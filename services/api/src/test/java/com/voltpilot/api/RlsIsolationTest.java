@@ -1,8 +1,10 @@
 package com.voltpilot.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -95,6 +97,73 @@ class RlsIsolationTest {
         }
     }
 
+    @Test
+    void everyOcppTableIsForceRlsAndRejectsCrossTenantWrites() throws Exception {
+        String[] tables = {
+                "ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
+                "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
+                "ocpp_meter_sample", "ocpp_station_status_event", "ocpp_configuration_key",
+                "ocpp_configuration_unknown_key", "ocpp_station_capability"
+        };
+        try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(), POSTGRES.getPassword()); Statement s = c.createStatement()) {
+            s.executeUpdate("INSERT INTO ocpp_station (device_id, charge_point_id, tenant_id, site_id, "
+                    + "last_seen, updated_at) VALUES "
+                    + "('00000000-0000-0000-0000-000000000003','RLS-A','" + TENANT_A
+                    + "','00000000-0000-0000-0000-000000000002',now(),now()),"
+                    + "('10000000-0000-0000-0000-000000000003','RLS-B','" + TENANT_B
+                    + "','10000000-0000-0000-0000-000000000002',now(),now()) "
+                    + "ON CONFLICT DO NOTHING");
+            try (ResultSet rs = s.executeQuery("SELECT count(*) FROM pg_class WHERE relname IN ('"
+                    + String.join("','", tables) + "') AND relrowsecurity AND relforcerowsecurity")) {
+                rs.next();
+                assertThat(rs.getInt(1)).isEqualTo(tables.length);
+            }
+        }
+
+        assertThat(scalar(TENANT_A, "SELECT count(*) FROM ocpp_station WHERE charge_point_id LIKE 'RLS-%'"))
+                .isEqualTo(1);
+        assertThat(scalar(TENANT_B, "SELECT count(*) FROM ocpp_station WHERE charge_point_id LIKE 'RLS-%'"))
+                .isEqualTo(1);
+        assertThat(scalar(TENANT_A, "SELECT count(*) FROM ocpp_station WHERE tenant_id='" + TENANT_B + "'"))
+                .isZero();
+        for (String table : tables) {
+            assertThat(scalarWithoutTenant("SELECT count(*) FROM " + table))
+                    .as(table + " default-deny").isZero();
+        }
+
+        try (Connection c = appDataSource().getConnection()) {
+            setTenant(c, TENANT_A);
+            assertThatThrownBy(() -> {
+                try (Statement s = c.createStatement()) {
+                    s.executeUpdate("INSERT INTO ocpp_station (device_id, charge_point_id, tenant_id, site_id, "
+                            + "updated_at) VALUES ('10000000-0000-0000-0000-000000000003',"
+                            + "'FORGED','" + TENANT_B + "','10000000-0000-0000-0000-000000000002',now())");
+                }
+            }).hasMessageContaining("row-level security");
+        }
+
+        // Even the schema owner cannot manufacture a mixed tenant/site/device
+        // tuple or bypass the free-text secret boundary. These constraints are
+        // independent backstops beneath RLS and the repository redactor.
+        try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(), POSTGRES.getPassword()); Statement s = c.createStatement()) {
+            assertThatThrownBy(() -> s.executeUpdate(
+                    "INSERT INTO ocpp_station (device_id, charge_point_id, tenant_id, site_id, updated_at) "
+                            + "VALUES ('10000000-0000-0000-0000-000000000003','MIXED','" + TENANT_A
+                            + "','00000000-0000-0000-0000-000000000002',now())"))
+                    .hasMessageContaining("ocpp_station_device_scope_fk");
+            assertThatThrownBy(() -> s.executeUpdate(
+                    "INSERT INTO ocpp_protocol_event (occurred_at,event_id,tenant_id,site_id,device_id,"
+                            + "charge_point_id,direction,message_type,action,error_description,payload) VALUES ("
+                            + "now(),'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','" + TENANT_A + "',"
+                            + "'00000000-0000-0000-0000-000000000002',"
+                            + "'00000000-0000-0000-0000-000000000003','CP-SECRET','internal','Event',"
+                            + "'SecretProbe','AuthorizationKey=must-not-land','{}')"))
+                    .hasMessageContaining("ocpp_protocol_error_description_redacted_chk");
+        }
+    }
+
     private List<String> sitesForTenant(String tenantId) throws Exception {
         List<String> names = new ArrayList<>();
         try (Connection c = appDataSource().getConnection()) {
@@ -116,6 +185,14 @@ class RlsIsolationTest {
                 rs.next();
                 return rs.getLong(1);
             }
+        }
+    }
+
+    private long scalarWithoutTenant(String sql) throws Exception {
+        try (Connection c = appDataSource().getConnection();
+                Statement s = c.createStatement(); ResultSet rs = s.executeQuery(sql)) {
+            rs.next();
+            return rs.getLong(1);
         }
     }
 

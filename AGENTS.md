@@ -1422,15 +1422,16 @@ Contract: `docs/contracts/mqtt-data-purge.schema.json` (additive; reuses the exi
 ONE purge authority: `services/api` `purge/DevicePurgeService` - both entry points run through it.
 
 - **What a cloud purge does, in order** (the ordering is load-bearing):
-  1. **Watermark first**: `device.data_purged_before = now()` (migration `V20260706000000`), committed as its own statement.
+  1. **Per-device database lock first:** `DeviceDataLock` holds a PostgreSQL advisory SESSION lock across the separately committed watermark and the full series sweep. `OcppRepository.ingest` takes the SAME key transactionally and reads the watermark only after acquiring it. Across API replicas an OCPP event therefore commits entirely before the purge (and is swept) or entirely after it (and survives); no mixed generation across the eleven tables and no cloud-side silent drop.
+  2. **Watermark first**: `device.data_purged_before = now()` (migration `V20260706000000`), committed as its own statement.
      The timescale-writer's insert refuses any sample whose OBSERVATION `time` is `<=` the watermark (extra `NOT EXISTS` on `device`), so a store-and-forward edge replaying old buffer entries can NEVER resurrect purged history - correctness does not depend on the device cooperating.
-  2. **Delete + rollup rebuild in one transaction** (`SeriesRepository.purgeDeviceRecordings`): the device's raw `telemetry` rows go, then the SITE's `telemetry_rollup_15m/1h/1d` are deleted and re-inserted from the remaining raw rows (rollups aggregate per SITE, and an upsert can never empty a bucket - hence rebuild, not refresh).
+  3. **Delete + rollup rebuild in one transaction** (`SeriesRepository.purgeDeviceRecordings`): the device's raw `telemetry` rows go, then the SITE's `telemetry_rollup_15m/1h/1d` are deleted and re-inserted from the remaining raw rows (rollups aggregate per SITE, and an upsert can never empty a bucket - hence rebuild, not refresh).
      All RLS-scoped through the app role (the migration grants it INSERT/UPDATE on the rollups).
      Unclaim reuses the same method, which also fixed the old gap where unclaim left the removed device's contribution in the rollups.
-  3. **Retained `purge_data` command** to `ems/{t}/{s}/{d}/command` (best-effort via `ProvisioningPublisher.publishPurgeCommand`; `clearRetained` clears it on unclaim): an offline device receives it on reconnect and wipes its local buffers BEFORE replaying. `deviceNotified` in the response tells the portal whether it went out.
+  4. **Retained `purge_data` command** to `ems/{t}/{s}/{d}/command` (best-effort via `ProvisioningPublisher.publishPurgeCommand`; `clearRetained` clears it on unclaim): an offline device receives it on reconnect and wipes its local buffers BEFORE replaying. `deviceNotified` in the response tells the portal whether it went out.
 - **Entry points:** portal `POST /api/v1/devices/{id}/purge-data` (tenant-scoped like every device route, foreign tenant = 404; admins via the tenant switcher) and the device's own `purge_request` on ITS status topic, consumed by `purge/PurgeRequestListener` (paho subscriber on `ems/+/+/+/status`; flag `VOLTPILOT_PURGE_MQTT_LISTENER_ENABLED`, on in both composes). Authorization of the MQTT path = the broker ACL + mTLS cert CN (a device can only publish on its own topic = it may purge its own data); the listener re-validates topic==payload identity and resolves the device via the RLS repository with the topic tenant (`TenantContext.set/clear` around it).
-- **Edge side (`edge-app/core`):** `agent/purge.go`. Local trigger = the guarded "Datenaufzeichnungen löschen" card on the `:8484` dashboard (`POST /api/purge-data`, type-LÖSCHEN confirm): wipes the store-and-forward buffer (`buffer.PurgeThrough(t)` - drops entries observed `<= t`, KEEPS newer ones with their original seq) + the live-chart ring (`history.PurgeThrough`), persists the request (`purge-request.json`) and (re-)publishes it on every cloud connect until confirmed - so an offline purge is queued explicitly, never lost, and the UI shows honest states (`ausstehend` -> `angefordert` -> `bestaetigt`, `Snapshot.DataPurge`). The cloud's retained `purge_data` command (new `command`-topic subscription in `cloud.go`) is BOTH the portal-purge push and the confirmation signal; it wipes `<= purged_before` only, so samples recorded after the purge survive and upload normally. Remember: `static/*` is `//go:embed`-ed - rebuild the core binary after UI edits.
-- **Tests:** api `PortalApiTest.purgeDeviceDataDeletesRecordingsRebuildsRollupsAndKeepsDeviceClaimed` (two devices/one site: rollups reflect only the kept device, purged-only buckets vanish, device stays claimed, idempotent re-purge, RLS 404) + `ProvisioningClaimTest` (retained command observed by a reconnecting device; device-published `purge_request` purges via the listener, spoofed identity ignored); writer `WriterPipeTest.purgeWatermarkRefusesReplayedOldSamplesButAcceptsNewOnes`; edge `buffer`/`history` PurgeThrough units, `web` endpoint tests, and `purge_integration_test.go` (offline round trip: purge while disconnected -> queued request on reconnect -> confirmation -> only post-purge samples reach the cloud; portal-initiated retained command wipes local buffers, foreign-device command ignored).
+- **Edge side (`edge-app/core`):** `agent/purge.go`. Local trigger = the guarded "Datenaufzeichnungen löschen" card on the `:8484` dashboard (`POST /api/purge-data`, type-LÖSCHEN confirm): FIRST atomically persists `purge-request.json` with `local_cleanup_pending=true`, THEN wipes store-and-forward buffer, live-chart ring and OCPP journal. A read/remove/gap-state failure leaves this exact cloud intent restart-safe, exposes `local_state=fehler`, retries local cleanup on boot before reconnect and (re-)publishes the original request on every cloud connect until confirmed. Corrupt/unreadable/timestamp-less journal bytes are conservatively removed; only a removal/state-commit failure is a retryable error. The cloud's retained `purge_data` command is BOTH portal-purge push and confirmation; known post-watermark samples/events survive. Remember: `static/*` is `//go:embed`-ed - rebuild the core binary after UI edits.
+- **Tests:** api `PortalApiTest.purgeDeviceDataDeletesRecordingsRebuildsRollupsAndKeepsDeviceClaimed` plus `postWatermarkOcppIngestWaitsForPurgeAndSurvivesCompletely` (real DB trigger deterministically stops purge after it owns the device lock, observes ingest blocked, then proves journal + every StatusNotification read model survives together) + `ProvisioningClaimTest`; writer `WriterPipeTest.purgeWatermarkRefusesReplayedOldSamplesButAcceptsNewOnes`; edge `buffer`/`history` PurgeThrough units, `csms/journal_test.go` corrupt/read/remove/gap-state failures and `purge_integration_test.go` including intent-write failure plus restart/reconnect retry.
 
 ## Live ingest pipe (`services/ingest` + `services/timescale-writer`)
 
@@ -1639,7 +1640,7 @@ Der Anlass war eine Produktionsstörung (06./07.08.2026): eine DNS-Fehlleitung l
 (cd edge-app/core && go test ./...)                          # Go 1.24+; incl. in-process mTLS integration test
 (cd edge-app/nodered/vp-palette && npm install && npm test)  # vp-palette node tests
 edge-app/test/e2e-compose.sh                                 # isolated compose e2e (Docker; own project/ports)
-edge-app/test/e2e-ocpp.sh                                    # OCPP-Lastmanagement-Rig (L1-L9; Docker-FREI, nur Go + curl)
+edge-app/test/e2e-ocpp.sh                                    # OCPP-Lastmanagement-/Daten-Rig (L1-L10; Docker-FREI, nur Go + curl)
 ```
 
 Health endpoints on the JVM services are mapped to root: `GET /health` (Spring Boot Actuator).
@@ -4067,6 +4068,84 @@ ERTEILT die Einmal-Freigabe.
   „Jetzt voll laden" erreicht GENAU EINEN Ladevorgang, alle Ablehnungen ohne
   Wirkung, Mandanten-Zaun) · Edge `internal/chargingboost` +
   `agent/charging_boost_test.go`. Portal-Seite in `frontend/portal/AGENTS.md`.
+
+## OCPP-Datenfundament (Slice 10): vollständig lesen, noch NICHT fernsteuern
+
+Der Edge bleibt das lokale CSMS. Slice 10 transportiert sein vollständiges,
+bereits privacy-redigiertes OCPP-1.6-Journal per QoS1 auf
+`ems/{tenant}/{site}/{device}/v2/ocpp-events` zur API; es gibt bewusst KEINEN
+CSMS→Station-Command-Gateway und keine neue Station-Aktion.
+
+- **Migration `V20260840000000`** besitzt die normalisierten Stations-/Stecker-,
+  Autorisierungs-, Transaktions-, MeterValue-, Diagnose-/Firmware-,
+  Konfigurations-/unknownKey-/Capability-Readmodels plus das vollständige
+  Call/CallResult/CallError-Journal. Alle elf Tabellen tragen `tenant_id`, RLS
+  UND FORCE RLS; Roh-/Diagnose-/personenbezogene Daten laufen nach 90 Tagen aus,
+  der Retention-Job leert dann auch `transactionData` und `tagref_*` im
+  langlebigen, nicht-personenbezogenen Transaktionskopf. Das additive Review-
+  Hardening `V20260840010000` bindet jede OCPP-Zeile per Composite-FK an exakt
+  ihr `(device,site,tenant)` und kaskadiert beim Device-Delete; Geräte-Purge,
+  Unclaim, Site-Delete und Tenant-Offboarding löschen dieselben elf Tabellen
+  zusätzlich explizit in ihrer bestehenden DB-Transaktion. Der Retention-Job
+  bereinigt nun auch seit >90 Tagen unveränderte offene Transaktionen.
+- **Ein SampledValue ist eine Zeile.** Der kanonische `point_key` enthält immer
+  `measurand/context/format/phase/location/unit`; fehlende OCPP-Felder bekommen
+  ausschließlich ihre Spec-Defaults bzw. den ehrlichen Sentinel `None`.
+  Phasen/Orte/Formate werden nie aggregiert oder zusammengeführt.
+- **Privacy ist zweistufig:** der Edge redigiert vor Disk; `OcppPrivacy` macht
+  dasselbe vor Postgres noch einmal (alte/kompromittierte Edge). Klare idTags
+  werden nur als stabile `tagref_*` gespeichert. `AuthorizationKey` und
+  secret-/password-/token-artige Vendor-Keys haben im DB- und API-Modell immer
+  `value=null`; Diagnose-/Firmware-URLs und untypisierte DataTransfer-Daten
+  landen nie roh im Journal. Achtung: `MeterValues.location=Outlet/EV/...` ist
+  eine Messdimension, keine URL. `CallError.error_description` ist untypisierter
+  Vendor-Freitext und wird deshalb an BEIDEN Grenzen vollständig auf
+  `[redacted-call-error-description]` reduziert; Error-Code und redigierte
+  Details bleiben erhalten. Auch der `ocpp-go`-Callback-/Status-/Log-Pfad wird
+  am Edge auf Code + Marker normiert. Eine DB-CHECK-Constraint verhindert
+  Umgehungen.
+- **Zustellung ist über Neustarts belastbar:** der API-Listener verwendet die
+  stabile, konfigurierbare MQTT-Client-ID `VOLTPILOT_OCPP_MQTT_CLIENT_ID`, eine
+  persistente Broker-Session (`cleanSession=false`) und manuelle QoS1-ACKs erst
+  nach abgeschlossener DB-Verarbeitung. Pro horizontaler API-Replika ist eine
+  eigene stabile ID Pflicht; dieselbe ID auf zwei laufenden Pods würde sie
+  gegenseitig vom Broker trennen.
+- **Lücken werden nicht verschwiegen:** Überlauf (10.000 Dateien) sowie Event-
+  Write-/Commit-/Encode-Fehler erhöhen einen persistenten monotonen Zähler im
+  Edge-Ledger `ocpp-journal-gaps.json`. Der Upload priorisiert daraus ein
+  idempotentes internes `JournalGap` mit Anzahl, Gründen und betroffenem Zeit-/
+  Eventbereich; die Cloud persistiert es im normalen Journal und liefert es
+  explizit über `GET .../ocpp/gaps`. Ledger und Gap überleben Neustarts bis zum
+  QoS1-ACK. Purge entfernt auch beschädigte/undekodierbare OCPP-Spool-Dateien
+  sowie nach einem Crash vor dem Rename verwaiste, streng auf das eigene Muster
+  `.<UTC-Zeit>_<v4-Event-ID>.json.tmp` begrenzte Temp-Artefakte; ein Remove-
+  Fehler bleibt mit dem davor restart-fest persistierten Cloud-Auftrag retrybar.
+  Cloud-Purge und Ingest
+  teilen einen DB-weiten Device-Lock; alte Replays scheitern innerhalb der
+  Ingest-Transaktion an `device.data_purged_before`, post-Watermark-Ereignisse
+  überleben vollständig auch dann, wenn Edge und API-Replikate konkurrieren.
+- **Die API ist strikt GET-only:**
+  `/api/v1/sites/{siteId}/ocpp/{stations,events,gaps,transactions,meter-values,configuration,action-permissions}`.
+  Kunden lesen über normalen JWT-Tenant + RLS, Plattform-Admins wie bei allen
+  Site-Pfaden über `X-Tenant-Id`. `OcppActionPolicy` materialisiert D4 für den
+  abhängigen Gateway-PR: operator < site-admin < platform-admin; die Map ist
+  heute nur Auskunft und keine ausführbare Aktion. Beide Realm-Importe kennen
+  `site-admin`; bestehende Realms brauchen wie jede Realm-Änderung ein manuelles
+  Nachziehen. Das bestehende Realm-Role `admin` bleibt als rückwärtskompatibler
+  Alias derselben Anlagenadministrator-Stufe autorisiert.
+- **Bestehende Verträge bleiben stehen:** `device_charging_*`, Charging-Boost
+  und der Smart-Charging-Executor werden nicht ersetzt. Das bestehende
+  Commissioning liest die vier bekannten Safe-Keys GEZIELT vor jedem Profil.
+  Erst nach installierter Höchstgrenze + TxDefault folgt eine getrennte,
+  best-effort GetConfiguration-Abfrage mit leerer Key-Liste (= alle Schlüssel);
+  ihre Ablehnung kann die Schutzprofile nie verhindern. Das Journal bewahrt bei
+  Erfolg readonly, unknownKey, SupportedFeatureProfiles und Vendor-Keys.
+  Bestehende SetChargingProfile-
+  Calls werden nur als Profilbezug an die Transaktion DERIVIERT, nie ausgelöst.
+- Verträge: `docs/contracts/mqtt-ocpp-events.schema.json` + die sieben GET-Pfade
+  in `openapi.yaml`. Beweise: `OcppPrivacyTest`, `OcppEventListenerTest`,
+  `OcppActionPolicyTest`, der OCPP-Fall in `PortalApiTest`, der FORCE-RLS-
+  Angriff in `RlsIsolationTest`, Edge `csms/journal_test.go` und Rig L10.
 
 ## Anlagen-Zentrale Stufe 1: jedes Gerät hat EINE deep-linkbare Seite
 

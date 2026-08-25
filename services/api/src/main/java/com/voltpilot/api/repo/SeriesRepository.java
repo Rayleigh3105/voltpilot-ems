@@ -20,6 +20,18 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class SeriesRepository {
 
+    /**
+     * Every tenant-scoped OCPP table introduced by Slice 10. Keep this list in
+     * lockstep with V20260840000000: these tables intentionally have explicit
+     * delete paths in addition to the additive composite-FK backstop.
+     */
+    private static final String[] OCPP_TABLES = {
+            "ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
+            "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
+            "ocpp_meter_sample", "ocpp_station_status_event", "ocpp_configuration_key",
+            "ocpp_configuration_unknown_key", "ocpp_station_capability"
+    };
+
     private final JdbcTemplate jdbc;
 
     public SeriesRepository(JdbcTemplate jdbc) {
@@ -52,6 +64,7 @@ public class SeriesRepository {
 
     /** Remove every series row of a site (telemetry, rollups, feeds, quality). */
     public void deleteForSite(UUID siteId) {
+        deleteOcpp("site_id", siteId);
         for (String table : new String[] {
                 "telemetry", "telemetry_rollup_15m", "telemetry_rollup_1h", "telemetry_rollup_1d",
                 "weather_forecast", "schedule", "forecast",
@@ -84,12 +97,24 @@ public class SeriesRepository {
      */
     @Transactional
     public long purgeDeviceRecordings(UUID deviceId, UUID siteId, Instant purgedBefore) {
+        // OCPP snapshots and raw events are recordings too. They are not
+        // bounded by telemetry's watermark because their own occurred_at can
+        // be a station clock. DevicePurgeService's session lock serializes this
+        // complete sweep with OcppRepository's transaction lock, so no ingress
+        // can cross the eleven deletes or disappear after T.
+        deleteOcpp("device_id", deviceId);
         long purged = purgedBefore == null
                 ? jdbc.update("DELETE FROM telemetry WHERE device_id = ?", deviceId)
                 : jdbc.update("DELETE FROM telemetry WHERE device_id = ? AND time <= ?",
                         deviceId, Timestamp.from(purgedBefore));
         recomputeRollupsForSite(siteId);
         return purged;
+    }
+
+    private void deleteOcpp(String column, UUID id) {
+        for (String table : OCPP_TABLES) {
+            jdbc.update("DELETE FROM " + table + " WHERE " + column + " = ?", id);
+        }
     }
 
     /**

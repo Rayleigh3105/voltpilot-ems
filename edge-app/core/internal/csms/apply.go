@@ -33,6 +33,7 @@ func (s *Server) onConnect(id string) {
 		return
 	}
 	s.log.Info("Ladesäule verbunden", "charge_point_id", id)
+	s.journal.RecordConnection(id, "Connected", now)
 	s.notifyChanged()
 }
 
@@ -45,6 +46,7 @@ func (s *Server) onConnect(id string) {
 // its own. Inventing "everything stopped" here would be a claim nobody
 // measured. What DOES change is Connected, which every surface keys on.
 func (s *Server) onDisconnect(id string) {
+	now := s.opts.Now()
 	s.mu.Lock()
 	c, ok := s.chargers[id]
 	if ok {
@@ -56,6 +58,7 @@ func (s *Server) onDisconnect(id string) {
 	}
 	s.log.Warn("Ladesäule getrennt — sie fällt auf ihr hinterlegtes Sicherheitsprofil zurück",
 		"charge_point_id", id)
+	s.journal.RecordConnection(id, "Disconnected", now)
 	s.notifyChanged()
 }
 

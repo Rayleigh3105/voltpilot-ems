@@ -346,6 +346,11 @@ services:
       VOLTPILOT_CONSUMER_REPLAN_TRIGGER_ENABLED: ${VOLTPILOT_CONSUMER_REPLAN_TRIGGER_ENABLED:-true}
       VOLTPILOT_SOURCES_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_CHARGERS_MQTT_LISTENER_ENABLED: "true"
+      # OCPP 1.6 station-originated calls/results/errors from the edge journal.
+      # The edge already masks tags/secrets; the api repeats redaction before DB.
+      VOLTPILOT_OCPP_MQTT_LISTENER_ENABLED: "true"
+      VOLTPILOT_OCPP_MQTT_CLIENT_ID: voltpilot-api-ocpp
+      VOLTPILOT_OCPP_PRIVACY_PEPPER: ${VOLTPILOT_OCPP_PRIVACY_PEPPER:-voltpilot-local-ocpp-privacy}
       VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED: "true"
       # Portal v3 M5: deployment acks + the feature-flagged per-node flow states.
       VOLTPILOT_FLOWS_MQTT_LISTENER_ENABLED: "true"

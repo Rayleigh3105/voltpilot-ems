@@ -20,6 +20,9 @@ import org.springframework.stereotype.Service;
  * hold no matter who asked. Design (docs/contracts/mqtt-data-purge.schema.json):
  *
  * <ol>
+ *   <li><b>Serialize per device</b>: a database-wide advisory session lock is
+ *       held through watermark and sweep. OCPP ingestion takes the same lock
+ *       transactionally, so a post-watermark event cannot be half-deleted.</li>
  *   <li><b>Watermark first</b>: {@code device.data_purged_before = now()} is
  *       committed as its own statement. From that moment the timescale-writer
  *       refuses any telemetry whose observation time is at or before the
@@ -27,8 +30,9 @@ import org.springframework.stereotype.Service;
  *       can never resurrect the history we are about to delete - correctness
  *       never depends on the device cooperating.</li>
  *   <li><b>Delete + rollup rebuild</b> in one transaction
- *       ({@link SeriesRepository#purgeDeviceRecordings}): raw telemetry of the
- *       device goes, the site's rollups are recomputed from what remains.</li>
+ *       ({@link SeriesRepository#purgeDeviceRecordings}): raw telemetry and
+ *       every OCPP event/snapshot/transaction/configuration row of the device
+ *       go, the site's rollups are recomputed from what remains.</li>
  *   <li><b>Retained {@code purge_data} command</b> to the device (best-effort):
  *       an online device wipes its local buffer + history immediately; an
  *       offline one gets the retained command on reconnect. Either way the
@@ -51,12 +55,14 @@ public class DevicePurgeService {
 
     private final DeviceRepository devices;
     private final SeriesRepository series;
+    private final DeviceDataLock dataLock;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
 
     public DevicePurgeService(DeviceRepository devices, SeriesRepository series,
-            ObjectProvider<ProvisioningPublisher> provisioning) {
+            DeviceDataLock dataLock, ObjectProvider<ProvisioningPublisher> provisioning) {
         this.devices = devices;
         this.series = series;
+        this.dataLock = dataLock;
         this.provisioning = provisioning;
     }
 
@@ -68,9 +74,19 @@ public class DevicePurgeService {
      */
     public Result purge(DeviceDto device) {
         UUID tenantId = TenantContext.get();
-        Instant purgedBefore = Instant.now();
-        devices.setDataPurgedBefore(device.id(), purgedBefore);
-        long purgedRows = series.purgeDeviceRecordings(device.id(), device.siteId(), purgedBefore);
+        Instant purgedBefore;
+        long purgedRows;
+        // This spans two commits on purpose: telemetry needs the watermark
+        // visible before its sweep, while OCPP ingestion uses the same lock and
+        // can therefore cross this boundary only wholly before or wholly after.
+        try (DeviceDataLock.SessionLock ignored = dataLock.lockSession(device.id())) {
+            // T is chosen only after the device lock is ours. Any ingest which
+            // won the lock first is unambiguously pre-purge; every event born
+            // after T must wait and is preserved after the sweep.
+            purgedBefore = Instant.now();
+            devices.setDataPurgedBefore(device.id(), purgedBefore);
+            purgedRows = series.purgeDeviceRecordings(device.id(), device.siteId(), purgedBefore);
+        }
         boolean notified = false;
         ProvisioningPublisher publisher = provisioning.getIfAvailable();
         if (publisher != null) {

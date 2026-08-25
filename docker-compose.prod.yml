@@ -396,6 +396,11 @@ services:
       # The SPA is served same-origin, so CORS is not strictly needed; allow the
       # public origin anyway for direct API tooling.
       VOLTPILOT_CORS_ALLOWED_ORIGINS: https://${DOMAIN:?set DOMAIN in .env}
+      # Tenant-scoped OCPP event journal. A stable secret pepper makes clear-text
+      # idTags from an old/compromised edge irreversible before persistence.
+      VOLTPILOT_OCPP_MQTT_LISTENER_ENABLED: "true"
+      VOLTPILOT_OCPP_MQTT_CLIENT_ID: ${VOLTPILOT_OCPP_MQTT_CLIENT_ID:-voltpilot-api-ocpp}
+      VOLTPILOT_OCPP_PRIVACY_PEPPER: ${VOLTPILOT_OCPP_PRIVACY_PEPPER:?set VOLTPILOT_OCPP_PRIVACY_PEPPER in .env}
       # Which forecast model is LIVE per kind. Since the portal promotion
       # switch (docs/forecasting.md) these are the DEFAULT: a row in
       # site_forecast_model_choice (je Anlage) bzw. forecast_model_choice

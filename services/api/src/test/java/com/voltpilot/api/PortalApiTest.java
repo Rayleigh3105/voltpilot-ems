@@ -14,6 +14,11 @@ import java.time.ZonedDateTime;
 import java.util.List;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -136,6 +141,12 @@ class PortalApiTest {
     @Autowired
     com.voltpilot.api.rules.RuleEventWriter ruleEventWriter;
 
+    @Autowired
+    com.voltpilot.api.ocpp.OcppRepository ocppRepository;
+
+    @Autowired
+    com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
     // ---- token validation ---------------------------------------------------
 
     @Test
@@ -155,6 +166,162 @@ class PortalApiTest {
     void healthStaysOpen() {
         assertThat(rest.getForEntity(url("/health"), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void ocppFoundationPersistsCompleteDimensionedAndPrivacySafeStationData() throws Exception {
+        String cp = "VP-RIG-OCPP-16";
+        ingestOcpp(cp, 0, "internal", "Event", null, "Connected", "{}");
+        ingestOcpp(cp, 1, "station_to_csms", "Call", "boot", "BootNotification", """
+                {"chargePointVendor":"RigVendor","chargePointModel":"Complete-16",
+                 "chargePointSerialNumber":"SN-42","chargeBoxSerialNumber":"BOX-9",
+                 "firmwareVersion":"1.6.10","iccid":"iccid-test","imsi":"imsi-test",
+                 "meterSerialNumber":"MTR-7","meterType":"MID"}
+                """);
+        ingestOcpp(cp, 2, "station_to_csms", "Call", "status", "StatusNotification", """
+                {"connectorId":1,"status":"Faulted","errorCode":"OtherError",
+                 "info":"contactor diagnostic","vendorId":"RigVendor",
+                 "vendorErrorCode":"RV-17","timestamp":"2026-08-25T06:30:02Z"}
+                """);
+        ingestOcpp(cp, 3, "station_to_csms", "Call", "auth", "Authorize",
+                "{\"idTag\":\"clear-rfid-4711\"}");
+        ingestOcpp(cp, 4, "csms_to_station", "CallResult", "auth", "Authorize", """
+                {"idTagInfo":{"status":"Accepted","parentIdTag":"clear-parent-tag",
+                 "expiryDate":"2026-09-25T00:00:00Z"}}
+                """);
+        ingestOcpp(cp, 5, "station_to_csms", "Call", "start", "StartTransaction", """
+                {"connectorId":1,"idTag":"clear-rfid-4711","meterStart":1000,
+                 "reservationId":77,"timestamp":"2026-08-25T06:30:05Z"}
+                """);
+        ingestOcpp(cp, 6, "csms_to_station", "CallResult", "start", "StartTransaction", """
+                {"transactionId":42,"idTagInfo":{"status":"Accepted",
+                 "parentIdTag":"clear-parent-tag"}}
+                """);
+        ingestOcpp(cp, 7, "station_to_csms", "Call", "meter", "MeterValues", """
+                {"connectorId":1,"transactionId":42,"meterValue":[{
+                  "timestamp":"2026-08-25T06:31:00Z","sampledValue":[
+                   {"value":"230.1","measurand":"Voltage","context":"Sample.Periodic",
+                    "format":"Raw","phase":"L1-N","location":"Outlet","unit":"V"},
+                   {"value":"229.9","measurand":"Voltage","context":"Sample.Periodic",
+                    "format":"Raw","phase":"L2-N","location":"Outlet","unit":"V"},
+                   {"value":"signed-payload","measurand":"Energy.Active.Import.Register",
+                    "context":"Transaction.Begin","format":"SignedData","phase":"None",
+                    "location":"EV","unit":"Wh"}]}]}
+                """);
+        ingestOcpp(cp, 8, "station_to_csms", "Call", "stop", "StopTransaction", """
+                {"transactionId":42,"idTag":"clear-rfid-4711","meterStop":1450,
+                 "reason":"DeAuthorized","timestamp":"2026-08-25T06:32:00Z",
+                 "transactionData":[{"timestamp":"2026-08-25T06:32:00Z","sampledValue":[
+                   {"value":"1450","measurand":"Energy.Active.Import.Register",
+                    "context":"Transaction.End","format":"Raw","phase":"None",
+                    "location":"Outlet","unit":"Wh"}]}]}
+                """);
+        ingestOcpp(cp, 9, "csms_to_station", "CallResult", "stop", "StopTransaction",
+                "{\"idTagInfo\":{\"status\":\"Accepted\"}}");
+        ingestOcpp(cp, 10, "station_to_csms", "Call", "diag", "DiagnosticsStatusNotification",
+                "{\"status\":\"Uploaded\"}");
+        ingestOcpp(cp, 11, "station_to_csms", "Call", "fw", "FirmwareStatusNotification",
+                "{\"status\":\"Installed\"}");
+        ingestOcpp(cp, 12, "csms_to_station", "Call", "config", "GetConfiguration", "{}");
+        ingestOcpp(cp, 13, "station_to_csms", "CallResult", "config", "GetConfiguration", """
+                {"configurationKey":[
+                  {"key":"AuthorizationKey","readonly":false,"value":"never-store-this-secret"},
+                  {"key":"SupportedFeatureProfiles","readonly":true,
+                   "value":"Core,SmartCharging,FirmwareManagement"},
+                  {"key":"RigVendor.Mode","readonly":true,"value":"complete"}],
+                 "unknownKey":["NotImplemented.StandardKey"]}
+                """);
+        ingestOcpp(cp, 14, "station_to_csms", "CallError", "bad", "DataTransfer", "{}",
+                "NotSupported", "AuthorizationKey=cloud-desc-secret "
+                        + "https://station.invalid/x?token=cloud-url-token "
+                        + "idTag=cloud-description-tag client_secret=cloud-generic-secret",
+                "{\"idTag\":\"clear-error-tag\",\"data\":\"secret-vendor-data\"}");
+        ingestOcpp(cp, 15, "csms_to_station", "Call", "profile", "SetChargingProfile", """
+                {"connectorId":1,"csChargingProfiles":{"chargingProfileId":1042,
+                 "transactionId":42,"stackLevel":0,"chargingProfilePurpose":"TxProfile",
+                 "chargingProfileKind":"Absolute","chargingSchedule":{"duration":120,
+                 "startSchedule":"2026-08-25T06:30:15Z","chargingRateUnit":"W",
+                 "minChargingRate":6000,"chargingSchedulePeriod":[
+                   {"startPeriod":0,"limit":11000,"numberPhases":3}]}}}
+                """);
+        ingestOcpp(cp, 16, "internal", "Event", null, "JournalGap", """
+                {"dropped_count":3,"total_dropped":7,
+                 "first_occurred_at":"2026-08-25T06:29:00Z",
+                 "last_occurred_at":"2026-08-25T06:29:30Z",
+                 "first_event_id":"gap-first","last_event_id":"gap-last",
+                 "reasons":{"capacity_overflow":2,"write_failure":1}}
+                """);
+
+        String demo = token("demo", "demo");
+        ResponseEntity<String> stations = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/stations"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class);
+        assertThat(stations.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(stations.getBody()).contains(cp, "Complete-16", "RV-17", "Uploaded", "Installed",
+                "SmartCharging");
+
+        List<Map<String, Object>> meter = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/meter-values?transactionId=42"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {}).getBody();
+        assertThat(meter).hasSize(4);
+        assertThat(meter).extracting(v -> v.get("pointKey")).doesNotHaveDuplicates();
+        assertThat(meter).extracting(v -> v.get("pointKey").toString())
+                .anyMatch(v -> v.contains("phase=L1-N") && v.contains("location=Outlet")
+                        && v.contains("context=Sample.Periodic") && v.contains("unit=V"))
+                .anyMatch(v -> v.contains("format=SignedData") && v.contains("location=EV"));
+
+        String transactions = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/transactions"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class).getBody();
+        assertThat(transactions).contains("DeAuthorized", "1450", "reservationId", "tagref_",
+                        "\"chargingProfileId\":1042", "\"chargingProfilePurpose\":\"TxProfile\"")
+                .doesNotContain("clear-rfid-4711", "clear-parent-tag");
+
+        String configuration = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/configuration?chargePointId=" + cp), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class).getBody();
+        assertThat(configuration).contains("AuthorizationKey", "\"value\":null",
+                        "\"secret\":true", "RigVendor.Mode", "NotImplemented.StandardKey",
+                        "FirmwareManagement")
+                .doesNotContain("never-store-this-secret");
+
+        String events = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/events?limit=100"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class).getBody();
+        assertThat(events).contains("CallError", "NotSupported", "BootNotification",
+                        "[redacted-call-error-description]", "JournalGap")
+                .doesNotContain("clear-rfid-4711", "clear-parent-tag", "clear-error-tag",
+                        "never-store-this-secret", "secret-vendor-data", "cloud-desc-secret",
+                        "cloud-url-token", "cloud-description-tag", "cloud-generic-secret");
+
+        String gaps = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/gaps"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class).getBody();
+        assertThat(gaps).contains("\"droppedCount\":3", "\"totalDropped\":7",
+                "gap-first", "gap-last", "capacity_overflow", "write_failure");
+
+        String permissions = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/action-permissions"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class).getBody();
+        assertThat(permissions).contains("\"RemoteStartTransaction\":true",
+                        "\"ChangeConfiguration\":false", "\"UpdateFirmware\":false");
+
+        ResponseEntity<String> crossTenant = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/stations"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(crossTenant.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE + "/ocpp/gaps"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        HttpHeaders adminHeaders = bearer(token("admin", "admin"));
+        adminHeaders.set("X-Tenant-Id", "00000000-0000-0000-0000-000000000001");
+        ResponseEntity<String> admin = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/stations"), HttpMethod.GET,
+                new HttpEntity<>(adminHeaders), String.class);
+        assertThat(admin.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(admin.getBody()).contains(cp);
     }
 
     // ---- tenant isolation through the API -----------------------------------
@@ -672,6 +839,8 @@ class PortalApiTest {
                 + "VALUES (now(), '" + tenantA + "', '" + siteId + "', 'load', 'load-persistence', 1.2, now(), 60, 'test')");
         exec("INSERT INTO weather_forecast (time, tenant_id, site_id, run_at, temperature_c, source) "
                 + "VALUES (now(), '" + tenantA + "', '" + siteId + "', now(), 20.0, 'open-meteo')");
+        OcppTestData.seed(PortalApiTest::exec, tenantA, siteId, deviceId);
+        assertThat(queryLong(OcppTestData.countBySiteSql(siteId))).isEqualTo(11);
 
         // The deletion preview lists the concrete consequences for the dialog.
         ResponseEntity<Map<String, Object>> preview = rest.exchange(
@@ -697,6 +866,13 @@ class PortalApiTest {
         assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isZero();
+        // Legacy-defense proof for the SITE path itself: the published
+        // foundation briefly allowed orphan OCPP rows. Bypass FK triggers only
+        // while seeding that pre-hardening state; the real endpoint must sweep
+        // all eleven tables even though no device remains.
+        seedLegacyOrphanOcpp(tenantA, siteId, deviceId);
+        assertThat(queryLong(OcppTestData.countBySiteSql(siteId))).isEqualTo(11);
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.DELETE,
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
@@ -707,6 +883,7 @@ class PortalApiTest {
         assertThat(queryLong("SELECT count(*) FROM forecast WHERE site_id = '" + siteId + "'")).isZero();
         assertThat(queryLong("SELECT count(*) FROM weather_forecast WHERE site_id = '" + siteId + "'")).isZero();
         assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + siteId + "'")).isZero();
+        assertThat(queryLong(OcppTestData.countBySiteSql(siteId))).isZero();
     }
 
     @Test
@@ -722,6 +899,8 @@ class PortalApiTest {
         String deviceId = (String) claim.getBody().get("id");
         exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw) VALUES "
                 + "(now(), '" + tenantA + "', '" + BERLIN_SITE + "', '" + deviceId + "', 3.3)");
+        OcppTestData.seed(PortalApiTest::exec, tenantA, BERLIN_SITE, deviceId);
+        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isEqualTo(11);
 
         // Edit: kind + label. The externalRef is identity and stays untouched.
         ResponseEntity<Map<String, Object>> updated = rest.exchange(
@@ -752,6 +931,7 @@ class PortalApiTest {
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
         assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + deviceId + "'")).isZero();
+        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isZero();
         assertThat(queryLong("SELECT count(*) FROM device WHERE id = '" + deviceId + "'")).isZero();
 
         // The freed ref is claimable again (fresh row, fresh id).
@@ -791,6 +971,10 @@ class PortalApiTest {
                 + BERLIN_SITE + "' AND bucket = '2026-01-05T10:00:00Z'")).isEqualTo(2);
         assertThat(queryLong("SELECT count(*) FROM telemetry_rollup_15m WHERE site_id = '"
                 + BERLIN_SITE + "' AND bucket = '2026-01-05T10:15:00Z'")).isEqualTo(1);
+        OcppTestData.seed(PortalApiTest::exec, tenantA, BERLIN_SITE, purged);
+        OcppTestData.seed(PortalApiTest::exec, tenantA, BERLIN_SITE, kept);
+        assertThat(queryLong(OcppTestData.countByDeviceSql(purged))).isEqualTo(11);
+        assertThat(queryLong(OcppTestData.countByDeviceSql(kept))).isEqualTo(11);
 
         // Authorization: another tenant cannot purge it (RLS => 404).
         assertThat(rest.exchange(url("/api/v1/devices/" + purged + "/purge-data"), HttpMethod.POST,
@@ -798,6 +982,7 @@ class PortalApiTest {
                 .isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + purged + "'"))
                 .isEqualTo(2);
+        assertThat(queryLong(OcppTestData.countByDeviceSql(purged))).isEqualTo(11);
 
         // The owner purges: raw telemetry of THIS device is gone, the other
         // device's rows stay, and the watermark is stamped.
@@ -811,6 +996,8 @@ class PortalApiTest {
         assertThat(res.getBody().get("purgedBefore")).isNotNull();
         assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + purged + "'")).isZero();
         assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + kept + "'")).isEqualTo(1);
+        assertThat(queryLong(OcppTestData.countByDeviceSql(purged))).isZero();
+        assertThat(queryLong(OcppTestData.countByDeviceSql(kept))).isEqualTo(11);
         assertThat(queryLong("SELECT count(*) FROM device WHERE id = '" + purged
                 + "' AND data_purged_before IS NOT NULL")).isEqualTo(1);
 
@@ -842,6 +1029,126 @@ class PortalApiTest {
                 new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
         assertThat(again.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(((Number) again.getBody().get("purgedRows")).longValue()).isEqualTo(1);
+    }
+
+    /**
+     * A database-controlled race: the purge is stopped inside its watermark
+     * UPDATE after it already owns the production per-device lock. OCPP ingest
+     * is then started and observed waiting on that same lock. Once released,
+     * purge finishes first and the post-watermark event must commit together
+     * with every derived StatusNotification row - never as a partial survivor.
+     */
+    @Test
+    void postWatermarkOcppIngestWaitsForPurgeAndSurvivesCompletely() throws Exception {
+        String demo = token("demo", "demo");
+        UUID tenant = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID site = UUID.fromString(BERLIN_SITE);
+        UUID device = UUID.fromString(claimDevice(demo, "edge-purge-race-01"));
+        UUID eventId = UUID.randomUUID();
+        String cp = "VP-PURGE-RACE-" + device.toString().substring(0, 8);
+        Instant occurredAt = Instant.now().plusSeconds(3600);
+        var envelope = statusEnvelope(eventId, occurredAt, cp);
+        long gateKey = 8_252_026_082_501L;
+        String trigger = "vp_test_purge_gate";
+        String function = trigger + "_fn";
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+
+        try (Connection gate = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                Statement gateStatement = gate.createStatement()) {
+            gateStatement.execute("SELECT pg_advisory_lock(" + gateKey + ")");
+            exec("CREATE OR REPLACE FUNCTION " + function + "() RETURNS trigger LANGUAGE plpgsql AS $$ "
+                    + "BEGIN IF NEW.id = '" + device + "'::uuid "
+                    + "AND NEW.data_purged_before IS DISTINCT FROM OLD.data_purged_before THEN "
+                    + "PERFORM pg_advisory_xact_lock(" + gateKey + "); END IF; RETURN NEW; END $$");
+            exec("CREATE TRIGGER " + trigger + " BEFORE UPDATE OF data_purged_before ON device "
+                    + "FOR EACH ROW EXECUTE FUNCTION " + function + "()");
+
+            Future<ResponseEntity<Map<String, Object>>> purge = pool.submit(() -> rest.exchange(
+                    url("/api/v1/devices/" + device + "/purge-data"), HttpMethod.POST,
+                    new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {}));
+            awaitBlockedStatement("UPDATE device SET data_purged_before");
+
+            Future<Boolean> ingest = pool.submit(() -> {
+                com.voltpilot.api.tenant.TenantContext.set(tenant);
+                try {
+                    return ocppRepository.ingest(tenant, site, device, envelope);
+                } finally {
+                    com.voltpilot.api.tenant.TenantContext.clear();
+                }
+            });
+            awaitBlockedStatement("SELECT pg_advisory_xact_lock");
+            assertThat(purge.isDone()).isFalse();
+            assertThat(ingest.isDone()).isFalse();
+
+            // This is the only release point: purge completes its atomic sweep,
+            // releases the device lock, then ingest re-checks T and commits.
+            try (java.sql.ResultSet unlocked = gateStatement.executeQuery(
+                    "SELECT pg_advisory_unlock(" + gateKey + ")")) {
+                assertThat(unlocked.next()).isTrue();
+                assertThat(unlocked.getBoolean(1)).isTrue();
+            }
+            ResponseEntity<Map<String, Object>> purged = purge.get(15, TimeUnit.SECONDS);
+            assertThat(purged.getStatusCode()).isEqualTo(HttpStatus.OK);
+            Instant watermark = Instant.parse((String) purged.getBody().get("purgedBefore"));
+            assertThat(occurredAt).isAfter(watermark);
+            assertThat(ingest.get(15, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(queryLong("SELECT count(*) FROM ocpp_protocol_event WHERE device_id = '"
+                    + device + "' AND event_id = '" + eventId + "'")).isEqualTo(1);
+            assertThat(queryLong("SELECT count(*) FROM ocpp_station WHERE device_id = '"
+                    + device + "' AND charge_point_id = '" + cp + "'")).isEqualTo(1);
+            assertThat(queryLong("SELECT count(*) FROM ocpp_connector_status_event WHERE device_id = '"
+                    + device + "' AND event_id = '" + eventId + "'")).isEqualTo(1);
+            assertThat(queryLong("SELECT count(*) FROM ocpp_connector_state WHERE device_id = '"
+                    + device + "' AND charge_point_id = '" + cp + "' AND connector_id = 1"))
+                    .isEqualTo(1);
+
+            // An old replay sees the committed watermark only after acquiring
+            // the same lock and is rejected without recreating any row.
+            var old = statusEnvelope(UUID.randomUUID(), watermark, cp);
+            com.voltpilot.api.tenant.TenantContext.set(tenant);
+            try {
+                assertThat(ocppRepository.ingest(tenant, site, device, old)).isFalse();
+            } finally {
+                com.voltpilot.api.tenant.TenantContext.clear();
+            }
+        } finally {
+            pool.shutdownNow();
+            exec("DROP TRIGGER IF EXISTS " + trigger + " ON device");
+            exec("DROP FUNCTION IF EXISTS " + function + "()");
+        }
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode statusEnvelope(
+            UUID eventId, Instant occurredAt, String chargePointId) throws Exception {
+        var envelope = objectMapper.createObjectNode();
+        envelope.put("schema_version", "1.0");
+        envelope.put("event_id", eventId.toString());
+        envelope.put("occurred_at", occurredAt.toString());
+        envelope.put("charge_point_id", chargePointId);
+        envelope.put("direction", "station_to_csms");
+        envelope.put("message_type", "Call");
+        envelope.put("correlation_id", eventId.toString());
+        envelope.put("action", "StatusNotification");
+        envelope.set("payload", objectMapper.readTree("""
+                {"connectorId":1,"status":"Charging","errorCode":"NoError"}
+                """));
+        return envelope;
+    }
+
+    private static void awaitBlockedStatement(String prefix) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            String escaped = prefix.replace("'", "''");
+            if (queryLong("SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() "
+                    + "AND datname = current_database() AND wait_event_type = 'Lock' "
+                    + "AND query LIKE '" + escaped + "%'") > 0) {
+                return;
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError("statement did not reach deterministic lock gate: " + prefix);
     }
 
     private String claimDevice(String token, String externalRef) {
@@ -5942,6 +6249,28 @@ class PortalApiTest {
         }
     }
 
+    /** Seed the pre-hardening orphan state solely to exercise site cleanup. */
+    private static void seedLegacyOrphanOcpp(String tenant, String site, String device) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                Statement st = c.createStatement()) {
+            st.execute("SET session_replication_role = replica");
+            try {
+                OcppTestData.seed(sql -> {
+                    try {
+                        st.execute(sql);
+                    } catch (java.sql.SQLException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }, tenant, site, device);
+            } finally {
+                st.execute("SET session_replication_role = origin");
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("legacy OCPP orphan seed failed", e);
+        }
+    }
+
     /**
      * The Anlagen-scharfe Erlöse ({@code GET /sites/{id}/earnings}, Historie
      * concept F1 / P3): one Anlage, one period, and a COMPOSITION the surface
@@ -6216,6 +6545,42 @@ class PortalApiTest {
     private static String ts(java.time.Instant instant) {
         return "timestamptz '" + instant.atZone(java.time.ZoneOffset.UTC)
                 .toLocalDateTime().toString().replace('T', ' ') + "+00'";
+    }
+
+    private void ingestOcpp(String chargePointId, int sequence, String direction,
+            String messageType, String correlationId, String action, String payload) throws Exception {
+        ingestOcpp(chargePointId, sequence, direction, messageType, correlationId, action,
+                payload, null, null, null);
+    }
+
+    private void ingestOcpp(String chargePointId, int sequence, String direction,
+            String messageType, String correlationId, String action, String payload,
+            String errorCode, String errorDescription, String errorDetails) throws Exception {
+        var envelope = objectMapper.createObjectNode();
+        envelope.put("schema_version", "1.0");
+        envelope.put("event_id", UUID.nameUUIDFromBytes(
+                (chargePointId + ":" + sequence).getBytes(StandardCharsets.UTF_8)).toString());
+        envelope.put("occurred_at", Instant.parse("2026-08-25T06:30:00Z")
+                .plusSeconds(sequence).toString());
+        envelope.put("charge_point_id", chargePointId);
+        envelope.put("direction", direction);
+        envelope.put("message_type", messageType);
+        if (correlationId != null) envelope.put("correlation_id", correlationId);
+        envelope.put("action", action);
+        if (errorCode != null) envelope.put("error_code", errorCode);
+        if (errorDescription != null) envelope.put("error_description", errorDescription);
+        if (errorDetails != null) envelope.set("error_details", objectMapper.readTree(errorDetails));
+        envelope.set("payload", objectMapper.readTree(payload));
+
+        UUID tenant = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID site = UUID.fromString(BERLIN_SITE);
+        UUID device = UUID.fromString("00000000-0000-0000-0000-000000000003");
+        com.voltpilot.api.tenant.TenantContext.set(tenant);
+        try {
+            assertThat(ocppRepository.ingest(tenant, site, device, envelope)).isTrue();
+        } finally {
+            com.voltpilot.api.tenant.TenantContext.clear();
+        }
     }
 
     private String url(String path) {

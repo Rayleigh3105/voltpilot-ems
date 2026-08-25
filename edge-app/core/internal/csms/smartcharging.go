@@ -95,6 +95,15 @@ func (s *Server) Commission(ctx context.Context, chargerID string, maxKw, defaul
 		return e
 	}
 
+	// Separate best-effort inventory: a station that refuses the OCPP empty-key
+	// form is still safely commissioned from the targeted capability read. The
+	// full answer (when supported) is retained by the protocol journal and
+	// normalized in the cloud; failure cannot unwind already-installed failsafes.
+	if _, _, err := t.getConfiguration(ctx, chargerID, InventoryKeys()); err != nil {
+		s.log.Info("Ladesäule lehnt die vollständige Konfigurationsinventur ab — Sicherheitsprofile bleiben aktiv",
+			"charge_point_id", chargerID, "err", err)
+	}
+
 	s.recordCommission(chargerID, &maxKw, &defaultKw, nil)
 	s.log.Info("Ladesäule eingerichtet",
 		"charge_point_id", chargerID, "max_kw", maxKw, "default_kw", defaultKw)

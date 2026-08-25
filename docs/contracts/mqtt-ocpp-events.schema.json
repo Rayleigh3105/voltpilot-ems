@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/mqtt-ocpp-events.schema.json",
+  "title": "Edge -> Cloud OCPP 1.6 protocol event",
+  "description": "Ein privacy-sicheres, dauerhaft am Edge gejournaltes OCPP-J-Ereignis auf ems/{tenant_id}/{site_id}/{device_id}/v2/ocpp-events (QoS 1, NICHT retained). Die Cloud prueft Topic- und Payload-Identitaet bytegenau. Call, CallResult und CallError werden vollstaendig bewahrt; Connect/Disconnect sind interne Event-Zeilen. Ein internes action=JournalGap macht Kapazitaetsueberlauf und fehlgeschlagene Journal-Schreib-/Commitvorgaenge mit monotonem total_dropped sowie betroffenem Zeit-/Eventbereich cloudsichtbar. idTag/parentIdTag muessen vor dem ersten Plattenschreiben als tagref_* pseudonymisiert sein. AuthorizationKey, Diagnose-URLs und untypisierte DataTransfer-Daten duerfen nie im Klartext vorkommen. Der untypisierte CallError-Freitext error_description wird konservativ auf den festen Marker [redacted-call-error-description] reduziert; die API redigiert zur Abwehr alter/kompromittierter Edges ein zweites Mal. Dieser Vertrag ist ausschliesslich Station-/Protokollsichtbarkeit und enthaelt keinen Downlink oder Station-Command-Pfad.",
+  "type": "object",
+  "required": ["schema_version", "event_id", "occurred_at", "tenant_id", "site_id", "device_id", "charge_point_id", "direction", "message_type", "action", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "event_id": { "type": "string", "format": "uuid" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "site_id": { "type": "string", "format": "uuid" },
+    "device_id": { "type": "string", "format": "uuid" },
+    "charge_point_id": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "direction": { "enum": ["station_to_csms", "csms_to_station", "internal"] },
+    "message_type": { "enum": ["Call", "CallResult", "CallError", "Event"] },
+    "correlation_id": { "type": "string", "maxLength": 255 },
+    "action": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "error_code": { "type": "string", "maxLength": 128 },
+    "error_description": {
+      "const": "[redacted-call-error-description]",
+      "description": "Nur Anwesenheitsbeleg; der untypisierte Stations-/Vendor-Freitext darf weder Edge-Disk noch Cloud erreichen."
+    },
+    "error_details": { "type": "object" },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "message_type": { "const": "CallError" } }, "required": ["message_type"] },
+      "then": { "required": ["error_code"] }
+    },
+    {
+      "if": { "properties": { "message_type": { "enum": ["Call", "CallResult", "CallError"] } }, "required": ["message_type"] },
+      "then": { "required": ["correlation_id"] }
+    }
+  ]
+}

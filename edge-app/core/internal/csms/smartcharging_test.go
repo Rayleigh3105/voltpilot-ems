@@ -2,7 +2,9 @@ package csms_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -30,10 +32,13 @@ type station struct {
 	// refuseProfiles makes every SetChargingProfile answer Rejected.
 	refuseProfiles bool
 	// refuseComposite makes GetCompositeSchedule answer Rejected.
-	refuseComposite bool
-	now             func() time.Time
-	setCalls        int
-	changed         []string
+	refuseComposite            bool
+	now                        func() time.Time
+	setCalls                   int
+	changed                    []string
+	rejectFullConfiguration    bool
+	targetedConfigurationReads int
+	fullConfigurationReads     int
 }
 
 type storedProfile struct {
@@ -162,9 +167,24 @@ func (s *station) OnGetCompositeSchedule(r *smartcharging.GetCompositeScheduleRe
 func (s *station) OnGetConfiguration(r *core.GetConfigurationRequest) (*core.GetConfigurationConfirmation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(r.Key) == 0 {
+		s.fullConfigurationReads++
+		if s.rejectFullConfiguration {
+			return nil, errors.New("empty GetConfiguration is not supported")
+		}
+	} else {
+		s.targetedConfigurationReads++
+	}
 	var keys []core.ConfigurationKey
 	var unknown []string
-	for _, k := range r.Key {
+	requested := append([]string(nil), r.Key...)
+	if len(requested) == 0 {
+		for k := range s.config {
+			requested = append(requested, k)
+		}
+		sort.Strings(requested)
+	}
+	for _, k := range requested {
 		if v, ok := s.config[k]; ok {
 			val := v
 			keys = append(keys, core.ConfigurationKey{Key: k, Readonly: true, Value: &val})
@@ -173,6 +193,33 @@ func (s *station) OnGetConfiguration(r *core.GetConfigurationRequest) (*core.Get
 		}
 	}
 	return &core.GetConfigurationConfirmation{ConfigurationKey: keys, UnknownKey: unknown}, nil
+}
+
+// A non-conforming but common station class rejects GetConfiguration with an
+// empty key list while answering targeted reads. The complete inventory is
+// best-effort: it must never prevent the two permanent safety profiles.
+func TestCommissioningSurvivesARefusedFullConfigurationInventory(t *testing.T) {
+	s, endpoint := startServer(t, "SAEULE-1")
+	_, st := connectStation(t, s, endpoint, "SAEULE-1", time.Now)
+	st.mu.Lock()
+	st.rejectFullConfiguration = true
+	st.mu.Unlock()
+
+	if err := s.Commission(ctx5(t), "SAEULE-1", 240, 15, 0); err != nil {
+		t.Fatalf("targeted fallback commissioning failed: %v", err)
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.targetedConfigurationReads != 1 || st.fullConfigurationReads != 1 {
+		t.Fatalf("configuration reads targeted/full = %d/%d, want 1/1",
+			st.targetedConfigurationReads, st.fullConfigurationReads)
+	}
+	if _, ok := st.profiles[[2]int{0, csms.ProfileIDMax}]; !ok {
+		t.Fatal("maximum safety profile missing after refused full inventory")
+	}
+	if _, ok := st.profiles[[2]int{0, csms.ProfileIDTxDefault}]; !ok {
+		t.Fatal("default safety profile missing after refused full inventory")
+	}
 }
 
 func (s *station) OnChangeConfiguration(r *core.ChangeConfigurationRequest) (*core.ChangeConfigurationConfirmation, error) {

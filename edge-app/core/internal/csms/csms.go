@@ -81,9 +81,10 @@ func (o *Options) applyDefaults() {
 
 // Server is the OCPP 1.6J central system on the box.
 type Server struct {
-	opts  Options
-	store *Store
-	log   *slog.Logger
+	opts    Options
+	store   *Store
+	journal *Journal
+	log     *slog.Logger
 
 	mu        sync.Mutex
 	chargers  map[string]*ChargerState
@@ -115,9 +116,14 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	journal, err := newJournal(opts.DataDir, opts.Log)
+	if err != nil {
+		return nil, fmt.Errorf("OCPP journal: %w", err)
+	}
 	s := &Server{
 		opts:     opts,
 		store:    st,
+		journal:  journal,
 		log:      opts.Log,
 		chargers: map[string]*ChargerState{},
 		nextTxID: next,
@@ -128,6 +134,15 @@ func New(opts Options) (*Server, error) {
 	}
 	return s, nil
 }
+
+// NextProtocolEvent/AckProtocolEvent expose the durable visibility queue to
+// the agent's cloud uploader. They are deliberately not a command surface.
+func (s *Server) NextProtocolEvent() ([]byte, string, bool) { return s.journal.Next() }
+func (s *Server) AckProtocolEvent(token string) error       { return s.journal.Ack(token) }
+func (s *Server) PurgeProtocolEventsThrough(t time.Time) error {
+	return s.journal.PurgeThrough(t)
+}
+func (s *Server) ProtocolEventsChanged() <-chan struct{} { return s.journal.Changed() }
 
 // Enabled reports whether the feature flag is on.
 func (s *Server) Enabled() bool { return s.opts.Enabled }
@@ -190,6 +205,7 @@ func (s *Server) Stop() {
 	if t != nil {
 		t.stop()
 	}
+	s.journal.Close()
 }
 
 // EndpointFor renders the FULL ws:// URL an operator types into ONE station:

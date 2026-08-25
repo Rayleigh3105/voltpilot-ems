@@ -22,6 +22,9 @@
 #       vor Auto" gegen „Auto vor Speicher", an den Säulen gemessen
 #   L9  (Stufe 4) „Jetzt voll laden" nimmt GENAU EINEN Ladevorgang aus der
 #       Quellen-Bahn - und der Anschluss hält trotzdem
+#   L10 (Slice 10) der vollständige privacy-sichere OCPP-J-Datenstrom liegt
+#       absturzfest am Edge: Protokolltypen, Konfiguration/Fähigkeiten,
+#       dimensionsgetreue MeterValues, Auth-Referenzen und TransactionData
 #
 # Bewusst OHNE Docker: alles hier läuft als Prozess, also ist das Rig auf jedem
 # Rechner mit Go reproduzierbar und braucht kein gebautes Image.
@@ -180,7 +183,8 @@ echo "--- Ladesäulen verbinden"
   --connectors 2 --status "$S1_STATUS" >"$WORK/s1.log" 2>&1 &
 SIM_PIDS+=($!)
 "$WORK/vp-ocpp-sim" --csms "ws://127.0.0.1:${OCPP_PORT}/ocpp" --id SAEULE-2 \
-  --connectors 2 --status "$S2_STATUS" >"$WORK/s2.log" 2>&1 &
+  --connectors 2 --status "$S2_STATUS" --reject-full-configuration \
+  >"$WORK/s2.log" 2>&1 &
 SIM_PIDS+=($!)
 sims_up() { curl -sf "http://${S1_STATUS}/status" >/dev/null && curl -sf "http://${S2_STATUS}/status" >/dev/null; }
 waitfor 20 "beide Säulen melden sich" sims_up
@@ -433,6 +437,58 @@ AFTER=$(site_kw)
 nearly "$AFTER" 80 2.0 || fail "L9: nach der Ruecknahme zieht der Standort $AFTER kW, erwartet den Ueberschuss 80"
 pass "L9b: zurueckgenommen - der Standort steht wieder bei $AFTER kW auf der Sonne"
 
+# ---------------------------------------------------------------- L10
+echo "--- L10: vollständiges OCPP-Datenjournal (Slice 10)"
+JOURNAL_DIR="$WORK/data/ocpp-journal"
+[ -d "$JOURNAL_DIR" ] || fail "L10: kein dauerhaftes OCPP-Journal angelegt"
+journal_has() { grep -R -F -q -- "$1" "$JOURNAL_DIR"; }
+
+journal_has '"message_type":"Call"' || fail "L10: OCPP Call fehlt"
+journal_has '"message_type":"CallResult"' || fail "L10: OCPP CallResult fehlt"
+journal_has '"action":"BootNotification"' || fail "L10: BootNotification fehlt"
+journal_has '"action":"StatusNotification"' || fail "L10: StatusNotification fehlt"
+journal_has '"vendorErrorCode":"RV-0"' || fail "L10: Status-Vendorfelder fehlen"
+journal_has '"action":"Authorize"' || fail "L10: Authorize fehlt"
+journal_has '"action":"StartTransaction"' || fail "L10: StartTransaction fehlt"
+journal_has '"action":"StopTransaction"' || fail "L10: StopTransaction fehlt"
+journal_has '"reason":"EVDisconnected"' || fail "L10: Stopgrund fehlt"
+journal_has '"transactionData"' || fail "L10: transactionData fehlt"
+journal_has '"action":"DiagnosticsStatusNotification"' || fail "L10: Diagnostics-Status fehlt"
+journal_has '"action":"FirmwareStatusNotification"' || fail "L10: Firmware-Status fehlt"
+journal_has '"action":"GetConfiguration"' || fail "L10: vollständiges GetConfiguration fehlt"
+journal_has '"key":"SupportedFeatureProfiles"' || fail "L10: SupportedFeatureProfiles fehlt"
+journal_has '"key":"RigVendor.Mode"' || fail "L10: Vendor-Key fehlt"
+journal_has '"key":"AuthorizationKey"' || fail "L10: redigierter Secret-Key-Beleg fehlt"
+journal_has '"redacted":true' || fail "L10: AuthorizationKey ist nicht als redigiert markiert"
+journal_has '"message_type":"CallError"' || fail "L10: verweigerte Vollinventur nicht belegt"
+journal_has '"error_description":"[redacted-call-error-description]"' \
+  || fail "L10: CallError-Freitext ist nicht konservativ redigiert"
+
+# Zwei Spannungen unterscheiden sich NUR in der Phase. Beide muessen im Wire-
+# Journal mit allen Dimensionen stehen; die Cloud baut daraus verschiedene
+# Point-Keys (der API-Integrationstest prueft genau diese Eindeutigkeit).
+journal_has '"context":"Sample.Periodic","format":"Raw","location":"Outlet","measurand":"Voltage","phase":"L1-N","unit":"V"' \
+  || fail "L10: vollständige L1-N-Messdimension fehlt"
+journal_has '"context":"Sample.Periodic","format":"Raw","location":"Outlet","measurand":"Voltage","phase":"L2-N","unit":"V"' \
+  || fail "L10: vollständige L2-N-Messdimension fehlt"
+
+if grep -R -q -- 'rig-secret-must-never-leave-edge' "$JOURNAL_DIR"; then
+  fail "L10: AuthorizationKey ist unmaskiert im Journal"
+fi
+if grep -R -q -- 'RIG-TAG' "$JOURNAL_DIR"; then
+  fail "L10: idTag ist unmaskiert im Journal"
+fi
+for secret in rig-full-secret rig-url-token RIG-DESC-TAG rig-generic-secret; do
+  if grep -R -q -- "$secret" "$JOURNAL_DIR"; then
+    fail "L10: CallError-Freitext-Secret ${secret} ist unmaskiert im Journal"
+  fi
+  if grep -q -- "$secret" "$WORK/core.log"; then
+    fail "L10: CallError-Freitext-Secret ${secret} ist unmaskiert im Edge-Log"
+  fi
+done
+journal_has 'tagref_' || fail "L10: maskierter idTag-/LocalAuth-Bezug fehlt"
+pass "L10: Vollinventur best-effort, gezielte Sicherheitsabfrage erfolgreich; Events vollständig und Secrets vor Disk redigiert"
+
 # Fuer L4 zaehlt die PHYSISCHE Bahn: der Totmann wird ohne Quellen-Deckel
 # geprueft (er ist eine Eigenschaft der Saeule, nicht der Oekonomie).
 policy schnell
@@ -459,4 +515,4 @@ awk -v d="$S1_AFTER" 'BEGIN{exit (d>1)?0:1}' || fail "L4: die Säule hat aufgeh�
 pass "L4: die Box ist tot, die Säule begrenzt sich SELBST auf 24,25 kW - und lädt weiter"
 
 echo
-echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L7 · L8 · L9 · L4 =="
+echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L7 · L8 · L9 · L10 · L4 =="

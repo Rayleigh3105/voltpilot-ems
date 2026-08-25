@@ -2,10 +2,10 @@
 // docs/contracts/mqtt-data-purge.schema.json. Two triggers meet here:
 //
 //   - The CUSTOMER on the local web app (PurgeRecordedData, via web.Handler):
-//     the local store-and-forward buffer + live-chart history are wiped
-//     immediately, and a purge_request is published to the cloud - queued on
-//     disk and re-sent on every (re)connect while the cloud has not confirmed,
-//     so an offline purge is never lost and never silently dropped.
+//     the purge_request intent is committed to disk FIRST, then the local
+//     store-and-forward buffer + live-chart history + OCPP journal are wiped.
+//     The request is re-sent on every (re)connect while the cloud has not
+//     confirmed; failed local cleanup remains a restart-retryable sub-state.
 //
 //   - The CLOUD's retained purge_data command (onPurgeCommand, via the cloud
 //     link's command subscription): arrives right after any purge (portal- or
@@ -29,7 +29,8 @@ import (
 const purgeRequestFile = "purge-request.json"
 
 type pendingPurge struct {
-	RequestedAt time.Time `json:"requested_at"`
+	RequestedAt         time.Time `json:"requested_at"`
+	LocalCleanupPending bool      `json:"local_cleanup_pending,omitempty"`
 }
 
 // PurgeRecordedData is the local web app's purge trigger: wipe the device's
@@ -38,19 +39,42 @@ type pendingPurge struct {
 // device without connectivity queues the request explicitly).
 func (a *Agent) PurgeRecordedData() (state.DataPurgeInfo, error) {
 	now := time.Now().UTC()
-	dropped, err := a.buf.PurgeThrough(now)
-	if err != nil {
+	// The cloud deletion intent is the FIRST commit. If this fails, delete
+	// nothing locally: a partial local wipe without a restart-safe cloud request
+	// is the exact failure mode this ordering prevents.
+	pending := pendingPurge{RequestedAt: now, LocalCleanupPending: true}
+	if err := a.savePendingPurge(pending); err != nil {
 		return state.DataPurgeInfo{}, err
 	}
-	a.hist.PurgeThrough(now)
+	info := state.DataPurgeInfo{RequestedAt: now, LocalState: "ausstehend", CloudState: "ausstehend"}
+	a.State.Update(func(s *state.Snapshot) {
+		s.DataPurge = &info
+	})
 
-	info := state.DataPurgeInfo{RequestedAt: now, CloudState: "ausstehend"}
-	if err := a.savePendingPurge(pendingPurge{RequestedAt: now}); err != nil {
-		// The local wipe already happened; without the file a restart forgets
-		// the cloud request - surface it in the log, keep the in-memory state.
-		slog.Warn("purge request not persisted; a restart before the cloud "+
-			"confirmation would drop it", "err", err)
+	dropped, err := a.purgeLocalRecordings(now)
+	if err != nil {
+		a.State.Update(func(s *state.Snapshot) {
+			cp := info
+			cp.LocalState = "fehler"
+			s.DataPurge = &cp
+			s.BufferPending = a.buf.Pending()
+			s.BufferDataLoss = a.buf.DataLoss()
+		})
+		// The request is already durable. Try the cloud half even when local
+		// cleanup is degraded; a reconnect retries it until confirmation.
+		a.trySendPurgeRequest()
+		return info, err
 	}
+	if err := a.markLocalCleanupComplete(pending); err != nil {
+		a.State.Update(func(s *state.Snapshot) {
+			cp := info
+			cp.LocalState = "fehler"
+			s.DataPurge = &cp
+		})
+		a.trySendPurgeRequest()
+		return info, err
+	}
+	info.LocalState = "bereinigt"
 	a.State.Update(func(s *state.Snapshot) {
 		s.DataPurge = &info
 		s.BufferPending = a.buf.Pending()
@@ -62,6 +86,59 @@ func (a *Agent) PurgeRecordedData() (state.DataPurgeInfo, error) {
 		return *dp, nil
 	}
 	return info, nil
+}
+
+func (a *Agent) purgeLocalRecordings(watermark time.Time) (int, error) {
+	dropped, err := a.buf.PurgeThrough(watermark)
+	if err != nil {
+		return dropped, err
+	}
+	a.hist.PurgeThrough(watermark)
+	if a.purgeOcpp != nil {
+		if err := a.purgeOcpp(watermark); err != nil {
+			return dropped, err
+		}
+	} else if a.ocpp != nil {
+		if err := a.ocpp.srv.PurgeProtocolEventsThrough(watermark); err != nil {
+			return dropped, err
+		}
+	}
+	return dropped, nil
+}
+
+func (a *Agent) markLocalCleanupComplete(p pendingPurge) error {
+	p.LocalCleanupPending = false
+	return a.savePendingPurge(p)
+}
+
+// retryPendingLocalPurge closes a restart window after every local store has
+// opened. The request file remains until cloud confirmation; failed cleanup is
+// therefore visible and retried again on the next boot/retained command.
+func (a *Agent) retryPendingLocalPurge() {
+	pending, ok := a.loadPendingPurge()
+	if !ok || !pending.LocalCleanupPending {
+		return
+	}
+	if _, err := a.purgeLocalRecordings(pending.RequestedAt); err != nil {
+		slog.Error("pending local recordings purge still failed; will retry", "err", err)
+		a.State.Update(func(s *state.Snapshot) {
+			info := state.DataPurgeInfo{RequestedAt: pending.RequestedAt,
+				LocalState: "fehler", CloudState: "ausstehend"}
+			s.DataPurge = &info
+		})
+		return
+	}
+	if err := a.markLocalCleanupComplete(pending); err != nil {
+		slog.Error("completed local purge could not persist its state; will retry", "err", err)
+		return
+	}
+	a.State.Update(func(s *state.Snapshot) {
+		info := state.DataPurgeInfo{RequestedAt: pending.RequestedAt,
+			LocalState: "bereinigt", CloudState: "ausstehend"}
+		s.DataPurge = &info
+		s.BufferPending = a.buf.Pending()
+		s.BufferDataLoss = a.buf.DataLoss()
+	})
 }
 
 // trySendPurgeRequest publishes the pending purge request if the cloud link is
@@ -122,12 +199,11 @@ func (a *Agent) onPurgeCommand(payload []byte) {
 		slog.Warn("purge command with unreadable purged_before ignored", "err", err)
 		return
 	}
-	dropped, err := a.buf.PurgeThrough(watermark)
+	dropped, err := a.purgeLocalRecordings(watermark)
 	if err != nil {
-		slog.Error("local buffer purge failed", "err", err)
+		slog.Error("local recordings purge failed", "err", err)
 		return
 	}
-	a.hist.PurgeThrough(watermark)
 	slog.Info("cloud purge command applied: local recordings wiped",
 		"purged_before", watermark, "dropped_buffered", dropped)
 
@@ -145,6 +221,7 @@ func (a *Agent) onPurgeCommand(payload []byte) {
 		s.BufferDataLoss = a.buf.DataLoss()
 		if confirmed && s.DataPurge != nil {
 			cp := *s.DataPurge
+			cp.LocalState = "bereinigt"
 			cp.CloudState = "bestaetigt"
 			cp.ConfirmedAt = time.Now().UTC()
 			s.DataPurge = &cp
@@ -187,7 +264,12 @@ func (a *Agent) restorePendingPurge() {
 	if !ok {
 		return
 	}
-	info := state.DataPurgeInfo{RequestedAt: pending.RequestedAt, CloudState: "ausstehend"}
+	localState := "bereinigt"
+	if pending.LocalCleanupPending {
+		localState = "ausstehend"
+	}
+	info := state.DataPurgeInfo{RequestedAt: pending.RequestedAt,
+		LocalState: localState, CloudState: "ausstehend"}
 	a.State.Update(func(s *state.Snapshot) { s.DataPurge = &info })
 	slog.Info("pending purge request restored; will be sent once connected",
 		"requested_at", pending.RequestedAt)

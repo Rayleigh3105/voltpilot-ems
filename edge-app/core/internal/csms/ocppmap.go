@@ -17,8 +17,10 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/lorenzodonini/ocpp-go/ocpp"
 	ocpp16 "github.com/lorenzodonini/ocpp-go/ocpp1.6"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/core"
+	"github.com/lorenzodonini/ocpp-go/ocpp1.6/firmware"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/smartcharging"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 	"github.com/lorenzodonini/ocpp-go/ws"
@@ -36,7 +38,10 @@ type transport struct {
 }
 
 func newTransport(s *Server, port int, path string) *transport {
-	wsrv := ws.NewServer()
+	// Journal at the websocket boundary: typed handlers cannot see malformed
+	// calls or CALLERROR frames, whereas Slice 10 must preserve all three OCPP-J
+	// message kinds. The wrapper delegates byte-for-byte after recording.
+	wsrv := &journalWsServer{WsServer: ws.NewServer(), journal: s.journal}
 	cs := ocpp16.NewCentralSystem(nil, wsrv)
 	t := &transport{srv: s, cs: cs, wsrv: wsrv, port: port, path: path, done: make(chan struct{})}
 
@@ -53,7 +58,30 @@ func newTransport(s *Server, port int, path string) *transport {
 	cs.SetNewChargePointHandler(func(cp ocpp16.ChargePointConnection) { s.onConnect(cp.ID()) })
 	cs.SetChargePointDisconnectedHandler(func(cp ocpp16.ChargePointConnection) { s.onDisconnect(cp.ID()) })
 	cs.SetCoreHandler(&coreHandler{srv: s})
+	cs.SetFirmwareManagementHandler(&firmwareHandler{srv: s})
 	return t
+}
+
+// journalWsServer decorates exactly the two byte-bearing methods. Embedding
+// keeps the complete ws.WsServer API delegated to the upstream implementation.
+type journalWsServer struct {
+	ws.WsServer
+	journal *Journal
+}
+
+func (s *journalWsServer) SetMessageHandler(handler func(ws.Channel, []byte) error) {
+	s.WsServer.SetMessageHandler(func(ch ws.Channel, data []byte) error {
+		s.journal.RecordWire("station_to_csms", ch.ID(), data)
+		return handler(ch, data)
+	})
+}
+
+func (s *journalWsServer) Write(id string, data []byte) error {
+	err := s.WsServer.Write(id, data)
+	if err == nil {
+		s.journal.RecordWire("csms_to_station", id, data)
+	}
+	return err
 }
 
 // start launches the server goroutine and returns once the socket accepts a
@@ -68,7 +96,7 @@ func (t *transport) start(ctx context.Context) error {
 	go func() {
 		for err := range errC {
 			if err != nil {
-				t.srv.log.Warn("OCPP-Server meldet einen Fehler", "err", err)
+				t.srv.log.Warn("OCPP-Server meldet einen Fehler", "err", privacySafeProtocolError(err))
 			}
 		}
 	}()
@@ -122,6 +150,24 @@ func (t *transport) disconnect(id string) {
 // --- the OCPP 1.6 Core profile, CSMS side ---
 
 type coreHandler struct{ srv *Server }
+
+// The two FirmwareManagement notifications are Station -> CSMS status data.
+// They are accepted and journalled by the websocket decorator; the handler
+// additionally keeps liveness current. No UpdateFirmware/GetDiagnostics
+// command is introduced here.
+type firmwareHandler struct{ srv *Server }
+
+func (h *firmwareHandler) OnDiagnosticsStatusNotification(id string,
+	_ *firmware.DiagnosticsStatusNotificationRequest) (*firmware.DiagnosticsStatusNotificationConfirmation, error) {
+	h.srv.touch(id, h.srv.opts.Now())
+	return firmware.NewDiagnosticsStatusNotificationConfirmation(), nil
+}
+
+func (h *firmwareHandler) OnFirmwareStatusNotification(id string,
+	_ *firmware.FirmwareStatusNotificationRequest) (*firmware.FirmwareStatusNotificationConfirmation, error) {
+	h.srv.touch(id, h.srv.opts.Now())
+	return firmware.NewFirmwareStatusNotificationConfirmation(), nil
+}
 
 // OnBootNotification accepts every registered station: registration IS the
 // admission decision, and it already happened at the websocket upgrade.
@@ -264,14 +310,30 @@ func await[T any](ctx context.Context, send func(cb func(T, error)) error) (T, e
 		}
 	})
 	if err != nil {
-		return zero, err
+		return zero, privacySafeProtocolError(err)
 	}
 	select {
 	case <-ctx.Done():
 		return zero, ctx.Err()
 	case r := <-ch:
-		return r.v, r.err
+		return r.v, privacySafeProtocolError(r.err)
 	}
+}
+
+// ocpp-go exposes CallError.errorDescription through error.Error() in addition
+// to the raw websocket frame. That free station/vendor prose must not escape
+// through commissioning state, command status or logs after the journal has
+// already redacted it. Keep the typed code; reduce description presence to the
+// same fixed marker used on disk and at the cloud boundary.
+func privacySafeProtocolError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var protocolErr *ocpp.Error
+	if errors.As(err, &protocolErr) {
+		return fmt.Errorf("OCPP CallError (%s): %s", protocolErr.Code, redactedErrorDescription)
+	}
+	return err
 }
 
 // toOcppProfile maps our plain profile onto the library's type. It is the ONLY

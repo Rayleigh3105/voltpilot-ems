@@ -103,6 +103,13 @@ public class TenantRepository {
             boolean autoCommit = con.getAutoCommit();
             con.setAutoCommit(false);
             try {
+                for (String table : new String[] {
+                        "ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
+                        "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
+                        "ocpp_meter_sample", "ocpp_station_status_event", "ocpp_configuration_key",
+                        "ocpp_configuration_unknown_key", "ocpp_station_capability"}) {
+                    deleteByTenant(con, table, tenantId);
+                }
                 long telemetryRows = deleteByTenant(con, "telemetry", tenantId);
                 for (String table : new String[] {
                         "telemetry_rollup_15m", "telemetry_rollup_1h", "telemetry_rollup_1d",
