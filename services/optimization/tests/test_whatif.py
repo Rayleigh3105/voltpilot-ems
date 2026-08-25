@@ -505,3 +505,110 @@ def test_the_handler_refuses_a_burst_past_the_cap_instead_of_queueing(monkeypatc
 
     release.set()
     holder.join(timeout=10)
+
+
+# ---------------------------------------------------------------------------
+# 6. Steuerung Stufe 7 - die KUNDEN-Knöpfe (Konzept vp-steuerung-konzept-b3 §3.8)
+# ---------------------------------------------------------------------------
+
+
+def test_customer_knobs_are_absent_by_default_and_change_nothing():
+    """Die tragende Bestands-Aussage: ohne die Knöpfe ist alles wie vorher."""
+    inp = make_input()
+    assert WhatIfOverrides().is_empty()
+    assert apply_overrides(inp, WhatIfOverrides()) is inp
+    assert inp.forced_charge_slots == 0
+    assert inp.forced_charge_kw == 0.0
+
+
+def test_soc_floor_now_raises_the_floor_to_where_the_battery_stands():
+    """„Ladestand halten" benutzt die VORHANDENE Reservierung, keine zweite Bodenlogik."""
+    inp = make_input(initial_soc_kwh=7.0)  # 70 % von 10 kWh
+    variant = apply_overrides(inp, WhatIfOverrides(soc_floor_now=True))
+    assert variant.battery.backup_reserve_pct == pytest.approx(70.0)
+    # ... und der EFFEKTIVE Boden ist wirklich der Stand von jetzt.
+    assert variant.battery.soc_floor_kwh(7.0) == pytest.approx(7.0)
+    # Alles Übrige bleibt Byte für Byte stehen.
+    assert variant.prices_eur_mwh == inp.prices_eur_mwh
+    assert variant.load_kw == inp.load_kw
+    assert variant.pv_kw == inp.pv_kw
+    assert variant.initial_soc_kwh == inp.initial_soc_kwh
+
+    # Eine BESTEHENDE höhere Reserve wird nie GESENKT - der Knopf hält, er löst nicht.
+    hoch = make_input(initial_soc_kwh=3.0, battery=replace(
+        make_input().battery, backup_reserve_pct=60.0))
+    assert apply_overrides(hoch, WhatIfOverrides(soc_floor_now=True)) \
+        .battery.backup_reserve_pct == pytest.approx(60.0)
+
+
+def test_forced_charge_is_capped_at_the_headroom_and_refuses_a_full_battery():
+    inp = make_input(initial_soc_kwh=5.0)  # Kopfraum bis 95 % = 9,5 kWh -> 4,5 kWh
+    variant = apply_overrides(inp, WhatIfOverrides(forced_charge_slots=8))
+    assert variant.forced_charge_slots == 8
+    # 4,5 kWh / (8 * 0,25 h * eta) - und nie über die Ladeleistung.
+    eta = inp.battery.one_way_efficiency
+    assert variant.forced_charge_kw == pytest.approx(
+        min(4.5 / (8 * 0.25 * eta), inp.battery.max_charge_kw))
+    assert variant.forced_charge_kw <= inp.battery.max_charge_kw
+
+    # Ein VOLLER Speicher bekommt einen deutschen Grund, keine unlösbare Vorschau.
+    voll = make_input(initial_soc_kwh=inp.battery.soc_max_kwh)
+    with pytest.raises(InvalidWhatIfRequest, match="bereits voll"):
+        apply_overrides(voll, WhatIfOverrides(forced_charge_slots=8))
+
+
+def test_consumer_load_shift_adds_the_device_only_inside_its_window():
+    inp = make_input()
+    variant = apply_overrides(inp, WhatIfOverrides(
+        consumer_load_shift=whatif.LoadShift(from_slot=4, slots=3, kw=11.0)))
+    assert variant.load_kw[3] == pytest.approx(2.0)
+    assert variant.load_kw[4:7] == pytest.approx([13.0, 13.0, 13.0])
+    assert variant.load_kw[7] == pytest.approx(2.0)
+    # Die PV- und Preisreihen bleiben unangetastet - es ist DIESELBE Anlage.
+    assert variant.pv_kw == inp.pv_kw
+    assert variant.prices_eur_mwh == inp.prices_eur_mwh
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("highspy") is None, reason="needs the HiGHS wheel")
+def test_the_three_knobs_move_the_money_in_the_direction_they_promise():
+    """Durch den ECHTEN Solver: jeder Knopf kostet, und die Zahl ist die Aussage."""
+    prices = [50.0] * 48 + [250.0] * 48
+    inp = make_input(prices, initial_soc_kwh=9.0)  # fast voll: es gibt was zu entladen
+    now = T0
+
+    basis, _ = whatif.solve_ephemeral(inp, now)
+
+    # „Ladestand halten" verbietet das Entladen -> die Ersparnis SINKT.
+    halten = whatif.solve_ephemeral(
+        apply_overrides(inp, WhatIfOverrides(soc_floor_now=True)), now)[0]
+    assert halten.savings_eur < basis.savings_eur
+    # ⚠ Der Boden ist ein BODEN, keine Einfrierung: der Ladestand fällt nie
+    # unter den Stand von jetzt (das ist die Zusage), laden und wieder bis auf
+    # diesen Stand entladen DARF der Plan. Genau deshalb ist die Vorschau als
+    # Näherung beschriftet - siehe den Docstring von `WhatIfOverrides`.
+    assert min(s.soc_kwh for s in halten.slots) >= 9.0 - 1e-6
+
+    # „Jetzt laden" erzwingt Ladung in den ersten Slots.
+    geladen = whatif.solve_ephemeral(
+        apply_overrides(make_input(prices, initial_soc_kwh=1.0),
+                        WhatIfOverrides(forced_charge_slots=4)), now)[0]
+    assert all(s.battery_kw > 0 for s in geladen.slots[:4])
+
+    # Ein Gerät, das im TEUREN Fenster läuft, kostet mehr als im günstigen.
+    teuer = whatif.solve_ephemeral(apply_overrides(inp, WhatIfOverrides(
+        consumer_load_shift=whatif.LoadShift(from_slot=60, slots=8, kw=6.0))), now)[0]
+    guenstig = whatif.solve_ephemeral(apply_overrides(inp, WhatIfOverrides(
+        consumer_load_shift=whatif.LoadShift(from_slot=0, slots=8, kw=6.0))), now)[0]
+    assert teuer.cost_eur > guenstig.cost_eur
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("highspy") is None, reason="needs the HiGHS wheel")
+def test_a_run_without_the_new_knobs_is_byte_identical_to_before():
+    """Der Bestands-Beweis: dieselben Setpoints, dieselbe Zahl."""
+    inp = make_input()
+    a, _ = whatif.solve_ephemeral(inp, T0)
+    b, _ = whatif.solve_ephemeral(replace(inp, forced_charge_slots=0, forced_charge_kw=0.0), T0)
+    assert [s.battery_kw for s in a.slots] == [s.battery_kw for s in b.slots]
+    assert a.cost_eur == pytest.approx(b.cost_eur)

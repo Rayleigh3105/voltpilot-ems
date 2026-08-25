@@ -411,6 +411,50 @@ export const BEGRUENDUNGEN: Begruendung[] = [
     ],
     aussage: 'Der Wechselrichter begrenzt die Einspeisung selbst enger.',
   },
+  // Steuerung Stufe 6 „Vorschläge V1" (Konzept `vp-steuerung-konzept-b3` §3.3).
+  // Eine Vorschlags-Karte behauptet eine URSACHE („da ist Überschuss", „das
+  // sind die günstigsten Stunden") und trägt deshalb ihre Gates wie jeder
+  // andere kausale Zweig. Ohne sie entsteht die Karte GAR NICHT - es gibt
+  // keinen zahlfreien Rückfall, weil ein Vorschlag ohne Zahl kein Vorschlag
+  // ist, sondern eine Vermutung.
+  {
+    id: 'vorschlag_ueberschuss',
+    gates: [
+      'slot.pvKw',
+      'slot.loadKw',
+      'pv - load >= Mindestleistung der Komponente',
+      'Fenster >= MIN_UEBERSCHUSS_SLOTS',
+    ],
+    aussage: 'Der Fahrplan erwartet in diesem Fenster mehr Solarstrom, als das Haus braucht.',
+  },
+  {
+    id: 'vorschlag_guenstig',
+    gates: [
+      'slot.importPriceCtKwh',
+      'Preis-Spanne im Horizont >= MIN_SPANNE_CT',
+      'Fenster >= GUENSTIG_SLOTS',
+    ],
+    aussage: 'Das sind die günstigsten Stunden des Fahrplan-Zeitraums.',
+  },
+  // Steuerung Stufe 7 „Vorschau mit Zahlen" (§3.5/§3.6/§3.8). Beide Zweige
+  // behaupten eine WIRKUNG in Euro und hängen deshalb an ihren Zahlen; ohne
+  // sie gibt es KEINEN zahlfreien Ersatz-Satz, sondern den Grund.
+  {
+    id: 'vorschau_delta',
+    gates: ['server.deltaEur (zwei Solver-Läufe über EINE Eingabe)'],
+    aussage: 'Diese Entscheidung kostet bzw. bringt im Fahrplan-Zeitraum den genannten Betrag.',
+  },
+  {
+    id: 'vorschau_nachteil',
+    gates: [
+      'slot.loadKw',
+      'slot.importPriceCtKwh',
+      'slot.storedValueCtKwh',
+      'Entladeleistung des Speichers',
+      'Startzeit des Anspruchs',
+    ],
+    aussage: 'Der Regel-Vorrang hat dem Fahrplan bisher den genannten Betrag gekostet.',
+  },
 ];
 
 export type PhaseKind = 'charge' | 'discharge' | 'idle' | 'curtail';

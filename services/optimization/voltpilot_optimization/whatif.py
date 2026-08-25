@@ -63,6 +63,22 @@ class WhatIfUnavailable(RuntimeError):
 
 
 @dataclass(frozen=True)
+class LoadShift:
+    """Ein Verbraucher läuft in einem Fenster (Steuerung Stufe 7, §3.8).
+
+    Das MODELL einer Verbraucher-Regel bzw. eines übernommenen Vorschlags: die
+    Last des Fensters steigt um ``kw``. Mehr behauptet es nicht - insbesondere
+    verschiebt es NICHTS von anderswo weg (der Name des Knopfes kommt aus dem
+    Konzept; die ehrliche Frage, die er beantwortet, ist „was kostet es, wenn
+    dieses Gerät DANN läuft?").
+    """
+
+    from_slot: int
+    slots: int
+    kw: float
+
+
+@dataclass(frozen=True)
 class WhatIfOverrides:
     """The admin knobs. ``None`` everywhere = "solve the site as configured".
 
@@ -77,6 +93,27 @@ class WhatIfOverrides:
     soc_min_pct: float | None = None
     soc_max_pct: float | None = None
     netzladen_erlaubt: bool | None = None
+    #: Steuerung Stufe 7 - die KUNDEN-Knöpfe (Konzept §3.8). Sie sind bewusst
+    #: GROB und beschreiben je eine Handlung, die der Kunde wirklich treffen
+    #: kann; die Admin-Regler darüber bleiben admin-only.
+    #:
+    #: ``soc_floor_now``      „Ladestand halten" - der Speicher geht nicht
+    #:                        unter seinen JETZIGEN Stand.
+    #:                        ⚠ Ein BODEN, keine Einfrierung: laden und wieder
+    #:                        bis auf diesen Stand entladen bleibt erlaubt. Der
+    #:                        Handeingriff selbst friert ein (Sollwert 0), die
+    #:                        Vorschau UNTERSCHÄTZT seine Wirkung also eher, als
+    #:                        sie zu überschätzen - und wird darum als Näherung
+    #:                        ausgewiesen. Eine echte Einfrierung bräuchte eine
+    #:                        eigene Bound-Paarung im Modell; ein Boden benutzt
+    #:                        die vorhandene, geprüfte Reservierungs-Maschinerie.
+    #: ``forced_charge_slots`` „Speicher jetzt laden" - so viele Viertelstunden
+    #:                        lädt er mit voller Leistung (auf den Kopfraum
+    #:                        gekappt, siehe :func:`apply_overrides`).
+    #: ``consumer_load_shift`` „dieses Gerät läuft in diesem Fenster".
+    soc_floor_now: bool | None = None
+    forced_charge_slots: int | None = None
+    consumer_load_shift: LoadShift | None = None
 
     def is_empty(self) -> bool:
         return all(
@@ -87,6 +124,9 @@ class WhatIfOverrides:
                 "soc_min_pct",
                 "soc_max_pct",
                 "netzladen_erlaubt",
+                "soc_floor_now",
+                "forced_charge_slots",
+                "consumer_load_shift",
             )
         )
 
@@ -103,6 +143,16 @@ class WhatIfOverrides:
             doc["socMaxPct"] = self.soc_max_pct
         if self.netzladen_erlaubt is not None:
             doc["netzladenErlaubt"] = self.netzladen_erlaubt
+        if self.soc_floor_now is not None:
+            doc["socFloorNow"] = self.soc_floor_now
+        if self.forced_charge_slots is not None:
+            doc["forcedChargeSlots"] = self.forced_charge_slots
+        if self.consumer_load_shift is not None:
+            doc["consumerLoadShift"] = {
+                "fromSlot": self.consumer_load_shift.from_slot,
+                "slots": self.consumer_load_shift.slots,
+                "kw": self.consumer_load_shift.kw,
+            }
         return doc
 
 
@@ -159,6 +209,9 @@ def parse_request(doc: dict) -> WhatIfRequest:
         soc_max_pct=_number(raw_overrides, "socMaxPct",
                             "die SoC-Obergrenze", 0.0, 100.0),
         netzladen_erlaubt=_bool(raw_overrides, "netzladenErlaubt"),
+        soc_floor_now=_bool(raw_overrides, "socFloorNow"),
+        forced_charge_slots=_slots(raw_overrides, "forcedChargeSlots", horizon_slots),
+        consumer_load_shift=_load_shift(raw_overrides, horizon_slots),
     )
     _require_valid_band(overrides.soc_min_pct, overrides.soc_max_pct)
     return WhatIfRequest(site_id=site_id, overrides=overrides, horizon_slots=horizon_slots)
@@ -185,6 +238,50 @@ def _bool(doc: dict, key: str) -> bool | None:
     if not isinstance(value, bool):
         raise InvalidWhatIfRequest("Ungültiger Wert für das Netzladen.")
     return value
+
+
+def _slots(doc: dict, key: str, horizon: int) -> int | None:
+    """Eine Zahl von Viertelstunden, immer INNERHALB des Horizonts."""
+    if doc.get(key) is None:
+        return None
+    try:
+        value = int(doc[key])
+    except (TypeError, ValueError) as exc:
+        raise InvalidWhatIfRequest("Ungültige Anzahl Viertelstunden.") from exc
+    if not 1 <= value <= horizon:
+        raise InvalidWhatIfRequest(
+            f"Die Anzahl Viertelstunden muss zwischen 1 und {horizon} liegen."
+        )
+    return value
+
+
+def _load_shift(doc: dict, horizon: int) -> LoadShift | None:
+    """Das Fenster, in dem ein Gerät laufen soll - vollständig oder gar nicht.
+
+    ⚠ Ein HALB gefülltes Fenster wird abgelehnt statt ergänzt: eine geratene
+    Startzeit wäre eine Aussage über eine Kundenanlage, die niemand getroffen
+    hat.
+    """
+    raw = doc.get("consumerLoadShift")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise InvalidWhatIfRequest("Ungültiges Verbraucher-Fenster.")
+    try:
+        from_slot = int(raw["fromSlot"])
+        slots = int(raw["slots"])
+        kw = float(raw["kw"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise InvalidWhatIfRequest(
+            "Ungültiges Verbraucher-Fenster: Beginn, Länge und Leistung gehören zusammen."
+        ) from exc
+    if not 0 <= from_slot < horizon:
+        raise InvalidWhatIfRequest("Der Beginn des Fensters liegt ausserhalb des Zeitraums.")
+    if not 1 <= slots <= horizon - from_slot:
+        raise InvalidWhatIfRequest("Die Länge des Fensters liegt ausserhalb des Zeitraums.")
+    if not math.isfinite(kw) or not 0.0 < kw <= 1000.0:
+        raise InvalidWhatIfRequest("Ungültige Leistung für das Verbraucher-Fenster.")
+    return LoadShift(from_slot=from_slot, slots=slots, kw=kw)
 
 
 def _require_valid_band(soc_min_pct: float | None, soc_max_pct: float | None) -> None:
@@ -227,10 +324,56 @@ def apply_overrides(inp: OptimizationInput, overrides: WhatIfOverrides) -> Optim
         except ValueError as exc:
             # A one-sided band override can cross the site's own other side.
             raise InvalidWhatIfRequest(f"Ungültige Speicher-Regler: {exc}") from exc
+    if overrides.soc_floor_now:
+        # „Ladestand halten": der Boden ist der Stand von JETZT. Das benutzt
+        # die vorhandene Reservierungs-Maschinerie (`soc_floor_kwh` kappt den
+        # Boden ohnehin auf den Startwert), statt eine zweite Bodenlogik zu
+        # bauen - und wirkt damit hart, wie jede andere Reservierung.
+        capacity = battery.capacity_kwh
+        if capacity > 0:
+            stand = battery.clamp_soc_kwh(inp.initial_soc_kwh)
+            pct = max(battery.backup_reserve_pct or 0.0, 100.0 * stand / capacity)
+            battery = replace(battery, backup_reserve_pct=min(pct, 100.0))
     variant = replace(inp, battery=battery)
     if overrides.netzladen_erlaubt is not None:
         variant = replace(variant, netzladen_erlaubt=overrides.netzladen_erlaubt)
+    if overrides.forced_charge_slots:
+        variant = replace(variant, **_forced_charge(variant, overrides.forced_charge_slots))
+    if overrides.consumer_load_shift is not None:
+        variant = replace(variant, load_kw=_with_load(variant, overrides.consumer_load_shift))
     return variant
+
+
+def _forced_charge(inp: OptimizationInput, slots: int) -> dict:
+    """Die Untergrenze für „Speicher jetzt laden", auf den KOPFRAUM gekappt.
+
+    ⚠ Ungekappt wäre das Modell auf einem fast vollen Speicher unlösbar - und
+    eine unlösbare Vorschau ist keine Antwort, sondern ein Fehler. Die Kappung
+    macht die Zahl zusätzlich ehrlich: mehr als der Kopfraum passt nicht hinein,
+    egal was der Knopf sagt.
+    """
+    p = inp.battery
+    n = max(min(slots, inp.slots), 0)
+    kopfraum = p.soc_max_kwh - p.clamp_soc_kwh(inp.initial_soc_kwh)
+    if n <= 0 or kopfraum <= 0:
+        raise InvalidWhatIfRequest(
+            "Der Speicher ist bereits voll - jetzt laden geht nicht."
+        )
+    # Die Ladung landet mit Wirkungsgrad im Speicher, die Untergrenze zählt
+    # AC-seitig: was hineinpasst, geteilt durch Zeit und Wirkungsgrad.
+    kw = kopfraum / (n * inp.slot_hours * p.one_way_efficiency)
+    return {
+        "forced_charge_slots": n,
+        "forced_charge_kw": min(kw, p.max_charge_kw),
+    }
+
+
+def _with_load(inp: OptimizationInput, shift: LoadShift) -> list[float]:
+    """Die Lastreihe MIT dem laufenden Gerät - alles Übrige bleibt, wie es ist."""
+    load = list(inp.load_kw)
+    for t in range(shift.from_slot, min(shift.from_slot + shift.slots, len(load))):
+        load[t] = load[t] + shift.kw
+    return load
 
 
 def knob_document(inp: OptimizationInput) -> dict:

@@ -15,6 +15,7 @@
  */
 import type { ScheduleSlot } from './api';
 import { fmtNum } from './format';
+import { VORSCHAU_LAEUFT, vorschauSatz, type VorschauErgebnis } from './vorschau';
 
 // ---------------------------------------------------------------------------
 // Vokabular
@@ -220,6 +221,20 @@ export interface FolgenInput {
   /** Die wirksame Ladeleistung („lädt mit bis zu X kW"); null = unbekannt. */
   leistungKw?: number | null;
   verzicht: PlanVerzicht;
+  /**
+   * Steuerung Stufe 7: die SERVER-Vorschau derselben Entscheidung (zwei echte
+   * Solver-Läufe). Sie steht NEBEN dem Plan-Verzicht, nicht an seiner Stelle -
+   * die zwei beantworten verschiedene Fragen: der Verzicht sagt, was der
+   * Fahrplan in diesem Fenster VORHATTE (aus den Slots ablesbar), die Vorschau,
+   * was das übers Ganze KOSTET (der Optimierer plant um den Eingriff herum,
+   * holt also einen Teil davon woanders wieder herein). Absent = die Karte
+   * bleibt wortgleich bei ihrer Stufe-4-Fassung.
+   */
+  vorschau?: VorschauErgebnis | null;
+  /** Die Vorschau-Anfrage ist unterwegs. */
+  vorschauLaeuft?: boolean;
+  /** Siehe `SatzOptionen.untergrenze`. */
+  vorschauUntergrenze?: boolean;
 }
 
 /** Die Folgen-Karte VOR dem Klick — vier feste Blöcke, nie eine erfundene Zahl. */
@@ -266,10 +281,21 @@ export function handeingriffFolgen(input: FolgenInput): HandeingriffFolgen {
     { key: 'passiert', titel: BLOCK_TITEL.passiert, zeilen: passiert },
   ];
   if (input.aktion !== 'resume') {
+    const fahrplan = [verzichtSatz(input.verzicht)];
+    const vorschau = vorschauSatz(input.vorschau ?? null,
+      { untergrenze: input.vorschauUntergrenze })
+      ?? (input.vorschauLaeuft ? VORSCHAU_LAEUFT : null);
+    // Nur eine ECHTE Zahl kommt dazu; ein Grund-Satz stünde hier doppelt (der
+    // Verzicht nennt seinen eigenen bereits).
+    // Nur eine ECHTE Zahl oder der Lade-Hinweis kommen dazu; ein Grund-Satz
+    // stünde hier doppelt (der Verzicht nennt seinen eigenen bereits).
+    if (vorschau && (input.vorschau?.deltaEur != null || input.vorschauLaeuft)) {
+      fahrplan.push(vorschau);
+    }
     bloecke.push({
       key: 'fahrplan',
       titel: BLOCK_TITEL.fahrplan,
-      zeilen: [verzichtSatz(input.verzicht)],
+      zeilen: fahrplan,
     });
     bloecke.push({ key: 'risiko', titel: BLOCK_TITEL.risiko, zeilen: risiko });
   }

@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +26,18 @@ public class FlowClaimRepository {
 
     /** One persisted claim - (entity, command) held by exactly one active flow. */
     public record ClaimRow(UUID entityId, String command, UUID flowId, int flowVersion,
-            String flowName, boolean delegated) {}
+            String flowName, boolean delegated, Instant claimedAt) {
+
+        /**
+         * Eine NEUE Beanspruchung. Die Startzeit vergibt die DATENBANK
+         * ({@code claimed_at DEFAULT now()}) - der Schreibpfad nennt sie
+         * deshalb gar nicht erst, damit es keine zweite Uhr gibt.
+         */
+        public ClaimRow(UUID entityId, String command, UUID flowId, int flowVersion,
+                String flowName, boolean delegated) {
+            this(entityId, command, flowId, flowVersion, flowName, delegated, null);
+        }
+    }
 
     private final JdbcTemplate jdbc;
 
@@ -36,12 +48,21 @@ public class FlowClaimRepository {
     /** Every claim of one site. */
     public List<ClaimRow> forSite(UUID siteId) {
         return jdbc.query(
-                "SELECT entity_id, command, flow_id, flow_version, flow_name, delegated "
-                        + "FROM flow_claim WHERE site_id = ? ORDER BY entity_id, command",
+                "SELECT entity_id, command, flow_id, flow_version, flow_name, delegated, "
+                        + "claimed_at FROM flow_claim WHERE site_id = ? "
+                        + "ORDER BY entity_id, command",
                 (rs, n) -> new ClaimRow(rs.getObject("entity_id", UUID.class),
                         rs.getString("command"), rs.getObject("flow_id", UUID.class),
                         rs.getInt("flow_version"), rs.getString("flow_name"),
-                        rs.getBoolean("delegated")),
+                        rs.getBoolean("delegated"),
+                        // Der Anker des Nachteil-Belegs (Stufe 7): seit WANN diese
+                        // Regel den Speicher hält. Er kommt aus der Zeile, die den
+                        // Anspruch materialisiert - jede andere Uhr (etwa
+                        // `flow_definition.updated_at`) verschöbe sich beim
+                        // Bearbeiten und machte den Nachteil kleiner, als er ist.
+                        rs.getObject("claimed_at", java.sql.Timestamp.class) == null ? null
+                                : rs.getObject("claimed_at", java.sql.Timestamp.class)
+                                        .toInstant()),
                 siteId);
     }
 

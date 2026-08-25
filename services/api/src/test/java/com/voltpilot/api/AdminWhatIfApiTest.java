@@ -90,6 +90,11 @@ class AdminWhatIfApiTest {
         registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> realm);
         registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
                 () -> realm + "/protocol/openid-connect/certs");
+        // Steuerung Stufe 7: ein WINZIGES Budget für die Kunden-Vorschau, damit
+        // der 429-Zweig ohne 30 Aufrufe prüfbar ist. Nur der Kunden-Pfad kennt
+        // den Deckel - die Admin-Tests dieser Klasse sind davon unberührt.
+        registry.add("voltpilot.vorschau.rate-limit.per-client-max", () -> "3");
+        registry.add("voltpilot.vorschau.rate-limit.window", () -> "PT5M");
     }
 
     /** In-memory stand-in for the Python service's {@code POST /what-if}. */
@@ -307,6 +312,100 @@ class AdminWhatIfApiTest {
     private static ParameterizedTypeReference<Map<String, Object>> mapType() {
         return new ParameterizedTypeReference<>() {
         };
+    }
+
+    // ---- Steuerung Stufe 7: die KUNDEN-Tür -----------------------------------
+
+    /**
+     * Die Kunden-Vorschau (Konzept `vp-steuerung-konzept-b3` §3.8 G1) an
+     * derselben Rechen-Maschine - mit ihren EIGENEN vier Grenzen.
+     *
+     * <p>⚠ Dieser Test verbraucht das (hier absichtlich winzige) Budget des
+     * Deckels; er ist der einzige Nutzer der Route in dieser Klasse.
+     */
+    @Test
+    void dieKundenVorschauLiefertEineZahlUndHatIhreEigenenGrenzen() {
+        String kunde = token("demo", "demo");
+        fake.submitted.clear();
+        fake.nextResponse = kundenAntwort(4.20, 3.30);
+
+        ResponseEntity<Map<String, Object>> res = vorschau(BERLIN_SITE, kunde, null,
+                Map.of("socFloorNow", true));
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        // Das Vorzeichen zeigt aus KUNDENSICHT: 3,30 statt 4,20 = es kostet 0,90.
+        assertThat(((Number) res.getBody().get("deltaEur")).doubleValue()).isEqualTo(-0.90);
+        assertThat(res.getBody().get("naeherung")).isEqualTo(true);
+        assertThat(res.getBody().get("grund")).isNull();
+        // ⚠ Die zwei vollen Pläne des Admin-Blicks erreichen den Kunden NICHT.
+        assertThat(res.getBody()).doesNotContainKeys("baseline", "variant", "delta", "slots");
+
+        // Weitergereicht wird NUR der eine Knopf, den der Kunde gewählt hat.
+        Map<String, Object> overrides = cast(fake.submitted.get(0).get("overrides"));
+        assertThat(overrides).containsOnlyKeys("socFloorNow");
+
+        // ⚠ Ein ADMIN-Regler im Rumpf ändert NICHTS: das Feld existiert dort
+        // nicht, wird also verworfen - die Vorschau-Tür ist keine Einstellungs-Tür.
+        fake.submitted.clear();
+        fake.nextResponse = kundenAntwort(4.20, 4.20);
+        assertThat(vorschau(BERLIN_SITE, kunde, null,
+                Map.of("wearCostCtPerKwh", 40.0, "netzladenErlaubt", true)).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(cast(fake.submitted.get(0).get("overrides"))).isEmpty();
+
+        // Ein HALBES Verbraucher-Fenster ist 400 - und kostet keinen Lauf.
+        fake.submitted.clear();
+        ResponseEntity<Map<String, Object>> halb = vorschau(BERLIN_SITE, kunde, null,
+                Map.of("verbraucherAbSlot", 4));
+        assertThat(halb.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) halb.getBody().get("message")).contains("gehören Beginn, Länge und Leistung zusammen");
+        assertThat(fake.submitted).isEmpty();
+
+        // Eine FREMDE Anlage ist 404 - und der Rechendienst wird nie gefragt
+        // (er kennt keinen Mandanten; dieser Zaun ist der ganze Zaun).
+        assertThat(vorschau(FOREIGN_SITE, kunde, null, Map.of()).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(fake.submitted).isEmpty();
+
+        // Anonym: 401, ebenfalls ohne Lauf.
+        assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE + "/steuerung-vorschau"),
+                HttpMethod.POST, new HttpEntity<>(Map.of()), mapType()).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(fake.submitted).isEmpty();
+
+        // Der DECKEL: er sagt es dem Kunden, statt eine Zahl zu erfinden.
+        // (Budget 3; einer davon ist oben schon verbraucht.)
+        fake.nextResponse = null;
+        HttpStatus letzter = null;
+        for (int i = 0; i < 5; i++) {
+            letzter = (HttpStatus) vorschau(BERLIN_SITE, kunde, null, Map.of()).getStatusCode();
+            if (letzter == HttpStatus.TOO_MANY_REQUESTS) {
+                break;
+            }
+        }
+        assertThat(letzter).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        ResponseEntity<Map<String, Object>> voll = vorschau(BERLIN_SITE, kunde, null, Map.of());
+        assertThat((String) voll.getBody().get("message"))
+                .contains("Ihre Anlage und Ihr Fahrplan sind davon nicht betroffen");
+    }
+
+    /** Die Antwort des Rechendienstes, wie die Kunden-Vorschau sie liest. */
+    private static SimulationHttp.Response kundenAntwort(double basis, double variante) {
+        return new SimulationHttp.Response(200, """
+                {"siteId":"s","computedAt":"2026-08-25T10:00:00Z","horizonSlots":96,
+                 "slotMinutes":15,"appliedOverrides":{},
+                 "baseline":{"netSavingsEur":%s,"slots":[]},
+                 "variant":{"netSavingsEur":%s,"slots":[]},
+                 "delta":{"netSavingsEur":%s}}""".formatted(basis, variante, variante - basis));
+    }
+
+    private ResponseEntity<Map<String, Object>> vorschau(String siteId, String token,
+            String tenantId, Map<String, Object> body) {
+        HttpHeaders headers = bearer(token);
+        if (tenantId != null) {
+            headers.set("X-Tenant-Id", tenantId);
+        }
+        return rest.exchange(url("/api/v1/sites/" + siteId + "/steuerung-vorschau"),
+                HttpMethod.POST, new HttpEntity<>(body, headers), mapType());
     }
 
     private ResponseEntity<Map<String, Object>> post(String siteId, String token,

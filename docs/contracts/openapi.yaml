@@ -1233,6 +1233,150 @@ paths:
       responses:
         "200": { description: Die Automatik läuft wieder. }
         "404": { description: Anlage nicht gefunden. }
+  /api/v1/sites/{siteId}/steuerung-vorschau:
+    post:
+      tags: [sites]
+      summary: Was eine Entscheidung am Fahrplan ändert - in Euro (Steuerung Stufe 7).
+      description: >
+        Die KUNDEN-Tür zu derselben Rechen-Maschine wie
+        `POST /api/v1/admin/sites/{siteId}/optimizer-what-if`: zwei Läufe über
+        EINE frisch geholte Eingabe (die Anlage wie sie ist, und die Anlage
+        unter dieser Entscheidung), und die Differenz ihres Netto-Vorteils.
+        Es wird NICHTS festgeschrieben - kein Plan persistiert, kein MQTT
+        veröffentlicht; das ist eine Eigenschaft des Rechendienstes (er
+        importiert weder Persistenz noch einen Publisher, per Import-Graph-Test
+        festgenagelt).
+
+
+        Vier Unterschiede zur Admin-Tür: der Zaun ist RLS (fremde Anlage 404,
+        nie 403, und die Id erreicht den Rechendienst erst danach); der Rumpf
+        trägt NUR die drei Kunden-Knöpfe (Verschleiss, SoC-Band und Netzladen
+        existieren hier gar nicht); ein Deckel antwortet mit einem deutschen
+        Satz, bevor der teure Lauf beginnt; und die Antwort ist EINE Zahl statt
+        zweier voller Pläne.
+
+
+        `deltaEur` zeigt aus KUNDENSICHT - negativ = die Entscheidung kostet.
+        Es ist IMMER eine Näherung (`naeherung: true`): gerechnet wird über den
+        Fahrplan-Horizont, nicht über die Lebensdauer einer Regel. `null` heisst
+        „keine Zahl", und `grund` sagt warum - entweder nicht berechenbar oder
+        (ein ANDERER Fall) berechnet und ohne sichtbaren Unterschied.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        description: >
+          Jedes Feld ist optional; `null` heisst „lass es, wie die Anlage es
+          hat". Ein LEERER Rumpf rechnet die Anlage zweimal gleich und ist damit
+          die ehrliche Aussage „das ändert nichts". Ein Verbraucher-Fenster
+          braucht Beginn, Länge und Leistung ZUSAMMEN - halb gefüllt ist 400,
+          nie ergänzt.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                socFloorNow:
+                  type: boolean
+                  description: >
+                    „Ladestand halten" - der Speicher geht nicht unter seinen
+                    jetzigen Stand. Ein BODEN, keine Einfrierung: laden und
+                    wieder bis auf diesen Stand entladen bleibt erlaubt, die
+                    Vorschau unterschätzt die Wirkung des Handeingriffs also
+                    eher, als sie zu überschätzen.
+                forcedChargeSlots:
+                  type: integer
+                  minimum: 1
+                  maximum: 192
+                  description: >
+                    „Speicher jetzt laden" - so viele Viertelstunden lädt er.
+                    Auf den Kopfraum des Speichers gekappt; ein bereits voller
+                    Speicher ist eine benannte Ablehnung, keine unlösbare
+                    Vorschau.
+                verbraucherAbSlot: { type: integer, minimum: 0, maximum: 191 }
+                verbraucherSlots: { type: integer, minimum: 1, maximum: 192 }
+                verbraucherKw: { type: number, minimum: 0.1 }
+      responses:
+        "200":
+          description: Die Vorschau - eine Zahl, oder ein Grund, warum es keine gibt.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deltaEur:
+                    type: number
+                    nullable: true
+                    description: variante − basis; negativ = es kostet. null = keine Zahl.
+                  basisEur: { type: number, nullable: true }
+                  varianteEur: { type: number, nullable: true }
+                  horizonSlots: { type: integer, nullable: true }
+                  naeherung: { type: boolean, description: immer true }
+                  grund: { type: string, nullable: true }
+        "400": { description: Ein halb gefülltes Verbraucher-Fenster oder ein krummer Wert. }
+        "404": { description: Anlage nicht gefunden. }
+        "409": { description: Diese Anlage hat keinen Speicher. }
+        "429": { description: Zu viele Vorschauen - mit deutschem Grund, nie einer erfundenen Zahl. }
+        "502": { description: Der Rechendienst war nicht erreichbar. }
+  /api/v1/sites/{siteId}/suggestion-states:
+    get:
+      tags: [sites]
+      summary: Welche Vorschläge der Kunde gerade nicht sehen will (Steuerung Stufe 6).
+      description: >
+        Das GEDÄCHTNIS der Vorschläge. Es gibt bewusst KEINE Route, die
+        Vorschläge LIEFERT: ein Vorschlag ist eine Ableitung aus Fahrplan ×
+        steuerbaren Komponenten × dem, was schon läuft, und sie lebt im Portal
+        (`vorschlaege.ts`) - eine Server-Route müsste dieselbe Ableitung ein
+        zweites Mal führen. Gespeichert wird nur die Gegenrichtung. Eine
+        ABGELAUFENE Haltung wird gar nicht erst ausgeliefert.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die geltenden Haltungen.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  states:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                          description: Der ABGELEITETE Vorschlags-Schlüssel (Art + Komponente).
+                        state: { type: string, enum: [spaeter, abgelehnt] }
+                        mutedUntil: { type: string, format: date-time }
+                        updatedAt: { type: string, format: date-time }
+        "404": { description: Anlage nicht gefunden. }
+  /api/v1/sites/{siteId}/suggestion-states/{key}:
+    put:
+      tags: [sites]
+      summary: „Später" (ein Tag) oder „Ablehnen" (sieben Tage).
+      description: >
+        Die FRIST rechnet der Server - eine vom Client gewählte Dauer wäre ein
+        Weg, einen Vorschlag für immer verstummen zu lassen, ohne ihn je
+        abzulehnen. Der Schlüssel wird auf seine Form geprüft, nie
+        zurechtgebogen: ein still verändertes Wort träfe beim nächsten Lesen
+        einen anderen Vorschlag als den weggeklickten.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: key, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state: { type: string, enum: [spaeter, abgelehnt] }
+      responses:
+        "200": { description: Die Haltung ist gemerkt; `mutedUntil` sagt bis wann. }
+        "400": { description: Unbekannte Auswahl oder ungültiger Schlüssel. }
+        "404": { description: Anlage nicht gefunden. }
   /api/v1/sites/{siteId}/chargers:
     get:
       tags: [sites]

@@ -418,7 +418,18 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     # unclaimed battery (the default) is byte-identical.
     charge_cap = 0.0 if inp.battery_held else p.max_charge_kw
     discharge_cap = 0.0 if inp.battery_held else p.max_discharge_kw
-    m.charge = Var(m.T, domain=NonNegativeReals, bounds=(0, charge_cap))
+    # Steuerung Stufe 7: „Speicher jetzt laden" als Vorschau - die ersten N
+    # Slots tragen eine UNTERGRENZE auf der Ladung. Ebenfalls eine BOUND (siehe
+    # OptimizationInput.forced_charge_slots), also nichts im Modell und nichts
+    # in KNOWN_CONSTRAINTS; die Vorgabe 0 ist byte-identisch zu jedem Lauf davor.
+    forced_kw = 0.0 if inp.battery_held else max(inp.forced_charge_kw, 0.0)
+    forced_n = max(min(inp.forced_charge_slots, n), 0) if forced_kw > 0 else 0
+
+    def _charge_bounds(model, t):
+        low = min(forced_kw, charge_cap) if t < forced_n else 0.0
+        return (low, charge_cap)
+
+    m.charge = Var(m.T, domain=NonNegativeReals, bounds=_charge_bounds)
     m.discharge = Var(m.T, domain=NonNegativeReals, bounds=(0, discharge_cap))
     m.is_charging = Var(m.T, domain=Binary)
     # Curtailment can only ever REDUCE feed-in: bounded per slot by the PV

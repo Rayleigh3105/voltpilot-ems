@@ -282,6 +282,43 @@ export interface Intervention {
   createdAt: string;
 }
 
+/**
+ * Die KUNDEN-VORSCHAU (Steuerung Stufe 7): was eine Entscheidung am Fahrplan
+ * ändert. `deltaEur` zeigt aus KUNDENSICHT - negativ = es kostet; `null` heisst
+ * „keine Zahl", und `grund` sagt warum. `naeherung` ist IMMER true.
+ */
+export interface SteuerungVorschau {
+  deltaEur: number | null;
+  basisEur: number | null;
+  varianteEur: number | null;
+  horizonSlots: number | null;
+  naeherung: boolean;
+  grund: string | null;
+}
+
+/** Die drei Knöpfe, die ein Kunde treffen kann - mehr kennt die Route nicht. */
+export interface VorschauKnoepfe {
+  socFloorNow?: boolean;
+  forcedChargeSlots?: number;
+  verbraucherAbSlot?: number;
+  verbraucherSlots?: number;
+  verbraucherKw?: number;
+}
+
+/** Eine server-seitig gemerkte Haltung zu einem abgeleiteten Vorschlag. */
+export interface SuggestionState {
+  key: string;
+  state: 'spaeter' | 'abgelehnt';
+  /** Bis wann sie gilt; danach erscheint der Vorschlag wieder. */
+  mutedUntil: string;
+  updatedAt: string;
+}
+
+/** Alles, was gerade stumm ist (abgelaufene Zeilen kommen nicht mit). */
+export interface SuggestionStates {
+  states: SuggestionState[];
+}
+
 /** Alles, was gerade von Hand gesetzt ist. */
 export interface SiteInterventions {
   automationPaused: boolean;
@@ -1324,6 +1361,13 @@ export interface TopologyRoleAssignment {
 export interface EntityStrategy {
   flowId: string;
   flowName: string;
+  /**
+   * Seit wann diese Regel die Komponente DIREKT beansprucht (Steuerung Stufe
+   * 7) — der Anker des Nachteil-Belegs. `null` = delegierter Anspruch (der
+   * übergibt gerade an den Fahrplan) oder ein älteres Backend; dann wird KEIN
+   * Nachteil behauptet, weil es den Zeitraum nicht gäbe, über den er gilt.
+   */
+  claimedAt?: string | null;
 }
 
 // --- AE7 usage profile (adaptation axis 2: emphasis) -------------------------
@@ -2774,6 +2818,38 @@ export const api = {
     request<InterventionOutcome>(`/api/v1/sites/${siteId}/automation-pause`, {
       method: 'DELETE',
     }),
+  /**
+   * Das GEDÄCHTNIS der Vorschläge (Steuerung Stufe 6): welche der abgeleiteten
+   * Karten der Kunde gerade nicht sehen will.
+   *
+   * ⚠ Es gibt bewusst KEINE Route, die Vorschläge LIEFERT - sie sind eine
+   * Ableitung aus dem Fahrplan (`vorschlaege.ts`), und eine Server-Route müsste
+   * dieselbe Ableitung ein zweites Mal führen. Abgelaufene Haltungen kommen
+   * hier gar nicht erst an.
+   */
+  /**
+   * Die Vorschau EINER Entscheidung (Steuerung Stufe 7): zwei echte
+   * Solver-Läufe über eine Eingabe, und die Differenz ihres Netto-Vorteils.
+   *
+   * ⚠ Sie ist TEUER (ein MILP-Lauf) und gedeckelt - die Fläche fragt sie
+   * einmal je geöffneter Folgen-Karte, nie in einer Schleife.
+   */
+  steuerungVorschau: (siteId: string, knoepfe: VorschauKnoepfe) =>
+    request<SteuerungVorschau>(`/api/v1/sites/${siteId}/steuerung-vorschau`, {
+      method: 'POST', body: JSON.stringify(knoepfe),
+    }),
+  suggestionStates: (siteId: string) =>
+    request<SuggestionStates>(`/api/v1/sites/${siteId}/suggestion-states`),
+  /**
+   * „Später" (ein Tag) oder „Ablehnen" (sieben Tage). Die FRIST rechnet der
+   * Server - eine vom Client gewählte Dauer wäre ein Weg, einen Vorschlag für
+   * immer verstummen zu lassen, ohne ihn je abzulehnen.
+   */
+  setSuggestionState: (siteId: string, key: string, state: 'spaeter' | 'abgelehnt') =>
+    request<SuggestionState>(
+      `/api/v1/sites/${siteId}/suggestion-states/${encodeURIComponent(key)}`,
+      { method: 'PUT', body: JSON.stringify({ state }) },
+    ),
   /** Die im Portal gepflegte Anschlussgrenze + Vorrang-Wahl. */
   chargingConfig: (siteId: string) =>
     request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-config`),

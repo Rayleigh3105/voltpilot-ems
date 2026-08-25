@@ -10,6 +10,8 @@ import java.util.UUID;
 import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -1046,6 +1048,115 @@ class ConsumerApiTest {
         assertThat(post(fremd, base + "/automation-pause",
                 Map.of("kind", "pause", "durationMinutes", 60)).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * STEUERUNG STUFE 6: das Gedächtnis der Vorschläge - „Später" (1 Tag) und
+     * „Ablehnen" (7 Tage).
+     *
+     * <p>Die drei Aussagen, die hier zählen: die FRIST gehört dem Server (ein
+     * mitgeschickter Wunsch ändert nichts), eine ABGELAUFENE Haltung kommt gar
+     * nicht erst an, und der Mandanten-Zaun ist derselbe wie überall auf
+     * {@code /sites/**} - eine fremde Anlage ist 404, nie 403.
+     */
+    @Test
+    void suggestionStatesAreServerTimedTenantScopedAndExpireOnTheirOwn() {
+        String token = token("demo", "demo");
+        String base = "/api/v1/sites/" + BERLIN_SITE;
+        try {
+            // Frisch: nichts ist stumm.
+            assertThat(states(token)).isEmpty();
+
+            // „Später" - der Server rechnet die Frist. Ein mitgeschickter
+            // Wunsch existiert im Vertrag gar nicht; wir prüfen die WIRKUNG.
+            ResponseEntity<Map<String, Object>> res = put(token,
+                    base + "/suggestion-states/ueberschuss:c1", Map.of("state", "spaeter"));
+            assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(res.getBody()).containsEntry("state", "spaeter");
+            Instant spaeterBis = Instant.parse((String) res.getBody().get("mutedUntil"));
+            assertThat(spaeterBis).isBetween(Instant.now().plus(Duration.ofHours(23)),
+                    Instant.now().plus(Duration.ofHours(25)));
+
+            // „Ablehnen" liegt DEUTLICH weiter - das ist der Unterschied, den
+            // die Karte dem Kunden vorher nennt.
+            ResponseEntity<Map<String, Object>> ab = put(token,
+                    base + "/suggestion-states/guenstig:c2", Map.of("state", "abgelehnt"));
+            assertThat(ab.getStatusCode()).isEqualTo(HttpStatus.OK);
+            Instant abBis = Instant.parse((String) ab.getBody().get("mutedUntil"));
+            assertThat(abBis).isAfter(spaeterBis.plus(Duration.ofDays(5)));
+
+            assertThat(states(token))
+                    .containsExactly("guenstig:c2", "ueberschuss:c1");
+
+            // Ein unbekanntes Wort und ein krummer Schlüssel werden BENANNT
+            // abgelehnt - und schreiben nichts.
+            assertThat(put(token, base + "/suggestion-states/ueberschuss:c9",
+                    Map.of("state", "nie_wieder")).getStatusCode())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(put(token, base + "/suggestion-states/GROSS",
+                    Map.of("state", "spaeter")).getStatusCode())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(states(token)).containsExactly("guenstig:c2", "ueberschuss:c1");
+
+            // Eine ABGELAUFENE Haltung ist keine Aussage mehr: sie wird nicht
+            // ausgeliefert (und beim nächsten Schreiben weggeräumt).
+            jdbcAsSuperuser("UPDATE site_suggestion_state SET muted_until = now() - interval "
+                    + "'1 hour' WHERE suggestion_key = 'ueberschuss:c1'");
+            assertThat(states(token)).containsExactly("guenstig:c2");
+            put(token, base + "/suggestion-states/guenstig:c3", Map.of("state", "spaeter"));
+            assertThat(countStates()).isEqualTo(2);
+
+            // Der Mandanten-Zaun: 404 in BEIDE Richtungen, nie 403.
+            String fremd = token("demo2", "demo2");
+            assertThat(rest.exchange(url(base + "/suggestion-states"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(fremd)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getStatusCode())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+            assertThat(put(fremd, base + "/suggestion-states/ueberschuss:c1",
+                    Map.of("state", "abgelehnt")).getStatusCode())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+            // ... und die fremde Anfrage hat nichts geschrieben.
+            assertThat(countStates()).isEqualTo(2);
+        } finally {
+            jdbcAsSuperuser("DELETE FROM site_suggestion_state");
+        }
+    }
+
+    /** Die Schlüssel der geltenden Haltungen, sortiert. */
+    private List<String> states(String token) {
+        Map<String, Object> body = getMap(
+                "/api/v1/sites/" + BERLIN_SITE + "/suggestion-states", token);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) body.get("states");
+        return rows.stream().map(r -> (String) r.get("key")).sorted().toList();
+    }
+
+    private int countStates() {
+        try (java.sql.Connection conn = java.sql.DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = conn.createStatement();
+                java.sql.ResultSet rs = st.executeQuery(
+                        "SELECT count(*) FROM site_suggestion_state")) {
+            rs.next();
+            return rs.getInt(1);
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * ⚠ Als SUPERUSER, weil die Tabelle FORCE RLS trägt: ohne gesetzten
+     * {@code app.tenant_id} wäre ein DELETE über den App-Pfad ein STILLES
+     * No-op (die dokumentierte Falle).
+     */
+    private void jdbcAsSuperuser(String sql) {
+        try (java.sql.Connection conn = java.sql.DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = conn.createStatement()) {
+            st.execute(sql);
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private Map<String, Object> interventions(String token) {

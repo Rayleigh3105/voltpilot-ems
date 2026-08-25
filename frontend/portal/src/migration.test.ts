@@ -22,6 +22,7 @@ import { betriebsmodellKarten, betriebsmodellZone } from './betriebsmodelle';
 import { profileRows } from './steuerungArea';
 import { showTechnicalLayer } from './rollen';
 import { JETZT_LEER, jetztZone } from './steuerungJetzt';
+import { vorschlaege } from './vorschlaege';
 import { regelFolgen } from './regeln/folgen';
 import { VORRANG_FOLGEN, VORRANG_ZEILE } from './regeln/satz';
 import {
@@ -1065,5 +1066,38 @@ describe('Steuerung Stufe 5 — Abbau-Invarianten', () => {
     const code = ohneKommentare(readFileSync(join(SRC, 'pages/SteuerungSection.tsx'), 'utf8'));
     expect(code).not.toMatch(/ProfileRowView/);
     expect(code).toMatch(/Betriebsmodelle/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Steuerung Stufe 6 — eine Anlage OHNE Vorschlags-Zutaten ist unberührt
+// ---------------------------------------------------------------------------
+
+describe('Steuerung Stufe 6: ohne Zutaten gibt es keine Vorschlags-Karte', () => {
+  const NOW = new Date('2026-08-25T08:00:00Z');
+
+  it('ohne Fahrplan UND ohne steuerbare Komponente entsteht nichts', () => {
+    expect(vorschlaege({ slots: null, consumers: [], now: NOW })).toEqual([]);
+    expect(vorschlaege({ slots: [], consumers: [], now: NOW })).toEqual([]);
+  });
+
+  it('ein Vorschlag erzeugt NIE selbst eine Regel — er füllt nur den Baukasten', () => {
+    // Der Beleg ist strukturell: die reine Schicht kennt keinen einzigen
+    // Schreibpfad, und die Fläche reicht `prefill` in den BESTEHENDEN
+    // Baukasten. Eine Vorlagen-Mechanik wäre genau das, was der Captain
+    // ausgeschlossen hat („nur freier Builder").
+    const code = ohneKommentare(readFileSync(join(SRC, 'vorschlaege.ts'), 'utf8'));
+    expect(code).not.toMatch(/\bapi\./);
+    expect(code).not.toMatch(/fetch\(/);
+    expect(code).not.toMatch(/localStorage|sessionStorage/);
+  });
+
+  it('die Vorschlags-Fläche speichert nichts im Browser', () => {
+    // Die Ablehnung ist server-seitig (§7 `localStorage`-Verbot) - sonst
+    // überlebte sie den Gerätewechsel nicht und wäre keine Entscheidung.
+    for (const name of ['vorschlaege.ts', 'components/VorschlagsKarten.tsx']) {
+      const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
+      expect(code, name).not.toMatch(/localStorage|sessionStorage/);
+    }
   });
 });

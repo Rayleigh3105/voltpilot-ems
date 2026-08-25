@@ -61,6 +61,9 @@ import { bestandZeile } from './erloesKomposition';
 import { lageView, speicherHalbsatz, type LageSlot } from './fahrplanLage';
 import { grenzenView, gruende, leitgrund } from './grenzenWarum';
 import { planInsightParts, planSentence, type PlanSlotLike } from './schedule';
+import { vorschlaege } from './vorschlaege';
+import type { ScheduleSlot } from './api';
+import type { Consumer } from './consumers/types';
 
 /**
  * Kausal-Vokabular: Wörter, die eine URSACHE behaupten oder einen Vergleich
@@ -445,5 +448,85 @@ describe('Warum-Wächter: die Bestandszeile behauptet KEINE Ursache', () => {
     expect(kausaleVokabeln(z.text)).toEqual([]);
     // Die kWh sind gemessen, der Euro ist Plan - ohne ihn wird er nicht erfunden.
     expect(z.wertEur).toBeNull();
+  });
+});
+
+/**
+ * STEUERUNG STUFE 6 „Vorschläge V1": eine Vorschlags-Karte behauptet eine
+ * URSACHE („da ist Überschuss", „das sind die günstigsten Stunden") - und
+ * unterliegt damit derselben Regel wie jeder Warum-Satz.
+ *
+ * ⚠ Der Rückfall ist hier NICHT „Beobachtung statt Ursache", sondern GAR KEINE
+ * KARTE: ein Vorschlag ohne Zahl ist kein Vorschlag, sondern eine Vermutung -
+ * und eine Vermutung, an die ein „Übernehmen"-Knopf hängt, ist schlimmer als
+ * Schweigen.
+ */
+describe('Warum-Wächter: ein Vorschlag entsteht nur aus Fahrplan-Fakten', () => {
+  const NOW = new Date('2026-08-25T08:00:00Z');
+
+  function vslot(idx: number, patch: Partial<ScheduleSlot> = {}): ScheduleSlot {
+    return {
+      start: new Date(NOW.getTime() + idx * 900_000).toISOString(),
+      batteryKw: null, gridKw: null, socPct: null, priceEurMwh: null,
+      costEur: null, baselineCostEur: null, curtailKw: null,
+      pvKw: null, loadKw: null, slotRole: null, slotFlags: null,
+      storedValueCtKwh: null, gridValueCtKwh: null, peakPressureEurKw: null,
+      importPriceCtKwh: null, exportValueCtKwh: null, importPriceSource: null,
+      ...patch,
+    } as ScheduleSlot;
+  }
+
+  const wallbox = {
+    id: 'c1', type: 'wallbox', typeLabel: 'Wallbox', name: 'Wallbox',
+    controlKind: 'on_off', ratedPowerKw: 11, minPowerKw: 4, levelsKw: null,
+    resolutionKw: null, powerRangesKw: null, storageRelation: 'consumer_first',
+    defaultGridEnergyPolicy: 'allow', allowStorageDischarge: false, failsafe: 'off',
+    enabled: true, version: 1, connection: 'connected', edgeSourceId: 's1',
+    controlActivation: 'not_activated', hasDraftPolicy: false, draftPolicyVersion: null,
+  } as Consumer;
+
+  it('die zwei Vorschlags-Zweige stehen in der Gate-Tabelle', () => {
+    for (const id of ['vorschlag_ueberschuss', 'vorschlag_guenstig']) {
+      expect(BEGRUENDUNGEN.map((b) => b.id)).toContain(id);
+    }
+  });
+
+  it('FAKTEN-FREIE Viertelstunden erzeugen GAR KEINE Karte', () => {
+    const nackt = Array.from({ length: 32 }, (_, i) => vslot(i));
+    expect(vorschlaege({ slots: nackt, consumers: [wallbox], now: NOW })).toEqual([]);
+  });
+
+  it('der Überschuss-Zweig ist ohne pv ODER ohne load unerreichbar', () => {
+    const nurPv = Array.from({ length: 32 }, (_, i) => vslot(i, { pvKw: 8 }));
+    expect(vorschlaege({ slots: nurPv, consumers: [wallbox], now: NOW })).toEqual([]);
+    const nurLast = Array.from({ length: 32 }, (_, i) => vslot(i, { loadKw: 2 }));
+    expect(vorschlaege({ slots: nurLast, consumers: [wallbox], now: NOW })).toEqual([]);
+    // MIT beiden Fakten entsteht die Karte - der Zweig ist also nicht tot.
+    const beides = Array.from({ length: 32 }, (_, i) => vslot(i, { pvKw: 8, loadKw: 2 }));
+    const v = vorschlaege({ slots: beides, consumers: [wallbox], now: NOW });
+    expect(v).toHaveLength(1);
+    expect(v[0].begruendung).toMatch(/\d/);
+  });
+
+  it('der Preis-Zweig ist ohne Preise ODER ohne Spanne unerreichbar', () => {
+    const flach = Array.from({ length: 32 }, (_, i) => vslot(i, { importPriceCtKwh: 30 }));
+    expect(vorschlaege({ slots: flach, consumers: [wallbox], now: NOW })).toEqual([]);
+    const mitSpanne = Array.from({ length: 32 }, (_, i) =>
+      vslot(i, { importPriceCtKwh: i >= 8 && i <= 15 ? 9 : 32 }));
+    const v = vorschlaege({ slots: mitSpanne, consumers: [wallbox], now: NOW });
+    expect(v).toHaveLength(1);
+    expect(v[0].begruendung).toMatch(/\d/);
+  });
+
+  it('jede erzeugte Begründung trägt mindestens eine Zahl aus dem Fahrplan', () => {
+    const beides = Array.from({ length: 32 }, (_, i) =>
+      vslot(i, { pvKw: i < 16 ? 8 : 0, loadKw: 2, importPriceCtKwh: i >= 20 ? 9 : 32 }));
+    const v = vorschlaege({
+      slots: beides,
+      consumers: [wallbox, { ...wallbox, id: 'c2', name: 'Heizstab' }],
+      now: NOW,
+    });
+    expect(v.length).toBeGreaterThan(0);
+    for (const k of v) expect(k.begruendung, k.key).toMatch(/\d/);
   });
 });

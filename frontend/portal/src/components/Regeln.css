@@ -53,6 +53,7 @@
 
 .vp-regel-satz,
 .vp-regel-zustand,
+.vp-regel-nachteil,
 .vp-regel-hinweis {
   margin: 0;
   font-size: 0.82rem;
@@ -78,6 +79,17 @@
 .vp-regel-hinweis {
   color: var(--vp-text-muted, #6C757D);
   font-style: italic;
+}
+
+/*
+ * Der NACHTEIL-BELEG (Steuerung Stufe 7). Er ist eine MESSBARE Folge, keine
+ * Störung - deshalb der ruhige Bernstein-Ton der Warn-Zustände und KEIN Rot:
+ * die Regel tut, was der Kunde wollte. Das Wort trägt die Aussage, die Farbe
+ * ist Zugabe (die Haus-Regel jeder Tönung hier).
+ */
+.vp-regel-nachteil {
+  color: #b45309;
+  font-weight: 600;
 }
 
 .vp-regel-chips {
@@ -265,11 +277,18 @@
 }
 
 .vp-regeld-immer,
+.vp-regeld-nachteil,
 .vp-regeld-note {
   margin: 8px 0 0;
   font-size: 0.78rem;
   line-height: 1.4;
   color: var(--vp-text-muted, #6C757D);
+}
+
+/* Derselbe Ton wie an der Karte - eine Aussage, ein Aussehen. */
+.vp-regeld-nachteil {
+  color: #b45309;
+  font-weight: 600;
 }
 
 .vp-regeld-list {
@@ -403,4 +422,92 @@
   color: var(--vp-text-muted, #475569);
   font-size: var(--vp-text-xs, 12px);
   line-height: 1.45;
+}
+
+/* --------------------------------------------------------------------------
+   VORSCHLÄGE (Steuerung Stufe 6, Konzept b3 §3.3)
+
+   Sie stehen am KOPF der Kapsel, weil sie der Einstieg sind („Vorschlag vor
+   Regel"). Optisch bewusst RUHIG und von den Regel-Karten unterscheidbar: ein
+   Vorschlag ist eine Einladung, keine laufende Sache — ein zweiter Karten-Look
+   in derselben Optik läse sich als „läuft schon".
+   -------------------------------------------------------------------------- */
+
+.vp-vorschlaege {
+  margin: 0 0 14px;
+  min-width: 0;
+}
+
+.vp-vorschlaege-kopf {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted, #6C757D);
+}
+
+.vp-vorschlagliste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vp-vorschlag {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(149, 185, 255, 0.5);
+  border-radius: var(--vp-radius-md, 12px);
+  background: rgba(149, 185, 255, 0.08);
+}
+
+.vp-vorschlag-titel {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.vp-vorschlag-grund {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--vp-text-muted, #6C757D);
+  overflow-wrap: anywhere;
+}
+
+.vp-vorschlag-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/*
+ * ⚠ Die Haus-Regel „≥ 44 px Trefferfläche" über die unsichtbare `::before`-
+ * Fläche (das `.vp-switch`-Muster), NICHT über eine grössere Schaltfläche: vier
+ * Knöpfe nebeneinander müssen bei 375 px in zwei Zeilen passen, ein 44-px-KASTEN
+ * je Knopf zöge die Reihe auseinander. Sichtbar bleiben sie 36 px hoch.
+ */
+.vp-vorschlag-aktionen button {
+  position: relative;
+}
+
+.vp-vorschlag-aktionen button::before {
+  content: '';
+  position: absolute;
+  inset: -4px 0;
+}
+
+/* Am Telefon nimmt die Haupt-Handlung die volle Zeile - „Übernehmen" ist die
+   Handlung, die der Kunde sucht, und ein 44-px-Ziel ist Pflicht. */
+@media (max-width: 720px) {
+  .vp-vorschlag-aktionen > :first-child { flex: 1 1 100%; }
+  .vp-vorschlag-aktionen > :first-child > button { width: 100%; }
 }

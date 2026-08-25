@@ -50,6 +50,11 @@ export function RegelKarteView({
             hier NICHTS - nie eine erfundene 0. */}
         {karte.aktivitaet && <p className="vp-regel-aktivitaet">{karte.aktivitaet}</p>}
         {karte.hinweis && <p className="vp-regel-hinweis">{karte.hinweis}</p>}
+        {/* Der NACHTEIL-BELEG (Stufe 7): was der Vorrang dieser Regel den
+            Fahrplan bisher gekostet hat. Er steht NEBEN dem Hinweis - der
+            warnt vorher, dieser berichtet laufend. Ohne belastbare Zahl
+            steht hier nichts. */}
+        {karte.nachteil && <p className="vp-regel-nachteil">{karte.nachteil}</p>}
         {karte.chips.length > 0 && (
           <span className="vp-regel-chips">
             {karte.chips.map((c) =>

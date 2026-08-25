@@ -488,6 +488,22 @@ class OptimizationInput:
     #: dispatch it, never battery master data. Default False = byte-identical
     #: to every run before Stufe 3.
     battery_held: bool = False
+    #: Steuerung Stufe 7 „Vorschau mit Zahlen" (Konzept vp-steuerung-konzept-b3
+    #: §3.8): die ersten ``forced_charge_slots`` Viertelstunden MÜSSEN mit
+    #: mindestens ``forced_charge_kw`` laden - das Modell des Handeingriffs
+    #: „Speicher jetzt laden".
+    #:
+    #: ⚠ Wie ``battery_held`` ist es eine BOUND, keine Nebenbedingung: es wird
+    #: dem Modell nichts hinzugefügt, also bleiben die Bestands-Inventarliste
+    #: der Erklär-Schicht (``KNOWN_CONSTRAINTS``) und die Golden-Suite
+    #: unberührt, und ein Lauf ohne den Knopf (die Vorgabe) ist byte-identisch.
+    #:
+    #: ⚠ Der AUFRUFER kappt ``forced_charge_kw`` auf den Kopfraum des Speichers
+    #: (:func:`voltpilot_optimization.whatif.apply_overrides`) - eine
+    #: Untergrenze über der Ladehöhe machte das Modell unlösbar, und eine
+    #: unlösbare Vorschau ist keine Antwort.
+    forced_charge_slots: int = 0
+    forced_charge_kw: float = 0.0
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)

@@ -26,7 +26,8 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import {
   ApiError, api,
-  type EntityStrategy, type RuleEvents, type Site, type SiteTopology,
+  type EntityStrategy, type RuleEvents, type ScheduleSlot, type Site,
+  type SiteInterventions, type SiteTopology,
 } from '../api';
 import { PartHead } from './SteuerungParts';
 import { ConsumerOverrideDialog } from './ConsumerOverrideDialog';
@@ -35,6 +36,7 @@ import { RegelDrawer } from './RegelDrawer';
 import { ConfirmDialog } from './ConfirmDialog';
 import { RegelKarteView } from './RegelKarten';
 import { RegelProtokoll } from './RegelProtokoll';
+import { VorschlagsKarten } from './VorschlagsKarten';
 import { VerbraucherAnlegenDrawer, VerbraucherRegelDrawer } from './VerbraucherDrawers';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer, ConsumerOptions, ConsumerPolicyVersion } from '../consumers/types';
@@ -67,6 +69,9 @@ import {
 } from '../regeln/rezepte';
 import { regelDetail } from '../regeln/detail';
 import { folgenZeilen, regelFolgen, vorrangArt, type FolgenKarte } from '../regeln/folgen';
+import type { VorrangArt } from '../regeln/satz';
+import { knoepfeFuerSpeicherRegel, nachteilBisher, nachteilZeile } from '../vorschau';
+import { useVorschau } from './useVorschau';
 import { protokoll as protokollView } from '../regeln/verlauf';
 import {
   istGenerierteVerbraucherregel,
@@ -79,6 +84,12 @@ import {
   REGEL_CAPSULE_INTRO,
   REGEL_CAPSULE_TITLE,
 } from '../steuerungArea';
+import {
+  LEER_MIT_VORSCHLAEGEN,
+  PLATTFORM_ZONE,
+  vorschlaege as leiteVorschlaegeAb,
+  type Vorschlag,
+} from '../vorschlaege';
 import './Regeln.css';
 
 type CondKind = 'entity' | 'price' | 'schedule';
@@ -144,6 +155,17 @@ export function RegelnKapsel({
   const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]>>({});
   const [ruleEvents, setRuleEvents] = useState<RuleEvents | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // Steuerung Stufe 6: die drei ZUSATZ-Quellen der Vorschläge. Alle fail-soft -
+  // fehlt eine, entsteht schlicht kein Vorschlag (nie ein geratener).
+  const [slots, setSlots] = useState<ScheduleSlot[] | null>(null);
+  const [eingriffe, setEingriffe] = useState<SiteInterventions | null>(null);
+  const [stumm, setStumm] = useState<string[]>([]);
+  /**
+   * Steuerung Stufe 7: die Entladeleistung des Speichers - die Obergrenze der
+   * Energie, die eine haltende Regel dem Fahrplan entzieht. Ohne sie gibt es
+   * KEINEN Nachteil-Beleg (nie eine geratene Grenze).
+   */
+  const [entladeKw, setEntladeKw] = useState<number | null>(null);
 
   const [creating, setCreating] = useState(false);
   const [offen, setOffen] = useState<string | null>(null);
@@ -175,6 +197,18 @@ export function RegelnKapsel({
     api.siteRuleEvents(site.id).then((r) => alive && setRuleEvents(r ?? null))
       .catch(() => {});
     consumersApi.overrides(site.id).then((o) => alive && setOverrides(o ?? [])).catch(() => {});
+    // Die Zutaten der VORSCHLÄGE (Stufe 6): der Fahrplan liefert die Zahlen,
+    // die Eingriffe und das Gedächtnis entscheiden, was NICHT gezeigt wird.
+    api.schedule(site.id).then((p) => alive && setSlots(p?.slots ?? null)).catch(() => {});
+    api.siteInterventions(site.id).then((i) => alive && setEingriffe(i ?? null)).catch(() => {});
+    api.suggestionStates(site.id)
+      .then((r) => alive && setStumm((r?.states ?? []).map((x) => x.key)))
+      .catch(() => {});
+    api.siteAssets(site.id)
+      .then((a) => alive && setEntladeKw(
+        a?.find((x) => x.type === 'battery')?.maxDischargeKw ?? null,
+      ))
+      .catch(() => {});
     // Die Geräte-Bestätigung je Regel; der Aufruf steht IM Promise, damit auch
     // ein Client ohne diese Route (älteres Backend) nur still nichts liefert.
     Promise.resolve()
@@ -206,6 +240,35 @@ export function RegelnKapsel({
    * (die erscheinen GENAU EINMAL — als Rezept-Karte ihres Verbrauchers), plus
    * je Verbraucher mit gespeicherter Regel eine Rezept-Karte.
    */
+  /**
+   * Der NACHTEIL-BELEG je Regel (Steuerung Stufe 7, Leitprinzip Regel 3).
+   *
+   * Er entsteht NUR, wo alle vier Zutaten belegt sind: die Regel beansprucht
+   * eine Komponente DIREKT (`claimedAt` aus `flow_claim`), der Fahrplan deckt
+   * die Zeit seither ab, jede seiner Viertelstunden trägt Preis UND
+   * Speicherwert, und die Entladeleistung ist bekannt. Fehlt eines davon,
+   * steht an der Karte NICHTS — kein „0,00 €" und keine Schätzung.
+   */
+  const nachteile = useMemo(() => {
+    const out: Record<string, string> = {};
+    if (!slots || entladeKw == null) return out;
+    const now = new Date();
+    for (const [, liste] of Object.entries(strategies)) {
+      for (const st of liste) {
+        if (!st.claimedAt) continue;
+        const seit = new Date(st.claimedAt);
+        if (Number.isNaN(seit.getTime())) continue;
+        const key = `flow:${st.flowId}`;
+        if (out[key]) continue;
+        const zeile = nachteilZeile(
+          nachteilBisher(slots, seit, now, entladeKw), seit, PLATTFORM_ZONE,
+        );
+        if (zeile) out[key] = zeile;
+      }
+    }
+    return out;
+  }, [slots, strategies, entladeKw]);
+
   const karten = useMemo(() => {
     const anyStatusReported = status.length > 0;
     const rezepte: RezeptRegelInput[] = consumers
@@ -225,6 +288,7 @@ export function RegelnKapsel({
       entities,
       rezepte,
       protokoll: ruleEvents,
+      nachteile,
       flows: flows
         .filter((f) => !istGenerierteVerbraucherregel(f.latestDocument))
         .map((f) => ({
@@ -237,7 +301,8 @@ export function RegelnKapsel({
           ack: acks.find((a) => a.flowId === f.flowId) ?? null,
         })),
     });
-  }, [flows, acks, consumers, status, fulfillment, overrides, policies, entities, ruleEvents]);
+  }, [flows, acks, consumers, status, fulfillment, overrides, policies, entities, ruleEvents,
+    nachteile]);
 
   // Das Gesamt-Protokoll spricht die NAMEN der Karten - ein Ereignis ohne
   // zuordenbare Regel bleibt sichtbar, nennt aber keine (nie eine geratene).
@@ -345,6 +410,52 @@ export function RegelnKapsel({
     }
   }, [consumers, entities, onError]);
 
+  // --- VORSCHLÄGE (Steuerung Stufe 6, Konzept b3 §3.3) -----------------------
+  /**
+   * Die Karten kommen ausschliesslich aus der reinen Ableitung - hier wird
+   * NICHTS gerechnet und NICHTS formuliert. Fehlt eine Zutat (kein Fahrplan,
+   * keine steuerbare Komponente, kein belastbares Fenster), ist die Liste leer
+   * und die Fläche zeigt schlicht keine Vorschläge.
+   */
+  const angebote = useMemo(() => leiteVorschlaegeAb({
+    slots,
+    consumers,
+    claims: strategies,
+    eingriffe: eingriffe?.interventions ?? null,
+    pausiert: eingriffe?.automationPaused === true,
+    stumm,
+    now: new Date(),
+    // Die Plattform-Zone (v1, wie `anlage.ts`/`HistoryRange.ZONE`) - die
+    // Anlage trägt keine eigene, und die Uhrzeit einer Karte darf nicht von
+    // der Zeitzone des Browsers abhängen.
+    zone: PLATTFORM_ZONE,
+  }), [slots, consumers, strategies, eingriffe, stumm]);
+
+  /**
+   * „Übernehmen" öffnet den BESTEHENDEN Regel-Baukasten vorbefüllt - es
+   * entsteht dabei KEINE Regel. Erst im Baukasten, hinter der Folgen-Karte,
+   * wird daraus eine; genau das meint „Vorschlag vor Regel".
+   */
+  const uebernehmen = useCallback((v: Vorschlag) => {
+    const c = consumers.find((x) => x.id === v.komponenteId);
+    if (!c) return;
+    setRulePrefill(v.prefill);
+    setRuleFor(c);
+  }, [consumers]);
+
+  /**
+   * „Später"/„Ablehnen". Die Karte verschwindet SOFORT (der Kunde hat
+   * entschieden), die Frist rechnet der Server - ein Fehlschlag holt sie
+   * zurück, statt eine Stummschaltung vorzutäuschen, die nicht gespeichert ist.
+   */
+  const stummSchalten = useCallback((v: Vorschlag, state: 'spaeter' | 'abgelehnt') => {
+    setStumm((prev) => (prev.includes(v.key) ? prev : [...prev, v.key]));
+    api.setSuggestionState(site.id, v.key, state).catch((e) => {
+      setStumm((prev) => prev.filter((k) => k !== v.key));
+      onError(e instanceof ApiError ? e.message : 'Das konnte nicht gespeichert werden.');
+    });
+  }, [site.id, onError]);
+
   // --- Schnellschalter ------------------------------------------------------
   /**
    * Die FOLGEN-KARTE vor jeder Aktivierung (Konzept `vp-steuerung-konzept-b3`
@@ -354,24 +465,45 @@ export function RegelnKapsel({
    * ⚠ Das AUSschalten fragt bewusst NICHT: es nimmt eine Erlaubnis zurück, es
    * gibt keine her — dieselbe Regel wie beim Abschalten der Wellen-Automatik.
    */
-  const [folgen, setFolgen] = useState<{ karte: RegelKarte; view: FolgenKarte } | null>(null);
+  const [folgen, setFolgen] = useState<{ karte: RegelKarte; art: VorrangArt } | null>(null);
 
   const fragen = useCallback((karte: RegelKarte, an: boolean) => {
     if (!an) return false;
     const flow = karte.art === 'rezept' ? null : flows.find((f) => f.flowId === karte.id);
-    setFolgen({
-      karte,
-      view: regelFolgen({
-        name: karte.name,
-        satz: karte.satz,
-        art: vorrangArt(flow?.latestDocument ?? null, entities),
-        // Der Fahrplan-Block sagt seinen Grund; ohne geladenen Plan bleibt es
-        // beim allgemeinen „noch nicht berechenbar" (nie eine erfundene Zahl).
-        hatFahrplan: true,
-      }),
-    });
+    setFolgen({ karte, art: vorrangArt(flow?.latestDocument ?? null, entities) });
     return true;
   }, [entities, flows]);
+
+  /**
+   * Die VORSCHAU der geöffneten Karte (Stufe 7). Sie wird GENAU EINMAL je
+   * geöffneter Regel geholt (der `nonce` ist die Regel-Id) und nur für eine
+   * Regel, die den Speicher beansprucht — nur die lässt sich in die drei
+   * Knöpfe der Route übersetzen. Für eine reine Geräte-Regel bleibt die Karte
+   * bei ihrer zahllosen Fassung, statt eine fremde Frage zu rechnen.
+   */
+  const speicherRegel = folgen?.art === 'speicher';
+  const uebersetzung = speicherRegel ? knoepfeFuerSpeicherRegel() : null;
+  const vorschau = useVorschau(
+    site.id,
+    uebersetzung?.knoepfe ?? null,
+    speicherRegel && folgen ? folgen.karte.key : null,
+  );
+
+  // Die Karte entsteht bei JEDEM Render neu — so trägt sie die Zahl, sobald
+  // sie da ist, statt die Fassung von vor der Antwort einzufrieren.
+  const folgenView: FolgenKarte | null = folgen
+    ? regelFolgen({
+      name: folgen.karte.name,
+      satz: folgen.karte.satz,
+      art: folgen.art,
+      // Der Fahrplan-Block sagt seinen Grund; ohne geladenen Plan bleibt es
+      // beim allgemeinen „noch nicht berechenbar" (nie eine erfundene Zahl).
+      hatFahrplan: true,
+      vorschau: vorschau.ergebnis,
+      vorschauLaeuft: vorschau.laeuft,
+      vorschauUntergrenze: uebersetzung?.untergrenze,
+    })
+    : null;
 
   const toggle = useCallback(async (karte: RegelKarte, an: boolean) => {
     onBusy(true);
@@ -486,6 +618,16 @@ export function RegelnKapsel({
       </PartHead>
 
       <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
+        {/* Steuerung Stufe 6: die VORSCHLÄGE stehen ganz oben - sie sind der
+            Einstieg („Vorschlag vor Regel"), nicht eine Beigabe unter der
+            Liste. Ohne belastbares Fenster rendert die Komponente nichts. */}
+        <VorschlagsKarten
+          vorschlaege={angebote}
+          busy={busy}
+          onUebernehmen={uebernehmen}
+          onStumm={stummSchalten}
+        />
+
         {/* Steuerung Stufe 1: der Banner eines laufenden Handeingriffs wohnt
             jetzt EINMAL — in Zone ① „Jetzt", wo der Eingriff auch gemacht
             wird (Konzept b3 §3.2). Hier bleibt, was die REGEL angeht: ihre
@@ -531,8 +673,9 @@ export function RegelnKapsel({
             ) : (
               <>
                 <p>
-                  Noch keine Regel. Im Baukasten sagen Sie in Ihren Worten, was
-                  passieren soll — vor dem Aktivieren zeigt VoltPilot die Folgen.
+                  {angebote.length > 0 ? LEER_MIT_VORSCHLAEGEN
+                    : 'Noch keine Regel. Im Baukasten sagen Sie in Ihren Worten, was '
+                      + 'passieren soll — vor dem Aktivieren zeigt VoltPilot die Folgen.'}
                 </p>
                 <Button size="sm" disabled={busy} onClick={() => setCreating(true)}>
                   Regel erstellen
@@ -691,13 +834,13 @@ export function RegelnKapsel({
         />
       )}
 
-      {folgen && (
+      {folgen && folgenView && (
         <ConfirmDialog
           open
-          title={folgen.view.titel}
-          intro={folgen.view.intro}
-          consequences={folgenZeilen(folgen.view)}
-          confirmLabel={folgen.view.bestaetigen}
+          title={folgenView.titel}
+          intro={folgenView.intro}
+          consequences={folgenZeilen(folgenView)}
+          confirmLabel={folgenView.bestaetigen}
           busy={busy}
           onCancel={() => setFolgen(null)}
           onConfirm={() => {

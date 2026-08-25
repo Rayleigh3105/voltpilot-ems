@@ -15,12 +15,13 @@
  * Gerendert wird sie im Haus-Muster `ConfirmDialog` (Drawer + Folgenliste) —
  * es entsteht KEIN zweiter Rückfrage-Dialog.
  *
- * ⚠ **DIE ZAHL WIRD NICHT ERFUNDEN.** In dieser Stufe trägt Block 2 bewusst
- * keinen Euro-Betrag: die belastbare Zahl bräuchte ein zweites, regelfreies
- * Solve (die Kundenroute des What-if, Konzept §3.8/Stufe 7). Bis dahin steht
- * dort wörtlich, dass es nicht abschätzbar ist, PLUS der Grund — nie eine
- * geschätzte Ersparnis. Das ist Leitprinzip Regel 2 im Wortlaut: „wo keine Zahl
- * belastbar ist, ehrlich ‚nicht abschätzbar' statt erfunden."
+ * ⚠ **DIE ZAHL WIRD NICHT ERFUNDEN.** Seit Stufe 7 KANN Block 2 einen
+ * Euro-Betrag tragen — aber nur den, den der SERVER aus zwei echten
+ * Solver-Läufen über EINE Eingabe geliefert hat (`vorschau.vorschauSatz`).
+ * Fehlt er, steht dort wörtlich, dass es nicht abschätzbar ist, PLUS der
+ * Grund — nie eine geschätzte Ersparnis. Das ist Leitprinzip Regel 2 im
+ * Wortlaut: „wo keine Zahl belastbar ist, ehrlich ‚nicht abschätzbar' statt
+ * erfunden."
  *
  * ⚠ **Block 3 ist nach der beanspruchten Sache getrennt** — siehe
  * {@link VORRANG_FOLGEN}: „Ihre Regel geht vor" gilt heute für ein GERÄT, auf
@@ -30,6 +31,8 @@
  * PURE + unit-getestet (`folgen.test.ts`); die Fläche rendert nur.
  */
 import type { EditorEntity, FlowDocument } from '../flows/model';
+import { VORSCHAU_LAEUFT, vorrangMitZahl, vorschauSatz, type VorschauErgebnis }
+  from '../vorschau';
 import { VORRANG_FOLGEN, type VorrangArt } from './satz';
 import { beanspruchtSpeicher } from './zustand';
 
@@ -102,6 +105,18 @@ export interface RegelFolgenInput {
    * „noch nicht berechenbar".
    */
   hatFahrplan?: boolean;
+  /**
+   * Die SERVER-Vorschau (Stufe 7). Absent/null = die Karte bleibt bei ihrer
+   * ehrlichen Stufe-2-Fassung — es entsteht dadurch KEINE geschätzte Zahl.
+   */
+  vorschau?: VorschauErgebnis | null;
+  /**
+   * Die Anfrage ist unterwegs. Sie schlägt `vorschau` NICHT — sie füllt nur
+   * die Lücke, solange es noch keine gibt (siehe {@link VORSCHAU_LAEUFT}).
+   */
+  vorschauLaeuft?: boolean;
+  /** Siehe `SatzOptionen.untergrenze` — der Knopf ist schwächer als die Tat. */
+  vorschauUntergrenze?: boolean;
 }
 
 /**
@@ -128,12 +143,21 @@ export function regelFolgen(input: RegelFolgenInput): FolgenKarte {
       {
         key: 'fahrplan',
         titel: BLOCK_TITEL.fahrplan,
-        zeilen: [input.hatFahrplan === false ? KEIN_FAHRPLAN : NICHT_ABSCHAETZBAR],
+        // Stufe 7: der Server-Satz, wenn es einen gibt; sonst unverändert die
+        // ehrliche Fassung mit ihrem Grund.
+        zeilen: [vorschauSatz(input.vorschau ?? null, { untergrenze: input.vorschauUntergrenze })
+          ?? (input.vorschauLaeuft ? VORSCHAU_LAEUFT : null)
+          ?? (input.hatFahrplan === false ? KEIN_FAHRPLAN : NICHT_ABSCHAETZBAR)],
       },
       {
         key: 'risiko',
         titel: BLOCK_TITEL.risiko,
-        zeilen: [VORRANG_FOLGEN[input.art]],
+        // §3.6 / Captain-Entscheid S2: Variante 2 „sobald die Vorschau eine
+        // Zahl hat", sonst Variante 1. Variante 2 IST Variante 1 mit der Zahl -
+        // es gibt keinen dritten Wortlaut.
+        zeilen: [vorrangMitZahl(VORRANG_FOLGEN[input.art], input.vorschau ?? null,
+          { untergrenze: input.vorschauUntergrenze })
+          ?? VORRANG_FOLGEN[input.art]],
       },
       { key: 'gleich', titel: BLOCK_TITEL.gleich, zeilen: [...BLEIBT_GLEICH] },
       { key: 'ende', titel: BLOCK_TITEL.ende, zeilen: [RUECKNAHME_REGEL] },
@@ -183,6 +207,15 @@ export interface WechselFolgenInput {
    * fehlenden Wert nichts tut, muss das VORHER sagen.
    */
   risikoNach?: string | null;
+  /**
+   * Die SERVER-Vorschau (Stufe 7) — absent/null lässt die Karte bei ihrer
+   * ehrlichen Stufe-5-Fassung.
+   */
+  vorschau?: VorschauErgebnis | null;
+  /** Die Anfrage ist unterwegs (siehe {@link VORSCHAU_LAEUFT}). */
+  vorschauLaeuft?: boolean;
+  /** Siehe `SatzOptionen.untergrenze` — der Knopf ist schwächer als die Tat. */
+  vorschauUntergrenze?: boolean;
 }
 
 /**
@@ -207,9 +240,14 @@ export function wechselFolgen(input: WechselFolgenInput): FolgenKarte {
         : `Der Beleg von „${input.von}" bleibt in Ihren Erlösen sichtbar.`,
     );
   }
+  // Stufe 7: die Server-Zahl, wenn es eine gibt. Sie steht NEBEN dem
+  // gemessenen Beleg des endenden Modells, nie an seiner Stelle - eine
+  // Vorhersage und eine Messung sind zwei verschiedene Aussagen.
   fahrplan.push(
-    'Nicht abschätzbar: Was die Umstellung Ihnen bringt oder kostet, rechnet '
-    + 'VoltPilot noch nicht vorher aus.',
+    vorschauSatz(input.vorschau ?? null, { untergrenze: input.vorschauUntergrenze })
+    ?? (input.vorschauLaeuft ? VORSCHAU_LAEUFT : null)
+    ?? 'Nicht abschätzbar: Was die Umstellung Ihnen bringt oder kostet, rechnet '
+      + 'VoltPilot noch nicht vorher aus.',
   );
   const risiko: string[] = [];
   if (input.risikoNach) risiko.push(input.risikoNach);

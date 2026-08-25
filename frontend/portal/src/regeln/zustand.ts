@@ -105,6 +105,18 @@ export interface RegelKarte {
    * Belastbares vor - dann steht dort NICHTS, nie eine erfundene 0.
    */
   aktivitaet: string | null;
+  /**
+   * Der NACHTEIL-BELEG (Steuerung Stufe 7, Leitprinzip Regel 3): „diese Regel
+   * hält den Speicher seit 14:10 — dem Fahrplan sind dadurch bisher etwa
+   * 0,80 € entgangen." Er steht NEBEN {@link hinweis}, nicht an seiner Stelle:
+   * der Hinweis WARNT vor dem Klick, der Beleg BERICHTET danach — zwei
+   * Aussagen, die zusammen erst das Leitprinzip erfüllen.
+   *
+   * NULL heißt: kein Anspruch auf den Speicher, keine Startzeit, kein
+   * Fahrplan, oder ein Nachteil unter der Sichtbarkeitsschwelle. Nie eine 0
+   * und nie eine Schätzung.
+   */
+  nachteil: string | null;
   /** Schnellschalter-Stellung. */
   an: boolean;
   /** Die Version, wenn eine ausgerollt/gespeichert ist. */
@@ -147,6 +159,13 @@ export interface RegelKartenInput {
    * ist zeichengleich zu Stufe 5a.
    */
   protokoll?: RuleEvents | null;
+  /**
+   * Der NACHTEIL-BELEG je Regel-Schlüssel (Steuerung Stufe 7). Er wird von der
+   * Fläche gerechnet, weil er den Fahrplan und die Speicherdaten braucht, die
+   * diese Ableitung nicht kennt — hier wird er nur EINSORTIERT. Fehlt er,
+   * bleiben die Karten zeichengleich zu Stufe 6.
+   */
+  nachteile?: Record<string, string> | null;
   now?: Date;
 }
 
@@ -395,6 +414,7 @@ export function flowKarte(input: FlowRegelInput, entities: EditorEntity[]): Rege
       ? null
       : VORRANG_ZEILE[beanspruchtSpeicher(input.latestDocument, entities) ? 'speicher' : 'geraet'],
     aktivitaet: null,
+    nachteil: null,
     an: active,
     version: active ? input.activeVersion : input.latestVersion,
   };
@@ -415,6 +435,9 @@ export function rezeptKarte(input: RezeptRegelInput, now: Date = new Date()): Re
     // Eine Verbraucher-Regel schaltet immer ihr Gerät - der Einzeiler gilt.
     hinweis: VORRANG_ZEILE.geraet,
     aktivitaet: null,
+    // Eine Verbraucher-Regel hält den Speicher nicht - sie kann dem Fahrplan
+    // dort also nichts entziehen, und ein Beleg wäre eine erfundene Aussage.
+    nachteil: null,
     an: c.controlActivation === 'active',
     version: null,
   };
@@ -447,6 +470,10 @@ export function regelKarten(input: RegelKartenInput): RegelKarte[] {
       aktivitaeten.get(k.key), input.protokoll?.recordingSince,
       input.protokoll?.countsToday ?? false,
     ),
+    // Nur eine AKTIVE Regel kann dem Fahrplan gerade etwas entziehen; eine
+    // pausierte trägt ihren alten Beleg nicht weiter (er wäre eine Aussage
+    // über eine Gegenwart, die es nicht mehr gibt).
+    nachteil: k.an ? (input.nachteile?.[k.key] ?? null) : null,
   }));
   return karten.sort((a, b) => {
     if (a.zustand.rang !== b.zustand.rang) return a.zustand.rang - b.zustand.rang;

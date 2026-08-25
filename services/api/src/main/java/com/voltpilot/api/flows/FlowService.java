@@ -236,8 +236,18 @@ public class FlowService {
         return summaries;
     }
 
-    /** One active strategy touching an entity (U2 "Ihre Geräte" strategy chip). */
-    public record EntityStrategyDto(UUID flowId, String flowName) {}
+    /**
+     * One active strategy touching an entity (U2 "Ihre Geräte" strategy chip).
+     *
+     * <p>{@code claimedAt} ist ADDITIV (Steuerung Stufe 7): der Anker des
+     * NACHTEIL-BELEGS - seit wann diese Regel die Komponente hält. Er kommt aus
+     * {@code flow_claim}, also aus der Zeile, die den Anspruch MATERIALISIERT;
+     * {@code null} heisst „diese Regel beansprucht die Komponente nicht
+     * DIREKT" (ein delegierter Anspruch übergibt gerade AN den Fahrplan) oder
+     * „vor Stufe 3 aktiviert". <b>Ohne ihn wird kein Nachteil behauptet</b> -
+     * eine Näherung ohne Startzeit hätte keinen Zeitraum, über den sie gilt.
+     */
+    public record EntityStrategyDto(UUID flowId, String flowName, Instant claimedAt) {}
 
     /**
      * Which ACTIVE flows touch each of the site's entities (U2, report §3.2):
@@ -249,6 +259,17 @@ public class FlowService {
      */
     public Map<String, List<EntityStrategyDto>> entityStrategies(UUID siteId) {
         requireSite(siteId);
+        // Der Zeitpunkt kommt aus der materialisierten Beanspruchung, die
+        // Zuordnung weiterhin aus dem Dokument - so bleibt die Liste dieselbe
+        // wie vor Stufe 7 und gewinnt nur ein Feld.
+        Map<UUID, Instant> seit = new LinkedHashMap<>();
+        for (FlowClaimRepository.ClaimRow c : claims.forSite(siteId)) {
+            if (c.delegated() || c.claimedAt() == null) {
+                continue;
+            }
+            seit.merge(c.entityId(), c.claimedAt(),
+                    (a, b) -> a.isBefore(b) ? a : b);
+        }
         Map<String, List<EntityStrategyDto>> byEntity = new LinkedHashMap<>();
         for (FlowVersionRow row : flows.versionsForSite(siteId)) {
             if (!"active".equals(row.lifecycle())) {
@@ -265,11 +286,22 @@ public class FlowService {
                 }
             }
             for (String entityId : entityIds) {
+                UUID uuid = uuidOrNull(entityId);
                 byEntity.computeIfAbsent(entityId, k -> new ArrayList<>())
-                        .add(new EntityStrategyDto(row.flowId(), row.name()));
+                        .add(new EntityStrategyDto(row.flowId(), row.name(),
+                                uuid == null ? null : seit.get(uuid)));
             }
         }
         return byEntity;
+    }
+
+    /** Eine Entitäts-Id aus dem Dokument ist Text; unlesbar ⇒ keine Startzeit. */
+    private static UUID uuidOrNull(String raw) {
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     /**

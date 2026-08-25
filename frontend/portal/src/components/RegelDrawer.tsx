@@ -60,6 +60,7 @@ export function RegelDrawer({
           <Badge variant={z.geraet.tone} dot>{z.geraet.label}</Badge>
         )}
         {karte.hinweis && <p className="vp-regeld-note">{karte.hinweis}</p>}
+        {karte.nachteil && <p className="vp-regeld-nachteil">{karte.nachteil}</p>}
 
         <section className="vp-regeld-sec vp-regeld-regel">
           <h3>Ihre Regel</h3>
