@@ -323,6 +323,34 @@ def test_the_cover_load_flag_is_omitted_unless_true_and_validates():
     assert "cover_load_from_battery" not in third
 
 
+def test_unplanned_idle_authority_and_effective_floor_are_additive_and_validate():
+    """The new idle authority is independent of the frozen follow meaning.
+
+    False/None omit the per-slot grant; the full floor is a top-level additive
+    fact old edges safely ignore and new edges require before starting.
+    """
+    import dataclasses
+
+    validator = load_validator()
+    plan = make_plan(slots=3)
+    authorized = dataclasses.replace(
+        plan.slots[0], battery_kw=0.0, unplanned_load_discharge=True
+    )
+    explicit_false = dataclasses.replace(
+        plan.slots[1], battery_kw=0.0, unplanned_load_discharge=False
+    )
+    payload = build_schedule_payload(
+        dataclasses.replace(plan, slots=[authorized, explicit_false, plan.slots[2]])
+    )
+
+    assert list(validator.iter_errors(payload)) == []
+    assert payload["effective_floor_soc_pct"] == plan.battery.effective_floor_soc_pct
+    assert payload["slots"][0]["unplanned_load_discharge"] is True
+    assert "cover_load_from_battery" not in payload["slots"][0]
+    assert "unplanned_load_discharge" not in payload["slots"][1]
+    assert "unplanned_load_discharge" not in payload["slots"][2]
+
+
 def test_both_in_slot_duties_can_ride_the_same_payload():
     """They are disjoint in practice (one is about a charge, the other about a
     discharge), but the SCHEMA must not forbid a payload carrying both - the edge

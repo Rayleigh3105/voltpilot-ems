@@ -137,6 +137,10 @@ PLANNED_GRID_CHARGE_DEADBAND_KW = 0.05
 #: side, and the same order as the solver's other slot deadbands.
 PLANNED_DISCHARGE_DEADBAND_KW = 0.05
 
+#: A slot is idle only while its signed battery command is inside the same
+#: tolerance used for planned charge/discharge intent throughout this module.
+PLANNED_IDLE_DEADBAND_KW = PLANNED_DISCHARGE_DEADBAND_KW
+
 #: How far a planned grid EXCHANGE may sit from zero and still count as the
 #: "Netz = 0" kink rather than a deliberate trade (kW, magnitude - so it bounds
 #: a planned import AND a planned export). Same order as the solver's other slot
@@ -384,6 +388,55 @@ def cover_load_from_battery(
     if battery_kw >= -PLANNED_DISCHARGE_DEADBAND_KW:
         return False
     if abs(grid_kw) > PLANNED_GRID_EXCHANGE_DEADBAND_KW:
+        return False
+    return cover_load_economic(
+        import_price_ct_kwh=import_price_ct_kwh,
+        stored_value_ct_kwh=stored_value_ct_kwh,
+        one_way_efficiency=one_way_efficiency,
+        wear_ct_per_kwh_each_way=wear_ct_per_kwh_each_way,
+        margin_ct_per_kwh=margin_ct_per_kwh,
+    )
+
+
+def unplanned_load_discharge(
+    *,
+    battery_kw: float,
+    grid_kw: float,
+    charge_surplus_to_battery: bool,
+    import_price_ct_kwh: float,
+    stored_value_ct_kwh: float | None,
+    one_way_efficiency: float,
+    wear_ct_per_kwh_each_way: float,
+    margin_ct_per_kwh: float = SLOT_TRIM_MARGIN_CT_PER_KWH,
+) -> bool:
+    """Authorize local load coverage from a planned idle/hold slot.
+
+    This is additive to :func:`cover_load_from_battery`.  It may START a
+    discharge from zero, so its plan-shape gates are deliberately stricter:
+
+    * the battery command must be inside the idle deadband (never reinterpret a
+      planned charge or discharge);
+    * planned export beyond rounding noise is a deliberate sale and stays
+      untouched;
+    * a simultaneous surplus-absorption duty would grant the opposite
+      direction and is refused;
+    * the identical marginal price test retains future prices, efficiency,
+      wear, margin and a possible later grid recharge through ``lambda``.
+
+    Measurement freshness, the full reserve floor and no-export enforcement
+    are edge responsibilities because only the edge sees the instantaneous
+    plant.  Missing/non-finite economics fail closed through
+    :func:`cover_load_economic`.
+    """
+    if not isinstance(battery_kw, (int, float)) or not math.isfinite(battery_kw):
+        return False
+    if abs(battery_kw) > PLANNED_IDLE_DEADBAND_KW:
+        return False
+    if not isinstance(grid_kw, (int, float)) or not math.isfinite(grid_kw):
+        return False
+    if grid_kw < -PLANNED_GRID_EXCHANGE_DEADBAND_KW:
+        return False
+    if charge_surplus_to_battery:
         return False
     return cover_load_economic(
         import_price_ct_kwh=import_price_ct_kwh,

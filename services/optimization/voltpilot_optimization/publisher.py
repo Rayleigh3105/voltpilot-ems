@@ -42,6 +42,10 @@ def build_schedule_payload(plan: SchedulePlan) -> dict:
         "horizon_slots": len(plan.slots),
         "slot_minutes": plan.slot_minutes,
         "slots": [_slot_payload(slot) for slot in plan.slots],
+        # Additive safety fact for any edge-side discharge that may start from
+        # an idle slot.  Old edges ignore it; new edges refuse the authorization
+        # when it is absent, so a mixed-version fleet fails closed.
+        "effective_floor_soc_pct": round(plan.battery.effective_floor_soc_pct, 2),
     }
     # OPTIONAL per the contract (P5, additive like pv_limit_kw): the site's
     # EEG posture. false = the edge clamps commanded charge to the MEASURED
@@ -98,6 +102,8 @@ def _slot_payload(slot) -> dict:
     # absence is fail-OPEN on the edge for the same reason.
     if slot.cover_load_from_battery:
         payload["cover_load_from_battery"] = True
+    if slot.unplanned_load_discharge:
+        payload["unplanned_load_discharge"] = True
     # OPTIONAL per the contract (in-slot surplus absorption, 2026-08-02): the
     # charge-side counterpart that RAISES, present only on slots where storing
     # the measured surplus beats selling it. Same omit-unless-true discipline,

@@ -1207,6 +1207,11 @@ type ExecutionSummary struct {
 	// SurplusKw is the measured PV surplus a charge is held at ("trim") or
 	// raised to ("absorb"); absent when unknown, same rule as DeficitKw.
 	SurplusKw *float64 `json:"surplus_kw,omitempty"`
+	// EffectiveFloorSocPct is the full technical/backup/peak floor applied by
+	// an idle correction. MeasurementsFresh is explicit system-status evidence,
+	// not inferred by the portal from a command timestamp.
+	EffectiveFloorSocPct *float64 `json:"effective_floor_soc_pct,omitempty"`
+	MeasurementsFresh    bool     `json:"measurements_fresh,omitempty"`
 }
 
 // CurtailmentSummary is the additive `curtailment` heartbeat block: the

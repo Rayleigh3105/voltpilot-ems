@@ -671,6 +671,7 @@ def _with_explanation(
             load_follow_enabled,
             slot_trim_enabled,
             surplus_charge_enabled,
+            unplanned_load_discharge_enabled,
         )
 
         if not explain_enabled():
@@ -681,6 +682,7 @@ def _with_explanation(
         trim = slot_trim_enabled()
         follow = load_follow_enabled()
         absorb = surplus_charge_enabled()
+        unforeseen = unplanned_load_discharge_enabled()
         slots = [
             replace(
                 slot,
@@ -703,6 +705,11 @@ def _with_explanation(
                 # push the setpoint in opposite directions.
                 cover_load_from_battery=(
                     _cover_load_from_battery(inp, t, slot, why) if follow else None
+                ),
+                unplanned_load_discharge=(
+                    _unplanned_load_discharge(inp, t, slot, why)
+                    if unforeseen
+                    else None
                 ),
                 # The CHARGE-side counterpart that RAISES (2026-08-02): storing
                 # one more kWh beats selling it here, so the edge may charge the
@@ -792,6 +799,25 @@ def _cover_load_from_battery(inp: OptimizationInput, t: int, slot, why) -> bool:
         grid_kw=slot.grid_kw,
         # EUR/MWh -> ct/kWh: the asymmetric IMPORT price (bare spot only when the
         # site carries no tariff), i.e. what the avoided grid kWh really costs.
+        import_price_ct_kwh=inp.import_prices[t] / 10.0,
+        stored_value_ct_kwh=why.stored_value_ct_kwh,
+        wear_ct_per_kwh_each_way=p.wear_cost_ct_per_kwh / 2.0,
+        one_way_efficiency=p.one_way_efficiency,
+    )
+
+
+def _unplanned_load_discharge(inp: OptimizationInput, t: int, slot, why) -> bool:
+    """The distinct idle-slot duty; never widens cover_load_from_battery."""
+    from voltpilot_optimization.slot_trim import unplanned_load_discharge
+
+    p = inp.battery
+    return unplanned_load_discharge(
+        battery_kw=slot.battery_kw,
+        grid_kw=slot.grid_kw,
+        # The opposite-direction duty is evaluated from the same slot/why
+        # facts.  Never emit both grants even though the JSON schema remains
+        # additive/permissive for forward compatibility.
+        charge_surplus_to_battery=_charge_surplus_to_battery(inp, t, slot, why),
         import_price_ct_kwh=inp.import_prices[t] / 10.0,
         stored_value_ct_kwh=why.stored_value_ct_kwh,
         wear_ct_per_kwh_each_way=p.wear_cost_ct_per_kwh / 2.0,

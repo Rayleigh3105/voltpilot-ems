@@ -44,6 +44,28 @@ func TestParseContractPayload(t *testing.T) {
 	}
 }
 
+func TestUnplannedLoadDischargeIsAdditiveAndFailsClosed(t *testing.T) {
+	legacy := mustParse(t, time.Now())
+	if legacy.EffectiveFloorSoc() != nil || legacy.ActiveUnplannedLoadDischarge(legacy.Slots[0].Start.Add(time.Minute)) {
+		t.Fatal("a legacy plan must never acquire the new discharge authority")
+	}
+	payload := `{"schema_version":"1.0","slot_minutes":15,"effective_floor_soc_pct":35,"slots":[{"start":"2026-07-01T09:00:00Z","battery_setpoint_kw":0,"unplanned_load_discharge":true}]}`
+	p, err := Parse([]byte(payload), time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if floor := p.EffectiveFloorSoc(); floor == nil || *floor != 35 {
+		t.Fatalf("floor = %v, want 35", floor)
+	}
+	if !p.ActiveUnplannedLoadDischarge(time.Date(2026, 7, 1, 9, 1, 0, 0, time.UTC)) {
+		t.Fatal("fresh idle slot carrying both facts must be authorized")
+	}
+	charged, _ := Parse([]byte(`{"schema_version":"1.0","slot_minutes":15,"effective_floor_soc_pct":35,"slots":[{"start":"2026-07-01T09:00:00Z","battery_setpoint_kw":2,"unplanned_load_discharge":true}]}`), p.ReceivedAt)
+	if charged.ActiveUnplannedLoadDischarge(time.Date(2026, 7, 1, 9, 1, 0, 0, time.UTC)) {
+		t.Fatal("a charge slot must never be reinterpreted")
+	}
+}
+
 // The optional pv_limit_kw (Phase-3 curtailment) is parsed and retained per
 // slot; absent stays nil, and a bad/negative value is dropped (never shown as a
 // real curtailment). The edge does not execute the field - only displays it.

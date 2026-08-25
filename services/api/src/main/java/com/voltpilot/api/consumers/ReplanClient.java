@@ -10,8 +10,9 @@ import org.slf4j.LoggerFactory;
  * Thin client of the solve service's {@code POST /replan} (D8): one real
  * planning cycle for one site. Rides the SAME {@link SimulationHttp} seam and
  * base-url as the Ersparnis-Simulation proxy - the solve surface is ONE
- * service, so there is exactly one base-url to keep in sync. Best-effort: a
- * refused/failed replan only logs (the 15-minute tick replans anyway).
+ * service, so there is exactly one base-url to keep in sync. It reports every
+ * refusal/failure to its caller; event-driven callers keep that request pending
+ * and retry within their own per-site rate limit.
  *
  * <p>Deliberately NOT a {@code @Component}: {@code SimulationHttp} is never a
  * bean by default (the ObjectProvider seam with the {@code JdkSimulationHttp}
@@ -45,7 +46,7 @@ public class ReplanClient {
                     response.body());
             return false;
         } catch (Exception e) {
-            log.warn("event replan for site {} failed: {} (the 15-min tick replans anyway)",
+            log.warn("event replan for site {} failed: {}",
                     siteId, e.getMessage());
             return false;
         }

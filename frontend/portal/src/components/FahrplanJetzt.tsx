@@ -34,7 +34,7 @@ export function JetztHeld({ view }: { view: JetztHeldView }) {
         {view.badgeNote && <span className="vp-jetzt-ago">{view.badgeNote}</span>}
       </div>
 
-      <p className={`vp-jetzt-status is-${view.tone}`}>
+      <p className={`vp-jetzt-status is-${view.tone}`} role="status" aria-live="polite">
         <i aria-hidden="true" />
         {view.status}
       </p>

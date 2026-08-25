@@ -72,10 +72,11 @@ type Agent struct {
 	invStore  *inverter.Store
 	invCat    inverter.Catalog
 
-	mu          sync.Mutex
-	currentPlan *plan.Plan
-	lastReading guards.Reading
-	lastRawSoc  *float64
+	mu            sync.Mutex
+	currentPlan   *plan.Plan
+	lastReading   guards.Reading
+	lastReadingAt time.Time
+	lastRawSoc    *float64
 
 	// net answers "under which address is my box reachable" - the ONE fact the
 	// box could never say about itself (D5). It records the Host header of
@@ -1459,6 +1460,7 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		LoadKw:      pick("load_kw"),
 		GridLimitKw: pick("grid_limit_kw"),
 	}
+	a.lastReadingAt = ts
 	// Keep the last-good raw SoC for the status heartbeat when this sample had
 	// no (or a despiked) SoC - mirrors the tile's last-good behaviour rather
 	// than reporting a hole to the cloud.
@@ -1781,11 +1783,13 @@ func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 
 // The `execution.mode` vocabulary - see cloud.ExecutionSummary.
 const (
-	execModePlan     = "plan"
-	execModeFollow   = "follow"
-	execModeTrim     = "trim"
-	execModeAbsorb   = "absorb"
-	execModeFallback = "fallback"
+	execModePlan                = "plan"
+	execModeFollow              = "follow"
+	execModeIdleFollow          = "idle_follow"
+	execModeAutonomousDischarge = "autonomous_discharge"
+	execModeTrim                = "trim"
+	execModeAbsorb              = "absorb"
+	execModeFallback            = "fallback"
 )
 
 // executionSummary folds the in-slot corrections (snap.Follow / snap.Trim) plus
@@ -1810,11 +1814,17 @@ func executionSummary(snap state.Snapshot) *cloud.ExecutionSummary {
 		}
 	}
 	if f := snap.Follow; f != nil && f.Active {
+		mode := execModeFollow
+		if f.Path == execModeIdleFollow {
+			mode = execModeIdleFollow
+		}
 		return &cloud.ExecutionSummary{
-			Mode:      execModeFollow,
-			Direction: f.Direction,
-			PlannedKw: copyFloat(&f.PlannedKw),
-			DeficitKw: copyFloat(f.DeficitKw),
+			Mode:                 mode,
+			Direction:            f.Direction,
+			PlannedKw:            copyFloat(&f.PlannedKw),
+			DeficitKw:            copyFloat(f.DeficitKw),
+			EffectiveFloorSocPct: copyFloat(snap.EffectiveFloorSocPct),
+			MeasurementsFresh:    true,
 		}
 	}
 	if t := snap.Trim; t != nil && t.Active {
@@ -2184,6 +2194,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	a.mu.Lock()
 	p := a.currentPlan
 	r := a.lastReading
+	readingAt := a.lastReadingAt
 	a.mu.Unlock()
 
 	hasReading := !math.IsNaN(r.PvKw) || !math.IsNaN(r.LoadKw) || !math.IsNaN(r.SocPct)
@@ -2206,6 +2217,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// anything). nil = module off = byte-for-byte pre-PS behavior.
 	peakTarget := p.PeakImportLimit()
 	peakReserve := p.PeakReserveSoc()
+	effectiveFloor := p.EffectiveFloorSoc()
 	// The site's feed-in limit at the grid connection point (FK1, published as
 	// grid_export_limit_kw). Like the peak target it deliberately survives plan
 	// staleness - and here the argument is stronger: this is a COMPLIANCE limit,
@@ -2263,14 +2275,29 @@ func (a *Agent) applySetpoint(now time.Time) {
 	}
 
 	var (
-		kw        float64
-		mode      state.Mode
-		source    string
-		slotStart time.Time
-		pvLimit   *float64
+		kw            float64
+		mode          state.Mode
+		source        string
+		slotStart     time.Time
+		pvLimit       *float64
+		nonPlanHolder bool
 	)
-	if raw, start, ok := p.ActiveSetpoint(now); ok {
-		kw = guards.Clamp(raw, limits, r)
+	paused := a.automationPausedAt(now)
+	plannedKw, start, planActive := p.ActiveSetpoint(now)
+	switch {
+	case paused && hasReading:
+		// Steuerung Stufe 4: the v1 physical write path must honor the SAME
+		// plant-rest authority as the entity arbiter. A pause means local
+		// self-consumption, never a still-active optimizer slot. Compliance
+		// guards below (rated/SoC, grid and export) remain in force.
+		fallback := guards.SelfConsumption(r)
+		if peakReserve != nil && fallback < 0 && !math.IsNaN(r.SocPct) && r.SocPct <= *peakReserve {
+			fallback = 0
+		}
+		kw = guards.Clamp(fallback, limits, r)
+		mode, source = state.ModeSelfConsume, "default"
+	case !paused && planActive:
+		kw = guards.Clamp(plannedKw, limits, r)
 		mode, source, slotStart = state.ModeSchedule, "schedule", start
 		// Forward the slot's PV feed-in cap so a control adapter can execute
 		// curtailment (report §4.5). Guard: only-reduce, never negative; cleared
@@ -2279,7 +2306,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 			v := math.Round(*lim*1000) / 1000
 			pvLimit = &v
 		}
-	} else if hasReading {
+	case hasReading:
 		fallback := guards.SelfConsumption(r)
 		// PS-3 reserve composition: on a stale/absent plan whose last version
 		// carried a peak reserve, ORDINARY self-consumption discharge stops at
@@ -2294,7 +2321,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		}
 		kw = guards.Clamp(fallback, limits, r)
 		mode, source = state.ModeSelfConsume, "default"
-	} else {
+	default:
 		// No inverter reading at all: publish nothing (mirrors the Node-RED
 		// watchdog, which does not write without a reading). The peak module's
 		// display state stays honest: target/reserve are known from the plan,
@@ -2312,6 +2339,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.Mode = state.ModeNoReading
 			s.PeakTargetKw = peakTarget
 			s.PeakReserveSocPct = peakReserve
+			s.EffectiveFloorSocPct = effectiveFloor
 			s.PeakGuardActive = false
 			s.PeakQuarterMeanKw = nil
 			// Without a reading none of the economic corrections can regulate
@@ -2348,18 +2376,21 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// The registry FAILSAFE (no holder) deliberately stays with the v1
 	// fallback computation above.
 	if battID := a.batteryEntityID(); battID != "" {
-		if granted, kind, ok := a.arb.HolderCommand(battID); ok && granted.SetpointKw != nil {
-			kw = *granted.SetpointKw
-			if kind == desired.SourcePlanExecutor {
-				mode, source = state.ModeSchedule, "schedule"
-			} else {
-				mode, source = state.ModeDesired, "desired"
-				slotStart = time.Time{}
-			}
-			pvLimit = nil
-			if granted.LimitKw != nil {
-				v := *granted.LimitKw
-				pvLimit = &v
+		if granted, kind, ok := a.arb.HolderCommand(battID); ok {
+			nonPlanHolder = kind != desired.SourcePlanExecutor
+			if granted.SetpointKw != nil {
+				kw = *granted.SetpointKw
+				if kind == desired.SourcePlanExecutor {
+					mode, source = state.ModeSchedule, "schedule"
+				} else {
+					mode, source = state.ModeDesired, "desired"
+					slotStart = time.Time{}
+				}
+				pvLimit = nil
+				if granted.LimitKw != nil {
+					v := *granted.LimitKw
+					pvLimit = &v
+				}
 			}
 		}
 	}
@@ -2369,15 +2400,23 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// earns - services/optimization slot_trim.py), cap the commanded CHARGE at the
 	// MEASURED surplus so a forecast shortfall inside the quarter hour is no
 	// longer covered by buying expensive grid energy for the battery. Runs after
-	// every compliance clamp AND after the holder override (so it applies whoever
-	// commanded the charge), and only ever LOWERS charge toward the surplus - the
+	// every compliance clamp AND after the holder override. It follows only the
+	// plan holder: every non-plan holder, technical ownership and plant rest
+	// explicitly outrank market economics. It only ever LOWERS charge toward the surplus - the
 	// resulting predicted grid power is >= 0, so no §14a/feed-in bound can be
 	// re-violated (see guards/slottrim.go for the full safety argument). The
 	// self-consumption fallback follows pv - load, i.e. the surplus itself, so the
 	// trim is a no-op there. NOTE the setpoint published below is the TRIMMED
 	// value: the register readback therefore matches it and the confirmation logic
 	// never reads a deliberate limitation as "setpoint not adopted".
-	trimmed := a.trim.Apply(now, kw, p.ActiveChargeFromSurplusOnly(now), r)
+	// The arbiter's selected holder is the authority boundary for the physical
+	// battery setpoint. No retained market flag may rewrite a technical/rule or
+	// contract/grid/safety command after arbitration; owner_claimed closes the
+	// registry transition even before its first holder command is available.
+	// Hard export/compliance/watchdog and device write gates remain downstream.
+	marketCorrectionsAllowed := !paused && !nonPlanHolder && !a.batteryOwnerClaimed()
+	trimmed := a.trim.Apply(now, kw,
+		marketCorrectionsAllowed && p.ActiveChargeFromSurplusOnly(now), r)
 	kw = trimmed.Kw
 
 	// In-slot LOAD FOLLOWING (2026-07-30, the discharge-side mirror of the trim
@@ -2392,8 +2431,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// AND limit it where the forecast overshot (6,7 kW planned into a 5,1 kW
 	// house -> 1,4 kW exported at ~21 ct while the same kWh was worth ~32,5 ct
 	// later). Runs at the SAME place as the trim - after every compliance clamp
-	// and after the holder override, so it applies to whoever commanded the
-	// discharge - and the two are disjoint by construction (one acts on charge,
+	// and after the holder override. Existing flow/desired semantics stay intact:
+	// every non-plan holder, technical owner and plant rest is exempt because
+	// market economics may not rewrite it. The two corrections are disjoint by
+	// construction (one acts on charge,
 	// one on discharge). It only ever moves the predicted grid power TOWARD 0,
 	// never past it, so no §14a/feed-in bound can be re-violated; a raised
 	// discharge is bounded by the rated band, the SoC floor AND the peak reserve
@@ -2404,7 +2445,42 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// published below is the FOLLOWED value: the register readback therefore
 	// matches it and the confirmation logic never reads a deliberate correction
 	// as "setpoint not adopted".
-	followed := a.follow.Apply(now, kw, p.ActiveCoverLoadFromBattery(now), limits, peakReserve, r)
+	// The additive idle-slot authorization is stricter than the established
+	// planned-discharge follower: it may START a discharge, so it needs one
+	// recent complete measurement, the cloud-computed full floor, and both live
+	// write gates. Every supported driver uses this exact-setpoint path until an
+	// exact model/firmware native capability has completed its bench gate.
+	freshWindow := 2 * a.Cfg.SetpointInterval
+	if freshWindow < 30*time.Second {
+		freshWindow = 30 * time.Second
+	}
+	measurementFresh := !readingAt.IsZero() && !now.Before(readingAt) && now.Sub(readingAt) <= freshWindow
+	unplanned := marketCorrectionsAllowed && p.ActiveUnplannedLoadDischarge(now)
+	// This additive economic permission belongs exclusively to an idle MARKET
+	// slot. The shared marketCorrectionsAllowed boundary above protects both it
+	// and the established cover_load_from_battery follower from every non-plan
+	// holder and from the owner-claim transition race.
+	if unplanned {
+		// The new authority starts a discharge, so unlike the established
+		// magnitude-only follower it also requires a recent independently held
+		// Layer-1 readback. Lost/mismatching/unconfirmed inverter communication
+		// drops back to the plan's 0 kW on this very tick.
+		readbackHealthy := idleReadbackHealthy(a.State.Get().Control, now, freshWindow)
+		a.invMu.Lock()
+		familyForIdle := ""
+		if a.inv != nil {
+			familyForIdle = a.inv.Family
+		}
+		a.invMu.Unlock()
+		unplanned = a.Cfg.ControlEnabled && a.controlCertified(familyForIdle) && readbackHealthy
+	}
+	floor := peakReserve
+	if effectiveFloor != nil {
+		floor = effectiveFloor
+	}
+	followed := a.follow.ApplyAuthorized(now, kw,
+		marketCorrectionsAllowed && p.ActiveCoverLoadFromBattery(now),
+		unplanned, floor, measurementFresh, limits, r)
 	kw = followed.Kw
 
 	// In-slot SURPLUS ABSORPTION (2026-08-02, the charge-side counterpart that
@@ -2429,7 +2505,8 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// argument. NOTE the setpoint published below is the RAISED value: the
 	// register readback therefore matches it and the confirmation logic never
 	// reads a deliberate correction as "setpoint not adopted".
-	absorbed := a.absorb.Apply(now, kw, p.ActiveChargeSurplusToBattery(now), limits, r)
+	absorbed := a.absorb.Apply(now, kw,
+		marketCorrectionsAllowed && p.ActiveChargeSurplusToBattery(now), limits, r)
 	kw = absorbed.Kw
 
 	// „AUTO VOR SPEICHER" (OCPP-Lastmanagement Stufe 4, internal/lastmgmt/
@@ -2451,7 +2528,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// corrections because the absorption above RAISES to the surplus, and with
 	// cars-first that surplus is not the battery's to take.
 	var carsFirstCap *float64
-	if cap, ok := a.OcppBatteryChargeCap(now); ok && kw > cap {
+	if cap, ok := a.OcppBatteryChargeCap(now); marketCorrectionsAllowed && ok && kw > cap {
 		v := cap
 		carsFirstCap = &v
 		kw = cap
@@ -2467,7 +2544,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// blind; a missed quarter only costs money, never safety.
 	peakActive := false
 	var quarterMean *float64
-	if peakTarget != nil {
+	if marketCorrectionsAllowed && peakTarget != nil {
 		if allowed, ok := a.peak.AllowedImport(now, *peakTarget); ok {
 			kw = guards.PeakShave(kw, allowed, limits, r)
 			peakActive = true
@@ -2563,6 +2640,9 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// it is unchanged.
 		"soc_max_pct": a.Cfg.SocMaxPct,
 	}
+	if effectiveFloor != nil {
+		msg["effective_floor_soc_pct"] = *effectiveFloor
+	}
 	// device_certified_path names the control surface the grant's First-Light
 	// evidence was produced on ("remote"/"tou") - Layer 1's plan node seeds its
 	// durable sticky path decision from it, so a certified remote pilot plans its
@@ -2611,6 +2691,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.ControlCertSource = certSource
 		s.PeakTargetKw = peakTarget
 		s.PeakReserveSocPct = peakReserve
+		s.EffectiveFloorSocPct = effectiveFloor
 		s.PeakGuardActive = peakActive
 		s.PeakQuarterMeanKw = quarterMean
 		s.Trim = trimInfo
@@ -2619,6 +2700,12 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.CarsFirstCapKw = carsFirstCap
 		s.ExportGuard = exportGuard
 	})
+}
+
+func idleReadbackHealthy(control *state.ControlInfo, now time.Time, window time.Duration) bool {
+	return control != nil && control.AllMatch && control.Confirm == "held" &&
+		!control.CheckedAt.IsZero() && !now.Before(control.CheckedAt) &&
+		now.Sub(control.CheckedAt) <= window
 }
 
 // exportSafeStaticCap is the BLIND fallback cap of the feed-in watchdog: the
@@ -2676,6 +2763,7 @@ func followSnapshot(f guards.FollowResult) *state.FollowInfo {
 	info := &state.FollowInfo{
 		Active:    true,
 		Direction: f.Direction,
+		Path:      f.Path,
 		PlannedKw: math.Round(f.CommandedKw*1000) / 1000,
 	}
 	if !math.IsNaN(f.DeficitKw) {

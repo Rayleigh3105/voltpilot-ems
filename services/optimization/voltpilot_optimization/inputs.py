@@ -62,6 +62,11 @@ from voltpilot_optimization.domain import (
 )
 from voltpilot_optimization.fallback import night_floor_pv, persistence_forecast
 from voltpilot_optimization.nowcast import AnchorEvidence, NO_EVIDENCE, anchor_evidence, apply_anchor
+from voltpilot_optimization.load_nowcast import (
+    apply_load_nowcast,
+    apply_uncertainty_reserve,
+    ewma_residual,
+)
 from voltpilot_optimization.pricing import (
     SiteTariff,
     SupplyPriceComponents,
@@ -521,6 +526,17 @@ def gather_inputs(
     load_kw, _ = _forecast_or_fallback(
         dsn, site, "load", "load_kw", slot_starts, now, site_choices
     )
+    # P1/P2: fresh actual-minus-plan evidence corrects only the near horizon;
+    # then a small bounded upper-load scenario protects against residual error.
+    # Both remain INPUTS to the unchanged full-horizon objective, so lambda
+    # still prices efficiency, wear, future scarcity and later cheap recharge.
+    recent_load = _recent_load_samples(dsn, site.tenant_id, site.site_id, now)
+    residual = ewma_residual(recent_load, load_kw[0]) if load_kw else None
+    load_kw = apply_load_nowcast(load_kw, residual)
+    # No fresh evidence means no robust-band claim and preserves the active
+    # model's series byte-for-byte. With evidence, the band is bounded + fades.
+    if residual is not None:
+        load_kw = apply_uncertainty_reserve(load_kw)
     pv_kw, pv_used_fallback = _forecast_or_fallback(
         dsn, site, "pv", "pv_power_kw", slot_starts, now, site_choices
     )
@@ -1093,6 +1109,29 @@ def _load_history(
             (site_id, now - FALLBACK_HISTORY),
         )
         return [(ensure_utc(ts), float(v)) for ts, v in cur.fetchall()]
+
+
+def _recent_load_samples(
+    dsn: str, tenant_id: UUID, site_id: UUID, now: datetime,
+    *, lookback: timedelta = timedelta(minutes=2), max_age: timedelta = timedelta(seconds=30),
+) -> list[float]:
+    """Fresh load samples for the short EWMA, oldest first; stale means none."""
+    import psycopg  # lazy: optional [db] extra
+
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT time, load_kw FROM telemetry
+            WHERE tenant_id = %s AND site_id = %s
+              AND load_kw IS NOT NULL AND time >= %s AND time <= %s
+            ORDER BY time
+            """,
+            (tenant_id, site_id, now - lookback, now),
+        )
+        rows = cur.fetchall()
+    if not rows or now - ensure_utc(rows[-1][0]) > max_age:
+        return []
+    return [float(value) for _ts, value in rows if value is not None]
 
 
 def _fresh_measurement(

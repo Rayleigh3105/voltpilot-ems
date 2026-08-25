@@ -33,6 +33,11 @@ import (
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
 // claimedRegistryPush is `registryPush` with owner_claimed stamped on the
@@ -55,6 +60,170 @@ func claimedRegistryPush(t *testing.T, revision string, claimBattery bool) []byt
 		t.Fatal(err)
 	}
 	return out
+}
+
+// Regression for the cross-PR authority boundary caught during PR 514's
+// independent review: the additive idle-slot market follower runs late in
+// applySetpoint, after E2 arbitration. It must never reinterpret a technical
+// rule's granted neutral 0 kW as permission to discharge into screenshot A's
+// 14.7 kW house deficit.
+func TestOwnerClaimedNeutralCommandBlocksUnplannedIdleFollower(t *testing.T) {
+	a := followAgent(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	reg, skipped, err := entities.ParseRegistryPush(
+		claimedRegistryPush(t, "rev-owner-idle", true),
+		entities.Identity{TenantID: tTenant, SiteID: tSite, DeviceID: tDevice})
+	if err != nil || len(skipped) != 0 {
+		t.Fatalf("claimed registry parse: skipped=%v err=%v", skipped, err)
+	}
+	a.applyEntityRegistry(reg)
+	a.arb.Submit(entBattery, desiredPayload(
+		entBattery, "regel-speicher-halten", 0, 900, false))
+	a.arb.Tick()
+
+	yes, floor := true, 35.0
+	a.mu.Lock()
+	a.currentPlan = &plan.Plan{
+		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
+		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		Slots: []plan.Slot{{
+			Start: now, BatterySetpointKw: 0, UnplannedLoadDischarge: true,
+		}},
+	}
+	a.lastReading = guards.Reading{
+		SocPct: 95, PvKw: 22.1, LoadKw: 36.8, GridLimitKw: guards.Unknown(),
+	}
+	a.lastReadingAt = now
+	a.mu.Unlock()
+	a.State.Update(func(s *state.Snapshot) {
+		s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
+	})
+
+	a.applySetpoint(now)
+	snap := a.State.Get()
+	if snap.Mode != state.ModeDesired || snap.SetpointKw != 0 {
+		t.Fatalf("owner-claimed technical neutral = mode %q, %.3f kW; want desired, 0 kW",
+			snap.Mode, snap.SetpointKw)
+	}
+	if snap.Follow != nil {
+		t.Fatalf("owner-claimed technical neutral must have no market follow claim: %+v", snap.Follow)
+	}
+}
+
+// Finalreview d6 reproduced the retained-plan transition the earlier idle-only
+// regression missed: the established cover_load_from_battery flag is market
+// authority too. An owner claim must stop it immediately, including the small
+// registry-push window before the technical holder's first command arrives;
+// once that neutral rule command holds, it must remain exactly neutral.
+func TestIndependentOwnerClaimBlocksEstablishedMarketFollower(t *testing.T) {
+	a := followAgent(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	reg, skipped, err := entities.ParseRegistryPush(
+		registryPush("rev-legacy-owner-0", true),
+		entities.Identity{TenantID: tTenant, SiteID: tSite, DeviceID: tDevice})
+	if err != nil || len(skipped) != 0 {
+		t.Fatalf("unclaimed registry parse: skipped=%v err=%v", skipped, err)
+	}
+	a.applyEntityRegistry(reg)
+	setRetainedLegacyCoverScenario(a, now)
+
+	// Establish the adversarial starting point: the retained market duty is
+	// active and rewrites the idle plan to screenshot A's -14.7 kW.
+	a.applySetpoint(now)
+	assertLegacyFollow(t, a.State.Get(), -14.7, true, state.ModeSchedule)
+
+	claimed, skipped, err := entities.ParseRegistryPush(
+		claimedRegistryPush(t, "rev-legacy-owner-1", true),
+		entities.Identity{TenantID: tTenant, SiteID: tSite, DeviceID: tDevice})
+	if err != nil || len(skipped) != 0 {
+		t.Fatalf("claimed registry parse: skipped=%v err=%v", skipped, err)
+	}
+	a.applyEntityRegistry(claimed)
+
+	// Race boundary: owner_claimed is already authoritative even before the
+	// rule publisher's first desired reaches the arbiter.
+	a.applySetpoint(now.Add(time.Second))
+	assertLegacyFollow(t, a.State.Get(), 0, false, state.ModeSchedule)
+
+	a.arb.Submit(entBattery, desiredPayload(
+		entBattery, "regel-speicher-halten-legacy", 0, 900, false))
+	a.arb.Tick()
+	a.applySetpoint(now.Add(2 * time.Second))
+	assertLegacyFollow(t, a.State.Get(), 0, false, state.ModeDesired)
+}
+
+// Contract, grid and safety holders are not "manual" commands, but they are
+// even stronger authorities. A retained legacy market flag must never rewrite
+// their neutral setpoint after HolderCommand has selected them.
+func TestContractGridAndSafetyHoldersBlockEstablishedMarketFollower(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		priority desired.Class
+	}{
+		{name: "contract", priority: desired.ClassContract},
+		{name: "grid", priority: desired.ClassGrid},
+		{name: "safety", priority: desired.ClassSafety},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := followAgent(t)
+			now := time.Now().UTC().Truncate(time.Second)
+			reg, skipped, err := entities.ParseRegistryPush(
+				registryPush("rev-legacy-"+tc.name, true),
+				entities.Identity{TenantID: tTenant, SiteID: tSite, DeviceID: tDevice})
+			if err != nil || len(skipped) != 0 {
+				t.Fatalf("registry parse: skipped=%v err=%v", skipped, err)
+			}
+			a.applyEntityRegistry(reg)
+			setRetainedLegacyCoverScenario(a, now)
+			a.applySetpoint(now)
+			assertLegacyFollow(t, a.State.Get(), -14.7, true, state.ModeSchedule)
+
+			zero := 0.0
+			a.arb.SubmitInternal(&desired.Desired{
+				EntityID: entBattery, RequestID: "compliance-neutral-" + tc.name,
+				Source:   desired.Source{Kind: desired.SourceCloudCommand},
+				Priority: tc.priority, TTL: time.Minute, IssuedAt: now,
+				Commands: entities.Commands{SetpointKw: &zero},
+			})
+			a.arb.Tick()
+			a.applySetpoint(now.Add(time.Second))
+			assertLegacyFollow(t, a.State.Get(), 0, false, state.ModeDesired)
+		})
+	}
+}
+
+func setRetainedLegacyCoverScenario(a *Agent, now time.Time) {
+	yes, floor := true, 35.0
+	a.mu.Lock()
+	a.currentPlan = &plan.Plan{
+		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
+		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		Slots: []plan.Slot{{
+			Start: now, BatterySetpointKw: 0, CoverLoadFromBattery: true,
+		}},
+	}
+	a.lastReading = guards.Reading{
+		SocPct: 95, PvKw: 22.1, LoadKw: 36.8, GridLimitKw: guards.Unknown(),
+	}
+	a.lastReadingAt = now
+	a.mu.Unlock()
+}
+
+func assertLegacyFollow(t *testing.T, snap state.Snapshot, wantKw float64, active bool, wantMode state.Mode) {
+	t.Helper()
+	if snap.Mode != wantMode || snap.SetpointKw != wantKw {
+		t.Fatalf("retained legacy cover = mode %q, %.3f kW; want %q, %.3f kW",
+			snap.Mode, snap.SetpointKw, wantMode, wantKw)
+	}
+	if active {
+		if snap.Follow == nil || !snap.Follow.Active || snap.Follow.Path != execModeFollow {
+			t.Fatalf("retained legacy cover evidence = %+v, want active legacy follow", snap.Follow)
+		}
+		return
+	}
+	if snap.Follow != nil {
+		t.Fatalf("non-plan authority must clear retained legacy follow evidence: %+v", snap.Follow)
+	}
 }
 
 func TestARuleClaimTakesTheBatteryFromThePlanAndGivesItBack(t *testing.T) {

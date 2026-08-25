@@ -461,6 +461,7 @@ services:
       VOLTPILOT_PURGE_MQTT_LISTENER_ENABLED: "true"
       # Inverter-control confirmation ingestion (portal "Steuerung" strip).
       VOLTPILOT_CONTROL_MQTT_LISTENER_ENABLED: "true"
+      VOLTPILOT_LOAD_RESIDUAL_REPLAN_ENABLED: "true"
       # Feed-in curtailment ("Abregeln") execution truth (portal three-stage
       # wording: geplant / setzt es noch nicht um / bestätigt).
       VOLTPILOT_CURTAILMENT_MQTT_LISTENER_ENABLED: "true"

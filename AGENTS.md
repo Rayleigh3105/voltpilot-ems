@@ -5368,12 +5368,16 @@ Push, kein anderer Wunsch, kein anderer Text.
 - **⚠ `automation_paused_until` ist ein ABSOLUTER Zeitpunkt, nie eine Dauer.** Der Push ist
   RETAINED: eine Box, die beim Ablauf offline war, muss die Sperre nach ihrer EIGENEN Uhr aufheben
   können, statt auf eine Nachricht zu warten, die vielleicht nie kommt (`Registry.Paused(now)`).
-- **Edge: die Pause hat ZWEI Hälften, und beide sind nötig.** `runPlanExecutors` speist nichts mehr
-  ein (der Fahrplan ruht) UND `desired.Deps.Suspended` lässt den Arbiter jede Wunsch-Klasse
-  **unterhalb `market`** ignorieren (die Regeln ruhen). **⚠ Es ist ein TOR, kein Rang-Wechsel:**
+- **Edge: die Pause hat DREI Hälften, und alle sind nötig.** `runPlanExecutors` speist nichts mehr
+  ein (der Fahrplan ruht), `desired.Deps.Suspended` lässt den Arbiter jede Wunsch-Klasse
+  **in `market` und darunter** ignorieren (Fahrplan und Regeln ruhen). **⚠ Es ist ein TOR, kein Rang-Wechsel:**
   D-4s Klassen und ihre Ordnung sind unangetastet, und alles ÜBER market (contract, grid, safety)
-  bindet weiter — eine Pause darf nie einen Compliance-Befehl aussetzen. `Suspended` nil = niemals
-  pausiert = byte-identisch zum Vor-Stufe-4-Verhalten.
+  bindet weiter — eine Pause darf nie einen Compliance-Befehl aussetzen. Der direkte v1-
+  `applySetpoint`-Pfad führt währenddessen den lokalen `self-consumption`-Failsafe aus und sperrt
+  alle marktgetragenen Slotkorrekturen/Peak-Economics; sonst könnte ein noch frischer Optimizer-
+  Slot die korrekt pausierte Entity-Arbitration am physischen Ausgang umgehen. Ein manueller
+  Batteriehalter sperrt dieselben Markt-Nachkorrekturen. Export-/Netz-/Schutzgrenzen bleiben in
+  beiden Fällen aktiv. `Suspended` nil = niemals pausiert = byte-identisch zum Vor-Stufe-4-Verhalten.
 - **⚠ Das Edge-Tor des Handeingriffs ist ENTITÄTS-ABHÄNGIG** (B3, `agent/override.go`): ein
   VERBRAUCHER-Wunsch hängt weiter am Verbraucher-Hauptschalter (`VP_CONSUMER_CONTROL_ENABLED`,
   Vorgabe AUS), ein SPEICHER-Wunsch an dem Schalter, der den Wechselrichter wirklich regiert —

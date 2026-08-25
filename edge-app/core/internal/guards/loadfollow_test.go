@@ -67,6 +67,69 @@ func TestMarkedSlotRaisesTheDischargeToTheMeasuredHouseLoad(t *testing.T) {
 	}
 }
 
+// The two customer-validated replay screenshots exercise the NEW idle-slot
+// authority, not the older discharge-follow flag.  A starts at exactly 0 kW
+// and closes the import; B then removes the transient and must stop without
+// ever creating battery export.
+func TestAuthorizedIdleFollowerReplaysTheUnforeseenLoadScreenshots(t *testing.T) {
+	floor := 30.0
+	f := NewLoadFollower()
+	a := Reading{SocPct: 95, PvKw: 22.1, LoadKw: 36.8, GridLimitKw: Unknown()}
+	got := f.ApplyAuthorized(followBase(), 0, false, true, &floor, true, followLimits(), a)
+	if !got.Active || got.Path != "idle_follow" || math.Abs(got.Kw+14.7) > 1e-9 {
+		t.Fatalf("screenshot A: %+v, want idle_follow at -14.7 kW", got)
+	}
+	if grid := a.LoadKw + got.Kw - a.PvKw; grid > .2 || grid < -.2 {
+		t.Fatalf("screenshot A grid = %.3f kW, want <= 0.2 kW import without export", grid)
+	}
+
+	// Keep the SAME engaged follower instance: this is the real A -> B
+	// transition, not a reset-assisted test.
+	b := Reading{SocPct: 95, PvKw: 22.6, LoadKw: 16.6, GridLimitKw: Unknown()}
+	got = f.ApplyAuthorized(followBase().Add(10*time.Second), 0, false, true, &floor, true, followLimits(), b)
+	if got.Kw != 0 || got.Active || got.Path != "" {
+		t.Fatalf("screenshot B: %+v, want neutral 0 kW with no active correction path", got)
+	}
+	if addedBatteryExport := math.Max(-got.Kw, 0); addedBatteryExport > .2 {
+		t.Fatalf("screenshot B added battery export = %.3f kW, want <= 0.2", addedBatteryExport)
+	}
+}
+
+func TestAuthorizedIdleFollowerFailsClosedOnEveryMissingSafetyFact(t *testing.T) {
+	floor := 30.0
+	valid := Reading{SocPct: 95, PvKw: 22.1, LoadKw: 36.8, GridLimitKw: Unknown()}
+	cases := []struct {
+		name  string
+		fresh bool
+		floor *float64
+		read  Reading
+	}{
+		{"stale", false, &floor, valid},
+		{"unknown floor", true, nil, valid},
+		{"unknown soc", true, &floor, Reading{SocPct: Unknown(), PvKw: 22.1, LoadKw: 36.8, GridLimitKw: Unknown()}},
+		{"unknown load", true, &floor, Reading{SocPct: 95, PvKw: 22.1, LoadKw: Unknown(), GridLimitKw: Unknown()}},
+		{"unknown pv", true, &floor, Reading{SocPct: 95, PvKw: Unknown(), LoadKw: 36.8, GridLimitKw: Unknown()}},
+		{"at floor", true, &floor, Reading{SocPct: 30, PvKw: 22.1, LoadKw: 36.8, GridLimitKw: Unknown()}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := NewLoadFollower().ApplyAuthorized(followBase(), 0, false, true, tc.floor, tc.fresh, followLimits(), tc.read)
+			if got.Active || got.Kw != 0 {
+				t.Fatalf("unsafe correction: %+v", got)
+			}
+		})
+	}
+	if got := NewLoadFollower().ApplyAuthorized(followBase(), 2, false, true, &floor, true, followLimits(), valid); got.Active || got.Kw != 2 {
+		t.Fatalf("planned charge must not be reinterpreted: %+v", got)
+	}
+	if got := NewLoadFollower().ApplyAuthorized(followBase(), -2, false, true, &floor, true, followLimits(), valid); got.Active || got.Kw != -2 {
+		t.Fatalf("planned sale/discharge must not be reinterpreted: %+v", got)
+	}
+	if got := NewLoadFollower().ApplyAuthorized(followBase(), 0, true, true, &floor, true, followLimits(), valid); got.Active || got.Kw != 0 {
+		t.Fatalf("conflicting old/new duties must fail closed: %+v", got)
+	}
+}
+
 // THE OTHER money case (Pilsting 23:12, the mirror of the 21:22 one): the plan
 // discharged 6.7 kW - again its forecast - into a house drawing only 5.1 kW, so
 // 1.4 kW left the site at ~21 ct while that same kWh was worth ~32.5 ct as

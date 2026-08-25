@@ -94,6 +94,24 @@ describe('JetztHeld', () => {
     expect(container.querySelector('.vp-jetzt-status.is-warn')).toBeTruthy();
   });
 
+  it('meldet Statusänderungen semantisch und zeigt den Ausführungspfad ohne interne Codes', () => {
+    const { container } = render(<JetztHeld view={held({
+      tone: 'warn',
+      status: 'Unerwarteter Verbrauch · Speicher deckt live bis 35 % Reserve',
+      chips: [
+        { label: 'Ausführung', value: 'Wechselrichter-Automatik' },
+        { label: 'Rücklesen', value: 'bestätigt' },
+      ],
+    })} />);
+    const status = screen.getByRole('status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(screen.getByText('Wechselrichter-Automatik')).toBeInTheDocument();
+    expect(screen.queryByText(/autonomous_discharge|idle_follow|exception|stack|SQLSTATE/i)).not.toBeInTheDocument();
+    // Die reine Statusfläche führt weder am Desktop noch mobil einen neuen
+    // Tastaturstopp ein; ihre Änderung erreicht Screenreader über aria-live.
+    expect(container.querySelectorAll('button, a, input, select, textarea, [tabindex]')).toHaveLength(0);
+  });
+
   it('zeigt im WARN-Flusskonflikt den bernstein Satz und lässt die Bestätigungszeile verschwinden', () => {
     const { container } = render(
       <JetztHeld

@@ -61,6 +61,7 @@ public record SchedulePlanDto(
         BigDecimal socStartPct,
         BigDecimal socEndPct,
         BigDecimal peakTargetKw,
+        BigDecimal effectiveFloorSocPct,
         Boolean fallback14a,
         String whyTerminalAnchor,
         BigDecimal whyRefillFreePct,
@@ -68,7 +69,7 @@ public record SchedulePlanDto(
 
     public static SchedulePlanDto empty() {
         return new SchedulePlanDto(
-                null, null, null, 15, null, null, null, null, null, null, null, null,
+                null, null, null, 15, null, null, null, null, null, null, null, null, null,
                 List.of());
     }
 }

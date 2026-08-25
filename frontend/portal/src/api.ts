@@ -463,6 +463,8 @@ export interface ScheduleSlot {
    * markiert.
    */
   coverLoadFromBattery?: boolean | null;
+  /** Additive authority to start measured load coverage from an idle slot. */
+  unplannedLoadDischarge?: boolean | null;
   /**
    * Der Ladeseiten-Spiegel: true = das Gerät begrenzt die Ladung auf den
    * GEMESSENEN Solar-Überschuss, weil Zukauf in dieser Viertelstunde
@@ -518,6 +520,8 @@ export interface SchedulePlan {
    * never a fabricated 0.
    */
   peakTargetKw: number | null;
+  /** Full corrective-discharge floor: max(technical, backup, peak reserve). */
+  effectiveFloorSocPct?: number | null;
   /**
    * True when this run is the advisory fallback build WITHOUT the §14a grid
    * constraint (it was infeasible) - the device enforces the limit
@@ -1666,7 +1670,14 @@ export interface EdgeVersion {
  *              PV-Überschuss
  *   fallback - kein aktueller Fahrplan: die eingebaute Eigenverbrauchs-Regel
  */
-export type ExecutionMode = 'plan' | 'follow' | 'trim' | 'fallback';
+export type ExecutionMode =
+  | 'plan'
+  | 'follow'
+  | 'trim'
+  | 'absorb'
+  | 'fallback'
+  | 'idle_follow'
+  | 'autonomous_discharge';
 
 /** `deepen` = Entladung angehoben, `reduce` = Entladung begrenzt. */
 export type ExecutionDirection = 'deepen' | 'reduce';
@@ -1706,6 +1717,10 @@ export interface ControlStatus {
    * (es regelt nie blind und meldet nie blind) — nie eine erfundene 0.
    */
   executionTargetKw?: number | null;
+  /** Full floor actually applied to an idle correction. */
+  executionFloorSocPct?: number | null;
+  /** Device evidence that SOC/load/PV were fresh when correction ran. */
+  executionMeasurementsFresh?: boolean | null;
   /**
    * WELCHE Quelle die Freigabe erteilt hat: `env` = die flottenweite
    * Allowlist, `device` = eine First-Light-Freigabe auf DIESER Box,

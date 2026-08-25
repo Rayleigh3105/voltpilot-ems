@@ -40,7 +40,7 @@ public class ScheduleRepository {
             "time, battery_kw, grid_kw, soc_pct, price_eur_mwh, cost_eur, baseline_cost_eur, "
                     + "curtail_kw, pv_kw, load_kw, slot_role, slot_flags, stored_value_ct_kwh, "
                     + "grid_value_ct_kwh, peak_pressure_eur_kw, "
-                    + "cover_load_from_battery, charge_from_surplus_only, "
+                    + "cover_load_from_battery, unplanned_load_discharge, charge_from_surplus_only, "
                     + "why_next_best, why_next_best_margin_ct";
 
     /**
@@ -54,6 +54,17 @@ public class ScheduleRepository {
 
     public ScheduleRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    /** Planned house load in the active slot of the newest tenant-visible run. */
+    public Double activePlannedLoadKw(UUID siteId, Instant observedAt) {
+        List<BigDecimal> values = jdbc.query(
+                "SELECT load_kw FROM schedule WHERE site_id = ? AND time <= ? "
+                        + "AND time + interval '15 minutes' > ? AND load_kw IS NOT NULL "
+                        + "ORDER BY generated_at DESC LIMIT 1",
+                (rs, i) -> rs.getBigDecimal("load_kw"), siteId,
+                Timestamp.from(observedAt), Timestamp.from(observedAt));
+        return values.isEmpty() ? null : values.get(0).doubleValue();
     }
 
     /** The most recent plan for a site, or {@code null} if none stored. */
@@ -76,7 +87,7 @@ public class ScheduleRepository {
                 siteId, Timestamp.from(generatedAt));
         slots = MeasuredSlots.assign(slots, measuredPerSlot(siteId, slots, 15));
         List<Object[]> meta = jdbc.query(
-                "SELECT plan_id, device_id, terminal_value_eur_per_kwh, peak_target_kw, "
+                "SELECT plan_id, device_id, terminal_value_eur_per_kwh, peak_target_kw, effective_floor_soc_pct, "
                         + "fallback_14a, why_terminal_anchor, why_refill_free_pct FROM schedule "
                         + "WHERE site_id = ? AND generated_at = ? LIMIT 1",
                 (rs, i) -> new Object[] {
@@ -84,6 +95,7 @@ public class ScheduleRepository {
                         rs.getObject("device_id", UUID.class),
                         rs.getBigDecimal("terminal_value_eur_per_kwh"),
                         rs.getBigDecimal("peak_target_kw"),
+                        rs.getBigDecimal("effective_floor_soc_pct"),
                         rs.getObject("fallback_14a", Boolean.class),
                         rs.getString("why_terminal_anchor"),
                         rs.getBigDecimal("why_refill_free_pct")
@@ -93,17 +105,18 @@ public class ScheduleRepository {
         UUID deviceId = meta.isEmpty() ? null : (UUID) meta.get(0)[1];
         BigDecimal terminalValue = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[2];
         BigDecimal peakTargetKw = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[3];
-        Boolean fallback14a = meta.isEmpty() ? null : (Boolean) meta.get(0)[4];
+        BigDecimal effectiveFloor = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[4];
+        Boolean fallback14a = meta.isEmpty() ? null : (Boolean) meta.get(0)[5];
         // Erklärbarkeit Stufe 1: run-level facts, repeated on every row of the
         // run (the terminal_value pattern), so ONE row answers for the plan.
-        String whyAnchor = meta.isEmpty() ? null : (String) meta.get(0)[5];
-        BigDecimal whyRefillFreePct = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[6];
+        String whyAnchor = meta.isEmpty() ? null : (String) meta.get(0)[6];
+        BigDecimal whyRefillFreePct = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[7];
         BigDecimal savings = slots.stream()
                 .map(s -> nz(s.baselineCostEur()).subtract(nz(s.costEur())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         Banked banked = bankedValue(siteId, slots, terminalValue, 15);
         return new SchedulePlanDto(planId, deviceId, generatedAt, 15, savings,
-                banked.valueEur(), banked.socStartPct(), banked.socEndPct(), peakTargetKw,
+                banked.valueEur(), banked.socStartPct(), banked.socEndPct(), peakTargetKw, effectiveFloor,
                 fallback14a, whyAnchor, whyRefillFreePct, slots);
     }
 
@@ -181,7 +194,7 @@ public class ScheduleRepository {
         // describe ONE run and are therefore null on a spliced day - a day
         // stitched from a dozen runs has no single anchor to name.
         return new SchedulePlanDto(null, runDevice[0], newestRun[0], 15, savings,
-                null, null, null, null, null, null, null, slots);
+                null, null, null, null, null, null, null, null, slots);
     }
 
     /** One row of the {@link #SLOT_COLUMNS} projection as a slot DTO. */
@@ -213,6 +226,7 @@ public class ScheduleRepository {
                 // nullable Booleans - getBoolean() would turn "not evaluated"
                 // into a claimed false.
                 rs.getObject("cover_load_from_battery", Boolean.class),
+                rs.getObject("unplanned_load_discharge", Boolean.class),
                 rs.getObject("charge_from_surplus_only", Boolean.class),
                 // Erklärbarkeit Stufe 1 (V20260824000000): only ever set on a
                 // RESTING slot - null elsewhere is the honest "no margin", not

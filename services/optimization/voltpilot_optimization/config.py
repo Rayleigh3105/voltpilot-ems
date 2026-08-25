@@ -331,6 +331,29 @@ def load_follow_enabled(env=None) -> bool:
     raise ValueError(f"{LOAD_FOLLOW_ENABLED_ENV} must be a boolean, got {raw!r}")
 
 
+#: Independent kill switch for the additive idle-slot authorization.  Keeping
+#: it separate from LOAD_FOLLOW_ENABLED_ENV is operationally important: this
+#: duty may start a discharge from zero whereas the older duty only adjusts an
+#: already-planned discharge.
+UNPLANNED_LOAD_DISCHARGE_ENABLED_ENV = "OPTIMIZER_UNPLANNED_LOAD_DISCHARGE_ENABLED"
+
+
+def unplanned_load_discharge_enabled(env=None) -> bool:
+    """Whether economic idle slots may authorize unforeseen-load coverage."""
+    env = os.environ if env is None else env
+    raw = env.get(UNPLANNED_LOAD_DISCHARGE_ENABLED_ENV)
+    if raw is None or raw.strip() == "":
+        return True
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(
+        f"{UNPLANNED_LOAD_DISCHARGE_ENABLED_ENV} must be a boolean, got {raw!r}"
+    )
+
+
 #: Instant off-switch for publishing the per-slot ``charge_surplus_to_battery``
 #: flag - the in-slot duty that RAISES a commanded charge to the measured PV
 #: surplus (2026-08-02, the Pilsting Negativpreis-Vormittag). ITS OWN LEVER for

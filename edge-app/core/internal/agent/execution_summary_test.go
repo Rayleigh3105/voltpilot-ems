@@ -86,6 +86,48 @@ func TestExecutionSummaryNamesTheLimitingDirection(t *testing.T) {
 	}
 }
 
+func TestIdleFollowerReportsOnlyWhileItActuallyCorrects(t *testing.T) {
+	floor, deficit := 35.0, 14.7
+	active := state.Snapshot{
+		Mode: state.ModeSchedule, Control: confirmedControl(), EffectiveFloorSocPct: &floor,
+		Follow: &state.FollowInfo{Active: true, Path: execModeIdleFollow,
+			Direction: guards.FollowDeepen, PlannedKw: 0, DeficitKw: &deficit},
+	}
+	ex := controlSummary(active).Execution
+	if ex == nil || ex.Mode != execModeIdleFollow || ex.EffectiveFloorSocPct == nil ||
+		*ex.EffectiveFloorSocPct != floor || !ex.MeasurementsFresh {
+		t.Fatalf("active idle correction diagnostics = %+v", ex)
+	}
+
+	// Screenshot B: PV now exceeds load, the follower returned 0 kW and
+	// Active=false. Even if a stale in-memory struct still carries the path, the
+	// heartbeat truth is the neutral plan mode - never "covering live".
+	neutral := active
+	neutral.Follow = &state.FollowInfo{Active: false, Path: execModeIdleFollow, PlannedKw: 0}
+	if ex := controlSummary(neutral).Execution; ex == nil || ex.Mode != execModePlan {
+		t.Fatalf("neutral slot must report plan, not idle_follow: %+v", ex)
+	}
+}
+
+func TestIdleFollowerRequiresFreshHeldReadback(t *testing.T) {
+	now := time.Date(2026, 8, 25, 10, 0, 30, 0, time.UTC)
+	held := &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now.Add(-10 * time.Second)}
+	if !idleReadbackHealthy(held, now, 30*time.Second) {
+		t.Fatal("fresh independently held readback must release the portable path")
+	}
+	for _, bad := range []*state.ControlInfo{
+		nil,
+		{AllMatch: false, Confirm: "not_held", CheckedAt: now},
+		{AllMatch: true, Confirm: "no_answer", CheckedAt: now},
+		{AllMatch: true, Confirm: "held", CheckedAt: now.Add(-31 * time.Second)},
+		{AllMatch: true, Confirm: "held", CheckedAt: now.Add(time.Second)},
+	} {
+		if idleReadbackHealthy(bad, now, 30*time.Second) {
+			t.Fatalf("unsafe readback accepted: %+v", bad)
+		}
+	}
+}
+
 func TestExecutionSummaryNamesThePriceAwareTrim(t *testing.T) {
 	surplus := 3.1
 	snap := state.Snapshot{

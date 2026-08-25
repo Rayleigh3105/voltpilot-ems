@@ -64,6 +64,64 @@ func pilstingNightReading() guards.Reading {
 	return guards.Reading{SocPct: 77, PvKw: 0.03, LoadKw: 7.117, GridLimitKw: guards.Unknown()}
 }
 
+// Full Edge path for the customer-validated A -> B replay. The same live
+// follower instance receives both snapshots; B is not helped by a reset.
+func TestAuthorizedIdleSlotCoversScreenshotAThenReportsScreenshotBNeutral(t *testing.T) {
+	a, addr := followAgentAddr(t)
+	sub := subscribeSetpoint(t, addr)
+	now := time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC)
+	yes, floor := true, 35.0
+	a.mu.Lock()
+	a.currentPlan = &plan.Plan{
+		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
+		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		Slots: []plan.Slot{{Start: now, BatterySetpointKw: 0, UnplannedLoadDischarge: true}},
+	}
+	a.lastReading = guards.Reading{SocPct: 95, PvKw: 22.1, LoadKw: 36.8, GridLimitKw: guards.Unknown()}
+	a.lastReadingAt = now
+	a.mu.Unlock()
+	a.State.Update(func(s *state.Snapshot) {
+		s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
+	})
+
+	a.applySetpoint(now)
+	waitFor(t, 5*time.Second, "screenshot A idle correction", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == -14.7
+	})
+	snap := a.State.Get()
+	if snap.Follow == nil || snap.Follow.Path != execModeIdleFollow || !snap.Follow.Active {
+		t.Fatalf("screenshot A follow evidence = %+v, want active idle path", snap.Follow)
+	}
+	if grid := 36.8 + snap.SetpointKw - 22.1; math.Abs(grid) > .2 {
+		t.Fatalf("screenshot A grid = %.3f kW, want within 0.2 kW of zero", grid)
+	}
+
+	// Ten seconds later PV exceeds the load. The exact same correction must
+	// publish 0, clear the active/path claim and never add battery export.
+	bAt := now.Add(10 * time.Second)
+	a.mu.Lock()
+	a.lastReading = guards.Reading{SocPct: 95, PvKw: 22.6, LoadKw: 16.6, GridLimitKw: guards.Unknown()}
+	a.lastReadingAt = bAt
+	a.mu.Unlock()
+	a.State.Update(func(s *state.Snapshot) { s.Control.CheckedAt = bAt })
+	a.applySetpoint(bAt)
+	waitFor(t, 5*time.Second, "screenshot B neutral command", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == 0.0
+	})
+	snap = a.State.Get()
+	if snap.SetpointKw != 0 || snap.Follow != nil {
+		t.Fatalf("screenshot B state setpoint=%v follow=%+v, want honest neutral", snap.SetpointKw, snap.Follow)
+	}
+	if addedBatteryExport := math.Max(-snap.SetpointKw, 0); addedBatteryExport > .2 {
+		t.Fatalf("screenshot B added battery export = %.3f kW, want <= 0.2", addedBatteryExport)
+	}
+	if ex := controlSummary(snap).Execution; ex == nil || ex.Mode != execModePlan {
+		t.Fatalf("screenshot B execution = %+v, want neutral plan mode", ex)
+	}
+}
+
 func TestMarkedSlotCoversTheMeasuredHouseAndSaysWhy(t *testing.T) {
 	a := followAgent(t)
 	now := time.Date(2026, 7, 30, 21, 22, 48, 0, time.UTC)
