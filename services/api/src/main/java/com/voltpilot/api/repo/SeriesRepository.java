@@ -29,7 +29,8 @@ public class SeriesRepository {
             "ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
             "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
             "ocpp_meter_sample", "ocpp_station_status_event", "ocpp_configuration_key",
-            "ocpp_configuration_unknown_key", "ocpp_station_capability"
+            "ocpp_configuration_unknown_key", "ocpp_station_capability", "ocpp_action",
+            "ocpp_action_audit", "ocpp_action_intent"
     };
 
     private final JdbcTemplate jdbc;

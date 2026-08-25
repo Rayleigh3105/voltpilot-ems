@@ -90,9 +90,11 @@ type Journal struct {
 	changed   chan struct{}
 	// pending action maps make CALLRESULT/CALLERROR self-describing. OCPP gives
 	// those messages only a unique id; the action belongs to the paired CALL.
-	incoming map[string]string
-	outgoing map[string]string
-	gaps     journalGapState
+	incoming         map[string]string
+	outgoing         map[string]string
+	externalOutgoing map[string][]string
+	externalByWire   map[string]string
+	gaps             journalGapState
 	// Injectable only for deterministic failure-path tests. Gap-state writes
 	// deliberately use the real filesystem, so an event-write failure can still
 	// leave durable evidence.
@@ -131,6 +133,7 @@ func newJournal(dataDir string, log *slog.Logger) (*Journal, error) {
 	j := &Journal{dir: dir, statePath: statePath, key: key, log: log,
 		changed: make(chan struct{}, 1), count: count,
 		incoming: map[string]string{}, outgoing: map[string]string{}, gaps: gaps,
+		externalOutgoing: map[string][]string{}, externalByWire: map[string]string{},
 		writeEventFile: os.WriteFile, renameEventFile: os.Rename,
 		readEventFile: os.ReadFile, removeEventFile: os.Remove,
 		writeGapFile: os.WriteFile, renameGapFile: os.Rename}
@@ -235,17 +238,29 @@ func (j *Journal) RecordWire(direction, chargePointID string, raw []byte) {
 			j.incoming[key] = e.Action
 		} else {
 			j.outgoing[key] = e.Action
+			queueKey := chargePointID + "\x00" + e.Action
+			if queued := j.externalOutgoing[queueKey]; len(queued) > 0 {
+				e.CorrelationID = queued[0]
+				j.externalOutgoing[queueKey] = queued[1:]
+				j.externalByWire[key] = e.CorrelationID
+			}
 		}
 		j.mu.Unlock()
 	case 3: // CALLRESULT
 		e.MessageType = "CallResult"
 		e.Action = j.takeAction(direction, key)
+		if direction == "station_to_csms" {
+			e.CorrelationID = j.externalCorrelation(key)
+		}
 		if len(msg) >= 3 {
 			e.Payload = j.redact(msg[2], e.Action)
 		}
 	case 4: // CALLERROR
 		e.MessageType = "CallError"
 		e.Action = j.takeAction(direction, key)
+		if direction == "station_to_csms" {
+			e.CorrelationID = j.externalCorrelation(key)
+		}
 		if len(msg) >= 3 {
 			_ = json.Unmarshal(msg[2], &e.ErrorCode)
 		}
@@ -266,6 +281,25 @@ func (j *Journal) RecordWire(direction, chargePointID string, raw []byte) {
 		e.Action = "UnknownMessageType"
 	}
 	j.append(e)
+}
+
+// BindOutgoing associates the API's durable correlation with the next wire
+// CALL of this action. The OCPP library owns the wire message id; keeping this
+// tiny adapter here lets late CallResult/CallError evidence close the right
+// cloud action without leaking an implementation id into the API contract.
+func (j *Journal) BindOutgoing(chargePointID, action, correlation string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	key := chargePointID + "\x00" + action
+	j.externalOutgoing[key] = append(j.externalOutgoing[key], correlation)
+}
+
+func (j *Journal) externalCorrelation(key string) string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	correlation := j.externalByWire[key]
+	delete(j.externalByWire, key)
+	return correlation
 }
 
 func (j *Journal) takeAction(direction, key string) string {

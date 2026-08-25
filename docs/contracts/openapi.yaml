@@ -1503,6 +1503,75 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/OcppActionPermissions" } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/ocpp/stations/{chargePointId}/action-intents:
+    post:
+      tags: [sites]
+      summary: Serverseitigen Kurzzeit-Intent für Hard Reset, Full LocalList oder Firmware ausstellen.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: chargePointId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/OcppActionIntentRequest" } } }
+      responses:
+        "201": { description: Intent, content: { application/json: { schema: { $ref: "#/components/schemas/OcppActionIntent" } } } }
+        "403": { description: Serverseitig nicht erlaubt. }
+        "404": { description: Station nicht bekannt. }
+  /api/v1/sites/{siteId}/ocpp/stations/{chargePointId}/actions:
+    post:
+      tags: [sites]
+      summary: Eine OCPP-1.6-Aktion vorbereiten und one-shot an die Edge senden.
+      description: >
+        Idempotent über Idempotency-Key. Die Antwort beschreibt nur den
+        persistierten Transportzustand; Accepted wird erst durch CallResult
+        und Wirkung beobachtet erst durch ein Folgeereignis.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: chargePointId, in: path, required: true, schema: { type: string } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, maxLength: 200 } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/OcppActionRequest" } } }
+      responses:
+        "201": { description: Persistierte Aktion, content: { application/json: { schema: { $ref: "#/components/schemas/OcppAction" } } } }
+        "403": { description: D4-Berechtigung fehlt. }
+        "409": { description: Laufende Doppelaktion oder Intent-Konflikt. }
+  /api/v1/sites/{siteId}/ocpp/actions:
+    get:
+      tags: [sites]
+      summary: Persistierte OCPP-Aktionschoreografien.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: chargePointId, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 100 } }
+      responses:
+        "200": { description: Aktionen, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/OcppAction" } } } } }
+  /api/v1/sites/{siteId}/ocpp/actions/{actionId}:
+    get:
+      tags: [sites]
+      summary: Eine OCPP-Aktion mit Antwort- und Wirkungsbeleg.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: actionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Aktion, content: { application/json: { schema: { $ref: "#/components/schemas/OcppAction" } } } }
+    delete:
+      tags: [sites]
+      summary: Eine noch nicht beantwortete One-shot-Aktion abbrechen.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: actionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Abbruch protokolliert. }
+  /api/v1/sites/{siteId}/ocpp/actions/{actionId}/audit:
+    get:
+      tags: [sites]
+      summary: Unveränderliche Zustands- und Wirkungs-Auditspur einer OCPP-Aktion.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: actionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Auditspur, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/OcppActionAudit" } } } } }
   /api/v1/sites/{siteId}/supply-price:
     get:
       tags: [sites]
@@ -6576,9 +6645,68 @@ components:
         supportedFeatureProfiles: { type: array, items: { type: string } }
     OcppActionPermissions:
       type: object
-      description: D4-Auskunft für den späteren Gateway; keine der Aktionen ist in diesem Slice aufrufbar.
+      description: D4 serverseitige Auskunft für das OCPP-Command-Gateway.
       properties:
         actions: { type: object, additionalProperties: { type: boolean } }
+    OcppActionIntentRequest:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string }
+        phrase: { type: string, maxLength: 200 }
+        connectorId: { type: integer, minimum: 0 }
+    OcppActionIntent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        action: { type: string }
+        phrase: { type: string, description: "Kurzlebige Bestätigung; kein Geheimnis." }
+        expiresAt: { type: string, format: date-time }
+    OcppActionRequest:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string }
+        connectorId: { type: integer, minimum: 0, nullable: true }
+        transactionId: { type: integer, nullable: true }
+        intentId: { type: string, format: uuid, nullable: true }
+        request: { type: object, additionalProperties: true }
+    OcppAction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid }
+        chargePointId: { type: string }
+        action: { type: string }
+        state: { enum: [prepared, sent, accepted_waiting_effect, effect_observed, completed, rejected, call_error, not_sendable, transport_failed, timed_out, cancelled] }
+        correlationId: { type: string }
+        idempotencyKey: { type: string }
+        actor: { type: string }
+        connectorId: { type: integer, nullable: true }
+        transactionId: { type: integer, nullable: true }
+        request: { type: object }
+        response: { type: object }
+        responseStatus: { type: string, nullable: true }
+        effect: { type: object }
+        reason: { type: string, nullable: true }
+        preparedAt: { type: string, format: date-time }
+        sentAt: { type: string, format: date-time, nullable: true }
+        responseAt: { type: string, format: date-time, nullable: true }
+        effectAt: { type: string, format: date-time, nullable: true }
+        deadlineAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    OcppActionAudit:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        actor: { type: string }
+        state: { type: string }
+        reason: { type: string, nullable: true }
+        deviceId: { type: string, format: uuid }
+        chargePointId: { type: string }
+        connectorId: { type: integer, nullable: true }
+        transactionId: { type: integer, nullable: true }
+        occurredAt: { type: string, format: date-time }
     RegisterWriteRequest:
       type: object
       description: >

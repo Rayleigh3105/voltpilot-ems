@@ -9,7 +9,8 @@ They are first-class artifacts: services implement against them, and changes her
 | [`telemetry-raw.event.schema.json`](./telemetry-raw.event.schema.json) | Redpanda `telemetry.raw` event written by Ingest and consumed by the TimescaleDB-Writer (and future consumers). | Ingest -> Redpanda -> Writer |
 | [`mqtt-schedule.schema.json`](./mqtt-schedule.schema.json) | Battery dispatch plan (24h, 15-min slots) published retained by the optimizer and executed slot-wise by the edge. Includes fail-safe semantics (`x-failsafe`). | Optimization -> EMQX -> Node-RED edge |
 | [`mqtt-provisioning.schema.json`](./mqtt-provisioning.schema.json) | Zero-touch onboarding handshake: device hello on `provision/{ref}/hello`, cloud answers claimed refs with the RETAINED identity config on `provision/{ref}/config`. Additive - the telemetry/schedule contracts are unchanged. | Device -> EMQX -> Ingest resolver (+ portal api at claim time) |
-| [`mqtt-ocpp-events.schema.json`](./mqtt-ocpp-events.schema.json) | Privacy-redigiertes, dauerhaft am Edge gejournaltes OCPP-1.6 Call/CallResult/CallError-/Verbindungsereignis (QoS1, nicht retained). Reine Station→Cloud-Sichtbarkeit, kein Command-Downlink. | Edge-App CSMS -> EMQX -> API |
+| [`mqtt-ocpp-events.schema.json`](./mqtt-ocpp-events.schema.json) | Privacy-redigiertes, dauerhaft am Edge gejournaltes OCPP-1.6 Call/CallResult/CallError-/Verbindungsereignis (QoS1, nicht retained). Der Command-Downlink hat einen eigenen Vertrag; diese Ereignisse sind seine Antwort-/Wirkungsbelege. | Edge-App CSMS -> EMQX -> API |
+| [`mqtt-ocpp-command.schema.json`](./mqtt-ocpp-command.schema.json) | Nicht-retained One-shot Cloud→Edge-OCPP-1.6-Command. Die Antwort und der Wirkungsnachweis kommen als korrelierte OCPP-Journalereignisse zurück. | API -> EMQX -> Edge-App CSMS |
 | [`openapi.yaml`](./openapi.yaml) | Portal API REST surface (stub) consumed by the frontend. | API <-> Frontend |
 
 ## MQTT topic convention

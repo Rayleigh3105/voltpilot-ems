@@ -61,14 +61,16 @@ public class OcppRepository {
     private final ObjectMapper mapper;
     private final DeviceRepository devices;
     private final DeviceDataLock dataLock;
+    private final OcppActionRepository actions;
 
     public OcppRepository(JdbcTemplate jdbc, OcppPrivacy privacy, ObjectMapper mapper,
-            DeviceRepository devices, DeviceDataLock dataLock) {
+            DeviceRepository devices, DeviceDataLock dataLock, OcppActionRepository actions) {
         this.jdbc = jdbc;
         this.privacy = privacy;
         this.mapper = mapper;
         this.devices = devices;
         this.dataLock = dataLock;
+        this.actions = actions;
     }
 
     /** Idempotently stores one edge-journal envelope and derives its read models. */
@@ -114,6 +116,9 @@ public class OcppRepository {
         if (inserted == 0) {
             return false;
         }
+        // The action ledger is deliberately advanced from the same durable
+        // event, so a late result/reconnect is still idempotent and visible.
+        actionEvidence(tenantId, deviceId, chargePointId, envelope);
 
         if ("station_to_csms".equals(direction)
                 || ("internal".equals(direction) && !"JournalGap".equals(action))) {
@@ -159,6 +164,14 @@ public class OcppRepository {
             }
         }
         return true;
+    }
+
+    private void actionEvidence(UUID tenantId, UUID deviceId, String chargePointId, JsonNode envelope) {
+        // Command gateway is additive: old databases/tests may not have action
+        // tables during a migration window, so do not hide protocol ingestion
+        // behind an action bookkeeping failure.
+        try { actions.applyProtocolEvidence(tenantId, deviceId, chargePointId, envelope); }
+        catch (org.springframework.dao.DataAccessException ignored) { }
     }
 
     /**

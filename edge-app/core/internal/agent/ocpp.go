@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -144,6 +145,26 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 	go a.ocppLoop(ctx)
 	a.publishOcppState()
 	return nil
+}
+
+// onCloudCommand shares the existing per-device command topic with purge_data.
+// OCPP commands are one-shot and non-retained; the edge never acknowledges an
+// expired/replayed command by pretending it reached a station.
+func (a *Agent) onCloudCommand(payload []byte) {
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(payload, &envelope) == nil && envelope.Type == "ocpp_command" {
+		if a.ocpp == nil {
+			slog.Warn("OCPP command received while CSMS is unavailable")
+			return
+		}
+		if err := a.ocpp.srv.ExecuteCloudCommand(a.ctx, payload); err != nil {
+			slog.Warn("OCPP cloud command was not sent", "err", err)
+		}
+		return
+	}
+	a.onPurgeCommand(payload)
 }
 
 // ocppJournalLoop drains oldest-first and acknowledges local files only after
