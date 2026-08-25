@@ -1,4 +1,4 @@
--- Slice 11/12: durable OCPP 1.6 command choreography.
+-- V20260846000000 - Slice 11/12: durable OCPP 1.6 command choreography.
 -- A command is a customer intent, not a claim that the station acted.
 ALTER TABLE ocpp_protocol_event ADD COLUMN wire_id TEXT;
 

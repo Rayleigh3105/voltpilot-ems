@@ -4246,6 +4246,13 @@ aktionsspezifisch validiert. `DataTransfer` ist ausschließlich über die
 geschlossene Registry `services/api/src/main/resources/ocpp/data-transfer-registry.json`
 und dieselbe Vendor/Message-Bindung am Edge zulässig.
 
+- **Migration sequencing:** Der Command-Gateway-Vertrag liegt fest auf
+  `V20260846000000__ocpp_command_gateway.sql`: `V45` gehört zum
+  `device_override`/Handeingriff aus PR 513; `V47` ist für PR 514 und
+  `V48`/`V48.01`/`V49` sind für PR 510 reserviert. Nach jeder Umbenennung muss
+  der API-Lauf mit `./mvnw clean ...` starten, damit keine alte Kopie unter
+  `target/classes/db/migration` Flyway täuscht.
+
 - **Persistierte Choreografie:** `prepared -> sent -> CallResult/CallError ->
   accepted_waiting_effect -> effect_observed/effect_failed`. `Accepted` wird
   nie als Ausführung verkauft. Readbacks tragen exakt
