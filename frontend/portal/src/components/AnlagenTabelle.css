@@ -1,0 +1,379 @@
+/*
+ * DIE ANLAGEN-TABELLE (Portfolio Revision 2, Scout `vp-portfolio-konzept-r2`
+ * §5.2/§5.4). Eine Zeile ist die Komponenten-Zeile des Cockpits eine Ebene
+ * höher: Ding · Jetzt · Heute · Zustand · Absprung.
+ *
+ * ⚠ Sie ist BEWUSST nicht `.vp-table.responsive`: deren Telefon-Fassung klappt
+ * jede Zelle zu einer Etikett/Wert-Zeile, und acht davon je Anlage sind genau
+ * die Wand, gegen die diese Revision gebaut ist. Am Telefon rendert das
+ * Bauteil stattdessen EINE Karte je Zeile (dieselben Daten, drei Jetzt-Werte).
+ *
+ * Komponenten-lokal, damit `index.css` unangetastet bleibt.
+ */
+
+.vp-at-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--vp-border, #e9ecef);
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-surface, #fff);
+  min-width: 0;
+}
+
+.vp-at {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  /* Acht Spalten brauchen Platz; darunter scrollt der EIGENE Rahmen, nie die
+     Seite (der horizontale Überlauf bleibt in diesem Kasten). */
+  min-width: 860px;
+}
+
+.vp-at th {
+  text-align: left;
+  font-size: 0.69rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted, #6c757d);
+  font-weight: 600;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--vp-border, #e9ecef);
+  white-space: nowrap;
+  vertical-align: bottom;
+  line-height: 1.25;
+}
+
+/* Die leise Einheit im Spaltenkopf — sie gehört nicht zur Rubrik. */
+.vp-at th .vp-at-einheit {
+  display: block;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.vp-at td {
+  padding: 0 10px;
+  border-bottom: 1px solid var(--vp-border, #e9ecef);
+  vertical-align: middle;
+  height: 44px;
+  white-space: nowrap;
+}
+
+.vp-at[data-dichte='komfortabel'] td {
+  height: 62px;
+  font-size: 0.88rem;
+}
+
+.vp-at tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Zahlen rechtsbündig und tabular — sonst lässt sich eine Spalte nicht lesen. */
+.vp-at th.num,
+.vp-at td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-at td.num {
+  font-weight: 500;
+  color: var(--vp-stat-ink, var(--vp-navy-1, #1e3a5f));
+}
+
+.vp-at td.num .u,
+.vp-at td .u {
+  color: var(--vp-text-muted, #6c757d);
+  font-weight: 400;
+  font-size: 0.78rem;
+}
+
+.vp-at td.dim {
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-at tbody tr.is-offen td {
+  background: var(--vp-tint, #eef3ff);
+}
+
+.vp-at tbody tr.vp-at-zeile:hover td {
+  background: var(--vp-bg, #f8f9fa);
+}
+
+.vp-at tbody tr.is-offen:hover td {
+  background: var(--vp-tint, #eef3ff);
+}
+
+/* Der Name IST der Schalter (Tastatur + Vorlesesoftware); die Zeile daneben
+   reagiert zusätzlich auf die Maus. */
+.vp-at-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  width: 100%;
+}
+
+.vp-at-name-text {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.vp-at-name b {
+  font-weight: 600;
+}
+
+.vp-at-sub {
+  display: block;
+  font-weight: 400;
+  color: var(--vp-text-muted, #6c757d);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.vp-at-chev {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--vp-text-muted, #6c757d);
+  transition: transform 0.15s ease;
+  flex: 0 0 auto;
+}
+
+.vp-at-name[aria-expanded='true'] .vp-at-chev {
+  transform: rotate(90deg);
+}
+
+/* Zustand: 8-px-Punkt + WORT + Alter — nie ein gefülltes Badge. */
+.vp-at-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.vp-at-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-text-subtle, #ced4da);
+  flex: 0 0 auto;
+}
+
+.vp-at-dot.is-ok {
+  background: var(--vp-flow-batt, #2e9e5b);
+}
+
+.vp-at-dot.is-warn {
+  background: var(--vp-warn, #f59e0b);
+}
+
+.vp-at-alter {
+  display: block;
+  color: var(--vp-text-muted, #6c757d);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  padding-left: 14px;
+  white-space: nowrap;
+}
+
+/* Der Ladestand: 5-px-Balken + % + Richtungswort (Kategoriefarbe NUR hier). */
+.vp-at-bar {
+  display: inline-block;
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--vp-border, #e9ecef);
+  vertical-align: middle;
+  margin-right: 6px;
+  position: relative;
+  overflow: hidden;
+}
+
+.vp-at-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--vp-flow-batt, #2e9e5b);
+  border-radius: 3px;
+}
+
+.vp-at-warnzeile {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--vp-industry-end, #c2410c);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+/* --- Die Vorschau-Zeile -------------------------------------------------- */
+
+.vp-at-vorschau td {
+  height: auto;
+  white-space: normal;
+  background: var(--vp-bg, #f8f9fa);
+  padding: 12px 14px 14px;
+}
+
+.vp-at-vor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 12px 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.vp-at-vor-l {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--vp-text-muted, #6c757d);
+  margin-bottom: 2px;
+}
+
+.vp-at-vor-v {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.vp-at-vor-v.is-warn {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-at-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: var(--vp-radius-pill, 999px);
+  background: var(--vp-border, #e9ecef);
+  color: var(--vp-text-muted, #6c757d);
+  font-size: 0.68rem;
+  font-weight: 600;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+/*
+ * ⚠ Die Trefferfläche wächst über `::before` (das `.vp-switch`-Muster), nicht
+ * über die Höhe: ein 44-px-KASTEN um einen Text-Absprung zöge die Vorschau
+ * bzw. den Karten-Fuss sichtbar auseinander.
+ */
+.vp-at-open {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 0;
+  padding: 8px 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--vp-action, #2c5282);
+  cursor: pointer;
+  align-self: center;
+}
+
+.vp-at-open::before {
+  content: '';
+  position: absolute;
+  inset: -6px -8px;
+}
+
+.vp-at-lade {
+  font-size: 0.8rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+/* --- Die Telefon-Fassung: EINE Karte je Zeile ---------------------------- */
+
+.vp-at-karten {
+  display: grid;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-at-karte {
+  border: 1px solid var(--vp-border, #e9ecef);
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-surface, #fff);
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.vp-at-karte-kopf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.vp-at-karte-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-at-karte-nums {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.vp-at-karte-nums .l {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-at-karte-nums .v {
+  font-family: var(--vp-font-display, 'Inter Tight', 'Inter', sans-serif);
+  font-weight: 600;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-stat-ink, var(--vp-navy-1, #1e3a5f));
+  overflow-wrap: anywhere;
+}
+
+.vp-at-karte-nums .v small {
+  font-family: var(--vp-font-sans, 'Inter', sans-serif);
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-at-karte-fuss {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--vp-action, #2c5282);
+}
+
+.vp-at-karte-heute {
+  color: var(--vp-stat-ink, var(--vp-navy-1, #1e3a5f));
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-at-karte-vor {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--vp-border, #e9ecef);
+}

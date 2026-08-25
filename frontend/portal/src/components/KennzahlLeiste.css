@@ -1,0 +1,118 @@
+/*
+ * DIE KENNZAHLEN-LEISTE (Portfolio Revision 2, Scout `vp-portfolio-konzept-r2`
+ * §5.4 + Mockup `08-kennzahlen-skala.html`).
+ *
+ * Sie loest das 235-px-`auto-fit`-Kachelgitter ab, dessen letzte Kachel bei
+ * fast jeder Breite als WAISE in einer eigenen Reihe stand (Befund P1). Eine
+ * Leiste ist EIN Gitter mit N gleich breiten Zellen: die Waise kann es
+ * strukturell nicht mehr geben, und die Zellen sind gleich hoch, weil das
+ * Gitter sie streckt.
+ *
+ * ⚠ Die Zellenzahl kommt als `--vp-leiste-cols` vom Bauteil (die Zahl der
+ * Zellen, die WIRKLICH etwas zu sagen haben) - eine feste Spaltenzahl im CSS
+ * wuerde eine Flotte ohne Geld-Modus mit einer Luecke rendern.
+ *
+ * Komponenten-lokal, damit `index.css` unangetastet bleibt.
+ */
+
+.vp-leiste {
+  display: grid;
+  grid-template-columns: repeat(var(--vp-leiste-cols, 4), minmax(0, 1fr));
+  background: var(--vp-surface, #fff);
+  border: 1px solid var(--vp-border, #e9ecef);
+  border-radius: var(--vp-radius-md, 12px);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.vp-leiste-zelle {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 16px;
+  border-right: 1px solid var(--vp-border, #e9ecef);
+  min-width: 0;
+}
+
+.vp-leiste-zelle:last-child {
+  border-right: 0;
+}
+
+/* Label: 12 px, Satzschreibung, NIE versal - eine Kennzahl ist keine Rubrik. */
+.vp-leiste-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--vp-text-muted, #6c757d);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Der Wert: tabular, damit zwei Zellen untereinander auf derselben Ziffern-
+ * breite sitzen. Die LEIT-Zelle ist groesser (eine je Leiste) - sie ersetzt
+ * den frueheren Geld-Held im Marken-Verlauf.
+ */
+.vp-leiste-wert {
+  font-family: var(--vp-font-display, 'Inter Tight', 'Inter', sans-serif);
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-stat-ink, var(--vp-navy-1, #1e3a5f));
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.vp-leiste-zelle.is-lead .vp-leiste-wert {
+  font-size: 1.75rem;
+}
+
+/* Die Einheit ist LEISE und bleibt bei ihrer Zahl. */
+.vp-leiste-einheit {
+  font-family: var(--vp-font-sans, 'Inter', sans-serif);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--vp-text-muted, #6c757d);
+  margin-left: 3px;
+}
+
+.vp-leiste-sub {
+  font-size: 0.72rem;
+  color: var(--vp-text-muted, #6c757d);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * `warn` faerbt NUR die Unterzeile - sie ist ein Vorbehalt („2 von 3 Anlagen
+ * melden gerade"), nie eine Stoerung. Die ZAHL bleibt in jeder Lage die
+ * Marken-Tinte.
+ */
+.vp-leiste-sub.is-warn {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+/*
+ * Am Telefon zweispaltig; eine ungerade letzte Zelle nimmt die volle Breite,
+ * damit auch dort keine Waise entsteht.
+ */
+@media (max-width: 720px) {
+  .vp-leiste {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .vp-leiste-zelle {
+    border-bottom: 1px solid var(--vp-border, #e9ecef);
+  }
+  .vp-leiste-zelle:nth-child(2n) {
+    border-right: 0;
+  }
+  .vp-leiste-zelle.is-voll {
+    grid-column: span 2;
+    border-right: 0;
+  }
+  .vp-leiste-zelle:last-child,
+  .vp-leiste-zelle:nth-last-child(2):nth-child(2n + 1) {
+    border-bottom: 0;
+  }
+}

@@ -2190,180 +2190,11 @@ button.vp-cl-item.is-off .vp-cl-label {
   background: var(--vp-tint, #eef3ff);
 }
 
-.vp-fleet-top {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--vp-gap);
-  align-items: stretch;
-}
-@media (min-width: 1024px) {
-  .vp-fleet-top {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  }
-}
-
-/* --- Money hero: the most important number is also the most beautiful. ----- */
-.vp-fleet-hero {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: var(--vp-space-6);
-  border-radius: var(--vp-radius-lg);
-  background: var(--vp-grad-hero);
-  color: #fff;
-  box-shadow: 0 8px 22px rgba(90, 141, 232, 0.35);
-}
-.vp-fleet-hero-label {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.85);
-}
-.vp-fleet-hero-value {
-  margin-top: var(--vp-space-2);
-  font-family: var(--vp-font-heading);
-  font-weight: 800;
-  font-size: clamp(2.2rem, 6vw, 2.9rem);
-  letter-spacing: -1px;
-  line-height: 1.05;
-  color: #fff;
-  text-shadow: 0 1px 8px rgba(30, 58, 95, 0.25);
-  font-variant-numeric: tabular-nums;
-}
-.vp-fleet-hero-sub {
-  margin-top: var(--vp-space-1);
-  font-size: 0.95rem;
-  color: rgba(255, 255, 255, 0.9);
-}
-/* Der 14-Tage-Spark ist seit Stufe 5 der `MiniBarSpark`-Baustein („on-gradient")
-   - Nulllinie, negative Tage und Sichtbarkeits-Striche kommen von dort, und die
-   Höhe ist die eine Spark-Höhe des Systems (vorher 38 px, eine von sieben).
-   Hier bleibt nur, was DIESE Fläche ausmacht. */
-.vp-fleet-spark {
-  margin-top: var(--vp-space-4);
-}
-.vp-fleet-spark .vp-mini-bar.is-on {
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
-}
-.vp-fleet-hero-fine {
-  display: flex;
-  gap: var(--vp-space-2);
-  margin: var(--vp-space-4) 0 0;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  color: rgba(255, 255, 255, 0.82);
-}
-.vp-fleet-fine-ico {
-  flex: 0 0 auto;
-  display: inline-flex;
-  margin-top: 2px;
-  color: rgba(255, 255, 255, 0.75);
-}
-/* Telefon: dieselbe Fussnote hinter einem InfoTip (Mobil-Umbau Stufe 4). Die
-   Bubble portaliert nach `document.body`, hier steht also nur der Ausloeser. */
-.vp-fleet-fine-tip {
-  align-items: center;
-  gap: 6px;
-}
-.vp-fleet-fine-tip .vp-infotip-btn {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-/* Telefon: die Einrichtungs-Aktionen stehen UNTER den Anlagen-Karten, nicht
-   vor dem Geld-Helden. Volle Breite, damit sie als Zeilen lesbar bleiben. */
-.vp-fleet-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-2);
-  margin-top: var(--vp-space-4);
-}
-.vp-fleet-actions > * {
-  width: 100%;
-}
-
-/* Two-number proof line: "Erlös mit VoltPilot X € / Ungeregelt wären es Y €". */
-.vp-fleet-hero-proof {
-  display: grid;
-  gap: 4px;
-  margin-top: var(--vp-space-4);
-  padding-top: var(--vp-space-3);
-  border-top: 1px solid rgba(255, 255, 255, 0.28);
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.92);
-}
-.vp-fleet-hero-proof div {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--vp-space-3);
-}
-.vp-fleet-hero-proof .v {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: #fff;
-  white-space: nowrap;
-}
-
-/* The calm "davon durch Netzladen verdient: +X €" attribution line under the
-   proof (only for grid-charging fleets/sites with grid-charged energy). */
-.vp-fleet-hero-arb {
-  margin: var(--vp-space-2) 0 0;
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.92);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Range switch on the gradient (Heute/Monat/Jahr/Gesamt, default Monat). */
-.vp-fleet-seg {
-  display: flex;
-  gap: 4px;
-  margin-top: var(--vp-space-4);
-  padding: 3px;
-  border-radius: var(--vp-radius-pill, 999px);
-  background: rgba(255, 255, 255, 0.16);
-}
-.vp-fleet-seg button {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 0;
-  border: none;
-  border-radius: var(--vp-radius-pill, 999px);
-  background: transparent;
-  color: rgba(255, 255, 255, 0.85);
-  font-family: var(--vp-font-body);
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.vp-fleet-seg button.active {
-  background: #fff;
-  color: var(--vp-action, #2c5282);
-  box-shadow: 0 1px 3px rgba(30, 58, 95, 0.3);
-}
-.vp-fleet-seg button:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: 1px;
-}
-
-/* --- Fleet status sentence: green calm, amber names the silent device. ----- */
-.vp-fleet-status {
-  display: flex;
-  align-items: center;
-}
-.vp-fleet-sentence {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--vp-space-3);
-  margin: 0;
-  font-size: 1rem;
-  line-height: 1.5;
-  font-weight: 500;
-  color: var(--vp-navy-2, #2c5282);
-}
-.vp-fleet-sentence.tone-off {
-  color: var(--vp-text-muted, #6c757d);
-  font-weight: 400;
-}
+/* --- Der Zustands-PUNKT: er lebt weiter an der Anlagen-Karte (#/anlagen) und
+   am Cockpit. Der Geld-HELD, das Zeitraum-Segment und die Flotten-Status-KARTE
+   sind mit der Portfolio-Revision 2 ERSATZLOS entfallen (Captain 25.08.2026):
+   der Marken-Verlauf gehört Login und Marketing, und die Flotten-Aussage ist
+   EINE Zeile unter dem Titel (`components/PortfolioCockpit.css`). ---------- */
 .vp-fleet-dot {
   flex: 0 0 auto;
   width: 10px;
@@ -2372,17 +2203,14 @@ button.vp-cl-item.is-off .vp-cl-label {
   margin-top: 0.42rem;
   background: var(--vp-flow-batt);
 }
-.vp-fleet-sentence .vp-fleet-dot,
 .vp-fleet-dot.tone-ok {
   background: var(--vp-flow-batt);
   animation: vp-fleet-pulse-ok 2.4s infinite;
 }
-.vp-fleet-sentence.tone-warn .vp-fleet-dot,
 .vp-fleet-dot.tone-warn {
   background: #f59e0b;
   animation: vp-fleet-pulse-warn 2.4s infinite;
 }
-.vp-fleet-sentence.tone-off .vp-fleet-dot,
 .vp-fleet-dot.tone-off {
   background: var(--vp-gray, #ced4da);
   animation: none;
@@ -3607,93 +3435,13 @@ button.vp-tech-card-h.toggle {
 }
 
 /* ============================================================================
-   Betreiber PORTFOLIO shell (U5, pages/PortfolioPage)
-   Aggregate KPI row over an operator table. Built on the shared KpiCard +
-   .vp-table.responsive (collapses to label/value cards below 720px) so the
-   page never overflows horizontally at phone width.
+   Die MODUS-CHIPS der Steuerung (`components/SteuerungParts.tsx`)
+   Übrig gebliebener Rest des U5-Blocks: die Betreiber-Kacheln, die
+   Operator-Tabelle, die Komponenten-Zähler und die per-Modus getönten Chips
+   sind mit der Portfolio-Revision 2 ERSATZLOS entfallen (Captain 25.08.2026 -
+   die Fläche ist eine Kennzahlen-Leiste plus EINE Anlagen-Tabelle, siehe
+   `components/KennzahlLeiste.css` und `components/AnlagenTabelle.css`).
    ============================================================================ */
-.vp-portfolio-kpis {
-  display: grid;
-  /* 235px: an icon tile + a label like "Speicher gesamt" next to its second
-     value line needs the room, otherwise the label breaks mid-phrase (G8). */
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
-  gap: var(--vp-gap);
-}
-
-/*
- * Anwendungs-Programm Stufe 4: EIN Baustein kann ZWEI Kacheln tragen
- * (Netz heute = Bezug + Einspeisung, Speicher = Größe + Ladestand, Erlöse =
- * heute + Zeitraum). Die Wrapper sind reine Gruppierungs-Knoten OHNE Semantik,
- * also treten sie mit `display: contents` zur Seite und die KACHELN selbst
- * werden Gitter-Zellen — sonst stauchte ein Paar seine zwei Karten in EINE
- * Spalte und die Reihe stünde schief neben den Einzel-Kacheln.
- */
-.vp-portfolio-kpis > .vp-portfolio-kachel,
-.vp-portfolio-kpis > .vp-portfolio-kachel > .vp-portfolio-kpi-paar {
-  display: contents;
-}
-
-/*
- * Im ANPASSEN-Modus ist das Paar dagegen EIN Baustein und muss als solcher
- * zusammenbleiben (es hat EINEN Griff und EIN Auge) — dort bekommt es sein
- * eigenes kleines Gitter statt `display: contents`.
- */
-.vp-anpassen-inhalt > .vp-portfolio-kpi-paar {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
-  gap: var(--vp-gap);
-}
-
-/*
- * ⚠ Im Anpassen-Modus stehen die Portfolio-Bausteine in einer SCHMALEN
- * Gitterspalte (235 px), nicht wie am Cockpit in einer vollbreiten Zeile —
- * dort schob ein längerer Name („Erzeugung heute") das Auge in eine zweite
- * Reihe, und die Bedienelemente EINES Bausteins standen auf zwei Zeilen. Die
- * Knopf-Gruppe bleibt deshalb hier zusammen und der NAME weicht (er steht
- * ohnehin vollständig im `aria-label` der Hülle und in jedem Knopf-Label).
- * Bewusst NUR im Portfolio-Gitter — am Cockpit ist der Platz da.
- */
-.vp-portfolio-kpis .vp-anpassen-ctrl {
-  flex-wrap: nowrap;
-}
-.vp-portfolio-kpis .vp-anpassen-name {
-  flex: 1 1 0;
-  overflow: hidden;
-  overflow-wrap: normal;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.vp-portfolio-table td {
-  vertical-align: middle;
-}
-/* The Σ-per-role "Entitäten" cell: an IconTile + count per non-zero role. */
-.vp-entity-badges {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--vp-space-2);
-}
-.vp-entity-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-.vp-entity-count {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--vp-text-strong, #1a2433);
-}
-/* Per-site MODE chips (M6 #534): the active modes of the Anlage, one calm tint
-   per mode kind. Replaces the retired single AE7 Profil-Chip (F5) - a row shows
-   the SET the cockpit projects from, never one winning face. Wraps and stays
-   min-width:0 so a multi-mode row never widens the table at phone width. */
-.vp-mode-chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
 .vp-mode-chip {
   display: inline-flex;
   align-items: center;
@@ -3707,33 +3455,6 @@ button.vp-tech-card-h.toggle {
   overflow-wrap: anywhere;
   background: var(--vp-tint, #eef3ff);
   color: var(--vp-text-muted);
-}
-.vp-mode-chip.vp-mode-lastspitzenkappung {
-  background: var(--vp-flow-pv-soft, #fff1e0);
-  color: var(--vp-warn-ink, #b45309);
-}
-.vp-mode-chip.vp-mode-marktvermarktung {
-  background: color-mix(in srgb, var(--vp-action, #2c5282) 12%, transparent);
-  color: var(--vp-action, #2c5282);
-}
-.vp-mode-chip.vp-mode-eigenverbrauch {
-  background: var(--vp-flow-batt-soft, #e6f7ec);
-  color: #15803d;
-}
-.vp-mode-chip.vp-mode-automation {
-  background: var(--vp-flow-load-soft, #f2eaff);
-  color: #6d28d9;
-}
-.vp-mode-chip.vp-mode-atypische-netznutzung {
-  background: var(--vp-tint, #eef3ff);
-  color: var(--vp-text-muted);
-}
-/* "Speicher ohne Gerät" inline warning under an Anlage name. */
-.vp-portfolio-warn {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--vp-industry-end, #c2410c);
 }
 
 /* ============================================================================
@@ -5180,14 +4901,6 @@ button.vp-tech-card-h.toggle {
    Rolle (Ladestand vs. Batterieleistung). */
 .vp-role-member-chan {
   font-weight: 500;
-  color: var(--vp-text-muted, #667);
-}
-
-/* G8 · Zweiter, beschrifteter Wert einer KPI-Kachel - nie ein „·", das beim
-   Umbruch verwaist. */
-.vp-kpi-second {
-  display: block;
-  font-size: var(--vp-text-meta);
   color: var(--vp-text-muted, #667);
 }
 

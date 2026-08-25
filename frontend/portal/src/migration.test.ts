@@ -739,8 +739,8 @@ describe('Anwendungs-Programm Stufe 4 — das Portfolio-Cockpit über Bestandsda
     expect(showPortfolioNav(i)).toBe(true);
     expect(redirectToPortfolio(i)).toBe(true);
     expect(showOverviewNav(i)).toBe(false);
-    // Die Operator-Tabelle bleibt seine Dichte.
-    expect(portfolioDichte('betreiber')).toBe('tabelle');
+    // Die kompakte Zeile bleibt seine Dichte.
+    expect(portfolioDichte('betreiber')).toBe('kompakt');
   });
 
   it('U0/U5: der Endkunde ab ZWEI Anlagen wechselt auf das Portfolio - in Karten-Dichte', () => {
@@ -749,15 +749,16 @@ describe('Anwendungs-Programm Stufe 4 — das Portfolio-Cockpit über Bestandsda
     // (die `FleetUebersicht`). Jetzt dieselbe Fläche wie der Betreiber ...
     expect(showPortfolioNav(i)).toBe(true);
     expect(showOverviewNav(i)).toBe(false);
-    // ... aber in der RUHIGEN Dichte, also genau seinem bisherigen Bild.
-    expect(portfolioDichte('endkunde')).toBe('karten');
+    // ... aber in der RUHIGEN Dichte (Revision 2: dieselbe Tabelle, nur mit
+    // mehr Luft und einer Satz-Unterzeile).
+    expect(portfolioDichte('endkunde')).toBe('komfortabel');
     // Und sein altes Lesezeichen `#/uebersicht` gilt weiter.
     expect(redirectToPortfolio(i)).toBe(true);
   });
 
-  it('ein Bestandskunde OHNE gesetzten Rahmen folgt derselben Heuristik + Karten', () => {
+  it('ein Bestandskunde OHNE gesetzten Rahmen folgt derselben Heuristik + Komfort', () => {
     expect(showPortfolioNav(flotte(2, null))).toBe(true);
-    expect(portfolioDichte(null)).toBe('karten');
+    expect(portfolioDichte(null)).toBe('komfortabel');
   });
 
   it('eine Flotten-Zeile eines ÄLTEREN Backends erfindet keine Anwendung', () => {
@@ -780,7 +781,7 @@ describe('Anwendungs-Programm Stufe 4 — das Portfolio-Cockpit über Bestandsda
     expect(anwendungenVonAnlage(alt)).toEqual(['monitoring']);
   });
 
-  it('eine Flotte ohne Kennzahlen zeigt NUR die Pflicht-Bausteine, nie Kacheln mit „—"', () => {
+  it('eine Flotte ohne Kennzahlen zeigt NUR die Pflicht-Bausteine, nie Zellen mit „—"', () => {
     const leer = portfolioKennzahlen(null, null, new Date());
     const ids = verfuegbareBausteine({
       anwendungen: ['monitoring', 'speicher-fahrplan'],
@@ -813,5 +814,53 @@ describe('Anwendungs-Programm Stufe 4 — das Portfolio-Cockpit über Bestandsda
     const code = ohneKommentare(readFileSync(join(SRC, 'pages/UebersichtPage.tsx'), 'utf8'));
     expect(code).not.toContain('function FleetUebersicht');
     expect(code).toContain('PortfolioCockpit');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Portfolio Revision 2 — was ERSATZLOS entfallen ist
+// ---------------------------------------------------------------------------
+
+describe('Portfolio Revision 2 — Abbau-Invarianten', () => {
+  it('der Geld-HELD ist weg: kein Marken-Verlauf mehr im Betriebs-Portal', () => {
+    // Captain 25.08.2026: der Verlauf gehört Login und Marketing. Kehrt
+    // `EarningsHero` zurück, kehrt mit ihm die Fläche zurück, gegen die
+    // Revision 2 gebaut ist.
+    for (const f of sourceFiles()) {
+      expect(ohneKommentare(readFileSync(f, 'utf8')), f).not.toMatch(
+        /\bEarningsHero\b|\bFleetStatusCard\b/,
+      );
+    }
+  });
+
+  it('die Kennzahlen-Leiste hat das 235-px-Kachelgitter abgelöst', () => {
+    // `.vp-portfolio-kpis` war das `auto-fit`-Gitter, dessen letzte Kachel bei
+    // fast jeder Breite als Waise in einer eigenen Reihe stand (Befund P1).
+    for (const f of sourceFiles()) {
+      expect(ohneKommentare(readFileSync(f, 'utf8')), f).not.toContain('vp-portfolio-kpis');
+    }
+  });
+
+  it('es gibt nur EINE Anlagen-Fläche: die Tabelle - Karten erst am Telefon', () => {
+    const code = ohneKommentare(readFileSync(join(SRC, 'components/PortfolioCockpit.tsx'), 'utf8'));
+    expect(code).toContain('AnlagenTabelle');
+    // Die Flotten-Karte lebt weiter - aber als Karte der Anlagen-LISTE
+    // (`#/anlagen`), nicht als zweite Flotten-Fassung des Portfolios.
+    expect(code).not.toContain('FleetSiteCard');
+  });
+
+  it('der Layout-Speicher bleibt SERVER-seitig, auch für die neuen Flächen', () => {
+    // Der Admin gestaltet für den Kunden - eine Browser-Ablage wäre pro Gerät
+    // und damit keine Vorgabe.
+    for (const name of [
+      'components/PortfolioCockpit.tsx',
+      'components/AnlagenTabelle.tsx',
+      'components/KennzahlLeiste.tsx',
+      'portfolioCockpit.ts',
+      'portfolioVorschau.ts',
+    ]) {
+      const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
+      expect(code, name).not.toMatch(/localStorage|sessionStorage/);
+    }
   });
 });

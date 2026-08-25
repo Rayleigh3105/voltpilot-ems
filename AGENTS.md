@@ -3525,12 +3525,15 @@ UND am DOM (`AnlagenPage.test.tsx`).
   Portfolio-Scope · Zeiträume über den Tag hinaus (die vier Kennzahlen sind Tages-Größen, und der
   Verlauf ist der Tagesverlauf — der Messwerte-Explorer bleibt der Ort für Woche/Monat/Jahr).
 
-## Das PORTFOLIO-COCKPIT: EINE Flotten-Fläche für jeden Mehr-Anlagen-Kunden (Stufe 4)
+## Das PORTFOLIO-COCKPIT: EINE Flotten-Fläche für jeden Mehr-Anlagen-Kunden (Stufe 4, Rev. 2)
 
 Captain-Entscheide **E5** (ein Portfolio-Cockpit aus den Anwendungen komponiert; die Betriebsart
 steuert nur noch DICHTE und TONALITÄT; `FleetUebersicht` geht darin auf) und **E1** (das
 Portfolio-Layout hängt am KUNDEN) vom 24.08.2026, Konzept `data/vp-portal-zielbild-anwendungen`
-§2.5/§3.5/§4.3 C. **Der behobene Befund war die KOMPOSITION, nicht die Datenlage:** die
+§2.5/§3.5/§4.3 C — seit dem 25.08.2026 in der **Revision 2** (Scout
+`data/vp-portfolio-konzept-r2` §5.2/§5.4, `…-b3` §6a: Kopf mit EINER Flotten-Zeile,
+Kennzahlen-LEISTE statt Icon-Kacheln, EINE Anlagen-Tabelle in zwei Dichten, **kein Geld-Held**
+und **kein kumulierter Ladestand**; die Fläche selbst steht in `frontend/portal/AGENTS.md`). **Der behobene Befund war die KOMPOSITION, nicht die Datenlage:** die
 Grammatik war schon die des Cockpits, die KPI-Zeile aber fest Geld-und-Speicher-zuerst — ein
 Gewerbekunde mit drei Filialen und reinem Monitoring sah dort **„—, —, —"**.
 
@@ -3546,9 +3549,11 @@ Gewerbekunde mit drei Filialen und reinem Monitoring sah dort **„—, —, —
   seiner Anwendungen und den zwei Portfolio-Welten. Sein altes Lesezeichen `#/uebersicht` gilt
   weiter (`redirectToPortfolio` leitet es). **Ein EINZEL-Anlagen-Kunde ist zeichengleich unberührt**
   — er hat keine Flotten-Ebene, seine Übersicht IST seine Anlagen-Seite wie seit je.
-- **Die Betriebsart entscheidet nur noch zweierlei:** die DICHTE (`portfolioDichte` —
-  `betreiber` Tabelle, alles andere Karten; ein UNBEKANNTER Rahmen fällt auf Karten, also
-  bestandsneutral) und die TONALITÄT (`fleetTonalitaet`). Ihr dritter, unveränderter Nutzen ist
+- **Die Betriebsart entscheidet nur noch zweierlei:** die DICHTE (`portfolioDichte` — seit
+  Revision 2 `kompakt` für den Betreiber und `komfortabel` für jeden anderen; **beide rendern
+  DIESELBE Tabelle**, sie unterscheiden sich in Zeilenhöhe und Unterzeile. Die frühere Lesart
+  „Tabelle vs. Karten" war der Grund, warum die Betriebsart nicht die Dichte, sondern den INHALT
+  änderte) und die TONALITÄT (`fleetTonalitaet`). Ihr dritter, unveränderter Nutzen ist
   die Frage, AB WANN es eine Flotten-Ebene gibt (Betreiber ab der ersten Anlage, Endkunde ab der
   zweiten).
 - **⚠ DIE AGGREGATIONSREGEL WOHNT AM BAUSTEIN, im EINEN Katalog** (`anwendungen/catalog.json`,
@@ -3558,14 +3563,21 @@ Gewerbekunde mit drei Filialen und reinem Monitoring sah dort **„—, —, —
   Prozent-Mittel gar nicht vor** — genau das verhindert „Ø Autarkie der Flotte". Ein
   Cockpit-Baustein trägt beide Felder NIE (er zeigt EINE Anlage und fasst nichts zusammen);
   `AnwendungKatalogTest` nagelt beide Richtungen fest.
+  **⚠ Seit Revision 2 trägt KEIN Portfolio-Baustein mehr `gewichtet`** (Captain: „Der kumulierte
+  Ladestand ist doch nicht aussagekräftig oder?"): `speicher` ist `je_anlage` und rendert nur noch
+  die SPALTE der Tabelle. Ein wieder auftauchendes `gewichtet` ist der Hinweis darauf, dass jemand
+  erneut einen Prozentsatz zusammenfasst — beidseitig gepinnt (`AnwendungKatalogTest` +
+  `portfolioCockpit.test.ts`).
 - **Die drei Regeln, die die Zahlen ehrlich halten** (`frontend/portal/src/portfolioCockpit.ts`,
   rein + Docker-frei geprüft — das `Tagesprotokoll`/`FleetPflege`-Muster):
   - **Σ nur, wo Σ ehrlich ist.** Energie (kWh), Leistung, Geld und Stückzahlen werden summiert;
     **Bezug und Einspeisung GETRENNT, nie saldiert** (eine Filiale, die einspeist, darf den Bezug
-    einer anderen nicht rechnerisch tilgen). Der EINZIGE Mittelwert ist der Ladestand, und er ist
-    mit der Kapazität GEWICHTET (`Σ(soc × kWh)/Σ kWh`) — ungewichtet wöge ein 10-kWh-Haus so
-    schwer wie ein 120-kWh-Betrieb; eine Anlage ohne gepflegte Kapazität hat kein Gewicht und geht
-    gar nicht ein. Dafür trägt die Flotten-Zeile `storageCapacityKwh` JE ANLAGE.
+    einer anderen nicht rechnerisch tilgen). **⚠ Seit Revision 2 gibt es GAR KEINEN Mittelwert
+    mehr:** der Ladestand war der einzige (kapazitätsgewichtet), und er ist raus — er steht
+    ausschliesslich JE ANLAGE in der Tabellen-Spalte bzw. der Telefon-Karte. `PortfolioKennzahlen`
+    trägt dafür nur noch `ladestandAnlagen`, den Zähler, der über die SPALTE entscheidet. Die
+    Flotten-Zeile führt `storageCapacityKwh` weiter (sie war das Gewicht des alten Mittels und
+    bleibt für spätere Fragen nützlich), aber nichts liest sie mehr für eine Flotten-Zahl.
   - **`null` statt einer erfundenen 0** — und ein Baustein ohne Wert wird AUSGEBLENDET statt als
     „—" hingestellt. Das ist die Antwort auf den Befund.
   - **Ein Baustein braucht BEIDES: eine aktive Anwendung UND einen Wert** (`verfuegbareBausteine`).
@@ -3587,14 +3599,16 @@ Gewerbekunde mit drei Filialen und reinem Monitoring sah dort **„—, —, —
   seit Stufe 3 scope-generisch gebaut. Kein zweiter Speicher, kein zweiter Editor: der
   Anpassen-Modus der Stufe 3 wird wiederverwendet. **Das Portfolio hat keine Bühne** (kein
   lead-fähiger Baustein), der Server lehnt dort jeden `lead` ab.
-- **Beweise:** rein `portfolioCockpit.test.ts` (30) + `migration.test.ts` (+8, u. a. „der
-  Einzel-Anlagen-Kunde ist byte-identisch" und „die frühere FleetUebersicht ist ersatzlos
-  übergegangen") + Java `AnwendungKatalogTest` (+2) · DOM `components/PortfolioCockpit.test.tsx`
-  (11, der §4.3-C-Fall mit echten Zahlen, beide Dichten über DIESELBE Flotte, der gewichtete
-  Ladestand) · Testcontainers
-  `PortalApiTest.overviewCarriesTheEnergyStorageWeightAndActiveApplicationsOfEachSite`.
-  Mutationsgeprüft: der gewichtete Ladestand, das Anwendungs-Tor, die Aggregations-Pflicht im
-  Katalog und die `null`-Ehrlichkeit von `energyToday` fallen ohne ihre Regel um.
+- **Beweise:** rein `portfolioCockpit.test.ts` (56) + `portfolioVorschau.test.ts` (11) +
+  `migration.test.ts` (41, u. a. „der Einzel-Anlagen-Kunde ist byte-identisch", „die frühere
+  FleetUebersicht ist ersatzlos übergegangen" und die vier Revision-2-Abbau-Wächter) + Java
+  `AnwendungKatalogTest` (kein Baustein mittelt mehr) · DOM
+  `components/PortfolioCockpit.test.tsx` (21, der §4.3-C-Fall mit echten Zahlen, beide Dichten
+  über DIESELBE Flotte, der Kopf-Satz, die Vorschau) + `components/AnlagenTabelle.test.tsx` (15)
+  + `components/KennzahlLeiste.test.tsx` (7) + `pages/PortfolioPage.test.tsx` (4) ·
+  Testcontainers `PortalApiTest.overviewCarriesTheEnergyStorageWeightAndActiveApplicationsOfEachSite`.
+  Mutationsgeprüft: das Anwendungs-Tor, die Aggregations-Pflicht im Katalog und die
+  `null`-Ehrlichkeit von `energyToday` fallen ohne ihre Regel um.
 - **NICHT in dieser Stufe:** eigene Kacheln aus Messwerten (`document.custom`, Stufe 5) ·
   Berichte (Stufe 6) · eine Portfolio-Fläche für den Einzel-Anlagen-Kunden (er hat keine
   Flotten-Ebene, und eine „Flotte von eins" wäre eine Fläche ohne Frage).

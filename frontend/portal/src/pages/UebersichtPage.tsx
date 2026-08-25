@@ -4,7 +4,6 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { type Betriebsart, type Device, type Site } from '../api';
-import { currentUser } from '../auth';
 import { isFleetShell } from '../betriebsart';
 import { anlageRoute, type Route } from '../nav';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
@@ -24,12 +23,10 @@ interface UebersichtProps {
 }
 
 /**
- * The ADAPTIVE Übersicht landing of the ENDKUNDE (cockpit) shell: with one
- * Anlage the Übersicht IS the Anlagen-Seite (their whole world is one Anlage,
- * no duplicated hero blocks); with 2-3 Anlagen they get the calm CARD overview
- * (money hero, fleet status sentence, per-Anlage cards; a card tap opens that
- * Anlage's page #/anlage/{id}) - by design never a portfolio table (design
- * vp-ems-ui-overhaul §2.3).
+ * Die ADAPTIVE Übersichts-Landung der ENDKUNDEN-Schale: mit EINER Anlage IST
+ * die Übersicht die Anlagen-Seite (ihre ganze Welt ist eine Anlage, keine
+ * doppelten Hero-Blöcke); ab zwei Anlagen rendert sie das gemeinsame
+ * {@link PortfolioCockpit} in seiner KOMFORTABLEN Dichte.
  *
  * ⚠ Seit dem Anwendungs-Programm Stufe 4 (E5) landet KEIN Mandant mit
  * Flotten-Ebene mehr hier - weder ein Betreiber noch ein Endkunde ab zwei
@@ -60,9 +57,8 @@ export function UebersichtPage(props: UebersichtProps) {
   }
   // Anwendungs-Programm Stufe 4 (E5): die Flotten-Ebene ist EINE Fläche. Die
   // frühere `FleetUebersicht` ist ersatzlos in das {@link PortfolioCockpit}
-  // übergegangen - dessen Karten-Dichte IST ihr Bild (Geld-Held + Status
-  // nebeneinander, darunter eine Karte je Anlage), nur komponiert aus den
-  // Anwendungen der Anlagen statt aus einer festen Kachel-Zeile.
+  // übergegangen; seit Revision 2 unterscheidet die Betriebsart dort nur noch
+  // die DICHTE derselben Tabelle, nicht mehr Karten gegen Tabelle.
   //
   // ⚠ Ein KUNDE landet hier seit Stufe 4 gar nicht mehr: `showPortfolioNav`
   // hängt an der Flotten-Ebene, also leitet `redirectToPortfolio` ihn auf
@@ -77,15 +73,9 @@ export function UebersichtPage(props: UebersichtProps) {
       onReload={props.onReload}
       isAdmin={props.isAdmin}
       betriebsart={props.betriebsart ?? null}
-      kopf={{ titel: `Guten Tag, ${greetingName()}`, satz: 'Alle Ihre Anlagen auf einen Blick.' }}
+      titel="Meine Anlagen"
     />
   );
-}
-
-/** Der Vorname für die Begrüßung - sonst der ganze angezeigte Name. */
-function greetingName(): string {
-  const user = currentUser();
-  return (user.name || '').split(/\s+/)[0] || user.name;
 }
 
 /** Empty-state: onboarding entry for customers, neutral notice for admins. */
@@ -127,10 +117,3 @@ function UebersichtEmpty({ onReload, isAdmin = false }: UebersichtProps) {
     </>
   );
 }
-
-/**
- * Fleet mode: one tenant-wide overview request (30 s background poll like the
- * single-site widgets) renders the hero + status sentence + Anlagen cards. No
- * Ø-Preis KPI here (captain decision - meaningless across bidding zones);
- * price detail lives on each Anlage and on the Marktpreise page.
- */

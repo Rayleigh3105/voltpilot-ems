@@ -299,8 +299,8 @@
       "beweglich": true,
       "lead_block": null,
       "bloecke": [],
-      "aggregation": "gewichtet",
-      "aggregation_regel": "Kapazität und Leistung werden summiert; der Ladestand ist mit der Kapazität GEWICHTET (Σ(soc × kWh) / Σ kWh). Ein ungewichtetes Mittel ließe ein 10-kWh-Haus so schwer wiegen wie einen 120-kWh-Betrieb; eine Anlage ohne gepflegte Kapazität geht gar nicht ein."
+      "aggregation": "je_anlage",
+      "aggregation_regel": "Der Ladestand steht JE ANLAGE (Spalte der Tabelle bzw. Karte am Telefon) und wird über die Flotte NICHT gemittelt - ein kumulierter Ladestand ist keine Aussage (Captain 25.08.2026). Kapazität und Leistung des Speichers stehen im Anlagen-Modell."
     },
     {
       "id": "lastspitzen",
@@ -373,7 +373,7 @@
       "label": "Anlagen",
       "flaeche": "portfolio",
       "pflicht": true,
-      "beweglich": true,
+      "beweglich": false,
       "lead_block": null,
       "bloecke": [],
       "aggregation": "je_anlage",

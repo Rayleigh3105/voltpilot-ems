@@ -267,6 +267,7 @@ export function AnpassenListe<T extends string = BausteinId>({
   onSichtbar,
   onLead,
   extra,
+  note,
 }: {
   zeilen: AnpassenZeile<T>[];
   onVerschieben: (id: T, richtung: 'hoch' | 'runter') => void;
@@ -274,6 +275,12 @@ export function AnpassenListe<T extends string = BausteinId>({
   onLead: (block: CockpitBlockId) => void;
   /** Zusätzliche Bedienelemente je Zeile (Stufe 5: der Stift). */
   extra?: (zeile: AnpassenZeile<T>) => ReactNode;
+  /**
+   * Der Orts-Hinweis eines unbeweglichen Bausteins — die `AnpassenHuelle` trägt
+   * ihn am Rechner, die Liste bis Stufe 3 gar nicht. Optional, damit jeder
+   * bestehende Aufrufer zeichengleich rendert.
+   */
+  note?: (zeile: AnpassenZeile<T>) => string | null;
 }) {
   const sichtbar = zeilen.filter((z) => z.sichtbar);
   const versteckt = zeilen.filter((z) => !z.sichtbar);
@@ -289,6 +296,7 @@ export function AnpassenListe<T extends string = BausteinId>({
               onLead={onLead}
               extra={extra?.(z)}
             />
+            {note?.(z) && <p className="vp-anpassen-note">{note(z)}</p>}
           </li>
         ))}
       </ul>

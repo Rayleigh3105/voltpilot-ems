@@ -1,4 +1,3 @@
-import { currentUser } from '../auth';
 import type { Betriebsart, Site } from '../api';
 import type { Route } from '../nav';
 import { PortfolioCockpit } from '../components/PortfolioCockpit';
@@ -23,8 +22,11 @@ interface PortfolioProps {
  * Betriebsart `betreiber`, die Kacheln als Bausteine, die eine aktive
  * Anwendung beisteuert.
  *
- * Die Route bleibt, damit jedes Lesezeichen gilt; sie ist nur noch der Kopf
- * (Titel + Ansprache) über der gemeinsamen Fläche.
+ * Die Route bleibt, damit jedes Lesezeichen gilt; sie liefert der gemeinsamen
+ * Fläche seit Revision 2 nur noch ihren TITEL. Die frühere Ansprache („Guten
+ * Tag, …") ist ersatzlos entfallen: unter dem Titel steht jetzt die EINE
+ * Flotten-Aussage, und eine Begrüßung darüber wäre die zweite Zeile, die
+ * nichts über die Flotte sagt (Captain 25.08.2026).
  */
 export function PortfolioPage({
   sites,
@@ -33,8 +35,6 @@ export function PortfolioPage({
   isAdmin = false,
   betriebsart = null,
 }: PortfolioProps) {
-  const user = currentUser();
-  const firstName = (user.name || '').split(/\s+/)[0] || user.name;
   return (
     <PortfolioCockpit
       sites={sites}
@@ -44,12 +44,8 @@ export function PortfolioPage({
       // Ein Admin sieht das Portfolio des GEWÄHLTEN Mandanten; ohne gewählten
       // Mandanten kommt er hier gar nicht an (die Schale leitet ihn weiter).
       betriebsart={betriebsart ?? 'betreiber'}
-      kopf={{
-        titel: 'Portfolio',
-        satz: isAdmin
-          ? 'Alle Anlagen dieses Mandanten auf einen Blick.'
-          : `Guten Tag, ${firstName} - Ihr Anlagen-Portfolio auf einen Blick.`,
-      }}
+      titel="Portfolio"
+      titelBereitsGenannt
     />
   );
 }

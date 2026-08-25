@@ -5,9 +5,15 @@ import { api, type Overview, type OverviewSite, type Site } from '../api';
 import type { Route } from '../nav';
 
 /**
- * M6 (#534): die Betreiber-Portfolio-Tabelle trägt pro Anlage die MODUS-CHIPS
- * (die M0-Projektion) statt des abgelösten AE7-Profil-Chips (F5) — und die
- * Zeile bleibt der Absprung in genau diese Anlage.
+ * M6 (#534) in der **Revision 2** vom 25.08.2026: die Zeile einer Anlage nennt
+ * die MENGE ihrer Geschäfts-Anwendungen (die M0-Projektion) statt des
+ * abgelösten AE7-Profil-Chips (F5) — und sie bleibt der Absprung in genau
+ * diese Anlage.
+ *
+ * ⚠ Die eigene SPALTE „Anwendungen" ist mit Revision 2 entfallen: sie stand in
+ * einer Tabelle, deren übrige Spalten Zahlen sind, und drängte die Zahlen an
+ * den Rand. Die Anwendungen sind seither die UNTERZEILE der kompakten Dichte
+ * — dieselbe Aussage, an dem Ort, an dem der Name steht.
  */
 
 function site(over: Partial<Site> & { id: string; name: string }): Site {
@@ -72,6 +78,9 @@ beforeEach(() => {
     sites: [],
     totals: {} as never,
   } as never);
+  vi.spyOn(api, 'tenantCockpitLayout').mockResolvedValue({ vorgabe: null, eigen: null } as never);
+  vi.spyOn(api, 'schedule').mockResolvedValue({ slots: [], deviceId: null } as never);
+  vi.spyOn(api, 'controlStatus').mockResolvedValue(null as never);
 });
 
 function renderPage(onNavigate: (r: Route) => void = () => {}) {
@@ -80,34 +89,50 @@ function renderPage(onNavigate: (r: Route) => void = () => {}) {
   );
 }
 
-describe('Portfolio: die Anwendungs-Spalte (M6)', () => {
+async function zeile(container: HTMLElement, name: string): Promise<HTMLElement> {
+  await waitFor(() => expect(screen.getByText(name)).toBeInTheDocument());
+  const rows = [...container.querySelectorAll('tbody tr')] as HTMLElement[];
+  const treffer = rows.find((r) => r.textContent?.includes(name));
+  expect(treffer, name).toBeTruthy();
+  return treffer!;
+}
+
+describe('Portfolio: die Anwendungen der Anlage (M6, Revision 2)', () => {
   it('nennt die aktiven Anwendungen einer migrierten Anlage — mehrere, nicht ein Gesicht', async () => {
     const { container } = renderPage();
-    await waitFor(() => expect(screen.getByText('Werk Nord')).toBeInTheDocument());
-
-    expect(screen.getByRole('columnheader', { name: 'Anwendungen' })).toBeInTheDocument();
-    // Der abgelöste Profil-Chip ist weg.
-    expect(screen.queryByRole('columnheader', { name: 'Profil' })).toBeNull();
+    const werk = await zeile(container, 'Werk Nord');
+    const unter = werk.querySelector('.vp-at-sub')!;
+    expect(unter.textContent).toBe('Direktvermarktung · Lastspitzenkappung · Marktoptimierung');
+    // Der abgelöste Profil-Chip ist weg - und mit Revision 2 auch die eigene
+    // Spalte, die die Zahlen an den Rand drängte.
     expect(container.querySelector('.vp-profile-chip')).toBeNull();
-
-    const chips = [...container.querySelectorAll('.vp-mode-chip')].map((n) => n.textContent);
-    expect(chips).toEqual(['Lastspitzenkappung', 'Marktoptimierung']);
+    expect(screen.queryByRole('columnheader', { name: 'Anwendungen' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'Profil' })).toBeNull();
   });
 
-  it('lässt die Zelle einer nie migrierten Anlage leer („—"), statt eine Face zu erfinden', async () => {
+  it('nennt bei einer nie migrierten Anlage nur, was sie belegen kann', async () => {
+    // Ohne Signale bleibt die Veräußerungsform - eine erfundene Anwendung
+    // wäre die schlimmere Auskunft.
     const { container } = renderPage();
-    await waitFor(() => expect(screen.getByText('Bestandsanlage')).toBeInTheDocument());
-    const rows = [...container.querySelectorAll('tbody tr')];
-    const altRow = rows.find((r) => r.textContent?.includes('Bestandsanlage'));
-    expect(altRow?.querySelector('.vp-mode-chip')).toBeNull();
-    expect(altRow?.querySelector('td[data-label="Anwendungen"]')?.textContent).toBe('—');
+    const alt = await zeile(container, 'Bestandsanlage');
+    expect(alt.querySelector('.vp-at-sub')!.textContent).toBe('Eigenverbrauch');
+  });
+
+  it('führt KEINE Komponenten-Zähler mehr - die Spalten SIND die Komponenten', async () => {
+    const { container } = renderPage();
+    await zeile(container, 'Werk Nord');
+    expect(container.querySelector('.vp-entity-badges')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'Komponenten' })).toBeNull();
   });
 
   it('bleibt der Absprung in genau diese Anlage', async () => {
     const routes: Route[] = [];
-    renderPage((r) => routes.push(r));
-    await waitFor(() => expect(screen.getByText('Werk Nord')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('Werk Nord'));
+    const { container } = renderPage((r) => routes.push(r));
+    await zeile(container, 'Werk Nord');
+    // Der Name klappt die Vorschau auf, der Absprung steht darin - ein Klick
+    // auf die Zeile navigiert nicht mehr blind weg.
+    fireEvent.click(screen.getByRole('button', { name: /Werk Nord/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Cockpit öffnen/ }));
     expect(routes).toEqual([{ page: 'anlagen', siteId: 'werk', sub: null }]);
   });
 });

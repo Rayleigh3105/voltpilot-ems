@@ -27,6 +27,18 @@ export function fmtRelative(iso: string | null | undefined, now: Date = new Date
   });
 }
 
+/**
+ * „seit 3 Std." — die DAUER eines anhaltenden Zustands, nicht der Zeitpunkt
+ * eines Ereignisses. `fmtRelative` beantwortet „wann zuletzt?" („vor 3 Std.");
+ * ein Zustand, der ANHÄLT, braucht das andere Wort: „meldet sich nicht · seit
+ * 3 Std." Ohne Zeitstempel wird nichts behauptet (null), nie „seit noch nie".
+ */
+export function seitDauer(iso: string | null | undefined, now: Date = new Date()): string | null {
+  if (!iso) return null;
+  const rel = fmtRelative(iso, now);
+  return rel.startsWith('vor ') ? `seit ${rel.slice(4)}` : `seit dem ${rel}`;
+}
+
 /** German label for a device kind (backend enum values stay English). */
 export function deviceKindLabel(kind: string): string {
   const map: Record<string, string> = {

@@ -1528,52 +1528,105 @@ Fläche. **Ohne einen einzigen Eintrag rendert das Cockpit zeichengleich wie vor
   der Knopf nur im Anpassen-Modus, kein Knopf ohne die Anwendung, die frische Kachel sagt „noch
   nicht gespeichert").
 
-## Das PORTFOLIO-COCKPIT: die Flotten-Fläche (Anwendungs-Programm Stufe 4)
+## Das PORTFOLIO-COCKPIT: die Flotten-Fläche (Stufe 4, **Revision 2**)
 
-Captain-Entscheid **E5**: EINE Fläche für jeden Mehr-Anlagen-Kunden, komponiert aus den
-Anwendungen seiner Anlagen. Regeln, Katalog und Server-Seite stehen in der Root-`AGENTS.md`
-(„Das PORTFOLIO-COCKPIT"); hier die Fläche.
+Captain-Entscheid **E5** (EINE Fläche für jeden Mehr-Anlagen-Kunden), seit dem 25.08.2026 in
+der **Revision 2** (Scout `data/vp-portfolio-konzept-r2` §5.2/§5.4, `…-b3` §6a; Entscheide E1
+„A · Tabelle mit Vorschau-Zeile", E2 „Geld-Held entfällt", E5 „Anpassen = Zellen + Spalten" plus
+die drei Schärfungen: Status als EINE Zeile · kein kumulierter Ladestand · Reset ohne Drohung).
+Regeln, Katalog und Server-Seite stehen in der Root-`AGENTS.md`; hier die Fläche.
 
-- **`components/PortfolioCockpit.tsx` ist die EINZIGE Flotten-Fläche.** `pages/PortfolioPage.tsx`
-  ist auf 55 Zeilen geschrumpft (nur noch Kopf + Ansprache darüber), `pages/UebersichtPage.tsx`
-  von 348 auf 136 — **`FleetUebersicht` ist ersatzlos darin aufgegangen**. Wer eine dritte
-  Flotten-Ansicht bauen will, baut einen Baustein in diese eine.
-- **⚠ Die DICHTE ist eine Anordnungs-Frage, keine Kosmetik.** In der Karten-Dichte ist das Geld
-  der HELD und steht mit dem Status im `.vp-fleet-top`-Paar (genau das frühere
-  FleetUebersicht-Bild); in der Tabellen-Dichte sind dieselben Erlöse ZWEI KpiCards. Das Paar
-  oben rendert nur, solange Status und Geld **kanonisch benachbart** sind (`paarOben`) —
-  verschiebt der Kunde das Geld im Anpassen-Modus woanders hin, rendert es an SEINER Stelle als
-  voller Held und der Status steht allein: **die Anordnung gewinnt vor der Kosmetik**, sonst
-  wäre der Griff eine Lüge.
-- **Die Kacheln kommen aus `kachelFuer`, die ZAHLEN aus dem reinen `src/portfolioCockpit.ts`.**
-  Eine Kachel, deren Wert `null` ist, wird gar nicht erst gebaut (`verfuegbareBausteine` hat sie
-  vorher aussortiert) — das ist die Antwort auf „—, —, —". Die zwei Fussnoten
-  (`ladestandFussnote`, `pvJetztFussnote`) SAGEN die Grundlage: „nach Speichergröße gewichtet"
-  bzw. „1 von 3 Anlagen melden gerade".
-- **Dieselbe Regel gilt eine Ebene tiefer für die TABELLEN-SPALTEN** (`tabellenSpalten`): eine
-  Spalte, die KEINE Anlage füllen kann, wird weggelassen — der Nur-Monitoring-Kunde trug sonst
-  eine „Ladestand"-Spalte aus lauter „—". **Ein EINZELNES „—" bleibt dagegen stehen:** in einer
-  gemischten Flotte ist es die wahre Aussage über genau diese Anlage.
-- **⚠ `.vp-portfolio-kpi-paar` (ein Baustein mit ZWEI Kacheln: Netz heute, Speicher, Erlöse) darf
-  im Normal-Modus KEIN eigener Gitter-Platz sein.** Es hatte anfangs gar keine CSS-Regel und
-  stauchte seine zwei Karten in EINE Spalte, während die Nachbarn einzeln standen. Wrapper und
-  Paar treten deshalb mit `display: contents` zur Seite, damit die KACHELN die Gitter-Zellen sind;
-  im ANPASSEN-Modus bekommt das Paar dagegen sein eigenes kleines Gitter — dort ist es EIN
-  Baustein mit EINEM Griff und EINEM Auge. Dort ist die Spalte auch nur ~235 px breit, weshalb
-  die Knopf-Gruppe (`.vp-portfolio-kpis .vp-anpassen-ctrl`) NICHT umbrechen darf und der Name
-  weicht — sonst stünden die Bedienelemente eines Bausteins auf zwei Zeilen.
-- **⚠ Der Ruhe-Satz kommt NUR, wenn gar keine Kennzahl da ist** (`ruheSatz`). Eine Flotte ohne
-  Speicher bekommt KEINE Erklärung dafür, dass keine Speicher-Kachel dasteht — die Erklärung
-  wäre die Zeile, die früher „—" hieß.
-- **Der Anpassen-Modus ist der der Stufe 3**, nur mit `schluessel: 'portfolio'` und der
-  Kunden-Quelle (`api.tenantCockpitLayout('portfolio')`). **Das Portfolio hat keine Bühne**, also
-  `blocks: []` und keinen Stern — der Server lehnt dort jeden `lead` ohnehin ab.
-- **Drill-down** ist unverändert `anlageRoute(siteId)`: die Karte wie die Tabellenzeile öffnet
-  genau ihre Anlage, die Flotten-Leiste bleibt der Rückweg.
-- **Beweise:** `src/portfolioCockpit.test.ts` (30, rein) · `components/PortfolioCockpit.test.tsx`
-  (11: der §4.3-C-Nur-Monitoring-Fall mit echten Zahlen, beide Dichten über DIESELBE Flotte, der
-  gewichtete Ladestand, die leere Flotte, der Kunden-Scope des Layouts) · `src/betriebsart.test.ts`
-  (24) · `src/shell/PortfolioNav.test.tsx` (4) · `src/migration.test.ts` (+8).
+Sie liest von oben nach unten: **Kopf** (Titel + die EINE Flotten-Aussage als Unterzeile,
+Aktionen im „···"-Menü, daneben „Anpassen") → **Kennzahlen-Leiste** → **EINE Anlagen-Tabelle** in
+zwei Dichten mit aufklappbarer Vorschau je Zeile.
+
+### Was Revision 2 ERSATZLOS entfernt hat, und warum
+
+- **Der Geld-HELD** (`EarningsHero`) und die **Flotten-Status-KARTE** (`FleetStatusCard`) sind
+  aus `components/FleetOverview.tsx` GELÖSCHT — der Marken-Verlauf gehört Login und Marketing,
+  im Betriebs-Portal ist Geld eine Zelle der Leiste wie jede andere Zahl. Die TONALITÄT trägt
+  weiterhin das WORT (`vorteilLabel`: „Mehrerlös heute" vs. „Vorteil heute"). Ihre
+  Ehrlichkeitsregeln (Verlusttag unter der Nulllinie, Strich statt Mindesthöhe, kein Nullbalken)
+  sind unberührt — sie wohnen im reinen `miniChart.ts` und sind dort geprüft, deshalb ging mit
+  `FleetOverview.test.tsx` nichts verloren. **`FleetSiteCard` lebt weiter**: sie ist die Karte
+  der Anlagen-LISTE (`#/anlagen`).
+- **Die neun Icon-Kacheln** sind eine LEISTE (`components/KennzahlLeiste.tsx` + `.css`) — dieselben
+  Katalog-Bausteine, nur als Zellen. Das 235-px-`auto-fit`-Gitter (`.vp-portfolio-kpis`, samt
+  `kachelFuer`/`ladestandFussnote`/`vp-portfolio-kpi-paar`) ist weg: seine letzte Kachel stand bei
+  fast jeder Breite als WAISE in einer eigenen Reihe.
+- **Karten und Tabelle sind EINE Tabelle** (`components/AnlagenTabelle.tsx` + `.css`). `dichte`
+  entscheidet nur noch über Zeilenhöhe und Unterzeile, **nicht mehr über den INHALT** — das war
+  Befund K4. Karten rendert erst das Telefon, und zwar in derselben Zeilen-Grammatik.
+- **Die Begrüßung** („Guten Tag, …") ist aus beiden Wirten weg: unter dem Titel steht jetzt die
+  Flotten-Aussage, und eine Begrüßung darüber wäre die zweite Zeile, die nichts über die Flotte
+  sagt. `PortfolioPage`/`UebersichtPage` reichen nur noch ihren `titel` durch.
+
+### Die Regeln der Fläche
+
+- **⚠ ALLES Rechnende liegt im reinen `src/portfolioCockpit.ts`**, die Vorschau in
+  `src/portfolioVorschau.ts`, die Anordnung in `src/cockpitLayout.ts` — die drei Bauteile
+  rendern. `portfolioVorschau` erfindet dabei KEINE Aussage: jede Zeile ist eine Komposition
+  bestehender, anderswo geprüfter Ableitungen (`schedule.planSentence` · `preisFenster` ·
+  `control.controlStrip` · `health.healthChecklist`). Zwei Formulierungen über dieselbe Sache
+  wären zwei Wahrheiten.
+- **`bausteinOrt(id)` sagt, WO ein Baustein rendert** — Zelle der Leiste, Spalte der Tabelle oder
+  beides. „PV jetzt" ist BEIDES (einmal Σ über die Flotte, einmal je Anlage), und das ist kein
+  Widerspruch, sondern der Kern der Zeilen-Grammatik. Deshalb gibt es **EIN Auge je Baustein**:
+  wer „PV jetzt" ausblendet, meint die GRÖSSE, nicht den Ort.
+- **⚠ Der kumulierte Ladestand ist RAUS** (Captain: „ist doch nicht aussagekräftig oder?").
+  `speicher` ist `aggregation: 'je_anlage'` und rendert NUR die Spalte; `PortfolioKennzahlen`
+  trägt kein `ladestandPct` mehr, nur `ladestandAnlagen` (der Zähler, der über die Spalte
+  entscheidet). Ein wieder auftauchendes `gewichtet` im Katalog ist der Hinweis darauf, dass
+  jemand erneut einen Prozentsatz zusammenfasst — beidseitig gepinnt (`portfolioCockpit.test.ts`
+  + Java `AnwendungKatalogTest`).
+- **Eine Zelle ohne Wert wird gar nicht erst gebaut, eine Spalte ohne einen einzigen Wert
+  weggelassen** (`leistenZellen` / `tabellenSpalten`) — das ist die Antwort auf „—, —, —". **Ein
+  EINZELNES „—" bleibt dagegen stehen:** in einer gemischten Flotte ist es die wahre Aussage über
+  genau diese Anlage. `tabellenSpalten` hält dabei die feste Lese-Reihenfolge Jetzt → Heute: die
+  ANORDNUNG entscheidet, WELCHE Spalte es gibt, nicht in welcher Reihenfolge sie stehen — eine je
+  Kunde anders sortierte Tabelle liesse sich zwischen zwei Anlagen nicht mehr lesen.
+- **`flottenAussage` ist EINE Zeile und zählt ANLAGEN**, nicht Geräte; ihr Urteil je Anlage ist
+  wörtlich `portfolio.siteStatus`. Eine Anlage mit Aufmerksamkeitsbedarf wird BEIM NAMEN genannt
+  und trägt ihr Alter.
+- **`anlagenZeilen` sortiert Zustand zuerst, dann Name** — die Anlage, die Aufmerksamkeit braucht,
+  steht oben, ohne dass jemand sortiert. Ein „jetzt"-Wert entsteht nur mit FRISCHEM Messwert
+  (`siteLiveFresh`); die Tages-Summen bleiben davon unberührt (sie sind Historie).
+- **⚠ Die Vorschau lädt LAZY, je Anlage genau einmal** (`useVorschau`): zwei Abrufe je Anlage bei
+  jedem Seitenaufruf wären der Preis für eine Fläche, die der Kunde meistens gar nicht aufklappt.
+  Beide Abrufe sind fail-soft, und `null` heisst „lädt noch" — Laden und „nichts da" sind zwei
+  verschiedene Auskünfte, und die Fläche sagt beide.
+- **Der ABSPRUNG steht IN der Vorschau, nicht als blinder Zeilen-Klick:** ein Klick auf den Namen
+  klappt auf, „Cockpit öffnen ›" navigiert. So kann ein Klick nie versehentlich die Fläche
+  verlassen.
+- **Anpassen ordnet ZELLEN und SPALTEN** — auf BEIDEN Breiten die kompakte `AnpassenListe`, nie
+  eine `AnpassenHuelle` (eine Hülle um eine Tabellenspalte gibt es nicht). `AnpassenListe` hat
+  dafür das additive `note` bekommen und zeigt den `ortsHinweis` eines unbeweglichen Bausteins
+  („Die Anlagen-Tabelle steht immer zuletzt.") — ein „fest" ohne Begründung ist eine Sperre ohne
+  Grund. **Das Portfolio hat keine Bühne**, also `blocks: []` und kein Stern.
+- **⚠ Der Reset-Satz nennt das ERGEBNIS, nicht den Verlust** („Danach gilt wieder …" statt „Ihre
+  Anordnung wird verworfen — …"). Beides ist wahr, aber die zweite Form droht mit einer Handlung,
+  die der Kunde selbst ausgelöst hat.
+- **⚠ Der Kopf NENNT die Ebene nur, wo sie sonst niemand nennt (Passung zu #503).** Seit der
+  Navigations-Runde „zwei Ebenen" trägt die BETREIBER-Ebene die Reiter `Übersicht · Messwerte ·
+  Erlöse` ÜBER dem Seitenkopf, und die Kopfzeile führt die Krume „Portfolio" — die Überschrift
+  stünde dort als DRITTE Nennung, während der aktive Reiter „Übersicht" sagt und sie „Portfolio".
+  `titelBereitsGenannt` macht sie deshalb zum reinen Sprungziel (`vp-sr-only`, das
+  `AnlageSeite`-Muster des Mobil-Umbaus), die Flotten-Aussage führt sichtbar. **Der Endkunden-Wirt
+  setzt es NICHT** — `isPortfolioPage('uebersicht')` ist false, dort gibt es keine Reiter, und die
+  Überschrift ist die einzige Stelle, die die Fläche benennt.
+- **`RowMenu` ist das „···"-Menü** — dasselbe Bauteil wie in den Tabellen (portaliert,
+  viewport-geklemmt, Escape/Klick-daneben). Kein zweiter Popover-Mechanismus.
+- **⚠ Die Tabelle ist BEWUSST nicht `.vp-table.responsive`:** deren Telefon-Fassung klappt jede
+  Zelle zu einer Etikett/Wert-Zeile, und acht davon je Anlage sind genau die Wand, gegen die
+  diese Revision gebaut ist. Am Telefon rendert `AnlagenTabelle` stattdessen EINE Karte je Zeile
+  mit den DREI Jetzt-Werten; die Tages-Summen stehen in der Vorschau. Der horizontale Überlauf
+  der acht Spalten bleibt im EIGENEN Rahmen (`.vp-at-wrap`), nie auf der Seite.
+- **Beweise:** `src/portfolioCockpit.test.ts` (56, rein) · `src/portfolioVorschau.test.ts` (11) ·
+  `components/KennzahlLeiste.test.tsx` (7) · `components/AnlagenTabelle.test.tsx` (15, inkl. der
+  Telefon-Fassung mit `matchMedia`-Attrappe) · `components/PortfolioCockpit.test.tsx` (21) ·
+  `pages/PortfolioPage.test.tsx` (4) · `src/betriebsart.test.ts` (24) ·
+  `src/shell/PortfolioNav.test.tsx` (4) · `src/migration.test.ts` (41, mit vier neuen
+  Abbau-Wächtern).
 
 ## Maintaining this file
 

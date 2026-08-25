@@ -369,9 +369,19 @@ describe('Reset-Ansage (E2: der Knopf SAGT, worauf er fällt)', () => {
   it('fällt auf die Vorgabe des Betreibers, wenn es eine gibt', () => {
     expect(resetZiel({ siteVorgabe: doc({ hidden: ['strompreis'] }) })).toEqual({
       ziel: 'vorgabe-anlage',
-      satz: 'Ihre Anordnung wird verworfen — es gilt wieder die Vorgabe Ihres Betreibers.',
+      satz: 'Danach gilt wieder die Vorgabe Ihres Betreibers.',
     });
     expect(resetZiel({ tenantVorgabe: doc({ lead: 'energiefluss' }) }).ziel).toBe('vorgabe-kunde');
+  });
+
+  it('nennt das ERGEBNIS, nie den Verlust (Captain 25.08.2026)', () => {
+    // Beides ist wahr - aber „wird verworfen" droht mit einer Handlung, die
+    // der Kunde selbst ausgelöst hat, und das Haus warnt nur dort, wo etwas
+    // Unerwartetes passiert.
+    for (const eingabe of [{}, { profil: 'privat' }, { siteVorgabe: doc({ hidden: ['geld'] }) }]) {
+      expect(resetZiel(eingabe).satz).toMatch(/^Danach gilt wieder /);
+      expect(resetZiel(eingabe).satz).not.toContain('verworfen');
+    }
   });
 
   it('fällt auf das Preset, wenn ein Profil gesetzt ist', () => {

@@ -654,6 +654,13 @@ export function ortsHinweis(id: string): string | null {
     case 'geld':
     case 'steuerung':
       return 'Wird am Rechner in der Bühne angezeigt.';
+    // Die zwei unbeweglichen Bausteine des PORTFOLIOS (Stufe 4/Revision 2):
+    // beide sind Pflicht, beide haben ihren festen Ort — ohne diese Sätze
+    // wäre ihr „fest" im Anpassen-Modus eine Sperre ohne Begründung.
+    case 'flotten-status':
+      return 'Der Kopf Ihres Portfolios — er steht immer oben.';
+    case 'anlagen':
+      return 'Die Anlagen-Tabelle steht immer zuletzt.';
     default:
       return null;
   }
@@ -663,6 +670,12 @@ export function ortsHinweis(id: string): string | null {
  * Worauf ein „Zurücksetzen" fällt — der Knopf SAGT es (E2). Ohne diese Ansage
  * wäre „Zurücksetzen" ein Sprung ins Ungewisse: bei einem Betreiber-Kunden
  * landet man auf dessen Vorgabe, sonst auf dem VoltPilot-Standard.
+ *
+ * ⚠ Der Satz nennt seit Revision 2 das ERGEBNIS, nicht den Verlust (Captain
+ * 25.08.2026): „Danach gilt wieder …" statt „Ihre Anordnung wird verworfen —
+ * …". Beides ist wahr, aber die zweite Form droht mit einer Handlung, die der
+ * Kunde selbst ausgelöst hat, und das Haus warnt nur dort, wo etwas
+ * Unerwartetes passiert.
  */
 export function resetZiel(input: {
   tenantVorgabe?: LayoutDocument | null;
@@ -673,18 +686,18 @@ export function resetZiel(input: {
   if (saysSomething(input.siteVorgabe) || saysSomething(input.tenantVorgabe)) {
     return {
       ziel: saysSomething(input.siteVorgabe) ? 'vorgabe-anlage' : 'vorgabe-kunde',
-      satz: 'Ihre Anordnung wird verworfen — es gilt wieder die Vorgabe Ihres Betreibers.',
+      satz: 'Danach gilt wieder die Vorgabe Ihres Betreibers.',
     };
   }
   if (saysSomething(presetLayout(input.profil, input.flaeche ?? 'cockpit'))) {
     return {
       ziel: 'preset',
-      satz: 'Ihre Anordnung wird verworfen — es gilt wieder der VoltPilot-Standard für Ihr Profil.',
+      satz: 'Danach gilt wieder der VoltPilot-Standard für Ihr Profil.',
     };
   }
   return {
     ziel: 'katalog',
-    satz: 'Ihre Anordnung wird verworfen — es gilt wieder der VoltPilot-Standard.',
+    satz: 'Danach gilt wieder der VoltPilot-Standard.',
   };
 }
 

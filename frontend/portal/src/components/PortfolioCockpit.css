@@ -1,0 +1,121 @@
+/*
+ * DAS PORTFOLIO-COCKPIT (Revision 2, Scout `vp-portfolio-konzept-r2` §5.2).
+ *
+ * Der Kopf ist eine ZEILE, nicht ein Block: Titel plus die EINE Flotten-Aussage
+ * als Unterzeile, die Aktionen im „···"-Menü rechts. Der frühere Geld-Held im
+ * Marken-Verlauf ist ersatzlos entfallen - der Verlauf gehoert Login und
+ * Marketing, im Betriebs-Portal ist Geld eine Zelle der Leiste.
+ *
+ * Komponenten-lokal, damit `index.css` unangetastet bleibt.
+ */
+
+.vp-portfolio-kopf {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vp-space-4, 16px);
+  flex-wrap: wrap;
+  margin-bottom: var(--vp-space-5, 20px);
+  min-width: 0;
+}
+
+.vp-portfolio-titel {
+  min-width: 0;
+  flex: 1 1 320px;
+}
+
+.vp-portfolio-titel h1 {
+  margin: 0;
+  font-family: var(--vp-font-display, 'Inter Tight', 'Inter', sans-serif);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * DIE Flotten-Aussage: EINE Zeile (Captain 25.08.2026 - „viel zu gross
+ * dargestellt"). Der Punkt traegt die Faerbung, das WORT die Aussage.
+ */
+.vp-portfolio-satz {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--vp-text-muted, #6c757d);
+  overflow-wrap: anywhere;
+}
+
+.vp-portfolio-punkt {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  align-self: center;
+  background: var(--vp-text-subtle, #ced4da);
+}
+
+.vp-portfolio-satz.is-ok .vp-portfolio-punkt {
+  background: var(--vp-flow-batt, #2e9e5b);
+}
+
+.vp-portfolio-satz.is-warn {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-portfolio-satz.is-warn .vp-portfolio-punkt {
+  background: var(--vp-warn, #f59e0b);
+}
+
+.vp-portfolio-aktionen {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  flex: 0 0 auto;
+}
+
+/*
+ * ⚠ Das „···"-Menü ist hier die PRIMÄRE Aktion der Seite, nicht die Zeilen-
+ * Aktion einer Tabelle: seine 36 px sind am Telefon unter der Haus-Grenze von
+ * 44. Die Trefferfläche wächst über `::before` (das `.vp-switch`-Muster) -
+ * ein 44-px-KASTEN würde den Kopf sichtbar auseinanderziehen, und das
+ * gemeinsame `RowMenu` bleibt für jede Tabelle unangetastet.
+ */
+.vp-portfolio-aktionen .vp-rowmenu-btn {
+  position: relative;
+}
+
+.vp-portfolio-aktionen .vp-rowmenu-btn::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+
+/* Die ruhige Zeile statt einer leeren Kennzahlen-Leiste. */
+.vp-portfolio-ruhe {
+  margin: var(--vp-space-3, 12px) 0 0;
+  font-size: 0.85rem;
+  color: var(--vp-text-muted, #6c757d);
+  overflow-wrap: anywhere;
+}
+
+.vp-portfolio-anlagen {
+  margin-top: var(--vp-space-5, 20px);
+  min-width: 0;
+}
+
+/* Am Telefon wandern die zwei Aktionen unter die Anlagen (die Bar-Regel). */
+.vp-portfolio-fuss {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2, 8px);
+  margin-top: var(--vp-space-5, 20px);
+}
+
+.vp-portfolio-fuss > * {
+  flex: 1 1 160px;
+}

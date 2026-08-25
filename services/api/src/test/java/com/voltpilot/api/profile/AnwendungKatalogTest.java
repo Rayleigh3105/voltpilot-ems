@@ -277,16 +277,26 @@ class AnwendungKatalogTest {
     }
 
     @Test
-    void theWeightedRuleIsUsedExactlyWhereAPercentageWouldOtherwiseLie() {
-        // Der Ladestand ist der EINE Portfolio-Wert, der ein Mittel ist - und
-        // er trägt sein Gewicht (die Kapazität). Jede andere Kachel summiert
-        // oder zählt je Anlage; eine zweite „gewichtet"-Kachel wäre ein Hinweis
-        // darauf, dass jemand einen Prozentsatz gemittelt hat.
+    void noPortfolioBuildingBlockFormsAnAverageAnyMore() {
+        // Bis zur Portfolio-Revision 2 (25.08.2026) mittelte GENAU EIN Baustein
+        // - der Ladestand, gewichtet mit der Kapazität. Der Captain hat ihn
+        // verworfen („Der kumulierte Ladestand ist doch nicht aussagekräftig
+        // oder?"): er steht seither JE ANLAGE. Damit fasst kein Portfolio-Wert
+        // mehr einen Prozentsatz zusammen, und ein wieder auftauchendes
+        // „gewichtet" wäre der Hinweis darauf, dass jemand es erneut tut.
         List<String> gewichtet = katalog.bausteine(AnwendungKatalog.FLAECHE_PORTFOLIO).stream()
                 .filter(b -> "gewichtet".equals(b.aggregation()))
                 .map(AnwendungKatalog.Baustein::id)
                 .toList();
-        assertThat(gewichtet).containsExactly("speicher");
+        assertThat(gewichtet).isEmpty();
+
+        AnwendungKatalog.Baustein speicher = katalog.bausteine(AnwendungKatalog.FLAECHE_PORTFOLIO)
+                .stream()
+                .filter(b -> "speicher".equals(b.id()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(speicher.aggregation()).isEqualTo("je_anlage");
+        assertThat(speicher.aggregationRegel()).contains("JE ANLAGE");
     }
 
     @Test
