@@ -71,9 +71,10 @@ class MeasurementBudgetTest {
         assertThat(estimate.hardRejected()).isTrue();
         assertThat(estimate.reasons()).anyMatch(s -> s.contains("engere Treiberbudget"));
 
-        // A misconfigured value above D5's ceiling never widens 600.
+        // A driver budget above D5's ceiling is a hard configuration error,
+        // rather than a silently ignored value that could hide bad metadata.
         assertThat(MeasurementBudget.estimate(points, Map.of("bench-driver", 900))
-                .hardSamplesPerMinute()).isEqualTo(600.0);
+                .hardRejected()).isTrue();
     }
 
     @Test
@@ -116,6 +117,22 @@ class MeasurementBudgetTest {
                 .isTrue();
         assertThat(MeasurementBudget.estimate(List.of(point("driver", 60, "driver", 400)),
                 Map.of("driver", -1)).hardRejected()).isTrue();
+
+        var nullCadence = MeasurementBudget.estimate(List.of(new MeasurementBudget.Candidate(
+                "null-cadence", true, null, "block", 400, FIFTEEN, "driver")));
+        assertThat(nullCadence.hardRejected()).isTrue();
+
+        var zeroCost = MeasurementBudget.estimate(List.of(point("zero-cost", 60, "block", 0)));
+        assertThat(zeroCost.hardRejected()).isTrue();
+
+        var unknownStrategy = MeasurementBudget.estimate(List.of(new MeasurementBudget.Candidate(
+                "bad-retention", true, 60, "block", 400,
+                new MeasurementRetention("thermal_bms", 90, 900, "bogus"), "driver")));
+        assertThat(unknownStrategy.hardRejected()).isTrue();
+
+        var extremeDriver = MeasurementBudget.estimate(List.of(point("driver", 60, "driver", 400)),
+                Map.of("driver", Integer.MAX_VALUE));
+        assertThat(extremeDriver.hardRejected()).isTrue();
     }
 
     @Test

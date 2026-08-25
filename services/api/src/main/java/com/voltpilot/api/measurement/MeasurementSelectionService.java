@@ -285,7 +285,7 @@ public class MeasurementSelectionService {
                 // A removed historical catalog point remains visible but does not
                 // acquire an invented request cost. Existing cadence still counts.
                 out.add(new MeasurementBudget.Candidate(row.pointKey(), row.enabled(),
-                        row.cadenceS(), null, 0, row.retention(), null));
+                        row.cadenceS(), null, MeasurementBudget.requestCostMs(null), row.retention(), null));
             } else {
                 out.add(new MeasurementBudget.Candidate(row.pointKey(), row.enabled(),
                         row.cadenceS(), p.pollGroup(),
@@ -329,7 +329,8 @@ public class MeasurementSelectionService {
             // new metadata merely to remove its future load.
             Point known = catalog.resolve(pointKey);
             return new Resolved(old.cadenceS(), known == null ? null : known.pollGroup(),
-                    known == null ? 0 : MeasurementBudget.requestCostMs(known.sourceKind()),
+                    known == null ? MeasurementBudget.requestCostMs(null)
+                            : MeasurementBudget.requestCostMs(known.sourceKind()),
                     old.retention(), null, known == null ? null : known.family());
         }
         return resolveCatalog(pointKey, cadence);

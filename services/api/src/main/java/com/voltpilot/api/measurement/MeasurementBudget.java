@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** D5 budget and the 96-byte/90-day volume preview from report §9. */
 public final class MeasurementBudget {
@@ -25,6 +26,8 @@ public final class MeasurementBudget {
     private static final double SECONDS_PER_DAY = 86_400.0;
     private static final int MAX_CADENCE_S = 86_400;
     private static final int MAX_REQUEST_COST_MS = 60_000;
+    /** A driver may tighten, never exceed, the platform's 600-sample ceiling. */
+    private static final int MAX_DRIVER_SAMPLE_LIMIT = (int) HARD_SAMPLES_PER_MINUTE;
 
     private MeasurementBudget() {}
 
@@ -105,6 +108,11 @@ public final class MeasurementBudget {
                 .map(e -> e.getValue().view(e.getKey()))
                 .sorted(Comparator.comparingDouble(PollGroupLoad::dutyCyclePercent).reversed())
                 .toList();
+        if (loads.stream().anyMatch(load -> !finiteNonNegative(load.requestsPerMinute())
+                || load.serverRequestCostMs() <= 0
+                || !finiteNonNegative(load.dutyCyclePercent()))) {
+            return rejected("Die Pollgruppenlast konnte wegen eines numerischen Überlaufs nicht sicher berechnet werden.");
+        }
         double requests = loads.stream().mapToDouble(PollGroupLoad::requestsPerMinute).sum();
         double duty = loads.stream().mapToDouble(PollGroupLoad::dutyCyclePercent).sum();
         List<String> reasons = new ArrayList<>();
@@ -143,7 +151,7 @@ public final class MeasurementBudget {
     /** Conservative request-duration estimate until family bench values exist. */
     public static int requestCostMs(String sourceKind) {
         if (sourceKind == null || "ocpp_sampled_value".equals(sourceKind)) {
-            return 0; // inbound/event source, no poll request generated here
+            return 1; // inbound/event source: positive sentinel, no poll group is created
         }
         if (sourceKind.startsWith("modbus") || "sunspec_model".equals(sourceKind)) {
             return 400;
@@ -161,15 +169,17 @@ public final class MeasurementBudget {
             if (c == null) {
                 return "Das Messwertbudget enthält einen ungültigen Messpunkt.";
             }
-            if (c.cadenceS() != null && (c.cadenceS() <= 0 || c.cadenceS() > MAX_CADENCE_S)) {
+            if (c.cadenceS() == null || c.cadenceS() <= 0 || c.cadenceS() > MAX_CADENCE_S) {
                 return "Die Kadenz muss zwischen 1 und 86400 Sekunden liegen.";
             }
-            if (c.requestCostMs() < 0 || c.requestCostMs() > MAX_REQUEST_COST_MS) {
+            if (c.requestCostMs() <= 0 || c.requestCostMs() > MAX_REQUEST_COST_MS) {
                 return "Die serverseitige Request-Kostenannahme ist ungültig.";
             }
             MeasurementRetention r = c.retention();
             if (r == null || r.rawRetentionDays() != MeasurementRetention.RAW_DAYS
                     || r.longTermStrategy() == null || r.longTermStrategy().isBlank()
+                    || !Set.of("five_minute", "fifteen_minute", "event_history",
+                            "change_history", "none").contains(r.longTermStrategy())
                     || (r.longTermCadenceS() != null
                         && (r.longTermCadenceS() <= 0 || r.longTermCadenceS() > MAX_CADENCE_S))) {
                 return "Die Aufbewahrungs- oder Langfristkadenz ist ungültig.";
@@ -178,7 +188,8 @@ public final class MeasurementBudget {
         if (driverSampleLimits != null) {
             for (Map.Entry<String, Integer> entry : driverSampleLimits.entrySet()) {
                 if (entry.getKey() == null || entry.getKey().isBlank()
-                        || entry.getValue() == null || entry.getValue() <= 0) {
+                        || entry.getValue() == null || entry.getValue() <= 0
+                        || entry.getValue() > MAX_DRIVER_SAMPLE_LIMIT) {
                     return "Das konfigurierte Treiberbudget ist ungültig.";
                 }
             }
