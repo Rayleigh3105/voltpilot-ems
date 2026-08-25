@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AnlageSeite } from './AnlagenPage';
 import { api, type Site } from '../api';
 import * as adaptive from '../useAdaptiveLive';
@@ -263,10 +263,14 @@ const TOPO = {
   },
 };
 
-function mockSurface(input: AnlageSurfaceInput | null) {
+function mockSurface(
+  input: AnlageSurfaceInput | null,
+  /** Das REGAL - nur daraus ist ablesbar, ob „Eigene Auswertung" an ist. */
+  profiles: { profiles: { id: string; active: boolean }[] } | null = null,
+) {
   vi.spyOn(surfaceHook, 'useAnlageSurface').mockReturnValue({
     surface: input ? anlageSurface(input) : null,
-    profiles: null,
+    profiles: profiles as never,
     entities: null,
     loading: false,
     failed: false,
@@ -1412,5 +1416,189 @@ describe('Anwendungs-Programm Stufe 3 · das anpassbare Cockpit', () => {
       (container.querySelector('.vp-anpassen-toggle input') as HTMLInputElement).checked,
     ).toBe(true);
     expect(container.querySelector('.vp-anpassen-band')?.textContent).toContain('Vorgabe');
+  });
+});
+
+describe('Anwendungs-Programm Stufe 5 · die eigene Auswertung im Cockpit', () => {
+  /** Alle Schichten leer, aber MIT den zwei Vorlagen (Stufe 5). */
+  function stubLayout5(eigen: Record<string, unknown> | null = null) {
+    vi.spyOn(api, 'cockpitLayout').mockResolvedValue({
+      surface: 'cockpit',
+      profil: null,
+      presetLayout: null,
+      tenantVorgabe: null,
+      siteVorgabe: null,
+      eigen,
+      bausteine: [],
+      darfVorgabe: false,
+      vorlagen: [],
+    } as never);
+  }
+
+  const KACHEL = {
+    id: 'eigen:k1',
+    titel: 'Wärmepumpe jetzt',
+    darstellung: 'kachel',
+    entityId: 'e-wb',
+    channel: 'power_kw',
+    aggregat: 'jetzt',
+  };
+
+  /** Das Regal mit „Eigene Auswertung" AN bzw. AUS. */
+  const regal = (active: boolean) => ({
+    profiles: [{ id: 'eigene-auswertung', active }],
+  });
+
+  it('rendert eine gespeicherte Kachel mit Zahl, Einheit und Zeitbezug', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI, regal(true));
+    stubLayout5({
+      document: { version: 1, order: [], hidden: [], shown: [], lead: null, custom: [KACHEL] },
+      updatedBy: 'u',
+      updatedAt: null,
+    });
+    vi.spyOn(api, 'eigeneAuswertung').mockResolvedValue({
+      at: '2026-08-25',
+      from: '',
+      to: '',
+      bucketMinutes: 15,
+      werte: [
+        {
+          ...KACHEL,
+          wert: 3.25,
+          kanalart: 'leistung',
+          komponente: 'Wärmepumpe',
+          entityType: 'wallbox',
+          hinweis: null,
+          verlauf: [],
+        },
+      ],
+    } as never);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-eigen-kachel')).toBeTruthy());
+    const kachel = container.querySelector('.vp-eigen-kachel') as HTMLElement;
+    expect(kachel.textContent).toContain('Wärmepumpe jetzt');
+    expect(kachel.textContent).toContain('3,25');
+    expect(kachel.textContent).toContain('kW');
+    // Der ZEITBEZUG steht an der Zahl — „3,25 kW" allein sagt zu wenig.
+    expect(kachel.textContent).toContain('jetzt');
+  });
+
+  it('behauptet ohne Messwert KEINE Null, sondern sagt es', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI, regal(true));
+    stubLayout5({
+      document: { version: 1, order: [], hidden: [], shown: [], lead: null, custom: [KACHEL] },
+      updatedBy: 'u',
+      updatedAt: null,
+    });
+    // Der Abruf scheitert — fail-soft wie jeder Zusatz-Abruf des Cockpits.
+    vi.spyOn(api, 'eigeneAuswertung').mockRejectedValue(new Error('weg'));
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-eigen-kachel')).toBeTruthy());
+    const kachel = container.querySelector('.vp-eigen-kachel') as HTMLElement;
+    expect(kachel.textContent).toContain('—');
+    expect(kachel.textContent).toContain('keine Messwerte');
+    expect(kachel.textContent).not.toMatch(/\b0,00\b/);
+  });
+
+  it('zeigt eine Kachel NICHT, wenn die Anwendung aus ist — die Definition bleibt', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI, regal(false));
+    stubLayout5({
+      document: { version: 1, order: [], hidden: [], shown: [], lead: null, custom: [KACHEL] },
+      updatedBy: 'u',
+      updatedAt: null,
+    });
+    const werte = vi.spyOn(api, 'eigeneAuswertung');
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(container.querySelector('.vp-eigen-kachel')).toBeNull();
+    // Und es wird nicht einmal gefragt: ohne die Anwendung gibt es nichts zu holen.
+    expect(werte).not.toHaveBeenCalled();
+  });
+
+  it('eine frisch angelegte Kachel sagt „noch nicht gespeichert", nie „keine Messwerte"', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI, regal(true));
+    stubLayout5();
+    vi.spyOn(api, 'siteEntities').mockResolvedValue({
+      registry: null,
+      entities: [
+        {
+          id: 'e-wb',
+          entityType: 'wallbox',
+          typeLabel: 'Wallbox',
+          role: 'consumer',
+          label: 'Wallbox',
+          control: false,
+          deviceId: 'd1',
+          capabilities: { measure: [{ channel: 'power_kw', unit: 'kW' }] },
+          guardConfig: null,
+          syncStatus: 'in_sync',
+          observed: null,
+          edgeSourceId: null,
+          orphanedPin: null,
+          capacityKwp: null,
+        },
+      ],
+      localSetup: [],
+      staleOnDevice: [],
+    } as never);
+    const { container, getByLabelText, getByText, findByRole } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    fireEvent.click(getByLabelText('Cockpit anpassen'));
+    await waitFor(() => expect(container.querySelector('.vp-eigen-neu')).toBeTruthy());
+    fireEvent.click(getByText('+ Eigene Auswertung'));
+
+    // Durch den geführten Dialog … (welche Komponente der Baum anbietet, ist
+    // hier gleichgültig - geprüft wird die WORTWAHL der frischen Kachel).
+    fireEvent.click(await findByRole('combobox', { name: /Komponente/ }));
+    const komponenten = await screen.findAllByRole('option');
+    fireEvent.click(komponenten[0]);
+    fireEvent.click(await findByRole('combobox', { name: /Messwert/ }));
+    const messwerte = await screen.findAllByRole('option');
+    fireEvent.click(messwerte[0]);
+    fireEvent.click(getByText('Anlegen'));
+
+    // … erscheint die Kachel SOFORT - aber sie behauptet keine fehlenden
+    // Messwerte, sondern sagt, dass sie noch nicht gespeichert ist.
+    await waitFor(() => expect(container.querySelector('.vp-eigen-kachel')).toBeTruthy());
+    const kachel = container.querySelector('.vp-eigen-kachel') as HTMLElement;
+    expect(kachel.textContent).toContain('Fertig');
+    expect(kachel.textContent).not.toContain('keine Messwerte');
+  });
+
+  it('bietet „+ Eigene Auswertung" NUR im Anpassen-Modus und NUR mit der Anwendung', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI, regal(true));
+    stubLayout5();
+    const { container, getByLabelText, getByText } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    // Ausserhalb des Anpassen-Modus gibt es den Knopf nicht.
+    expect(container.querySelector('.vp-eigen-neu')).toBeNull();
+
+    fireEvent.click(getByLabelText('Cockpit anpassen'));
+    await waitFor(() => expect(container.querySelector('.vp-eigen-neu')).toBeTruthy());
+    // Ohne eine einzige Auswertung sagt die Zeile, wofür der Knopf da ist.
+    expect(container.querySelector('.vp-eigen-neu')?.textContent).toContain(
+      'noch keine eigene Auswertung',
+    );
+    // Und er öffnet den geführten Dialog.
+    fireEvent.click(getByText('+ Eigene Auswertung'));
+    await waitFor(() => expect(container.ownerDocument.body.textContent).toContain('Komponente'));
+  });
+
+  it('ohne die Anwendung gibt es den Knopf auch im Anpassen-Modus nicht', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI, regal(false));
+    stubLayout5();
+    const { container, getByLabelText } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    fireEvent.click(getByLabelText('Cockpit anpassen'));
+    await waitFor(() => expect(container.querySelector('.vp-anpassen-bar')).toBeTruthy());
+    // Ein Knopf, der nichts bewirken kann, wird nicht angeboten.
+    expect(container.querySelector('.vp-eigen-neu')).toBeNull();
   });
 });

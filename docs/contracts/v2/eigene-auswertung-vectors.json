@@ -1,0 +1,214 @@
+{
+  "_comment": [
+    "Geteilte Vektoren der EHRLICHKEITSREGEL der Anwendung „Eigene Auswertung\"",
+    "(Zielbild vp-portal-zielbild-anwendungen §3.6 / §5 Stufe 5). Sie pinnen die zwei",
+    "Zwillinge gegeneinander:",
+    "  Java  services/api .../cockpit/EigeneAuswertung  (der SERVER — er entscheidet;",
+    "        eine unehrliche Kombination ist dort ein 400 mit deutschem Grund)",
+    "  TS    frontend/portal/src/eigeneAuswertung.ts    (die FLÄCHE — sie bietet eine",
+    "        unehrliche Kombination gar nicht erst an und sagt, warum)",
+    "",
+    "⚠ WER DIE REGEL ÄNDERT, ÄNDERT BEIDE SEITEN UND DIESE DATEI. Der Server bleibt",
+    "die Autorität: die TS-Hälfte spart dem Kunden den Klick, sie ersetzt die Prüfung",
+    "nicht (dem Client zu glauben wäre keine Prüfung).",
+    "",
+    "DIE REGEL IN EINEM SATZ: das Aggregat muss zu dem passen, was der Kanal MISST.",
+    "",
+    "  Kanalart   | erkannt an              | jetzt | tagessumme | tagesmax | tagesmittel",
+    "  -----------+-------------------------+-------+------------+----------+------------",
+    "  energie    | *_kwh, *_wh, *energy*   |   ja  |     ja     |   nein   |    nein",
+    "  leistung   | *_kw, *_w, *power*      |   ja  |    nein    |    ja    |     ja",
+    "  anteil     | *_pct                   |   ja  |    nein    |    ja    |     ja",
+    "  messwert   | alles Übrige            |   ja  |    nein    |    ja    |     ja",
+    "",
+    "Die zwei Gründe, und sie hängen an DERSELBEN Tatsache — ein kWh-Kanal meldet in",
+    "diesem Haus einen ZÄHLERSTAND, nicht die Energie eines Intervalls (die Hausregel",
+    "steht in ConsumerRequirementStateRepository.energyOverPeriod: `max − min`):",
+    "  1. Eine Tagessumme über Leistung/Anteil/Temperatur addiert Momentanwerte —",
+    "     die Summe von 96 kW-Werten ist keine Energie und keine sonstige Größe.",
+    "  2. Mittelwert und Höchstwert eines ZÄHLERSTANDS sind keine Aussage: der",
+    "     Höchststand ist der Endstand, das Mittel liegt irgendwo dazwischen. Für",
+    "     einen Energiekanal gibt es deshalb nur den Stand (jetzt) und den ZUWACHS",
+    "     des Tages (tagessumme).",
+    "",
+    "Die Kanalart wird aus dem NAMEN abgeleitet, nicht aus der gemeldeten Einheit: das",
+    "Kanal-Vokabular ist offen (ein Selbstbau-Gerät benennt seine Kanäle selbst), und",
+    "die Einheit ist optional. Ein UNBEKANNTER Kanal ist `messwert` — er bekommt jedes",
+    "Aggregat ausser der Summe, nie eine erfundene Einheit.",
+    "",
+    "REIHENFOLGE DER ERKENNUNG: `_pct` wird ZUERST geprueft. Ein Prozentsuffix ist",
+    "die eindeutigste Aussage, die ein Kanalname machen kann; stuende es hinter",
+    "der Energie, bekaeme ein `energy_pct` die Tagessumme eines Zaehlerstands -",
+    "also eine Summe ueber Prozentwerte. Danach Energie vor Leistung."
+  ],
+  "schema_version": "1.0",
+  "aggregate": [
+    "jetzt",
+    "tagessumme",
+    "tagesmax",
+    "tagesmittel"
+  ],
+  "darstellung": [
+    "kachel",
+    "chart"
+  ],
+  "kanalarten": [
+    "energie",
+    "leistung",
+    "anteil",
+    "messwert"
+  ],
+  "kanalart": [
+    {
+      "channel": "energy_kwh",
+      "kanalart": "energie",
+      "einheit": "kWh"
+    },
+    {
+      "channel": "total_energy_kwh",
+      "kanalart": "energie",
+      "einheit": "kWh"
+    },
+    {
+      "channel": "zaehler_wh",
+      "kanalart": "energie",
+      "einheit": null
+    },
+    {
+      "channel": "energyToday",
+      "kanalart": "energie",
+      "einheit": null
+    },
+    {
+      "channel": "pv_power_kw",
+      "kanalart": "leistung",
+      "einheit": "kW"
+    },
+    {
+      "channel": "battery_power_kw",
+      "kanalart": "leistung",
+      "einheit": "kW"
+    },
+    {
+      "channel": "power_kw",
+      "kanalart": "leistung",
+      "einheit": "kW"
+    },
+    {
+      "channel": "load_kw",
+      "kanalart": "leistung",
+      "einheit": "kW"
+    },
+    {
+      "channel": "grid_limit_kw",
+      "kanalart": "leistung",
+      "einheit": "kW"
+    },
+    {
+      "channel": "wirkleistung_w",
+      "kanalart": "leistung",
+      "einheit": null
+    },
+    {
+      "channel": "soc_pct",
+      "kanalart": "anteil",
+      "einheit": "%"
+    },
+    {
+      "channel": "limit_pct",
+      "kanalart": "anteil",
+      "einheit": "%"
+    },
+    {
+      "channel": "temperature_c",
+      "kanalart": "messwert",
+      "einheit": null
+    },
+    {
+      "channel": "voltage_v",
+      "kanalart": "messwert",
+      "einheit": null
+    },
+    {
+      "channel": "current_a",
+      "kanalart": "messwert",
+      "einheit": null
+    },
+    {
+      "channel": "frequency_hz",
+      "kanalart": "messwert",
+      "einheit": null
+    },
+    {
+      "channel": "kesseltemperatur",
+      "kanalart": "messwert",
+      "einheit": null
+    },
+    {
+      "channel": "energy_pct",
+      "kanalart": "anteil",
+      "einheit": "%"
+    }
+  ],
+  "erlaubt": [
+    {
+      "name": "energie-nur-stand-und-zuwachs",
+      "channel": "energy_kwh",
+      "jetzt": true,
+      "tagessumme": true,
+      "tagesmax": false,
+      "tagesmittel": false
+    },
+    {
+      "name": "leistung-alles-ausser-summe",
+      "channel": "pv_power_kw",
+      "jetzt": true,
+      "tagessumme": false,
+      "tagesmax": true,
+      "tagesmittel": true
+    },
+    {
+      "name": "anteil-alles-ausser-summe",
+      "channel": "soc_pct",
+      "jetzt": true,
+      "tagessumme": false,
+      "tagesmax": true,
+      "tagesmittel": true
+    },
+    {
+      "name": "temperatur-alles-ausser-summe",
+      "channel": "temperature_c",
+      "jetzt": true,
+      "tagessumme": false,
+      "tagesmax": true,
+      "tagesmittel": true
+    },
+    {
+      "name": "unbekannter-kanal-ist-messwert",
+      "channel": "kesseltemperatur",
+      "jetzt": true,
+      "tagessumme": false,
+      "tagesmax": true,
+      "tagesmittel": true
+    },
+    {
+      "name": "prozent-schlaegt-energie-im-namen",
+      "channel": "energy_pct",
+      "jetzt": true,
+      "tagessumme": false,
+      "tagesmax": true,
+      "tagesmittel": true
+    }
+  ],
+  "gruende": {
+    "_comment": [
+      "Der deutsche Grund, den der Server bei einer unehrlichen Kombination nennt.",
+      "Er benennt die KANALART und die Handlung — nie nur „ungültig\"."
+    ],
+    "tagessumme_leistung": "„PV-Leistung“ ist eine Leistung — sie lässt sich nicht zu einer Tagessumme addieren. Wählen Sie „Aktuell“, „Tageshöchstwert“ oder „Tagesmittel“.",
+    "tagessumme_anteil": "„Ladestand“ ist ein Prozentwert — er lässt sich nicht zu einer Tagessumme addieren. Wählen Sie „Aktuell“, „Tageshöchstwert“ oder „Tagesmittel“.",
+    "tagessumme_messwert": "„Temperatur“ ist ein Messwert — er lässt sich nicht zu einer Tagessumme addieren. Wählen Sie „Aktuell“, „Tageshöchstwert“ oder „Tagesmittel“.",
+    "tagesmax_energie": "„Energie“ ist ein Zählerstand — sein Höchstwert ist immer der letzte Stand des Tages. Wählen Sie „Aktuell“ oder „Tagessumme“.",
+    "tagesmittel_energie": "„Energie“ ist ein Zählerstand — ein Mittelwert daraus ist keine Aussage. Wählen Sie „Aktuell“ oder „Tagessumme“."
+  }
+}

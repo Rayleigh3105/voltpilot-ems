@@ -127,11 +127,18 @@ export function AnpassenSteuerung<T extends string = BausteinId>({
   onVerschieben,
   onSichtbar,
   onLead,
+  extra,
 }: {
   zeile: AnpassenZeile<T>;
   onVerschieben: (id: T, richtung: 'hoch' | 'runter') => void;
   onSichtbar: (id: T, sichtbar: boolean) => void;
   onLead: (block: CockpitBlockId) => void;
+  /**
+   * Zusätzliche Bedienelemente DIESER Zeile — heute der Stift einer eigenen
+   * Auswertung (Stufe 5). Sie stehen hier statt in einer zweiten Zeile, weil
+   * „ändern" zu demselben Baustein gehört wie „verschieben" und „ausblenden".
+   */
+  extra?: ReactNode;
 }) {
   return (
     <div className="vp-anpassen-ctrl">
@@ -196,6 +203,7 @@ export function AnpassenSteuerung<T extends string = BausteinId>({
           <Icon name={zeile.sichtbar ? 'eye' : 'eye-off'} size={16} />
         </button>
       )}
+      {extra}
     </div>
   );
 }
@@ -213,6 +221,7 @@ export function AnpassenHuelle<T extends string = BausteinId>({
   onVerschieben,
   onSichtbar,
   onLead,
+  extra,
 }: {
   zeile: AnpassenZeile<T>;
   children?: ReactNode;
@@ -227,6 +236,7 @@ export function AnpassenHuelle<T extends string = BausteinId>({
   onVerschieben: (id: T, richtung: 'hoch' | 'runter') => void;
   onSichtbar: (id: T, sichtbar: boolean) => void;
   onLead: (block: CockpitBlockId) => void;
+  extra?: ReactNode;
 }) {
   return (
     <section
@@ -238,6 +248,7 @@ export function AnpassenHuelle<T extends string = BausteinId>({
         onVerschieben={onVerschieben}
         onSichtbar={onSichtbar}
         onLead={onLead}
+        extra={extra}
       />
       {note && <p className="vp-anpassen-note">{note}</p>}
       {children != null && <div className="vp-anpassen-inhalt">{children}</div>}
@@ -255,11 +266,14 @@ export function AnpassenListe<T extends string = BausteinId>({
   onVerschieben,
   onSichtbar,
   onLead,
+  extra,
 }: {
   zeilen: AnpassenZeile<T>[];
   onVerschieben: (id: T, richtung: 'hoch' | 'runter') => void;
   onSichtbar: (id: T, sichtbar: boolean) => void;
   onLead: (block: CockpitBlockId) => void;
+  /** Zusätzliche Bedienelemente je Zeile (Stufe 5: der Stift). */
+  extra?: (zeile: AnpassenZeile<T>) => ReactNode;
 }) {
   const sichtbar = zeilen.filter((z) => z.sichtbar);
   const versteckt = zeilen.filter((z) => !z.sichtbar);
@@ -273,6 +287,7 @@ export function AnpassenListe<T extends string = BausteinId>({
               onVerschieben={onVerschieben}
               onSichtbar={onSichtbar}
               onLead={onLead}
+              extra={extra?.(z)}
             />
           </li>
         ))}
@@ -282,6 +297,7 @@ export function AnpassenListe<T extends string = BausteinId>({
         onVerschieben={onVerschieben}
         onSichtbar={onSichtbar}
         onLead={onLead}
+        extra={extra}
       />
     </div>
   );
@@ -297,11 +313,14 @@ export function AusgeblendetZeile<T extends string = BausteinId>({
   onVerschieben,
   onSichtbar,
   onLead,
+  extra,
 }: {
   zeilen: AnpassenZeile<T>[];
   onVerschieben: (id: T, richtung: 'hoch' | 'runter') => void;
   onSichtbar: (id: T, sichtbar: boolean) => void;
   onLead: (block: CockpitBlockId) => void;
+  /** Zusätzliche Bedienelemente je Zeile (Stufe 5: der Stift). */
+  extra?: (zeile: AnpassenZeile<T>) => ReactNode;
 }) {
   if (zeilen.length === 0) return null;
   return (
@@ -315,6 +334,7 @@ export function AusgeblendetZeile<T extends string = BausteinId>({
               onVerschieben={onVerschieben}
               onSichtbar={onSichtbar}
               onLead={onLead}
+              extra={extra?.(z)}
             />
           </li>
         ))}

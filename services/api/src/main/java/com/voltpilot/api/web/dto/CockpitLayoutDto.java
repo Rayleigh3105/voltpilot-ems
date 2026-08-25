@@ -22,10 +22,12 @@ import java.util.List;
  * @param eigen         der Wille des Kunden, oder null — er GEWINNT
  * @param bausteine     der Baustein-Katalog dieser Fläche (Labels, Pflicht, Lead)
  * @param darfVorgabe   true = dieser Aufrufer darf die Vorgabe-Schicht schreiben
+ * @param vorlagen      die ARTEN eigener Auswertungen, die diese Fläche kennt
+ *                      (Stufe 5; leer, wo es keine gibt)
  */
 public record CockpitLayoutDto(String surface, String profil, LayoutDocumentDto presetLayout,
         LayerDto tenantVorgabe, LayerDto siteVorgabe, LayerDto eigen, List<BausteinDto> bausteine,
-        boolean darfVorgabe) {
+        boolean darfVorgabe, List<VorlageDto> vorlagen) {
 
     /**
      * Ein Layout-Dokument: NUR Absicht.
@@ -37,9 +39,31 @@ public record CockpitLayoutDto(String surface, String profil, LayoutDocumentDto 
      * @param shown   ausdrücklich gezeigt — nimmt einer TIEFEREN Schicht ihr
      *                {@code hidden} zurück
      * @param lead    der hervorgehobene Block, oder null
+     * @param custom  die EIGENEN Auswertungen dieses Dokuments (Stufe 5). Sie
+     *                sind die einzigen Bausteine, die das Dokument selbst
+     *                DEFINIERT statt nur zu nennen — ihr Schlüssel steht
+     *                zusätzlich in {@code order}/{@code hidden}.
      */
     public record LayoutDocumentDto(int version, List<String> order, List<String> hidden,
-            List<String> shown, String lead) {}
+            List<String> shown, String lead, List<CustomBausteinDto> custom) {}
+
+    /**
+     * Eine eigene Auswertung: Titel, Darstellung und die QUELLE (Komponente ×
+     * Messwert × Kennzahl). Ob die Kennzahl zu diesem Messwert ehrlich ist,
+     * entscheidet der Server ({@code cockpit/EigeneAuswertung}) — hier steht
+     * nur, was gespeichert wurde.
+     */
+    public record CustomBausteinDto(String id, String titel, String darstellung, String entityId,
+            String channel, String aggregat) {}
+
+    /**
+     * Eine ART eigener Auswertung, wie der Katalog sie beschreibt — die Wahl im
+     * Anlege-Dialog. Sie ist NICHT renderbar; erst ihre Instanz ist es.
+     *
+     * @param nach der Baustein, hinter dem eine Instanz kanonisch einsortiert wird
+     */
+    public record VorlageDto(String id, String label, String satz, String darstellung,
+            String anwendung, String nach) {}
 
     /** Eine gespeicherte Schicht samt Papier-Spur. */
     public record LayerDto(LayoutDocumentDto document, String updatedBy, Instant updatedAt) {}

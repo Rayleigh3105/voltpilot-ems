@@ -1,5 +1,5 @@
 {
-  "catalog_version": "1.0.0",
+  "catalog_version": "1.1.0",
   "_comment": [
     "Der EINE Anwendungs-Katalog (Zielbild 'Portal fuer viele Kunden, viele",
     "Anwendungen', Scout vp-portal-zielbild-anwendungen §3.2/§4.1, Stufe 1).",
@@ -120,7 +120,31 @@
     "ist Vorauswahl + Tonalitaet + Reset-Basis, mehr nicht. Die Wahrheit",
     "darueber, was auf einer Anlage laeuft, bleibt Anwendungen x Faehigkeiten;",
     "eine Anlage ohne gespeichertes Profil (jede Bestandsanlage) verhaelt sich",
-    "zeichengleich wie vor Stufe 2."
+    "zeichengleich wie vor Stufe 2.",
+    "",
+    "STUFE 5 - DIE EIGENE AUSWERTUNG. 'eigene-auswertung' ist von 'reserviert'",
+    "auf die Klasse 'regel' gehoben: ihr Schalter ist reine ABSICHT (kein Gate,",
+    "kein Starter), und sie steht in KEINEM Preset auf 'an' - der Kunde schaltet",
+    "sie selbst ein. Ihre Bausteine sind die einzigen DYNAMISCHEN des Katalogs:",
+    "sie entstehen erst, wenn der Kunde im Anpassen-Modus eine anlegt, und leben",
+    "als cockpit_layout.document.custom[] (Anlagen-Scope) - deshalb nennt ihr",
+    "Feld 'bausteine.cockpit' nichts, und deshalb stehen ihre zwei ARTEN unter",
+    "'baustein_vorlagen' statt unter 'bausteine'. Eine Vorlage ist nicht",
+    "renderbar; erst ihre Instanz ist es, unter dem Schluessel 'eigen:<id>'.",
+    "'nach' sagt, hinter welchem Baustein eine Instanz kanonisch einsortiert",
+    "wird - eine frisch angelegte Kachel erscheint damit an ihrem Platz, nicht",
+    "als Anhaengsel unten.",
+    "",
+    "WAS BEI 'eigene-auswertung' BEWUSST NULL BLEIBT: 'leer_zustand'. Der Server",
+    "kann NICHT belegen, dass eine Anlage keine eigene Kachel hat - sein Beleg",
+    "(hasCustomerRule) zaehlt aktive Flows, nicht Kacheln -, und was er nicht",
+    "belegen kann, behauptet er nicht. Der ehrliche Leer-Hinweis lebt im",
+    "Cockpit, wo der Knopf '+ Eigene Auswertung' steht.",
+    "",
+    "Die EHRLICHKEITSREGEL, welches Aggregat zu welchem Kanal passt, steht",
+    "bewusst NICHT hier: sie ist Logik (Java cockpit/EigeneAuswertung, TS",
+    "src/eigeneAuswertung.ts) und beidseitig ueber",
+    "docs/contracts/v2/eigene-auswertung-vectors.json gepinnt."
   ],
   "klassen": ["basis", "regel", "geschaeft", "reserviert"],
   "kategorien": ["basis", "steuerung", "geschaeft", "auswertung"],
@@ -129,6 +153,34 @@
   "tonalitaeten": ["sparen", "verdienen"],
   "baustein_flaechen": ["cockpit", "portfolio"],
   "aggregations_arten": ["summe", "gewichtet", "je_anlage"],
+  "eigene_aggregate": ["jetzt", "tagessumme", "tagesmax", "tagesmittel"],
+  "eigene_darstellungen": ["kachel", "chart"],
+  "baustein_vorlagen": [
+    {
+      "id": "eigene-kachel",
+      "label": "Eigene Kachel",
+      "satz": "Eine Zahl aus einem Messwert Ihrer Anlage - mit Einheit und Zeitbezug.",
+      "darstellung": "kachel",
+      "flaeche": "cockpit",
+      "anwendung": "eigene-auswertung",
+      "nach": "kacheln",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null
+    },
+    {
+      "id": "eigener-chart",
+      "label": "Eigener Verlauf",
+      "satz": "Der Tagesverlauf eines Messwerts, mit der Kennzahl als Kopfzeile.",
+      "darstellung": "chart",
+      "flaeche": "cockpit",
+      "anwendung": "eigene-auswertung",
+      "nach": "kacheln",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null
+    }
+  ],
   "bausteine": [
     {
       "id": "status",
@@ -708,11 +760,11 @@
       "id": "eigene-auswertung",
       "label": "Eigene Auswertung",
       "kategorie": "auswertung",
-      "klasse": "reserviert",
+      "klasse": "regel",
       "rang": 90,
-      "nutzen": "Sie stellen sich eigene Kennzahlen und Verläufe aus Ihren Messwerten zusammen.",
+      "nutzen": "Sie stellen sich eigene Kennzahlen und Verläufe aus den Messwerten Ihrer Anlage zusammen - genau die Zahl, die Sie täglich sehen wollen.",
       "abschaltbar": true,
-      "sichtbar": false,
+      "sichtbar": true,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -720,7 +772,13 @@
         "actuate": [],
         "messung": ["mindestens ein Messwert"]
       },
-      "voraussetzungen": [],
+      "voraussetzungen": [
+        {
+          "id": "messwert",
+          "label": "Messwerte kommen an",
+          "blocked_reason": "Ihre Anlage hat noch keinen Messwert gemeldet - ohne einen gibt es nichts auszuwerten."
+        }
+      ],
       "blocked_reason_immer": null,
       "leer_zustand": null,
       "bausteine": {
@@ -731,7 +789,7 @@
         "steuerungskarte": false,
         "nav_gruppe": false
       },
-      "unlock_chips": [],
+      "unlock_chips": ["Eigene Kacheln und Verläufe im Cockpit"],
       "einstellungen": [],
       "einstellungen_verweis": null,
       "preset": { "privat": "angeboten", "gewerbe": "angeboten" }

@@ -57,6 +57,17 @@ import { leadBlock } from '../leadSlot';
 import { useCockpitLayout } from '../useCockpitLayout';
 import { ortsHinweis, type BausteinId } from '../cockpitLayout';
 import {
+  LEER_SATZ as EIGEN_LEER_SATZ,
+  deckelSatz as eigenDeckelSatz,
+  einheit as eigenEinheit,
+  istEigen,
+  werteNachId,
+  type EigeneAuswertungDef,
+  type EigeneAuswertungWerte,
+} from '../eigeneAuswertung';
+import { EigenerBaustein } from '../components/EigeneAuswertung';
+import { EigeneAuswertungDialog } from '../components/EigeneAuswertungDialog';
+import {
   AnpassenHuelle,
   AnpassenLeiste,
   AnpassenListe,
@@ -839,6 +850,7 @@ export function AnlageSeite({
   // "projected ? … : []" ternary any more.
   const {
     surface,
+    profiles: siteProfiles,
     entities: siteEntityPins,
     loading: surfaceLoading,
     failed: surfaceFailed,
@@ -1308,13 +1320,90 @@ export function AnlageSeite({
     if (ovSite != null && health.length > 0) out.push('zustand');
     return out;
   }, [blocks, controlView, guardView, fahrplanRow, strompreisRow, shownWidgets, ovSite, health]);
+  // ⚠ Die Quelle ist das REGAL, nicht `modes`: „Eigene Auswertung" wird nie
+  // ABGELEITET (ihr Schalter ist reine Absicht, Klasse `regel`), also taucht
+  // sie in der M0-Projektion gar nicht auf. `active` der Regal-Karte ist der
+  // EFFEKTIVE Zustand, den der Server nach dem Willens-Overlay meldet — er ist
+  // die einzige Stelle, die die Frage beantworten kann.
+  const eigenAn =
+    siteProfiles?.profiles?.some((p) => p.id === 'eigene-auswertung' && p.active) ?? false;
   const layout = useCockpitLayout({
     schluessel: site.id,
     siteId: site.id,
     verfuegbar,
     blocks,
     isPhone,
+    eigeneAktiv: eigenAn,
   });
+
+  // --- Anwendungs-Programm Stufe 5 · die EIGENEN Auswertungen ---------------
+  // Sie erscheinen nur, wenn die Anwendung „Eigene Auswertung" eingeschaltet
+  // ist: ihr Schalter ist reine Absicht (Klasse `regel`), und ein Baustein
+  // einer nicht aktiven Anwendung wird - wie jeder andere - still übersprungen.
+  // Die DEFINITIONEN bleiben dabei gespeichert, ein Wiedereinschalten stellt
+  // das Bild also her.
+  const [eigenWerte, setEigenWerte] = useState<EigeneAuswertungWerte | null>(null);
+  const [eigenDialog, setEigenDialog] = useState<
+    { offen: true; bearbeiten: EigeneAuswertungDef | null } | null
+  >(null);
+  // ⚠ Der Abruf hängt an den GESPEICHERTEN Auswertungen, nicht am Entwurf: der
+  // Server beantwortet genau die gespeicherten, und der Schlüssel ändert sich
+  // damit exakt dann, wenn ein Speichern gelandet ist. Am Entwurf zu hängen
+  // fragte beim Anlegen einmal zu früh (der Server kennt die Kachel noch nicht)
+  // und danach nie wieder - die frisch gespeicherte Kachel bliebe für immer
+  // ohne Zahl.
+  const eigenIds = layout.eigeneGespeichert.map((d) => d.id).join('|');
+  useEffect(() => {
+    // Fail-soft wie jeder Zusatz-Abruf des Cockpits: ohne Antwort bleiben die
+    // Kacheln stehen und sagen „noch keine Werte" - nie eine erfundene Zahl.
+    if (!eigenAn || eigenIds === '') {
+      setEigenWerte(null);
+      return undefined;
+    }
+    let aktiv = true;
+    api.eigeneAuswertung(site.id).then(
+      (w) => {
+        if (aktiv) setEigenWerte(w);
+      },
+      () => {
+        if (aktiv) setEigenWerte(null);
+      },
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [site.id, eigenAn, eigenIds, reloadKey]);
+  const eigenWerteById = useMemo(() => werteNachId(eigenWerte), [eigenWerte]);
+  /**
+   * Der Stift AN der Zeile einer eigenen Auswertung — nur dort. Ein Baustein
+   * des Katalogs hat nichts zu bearbeiten, und ein Knopf ohne Wirkung wäre
+   * genau die Zusage, die dieses Haus nicht macht.
+   */
+  const eigenStift = (zeile: { id: string; eigen?: boolean; label: string }) => {
+    if (!zeile.eigen) return null;
+    const def = layout.eigene.find((d) => d.id === zeile.id);
+    if (!def) return null;
+    return (
+      <button
+        type="button"
+        className="vp-anpassen-icon"
+        onClick={() => setEigenDialog({ offen: true, bearbeiten: def })}
+        aria-label={`${zeile.label} ändern`}
+        title="Ändern"
+      >
+        <Icon name="pencil" size={16} />
+      </button>
+    );
+  };
+  const eigenEinheiten = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const e of siteEntityPins ?? []) {
+      for (const m of e.capabilities?.measure ?? []) {
+        out.set(`${e.id}:${m.channel}`, eigenEinheit(m.channel, m.unit));
+      }
+    }
+    return out;
+  }, [siteEntityPins]);
   // Der Lead kommt seit dieser Stufe aus der AUFLÖSUNG (Katalog -> Preset ->
   // Vorgabe -> Eigen); ohne gespeicherte Zeile ist das exakt die M0-Regel
   // peak -> Geld -> Fluss, die `leadBlock` oben schon liefert.
@@ -1328,6 +1417,35 @@ export function AnlageSeite({
     return isPhone ? mobileWidgets(neu, { hasRings: heroView.rings.length > 0 }) : neu;
   })();
   const zeigt = (id: BausteinId) => layout.resolved.order.includes(id);
+  /**
+   * Der Knoten EINER eigenen Auswertung. Ohne Wert vom Server rendert sie
+   * trotzdem — mit dem ehrlichen Satz statt einer erfundenen Zahl.
+   */
+  const eigenerKnoten = (id: string): ReactNode => {
+    const def = layout.eigene.find((d) => d.id === id);
+    if (!def) return null;
+    // Eine Kachel, die der Server noch nicht kennt, hat NOCH KEINE Messwerte
+    // verdient — sie ist schlicht ungespeichert. Das zu verwechseln wäre die
+    // gefährlichere der beiden Auskünfte (der Kunde suchte einen Datenfehler).
+    const gespeichert = layout.eigeneGespeichert.some((d) => d.id === id);
+    const wert = eigenWerteById.get(id) ?? {
+      ...def,
+      wert: null,
+      kanalart: null,
+      komponente: null,
+      entityType: null,
+      hinweis: gespeichert
+        ? 'Für diesen Tag liegen noch keine Messwerte vor.'
+        : 'Wird berechnet, sobald Sie oben „Fertig“ gespeichert haben.',
+      verlauf: [],
+    };
+    return (
+      <EigenerBaustein
+        wert={wert}
+        einheit={eigenEinheiten.get(`${def.entityId}:${def.channel}`) ?? ''}
+      />
+    );
+  };
   // Die Bausteine als Knoten unter ihrer Baustein-Id: der Stapel entsteht
   // danach aus der AUFGELÖSTEN Reihenfolge, nicht mehr aus einer hart
   // codierten Folge von JSX-Zeilen. Ohne gespeicherte Zeile kommt Zeichen für
@@ -1444,6 +1562,25 @@ export function AnlageSeite({
 
   return (
     <>
+      {/* Anwendungs-Programm Stufe 5: der geführte Dialog. Er hängt an der
+          Seite (nicht am Anpassen-Modus), damit ein Speichern den Modus nicht
+          aufreisst - der Kunde arrangiert weiter, wo er war. */}
+      {eigenDialog && (
+        <EigeneAuswertungDialog
+          open
+          siteId={site.id}
+          bearbeiten={eigenDialog.bearbeiten}
+          onSpeichern={(def) => {
+            layout.setzeEigene(def);
+            setEigenDialog(null);
+          }}
+          onEntfernen={(id) => {
+            layout.entferneEigene(id);
+            setEigenDialog(null);
+          }}
+          onAbbrechen={() => setEigenDialog(null)}
+        />
+      )}
       {onBackToList && (
         <button type="button" className="vp-fleet-back" onClick={onBackToList}>
           <Icon name="chevron-left" size={18} />
@@ -1596,12 +1733,34 @@ export function AnlageSeite({
               onZuruecksetzen={layout.zuruecksetzen}
             />
           )}
+          {/* Anwendungs-Programm Stufe 5: der EINE Weg zu einer eigenen
+              Auswertung. Er steht im Anpassen-Modus, weil eine eigene Kachel
+              genau das ist - eine Anordnungs-Entscheidung des Kunden. Ist die
+              Anwendung „Eigene Auswertung" nicht eingeschaltet, gibt es ihn
+              nicht: ein Knopf, der nichts bewirken kann, wäre eine Zusage,
+              die niemand einlöst. */}
+          {layout.anpassen && eigenAn && (
+            <div className="vp-eigen-neu">
+              <Button
+                variant="ghost"
+                onClick={() => setEigenDialog({ offen: true, bearbeiten: null })}
+                disabled={eigenDeckelSatz(layout.eigene.length) != null}
+              >
+                + Eigene Auswertung
+              </Button>
+              <p className="vp-eigen-hinweis">
+                {eigenDeckelSatz(layout.eigene.length) ??
+                  (layout.eigene.length === 0 ? EIGEN_LEER_SATZ : null)}
+              </p>
+            </div>
+          )}
           {layout.anpassen && isPhone && (
             <AnpassenListe
               zeilen={layout.zeilen}
               onVerschieben={layout.verschieben}
               onSichtbar={layout.setSichtbar}
               onLead={layout.setLead}
+              extra={eigenStift}
             />
           )}
 
@@ -1609,7 +1768,7 @@ export function AnlageSeite({
               Preset -> Vorgabe -> Eigen). Ohne gespeicherte Zeile ist das
               Zeichen für Zeichen die frühere hart codierte Folge. */}
           {layout.resolved.order.map((id) => {
-            const node = bausteinNodes[id];
+            const node = istEigen(id) ? eigenerKnoten(id) : bausteinNodes[id];
             const zeile = layout.anpassen && !isPhone
               ? layout.zeilen.find((z) => z.id === id)
               : undefined;
@@ -1627,6 +1786,7 @@ export function AnlageSeite({
                   onVerschieben={layout.verschieben}
                   onSichtbar={layout.setSichtbar}
                   onLead={layout.setLead}
+                  extra={eigenStift(zeile)}
                 >
                   {node ?? undefined}
                 </AnpassenHuelle>
@@ -1645,6 +1805,7 @@ export function AnlageSeite({
               onVerschieben={layout.verschieben}
               onSichtbar={layout.setSichtbar}
               onLead={layout.setLead}
+              extra={eigenStift}
             />
           )}
         </div>

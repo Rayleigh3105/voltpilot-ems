@@ -24,7 +24,7 @@ import org.springframework.web.server.ResponseStatusException;
 class CockpitLayoutServiceTest {
 
     private final AnwendungKatalog katalog = new AnwendungKatalog(new ObjectMapper());
-    private final CockpitLayoutService service = new CockpitLayoutService(null, null, katalog);
+    private final CockpitLayoutService service = new CockpitLayoutService(null, null, katalog, null, new ObjectMapper());
 
     private static LayoutDoc doc(List<String> order, List<String> hidden, List<String> shown,
             String lead) {
@@ -35,19 +35,19 @@ class CockpitLayoutServiceTest {
     void einVollstaendigesDokumentGehtDurch() {
         assertThatCode(() -> service.validate(doc(
                 List.of("status", "energiefluss", "geld", "kacheln", "komponenten", "zustand"),
-                List.of("strompreis"), List.of("fahrplan"), "energiefluss"), "cockpit"))
+                List.of("strompreis"), List.of("fahrplan"), "energiefluss"), "cockpit", null))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void dasLeereDokumentSagtNichtsUndIstDamitGueltig() {
-        assertThatCode(() -> service.validate(LayoutDoc.leer(), "cockpit")).doesNotThrowAnyException();
+        assertThatCode(() -> service.validate(LayoutDoc.leer(), "cockpit", null)).doesNotThrowAnyException();
     }
 
     @Test
     void einUnbekannterBausteinIstEineBenannteAblehnung() {
         assertThatThrownBy(() -> service.validate(doc(List.of("gibtsnicht"), List.of(), List.of(),
-                null), "cockpit"))
+                null), "cockpit", null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("kein Baustein");
     }
@@ -56,7 +56,7 @@ class CockpitLayoutServiceTest {
     void einPflichtBausteinLaesstSichNichtAusblenden() {
         for (String pflicht : List.of("status", "zustand")) {
             assertThatThrownBy(() -> service.validate(doc(List.of(), List.of(pflicht), List.of(),
-                    null), "cockpit"))
+                    null), "cockpit", null))
                     .as(pflicht)
                     .isInstanceOf(ResponseStatusException.class)
                     .hasMessageContaining("Grundausstattung");
@@ -66,7 +66,7 @@ class CockpitLayoutServiceTest {
     @Test
     void einErfundenerLeadWirdNieUebernommen() {
         assertThatThrownBy(() -> service.validate(doc(List.of(), List.of(), List.of(),
-                "geraete-automatik"), "cockpit"))
+                "geraete-automatik"), "cockpit", null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("hervorheben");
     }
@@ -74,7 +74,7 @@ class CockpitLayoutServiceTest {
     @Test
     void eineDoppelteNennungInDerReihenfolgeIstEinWiderspruch() {
         assertThatThrownBy(() -> service.validate(doc(List.of("kacheln", "kacheln"), List.of(),
-                List.of(), null), "cockpit"))
+                List.of(), null), "cockpit", null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("mehrfach");
     }
@@ -85,7 +85,7 @@ class CockpitLayoutServiceTest {
         // rendert. Würde er auf momentane Verfügbarkeit prüfen, verlöre der
         // Kunde sein Bild, sobald er eine Anwendung kurz abschaltet.
         assertThatCode(() -> service.validate(doc(List.of("kacheln", "geld"),
-                List.of("kacheln", "geld"), List.of(), "erloes-komposition"), "cockpit"))
+                List.of("kacheln", "geld"), List.of(), "erloes-komposition"), "cockpit", null))
                 .doesNotThrowAnyException();
     }
 
@@ -152,11 +152,11 @@ class CockpitLayoutServiceTest {
     @Test
     void einCockpitBausteinGehoertNichtAufDasPortfolioUndUmgekehrt() {
         assertThatThrownBy(() -> service.validate(doc(List.of("kacheln"), List.of(), List.of(),
-                null), "portfolio"))
+                null), "portfolio", null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("gehört nicht auf diese Fläche");
         assertThatThrownBy(() -> service.validate(doc(List.of("speicher"), List.of(), List.of(),
-                null), "cockpit"))
+                null), "cockpit", null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("gehört nicht auf diese Fläche");
     }
@@ -166,7 +166,7 @@ class CockpitLayoutServiceTest {
         // Es gibt dort keine Bühne, die ein Baustein an sich ziehen könnte -
         // ein gesetzter Lead wäre still wirkungslos statt benannt.
         assertThatThrownBy(() -> service.validate(doc(List.of(), List.of(), List.of(),
-                "energiefluss"), "portfolio"))
+                "energiefluss"), "portfolio", null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("hervorheben");
     }
@@ -175,13 +175,59 @@ class CockpitLayoutServiceTest {
     void diePflichtBausteineDesPortfoliosLassenSichNichtAusblenden() {
         for (String pflicht : List.of("flotten-status", "anlagen")) {
             assertThatThrownBy(() -> service.validate(doc(List.of(), List.of(pflicht), List.of(),
-                    null), "portfolio"))
+                    null), "portfolio", null))
                     .as(pflicht)
                     .isInstanceOf(ResponseStatusException.class)
                     .hasMessageContaining("Grundausstattung");
         }
         assertThatCode(() -> service.validate(doc(List.of("erloese", "speicher"),
-                List.of("lastspitzen"), List.of(), null), "portfolio"))
+                List.of("lastspitzen"), List.of(), null), "portfolio", null))
                 .doesNotThrowAnyException();
+    }
+
+    // --- Anwendungs-Programm Stufe 5 ---------------------------------------
+
+    private static LayoutDoc mitEigener(List<String> order, EigeneAuswertung.CustomBaustein b) {
+        return new LayoutDoc(order, List.of(), List.of(), null,
+                b == null ? List.of() : List.of(b));
+    }
+
+    private static EigeneAuswertung.CustomBaustein kachel() {
+        return new EigeneAuswertung.CustomBaustein("eigen:k1", "Wärmepumpe", "kachel",
+                "11111111-1111-1111-1111-111111111111", "power_kw", "jetzt");
+    }
+
+    @Test
+    void eineEigeneAuswertungGibtEsNurAufDemCockpitEinerAnlage() {
+        // Das Portfolio hängt am KUNDEN und hat keine einzelne Komponente,
+        // gegen die ein Kanal zu prüfen wäre.
+        assertThatThrownBy(() -> service.validate(mitEigener(List.of(), kachel()), "portfolio",
+                java.util.UUID.randomUUID()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("nur auf dem Cockpit");
+        // Und ohne Anlage (die kunden-weite Route) ebenso.
+        assertThatThrownBy(() -> service.validate(mitEigener(List.of(), kachel()), "cockpit", null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("nur auf dem Cockpit");
+    }
+
+    @Test
+    void einEigenSchluesselOhneDefinitionIstEineBenannteAblehnung() {
+        // Eine Reihenfolge, die eine Kachel nennt, die es nicht gibt, wäre ein
+        // Schlüssel, den niemand rendern kann.
+        assertThatThrownBy(() -> service.validate(
+                mitEigener(List.of("eigen:geist"), null), "cockpit", java.util.UUID.randomUUID()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("keine eigene Auswertung");
+    }
+
+    @Test
+    void einDokumentOhneEigeneAuswertungenIstUnveraendert() {
+        // Der Bestands-Beweis: kein `custom`, keine neue Ablehnung, und die
+        // Prüfung fasst die Entitäts-Repository gar nicht erst an (sie ist hier
+        // null - ein Zugriff wäre eine NPE).
+        assertThatCode(() -> service.validate(
+                doc(List.of("status", "kacheln"), List.of(), List.of(), null), "cockpit",
+                java.util.UUID.randomUUID())).doesNotThrowAnyException();
     }
 }

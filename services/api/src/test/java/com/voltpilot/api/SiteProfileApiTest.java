@@ -179,13 +179,18 @@ class SiteProfileApiTest {
         //
         // Seit dem EINEN Anwendungs-Katalog (Zielbild-Stufe 1) fuehrt das Regal
         // zusaetzlich die zwei BASIS-Anwendungen ("immer an", nicht schaltbar)
-        // und die zwei REGEL-Anwendungen (Schalter = reine Absicht). Die zwei
-        // RESERVIERTEN Eintraege (eigene-auswertung, berichte) stehen bewusst
-        // NICHT darin - ein Schalter, der nichts bewirken kann, waere eine
-        // Zusage, die niemand einloest.
+        // und die REGEL-Anwendungen (Schalter = reine Absicht) - seit Stufe 5
+        // gehoert "eigene-auswertung" dazu. Der letzte RESERVIERTE Eintrag
+        // ("berichte") steht bewusst NICHT darin: ein Schalter, der nichts
+        // bewirken kann, waere eine Zusage, die niemand einloest.
         assertThat(ids(shelf)).containsExactly("monitoring", "speicher-fahrplan", "ueberschuss",
                 "verbraucher", "marktvermarktung", "lastspitzenkappung", "atypische-netznutzung",
-                "lastmanagement");
+                "lastmanagement", "eigene-auswertung");
+        // Sie wird NIE abgeleitet (wie `ueberschuss`) und steht in keinem
+        // Preset auf "an" - der Kunde schaltet sie selbst ein.
+        assertThat(card(shelf, "eigene-auswertung").path("derivedActive").asBoolean()).isFalse();
+        assertThat(card(shelf, "eigene-auswertung").path("active").asBoolean()).isFalse();
+        assertThat(card(shelf, "eigene-auswertung").path("state").isNull()).isTrue();
         // Monitoring laeuft immer - jede Anlage wird beobachtet; der
         // Voraussetzungs-Chip sagt, ob schon Werte ankommen.
         assertThat(card(shelf, "monitoring").path("derivedActive").asBoolean()).isTrue();

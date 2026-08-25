@@ -46,6 +46,7 @@
  * Fassung übergeben. Der Server braucht sie gar nicht: er prüft Schlüssel.
  */
 import CATALOG from './anwendungen/catalog.json';
+import { istEigen, vorlageFuer, type EigeneAuswertungDef } from './eigeneAuswertung';
 import type { CockpitBlock, CockpitBlockId } from './surface';
 import { LEAD_CANDIDATES, leadBlock } from './leadSlot';
 
@@ -77,6 +78,14 @@ export interface LayoutDocument {
   hidden: string[];
   shown: string[];
   lead: string | null;
+  /**
+   * Die EIGENEN Auswertungen dieses Dokuments (Stufe 5). Sie sind die einzigen
+   * Bausteine, die das Dokument selbst DEFINIERT statt nur zu nennen: ihr
+   * Schlüssel (`eigen:…`) steht zusätzlich in `order`/`hidden`, damit sie sich
+   * anordnen und ausblenden lassen wie jeder andere Baustein. Fehlt das Feld
+   * (jedes Dokument vor dieser Stufe), gibt es keine — nie ein Fehler.
+   */
+  custom?: EigeneAuswertungDef[];
 }
 
 /** Ein Baustein, wie der Katalog ihn beschreibt. */
@@ -131,8 +140,21 @@ export function baustein(id: string | null | undefined): BausteinDef | null {
   return id ? (BY_ID.get(id) ?? null) : null;
 }
 
-/** Der kundenseitige Name eines Bausteins; unbekannt → die Id (nie leer). */
-export function bausteinLabel(id: string): string {
+/**
+ * Der kundenseitige Name eines Bausteins; unbekannt → die Id (nie leer).
+ *
+ * Eine EIGENE Auswertung hat keinen Katalog-Eintrag — ihr Name ist der TITEL,
+ * den der Kunde vergeben hat. `eigene` ist deshalb ein Parameter: ohne ihn
+ * (jeder Aufrufer vor Stufe 5) verhält sich die Funktion zeichengleich.
+ */
+export function bausteinLabel(
+  id: string,
+  eigene?: readonly EigeneAuswertungDef[] | null,
+): string {
+  if (istEigen(id)) {
+    const def = (eigene ?? []).find((d) => d.id === id);
+    return def?.titel?.trim() || 'Eigene Auswertung';
+  }
   return baustein(id)?.label ?? id;
 }
 
@@ -246,6 +268,66 @@ export function presetLayout(
 // Auflösung
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Die EIGENEN Auswertungen (Stufe 5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Die eigenen Auswertungen ALLER Schichten, `eigen` gewinnt bei gleichem
+ * Schlüssel — dieselbe Rangfolge wie bei der Reihenfolge (E2 „Kunde gewinnt").
+ * Eine Kachel, die nur die Vorgabe des Betreibers definiert, bleibt dabei
+ * erhalten; ohne diese Vereinigung wäre sie unsichtbar, sobald der Kunde
+ * einmal etwas anordnet.
+ *
+ * ⚠ Der SERVER fährt dieselbe Vereinigung, wenn er die Werte holt
+ * (`EigeneAuswertungService.definitionen`) — beide zusammen ändern, sonst
+ * rendert die Fläche eine Kachel, für die keine Zahl kommt.
+ */
+export function eigeneAusSchichten(input: {
+  tenantVorgabe?: LayoutDocument | null;
+  siteVorgabe?: LayoutDocument | null;
+  eigen?: LayoutDocument | null;
+}): EigeneAuswertungDef[] {
+  const out = new Map<string, EigeneAuswertungDef>();
+  for (const doc of [input.tenantVorgabe, input.siteVorgabe, input.eigen]) {
+    for (const d of doc?.custom ?? []) out.set(d.id, d);
+  }
+  return [...out.values()];
+}
+
+/**
+ * Die kanonische Reihenfolge MIT den eigenen Auswertungen: jede steht hinter
+ * dem Baustein, den ihre Vorlage als `nach` nennt (heute: hinter den
+ * Kennzahlen), in der Reihenfolge, in der sie definiert wurden.
+ *
+ * Sie kanonisch einzusortieren statt hinten anzuhängen ist dieselbe Regel wie
+ * für jeden anderen Baustein: eine frisch angelegte Kachel erscheint dort, wo
+ * sie hingehört, und nicht als Anhängsel unter allem, was der Kunde arrangiert
+ * hat. Ist der Anker auf DIESER Anlage gar nicht verfügbar, hängen sie ans
+ * Ende — ein Anker, den es nicht gibt, kann nichts ordnen.
+ */
+export function mitEigenen<T extends string = BausteinId>(
+  canonical: readonly T[],
+  eigene: readonly EigeneAuswertungDef[],
+): T[] {
+  if (eigene.length === 0) return [...canonical];
+  const out: T[] = [...canonical];
+  // Je Anker die zugehörigen Kacheln, in Definitions-Reihenfolge.
+  const proAnker = new Map<string, string[]>();
+  for (const d of eigene) {
+    const anker = vorlageFuer(d.darstellung)?.nach ?? '';
+    const liste = proAnker.get(anker) ?? [];
+    liste.push(d.id);
+    proAnker.set(anker, liste);
+  }
+  for (const [anker, ids] of proAnker) {
+    const at = out.indexOf(anker as T);
+    if (at >= 0) out.splice(at + 1, 0, ...(ids as T[]));
+    else out.push(...(ids as T[]));
+  }
+  return out;
+}
+
 /** Woher die wirksame Anordnung kommt — die Ansage des Reset-Knopfes (E2). */
 export type LayoutQuelle = 'katalog' | 'preset' | 'vorgabe-kunde' | 'vorgabe-anlage' | 'eigen';
 
@@ -293,7 +375,14 @@ export interface ResolvedLayout<T extends string = BausteinId> {
 function saysSomething(doc: LayoutDocument | null | undefined): doc is LayoutDocument {
   if (!doc) return false;
   return (
-    doc.order.length > 0 || doc.hidden.length > 0 || doc.shown.length > 0 || doc.lead != null
+    doc.order.length > 0 ||
+    doc.hidden.length > 0 ||
+    doc.shown.length > 0 ||
+    doc.lead != null ||
+    // ⚠ Eine eigene Auswertung IST eine Aussage, auch ohne jede Reihenfolge —
+    // ein Dokument, das nur Kacheln definiert, darf nicht als „keine Schicht"
+    // durchfallen, sonst verschwänden sie beim Auflösen.
+    (doc.custom?.length ?? 0) > 0
   );
 }
 
@@ -437,6 +526,9 @@ export interface AnpassenZeile<T extends string = BausteinId> {
   /** Kann sie eine Position nach oben? (Tastatur-Alternative zu Drag/Drop.) */
   kannHoch: boolean;
   kannRunter: boolean;
+  /** true = eine EIGENE Auswertung (Stufe 5) — sie lässt sich zusätzlich
+   *  bearbeiten und entfernen, und ihr Name ist der Titel des Kunden. */
+  eigen?: boolean;
 }
 
 /**
@@ -453,6 +545,8 @@ export function anpassenZeilen<T extends string = BausteinId>(input: {
   arrangement: readonly T[];
   hidden: readonly T[];
   lead: CockpitBlockId | null;
+  /** Die eigenen Auswertungen — sie tragen ihren Titel als Namen (Stufe 5). */
+  eigene?: readonly EigeneAuswertungDef[] | null;
 }): AnpassenZeile<T>[] {
   const hidden = new Set<string>(input.hidden);
   const sichtbar = input.arrangement.filter((id) => !hidden.has(id));
@@ -462,12 +556,15 @@ export function anpassenZeilen<T extends string = BausteinId>(input: {
     const mi = ist ? movable.indexOf(id) : -1;
     return {
       id,
-      label: bausteinLabel(id),
+      label: bausteinLabel(id, input.eigene),
       sichtbar: ist,
       pflicht: def?.pflicht ?? false,
+      // Eine eigene Auswertung hat keinen Katalog-Eintrag — sie ist beweglich,
+      // nie Pflicht und trägt keinen Stern (die Bühne gehört ihr nicht).
       beweglich: def?.beweglich !== false,
       leadBlock: def?.lead_block ?? null,
       lead: ist && def?.lead_block != null && def.lead_block === input.lead,
+      eigen: istEigen(id),
       kannHoch: mi > 0,
       kannRunter: mi >= 0 && mi < movable.length - 1,
     };
@@ -518,15 +615,27 @@ export function anpassenDokument<T extends string = BausteinId>(input: {
   lead: CockpitBlockId | null;
   /** Was die Schichten UNTER „eigen" ausblenden würden. */
   geerbtVersteckt?: readonly T[];
+  /** Die eigenen Auswertungen dieser Schicht (Stufe 5). */
+  eigene?: readonly EigeneAuswertungDef[] | null;
 }): LayoutDocument {
   const hidden = input.hidden.filter((id) => !baustein(id)?.pflicht);
   const shown = (input.geerbtVersteckt ?? []).filter((id) => !hidden.includes(id));
-  return {
-    order: [...input.arrangement],
-    hidden: [...hidden],
-    shown: [...shown],
+  const eigene = input.eigene ?? [];
+  // ⚠ Nur Schlüssel, die dieses Dokument auch DEFINIERT: der Server lehnt eine
+  // Reihenfolge ab, die eine Kachel nennt, die es nicht gibt — und das ist
+  // richtig so, denn niemand könnte sie rendern.
+  const definiert = new Set(eigene.map((d) => d.id));
+  const behalte = (id: string) => !istEigen(id) || definiert.has(id);
+  const doc: LayoutDocument = {
+    order: input.arrangement.filter(behalte),
+    hidden: hidden.filter(behalte),
+    shown: shown.filter(behalte),
     lead: input.lead,
   };
+  // Ein Dokument ohne eigene Auswertungen bleibt Zeichen für Zeichen das von
+  // vor Stufe 5 — das Feld erscheint gar nicht erst.
+  if (eigene.length > 0) doc.custom = [...eigene];
+  return doc;
 }
 
 /**
@@ -538,6 +647,7 @@ export function anpassenDokument<T extends string = BausteinId>(input: {
  * gibt. `null` = dieser Baustein rendert sich selbst.
  */
 export function ortsHinweis(id: string): string | null {
+  if (istEigen(id)) return null;
   switch (id) {
     case 'status':
       return 'Der Kopf Ihrer Anlage — er steht immer oben.';

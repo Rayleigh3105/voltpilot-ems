@@ -1,6 +1,7 @@
 package com.voltpilot.api.profile;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.voltpilot.api.cockpit.EigeneAuswertung.CustomBaustein;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.flows.FlowCatalog;
 import java.io.IOException;
@@ -172,6 +173,28 @@ public class AnwendungKatalog {
             String aggregationRegel) {}
 
     /**
+     * Eine BAUSTEIN-VORLAGE (Stufe 5): die ART eines eigenen Cockpit-Bausteins,
+     * nicht der Baustein selbst.
+     *
+     * <p>Sie steht bewusst NEBEN {@link Baustein} und nicht darin: ein
+     * {@code Baustein} ist eine feste Fläche mit festem Schlüssel, den die
+     * kanonische Reihenfolge kennt — eine Vorlage ist erst RENDERBAR, wenn der
+     * Kunde eine Instanz davon anlegt ({@code eigen:<id>} in
+     * {@code document.custom}). Sie in dieselbe Liste zu legen hiesse, dass die
+     * kanonischen Listen einen Schlüssel führen müssten, den niemand rendert.
+     *
+     * @param id          die Vorlagen-Id (nie ein Baustein-Schlüssel)
+     * @param label       der kundenseitige Name der Wahl
+     * @param satz        EIN Satz: was diese Art zeigt
+     * @param darstellung {@code kachel} | {@code chart}
+     * @param flaeche     die Fläche, auf der ihre Instanzen leben
+     * @param anwendung   die Anwendung, die sie beisteuert
+     * @param nach        hinter WELCHEM Baustein eine Instanz kanonisch steht
+     */
+    public record BausteinVorlage(String id, String label, String satz, String darstellung,
+            String flaeche, String anwendung, String nach) {}
+
+    /**
      * Ein Layout-Dokument: der gespeicherte WILLE, nie die abgeleitete Fläche.
      *
      * <p>{@code order} nennt Bausteine in ihrer Reihenfolge (ungenannte
@@ -182,16 +205,33 @@ public class AnwendungKatalog {
      * deshalb ein eigenes Feld und keine Position in {@code order}.
      */
     public record LayoutDoc(List<String> order, List<String> hidden, List<String> shown,
-            String lead) {
+            String lead, List<CustomBaustein> custom) {
+
+        /**
+         * Ein Dokument OHNE eigene Auswertungen — die Form jedes Aufrufers vor
+         * Stufe 5 (Preset-Schichten, Tests, der Katalog selbst). Sie bleibt
+         * bestehen, damit das Hinzufügen von {@code custom} keine einzige
+         * bestehende Stelle anfasst.
+         */
+        public LayoutDoc(List<String> order, List<String> hidden, List<String> shown,
+                String lead) {
+            this(order, hidden, shown, lead, List.of());
+        }
 
         /** Das leere Dokument — es sagt über nichts etwas aus. */
         public static LayoutDoc leer() {
-            return new LayoutDoc(List.of(), List.of(), List.of(), null);
+            return new LayoutDoc(List.of(), List.of(), List.of(), null, List.of());
         }
 
-        /** true = dieses Dokument trifft keine einzige Aussage. */
+        /**
+         * true = dieses Dokument trifft keine einzige Aussage. ⚠ Eine eigene
+         * Auswertung IST eine Aussage, auch ohne jede Reihenfolge — ein
+         * Dokument, das nur Kacheln definiert, darf nicht als „keine Schicht"
+         * durchfallen, sonst verschwänden sie beim Auflösen.
+         */
         public boolean istLeer() {
-            return order.isEmpty() && hidden.isEmpty() && shown.isEmpty() && lead == null;
+            return order.isEmpty() && hidden.isEmpty() && shown.isEmpty() && lead == null
+                    && custom.isEmpty();
         }
     }
 
@@ -242,6 +282,7 @@ public class AnwendungKatalog {
     private final Map<String, Profil> profileById = new LinkedHashMap<>();
     private final Map<String, LayoutDoc> presetLayoutById = new LinkedHashMap<>();
     private final Map<String, Baustein> bausteinById = new LinkedHashMap<>();
+    private final List<BausteinVorlage> vorlagen = new ArrayList<>();
 
     public AnwendungKatalog(ObjectMapper mapper) {
         try (InputStream in = getClass().getResourceAsStream("/anwendungen/catalog.json")) {
@@ -289,6 +330,11 @@ public class AnwendungKatalog {
                 throw new IllegalStateException("duplicate baustein id: " + baustein.id());
             }
         }
+        for (JsonNode v : raw.path("baustein_vorlagen")) {
+            vorlagen.add(new BausteinVorlage(v.path("id").asText(), v.path("label").asText(),
+                    text(v, "satz"), v.path("darstellung").asText(), v.path("flaeche").asText(),
+                    v.path("anwendung").asText(), text(v, "nach")));
+        }
     }
 
     private static Anwendung parse(JsonNode a) {
@@ -316,6 +362,8 @@ public class AnwendungKatalog {
         if (node == null || node.isMissingNode() || node.isNull()) {
             return LayoutDoc.leer();
         }
+        // Eine PRESET-Schicht trägt nie eigene Auswertungen: sie ist die
+        // VoltPilot-Vorgabe für ein Profil, und eine Kachel gehört dem Kunden.
         return new LayoutDoc(strings(node.path("order")), strings(node.path("hidden")),
                 strings(node.path("shown")), text(node, "lead"));
     }
@@ -422,6 +470,31 @@ public class AnwendungKatalog {
     /** Der Baustein mit dieser Id, oder null (auch für ein unbekanntes Wort). */
     public Baustein baustein(String id) {
         return id == null ? null : bausteinById.get(id);
+    }
+
+    /** Alle Baustein-Vorlagen EINER Fläche in Katalog-Reihenfolge (Stufe 5). */
+    public List<BausteinVorlage> bausteinVorlagen(String flaeche) {
+        List<BausteinVorlage> out = new ArrayList<>();
+        for (BausteinVorlage v : vorlagen) {
+            if (flaeche == null || flaeche.equals(v.flaeche())) {
+                out.add(v);
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * Die Vorlage zu einer Darstellung ({@code kachel} | {@code chart}), oder
+     * null. Sie ist der Weg von einer INSTANZ zurück zu ihrer Art — eine
+     * Instanz trägt ihre Darstellung, nicht ihre Vorlagen-Id.
+     */
+    public BausteinVorlage vorlageFuerDarstellung(String darstellung) {
+        for (BausteinVorlage v : vorlagen) {
+            if (v.darstellung().equals(darstellung)) {
+                return v;
+            }
+        }
+        return null;
     }
 
     /**

@@ -24,7 +24,10 @@ import {
   BAUSTEINE,
   CANONICAL_DESKTOP,
   CANONICAL_PHONE,
+  anpassenDokument,
+  eigeneAusSchichten,
   layoutResolve,
+  mitEigenen,
   presetLayout,
 } from './cockpitLayout';
 import { MODE_RANK, anlageSurface, type AnlageSurfaceInput } from './surface';
@@ -475,10 +478,13 @@ describe('Abbau-Invarianten (M6)', () => {
         netzladenErlaubt: false,
       }),
     ).toEqual(['monitoring']);
-    // Die zwei RESERVIERTEN Einträge stehen im Katalog, aber nie im Regal.
+    // Der RESERVIERTE Eintrag steht im Katalog, aber nie im Regal.
     expect(ANWENDUNGEN.map((a) => a.id)).toContain('berichte');
     expect(REGAL.map((a) => a.id)).not.toContain('berichte');
-    expect(REGAL.map((a) => a.id)).not.toContain('eigene-auswertung');
+    // Stufe 5: die eigene Auswertung IST seither schaltbar - aber sie wird nie
+    // ABGELEITET (wie `ueberschuss`): ihr Schalter ist reine Absicht, und eine
+    // Anlage, die nie eine Kachel angelegt hat, bekommt keine erfundene.
+    expect(REGAL.map((a) => a.id)).toContain('eigene-auswertung');
   });
 
   it('Anwendungs-Preset Stufe 2: eine Anlage OHNE Profil rendert exakt wie vorher', () => {
@@ -627,6 +633,55 @@ describe('Anwendungs-Programm Stufe 3 — das Cockpit-Layout einer Bestandsanlag
       'komponenten',
       'zustand',
     ]);
+  });
+
+  it('Stufe 5: OHNE eigene Auswertungen ist alles Zeichen für Zeichen wie vorher', () => {
+    // Die tragende Invariante der Stufe: `document.custom` ist für JEDE
+    // Bestandsanlage leer (das Feld existierte nicht einmal). Ohne einen
+    // einzigen Eintrag darf sich weder die kanonische Reihenfolge noch die
+    // Auflösung noch das gespeicherte Dokument um ein Zeichen ändern.
+    expect(mitEigenen(CANONICAL_DESKTOP, [])).toEqual(CANONICAL_DESKTOP);
+    expect(mitEigenen(CANONICAL_PHONE, [])).toEqual(CANONICAL_PHONE);
+    expect(eigeneAusSchichten({})).toEqual([]);
+    expect(
+      eigeneAusSchichten({
+        eigen: { order: ['status'], hidden: [], shown: [], lead: null },
+      }),
+    ).toEqual([]);
+    // Das gespeicherte Dokument trägt das Feld gar nicht erst - ein leeres
+    // `custom: []` wäre eine Aussage, die es vorher nicht gab.
+    const doc = anpassenDokument({
+      arrangement: [...CANONICAL_DESKTOP],
+      hidden: [],
+      lead: null,
+    });
+    expect('custom' in doc).toBe(false);
+    // Und die Auflösung bleibt der Katalog-Standard.
+    const r = layoutResolve({ canonical: CANONICAL_DESKTOP, verfuegbar: ALLE });
+    expect(r.order).toEqual(CANONICAL_DESKTOP);
+    expect(r.quelle).toBe('katalog');
+  });
+
+  it('Stufe 5: eine eigene Auswertung landet an ihrer KANONISCHEN Stelle', () => {
+    // Hinter den Kennzahlen (der Anker ihrer Vorlage), nicht hinten dran -
+    // dieselbe Regel wie für jeden anderen frisch aufgetauchten Baustein.
+    const def = {
+      id: 'eigen:k1',
+      titel: 'Wärmepumpe',
+      darstellung: 'kachel' as const,
+      entityId: 'e1',
+      channel: 'power_kw',
+      aggregat: 'jetzt' as const,
+    };
+    const canonical = mitEigenen(CANONICAL_DESKTOP, [def]);
+    expect(canonical[canonical.indexOf('kacheln') + 1]).toBe('eigen:k1');
+    expect(canonical.length).toBe(CANONICAL_DESKTOP.length + 1);
+    // Sie ist erst verfügbar, wenn sie definiert ist - sonst würde die
+    // Auflösung einen Schlüssel rendern, hinter dem nichts steht.
+    expect(
+      layoutResolve({ canonical, verfuegbar: [...ALLE, 'eigen:k1'] }).order,
+    ).toContain('eigen:k1');
+    expect(layoutResolve({ canonical, verfuegbar: ALLE }).order).not.toContain('eigen:k1');
   });
 
   it('das Layout ist server-seitig — im Portal gibt es dafür KEIN localStorage', () => {

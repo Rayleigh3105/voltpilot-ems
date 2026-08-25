@@ -8,6 +8,7 @@ import type {
   Flaeche as CockpitLayoutFlaeche,
 } from './cockpitLayout';
 import type { Profil } from './anwendungen';
+import type { EigeneAuswertungWerte } from './eigeneAuswertung';
 import type {
   ChargingBoostResult,
   ChargingConfig,
@@ -2580,6 +2581,11 @@ export type {
   CockpitLayoutResponse,
   Flaeche as CockpitLayoutFlaeche,
 } from './cockpitLayout';
+export type {
+  EigeneAuswertungDef,
+  EigeneAuswertungWerte,
+  EigenerWert,
+} from './eigeneAuswertung';
 
 /**
  * Ein aufgezeichneter Wechsel aus dem Regel-Protokoll (Stufe 5b). Die Wörter
@@ -3204,6 +3210,20 @@ export const api = {
     request<CockpitLayoutResponse>(
       `/api/v1/tenant/cockpit-layout?surface=${surface}&layer=${layer}`,
       { method: 'DELETE' },
+    ),
+  /**
+   * Die WERTE der eigenen Auswertungen einer Anlage (Anwendungs-Programm
+   * Stufe 5). Eine Route für ALLE eigenen Bausteine zusammen: das Cockpit
+   * rendert sie gemeinsam, und mehrere Kacheln auf derselben Komponente teilen
+   * sich server-seitig eine Abfrage.
+   *
+   * Sie nimmt KEINE Definition entgegen — was auf dem Cockpit steht, entscheidet
+   * das Layout-Dokument; eine Route, die eine mitgeschickte Definition
+   * beantwortet, wäre ein zweiter Weg an der Prüfung des Schreibpfads vorbei.
+   */
+  eigeneAuswertung: (siteId: string, at?: string) =>
+    request<EigeneAuswertungWerte>(
+      `/api/v1/sites/${siteId}/eigene-auswertung${at ? `?at=${at}` : ''}`,
     ),
   /** Seed this site's starter flow DRAFT (customer twin, idempotent). */
   autoStart: (siteId: string) =>

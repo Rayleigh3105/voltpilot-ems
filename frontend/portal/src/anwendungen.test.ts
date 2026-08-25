@@ -297,6 +297,9 @@ describe('Katalog-Regeln', () => {
       'lastspitzenkappung',
       'atypische-netznutzung',
       'lastmanagement',
+      // Stufe 5: die eigene Auswertung ist seither schaltbar - sie steht aber
+      // in KEINEM Preset auf „an", der Kunde schaltet sie selbst ein.
+      'eigene-auswertung',
     ]);
     const raenge = ANWENDUNGEN.map((a) => a.rang);
     expect(new Set(raenge).size).toBe(raenge.length);
@@ -313,6 +316,15 @@ describe('Katalog-Regeln', () => {
   it('die Regel-Anwendungen tragen ihren ehrlichen Leer-Zustand', () => {
     for (const a of ANWENDUNGEN) {
       if (a.klasse !== 'regel') continue;
+      if (a.id === 'eigene-auswertung') {
+        // ⚠ Die EINE Ausnahme, und sie ist eine Ehrlichkeitsregel: der SERVER
+        // kann die Leere hier nicht belegen (sein Beleg `hasCustomerRule`
+        // zählt aktive Flows, nicht Kacheln). Was er nicht belegen kann,
+        // behauptet er nicht - der Leer-Hinweis lebt im Cockpit, wo der Knopf
+        // „+ Eigene Auswertung" steht (`eigeneAuswertung.LEER_SATZ`).
+        expect(a.leer_zustand, a.id).toBeNull();
+        continue;
+      }
       expect(a.leer_zustand, a.id).toBeTruthy();
       expect(a.leer_zustand, a.id).toContain('Regeln');
     }

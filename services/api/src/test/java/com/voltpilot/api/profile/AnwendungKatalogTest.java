@@ -27,13 +27,17 @@ class AnwendungKatalogTest {
     void theShelfIsTheVisibleEntriesInTheirCanonicalOrder() {
         assertThat(katalog.regal().stream().map(Anwendung::id)).containsExactly("monitoring",
                 "speicher-fahrplan", "ueberschuss", "verbraucher", "marktvermarktung",
-                "lastspitzenkappung", "atypische-netznutzung", "lastmanagement");
+                "lastspitzenkappung", "atypische-netznutzung", "lastmanagement",
+                // Stufe 5: die eigene Auswertung ist seither schaltbar - sie
+                // steht aber in KEINEM Preset auf „an", der Kunde schaltet sie
+                // selbst ein.
+                "eigene-auswertung");
+        assertThat(katalog.find("eigene-auswertung").preset().privat()).isEqualTo("angeboten");
+        assertThat(katalog.find("eigene-auswertung").preset().gewerbe()).isEqualTo("angeboten");
         // Die reservierten Einträge stehen im Katalog, aber NICHT im Regal - ein
         // Schalter, der nichts bewirken kann, wäre eine Zusage, die niemand
         // einlöst.
-        assertThat(katalog.alle().stream().map(Anwendung::id))
-                .contains("eigene-auswertung", "berichte");
-        assertThat(katalog.find("eigene-auswertung").sichtbar()).isFalse();
+        assertThat(katalog.alle().stream().map(Anwendung::id)).contains("berichte");
         assertThat(katalog.find("berichte").sichtbar()).isFalse();
     }
 
@@ -60,9 +64,18 @@ class AnwendungKatalogTest {
                 assertThat(a.strategieKnoten()).as(a.id()).isNull();
                 assertThat(a.starter()).as(a.id()).isNull();
             }
-            // Eine Regel-Anwendung trägt ihren ehrlichen Leer-Zustand.
+            // Eine Regel-Anwendung trägt ihren ehrlichen Leer-Zustand — sofern
+            // der SERVER die Leere überhaupt belegen kann. ⚠ Bei der eigenen
+            // Auswertung kann er das NICHT: sein Beleg (`hasCustomerRule`)
+            // zählt aktive Flows, nicht Kacheln. Was er nicht belegen kann,
+            // behauptet er nicht; der Leer-Hinweis lebt dort im Cockpit, wo der
+            // Knopf „+ Eigene Auswertung" steht.
             if (AnwendungKatalog.KLASSE_REGEL.equals(a.klasse())) {
-                assertThat(a.leerZustand()).as(a.id()).isNotBlank();
+                if (AnwendungKatalog.EIGENE_AUSWERTUNG.equals(a.id())) {
+                    assertThat(a.leerZustand()).as(a.id()).isNull();
+                } else {
+                    assertThat(a.leerZustand()).as(a.id()).isNotBlank();
+                }
             }
         }
     }

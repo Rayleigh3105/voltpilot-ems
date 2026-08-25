@@ -1,8 +1,10 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.cockpit.CockpitLayoutService;
+import com.voltpilot.api.cockpit.EigeneAuswertung.CustomBaustein;
 import com.voltpilot.api.profile.AnwendungKatalog.LayoutDoc;
 import com.voltpilot.api.web.dto.CockpitLayoutDto;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -53,7 +55,16 @@ public class SiteCockpitLayoutController {
 
     /** Der Rumpf eines Schreibvorgangs — NUR Absicht, nie die gerenderte Fläche. */
     public record LayoutRequest(List<String> order, List<String> hidden, List<String> shown,
-            String lead) {}
+            String lead, List<CustomRequest> custom) {}
+
+    /**
+     * Eine EIGENE Auswertung im Rumpf (Anwendungs-Programm Stufe 5). Bewusst
+     * ein eigener Typ statt {@code CustomBaustein} direkt: der Rumpf darf
+     * lückenhaft ankommen, und {@code EigeneAuswertung.pruefeForm} soll den
+     * deutschen Grund nennen — nicht Jackson einen englischen Parser-Fehler.
+     */
+    public record CustomRequest(String id, String titel, String darstellung, String entityId,
+            String channel, String aggregat) {}
 
     private final CockpitLayoutService layouts;
 
@@ -112,7 +123,27 @@ public class SiteCockpitLayoutController {
             return LayoutDoc.leer();
         }
         return new LayoutDoc(list(request.order()), list(request.hidden()), list(request.shown()),
-                blankToNull(request.lead()));
+                blankToNull(request.lead()), custom(request.custom()));
+    }
+
+    /** Die eigenen Auswertungen des Rumpfs — Trimmen, sonst unverändert. */
+    private static List<CustomBaustein> custom(List<CustomRequest> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return List.of();
+        }
+        List<CustomBaustein> out = new ArrayList<>();
+        for (CustomRequest c : raw) {
+            if (c == null) {
+                continue;
+            }
+            out.add(new CustomBaustein(trim(c.id()), trim(c.titel()), trim(c.darstellung()),
+                    trim(c.entityId()), trim(c.channel()), trim(c.aggregat())));
+        }
+        return List.copyOf(out);
+    }
+
+    private static String trim(String raw) {
+        return raw == null ? null : raw.trim();
     }
 
     private static List<String> list(List<String> raw) {

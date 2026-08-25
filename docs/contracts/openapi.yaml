@@ -1742,6 +1742,46 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { description: Only a platform-admin may reset the `vorgabe` layer. }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/eigene-auswertung:
+    get:
+      tags: [profile]
+      summary: The VALUES of one plant's own evaluations (Anwendungs-Programm Stufe 5).
+      description: >
+        One narrow read for every own Baustein of a plant - current value, day
+        figure and, for a `chart`, the day's buckets. No new store and no new
+        query: the DEFINITIONS live in the layout document
+        (`cockpit_layout.document.custom`), the VALUES come from the same entity
+        history path the Messwerte explorer draws its curves from (including the
+        MIG-B2 splice that keeps a migrated plant's v1 history). One query per
+        COMPONENT, however many tiles sit on it.
+        The four figures: `jetzt` = the newest reported value (from the SAME
+        series the chart draws, so tile and curve can never disagree),
+        `tagesmax` = the day's maximum, `tagesmittel` = the SAMPLE-WEIGHTED mean,
+        `tagessumme` = the ADVANCE (`max - min`), never a sum of the readings -
+        a kWh channel reports a METER READING here. A negative advance (meter
+        swap, reset) yields null, never a fabricated figure.
+        `wert` is null wherever there is none - NEVER a 0; a tile without a
+        measurement says so in `hinweis`.
+        Read-only and RLS-scoped like every `/sites/**` route (foreign site 404,
+        never 403; admins via the `X-Tenant-Id` switcher). It takes no
+        definition: what a cockpit shows is decided by the layout document, and
+        answering a submitted definition would be a second way past the write
+        path's validation.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: at
+          in: query
+          required: false
+          description: The anchor day (Europe/Berlin); default today.
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: One row per stored evaluation (empty when the plant has none).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EigeneAuswertungWerte" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/tenant/cockpit-layout:
     get:
       tags: [profile]
@@ -9680,6 +9720,43 @@ components:
           type: string
           nullable: true
           description: The highlighted CockpitBlockId (peak-band, erloes-komposition, energiefluss, lade-budget).
+        custom:
+          type: array
+          description: >
+            The customer's OWN evaluations (Anwendungs-Programm Stufe 5). They
+            are the only Bausteine a document DEFINES rather than merely names:
+            each carries its key (`eigen:<id>`), which additionally appears in
+            `order`/`hidden`. Only the `cockpit` surface of ONE plant may carry
+            them (the portfolio hangs off the customer and has no single
+            component to validate a channel against); at most 12 per plant.
+            Server-side validation: the component must belong to this plant
+            (RLS), it must actually report that channel, and the aggregate must
+            be HONEST for that channel - `tagessumme` only on an energy channel
+            (a kWh channel reports a METER READING, so its day figure is the
+            ADVANCE), and `tagesmax`/`tagesmittel` never on one (the maximum of
+            a counter is its closing reading, its mean is no statement). Each
+            refusal is a 400 with a German reason and writes nothing. The rule
+            lives in `cockpit/EigeneAuswertung` and is pinned against the portal
+            twin by `docs/contracts/v2/eigene-auswertung-vectors.json`.
+          items: { $ref: "#/components/schemas/EigeneAuswertungDefinition" }
+    EigeneAuswertungDefinition:
+      type: object
+      required: [id, titel, darstellung, entityId, channel, aggregat]
+      properties:
+        id:
+          type: string
+          example: "eigen:a1b2c3"
+          description: The Baustein key - `eigen:` plus lowercase letters, digits and hyphens.
+        titel: { type: string, maxLength: 60, example: "Wärmepumpe heute" }
+        darstellung:
+          type: string
+          enum: [kachel, chart]
+          description: One number, or the day's curve with that number as its headline.
+        entityId: { type: string, format: uuid, description: A component of THIS plant. }
+        channel: { type: string, example: power_kw, description: A measure channel that component reports. }
+        aggregat:
+          type: string
+          enum: [jetzt, tagessumme, tagesmax, tagesmittel]
     CockpitLayout:
       type: object
       description: >
@@ -9730,6 +9807,71 @@ components:
                 description: >
                   The applications contributing this Baustein - DERIVED from the
                   catalog, never a second list. Empty = base equipment.
+        vorlagen:
+          type: array
+          description: >
+            The KINDS of own evaluation this surface knows (Anwendungs-Programm
+            Stufe 5) - catalog data, empty where there are none. A Vorlage is not
+            renderable; only its instance in `document.custom` is.
+          items:
+            type: object
+            properties:
+              id: { type: string, example: eigene-kachel }
+              label: { type: string, example: Eigene Kachel }
+              satz: { type: string, nullable: true, description: ONE sentence - what this kind shows. }
+              darstellung: { type: string, enum: [kachel, chart] }
+              anwendung: { type: string, example: eigene-auswertung }
+              nach:
+                type: string
+                nullable: true
+                description: The Baustein an instance is canonically sorted behind.
+    EigeneAuswertungWerte:
+      type: object
+      properties:
+        at: { type: string, format: date }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        bucketMinutes: { type: integer, example: 15 }
+        werte:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, example: "eigen:a1b2c3" }
+              titel: { type: string }
+              darstellung: { type: string, enum: [kachel, chart] }
+              entityId: { type: string, format: uuid }
+              channel: { type: string }
+              aggregat: { type: string, enum: [jetzt, tagessumme, tagesmax, tagesmittel] }
+              wert:
+                type: number
+                nullable: true
+                description: The figure - null where there is none, NEVER a 0.
+              kanalart:
+                type: string
+                nullable: true
+                enum: [energie, leistung, anteil, messwert]
+                description: >
+                  What the channel measures - it tells the surface which unit and
+                  which time reference are meant without parsing the channel name.
+              komponente: { type: string, nullable: true, description: The component's name. }
+              entityType: { type: string, nullable: true }
+              hinweis:
+                type: string
+                nullable: true
+                description: The honest German sentence when there is nothing to show.
+              verlauf:
+                type: array
+                description: The day's buckets - filled for `chart` only (a tile shows ONE number).
+                items:
+                  type: object
+                  properties:
+                    start: { type: string, format: date-time }
+                    avg: { type: number, nullable: true }
+                    min: { type: number, nullable: true }
+                    max: { type: number, nullable: true }
+                    last: { type: number, nullable: true }
+                    n: { type: integer }
     CockpitLayoutLayer:
       type: object
       properties:

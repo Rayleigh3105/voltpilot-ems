@@ -7,6 +7,8 @@ import {
   anpassenZeilen,
   baustein,
   bausteinLabel,
+  eigeneAusSchichten,
+  mitEigenen,
   layoutResolve,
   presetLayout,
   ortsHinweis,
@@ -386,5 +388,128 @@ describe('Reset-Ansage (E2: der Knopf SAGT, worauf er fällt)', () => {
   it('das Admin-Band nennt den Kunden und sagt, dass er abweichen darf', () => {
     expect(vorgabeBand('Nordwind GmbH')).toContain('Nordwind GmbH');
     expect(vorgabeBand(null)).toContain('abweichen');
+  });
+});
+
+describe('Anwendungs-Programm Stufe 5 · die eigenen Auswertungen im Layout', () => {
+  const kachel = {
+    id: 'eigen:k1',
+    titel: 'Wärmepumpe jetzt',
+    darstellung: 'kachel' as const,
+    entityId: 'e1',
+    channel: 'power_kw',
+    aggregat: 'jetzt' as const,
+  };
+  const chart = { ...kachel, id: 'eigen:k2', titel: 'Verlauf', darstellung: 'chart' as const };
+
+  it('die Schichten werden vereinigt, `eigen` gewinnt bei gleichem Schlüssel', () => {
+    // Eine Kachel, die nur die VORGABE definiert, bleibt erhalten - ohne die
+    // Vereinigung wäre sie unsichtbar, sobald der Kunde einmal etwas anordnet.
+    const gewonnen = eigeneAusSchichten({
+      siteVorgabe: { order: [], hidden: [], shown: [], lead: null, custom: [kachel, chart] },
+      eigen: {
+        order: [],
+        hidden: [],
+        shown: [],
+        lead: null,
+        custom: [{ ...kachel, titel: 'Mein Name' }],
+      },
+    });
+    expect(gewonnen.map((d) => d.id)).toEqual(['eigen:k1', 'eigen:k2']);
+    expect(gewonnen[0].titel).toBe('Mein Name');
+  });
+
+  it('ohne eine einzige Definition ändert sich NICHTS', () => {
+    expect(eigeneAusSchichten({})).toEqual([]);
+    expect(mitEigenen(CANONICAL_DESKTOP, [])).toEqual(CANONICAL_DESKTOP);
+  });
+
+  it('eine eigene Auswertung steht hinter ihrem kanonischen Anker', () => {
+    const c = mitEigenen(CANONICAL_DESKTOP, [kachel, chart]);
+    const i = c.indexOf('kacheln');
+    expect(c.slice(i + 1, i + 3)).toEqual(['eigen:k1', 'eigen:k2']);
+  });
+
+  it('ohne den Anker hängen sie ans Ende - ein Anker, den es nicht gibt, ordnet nichts', () => {
+    const c = mitEigenen(['status', 'zustand'] as BausteinId[], [kachel]);
+    expect(c[c.length - 1]).toBe('eigen:k1');
+  });
+
+  it('ihr NAME ist der Titel des Kunden, nie ein Katalog-Label', () => {
+    expect(bausteinLabel('eigen:k1', [kachel])).toBe('Wärmepumpe jetzt');
+    // Ohne Definition (eine verwaiste Zeile) wird nichts erfunden.
+    expect(bausteinLabel('eigen:k1', [])).toBe('Eigene Auswertung');
+    // Und ein Katalog-Baustein ist unberührt.
+    expect(bausteinLabel('kacheln', [kachel])).toBe('Kennzahlen');
+  });
+
+  it('ihre Zeile ist beweglich, nie Pflicht, ohne Stern - und trägt `eigen`', () => {
+    const zeilen = anpassenZeilen({
+      arrangement: ['status', 'eigen:k1'] as BausteinId[],
+      hidden: [],
+      lead: null,
+      eigene: [kachel],
+    });
+    const z = zeilen.find((x) => x.id === 'eigen:k1')!;
+    expect(z.label).toBe('Wärmepumpe jetzt');
+    expect(z.eigen).toBe(true);
+    expect(z.pflicht).toBe(false);
+    expect(z.beweglich).toBe(true);
+    expect(z.leadBlock).toBeNull();
+    // Ein Katalog-Baustein trägt die Marke NICHT.
+    expect(zeilen.find((x) => x.id === 'status')!.eigen).toBe(false);
+    // Und sie braucht keinen Orts-Hinweis: sie rendert sich selbst.
+    expect(ortsHinweis('eigen:k1')).toBeNull();
+  });
+
+  it('⚠ die Definitionen überleben ein Speichern bei ABGESCHALTETER Anwendung', () => {
+    // Der Fall, den der DOM-Test aufgedeckt hat: ist „Eigene Auswertung" aus,
+    // stehen die Schlüssel in keiner Anordnung mehr - ihre DEFINITIONEN müssen
+    // trotzdem mit, sonst löscht ein Speichern genau das, was ein
+    // Wiedereinschalten zurückbringen soll.
+    const doc = anpassenDokument({
+      arrangement: [...CANONICAL_DESKTOP],
+      hidden: [],
+      lead: null,
+      eigene: [kachel, chart],
+    });
+    expect(doc.custom).toHaveLength(2);
+    // Kein Schlüssel in der Reihenfolge - der Server lehnte ihn sonst ab.
+    expect(doc.order).not.toContain('eigen:k1');
+  });
+
+  it('ein Schlüssel ohne Definition wird NIE gespeichert', () => {
+    const doc = anpassenDokument({
+      arrangement: ['status', 'eigen:geist'] as BausteinId[],
+      hidden: ['eigen:geist'] as BausteinId[],
+      lead: null,
+      eigene: [],
+    });
+    expect(doc.order).toEqual(['status']);
+    expect(doc.hidden).toEqual([]);
+    expect('custom' in doc).toBe(false);
+  });
+
+  it('eine Auflösung MIT ihnen zeigt sie, ohne sie nicht', () => {
+    const canonical = mitEigenen(CANONICAL_DESKTOP, [kachel]);
+    const eigen: LayoutDocument = {
+      order: [],
+      hidden: [],
+      shown: [],
+      lead: null,
+      custom: [kachel],
+    };
+    const mit = layoutResolve({
+      canonical,
+      verfuegbar: [...CANONICAL_DESKTOP, 'eigen:k1'] as BausteinId[],
+      eigen,
+    });
+    expect(mit.order).toContain('eigen:k1');
+    // Ein Dokument, das NUR Kacheln definiert, ist trotzdem eine Schicht.
+    expect(mit.quelle).toBe('eigen');
+    // Ist sie nicht verfügbar (Anwendung aus), wird sie still übersprungen.
+    expect(
+      layoutResolve({ canonical, verfuegbar: CANONICAL_DESKTOP, eigen }).order,
+    ).not.toContain('eigen:k1');
   });
 });

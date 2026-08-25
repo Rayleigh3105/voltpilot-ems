@@ -2,6 +2,7 @@ package com.voltpilot.api.repo;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.cockpit.EigeneAuswertung.CustomBaustein;
 import com.voltpilot.api.profile.AnwendungKatalog.LayoutDoc;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -110,12 +111,40 @@ public class CockpitLayoutRepository {
             JsonNode node = mapper.readTree(raw);
             return new LayoutDoc(strings(node.path("order")), strings(node.path("hidden")),
                     strings(node.path("shown")),
-                    node.hasNonNull("lead") ? node.get("lead").asText() : null);
+                    node.hasNonNull("lead") ? node.get("lead").asText() : null,
+                    custom(node.path("custom")));
         } catch (Exception e) {
             // Ein unlesbares Dokument ist kein Fehler der Anlage: die Fläche
             // fällt auf den deterministischen Standard zurück.
             return LayoutDoc.leer();
         }
+    }
+
+    /**
+     * Die eigenen Auswertungen eines Dokuments (Stufe 5). Ein Eintrag, dem ein
+     * Pflichtfeld fehlt, wird ÜBERSPRUNGEN statt halb gelesen: die Fläche würde
+     * sonst eine Kachel ohne Quelle rendern. Die inhaltliche Prüfung (gehört
+     * die Komponente zu dieser Anlage, ist das Aggregat ehrlich) sitzt im
+     * SCHREIBpfad ({@code CockpitLayoutService}) — hier wird nur gelesen, und
+     * eine schon gespeicherte Zeile darf am Lesen nie scheitern.
+     */
+    private static List<CustomBaustein> custom(JsonNode array) {
+        List<CustomBaustein> out = new ArrayList<>();
+        for (JsonNode n : array) {
+            if (n == null || !n.isObject()) {
+                continue;
+            }
+            String id = n.path("id").asText(null);
+            String entityId = n.path("entityId").asText(null);
+            String channel = n.path("channel").asText(null);
+            if (id == null || entityId == null || channel == null) {
+                continue;
+            }
+            out.add(new CustomBaustein(id, n.path("titel").asText(""),
+                    n.path("darstellung").asText(""), entityId, channel,
+                    n.path("aggregat").asText("")));
+        }
+        return List.copyOf(out);
     }
 
     private static List<String> strings(JsonNode array) {
@@ -139,6 +168,16 @@ public class CockpitLayoutRepository {
                 node.putNull("lead");
             } else {
                 node.put("lead", doc.lead());
+            }
+            var custom = node.putArray("custom");
+            for (CustomBaustein b : doc.custom()) {
+                var c = custom.addObject();
+                c.put("id", b.id());
+                c.put("titel", b.titel());
+                c.put("darstellung", b.darstellung());
+                c.put("entityId", b.entityId());
+                c.put("channel", b.channel());
+                c.put("aggregat", b.aggregat());
             }
             return mapper.writeValueAsString(node);
         } catch (Exception e) {

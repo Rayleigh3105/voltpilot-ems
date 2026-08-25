@@ -1,0 +1,186 @@
+/*
+ * Eigene Auswertungen (Anwendungs-Programm Stufe 5).
+ *
+ * Sie borgen die Optik der bestehenden Cockpit-Karten (Tokens, Radius,
+ * Rahmen) statt eine eigene zu erfinden — eine Kachel, die der Kunde selbst
+ * baut, soll wie das Cockpit aussehen, in das sie gehört.
+ */
+
+.vp-eigen-kachel,
+.vp-eigen-chart {
+  background: var(--vp-surface, #fff);
+  border: 1px solid var(--vp-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--vp-radius-lg, 16px);
+  padding: var(--vp-space-4, 16px);
+}
+
+.vp-eigen-kachel h3,
+.vp-eigen-chart h3 {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+  color: var(--vp-text-muted, #5b6472);
+}
+
+.vp-eigen-zahl {
+  margin: 4px 0 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: var(--vp-text-stat-sm, var(--vp-text-stat));
+  font-weight: 600;
+  color: var(--vp-stat-ink, #10151f);
+  /* Eine lange Zahl darf die Karte nie sprengen (375 px). */
+  overflow-wrap: anywhere;
+}
+
+.vp-eigen-bezug {
+  font-size: var(--vp-text-meta);
+  font-weight: 500;
+  color: var(--vp-text-muted, #5b6472);
+}
+
+.vp-eigen-quelle {
+  margin: 6px 0 0;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-muted, #5b6472);
+  overflow-wrap: anywhere;
+}
+
+.vp-eigen-hinweis {
+  margin: 8px 0 0;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-muted, #5b6472);
+}
+
+.vp-eigen-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vp-space-3, 12px);
+  flex-wrap: wrap;
+}
+
+.vp-eigen-head > div {
+  min-width: 0;
+}
+
+.vp-eigen-head .vp-eigen-zahl {
+  margin-top: 0;
+}
+
+.vp-eigen-canvas {
+  margin-top: var(--vp-space-3, 12px);
+  height: 220px;
+  /* Die Chart-Fläche darf nie breiter werden als ihre Karte. */
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .vp-eigen-canvas {
+    height: 180px;
+  }
+}
+
+/* --- Der geführte Dialog ------------------------------------------------- */
+
+.vp-eigen-dialog {
+  display: grid;
+  gap: var(--vp-space-4, 16px);
+}
+
+.vp-eigen-dialog-intro {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted, #5b6472);
+}
+
+.vp-eigen-dialog-footer {
+  display: flex;
+  gap: var(--vp-space-2, 8px);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.vp-eigen-feld {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.vp-eigen-feld legend {
+  padding: 0 0 6px;
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+  color: var(--vp-text, #10151f);
+}
+
+.vp-eigen-feld[disabled] {
+  opacity: 0.5;
+}
+
+.vp-eigen-optionen {
+  display: grid;
+  gap: 6px;
+}
+
+.vp-eigen-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--vp-radius-md, 10px);
+  cursor: pointer;
+  /* 44 px Touch-Ziel (Haus-Regel). */
+  min-height: 44px;
+  min-width: 0;
+}
+
+.vp-eigen-option input {
+  margin-top: 3px;
+  flex: none;
+}
+
+.vp-eigen-option span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-eigen-option strong {
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+}
+
+.vp-eigen-option em {
+  font-style: normal;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-muted, #5b6472);
+  overflow-wrap: anywhere;
+}
+
+/* Eine gesperrte Wahl bleibt SICHTBAR und nennt ihren Grund — sie
+   verschwindet nie, sonst sucht der Kunde einen Knopf, den es gab. */
+.vp-eigen-option.is-off {
+  cursor: not-allowed;
+  background: var(--vp-bg-light, #f8f9fa);
+}
+
+.vp-eigen-option.is-off strong {
+  color: var(--vp-text-muted, #5b6472);
+}
+
+.vp-eigen-fehler {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-warn-ink, #b45309);
+}
+
+/* Der Knopf im Anpassen-Modus. */
+.vp-eigen-neu {
+  display: flex;
+  justify-content: flex-start;
+}

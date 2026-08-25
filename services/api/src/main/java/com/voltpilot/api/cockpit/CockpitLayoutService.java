@@ -1,5 +1,10 @@
 package com.voltpilot.api.cockpit;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.cockpit.EigeneAuswertung.CustomBaustein;
+import com.voltpilot.api.entities.EntityRegistryRepository;
+import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.profile.AnwendungKatalog;
 import com.voltpilot.api.profile.AnwendungKatalog.Baustein;
 import com.voltpilot.api.profile.AnwendungKatalog.LayoutDoc;
@@ -10,11 +15,15 @@ import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.CockpitLayoutDto;
 import com.voltpilot.api.web.dto.CockpitLayoutDto.BausteinDto;
 import com.voltpilot.api.web.dto.CockpitLayoutDto.LayerDto;
+import com.voltpilot.api.web.dto.CockpitLayoutDto.CustomBausteinDto;
 import com.voltpilot.api.web.dto.CockpitLayoutDto.LayoutDocumentDto;
+import com.voltpilot.api.web.dto.CockpitLayoutDto.VorlageDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -65,12 +74,16 @@ public class CockpitLayoutService {
     private final SiteRepository sites;
     private final CockpitLayoutRepository layouts;
     private final AnwendungKatalog anwendungen;
+    private final EntityRegistryRepository entities;
+    private final ObjectMapper mapper;
 
     public CockpitLayoutService(SiteRepository sites, CockpitLayoutRepository layouts,
-            AnwendungKatalog anwendungen) {
+            AnwendungKatalog anwendungen, EntityRegistryRepository entities, ObjectMapper mapper) {
         this.sites = sites;
         this.layouts = layouts;
         this.anwendungen = anwendungen;
+        this.entities = entities;
+        this.mapper = mapper;
     }
 
     // -- read ---------------------------------------------------------------
@@ -94,7 +107,7 @@ public class CockpitLayoutService {
                 layer(tenantRows, CockpitLayoutRepository.LAYER_VORGABE),
                 layer(siteRows, CockpitLayoutRepository.LAYER_VORGABE),
                 layer(siteRows, CockpitLayoutRepository.LAYER_EIGEN),
-                bausteine(SURFACE_COCKPIT), darfVorgabe);
+                bausteine(SURFACE_COCKPIT), darfVorgabe, vorlagen(SURFACE_COCKPIT));
     }
 
     /**
@@ -119,7 +132,8 @@ public class CockpitLayoutService {
         return new CockpitLayoutDto(flaeche, profil,
                 document(anwendungen.presetLayout(profil, flaeche)),
                 layer(rows, CockpitLayoutRepository.LAYER_VORGABE), null,
-                layer(rows, CockpitLayoutRepository.LAYER_EIGEN), bausteine(flaeche), darfVorgabe);
+                layer(rows, CockpitLayoutRepository.LAYER_EIGEN), bausteine(flaeche), darfVorgabe,
+                vorlagen(flaeche));
     }
 
     // -- write --------------------------------------------------------------
@@ -129,7 +143,7 @@ public class CockpitLayoutService {
             String updatedBy, boolean darfVorgabe) {
         requireSite(siteId);
         String normalized = requireLayer(layer);
-        validate(document, SURFACE_COCKPIT);
+        validate(document, SURFACE_COCKPIT, siteId);
         layouts.save(CockpitLayoutRepository.SCOPE_SITE, siteId, SURFACE_COCKPIT, normalized,
                 document, updatedBy);
         return forSite(siteId, darfVorgabe);
@@ -141,7 +155,7 @@ public class CockpitLayoutService {
         UUID tenantId = requireTenant();
         String flaeche = requireSurface(surface);
         String normalized = requireLayer(layer);
-        validate(document, flaeche);
+        validate(document, flaeche, null);
         layouts.save(CockpitLayoutRepository.SCOPE_TENANT, tenantId, flaeche, normalized,
                 document, updatedBy);
         return forTenant(flaeche, darfVorgabe);
@@ -175,19 +189,22 @@ public class CockpitLayoutService {
      * Prüft die FORM eines Dokuments gegen den Baustein-Katalog. Siehe den
      * Klassen-Kommentar dafür, was hier ausdrücklich NICHT geprüft wird.
      */
-    void validate(LayoutDoc document, String flaeche) {
+    void validate(LayoutDoc document, String flaeche, UUID siteId) {
         if (document == null) {
             throw bad("Es wurde kein Layout übergeben.");
         }
+        Map<String, CustomBaustein> eigene = validateCustom(document, flaeche, siteId);
         for (String id : document.order()) {
-            requireBaustein(id, flaeche);
+            requireBaustein(id, flaeche, eigene);
         }
         for (String id : document.shown()) {
-            requireBaustein(id, flaeche);
+            requireBaustein(id, flaeche, eigene);
         }
         for (String id : document.hidden()) {
-            Baustein b = requireBaustein(id, flaeche);
-            if (b.pflicht()) {
+            Baustein b = requireBaustein(id, flaeche, eigene);
+            // Eine eigene Auswertung ist NIE Pflicht — sie hat keinen Baustein
+            // im Katalog, also auch keine Pflicht-Eigenschaft.
+            if (b != null && b.pflicht()) {
                 throw bad("„" + b.label() + "“ lässt sich nicht ausblenden — dieser "
                         + "Baustein gehört zur Grundausstattung jedes Cockpits.");
             }
@@ -203,7 +220,113 @@ public class CockpitLayoutService {
         }
     }
 
-    private Baustein requireBaustein(String id, String flaeche) {
+    /**
+     * Die EIGENEN Auswertungen eines Dokuments (Anwendungs-Programm Stufe 5).
+     *
+     * <p>Geprüft wird hier, was die reine {@link EigeneAuswertung} allein nicht
+     * wissen kann — dass die Komponente zu DIESER Anlage gehört (RLS: eine
+     * fremde ist über {@code entityForSite} schlicht nicht auffindbar) und dass
+     * sie diesen Messwert überhaupt meldet. Die Form und die EHRLICHKEITSREGEL
+     * (welches Aggregat zu welchem Kanal passt) kommen aus der reinen Klasse,
+     * damit sie ohne einen einzigen Container prüfbar bleiben.
+     *
+     * <p><b>Nur die Anlagen-Fläche trägt eigene Auswertungen.</b> Das Portfolio
+     * hängt am KUNDEN und hat keine einzelne Komponente, gegen die ein Kanal
+     * geprüft werden könnte; eine Kachel dort wäre eine Zusage über Messwerte,
+     * die je Anlage verschieden sind.
+     */
+    private Map<String, CustomBaustein> validateCustom(LayoutDoc document, String flaeche,
+            UUID siteId) {
+        List<CustomBaustein> custom = document.custom();
+        if (custom.isEmpty()) {
+            return Map.of();
+        }
+        if (!SURFACE_COCKPIT.equals(flaeche) || siteId == null) {
+            throw bad("Eigene Auswertungen gibt es nur auf dem Cockpit einer Anlage.");
+        }
+        if (custom.size() > EigeneAuswertung.MAX_BAUSTEINE) {
+            throw bad("Mehr als " + EigeneAuswertung.MAX_BAUSTEINE
+                    + " eigene Auswertungen kann ein Cockpit nicht tragen.");
+        }
+        String doppelt = EigeneAuswertung.ersterDoppelter(custom);
+        if (doppelt != null) {
+            throw bad("„" + doppelt + "“ ist zweimal definiert.");
+        }
+        Map<String, CustomBaustein> out = new LinkedHashMap<>();
+        // Je Komponente EINE Abfrage, auch wenn mehrere Kacheln auf ihr sitzen.
+        Map<String, EntityRow> geladen = new LinkedHashMap<>();
+        for (CustomBaustein b : custom) {
+            String form = EigeneAuswertung.pruefeForm(b);
+            if (form != null) {
+                throw bad(form);
+            }
+            EntityRow row = geladen.computeIfAbsent(b.entityId(), id -> entity(siteId, id));
+            if (row == null) {
+                throw bad("Die gewählte Komponente gehört nicht zu dieser Anlage.");
+            }
+            if (!messkanaele(row).contains(b.channel())) {
+                throw bad("„" + name(row) + "“ meldet diesen Messwert nicht.");
+            }
+            String grund = EigeneAuswertung.grund(b.channel(), b.aggregat(), null);
+            if (grund != null) {
+                throw bad(grund);
+            }
+            out.put(b.id(), b);
+        }
+        return Map.copyOf(out);
+    }
+
+    /** Die Komponente dieser Anlage, oder null (auch bei krummer Id). */
+    private EntityRow entity(UUID siteId, String entityId) {
+        try {
+            return entities.entityForSite(siteId, UUID.fromString(entityId));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** Die Messwert-Kanäle, die diese Komponente laut Registry meldet. */
+    private Set<String> messkanaele(EntityRow row) {
+        Set<String> out = new LinkedHashSet<>();
+        if (row.capabilitiesJson() == null) {
+            return out;
+        }
+        try {
+            JsonNode measure = mapper.readTree(row.capabilitiesJson()).path("measure");
+            for (JsonNode m : measure) {
+                String channel = m.path("channel").asText(null);
+                if (channel != null && !channel.isBlank()) {
+                    out.add(channel);
+                }
+            }
+        } catch (Exception e) {
+            // Unlesbare Fähigkeiten sind KEIN Freibrief: dann meldet die
+            // Komponente nachweislich nichts, was wir kennen.
+            return Set.of();
+        }
+        return out;
+    }
+
+    private static String name(EntityRow row) {
+        return row.label() == null || row.label().isBlank() ? "Diese Komponente" : row.label();
+    }
+
+    /**
+     * Der Baustein hinter einem Schlüssel — oder null für eine EIGENE
+     * Auswertung, die dieses Dokument selbst definiert.
+     *
+     * <p>Ein {@code eigen:}-Schlüssel ist damit nur bekannt, weil DASSELBE
+     * Dokument ihn definiert: eine Reihenfolge, die eine Kachel nennt, die es
+     * nicht gibt, wäre ein Schlüssel, den niemand rendern kann.
+     */
+    private Baustein requireBaustein(String id, String flaeche,
+            Map<String, CustomBaustein> eigene) {
+        if (EigeneAuswertung.istEigen(id)) {
+            if (!eigene.containsKey(id)) {
+                throw bad("Zu „" + id + "“ gibt es keine eigene Auswertung in diesem Layout.");
+            }
+            return null;
+        }
         Baustein b = anwendungen.baustein(id);
         if (b == null) {
             throw bad("„" + id + "“ ist kein Baustein, den VoltPilot kennt.");
@@ -250,8 +373,24 @@ public class CockpitLayoutService {
         return null;
     }
 
+    /** Die ARTEN eigener Auswertungen dieser Fläche — Katalog-Daten. */
+    private List<VorlageDto> vorlagen(String flaeche) {
+        List<VorlageDto> out = new ArrayList<>();
+        for (AnwendungKatalog.BausteinVorlage v : anwendungen.bausteinVorlagen(flaeche)) {
+            out.add(new VorlageDto(v.id(), v.label(), v.satz(), v.darstellung(), v.anwendung(),
+                    v.nach()));
+        }
+        return List.copyOf(out);
+    }
+
     private static LayoutDocumentDto document(LayoutDoc doc) {
-        return new LayoutDocumentDto(1, doc.order(), doc.hidden(), doc.shown(), doc.lead());
+        List<CustomBausteinDto> custom = new ArrayList<>();
+        for (CustomBaustein b : doc.custom()) {
+            custom.add(new CustomBausteinDto(b.id(), b.titel(), b.darstellung(), b.entityId(),
+                    b.channel(), b.aggregat()));
+        }
+        return new LayoutDocumentDto(1, doc.order(), doc.hidden(), doc.shown(), doc.lead(),
+                List.copyOf(custom));
     }
 
     private void requireSite(UUID siteId) {
