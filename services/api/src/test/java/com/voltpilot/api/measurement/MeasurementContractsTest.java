@@ -2,6 +2,7 @@ package com.voltpilot.api.measurement;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -21,6 +22,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 
 class MeasurementContractsTest {
     private static final UUID TENANT = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -50,6 +53,27 @@ class MeasurementContractsTest {
     }
 
     @Test
+    void publisherCarriesConcreteCustomDefinitionToTheEdge() throws Exception {
+        MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
+                "tcp://unused:1883", "", "", mapper);
+        var definition = mapper.readTree("{\"label\":\"Test\",\"sourceKind\":\"modbus_input\",\"address\":42,"
+                + "\"selector\":\"input:0x002a\",\"valueType\":\"uint16\",\"widthBits\":16,"
+                + "\"signed\":false,\"endian\":\"big\",\"scale\":1,\"unit\":\"V\","
+                + "\"cadenceS\":30,\"retentionClass\":\"unclassified\",\"readOnly\":true,"
+                + "\"requestCostMs\":400}");
+        SelectionPoint point = new SelectionPoint("custom.abc", true, 30, 8, null, null,
+                "2026.08.25.1", "test", null, null, "pending_edge", null, null, definition,
+                "unclassified", 90, 900, "fifteen_minute", "Test", "custom", "custom", "known");
+        State state = new State(DEVICE, SITE, 8, "2026.08.25.1", "pending_edge", null,
+                null, null, List.of(point), List.of(), null);
+        var payload = mapper.readTree(publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), state));
+        assertThat(payload.at("/selections/0/definition")).isEqualTo(definition);
+        var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
+                "v2", "examples", "mqtt-measurement-config.valid.custom.json")));
+        assertThat(payload).isEqualTo(fixture);
+    }
+
+    @Test
     void statusIdentityAndMonotoneRevisionAreEnforced() throws Exception {
         MeasurementSelectionRepository repository = mock(MeasurementSelectionRepository.class);
         when(repository.deviceScope(DEVICE)).thenReturn(new DeviceScope(TENANT, SITE, DEVICE));
@@ -74,6 +98,42 @@ class MeasurementContractsTest {
         assertThat(listener.handle(STATUS_TOPIC.replace(TENANT.toString(),
                 "10000000-0000-0000-0000-000000000001"), valid)).isFalse();
         verify(repository, never()).applyAcknowledgement(eq(DEVICE), eq(8L), any(), any(), any(), any());
+    }
+
+    @Test
+    void initialStatusBrokerOutageDoesNotWedgeFutureRetries() {
+        var listener = new MeasurementConfigStatusListener("tcp://127.0.0.1:1", "", "",
+                mock(MeasurementSelectionRepository.class), mapper);
+        listener.ensureConnected();
+        assertThat(listener.connectedForTest()).isFalse();
+        listener.ensureConnected();
+        assertThat(listener.connectedForTest()).isFalse();
+        listener.close();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void pendingDesiredRevisionIsRepublishedByReconciliation() {
+        JdbcTemplate admin = mock(JdbcTemplate.class);
+        MeasurementSelectionService service = mock(MeasurementSelectionService.class);
+        MeasurementConfigPublisher publisher = mock(MeasurementConfigPublisher.class);
+        DeviceScope scope = new DeviceScope(TENANT, SITE, DEVICE);
+        State state = new State(DEVICE, SITE, 9, "2026.08.25.1", "pending_edge", null,
+                null, null, List.of(), List.of(), null);
+        when(admin.query(anyString(), any(RowMapper.class))).thenReturn(List.of(scope));
+        when(service.state(DEVICE)).thenReturn(state);
+        new MeasurementConfigReconciler(admin, service, publisher).reconcile();
+        verify(publisher).publish(scope, state);
+        assertThat(TenantContext.get()).isNull();
+    }
+
+    @Test
+    void rollupHardeningIsReplayAwareAndQualityCorrect() throws Exception {
+        String sql = Files.readString(Path.of("src", "main", "resources", "db", "migration",
+                "V20260843000000__measurement_pipeline_review_hardening.sql"));
+        assertThat(sql).contains("quality = 'good'")
+                .contains("now()-INTERVAL '90 days'")
+                .doesNotContain("now()-INTERVAL '2 days'");
     }
 
     private static byte[] fixture(String name) throws Exception {

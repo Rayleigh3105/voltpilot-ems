@@ -5430,10 +5430,15 @@ Push, kein anderer Wunsch, kein anderer Text.
 - **Der Edge aktiviert immer einen vollständigen Plan atomar.** Der Core prüft
   Identität + monotone Revision, persistiert die gewünschte Konfiguration per
   Rename und bridgt sie auf `edge/measurements/config`. Der Layer-1-Planer unter
-  `edge-app/nodered/measurements` tauscht Active-Plan+Due-Map nur bei komplett
-  erfolgreicher Prüfung. Er gruppiert Registerblöcke (max. 120 Wörter), lässt
-  Steueraufgaben immer vor Messpolls laufen und erzwingt D5: Warnung >120,
-  hart 600 Samples/min, 30 Requests/min, 20% Duty.
+  `edge-app/nodered/measurements` ist im ausgelieferten Flow durch
+  `vp-measurements` instanziiert und tauscht Active-Plan+Due-Map nur bei komplett
+  erfolgreicher Prüfung. Wildcards werden vor dem Planen zu konkreten Punkten
+  expandiert (SunSpec 160 anhand Live-Discovery, JSON/OCPP anhand Payload bzw.
+  Capability); Custom-Definitionen bleiben im Desired State erhalten. Der
+  Planer gruppiert Registerblöcke (max. 120 Wörter), lässt Steueraufgaben immer
+  vor Messpolls laufen und erzwingt D5 bei Apply **und** zur Laufzeit: Warnung
+  >120, hart 600 Samples/min, 30 Requests/min, 20% Duty; parallele Ticks werden
+  zu genau einem physischen Poll zusammengeführt.
 - **Rohdaten-Ehrlichkeit ist eine Invariante.** Ohne erfolgreiche physische/
   Protokoll-Lesung kein Sample; `raw` ist verpflichtend und kommt direkt vom
   Wire/API/OCPP, `decoded` ist optional. Nie zurückrechnen, Einheit raten oder
@@ -5443,22 +5448,31 @@ Push, kein anderer Wunsch, kein anderer Text.
 - **Replay und Lücken sind explizit.** Der Core-Outbox unter
   `data_dir/measurement-outbox` vergibt monotone Sequenzen, sendet älteste
   zuerst und löscht erst nach QoS1-Bestätigung. Begrenzte Eviction schützt die
-  gerade gesendete Envelope; der nächste bestätigte Batch trägt genau die bis
-  dahin bekannten `gap`/`dropped_samples`, spätere Drops werden nicht vom
-  älteren ACK gelöscht.
+  gerade gesendete Envelope; ein vor dem Löschen fsync-persistierter Pending-
+  Drop-Zustand macht die Zählung crash-sicher und zählt **Samples**, nicht
+  Dateien. Der nächste bestätigte Batch trägt genau die bis dahin bekannten
+  `gap`/`dropped_samples`; spätere Drops werden nicht vom älteren ACK gelöscht.
 - **Cloud-Datenpfad:** EMQX → Ingest → eigenes `measurements.raw` →
-  Timescale-Writer. Der Writer setzt RLS-Tenant pro Transaktion, sperrt das
+  Timescale-Writer. Der Measurement-Ingest nutzt eine persistente MQTT-Session,
+  quittiert QoS1 erst nach bestätigtem Redpanda-Produce und lässt Fehler zur
+  Broker-Wiederholung unquittiert. Desired State und letzter Edge-Status werden
+  nach Start/Broker-Reconnect erneut abgeglichen. Der Writer setzt RLS-Tenant pro Transaktion, sperrt das
   Device gegen Purge, respektiert No-Backfill/Auswahl-Cutover und speichert
-  idempotent in `device_measurement_sample`; Retention ist 90 Tage. Die
+  idempotent in `device_measurement_sample`; konkrete OCPP-/JSON-Wildcard-Keys
+  werden gegen ihren ausgewählten Template-Key aufgelöst. Numerische JSON-Rohwerte
+  werden als `NUMERIC` ohne IEEE-754-Verlust gespeichert; Retention ist 90 Tage. Die
   RLS-Hypertables `device_measurement_rollup_5m/_15m` werden per Timescale-Job
-  semantikabhängig gepflegt (Gauge min/max/avg, Counter positive Deltas +
-  Reset, State/Error/Bitfield/Text als On-Change-Ereignisse). Der Katalog fürs
+  über die vollen 90 Replay-Tage nur aus `quality='good'` semantikabhängig
+  gepflegt (Gauge min/max/avg, Counter positive Deltas + Reset,
+  State/Error/Bitfield/Text als On-Change-Ereignisse einschließlich Recovery).
+  Der Katalog fürs
   Edge und die Metadatenmigration sind generiert; prüfen mit
   `catalog/measurement-points/tools/package_edge_runtime.py --check`.
-- **mTLS/ACL braucht keine Sonderfreigabe.** Das vorhandene, device-eigene
-  `ems/{tenant}/{site}/{device}/v2/#` Publish+Subscribe-Grant deckt die drei
-  Topics ab; CN/Username bindet es an genau dieses Device. Änderungen an den
-  beiden Wildcard-Zeilen müssen weiter durch `tools/pki/test-acl-grants.sh`.
+- **mTLS/ACL ist trotz v2-Wildcard richtungsgebunden.** Vor den breiten,
+  device-eigenen `v2/#`-Grants stehen First-Match-Denies: Ein Device darf
+  `measurement-config` nur lesen und `measurement-config-status`/
+  `measurement-samples` nur schreiben. CN/Username bindet alles an genau dieses
+  Device. Jede Änderung muss weiter durch `tools/pki/test-acl-grants.sh`.
 
 ## Maintaining this file
 

@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /** Authenticated, identity-bound apply acknowledgement consumer. */
@@ -56,13 +57,25 @@ public class MeasurementConfigStatusListener {
 
     @EventListener(ContextRefreshedEvent.class)
     public void start() {
-        try { connect(); }
-        catch (Exception e) { log.warn("measurement status listener awaits broker: {}", e.getMessage()); }
+        ensureConnected();
     }
 
-    private synchronized void connect() throws Exception {
-        if (client != null) return;
-        client = new MqttClient(brokerUrl, "voltpilot-api-measurement-status-" + UUID.randomUUID(),
+    /** Initial broker outages are retried; a failed half-created client never wedges startup. */
+    @Scheduled(fixedDelayString = "${voltpilot.measurements.status-reconnect-ms:5000}",
+            initialDelayString = "${voltpilot.measurements.status-reconnect-ms:5000}")
+    public synchronized void ensureConnected() {
+        if (client != null && client.isConnected()) return;
+        try {
+            connect();
+        } catch (Exception e) {
+            log.warn("measurement status listener awaits broker: {}", e.getMessage());
+            discardClient();
+        }
+    }
+
+    private void connect() throws Exception {
+        discardClient();
+        client = new MqttClient(brokerUrl, "voltpilot-api-measurement-status",
                 new MemoryPersistence());
         client.setCallback(new MqttCallbackExtended() {
             @Override public void connectComplete(boolean reconnect, String uri) {
@@ -74,12 +87,22 @@ public class MeasurementConfigStatusListener {
             @Override public void deliveryComplete(org.eclipse.paho.client.mqttv3.IMqttDeliveryToken t) { }
         });
         MqttConnectOptions options = new MqttConnectOptions();
-        options.setCleanSession(true); options.setAutomaticReconnect(true); options.setConnectionTimeout(5);
+        options.setCleanSession(false); options.setAutomaticReconnect(true); options.setConnectionTimeout(5);
         if (username != null && !username.isBlank()) {
             options.setUserName(username); options.setPassword(password == null ? new char[0] : password.toCharArray());
         }
         client.connect(options);
+        client.subscribe(FILTER, 1, listener());
     }
+
+    private void discardClient() {
+        if (client == null) return;
+        try { if (client.isConnected()) client.disconnect(); client.close(); }
+        catch (Exception ignored) { }
+        client = null;
+    }
+
+    boolean connectedForTest() { return client != null && client.isConnected(); }
 
     private IMqttMessageListener listener() {
         return (topic, message) -> {
@@ -146,9 +169,5 @@ public class MeasurementConfigStatusListener {
         return true;
     }
 
-    @PreDestroy void close() {
-        if (client == null) return;
-        try { if (client.isConnected()) client.disconnect(); client.close(); }
-        catch (Exception ignored) { }
-    }
+    @PreDestroy synchronized void close() { discardClient(); }
 }

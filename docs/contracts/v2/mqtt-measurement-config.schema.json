@@ -27,7 +27,38 @@
       "required": ["point_key", "cadence_s"],
       "properties": {
         "point_key": {"$ref": "#/$defs/point_key"},
-        "cadence_s": {"type": "integer", "minimum": 1, "maximum": 86400}
+        "cadence_s": {"type": "integer", "minimum": 1, "maximum": 86400},
+        "definition": {"$ref": "#/$defs/custom_definition"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"point_key": {"pattern": "^custom\\."}}},
+          "then": {"required": ["definition"]},
+          "else": {"not": {"required": ["definition"]}}
+        }
+      ]
+    },
+    "custom_definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "sourceKind", "address", "selector", "valueType", "widthBits",
+        "signed", "endian", "scale", "unit", "cadenceS", "retentionClass", "readOnly",
+        "requestCostMs"],
+      "properties": {
+        "label": {"type": "string", "minLength": 1, "maxLength": 120},
+        "sourceKind": {"enum": ["modbus_holding", "modbus_input"]},
+        "address": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "selector": {"type": "string", "minLength": 1, "maxLength": 80},
+        "valueType": {"enum": ["uint16", "int16", "uint32", "int32", "float32", "float64"]},
+        "widthBits": {"enum": [16, 32, 64]},
+        "signed": {"type": "boolean"},
+        "endian": {"enum": ["big", "word_little_byte_big"]},
+        "scale": {"type": "number"},
+        "unit": {"type": "string", "minLength": 1, "maxLength": 32},
+        "cadenceS": {"type": "integer", "minimum": 1, "maximum": 86400},
+        "retentionClass": {"type": "string", "minLength": 1},
+        "readOnly": {"const": true},
+        "requestCostMs": {"type": "integer", "minimum": 0}
       }
     }
   },

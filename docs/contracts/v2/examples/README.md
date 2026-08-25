@@ -36,6 +36,12 @@ const ajv = new Ajv2020({ strict: false });
 | `mqtt-telemetry-2.0.valid.three-entities.json` | mqtt-telemetry-2.0 | valid — the three pilot entities (battery-hybrid + producer + grid-meter), per-entity ts override |
 | `mqtt-telemetry-2.0.valid.single-entity.json` | mqtt-telemetry-2.0 | valid — minimal single grid-meter uplink |
 | `mqtt-telemetry-2.0.invalid.string-channel.json` | mqtt-telemetry-2.0 | **invalid** — channel value is a string (channels are always numbers) |
+| `mqtt-measurement-config.valid.json` | mqtt-measurement-config | valid — packaged catalog selection |
+| `mqtt-measurement-config.valid.custom.json` | mqtt-measurement-config | valid — complete read-only custom Modbus input definition survives desired-state transport |
+| `mqtt-measurement-config.invalid.identity.json` | mqtt-measurement-config | **semantic invalid** — schema-valid payload whose tenant differs from the fixture topic identity; refused by the Core validator |
+| `mqtt-measurement-config-status.valid.json` | mqtt-measurement-config-status | valid — monotone apply receipt |
+| `mqtt-measurement-samples.valid.json` | mqtt-measurement-samples | valid — exact raw sample batch |
+| `mqtt-measurement-samples.invalid.no-raw.json` | mqtt-measurement-samples | **invalid** — a sample may never invent or omit its wire/API raw value |
 | `edge-entity.valid.config-battery.json` | edge-entity | valid — retained per-entity config for a battery-hybrid (guard limits + self-consumption failsafe) |
 | `edge-entity.valid.config-wallbox.json` | edge-entity | valid — retained per-entity config for a wallbox (E1b consumer type: `max_consumption_kw`, `release` failsafe) |
 | `edge-entity.valid.registry-push.json` | edge-entity | valid — full `…/v2/entities` push carrying the three pilot entity descriptors |

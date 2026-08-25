@@ -7,7 +7,29 @@ function templateKey(key) {
   return key.replace(/\[[^\]]+\]/g, '[*]');
 }
 
-function resolvePoint(key, discovery) {
+function customPoint(key, definition) {
+  if (!key.startsWith('custom.') || !definition || typeof definition !== 'object') return null;
+  const source = definition.sourceKind || definition.source_kind;
+  const address = Number(definition.address);
+  const widthBits = Number(definition.widthBits || definition.width_bits);
+  const widthWords = widthBits / 16;
+  if (!['modbus_holding', 'modbus_input'].includes(source)
+      || !Number.isInteger(address) || address < 0 || address > 65535
+      || ![1, 2, 4].includes(widthWords) || address + widthWords > 65536) return null;
+  return {
+    point_key: key, family: 'custom', source_kind: source, readable: true,
+    address: { kind: source, registers: Array.from({ length: widthWords }, (_, i) => address + i),
+      width_words: widthWords },
+    selector: definition.selector, value_type: definition.valueType || definition.value_type,
+    signed: definition.signed, endian: definition.endian,
+    scale: { kind: 'factor', value: Number(definition.scale) },
+    poll_group: `custom:${source}:${address}`, min_cadence_s: 1,
+  };
+}
+
+function resolvePoint(key, discovery, definition) {
+  const custom = customPoint(key, definition);
+  if (custom) return custom;
   let point = catalog.get(key);
   if (!point) point = catalog.get(templateKey(key));
   if (!point) return null;
@@ -90,16 +112,20 @@ function baseNumber(point, words) {
     case 'uint32': case 'acc32': case 'bitfield32': return point.endian === 'word_little_byte_big'
       ? Buffer.from([b[2], b[3], b[0], b[1]]).readUInt32BE(0) : b.readUInt32BE(0);
     case 'float32': return b.readFloatBE(0);
+    case 'float64': return b.readDoubleBE(0);
     case 'string': return b.toString('ascii').replace(/\0+$/, '');
     default: return null;
   }
 }
 
 /** Decode once at the edge. Unknown/conditional scale deliberately omits decoded. */
-function decodeRegisters(point, words, scaleFactors) {
+function decodeRegisters(point, words, scaleFactors, addresses) {
   const width = point.address && point.address.width_words;
   if (!Array.isArray(words) || !width || words.length !== width) return null;
-  const raw = wordsRaw(words);
+  const contiguous = !Array.isArray(addresses) || addresses.length < 2
+    || addresses.every((address, i) => i === 0 || address === addresses[i - 1] + 1);
+  const raw = contiguous ? wordsRaw(words) : addresses.map((address, i) =>
+    `${address.toString(16).padStart(4, '0')}=${(words[i] & 0xffff).toString(16).padStart(4, '0')}`).join(',');
   let decoded = baseNumber(point, words);
   if (decoded === null || (typeof decoded === 'number' && !Number.isFinite(decoded))) {
     return { point_key: point.point_key, raw, quality: 'invalid' };
@@ -122,16 +148,59 @@ function pathValue(root, selector) {
   return clean.split(/[./]/).filter(Boolean).reduce((v, key) => v == null ? undefined : v[key], root);
 }
 
-function decodeJSON(point, payload) {
+function scalarSample(point, key, value) {
+  if (value === undefined || value === null || (typeof value === 'number' && !Number.isFinite(value))) return null;
+  if (['number', 'string', 'boolean'].includes(typeof value)) {
+    return { point_key: key, raw: value, decoded: value, quality: 'good' };
+  }
+  // The wire contract intentionally keeps raw scalar. Preserve readable JSON
+  // objects/arrays as JSON text instead of silently discarding them or
+  // inventing a numeric interpretation.
+  if (typeof value === 'object') return { point_key: key, raw: JSON.stringify(value), quality: 'good' };
+  return null;
+}
+
+function concreteKey(template, captures) {
+  if (!template.includes('*')) return template;
+  const values = captures.length ? captures : ['0'];
+  let i = 0;
+  return template.replace(/\[\*]/g, () => `[${values[Math.min(i++, values.length - 1)]}]`)
+    .replace(/(?<=\.)\*(?=\.|$)/g, () => String(values[Math.min(i++, values.length - 1)]));
+}
+
+function expandPath(root, selector) {
+  const tokens = selector.replace(/^\$\.?/, '').replace(/\[(\d+|\*)]/g, '.$1')
+    .split(/[./]/).filter(Boolean);
+  const out = [];
+  const walk = (value, at, captures) => {
+    if (at === tokens.length) { out.push({ value, captures }); return; }
+    const token = tokens[at];
+    if (token === '*') {
+      if (value == null || typeof value !== 'object') return;
+      for (const key of Object.keys(value)) walk(value[key], at + 1, captures.concat(String(key)));
+    } else if (value != null) walk(value[token], at + 1, captures);
+  };
+  walk(root, 0, []);
+  return out;
+}
+
+function decodeJSONSamples(point, payload) {
   let selector = point.selector;
   if (selector.includes('?filter=')) selector = selector.split('?filter=')[1];
   else if (selector.includes('#')) selector = selector.split('#')[1];
   const indices = [...point.point_key.matchAll(/\[(\d+)]/g)].map((m) => m[1]);
   for (const index of indices) selector = selector.replace('[*]', `[${index}]`);
-  const value = pathValue(payload, selector);
-  if (value === undefined || value === null || (typeof value === 'number' && !Number.isFinite(value))) return null;
-  if (!['number', 'string', 'boolean'].includes(typeof value)) return null;
-  return { point_key: point.point_key, raw: value, decoded: value, quality: 'good' };
+  const prefixCaptures = [];
+  if (/\?id=\*/.test(point.selector) && payload && Number.isInteger(payload.id)) {
+    prefixCaptures.push(String(payload.id));
+  }
+  return expandPath(payload, selector).map(({ value, captures }) =>
+    scalarSample(point, concreteKey(point.point_key, prefixCaptures.concat(captures)), value)).filter(Boolean);
+}
+
+function decodeJSON(point, payload) {
+  const samples = decodeJSONSamples(point, payload);
+  return samples.length ? samples[0] : null;
 }
 
 function ocppPointKey(value) {
@@ -159,5 +228,6 @@ function decodeOcppSampledValue(value) {
 }
 
 module.exports = { catalogDocument, resolvePoint, decodeRegisters, decodeJSON,
-  decodeDerived, derivedAddresses, decodeOcppSampledValue, ocppPointKey, templateKey,
-  _helpers: { templateKey, evalDynamicOffset, pathValue } };
+  decodeJSONSamples, decodeDerived, derivedAddresses, decodeOcppSampledValue, ocppPointKey,
+  templateKey, _helpers: { templateKey, evalDynamicOffset, pathValue, concreteKey, expandPath,
+    customPoint } };

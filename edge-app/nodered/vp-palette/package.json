@@ -36,7 +36,8 @@
       "vp-modbus-switch": "nodes/vp-modbus-switch.js",
       "vp-installer-write-request": "nodes/vp-installer-write-request.js",
       "vp-installer-write-result": "nodes/vp-installer-write-result.js",
-      "vp-register-write": "nodes/vp-register-write.js"
+      "vp-register-write": "nodes/vp-register-write.js",
+      "vp-measurements": "nodes/vp-measurements.js"
     }
   },
   "dependencies": {

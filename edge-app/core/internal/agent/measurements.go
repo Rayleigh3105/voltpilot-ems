@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 )
 
@@ -48,6 +49,19 @@ func (a *Agent) onMeasurementStatus(_ string, payload []byte) {
 		slog.Warn("local measurement status rejected", "err", err)
 		return
 	}
+	// A status produced during a WAN outage must not disappear. Persist the
+	// already identity-bound cloud envelope before attempting transport; the
+	// connection callback republishes it retained after every reconnect.
+	tmp := filepath.Join(a.Cfg.DataDir, "measurement-status.json.tmp")
+	path := filepath.Join(a.Cfg.DataDir, "measurement-status.json")
+	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
+		slog.Warn("measurement status persist failed", "err", err)
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		slog.Warn("measurement status atomic replace failed", "err", err)
+		return
+	}
 	a.linkMu.Lock()
 	link := a.link
 	a.linkMu.Unlock()
@@ -56,6 +70,20 @@ func (a *Agent) onMeasurementStatus(_ string, payload []byte) {
 	} // retained config is replayed; Node-RED re-acks.
 	if err := link.PublishMeasurementConfigStatus(raw); err != nil {
 		slog.Warn("measurement status publish failed", "err", err)
+	}
+}
+
+func (a *Agent) republishMeasurementStatus(link *cloud.Link) {
+	raw, err := os.ReadFile(filepath.Join(a.Cfg.DataDir, "measurement-status.json"))
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		slog.Warn("stored measurement status unreadable", "err", err)
+		return
+	}
+	if err := link.PublishMeasurementConfigStatus(raw); err != nil {
+		slog.Warn("stored measurement status reconnect publish failed", "err", err)
 	}
 }
 

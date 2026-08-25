@@ -260,6 +260,10 @@ class AclRegenerateReloadBrokerE2eTest {
                 + base + "/status\"]}.\n"
                 + "{allow, {username, \"" + device + "\"}, subscribe, [\"" + base + "/schedule\", \""
                 + base + "/command\", \"" + base + "/config\"]}.\n"
+                + "{deny, {username, \"" + device + "\"}, publish,   [\"" + base
+                + "/v2/measurement-config\"]}.\n"
+                + "{deny, {username, \"" + device + "\"}, subscribe, [\"" + base
+                + "/v2/measurement-config-status\", \"" + base + "/v2/measurement-samples\"]}.\n"
                 + "{allow, {username, \"" + device + "\"}, publish,   [\"" + base + "/v2/#\"]}.\n"
                 + "{allow, {username, \"" + device + "\"}, subscribe, [\"" + base + "/v2/#\"]}.\n"
                 + "%%<<end device " + device + ">>\n";

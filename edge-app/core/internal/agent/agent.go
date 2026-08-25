@@ -1154,6 +1154,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 	// The v2 entity-registry push must match this identity (topic==payload).
 	a.setEntityIdentity(id.TenantID, id.SiteID, id.DeviceID)
 	a.setMeasurementIdentity(id.TenantID, id.SiteID, id.DeviceID)
+	var link *cloud.Link
 	link, err := cloud.New(cloud.Options{
 		Identity:    id,
 		KeyPath:     keyPath,
@@ -1204,6 +1205,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 			})
 			if connected {
 				a.kick()
+				a.republishMeasurementStatus(link)
 				// A purge requested while the device was offline is queued on
 				// disk; (re-)send it now that the cloud is reachable again.
 				a.trySendPurgeRequest()

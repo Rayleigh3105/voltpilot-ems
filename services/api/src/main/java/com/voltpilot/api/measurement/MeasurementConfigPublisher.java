@@ -64,8 +64,15 @@ public class MeasurementConfigPublisher {
     byte[] payload(DeviceScope scope, State state) throws Exception {
         List<Map<String, Object>> selections = state.selections().stream()
                 .filter(MeasurementSelectionService.SelectionPoint::enabled)
-                .map(p -> Map.<String, Object>of(
-                        "point_key", p.pointKey(), "cadence_s", p.cadenceS()))
+                .map(p -> {
+                    Map<String, Object> selection = new LinkedHashMap<>();
+                    selection.put("point_key", p.pointKey());
+                    selection.put("cadence_s", p.cadenceS());
+                    if (p.customDefinition() != null) {
+                        selection.put("definition", p.customDefinition());
+                    }
+                    return selection;
+                })
                 .toList();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema_version", "2.0");
@@ -80,12 +87,12 @@ public class MeasurementConfigPublisher {
 
     private MqttClient connected() throws Exception {
         if (client == null) {
-            client = new MqttClient(brokerUrl, "voltpilot-api-measurements-" + UUID.randomUUID(),
+            client = new MqttClient(brokerUrl, "voltpilot-api-measurements",
                     new MemoryPersistence());
         }
         if (!client.isConnected()) {
             MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
+            options.setCleanSession(false);
             options.setConnectionTimeout(5);
             options.setAutomaticReconnect(true);
             if (username != null && !username.isBlank()) {

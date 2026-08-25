@@ -301,7 +301,8 @@ class AclGrantWriter {
      * {@code write_acl_grant} in {@code tools/pki/voltpilot-ca.sh} (the shell
      * twin); both sides pin the same fixed vector in their tests
      * ({@code AclGrantWriterTest} / {@code tools/pki/test-acl-grants.sh}).
-     * The two v2 wildcard lines are the E1a/D-2 decision
+     * The v2 wildcard lines remain the E1a/D-2 decision, preceded by narrow
+     * first-match denies for the direction-specific measurement contracts.
      * (docs/contracts/v2/mqtt-schedule-2.0.md §1): ONE {@code v2/#} subtree
      * per device covers every current and future v2 topic (plan, entities,
      * telemetry, flows, prices), so this template never changes again for a
@@ -316,6 +317,11 @@ class AclGrantWriter {
                         + "/telemetry\", \"" + base + "/status\"]}.",
                 "{allow, {username, \"" + deviceId + "\"}, subscribe, [\"" + base
                         + "/schedule\", \"" + base + "/command\", \"" + base + "/config\"]}.",
+                "{deny, {username, \"" + deviceId + "\"}, publish,   [\"" + base
+                        + "/v2/measurement-config\"]}.",
+                "{deny, {username, \"" + deviceId + "\"}, subscribe, [\"" + base
+                        + "/v2/measurement-config-status\", \"" + base
+                        + "/v2/measurement-samples\"]}.",
                 "{allow, {username, \"" + deviceId + "\"}, publish,   [\"" + base + "/v2/#\"]}.",
                 "{allow, {username, \"" + deviceId + "\"}, subscribe, [\"" + base + "/v2/#\"]}.",
                 "%%<<end device " + deviceId + ">>");

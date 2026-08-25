@@ -234,7 +234,9 @@ func (h *coreHandler) OnStartTransaction(id string, req *core.StartTransactionRe
 func (h *coreHandler) OnStopTransaction(id string, req *core.StopTransactionRequest) (*core.StopTransactionConfirmation, error) {
 	now := h.srv.opts.Now()
 	for _, mv := range req.TransactionData {
-		h.srv.onMeterValues(id, connectorOfTransaction(h.srv, id, req.TransactionId), ParseMeterValues(mapSamples(mv.SampledValue)), now)
+		samples := mapSamples(mv.SampledValue)
+		h.srv.emitSampledValues(samples, now)
+		h.srv.onMeterValues(id, connectorOfTransaction(h.srv, id, req.TransactionId), ParseMeterValues(samples), now)
 	}
 	h.srv.onStopTransaction(id, req.TransactionId, now)
 	return core.NewStopTransactionConfirmation(), nil
@@ -244,7 +246,9 @@ func (h *coreHandler) OnStopTransaction(id string, req *core.StopTransactionRequ
 func (h *coreHandler) OnMeterValues(id string, req *core.MeterValuesRequest) (*core.MeterValuesConfirmation, error) {
 	now := h.srv.opts.Now()
 	for _, mv := range req.MeterValue {
-		r := ParseMeterValues(mapSamples(mv.SampledValue))
+		samples := mapSamples(mv.SampledValue)
+		h.srv.emitSampledValues(samples, now)
+		r := ParseMeterValues(samples)
 		if r.Dropped > 0 {
 			h.srv.log.Debug("Messwerte einer Ladesäule teilweise verworfen",
 				"charge_point_id", id, "connector", req.ConnectorId, "dropped", r.Dropped)
@@ -295,9 +299,17 @@ func mapSamples(in []types.SampledValue) []SampledReading {
 			Unit:      string(s.Unit),
 			Phase:     string(s.Phase),
 			Context:   string(s.Context),
+			Format:    string(s.Format),
+			Location:  string(s.Location),
 		})
 	}
 	return out
+}
+
+func (s *Server) emitSampledValues(samples []SampledReading, now time.Time) {
+	if s.opts.OnSampledValues != nil && len(samples) > 0 {
+		s.opts.OnSampledValues(samples, now)
+	}
 }
 
 // --- Smart Charging + configuration, CSMS -> station ---

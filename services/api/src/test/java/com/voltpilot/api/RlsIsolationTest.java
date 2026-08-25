@@ -296,12 +296,17 @@ class RlsIsolationTest {
                         + "('2026-08-25T12:16:01Z','" + TENANT_A + "','" + site + "','" + device
                         + "','test.rollup.counter',1100,110,'good','2026.08.25.1',4,'counter',900),"
                         + "('2026-08-25T12:31:01Z','" + TENANT_A + "','" + site + "','" + device
-                        + "','test.rollup.counter',50,5,'good','2026.08.25.1',5,'counter',900)");
+                        + "','test.rollup.counter',50,5,'good','2026.08.25.1',5,'counter',900),"
+                        + "(now()-INTERVAL '30 days','" + TENANT_A + "','" + site + "','" + device
+                        + "','test.rollup.replay',300,30,'good','2026.08.25.1',6,'gauge',300),"
+                        + "(now()-INTERVAL '30 days'+INTERVAL '1 second','" + TENANT_A + "','" + site
+                        + "','" + device + "','test.rollup.replay',9990,999,'invalid',"
+                        + "'2026.08.25.1',7,'gauge',300)");
             }
         }
 
         assertThat(scalar(TENANT_A, "SELECT count(*) FROM device_measurement_sample "
-                + "WHERE point_key LIKE 'test.rollup.%'")).isEqualTo(5L);
+                + "WHERE point_key LIKE 'test.rollup.%'")).isEqualTo(7L);
         assertThat(scalar(TENANT_B, "SELECT count(*) FROM device_measurement_sample "
                 + "WHERE point_key LIKE 'test.rollup.%'")).isZero();
         assertThat(scalarWithoutTenant("SELECT count(*) FROM device_measurement_sample")).isZero();
@@ -312,6 +317,10 @@ class RlsIsolationTest {
                     + "INTERVAL '5 minutes', '2026-08-25T11:00:00Z')");
             s.execute("CALL refresh_device_measurement_rollup('device_measurement_rollup_15m', "
                     + "INTERVAL '15 minutes', '2026-08-25T11:00:00Z')");
+            // The scheduled job must include replay well beyond the old two-day
+            // horizon, while an invalid value in the same bucket contributes
+            // neither to average nor sample_count.
+            s.execute("CALL device_measurement_rollup_job(0, '{}'::jsonb)");
             try (ResultSet rs = s.executeQuery("SELECT avg_numeric FROM device_measurement_rollup_5m "
                     + "WHERE point_key='test.rollup.gauge'")) {
                 assertThat(rs.next()).isTrue();
@@ -321,6 +330,12 @@ class RlsIsolationTest {
                     + "FROM device_measurement_rollup_15m WHERE point_key='test.rollup.counter'")) {
                 assertThat(rs.next()).isTrue();
                 assertThat(rs.getDouble(1)).isEqualTo(10.0);
+                assertThat(rs.getLong(2)).isEqualTo(1L);
+            }
+            try (ResultSet rs = s.executeQuery("SELECT avg_numeric,sample_count "
+                    + "FROM device_measurement_rollup_5m WHERE point_key='test.rollup.replay'")) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getBigDecimal(1)).isEqualByComparingTo("30");
                 assertThat(rs.getLong(2)).isEqualTo(1L);
             }
             try (ResultSet rs = s.executeQuery("SELECT count(*) FROM timescaledb_information.jobs "

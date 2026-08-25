@@ -1,6 +1,8 @@
 package com.voltpilot.writer;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
@@ -14,12 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class MeasurementWriteRepository {
     private final JdbcTemplate jdbc;
 
-    record Meta(boolean enabled, Instant enabledAt, Instant disabledAt, String applyStatus,
-            Instant appliedAt, String aggregationKind, Integer cadence) {}
+    record Meta(String selectionKey, boolean enabled, Instant enabledAt, Instant disabledAt,
+            String applyStatus, Instant appliedAt, String aggregationKind, Integer cadence) {}
 
-    record Previous(Double numeric, String text, String quality) {}
+    record Previous(BigDecimal numeric, String text, String quality) {}
 
-    record Value(Double numeric, String text) {
+    record Value(BigDecimal numeric, String text) {
         static Value prefer(Value decoded, Value raw) {
             return decoded.numeric != null || decoded.text != null ? decoded : raw;
         }
@@ -75,7 +77,7 @@ public class MeasurementWriteRepository {
             if (inserted > 0) {
                 appendTransitions(event, pointKey, observedAt, raw, decoded,
                         sample.path("quality").asText(), meta);
-                markFirstSample(event, pointKey, observedAt);
+                markFirstSample(event, meta.selectionKey(), observedAt);
                 rows++;
             }
         }
@@ -87,20 +89,24 @@ public class MeasurementWriteRepository {
     }
 
     private Meta metadata(MeasurementRawEvent event, String pointKey) {
-        List<Meta> rows = jdbc.query("SELECT s.enabled,s.enabled_at,s.disabled_at,s.apply_status,"
+        String template = templateKey(pointKey);
+        List<Meta> rows = jdbc.query("SELECT s.point_key,s.enabled,s.enabled_at,s.disabled_at,s.apply_status,"
                         + "s.applied_at,"
                         + "COALESCE(m.aggregation_kind,CASE s.retention_class "
                         + "WHEN 'energy_counter' THEN 'counter' WHEN 'state_event' THEN 'event' "
                         + "WHEN 'identity_configuration' THEN 'text' WHEN 'unclassified' THEN 'none' "
                         + "ELSE 'gauge' END),COALESCE(m.long_term_cadence_s,s.long_term_cadence_s) "
                         + "FROM device_measurement_selection s "
-                        + "LEFT JOIN measurement_catalog_point_metadata m "
-                        + "ON m.catalog_version=? AND m.point_key=s.point_key "
-                        + "WHERE s.device_id=? AND s.point_key=?",
-                (rs, n) -> new Meta(rs.getBoolean(1), instant(rs.getTimestamp(2)),
-                        instant(rs.getTimestamp(3)), rs.getString(4), instant(rs.getTimestamp(5)),
-                        rs.getString(6), (Integer) rs.getObject(7)),
-                event.catalog_version(), event.device_id(), pointKey);
+                        + "LEFT JOIN LATERAL (SELECT m.aggregation_kind,m.long_term_cadence_s "
+                        + "FROM measurement_catalog_point_metadata m "
+                        + "WHERE m.catalog_version=? AND m.point_key IN (s.point_key,?) "
+                        + "ORDER BY CASE WHEN m.point_key=s.point_key THEN 0 ELSE 1 END LIMIT 1) m ON true "
+                        + "WHERE s.device_id=? AND s.point_key IN (?,?) "
+                        + "ORDER BY CASE WHEN s.point_key=? THEN 0 ELSE 1 END LIMIT 1",
+                (rs, n) -> new Meta(rs.getString(1), rs.getBoolean(2), instant(rs.getTimestamp(3)),
+                        instant(rs.getTimestamp(4)), rs.getString(5), instant(rs.getTimestamp(6)),
+                        rs.getString(7), (Integer) rs.getObject(8)),
+                event.catalog_version(), template, event.device_id(), pointKey, template, pointKey);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -119,7 +125,7 @@ public class MeasurementWriteRepository {
                         + "WHERE device_id=? AND point_key=? AND "
                         + "(time<? OR (time=? AND edge_sequence<?)) "
                         + "ORDER BY time DESC,edge_sequence DESC LIMIT 1",
-                (rs, n) -> new Previous((Double) rs.getObject(1), rs.getString(2), rs.getString(3)),
+                (rs, n) -> new Previous(rs.getBigDecimal(1), rs.getString(2), rs.getString(3)),
                 event.device_id(), pointKey, Timestamp.from(at), Timestamp.from(at), event.sequence());
         Previous previous = rows.isEmpty() ? null : rows.get(0);
         if (previous == null) {
@@ -127,11 +133,11 @@ public class MeasurementWriteRepository {
         }
 
         Value current = Value.prefer(decoded, raw);
-        boolean changed = !Objects.equals(previous.numeric(), current.numeric())
+        boolean changed = numericChanged(previous.numeric(), current.numeric())
                 || !Objects.equals(previous.text(), current.text());
         String eventKind = null;
         if ("counter".equals(meta.aggregationKind()) && previous.numeric() != null
-                && current.numeric() != null && current.numeric() < previous.numeric()) {
+                && current.numeric() != null && current.numeric().compareTo(previous.numeric()) < 0) {
             eventKind = "counter_reset";
         } else if (changed && "bitfield".equals(meta.aggregationKind())) {
             eventKind = "bitfield_change";
@@ -141,7 +147,7 @@ public class MeasurementWriteRepository {
                 || "event".equals(meta.aggregationKind()))) {
             eventKind = "state_change";
         }
-        if (!Objects.equals(previous.quality(), quality) && !"good".equals(quality)) {
+        if (!Objects.equals(previous.quality(), quality)) {
             insertEvent(event, pointKey, at, "error_change", previous.numeric(),
                     current.numeric(), previous.quality(), quality, "{}");
         }
@@ -159,7 +165,7 @@ public class MeasurementWriteRepository {
     }
 
     private void insertEvent(MeasurementRawEvent event, String pointKey, Instant at, String kind,
-            Double previousNumeric, Double valueNumeric, String previousText, String valueText,
+            BigDecimal previousNumeric, BigDecimal valueNumeric, String previousText, String valueText,
             String details) {
         jdbc.update("INSERT INTO device_measurement_event(occurred_at,tenant_id,site_id,device_id,"
                         + "point_key,event_kind,previous_numeric,value_numeric,previous_text,value_text,"
@@ -194,15 +200,14 @@ public class MeasurementWriteRepository {
 
     private static Value value(JsonNode node) {
         if (node.isNumber()) {
-            return new Value(node.asDouble(), null);
+            return new Value(node.decimalValue(), null);
         }
         return new Value(null, node.isTextual() ? node.asText()
                 : Boolean.toString(node.asBoolean()));
     }
 
     private static boolean scalar(JsonNode node) {
-        return node.isNumber() && Double.isFinite(node.asDouble())
-                || node.isTextual() || node.isBoolean();
+        return node.isNumber() || node.isTextual() || node.isBoolean();
     }
 
     private static Instant sampleTime(JsonNode sample, Instant fallback) {
@@ -222,16 +227,26 @@ public class MeasurementWriteRepository {
         return watermark != null && !value.isAfter(watermark);
     }
 
-    private static String bitfieldDetails(Double previous, Double current) {
-        if (previous == null || current == null || previous < 0 || current < 0
-                || previous > Long.MAX_VALUE || current > Long.MAX_VALUE
-                || previous != Math.rint(previous) || current != Math.rint(current)) {
+    private static String bitfieldDetails(BigDecimal previous, BigDecimal current) {
+        if (previous == null || current == null || previous.signum() < 0 || current.signum() < 0) {
             return "{}";
         }
-        long before = previous.longValue();
-        long after = current.longValue();
-        return "{\"set_bits\":" + (after & ~before)
-                + ",\"cleared_bits\":" + (before & ~after) + "}";
+        try {
+            BigInteger before = previous.toBigIntegerExact();
+            BigInteger after = current.toBigIntegerExact();
+            return "{\"set_bits\":" + after.andNot(before)
+                    + ",\"cleared_bits\":" + before.andNot(after) + "}";
+        } catch (ArithmeticException e) {
+            return "{}";
+        }
+    }
+
+    static String templateKey(String pointKey) {
+        return pointKey == null ? null : pointKey.replaceAll("\\[[^]\\r\\n]+]", "[*]");
+    }
+
+    private static boolean numericChanged(BigDecimal before, BigDecimal after) {
+        return before == null || after == null ? before != after : before.compareTo(after) != 0;
     }
 
     private static String text(JsonNode node, String field) {

@@ -173,7 +173,7 @@ CREATE POLICY device_measurement_selection_event_isolation ON device_measurement
 CREATE TABLE device_measurement_sample (
     time TIMESTAMPTZ NOT NULL, received_at TIMESTAMPTZ NOT NULL, tenant_id UUID NOT NULL,
     site_id UUID NOT NULL, device_id UUID NOT NULL, point_key TEXT NOT NULL,
-    raw_numeric DOUBLE PRECISION, raw_text TEXT, decoded_numeric DOUBLE PRECISION,
+    raw_numeric NUMERIC, raw_text TEXT, decoded_numeric NUMERIC,
     decoded_text TEXT, quality TEXT NOT NULL, catalog_version TEXT NOT NULL,
     edge_sequence BIGINT NOT NULL, aggregation_kind TEXT NOT NULL, long_term_cadence_s INTEGER,
     gap BOOLEAN NOT NULL, dropped_samples BIGINT NOT NULL, signed_data TEXT,
@@ -193,7 +193,7 @@ CREATE POLICY device_measurement_sample_isolation ON device_measurement_sample
 CREATE TABLE device_measurement_event (
     occurred_at TIMESTAMPTZ NOT NULL, tenant_id UUID NOT NULL, site_id UUID NOT NULL,
     device_id UUID NOT NULL, point_key TEXT NOT NULL, event_kind TEXT NOT NULL,
-    previous_numeric DOUBLE PRECISION, value_numeric DOUBLE PRECISION,
+    previous_numeric NUMERIC, value_numeric NUMERIC,
     previous_text TEXT, value_text TEXT, catalog_version TEXT NOT NULL,
     edge_sequence BIGINT NOT NULL, details JSONB NOT NULL,
     UNIQUE(device_id,point_key,occurred_at,edge_sequence,event_kind)

@@ -512,6 +512,71 @@ class WriterPipeTest {
         }
     }
 
+    @Test
+    void concreteOcppSelectionPreservesLargeRawAndRecordsQualityRecovery() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "30000000-0000-0000-0000-0000000000f3";
+        String template = "ocpp.1_6.metervalues.voltage.context[*].format[*].phase[*].location[*].unit[*]";
+        String concrete = "ocpp.1_6.metervalues.voltage.context[sample-periodic].format[raw].phase[l1-n].location[outlet].unit[v]";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            st.execute("INSERT INTO device(id,tenant_id,site_id) VALUES ('" + device + "','"
+                    + TENANT_A + "','" + SITE + "')");
+            st.execute("INSERT INTO measurement_catalog_point_metadata VALUES ('2026.08.25.1','"
+                    + template + "','gauge',900)");
+            st.execute("INSERT INTO device_measurement_selection(tenant_id,site_id,device_id,"
+                    + "point_key,enabled,cadence_s,desired_revision,enabled_at,catalog_version,"
+                    + "changed_by,apply_status,applied_at,retention_class,raw_retention_days,"
+                    + "long_term_cadence_s,long_term_strategy) VALUES ('" + TENANT_A + "','"
+                    + SITE + "','" + device + "','" + template + "',true,60,1,"
+                    + "'2026-08-25T11:00:00Z','2026.08.25.1','test','applied',"
+                    + "'2026-08-25T11:00:01Z','state_event',90,900,'fifteen_minute')");
+        }
+        try (KafkaProducer<String, String> producer = producer()) {
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, TENANT_A + ":" + SITE
+                    + ":" + device, measurementEvent(device, concrete, 50,
+                            "2026-08-25T12:00:00Z", "good"))).get();
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, TENANT_A + ":" + SITE
+                    + ":" + device, measurementEvent(device, concrete, 51,
+                            "2026-08-25T12:01:00Z", "device_error"))).get();
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, TENANT_A + ":" + SITE
+                    + ":" + device, measurementEvent(device, concrete, 52,
+                            "2026-08-25T12:02:00Z", "good"))).get();
+            producer.flush();
+        }
+        awaitMeasurementRows(device, 3);
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT raw_numeric::text FROM device_measurement_sample "
+                        + "WHERE device_id='" + device + "' ORDER BY edge_sequence LIMIT 1")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isEqualTo("9007199254740993");
+        }
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT count(*) FROM device_measurement_event "
+                        + "WHERE device_id='" + device + "' AND event_kind='error_change'")) {
+            rs.next();
+            assertThat(rs.getLong(1)).as("error transition and good recovery").isEqualTo(2);
+        }
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT apply_status FROM device_measurement_selection "
+                        + "WHERE device_id='" + device + "' AND point_key='" + template + "'")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isEqualTo("first_sample");
+        }
+    }
+
+    private static String measurementEvent(String device, String point, long sequence,
+            String observedAt, String quality) {
+        return "{\"schema_version\":\"1.0\",\"event_id\":\"" + UUID.randomUUID()
+                + "\",\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + device
+                + "\",\"catalog_version\":\"2026.08.25.1\",\"sequence\":" + sequence
+                + ",\"observed_at\":\"" + observedAt + "\",\"ingested_at\":\""
+                + observedAt + "\",\"source_topic\":\"ems/" + TENANT_A + "/" + SITE + "/"
+                + device + "/v2/measurement-samples\",\"gap\":false,\"dropped_samples\":0,"
+                + "\"samples\":[{\"point_key\":\"" + point
+                + "\",\"raw\":9007199254740993,\"quality\":\"" + quality + "\"}]}";
+    }
+
     private static String migratedEvent(String device, String site) {
         return "{"
                 + "\"schema_version\":\"1.0\","

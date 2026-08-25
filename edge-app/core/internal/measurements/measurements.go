@@ -34,8 +34,9 @@ type Identity struct {
 	DeviceID string `json:"device_id"`
 }
 type Selection struct {
-	PointKey string `json:"point_key"`
-	CadenceS int    `json:"cadence_s"`
+	PointKey   string          `json:"point_key"`
+	CadenceS   int             `json:"cadence_s"`
+	Definition json.RawMessage `json:"definition,omitempty"`
 }
 type Config struct {
 	SchemaVersion  string      `json:"schema_version"`
@@ -82,8 +83,38 @@ func ParseConfig(raw []byte, id Identity, appliedRevision int64) (Config, error)
 			return c, fmt.Errorf("duplicate point %s", s.PointKey)
 		}
 		seen[s.PointKey] = true
+		if strings.HasPrefix(s.PointKey, "custom.") {
+			if len(s.Definition) == 0 || len(s.Definition) > 4096 || !validCustomDefinition(s.Definition) {
+				return c, errors.New("custom selection definition missing/invalid")
+			}
+		} else if len(s.Definition) != 0 {
+			return c, errors.New("catalog selection must not carry a custom definition")
+		}
 	}
 	return c, nil
+}
+
+func validCustomDefinition(raw []byte) bool {
+	var definition map[string]any
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.UseNumber()
+	if d.Decode(&definition) != nil || definition == nil || d.Decode(&struct{}{}) != io.EOF {
+		return false
+	}
+	required := []string{"label", "sourceKind", "address", "selector", "valueType", "widthBits",
+		"signed", "endian", "scale", "unit", "cadenceS", "retentionClass", "readOnly", "requestCostMs"}
+	if len(definition) != len(required) {
+		return false
+	}
+	for _, key := range required {
+		if _, ok := definition[key]; !ok {
+			return false
+		}
+	}
+	source, _ := definition["sourceKind"].(string)
+	readOnly, _ := definition["readOnly"].(bool)
+	_, signedOK := definition["signed"].(bool)
+	return (source == "modbus_holding" || source == "modbus_input") && readOnly && signedOK
 }
 
 type LocalStatus struct {
@@ -154,6 +185,8 @@ type LocalBatch struct {
 	CatalogVersion string    `json:"catalog_version"`
 	ObservedAt     time.Time `json:"observed_at"`
 	Samples        []Sample  `json:"samples"`
+	DroppedSamples int64     `json:"dropped_samples,omitempty"`
+	Gap            bool      `json:"gap,omitempty"`
 }
 
 var qualities = map[string]bool{"good": true, "uncertain": true, "invalid": true, "stale": true, "device_error": true}
@@ -169,7 +202,8 @@ func parseBatch(raw []byte) (LocalBatch, error) {
 	if d.Decode(&struct{}{}) != io.EOF {
 		return b, errors.New("batch has trailing json")
 	}
-	if b.CatalogVersion == "" || b.ObservedAt.IsZero() || len(b.Samples) < 1 || len(b.Samples) > MaxBatchSamples {
+	if b.CatalogVersion == "" || b.ObservedAt.IsZero() || len(b.Samples) > MaxBatchSamples ||
+		b.DroppedSamples < 0 || (len(b.Samples) == 0 && !(b.Gap && b.DroppedSamples > 0)) {
 		return b, errors.New("invalid batch")
 	}
 	seen := map[string]bool{}
@@ -203,9 +237,11 @@ type Envelope struct {
 	Raw      []byte
 }
 type diskState struct {
-	NextSequence int64 `json:"next_sequence"`
-	Dropped      int64 `json:"dropped"`
-	Gap          bool  `json:"gap"`
+	NextSequence       int64  `json:"next_sequence"`
+	Dropped            int64  `json:"dropped"`
+	Gap                bool   `json:"gap"`
+	PendingDropFile    string `json:"pending_drop_file,omitempty"`
+	PendingDropSamples int64  `json:"pending_drop_samples,omitempty"`
 }
 type Outbox struct {
 	mu    sync.Mutex
@@ -235,6 +271,9 @@ func OpenOutbox(dir string, max int) (*Outbox, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
+	if err := o.recoverPendingDrop(); err != nil {
+		return nil, err
+	}
 	// Recover monotonically after a crash between the atomic envelope write and
 	// the state write. An existing envelope is never overwritten or assigned a
 	// second sequence number.
@@ -260,12 +299,23 @@ func OpenOutbox(dir string, max int) (*Outbox, error) {
 func (o *Outbox) Append(local []byte, id Identity) (Envelope, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	if err := o.recoverPendingDrop(); err != nil {
+		return Envelope{}, err
+	}
 	if id.TenantID == "" || id.SiteID == "" || id.DeviceID == "" {
 		return Envelope{}, errors.New("measurement identity incomplete")
 	}
 	b, err := parseBatch(local)
 	if err != nil {
 		return Envelope{}, err
+	}
+	// A runtime limiter can report a loss even when no sample survived. Keep
+	// that count durably and attach it to the next real envelope; the cloud
+	// contract intentionally never sends an empty samples array.
+	if len(b.Samples) == 0 {
+		o.state.Dropped += b.DroppedSamples
+		o.state.Gap = true
+		return Envelope{Sequence: -1}, o.save()
 	}
 	files, err := o.files()
 	if err != nil {
@@ -279,12 +329,30 @@ func (o *Outbox) Append(local []byte, id Identity) (Envelope, error) {
 		if drop >= len(files) { // max >= 2, defensive only.
 			return Envelope{}, errors.New("measurement outbox contains only in-flight entry")
 		}
-		if err = os.Remove(filepath.Join(o.dir, files[drop])); err != nil {
+		name := files[drop]
+		count, countErr := envelopeLossCount(filepath.Join(o.dir, name))
+		if countErr != nil {
+			return Envelope{}, countErr
+		}
+		// Two-phase eviction: recovery can distinguish "prepared but file still
+		// exists" from "file removed but loss counter not committed" exactly.
+		o.state.PendingDropFile, o.state.PendingDropSamples = name, count
+		if err = o.save(); err != nil {
+			return Envelope{}, err
+		}
+		if err = os.Remove(filepath.Join(o.dir, name)); err != nil {
+			return Envelope{}, err
+		}
+		if err = syncDir(o.dir); err != nil {
 			return Envelope{}, err
 		}
 		files = append(files[:drop], files[drop+1:]...)
-		o.state.Dropped++
+		o.state.Dropped += count
 		o.state.Gap = true
+		o.state.PendingDropFile, o.state.PendingDropSamples = "", 0
+		if err = o.save(); err != nil {
+			return Envelope{}, err
+		}
 	}
 	// Persist the loss marker before creating another envelope. A crash after
 	// deleting an oldest file may duplicate a gap report, but can never hide it.
@@ -298,7 +366,7 @@ func (o *Outbox) Append(local []byte, id Identity) (Envelope, error) {
 	// Gap/drop state is injected by Next into exactly the first envelope that is
 	// actually sent after an eviction. Persisted later envelopes stay clean, so
 	// one loss episode cannot become a train of duplicate data-gap events.
-	payload := map[string]any{"schema_version": "2.0", "tenant_id": id.TenantID, "site_id": id.SiteID, "device_id": id.DeviceID, "catalog_version": b.CatalogVersion, "sequence": seq, "observed_at": b.ObservedAt.UTC(), "samples": b.Samples, "dropped_samples": 0, "gap": false}
+	payload := map[string]any{"schema_version": "2.0", "tenant_id": id.TenantID, "site_id": id.SiteID, "device_id": id.DeviceID, "catalog_version": b.CatalogVersion, "sequence": seq, "observed_at": b.ObservedAt.UTC(), "samples": b.Samples, "dropped_samples": b.DroppedSamples, "gap": b.Gap || b.DroppedSamples > 0}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return Envelope{}, err
@@ -329,8 +397,11 @@ func (o *Outbox) Next() (Envelope, bool) {
 	// behind it; otherwise the receiver could observe post-gap data first.
 	if o.state.Gap {
 		var payload map[string]any
-		if json.Unmarshal(raw, &payload) == nil {
-			payload["gap"], payload["dropped_samples"] = true, o.state.Dropped
+		d := json.NewDecoder(bytes.NewReader(raw))
+		d.UseNumber()
+		if d.Decode(&payload) == nil {
+			already, _ := strconv.ParseInt(fmt.Sprint(payload["dropped_samples"]), 10, 64)
+			payload["gap"], payload["dropped_samples"] = true, already+o.state.Dropped
 			raw, _ = json.Marshal(payload)
 		}
 		o.reported[seq] = o.state.Dropped
@@ -380,10 +451,59 @@ func (o *Outbox) save() error {
 	raw, _ := json.Marshal(o.state)
 	return atomicWrite(filepath.Join(o.dir, "state.json"), raw)
 }
-func atomicWrite(path string, raw []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0644); err != nil {
+func (o *Outbox) recoverPendingDrop() error {
+	if o.state.PendingDropFile == "" {
+		return nil
+	}
+	_, err := os.Stat(filepath.Join(o.dir, o.state.PendingDropFile))
+	if os.IsNotExist(err) {
+		o.state.Dropped += o.state.PendingDropSamples
+		o.state.Gap = true
+	} else if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	o.state.PendingDropFile, o.state.PendingDropSamples = "", 0
+	return o.save()
+}
+func envelopeLossCount(path string) (int64, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	var payload struct {
+		Samples []json.RawMessage `json:"samples"`
+		Dropped int64             `json:"dropped_samples"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return 0, fmt.Errorf("measurement outbox envelope corrupt: %w", err)
+	}
+	return int64(len(payload.Samples)) + payload.Dropped, nil
+}
+func atomicWrite(path string, raw []byte) error {
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	if _, err = f.Write(raw); err == nil {
+		err = f.Sync()
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	if err = os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return syncDir(filepath.Dir(path))
+}
+func syncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
 }

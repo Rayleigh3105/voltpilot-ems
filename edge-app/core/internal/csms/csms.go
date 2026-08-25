@@ -53,6 +53,9 @@ type Options struct {
 	Now func() time.Time
 	// Log receives the CSMS's own lines. nil = slog.Default().
 	Log *slog.Logger
+	// OnSampledValues mirrors the untouched OCPP values to the additive
+	// measurement runtime. It is observation-only and never blocks CSMS state.
+	OnSampledValues func([]SampledReading, time.Time)
 }
 
 func (o *Options) applyDefaults() {

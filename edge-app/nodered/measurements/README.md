@@ -16,12 +16,14 @@ and due map with one pointer assignment only after all validation and hard
 budgets pass. A rejected revision therefore leaves the previous plan running.
 The scheduler always drains control work before measurement polls.
 
-The runtime has no write primitive. Customer-specific Layer-1 wiring injects
-the existing read transports through `readModbus` and `readJSON`, and forwards
-OCPP `MeterValues` to `onMeterValues`. The injected Modbus reader must use the
-same per-device arbiter as control traffic; measurement requests carry
-`priority: "measurement"`. The implementation groups adjacent registers into
-blocks of at most 120 words and enforces D5 before activation:
+The runtime has no write primitive. The shipped `vp-measurements` palette node
+is instantiated in `flows.json`; it consumes the retained config, injects the
+read-only Modbus/Solarman/HTTP transports, discovers SunSpec model bases and
+reads Model 160's live `N` field, receives OCPP `MeterValues` from Core, ticks the
+runtime and publishes status/samples. The `edge/setpoint` lane opens a control
+priority window before measurement requests. The implementation groups adjacent
+registers into blocks of at most 120 words and enforces D5 before activation and
+again over rolling runtime windows:
 
 - soft warning above 120 samples/minute;
 - hard maximum 600 samples/minute;

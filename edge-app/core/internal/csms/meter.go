@@ -11,11 +11,13 @@ import (
 // parser on plain strings is what lets it be unit-tested without the library
 // and without a socket.
 type SampledReading struct {
-	Value     string
-	Measurand string
-	Unit      string
-	Phase     string
-	Context   string
+	Value     string `json:"value"`
+	Measurand string `json:"measurand"`
+	Unit      string `json:"unit,omitempty"`
+	Phase     string `json:"phase,omitempty"`
+	Context   string `json:"context,omitempty"`
+	Format    string `json:"format,omitempty"`
+	Location  string `json:"location,omitempty"`
 }
 
 // MeterReading is what one MeterValues message told us about a connector. A

@@ -3,8 +3,10 @@ package com.voltpilot.ingest;
 import java.util.UUID;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.integration.channel.DirectChannel;
 import org.springframework.integration.mqtt.core.DefaultMqttPahoClientFactory;
 import org.springframework.integration.mqtt.core.MqttPahoClientFactory;
@@ -24,6 +26,7 @@ public class MqttIngestConfig {
     static final String INBOUND_CHANNEL = "mqttInboundChannel";
 
     @Bean
+    @Primary
     public MqttPahoClientFactory mqttClientFactory(
             @Value("${voltpilot.mqtt.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.mqtt.username:}") String username,
@@ -50,7 +53,7 @@ public class MqttIngestConfig {
 
     @Bean
     public MqttPahoMessageDrivenChannelAdapter mqttInboundAdapter(
-            MqttPahoClientFactory clientFactory,
+            @Qualifier("mqttClientFactory") MqttPahoClientFactory clientFactory,
             @Value("${voltpilot.mqtt.client-id:voltpilot-ingest}") String clientIdPrefix,
             @Value("${voltpilot.mqtt.telemetry-topic-filter:ems/+/+/+/telemetry}") String topicFilter,
             @Value("${voltpilot.mqtt.qos:1}") int qos) {
