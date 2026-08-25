@@ -146,6 +146,9 @@ class ConsumerPolicyActivationBrokerTest {
         ConsumerPolicyCompiler.WindowSource windows =
                 (siteId, signal, op, value, from, to) -> List.of();
         FlowActivationService deployments = new FlowActivationService(flows, entities,
+                org.mockito.Mockito.mock(com.voltpilot.api.repo.FlowClaimRepository.class),
+                new FlowCatalog(MAPPER),
+                provider((com.voltpilot.api.entities.EntityRegistryService) null),
                 provider((FlowCompiler) null), provider(publisher), MAPPER, true);
         return new ConsumerPolicyActivationService(repo,
                 new ConsumerPolicyValidator(new ConsumerSignalCatalog()), compiler,

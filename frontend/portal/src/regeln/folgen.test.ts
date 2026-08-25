@@ -98,19 +98,23 @@ describe('Die Folgen-Karte — der Vorrang-Hinweis ist nach der Sache getrennt',
     expect(risiko.zeilen[0]).toContain('ausschalten');
   });
 
-  it('behauptet auf einer SPEICHER-Regel NICHT, dass die Regel vorgeht', () => {
+  it('sagt seit Stufe 3 auch auf einer SPEICHER-Regel „Ihre Regel geht vor"', () => {
     const k = regelFolgen({ name: 'R', satz: null, art: 'speicher' });
     const risiko = k.bloecke.find((b) => b.key === 'risiko')!.zeilen[0];
     expect(risiko).toBe(VORRANG_FOLGEN.speicher);
-    expect(risiko).not.toContain('Ihre Regel geht vor');
-    expect(risiko).toContain('Fahrplan vor');
-    // Auch hier: der Rückweg gehört in den Satz.
+    expect(risiko).toContain('Ihre Regel geht vor');
+    // Variante 1: das konkrete Speicher-Beispiel steht im Satz ...
+    expect(risiko).toContain('voll gehalten');
+    // ... die FOLGE, die es nur hier gibt (A5b) ...
+    expect(risiko).toContain('Betriebsmodell');
+    // ... und der Rückweg.
     expect(risiko).toContain('ausschalten');
   });
 
   it('die Zeile unter dem Schalter (Variante 3) ist die BEDINGTE Kurzform', () => {
     expect(VORRANG_ZEILE.geraet).toContain('Greift die Regel');
-    expect(VORRANG_ZEILE.speicher).toContain('Fahrplan vor Regel');
+    // Seit Stufe 3 gilt derselbe Satz auf dem Speicher (§3.7 A3/A4).
+    expect(VORRANG_ZEILE.speicher).toContain('Greift die Regel');
     // Nie eine Live-Behauptung („bremst gerade").
     for (const z of Object.values(VORRANG_ZEILE)) {
       expect(z).not.toMatch(/gerade|seit \d/);

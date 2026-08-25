@@ -145,6 +145,13 @@ type Entity struct {
 	// FlexRequirements are the consumer's active deadline duties for the
 	// edge-local fallback (Inkrement 6, D-20). Empty = no fallback.
 	FlexRequirements []FlexRequirement `json:"flex_requirements,omitempty"`
+	// OwnerClaimed says an ACTIVE customer rule claims this component
+	// (Steuerung Stufe 3, vp-steuerung-konzept-b3 §3.7 A3). The plan
+	// executors then inject NO market desire for it, so the rule's flow-class
+	// desire wins because no competitor exists - the arbiter, the priority
+	// classes and D-4/D-5/D-6 stay untouched. ABSENT = false: an older cloud
+	// and every unclaimed component behave byte-for-byte as before.
+	OwnerClaimed bool `json:"owner_claimed,omitempty"`
 }
 
 // Registry is the applied entity set of this device.
@@ -180,6 +187,14 @@ func (r Registry) FirstOfType(entityType string) *Entity {
 		}
 	}
 	return nil
+}
+
+// Claimed reports whether an ACTIVE customer rule claims this entity
+// (Steuerung Stufe 3, §3.7 A3). An unknown entity is never claimed - a plan
+// executor that cannot find its subject has nothing to skip.
+func (r Registry) Claimed(id string) bool {
+	e := r.Find(id)
+	return e != nil && e.OwnerClaimed
 }
 
 // IDs returns the entity ids in registry order.

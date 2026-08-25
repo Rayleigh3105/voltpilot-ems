@@ -933,12 +933,32 @@ describe('Steuerung Stufen 1+2: eine Anlage OHNE Daten bleibt ehrlich leer', () 
     expect(alles).toContain('Nicht abschätzbar');
   });
 
-  it('der Vorrang-Hinweis behauptet auf dem Speicher nicht, dass die Regel vorgeht', () => {
-    // ⚠ Der Umschaltpunkt ist Stufe 3 (A3-A5 des Konzepts). Solange der
-    // Fahrplan den Speicher-Wunsch überstimmt, wäre „Ihre Regel geht vor"
-    // eine Zusage, die die Anlage nicht hält.
-    expect(VORRANG_FOLGEN.speicher).not.toContain('Ihre Regel geht vor');
-    expect(VORRANG_ZEILE.speicher).toContain('Fahrplan vor Regel');
+  it('der Vorrang-Hinweis sagt seit Stufe 3 auf BEIDEN Zweigen „Ihre Regel geht vor"', () => {
+    // ⚠ Der Umschaltpunkt WAR Stufe 3 (A3-A5): seit die Box für eine
+    // beanspruchte Komponente keinen Fahrplan-Sollwert mehr einspeist und der
+    // Optimierer sie als gehalten plant, hält die Anlage die Zusage - vorher
+    // wäre sie eine gewesen, die sie nicht hält.
+    expect(VORRANG_FOLGEN.speicher).toContain('Ihre Regel geht vor');
+    expect(VORRANG_FOLGEN.geraet).toContain('Ihre Regel geht vor');
+    for (const zeile of Object.values(VORRANG_ZEILE)) {
+      expect(zeile).toContain('Regel vor Fahrplan');
+      expect(zeile).not.toContain('Fahrplan vor Regel');
+    }
+    // ... aber KEINE Zahl: „was das kostet" ist Stufe 7, bis dahin wäre sie
+    // erfunden (die Echtheits-Regel des Hauses).
+    for (const text of [...Object.values(VORRANG_FOLGEN), ...Object.values(VORRANG_ZEILE)]) {
+      expect(text).not.toMatch(/\d+[,.]\d+\s*(€|kWh)/);
+    }
+  });
+
+  it('eine SPEICHER-Regel nennt die Folge für ein laufendes Betriebsmodell (A5b)', () => {
+    // Der Server legt das konkurrierende Betriebsmodell bei der Aktivierung
+    // stillt statt die Regel mit V-5 abzulehnen - die Folgen-Karte sagt das
+    // VOR dem Klick, sonst wäre es eine Überraschung.
+    expect(VORRANG_FOLGEN.speicher).toContain('Betriebsmodell');
+    expect(VORRANG_FOLGEN.speicher).toContain('pausiert');
+    // Bei einem GERÄT gibt es kein Betriebsmodell, das pausieren könnte.
+    expect(VORRANG_FOLGEN.geraet).not.toContain('Betriebsmodell');
   });
 
   it('die Jetzt-Zone speichert nichts im Browser', () => {

@@ -112,7 +112,7 @@ def test_shadow_persists_consumer_slots_only_for_the_flagged_site(monkeypatch):
     monkeypatch.setattr(
         engine,
         "gather_inputs",
-        lambda dsn, site, now, horizon_slots, model_choices=None: synthetic_inputs(site, now),
+        lambda dsn, site, now, horizon_slots, model_choices=None, battery_claims=None: synthetic_inputs(site, now),
     )
     flagged = sites[0]
     monkeypatch.setenv("VOLTPILOT_V2_PLAN_SITES", str(flagged.site_id))

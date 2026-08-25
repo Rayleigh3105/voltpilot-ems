@@ -46,7 +46,22 @@ public class FlowGraphValidator {
     }
 
     /** One claim held by ANOTHER active flow of the same site+runtime. */
-    public record ForeignClaim(String entityId, UUID flowId, String flowName) {}
+    /**
+     * One claim held by another ACTIVE flow of the site (V-5). {@code delegated}
+     * marks a BETRIEBSMODELL claim (a {@code vp.strategy.*} node that delegates
+     * dispatch to the plan): since Steuerung Stufe 3 (§3.7 A5b) such a claim
+     * YIELDS to a direct customer rule instead of refusing it - the strategy
+     * flow is stilled on activation and the customer is told so in the
+     * Folgen-Karte, rather than being stopped by a 422 they cannot resolve.
+     */
+    public record ForeignClaim(String entityId, UUID flowId, String flowName,
+            boolean delegated) {
+
+        /** Backwards-compatible: a claim of unknown origin never yields. */
+        public ForeignClaim(String entityId, UUID flowId, String flowName) {
+            this(entityId, flowId, flowName, false);
+        }
+    }
 
     private static final Pattern ID_PATTERN = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$");
     private static final Pattern PORT_PATTERN = Pattern.compile("^[a-z0-9][a-z0-9_]{0,63}$");
@@ -560,15 +575,33 @@ public class FlowGraphValidator {
         }
 
         // Cross-flow exclusivity against the site's other ACTIVE flows.
+        //
+        // Steuerung Stufe 3 (§3.7 A5b): a DELEGATED foreign claim - a
+        // Betriebsmodell whose strategy node hands dispatch to the plan - does
+        // not block a DIRECT customer rule; the activation stills that strategy
+        // flow instead ("Regel gewinnt"). Two delegated claims still collide
+        // (Betriebsmodelle are exclusive anyway), and a plain customer rule
+        // still blocks another one - V-5 is only relaxed where a human decision
+        // exists to resolve it.
         for (FlowClaims.DerivedClaim claim : derived) {
             for (ForeignClaim foreign : foreignClaims) {
-                if (foreign.entityId().equals(claim.entityId())) {
-                    findings.add(FlowValidationFinding.error("V-5", List.of(claim.nodeId()),
-                            List.of(),
-                            "Die Entität \"" + entityLabel(claim.entityId(), nodesById)
-                                    + "\" wird bereits vom aktiven Flow \"" + foreign.flowName()
-                                    + "\" gesteuert."));
+                if (!foreign.entityId().equals(claim.entityId())) {
+                    continue;
                 }
+                if (foreign.delegated() && !claim.delegated()) {
+                    findings.add(FlowValidationFinding.warning("V-5", List.of(claim.nodeId()),
+                            List.of(),
+                            "Ihre Regel geht vor: das Betriebsmodell \"" + foreign.flowName()
+                                    + "\" pausiert auf \""
+                                    + entityLabel(claim.entityId(), nodesById)
+                                    + "\", solange diese Regel aktiv ist."));
+                    continue;
+                }
+                findings.add(FlowValidationFinding.error("V-5", List.of(claim.nodeId()),
+                        List.of(),
+                        "Die Entität \"" + entityLabel(claim.entityId(), nodesById)
+                                + "\" wird bereits vom aktiven Flow \"" + foreign.flowName()
+                                + "\" gesteuert."));
             }
         }
 

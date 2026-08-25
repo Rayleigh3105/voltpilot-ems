@@ -153,7 +153,7 @@ describe('Komponenten-Chips + Fehler-Ehrlichkeit', () => {
     expect(karte.zustand.rang).toBe(RANK_FEHLER);
   });
 
-  it('der Vorrang-Einzeiler ist nach der beanspruchten Sache getrennt (Stufe 2)', () => {
+  it('der Vorrang-Einzeiler steht seit Stufe 3 auf BEIDEN Arten gleich', () => {
     const speicherRegel: GuidedRule = {
       conditions: REGEL.conditions,
       combinator: 'and',
@@ -163,12 +163,18 @@ describe('Komponenten-Chips + Fehler-Ehrlichkeit', () => {
       flow({ latestDocument: buildGuidedFlow(speicherRegel, 'Speicher', 's-1') }),
       ENTITIES,
     );
-    // Speicher: heute gewinnt der Fahrplan — das sagt die Zeile auch.
-    expect(mit.hinweis).toContain('Fahrplan vor Regel');
-    // Gerät: die Regel geht wirklich vor.
+    // Speicher: seit Stufe 3 geht die Regel auch hier vor (§3.7 A3/A4 - die
+    // Box speist für eine beanspruchte Komponente keinen Fahrplan-Sollwert
+    // mehr ein, der Optimierer plant sie als gehalten).
+    expect(mit.hinweis).toContain('Regel vor Fahrplan');
+    expect(mit.hinweis).not.toContain('Fahrplan vor Regel');
+    // Gerät: unverändert.
     const geraet = flowKarte(flow(), ENTITIES).hinweis;
     expect(geraet).toContain('Regel vor Fahrplan');
     expect(geraet).not.toContain('Fahrplan vor Regel');
+    // Die Zeile hängt weiter an einem ANSPRUCH: eine Regel ohne Anspruch
+    // (nur Benachrichtigung) sagt dazu nichts.
+    expect(mit.chips.length).toBeGreaterThan(0);
   });
 
   it('unterscheidet Baukasten- von Editor-Regel und behauptet bei letzterer nichts', () => {

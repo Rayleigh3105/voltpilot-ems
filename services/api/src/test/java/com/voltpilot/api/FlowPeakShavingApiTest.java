@@ -144,6 +144,16 @@ class FlowPeakShavingApiTest {
         }
 
         /**
+         * Steuerung Stufe 3: the composed registry pushes, recorded. The real
+         * publisher is @ConditionalOnProperty on the broker; this stand-in lets
+         * the test read the BYTES the box would get (owner_claimed).
+         */
+        @Bean
+        RecordingRegistryPublisher registryPublisher() {
+            return new RecordingRegistryPublisher();
+        }
+
+        /**
          * Fake flowc transport: a JVM test has no Node runtime, so the real
          * {@link com.voltpilot.api.flows.FlowCompilerClient} runs offline over
          * this seam and gets the contract fixture ARTIFACT back (kind=artifact,
@@ -167,6 +177,10 @@ class FlowPeakShavingApiTest {
     /** The stand-in simulation service - E-8 asserts what is (not) submitted. */
     @Autowired
     FakeSimulationService simulationHttp;
+
+    /** Steuerung Stufe 3: the composed registry pushes the box would receive. */
+    @Autowired
+    RecordingRegistryPublisher registryPublisher;
 
     @Test
     void peakShavingActivatesWithGovernanceAndPriceWhileAtypicalGridIsRefused() {
@@ -635,6 +649,221 @@ class FlowPeakShavingApiTest {
         edge.put("id", id);
         edge.putObject("from").put("node", fromNode).put("port", fromPort);
         edge.putObject("to").put("node", toNode).put("port", toPort);
+    }
+
+    /**
+     * Records every composed registry push (Steuerung Stufe 3). It EXTENDS the
+     * real publisher so the ObjectProvider in EntityRegistryService resolves it
+     * - only publishRegistry is intercepted, nothing else is faked away.
+     */
+    static class RecordingRegistryPublisher extends com.voltpilot.api.entities.EntityRegistryPublisher {
+
+        final List<String> payloads = new CopyOnWriteArrayList<>();
+
+        RecordingRegistryPublisher() {
+            super("tcp://127.0.0.1:1", null, null);
+        }
+
+        @Override
+        public boolean publishRegistry(java.util.UUID tenantId, java.util.UUID siteId,
+                java.util.UUID deviceId, byte[] payload) {
+            payloads.add(new String(payload, java.nio.charset.StandardCharsets.UTF_8));
+            return true;
+        }
+
+        JsonNode lastEntity(String entityId) throws IOException {
+            for (int i = payloads.size() - 1; i >= 0; i--) {
+                JsonNode push = MAPPER.readTree(payloads.get(i));
+                for (JsonNode e : push.path("entities")) {
+                    if (entityId.equals(e.path("entity_id").asText())) {
+                        return e;
+                    }
+                }
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Steuerung Stufe 3 „Vorrang technisch" (Konzept vp-steuerung-konzept-b3
+     * §3.7 A3/A4/A5b) - the CLOUD half of „Regel gewinnt", end to end against
+     * a real DB + Keycloak. The edge half (the plan executor really releasing
+     * the battery) is the in-process simulator proof
+     * {@code agent.TestARuleClaimTakesTheBatteryFromThePlanAndGivesItBack}.
+     *
+     * <ol>
+     *   <li>a DIRECT customer rule on the battery activates and materializes
+     *       its claim; the composed registry push carries {@code owner_claimed}
+     *       so the box stops injecting a plan setpoint for it;</li>
+     *   <li>a running Betriebsmodell YIELDS instead of refusing with V-5 (A5b)
+     *       - it is stilled and NAMED in the response;</li>
+     *   <li>switching the rule off drops the claim and the push is byte-clean
+     *       again - the plan takes the battery back;</li>
+     *   <li>the DELEGATED claim of a Betriebsmodell never sets
+     *       {@code owner_claimed} (it hands dispatch TO the plan - stamping it
+     *       would invert the feature);</li>
+     *   <li>a site with no rule at all is byte-identical to before Stufe 3.</li>
+     * </ol>
+     */
+    @Test
+    void aCustomerRuleClaimsTheBatteryAndTheBetriebsmodellYieldsInsteadOfRefusing() throws Exception {
+        // ⚠ This class shares ONE site across its tests and JUnit's default
+        // method order is unspecified: everything this test switches on (the
+        // governance node, the Leistungspreis) and every flow it creates is
+        // handed back in the finally block, or a sibling test fails for a
+        // reason that has nothing to do with it (the documented FlowApiTest
+        // footgun).
+        String admin = token("admin", "admin");
+        List<String> created = new java.util.ArrayList<>();
+        try {
+        JsonNode bootstrap = exchange("/api/v1/admin/sites/" + BERLIN_SITE
+                + "/v2-entities/bootstrap", HttpMethod.POST, admin, TENANT_A, Map.of()).getBody();
+        String battery = null;
+        String houseLoad = null;
+        for (JsonNode entity : bootstrap.path("entities")) {
+            if ("battery-hybrid".equals(entity.path("entityType").asText())) {
+                battery = entity.path("id").asText();
+            }
+            if ("house-load".equals(entity.path("entityType").asText())) {
+                houseLoad = entity.path("id").asText();
+            }
+        }
+        assertThat(battery).isNotNull();
+
+        // (5) BEFORE anything: no rule -> the push carries no owner_claimed at
+        // all. This is the byte-identical baseline every existing plant has.
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/v2-entities/bootstrap",
+                HttpMethod.POST, admin, TENANT_A, Map.of());
+        JsonNode clean = registryPublisher.lastEntity(battery);
+        assertThat(clean).isNotNull();
+        assertThat(clean.has("owner_claimed"))
+                .as("an unclaimed component must not carry the field at all")
+                .isFalse();
+
+        // (4) A Betriebsmodell first: its DELEGATED claim hands dispatch to the
+        // plan, so it must NOT take the battery away from the plan.
+        setLeistungspreis(admin, 140);
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flow-node-governance", HttpMethod.PUT,
+                admin, TENANT_A,
+                Map.of("enablements", List.of(Map.of("nodeType", PEAKSHAVING, "enabled", true))));
+        String modeId = createSimulateActivate(admin, "Lastspitzenkappung Stufe3",
+                peakShavingDocument(battery), true);
+        created.add(modeId);
+        assertThat(registryPublisher.lastEntity(battery).has("owner_claimed"))
+                .as("a DELEGATED (Betriebsmodell) claim must never set owner_claimed")
+                .isFalse();
+
+        // (1)+(2) The customer rule on the SAME battery: it activates, the
+        // Betriebsmodell yields (A5b) instead of a V-5 refusal, and the push
+        // now carries owner_claimed.
+        String ruleId = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows",
+                HttpMethod.POST, admin, TENANT_A, Map.of("name", "Speicher halten")).getBody()
+                .path("flowId").asText();
+        created.add(ruleId);
+        String ruleBase = "/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + ruleId;
+        exchange(ruleBase + "/versions/1", HttpMethod.PUT, admin, TENANT_A,
+                Map.of("name", "Speicher halten", "document", batterySetpointRule(battery)));
+        JsonNode validation = exchange(ruleBase + "/versions/1/validate", HttpMethod.POST, admin,
+                TENANT_A, Map.of()).getBody();
+        assertThat(validation.path("valid").asBoolean())
+                .as("a rule on a battery a Betriebsmodell holds must VALIDATE: "
+                        + validation.path("findings"))
+                .isTrue();
+        assertThat(validation.path("findings").toString())
+                .as("the yield stays visible as the Folgen-Karte's sentence")
+                .contains("Ihre Regel geht vor");
+
+        exchange(ruleBase + "/versions/1/simulate", HttpMethod.POST, admin, TENANT_A, Map.of());
+        pollSimulation(admin, ruleBase);
+        ResponseEntity<JsonNode> activated = exchange(ruleBase + "/versions/1/activate",
+                HttpMethod.POST, admin, TENANT_A, Map.of());
+        assertThat(activated.getBody().path("activated").asBoolean())
+                .as("the rule activates: " + activated.getBody()).isTrue();
+        assertThat(activated.getBody().path("yieldedFlows").toString())
+                .contains("Lastspitzenkappung Stufe3");
+        assertThat(exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + modeId
+                + "/versions/1", HttpMethod.GET, admin, TENANT_A, null).getBody()
+                .path("lifecycle").asText())
+                .as("the Betriebsmodell is really stilled, not just announced")
+                .isEqualTo("retired");
+
+        JsonNode claimed = registryPublisher.lastEntity(battery);
+        assertThat(claimed.path("owner_claimed").asBoolean())
+                .as("the box learns the claim: " + claimed).isTrue();
+        if (houseLoad != null) {
+            assertThat(registryPublisher.lastEntity(houseLoad).has("owner_claimed"))
+                    .as("every UNCLAIMED component stays untouched").isFalse();
+        }
+
+        // (3) Switch the rule off -> the claim is dropped and the push is clean.
+        exchange(ruleBase + "/deactivate", HttpMethod.POST, admin, TENANT_A, Map.of());
+        assertThat(registryPublisher.lastEntity(battery).has("owner_claimed"))
+                .as("the plan gets the battery back when the rule is switched off")
+                .isFalse();
+        } finally {
+            for (String flowId : created) {
+                String base = "/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + flowId;
+                exchange(base + "/deactivate", HttpMethod.POST, admin, TENANT_A, Map.of());
+                exchange(base, HttpMethod.DELETE, admin, TENANT_A, null);
+            }
+            exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flow-node-governance",
+                    HttpMethod.PUT, admin, TENANT_A, Map.of("enablements",
+                            List.of(Map.of("nodeType", PEAKSHAVING, "enabled", false))));
+            setLeistungspreis(admin, null);
+        }
+    }
+
+    /** Create → save → simulate → activate one flow; returns its id. */
+    private String createSimulateActivate(String admin, String name, ObjectNode document,
+            boolean expectActivated) {
+        String flowId = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows",
+                HttpMethod.POST, admin, TENANT_A, Map.of("name", name)).getBody()
+                .path("flowId").asText();
+        String base = "/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + flowId;
+        exchange(base + "/versions/1", HttpMethod.PUT, admin, TENANT_A,
+                Map.of("name", name, "document", document));
+        exchange(base + "/versions/1/simulate", HttpMethod.POST, admin, TENANT_A, Map.of());
+        pollSimulation(admin, base);
+        ResponseEntity<JsonNode> res = exchange(base + "/versions/1/activate", HttpMethod.POST,
+                admin, TENANT_A, Map.of());
+        assertThat(res.getBody().path("activated").asBoolean())
+                .as(name + " activation: " + res.getBody()).isEqualTo(expectActivated);
+        return flowId;
+    }
+
+    /** Drive the (fake, instantly-done) dry-run to completion. */
+    private void pollSimulation(String admin, String base) {
+        JsonNode version = exchange(base + "/versions/1", HttpMethod.GET, admin, TENANT_A, null)
+                .getBody();
+        if ("simulated".equals(version.path("lifecycle").asText())) {
+            return;
+        }
+        for (Map.Entry<String, String> entry : simulationHttp.statusBodies.entrySet()) {
+            exchange(base + "/versions/1/simulation/" + entry.getKey(), HttpMethod.GET, admin,
+                    TENANT_A, null);
+        }
+    }
+
+    /**
+     * A DIRECT customer rule on the battery: a time window sets a setpoint.
+     * The control node claims the battery ITSELF (delegated=false) - that is
+     * what takes the component away from the plan.
+     */
+    private static ObjectNode batterySetpointRule(String battery) {
+        ObjectNode doc = automationShell("Speicher halten");
+        addNode(doc, "fenster1", "vp.schedule.window",
+                Map.of("from", "08:00", "to", "18:00", "days", "alle"));
+        ObjectNode ifNode = addNode(doc, "wert1", "vp.logic.if", Map.of());
+        ((ObjectNode) ifNode.path("parameters")).put("then_value", 0).put("else_value", 0);
+        ObjectNode ctl = addNode(doc, "steuern1", "vp.entity.control",
+                Map.of("entity_id", battery, "command", "setpoint_kw"));
+        ((ObjectNode) ctl.path("parameters")).put("ttl_s", 300);
+        ObjectNode claim = ctl.putArray("claims").addObject();
+        claim.put("entity_id", battery);
+        claim.putArray("commands").add("setpoint_kw");
+        edge(doc, "e1", "fenster1", "active", "wert1", "condition");
+        edge(doc, "e2", "wert1", "value", "steuern1", "setpoint");
+        return doc;
     }
 
     // ---- helpers -------------------------------------------------------------

@@ -42,25 +42,28 @@ export type VorrangArt = 'speicher' | 'geraet';
  * Captain-Entscheid S2): ruhig, konkret, mit dem Beispiel und dem Rückweg — der
  * Text der FOLGEN-KARTE vor „Aktivieren".
  *
- * ⚠ **Er ist nach der beanspruchten Sache getrennt, und das ist keine Kosmetik,
- * sondern die Echtheits-Regel des Hauses** („ein Satz, der eine Ursache
- * behauptet, muss an einem Fakt hängen"). Belegt ist heute (§3.7, jede Zeile
- * mit Codestelle):
+ * ⚠ **Er ist nach der beanspruchten Sache getrennt, und das bleibt so — aber
+ * SEIT STUFE 3 sagen beide Zweige „Ihre Regel geht vor".** Die Trennung
+ * transportiert jetzt die FOLGE, nicht mehr den Gewinner: auf dem Speicher
+ * pausiert dafür ein laufendes Betriebsmodell, bei einem Gerät nicht.
  *
- *  - **Gerät:** die Regel geht wirklich vor. Für Verbraucher wirft der
- *    Optimierer auf keiner Anlage einen konkurrierenden Wunsch ein
+ * Belegt ist das (§3.7, jede Zeile mit Codestelle):
+ *
+ *  - **Gerät:** die Regel geht vor. Für Verbraucher wirft der Optimierer auf
+ *    keiner Anlage einen konkurrierenden Wunsch ein
  *    (`OPTIMIZER_CONTROLLABLE_LOADS_ENABLED` und `VOLTPILOT_V2_PLAN_SITES` sind
- *    per Vorgabe aus), und eine generierte Verbraucherregel überholt den Plan
- *    ohnehin.
- *  - **Speicher:** heute gewinnt der FAHRPLAN — der Wunsch der Regel wird
- *    überstimmt und greift erst in Plan-Lücken; eine Regel auf einem Speicher,
- *    den ein Betriebsmodell fährt, lehnt der Server sogar ab. „Ihre Regel geht
- *    vor" wäre hier eine Zusage, die die Anlage nicht hält.
+ *    per Vorgabe aus), eine generierte Verbraucherregel überholt den Plan
+ *    ohnehin — und seit Stufe 3 beansprucht eine aktive Regel ihre Komponente
+ *    zusätzlich materiell (`flow_claim` → `owner_claimed`).
+ *  - **Speicher:** die Regel geht seit Stufe 3 ebenfalls vor, und zwar OHNE
+ *    dass am Arbiter etwas geändert wurde: für eine beanspruchte Komponente
+ *    speist die Box gar keinen Fahrplan-Sollwert mehr ein (§3.7 A3) und der
+ *    Optimierer plant sie als gehalten (A4). Ein Betriebsmodell auf demselben
+ *    Speicher wird bei der Aktivierung stillgelegt statt die Regel abzulehnen
+ *    (A5b) — deshalb nennt der Satz genau das.
  *
- * **Der Umschaltpunkt ist benannt:** sobald Stufe 3 (A3–A5 des Konzepts: der
- * Plan konkurriert nicht mehr um beanspruchte Komponenten) ausgeliefert ist,
- * bekommt der `speicher`-Zweig den Wortlaut des `geraet`-Zweigs — EINE
- * Konstante, kein Umbau.
+ * ⚠ Was der Satz ABSICHTLICH NICHT verspricht: eine Zahl. „Was das kostet"
+ * kommt mit der Vorschau (Stufe 7); bis dahin wäre sie erfunden.
  */
 export const VORRANG_FOLGEN: Record<VorrangArt, string> = {
   geraet:
@@ -69,10 +72,11 @@ export const VORRANG_FOLGEN: Record<VorrangArt, string> = {
     + 'hätte. Sie können die Regel jederzeit ausschalten, dann plant VoltPilot '
     + 'wieder frei.',
   speicher:
-    'Auf dem Speicher geht der Fahrplan vor: solange er läuft, führt Ihre Regel '
-    + 'ihn nicht aus, sondern greift erst, wenn kein Fahrplan da ist. Fährt ein '
-    + 'Betriebsmodell diesen Speicher, lehnt VoltPilot die Regel ganz ab und '
-    + 'sagt es Ihnen. Sie können die Regel jederzeit ausschalten.',
+    'Ihre Regel geht vor. Wenn sie greift, weicht der Fahrplan — der Speicher '
+    + 'wird dann zum Beispiel voll gehalten, obwohl er abends günstig hätte '
+    + 'entladen können. Läuft gerade ein Betriebsmodell auf diesem Speicher, '
+    + 'pausiert es dafür. Sie können die Regel jederzeit ausschalten, dann '
+    + 'plant VoltPilot wieder frei.',
 };
 
 /**
@@ -81,21 +85,26 @@ export const VORRANG_FOLGEN: Record<VorrangArt, string> = {
  * Rückweg im Satz davor (die Karte trägt ihn).
  *
  * ⚠ Er ist eine BEDINGTE Aussage („greift die Regel …"), keine Live-Behauptung.
- * Ob eine Regel den Fahrplan GERADE ausbremst, meldet heute niemand fein genug
- * (Konzept §3.7 C1) — dieser Zustand kommt mit Stufe 3, und bis dahin wird er
- * nicht erfunden.
+ * Ob eine Regel den Fahrplan GERADE ausbremst und was das kostet, meldet auch
+ * nach Stufe 3 niemand fein genug (Konzept §3.7 C1) — das ist der Live-Beleg
+ * der Stufe 7, und bis dahin wird er nicht erfunden.
+ *
+ * ⚠ Seit Stufe 3 lautet er auf BEIDEN Zweigen gleich, weil die Aussage jetzt
+ * auf beiden stimmt (§3.7 A3/A4). Er bleibt trotzdem ein Record: der Speicher
+ * bekommt in Stufe 7 die Variante 2 (dieselbe Aussage MIT Zahl), das Gerät
+ * nicht.
  */
 export const VORRANG_ZEILE: Record<VorrangArt, string> = {
   geraet:
     'Regel vor Fahrplan: Greift die Regel, plant VoltPilot um sie herum — das '
     + 'kann Ersparnis kosten. Wir zeigen es Ihnen, wenn es passiert.',
   speicher:
-    'Fahrplan vor Regel: Solange ein Fahrplan läuft, steuert er den Speicher — '
-    + 'Ihre Regel greift in den Lücken.',
+    'Regel vor Fahrplan: Greift die Regel, plant VoltPilot um sie herum — das '
+    + 'kann Ersparnis kosten. Wir zeigen es Ihnen, wenn es passiert.',
 };
 
 /**
- * Der statische Erklärsatz auf einer SPEICHER-Regel — jetzt der Variante-3-Satz
+ * Der statische Erklärsatz auf einer SPEICHER-Regel — der Variante-3-Satz
  * (§3.6). Der Name bleibt, damit die Karte nicht umgebaut werden muss.
  */
 export const SPEICHER_VORRANG_HINWEIS = VORRANG_ZEILE.speicher;

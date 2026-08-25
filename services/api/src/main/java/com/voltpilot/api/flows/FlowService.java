@@ -9,6 +9,7 @@ import com.voltpilot.api.flows.FlowGraphValidator.EntityCapabilities;
 import com.voltpilot.api.flows.FlowGraphValidator.ForeignClaim;
 import com.voltpilot.api.profile.UsageProfileDeriver;
 import com.voltpilot.api.repo.FlowGatedNodeRepository;
+import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
 import com.voltpilot.api.repo.SimulationDefaultsRepository;
@@ -128,6 +129,7 @@ public class FlowService {
     private final EntityTypeCatalog entityTypes;
     private final FlowActivationService activation;
     private final FlowGatedNodeRepository gatedNodes;
+    private final FlowClaimRepository claims;
     private final FlowTemplateService templates;
     private final SimulationDefaultsRepository simulationDefaults;
     private final SimulationClient simulationClient;
@@ -141,7 +143,7 @@ public class FlowService {
             FlowActivationService activation, FlowGatedNodeRepository gatedNodes,
             FlowTemplateService templates, SimulationDefaultsRepository simulationDefaults,
             SimulationClient simulationClient, SimulationJobRegistry simulationJobs,
-            ObjectMapper mapper) {
+            FlowClaimRepository claims, ObjectMapper mapper) {
         this.sites = sites;
         this.layouts = layouts;
         this.flowStatus = flowStatus;
@@ -156,6 +158,7 @@ public class FlowService {
         this.simulationDefaults = simulationDefaults;
         this.simulationClient = simulationClient;
         this.simulationJobs = simulationJobs;
+        this.claims = claims;
         this.mapper = mapper;
     }
 
@@ -334,6 +337,41 @@ public class FlowService {
                     "Dieser Flow hat eine aktive Version - bitte zuerst stilllegen.");
         }
         flows.deleteFlow(flowId);
+        claims.clearForFlow(flowId);
+    }
+
+    /**
+     * Still every OTHER active flow whose DELEGATED claim (a Betriebsmodell
+     * strategy) collides with a claim of the document being activated, and
+     * return their names for the response. A rule of the customer wins over a
+     * Betriebsmodell (§3.7 A5b); two Betriebsmodelle never reach here (the
+     * validator still refuses that with V-5).
+     */
+    private List<String> yieldDelegatedFlows(UUID siteId, UUID flowId, JsonNode document) {
+        Set<String> mine = new HashSet<>();
+        for (FlowClaims.DerivedClaim claim : FlowClaims.derive(document, catalog)) {
+            if (!claim.delegated()) {
+                mine.add(claim.entityId());
+            }
+        }
+        if (mine.isEmpty()) {
+            return List.of();
+        }
+        List<String> yielded = new ArrayList<>();
+        for (FlowVersionRow row : flows.activeVersionsForSiteExcept(siteId,
+                document.path("runtime").asText("edge"), flowId)) {
+            JsonNode doc = parse(row.documentJson());
+            if (doc == null) {
+                continue;
+            }
+            boolean collides = FlowClaims.derive(doc, catalog).stream()
+                    .anyMatch(c -> c.delegated() && mine.contains(c.entityId()));
+            if (collides) {
+                activation.deactivate(siteId, row.flowId(), row);
+                yielded.add(row.name());
+            }
+        }
+        return yielded;
     }
 
     public ValidationResponse validate(UUID siteId, UUID flowId, int version) {
@@ -483,8 +521,17 @@ public class FlowService {
         if (peakGate != null) {
             return peakGate;
         }
+        // Steuerung Stufe 3 (§3.7 A5b): still the Betriebsmodell flows whose
+        // DELEGATED claim this rule takes over. The validator turned that
+        // collision into a warning above, so this is the only place the actual
+        // handover happens - and it happens BEFORE the activation, so a claim
+        // is never held twice.
+        List<String> yielded = yieldDelegatedFlows(siteId, flowId, document);
         FlowActivationService.ActivationOutcome outcome = activation.activate(siteId, row, document);
         Map<String, Object> body = new LinkedHashMap<>();
+        if (!yielded.isEmpty()) {
+            body.put("yieldedFlows", yielded);
+        }
         body.put("activated", outcome.activated());
         if (outcome.reason() != null) {
             body.put("reason", outcome.reason());
@@ -603,7 +650,8 @@ public class FlowService {
                 continue;
             }
             for (FlowClaims.DerivedClaim claim : FlowClaims.derive(doc, catalog)) {
-                claims.add(new ForeignClaim(claim.entityId(), row.flowId(), row.name()));
+                claims.add(new ForeignClaim(claim.entityId(), row.flowId(), row.name(),
+                        claim.delegated()));
             }
         }
         return claims;

@@ -480,6 +480,14 @@ class OptimizationInput:
     peak_so_far_kw: float = 0.0
     pv_anchor_ratio: float | None = None
     pv_anchor_slots: int = 0
+    #: An ACTIVE customer rule claims the battery (Steuerung Stufe 3, Konzept
+    #: vp-steuerung-konzept-b3 §3.7 A4). The battery is then NOT the plan's to
+    #: command: charge and discharge are bounded to 0, so the plan holds the
+    #: SoC path flat and claims no savings on a battery the rule owns. The
+    #: physical asset is unchanged - this is a per-RUN fact about WHO may
+    #: dispatch it, never battery master data. Default False = byte-identical
+    #: to every run before Stufe 3.
+    battery_held: bool = False
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)

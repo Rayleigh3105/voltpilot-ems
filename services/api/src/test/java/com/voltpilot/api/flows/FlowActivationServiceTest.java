@@ -93,8 +93,10 @@ class FlowActivationServiceTest {
     }
 
     private FlowActivationService service(FlowCompiler compiler, boolean enabled) {
-        return new FlowActivationService(flows, entities, provider(compiler),
-                provider(publisher), MAPPER, enabled,
+        return new FlowActivationService(flows, entities,
+                mock(com.voltpilot.api.repo.FlowClaimRepository.class), new FlowCatalog(MAPPER),
+                provider((com.voltpilot.api.entities.EntityRegistryService) null),
+                provider(compiler), provider(publisher), MAPPER, enabled,
                 Clock.fixed(Instant.parse("2026-07-18T12:00:00Z"), ZoneOffset.UTC));
     }
 

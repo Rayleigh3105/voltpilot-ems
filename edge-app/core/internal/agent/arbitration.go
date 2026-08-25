@@ -287,7 +287,15 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 	// The v1 plan commands the battery entity FIRST: while both plan eras
 	// exist (the E13a shadow phase - "v2 publishes, v1 controls"), the v1
 	// plan stays authoritative for the one entity it knows.
-	if batt := reg.FirstOfType(entities.TypeBatteryHybrid); batt != nil {
+	//
+	// Steuerung Stufe 3 (§3.7 A3): unless an ACTIVE customer rule claims it.
+	// Then NO market desire is injected at all, so the rule's flow-class wish
+	// wins because no competitor exists - the arbiter and the priority classes
+	// are untouched. A claimed entity simply never enters `held`, so the
+	// withdraw pass below releases a previously plan-held entity CLEANLY
+	// (stale=false): the arbiter re-selects at once and the rule takes over
+	// without a failsafe blip.
+	if batt := reg.FirstOfType(entities.TypeBatteryHybrid); batt != nil && !batt.OwnerClaimed {
 		a.mu.Lock()
 		p := a.currentPlan
 		a.mu.Unlock()
@@ -322,6 +330,9 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 			}
 			if reg.Find(pe.ID) == nil {
 				continue // unknown entity: logged-and-skipped territory
+			}
+			if reg.Claimed(pe.ID) {
+				continue // Stufe 3: an active customer rule owns this component
 			}
 			cmds, slotStart, ok := v2.ActiveCommands(pe.ID, now)
 			if !ok {

@@ -410,8 +410,16 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     m.T = RangeSet(0, n - 1)  # decision slots
     m.S = RangeSet(0, n)  # SoC nodes (slot boundaries)
 
-    m.charge = Var(m.T, domain=NonNegativeReals, bounds=(0, p.max_charge_kw))
-    m.discharge = Var(m.T, domain=NonNegativeReals, bounds=(0, p.max_discharge_kw))
+    # Steuerung Stufe 3 (§3.7 A4): a battery an ACTIVE customer rule claims is
+    # not the plan's to command - its power bounds collapse to 0, the SoC path
+    # stays flat and the run claims no savings on it. Deliberately a BOUND, not
+    # a constraint: nothing is added to the model, so the explain layer's
+    # KNOWN_CONSTRAINTS inventory and the golden suite are untouched, and an
+    # unclaimed battery (the default) is byte-identical.
+    charge_cap = 0.0 if inp.battery_held else p.max_charge_kw
+    discharge_cap = 0.0 if inp.battery_held else p.max_discharge_kw
+    m.charge = Var(m.T, domain=NonNegativeReals, bounds=(0, charge_cap))
+    m.discharge = Var(m.T, domain=NonNegativeReals, bounds=(0, discharge_cap))
     m.is_charging = Var(m.T, domain=Binary)
     # Curtailment can only ever REDUCE feed-in: bounded per slot by the PV
     # forecast, so pv - curtail (the published inverter cap) is never negative.

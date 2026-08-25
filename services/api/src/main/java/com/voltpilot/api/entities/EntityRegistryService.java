@@ -9,6 +9,7 @@ import com.voltpilot.api.components.ComponentAuthority;
 import com.voltpilot.api.entities.EntityRegistryRepository.BatteryAsset;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.repo.AssetRepository;
+import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -105,6 +106,7 @@ public class EntityRegistryService {
     private final ObjectMapper mapper;
     private final EntityTypeCatalog catalog;
     private final AssetRepository assets;
+    private final FlowClaimRepository claims;
     private final Clock clock;
 
     /**
@@ -116,18 +118,20 @@ public class EntityRegistryService {
     @org.springframework.beans.factory.annotation.Autowired
     public EntityRegistryService(EntityRegistryRepository repo,
             ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
-            EntityTypeCatalog catalog, AssetRepository assets) {
-        this(repo, publisher, mapper, catalog, assets, Clock.systemUTC());
+            EntityTypeCatalog catalog, AssetRepository assets, FlowClaimRepository claims) {
+        this(repo, publisher, mapper, catalog, assets, claims, Clock.systemUTC());
     }
 
     EntityRegistryService(EntityRegistryRepository repo,
             ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
-            EntityTypeCatalog catalog, AssetRepository assets, Clock clock) {
+            EntityTypeCatalog catalog, AssetRepository assets, FlowClaimRepository claims,
+            Clock clock) {
         this.repo = repo;
         this.publisher = publisher;
         this.mapper = mapper;
         this.catalog = catalog;
         this.assets = assets;
+        this.claims = claims;
         this.clock = clock;
     }
 
@@ -987,12 +991,21 @@ public class EntityRegistryService {
         // activation/deactivation/pause re-pushes cleanly too.
         java.util.Map<UUID, EntityRegistryRepository.ConsumerFlexSource> flex =
                 repo.activeConsumerPolicies(siteId);
+        // Steuerung Stufe 3 (§3.7 A3): WELCHE Komponenten eine aktive Kundenregel
+        // beansprucht. Der Edge speist für sie KEINEN Fahrplan-Sollwert mehr ein -
+        // die Regel gewinnt, weil kein Konkurrent existiert; Arbiter und D-4/D-5/D-6
+        // bleiben unangetastet. Additiv wie edge_source_id (D-17) und
+        // flex_requirements (D-20): ohne Beanspruchung ist die Nutzlast byte-gleich.
+        java.util.Map<UUID, String> claimed = claims.claimedEntities(siteId);
         ArrayNode entities = push.putArray("entities");
         for (EntityRow row : rows) {
             ObjectNode d = descriptor(row);
             EntityRegistryRepository.ConsumerCycleLimits cl = cycle.get(row.id());
             if (cl != null) {
                 mergeCycleLimits(d, cl);
+            }
+            if (claimed.containsKey(row.id())) {
+                d.put("owner_claimed", true);
             }
             EntityRegistryRepository.ConsumerFlexSource fs = flex.get(row.id());
             if (fs != null) {

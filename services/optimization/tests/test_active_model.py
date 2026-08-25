@@ -312,7 +312,7 @@ def test_the_cycle_reads_the_choices_once_for_the_whole_fleet(fake_psycopg, monk
     monkeypatch.setattr(engine, "load_battery_sites", lambda dsn: sites)
     seen: list = []
 
-    def gather(dsn, site, now, horizon_slots, model_choices=None):
+    def gather(dsn, site, now, horizon_slots, model_choices=None, battery_claims=None):
         seen.append(model_choices)
         raise SkipSite("nicht plannbar - wir pruefen nur die Weitergabe")
 

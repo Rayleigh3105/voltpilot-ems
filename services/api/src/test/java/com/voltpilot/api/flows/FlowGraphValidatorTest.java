@@ -389,6 +389,53 @@ class FlowGraphValidatorTest {
                 .message()).contains("Anderer Flow");
     }
 
+    /**
+     * Steuerung Stufe 3 (§3.7 A5b): a DELEGATED foreign claim - a
+     * Betriebsmodell handing dispatch to the plan - YIELDS to a direct
+     * customer rule. It stays visible as a WARNING (so the Folgen-Karte can
+     * say what pauses), but it no longer blocks the activation.
+     */
+    @Test
+    void aBetriebsmodellClaimYieldsToADirectCustomerRuleInsteadOfBlockingIt() {
+        ObjectNode doc = flowShell();
+        addNode(doc, "ctl1", "vp.entity.control", "1.0.0",
+                Map.of("entity_id", "batt-main", "command", "setpoint_kw", "ttl_s", 180.0));
+        setClaims(doc, "ctl1", "batt-main", List.of("setpoint_kw"), false);
+        List<FlowValidationFinding> findings = validator.validate(doc, FIXTURE_ENTITIES,
+                List.of(new ForeignClaim("batt-main", UUID.randomUUID(), "Marktoptimierung",
+                        true)));
+        assertThat(errors(findings)).doesNotContain("V-5");
+        FlowValidationFinding warn = findings.stream()
+                .filter(f -> "V-5".equals(f.rule())).findFirst().orElseThrow();
+        assertThat(warn.severity()).isEqualTo("warning");
+        assertThat(warn.message()).contains("Ihre Regel geht vor").contains("Marktoptimierung");
+    }
+
+    @Test
+    void twoBetriebsmodelleStillCollideAndAPlainRuleStillBlocksAnother() {
+        // delegated vs. delegated: Betriebsmodelle are exclusive (Stufe 5).
+        JsonNode strategy = pilotFlow("batt-main");
+        assertThat(errors(validator.validate(strategy, FIXTURE_ENTITIES,
+                List.of(new ForeignClaim("batt-main", UUID.randomUUID(), "Lastspitzenkappung",
+                        true))))).contains("V-5");
+
+        // rule vs. rule: unchanged, there is no human decision to resolve it.
+        ObjectNode rule = flowShell();
+        addNode(rule, "ctl1", "vp.entity.control", "1.0.0",
+                Map.of("entity_id", "batt-main", "command", "setpoint_kw", "ttl_s", 180.0));
+        setClaims(rule, "ctl1", "batt-main", List.of("setpoint_kw"), false);
+        assertThat(errors(validator.validate(rule, FIXTURE_ENTITIES,
+                List.of(new ForeignClaim("batt-main", UUID.randomUUID(), "Andere Regel",
+                        false))))).contains("V-5");
+    }
+
+    @Test
+    void theTwoArgForeignClaimNeverYields() {
+        // The compatibility constructor must default to "does not yield" - a
+        // claim of unknown origin is never assumed to be a Betriebsmodell.
+        assertThat(new ForeignClaim("batt-main", UUID.randomUUID(), "X").delegated()).isFalse();
+    }
+
     // ---- V-6 capability match ---------------------------------------------
 
     @Test

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.entities.EntityRegistryRepository;
+import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
 import com.voltpilot.api.tenant.TenantContext;
@@ -63,6 +65,9 @@ public class FlowActivationService {
 
     private final FlowRepository flows;
     private final EntityRegistryRepository entities;
+    private final FlowClaimRepository claims;
+    private final FlowCatalog catalog;
+    private final ObjectProvider<EntityRegistryService> registry;
     private final ObjectProvider<FlowCompiler> compiler;
     private final ObjectProvider<FlowDeploymentPublisher> publisher;
     private final ObjectMapper mapper;
@@ -76,17 +81,25 @@ public class FlowActivationService {
      */
     @org.springframework.beans.factory.annotation.Autowired
     public FlowActivationService(FlowRepository flows, EntityRegistryRepository entities,
+            FlowClaimRepository claims, FlowCatalog catalog,
+            ObjectProvider<EntityRegistryService> registry,
             ObjectProvider<FlowCompiler> compiler, ObjectProvider<FlowDeploymentPublisher> publisher,
             ObjectMapper mapper,
             @Value("${voltpilot.flows.activation.enabled:false}") boolean activationEnabled) {
-        this(flows, entities, compiler, publisher, mapper, activationEnabled, Clock.systemUTC());
+        this(flows, entities, claims, catalog, registry, compiler, publisher, mapper,
+                activationEnabled, Clock.systemUTC());
     }
 
     FlowActivationService(FlowRepository flows, EntityRegistryRepository entities,
+            FlowClaimRepository claims, FlowCatalog catalog,
+            ObjectProvider<EntityRegistryService> registry,
             ObjectProvider<FlowCompiler> compiler, ObjectProvider<FlowDeploymentPublisher> publisher,
             ObjectMapper mapper, boolean activationEnabled, Clock clock) {
         this.flows = flows;
         this.entities = entities;
+        this.claims = claims;
+        this.catalog = catalog;
+        this.registry = registry;
         this.compiler = compiler;
         this.publisher = publisher;
         this.mapper = mapper;
@@ -139,8 +152,15 @@ public class FlowActivationService {
 
         flows.retireActive(version.flowId());
         flows.markActive(version.flowId(), version.flowVersion(), artifact.toString());
-
+        // Steuerung Stufe 3 (§3.7 A3/A4): materialize this flow's claims in the
+        // SAME transaction, then re-push the registry so the box learns
+        // owner_claimed and stops injecting a plan setpoint for the claimed
+        // component. FlowClaims stays the ONE derivation - the table is only
+        // its projection for the two consumers outside this process (the push
+        // and the optimizer).
+        writeClaims(siteId, version, document);
         boolean published = publishDeploymentSet(siteId, gateway);
+        pushRegistry(siteId);
         return new ActivationOutcome(true, null,
                 "Flow aktiviert (Version " + version.flowVersion() + ").", published, gateway);
     }
@@ -155,13 +175,47 @@ public class FlowActivationService {
     @Transactional
     public DeactivationOutcome deactivate(UUID siteId, UUID flowId, FlowVersionRow active) {
         flows.retireActive(flowId);
+        // A claim never outlives the flow that holds it (Stufe 3): dropping it
+        // here is what makes the plan take the component back on the next push.
+        claims.clearForFlow(flowId);
         UUID gateway = gatewayDevice(siteId);
         boolean published = gateway != null && publishDeploymentSet(siteId, gateway);
         if (gateway == null) {
             log.warn("flow {} deactivated but deployment for site {} not re-published: "
                     + "no unique gateway device", flowId, siteId);
         }
+        pushRegistry(siteId);
         return new DeactivationOutcome(published);
+    }
+
+    /**
+     * Materialize the ACTIVE version's claims (Stufe 3). Derived here from the
+     * SAME {@link FlowClaims} the validator uses - never a second rule.
+     */
+    private void writeClaims(UUID siteId, FlowVersionRow version, JsonNode document) {
+        List<FlowClaimRepository.ClaimRow> rows = new ArrayList<>();
+        for (FlowClaims.DerivedClaim claim : FlowClaims.derive(document, catalog)) {
+            for (String command : claim.commands()) {
+                rows.add(new FlowClaimRepository.ClaimRow(UUID.fromString(claim.entityId()),
+                        command, version.flowId(), version.flowVersion(), version.name(),
+                        claim.delegated()));
+            }
+        }
+        claims.replaceForFlow(TenantContext.get(), siteId, version.flowId(), version.flowVersion(),
+                version.name(), rows);
+    }
+
+    /**
+     * Re-push the entity registry so a claim change reaches the box
+     * ({@code owner_claimed}). Best-effort exactly like every other push - a
+     * missing gateway or a broker outage never fails the activation, the
+     * retained delivery converges later.
+     */
+    private void pushRegistry(UUID siteId) {
+        EntityRegistryService svc = registry.getIfAvailable();
+        if (svc != null) {
+            svc.pushRegistryBestEffort(siteId);
+        }
     }
 
     /**

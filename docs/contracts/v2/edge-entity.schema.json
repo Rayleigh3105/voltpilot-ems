@@ -318,6 +318,10 @@
           "maxLength": 128,
           "description": "The edge-local source id this entity was adopted from (:8484 sources selection; the cloud pin measurement_point.edge_source_id). OPTIONAL + ADDITIVE (2026-07-29, vp-vier-erzeuger-p9 PR 4a): lets the device map its OWN source readings onto the entity for its LOCAL display - deterministic instead of order-guessing. An old edge ignores it."
         },
+        "owner_claimed": {
+          "type": "boolean",
+          "description": "TRUE = an ACTIVE customer rule claims this component, so the plan executors inject NO market desire for it and the rule wins because no competitor exists (Steuerung Stufe 3, vp-steuerung-konzept-b3 \u00a73.7 A3). OPTIONAL + ADDITIVE: ABSENT means false, which is what an older cloud sends and what every unclaimed component sends - the arbiter, the priority classes and D-4/D-5/D-6 are unchanged. An older edge ignores it and behaves exactly as before."
+        },
         "capabilities": {
           "$ref": "#/$defs/capabilities"
         },

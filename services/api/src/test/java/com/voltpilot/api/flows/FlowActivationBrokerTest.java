@@ -107,6 +107,8 @@ class FlowActivationBrokerTest {
 
         FlowDeploymentPublisher publisher = new FlowDeploymentPublisher(brokerUrl(), "", "");
         FlowActivationService service = new FlowActivationService(flows, entities,
+                mock(com.voltpilot.api.repo.FlowClaimRepository.class), new FlowCatalog(MAPPER),
+                provider((com.voltpilot.api.entities.EntityRegistryService) null),
                 provider(compiler), provider(publisher), MAPPER, true,
                 Clock.fixed(Instant.parse("2026-07-19T09:00:00Z"), ZoneOffset.UTC));
 

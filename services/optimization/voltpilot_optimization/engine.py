@@ -29,6 +29,7 @@ from voltpilot_optimization.inputs import (
     SkipSite,
     gather_inputs,
     load_battery_sites,
+    load_battery_claims,
     load_model_choices,
 )
 from voltpilot_optimization.persistence import ScheduleRepository
@@ -72,6 +73,7 @@ def plan_site(
     v2_sites: frozenset | None = None,
     v2_repository: SitePlanRepository | None = None,
     model_choices=None,
+    battery_claims=None,
 ) -> SchedulePlan:
     """Plan one site end to end. Raises :class:`SkipSite` when un-plannable.
 
@@ -85,8 +87,12 @@ def plan_site(
     models (:func:`voltpilot_optimization.inputs.load_model_choices`, platform
     default + the per-site choices); ``None`` lets ``gather_inputs`` load them
     itself, which is what the single-site on-demand replan does.
+
+    ``battery_claims`` is the same convention for the customer-rule claims
+    (:func:`voltpilot_optimization.inputs.load_battery_claims`, Stufe 3 §3.7 A4).
     """
-    inp = gather_inputs(dsn, site, now, horizon_slots, model_choices=model_choices)
+    inp = gather_inputs(dsn, site, now, horizon_slots, model_choices=model_choices,
+                        battery_claims=battery_claims)
     plan_id = uuid4()
     try:
         plan = optimize(inp, plan_id, now)
@@ -204,6 +210,10 @@ def run_cycle(
     # 19.08.2026). Both are small indexed reads; re-reading them per site would
     # be N identical queries. `gather_inputs` resolves them PER SITE.
     model_choices = load_model_choices(dsn)
+    # ONE read of the customer-rule claims for the whole cycle (Stufe 3 §3.7
+    # A4) - same reasoning as the model choices above, and fail-soft: without
+    # the table every battery is planned exactly as before.
+    battery_claims = load_battery_claims(dsn)
     for site in sites:
         try:
             plan = plan_site(
@@ -217,6 +227,7 @@ def run_cycle(
                 v2_sites=v2_sites,
                 v2_repository=v2_repository,
                 model_choices=model_choices,
+                battery_claims=battery_claims,
             )
             summary.planned.append(plan)
         except SkipSite as exc:

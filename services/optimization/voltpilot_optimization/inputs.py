@@ -123,6 +123,58 @@ def load_model_choices(dsn: str):
     return model_choice.load_all_dsn(dsn)
 
 
+def load_battery_claims(dsn: str) -> dict:
+    """The batteries an ACTIVE customer rule claims, per site (Steuerung Stufe 3).
+
+    Since §3.7 A4 a customer rule OWNS the component it controls: the box stops
+    injecting a plan setpoint for it (``owner_claimed`` in the registry push),
+    and the plan must stop DISPATCHING it - otherwise the optimizer silently
+    banks money on a battery the rule holds. ``flow_claim`` (api migration
+    V20260842000000) is the materialized projection of the ONE Java claim
+    derivation; the join to ``measurement_point`` keeps the entity TYPE a
+    single truth instead of a snapshot column.
+
+    ⚠ ``delegated`` claims are EXCLUDED. A ``vp.strategy.*`` node claims the
+    battery in order to hand dispatch TO this optimizer - reading it as "held"
+    would make a Betriebsmodell stop the very plan it exists for. Only a DIRECT
+    customer rule takes the battery away from the plan.
+
+    Returns ``{site_id_str: flow_name}`` for the claimed batteries. The CYCLE
+    reads it ONCE and hands it to every site, like the model choices.
+
+    Never raises: a missing table (an optimizer deployed ahead of the api
+    migration) or an unreachable DB degrades to "no claim" - which is exactly
+    the pre-Stufe-3 behaviour, never a plant left unplanned.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    claims: dict[str, str] = {}
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT fc.site_id::text, fc.flow_name
+                FROM flow_claim fc
+                JOIN measurement_point mp ON mp.id = fc.entity_id
+                WHERE mp.entity_type = 'battery-hybrid'
+                  AND NOT fc.delegated
+                """
+            )
+            for site_id, flow_name in cur.fetchall():
+                claims.setdefault(site_id, flow_name)
+    except Exception as exc:  # pragma: no cover - exercised via the unit test
+        print(f"[optimizer] flow_claim not readable ({exc}); planning every battery")
+        return {}
+    return claims
+
+
+def site_battery_claim(claims, site_id) -> str | None:
+    """The name of the rule holding THIS site's battery, or ``None``."""
+    if not claims:
+        return None
+    return claims.get(str(site_id))
+
+
 def site_model_choices(choices, site_id) -> dict:
     """The choices in force for ONE site, as ``{kind_str: model_id}``.
 
@@ -424,6 +476,7 @@ def gather_inputs(
     now: datetime,
     horizon_slots: int = SLOTS_24H,
     model_choices=None,
+    battery_claims=None,
 ) -> OptimizationInput:
     """Assemble the slot-aligned :class:`OptimizationInput` for one site.
 
@@ -437,9 +490,17 @@ def gather_inputs(
     choices (:func:`load_model_choices`); ``None`` means "load it here", which
     is what the single-site callers (what-if, on-demand replan) do. It is
     resolved for THIS site here - the site's own choice beats the fleet default.
+
+    ``battery_claims`` is the cycle's ONE read of the customer-rule claims
+    (:func:`load_battery_claims`, Steuerung Stufe 3 §3.7 A4), same convention:
+    ``None`` = load it here. A claimed battery is planned as HELD - see
+    :attr:`~voltpilot_optimization.domain.OptimizationInput.battery_held`.
     """
     if model_choices is None:
         model_choices = load_model_choices(dsn)
+    if battery_claims is None:
+        battery_claims = load_battery_claims(dsn)
+    held_by = site_battery_claim(battery_claims, site.site_id)
     site_choices = site_model_choices(model_choices, site.site_id)
     now = ensure_utc(now)
     slot_starts = horizon_slot_starts(now, horizon_slots)
@@ -536,6 +597,9 @@ def gather_inputs(
         # readout): the correction ALREADY sits in pv_kw above.
         pv_anchor_ratio=pv_anchor.ratio,
         pv_anchor_slots=pv_anchor.slots_used,
+        # Steuerung Stufe 3: an active customer rule owns this battery, so the
+        # plan holds it instead of dispatching it (§3.7 A4).
+        battery_held=held_by is not None,
     )
 
 
