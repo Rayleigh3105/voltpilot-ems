@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Map;
 
 /**
@@ -40,12 +41,14 @@ public record SaveComponentRequest(
         @Positive BigDecimal capacityKwp,
         Integer intervalS,
         @Size(max = 200) String note,
-        @Size(max = 40) String acceptMissingChannel) {
+        @Size(max = 40) String acceptMissingChannel,
+        Integer expectedRevision,
+        Instant effectiveAt) {
 
     /** Der Bequemlichkeits-Konstruktor der Aufrufer VOR dem Override-Weg. */
     public SaveComponentRequest(String templateRef, String label, String role,
             Map<String, Object> connection, BigDecimal capacityKwp, Integer intervalS,
             String note) {
-        this(templateRef, label, role, connection, capacityKwp, intervalS, note, null);
+        this(templateRef, label, role, connection, capacityKwp, intervalS, note, null, null, null);
     }
 }

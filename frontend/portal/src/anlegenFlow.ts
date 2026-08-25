@@ -54,6 +54,20 @@ const TYP_DEVICE_TYPES: Record<TypId, string[]> = {
   eigenbau: [],
 };
 
+/** Der Gerätetyp einer bestehenden Vorlage für den Wiedereinstieg in denselben Assistenten. */
+export function typFuerTemplate(template: ComponentTemplate | null): TypId {
+  switch (template?.deviceType) {
+    case 'wallbox':
+      return 'wallbox';
+    case 'switch':
+      return 'verbraucher';
+    case 'meter':
+      return 'zaehler';
+    default:
+      return 'wechselrichter';
+  }
+}
+
 /** Die Rollen, die ein Typ in der Anlage einnehmen kann. */
 const TYP_ROLLEN: Record<TypId, KomponentenRolle[]> = {
   // Ein Wechselrichter kann das Herz der Anlage ODER ein weiterer Erzeuger

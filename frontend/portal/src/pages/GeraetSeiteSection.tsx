@@ -17,6 +17,8 @@ import {
   type EntityStrategy,
   type Site,
   type SiteComponents,
+  type SiteComponentRow,
+  type ComponentDefinition,
   type SiteEntities,
   type SiteEntity,
   type SiteSource,
@@ -46,7 +48,7 @@ import { deviceLimitLine, exportGuardView, WAECHTER_LABEL } from '../curtailment
 import { COMPONENT_ROLE_ICONS } from '../komponenten';
 import type { IconName } from '../../designsystem/components/core/Icon';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import { anlageRoute, befehleGeraetHash, hashForRoute, pageRoute } from '../nav';
+import { anlageRoute, befehleGeraetHash, boxSeiteHash, hashForRoute, pageRoute } from '../nav';
 import {
   ABRUF_HINWEIS,
   abrufZeile,
@@ -82,6 +84,9 @@ import {
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { showTechnicalLayer } from '../rollen';
 import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
+import { AnlegenFlow } from '../components/AnlegenFlow';
+import { GeraetVerschiebenDialog } from '../components/GeraetVerschiebenDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { geraetView, type GeraetView } from '../adminGeraet';
 import { adminApi } from '../admin/adminApi';
 import { fleetApi } from '../admin/fleetApi';
@@ -139,6 +144,12 @@ export function GeraetSeiteSection({
   const [topology, setTopology] = useState<SiteTopology | null>(null);
   const [sources, setSources] = useState<SiteSource[] | null>(null);
   const [components, setComponents] = useState<SiteComponents | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [versions, setVersions] = useState<ComponentDefinition[]>([]);
+  const [rollbackTarget, setRollbackTarget] = useState<ComponentDefinition | null>(null);
+  const [rollbackBusy, setRollbackBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [control, setControl] = useState<ControlStatus | null>(null);
   const [curtailment, setCurtailment] = useState<CurtailmentStatus | null>(null);
   const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
@@ -310,6 +321,38 @@ export function GeraetSeiteSection({
   ]);
 
   const box = boxDevice;
+  const editRow: SiteComponentRow | null = useMemo(() => {
+    if (!view || !geraetId) return null;
+    return (components?.components ?? []).find(
+      (row) => Boolean(row.templateRef) && (row.edgeSourceId === geraetId
+        || view.komponenten.some((component) => component.entityId === row.id)),
+    ) ?? null;
+  }, [components, geraetId, view]);
+
+  useEffect(() => {
+    if (!editRow) { setVersions([]); return; }
+    let active = true;
+    api.componentVersions(site.id, editRow.id).then(
+      (rows) => active && setVersions(rows),
+      () => active && setVersions([]),
+    );
+    return () => { active = false; };
+  }, [editRow?.id, editRow?.definitionVersion, site.id]);
+
+  async function rollback() {
+    if (!editRow || !rollbackTarget) return;
+    setRollbackBusy(true);
+    setEditError(null);
+    try {
+      const result = await api.rollbackComponent(site.id, editRow.id, rollbackTarget.version);
+      setComponents(result);
+      setRollbackTarget(null);
+    } catch (cause) {
+      setEditError(cause instanceof ApiError ? cause.message : 'Das Zurückrollen ist fehlgeschlagen.');
+    } finally {
+      setRollbackBusy(false);
+    }
+  }
 
   // ------------------------------------------------------------------
   // Das GESICHT dieser Seite - was oben steht und welche Sektionen folgen.
@@ -404,7 +447,19 @@ export function GeraetSeiteSection({
       {view && view.gefunden && (
         <>
           <Card padding="lg" radius="lg" className="vp-geraet-kopf">
-            <h1>{view.kopf.titel}</h1>
+            <div className="vp-geraet-titleline">
+              <h1>{view.kopf.titel}</h1>
+              {components?.componentAuthority === 'portal' && editRow && (
+                <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={() => setEditOpen(true)}>
+                  <Icon name="pencil" size={15} /> Bearbeiten
+                </button>
+              )}
+              {components?.componentAuthority === 'portal' && boxDevice && (
+                <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={() => setMoveOpen(true)}>
+                  <Icon name="map-pin" size={15} /> Gerät verschieben
+                </button>
+              )}
+            </div>
             <div className="vp-geraet-meta">
               <span>{view.kopf.unterzeile}</span>
               <span className="vp-mono vp-geraet-kennung">{view.kopf.kennung}</span>
@@ -425,6 +480,31 @@ export function GeraetSeiteSection({
                 <span className="vp-pill vp-pill-info">{view.kopf.pflegeOrt}</span>
               )}
             </div>
+            {editRow && (
+              <details className="vp-geraet-versionen">
+                <summary>
+                  Fassung {editRow.definitionVersion} · {
+                    editRow.syncStatus === 'in_sync' ? 'auf der Box aktiv'
+                      : editRow.syncStatus === 'pending' ? 'Aktivierung läuft'
+                        : 'Bestätigung der Box ausstehend'
+                  }
+                </summary>
+                {components?.refusedReason && (
+                  <p className="vp-assist-error" role="alert">
+                    Die Box hat die neue Fassung abgelehnt: {components.refusedReason}. Die vorige Fassung läuft weiter.
+                  </p>
+                )}
+                <p>Jede Änderung ist eine neue Fassung. Eine Rückkehr schreibt wiederum eine neue Fassung; nichts wird gelöscht.</p>
+                <div className="vp-geraet-version-list">
+                  {versions.filter((version) => version.version < editRow.definitionVersion).slice(0, 4).map((version) => (
+                    <button key={version.version} type="button" className="vp-btn vp-btn--outline vp-btn--sm" onClick={() => setRollbackTarget(version)}>
+                      Fassung {version.version} zurückholen
+                    </button>
+                  ))}
+                </div>
+                {editError && <p className="vp-assist-error" role="alert">{editError}</p>}
+              </details>
+            )}
           </Card>
 
           {/* Der HELD: die Frage, die DIESE Gattung zuerst beantwortet. Er
@@ -594,6 +674,39 @@ export function GeraetSeiteSection({
               {adminFehler && <p className="vp-alert vp-alert-err">{adminFehler}</p>}
             </details>
           )}
+
+          {editOpen && editRow && (
+            <AnlegenFlow
+              siteId={site.id}
+              box={boxDevice}
+              bearbeiten={editRow}
+              onClose={() => setEditOpen(false)}
+              onSaved={(result) => setComponents(result)}
+            />
+          )}
+          {moveOpen && boxDevice && (
+            <GeraetVerschiebenDialog
+              device={boxDevice}
+              onClose={() => setMoveOpen(false)}
+              onMoved={(moved) => {
+                setMoveOpen(false);
+                window.location.hash = boxSeiteHash(moved.siteId, moved.externalRef);
+              }}
+            />
+          )}
+          <ConfirmDialog
+            open={Boolean(rollbackTarget)}
+            title={`Auf Fassung ${rollbackTarget?.version ?? ''} zurückrollen?`}
+            intro="Die gewählte, bereits gespeicherte Definition wird als neue Fassung aktiviert."
+            consequences={[
+              'Geräte-ID, Messhistorie, Transaktionen, Befehle und Audit bleiben erhalten.',
+              'Die aktuelle Fassung bleibt in der Historie und kann später wieder gewählt werden.',
+              'Die bisher aktive Fassung läuft, bis die Box den Rollback vollständig bestätigt.',
+            ]}
+            confirmLabel={rollbackBusy ? 'Rolle zurück …' : 'Fassung zurückholen'}
+            onCancel={() => !rollbackBusy && setRollbackTarget(null)}
+            onConfirm={() => void rollback()}
+          />
 
         </>
       )}
@@ -1288,4 +1401,3 @@ function KomponentenZeile({
     </li>
   );
 }
-

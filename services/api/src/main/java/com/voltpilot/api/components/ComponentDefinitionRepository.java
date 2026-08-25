@@ -1,9 +1,11 @@
 package com.voltpilot.api.components;
 
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -97,6 +99,36 @@ public class ComponentDefinitionRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /**
+     * Revisionierter Bearbeitungsweg. Anders als der Anlege-/Übernahmeweg ist
+     * der Name hier eine ausdrückliche Kundeneingabe und darf daher auch
+     * entfernt werden. Die Revisionsbedingung sitzt IN demselben UPDATE wie
+     * alle neuen Sollwerte: zwischen Lesen und Schreiben kann kein zweiter
+     * Tab unbemerkt gewinnen.
+     */
+    public Applied applyEditDefinition(UUID siteId, UUID entityId, int expectedRevision,
+            String role, String entityType, String label, BigDecimal capacityKwp,
+            String brand, String model, String family, String communication,
+            String connectionJson, String sourceKind, String templateRef,
+            Integer templateVersion, String capabilitiesJson, String guardConfigJson) {
+        List<Applied> rows = jdbc.query(
+                "UPDATE measurement_point SET role = ?, entity_type = COALESCE(?, entity_type), "
+                        + "control = CASE WHEN ? = 'battery-hybrid' THEN control ELSE false END, "
+                        + "label = NULLIF(?::text, ''), capacity_kwp = ?, brand = ?, model = ?, "
+                        + "family = ?, communication = ?, connection_json = ?::jsonb, "
+                        + "source_kind = ?, template_ref = ?, template_version = ?, "
+                        + "capabilities = COALESCE(?::jsonb, capabilities), "
+                        + "guard_config = COALESCE(?::jsonb, guard_config), "
+                        + "definition_version = definition_version + 1 "
+                        + "WHERE id = ? AND site_id = ? AND definition_version = ? "
+                        + "RETURNING definition_version, label",
+                (rs, n) -> new Applied(rs.getInt(1), rs.getString(2)),
+                role, entityType, entityType, label, capacityKwp, brand, model, family, communication,
+                connectionJson, sourceKind, templateRef, templateVersion, capabilitiesJson,
+                guardConfigJson, entityId, siteId, expectedRevision);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     /** Legt die Fassung in der Historie ab. */
     public void recordVersion(UUID tenantId, UUID siteId, UUID entityId, int version, String role,
             String label, String brand, String model, String family, String communication,
@@ -128,6 +160,33 @@ public class ComponentDefinitionRepository {
                         + "WHERE site_id = ? AND entity_id = ? AND version = ?",
                 ComponentDefinitionRepository::map, siteId, entityId, version);
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Ereignis-Marker neben der vollständigen Fassungs-Historie. */
+    public void recordEvent(UUID tenantId, UUID siteId, UUID entityId, int revision,
+            String eventType, Instant effectiveAt, String fromValue, String toValue,
+            String createdBy, String note) {
+        jdbc.update(
+                "INSERT INTO component_change_event (tenant_id, site_id, entity_id, revision, "
+                        + "event_type, effective_at, from_value, to_value, created_by, note) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                tenantId, siteId, entityId, revision, eventType,
+                java.sql.Timestamp.from(effectiveAt), fromValue, toValue, createdBy, note);
+    }
+
+    public List<com.voltpilot.api.web.dto.ComponentChangeEventDto> events(UUID siteId,
+            UUID entityId) {
+        return jdbc.query(
+                "SELECT revision, event_type, effective_at, from_value, to_value, created_at, "
+                        + "created_by, note FROM component_change_event WHERE site_id = ? "
+                        + "AND entity_id = ? ORDER BY effective_at DESC, id DESC",
+                (rs, n) -> new com.voltpilot.api.web.dto.ComponentChangeEventDto(
+                        rs.getInt("revision"), rs.getString("event_type"),
+                        rs.getObject("effective_at", OffsetDateTime.class).toInstant(),
+                        rs.getString("from_value"), rs.getString("to_value"),
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant(),
+                        rs.getString("created_by"), rs.getString("note")),
+                siteId, entityId);
     }
 
     private static ComponentDefinitionDto map(ResultSet rs, int rowNum) throws SQLException {

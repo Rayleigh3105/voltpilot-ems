@@ -8,6 +8,7 @@ import {
   type Site,
   type SiteComponents,
   type SiteComponentTemplate,
+  type SiteComponentRow,
   type SiteEntities,
   type SiteEntity,
   type SiteSource,
@@ -162,6 +163,7 @@ export function AnlagenModellSection({
   const [addOpen, setAddOpen] = useState(false);
   const [addTyp, setAddTyp] = useState<TypId | null>(null);
   const [addRolle, setAddRolle] = useState<KomponentenRolle | null>(null);
+  const [editComponent, setEditComponent] = useState<SiteComponentRow | null>(null);
   /**
    * Geräte-Erlebnis Slice 1: Anlagenbild ist die Vorgabe auf jeder Breite;
    * die Liste bleibt dieselbe synchronisierte Zweitsicht. Die Wahl lebt im
@@ -384,6 +386,16 @@ export function AnlagenModellSection({
    * Ablehnung läuft, ist schlechter als kein Knopf.
    */
   const portalManaged = components?.componentAuthority === 'portal';
+  const editForKarte = (karteId: string) => {
+    const karte = karten.find((item) => item.id === karteId);
+    const entityIds = new Set(
+      karte?.komponenten.map((component) => component.entityId).filter(Boolean) ?? [],
+    );
+    const row = components?.components.find(
+      (component) => entityIds.has(component.id) && Boolean(component.templateRef),
+    );
+    if (row) setEditComponent(row);
+  };
   const komponentenStand = components
     ? {
         text: sollIstText(
@@ -577,6 +589,7 @@ export function AnlagenModellSection({
                     setAddOpen(true);
                   }}
                   onAssign={setAssign}
+                  onEdit={editForKarte}
                 />
               </div>
             )}
@@ -622,6 +635,7 @@ export function AnlagenModellSection({
                     )
                   }
                   ohneMesswertFor={(c) => ohneMesswertById.get(c.entityId ?? '') ?? null}
+                  onEdit={portalManaged ? (karte) => editForKarte(karte.id) : undefined}
                   onRepin={setRepin}
                   onRemove={setRemove}
                   sofortFor={(c) =>
@@ -695,18 +709,20 @@ export function AnlagenModellSection({
         />
       )}
 
-      {(addOpen || vorlage) && (
+      {(addOpen || vorlage || editComponent) && (
         <AnlegenFlow
           siteId={site.id}
           box={boxOf(devices, site.id) ?? undefined}
           vorlage={vorlage}
           initialTyp={vorlage ? null : addTyp}
           initialRolle={vorlage ? null : addRolle}
+          bearbeiten={editComponent}
           onClose={() => {
             setAddOpen(false);
             setAddTyp(null);
             setAddRolle(null);
             setVorlage(null);
+            setEditComponent(null);
           }}
           onSaved={(result) => {
             setComponents(result);
@@ -850,6 +866,7 @@ function GeraeteKarteView({
   onSofort,
   technik,
   ohneMesswertFor,
+  onEdit,
 }: {
   karte: GeraeteKarte;
   selected: boolean;
@@ -866,6 +883,7 @@ function GeraeteKarteView({
   technik: TechnikSicht | null;
   /** Die dauerhafte Ausnahme je Komponente (siehe {@link ComponentRow}). */
   ohneMesswertFor: (c: PlantComponent) => { badge: string; satz: string } | null;
+  onEdit?: (karte: GeraeteKarte) => void;
 }) {
   const k = karte;
   return (
@@ -878,6 +896,7 @@ function GeraeteKarteView({
       <div className="vp-am-karte-head">
         <span className={`vp-health-dot vp-health-${k.ton}`} />
         <span className="nm">{k.titel}</span>
+        {k.technischerName && <span className="tech">Technik: {k.technischerName}</span>}
         <span className="ty">{k.untertitel}</span>
         <span className={`st${k.ton === 'warn' ? ' warn' : ''}`}>{k.zustand}</span>
         {/* Ein Weg, der strukturell nirgends hinführt, wird gar nicht erst
@@ -891,6 +910,11 @@ function GeraeteKarteView({
           <a className="vp-am-karte-go" href={k.href}>
             Geräteseite <Icon name="chevron-right" size={14} />
           </a>
+        )}
+        {onEdit && k.art === 'geraet' && k.komponenten.some((c) => c.entityId) && (
+          <button type="button" className="vp-am-karte-go" onClick={() => onEdit(k)}>
+            Bearbeiten <Icon name="pencil" size={14} />
+          </button>
         )}
         {k.art === 'neu' && k.quelle && (
           <button

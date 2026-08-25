@@ -34,6 +34,7 @@ export type TemplateField = {
   default?: string | number | boolean;
   help?: string;
   options?: { value: string | number; label: string }[];
+  secret?: boolean;
 };
 
 /** Eine Vorlage, wie `GET /api/v1/component-templates` sie liefert. */

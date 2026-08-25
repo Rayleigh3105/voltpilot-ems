@@ -84,7 +84,8 @@ public class ComponentService {
     private static final Map<String, String> ROLE_ENTITY_TYPE = Map.of(
             ROLE_INVERTER, "battery-hybrid",
             ROLE_ERZEUGER, "producer",
-            ROLE_NETZ, "grid-meter");
+            ROLE_NETZ, "grid-meter",
+            ROLE_CONSUMER, "generic-load");
 
     private static final String SOURCE_KIND_BUILTIN = "builtin";
     private static final String SOURCE_KIND_CERTIFIED = "certified";
@@ -144,7 +145,31 @@ public class ComponentService {
     public List<ComponentDefinitionDto> versions(UUID siteId, UUID entityId) {
         requireSite(siteId);
         requireComponent(siteId, entityId);
-        return definitions.versions(siteId, entityId);
+        return definitions.versions(siteId, entityId).stream().map(this::masked).toList();
+    }
+
+    /** Semantische Marker (z. B. Familienwechsel), ohne alte Samples anzufassen. */
+    public List<com.voltpilot.api.web.dto.ComponentChangeEventDto> events(UUID siteId,
+            UUID entityId) {
+        requireSite(siteId);
+        requireComponent(siteId, entityId);
+        return definitions.events(siteId, entityId);
+    }
+
+    /**
+     * Baut für den Bearbeitungs-Test die echte neue Verbindung. Der Browser
+     * kennt alte Secrets absichtlich nicht; deshalb ergänzt ausschließlich der
+     * Server sie aus derselben RLS-geschützten Komponente.
+     */
+    public Map<String, Object> connectionForTest(UUID siteId, UUID entityId,
+            ComponentTemplateDto template, Map<String, Object> incoming) {
+        EntityRow existing = requireComponent(siteId, entityId);
+        Set<String> keys = new java.util.LinkedHashSet<>(ComponentSecrets.keys(template));
+        if (existing.templateRef() != null) {
+            templates.findNewestByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
+                    existing.templateRef()).ifPresent(t -> keys.addAll(ComponentSecrets.keys(t)));
+        }
+        return ComponentSecrets.merge(incoming, existing.connectionJson(), keys);
     }
 
     // ---- Schreiben --------------------------------------------------------
@@ -183,20 +208,94 @@ public class ComponentService {
         requireSite(siteId);
         requirePortalManaged(siteId);
         EntityRow existing = requireComponent(siteId, entityId);
-        String role = requireRole(req.role());
-        if (!sameRole(role, existing)) {
-            // Die Rolle einer Komponente zu wechseln hieße, sie in einen anderen
-            // Teil der Energiebilanz zu verschieben - das ist ein Löschen plus
-            // ein Anlegen, kein Bearbeiten, und darf nicht als eine Fassung
-            // durchgehen.
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Die Art dieser Komponente lässt sich nicht ändern. Bitte legen Sie sie neu an.");
+        if (req.expectedRevision() == null || req.expectedRevision() < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Zum Bearbeiten fehlt die gelesene Fassung. Bitte laden Sie das Gerät neu.");
         }
+        if (existing.definitionVersion() != req.expectedRevision()) {
+            throw stale(existing.definitionVersion());
+        }
+        String role = requireRole(req.role());
+        requireCompatibleRoleChange(siteId, entityId, role, existing);
         ComponentTemplateDto template = requireTemplate(req.templateRef());
-        TestedConnection tested = requireTestedConnection(siteId, req, template);
+        Set<String> secretKeys = new java.util.LinkedHashSet<>(ComponentSecrets.keys(template));
+        if (existing.templateRef() != null) {
+            templates.findNewestByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
+                    existing.templateRef()).ifPresent(t -> secretKeys.addAll(ComponentSecrets.keys(t)));
+        }
+        Map<String, Object> merged = ComponentSecrets.merge(req.connection(),
+                existing.connectionJson(), secretKeys);
+        Map<String, Object> desired = new LinkedHashMap<>(merged);
+        Map<String, Object> old = ComponentSecrets.parse(existing.connectionJson());
+        Integer interval = req.intervalS();
+        if (interval == null && old.get("interval_s") instanceof Number n) {
+            interval = n.intValue();
+        }
+        if (interval != null && interval > 0) desired.put("interval_s", interval);
+        else desired.remove("interval_s");
 
-        writeDefinition(siteId, TenantContext.get(), entityId, role, req, template, tested,
-                subject, "Verbindung geändert");
+        Map<String, Object> oldFingerprint = connectionFingerprint(old);
+        Map<String, Object> newFingerprint = connectionFingerprint(desired);
+        boolean clearReadingOverride = old.containsKey("reading_override")
+                && req.acceptMissingChannel() == null
+                && receipts.has(siteId, template.templateRef(), newFingerprint)
+                && receipts.overrideChannel(siteId, template.templateRef(), newFingerprint) == null;
+        boolean connectionChanged = !java.util.Objects.equals(existing.templateRef(),
+                template.templateRef()) || !oldFingerprint.equals(newFingerprint)
+                || clearReadingOverride;
+        String connJson;
+        if (connectionChanged) {
+            SaveComponentRequest effective = new SaveComponentRequest(template.templateRef(),
+                    req.label(), role, merged, req.capacityKwp(), interval, req.note(),
+                    req.acceptMissingChannel(), req.expectedRevision(), req.effectiveAt());
+            TestedConnection tested = requireTestedConnection(siteId, effective, template);
+            connJson = writeJson(driverConnection(tested, effective, subject));
+        } else {
+            // Namen/Rolle/Nennwert ändern: kein unnötiger Test, und auch die
+            // servereigenen Belege der bisherigen Verbindung bleiben bytegleich.
+            connJson = existing.connectionJson();
+        }
+
+        Instant effectiveAt = req.effectiveAt() == null ? Instant.now() : req.effectiveAt();
+        Instant now = Instant.now();
+        if (effectiveAt.isAfter(now.plusSeconds(60)) || effectiveAt.isBefore(now.minusSeconds(300))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Der Wirksamkeitszeitpunkt muss jetzt liegen; alte Messwerte werden nicht rückwirkend geändert.");
+        }
+        BigDecimal capacity = ROLE_ERZEUGER.equals(role) ? req.capacityKwp() : null;
+        String dbRole = sameRole(role, existing) ? existing.role() : role;
+        ComponentDefinitionRepository.Applied applied = definitions.applyEditDefinition(siteId,
+                entityId, req.expectedRevision(), dbRole, ROLE_ENTITY_TYPE.get(role),
+                normalizeLabel(req.label()), capacity, template.brand(), template.model(),
+                template.family(), template.communication(), connJson,
+                SOURCE_KIND_CERTIFIED.equals(template.kind()) ? SOURCE_KIND_CERTIFIED
+                        : SOURCE_KIND_BUILTIN,
+                template.templateRef(), template.version(),
+                ComponentDefaults.capabilities(mapper, role),
+                ComponentDefaults.guards(mapper, role, req.capacityKwp()));
+        if (applied == null) {
+            EntityRow current = entityRepo.entityForSite(siteId, entityId);
+            if (current == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Komponente nicht gefunden.");
+            throw stale(current.definitionVersion());
+        }
+        adjustPvCapacity(TenantContext.get(), siteId, existing, role, capacity);
+        String note = req.note() == null || req.note().isBlank()
+                ? (connectionChanged ? "Verbindung geändert" : "Gerät bearbeitet")
+                : req.note().trim();
+        definitions.recordVersion(TenantContext.get(), siteId, entityId, applied.version(),
+                role, applied.label(), template.brand(), template.model(), template.family(),
+                template.communication(), connJson,
+                SOURCE_KIND_CERTIFIED.equals(template.kind()) ? SOURCE_KIND_CERTIFIED
+                        : SOURCE_KIND_BUILTIN,
+                template.templateRef(), template.version(), subject, note);
+        definitions.recordEvent(TenantContext.get(), siteId, entityId, applied.version(),
+                "edited", effectiveAt, null, null, subject, note);
+        if (!java.util.Objects.equals(existing.family(), template.family())) {
+            definitions.recordEvent(TenantContext.get(), siteId, entityId, applied.version(),
+                    "family_changed", effectiveAt, existing.family(), template.family(), subject,
+                    "Gerätefamilie geändert; frühere Messwerte behalten ihre damalige Interpretation.");
+        }
         entityRegistry.pushRegistryBestEffort(siteId);
         return list(siteId);
     }
@@ -235,6 +334,9 @@ public class ComponentService {
                 old.role(), applied.label(), old.brand(), old.model(), old.family(),
                 old.communication(), old.connection(), old.sourceKind(), old.templateRef(),
                 old.templateVersion(), subject, "Zurück auf Fassung " + version);
+        definitions.recordEvent(TenantContext.get(), siteId, entityId, applied.version(),
+                "rolled_back", Instant.now(), null, String.valueOf(version), subject,
+                "Zurück auf Fassung " + version);
         entityRegistry.pushRegistryBestEffort(siteId);
         return list(siteId);
     }
@@ -641,10 +743,85 @@ public class ComponentService {
                 && (entityType.equals(stored) || entityType.equals(existing.entityType()));
     }
 
+    private void requireCompatibleRoleChange(UUID siteId, UUID entityId, String role,
+            EntityRow existing) {
+        if (sameRole(role, existing)) return;
+        if (existing.control() && !ROLE_INVERTER.equals(role)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Das maßgebliche Speicher-/Steuergerät kann nicht in eine andere Bilanzrolle verschoben werden.");
+        }
+        boolean wasConsumer = "generic-load".equals(existing.entityType())
+                || ROLE_CONSUMER.equals(existing.role());
+        if (wasConsumer != ROLE_CONSUMER.equals(role)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ein Wechsel in oder aus der Verbraucherrolle braucht ein passendes Steuerprofil und ist für dieses Gerät nicht verträglich.");
+        }
+        String targetType = ROLE_ENTITY_TYPE.get(role);
+        if (targetType == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Diese elektrische Rolle passt nicht zu dieser Gerätevorlage.");
+        }
+        for (EntityRow row : entityRepo.entitiesForSite(siteId)) {
+            if (!row.id().equals(entityId) && sameRole(role, row)
+                    && (ROLE_INVERTER.equals(role) || ROLE_NETZ.equals(role))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        ROLE_NETZ.equals(role)
+                                ? "Diese Anlage hat bereits einen Netz-Zähler."
+                                : "Diese Anlage hat bereits einen Wechselrichter / Speicher.");
+            }
+        }
+    }
+
+    private void adjustPvCapacity(UUID tenantId, UUID siteId, EntityRow existing,
+            String newRole, BigDecimal newCapacity) {
+        boolean wasPv = ROLE_ERZEUGER.equals(existing.role())
+                || "producer".equals(existing.entityType());
+        boolean isPv = ROLE_ERZEUGER.equals(newRole);
+        BigDecimal oldValue = wasPv ? orZero(existing.capacityKwp()) : BigDecimal.ZERO;
+        BigDecimal newValue = isPv ? orZero(newCapacity) : BigDecimal.ZERO;
+        BigDecimal delta = newValue.subtract(oldValue);
+        if (delta.signum() != 0) assets.addPvCapacity(tenantId, siteId, delta);
+    }
+
+    private static String normalizeLabel(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static Map<String, Object> connectionFingerprint(Map<String, Object> input) {
+        Map<String, Object> out = new LinkedHashMap<>(input);
+        SERVER_OWNED_CONNECTION_KEYS.forEach(out::remove);
+        return out;
+    }
+
+    private static ResponseStatusException stale(int current) {
+        return new ResponseStatusException(HttpStatus.CONFLICT,
+                "Dieses Gerät wurde inzwischen geändert (aktuelle Fassung " + current
+                        + "). Bitte laden Sie die neuen Werte und prüfen Sie Ihre Änderungen erneut.");
+    }
+
+    private ComponentDefinitionDto masked(ComponentDefinitionDto row) {
+        ComponentTemplateDto template = row.templateRef() == null ? null
+                : templates.findNewestByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
+                        row.templateRef()).orElse(null);
+        return new ComponentDefinitionDto(row.entityId(), row.version(), row.role(), row.label(),
+                row.brand(), row.model(), row.family(), row.communication(),
+                row.connection() == null ? null
+                        : ComponentSecrets.maskedJson(row.connection(), ComponentSecrets.keys(template)),
+                row.sourceKind(), row.templateRef(), row.templateVersion(), row.createdAt(),
+                row.createdBy(), row.note());
+    }
+
     private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied) {
+        ComponentTemplateDto template = row.templateRef() == null ? null
+                : templates.findNewestByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
+                        row.templateRef()).orElse(null);
         return new SiteComponentsDto.ComponentRowDto(row.id(), row.role(), row.entityType(),
                 row.label(), row.brand(), row.model(), row.family(), row.communication(),
-                row.connectionJson(), row.sourceKind(), row.templateRef(), row.templateVersion(),
+                row.connectionJson() == null ? null
+                        : ComponentSecrets.maskedJson(row.connectionJson(), ComponentSecrets.keys(template)),
+                row.sourceKind(), row.templateRef(), row.templateVersion(),
                 row.definitionVersion(), row.capacityKwp(), row.edgeSourceId(),
                 syncStatus(soll, applied));
     }

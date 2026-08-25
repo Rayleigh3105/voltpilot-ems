@@ -111,6 +111,13 @@ public class SiteComponentController {
         return components.versions(siteId, entityId);
     }
 
+    /** Änderungsmarker; alte Messwerte bleiben unverändert. */
+    @GetMapping("/components/{entityId}/events")
+    public List<com.voltpilot.api.web.dto.ComponentChangeEventDto> events(
+            @PathVariable UUID siteId, @PathVariable UUID entityId) {
+        return components.events(siteId, entityId);
+    }
+
     /** Zurück auf eine frühere Fassung - ein Klick, kein Support-Fall. */
     @PostMapping("/components/{entityId}/versions/{version}/rollback")
     public SiteComponentsDto rollback(@PathVariable UUID siteId, @PathVariable UUID entityId,
@@ -264,6 +271,10 @@ public class SiteComponentController {
                         "Dieses Gerät kennen wir nicht."));
         Map<String, Object> connection =
                 request.connection() == null ? Map.of() : new LinkedHashMap<>(request.connection());
+        if (request.entityId() != null) {
+            connection = components.connectionForTest(siteId, request.entityId(), template,
+                    connection);
+        }
         // Dieselbe Regel wie beim Speichern, mit demselben Satz: der Test ist die
         // Stelle, an der der Kunde die Eckpunkte AUSPROBIERT, und er soll dort
         // dieselbe Auskunft bekommen wie beim Klick auf Speichern.

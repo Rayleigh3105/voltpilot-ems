@@ -1,6 +1,7 @@
 package com.voltpilot.api.repo;
 
 import com.voltpilot.api.web.dto.DeviceDto;
+import com.voltpilot.api.web.dto.DeviceMovePreviewDto;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -10,6 +11,9 @@ import org.springframework.stereotype.Repository;
 /** Devices for the current tenant (RLS-scoped, see migration V2). */
 @Repository
 public class DeviceRepository {
+
+    public record MoveState(UUID deviceId, UUID tenantId, UUID siteId, int revision,
+            String externalRef) {}
 
     private final JdbcTemplate jdbc;
 
@@ -87,6 +91,89 @@ public class DeviceRepository {
                         + "lan_host, lan_seen_at, lan_source, "
                         + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = device.id) AS last_seen",
                 DeviceRepository::mapDevice, kind, name, deviceId).stream().findFirst();
+    }
+
+    /** Topologie-Vorprüfung des getrennten Standortwechsels. */
+    public DeviceMovePreviewDto movePreview(UUID deviceId) {
+        MoveState state = moveState(deviceId).orElse(null);
+        if (state == null) return null;
+        List<DeviceMovePreviewDto.TargetSiteDto> targets = jdbc.query(
+                "SELECT s.id, s.name, s.component_authority, "
+                        + "(SELECT count(*) FROM device d WHERE d.site_id = s.id) AS devices, "
+                        + "(SELECT count(*) FROM measurement_point m WHERE m.site_id = s.id "
+                        + " AND m.entity_type IS NOT NULL) AS entities, "
+                        + "(SELECT count(*) FROM asset a WHERE a.site_id = s.id) AS assets "
+                        + "FROM site s WHERE s.id <> ? ORDER BY s.name",
+                (rs, n) -> {
+                    boolean portal = "portal".equals(rs.getString("component_authority"));
+                    int devices = rs.getInt("devices");
+                    int entities = rs.getInt("entities");
+                    int assets = rs.getInt("assets");
+                    String reason = !portal
+                            ? "Die Geräte dieses Standorts werden direkt an der Box verwaltet."
+                            : devices > 0 || entities > 0 || assets > 0
+                                ? "Der Zielstandort hat bereits eine eigene Gerätetopologie."
+                                : null;
+                    return new DeviceMovePreviewDto.TargetSiteDto(
+                            rs.getObject("id", UUID.class), rs.getString("name"),
+                            reason == null, reason);
+                }, state.siteId());
+        return new DeviceMovePreviewDto(deviceId, state.siteId(), state.revision(), targets);
+    }
+
+    public Optional<MoveState> moveState(UUID deviceId) {
+        return jdbc.query(
+                "SELECT id, tenant_id, site_id, revision, external_ref FROM device WHERE id = ?",
+                (rs, n) -> new MoveState(rs.getObject("id", UUID.class),
+                        rs.getObject("tenant_id", UUID.class), rs.getObject("site_id", UUID.class),
+                        rs.getInt("revision"), rs.getString("external_ref")), deviceId)
+                .stream().findFirst();
+    }
+
+    /**
+     * Verschiebt dieselbe Geräte- und Entitätsidentität atomisch. Historische
+     * Telemetrie, Befehle und Auditzeilen werden NICHT umgeschrieben; nur das
+     * aktuelle Stammdaten-Soll und seine append-only Zuordnung wechseln.
+     */
+    public boolean move(MoveState state, UUID targetSiteId, java.time.Instant effectiveAt,
+            String actor) {
+        jdbc.update("UPDATE component_definition d SET site_id = ? FROM measurement_point m "
+                        + "WHERE d.entity_id = m.id AND m.device_id = ? AND m.site_id = ?",
+                targetSiteId, state.deviceId(), state.siteId());
+        jdbc.update("UPDATE component_change_event e SET site_id = ? FROM measurement_point m "
+                        + "WHERE e.entity_id = m.id AND m.device_id = ? AND m.site_id = ?",
+                targetSiteId, state.deviceId(), state.siteId());
+        jdbc.update("UPDATE entity_role_assignment a SET site_id = ? FROM measurement_point m "
+                        + "WHERE a.entity_id = m.id AND m.device_id = ? AND m.site_id = ?",
+                targetSiteId, state.deviceId(), state.siteId());
+        jdbc.update("UPDATE consumer_policy p SET site_id = ? FROM measurement_point m "
+                        + "WHERE p.entity_id = m.id AND m.device_id = ? AND m.site_id = ?",
+                targetSiteId, state.deviceId(), state.siteId());
+        // consumer_profile folgt über ON UPDATE CASCADE.
+        jdbc.update("UPDATE measurement_point SET site_id = ? WHERE device_id = ? AND site_id = ?",
+                targetSiteId, state.deviceId(), state.siteId());
+        jdbc.update("UPDATE entity_observed_state SET site_id = ? WHERE device_id = ?",
+                targetSiteId, state.deviceId());
+        jdbc.update("DELETE FROM entity_registry_state WHERE site_id IN (?, ?)",
+                state.siteId(), targetSiteId);
+        jdbc.update("DELETE FROM device_component_apply WHERE device_id = ?", state.deviceId());
+        // Physische Assets, die ausdrücklich an DIESEM Gerät hängen, reisen
+        // unter derselben Asset-/Geräte-ID mit. Standortweite, nicht verknüpfte
+        // Aggregate bleiben beim bisherigen Standort.
+        jdbc.update("UPDATE asset SET site_id = ? WHERE device_id = ? AND site_id = ?",
+                targetSiteId, state.deviceId(), state.siteId());
+        int changed = jdbc.update(
+                "UPDATE device SET site_id = ?, revision = revision + 1 "
+                        + "WHERE id = ? AND site_id = ? AND revision = ?",
+                targetSiteId, state.deviceId(), state.siteId(), state.revision());
+        if (changed == 0) return false;
+        jdbc.update(
+                "INSERT INTO device_site_assignment (tenant_id, device_id, revision, "
+                        + "from_site_id, to_site_id, effective_at, created_by) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                state.tenantId(), state.deviceId(), state.revision() + 1, state.siteId(),
+                targetSiteId, java.sql.Timestamp.from(effectiveAt), actor);
+        return true;
     }
 
     /** Delete (unclaim) a device row. False when RLS hides it (=> 404). */

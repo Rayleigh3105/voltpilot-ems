@@ -261,12 +261,24 @@ class ComponentApiTest {
             Map<String, Object> neu = new LinkedHashMap<>(conn);
             neu.put("ip", "192.168.0.55");
             receipts.record(site, FRONIUS, neu);
+            Map<String, Object> edit = saveBody(FRONIUS, "pv-generation", neu);
+            edit.put("expectedRevision", erzeuger.get("definitionVersion").asInt());
             ResponseEntity<String> updated = put(
                     "/api/v1/sites/" + site + "/components/" + entityId, customer,
-                    saveBody(FRONIUS, "pv-generation", neu));
+                    edit);
             assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(byRole(json.readTree(updated.getBody()), "pv-generation")
                     .get("definitionVersion").asInt()).isEqualTo(3);
+            assertThat(byRole(json.readTree(updated.getBody()), "pv-generation")
+                    .get("id").asText()).as("Bearbeiten prägt niemals eine neue Identität")
+                    .isEqualTo(entityId.toString());
+
+            Map<String, Object> stale = saveBody(FRONIUS, "pv-generation", neu);
+            stale.put("expectedRevision", 2);
+            assertThat(put("/api/v1/sites/" + site + "/components/" + entityId,
+                    customer, stale).getStatusCode())
+                    .as("ein zweiter Tab darf die neuere Fassung nicht still überschreiben")
+                    .isEqualTo(HttpStatus.CONFLICT);
 
             JsonNode versions = getJson(
                     "/api/v1/sites/" + site + "/components/" + entityId + "/versions", customer);
@@ -289,6 +301,10 @@ class ComponentApiTest {
                     "/api/v1/sites/" + site + "/components/" + entityId + "/versions", customer);
             assertThat(after4.size()).as("Historie ist append-only").isEqualTo(3);
             assertThat(after4.get(0).get("note").asText()).contains("Zurück auf Fassung 2");
+            JsonNode events = getJson(
+                    "/api/v1/sites/" + site + "/components/" + entityId + "/events", customer);
+            assertThat(events.toString()).contains("\"eventType\":\"edited\"",
+                    "\"eventType\":\"rolled_back\"");
 
             // Eine Fassung, die es nicht gibt, ist 404 - nie ein Zufallstreffer.
             assertThat(post("/api/v1/sites/" + site + "/components/" + entityId
@@ -407,6 +423,69 @@ class ComponentApiTest {
         assertThat(list.get("refusedReason").asText()).contains("Unbekannte Marke");
     }
 
+    /** D8: Standortwechsel ist ein eigener, revisionierter In-place-Vorgang. */
+    @Test
+    void movingADeviceKeepsItsIdentityAndHistoricalTelemetry() throws Exception {
+        String customer = token("demo", "demo");
+        UUID source = createSite(customer, "Umzug Quelle");
+        UUID target = createSite(customer, "Umzug Ziel");
+        try {
+            claim(customer, source, "edge-location-move-01");
+            UUID deviceId = anyDeviceOf(source);
+            Instant sampleTime = Instant.parse("2026-08-24T10:00:00Z");
+            try (Connection c = superuser(); var statement = c.prepareStatement(
+                    "INSERT INTO telemetry (time, received_at, tenant_id, site_id, device_id, "
+                            + "power_kw, payload) VALUES (?, ?, ?::uuid, ?::uuid, ?::uuid, 1.25, '{}'::jsonb)")) {
+                statement.setObject(1, java.sql.Timestamp.from(sampleTime));
+                statement.setObject(2, java.sql.Timestamp.from(sampleTime));
+                statement.setString(3, TENANT_A);
+                statement.setString(4, source.toString());
+                statement.setString(5, deviceId.toString());
+                statement.executeUpdate();
+            }
+
+            JsonNode preview = getJson("/api/v1/devices/" + deviceId + "/move-preview", customer);
+            assertThat(preview.get("revision").asInt()).isEqualTo(1);
+            assertThat(preview.get("targets")).anySatisfy(option -> {
+                assertThat(option.get("siteId").asText()).isEqualTo(target.toString());
+                assertThat(option.get("allowed").asBoolean()).isTrue();
+            });
+
+            ResponseEntity<String> moved = post("/api/v1/devices/" + deviceId + "/move",
+                    customer, Map.of("targetSiteId", target, "expectedRevision", 1,
+                            "effectiveAt", Instant.now().toString()));
+            assertThat(moved.getStatusCode()).isEqualTo(HttpStatus.OK);
+            JsonNode movedDevice = json.readTree(moved.getBody());
+            assertThat(movedDevice.get("id").asText()).isEqualTo(deviceId.toString());
+            assertThat(movedDevice.get("siteId").asText()).isEqualTo(target.toString());
+
+            assertThat(post("/api/v1/devices/" + deviceId + "/move", customer,
+                    Map.of("targetSiteId", source, "expectedRevision", 1,
+                            "effectiveAt", Instant.now().toString())).getStatusCode())
+                    .as("eine veraltete Standortfassung überschreibt den Umzug nicht")
+                    .isEqualTo(HttpStatus.CONFLICT);
+
+            try (Connection c = superuser(); Statement st = c.createStatement()) {
+                try (var rs = st.executeQuery("SELECT count(*), min(site_id::text) FROM telemetry "
+                        + "WHERE device_id = '" + deviceId + "'")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getInt(1)).isEqualTo(1);
+                    assertThat(rs.getString(2)).as("alte Samples behalten ihren damaligen Standort")
+                            .isEqualTo(source.toString());
+                }
+                try (var rs = st.executeQuery("SELECT count(*) FROM device_site_assignment "
+                        + "WHERE device_id = '" + deviceId + "' AND from_site_id = '" + source
+                        + "' AND to_site_id = '" + target + "'")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getInt(1)).isEqualTo(1);
+                }
+            }
+        } finally {
+            deleteSite(customer, source);
+            deleteSite(customer, target);
+        }
+    }
+
     /**
      * Der AUSWEG aus der Sackgasse (Live-Fall Muehlfeldweg 2, 21.08.2026): eine
      * Deye-Anlage mit Eigenbau-Batterie, deren BMS nicht gekoppelt ist, meldet
@@ -497,8 +576,10 @@ class ComponentApiTest {
             // 5 · Der WEG ZURUECK: ein vollstaendiger Test loescht die Ausnahme -
             // niemand muss ein Flag zuruecksetzen.
             receipts.record(site, DEYE, conn);
+            Map<String, Object> edit = saveBody(DEYE, "inverter", conn);
+            edit.put("expectedRevision", row.get("definitionVersion").asInt());
             assertThat(put("/api/v1/sites/" + site + "/components/" + row.get("id").asText(),
-                    customer, saveBody(DEYE, "inverter", conn))
+                    customer, edit)
                     .getStatusCode()).isEqualTo(HttpStatus.OK);
             JsonNode danach = byRole(getJson("/api/v1/sites/" + site + "/components", customer),
                     "battery-hybrid");

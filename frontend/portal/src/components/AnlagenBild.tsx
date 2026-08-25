@@ -26,6 +26,7 @@ export function AnlagenBild({
   onClosePreview,
   onAdd,
   onAssign,
+  onEdit,
 }: {
   bild: AnlagenBildModell;
   desktop: boolean;
@@ -36,6 +37,7 @@ export function AnlagenBild({
   onClosePreview: () => void;
   onAdd: (slot: AnlagenSlot) => void;
   onAssign: (source: AdoptableSource) => void;
+  onEdit: (karteId: string) => void;
 }) {
   const [kommunikation, setKommunikation] = useState(false);
   const preview = bild.knoten.find((k) => k.karteId === previewId) ?? null;
@@ -85,6 +87,7 @@ export function AnlagenBild({
           authority={authority}
           onClose={onClosePreview}
           onAssign={onAssign}
+          onEdit={() => onEdit(preview.karteId)}
         />
       )}
     </section>
@@ -367,11 +370,13 @@ function GeraeteVorschau({
   authority,
   onClose,
   onAssign,
+  onEdit,
 }: {
   knoten: AnlagenKnoten;
   authority: AnlagenAddAuthority;
   onClose: () => void;
   onAssign: (source: AdoptableSource) => void;
+  onEdit: () => void;
 }) {
   const panel = useRef<HTMLElement>(null);
   const close = useRef<HTMLButtonElement>(null);
@@ -510,14 +515,18 @@ function GeraeteVorschau({
           <button
             type="button"
             className="vp-btn vp-btn--outline vp-btn--md"
-            disabled
+            disabled={authority !== 'portal' || !knoten.href}
             aria-describedby={`${titleId}-edit-hint`}
+            onClick={() => {
+              onClose();
+              onEdit();
+            }}
           >
             Bearbeiten
           </button>
           <p id={`${titleId}-edit-hint`}>
             {authority === 'portal'
-              ? 'Gerätebearbeitung folgt in einem eigenen, geprüften Schritt.'
+              ? 'Öffnet denselben geführten Ablauf mit den aktuellen Werten.'
               : authority === 'box'
                 ? 'Dieses Gerät wird an Ihrer VoltPilot-Box verwaltet.'
                 : 'Für diese Anlage ist keine Gerätebearbeitung freigegeben.'}

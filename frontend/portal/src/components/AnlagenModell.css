@@ -957,10 +957,16 @@
 }
 
 .vp-am-karte-head .ty,
+.vp-am-karte-head .tech,
 .vp-am-karte-head .st {
   font-size: 0.8rem;
   color: var(--vp-text-gray, #6b7280);
   min-width: 0;
+}
+
+.vp-am-karte-head .tech {
+  flex-basis: 100%;
+  margin-left: 1.25rem;
 }
 
 .vp-am-karte-head .st {

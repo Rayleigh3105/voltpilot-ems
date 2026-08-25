@@ -5,6 +5,7 @@ import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.chargers.ChargingConfigPublisher;
 import com.voltpilot.api.entities.EntityAutoComposer;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
+import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.ota.RolloutService;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.provisioning.ProvisioningTopics;
@@ -17,6 +18,8 @@ import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceClaimRequest;
 import com.voltpilot.api.web.dto.DeviceDto;
+import com.voltpilot.api.web.dto.DeviceMovePreviewDto;
+import com.voltpilot.api.web.dto.MoveDeviceRequest;
 import com.voltpilot.api.web.dto.UpdateDeviceRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -27,7 +30,11 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -61,6 +68,7 @@ public class DeviceController {
     private final ObjectProvider<ProvisioningPublisher> provisioning;
     private final ObjectProvider<EnrollmentService> enrollment;
     private final ObjectProvider<EntityRegistryPublisher> entityRegistry;
+    private final EntityRegistryService entityRegistryService;
     private final ObjectProvider<RolloutService> rollouts;
     private final EntityAutoComposer autoCompose;
     private final ControlCertificationService controlCertification;
@@ -73,6 +81,7 @@ public class DeviceController {
             ObjectProvider<ProvisioningPublisher> provisioning,
             ObjectProvider<EnrollmentService> enrollment,
             ObjectProvider<EntityRegistryPublisher> entityRegistry,
+            EntityRegistryService entityRegistryService,
             ObjectProvider<RolloutService> rollouts,
             EntityAutoComposer autoCompose,
             ControlCertificationService controlCertification,
@@ -86,6 +95,7 @@ public class DeviceController {
         this.provisioning = provisioning;
         this.enrollment = enrollment;
         this.entityRegistry = entityRegistry;
+        this.entityRegistryService = entityRegistryService;
         this.rollouts = rollouts;
         this.autoCompose = autoCompose;
         this.controlCertification = controlCertification;
@@ -186,8 +196,9 @@ public class DeviceController {
     /**
      * Update a device's editable fields: TYPE and label (Bezeichnung) only.
      * The {@code external_ref} is the device's identity - MQTT topics and the
-     * registry gate hang off it - and stays immutable; a wrong ref is fixed by
-     * unclaiming and re-claiming. RLS makes a foreign device a 404.
+     * registry gate hang off it - and stays immutable. Es gibt bewusst keinen
+     * Korrekturweg über Unclaim/Re-Claim: Historie, Befehle und Audit bleiben
+     * an derselben Geräte-ID. RLS makes a foreign device a 404.
      */
     @PutMapping("/{deviceId}")
     public DeviceDto update(@PathVariable UUID deviceId,
@@ -198,6 +209,80 @@ public class DeviceController {
                 ? existing.kind() : request.kind();
         return devices.update(deviceId, kind, request.nameOrNull())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
+    }
+
+    /** Getrennter Standortwechsel: reine Vorprüfung, noch keine Mutation. */
+    @GetMapping("/{deviceId}/move-preview")
+    public DeviceMovePreviewDto movePreview(@PathVariable UUID deviceId) {
+        DeviceMovePreviewDto preview = devices.movePreview(deviceId);
+        if (preview == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
+        }
+        return preview;
+    }
+
+    /** Verschiebt dieselbe Geräte-ID nach erneuter Revisions- und Topologieprüfung. */
+    @PostMapping("/{deviceId}/move")
+    @Transactional
+    public DeviceDto move(@PathVariable UUID deviceId,
+            @Valid @RequestBody MoveDeviceRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        DeviceRepository.MoveState state = devices.moveState(deviceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Gerät nicht gefunden."));
+        if (state.revision() != request.expectedRevision()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Der Geräte-Standort wurde inzwischen geändert. Bitte prüfen Sie das Ziel erneut.");
+        }
+        DeviceMovePreviewDto preview = devices.movePreview(deviceId);
+        DeviceMovePreviewDto.TargetSiteDto target = preview.targets().stream()
+                .filter(option -> option.siteId().equals(request.targetSiteId()))
+                .findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Zielstandort nicht gefunden."));
+        if (!target.allowed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, target.reason());
+        }
+        java.time.Instant now = java.time.Instant.now();
+        if (request.effectiveAt().isAfter(now.plusSeconds(60))
+                || request.effectiveAt().isBefore(now.minusSeconds(300))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Der Wirksamkeitszeitpunkt muss jetzt liegen. Künftige Umzüge werden nicht still vorgemerkt.");
+        }
+        if (!devices.move(state, request.targetSiteId(), request.effectiveAt(),
+                jwt == null ? null : jwt.getSubject())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Der Geräte-Standort wurde inzwischen geändert. Bitte prüfen Sie das Ziel erneut.");
+        }
+        assets.autoLinkBatteryDevice(request.targetSiteId());
+        autoCompose.ensureComposed(request.targetSiteId());
+        // MQTT is an external side effect. Publish only after the database
+        // transaction commits, otherwise a later rollback could leave the edge
+        // on a site assignment that never became durable. The target registry
+        // is republished here as well; moving an already-composed topology
+        // does not trigger EntityAutoComposer's "new composition" branch.
+        UUID tenantId = state.tenantId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                UUID previous = TenantContext.get();
+                TenantContext.set(tenantId);
+                try {
+                    provisioning.ifAvailable(p -> {
+                        p.clearRetained(state.externalRef(), tenantId, state.siteId(), state.deviceId());
+                        p.publishConfig(state.externalRef(), tenantId, request.targetSiteId(),
+                                state.deviceId());
+                    });
+                    entityRegistry.ifAvailable(p ->
+                            p.clearRegistry(tenantId, state.siteId(), state.deviceId()));
+                    entityRegistryService.pushRegistryBestEffort(request.targetSiteId());
+                } finally {
+                    if (previous == null) TenantContext.clear();
+                    else TenantContext.set(previous);
+                }
+            }
+        });
+        return devices.findById(deviceId).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden."));
     }
 
     /**

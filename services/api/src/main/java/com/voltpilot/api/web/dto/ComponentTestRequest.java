@@ -20,4 +20,12 @@ public record ComponentTestRequest(
         @NotBlank @Size(max = 200) String templateRef,
         @Size(max = 40) String role,
         Map<String, Object> connection,
-        UUID deviceId) {}
+        UUID deviceId,
+        /** Bestehende Komponente beim Bearbeiten; nur dann werden maskierte Secrets ergänzt. */
+        UUID entityId) {
+
+    public ComponentTestRequest(String templateRef, String role,
+            Map<String, Object> connection, UUID deviceId) {
+        this(templateRef, role, connection, deviceId, null);
+    }
+}

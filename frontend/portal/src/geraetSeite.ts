@@ -591,6 +591,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
             .filter((c): c is PlantComponent => c != null) ?? [])
         : []);
   const entityIds = new Set(komponenten.map((c) => c.entityId));
+  const componentRow = componentRowOf(input.components, entityIds, input.geraetId);
 
   // Der gemeldete Ist-Zustand dieses Geräts (`/sources`).
   const src = input.geraetId
@@ -601,16 +602,17 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   // Kopf
   // ------------------------------------------------------------------
   const boxLabel = box ? deviceName({ storedLabel: box.name }) || box.externalRef : input.ref;
-  const titel = charger
+  const technicalTitle = charger
     ? chargerName(charger)
     : (technicalDeviceName({
         edgeLabel: setup?.label ?? null,
         brand: setup?.brand ?? null,
         model: setup?.model ?? null,
       }) ?? 'Gerät');
+  const titel = charger ? technicalTitle : (componentRow?.label?.trim() || technicalTitle);
 
   const artWort = geraeteArtWort(art, setup?.role ?? null, komponenten);
-  const unterzeile = `${artWort} an Ihrer VoltPilot-Box ${boxLabel}`;
+  const unterzeile = `${titel !== technicalTitle ? `${technicalTitle} · ` : ''}${artWort} an Ihrer VoltPilot-Box ${boxLabel}`;
 
   const zustand = charger
     ? {
@@ -669,8 +671,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
       ton: zustand.ton,
     });
   } else {
-    const row = componentRowOf(input.components, entityIds, input.geraetId);
-    const weg = verbindungsWeg(row, setup);
+    const weg = verbindungsWeg(componentRow, setup);
     if (weg.anbindung || weg.adresse) {
       if (weg.anbindung) verbindung.push({ label: 'Anbindung', wert: weg.anbindung });
       if (weg.adresse) {
@@ -698,7 +699,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
       detail: KEIN_VERBINDUNGS_VERLAUF,
       ton: zustand.ton,
     });
-    const stand = fassungsSatz(input.components, row);
+    const stand = fassungsSatz(input.components, componentRow);
     if (stand) verbindung.push({ label: 'Einrichtung', wert: stand });
   }
 
