@@ -311,7 +311,7 @@ public class ComponentService {
                     "family_changed", effectiveAt, existing.family(), template.family(), subject,
                     "Gerätefamilie geändert; frühere Messwerte behalten ihre damalige Interpretation.");
         }
-        entityRegistry.pushRegistryBestEffort(siteId);
+        activationOutbox.enqueue(TenantContext.get(), siteId, entityId, applied.version(), "component_edit");
         return list(siteId);
     }
 
