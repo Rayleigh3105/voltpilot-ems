@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -480,6 +481,28 @@ class ComponentApiTest {
                     assertThat(rs.getInt(1)).isEqualTo(1);
                 }
             }
+        } finally {
+            deleteSite(customer, source);
+            deleteSite(customer, target);
+        }
+    }
+
+    @Test
+    void concurrentMovesSerializeOnTheTargetTopologyLock() throws Exception {
+        String customer = token("demo", "demo");
+        UUID source = createSite(customer, "Concurrent Move Source");
+        UUID target = createSite(customer, "Concurrent Move Target");
+        try {
+            claim(customer, source, "edge-location-concurrent-01");
+            UUID deviceId = anyDeviceOf(source);
+            Map<String, Object> body = Map.of("targetSiteId", target, "expectedRevision", 1,
+                    "effectiveAt", Instant.now().toString());
+            CompletableFuture<ResponseEntity<String>> first = CompletableFuture.supplyAsync(
+                    () -> post("/api/v1/devices/" + deviceId + "/move", customer, body));
+            CompletableFuture<ResponseEntity<String>> second = CompletableFuture.supplyAsync(
+                    () -> post("/api/v1/devices/" + deviceId + "/move", customer, body));
+            List<Integer> statuses = List.of(first.join().getStatusCode().value(), second.join().getStatusCode().value());
+            assertThat(statuses).contains(HttpStatus.OK.value()).contains(HttpStatus.CONFLICT.value());
         } finally {
             deleteSite(customer, source);
             deleteSite(customer, target);
