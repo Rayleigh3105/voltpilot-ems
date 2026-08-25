@@ -4262,7 +4262,11 @@ und dieselbe Vendor/Message-Bindung am Edge zulässig.
   Broker-Replays sind No-ops, Kollisionen fail-closed; ein Crash darf dadurch
   einen Befehl verlieren, aber niemals eine physische Aktion doppelt ausführen.
   Der `action_id` ist zugleich der OCPP-wire-id; die Journal-Korrelation ist
-  wire-identisch und wird aus dem immutable CALL-Spool nach Neustart aufgebaut.
+  wire-identisch. Nach Neustart wird sie aus dem immutable CALL-Spool UND dem
+  Command-Ledger aufgebaut, weil ein normaler Cloud-QoS1-ACK die bereits
+  hochgeladene CALL-Datei vor der Stationsantwort löscht. Auch die zufällige
+  Readback-wire-id wird vor dem Stationsbyte im selben Ledger gebunden; gleiche
+  Aktionen und umgekehrt eintreffende Antworten bleiben dadurch exakt.
   `wire_id` wird zusätzlich im Cloud-Protokolljournal persistiert; eine
   CallResult/CallError-Zeile darf die Action nur fortschreiben, wenn externe
   Korrelation, logische Wire-Aktion UND diese UUID übereinstimmen.
@@ -4273,6 +4277,11 @@ und dieselbe Vendor/Message-Bindung am Edge zulässig.
   der Ausgang wird stattdessen als `effect_failed` erklärt.
   Positive ChangeConfiguration/SendLocalList/Profile-Antworten lösen einen
   gezielten Readback aus; `RebootRequired` startet niemals automatisch Reset.
+  RemoteStart-Wirkung verlangt zusätzlich denselben privacy-safe `idTag`-Beleg
+  wie der exakte outbound CALL. SetChargingProfile vergleicht Connector,
+  Einheit, Dauer/Zeitraum und sämtliche Perioden/Limits; ClearChargingProfile
+  bleibt ohne persistierten Vorher-/Nachherbeleg ehrlich `effect_failed` statt
+  einen unveränderten CompositeSchedule als Erfolg zu verkaufen.
 - **Races/Idempotenz:** Zustand+Audit mutieren in einer Transaktion und unter
   Row-Lock/CAS; `sent` kann Antwort oder Cancel nicht zurückdrehen. Tenantweite
   Idempotency-Keys werden per transaction advisory lock serialisiert und an

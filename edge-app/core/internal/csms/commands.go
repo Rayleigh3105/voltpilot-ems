@@ -100,7 +100,7 @@ func (s *Server) ExecuteCloudCommand(ctx context.Context, raw []byte, identity C
 		}
 	}
 	fingerprint := fmt.Sprintf("%x", sha256.Sum256(raw))
-	duplicate, err := s.commands.claim(cmd, fingerprint, deadline, now)
+	duplicate, err := s.commands.claim(cmd, fingerprint, wireAction, deadline, now)
 	if err != nil {
 		return reject("deduplication_failed", "OCPP-Befehl konnte nicht dauerhaft vorgemerkt werden")
 	}
@@ -258,6 +258,7 @@ func (t *transport) sendCloudCommand(chargePointID string, request any,
 func (s *Server) commandReadback(chargePointID, wireID, action string, payload json.RawMessage) {
 	entry, ok := s.commands.get(wireID)
 	if !ok || entry.ChargePointID != chargePointID || entry.Action != action {
+		_ = s.commands.finishByWire(wireID, "responded", s.opts.Now())
 		return
 	}
 	var response struct {
@@ -265,6 +266,7 @@ func (s *Server) commandReadback(chargePointID, wireID, action string, payload j
 	}
 	_ = json.Unmarshal(payload, &response)
 	if response.Status != "" && response.Status != "Accepted" && response.Status != "RebootRequired" {
+		_ = s.commands.finish(wireID, "responded", s.opts.Now())
 		return
 	}
 	var followAction string
@@ -272,6 +274,7 @@ func (s *Server) commandReadback(chargePointID, wireID, action string, payload j
 	switch action {
 	case "ChangeConfiguration":
 		if entry.ConfigurationKey == "" {
+			_ = s.commands.finish(wireID, "responded", s.opts.Now())
 			return
 		}
 		followAction = "GetConfiguration"
@@ -286,10 +289,14 @@ func (s *Server) commandReadback(chargePointID, wireID, action string, payload j
 		followAction = "GetCompositeSchedule"
 		followPayload, _ = json.Marshal(map[string]any{"connectorId": connector, "duration": 300})
 	default:
+		_ = s.commands.finish(wireID, "responded", s.opts.Now())
 		return
 	}
 	request, followWire, err := commandRequest(followAction, followPayload)
 	if err != nil {
+		s.journal.RecordCommandEvent(chargePointID, entry.CorrelationID, "CommandRejected", wireID,
+			"readback_failed", "OCPP-Readback konnte nicht vorbereitet werden", s.opts.Now())
+		_ = s.commands.finish(wireID, "readback_failed", s.opts.Now())
 		return
 	}
 	s.mu.Lock()
@@ -298,14 +305,30 @@ func (s *Server) commandReadback(chargePointID, wireID, action string, payload j
 	connected := charger != nil && charger.Connected
 	s.mu.Unlock()
 	if t == nil || !connected {
+		s.journal.RecordCommandEvent(chargePointID, entry.CorrelationID, "CommandRejected", wireID,
+			"readback_failed", "OCPP-Readback konnte wegen Verbindungsabbruch nicht gesendet werden", s.opts.Now())
+		_ = s.commands.finish(wireID, "readback_failed", s.opts.Now())
 		return
 	}
 	// OCPP-J uniqueId is capped at 36 characters by several 1.6 stacks. The
 	// action UUID is already 36 characters, so suffixing it makes a standards-
 	// compliant station silently discard the readback CALL.
-	readbackWireID := newEventID()
-	if err := t.sendCloudCommand(chargePointID, request, followWire, readbackWireID, "readback-"+entry.CorrelationID); err != nil {
+	readbackCorrelation := "readback-" + entry.CorrelationID
+	bound, shouldSend, err := s.commands.bindReadback(wireID, newEventID(), followWire,
+		readbackCorrelation, s.opts.Now())
+	if err != nil {
+		s.journal.RecordCommandEvent(chargePointID, entry.CorrelationID, "CommandRejected", wireID,
+			"readback_failed", "OCPP-Readback konnte nicht dauerhaft korreliert werden", s.opts.Now())
+		return
+	}
+	if !shouldSend {
+		return
+	}
+	if err := t.sendCloudCommand(chargePointID, request, followWire, bound.ReadbackWireID, bound.ReadbackCorrelation); err != nil {
 		s.journal.RecordCommandEvent(chargePointID, entry.CorrelationID, "CommandRejected", wireID,
 			"readback_failed", "OCPP-Readback konnte nicht gesendet werden", s.opts.Now())
+		_ = s.commands.finish(wireID, "readback_failed", s.opts.Now())
+		return
 	}
+	_ = s.commands.finish(wireID, "readback_sent", s.opts.Now())
 }

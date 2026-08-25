@@ -97,6 +97,7 @@ type Journal struct {
 	externalCallSeen     map[string]bool
 	externalResponseSeen map[string]bool
 	onCommandResult      func(chargePointID, wireID, action string, payload json.RawMessage)
+	onCommandError       func(chargePointID, wireID, action string)
 	gaps                 journalGapState
 	// Injectable only for deterministic failure-path tests. Gap-state writes
 	// deliberately use the real filesystem, so an event-write failure can still
@@ -167,6 +168,26 @@ func newJournal(dataDir string, log *slog.Logger) (*Journal, error) {
 	j.enforceBoundLocked()
 	j.mu.Unlock()
 	return j, nil
+}
+
+// RestoreCommandMappings overlays the durable command ledger after the
+// journal has rebuilt what remains in its spool. Ledger mappings are the
+// authority once a normal QoS1 ACK has removed the outbound CALL file.
+func (j *Journal) RestoreCommandMappings(mappings []commandWireMapping) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for _, mapping := range mappings {
+		if mapping.ChargePointID == "" || mapping.WireID == "" ||
+			mapping.WireAction == "" || mapping.CorrelationID == "" {
+			continue
+		}
+		key := mapping.ChargePointID + "\x00" + mapping.WireID
+		j.externalByWire[key] = mapping.CorrelationID
+		j.outgoing[key] = mapping.WireAction
+		if mapping.CallSeen {
+			j.externalCallSeen[key] = true
+		}
+	}
 }
 
 func loadJournalGapState(path string) (journalGapState, error) {
@@ -312,6 +333,8 @@ func (j *Journal) RecordWire(direction, chargePointID string, raw []byte) {
 	j.append(e)
 	if kind == 3 && direction == "station_to_csms" && e.CorrelationID != "" && j.onCommandResult != nil {
 		j.onCommandResult(chargePointID, e.WireID, e.Action, e.Payload)
+	} else if kind == 4 && direction == "station_to_csms" && e.CorrelationID != "" && j.onCommandError != nil {
+		j.onCommandError(chargePointID, e.WireID, e.Action)
 	}
 }
 

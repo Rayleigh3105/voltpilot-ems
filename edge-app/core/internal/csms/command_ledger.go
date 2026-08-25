@@ -14,16 +14,28 @@ const commandLedgerFile = "ocpp-command-ledger.json"
 const commandLedgerLimit = 4096
 
 type commandLedgerEntry struct {
-	ActionID         string    `json:"action_id"`
-	Fingerprint      string    `json:"fingerprint"`
-	State            string    `json:"state"`
-	DeadlineAt       time.Time `json:"deadline_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	Action           string    `json:"action"`
-	ChargePointID    string    `json:"charge_point_id"`
-	CorrelationID    string    `json:"correlation_id"`
-	ConnectorID      *int      `json:"connector_id,omitempty"`
-	ConfigurationKey string    `json:"configuration_key,omitempty"`
+	ActionID            string    `json:"action_id"`
+	Fingerprint         string    `json:"fingerprint"`
+	State               string    `json:"state"`
+	DeadlineAt          time.Time `json:"deadline_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+	Action              string    `json:"action"`
+	WireAction          string    `json:"wire_action,omitempty"`
+	ChargePointID       string    `json:"charge_point_id"`
+	CorrelationID       string    `json:"correlation_id"`
+	ConnectorID         *int      `json:"connector_id,omitempty"`
+	ConfigurationKey    string    `json:"configuration_key,omitempty"`
+	ReadbackWireID      string    `json:"readback_wire_id,omitempty"`
+	ReadbackAction      string    `json:"readback_action,omitempty"`
+	ReadbackCorrelation string    `json:"readback_correlation,omitempty"`
+}
+
+type commandWireMapping struct {
+	ChargePointID string
+	WireID        string
+	WireAction    string
+	CorrelationID string
+	CallSeen      bool
 }
 
 type commandLedgerDocument struct {
@@ -62,7 +74,7 @@ func newCommandLedger(dataDir string) (*commandLedger, error) {
 
 // claim returns duplicate=true only for a byte-identical replay. Reusing an
 // action id for changed bytes is a fail-closed collision.
-func (l *commandLedger) claim(cmd CloudCommand, fingerprint string, deadline, now time.Time) (bool, error) {
+func (l *commandLedger) claim(cmd CloudCommand, fingerprint, wireAction string, deadline, now time.Time) (bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if old, ok := l.entries[cmd.ActionID]; ok {
@@ -73,7 +85,7 @@ func (l *commandLedger) claim(cmd CloudCommand, fingerprint string, deadline, no
 	}
 	l.prune(now)
 	entry := commandLedgerEntry{ActionID: cmd.ActionID, Fingerprint: fingerprint, Action: cmd.Action,
-		ChargePointID: cmd.ChargePointID, CorrelationID: cmd.CorrelationID,
+		WireAction: wireAction, ChargePointID: cmd.ChargePointID, CorrelationID: cmd.CorrelationID,
 		State: "claimed", DeadlineAt: deadline.UTC(), UpdatedAt: now.UTC()}
 	var request struct {
 		ConnectorID *int   `json:"connectorId"`
@@ -87,6 +99,89 @@ func (l *commandLedger) claim(cmd CloudCommand, fingerprint string, deadline, no
 		return false, err
 	}
 	return false, nil
+}
+
+// wireMappings returns the durable exact-wire bindings that still await a
+// station response. Unlike the protocol spool, these survive the normal QoS1
+// ACK which deletes an already-uploaded outbound CALL.
+func (l *commandLedger) wireMappings() []commandWireMapping {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var mappings []commandWireMapping
+	for _, e := range l.entries {
+		if e.State == "claimed" || e.State == "sent" {
+			wireAction := e.WireAction
+			if wireAction == "" {
+				wireAction = e.Action
+				if e.Action == "SoftReset" || e.Action == "HardReset" {
+					wireAction = "Reset"
+				}
+			}
+			mappings = append(mappings, commandWireMapping{ChargePointID: e.ChargePointID,
+				WireID: e.ActionID, WireAction: wireAction, CorrelationID: e.CorrelationID,
+				CallSeen: e.State == "sent"})
+		}
+		if e.ReadbackWireID != "" && (e.State == "readback_bound" || e.State == "readback_sent") {
+			mappings = append(mappings, commandWireMapping{ChargePointID: e.ChargePointID,
+				WireID: e.ReadbackWireID, WireAction: e.ReadbackAction,
+				CorrelationID: e.ReadbackCorrelation, CallSeen: e.State == "readback_sent"})
+		}
+	}
+	return mappings
+}
+
+// bindReadback persists the follow-up mapping before any readback bytes are
+// handed to the station. Repeated callbacks reuse one wire id and never create
+// multiple concurrent readbacks for the same physical action.
+func (l *commandLedger) bindReadback(actionID, wireID, action, correlation string, now time.Time) (commandLedgerEntry, bool, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	e, ok := l.entries[actionID]
+	if !ok {
+		return commandLedgerEntry{}, false, errors.New("unbekannte action_id")
+	}
+	if e.ReadbackWireID != "" {
+		return e, e.State == "readback_bound", nil
+	}
+	previousState := e.State
+	e.ReadbackWireID, e.ReadbackAction, e.ReadbackCorrelation = wireID, action, correlation
+	e.State, e.UpdatedAt = "readback_bound", now.UTC()
+	l.entries[actionID] = e
+	if err := l.save(); err != nil {
+		e.ReadbackWireID, e.ReadbackAction, e.ReadbackCorrelation = "", "", ""
+		e.State = previousState
+		l.entries[actionID] = e
+		return commandLedgerEntry{}, false, err
+	}
+	return e, true, nil
+}
+
+func (l *commandLedger) getByWire(wireID string) (commandLedgerEntry, bool, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, e := range l.entries {
+		if e.ActionID == wireID {
+			return e, false, true
+		}
+		if e.ReadbackWireID == wireID {
+			return e, true, true
+		}
+	}
+	return commandLedgerEntry{}, false, false
+}
+
+func (l *commandLedger) finishByWire(wireID, state string, now time.Time) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for id, e := range l.entries {
+		if e.ActionID != wireID && e.ReadbackWireID != wireID {
+			continue
+		}
+		e.State, e.UpdatedAt = state, now.UTC()
+		l.entries[id] = e
+		return l.save()
+	}
+	return errors.New("unbekannte wire_id")
 }
 
 func (l *commandLedger) get(actionID string) (commandLedgerEntry, bool) {

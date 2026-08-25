@@ -58,9 +58,12 @@ class OcppActionRepositoryTest {
         try (Harness h = harness()) {
             UUID id = insert(h, "CP-A", "RemoteStartTransaction", "RemoteStartTransaction", 1, null,
                     MAPPER.readTree("{\"connectorId\":1,\"idTag\":\"secret\"}"), Instant.now().plusSeconds(30));
+            outboundCall(h, id, "CP-A", "RemoteStartTransaction",
+                    "{\"connectorId\":1,\"idTag\":\"secret\"}");
             evidence(h, "CP-A", "CallResult", "RemoteStartTransaction", "ocpp-"+id, "{\"status\":\"Accepted\"}");
             evidence(h, "CP-B", "Call", "StartTransaction", null, "{\"connectorId\":1,\"transactionId\":9,\"idTag\":\"secret\"}");
             evidence(h, "CP-A", "Call", "StartTransaction", null, "{\"connectorId\":2,\"transactionId\":9,\"idTag\":\"secret\"}");
+            evidence(h, "CP-A", "Call", "StartTransaction", null, "{\"connectorId\":1,\"transactionId\":8,\"idTag\":\"other\"}");
             assertThat(h.repo.byId(id).orElseThrow().state()).isEqualTo("accepted_waiting_effect");
             evidence(h, "CP-A", "Call", "StartTransaction", null, "{\"connectorId\":1,\"transactionId\":9,\"idTag\":\"secret\"}");
             assertThat(h.repo.byId(id).orElseThrow().state()).isEqualTo("effect_observed");
@@ -75,6 +78,37 @@ class OcppActionRepositoryTest {
             evidence(h, "CP-A", "Call", "StopTransaction", null,
                     "{\"transactionId\":9,\"meterStop\":1,\"timestamp\":\"2026-08-25T00:00:01Z\"}");
             assertThat(h.repo.byId(stop).orElseThrow().state()).isEqualTo("effect_observed");
+        }
+    }
+
+    @Test void concurrentRemoteStartsInReverseOrderBindToTheExactOutboundTagProof() throws Exception {
+        try (Harness h = harness()) {
+            UUID first = insert(h, "CP-A", "RemoteStartTransaction", "remote-start-first-" + UUID.randomUUID(),
+                    1, null, MAPPER.readTree("{\"connectorId\":1,\"idTag\":\"tagref_first\"}"),
+                    Instant.now().plusSeconds(30));
+            outboundCall(h, first, "CP-A", "RemoteStartTransaction",
+                    "{\"connectorId\":1,\"idTag\":\"tagref_first\"}");
+            evidence(h, "CP-A", "CallResult", "RemoteStartTransaction", "ocpp-" + first,
+                    "{\"status\":\"Accepted\"}");
+
+            UUID second = insert(h, "CP-A", "RemoteStartTransaction", "remote-start-second-" + UUID.randomUUID(),
+                    1, null, MAPPER.readTree("{\"connectorId\":1,\"idTag\":\"tagref_second\"}"),
+                    Instant.now().plusSeconds(30));
+            outboundCall(h, second, "CP-A", "RemoteStartTransaction",
+                    "{\"connectorId\":1,\"idTag\":\"tagref_second\"}");
+            evidence(h, "CP-A", "CallResult", "RemoteStartTransaction", "ocpp-" + second,
+                    "{\"status\":\"Accepted\"}");
+
+            evidence(h, "CP-A", "Call", "StartTransaction", null,
+                    "{\"connectorId\":1,\"transactionId\":101,\"idTag\":\"tagref_first\"}");
+            assertThat(h.repo.byId(first).orElseThrow().transactionId()).isEqualTo(101);
+            assertThat(h.repo.byId(first).orElseThrow().state()).isEqualTo("effect_observed");
+            assertThat(h.repo.byId(second).orElseThrow().state()).isEqualTo("accepted_waiting_effect");
+
+            evidence(h, "CP-A", "Call", "StartTransaction", null,
+                    "{\"connectorId\":1,\"transactionId\":202,\"idTag\":\"tagref_second\"}");
+            assertThat(h.repo.byId(second).orElseThrow().transactionId()).isEqualTo(202);
+            assertThat(h.repo.byId(second).orElseThrow().state()).isEqualTo("effect_observed");
         }
     }
 
@@ -206,23 +240,48 @@ class OcppActionRepositoryTest {
                     "{\"configurationKey\":[{\"key\":\"HeartbeatInterval\",\"value\":\"300\"}]}");
             assertThat(h.repo.byId(id).orElseThrow().state()).isEqualTo("effect_observed");
 
+            String requestedProfile = "{\"connectorId\":1,\"csChargingProfiles\":{" +
+                    "\"chargingProfileId\":41,\"stackLevel\":0,\"chargingProfilePurpose\":\"TxProfile\"," +
+                    "\"chargingProfileKind\":\"Relative\",\"chargingSchedule\":{\"duration\":300," +
+                    "\"chargingRateUnit\":\"W\",\"chargingSchedulePeriod\":[" +
+                    "{\"startPeriod\":0,\"limit\":11000,\"numberPhases\":3}," +
+                    "{\"startPeriod\":120,\"limit\":7000,\"numberPhases\":3}]}}}";
             UUID profile = insert(h, "CP-A", "SetChargingProfile", "ChargingProfileMutation", 1, null,
-                    MAPPER.readTree("{\"connectorId\":1,\"csChargingProfiles\":{\"chargingSchedule\":{\"chargingRateUnit\":\"W\"}}}"),
+                    MAPPER.readTree(requestedProfile),
                     Instant.now().plusSeconds(30));
+            outboundCall(h, profile, "CP-A", "SetChargingProfile", requestedProfile);
             evidence(h, "CP-A", "CallResult", "SetChargingProfile", "ocpp-" + profile,
                     "{\"status\":\"Accepted\"}");
             evidence(h, "CP-A", "CallResult", "GetCompositeSchedule", "readback-ocpp-" + profile,
-                    "{\"status\":\"Accepted\",\"connectorId\":2,\"chargingSchedule\":{\"chargingRateUnit\":\"W\"}}");
+                    "{\"status\":\"Accepted\",\"connectorId\":1,\"chargingSchedule\":{" +
+                            "\"duration\":300,\"chargingRateUnit\":\"W\",\"chargingSchedulePeriod\":[" +
+                            "{\"startPeriod\":0,\"limit\":1000,\"numberPhases\":3}," +
+                            "{\"startPeriod\":120,\"limit\":7000,\"numberPhases\":3}]}}");
             assertThat(h.repo.byId(profile).orElseThrow().state()).isEqualTo("effect_failed");
 
             UUID matchingProfile = insert(h, "CP-A", "SetChargingProfile", "ChargingProfileMutation", 1, null,
-                    MAPPER.readTree("{\"connectorId\":1,\"csChargingProfiles\":{\"chargingSchedule\":{\"chargingRateUnit\":\"W\"}}}"),
+                    MAPPER.readTree(requestedProfile),
                     Instant.now().plusSeconds(30));
+            outboundCall(h, matchingProfile, "CP-A", "SetChargingProfile", requestedProfile);
             evidence(h, "CP-A", "CallResult", "SetChargingProfile", "ocpp-" + matchingProfile,
                     "{\"status\":\"Accepted\"}");
             evidence(h, "CP-A", "CallResult", "GetCompositeSchedule", "readback-ocpp-" + matchingProfile,
-                    "{\"status\":\"Accepted\",\"connectorId\":1,\"chargingSchedule\":{\"chargingRateUnit\":\"W\"}}");
+                    "{\"status\":\"Accepted\",\"connectorId\":1,\"chargingSchedule\":{" +
+                            "\"duration\":300,\"chargingRateUnit\":\"W\",\"chargingSchedulePeriod\":[" +
+                            "{\"startPeriod\":0,\"limit\":11000,\"numberPhases\":3}," +
+                            "{\"startPeriod\":120,\"limit\":7000,\"numberPhases\":3}]}}");
             assertThat(h.repo.byId(matchingProfile).orElseThrow().state()).isEqualTo("effect_observed");
+
+            UUID clear = insert(h, "CP-A", "ClearChargingProfile", "ChargingProfileMutation", 1, null,
+                    MAPPER.readTree("{\"connectorId\":1,\"chargingProfilePurpose\":\"TxProfile\"}"),
+                    Instant.now().plusSeconds(30));
+            evidence(h, "CP-A", "CallResult", "ClearChargingProfile", "ocpp-" + clear,
+                    "{\"status\":\"Accepted\"}");
+            evidence(h, "CP-A", "CallResult", "GetCompositeSchedule", "readback-ocpp-" + clear,
+                    "{\"status\":\"Accepted\",\"connectorId\":1,\"chargingSchedule\":{" +
+                            "\"duration\":300,\"chargingRateUnit\":\"W\",\"chargingSchedulePeriod\":[" +
+                            "{\"startPeriod\":0,\"limit\":11000,\"numberPhases\":3}]}}");
+            assertThat(h.repo.byId(clear).orElseThrow().state()).isEqualTo("effect_failed");
         }
     }
 
@@ -406,6 +465,14 @@ class OcppActionRepositoryTest {
         new JdbcTemplate(h.ds).update("INSERT INTO ocpp_connector_status_event(occurred_at,event_id,tenant_id,"
                 + "site_id,device_id,charge_point_id,connector_id,status,error_code) VALUES(?,?,?,?,?,?,?,?,?)",
                 java.sql.Timestamp.from(at), UUID.randomUUID(), TENANT, SITE, DEVICE, cp, connector, status, "NoError");
+    }
+
+    private static void outboundCall(Harness h, UUID actionId, String cp, String action, String payload) {
+        new JdbcTemplate(h.ds).update("INSERT INTO ocpp_protocol_event(occurred_at,event_id,tenant_id,site_id," +
+                        "device_id,charge_point_id,direction,message_type,correlation_id,wire_id,action,payload) " +
+                        "VALUES(?,?,?,?,?,?,'csms_to_station','Call',?,?,?,?::jsonb)",
+                java.sql.Timestamp.from(Instant.now()), UUID.randomUUID(), TENANT, SITE, DEVICE, cp,
+                "ocpp-" + actionId, actionId.toString(), action, payload);
     }
 
     private static Harness harness() throws Exception {

@@ -315,6 +315,7 @@ public class OcppActionRepository {
         return switch (a.action()) {
             case "RemoteStartTransaction" -> "StartTransaction".equals(wire)
                     && sameOptionalInt(a.connectorId(), connector)
+                    && remoteStartTargetMatches(a, p, at)
                     ? EffectMatch.SUCCESS : EffectMatch.NONE;
             case "RemoteStopTransaction" -> "StopTransaction".equals(wire)
                     && a.transactionId() != null && a.transactionId() == p.path("transactionId").asInt(Integer.MIN_VALUE)
@@ -347,7 +348,7 @@ public class OcppActionRepository {
             case "SetChargingProfile", "ClearChargingProfile" -> "GetCompositeSchedule".equals(wire)
                     && readbackCorrelation(a, correlation)
                     ? connector == (a.connectorId() == null ? 0 : a.connectorId())
-                            && profileUnitMatches(a.action(), r, p)
+                            && profileScheduleMatches(a.action(), r, p) && exactOutboundProfile(a)
                             ? EffectMatch.SUCCESS : EffectMatch.FAILURE
                     : EffectMatch.NONE;
             case "GetDiagnostics" -> diagnosticEffect(wire, p);
@@ -393,12 +394,94 @@ public class OcppActionRepository {
                     && (value == null || value.isBlank() || value.equals(entry.path("value").asText()))) return true;
         return false;
     }
-    private static boolean profileUnitMatches(String action, JsonNode request, JsonNode response) {
-        if ("ClearChargingProfile".equals(action)) return true;
-        String requested = request.path("csChargingProfiles").path("chargingSchedule")
-                .path("chargingRateUnit").asText("");
-        String observed = response.path("chargingSchedule").path("chargingRateUnit").asText("");
-        return !requested.isBlank() && requested.equals(observed);
+    private boolean remoteStartTargetMatches(OcppActionDto.Action action, JsonNode effect, Instant at) {
+        String observed = effect.path("idTag").asText("");
+        if (observed.isBlank()) return false;
+        String sent = jdbc.query("SELECT payload->>'idTag' FROM ocpp_protocol_event WHERE device_id=? "
+                        + "AND charge_point_id=? AND direction='csms_to_station' AND message_type='Call' "
+                        + "AND action='RemoteStartTransaction' AND wire_id=? AND correlation_id=? "
+                        + "AND occurred_at>=? AND occurred_at<=? ORDER BY occurred_at DESC LIMIT 1",
+                rs -> rs.next() ? rs.getString(1) : null, action.deviceId(), action.chargePointId(),
+                action.id().toString(), action.correlationId(), ts(action.preparedAt()), ts(at));
+        return sent != null && sent.equals(observed);
+    }
+
+    private boolean exactOutboundProfile(OcppActionDto.Action action) {
+        JsonNode sent = jdbc.query("SELECT payload FROM ocpp_protocol_event WHERE device_id=? "
+                        + "AND charge_point_id=? AND direction='csms_to_station' AND message_type='Call' "
+                        + "AND action='SetChargingProfile' AND wire_id=? AND correlation_id=? "
+                        + "AND occurred_at>=? ORDER BY occurred_at DESC LIMIT 1",
+                rs -> rs.next() ? parse(rs.getString(1)) : null, action.deviceId(), action.chargePointId(),
+                action.id().toString(), action.correlationId(), ts(action.preparedAt()));
+        return sent != null && sent.path("connectorId").equals(action.request().path("connectorId"))
+                && sent.path("csChargingProfiles").equals(action.request().path("csChargingProfiles"));
+    }
+
+    private static boolean profileScheduleMatches(String action, JsonNode request, JsonNode response) {
+        // A single post-clear composite schedule cannot prove that the matched
+        // profile was actually removed: the same aggregate may come from a
+        // default or another stack. Without persisted before/after evidence the
+        // only honest result is fail-closed, never effect_observed.
+        if ("ClearChargingProfile".equals(action)) return false;
+        if (!"Accepted".equals(response.path("status").asText())) return false;
+        JsonNode profile = request.path("csChargingProfiles");
+        if (!profile.path("chargingProfileId").isIntegralNumber()
+                || !profile.path("stackLevel").isIntegralNumber()
+                || profile.path("chargingProfilePurpose").asText("").isBlank()
+                || profile.path("chargingProfileKind").asText("").isBlank()) return false;
+        JsonNode requested = profile.path("chargingSchedule");
+        JsonNode observed = response.path("chargingSchedule");
+        if (!requested.isObject() || !observed.isObject()
+                || !requested.path("chargingRateUnit").asText("")
+                        .equals(observed.path("chargingRateUnit").asText(""))
+                || requested.path("chargingRateUnit").asText("").isBlank()
+                || !periodsMatch(requested.path("chargingSchedulePeriod"),
+                        observed.path("chargingSchedulePeriod"))) return false;
+        if (requested.has("duration") && (!observed.path("duration").isIntegralNumber()
+                || requested.path("duration").intValue() != observed.path("duration").intValue())) return false;
+        if (requested.has("minChargingRate")
+                && !sameNumber(requested.path("minChargingRate"), observed.path("minChargingRate"))) return false;
+
+        String requestedStart = requested.path("startSchedule").asText("");
+        String observedStart = response.path("scheduleStart").asText(
+                observed.path("startSchedule").asText(""));
+        if (!requestedStart.isBlank() && !sameInstant(requestedStart, observedStart)) return false;
+        if ((!profile.path("validFrom").asText("").isBlank()
+                || !profile.path("validTo").asText("").isBlank()) && observedStart.isBlank()) return false;
+        try {
+            if (!profile.path("validFrom").asText("").isBlank()
+                    && Instant.parse(observedStart).isBefore(Instant.parse(profile.path("validFrom").asText()))) return false;
+            if (!profile.path("validTo").asText("").isBlank()
+                    && !Instant.parse(observedStart).isBefore(Instant.parse(profile.path("validTo").asText()))) return false;
+        } catch (RuntimeException e) {
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean periodsMatch(JsonNode requested, JsonNode observed) {
+        if (!requested.isArray() || requested.isEmpty() || !observed.isArray()
+                || requested.size() != observed.size()) return false;
+        for (int i = 0; i < requested.size(); i++) {
+            JsonNode left = requested.get(i), right = observed.get(i);
+            if (!left.path("startPeriod").isIntegralNumber() || !right.path("startPeriod").isIntegralNumber()
+                    || left.path("startPeriod").intValue() != right.path("startPeriod").intValue()
+                    || !sameNumber(left.path("limit"), right.path("limit"))) return false;
+            if (left.has("numberPhases") != right.has("numberPhases")
+                    || (left.has("numberPhases") && left.path("numberPhases").intValue()
+                            != right.path("numberPhases").intValue())) return false;
+        }
+        return true;
+    }
+
+    private static boolean sameNumber(JsonNode left, JsonNode right) {
+        return left.isNumber() && right.isNumber() && left.decimalValue().compareTo(right.decimalValue()) == 0;
+    }
+
+    private static boolean sameInstant(String left, String right) {
+        if (left.isBlank() || right.isBlank()) return false;
+        try { return Instant.parse(left).equals(Instant.parse(right)); }
+        catch (RuntimeException e) { return false; }
     }
     private static EffectMatch diagnosticEffect(String wire, JsonNode p) {
         if (!"DiagnosticsStatusNotification".equals(wire)) return EffectMatch.NONE;

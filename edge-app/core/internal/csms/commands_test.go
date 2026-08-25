@@ -110,7 +110,7 @@ func TestCommandCrashAfterDurableClaimNeverReplays(t *testing.T) {
 		t.Fatal(err)
 	}
 	fingerprint := fmt.Sprintf("%x", sha256.Sum256(raw))
-	if duplicate, err := s1.commands.claim(cmd, fingerprint, now.Add(30*time.Second), now); err != nil || duplicate {
+	if duplicate, err := s1.commands.claim(cmd, fingerprint, cmd.Action, now.Add(30*time.Second), now); err != nil || duplicate {
 		t.Fatalf("durable pre-send claim: duplicate=%v err=%v", duplicate, err)
 	}
 	// Simulate power loss in the exact claim -> station-write window: no
@@ -198,6 +198,154 @@ func TestWireCorrelationSurvivesCrashAndConcurrentReverseResponses(t *testing.T)
 	}
 	if len(got) != 2 || got["wire-a"] != want["wire-a"] || got["wire-b"] != want["wire-b"] {
 		t.Fatalf("correlation after crash/reverse responses = %#v", got)
+	}
+}
+
+func TestWireCorrelationSurvivesRestartAfterOutboundCallUploadAck(t *testing.T) {
+	dir := t.TempDir()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	ledger, err := newCommandLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, err := newJournal(dir, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands := []CloudCommand{
+		{ActionID: "11111111-1111-4111-8111-111111111111", CorrelationID: "ocpp-11111111-1111-4111-8111-111111111111",
+			Action: "SetChargingProfile", ChargePointID: "cp-1", Request: json.RawMessage(`{"connectorId":1}`)},
+		{ActionID: "22222222-2222-4222-8222-222222222222", CorrelationID: "ocpp-22222222-2222-4222-8222-222222222222",
+			Action: "SetChargingProfile", ChargePointID: "cp-1", Request: json.RawMessage(`{"connectorId":1}`)},
+	}
+	for i, cmd := range commands {
+		if duplicate, err := ledger.claim(cmd, fmt.Sprintf("fingerprint-%d", i), cmd.Action,
+			now.Add(time.Minute), now); err != nil || duplicate {
+			t.Fatalf("claim %d: duplicate=%v err=%v", i, duplicate, err)
+		}
+		j.BindWire(cmd.ChargePointID, cmd.ActionID, cmd.Action, cmd.CorrelationID)
+		j.RecordWire("csms_to_station", cmd.ChargePointID,
+			[]byte(fmt.Sprintf(`[2,%q,%q,{"connectorId":1}]`, cmd.ActionID, cmd.Action)))
+		if err := ledger.finish(cmd.ActionID, "sent", now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Model the normal cloud uploader: both outbound CALL records have been
+	// delivered with QoS1 and their immutable spool files are deleted.
+	for range commands {
+		raw, token, ok := j.Next()
+		if !ok {
+			t.Fatal("missing outbound CALL")
+		}
+		var event ProtocolEvent
+		if err := json.Unmarshal(raw, &event); err != nil || event.MessageType != "Call" {
+			t.Fatalf("outbound event = %#v err=%v", event, err)
+		}
+		if err := j.Ack(token); err != nil {
+			t.Fatal(err)
+		}
+	}
+	j.Close()
+
+	restartedLedger, err := newCommandLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := newJournal(dir, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted.RestoreCommandMappings(restartedLedger.wireMappings())
+	callbacks := map[string]string{}
+	restarted.onCommandResult = func(_, wireID, action string, _ json.RawMessage) {
+		callbacks[wireID] = action
+		_ = restartedLedger.finishByWire(wireID, "responded", now.Add(time.Second))
+	}
+	// Same-action results deliberately arrive in reverse order. Only the exact
+	// wire UUID may decide their logical operation and targeted callback.
+	for i := len(commands) - 1; i >= 0; i-- {
+		cmd := commands[i]
+		restarted.RecordWire("station_to_csms", cmd.ChargePointID,
+			[]byte(fmt.Sprintf(`[3,%q,{"status":"Accepted"}]`, cmd.ActionID)))
+	}
+	correlations := map[string]string{}
+	for {
+		raw, token, ok := restarted.Next()
+		if !ok {
+			break
+		}
+		var event ProtocolEvent
+		if err := json.Unmarshal(raw, &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.MessageType == "CallResult" {
+			correlations[event.WireID] = event.CorrelationID
+			if event.Action != "SetChargingProfile" {
+				t.Fatalf("wire %s action=%q", event.WireID, event.Action)
+			}
+		}
+		if err := restarted.Ack(token); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, cmd := range commands {
+		if correlations[cmd.ActionID] != cmd.CorrelationID || callbacks[cmd.ActionID] != cmd.Action {
+			t.Fatalf("wire %s correlation=%q callback=%q", cmd.ActionID,
+				correlations[cmd.ActionID], callbacks[cmd.ActionID])
+		}
+	}
+
+	// The same durability rule applies to the targeted readback CALL. Its ACK
+	// must not make a later composite-schedule result anonymous after restart.
+	readbackWire := "33333333-3333-4333-8333-333333333333"
+	bound, shouldSend, err := restartedLedger.bindReadback(commands[0].ActionID, readbackWire,
+		"GetCompositeSchedule", "readback-"+commands[0].CorrelationID, now.Add(2*time.Second))
+	if err != nil || !shouldSend {
+		t.Fatalf("bind readback: bound=%#v send=%v err=%v", bound, shouldSend, err)
+	}
+	restarted.BindWire("cp-1", readbackWire, bound.ReadbackAction, bound.ReadbackCorrelation)
+	restarted.RecordWire("csms_to_station", "cp-1",
+		[]byte(fmt.Sprintf(`[2,%q,"GetCompositeSchedule",{"connectorId":1,"duration":300}]`, readbackWire)))
+	if err := restartedLedger.finish(commands[0].ActionID, "readback_sent", now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	raw, token, ok := restarted.Next()
+	if !ok {
+		t.Fatal("missing readback CALL")
+	}
+	var readbackCall ProtocolEvent
+	if err := json.Unmarshal(raw, &readbackCall); err != nil || readbackCall.WireID != readbackWire {
+		t.Fatalf("readback CALL=%#v err=%v", readbackCall, err)
+	}
+	if err := restarted.Ack(token); err != nil {
+		t.Fatal(err)
+	}
+	restarted.Close()
+
+	thirdLedger, err := newCommandLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, err := newJournal(dir, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer third.Close()
+	third.RestoreCommandMappings(thirdLedger.wireMappings())
+	third.RecordWire("station_to_csms", "cp-1",
+		[]byte(fmt.Sprintf(`[3,%q,{"status":"Accepted","connectorId":1}]`, readbackWire)))
+	raw, _, ok = third.Next()
+	if !ok {
+		t.Fatal("missing readback result")
+	}
+	var readbackResult ProtocolEvent
+	if err := json.Unmarshal(raw, &readbackResult); err != nil {
+		t.Fatal(err)
+	}
+	if readbackResult.Action != "GetCompositeSchedule" ||
+		readbackResult.CorrelationID != "readback-"+commands[0].CorrelationID {
+		t.Fatalf("readback result lost exact mapping: %#v", readbackResult)
 	}
 }
 

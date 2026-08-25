@@ -136,11 +136,19 @@ func New(opts Options) (*Server, error) {
 		nextTxID: next,
 		changed:  make(chan struct{}, 1),
 	}
+	journal.RestoreCommandMappings(commands.wireMappings())
 	for _, c := range list {
 		s.chargers[c.ID] = &ChargerState{Charger: c}
 	}
 	journal.onCommandResult = func(chargePointID, wireID, action string, payload json.RawMessage) {
-		go s.commandReadback(chargePointID, wireID, action, payload)
+		s.commandReadback(chargePointID, wireID, action, payload)
+	}
+	journal.onCommandError = func(chargePointID, wireID, _ string) {
+		if entry, readback, ok := commands.getByWire(wireID); ok && readback {
+			journal.RecordCommandEvent(chargePointID, entry.CorrelationID, "CommandRejected", entry.ActionID,
+				"readback_failed", "Station hat den gezielten OCPP-Readback abgelehnt", opts.Now())
+		}
+		_ = commands.finishByWire(wireID, "responded", opts.Now())
 	}
 	return s, nil
 }
