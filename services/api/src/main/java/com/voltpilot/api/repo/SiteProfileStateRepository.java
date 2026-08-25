@@ -42,6 +42,27 @@ public class SiteProfileStateRepository {
     }
 
     /**
+     * Der gespeicherte Wille ALLER Anlagen des Mandanten, je Anlage nach
+     * Anwendungs-Id (Anwendungs-Programm Stufe 4). Eine Anlage ohne Zeile ist
+     * ABWESEND — „alles abgeleitet", der Zustand jeder Bestandsanlage.
+     *
+     * <p>EINE Abfrage für die ganze Flotte statt einer je Anlage: die Übersicht
+     * ist die Landeseite und wird alle 30 s abgerufen. RLS ist der Zaun wie
+     * überall hier — es gibt kein Mandanten-Prädikat, und genau deshalb kann
+     * die Antwort nie über den Mandanten des Aufrufers hinausreichen.
+     */
+    public Map<UUID, Map<String, String>> findAllForTenant() {
+        Map<UUID, Map<String, String>> states = new LinkedHashMap<>();
+        jdbc.query("SELECT site_id, profile, state FROM site_profile_state "
+                + "ORDER BY site_id, profile", rs -> {
+                    states.computeIfAbsent(rs.getObject("site_id", UUID.class),
+                            k -> new LinkedHashMap<>())
+                            .put(rs.getString("profile"), rs.getString("state"));
+                });
+        return states;
+    }
+
+    /**
      * Persist the customer's intent for one profile. The RLS {@code WITH CHECK}
      * guarantees the row lands in the caller's tenant; the primary key makes it
      * an upsert.

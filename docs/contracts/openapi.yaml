@@ -1751,7 +1751,20 @@ paths:
         Vorgabe instead of 20 layouts. A per-plant Vorgabe BEATS it, and the
         customer beats both. The tenant comes from the validated token / the
         `X-Tenant-Id` switcher, never from the path - a platform-admin without a
-        selected customer gets 404.
+        selected customer gets 404. On `surface=portfolio` the response's
+        `profil` is the fleet's MAJORITY plant profile (ties and "none set"
+        yield null - never a guessed audience).
+      parameters:
+        - name: surface
+          in: query
+          required: false
+          schema: { type: string, enum: [cockpit, portfolio], default: cockpit }
+          description: >
+            Which surface the layer belongs to. `cockpit` is the per-plant
+            cockpit's customer-wide Vorgabe; `portfolio` is the customer's OWN
+            portfolio cockpit (Anwendungs-Programm Stufe 4) - there the `eigen`
+            layer is the customer's own arrangement, not a dead end. An unknown
+            word is a 400 with a German reason, never a silent fallback.
       responses:
         "200":
           description: The layers + the Baustein catalog.
@@ -1764,6 +1777,16 @@ paths:
       tags: [profile]
       summary: Store the customer-wide Vorgabe.
       parameters:
+        - name: surface
+          in: query
+          required: false
+          schema: { type: string, enum: [cockpit, portfolio], default: cockpit }
+          description: >
+            Which surface the layer belongs to. `cockpit` is the per-plant
+            cockpit's customer-wide Vorgabe; `portfolio` is the customer's OWN
+            portfolio cockpit (Anwendungs-Programm Stufe 4) - there the `eigen`
+            layer is the customer's own arrangement, not a dead end. An unknown
+            word is a 400 with a German reason, never a silent fallback.
         - name: layer
           in: query
           required: false
@@ -1779,7 +1802,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CockpitLayout" }
-        "400": { description: "Unknown Baustein, mandatory Baustein hidden, invalid lead, or unknown layer." }
+        "400": { description: "Unknown Baustein, a Baustein of the OTHER surface, mandatory Baustein hidden, invalid lead, unknown layer, or unknown surface." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { description: Only a platform-admin may write the `vorgabe` layer. }
         "404": { description: No tenant selected. }
@@ -1787,6 +1810,16 @@ paths:
       tags: [profile]
       summary: Remove the customer-wide Vorgabe.
       parameters:
+        - name: surface
+          in: query
+          required: false
+          schema: { type: string, enum: [cockpit, portfolio], default: cockpit }
+          description: >
+            Which surface the layer belongs to. `cockpit` is the per-plant
+            cockpit's customer-wide Vorgabe; `portfolio` is the customer's OWN
+            portfolio cockpit (Anwendungs-Programm Stufe 4) - there the `eigen`
+            layer is the customer's own arrangement, not a dead end. An unknown
+            word is a 400 with a German reason, never a silent fallback.
         - name: layer
           in: query
           required: false
@@ -7922,6 +7955,48 @@ components:
             optimizer re-plans every 15 minutes, so the age is the statement.
             null = no run inside the lookback window (7 days), never a
             fabricated age.
+        storageCapacityKwh:
+          type: number
+          nullable: true
+          description: >
+            This site's battery capacity (kWh) - the WEIGHT of the portfolio's
+            average state of charge (Anwendungs-Programm Stufe 4). Without it a
+            fleet average would weigh a 10-kWh house like a 120-kWh plant.
+            null = no battery, never a fake zero.
+        energyToday:
+          nullable: true
+          description: >
+            Energy sums of the running Europe/Berlin day from
+            telemetry_rollup_15m. Energy MAY be summed across plants (unlike a
+            percentage). Every field is individually null when no quarter hour
+            carried that channel; the rollups lag their refresh job by up to 15
+            minutes, which is correct for a day total and wrong for a live
+            value (that one comes from `live`).
+          allOf: [{ $ref: "#/components/schemas/OverviewEnergyToday" }]
+        chargePointCount:
+          type: integer
+          description: >
+            Number of ev-charger entities (roleCounts folds them into
+            `consumer` and therefore cannot answer this).
+        anwendungen:
+          type: array
+          items: { type: string }
+          description: >
+            The site's ACTIVE applications - the stored customer intent over the
+            derivation, exactly the rule GET /sites/{id}/profiles applies. The
+            portfolio cockpit composes its Bausteine from the UNION over the
+            plants; without this it would have to guess, and a switched-off
+            marktvermarktung would stay visible.
+    OverviewEnergyToday:
+      type: object
+      description: >
+        One day's energy sums (kWh). Every field individually nullable - a
+        generation-only plant without a grid meter reports no fabricated 0.
+      properties:
+        pvKwh: { type: number, nullable: true }
+        loadKwh: { type: number, nullable: true }
+        gridImportKwh: { type: number, nullable: true }
+        gridExportKwh: { type: number, nullable: true }
     AdminFleet:
       type: object
       description: The platform-wide fleet aggregate (see GET /api/v1/admin/fleet).

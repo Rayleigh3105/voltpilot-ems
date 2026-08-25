@@ -52,6 +52,28 @@ public record OverviewDto(
      * {@link com.voltpilot.api.profile.UsageProfileDeriver} the profile endpoint
      * runs) - the portfolio Profil-Chip, without an N-per-site round trip.
      *
+     * <p>{@code storageCapacityKwh} ist die Speicher-Kapazität DIESER Anlage
+     * (Stufe 4) — das GEWICHT des Portfolio-Ladestands. Ohne sie wäre der
+     * Flotten-Ladestand das ungewichtete Mittel über Anlagen, und ein
+     * 10-kWh-Haus zöge einen 120-kWh-Betrieb gleich stark. {@code null} = keine
+     * Batterie (nie eine 0).
+     *
+     * <p>{@code energyToday} sind die Energie-Summen des laufenden
+     * Europe/Berlin-Tages aus {@code telemetry_rollup_15m} — Energie darf man
+     * summieren, anders als einen Prozentsatz. Jedes Feld einzeln {@code null},
+     * wenn keine Viertelstunde diesen Kanal getragen hat.
+     *
+     * <p>{@code chargePointCount} ist die Zahl der {@code ev-charger}-Entitäten
+     * (die Rollen-Zählung fasst sie unter {@code consumer} zusammen und kann
+     * sie deshalb nicht beantworten).
+     *
+     * <p>{@code anwendungen} sind die AKTIVEN Anwendungen dieser Anlage — der
+     * gespeicherte Kundenwille über der Ableitung, dieselbe Regel wie
+     * {@code GET /sites/{id}/profiles}. Das Portfolio-Cockpit komponiert seine
+     * Bausteine aus der VEREINIGUNG über die Anlagen; ohne dieses Feld müsste
+     * es raten, und ein abgeschaltetes {@code marktvermarktung} bliebe
+     * sichtbar.
+     *
      * <p>{@code lastPlanGeneratedAt} ist der Zeitpunkt des JÜNGSTEN
      * Optimierer-Laufs dieser Anlage (Admin-Umbau Stufe 1, Spalte „Plan" der
      * Plattform-Übersicht). Der Optimierer plant alle 15 Minuten neu, das Alter
@@ -75,7 +97,20 @@ public record OverviewDto(
             BigDecimal plannedSavingsTodayEur,
             RoleCountsDto roleCounts,
             String usageProfile,
-            Instant lastPlanGeneratedAt) {
+            Instant lastPlanGeneratedAt,
+            BigDecimal storageCapacityKwh,
+            EnergyTodayDto energyToday,
+            int chargePointCount,
+            List<String> anwendungen) {
+    }
+
+    /**
+     * Die Energie-Summen eines Tages (kWh). Jedes Feld einzeln {@code null},
+     * wenn die Anlage diesen Kanal nicht misst oder der Tag noch keine
+     * verdichtete Viertelstunde hat — nie eine erfundene 0.
+     */
+    public record EnergyTodayDto(BigDecimal pvKwh, BigDecimal loadKwh, BigDecimal gridImportKwh,
+            BigDecimal gridExportKwh) {
     }
 
     /**

@@ -1309,6 +1309,7 @@ export function AnlageSeite({
     return out;
   }, [blocks, controlView, guardView, fahrplanRow, strompreisRow, shownWidgets, ovSite, health]);
   const layout = useCockpitLayout({
+    schluessel: site.id,
     siteId: site.id,
     verfuegbar,
     blocks,

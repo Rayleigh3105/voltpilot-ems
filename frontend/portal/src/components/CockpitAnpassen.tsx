@@ -39,6 +39,7 @@ export function AnpassenLeiste({
   onFertig,
   onAbbrechen,
   onZuruecksetzen,
+  mitStern = true,
 }: {
   quelle: LayoutQuelle;
   resetSatz: string;
@@ -53,14 +54,22 @@ export function AnpassenLeiste({
   onFertig: () => void;
   onAbbrechen: () => void;
   onZuruecksetzen: () => void;
+  /**
+   * Gibt es auf DIESER Fläche überhaupt einen Stern? Am Cockpit ja (die
+   * Bühne hat einen Lead), im Portfolio NICHT — dort ist kein Baustein
+   * lead-fähig, und der Server lehnt jeden Lead ab. Eine Anleitung, die einen
+   * Knopf verspricht, den es nicht gibt, schickt den Kunden auf die Suche.
+   */
+  mitStern?: boolean;
 }) {
   return (
     <div className="vp-anpassen-bar" role="region" aria-label="Cockpit anpassen">
       {band && <p className="vp-anpassen-band">{band}</p>}
       <div className="vp-anpassen-bar-row">
         <p className="vp-anpassen-hint">
-          Ordnen Sie die Bausteine mit ▲ ▼, blenden Sie mit dem Auge aus und heben Sie einen
-          Baustein mit dem Stern hervor.
+          {mitStern
+            ? 'Ordnen Sie die Bausteine mit ▲ ▼, blenden Sie mit dem Auge aus und heben Sie einen Baustein mit dem Stern hervor.'
+            : 'Ordnen Sie die Bausteine mit ▲ ▼ und blenden Sie mit dem Auge aus.'}
           {quelle === 'vorgabe-anlage' || quelle === 'vorgabe-kunde'
             ? ' Zurzeit gilt die Vorgabe Ihres Betreibers.'
             : ''}
@@ -105,16 +114,23 @@ export function AnpassenLeiste({
   );
 }
 
-/** Die Bedienelemente EINER Baustein-Zeile — Griff (▲▼), Auge, Stern. */
-export function AnpassenSteuerung({
+/**
+ * Die Bedienelemente EINER Baustein-Zeile — Griff (▲▼), Auge, Stern.
+ *
+ * Generisch über den Baustein-Schlüssel, weil es GENAU EINEN Anpassen-Modus
+ * gibt: das Anlagen-Cockpit und das Portfolio-Cockpit (Stufe 4) haben
+ * verschiedene Baustein-Mengen, aber dieselbe Bedienung. Ein zweiter Editor
+ * wäre eine zweite Bedienlogik für dieselbe Handlung.
+ */
+export function AnpassenSteuerung<T extends string = BausteinId>({
   zeile,
   onVerschieben,
   onSichtbar,
   onLead,
 }: {
-  zeile: AnpassenZeile;
-  onVerschieben: (id: BausteinId, richtung: 'hoch' | 'runter') => void;
-  onSichtbar: (id: BausteinId, sichtbar: boolean) => void;
+  zeile: AnpassenZeile<T>;
+  onVerschieben: (id: T, richtung: 'hoch' | 'runter') => void;
+  onSichtbar: (id: T, sichtbar: boolean) => void;
   onLead: (block: CockpitBlockId) => void;
 }) {
   return (
@@ -190,7 +206,7 @@ export function AnpassenSteuerung({
  * E4 den Inline-Modus einer eigenen Einstellungs-Seite vorzieht („sonst
  * gestaltet der Kunde blind").
  */
-export function AnpassenHuelle({
+export function AnpassenHuelle<T extends string = BausteinId>({
   zeile,
   children,
   note,
@@ -198,7 +214,7 @@ export function AnpassenHuelle({
   onSichtbar,
   onLead,
 }: {
-  zeile: AnpassenZeile;
+  zeile: AnpassenZeile<T>;
   children?: ReactNode;
   /**
    * Ein Baustein OHNE eigenen Knoten am Rechner (die Geld-Leiste und der
@@ -208,8 +224,8 @@ export function AnpassenHuelle({
    * gibt.
    */
   note?: string | null;
-  onVerschieben: (id: BausteinId, richtung: 'hoch' | 'runter') => void;
-  onSichtbar: (id: BausteinId, sichtbar: boolean) => void;
+  onVerschieben: (id: T, richtung: 'hoch' | 'runter') => void;
+  onSichtbar: (id: T, sichtbar: boolean) => void;
   onLead: (block: CockpitBlockId) => void;
 }) {
   return (
@@ -234,15 +250,15 @@ export function AnpassenHuelle({
  * Inline-Overlay über einem Diagramm nicht bedienbar — die Liste zeigt
  * dieselben Zeilen mit denselben drei Bedienelementen.
  */
-export function AnpassenListe({
+export function AnpassenListe<T extends string = BausteinId>({
   zeilen,
   onVerschieben,
   onSichtbar,
   onLead,
 }: {
-  zeilen: AnpassenZeile[];
-  onVerschieben: (id: BausteinId, richtung: 'hoch' | 'runter') => void;
-  onSichtbar: (id: BausteinId, sichtbar: boolean) => void;
+  zeilen: AnpassenZeile<T>[];
+  onVerschieben: (id: T, richtung: 'hoch' | 'runter') => void;
+  onSichtbar: (id: T, sichtbar: boolean) => void;
   onLead: (block: CockpitBlockId) => void;
 }) {
   const sichtbar = zeilen.filter((z) => z.sichtbar);
@@ -276,15 +292,15 @@ export function AnpassenListe({
  * Bausteine bleiben ERREICHBAR. Ohne sie wäre „ausblenden" ein Weg ohne
  * Rückweg — der Kunde müsste raten, was er einmal versteckt hat.
  */
-export function AusgeblendetZeile({
+export function AusgeblendetZeile<T extends string = BausteinId>({
   zeilen,
   onVerschieben,
   onSichtbar,
   onLead,
 }: {
-  zeilen: AnpassenZeile[];
-  onVerschieben: (id: BausteinId, richtung: 'hoch' | 'runter') => void;
-  onSichtbar: (id: BausteinId, sichtbar: boolean) => void;
+  zeilen: AnpassenZeile<T>[];
+  onVerschieben: (id: T, richtung: 'hoch' | 'runter') => void;
+  onSichtbar: (id: T, sichtbar: boolean) => void;
   onLead: (block: CockpitBlockId) => void;
 }) {
   if (zeilen.length === 0) return null;

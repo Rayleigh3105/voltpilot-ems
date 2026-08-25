@@ -5,6 +5,7 @@ import type {
   CockpitLayoutDocument,
   CockpitLayoutLayer,
   CockpitLayoutResponse,
+  Flaeche as CockpitLayoutFlaeche,
 } from './cockpitLayout';
 import type { Profil } from './anwendungen';
 import type {
@@ -1449,6 +1450,35 @@ export interface OverviewSite {
    * Servers bzw. älteres Backend — nie ein erfundenes Alter.
    */
   lastPlanGeneratedAt?: string | null;
+  /**
+   * Die Speicher-Kapazität DIESER Anlage (kWh) — das GEWICHT des
+   * Portfolio-Ladestands (Stufe 4). `null`/absent = keine Batterie, nie eine 0.
+   */
+  storageCapacityKwh?: number | null;
+  /**
+   * Die Energie-Summen des laufenden Berliner Tages. Jedes Feld einzeln
+   * `null`: eine reine Erzeuger-Anlage ohne Netz-Messung meldet kein
+   * erfundenes `grid = 0`. Die Rollups hinken ihrem Auffrisch-Takt bis zu
+   * 15 Minuten hinterher — für eine Tagessumme richtig, für „jetzt" falsch
+   * (das kommt aus `live`).
+   */
+  energyToday?: OverviewEnergyToday | null;
+  /** Zahl der Ladepunkte (`roleCounts` fasst sie unter `consumer` zusammen). */
+  chargePointCount?: number;
+  /**
+   * Die AKTIVEN Anwendungen dieser Anlage — gespeicherter Kundenwille über der
+   * Ableitung, dieselbe Regel wie das Regal. Absent = älteres Backend; das
+   * Portfolio leitet dann aus der Zeile ab, was es belegen kann.
+   */
+  anwendungen?: string[];
+}
+
+/** Die Energie-Summen eines Tages (kWh), jedes Feld einzeln `null`-fähig. */
+export interface OverviewEnergyToday {
+  pvKwh: number | null;
+  loadKwh: number | null;
+  gridImportKwh: number | null;
+  gridExportKwh: number | null;
 }
 
 /** Σ v2 entities per topology role (U5 portfolio "Entitäten" badge). */
@@ -2548,6 +2578,7 @@ export type {
   CockpitLayoutDocument,
   CockpitLayoutLayer,
   CockpitLayoutResponse,
+  Flaeche as CockpitLayoutFlaeche,
 } from './cockpitLayout';
 
 /**
@@ -3149,17 +3180,31 @@ export const api = {
     request<CockpitLayoutResponse>(`/api/v1/sites/${siteId}/cockpit-layout?layer=${layer}`, {
       method: 'DELETE',
     }),
-  /** Die kunden-weite Vorgabe „für alle meine Anlagen" (E1). */
-  tenantCockpitLayout: () => request<CockpitLayoutResponse>('/api/v1/tenant/cockpit-layout'),
-  saveTenantCockpitLayout: (layer: CockpitLayoutLayer, document: CockpitLayoutDocument) =>
-    request<CockpitLayoutResponse>(`/api/v1/tenant/cockpit-layout?layer=${layer}`, {
-      method: 'PUT',
-      body: JSON.stringify(document),
-    }),
-  resetTenantCockpitLayout: (layer: CockpitLayoutLayer) =>
-    request<CockpitLayoutResponse>(`/api/v1/tenant/cockpit-layout?layer=${layer}`, {
-      method: 'DELETE',
-    }),
+  /**
+   * Die kunden-weite Schicht EINER Fläche: auf `cockpit` die Vorgabe „für alle
+   * meine Anlagen" (E1), auf `portfolio` das Kunden-Cockpit selbst (Stufe 4) —
+   * dort ist `eigen` der Wille des Kunden. Ein Aufruf ohne Fläche bleibt
+   * zeichengleich auf `cockpit`.
+   */
+  tenantCockpitLayout: (surface: CockpitLayoutFlaeche = 'cockpit') =>
+    request<CockpitLayoutResponse>(`/api/v1/tenant/cockpit-layout?surface=${surface}`),
+  saveTenantCockpitLayout: (
+    layer: CockpitLayoutLayer,
+    document: CockpitLayoutDocument,
+    surface: CockpitLayoutFlaeche = 'cockpit',
+  ) =>
+    request<CockpitLayoutResponse>(
+      `/api/v1/tenant/cockpit-layout?surface=${surface}&layer=${layer}`,
+      { method: 'PUT', body: JSON.stringify(document) },
+    ),
+  resetTenantCockpitLayout: (
+    layer: CockpitLayoutLayer,
+    surface: CockpitLayoutFlaeche = 'cockpit',
+  ) =>
+    request<CockpitLayoutResponse>(
+      `/api/v1/tenant/cockpit-layout?surface=${surface}&layer=${layer}`,
+      { method: 'DELETE' },
+    ),
   /** Seed this site's starter flow DRAFT (customer twin, idempotent). */
   autoStart: (siteId: string) =>
     request<{ created: boolean; reason?: string | null; message?: string | null }>(

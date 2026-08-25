@@ -3619,6 +3619,50 @@ button.vp-tech-card-h.toggle {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
   gap: var(--vp-gap);
 }
+
+/*
+ * Anwendungs-Programm Stufe 4: EIN Baustein kann ZWEI Kacheln tragen
+ * (Netz heute = Bezug + Einspeisung, Speicher = Größe + Ladestand, Erlöse =
+ * heute + Zeitraum). Die Wrapper sind reine Gruppierungs-Knoten OHNE Semantik,
+ * also treten sie mit `display: contents` zur Seite und die KACHELN selbst
+ * werden Gitter-Zellen — sonst stauchte ein Paar seine zwei Karten in EINE
+ * Spalte und die Reihe stünde schief neben den Einzel-Kacheln.
+ */
+.vp-portfolio-kpis > .vp-portfolio-kachel,
+.vp-portfolio-kpis > .vp-portfolio-kachel > .vp-portfolio-kpi-paar {
+  display: contents;
+}
+
+/*
+ * Im ANPASSEN-Modus ist das Paar dagegen EIN Baustein und muss als solcher
+ * zusammenbleiben (es hat EINEN Griff und EIN Auge) — dort bekommt es sein
+ * eigenes kleines Gitter statt `display: contents`.
+ */
+.vp-anpassen-inhalt > .vp-portfolio-kpi-paar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
+  gap: var(--vp-gap);
+}
+
+/*
+ * ⚠ Im Anpassen-Modus stehen die Portfolio-Bausteine in einer SCHMALEN
+ * Gitterspalte (235 px), nicht wie am Cockpit in einer vollbreiten Zeile —
+ * dort schob ein längerer Name („Erzeugung heute") das Auge in eine zweite
+ * Reihe, und die Bedienelemente EINES Bausteins standen auf zwei Zeilen. Die
+ * Knopf-Gruppe bleibt deshalb hier zusammen und der NAME weicht (er steht
+ * ohnehin vollständig im `aria-label` der Hülle und in jedem Knopf-Label).
+ * Bewusst NUR im Portfolio-Gitter — am Cockpit ist der Platz da.
+ */
+.vp-portfolio-kpis .vp-anpassen-ctrl {
+  flex-wrap: nowrap;
+}
+.vp-portfolio-kpis .vp-anpassen-name {
+  flex: 1 1 0;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .vp-portfolio-table td {
   vertical-align: middle;
 }

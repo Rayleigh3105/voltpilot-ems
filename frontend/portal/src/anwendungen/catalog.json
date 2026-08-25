@@ -83,8 +83,16 @@
     "               Lead setzt; null = kein Stern. Der Lead ist eine EIGENE",
     "               Achse (leadSlot.ts LEAD_CANDIDATES), deshalb ein eigenes",
     "               Feld und keine Position in 'order'.",
-    "  flaeche    - 'cockpit' heute; 'portfolio' ist fuer Stufe 4 reserviert,",
-    "               damit der Layout-Speicher scope-generisch bleibt.",
+    "  flaeche    - 'cockpit' (das Anlagen-Cockpit) oder 'portfolio' (das",
+    "               Kunden-Cockpit ueber alle Anlagen, Stufe 4). Beide Flaechen",
+    "               teilen EINEN Speicher und EINE Aufloesung; getrennt sind",
+    "               nur die Baustein-Mengen, weil nicht jeder Anlagen-Baustein",
+    "               aggregierbar ist (ein Energiefluss ueber drei Filialen",
+    "               waere eine Erfindung, §3.5).",
+    "  bloecke    - nur fuer 'cockpit': die CockpitBlockIds, die der Baustein",
+    "               rendert. Ein PORTFOLIO-Baustein hat darunter keine",
+    "               Blockschicht - er IST die Einheit; wer ihn beisteuert,",
+    "               steht deshalb direkt in anwendungen[].bausteine.portfolio.",
     "",
     "DIE KANONISCHE REIHENFOLGE STEHT HIER BEWUSST NICHT: sie ist je",
     "Bildschirmbreite verschieden (am Telefon fuehren Fahrplan und Preis als",
@@ -93,12 +101,20 @@
     "Listen leben deshalb im Portal (cockpitLayout.ts), das sie rendert; der",
     "Server braucht sie nicht, um einen Schluessel zu pruefen.",
     "",
-    "'presets[].layout' ist die zweite Schicht der Aufloesung (Katalog ->",
-    "Preset -> Vorgabe -> Eigen). Sie ist bewusst MINIMAL: 'privat' setzt den",
-    "Lead auf den Energiefluss (ein Haushalt liest seinen Fluss, nicht seine",
-    "Lastspitze), 'gewerbe' aendert NICHTS und laesst damit die M0-Regel",
-    "peak -> Geld -> Fluss stehen. Ein Preset, das viel umstellt, macht den",
+    "'presets[].layouts' ist die zweite Schicht der Aufloesung (Katalog ->",
+    "Preset -> Vorgabe -> Eigen), JE FLAECHE eine. Sie ist bewusst MINIMAL:",
+    "auf dem Cockpit setzt 'privat' den Lead auf den Energiefluss (ein",
+    "Haushalt liest seinen Fluss, nicht seine Lastspitze) und 'gewerbe'",
+    "aendert NICHTS, laesst also die M0-Regel peak -> Geld -> Fluss stehen;",
+    "im Portfolio stellt 'privat' das Energie-Bild vor das Geld und 'gewerbe'",
+    "aendert wieder nichts. Ein Preset, das viel umstellt, macht den",
     "Reset-Knopf zu einer Ueberraschung.",
+    "",
+    "⚠ Das Portfolio haengt am KUNDEN, ein Profil an der ANLAGE - welches",
+    "Preset also fuer die Kunden-Flaeche gilt, ist eine MEHRHEITS-Frage. Die",
+    "Regel steht im Portal (portfolioCockpit.ts portfolioProfil): das",
+    "haeufigste gesetzte Profil gewinnt, ein Gleichstand und 'gar keins'",
+    "ergeben KEIN Preset - nie eine geratene Zielgruppe.",
     "",
     "DAS PROFIL IST NIE EIN SIGNAL DER ABLEITUNG (Captain-Entscheid E3): es",
     "ist Vorauswahl + Tonalitaet + Reset-Basis, mehr nicht. Die Wahrheit",
@@ -112,6 +128,7 @@
   "profile": ["privat", "gewerbe"],
   "tonalitaeten": ["sparen", "verdienen"],
   "baustein_flaechen": ["cockpit", "portfolio"],
+  "aggregations_arten": ["summe", "gewichtet", "je_anlage"],
   "bausteine": [
     {
       "id": "status",
@@ -199,6 +216,116 @@
       "beweglich": true,
       "lead_block": null,
       "bloecke": []
+    },
+    {
+      "id": "flotten-status",
+      "label": "Flotten-Status",
+      "flaeche": "portfolio",
+      "pflicht": true,
+      "beweglich": false,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "je_anlage",
+      "aggregation_regel": "Zählt die Anlagen nach Zustand; es wird KEIN Messwert über Anlagen hinweg verrechnet."
+    },
+    {
+      "id": "erloese",
+      "label": "Erlöse",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "summe",
+      "aggregation_regel": "Σ der GEMESSENEN Erlöse bzw. Ersparnis über die Anlagen. Ein Durchschnittspreis wird NICHT gebildet - über verschiedene Gebotszonen und Tarife hätte er keine Bedeutung."
+    },
+    {
+      "id": "speicher",
+      "label": "Speicher",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "gewichtet",
+      "aggregation_regel": "Kapazität und Leistung werden summiert; der Ladestand ist mit der Kapazität GEWICHTET (Σ(soc × kWh) / Σ kWh). Ein ungewichtetes Mittel ließe ein 10-kWh-Haus so schwer wiegen wie einen 120-kWh-Betrieb; eine Anlage ohne gepflegte Kapazität geht gar nicht ein."
+    },
+    {
+      "id": "lastspitzen",
+      "label": "Lastspitzen",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "summe",
+      "aggregation_regel": "Σ der VERMIEDENEN Spitze (kW und EUR) über die Anlagen mit Lastspitzenkappung. Die Spitzen selbst werden NICHT summiert: jede Anlage hat ihren eigenen Netzanschluss und ihre eigene Abrechnungsperiode, eine Flotten-Spitze gibt es physikalisch nicht."
+    },
+    {
+      "id": "ladepunkte",
+      "label": "Ladepunkte",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "summe",
+      "aggregation_regel": "Σ der Ladepunkte der Flotte."
+    },
+    {
+      "id": "pv-jetzt",
+      "label": "PV jetzt",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "summe",
+      "aggregation_regel": "Σ der PV-Leistung über die Anlagen mit FRISCHEM Messwert. Eine Anlage, die gerade ihren Puffer mit alten Zeitstempeln nachspielt, geht nicht ein - das wäre kein „jetzt\"; die Fläche nennt die Zahl der beitragenden Anlagen."
+    },
+    {
+      "id": "erzeugung-heute",
+      "label": "Erzeugung heute",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "summe",
+      "aggregation_regel": "Σ der Erzeugungs-Energie des laufenden Berliner Tages. Energie darf man summieren; eine Anlage ohne PV-Kanal trägt nichts bei - nie eine erfundene 0."
+    },
+    {
+      "id": "verbrauch-heute",
+      "label": "Verbrauch heute",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "summe",
+      "aggregation_regel": "Σ der Verbrauchs-Energie des laufenden Berliner Tages, dieselbe Regel wie die Erzeugung."
+    },
+    {
+      "id": "netz-heute",
+      "label": "Netz heute",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "summe",
+      "aggregation_regel": "Bezug und Einspeisung werden GETRENNT summiert, nie saldiert: eine Filiale, die einspeist, darf den Bezug einer anderen nicht rechnerisch tilgen."
+    },
+    {
+      "id": "anlagen",
+      "label": "Anlagen",
+      "flaeche": "portfolio",
+      "pflicht": true,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "je_anlage",
+      "aggregation_regel": "Eine Zeile bzw. Karte je Anlage; jede Zahl gehört genau EINER Anlage. Prozentwerte (Autarkie, Eigenverbrauchsquote) bleiben deshalb hier und werden nie zu einem Flotten-Mittel."
     }
   ],
   "presets": [
@@ -207,14 +334,33 @@
       "label": "Privat",
       "satz": "Ein Haushalt mit eigener Erzeugung - wir starten damit, Ihren eigenen Strom im Haus zu halten und Ihre Geraete danach laufen zu lassen.",
       "tonalitaet": "sparen",
-      "layout": { "order": [], "hidden": [], "shown": [], "lead": "energiefluss" }
+      "layouts": {
+        "cockpit": { "order": [], "hidden": [], "shown": [], "lead": "energiefluss" },
+        "portfolio": {
+          "order": [
+            "flotten-status",
+            "pv-jetzt",
+            "erzeugung-heute",
+            "verbrauch-heute",
+            "netz-heute",
+            "speicher",
+            "erloese"
+          ],
+          "hidden": [],
+          "shown": [],
+          "lead": null
+        }
+      }
     },
     {
       "id": "gewerbe",
       "label": "Gewerbe",
       "satz": "Ein Betrieb mit Leistungsmessung oder Vermarktung - wir starten mit dem, was am Netzanschluss und am Markt Geld bringt.",
       "tonalitaet": "verdienen",
-      "layout": { "order": [], "hidden": [], "shown": [], "lead": null }
+      "layouts": {
+        "cockpit": { "order": [], "hidden": [], "shown": [], "lead": null },
+        "portfolio": { "order": [], "hidden": [], "shown": [], "lead": null }
+      }
     }
   ],
   "anwendungen": [
@@ -246,6 +392,14 @@
       "bausteine": {
         "cockpit": ["status", "energiefluss", "toolbox-pointer"],
         "ansichten": ["live", "geraete", "telemetrie-historie", "wetter"],
+        "portfolio": [
+          "flotten-status",
+          "pv-jetzt",
+          "erzeugung-heute",
+          "verbrauch-heute",
+          "netz-heute",
+          "anlagen"
+        ],
         "geldstrom": null,
         "steuerungskarte": false,
         "nav_gruppe": false
@@ -283,6 +437,10 @@
       "bausteine": {
         "cockpit": [],
         "ansichten": ["fahrplan", "prognosequalitaet"],
+        "portfolio": [
+          "speicher",
+          "erloese"
+        ],
         "geldstrom": null,
         "steuerungskarte": false,
         "nav_gruppe": false
@@ -325,6 +483,7 @@
       "bausteine": {
         "cockpit": ["geraete-automatik"],
         "ansichten": ["flow-editor"],
+        "portfolio": [],
         "geldstrom": null,
         "steuerungskarte": false,
         "nav_gruppe": false
@@ -362,6 +521,7 @@
       "bausteine": {
         "cockpit": ["geraete-automatik"],
         "ansichten": ["flow-editor"],
+        "portfolio": [],
         "geldstrom": null,
         "steuerungskarte": false,
         "nav_gruppe": false
@@ -404,6 +564,9 @@
       "bausteine": {
         "cockpit": ["handel"],
         "ansichten": ["fahrplan", "marktpreise", "prognosequalitaet", "erloes-historie"],
+        "portfolio": [
+          "erloese"
+        ],
         "geldstrom": "einspeisung",
         "steuerungskarte": true,
         "nav_gruppe": true
@@ -446,6 +609,9 @@
       "bausteine": {
         "cockpit": ["peak-band"],
         "ansichten": ["lastspitzen", "erloes-historie"],
+        "portfolio": [
+          "lastspitzen"
+        ],
         "geldstrom": "lastspitzen",
         "steuerungskarte": true,
         "nav_gruppe": true
@@ -483,6 +649,7 @@
       "bausteine": {
         "cockpit": [],
         "ansichten": [],
+        "portfolio": [],
         "geldstrom": null,
         "steuerungskarte": true,
         "nav_gruppe": true
@@ -525,6 +692,9 @@
       "bausteine": {
         "cockpit": ["lade-budget"],
         "ansichten": ["ladevorgaenge"],
+        "portfolio": [
+          "ladepunkte"
+        ],
         "geldstrom": null,
         "steuerungskarte": true,
         "nav_gruppe": true
@@ -556,6 +726,7 @@
       "bausteine": {
         "cockpit": [],
         "ansichten": [],
+        "portfolio": [],
         "geldstrom": null,
         "steuerungskarte": false,
         "nav_gruppe": false
@@ -587,6 +758,7 @@
       "bausteine": {
         "cockpit": [],
         "ansichten": [],
+        "portfolio": [],
         "geldstrom": null,
         "steuerungskarte": false,
         "nav_gruppe": false

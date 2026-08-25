@@ -157,12 +157,27 @@ class AnwendungKatalogTest {
                 "lastspitzen", "flow-editor");
         Set<String> streams = Set.of("eigenverbrauchswert", "einspeisung", "handel", "lastspitzen",
                 "automation");
+        // Ein PORTFOLIO-Beitrag nennt unmittelbar einen Baustein der
+        // Kunden-Fläche - dort gibt es keine Blockschicht darunter (Stufe 4).
+        Set<String> portfolio = katalog.bausteine(AnwendungKatalog.FLAECHE_PORTFOLIO).stream()
+                .map(AnwendungKatalog.Baustein::id).collect(java.util.stream.Collectors.toSet());
         for (Anwendung a : katalog.alle()) {
             assertThat(blocks).as(a.id()).containsAll(a.bausteine().cockpit());
             assertThat(views).as(a.id()).containsAll(a.bausteine().ansichten());
+            assertThat(portfolio).as(a.id()).containsAll(a.bausteine().portfolio());
             if (a.bausteine().geldstrom() != null) {
                 assertThat(streams).as(a.id()).contains(a.bausteine().geldstrom());
             }
+        }
+    }
+
+    @Test
+    void everyPortfolioBuildingBlockIsContributedByAtLeastOneApplication() {
+        // Ein Baustein, den keine Anwendung beisteuert, könnte auf der
+        // Kunden-Fläche nie erscheinen - er wäre toter Katalog.
+        for (AnwendungKatalog.Baustein b
+                : katalog.bausteine(AnwendungKatalog.FLAECHE_PORTFOLIO)) {
+            assertThat(katalog.beigesteuertVon(b.id())).as(b.id()).isNotEmpty();
         }
     }
 
@@ -221,6 +236,44 @@ class AnwendungKatalogTest {
                 assertThat(katalog.find(id).istBasis()).as(id).isFalse();
             }
         }
+    }
+
+    @Test
+    void everyPortfolioBuildingBlockDocumentsItsAggregationRuleAndNoOtherOneDoes() {
+        // Anwendungs-Programm Stufe 4: die Zusammenfassung über die Anlagen
+        // eines Kunden ist eine BEHAUPTUNG, also muss jeder Portfolio-Baustein
+        // sagen, WIE er sie bildet - und das aus einem GESCHLOSSENEN Vokabular,
+        // in dem ein ungewichtetes Prozent-Mittel gar nicht vorkommt.
+        List<String> arten = List.of("summe", "gewichtet", "je_anlage");
+        int portfolio = 0;
+        for (AnwendungKatalog.Baustein b : katalog.bausteine(null)) {
+            if (AnwendungKatalog.FLAECHE_PORTFOLIO.equals(b.flaeche())) {
+                portfolio++;
+                assertThat(b.aggregation()).as(b.id()).isIn(arten);
+                // Der Satz ist Pflicht: eine Art ohne Begründung wäre eine
+                // Kennzahl, deren Ehrlichkeit niemand nachlesen kann.
+                assertThat(b.aggregationRegel()).as(b.id()).isNotBlank();
+            } else {
+                // Ein Cockpit-Baustein zeigt EINE Anlage - er fasst nichts
+                // zusammen, und eine Regel dort wäre eine erfundene Aussage.
+                assertThat(b.aggregation()).as(b.id()).isNull();
+                assertThat(b.aggregationRegel()).as(b.id()).isNull();
+            }
+        }
+        assertThat(portfolio).isGreaterThanOrEqualTo(8);
+    }
+
+    @Test
+    void theWeightedRuleIsUsedExactlyWhereAPercentageWouldOtherwiseLie() {
+        // Der Ladestand ist der EINE Portfolio-Wert, der ein Mittel ist - und
+        // er trägt sein Gewicht (die Kapazität). Jede andere Kachel summiert
+        // oder zählt je Anlage; eine zweite „gewichtet"-Kachel wäre ein Hinweis
+        // darauf, dass jemand einen Prozentsatz gemittelt hat.
+        List<String> gewichtet = katalog.bausteine(AnwendungKatalog.FLAECHE_PORTFOLIO).stream()
+                .filter(b -> "gewichtet".equals(b.aggregation()))
+                .map(AnwendungKatalog.Baustein::id)
+                .toList();
+        assertThat(gewichtet).containsExactly("speicher");
     }
 
     @Test

@@ -79,12 +79,25 @@ public class AnwendungKatalog {
     /** Diese Anwendung gehoert zur Vorauswahl des Profils. */
     public static final String PRESET_AN = "an";
 
+    /** Die Fläche „Anlagen-Cockpit". */
+    public static final String FLAECHE_COCKPIT = "cockpit";
+    /** Die Fläche „Portfolio-Cockpit" (Stufe 4) — sie hängt am KUNDEN. */
+    public static final String FLAECHE_PORTFOLIO = "portfolio";
+
     /** Eine Voraussetzung: der Chip, plus der Satz für genau ihr Fehlen. */
     public record Voraussetzung(String id, String label, String blockedReason) {}
 
-    /** Was eine Anwendung zur Oberfläche beiträgt. */
-    public record Bausteine(List<String> cockpit, List<String> ansichten, String geldstrom,
-            boolean steuerungskarte, boolean navGruppe) {}
+    /**
+     * Was eine Anwendung zur Oberfläche beiträgt.
+     *
+     * <p>{@code cockpit} nennt {@code CockpitBlockId}s (die Blockschicht des
+     * Anlagen-Cockpits), {@code portfolio} dagegen unmittelbar
+     * BAUSTEIN-Schlüssel der Kunden-Fläche: dort gibt es keine Blockschicht,
+     * ein Portfolio-Baustein IST die Einheit (Stufe 4, §3.5).
+     */
+    public record Bausteine(List<String> cockpit, List<String> portfolio,
+            List<String> ansichten, String geldstrom, boolean steuerungskarte,
+            boolean navGruppe) {}
 
     /**
      * Die Vorauswahl je Profil: {@code an} | {@code angeboten} |
@@ -141,9 +154,22 @@ public class AnwendungKatalog {
      * @param leadBlock die {@code CockpitBlockId}, die sein Stern als Lead
      *                  setzt; null = kein Stern
      * @param bloecke   die {@code CockpitBlockId}s, die er rendert
+     * @param aggregation      NUR auf der Fläche {@code portfolio} gesetzt (sonst
+     *                  {@code null}): WIE dieser Baustein über die Anlagen des
+     *                  Kunden zusammenfasst — {@code summe} (Energie, Leistung,
+     *                  Geld, Stückzahlen), {@code gewichtet} (ein Mittel, das
+     *                  ein Gewicht trägt) oder {@code je_anlage} (er fasst gar
+     *                  nichts zusammen, sondern zeigt je Anlage eine Zeile).
+     *                  <b>Ein Prozent-Mittel OHNE Gewicht gibt es in diesem
+     *                  Vokabular nicht</b> — genau das ist die Regel, die
+     *                  „Ø Autarkie der Flotte" verhindert.
+     * @param aggregationRegel der deutsche Satz, der die Regel AUSSPRICHT (und
+     *                  ausdrücklich sagt, was NICHT zusammengefasst wird);
+     *                  {@code null} ausserhalb der Portfolio-Fläche
      */
     public record Baustein(String id, String label, String flaeche, boolean pflicht,
-            boolean beweglich, String leadBlock, List<String> bloecke) {}
+            boolean beweglich, String leadBlock, List<String> bloecke, String aggregation,
+            String aggregationRegel) {}
 
     /**
      * Ein Layout-Dokument: der gespeicherte WILLE, nie die abgeleitete Fläche.
@@ -248,13 +274,17 @@ public class AnwendungKatalog {
             if (profileById.put(profil.id(), profil) != null) {
                 throw new IllegalStateException("duplicate preset id: " + profil.id());
             }
-            presetLayoutById.put(profil.id(), parseLayout(p.path("layout")));
+            for (String flaeche : List.of(FLAECHE_COCKPIT, FLAECHE_PORTFOLIO)) {
+                presetLayoutById.put(layoutKey(profil.id(), flaeche),
+                        parseLayout(p.path("layouts").path(flaeche)));
+            }
         }
         for (JsonNode b : raw.path("bausteine")) {
             Baustein baustein = new Baustein(b.path("id").asText(), b.path("label").asText(),
                     b.path("flaeche").asText(), b.path("pflicht").asBoolean(false),
                     b.path("beweglich").asBoolean(false), text(b, "lead_block"),
-                    strings(b.path("bloecke")));
+                    strings(b.path("bloecke")), text(b, "aggregation"),
+                    text(b, "aggregation_regel"));
             if (bausteinById.put(baustein.id(), baustein) != null) {
                 throw new IllegalStateException("duplicate baustein id: " + baustein.id());
             }
@@ -269,7 +299,7 @@ public class AnwendungKatalog {
         }
         JsonNode b = a.path("bausteine");
         Bausteine bausteine = new Bausteine(strings(b.path("cockpit")),
-                strings(b.path("ansichten")), text(b, "geldstrom"),
+                strings(b.path("portfolio")), strings(b.path("ansichten")), text(b, "geldstrom"),
                 b.path("steuerungskarte").asBoolean(false), b.path("nav_gruppe").asBoolean(false));
         JsonNode p = a.path("preset");
         return new Anwendung(a.path("id").asText(), a.path("label").asText(),
@@ -395,17 +425,34 @@ public class AnwendungKatalog {
     }
 
     /**
-     * Die Anwendungen, die diesen Baustein BEISTEUERN — abgeleitet aus
-     * {@code bloecke} × {@code anwendungen[].bausteine.cockpit}, nie aus einer
-     * zweiten Liste. Ein Baustein ohne Blöcke (Fahrplan, Steuerung, Preis,
-     * Komponenten, Zustand) ist Grundausstattung und hat keine Beisteuerer.
+     * Die Anwendungen, die diesen Baustein BEISTEUERN — nie aus einer zweiten
+     * Liste, sondern aus dem, was die Anwendungen ohnehin nennen.
+     *
+     * <p>Die zwei Flächen kommen dabei verschieden dorthin, und das ist kein
+     * Schönheitsfehler: ein COCKPIT-Baustein rendert mehrere Blöcke, also läuft
+     * die Zuordnung über {@code bloecke} × {@code bausteine.cockpit} (ein
+     * Baustein ohne Blöcke — Fahrplan, Steuerung, Preis, Komponenten, Zustand —
+     * ist Grundausstattung und hat keine Beisteuerer). Ein PORTFOLIO-Baustein
+     * hat keine Blockschicht unter sich, er IST die Einheit — dort steht sein
+     * Schlüssel direkt in {@code bausteine.portfolio}.
      */
     public List<String> beigesteuertVon(String bausteinId) {
         Baustein b = baustein(bausteinId);
-        if (b == null || b.bloecke().isEmpty()) {
+        if (b == null) {
             return List.of();
         }
         List<String> out = new ArrayList<>();
+        if (FLAECHE_PORTFOLIO.equals(b.flaeche())) {
+            for (Anwendung a : byId.values()) {
+                if (a.bausteine().portfolio().contains(b.id())) {
+                    out.add(a.id());
+                }
+            }
+            return List.copyOf(out);
+        }
+        if (b.bloecke().isEmpty()) {
+            return List.of();
+        }
         for (Anwendung a : byId.values()) {
             for (String block : a.bausteine().cockpit()) {
                 if (b.bloecke().contains(block)) {
@@ -418,14 +465,23 @@ public class AnwendungKatalog {
     }
 
     /**
-     * Das Layout-Dokument eines Profil-PRESETS — die zweite Schicht der
-     * Auflösung (Katalog → Preset → Vorgabe → Eigen). Ohne Profil oder ohne
-     * Eintrag ist es das leere Dokument: ein Preset, das nichts sagt, ändert
-     * auch nichts.
+     * Das Layout-Dokument eines Profil-PRESETS für EINE Fläche — die zweite
+     * Schicht der Auflösung (Katalog → Preset → Vorgabe → Eigen). Ohne Profil
+     * oder ohne Eintrag ist es das leere Dokument: ein Preset, das nichts sagt,
+     * ändert auch nichts.
+     *
+     * <p><b>Die Fläche ist ein Parameter, kein Detail:</b> das Cockpit-Preset
+     * von {@code privat} setzt den Lead auf den Energiefluss — eine
+     * {@code CockpitBlockId}, die es im Portfolio gar nicht gibt. Es dorthin
+     * durchzureichen wäre ein Dokument, das die Form-Prüfung zu Recht ablehnt.
      */
-    public LayoutDoc presetLayout(String profil) {
-        LayoutDoc doc = profil == null ? null : presetLayoutById.get(profil);
+    public LayoutDoc presetLayout(String profil, String flaeche) {
+        LayoutDoc doc = profil == null ? null : presetLayoutById.get(layoutKey(profil, flaeche));
         return doc == null ? LayoutDoc.leer() : doc;
+    }
+
+    private static String layoutKey(String profil, String flaeche) {
+        return profil + "\u0000" + flaeche;
     }
 
     public List<String> vorauswahl(String profil) {

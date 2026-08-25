@@ -50,35 +50,53 @@ export function isFleetShell(betriebsart: Betriebsart | null, siteCount: number)
 }
 
 /**
- * The Betreiber PORTFOLIO shell (U5): the tenant's EFFECTIVE frame is
- * `betreiber`. This is the ONLY thing that swaps the `Übersicht` sidebar item +
- * card landing for the `Portfolio` page + operator table; an `endkunde` (even
- * with 2-3 Anlagen) keeps the calm card Übersicht, and a null/unknown frame
- * falls back to the endkunde behavior. Distinct from {@link isFleetShell} (the
- * "is there a fleet LEVEL at all" question, which an endkunde with 2+ Anlagen
- * also answers yes to).
+ * Der BETREIBER-Rahmen: die EFFEKTIVE Betriebsart des Mandanten ist
+ * `betreiber`.
+ *
+ * ⚠ Seit dem Anwendungs-Programm Stufe 4 (Captain-Entscheid E5) entscheidet
+ * er NICHT mehr, WELCHE Fläche die Flotten-Ebene zeigt — es gibt nur noch EINE
+ * ({@link showPortfolioNav}). Er steuert dort ausschliesslich DICHTE (Tabelle
+ * statt Karten, `portfolioDichte`) und TONALITÄT (`fleetTonalitaet`). Sein
+ * zweiter Nutzen ist unverändert: ein Betreiber hat seine Flotten-Ebene ab der
+ * ERSTEN Anlage, ein Endkunde erst ab der zweiten.
  */
 export function isBetreiberShell(betriebsart: Betriebsart | null): boolean {
   return betriebsart === 'betreiber';
 }
 
 /**
- * Whether the sidebar shows the `Portfolio` item (and the landing is the
- * Portfolio page). Betreiber tenants only, once the load + tenant context are
- * settled. Admins reach it by selecting a betreiber tenant in the switcher
- * (their tenant-context then reports `betreiber`), so no special admin case is
- * needed here.
+ * Zeigt die Schale den Punkt `Portfolio` — und ist die Landung damit das
+ * Portfolio-Cockpit?
+ *
+ * ⚠ **Anwendungs-Programm Stufe 4 (E5): die Bedingung ist die FLOTTEN-Ebene,
+ * nicht mehr der Betreiber-Rahmen.** Bis dahin sah ein Endkunde mit drei
+ * Anlagen die ruhigen `FleetUebersicht`-Karten und NIE eine Portfolio-Welt,
+ * während ein Betreiber die feste Geld-/Speicher-Tabelle bekam — zwei
+ * Implementierungen derselben Frage, und für einen Nur-Monitoring-Kunden
+ * antwortete die eine mit „—, —, —". Jetzt komponiert EINE Fläche sich aus den
+ * Anwendungen der Anlagen, und die Betriebsart wählt nur noch ihre Dichte.
+ *
+ * Sichtbare Folge (gewollt, in `concept.html` gezeigt): ein Endkunde ab zwei
+ * Anlagen sieht statt „Übersicht" den Punkt „Portfolio" — dieselbe ruhige
+ * Karten-Dichte, jetzt mit den Bausteinen seiner Anwendungen. Sein altes
+ * Lesezeichen `#/uebersicht` gilt weiter: {@link redirectToPortfolio} leitet
+ * es weiter.
+ *
+ * Ein Admin erreicht das Portfolio wie bisher über den Mandanten-Umschalter
+ * (dessen Kontext den Rahmen und die Anlagen-Zahl liefert), deshalb braucht es
+ * hier keinen Admin-Sonderfall.
  */
 export function showPortfolioNav(i: ShellInput): boolean {
   if (!i.loaded || !i.tenantReady) return false;
-  return isBetreiberShell(i.betriebsart);
+  return isFleetShell(i.betriebsart, i.siteCount);
 }
 
 /**
- * Whether the "Übersicht" nav item renders in the sidebar. A Betreiber gets
- * `Portfolio` INSTEAD (see {@link showPortfolioNav}), so Übersicht is hidden
- * for them; admins otherwise keep today's always-Übersicht behavior; an
- * endkunde shows it only from the fleet level (2+ Anlagen).
+ * Whether the "Übersicht" nav item renders in the sidebar. Wer eine
+ * Flotten-Ebene hat, bekommt `Portfolio` STATTDESSEN (siehe
+ * {@link showPortfolioNav}); Admins behalten sonst ihr heutiges
+ * Immer-Übersicht-Verhalten, und ein Kunde ohne Flotten-Ebene hat gar keinen
+ * Punkt (seine Welt IST die eine Anlage).
  */
 export function showOverviewNav(i: ShellInput): boolean {
   if (showPortfolioNav(i)) return false;
@@ -90,9 +108,10 @@ export function showOverviewNav(i: ShellInput): boolean {
 /**
  * Whether a customer landing on #/uebersicht (default boot hash, old
  * bookmark) is forwarded to the Anlagen entry - i.e. the tenant has no fleet
- * level. A Betreiber is never forwarded here: their landing is the Portfolio
- * page (see {@link redirectToPortfolio}), and an endkunde fleet keeps the
- * Übersicht.
+ * level. Wer eine Flotten-Ebene HAT, wird stattdessen auf das
+ * Portfolio-Cockpit geleitet ({@link redirectToPortfolio}, das im Aufrufer
+ * ZUERST greift) — hier bleibt nur der Einzel-Anlagen-Kunde übrig, und für den
+ * ist alles unverändert.
  */
 export function redirectOverviewToAnlage(i: ShellInput): boolean {
   if (i.isAdmin || !i.loaded) return false;
@@ -101,10 +120,12 @@ export function redirectOverviewToAnlage(i: ShellInput): boolean {
 }
 
 /**
- * Whether the current landing should be swapped to the Portfolio page: a
- * betreiber tenant landing on `#/uebersicht` (the default boot hash / an old
- * bookmark) is sent to `#/portfolio`. Admins are included - selecting a
- * betreiber tenant surfaces the Portfolio "via the switcher" (design §2.3).
+ * Wird die Landung auf das Portfolio-Cockpit umgelegt? Ein Mandant MIT
+ * Flotten-Ebene, der auf `#/uebersicht` landet (Boot-Hash oder altes
+ * Lesezeichen), wird auf `#/portfolio` geleitet — das ist der Weg, auf dem
+ * seit Stufe 4 auch jedes Endkunden-Lesezeichen gilt. Admins sind
+ * eingeschlossen: die Wahl im Umschalter bringt sie „über den Umschalter" ins
+ * Portfolio des gewählten Kunden (Design §2.3).
  */
 export function redirectToPortfolio(i: ShellInput): boolean {
   return showPortfolioNav(i);

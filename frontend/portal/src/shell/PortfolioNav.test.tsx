@@ -28,20 +28,22 @@ function nav() {
 }
 
 /**
- * **Die Portfolio-Historie ist ein Angebot der BETREIBER-Schale** (PR G). Der
- * Endkunde — egal ob mit einer oder mit drei Anlagen — sieht davon nichts:
- * seine Historie lebt auf der Anlage, und ein Portfolio hat er nicht.
+ * **Die Portfolio-Ebene ist seit dem Anwendungs-Programm Stufe 4 (E5) ein
+ * Angebot der FLOTTEN-Ebene, nicht mehr der Betreiber-Schale** (PR G war das
+ * Vorher). Ein Endkunde mit EINER Anlage sieht davon weiterhin nichts — seine
+ * Welt IST die eine Anlage —, ein Endkunde ab ZWEI Anlagen bekommt dieselbe
+ * Ebene wie ein Betreiber, nur in Karten-Dichte.
  */
 describe('Sichtbarkeit der Portfolio-Welten in der Schale', () => {
-  it('zeigt einem Endkunden NICHTS Neues', () => {
-    const endkunde = {
+  it('zeigt einem Endkunden mit EINER Anlage nichts davon', () => {
+    const einzel = {
       isAdmin: false,
       loaded: true,
       tenantReady: true,
       betriebsart: 'endkunde' as const,
-      siteCount: 3,
+      siteCount: 1,
     };
-    expect(showPortfolioNav(endkunde)).toBe(false);
+    expect(showPortfolioNav(einzel)).toBe(false);
 
     render(
       <AppShell {...baseProps} showPortfolio={false} showPortfolioErloese>
@@ -51,6 +53,28 @@ describe('Sichtbarkeit der Portfolio-Welten in der Schale', () => {
     expect(within(nav()).queryByText('Alle Anlagen')).toBeNull();
     expect(within(nav()).queryByRole('button', { name: 'Messwerte' })).toBeNull();
     expect(within(nav()).queryByRole('button', { name: 'Erlöse' })).toBeNull();
+  });
+
+  it('Stufe 4: ein Endkunde ab ZWEI Anlagen bekommt die Portfolio-Ebene', () => {
+    // Die sichtbare U0/U5-Änderung, hier an der Schale festgenagelt: bis
+    // Stufe 3 stand hier `false` und der Kunde sah die `FleetUebersicht`.
+    const flotte = {
+      isAdmin: false,
+      loaded: true,
+      tenantReady: true,
+      betriebsart: 'endkunde' as const,
+      siteCount: 3,
+    };
+    expect(showPortfolioNav(flotte)).toBe(true);
+
+    render(
+      <AppShell {...baseProps} showPortfolio showPortfolioErloese>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(within(nav()).queryByText('Alle Anlagen')).not.toBeNull();
+    expect(within(nav()).queryByRole('button', { name: 'Messwerte' })).not.toBeNull();
+    expect(within(nav()).queryByRole('button', { name: 'Erlöse' })).not.toBeNull();
   });
 
   it('gibt dem Betreiber beide Welten unter der Portfolio-Landung', () => {

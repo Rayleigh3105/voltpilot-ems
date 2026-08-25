@@ -35,19 +35,19 @@ class CockpitLayoutServiceTest {
     void einVollstaendigesDokumentGehtDurch() {
         assertThatCode(() -> service.validate(doc(
                 List.of("status", "energiefluss", "geld", "kacheln", "komponenten", "zustand"),
-                List.of("strompreis"), List.of("fahrplan"), "energiefluss")))
+                List.of("strompreis"), List.of("fahrplan"), "energiefluss"), "cockpit"))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void dasLeereDokumentSagtNichtsUndIstDamitGueltig() {
-        assertThatCode(() -> service.validate(LayoutDoc.leer())).doesNotThrowAnyException();
+        assertThatCode(() -> service.validate(LayoutDoc.leer(), "cockpit")).doesNotThrowAnyException();
     }
 
     @Test
     void einUnbekannterBausteinIstEineBenannteAblehnung() {
         assertThatThrownBy(() -> service.validate(doc(List.of("gibtsnicht"), List.of(), List.of(),
-                null)))
+                null), "cockpit"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("kein Baustein");
     }
@@ -56,7 +56,7 @@ class CockpitLayoutServiceTest {
     void einPflichtBausteinLaesstSichNichtAusblenden() {
         for (String pflicht : List.of("status", "zustand")) {
             assertThatThrownBy(() -> service.validate(doc(List.of(), List.of(pflicht), List.of(),
-                    null)))
+                    null), "cockpit"))
                     .as(pflicht)
                     .isInstanceOf(ResponseStatusException.class)
                     .hasMessageContaining("Grundausstattung");
@@ -66,7 +66,7 @@ class CockpitLayoutServiceTest {
     @Test
     void einErfundenerLeadWirdNieUebernommen() {
         assertThatThrownBy(() -> service.validate(doc(List.of(), List.of(), List.of(),
-                "geraete-automatik")))
+                "geraete-automatik"), "cockpit"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("hervorheben");
     }
@@ -74,7 +74,7 @@ class CockpitLayoutServiceTest {
     @Test
     void eineDoppelteNennungInDerReihenfolgeIstEinWiderspruch() {
         assertThatThrownBy(() -> service.validate(doc(List.of("kacheln", "kacheln"), List.of(),
-                List.of(), null)))
+                List.of(), null), "cockpit"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("mehrfach");
     }
@@ -85,7 +85,7 @@ class CockpitLayoutServiceTest {
         // rendert. Würde er auf momentane Verfügbarkeit prüfen, verlöre der
         // Kunde sein Bild, sobald er eine Anwendung kurz abschaltet.
         assertThatCode(() -> service.validate(doc(List.of("kacheln", "geld"),
-                List.of("kacheln", "geld"), List.of(), "erloes-komposition")))
+                List.of("kacheln", "geld"), List.of(), "erloes-komposition"), "cockpit"))
                 .doesNotThrowAnyException();
     }
 
@@ -101,9 +101,87 @@ class CockpitLayoutServiceTest {
                 .contains("marktvermarktung", "lastspitzenkappung", "lastmanagement");
         assertThat(katalog.beigesteuertVon("komponenten")).isEmpty();
         // Das Preset „privat" hebt den Fluss hervor, „gewerbe" sagt nichts.
-        assertThat(katalog.presetLayout("privat").lead()).isEqualTo("energiefluss");
-        assertThat(katalog.presetLayout("gewerbe").istLeer()).isTrue();
-        assertThat(katalog.presetLayout(null).istLeer()).isTrue();
-        assertThat(katalog.presetLayout("gibtsnicht").istLeer()).isTrue();
+        assertThat(katalog.presetLayout("privat", "cockpit").lead()).isEqualTo("energiefluss");
+        assertThat(katalog.presetLayout("gewerbe", "cockpit").istLeer()).isTrue();
+        assertThat(katalog.presetLayout(null, "cockpit").istLeer()).isTrue();
+        assertThat(katalog.presetLayout("gibtsnicht", "cockpit").istLeer()).isTrue();
+    }
+
+    // -- Stufe 4: die Fläche „portfolio" ------------------------------------
+
+    @Test
+    void derPortfolioKatalogTraegtSeineEigenenBausteine() {
+        var portfolio = katalog.bausteine("portfolio");
+        assertThat(portfolio.stream().map(b -> b.id())).containsExactly("flotten-status",
+                "erloese", "speicher", "lastspitzen", "ladepunkte", "pv-jetzt", "erzeugung-heute",
+                "verbrauch-heute", "netz-heute", "anlagen");
+        // Pflicht sind der Kopf und die Anlagen-Liste: eine Flotten-Fläche ohne
+        // ihre Anlagen wäre keine.
+        assertThat(portfolio.stream().filter(b -> b.pflicht()).map(b -> b.id()))
+                .containsExactly("flotten-status", "anlagen");
+        // KEIN Portfolio-Baustein ist lead-fähig - es gibt dort keine Bühne.
+        assertThat(portfolio.stream().map(b -> b.leadBlock())).containsOnlyNulls();
+    }
+
+    @Test
+    void beigesteuertVonKommtImPortfolioDIREKTausDenAnwendungen() {
+        // Ein Portfolio-Baustein hat keine Blockschicht unter sich - er IST die
+        // Einheit. Deshalb steht sein Schlüssel direkt in bausteine.portfolio.
+        assertThat(katalog.beigesteuertVon("speicher")).containsExactly("speicher-fahrplan");
+        assertThat(katalog.beigesteuertVon("lastspitzen"))
+                .containsExactly("lastspitzenkappung");
+        assertThat(katalog.beigesteuertVon("ladepunkte")).containsExactly("lastmanagement");
+        // Geld kommt aus ZWEI Anwendungen (Fahrplan-Ersparnis und Markt).
+        assertThat(katalog.beigesteuertVon("erloese"))
+                .containsExactlyInAnyOrder("speicher-fahrplan", "marktvermarktung");
+        assertThat(katalog.beigesteuertVon("flotten-status")).containsExactly("monitoring");
+    }
+
+    @Test
+    void dasPresetLayoutHaengtAnDerFLAECHE() {
+        // Der Cockpit-Lead „energiefluss" ist eine CockpitBlockId, die es im
+        // Portfolio gar nicht gibt - ihn dorthin durchzureichen wäre ein
+        // Dokument, das die Form-Prüfung zu Recht ablehnt.
+        assertThat(katalog.presetLayout("privat", "portfolio").lead()).isNull();
+        assertThat(katalog.presetLayout("privat", "portfolio").order())
+                .startsWith("flotten-status", "pv-jetzt");
+        assertThat(katalog.presetLayout("gewerbe", "portfolio").istLeer()).isTrue();
+        assertThat(katalog.presetLayout(null, "portfolio").istLeer()).isTrue();
+    }
+
+    @Test
+    void einCockpitBausteinGehoertNichtAufDasPortfolioUndUmgekehrt() {
+        assertThatThrownBy(() -> service.validate(doc(List.of("kacheln"), List.of(), List.of(),
+                null), "portfolio"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("gehört nicht auf diese Fläche");
+        assertThatThrownBy(() -> service.validate(doc(List.of("speicher"), List.of(), List.of(),
+                null), "cockpit"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("gehört nicht auf diese Fläche");
+    }
+
+    @Test
+    void aufDemPortfolioIstJEDERLeadEineAblehnung() {
+        // Es gibt dort keine Bühne, die ein Baustein an sich ziehen könnte -
+        // ein gesetzter Lead wäre still wirkungslos statt benannt.
+        assertThatThrownBy(() -> service.validate(doc(List.of(), List.of(), List.of(),
+                "energiefluss"), "portfolio"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("hervorheben");
+    }
+
+    @Test
+    void diePflichtBausteineDesPortfoliosLassenSichNichtAusblenden() {
+        for (String pflicht : List.of("flotten-status", "anlagen")) {
+            assertThatThrownBy(() -> service.validate(doc(List.of(), List.of(pflicht), List.of(),
+                    null), "portfolio"))
+                    .as(pflicht)
+                    .isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("Grundausstattung");
+        }
+        assertThatCode(() -> service.validate(doc(List.of("erloese", "speicher"),
+                List.of("lastspitzen"), List.of(), null), "portfolio"))
+                .doesNotThrowAnyException();
     }
 }

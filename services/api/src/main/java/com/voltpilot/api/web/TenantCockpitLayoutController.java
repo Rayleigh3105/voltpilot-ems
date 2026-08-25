@@ -28,12 +28,14 @@ import org.springframework.web.server.ResponseStatusException;
  * Anlagen-Vorgabe gewinnt"), und der Kunde schlägt beide (E2). Die Reihenfolge
  * lebt in der reinen Auflösung des Portals, nicht hier.
  *
- * <p>Die Vorgabe-Vorgabe ist heute die EINZIGE sinnvolle Schicht dieser Route:
- * eine kunden-weite {@code eigen}-Schicht auf der Fläche {@code cockpit} liest
- * niemand (das Anlagen-Cockpit löst gegen die Anlagen-Schichten auf). Sie ist
- * trotzdem erlaubt, weil dieselbe Route ab Stufe 4 die Fläche
- * {@code portfolio} trägt — dort IST {@code eigen} der Wille des Kunden. Der
- * Speicher bleibt damit scope-generisch statt zweimal gebaut.
+ * <p><b>Die Fläche ist ein Parameter</b> ({@code ?surface=cockpit|portfolio},
+ * Vorgabe {@code cockpit} — ein älterer Aufrufer verhält sich also
+ * zeichengleich). Auf {@code cockpit} liest die Schicht {@code eigen} niemand
+ * (jedes Anlagen-Cockpit löst gegen SEINE Anlagen-Schichten auf); auf
+ * {@code portfolio} IST sie der Wille des Kunden — die Kunden-Fläche hängt am
+ * Kunden (Stufe 4, Captain-Entscheid E1). Beide teilen einen Speicher und eine
+ * Auflösung statt zweimal gebaut zu sein; ein unbekanntes Flächen-Wort ist ein
+ * 400 mit deutschem Grund, nie ein stiller Rückfall.
  *
  * <p>Mandantenbezogen wie die Anlagen-Route: der Mandant kommt aus dem
  * validierten Token bzw. dem {@code X-Tenant-Id}-Umschalter, nie aus dem Pfad —
@@ -52,27 +54,38 @@ public class TenantCockpitLayoutController {
     }
 
     @GetMapping
-    public CockpitLayoutDto get() {
-        return layouts.forTenant(SiteCockpitLayoutController.isPlatformAdmin());
+    public CockpitLayoutDto get(
+            @RequestParam(name = "surface", defaultValue = "cockpit") String surface) {
+        return layouts.forTenant(surface, SiteCockpitLayoutController.isPlatformAdmin());
     }
 
     @PutMapping
-    public CockpitLayoutDto put(@RequestParam(name = "layer", defaultValue = "vorgabe") String layer,
+    public CockpitLayoutDto put(
+            @RequestParam(name = "surface", defaultValue = "cockpit") String surface,
+            @RequestParam(name = "layer", defaultValue = "vorgabe") String layer,
             @RequestBody(required = false) LayoutRequest request,
             @AuthenticationPrincipal Jwt caller) {
         requireVorgabeRecht(layer);
-        return layouts.saveForTenant(layer, SiteCockpitLayoutController.document(request),
+        return layouts.saveForTenant(surface, layer,
+                SiteCockpitLayoutController.document(request),
                 SiteCockpitLayoutController.subject(caller),
                 SiteCockpitLayoutController.isPlatformAdmin());
     }
 
     @DeleteMapping
     public CockpitLayoutDto reset(
+            @RequestParam(name = "surface", defaultValue = "cockpit") String surface,
             @RequestParam(name = "layer", defaultValue = "vorgabe") String layer) {
         requireVorgabeRecht(layer);
-        return layouts.resetForTenant(layer, SiteCockpitLayoutController.isPlatformAdmin());
+        return layouts.resetForTenant(surface, layer,
+                SiteCockpitLayoutController.isPlatformAdmin());
     }
 
+    /**
+     * Die Rechte-Ordnung (E2), unverändert und flächen-unabhängig: {@code eigen}
+     * schreibt der Kunde — auf dem Portfolio ist das SEIN Cockpit —,
+     * {@code vorgabe} nur ein Portal-Admin über den Umschalter.
+     */
     private void requireVorgabeRecht(String layer) {
         if ("vorgabe".equals(layer) && !SiteCockpitLayoutController.isPlatformAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,

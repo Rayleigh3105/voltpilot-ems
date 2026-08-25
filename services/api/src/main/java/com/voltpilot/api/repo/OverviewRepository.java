@@ -76,29 +76,118 @@ public class OverviewRepository {
     }
 
     /**
-     * The {@code vp.strategy.*} node types of each site's ACTIVE flows - the ONLY
-     * thing the overview's usage-profile derivation needs from a flow document.
+     * Die Knotentypen der AKTIVEN Flows je Anlage, auf die es hier ankommt: alle
+     * {@code vp.strategy.*} (die AE7-Nutzungsprofil-Ableitung) plus den
+     * generierten Verbraucher-Executor {@code vp.consumer.reactive} — der EINE
+     * Beleg, an dem {@link com.voltpilot.api.profile.AnwendungDerivation} die
+     * Anwendung {@code verbraucher} erkennt (Stufe 4: die Flotten-Zeile trägt
+     * ihre aktiven Anwendungen).
      *
      * <p>Extracted IN SQL (jsonb): the overview is the portal's landing page and
      * is polled every 30 s, so parsing every active document per request scaled
      * with the fleet size for a handful of node names. One fleet-wide query,
      * RLS-scoped; sites without a matching node are absent. A malformed
      * {@code nodes} (not an array) yields no types instead of an error.
+     *
+     * <p>Das zusätzliche Wort stört die Nutzungsprofil-Ableitung nicht: sie
+     * fragt die Menge nach {@code vp.strategy.peakshaving}/{@code .market}, ein
+     * unbeteiligter Typ daneben ist für sie unsichtbar.
      */
-    public Map<UUID, Set<String>> activeStrategyNodeTypesPerSite() {
+    public Map<UUID, Set<String>> activeNodeTypesPerSite() {
         Map<UUID, Set<String>> types = new HashMap<>();
         jdbc.query(
                 "SELECT f.site_id, n.value->>'type' AS node_type FROM flow_definition f "
                         + "CROSS JOIN LATERAL jsonb_array_elements("
                         + "  CASE WHEN jsonb_typeof(f.document->'nodes') = 'array' "
                         + "       THEN f.document->'nodes' ELSE '[]'::jsonb END) AS n "
-                        + "WHERE f.lifecycle = 'active' AND n.value->>'type' LIKE 'vp.strategy.%' "
+                        + "WHERE f.lifecycle = 'active' AND (n.value->>'type' LIKE 'vp.strategy.%' "
+                        + "  OR n.value->>'type' = 'vp.consumer.reactive') "
                         + "ORDER BY f.site_id, node_type",
                 rs -> {
                     types.computeIfAbsent(rs.getObject("site_id", UUID.class),
                             k -> new LinkedHashSet<>()).add(rs.getString("node_type"));
                 });
         return types;
+    }
+
+    /**
+     * Die Speicher-Kapazität JE ANLAGE (kWh) — die Gewichte des
+     * Portfolio-Ladestands (Stufe 4). Ohne sie wäre „Ø Ladestand" das
+     * ungewichtete Mittel über Anlagen, und ein 10-kWh-Haus zöge einen
+     * 120-kWh-Betrieb gleich stark — genau das Prozent-Mittel, das die Stufe
+     * verbietet. Anlagen ohne Batterie sind ABWESEND (nie eine 0).
+     */
+    public Map<UUID, BigDecimal> storageCapacityPerSite() {
+        Map<UUID, BigDecimal> caps = new HashMap<>();
+        jdbc.query(
+                "SELECT site_id, sum(capacity_kwh) AS kwh FROM asset "
+                        + "WHERE type = 'battery' AND capacity_kwh IS NOT NULL GROUP BY site_id",
+                rs -> {
+                    BigDecimal kwh = rs.getBigDecimal("kwh");
+                    if (kwh != null) {
+                        caps.put(rs.getObject("site_id", UUID.class), kwh);
+                    }
+                });
+        return caps;
+    }
+
+    /** Die Tagesenergien einer Anlage; jedes Feld einzeln {@code null}-fähig. */
+    public record EnergyRow(BigDecimal pvKwh, BigDecimal loadKwh, BigDecimal gridImportKwh,
+            BigDecimal gridExportKwh) {
+    }
+
+    /**
+     * Die Energie-Summen eines Fensters JE ANLAGE, aus {@code telemetry_rollup_15m}
+     * (Stufe 4: „Erzeugung heute", „Verbrauch heute", „Netz heute" über die
+     * ganze Flotte). Energie DARF man summieren — anders als einen Prozentsatz.
+     *
+     * <p><b>Die Ehrlichkeit steckt in Postgres' {@code sum()}</b>: es liefert
+     * {@code NULL}, wenn nicht eine einzige Viertelstunde diesen Kanal getragen
+     * hat — genau die Disziplin von {@code HistoryService.totals} („null, nicht
+     * 0, wenn kein Eimer den Kanal trug"). Eine reine Erzeuger-Anlage ohne
+     * Netz-Messung liefert deshalb kein erfundenes {@code grid = 0}.
+     *
+     * <p><b>⚠ Die Rollups hinken ihrem Auffrisch-Takt bis zu 15 Minuten
+     * hinterher</b> (Hintergrund-Job, {@code V20260701030000}). Für eine
+     * TAGESSUMME ist das richtig — sie soll nicht im Sekundentakt zappeln —,
+     * für einen Momentanwert wäre es falsch; der kommt deshalb aus
+     * {@link #latestLivePerSite()}.
+     *
+     * <p>Das Prädikat sitzt auf {@code bucket}, der PARTITIONSSPALTE des
+     * Hypertables — ein Tagesfenster liest damit genau einen Chunk (die
+     * dokumentierte Lehre „ein Prädikat auf einer Nicht-Partitionsspalte
+     * begrenzt das Ergebnis, nicht die gelesenen Chunks").
+     */
+    public Map<UUID, EnergyRow> energyPerSite(Instant from, Instant to) {
+        Map<UUID, EnergyRow> rows = new HashMap<>();
+        jdbc.query(
+                "SELECT site_id, sum(pv_kwh) AS pv, sum(load_kwh) AS load_, "
+                        + "sum(grid_import_kwh) AS imp, sum(grid_export_kwh) AS exp "
+                        + "FROM telemetry_rollup_15m WHERE bucket >= ? AND bucket < ? "
+                        + "GROUP BY site_id",
+                rs -> {
+                    rows.put(rs.getObject("site_id", UUID.class),
+                            new EnergyRow(rs.getBigDecimal("pv"), rs.getBigDecimal("load_"),
+                                    rs.getBigDecimal("imp"), rs.getBigDecimal("exp")));
+                },
+                Timestamp.from(from), Timestamp.from(to));
+        return rows;
+    }
+
+    /**
+     * Die Anlagen mit einer gepflegten ANSCHLUSSGRENZE — die Voraussetzung des
+     * Ladepark-Lastmanagements. Fleet-weit in EINER Abfrage, damit die
+     * Ableitungs-Eingabe der Übersicht kein Feld raten muss (ein pauschales
+     * {@code false} wäre eine Behauptung über jede Anlage mit Ladepark).
+     */
+    public Set<UUID> sitesWithGridLimit() {
+        Set<UUID> ids = new java.util.HashSet<>();
+        jdbc.query(
+                "SELECT site_id FROM site_charging_config WHERE grid_limit_kw IS NOT NULL",
+                rs -> {
+                    ids.add(rs.getObject("site_id", UUID.class));
+                });
+        return ids;
     }
 
     /**

@@ -954,6 +954,7 @@ function UnifiedPortal() {
               onNavigate={navigate}
               onReload={(selectSiteId?: string) => void reload(selectSiteId)}
               isAdmin={isAdmin}
+              betriebsart={betriebsart}
             />
           )}
           {/* PR G: die zwei Historie-Welten des Portfolios. Sie leben auf der

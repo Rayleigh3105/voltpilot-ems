@@ -3334,6 +3334,96 @@ class PortalApiTest {
         assertThat(overviewSite(demo, haus)).containsEntry("usageProfile", "private");
     }
 
+    /**
+     * Anwendungs-Programm Stufe 4: die Flotten-Zeile trägt die Zahlen, aus
+     * denen das Portfolio-Cockpit seine Bausteine komponiert — und ihre
+     * EHRLICHKEIT ist die Aussage.
+     *
+     * <p>Der Leitfall ist §4.3 C („Gewerbe, reines Monitoring, 3 Filialen"):
+     * bis Stufe 3 stand dort „—, —, —", weil die Fläche Geld und Speicher
+     * zuerst zeigte und diese Zahlen gar nicht kannte. Geprüft wird beides —
+     * dass die Summen ankommen UND dass ein fehlender Kanal {@code null}
+     * bleibt statt eine 0 zu erfinden.
+     */
+    @Test
+    void overviewCarriesTheEnergyStorageWeightAndActiveApplicationsOfEachSite() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        // Zwei Filialen: PV + Netz-Zähler, KEIN Speicher, fester Tarif.
+        String f1 = createSite(demo, "Stufe4 Filiale Nord", "DE-LU", "eigenverbrauch");
+        String f2 = createSite(demo, "Stufe4 Filiale Süd", "DE-LU", "eigenverbrauch");
+        for (String id : List.of(f1, f2)) {
+            exec("INSERT INTO measurement_point (tenant_id, site_id, role, entity_type) VALUES "
+                    + "('" + tenantA + "', '" + id + "', 'producer', 'producer'), "
+                    + "('" + tenantA + "', '" + id + "', 'grid-meter', 'grid-meter')");
+        }
+        // Der laufende Berliner Tag: zwei Viertelstunden je Filiale.
+        String tagStart = "date_trunc('day', now() AT TIME ZONE 'Europe/Berlin') "
+                + "AT TIME ZONE 'Europe/Berlin'";
+        for (String id : List.of(f1, f2)) {
+            exec("INSERT INTO telemetry_rollup_15m (tenant_id, site_id, bucket, pv_kwh, "
+                    + "load_kwh, grid_import_kwh, grid_export_kwh, n_samples) VALUES "
+                    + "('" + tenantA + "', '" + id + "', " + tagStart + ", 40, 70, 34, 4, 90), "
+                    + "('" + tenantA + "', '" + id + "', " + tagStart
+                    + " + interval '15 minutes', 12, 20, 11, 0, 90)");
+        }
+
+        Map<String, Object> nord = overviewSite(demo, f1);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> energie = (Map<String, Object>) nord.get("energyToday");
+        assertThat(energie).as("die Tages-Energie der Anlage").isNotNull();
+        assertThat(num(energie, "pvKwh")).isEqualTo(52.0);
+        assertThat(num(energie, "loadKwh")).isEqualTo(90.0);
+        // Bezug und Einspeisung GETRENNT - nie saldiert.
+        assertThat(num(energie, "gridImportKwh")).isEqualTo(45.0);
+        assertThat(num(energie, "gridExportKwh")).isEqualTo(4.0);
+        // Ohne Batterie KEIN Gewicht - und ausdrücklich keine 0.
+        assertThat(nord.get("storageCapacityKwh")).isNull();
+        assertThat(((Number) nord.get("chargePointCount")).intValue()).isZero();
+
+        // Die AKTIVEN Anwendungen: der gespeicherte Kundenwille liegt allein
+        // auf dem Server, also muss die Zeile ihn tragen.
+        @SuppressWarnings("unchecked")
+        List<String> anwendungen = (List<String>) nord.get("anwendungen");
+        assertThat(anwendungen).as("Monitoring ist Basis und läuft immer").contains("monitoring");
+        assertThat(anwendungen).as("ohne Speicher kein Fahrplan")
+                .doesNotContain("speicher-fahrplan");
+
+        // Eine Anlage MIT Speicher trägt ihr Gewicht - das ist es, womit der
+        // Flotten-Ladestand gewichtet wird (ohne es wäre er das ungewichtete
+        // Mittel über Anlagen).
+        String werk = createSite(demo, "Stufe4 Werk", "DE-LU", "eigenverbrauch");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantA + "', '"
+                + werk + "', 'battery', 120, 60, 60, 92)");
+        exec("INSERT INTO measurement_point (tenant_id, site_id, role, entity_type) VALUES "
+                + "('" + tenantA + "', '" + werk + "', 'battery-hybrid', 'battery-hybrid'), "
+                + "('" + tenantA + "', '" + werk + "', 'consumer', 'ev-charger'), "
+                + "('" + tenantA + "', '" + werk + "', 'consumer', 'ev-charger')");
+        Map<String, Object> werkRow = overviewSite(demo, werk);
+        assertThat(num(werkRow, "storageCapacityKwh")).isEqualTo(120.0);
+        // Die Rollen-Zählung fasst Ladepunkte unter `consumer` zusammen und
+        // kann die Frage deshalb nicht beantworten - dieses Feld schon.
+        assertThat(((Number) werkRow.get("chargePointCount")).intValue()).isEqualTo(2);
+        @SuppressWarnings("unchecked")
+        List<String> werkAnwendungen = (List<String>) werkRow.get("anwendungen");
+        assertThat(werkAnwendungen).contains("monitoring", "speicher-fahrplan");
+
+        // Eine Anlage ganz OHNE verdichtete Viertelstunde behauptet nichts.
+        String frisch = createSite(demo, "Stufe4 Frisch", "DE-LU", "eigenverbrauch");
+        Map<String, Object> frischRow = overviewSite(demo, frisch);
+        assertThat(frischRow.get("energyToday"))
+                .as("keine Messung ist keine 0").isNull();
+
+        // RLS: ein fremder Mandant sieht keine dieser Zeilen.
+        List<Map<String, Object>> fremd = list(rest.exchange(
+                url("/api/v1/overview"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody(), "sites");
+        assertThat(fremd).extracting(x -> x.get("id")).doesNotContain(f1, f2, werk, frisch);
+    }
+
     /** plant_kind: defaults to eigenverbrauch, editable through the site paths. */
     @Test
     void sitePlantKindDefaultsAndIsEditableViaSitePaths() {

@@ -57,8 +57,10 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class CockpitLayoutService {
 
-    /** Die heute gerenderte Fläche. */
+    /** Die Fläche „Anlagen-Cockpit" (Stufe 3). */
     public static final String SURFACE_COCKPIT = CockpitLayoutRepository.SURFACE_COCKPIT;
+    /** Die Fläche „Portfolio-Cockpit" (Stufe 4) — sie hängt am KUNDEN. */
+    public static final String SURFACE_PORTFOLIO = CockpitLayoutRepository.SURFACE_PORTFOLIO;
 
     private final SiteRepository sites;
     private final CockpitLayoutRepository layouts;
@@ -88,24 +90,36 @@ public class CockpitLayoutService {
         List<StoredLayout> tenantRows = tenantId == null ? List.of()
                 : layouts.find(CockpitLayoutRepository.SCOPE_TENANT, tenantId, SURFACE_COCKPIT);
         return new CockpitLayoutDto(SURFACE_COCKPIT, site.profil(),
-                document(anwendungen.presetLayout(site.profil())),
+                document(anwendungen.presetLayout(site.profil(), SURFACE_COCKPIT)),
                 layer(tenantRows, CockpitLayoutRepository.LAYER_VORGABE),
                 layer(siteRows, CockpitLayoutRepository.LAYER_VORGABE),
                 layer(siteRows, CockpitLayoutRepository.LAYER_EIGEN),
-                bausteine(), darfVorgabe);
+                bausteine(SURFACE_COCKPIT), darfVorgabe);
     }
 
     /**
-     * Die kunden-weite Schicht (E1: „für alle meine Anlagen"). Sie kennt kein
-     * Profil — ein Preset hängt an der ANLAGE, nicht an der Organisation.
+     * Die kunden-weite Schicht (E1: „für alle meine Anlagen") einer Fläche.
+     *
+     * <p><b>Das Profil ist hier eine MEHRHEITS-Frage</b>, denn ein Preset hängt
+     * an der ANLAGE und diese Fläche am KUNDEN: die Regel steht rein und
+     * Docker-frei in {@link PortfolioPreset}. Auf der Fläche {@code cockpit}
+     * bleibt sie ausdrücklich ungefragt — dort löst jedes Anlagen-Cockpit gegen
+     * SEIN eigenes Profil auf, und ein Mehrheits-Profil daneben wäre eine
+     * zweite Aussage über dieselbe Sache.
      */
-    public CockpitLayoutDto forTenant(boolean darfVorgabe) {
+    public CockpitLayoutDto forTenant(String surface, boolean darfVorgabe) {
         UUID tenantId = requireTenant();
+        String flaeche = requireSurface(surface);
         List<StoredLayout> rows =
-                layouts.find(CockpitLayoutRepository.SCOPE_TENANT, tenantId, SURFACE_COCKPIT);
-        return new CockpitLayoutDto(SURFACE_COCKPIT, null, document(LayoutDoc.leer()),
+                layouts.find(CockpitLayoutRepository.SCOPE_TENANT, tenantId, flaeche);
+        String profil = SURFACE_PORTFOLIO.equals(flaeche)
+                ? PortfolioPreset.mehrheitsProfil(sites.findAll().stream()
+                        .map(SiteDto::profil).toList())
+                : null;
+        return new CockpitLayoutDto(flaeche, profil,
+                document(anwendungen.presetLayout(profil, flaeche)),
                 layer(rows, CockpitLayoutRepository.LAYER_VORGABE), null,
-                layer(rows, CockpitLayoutRepository.LAYER_EIGEN), bausteine(), darfVorgabe);
+                layer(rows, CockpitLayoutRepository.LAYER_EIGEN), bausteine(flaeche), darfVorgabe);
     }
 
     // -- write --------------------------------------------------------------
@@ -115,21 +129,22 @@ public class CockpitLayoutService {
             String updatedBy, boolean darfVorgabe) {
         requireSite(siteId);
         String normalized = requireLayer(layer);
-        validate(document);
+        validate(document, SURFACE_COCKPIT);
         layouts.save(CockpitLayoutRepository.SCOPE_SITE, siteId, SURFACE_COCKPIT, normalized,
                 document, updatedBy);
         return forSite(siteId, darfVorgabe);
     }
 
-    /** Schreibt die kunden-weite Vorgabe (E1). */
-    public CockpitLayoutDto saveForTenant(String layer, LayoutDoc document, String updatedBy,
-            boolean darfVorgabe) {
+    /** Schreibt die kunden-weite Schicht einer Fläche (E1). */
+    public CockpitLayoutDto saveForTenant(String surface, String layer, LayoutDoc document,
+            String updatedBy, boolean darfVorgabe) {
         UUID tenantId = requireTenant();
+        String flaeche = requireSurface(surface);
         String normalized = requireLayer(layer);
-        validate(document);
-        layouts.save(CockpitLayoutRepository.SCOPE_TENANT, tenantId, SURFACE_COCKPIT, normalized,
+        validate(document, flaeche);
+        layouts.save(CockpitLayoutRepository.SCOPE_TENANT, tenantId, flaeche, normalized,
                 document, updatedBy);
-        return forTenant(darfVorgabe);
+        return forTenant(flaeche, darfVorgabe);
     }
 
     /**
@@ -146,11 +161,12 @@ public class CockpitLayoutService {
     }
 
     /** Der Reset der kunden-weiten Schicht („Vorgabe entfernen"). */
-    public CockpitLayoutDto resetForTenant(String layer, boolean darfVorgabe) {
+    public CockpitLayoutDto resetForTenant(String surface, String layer, boolean darfVorgabe) {
         UUID tenantId = requireTenant();
-        layouts.delete(CockpitLayoutRepository.SCOPE_TENANT, tenantId, SURFACE_COCKPIT,
+        String flaeche = requireSurface(surface);
+        layouts.delete(CockpitLayoutRepository.SCOPE_TENANT, tenantId, flaeche,
                 requireLayer(layer));
-        return forTenant(darfVorgabe);
+        return forTenant(flaeche, darfVorgabe);
     }
 
     // -- Form-Prüfung -------------------------------------------------------
@@ -159,24 +175,24 @@ public class CockpitLayoutService {
      * Prüft die FORM eines Dokuments gegen den Baustein-Katalog. Siehe den
      * Klassen-Kommentar dafür, was hier ausdrücklich NICHT geprüft wird.
      */
-    void validate(LayoutDoc document) {
+    void validate(LayoutDoc document, String flaeche) {
         if (document == null) {
             throw bad("Es wurde kein Layout übergeben.");
         }
         for (String id : document.order()) {
-            requireBaustein(id);
+            requireBaustein(id, flaeche);
         }
         for (String id : document.shown()) {
-            requireBaustein(id);
+            requireBaustein(id, flaeche);
         }
         for (String id : document.hidden()) {
-            Baustein b = requireBaustein(id);
+            Baustein b = requireBaustein(id, flaeche);
             if (b.pflicht()) {
                 throw bad("„" + b.label() + "“ lässt sich nicht ausblenden — dieser "
                         + "Baustein gehört zur Grundausstattung jedes Cockpits.");
             }
         }
-        if (document.lead() != null && !leadBlocks().contains(document.lead())) {
+        if (document.lead() != null && !leadBlocks(flaeche).contains(document.lead())) {
             throw bad("„" + document.lead() + "“ lässt sich nicht hervorheben.");
         }
         Set<String> seen = new LinkedHashSet<>();
@@ -187,21 +203,26 @@ public class CockpitLayoutService {
         }
     }
 
-    private Baustein requireBaustein(String id) {
+    private Baustein requireBaustein(String id, String flaeche) {
         Baustein b = anwendungen.baustein(id);
         if (b == null) {
             throw bad("„" + id + "“ ist kein Baustein, den VoltPilot kennt.");
         }
-        if (!SURFACE_COCKPIT.equals(b.flaeche())) {
+        if (!flaeche.equals(b.flaeche())) {
             throw bad("„" + b.label() + "“ gehört nicht auf diese Fläche.");
         }
         return b;
     }
 
-    /** Die Blöcke, die ein Stern als Lead setzen darf — aus dem Katalog, nie von Hand. */
-    private Set<String> leadBlocks() {
+    /**
+     * Die Blöcke, die ein Stern als Lead setzen darf — aus dem Katalog, nie von
+     * Hand. Auf der Fläche {@code portfolio} ist die Menge LEER: es gibt dort
+     * keine Bühne, die ein Baustein an sich ziehen könnte, und ein gesetzter
+     * Lead ist damit ein 400 statt einer stillen Wirkungslosigkeit.
+     */
+    private Set<String> leadBlocks(String flaeche) {
         Set<String> out = new LinkedHashSet<>();
-        for (Baustein b : anwendungen.bausteine(SURFACE_COCKPIT)) {
+        for (Baustein b : anwendungen.bausteine(flaeche)) {
             if (b.leadBlock() != null) {
                 out.add(b.leadBlock());
             }
@@ -211,9 +232,9 @@ public class CockpitLayoutService {
 
     // -- Helfer -------------------------------------------------------------
 
-    private List<BausteinDto> bausteine() {
+    private List<BausteinDto> bausteine(String flaeche) {
         List<BausteinDto> out = new ArrayList<>();
-        for (Baustein b : anwendungen.bausteine(SURFACE_COCKPIT)) {
+        for (Baustein b : anwendungen.bausteine(flaeche)) {
             out.add(new BausteinDto(b.id(), b.label(), b.pflicht(), b.beweglich(), b.leadBlock(),
                     anwendungen.beigesteuertVon(b.id())));
         }
@@ -248,6 +269,19 @@ public class CockpitLayoutService {
                     "Ohne gewählten Kunden gibt es keine kunden-weite Vorgabe.");
         }
         return tenantId;
+    }
+
+    /**
+     * Ein unbekanntes Flächen-Wort ist ein 400 mit deutschem Grund, nie ein
+     * stiller Rückfall auf das Cockpit: eine Schicht, die unter dem falschen
+     * Schlüssel landet, wäre für den Kunden unauffindbar.
+     */
+    private static String requireSurface(String surface) {
+        String f = surface == null || surface.isBlank() ? SURFACE_COCKPIT : surface.trim();
+        if (SURFACE_COCKPIT.equals(f) || SURFACE_PORTFOLIO.equals(f)) {
+            return f;
+        }
+        throw bad("Unbekannte Fläche — erlaubt sind „cockpit“ und „portfolio“.");
     }
 
     private static String requireLayer(String layer) {

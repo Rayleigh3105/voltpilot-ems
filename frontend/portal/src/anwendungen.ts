@@ -58,6 +58,12 @@ export interface AnwendungVoraussetzung {
 export interface AnwendungBausteine {
   /** Cockpit-Block-Ids (`CockpitBlockId`), die diese Anwendung beisteuert. */
   cockpit: string[];
+  /**
+   * Baustein-Schlüssel der PORTFOLIO-Fläche (Stufe 4). Anders als `cockpit`
+   * nennt dieses Feld unmittelbar Bausteine: über der Kunden-Fläche gibt es
+   * keine Blockschicht, ein Portfolio-Baustein IST die Einheit.
+   */
+  portfolio: string[];
   /** Tiefen-Ansichten (`DeepViewId`), die sie beisteuert. */
   ansichten: string[];
   /** Ihr primärer Geld-Strom (`MoneyStreamId`), oder null. */
@@ -151,6 +157,15 @@ export function istRegel(id: string | null | undefined): boolean {
  */
 export function istAbschaltbar(id: string | null | undefined): boolean {
   return anwendung(id)?.abschaltbar ?? true;
+}
+
+/**
+ * Die Anwendungen, die diesen PORTFOLIO-Baustein beisteuern, in
+ * Katalog-Reihenfolge — der Zwilling von Java
+ * `AnwendungKatalog.beigesteuertVon` für die Kunden-Fläche.
+ */
+export function anwendungenFuerPortfolioBaustein(bausteinId: string): string[] {
+  return ANWENDUNGEN.filter((a) => a.bausteine.portfolio.includes(bausteinId)).map((a) => a.id);
 }
 
 /** Die Einstellungs-Ids, die diese Anwendung beansprucht. */

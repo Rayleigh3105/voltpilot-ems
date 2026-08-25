@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type CockpitLayoutResponse } from './api';
 import {
   CANONICAL_DESKTOP,
@@ -11,6 +11,8 @@ import {
   vorgabeBand,
   type AnpassenZeile,
   type BausteinId,
+  type CockpitLayoutLayer,
+  type Flaeche,
   type LayoutDocument,
   type ResolvedLayout,
 } from './cockpitLayout';
@@ -32,13 +34,13 @@ import type { CockpitBlock, CockpitBlockId } from './surface';
  * Verhalten vor dieser Stufe: das Cockpit darf an seinem Layout-Speicher nie
  * scheitern.
  */
-export interface CockpitLayoutState {
+export interface CockpitLayoutState<T extends string = BausteinId> {
   /** Die wirksame Anordnung — was gerendert wird. */
-  resolved: ResolvedLayout;
+  resolved: ResolvedLayout<T>;
   /** Läuft der Anpassen-Modus gerade? */
   anpassen: boolean;
   /** Die Zeilen des Anpassen-Modus (leer, solange er nicht läuft). */
-  zeilen: AnpassenZeile[];
+  zeilen: AnpassenZeile<T>[];
   /** Der Satz, den der Reset-Knopf ansagt (E2). */
   resetSatz: string;
   /** Das Admin-Band „Sie gestalten die Vorgabe für …"; null = Kunde. */
@@ -53,42 +55,81 @@ export interface CockpitLayoutState {
   fertig: () => void;
   zuruecksetzen: () => void;
   setAlsVorgabe: (value: boolean) => void;
-  verschieben: (id: BausteinId, richtung: 'hoch' | 'runter') => void;
-  setSichtbar: (id: BausteinId, sichtbar: boolean) => void;
+  verschieben: (id: T, richtung: 'hoch' | 'runter') => void;
+  setSichtbar: (id: T, sichtbar: boolean) => void;
   setLead: (block: CockpitBlockId) => void;
 }
 
-interface UseCockpitLayoutInput {
-  siteId: string;
-  /** Die Bausteine, die diese Anlage GERADE hat. */
-  verfuegbar: readonly BausteinId[];
+/**
+ * Die drei Aufrufe EINER Fläche. Sie sind ein Parameter, damit es genau EINEN
+ * Anpassen-Modus gibt: das Anlagen-Cockpit hängt an `/sites/{id}/cockpit-layout`,
+ * das Portfolio-Cockpit an `/tenant/cockpit-layout?surface=portfolio` — die
+ * Zustandsführung, die Auflösung und die Bedienung sind dieselben.
+ */
+export interface LayoutQuelleApi {
+  laden: () => Promise<CockpitLayoutResponse>;
+  speichern: (
+    layer: CockpitLayoutLayer,
+    document: LayoutDocument,
+  ) => Promise<CockpitLayoutResponse>;
+  zuruecksetzen: (layer: CockpitLayoutLayer) => Promise<CockpitLayoutResponse>;
+}
+
+interface UseCockpitLayoutInput<T extends string = BausteinId> {
+  /** Der Schlüssel, bei dessen Wechsel neu geladen wird (Anlage bzw. Fläche). */
+  schluessel: string;
+  /** Welche Fläche aufgelöst wird — sie wählt die Preset-Schicht. */
+  flaeche?: Flaeche;
+  /** Die Bausteine, die diese Fläche GERADE hat. */
+  verfuegbar: readonly T[];
+  /** Die kanonische Reihenfolge; ohne sie entscheidet `isPhone` am Cockpit. */
+  canonical?: readonly T[];
   /** Die Blöcke der Projektion (M0) — sie entscheiden über den Lead. */
-  blocks: CockpitBlock[];
-  isPhone: boolean;
+  blocks?: CockpitBlock[] | null;
+  isPhone?: boolean;
   /** Der Kundenname für das Admin-Band; null = Kunde selbst. */
   kunde?: string | null;
+  /** Woher die Schichten kommen; ohne Angabe die Anlagen-Route. */
+  quelle?: LayoutQuelleApi;
+  /** Die Anlage — nur für die Vorgabe-Route der Anlagen-Fläche. */
+  siteId?: string;
 }
 
 function docOf(layer: { document: LayoutDocument } | null | undefined): LayoutDocument | null {
   return layer?.document ?? null;
 }
 
-export function useCockpitLayout(input: UseCockpitLayoutInput): CockpitLayoutState {
-  const { siteId, verfuegbar, blocks, isPhone } = input;
+export function useCockpitLayout<T extends string = BausteinId>(
+  input: UseCockpitLayoutInput<T>,
+): CockpitLayoutState<T> {
+  const { schluessel, verfuegbar, blocks, isPhone } = input;
+  const flaeche: Flaeche = input.flaeche ?? 'cockpit';
   const [layers, setLayers] = useState<CockpitLayoutResponse | null>(null);
   const [anpassen, setAnpassen] = useState(false);
   const [entwurf, setEntwurf] = useState<{
-    arrangement: BausteinId[];
-    hidden: BausteinId[];
+    arrangement: T[];
+    hidden: T[];
     lead: CockpitBlockId | null;
   } | null>(null);
   const [alsVorgabe, setAlsVorgabe] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
 
+  // Die Aufrufe wandern über eine Referenz in den Effekt: sie sind bei jedem
+  // Rendern neu, der Nachlade-Effekt hängt aber am SCHLÜSSEL — sonst lüde die
+  // Fläche in einer Schleife.
+  const siteId = input.siteId;
+  const quelle: LayoutQuelleApi = input.quelle ?? {
+    laden: () => api.cockpitLayout(siteId as string),
+    speichern: (layer, document) => api.saveCockpitLayout(siteId as string, layer, document),
+    zuruecksetzen: (layer) => api.resetCockpitLayout(siteId as string, layer),
+  };
+  const quelleRef = useRef(quelle);
+  quelleRef.current = quelle;
+
   useEffect(() => {
     let active = true;
-    api.cockpitLayout(siteId).then(
+    quelleRef.current.laden().then(
       (r) => {
         if (active) setLayers(r);
       },
@@ -100,21 +141,24 @@ export function useCockpitLayout(input: UseCockpitLayoutInput): CockpitLayoutSta
     return () => {
       active = false;
     };
-  }, [siteId]);
+  }, [schluessel]);
 
-  const canonical = isPhone ? CANONICAL_PHONE : CANONICAL_DESKTOP;
+  const canonical: readonly T[] =
+    input.canonical ??
+    ((isPhone ? CANONICAL_PHONE : CANONICAL_DESKTOP) as unknown as readonly T[]);
   const gespeichert = useMemo(
     () =>
-      layoutResolve({
+      layoutResolve<T>({
         canonical,
         verfuegbar,
         blocks,
+        flaeche,
         profil: layers?.profil ?? null,
         tenantVorgabe: docOf(layers?.tenantVorgabe),
         siteVorgabe: docOf(layers?.siteVorgabe),
         eigen: docOf(layers?.eigen),
       }),
-    [canonical, verfuegbar, blocks, layers],
+    [canonical, verfuegbar, blocks, layers, flaeche],
   );
 
   /**
@@ -124,21 +168,22 @@ export function useCockpitLayout(input: UseCockpitLayoutInput): CockpitLayoutSta
    */
   const geerbtVersteckt = useMemo(
     () =>
-      layoutResolve({
+      layoutResolve<T>({
         canonical,
         verfuegbar,
         blocks,
+        flaeche,
         profil: layers?.profil ?? null,
         tenantVorgabe: docOf(layers?.tenantVorgabe),
         siteVorgabe: docOf(layers?.siteVorgabe),
       }).hidden,
-    [canonical, verfuegbar, blocks, layers],
+    [canonical, verfuegbar, blocks, layers, flaeche],
   );
 
   // Im Anpassen-Modus gilt der Entwurf, sonst das Gespeicherte.
-  const resolved: ResolvedLayout = useMemo(() => {
+  const resolved: ResolvedLayout<T> = useMemo(() => {
     if (!anpassen || !entwurf) return gespeichert;
-    const hidden = new Set(entwurf.hidden);
+    const hidden = new Set<string>(entwurf.hidden);
     return {
       order: entwurf.arrangement.filter((id) => !hidden.has(id)),
       arrangement: entwurf.arrangement,
@@ -165,11 +210,11 @@ export function useCockpitLayout(input: UseCockpitLayoutInput): CockpitLayoutSta
     setFehler(null);
   }, []);
 
-  const verschieben = useCallback((id: BausteinId, richtung: 'hoch' | 'runter') => {
-    setEntwurf((e) => (e ? { ...e, arrangement: verschiebe(e.arrangement, id, richtung) } : e));
+  const verschieben = useCallback((id: T, richtung: 'hoch' | 'runter') => {
+    setEntwurf((e) => (e ? { ...e, arrangement: verschiebe<T>(e.arrangement, id, richtung) } : e));
   }, []);
 
-  const setSichtbar = useCallback((id: BausteinId, sichtbar: boolean) => {
+  const setSichtbar = useCallback((id: T, sichtbar: boolean) => {
     setEntwurf((e) => {
       if (!e) return e;
       const hidden = sichtbar ? e.hidden.filter((h) => h !== id) : [...e.hidden, id];
@@ -195,8 +240,8 @@ export function useCockpitLayout(input: UseCockpitLayoutInput): CockpitLayoutSta
       try {
         const next =
           document == null
-            ? await api.resetCockpitLayout(siteId, layer)
-            : await api.saveCockpitLayout(siteId, layer, document);
+            ? await quelleRef.current.zuruecksetzen(layer)
+            : await quelleRef.current.speichern(layer, document);
         setLayers(next);
         setAnpassen(false);
         setEntwurf(null);
@@ -212,7 +257,7 @@ export function useCockpitLayout(input: UseCockpitLayoutInput): CockpitLayoutSta
         setSaving(false);
       }
     },
-    [alsVorgabe, layers, siteId],
+    [alsVorgabe, layers],
   );
 
   const fertig = useCallback(() => {
@@ -247,12 +292,13 @@ export function useCockpitLayout(input: UseCockpitLayoutInput): CockpitLayoutSta
     tenantVorgabe: docOf(layers?.tenantVorgabe),
     siteVorgabe: docOf(layers?.siteVorgabe),
     profil: layers?.profil ?? null,
+    flaeche,
   });
 
   return {
     resolved,
     anpassen,
-    zeilen: anpassen ? anpassenZeilen(resolved) : [],
+    zeilen: anpassen ? anpassenZeilen<T>(resolved) : [],
     resetSatz: ziel.satz,
     band: layers?.darfVorgabe && alsVorgabe ? vorgabeBand(input.kunde) : null,
     alsVorgabe: layers?.darfVorgabe ? alsVorgabe : null,

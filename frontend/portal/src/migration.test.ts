@@ -28,6 +28,21 @@ import {
   presetLayout,
 } from './cockpitLayout';
 import { MODE_RANK, anlageSurface, type AnlageSurfaceInput } from './surface';
+import {
+  CANONICAL_PORTFOLIO,
+  PORTFOLIO_BAUSTEINE,
+  anwendungenVonAnlage,
+  portfolioDichte,
+  portfolioKennzahlen,
+  verfuegbareBausteine,
+} from './portfolioCockpit';
+import {
+  isFleetShell,
+  redirectOverviewToAnlage,
+  redirectToPortfolio,
+  showOverviewNav,
+  showPortfolioNav,
+} from './betriebsart';
 import type { OverviewSite } from './api';
 
 /**
@@ -623,5 +638,124 @@ describe('Anwendungs-Programm Stufe 3 — das Cockpit-Layout einer Bestandsanlag
       expect(ohneKommentare(code)).not.toContain('localStorage');
       expect(ohneKommentare(code)).not.toContain('sessionStorage');
     }
+  });
+});
+
+describe('Anwendungs-Programm Stufe 4 — das Portfolio-Cockpit über Bestandsdaten', () => {
+  /**
+   * Die tragende Invariante der Stufe hat ZWEI Hälften, und nur die zweite
+   * ändert sich sichtbar (E5, gewollt):
+   *
+   * 1. **Der EINZEL-Anlagen-Kunde ist zeichengleich unberührt** — er hat keine
+   *    Flotten-Ebene, also weder Portfolio-Punkt noch Portfolio-Landung; seine
+   *    Übersicht IST seine Anlagen-Seite wie seit je.
+   * 2. **Der BETREIBER-Pfad behält Fläche und Dichte** — er bekam schon vor
+   *    Stufe 4 das Portfolio mit der Operator-Tabelle, und genau das bekommt
+   *    er weiter; NEU sind darin nur die Bausteine, die eine aktive Anwendung
+   *    beisteuert.
+   *
+   * Was sich ändert, ist der Endkunde AB ZWEI Anlagen — die U0/U5-Änderung.
+   * Sie steht hier ausdrücklich als Wächter, damit niemand sie versehentlich
+   * zurücknimmt oder unbemerkt ausweitet.
+   */
+  const flotte = (siteCount: number, betriebsart: 'endkunde' | 'betreiber' | null) => ({
+    isAdmin: false,
+    loaded: true,
+    tenantReady: true,
+    betriebsart,
+    siteCount,
+  });
+
+  it('EINE Anlage: kein Portfolio, keine Weiterleitung — byte-identisch zu vorher', () => {
+    for (const betriebsart of ['endkunde', null] as const) {
+      const i = flotte(1, betriebsart);
+      expect(isFleetShell(betriebsart, 1)).toBe(false);
+      expect(showPortfolioNav(i)).toBe(false);
+      expect(redirectToPortfolio(i)).toBe(false);
+      expect(showOverviewNav(i)).toBe(false);
+      // Seine Übersicht ist die Anlagen-Seite - unverändert seit der IA.
+      expect(redirectOverviewToAnlage(i)).toBe(true);
+    }
+  });
+
+  it('der BETREIBER behält Fläche UND Dichte (auch mit einer Anlage)', () => {
+    const i = flotte(1, 'betreiber');
+    expect(showPortfolioNav(i)).toBe(true);
+    expect(redirectToPortfolio(i)).toBe(true);
+    expect(showOverviewNav(i)).toBe(false);
+    // Die Operator-Tabelle bleibt seine Dichte.
+    expect(portfolioDichte('betreiber')).toBe('tabelle');
+  });
+
+  it('U0/U5: der Endkunde ab ZWEI Anlagen wechselt auf das Portfolio - in Karten-Dichte', () => {
+    const i = flotte(3, 'endkunde');
+    // Vor Stufe 4: showPortfolioNav false, showOverviewNav true
+    // (die `FleetUebersicht`). Jetzt dieselbe Fläche wie der Betreiber ...
+    expect(showPortfolioNav(i)).toBe(true);
+    expect(showOverviewNav(i)).toBe(false);
+    // ... aber in der RUHIGEN Dichte, also genau seinem bisherigen Bild.
+    expect(portfolioDichte('endkunde')).toBe('karten');
+    // Und sein altes Lesezeichen `#/uebersicht` gilt weiter.
+    expect(redirectToPortfolio(i)).toBe(true);
+  });
+
+  it('ein Bestandskunde OHNE gesetzten Rahmen folgt derselben Heuristik + Karten', () => {
+    expect(showPortfolioNav(flotte(2, null))).toBe(true);
+    expect(portfolioDichte(null)).toBe('karten');
+  });
+
+  it('eine Flotten-Zeile eines ÄLTEREN Backends erfindet keine Anwendung', () => {
+    // Ohne `anwendungen` (kein Stufe-4-Server) leitet das Portal aus der Zeile
+    // ab, was es belegen kann - Monitoring plus, mit Speicher, den Fahrplan.
+    const alt = {
+      id: 'a',
+      name: 'Bestandsanlage',
+      plantKind: 'eigenverbrauch',
+      netzladenErlaubt: false,
+      batteryWithoutDevice: false,
+      deviceCount: 1,
+      onlineCount: 1,
+      waitingCount: 0,
+      worstStatus: 'online',
+      lastSeenAt: null,
+      live: null,
+      plannedSavingsTodayEur: null,
+    } as never;
+    expect(anwendungenVonAnlage(alt)).toEqual(['monitoring']);
+  });
+
+  it('eine Flotte ohne Kennzahlen zeigt NUR die Pflicht-Bausteine, nie Kacheln mit „—"', () => {
+    const leer = portfolioKennzahlen(null, null, new Date());
+    const ids = verfuegbareBausteine({
+      anwendungen: ['monitoring', 'speicher-fahrplan'],
+      kennzahlen: leer,
+      anlagen: 3,
+    });
+    expect(ids).toEqual(['flotten-status', 'anlagen']);
+  });
+
+  it('die kanonische Portfolio-Reihenfolge ist der Wächter über den Standard', () => {
+    // Wer sie ändert, ändert die Landung JEDES Mehr-Anlagen-Kunden, der keine
+    // eigene Zeile in `cockpit_layout` hat - also fast aller.
+    expect(CANONICAL_PORTFOLIO).toEqual([
+      'flotten-status',
+      'erloese',
+      'speicher',
+      'lastspitzen',
+      'ladepunkte',
+      'pv-jetzt',
+      'erzeugung-heute',
+      'verbrauch-heute',
+      'netz-heute',
+      'anlagen',
+    ]);
+    expect([...CANONICAL_PORTFOLIO].sort()).toEqual(PORTFOLIO_BAUSTEINE.map((b) => b.id).sort());
+  });
+
+  it('die frühere FleetUebersicht ist ERSATZLOS übergegangen, nicht dupliziert', () => {
+    // Zwei Flotten-Bilder auf zwei Adressen waren der Zustand, den E5 beendet.
+    const code = ohneKommentare(readFileSync(join(SRC, 'pages/UebersichtPage.tsx'), 'utf8'));
+    expect(code).not.toContain('function FleetUebersicht');
+    expect(code).toContain('PortfolioCockpit');
   });
 });

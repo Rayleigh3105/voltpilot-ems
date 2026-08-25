@@ -53,7 +53,10 @@ import { LEAD_CANDIDATES, leadBlock } from './leadSlot';
 // Vokabular
 // ---------------------------------------------------------------------------
 
-/** Ein Baustein-Schlüssel — das Vokabular des Dokuments. */
+/** Die zwei Flächen, die einen Layout-Speicher haben. */
+export type Flaeche = 'cockpit' | 'portfolio';
+
+/** Ein Baustein-Schlüssel des ANLAGEN-Cockpits. */
 export type BausteinId =
   | 'status'
   | 'energiefluss'
@@ -78,7 +81,7 @@ export interface LayoutDocument {
 
 /** Ein Baustein, wie der Katalog ihn beschreibt. */
 export interface BausteinDef {
-  id: BausteinId;
+  id: string;
   label: string;
   flaeche: string;
   /** true = kann NIE ausgeblendet werden (E2). */
@@ -89,6 +92,21 @@ export interface BausteinDef {
   lead_block: CockpitBlockId | null;
   /** Die Cockpit-Blöcke, die er rendert. */
   bloecke: CockpitBlockId[];
+  /**
+   * NUR auf der Fläche `portfolio` gesetzt: WIE dieser Baustein über die
+   * Anlagen des Kunden zusammenfasst — `summe` (Energie, Leistung, Geld,
+   * Stückzahlen), `gewichtet` (ein Mittel, das ein Gewicht trägt) oder
+   * `je_anlage` (er fasst gar nichts zusammen, sondern zeigt je Anlage eine
+   * Zeile). **Ein Prozent-Mittel OHNE Gewicht gibt es in diesem Vokabular
+   * nicht** — genau das ist die Regel, die „Ø Autarkie der Flotte" verhindert.
+   */
+  aggregation?: 'summe' | 'gewichtet' | 'je_anlage';
+  /**
+   * Der deutsche Satz, der die Aggregationsregel AUSSPRICHT (und sagt, was
+   * ausdrücklich NICHT zusammengefasst wird). Er ist die Quelle der Fussnote
+   * an der Kachel — die Fläche formuliert ihn nie neu.
+   */
+  aggregation_regel?: string;
 }
 
 const RAW_BAUSTEINE = (CATALOG as { bausteine?: BausteinDef[] }).bausteine ?? [];
@@ -96,7 +114,17 @@ const RAW_BAUSTEINE = (CATALOG as { bausteine?: BausteinDef[] }).bausteine ?? []
 /** Alle Bausteine der Cockpit-Fläche, in Katalog-Reihenfolge. */
 export const BAUSTEINE: BausteinDef[] = RAW_BAUSTEINE.filter((b) => b.flaeche === 'cockpit');
 
-const BY_ID = new Map<string, BausteinDef>(BAUSTEINE.map((b) => [b.id, b]));
+/**
+ * Alle Bausteine EINER Fläche in Katalog-Reihenfolge. Die Reihenfolge hier ist
+ * die der Ressource — NICHT die kanonische Render-Reihenfolge (die wohnt bei
+ * der Fläche, die rendert, und ist am Cockpit sogar je Bildschirmbreite
+ * verschieden).
+ */
+export function bausteineFuer(flaeche: Flaeche): BausteinDef[] {
+  return RAW_BAUSTEINE.filter((b) => b.flaeche === flaeche);
+}
+
+const BY_ID = new Map<string, BausteinDef>(RAW_BAUSTEINE.map((b) => [b.id, b]));
 
 /** Der Baustein mit dieser Id, oder null (auch für ein unbekanntes Wort). */
 export function baustein(id: string | null | undefined): BausteinDef | null {
@@ -187,22 +215,31 @@ export interface CockpitLayoutResponse {
 
 interface PresetEntry {
   id: string;
-  layout?: LayoutDocument;
+  layouts?: Partial<Record<Flaeche, LayoutDocument>>;
 }
 
-const PRESET_LAYOUTS = new Map<string, LayoutDocument>(
-  ((CATALOG as { presets?: PresetEntry[] }).presets ?? [])
-    .filter((p) => p.layout != null)
-    .map((p) => [p.id, p.layout as LayoutDocument]),
-);
+const PRESET_LAYOUTS = new Map<string, LayoutDocument>();
+for (const p of (CATALOG as { presets?: PresetEntry[] }).presets ?? []) {
+  for (const [flaeche, doc] of Object.entries(p.layouts ?? {})) {
+    if (doc) PRESET_LAYOUTS.set(`${p.id}\u0000${flaeche}`, doc);
+  }
+}
 
 /**
- * Die Preset-Schicht eines Profils. Ohne Profil (jede Bestandsanlage) und für
- * ein unbekanntes Wort gibt es sie NICHT — ein Preset, das nichts sagt, ändert
- * auch nichts.
+ * Die Preset-Schicht eines Profils AUF EINER FLÄCHE. Ohne Profil (jede
+ * Bestandsanlage) und für ein unbekanntes Wort gibt es sie NICHT — ein Preset,
+ * das nichts sagt, ändert auch nichts.
+ *
+ * ⚠ **Die Fläche ist ein Parameter, kein Detail:** das Cockpit-Preset von
+ * `privat` setzt den Lead auf den Energiefluss — eine `CockpitBlockId`, die es
+ * im Portfolio gar nicht gibt. Sie dorthin durchzureichen wäre ein Dokument,
+ * das der Server zu Recht ablehnt.
  */
-export function presetLayout(profil: string | null | undefined): LayoutDocument | null {
-  return profil ? (PRESET_LAYOUTS.get(profil) ?? null) : null;
+export function presetLayout(
+  profil: string | null | undefined,
+  flaeche: Flaeche = 'cockpit',
+): LayoutDocument | null {
+  return profil ? (PRESET_LAYOUTS.get(`${profil}\u0000${flaeche}`) ?? null) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,15 +249,20 @@ export function presetLayout(profil: string | null | undefined): LayoutDocument 
 /** Woher die wirksame Anordnung kommt — die Ansage des Reset-Knopfes (E2). */
 export type LayoutQuelle = 'katalog' | 'preset' | 'vorgabe-kunde' | 'vorgabe-anlage' | 'eigen';
 
-export interface LayoutResolveInput {
+export interface LayoutResolveInput<T extends string = BausteinId> {
   /** Die kanonische Reihenfolge dieser Fassung (Rechner bzw. Telefon). */
-  canonical: BausteinId[];
-  /** Was diese Anlage GERADE hat — alles andere wird still übersprungen. */
-  verfuegbar: readonly BausteinId[];
+  canonical: readonly T[];
+  /** Was diese Fläche GERADE hat — alles andere wird still übersprungen. */
+  verfuegbar: readonly T[];
   /** Die Blöcke der Projektion (M0) — sie entscheiden über den Lead. */
   blocks?: CockpitBlock[] | null;
-  /** Das Preset der Anlage (`site.profil`). */
+  /** Das Preset der Anlage (`site.profil`) bzw. der Flotte (Mehrheit). */
   profil?: string | null;
+  /**
+   * Welche Fläche aufgelöst wird — sie wählt die Preset-Schicht. Vorgabe
+   * `cockpit`, damit jeder bestehende Aufrufer zeichengleich bleibt.
+   */
+  flaeche?: Flaeche;
   /** Die kunden-weite Vorgabe des Betreibers (E1). */
   tenantVorgabe?: LayoutDocument | null;
   /** Die Vorgabe DIESER Anlage — sie schlägt die kunden-weite (E1). */
@@ -229,18 +271,18 @@ export interface LayoutResolveInput {
   eigen?: LayoutDocument | null;
 }
 
-export interface ResolvedLayout {
+export interface ResolvedLayout<T extends string = BausteinId> {
   /** Die sichtbaren Bausteine in ihrer wirksamen Reihenfolge — was gerendert wird. */
-  order: BausteinId[];
+  order: T[];
   /**
    * ALLE verfügbaren Bausteine in derselben Anordnung, ausgeblendete
    * eingeschlossen. Der Anpassen-Modus arbeitet auf dieser Liste, damit ein
    * wieder eingeblendeter Baustein an seinen Platz zurückkehrt statt hinten
    * anzuhängen.
    */
-  arrangement: BausteinId[];
+  arrangement: T[];
   /** Verfügbar, aber ausgeblendet — die Zeile „Ausgeblendet (n)". */
-  hidden: BausteinId[];
+  hidden: T[];
   /** Der hervorgehobene Block; null = kein lead-fähiger Block vorhanden. */
   lead: CockpitBlockId | null;
   /** Die oberste Schicht, die wirklich etwas gesagt hat. */
@@ -265,18 +307,18 @@ function saysSomething(doc: LayoutDocument | null | undefined): doc is LayoutDoc
  * aktivierte Anwendung an der richtigen Stelle auftauchen, statt hinten
  * anzuhängen.
  */
-function applyOrder(current: BausteinId[], wanted: string[]): BausteinId[] {
-  const known = new Set(current);
-  const named: BausteinId[] = [];
+function applyOrder<T extends string>(current: T[], wanted: string[]): T[] {
+  const known = new Set<string>(current);
+  const named: T[] = [];
   const seen = new Set<string>();
   for (const id of wanted) {
-    if (!known.has(id as BausteinId) || seen.has(id)) continue;
+    if (!known.has(id) || seen.has(id)) continue;
     seen.add(id);
-    named.push(id as BausteinId);
+    named.push(id as T);
   }
   if (named.length === 0) return current;
 
-  const out = [...named];
+  const out: T[] = [...named];
   // Die ungenannten in KANONISCHER Reihenfolge (= der Reihenfolge, in der sie
   // gerade stehen), jeweils hinter ihren kanonischen Vorgänger.
   for (const id of current) {
@@ -303,11 +345,11 @@ function applyOrder(current: BausteinId[], wanted: string[]): BausteinId[] {
  * das ist die Auflage des Stufenplans zum Lead-Wechsel. Ein Dokument kann sie
  * damit nicht verschieben, auch ein handgeschriebenes nicht.
  */
-function pinFixed(order: BausteinId[], canonical: BausteinId[]): BausteinId[] {
+function pinFixed<T extends string>(order: T[], canonical: readonly T[]): T[] {
   const fixed = order.filter((id) => baustein(id)?.beweglich === false);
   if (fixed.length === 0) return order;
   const movable = order.filter((id) => baustein(id)?.beweglich !== false);
-  const out: BausteinId[] = [];
+  const out: T[] = [];
   let m = 0;
   for (const id of canonical) {
     if (!order.includes(id)) continue;
@@ -327,15 +369,17 @@ function pinFixed(order: BausteinId[], canonical: BausteinId[]): BausteinId[] {
  * Die wirksame Anordnung des Cockpits: Katalog → Preset → kunden-weite Vorgabe
  * → Anlagen-Vorgabe → Eigen, jede Schicht additiv über der darunter.
  */
-export function layoutResolve(input: LayoutResolveInput): ResolvedLayout {
-  const verfuegbar = new Set(input.verfuegbar);
+export function layoutResolve<T extends string = BausteinId>(
+  input: LayoutResolveInput<T>,
+): ResolvedLayout<T> {
+  const verfuegbar = new Set<string>(input.verfuegbar);
   let order = input.canonical.filter((id) => verfuegbar.has(id));
-  const hidden = new Set<BausteinId>();
+  const hidden = new Set<T>();
   let lead: string | null = null;
   let quelle: LayoutQuelle = 'katalog';
 
   const layers: Array<[LayoutQuelle, LayoutDocument | null | undefined]> = [
-    ['preset', presetLayout(input.profil)],
+    ['preset', presetLayout(input.profil, input.flaeche ?? 'cockpit')],
     ['vorgabe-kunde', input.tenantVorgabe],
     ['vorgabe-anlage', input.siteVorgabe],
     ['eigen', input.eigen],
@@ -345,11 +389,11 @@ export function layoutResolve(input: LayoutResolveInput): ResolvedLayout {
     quelle = name;
     order = pinFixed(applyOrder(order, doc.order), input.canonical);
     for (const id of doc.hidden) {
-      if (verfuegbar.has(id as BausteinId)) hidden.add(id as BausteinId);
+      if (verfuegbar.has(id)) hidden.add(id as T);
     }
     // `shown` nimmt einer TIEFEREN Schicht ihr `hidden` zurück — deshalb ist es
     // nicht dasselbe wie „steht nicht in hidden".
-    for (const id of doc.shown) hidden.delete(id as BausteinId);
+    for (const id of doc.shown) hidden.delete(id as T);
     if (doc.lead != null) lead = doc.lead;
   }
 
@@ -380,8 +424,8 @@ export function layoutResolve(input: LayoutResolveInput): ResolvedLayout {
 // ---------------------------------------------------------------------------
 
 /** Eine Zeile des Anpassen-Modus (Desktop-Overlay wie Telefon-Liste). */
-export interface AnpassenZeile {
-  id: BausteinId;
+export interface AnpassenZeile<T extends string = BausteinId> {
+  id: T;
   label: string;
   sichtbar: boolean;
   pflicht: boolean;
@@ -405,15 +449,15 @@ export interface AnpassenZeile {
  * gerenderte Liste: ein ausgeblendeter Baustein behält damit seinen Platz und
  * kehrt beim Wiedereinblenden dorthin zurück.
  */
-export function anpassenZeilen(input: {
-  arrangement: readonly BausteinId[];
-  hidden: readonly BausteinId[];
+export function anpassenZeilen<T extends string = BausteinId>(input: {
+  arrangement: readonly T[];
+  hidden: readonly T[];
   lead: CockpitBlockId | null;
-}): AnpassenZeile[] {
-  const hidden = new Set(input.hidden);
+}): AnpassenZeile<T>[] {
+  const hidden = new Set<string>(input.hidden);
   const sichtbar = input.arrangement.filter((id) => !hidden.has(id));
   const movable = sichtbar.filter((id) => baustein(id)?.beweglich !== false);
-  const zeile = (id: BausteinId, ist: boolean): AnpassenZeile => {
+  const zeile = (id: T, ist: boolean): AnpassenZeile<T> => {
     const def = baustein(id);
     const mi = ist ? movable.indexOf(id) : -1;
     return {
@@ -439,11 +483,11 @@ export function anpassenZeilen(input: {
  * Bausteine bleiben, wo sie sind — der Tausch findet ausschließlich unter den
  * beweglichen statt, damit die Bühne nicht zerfällt.
  */
-export function verschiebe(
-  order: BausteinId[],
-  id: BausteinId,
+export function verschiebe<T extends string = BausteinId>(
+  order: T[],
+  id: T,
   richtung: 'hoch' | 'runter',
-): BausteinId[] {
+): T[] {
   const movable = order.filter((b) => baustein(b)?.beweglich !== false);
   const i = movable.indexOf(id);
   const j = richtung === 'hoch' ? i - 1 : i + 1;
@@ -467,13 +511,13 @@ export function verschiebe(
  * die der Kunde ausdrücklich wieder sehen will — ohne das könnte ein Kunde
  * eine Vorgabe seines Betreibers nie zurücknehmen.
  */
-export function anpassenDokument(input: {
+export function anpassenDokument<T extends string = BausteinId>(input: {
   /** Das volle Arrangement, ausgeblendete Bausteine eingeschlossen. */
-  arrangement: readonly BausteinId[];
-  hidden: readonly BausteinId[];
+  arrangement: readonly T[];
+  hidden: readonly T[];
   lead: CockpitBlockId | null;
   /** Was die Schichten UNTER „eigen" ausblenden würden. */
-  geerbtVersteckt?: readonly BausteinId[];
+  geerbtVersteckt?: readonly T[];
 }): LayoutDocument {
   const hidden = input.hidden.filter((id) => !baustein(id)?.pflicht);
   const shown = (input.geerbtVersteckt ?? []).filter((id) => !hidden.includes(id));
@@ -493,7 +537,7 @@ export function anpassenDokument(input: {
  * hervorheben könnte — und der Kunde suchte einen Knopf, den es nur am Telefon
  * gibt. `null` = dieser Baustein rendert sich selbst.
  */
-export function ortsHinweis(id: BausteinId): string | null {
+export function ortsHinweis(id: string): string | null {
   switch (id) {
     case 'status':
       return 'Der Kopf Ihrer Anlage — er steht immer oben.';
@@ -514,6 +558,7 @@ export function resetZiel(input: {
   tenantVorgabe?: LayoutDocument | null;
   siteVorgabe?: LayoutDocument | null;
   profil?: string | null;
+  flaeche?: Flaeche;
 }): { ziel: LayoutQuelle; satz: string } {
   if (saysSomething(input.siteVorgabe) || saysSomething(input.tenantVorgabe)) {
     return {
@@ -521,7 +566,7 @@ export function resetZiel(input: {
       satz: 'Ihre Anordnung wird verworfen — es gilt wieder die Vorgabe Ihres Betreibers.',
     };
   }
-  if (saysSomething(presetLayout(input.profil))) {
+  if (saysSomething(presetLayout(input.profil, input.flaeche ?? 'cockpit'))) {
     return {
       ziel: 'preset',
       satz: 'Ihre Anordnung wird verworfen — es gilt wieder der VoltPilot-Standard für Ihr Profil.',

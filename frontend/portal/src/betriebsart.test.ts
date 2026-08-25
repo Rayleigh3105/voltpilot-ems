@@ -50,11 +50,23 @@ describe('showPortfolioNav', () => {
     expect(showPortfolioNav({ isAdmin: true, loaded: true, tenantReady: true, betriebsart: 'betreiber', siteCount: 4 })).toBe(true);
   });
 
-  it('waits for the load + tenant context, and never for a non-betreiber frame', () => {
+  it('waits for the load + tenant context, and never below the fleet level', () => {
     expect(showPortfolioNav({ ...base, loaded: false, betriebsart: 'betreiber', siteCount: 3 })).toBe(false);
     expect(showPortfolioNav({ ...base, tenantReady: false, betriebsart: 'betreiber', siteCount: 3 })).toBe(false);
-    expect(showPortfolioNav({ ...base, betriebsart: 'endkunde', siteCount: 3 })).toBe(false);
-    expect(showPortfolioNav({ ...base, betriebsart: null, siteCount: 3 })).toBe(false);
+    // Ohne Flotten-Ebene gibt es kein Portfolio - der Einzel-Anlagen-Kunde
+    // ist von Stufe 4 unberührt.
+    expect(showPortfolioNav({ ...base, betriebsart: 'endkunde', siteCount: 1 })).toBe(false);
+    expect(showPortfolioNav({ ...base, betriebsart: null, siteCount: 1 })).toBe(false);
+  });
+
+  it('Stufe 4 (E5): auch ein ENDKUNDE ab zwei Anlagen bekommt das Portfolio', () => {
+    // Die sichtbare U0/U5-Änderung: bis Stufe 3 sah dieser Kunde die ruhigen
+    // `FleetUebersicht`-Karten und NIE eine Portfolio-Welt. Jetzt ist es
+    // dieselbe EINE Fläche - nur in Karten-Dichte (`portfolioDichte`).
+    expect(showPortfolioNav({ ...base, betriebsart: 'endkunde', siteCount: 2 })).toBe(true);
+    expect(showPortfolioNav({ ...base, betriebsart: 'endkunde', siteCount: 3 })).toBe(true);
+    // Ein unbekannter Rahmen folgt derselben Heuristik wie die Flotten-Ebene.
+    expect(showPortfolioNav({ ...base, betriebsart: null, siteCount: 2 })).toBe(true);
   });
 });
 
@@ -70,14 +82,19 @@ describe('showOverviewNav', () => {
     expect(showOverviewNav({ ...base, betriebsart: 'betreiber', siteCount: 3 })).toBe(false);
   });
 
-  it('an endkunde keeps the calm card Übersicht from the fleet level (unchanged)', () => {
+  it('Stufe 4: ein Endkunde ab zwei Anlagen bekommt Portfolio STATT Übersicht', () => {
+    // Vor Stufe 4 stand hier `true` - der Punkt hieß „Übersicht" und führte
+    // auf die `FleetUebersicht`. Es geht nichts verloren: derselbe Kunde hat
+    // jetzt den Punkt „Portfolio" auf dieselbe Fläche.
     expect(showOverviewNav({ ...base, betriebsart: 'endkunde', siteCount: 1 })).toBe(false);
-    expect(showOverviewNav({ ...base, betriebsart: 'endkunde', siteCount: 2 })).toBe(true);
+    expect(showOverviewNav({ ...base, betriebsart: 'endkunde', siteCount: 2 })).toBe(false);
+    expect(showPortfolioNav({ ...base, betriebsart: 'endkunde', siteCount: 2 })).toBe(true);
   });
 
-  it('v1 regression: without a frame the pre-U0 behavior holds', () => {
+  it('ohne Rahmen gilt dieselbe Flotten-Heuristik', () => {
     expect(showOverviewNav({ ...base, betriebsart: null, siteCount: 1 })).toBe(false);
-    expect(showOverviewNav({ ...base, betriebsart: null, siteCount: 2 })).toBe(true);
+    expect(showOverviewNav({ ...base, betriebsart: null, siteCount: 2 })).toBe(false);
+    expect(showPortfolioNav({ ...base, betriebsart: null, siteCount: 2 })).toBe(true);
   });
 });
 
@@ -104,9 +121,16 @@ describe('redirectToPortfolio', () => {
     expect(redirectToPortfolio({ isAdmin: true, loaded: true, tenantReady: true, betriebsart: 'betreiber', siteCount: 1 })).toBe(true);
   });
 
-  it('never for a non-betreiber frame or before the context settles', () => {
-    expect(redirectToPortfolio({ ...base, betriebsart: 'endkunde', siteCount: 3 })).toBe(false);
-    expect(redirectToPortfolio({ ...base, betriebsart: null, siteCount: 3 })).toBe(false);
+  it('Stufe 4: das alte Endkunden-Lesezeichen #/uebersicht gilt weiter', () => {
+    // Genau DAS ist der Weg, auf dem die U0/U5-Änderung niemandem etwas
+    // wegnimmt: wer `#/uebersicht` gespeichert hat, landet auf `#/portfolio`.
+    expect(redirectToPortfolio({ ...base, betriebsart: 'endkunde', siteCount: 3 })).toBe(true);
+    expect(redirectToPortfolio({ ...base, betriebsart: null, siteCount: 3 })).toBe(true);
+  });
+
+  it('never below the fleet level or before the context settles', () => {
+    expect(redirectToPortfolio({ ...base, betriebsart: 'endkunde', siteCount: 1 })).toBe(false);
+    expect(redirectToPortfolio({ ...base, betriebsart: null, siteCount: 1 })).toBe(false);
     expect(redirectToPortfolio({ ...base, loaded: false, betriebsart: 'betreiber', siteCount: 3 })).toBe(false);
   });
 });
@@ -124,14 +148,22 @@ describe('HIGH-1: an UNSET frame is deploy-day neutral (pre-deploy audit)', () =
     expect(redirectOverviewToAnlage(unset(1))).toBe(true);
   });
 
-  it('a 2+-site customer lands on the calm fleet Übersicht, never on Portfolio', () => {
-    expect(showPortfolioNav(unset(3))).toBe(false);
-    expect(showOverviewNav(unset(3))).toBe(true);
+  it('Stufe 4: ein 2+-Anlagen-Kunde landet auf dem Portfolio-Cockpit (Karten)', () => {
+    // Der HIGH-1-Kern bleibt: ein Bestandskunde OHNE gesetzten Rahmen wird
+    // nicht auf eine Betreiber-Fläche geworfen. Die Fläche ist jetzt dieselbe
+    // wie beim Betreiber, ihre DICHTE aber die ruhige Karten-Dichte - das
+    // prüft `portfolioCockpit.test.ts` an `portfolioDichte(null)`.
+    expect(showPortfolioNav(unset(3))).toBe(true);
+    expect(showOverviewNav(unset(3))).toBe(false);
     expect(redirectOverviewToAnlage(unset(3))).toBe(false);
   });
 
-  it('only an explicit betreiber override opens the Portfolio shell', () => {
+  it('nur ein ausdrücklicher betreiber-Rahmen öffnet das Portfolio schon bei EINER Anlage', () => {
     expect(showPortfolioNav({ ...base, betriebsart: 'betreiber', siteCount: 1 })).toBe(true);
+    // Das ist der Rest, den die Betriebsart an der SCHALE noch entscheidet:
+    // ab wann es eine Flotten-Ebene gibt. Ein Endkunde mit EINER Anlage hat
+    // keine - für ihn ist Stufe 4 folgenlos.
+    expect(showPortfolioNav({ ...base, betriebsart: 'endkunde', siteCount: 1 })).toBe(false);
   });
 });
 

@@ -3,10 +3,14 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.chargers.ChargerComponentComposer;
 import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.history.HistoryRange;
+import com.voltpilot.api.profile.AnwendungDerivation;
+import com.voltpilot.api.profile.AnwendungKatalog;
 import com.voltpilot.api.profile.UsageProfileDeriver;
 import com.voltpilot.api.repo.OverviewRepository;
+import com.voltpilot.api.repo.SiteProfileStateRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.web.dto.OverviewDto;
+import com.voltpilot.api.web.dto.OverviewDto.EnergyTodayDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewDailySavingsDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewLiveDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewSiteDto;
@@ -61,12 +65,17 @@ public class OverviewController {
     private final SiteRepository sites;
     private final OverviewRepository overview;
     private final EntityTypeCatalog catalog;
+    private final AnwendungKatalog anwendungen;
+    private final SiteProfileStateRepository profileStates;
 
     public OverviewController(SiteRepository sites, OverviewRepository overview,
-            EntityTypeCatalog catalog) {
+            EntityTypeCatalog catalog, AnwendungKatalog anwendungen,
+            SiteProfileStateRepository profileStates) {
         this.sites = sites;
         this.overview = overview;
         this.catalog = catalog;
+        this.anwendungen = anwendungen;
+        this.profileStates = profileStates;
     }
 
     @GetMapping
@@ -85,8 +94,15 @@ public class OverviewController {
         // U5 portfolio rollup: per-site entity role counts + usage profile, both
         // in ONE round trip so the portfolio table renders without N calls.
         Map<UUID, Map<String, Integer>> entityCounts = overview.entityTypeCountsPerSite();
-        Map<UUID, Set<String>> strategyNodes = overview.activeStrategyNodeTypesPerSite();
+        Map<UUID, Set<String>> strategyNodes = overview.activeNodeTypesPerSite();
         Map<UUID, Instant> lastPlan = overview.lastPlanPerSite(Instant.now().minus(PLAN_LOOKBACK));
+        // Stufe 4: die Flotten-Zeile trägt ihre aktiven Anwendungen und die
+        // Zahlen, aus denen das Portfolio-Cockpit seine Bausteine komponiert.
+        Map<UUID, BigDecimal> storagePerSite = overview.storageCapacityPerSite();
+        Map<UUID, OverviewRepository.EnergyRow> energyToday =
+                overview.energyPerSite(todayWindow.from(), todayWindow.to());
+        Set<UUID> gridLimitSites = overview.sitesWithGridLimit();
+        Map<UUID, Map<String, String>> storedStates = profileStates.findAllForTenant();
 
         Instant freshnessCutoff = Instant.now().minus(ONLINE_WINDOW);
         int totalDevices = 0;
@@ -116,6 +132,7 @@ public class OverviewController {
             }
 
             Map<String, Integer> typeCounts = entityCounts.getOrDefault(site.id(), Map.of());
+            OverviewRepository.EnergyRow energy = energyToday.get(site.id());
             fleet.add(new OverviewSiteDto(
                     site.id(),
                     site.name(),
@@ -132,7 +149,15 @@ public class OverviewController {
                     roleCounts(typeCounts),
                     usageProfile(site, typeCounts,
                             strategyNodes.getOrDefault(site.id(), Set.of())),
-                    lastPlan.get(site.id())));
+                    lastPlan.get(site.id()),
+                    storagePerSite.get(site.id()),
+                    energy == null ? null : new EnergyTodayDto(energy.pvKwh(), energy.loadKwh(),
+                            energy.gridImportKwh(), energy.gridExportKwh()),
+                    typeCounts.getOrDefault(ChargerComponentComposer.TYPE_EV_CHARGER, 0),
+                    aktiveAnwendungen(site, typeCounts,
+                            strategyNodes.getOrDefault(site.id(), Set.of()),
+                            liveRow != null, gridLimitSites.contains(site.id()),
+                            storedStates.getOrDefault(site.id(), Map.of()))));
         }
 
         OverviewRepository.StorageTotals storage = overview.storageTotals();
@@ -215,6 +240,62 @@ public class OverviewController {
         return UsageProfileDeriver.effectiveProfile(new UsageProfileDeriver.Signals(
                 hasStorage, hasPv, hasControllableConsumer, hasChargePoint, strategyNodeTypes,
                 site.plantKind(), site.leistungspreisEurKw() != null, site.usageProfileOverride()));
+    }
+
+    /**
+     * Die AKTIVEN Anwendungen dieser Anlage (Anwendungs-Programm Stufe 4) —
+     * derselbe Vorrang wie im Regal ({@code SiteProfileService.shelf}): ein
+     * gespeichertes {@code aus} gewinnt, sonst ein gespeichertes {@code an},
+     * sonst die reine Ableitung.
+     *
+     * <p><b>Warum das hier steht und nicht im Portal:</b> das Portfolio-Cockpit
+     * komponiert seine Bausteine aus der VEREINIGUNG über alle Anlagen, und der
+     * gespeicherte Kundenwille ({@code site_profile_state}) liegt allein auf dem
+     * Server. Ohne ihn bliebe eine abgeschaltete Anwendung sichtbar — das wäre
+     * eine Fläche, die dem Kunden widerspricht.
+     *
+     * <p><b>⚠ Die Übersicht rechnet KEINE Voraussetzungs-Chips</b> (dafür gibt
+     * es {@code GET /sites/{id}/profiles}) — {@code hasMeasurement} und
+     * {@code hasGridLimit} gehen trotzdem WAHRHEITSGEMÄSS hinein, damit die
+     * Eingabe nie eine Behauptung enthält, die niemand geprüft hat.
+     */
+    private List<String> aktiveAnwendungen(SiteDto site, Map<String, Integer> typeCounts,
+            Set<String> activeNodeTypes, boolean hasLive, boolean hasGridLimit,
+            Map<String, String> stored) {
+        boolean hasStorage = false;
+        boolean hasPv = false;
+        boolean hasControllableConsumer = false;
+        boolean hasChargePoint = typeCounts.containsKey(ChargerComponentComposer.TYPE_EV_CHARGER);
+        for (String entityType : typeCounts.keySet()) {
+            EntityTypeCatalog.EntityType type = catalog.find(entityType);
+            String category = type == null ? "" : type.category();
+            switch (category) {
+                case "storage" -> hasStorage = true;
+                case "producer" -> hasPv = true;
+                case "consumer" -> hasControllableConsumer =
+                        hasControllableConsumer || (type != null && type.controllable());
+                default -> { /* meter/other: no signal */ }
+            }
+        }
+        // `hasCustomerRule` beantwortet nur den Leer-Zustand einer
+        // Regel-Anwendung (den die Übersicht nicht rendert); die Ableitung
+        // selbst konsultiert es nicht.
+        AnwendungDerivation.Input in = new AnwendungDerivation.Input(hasStorage, hasPv,
+                hasControllableConsumer, hasChargePoint, hasLive,
+                site.leistungspreisEurKw() != null, hasGridLimit, activeNodeTypes, false,
+                site.plantKind(), site.tarifArt(), site.netzladenErlaubt());
+        List<String> aktiv = new java.util.ArrayList<>();
+        for (AnwendungKatalog.Anwendung a : anwendungen.alle()) {
+            String state = stored.get(a.id());
+            if (SiteProfileStateRepository.STATE_AUS.equals(state)) {
+                continue;
+            }
+            if (SiteProfileStateRepository.STATE_AN.equals(state)
+                    || AnwendungDerivation.derivedActive(a.id(), in)) {
+                aktiv.add(a.id());
+            }
+        }
+        return List.copyOf(aktiv);
     }
 
     /**

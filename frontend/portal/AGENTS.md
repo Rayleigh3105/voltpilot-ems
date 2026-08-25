@@ -1463,6 +1463,53 @@ ohne die Route", zwei DOMs verglichen).
   ausblenden, hervorheben, speichern, neu laden, zurücksetzen): 0 px horizontaler Überlauf, 0
   überstehende Elemente, keine Konsolenmeldungen.
 
+## Das PORTFOLIO-COCKPIT: die Flotten-Fläche (Anwendungs-Programm Stufe 4)
+
+Captain-Entscheid **E5**: EINE Fläche für jeden Mehr-Anlagen-Kunden, komponiert aus den
+Anwendungen seiner Anlagen. Regeln, Katalog und Server-Seite stehen in der Root-`AGENTS.md`
+(„Das PORTFOLIO-COCKPIT"); hier die Fläche.
+
+- **`components/PortfolioCockpit.tsx` ist die EINZIGE Flotten-Fläche.** `pages/PortfolioPage.tsx`
+  ist auf 55 Zeilen geschrumpft (nur noch Kopf + Ansprache darüber), `pages/UebersichtPage.tsx`
+  von 348 auf 136 — **`FleetUebersicht` ist ersatzlos darin aufgegangen**. Wer eine dritte
+  Flotten-Ansicht bauen will, baut einen Baustein in diese eine.
+- **⚠ Die DICHTE ist eine Anordnungs-Frage, keine Kosmetik.** In der Karten-Dichte ist das Geld
+  der HELD und steht mit dem Status im `.vp-fleet-top`-Paar (genau das frühere
+  FleetUebersicht-Bild); in der Tabellen-Dichte sind dieselben Erlöse ZWEI KpiCards. Das Paar
+  oben rendert nur, solange Status und Geld **kanonisch benachbart** sind (`paarOben`) —
+  verschiebt der Kunde das Geld im Anpassen-Modus woanders hin, rendert es an SEINER Stelle als
+  voller Held und der Status steht allein: **die Anordnung gewinnt vor der Kosmetik**, sonst
+  wäre der Griff eine Lüge.
+- **Die Kacheln kommen aus `kachelFuer`, die ZAHLEN aus dem reinen `src/portfolioCockpit.ts`.**
+  Eine Kachel, deren Wert `null` ist, wird gar nicht erst gebaut (`verfuegbareBausteine` hat sie
+  vorher aussortiert) — das ist die Antwort auf „—, —, —". Die zwei Fussnoten
+  (`ladestandFussnote`, `pvJetztFussnote`) SAGEN die Grundlage: „nach Speichergröße gewichtet"
+  bzw. „1 von 3 Anlagen melden gerade".
+- **Dieselbe Regel gilt eine Ebene tiefer für die TABELLEN-SPALTEN** (`tabellenSpalten`): eine
+  Spalte, die KEINE Anlage füllen kann, wird weggelassen — der Nur-Monitoring-Kunde trug sonst
+  eine „Ladestand"-Spalte aus lauter „—". **Ein EINZELNES „—" bleibt dagegen stehen:** in einer
+  gemischten Flotte ist es die wahre Aussage über genau diese Anlage.
+- **⚠ `.vp-portfolio-kpi-paar` (ein Baustein mit ZWEI Kacheln: Netz heute, Speicher, Erlöse) darf
+  im Normal-Modus KEIN eigener Gitter-Platz sein.** Es hatte anfangs gar keine CSS-Regel und
+  stauchte seine zwei Karten in EINE Spalte, während die Nachbarn einzeln standen. Wrapper und
+  Paar treten deshalb mit `display: contents` zur Seite, damit die KACHELN die Gitter-Zellen sind;
+  im ANPASSEN-Modus bekommt das Paar dagegen sein eigenes kleines Gitter — dort ist es EIN
+  Baustein mit EINEM Griff und EINEM Auge. Dort ist die Spalte auch nur ~235 px breit, weshalb
+  die Knopf-Gruppe (`.vp-portfolio-kpis .vp-anpassen-ctrl`) NICHT umbrechen darf und der Name
+  weicht — sonst stünden die Bedienelemente eines Bausteins auf zwei Zeilen.
+- **⚠ Der Ruhe-Satz kommt NUR, wenn gar keine Kennzahl da ist** (`ruheSatz`). Eine Flotte ohne
+  Speicher bekommt KEINE Erklärung dafür, dass keine Speicher-Kachel dasteht — die Erklärung
+  wäre die Zeile, die früher „—" hieß.
+- **Der Anpassen-Modus ist der der Stufe 3**, nur mit `schluessel: 'portfolio'` und der
+  Kunden-Quelle (`api.tenantCockpitLayout('portfolio')`). **Das Portfolio hat keine Bühne**, also
+  `blocks: []` und keinen Stern — der Server lehnt dort jeden `lead` ohnehin ab.
+- **Drill-down** ist unverändert `anlageRoute(siteId)`: die Karte wie die Tabellenzeile öffnet
+  genau ihre Anlage, die Flotten-Leiste bleibt der Rückweg.
+- **Beweise:** `src/portfolioCockpit.test.ts` (30, rein) · `components/PortfolioCockpit.test.tsx`
+  (11: der §4.3-C-Nur-Monitoring-Fall mit echten Zahlen, beide Dichten über DIESELBE Flotte, der
+  gewichtete Ladestand, die leere Flotte, der Kunden-Scope des Layouts) · `src/betriebsart.test.ts`
+  (24) · `src/shell/PortfolioNav.test.tsx` (4) · `src/migration.test.ts` (+8).
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
