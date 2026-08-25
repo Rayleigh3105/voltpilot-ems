@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Device, type DeviceMovePreview } from '../api';
+import { api, ApiError, type Device, type DeviceMovePreview, type MoveProvisioningStatus } from '../api';
 import { AnlegenDialog } from './AnlegenDialog';
 import './AnlegenFlow.css';
 
@@ -16,6 +16,7 @@ export function GeraetVerschiebenDialog({ device, onClose, onMoved }: {
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [applyStatus, setApplyStatus] = useState<MoveProvisioningStatus | null>(null);
   const target = useMemo(
     () => preview?.targets.find((option) => option.siteId === targetId) ?? null,
     [preview, targetId],
@@ -40,6 +41,7 @@ export function GeraetVerschiebenDialog({ device, onClose, onMoved }: {
         expectedRevision: preview.revision,
         effectiveAt: new Date().toISOString(),
       });
+      setApplyStatus(await api.deviceMoveStatus(device.id));
       onMoved(result);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Das Gerät konnte nicht verschoben werden.');
@@ -109,6 +111,7 @@ export function GeraetVerschiebenDialog({ device, onClose, onMoved }: {
               <li>Ein Tenantwechsel ist ausgeschlossen.</li>
               <li>Die Konfiguration wird am Ziel neu verteilt; bis dahin bleibt die bisherige Gerätefassung aktiv.</li>
             </ul>
+            {applyStatus && <p role="status">Provisionierung: {applyStatus.status === 'applied' ? 'angewandt' : applyStatus.status === 'refused' ? 'abgelehnt' : 'ausstehend'}{applyStatus.lastError ? ` – ${applyStatus.lastError}` : ''}</p>}
           </div>
         </section>
       )}

@@ -8,6 +8,7 @@ import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.repo.AssetRepository;
+import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.MeasurementPointRepository;
 import com.voltpilot.api.repo.RegisterWriteEventRepository;
 import com.voltpilot.api.repo.SiteRepository;
@@ -17,6 +18,7 @@ import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
 import com.voltpilot.api.web.dto.ComponentMatchDto;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
+import com.voltpilot.api.web.dto.ComponentActivationStatusDto;
 import com.voltpilot.api.web.dto.SaveComponentRequest;
 import com.voltpilot.api.web.dto.SiteComponentsDto;
 import java.math.BigDecimal;
@@ -101,13 +103,16 @@ public class ComponentService {
     private final ComponentTemplateRepository templates;
     private final ComponentConnectionReceipts receipts;
     private final AssetRepository assets;
+    private final ComponentActivationOutboxService activationOutbox;
+    private final DeviceRepository deviceTopology;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public ComponentService(SiteRepository sites, MeasurementPointRepository points,
             EntityRegistryRepository entityRepo, EntityRegistryService entityRegistry,
             ComponentDefinitionRepository definitions, ComponentApplyRepository applyState,
             ComponentTemplateRepository templates, ComponentConnectionReceipts receipts,
-            AssetRepository assets, EntityObservedRepository observed) {
+            AssetRepository assets, EntityObservedRepository observed,
+            ComponentActivationOutboxService activationOutbox, DeviceRepository deviceTopology) {
         this.sites = sites;
         this.points = points;
         this.entityRepo = entityRepo;
@@ -118,6 +123,8 @@ public class ComponentService {
         this.templates = templates;
         this.receipts = receipts;
         this.assets = assets;
+        this.activationOutbox = activationOutbox;
+        this.deviceTopology = deviceTopology;
     }
 
     // ---- Lesen ------------------------------------------------------------
@@ -156,6 +163,11 @@ public class ComponentService {
         return definitions.events(siteId, entityId);
     }
 
+    public ComponentActivationStatusDto activationStatus(UUID siteId, UUID entityId) {
+        requireSite(siteId); requireComponent(siteId, entityId);
+        return activationOutbox.status(entityId).orElse(null);
+    }
+
     /**
      * Baut für den Bearbeitungs-Test die echte neue Verbindung. Der Browser
      * kennt alte Secrets absichtlich nicht; deshalb ergänzt ausschließlich der
@@ -182,6 +194,7 @@ public class ComponentService {
      */
     @Transactional
     public SiteComponentsDto create(UUID siteId, SaveComponentRequest req, String subject) {
+        deviceTopology.lockTopology(siteId);
         requireSite(siteId);
         requirePortalManaged(siteId);
         String role = requireRole(req.role());
@@ -205,6 +218,7 @@ public class ComponentService {
     @Transactional
     public SiteComponentsDto update(UUID siteId, UUID entityId, SaveComponentRequest req,
             String subject) {
+        deviceTopology.lockTopology(siteId);
         requireSite(siteId);
         requirePortalManaged(siteId);
         EntityRow existing = requireComponent(siteId, entityId);
@@ -283,12 +297,13 @@ public class ComponentService {
         String note = req.note() == null || req.note().isBlank()
                 ? (connectionChanged ? "Verbindung geändert" : "Gerät bearbeitet")
                 : req.note().trim();
-        definitions.recordVersion(TenantContext.get(), siteId, entityId, applied.version(),
+        definitions.recordVersionFull(TenantContext.get(), siteId, entityId, applied.version(),
                 role, applied.label(), template.brand(), template.model(), template.family(),
                 template.communication(), connJson,
-                SOURCE_KIND_CERTIFIED.equals(template.kind()) ? SOURCE_KIND_CERTIFIED
-                        : SOURCE_KIND_BUILTIN,
-                template.templateRef(), template.version(), subject, note);
+                SOURCE_KIND_CERTIFIED.equals(template.kind()) ? SOURCE_KIND_CERTIFIED : SOURCE_KIND_BUILTIN,
+                template.templateRef(), template.version(), capacity, existing.control(),
+                ROLE_ENTITY_TYPE.get(role), ComponentDefaults.capabilities(mapper, role),
+                ComponentDefaults.guards(mapper, role, req.capacityKwp()), existing.registryUnitId(), subject, note);
         definitions.recordEvent(TenantContext.get(), siteId, entityId, applied.version(),
                 "edited", effectiveAt, null, null, subject, note);
         if (!java.util.Objects.equals(existing.family(), template.family())) {
@@ -314,30 +329,45 @@ public class ComponentService {
      * versperren, wenn das Gerät gerade nicht antwortet - also im Notfall.
      */
     @Transactional
-    public SiteComponentsDto rollback(UUID siteId, UUID entityId, int version, String subject) {
+    public SiteComponentsDto rollback(UUID siteId, UUID entityId, int version, int expectedRevision,
+            String subject) {
+        deviceTopology.lockTopology(siteId);
         requireSite(siteId);
         requirePortalManaged(siteId);
-        requireComponent(siteId, entityId);
-        ComponentDefinitionDto old = definitions.version(siteId, entityId, version);
+        EntityRow current = requireComponent(siteId, entityId);
+        if (current.definitionVersion() != expectedRevision) {
+            throw stale(current.definitionVersion());
+        }
+        ComponentDefinitionRepository.FullDefinition old = definitions.fullVersion(siteId, entityId, version);
         if (old == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Diese Fassung gibt es nicht.");
         }
-        ComponentDefinitionRepository.Applied applied = definitions.applyDefinition(siteId,
-                entityId, old.label(), old.brand(), old.model(), old.family(),
-                old.communication(), old.connection(), old.sourceKind(), old.templateRef(),
-                old.templateVersion());
+        String restoredEntityType = old.entityType() == null ? current.entityType() : old.entityType();
+        String restoredCapabilities = old.capabilitiesJson() == null ? current.capabilitiesJson() : old.capabilitiesJson();
+        String restoredGuards = old.guardConfigJson() == null ? current.guardConfigJson() : old.guardConfigJson();
+        BigDecimal restoredCapacity = old.capacityKwp() == null ? current.capacityKwp() : old.capacityKwp();
+        Boolean restoredControl = old.control() == null ? current.control() : old.control();
+        ComponentDefinitionRepository.FullDefinition restored = new ComponentDefinitionRepository.FullDefinition(
+                old.definition(), restoredCapacity, restoredControl, restoredEntityType, restoredCapabilities,
+                restoredGuards, old.registryUnitId() == null ? current.registryUnitId() : old.registryUnitId());
+        ComponentDefinitionRepository.Applied applied = definitions.applyDefinitionFull(siteId, entityId,
+                expectedRevision, restored);
         if (applied == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
+            EntityRow latest = entityRepo.entityForSite(siteId, entityId);
+            throw stale(latest == null ? expectedRevision : latest.definitionVersion());
         }
-        definitions.recordVersion(TenantContext.get(), siteId, entityId, applied.version(),
-                old.role(), applied.label(), old.brand(), old.model(), old.family(),
-                old.communication(), old.connection(), old.sourceKind(), old.templateRef(),
-                old.templateVersion(), subject, "Zurück auf Fassung " + version);
+        adjustPvCapacity(TenantContext.get(), siteId, current, old.definition().role(), restoredCapacity);
+        definitions.recordVersionFull(TenantContext.get(), siteId, entityId, applied.version(),
+                old.definition().role(), applied.label(), old.definition().brand(), old.definition().model(),
+                old.definition().family(), old.definition().communication(), old.definition().connection(),
+                old.definition().sourceKind(), old.definition().templateRef(), old.definition().templateVersion(),
+                restoredCapacity, Boolean.TRUE.equals(restoredControl), restoredEntityType, restoredCapabilities,
+                restoredGuards, restored.registryUnitId(), subject, "Zurück auf Fassung " + version);
         definitions.recordEvent(TenantContext.get(), siteId, entityId, applied.version(),
                 "rolled_back", Instant.now(), null, String.valueOf(version), subject,
                 "Zurück auf Fassung " + version);
-        entityRegistry.pushRegistryBestEffort(siteId);
+        activationOutbox.enqueue(TenantContext.get(), siteId, entityId, applied.version(), "component_rollback");
         return list(siteId);
     }
 

@@ -44,4 +44,14 @@ class ComponentSecretsTest {
         assertThat(masked).contains("10.0.0.2", ComponentSecrets.MASK)
                 .doesNotContain("never-return-me");
     }
+
+    @Test
+    void treatsProtocolMasksAsSecretsEvenForUnknownKeysAndMissingTemplates() {
+        Map<String, Object> merged = ComponentSecrets.merge(
+                Map.of("customCredential", ComponentSecrets.MASK),
+                "{\"customCredential\":\"server-secret\"}", Set.of());
+        assertThat(merged).containsEntry("customCredential", "server-secret");
+        assertThat(ComponentSecrets.maskedJson("{\"customCredential\":\"••••••••\"}", Set.of()))
+                .contains(ComponentSecrets.MASK);
+    }
 }

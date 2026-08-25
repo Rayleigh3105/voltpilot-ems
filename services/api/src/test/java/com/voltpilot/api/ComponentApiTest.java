@@ -290,7 +290,7 @@ class ComponentApiTest {
             // --- Rollback SCHREIBT zurück, es löscht nichts -----------------
             ResponseEntity<String> back = post(
                     "/api/v1/sites/" + site + "/components/" + entityId + "/versions/2/rollback",
-                    customer, null);
+                    customer, Map.of("expectedRevision", 3));
             assertThat(back.getStatusCode()).isEqualTo(HttpStatus.OK);
             JsonNode rolled = byRole(json.readTree(back.getBody()), "pv-generation");
             assertThat(rolled.get("connection").get("ip").asText()).isEqualTo("192.168.0.28");
@@ -308,7 +308,7 @@ class ComponentApiTest {
 
             // Eine Fassung, die es nicht gibt, ist 404 - nie ein Zufallstreffer.
             assertThat(post("/api/v1/sites/" + site + "/components/" + entityId
-                    + "/versions/99/rollback", customer, null).getStatusCode())
+                    + "/versions/99/rollback", customer, Map.of("expectedRevision", 4)).getStatusCode())
                     .isEqualTo(HttpStatus.NOT_FOUND);
         } finally {
             deleteSite(customer, site);

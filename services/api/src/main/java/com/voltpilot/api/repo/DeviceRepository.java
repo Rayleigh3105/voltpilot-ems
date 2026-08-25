@@ -2,6 +2,7 @@ package com.voltpilot.api.repo;
 
 import com.voltpilot.api.web.dto.DeviceDto;
 import com.voltpilot.api.web.dto.DeviceMovePreviewDto;
+import com.voltpilot.api.web.dto.MoveProvisioningStatusDto;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -69,6 +70,8 @@ public class DeviceRepository {
      * with a duplicate-key error (surfaced as HTTP 409).
      */
     public DeviceDto claim(UUID tenantId, UUID siteId, String externalRef, String kind) {
+        lockTopology(siteId);
+        jdbc.query("SELECT id FROM site WHERE id = ? FOR UPDATE", (rs, n) -> rs.getObject(1), siteId);
         return jdbc.queryForObject(
                 "INSERT INTO device (tenant_id, site_id, external_ref, kind, status) "
                         + "VALUES (?, ?, ?, ?, 'claimed') "
@@ -123,7 +126,7 @@ public class DeviceRepository {
 
     public Optional<MoveState> moveState(UUID deviceId) {
         return jdbc.query(
-                "SELECT id, tenant_id, site_id, revision, external_ref FROM device WHERE id = ?",
+                "SELECT id, tenant_id, site_id, revision, external_ref FROM device WHERE id = ? FOR UPDATE",
                 (rs, n) -> new MoveState(rs.getObject("id", UUID.class),
                         rs.getObject("tenant_id", UUID.class), rs.getObject("site_id", UUID.class),
                         rs.getInt("revision"), rs.getString("external_ref")), deviceId)
@@ -137,11 +140,10 @@ public class DeviceRepository {
      */
     public boolean move(MoveState state, UUID targetSiteId, java.time.Instant effectiveAt,
             String actor) {
+        lockTopologyPair(state.siteId(), targetSiteId);
+        if (!targetTopologyStillEmpty(targetSiteId)) return false;
         jdbc.update("UPDATE component_definition d SET site_id = ? FROM measurement_point m "
                         + "WHERE d.entity_id = m.id AND m.device_id = ? AND m.site_id = ?",
-                targetSiteId, state.deviceId(), state.siteId());
-        jdbc.update("UPDATE component_change_event e SET site_id = ? FROM measurement_point m "
-                        + "WHERE e.entity_id = m.id AND m.device_id = ? AND m.site_id = ?",
                 targetSiteId, state.deviceId(), state.siteId());
         jdbc.update("UPDATE entity_role_assignment a SET site_id = ? FROM measurement_point m "
                         + "WHERE a.entity_id = m.id AND m.device_id = ? AND m.site_id = ?",
@@ -154,6 +156,18 @@ public class DeviceRepository {
                 targetSiteId, state.deviceId(), state.siteId());
         jdbc.update("UPDATE entity_observed_state SET site_id = ? WHERE device_id = ?",
                 targetSiteId, state.deviceId());
+        // Current execution/health snapshots follow the device; historical
+        // journals and telemetry retain their original site attribution.
+        for (String table : new String[] {"device_control_status", "device_curtailment_status",
+                "device_source_status", "device_edge_version", "device_update_status",
+                "consumer_runtime_status", "device_charging_budget", "device_charge_point",
+                "device_charge_connector", "ocpp_station", "ocpp_connector_state",
+                "ocpp_configuration_key", "ocpp_configuration_unknown_key", "ocpp_station_capability"}) {
+            jdbc.update("UPDATE " + table + " SET site_id = ? WHERE device_id = ? AND site_id = ?",
+                    targetSiteId, state.deviceId(), state.siteId());
+        }
+        jdbc.update("UPDATE ocpp_transaction SET site_id = ? WHERE device_id = ? AND site_id = ? AND stopped_at IS NULL",
+                targetSiteId, state.deviceId(), state.siteId());
         jdbc.update("DELETE FROM entity_registry_state WHERE site_id IN (?, ?)",
                 state.siteId(), targetSiteId);
         jdbc.update("DELETE FROM device_component_apply WHERE device_id = ?", state.deviceId());
@@ -174,6 +188,44 @@ public class DeviceRepository {
                 state.tenantId(), state.deviceId(), state.revision() + 1, state.siteId(),
                 targetSiteId, java.sql.Timestamp.from(effectiveAt), actor);
         return true;
+    }
+
+    public Optional<MoveProvisioningStatusDto> moveProvisioningStatus(UUID deviceId) {
+        return jdbc.query("SELECT device_id, revision, status, attempts, last_error, updated_at, applied_at "
+                        + "FROM move_provisioning_operation WHERE device_id = ? ORDER BY revision DESC LIMIT 1",
+                (rs, n) -> {
+                    java.time.OffsetDateTime applied = rs.getObject("applied_at", java.time.OffsetDateTime.class);
+                    return new MoveProvisioningStatusDto(rs.getObject("device_id", UUID.class),
+                            rs.getInt("revision"), rs.getString("status"), rs.getInt("attempts"),
+                            rs.getString("last_error"), rs.getObject("updated_at", java.time.OffsetDateTime.class).toInstant(),
+                            applied == null ? null : applied.toInstant());
+                }, deviceId)
+                .stream().findFirst();
+    }
+
+    private boolean targetTopologyStillEmpty(UUID targetSiteId) {
+        Integer devices = jdbc.queryForObject("SELECT count(*) FROM device WHERE site_id = ?", Integer.class, targetSiteId);
+        Integer entities = jdbc.queryForObject("SELECT count(*) FROM measurement_point WHERE site_id = ? AND entity_type IS NOT NULL",
+                Integer.class, targetSiteId);
+        Integer assets = jdbc.queryForObject("SELECT count(*) FROM asset WHERE site_id = ?", Integer.class, targetSiteId);
+        String authority = jdbc.queryForObject("SELECT component_authority FROM site WHERE id = ?", String.class, targetSiteId);
+        return "portal".equals(authority) && devices != null && devices == 0
+                && entities != null && entities == 0 && assets != null && assets == 0;
+    }
+
+    /** Shared transaction-scoped lock used by every topology writer. */
+    public void lockTopology(UUID siteId) {
+        jdbc.query("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", (rs, n) -> null,
+                "site-topology:" + siteId);
+    }
+
+    private void lockTopologyPair(UUID a, UUID b) {
+        UUID first = a.toString().compareTo(b.toString()) <= 0 ? a : b;
+        UUID second = first.equals(a) ? b : a;
+        lockTopology(first);
+        lockTopology(second);
+        jdbc.query("SELECT id FROM site WHERE id IN (?, ?) ORDER BY id FOR UPDATE",
+                (rs, n) -> rs.getObject(1), first, second);
     }
 
     /** Delete (unclaim) a device row. False when RLS hides it (=> 404). */

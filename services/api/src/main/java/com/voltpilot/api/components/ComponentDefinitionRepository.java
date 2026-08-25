@@ -66,6 +66,9 @@ public class ComponentDefinitionRepository {
      * wurde - eine zweite Ableitung im Aufrufer wäre eine zweite Wahrheit.
      */
     public record Applied(int version, String label) {}
+    public record FullDefinition(ComponentDefinitionDto definition, BigDecimal capacityKwp,
+            Boolean control, String entityType, String capabilitiesJson, String guardConfigJson,
+            String registryUnitId) {}
 
     /**
      * Schreibt die geltende Anbindung auf den Messpunkt und hebt seine Fassung.
@@ -96,6 +99,23 @@ public class ComponentDefinitionRepository {
                 (rs, n) -> new Applied(rs.getInt(1), rs.getString(2)),
                 label, brand, model, family, communication, connectionJson, sourceKind,
                 templateRef, templateVersion, entityId, siteId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    public Applied applyDefinitionFull(UUID siteId, UUID entityId, int expectedRevision,
+            FullDefinition old) {
+        ComponentDefinitionDto d = old.definition();
+        List<Applied> rows = jdbc.query(
+                "UPDATE measurement_point SET role = ?, label = ?, brand = ?, model = ?, family = ?, "
+                        + "communication = ?, connection_json = ?::jsonb, source_kind = ?, template_ref = ?, "
+                        + "template_version = ?, capacity_kwp = ?, control = ?, entity_type = ?, "
+                        + "capabilities = ?::jsonb, guard_config = ?::jsonb, registry_unit_id = ?, "
+                        + "definition_version = definition_version + 1 WHERE id = ? AND site_id = ? "
+                        + "AND definition_version = ? RETURNING definition_version, label",
+                (rs, n) -> new Applied(rs.getInt(1), rs.getString(2)), d.role(), d.label(), d.brand(),
+                d.model(), d.family(), d.communication(), d.connection(), d.sourceKind(), d.templateRef(),
+                d.templateVersion(), old.capacityKwp(), old.control(), old.entityType(), old.capabilitiesJson(),
+                old.guardConfigJson(), old.registryUnitId(), entityId, siteId, expectedRevision);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -145,6 +165,22 @@ public class ComponentDefinitionRepository {
                 createdBy, note);
     }
 
+    public void recordVersionFull(UUID tenantId, UUID siteId, UUID entityId, int version,
+            String role, String label, String brand, String model, String family,
+            String communication, String connectionJson, String sourceKind, String templateRef,
+            Integer templateVersion, BigDecimal capacityKwp, boolean control, String entityType,
+            String capabilitiesJson, String guardConfigJson, String registryUnitId,
+            String createdBy, String note) {
+        jdbc.update("INSERT INTO component_definition (entity_id, version, tenant_id, site_id, role, "
+                        + "label, brand, model, family, communication, connection_json, source_kind, "
+                        + "template_ref, template_version, capacity_kwp, control, entity_type, capabilities, "
+                        + "guard_config, registry_unit_id, created_by, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?) "
+                        + "ON CONFLICT (entity_id, version) DO NOTHING",
+                entityId, version, tenantId, siteId, role, label, brand, model, family, communication,
+                connectionJson, sourceKind, templateRef, templateVersion, capacityKwp, control,
+                entityType, capabilitiesJson, guardConfigJson, registryUnitId, createdBy, note);
+    }
+
     /** Alle Fassungen einer Komponente, neueste zuerst. */
     public List<ComponentDefinitionDto> versions(UUID siteId, UUID entityId) {
         return jdbc.query(
@@ -159,6 +195,18 @@ public class ComponentDefinitionRepository {
                 "SELECT " + DEF_COLUMNS + " FROM component_definition "
                         + "WHERE site_id = ? AND entity_id = ? AND version = ?",
                 ComponentDefinitionRepository::map, siteId, entityId, version);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    public FullDefinition fullVersion(UUID siteId, UUID entityId, int version) {
+        List<FullDefinition> rows = jdbc.query(
+                "SELECT " + DEF_COLUMNS + ", capacity_kwp, control, entity_type, "
+                        + "capabilities::text AS caps, guard_config::text AS guards, registry_unit_id "
+                        + "FROM component_definition WHERE site_id = ? AND entity_id = ? AND version = ?",
+                (rs, n) -> new FullDefinition(map(rs, n), rs.getBigDecimal("capacity_kwp"),
+                        (Boolean) rs.getObject("control"), rs.getString("entity_type"),
+                        rs.getString("caps"), rs.getString("guards"), rs.getString("registry_unit_id")),
+                siteId, entityId, version);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -178,15 +226,15 @@ public class ComponentDefinitionRepository {
             UUID entityId) {
         return jdbc.query(
                 "SELECT revision, event_type, effective_at, from_value, to_value, created_at, "
-                        + "created_by, note FROM component_change_event WHERE site_id = ? "
-                        + "AND entity_id = ? ORDER BY effective_at DESC, id DESC",
+                        + "created_by, note FROM component_change_event WHERE entity_id = ? "
+                        + "ORDER BY effective_at DESC, id DESC",
                 (rs, n) -> new com.voltpilot.api.web.dto.ComponentChangeEventDto(
                         rs.getInt("revision"), rs.getString("event_type"),
                         rs.getObject("effective_at", OffsetDateTime.class).toInstant(),
                         rs.getString("from_value"), rs.getString("to_value"),
                         rs.getObject("created_at", OffsetDateTime.class).toInstant(),
                         rs.getString("created_by"), rs.getString("note")),
-                siteId, entityId);
+                entityId);
     }
 
     private static ComponentDefinitionDto map(ResultSet rs, int rowNum) throws SQLException {

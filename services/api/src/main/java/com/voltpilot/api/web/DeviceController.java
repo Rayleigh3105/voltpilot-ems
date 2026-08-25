@@ -5,10 +5,10 @@ import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.chargers.ChargingConfigPublisher;
 import com.voltpilot.api.entities.EntityAutoComposer;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
-import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.ota.RolloutService;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.provisioning.ProvisioningTopics;
+import com.voltpilot.api.provisioning.MoveProvisioningOutboxService;
 import com.voltpilot.api.purge.DevicePurgeService;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
@@ -20,6 +20,7 @@ import com.voltpilot.api.web.dto.DeviceClaimRequest;
 import com.voltpilot.api.web.dto.DeviceDto;
 import com.voltpilot.api.web.dto.DeviceMovePreviewDto;
 import com.voltpilot.api.web.dto.MoveDeviceRequest;
+import com.voltpilot.api.web.dto.MoveProvisioningStatusDto;
 import com.voltpilot.api.web.dto.UpdateDeviceRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -33,8 +34,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -68,11 +67,11 @@ public class DeviceController {
     private final ObjectProvider<ProvisioningPublisher> provisioning;
     private final ObjectProvider<EnrollmentService> enrollment;
     private final ObjectProvider<EntityRegistryPublisher> entityRegistry;
-    private final EntityRegistryService entityRegistryService;
     private final ObjectProvider<RolloutService> rollouts;
     private final EntityAutoComposer autoCompose;
     private final ControlCertificationService controlCertification;
     private final ObjectProvider<ChargingConfigPublisher> chargingConfig;
+    private final MoveProvisioningOutboxService moveOutbox;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
             SeriesRepository series, AssetRepository assets,
@@ -81,11 +80,11 @@ public class DeviceController {
             ObjectProvider<ProvisioningPublisher> provisioning,
             ObjectProvider<EnrollmentService> enrollment,
             ObjectProvider<EntityRegistryPublisher> entityRegistry,
-            EntityRegistryService entityRegistryService,
             ObjectProvider<RolloutService> rollouts,
             EntityAutoComposer autoCompose,
             ControlCertificationService controlCertification,
-            ObjectProvider<ChargingConfigPublisher> chargingConfig) {
+            ObjectProvider<ChargingConfigPublisher> chargingConfig,
+            MoveProvisioningOutboxService moveOutbox) {
         this.devices = devices;
         this.sites = sites;
         this.series = series;
@@ -95,11 +94,11 @@ public class DeviceController {
         this.provisioning = provisioning;
         this.enrollment = enrollment;
         this.entityRegistry = entityRegistry;
-        this.entityRegistryService = entityRegistryService;
         this.rollouts = rollouts;
         this.autoCompose = autoCompose;
         this.controlCertification = controlCertification;
         this.chargingConfig = chargingConfig;
+        this.moveOutbox = moveOutbox;
     }
 
     @GetMapping
@@ -221,6 +220,14 @@ public class DeviceController {
         return preview;
     }
 
+    @GetMapping("/{deviceId}/move-status")
+    public MoveProvisioningStatusDto moveStatus(@PathVariable UUID deviceId) {
+        if (devices.findById(deviceId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
+        }
+        return devices.moveProvisioningStatus(deviceId).orElse(null);
+    }
+
     /** Verschiebt dieselbe Geräte-ID nach erneuter Revisions- und Topologieprüfung. */
     @PostMapping("/{deviceId}/move")
     @Transactional
@@ -255,32 +262,8 @@ public class DeviceController {
         }
         assets.autoLinkBatteryDevice(request.targetSiteId());
         autoCompose.ensureComposed(request.targetSiteId());
-        // MQTT is an external side effect. Publish only after the database
-        // transaction commits, otherwise a later rollback could leave the edge
-        // on a site assignment that never became durable. The target registry
-        // is republished here as well; moving an already-composed topology
-        // does not trigger EntityAutoComposer's "new composition" branch.
-        UUID tenantId = state.tenantId();
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                UUID previous = TenantContext.get();
-                TenantContext.set(tenantId);
-                try {
-                    provisioning.ifAvailable(p -> {
-                        p.clearRetained(state.externalRef(), tenantId, state.siteId(), state.deviceId());
-                        p.publishConfig(state.externalRef(), tenantId, request.targetSiteId(),
-                                state.deviceId());
-                    });
-                    entityRegistry.ifAvailable(p ->
-                            p.clearRegistry(tenantId, state.siteId(), state.deviceId()));
-                    entityRegistryService.pushRegistryBestEffort(request.targetSiteId());
-                } finally {
-                    if (previous == null) TenantContext.clear();
-                    else TenantContext.set(previous);
-                }
-            }
-        });
+        moveOutbox.enqueue(state.tenantId(), state.deviceId(), state.siteId(), request.targetSiteId(),
+                state.revision() + 1, state.externalRef());
         return devices.findById(deviceId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden."));
     }

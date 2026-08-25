@@ -344,7 +344,8 @@ export function GeraetSeiteSection({
     setRollbackBusy(true);
     setEditError(null);
     try {
-      const result = await api.rollbackComponent(site.id, editRow.id, rollbackTarget.version);
+      const result = await api.rollbackComponent(
+        site.id, editRow.id, rollbackTarget.version, editRow.definitionVersion);
       setComponents(result);
       setRollbackTarget(null);
     } catch (cause) {

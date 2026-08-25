@@ -66,6 +66,16 @@ public final class ComponentSecrets {
         Map<String, Object> old = parse(existingJson);
         Map<String, Object> out = new LinkedHashMap<>();
         if (incoming != null) out.putAll(incoming);
+        // A mask is a protocol-level secret marker even when the old template
+        // was withdrawn or the key was custom-named. Never persist the mask as
+        // a new credential and never replace a server value with it.
+        if (incoming != null) {
+            for (String key : new LinkedHashSet<>(incoming.keySet())) {
+                if (MASK.equals(incoming.get(key))) {
+                    if (old.containsKey(key)) out.put(key, old.get(key)); else out.remove(key);
+                }
+            }
+        }
         for (String key : secretKeys) {
             Object next = out.get(key);
             boolean unchanged = next == null || MASK.equals(next)
@@ -84,13 +94,19 @@ public final class ComponentSecrets {
             // Die Heuristik bleibt absichtlich aktiv, wenn eine alte/entzogene
             // Vorlage nicht mehr auflösbar ist. Gerade dann darf ein Listing
             // nicht plötzlich das frühere Kennwort ausgeben.
-            if (secretKeys.contains(key) || looksSecret(key)) out.put(key, MASK);
+            if (secretKeys.contains(key) || isSecretKey(key) || MASK.equals(out.get(key))) {
+                out.put(key, MASK);
+            }
         }
         try {
             return MAPPER.writeValueAsString(out);
         } catch (Exception e) {
             return "{}";
         }
+    }
+
+    public static boolean isSecretKey(String key) {
+        return looksSecret(key);
     }
 
     private static boolean looksSecret(String key) {
