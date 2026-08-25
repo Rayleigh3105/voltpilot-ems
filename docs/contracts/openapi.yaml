@@ -1493,8 +1493,8 @@ paths:
   /api/v1/sites/{siteId}/ocpp/action-permissions:
     get:
       tags: [sites]
-      summary: D4-Rollenmatrix für den abhängigen Station-Command-Gateway-PR.
-      description: Reine Policy-Auskunft; dieser Slice stellt bewusst keinen schreibenden Stationspfad bereit.
+      summary: D4-Rollenmatrix des Station-Command-Gateways.
+      description: Reine Policy-Auskunft; die schreibenden Endpunkte erzwingen dieselbe Matrix serverseitig.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
@@ -1557,12 +1557,13 @@ paths:
         "200": { description: Aktion, content: { application/json: { schema: { $ref: "#/components/schemas/OcppAction" } } } }
     delete:
       tags: [sites]
-      summary: Eine noch nicht beantwortete One-shot-Aktion abbrechen.
+      summary: Eine noch nicht an die Edge übergebene One-shot-Aktion abbrechen.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: actionId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         "204": { description: Abbruch protokolliert. }
+        "409": { description: Bereits an die Edge übergeben; der physische Befehl kann nicht zurückgerufen werden. }
   /api/v1/sites/{siteId}/ocpp/actions/{actionId}/audit:
     get:
       tags: [sites]
@@ -6653,14 +6654,16 @@ components:
       required: [action]
       properties:
         action: { type: string }
-        phrase: { type: string, maxLength: 200 }
         connectorId: { type: integer, minimum: 0 }
+        transactionId: { type: integer, nullable: true }
+        request: { type: object, additionalProperties: true, description: "Exakte, aktionsspezifisch validierte und an den Intent gebundene Nutzlast." }
     OcppActionIntent:
       type: object
       properties:
         id: { type: string, format: uuid }
         action: { type: string }
         phrase: { type: string, description: "Kurzlebige Bestätigung; kein Geheimnis." }
+        fourEyes: { type: boolean, description: "Ein anderer Plattformoperator muss die gebundene Aktion ausführen." }
         expiresAt: { type: string, format: date-time }
     OcppActionRequest:
       type: object
@@ -6670,7 +6673,8 @@ components:
         connectorId: { type: integer, minimum: 0, nullable: true }
         transactionId: { type: integer, nullable: true }
         intentId: { type: string, format: uuid, nullable: true }
-        request: { type: object, additionalProperties: true }
+        confirmationPhrase: { type: string, nullable: true }
+        request: { type: object, additionalProperties: true, description: "Wird serverseitig gegen die geschlossene OCPP-Aktionsform bzw. das registrierte DataTransfer-Schema validiert." }
     OcppAction:
       type: object
       properties:
@@ -6678,7 +6682,7 @@ components:
         deviceId: { type: string, format: uuid }
         chargePointId: { type: string }
         action: { type: string }
-        state: { enum: [prepared, sent, accepted_waiting_effect, effect_observed, completed, rejected, call_error, not_sendable, transport_failed, timed_out, cancelled] }
+        state: { enum: [prepared, sent, accepted_waiting_effect, effect_observed, completed, rejected, call_error, edge_rejected, effect_failed, not_sendable, transport_failed, timed_out, cancelled] }
         correlationId: { type: string }
         idempotencyKey: { type: string }
         actor: { type: string }

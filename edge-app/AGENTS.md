@@ -3313,7 +3313,7 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
 
 ## Das Lastmanagement-Rig `test/e2e-ocpp.sh`: Docker-frei, und es misst
 
-Die Faelle L1-L10 des Konzepts (§6.2 + Datenfundament) gegen den ECHTEN Kern und ECHTE
+Die Faelle L1-L12 des Konzepts (§6.2 + Datenfundament + Command-Gateway) gegen den ECHTEN Kern und ECHTE
 OCPP-Ladesaeulen (`cmd/vp-ocpp-sim`) ueber ECHTE Websockets.
 
 - **⚠ Jede Zusicherung liest, was eine Saeule ZIEHEN WUERDE**, abgeleitet aus
@@ -3370,6 +3370,10 @@ OCPP-Ladesaeulen (`cmd/vp-ocpp-sim`) ueber ECHTE Websockets.
     Firmware/GetConfiguration samt Vendorfeldern, `transactionData`, Stopgrund
     und den zwei nur durch L1-N/L2-N getrennten Messdimensionen sind vorhanden;
     `RIG-TAG` und der simulierte AuthorizationKey fehlen im Klartext.
+  - **L11/L12** führen zusätzlich die vollständige Command-Fläche gegen den
+    echten lokalen Websocket-Stack aus: persistentes Replay/Reconnect-Dedup,
+    Deadline/Enrollment-Identität, Crash+umgekehrte gleichartige Antworten und
+    ChangeConfiguration → CallResult → gezielter GetConfiguration-Readback.
   - **⚠ Grosszuegige Fristen mit Grund:** der Rest des Standorts wird als
     MAXIMUM ueber 60 s genommen, und waehrend die Fahrzeuge herunterfahren
     liest der Zaehler ihren Zug kurz zu hoch. Beides UNTERSCHAETZT den

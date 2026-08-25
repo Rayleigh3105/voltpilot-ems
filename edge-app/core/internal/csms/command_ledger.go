@@ -1,0 +1,170 @@
+package csms
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"sort"
+	"sync"
+	"time"
+)
+
+const commandLedgerFile = "ocpp-command-ledger.json"
+const commandLedgerLimit = 4096
+
+type commandLedgerEntry struct {
+	ActionID         string    `json:"action_id"`
+	Fingerprint      string    `json:"fingerprint"`
+	State            string    `json:"state"`
+	DeadlineAt       time.Time `json:"deadline_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Action           string    `json:"action"`
+	ChargePointID    string    `json:"charge_point_id"`
+	CorrelationID    string    `json:"correlation_id"`
+	ConnectorID      *int      `json:"connector_id,omitempty"`
+	ConfigurationKey string    `json:"configuration_key,omitempty"`
+}
+
+type commandLedgerDocument struct {
+	SchemaVersion string               `json:"schema_version"`
+	Entries       []commandLedgerEntry `json:"entries"`
+}
+
+// commandLedger is the durable at-most-once boundary. Claim is fsynced via an
+// atomic rename before the first station byte is written. A crash may lose a
+// command, but can never replay a physical action after restart.
+type commandLedger struct {
+	mu      sync.Mutex
+	path    string
+	entries map[string]commandLedgerEntry
+}
+
+func newCommandLedger(dataDir string) (*commandLedger, error) {
+	path := filepath.Join(dataDir, commandLedgerFile)
+	l := &commandLedger{path: path, entries: map[string]commandLedgerEntry{}}
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return l, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var doc commandLedgerDocument
+	if json.Unmarshal(raw, &doc) != nil || doc.SchemaVersion != "1.0" {
+		return nil, errors.New("OCPP command ledger beschädigt")
+	}
+	for _, e := range doc.Entries {
+		l.entries[e.ActionID] = e
+	}
+	return l, nil
+}
+
+// claim returns duplicate=true only for a byte-identical replay. Reusing an
+// action id for changed bytes is a fail-closed collision.
+func (l *commandLedger) claim(cmd CloudCommand, fingerprint string, deadline, now time.Time) (bool, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if old, ok := l.entries[cmd.ActionID]; ok {
+		if old.Fingerprint != fingerprint {
+			return false, errors.New("action_id wurde mit anderer Nutzlast wiederverwendet")
+		}
+		return true, nil
+	}
+	l.prune(now)
+	entry := commandLedgerEntry{ActionID: cmd.ActionID, Fingerprint: fingerprint, Action: cmd.Action,
+		ChargePointID: cmd.ChargePointID, CorrelationID: cmd.CorrelationID,
+		State: "claimed", DeadlineAt: deadline.UTC(), UpdatedAt: now.UTC()}
+	var request struct {
+		ConnectorID *int   `json:"connectorId"`
+		Key         string `json:"key"`
+	}
+	_ = json.Unmarshal(cmd.Request, &request)
+	entry.ConnectorID, entry.ConfigurationKey = request.ConnectorID, request.Key
+	l.entries[cmd.ActionID] = entry
+	if err := l.save(); err != nil {
+		delete(l.entries, cmd.ActionID)
+		return false, err
+	}
+	return false, nil
+}
+
+func (l *commandLedger) get(actionID string) (commandLedgerEntry, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	e, ok := l.entries[actionID]
+	return e, ok
+}
+
+func (l *commandLedger) finish(actionID, state string, now time.Time) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	e, ok := l.entries[actionID]
+	if !ok {
+		return errors.New("unbekannte action_id")
+	}
+	e.State, e.UpdatedAt = state, now.UTC()
+	l.entries[actionID] = e
+	return l.save()
+}
+
+func (l *commandLedger) prune(now time.Time) {
+	for id, e := range l.entries {
+		if e.DeadlineAt.Before(now.Add(-24 * time.Hour)) {
+			delete(l.entries, id)
+		}
+	}
+	if len(l.entries) < commandLedgerLimit {
+		return
+	}
+	all := make([]commandLedgerEntry, 0, len(l.entries))
+	for _, e := range l.entries {
+		all = append(all, e)
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].UpdatedAt.Before(all[j].UpdatedAt) })
+	for i := 0; i <= len(all)-commandLedgerLimit; i++ {
+		delete(l.entries, all[i].ActionID)
+	}
+}
+
+func (l *commandLedger) save() error {
+	doc := commandLedgerDocument{SchemaVersion: "1.0", Entries: make([]commandLedgerEntry, 0, len(l.entries))}
+	for _, e := range l.entries {
+		doc.Entries = append(doc.Entries, e)
+	}
+	sort.Slice(doc.Entries, func(i, j int) bool { return doc.Entries[i].ActionID < doc.Entries[j].ActionID })
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	tmp := l.path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err = f.Write(raw); err == nil {
+		err = f.Sync()
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, l.path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	// The file sync protects its bytes; syncing the directory protects the
+	// rename itself across sudden power loss before any station byte is sent.
+	dir, err := os.Open(filepath.Dir(l.path))
+	if err != nil {
+		return err
+	}
+	err = dir.Sync()
+	if closeErr := dir.Close(); err == nil {
+		err = closeErr
+	}
+	return err
+}

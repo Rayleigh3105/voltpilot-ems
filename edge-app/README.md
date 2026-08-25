@@ -150,10 +150,10 @@ node --test nodered/*.test.js nodered/deye/*.test.js
 # stand-in cloud broker; retained schedule -> guards -> sim setpoint write)
 ./test/e2e-compose.sh
 
-# OCPP-Lastmanagement-Rig (L1-L5), DOCKER-FREI: der echte Kern + echte
-# simulierte Ladesaeulen ueber echte Websockets. Gemessen wird, was eine
-# Saeule ZIEHEN wuerde - nie eine Quittung. Enthaelt den Totmann-Beweis:
-# der Kern wird getoetet, die Saeule begrenzt sich SELBST und laedt weiter.
+# OCPP-Lastmanagement-/Daten-/Command-Rig (L1-L12), DOCKER-FREI: der echte
+# Kern + echte simulierte Ladesaeulen ueber echte Websockets. Gemessen wird,
+# was eine Saeule ZIEHEN wuerde - nie nur eine Quittung. Enthaelt Totmann,
+# privacy-sicheres Journal sowie Replay/Deadline/Crash/Readback des Gateways.
 ./test/e2e-ocpp.sh
 ```
 

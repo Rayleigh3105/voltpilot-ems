@@ -25,6 +25,9 @@
 #   L10 (Slice 10) der vollständige privacy-sichere OCPP-J-Datenstrom liegt
 #       absturzfest am Edge: Protokolltypen, Konfiguration/Fähigkeiten,
 #       dimensionsgetreue MeterValues, Auth-Referenzen und TransactionData
+#   L11/L12 der Command-Gateway fährt die vollständige Aktionsfläche mit
+#       persistentem Replay-/Deadline-Schutz, crashfester wire-id-Korrelation
+#       und echtem mutieren→Antwort→Readback über lokale Websockets
 #
 # Bewusst OHNE Docker: alles hier läuft als Prozess, also ist das Rig auf jedem
 # Rechner mit Go reproduzierbar und braucht kein gebautes Image.
@@ -492,11 +495,12 @@ pass "L10: Vollinventur best-effort, gezielte Sicherheitsabfrage erfolgreich; Ev
 # ---------------------------------------------------------------- L11/L12
 echo "--- L11/L12: OCPP-Command-Gateway (lokal, ohne Live-Station)"
 # The real websocket rig above proves the station half. These focused checks
-# prove the cloud command boundary covers every OCPP 1.6 action and that the
-# API correlation survives the library's opaque wire message id.
-( cd core && go test ./internal/csms -run 'TestCommandRequestCoversCompleteOcpp16Surface|TestJournalCarriesExternalCorrelationAcrossWireID' -count=1 ) \
+# prove the cloud command boundary covers every OCPP 1.6 action, survives
+# replay/reconnect/crash/reverse responses and executes a real
+# ChangeConfiguration -> CallResult -> targeted GetConfiguration readback.
+( cd core && go test ./internal/csms -run 'TestCommandRequestCoversCompleteOcpp16Surface|TestCommandReplayAndReconnectAreDurablyDeduplicated|TestCommandCrashAfterDurableClaimNeverReplays|TestCommandDeadlineAndIdentityFailClosedBeforeExecution|TestWireCorrelationSurvivesCrashAndConcurrentReverseResponses|TestJournalCarriesExternalCorrelationAcrossWireID|TestCloudChangeConfigurationPersistsResponseAndPerformsReadback' -count=1 ) \
   || fail "L11/L12: Command-Dispatcher oder Korrelationsbrücke fehlgeschlagen"
-pass "L11/L12: vollständige Command-Fläche, one-shot Korrelation und Secret-Redaktion lokal bewiesen"
+pass "L11/L12: vollständige Command-Fläche, Replay/Deadline/Crash, exakte Korrelation und persistierter Readback lokal bewiesen"
 
 # Fuer L4 zaehlt die PHYSISCHE Bahn: der Totmann wird ohne Quellen-Deckel
 # geprueft (er ist eine Eigenschaft der Saeule, nicht der Oekonomie).

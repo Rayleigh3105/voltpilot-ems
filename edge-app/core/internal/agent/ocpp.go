@@ -159,7 +159,11 @@ func (a *Agent) onCloudCommand(payload []byte) {
 			slog.Warn("OCPP command received while CSMS is unavailable")
 			return
 		}
-		if err := a.ocpp.srv.ExecuteCloudCommand(a.ctx, payload); err != nil {
+		a.entMu.Lock()
+		identity := csms.CommandIdentity{TenantID: a.entIdentity.TenantID,
+			SiteID: a.entIdentity.SiteID, DeviceID: a.entIdentity.DeviceID}
+		a.entMu.Unlock()
+		if err := a.ocpp.srv.ExecuteCloudCommand(a.ctx, payload, identity); err != nil {
 			slog.Warn("OCPP cloud command was not sent", "err", err)
 		}
 		return

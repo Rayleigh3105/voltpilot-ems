@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "schemas": [
+    {
+      "schema_id": "voltpilot.health-check.v1",
+      "vendor_id": "de.voltpilot",
+      "message_id": "HealthCheck",
+      "data_type": "object",
+      "required": ["nonce"],
+      "properties": {
+        "nonce": "string"
+      },
+      "additional_properties": false
+    }
+  ]
+}

@@ -2,6 +2,7 @@ package csms
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -81,10 +82,11 @@ func (o *Options) applyDefaults() {
 
 // Server is the OCPP 1.6J central system on the box.
 type Server struct {
-	opts    Options
-	store   *Store
-	journal *Journal
-	log     *slog.Logger
+	opts     Options
+	store    *Store
+	journal  *Journal
+	commands *commandLedger
+	log      *slog.Logger
 
 	mu        sync.Mutex
 	chargers  map[string]*ChargerState
@@ -120,10 +122,15 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("OCPP journal: %w", err)
 	}
+	commands, err := newCommandLedger(opts.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("OCPP command ledger: %w", err)
+	}
 	s := &Server{
 		opts:     opts,
 		store:    st,
 		journal:  journal,
+		commands: commands,
 		log:      opts.Log,
 		chargers: map[string]*ChargerState{},
 		nextTxID: next,
@@ -131,6 +138,9 @@ func New(opts Options) (*Server, error) {
 	}
 	for _, c := range list {
 		s.chargers[c.ID] = &ChargerState{Charger: c}
+	}
+	journal.onCommandResult = func(chargePointID, wireID, action string, payload json.RawMessage) {
+		go s.commandReadback(chargePointID, wireID, action, payload)
 	}
 	return s, nil
 }

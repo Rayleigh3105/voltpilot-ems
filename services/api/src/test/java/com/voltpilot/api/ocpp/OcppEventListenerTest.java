@@ -1,6 +1,7 @@
 package com.voltpilot.api.ocpp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -18,6 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessResourceFailureException;
 
 class OcppEventListenerTest {
     private static final UUID TENANT = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -69,6 +71,15 @@ class OcppEventListenerTest {
         when(repository.ingest(eq(TENANT), eq(SITE), eq(DEVICE), any())).thenReturn(false);
         assertThat(listener.handle(TOPIC, event(DEVICE).getBytes(StandardCharsets.UTF_8))).isFalse();
         verify(repository).ingest(eq(TENANT), eq(SITE), eq(DEVICE), any());
+        assertThat(TenantContext.get()).isNull();
+    }
+
+    @Test
+    void databaseFailurePropagatesForMqttRedeliveryAndStillClearsTenantContext() {
+        when(repository.ingest(eq(TENANT), eq(SITE), eq(DEVICE), any()))
+                .thenThrow(new DataAccessResourceFailureException("database unavailable"));
+        assertThatThrownBy(() -> listener.handle(TOPIC, event(DEVICE).getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(DataAccessResourceFailureException.class);
         assertThat(TenantContext.get()).isNull();
     }
 

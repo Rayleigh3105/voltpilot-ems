@@ -1443,7 +1443,7 @@ Contract: `docs/contracts/mqtt-data-purge.schema.json` (additive; reuses the exi
 ONE purge authority: `services/api` `purge/DevicePurgeService` - both entry points run through it.
 
 - **What a cloud purge does, in order** (the ordering is load-bearing):
-  1. **Per-device database lock first:** `DeviceDataLock` holds a PostgreSQL advisory SESSION lock across the separately committed watermark and the full series sweep. `OcppRepository.ingest` takes the SAME key transactionally and reads the watermark only after acquiring it. Across API replicas an OCPP event therefore commits entirely before the purge (and is swept) or entirely after it (and survives); no mixed generation across the eleven tables and no cloud-side silent drop.
+  1. **Per-device database lock first:** `DeviceDataLock` holds a PostgreSQL advisory SESSION lock across the separately committed watermark and the full series sweep. `OcppRepository.ingest` takes the SAME key transactionally and reads the watermark only after acquiring it. Across API replicas an OCPP event therefore commits entirely before the purge (and is swept) or entirely after it (and survives); no mixed generation across the OCPP tables and no cloud-side silent drop.
   2. **Watermark first**: `device.data_purged_before = now()` (migration `V20260706000000`), committed as its own statement.
      The timescale-writer's insert refuses any sample whose OBSERVATION `time` is `<=` the watermark (extra `NOT EXISTS` on `device`), so a store-and-forward edge replaying old buffer entries can NEVER resurrect purged history - correctness does not depend on the device cooperating.
   3. **Delete + rollup rebuild in one transaction** (`SeriesRepository.purgeDeviceRecordings`): the device's raw `telemetry` rows go, then the SITE's `telemetry_rollup_15m/1h/1d` are deleted and re-inserted from the remaining raw rows (rollups aggregate per SITE, and an upsert can never empty a bucket - hence rebuild, not refresh).
@@ -1661,7 +1661,7 @@ Der Anlass war eine Produktionsstörung (06./07.08.2026): eine DNS-Fehlleitung l
 (cd edge-app/core && go test ./...)                          # Go 1.24+; incl. in-process mTLS integration test
 (cd edge-app/nodered/vp-palette && npm install && npm test)  # vp-palette node tests
 edge-app/test/e2e-compose.sh                                 # isolated compose e2e (Docker; own project/ports)
-edge-app/test/e2e-ocpp.sh                                    # OCPP-Lastmanagement-/Daten-Rig (L1-L10; Docker-FREI, nur Go + curl)
+edge-app/test/e2e-ocpp.sh                                    # OCPP-Lastmanagement-/Daten-/Command-Rig (L1-L12; Docker-FREI, nur Go + curl)
 ```
 
 Health endpoints on the JVM services are mapped to root: `GET /health` (Spring Boot Actuator).
@@ -4162,8 +4162,9 @@ ERTEILT die Einmal-Freigabe.
 
 Der Edge bleibt das lokale CSMS. Slice 10 transportiert sein vollständiges,
 bereits privacy-redigiertes OCPP-1.6-Journal per QoS1 auf
-`ems/{tenant}/{site}/{device}/v2/ocpp-events` zur API; es gibt bewusst KEINEN
-CSMS→Station-Command-Gateway und keine neue Station-Aktion.
+  `ems/{tenant}/{site}/{device}/v2/ocpp-events` zur API. Slice 10 selbst war
+  GET-only; der darauf aufbauende Command-Gateway aus Slice 11/12 steht im
+  direkt folgenden Abschnitt.
 
 - **Migration `V20260840000000`** besitzt die normalisierten Stations-/Stecker-,
   Autorisierungs-, Transaktions-, MeterValue-, Diagnose-/Firmware-,
@@ -4213,12 +4214,12 @@ CSMS→Station-Command-Gateway und keine neue Station-Aktion.
   teilen einen DB-weiten Device-Lock; alte Replays scheitern innerhalb der
   Ingest-Transaktion an `device.data_purged_before`, post-Watermark-Ereignisse
   überleben vollständig auch dann, wenn Edge und API-Replikate konkurrieren.
-- **Die API ist strikt GET-only:**
+- **Die Slice-10-Leseseite ist strikt GET-only:**
   `/api/v1/sites/{siteId}/ocpp/{stations,events,gaps,transactions,meter-values,configuration,action-permissions}`.
   Kunden lesen über normalen JWT-Tenant + RLS, Plattform-Admins wie bei allen
   Site-Pfaden über `X-Tenant-Id`. `OcppActionPolicy` materialisiert D4 für den
-  abhängigen Gateway-PR: operator < site-admin < platform-admin; die Map ist
-  heute nur Auskunft und keine ausführbare Aktion. Beide Realm-Importe kennen
+  Command-Gateway: operator < site-admin < platform-admin; die Map ist zugleich
+  Auskunft und serverseitig erzwungene Vollmacht. Beide Realm-Importe kennen
   `site-admin`; bestehende Realms brauchen wie jede Realm-Änderung ein manuelles
   Nachziehen. Das bestehende Realm-Role `admin` bleibt als rückwärtskompatibler
   Alias derselben Anlagenadministrator-Stufe autorisiert.
@@ -4235,6 +4236,75 @@ CSMS→Station-Command-Gateway und keine neue Station-Aktion.
   in `openapi.yaml`. Beweise: `OcppPrivacyTest`, `OcppEventListenerTest`,
   `OcppActionPolicyTest`, der OCPP-Fall in `PortalApiTest`, der FORCE-RLS-
   Angriff in `RlsIsolationTest`, Edge `csms/journal_test.go` und Rig L10.
+
+## OCPP Command Gateway (Slices 11/12): Antwort ist nicht Wirkung
+
+Der vollständige CSMS→Station-Pfad liegt unter
+`POST/GET/DELETE /api/v1/sites/{siteId}/ocpp/...`; Premium-Portalflächen sind
+bewusst ein späterer Slice. Alle 20 OCPP-1.6-Aktionen aus Anhang A5 sind
+aktionsspezifisch validiert. `DataTransfer` ist ausschließlich über die
+geschlossene Registry `services/api/src/main/resources/ocpp/data-transfer-registry.json`
+und dieselbe Vendor/Message-Bindung am Edge zulässig.
+
+- **Persistierte Choreografie:** `prepared -> sent -> CallResult/CallError ->
+  accepted_waiting_effect -> effect_observed/effect_failed`. `Accepted` wird
+  nie als Ausführung verkauft. Readbacks tragen exakt
+  `readback-<action-correlation>`; Statuswirkungen binden Station, Connector,
+  Transaktion/Zielzustand und müssen nach der Antwort liegen. Reset verlangt
+  Disconnect gefolgt von Boot. D10-Fristen laufen auch im tenantlosen Scheduler
+  über die eng begrenzte SECURITY-DEFINER-Funktion `expire_ocpp_actions`; ein
+  vor dem Sendestatus abgestürztes `prepared` läuft ebenfalls aus.
+- **One-shot am Edge:** das nicht-retained QoS1-Kommando enthält
+  `requested_at`, `deadline_at`, `action_id`, Request-Hash und die vollständige
+  Tenant/Site/Device-Identität. Der Edge vergleicht diese mit seiner Enrollment-
+  Identität, validiert strikt und schreibt VOR dem ersten Stationsbyte das
+  fsync+rename+directory-fsync Ledger `ocpp-command-ledger.json`. Identische
+  Broker-Replays sind No-ops, Kollisionen fail-closed; ein Crash darf dadurch
+  einen Befehl verlieren, aber niemals eine physische Aktion doppelt ausführen.
+  Der `action_id` ist zugleich der OCPP-wire-id; die Journal-Korrelation ist
+  wire-identisch und wird aus dem immutable CALL-Spool nach Neustart aufgebaut.
+  `wire_id` wird zusätzlich im Cloud-Protokolljournal persistiert; eine
+  CallResult/CallError-Zeile darf die Action nur fortschreiben, wenn externe
+  Korrelation, logische Wire-Aktion UND diese UUID übereinstimmen.
+- **Edge-Ablehnung ist ein Ergebnis:** Payload-/Schema-/Identitäts-/Deadline-,
+  Offline- und Sendefehler erzeugen ein dauerhaftes `CommandRejected`-Event,
+  das die API als `edge_rejected` statt als irreführenden Timeout speichert.
+  Scheitert erst der Folge-Readback, bleibt die ursprüngliche Annahme wahr und
+  der Ausgang wird stattdessen als `effect_failed` erklärt.
+  Positive ChangeConfiguration/SendLocalList/Profile-Antworten lösen einen
+  gezielten Readback aus; `RebootRequired` startet niemals automatisch Reset.
+- **Races/Idempotenz:** Zustand+Audit mutieren in einer Transaktion und unter
+  Row-Lock/CAS; `sent` kann Antwort oder Cancel nicht zurückdrehen. Tenantweite
+  Idempotency-Keys werden per transaction advisory lock serialisiert und an
+  Ziel, Aktion, Connector/Transaktion und kanonischen Payload-Hash gebunden.
+  Kollidierende laufende Reset/Boot- und Profile-Mutationen sind ausgeschlossen.
+  DELETE kann nur echtes `prepared` abbrechen und liefert 204; nach Übergabe
+  liefert es ehrlich 409. Späte Antworten/Wirkungen behalten den terminalen
+  Ausgang und erzeugen explizite `late_response`/`late_effect`-Auditzeilen.
+- **D4/D9:** Operator = Alltag, site-admin/admin = Betrieb, platform-admin =
+  Hard Reset/Firmware/Diagnoseziel/DataTransfer. Hard Reset, Full LocalList und
+  Firmware verwenden servererzeugte, fünf Minuten gültige, akteur-/ziel-/
+  payloadgebundene Intents. Fremdfirmware verlangt einen zweiten
+  Plattformoperator; normale Firmware muss Location+SHA-256+Signatur exakt in
+  `ocpp_firmware_artifact` treffen. Firmware-/Diagnoseziele sind kurzlebig
+  kryptografisch presigned HTTPS; URLs/Tags/Secrets werden vor BEIDEN
+  Postgres-Kopien redigiert.
+  ChangeConfiguration bleibt auch für Anlagenadmins eine geschlossene
+  Standard-Key-Allowlist; `AuthorizationKey`, Secrets und freie Vendor-Keys
+  können über diesen Remote-Pfad niemals geschrieben werden.
+- **Audit ist append-only und begrenzt:** die App-Rolle besitzt weder UPDATE/
+  DELETE auf Audit noch DELETE auf dem kaskadierenden Action-Parent. Nur
+  `purge_ocpp_action_history` darf abgeschlossene Action+Audit-Historie nach
+  90 Tagen und abgelaufene Intents nach einem Tag entfernen. Die einzige
+  vorzeitige Ausnahme ist eine ausdrücklich bestätigte Kunden-Datenlöschung:
+  `purge_ocpp_action_scope` verlangt den gesetzten Tenant und genau EINE
+  Site-/Device-Grenze; `SeriesRepository` nutzt sie, ohne der App-Rolle
+  allgemeines DELETE auf Lifecycle/Audit zu geben.
+- Verträge: `mqtt-ocpp-command.schema.json`, `mqtt-ocpp-events.schema.json` und
+  die OCPP-Action-Pfade in `openapi.yaml`. Beweise: API
+  `OcppActionRepositoryTest`/`OcppCommandValidatorTest` plus RLS-/Listener-Tests;
+  Edge `commands_test.go`, `journal_test.go`, `smartcharging_test.go` und das
+  lokale `edge-app/test/e2e-ocpp.sh` (keine Live-Station).
 
 ## Anlagen-Zentrale Stufe 1: jedes Gerät hat EINE deep-linkbare Seite
 

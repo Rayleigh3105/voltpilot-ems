@@ -101,24 +101,32 @@ public class OcppRepository {
             return false;
         }
         String correlation = nullableText(envelope, "correlation_id");
+        String wireId = nullableText(envelope, "wire_id");
         JsonNode payload = privacy.redact(envelope.path("payload"), action);
         JsonNode errorDetails = privacy.redact(envelope.path("error_details"), action);
         String errorDescription = privacy.redactErrorDescription(
                 nullableText(envelope, "error_description"));
         int inserted = jdbc.update("INSERT INTO ocpp_protocol_event (occurred_at, event_id, tenant_id, "
-                        + "site_id, device_id, charge_point_id, direction, message_type, correlation_id, "
+                        + "site_id, device_id, charge_point_id, direction, message_type, correlation_id, wire_id, "
                         + "action, error_code, error_description, error_details, payload) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb) "
                         + "ON CONFLICT (event_id, occurred_at) DO NOTHING",
                 Timestamp.from(occurredAt), eventId, tenantId, siteId, deviceId, chargePointId,
-                direction, messageType, correlation, action, nullableText(envelope, "error_code"),
+                direction, messageType, correlation, wireId, action, nullableText(envelope, "error_code"),
                 errorDescription, json(errorDetails), json(payload));
         if (inserted == 0) {
             return false;
         }
         // The action ledger is deliberately advanced from the same durable
         // event, so a late result/reconnect is still idempotent and visible.
-        actionEvidence(tenantId, deviceId, chargePointId, envelope);
+        // It must receive the SAME privacy-filtered evidence as the protocol
+        // journal; otherwise its second JSON copy could retain secrets that
+        // the canonical event correctly removed.
+        ObjectNode safeEvidence = envelope.deepCopy();
+        safeEvidence.set("payload", payload); safeEvidence.set("error_details", errorDetails);
+        if (errorDescription == null) safeEvidence.remove("error_description");
+        else safeEvidence.put("error_description", errorDescription);
+        actionEvidence(tenantId, deviceId, chargePointId, safeEvidence);
 
         if ("station_to_csms".equals(direction)
                 || ("internal".equals(direction) && !"JournalGap".equals(action))) {
@@ -167,11 +175,11 @@ public class OcppRepository {
     }
 
     private void actionEvidence(UUID tenantId, UUID deviceId, String chargePointId, JsonNode envelope) {
-        // Command gateway is additive: old databases/tests may not have action
-        // tables during a migration window, so do not hide protocol ingestion
-        // behind an action bookkeeping failure.
-        try { actions.applyProtocolEvidence(tenantId, deviceId, chargePointId, envelope); }
-        catch (org.springframework.dao.DataAccessException ignored) { }
+        // Runs in the SAME transaction as the immutable protocol event. A
+        // bookkeeping SQL failure must abort and remain visible to the MQTT
+        // manual-ACK retry; PostgreSQL transactions cannot recover by merely
+        // catching DataAccessException after a statement has failed.
+        actions.applyProtocolEvidence(tenantId, deviceId, chargePointId, envelope);
     }
 
     /**

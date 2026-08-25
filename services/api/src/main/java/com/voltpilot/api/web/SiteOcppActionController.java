@@ -70,6 +70,7 @@ public class SiteOcppActionController {
     }
 
     @DeleteMapping("/actions/{actionId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     public void cancel(@PathVariable UUID siteId, @PathVariable UUID actionId, Authentication auth) {
         requireSite(siteId); service.cancel(siteId, actionId, actor(auth));
     }

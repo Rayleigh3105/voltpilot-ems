@@ -17,6 +17,7 @@
     "direction": { "enum": ["station_to_csms", "csms_to_station", "internal"] },
     "message_type": { "enum": ["Call", "CallResult", "CallError", "Event"] },
     "correlation_id": { "type": "string", "maxLength": 255 },
+    "wire_id": { "type": "string", "maxLength": 255, "description": "Exakte OCPP-J UniqueId; correlation_id bleibt die Cloud-Operations-ID." },
     "action": { "type": "string", "minLength": 1, "maxLength": 128 },
     "error_code": { "type": "string", "maxLength": 128 },
     "error_description": {
@@ -33,7 +34,7 @@
     },
     {
       "if": { "properties": { "message_type": { "enum": ["Call", "CallResult", "CallError"] } }, "required": ["message_type"] },
-      "then": { "required": ["correlation_id"] }
+      "then": { "required": ["correlation_id", "wire_id"] }
     }
   ]
 }

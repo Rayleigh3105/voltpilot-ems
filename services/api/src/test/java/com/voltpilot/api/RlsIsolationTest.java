@@ -103,7 +103,8 @@ class RlsIsolationTest {
                 "ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
                 "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
                 "ocpp_meter_sample", "ocpp_station_status_event", "ocpp_configuration_key",
-                "ocpp_configuration_unknown_key", "ocpp_station_capability"
+                "ocpp_configuration_unknown_key", "ocpp_station_capability", "ocpp_action",
+                "ocpp_action_audit", "ocpp_action_intent"
         };
         try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(),
                 POSTGRES.getUsername(), POSTGRES.getPassword()); Statement s = c.createStatement()) {
@@ -162,6 +163,37 @@ class RlsIsolationTest {
                             + "'SecretProbe','AuthorizationKey=must-not-land','{}')"))
                     .hasMessageContaining("ocpp_protocol_error_description_redacted_chk");
         }
+    }
+
+    @Test
+    void ocppActionAuditIsAppendOnlyForTheApplicationRole() throws Exception {
+        try (Connection c = appDataSource().getConnection()) {
+            setTenant(c, TENANT_A);
+            try (Statement s = c.createStatement()) {
+                s.executeUpdate("INSERT INTO ocpp_action (id,tenant_id,site_id,device_id,charge_point_id,"
+                        + "action,state,correlation_id,idempotency_key,request_hash,conflict_key,actor,"
+                        + "prepared_at,deadline_at,updated_at) VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','"
+                        + TENANT_A + "','00000000-0000-0000-0000-000000000002',"
+                        + "'00000000-0000-0000-0000-000000000003','AUDIT-CP','ClearCache','prepared',"
+                        + "'audit-correlation','audit-key',repeat('a',64),'ClearCache','tester',now(),now()+interval '1 minute',now())");
+                s.executeUpdate("INSERT INTO ocpp_action_audit(action_id,tenant_id,site_id,device_id,"
+                        + "charge_point_id,actor,state) VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','"
+                        + TENANT_A + "','00000000-0000-0000-0000-000000000002',"
+                        + "'00000000-0000-0000-0000-000000000003','AUDIT-CP','tester','prepared')");
+            }
+        }
+        assertThatThrownBy(() -> execute(TENANT_A, "UPDATE ocpp_action_audit SET state='rewritten' WHERE action_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'"))
+                .hasMessageContaining("permission denied");
+        assertThatThrownBy(() -> execute(TENANT_A, "DELETE FROM ocpp_action_audit WHERE action_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'"))
+                .hasMessageContaining("permission denied");
+        assertThatThrownBy(() -> execute(TENANT_A, "DELETE FROM ocpp_action WHERE id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'"))
+                .hasMessageContaining("permission denied");
+        assertThat(scalar(TENANT_B, "SELECT purge_ocpp_action_scope(NULL::uuid, "
+                + "'00000000-0000-0000-0000-000000000003'::uuid)")).isZero();
+        assertThat(scalar(TENANT_A, "SELECT purge_ocpp_action_scope(NULL::uuid, "
+                + "'00000000-0000-0000-0000-000000000003'::uuid)")).isEqualTo(1L);
+        assertThat(scalar(TENANT_A, "SELECT count(*) FROM ocpp_action_audit "
+                + "WHERE action_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'")).isZero();
     }
 
     @Test

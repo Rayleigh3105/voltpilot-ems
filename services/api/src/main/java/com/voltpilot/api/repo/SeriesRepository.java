@@ -21,16 +21,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class SeriesRepository {
 
     /**
-     * Every tenant-scoped OCPP table introduced by Slice 10. Keep this list in
-     * lockstep with V20260840000000: these tables intentionally have explicit
-     * delete paths in addition to the additive composite-FK backstop.
+     * Every tenant-scoped OCPP table introduced by Slice 10. Action lifecycle
+     * tables are deliberately absent: direct DELETE is revoked there and the
+     * tenant-bound {@code purge_ocpp_action_scope} function removes their audit
+     * chain for an explicit customer data-erasure request.
      */
     private static final String[] OCPP_TABLES = {
             "ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
             "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
             "ocpp_meter_sample", "ocpp_station_status_event", "ocpp_configuration_key",
-            "ocpp_configuration_unknown_key", "ocpp_station_capability", "ocpp_action",
-            "ocpp_action_audit", "ocpp_action_intent"
+            "ocpp_configuration_unknown_key", "ocpp_station_capability"
     };
 
     private final JdbcTemplate jdbc;
@@ -102,7 +102,7 @@ public class SeriesRepository {
         // bounded by telemetry's watermark because their own occurred_at can
         // be a station clock. DevicePurgeService's session lock serializes this
         // complete sweep with OcppRepository's transaction lock, so no ingress
-        // can cross the eleven deletes or disappear after T.
+        // can cross the complete sweep or disappear after T.
         deleteOcpp("device_id", deviceId);
         long purged = purgedBefore == null
                 ? jdbc.update("DELETE FROM telemetry WHERE device_id = ?", deviceId)
@@ -113,6 +113,13 @@ public class SeriesRepository {
     }
 
     private void deleteOcpp(String column, UUID id) {
+        if ("site_id".equals(column)) {
+            jdbc.queryForObject("SELECT purge_ocpp_action_scope(?, NULL::uuid)", Integer.class, id);
+        } else if ("device_id".equals(column)) {
+            jdbc.queryForObject("SELECT purge_ocpp_action_scope(NULL::uuid, ?)", Integer.class, id);
+        } else {
+            throw new IllegalArgumentException("unsupported OCPP purge scope: " + column);
+        }
         for (String table : OCPP_TABLES) {
             jdbc.update("DELETE FROM " + table + " WHERE " + column + " = ?", id);
         }

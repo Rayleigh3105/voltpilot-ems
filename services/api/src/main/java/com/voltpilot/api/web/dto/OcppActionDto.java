@@ -10,11 +10,12 @@ public final class OcppActionDto {
     private OcppActionDto() {}
 
     public record ActionRequest(@NotBlank String action, Integer connectorId, Integer transactionId,
-            JsonNode request, UUID intentId) {}
+            JsonNode request, UUID intentId, String confirmationPhrase) {}
 
-    public record IntentRequest(@NotBlank String action, String phrase, Integer connectorId) {}
+    public record IntentRequest(@NotBlank String action, Integer connectorId, Integer transactionId,
+            JsonNode request) {}
 
-    public record Intent(UUID id, String action, String phrase, Instant expiresAt) {}
+    public record Intent(UUID id, String action, String phrase, boolean fourEyes, Instant expiresAt) {}
 
     public record Action(UUID id, UUID deviceId, String chargePointId, String action, String state,
             String correlationId, String idempotencyKey, String actor, Integer connectorId,
