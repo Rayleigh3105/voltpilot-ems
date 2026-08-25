@@ -149,37 +149,30 @@ public class ComponentDefinitionRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    /** Legt die Fassung in der Historie ab. */
-    public void recordVersion(UUID tenantId, UUID siteId, UUID entityId, int version, String role,
-            String label, String brand, String model, String family, String communication,
-            String connectionJson, String sourceKind, String templateRef, Integer templateVersion,
+    /**
+     * Legt den TATSAECHLICH angewandten Stand als vollstaendigen Snapshot ab.
+     *
+     * <p>Der Assistent spricht in Kundenrollen (zum Beispiel {@code inverter}),
+     * waehrend die gespeicherte, aus Wechselrichter und Batterie komponierte
+     * Entitaet {@code battery-hybrid} sein kann. Deshalb darf kein Aufrufer die
+     * Snapshot-Felder ein zweites Mal aus dem Request ableiten. Diese eine
+     * Abfrage kopiert Rolle, Typ, Schutzklemmen und Verbindung direkt aus genau
+     * der gerade geschriebenen {@code measurement_point}-Fassung.
+     */
+    public void recordStoredVersion(UUID tenantId, UUID siteId, UUID entityId, int version,
             String createdBy, String note) {
         jdbc.update("INSERT INTO component_definition (entity_id, version, tenant_id, site_id, role, "
                         + "label, brand, model, family, communication, connection_json, source_kind, "
                         + "template_ref, template_version, capacity_kwp, control, entity_type, capabilities, "
                         + "guard_config, registry_unit_id, semantic_snapshot_complete, created_by, note) "
-                        + "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, m.capacity_kwp, m.control, "
-                        + "m.entity_type, m.capabilities, m.guard_config, m.registry_unit_id, true, ?, ? "
-                        + "FROM measurement_point m WHERE m.id = ? ON CONFLICT (entity_id, version) DO NOTHING",
-                entityId, version, tenantId, siteId, role, label, brand, model, family,
-                communication, connectionJson, sourceKind, templateRef, templateVersion,
-                createdBy, note, entityId);
-    }
-
-    public void recordVersionFull(UUID tenantId, UUID siteId, UUID entityId, int version,
-            String role, String label, String brand, String model, String family,
-            String communication, String connectionJson, String sourceKind, String templateRef,
-            Integer templateVersion, BigDecimal capacityKwp, boolean control, String entityType,
-            String capabilitiesJson, String guardConfigJson, String registryUnitId,
-            String createdBy, String note) {
-        jdbc.update("INSERT INTO component_definition (entity_id, version, tenant_id, site_id, role, "
-                        + "label, brand, model, family, communication, connection_json, source_kind, "
-                        + "template_ref, template_version, capacity_kwp, control, entity_type, capabilities, "
-                        + "guard_config, registry_unit_id, semantic_snapshot_complete, created_by, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?) "
+                        + "SELECT m.id, ?, m.tenant_id, m.site_id, m.role, m.label, m.brand, m.model, "
+                        + "m.family, m.communication, m.connection_json, m.source_kind, m.template_ref, "
+                        + "m.template_version, m.capacity_kwp, m.control, m.entity_type, m.capabilities, "
+                        + "m.guard_config, m.registry_unit_id, true, ?, ? FROM measurement_point m "
+                        + "WHERE m.id = ? AND m.site_id = ? AND m.tenant_id = ? "
+                        + "AND m.definition_version = ? "
                         + "ON CONFLICT (entity_id, version) DO NOTHING",
-                entityId, version, tenantId, siteId, role, label, brand, model, family, communication,
-                connectionJson, sourceKind, templateRef, templateVersion, capacityKwp, control,
-                entityType, capabilitiesJson, guardConfigJson, registryUnitId, true, createdBy, note);
+                version, createdBy, note, entityId, siteId, tenantId, version);
     }
 
     /** Alle Fassungen einer Komponente, neueste zuerst. */

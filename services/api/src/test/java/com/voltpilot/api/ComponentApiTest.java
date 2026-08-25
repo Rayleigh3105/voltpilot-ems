@@ -76,6 +76,8 @@ class ComponentApiTest {
     private static final String DEYE = "builtin:deye:sun-30k-sg01hp3";
     private static final String FRONIUS = "builtin:fronius_sunspec:fronius-eco-27-3-s";
     private static final String GENERIC = "builtin:generic_modbus:sunspec";
+    private static final String BATTERY_CURRENT_POINT =
+            "deye.hybrid_1p.battery.battery-current";
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -375,6 +377,91 @@ class ComponentApiTest {
         }
     }
 
+    @Test
+    void aMissingExactTemplateVersionMasksARealCustomSecretInsteadOfFallingBack() throws Exception {
+        String customer = token("demo", "demo");
+        String templateRef = "builtin:test:versioned-mask";
+        String customSecret = "credential-only-version-two";
+        UUID site = createSite(customer, "Vorlagen-Fassung-Maske");
+        try {
+            claim(customer, site, "edge-template-mask-01");
+            Map<String, Object> conn = deyeConnection();
+            receipts.record(site, FRONIUS, conn);
+            ResponseEntity<String> created = post("/api/v1/sites/" + site + "/components",
+                    customer, saveBody(FRONIUS, "pv-generation", conn));
+            assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
+            UUID entityId = UUID.fromString(byRole(json.readTree(created.getBody()),
+                    "pv-generation").get("id").asText());
+
+            try (Connection c = superuser()) {
+                try (var insert = c.prepareStatement(
+                        "INSERT INTO component_template (kind, template_ref, version, brand, "
+                                + "brand_label, model, model_label, family, family_label, "
+                                + "communication, communication_label, transport_schema, "
+                                + "certification_status, created_by, withdrawn_at, withdrawn_by, "
+                                + "device_type) VALUES ('builtin', ?, ?, 'probe', 'Probe', ?, ?, "
+                                + "NULL, NULL, 'modbus_tcp', 'Modbus TCP', ?::jsonb, 'builtin', "
+                                + "'component-api-test', ?, ?, 'inverter')")) {
+                    insert.setString(1, templateRef);
+                    insert.setInt(2, 1);
+                    insert.setString(3, "v1");
+                    insert.setString(4, "Version 1");
+                    insert.setString(5, "[{\"key\":\"ip\",\"type\":\"text\"}]");
+                    insert.setNull(6, java.sql.Types.TIMESTAMP_WITH_TIMEZONE);
+                    insert.setNull(7, java.sql.Types.VARCHAR);
+                    insert.executeUpdate();
+
+                    insert.setString(1, templateRef);
+                    insert.setInt(2, 2);
+                    insert.setString(3, "v2");
+                    insert.setString(4, "Version 2");
+                    insert.setString(5, "[{\"key\":\"customCredential\",\"type\":\"text\","
+                            + "\"secret\":true}]");
+                    insert.setObject(6, java.sql.Timestamp.from(Instant.now()));
+                    insert.setString(7, "component-api-test");
+                    insert.executeUpdate();
+                }
+                try (var update = c.prepareStatement(
+                        "UPDATE measurement_point SET template_ref = ?, template_version = 2, "
+                                + "connection_json = jsonb_build_object('ip', '192.0.2.44', "
+                                + "'customCredential', ?) WHERE id = ?")) {
+                    update.setString(1, templateRef);
+                    update.setString(2, customSecret);
+                    update.setObject(3, entityId);
+                    assertThat(update.executeUpdate()).isEqualTo(1);
+                }
+                try (var update = c.prepareStatement(
+                        "UPDATE component_definition SET template_ref = ?, template_version = 2, "
+                                + "connection_json = jsonb_build_object('ip', '192.0.2.44', "
+                                + "'customCredential', ?) WHERE entity_id = ?")) {
+                    update.setString(1, templateRef);
+                    update.setString(2, customSecret);
+                    update.setObject(3, entityId);
+                    assertThat(update.executeUpdate()).isGreaterThan(0);
+                }
+            }
+
+            JsonNode current = byRole(getJson("/api/v1/sites/" + site + "/components", customer),
+                    "pv-generation");
+            assertThat(current.path("connection").path("customCredential").asText())
+                    .isEqualTo(com.voltpilot.api.components.ComponentSecrets.MASK);
+            assertThat(current.toString()).doesNotContain(customSecret);
+
+            JsonNode history = getJson("/api/v1/sites/" + site + "/components/" + entityId
+                    + "/versions", customer);
+            assertThat(history.get(0).path("connection").path("customCredential").asText())
+                    .isEqualTo(com.voltpilot.api.components.ComponentSecrets.MASK);
+            assertThat(history.toString()).doesNotContain(customSecret);
+        } finally {
+            deleteSite(customer, site);
+            try (Connection c = superuser(); var delete = c.prepareStatement(
+                    "DELETE FROM component_template WHERE template_ref = ?")) {
+                delete.setString(1, templateRef);
+                delete.executeUpdate();
+            }
+        }
+    }
+
     /** RLS ist der Zaun: eine fremde Anlage ist 404, bevor etwas geschrieben wird. */
     @Test
     void aForeignPlantIs404OnEveryRoute() throws Exception {
@@ -428,11 +515,19 @@ class ComponentApiTest {
     @Test
     void movingADeviceKeepsItsIdentityAndHistoricalTelemetry() throws Exception {
         String customer = token("demo", "demo");
+        String otherTenant = token("demo2", "demo2");
         UUID source = createSite(customer, "Umzug Quelle");
         UUID target = createSite(customer, "Umzug Ziel");
         try {
             claim(customer, source, "edge-location-move-01");
             UUID deviceId = anyDeviceOf(source);
+            ResponseEntity<String> selected = put(
+                    "/api/v1/devices/" + deviceId + "/measurement-selection/"
+                            + BATTERY_CURRENT_POINT,
+                    customer, Map.of("expectedRevision", 0,
+                            "idempotencyKey", UUID.randomUUID().toString(),
+                            "enabled", true, "cadenceS", 60));
+            assertThat(selected.getStatusCode()).isEqualTo(HttpStatus.OK);
             Instant sampleTime = Instant.parse("2026-08-24T10:00:00Z");
             try (Connection c = superuser(); var statement = c.prepareStatement(
                     "INSERT INTO telemetry (time, received_at, tenant_id, site_id, device_id, "
@@ -443,6 +538,31 @@ class ComponentApiTest {
                 statement.setString(4, source.toString());
                 statement.setString(5, deviceId.toString());
                 statement.executeUpdate();
+            }
+            try (Connection c = superuser()) {
+                try (var statement = c.prepareStatement(
+                        "INSERT INTO ocpp_station (device_id, charge_point_id, tenant_id, "
+                                + "site_id, connected, last_seen, updated_at) "
+                                + "VALUES (?, 'CP-MOVE', ?::uuid, ?::uuid, true, ?, ?)")) {
+                    statement.setObject(1, deviceId);
+                    statement.setString(2, TENANT_A);
+                    statement.setString(3, source.toString());
+                    statement.setObject(4, java.sql.Timestamp.from(sampleTime));
+                    statement.setObject(5, java.sql.Timestamp.from(sampleTime));
+                    statement.executeUpdate();
+                }
+                try (var statement = c.prepareStatement(
+                        "INSERT INTO ocpp_protocol_event (occurred_at, event_id, tenant_id, "
+                                + "site_id, device_id, charge_point_id, direction, message_type, "
+                                + "action, payload) VALUES (?, ?, ?::uuid, ?::uuid, ?, "
+                                + "'CP-MOVE', 'station_to_csms', 'Call', 'Heartbeat', '{}'::jsonb)")) {
+                    statement.setObject(1, java.sql.Timestamp.from(sampleTime));
+                    statement.setObject(2, UUID.randomUUID());
+                    statement.setString(3, TENANT_A);
+                    statement.setString(4, source.toString());
+                    statement.setObject(5, deviceId);
+                    statement.executeUpdate();
+                }
             }
 
             JsonNode preview = getJson("/api/v1/devices/" + deviceId + "/move-preview", customer);
@@ -459,6 +579,11 @@ class ComponentApiTest {
             JsonNode movedDevice = json.readTree(moved.getBody());
             assertThat(movedDevice.get("id").asText()).isEqualTo(deviceId.toString());
             assertThat(movedDevice.get("siteId").asText()).isEqualTo(target.toString());
+            assertThat(rest.exchange(url("/api/v1/devices/" + deviceId
+                            + "/measurement-selection"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(otherTenant)), String.class).getStatusCode())
+                    .as("der verschobene Pollplan bleibt für den anderen Tenant unsichtbar")
+                    .isEqualTo(HttpStatus.NOT_FOUND);
 
             assertThat(post("/api/v1/devices/" + deviceId + "/move", customer,
                     Map.of("targetSiteId", source, "expectedRevision", 1,
@@ -479,6 +604,45 @@ class ComponentApiTest {
                         + "' AND to_site_id = '" + target + "'")) {
                     assertThat(rs.next()).isTrue();
                     assertThat(rs.getInt(1)).isEqualTo(1);
+                }
+                try (var rs = st.executeQuery("SELECT site_id::text, tenant_id::text, enabled "
+                        + "FROM device_measurement_selection WHERE device_id = '" + deviceId
+                        + "' AND point_key = '" + BATTERY_CURRENT_POINT + "'")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString(1)).as("der aktuelle Pollplan folgt dem Gerät")
+                            .isEqualTo(target.toString());
+                    assertThat(rs.getString(2)).isEqualTo(TENANT_A);
+                    assertThat(rs.getBoolean(3)).isTrue();
+                }
+                try (var rs = st.executeQuery("SELECT site_id::text, tenant_id::text, "
+                        + "requested_enabled, event_kind FROM device_measurement_selection_event "
+                        + "WHERE device_id = '" + deviceId + "' AND point_key = '"
+                        + BATTERY_CURRENT_POINT + "'")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString(1)).as("das unveränderliche Ereignis behält seinen damaligen Standort")
+                            .isEqualTo(source.toString());
+                    assertThat(rs.getString(2)).isEqualTo(TENANT_A);
+                    assertThat(rs.getBoolean(3)).isTrue();
+                    assertThat(rs.getString(4)).isEqualTo("selection_requested");
+                    assertThat(rs.next()).isFalse();
+                }
+                try (var rs = st.executeQuery("SELECT site_id::text, tenant_id::text, connected "
+                        + "FROM ocpp_station WHERE device_id = '" + deviceId
+                        + "' AND charge_point_id = 'CP-MOVE'")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString(1)).as("der aktuelle OCPP-Zustand folgt dem Gerät")
+                            .isEqualTo(target.toString());
+                    assertThat(rs.getString(2)).isEqualTo(TENANT_A);
+                    assertThat(rs.getBoolean(3)).isTrue();
+                }
+                try (var rs = st.executeQuery("SELECT site_id::text, tenant_id::text FROM "
+                        + "ocpp_protocol_event WHERE device_id = '" + deviceId
+                        + "' AND charge_point_id = 'CP-MOVE'")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString(1)).as("das OCPP-Journal behält den Ereignisstandort")
+                            .isEqualTo(source.toString());
+                    assertThat(rs.getString(2)).isEqualTo(TENANT_A);
+                    assertThat(rs.next()).isFalse();
                 }
             }
         } finally {
@@ -510,24 +674,90 @@ class ComponentApiTest {
     }
 
     @Test
-    void moveAndClaimAgainstOneTargetAreTransactionalAndNeverReturnServerError() throws Exception {
+    void moveAndClaimAgainstOneTargetKeepTheTopologyLockUntilClaimCommit() throws Exception {
         String customer = token("demo", "demo");
         UUID source = createSite(customer, "Move Claim Source");
         UUID target = createSite(customer, "Move Claim Target");
+        CompletableFuture<ResponseEntity<String>> claimFuture = null;
+        CompletableFuture<ResponseEntity<String>> moveFuture = null;
         try {
             claim(customer, source, "edge-location-move-claim-01");
             UUID deviceId = anyDeviceOf(source);
             Map<String, Object> moveBody = Map.of("targetSiteId", target, "expectedRevision", 1,
                     "effectiveAt", Instant.now().toString());
-            CompletableFuture<ResponseEntity<String>> move = CompletableFuture.supplyAsync(
-                    () -> post("/api/v1/devices/" + deviceId + "/move", customer, moveBody));
-            CompletableFuture<ResponseEntity<String>> claim = CompletableFuture.supplyAsync(
-                    () -> post("/api/v1/devices/claim", customer,
-                            Map.of("externalRef", "edge-location-move-claim-02", "siteId", target.toString(), "kind", "inverter")));
-            assertThat(List.of(move.join().getStatusCode(), claim.join().getStatusCode()))
-                    .allMatch(status -> status == HttpStatus.OK || status == HttpStatus.CREATED
-                            || status == HttpStatus.CONFLICT);
+            installClaimInsertGate();
+            ResponseEntity<String> moved;
+            ResponseEntity<String> claimed;
+            try (Connection topologyBlocker = superuser(); Connection insertBlocker = superuser()) {
+                topologyBlocker.setAutoCommit(false);
+                insertBlocker.setAutoCommit(false);
+                holdAdvisoryLock(topologyBlocker, "site-topology:" + target);
+                holdAdvisoryLock(insertBlocker, "component-api:claim-insert-gate");
+
+                // Queue the claim first behind the exact topology lock used by
+                // production. Only after PostgreSQL reports that waiter do we
+                // queue the move. A test-only INSERT trigger then pauses the
+                // claim AFTER it acquired the topology lock. With the controller
+                // transaction intact, the move must still be waiting there.
+                claimFuture = CompletableFuture.supplyAsync(
+                        () -> post("/api/v1/devices/claim", customer,
+                                Map.of("externalRef", "edge-location-move-claim-02",
+                                        "siteId", target.toString(), "kind", "inverter")));
+                awaitAdvisoryWaiters(1);
+                moveFuture = CompletableFuture.supplyAsync(
+                        () -> post("/api/v1/devices/" + deviceId + "/move", customer, moveBody));
+                awaitAdvisoryWaiters(2);
+                topologyBlocker.commit();
+
+                awaitAdvisoryQuery("INSERT INTO device");
+                awaitAdvisoryWaiters(2);
+                assertThat(claimFuture.isDone()).as("der Claim steht kontrolliert im INSERT")
+                        .isFalse();
+                assertThat(moveFuture.isDone()).as("der Move wartet bis zum Claim-COMMIT")
+                        .isFalse();
+
+                insertBlocker.commit();
+                claimed = claimFuture.join();
+                moved = moveFuture.join();
+            }
+
+            HttpStatus moveStatus = (HttpStatus) moved.getStatusCode();
+            HttpStatus claimStatus = (HttpStatus) claimed.getStatusCode();
+            assertThat(claimStatus).as("der eindeutige neue Claim schreibt genau einmal")
+                    .isEqualTo(HttpStatus.CREATED);
+            assertThat(moveStatus).as("der danach laufende Move sieht die belegte Topologie")
+                    .isEqualTo(HttpStatus.CONFLICT);
+
+            try (Connection c = superuser(); Statement st = c.createStatement()) {
+                String movedSite;
+                String claimedSite;
+                try (var rs = st.executeQuery("SELECT external_ref, site_id::text FROM device "
+                        + "WHERE external_ref IN ('edge-location-move-claim-01', "
+                        + "'edge-location-move-claim-02') ORDER BY external_ref")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString(1)).isEqualTo("edge-location-move-claim-01");
+                    movedSite = rs.getString(2);
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString(1)).isEqualTo("edge-location-move-claim-02");
+                    claimedSite = rs.getString(2);
+                    assertThat(rs.next()).isFalse();
+                }
+                assertThat(claimedSite).isEqualTo(target.toString());
+                long assignments;
+                try (var rs = st.executeQuery("SELECT count(*) FROM device_site_assignment "
+                        + "WHERE device_id = '" + deviceId + "' AND from_site_id = '" + source
+                        + "' AND to_site_id = '" + target + "'")) {
+                    assertThat(rs.next()).isTrue();
+                    assignments = rs.getLong(1);
+                }
+                assertThat(movedSite).as("der abgelehnte Move bleibt vollständig an der Quelle")
+                        .isEqualTo(source.toString());
+                assertThat(assignments).isZero();
+            }
         } finally {
+            if (claimFuture != null) claimFuture.join();
+            if (moveFuture != null) moveFuture.join();
+            removeClaimInsertGate();
             deleteSite(customer, source);
             deleteSite(customer, target);
         }
@@ -597,6 +827,22 @@ class ComponentApiTest {
                     .isEqualTo("kunde");
             assertThat(stored.path("reading_override").path("accepted_at").asText()).isNotBlank();
             assertThat(stored.path("reading_override").path("accepted_by").asText()).isNotBlank();
+
+            // Die Historie kopiert die TATSAECHLICH komponierte Datenbankrolle,
+            // nicht die Assistentenrolle `inverter`. Ein Rollback derselben
+            // vollständigen Fassung darf die battery-hybrid-Entität deshalb
+            // weder umdeuten noch verschwinden lassen.
+            UUID entityId = UUID.fromString(row.get("id").asText());
+            JsonNode versions = getJson("/api/v1/sites/" + site + "/components/"
+                    + entityId + "/versions", customer);
+            assertThat(versions.get(0).path("role").asText()).isEqualTo("battery-hybrid");
+            ResponseEntity<String> composedRollback = post("/api/v1/sites/" + site
+                    + "/components/" + entityId + "/versions/2/rollback", customer,
+                    Map.of("expectedRevision", row.get("definitionVersion").asInt()));
+            assertThat(composedRollback.getStatusCode()).isEqualTo(HttpStatus.OK);
+            row = byRole(json.readTree(composedRollback.getBody()), "battery-hybrid");
+            assertThat(row.get("id").asText()).isEqualTo(entityId.toString());
+            assertThat(row.get("definitionVersion").asInt()).isEqualTo(3);
 
             // Er reist mit zur Box: der Registry-Push traegt das Opt-in.
             JsonNode push = pushJson(site);
@@ -835,6 +1081,36 @@ class ComponentApiTest {
                 POSTGRES.getUsername(), POSTGRES.getPassword());
     }
 
+    private void installClaimInsertGate() throws SQLException {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute("CREATE OR REPLACE FUNCTION component_api_claim_insert_gate() "
+                    + "RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+                    + "IF NEW.external_ref = 'edge-location-move-claim-02' THEN "
+                    + "PERFORM pg_advisory_xact_lock(hashtextextended("
+                    + "'component-api:claim-insert-gate', 0)); END IF; RETURN NEW; END $$");
+            st.execute("DROP TRIGGER IF EXISTS component_api_claim_insert_gate ON device");
+            st.execute("CREATE TRIGGER component_api_claim_insert_gate BEFORE INSERT ON device "
+                    + "FOR EACH ROW EXECUTE FUNCTION component_api_claim_insert_gate()");
+        }
+    }
+
+    private void removeClaimInsertGate() {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute("DROP TRIGGER IF EXISTS component_api_claim_insert_gate ON device");
+            st.execute("DROP FUNCTION IF EXISTS component_api_claim_insert_gate()");
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static void holdAdvisoryLock(Connection c, String key) throws SQLException {
+        try (var lock = c.prepareStatement(
+                "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))")) {
+            lock.setString(1, key);
+            lock.executeQuery().close();
+        }
+    }
+
     private ResponseEntity<String> post(String path, String token, Object body) {
         return rest.exchange(url(path), HttpMethod.POST,
                 new HttpEntity<>(body, bearer(token)), String.class);
@@ -843,6 +1119,52 @@ class ComponentApiTest {
     private ResponseEntity<String> put(String path, String token, Object body) {
         return rest.exchange(url(path), HttpMethod.PUT,
                 new HttpEntity<>(body, bearer(token)), String.class);
+    }
+
+    private void awaitAdvisoryWaiters(int expected) throws SQLException {
+        Instant deadline = Instant.now().plusSeconds(5);
+        int actual = 0;
+        while (Instant.now().isBefore(deadline)) {
+            try (Connection c = superuser(); Statement st = c.createStatement();
+                    var rs = st.executeQuery("SELECT count(*) FROM pg_stat_activity "
+                            + "WHERE datname = current_database() AND wait_event = 'advisory'")) {
+                assertThat(rs.next()).isTrue();
+                actual = rs.getInt(1);
+            }
+            if (actual >= expected) return;
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("waiting for advisory-lock contention was interrupted", e);
+            }
+        }
+        assertThat(actual).as("HTTP-Transaktionen warten gemeinsam auf dem Topologie-Lock")
+                .isGreaterThanOrEqualTo(expected);
+    }
+
+    private void awaitAdvisoryQuery(String fragment) throws SQLException {
+        Instant deadline = Instant.now().plusSeconds(5);
+        boolean found = false;
+        while (Instant.now().isBefore(deadline)) {
+            try (Connection c = superuser(); var ps = c.prepareStatement(
+                    "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() "
+                            + "AND wait_event = 'advisory' AND query ILIKE ?)")) {
+                ps.setString(1, "%" + fragment + "%");
+                try (var rs = ps.executeQuery()) {
+                    assertThat(rs.next()).isTrue();
+                    found = rs.getBoolean(1);
+                }
+            }
+            if (found) return;
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("waiting for the controlled INSERT gate was interrupted", e);
+            }
+        }
+        assertThat(found).as("der Claim wartet nach dem Topologie-Lock im INSERT").isTrue();
     }
 
     private JsonNode getJson(String path, String token) throws Exception {

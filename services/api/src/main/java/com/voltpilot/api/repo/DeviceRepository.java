@@ -157,13 +157,16 @@ public class DeviceRepository {
         jdbc.update("UPDATE entity_observed_state SET site_id = ? WHERE device_id = ?",
                 targetSiteId, state.deviceId());
         // Current execution/health snapshots follow the device; historical
-        // journals and telemetry retain their original site attribution.
+        // journals and telemetry retain their original site attribution. The
+        // measurement selection and OCPP current-state tables are deliberately
+        // absent here: their composite FKs use ON UPDATE CASCADE, so the parent
+        // device update below moves those rows atomically without a transient
+        // child/parent tuple violation.
         for (String table : new String[] {"device_control_status", "device_curtailment_status",
                 "device_source_status", "device_edge_version", "device_update_status",
                 "consumer_runtime_status", "device_charging_budget", "device_charge_point",
-                "device_charge_connector", "device_measurement_selection", "device_curtailment_unit",
-                "flow_device_ack", "flow_node_status", "ocpp_station", "ocpp_connector_state",
-                "ocpp_configuration_key", "ocpp_configuration_unknown_key", "ocpp_station_capability"}) {
+                "device_charge_connector", "device_curtailment_unit",
+                "flow_device_ack", "flow_node_status"}) {
             jdbc.update("UPDATE " + table + " SET site_id = ? WHERE device_id = ? AND site_id = ?",
                     targetSiteId, state.deviceId(), state.siteId());
         }

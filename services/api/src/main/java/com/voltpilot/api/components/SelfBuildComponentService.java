@@ -792,10 +792,7 @@ public class SelfBuildComponentService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
         int version = applied.version();
-        definitions.recordVersion(tenantId, siteId, entityId, version,
-                sw == null ? SelfBuildDefinition.ENTITY_TYPE : SWITCHABLE_ENTITY_TYPE, label,
-                null, null, null, SelfBuildDefinition.COMMUNICATION, definitionJson,
-                SelfBuildDefinition.SOURCE_KIND, null, null, subject, note);
+        definitions.recordStoredVersion(tenantId, siteId, entityId, version, subject, note);
         deployFlow(siteId, tenantId, entityId, version, label, transport, channels, sw);
         entityRegistry.pushRegistryBestEffort(siteId);
     }
@@ -821,13 +818,7 @@ public class SelfBuildComponentService {
         }
         int version = applied.version();
         String text = note == null || note.isBlank() ? defaultNote : note.trim();
-        // Die Rolle der Zeile IST ihr Entitätstyp (die Konvention jeder
-        // v2-nativen Entität) - die Fassungs-Historie erfindet dafür kein
-        // zweites Wort.
-        definitions.recordVersion(tenantId, siteId, entityId, version,
-                SelfBuildDefinition.ENTITY_TYPE, label, null, null, null,
-                SelfBuildDefinition.COMMUNICATION, definitionJson,
-                SelfBuildDefinition.SOURCE_KIND, null, null, subject, text);
+        definitions.recordStoredVersion(tenantId, siteId, entityId, version, subject, text);
 
         deployReadFlow(siteId, tenantId, entityId, version, label, def);
         entityRegistry.pushRegistryBestEffort(siteId);

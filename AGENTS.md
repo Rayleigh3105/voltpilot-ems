@@ -648,6 +648,13 @@ Anlage ändert dadurch ihr Verhalten NICHT** (siehe die Autoritäts-Regel; der B
 - **Versionen sind APPEND-ONLY** (`component_definition`, PK `(entity_id, version)`, RLS + FORCE): jedes
   Speichern schreibt eine neue Fassung und hebt `measurement_point.definition_version`; ein Rollback schreibt
   die ALTE Fassung als NEUE (nie ein Löschen) — „was lief letzte Woche" bleibt beantwortbar.
+  Vollständige Snapshots werden ausschließlich aus dem gerade angewandten `measurement_point` kopiert
+  (`recordStoredVersion`), nie aus der Assistentenrolle: ein über `inverter` bearbeiteter komponierter
+  `battery-hybrid` bleibt deshalb auch nach Rollback `battery-hybrid`, samt Typ, Capabilities und Guards.
+- **Secrets werden gegen die REFERENZIERTE Vorlagenfassung maskiert.** Listen und Historie lösen immer
+  exakt `(template_ref, template_version)` auf. Fehlt diese Fassung oder wurde sie zurückgezogen, gilt
+  fail-closed und jeder gespeicherte Verbindungswert wird maskiert; ein Rückfall auf eine ältere auswählbare
+  Fassung ist nur für den Vorlagen-Picker erlaubt, nie für die Ausgabe bestehender Definitionen.
 - **Der Registry-Push wird für den LESEPFAD autoritativ, OHNE neues Topic:** `EntityRegistryService.composePush`
   füllt `driver.connection` aus der gespeicherten Fassung und stempelt `component_authority` **NUR bei
   `portal`** — die Bytes einer box-verwalteten Anlage sind damit unverändert.
@@ -4929,6 +4936,11 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
 - **Aktivierung beginnt serverseitig jetzt.** `enabled_at` kommt ausschließlich
   aus DB-`now()` und ist die spätere Writer-No-Backfill-Grenze. Abwahl ist ein
   UPDATE mit `disabled_at`; weder Auswahlzeile noch Events werden gelöscht.
+- **Beim Standortwechsel gilt Current-vs-History.** Der aktuelle Pollplan folgt
+  der stabilen Geräte-ID atomisch per zusammengesetztem `ON UPDATE CASCADE`;
+  Auswahl- und OCPP-Ereignisse behalten den damaligen Standort. Historienzeilen
+  sind deshalb getrennt über `(device_id, tenant_id)` und `(site_id, tenant_id)`
+  gebunden: alte Attribution bleibt unverändert, ohne den Tenantzaun zu lockern.
 - **API:** `/api/v1/devices/{deviceId}/measurement-selection/**` liefert
   Katalogsuche/Facetten, Status/Audit, Budget-Preview, optimistic/idempotente
   Auswahl und „Eigenen Messwert hinzufügen“. Freie Register sind ausschließlich

@@ -297,13 +297,8 @@ public class ComponentService {
         String note = req.note() == null || req.note().isBlank()
                 ? (connectionChanged ? "Verbindung geändert" : "Gerät bearbeitet")
                 : req.note().trim();
-        definitions.recordVersionFull(TenantContext.get(), siteId, entityId, applied.version(),
-                role, applied.label(), template.brand(), template.model(), template.family(),
-                template.communication(), connJson,
-                SOURCE_KIND_CERTIFIED.equals(template.kind()) ? SOURCE_KIND_CERTIFIED : SOURCE_KIND_BUILTIN,
-                template.templateRef(), template.version(), capacity, existing.control(),
-                ROLE_ENTITY_TYPE.get(role), ComponentDefaults.capabilities(mapper, role),
-                ComponentDefaults.guards(mapper, role, req.capacityKwp()), existing.registryUnitId(), subject, note);
+        definitions.recordStoredVersion(TenantContext.get(), siteId, entityId,
+                applied.version(), subject, note);
         definitions.recordEvent(TenantContext.get(), siteId, entityId, applied.version(),
                 "edited", effectiveAt, null, null, subject, note);
         if (!java.util.Objects.equals(existing.family(), template.family())) {
@@ -347,11 +342,7 @@ public class ComponentService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Diese historische Fassung enthält keinen vollständigen Sicherheits-Snapshot und kann nicht automatisch zurückgesetzt werden.");
         }
-        String restoredEntityType = old.entityType();
-        String restoredCapabilities = old.capabilitiesJson();
-        String restoredGuards = old.guardConfigJson();
         BigDecimal restoredCapacity = old.capacityKwp();
-        Boolean restoredControl = old.control();
         ComponentDefinitionRepository.FullDefinition restored = old;
         ComponentDefinitionRepository.Applied applied = definitions.applyDefinitionFull(siteId, entityId,
                 expectedRevision, restored);
@@ -360,12 +351,8 @@ public class ComponentService {
             throw stale(latest == null ? expectedRevision : latest.definitionVersion());
         }
         adjustPvCapacity(TenantContext.get(), siteId, current, old.definition().role(), restoredCapacity);
-        definitions.recordVersionFull(TenantContext.get(), siteId, entityId, applied.version(),
-                old.definition().role(), applied.label(), old.definition().brand(), old.definition().model(),
-                old.definition().family(), old.definition().communication(), old.definition().connection(),
-                old.definition().sourceKind(), old.definition().templateRef(), old.definition().templateVersion(),
-                restoredCapacity, Boolean.TRUE.equals(restoredControl), restoredEntityType, restoredCapabilities,
-                restoredGuards, restored.registryUnitId(), subject, "Zurück auf Fassung " + version);
+        definitions.recordStoredVersion(TenantContext.get(), siteId, entityId,
+                applied.version(), subject, "Zurück auf Fassung " + version);
         definitions.recordEvent(TenantContext.get(), siteId, entityId, applied.version(),
                 "rolled_back", Instant.now(), null, String.valueOf(version), subject,
                 "Zurück auf Fassung " + version);
@@ -698,10 +685,8 @@ public class ComponentService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
         String note = req.note() == null || req.note().isBlank() ? defaultNote : req.note().trim();
-        definitions.recordVersion(tenantId, siteId, entityId, applied.version(), role,
-                applied.label(), template.brand(), template.model(), template.family(),
-                template.communication(), connJson, sourceKind, template.templateRef(),
-                template.version(), subject, note);
+        definitions.recordStoredVersion(tenantId, siteId, entityId, applied.version(),
+                subject, note);
     }
 
     /**
@@ -834,9 +819,7 @@ public class ComponentService {
     }
 
     private ComponentDefinitionDto masked(ComponentDefinitionDto row) {
-        ComponentTemplateDto template = row.templateRef() == null ? null
-                : templates.findNewestByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
-                        row.templateRef()).orElse(null);
+        ComponentTemplateDto template = exactTemplate(row.templateRef(), row.templateVersion());
         return new ComponentDefinitionDto(row.entityId(), row.version(), row.role(), row.label(),
                 row.brand(), row.model(), row.family(), row.communication(),
                 row.connection() == null ? null
@@ -846,9 +829,7 @@ public class ComponentService {
     }
 
     private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied) {
-        ComponentTemplateDto template = row.templateRef() == null ? null
-                : templates.findNewestByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
-                        row.templateRef()).orElse(null);
+        ComponentTemplateDto template = exactTemplate(row.templateRef(), row.templateVersion());
         return new SiteComponentsDto.ComponentRowDto(row.id(), row.role(), row.entityType(),
                 row.label(), row.brand(), row.model(), row.family(), row.communication(),
                 row.connectionJson() == null ? null
@@ -856,6 +837,12 @@ public class ComponentService {
                 row.sourceKind(), row.templateRef(), row.templateVersion(),
                 row.definitionVersion(), row.capacityKwp(), row.edgeSourceId(),
                 syncStatus(soll, applied));
+    }
+
+    private ComponentTemplateDto exactTemplate(String templateRef, Integer templateVersion) {
+        if (templateRef == null || templateVersion == null) return null;
+        return templates.findExactByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
+                templateRef, templateVersion).orElse(null);
     }
 
     /**
