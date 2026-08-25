@@ -63,8 +63,15 @@ function compatibleOcpp(points, capability) {
   }).filter(Boolean))];
   if (!measurands.length) return { ok: true, changes: {} };
   if (!capability || capability.readonly || capability.supported === false) return { ok: false };
-  const supported = new Set(capability.supportedMeasurands || []);
-  if (measurands.some((m) => !supported.has(m))) return { ok: false };
+  // OCPP 1.6 exposes the currently configured sampled-data CSV, not a complete
+  // vocabulary. Treating already-arriving measurands as capability creates a
+  // deadlock: a desired key could never be enabled. The station's
+  // ChangeConfiguration response + targeted GetConfiguration readback is the
+  // compatibility proof.
+  if (Array.isArray(capability.supportedMeasurands)) {
+    const supported = new Set(capability.supportedMeasurands);
+    if (measurands.some((m) => !supported.has(m))) return { ok: false };
+  }
   const csv = measurands.join(',');
   if (capability.maxLength && csv.length > capability.maxLength) return { ok: false };
   return { ok: true, changes: { MeterValuesSampledData: csv, StopTxnSampledData: csv } };

@@ -27,6 +27,7 @@ const controlRouting = require('./inverter-control-routing');
 const SV5 = require('./deye/solarman-v5');
 // Die Zeitfenster der Bus-Warteschlange - dieselbe Quelle, die die Knoten tragen.
 const bus = require('./bus-arbitration');
+const sharedBus = require('./measurements/shared-bus-arbiter');
 
 const flows = JSON.parse(fs.readFileSync(path.join(__dirname, 'flows.json'), 'utf8'));
 const byId = Object.fromEntries(flows.map((n) => [n.id, n]));
@@ -184,7 +185,7 @@ async function runExec(func, msg, ctxStore = {}, flowStore = {}, warns = null) {
     node: { status() {}, error() {}, warn(l) { if (warns) warns.push(String(l)); }, log() {}, send() {} },
     context: { get: (k) => ctxStore[k], set: (k, v) => { ctxStore[k] = v; } },
     flow: { get: (k) => flowStore[k], set: (k, v) => { flowStore[k] = v; } },
-    global: { get: (k) => (k === 'net' ? net : undefined) },
+    global: { get: (k) => (k === 'net' ? net : (k === 'vpSharedBusArbiter' ? sharedBus : undefined)) },
     Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, setTimeout, clearTimeout,
   };
   const script = new vm.Script('(function(){' + func + '\n})()');

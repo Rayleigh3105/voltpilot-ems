@@ -21,6 +21,7 @@
 
 const conn = require('./modbus-conn.js');
 const codec = require('./modbus-tcp.js');
+const sharedBus = require('../../measurements/shared-bus-arbiter.js');
 
 const ERR_INVALID_REQUEST = 'invalid_request';
 const ERR_UNREACHABLE = 'unreachable';
@@ -109,7 +110,7 @@ function runWrite(op, deps) {
     });
   }
   const isCoil = plan.fc === codec.FN_WRITE_COIL;
-  return deps.writeValue(plan)
+  const execute = () => deps.writeValue(plan)
     .then(() => {
       const rb = op.readback_address;
       if (rb === undefined || rb === null) return { id: opId(op), ok: true };
@@ -133,6 +134,8 @@ function runWrite(op, deps) {
       const c = classify(err && err.message);
       return { id: opId(op), ok: false, error_code: c.code, message: c.message };
     });
+  const arbiter = deps.arbiter || sharedBus;
+  return arbiter.runControl(sharedBus.targetKey(plan, 502), execute);
 }
 
 function opId(op) {

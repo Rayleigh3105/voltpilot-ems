@@ -19,11 +19,13 @@ import (
 )
 
 const (
-	LocalConfigTopic  = "edge/measurements/config"
-	LocalStatusTopic  = "edge/measurements/config-status"
-	LocalSamplesTopic = "edge/measurements/samples"
-	MaxBatchSamples   = 256
-	MaxConfigPoints   = 2301
+	LocalConfigTopic           = "edge/measurements/config"
+	LocalStatusTopic           = "edge/measurements/config-status"
+	LocalSamplesTopic          = "edge/measurements/samples"
+	LocalOcppConfigTopic       = "edge/measurements/ocpp-configuration"
+	LocalOcppConfigResultTopic = "edge/measurements/ocpp-configuration-result"
+	MaxBatchSamples            = 256
+	MaxConfigPoints            = 2301
 )
 
 var pointKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._*\[\]@-]{0,239}$`)

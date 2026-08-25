@@ -1,7 +1,9 @@
 package com.voltpilot.ingest;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -13,6 +15,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.integration.acks.SimpleAcknowledgment;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
@@ -45,6 +48,19 @@ class MeasurementIngestAcknowledgementTest {
         verify(acknowledgement).acknowledge();
     }
 
+    @SuppressWarnings("unchecked")
+    @Test
+    void wideDecimalStringRawReachesKafkaWithoutNumericCoercion() {
+        KafkaTemplate<String, String> kafka = mock(KafkaTemplate.class);
+        when(kafka.send(anyString(), anyString(), anyString()))
+                .thenReturn(CompletableFuture.completedFuture(mock(SendResult.class)));
+        handler(kafka).handle(new GenericMessage<>(payload("\"9007199254740993\"")), TOPIC, null);
+
+        ArgumentCaptor<String> event = ArgumentCaptor.forClass(String.class);
+        verify(kafka).send(eq("measurements.raw"), anyString(), event.capture());
+        assertThat(event.getValue()).contains("\"raw\":\"9007199254740993\"");
+    }
+
     private static MeasurementIngestHandler handler(KafkaTemplate<String, String> kafka) {
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
         return new MeasurementIngestHandler(new MeasurementSamplesValidator(mapper), mapper, kafka,
@@ -52,10 +68,14 @@ class MeasurementIngestAcknowledgementTest {
     }
 
     private static String payload() {
+        return payload("false");
+    }
+
+    private static String payload(String raw) {
         return "{\"schema_version\":\"2.0\",\"tenant_id\":\"" + TENANT
                 + "\",\"site_id\":\"" + SITE + "\",\"device_id\":\"" + DEVICE
                 + "\",\"catalog_version\":\"2026.08.25.1\",\"sequence\":4,"
                 + "\"observed_at\":\"2026-08-25T12:00:00Z\",\"samples\":[{"
-                + "\"point_key\":\"goe.api_v2.alw\",\"raw\":false,\"quality\":\"good\"}]}";
+                + "\"point_key\":\"goe.api_v2.alw\",\"raw\":" + raw + ",\"quality\":\"good\"}]}";
     }
 }

@@ -2,12 +2,53 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { catalogDocument } = require('./measurement-driver');
+const fs = require('fs');
+const http = require('http');
+const Module = require('module');
+const os = require('os');
+const path = require('path');
+const { catalogDocument, resolvePoint, decodeJSON } = require('./measurement-driver');
 const { MeasurementRuntime } = require('./measurement-runtime');
-const { discoverSunSpec, shapeShellyStatus } = require('../vp-palette/nodes/vp-measurements');
+const { discoverSunSpec, shapeShellyStatus, getJSON } = require('../vp-palette/nodes/vp-measurements');
 
 const config = (selections, revision = 1) => ({
   revision, catalog_version: catalogDocument.catalog_version, selections,
+});
+
+test('production image and reseed layouts package every settings dependency', () => {
+  const root = path.resolve(__dirname, '..');
+  const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
+  const reseed = fs.readFileSync(path.join(root, 'reseed-entrypoint.sh'), 'utf8');
+  assert.match(dockerfile, /COPY deye \/opt\/vp-template\/deye/);
+  assert.match(reseed, /for d in vp-palette measurements deye node_modules/);
+
+  // Recreate only the production /data files produced by the image template
+  // and reseed loop. Requiring settings from the source tree would hide a
+  // missing packaged relative dependency.
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'vp-image-layout-'));
+  try {
+    fs.copyFileSync(path.join(root, 'settings.js'), path.join(data, 'settings.js'));
+    for (const directory of ['measurements', 'vp-palette', 'deye']) {
+      fs.cpSync(path.join(root, directory), path.join(data, directory), { recursive:true,
+        filter:(source)=>path.basename(source)!=='node_modules' });
+    }
+    const originalLoad = Module._load;
+    const originalPassword = process.env.VP_NODERED_PASSWORD;
+    process.env.VP_NODERED_PASSWORD = 'image-layout-probe';
+    Module._load = function (request, parent, isMain) {
+      if (request === 'bcryptjs') return { hashSync:()=> 'hash', compareSync:()=> true };
+      return originalLoad.call(this, request, parent, isMain);
+    };
+    try {
+      assert.doesNotThrow(() => require(path.join(data, 'settings.js')));
+    } finally {
+      Module._load = originalLoad;
+      if (originalPassword === undefined) delete process.env.VP_NODERED_PASSWORD;
+      else process.env.VP_NODERED_PASSWORD = originalPassword;
+    }
+  } finally {
+    fs.rmSync(data, { recursive:true, force:true });
+  }
 });
 
 test('Deye bench groups a block, runs control first and emits exact raw words', async () => {
@@ -94,12 +135,54 @@ test('concurrent ticks join one physical read and runtime request budget remains
   assert.equal(limited.consumeRequest('ocpp_sampled_value'),false);
 });
 
+test('duty budget reconciles reservations to real monotonic bus occupancy', async () => {
+  let mono=0, runs=0;
+  const runtime=new MeasurementRuntime({monotonicNow:()=>mono},()=>{},()=>new Date('2026-08-25T12:00:00Z'));
+  for(let i=0;i<10;i++) {
+    const result=await runtime.runMeasuredRequest('modbus_holding',async()=>{
+      runs++; mono+=3000; return 'ok';
+    });
+    if(i<3) assert.equal(result,'ok');
+    else assert.equal(result,MeasurementRuntime.BUDGET_BLOCKED);
+  }
+  // The fourth request is conservatively withheld because its 4 s timeout
+  // reservation would exceed the hard window, even though the first three
+  // completed in 3 s each.
+  assert.equal(runs,3);
+  assert.equal(runtime.requestWindow.reduce((sum,entry)=>sum+entry.cost,0),9000);
+
+  let timeoutMono=0, attempts=0;
+  const timeouts=new MeasurementRuntime({monotonicNow:()=>timeoutMono},()=>{});
+  for(let i=0;i<4;i++) await timeouts.runMeasuredRequest('modbus_holding',async()=>{
+    attempts++; timeoutMono+=4000; throw new Error('timeout');
+  }).catch(()=>{});
+  assert.equal(attempts,3); // timeout reservations fill the same hard 20% window.
+});
+
 test('event-driven OCPP obeys selected cadence',()=>{
   const sent=[]; const runtime=new MeasurementRuntime({ocppCapability:{supportedMeasurands:['Voltage'],maxLength:100}},(t,p)=>sent.push({t,p}),()=>new Date('2026-08-25T12:00:00Z'));
   runtime.apply(config([{point_key:'ocpp.1_6.metervalues.voltage.context[*].format[*].phase[*].location[*].unit[*]',cadence_s:60}]));
   const value={measurand:'Voltage',context:'Sample.Periodic',format:'Raw',phase:'L1-N',location:'Outlet',unit:'V',value:'231.2'};
   assert.equal(runtime.onMeterValues([value],new Date('2026-08-25T12:00:00Z')).length,1);
   assert.equal(runtime.onMeterValues([value],new Date('2026-08-25T12:00:01Z')).length,0);
+});
+
+test('OCPP desired is not acknowledged until the durable Core applier confirms readback', async () => {
+  let calls=0, confirm; const published=[];
+  const runtime=new MeasurementRuntime({ocppCapability:{supported:true,maxLength:100},
+    applyOcppConfiguration:(desired)=>{ calls++; assert.deepEqual(desired.configuration,
+      {MeterValuesSampledData:'Voltage',StopTxnSampledData:'Voltage'});
+      return new Promise(resolve=>{confirm=resolve;}); }},
+  (topic,payload)=>published.push({topic,payload}),()=>new Date('2026-08-25T12:00:00Z'));
+  const plan=runtime.apply(config([{point_key:'ocpp.1_6.metervalues.voltage.context[*].format[*].phase[*].location[*].unit[*]',cadence_s:60}]));
+  assert.equal(calls,1);
+  assert.equal(plan.pending,true);
+  assert.equal(runtime.active,null);
+  assert.equal(published.some((entry)=>entry.topic==='edge/measurements/config-status'),false);
+  confirm({revision:1,applied:true});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(runtime.active);
+  assert.equal(published.filter((entry)=>entry.topic==='edge/measurements/config-status').length,1);
 });
 
 test('shipped flow instantiates the production measurement node',()=>{
@@ -129,4 +212,19 @@ test('production Shelly transport expands live component ids into concrete sampl
   const samples=await runtime.tick();
   assert.deepEqual(samples.map((sample)=>sample.point_key),[
     point.point_key.replace('[*]','[0]'),point.point_key.replace('[*]','[2]')]);
+});
+
+test('production HTTP transport preserves 2^53+1 and uint64 max as decimal raw strings', async (t) => {
+  const server = http.createServer((_request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end('{"c0e":9007199254740993,"eto":18446744073709551615}');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const payload = await getJSON(new URL(`http://127.0.0.1:${server.address().port}/api/status`));
+  assert.equal(payload.c0e, '9007199254740993');
+  assert.equal(payload.eto, '18446744073709551615');
+  assert.equal(decodeJSON(resolvePoint('goe.api_v2.c0e'), payload).raw, '9007199254740993');
+  assert.equal(decodeJSON(resolvePoint('goe.api_v2.eto'), payload).raw, '18446744073709551615');
+  assert.match(JSON.stringify(payload), /"c0e":"9007199254740993"/);
 });

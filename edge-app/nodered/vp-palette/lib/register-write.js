@@ -32,6 +32,7 @@ const conn = require('./modbus-conn.js');
 const codec = require('./modbus-tcp.js');
 const sw = require('./switch-write.js');
 const privateHost = require('./private-host.js');
+const sharedBus = require('../../measurements/shared-bus-arbiter.js');
 
 const KIND_HOLDING = 'holding';
 const KIND_COIL = 'coil';
@@ -160,7 +161,7 @@ function runOnce(req, deps) {
   let before = null;
   let wrote = false;
   const sleep = deps.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
-  return readOne(p, deps)
+  const execute = () => readOne(p, deps)
     .then((v) => {
       before = v;
       if (!p.apply) return { ok: true, wrote: false, before: before };
@@ -196,6 +197,8 @@ function runOnce(req, deps) {
           : c.message,
       };
     });
+  const arbiter = deps.arbiter || sharedBus;
+  return arbiter.runControl(sharedBus.targetKey(p, 502), execute);
 }
 
 /** The real dependencies - the SHARED connection manager, never a new socket. */

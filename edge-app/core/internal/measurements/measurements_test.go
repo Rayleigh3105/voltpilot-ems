@@ -105,6 +105,32 @@ func TestNoRawMeansNoSample(t *testing.T) {
 	}
 }
 
+func TestOutboxPreservesWideDecimalStringRawExactly(t *testing.T) {
+	o, err := OpenOutbox(t.TempDir(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	local := []byte(`{"catalog_version":"2026.08.25.1","observed_at":"2026-08-25T12:00:00Z","samples":[{"point_key":"goe.api_v2.eto","raw":"9007199254740993","quality":"good"}]}`)
+	if _, err = o.Append(local, testID); err != nil {
+		t.Fatal(err)
+	}
+	envelope, ok := o.Next()
+	if !ok {
+		t.Fatal("missing persisted envelope")
+	}
+	var payload struct {
+		Samples []struct {
+			Raw any `json:"raw"`
+		} `json:"samples"`
+	}
+	if err = json.Unmarshal(envelope.Raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := payload.Samples[0].Raw.(string); !ok || got != "9007199254740993" {
+		t.Fatalf("wide integer changed type or value: %#v", payload.Samples[0].Raw)
+	}
+}
+
 func TestBackpressureNeverEvictsInFlightOrClearsLaterDrops(t *testing.T) {
 	o, err := OpenOutbox(t.TempDir(), 2)
 	if err != nil {

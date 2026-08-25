@@ -541,12 +541,21 @@ class WriterPipeTest {
             producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, TENANT_A + ":" + SITE
                     + ":" + device, measurementEvent(device, concrete, 52,
                             "2026-08-25T12:02:00Z", "good"))).get();
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, TENANT_A + ":" + SITE
+                    + ":" + device, measurementStringEvent(device, concrete, 53,
+                            "2026-08-25T12:03:00Z", "9007199254740993"))).get();
             producer.flush();
         }
-        awaitMeasurementRows(device, 3);
+        awaitMeasurementRows(device, 4);
         try (Connection c = admin(); Statement st = c.createStatement();
                 ResultSet rs = st.executeQuery("SELECT raw_numeric::text FROM device_measurement_sample "
                         + "WHERE device_id='" + device + "' ORDER BY edge_sequence LIMIT 1")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isEqualTo("9007199254740993");
+        }
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT raw_text FROM device_measurement_sample "
+                        + "WHERE device_id='" + device + "' AND edge_sequence=53")) {
             assertThat(rs.next()).isTrue();
             assertThat(rs.getString(1)).isEqualTo("9007199254740993");
         }
@@ -575,6 +584,19 @@ class WriterPipeTest {
                 + device + "/v2/measurement-samples\",\"gap\":false,\"dropped_samples\":0,"
                 + "\"samples\":[{\"point_key\":\"" + point
                 + "\",\"raw\":9007199254740993,\"quality\":\"" + quality + "\"}]}";
+    }
+
+    private static String measurementStringEvent(String device, String point, long sequence,
+            String observedAt, String raw) {
+        return "{\"schema_version\":\"1.0\",\"event_id\":\"" + UUID.randomUUID()
+                + "\",\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + device
+                + "\",\"catalog_version\":\"2026.08.25.1\",\"sequence\":" + sequence
+                + ",\"observed_at\":\"" + observedAt + "\",\"ingested_at\":\""
+                + observedAt + "\",\"source_topic\":\"ems/" + TENANT_A + "/" + SITE + "/"
+                + device + "/v2/measurement-samples\",\"gap\":false,\"dropped_samples\":0,"
+                + "\"samples\":[{\"point_key\":\"" + point
+                + "\",\"raw\":\"" + raw + "\",\"quality\":\"good\"}]}";
     }
 
     private static String migratedEvent(String device, String site) {

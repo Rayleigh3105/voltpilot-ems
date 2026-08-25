@@ -4,6 +4,9 @@ const { buildPlan, Scheduler } = require('./measurement-planner');
 const { resolvePoint, decodeRegisters, decodeDerived, derivedAddresses,
   decodeJSONSamples, decodeOcppSampledValue, templateKey } = require('./measurement-driver');
 const { LIMITS, COST_MS } = require('./measurement-planner');
+const RESERVATION_MS = Object.freeze({ modbus_holding:4000, modbus_input:4000,
+  sunspec_model:4000, http_api_key:4000, rest_json:4000, rpc_json:4000,
+  ocpp_sampled_value:0 });
 
 /**
  * Read-only runtime. Every I/O primitive is injected for bench simulation;
@@ -12,9 +15,10 @@ const { LIMITS, COST_MS } = require('./measurement-planner');
 class MeasurementRuntime {
   constructor(io, publish, now) {
     this.io = io || {}; this.publish = publish || (() => {}); this.now = now || (() => new Date());
+    this.monotonicNow = this.io.monotonicNow || (() => Number(process.hrtime.bigint() / 1000000n));
     this.active = null; this.scheduler = new Scheduler(); this.due = new Map();
     this.tickPromise = null; this.requestWindow = []; this.sampleWindow = [];
-    this.ocppDue = new Map();
+    this.ocppDue = new Map(); this.applyGeneration = 0;
   }
 
   apply(config, options) {
@@ -22,16 +26,57 @@ class MeasurementRuntime {
       ocppCapability:this.io.ocppCapability }, options || {});
     const candidate = buildPlan(config, planning);
     if (candidate.applied) {
-      // One pointer swap is the atomic cutover. No timer from the previous
-      // plan survives because due is replaced together with active.
-      const due = new Map(candidate.selections.map((s) => [s.point.point_key, 0]));
-      this.active = candidate; this.due = due;
+      const changes = candidate.ocppConfiguration || {};
+      if (Object.keys(changes).length && typeof this.io.applyOcppConfiguration === 'function') {
+        const generation = ++this.applyGeneration;
+        candidate.pending = true;
+        let result;
+        try {
+          // Invoke synchronously so accepting a desired OCPP plan always
+          // produces the durable Core command before apply() returns.
+          result = this.io.applyOcppConfiguration({ revision:config.revision,
+            configuration:changes });
+        } catch (error) {
+          result = Promise.reject(error);
+        }
+        Promise.resolve(result).then((confirmed) => {
+          if (generation !== this.applyGeneration) return;
+          if (confirmed && confirmed.applied === false) throw new Error(confirmed.reason || 'rejected');
+          this.activate(candidate);
+          this.publishStatus(config, candidate);
+        }).catch(() => {
+          if (generation !== this.applyGeneration) return;
+          const ocppKeys = new Set(candidate.selections.filter((selection) =>
+            selection.point.source_kind === 'ocpp_sampled_value').map((selection) => selection.requested_key));
+          const fallback = buildPlan(Object.assign({}, config, { selections:(config.selections || [])
+            .filter((selection) => !ocppKeys.has(selection.point_key)) }), planning);
+          if (fallback.applied) this.activate(fallback);
+          this.publishStatus(config, { accepted:fallback.accepted || [],
+            rejected:(fallback.rejected || []).concat([...ocppKeys].map((point_key) => ({
+              point_key, reason:'ocpp_configuration_incompatible',
+            }))) });
+        });
+        return candidate;
+      }
+      this.applyGeneration++;
+      this.activate(candidate);
     }
+    this.publishStatus(config, candidate);
+    return candidate;
+  }
+
+  activate(candidate) {
+    // One pointer swap is the atomic cutover. No timer from the previous plan
+    // survives because due is replaced together with active.
+    const due = new Map(candidate.selections.map((s) => [s.point.point_key, 0]));
+    this.active = candidate; this.due = due;
+  }
+
+  publishStatus(config, candidate) {
     this.publish('edge/measurements/config-status', {
       revision: config.revision, applied_at: this.now().toISOString(),
       accepted: candidate.accepted, rejected: candidate.rejected,
     }, true);
-    return candidate;
   }
 
   enqueueControl(run) { this.scheduler.enqueueControl({ kind:'control', run }); }
@@ -79,10 +124,11 @@ class MeasurementRuntime {
   async readBlock(block, dueKeys, wireWords) {
     if (typeof this.io.readModbus !== 'function') return [];
     let words;
-    if (!this.consumeRequest(block.source_kind || 'modbus_holding')) return [];
-    try { words = await this.runBusTask(() => this.io.readModbus({ start:block.start,
-      count:block.count, source_kind:block.source_kind, priority:'measurement' })); }
+    try { words = await this.runMeasuredRequest(block.source_kind || 'modbus_holding',
+      () => this.runBusTask(() => this.io.readModbus({ start:block.start,
+        count:block.count, source_kind:block.source_kind, priority:'measurement' }))); }
     catch (_) { return []; } // silence is a gap in time, never a synthetic zero sample.
+    if (words === MeasurementRuntime.BUDGET_BLOCKED) return [];
     if (!Array.isArray(words) || words.length < block.count) return [];
     for (let i = 0; i < block.count; i++) wireWords.set(block.start + i, words[i]);
     return [];
@@ -98,9 +144,10 @@ class MeasurementRuntime {
     const filter = selected.filter((x) => x.point.source_kind === 'http_api_key')
       .map((x) => x.point.selector.split('filter=')[1]).filter(Boolean).join(',');
     let payload;
-    if (!this.consumeRequest(selected[0].point.source_kind)) return [];
-    try { payload = await this.io.readJSON({ group, filter, points:selected.map((x)=>x.point) }); }
+    try { payload = await this.runMeasuredRequest(selected[0].point.source_kind,
+      () => this.io.readJSON({ group, filter, points:selected.map((x)=>x.point) })); }
     catch (_) { return []; }
+    if (payload === MeasurementRuntime.BUDGET_BLOCKED) return [];
     const payloads = payload && Array.isArray(payload.__vpResponses)
       ? payload.__vpResponses : [payload];
     return selected.flatMap((x) => payloads.flatMap((value) => decodeJSONSamples(x.point, value)));
@@ -139,13 +186,34 @@ class MeasurementRuntime {
   }
 
   consumeRequest(kind) {
-    const ms = this.now().getTime(); this.trimWindow(this.requestWindow, ms);
-    if (this.requestWindow.length >= LIMITS.requestsPerMinute) return false;
-    const cost = COST_MS[kind] || 250;
-    const duty = this.requestWindow.reduce((sum, x) => sum + (x.cost || 0), 0);
-    if ((duty + cost) / 600 > LIMITS.dutyPercent) return false;
-    this.requestWindow.push({ at:ms, cost });
-    return true;
+    return this.beginRequest(kind) !== null;
+  }
+
+  beginRequest(kind) {
+    const ms = this.monotonicNow(); this.trimWindow(this.requestWindow, ms);
+    if (this.requestWindow.length >= LIMITS.requestsPerMinute) return null;
+    // Reserve the whole field timeout before touching the wire. A slow/silent
+    // device can therefore never spend capacity that was not admitted. On
+    // completion the reservation is reconciled to measured monotonic occupancy.
+    const reserve = RESERVATION_MS[kind] ?? (COST_MS[kind] || 4000);
+    const duty = this.requestWindow.reduce((sum, x) => sum + x.cost, 0);
+    if ((duty + reserve) / 600 > LIMITS.dutyPercent) return null;
+    const ticket = { at:ms, started:ms, cost:reserve, pending:true };
+    this.requestWindow.push(ticket);
+    return ticket;
+  }
+
+  finishRequest(ticket) {
+    if (!ticket || !ticket.pending) return;
+    ticket.pending = false;
+    ticket.cost = Math.max(1, this.monotonicNow() - ticket.started);
+  }
+
+  async runMeasuredRequest(kind, run) {
+    const ticket = this.beginRequest(kind);
+    if (!ticket) return MeasurementRuntime.BUDGET_BLOCKED;
+    try { return await run(); }
+    finally { this.finishRequest(ticket); }
   }
 
   publishSamples(samples, at) {
@@ -161,4 +229,6 @@ class MeasurementRuntime {
   }
 }
 
-module.exports = { MeasurementRuntime };
+MeasurementRuntime.BUDGET_BLOCKED = Symbol('budget-blocked');
+
+module.exports = { MeasurementRuntime, RESERVATION_MS };

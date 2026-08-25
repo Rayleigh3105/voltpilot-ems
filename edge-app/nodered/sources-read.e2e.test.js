@@ -19,6 +19,7 @@ const vm = require('node:vm');
 const net = require('node:net');
 const http = require('node:http');
 const https = require('node:https');
+const sharedBus = require('./measurements/shared-bus-arbiter');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -130,7 +131,7 @@ async function runFunctionNode(func, { msg = {}, flow = {}, sends = [], warns = 
     node: { status() {}, error() {}, warn(w) { warns.push(String(w)); }, log(l) { logs.push(String(l)); }, send(m) { sends.push(JSON.parse(JSON.stringify(m))); } },
     context: { get: (k) => ctx[k], set: (k, v) => { ctx[k] = v; } },
     flow: { get: (k) => flow[k], set: (k, v) => { flow[k] = v; } },
-    global: { get: (k) => (k === 'net' ? (netStub || net) : (k === 'http' ? http : (k === 'https' ? https : undefined))) },
+    global: { get: (k) => (k === 'net' ? (netStub || net) : (k === 'http' ? http : (k === 'https' ? https : (k === 'vpSharedBusArbiter' ? sharedBus : undefined)))) },
     Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, Map,
     setTimeout: fakeTimers ? fakeTimers.setTimeout : setTimeout,
     clearTimeout: fakeTimers ? fakeTimers.clearTimeout : clearTimeout,

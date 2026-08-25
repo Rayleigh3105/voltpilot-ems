@@ -35,6 +35,7 @@ const path = require('node:path');
 
 const D = require('./sunspec/model-discovery');
 const lease = require('./sunspec/curtail-lease');
+const sharedBus = require('./measurements/shared-bus-arbiter');
 
 const flows = JSON.parse(fs.readFileSync(path.join(__dirname, 'flows.json'), 'utf8'));
 const byId = Object.fromEntries(flows.map((n) => [n.id, n]));
@@ -60,7 +61,7 @@ async function runFunctionNode(func, {
       get: (k) => flow[k],
       set: (k, v) => { if (flowLog) flowLog.push({ k, v }); flow[k] = v; },
     },
-    global: { get: (k) => (k === 'net' ? net : undefined) },
+    global: { get: (k) => (k === 'net' ? net : (k === 'vpSharedBusArbiter' ? sharedBus : undefined)) },
     Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, Map,
     setTimeout, clearTimeout,
   };

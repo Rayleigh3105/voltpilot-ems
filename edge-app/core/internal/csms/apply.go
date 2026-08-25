@@ -35,6 +35,7 @@ func (s *Server) onConnect(id string) {
 	s.log.Info("Ladesäule verbunden", "charge_point_id", id)
 	s.journal.RecordConnection(id, "Connected", now)
 	s.notifyChanged()
+	s.reconcileMeasurementConfigurationAsync()
 }
 
 // onDisconnect records the loss of a station's websocket.

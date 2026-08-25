@@ -35,6 +35,7 @@
 
 const conn = require('../lib/modbus-conn.js');
 const codec = require('../lib/modbus-tcp.js');
+const sharedBus = require('../../measurements/shared-bus-arbiter');
 
 const REQUEST_TOPIC = 'edge/probe/request';
 const RESULT_TOPIC = 'edge/probe/result';
@@ -207,7 +208,7 @@ module.exports = function (RED) {
         return;
       }
       node.status({ fill: 'blue', shape: 'dot', text: 'prüfe ' + req.ops.length + ' Register' });
-      runOps(req.ops, (plan) => conn.readRegisters(plan)).then((results) => {
+      runOps(req.ops, (plan) => sharedBus.runPoll(plan, () => conn.readRegisters(plan))).then((results) => {
         const ok = results.filter((r) => r.ok).length;
         node.status({
           fill: ok === results.length ? 'green' : 'yellow',

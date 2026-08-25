@@ -130,7 +130,7 @@ class MeasurementContractsTest {
     @Test
     void rollupHardeningIsReplayAwareAndQualityCorrect() throws Exception {
         String sql = Files.readString(Path.of("src", "main", "resources", "db", "migration",
-                "V20260843000000__measurement_pipeline_review_hardening.sql"));
+                "V20260845000000__measurement_pipeline_review_hardening.sql"));
         assertThat(sql).contains("quality = 'good'")
                 .contains("now()-INTERVAL '90 days'")
                 .doesNotContain("now()-INTERVAL '2 days'");

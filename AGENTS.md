@@ -5435,16 +5435,28 @@ Push, kein anderer Wunsch, kein anderer Text.
   erfolgreicher Prüfung. Wildcards werden vor dem Planen zu konkreten Punkten
   expandiert (SunSpec 160 anhand Live-Discovery, JSON/OCPP anhand Payload bzw.
   Capability); Custom-Definitionen bleiben im Desired State erhalten. Der
-  Planer gruppiert Registerblöcke (max. 120 Wörter), lässt Steueraufgaben immer
-  vor Messpolls laufen und erzwingt D5 bei Apply **und** zur Laufzeit: Warnung
-  >120, hart 600 Samples/min, 30 Requests/min, 20% Duty; parallele Ticks werden
-  zu genau einem physischen Poll zusammengeführt.
+  Core persistiert gewünschte OCPP-Schlüssel selbst, wendet sie per CSMS an und
+  bestätigt erst nach `GetConfiguration`-Readback; nach Core- oder Ladepunkt-
+  Reconnect wird derselbe Desired State ohne erneutes Cloud-Publish abgeglichen.
+  Planer und bestehende Lese-/Steuerknoten teilen sich den **prozessweiten**
+  `shared-bus-arbiter`: Steuerung gewinnt die nächste Lease, neue Polls warten,
+  und die Lease bleibt bis nach dem Readback und Socket-Abbau belegt. Der Planer
+  gruppiert Registerblöcke (max. 120 Wörter) und erzwingt D5 bei Apply **und**
+  zur Laufzeit: Warnung >120, hart 600 Samples/min, 30 Requests/min, 20% Duty;
+  Duty misst monotone echte Bus-Belegungszeit mit konservativer Vorreservierung,
+  parallele Ticks werden zu genau einem physischen Poll zusammengeführt. Das
+  Produktionsimage MUSS `settings.js`, `measurements/`, `vp-palette/` und
+  `deye/` gemeinsam paketieren/reseeden; der Image-Layout-Test darf nie aus dem
+  Source-Checkout auf fehlende relative Module ausweichen.
 - **Rohdaten-Ehrlichkeit ist eine Invariante.** Ohne erfolgreiche physische/
   Protokoll-Lesung kein Sample; `raw` ist verpflichtend und kommt direkt vom
   Wire/API/OCPP, `decoded` ist optional. Nie zurückrechnen, Einheit raten oder
   bei Fehler eine Nullprobe erfinden. Deye-Ableitungen behalten einen exakten
   Address=Word-Rohvektor; unbekannte Firmware-/Skalenregeln bleiben raw-only.
-  SunSpec Model 160 löst `module[i]` aus live entdeckter Base und `N` auf.
+  SunSpec Model 160 löst `module[i]` aus live entdeckter Base und `N` auf. JSON-
+  Integer außerhalb des sicheren JavaScript-Bereichs werden bereits beim HTTP-
+  Parsen als exakte Dezimalstrings erhalten (nie zuerst durch `Number` gerundet)
+  und bleiben auf Edge, im Ingest-Event und als Writer-`raw_text` bytegenau.
 - **Replay und Lücken sind explizit.** Der Core-Outbox unter
   `data_dir/measurement-outbox` vergibt monotone Sequenzen, sendet älteste
   zuerst und löscht erst nach QoS1-Bestätigung. Begrenzte Eviction schützt die
@@ -5459,8 +5471,9 @@ Push, kein anderer Wunsch, kein anderer Text.
   nach Start/Broker-Reconnect erneut abgeglichen. Der Writer setzt RLS-Tenant pro Transaktion, sperrt das
   Device gegen Purge, respektiert No-Backfill/Auswahl-Cutover und speichert
   idempotent in `device_measurement_sample`; konkrete OCPP-/JSON-Wildcard-Keys
-  werden gegen ihren ausgewählten Template-Key aufgelöst. Numerische JSON-Rohwerte
-  werden als `NUMERIC` ohne IEEE-754-Verlust gespeichert; Retention ist 90 Tage. Die
+  werden gegen ihren ausgewählten Template-Key aufgelöst. Sichere numerische
+  JSON-Rohwerte werden als `NUMERIC`, als Dezimalstring transportierte Wide-
+  Integer als exakter `raw_text` gespeichert; Retention ist 90 Tage. Die
   RLS-Hypertables `device_measurement_rollup_5m/_15m` werden per Timescale-Job
   über die vollen 90 Replay-Tage nur aus `quality='good'` semantikabhängig
   gepflegt (Gauge min/max/avg, Counter positive Deltas + Reset,

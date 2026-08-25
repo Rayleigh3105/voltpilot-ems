@@ -127,7 +127,7 @@ reseed_template() {
   # inherit the copier's uid (root here), and the `chown -R` below hands the
   # whole tree back to the node-red run user. `-RP` is portable across the
   # image's BusyBox cp, GNU coreutils, and BSD/macOS cp (the reseed.test.sh host).
-  for d in vp-palette measurements node_modules; do
+  for d in vp-palette measurements deye node_modules; do
     if [ -e "$TEMPLATE_DIR/$d" ]; then
       rm -rf "$DATA_DIR/$d"
       cp -RP "$TEMPLATE_DIR/$d" "$DATA_DIR/$d"

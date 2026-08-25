@@ -1,14 +1,40 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 )
+
+func (a *Agent) onOcppMeasurementConfiguration(_ string, payload []byte) {
+	var desired csms.MeasurementConfiguration
+	if err := json.Unmarshal(payload, &desired); err != nil {
+		slog.Warn("lokale OCPP-Messkonfiguration verworfen", "err", err)
+		return
+	}
+	if a.ocpp == nil || a.ocpp.srv == nil {
+		raw, _ := json.Marshal(csms.MeasurementConfigurationResult{Revision: desired.Revision,
+			Applied: false, Reason: "ocpp_configuration_incompatible"})
+		if a.Bus != nil {
+			_ = a.Bus.Publish(measurements.LocalOcppConfigResultTopic, raw, false)
+		}
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := a.ocpp.srv.SetMeasurementConfiguration(ctx, desired); err != nil {
+			slog.Warn("OCPP-Messkonfiguration nicht bestätigt", "err", err)
+		}
+	}()
+}
 
 // onMeasurementConfig is the cloud-to-local desired-state bridge. Persistence
 // precedes the retained local publish; Node-RED therefore sees either the old

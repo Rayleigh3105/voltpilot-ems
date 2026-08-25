@@ -56,6 +56,10 @@ type Options struct {
 	// OnSampledValues mirrors the untouched OCPP values to the additive
 	// measurement runtime. It is observation-only and never blocks CSMS state.
 	OnSampledValues func([]SampledReading, time.Time)
+	// OnMeasurementConfigurationResult reports only a station-confirmed,
+	// read-back result. The Node-RED measurement plan must not acknowledge an
+	// OCPP selection merely because a local desired document was parsed.
+	OnMeasurementConfigurationResult func(MeasurementConfigurationResult)
 }
 
 func (o *Options) applyDefaults() {
@@ -107,6 +111,9 @@ type Server struct {
 	// transport is the ocpp-go half. It is created in Start and is the ONLY
 	// place the library is touched besides ocppmap.go.
 	transport *transport
+
+	measurementApplyMu sync.Mutex
+	measurementDesired MeasurementConfiguration
 }
 
 // New builds the server and loads the persisted allowlist. It never opens a
@@ -129,15 +136,20 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("OCPP command ledger: %w", err)
 	}
+	measurementDesired, err := loadMeasurementConfiguration(opts.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("OCPP measurement configuration: %w", err)
+	}
 	s := &Server{
-		opts:     opts,
-		store:    st,
-		journal:  journal,
-		commands: commands,
-		log:      opts.Log,
-		chargers: map[string]*ChargerState{},
-		nextTxID: next,
-		changed:  make(chan struct{}, 1),
+		opts:               opts,
+		store:              st,
+		journal:            journal,
+		commands:           commands,
+		log:                opts.Log,
+		chargers:           map[string]*ChargerState{},
+		nextTxID:           next,
+		changed:            make(chan struct{}, 1),
+		measurementDesired: measurementDesired,
 	}
 	journal.RestoreCommandMappings(commands.wireMappings())
 	for _, c := range list {

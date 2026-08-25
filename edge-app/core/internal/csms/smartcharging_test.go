@@ -356,6 +356,125 @@ func ctx5(t *testing.T) context.Context {
 	return c
 }
 
+func TestMeasurementDesiredIsReadBackAndReappliedAfterCoreAndStationReconnect(t *testing.T) {
+	dir := t.TempDir()
+	results := make(chan csms.MeasurementConfigurationResult, 8)
+	samples := make(chan []csms.SampledReading, 8)
+	start := func(add bool) (*csms.Server, string) {
+		s, err := csms.New(csms.Options{Enabled: true, DataDir: dir, Log: quiet(),
+			OnMeasurementConfigurationResult: func(result csms.MeasurementConfigurationResult) { results <- result },
+			OnSampledValues:                  func(values []csms.SampledReading, _ time.Time) { samples <- values }})
+		if err != nil {
+			t.Fatalf("new CSMS: %v", err)
+		}
+		if add {
+			if _, err := s.Add(csms.AddRequest{ID: "SAEULE-MESSUNG"}); err != nil {
+				t.Fatalf("add: %v", err)
+			}
+		}
+		if err := s.Start(context.Background()); err != nil {
+			t.Fatalf("start: %v", err)
+		}
+		snap := s.Snapshot()
+		return s, fmt.Sprintf("ws://127.0.0.1:%d%s", snap.Port, snap.URLPath)
+	}
+
+	s1, endpoint1 := start(true)
+	station1 := newStation(time.Now)
+	cp1 := ocpp16.NewChargePoint("SAEULE-MESSUNG", nil, nil)
+	cp1.SetCoreHandler(station1)
+	cp1.SetSmartChargingHandler(station1)
+	if err := cp1.Start(endpoint1); err != nil {
+		t.Fatalf("station could not connect: %v", err)
+	}
+	stopCP1 := sync.OnceFunc(cp1.Stop)
+	t.Cleanup(stopCP1)
+	waitFor(t, "the CSMS recorded SAEULE-MESSUNG as connected", func() bool {
+		c, ok := s1.Snapshot().ChargerByID("SAEULE-MESSUNG")
+		return ok && c.Connected
+	})
+	station1.mu.Lock()
+	_, emittedBefore := station1.config["MeterValuesSampledData"]
+	station1.mu.Unlock()
+	if emittedBefore {
+		t.Fatal("station unexpectedly emitted the unconfigured measurand")
+	}
+	desired := csms.MeasurementConfiguration{Revision: 7, Values: map[string]string{
+		"MeterValuesSampledData": "Voltage", "StopTxnSampledData": "Voltage",
+	}}
+	if err := s1.SetMeasurementConfiguration(ctx5(t), desired); err != nil {
+		t.Fatalf("set desired: %v", err)
+	}
+	conflict := desired
+	conflict.Values = map[string]string{"MeterValuesSampledData": "Current",
+		"StopTxnSampledData": "Current"}
+	if err := s1.SetMeasurementConfiguration(ctx5(t), conflict); err == nil {
+		t.Fatal("same revision was allowed to replace durable desired keys")
+	}
+	select {
+	case result := <-results:
+		if !result.Applied || result.Revision != 7 {
+			t.Fatalf("result: %+v", result)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("station-confirmed measurement result missing")
+	}
+	station1.mu.Lock()
+	if station1.config["MeterValuesSampledData"] != "Voltage" ||
+		station1.config["StopTxnSampledData"] != "Voltage" || station1.targetedConfigurationReads == 0 {
+		t.Fatalf("station configuration/readback: %+v reads=%d", station1.config,
+			station1.targetedConfigurationReads)
+	}
+	station1.mu.Unlock()
+	if _, err := cp1.MeterValues(1, []types.MeterValue{{Timestamp: types.NewDateTime(time.Now()),
+		SampledValue: []types.SampledValue{{Value: "231", Measurand: types.MeasurandVoltage,
+			Unit: types.UnitOfMeasureV}}}}); err != nil {
+		t.Fatalf("first MeterValues: %v", err)
+	}
+	select {
+	case values := <-samples:
+		if len(values) != 1 || values[0].Measurand != "Voltage" {
+			t.Fatalf("sample bridge: %+v", values)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("configured station did not emit")
+	}
+	stopCP1()
+	s1.Stop()
+
+	// No API/Node-RED desired publish occurs after this point. A fresh Core
+	// loads the fsync-persisted keys and applies+reads them back when the station
+	// reconnects.
+	s2, endpoint2 := start(false)
+	t.Cleanup(s2.Stop)
+	cp2, station2 := connectStation(t, s2, endpoint2, "SAEULE-MESSUNG", time.Now)
+	select {
+	case result := <-results:
+		if !result.Applied || result.Revision != 7 {
+			t.Fatalf("reconnect result: %+v", result)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("persisted desired was not reconciled on reconnect")
+	}
+	station2.mu.Lock()
+	reapplied := station2.config["MeterValuesSampledData"] == "Voltage" &&
+		station2.config["StopTxnSampledData"] == "Voltage" && station2.targetedConfigurationReads > 0
+	station2.mu.Unlock()
+	if !reapplied {
+		t.Fatal("fresh station did not receive/read back persisted desired keys")
+	}
+	if _, err := cp2.MeterValues(1, []types.MeterValue{{Timestamp: types.NewDateTime(time.Now()),
+		SampledValue: []types.SampledValue{{Value: "232", Measurand: types.MeasurandVoltage,
+			Unit: types.UnitOfMeasureV}}}}); err != nil {
+		t.Fatalf("reconnect MeterValues: %v", err)
+	}
+	select {
+	case <-samples:
+	case <-time.After(5 * time.Second):
+		t.Fatal("emission did not resume after reconnect")
+	}
+}
+
 // TestCommissioningReadsBeforeItCommands is the anti-Deye discipline: ask what
 // the station can do, THEN install the two permanent profiles - and the safe
 // default is installed at EVERY connect, because a station that rebooted may

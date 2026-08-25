@@ -3,10 +3,13 @@
 const net = require('net');
 const http = require('http');
 const https = require('https');
+const losslessJSON = require('../lib/lossless-json');
 
 const CONFIG = 'edge/measurements/config';
 const INVERTER = 'edge/inverter/config';
 const OCPP = 'edge/measurements/ocpp-meter-values';
+const OCPP_RESULT = 'edge/measurements/ocpp-configuration-result';
+const OCPP_CONFIG = 'edge/measurements/ocpp-configuration';
 const CONTROL = 'edge/setpoint';
 
 function request(host, port, frame, expectedLength, timeoutMs) {
@@ -37,7 +40,7 @@ function getJSON(url) {
       res.on('data', (chunk) => { if (body.length < 1024 * 1024) body += chunk; });
       res.on('end', () => {
         if (res.statusCode < 200 || res.statusCode >= 300) return reject(new Error('HTTP ' + res.statusCode));
-        try { resolve(JSON.parse(body)); } catch (error) { reject(error); }
+        try { resolve(losslessJSON.parse(body)); } catch (error) { reject(error); }
       });
     });
     req.on('timeout', () => req.destroy(new Error('Zeitüberschreitung')));
@@ -104,19 +107,20 @@ module.exports = function (RED) {
     const Runtime = global.get('vpMeasurementRuntime');
     const modbus = global.get('vpMeasurementModbus');
     const deye = global.get('vpMeasurementDeye');
-    if (!Runtime || !Runtime.MeasurementRuntime || !modbus || !deye) {
+    const busArbiter = global.get('vpSharedBusArbiter');
+    if (!Runtime || !Runtime.MeasurementRuntime || !modbus || !deye || !busArbiter) {
       node.status({ fill:'red', shape:'ring', text:'Messruntime fehlt' }); return;
     }
-    let inverter = null; let txid = 0; let sequence = 0; let desired = null; let controlUntil = 0;
-    const ocppMeasurands = new Set();
+    let inverter = null; let txid = 0; let sequence = 0; let desired = null;
+    const ocppPending = new Map();
     const io = {
       // The setpoint lane announces control before the existing write flow
       // touches the device. Measurement requests yield a bounded exclusive
       // window, so control communication cannot queue behind catalog polling.
       runBusTask: async (_priority, run) => {
-        const wait = Math.max(0, controlUntil - Date.now());
-        if (wait) await new Promise(resolve => setTimeout(resolve, wait));
-        return run();
+        const conn=inverter&&inverter.connection||{};
+        return busArbiter.runPoll(busArbiter.targetKey(conn,
+          inverter&&inverter.communication==='solarman_v5'?8899:502),run);
       },
       readModbus: async ({ start, count, source_kind }) => {
         const conn = inverter && inverter.connection || {};
@@ -153,21 +157,31 @@ module.exports = function (RED) {
         const payload=await getJSON(url);
         return source==='rpc_json'?shapeShellyStatus(points,payload):payload;
       },
+      ocppCapability: { supported:true, readonly:false, maxLength:1024 },
+      applyOcppConfiguration: ({ revision, configuration }) => new Promise((resolve) => {
+        ocppPending.set(revision, resolve);
+        core.client.publish(OCPP_CONFIG, JSON.stringify({ revision, values:configuration }),
+          { qos:1, retain:true });
+      }),
     };
     const runtime = new Runtime.MeasurementRuntime(io, (topic, payload, retained) => {
       core.client.publish(topic, JSON.stringify(payload), { qos:1, retain:!!retained });
     });
-    const subscribe = () => core.client.subscribe([CONFIG, INVERTER, OCPP, CONTROL], { qos:1 });
+    const subscribe = () => core.client.subscribe([CONFIG, INVERTER, OCPP, OCPP_RESULT, CONTROL], { qos:1 });
     if (core.client.connected) subscribe();
     core.client.on('connect', subscribe);
     const onMessage = (topic, raw) => {
       try {
         const value = JSON.parse(raw.toString());
+        if (topic === OCPP_RESULT) {
+          const resolve = ocppPending.get(value.revision);
+          if (resolve) { ocppPending.delete(value.revision); resolve(value); }
+          return;
+        }
         if (topic === CONTROL) {
-          controlUntil = Date.now() + 5000;
-          // The production control signal enters the runtime's priority lane.
-          // It drains before queued polls; runBusTask then holds new reads
-          // throughout the controller's bounded write/readback window.
+          // The actual control executors acquire the same process-wide lease
+          // and keep it through readback; this signal only wakes the runtime's
+          // own priority queue for backwards-compatible injected tasks.
           runtime.enqueueControl(async () => {});
           return;
         }
@@ -184,17 +198,11 @@ module.exports = function (RED) {
         if (topic === CONFIG) {
           desired = value;
           const plan = runtime.apply(value, {});
-          node.status(plan.applied ? { fill:'green',shape:'dot',text:'Revision ' + value.revision }
+          node.status(plan.pending ? { fill:'blue',shape:'ring',text:'OCPP-Abgleich Revision ' + value.revision }
+            : plan.applied ? { fill:'green',shape:'dot',text:'Revision ' + value.revision }
             : { fill:'yellow',shape:'ring',text:'Plan abgelehnt' });
         } else if (topic === OCPP) {
           const values = value.samples || value;
-          for (const sample of values) if (sample && sample.measurand) ocppMeasurands.add(sample.measurand);
-          io.ocppCapability = { supported:true, readonly:false,
-            supportedMeasurands:[...ocppMeasurands], maxLength:1024 };
-          // A first MeterValues report is the compatibility proof. Re-plan the
-          // same retained revision atomically now that actual station vocabulary
-          // is known; unsupported requested measurands remain rejected.
-          if (desired) runtime.apply(desired, {});
           runtime.onMeterValues(values, value.observed_at ? new Date(value.observed_at) : undefined);
         }
       } catch (error) { node.warn('Messruntime: ' + error.message); }

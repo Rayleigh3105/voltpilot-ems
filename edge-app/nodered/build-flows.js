@@ -52,7 +52,17 @@ const simReadNodes = ['sim-note', 'sim-poll', 'sim-read', 'sim-decode', 'sim-tel
 const simTab = need('tab-sim');
 
 // --- reuse verbatim: the tested Deye reader + decoder function bodies ---------
-const solarmanFunc = need('auto-solarman').func; // Solarman-V5 socket reader (copy of deye/solarman-v5.js)
+const wrapSharedSolarmanPoll = (source) => {
+  if (source.includes("vpSharedBusArbiter")) return source;
+  let out = source.replace("const net = global.get('net');",
+    "const net = global.get('net');\nconst sharedBus = global.get('vpSharedBusArbiter');")
+    .replace("if (!net) {", "if (!net || !sharedBus) {")
+    .replace("return new Promise((resolve) => {", "return sharedBus.runPoll(target, () => new Promise((resolve) => {");
+  const end = out.lastIndexOf('\n});');
+  if (end < 0) throw new Error('auto-solarman wrapper anchor missing');
+  return out.slice(0, end) + '\n}));' + out.slice(end + 4);
+};
+const solarmanFunc = wrapSharedSolarmanPoll(need('auto-solarman').func); // shared process-wide bus lease
 const deyeDecodeFunc = need('auto-deye-decode').func; // register -> reading (copy of deye/deye-decode.js)
 
 // --- the self-wiring tab -----------------------------------------------------
@@ -290,11 +300,13 @@ const modbusReadFunc = [
   "// halten (ein Node-RED-Flow ist self-contained JSON und kann keine Repo-Datei",
   "// zur Laufzeit requiren). Quelle der Wahrheit + Offline-Tests: modbus-tcp.js.",
   "const net = global.get('net');",
-  "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }",
+  "const sharedBus = global.get('vpSharedBusArbiter');",
+  "if (!net || !sharedBus) { node.status({ fill: 'red', shape: 'ring', text:'net/Bus-Arbiter fehlt (settings.js)' }); node.error('functionGlobalContext.net/vpSharedBusArbiter in settings.js setzen', msg); return null; }",
   "const mb = msg.mb;",
   "if (!mb) return null;",
   "const conn = mb.conn;",
   "const unitId = conn.unit_id || 1;",
+  "const target = sharedBus.targetKey(conn, 502);",
   "const timeoutMs = conn.timeout_ms || 5000;",
   "const buildReq = (txid, addr, count) => { const b = Buffer.alloc(12); b.writeUInt16BE(txid & 0xffff, 0); b.writeUInt16BE(0, 2); b.writeUInt16BE(6, 4); b[6] = unitId & 0xff; b[7] = 0x03; b.writeUInt16BE(addr & 0xffff, 8); b.writeUInt16BE(count & 0xffff, 10); return b; };",
   "const frameLen = (buf) => (buf.length < 6 ? null : 6 + buf.readUInt16BE(4));",
@@ -310,7 +322,7 @@ const modbusReadFunc = [
   "  const regs = []; for (let i = 0; i < bc >> 1; i++) regs.push(buf.readUInt16BE(9 + i * 2)); return regs;",
   "};",
   "let txid = context.get('txid') || 0;",
-  "return new Promise((resolve) => {",
+  "return sharedBus.runPoll(target, () => new Promise((resolve) => {",
   "  const sock = new net.Socket();",
   "  sock.setNoDelay(true);",
   "  let done = false;",
@@ -327,7 +339,7 @@ const modbusReadFunc = [
   "    });",
   "    sock.write(buildReq(txid, mb.read.addr, mb.read.count));",
   "  });",
-  "});",
+  "}));",
 ].join('\n');
 
 const modbusDecodeFunc = [
@@ -1083,7 +1095,8 @@ const controlExecKostalFunc = [
   "// Nur der Kostal-Adapter arbeitet hier; jeder andere Plan ist ein No-op. Der",
   "// Plan kommt aus controlRoute/controlRelease (Not-Aus + Freigabe dort gegatet).",
   "const net = global.get('net');",
-  "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }",
+  "const sharedBus = global.get('vpSharedBusArbiter');",
+  "if (!net || !sharedBus) { node.status({ fill: 'red', shape: 'ring', text: 'net/Bus-Arbiter fehlt (settings.js)' }); node.error('functionGlobalContext.net/vpSharedBusArbiter in settings.js setzen', msg); return null; }",
   "const ctrl = msg.control;",
   "if (!ctrl || ctrl.adapter !== 'kostal_modbus' || !Array.isArray(ctrl.readbacks) || ctrl.readbacks.length === 0) {",
   "  node.status({ fill: 'grey', shape: 'ring', text: (ctrl && ctrl.reason) ? ctrl.reason : 'keine Steuerung' });",
@@ -1091,6 +1104,7 @@ const controlExecKostalFunc = [
   "}",
   "const conn = ctrl.connection || {};",
   "const unitId = conn.unit_id || 71;",
+  "const target = sharedBus.targetKey(conn, 1502);",
   "const timeoutMs = conn.timeout_ms || 8000;",
   "const frameLen = (buf) => (buf.length < 6 ? null : 6 + buf.readUInt16BE(4));",
   "const buildRead = (txid, addr, count) => { const b = Buffer.alloc(12); b.writeUInt16BE(txid & 0xffff, 0); b.writeUInt16BE(0, 2); b.writeUInt16BE(6, 4); b[6] = unitId & 0xff; b[7] = 0x03; b.writeUInt16BE(addr & 0xffff, 8); b.writeUInt16BE(count & 0xffff, 10); return b; };",
@@ -1103,7 +1117,7 @@ const controlExecKostalFunc = [
   "const f32ToWords = (value, order) => { const b = Buffer.alloc(4); b.writeFloatBE(value, 0); const hi = b.readUInt16BE(0), lo = b.readUInt16BE(2); return order === 'big' ? [hi, lo] : [lo, hi]; };",
   "const wordsToF32 = (regs, order) => { if (!regs || regs.length < 2) return null; const hi = order === 'little' ? regs[1] : regs[0]; const lo = order === 'little' ? regs[0] : regs[1]; const b = Buffer.alloc(4); b.writeUInt16BE(hi & 0xffff, 0); b.writeUInt16BE(lo & 0xffff, 2); const f = b.readFloatBE(0); return isFinite(f) ? f : null; };",
   "let txid = context.get('ktxid') || 0;",
-  "return new Promise((resolve) => {",
+  "return sharedBus.runControl(target, () => new Promise((resolve) => {",
   "  const sock = new net.Socket();",
   "  sock.setNoDelay(true);",
   "  let done = false, acc = Buffer.alloc(0), pending = null;",
@@ -1167,7 +1181,7 @@ const controlExecKostalFunc = [
   "      publish(Object.assign({}, base, { registers: registers }));",
   "    } catch (e) { finish(e); }",
   "  });",
-  "});",
+  "}));",
 ].join('\n');
 
 const controlExecFunc = [
@@ -1178,7 +1192,8 @@ const controlExecFunc = [
   "// generische SunSpec-Adapter schreibt hier; der Deye-Adapter traegt keine",
   "// ausfuehrbaren Befehle (nur lesend bis Pruefstand-Freigabe) und macht nichts.",
   "const net = global.get('net');",
-  "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }",
+  "const sharedBus = global.get('vpSharedBusArbiter');",
+  "if (!net || !sharedBus) { node.status({ fill:'red', shape:'ring', text:'net/Bus-Arbiter fehlt (settings.js)' }); node.error('functionGlobalContext.net/vpSharedBusArbiter in settings.js setzen', msg); return null; }",
   "const ctrl = msg.control;",
   "if (!ctrl || ctrl.adapter !== 'modbus_tcp' || !Array.isArray(ctrl.readbacks) || ctrl.readbacks.length === 0) {",
   "  node.status({ fill: 'grey', shape: 'ring', text: (ctrl && ctrl.reason) ? ctrl.reason : 'keine Steuerung' });",
@@ -1186,6 +1201,7 @@ const controlExecFunc = [
   "}",
   "const conn = ctrl.connection || {};",
   "const unitId = conn.unit_id || 1;",
+  "const target = sharedBus.targetKey(conn, 502);",
   "const timeoutMs = conn.timeout_ms || 5000;",
   "const s16 = (v) => { v &= 0xffff; return v > 0x7fff ? v - 0x10000 : v; };",
   "const frameLen = (buf) => (buf.length < 6 ? null : 6 + buf.readUInt16BE(4));",
@@ -1194,7 +1210,7 @@ const controlExecFunc = [
   "const parseRead = (buf, txid) => { if (buf.length < 9) throw new Error('Antwort zu kurz'); if (buf.readUInt16BE(0) !== (txid & 0xffff)) throw new Error('Transaktions-ID'); const fn = buf[7]; if (fn & 0x80) throw new Error('Modbus-Ausnahme 0x' + (buf[8] || 0).toString(16)); if (fn !== 0x03) throw new Error('Modbus-Funktion 0x' + fn.toString(16)); const bc = buf[8]; const regs = []; for (let i = 0; i < bc >> 1; i++) regs.push(buf.readUInt16BE(9 + i * 2)); return regs; };",
   "const parseWrite = (buf, txid) => { if (buf.length < 12) throw new Error('Schreibantwort zu kurz'); if (buf.readUInt16BE(0) !== (txid & 0xffff)) throw new Error('Transaktions-ID'); const fn = buf[7]; if (fn & 0x80) throw new Error('Modbus-Ausnahme 0x' + (buf[8] || 0).toString(16)); if (fn !== 0x06) throw new Error('Modbus-Funktion 0x' + fn.toString(16)); return { addr: buf.readUInt16BE(8), value: buf.readUInt16BE(10) }; };",
   "let txid = context.get('ctxid') || 0;",
-  "return new Promise((resolve) => {",
+  "return sharedBus.runControl(target, () => new Promise((resolve) => {",
   "  const sock = new net.Socket();",
   "  sock.setNoDelay(true);",
   "  let done = false, acc = Buffer.alloc(0), pending = null;",
@@ -1216,7 +1232,7 @@ const controlExecFunc = [
   "      finish(null, msg);",
   "    } catch (e) { finish(e); }",
   "  });",
-  "});",
+  "}));",
 ].join('\n');
 
 // embedModule - embed a repo module VERBATIM into a function-node body (a
@@ -1449,7 +1465,9 @@ const controlExecSolarmanFunc = [
   "// unchanged budget. That is the whole cost of the queue for the control path:",
   "// a delay of one one-shot round, never a refusal and never an abort.",
   "const acquire = async () => { const start = Date.now(); for (;;) { const tn = Date.now(); const g = flow.get(grantKey) || null; const gLive = !!(g && Number(g.at) > 0 && tn - Number(g.at) < GRANT_TTL_MS); const bs = flow.get(busyKey) || 0; if (!gLive && (!bs || tn - bs >= STALE_MS)) { flow.set(busyKey, tn); return true; } if (tn - start >= ACQUIRE_MS) return false; node.status({ fill: 'blue', shape: 'ring', text: gLive ? 'Einmal-Auftrag hat den Bus - warte' : 'Logger belegt - warte auf freien Sozket' }); await sleep(POLL_MS); } };",
-  "return acquire().then((gotSock) => {",
+  "const sharedBus = global.get('vpSharedBusArbiter');",
+  "if (!sharedBus) { node.error('functionGlobalContext.vpSharedBusArbiter fehlt', msg); return null; }",
+  "return sharedBus.runControl(target, () => acquire().then((gotSock) => {",
   "  if (!gotSock) {",
   "    // Could not win the socket within the budget: DEFER one setpoint tick. COUNT it",
   "    // (reset on a landed write) and, past N in a row, WARN loudly - so a starved write",
@@ -1657,7 +1675,7 @@ const controlExecSolarmanFunc = [
   "    } catch (e) { finish(e); }",
   "  });",
   "  });",
-  "});",
+  "}));",
 ].join('\n');
 
 // crashRecoveryFunc - the STARTUP crash-recovery path (report §8): Deye has no revert
@@ -1855,7 +1873,8 @@ const sourcesReadFunc = [
   'var __FR = ' + embedModule('fronius/solar-api.js') + ';',
   'var __LEASE = ' + embedModule('sunspec/curtail-lease.js') + ';',
   "const net = global.get('net');",
-  "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }",
+  "const sharedBus = global.get('vpSharedBusArbiter');",
+  "if (!net || !sharedBus) { node.status({ fill: 'red', shape: 'ring', text: 'net/Bus-Arbiter fehlt (settings.js)' }); node.error('functionGlobalContext.net/vpSharedBusArbiter in settings.js setzen', msg); return null; }",
   "// http/https are needed only for the go-e (goe_http_api) + Fronius Solar API",
   "// (fronius_solar_api) branches; the modbus / sunspec / solarman branches do not",
   "// use them, so a missing global only fails those branches (with a named warn),",
@@ -2031,8 +2050,10 @@ const sourcesReadFunc = [
   "      flow.set(skKey, 0);",
   "      if (ld.action === 'expire') { flow.set('curtail_want:' + ipKey, 0); trace('lexp_' + ipKey, 'expired', 'Abregelungs-Schreibzugriff auf ' + ipKey + ' seit ' + Math.round((ld.heldMs || 0) / 1000) + ' s ohne Freigabe (Executor abgestuerzt?) - Anspruch verworfen, Quellen werden wieder gelesen', true); }",
   "      if (ld.action === 'force') { trace('lforce_' + plan.id, 'forced', 'Quelle ' + plan.id + ': ' + __LEASE.MAX_CLAIM_SKIPS + ' Ticks in Folge wegen Abregelungs-Vorrang uebersprungen - Lesung wird erzwungen (Telemetrie darf nicht verhungern)', true); }",
-  "      flow.set('src_reading:' + ipKey, Date.now());",
   "      trace('start_' + plan.id, plan.adapter, 'Lese Quelle ' + plan.id + ' (' + plan.adapter + ' ' + plan.conn.ip + ':' + (plan.conn.port || 502) + ') ...');",
+  "      await sharedBus.runPoll(sharedBus.targetKey(plan.conn, plan.adapter === 'solarman_v5' ? 8899 : (plan.adapter === 'kaco_http' ? 8484 : 502)), async () => {",
+  "      flow.set('src_reading:' + ipKey, Date.now());",
+  "      try {",
   "      if (plan.adapter === 'goe_http_api') {",
   "        if (!http || !https) { why = 'http/https fehlt (settings.js) - go-e nicht lesbar'; }",
   "        else {",
@@ -2095,7 +2116,8 @@ const sourcesReadFunc = [
   "          grid = decodeGrid(plan.profile, regs);",
   "        } else { why = (regs && regs.__overall_timeout) ? ('Gesamt-Timeout nach ' + (SOURCE_OVERALL_TIMEOUT_MS / 1000) + ' s - Lesung abgebrochen (Verbindung haengt?)') : 'keine Modbus-Antwort'; }",
   "      }",
-  "      flow.set('src_reading:' + ipKey, 0);",
+  "      } finally { flow.set('src_reading:' + ipKey, 0); }",
+  "      });",
   "      // Letzte Messwerte je Quelle im Flow-Kontext stashen: der Abregelungs-",
   "      // Planer rechnet damit den unkontrollierbaren Anteil, die Wirkungs-",
   "      // Pruefung vergleicht die gemessene AC-Leistung gegen die Begrenzung.",
@@ -2214,7 +2236,8 @@ const curtailExecFunc = [
   'var __CURT = ' + embedModule('sunspec/curtail.js') + ';',
   'var __LEASE = ' + embedModule('sunspec/curtail-lease.js') + ';',
   "const net = global.get('net');",
-  "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }",
+  "const sharedBus = global.get('vpSharedBusArbiter');",
+  "if (!net || !sharedBus) { node.status({ fill: 'red', shape: 'ring', text: 'net/Bus-Arbiter fehlt (settings.js)' }); node.error('functionGlobalContext.net/vpSharedBusArbiter in settings.js setzen', msg); return null; }",
   "const fleet = msg.curtailFleet;",
   "if (!fleet || !fleet.active || !Array.isArray(fleet.units) || fleet.units.length === 0) { node.status({ fill: 'grey', shape: 'ring', text: (fleet && fleet.reason) || 'keine Abregelung' }); return null; }",
   "const busySince = context.get('curtail_busy_since') || 0;",
@@ -2378,10 +2401,11 @@ const curtailExecFunc = [
   "        if (!__LEASE.observeDue(flow.get('curtail_obs:' + ipKey), nowT)) { node.status({ fill: 'grey', shape: 'dot', text: 'beobachtet (max. alle ' + Math.round(__LEASE.OBSERVE_MIN_MS / 1000) + ' s)' }); continue; }",
   "        const rb0 = flow.get('src_reading:' + ipKey) || 0;",
   "        if (rb0 && nowT - rb0 <= 30000) { node.status({ fill: 'grey', shape: 'ring', text: 'Quellen-Lesung aktiv - Beobachtung vertagt' }); continue; }",
+  "        const busLease = await sharedBus.acquirePoll(ipKey);",
   "        let dev = null;",
   "        try { dev = await openSock(group[0].conn.ip, group[0].conn.port); }",
   "        catch (e) { warnRL('conn_' + ipKey, 'PV-Abregelung: Gateway ' + ipKey + ' nicht erreichbar: ' + (e && e.message ? e.message : e)); }",
-  "        if (!dev) { failed += obsJobs.length; for (const j of obsJobs) publish(j.u, { blocked: true, reason: 'Gateway nicht erreichbar', registers: [] }); continue; }",
+  "        if (!dev) { busLease.release(); failed += obsJobs.length; for (const j of obsJobs) publish(j.u, { blocked: true, reason: 'Gateway nicht erreichbar', registers: [] }); continue; }",
   "        const obsDeadline = Date.now() + DEADLINE_MS;",
   "        try {",
   "          for (const j of obsJobs) {",
@@ -2401,7 +2425,7 @@ const curtailExecFunc = [
   "            publish(j.u, { applied: false, all_match: hadCmd ? vo.held : null, mismatch_roles: hadCmd ? vo.mismatchRoles : [], quirk_roles: vo.quirkRoles, quirk_note: vo.quirkNote, registers: rbo.registers, enforcement: null, blocked: rejO, reason: rejO ? __CURT.REJECTED_REASON : j.u.reason });",
   "          }",
   "          flow.set('curtail_obs:' + ipKey, Date.now());",
-  "        } finally { try { dev.close(); } catch (e) { /* ignore */ } }",
+  "        } finally { try { dev.close(); } catch (e) { /* ignore */ } busLease.release(); }",
   "        continue;",
   "      }",
   "      // SCHREIB-/DISCOVERY-Pfad: Lease ankuendigen + per Herzschlag halten,",
@@ -2412,10 +2436,11 @@ const curtailExecFunc = [
   "      beat();",
   "      const waitStart = Date.now();",
   "      while (Date.now() - waitStart < 9000) { const rb = flow.get('src_reading:' + ipKey) || 0; if (!rb || Date.now() - rb > 30000) break; beat(); await new Promise((r) => setTimeout(r, 250)); }",
+  "      const busLease = await sharedBus.acquireControl(ipKey);",
   "      let dev = null;",
   "      try { dev = await openSock(group[0].conn.ip, group[0].conn.port); }",
   "      catch (e) { warnRL('conn_' + ipKey, 'PV-Abregelung: Gateway ' + ipKey + ' nicht erreichbar: ' + (e && e.message ? e.message : e)); }",
-  "      if (!dev) { flow.set(wantKey, 0); failed += group.length; for (const u of group) publish(u, { blocked: true, reason: 'Gateway nicht erreichbar', registers: [] }); continue; }",
+  "      if (!dev) { busLease.release(); flow.set(wantKey, 0); failed += group.length; for (const u of group) publish(u, { blocked: true, reason: 'Gateway nicht erreichbar', registers: [] }); continue; }",
   "      const deadlineAt = Date.now() + DEADLINE_MS;",
   "      try {",
   "        for (const j of jobs) {",
@@ -2507,7 +2532,7 @@ const curtailExecFunc = [
   "          publish(u, { applied: didWrite, all_match: allMatch, mismatch_roles: mismatch, quirk_roles: verdict.quirkRoles, quirk_note: verdict.quirkNote, registers: registers, enforcement: enforcement, blocked: rejected, reason: rejected ? __CURT.REJECTED_REASON : u.reason });",
   "        }",
   "        flow.set('curtail_obs:' + ipKey, Date.now());",
-  "      } finally { try { dev.close(); } catch (e) { /* ignore */ } flow.set(wantKey, 0); }",
+  "      } finally { try { dev.close(); } catch (e) { /* ignore */ } busLease.release(); flow.set(wantKey, 0); }",
   "    }",
   "    if (applied || observed || overrides || failed) {",
   "      const txt = applied + ' geschrieben, ' + observed + ' beobachtet' + (overrides ? (', ' + overrides + ' OVERRIDE?') : '') + (failed ? (', ' + failed + ' Fehler') : '');",
@@ -2629,7 +2654,8 @@ const sunspecReadFunc = [
   'var __DISC = ' + embedModule('sunspec/model-discovery.js') + ';',
   'var __SS = ' + embedModule('sunspec/sunspec-live.js') + ';',
   "var net = global.get('net');",
-  "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }",
+  "var sharedBus = global.get('vpSharedBusArbiter');",
+  "if (!net || !sharedBus) { node.status({ fill: 'red', shape: 'ring', text: 'net/Bus-Arbiter fehlt (settings.js)' }); node.error('functionGlobalContext.net/vpSharedBusArbiter in settings.js setzen', msg); return null; }",
   'var s = msg.sunspec;',
   'if (!s || !s.conn || !s.conn.ip) return null;',
   'var conn = s.conn;',
@@ -2643,7 +2669,7 @@ const sunspecReadFunc = [
   "  node.warn('Fronius SunSpec (' + conn.ip + ':' + (conn.port || 502) + '): ' + why);",
   "};",
   'var read = __SS.makeSunspecReader({ net: net, discovery: __DISC, connectTimeoutMs: 8000, readTimeoutMs: 8000 });',
-  'return read({ ip: conn.ip, port: conn.port, unitId: conn.unit_id, invertGridSign: !!conn.invert_grid_sign, modelType: conn.model_type }).then(function (out) {',
+  'return sharedBus.runPoll(sharedBus.targetKey(conn, 502), function () { return read({ ip: conn.ip, port: conn.port, unitId: conn.unit_id, invertGridSign: !!conn.invert_grid_sign, modelType: conn.model_type }); }).then(function (out) {',
   "  context.set('ss_busy_since', 0);",
   "  if (!out || !out.reading) { node.status({ fill: 'yellow', shape: 'ring', text: 'keine SunSpec-Messwerte' }); warnFail('keine Antwort / kein SunSpec-Geraet (Timeout, Verbindung abgewiesen oder Walk abgebrochen)'); return null; }",
   '  var reading = Object.assign({ ts: new Date().toISOString() }, out.reading);',
@@ -2669,7 +2695,8 @@ const kostalReadFunc = [
   '// uebersprungen (120 s Stale-Ablauf), Fehlschlaege werden benannt (60-s-Rate).',
   'var __KOSTAL = ' + embedModule('kostal/kostal-decode.js') + ';',
   "var net = global.get('net');",
-  "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }",
+  "var sharedBus = global.get('vpSharedBusArbiter');",
+  "if (!net || !sharedBus) { node.status({ fill: 'red', shape: 'ring', text: 'net/Bus-Arbiter fehlt (settings.js)' }); node.error('functionGlobalContext.net/vpSharedBusArbiter in settings.js setzen', msg); return null; }",
   'var k = msg.kostal;',
   'if (!k || !k.conn || !k.conn.ip) return null;',
   'var conn = k.conn;',
@@ -2683,7 +2710,7 @@ const kostalReadFunc = [
   "  node.warn('KOSTAL PLENTICORE (' + conn.ip + ':' + (conn.port || 1502) + '): ' + why);",
   "};",
   'var read = __KOSTAL.makeKostalReader({ net: net, connectTimeoutMs: 8000, readTimeoutMs: 8000 });',
-  'return read({ ip: conn.ip, port: conn.port, unitId: conn.unit_id, invertGridSign: !!conn.invert_grid_sign, invertBattSign: !!conn.invert_batt_sign, byteOrder: conn.byte_order }).then(function (out) {',
+  'return sharedBus.runPoll(sharedBus.targetKey(conn, 1502), function () { return read({ ip: conn.ip, port: conn.port, unitId: conn.unit_id, invertGridSign: !!conn.invert_grid_sign, invertBattSign: !!conn.invert_batt_sign, byteOrder: conn.byte_order }); }).then(function (out) {',
   "  context.set('k_busy_since', 0);",
   "  if (!out || !out.reading) { node.status({ fill: 'yellow', shape: 'ring', text: 'keine Messwerte' }); warnFail('keine Antwort (Timeout, Verbindung abgewiesen oder Modbus im Webserver nicht aktiviert)'); return null; }",
   '  var reading = Object.assign({ ts: new Date().toISOString() }, out.reading);',
@@ -2747,7 +2774,8 @@ const kacoNh3ReadFunc = [
   '// dem gesperrten Steuer-Pfad, nicht hier.',
   'var __AISWEI = ' + embedModule('kaco/aiswei-decode.js') + ';',
   "var net = global.get('net');",
-  "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }",
+  "var sharedBus = global.get('vpSharedBusArbiter');",
+  "if (!net || !sharedBus) { node.status({ fill: 'red', shape: 'ring', text: 'net/Bus-Arbiter fehlt (settings.js)' }); node.error('functionGlobalContext.net/vpSharedBusArbiter in settings.js setzen', msg); return null; }",
   'var a = msg.aiswei;',
   'if (!a || !a.conn || !a.conn.ip) return null;',
   'var conn = a.conn;',
@@ -2761,7 +2789,7 @@ const kacoNh3ReadFunc = [
   "  node.warn('KACO NH3 (' + conn.ip + ':' + (conn.port || 502) + '): ' + why);",
   '};',
   'var read = __AISWEI.makeAisweiReader({ net: net, connectTimeoutMs: 8000, readTimeoutMs: 8000 });',
-  'return read({ ip: conn.ip, port: conn.port, unitId: conn.unit_id, invertGridSign: !!conn.invert_grid_sign, invertBattSign: !!conn.invert_batt_sign }).then(function (out) {',
+  'return sharedBus.runPoll(sharedBus.targetKey(conn, 502), function () { return read({ ip: conn.ip, port: conn.port, unitId: conn.unit_id, invertGridSign: !!conn.invert_grid_sign, invertBattSign: !!conn.invert_batt_sign }); }).then(function (out) {',
   "  context.set('nh3_busy_since', 0);",
   "  if (!out || !out.reading) { node.status({ fill: 'yellow', shape: 'ring', text: 'keine Messwerte' }); warnFail('keine Antwort (Timeout oder Verbindung abgewiesen)'); return null; }",
   '  var reading = Object.assign({ ts: new Date().toISOString() }, out.reading);',
@@ -2795,8 +2823,11 @@ const testReadFunc = [
   "var net = global.get('net');",
   "var http = global.get('http');",
   "var https = global.get('https');",
-  "if (!net || !http || !https) { node.status({ fill: 'red', shape: 'ring', text: 'net/http fehlt (settings.js)' }); node.error('functionGlobalContext.net/http/https in settings.js setzen', msg); return null; }",
+  "var sharedBus = global.get('vpSharedBusArbiter');",
+  "if (!net || !http || !https || !sharedBus) { node.status({ fill: 'red', shape: 'ring', text: 'net/http/Bus-Arbiter fehlt (settings.js)' }); node.error('functionGlobalContext.net/http/https/vpSharedBusArbiter in settings.js setzen', msg); return null; }",
   'var req = msg.payload;',
+  "var defaultPort = req && req.communication === 'solarman_v5' ? 8899 : (req && req.communication === 'kostal_modbus' ? 1502 : (req && req.communication === 'kaco_http' ? 8484 : 502));",
+  "var target = sharedBus.targetKey((req && req.connection) || {}, defaultPort);",
   "if (!req || typeof req.request_id !== 'string' || !req.request_id) { node.status({ fill: 'yellow', shape: 'ring', text: 'ungueltige Testanfrage' }); return null; }",
   '// Multi-Inverter-Suche (Fronius Datamanager): probe_units=true tastet dieselbe',
   '// Adresse nach WEITEREN Wechselrichter-Unit-IDs ab (1..10, ein SID-Read je ID,',
@@ -2805,7 +2836,7 @@ const testReadFunc = [
   'if (req.probe_units === true) {',
   '  var probeUnits = __TR.makeProbeUnits({ net: net });',
   "  node.status({ fill: 'blue', shape: 'dot', text: 'suche weitere Wechselrichter @ ' + ((req.connection && req.connection.ip) || '?') });",
-  '  return probeUnits(req).then(function (res) {',
+  '  return sharedBus.runPoll(target, function () { return probeUnits(req); }).then(function (res) {',
   "    res = res || { ok: false, error_code: 'invalid_response' };",
   '    res.request_id = req.request_id;',
   "    node.status({ fill: res.ok ? 'green' : 'yellow', shape: 'dot', text: res.ok ? ('gefunden: Unit-ID ' + ((res.found_units || []).join(', ') || 'keine')) : (res.error_code || 'Fehler') });",
@@ -2817,7 +2848,7 @@ const testReadFunc = [
   '}',
   'var readOnce = __TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, sunspec: __SS, discovery: __DISC, goe: __GOE, kostal: __KOSTAL, kaco: __KACO, aiswei: __AISWEI, net: net, http: http, https: https });',
   "node.status({ fill: 'blue', shape: 'dot', text: 'pruefe ' + (req.brand || req.communication || '?') });",
-  'return readOnce(req, req.role).then(function (res) {',
+  'return sharedBus.runPoll(target, function () { return readOnce(req, req.role); }).then(function (res) {',
   "  res = res || { ok: false, error_code: 'invalid_response' };",
   '  res.request_id = req.request_id;',
   "  node.status({ fill: res.ok ? 'green' : 'yellow', shape: 'dot', text: res.ok ? 'Verbindung ok' : (res.error_code || 'Fehler') });",
@@ -3003,6 +3034,8 @@ const installerWriteFunc = [
   "const plan = installerWriteRoute(flow.get('inverter_config') || null, req);",
   "if (!plan.ok) { node.status({ fill: 'yellow', shape: 'ring', text: 'abgelehnt' }); node.warn('Installateur-Schreibpfad abgelehnt: ' + plan.reason); return reply({ ok: false, wrote: false, error_code: 'invalid_request', message: plan.reason }); }",
   "const target = plan.target;",
+  "const sharedBus = global.get('vpSharedBusArbiter');",
+  "if (!sharedBus) { return reply({ ok:false, wrote:false, error_code:'invalid_request', message:'Der gemeinsame Bus-Arbiter fehlt.' }); }",
   "const busyKey = 'sv5_busy:' + target;",
   "// ⚠ RESERVIERT wird unter einem EIGENEN Schluessel, nicht mehr unter der",
   "// gemeinsamen Absichts-Fahne sv5_write_want: die loeschte der Steuer-Executor",
@@ -3034,7 +3067,7 @@ const installerWriteFunc = [
   "// Eine an UNS gerichtete Uebergabe schlaegt alles andere; eine an jemand",
   "// anderen gerichtete ist eine Sperre, die wir abwarten.",
   "const acquire = async () => { const start = Date.now(); for (;;) { const tn = Date.now(); flow.set(oneKey, { id: ticket, at: tn }); const g = flow.get(grantKey) || null; const gAt = (g && Number(g.at) > 0) ? Number(g.at) : 0; const gLive = gAt > 0 && tn - gAt < GRANT_TTL_MS; const mine = gLive && g.id === ticket; const bs = flow.get(busyKey) || 0; if (mine || (!gLive && (!bs || tn - bs >= STALE_MS))) { flow.set(busyKey, tn); if (mine) flow.set(grantKey, 0); return true; } if (tn - start >= ACQUIRE_MS) return false; node.status({ fill: 'blue', shape: 'ring', text: gLive ? 'anderer Auftrag hat den Bus - warte' : 'Logger belegt - warte' }); await sleep(POLL_MS); } };",
-  "return acquire().then((got) => {",
+  "return sharedBus.runControl(target, () => acquire().then((got) => {",
   "  if (!got) { flow.set(oneKey, 0); node.status({ fill: 'blue', shape: 'ring', text: 'Logger belegt' }); node.warn('Installateur-Schreibpfad: Logger belegt (' + target + ') nach ' + ACQUIRE_MS + ' ms - Anfrage nicht ausgefuehrt'); return reply({ ok: false, wrote: false, error_code: 'busy', message: 'Der Wechselrichter-Logger war belegt. Bitte in einem Moment erneut versuchen - es wurde NICHTS geschrieben.' }); }",
   "  let seq = context.get('sv5_ctrl_seq') || 0;",
   "  return new Promise((resolve) => {",
@@ -3082,7 +3115,7 @@ const installerWriteFunc = [
   "      })().catch((e) => finish(e));",
   "    });",
   "  });",
-  "});",
+  "}));",
 ].join('\n');
 
 const autoNodes = [
@@ -3231,6 +3264,17 @@ const autoNodes = [
   { id: 'auto-installer-res', type: 'vp-installer-write-result', z: TAB, name: 'Ergebnis an Core', core: 'cfg-vp-core', x: 950, y: 900, wires: [] },
 ];
 
+const measurementNodes = [
+  {
+    id: 'tab-measurements', type: 'tab', label: 'Zusätzliche Messwerte', disabled: false,
+    info: 'Produktive Instanz des atomaren v2-Messruntimes. Desired State und Samples laufen ausschließlich über den lokalen Core-Bus.',
+  },
+  {
+    id: 'measurement-runtime', type: 'vp-measurements', z: 'tab-measurements',
+    name: 'Messplan ausführen', core: 'cfg-vp-core', x: 220, y: 100, wires: [],
+  },
+];
+
 // --- Simulator tab control path (the safe write->readback proof vs edge/sim) --
 // Replaces the old sim-sp2reg/sim-write/sim-enable nodes: the same controlRoute
 // + write/readback the real self-wiring path uses, but with the sim's fixed
@@ -3257,6 +3301,7 @@ const simControlNodes = [
 
 const simNodes = [simTab, ...simReadNodes, ...simControlNodes];
 
-const flows = [...keepConfig, ...autoNodes, ...sourcesNodes, ...testNodes, ...simNodes];
+const flows = [...keepConfig, ...autoNodes, ...sourcesNodes, ...testNodes, ...simNodes,
+  ...measurementNodes];
 fs.writeFileSync(OUT, JSON.stringify(flows, null, 2) + '\n');
 console.log('flows.json written:', flows.length, 'nodes');

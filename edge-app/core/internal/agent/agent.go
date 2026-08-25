@@ -832,6 +832,10 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := a.startOcpp(ctx); err != nil {
 		return err
 	}
+	if err := bus.Subscribe(measurements.LocalOcppConfigTopic, 18,
+		a.onOcppMeasurementConfiguration); err != nil {
+		return err
+	}
 	// A customer intent is persisted BEFORE cleanup. If a prior boot died or
 	// hit an I/O fault during that cleanup, retry it now that every local store
 	// (including the optional OCPP journal) is open, before cloud reconnect.

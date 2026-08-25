@@ -55,6 +55,7 @@ module.exports = {
     vpMeasurementPlanner: require("./measurements/measurement-planner"),
     vpMeasurementModbus: require("./vp-palette/lib/modbus-tcp"),
     vpMeasurementDeye: require("./deye/solarman-v5"),
+    vpSharedBusArbiter: require("./measurements/shared-bus-arbiter"),
   },
 
   // Durable context store for the Deye control SNAPSHOT (report §8, vp-deye-tou-dir-q5).
