@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -26,6 +27,7 @@ from cataloglib import (
 
 
 MANIFEST_PATH = ROOT / "sources" / "manifest.json"
+DEYE_KEY_LOCK_PATH = ROOT / "sources" / "deye" / "point-key-lock.json"
 DEFAULT_OUTPUT = ROOT / "dist" / f"measurement-point-catalog-{CATALOG_VERSION}.json"
 
 DEYE_LABELS_DE = {
@@ -103,6 +105,13 @@ OCPP_LABELS_DE = {
     "Temperature": "Temperatur",
     "Voltage": "Spannung",
 }
+
+# OCPP 1.6 JSON Schema, UnitOfMeasure. ``ocpp-go`` also exports the misspelled
+# compatibility constant ``Celcius``. It is intentionally not protocol truth.
+OCPP_16_STANDARD_UNITS = [
+    "Wh", "kWh", "varh", "kvarh", "W", "kW", "VA", "kVA", "var", "kvar",
+    "A", "V", "Celsius", "Fahrenheit", "K", "Percent",
+]
 
 GOE_COUNTER_KEYS = {"eto", "eto_mid", "wh", "wh_mid", "whb", "whg", "who", "whs"}
 
@@ -198,15 +207,25 @@ def sensor_registers(item: dict[str, Any]) -> list[int]:
     return list(dict.fromkeys(found))
 
 
-def generate_deye(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
-    normalized = read_json(source_file(source, source["input_path"]))
-    if normalized.get("normalizer_version") != "1.0":
-        raise ValueError(f"unsupported Deye normalizer version for {source['id']}")
-    if normalized.get("raw_sha256") != source["source_sha256"]:
-        raise ValueError(f"normalized Deye source mismatch for {source['id']}")
-    if normalized.get("raw_file") != Path(source["path"]).name:
-        raise ValueError(f"normalized Deye filename mismatch for {source['id']}")
-    document = normalized["document"]
+def deye_decoder(item: dict[str, Any]) -> dict[str, Any]:
+    decoder_fields = (
+        "rule", "scale", "divide", "mask", "bit", "bitmask", "offset", "magnitude",
+        "inverted", "registers", "sensors", "lookup", "range", "validation", "value",
+        "enabled_lookup", "name_lookup", "l", "alt",
+    )
+    return {field: item[field] for field in decoder_fields if field in item}
+
+
+def deye_lock_fingerprint(registers: list[int], derived_registers: list[int], decoder: dict[str, Any]) -> str:
+    identity = {
+        "decoder": decoder,
+        "derived_registers": derived_registers,
+        "registers": registers,
+    }
+    return hashlib.sha256(canonical_json_bytes(identity)).hexdigest()
+
+
+def deye_source_records(source: dict[str, Any], document: dict[str, Any]) -> Iterable[dict[str, Any]]:
     default_cadence = document.get("default", {}).get("update_interval")
     family = source["family"]
     for group in document["parameters"]:
@@ -227,42 +246,105 @@ def generate_deye(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
             if duplicates[item.get("name") or ""] > 1:
                 suffix = f"r{selector_addresses[0]:04x}" if selector_addresses else f"n{ordinal}"
                 key += "@" + suffix
-            width_bits = len(registers) * 16 if registers else None
-            value_type, signed = deye_value_type(item, width_bits)
-            aggregation = deye_aggregation(item, value_type)
-            cadence = item.get("update_interval", group_cadence)
-            decoder_fields = (
-                "rule", "scale", "divide", "mask", "bit", "bitmask", "offset", "magnitude",
-                "inverted", "registers", "sensors", "lookup", "range", "validation", "value",
-                "enabled_lookup", "name_lookup", "l", "alt",
-            )
-            decoder = {field: item[field] for field in decoder_fields if field in item}
-            yield base_point(
-                family=family,
-                point_key=key,
-                source_kind="modbus_holding",
-                address={"kind": "modbus_holding", "registers": registers, "width_words": len(registers)} if registers else None,
-                selector=selector,
-                width_bits=width_bits,
-                value_type=value_type,
-                signed=signed,
-                endian="word_little_byte_big" if registers else None,
-                scale=scale_metadata(item),
-                unit=item.get("uom"),
-                group=group_name,
-                label_de=deye_label_de(name),
-                label_source=name,
-                semantic_status="unknown" if name is None else "vendor_label_only",
-                aggregation_kind=aggregation,
-                default_cadence_s=cadence,
-                min_cadence_s=cadence,
-                long_term_cadence_s=long_term_cadence(item.get("uom"), aggregation, f"{group_name} {name or ''}"),
-                poll_group=f"deye:{family}:{slug(group_name)}:{cadence or 'source-default'}",
-                source=source,
-                decoder=decoder,
-                derived_from=[f"holding:0x{address:04x}" for address in derived_registers],
-                readable=True,
-            )
+            decoder = deye_decoder(item)
+            source_locator = f"{group_name}/{name or f'<unnamed:{ordinal}>'}"
+            yield {
+                "decoder": decoder,
+                "derived_registers": derived_registers,
+                "group_cadence": group_cadence,
+                "group_name": group_name,
+                "item": item,
+                "legacy_point_key": key,
+                "lock_fingerprint": deye_lock_fingerprint(registers, derived_registers, decoder),
+                "name": name,
+                "ordinal": ordinal,
+                "registers": registers,
+                "selector": selector,
+                "source_locator": source_locator,
+            }
+
+
+def load_deye_document(source: dict[str, Any]) -> dict[str, Any]:
+    normalized = read_json(source_file(source, source["input_path"]))
+    if normalized.get("normalizer_version") != "1.0":
+        raise ValueError(f"unsupported Deye normalizer version for {source['id']}")
+    if normalized.get("raw_sha256") != source["source_sha256"]:
+        raise ValueError(f"normalized Deye source mismatch for {source['id']}")
+    if normalized.get("raw_file") != Path(source["path"]).name:
+        raise ValueError(f"normalized Deye filename mismatch for {source['id']}")
+    return normalized["document"]
+
+
+def resolve_deye_key(
+    key_lock: dict[str, Any], family: str, source_locator: str, fingerprint: str,
+) -> dict[str, Any]:
+    matches = [
+        entry
+        for entry in key_lock["entries"]
+        if entry["family"] == family
+        and source_locator in entry["source_locators"]
+        and fingerprint in entry["fingerprints"]
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"Deye point-key lock mismatch for {family}/{source_locator} ({fingerprint[:12]}): "
+            "run tools/update_deye_key_lock.py and review the lock diff"
+        )
+    return matches[0]
+
+
+def generate_deye_points(
+    source: dict[str, Any], document: dict[str, Any], key_lock: dict[str, Any],
+) -> Iterable[dict[str, Any]]:
+    family = source["family"]
+    for record in deye_source_records(source, document):
+        item = record["item"]
+        name = record["name"]
+        registers = record["registers"]
+        derived_registers = record["derived_registers"]
+        group_name = record["group_name"]
+        lock_entry = resolve_deye_key(
+            key_lock, family, record["source_locator"], record["lock_fingerprint"],
+        )
+        width_bits = len(registers) * 16 if registers else None
+        value_type, signed = deye_value_type(item, width_bits)
+        aggregation = deye_aggregation(item, value_type)
+        cadence = item.get("update_interval", record["group_cadence"])
+        yield base_point(
+            family=family,
+            point_key=lock_entry["point_key"],
+            source_kind="modbus_holding",
+            address={
+                "kind": "modbus_holding", "registers": registers, "width_words": len(registers),
+            } if registers else None,
+            selector=record["selector"],
+            width_bits=width_bits,
+            value_type=value_type,
+            signed=signed,
+            endian="word_little_byte_big" if registers else None,
+            scale=scale_metadata(item),
+            unit=item.get("uom"),
+            group=group_name,
+            label_de=deye_label_de(name),
+            label_source=name,
+            semantic_status="unknown" if name is None else "vendor_label_only",
+            aggregation_kind=aggregation,
+            default_cadence_s=cadence,
+            min_cadence_s=cadence,
+            long_term_cadence_s=long_term_cadence(
+                item.get("uom"), aggregation, f"{group_name} {name or ''}",
+            ),
+            poll_group=f"deye:{family}:{slug(group_name)}:{cadence or 'source-default'}",
+            source=source,
+            decoder=record["decoder"],
+            derived_from=[f"holding:0x{address:04x}" for address in derived_registers],
+            point_key_aliases=lock_entry["aliases"],
+            readable=True,
+        )
+
+
+def generate_deye(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
+    return generate_deye_points(source, load_deye_document(source), read_json(DEYE_KEY_LOCK_PATH))
 
 
 def sunspec_aggregation(value_type: str) -> str:
@@ -466,9 +548,12 @@ def shelly_fields(component: dict[str, Any]) -> Iterable[list[Any]]:
 def generate_shelly(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
     document = read_json(source_file(source))
     for family in document["families"]:
-        family_source = dict(source)
-        family_source["source_url"] = family["source_url"]
         for component in family["components"]:
+            source_evidence = component["source_evidence"]
+            primary_evidence = source_evidence[0]
+            component_source = dict(source)
+            component_source["source_sha256"] = primary_evidence["sha256"]
+            component_source["source_url"] = primary_evidence["url"]
             method = component.get("method") or component.get("endpoint")
             for field_path, value_type, unit, label_de, aggregation in shelly_fields(component):
                 component_key = path_segment(component["component"])
@@ -495,10 +580,11 @@ def generate_shelly(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
                     min_cadence_s=min(cadence, 5 if cadence <= 30 else 30),
                     long_term_cadence_s=long_term_cadence(unit, aggregation, f"{component['component']} {field_path}"),
                     poll_group=f"shelly:{family['family']}:{path_segment(method)}",
-                    source=family_source,
+                    source=component_source,
                     dynamic="*" in component["component"] or "*" in field_path,
                     optional=True,
                     readable=True,
+                    source_evidence=source_evidence,
                 )
 
 
@@ -516,12 +602,20 @@ def parse_ocpp_constants(path: Path) -> dict[str, list[str]]:
 
 def generate_ocpp(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
     constants = parse_ocpp_constants(source_file(source))
+    parsed_units = set(constants["UnitOfMeasure"])
+    missing_units = set(OCPP_16_STANDARD_UNITS) - parsed_units
+    compatibility_units = parsed_units - set(OCPP_16_STANDARD_UNITS)
+    if missing_units or compatibility_units != {"Celcius"}:
+        raise ValueError(
+            "unexpected ocpp-go UnitOfMeasure constants: "
+            f"missing={sorted(missing_units)}, compatibility={sorted(compatibility_units)}"
+        )
     dimensions = {
         "contexts": constants["ReadingContext"],
         "formats": constants["ValueFormat"],
         "locations": constants["Location"],
         "phases": constants["Phase"],
-        "units": constants["UnitOfMeasure"],
+        "units": OCPP_16_STANDARD_UNITS,
     }
     for measurand in constants["Measurand"]:
         aggregation = "counter" if measurand.endswith(".Register") else "gauge"
@@ -578,6 +672,20 @@ def verify_source_hashes(manifest: dict[str, Any]) -> None:
                 if sha256(path) != expected:
                     failures.append(str(path.relative_to(ROOT)))
             continue
+        if source["adapter"] == "shelly":
+            for path_key, hash_key in (
+                ("path", "extracted_sha256"),
+                ("raw_manifest_path", "raw_manifest_sha256"),
+                ("extraction_spec_path", "extraction_spec_sha256"),
+                ("annotations_path", "annotations_sha256"),
+            ):
+                if sha256(source_file(source, source[path_key])) != source[hash_key]:
+                    failures.append(source[path_key])
+            raw_manifest = read_json(source_file(source, source["raw_manifest_path"]))
+            for raw_source in raw_manifest["sources"]:
+                if sha256(ROOT / raw_source["path"]) != raw_source["sha256"]:
+                    failures.append(raw_source["path"])
+            continue
         for path_key, hash_key in (("path", "source_sha256"), ("input_path", "input_sha256"), ("german_labels_path", "german_labels_sha256")):
             if path_key in source and sha256(source_file(source, source[path_key])) != source[hash_key]:
                 failures.append(source[path_key])
@@ -603,6 +711,7 @@ def build_catalog() -> dict[str, Any]:
     ]
     return {
         "catalog_version": CATALOG_VERSION,
+        "deye_point_key_lock_sha256": sha256(DEYE_KEY_LOCK_PATH),
         "edge_min_version": EDGE_MIN_VERSION,
         "families": families,
         "points": points,

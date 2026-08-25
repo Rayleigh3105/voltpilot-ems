@@ -1,419 +1,1883 @@
 {
-  "schema_version": "1.0",
-  "snapshot_date": "2026-08-24",
+  "annotations_sha256": "aaf199c4f003f546ab6e5baf56da644bd8f6504fa574ebf72b7b427b063d9d7c",
+  "extraction_spec_sha256": "f970abb93c340775a59c832ec8aa21e868ffd6cfbc7fc1e6ea4302f40ffcde70",
   "families": [
     {
-      "family": "shelly.gen1",
-      "source_url": "https://shelly-api-docs.shelly.cloud/gen1/#shelly-status",
-      "source_kind": "rest_json",
       "components": [
         {
+          "cadence_s": 3600,
           "component": "device_info",
           "endpoint": "/shelly",
-          "cadence_s": 3600,
           "fields": [
-            ["type", "string", null, "Gerätetyp", "text"],
-            ["mac", "string", null, "MAC-Adresse", "text"],
-            ["auth", "bool", null, "Authentifizierung aktiv", "state"],
-            ["fw", "string", null, "Firmware", "text"],
-            ["longid", "bool", null, "Lange Gerätekennung", "state"],
-            ["num_outputs", "uint", null, "Anzahl Ausgänge", "state"],
-            ["num_meters", "uint", null, "Anzahl Leistungsmesser", "state"]
+            [
+              "type",
+              "string",
+              null,
+              "Gerätetyp",
+              "text"
+            ],
+            [
+              "mac",
+              "string",
+              null,
+              "MAC-Adresse",
+              "text"
+            ],
+            [
+              "auth",
+              "bool",
+              null,
+              "Authentifizierung aktiv",
+              "state"
+            ],
+            [
+              "fw",
+              "string",
+              null,
+              "Firmware",
+              "text"
+            ],
+            [
+              "longid",
+              "number",
+              null,
+              "Lange Gerätekennung",
+              "state"
+            ]
+          ],
+          "source_evidence": [
+            {
+              "id": "gen1",
+              "path": "sources/shelly/raw/gen1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "d76d588eedb612cc9461f59656995734ccf5352cfe46ba96431b73ef0b7f8016",
+              "url": "https://shelly-api-docs.shelly.cloud/gen1/"
+            }
           ]
         },
         {
+          "cadence_s": 60,
           "component": "wifi_sta",
           "endpoint": "/status",
-          "cadence_s": 60,
           "fields": [
-            ["wifi_sta.connected", "bool", null, "WLAN verbunden", "state"],
-            ["wifi_sta.ssid", "string", null, "WLAN-Name", "text"],
-            ["wifi_sta.ip", "string", null, "IP-Adresse", "text"],
-            ["wifi_sta.rssi", "int", "dBm", "WLAN-Signal", "gauge"]
+            [
+              "wifi_sta.connected",
+              "bool",
+              null,
+              "WLAN verbunden",
+              "state"
+            ],
+            [
+              "wifi_sta.ssid",
+              "string",
+              null,
+              "WLAN-Name",
+              "text"
+            ],
+            [
+              "wifi_sta.ip",
+              "string",
+              null,
+              "IP-Adresse",
+              "text"
+            ],
+            [
+              "wifi_sta.rssi",
+              "number",
+              null,
+              "WLAN-Signal",
+              "gauge"
+            ]
+          ],
+          "source_evidence": [
+            {
+              "id": "gen1",
+              "path": "sources/shelly/raw/gen1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "d76d588eedb612cc9461f59656995734ccf5352cfe46ba96431b73ef0b7f8016",
+              "url": "https://shelly-api-docs.shelly.cloud/gen1/"
+            }
           ]
         },
         {
+          "cadence_s": 60,
           "component": "services",
           "endpoint": "/status",
-          "cadence_s": 60,
           "fields": [
-            ["cloud.enabled", "bool", null, "Shelly Cloud aktiviert", "state"],
-            ["cloud.connected", "bool", null, "Shelly Cloud verbunden", "state"],
-            ["mqtt.connected", "bool", null, "MQTT verbunden", "state"]
+            [
+              "cloud.enabled",
+              "bool",
+              null,
+              "Shelly Cloud aktiviert",
+              "state"
+            ],
+            [
+              "cloud.connected",
+              "bool",
+              null,
+              "Shelly Cloud verbunden",
+              "state"
+            ],
+            [
+              "mqtt.connected",
+              "bool",
+              null,
+              "MQTT verbunden",
+              "state"
+            ]
+          ],
+          "source_evidence": [
+            {
+              "id": "gen1",
+              "path": "sources/shelly/raw/gen1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "d76d588eedb612cc9461f59656995734ccf5352cfe46ba96431b73ef0b7f8016",
+              "url": "https://shelly-api-docs.shelly.cloud/gen1/"
+            }
           ]
         },
         {
+          "cadence_s": 300,
           "component": "system",
           "endpoint": "/status",
-          "cadence_s": 300,
           "fields": [
-            ["time", "string", null, "Lokale Uhrzeit", "text"],
-            ["unixtime", "uint", "s", "Unix-Zeit", "gauge"],
-            ["serial", "uint", null, "Neustartzähler", "counter"],
-            ["has_update", "bool", null, "Update verfügbar", "state"],
-            ["mac", "string", null, "MAC-Adresse", "text"],
-            ["cfg_changed", "uint", null, "Konfigurationsänderung", "counter"],
-            ["actions_stats", "object", null, "Aktionsstatistik", "none"],
-            ["uptime", "uint", "s", "Laufzeit", "gauge"],
-            ["ram_total", "uint", "B", "RAM gesamt", "gauge"],
-            ["ram_free", "uint", "B", "RAM frei", "gauge"],
-            ["fs_size", "uint", "B", "Flash gesamt", "gauge"],
-            ["fs_free", "uint", "B", "Flash frei", "gauge"]
+            [
+              "time",
+              "string",
+              null,
+              "Lokale Uhrzeit",
+              "text"
+            ],
+            [
+              "unixtime",
+              "number",
+              "s",
+              "Unix-Zeit",
+              "gauge"
+            ],
+            [
+              "serial",
+              "number",
+              null,
+              "Neustartzähler",
+              "counter"
+            ],
+            [
+              "has_update",
+              "bool",
+              null,
+              "Update verfügbar",
+              "state"
+            ],
+            [
+              "mac",
+              "string",
+              null,
+              "MAC-Adresse",
+              "text"
+            ],
+            [
+              "cfg_changed_cnt",
+              "number",
+              null,
+              "Konfigurationsänderung",
+              "counter"
+            ],
+            [
+              "actions_stats",
+              "object",
+              null,
+              "Aktionsstatistik",
+              "none"
+            ],
+            [
+              "uptime",
+              "number",
+              "s",
+              "Laufzeit",
+              "gauge"
+            ],
+            [
+              "ram_total",
+              "number",
+              "B",
+              "RAM gesamt",
+              "gauge"
+            ],
+            [
+              "ram_free",
+              "number",
+              "B",
+              "RAM frei",
+              "gauge"
+            ],
+            [
+              "fs_size",
+              "number",
+              "B",
+              "Flash gesamt",
+              "gauge"
+            ],
+            [
+              "fs_free",
+              "number",
+              "B",
+              "Flash frei",
+              "gauge"
+            ]
+          ],
+          "source_evidence": [
+            {
+              "id": "gen1",
+              "path": "sources/shelly/raw/gen1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "d76d588eedb612cc9461f59656995734ccf5352cfe46ba96431b73ef0b7f8016",
+              "url": "https://shelly-api-docs.shelly.cloud/gen1/"
+            }
           ]
         },
         {
+          "cadence_s": 10,
           "component": "relay[*]",
           "endpoint": "/status",
-          "cadence_s": 10,
           "fields": [
-            ["relays[*].ison", "bool", null, "Schaltzustand", "state"],
-            ["relays[*].has_timer", "bool", null, "Timer aktiv", "state"],
-            ["relays[*].timer_started", "uint", "s", "Timer gestartet", "gauge"],
-            ["relays[*].timer_duration", "uint", "s", "Timerdauer", "gauge"],
-            ["relays[*].timer_remaining", "uint", "s", "Verbleibende Timerzeit", "gauge"],
-            ["relays[*].overpower", "bool", null, "Überleistungszustand", "state"],
-            ["relays[*].source", "string", null, "Schaltquelle", "state"]
+            [
+              "relays[*].ison",
+              "bool",
+              null,
+              "Schaltzustand",
+              "state"
+            ],
+            [
+              "relays[*].has_timer",
+              "bool",
+              null,
+              "Timer aktiv",
+              "state"
+            ],
+            [
+              "relays[*].timer_started",
+              "number",
+              "s",
+              "Timer gestartet",
+              "gauge"
+            ],
+            [
+              "relays[*].timer_duration",
+              "number",
+              "s",
+              "Timerdauer",
+              "gauge"
+            ],
+            [
+              "relays[*].timer_remaining",
+              "number",
+              "s",
+              "Verbleibende Timerzeit",
+              "gauge"
+            ],
+            [
+              "relays[*].overpower",
+              "bool",
+              null,
+              "Überleistungszustand",
+              "state"
+            ],
+            [
+              "relays[*].source",
+              "string",
+              null,
+              "Schaltquelle",
+              "state"
+            ]
+          ],
+          "source_evidence": [
+            {
+              "id": "gen1",
+              "path": "sources/shelly/raw/gen1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "d76d588eedb612cc9461f59656995734ccf5352cfe46ba96431b73ef0b7f8016",
+              "url": "https://shelly-api-docs.shelly.cloud/gen1/"
+            }
           ]
         },
         {
+          "cadence_s": 30,
           "component": "meter[*]",
           "endpoint": "/status",
-          "cadence_s": 30,
           "fields": [
-            ["meters[*].power", "number", "W", "Wirkleistung", "gauge"],
-            ["meters[*].overpower", "number", "W", "Überleistung", "gauge"],
-            ["meters[*].is_valid", "bool", null, "Messwert gültig", "state"],
-            ["meters[*].timestamp", "uint", "s", "Messzeitpunkt", "gauge"],
-            ["meters[*].counters[*]", "number", "Wmin", "Minutenwert", "gauge"],
-            ["meters[*].total", "number", "Wmin", "Gesamtenergie", "counter"]
+            [
+              "meters[*].power",
+              "number",
+              "W",
+              "Wirkleistung",
+              "gauge"
+            ],
+            [
+              "meters[*].overpower",
+              "number",
+              "W",
+              "Überleistung",
+              "gauge"
+            ],
+            [
+              "meters[*].is_valid",
+              "bool",
+              null,
+              "Messwert gültig",
+              "state"
+            ],
+            [
+              "meters[*].timestamp",
+              "number",
+              "s",
+              "Messzeitpunkt",
+              "gauge"
+            ],
+            [
+              "meters[*].counters[*]",
+              "number",
+              "Wmin",
+              "Minutenwert",
+              "gauge"
+            ],
+            [
+              "meters[*].total",
+              "number",
+              "Wmin",
+              "Gesamtenergie",
+              "counter"
+            ]
+          ],
+          "source_evidence": [
+            {
+              "id": "gen1",
+              "path": "sources/shelly/raw/gen1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "d76d588eedb612cc9461f59656995734ccf5352cfe46ba96431b73ef0b7f8016",
+              "url": "https://shelly-api-docs.shelly.cloud/gen1/"
+            }
           ]
         },
         {
+          "cadence_s": 10,
           "component": "input[*]",
           "endpoint": "/status",
-          "cadence_s": 10,
           "fields": [
-            ["inputs[*].input", "bool", null, "Eingangspegel", "state"],
-            ["inputs[*].event", "string", null, "Letztes Eingangsereignis", "event"],
-            ["inputs[*].event_cnt", "uint", null, "Ereigniszähler", "counter"]
+            [
+              "inputs[*].input",
+              "number",
+              null,
+              "Eingangspegel",
+              "state"
+            ],
+            [
+              "inputs[*].event",
+              "string",
+              null,
+              "Letztes Eingangsereignis",
+              "event"
+            ],
+            [
+              "inputs[*].event_cnt",
+              "number",
+              null,
+              "Ereigniszähler",
+              "counter"
+            ]
+          ],
+          "source_evidence": [
+            {
+              "id": "gen1",
+              "path": "sources/shelly/raw/gen1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "d76d588eedb612cc9461f59656995734ccf5352cfe46ba96431b73ef0b7f8016",
+              "url": "https://shelly-api-docs.shelly.cloud/gen1/"
+            }
           ]
         },
         {
+          "cadence_s": 60,
           "component": "thermal",
           "endpoint": "/status",
-          "cadence_s": 60,
           "fields": [
-            ["temperature", "number", "°C", "Gerätetemperatur", "gauge"],
-            ["overtemperature", "bool", null, "Übertemperatur", "event"],
-            ["temperature_status", "string", null, "Temperaturzustand", "state"]
+            [
+              "temperature",
+              "number",
+              "°C",
+              "Gerätetemperatur",
+              "gauge"
+            ],
+            [
+              "overtemperature",
+              "bool",
+              null,
+              "Übertemperatur",
+              "event"
+            ],
+            [
+              "temperature_status",
+              "string",
+              null,
+              "Temperaturzustand",
+              "state"
+            ]
+          ],
+          "source_evidence": [
+            {
+              "id": "gen1",
+              "path": "sources/shelly/raw/gen1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "d76d588eedb612cc9461f59656995734ccf5352cfe46ba96431b73ef0b7f8016",
+              "url": "https://shelly-api-docs.shelly.cloud/gen1/"
+            }
           ]
         },
         {
+          "cadence_s": 60,
           "component": "external_sensor[*]",
           "endpoint": "/status",
-          "cadence_s": 60,
           "fields": [
-            ["ext_temperature.*.tC", "number", "°C", "Externe Temperatur", "gauge"],
-            ["ext_temperature.*.tF", "number", "°F", "Externe Temperatur", "gauge"],
-            ["ext_humidity.*.hum", "number", "%", "Externe Luftfeuchte", "gauge"]
+            [
+              "ext_temperature.*.tC",
+              "number",
+              "°C",
+              "Externe Temperatur",
+              "gauge"
+            ],
+            [
+              "ext_temperature.*.tF",
+              "number",
+              "°F",
+              "Externe Temperatur",
+              "gauge"
+            ],
+            [
+              "ext_humidity.*.hum",
+              "number",
+              "%",
+              "Externe Luftfeuchte",
+              "gauge"
+            ]
+          ],
+          "source_evidence": [
+            {
+              "id": "gen1",
+              "path": "sources/shelly/raw/gen1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "d76d588eedb612cc9461f59656995734ccf5352cfe46ba96431b73ef0b7f8016",
+              "url": "https://shelly-api-docs.shelly.cloud/gen1/"
+            }
           ]
         },
         {
+          "cadence_s": 30,
           "component": "emeter[*]",
           "endpoint": "/status",
-          "cadence_s": 30,
           "fields": [
-            ["emeters[*].voltage", "number", "V", "Spannung", "gauge"],
-            ["emeters[*].current", "number", "A", "Strom", "gauge"],
-            ["emeters[*].power", "number", "W", "Wirkleistung", "gauge"],
-            ["emeters[*].pf", "number", null, "Leistungsfaktor", "gauge"],
-            ["emeters[*].total", "number", "Wh", "Bezogene Wirkenergie", "counter"],
-            ["emeters[*].total_returned", "number", "Wh", "Rückgespeiste Wirkenergie", "counter"]
+            [
+              "emeters[*].voltage",
+              "number",
+              "V",
+              "Spannung",
+              "gauge"
+            ],
+            [
+              "emeters[*].current",
+              "number",
+              "A",
+              "Strom",
+              "gauge"
+            ],
+            [
+              "emeters[*].power",
+              "number",
+              "W",
+              "Wirkleistung",
+              "gauge"
+            ],
+            [
+              "emeters[*].pf",
+              "number",
+              null,
+              "Leistungsfaktor",
+              "gauge"
+            ],
+            [
+              "emeters[*].total",
+              "number",
+              "Wh",
+              "Bezogene Wirkenergie",
+              "counter"
+            ],
+            [
+              "emeters[*].total_returned",
+              "number",
+              "Wh",
+              "Rückgespeiste Wirkenergie",
+              "counter"
+            ]
+          ],
+          "source_evidence": [
+            {
+              "id": "gen1",
+              "path": "sources/shelly/raw/gen1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "d76d588eedb612cc9461f59656995734ccf5352cfe46ba96431b73ef0b7f8016",
+              "url": "https://shelly-api-docs.shelly.cloud/gen1/"
+            }
           ]
         },
         {
+          "cadence_s": 30,
           "component": "light_cover[*]",
           "endpoint": "/status",
-          "cadence_s": 30,
           "fields": [
-            ["lights[*].ison", "bool", null, "Licht eingeschaltet", "state"],
-            ["lights[*].brightness", "number", "%", "Helligkeit", "gauge"],
-            ["lights[*].white", "number", null, "Weißkanal", "gauge"],
-            ["lights[*].temp", "number", "K", "Farbtemperatur", "gauge"],
-            ["rollers[*].state", "string", null, "Abdeckungszustand", "state"],
-            ["rollers[*].current_pos", "number", "%", "Aktuelle Position", "gauge"],
-            ["rollers[*].power", "number", "W", "Wirkleistung", "gauge"]
+            [
+              "lights[*].ison",
+              "bool",
+              null,
+              "Licht eingeschaltet",
+              "state"
+            ],
+            [
+              "lights[*].brightness",
+              "number",
+              "%",
+              "Helligkeit",
+              "gauge"
+            ],
+            [
+              "lights[*].white",
+              "number",
+              null,
+              "Weißkanal",
+              "gauge"
+            ],
+            [
+              "lights[*].temp",
+              "number",
+              "K",
+              "Farbtemperatur",
+              "gauge"
+            ],
+            [
+              "rollers[*].state",
+              "string",
+              null,
+              "Abdeckungszustand",
+              "state"
+            ],
+            [
+              "rollers[*].current_pos",
+              "number",
+              "%",
+              "Aktuelle Position",
+              "gauge"
+            ],
+            [
+              "rollers[*].power",
+              "number",
+              "W",
+              "Wirkleistung",
+              "gauge"
+            ]
+          ],
+          "source_evidence": [
+            {
+              "id": "gen1",
+              "path": "sources/shelly/raw/gen1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "d76d588eedb612cc9461f59656995734ccf5352cfe46ba96431b73ef0b7f8016",
+              "url": "https://shelly-api-docs.shelly.cloud/gen1/"
+            }
           ]
         }
-      ]
+      ],
+      "family": "shelly.gen1",
+      "source_kind": "rest_json"
     },
     {
-      "family": "shelly.gen2plus",
-      "source_url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/",
-      "source_kind": "rpc_json",
       "components": [
         {
-          "component": "device_info",
-          "method": "Shelly.GetDeviceInfo",
           "cadence_s": 3600,
+          "component": "device_info",
           "fields": [
-            ["id", "string", null, "Gerätekennung", "text"],
-            ["mac", "string", null, "MAC-Adresse", "text"],
-            ["model", "string", null, "Modell", "text"],
-            ["gen", "uint", null, "API-Generation", "state"],
-            ["fw_id", "string", null, "Firmware-Kennung", "text"],
-            ["ver", "string", null, "Firmware-Version", "text"],
-            ["app", "string", null, "Anwendung", "text"],
-            ["auth_en", "bool", null, "Authentifizierung aktiv", "state"],
-            ["auth_domain", "string", null, "Authentifizierungsbereich", "text"],
-            ["profile", "string", null, "Geräteprofil", "state"]
-          ]
-        },
-        {
-          "component": "sys",
-          "method": "Sys.GetStatus",
-          "cadence_s": 300,
-          "fields": [
-            ["mac", "string", null, "MAC-Adresse", "text"],
-            ["restart_required", "bool", null, "Neustart erforderlich", "state"],
-            ["time", "string", null, "Lokale Uhrzeit", "text"],
-            ["unixtime", "uint", "s", "Unix-Zeit", "gauge"],
-            ["uptime", "uint", "s", "Laufzeit", "gauge"],
-            ["ram_size", "uint", "B", "RAM gesamt", "gauge"],
-            ["ram_free", "uint", "B", "RAM frei", "gauge"],
-            ["fs_size", "uint", "B", "Flash gesamt", "gauge"],
-            ["fs_free", "uint", "B", "Flash frei", "gauge"],
-            ["cfg_rev", "uint", null, "Konfigurationsrevision", "counter"],
-            ["kvs_rev", "uint", null, "KVS-Revision", "counter"],
-            ["schedule_rev", "uint", null, "Zeitplanrevision", "counter"],
-            ["webhook_rev", "uint", null, "Webhook-Revision", "counter"],
-            ["available_updates", "object", null, "Verfügbare Updates", "none"],
-            ["reset_reason", "uint", null, "Neustartgrund", "state"]
-          ]
-        },
-        {
-          "component": "wifi",
-          "method": "Wifi.GetStatus",
-          "cadence_s": 60,
-          "fields": [
-            ["sta_ip", "string", null, "WLAN-IP-Adresse", "text"],
-            ["status", "string", null, "WLAN-Zustand", "state"],
-            ["ssid", "string", null, "WLAN-Name", "text"],
-            ["rssi", "int", "dBm", "WLAN-Signal", "gauge"],
-            ["ap_client_count", "uint", null, "Verbundene AP-Clients", "gauge"]
-          ]
-        },
-        {
-          "component": "cloud",
-          "method": "Cloud.GetStatus",
-          "cadence_s": 60,
-          "fields": [
-            ["connected", "bool", null, "Shelly Cloud verbunden", "state"]
-          ]
-        },
-        {
-          "component": "mqtt",
-          "method": "Mqtt.GetStatus",
-          "cadence_s": 60,
-          "fields": [
-            ["connected", "bool", null, "MQTT verbunden", "state"]
-          ]
-        },
-        {
-          "component": "switch[*]",
-          "method": "Switch.GetStatus?id=*",
-          "cadence_s": 10,
-          "fields": [
-            ["id", "uint", null, "Komponentenkennung", "state"],
-            ["source", "string", null, "Schaltquelle", "state"],
-            ["output", "bool", null, "Schaltzustand", "state"],
-            ["temperature.tC", "number", "°C", "Temperatur", "gauge"],
-            ["temperature.tF", "number", "°F", "Temperatur", "gauge"],
-            ["apower", "number", "W", "Wirkleistung", "gauge"],
-            ["voltage", "number", "V", "Spannung", "gauge"],
-            ["current", "number", "A", "Strom", "gauge"],
-            ["pf", "number", null, "Leistungsfaktor", "gauge"],
-            ["freq", "number", "Hz", "Frequenz", "gauge"],
-            ["aenergy.total", "number", "Wh", "Bezogene Wirkenergie", "counter"],
-            ["aenergy.by_minute[*]", "number", "mWh", "Minutenenergie", "gauge"],
-            ["aenergy.minute_ts", "uint", "s", "Zeitpunkt der Minutenenergie", "gauge"],
-            ["ret_aenergy.total", "number", "Wh", "Rückgespeiste Wirkenergie", "counter"],
-            ["ret_aenergy.by_minute[*]", "number", "mWh", "Rückgespeiste Minutenenergie", "gauge"],
-            ["ret_aenergy.minute_ts", "uint", "s", "Zeitpunkt der Rückenergie", "gauge"],
-            ["errors[*]", "string", null, "Fehler", "event"]
-          ]
-        },
-        {
-          "component": "pm1[*]",
-          "method": "PM1.GetStatus?id=*",
-          "cadence_s": 30,
-          "fields": [
-            ["id", "uint", null, "Komponentenkennung", "state"],
-            ["voltage", "number", "V", "Spannung", "gauge"],
-            ["current", "number", "A", "Strom", "gauge"],
-            ["apower", "number", "W", "Wirkleistung", "gauge"],
-            ["aprtpower", "number", "VA", "Scheinleistung", "gauge"],
-            ["pf", "number", null, "Leistungsfaktor", "gauge"],
-            ["freq", "number", "Hz", "Frequenz", "gauge"],
-            ["aenergy.total", "number", "Wh", "Bezogene Wirkenergie", "counter"],
-            ["aenergy.by_minute[*]", "number", "mWh", "Minutenenergie", "gauge"],
-            ["aenergy.minute_ts", "uint", "s", "Zeitpunkt der Minutenenergie", "gauge"],
-            ["ret_aenergy.total", "number", "Wh", "Rückgespeiste Wirkenergie", "counter"],
-            ["ret_aenergy.by_minute[*]", "number", "mWh", "Rückgespeiste Minutenenergie", "gauge"],
-            ["ret_aenergy.minute_ts", "uint", "s", "Zeitpunkt der Rückenergie", "gauge"],
-            ["errors[*]", "string", null, "Fehler", "event"]
-          ]
-        },
-        {
-          "component": "em[*]",
-          "method": "EM.GetStatus?id=*",
-          "cadence_s": 30,
-          "phase_prefixes": ["a", "b", "c"],
-          "phase_fields": [
-            ["current", "number", "A", "Strom", "gauge"],
-            ["voltage", "number", "V", "Spannung", "gauge"],
-            ["act_power", "number", "W", "Wirkleistung", "gauge"],
-            ["aprt_power", "number", "VA", "Scheinleistung", "gauge"],
-            ["pf", "number", null, "Leistungsfaktor", "gauge"],
-            ["freq", "number", "Hz", "Frequenz", "gauge"]
+            [
+              "id",
+              "string",
+              null,
+              "Gerätekennung",
+              "text"
+            ],
+            [
+              "mac",
+              "string",
+              null,
+              "MAC-Adresse",
+              "text"
+            ],
+            [
+              "model",
+              "string",
+              null,
+              "Modell",
+              "text"
+            ],
+            [
+              "gen",
+              "number",
+              null,
+              "API-Generation",
+              "state"
+            ],
+            [
+              "fw_id",
+              "string",
+              null,
+              "Firmware-Kennung",
+              "text"
+            ],
+            [
+              "ver",
+              "string",
+              null,
+              "Firmware-Version",
+              "text"
+            ],
+            [
+              "app",
+              "string",
+              null,
+              "Anwendung",
+              "text"
+            ],
+            [
+              "auth_en",
+              "bool",
+              null,
+              "Authentifizierung aktiv",
+              "state"
+            ],
+            [
+              "auth_domain",
+              "string",
+              null,
+              "Authentifizierungsbereich",
+              "text"
+            ],
+            [
+              "profile",
+              "string",
+              null,
+              "Geräteprofil",
+              "state"
+            ]
           ],
-          "fields": [
-            ["total_current", "number", "A", "Gesamtstrom", "gauge"],
-            ["total_act_power", "number", "W", "Gesamtwirkleistung", "gauge"],
-            ["total_aprt_power", "number", "VA", "Gesamtscheinleistung", "gauge"],
-            ["errors[*]", "string", null, "Fehler", "event"]
+          "method": "Shelly.GetDeviceInfo",
+          "source_evidence": [
+            {
+              "id": "gen2-Shelly",
+              "path": "sources/shelly/raw/gen2-Shelly.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "3be3052ccf05171e408a902713c271802a32afc6c3908f09dd4376071c9f774d",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly/"
+            }
           ]
         },
         {
+          "cadence_s": 300,
+          "component": "sys",
+          "fields": [
+            [
+              "mac",
+              "string",
+              null,
+              "MAC-Adresse",
+              "text"
+            ],
+            [
+              "restart_required",
+              "bool",
+              null,
+              "Neustart erforderlich",
+              "state"
+            ],
+            [
+              "time",
+              "string",
+              null,
+              "Lokale Uhrzeit",
+              "text"
+            ],
+            [
+              "unixtime",
+              "number",
+              "s",
+              "Unix-Zeit",
+              "gauge"
+            ],
+            [
+              "uptime",
+              "number",
+              "s",
+              "Laufzeit",
+              "gauge"
+            ],
+            [
+              "ram_size",
+              "number",
+              "B",
+              "RAM gesamt",
+              "gauge"
+            ],
+            [
+              "ram_free",
+              "number",
+              "B",
+              "RAM frei",
+              "gauge"
+            ],
+            [
+              "fs_size",
+              "number",
+              "B",
+              "Flash gesamt",
+              "gauge"
+            ],
+            [
+              "fs_free",
+              "number",
+              "B",
+              "Flash frei",
+              "gauge"
+            ],
+            [
+              "cfg_rev",
+              "number",
+              null,
+              "Konfigurationsrevision",
+              "counter"
+            ],
+            [
+              "kvs_rev",
+              "number",
+              null,
+              "KVS-Revision",
+              "counter"
+            ],
+            [
+              "schedule_rev",
+              "number",
+              null,
+              "Zeitplanrevision",
+              "counter"
+            ],
+            [
+              "webhook_rev",
+              "number",
+              null,
+              "Webhook-Revision",
+              "counter"
+            ],
+            [
+              "available_updates",
+              "object",
+              null,
+              "Verfügbare Updates",
+              "none"
+            ]
+          ],
+          "method": "Sys.GetStatus",
+          "source_evidence": [
+            {
+              "id": "gen2-Sys",
+              "path": "sources/shelly/raw/gen2-Sys.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "45ffc3da51fcf68c83f9a41bc997d861de919f34985f701377d6c545324a037a",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Sys/"
+            }
+          ]
+        },
+        {
+          "cadence_s": 60,
+          "component": "wifi",
+          "fields": [
+            [
+              "sta_ip",
+              "string",
+              null,
+              "WLAN-IP-Adresse",
+              "text"
+            ],
+            [
+              "status",
+              "string",
+              null,
+              "WLAN-Zustand",
+              "state"
+            ],
+            [
+              "ssid",
+              "string",
+              null,
+              "WLAN-Name",
+              "text"
+            ],
+            [
+              "rssi",
+              "number",
+              "dBm",
+              "WLAN-Signal",
+              "gauge"
+            ],
+            [
+              "ap_client_count",
+              "number",
+              null,
+              "Verbundene AP-Clients",
+              "gauge"
+            ]
+          ],
+          "method": "Wifi.GetStatus",
+          "source_evidence": [
+            {
+              "id": "gen2-WiFi",
+              "path": "sources/shelly/raw/gen2-WiFi.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "8faa9dc47e284bbd1d9b66929a5395de195cae4ef62defae5cd9acd1cec3571f",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/WiFi/"
+            }
+          ]
+        },
+        {
+          "cadence_s": 60,
+          "component": "cloud",
+          "fields": [
+            [
+              "connected",
+              "bool",
+              null,
+              "Shelly Cloud verbunden",
+              "state"
+            ]
+          ],
+          "method": "Cloud.GetStatus",
+          "source_evidence": [
+            {
+              "id": "gen2-Cloud",
+              "path": "sources/shelly/raw/gen2-Cloud.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "9cb8a5637fcd2dcfc8b8048e85e518ea6028d530335b4e476a1b9975561c8b51",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cloud/"
+            }
+          ]
+        },
+        {
+          "cadence_s": 60,
+          "component": "mqtt",
+          "fields": [
+            [
+              "connected",
+              "bool",
+              null,
+              "MQTT verbunden",
+              "state"
+            ]
+          ],
+          "method": "Mqtt.GetStatus",
+          "source_evidence": [
+            {
+              "id": "gen2-Mqtt",
+              "path": "sources/shelly/raw/gen2-Mqtt.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "38f5574e63d007bfc20f7741be4cba64da8033b863805f3206284190a9fdfcf8",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Mqtt/"
+            }
+          ]
+        },
+        {
+          "cadence_s": 10,
+          "component": "switch[*]",
+          "fields": [
+            [
+              "id",
+              "number",
+              null,
+              "Komponentenkennung",
+              "state"
+            ],
+            [
+              "source",
+              "string",
+              null,
+              "Schaltquelle",
+              "state"
+            ],
+            [
+              "output",
+              "bool",
+              null,
+              "Schaltzustand",
+              "state"
+            ],
+            [
+              "temperature.tC",
+              "number",
+              "°C",
+              "Temperatur",
+              "gauge"
+            ],
+            [
+              "temperature.tF",
+              "number",
+              "°F",
+              "Temperatur",
+              "gauge"
+            ],
+            [
+              "apower",
+              "number",
+              "W",
+              "Wirkleistung",
+              "gauge"
+            ],
+            [
+              "voltage",
+              "number",
+              "V",
+              "Spannung",
+              "gauge"
+            ],
+            [
+              "current",
+              "number",
+              "A",
+              "Strom",
+              "gauge"
+            ],
+            [
+              "pf",
+              "number",
+              null,
+              "Leistungsfaktor",
+              "gauge"
+            ],
+            [
+              "freq",
+              "number",
+              null,
+              "Frequenz",
+              "gauge"
+            ],
+            [
+              "aenergy.total",
+              "number",
+              "Wh",
+              "Bezogene Wirkenergie",
+              "counter"
+            ],
+            [
+              "aenergy.by_minute[*]",
+              "number",
+              "mWh",
+              "Minutenenergie",
+              "gauge"
+            ],
+            [
+              "aenergy.minute_ts",
+              "number",
+              null,
+              "Zeitpunkt der Minutenenergie",
+              "gauge"
+            ],
+            [
+              "ret_aenergy.total",
+              "number",
+              "Wh",
+              "Rückgespeiste Wirkenergie",
+              "counter"
+            ],
+            [
+              "ret_aenergy.by_minute[*]",
+              "number",
+              "mWh",
+              "Rückgespeiste Minutenenergie",
+              "gauge"
+            ],
+            [
+              "ret_aenergy.minute_ts",
+              "number",
+              null,
+              "Zeitpunkt der Rückenergie",
+              "gauge"
+            ],
+            [
+              "errors[*]",
+              "string",
+              null,
+              "Fehler",
+              "event"
+            ]
+          ],
+          "method": "Switch.GetStatus?id=*",
+          "source_evidence": [
+            {
+              "id": "gen2-Switch",
+              "path": "sources/shelly/raw/gen2-Switch.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "ab7dcc634be2acf32eeff196560f94ca10170249b14968f457a40188b75bb6be",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch/"
+            }
+          ]
+        },
+        {
+          "cadence_s": 30,
+          "component": "pm1[*]",
+          "fields": [
+            [
+              "id",
+              "number",
+              null,
+              "Komponentenkennung",
+              "state"
+            ],
+            [
+              "voltage",
+              "number",
+              "V",
+              "Spannung",
+              "gauge"
+            ],
+            [
+              "current",
+              "number",
+              "A",
+              "Strom",
+              "gauge"
+            ],
+            [
+              "apower",
+              "number",
+              "W",
+              "Wirkleistung",
+              "gauge"
+            ],
+            [
+              "aprtpower",
+              "number",
+              "VA",
+              "Scheinleistung",
+              "gauge"
+            ],
+            [
+              "pf",
+              "number",
+              null,
+              "Leistungsfaktor",
+              "gauge"
+            ],
+            [
+              "freq",
+              "number",
+              null,
+              "Frequenz",
+              "gauge"
+            ],
+            [
+              "aenergy.total",
+              "number",
+              "Wh",
+              "Bezogene Wirkenergie",
+              "counter"
+            ],
+            [
+              "aenergy.by_minute[*]",
+              "number",
+              "mWh",
+              "Minutenenergie",
+              "gauge"
+            ],
+            [
+              "aenergy.minute_ts",
+              "number",
+              null,
+              "Zeitpunkt der Minutenenergie",
+              "gauge"
+            ],
+            [
+              "ret_aenergy.total",
+              "number",
+              "Wh",
+              "Rückgespeiste Wirkenergie",
+              "counter"
+            ],
+            [
+              "ret_aenergy.by_minute[*]",
+              "number",
+              "mWh",
+              "Rückgespeiste Minutenenergie",
+              "gauge"
+            ],
+            [
+              "ret_aenergy.minute_ts",
+              "number",
+              null,
+              "Zeitpunkt der Rückenergie",
+              "gauge"
+            ],
+            [
+              "errors[*]",
+              "string",
+              null,
+              "Fehler",
+              "event"
+            ]
+          ],
+          "method": "PM1.GetStatus?id=*",
+          "source_evidence": [
+            {
+              "id": "gen2-PM1",
+              "path": "sources/shelly/raw/gen2-PM1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "0577ca91c3753944bcd4ed864b822ec3e46723970f36c88e4e111c2ce762cfb7",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/PM1/"
+            }
+          ]
+        },
+        {
+          "cadence_s": 30,
+          "component": "em[*]",
+          "fields": [
+            [
+              "total_current",
+              "number",
+              "A",
+              "Gesamtstrom",
+              "gauge"
+            ],
+            [
+              "total_act_power",
+              "number",
+              "W",
+              "Gesamtwirkleistung",
+              "gauge"
+            ],
+            [
+              "total_aprt_power",
+              "number",
+              null,
+              "Gesamtscheinleistung",
+              "gauge"
+            ],
+            [
+              "errors[*]",
+              "string",
+              null,
+              "Fehler",
+              "event"
+            ]
+          ],
+          "method": "EM.GetStatus?id=*",
+          "phase_fields": [
+            [
+              "current",
+              "number",
+              "A",
+              "Strom",
+              "gauge"
+            ],
+            [
+              "voltage",
+              "number",
+              "V",
+              "Spannung",
+              "gauge"
+            ],
+            [
+              "act_power",
+              "number",
+              "W",
+              "Wirkleistung",
+              "gauge"
+            ],
+            [
+              "aprt_power",
+              "number",
+              "VA",
+              "Scheinleistung",
+              "gauge"
+            ],
+            [
+              "pf",
+              "number",
+              null,
+              "Leistungsfaktor",
+              "gauge"
+            ],
+            [
+              "freq",
+              "number",
+              null,
+              "Frequenz",
+              "gauge"
+            ]
+          ],
+          "phase_prefixes": [
+            "a",
+            "b",
+            "c"
+          ],
+          "source_evidence": [
+            {
+              "id": "gen2-EM",
+              "path": "sources/shelly/raw/gen2-EM.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "6857c05a48a4be7b01234c69a0586405f3cc5554b337ccd338da32f292f0771e",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/EM/"
+            }
+          ]
+        },
+        {
+          "cadence_s": 60,
           "component": "emdata[*]",
+          "fields": [
+            [
+              "id",
+              "number",
+              null,
+              "Komponentenkennung",
+              "state"
+            ],
+            [
+              "a_total_act_energy",
+              "number",
+              "Wh",
+              "Bezogene Wirkenergie Phase A",
+              "counter"
+            ],
+            [
+              "a_total_act_ret_energy",
+              "number",
+              "Wh",
+              "Rückgespeiste Wirkenergie Phase A",
+              "counter"
+            ],
+            [
+              "b_total_act_energy",
+              "number",
+              "Wh",
+              "Bezogene Wirkenergie Phase B",
+              "counter"
+            ],
+            [
+              "b_total_act_ret_energy",
+              "number",
+              "Wh",
+              "Rückgespeiste Wirkenergie Phase B",
+              "counter"
+            ],
+            [
+              "c_total_act_energy",
+              "number",
+              "Wh",
+              "Bezogene Wirkenergie Phase C",
+              "counter"
+            ],
+            [
+              "c_total_act_ret_energy",
+              "number",
+              "Wh",
+              "Rückgespeiste Wirkenergie Phase C",
+              "counter"
+            ],
+            [
+              "total_act",
+              "number",
+              "Wh",
+              "Bezogene Gesamtwirkenergie",
+              "counter"
+            ],
+            [
+              "total_act_ret",
+              "number",
+              "Wh",
+              "Rückgespeiste Gesamtwirkenergie",
+              "counter"
+            ],
+            [
+              "errors[*]",
+              "string",
+              null,
+              "Fehler",
+              "event"
+            ]
+          ],
           "method": "EMData.GetStatus?id=*",
-          "cadence_s": 60,
-          "fields": [
-            ["id", "uint", null, "Komponentenkennung", "state"],
-            ["a_total_act_energy", "number", "Wh", "Bezogene Wirkenergie Phase A", "counter"],
-            ["a_total_act_ret_energy", "number", "Wh", "Rückgespeiste Wirkenergie Phase A", "counter"],
-            ["b_total_act_energy", "number", "Wh", "Bezogene Wirkenergie Phase B", "counter"],
-            ["b_total_act_ret_energy", "number", "Wh", "Rückgespeiste Wirkenergie Phase B", "counter"],
-            ["c_total_act_energy", "number", "Wh", "Bezogene Wirkenergie Phase C", "counter"],
-            ["c_total_act_ret_energy", "number", "Wh", "Rückgespeiste Wirkenergie Phase C", "counter"],
-            ["total_act", "number", "Wh", "Bezogene Gesamtwirkenergie", "counter"],
-            ["total_act_ret", "number", "Wh", "Rückgespeiste Gesamtwirkenergie", "counter"],
-            ["errors[*]", "string", null, "Fehler", "event"]
+          "source_evidence": [
+            {
+              "id": "gen2-EMData",
+              "path": "sources/shelly/raw/gen2-EMData.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "e10881dbd88a586b9c06c427c441634c7ab93f9f506ca83b87961b933f746ab9",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/EMData/"
+            }
           ]
         },
         {
+          "cadence_s": 30,
           "component": "em1[*]",
+          "fields": [
+            [
+              "id",
+              "number",
+              null,
+              "Komponentenkennung",
+              "state"
+            ],
+            [
+              "voltage",
+              "number",
+              "V",
+              "Spannung",
+              "gauge"
+            ],
+            [
+              "current",
+              "number",
+              "A",
+              "Strom",
+              "gauge"
+            ],
+            [
+              "act_power",
+              "number",
+              "W",
+              "Wirkleistung",
+              "gauge"
+            ],
+            [
+              "aprt_power",
+              "number",
+              "VA",
+              "Scheinleistung",
+              "gauge"
+            ],
+            [
+              "pf",
+              "number",
+              null,
+              "Leistungsfaktor",
+              "gauge"
+            ],
+            [
+              "freq",
+              "number",
+              null,
+              "Frequenz",
+              "gauge"
+            ],
+            [
+              "errors[*]",
+              "string",
+              null,
+              "Fehler",
+              "event"
+            ]
+          ],
           "method": "EM1.GetStatus?id=*",
-          "cadence_s": 30,
-          "fields": [
-            ["id", "uint", null, "Komponentenkennung", "state"],
-            ["voltage", "number", "V", "Spannung", "gauge"],
-            ["current", "number", "A", "Strom", "gauge"],
-            ["act_power", "number", "W", "Wirkleistung", "gauge"],
-            ["aprt_power", "number", "VA", "Scheinleistung", "gauge"],
-            ["pf", "number", null, "Leistungsfaktor", "gauge"],
-            ["freq", "number", "Hz", "Frequenz", "gauge"],
-            ["errors[*]", "string", null, "Fehler", "event"]
+          "source_evidence": [
+            {
+              "id": "gen2-EM1",
+              "path": "sources/shelly/raw/gen2-EM1.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "54752cd5b3dc52d01fc1e3df131ae9967b353352f5c8bc39e15e220b7a503f64",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/EM1/"
+            }
           ]
         },
         {
+          "cadence_s": 60,
           "component": "em1data[*]",
+          "fields": [
+            [
+              "id",
+              "number",
+              null,
+              "Komponentenkennung",
+              "state"
+            ],
+            [
+              "total_act_energy",
+              "number",
+              "Wh",
+              "Bezogene Wirkenergie",
+              "counter"
+            ],
+            [
+              "total_act_ret_energy",
+              "number",
+              "Wh",
+              "Rückgespeiste Wirkenergie",
+              "counter"
+            ],
+            [
+              "errors[*]",
+              "string",
+              null,
+              "Fehler",
+              "event"
+            ]
+          ],
           "method": "EM1Data.GetStatus?id=*",
-          "cadence_s": 60,
-          "fields": [
-            ["id", "uint", null, "Komponentenkennung", "state"],
-            ["total_act_energy", "number", "Wh", "Bezogene Wirkenergie", "counter"],
-            ["total_act_ret_energy", "number", "Wh", "Rückgespeiste Wirkenergie", "counter"],
-            ["errors[*]", "string", null, "Fehler", "event"]
+          "source_evidence": [
+            {
+              "id": "gen2-EM1Data",
+              "path": "sources/shelly/raw/gen2-EM1Data.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "754e68a09bada4838aaff71b6539b77c61a4631ebb3fa1d67ed5c125aed44d13",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/EM1Data/"
+            }
           ]
         },
         {
+          "cadence_s": 60,
           "component": "input[*]",
+          "fields": [
+            [
+              "id",
+              "number",
+              null,
+              "Eingangskennung",
+              "state"
+            ],
+            [
+              "state",
+              "bool|number|null",
+              null,
+              "Eingangsstatus",
+              "state"
+            ]
+          ],
           "method": "Input.GetStatus?id=*",
-          "cadence_s": 60,
-          "fields": [
-            ["id", "uint", null, "Eingangskennung", "state"],
-            ["state", "bool|number|null", null, "Eingangsstatus", "state"]
+          "source_evidence": [
+            {
+              "id": "gen2-Input",
+              "path": "sources/shelly/raw/gen2-Input.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "c1fa9d9b4c017dc7d58528b910e8fb5685e7fa8c3d667b2f79aa586b9ab10279",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input/"
+            }
           ]
         },
         {
+          "cadence_s": 60,
           "component": "temperature[*]",
+          "fields": [
+            [
+              "id",
+              "number",
+              null,
+              "Temperatursensorkennung",
+              "state"
+            ],
+            [
+              "tC",
+              "number",
+              "°C",
+              "Temperatur",
+              "gauge"
+            ],
+            [
+              "tF",
+              "number",
+              "°F",
+              "Temperatur",
+              "gauge"
+            ],
+            [
+              "errors[*]",
+              "string",
+              null,
+              "Temperaturfehler",
+              "event"
+            ]
+          ],
           "method": "Temperature.GetStatus?id=*",
-          "cadence_s": 60,
-          "fields": [
-            ["id", "uint", null, "Temperatursensorkennung", "state"],
-            ["tC", "number", "°C", "Temperatur", "gauge"],
-            ["tF", "number", "°F", "Temperatur", "gauge"],
-            ["errors[*]", "string", null, "Temperaturfehler", "event"]
+          "source_evidence": [
+            {
+              "id": "gen2-Temperature",
+              "path": "sources/shelly/raw/gen2-Temperature.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "0d11dc1e6f486ed15969683a7616f0a031538bb38a4a2e7fc4117350304e0d8c",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Temperature/"
+            }
           ]
         },
         {
+          "cadence_s": 60,
           "component": "humidity[*]",
+          "fields": [
+            [
+              "id",
+              "number",
+              null,
+              "Feuchtesensorkennung",
+              "state"
+            ],
+            [
+              "rh",
+              "number",
+              "%",
+              "Relative Luftfeuchte",
+              "gauge"
+            ],
+            [
+              "errors[*]",
+              "string",
+              null,
+              "Feuchtefehler",
+              "event"
+            ]
+          ],
           "method": "Humidity.GetStatus?id=*",
-          "cadence_s": 60,
-          "fields": [
-            ["id", "uint", null, "Feuchtesensorkennung", "state"],
-            ["rh", "number", "%", "Relative Luftfeuchte", "gauge"],
-            ["errors[*]", "string", null, "Feuchtefehler", "event"]
+          "source_evidence": [
+            {
+              "id": "gen2-Humidity",
+              "path": "sources/shelly/raw/gen2-Humidity.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "0adcc88b53fa9bf8d152fbec2ef71ecdc29d143b68367d342afabd8dca67b655",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Humidity/"
+            }
           ]
         },
         {
+          "cadence_s": 60,
           "component": "devicepower[*]",
+          "fields": [
+            [
+              "id",
+              "number",
+              null,
+              "Komponentenkennung",
+              "state"
+            ],
+            [
+              "battery.V",
+              "number",
+              "V",
+              "Batteriespannung",
+              "gauge"
+            ],
+            [
+              "battery.percent",
+              "number",
+              "%",
+              "Batterieladestand",
+              "gauge"
+            ],
+            [
+              "external.present",
+              "bool",
+              null,
+              "Externe Versorgung vorhanden",
+              "state"
+            ]
+          ],
           "method": "DevicePower.GetStatus?id=*",
-          "cadence_s": 60,
-          "fields": [
-            ["id", "uint", null, "Komponentenkennung", "state"],
-            ["battery.V", "number", "V", "Batteriespannung", "gauge"],
-            ["battery.percent", "number", "%", "Batterieladestand", "gauge"],
-            ["external.present", "bool", null, "Externe Versorgung vorhanden", "state"]
+          "source_evidence": [
+            {
+              "id": "gen2-DevicePower",
+              "path": "sources/shelly/raw/gen2-DevicePower.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "742913572c277518015e430af99ae33b0f9ac01b79cc9b6716e41b5368266f9c",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/DevicePower/"
+            }
           ]
         },
         {
+          "cadence_s": 30,
           "component": "cover[*]",
-          "method": "Cover.GetStatus?id=*",
-          "cadence_s": 30,
           "fields": [
-            ["id", "uint", null, "Komponentenkennung", "state"],
-            ["source", "string", null, "Schaltquelle", "state"],
-            ["state", "string", null, "Abdeckungszustand", "state"],
-            ["apower", "number", "W", "Wirkleistung", "gauge"],
-            ["voltage", "number", "V", "Spannung", "gauge"],
-            ["current", "number", "A", "Strom", "gauge"],
-            ["pf", "number", null, "Leistungsfaktor", "gauge"],
-            ["freq", "number", "Hz", "Frequenz", "gauge"],
-            ["aenergy.total", "number", "Wh", "Bezogene Wirkenergie", "counter"],
-            ["aenergy.by_minute[*]", "number", "mWh", "Minutenenergie", "gauge"],
-            ["aenergy.minute_ts", "uint", "s", "Zeitpunkt der Minutenenergie", "gauge"],
-            ["current_pos", "number", "%", "Aktuelle Position", "gauge"],
-            ["target_pos", "number", "%", "Zielposition", "gauge"],
-            ["pos_control", "bool", null, "Positionssteuerung verfügbar", "state"],
-            ["temperature.tC", "number", "°C", "Temperatur", "gauge"],
-            ["temperature.tF", "number", "°F", "Temperatur", "gauge"],
-            ["errors[*]", "string", null, "Fehler", "event"]
+            [
+              "id",
+              "number",
+              null,
+              "Komponentenkennung",
+              "state"
+            ],
+            [
+              "source",
+              "string",
+              null,
+              "Schaltquelle",
+              "state"
+            ],
+            [
+              "state",
+              "string",
+              null,
+              "Abdeckungszustand",
+              "state"
+            ],
+            [
+              "apower",
+              "number",
+              "W",
+              "Wirkleistung",
+              "gauge"
+            ],
+            [
+              "voltage",
+              "number",
+              "V",
+              "Spannung",
+              "gauge"
+            ],
+            [
+              "current",
+              "number",
+              "A",
+              "Strom",
+              "gauge"
+            ],
+            [
+              "pf",
+              "number",
+              null,
+              "Leistungsfaktor",
+              "gauge"
+            ],
+            [
+              "freq",
+              "number",
+              null,
+              "Frequenz",
+              "gauge"
+            ],
+            [
+              "aenergy.total",
+              "number",
+              "Wh",
+              "Bezogene Wirkenergie",
+              "counter"
+            ],
+            [
+              "aenergy.by_minute[*]",
+              "number",
+              null,
+              "Minutenenergie",
+              "gauge"
+            ],
+            [
+              "aenergy.minute_ts",
+              "number",
+              null,
+              "Zeitpunkt der Minutenenergie",
+              "gauge"
+            ],
+            [
+              "current_pos",
+              "number",
+              "%",
+              "Aktuelle Position",
+              "gauge"
+            ],
+            [
+              "target_pos",
+              "number",
+              "%",
+              "Zielposition",
+              "gauge"
+            ],
+            [
+              "pos_control",
+              "bool",
+              null,
+              "Positionssteuerung verfügbar",
+              "state"
+            ],
+            [
+              "temperature.tC",
+              "number",
+              "°C",
+              "Temperatur",
+              "gauge"
+            ],
+            [
+              "temperature.tF",
+              "number",
+              "°F",
+              "Temperatur",
+              "gauge"
+            ],
+            [
+              "errors[*]",
+              "string",
+              null,
+              "Fehler",
+              "event"
+            ]
+          ],
+          "method": "Cover.GetStatus?id=*",
+          "source_evidence": [
+            {
+              "id": "gen2-Cover",
+              "path": "sources/shelly/raw/gen2-Cover.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "9bdf3bf7c5b8c4d76283825c0d94afe83df44480ff681e0992e67e2b3f7e289a",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/"
+            },
+            {
+              "id": "gen2-Switch",
+              "path": "sources/shelly/raw/gen2-Switch.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "ab7dcc634be2acf32eeff196560f94ca10170249b14968f457a40188b75bb6be",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch/"
+            }
           ]
         },
         {
-          "component": "light_rgb_rgbw[*]",
-          "method": "Light|RGB|RGBW.GetStatus?id=*",
           "cadence_s": 30,
+          "component": "light_rgb_rgbw[*]",
           "fields": [
-            ["id", "uint", null, "Komponentenkennung", "state"],
-            ["source", "string", null, "Schaltquelle", "state"],
-            ["output", "bool", null, "Schaltzustand", "state"],
-            ["brightness", "number", "%", "Helligkeit", "gauge"],
-            ["rgb", "array", null, "RGB-Farbwert", "state"],
-            ["white", "number", null, "Weißkanal", "gauge"],
-            ["temp", "number", "K", "Farbtemperatur", "gauge"],
-            ["apower", "number", "W", "Wirkleistung", "gauge"],
-            ["voltage", "number", "V", "Spannung", "gauge"],
-            ["current", "number", "A", "Strom", "gauge"],
-            ["aenergy.total", "number", "Wh", "Bezogene Wirkenergie", "counter"],
-            ["aenergy.by_minute[*]", "number", "mWh", "Minutenenergie", "gauge"],
-            ["aenergy.minute_ts", "uint", "s", "Zeitpunkt der Minutenenergie", "gauge"],
-            ["errors[*]", "string", null, "Fehler", "event"]
+            [
+              "id",
+              "number",
+              null,
+              "Komponentenkennung",
+              "state"
+            ],
+            [
+              "source",
+              "string",
+              null,
+              "Schaltquelle",
+              "state"
+            ],
+            [
+              "output",
+              "bool",
+              null,
+              "Schaltzustand",
+              "state"
+            ],
+            [
+              "brightness",
+              "number",
+              "%",
+              "Helligkeit",
+              "gauge"
+            ],
+            [
+              "rgb",
+              "array",
+              null,
+              "RGB-Farbwert",
+              "state"
+            ],
+            [
+              "white",
+              "number",
+              null,
+              "Weißkanal",
+              "gauge"
+            ],
+            [
+              "temperature.tC",
+              "number",
+              "°C",
+              "Temperatur",
+              "gauge"
+            ],
+            [
+              "temperature.tF",
+              "number",
+              "°F",
+              "Temperatur",
+              "gauge"
+            ],
+            [
+              "apower",
+              "number",
+              "W",
+              "Wirkleistung",
+              "gauge"
+            ],
+            [
+              "voltage",
+              "number",
+              "V",
+              "Spannung",
+              "gauge"
+            ],
+            [
+              "current",
+              "number",
+              "A",
+              "Strom",
+              "gauge"
+            ],
+            [
+              "aenergy.total",
+              "number",
+              "Wh",
+              "Bezogene Wirkenergie",
+              "counter"
+            ],
+            [
+              "aenergy.by_minute[*]",
+              "number",
+              "mWh",
+              "Minutenenergie",
+              "gauge"
+            ],
+            [
+              "aenergy.minute_ts",
+              "number",
+              null,
+              "Zeitpunkt der Minutenenergie",
+              "gauge"
+            ],
+            [
+              "errors[*]",
+              "string",
+              null,
+              "Fehler",
+              "event"
+            ]
+          ],
+          "method": "Light|RGB|RGBW.GetStatus?id=*",
+          "source_evidence": [
+            {
+              "id": "gen2-Light",
+              "path": "sources/shelly/raw/gen2-Light.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "a3b6fb35b8092072d11660b5f2ff36f1d9e4d1c3c44d2e63e18993e7a74e0c22",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Light/"
+            },
+            {
+              "id": "gen2-RGB",
+              "path": "sources/shelly/raw/gen2-RGB.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "5fc4b32b8dbc2e7d6d60d0ef75662f552c5144872943f42019b1b7355e339796",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/RGB/"
+            },
+            {
+              "id": "gen2-RGBW",
+              "path": "sources/shelly/raw/gen2-RGBW.html",
+              "retrieved_date": "2026-08-25",
+              "sha256": "c5e7dc0605df5f57048690ee27fa9d4259a3c75f0615dca07f0a2db83f641eef",
+              "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/RGBW/"
+            }
           ]
         }
-      ]
+      ],
+      "family": "shelly.gen2plus",
+      "source_kind": "rpc_json"
     }
-  ]
+  ],
+  "raw_manifest_sha256": "3a68c3d0bedc74b7fc1dfdd9659743df241f45350abe1c7dbd5e8d8962a74d44",
+  "schema_version": "1.0",
+  "snapshot_date": "2026-08-25"
 }

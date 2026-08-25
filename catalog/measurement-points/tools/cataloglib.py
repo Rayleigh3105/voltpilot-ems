@@ -90,6 +90,7 @@ def base_point(
     source: dict[str, Any],
     **extra: Any,
 ) -> dict[str, Any]:
+    point_key_aliases = extra.pop("point_key_aliases", [])
     point = {
         "address": address,
         "aggregation_kind": aggregation_kind,
@@ -104,6 +105,7 @@ def base_point(
         "long_term_cadence_s": long_term_cadence_s,
         "min_cadence_s": min_cadence_s,
         "point_key": point_key,
+        "point_key_aliases": point_key_aliases,
         "poll_group": poll_group,
         "scale": scale,
         "selector": selector,

@@ -1,5 +1,6 @@
 {
   "catalog_version": "2026.08.25.1",
+  "deye_lock_sha256": "2e378e218ab59cbca39b24169330d95fa40f830b51312d21818b75f332cb954f",
   "deye_direct_register_points": {
     "hybrid_1p": 193,
     "hybrid_3p": 590,
@@ -12,7 +13,7 @@
     "hybrid_3p": 624,
     "micro": 60,
     "ocpp.1_6": 22,
-    "shelly.gen1": 61,
+    "shelly.gen1": 59,
     "shelly.gen2plus": 151,
     "string": 60,
     "sunspec.model_1": 9,
@@ -37,7 +38,8 @@
   },
   "goe_german_source_rows": 174,
   "goe_keys_with_german_label": 177,
-  "manifest_sha256": "21c422233dcd40f7e9cb1b1baf19a763510f49dec336704912075f180958c35e",
+  "manifest_sha256": "a36c7b58dd568dcbfe393ce6d7d09f24c0a84c66950856e742ed589464ba1e75",
+  "shelly_raw_manifest_sha256": "3a68c3d0bedc74b7fc1dfdd9659743df241f45350abe1c7dbd5e8d8962a74d44",
   "source_versions": {
     "deye.hybrid_1p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
     "deye.hybrid_3p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
@@ -45,14 +47,14 @@
     "deye.string": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
     "goe.api_v2": "b4d7f85325f5fd7243d007f7fd639ac2db16c5da",
     "ocpp.1_6.meter_values": "a1eec917af884db0585752f909a61893aa667480",
-    "shelly.status": "docs-1.0-snapshot-2026-08-24",
+    "shelly.status": "official-html-retrieved-2026-08-25",
     "sunspec.models": "90b4a331dcca1d6eac69c1bead952fddcc5852e0"
   },
   "template_counts": {
     "ocpp.1_6": 22,
     "shelly.gen1": 32,
-    "shelly.gen2plus": 119,
+    "shelly.gen2plus": 120,
     "sunspec.model_160": 10
   },
-  "total_points": 2303
+  "total_points": 2301
 }

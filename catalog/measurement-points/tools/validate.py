@@ -11,13 +11,20 @@ from pathlib import Path
 from typing import Any
 
 from cataloglib import CATALOG_VERSION, EDGE_MIN_VERSION, POINT_KEY_RE, ROOT, read_json, sha256
-from generate import DEFAULT_OUTPUT, MANIFEST_PATH, verify_source_hashes
+from generate import (
+    DEFAULT_OUTPUT,
+    DEYE_KEY_LOCK_PATH,
+    MANIFEST_PATH,
+    OCPP_16_STANDARD_UNITS,
+    verify_source_hashes,
+)
+from jsonschema_validator import SchemaValidationError, validate_json_schema
 
 
 REQUIRED_POINT_FIELDS = {
     "address", "aggregation_kind", "catalog_version", "default_cadence_s", "edge_min_version",
     "endian", "family", "group", "label_de", "label_source", "long_term_cadence_s",
-    "min_cadence_s", "point_key", "poll_group", "readable", "scale", "selector",
+    "min_cadence_s", "point_key", "point_key_aliases", "poll_group", "readable", "scale", "selector",
     "semantic_status", "signed", "source_commit", "source_kind", "source_revision",
     "source_sha256", "source_url", "unit", "value_type", "width_bits",
 }
@@ -30,6 +37,8 @@ SEMANTIC_STATUSES = {"known", "vendor_label_only", "unknown"}
 SCALE_KINDS = {"none", "factor", "divisor", "conditional_factor", "sunssf", "protocol_value"}
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 DYNAMIC_OFFSET_RE = re.compile(r"^[0-9]+\+index\*[1-9][0-9]*\+[0-9]+$")
+CATALOG_SCHEMA_PATH = ROOT / "schema" / "catalog.schema.json"
+MANIFEST_SCHEMA_PATH = ROOT / "schema" / "source-manifest.schema.json"
 
 
 class ValidationErrors:
@@ -55,6 +64,10 @@ def is_optional_non_negative_int(value: Any) -> bool:
 
 def validate_manifest(errors: ValidationErrors) -> dict[str, Any]:
     manifest = read_json(MANIFEST_PATH)
+    try:
+        validate_json_schema(manifest, read_json(MANIFEST_SCHEMA_PATH), " source manifest")
+    except (SchemaValidationError, ValueError) as exc:
+        errors.check(False, str(exc))
     errors.check(manifest.get("schema_version") == "1.0", "source manifest schema_version must be 1.0")
     sources = manifest.get("sources")
     errors.check(isinstance(sources, list) and bool(sources), "source manifest needs a non-empty sources list")
@@ -74,7 +87,7 @@ def validate_manifest(errors: ValidationErrors) -> dict[str, Any]:
                     and isinstance(model[1], str) and bool(SHA256_RE.fullmatch(model[1])),
                     f"{prefix} contains an invalid model pin",
                 )
-        else:
+        elif source.get("adapter") != "shelly":
             source_hash = source.get("source_sha256")
             errors.check(isinstance(source_hash, str) and bool(SHA256_RE.fullmatch(source_hash)), f"{prefix} has an invalid source hash")
     errors.check(len(ids) == len(set(ids)), "source manifest contains duplicate ids")
@@ -134,6 +147,12 @@ def validate_point(errors: ValidationErrors, point: Any, index: int) -> None:
     missing = REQUIRED_POINT_FIELDS - point.keys()
     errors.check(not missing, f"{prefix}: missing fields {sorted(missing)}")
     errors.check(isinstance(point_key, str) and bool(POINT_KEY_RE.fullmatch(point_key)), f"{prefix}: invalid point_key")
+    aliases = point.get("point_key_aliases")
+    errors.check(
+        isinstance(aliases, list)
+        and all(isinstance(alias, str) and bool(POINT_KEY_RE.fullmatch(alias)) for alias in aliases),
+        f"{prefix}: invalid point_key_aliases",
+    )
     errors.check(point.get("catalog_version") == CATALOG_VERSION, f"{prefix}: catalog_version mismatch")
     errors.check(point.get("edge_min_version") == EDGE_MIN_VERSION, f"{prefix}: edge_min_version mismatch")
     errors.check(point.get("source_kind") in SOURCE_KINDS, f"{prefix}: invalid source_kind")
@@ -164,10 +183,103 @@ def validate_point(errors: ValidationErrors, point: Any, index: int) -> None:
     validate_address(errors, point, prefix)
 
 
+def validate_deye_key_lock(errors: ValidationErrors, document: dict[str, Any], points: list[dict[str, Any]]) -> None:
+    lock = read_json(DEYE_KEY_LOCK_PATH)
+    errors.check(
+        document.get("deye_point_key_lock_sha256") == sha256(DEYE_KEY_LOCK_PATH),
+        "Deye point-key lock hash mismatch",
+    )
+    errors.check(lock.get("schema_version") == "1.0", "Deye point-key lock schema_version must be 1.0")
+    entries = lock.get("entries")
+    errors.check(isinstance(entries, list), "Deye point-key lock entries must be a list")
+    entries = entries if isinstance(entries, list) else []
+    lock_keys: list[str] = []
+    lock_aliases: list[str] = []
+    identities: list[tuple[str, str, str]] = []
+    allowed_fields = {"active", "aliases", "family", "fingerprints", "point_key", "source_locators"}
+    for index, entry in enumerate(entries):
+        prefix = f"Deye lock entry[{index}]"
+        errors.check(isinstance(entry, dict), f"{prefix} must be an object")
+        if not isinstance(entry, dict):
+            continue
+        errors.check(set(entry) == allowed_fields, f"{prefix} has unexpected or missing fields")
+        key = entry.get("point_key")
+        aliases = entry.get("aliases")
+        fingerprints = entry.get("fingerprints")
+        locators = entry.get("source_locators")
+        family = entry.get("family")
+        errors.check(isinstance(entry.get("active"), bool), f"{prefix} active must be boolean")
+        errors.check(isinstance(family, str) and bool(family), f"{prefix} family is invalid")
+        errors.check(isinstance(key, str) and bool(POINT_KEY_RE.fullmatch(key or "")), f"{prefix} point_key is invalid")
+        errors.check(
+            isinstance(aliases, list) and len(aliases) == len(set(aliases))
+            and all(isinstance(alias, str) and bool(POINT_KEY_RE.fullmatch(alias)) for alias in aliases),
+            f"{prefix} aliases are invalid",
+        )
+        errors.check(
+            isinstance(fingerprints, list) and bool(fingerprints) and len(fingerprints) == len(set(fingerprints))
+            and all(isinstance(value, str) and bool(SHA256_RE.fullmatch(value)) for value in fingerprints),
+            f"{prefix} fingerprints are invalid",
+        )
+        errors.check(
+            isinstance(locators, list) and bool(locators) and len(locators) == len(set(locators))
+            and all(isinstance(value, str) and bool(value) for value in locators),
+            f"{prefix} source_locators are invalid",
+        )
+        if isinstance(key, str):
+            lock_keys.append(key)
+        if isinstance(aliases, list):
+            lock_aliases.extend(alias for alias in aliases if isinstance(alias, str))
+        if isinstance(family, str) and isinstance(fingerprints, list) and isinstance(locators, list):
+            identities.extend((family, locator, fingerprint) for locator in locators for fingerprint in fingerprints)
+    errors.check(len(lock_keys) == len(set(lock_keys)), "Deye point-key lock has duplicate canonical keys")
+    errors.check(len(lock_aliases) == len(set(lock_aliases)), "Deye point-key lock has duplicate aliases")
+    errors.check(not (set(lock_keys) & set(lock_aliases)), "Deye alias collides with a canonical key")
+    errors.check(len(identities) == len(set(identities)), "Deye point-key lock has duplicate source identities")
+
+    deye_points = {
+        point["point_key"]: point
+        for point in points
+        if point.get("source_kind") == "modbus_holding"
+    }
+    active_entries = {entry["point_key"]: entry for entry in entries if isinstance(entry, dict) and entry.get("active")}
+    errors.check(set(active_entries) == set(deye_points), "active Deye lock keys differ from generated Deye points")
+    for key in set(active_entries) & set(deye_points):
+        errors.check(
+            deye_points[key].get("point_key_aliases") == active_entries[key].get("aliases"),
+            f"{key}: generated aliases differ from Deye lock",
+        )
+
+
+def validate_shelly_evidence(errors: ValidationErrors, points: list[dict[str, Any]]) -> None:
+    raw_manifest_path = ROOT / "sources" / "shelly" / "raw-manifest.json"
+    raw_manifest = read_json(raw_manifest_path)
+    pinned = {source["id"]: source for source in raw_manifest["sources"]}
+    shelly_points = [point for point in points if str(point.get("family", "")).startswith("shelly.")]
+    errors.check(bool(shelly_points), "Shelly inventory may not be empty")
+    for point in shelly_points:
+        key = point["point_key"]
+        evidence = point.get("source_evidence")
+        errors.check(isinstance(evidence, list) and bool(evidence), f"{key}: missing Shelly raw source evidence")
+        if not isinstance(evidence, list) or not evidence:
+            continue
+        for source in evidence:
+            source_id = source.get("id") if isinstance(source, dict) else None
+            errors.check(source_id in pinned, f"{key}: unknown Shelly raw source {source_id!r}")
+            if source_id in pinned:
+                errors.check(source == pinned[source_id], f"{key}: Shelly raw evidence differs from its manifest pin")
+        errors.check(point.get("source_sha256") == evidence[0].get("sha256"), f"{key}: primary Shelly source hash mismatch")
+        errors.check(point.get("source_url") == evidence[0].get("url"), f"{key}: primary Shelly source URL mismatch")
+
+
 def validate_catalog(path: Path) -> dict[str, Any]:
     errors = ValidationErrors()
     validate_manifest(errors)
     document = read_json(path)
+    try:
+        validate_json_schema(document, read_json(CATALOG_SCHEMA_PATH), " catalog")
+    except (SchemaValidationError, ValueError) as exc:
+        errors.check(False, str(exc))
     errors.check(document.get("schema_version") == "1.0", "catalog schema_version must be 1.0")
     errors.check(document.get("catalog_version") == CATALOG_VERSION, "root catalog_version mismatch")
     errors.check(document.get("edge_min_version") == EDGE_MIN_VERSION, "root edge_min_version mismatch")
@@ -181,6 +293,9 @@ def validate_catalog(path: Path) -> dict[str, Any]:
     keys = [point.get("point_key") for point in points if isinstance(point, dict)]
     errors.check(keys == sorted(keys), "points must be sorted by point_key")
     errors.check(len(keys) == len(set(keys)), "duplicate point_key")
+    aliases = [alias for point in points if isinstance(point, dict) for alias in point.get("point_key_aliases", [])]
+    errors.check(len(aliases) == len(set(aliases)), "duplicate point_key alias")
+    errors.check(not (set(keys) & set(aliases)), "point_key alias collides with a canonical point_key")
 
     selectors: collections.defaultdict[tuple[str, str], list[str]] = collections.defaultdict(list)
     modbus_decoders: collections.defaultdict[tuple[str, tuple[int, ...], str], list[str]] = collections.defaultdict(list)
@@ -198,6 +313,8 @@ def validate_catalog(path: Path) -> dict[str, Any]:
             modbus_decoders[key].append(point.get("point_key"))
     errors.check(not any(len(values) > 1 for values in selectors.values()), "duplicate selector within a non-Deye family")
     errors.check(not any(len(values) > 1 for values in modbus_decoders.values()), "duplicate Deye address and decoder")
+    validate_deye_key_lock(errors, document, points)
+    validate_shelly_evidence(errors, points)
 
     expected_counts = collections.Counter(point.get("family") for point in points if isinstance(point, dict))
     expected_templates = collections.Counter(
@@ -227,6 +344,8 @@ def validate_catalog(path: Path) -> dict[str, Any]:
         errors.check(len(dimensions.get("formats", [])) == 2, "OCPP format count mismatch")
         errors.check(len(dimensions.get("phases", [])) == 10, "OCPP phase count mismatch")
         errors.check(len(dimensions.get("locations", [])) == 5, "OCPP location count mismatch")
+        errors.check(dimensions.get("units") == OCPP_16_STANDARD_UNITS, "OCPP standard unit set mismatch")
+        errors.check("Celcius" not in dimensions.get("units", []), "ocpp-go Celcius compatibility typo must not be a standard unit")
         errors.check(all(point.get("dimensions") == dimensions for point in ocpp), "OCPP dimensions differ between measurands")
 
     errors.finish()

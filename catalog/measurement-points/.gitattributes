@@ -2,3 +2,4 @@
 sources/deye/*.yaml -whitespace
 sources/goe/*.md -whitespace
 sources/ocpp/LICENSE -whitespace
+sources/shelly/raw/*.html -whitespace

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections
+import copy
 import hashlib
 import json
 import subprocess
@@ -15,12 +16,19 @@ TOOLS = ROOT / "tools"
 sys.path.insert(0, str(TOOLS))
 
 from cataloglib import canonical_json_bytes  # noqa: E402
-from generate import build_catalog  # noqa: E402
+from generate import build_catalog, generate_deye_points, load_deye_document  # noqa: E402
+from jsonschema_validator import SchemaValidationError, validate_json_schema  # noqa: E402
+from update_deye_key_lock import reconcile_deye_key_lock  # noqa: E402
 from validate import validate_catalog  # noqa: E402
+from verify_remote_sources import download_url  # noqa: E402
 
 
 ARTIFACT = ROOT / "dist" / f"measurement-point-catalog-{(ROOT / 'VERSION').read_text().strip()}.json"
 MANIFEST = ROOT / "sources" / "manifest.json"
+CATALOG_SCHEMA = ROOT / "schema" / "catalog.schema.json"
+MANIFEST_SCHEMA = ROOT / "schema" / "source-manifest.schema.json"
+DEYE_LOCK = ROOT / "sources" / "deye" / "point-key-lock.json"
+SHELLY_RAW_MANIFEST = ROOT / "sources" / "shelly" / "raw-manifest.json"
 EXPECTED = json.loads((Path(__file__).with_name("expected_inventory.json")).read_text(encoding="utf-8"))
 
 
@@ -61,8 +69,41 @@ class CatalogTest(unittest.TestCase):
         for schema in (ROOT / "schema").glob("*.schema.json"):
             document = json.loads(schema.read_text(encoding="utf-8"))
             self.assertEqual(document["$schema"], "https://json-schema.org/draft/2020-12/schema")
+        validate_json_schema(self.catalog, json.loads(CATALOG_SCHEMA.read_text(encoding="utf-8")))
+        validate_json_schema(self.manifest, json.loads(MANIFEST_SCHEMA.read_text(encoding="utf-8")))
         validated = validate_catalog(ARTIFACT)
         self.assertEqual(len(validated["points"]), EXPECTED["total_points"])
+
+    def test_json_schemas_reject_extras_and_nested_type_errors(self) -> None:
+        catalog_schema = json.loads(CATALOG_SCHEMA.read_text(encoding="utf-8"))
+        manifest_schema = json.loads(MANIFEST_SCHEMA.read_text(encoding="utf-8"))
+        invalid_documents = []
+
+        root_extra = copy.deepcopy(self.catalog)
+        root_extra["invented"] = True
+        invalid_documents.append((root_extra, catalog_schema, "additional property"))
+
+        point_extra = copy.deepcopy(self.catalog)
+        point_extra["points"][0]["invented"] = True
+        invalid_documents.append((point_extra, catalog_schema, "additional property"))
+
+        nested_type = copy.deepcopy(self.catalog)
+        modbus_point = next(point for point in nested_type["points"] if point["address"] and point["address"]["kind"] == "modbus_holding")
+        modbus_point["address"]["width_words"] = "two"
+        invalid_documents.append((nested_type, catalog_schema, "expected type"))
+
+        manifest_extra = copy.deepcopy(self.manifest)
+        manifest_extra["sources"][0]["invented"] = "field"
+        invalid_documents.append((manifest_extra, manifest_schema, "additional property"))
+
+        for document, schema, message in invalid_documents:
+            with self.subTest(message=message), self.assertRaisesRegex(SchemaValidationError, message):
+                validate_json_schema(document, schema)
+
+        unsupported = copy.deepcopy(catalog_schema)
+        unsupported["not"] = {}
+        with self.assertRaisesRegex(ValueError, "unsupported JSON Schema keyword"):
+            validate_json_schema(self.catalog, unsupported)
 
     def test_inventory_counts_are_pinned(self) -> None:
         counts = collections.Counter(point["family"] for point in self.points)
@@ -90,6 +131,7 @@ class CatalogTest(unittest.TestCase):
         manifest_hash = hashlib.sha256(MANIFEST.read_bytes()).hexdigest()
         self.assertEqual(manifest_hash, EXPECTED["manifest_sha256"])
         self.assertEqual(self.catalog["source_manifest_sha256"], manifest_hash)
+        self.assertEqual(self.catalog["deye_point_key_lock_sha256"], EXPECTED["deye_lock_sha256"])
         versions = {
             source["id"]: source.get("source_commit") or source.get("source_revision")
             for source in self.manifest["sources"]
@@ -99,6 +141,59 @@ class CatalogTest(unittest.TestCase):
             self.assertEqual(point["catalog_version"], EXPECTED["catalog_version"])
             self.assertTrue(point["source_commit"] or point["source_revision"])
             self.assertRegex(point["source_sha256"], r"^[0-9a-f]{64}$")
+
+    def test_deye_lock_keeps_keys_stable_across_duplicate_and_rename(self) -> None:
+        lock = json.loads(DEYE_LOCK.read_text(encoding="utf-8"))
+        deye_sources = [source for source in self.manifest["sources"] if source["adapter"] == "deye"]
+        documents = {source["id"]: load_deye_document(source) for source in deye_sources}
+        string_source = next(source for source in deye_sources if source["id"] == "deye.string")
+        original_key = next(
+            point["point_key"]
+            for point in generate_deye_points(string_source, documents["deye.string"], lock)
+            if point["selector"] == "holding:0x0000"
+        )
+
+        duplicate_document = copy.deepcopy(documents["deye.string"])
+        info_group = next(group for group in duplicate_document["parameters"] if group["group"] == "Info")
+        duplicate = copy.deepcopy(next(item for item in info_group["items"] if item.get("name") == "Device"))
+        duplicate["registers"] = [65500]
+        info_group["items"].append(duplicate)
+        duplicate_sources = [
+            (source, duplicate_document if source["id"] == "deye.string" else documents[source["id"]])
+            for source in deye_sources
+        ]
+        duplicate_lock = reconcile_deye_key_lock(lock, duplicate_sources)
+        duplicate_points = list(generate_deye_points(string_source, duplicate_document, duplicate_lock))
+        self.assertEqual(
+            next(point["point_key"] for point in duplicate_points if point["selector"] == "holding:0x0000"),
+            original_key,
+        )
+        duplicate_key = next(point["point_key"] for point in duplicate_points if point["selector"] == "holding:0xffdc")
+        self.assertNotEqual(duplicate_key, original_key)
+
+        renamed_document = copy.deepcopy(duplicate_document)
+        next(group for group in renamed_document["parameters"] if group["group"] == "Info")["group"] = "Renamed Info"
+        renamed_sources = [
+            (source, renamed_document if source["id"] == "deye.string" else documents[source["id"]])
+            for source in deye_sources
+        ]
+        renamed_lock = reconcile_deye_key_lock(duplicate_lock, renamed_sources)
+        original_entry = next(entry for entry in renamed_lock["entries"] if entry["point_key"] == original_key)
+        original_entry["aliases"].append("deye.string.legacy-device")
+        renamed_points = list(generate_deye_points(string_source, renamed_document, renamed_lock))
+        renamed_original = next(point for point in renamed_points if point["selector"] == "holding:0x0000")
+        self.assertEqual(renamed_original["point_key"], original_key)
+        self.assertEqual(renamed_original["point_key_aliases"], ["deye.string.legacy-device"])
+
+    def test_offline_source_derivations_are_committed_and_deterministic(self) -> None:
+        for tool in ("update_deye_key_lock.py", "extract_shelly.py"):
+            subprocess.run([sys.executable, str(TOOLS / tool), "--check"], check=True, cwd=ROOT)
+        workflow = (ROOT.parents[1] / ".forgejo" / "workflows" / "deploy.yaml").read_text(encoding="utf-8")
+        catalog_gate = workflow.split("- name: Measurement-point catalog checks", 1)[1].split("# ---- Frontend", 1)[0]
+        self.assertNotIn("pip install", catalog_gate)
+        self.assertNotIn("normalize_deye.py", catalog_gate)
+        setup_python = workflow.split("- name: Set up Python", 1)[1].split("- name: Pytest", 1)[0]
+        self.assertNotIn("catalog", setup_python)
 
     def test_sunspec_is_relative_and_model_160_is_dynamic(self) -> None:
         points = [point for point in self.points if point["source_kind"] == "sunspec_model"]
@@ -121,6 +216,17 @@ class CatalogTest(unittest.TestCase):
         repaired = {point["source_key_raw"]: point["selector"] for point in points if "source_key_raw" in point}
         self.assertEqual(len(repaired), 3)
         self.assertTrue(all("\t" in raw and "\t" not in selector for raw, selector in repaired.items()))
+        source = next(source for source in self.manifest["sources"] if source["id"] == "goe.api_v2")
+        self.assertEqual(
+            source["german_labels_url"],
+            "https://github.com/goecharger/go-eCharger-API-v2/blob/"
+            "b4d7f85325f5fd7243d007f7fd639ac2db16c5da/API_KEYS_FIRMWARE/apikeys-de.md",
+        )
+        self.assertEqual(
+            download_url(source["german_labels_url"]),
+            "https://raw.githubusercontent.com/goecharger/go-eCharger-API-v2/"
+            "b4d7f85325f5fd7243d007f7fd639ac2db16c5da/API_KEYS_FIRMWARE/apikeys-de.md",
+        )
 
     def test_shelly_components_and_ocpp_dimensions_are_complete(self) -> None:
         components = {
@@ -143,19 +249,24 @@ class CatalogTest(unittest.TestCase):
                 "light_rgb_rgbw[*]",
             },
         )
-        self.assertEqual(
-            {point["source_url"] for point in self.points if point["family"] == "shelly.gen1"},
-            {"https://shelly-api-docs.shelly.cloud/gen1/#shelly-status"},
-        )
-        self.assertEqual(
-            {point["source_url"] for point in self.points if point["family"] == "shelly.gen2plus"},
-            {"https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/"},
-        )
+        raw_manifest_bytes = SHELLY_RAW_MANIFEST.read_bytes()
+        self.assertEqual(hashlib.sha256(raw_manifest_bytes).hexdigest(), EXPECTED["shelly_raw_manifest_sha256"])
+        raw_manifest = json.loads(raw_manifest_bytes)
+        self.assertEqual(len(raw_manifest["sources"]), 21)
+        pinned_sources = {source["id"]: source for source in raw_manifest["sources"]}
+        for source in pinned_sources.values():
+            self.assertEqual(hashlib.sha256((ROOT / source["path"]).read_bytes()).hexdigest(), source["sha256"])
+        for point in self.points:
+            if not point["family"].startswith("shelly."):
+                continue
+            self.assertTrue(point["source_evidence"])
+            self.assertTrue(all(evidence == pinned_sources[evidence["id"]] for evidence in point["source_evidence"]))
+            self.assertEqual(point["source_sha256"], point["source_evidence"][0]["sha256"])
         ocpp = [point for point in self.points if point["family"] == "ocpp.1_6"]
         dimensions = ocpp[0]["dimensions"]
         self.assertEqual(
             {name: len(values) for name, values in dimensions.items()},
-            {"contexts": 8, "formats": 2, "locations": 5, "phases": 10, "units": 17},
+            {"contexts": 8, "formats": 2, "locations": 5, "phases": 10, "units": 16},
         )
         self.assertEqual(
             dimensions["contexts"],
@@ -174,9 +285,10 @@ class CatalogTest(unittest.TestCase):
             dimensions["units"],
             [
                 "Wh", "kWh", "varh", "kvarh", "W", "kW", "VA", "kVA", "var",
-                "kvar", "A", "V", "Celsius", "Celcius", "Fahrenheit", "K", "Percent",
+                "kvar", "A", "V", "Celsius", "Fahrenheit", "K", "Percent",
             ],
         )
+        self.assertNotIn("Celcius", dimensions["units"])
         self.assertTrue(all(point["point_key_template"] for point in ocpp))
         self.assertTrue(all(point["unit"] is None for point in ocpp))
 

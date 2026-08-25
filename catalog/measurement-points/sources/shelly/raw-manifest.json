@@ -1,0 +1,152 @@
+{
+  "schema_version": "1.0",
+  "sources": [
+    {
+      "id": "gen1",
+      "path": "sources/shelly/raw/gen1.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "d76d588eedb612cc9461f59656995734ccf5352cfe46ba96431b73ef0b7f8016",
+      "url": "https://shelly-api-docs.shelly.cloud/gen1/"
+    },
+    {
+      "id": "gen2-index",
+      "path": "sources/shelly/raw/gen2-index.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "7c05cbc14a2850edb1fb43db7d35712ca2439145c11036796bbc46a19b667dab",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/"
+    },
+    {
+      "id": "gen2-Shelly",
+      "path": "sources/shelly/raw/gen2-Shelly.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "3be3052ccf05171e408a902713c271802a32afc6c3908f09dd4376071c9f774d",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly/"
+    },
+    {
+      "id": "gen2-Sys",
+      "path": "sources/shelly/raw/gen2-Sys.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "45ffc3da51fcf68c83f9a41bc997d861de919f34985f701377d6c545324a037a",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Sys/"
+    },
+    {
+      "id": "gen2-WiFi",
+      "path": "sources/shelly/raw/gen2-WiFi.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "8faa9dc47e284bbd1d9b66929a5395de195cae4ef62defae5cd9acd1cec3571f",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/WiFi/"
+    },
+    {
+      "id": "gen2-Cloud",
+      "path": "sources/shelly/raw/gen2-Cloud.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "9cb8a5637fcd2dcfc8b8048e85e518ea6028d530335b4e476a1b9975561c8b51",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cloud/"
+    },
+    {
+      "id": "gen2-Mqtt",
+      "path": "sources/shelly/raw/gen2-Mqtt.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "38f5574e63d007bfc20f7741be4cba64da8033b863805f3206284190a9fdfcf8",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Mqtt/"
+    },
+    {
+      "id": "gen2-Switch",
+      "path": "sources/shelly/raw/gen2-Switch.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "ab7dcc634be2acf32eeff196560f94ca10170249b14968f457a40188b75bb6be",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch/"
+    },
+    {
+      "id": "gen2-PM1",
+      "path": "sources/shelly/raw/gen2-PM1.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "0577ca91c3753944bcd4ed864b822ec3e46723970f36c88e4e111c2ce762cfb7",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/PM1/"
+    },
+    {
+      "id": "gen2-EM",
+      "path": "sources/shelly/raw/gen2-EM.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "6857c05a48a4be7b01234c69a0586405f3cc5554b337ccd338da32f292f0771e",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/EM/"
+    },
+    {
+      "id": "gen2-EMData",
+      "path": "sources/shelly/raw/gen2-EMData.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "e10881dbd88a586b9c06c427c441634c7ab93f9f506ca83b87961b933f746ab9",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/EMData/"
+    },
+    {
+      "id": "gen2-EM1",
+      "path": "sources/shelly/raw/gen2-EM1.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "54752cd5b3dc52d01fc1e3df131ae9967b353352f5c8bc39e15e220b7a503f64",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/EM1/"
+    },
+    {
+      "id": "gen2-EM1Data",
+      "path": "sources/shelly/raw/gen2-EM1Data.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "754e68a09bada4838aaff71b6539b77c61a4631ebb3fa1d67ed5c125aed44d13",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/EM1Data/"
+    },
+    {
+      "id": "gen2-Input",
+      "path": "sources/shelly/raw/gen2-Input.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "c1fa9d9b4c017dc7d58528b910e8fb5685e7fa8c3d667b2f79aa586b9ab10279",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input/"
+    },
+    {
+      "id": "gen2-Temperature",
+      "path": "sources/shelly/raw/gen2-Temperature.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "0d11dc1e6f486ed15969683a7616f0a031538bb38a4a2e7fc4117350304e0d8c",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Temperature/"
+    },
+    {
+      "id": "gen2-Humidity",
+      "path": "sources/shelly/raw/gen2-Humidity.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "0adcc88b53fa9bf8d152fbec2ef71ecdc29d143b68367d342afabd8dca67b655",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Humidity/"
+    },
+    {
+      "id": "gen2-DevicePower",
+      "path": "sources/shelly/raw/gen2-DevicePower.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "742913572c277518015e430af99ae33b0f9ac01b79cc9b6716e41b5368266f9c",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/DevicePower/"
+    },
+    {
+      "id": "gen2-Cover",
+      "path": "sources/shelly/raw/gen2-Cover.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "9bdf3bf7c5b8c4d76283825c0d94afe83df44480ff681e0992e67e2b3f7e289a",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/"
+    },
+    {
+      "id": "gen2-Light",
+      "path": "sources/shelly/raw/gen2-Light.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "a3b6fb35b8092072d11660b5f2ff36f1d9e4d1c3c44d2e63e18993e7a74e0c22",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Light/"
+    },
+    {
+      "id": "gen2-RGB",
+      "path": "sources/shelly/raw/gen2-RGB.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "5fc4b32b8dbc2e7d6d60d0ef75662f552c5144872943f42019b1b7355e339796",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/RGB/"
+    },
+    {
+      "id": "gen2-RGBW",
+      "path": "sources/shelly/raw/gen2-RGBW.html",
+      "retrieved_date": "2026-08-25",
+      "sha256": "c5e7dc0605df5f57048690ee27fa9d4259a3c75f0615dca07f0a2db83f641eef",
+      "url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/RGBW/"
+    }
+  ]
+}
