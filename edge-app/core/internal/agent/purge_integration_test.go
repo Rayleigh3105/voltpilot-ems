@@ -28,7 +28,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 )
 
-func TestFailedLocalPurgeKeepsRestartSafeIntentAndRetriesCleanup(t *testing.T) {
+func TestFailedJournalTempRemovalKeepsRestartSafeIntentAndRetriesCleanup(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()
 	cfg.LocalMQTTAddr = "127.0.0.1:0"
@@ -37,7 +37,12 @@ func TestFailedLocalPurgeKeepsRestartSafeIntentAndRetriesCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.purgeOcpp = func(time.Time) error { return errors.New("injected OCPP remove failure") }
+	// The csms regression test proves this is the error returned for an exact
+	// crash-left .<event>.json.tmp artifact. This seam proves the orchestration
+	// leaves the already-committed cloud request pending across a process restart.
+	a.purgeOcpp = func(time.Time) error {
+		return errors.New("remove crash-left OCPP journal temp artifact: injected failure")
+	}
 	if _, err := a.PurgeRecordedData(); err == nil {
 		t.Fatal("local OCPP failure was reported as a successful purge")
 	}

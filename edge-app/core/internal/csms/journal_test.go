@@ -291,6 +291,117 @@ func TestJournalPurgeConservativelyRemovesCorruptAndUnreadableBytes(t *testing.T
 	}
 }
 
+func TestJournalPurgeRemovesCrashLeftTempAfterRestartWithoutTouchingForeignFiles(t *testing.T) {
+	dir := t.TempDir()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	first, err := newJournal(dir, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := eventForPurge("60000000-0000-4000-8000-000000000001",
+		time.Date(2026, 8, 25, 6, 0, 0, 123456789, time.UTC))
+	raw, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempPath, finalPath := journalEventPaths(first.dir, event)
+	// This is the exact append crash window: the privacy-safe bytes reached the
+	// temp file, but the process died before rename could commit finalPath.
+	if err := first.writeEventFile(tempPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	foreign := []string{
+		filepath.Join(first.dir, ".operator-note.json.tmp"),
+		filepath.Join(first.dir, ".2026-08-25T06-00-00Z_not-a-generated-event.json.tmp"),
+		filepath.Join(first.dir, "2026-08-25T06-00-00Z_60000000-0000-4000-8000-000000000001.json.tmp"),
+	}
+	for _, path := range foreign {
+		if err := os.WriteFile(path, []byte("must stay"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	matchingDirectory := filepath.Join(first.dir,
+		".2026-08-25T06-00-00Z_60000000-0000-4000-8000-000000000002.json.tmp")
+	if err := os.Mkdir(matchingDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-open the journal to model a full process restart. Purge must discover
+	// temp bytes that were never part of the in-memory count or upload queue.
+	restarted, err := newJournal(dir, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.PurgeThrough(time.Date(2026, 8, 25, 7, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(tempPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("crash-left temp bytes survived restart purge: %v", err)
+	}
+	if _, err := os.Stat(finalPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("uncommitted event unexpectedly produced a final file: %v", err)
+	}
+	for _, path := range append(foreign, matchingDirectory) {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("purge touched non-journal artifact %s: %v", filepath.Base(path), err)
+		}
+	}
+	if key, err := os.ReadFile(filepath.Join(dir, journalKeyFile)); err != nil || len(key) != 32 {
+		t.Fatalf("purge touched the journal privacy key: bytes=%d err=%v", len(key), err)
+	}
+}
+
+func TestJournalCrashLeftTempRemoveFailureStaysRetryableAcrossRestart(t *testing.T) {
+	dir := t.TempDir()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	first, err := newJournal(dir, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := eventForPurge("70000000-0000-4000-8000-000000000001",
+		time.Date(2026, 8, 25, 6, 0, 0, 0, time.UTC))
+	raw, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempPath, _ := journalEventPaths(first.dir, event)
+	if err := first.writeEventFile(tempPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted, err := newJournal(dir, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted.removeEventFile = func(path string) error {
+		if path == tempPath {
+			return errors.New("injected crash-temp remove failure")
+		}
+		return os.Remove(path)
+	}
+	watermark := time.Date(2026, 8, 25, 7, 0, 0, 0, time.UTC)
+	if err := restarted.PurgeThrough(watermark); err == nil ||
+		!strings.Contains(err.Error(), "crash-left OCPP journal temp artifact") {
+		t.Fatalf("temp remove failure was not surfaced as retryable purge error: %v", err)
+	}
+	if _, err := os.Stat(tempPath); err != nil {
+		t.Fatalf("failed temp removal did not remain retryable: %v", err)
+	}
+
+	// A second process with recovered storage sees the same artifact and erases
+	// it under the still-pending all-data purge intent.
+	retried, err := newJournal(dir, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := retried.PurgeThrough(watermark); err != nil {
+		t.Fatalf("restart retry after temp remove recovery: %v", err)
+	}
+	if _, err := os.Stat(tempPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("restart retry did not erase crash-left temp bytes: %v", err)
+	}
+}
+
 func TestJournalPurgeRemoveAndGapStateFailuresStayRetryable(t *testing.T) {
 	t.Run("remove failure", func(t *testing.T) {
 		dir := t.TempDir()

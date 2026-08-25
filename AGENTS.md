@@ -3942,8 +3942,11 @@ CSMS→Station-Command-Gateway und keine neue Station-Aktion.
   idempotentes internes `JournalGap` mit Anzahl, Gründen und betroffenem Zeit-/
   Eventbereich; die Cloud persistiert es im normalen Journal und liefert es
   explizit über `GET .../ocpp/gaps`. Ledger und Gap überleben Neustarts bis zum
-  QoS1-ACK. Purge entfernt auch beschädigte/undekodierbare OCPP-Spool-Dateien;
-  sein Cloud-Auftrag wird davor restart-fest persistiert. Cloud-Purge und Ingest
+  QoS1-ACK. Purge entfernt auch beschädigte/undekodierbare OCPP-Spool-Dateien
+  sowie nach einem Crash vor dem Rename verwaiste, streng auf das eigene Muster
+  `.<UTC-Zeit>_<v4-Event-ID>.json.tmp` begrenzte Temp-Artefakte; ein Remove-
+  Fehler bleibt mit dem davor restart-fest persistierten Cloud-Auftrag retrybar.
+  Cloud-Purge und Ingest
   teilen einen DB-weiten Device-Lock; alte Replays scheitern innerhalb der
   Ingest-Transaktion an `device.data_purged_before`, post-Watermark-Ereignisse
   überleben vollständig auch dann, wenn Edge und API-Replikate konkurrieren.

@@ -25,13 +25,14 @@ import (
 )
 
 const (
-	journalDirectory         = "ocpp-journal"
-	journalKeyFile           = "ocpp-privacy.key"
-	journalGapStateFile      = "ocpp-journal-gaps.json"
-	journalMaxEvents         = 10000
-	journalMaxWire           = 1024 * 1024
-	journalGapTokenPrefix    = "gap:"
-	redactedErrorDescription = "[redacted-call-error-description]"
+	journalDirectory          = "ocpp-journal"
+	journalKeyFile            = "ocpp-privacy.key"
+	journalGapStateFile       = "ocpp-journal-gaps.json"
+	journalFilenameTimeLayout = "2006-01-02T15-04-05.999999999Z"
+	journalMaxEvents          = 10000
+	journalMaxWire            = 1024 * 1024
+	journalGapTokenPrefix     = "gap:"
+	redactedErrorDescription  = "[redacted-call-error-description]"
 )
 
 // ProtocolEvent is the privacy-safe envelope queued on disk. Tenant/site/
@@ -382,9 +383,7 @@ func (j *Journal) append(e ProtocolEvent) {
 	if j.closed {
 		return
 	}
-	name := strings.ReplaceAll(e.OccurredAt, ":", "-") + "_" + e.EventID + ".json"
-	tmp := filepath.Join(j.dir, "."+name+".tmp")
-	final := filepath.Join(j.dir, name)
+	tmp, final := journalEventPaths(j.dir, e)
 	if err := j.writeEventFile(tmp, raw, 0o600); err != nil {
 		j.log.Error("OCPP journal event could not be persisted", "err", err)
 		j.recordDropLocked(e, "write_failure")
@@ -402,6 +401,11 @@ func (j *Journal) append(e ProtocolEvent) {
 	case j.changed <- struct{}{}:
 	default:
 	}
+}
+
+func journalEventPaths(dir string, event ProtocolEvent) (tmp, final string) {
+	name := strings.ReplaceAll(event.OccurredAt, ":", "-") + "_" + event.EventID + ".json"
+	return filepath.Join(dir, "."+name+".tmp"), filepath.Join(dir, name)
 }
 
 func (j *Journal) recordDrop(e ProtocolEvent, reason string) {
@@ -533,6 +537,57 @@ func (j *Journal) filesLocked() ([]string, error) {
 	return files, nil
 }
 
+// tempArtifactsLocked inventories only files append() itself can leave between
+// the durable temp write and its atomic rename. The strict UTC timestamp + v4
+// UUID shape prevents an all-data purge from treating unrelated dotfiles,
+// privacy keys, directories or symlinks as journal data.
+func (j *Journal) tempArtifactsLocked() ([]string, error) {
+	entries, err := os.ReadDir(j.dir)
+	if err != nil {
+		return nil, err
+	}
+	files := make([]string, 0)
+	for _, entry := range entries {
+		if entry.Type().IsRegular() && isJournalTempArtifact(entry.Name()) {
+			files = append(files, entry.Name())
+		}
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+func isJournalTempArtifact(name string) bool {
+	if !strings.HasPrefix(name, ".") || !strings.HasSuffix(name, ".json.tmp") {
+		return false
+	}
+	finalName := strings.TrimSuffix(strings.TrimPrefix(name, "."), ".tmp")
+	stem := strings.TrimSuffix(finalName, ".json")
+	if len(stem) <= 37 || stem[len(stem)-37] != '_' {
+		return false
+	}
+	timestamp, eventID := stem[:len(stem)-37], stem[len(stem)-36:]
+	if _, err := time.Parse(journalFilenameTimeLayout, timestamp); err != nil {
+		return false
+	}
+	return isGeneratedEventID(eventID)
+}
+
+func isGeneratedEventID(id string) bool {
+	if len(id) != 36 || id[8] != '-' || id[13] != '-' || id[18] != '-' || id[23] != '-' ||
+		id[14] != '4' || !strings.ContainsRune("89ab", rune(id[19])) {
+		return false
+	}
+	for i, c := range id {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			continue
+		}
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			return false
+		}
+	}
+	return true
+}
+
 // Next returns the oldest durable event and an opaque ack token.
 func (j *Journal) Next() ([]byte, string, bool) {
 	j.mu.Lock()
@@ -645,6 +700,20 @@ func (j *Journal) Ack(token string) error {
 func (j *Journal) PurgeThrough(watermark time.Time) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	tempArtifacts, err := j.tempArtifactsLocked()
+	if err != nil {
+		return err
+	}
+	// A crash between append's temp write and rename leaves bytes without a
+	// trustworthy committed timestamp. After restart they necessarily predate
+	// this purge invocation, so erase every exact journal temp artifact. A
+	// failed removal is returned before the durable purge intent can be cleared;
+	// the same artifact remains present for the startup/reconnect retry.
+	for _, name := range tempArtifacts {
+		if removeErr := j.removeEventFile(filepath.Join(j.dir, name)); removeErr != nil {
+			return fmt.Errorf("remove crash-left OCPP journal temp artifact %s: %w", name, removeErr)
+		}
+	}
 	files, err := j.filesLocked()
 	if err != nil {
 		return err
