@@ -54,11 +54,15 @@ class MeasurementIngestAcknowledgementTest {
         KafkaTemplate<String, String> kafka = mock(KafkaTemplate.class);
         when(kafka.send(anyString(), anyString(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture(mock(SendResult.class)));
-        handler(kafka).handle(new GenericMessage<>(payload("\"9007199254740993\"")), TOPIC, null);
+        handler(kafka).handle(new GenericMessage<>(payload(
+                "\"ocpp.1_6.metervalues.energy.active.import.register.context[sample-periodic]"
+                        + ".format[raw].phase[none].location[outlet].unit[wh]\"",
+                "\"9007199254740993\"")), TOPIC, null);
 
         ArgumentCaptor<String> event = ArgumentCaptor.forClass(String.class);
         verify(kafka).send(eq("measurements.raw"), anyString(), event.capture());
         assertThat(event.getValue()).contains("\"raw\":\"9007199254740993\"");
+        assertThat(event.getValue()).doesNotContain("\"decoded\"");
     }
 
     private static MeasurementIngestHandler handler(KafkaTemplate<String, String> kafka) {
@@ -72,10 +76,14 @@ class MeasurementIngestAcknowledgementTest {
     }
 
     private static String payload(String raw) {
+        return payload("\"goe.api_v2.alw\"", raw);
+    }
+
+    private static String payload(String pointKey, String raw) {
         return "{\"schema_version\":\"2.0\",\"tenant_id\":\"" + TENANT
                 + "\",\"site_id\":\"" + SITE + "\",\"device_id\":\"" + DEVICE
                 + "\",\"catalog_version\":\"2026.08.25.1\",\"sequence\":4,"
                 + "\"observed_at\":\"2026-08-25T12:00:00Z\",\"samples\":[{"
-                + "\"point_key\":\"goe.api_v2.alw\",\"raw\":" + raw + ",\"quality\":\"good\"}]}";
+                + "\"point_key\":" + pointKey + ",\"raw\":" + raw + ",\"quality\":\"good\"}]}";
     }
 }

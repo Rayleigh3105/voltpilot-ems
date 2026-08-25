@@ -554,10 +554,13 @@ class WriterPipeTest {
             assertThat(rs.getString(1)).isEqualTo("9007199254740993");
         }
         try (Connection c = admin(); Statement st = c.createStatement();
-                ResultSet rs = st.executeQuery("SELECT raw_text FROM device_measurement_sample "
+                ResultSet rs = st.executeQuery("SELECT raw_text,decoded_numeric,decoded_text "
+                        + "FROM device_measurement_sample "
                         + "WHERE device_id='" + device + "' AND edge_sequence=53")) {
             assertThat(rs.next()).isTrue();
             assertThat(rs.getString(1)).isEqualTo("9007199254740993");
+            assertThat(rs.getBigDecimal(2)).as("rounded decoded must stay absent").isNull();
+            assertThat(rs.getString(3)).as("decoded string was not emitted by the edge").isNull();
         }
         try (Connection c = admin(); Statement st = c.createStatement();
                 ResultSet rs = st.executeQuery("SELECT count(*) FROM device_measurement_event "

@@ -218,11 +218,20 @@ function decodeOcppSampledValue(value) {
   if (!point) return null;
   const raw = value.value;
   if (!['number', 'string'].includes(typeof raw)) return null;
+  // OCPP 1.6 SampledValue.value is a string. If a non-conforming adapter has
+  // already converted a wide integer to a JS number, its original digits are
+  // unrecoverable: emit no sample instead of presenting rounded data as raw.
+  if (typeof raw === 'number' && Number.isInteger(raw) && !Number.isSafeInteger(raw)) return null;
   const out = { point_key: key, raw, quality: 'good' };
   if ((value.format || 'Raw') === 'SignedData') {
     out.signed_data = String(raw); out.signed_data_format = 'OCPP1.6/SignedData';
   } else {
-    const n = Number(raw); if (Number.isFinite(n)) out.decoded = n;
+    const n = Number(raw);
+    // Keep the OCPP wire string exact. A numeric derivative is useful only
+    // while IEEE-754 can represent its integer magnitude safely; otherwise
+    // omitting decoded prevents writer/rollup COALESCE from preferring a
+    // rounded value over the truthful raw decimal string.
+    if (Number.isFinite(n) && (!Number.isInteger(n) || Number.isSafeInteger(n))) out.decoded = n;
   }
   return out;
 }

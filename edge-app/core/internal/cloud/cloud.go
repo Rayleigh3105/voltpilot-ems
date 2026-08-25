@@ -47,7 +47,7 @@ type Link struct {
 	onProbeRequest      func(payload []byte)
 	onRegisterWrite     func(payload []byte)
 	onDesiredDownlink   func(payload []byte)
-	onMeasurementConfig func(payload []byte)
+	onMeasurementConfig func(payload []byte) bool
 	onControlCert       func(payload []byte)
 	onChargingConfig    func(payload []byte)
 	onChargingBoost     func(payload []byte)
@@ -176,8 +176,10 @@ type Options struct {
 	OnDesiredDownlink func(payload []byte)
 	// OnMeasurementConfig receives the retained complete additional-measurement
 	// desired state. Older binaries omit this callback and therefore safely
-	// ignore the additive topic.
-	OnMeasurementConfig func(payload []byte)
+	// ignore the additive topic. Return true only after the desired state has
+	// been durably adopted; false keeps the QoS1 delivery unacknowledged so the
+	// broker retries it.
+	OnMeasurementConfig func(payload []byte) bool
 	// OnConnect is called with the connection state on every transition.
 	OnConnect func(connected bool)
 	// ClientID override for dev; production leaves it to the broker (CN).
@@ -261,16 +263,6 @@ func New(o Options) (*Link, error) {
 				slog.Error("downlink subscribe failed", "topic", route.topic, "err", tok.Error())
 			}
 		}
-		if l.onMeasurementConfig != nil {
-			measurementTopic := l.topic("v2/measurement-config")
-			if tok := c.Subscribe(measurementTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-				if len(msg.Payload()) > 0 {
-					l.onMeasurementConfig(msg.Payload())
-				}
-			}); tok.Wait() && tok.Error() != nil {
-				slog.Error("measurement config subscribe failed", "topic", measurementTopic, "err", tok.Error())
-			}
-		}
 		if l.onConnect != nil {
 			l.onConnect(true)
 		}
@@ -314,6 +306,11 @@ func (l *Link) buildDownlinkRoutes() []downlinkRoute {
 	add("v2/probe", l.onProbeRequest, false)
 	add("v2/register-write", l.onRegisterWrite, false)
 	add("v2/desired", l.onDesiredDownlink, false)
+	if l.onMeasurementConfig != nil {
+		routes = append(routes, downlinkRoute{l.topic("v2/measurement-config"), func(_ pahomqtt.Client, msg pahomqtt.Message) {
+			handleMeasurementConfigMessage(l.onMeasurementConfig, msg)
+		}})
+	}
 	return routes
 }
 
@@ -328,6 +325,19 @@ func ackingDownlink(handler func([]byte), deliverEmpty bool) pahomqtt.MessageHan
 
 func handleCommandMessage(handler func([]byte) bool, msg pahomqtt.Message) {
 	if handler != nil && len(msg.Payload()) > 0 && !handler(msg.Payload()) {
+		return
+	}
+	msg.Ack()
+}
+
+func handleMeasurementConfigMessage(handler func([]byte) bool, msg pahomqtt.Message) {
+	// An empty retained payload only clears the broker-side desired document;
+	// it has no local desired state to apply and is therefore terminal.
+	if len(msg.Payload()) == 0 {
+		msg.Ack()
+		return
+	}
+	if handler == nil || !handler(msg.Payload()) {
 		return
 	}
 	msg.Ack()

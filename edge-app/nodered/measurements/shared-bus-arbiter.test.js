@@ -74,3 +74,44 @@ test('palette object poll and host:port control share one physical bus lane',asy
     'palette-poll-start','palette-poll-end','control-start','control-end'
   ]);
 });
+
+test('an already waiting poll cannot starve under a continuously replenished control queue',async()=>{
+  arbiter.resetForTest();
+  const order=[];
+  let active=0;
+  let maxActive=0;
+  let releaseFirst;
+  const firstGate=new Promise(resolve=>{releaseFirst=resolve;});
+  const enter=async(label,run)=>{
+    active+=1;
+    maxActive=Math.max(maxActive,active);
+    order.push(label);
+    try{return await run();}finally{active-=1;}
+  };
+  const first=arbiter.runPoll('busy:502',()=>enter('first-poll',()=>firstGate));
+  await new Promise(resolve=>setImmediate(resolve));
+  const waiting=arbiter.runPoll('busy:502',()=>enter('waiting-poll',async()=>{}));
+
+  const controls=[];
+  let finishControls;
+  const controlsDone=new Promise(resolve=>{finishControls=resolve;});
+  const enqueueControl=(index)=>{
+    const promise=arbiter.runControl('busy:502',()=>enter('control-'+index,async()=>{
+      if(index<100) enqueueControl(index+1);
+      else finishControls();
+    }));
+    controls.push(promise);
+  };
+  enqueueControl(1);
+  releaseFirst();
+  await waiting;
+  await controlsDone;
+  await Promise.all([first,...controls]);
+
+  const waitingIndex=order.indexOf('waiting-poll');
+  const controlsBefore=order.slice(0,waitingIndex).filter(x=>x.startsWith('control-')).length;
+  assert.equal(maxActive,1,'fairness must never create a second active bus operation');
+  assert.equal(controlsBefore,arbiter.MAX_CONTROL_BURST_WITH_WAITING_POLL,
+    'the waiting poll gets a bounded lease despite continuously appended controls');
+  assert.ok(waitingIndex<101,'the old strict-priority failure ran the poll only after 100 controls');
+});

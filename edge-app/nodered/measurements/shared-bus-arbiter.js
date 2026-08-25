@@ -3,11 +3,15 @@
 // Process-wide per-target lease. Unlike flow context this module instance is
 // shared by every tab and every palette node in one Node-RED process.
 const targets = new Map();
+// One already-waiting poll yields to the next control lease, preserving the
+// safety-critical priority. It is then guaranteed one lease before another
+// control may run, so an endless control producer cannot starve telemetry.
+const MAX_CONTROL_BURST_WITH_WAITING_POLL = 1;
 
 function state(target) {
   const key=canonicalTarget(target);
   let value=targets.get(key);
-  if(!value){value={active:false,controls:[],polls:[]};targets.set(key,value);}
+  if(!value){value={active:false,controls:[],polls:[],controlBurst:0};targets.set(key,value);}
   return value;
 }
 
@@ -22,7 +26,17 @@ function enqueue(target,kind,run) {
 
 function pump(current) {
   if(current.active) return;
-  const job=current.controls.shift()||current.polls.shift();
+  let job;
+  if(current.controls.length && (!current.polls.length
+      || current.controlBurst < MAX_CONTROL_BURST_WITH_WAITING_POLL)) {
+    job=current.controls.shift();
+    // Controls which ran before a poll existed do not spend its fairness
+    // allowance. A newly waiting poll still yields to exactly the next control.
+    current.controlBurst=current.polls.length ? current.controlBurst+1 : 0;
+  } else if(current.polls.length) {
+    job=current.polls.shift();
+    current.controlBurst=0;
+  }
   if(!job) return;
   current.active=true;
   Promise.resolve().then(job.run).then(job.resolve,job.reject).finally(()=>{
@@ -66,4 +80,5 @@ function canonicalTarget(target){
 
 function resetForTest(){targets.clear();}
 
-module.exports={runPoll,runControl,acquirePoll,acquireControl,targetKey,resetForTest};
+module.exports={runPoll,runControl,acquirePoll,acquireControl,targetKey,resetForTest,
+  MAX_CONTROL_BURST_WITH_WAITING_POLL};

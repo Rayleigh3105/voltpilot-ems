@@ -46,6 +46,29 @@ func TestCommandMessageAcknowledgesOnlyDurablyDecidedOutcome(t *testing.T) {
 	}
 }
 
+func TestMeasurementConfigAcknowledgesOnlyDurableAdoption(t *testing.T) {
+	retryable := &commandAckMessage{payload: []byte(`{"revision":2}`)}
+	handleMeasurementConfigMessage(func([]byte) bool { return false }, retryable)
+	if retryable.acks != 0 {
+		t.Fatalf("failed measurement-config adoption ACK count = %d, want 0", retryable.acks)
+	}
+
+	adopted := &commandAckMessage{payload: []byte(`{"revision":2}`)}
+	handleMeasurementConfigMessage(func([]byte) bool { return true }, adopted)
+	if adopted.acks != 1 {
+		t.Fatalf("durably adopted measurement-config ACK count = %d, want 1", adopted.acks)
+	}
+
+	empty := &commandAckMessage{}
+	handleMeasurementConfigMessage(func([]byte) bool {
+		t.Fatal("empty retained clear must not be dispatched")
+		return false
+	}, empty)
+	if empty.acks != 1 {
+		t.Fatalf("empty retained clear ACK count = %d, want 1", empty.acks)
+	}
+}
+
 func TestNewRegistersEveryLocalDownlinkRouteBeforeConnect(t *testing.T) {
 	handler := func([]byte) {}
 	link, err := New(Options{
@@ -55,6 +78,7 @@ func TestNewRegistersEveryLocalDownlinkRouteBeforeConnect(t *testing.T) {
 		OnFlows: handler, OnUpdateTarget: handler, OnApplyRequest: handler,
 		OnProbeRequest: handler, OnRegisterWrite: handler, OnDesiredDownlink: handler,
 		OnControlCert: handler, OnChargingConfig: handler, OnChargingBoost: handler,
+		OnMeasurementConfig: func([]byte) bool { return true },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +92,8 @@ func TestNewRegistersEveryLocalDownlinkRouteBeforeConnect(t *testing.T) {
 	want := map[string]bool{}
 	for _, leaf := range []string{"schedule", "command", "v2/entities", "v2/plan", "v2/flows",
 		"v2/update", "v2/control-certification", "v2/charging-config", "v2/apply",
-		"v2/charging-boost", "v2/probe", "v2/register-write", "v2/desired"} {
+		"v2/charging-boost", "v2/probe", "v2/register-write", "v2/desired",
+		"v2/measurement-config"} {
 		want[link.topic(leaf)] = true
 	}
 	if len(link.downlinks) != len(want) {

@@ -200,6 +200,22 @@ test('event-driven OCPP obeys selected cadence',()=>{
   assert.equal(runtime.onMeterValues([value],new Date('2026-08-25T12:00:01Z')).length,0);
 });
 
+test('event-driven OCPP publishes 2^53+1 as exact raw without rounded decoded',()=>{
+  const sent=[];
+  const runtime=new MeasurementRuntime({ocppCapability:{supported:true,maxLength:200}},
+    (topic,payload)=>sent.push({topic,payload}),()=>new Date('2026-08-25T12:00:00Z'));
+  runtime.apply(config([{point_key:'ocpp.1_6.metervalues.energy.active.import.register.context[*].format[*].phase[*].location[*].unit[*]',cadence_s:60}]));
+  const samples=runtime.onMeterValues([{measurand:'Energy.Active.Import.Register',
+    context:'Sample.Periodic',format:'Raw',location:'Outlet',unit:'Wh',
+    value:'9007199254740993'}],new Date('2026-08-25T12:00:00Z'));
+  assert.equal(samples.length,1);
+  assert.equal(samples[0].raw,'9007199254740993');
+  assert.equal('decoded' in samples[0],false);
+  const wire=JSON.stringify(sent.find(entry=>entry.topic==='edge/measurements/samples').payload);
+  assert.match(wire,/"raw":"9007199254740993"/);
+  assert.doesNotMatch(wire,/"decoded":9007199254740992/);
+});
+
 test('OCPP desired is not acknowledged until the durable Core applier confirms readback', async () => {
   let calls=0, confirm; const published=[];
   const runtime=new MeasurementRuntime({ocppCapability:{supported:true,maxLength:100},

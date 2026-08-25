@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -39,31 +40,70 @@ func (a *Agent) onOcppMeasurementConfiguration(_ string, payload []byte) {
 // onMeasurementConfig is the cloud-to-local desired-state bridge. Persistence
 // precedes the retained local publish; Node-RED therefore sees either the old
 // complete plan or the new complete plan, never a partially applied selection.
-func (a *Agent) onMeasurementConfig(payload []byte) {
+func (a *Agent) onMeasurementConfig(payload []byte) bool {
 	a.measurementMu.Lock()
 	defer a.measurementMu.Unlock()
+	// QoS1 may redeliver after the durable replace but before its PUBACK reaches
+	// the broker, including after a process restart. The exact stored document
+	// is already the adopted desired state and can be ACKed without applying it
+	// to the local bus a second time.
+	if bytes.Equal(payload, a.measurementConfig) {
+		stored, err := measurements.ParseConfig(payload, a.measurementIdentity, 0)
+		return err == nil && stored.Revision == a.measurementRevision
+	}
 	cfg, err := measurements.ParseConfig(payload, a.measurementIdentity, a.measurementRevision)
 	if err != nil {
 		if err.Error() != "stale revision" {
 			slog.Warn("measurement config rejected", "err", err)
 		}
-		return
+		return false
 	}
-	tmp := filepath.Join(a.Cfg.DataDir, "measurement-config.json.tmp")
 	path := filepath.Join(a.Cfg.DataDir, "measurement-config.json")
-	if err := os.WriteFile(tmp, payload, 0o644); err != nil {
+	if err := persistMeasurementConfig(path, payload); err != nil {
 		slog.Error("measurement config persist failed", "err", err)
-		return
+		return false
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		slog.Error("measurement config atomic replace failed", "err", err)
-		return
+	if a.Bus == nil {
+		slog.Error("measurement config local publish failed", "err", "local bus unavailable")
+		return false
 	}
 	if err := a.Bus.Publish(measurements.LocalConfigTopic, payload, true); err != nil {
 		slog.Error("measurement config local publish failed", "err", err)
-		return
+		return false
 	}
 	a.measurementRevision, a.measurementConfig = cfg.Revision, append([]byte(nil), payload...)
+	return true
+}
+
+func persistMeasurementConfig(path string, payload []byte) error {
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err = f.Write(payload); err == nil {
+		err = f.Sync()
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err = os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	err = dir.Sync()
+	if closeErr := dir.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 func (a *Agent) onMeasurementStatus(_ string, payload []byte) {

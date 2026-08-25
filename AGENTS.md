@@ -5460,6 +5460,9 @@ Push, kein anderer Wunsch, kein anderer Text.
   Integer außerhalb des sicheren JavaScript-Bereichs werden bereits beim HTTP-
   Parsen als exakte Dezimalstrings erhalten (nie zuerst durch `Number` gerundet)
   und bleiben auf Edge, im Ingest-Event und als Writer-`raw_text` bytegenau.
+  Dasselbe gilt für OCPP `SampledValue.value`: der Wire-String bleibt `raw`;
+  bei Integern außerhalb `Number.isSafeInteger` entfällt `decoded`, damit
+  Writer/Rollup nie eine gerundete Ableitung dem exakten Rohwert vorziehen.
 - **Replay und Lücken sind explizit.** Der Core-Outbox unter
   `data_dir/measurement-outbox` vergibt monotone Sequenzen, sendet älteste
   zuerst und löscht erst nach QoS1-Bestätigung. Begrenzte Eviction schützt die

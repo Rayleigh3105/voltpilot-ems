@@ -143,6 +143,37 @@ func (t *transport) start(ctx context.Context) error {
 }
 
 func (t *transport) stop() {
+	// ocpp-go v0.19 closes and nils its error channel in WsServer.Stop while a
+	// connection's writePump may still report its final close error. Drain every
+	// known socket first and wait until the dependency has removed it; only then
+	// may Stop close that shared channel. This local lifecycle barrier avoids a
+	// dependency fork and leaves command-ledger/reconnect semantics untouched.
+	t.srv.mu.Lock()
+	ids := make([]string, 0, len(t.srv.chargers))
+	for id := range t.srv.chargers {
+		ids = append(ids, id)
+	}
+	t.srv.mu.Unlock()
+	for _, id := range ids {
+		_ = t.wsrv.StopConnection(id, websocket.CloseError{
+			Code: websocket.CloseNormalClosure,
+			Text: "Edge wird beendet",
+		})
+	}
+	deadline := time.Now().Add(commandSocketWriteWait + time.Second)
+	for time.Now().Before(deadline) {
+		open := false
+		for _, id := range ids {
+			if t.wsrv.Connections(id) != nil {
+				open = true
+				break
+			}
+		}
+		if !open {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	t.cs.Stop()
 	select {
 	case <-t.done:
