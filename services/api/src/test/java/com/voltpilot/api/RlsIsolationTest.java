@@ -164,6 +164,63 @@ class RlsIsolationTest {
         }
     }
 
+    @Test
+    void measurementSelectionsAndImmutableEventsAreTenantFenced() throws Exception {
+        try (Connection c = appDataSource().getConnection()) {
+            setTenant(c, TENANT_A);
+            try (Statement s = c.createStatement()) {
+                s.executeUpdate("INSERT INTO device_measurement_selection (tenant_id, site_id, "
+                        + "device_id, point_key, enabled, cadence_s, desired_revision, enabled_at, "
+                        + "catalog_version, changed_by, apply_status, apply_reason, "
+                        + "retention_class, raw_retention_days, long_term_cadence_s, "
+                        + "long_term_strategy) VALUES ('" + TENANT_A + "', "
+                        + "'00000000-0000-0000-0000-000000000002', "
+                        + "'00000000-0000-0000-0000-000000000003', 'test.rls.point', TRUE, 60, "
+                        + "1, now(), '2026.08.25.1', 'test', 'pending_edge', 'wartet', "
+                        + "'thermal_bms', 90, 900, 'fifteen_minute')");
+                s.executeUpdate("INSERT INTO device_measurement_selection_event (tenant_id, "
+                        + "site_id, device_id, point_key, desired_revision, idempotency_key, "
+                        + "requested_enabled, requested_cadence_s, enabled_at, catalog_version, actor, "
+                        + "apply_status, apply_reason, retention_class, raw_retention_days, "
+                        + "long_term_cadence_s, long_term_strategy) VALUES ('" + TENANT_A + "', "
+                        + "'00000000-0000-0000-0000-000000000002', "
+                        + "'00000000-0000-0000-0000-000000000003', 'test.rls.point', 1, "
+                        + "'00000000-0000-0000-0000-000000000099', TRUE, 60, now(), '2026.08.25.1', "
+                        + "'test', 'pending_edge', 'wartet', 'thermal_bms', 90, 900, "
+                        + "'fifteen_minute')");
+            }
+        }
+
+        assertThat(scalar(TENANT_A, "SELECT count(*) FROM device_measurement_selection "
+                + "WHERE point_key = 'test.rls.point'")).isEqualTo(1L);
+        assertThat(scalar(TENANT_B, "SELECT count(*) FROM device_measurement_selection "
+                + "WHERE point_key = 'test.rls.point'")).isZero();
+        assertThat(scalar(TENANT_B, "SELECT count(*) FROM device_measurement_selection_event "
+                + "WHERE point_key = 'test.rls.point'")).isZero();
+
+        // Even a direct app-role attacker cannot pair its tenant with a foreign
+        // site/device UUID: the composite FK binds all three identities.
+        assertThatThrownBy(() -> execute(TENANT_A,
+                "INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, "
+                        + "point_key, enabled, cadence_s, desired_revision, enabled_at, "
+                        + "catalog_version, changed_by, apply_status, retention_class, "
+                        + "raw_retention_days, long_term_strategy) VALUES ('" + TENANT_A + "', "
+                        + "'10000000-0000-0000-0000-000000000002', "
+                        + "'10000000-0000-0000-0000-000000000003', 'attack', TRUE, 60, 2, now(), "
+                        + "'2026.08.25.1', 'attacker', 'pending_edge', 'unclassified', 90, 'none')"))
+                .hasMessageContaining("device_measurement_selection_device_fk");
+
+        // The application role has no UPDATE/DELETE privilege on audit rows.
+        assertThatThrownBy(() -> execute(TENANT_A,
+                "UPDATE device_measurement_selection_event SET apply_reason = 'rewritten' "
+                        + "WHERE point_key = 'test.rls.point'"))
+                .hasMessageContaining("permission denied");
+        assertThatThrownBy(() -> execute(TENANT_A,
+                "DELETE FROM device_measurement_selection_event "
+                        + "WHERE point_key = 'test.rls.point'"))
+                .hasMessageContaining("permission denied");
+    }
+
     private List<String> sitesForTenant(String tenantId) throws Exception {
         List<String> names = new ArrayList<>();
         try (Connection c = appDataSource().getConnection()) {
@@ -193,6 +250,15 @@ class RlsIsolationTest {
                 Statement s = c.createStatement(); ResultSet rs = s.executeQuery(sql)) {
             rs.next();
             return rs.getLong(1);
+        }
+    }
+
+    private void execute(String tenantId, String sql) throws Exception {
+        try (Connection c = appDataSource().getConnection()) {
+            setTenant(c, tenantId);
+            try (Statement s = c.createStatement()) {
+                s.executeUpdate(sql);
+            }
         }
     }
 

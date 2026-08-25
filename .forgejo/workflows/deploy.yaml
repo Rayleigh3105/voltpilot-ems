@@ -211,7 +211,10 @@ jobs:
       matrix:
         include:
           - component: api
-            context: ./services/api
+            # Root context: the api jar packages the canonical generated
+            # measurement catalog from catalog/measurement-points/dist.
+            context: .
+            dockerfile: ./services/api/Dockerfile
             build_args: ""
           - component: ingest
             context: ./services/ingest

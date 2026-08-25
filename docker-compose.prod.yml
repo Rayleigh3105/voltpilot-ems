@@ -341,7 +341,8 @@ services:
     # `image:` name, so the subsequent `up -d` uses the local build instead of
     # pulling. The CI path ignores `build:` (it runs `pull` + `up -d`).
     build:
-      context: ./services/api
+      context: .
+      dockerfile: services/api/Dockerfile
     restart: unless-stopped
     depends_on:
       timescaledb:

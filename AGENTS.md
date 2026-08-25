@@ -4916,6 +4916,37 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   regressionsgesichert; das optionale Deye-YAML-Update nutzt ausschließlich die
   in `requirements-update.txt` gepinnte PyYAML-Version.
 
+## Zusätzliche Messwerte: Auswahl- und Auditfundament (Slice 5)
+
+- **Die Cloud speichert Soll, nicht behauptete Wirkung.**
+  `device_measurement_selection` hält den gewünschten revisionierten Zustand;
+  `device_measurement_selection_event` ist für App- und Admin-Rolle append-only;
+  spätere `edge_ack`/`first_sample`-Übergänge werden als neue Zeilen derselben
+  `desired_revision` angehängt, nie in eine alte Anforderung hineingepatcht. Beide
+  tragen Tenant/Site/Device, Katalogversion, Kadenz, Akteur, D6-Retention und
+  RLS + FORCE. Bis der spätere Edge-Ack-Pfad existiert, bleibt jeder neue
+  Vorgang ehrlich `pending_edge` mit `applied_at = NULL`.
+- **Aktivierung beginnt serverseitig jetzt.** `enabled_at` kommt ausschließlich
+  aus DB-`now()` und ist die spätere Writer-No-Backfill-Grenze. Abwahl ist ein
+  UPDATE mit `disabled_at`; weder Auswahlzeile noch Events werden gelöscht.
+- **API:** `/api/v1/devices/{deviceId}/measurement-selection/**` liefert
+  Katalogsuche/Facetten, Status/Audit, Budget-Preview, optimistic/idempotente
+  Auswahl und „Eigenen Messwert hinzufügen“. Freie Register sind ausschließlich
+  `modbus_holding|modbus_input`, `readOnly=true`, vollständig typ-/adress-/
+  skalen-/einheiten-/kadenzvalidiert; dieser Pfad hat keine Schreibfunktion.
+- **Kein zweiter Katalog im API-Service.** Maven paketiert das kanonische
+  `catalog/measurement-points/dist/measurement-point-catalog-*.json` bytegleich
+  ins JAR. Deshalb baut das API-Image mit Repo-Root als Docker-Kontext und
+  `services/api/Dockerfile`; Compose und beide Deploy-Workflows müssen diese
+  Kontextform beibehalten.
+- **D5/D6 sind ausführbare Policy.** Kein Punktzahl-Limit; Warnung ab 120
+  Samples/min, hart 600 oder engeres per-Familien-Treiberbudget sowie 30
+  Requests/min/20 % Duty. Volumen rechnet konservativ mit 96 B (Korridor
+  64–128), 90 Tagen roh und danach 5 min für Leistung/Phasen/MPPT bzw. 15 min
+  für Thermik/BMS/Zähler; Zustände/Ereignisse und Identitätsänderungen behalten
+  ihre eigene Historienstrategie. MQTT, Edge-Pollplan und Sample-Hypertable
+  gehören ausdrücklich in die folgenden Slices.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
