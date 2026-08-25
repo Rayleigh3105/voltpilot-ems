@@ -23,8 +23,6 @@ export type PageId =
   | 'portfolio-erloese'
   | 'uebersicht'
   | 'anlagen'
-  | 'marktpreise'
-  | 'prognose'
   | 'plattform-uebersicht'
   | 'mandanten'
   | 'geraete-registry'
@@ -40,6 +38,13 @@ export type AnlagenSub =
   | 'fahrplan'
   | 'messwerte'
   | 'erloese'
+  // Marktpreise und Prognose sind seit der Navigations-Runde „zwei Ebenen"
+  // (r2 §5.5, E3) Unterseiten DER ANLAGE statt Seiten daneben: sie beantworten
+  // eine Frage ÜBER diese Anlage (ihr Börsentarif, ihr Prognosemodell) und
+  // standen trotzdem ausserhalb - Befund N3. Ihre alten Adressen leiten um
+  // (`LEGACY_ROUTES`), also gilt jedes Lesezeichen weiter.
+  | 'marktpreise'
+  | 'prognose'
   | 'wetter'
   | 'technik'
   | 'modell'
@@ -51,8 +56,9 @@ export type AnlagenSub =
   | 'box';
 
 const SUBS = new Set<string>([
-  'fahrplan', 'messwerte', 'erloese', 'wetter', 'technik', 'modell',
-  'steuerung', 'lastspitzen', 'ladevorgaenge', 'befehle', 'geraet', 'box',
+  'fahrplan', 'messwerte', 'erloese', 'marktpreise', 'prognose', 'wetter',
+  'technik', 'modell', 'steuerung', 'lastspitzen', 'ladevorgaenge', 'befehle',
+  'geraet', 'box',
 ]);
 
 /**
@@ -130,32 +136,28 @@ export interface PageDef {
   adminOnly?: boolean;
 }
 
+/**
+ * Die Seiten der oberen Ebene, die die Schale als eigenen Punkt führt.
+ *
+ * ⚠ **„Meine Anlage(n)" steht hier seit der Navigations-Runde „zwei Ebenen"
+ * NICHT mehr** (r2 §5.5 + Captain-Schärfung 25.08.2026: „Ist dann meine
+ * Anlagen navigation nicht überflüssig?" — ja): das PORTFOLIO **IST** die
+ * Liste, ein zweiter Eintrag daneben war dieselbe Frage mit zwei Antworten.
+ * Die Seite `anlagen` bleibt als ROUTE (sie beherbergt `#/anlage/{id}`), und
+ * `#/anlagen` leitet auf das Portfolio, wo es eine Flotten-Ebene gibt.
+ */
 export const MAIN_PAGES: PageDef[] = [
   { id: 'uebersicht', label: 'Übersicht', icon: 'dashboard' },
-  { id: 'anlagen', label: 'Meine Anlage', icon: 'sun' },
 ];
 
 /**
- * M1 (Projektion #529, captain feedback round 1): Marktpreise and
- * Prognosequalität are NOT a global "Markt & Wissen" menu group any more -
- * they are the MARKET mode's deep views and render as a mode-tagged sidebar
- * group only while that mode is active (`anlageNav.modeNavGroup`, driven by
- * the M0 `deepViews(...)`). Trading knowledge on a site that does not trade is
- * noise at best. The PAGES and their routes are untouched, so every existing
- * `#/marktpreise` / `#/prognose` bookmark keeps working.
+ * Die Anlagen-Seite selbst bleibt eine `PageId` (sie beherbergt jede
+ * `#/anlage/{id}`-Route), auch wenn die Navigation sie nicht mehr als Punkt
+ * führt. Sie steht deshalb hier statt in {@link MAIN_PAGES} - sonst verlöre
+ * `parseRoute` sie und `#/anlagen` liefe ins Leere.
  */
-export const MODE_PAGES: PageDef[] = [
-  { id: 'marktpreise', label: 'Marktpreise', icon: 'euro' },
-  { id: 'prognose', label: 'Prognosequalität', icon: 'trending-up' },
-];
+export const ANLAGEN_PAGE: PageDef = { id: 'anlagen', label: 'Meine Anlage', icon: 'sun' };
 
-/**
- * The Betreiber PORTFOLIO landing (U5): NOT in MAIN_PAGES because it renders
- * ONLY for a betreiber frame, IN PLACE of "Übersicht" (the shell decides, see
- * betriebsart.ts). The shell hoists it to the top of the sidebar when
- * `showPortfolioNav` is true; a non-betreiber landing on `#/portfolio` is
- * redirected away (App.tsx).
- */
 export const PORTFOLIO_PAGE: PageDef = { id: 'portfolio', label: 'Portfolio', icon: 'building' };
 
 /**
@@ -364,7 +366,7 @@ export const ALL_PAGES: PageDef[] = [
   PORTFOLIO_PAGE,
   ...PORTFOLIO_WELT_PAGES,
   ...MAIN_PAGES,
-  ...MODE_PAGES,
+  ANLAGEN_PAGE,
   ...PLATFORM_PAGES,
 ];
 
@@ -392,6 +394,11 @@ const LEGACY_ROUTES: Record<string, AnlagenSub | null> = {
   // (money-centric v2: Technik moved behind the gear icon).
   standorte: 'technik',
   geraete: 'technik',
+  // r2 §5.5 / E3: die zwei Markt-Ansichten ziehen UNTER die Anlage. Ohne
+  // Anlage im Pfad löst die Anlagen-Seite sie wie jede andere Alt-Adresse auf
+  // (die EINE Anlage eines Einzel-Kunden, sonst die Flotten-Ebene).
+  marktpreise: 'marktpreise',
+  prognose: 'prognose',
 };
 
 /**

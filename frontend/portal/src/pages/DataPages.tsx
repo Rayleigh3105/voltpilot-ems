@@ -102,6 +102,7 @@ function PageFrame({
   sites,
   selectedSite,
   onSelectSite,
+  embedded = false,
   children,
 }: {
   title: string;
@@ -109,19 +110,28 @@ function PageFrame({
   sites: Site[];
   selectedSite: string | null;
   onSelectSite: (id: string) => void;
+  /**
+   * Als REITER einer Anlage gerendert (Navigations-Runde „zwei Ebenen", E3):
+   * die Anlage steht dann schon im Pfad der Kopfzeile und der Seitenkopf der
+   * Unterseite trägt den Titel — Überschrift und Anlagen-Wähler wären hier
+   * eine zweite Kopie davon.
+   */
+  embedded?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <>
-      <div className="vp-page-head">
-        <div className="titles">
-          <h1>{title}</h1>
-          <p>{subtitle}</p>
+      {!embedded && (
+        <div className="vp-page-head">
+          <div className="titles">
+            <h1>{title}</h1>
+            <p>{subtitle}</p>
+          </div>
+          <div className="actions">
+            <SitePicker sites={sites} value={selectedSite} onChange={onSelectSite} />
+          </div>
         </div>
-        <div className="actions">
-          <SitePicker sites={sites} value={selectedSite} onChange={onSelectSite} />
-        </div>
-      </div>
+      )}
       {sites.length === 0 ? (
         <Card padding="lg" radius="lg">
           <p className="vp-muted">
@@ -210,6 +220,8 @@ export function MarktpreisePage(props: {
   sites: Site[];
   selectedSite: string | null;
   onSelectSite: (id: string) => void;
+  /** Als Reiter des Verlaufs gerendert (E3) — ohne eigenen Seitenkopf. */
+  embedded?: boolean;
 }) {
   const site = props.sites.find((s) => s.id === props.selectedSite) ?? null;
   const [range, setRange] = useState<HistoryRange>('day');

@@ -1,0 +1,62 @@
+/*
+ * Die Reiter eines Anlagen-Bereichs (E3). Sie leihen sich die Optik des
+ * Haus-Segments (`.vp-seg`), tragen aber `role="tablist"` und navigieren —
+ * deshalb eine eigene Klasse: ein Segment wählt einen Zeitraum, diese Leiste
+ * wechselt die Seite.
+ *
+ * Sie SCROLLT waagerecht statt umzubrechen: fünf Reiter passen bei 375 px nicht
+ * nebeneinander, und eine zweite Zeile schöbe den Inhalt unter den Falz.
+ */
+.vp-bereich-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 0 0 var(--vp-space-4, 1rem);
+  padding: 3px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-pill, 999px);
+  background: var(--vp-surface-alt, #f4f6f9);
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* Die Leiste ist so breit wie ihr Inhalt, nie breiter als die Spalte. */
+  max-width: 100%;
+  align-self: flex-start;
+}
+.vp-bereich-tabs::-webkit-scrollbar {
+  display: none;
+}
+.vp-bereich-tab {
+  flex: 0 0 auto;
+  /* ≥44 px Trefferfläche - die Leiste ist am Telefon das Haupt-Bedienelement
+     des Bereichs. */
+  min-height: 40px;
+  padding: 0 var(--vp-space-4, 1rem);
+  border: 0;
+  border-radius: var(--vp-radius-pill, 999px);
+  background: transparent;
+  color: var(--vp-text-muted);
+  font-family: var(--vp-font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: var(--vp-transition-fast);
+}
+.vp-bereich-tab:hover {
+  color: var(--vp-action, #2c5282);
+}
+.vp-bereich-tab.active {
+  background: var(--vp-surface, #fff);
+  color: var(--vp-action, #2c5282);
+  box-shadow: 0 1px 2px rgba(30, 58, 95, 0.12);
+}
+@media (max-width: 720px) {
+  .vp-bereich-tabs {
+    /* Am Telefon die volle Breite - sie IST die Navigation des Bereichs. */
+    align-self: stretch;
+    margin-bottom: var(--vp-space-3, 0.75rem);
+  }
+  .vp-bereich-tab {
+    min-height: 44px;
+    padding: 0 0.85rem;
+  }
+}

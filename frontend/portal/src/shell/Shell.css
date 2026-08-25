@@ -1,9 +1,9 @@
 /* ============================================================
    Portal v3 · M1 — Shell & Navigation (component-local)
-   The grouped Anlage sidebar (base group + one coloured group per active mode),
-   the Anlage context card with its health line, the aggregated health badge in
-   the top bar, the phone 5-slot bottom bar + Mehr sheet, the Hilfe panel and
-   the tablet icon rail.
+   Die FÜNF Bereiche der Anlage in der Seitenleiste, der Pfad + Anlagen-
+   Umschalter in der Kopfzeile, das aggregierte Zustands-Abzeichen, die
+   Telefon-Leiste (fünf Bereiche, KEINE „Mehr"-Kachel seit E4), das
+   Avatar-Menü, die Hilfe-Fläche und die Tablet-Icon-Schiene.
 
    Moved here out of `src/index.css` ("M1 · Anlage-scoped shell nav") per the v3
    CSS convention: surface CSS lives next to its component. The `.vp-bottombar`
@@ -16,107 +16,21 @@
    instead of relying on source order.
    ============================================================ */
 
-/* ---------- Anlage context card ---------- */
+/* ---------- Die fünf Bereiche der Anlage ----------
+   Die frühere Anlagen-KONTEXTKARTE (Picker + Zustands-Zeile) ist mit der
+   Navigations-Runde „zwei Ebenen" (E3) ERSATZLOS entfallen: der Umschalter
+   wohnt im Pfad der Kopfzeile, der Zustand im Abzeichen daneben. Übrig bleibt
+   die Trennlinie, die die Bereiche von der Flotten-Ebene darüber absetzt. */
 .vp-anlagenav {
   margin-top: var(--vp-space-4);
   padding-top: var(--vp-space-3);
   border-top: 1px solid var(--vp-border);
   min-width: 0;
 }
-.vp-anlagenav-ctx {
-  padding: 0 var(--vp-space-3) var(--vp-space-2);
-  min-width: 0;
-}
-.vp-anlagenav-switch,
-.vp-anlagenav-label {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-2);
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: 0.35rem 0.6rem;
-  border-radius: var(--vp-radius-sm);
-  font-size: var(--vp-text-sm);
-  font-weight: 700;
-  color: var(--vp-primary-deep);
-  background: var(--vp-tint);
-}
-.vp-anlagenav-switch {
-  border: 1px solid transparent;
-  transition: var(--vp-transition-fast);
-}
-.vp-anlagenav-switch:hover {
-  border-color: var(--vp-primary);
-}
-.vp-anlagenav-switch:focus-within {
-  border-color: var(--vp-primary);
-  box-shadow: 0 0 0 3px var(--vp-focus-ring);
-}
-.vp-anlagenav-ic,
-.vp-anlagenav-caret {
-  flex-shrink: 0;
-}
-.vp-anlagenav-caret {
-  color: var(--vp-text-gray);
-}
-.vp-anlagenav-body {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-/* Der Anlagen-Picker sitzt IN der Kontext-Karte: sie trägt Rahmen, Tönung und
-   Fokusring, der Auslöser bringt nur Text und Chevron mit. Ohne diese Zeilen
-   stünde ein zweites Feld im Feld. */
-.vp-anlagenav-picker {
-  min-width: 0;
-}
-.vp-anlagenav-switch .vp-picker-ausloeser {
-  border: 0;
-  background: transparent;
-  font: inherit;
-  color: inherit;
-  padding: 0;
-  min-height: 0;
-  gap: var(--vp-space-2);
-}
-.vp-anlagenav-switch .vp-picker-ausloeser:hover,
-.vp-anlagenav-switch .vp-picker-ausloeser[aria-expanded='true'] {
-  border-color: transparent;
-  box-shadow: none;
-}
-.vp-anlagenav-switch .vp-picker-caret {
-  color: var(--vp-text-gray);
-}
-.vp-anlagenav-label .t {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* The context card's health line — the same three states as the top badge. */
-.vp-anlagenav-health {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-width: 0;
-  font-size: var(--vp-text-meta);
-  font-weight: 500;
-  color: var(--vp-text-gray);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* Gesund sieht gesund aus - dasselbe satte Grün wie das Abzeichen der
-   Kopfzeile (Punkt aus `--vp-flow-batt`, Schrift in seiner lesbaren Tiefe). */
-.vp-anlagenav-health.state-ok {
-  color: var(--vp-flow-batt-ink, #166534);
-  font-weight: 600;
-}
 
-/* ---------- Mode groups ---------- */
+/* ---------- Gruppen-Überschriften (nur noch „Plattform") ----------
+   Die farbigen Anwendungs-Gruppen sind mit E3 entfallen; ihre Ansichten sind
+   Reiter geworden. Geblieben sind die Plattform-Überschriften. */
 .vp-navgroup {
   min-width: 0;
 }
@@ -127,9 +41,7 @@
   min-width: 0;
 }
 /* Admin-Umbau Stufe 1: die Plattform-Gruppen sind eine EBENE UNTER dem
-   „Plattform"-Label, also liest sich ihre Überschrift ruhiger — kleiner,
-   ohne Versalien, mit weniger Luft darüber. Sie bleibt eine Überschrift
-   (nicht anklickbar), damit die Leiste genau EINE Art von Ziel kennt. */
+   „Plattform"-Label, also liest sich ihre Überschrift ruhiger. */
 .vp-nav-group-label.vp-nav-sublabel {
   text-transform: none;
   letter-spacing: 0;
@@ -138,27 +50,16 @@
   padding-bottom: var(--vp-space-1);
   opacity: 0.85;
 }
-
-.vp-mode-dot {
-  flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--vp-gray, #ced4da);
-}
-.vp-nav-group-label.tone-markt .vp-mode-dot {
-  background: var(--vp-flow-grid);
-}
-.vp-nav-group-label.tone-peak .vp-mode-dot {
-  background: var(--vp-flow-pv);
-}
-.vp-nav-group-label.tone-eigen .vp-mode-dot {
-  background: var(--vp-flow-batt);
-}
-.vp-nav-group-label.tone-laden .vp-mode-dot,
-.vp-nav-group-label.tone-atyp .vp-mode-dot,
-.vp-nav-group-label.tone-automation .vp-mode-dot {
-  background: var(--vp-flow-load);
+/* S8: „Plattform ▸" ist zusammenklappbar - die EINZIGE Überschrift, die ein
+   Knopf ist, deshalb setzt sie ihre Knopf-Vorgaben selbst zurück. */
+.vp-nav-fold {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 /* Steuerung's active-mode badge reads as a count, not a muted note. */
@@ -385,6 +286,70 @@
   display: none;
 }
 
+/* ⚠ `opacity: 0` statt `visibility: hidden`: der Auslöser muss anklickbar UND
+   fokussierbar bleiben - er IST die Trefferfläche. Er steht hier UNBEDINGT,
+   weil er ohnehin nur innerhalb des (per Vorgabe versteckten) Wrappers
+   rendert - so tragen beide Breiten dieselbe eine Regel. */
+.vp-app .vp-tb-switch {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Der Anlagen-Umschalter am RECHNER (Navigations-Runde „zwei Ebenen", E3).
+   Seit die Picker-KARTE der Seitenleiste entfallen ist, ist der Pfad der
+   EINZIGE Wechsler - er darf also nicht länger telefon-only sein.
+   ⚠ Der Anker ist hier der NAMEN-Block, nicht die ganze Kopfzeile: sonst läge
+   die unsichtbare Fläche über dem Rückweg („Portfolio ›") und über dem
+   Zustands-Abzeichen, und beide wären tot. Am Telefon bleibt es beim Anker
+   `.vp-topbar-anlage` (Block unten) - `.vp-crumb-anlage` ist dort `static`,
+   also greift dieselbe `inset: 0`-Regel eine Ebene höher. */
+.vp-crumb-anlage {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+@media (min-width: 721px) {
+  .vp-crumb-anlage {
+    position: relative;
+  }
+  .vp-app .vp-tb-switchwrap {
+    display: block;
+    position: absolute;
+    inset: 0;
+  }
+  .vp-tb-switchwrap .vp-picker-anker {
+    height: 100%;
+  }
+  .vp-tb-caret {
+    display: inline-flex;
+    flex: 0 0 auto;
+    color: var(--vp-text-gray);
+  }
+  /* Der Name reagiert sichtbar auf den Zeiger - sonst sähe der Wechsler wie
+     reiner Text aus (er IST die Fläche, die den Picker öffnet). */
+  .vp-crumb-anlage:hover .here,
+  .vp-crumb-anlage:focus-within .here {
+    color: var(--vp-action);
+  }
+  .vp-crumb-anlage:focus-within {
+    border-radius: var(--vp-radius-sm);
+    box-shadow: 0 0 0 3px var(--vp-focus-ring);
+  }
+}
+
 /* ---------- Phone bottom bar: up to four areas + Mehr ---------- */
 .vp-bottombar {
   display: none;
@@ -435,24 +400,9 @@
   .vp-tb-switchwrap .vp-picker-anker {
     height: 100%;
   }
-  /* ⚠ `opacity: 0` statt `visibility: hidden`: der Auslöser muss anklickbar
-     UND fokussierbar bleiben - er IST die Trefferfläche. */
-  .vp-app .vp-tb-switch {
-    display: block;
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-    opacity: 0;
-    font: inherit;
-    cursor: pointer;
-  }
+  /* Die Trefferfläche selbst steht als EINE Regel weiter oben (beide
+     Breiten teilen sie); hier zählt nur der ANKER: am Telefon ist es der
+     ganze 68-px-Block, nicht nur der Name. */
   /* The state is the sub-line, not a pill: dot + word + cause, no chrome. It
      keeps its own hit area (and stays ABOVE the switcher overlay), so the
      findings popover is still one tap away. */
@@ -486,10 +436,20 @@
   .vp-app .vp-topbar-anlage .vp-healthbadge-caret {
     display: none;
   }
-  /* Both move into the Mehr sheet on a phone. */
-  .vp-app .vp-add-anlage-btn,
-  .vp-app .vp-logout-btn {
+  /* „＋ Anlage" ist am Telefon eine Einmal-im-Leben-Aktion und darf der
+     Kopfzeile keine Breite nehmen - der Assistent ist über die Anlagen-Liste
+     erreichbar. */
+  .vp-app .vp-add-anlage-btn {
     display: none;
+  }
+  /* Die Plattform-Punkte gibt es NUR hier: die Seitenleiste rendert am Telefon
+     nicht, und einen Hamburger gibt es seit Mobil-Umbau Stufe 1 nicht mehr.
+     ⚠ Einen Spezifitäts-SCHRITT höher, weil die Basis-Regel (`display: none`)
+     weiter UNTEN in derselben Datei steht: bei gleicher Spezifität gewinnt die
+     spätere, und der Block blieb am Telefon unsichtbar — im Browser bei 375 px
+     gemessen. Dieselbe Klippe wie beim Telefon-Wechsler. */
+  .vp-app .vp-avatarmenu-phone {
+    display: block;
   }
 
   .vp-bottombar {
@@ -564,28 +524,15 @@
   text-align: center;
 }
 
-/* ---------- "Mehr" sheet + Hilfe panel ---------- */
+/* ---------- Hilfe-Fläche + Avatar-Menü ----------
+   Das „Mehr"-Blatt ist mit E4 ERSATZLOS entfallen: die Telefon-Leiste trägt
+   die fünf Bereiche, Hilfe · Abmelden · Plattform wohnen im Avatar-Menü.
+   Schleier und Kopfzeile bleiben - die Hilfe-Fläche benutzt sie. */
 .vp-sheet-scrim {
   position: fixed;
   inset: 0;
   z-index: 60;
   background: rgba(30, 58, 95, 0.35);
-}
-.vp-sheet {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 61;
-  max-height: 78vh;
-  overflow-y: auto;
-  background: var(--vp-surface);
-  border-top-left-radius: var(--vp-radius-lg);
-  border-top-right-radius: var(--vp-radius-lg);
-  box-shadow: var(--vp-shadow-md);
-  padding: var(--vp-space-3) calc(var(--vp-space-3) + env(safe-area-inset-right, 0))
-    calc(var(--vp-space-5) + env(safe-area-inset-bottom, 0))
-    calc(var(--vp-space-3) + env(safe-area-inset-left, 0));
 }
 .vp-helppanel {
   position: fixed;
@@ -631,45 +578,6 @@
   color: var(--vp-text-gray);
   cursor: pointer;
 }
-.vp-sheet-group {
-  min-width: 0;
-}
-.vp-sheet-item {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-3);
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: 0.5rem var(--vp-space-3);
-  border: none;
-  border-radius: var(--vp-radius-sm);
-  background: none;
-  font-family: var(--vp-font-body);
-  font-size: var(--vp-text-sm);
-  font-weight: 600;
-  color: var(--vp-text-dark);
-  text-align: left;
-  cursor: pointer;
-}
-.vp-sheet-item.active {
-  background: var(--vp-tint);
-  color: var(--vp-primary-deep);
-}
-/* Falls die Steuerung ins Blatt gefallen ist, trägt ihre Zeile dort weiter das
-   Abzeichen (die Leiste zeigt es dann auf „Mehr"). */
-.vp-sheet-badge {
-  margin-left: auto;
-  min-width: 20px;
-  padding: 0 0.45rem;
-  border-radius: var(--vp-radius-pill);
-  background: var(--vp-tint);
-  color: var(--vp-primary-deep);
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-align: center;
-}
-
 /* ---------- Tablet: a 56px icon rail instead of a hamburger ----------
    721-1023px. The base sheet hides the sidebar below 1024px; these rules are
    deliberately one specificity step higher so they win regardless of import
@@ -738,4 +646,101 @@
   .vp-content .vp-hamburger {
     display: none;
   }
+}
+
+
+/* ---------- Der PFAD in der Kopfzeile (E3) ----------
+   „Portfolio › Solarpark Dachau ▾" — das führende Wort ist der Rückweg auf die
+   Flotten-Ebene, der Name der Anlagen-Umschalter. Er ersetzt die Picker-Karte
+   der Seitenleiste UND den Link „‹ Alle Anlagen" über dem Seitenkopf. */
+.vp-crumb-up {
+  flex: 0 0 auto;
+  border: 0;
+  background: none;
+  padding: 0.25rem 0.35rem;
+  margin-left: -0.35rem;
+  border-radius: var(--vp-radius-sm, 8px);
+  font-family: var(--vp-font-body);
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+  color: var(--vp-text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vp-crumb-up:hover {
+  color: var(--vp-action, #2c5282);
+  background: var(--vp-bg-light, #f1f3f5);
+}
+.vp-crumb-sep {
+  flex: 0 0 auto;
+  color: var(--vp-text-muted);
+  opacity: 0.7;
+}
+@media (max-width: 720px) {
+  /* Am Telefon trägt die Kopfzeile die IDENTITÄT der Anlage (Name + Zustand);
+     der Rückweg steht als „Alle Anlagen" ganz oben im Umschalter, also nimmt
+     das führende Wort hier keine Breite. */
+  .vp-app .vp-crumb-up,
+  .vp-app .vp-crumb-sep {
+    display: none;
+  }
+}
+
+/* ---------- Avatar-Menü (E4) ----------
+   Der Wohnort von Hilfe · Abmelden — und am Telefon zusätzlich der
+   Plattform-Gruppe. Es ersetzt den früheren „Abmelden"-Knopf der Kopfzeile
+   und das „Mehr"-Blatt. */
+.vp-usermenu {
+  position: relative;
+}
+.vp-avatar-btn {
+  border: 0;
+  cursor: pointer;
+  font-size: var(--vp-text-sm);
+}
+.vp-avatarmenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1200;
+  min-width: 15rem;
+  max-width: min(20rem, calc(100vw - 24px));
+  max-height: min(70vh, 34rem);
+  overflow-y: auto;
+  padding: var(--vp-space-2, 0.5rem);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-surface);
+  box-shadow: var(--vp-shadow-md);
+}
+.vp-avatarmenu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem var(--vp-space-3);
+  border: 0;
+  border-radius: var(--vp-radius-sm);
+  background: none;
+  font-family: var(--vp-font-body);
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+  color: var(--vp-text-dark);
+  text-align: left;
+  cursor: pointer;
+}
+.vp-avatarmenu-item:hover {
+  background: var(--vp-bg-light, #f1f3f5);
+}
+.vp-avatarmenu-head {
+  padding: var(--vp-space-3) var(--vp-space-3) var(--vp-space-1);
+  font-size: var(--vp-text-badge, 0.75rem);
+  font-weight: 700;
+  color: var(--vp-text-muted);
+}
+/* Am Rechner steht die Plattform-Gruppe in der Seitenleiste - ein zweiter Ort
+   für dieselben Punkte wäre eine Doppelung. */
+.vp-avatarmenu-phone {
+  display: none;
 }

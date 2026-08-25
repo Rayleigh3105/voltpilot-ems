@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -13,26 +13,12 @@ import { NavItem } from '../../designsystem/components/shell/NavItem';
 import logoUrl from '../../designsystem/assets/voltpilot-wordmark.png';
 import { currentUser, logout } from '../auth';
 import type { Tenant } from '../admin/adminApi';
-import {
-  anlagenLabel,
-  MAIN_PAGES,
-  PLATFORM_GROUPS,
-  navPageFor,
-  PORTFOLIO_PAGE,
-  PORTFOLIO_WELT_PAGES,
-  pageLabel,
-  type PageId,
-} from '../nav';
+import { MAIN_PAGES, PLATFORM_GROUPS, navPageFor, PORTFOLIO_PAGE, pageLabel, type PageId } from '../nav';
 import {
   bottomBarSlots,
-  fleetBarSlots,
-  fleetSheetGroups,
   HELP_TEXT,
-  moreSheetItems,
   type AnlageSidebar,
-  type FleetNavInput,
   type NavTarget,
-  type SidebarGroup,
   type SidebarItem,
 } from '../anlageNav';
 import type { HealthBadge } from '../health';
@@ -43,13 +29,17 @@ import { HealthBadgeButton } from './HealthBadgeButton';
 import './Shell.css';
 
 /**
- * Portal v3 · M1 — the Anlage-scoped shell navigation: the Anlage context card
- * (name + health line, tap = switcher, "Alle Anlagen" → the fleet), the grouped
- * sidebar (base group + one coloured group per active mode), the foot
- * (Einstellungen · Hilfe & Kontakt), the phone 5-slot bottom bar with its Mehr
- * sheet — and the aggregated health badge in the top bar.
- * Present whenever exactly one Anlage is in scope; null otherwise (fleet list,
- * Portfolio, Plattform pages) — the shell then renders as before.
+ * Die Anlagen-Navigation der Schale — seit der Navigations-Runde „zwei Ebenen"
+ * (Konzept `data/vp-portfolio-konzept-r2` §5.5, Captain-Entscheide E3/E4 vom
+ * 25.08.2026) sind es die FÜNF BEREICHE aus `anlageNav.ts`, der Pfad
+ * („Portfolio › Solarpark Dachau ▾") in der Kopfzeile und der Fuß
+ * (Hilfe & Kontakt).
+ *
+ * Was dabei ERSATZLOS entfallen ist: die Anlagen-Picker-KARTE der Seitenleiste
+ * (der Umschalter wohnt im Pfad), der Link „‹ Alle Anlagen" (der Pfad IST der
+ * Rückweg) und die farbigen Anwendungs-Gruppen (ihre Ansichten sind Reiter
+ * geworden). Die Seitenleiste ändert ihre FORM damit nie: Portfolio · fünf
+ * Bereiche · Fuß.
  */
 export interface AnlageNav {
   /** The Anlage in scope (the switcher's current value). */
@@ -59,7 +49,7 @@ export interface AnlageNav {
   sites: { id: string; name: string }[];
   /**
    * Die ANGEREICHERTEN Zeilen des Anlagen-Pickers (`anlagenWahl.anlagenOptionen`):
-   * je Anlage Gesundheits-Punkt + Nebenzeile, plus „Alle Anlagen" ganz oben.
+   * je Anlage Gesundheits-Punkt + Nebenzeile, plus die Flotten-Zeile ganz oben.
    *
    * ⚠ Sie kommen FERTIG von aussen - die Schale rechnet keine Gesundheit. Eine
    * zweite Ableitung liesse Kopfzeile und Liste über dieselbe Anlage
@@ -68,21 +58,22 @@ export interface AnlageNav {
    */
   siteOptions?: VpOption[];
   onSelectSite: (siteId: string) => void;
-  /** The grouped sidebar model (`anlageSidebar`), never re-derived here. */
+  /** Das Bereichs-Modell (`anlageSidebar`), hier NIE neu abgeleitet. */
   sidebar: AnlageSidebar;
-  /** Which entry is current (`activeAreaKey` / `activeKeyForPage`). */
+  /** Welcher BEREICH gerade offen ist (`activeAreaKey`). */
   activeKey: string | null;
   onOpenSub: (sub: AnlagenSub | null) => void;
   onOpenPage: (page: PageId) => void;
-  /** "Alle Anlagen" — back to the fleet/portfolio landing; null = hidden. */
+  /** Der Rückweg auf die Flotten-Ebene; null = es gibt keine. */
   onOpenFleet: (() => void) | null;
   /** The aggregated plant state; null = not known yet (no badge is shown). */
   health: HealthBadge | null;
 }
 
 /**
- * The value the Anlage switcher uses for its "Alle Anlagen" option - wortgleich
- * mit `anlagenWahl.ALLE_ANLAGEN` (die Zeilen kommen von dort).
+ * Der Wert, mit dem der Umschalter die FLOTTEN-Ebene meint - wortgleich mit
+ * `anlagenWahl.ALLE_ANLAGEN` (die Zeilen kommen von dort). Wie sie HEISST,
+ * sagt `fleetLabel`; hier steht nur ihr Schlüssel.
  */
 const ALL_SITES = '__all__';
 
@@ -90,9 +81,11 @@ const ALL_SITES = '__all__';
  * The unified dashboard shell: left sidebar (primary navigation, identical for
  * both roles; Portal-Admins additively get the "Plattform" group), top bar
  * (breadcrumb, tenant context, user menu) and the main content area.
- * Collapses to a hamburger drawer below 1024px — EXCEPT the Anlage trio, which
- * becomes an app-like bottom bar on phones (M1): the three core areas never
- * hide behind a hamburger.
+ *
+ * Seit E4 hat das TELEFON keine „Mehr"-Klappe mehr: die Leiste trägt die fünf
+ * Bereiche der Anlage, und Hilfe · Abmelden · Plattform wohnen im Avatar-Menü.
+ * Auf der Flotten-Ebene gibt es GAR KEINE Leiste — dort navigieren die Reiter
+ * der Portfolio-Seite.
  */
 export function AppShell({
   page,
@@ -100,7 +93,7 @@ export function AppShell({
   isAdmin,
   showOverview,
   showPortfolio,
-  showPortfolioErloese = false,
+  fleetLabel = PORTFOLIO_PAGE.label,
   showAddAnlage,
   onAddAnlage,
   counts,
@@ -116,17 +109,16 @@ export function AppShell({
   /** Show the "Übersicht" nav item (fleet customers + admins only). */
   showOverview: boolean;
   /**
-   * Show the "Portfolio" nav item + land on it (Betreiber shell, U5). Replaces
-   * "Übersicht" for a betreiber frame (showOverview is then false).
+   * Zeigt die Schale die FLOTTEN-EBENE (das Portfolio) als Punkt — und ist die
+   * Landung damit dort? Er ersetzt „Übersicht" (dann ist `showOverview` false).
    */
   showPortfolio: boolean;
   /**
-   * Show the "Erlöse" entry of the Portfolio-Historie group (PR G): only when
-   * at least one Anlage has a money mode - a purely private fleet gets no
-   * Erlöse page instead of one that explains nothing. Ignored while
-   * `showPortfolio` is false.
+   * Wie die Flotten-Ebene HEISST (`betriebsart.fleetLabel`): „Portfolio" beim
+   * Betreiber, „Meine Anlagen" beim Endkunden — nur das WORT folgt der
+   * Tonalität, die Ebene gibt es genau einmal.
    */
-  showPortfolioErloese?: boolean;
+  fleetLabel?: string;
   /**
    * Show the always-visible "＋ Anlage hinzufügen" header action. Scoped to a
    * single-Anlage customer (see `showAddAnlageButton`) - their only obvious way
@@ -141,30 +133,49 @@ export function AppShell({
   /** Admin only: the selected tenant id ('' = Alle Mandanten). */
   tenantOverride: string | null;
   onTenantChange: (tenantId: string | null) => void;
-  /** M1: the Anlage-scoped nav (trio + context + mode group); null = none. */
+  /** Die Anlagen-Navigation (fünf Bereiche + Pfad); null = keine Anlage offen. */
   anlage?: AnlageNav | null;
   children: React.ReactNode;
 }) {
   const user = currentUser();
-  const [moreOpen, setMoreOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-
-  // Close the sheet whenever navigation happens.
+  const [menuOpen, setMenuOpen] = useState(false);
+  /**
+   * S8 · „Plattform ▸" ist EINGEKLAPPT, solange ein Mandant gewählt ist — der
+   * Admin ist dann in der Rolle des Kunden unterwegs. Ohne Mandant bleibt sie
+   * aufgeklappt wie bisher. Der Zustand ist bedienbar (der Betreiber darf sie
+   * jederzeit öffnen); die WAHL des Mandanten setzt ihn nur neu.
+   */
+  const [platformOpen, setPlatformOpen] = useState(!tenantOverride);
   useEffect(() => {
-    setMoreOpen(false);
+    setPlatformOpen(!tenantOverride);
+  }, [tenantOverride]);
+
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Navigation schliesst das Avatar-Menü.
+  useEffect(() => {
+    setMenuOpen(false);
   }, [page]);
 
-  // Escape closes the phone sheet / the Hilfe panel.
+  // Escape schliesst Menü + Hilfe; ein Klick daneben schliesst das Menü.
   useEffect(() => {
-    if (!moreOpen && !helpOpen) return undefined;
+    if (!menuOpen && !helpOpen) return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      setMoreOpen(false);
+      setMenuOpen(false);
       setHelpOpen(false);
     };
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [moreOpen, helpOpen]);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [menuOpen, helpOpen]);
 
   const initials = (user.name || 'VP')
     .split(/\s+/)
@@ -174,52 +185,37 @@ export function AppShell({
     .toUpperCase();
 
   /**
-   * ONE place that turns a nav target into navigation — the sidebar, both
-   * bottom bars and the Mehr sheet all go through it, so they can never drift.
+   * ONE place that turns a nav target into navigation — sidebar, bottom bar and
+   * the Avatar menu all go through it, so they can never drift.
    */
   const openTarget = (target: NavTarget) => {
+    setMenuOpen(false);
     switch (target.kind) {
       case 'sub':
         anlage?.onOpenSub(target.sub);
-        setMoreOpen(false);
         return;
       case 'page':
         // Inside an Anlage the page jump keeps its Anlage context; at fleet
         // level there is none, so the plain shell navigation carries it.
         if (anlage) anlage.onOpenPage(target.page);
         else onNavigate(target.page);
-        setMoreOpen(false);
         return;
       case 'help':
-        setMoreOpen(false);
         setHelpOpen(true);
         return;
       case 'action':
-        setMoreOpen(false);
+      default:
         if (target.action === 'add-anlage') onAddAnlage();
         else logout();
-        return;
-      case 'more':
-      default:
-        setMoreOpen((v) => !v);
     }
   };
 
   /**
-   * The phone bar + sheet of the level the customer is on: one Anlage, or the
-   * fleet above it. Both are derived (`anlageNav.ts`) — the shell only renders.
+   * Die Telefon-Leiste gibt es NUR in einer Anlage (E4): auf der Flotten-Ebene
+   * navigieren die Reiter der Portfolio-Seite, eine zweite Leiste daneben wäre
+   * ein zweites Menü für dieselbe Ebene.
    */
-  const fleetNav: FleetNavInput = {
-    showPortfolio,
-    showPortfolioErloese,
-    showOverview,
-    siteCount: counts.sites,
-  };
-  const barSlots = anlage ? bottomBarSlots(anlage.sidebar) : fleetBarSlots(fleetNav);
-  const sheetGroups = anlage
-    ? moreSheetItems(anlage.sidebar, { isAdmin, showAddAnlage })
-    : fleetSheetGroups(fleetNav, { isAdmin, showAddAnlage });
-  const barLabel = anlage ? `Bereiche der Anlage ${anlage.siteName}` : 'Hauptbereiche';
+  const barSlots = anlage ? bottomBarSlots(anlage.sidebar) : [];
   /** 2+ Anlagen or a fleet level to return to = there is something to switch. */
   const canSwitchAnlage = !!anlage && (anlage.sites.length > 1 || !!anlage.onOpenFleet);
 
@@ -237,16 +233,6 @@ export function AppShell({
     />
   );
 
-  const navGroup = (group: SidebarGroup) => (
-    <div className="vp-navgroup" key={group.key}>
-      <div className={`vp-nav-group-label${group.tone ? ` tone-${group.tone}` : ''}`}>
-        {group.tone && <span className="vp-mode-dot" aria-hidden="true" />}
-        <span className="vp-nav-lbl">{group.label}</span>
-      </div>
-      {group.items.map(navEntry)}
-    </div>
-  );
-
   /**
    * Die Zeilen des Anlagen-Pickers. Kommen sie fertig von aussen
    * (`anlagenWahl.anlagenOptionen`), tragen sie Punkt und Nebenzeile; sonst
@@ -257,7 +243,7 @@ export function AppShell({
       ?? [
         ...anlage.sites.map((s) => ({ value: s.id, label: s.name })),
         ...(anlage.onOpenFleet
-          ? [{ value: ALL_SITES, label: 'Alle Anlagen', sub: 'Zurück zur Übersicht' }]
+          ? [{ value: ALL_SITES, label: fleetLabel, sub: 'Zurück zur Übersicht' }]
           : []),
       ]
     : [];
@@ -269,60 +255,19 @@ export function AppShell({
   };
 
   /**
-   * The Anlage context card: which plant am I looking at, and is it healthy.
-   * A fleet gets a real switcher (plus "Alle Anlagen" back to the fleet
-   * landing); a single-Anlage customer a calm static label.
+   * Die fünf Bereiche der offenen Anlage — OHNE Gruppen-Überschrift und ohne
+   * Picker-Karte (E3): der Umschalter wohnt im Pfad der Kopfzeile, und eine
+   * Überschrift „Anlage" über einem Bereich, der ebenfalls „Anlage" heisst,
+   * wäre nur Rauschen.
    */
   const anlageNav = anlage && (
-    <div className="vp-anlagenav">
-      <div className="vp-anlagenav-ctx">
-        {anlage.sites.length > 1 || anlage.onOpenFleet ? (
-          // DER VORZEIGE-PICKER (Konzept `vp-picker-system`, Entscheid 4):
-          // durchsuchbar, je Anlage ein Gesundheits-Punkt und eine Nebenzeile.
-          // Der Zustands-Streifen darunter bleibt - er gilt der GEÖFFNETEN
-          // Anlage und beantwortet damit eine andere Frage als die Liste.
-          <span className="vp-anlagenav-switch">
-            <Icon name="sun" size={16} className="vp-anlagenav-ic" />
-            <span className="vp-anlagenav-body">
-              <VpPicker
-                ariaLabel="Anlage wählen"
-                className="vp-anlagenav-picker"
-                options={anlagenZeilen}
-                value={anlage.siteId}
-                onChange={waehleAnlage}
-                searchPlaceholder="Anlage suchen …"
-              />
-              {anlage.health && (
-                <span className={`vp-anlagenav-health state-${anlage.health.state}`}>
-                  <span className="vp-health-dot" aria-hidden="true" />
-                  {anlage.health.label}
-                </span>
-              )}
-            </span>
-          </span>
-        ) : (
-          <span className="vp-anlagenav-label">
-            <Icon name="sun" size={16} className="vp-anlagenav-ic" />
-            <span className="vp-anlagenav-body">
-              <span className="t">{anlage.siteName}</span>
-              {anlage.health && (
-                <span className={`vp-anlagenav-health state-${anlage.health.state}`}>
-                  <span className="vp-health-dot" aria-hidden="true" />
-                  {anlage.health.label}
-                </span>
-              )}
-            </span>
-          </span>
-        )}
-      </div>
-      {anlage.sidebar.groups.map(navGroup)}
-    </div>
+    <div className="vp-anlagenav">{anlage.sidebar.bereiche.map(navEntry)}</div>
   );
 
   const sidebar = (
     // Desktop (>=1024px) and the tablet icon rail (721-1023px) are unchanged.
     // The phone slide-over is GONE since Mobil-Umbau Stufe 1: the bottom bar
-    // plus its Mehr sheet cover every destination, so a second menu (and its
+    // covers every destination of an Anlage, so a second menu (and its
     // hamburger) would only compete with the thumb pattern.
     <aside className="vp-sidebar">
       <div className="brand">
@@ -330,95 +275,69 @@ export function AppShell({
       </div>
       <nav aria-label="Hauptnavigation">
         {showPortfolio && (
-          // Betreiber shell (U5): Portfolio leads the sidebar, in place of the
-          // (hidden) Übersicht item.
+          // Die FLOTTEN-Ebene führt die Leiste. Ihre zwei Welten (Messwerte ·
+          // Erlöse) sind seit E3 REITER der Portfolio-Seite — die frühere
+          // Gruppe der Flotten-Welten ist dort aufgegangen.
           <NavItem
             icon={<Icon name={PORTFOLIO_PAGE.icon} size={18} />}
-            label={<span className="vp-nav-lbl">{PORTFOLIO_PAGE.label}</span>}
-            title={PORTFOLIO_PAGE.label}
+            label={<span className="vp-nav-lbl">{fleetLabel}</span>}
+            title={fleetLabel}
             active={page === PORTFOLIO_PAGE.id}
             onClick={() => onNavigate(PORTFOLIO_PAGE.id)}
           />
-        )}
-        {showPortfolio && (
-          // PR G: die zwei Historie-Welten EINE EBENE HÖHER. Sie stehen als
-          // eigene Gruppe unter der Portfolio-Landung, damit „Messwerte" hier
-          // nie mit der gleichnamigen Ansicht EINER Anlage verwechselt wird -
-          // die Gruppenüberschrift sagt, worüber sie sprechen.
-          <div className="vp-navgroup">
-            <div className="vp-nav-group-label">
-              <span className="vp-nav-lbl">Alle Anlagen</span>
-            </div>
-            {PORTFOLIO_WELT_PAGES.filter(
-              (p) => p.id !== 'portfolio-erloese' || showPortfolioErloese,
-            ).map((p) => (
-              <NavItem
-                key={p.id}
-                icon={<Icon name={p.icon} size={18} />}
-                label={<span className="vp-nav-lbl">{p.label}</span>}
-                title={p.label}
-                active={page === p.id}
-                onClick={() => onNavigate(p.id)}
-              />
-            ))}
-          </div>
         )}
         {MAIN_PAGES.filter((p) => p.id !== 'uebersicht' || showOverview).map((p) => (
           <NavItem
             key={p.id}
             icon={<Icon name={p.icon} size={18} />}
-            label={
-              <span className="vp-nav-lbl">
-                {p.id === 'anlagen' ? anlagenLabel(counts.sites) : p.label}
-              </span>
-            }
-            title={p.id === 'anlagen' ? anlagenLabel(counts.sites) : p.label}
+            label={<span className="vp-nav-lbl">{p.label}</span>}
+            title={p.label}
             active={page === p.id}
-            count={
-              // "Meine Anlagen" carries the fleet size; a single Anlage needs
-              // no number - it IS the page.
-              p.id === 'anlagen' && counts.sites != null && counts.sites > 1
-                ? counts.sites
-                : null
-            }
             onClick={() => onNavigate(p.id)}
           />
         ))}
         {anlageNav}
         {isAdmin && (
           // Admin-Umbau Stufe 1 „Ordnung": die elf flachen Punkte sind vier
-          // benannte Gruppen hinter der LANDUNG (Plattform-Übersicht). Die
-          // Gruppierung ist reine Präsentation - keine Route ändert sich, und
-          // die Reihenfolge erzählt jetzt die Arbeit statt der Baugeschichte.
+          // benannte Gruppen hinter der LANDUNG (Plattform-Übersicht). Seit S8
+          // ist der ganze Block ZUSAMMENKLAPPBAR und startet eingeklappt,
+          // solange ein Mandant gewählt ist.
           <>
-            <div className="vp-nav-group-label">
+            <button
+              type="button"
+              className="vp-nav-group-label vp-nav-fold"
+              aria-expanded={platformOpen}
+              onClick={() => setPlatformOpen((v) => !v)}
+            >
+              <Icon name={platformOpen ? 'chevron-down' : 'chevron-right'} size={14} />
               <span className="vp-nav-lbl">Plattform</span>
-            </div>
-            {PLATFORM_GROUPS.map((group) => (
-              <div className="vp-navgroup" key={group.key}>
-                {/* Die Landung trägt keine eigene Überschrift - sie steht schon
-                    unter „Plattform" und braucht keine zweite Zeile. */}
-                {group.label && (
-                  <div className="vp-nav-group-label vp-nav-sublabel">
-                    <span className="vp-nav-lbl">{group.label}</span>
-                  </div>
-                )}
-                {group.pages.map((p) => (
-                  <NavItem
-                    key={p.id}
-                    icon={<Icon name={p.icon} size={18} />}
-                    label={<span className="vp-nav-lbl">{p.label}</span>}
-                    title={p.label}
-                    // Seit Stufe 3 leuchtet der BEREICH, nicht die Seite: der
-                    // Tab „Updates" gehört zu „Geräte", also darf die Leiste
-                    // dort nicht ins Nichts zeigen.
-                    active={navPageFor(page) === p.id}
-                    count={p.id === 'mandanten' && tenants.length ? tenants.length : null}
-                    onClick={() => onNavigate(p.id)}
-                  />
-                ))}
-              </div>
-            ))}
+            </button>
+            {platformOpen &&
+              PLATFORM_GROUPS.map((group) => (
+                <div className="vp-navgroup" key={group.key}>
+                  {/* Die Landung trägt keine eigene Überschrift - sie steht schon
+                      unter „Plattform" und braucht keine zweite Zeile. */}
+                  {group.label && (
+                    <div className="vp-nav-group-label vp-nav-sublabel">
+                      <span className="vp-nav-lbl">{group.label}</span>
+                    </div>
+                  )}
+                  {group.pages.map((p) => (
+                    <NavItem
+                      key={p.id}
+                      icon={<Icon name={p.icon} size={18} />}
+                      label={<span className="vp-nav-lbl">{p.label}</span>}
+                      title={p.label}
+                      // Seit Stufe 3 leuchtet der BEREICH, nicht die Seite: der
+                      // Tab „Updates" gehört zu „Geräte", also darf die Leiste
+                      // dort nicht ins Nichts zeigen.
+                      active={navPageFor(page) === p.id}
+                      count={p.id === 'mandanten' && tenants.length ? tenants.length : null}
+                      onClick={() => onNavigate(p.id)}
+                    />
+                  ))}
+                </div>
+              ))}
           </>
         )}
       </nav>
@@ -437,39 +356,53 @@ export function AppShell({
 
       <div className="vp-content">
         <header className="vp-topbar">
-          {/* Breadcrumb + plant state. On a phone (Stufe 1) this block becomes
-              the plant identity: name as a tappable SWITCHER with the state as
-              its sub-line — on wider screens it stays the row it always was
-              (name, then the health pill), so desktop is unchanged. */}
+          {/* Der PFAD ersetzt den Sprung (E3): „Portfolio › Solarpark Dachau ▾".
+              Der Name IST der Anlagen-Umschalter, das führende Wort der
+              Rückweg auf die Flotten-Ebene. Auf einer Anlage ohne Flotte
+              bleibt nur der Name. */}
           <div className={anlage ? 'vp-topbar-anlage' : 'crumbs'}>
             {anlage ? (
               <div className="crumbs">
+                {anlage.onOpenFleet && (
+                  <>
+                    <button type="button" className="vp-crumb-up" onClick={anlage.onOpenFleet}>
+                      {fleetLabel}
+                    </button>
+                    <span className="vp-crumb-sep" aria-hidden="true">
+                      ›
+                    </span>
+                  </>
+                )}
                 {/* The breadcrumb names the ANLAGE, not the menu item ("Hof
                     Lindenberg", not "Meine Anlagen") - that is what the
                     customer is looking at (G1). The full text stays in the
                     title for a truncated phone width. */}
-                <span className="here" title={anlage.siteName}>
-                  {anlage.siteName}
+                {/* Der NAME ist der Umschalter — auf BEIDEN Breiten (E3: es
+                    gibt keine Picker-Karte in der Seitenleiste mehr, das hier
+                    ist der einzige Wechsler). Die unsichtbare Fläche liegt am
+                    Rechner über genau diesem Block, damit der Rückweg links
+                    und das Zustands-Abzeichen daneben anklickbar bleiben; am
+                    Telefon über der ganzen Kopfzeile (die dokumentierte
+                    68-px-Trefferfläche). EINE absolute Regel, zwei Anker. */}
+                <span className="vp-crumb-anlage">
+                  <span className="here" title={anlage.siteName}>
+                    {anlage.siteName}
+                  </span>
+                  {canSwitchAnlage && (
+                    <>
+                      <Icon name="chevron-down" size={16} className="vp-tb-caret" />
+                      <VpPicker
+                        className="vp-tb-switchwrap"
+                        triggerClassName="vp-tb-switch"
+                        ariaLabel="Anlage wechseln"
+                        options={anlagenZeilen}
+                        value={anlage.siteId}
+                        onChange={waehleAnlage}
+                        searchPlaceholder="Anlage suchen …"
+                      />
+                    </>
+                  )}
                 </span>
-                {canSwitchAnlage && (
-                  <>
-                    <Icon name="chevron-down" size={16} className="vp-tb-caret" />
-                    {/* Phone-only (CSS): der Auslöser ist eine UNSICHTBARE
-                        Fläche über dem ganzen Block, damit die Trefferfläche
-                        die volle Kopfzeilen-Höhe ist. Angetippt öffnet er das
-                        Bottom-Sheet - dieselben Zeilen wie in der
-                        Seitenleiste, samt Punkt und Nebenzeile. */}
-                    <VpPicker
-                      className="vp-tb-switchwrap"
-                      triggerClassName="vp-tb-switch"
-                      ariaLabel="Anlage wechseln"
-                      options={anlagenZeilen}
-                      value={anlage.siteId}
-                      onChange={waehleAnlage}
-                      searchPlaceholder="Anlage suchen …"
-                    />
-                  </>
-                )}
               </div>
             ) : (
               <span className="here">{pageLabel(page, counts.sites)}</span>
@@ -527,7 +460,7 @@ export function AppShell({
             </span>
           )}
 
-          <div className="vp-usermenu">
+          <div className="vp-usermenu" ref={menuRef}>
             <div className="meta">
               <div className="n">
                 {user.name}{' '}
@@ -539,104 +472,97 @@ export function AppShell({
               </div>
               {user.email && user.email !== user.name && <div className="e">{user.email}</div>}
             </div>
-            <span className="vp-avatar" title={user.name}>
-              {initials}
-            </span>
-            {/* Icon + word on wider screens, icon-only on a phone so the
-                breadcrumb keeps its room (G1). The aria-label keeps it
-                accessible either way. */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="vp-logout-btn"
-              onClick={logout}
-              aria-label="Abmelden"
-              title="Abmelden"
-              iconLeft={<Icon name="log-out" size={18} />}
+            {/* E4: das Avatar-Menü ist der Wohnort von Hilfe · Abmelden — und am
+                Telefon zusätzlich der Plattform-Gruppe, weil die Seitenleiste
+                dort nicht rendert und es keinen Hamburger mehr gibt. */}
+            <button
+              type="button"
+              className="vp-avatar vp-avatar-btn"
+              title={user.name}
+              aria-label="Konto-Menü"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((v) => !v)}
             >
-              <span className="vp-logout-label">Abmelden</span>
-            </Button>
+              {initials}
+            </button>
+            {menuOpen && (
+              <div className="vp-avatarmenu" role="menu" aria-label="Konto-Menü">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="vp-avatarmenu-item"
+                  onClick={() => openTarget({ kind: 'help' })}
+                >
+                  <Icon name="help-circle" size={18} />
+                  Hilfe &amp; Kontakt
+                </button>
+                {isAdmin && (
+                  // Nur am Telefon eingeblendet (CSS): am Rechner steht die
+                  // Plattform-Gruppe in der Seitenleiste, ein zweiter Ort für
+                  // dieselben Punkte wäre eine Doppelung.
+                  <div className="vp-avatarmenu-phone">
+                    <div className="vp-avatarmenu-head">Plattform</div>
+                    {PLATFORM_GROUPS.flatMap((g) => g.pages).map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        role="menuitem"
+                        className="vp-avatarmenu-item"
+                        onClick={() => openTarget({ kind: 'page', page: p.id })}
+                      >
+                        <Icon name={p.icon} size={18} />
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="vp-avatarmenu-item"
+                  onClick={() => openTarget({ kind: 'action', action: 'logout' })}
+                >
+                  <Icon name="log-out" size={18} />
+                  Abmelden
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
         <main className="vp-main has-bottombar">{children}</main>
       </div>
 
-      {/* The app-like bottom bar on phones. Since Mobil-Umbau Stufe 1 BOTH
-          levels carry one: inside an Anlage the derived daily areas
-          (Cockpit · Fahrplan · Messwerte · Erlöse), above it the fleet entries
-          (Übersicht · Anlagen) — the last slot always opens the sheet with
-          everything else. Hidden above 720px by CSS. */}
-      <nav
-        className="vp-bottombar"
-        aria-label={barLabel}
-        style={{ ['--vp-bar-slots' as string]: String(barSlots.length) } as React.CSSProperties}
-      >
-        {barSlots.map((item) => {
-          const active =
-            item.target.kind === 'more'
-              ? moreOpen
-              : anlage
-                ? anlage.activeKey === item.key
-                : page === item.key;
-          return (
-            <button
-              key={item.key}
-              type="button"
-              className={`vp-bottombar-item${active ? ' active' : ''}`}
-              aria-current={item.target.kind !== 'more' && active ? 'page' : undefined}
-              aria-expanded={item.target.kind === 'more' ? moreOpen : undefined}
-              onClick={() => openTarget(item.target)}
-            >
-              <span className="ic" aria-hidden="true">
-                <Icon name={item.icon} size={20} />
-                {item.badge != null && <span className="vp-bottombar-badge">{item.badge}</span>}
-              </span>
-              <span className="lbl">{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {moreOpen && (
-        // The "Mehr" sheet: every remaining area, grouped and colour-tagged
-        // exactly like the sidebar - nothing is hidden, only folded away.
-        <>
-          <div className="vp-sheet-scrim" onClick={() => setMoreOpen(false)} aria-hidden="true" />
-          <div className="vp-sheet" role="dialog" aria-label="Weitere Bereiche">
-            <div className="vp-sheet-head">
-              <span>Weitere Bereiche</span>
-              <button type="button" aria-label="Schließen" onClick={() => setMoreOpen(false)}>
-                <Icon name="x" size={20} />
+      {/* Die Telefon-Leiste trägt seit E4 die FÜNF Bereiche der Anlage und
+          KEINE „Mehr"-Kachel — es gibt nichts mehr zu falten. Auf der
+          Flotten-Ebene rendert sie gar nicht (dort navigieren die Reiter).
+          Oberhalb von 720 px blendet CSS sie aus. */}
+      {barSlots.length > 0 && (
+        <nav
+          className="vp-bottombar"
+          aria-label={`Bereiche der Anlage ${anlage?.siteName ?? ''}`.trim()}
+          style={{ ['--vp-bar-slots' as string]: String(barSlots.length) } as React.CSSProperties}
+        >
+          {barSlots.map((item) => {
+            const active = anlage?.activeKey === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                className={`vp-bottombar-item${active ? ' active' : ''}`}
+                aria-current={active ? 'page' : undefined}
+                onClick={() => openTarget(item.target)}
+              >
+                <span className="ic" aria-hidden="true">
+                  <Icon name={item.icon} size={20} />
+                  {item.badge != null && <span className="vp-bottombar-badge">{item.badge}</span>}
+                </span>
+                <span className="lbl">{item.label}</span>
               </button>
-            </div>
-            {sheetGroups.map((group) => (
-              <div className="vp-sheet-group" key={group.key}>
-                <div className={`vp-nav-group-label${group.tone ? ` tone-${group.tone}` : ''}`}>
-                  {group.tone && <span className="vp-mode-dot" aria-hidden="true" />}
-                  {group.label}
-                </div>
-                {group.items.map((item) => {
-                  const active = anlage ? anlage.activeKey === item.key : page === item.key;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      className={`vp-sheet-item${active ? ' active' : ''}`}
-                      onClick={() => openTarget(item.target)}
-                    >
-                      <Icon name={item.icon} size={18} />
-                      {item.label}
-                      {item.badge != null && (
-                        <span className="vp-sheet-badge">{item.badge}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </>
+            );
+          })}
+        </nav>
       )}
 
       {helpOpen && (

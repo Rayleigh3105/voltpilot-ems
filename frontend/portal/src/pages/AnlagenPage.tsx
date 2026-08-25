@@ -26,7 +26,6 @@ import { plantKindLabel } from '../format';
 import { DEFAULT_EARNINGS_RANGE } from '../anlage';
 import {
   anlageRoute,
-  pageRoute,
   parseBefehleGeraet,
   parseBefehleKomponente,
   type AnlagenSub,
@@ -104,6 +103,8 @@ import { PeriodTabs } from '../components/MoneyView';
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { ErrorState, Skeleton } from '../components/States';
 import { LazyBoundary } from '../components/Lazy';
+import { BereichTabs } from '../components/BereichTabs';
+import { anlageSidebar, bereichLabel, tabsFor } from '../anlageNav';
 // Die Unterseiten einer Anlage werden LAZY geladen. Das Cockpit (`sub === null`)
 // zeichnet keine von ihnen, zog aber über den statischen Import ihre gesamte
 // Fracht ins Einstiegs-Bündel: ECharts (jede Diagramm-Fläche), Leaflet (die
@@ -144,6 +145,15 @@ const TechnikSection = lazy(() =>
 );
 const BefehleSection = lazy(() =>
   import('./BefehleSection').then((m) => ({ default: m.BefehleSection })),
+);
+// Marktpreise und Prognose sind seit der Navigations-Runde „zwei Ebenen" (E3)
+// REITER des Verlaufs, also gewöhnliche Unterseiten dieser Anlage - ihre alten
+// Adressen leiten um (`nav.ts` LEGACY_ROUTES).
+const MarktpreisePage = lazy(() =>
+  import('./DataPages').then((m) => ({ default: m.MarktpreisePage })),
+);
+const PrognosePage = lazy(() =>
+  import('./PrognosePage').then((m) => ({ default: m.PrognosePage })),
 );
 
 /** Background refresh cadence of the live widgets (30 s poll pattern). */
@@ -425,6 +435,14 @@ const SUB_PAGES: Partial<Record<AnlagenSub, { title: string; subtitle: string }>
     // schoben am Telefon die Kapseln unter den Falz (Mobil-Umbau Stufe 4).
     subtitle: 'Was Ihre Anlage automatisch tut - und was es bringt.',
   },
+  marktpreise: {
+    title: 'Marktpreise',
+    subtitle: 'Was Strom an der Börse kostet - heute, morgen und im Rückblick.',
+  },
+  prognose: {
+    title: 'Prognosequalität',
+    subtitle: 'Welches Prognosemodell Ihre Anlage plant und wie genau es ist.',
+  },
   lastspitzen: {
     title: 'Lastspitzen',
     subtitle:
@@ -460,6 +478,11 @@ function AnlagenSubPage({
   onReload: (selectSiteId?: string) => void;
 }) {
   const meta = SUB_PAGES[sub];
+  // Die REITER dieses Bereichs - aus DEMSELBEN Modell wie die Seitenleiste
+  // (`anlageSidebar`), damit Leiste und Reiter nie Verschiedenes behaupten.
+  // Ein Bereich, der EINE Seite ist (Cockpit, Steuerung), liefert keine.
+  const sidebar = anlageSidebar(surface);
+  const tabs = tabsFor(sidebar, sub);
   return (
     <>
       <button type="button" className="vp-fleet-back" onClick={onBack}>
@@ -474,6 +497,12 @@ function AnlagenSubPage({
           </div>
         </div>
       )}
+      <BereichTabs
+        tabs={tabs}
+        active={sub}
+        label={`Reiter des Bereichs ${bereichLabel(sidebar, sub)}`}
+        onOpen={onOpenSub}
+      />
       <LazyBoundary>
         {sub === 'fahrplan' && <FahrplanSection site={site} />}
         {sub === 'messwerte' && (
@@ -487,6 +516,20 @@ function AnlagenSubPage({
           <ErloeseSection site={site} surface={surface} onOpenWelt={(welt) => onOpenSub(welt)} />
         )}
         {sub === 'wetter' && <WetterSection site={site} />}
+        {/* Als Reiter des Verlaufs: die Anlage steht im Pfad, den Titel trägt
+            der Seitenkopf oben - `embedded` unterdrückt darum Überschrift und
+            Anlagen-Wähler der ehemals eigenständigen Seiten. */}
+        {sub === 'marktpreise' && (
+          <MarktpreisePage
+            sites={[site]}
+            selectedSite={site.id}
+            onSelectSite={() => {}}
+            embedded
+          />
+        )}
+        {sub === 'prognose' && (
+          <PrognosePage sites={[site]} selectedSite={site.id} onSelectSite={() => {}} embedded />
+        )}
       {/* The Anlagen-Modell names the ONE VoltPilot-Box every reported device
           hangs off (Captain-Korrektur) — from the devices list the shell already
           holds and keeps fresh, so this page adds no request of its own. Its
@@ -566,14 +609,18 @@ export function AnlageSeite({
   site,
   sites,
   onOpenSub,
-  onBackToList,
-  onNavigate,
   onReload,
   onHealthFacts,
 }: AnlagenPageProps & {
   site: Site;
   onOpenSub: (sub: AnlagenSub) => void;
-  onBackToList: (() => void) | null;
+  /**
+   * ⚠ Seit E3 UNGENUTZT: der Pfad in der Kopfzeile ist der Rückweg zur
+   * Flotten-Ebene. Der Prop bleibt, damit die zwei Aufrufer (Anlagen-Seite,
+   * Übersicht) unverändert bleiben — und als Andockpunkt, falls die Fläche
+   * je wieder einen eigenen Rückweg braucht.
+   */
+  onBackToList?: (() => void) | null;
 }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [overviewFailed, setOverviewFailed] = useState(false);
@@ -1277,7 +1324,7 @@ export function AnlageSeite({
       slots={planSlots}
       slotMinutes={plan?.slotMinutes ?? 15}
       activeSlot={activePlanSlot}
-      onOpenMarktpreise={() => onNavigate(pageRoute('marktpreise'))}
+      onOpenMarktpreise={() => onOpenSub('marktpreise')}
       compact={isPhone}
     />
   ) : null;
@@ -1581,12 +1628,10 @@ export function AnlageSeite({
           onAbbrechen={() => setEigenDialog(null)}
         />
       )}
-      {onBackToList && (
-        <button type="button" className="vp-fleet-back" onClick={onBackToList}>
-          <Icon name="chevron-left" size={18} />
-          Alle Anlagen
-        </button>
-      )}
+      {/* Der Link „‹ Alle Anlagen" ist mit der Navigations-Runde „zwei
+          Ebenen" ERSATZLOS entfallen (E3): der Pfad in der Kopfzeile
+          („Portfolio › Solarpark Dachau ▾") IST der Rückweg, und zwei
+          Rückwege auf einer Seite sind einer zu viel. */}
 
       {/* 1 · Kopf: Status + Warnungen bleiben oben sichtbar; Technik hinterm Zahnrad.
              Mobil-Umbau Stufe 2: am Telefon trägt die Topbar seit Stufe 1 die

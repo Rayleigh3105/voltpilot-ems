@@ -122,28 +122,40 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
       </AppShell>,
     );
 
-  it('renders the base group with its four areas, labelled "Anlage"', () => {
-    // Cockpit+Live merge (Option A): no "Live-Daten" nav item any more.
+  it('rendert die BEREICHE der Anlage - ohne Gruppen-Überschrift', () => {
+    // E3: die Seitenleiste trägt die Bereiche, nicht mehr eine Gruppe „Anlage"
+    // über Einträgen, von denen einer ebenfalls „Anlage" heißt.
     const { container } = renderShell();
-    expect(container.querySelector('.vp-anlagenav .vp-nav-group-label')?.textContent).toBe(
-      'Anlage',
-    );
-    for (const label of ['Cockpit', 'Messwerte', 'Steuerung', 'Anlagen-Modell']) {
-      expect(screen.getAllByRole('button', { name: new RegExp(label) }).length).toBeGreaterThanOrEqual(1);
-    }
+    expect(container.querySelector('.vp-anlagenav .vp-nav-group-label')).toBeNull();
+    // Ohne Speicher/Ladepunkte gibt es den zweiten Bereich nicht (Gesetz 1:
+    // ein Bereich ohne Inhalt existiert nicht).
+    expect(
+      [...container.querySelectorAll('.vp-anlagenav .vp-nav-lbl')].map((n) => n.textContent),
+    ).toEqual(['Cockpit', 'Verlauf', 'Steuerung', 'Anlage']);
+    // Und die früheren Einzel-Einträge sind Reiter geworden, keine Nav-Zeilen.
+    expect(container.querySelector('.vp-anlagenav')?.textContent).not.toContain('Messwerte');
     expect(screen.queryByRole('button', { name: /Live-Daten/ })).toBeNull();
   });
 
-  it('renders the 5-slot bottom bar for the Anlage', () => {
-    renderShell();
-    const bar = screen.getByLabelText('Bereiche der Anlage Hof Lindenberg');
-    expect(bar.querySelectorAll('.vp-bottombar-item')).toHaveLength(5);
-    expect(bar.textContent).toContain('Mehr');
+  it('trägt die Anwendungs-Ansichten als REITER, nicht als Nav-Gruppe', () => {
+    // Ein DV-Park: Fahrplan/Marktpreise/Prognose kommen aus dem Modus. Sie
+    // stehen im Bereich, nicht in einer farbigen Gruppe daneben.
+    const { container } = renderShell({ sidebar: anlageSidebar(MARKT) });
+    const nav = container.querySelector('.vp-anlagenav') as HTMLElement;
+    expect(nav.textContent).not.toContain('Anwendung · ');
+    expect([...nav.querySelectorAll('.vp-nav-lbl')].map((n) => n.textContent)).toEqual([
+      'Cockpit',
+      'Fahrplan',
+      'Verlauf',
+      'Steuerung',
+      'Anlage',
+    ]);
   });
 
-  it('has NO "Mehr ▾" popover trigger anywhere', () => {
+  it('hat KEINEN „Mehr ▾"-Auslöser und kein Blatt mehr', () => {
     const { container } = renderShell();
     expect(container.querySelector('.vp-more-btn')).toBeNull();
+    expect(container.querySelector('.vp-sheet')).toBeNull();
   });
 
   it('carries the active-mode count as the Steuerung badge', () => {
@@ -214,14 +226,17 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(container.querySelector('.vp-healthbadge')).toBeNull();
   });
 
-  it('„Alles in Ordnung" trägt den grünen Zustand - in Kopfzeile UND Anlagen-Karte', () => {
+  it('„Alles in Ordnung" trägt den grünen Zustand - GENAU EINMAL, in der Kopfzeile', () => {
     const { container } = renderShell();
     const badge = container.querySelector('.vp-topbar .vp-healthbadge');
     expect(badge?.className).toContain('state-ok');
     expect(badge?.textContent).toContain('Alles in Ordnung');
     // Der Punkt hängt an genau dem Zustand, den das Stylesheet einfärbt.
     expect(badge?.querySelector('.vp-health-dot')).not.toBeNull();
-    expect(container.querySelector('.vp-anlagenav-health.state-ok')).not.toBeNull();
+    // E3: die Anlagen-Karte der Seitenleiste ist entfallen - der Zustand steht
+    // nur noch im Pfad, sonst wären es zwei Orte für dieselbe Aussage.
+    expect(container.querySelectorAll('.vp-healthbadge')).toHaveLength(1);
+    expect(container.querySelector('.vp-anlagenav-health')).toBeNull();
     // Eine Warnung behält ihre eigene Farbe - der grüne Zustand darf sie nicht
     // vereinnahmen.
     const warn = renderShell({ health: WARN_HEALTH }).container.querySelector(
@@ -231,20 +246,24 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(warn?.className).not.toContain('state-ok');
   });
 
-  it('shows a static Anlage label with its health line for a single-Anlage customer', () => {
+  it('zeigt einem Einzel-Anlagen-Kunden Namen + Zustand, aber keinen Umschalter', () => {
     const { container } = renderShell();
-    expect(container.querySelector('.vp-anlagenav-label .t')?.textContent).toBe('Hof Lindenberg');
-    expect(container.querySelector('.vp-anlagenav-health')?.textContent).toContain(
+    // E3: keine Picker-Karte in der Seitenleiste mehr.
+    expect(container.querySelector('.vp-anlagenav-label')).toBeNull();
+    expect(container.querySelector('.vp-topbar .here')?.textContent).toBe('Hof Lindenberg');
+    expect(container.querySelector('.vp-topbar .vp-healthbadge')?.textContent).toContain(
       'Alles in Ordnung',
     );
-    expect(container.querySelector('.vp-topbar .here')?.textContent).toBe('Hof Lindenberg');
-    expect(screen.queryByLabelText('Anlage wählen')).toBeNull();
+    // Eine Anlage, keine Flotte: es gibt nichts zu wechseln, also auch keinen
+    // Wechsler - ein Knopf, der nichts bewirken kann, wird nicht angeboten.
+    expect(screen.queryByRole('combobox', { name: 'Anlage wechseln' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Anlage wählen' })).toBeNull();
   });
 
-  it('turns the label into a real switcher with "Alle Anlagen" for a fleet', () => {
+  it('der Umschalter wohnt im PFAD - und die erste Zeile führt zurück auf die Flotte', () => {
     const onSelectSite = vi.fn();
     const onOpenFleet = vi.fn();
-    renderShell({
+    const { container } = renderShell({
       sites: [
         { id: 's-1', name: 'Hof Lindenberg' },
         { id: 's-2', name: 'Halle Nord' },
@@ -252,14 +271,44 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
       onSelectSite,
       onOpenFleet,
     });
-    // Seit dem Picker-System ist der Wechsler ein VpPicker, kein `select`:
-    // aufklappen, Zeile antippen. Der Wert ist derselbe.
-    fireEvent.click(screen.getByRole('combobox', { name: 'Anlage wählen' }));
+    // E3: die Picker-KARTE der Seitenleiste ist entfallen, es gibt genau EINEN
+    // Umschalter - den im Pfad der Kopfzeile.
+    expect(screen.queryByRole('combobox', { name: 'Anlage wählen' })).toBeNull();
+    const pfad = container.querySelector('.vp-topbar-anlage') as HTMLElement;
+    fireEvent.click(within(pfad).getByRole('combobox', { name: 'Anlage wechseln' }));
     fireEvent.click(screen.getByRole('option', { name: /Halle Nord/ }));
     expect(onSelectSite).toHaveBeenCalledWith('s-2');
-    fireEvent.click(screen.getByRole('combobox', { name: 'Anlage wählen' }));
-    fireEvent.click(screen.getByRole('option', { name: /Alle Anlagen/ }));
+  });
+
+  it('der PFAD nennt die Flotten-Ebene und führt zurück', () => {
+    const onOpenFleet = vi.fn();
+    const { container } = renderShell({ onOpenFleet, sites: [{ id: 's-1', name: 'Hof Lindenberg' }] });
+    const up = container.querySelector('.vp-crumb-up') as HTMLElement;
+    // Ohne eigene Angabe trägt er den Vorgabe-Namen der Flotten-Ebene.
+    expect(up.textContent).toBe('Portfolio');
+    fireEvent.click(up);
     expect(onOpenFleet).toHaveBeenCalledTimes(1);
+  });
+
+  it('nennt die Flotten-Ebene beim WORT des Kunden (fleetLabel)', () => {
+    const { container } = render(
+      <AppShell
+        {...baseProps}
+        showAddAnlage={false}
+        onAddAnlage={vi.fn()}
+        fleetLabel="Meine Anlagen"
+        anlage={{ ...anlage, onOpenFleet: vi.fn() }}
+      >
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(container.querySelector('.vp-crumb-up')?.textContent).toBe('Meine Anlagen');
+  });
+
+  it('zeigt ohne Flotten-Ebene NUR den Anlagen-Namen', () => {
+    const { container } = renderShell();
+    expect(container.querySelector('.vp-crumb-up')).toBeNull();
+    expect(container.querySelector('.vp-topbar .here')?.textContent).toBe('Hof Lindenberg');
   });
 
   it('opens an area on click', () => {
@@ -269,62 +318,54 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(onOpenSub).toHaveBeenCalledWith('steuerung');
   });
 
-  it('renders the market mode group ONLY while that mode is active', () => {
-    const { container } = renderShell();
-    expect(container.querySelector('.vp-sidebar')?.textContent).not.toContain('Marktpreise');
-
-    const onOpenPage = vi.fn();
-    const second = renderShell({ sidebar: anlageSidebar(MARKT), onOpenPage });
-    const sidebar = second.container.querySelector('.vp-sidebar') as HTMLElement;
-    expect(sidebar.textContent).toContain('Anwendung · Marktoptimierung');
-    expect(sidebar.textContent).toContain('Fahrplan');
-    fireEvent.click(within(sidebar).getByRole('button', { name: /Marktpreise/ }));
-    expect(onOpenPage).toHaveBeenCalledWith('marktpreise');
-  });
-
-  it('the Mehr slot opens a sheet with the remaining areas, colour-tagged', () => {
+  /**
+   * E4 · die Telefon-Leiste: die FÜNF Bereiche, kein „Mehr", kein Blatt. Sie
+   * heißt am Telefon wie in der Seitenleiste - derselbe Ort, dasselbe Wort.
+   */
+  it('belegt die Leiste mit den BEREICHEN der Anlage - ohne „Mehr"', () => {
     renderShell({ sidebar: anlageSidebar(MARKT) });
     const bar = screen.getByLabelText('Bereiche der Anlage Hof Lindenberg');
-    fireEvent.click(bar.querySelectorAll('.vp-bottombar-item')[4]);
-    const sheet = screen.getByRole('dialog', { name: 'Weitere Bereiche' });
-    // Der DV-Park trägt Fahrplan/Marktpreise/Prognose im Modus; der Fahrplan
-    // zieht in die Leiste, der Rest bleibt farbig getaggt im Blatt.
-    expect(sheet.textContent).toContain('Anwendung · Marktoptimierung');
-    expect(sheet.textContent).toContain('Wetter');
-    expect(sheet.textContent).toContain('Einstellungen');
-    expect(sheet.textContent).toContain('Hilfe & Kontakt');
-    expect(sheet.querySelector('.tone-markt')).not.toBeNull();
+    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
+      'Cockpit',
+      'Fahrplan',
+      'Verlauf',
+      'Steuerung',
+      'Anlage',
+    ]);
+    expect(bar.textContent).not.toContain('Mehr');
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 5');
+    expect(screen.queryByRole('dialog', { name: 'Weitere Bereiche' })).toBeNull();
   });
 
-  /**
-   * Mobil-Umbau Stufe 1: die Leiste trägt die täglichen Fragen, der Hamburger
-   * ist weg, und die Kopfzeile wird zur Anlagen-Identität.
-   */
-  it('belegt die Leiste mit den täglichen Fragen (und rückt ohne sie nach)', () => {
-    // Speicher + Geld-Modus: die neue Belegung.
-    renderShell({ sidebar: anlageSidebar(MARKT) });
-    expect(
-      [...screen.getByLabelText(/Bereiche der Anlage/).querySelectorAll('.lbl')].map(
-        (n) => n.textContent,
-      ),
-    ).toEqual(['Cockpit', 'Fahrplan', 'Messwerte', 'Erlöse', 'Mehr']);
-
-    // Weder Speicher noch Geld-Modus: Steuerung und Anlage rücken nach.
-    cleanup();
+  it('rückt nach, wo ein Bereich fehlt - nie ein leerer Platz', () => {
     renderShell();
-    expect(
-      [...screen.getByLabelText(/Bereiche der Anlage/).querySelectorAll('.lbl')].map(
-        (n) => n.textContent,
-      ),
-    ).toEqual(['Cockpit', 'Messwerte', 'Steuerung', 'Anlage', 'Mehr']);
+    const bar = screen.getByLabelText(/Bereiche der Anlage/);
+    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
+      'Cockpit',
+      'Verlauf',
+      'Steuerung',
+      'Anlage',
+    ]);
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 4');
   });
 
-  it('zeigt das Steuerungs-Abzeichen auf „Mehr", wenn die Steuerung ins Blatt fällt', () => {
-    renderShell({ sidebar: anlageSidebar(MARKT, 2) });
+  it('die Leiste NAVIGIERT in ihren Bereich', () => {
+    const onOpenSub = vi.fn();
+    renderShell({ sidebar: anlageSidebar(MARKT), onOpenSub });
     const bar = screen.getByLabelText(/Bereiche der Anlage/);
-    const mehr = [...bar.querySelectorAll('.vp-bottombar-item')].at(-1) as HTMLElement;
-    expect(mehr.textContent).toContain('Mehr');
-    expect(mehr.querySelector('.vp-bottombar-badge')?.textContent).toBe('2');
+    fireEvent.click(bar.querySelectorAll('.vp-bottombar-item')[1]);
+    expect(onOpenSub).toHaveBeenCalledWith('fahrplan');
+  });
+
+  it('das Steuerungs-Abzeichen BLEIBT an der Steuerung - in Leiste und Seitenleiste', () => {
+    const { container } = renderShell({ sidebar: anlageSidebar(MARKT, 2) });
+    const bar = screen.getByLabelText(/Bereiche der Anlage/);
+    const steuerung = [...bar.querySelectorAll('.vp-bottombar-item')].find((n) =>
+      n.textContent?.includes('Steuerung'),
+    ) as HTMLElement;
+    expect(steuerung.querySelector('.vp-bottombar-badge')?.textContent).toBe('2');
+    // Und derselbe Zähler steht in der Seitenleiste - eine Zahl, zwei Orte.
+    expect(container.querySelector('.vp-anlagenav')?.textContent).toContain('2');
   });
 
   it('hat KEINEN Hamburger mehr - Leiste und Blatt tragen alles', () => {
@@ -370,49 +411,60 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(css).toMatch(/\.vp-app \.vp-tb-switchwrap \{\s*display: block;/);
   });
 
-  it('faltet „＋ Anlage" und „Abmelden" ins Blatt (sie verlassen die Kopfzeile am Telefon)', () => {
+  /**
+   * E4 · das Avatar-Menü ist der Wohnort von Hilfe · Abmelden — und am Telefon
+   * zusätzlich der Plattform-Gruppe: die Seitenleiste rendert dort nicht, das
+   * „Mehr"-Blatt gibt es nicht mehr, und einen Hamburger gab es schon vorher
+   * nicht. Ohne dieses Menü käme ein Admin am Telefon nirgends hin.
+   */
+  it('trägt Hilfe und Abmelden im Avatar-Menü', () => {
+    renderShell();
+    // Zu ist zu: kein Menü im DOM, bevor jemand es öffnet.
+    expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Konto-Menü' }));
+    const menu = screen.getByRole('menu', { name: 'Konto-Menü' });
+    expect(menu.textContent).toContain('Hilfe & Kontakt');
+    expect(menu.textContent).toContain('Abmelden');
+  });
+
+  it('führt die Plattform-Punkte im Avatar-Menü mit (der Telefon-Weg des Admins)', () => {
     render(
       <AppShell
         {...baseProps}
-        showAddAnlage
+        isAdmin
+        showAddAnlage={false}
         onAddAnlage={vi.fn()}
         anlage={anlage}
       >
         <div>content</div>
       </AppShell>,
     );
-    fireEvent.click(
-      [...screen.getByLabelText(/Bereiche der Anlage/).querySelectorAll('.vp-bottombar-item')].at(
-        -1,
-      ) as HTMLElement,
-    );
-    const sheet = screen.getByRole('dialog', { name: 'Weitere Bereiche' });
-    expect(sheet.textContent).toContain('Anlage hinzufügen');
-    expect(sheet.textContent).toContain('Abmelden');
+    fireEvent.click(screen.getByRole('button', { name: 'Konto-Menü' }));
+    const menu = screen.getByRole('menu', { name: 'Konto-Menü' });
+    expect(menu.textContent).toContain('Plattform');
+    // Seit Stufe 3 ist „Edge-Updates" ein TAB von „Geräte" - im Menü steht der
+    // Bereich, nicht sein Tab (der wäre ein zweiter Weg zum selben Ort).
+    expect(menu.textContent).toContain('Geräte');
+    expect(menu.textContent).not.toContain('Edge-Updates');
+    // Und ein Kunde bekommt die Gruppe gar nicht erst.
+    cleanup();
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: 'Konto-Menü' }));
+    expect(screen.getByRole('menu', { name: 'Konto-Menü' }).textContent).not.toContain('Plattform');
   });
 
-  it('führt die Plattform-Gruppe im Blatt mit, weil ein Admin am Telefon sonst nirgends hinkommt', () => {
-    render(
-      <AppShell {...baseProps} isAdmin showAddAnlage={false} onAddAnlage={vi.fn()} anlage={anlage}>
-        <div>content</div>
-      </AppShell>,
-    );
-    fireEvent.click(
-      [...screen.getByLabelText(/Bereiche der Anlage/).querySelectorAll('.vp-bottombar-item')].at(
-        -1,
-      ) as HTMLElement,
-    );
-    const sheet = screen.getByRole('dialog', { name: 'Weitere Bereiche' });
-    expect(sheet.textContent).toContain('Plattform');
-    // Seit Stufe 3 ist „Edge-Updates" ein TAB von „Geräte" - im Blatt steht
-    // der Bereich, nicht sein Tab (der wäre ein zweiter Weg zum selben Ort).
-    expect(sheet.textContent).toContain('Geräte');
-    expect(sheet.textContent).not.toContain('Edge-Updates');
+  it('das Avatar-Menü schließt mit Escape', () => {
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: 'Konto-Menü' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
   });
 
   it('the foot Hilfe entry opens an honest help panel, never a dead link', () => {
     renderShell();
-    fireEvent.click(screen.getByRole('button', { name: /Hilfe & Kontakt/ }));
+    // Der Fuß der Seitenleiste trägt ihn weiterhin (am Rechner), das
+    // Avatar-Menü am Telefon - beide öffnen dieselbe Fläche.
+    fireEvent.click(screen.getAllByRole('button', { name: /Hilfe & Kontakt/ })[0]);
     const panel = screen.getByRole('dialog', { name: 'Hilfe & Kontakt' });
     expect(panel.textContent).toContain('VoltPilot');
   });
@@ -431,10 +483,11 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
 });
 
 /**
- * Mobil-Umbau Stufe 1, Flotten-Ebene: dieselbe Bar-Mechanik eine Ebene höher -
- * das Daumen-Muster überlebt den Ebenen-Wechsel, statt am Hamburger zu enden.
+ * E4 · die Flotten-Ebene hat KEINE Leiste: dort navigieren die Reiter der
+ * Portfolio-Seite, eine zweite Leiste daneben wäre ein zweites Menü für
+ * dieselbe Ebene.
  */
-describe('AppShell: die Leiste der Flotten-Ebene', () => {
+describe('AppShell: die Flotten-Ebene navigiert ohne Leiste', () => {
   const renderFleet = (over: Partial<React.ComponentProps<typeof AppShell>> = {}) =>
     render(
       <AppShell
@@ -451,52 +504,49 @@ describe('AppShell: die Leiste der Flotten-Ebene', () => {
       </AppShell>,
     );
 
-  it('ist Übersicht · Anlagen · Mehr und hebt die offene Seite hervor', () => {
-    renderFleet();
-    const bar = screen.getByLabelText('Hauptbereiche');
-    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
-      'Übersicht',
-      'Anlagen',
-      'Mehr',
-    ]);
-    expect(bar.querySelector('.vp-bottombar-item.active')?.textContent).toContain('Übersicht');
-    // Die Spaltenzahl folgt der Belegung, statt fünf zu behaupten.
-    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 3');
+  it('rendert weder Leiste noch Blatt', () => {
+    const { container } = renderFleet();
+    expect(container.querySelector('.vp-bottombar')).toBeNull();
+    expect(screen.queryByLabelText('Hauptbereiche')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Weitere Bereiche' })).toBeNull();
   });
 
-  it('navigiert per Leiste und trägt Hilfe/Abmelden im Blatt', () => {
+  it('führt beim Betreiber mit dem Portfolio - unter SEINEM Namen', () => {
     const onNavigate = vi.fn();
-    renderFleet({ onNavigate });
-    const bar = screen.getByLabelText('Hauptbereiche');
-    fireEvent.click(bar.querySelectorAll('.vp-bottombar-item')[1]);
-    expect(onNavigate).toHaveBeenCalledWith('anlagen');
-
-    fireEvent.click([...bar.querySelectorAll('.vp-bottombar-item')].at(-1) as HTMLElement);
-    const sheet = screen.getByRole('dialog', { name: 'Weitere Bereiche' });
-    expect(sheet.textContent).toContain('Hilfe & Kontakt');
-    expect(sheet.textContent).toContain('Abmelden');
-  });
-
-  it('führt beim Betreiber mit dem Portfolio und legt die Plattform ins Blatt', () => {
     renderFleet({
-      isAdmin: true,
       page: 'portfolio',
       showOverview: false,
       showPortfolio: true,
-      showPortfolioErloese: true,
+      fleetLabel: 'Portfolio',
+      onNavigate,
     });
-    const bar = screen.getByLabelText('Hauptbereiche');
-    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
-      'Portfolio',
-      'Anlagen',
-      'Messwerte',
-      'Erlöse',
-      'Mehr',
-    ]);
-    fireEvent.click([...bar.querySelectorAll('.vp-bottombar-item')].at(-1) as HTMLElement);
-    expect(screen.getByRole('dialog', { name: 'Weitere Bereiche' }).textContent).toContain(
-      'Mandanten',
-    );
+    const nav = screen.getByLabelText('Hauptnavigation');
+    const eintraege = [...nav.querySelectorAll('.vp-nav-lbl')].map((n) => n.textContent);
+    expect(eintraege[0]).toBe('Portfolio');
+    // Die frühere Listen-Seite „Meine Anlagen" ist ersatzlos aufgegangen.
+    expect(eintraege).not.toContain('Meine Anlage');
+    expect(eintraege).not.toContain('Meine Anlagen');
+    fireEvent.click(screen.getByTitle('Portfolio'));
+    expect(onNavigate).toHaveBeenCalledWith('portfolio');
+  });
+
+  it('nennt dieselbe Ebene beim Endkunden „Meine Anlagen"', () => {
+    renderFleet({
+      page: 'portfolio',
+      showOverview: false,
+      showPortfolio: true,
+      fleetLabel: 'Meine Anlagen',
+    });
+    expect(screen.getByTitle('Meine Anlagen')).toBeInTheDocument();
+    expect(screen.queryByTitle('Portfolio')).toBeNull();
+  });
+
+  it('trägt Hilfe und Abmelden auch hier im Avatar-Menü', () => {
+    renderFleet();
+    fireEvent.click(screen.getByRole('button', { name: 'Konto-Menü' }));
+    const menu = screen.getByRole('menu', { name: 'Konto-Menü' });
+    expect(menu.textContent).toContain('Hilfe & Kontakt');
+    expect(menu.textContent).toContain('Abmelden');
   });
 });
 
@@ -520,12 +570,24 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
     return [...nav.querySelectorAll('.vp-nav-group-label .vp-nav-lbl')].map((n) => n.textContent);
   }
 
+  /**
+   * S8: die Gruppe ist ZUSAMMENKLAPPBAR und startet EINGEKLAPPT, solange ein
+   * Mandant gewählt ist - dort arbeitet der Admin in der Kundensicht, und elf
+   * Plattform-Punkte darüber sind dann Rauschen. Ohne Mandant ist sie offen.
+   */
+  function oeffnePlattform() {
+    // Exakt „Plattform" - `/Plattform/` träfe auch „Plattform-Übersicht".
+    const knopf = screen.getByRole('button', { name: 'Plattform' });
+    if (knopf.getAttribute('aria-expanded') === 'false') fireEvent.click(knopf);
+  }
+
   it('rendert „Plattform" plus die vier Gruppen-Überschriften in Arbeits-Reihenfolge', () => {
     render(
       <AppShell {...adminProps}>
         <div>content</div>
       </AppShell>,
     );
+    oeffnePlattform();
     expect(sidebarLabels()).toEqual([
       'Plattform',
       'Flotte',
@@ -541,6 +603,7 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
         <div>content</div>
       </AppShell>,
     );
+    oeffnePlattform();
     const nav = screen.getByLabelText('Hauptnavigation');
     const gruppen = [...nav.querySelectorAll('.vp-navgroup')];
     // Die erste Gruppe ist die Landung: ein Eintrag, keine Zwischenüberschrift.
@@ -563,6 +626,7 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
         <div>content</div>
       </AppShell>,
     );
+    oeffnePlattform();
     for (const label of ['Geräte', 'Steuerungs-Freigabe',
       'Optimizer', 'Flows', 'Gerätevorlagen', 'Komponenten', 'Mandanten']) {
       expect(screen.getByTitle(label)).toBeInTheDocument();
@@ -584,9 +648,57 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
         <div>content</div>
       </AppShell>,
     );
+    oeffnePlattform();
     // Ein Tab darf die Leiste nie ins Nichts zeigen lassen: der Bereich ist
     // aktiv, sonst wüsste der Betreiber nicht, wo er steht.
     expect(screen.getByTitle('Geräte').className).toContain('active');
+  });
+
+  it('S8: die Gruppe startet EINGEKLAPPT, solange ein Mandant gewählt ist', () => {
+    render(
+      <AppShell {...adminProps} tenantOverride="t-1">
+        <div>content</div>
+      </AppShell>,
+    );
+    const knopf = screen.getByRole('button', { name: 'Plattform' });
+    expect(knopf.getAttribute('aria-expanded')).toBe('false');
+    // Eingeklappt heißt EINGEKLAPPT: die Punkte stehen nicht im DOM.
+    expect(screen.queryByTitle('Mandanten')).toBeNull();
+    // Ein Klick öffnet sie - der Weg ist da, er drängt sich nur nicht auf.
+    fireEvent.click(knopf);
+    expect(screen.getByTitle('Mandanten')).toBeInTheDocument();
+
+    // Und ohne gewählten Mandanten steht sie von sich aus offen.
+    cleanup();
+    render(
+      <AppShell {...adminProps} tenantOverride={null}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Plattform' }).getAttribute('aria-expanded'),
+    ).toBe('true');
+  });
+
+  it('S8: die Wahl eines Mandanten klappt sie zu, das Zurücksetzen wieder auf', () => {
+    const { rerender } = render(
+      <AppShell {...adminProps} tenantOverride={null}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(screen.getByTitle('Mandanten')).toBeInTheDocument();
+    rerender(
+      <AppShell {...adminProps} tenantOverride="t-1">
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(screen.queryByTitle('Mandanten')).toBeNull();
+    rerender(
+      <AppShell {...adminProps} tenantOverride={null}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(screen.getByTitle('Mandanten')).toBeInTheDocument();
   });
 
   it('zeigt einem Kunden keine einzige Plattform-Gruppe', () => {
@@ -596,6 +708,7 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
       </AppShell>,
     );
     expect(sidebarLabels()).not.toContain('Plattform');
+    expect(screen.queryByRole('button', { name: 'Plattform' })).toBeNull();
     expect(screen.queryByTitle('Geräte')).toBeNull();
   });
 });

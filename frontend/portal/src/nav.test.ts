@@ -31,7 +31,7 @@ import {
   parseKomponente,
   boxSeiteHash,
 } from './nav';
-import { anlageSidebar, moreSheetItems } from './anlageNav';
+import { anlageSidebar } from './anlageNav';
 import { anlageSurface } from './surface';
 
 /** Every AnlagenSub route that exists. */
@@ -59,8 +59,6 @@ describe('parseRoute', () => {
     expect(parseRoute('')).toEqual(route('uebersicht'));
     expect(parseRoute('#/')).toEqual(route('uebersicht'));
     expect(parseRoute('#/uebersicht')).toEqual(route('uebersicht'));
-    expect(parseRoute('#/marktpreise')).toEqual(route('marktpreise'));
-    expect(parseRoute('#/prognose')).toEqual(route('prognose'));
     expect(parseRoute('#/mandanten')).toEqual(route('mandanten'));
     // Stufe 4 (F5): „Benutzer" ist im Mandanten-Drawer aufgegangen - das
     // Lesezeichen bleibt gültig und landet auf der Mandanten-Liste, wo der
@@ -157,7 +155,7 @@ describe('parseRoute', () => {
   });
 
   it('drops a query string like the previous router', () => {
-    expect(parseRoute('#/marktpreise?state=abc')).toEqual(route('marktpreise'));
+    expect(parseRoute('#/mandanten?state=abc')).toEqual(route('mandanten'));
   });
 });
 
@@ -165,7 +163,6 @@ describe('hashForRoute', () => {
   it('round-trips every route shape', () => {
     const routes: Route[] = [
       pageRoute('uebersicht'),
-      pageRoute('marktpreise'),
       pageRoute('anlagen'),
       anlageRoute('site-1'),
       anlageRoute('site-1', 'fahrplan'),
@@ -307,15 +304,27 @@ describe('M1: no route breaks when the tab bar is retired', () => {
     });
   });
 
-  it('keeps Marktpreise/Prognose addressable although they left the main nav', () => {
-    expect(parseRoute('#/marktpreise')).toEqual(route('marktpreise'));
-    expect(parseRoute('#/prognose')).toEqual(route('prognose'));
-    expect(pageLabel('marktpreise')).toBe('Marktpreise');
-    expect(pageLabel('prognose')).toBe('Prognosequalität');
+  it('zieht Marktpreise/Prognose UNTER die Anlage - ohne ein Lesezeichen zu brechen', () => {
+    // Navigations-Runde „zwei Ebenen" (E3): sie sind Reiter des Verlaufs
+    // geworden. Die alten Adressen bleiben gültig und lösen sich wie jede
+    // andere stillgelegte Route auf (die EINE Anlage eines Einzel-Kunden,
+    // sonst die Flotten-Ebene) - das `#/fahrplan`-Muster.
+    expect(parseRoute('#/marktpreise')).toEqual({
+      page: 'anlagen',
+      siteId: null,
+      sub: 'marktpreise',
+    });
+    expect(parseRoute('#/prognose')).toEqual({ page: 'anlagen', siteId: null, sub: 'prognose' });
+    // Und als Unterseite tragen sie ihre eigene Adresse.
+    expect(parseRoute(hashForRoute(anlageRoute('s-1', 'marktpreise')))).toEqual({
+      page: 'anlagen',
+      siteId: 's-1',
+      sub: 'marktpreise',
+    });
   });
 
-  it('routes every UI-reachable area (v3 shell: sidebar groups + foot + Mehr sheet)', () => {
-    // The widest possible nav, so every mode group that can exist does.
+  it('routet jede Fläche, die die fünf Bereiche und ihre Reiter erreichen', () => {
+    // Die breitest mögliche Navigation, damit jeder abgeleitete Reiter da ist.
     const sidebar = anlageSidebar(
       anlageSurface({
         entities: [{ id: 'e1', entityType: 'battery-hybrid' }],
@@ -326,12 +335,12 @@ describe('M1: no route breaks when the tab bar is retired', () => {
         },
       }),
     );
-    const reachable = [
-      ...sidebar.groups.flatMap((g) => g.items),
-      ...sidebar.foot,
-      ...moreSheetItems(sidebar).flatMap((g) => g.items),
-    ]
-      .map((i) => (i.target.kind === 'sub' ? i.target.sub : null))
+    const reachable = sidebar.bereiche
+      .flatMap((b) =>
+        b.tabs.length > 0
+          ? b.tabs.map((t) => t.sub as AnlagenSub | null)
+          : [b.target.kind === 'sub' ? b.target.sub : null],
+      )
       .filter((s): s is AnlagenSub => s != null);
     for (const sub of reachable) {
       expect(parseRoute(hashForRoute(anlageRoute('s-1', sub)))).toEqual({

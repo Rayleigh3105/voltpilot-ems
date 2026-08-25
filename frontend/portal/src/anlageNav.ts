@@ -1,171 +1,113 @@
 /**
- * Portal v3 · M1 — the Anlage-scoped SHELL navigation.
+ * Die ANLAGEN-Navigation — seit der Navigations-Runde „zwei Ebenen"
+ * (Konzept `data/vp-portfolio-konzept-r2` §5.5 + §8 Stufen S3–S5,
+ * Captain-Entscheide E3/E4 vom 25.08.2026) **fünf BEREICHE mit REITERN**.
  *
- * v3 gives an Anlage **one** navigation (`docs/portal-v3/M1-shell.md`): the
- * sidebar shows every area of the selected plant openly, grouped into
- * **Anlage** (Cockpit · Messwerte · [Erlöse] · Steuerung · Anlagen-Modell — the
- * former Live-Daten area merged INTO the cockpit, owner decision Option A, and
- * the former single „Historie" split into its two worlds, captain decision H1
- * 2026-07-30) plus
- * **one group per active mode profile** (`Modus · <Name>`, colour-tagged).
- * The v2 "Mehr ▾" popover and the retired U1 tab strip are gone; phones get a
- * bottom bar whose last slot opens a sheet with everything else — on the Anlage
- * level (`bottomBarSlots`/`moreSheetItems`) AND one level up
- * (`fleetBarSlots`/`fleetSheetGroups`, Mobil-Umbau Stufe 1), so the thumb
- * pattern survives leaving the plant and the phone needs no hamburger at all.
+ * Der behobene Befund war die ZÄHLUNG, nicht der Inhalt: ein Kunde mit
+ * geöffneter Anlage sah 14 Einträge in 3 Gruppen (Admin: 23 in 8), „Messwerte"
+ * und „Erlöse" standen doppelt (Flotten-Ebene UND Anlage), „Prognosequalität"
+ * war ein Hauptmenü-Punkt, und jede Ausbaustufe hatte ANGEHÄNGT statt
+ * eingeordnet — die Reihenfolge erzählte die Baugeschichte. Jetzt sind es
+ * **fünf Bereiche + Fuß**, und die Seitenleiste ändert ihre FORM nie.
  *
- * Pure + deterministic (the `betriebsart.ts`/`surface.ts` precedent) — no
- * React, no network. The three laws it encodes:
+ * Rein + deterministisch (das `betriebsart.ts`/`surface.ts`-Muster) — kein
+ * React, kein Netz. Die Gesetze, die sie trägt:
  *
- * 1. **The base group is fixed and ordered.** The four areas are always there,
- *    always in the same order — plus „Erlöse", the ONE base-group entry whose
- *    presence follows the read-model (`erloes-historie` is mode-bound, its
- *    sibling `telemetrie-historie` is base). Placement is deliberate: the two
- *    Historie worlds are siblings, so a customer never hunts for the money world
- *    inside a mode group. Only Steuerung carries a badge (the active-mode
- *    count from the M0 read-model), and a 0/unknown count renders NO badge —
- *    never a discouraging "0". Since the Captain hotfix 2026-07-29 the group
- *    additionally carries the BASE deep views of the M0 read-model
- *    (`surface.base.deepViews`): **Fahrplan** right behind Steuerung on every
- *    plant with a storage, **Marktpreise** at the end on every plant with a
- *    spot tariff — both derived, never hardcoded, and reachable without a
- *    single active mode. See `baseSurface` for the why.
- * 2. **Mode groups are a PROJECTION, never a hardcoded list.** A group exists
- *    for every `activeModes(site)` entry whose manifest contributes at least
- *    one deep view that is not already a base area — so Prognosequalität exists
- *    exactly while the market mode is active, and a plain self-consumption
- *    plant never sees it.
- * 3. **Nothing is orphaned.** Every `AnlagenSub` is reachable from the sidebar,
- *    a mode group or the phone Mehr sheet; `anlageNav.test.ts` enforces it, so
- *    a new sub must be mounted somewhere or the test fails.
+ * 1. **Die fünf Bereiche sind FEST und geordnet:** Cockpit · Fahrplan ·
+ *    Verlauf · Steuerung · Anlage. Nur der zweite folgt der Komposition
+ *    (Speicher · Ladepunkte) — er heißt auf einem reinen Ladepark
+ *    „Ladevorgänge" und fehlt ganz, wo es weder das eine noch das andere gibt.
+ *    **Ein Bereich ohne Inhalt existiert nicht — nie ein leerer Reiter.**
+ * 2. **Die REITER entstehen aus dem M0-Read-Model** (`surface.deepViews`), wie
+ *    vorher die Nav-Einträge: „Erlöse" erscheint mit einem Geld-Modus,
+ *    „Lastspitzen" mit der Lastspitzenkappung, „Marktpreise" auf einem
+ *    Börsentarif. Nichts davon ist hier fest verdrahtet.
+ * 3. **Nichts ist verwaist.** Jede `AnlagenSub` hat einen Bereich oder einen
+ *    Reiter; `anlageNav.test.ts` erzwingt es, eine neue Unterseite muss also
+ *    irgendwo montiert werden oder der Test fällt. Das wiegt seit dem Wegfall
+ *    des Telefon-Blatts SCHWERER als vorher: es gibt keinen Sammelort mehr,
+ *    an dem eine vergessene Ansicht noch erreichbar wäre.
  *
- * Routes are untouched — every bookmark keeps working (`nav.ts` LEGACY
- * discipline).
+ * ⚠ **Die Anwendungs-Gruppen („Anwendung · X") sind ERSATZLOS entfallen**
+ * (E3 + Steuerungs-Konzept `vp-steuerung-konzept-b3` §3.1): ihre tiefen
+ * Ansichten (Lastspitzen · Ladevorgänge · Prognose · Marktpreise) haben jetzt
+ * einen Wohnort als Reiter. Eine neue Betriebsmodell-Ansicht bekommt einen
+ * REITER, nie einen Nav-Eintrag. `modeViewItems` bleibt trotzdem — der
+ * Anwendungs-Container rendert damit seine „Ansichten dieser Anwendung".
+ *
+ * Routen bleiben (`nav.ts` LEGACY-Disziplin): jedes Lesezeichen gilt weiter.
  */
 import type { IconName } from '../designsystem/components/core/Icon';
-import { PLATFORM_GROUPS, type AnlagenSub, type PageId } from './nav';
-import type { ActiveMode, AnlageSurface, DeepViewId, ModeKind } from './surface';
+import type { AnlagenSub, PageId } from './nav';
+import type { AnlageSurface, DeepViewId } from './surface';
 
 /**
- * Where a nav entry leads. `sub: null` = the Anlage cockpit itself; `page` = a
- * top-level page (the market mode's Marktpreise/Prognosequalität, whose routes
- * predate the Anlage subpages); `help` opens the shell's Hilfe panel (there is
- * deliberately no invented support address — see `HELP_TEXT`); `more` opens the
- * phone sheet; `action` is a shell ACTION rather than a destination — the two
- * top-bar buttons that the phone moves into that sheet (Mobil-Umbau Stufe 1).
+ * Wohin ein Nav-Eintrag führt. `sub: null` = das Cockpit der Anlage selbst;
+ * `page` = eine Seite der oberen Ebene (heute nur noch aus dem
+ * Anwendungs-Container heraus); `help` öffnet die Hilfe-Fläche der Schale
+ * (es gibt bewusst keine erfundene Support-Adresse — siehe `HELP_TEXT`);
+ * `action` ist eine SCHALEN-Handlung statt eines Ziels.
  */
 export type NavTarget =
   | { kind: 'sub'; sub: AnlagenSub | null }
   | { kind: 'page'; page: PageId }
   | { kind: 'help' }
-  | { kind: 'more' }
   | { kind: 'action'; action: 'add-anlage' | 'logout' };
 
-/** The colour key of a mode group's dot; resolved to a token in Shell.css. */
-export type ModeTone = 'markt' | 'peak' | 'eigen' | 'atyp' | 'laden' | 'automation';
-
-/** One sidebar / bottom-bar / sheet entry. */
+/** Eine Zeile der Seitenleiste / der Telefon-Leiste / des Fußes. */
 export interface SidebarItem {
-  /** Stable key; also what `activeAreaKey` returns for the open route. */
+  /** Stabiler Schlüssel; zugleich das, was `activeAreaKey` zurückgibt. */
   key: string;
   label: string;
   icon: IconName;
   target: NavTarget;
-  /** Trailing count badge; null = none (Steuerung only, and only when > 0). */
+  /** Zahl-Abzeichen; null = keines (nur Steuerung, und nur > 0). */
   badge: number | null;
 }
 
-/** A labelled sidebar group: the fixed base group, or one active mode. */
-export interface SidebarGroup {
+/** Die fünf Bereiche einer Anlage. */
+export type BereichId = 'cockpit' | 'fahrplan' | 'ladevorgaenge' | 'verlauf' | 'steuerung' | 'anlage';
+
+/**
+ * Ein REITER eines Bereichs. Er zeigt IMMER auf eine Unterseite derselben
+ * Anlage — ein Reiter, der die Anlage verlässt, wäre keiner (genau das war der
+ * Befund N3: „Marktpreise" stand in der Anlagen-Gruppe und öffnete eine Seite
+ * ausserhalb).
+ */
+export interface BereichTab {
   key: string;
   label: string;
-  /** null = the base group (no colour dot); else the mode's tone. */
-  tone: ModeTone | null;
-  items: SidebarItem[];
+  sub: AnlagenSub;
 }
 
-/** The whole Anlage sidebar model: groups plus the foot (Einstellungen · Hilfe). */
+/**
+ * Ein Bereich: eine Zeile der Seitenleiste, dahinter seine Reiter.
+ *
+ * `tabs.length <= 1` heißt „dieser Bereich IST eine Seite" — die Fläche
+ * rendert dann keine Reiter-Leiste (eine Leiste mit einem Reiter behauptet
+ * eine Wahl, die es nicht gibt).
+ */
+export interface AnlageBereich extends SidebarItem {
+  key: BereichId;
+  tabs: BereichTab[];
+}
+
+/** Das ganze Modell: die Bereiche plus der Fuß (Hilfe & Kontakt). */
 export interface AnlageSidebar {
-  groups: SidebarGroup[];
+  bereiche: AnlageBereich[];
   foot: SidebarItem[];
 }
 
-/** The label of the always-present base group. */
-export const BASE_GROUP_LABEL = 'Anlage';
-
 /**
- * The Hilfe & Kontakt copy. There is no self-service support channel in this
- * platform (no SMTP, and "Vertrieb läuft persönlich" — captain decision, see
- * `moduleSurface.ts`), so the foot item states the honest truth instead of
- * linking a mailto nobody reads.
+ * Der Text von „Hilfe & Kontakt". Es gibt in dieser Plattform keinen
+ * Selbstbedienungs-Kanal (kein SMTP, und „Vertrieb läuft persönlich" —
+ * Captain-Entscheid, siehe `moduleSurface.ts`), also sagt der Fuß-Eintrag die
+ * ehrliche Wahrheit statt einen mailto zu verlinken, den niemand liest.
  */
 export const HELP_TEXT =
   'Ihr VoltPilot-Team hilft Ihnen weiter. Wenden Sie sich an Ihren Ansprechpartner bei VoltPilot — ' +
   'auch wenn Sie Ihr Passwort zurücksetzen möchten oder ein Gerät sich nicht meldet.';
 
-/**
- * The four base areas — fixed, ordered, always present (the former Live-Daten
- * area merged into the cockpit — Option A; `#/anlage/{id}/live` redirects
- * there) — PLUS the base deep views the M0 read-model derived for this plant.
- *
- * Placement is deliberate: **Fahrplan sits directly behind Steuerung** (it is
- * what the storage is going to do — the same neighbourhood a customer looks in
- * when they ask "what does VoltPilot do with my battery?"), and the two
- * top-level pages **Marktpreise · Prognosequalität close the group** (the
- * outliers that are not Anlage subpages). None is a loose special route: all
- * are regular entries of the Anlage group, so they also travel into the phone
- * „Mehr"-sheet on their own.
- */
-function baseItems(
-  badge: number | null,
-  baseViews: readonly DeepViewId[],
-  allViews: readonly DeepViewId[],
-): SidebarItem[] {
-  const items: SidebarItem[] = [
-    { key: 'cockpit', label: 'Cockpit', icon: 'dashboard', target: { kind: 'sub', sub: null }, badge: null },
-    // Die Messwerte-Welt ist Basis: sie existiert auf JEDER Anlage.
-    { key: 'messwerte', label: 'Messwerte', icon: 'history', target: { kind: 'sub', sub: 'messwerte' }, badge: null },
-  ];
-  // Die Erlöse-Welt ist modusgebunden — sie erscheint genau dann, wenn die
-  // Projektion `erloes-historie` beisteuert (`surface.ts`). Eine Privat-Anlage
-  // ohne Geld-Modus bekommt gar keinen Eintrag statt einer leeren Fläche.
-  if (allViews.includes('erloes-historie')) {
-    items.push({
-      key: 'erloese',
-      label: 'Erlöse',
-      icon: 'euro',
-      target: { kind: 'sub', sub: 'erloese' },
-      badge: null,
-    });
-  }
-  items.push({
-    key: 'steuerung',
-    label: 'Steuerung',
-    icon: 'zap',
-    target: { kind: 'sub', sub: 'steuerung' },
-    badge,
-  });
-  if (baseViews.includes('fahrplan')) items.push(viewItem('fahrplan'));
-  items.push({
-    key: 'anlagen-modell',
-    label: 'Anlagen-Modell',
-    icon: 'layers',
-    // M6 built the three-column plant model behind this route.
-    target: { kind: 'sub', sub: 'modell' },
-    badge: null,
-  });
-  if (baseViews.includes('marktpreise')) items.push(viewItem('marktpreise'));
-  if (baseViews.includes('prognosequalitaet')) items.push(viewItem('prognosequalitaet'));
-  return items;
-}
-
-/**
- * Einstellungen · Hilfe & Kontakt — the sidebar foot.
- *
- * v3.1-M2 retired the standalone shelf page: every application is now a
- * CONTAINER opened from the Steuerung capsule, so the foot no longer carries a
- * `profile` entry. Steuerung remains the ONE door to the modes (base group).
- */
 const HELP_ITEM: SidebarItem = {
   key: 'hilfe',
   label: 'Hilfe & Kontakt',
@@ -174,29 +116,226 @@ const HELP_ITEM: SidebarItem = {
   badge: null,
 };
 
-function footItems(): SidebarItem[] {
-  return [
-    // Der frühere Fuß-Eintrag „Verbraucher" ist mit dem Einheitsmodell
-    // (Stufe 5a) ERSATZLOS entfallen: die Regeln eines Verbrauchers wohnen in
-    // der Kapsel „Regeln" der Steuerung, das Gerät selbst im Anlagen-Modell.
-    // Die Route bleibt als Weiterleitung erhalten (`nav.ts` LEGACY_SUBS).
-    { key: 'technik', label: 'Einstellungen', icon: 'settings', target: { kind: 'sub', sub: 'technik' }, badge: null },
-    HELP_ITEM,
-  ];
+/**
+ * Die REITER des Bereichs „Verlauf", in der Reihenfolge des Zielbilds
+ * (Mockup `06-navigation-ist-ziel.html`): Messwerte · Erlöse · Marktpreise ·
+ * Lastspitzen · Prognose · Wetter.
+ *
+ * `view: null` = unbedingt. Das gilt genau für **Messwerte**: die Basis-Welt
+ * der Historie existiert auf JEDER Anlage (sie war vor diesem Umbau ein fester
+ * Basis-Eintrag und bleibt es) — ohne sie hätte eine frisch angelegte Anlage
+ * einen leeren Bereich, und genau das verbietet Gesetz 1.
+ *
+ * ⚠ **`wetter` ist hier eine bewusste Abweichung vom Mockup-Wortlaut.** Das
+ * Fragment sagt „Wetter bleibt Cockpit-Karte mit Absprung" — eine solche Karte
+ * gibt es heute NICHT (`AnlagenPage.tsx` kennt nur die Unterseite), und mit dem
+ * Wegfall des Telefon-Blatts verlöre die Ansicht damit ihren einzigen
+ * Wohnort. Sie ist eine abgeleitete Basis-Ansicht des Read-Models wie die
+ * anderen, also bekommt sie einen Reiter statt einer erfundenen Karte. Baut
+ * jemand die Cockpit-Karte, kann der Reiter entfallen — der Wächter „nichts
+ * ist verwaist" merkt es sofort.
+ */
+const VERLAUF_TABS: { key: string; label: string; sub: AnlagenSub; view: DeepViewId | null }[] = [
+  { key: 'messwerte', label: 'Messwerte', sub: 'messwerte', view: null },
+  { key: 'erloese', label: 'Erlöse', sub: 'erloese', view: 'erloes-historie' },
+  { key: 'marktpreise', label: 'Marktpreise', sub: 'marktpreise', view: 'marktpreise' },
+  { key: 'lastspitzen', label: 'Lastspitzen', sub: 'lastspitzen', view: 'lastspitzen' },
+  { key: 'prognose', label: 'Prognose', sub: 'prognose', view: 'prognosequalitaet' },
+  { key: 'wetter', label: 'Wetter', sub: 'wetter', view: 'wetter' },
+];
+
+/**
+ * Die REITER des Bereichs „Anlage": Modell · Einstellungen · Befehle an
+ * Geräte. Alle drei sind STRUKTURELL da (sie folgen keinem Modus) — die
+ * Befehle-Seite zeigt ohne Komponente den Verlauf der ganzen Anlage.
+ */
+const ANLAGE_TABS: BereichTab[] = [
+  { key: 'modell', label: 'Modell', sub: 'modell' },
+  { key: 'technik', label: 'Einstellungen', sub: 'technik' },
+  { key: 'befehle', label: 'Befehle an Geräte', sub: 'befehle' },
+];
+
+/** Welcher Bereich eine Unterseite beherbergt — die EINE Zuordnung. */
+const SUB_BEREICH: Record<AnlagenSub, BereichId> = {
+  fahrplan: 'fahrplan',
+  ladevorgaenge: 'fahrplan',
+  messwerte: 'verlauf',
+  erloese: 'verlauf',
+  marktpreise: 'verlauf',
+  lastspitzen: 'verlauf',
+  prognose: 'verlauf',
+  wetter: 'verlauf',
+  steuerung: 'steuerung',
+  modell: 'anlage',
+  technik: 'anlage',
+  befehle: 'anlage',
+  // Die GERÄTE-DETAILSEITE und die BOX-Seite sind eine Ebene UNTER dem
+  // Anlagen-Modell (die eine braucht eine Geräte-Referenz, die andere IST das
+  // Tor der Zentrale) - beide haben keinen eigenen Reiter und heben deshalb
+  // ihren Wirt hervor; sonst stünde die Navigation ohne Markierung da,
+  // während der Kunde offensichtlich IN der Zentrale ist.
+  geraet: 'anlage',
+  box: 'anlage',
+};
+
+function bereich(
+  key: BereichId,
+  label: string,
+  icon: IconName,
+  sub: AnlagenSub | null,
+  tabs: BereichTab[],
+  badge: number | null = null,
+): AnlageBereich {
+  return { key, label, icon, target: { kind: 'sub', sub }, badge, tabs };
 }
 
 /**
- * Which deep views become their OWN nav entry — ONE definition, used by the
- * base group AND the mode groups, so a view carries the same label/icon/target
- * wherever it is mounted. Everything else a manifest lists is already an area
- * of its own (`live`, `geraete`, `telemetrie-historie`, `erloes-historie`,
- * `flow-editor`) or deliberately has no nav entry any more (`wetter` becomes a
- * cockpit card + drill-in in M2; its route stays and the phone sheet keeps it
- * reachable).
+ * Die fünf Bereiche einer Anlage. `activeModeCount` badgt die Steuerung
+ * (Vorgabe: die Modus-Zahl der Projektion); 0/null/NaN rendert KEIN Abzeichen —
+ * nie eine entmutigende „0".
  *
- * OPEN(O2, BUILD.md §8) is CLOSED: the owner decided on 2026-07-29 that every
- * plant with a storage carries the Fahrplan as a BASE entry — the derivation
- * lives in `baseSurface`, this map only says how the entry looks.
+ * ⚠ Das Abzeichen bleibt an der Steuerung, seine BEDEUTUNG wechselt mit dem
+ * Steuerungs-Konzept (§3.1: „Zahl der Dinge, die Aufmerksamkeit brauchen"
+ * statt „aktive Anwendungen"). Der Ort ändert sich dadurch nicht, also ist das
+ * hier ein Argument-Wechsel im Aufrufer und kein Umbau.
+ */
+export function anlageBereiche(
+  surface: AnlageSurface | null | undefined,
+  activeModeCount?: number | null,
+): AnlageBereich[] {
+  const raw = activeModeCount === undefined ? surface?.modes.length ?? null : activeModeCount;
+  const badge =
+    typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : null;
+  const views = surface?.deepViews ?? [];
+
+  const out: AnlageBereich[] = [
+    bereich('cockpit', 'Cockpit', 'dashboard', null, []),
+  ];
+
+  // Bereich 2 folgt als EINZIGER der Komposition: mit Speicher heißt er
+  // „Fahrplan" (und trägt die Ladevorgänge als zweiten Reiter, wo es auch
+  // Ladepunkte gibt), auf einem REINEN Ladepark „Ladevorgänge", sonst gibt es
+  // ihn nicht.
+  const hatFahrplan = views.includes('fahrplan');
+  const hatLade = views.includes('ladevorgaenge');
+  if (hatFahrplan) {
+    const tabs: BereichTab[] = [{ key: 'fahrplan', label: 'Fahrplan', sub: 'fahrplan' }];
+    if (hatLade) tabs.push({ key: 'ladevorgaenge', label: 'Ladevorgänge', sub: 'ladevorgaenge' });
+    out.push(bereich('fahrplan', 'Fahrplan', 'calendar', 'fahrplan', tabs));
+  } else if (hatLade) {
+    out.push(
+      bereich('ladevorgaenge', 'Ladevorgänge', 'zap', 'ladevorgaenge', [
+        { key: 'ladevorgaenge', label: 'Ladevorgänge', sub: 'ladevorgaenge' },
+      ]),
+    );
+  }
+
+  const verlaufTabs = VERLAUF_TABS.filter((t) => t.view === null || views.includes(t.view)).map(
+    ({ key, label, sub }) => ({ key, label, sub }),
+  );
+  out.push(bereich('verlauf', 'Verlauf', 'history', verlaufTabs[0].sub, verlaufTabs));
+
+  out.push(bereich('steuerung', 'Steuerung', 'zap', 'steuerung', [], badge));
+  out.push(bereich('anlage', 'Anlage', 'layers', 'modell', ANLAGE_TABS));
+  return out;
+}
+
+/**
+ * Das ganze Navigations-Modell einer Anlage: die Bereiche plus der Fuß.
+ *
+ * Der Fuß trägt seit diesem Umbau NUR noch „Hilfe & Kontakt" — die
+ * „Einstellungen" sind ein Reiter des Bereichs „Anlage" geworden, wo sie
+ * hingehören (die Stammdaten DIESER Anlage). Ihre Route bleibt unverändert.
+ */
+export function anlageSidebar(
+  surface: AnlageSurface | null | undefined,
+  activeModeCount?: number | null,
+): AnlageSidebar {
+  return { bereiche: anlageBereiche(surface, activeModeCount), foot: [HELP_ITEM] };
+}
+
+/** Kürzere Telefon-Beschriftungen; die Seitenleiste behält die vollen Wörter. */
+const BOTTOM_LABELS: Partial<Record<BereichId, string>> = {
+  ladevorgaenge: 'Laden',
+};
+
+/**
+ * Die Telefon-Leiste einer Anlage: **die fünf Bereiche, ohne „Mehr"** (E4 —
+ * das Blatt entfällt ersatzlos; Hilfe · Abmelden · Plattform wohnen im
+ * Avatar-Menü). Die Belegung ist damit nicht mehr abgeleitet, sondern IDENTISCH
+ * mit der Seitenleiste: derselbe Ort heißt am Telefon nicht anders als am
+ * Rechner.
+ */
+export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
+  return sidebar.bereiche.map((b) => ({
+    key: b.key,
+    label: BOTTOM_LABELS[b.key] ?? b.label,
+    icon: b.icon,
+    target: b.target,
+    badge: b.badge,
+  }));
+}
+
+/** Der Bereich, in dem eine Unterseite wohnt. */
+export function bereichFor(sub: AnlagenSub | null): BereichId {
+  return sub == null ? 'cockpit' : SUB_BEREICH[sub];
+}
+
+/**
+ * Die Reiter, die über einer offenen Unterseite stehen — leer, wo der Bereich
+ * EINE Seite ist (Cockpit, Steuerung) oder nur einen Reiter hätte.
+ *
+ * ⚠ Sie kommen aus DEMSELBEN Modell wie die Seitenleiste. Eine zweite
+ * Ableitung ließe Leiste und Reiter über dieselbe Anlage Verschiedenes
+ * behaupten.
+ */
+export function tabsFor(sidebar: AnlageSidebar, sub: AnlagenSub | null): BereichTab[] {
+  const key = bereichFor(sub);
+  const tabs = sidebar.bereiche.find((b) => b.key === key)?.tabs ?? [];
+  return tabs.length > 1 ? tabs : [];
+}
+
+/** Die Beschriftung des Bereichs, in dem eine Unterseite wohnt. */
+export function bereichLabel(sidebar: AnlageSidebar, sub: AnlagenSub | null): string {
+  const key = bereichFor(sub);
+  return sidebar.bereiche.find((b) => b.key === key)?.label ?? key;
+}
+
+/**
+ * Welcher Bereich die offene Route hervorhebt. EINE Regel, hier entschieden
+ * und nie in die `AppShell` verstreut.
+ */
+export function activeAreaKey(sub: AnlagenSub | null): BereichId {
+  return bereichFor(sub);
+}
+
+/**
+ * Welche tiefen Ansichten eine Modus-Menge als eigene Zeile beisteuert — das
+ * bleibt für den v3.1-M2-**Anwendungs-Container** („Ansichten dieser
+ * Anwendung"), NICHT mehr für die Navigation: Anwendungs-Gruppen gibt es
+ * seit E3 keine.
+ *
+ * `baseViews` wird abgezogen: was der Kunde ohnehin erreicht, darf der
+ * Container nicht als „wird verfügbar, sobald Sie den Modus einschalten"
+ * ausgeben.
+ */
+export function modeViewItems(
+  deepViews: readonly DeepViewId[],
+  baseViews: readonly DeepViewId[] = [],
+): SidebarItem[] {
+  const items: SidebarItem[] = [];
+  for (const view of deepViews) {
+    if (baseViews.includes(view)) continue;
+    const def = VIEW_ITEMS[view];
+    if (def) items.push({ ...def, badge: null });
+  }
+  return items;
+}
+
+/**
+ * Wie eine tiefe Ansicht im Anwendungs-Container aussieht. Sie zeigt seit
+ * diesem Umbau auf ihre ANLAGEN-Unterseite (Marktpreise und Prognose sind
+ * keine Seiten der oberen Ebene mehr, sondern Reiter des Verlaufs).
  */
 const VIEW_ITEMS: Partial<Record<DeepViewId, Omit<SidebarItem, 'badge'>>> = {
   fahrplan: { key: 'fahrplan', label: 'Fahrplan', icon: 'calendar', target: { kind: 'sub', sub: 'fahrplan' } },
@@ -204,13 +343,13 @@ const VIEW_ITEMS: Partial<Record<DeepViewId, Omit<SidebarItem, 'badge'>>> = {
     key: 'marktpreise',
     label: 'Marktpreise',
     icon: 'euro',
-    target: { kind: 'page', page: 'marktpreise' },
+    target: { kind: 'sub', sub: 'marktpreise' },
   },
   prognosequalitaet: {
     key: 'prognose',
     label: 'Prognosequalität',
     icon: 'trending-up',
-    target: { kind: 'page', page: 'prognose' },
+    target: { kind: 'sub', sub: 'prognose' },
   },
   lastspitzen: {
     key: 'lastspitzen',
@@ -226,384 +365,11 @@ const VIEW_ITEMS: Partial<Record<DeepViewId, Omit<SidebarItem, 'badge'>>> = {
   },
 };
 
-/** The deep view that has no nav entry but must stay reachable (phone sheet). */
-const SHEET_ONLY_ITEMS: SidebarItem[] = [
-  { key: 'wetter', label: 'Wetter', icon: 'sun', target: { kind: 'sub', sub: 'wetter' }, badge: null },
-  // Die BEFEHLE-Seite gehört einer KOMPONENTE (Kommando-Transparenz V1, F2):
-  // ihre Einstiege sind die Komponenten-Karte und die Steuerung, wo die
-  // Komponente schon feststeht. Ein Seitenleisten-Eintrag hätte keine - und
-  // orphan darf sie trotzdem nicht sein, also trägt das Blatt sie (die
-  // `wetter`-Disziplin). Ohne Komponente zeigt sie die ganze Anlage.
-  {
-    key: 'befehle',
-    label: 'Befehle an Geräte',
-    icon: 'shield',
-    target: { kind: 'sub', sub: 'befehle' },
-    badge: null,
-  },
-];
-
-const MODE_TONES: Record<ModeKind, ModeTone> = {
-  // Der Ladepark trägt den Verbraucher-Ton des Hauses: Ladepunkte sind die
-  // Verbraucher-Rolle (Mockups §2 Entscheidung 3, Violett `--vp-flow-load`).
-  lastmanagement: 'laden',
-  marktvermarktung: 'markt',
-  lastspitzenkappung: 'peak',
-  'atypische-netznutzung': 'atyp',
-  automation: 'automation',
-};
-
-function viewItem(view: DeepViewId): SidebarItem {
-  // Nur mit einer Definition aufgerufen (die Aufrufer prüfen vorher).
-  return { ...(VIEW_ITEMS[view] as Omit<SidebarItem, 'badge'>), badge: null };
-}
-
 /**
- * The navigable sidebar entries a set of deep views contributes — the mode
- * group's items, and the SAME list the v3.1-M2 „Anwendungs-Container" renders as
- * its „Ansichten dieser Anwendung" section. Only deep views that become their OWN nav
- * entry appear (see `VIEW_ITEMS`); base areas contribute none.
- *
- * `baseViews` (the M0 `surface.base.deepViews`) is subtracted: a view the base
- * group already carries must not appear a second time under a mode — and the
- * container must not claim it "becomes available once you switch the mode on"
- * when it is reachable right now. Omitted = nothing subtracted (the pre-hotfix
- * behaviour).
- */
-export function modeViewItems(
-  deepViews: readonly DeepViewId[],
-  baseViews: readonly DeepViewId[] = [],
-): SidebarItem[] {
-  const items: SidebarItem[] = [];
-  for (const view of deepViews) {
-    if (baseViews.includes(view)) continue;
-    if (VIEW_ITEMS[view]) items.push(viewItem(view));
-  }
-  return items;
-}
-
-function modeGroup(
-  mode: ActiveMode,
-  taken: Set<string>,
-  baseViews: readonly DeepViewId[],
-): SidebarGroup | null {
-  const items: SidebarItem[] = [];
-  for (const item of modeViewItems(mode.manifest.deepViews, baseViews)) {
-    if (taken.has(item.key)) continue;
-    taken.add(item.key);
-    items.push(item);
-  }
-  if (items.length === 0) return null;
-  return {
-    key: `mode:${mode.key}`,
-    // M3 gives the customer-facing application its own name; until then the
-    // group carries the mode label straight from the M0 read-model. The WORD is
-    // „Anwendung" (Captain 24.08.2026); the code id `ModeKind` stays.
-    label: `Anwendung · ${mode.label}`,
-    tone: MODE_TONES[mode.kind],
-    items,
-  };
-}
-
-/**
- * The grouped Anlage sidebar: the fixed base group plus one group per active
- * mode that contributes a view of its own. `activeModeCount` badges Steuerung
- * (defaults to the surface's own mode count); 0/null/NaN renders no badge.
- */
-export function anlageSidebar(
-  surface: AnlageSurface | null | undefined,
-  activeModeCount?: number | null,
-): AnlageSidebar {
-  const raw = activeModeCount === undefined ? surface?.modes.length ?? null : activeModeCount;
-  const badge =
-    typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : null;
-
-  const baseViews = surface?.base?.deepViews ?? [];
-  const allViews = surface?.deepViews ?? [];
-  const groups: SidebarGroup[] = [
-    {
-      key: 'base',
-      label: BASE_GROUP_LABEL,
-      tone: null,
-      items: baseItems(badge, baseViews, allViews),
-    },
-  ];
-  // Was die Basis schon trägt, taucht unter keinem Modus ein zweites Mal auf.
-  const taken = new Set<string>(groups[0].items.map((i) => i.key));
-  for (const mode of surface?.modes ?? []) {
-    const group = modeGroup(mode, taken, baseViews);
-    if (group) groups.push(group);
-  }
-  return { groups, foot: footItems() };
-}
-
-/**
- * The order in which the phone bar hands out its four slots — the Mobil-Umbau
- * Stufe 1 re-belegung (concept `data/vp-mobile-views-x1`, Captain-Go
- * 09.08.2026). **The bar carries the DAILY questions**: „Was ist jetzt?"
- * (Cockpit) · „Was macht die Batterie heute?" (Fahrplan) · „Was war?"
- * (Messwerte) · „Was verdiene ich?" (Erlöse). Steuerung and Anlagen-Modell are
- * setup/trust surfaces — important, but not daily — so they follow in the list
- * and normally travel in the Mehr sheet.
- *
- * **The belegung stays DERIVED, never hard.** Fahrplan exists only on a plant
- * with a storage, Erlöse only with a money mode (`surface.ts`), so a plant
- * without either automatically moves Steuerung/Anlagen-Modell up — no empty
- * slot, and no special case in the shell.
- *
- * The lookup spans BASE *and* mode groups on purpose: on a DV park without a
- * storage the Fahrplan is a mode entry, and it deserves its slot wherever it
- * is mounted.
- */
-const BOTTOM_PRIORITY = [
-  'cockpit',
-  'fahrplan',
-  'messwerte',
-  'erloese',
-  'steuerung',
-  'anlagen-modell',
-] as const;
-
-/** Four areas plus „Mehr" — the fifth tile is always the sheet. */
-const BOTTOM_SLOTS = 4;
-
-/** Shorter phone labels; the sidebar keeps the full words. */
-const BOTTOM_LABELS: Record<string, string> = {
-  cockpit: 'Cockpit',
-  fahrplan: 'Fahrplan',
-  messwerte: 'Messwerte',
-  erloese: 'Erlöse',
-  steuerung: 'Steuerung',
-  'anlagen-modell': 'Anlage',
-};
-
-const MORE_ITEM: SidebarItem = {
-  key: 'more',
-  label: 'Mehr',
-  icon: 'more-horizontal',
-  target: { kind: 'more' },
-  badge: null,
-};
-
-/** Every navigable entry of the Anlage nav — base group AND mode groups. */
-function navItems(sidebar: AnlageSidebar): SidebarItem[] {
-  return sidebar.groups.flatMap((g) => g.items);
-}
-
-/**
- * Which keys the bar really carries — ONE derivation, read by the bar AND by
- * the sheet, so the two can never claim the same entry (or drop one).
- */
-function bottomKeys(sidebar: AnlageSidebar): string[] {
-  const present = new Set(navItems(sidebar).map((i) => i.key));
-  return BOTTOM_PRIORITY.filter((k) => present.has(k)).slice(0, BOTTOM_SLOTS);
-}
-
-/**
- * The phone bottom bar of one Anlage: up to four derived areas plus the Mehr
- * sheet. The daily areas are always one thumb away; nothing hides behind a
- * hamburger (the phone has none since Stufe 1).
- */
-export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
-  const items = navItems(sidebar);
-  const keys = bottomKeys(sidebar);
-  const slots = keys
-    .map((key) => items.find((i) => i.key === key))
-    .filter((i): i is SidebarItem => i != null)
-    .map((i) => ({ ...i, label: BOTTOM_LABELS[i.key] ?? i.label }));
-  // Falls die Steuerung ins Blatt fällt, wandert ihr Abzeichen sichtbar auf
-  // „Mehr" — sonst verschwände der einzige Hinweis auf Handlungsbedarf hinter
-  // einer geschlossenen Klappe.
-  const hidden = keys.includes('steuerung')
-    ? null
-    : items.find((i) => i.key === 'steuerung') ?? null;
-  slots.push({ ...MORE_ITEM, badge: hidden?.badge ?? null });
-  return slots;
-}
-
-/** What travels into the sheet BESIDES the areas of the current level. */
-export interface ShellExtras {
-  /** Portal-Admin: the Plattform group travels into the sheet (no hamburger). */
-  isAdmin?: boolean;
-  /** The single-Anlage customer's „＋ Anlage hinzufügen" (a top-bar button on
-   *  wider screens, a sheet entry on the phone). */
-  showAddAnlage?: boolean;
-}
-
-function accountItems(extras: ShellExtras): SidebarItem[] {
-  const items: SidebarItem[] = [];
-  if (extras.showAddAnlage) {
-    items.push({
-      key: 'add-anlage',
-      label: 'Anlage hinzufügen',
-      icon: 'plus',
-      target: { kind: 'action', action: 'add-anlage' },
-      badge: null,
-    });
-  }
-  items.push({
-    key: 'logout',
-    label: 'Abmelden',
-    icon: 'log-out',
-    target: { kind: 'action', action: 'logout' },
-    badge: null,
-  });
-  return items;
-}
-
-/**
- * Die Plattform-Gruppen als Blatt-Einträge — eine PROJEKTION von
- * `PLATFORM_GROUPS`, damit die Faltung am Telefon dieselbe Ordnung zeigt wie
- * die Seitenleiste (Admin-Umbau Stufe 1). Die LANDUNG trägt dabei das
- * „Plattform"-Label, jede weitere Gruppe ihr eigenes — im Blatt gibt es keine
- * zweite Ebene, also wäre eine Überschrift ohne Einträge nur Lärm.
- */
-function platformGroups(): SidebarGroup[] {
-  return PLATFORM_GROUPS.map((group) => ({
-    key: `plattform-${group.key}`,
-    label: group.label ?? 'Plattform',
-    tone: null,
-    items: group.pages.map((p) => ({
-      key: p.id,
-      label: p.label,
-      icon: p.icon,
-      target: { kind: 'page', page: p.id } as NavTarget,
-      badge: null,
-    })),
-  }));
-}
-
-/**
- * The "Mehr" sheet of one Anlage: everything the bottom bar does not carry,
- * grouped and colour-tagged exactly like the sidebar — the base remainder, the
- * mode remainder, the Plattform group for an operator, and a trailing group
- * with the entries that have no sidebar home (Wetter), the foot
- * (Einstellungen · Hilfe & Kontakt) and the two top-bar actions the phone
- * folds in here (＋ Anlage · Abmelden).
- */
-export function moreSheetItems(
-  sidebar: AnlageSidebar,
-  extras: ShellExtras = {},
-): SidebarGroup[] {
-  const inBottom = new Set(bottomKeys(sidebar));
-  const groups: SidebarGroup[] = [];
-  const [base, ...modes] = sidebar.groups;
-  const rest = (base?.items ?? []).filter((i) => !inBottom.has(i.key));
-  if (rest.length > 0) groups.push({ key: 'base', label: BASE_GROUP_LABEL, tone: null, items: rest });
-  for (const mode of modes) {
-    const items = mode.items.filter((i) => !inBottom.has(i.key));
-    if (items.length > 0) groups.push({ ...mode, items });
-  }
-  if (extras.isAdmin) groups.push(...platformGroups());
-  groups.push({
-    key: 'mehr',
-    label: 'Mehr',
-    tone: null,
-    items: [...SHEET_ONLY_ITEMS, ...sidebar.foot, ...accountItems(extras)],
-  });
-  return groups;
-}
-
-/**
- * What the FLEET level (no single Anlage in scope) offers — the same bar
- * mechanics one level up (concept §3: „dieselbe Bar auf Flotten-Ebene"), so the
- * thumb pattern survives the level change instead of falling back to a
- * hamburger.
- */
-export interface FleetNavInput {
-  /** Betreiber frame: the Portfolio landing replaces „Übersicht" (U5). */
-  showPortfolio: boolean;
-  /** Only when at least one Anlage has a money mode (PR G). */
-  showPortfolioErloese: boolean;
-  /** Fleet customers + admins; a single-Anlage endkunde has no Übersicht. */
-  showOverview: boolean;
-  /** Drives singular/plural of the Anlagen slot; null = not loaded yet. */
-  siteCount: number | null;
-}
-
-/** The visible top-level entries, in the order the bar hands out its slots. */
-function fleetItems(input: FleetNavInput): SidebarItem[] {
-  const entry = (page: PageId, label: string, icon: IconName): SidebarItem => ({
-    key: page,
-    label,
-    icon,
-    target: { kind: 'page', page },
-    badge: null,
-  });
-  const items: SidebarItem[] = [];
-  if (input.showPortfolio) items.push(entry('portfolio', 'Portfolio', 'building'));
-  if (input.showOverview) items.push(entry('uebersicht', 'Übersicht', 'dashboard'));
-  items.push(
-    entry('anlagen', input.siteCount != null && input.siteCount > 1 ? 'Anlagen' : 'Anlage', 'sun'),
-  );
-  if (input.showPortfolio) {
-    items.push(entry('portfolio-messwerte', 'Messwerte', 'activity'));
-    if (input.showPortfolioErloese) items.push(entry('portfolio-erloese', 'Erlöse', 'euro'));
-  }
-  return items;
-}
-
-/** The phone bottom bar one level up: Übersicht · Anlagen · Mehr (derived). */
-export function fleetBarSlots(input: FleetNavInput): SidebarItem[] {
-  return [...fleetItems(input).slice(0, BOTTOM_SLOTS), MORE_ITEM];
-}
-
-/** The fleet-level „Mehr" sheet — the complement of `fleetBarSlots`. */
-export function fleetSheetGroups(
-  input: FleetNavInput,
-  extras: ShellExtras = {},
-): SidebarGroup[] {
-  const groups: SidebarGroup[] = [];
-  const rest = fleetItems(input).slice(BOTTOM_SLOTS);
-  if (rest.length > 0) {
-    groups.push({ key: 'ebene', label: 'Alle Anlagen', tone: null, items: rest });
-  }
-  if (extras.isAdmin) groups.push(...platformGroups());
-  groups.push({
-    key: 'mehr',
-    label: 'Mehr',
-    tone: null,
-    items: [HELP_ITEM, ...accountItems(extras)],
-  });
-  return groups;
-}
-
-/**
- * Which nav entry the open route highlights. ONE rule, decided here and never
- * spread into `AppShell`: the cockpit is `cockpit`, the Anlagen-Modell route
- * (`modell`) carries its own nav key, everything else highlights the entry with
- * its own sub key — deep views are real sidebar entries now, so (unlike v2)
- * none of them leaves the navigation unhighlighted.
- */
-export function activeAreaKey(sub: AnlagenSub | null): string {
-  if (sub == null) return 'cockpit';
-  if (sub === 'modell') return 'anlagen-modell';
-  // Die GERÄTE-DETAILSEITE und die BOX-Seite sind eine Ebene UNTER dem
-  // Anlagen-Modell (die eine braucht eine Geräte-Referenz, die andere IST das
-  // Tor der Zentrale) - beide haben keinen eigenen Navigationspunkt und heben
-  // deshalb ihren Wirt hervor; sonst stünde die Navigation ohne Markierung da,
-  // während der Kunde offensichtlich IN der Zentrale ist (die
-  // `GERAETE_BEREICH`-Disziplin der Plattform-Tabs).
-  if (sub === 'geraet' || sub === 'box') return 'anlagen-modell';
-  return sub;
-}
-
-/**
- * The highlighted entry while a mode PAGE is open (Marktpreise /
- * Prognosequalität keep the Anlage nav — they are that Anlage's market-mode
- * deep views). Any other page is outside the Anlage nav.
- */
-export function activeKeyForPage(page: PageId): string | null {
-  if (page === 'marktpreise') return 'marktpreise';
-  if (page === 'prognose') return 'prognose';
-  return null;
-}
-
-/**
- * The Anlage a route addresses: the requested site, else the single Anlage of
- * a one-Anlage customer, else null (the fleet list). Shared by `AnlagenPage`
- * (which renders it) and `App.tsx` (which builds the shell nav for it) so the
- * two can never disagree about which Anlage the shell is scoped to.
+ * Die Anlage, die eine Route meint: die verlangte, sonst die EINE Anlage eines
+ * Einzel-Anlagen-Kunden, sonst null (die Flotten-Ebene). Geteilt von
+ * `AnlagenPage` (die sie rendert) und `App.tsx` (die die Schale dafür baut),
+ * damit die zwei nie uneins darüber sind, auf welche Anlage die Schale zeigt.
  */
 export function resolveAnlage<T extends { id: string }>(
   sites: T[],

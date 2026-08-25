@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { anlageSidebar, moreSheetItems } from './anlageNav';
+import { anlageSidebar } from './anlageNav';
 import { healthBadge } from './health';
 import { anlageDecision, cockpitStack, projectionActive } from './cockpit';
 import { cockpitWidgets } from './cockpitWidgets';
@@ -234,25 +234,26 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
     ).toBe(false);
   });
 
-  it('die M1-Shell trägt weder Badge noch Modus-Gruppe', () => {
+  it('die Schale trägt weder Badge noch einen Bereich, den die Anlage nicht hat', () => {
     for (const input of [NIE_MIGRIERT, NICHTS_GELADEN]) {
       const s = anlageSurface(input);
       const sidebar = anlageSidebar(s);
-      // Nur die Basis-Gruppe - keine einzige Modus-Gruppe.
-      expect(sidebar.groups).toHaveLength(1);
-      expect(sidebar.groups[0].label).toBe('Anlage');
-      expect(sidebar.groups[0].items.map((i) => i.key)).toEqual([
+      // Ohne Speicher und ohne Ladepunkte fehlt der zweite Bereich ganz -
+      // „ein Bereich ohne Inhalt existiert nicht" (E3).
+      expect(sidebar.bereiche.map((b) => b.key)).toEqual([
         'cockpit',
-        // Die Basis-Welt der Historie; „Erlöse" ist modusgebunden und fehlt
-        // auf einer nie migrierten Anlage folgerichtig.
-        'messwerte',
+        'verlauf',
         'steuerung',
-        'anlagen-modell',
+        'anlage',
+      ]);
+      // Der Verlauf trägt genau seine EINE Basis-Welt; „Erlöse"/„Marktpreise"
+      // sind modusgebunden und fehlen auf einer nie migrierten Anlage
+      // folgerichtig - der Reiter-Streifen rendert damit gar nicht.
+      expect(sidebar.bereiche.find((b) => b.key === 'verlauf')?.tabs.map((t) => t.key)).toEqual([
+        'messwerte',
       ]);
       // Kein „0"-Badge, das die Anlage schlechter aussehen lässt, als sie ist.
-      expect(sidebar.groups[0].items.every((i) => i.badge === null)).toBe(true);
-      // Und im Mehr-Blatt taucht ebenfalls keine Modus-Gruppe auf.
-      expect(moreSheetItems(sidebar).every((g) => g.tone === null)).toBe(true);
+      expect(sidebar.bereiche.every((b) => b.badge === null)).toBe(true);
     }
   });
 

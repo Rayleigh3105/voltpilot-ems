@@ -65,6 +65,19 @@ export function isBetreiberShell(betriebsart: Betriebsart | null): boolean {
 }
 
 /**
+ * Wie die FLOTTEN-EBENE im Menü heisst (Navigations-Runde „zwei Ebenen",
+ * r2 §5.1: „nur das Wort folgt der Tonalität").
+ *
+ * Es gibt sie GENAU EINMAL — ein Betreiber nennt sie „Portfolio", ein Endkunde
+ * „Meine Anlagen". Der frühere zweite Eintrag „Meine Anlage(n)" (die Listen-
+ * Seite) ist darin aufgegangen: das Portfolio IST die Liste, und zwei Einträge
+ * für dieselbe Ebene waren dieselbe Frage mit zwei Antworten.
+ */
+export function fleetLabel(betriebsart: Betriebsart | null): string {
+  return betriebsart === 'betreiber' ? 'Portfolio' : 'Meine Anlagen';
+}
+
+/**
  * Zeigt die Schale den Punkt `Portfolio` — und ist die Landung damit das
  * Portfolio-Cockpit?
  *

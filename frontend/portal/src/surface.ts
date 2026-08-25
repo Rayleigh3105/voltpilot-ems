@@ -391,6 +391,14 @@ const DEEP_VIEW_ORDER: DeepViewId[] = [
   'live',
   'geraete',
   'telemetrie-historie',
+  // ⚠ `ladevorgaenge` FEHLTE hier bis zur Navigations-Runde „zwei Ebenen" -
+  // `sortDeepViews` filtert gegen diese Liste, also fiel die einzige
+  // Tiefen-Ansicht des Lastmanagements aus `surface.deepViews` heraus,
+  // obwohl das Manifest sie deklariert. Sichtbar wurde es erst, als die
+  // Navigation ihre Bereiche daraus ableitete (vorher las sie die
+  // Modus-Manifeste direkt). Wer eine `DeepViewId` ergänzt, trägt sie HIER
+  // nach - sonst existiert sie im Read-Model nicht.
+  'ladevorgaenge',
   'lastspitzen',
   'fahrplan',
   'erloes-historie',

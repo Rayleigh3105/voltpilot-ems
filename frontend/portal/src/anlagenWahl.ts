@@ -62,15 +62,22 @@ export interface AnlagenWahlEingabe {
   sites: Site[];
   /** Die Geräteliste samt ihrer Bezugszeit - beide immer gemeinsam. */
   devices: DevicesSnapshot;
-  /** Gibt es eine Flotten-Ebene, auf die „Alle Anlagen" zurückführt? */
+  /** Gibt es eine Flotten-Ebene, auf die die erste Zeile zurückführt? */
   mitFlotte: boolean;
+  /**
+   * Wie die Flotten-Ebene HEISST (`betriebsart.fleetLabel`). Sie hat seit der
+   * Navigations-Runde „zwei Ebenen" GENAU EINEN Namen — der Pfad der Kopfzeile
+   * und diese Zeile führen an denselben Ort, zwei Wörter dafür wären zwei
+   * Orte. Ohne Angabe bleibt es beim bisherigen „Alle Anlagen".
+   */
+  flottenLabel?: string;
   now?: number;
 }
 
 /**
  * Die Zeilen des Anlagen-Pickers.
  *
- * „Alle Anlagen" steht bewusst GANZ OBEN und ohne Punkt: es ist kein Zustand,
+ * Die Flotten-Zeile steht bewusst GANZ OBEN und ohne Punkt: es ist kein Zustand,
  * sondern ein Ortswechsel - ein Punkt daneben behauptete eine Gesundheit über
  * eine Flotte, die diese Zeile gar nicht misst.
  */
@@ -78,6 +85,7 @@ export function anlagenOptionen({
   sites,
   devices,
   mitFlotte,
+  flottenLabel = 'Alle Anlagen',
   now = Date.now(),
 }: AnlagenWahlEingabe): VpOption[] {
   // Der Ort steht nur da, wo er unterscheidet - siehe Kopf dieser Datei.
@@ -102,7 +110,7 @@ export function anlagenOptionen({
   });
 
   if (mitFlotte) {
-    zeilen.unshift({ value: ALLE_ANLAGEN, label: 'Alle Anlagen', sub: 'Zurück zur Übersicht' });
+    zeilen.unshift({ value: ALLE_ANLAGEN, label: flottenLabel, sub: 'Zurück zur Übersicht' });
   }
   return zeilen;
 }

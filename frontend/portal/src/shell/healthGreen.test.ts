@@ -45,10 +45,10 @@ describe('„Alles in Ordnung" ist satt grün - aus den bestehenden Tokens', () 
     expect(dot).toContain('box-shadow');
   });
 
-  it('die Anlagen-Karte der Seitenleiste zieht mit', () => {
-    const line = ruleBody(shellCss, '.vp-anlagenav-health.state-ok {');
-    expect(line).toContain('--vp-flow-batt-ink');
-  });
+  // ⚠ Die frühere Anlagen-KONTEXTKARTE der Seitenleiste (`.vp-anlagenav-health`)
+  // ist mit der Navigations-Runde „zwei Ebenen" (E3) ERSATZLOS entfallen: der
+  // Zustand wohnt nur noch im Abzeichen der Kopfzeile, das die zwei Regeln
+  // darüber prüfen. Wer die Karte je zurückholt, holt ihre Zeile mit zurück.
 
   it('Warn- und Hinweis-Zustand behalten ihre eigenen Farben', () => {
     expect(ruleBody(shellCss, '.vp-healthbadge.state-warnung {')).toContain('--vp-flow-pv');

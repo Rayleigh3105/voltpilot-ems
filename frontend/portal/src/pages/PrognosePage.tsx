@@ -88,6 +88,12 @@ export function PrognosePage(props: {
   sites: Site[];
   selectedSite: string | null;
   onSelectSite: (id: string) => void;
+  /**
+   * Als REITER des Verlaufs gerendert (Navigations-Runde „zwei Ebenen", E3):
+   * die Anlage steht im Pfad der Kopfzeile, den Titel trägt der Seitenkopf der
+   * Unterseite — Überschrift und Anlagen-Wähler wären eine zweite Kopie davon.
+   */
+  embedded?: boolean;
 }) {
   const site = props.sites.find((s) => s.id === props.selectedSite) ?? null;
   const [quality, setQuality] = useState<ForecastQuality | null>(null);
@@ -196,21 +202,23 @@ export function PrognosePage(props: {
 
   return (
     <>
-      <div className="vp-page-head">
-        <div className="titles">
-          <h1>Prognosequalität</h1>
-          <p>
-            {/* Am Telefon EIN Satz - der lange Untertitel schob das Verdikt nach
-                unten, und die Anlage steht bereits in der Kopfzeile der Schale. */}
-            {isPhone
-              ? 'Wie treffsicher Ihre Anlage vorhersagt.'
-              : `Welches Prognosemodell Ihre Anlage plant, wie genau es ist - und was die lernenden Kandidaten leisten${site ? ` (${site.name})` : ''}.`}
-          </p>
+      {!props.embedded && (
+        <div className="vp-page-head">
+          <div className="titles">
+            <h1>Prognosequalität</h1>
+            <p>
+              {/* Am Telefon EIN Satz - der lange Untertitel schob das Verdikt nach
+                  unten, und die Anlage steht bereits in der Kopfzeile der Schale. */}
+              {isPhone
+                ? 'Wie treffsicher Ihre Anlage vorhersagt.'
+                : `Welches Prognosemodell Ihre Anlage plant, wie genau es ist - und was die lernenden Kandidaten leisten${site ? ` (${site.name})` : ''}.`}
+            </p>
+          </div>
+          <div className="actions">
+            <SitePicker sites={props.sites} value={props.selectedSite} onChange={props.onSelectSite} />
+          </div>
         </div>
-        <div className="actions">
-          <SitePicker sites={props.sites} value={props.selectedSite} onChange={props.onSelectSite} />
-        </div>
-      </div>
+      )}
 
       {props.sites.length === 0 ? (
         <Card padding="lg" radius="lg">

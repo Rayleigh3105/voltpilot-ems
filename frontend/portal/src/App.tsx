@@ -16,6 +16,7 @@ import {
 } from './api';
 import { adminApi, type Tenant } from './admin/adminApi';
 import {
+  fleetLabel,
   redirectAdminToPlattform,
   redirectOverviewToAnlage,
   redirectToPortfolio,
@@ -39,7 +40,7 @@ import {
 } from './nav';
 import { hatGeldWelt } from './portfolioHistorie';
 import { showAddAnlageButton } from './addAnlage';
-import { activeAreaKey, activeKeyForPage, anlageSidebar, resolveAnlage } from './anlageNav';
+import { activeAreaKey, anlageSidebar, resolveAnlage } from './anlageNav';
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
 import { deviceHealthForSite, LIVENESS_POLL_MS } from './liveness';
 import { anlagenOptionen } from './anlagenWahl';
@@ -48,6 +49,7 @@ import { useDeployWatch } from './deployWatch';
 import { useAnlageSurface } from './useAnlageSurface';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawerLazy';
 import { LazyBoundary } from './components/Lazy';
+import { PortfolioTabs } from './components/PortfolioTabs';
 // Der Anlege-Assistent des ERSTEN Besuchs - nachgeladen statt mitgeliefert
 // (Perf-Review `vp-cockpit-perf-p7` §2 U2). Er hängt über
 // `Onboarding.tsx → AnlageFlow.tsx → LocationMap` an **Leaflet** (146 kB) und
@@ -84,12 +86,6 @@ const PortfolioMesswerte = lazy(() =>
 );
 const PortfolioErloese = lazy(() =>
   import('./pages/PortfolioErloese').then((m) => ({ default: m.PortfolioErloese })),
-);
-const MarktpreisePage = lazy(() =>
-  import('./pages/DataPages').then((m) => ({ default: m.MarktpreisePage })),
-);
-const PrognosePage = lazy(() =>
-  import('./pages/PrognosePage').then((m) => ({ default: m.PrognosePage })),
 );
 const MandantenPage = lazy(() =>
   import('./pages/admin/MandantenPage').then((m) => ({ default: m.MandantenPage })),
@@ -675,8 +671,28 @@ function UnifiedPortal() {
     if (route.page === 'uebersicht' && redirectOverviewToAnlage(shell)) {
       window.location.replace(hashForRoute(pageRoute('anlagen')));
       setRoute(pageRoute('anlagen'));
+      return;
     }
-  }, [isAdmin, loaded, tenantReady, betriebsart, error, sites.length, route.page]);
+    // Navigations-Runde „zwei Ebenen" (E3 + Captain-Schärfung): die LISTE
+    // `#/anlagen` ist ersatzlos aufgegangen - das Portfolio IST sie. Ein
+    // Lesezeichen darauf landet dort, WO es eine Flotten-Ebene gibt; ein
+    // Einzel-Anlagen-Kunde bleibt unberührt (`resolveAnlage` löst die Route
+    // ohnehin auf seine eine Anlage auf).
+    if (route.page === 'anlagen' && route.siteId == null && route.sub == null) {
+      window.location.replace(hashForRoute(pageRoute('portfolio')));
+      setRoute(pageRoute('portfolio'));
+    }
+  }, [
+    isAdmin,
+    loaded,
+    tenantReady,
+    betriebsart,
+    error,
+    sites.length,
+    route.page,
+    route.siteId,
+    route.sub,
+  ]);
 
   // An Anlage opened by route is also the context of the site-scoped pages
   // (Marktpreise, Prognosequalität) - switching there stays on "their" site.
@@ -716,12 +732,10 @@ function UnifiedPortal() {
   // The mode-scoped pages (Marktpreise/Prognosequalität) keep the Anlage nav
   // too - they are that Anlage's market-mode deep views, so leaving the trio
   // behind when opening one would strand the customer.
-  const shellSite =
-    page === 'anlagen'
-      ? resolveAnlage(sites, route.siteId)
-      : page === 'marktpreise' || page === 'prognose'
-        ? resolveAnlage(sites, selectedSite)
-        : null;
+  // Marktpreise/Prognose sind seit der Navigations-Runde „zwei Ebenen" (E3)
+  // REITER des Verlaufs, also gewöhnliche Unterseiten - ein eigener Zweig für
+  // sie gibt es nicht mehr.
+  const shellSite = page === 'anlagen' ? resolveAnlage(sites, route.siteId) : null;
   const { surface } = useAnlageSurface(shellSite);
 
   // Die stille Auffrischung der Geräteliste - das Gegenstück zur Bezugszeit
@@ -776,6 +790,13 @@ function UnifiedPortal() {
   }, []);
   const scopedFacts = shellSite && anlageFacts?.siteId === shellSite.id ? anlageFacts.facts : null;
 
+  // Die zwei Rahmen-Fragen EINMAL beantwortet (sonst rechnete jede Fläche sie
+  // neu): gibt es eine Flotten-Ebene, und heißt sie „Portfolio"?
+  const shellFrame = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length };
+  const portfolioNav = showPortfolioNav(shellFrame);
+  const overviewNav = showOverviewNav(shellFrame);
+  const fleetLevel = portfolioNav || overviewNav;
+
   const anlageNav = shellSite
     ? {
         siteId: shellSite.id,
@@ -790,19 +811,26 @@ function UnifiedPortal() {
           sites,
           devices: { devices, fetchedAt: devicesAt },
           mitFlotte: sites.length > 1,
+          // Der Pfad der Kopfzeile und diese Zeile führen an denselben Ort,
+          // also tragen sie DASSELBE Wort.
+          flottenLabel: fleetLabel(betriebsart),
         }),
         onSelectSite: (id: string) => navigate(anlageRoute(id)),
         sidebar: anlageSidebar(surface, surface?.modes.length ?? null),
-        // A mode page keeps the Anlage nav and highlights ITS entry inside the
-        // market mode group (`activeKeyForPage`), so opening Marktpreise never
-        // leaves the customer without a "you are here".
-        activeKey:
-          page === 'anlagen' ? activeAreaKey(route.sub) : activeKeyForPage(page),
+        // Hervorgehoben wird der BEREICH, in dem die offene Unterseite wohnt
+        // (`activeAreaKey`) - ein Reiter darf die Leiste nie ins Nichts zeigen
+        // lassen.
+        activeKey: activeAreaKey(route.sub),
         onOpenSub: (sub: Parameters<typeof anlageRoute>[1]) =>
           navigate(anlageRoute(shellSite.id, sub ?? null)),
         onOpenPage: (target: PageId) => navigate(target),
-        // "Alle Anlagen" only exists where a fleet level exists.
-        onOpenFleet: sites.length > 1 ? () => navigate(pageRoute('anlagen')) : null,
+        // Die FLOTTEN-Ebene ist seit E3 das Portfolio - die erste Picker-Zeile
+        // und das führende Wort des Pfades führen dorthin, wo es eine gibt
+        // (`showPortfolio`), sonst auf die Übersicht. Die frühere Listen-Seite
+        // `#/anlagen` ist ersatzlos aufgegangen.
+        onOpenFleet: fleetLevel
+          ? () => navigate(pageRoute(portfolioNav ? 'portfolio' : 'uebersicht'))
+          : null,
         // Composed from the devices list the shell holds (kept current by the
         // silent refresh above - a freshness verdict needs FRESH data, not a
         // clock ticking over a frozen one) plus whatever the Anlagen-Seite
@@ -855,24 +883,10 @@ function UnifiedPortal() {
       // (betreiber = always the fleet level; endkunde = only from the second
       // Anlage on, where it renders the calm card overview), not the raw site
       // count. Unknown frame falls back to the v1 heuristic.
-      showOverview={showOverviewNav({
-        isAdmin,
-        loaded,
-        tenantReady,
-        betriebsart,
-        siteCount: sites.length,
-      })}
+      showOverview={overviewNav}
       // U5: a betreiber frame swaps "Übersicht" for the "Portfolio" landing.
-      showPortfolio={showPortfolioNav({
-        isAdmin,
-        loaded,
-        tenantReady,
-        betriebsart,
-        siteCount: sites.length,
-      })}
-      // PR G: die Erlöse-Welt des Portfolios gibt es nur, wenn mindestens eine
-      // Anlage einen Geld-Modus hat (dieselbe Regel wie auf der Anlage).
-      showPortfolioErloese={hatGeldWelt(sites)}
+      showPortfolio={portfolioNav}
+      fleetLabel={fleetLabel(betriebsart)}
       showAddAnlage={showAddAnlage}
       onAddAnlage={() => setAddAnlageOpen(true)}
       counts={{
@@ -948,6 +962,14 @@ function UnifiedPortal() {
               Besuchs), alles andere kommt beim ersten Aufruf nach. Der
               Platzhalter ist ein Skelett, nie eine erfundene Zahl. */}
           <LazyBoundary>
+          {/* Die Reiter der FLOTTEN-Ebene (E3/S4) - sie ersetzen die
+              Seitenleisten-Gruppe „Alle Anlagen". */}
+          <PortfolioTabs
+            page={page}
+            showErloese={hatGeldWelt(sites)}
+            fleetLabel={fleetLabel(betriebsart)}
+            onNavigate={navigate}
+          />
           {page === 'portfolio' && (
             <PortfolioPage
               sites={sites}
@@ -981,12 +1003,6 @@ function UnifiedPortal() {
               onHealthFacts={onHealthFacts}
               surface={surface}
             />
-          )}
-          {page === 'marktpreise' && (
-            <MarktpreisePage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
-          )}
-          {page === 'prognose' && (
-            <PrognosePage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
           )}
           {page === 'plattform-uebersicht' && isAdmin && (
             <PlattformUebersichtPage onJumpToTenant={jumpToTenant} onNavigate={navigate} />
