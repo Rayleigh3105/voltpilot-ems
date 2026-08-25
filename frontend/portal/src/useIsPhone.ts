@@ -55,9 +55,9 @@ export function useIsPhone(): boolean {
  * Grenze irgendwann auseinanderlaufen - und dann widersprechen sich zwei
  * Flächen über dieselbe Fensterbreite.
  *
- * Gebraucht wird sie vom Struktur-Schaltbild der Anlagen-Zentrale: den Reiter
- * „Geräte | Schaltbild" gibt es ausdrücklich NUR auf dem Desktop; darunter IST
- * die Geräte-Liste die Struktur (M5-Lehre: Telefon = Liste, nie Mini-Canvas).
+ * Gebraucht wird sie vom Anlagenbild der Anlagen-Zentrale: ab hier passt das
+ * deterministische Einlinienschema; darunter wird dieselbe elektrische
+ * Struktur als vertikaler Pfad gerendert (nie als verkleinertes Canvas).
  *
  * **Ohne `matchMedia` (jsdom, Server-Rendern) ist das Ergebnis `true`** - also
  * die Desktop-Fassung, genau wie {@link useIsPhone} dort `false` liefert. Eine

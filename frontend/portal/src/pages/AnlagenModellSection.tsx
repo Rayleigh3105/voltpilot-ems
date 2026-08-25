@@ -1,13 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
   api,
-  type ControlStatus,
   type EntityStrategy,
-  type CurtailmentStatus,
   type Device,
-  type EdgeVersion,
   type Site,
   type SiteComponents,
   type SiteComponentTemplate,
@@ -56,7 +53,7 @@ import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';
 import { sofortAktionen, SOFORT_LABEL, type SofortAktion } from '../consumers/fulfillment';
 import { InfoTip } from '../components/InfoTip';
-import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
+import { ErrorState, TextSkeleton } from '../components/States';
 import { fmtNum } from '../format';
 import { NO_DATA } from '../nodata';
 import { BEFEHLE_LABEL } from '../befehle';
@@ -70,8 +67,9 @@ import {
   type ZentraleAnsicht,
 } from '../nav';
 import { useIsDesktop } from '../useIsPhone';
-import { schaltbild, SCHALTBILD_HINWEIS } from '../schaltbild';
-import { Schaltbild } from '../components/Schaltbild';
+import { anlagenBild } from '../anlagenBild';
+import { AnlagenBild } from '../components/AnlagenBild';
+import type { TypId } from '../anlegenFlow';
 import {
   AdoptDrawer,
   EntityDrawer,
@@ -89,6 +87,7 @@ import {
   sollIstText,
   sollIstTon,
   verwaltungsHinweis,
+  type KomponentenRolle,
 } from '../komponentenAssistent';
 import '../components/AnlagenModell.css';
 import '../components/KomponenteAssistent.css';
@@ -97,12 +96,10 @@ import '../components/KomponenteAssistent.css';
  * Portal v3 · M6 — the Anlagen-Modell, rebuilt to the approved **Variante A**
  * (design `data/vp-anlagenmodell-ux-w7`, Captain-Go 2026-07-29).
  *
- * Die Seite beantwortet EINE Frage — „Kennt VoltPilot meine Anlage richtig, und
- * woher kommt jede Zahl?" — und zwar in dieser Reihenfolge: Kopfsatz (Zustand)
- * → die EINE VoltPilot-Box mit den Geräten, die ihr Messwerte liefern → die
- * Komponenten in Rollen-Gruppen MIT Live-Werten und Herkunft → Fußzeile
- * (Schutz-Satz + wo die Komponenten wieder auftauchen). Die frühere dritte
- * Spalte („Ihre Anlage") ist aufgelöst.
+ * Geräte-Erlebnis Slice 1 stellt dieselben Identitäten zuerst als elektrisches
+ * Anlagenbild dar; die vollständige Gerät-/Komponentenliste bleibt die
+ * synchronisierte Zweitsicht. Beide werden ausschließlich aus `plantModel`
+ * und `zentraleListe` projiziert, nicht als zweites Datenmodell gespeichert.
  *
  * Tapping a device highlights the components it measures (the interaction of
  * the old layout, kept). A newly reported device is assigned in one move
@@ -163,25 +160,22 @@ export function AnlagenModellSection({
    */
   const [components, setComponents] = useState<SiteComponents | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [addTyp, setAddTyp] = useState<TypId | null>(null);
+  const [addRolle, setAddRolle] = useState<KomponentenRolle | null>(null);
   /**
-   * Anlagen-Zentrale Stufe 2: die Ansicht („Ihre Geräte" | „Schaltbild"). Sie
-   * lebt im Hash (`?ansicht=schaltbild`), damit ein Lesezeichen genau das
-   * wieder öffnet - die Vorgabe bleibt die ruhige Liste.
+   * Geräte-Erlebnis Slice 1: Anlagenbild ist die Vorgabe auf jeder Breite;
+   * die Liste bleibt dieselbe synchronisierte Zweitsicht. Die Wahl lebt im
+   * Hash, damit Lesezeichen und Zurück-Taste dieselbe Sicht wiederherstellen.
    */
   const isDesktop = useIsDesktop();
   const [ansicht, setAnsicht] = useState<ZentraleAnsicht>(() =>
     parseZentraleAnsicht(typeof window === 'undefined' ? '' : window.location.hash),
   );
-  /**
-   * Die drei Lesepfade, die NUR das Schaltbild braucht (Steuer- und
-   * Abregel-Freigabe, der Software-Stand der Box). Sie werden erst geholt,
-   * wenn der Reiter wirklich offen ist - der Einstieg soll nicht drei
-   * Abrufe teurer werden, die er nicht rendert. Alle drei fail-soft: ohne sie
-   * fehlt genau ihre Zeile, nie das Bild.
-   */
-  const [control, setControl] = useState<ControlStatus | null>(null);
-  const [curtailment, setCurtailment] = useState<CurtailmentStatus | null>(null);
-  const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
+  /** Auswahl ist eine Identität, die zwischen Anlagenbild und Liste überlebt. */
+  const [selectedKarteId, setSelectedKarteId] = useState<string | null>(null);
+  /** Die Vorschau ist getrennt: Schließen entfernt nie die Auswahl. */
+  const [previewKarteId, setPreviewKarteId] = useState<string | null>(null);
+  const ansichtWechselt = useRef(false);
   // Einheitsmodell Stufe 6: aus einer EIGENEN Vorlage ein Gerät machen - der
   // Assistent öffnet dann direkt in der Selbstbau-Tür, vorbefüllt.
   const [vorlage, setVorlage] = useState<SiteComponentTemplate | null>(null);
@@ -267,6 +261,7 @@ export function AnlagenModellSection({
   }, []);
 
   const zeigeAnsicht = (naechste: ZentraleAnsicht) => {
+    ansichtWechselt.current = true;
     setAnsicht(naechste);
     const ziel = zentraleAnsichtHash(site.id, naechste);
     if (typeof window !== 'undefined' && window.location.hash !== ziel) {
@@ -274,33 +269,18 @@ export function AnlagenModellSection({
     }
   };
 
-  /*
-    Die drei Lesepfade des Schaltbilds - erst holen, wenn der Reiter wirklich
-    offen ist. Der Einstieg soll nicht drei Abrufe teurer werden, die er nicht
-    rendert; und weil sie fail-soft sind, fehlt bei einem Ausfall genau ihre
-    Zeile, nie das Bild.
-  */
   useEffect(() => {
-    if (ansicht !== 'schaltbild') return;
-    let active = true;
-    api.controlStatus(site.id).then(
-      (c) => active && setControl(c),
-      () => active && setControl(null),
-    );
-    api.curtailmentStatus(site.id).then(
-      (c) => active && setCurtailment(c),
-      () => active && setCurtailment(null),
-    );
-    // `/edge-versions` ist mandantenweit (RLS-gefenced) - gefiltert wird auf
-    // die Box dieser Anlage erst in der Ableitung.
-    api.edgeVersions().then(
-      (v) => active && setEdgeVersions(v),
-      () => active && setEdgeVersions(null),
-    );
-    return () => {
-      active = false;
-    };
-  }, [ansicht, site.id, reloadKey]);
+    if (!ansichtWechselt.current) return;
+    ansichtWechselt.current = false;
+    if (!selectedKarteId) return;
+    const attribut = ansicht === 'schaltbild' ? 'data-anlagen-knoten' : 'data-anlagen-karte';
+    const id = window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>(`[${attribut}="${CSS.escape(selectedKarteId)}"]`)
+        ?.focus();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [ansicht, selectedKarteId]);
 
   const runSofort = async (durationMinutes?: number) => {
     if (!sofort) return;
@@ -388,42 +368,8 @@ export function AnlagenModellSection({
     return () => window.clearTimeout(t);
   }, [karten.length, gesprungen, sprungZiel]);
 
-  /** Das Struktur-Schaltbild - dieselbe Eingabe, andere Sicht (§8.2). */
-  const bild = useMemo(
-    () =>
-      model
-        ? schaltbild({
-            siteId: site.id,
-            siteName: site.name,
-            model,
-            devices: (devices ?? []).filter((d) => d.siteId === site.id),
-            devicesFetchedAt,
-            boxRef,
-            localSetup: data?.localSetup ?? null,
-            sources,
-            charging,
-            control,
-            curtailment,
-            edgeVersions,
-            maxFeedInKw: site.maxFeedInKw ?? null,
-          })
-        : null,
-    [
-      model,
-      site.id,
-      site.name,
-      site.maxFeedInKw,
-      devices,
-      devicesFetchedAt,
-      boxRef,
-      data,
-      sources,
-      charging,
-      control,
-      curtailment,
-      edgeVersions,
-    ],
-  );
+  /** Anlagenbild und Liste lesen exakt dieselben Kartenidentitäten. */
+  const bild = useMemo(() => (model ? anlagenBild(karten) : null), [model, karten]);
 
   const isEmpty =
     model != null &&
@@ -477,28 +423,25 @@ export function AnlagenModellSection({
         {error && (
           <ErrorState message="Das Anlagen-Modell konnte nicht geladen werden." onRetry={reload} />
         )}
-        {model && isEmpty && (
-          <EmptyState
-            icon="layers"
-            category="primary"
-            title="Noch keine Komponenten"
-            description="Sobald Ihr Gerät sich meldet, erscheint hier, wie Ihre Anlage verschaltet ist."
-          />
-        )}
-
-        {model && !isEmpty && (
+        {model && (
           <>
-            {/* 1 · EIN Satz über die Gesundheit + der EINE Anlege-Knopf (D6).
-                Die frühere Vier-Zahlen-Kopfzeile ist ersetzt: die Zahlen stehen
-                in den Karten darunter, hier steht die Antwort auf „geht es
-                meiner Anlage gut?". */}
+            {/* Slice 1: Anlagenbild führt; der globale Einstieg bleibt für den
+                objektorientierten Weg sichtbar. */}
             <div className="vp-am-kopf">
               <p className={`vp-am-headline${satz.ton === 'warn' ? ' warn' : ''}`}>
                 <span className={`vp-health-dot vp-health-${satz.ton}`} />
                 <span>{satz.text}</span>
               </p>
               {portalManaged && (
-                <button type="button" className="vp-am-add" onClick={() => setAddOpen(true)}>
+                <button
+                  type="button"
+                  className="vp-btn vp-btn--primary vp-btn--sm vp-am-global-add"
+                  onClick={() => {
+                    setAddTyp(null);
+                    setAddRolle(null);
+                    setAddOpen(true);
+                  }}
+                >
                   <Icon name="plus" size={14} /> {HINZUFUEGEN_LABEL}
                 </button>
               )}
@@ -519,80 +462,152 @@ export function AnlagenModellSection({
               )}
             </div>
 
-            {/* 2 · Der Schalter „Geräte | Schaltbild" (§13.2) - NUR auf dem
-                Rechner. Am Telefon IST die Liste die Struktur (M5-Lehre:
-                Telefon = Liste, nie Mini-Canvas), dort gibt es ihn nicht. */}
-            {isDesktop && (
-              <div className="vp-am-ansicht">
-                <div className="vp-seg vp-seg-compact" role="tablist" aria-label="Ansicht">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={ansicht === 'geraete'}
-                    className={ansicht === 'geraete' ? 'on' : undefined}
-                    onClick={() => zeigeAnsicht('geraete')}
-                  >
-                    {LISTE_TITEL}
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={ansicht === 'schaltbild'}
-                    className={ansicht === 'schaltbild' ? 'on' : undefined}
-                    onClick={() => zeigeAnsicht('schaltbild')}
-                  >
-                    Schaltbild
-                  </button>
+            {components && components.componentAuthority !== 'portal' && (
+              <p className="vp-am-authority">
+                {components.componentAuthority === 'box'
+                  ? 'Diese Anlage wird an Ihrer VoltPilot-Box verwaltet. Freie Plätze zeigen, was elektrisch möglich ist; Änderungen nehmen Sie an der Box vor.'
+                  : 'Für diese Anlage ist keine Gerätebearbeitung im Portal freigegeben. Freie Plätze zeigen nur, was elektrisch möglich ist.'}
+              </p>
+            )}
+
+            {isEmpty && (
+              <div className="vp-am-empty-intro">
+                <Icon name="layers" size={24} />
+                <div>
+                  <strong>Ihre Anlage wartet auf das erste Gerät.</strong>
+                  <span>
+                    {portalManaged
+                      ? 'Wählen Sie einen freien Platz oder starten Sie mit „Gerät hinzufügen".'
+                      : 'Die freien Plätze zeigen den möglichen Aufbau, ohne fehlende Geräte zu erfinden.'}
+                  </span>
                 </div>
-                {ansicht === 'schaltbild' && (
-                  <span className="vp-am-ansicht-hint">{SCHALTBILD_HINWEIS}</span>
+                {portalManaged && (
+                  <button
+                    type="button"
+                    className="vp-btn vp-btn--primary vp-btn--sm"
+                    onClick={() => {
+                      setAddTyp(null);
+                      setAddRolle(null);
+                      setAddOpen(true);
+                    }}
+                  >
+                    Gerät hinzufügen
+                  </button>
                 )}
               </div>
             )}
 
-            {isDesktop && ansicht === 'schaltbild' && bild && (
-              <Schaltbild
-                bild={bild}
-                onKomponente={(id) => {
-                  // Ein Klick auf eine Komponente springt zu IHRER Zeile in der
-                  // Liste - das Schaltbild erklärt die Struktur, die Zeile trägt
-                  // die Handlungen (§13.2).
-                  zeigeAnsicht('geraete');
-                  window.setTimeout(() => {
-                    document
-                      .querySelector(`[data-komponente="${CSS.escape(id)}"]`)
-                      ?.scrollIntoView({ block: 'center' });
-                  }, 0);
-                }}
-              />
+            {/* Anlagenbild und Liste sind auf ALLEN Breiten echte Ansichten. */}
+            <div className="vp-am-ansicht">
+              <div className="vp-seg vp-seg-compact" role="tablist" aria-label="Ansicht">
+                <button
+                  id="vp-anlagenbild-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected={ansicht === 'schaltbild'}
+                  aria-controls="vp-anlagenbild"
+                  tabIndex={ansicht === 'schaltbild' ? 0 : -1}
+                  className={ansicht === 'schaltbild' ? 'on' : undefined}
+                  onClick={() => zeigeAnsicht('schaltbild')}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ArrowRight' && event.key !== 'End') return;
+                    event.preventDefault();
+                    zeigeAnsicht('geraete');
+                    window.requestAnimationFrame(() =>
+                      document.getElementById('vp-anlagenliste-tab')?.focus(),
+                    );
+                  }}
+                >
+                  Anlagenbild
+                </button>
+                <button
+                  id="vp-anlagenliste-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected={ansicht === 'geraete'}
+                  aria-controls="vp-anlagenliste"
+                  tabIndex={ansicht === 'geraete' ? 0 : -1}
+                  className={ansicht === 'geraete' ? 'on' : undefined}
+                  onClick={() => zeigeAnsicht('geraete')}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ArrowLeft' && event.key !== 'Home') return;
+                    event.preventDefault();
+                    zeigeAnsicht('schaltbild');
+                    window.requestAnimationFrame(() =>
+                      document.getElementById('vp-anlagenbild-tab')?.focus(),
+                    );
+                  }}
+                >
+                  Liste
+                </button>
+              </div>
+              <span className="vp-am-ansicht-hint">
+                {ansicht === 'schaltbild'
+                  ? 'Elektrische Struktur und freie Plätze'
+                  : 'Dieselben Geräte mit allen Komponentenaktionen'}
+              </span>
+            </div>
+
+            {ansicht === 'schaltbild' && bild && (
+              <div
+                id="vp-anlagenbild"
+                role="tabpanel"
+                aria-labelledby="vp-anlagenbild-tab"
+              >
+                <AnlagenBild
+                  bild={bild}
+                  desktop={isDesktop}
+                  authority={
+                    components?.componentAuthority === 'portal'
+                      ? 'portal'
+                      : components?.componentAuthority === 'box'
+                        ? 'box'
+                        : 'unknown'
+                  }
+                  selectedId={selectedKarteId}
+                  previewId={previewKarteId}
+                  onSelect={(id) => {
+                    setSelectedKarteId(id);
+                    setPreviewKarteId(id);
+                  }}
+                  onClosePreview={() => setPreviewKarteId(null)}
+                  onAdd={(slot) => {
+                    setAddTyp(slot.typ);
+                    setAddRolle(slot.initialRolle);
+                    setAddOpen(true);
+                  }}
+                  onAssign={setAssign}
+                />
+              </div>
             )}
 
-            {/* 3 · EINE Liste: je Gerät eine Karte, je Komponente eine Zeile
-                darin (§13 R1/R2). Die frühere Doppelung - dasselbe Ding einmal
-                als Geräte-Kachel und einmal als Komponenten-Zeile - ist damit
-                strukturell aufgelöst. */}
-            <section
-              aria-label={LISTE_TITEL}
-              className="vp-am-liste"
-              hidden={isDesktop && ansicht === 'schaltbild'}
+            {/* Die bestehende Liste bleibt vollständig und teilt Auswahl/Fokus. */}
+            <div
+              id="vp-anlagenliste"
+              role="tabpanel"
+              aria-label="Liste"
+              hidden={ansicht === 'schaltbild'}
             >
+              <section aria-label={LISTE_TITEL} className="vp-am-liste">
               <p className="vp-am-box-hint">{EDGE_BOX_HINT}</p>
               {verwaltung && <p className="vp-am-stand is-unbekannt">{verwaltung}</p>}
               {komponentenStand && (
                 <p className={`vp-am-stand is-${komponentenStand.ton}`}>{komponentenStand.text}</p>
               )}
               {ablehnung && <p className="vp-am-stand is-warn">{ablehnung}</p>}
-              {/* Der Soll/Ist-Stand der ENTITÄTS-Registry - eine ANDERE
-                  Tatsache als die Komponenten-Fassung darüber (die eine ist
-                  die v2-Registry auf dem Gerät, die andere die gespeicherte
-                  Definition). Sie zusammenzulegen hieße, zwei Antworten unter
-                  eine Frage zu stellen. */}
               {showTechnical && data && <RegistryDrift data={data} />}
+
+              {karten.length === 0 && (
+                <p className="vp-am-list-empty">
+                  Noch keine Geräte vorhanden. Im Anlagenbild sehen Sie die möglichen Plätze.
+                </p>
+              )}
 
               {karten.map((k) => (
                 <GeraeteKarteView
                   key={k.id}
                   karte={k}
+                  selected={selectedKarteId === k.id}
                   siteId={site.id}
                   onAssign={setAssign}
                   onRename={setRename}
@@ -629,28 +644,22 @@ export function AnlagenModellSection({
                 />
               ))}
 
-              {/*
-                Einheitsmodell Stufe 6: die EIGENEN Vorlagen dieser Anlage. Sie
-                wohnen bei den Geräten, weil sie aus einem entstehen und zu
-                einem führen - und nur dort, wo das Portal die Geräte verwaltet.
-              */}
-              {portalManaged && <EigeneVorlagenPanel siteId={site.id} onAnlegen={setVorlage} />}
-            </section>
-
-            {/* 3 · Die Fußzeile: Schutz-Satz, wo die Komponenten wieder
-                auftauchen - und der EINE Register-Verweis (§6.2). Rollen-Summen
-                stehen bewusst NICHT hier (R8): die Zentrale beantwortet „WAS ist
-                meine Anlage", nicht „wie viel gerade". */}
-            <div className="vp-am-foot">
-              {GUARD_FOOTNOTE}
-              <div className="vp-am-links">
-                <span>Diese Komponenten begegnen Ihnen überall:</span>
-                <a href={hashForRoute(anlageRoute(site.id))}>→ Cockpit</a>
-                <a href={hashForRoute(anlageRoute(site.id, 'messwerte'))}>→ Messwerte</a>
-                <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>→ Steuerung</a>
-              </div>
-              <p className="vp-am-register-hint">{REGISTER_VERWEIS}</p>
+                {portalManaged && <EigeneVorlagenPanel siteId={site.id} onAnlegen={setVorlage} />}
+              </section>
             </div>
+
+            {!isEmpty && (
+              <div className="vp-am-foot">
+                {GUARD_FOOTNOTE}
+                <div className="vp-am-links">
+                  <span>Diese Komponenten begegnen Ihnen überall:</span>
+                  <a href={hashForRoute(anlageRoute(site.id))}>→ Cockpit</a>
+                  <a href={hashForRoute(anlageRoute(site.id, 'messwerte'))}>→ Messwerte</a>
+                  <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>→ Steuerung</a>
+                </div>
+                <p className="vp-am-register-hint">{REGISTER_VERWEIS}</p>
+              </div>
+            )}
           </>
         )}
       </Card>
@@ -691,12 +700,18 @@ export function AnlagenModellSection({
           siteId={site.id}
           box={boxOf(devices, site.id) ?? undefined}
           vorlage={vorlage}
+          initialTyp={vorlage ? null : addTyp}
+          initialRolle={vorlage ? null : addRolle}
           onClose={() => {
             setAddOpen(false);
+            setAddTyp(null);
+            setAddRolle(null);
             setVorlage(null);
           }}
           onSaved={(result) => {
             setComponents(result);
+            setAddTyp(null);
+            setAddRolle(null);
             reload();
           }}
         />
@@ -822,6 +837,7 @@ const HEALTH_TONE: Record<ComponentHealth, 'ok' | 'warn' | 'off'> = {
  */
 function GeraeteKarteView({
   karte,
+  selected,
   siteId,
   onAssign,
   onRename,
@@ -836,6 +852,7 @@ function GeraeteKarteView({
   ohneMesswertFor,
 }: {
   karte: GeraeteKarte;
+  selected: boolean;
   siteId: string;
   onAssign: (s: AdoptableSource) => void;
   onRename?: (c: PlantComponent) => void;
@@ -852,7 +869,12 @@ function GeraeteKarteView({
 }) {
   const k = karte;
   return (
-    <section className={`vp-am-karte is-${k.art}`} aria-label={k.titel}>
+    <section
+      className={`vp-am-karte is-${k.art}${selected ? ' is-selected' : ''}`}
+      aria-label={k.titel}
+      data-anlagen-karte={k.id}
+      tabIndex={selected ? -1 : undefined}
+    >
       <div className="vp-am-karte-head">
         <span className={`vp-health-dot vp-health-${k.ton}`} />
         <span className="nm">{k.titel}</span>
@@ -1181,4 +1203,3 @@ function ComponentRow({
     </div>
   );
 }
-

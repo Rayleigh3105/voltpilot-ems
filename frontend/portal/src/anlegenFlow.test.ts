@@ -135,6 +135,12 @@ describe('rollenWahl / vorschlagRolle', () => {
     expect(rollenWahl('wechselrichter', ['inverter']).every((r) => r.verfuegbar)).toBe(true);
   });
 
+  it('bewahrt die elektrische Speicher-Absicht auch neben einem vorhandenen Wechselrichter', () => {
+    expect(vorschlagRolle('wechselrichter', ['inverter'], 'inverter')).toBe('inverter');
+    // Eine Rolle, die nicht zu dieser Typ-Karte gehört, wird nie eingeschleust.
+    expect(vorschlagRolle('wechselrichter', [], 'consumer')).toBe('inverter');
+  });
+
   it('schlaegt nichts vor, wo nichts frei ist', () => {
     expect(vorschlagRolle('zaehler', ['grid-meter'])).toBeNull();
     expect(vorschlagRolle('ladesaeule', [])).toBeNull();

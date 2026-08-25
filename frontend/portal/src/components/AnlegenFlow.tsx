@@ -79,6 +79,8 @@ export function AnlegenFlow({
   siteId,
   box,
   vorlage,
+  initialTyp,
+  initialRolle,
   onClose,
   onSaved,
 }: {
@@ -95,14 +97,28 @@ export function AnlegenFlow({
    * wäre dann eine Frage, die der Kunde schon beantwortet hat.
    */
   vorlage?: SiteComponentTemplate | null;
+  /**
+   * Ein freier elektrischer Platz hat die Typfrage bereits beantwortet. Der
+   * Assistent beginnt dann in Schritt 2; „Zurück" führt weiterhin in die
+   * vollständige Typauswahl. Keine Anlege-Semantik ändert sich dadurch.
+   */
+  initialTyp?: TypId | null;
+  /**
+   * Elektrische Absicht eines konkreten Anlagenbild-Slots. Sie bleibt eine
+   * vorhandene Backend-Rolle (z. B. `inverter` für den Speicherpfad), keine
+   * neue Topologiebehauptung.
+   */
+  initialRolle?: KomponentenRolle | null;
   onClose: () => void;
   onSaved: (result: SiteComponents) => void;
 }) {
   const [templates, setTemplates] = useState<ComponentTemplate[] | null>(null);
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
-  const [typ, setTyp] = useState<TypId | null>(vorlage ? 'eigenbau' : null);
-  const [schritt, setSchritt] = useState(vorlage ? 2 : 1);
-  const [rolle, setRolle] = useState<KomponentenRolle | null>(null);
+  const [typ, setTyp] = useState<TypId | null>(vorlage ? 'eigenbau' : (initialTyp ?? null));
+  const [schritt, setSchritt] = useState(vorlage || initialTyp ? 2 : 1);
+  const [rolle, setRolle] = useState<KomponentenRolle | null>(() =>
+    initialTyp ? vorschlagRolle(initialTyp, [], initialRolle) : null,
+  );
   const [template, setTemplate] = useState<ComponentTemplate | null>(null);
   const [verbindung, setVerbindung] = useState<Record<string, unknown>>({});
   const [erweitertOffen, setErweitertOffen] = useState(false);
@@ -158,7 +174,18 @@ export function AnlegenFlow({
       .siteComponents(siteId)
       .then((c) => {
         if (!alive) return;
-        setVorhandene(c.components.map((r) => r.role ?? ''));
+        const rollen = c.components.map((r) => r.role ?? '');
+        setVorhandene(rollen);
+        if (initialTyp) {
+          setRolle((aktuell) => {
+            const bleibtGueltig = rollenWahl(initialTyp, rollen).some(
+              (wahl) => wahl.rolle === aktuell && wahl.verfuegbar,
+            );
+            return bleibtGueltig
+              ? aktuell
+              : vorschlagRolle(initialTyp, rollen, initialRolle);
+          });
+        }
         setVorherigeIds(c.components.map((r) => ({ id: r.id })));
       })
       .catch(() => {
@@ -167,7 +194,7 @@ export function AnlegenFlow({
     return () => {
       alive = false;
     };
-  }, [siteId]);
+  }, [initialRolle, initialTyp, siteId]);
 
   const alle = useMemo(() => templates ?? [], [templates]);
   const karten = useMemo(() => typKarten(alle), [alle]);
