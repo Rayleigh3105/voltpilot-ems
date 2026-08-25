@@ -160,6 +160,28 @@ public class ComponentTemplateRepository {
     }
 
     /**
+     * Genau die Fassung, die eine gespeicherte Definition nennt.
+     *
+     * <p>Anders als die Assistenten-Auswahl darf dieser Pfad niemals auf eine
+     * aeltere Fassung zurueckfallen: deren Feldschema koennte einen
+     * benutzerdefinierten Secret-Schluessel noch nicht kennen. Eine fehlende
+     * oder zurueckgezogene exakte Fassung liefert deshalb leer, damit die
+     * Ausgabeschicht alle gespeicherten Verbindungswerte fail-closed maskiert.
+     */
+    public Optional<ComponentTemplateDto> findExactByRef(Collection<String> kinds, String ref,
+            int version) {
+        return read.query("SELECT " + READ_COLUMNS + " FROM component_template "
+                        + "WHERE kind = ANY (?) AND template_ref = ? AND version = ? "
+                        + "AND withdrawn_at IS NULL",
+                ps -> {
+                    ps.setArray(1, ps.getConnection()
+                            .createArrayOf("text", kinds.toArray(String[]::new)));
+                    ps.setString(2, ref);
+                    ps.setInt(3, version);
+                }, ComponentTemplateRepository::map).stream().findFirst();
+    }
+
+    /**
      * Spiegelt eine eingebaute Vorlage in die Tabelle: anlegen oder AN ORT UND
      * STELLE auffrischen.
      *

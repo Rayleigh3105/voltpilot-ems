@@ -1,9 +1,11 @@
 package com.voltpilot.api.components;
 
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -64,6 +66,9 @@ public class ComponentDefinitionRepository {
      * wurde - eine zweite Ableitung im Aufrufer wäre eine zweite Wahrheit.
      */
     public record Applied(int version, String label) {}
+    public record FullDefinition(ComponentDefinitionDto definition, BigDecimal capacityKwp,
+            Boolean control, String entityType, String capabilitiesJson, String guardConfigJson,
+            String registryUnitId, boolean semanticSnapshotComplete) {}
 
     /**
      * Schreibt die geltende Anbindung auf den Messpunkt und hebt seine Fassung.
@@ -97,20 +102,77 @@ public class ComponentDefinitionRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    /** Legt die Fassung in der Historie ab. */
-    public void recordVersion(UUID tenantId, UUID siteId, UUID entityId, int version, String role,
-            String label, String brand, String model, String family, String communication,
-            String connectionJson, String sourceKind, String templateRef, Integer templateVersion,
+    public Applied applyDefinitionFull(UUID siteId, UUID entityId, int expectedRevision,
+            FullDefinition old) {
+        ComponentDefinitionDto d = old.definition();
+        List<Applied> rows = jdbc.query(
+                "UPDATE measurement_point SET role = ?, label = ?, brand = ?, model = ?, family = ?, "
+                        + "communication = ?, connection_json = ?::jsonb, source_kind = ?, template_ref = ?, "
+                        + "template_version = ?, capacity_kwp = ?, control = ?, entity_type = ?, "
+                        + "capabilities = ?::jsonb, guard_config = ?::jsonb, registry_unit_id = ?, "
+                        + "definition_version = definition_version + 1 WHERE id = ? AND site_id = ? "
+                        + "AND definition_version = ? RETURNING definition_version, label",
+                (rs, n) -> new Applied(rs.getInt(1), rs.getString(2)), d.role(), d.label(), d.brand(),
+                d.model(), d.family(), d.communication(), d.connection(), d.sourceKind(), d.templateRef(),
+                d.templateVersion(), old.capacityKwp(), old.control(), old.entityType(), old.capabilitiesJson(),
+                old.guardConfigJson(), old.registryUnitId(), entityId, siteId, expectedRevision);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * Revisionierter Bearbeitungsweg. Anders als der Anlege-/Übernahmeweg ist
+     * der Name hier eine ausdrückliche Kundeneingabe und darf daher auch
+     * entfernt werden. Die Revisionsbedingung sitzt IN demselben UPDATE wie
+     * alle neuen Sollwerte: zwischen Lesen und Schreiben kann kein zweiter
+     * Tab unbemerkt gewinnen.
+     */
+    public Applied applyEditDefinition(UUID siteId, UUID entityId, int expectedRevision,
+            String role, String entityType, String label, BigDecimal capacityKwp,
+            String brand, String model, String family, String communication,
+            String connectionJson, String sourceKind, String templateRef,
+            Integer templateVersion, String capabilitiesJson, String guardConfigJson) {
+        List<Applied> rows = jdbc.query(
+                "UPDATE measurement_point SET role = ?, entity_type = COALESCE(?, entity_type), "
+                        + "control = CASE WHEN ? = 'battery-hybrid' THEN control ELSE false END, "
+                        + "label = NULLIF(?::text, ''), capacity_kwp = ?, brand = ?, model = ?, "
+                        + "family = ?, communication = ?, connection_json = ?::jsonb, "
+                        + "source_kind = ?, template_ref = ?, template_version = ?, "
+                        + "capabilities = COALESCE(?::jsonb, capabilities), "
+                        + "guard_config = COALESCE(?::jsonb, guard_config), "
+                        + "definition_version = definition_version + 1 "
+                        + "WHERE id = ? AND site_id = ? AND definition_version = ? "
+                        + "RETURNING definition_version, label",
+                (rs, n) -> new Applied(rs.getInt(1), rs.getString(2)),
+                role, entityType, entityType, label, capacityKwp, brand, model, family, communication,
+                connectionJson, sourceKind, templateRef, templateVersion, capabilitiesJson,
+                guardConfigJson, entityId, siteId, expectedRevision);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * Legt den TATSAECHLICH angewandten Stand als vollstaendigen Snapshot ab.
+     *
+     * <p>Der Assistent spricht in Kundenrollen (zum Beispiel {@code inverter}),
+     * waehrend die gespeicherte, aus Wechselrichter und Batterie komponierte
+     * Entitaet {@code battery-hybrid} sein kann. Deshalb darf kein Aufrufer die
+     * Snapshot-Felder ein zweites Mal aus dem Request ableiten. Diese eine
+     * Abfrage kopiert Rolle, Typ, Schutzklemmen und Verbindung direkt aus genau
+     * der gerade geschriebenen {@code measurement_point}-Fassung.
+     */
+    public void recordStoredVersion(UUID tenantId, UUID siteId, UUID entityId, int version,
             String createdBy, String note) {
-        jdbc.update(
-                "INSERT INTO component_definition (entity_id, version, tenant_id, site_id, role, "
+        jdbc.update("INSERT INTO component_definition (entity_id, version, tenant_id, site_id, role, "
                         + "label, brand, model, family, communication, connection_json, source_kind, "
-                        + "template_ref, template_version, created_by, note) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?) "
+                        + "template_ref, template_version, capacity_kwp, control, entity_type, capabilities, "
+                        + "guard_config, registry_unit_id, semantic_snapshot_complete, created_by, note) "
+                        + "SELECT m.id, ?, m.tenant_id, m.site_id, m.role, m.label, m.brand, m.model, "
+                        + "m.family, m.communication, m.connection_json, m.source_kind, m.template_ref, "
+                        + "m.template_version, m.capacity_kwp, m.control, m.entity_type, m.capabilities, "
+                        + "m.guard_config, m.registry_unit_id, true, ?, ? FROM measurement_point m "
+                        + "WHERE m.id = ? AND m.site_id = ? AND m.tenant_id = ? "
+                        + "AND m.definition_version = ? "
                         + "ON CONFLICT (entity_id, version) DO NOTHING",
-                entityId, version, tenantId, siteId, role, label, brand, model, family,
-                communication, connectionJson, sourceKind, templateRef, templateVersion,
-                createdBy, note);
+                version, createdBy, note, entityId, siteId, tenantId, version);
     }
 
     /** Alle Fassungen einer Komponente, neueste zuerst. */
@@ -128,6 +190,46 @@ public class ComponentDefinitionRepository {
                         + "WHERE site_id = ? AND entity_id = ? AND version = ?",
                 ComponentDefinitionRepository::map, siteId, entityId, version);
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    public FullDefinition fullVersion(UUID siteId, UUID entityId, int version) {
+        List<FullDefinition> rows = jdbc.query(
+                "SELECT " + DEF_COLUMNS + ", capacity_kwp, control, entity_type, "
+                        + "capabilities::text AS caps, guard_config::text AS guards, registry_unit_id, semantic_snapshot_complete "
+                        + "FROM component_definition WHERE site_id = ? AND entity_id = ? AND version = ?",
+                (rs, n) -> new FullDefinition(map(rs, n), rs.getBigDecimal("capacity_kwp"),
+                        (Boolean) rs.getObject("control"), rs.getString("entity_type"),
+                        rs.getString("caps"), rs.getString("guards"), rs.getString("registry_unit_id"),
+                        rs.getBoolean("semantic_snapshot_complete")),
+                siteId, entityId, version);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Ereignis-Marker neben der vollständigen Fassungs-Historie. */
+    public void recordEvent(UUID tenantId, UUID siteId, UUID entityId, int revision,
+            String eventType, Instant effectiveAt, String fromValue, String toValue,
+            String createdBy, String note) {
+        jdbc.update(
+                "INSERT INTO component_change_event (tenant_id, site_id, entity_id, revision, "
+                        + "event_type, effective_at, from_value, to_value, created_by, note) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                tenantId, siteId, entityId, revision, eventType,
+                java.sql.Timestamp.from(effectiveAt), fromValue, toValue, createdBy, note);
+    }
+
+    public List<com.voltpilot.api.web.dto.ComponentChangeEventDto> events(UUID siteId,
+            UUID entityId) {
+        return jdbc.query(
+                "SELECT revision, event_type, effective_at, from_value, to_value, created_at, "
+                        + "created_by, note FROM component_change_event WHERE entity_id = ? "
+                        + "ORDER BY effective_at DESC, id DESC",
+                (rs, n) -> new com.voltpilot.api.web.dto.ComponentChangeEventDto(
+                        rs.getInt("revision"), rs.getString("event_type"),
+                        rs.getObject("effective_at", OffsetDateTime.class).toInstant(),
+                        rs.getString("from_value"), rs.getString("to_value"),
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant(),
+                        rs.getString("created_by"), rs.getString("note")),
+                entityId);
     }
 
     private static ComponentDefinitionDto map(ResultSet rs, int rowNum) throws SQLException {

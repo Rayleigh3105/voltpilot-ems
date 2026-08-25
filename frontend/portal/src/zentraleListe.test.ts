@@ -236,11 +236,11 @@ describe('zentraleListe · die Reihenfolge und die Karten-Arten', () => {
     expect(box.href).toBe('#/anlage/s-1/box/edge-45gz7da');
   });
 
-  it('trägt an der KARTE den technischen Namen - der Kundenname lebt an der ZEILE', () => {
+  it('trägt den Kundennamen an der KARTE und den technischen Namen darunter', () => {
     const k = zentraleListe(input());
     const deye = karte(k, 'inverter')!;
-    expect(deye.titel).toBe('Deye SUN-30K');
-    expect(deye.titel).not.toContain('Scheune');
+    expect(deye.titel).toBe('Wechselrichter Scheune');
+    expect(deye.technischerName).toBe('Deye SUN-30K');
     expect(deye.komponenten.map((c) => c.label)).toContain('Wechselrichter Scheune');
   });
 
@@ -253,7 +253,8 @@ describe('zentraleListe · die Reihenfolge und die Karten-Arten', () => {
 
   it('macht aus dem 1:1-Fall EINE Karte mit EINER Zeile (die Doppelung ist weg)', () => {
     const fr = karte(zentraleListe(input()), 'src-a')!;
-    expect(fr.titel).toBe('Fronius Eco 27.0-3');
+    expect(fr.titel).toBe('Dach Süd');
+    expect(fr.technischerName).toBe('Fronius Eco 27.0-3');
     expect(fr.komponenten.map((c) => c.label)).toEqual(['Dach Süd']);
     expect(fr.untertitel).toBe('PV-Wechselrichter');
   });
@@ -382,7 +383,7 @@ describe('zentraleSatz · EIN Satz über die Gesundheit', () => {
     );
     const s = zentraleSatz(k);
     expect(s.ton).toBe('warn');
-    expect(s.text).toContain('„Fronius Eco 27.0-3"');
+    expect(s.text).toContain('„Dach Süd"');
   });
 
   it('sagt bei einer leeren Anlage, was als Nächstes passiert', () => {

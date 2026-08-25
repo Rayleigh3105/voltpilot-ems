@@ -50,12 +50,10 @@ export interface GeraeteKarte {
   /** Stabiler Schlüssel; bei einem Gerät die Kennung auf der Box. */
   id: string;
   art: KartenArt;
-  /**
-   * Der TECHNISCHE Gerätename. **Der Kundenname lebt an der ZEILE** - ein Gerät
-   * wird nie umbenannt, nur seine Komponenten (w7 R6 / PR 432), sonst entstünde
-   * ein viertes Namenssystem.
-   */
+  /** Der primäre Kundenname nach Geräte-Erlebnis D7. */
   titel: string;
+  /** Technischer Hersteller/Modell-Name; unter dem Anzeigenamen. */
+  technischerName?: string | null;
   /** „Hybrid-Wechselrichter · Hauptgerät" / „Ladesäule · 2 Stecker". */
   untertitel: string;
   /** Zustand MIT Zeitbezug („liefert Daten · vor 12 Sek."). */
@@ -206,10 +204,13 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
       .map(komponenteVon)
       .filter((c): c is PlantComponent => c != null);
     const art = setupVon(d.id)?.kind === 'inverter' ? 'hauptgeraet' : 'quelle';
+    const customerName = komponenten.find((component) => component.aspect === 'main'
+      && component.alias?.trim())?.alias?.trim();
     karten.push({
       id: d.id,
       art: 'geraet',
-      titel: d.label,
+      titel: customerName || d.label,
+      technischerName: customerName ? d.label : null,
       untertitel: geraeteArtWort(art, rolleVon(d.id), komponenten),
       zustand: mitZeit(d.state, alter(leseZeit(d.id), now)),
       ton: HEALTH_TON[d.health],

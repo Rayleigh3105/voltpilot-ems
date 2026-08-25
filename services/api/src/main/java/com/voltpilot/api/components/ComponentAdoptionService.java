@@ -231,10 +231,8 @@ public class ComponentAdoptionService {
         if (applied == null) {
             throw new IllegalStateException("adopted component vanished: " + entityId);
         }
-        definitions.recordVersion(tenantId, siteId, entityId, applied.version(), item.role(),
-                applied.label(), template.brand(), template.model(), template.family(),
-                template.communication(), connJson, sourceKind, template.templateRef(),
-                template.version(), ACTOR, NOTE);
+        definitions.recordStoredVersion(tenantId, siteId, entityId, applied.version(),
+                ACTOR, NOTE);
     }
 
     /**

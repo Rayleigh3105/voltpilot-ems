@@ -199,7 +199,9 @@ class RlsIsolationTest {
                 + "WHERE point_key = 'test.rls.point'")).isZero();
 
         // Even a direct app-role attacker cannot pair its tenant with a foreign
-        // site/device UUID: the composite FK binds all three identities.
+        // site/device UUID. Current desired state binds the live triple; history
+        // independently binds both the stable device and historical site to the
+        // row's tenant so preserving an old site never weakens tenant isolation.
         assertThatThrownBy(() -> execute(TENANT_A,
                 "INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, "
                         + "point_key, enabled, cadence_s, desired_revision, enabled_at, "
@@ -209,6 +211,27 @@ class RlsIsolationTest {
                         + "'10000000-0000-0000-0000-000000000003', 'attack', TRUE, 60, 2, now(), "
                         + "'2026.08.25.1', 'attacker', 'pending_edge', 'unclassified', 90, 'none')"))
                 .hasMessageContaining("device_measurement_selection_device_fk");
+
+        assertThatThrownBy(() -> execute(TENANT_A,
+                "INSERT INTO device_measurement_selection_event (tenant_id, site_id, device_id, "
+                        + "point_key, desired_revision, idempotency_key, requested_enabled, "
+                        + "requested_cadence_s, enabled_at, catalog_version, actor, apply_status, "
+                        + "retention_class, raw_retention_days, long_term_strategy) VALUES ('"
+                        + TENANT_A + "', '00000000-0000-0000-0000-000000000002', "
+                        + "'10000000-0000-0000-0000-000000000003', 'attack.device', 2, "
+                        + "'00000000-0000-0000-0000-000000000097', TRUE, 60, now(), "
+                        + "'2026.08.25.1', 'attacker', 'pending_edge', 'unclassified', 90, 'none')"))
+                .hasMessageContaining("device_measurement_selection_event_device_tenant_fk");
+        assertThatThrownBy(() -> execute(TENANT_A,
+                "INSERT INTO device_measurement_selection_event (tenant_id, site_id, device_id, "
+                        + "point_key, desired_revision, idempotency_key, requested_enabled, "
+                        + "requested_cadence_s, enabled_at, catalog_version, actor, apply_status, "
+                        + "retention_class, raw_retention_days, long_term_strategy) VALUES ('"
+                        + TENANT_A + "', '10000000-0000-0000-0000-000000000002', "
+                        + "'00000000-0000-0000-0000-000000000003', 'attack.site', 2, "
+                        + "'00000000-0000-0000-0000-000000000098', TRUE, 60, now(), "
+                        + "'2026.08.25.1', 'attacker', 'pending_edge', 'unclassified', 90, 'none')"))
+                .hasMessageContaining("device_measurement_selection_event_site_tenant_fk");
 
         // The application role has no UPDATE/DELETE privilege on audit rows.
         assertThatThrownBy(() -> execute(TENANT_A,

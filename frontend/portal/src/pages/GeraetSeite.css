@@ -42,6 +42,22 @@
   overflow-wrap: anywhere;
 }
 
+.vp-geraet-titleline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-geraet-titleline h1 { min-width: 0; }
+.vp-geraet-titleline button { flex: 0 0 auto; min-height: 44px; }
+
+@media (max-width: 520px) {
+  .vp-geraet-titleline { align-items: stretch; flex-direction: column; }
+  .vp-geraet-titleline button { align-self: flex-start; }
+}
+
 .vp-geraet-meta {
   display: flex;
   flex-wrap: wrap;
@@ -58,6 +74,15 @@
   background: var(--vp-surface-2, #f7fafc);
   font-size: 0.82rem;
 }
+
+.vp-geraet-versionen { margin-top: var(--vp-space-3, 12px); }
+.vp-geraet-versionen > summary {
+  display: flex; align-items: center; min-height: 44px; cursor: pointer;
+  color: var(--vp-action, #2c5282); font-weight: 650;
+}
+.vp-geraet-versionen > p { margin: 0.4rem 0; color: var(--vp-text-muted, #4a5568); }
+.vp-geraet-version-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.vp-geraet-version-list button { min-height: 44px; }
 
 /* Der Zustands-Pill. Die drei Töne sind die des Hauses; das WORT steht immer
    daneben, die Farbe verstärkt es nur. */

@@ -8,6 +8,7 @@ import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.ota.RolloutService;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.provisioning.ProvisioningTopics;
+import com.voltpilot.api.provisioning.MoveProvisioningOutboxService;
 import com.voltpilot.api.purge.DevicePurgeService;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
@@ -17,6 +18,9 @@ import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceClaimRequest;
 import com.voltpilot.api.web.dto.DeviceDto;
+import com.voltpilot.api.web.dto.DeviceMovePreviewDto;
+import com.voltpilot.api.web.dto.MoveDeviceRequest;
+import com.voltpilot.api.web.dto.MoveProvisioningStatusDto;
 import com.voltpilot.api.web.dto.UpdateDeviceRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -27,6 +31,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -65,6 +71,7 @@ public class DeviceController {
     private final EntityAutoComposer autoCompose;
     private final ControlCertificationService controlCertification;
     private final ObjectProvider<ChargingConfigPublisher> chargingConfig;
+    private final MoveProvisioningOutboxService moveOutbox;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
             SeriesRepository series, AssetRepository assets,
@@ -76,7 +83,8 @@ public class DeviceController {
             ObjectProvider<RolloutService> rollouts,
             EntityAutoComposer autoCompose,
             ControlCertificationService controlCertification,
-            ObjectProvider<ChargingConfigPublisher> chargingConfig) {
+            ObjectProvider<ChargingConfigPublisher> chargingConfig,
+            MoveProvisioningOutboxService moveOutbox) {
         this.devices = devices;
         this.sites = sites;
         this.series = series;
@@ -90,6 +98,7 @@ public class DeviceController {
         this.autoCompose = autoCompose;
         this.controlCertification = controlCertification;
         this.chargingConfig = chargingConfig;
+        this.moveOutbox = moveOutbox;
     }
 
     @GetMapping
@@ -98,6 +107,7 @@ public class DeviceController {
     }
 
     @PostMapping("/claim")
+    @Transactional
     public ResponseEntity<DeviceDto> claim(@Valid @RequestBody DeviceClaimRequest request) {
         UUID tenantId = TenantContext.get();
         if (tenantId == null) {
@@ -186,8 +196,9 @@ public class DeviceController {
     /**
      * Update a device's editable fields: TYPE and label (Bezeichnung) only.
      * The {@code external_ref} is the device's identity - MQTT topics and the
-     * registry gate hang off it - and stays immutable; a wrong ref is fixed by
-     * unclaiming and re-claiming. RLS makes a foreign device a 404.
+     * registry gate hang off it - and stays immutable. Es gibt bewusst keinen
+     * Korrekturweg über Unclaim/Re-Claim: Historie, Befehle und Audit bleiben
+     * an derselben Geräte-ID. RLS makes a foreign device a 404.
      */
     @PutMapping("/{deviceId}")
     public DeviceDto update(@PathVariable UUID deviceId,
@@ -198,6 +209,64 @@ public class DeviceController {
                 ? existing.kind() : request.kind();
         return devices.update(deviceId, kind, request.nameOrNull())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
+    }
+
+    /** Getrennter Standortwechsel: reine Vorprüfung, noch keine Mutation. */
+    @GetMapping("/{deviceId}/move-preview")
+    public DeviceMovePreviewDto movePreview(@PathVariable UUID deviceId) {
+        DeviceMovePreviewDto preview = devices.movePreview(deviceId);
+        if (preview == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
+        }
+        return preview;
+    }
+
+    @GetMapping("/{deviceId}/move-status")
+    public MoveProvisioningStatusDto moveStatus(@PathVariable UUID deviceId) {
+        if (devices.findById(deviceId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
+        }
+        return devices.moveProvisioningStatus(deviceId).orElse(null);
+    }
+
+    /** Verschiebt dieselbe Geräte-ID nach erneuter Revisions- und Topologieprüfung. */
+    @PostMapping("/{deviceId}/move")
+    @Transactional
+    public DeviceDto move(@PathVariable UUID deviceId,
+            @Valid @RequestBody MoveDeviceRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        DeviceRepository.MoveState state = devices.moveState(deviceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Gerät nicht gefunden."));
+        if (state.revision() != request.expectedRevision()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Der Geräte-Standort wurde inzwischen geändert. Bitte prüfen Sie das Ziel erneut.");
+        }
+        DeviceMovePreviewDto preview = devices.movePreview(deviceId);
+        DeviceMovePreviewDto.TargetSiteDto target = preview.targets().stream()
+                .filter(option -> option.siteId().equals(request.targetSiteId()))
+                .findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Zielstandort nicht gefunden."));
+        if (!target.allowed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, target.reason());
+        }
+        java.time.Instant now = java.time.Instant.now();
+        if (request.effectiveAt().isAfter(now.plusSeconds(60))
+                || request.effectiveAt().isBefore(now.minusSeconds(300))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Der Wirksamkeitszeitpunkt muss jetzt liegen. Künftige Umzüge werden nicht still vorgemerkt.");
+        }
+        if (!devices.move(state, request.targetSiteId(), request.effectiveAt(),
+                jwt == null ? null : jwt.getSubject())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Der Geräte-Standort wurde inzwischen geändert. Bitte prüfen Sie das Ziel erneut.");
+        }
+        assets.autoLinkBatteryDevice(request.targetSiteId());
+        autoCompose.ensureComposed(request.targetSiteId());
+        moveOutbox.enqueue(state.tenantId(), state.deviceId(), state.siteId(), request.targetSiteId(),
+                state.revision() + 1, state.externalRef());
+        return devices.findById(deviceId).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden."));
     }
 
     /**

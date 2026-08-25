@@ -793,6 +793,22 @@ export interface DevicePurgeResult {
   deviceNotified: boolean;
 }
 
+export interface DeviceMovePreview {
+  deviceId: string;
+  currentSiteId: string;
+  revision: number;
+  targets: { siteId: string; name: string; allowed: boolean; reason?: string | null }[];
+}
+export interface MoveProvisioningStatus {
+  deviceId: string;
+  revision: number;
+  status: 'pending' | 'applied' | 'refused';
+  attempts: number;
+  lastError?: string | null;
+  updatedAt: string;
+  appliedAt?: string | null;
+}
+
 /** What deleting a site would remove - drives the confirm dialog. */
 export interface SiteDeletionPreview {
   deviceCount: number;
@@ -1027,6 +1043,8 @@ export interface TemplateField {
   default?: string | number | boolean;
   help?: string;
   options?: { value: string | number; label: string }[];
+  /** Geheimnis: wird nie zurückgegeben, nur mit einer festen Maske angezeigt. */
+  secret?: boolean;
 }
 
 /** Eine gespeicherte Fassung der Anbindung einer Komponente (Stufe 1). */
@@ -1064,6 +1082,10 @@ export interface SaveComponentBody {
    * fehlend ausgewiesen hat.
    */
   acceptMissingChannel?: string;
+  /** Gelesene Fassung beim Bearbeiten; verhindert stilles Überschreiben. */
+  expectedRevision?: number;
+  /** Ab wann diese Änderung gilt; aktuell atomisch beim Speichern. */
+  effectiveAt?: string;
 }
 
 /**
@@ -2935,6 +2957,8 @@ export const api = {
       role?: string;
       connection: Record<string, unknown>;
       deviceId?: string;
+      /** Bestehende Komponente: der Server ergänzt unveränderte Secrets. */
+      entityId?: string;
     },
   ) =>
     request<ProbeAntwort>(`/api/v1/sites/${siteId}/component-test`, {
@@ -2974,11 +2998,24 @@ export const api = {
   componentVersions: (siteId: string, entityId: string) =>
     request<ComponentDefinition[]>(`/api/v1/sites/${siteId}/components/${entityId}/versions`),
   /** Zurück auf eine frühere Fassung - der Ein-Klick-Weg aus einem falschen Soll. */
-  rollbackComponent: (siteId: string, entityId: string, version: number) =>
+  rollbackComponent: (siteId: string, entityId: string, version: number, expectedRevision: number) =>
     request<SiteComponents>(
       `/api/v1/sites/${siteId}/components/${entityId}/versions/${version}/rollback`,
-      { method: 'POST' },
+      { method: 'POST', body: JSON.stringify({ expectedRevision }) },
     ),
+  /** Getrennter Standortwechsel: erst Vorprüfung, dann revisionsgeschütztes Apply. */
+  deviceMovePreview: (deviceId: string) =>
+    request<DeviceMovePreview>(`/api/v1/devices/${deviceId}/move-preview`),
+  moveDevice: (deviceId: string, body: {
+    targetSiteId: string;
+    expectedRevision: number;
+    effectiveAt: string;
+  }) => request<Device>(`/api/v1/devices/${deviceId}/move`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }),
+  deviceMoveStatus: (deviceId: string) =>
+    request<MoveProvisioningStatus | null>(`/api/v1/devices/${deviceId}/move-status`),
   /**
    * „Jetzt lesen" (Einheitsmodell Stufe 3): die BOX liest EINEN Messwert des
    * noch nicht gespeicherten Geräts einmal und antwortet mit Roh- UND

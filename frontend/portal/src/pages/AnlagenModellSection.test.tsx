@@ -378,7 +378,10 @@ describe('AnlagenModellSection — Variante A', () => {
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
     // A HEALTHY component keeps its actions in the calm Details fold.
-    const wr2 = (await screen.findAllByText('Fronius WR2'))[0].closest('.vp-am-comp')!;
+    // D7: derselbe Anzeigename steht zusätzlich als Geräte-Titel über der
+    // technischen Zeile; die Zeilenaktion bewusst an der Zeile suchen.
+    const wr2 = (await screen.findAllByText('Fronius WR2'))
+      .map((node) => node.closest('.vp-am-comp')).find(Boolean)!;
     fireEvent.click(within(wr2 as HTMLElement).getByRole('button', { name: /Zuordnung ändern/ }));
 
     // The dialog is up (its title and the row button share the same words, so

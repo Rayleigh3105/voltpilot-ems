@@ -135,6 +135,68 @@
   min-width: 0;
 }
 
+/* --- Bestehendes Gerät bearbeiten --------------------------------------- */
+
+.vp-edit-identity,
+.vp-edit-effects {
+  display: grid;
+  gap: var(--vp-space-2, 0.5rem);
+  min-width: 0;
+  margin: var(--vp-space-3, 0.75rem) 0;
+  padding: var(--vp-space-4, 1rem);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-alt, #f8fafc);
+}
+
+.vp-edit-identity > strong { font-size: 1.05rem; }
+.vp-edit-identity > span,
+.vp-edit-identity > p { margin: 0; color: var(--vp-text-muted, #64748b); }
+
+.vp-edit-locked { margin-top: var(--vp-space-4, 1rem); }
+.vp-edit-locked > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--vp-action, #2c5282);
+  font-weight: 600;
+}
+.vp-edit-locked dl,
+.vp-edit-delta { margin: 0; }
+.vp-edit-locked dl > div,
+.vp-edit-delta > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.8fr) minmax(0, 1.4fr);
+  gap: var(--vp-space-3, 0.75rem);
+  padding: var(--vp-space-2, 0.5rem) 0;
+  border-bottom: 1px solid var(--vp-border, #e2e8f0);
+}
+.vp-edit-locked dt,
+.vp-edit-delta dt { font-weight: 650; }
+.vp-edit-locked dd,
+.vp-edit-delta dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.vp-edit-delta dd { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.vp-edit-delta del { color: var(--vp-text-muted, #64748b); }
+.vp-edit-delta ins { color: var(--vp-flow-batt-ink, #166534); text-decoration: none; font-weight: 650; }
+.vp-edit-effects ul { margin: 0; padding-left: 1.2rem; }
+
+@media (max-width: 560px) {
+  .vp-edit-locked dl > div,
+  .vp-edit-delta > div { grid-template-columns: 1fr; gap: 0.2rem; }
+}
+
+.vp-move-targets { display: grid; gap: var(--vp-space-2, 0.5rem); margin-top: 1rem; }
+.vp-move-target {
+  display: flex; align-items: flex-start; gap: 0.75rem; min-height: 48px;
+  padding: 0.75rem; border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px); cursor: pointer;
+}
+.vp-move-target:has(input:checked) { border-color: var(--vp-action, #2c5282); background: var(--vp-surface-alt, #f8fafc); }
+.vp-move-target.is-blocked { cursor: not-allowed; opacity: 0.72; }
+.vp-move-target span { display: grid; gap: 0.2rem; min-width: 0; }
+.vp-move-target small { color: var(--vp-text-muted, #64748b); overflow-wrap: anywhere; }
+
 /* --- Schritt 4: der zweite Anlauf ---------------------------------------- */
 
 /*

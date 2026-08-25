@@ -11,6 +11,7 @@ import {
   type Device,
   type SiteComponents,
   type SiteComponentTemplate,
+  type SiteComponentRow,
 } from '../api';
 import { AnlegenDialog } from './AnlegenDialog';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -55,8 +56,18 @@ import {
   schritte as schritteFuer,
   typKarten,
   vorschlagRolle,
+  typFuerTemplate,
   type TypId,
 } from '../anlegenFlow';
+import {
+  GESPERRTE_FELDER,
+  auswirkungen,
+  brauchtVerbindungstest,
+  delta,
+  istSecret,
+  kundenRolle,
+  verbindungFuerSpeichern,
+} from '../geraeteEdit';
 
 /**
  * Der NEUE ANLEGE-FLUSS (Anlegen-Rework Stufe 2, Konzept
@@ -81,6 +92,7 @@ export function AnlegenFlow({
   vorlage,
   initialTyp,
   initialRolle,
+  bearbeiten,
   onClose,
   onSaved,
 }: {
@@ -109,18 +121,25 @@ export function AnlegenFlow({
    * neue Topologiebehauptung.
    */
   initialRolle?: KomponentenRolle | null;
+  /** Bestehende stabile Komponente: derselbe Assistent, mit ihren Sollwerten. */
+  bearbeiten?: SiteComponentRow | null;
   onClose: () => void;
   onSaved: (result: SiteComponents) => void;
 }) {
   const [templates, setTemplates] = useState<ComponentTemplate[] | null>(null);
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
-  const [typ, setTyp] = useState<TypId | null>(vorlage ? 'eigenbau' : (initialTyp ?? null));
-  const [schritt, setSchritt] = useState(vorlage || initialTyp ? 2 : 1);
+  const edit = bearbeiten ?? null;
+  const [typ, setTyp] = useState<TypId | null>(
+    vorlage ? 'eigenbau' : (edit ? 'wechselrichter' : (initialTyp ?? null)),
+  );
+  const [schritt, setSchritt] = useState(vorlage || initialTyp || edit ? 2 : 1);
   const [rolle, setRolle] = useState<KomponentenRolle | null>(() =>
-    initialTyp ? vorschlagRolle(initialTyp, [], initialRolle) : null,
+    edit ? kundenRolle(edit) : initialTyp ? vorschlagRolle(initialTyp, [], initialRolle) : null,
   );
   const [template, setTemplate] = useState<ComponentTemplate | null>(null);
-  const [verbindung, setVerbindung] = useState<Record<string, unknown>>({});
+  const [verbindung, setVerbindung] = useState<Record<string, unknown>>(
+    () => ({ ...(edit?.connection ?? {}) }),
+  );
   const [erweitertOffen, setErweitertOffen] = useState(false);
   const [testZustand, setTestZustand] = useState<TestZustand>('ungeprueft');
   const [testText, setTestText] = useState<TestErgebnis | null>(null);
@@ -147,8 +166,8 @@ export function AnlegenFlow({
    * deshalb wird es nur mit dem Formular zurückgesetzt, nie durch einen Test.
    */
   const [socAngeboten, setSocAngeboten] = useState(false);
-  const [name, setName] = useState('');
-  const [kwp, setKwp] = useState('');
+  const [name, setName] = useState(edit?.label ?? '');
+  const [kwp, setKwp] = useState(edit?.capacityKwp == null ? '' : String(edit.capacityKwp));
   const [speichern, setSpeichern] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [vorhandene, setVorhandene] = useState<string[]>([]);
@@ -156,6 +175,7 @@ export function AnlegenFlow({
   /** Die Komponente, die gerade entstanden ist - BELEGT, nie geraten. */
   const [neueId, setNeueId] = useState<string | null>(null);
   const [uebernommen, setUebernommen] = useState(false);
+  const [gespeichert, setGespeichert] = useState<SiteComponents | null>(null);
   /**
    * Die vorhandene Komponente, die dieses Gerät übernimmt - VOM SERVER, nie
    * hier abgeleitet (Alias-Kontinuität). `null` = es entsteht eine neue.
@@ -174,7 +194,7 @@ export function AnlegenFlow({
       .siteComponents(siteId)
       .then((c) => {
         if (!alive) return;
-        const rollen = c.components.map((r) => r.role ?? '');
+        const rollen = c.components.filter((r) => r.id !== edit?.id).map((r) => r.role ?? '');
         setVorhandene(rollen);
         if (initialTyp) {
           setRolle((aktuell) => {
@@ -194,7 +214,20 @@ export function AnlegenFlow({
     return () => {
       alive = false;
     };
-  }, [initialRolle, initialTyp, siteId]);
+  }, [edit?.id, initialRolle, initialTyp, siteId]);
+
+  useEffect(() => {
+    if (!edit || !templates || template) return;
+    const found = templates.find((t) => t.templateRef === edit.templateRef) ?? null;
+    if (!found) {
+      setLadeFehler('Die bisherige Gerätevorlage ist nicht mehr auswählbar. Die gespeicherte Fassung bleibt aktiv.');
+      return;
+    }
+    setTemplate(found);
+    setTyp(typFuerTemplate(found));
+    setRolle(kundenRolle(edit));
+    setVerbindung({ ...(edit.connection ?? {}) });
+  }, [edit, template, templates]);
 
   const alle = useMemo(() => templates ?? [], [templates]);
   const karten = useMemo(() => typKarten(alle), [alle]);
@@ -235,6 +268,10 @@ export function AnlegenFlow({
   const fields = felder(template);
   const gruppen = feldGruppen<TemplateField>(fields);
   const fehlend = fehlendeFelder(template, verbindung);
+  const testNoetig = edit ? brauchtVerbindungstest(edit, template, verbindung) : true;
+  const aenderungen = edit && template && rolle
+    ? delta(edit, template, rolle, name, verbindung, kwp)
+    : [];
   // ⚠ Die HEBEL entstehen aus BELEGEN (Server-Fehlerklasse + Befund) und aus
   // dem, was die Vorlage strukturell hergibt - nie aus einer eigenen Diagnose
   // der gelesenen Zahlen. Die ganze Regel liegt rein in `testHebel.ts`.
@@ -248,10 +285,10 @@ export function AnlegenFlow({
   const laeuft = useRef(false);
   useEffect(() => {
     if (schritt !== 4 || typ === 'eigenbau' || typ === 'ladesaeule') return;
-    if (!template || testZustand !== 'ungeprueft' || laeuft.current) return;
+    if (!template || !testNoetig || testZustand !== 'ungeprueft' || laeuft.current) return;
     void testen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schritt, template, testZustand, typ]);
+  }, [schritt, template, testNoetig, testZustand, typ]);
 
   function waehleTyp(id: TypId) {
     setTyp(id);
@@ -264,13 +301,14 @@ export function AnlegenFlow({
     const t = auswahl.templates.find((x) => x.templateRef === ref);
     if (!t) return;
     setTemplate(t);
-    setVerbindung(initialeVerbindung(t));
+    const istBisherige = edit?.templateRef === t.templateRef;
+    setVerbindung(istBisherige ? { ...(edit.connection ?? {}) } : initialeVerbindung(t));
     setSocVolt(socSchaetzung.leereEingabe());
     setSocAngeboten(false);
     // ⚠ NICHT mit dem Modellnamen vorbefüllen (Alias-Kontinuität, Live-Fall
     // Herzogau 20.08.2026): ein vorbefülltes Feld wird mitgeschickt und
     // überschreibt beim Übernehmen den Namen, den der Kunde vergeben hat.
-    setName('');
+    setName(edit?.label ?? '');
     setUebernahme(null);
     setTestZustand('ungeprueft');
     setTestText(null);
@@ -351,7 +389,8 @@ export function AnlegenFlow({
       const antwort = await api.testComponentConnection(siteId, {
         templateRef: template.templateRef,
         role: rolle ?? undefined,
-        connection: verbindung,
+        connection: verbindungFuerSpeichern(template, verbindung),
+        entityId: edit?.id,
       });
       const ergebnis = testErgebnis(antwort);
       setTestText(ergebnis);
@@ -382,7 +421,7 @@ export function AnlegenFlow({
       const hit = await api.matchComponent(siteId, {
         templateRef: template.templateRef,
         role: rolle,
-        connection: verbindung,
+        connection: verbindungFuerSpeichern(template, verbindung),
       });
       setUebernahme(hit ?? null);
     } catch {
@@ -395,22 +434,32 @@ export function AnlegenFlow({
     setSpeichern(true);
     setFehler(null);
     try {
-      const result = await api.createComponent(siteId, {
+      const body = {
         templateRef: template.templateRef,
-        label: name.trim() || undefined,
+        label: edit ? name.trim() : (name.trim() || undefined),
         role: rolle,
-        connection: verbindung,
+        connection: verbindungFuerSpeichern(template, verbindung),
         capacityKwp: rolle === 'pv-generation' && kwp.trim() !== '' ? Number(kwp) : undefined,
         acceptMissingChannel: ohneKanal?.channel,
-      });
-      setNeueId(neueKomponente(vorherigeIds, result.components, uebernahme?.entityId));
-      setUebernommen(Boolean(uebernahme));
+        expectedRevision: edit?.definitionVersion,
+        effectiveAt: edit ? new Date().toISOString() : undefined,
+      };
+      const result = edit
+        ? await api.updateComponent(siteId, edit.id, body)
+        : await api.createComponent(siteId, body);
+      setNeueId(edit?.id ?? neueKomponente(vorherigeIds, result.components, uebernahme?.entityId));
+      setUebernommen(Boolean(uebernahme) || Boolean(edit));
       setVorherigeIds(result.components.map((r) => ({ id: r.id })));
       setVorhandene(result.components.map((r) => r.role ?? ''));
       setSchritt(5);
+      setGespeichert(result);
       onSaved(result);
     } catch (e) {
-      setFehler(e instanceof ApiError ? e.message : 'Speichern ist fehlgeschlagen.');
+      setFehler(e instanceof ApiError
+        ? e.message
+        : typeof navigator !== 'undefined' && !navigator.onLine
+          ? 'Keine Verbindung. Ihre Eingaben bleiben erhalten — versuchen Sie es wieder, sobald Sie online sind.'
+          : 'Speichern ist fehlgeschlagen. Ihre Eingaben bleiben erhalten; versuchen Sie es erneut.');
     } finally {
       setSpeichern(false);
     }
@@ -521,9 +570,10 @@ export function AnlegenFlow({
           </Button>
           <Button
             onClick={anlegen}
-            disabled={speichern || (testZustand !== 'bestanden' && !ohneKanal) || !rolle}
+            disabled={speichern || (testNoetig && testZustand !== 'bestanden' && !ohneKanal)
+              || !rolle || (Boolean(edit) && aenderungen.length === 0)}
           >
-            {speichern ? 'Speichere …' : 'Komponente anlegen'}
+            {speichern ? 'Speichere …' : edit ? 'Änderungen speichern' : 'Komponente anlegen'}
           </Button>
         </>
       );
@@ -533,14 +583,14 @@ export function AnlegenFlow({
 
   return (
     <AnlegenDialog
-      titel={DIALOG_TITEL}
+      titel={edit ? 'Gerät bearbeiten' : DIALOG_TITEL}
       schritte={schritte}
       aktiv={schritt}
       onClose={onClose}
       onBack={schritt > 1 && !istFertig ? zurueck : null}
       footer={fuss()}
     >
-      {ladeFehler && <p className="vp-assist-error">{ladeFehler}</p>}
+      {ladeFehler && <p className="vp-assist-error" role="alert">{ladeFehler}</p>}
 
       {/* 1 · Was möchten Sie anbinden? Die Typ-Karten aus der Katalog-Typ-
           Dimension (Captain-Entscheidung 2: Gerätetyp zuerst). */}
@@ -600,7 +650,17 @@ export function AnlegenFlow({
       {/* 2 · Gerät wählen - EIN Picker mit den Marken als Gruppen. */}
       {schritt === 2 && typ && typ !== 'eigenbau' && typ !== 'ladesaeule' && (
         <section>
-          <h3 className="vp-assist-h">Welches Gerät ist es?</h3>
+          <h3 className="vp-assist-h">{edit ? 'Gerät und Aufgabe' : 'Welches Gerät ist es?'}</h3>
+          {edit && (
+            <div className="vp-edit-identity" role="note">
+              <strong>{edit.label?.trim() || 'Gerät ohne Anzeigenamen'}</strong>
+              <span>{[
+                template?.brandLabel ?? edit.brand,
+                template?.modelLabel ?? edit.model,
+              ].filter(Boolean).join(' ') || 'Technische Angaben unbekannt'}</span>
+              <p>Die Geräte-ID bleibt unverändert. Messhistorie, Transaktionen, Befehle und Audit werden fortgeführt.</p>
+            </div>
+          )}
           {/* Die einzige echte Rest-Frage der Typ-Karten: ein Wechselrichter
               kann das Herz der Anlage ODER ein weiterer Erzeuger sein. Jede
               andere Karte beantwortet sie selbst - dann steht hier nichts. */}
@@ -658,6 +718,19 @@ export function AnlegenFlow({
               {modellZusatz(template) ? ` · ${modellZusatz(template)}` : ''}
             </p>
           )}
+          {edit && (
+            <details className="vp-edit-locked">
+              <summary>Gesperrte Angaben und Gründe</summary>
+              <dl>
+                {GESPERRTE_FELDER.map((item) => (
+                  <div key={item.feld}>
+                    <dt>{item.feld}</dt>
+                    <dd>{item.grund}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          )}
         </section>
       )}
 
@@ -693,9 +766,14 @@ export function AnlegenFlow({
       {/* 4 · Testen - der Befund, die Hebel, der Ausweg, und was gleich entsteht. */}
       {schritt === 4 && template && (
         <section>
-          <h3 className="vp-assist-h">Verbindung testen</h3>
+          <h3 className="vp-assist-h">{edit ? 'Änderungen prüfen' : 'Verbindung testen'}</h3>
           <div className="vp-assist-test">
-            {testZustand === 'laeuft' && <p role="status">Prüfe …</p>}
+            {!testNoetig && (
+              <p className="vp-assist-ok" role="status">
+                Verbindung und Vorlage sind unverändert — kein neuer Verbindungstest nötig.
+              </p>
+            )}
+            {testNoetig && testZustand === 'laeuft' && <p role="status">Prüfe …</p>}
             {testText && (
               <div
                 className={testText.zustand === 'bestanden' ? 'vp-assist-ok' : 'vp-assist-error'}
@@ -717,7 +795,7 @@ export function AnlegenFlow({
                 )}
               </div>
             )}
-            {testZustand !== 'laeuft' && (
+            {testNoetig && testZustand !== 'laeuft' && (
               <Button variant="outline" className="vp-anlegen-nochmal" onClick={testen}>
                 Erneut testen
               </Button>
@@ -815,9 +893,9 @@ export function AnlegenFlow({
 
           {/* Was gleich entsteht - erst nach einem Ja (oder der abgenickten
               Ausnahme). Vorher gibt es nichts anzulegen. */}
-          {rolle && (testZustand === 'bestanden' || ohneKanal) && (
+          {rolle && (!testNoetig || testZustand === 'bestanden' || ohneKanal) && (
             <div className="vp-anlegen-fertigmachen" data-testid="fertigmachen">
-              <h4 className="vp-assist-h">Fast fertig</h4>
+              <h4 className="vp-assist-h">{edit ? 'Nur diese Änderungen' : 'Fast fertig'}</h4>
               {uebernahmeHinweis(uebernahme, template) && (
                 <p className="vp-assist-uebernahme">{uebernahmeHinweis(uebernahme, template)}</p>
               )}
@@ -845,18 +923,41 @@ export function AnlegenFlow({
                   </p>
                 </div>
               )}
-              <dl className="vp-assist-check">
-                {pruefen(template, rolle, name, verbindung, uebernahme).map((row) => (
-                  <div key={row.label}>
-                    <dt>{row.label}</dt>
-                    <dd>{row.wert}</dd>
+              {edit ? (
+                <>
+                  {aenderungen.length > 0 ? (
+                    <dl className="vp-edit-delta" aria-label="Änderungen">
+                      {aenderungen.map((row) => (
+                        <div key={row.feld}>
+                          <dt>{row.feld}</dt>
+                          <dd><del>{row.vorher}</del><span aria-hidden="true">→</span><ins>{row.nachher}</ins></dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : (
+                    <p className="vp-assist-help" role="status">Noch keine Änderung.</p>
+                  )}
+                  <div className="vp-edit-effects">
+                    <strong>Auswirkungen</strong>
+                    <ul>{auswirkungen(aenderungen).map((satz) => <li key={satz}>{satz}</li>)}</ul>
                   </div>
-                ))}
-              </dl>
-              <p className="vp-assist-balance">{bilanzHinweis(rolle)}</p>
+                </>
+              ) : (
+                <>
+                  <dl className="vp-assist-check">
+                    {pruefen(template, rolle, name, verbindung, uebernahme).map((row) => (
+                      <div key={row.label}>
+                        <dt>{row.label}</dt>
+                        <dd>{row.wert}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className="vp-assist-balance">{bilanzHinweis(rolle)}</p>
+                </>
+              )}
             </div>
           )}
-          {fehler && <p className="vp-assist-error">{fehler}</p>}
+          {fehler && <p className="vp-assist-error" role="alert">{fehler}</p>}
         </section>
       )}
 
@@ -865,12 +966,20 @@ export function AnlegenFlow({
         <section className="vp-anlegen-fertig" data-testid="schritt-fertig">
           <p className="vp-assist-ok">
             <Icon name="check" />{' '}
-            {abschlussTitel(
-              name.trim() || uebernahme?.label?.trim() || template?.modelLabel || '',
-              uebernommen,
-            )}
+            {edit
+              ? `„${name.trim() || template?.modelLabel || 'Gerät'}“ wurde als neue Fassung gespeichert.`
+              : abschlussTitel(
+                name.trim() || uebernahme?.label?.trim() || template?.modelLabel || '',
+                uebernommen,
+              )}
           </p>
-          <p className="vp-assist-help">{ABSCHLUSS_HINWEIS}</p>
+          <p className="vp-assist-help">
+            {edit
+              ? gespeichert?.components.find((row) => row.id === edit.id)?.syncStatus === 'in_sync'
+                ? 'Die Box hat diese Fassung bereits vollständig aktiviert.'
+                : 'Die bisherige Fassung bleibt aktiv, bis die Box die neue vollständig bestätigt. Bei Ablehnung können Sie in der Gerätehistorie zurückrollen.'
+              : ABSCHLUSS_HINWEIS}
+          </p>
         </section>
       )}
 
@@ -930,10 +1039,15 @@ function Feld({
       ) : (
         <Input
           id={`anlegen-${feld.key}`}
-          type={feld.type === 'number' ? 'number' : 'text'}
-          value={String(wert ?? '')}
+          type={istSecret(feld) ? 'password' : feld.type === 'number' ? 'number' : 'text'}
+          value={istSecret(feld) && String(wert ?? '') === '••••••••' ? '' : String(wert ?? '')}
+          placeholder={istSecret(feld) && wert ? '•••••••• (unverändert)' : undefined}
+          autoComplete={istSecret(feld) ? 'new-password' : undefined}
           onChange={(e) => onChange(feld, e.target.value)}
         />
+      )}
+      {istSecret(feld) && Boolean(wert) && (
+        <p className="vp-assist-help">Gespeichert und verborgen. Leer lassen, um es beizubehalten.</p>
       )}
       {feld.help && <p className="vp-assist-help">{feld.help}</p>}
     </div>
