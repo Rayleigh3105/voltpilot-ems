@@ -343,14 +343,16 @@ public class ComponentService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Diese Fassung gibt es nicht.");
         }
-        String restoredEntityType = old.entityType() == null ? current.entityType() : old.entityType();
-        String restoredCapabilities = old.capabilitiesJson() == null ? current.capabilitiesJson() : old.capabilitiesJson();
-        String restoredGuards = old.guardConfigJson() == null ? current.guardConfigJson() : old.guardConfigJson();
-        BigDecimal restoredCapacity = old.capacityKwp() == null ? current.capacityKwp() : old.capacityKwp();
-        Boolean restoredControl = old.control() == null ? current.control() : old.control();
-        ComponentDefinitionRepository.FullDefinition restored = new ComponentDefinitionRepository.FullDefinition(
-                old.definition(), restoredCapacity, restoredControl, restoredEntityType, restoredCapabilities,
-                restoredGuards, old.registryUnitId() == null ? current.registryUnitId() : old.registryUnitId());
+        if (!old.semanticSnapshotComplete()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Diese historische Fassung enthält keinen vollständigen Sicherheits-Snapshot und kann nicht automatisch zurückgesetzt werden.");
+        }
+        String restoredEntityType = old.entityType();
+        String restoredCapabilities = old.capabilitiesJson();
+        String restoredGuards = old.guardConfigJson();
+        BigDecimal restoredCapacity = old.capacityKwp();
+        Boolean restoredControl = old.control();
+        ComponentDefinitionRepository.FullDefinition restored = old;
         ComponentDefinitionRepository.Applied applied = definitions.applyDefinitionFull(siteId, entityId,
                 expectedRevision, restored);
         if (applied == null) {
@@ -838,7 +840,7 @@ public class ComponentService {
         return new ComponentDefinitionDto(row.entityId(), row.version(), row.role(), row.label(),
                 row.brand(), row.model(), row.family(), row.communication(),
                 row.connection() == null ? null
-                        : ComponentSecrets.maskedJson(row.connection(), ComponentSecrets.keys(template)),
+                        : ComponentSecrets.maskedJson(row.connection(), ComponentSecrets.keys(template), template == null),
                 row.sourceKind(), row.templateRef(), row.templateVersion(), row.createdAt(),
                 row.createdBy(), row.note());
     }
@@ -850,7 +852,7 @@ public class ComponentService {
         return new SiteComponentsDto.ComponentRowDto(row.id(), row.role(), row.entityType(),
                 row.label(), row.brand(), row.model(), row.family(), row.communication(),
                 row.connectionJson() == null ? null
-                        : ComponentSecrets.maskedJson(row.connectionJson(), ComponentSecrets.keys(template)),
+                        : ComponentSecrets.maskedJson(row.connectionJson(), ComponentSecrets.keys(template), template == null),
                 row.sourceKind(), row.templateRef(), row.templateVersion(),
                 row.definitionVersion(), row.capacityKwp(), row.edgeSourceId(),
                 syncStatus(soll, applied));

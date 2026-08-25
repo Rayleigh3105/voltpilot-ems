@@ -690,7 +690,6 @@ export function GeraetSeiteSection({
               device={boxDevice}
               onClose={() => setMoveOpen(false)}
               onMoved={(moved) => {
-                setMoveOpen(false);
                 window.location.hash = boxSeiteHash(moved.siteId, moved.externalRef);
               }}
             />

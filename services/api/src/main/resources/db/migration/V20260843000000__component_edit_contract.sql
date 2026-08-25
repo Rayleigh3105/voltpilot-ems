@@ -32,6 +32,7 @@ ALTER TABLE component_definition ADD COLUMN IF NOT EXISTS entity_type TEXT;
 ALTER TABLE component_definition ADD COLUMN IF NOT EXISTS capabilities JSONB;
 ALTER TABLE component_definition ADD COLUMN IF NOT EXISTS guard_config JSONB;
 ALTER TABLE component_definition ADD COLUMN IF NOT EXISTS registry_unit_id TEXT;
+ALTER TABLE component_definition ADD COLUMN IF NOT EXISTS semantic_snapshot_complete BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_component_change_event_entity
     ON component_change_event (site_id, entity_id, effective_at DESC, id DESC);
@@ -152,3 +153,17 @@ ALTER TABLE consumer_profile DROP CONSTRAINT IF EXISTS consumer_profile_entity_c
 ALTER TABLE consumer_profile ADD CONSTRAINT consumer_profile_entity_consistency
     FOREIGN KEY (entity_id, tenant_id, site_id)
     REFERENCES measurement_point (id, tenant_id, site_id) ON UPDATE CASCADE;
+
+-- Current snapshots move with the stable device; historical facts retain the
+-- original site attribution forever.  Remove composite history FKs that would
+-- otherwise rewrite/erase history during a site move.
+ALTER TABLE device_measurement_selection_event DROP CONSTRAINT IF EXISTS device_measurement_selection_event_device_fk;
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['ocpp_protocol_event','ocpp_connector_status_event',
+    'ocpp_authorization_event','ocpp_meter_sample','ocpp_station_status_event','ocpp_transaction'] LOOP
+    EXECUTE format('ALTER TABLE %I DROP CONSTRAINT IF EXISTS %I', t, t || '_device_scope_fk');
+    EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I FOREIGN KEY (device_id) REFERENCES device(id) ON DELETE CASCADE', t, t || '_device_history_device_fk');
+  END LOOP;
+END $$;

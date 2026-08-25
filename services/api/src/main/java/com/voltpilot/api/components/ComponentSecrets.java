@@ -89,12 +89,17 @@ public final class ComponentSecrets {
     }
 
     public static String maskedJson(String json, Set<String> secretKeys) {
+        return maskedJson(json, secretKeys, false);
+    }
+
+    /** Fail closed when the template has disappeared: every persisted key is sensitive. */
+    public static String maskedJson(String json, Set<String> secretKeys, boolean failClosed) {
         Map<String, Object> out = parse(json);
         for (String key : new LinkedHashSet<>(out.keySet())) {
             // Die Heuristik bleibt absichtlich aktiv, wenn eine alte/entzogene
             // Vorlage nicht mehr auflösbar ist. Gerade dann darf ein Listing
             // nicht plötzlich das frühere Kennwort ausgeben.
-            if (secretKeys.contains(key) || isSecretKey(key) || MASK.equals(out.get(key))) {
+            if (failClosed || secretKeys.contains(key) || isSecretKey(key) || MASK.equals(out.get(key))) {
                 out.put(key, MASK);
             }
         }

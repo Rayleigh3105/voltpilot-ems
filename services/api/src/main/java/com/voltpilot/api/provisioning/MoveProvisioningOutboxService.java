@@ -48,13 +48,21 @@ public class MoveProvisioningOutboxService {
         UUID previous = TenantContext.get(); TenantContext.set(tenantId);
         try {
             ProvisioningPublisher publisher = provisioning.getIfAvailable();
-            boolean clear = publisher == null || publisher.clearRetained(externalRef, tenantId, fromSiteId, deviceId);
-            boolean publish = publisher == null || publisher.publishConfig(externalRef, tenantId, toSiteId, deviceId);
-            registry.pushRegistryBestEffort(toSiteId);
-            String status = clear && publish ? "applied" : "pending";
+            if (publisher == null) {
+                admin.update("UPDATE move_provisioning_operation SET status = 'refused', attempts = attempts + 1, last_error = ?, updated_at = ? WHERE id = ?",
+                        "mqtt_not_configured", Instant.now(), id);
+                return;
+            }
+            boolean clear = publisher.clearRetained(externalRef, tenantId, fromSiteId, deviceId);
+            boolean publish = publisher.publishConfig(externalRef, tenantId, toSiteId, deviceId);
+            EntityRegistryService.PushOutcome registryOutcome = registry.pushRegistryBestEffort(toSiteId);
+            boolean registryOk = registryOutcome.published();
+            boolean refused = !registryOutcome.attempted() && "no_gateway_device".equals(registryOutcome.reason());
+            String status = clear && publish && registryOk ? "applied" : (refused ? "refused" : "pending");
+            String error = "applied".equals(status) ? null : (registryOutcome.reason() == null ? "broker_publish_failed" : registryOutcome.reason());
             admin.update("UPDATE move_provisioning_operation SET status = ?, attempts = attempts + 1, last_error = ?, updated_at = ?, "
                             + "applied_at = CASE WHEN ? = 'applied' THEN ? ELSE applied_at END WHERE id = ?",
-                    status, status.equals("applied") ? null : "broker_publish_failed", Instant.now(), status, Instant.now(), id);
+                    status, error, Instant.now(), status, Instant.now(), id);
         } catch (RuntimeException ex) {
             admin.update("UPDATE move_provisioning_operation SET attempts = attempts + 1, last_error = ?, updated_at = ? WHERE id = ?",
                     ex.getMessage(), Instant.now(), id);

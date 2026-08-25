@@ -107,6 +107,7 @@ public class DeviceController {
     }
 
     @PostMapping("/claim")
+    @Transactional
     public ResponseEntity<DeviceDto> claim(@Valid @RequestBody DeviceClaimRequest request) {
         UUID tenantId = TenantContext.get();
         if (tenantId == null) {

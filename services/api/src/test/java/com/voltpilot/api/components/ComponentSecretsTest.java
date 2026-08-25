@@ -54,4 +54,11 @@ class ComponentSecretsTest {
         assertThat(ComponentSecrets.maskedJson("{\"customCredential\":\"••••••••\"}", Set.of()))
                 .contains(ComponentSecrets.MASK);
     }
+
+    @Test
+    void failsClosedForARealCredentialWhenTemplateDisappears() {
+        assertThat(ComponentSecrets.maskedJson("{\"customCredential\":\"server-secret\"}", Set.of(), true))
+                .contains(ComponentSecrets.MASK)
+                .doesNotContain("server-secret");
+    }
 }

@@ -31,6 +31,21 @@ export function GeraetVerschiebenDialog({ device, onClose, onMoved }: {
     return () => { active = false; };
   }, [device.id]);
 
+  useEffect(() => {
+    if (!applyStatus || applyStatus.status !== 'pending') return;
+    let active = true;
+    const timer = window.setInterval(() => {
+      api.deviceMoveStatus(device.id).then((next) => {
+        if (!active) return;
+        setApplyStatus(next);
+        if (next?.status === 'applied' || next?.status === 'refused') {
+          setBusy(false);
+        }
+      }).catch(() => { /* transient offline state remains visible */ });
+    }, 1000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [applyStatus, device.id]);
+
   async function move() {
     if (!preview || !target?.allowed) return;
     setBusy(true);
@@ -41,8 +56,9 @@ export function GeraetVerschiebenDialog({ device, onClose, onMoved }: {
         expectedRevision: preview.revision,
         effectiveAt: new Date().toISOString(),
       });
-      setApplyStatus(await api.deviceMoveStatus(device.id));
-      onMoved(result);
+      const status = await api.deviceMoveStatus(device.id);
+      setApplyStatus(status);
+      if (status?.status === 'applied' || status?.status === 'refused') onMoved(result);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Das Gerät konnte nicht verschoben werden.');
       // Bei 409 nie mit veralteter Prüfung weiterarbeiten.

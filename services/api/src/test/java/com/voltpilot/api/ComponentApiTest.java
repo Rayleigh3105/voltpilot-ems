@@ -509,6 +509,30 @@ class ComponentApiTest {
         }
     }
 
+    @Test
+    void moveAndClaimAgainstOneTargetAreTransactionalAndNeverReturnServerError() throws Exception {
+        String customer = token("demo", "demo");
+        UUID source = createSite(customer, "Move Claim Source");
+        UUID target = createSite(customer, "Move Claim Target");
+        try {
+            claim(customer, source, "edge-location-move-claim-01");
+            UUID deviceId = anyDeviceOf(source);
+            Map<String, Object> moveBody = Map.of("targetSiteId", target, "expectedRevision", 1,
+                    "effectiveAt", Instant.now().toString());
+            CompletableFuture<ResponseEntity<String>> move = CompletableFuture.supplyAsync(
+                    () -> post("/api/v1/devices/" + deviceId + "/move", customer, moveBody));
+            CompletableFuture<ResponseEntity<String>> claim = CompletableFuture.supplyAsync(
+                    () -> post("/api/v1/devices/claim", customer,
+                            Map.of("externalRef", "edge-location-move-claim-02", "siteId", target.toString(), "kind", "inverter")));
+            assertThat(List.of(move.join().getStatusCode(), claim.join().getStatusCode()))
+                    .allMatch(status -> status == HttpStatus.OK || status == HttpStatus.CREATED
+                            || status == HttpStatus.CONFLICT);
+        } finally {
+            deleteSite(customer, source);
+            deleteSite(customer, target);
+        }
+    }
+
     /**
      * Der AUSWEG aus der Sackgasse (Live-Fall Muehlfeldweg 2, 21.08.2026): eine
      * Deye-Anlage mit Eigenbau-Batterie, deren BMS nicht gekoppelt ist, meldet

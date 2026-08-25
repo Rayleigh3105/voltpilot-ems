@@ -68,7 +68,7 @@ public class ComponentDefinitionRepository {
     public record Applied(int version, String label) {}
     public record FullDefinition(ComponentDefinitionDto definition, BigDecimal capacityKwp,
             Boolean control, String entityType, String capabilitiesJson, String guardConfigJson,
-            String registryUnitId) {}
+            String registryUnitId, boolean semanticSnapshotComplete) {}
 
     /**
      * Schreibt die geltende Anbindung auf den Messpunkt und hebt seine Fassung.
@@ -154,15 +154,16 @@ public class ComponentDefinitionRepository {
             String label, String brand, String model, String family, String communication,
             String connectionJson, String sourceKind, String templateRef, Integer templateVersion,
             String createdBy, String note) {
-        jdbc.update(
-                "INSERT INTO component_definition (entity_id, version, tenant_id, site_id, role, "
+        jdbc.update("INSERT INTO component_definition (entity_id, version, tenant_id, site_id, role, "
                         + "label, brand, model, family, communication, connection_json, source_kind, "
-                        + "template_ref, template_version, created_by, note) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?) "
-                        + "ON CONFLICT (entity_id, version) DO NOTHING",
+                        + "template_ref, template_version, capacity_kwp, control, entity_type, capabilities, "
+                        + "guard_config, registry_unit_id, semantic_snapshot_complete, created_by, note) "
+                        + "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, m.capacity_kwp, m.control, "
+                        + "m.entity_type, m.capabilities, m.guard_config, m.registry_unit_id, true, ?, ? "
+                        + "FROM measurement_point m WHERE m.id = ? ON CONFLICT (entity_id, version) DO NOTHING",
                 entityId, version, tenantId, siteId, role, label, brand, model, family,
                 communication, connectionJson, sourceKind, templateRef, templateVersion,
-                createdBy, note);
+                createdBy, note, entityId);
     }
 
     public void recordVersionFull(UUID tenantId, UUID siteId, UUID entityId, int version,
@@ -174,11 +175,11 @@ public class ComponentDefinitionRepository {
         jdbc.update("INSERT INTO component_definition (entity_id, version, tenant_id, site_id, role, "
                         + "label, brand, model, family, communication, connection_json, source_kind, "
                         + "template_ref, template_version, capacity_kwp, control, entity_type, capabilities, "
-                        + "guard_config, registry_unit_id, created_by, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?) "
+                        + "guard_config, registry_unit_id, semantic_snapshot_complete, created_by, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?) "
                         + "ON CONFLICT (entity_id, version) DO NOTHING",
                 entityId, version, tenantId, siteId, role, label, brand, model, family, communication,
                 connectionJson, sourceKind, templateRef, templateVersion, capacityKwp, control,
-                entityType, capabilitiesJson, guardConfigJson, registryUnitId, createdBy, note);
+                entityType, capabilitiesJson, guardConfigJson, registryUnitId, true, createdBy, note);
     }
 
     /** Alle Fassungen einer Komponente, neueste zuerst. */
@@ -201,11 +202,12 @@ public class ComponentDefinitionRepository {
     public FullDefinition fullVersion(UUID siteId, UUID entityId, int version) {
         List<FullDefinition> rows = jdbc.query(
                 "SELECT " + DEF_COLUMNS + ", capacity_kwp, control, entity_type, "
-                        + "capabilities::text AS caps, guard_config::text AS guards, registry_unit_id "
+                        + "capabilities::text AS caps, guard_config::text AS guards, registry_unit_id, semantic_snapshot_complete "
                         + "FROM component_definition WHERE site_id = ? AND entity_id = ? AND version = ?",
                 (rs, n) -> new FullDefinition(map(rs, n), rs.getBigDecimal("capacity_kwp"),
                         (Boolean) rs.getObject("control"), rs.getString("entity_type"),
-                        rs.getString("caps"), rs.getString("guards"), rs.getString("registry_unit_id")),
+                        rs.getString("caps"), rs.getString("guards"), rs.getString("registry_unit_id"),
+                        rs.getBoolean("semantic_snapshot_complete")),
                 siteId, entityId, version);
         return rows.isEmpty() ? null : rows.get(0);
     }
