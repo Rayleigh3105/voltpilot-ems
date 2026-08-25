@@ -4268,6 +4268,12 @@ und dieselbe Vendor/Message-Bindung am Edge zulässig.
   fsync+rename+directory-fsync Ledger `ocpp-command-ledger.json`. Identische
   Broker-Replays sind No-ops, Kollisionen fail-closed; ein Crash darf dadurch
   einen Befehl verlieren, aber niemals eine physische Aktion doppelt ausführen.
+  **Die 4.096er-Grenze ist Backpressure, keine Verdrängung:** kein Eintrag wird
+  vor seiner unveränderlichen Deadline entfernt, auch ein terminaler nicht;
+  ist das Ledger nur mit solchen Live- oder Late-Response-Belegen gefüllt,
+  lehnt die Edge weitere Commands mit `ledger_capacity` ab. Nach Deadline dürfen
+  terminale Belege weg; ausstehende claimed/sent/readback-Belege bleiben für
+  späte Stationsantworten noch 24 h korrelierbar und werden erst danach bereinigt.
   Der `action_id` ist zugleich der OCPP-wire-id; die Journal-Korrelation ist
   wire-identisch. Nach Neustart wird sie aus dem immutable CALL-Spool UND dem
   Command-Ledger aufgebaut, weil ein normaler Cloud-QoS1-ACK die bereits

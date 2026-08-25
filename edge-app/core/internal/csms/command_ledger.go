@@ -12,6 +12,9 @@ import (
 
 const commandLedgerFile = "ocpp-command-ledger.json"
 const commandLedgerLimit = 4096
+const commandLedgerLateResponseRetention = 24 * time.Hour
+
+var errCommandLedgerCapacity = errors.New("OCPP-Befehlsledger ist mit noch gültigen Einträgen ausgelastet")
 
 type commandLedgerEntry struct {
 	ActionID            string    `json:"action_id"`
@@ -84,6 +87,13 @@ func (l *commandLedger) claim(cmd CloudCommand, fingerprint, wireAction string, 
 		return true, nil
 	}
 	l.prune(now)
+	if len(l.entries) >= commandLedgerLimit {
+		// Every remaining entry is protected: either its immutable command
+		// deadline is still live or its exact mapping is inside the bounded late-
+		// response window. Eviction could therefore repeat a physical station
+		// action or make its late outcome anonymous. Apply backpressure instead.
+		return false, errCommandLedgerCapacity
+	}
 	entry := commandLedgerEntry{ActionID: cmd.ActionID, Fingerprint: fingerprint, Action: cmd.Action,
 		WireAction: wireAction, ChargePointID: cmd.ChargePointID, CorrelationID: cmd.CorrelationID,
 		State: "claimed", DeadlineAt: deadline.UTC(), UpdatedAt: now.UTC()}
@@ -205,21 +215,29 @@ func (l *commandLedger) finish(actionID, state string, now time.Time) error {
 
 func (l *commandLedger) prune(now time.Time) {
 	for id, e := range l.entries {
-		if e.DeadlineAt.Before(now.Add(-24 * time.Hour)) {
+		if commandLedgerEntryPrunable(e, now) {
 			delete(l.entries, id)
 		}
 	}
-	if len(l.entries) < commandLedgerLimit {
-		return
+}
+
+func commandLedgerEntryPrunable(e commandLedgerEntry, now time.Time) bool {
+	// A missing deadline is unknown legacy/corrupt evidence and therefore
+	// deliberately retained fail-closed.
+	if e.DeadlineAt.IsZero() || now.Before(e.DeadlineAt) {
+		return false
 	}
-	all := make([]commandLedgerEntry, 0, len(l.entries))
-	for _, e := range l.entries {
-		all = append(all, e)
+	// ExecuteCloudCommand rejects an expired envelope before claim(), so a
+	// terminal entry is safe to remove once its deadline has passed. Before
+	// then it remains replay protection even though no response is outstanding.
+	switch e.State {
+	case "rejected", "responded", "readback_failed":
+		return true
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].UpdatedAt.Before(all[j].UpdatedAt) })
-	for i := 0; i <= len(all)-commandLedgerLimit; i++ {
-		delete(l.entries, all[i].ActionID)
-	}
+	// Claimed/sent/readback states can still receive a late station response.
+	// Keep their exact wire mapping for a bounded late-outcome window; only
+	// after that window is both replay and response evidence safely obsolete.
+	return !now.Before(e.DeadlineAt.Add(commandLedgerLateResponseRetention))
 }
 
 func (l *commandLedger) save() error {

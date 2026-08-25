@@ -102,6 +102,9 @@ func (s *Server) ExecuteCloudCommand(ctx context.Context, raw []byte, identity C
 	fingerprint := fmt.Sprintf("%x", sha256.Sum256(raw))
 	duplicate, err := s.commands.claim(cmd, fingerprint, wireAction, deadline, now)
 	if err != nil {
+		if errors.Is(err, errCommandLedgerCapacity) {
+			return reject("ledger_capacity", "OCPP-Befehl kann nicht sicher angenommen werden: Das At-most-once-Ledger ist ausgelastet")
+		}
 		return reject("deduplication_failed", "OCPP-Befehl konnte nicht dauerhaft vorgemerkt werden")
 	}
 	if duplicate {

@@ -127,6 +127,183 @@ func TestCommandCrashAfterDurableClaimNeverReplays(t *testing.T) {
 	}
 }
 
+func TestCommandLedgerCapacityBackpressurePreservesOldestLiveReplayAcrossRestart(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	oldestID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	oldestRaw := cloudCommand(now, func(c *CloudCommand) {
+		c.ActionID = oldestID
+		c.CorrelationID = "ocpp-" + oldestID
+	})
+	var oldest CloudCommand
+	if err := json.Unmarshal(oldestRaw, &oldest); err != nil {
+		t.Fatal(err)
+	}
+	oldestFingerprint := fmt.Sprintf("%x", sha256.Sum256(oldestRaw))
+
+	ledger, err := newCommandLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Build one durable full-capacity image in a single fsync. The first entry
+	// is the reviewer's oldest still-unexpired sent command; another is already
+	// terminal but remains live dedup evidence until the immutable deadline.
+	ledger.entries[oldestID] = commandLedgerEntry{ActionID: oldestID,
+		Fingerprint: oldestFingerprint, State: "sent", DeadlineAt: now.Add(30 * time.Second),
+		UpdatedAt: now.Add(-time.Hour), Action: oldest.Action, WireAction: oldest.Action,
+		ChargePointID: oldest.ChargePointID, CorrelationID: oldest.CorrelationID}
+	liveTerminalID := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	ledger.entries[liveTerminalID] = commandLedgerEntry{ActionID: liveTerminalID,
+		Fingerprint: "terminal-fingerprint", State: "responded", DeadlineAt: now.Add(30 * time.Second),
+		UpdatedAt: now.Add(-30 * time.Minute), Action: "ClearCache", WireAction: "ClearCache",
+		ChargePointID: "cp-1", CorrelationID: "ocpp-" + liveTerminalID}
+	for i := 0; len(ledger.entries) < commandLedgerLimit; i++ {
+		id := fmt.Sprintf("%08x-0000-4000-8000-%012x", i+1, i+1)
+		ledger.entries[id] = commandLedgerEntry{ActionID: id, Fingerprint: fmt.Sprintf("fingerprint-%d", i),
+			State: "sent", DeadlineAt: now.Add(30 * time.Second), UpdatedAt: now.Add(time.Duration(i) * time.Nanosecond),
+			Action: "ClearCache", WireAction: "ClearCache", ChargePointID: "cp-1", CorrelationID: "ocpp-" + id}
+	}
+	if err := ledger.save(); err != nil {
+		t.Fatal(err)
+	}
+
+	identity := CommandIdentity{TenantID: "tenant-a", SiteID: "site-a", DeviceID: "device-a"}
+	s1, err := New(Options{Enabled: false, DataDir: dir, Now: func() time.Time { return now }, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRaw := cloudCommand(now, func(c *CloudCommand) {
+		c.ActionID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		c.CorrelationID = "ocpp-" + c.ActionID
+	})
+	if err := s1.ExecuteCloudCommand(context.Background(), newRaw, identity); err == nil ||
+		!strings.Contains(err.Error(), "At-most-once-Ledger ist ausgelastet") {
+		t.Fatalf("full live ledger must apply explicit backpressure, got %v", err)
+	}
+	eventRaw, token, ok := s1.NextProtocolEvent()
+	if !ok {
+		t.Fatal("capacity rejection was not durably reported upstream")
+	}
+	var rejection ProtocolEvent
+	if err := json.Unmarshal(eventRaw, &rejection); err != nil {
+		t.Fatal(err)
+	}
+	if rejection.Action != "CommandRejected" || rejection.Payload == nil {
+		t.Fatalf("capacity event = %#v", rejection)
+	}
+	var rejectionPayload map[string]any
+	if err := json.Unmarshal(rejection.Payload, &rejectionPayload); err != nil || rejectionPayload["code"] != "ledger_capacity" {
+		t.Fatalf("capacity payload = %#v err=%v", rejectionPayload, err)
+	}
+	if err := s1.AckProtocolEvent(token); err != nil {
+		t.Fatal(err)
+	}
+	s1.Stop()
+
+	restarted, err := newCommandLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restarted.entries) != commandLedgerLimit {
+		t.Fatalf("ledger size after rejected claim = %d, want %d", len(restarted.entries), commandLedgerLimit)
+	}
+	if _, ok := restarted.entries[oldestID]; !ok {
+		t.Fatal("capacity evicted the oldest still-unexpired at-most-once proof")
+	}
+	if _, ok := restarted.entries[liveTerminalID]; !ok {
+		t.Fatal("capacity evicted terminal evidence before its replay deadline")
+	}
+	if _, ok := restarted.entries["cccccccc-cccc-4ccc-8ccc-cccccccccccc"]; ok {
+		t.Fatal("backpressured command was persisted as accepted")
+	}
+
+	// Exact QoS1 replay after the restart must still hit the original durable
+	// fingerprint and become a no-op before station lookup.
+	s2, err := New(Options{Enabled: false, DataDir: dir, Now: func() time.Time { return now.Add(time.Second) }, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Stop()
+	if err := s2.ExecuteCloudCommand(context.Background(), oldestRaw, identity); err != nil {
+		t.Fatalf("oldest exact replay after capacity/restart must be a no-op: %v", err)
+	}
+}
+
+func TestCommandLedgerCapacityPrunesExpiredButRetainsUnexpiredTerminalEvidence(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	ledger, err := newCommandLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiredID := "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	liveTerminalID := "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+	latePendingID := "abababab-abab-4aba-8aba-abababababab"
+	ledger.entries[expiredID] = commandLedgerEntry{ActionID: expiredID, Fingerprint: "expired",
+		State: "responded", DeadlineAt: now, UpdatedAt: now.Add(-time.Hour)}
+	ledger.entries[liveTerminalID] = commandLedgerEntry{ActionID: liveTerminalID, Fingerprint: "live-terminal",
+		State: "rejected", DeadlineAt: now.Add(time.Minute), UpdatedAt: now.Add(-time.Hour)}
+	ledger.entries[latePendingID] = commandLedgerEntry{ActionID: latePendingID, Fingerprint: "late-pending",
+		State: "sent", DeadlineAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)}
+	for i := 0; len(ledger.entries) < commandLedgerLimit; i++ {
+		id := fmt.Sprintf("%08x-1000-4000-8000-%012x", i+1, i+1)
+		ledger.entries[id] = commandLedgerEntry{ActionID: id, Fingerprint: fmt.Sprintf("live-%d", i),
+			State: "sent", DeadlineAt: now.Add(time.Minute), UpdatedAt: now}
+	}
+	if err := ledger.save(); err != nil {
+		t.Fatal(err)
+	}
+	cmd := CloudCommand{ActionID: "ffffffff-ffff-4fff-8fff-ffffffffffff", Action: "ClearCache",
+		ChargePointID: "cp-1", CorrelationID: "ocpp-ffffffff-ffff-4fff-8fff-ffffffffffff"}
+	duplicate, err := ledger.claim(cmd, "new-fingerprint", "ClearCache", now.Add(time.Minute), now)
+	if err != nil || duplicate {
+		t.Fatalf("claim after safe expired prune: duplicate=%v err=%v", duplicate, err)
+	}
+	if _, ok := ledger.entries[expiredID]; ok {
+		t.Fatal("expired evidence should free capacity")
+	}
+	if _, ok := ledger.entries[liveTerminalID]; !ok {
+		t.Fatal("unexpired terminal evidence is still replay protection")
+	}
+	if _, ok := ledger.entries[latePendingID]; !ok {
+		t.Fatal("expired sent command lost its bounded late-response correlation")
+	}
+	if len(ledger.entries) != commandLedgerLimit {
+		t.Fatalf("ledger size after prune+claim = %d, want %d", len(ledger.entries), commandLedgerLimit)
+	}
+	restarted, err := newCommandLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duplicate, err := restarted.claim(cmd, "new-fingerprint", "ClearCache", now.Add(time.Minute), now); err != nil || !duplicate {
+		t.Fatalf("new claim did not survive restart: duplicate=%v err=%v", duplicate, err)
+	}
+}
+
+func TestCommandLedgerPruneClassificationKeepsEveryLiveAndLateResponseProof(t *testing.T) {
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name     string
+		state    string
+		deadline time.Time
+		want     bool
+	}{
+		{"unexpired sent", "sent", now.Add(time.Second), false},
+		{"unexpired terminal", "responded", now.Add(time.Second), false},
+		{"expired terminal", "responded", now.Add(-time.Second), true},
+		{"recent late response", "sent", now.Add(-time.Hour), false},
+		{"late response retention elapsed", "readback_sent", now.Add(-commandLedgerLateResponseRetention), true},
+		{"missing deadline fails closed", "responded", time.Time{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := commandLedgerEntryPrunable(commandLedgerEntry{State: tt.state, DeadlineAt: tt.deadline}, now); got != tt.want {
+				t.Fatalf("prunable=%v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCommandDeadlineAndIdentityFailClosedBeforeExecution(t *testing.T) {
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
 	s, err := New(Options{Enabled: false, DataDir: t.TempDir(), Now: func() time.Time { return now }, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
