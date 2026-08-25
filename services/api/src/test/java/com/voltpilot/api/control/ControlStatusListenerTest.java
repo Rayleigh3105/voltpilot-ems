@@ -111,6 +111,20 @@ class ControlStatusListenerTest {
         assertThat(ex.targetKw()).isEqualTo(3.1);
     }
 
+    /** Idle coverage is diagnostics-only: path, fresh evidence and full floor. */
+    @Test
+    void idleFollowerCarriesFreshnessFloorAndMeasuredDeficit() {
+        var ex = ingest("{" + BASE + ",\"execution\":{\"mode\":\"idle_follow\"," +
+                "\"planned_kw\":0,\"deficit_kw\":14.7,\"effective_floor_soc_pct\":35," +
+                "\"measurements_fresh\":true}}", "schedule");
+
+        assertThat(ex.mode()).isEqualTo("idle_follow");
+        assertThat(ex.plannedKw()).isZero();
+        assertThat(ex.targetKw()).isEqualTo(14.7);
+        assertThat(ex.effectiveFloorSocPct()).isEqualTo(35);
+        assertThat(ex.measurementsFresh()).isTrue();
+    }
+
     /** An uncorrected slot and the built-in rule are two different statements. */
     @Test
     void planAndFallbackAreStoredWithoutCorrectionDetail() {

@@ -271,6 +271,17 @@ voltpilot:
   # settings above. Off by default; compose turns it on next to the purge one.
   control:
     mqtt-listener-enabled: ${VOLTPILOT_CONTROL_MQTT_LISTENER_ENABLED:false}
+  # Sustained (>3 kW AND >20 %) fresh telemetry-vs-plan load deviations. The
+  # local 10-second follower handles impulses; only 20 s persistence reaches
+  # the solver, with at most one request attempt/site/120 s and pending-failure retry.
+  load-residual-replan:
+    enabled: ${VOLTPILOT_LOAD_RESIDUAL_REPLAN_ENABLED:false}
+    absolute-kw: ${VOLTPILOT_LOAD_RESIDUAL_REPLAN_ABSOLUTE_KW:3}
+    relative-fraction: ${VOLTPILOT_LOAD_RESIDUAL_REPLAN_RELATIVE_FRACTION:0.20}
+    sustained-seconds: ${VOLTPILOT_LOAD_RESIDUAL_REPLAN_SUSTAINED_SECONDS:20}
+    min-interval-seconds: ${VOLTPILOT_LOAD_RESIDUAL_REPLAN_MIN_INTERVAL_SECONDS:120}
+    retry-seconds: ${VOLTPILOT_LOAD_RESIDUAL_REPLAN_RETRY_SECONDS:5}
+    max-sample-age-seconds: ${VOLTPILOT_LOAD_RESIDUAL_REPLAN_MAX_SAMPLE_AGE_SECONDS:30}
   # Feed-in curtailment ("Abregeln") execution truth: a sibling listener on the
   # same status topic parses the additive `curtailment` block (configured units,
   # per-unit First-Light releases, applied cap + readback match + possible

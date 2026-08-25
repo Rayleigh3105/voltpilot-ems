@@ -63,12 +63,13 @@ INSERT INTO schedule
      terminal_value_eur_per_kwh, peak_target_kw,
      slot_role, slot_flags, stored_value_ct_kwh, grid_value_ct_kwh,
      peak_pressure_eur_kw, fallback_14a,
-     cover_load_from_battery, charge_from_surplus_only,
+     cover_load_from_battery, unplanned_load_discharge,
+     charge_from_surplus_only, effective_floor_soc_pct,
      why_terminal_anchor, why_refill_free_pct,
      why_next_best, why_next_best_margin_ct,
      pv_anchor_ratio)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (site_id, generated_at, time)
 DO UPDATE SET
     device_id         = EXCLUDED.device_id,
@@ -92,7 +93,9 @@ DO UPDATE SET
     peak_pressure_eur_kw = EXCLUDED.peak_pressure_eur_kw,
     fallback_14a      = EXCLUDED.fallback_14a,
     cover_load_from_battery = EXCLUDED.cover_load_from_battery,
+    unplanned_load_discharge = EXCLUDED.unplanned_load_discharge,
     charge_from_surplus_only = EXCLUDED.charge_from_surplus_only,
+    effective_floor_soc_pct = EXCLUDED.effective_floor_soc_pct,
     why_terminal_anchor = EXCLUDED.why_terminal_anchor,
     why_refill_free_pct = EXCLUDED.why_refill_free_pct,
     why_next_best = EXCLUDED.why_next_best,
@@ -172,7 +175,9 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
             slot.peak_pressure_eur_kw,
             plan.fallback_14a,
             slot.cover_load_from_battery,
+            slot.unplanned_load_discharge,
             slot.charge_from_surplus_only,
+            plan.battery.effective_floor_soc_pct,
             plan.why_terminal_anchor,
             plan.why_refill_free_pct,
             slot.why_next_best,

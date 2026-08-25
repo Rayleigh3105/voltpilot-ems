@@ -150,6 +150,82 @@ describe('jetztHeld · die drei Wahrheiten im Jetzt', () => {
   });
 });
 
+describe('jetztHeld · unerwarteter Verbrauch in geplanter Ruhe', () => {
+  const idle = (over: Partial<WhySlot> = {}) => slot({
+    batteryKw: 0,
+    slotRole: 'warten',
+    unplannedLoadDischarge: true,
+    ...over,
+  });
+
+  it('nennt live-Follower, Wirtschaftsdaten, Reserve, Frische und Rücklesen', () => {
+    const v = jetztHeld(input({
+      slot: idle(),
+      slots: [idle()],
+      planFacts: { generatedAt: '2026-08-01T19:15:00Z', effectiveFloorSocPct: 35 },
+      snapshot: snap({ pvKw: 22.1, loadKw: 36.8, gridKw: 0, battKw: -14.7, socPct: 95 }),
+      control: status({
+        commandedKw: -14.7,
+        confirmedKw: -14.7,
+        executionMode: 'idle_follow',
+        executionPlannedKw: 0,
+        executionTargetKw: 14.7,
+        executionFloorSocPct: 35,
+        executionMeasurementsFresh: true,
+      }),
+    }));
+    expect(v.tone).toBe('warn');
+    expect(v.status).toBe('Unerwarteter Verbrauch · Speicher deckt live bis 35 % Reserve');
+    expect(v.chips).toEqual(expect.arrayContaining([
+      { label: 'Netzbezug', value: `32,5${NBSP}ct/kWh` },
+      { label: 'Speicherwert', value: `21,5${NBSP}ct/kWh` },
+      { label: 'Reserveboden', value: `35${NBSP}%` },
+      { label: 'Ausführung', value: '10-Sekunden-Nachführung' },
+      { label: 'Messung', value: 'frisch' },
+      { label: 'Rücklesen', value: 'bestätigt' },
+    ]));
+    expect(v.next).toBe('Neuplanung bei anhaltender Abweichung automatisch, sonst spätestens 21:30');
+  });
+
+  it('erklärt einen wirtschaftlich wertvolleren späteren Einsatz ausdrücklich', () => {
+    const v = jetztHeld(input({
+      slot: idle({ unplannedLoadDischarge: false }),
+      snapshot: snap({ pvKw: 22.1, loadKw: 36.8, gridKw: 14.7, battKw: 0, socPct: 95 }),
+      control: status({ commandedKw: 0, confirmedKw: 0, executionMode: 'plan' }),
+    }));
+    expect(v.status).toBe('Speicher hält zurück, weil Energie später mehr wert ist');
+    expect(v.tone).toBe('warn');
+  });
+
+  it('nennt Reserve oder Gerätezustand bei bindender Grenze und bei verlorener Frische', () => {
+    const reserve = jetztHeld(input({
+      slot: idle({ slotFlags: ['reserve_backup'] }),
+      planFacts: { effectiveFloorSocPct: 35 },
+      snapshot: snap({ gridKw: 14.7, battKw: 0, socPct: 35 }),
+      control: status({ commandedKw: 0, confirmedKw: 0, executionMode: 'plan' }),
+    }));
+    expect(reserve.status).toBe('Entladung durch Reserve/Gerätezustand begrenzt');
+
+    const staleReadback = jetztHeld(input({
+      slot: idle(),
+      snapshot: snap({ gridKw: 14.7, battKw: 0 }),
+      control: status({ executionMode: 'idle_follow', executionMeasurementsFresh: false, allMatch: false }),
+    }));
+    expect(staleReadback.status).toBe('Entladung durch Reserve/Gerätezustand begrenzt');
+  });
+
+  it('meldet Screenshot B bei PV-Überschuss neutral und nie als Live-Deckung', () => {
+    const v = jetztHeld(input({
+      slot: idle(),
+      snapshot: snap({ pvKw: 22.6, loadKw: 16.6, gridKw: -6, battKw: 0, socPct: 95 }),
+      control: status({ commandedKw: 0, confirmedKw: 0, executionMode: 'plan' }),
+    }));
+    expect(v.state).toBe('ruhe');
+    expect(v.status).not.toMatch(/Unerwarteter Verbrauch|deckt live/);
+    expect(v.chips.find((chip) => chip.label === 'Ausführung')).toBeUndefined();
+  });
+});
+
 describe('jetztHeld · die „—"-Disziplin', () => {
   it('erfindet ohne Rücklesen keinen Ausführungs-Wert, sondern nennt den Grund', () => {
     const v = jetztHeld(input({ control: null }));

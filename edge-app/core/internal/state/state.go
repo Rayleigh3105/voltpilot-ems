@@ -68,10 +68,11 @@ type Snapshot struct {
 	// while the guard can actually regulate (target known AND a fresh grid
 	// measurement feeds the quarter tracker); PeakQuarterMeanKw is the running
 	// wall-clock quarter hour's mean grid import so far.
-	PeakTargetKw      *float64 `json:"peak_target_kw,omitempty"`
-	PeakReserveSocPct *float64 `json:"peak_reserve_soc_pct,omitempty"`
-	PeakGuardActive   bool     `json:"peak_guard_active"`
-	PeakQuarterMeanKw *float64 `json:"peak_quarter_mean_kw,omitempty"`
+	PeakTargetKw         *float64 `json:"peak_target_kw,omitempty"`
+	PeakReserveSocPct    *float64 `json:"peak_reserve_soc_pct,omitempty"`
+	EffectiveFloorSocPct *float64 `json:"effective_floor_soc_pct,omitempty"`
+	PeakGuardActive      bool     `json:"peak_guard_active"`
+	PeakQuarterMeanKw    *float64 `json:"peak_quarter_mean_kw,omitempty"`
 
 	// Trim is the price-aware in-slot limitation (2026-07-30), non-nil ONLY while
 	// it is actually lowering the commanded charge. It exists so the card can name
@@ -249,6 +250,9 @@ type FollowInfo struct {
 	// the house needs, at most down to zero). The card names it - an unnamed
 	// correction reads as a defect.
 	Direction string `json:"direction,omitempty"`
+	// Path is "follow" for the established planned-discharge correction or
+	// "idle_follow" when the additive idle-slot authorization started it.
+	Path string `json:"path,omitempty"`
 	// PlannedKw is the setpoint BEFORE the correction - what the Fahrplan/holder
 	// asked for, so the card can say "der Fahrplan wollte X kW".
 	PlannedKw float64 `json:"planned_kw"`

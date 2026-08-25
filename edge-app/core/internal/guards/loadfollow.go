@@ -156,6 +156,9 @@ type FollowResult struct {
 	// follows; NaN when unknown (then the correction is inactive - never
 	// regulate blind).
 	DeficitKw float64
+	// Path distinguishes adjustment of an already-planned discharge from the
+	// additive 0-kW idle fallback.
+	Path string
 }
 
 // LoadFollower holds the correction's hysteresis state across setpoint ticks.
@@ -194,12 +197,49 @@ func (f *LoadFollower) Apply(
 	reserveSocPct *float64,
 	r Reading,
 ) FollowResult {
+	return f.ApplyAuthorized(now, kw, coverLoad, false, reserveSocPct, true, l, r)
+}
+
+// ApplyAuthorized composes the established follow duty with the additive
+// idle-slot authorization. The latter is strictly fail-closed: it only starts
+// from a real zero command, with fresh load/PV/SoC and an explicit effective
+// floor. Existing cover_load_from_battery semantics stay unchanged through the
+// Apply wrapper above.
+func (f *LoadFollower) ApplyAuthorized(
+	now time.Time,
+	kw float64,
+	coverLoad bool,
+	unplannedLoad bool,
+	effectiveFloorSocPct *float64,
+	measurementsFresh bool,
+	l Limits,
+	r Reading,
+) FollowResult {
 	res := FollowResult{Kw: kw, CommandedKw: kw, DeficitKw: math.NaN()}
 
 	// Nothing to enforce: not worth covering / no duty / no plan.
-	if !coverLoad {
+	if !coverLoad && !unplannedLoad {
 		f.release()
 		return res
+	}
+	// Conflicting grants are not a reason to guess which contract was meant.
+	// The optimizer never emits both; a hand-crafted/corrupt payload therefore
+	// leaves the original plan untouched.
+	if coverLoad && unplannedLoad {
+		f.release()
+		return res
+	}
+	path := "follow"
+	if unplannedLoad && !coverLoad {
+		// Starting a discharge is a larger authority than adjusting one. Refuse
+		// on every ambiguity, including a non-zero command (planned charge/sale),
+		// stale measurements, unknown SoC or a missing reserve stack.
+		if math.Abs(kw) > 0.05 || !measurementsFresh || effectiveFloorSocPct == nil ||
+			!known(r.SocPct) || r.SocPct <= *effectiveFloorSocPct {
+			f.release()
+			return res
+		}
+		path = "idle_follow"
 	}
 	// Never regulate blind (the economic-guard convention, cf. PeakShave).
 	if !known(r.PvKw) || !known(r.LoadKw) || math.IsNaN(kw) || math.IsInf(kw, 0) {
@@ -253,8 +293,8 @@ func (f *LoadFollower) Apply(
 		// arithmetic. The reserve raises the effective SoC floor: ordinary load
 		// covering must not eat what peak defense is holding.
 		lim := l
-		if reserveSocPct != nil && *reserveSocPct > lim.SocMinPct {
-			lim.SocMinPct = *reserveSocPct
+		if effectiveFloorSocPct != nil && *effectiveFloorSocPct > lim.SocMinPct {
+			lim.SocMinPct = *effectiveFloorSocPct
 		}
 		target := PeakShave(kw, 0, lim, r)
 		if target >= kw-followWriteResolutionKw {
@@ -263,7 +303,7 @@ func (f *LoadFollower) Apply(
 			return res
 		}
 		res.Kw = math.Round(target*1000) / 1000
-		res.Active, res.Direction = true, FollowDeepen
+		res.Active, res.Direction, res.Path = true, FollowDeepen, path
 		return res
 	}
 
@@ -284,7 +324,7 @@ func (f *LoadFollower) Apply(
 		return res // engaged but not biting (inside the release dwell)
 	}
 	res.Kw = math.Round(target*1000) / 1000
-	res.Active, res.Direction = true, FollowReduce
+	res.Active, res.Direction, res.Path = true, FollowReduce, path
 	return res
 }
 

@@ -177,6 +177,12 @@ export interface JetztHeldView {
   next: string | null;
 }
 
+interface UnplannedStatus {
+  status: string;
+  chips: JetztChip[];
+  next: string;
+}
+
 /** Was der Held braucht — alles optional außer der Uhrzeit und der Wortwahl. */
 export interface JetztInput {
   /** Der Slot, der JETZT läuft (`control.controlReasonSlot`); null = außerhalb. */
@@ -391,6 +397,7 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
   const dir = showValue ? direction(executedKw as number) : null;
 
   const chips = input.snapshotFresh ? measurementChips(input.snapshot) : [];
+  const unplanned = unplannedLoadStatus(input, slot, status);
   const measured = showValue || chips.length > 0;
 
   // Der Flussabgleich (Scout `vp-verkauf-praemisse-s8` §3): register-bestätigt,
@@ -416,13 +423,14 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
 
   return {
     state,
-    tone: flowWarn ? 'warn' : tone,
+    tone: flowWarn || unplanned ? 'warn' : tone,
     badge: measured ? PROVENIENZ.gemessen.label : PROVENIENZ.geplant.label,
     badgeArt: measured ? 'gemessen' : 'geplant',
     badgeNote: measured && status ? fmtRelative(status.checkedAt, now) : null,
     status: flowWarn
       ? 'Der angewiesene Wert fließt gerade nicht wie erwartet. Bitte im Blick behalten.'
-      : statusLine(state, strip?.sentence ?? null, executedKw, confirmedKw),
+      : unplanned?.status ??
+        statusLine(state, strip?.sentence ?? null, executedKw, confirmedKw),
     lead: leadLine(
       state,
       role,
@@ -457,11 +465,74 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
         : null,
     // Ein toter Plan erklärt nichts über das Jetzt - sein Grund bleibt weg.
     why: SHOWS_WHY.has(state) ? reason : null,
-    chips,
+    chips: [...chips, ...(unplanned?.chips ?? [])],
     next:
-      state === 'ruhe' && input.nextPhase
+      unplanned?.next ??
+      (state === 'ruhe' && input.nextPhase
         ? `Nächster Einsatz: ${hm(input.nextPhase.at)} ${input.nextPhase.label}`
-        : null,
+        : null),
+  };
+}
+
+/** Honest status for a fresh material import while the planned battery is idle. */
+function unplannedLoadStatus(
+  input: JetztInput,
+  slot: WhySlot | null,
+  control: ControlStatus | null,
+): UnplannedStatus | null {
+  const mode = control?.executionMode ?? null;
+  const checkedAge = control ? input.now.getTime() - new Date(control.checkedAt).getTime() : Infinity;
+  const active = (mode === 'idle_follow' || mode === 'autonomous_discharge') &&
+    control?.executionMeasurementsFresh === true && control.allMatch &&
+    control.controlEnabled && control.certified && checkedAge >= 0 && checkedAge <= 30_000;
+  const gridKw = num(input.snapshot?.gridKw);
+  const plannedIdle = Math.abs(num(slot?.batteryKw) ?? Infinity) <= ADJUST_DEADBAND_KW;
+  const materialImport = input.snapshotFresh && gridKw != null && gridKw > 3;
+  if (!active && !(plannedIdle && materialImport)) return null;
+
+  const floor = num(control?.executionFloorSocPct)
+    ?? num(input.planFacts?.effectiveFloorSocPct);
+  const soc = num(input.snapshot?.socPct);
+  const flags = new Set(slot?.slotFlags ?? []);
+  const reserveBound = flags.has('soc_floor') || flags.has('reserve_backup') ||
+    flags.has('reserve_peak') || (floor != null && soc != null && soc <= floor + 0.5);
+  const deviceBound = slot?.unplannedLoadDischarge !== true || !control?.controlEnabled ||
+    !control?.certified || control?.allMatch === false ||
+    control?.executionMeasurementsFresh === false;
+
+  let status: string;
+  if (active && floor != null) {
+    status = `Unerwarteter Verbrauch · Speicher deckt live bis ${fmtNum(floor, '', 0)} % Reserve`;
+  } else if (active) {
+    status = 'Unerwarteter Verbrauch · Speicher deckt live bis zur Reserve';
+  } else if (reserveBound || (slot?.unplannedLoadDischarge === true && deviceBound)) {
+    status = 'Entladung durch Reserve/Gerätezustand begrenzt';
+  } else if (slot?.unplannedLoadDischarge === false) {
+    status = 'Speicher hält zurück, weil Energie später mehr wert ist';
+  } else {
+    status = 'Entladung durch Reserve/Gerätezustand begrenzt';
+  }
+
+  const chips: JetztChip[] = [];
+  if (slot?.importPriceCtKwh != null) chips.push({ label: 'Netzbezug', value: fmtNum(slot.importPriceCtKwh, 'ct/kWh') });
+  if (slot?.storedValueCtKwh != null) chips.push({ label: 'Speicherwert', value: fmtNum(slot.storedValueCtKwh, 'ct/kWh') });
+  if (floor != null) chips.push({ label: 'Reserveboden', value: fmtNum(floor, '%', 0) });
+  chips.push({
+    label: 'Ausführung',
+    value: mode === 'autonomous_discharge'
+      ? 'Wechselrichter-Automatik'
+      : mode === 'idle_follow' ? '10-Sekunden-Nachführung' : 'noch nicht aktiv',
+  });
+  chips.push({ label: 'Messung', value: input.snapshotFresh ? 'frisch' : 'veraltet' });
+  chips.push({ label: 'Rücklesen', value: control?.allMatch ? 'bestätigt' : 'nicht bestätigt' });
+  if (input.planFacts?.generatedAt) {
+    chips.push({ label: 'Planalter', value: fmtRelative(input.planFacts.generatedAt, input.now) });
+  }
+  const quarter = new Date(Math.floor(input.now.getTime() / 900_000) * 900_000 + 900_000);
+  return {
+    status,
+    chips,
+    next: `Neuplanung bei anhaltender Abweichung automatisch, sonst spätestens ${hm(quarter.toISOString())}`,
   };
 }
 
@@ -487,7 +558,8 @@ function resolveState(
   // Fahrplan führt keinen aus, egal wie gut der Wert zum Plan passt.
   const mode = input.control?.executionMode ?? null;
   if (mode === 'fallback') return 'sicherung';
-  if (mode === 'follow' || mode === 'trim') return 'angepasst';
+  if (mode === 'follow' || mode === 'trim' || mode === 'absorb' ||
+      mode === 'idle_follow' || mode === 'autonomous_discharge') return 'angepasst';
   // Ohne den präzisen Modus (ältere Edge-Version) bleibt die GROBE Wahrheit:
   // das Gerät sagt, dass kein Fahrplan es steuert. Das reicht, um „läuft wie
   // vorgesehen" NICHT zu behaupten — aber NICHT, um die Ursache zu benennen

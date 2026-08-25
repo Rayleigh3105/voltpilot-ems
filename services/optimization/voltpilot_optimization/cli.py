@@ -20,10 +20,12 @@ import logging
 import os
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from urllib.parse import quote
 
 from voltpilot_optimization.config import v2_plan_site_ids
+from voltpilot_optimization.cadence import aligned_delay_seconds
 from voltpilot_optimization.engine import run_cycle
 from voltpilot_optimization.persistence import TimescaleScheduleRepository
 from voltpilot_optimization.persistence_v2 import TimescaleSitePlanRepository
@@ -389,18 +391,23 @@ def main(argv: list[str] | None = None) -> int:
         )
         cycle = 0
         while not runtime.stopping:
+            cycle_started = time.monotonic()
+            succeeded = False
             try:
                 _run_one(args, env)
-                runtime.record_success()
+                runtime.record_success(time.monotonic() - cycle_started)
+                succeeded = True
             except Exception as exc:  # keep the loop alive across transient blips
-                runtime.record_failure(exc)
+                runtime.record_failure(exc, time.monotonic() - cycle_started)
                 logger.warning(
                     "serve.cycle_failed", extra={"context": {"error": str(exc)}}
                 )
             cycle += 1
             if args.max_cycles and cycle >= args.max_cycles:
                 return 0
-            if not runtime.sleep(runtime.next_delay(args.interval_seconds)):
+            delay = (aligned_delay_seconds(datetime.now(timezone.utc), args.interval_seconds)
+                     if succeeded else runtime.next_delay(args.interval_seconds))
+            if not runtime.sleep(delay):
                 break
         logger.info("serve.stopped", extra={"context": {"cycles": cycle}})
         return 0

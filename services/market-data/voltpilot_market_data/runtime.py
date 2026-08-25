@@ -75,6 +75,7 @@ class ServeRuntime:
         self._consecutive_failures = 0
         self._last_cycle_ok: bool | None = None
         self._last_success_at: float | None = None
+        self._last_cycle_duration_seconds: float | None = None
         self._last_error: str | None = None
 
     # ---- shutdown ---------------------------------------------------------
@@ -127,20 +128,22 @@ class ServeRuntime:
 
     # ---- cycle bookkeeping ------------------------------------------------
 
-    def record_success(self) -> None:
+    def record_success(self, duration_seconds: float | None = None) -> None:
         with self._lock:
             self._cycles += 1
             self._consecutive_failures = 0
             self._last_cycle_ok = True
             self._last_success_at = time.monotonic()
+            self._last_cycle_duration_seconds = duration_seconds
             self._last_error = None
 
-    def record_failure(self, error: BaseException | str) -> None:
+    def record_failure(self, error: BaseException | str, duration_seconds: float | None = None) -> None:
         with self._lock:
             self._cycles += 1
             self._consecutive_failures += 1
             self._last_cycle_ok = False
             self._last_error = str(error)
+            self._last_cycle_duration_seconds = duration_seconds
 
     def next_delay(self, baseline_seconds: float) -> float:
         """Seconds to wait before the next cycle (see module docstring, 2)."""
@@ -159,6 +162,7 @@ class ServeRuntime:
             last_ok = self._last_cycle_ok
             last_success_at = self._last_success_at
             last_error = self._last_error
+            cycle_duration = self._last_cycle_duration_seconds
         now = time.monotonic()
         if cycles == 0:
             state = "starting"
@@ -178,6 +182,9 @@ class ServeRuntime:
             doc["last_cycle_ok"] = last_ok
         if last_success_at is not None:
             doc["last_success_age_seconds"] = round(now - last_success_at, 3)
+            doc["plan_age_seconds"] = round(now - last_success_at, 3)
+        if cycle_duration is not None:
+            doc["solve_duration_seconds"] = round(cycle_duration, 3)
         if last_error is not None:
             doc["last_error"] = last_error
         return doc

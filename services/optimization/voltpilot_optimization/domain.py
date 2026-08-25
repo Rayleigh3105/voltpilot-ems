@@ -124,6 +124,21 @@ class BatteryParams:
     def soc_max_kwh(self) -> float:
         return self.capacity_kwh * self.soc_max_fraction
 
+    @property
+    def effective_floor_soc_pct(self) -> float:
+        """The floor an edge-side corrective discharge must preserve.
+
+        This is deliberately the *configured* reservation stack, not
+        :meth:`soc_floor_kwh`: the latter relaxes a below-reserve initial state
+        to keep the MILP feasible, while an edge correction must never deepen
+        that deficit.  Technical, backup and peak floors compose by maximum.
+        """
+        return max(
+            self.soc_min_fraction * 100.0,
+            self.backup_reserve_pct or 0.0,
+            self.peak_reserve_pct or 0.0,
+        )
+
     def clamp_soc_kwh(self, soc_kwh: float) -> float:
         """Clamp a measured SoC into the usable window (keeps the model feasible
         when telemetry reports a SoC outside the reserve band)."""
@@ -699,6 +714,13 @@ class PlanSlot:
     # MQTT payload (as the optional per-slot ``cover_load_from_battery``): it is
     # an executor duty, not presentation. None/False = pre-feature behavior.
     cover_load_from_battery: bool | None = None
+    # ---- Economically-authorized unforeseen-load coverage (2026-08-25) ------
+    # True only for a genuinely IDLE/HOLD slot (battery setpoint ~= 0, no
+    # planned sale) whose full marginal economics make discharging now better
+    # than importing.  This is intentionally a separate contract bit: the
+    # established cover_load_from_battery duty continues to mean "adjust an
+    # already-planned discharge" and is not silently widened to start one.
+    unplanned_load_discharge: bool | None = None
     # ---- In-slot surplus absorption (2026-08-02) ------------------------------
     # True = storing one more kWh beats selling it in THIS slot (eta*lambda -
     # wear above the slot's export value), so the edge may RAISE the commanded

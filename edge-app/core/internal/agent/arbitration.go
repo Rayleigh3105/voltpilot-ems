@@ -395,10 +395,17 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 // Stufe 4). It reads the APPLIED registry, so an older cloud (no field) and
 // every unpaused plant answer false - byte-for-byte the pre-Stufe-4 behaviour.
 func (a *Agent) automationPaused() bool {
+	return a.automationPausedAt(time.Now().UTC())
+}
+
+// automationPausedAt is the deterministic execution-path half. The arbiter
+// callback uses the box clock above; applySetpoint passes its own tick so a
+// pause and the command it protects are evaluated against the same instant.
+func (a *Agent) automationPausedAt(now time.Time) bool {
 	a.entMu.Lock()
 	reg := a.entRegistry
 	a.entMu.Unlock()
-	return reg.Paused(time.Now().UTC())
+	return reg.Paused(now)
 }
 
 // pausedWithdrawSet is the set of entities the plan executors held when the
@@ -480,6 +487,18 @@ func (a *Agent) batteryEntityID() string {
 		return e.ID
 	}
 	return ""
+}
+
+// batteryOwnerClaimed reports whether the technical/customer-rule plane owns
+// the battery. Additive market corrections must not create a second command
+// beneath that ownership: in particular, a granted neutral 0 kW remains 0 kW.
+func (a *Agent) batteryOwnerClaimed() bool {
+	a.entMu.Lock()
+	defer a.entMu.Unlock()
+	if e := a.entRegistry.FirstOfType(entities.TypeBatteryHybrid); e != nil {
+		return e.OwnerClaimed
+	}
+	return false
 }
 
 // mirrorReadbackToEntity republishes the v1 control readback on the battery

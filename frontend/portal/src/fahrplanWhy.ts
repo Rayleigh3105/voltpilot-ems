@@ -106,6 +106,8 @@ export interface WhySlot {
    * siehe `schedule.ts slotDuty` (nur ein ausdrückliches true markiert).
    */
   coverLoadFromBattery?: boolean | null;
+  /** May start measured load coverage from an economically idle slot. */
+  unplannedLoadDischarge?: boolean | null;
   /** Der Ladeseiten-Spiegel: nur den gemessenen Solar-Überschuss laden. */
   chargeFromSurplusOnly?: boolean | null;
   /**
@@ -182,6 +184,8 @@ export const REFILL_HIGH_PCT = 60;
 export interface PlanWhyFacts {
   whyTerminalAnchor?: string | null;
   whyRefillFreePct?: number | null;
+  generatedAt?: string | null;
+  effectiveFloorSocPct?: number | null;
 }
 
 /**

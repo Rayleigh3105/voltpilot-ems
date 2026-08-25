@@ -93,7 +93,9 @@ export const FLOW_CONFLICT_MIN_STREAK = 3;
 export const FEED_IN_FULL_MARGIN_KW = 1;
 
 /** Die Ausführungs-Modi, in denen das Gerät bewusst dem MESSWERT folgt. */
-const FOLLOWING_MODES: ReadonlySet<string> = new Set(['follow', 'trim', 'absorb']);
+const FOLLOWING_MODES: ReadonlySet<string> = new Set([
+  'follow', 'trim', 'absorb', 'idle_follow', 'autonomous_discharge',
+]);
 
 /** Der Trailing-Satz jeder Konflikt-Aussage: ein Hinweis, kein Alarm. */
 export const FLOW_CONFLICT_WATCH_SENTENCE = 'Bitte im Blick behalten.';

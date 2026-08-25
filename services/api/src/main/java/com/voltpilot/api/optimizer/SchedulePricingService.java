@@ -63,7 +63,7 @@ public class SchedulePricingService {
         }
         return new SchedulePlanDto(plan.planId(), plan.deviceId(), plan.generatedAt(),
                 plan.slotMinutes(), plan.savingsEur(), plan.bankedValueEur(), plan.socStartPct(),
-                plan.socEndPct(), plan.peakTargetKw(), plan.fallback14a(),
+                plan.socEndPct(), plan.peakTargetKw(), plan.effectiveFloorSocPct(), plan.fallback14a(),
                 plan.whyTerminalAnchor(), plan.whyRefillFreePct(), priced);
     }
 

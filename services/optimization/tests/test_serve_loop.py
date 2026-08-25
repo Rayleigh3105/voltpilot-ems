@@ -44,7 +44,7 @@ def test_a_failed_cycle_retries_in_seconds_instead_of_a_full_interval(monkeypatc
     assert delays == [5.0, 10.0, 20.0]
 
 
-def test_a_successful_cycle_keeps_the_configured_cadence(monkeypatch):
+def test_a_successful_cycle_aligns_the_base_cadence_to_the_next_quarter(monkeypatch):
     delays: list[float] = []
     monkeypatch.setattr(cli, "_run_one", lambda _a, _e: None)
     monkeypatch.setattr(
@@ -52,7 +52,8 @@ def test_a_successful_cycle_keeps_the_configured_cadence(monkeypatch):
     )
 
     assert cli.main(["serve", "--interval-seconds", "900", "--health-port", "0"]) == 0
-    assert delays == [900.0]
+    assert len(delays) == 1
+    assert 0 < delays[0] <= 900.0
 
 
 def test_sigterm_ends_the_loop_instead_of_waiting_out_the_interval(monkeypatch):

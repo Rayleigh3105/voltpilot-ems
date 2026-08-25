@@ -136,6 +136,7 @@ public record ScheduleSlotDto(
         BigDecimal measuredLoadKw,
         BigDecimal measuredPvKw,
         Boolean coverLoadFromBattery,
+        Boolean unplannedLoadDischarge,
         Boolean chargeFromSurplusOnly,
         String whyNextBest,
         BigDecimal whyNextBestMarginCt) {
@@ -147,7 +148,8 @@ public record ScheduleSlotDto(
                 baselineCostEur, curtailKw, pvKw, loadKw, slotRole, slotFlags, storedValueCtKwh,
                 gridValueCtKwh, peakPressureEurKw,
                 importPriceCtKwh, exportValueCtKwh, importPriceSource,
-                measuredLoadKw, measuredPvKw, coverLoadFromBattery, chargeFromSurplusOnly,
+                measuredLoadKw, measuredPvKw, coverLoadFromBattery, unplannedLoadDischarge,
+                chargeFromSurplusOnly,
                 whyNextBest, whyNextBestMarginCt);
     }
 
@@ -161,7 +163,8 @@ public record ScheduleSlotDto(
                 baselineCostEur, curtailKw, pvKw, loadKw, slotRole, slotFlags, storedValueCtKwh,
                 gridValueCtKwh, peakPressureEurKw,
                 importPriceCtKwh, exportValueCtKwh, importPriceSource,
-                measuredLoadKw, measuredPvKw, coverLoadFromBattery, chargeFromSurplusOnly,
+                measuredLoadKw, measuredPvKw, coverLoadFromBattery, unplannedLoadDischarge,
+                chargeFromSurplusOnly,
                 whyNextBest, whyNextBestMarginCt);
     }
 }

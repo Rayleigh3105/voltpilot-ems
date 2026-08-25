@@ -209,12 +209,15 @@ export function directionLabel(direction: ExecutionDirection | null | undefined)
   return null;
 }
 
-/** Die deutschen Namen der vier Ausführungs-Modi (Anzeige, nie Fachjargon). */
+/** Die deutschen Namen der additiven Ausführungs-Modi (Anzeige, nie Fachjargon). */
 export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
   plan: 'Fahrplan',
   follow: 'Nachführung',
   trim: 'Solar-Überschuss',
+  absorb: 'Überschuss-Aufnahme',
   fallback: 'Eingebaute Sicherung',
+  idle_follow: 'Live-Lastnachführung',
+  autonomous_discharge: 'Wechselrichter-Automatik',
 };
 
 /**
@@ -252,6 +255,14 @@ export function executionNote(status: ControlStatus | null): string | null {
       `${plannedPart}geladen wird nur der gemessene Solar-Überschuss${surplus}: ` +
       'Netzstrom wäre in dieser Viertelstunde teurer als der spätere Nutzen.'
     );
+  }
+  if (mode === 'absorb') {
+    return `${plannedPart}Ihr Gerät nimmt gerade den gemessenen Solar-Überschuss auf.`;
+  }
+  if (mode === 'idle_follow' || mode === 'autonomous_discharge') {
+    const measured = target == null ? '' : ` (${absKw(target)})`;
+    const path = mode === 'idle_follow' ? 'der 10-Sekunden-Nachführung' : 'der Wechselrichter-Automatik';
+    return `${plannedPart}Unerwarteter Verbrauch wird live mit ${path}${measured} gedeckt.`;
   }
   // follow
   const measured = target == null ? '' : ` (${absKw(target)})`;

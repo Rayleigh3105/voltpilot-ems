@@ -30,16 +30,18 @@ public class ControlStatusRepository {
      *                  - it collapses every non-schedule mode into
      *                  {@code default}, so it may never be read as "the
      *                  built-in safety rule is running".
-     * @param mode      {@code plan|follow|trim|fallback}, the PRECISE reason.
+     * @param mode      the precise execution path, including {@code idle_follow}
+     *                  and the separately certified {@code autonomous_discharge}.
      * @param direction {@code deepen|reduce}, only for {@code follow}.
      * @param plannedKw the setpoint BEFORE the correction.
      * @param targetKw  the MEASURED value the correction tracks (house deficit
      *                  for {@code follow}, PV surplus for {@code trim}).
      */
     public record Execution(String source, String mode, String direction,
-            Double plannedKw, Double targetKw) {
+            Double plannedKw, Double targetKw, Double effectiveFloorSocPct,
+            Boolean measurementsFresh) {
 
-        public static final Execution NONE = new Execution(null, null, null, null, null);
+        public static final Execution NONE = new Execution(null, null, null, null, null, null, null);
     }
 
     /**
@@ -85,10 +87,11 @@ public class ControlStatusRepository {
                 "INSERT INTO device_control_status (device_id, tenant_id, site_id, commanded_kw, "
                         + "confirmed_kw, all_match, control_enabled, certified, mismatch_roles, "
                         + "slot_start, checked_at, control_source, execution_mode, execution_direction, "
-                        + "execution_planned_kw, execution_target_kw, cert_source, platform_cert_verdict, "
+                        + "execution_planned_kw, execution_target_kw, execution_floor_soc_pct, "
+                        + "execution_measurements_fresh, cert_source, platform_cert_verdict, "
                         + "platform_cert_model, platform_cert_reason, updated_at) "
                         + "VALUES (?, NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
+                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
                         + "ON CONFLICT (device_id) DO UPDATE SET "
                         + "site_id = EXCLUDED.site_id, commanded_kw = EXCLUDED.commanded_kw, "
                         + "confirmed_kw = EXCLUDED.confirmed_kw, all_match = EXCLUDED.all_match, "
@@ -99,6 +102,8 @@ public class ControlStatusRepository {
                         + "execution_direction = EXCLUDED.execution_direction, "
                         + "execution_planned_kw = EXCLUDED.execution_planned_kw, "
                         + "execution_target_kw = EXCLUDED.execution_target_kw, "
+                        + "execution_floor_soc_pct = EXCLUDED.execution_floor_soc_pct, "
+                        + "execution_measurements_fresh = EXCLUDED.execution_measurements_fresh, "
                         + "cert_source = EXCLUDED.cert_source, "
                         + "platform_cert_verdict = EXCLUDED.platform_cert_verdict, "
                         + "platform_cert_model = EXCLUDED.platform_cert_model, "
@@ -106,6 +111,7 @@ public class ControlStatusRepository {
                 deviceId, siteId, commandedKw, confirmedKw, allMatch, controlEnabled, certified,
                 mismatchRoles, slotStart == null ? null : Timestamp.from(slotStart), Timestamp.from(checkedAt),
                 ex.source(), ex.mode(), ex.direction(), ex.plannedKw(), ex.targetKw(),
+                ex.effectiveFloorSocPct(), ex.measurementsFresh(),
                 ct.source(), ct.verdict(), ct.model(), ct.reason());
     }
 
@@ -114,7 +120,8 @@ public class ControlStatusRepository {
         return jdbc.query(
                 "SELECT device_id, commanded_kw, confirmed_kw, all_match, control_enabled, certified, "
                         + "mismatch_roles, slot_start, checked_at, control_source, execution_mode, "
-                        + "execution_direction, execution_planned_kw, execution_target_kw, cert_source, "
+                        + "execution_direction, execution_planned_kw, execution_target_kw, "
+                        + "execution_floor_soc_pct, execution_measurements_fresh, cert_source, "
                         + "platform_cert_verdict, platform_cert_model, platform_cert_reason, "
                         // Die Ausnahme dieser ANLAGE (nicht des Geräts): sie steht in der
                         // gespeicherten Anbindung einer Komponente und beantwortet genau die
@@ -143,6 +150,8 @@ public class ControlStatusRepository {
                         rs.getString("execution_direction"),
                         (Double) rs.getObject("execution_planned_kw"),
                         (Double) rs.getObject("execution_target_kw"),
+                        (Double) rs.getObject("execution_floor_soc_pct"),
+                        (Boolean) rs.getObject("execution_measurements_fresh"),
                         rs.getString("cert_source"),
                         rs.getString("platform_cert_verdict"),
                         rs.getString("platform_cert_model"),

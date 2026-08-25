@@ -42,7 +42,7 @@ class SchedulePricingServiceTest {
         return new ScheduleSlotDto(SLOT, new BigDecimal("-4.332"), new BigDecimal("2.8"),
                 new BigDecimal("77"), spotEurMwh, null, null, null, null, new BigDecimal("4.33"),
                 "eigenverbrauch", List.of(), new BigDecimal("21.5"), null, null,
-                null, null, null, null, null, Boolean.TRUE, Boolean.FALSE, null, null);
+                null, null, null, null, null, Boolean.TRUE, Boolean.FALSE, Boolean.FALSE, null, null);
     }
 
     private static SchedulePricingService serviceReturning(SlotEconomics economics) {
@@ -53,7 +53,7 @@ class SchedulePricingServiceTest {
 
     private static SchedulePlanDto plan(ScheduleSlotDto... slots) {
         return new SchedulePlanDto(UUID.randomUUID(), UUID.randomUUID(), SLOT, 15,
-                BigDecimal.ONE, null, null, null, null, null, null, null, List.of(slots));
+                BigDecimal.ONE, null, null, null, null, null, null, null, null, List.of(slots));
     }
 
     @Test

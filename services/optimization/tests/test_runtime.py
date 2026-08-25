@@ -175,6 +175,14 @@ def test_health_server_is_disabled_by_a_non_positive_port():
     assert serve_health(ServeRuntime("t"), -1) is None
 
 
+def test_status_exposes_plan_age_and_last_solve_duration():
+    runtime = ServeRuntime("optimization")
+    runtime.record_success(1.2345)
+    doc = runtime.status()
+    assert doc["plan_age_seconds"] >= 0
+    assert doc["solve_duration_seconds"] == 1.234
+
+
 # ---- twin drift guard -----------------------------------------------------------
 
 def test_the_three_runtime_twins_stay_byte_identical():

@@ -33,8 +33,8 @@ type Deps struct {
 	// ControlEnabled is the two-gate posture stamped onto entity commands.
 	ControlEnabled func() bool
 	// Suspended is the operator's „Automatik pausieren" (Steuerung Stufe 4,
-	// §3.7 B5). While it holds, the arbiter IGNORES every desire below the
-	// market class - the plan executors already inject nothing, so every
+	// §3.7 B5). While it holds, the arbiter IGNORES every desire in the market
+	// class or below - the plan executors already inject nothing, so every
 	// entity falls to its REGISTRY FAILSAFE: the battery to self-consumption,
 	// a device to release/off. That is the honest reading of „so, als gäbe es
 	// VoltPilot nicht", and it is the ONE value the cloud could never have
@@ -314,7 +314,10 @@ func (a *Arbiter) HolderCommand(entityID string) (entities.Commands, SourceKind,
 		return entities.Commands{}, "", false
 	}
 	d := st.desires[st.holderKey]
-	if d == nil {
+	if d == nil || a.suspended(d) {
+		// Close the registry-push race: the physical v1 path must not observe a
+		// just-suspended incumbent before the next Tick has moved the entity to
+		// failsafe. Contract/grid/safety holders are not suspended and pass.
 		return entities.Commands{}, "", false
 	}
 	return st.lastGranted, d.Source.Kind, true
@@ -465,13 +468,12 @@ func (st *entState) currentHolder() *Desired {
 // wins rank ties, otherwise the earliest-received (deterministic, no
 // oscillation).
 func (a *Arbiter) selectHolder(st *entState, now time.Time) *Desired {
-	suspended := a.deps.Suspended != nil && a.deps.Suspended()
 	var best *Desired
 	for _, d := range st.desires {
 		if d.Expired(now) {
 			continue
 		}
-		if suspended && d.effectiveRank() <= ClassMarket.rank() {
+		if a.suspended(d) {
 			// „Automatik pausieren": plan, rules and manual wishes rest;
 			// compliance (contract/grid/safety) never does.
 			continue
@@ -494,16 +496,40 @@ func (a *Arbiter) selectHolder(st *entState, now time.Time) *Desired {
 	return best
 }
 
+// suspended keys on the desired's CLASS, not its effective arbitration rank:
+// a bounded local-ui override is still a flow-class manual wish even though
+// D-5 elevates it above market during normal operation. Plant rest suspends
+// both ordinary and override wishes while preserving contract/grid/safety.
+func (a *Arbiter) suspended(d *Desired) bool {
+	return d != nil && a.deps.Suspended != nil && a.deps.Suspended() &&
+		d.Priority.rank() <= ClassMarket.rank()
+}
+
 // tickEntity re-evaluates one entity: expiry, holder re-clamp, failsafe.
 func (a *Arbiter) tickEntity(st *entState, now time.Time) {
 	a.pruneExpired(st, now)
-	if holder := st.currentHolder(); holder != nil {
+	holder := st.currentHolder()
+	if a.suspended(holder) {
+		// A pause can arrive while a manual override already holds the entity.
+		// Re-select now; merely filtering future selections would leave that
+		// incumbent active until its TTL and defeat the plant-rest command.
+		st.holderKey = ""
+		holder = nil
+	}
+	if holder != nil {
 		a.applyDecision(st, now, holder, eventCtx{subject: holder.Ref()})
 		return
 	}
 	if st.holderKey != "" {
 		// The holder vanished without pruning noticing (defensive).
 		st.holderKey = ""
+	}
+	// Also resumes a still-live wish from the failsafe when a plant pause ends
+	// by the box's own clock; no cloud re-send is required.
+	if next := a.selectHolder(st, now); next != nil {
+		st.holderKey = next.Source.Key()
+		a.applyDecision(st, now, next, eventCtx{subject: next.Ref()})
+		return
 	}
 	a.fallToFailsafe(st, now, nil, nil)
 }

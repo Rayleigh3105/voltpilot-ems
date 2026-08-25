@@ -20,13 +20,14 @@ type published struct {
 }
 
 type harness struct {
-	t        *testing.T
-	arb      *Arbiter
-	clock    time.Time
-	commands []published
-	events   []published
-	reading  guards.Reading
-	failsafe func(id string, r guards.Reading) (float64, bool)
+	t         *testing.T
+	arb       *Arbiter
+	clock     time.Time
+	commands  []published
+	events    []published
+	reading   guards.Reading
+	failsafe  func(id string, r guards.Reading) (float64, bool)
+	suspended bool
 }
 
 func f64(v float64) *float64 { return &v }
@@ -78,9 +79,10 @@ func newHarness(t *testing.T) *harness {
 		return guards.SelfConsumption(r), true
 	}
 	h.arb = New(Deps{
-		Now:     func() time.Time { return h.clock },
-		Reading: func(string) guards.Reading { return h.reading },
-		ControlEnabled: func() bool { return true },
+		Now:             func() time.Time { return h.clock },
+		Reading:         func(string) guards.Reading { return h.reading },
+		Suspended:       func() bool { return h.suspended },
+		ControlEnabled:  func() bool { return true },
 		StorageFailsafe: func(id string, r guards.Reading) (float64, bool) { return h.failsafe(id, r) },
 		PublishCommand: func(id string, p []byte) {
 			h.commands = append(h.commands, published{id, p})
@@ -161,10 +163,10 @@ func flowDesire(entity, node string, kw float64, ttlS int, override bool, issued
 		"request_id":     node + ":" + issued.Format(time.RFC3339),
 		"source": map[string]any{"kind": "flow",
 			"flow_id": "d0eaf5aa-9b1c-4d2e-8f30-415263748596", "flow_version": 2, "node_id": node},
-		"priority": "flow",
-		"override": override,
-		"command":  map[string]any{"type": "setpoint_kw", "value": kw},
-		"ttl_s":    ttlS,
+		"priority":  "flow",
+		"override":  override,
+		"command":   map[string]any{"type": "setpoint_kw", "value": kw},
+		"ttl_s":     ttlS,
 		"issued_at": issued.Format(time.RFC3339),
 	})
 	return raw
@@ -180,6 +182,56 @@ func marketDesire(entity string, kw float64, ttl time.Duration) *Desired {
 		IssuedAt:  now,
 		Commands:  entities.Commands{SetpointKw: &kw},
 		SolarOnly: false,
+	}
+}
+
+func externalDesire(entity string, source SourceKind, priority Class,
+	kw float64, override bool, issued time.Time) []byte {
+	raw, _ := json.Marshal(map[string]any{
+		"schema_version": "1.0", "entity_id": entity,
+		"request_id": string(source) + ":" + issued.Format(time.RFC3339Nano),
+		"source":     map[string]any{"kind": source}, "priority": priority,
+		"override": override, "ttl_s": 900,
+		"issued_at": issued.Format(time.RFC3339Nano),
+		"command":   map[string]any{"type": "setpoint_kw", "value": kw},
+	})
+	return raw
+}
+
+func TestPlantRestSuspendsAnIncumbentManualOverrideButNeverCompliance(t *testing.T) {
+	h := newHarness(t)
+	h.arb.Submit("batt-main", externalDesire(
+		"batt-main", SourceLocalUI, ClassFlow, 0, true, h.clock))
+	if got := h.setpointOf("batt-main"); got != 0 {
+		t.Fatalf("manual hold = %v, want 0", got)
+	}
+
+	// Suspension is a live gate: it must evict an ALREADY holding override,
+	// not merely filter desires submitted after the pause began.
+	h.suspended = true
+	h.arb.Tick()
+	if got := h.setpointOf("batt-main"); got != 5.2 { // PV 6.2 - load 1
+		t.Fatalf("paused battery = %v, want local self-consumption 5.2", got)
+	}
+	if dec, ok := h.arb.DecisionFor("batt-main"); !ok || dec.HolderKind != "" || dec.Source != "failsafe" {
+		t.Fatalf("paused decision must be holderless failsafe: %+v ok=%v", dec, ok)
+	}
+
+	// Grid/contract/safety sit above market and remain eligible throughout the
+	// pause. This is the safety boundary, not an all-commands kill switch.
+	h.clock = h.clock.Add(time.Second)
+	h.arb.Submit("batt-main", externalDesire(
+		"batt-main", SourceCloudCommand, ClassGrid, -2, false, h.clock))
+	if got := h.setpointOf("batt-main"); got != -2 {
+		t.Fatalf("grid command during pause = %v, want -2", got)
+	}
+
+	// When the local clock ends the pause, the still-live manual intervention
+	// resumes without a cloud re-send after compliance releases.
+	h.suspended = false
+	h.arb.Withdraw("batt-main", Source{Kind: SourceCloudCommand}.Key(), false)
+	if got := h.setpointOf("batt-main"); got != 0 {
+		t.Fatalf("manual hold after pause = %v, want resumed 0", got)
 	}
 }
 

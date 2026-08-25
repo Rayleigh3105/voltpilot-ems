@@ -71,6 +71,7 @@ public record ControlStatusDto(UUID deviceId, Double commandedKw, Double confirm
         String mismatchRoles, Instant slotStart, Instant checkedAt,
         String controlSource, String executionMode, String executionDirection,
         Double executionPlannedKw, Double executionTargetKw,
+        Double executionFloorSocPct, Boolean executionMeasurementsFresh,
         String certSource, String platformCertVerdict, String platformCertModel,
         String platformCertReason,
         /*
@@ -102,7 +103,7 @@ public record ControlStatusDto(UUID deviceId, Double commandedKw, Double confirm
             String platformCertReason) {
         this(deviceId, commandedKw, confirmedKw, allMatch, controlEnabled, certified,
                 mismatchRoles, slotStart, checkedAt, controlSource, executionMode,
-                executionDirection, executionPlannedKw, executionTargetKw, certSource,
+                executionDirection, executionPlannedKw, executionTargetKw, null, null, certSource,
                 platformCertVerdict, platformCertModel, platformCertReason, null);
     }
 }

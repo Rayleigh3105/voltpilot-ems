@@ -66,6 +66,10 @@ type Slot struct {
 	// the price-blind self-consumption logic, which is precisely what the
 	// price-aware plan replaced.
 	CoverLoadFromBattery bool `json:"cover_load_from_battery,omitempty"`
+	// UnplannedLoadDischarge is a DISTINCT authorization for a planned idle
+	// slot. It may start discharge from 0 kW, so execution additionally
+	// requires a fresh full measurement set and EffectiveFloorSocPct.
+	UnplannedLoadDischarge bool `json:"unplanned_load_discharge,omitempty"`
 	// ChargeSurplusToBattery is the OPTIONAL in-slot SURPLUS-ABSORPTION duty of
 	// the slot (2026-08-02, the charge-side counterpart that RAISES): true = the
 	// cloud determined that STORING one more kWh beats SELLING it here
@@ -113,6 +117,10 @@ type Plan struct {
 	// reserve survives for peak defense (which alone may go below it, down to
 	// the technical SoC floor). nil = no reserve - fallback behaves as before.
 	PeakReserveSocPct *float64 `json:"peak_reserve_soc_pct,omitempty"`
+	// EffectiveFloorSocPct is max(technical, backup, peak reserve), computed by
+	// the optimizer. It is mandatory for starting unforeseen-load discharge;
+	// absent/invalid means that additive duty is disabled (old-cloud safe).
+	EffectiveFloorSocPct *float64 `json:"effective_floor_soc_pct,omitempty"`
 	// GridExportLimitKw is the OPTIONAL site feed-in limit at the grid
 	// connection point (kW >= 0), mirroring site.max_feed_in_kw (FK1). It is the
 	// EXPORT-side twin of GridImportLimitKw: the cloud plans against it as a hard
@@ -177,22 +185,35 @@ func (p *Plan) PeakReserveSoc() *float64 {
 	return &v
 }
 
+// EffectiveFloorSoc returns the full cloud-computed corrective-discharge
+// floor. It does not survive absence (nil is the fail-closed signal for the
+// additive idle duty); plan staleness is checked by the duty itself.
+func (p *Plan) EffectiveFloorSoc() *float64 {
+	if p == nil || p.EffectiveFloorSocPct == nil {
+		return nil
+	}
+	v := *p.EffectiveFloorSocPct
+	return &v
+}
+
 // wire mirrors the contract JSON (RFC 3339 strings).
 type wire struct {
-	SchemaVersion     string   `json:"schema_version"`
-	PlanID            string   `json:"plan_id"`
-	GeneratedAt       string   `json:"generated_at"`
-	SlotMinutes       int      `json:"slot_minutes"`
-	GridChargeAllowed *bool    `json:"grid_charge_allowed"`
-	GridImportLimitKw *float64 `json:"grid_import_limit_kw"`
-	PeakReserveSocPct *float64 `json:"peak_reserve_soc_pct"`
-	GridExportLimitKw *float64 `json:"grid_export_limit_kw"`
-	Slots             []struct {
+	SchemaVersion        string   `json:"schema_version"`
+	PlanID               string   `json:"plan_id"`
+	GeneratedAt          string   `json:"generated_at"`
+	SlotMinutes          int      `json:"slot_minutes"`
+	GridChargeAllowed    *bool    `json:"grid_charge_allowed"`
+	GridImportLimitKw    *float64 `json:"grid_import_limit_kw"`
+	PeakReserveSocPct    *float64 `json:"peak_reserve_soc_pct"`
+	EffectiveFloorSocPct *float64 `json:"effective_floor_soc_pct"`
+	GridExportLimitKw    *float64 `json:"grid_export_limit_kw"`
+	Slots                []struct {
 		Start                  string   `json:"start"`
 		BatterySetpointKw      float64  `json:"battery_setpoint_kw"`
 		PvLimitKw              *float64 `json:"pv_limit_kw"`
 		ChargeFromSurplusOnly  *bool    `json:"charge_from_surplus_only"`
 		CoverLoadFromBattery   *bool    `json:"cover_load_from_battery"`
+		UnplannedLoadDischarge *bool    `json:"unplanned_load_discharge"`
 		ChargeSurplusToBattery *bool    `json:"charge_surplus_to_battery"`
 	} `json:"slots"`
 }
@@ -247,6 +268,12 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		v := *w.GridExportLimitKw
 		p.GridExportLimitKw = &v
 	}
+	if w.EffectiveFloorSocPct != nil && !math.IsNaN(*w.EffectiveFloorSocPct) &&
+		!math.IsInf(*w.EffectiveFloorSocPct, 0) && *w.EffectiveFloorSocPct >= 0 &&
+		*w.EffectiveFloorSocPct <= 100 {
+		v := *w.EffectiveFloorSocPct
+		p.EffectiveFloorSocPct = &v
+	}
 	if t, err := time.Parse(time.RFC3339, w.GeneratedAt); err == nil {
 		p.GeneratedAt = t
 	}
@@ -278,6 +305,9 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		// the load-following duty.
 		if s.CoverLoadFromBattery != nil && *s.CoverLoadFromBattery {
 			slot.CoverLoadFromBattery = true
+		}
+		if s.UnplannedLoadDischarge != nil && *s.UnplannedLoadDischarge {
+			slot.UnplannedLoadDischarge = true
 		}
 		// ...and for the charge-side counterpart that RAISES: only an EXPLICIT
 		// true carries the surplus-absorption duty.
@@ -378,6 +408,22 @@ func (p *Plan) ActiveCoverLoadFromBattery(now time.Time) bool {
 	for _, s := range p.Slots {
 		if !now.Before(s.Start) && now.Before(s.Start.Add(width)) {
 			return s.CoverLoadFromBattery
+		}
+	}
+	return false
+}
+
+// ActiveUnplannedLoadDischarge reports the additive idle-slot authorization.
+// It never survives staleness and is false unless the same plan also carries a
+// valid full reserve floor. That fail-closed coupling makes an old cloud safe.
+func (p *Plan) ActiveUnplannedLoadDischarge(now time.Time) bool {
+	if !p.Fresh(now) || p.EffectiveFloorSocPct == nil {
+		return false
+	}
+	width := time.Duration(p.SlotMinutes) * time.Minute
+	for _, s := range p.Slots {
+		if !now.Before(s.Start) && now.Before(s.Start.Add(width)) {
+			return s.UnplannedLoadDischarge && math.Abs(s.BatterySetpointKw) <= 0.05
 		}
 	}
 	return false

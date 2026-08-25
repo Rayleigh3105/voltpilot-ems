@@ -29,6 +29,10 @@ import (
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
 // pausedRegistryPush is `registryPush` with the operator pause stamped on -
@@ -47,6 +51,170 @@ func pausedRegistryPush(t *testing.T, revision string, until *time.Time) []byte 
 		t.Fatal(err)
 	}
 	return out
+}
+
+// manualBatteryDesired is byte-for-byte the semantic envelope emitted by
+// ConsumerOverridePublisher for „Ladestand halten" / „Speicher jetzt laden".
+func manualBatteryDesired(now time.Time, kw float64) []byte {
+	raw, _ := json.Marshal(map[string]any{
+		"schema_version": "1.0", "entity_id": entBattery,
+		"request_id": "override:" + entBattery + ":" + fmt.Sprint(now.UnixNano()),
+		"source":     map[string]any{"kind": "local-ui"},
+		"priority":   "flow", "override": true, "ttl_s": 900,
+		"issued_at": now.UTC().Format(time.RFC3339Nano),
+		"command":   map[string]any{"type": "setpoint_kw", "value": kw},
+	})
+	return raw
+}
+
+// Cross-increment regression for PR513 + PR514. A manual battery intervention
+// owns the physical command downstream of optimizer slot corrections, while a
+// whole-plant pause owns both the entity arbitration and the legacy v1 output.
+// Screenshot A/B are replayed on the same follower instance so a stale active
+// claim cannot make the assertions pass.
+func TestManualBatteryAndPlantRestOutrankIdleFollowerAndOptimizer(t *testing.T) {
+	a, addr := followAgentAddr(t)
+	sub := subscribeSetpoint(t, addr)
+	now := time.Now().UTC().Truncate(time.Second)
+	reg, skipped, err := entities.ParseRegistryPush(registryPush("rev-manual-idle", true),
+		entities.Identity{TenantID: tTenant, SiteID: tSite, DeviceID: tDevice})
+	if err != nil || len(skipped) != 0 {
+		t.Fatalf("registry parse: skipped=%v err=%v", skipped, err)
+	}
+	a.applyEntityRegistry(reg)
+
+	yes, floor, peak := true, 35.0, 0.0
+	a.mu.Lock()
+	a.currentPlan = &plan.Plan{
+		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
+		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		GridImportLimitKw: &peak,
+		Slots: []plan.Slot{{
+			Start: now, BatterySetpointKw: 0,
+			ChargeFromSurplusOnly: true, CoverLoadFromBattery: true,
+			UnplannedLoadDischarge: true, ChargeSurplusToBattery: true,
+		}},
+	}
+	a.lastReading = guards.Reading{
+		SocPct: 95, PvKw: 22.1, LoadKw: 36.8, GridLimitKw: guards.Unknown(),
+	}
+	a.lastReadingAt = now
+	a.mu.Unlock()
+	a.State.Update(func(s *state.Snapshot) {
+		s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
+	})
+	assertPhysical := func(want float64, source string) {
+		t.Helper()
+		waitFor(t, 5*time.Second, "physical manual/pause setpoint", func() bool {
+			m, ok := sub.latest()
+			return ok && m["battery_setpoint_kw"] == want && m["source"] == source
+		})
+	}
+	assertNoMarketCorrection := func(snap state.Snapshot) {
+		t.Helper()
+		if snap.Trim != nil || snap.Follow != nil || snap.Absorb != nil ||
+			snap.PeakGuardActive || snap.CarsFirstCapKw != nil {
+			t.Fatalf("manual/pause command carries optimizer correction: %+v", snap)
+		}
+	}
+
+	// Manual hold against exact screenshot A: the additive idle permission may
+	// not reinterpret the operator's neutral command as -14.7 kW discharge.
+	a.arb.Submit(entBattery, manualBatteryDesired(now, 0))
+	a.arb.Tick()
+	a.applySetpoint(now)
+	assertPhysical(0, "desired")
+	snap := a.State.Get()
+	if snap.Mode != state.ModeDesired || snap.SetpointKw != 0 {
+		t.Fatalf("manual hold = mode %q, %.3f kW; want desired, 0", snap.Mode, snap.SetpointKw)
+	}
+	assertNoMarketCorrection(snap)
+
+	// A positive manual charge is equally authoritative: screenshot A has no
+	// surplus, so the optimizer's charge_from_surplus_only flag would cut it to
+	// zero if a market correction leaked past the local-ui holder.
+	tCharge := now.Add(time.Second)
+	a.mu.Lock()
+	a.lastReading.SocPct = 60
+	a.lastReadingAt = tCharge
+	a.mu.Unlock()
+	a.arb.Submit(entBattery, manualBatteryDesired(time.Now().UTC(), 1.5))
+	a.arb.Tick()
+	a.applySetpoint(tCharge)
+	assertPhysical(1.5, "desired")
+	snap = a.State.Get()
+	if snap.Mode != state.ModeDesired || snap.SetpointKw != 1.5 {
+		t.Fatalf("manual charge = mode %q, %.3f kW; want desired, 1.5", snap.Mode, snap.SetpointKw)
+	}
+	assertNoMarketCorrection(snap)
+
+	// Whole-plant rest suspends the incumbent manual wish AND the optimizer.
+	// The physical v1 path must use local self-consumption, with no idle-follow
+	// execution claim, even though the fresh slot authorizes every market duty.
+	until := now.Add(time.Hour)
+	paused, skipped, err := entities.ParseRegistryPush(
+		pausedRegistryPush(t, "rev-manual-idle-paused", &until),
+		entities.Identity{TenantID: tTenant, SiteID: tSite, DeviceID: tDevice})
+	if err != nil || len(skipped) != 0 {
+		t.Fatalf("paused registry parse: skipped=%v err=%v", skipped, err)
+	}
+	a.applyEntityRegistry(paused)
+
+	// Deliberately execute BEFORE the arbiter's next Tick: HolderCommand must
+	// close the registry-push race and refuse the now-suspended incumbent.
+	tA := now.Add(2 * time.Second)
+	a.mu.Lock()
+	a.lastReading = guards.Reading{
+		SocPct: 95, PvKw: 22.1, LoadKw: 36.8, GridLimitKw: guards.Unknown(),
+	}
+	a.lastReadingAt = tA
+	a.mu.Unlock()
+	a.applySetpoint(tA)
+	assertPhysical(-14.7, "default")
+	snap = a.State.Get()
+	if snap.Mode != state.ModeSelfConsume || snap.SetpointKw != -14.7 {
+		t.Fatalf("paused screenshot A = mode %q, %.3f kW; want self-consumption -14.7",
+			snap.Mode, snap.SetpointKw)
+	}
+	assertNoMarketCorrection(snap)
+	a.runPlanExecutors(tA)
+	a.arb.Tick()
+
+	// Screenshot B proves honesty: plant rest charges the measured 6 kW local
+	// surplus; it neither executes the optimizer's idle 0 nor reports following.
+	tB := now.Add(3 * time.Second)
+	a.mu.Lock()
+	a.lastReading = guards.Reading{
+		SocPct: 60, PvKw: 22.6, LoadKw: 16.6, GridLimitKw: guards.Unknown(),
+	}
+	a.lastReadingAt = tB
+	a.mu.Unlock()
+	a.applySetpoint(tB)
+	assertPhysical(6.0, "default")
+	snap = a.State.Get()
+	if snap.Mode != state.ModeSelfConsume || snap.SetpointKw != 6 {
+		t.Fatalf("paused screenshot B = mode %q, %.3f kW; want self-consumption +6",
+			snap.Mode, snap.SetpointKw)
+	}
+	assertNoMarketCorrection(snap)
+
+	// A non-neutral optimizer command cannot break plant rest either.
+	tOptimizer := now.Add(4 * time.Second)
+	a.mu.Lock()
+	a.currentPlan.Slots[0].BatterySetpointKw = 8
+	a.lastReading = guards.Reading{
+		SocPct: 60, PvKw: 22.1, LoadKw: 36.8, GridLimitKw: guards.Unknown(),
+	}
+	a.lastReadingAt = tOptimizer
+	a.mu.Unlock()
+	a.applySetpoint(tOptimizer)
+	assertPhysical(-14.7, "default")
+	snap = a.State.Get()
+	if snap.Mode != state.ModeSelfConsume || snap.SetpointKw != -14.7 {
+		t.Fatalf("paused optimizer override = mode %q, %.3f kW; want self-consumption -14.7",
+			snap.Mode, snap.SetpointKw)
+	}
+	assertNoMarketCorrection(snap)
 }
 
 func TestAutomationPauseFallsEveryComponentToItsFailsafeAndLiftsItself(t *testing.T) {

@@ -53,8 +53,9 @@ public class ControlStatusListener {
 
     private static final Logger log = LoggerFactory.getLogger(ControlStatusListener.class);
     private static final String STATUS_FILTER = "ems/+/+/+/status";
-    /** The four execution modes the edge may report - anything else is ignored. */
-    private static final Set<String> EXECUTION_MODES = Set.of("plan", "follow", "trim", "fallback");
+    /** The additive execution modes the edge may report - anything else is ignored. */
+    private static final Set<String> EXECUTION_MODES = Set.of(
+            "plan", "follow", "trim", "absorb", "fallback", "idle_follow", "autonomous_discharge");
     /** The two follow directions - only meaningful for mode {@code follow}. */
     private static final Set<String> FOLLOW_DIRECTIONS = Set.of("deepen", "reduce");
     /** The three certification sources the core may report - anything else is ignored. */
@@ -237,7 +238,7 @@ public class ControlStatusListener {
         if (ex == null || !ex.isObject()) {
             // An older edge: the coarse source is all we know, and it is stored
             // as exactly that - no mode, no direction, no invented detail.
-            return new ControlStatusRepository.Execution(source, null, null, null, null);
+            return new ControlStatusRepository.Execution(source, null, null, null, null, null, null);
         }
         String mode = optText(ex, "mode");
         if (mode != null && !EXECUTION_MODES.contains(mode)) {
@@ -254,9 +255,13 @@ public class ControlStatusListener {
         // worse than none.
         Double target = mode == null
                 ? null
-                : "trim".equals(mode) ? optDouble(ex, "surplus_kw") : optDouble(ex, "deficit_kw");
+                : Set.of("trim", "absorb").contains(mode)
+                        ? optDouble(ex, "surplus_kw") : optDouble(ex, "deficit_kw");
         return new ControlStatusRepository.Execution(
-                source, mode, direction, optDouble(ex, "planned_kw"), target);
+                source, mode, direction, optDouble(ex, "planned_kw"), target,
+                optDouble(ex, "effective_floor_soc_pct"),
+                ex.has("measurements_fresh") && ex.get("measurements_fresh").isBoolean()
+                        ? ex.get("measurements_fresh").booleanValue() : null);
     }
 
     /**
