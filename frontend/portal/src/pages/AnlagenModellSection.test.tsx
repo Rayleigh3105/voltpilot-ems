@@ -857,6 +857,49 @@ describe('AnlagenModellSection — elektrisches Anlagenbild', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it('hält den Fokus ab dem ersten rückwärts-Tab im Modal und sperrt den Hintergrund', async () => {
+    stub();
+    alsDesktop(true);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    const { container } = render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    const node = await screen.findByRole('button', { name: /Fronius Anlage/ });
+    node.focus();
+    fireEvent.click(node);
+    const dialog = await screen.findByRole('dialog', { name: 'Fronius Anlage' });
+    const close = within(dialog).getByRole('button', { name: 'Vorschau schließen' });
+    const open = within(dialog).getByRole('link', { name: 'Gerät öffnen' });
+    await waitFor(() => expect(close).toHaveFocus());
+    expect(container).toHaveAttribute('inert');
+    expect(container).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(open).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(close).toHaveFocus();
+
+    fireEvent.click(close);
+    expect(container).not.toHaveAttribute('inert');
+    expect(container).not.toHaveAttribute('aria-hidden');
+    await waitFor(() => expect(node).toHaveFocus());
+  });
+
+  it('zeigt ein neues Gerät als Zuordnungsaufgabe und öffnet Übernehmen in der Primäransicht', async () => {
+    stub();
+    alsDesktop(true);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Neues Gerät gefunden/ }));
+    const preview = await screen.findByRole('dialog', { name: 'Neues Gerät gefunden' });
+    expect(within(preview).getByText('Zuordnung ausstehend')).toBeInTheDocument();
+    expect(within(preview).queryByText('Gestört')).toBeNull();
+    fireEvent.click(within(preview).getByRole('button', { name: 'Übernehmen' }));
+    const zuordnen = await screen.findByRole('dialog', { name: 'Gerät zuordnen' });
+    expect(screen.queryByRole('dialog', { name: 'Neues Gerät gefunden' })).toBeNull();
+    await waitFor(() => expect(zuordnen).toHaveFocus());
+  });
+
   it('rendert am Telefon einen vertikalen Pfad statt eines Mini-Canvas', async () => {
     stub();
     alsDesktop(false);
@@ -914,7 +957,9 @@ describe('AnlagenModellSection — elektrisches Anlagenbild', () => {
     node.focus();
     fireEvent.click(node);
     const dialog = await screen.findByRole('dialog', { name: 'Fronius Anlage' });
-    await waitFor(() => expect(dialog).toHaveFocus());
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Vorschau schließen' })).toHaveFocus(),
+    );
     fireEvent.keyDown(dialog, { key: 'Escape' });
     await waitFor(() => expect(node).toHaveFocus());
   });
@@ -982,7 +1027,7 @@ describe('der Anlege-Einstieg', () => {
     stub();
     vi.spyOn(api, 'siteComponents').mockResolvedValue({
       componentAuthority: 'portal',
-      components: [{ id: 'batt', definitionVersion: 2, syncStatus: 'in_sync' }],
+      components: [{ id: 'batt', role: 'inverter', definitionVersion: 2, syncStatus: 'in_sync' }],
     });
     vi.spyOn(api, 'componentTemplates').mockResolvedValue([]);
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
@@ -1066,5 +1111,7 @@ describe('der Anlege-Einstieg', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Gerät anbinden' });
     expect(within(dialog).getByText('Welches Gerät ist es?')).toBeInTheDocument();
     expect(within(dialog).queryByText('Was möchten Sie anbinden?')).toBeNull();
+    expect(within(dialog).getByTestId('rollen-wahl').querySelector('.is-on')?.textContent)
+      .toContain('Wechselrichter / Speicher');
   });
 });

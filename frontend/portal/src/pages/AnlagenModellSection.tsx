@@ -87,6 +87,7 @@ import {
   sollIstText,
   sollIstTon,
   verwaltungsHinweis,
+  type KomponentenRolle,
 } from '../komponentenAssistent';
 import '../components/AnlagenModell.css';
 import '../components/KomponenteAssistent.css';
@@ -160,6 +161,7 @@ export function AnlagenModellSection({
   const [components, setComponents] = useState<SiteComponents | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addTyp, setAddTyp] = useState<TypId | null>(null);
+  const [addRolle, setAddRolle] = useState<KomponentenRolle | null>(null);
   /**
    * Geräte-Erlebnis Slice 1: Anlagenbild ist die Vorgabe auf jeder Breite;
    * die Liste bleibt dieselbe synchronisierte Zweitsicht. Die Wahl lebt im
@@ -436,6 +438,7 @@ export function AnlagenModellSection({
                   className="vp-btn vp-btn--primary vp-btn--sm vp-am-global-add"
                   onClick={() => {
                     setAddTyp(null);
+                    setAddRolle(null);
                     setAddOpen(true);
                   }}
                 >
@@ -484,6 +487,7 @@ export function AnlagenModellSection({
                     className="vp-btn vp-btn--primary vp-btn--sm"
                     onClick={() => {
                       setAddTyp(null);
+                      setAddRolle(null);
                       setAddOpen(true);
                     }}
                   >
@@ -551,7 +555,7 @@ export function AnlagenModellSection({
                 aria-labelledby="vp-anlagenbild-tab"
               >
                 <AnlagenBild
-                bild={bild}
+                  bild={bild}
                   desktop={isDesktop}
                   authority={
                     components?.componentAuthority === 'portal'
@@ -567,10 +571,12 @@ export function AnlagenModellSection({
                     setPreviewKarteId(id);
                   }}
                   onClosePreview={() => setPreviewKarteId(null)}
-                  onAdd={(typ) => {
-                    setAddTyp(typ);
+                  onAdd={(slot) => {
+                    setAddTyp(slot.typ);
+                    setAddRolle(slot.initialRolle);
                     setAddOpen(true);
                   }}
+                  onAssign={setAssign}
                 />
               </div>
             )}
@@ -695,14 +701,17 @@ export function AnlagenModellSection({
           box={boxOf(devices, site.id) ?? undefined}
           vorlage={vorlage}
           initialTyp={vorlage ? null : addTyp}
+          initialRolle={vorlage ? null : addRolle}
           onClose={() => {
             setAddOpen(false);
             setAddTyp(null);
+            setAddRolle(null);
             setVorlage(null);
           }}
           onSaved={(result) => {
             setComponents(result);
             setAddTyp(null);
+            setAddRolle(null);
             reload();
           }}
         />

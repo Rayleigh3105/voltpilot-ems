@@ -11,7 +11,7 @@ import {
   type AnlagenSlot,
   type AnlagenZone,
 } from '../anlagenBild';
-import type { TypId } from '../anlegenFlow';
+import type { AdoptableSource } from '../rollen';
 import './AnlagenBild.css';
 
 export type AnlagenAddAuthority = 'portal' | 'box' | 'unknown';
@@ -25,6 +25,7 @@ export function AnlagenBild({
   onSelect,
   onClosePreview,
   onAdd,
+  onAssign,
 }: {
   bild: AnlagenBildModell;
   desktop: boolean;
@@ -33,7 +34,8 @@ export function AnlagenBild({
   previewId: string | null;
   onSelect: (karteId: string) => void;
   onClosePreview: () => void;
-  onAdd: (typ: TypId) => void;
+  onAdd: (slot: AnlagenSlot) => void;
+  onAssign: (source: AdoptableSource) => void;
 }) {
   const [kommunikation, setKommunikation] = useState(false);
   const preview = bild.knoten.find((k) => k.karteId === previewId) ?? null;
@@ -82,6 +84,7 @@ export function AnlagenBild({
           knoten={preview}
           authority={authority}
           onClose={onClosePreview}
+          onAssign={onAssign}
         />
       )}
     </section>
@@ -101,7 +104,7 @@ function DesktopBild({
   authority: AnlagenAddAuthority;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onAdd: (typ: TypId) => void;
+  onAdd: (slot: AnlagenSlot) => void;
 }) {
   const layout = useMemo(() => layoutAnlagenBild(bild), [bild]);
   const knoten = new Map(bild.knoten.map((k) => [k.id, k]));
@@ -239,7 +242,7 @@ function MobilerPfad({
   authority: AnlagenAddAuthority;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onAdd: (typ: TypId) => void;
+  onAdd: (slot: AnlagenSlot) => void;
 }) {
   return (
     <div className="vp-ab-mobile" data-testid="anlagenbild-mobil">
@@ -334,7 +337,7 @@ function Slot({
 }: {
   slot: AnlagenSlot;
   authority: AnlagenAddAuthority;
-  onAdd: (typ: TypId) => void;
+  onAdd: (slot: AnlagenSlot) => void;
   style?: React.CSSProperties;
 }) {
   return (
@@ -343,7 +346,7 @@ function Slot({
       className={`vp-ab-slot zone-${slot.zone}`}
       style={style}
       disabled={authority !== 'portal'}
-      onClick={() => onAdd(slot.typ)}
+      onClick={() => onAdd(slot)}
       aria-describedby={authority !== 'portal' ? `${slot.id}-authority` : undefined}
     >
       <span className="vp-ab-slot-icon"><Icon name={slot.icon} size={17} /></span>
@@ -363,19 +366,34 @@ function GeraeteVorschau({
   knoten,
   authority,
   onClose,
+  onAssign,
 }: {
   knoten: AnlagenKnoten;
   authority: AnlagenAddAuthority;
   onClose: () => void;
+  onAssign: (source: AdoptableSource) => void;
 }) {
   const panel = useRef<HTMLElement>(null);
+  const close = useRef<HTMLButtonElement>(null);
+  const layer = useRef<HTMLDivElement>(null);
   const titleId = `vp-ab-preview-${knoten.karteId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
 
   useEffect(() => {
     const vorher = document.activeElement as HTMLElement | null;
     const overflow = document.body.style.overflow;
+    const hintergrund = [...document.body.children]
+      .filter((element) => element !== layer.current)
+      .map((element) => ({
+        element,
+        inert: element.hasAttribute('inert'),
+        ariaHidden: element.getAttribute('aria-hidden'),
+      }));
     document.body.style.overflow = 'hidden';
-    panel.current?.focus();
+    for (const { element } of hintergrund) {
+      element.setAttribute('inert', '');
+      element.setAttribute('aria-hidden', 'true');
+    }
+    close.current?.focus();
     const key = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
@@ -383,6 +401,11 @@ function GeraeteVorschau({
     return () => {
       document.body.style.overflow = overflow;
       document.removeEventListener('keydown', key);
+      for (const { element, inert, ariaHidden } of hintergrund) {
+        if (!inert) element.removeAttribute('inert');
+        if (ariaHidden === null) element.removeAttribute('aria-hidden');
+        else element.setAttribute('aria-hidden', ariaHidden);
+      }
       vorher?.focus();
     };
   }, [knoten.karteId, onClose]);
@@ -393,19 +416,17 @@ function GeraeteVorschau({
       'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
     ) ?? [])];
     if (fokus.length === 0) return;
-    const erstes = fokus[0];
-    const letztes = fokus[fokus.length - 1];
-    if (event.shiftKey && document.activeElement === erstes) {
-      event.preventDefault();
-      letztes.focus();
-    } else if (!event.shiftKey && document.activeElement === letztes) {
-      event.preventDefault();
-      erstes.focus();
-    }
+    const jetzt = document.activeElement as HTMLElement | null;
+    const index = jetzt ? fokus.indexOf(jetzt) : -1;
+    const ziel = event.shiftKey
+      ? fokus[(index <= 0 ? fokus.length : index) - 1]
+      : fokus[(index + 1) % fokus.length];
+    event.preventDefault();
+    ziel?.focus();
   };
 
   return createPortal(
-    <div className="vp-ab-preview-layer">
+    <div ref={layer} className="vp-ab-preview-layer">
       <div className="vp-ab-preview-scrim" aria-hidden="true" onClick={onClose} />
       <aside
         ref={panel}
@@ -423,7 +444,7 @@ function GeraeteVorschau({
             <h2 id={titleId}>{knoten.titel}</h2>
             <p>{knoten.untertitel}</p>
           </div>
-          <button type="button" className="vp-ab-preview-close" onClick={onClose} aria-label="Vorschau schließen">
+          <button ref={close} type="button" className="vp-ab-preview-close" onClick={onClose} aria-label="Vorschau schließen">
             <Icon name="x" size={20} />
           </button>
         </header>
@@ -466,7 +487,18 @@ function GeraeteVorschau({
         </div>
 
         <footer>
-          {knoten.href ? (
+          {knoten.quelle ? (
+            <button
+              type="button"
+              className="vp-btn vp-btn--primary vp-btn--md"
+              onClick={() => {
+                onClose();
+                onAssign(knoten.quelle as AdoptableSource);
+              }}
+            >
+              Übernehmen
+            </button>
+          ) : knoten.href ? (
             <a className="vp-btn vp-btn--primary vp-btn--md" href={knoten.href}>
               Gerät öffnen
             </a>

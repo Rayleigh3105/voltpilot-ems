@@ -239,10 +239,19 @@ export function rollenWahl(typ: TypId, vorhandeneRollen: string[]): RollenWahl[]
 export function vorschlagRolle(
   typ: TypId,
   vorhandeneRollen: string[],
+  /**
+   * Ein elektrischer Slot kann die Restfrage bereits beantwortet haben. Die
+   * Rolle wird nur übernommen, wenn sie zu diesem Typ gehört und verfügbar
+   * ist; ein fremder/gesperrter Wert fällt auf dieselbe ehrliche Ableitung wie
+   * der globale Einstieg zurück.
+   */
+  bevorzugt?: KomponentenRolle | null,
 ): KomponentenRolle | null {
   const wahl = rollenWahl(typ, vorhandeneRollen);
   const frei = wahl.filter((w) => w.verfuegbar);
   if (frei.length === 0) return null;
+  const ortsgebunden = frei.find((w) => w.rolle === bevorzugt);
+  if (ortsgebunden) return ortsgebunden.rolle;
   if (frei.length === 1) return frei[0].rolle;
   // Der Wechselrichter-Fall: hat die Anlage schon einen, meint der Kunde
   // fast immer einen WEITEREN Erzeuger.

@@ -14,11 +14,18 @@
 import type { IconName } from '../designsystem/components/core/Icon';
 import type { TypId } from './anlegenFlow';
 import type { ComponentRole } from './komponenten';
+import type { KomponentenRolle } from './komponentenAssistent';
+import type { AdoptableSource } from './rollen';
 import type { GeraeteKarte } from './zentraleListe';
 import { fmtNum } from './format';
 
 export type AnlagenZone = 'pv' | 'storage' | 'house' | 'grid' | 'consumer';
-export type AnlagenZustand = 'online' | 'gestoert' | 'ungesteuert' | 'nicht-verbunden';
+export type AnlagenZustand =
+  | 'online'
+  | 'gestoert'
+  | 'ungesteuert'
+  | 'nicht-verbunden'
+  | 'zuzuordnen';
 
 export const ANLAGEN_ZONE: Record<
   AnlagenZone,
@@ -53,6 +60,8 @@ export interface AnlagenKnoten {
   werte: AnlagenWert[];
   /** Ein belegter Satz der vorhandenen Karte, nie eine geratene Adresse. */
   verbindung: string | null;
+  /** Nur ein schon gemeldetes, noch nicht übernommenes Gerät trägt die Aktion. */
+  quelle: AdoptableSource | null;
 }
 
 export interface AnlagenSlot {
@@ -60,6 +69,8 @@ export interface AnlagenSlot {
   zone: AnlagenZone;
   label: string;
   typ: TypId;
+  /** Elektrische Absicht für die vorhandene Anlege-API; null = Typ-Ableitung. */
+  initialRolle: KomponentenRolle | null;
   icon: IconName;
 }
 
@@ -121,6 +132,7 @@ function rollenFuer(karte: GeraeteKarte): AnlagenZone[] {
 
 function zustandFuer(karte: GeraeteKarte): AnlagenZustand {
   const wort = karte.zustand.toLocaleLowerCase('de-DE');
+  if (karte.art === 'neu') return 'zuzuordnen';
   if (
     karte.art === 'verwaist' ||
     karte.ton === 'off' ||
@@ -130,7 +142,7 @@ function zustandFuer(karte: GeraeteKarte): AnlagenZustand {
   ) {
     return 'nicht-verbunden';
   }
-  if (karte.art === 'neu' || karte.ton === 'warn') return 'gestoert';
+  if (karte.ton === 'warn') return 'gestoert';
   const kannSteuern = karte.komponenten.some((c) => c.control);
   const wirdGesteuert = karte.komponenten.some((c) => c.schaltbar);
   return kannSteuern && !wirdGesteuert ? 'ungesteuert' : 'online';
@@ -141,6 +153,7 @@ const ZUSTAND_LABEL: Record<AnlagenZustand, string> = {
   gestoert: 'Gestört',
   ungesteuert: 'Ungesteuert',
   'nicht-verbunden': 'Nicht verbunden',
+  zuzuordnen: 'Zuordnung ausstehend',
 };
 
 function standAus(zustand: string): string | null {
@@ -186,6 +199,7 @@ function knotenFuer(karte: GeraeteKarte): AnlagenKnoten {
     href: karte.href,
     werte: werteFuer(karte),
     verbindung: karte.zusatz,
+    quelle: karte.quelle ?? null,
   };
 }
 
@@ -201,6 +215,7 @@ function slotsFuer(knoten: AnlagenKnoten[]): AnlagenSlot[] {
       zone: 'pv',
       label: 'PV-Wechselrichter hinzufügen',
       typ: 'wechselrichter',
+      initialRolle: null,
       icon: 'sun',
     },
     {
@@ -208,6 +223,7 @@ function slotsFuer(knoten: AnlagenKnoten[]): AnlagenSlot[] {
       zone: 'storage',
       label: 'Speicher hinzufügen',
       typ: 'wechselrichter',
+      initialRolle: 'inverter',
       icon: 'battery',
     },
     {
@@ -215,6 +231,7 @@ function slotsFuer(knoten: AnlagenKnoten[]): AnlagenSlot[] {
       zone: 'consumer',
       label: 'Ladesäule anbinden',
       typ: 'ladesaeule',
+      initialRolle: null,
       icon: 'battery-charging',
     },
     {
@@ -222,6 +239,7 @@ function slotsFuer(knoten: AnlagenKnoten[]): AnlagenSlot[] {
       zone: 'consumer',
       label: 'Verbraucher hinzufügen',
       typ: 'verbraucher',
+      initialRolle: null,
       icon: 'zap',
     },
   ];
@@ -231,6 +249,7 @@ function slotsFuer(knoten: AnlagenKnoten[]): AnlagenSlot[] {
       zone: 'grid',
       label: 'Netz-Zähler hinzufügen',
       typ: 'zaehler',
+      initialRolle: null,
       icon: 'activity',
     });
   }

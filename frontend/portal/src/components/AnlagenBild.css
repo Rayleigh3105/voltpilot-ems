@@ -242,6 +242,9 @@
 .state-ungesteuert .vp-ab-state-mark,
 .vp-ab-preview-state.state-ungesteuert { color: var(--vp-action); }
 .state-ungesteuert .vp-ab-state-mark { background: transparent; border-radius: 2px; }
+.state-zuzuordnen .vp-ab-state-mark,
+.vp-ab-preview-state.state-zuzuordnen { color: var(--vp-action); }
+.state-zuzuordnen .vp-ab-state-mark { background: transparent; }
 .state-nicht-verbunden .vp-ab-state-mark,
 .vp-ab-preview-state.state-nicht-verbunden { color: var(--vp-text-gray); }
 .state-nicht-verbunden .vp-ab-state-mark { background: transparent; border-style: dashed; }
@@ -302,6 +305,8 @@
 }
 
 .vp-ab-service.is-on { border-color: var(--vp-action); background: var(--vp-tint); }
+.vp-ab-service small,
+.vp-ab-mobile-service small { color: var(--vp-action); }
 
 /* --- Tablet/Telefon: echter vertikaler elektrischer Pfad ----------------- */
 
@@ -502,7 +507,7 @@
 }
 .vp-ab-preview-valuegrid strong { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
 .vp-ab-preview-valuegrid span,
-.vp-ab-preview-valuegrid small { color: var(--vp-text-gray); font-size: var(--vp-text-badge); overflow-wrap: anywhere; }
+.vp-ab-preview-valuegrid small { color: var(--vp-action); font-size: var(--vp-text-badge); overflow-wrap: anywhere; }
 
 .vp-ab-preview footer {
   display: grid;

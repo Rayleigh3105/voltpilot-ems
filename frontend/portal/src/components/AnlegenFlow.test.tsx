@@ -363,6 +363,35 @@ describe('die Rolle folgt der Typ-Karte', () => {
     for (const b of wahl.querySelectorAll('button')) expect(b).toBeEnabled();
   });
 
+  it('legt vom Speicher-Slot trotz vorhandenem Wechselrichter den kompatiblen Speicherpfad an', async () => {
+    siteComponents.mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{ id: 'wr', role: 'inverter', definitionVersion: 1 }],
+    });
+    render(
+      <AnlegenFlow
+        siteId="s1"
+        initialTyp="wechselrichter"
+        initialRolle="inverter"
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+
+    const wahl = await screen.findByTestId('rollen-wahl');
+    expect(wahl.querySelector('.is-on')?.textContent).toContain('Wechselrichter / Speicher');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Gerät' }));
+    fireEvent.click(screen.getByRole('option', { name: new RegExp(template.modelLabel) }));
+    fireEvent.click(knopf('Weiter'));
+    await screen.findByLabelText(/IP-Adresse/);
+    fuelleFormular();
+    fireEvent.click(knopf('Weiter'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Komponente anlegen' }));
+
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1]).toMatchObject({ role: 'inverter' });
+  });
+
   it('stellt bei der Wallbox gar keine Frage und legt sie als Verbraucher an', async () => {
     componentTemplates.mockResolvedValue([
       { ...template, templateRef: 'builtin:go-e:charger', brand: 'go-e', brandLabel: 'go-e',

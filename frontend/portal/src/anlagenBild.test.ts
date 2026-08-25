@@ -108,12 +108,14 @@ describe('anlagenBild — reine elektrische Projektion', () => {
       card(),
       card({ id: 'warn', titel: 'Zähler gestört', ton: 'warn', zustand: 'meldet sich gerade nicht' }),
       card({ id: 'off', titel: 'Wallbox aus', ton: 'off', zustand: 'getrennt · gestern' }),
+      card({ id: 'neu', art: 'neu', titel: 'Neues Gerät', zustand: 'noch keine Komponente' }),
     ]);
 
     expect(bild.knoten.map((k) => k.zustandLabel)).toEqual([
       'Online',
       'Gestört',
       'Nicht verbunden',
+      'Zuordnung ausstehend',
     ]);
     expect(bild.knoten.every((k) => k.werte.length === 0)).toBe(true);
     expect(JSON.stringify(bild)).not.toMatch(/"wert":"?0/);
@@ -139,6 +141,7 @@ describe('anlagenBild — reine elektrische Projektion', () => {
       'Ladesäule anbinden',
       'Verbraucher hinzufügen',
     ]);
+    expect(leer.slots.find((s) => s.id === 'slot-storage')?.initialRolle).toBe('inverter');
 
     const mitNetz = anlagenBild([
       card({ komponenten: [component({ role: 'grid', primary: true })] }),
