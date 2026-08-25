@@ -3265,9 +3265,35 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
   erfundenes „Invalid" hielte ein Kundenauto aus einem Grund an, den wir
   erfunden haben. Sitzungen sind BETRIEBS-, keine Abrechnungsdaten.
 
+### OCPP-Datenjournal (Slice 10): unter dem Typ-System, vor der ersten Platte
+
+- **`csms/journal.go` sitzt am Websocket-Rand und sieht ALLES:** der Wrapper in
+  `ocppmap.go` protokolliert Call, CallResult und CallError in beide Richtungen,
+  bevor ein typisierter Handler ein unbekanntes/fehlerhaftes Ereignis verlieren
+  könnte. Connect/Disconnect werden als interne Events ergänzt. Die Library-
+  Kapsel bleibt trotzdem intakt: `journal.go` importiert `ocpp-go` nicht.
+- **⚠ Privacy gilt VOR dem ersten `WriteFile`:** `idTag`/`parentIdTag` werden
+  mit dem gerätespezifischen, 0600-geschützten `ocpp-privacy.key` zu stabilen
+  `tagref_*`; `AuthorizationKey` und secret-/password-/token-artige Vendor-Keys,
+  Diagnose-/Firmware-URLs und untypisierte `DataTransfer.data` werden redigiert.
+  `location` ist NUR bei Diagnose/Firmware eine URL — bei `MeterValues` ist
+  `Outlet`/`EV` eine unverzichtbare Messdimension und darf nie redigiert werden.
+- **Der Spool ist crashfest und geordnet:** eine atomisch umbenannte Datei je
+  Event unter `data/ocpp-journal`; erst ein erfolgreicher MQTT-QoS1-Publish auf
+  `ems/{t}/{s}/{d}/v2/ocpp-events` löscht genau diese Datei. Der Upload-Loop in
+  `agent/ocpp.go` ist reine Sichtbarkeit und stellt keinen Downlink/Command-Pfad
+  bereit. `Journal.Close` ist die Lifecycle-Barriere gegen verspätete
+  Disconnect-Callbacks beim Shutdown.
+- **Das GetConfiguration-Inventar ist absichtlich VOLLSTÄNDIG:**
+  `CapabilityKeys()` liefert die leere OCPP-Keyliste (= alle Schlüssel). Der
+  bestehende Commissioning-Mechanismus wertet weiterhin nur seine bekannten
+  Smart-Charging-Schlüssel aus; das Wire-Journal bewahrt zusätzlich readonly,
+  unknownKey, SupportedFeatureProfiles und Vendor-Keys. Es entsteht dadurch
+  keine neue Aktion.
+
 ## Das Lastmanagement-Rig `test/e2e-ocpp.sh`: Docker-frei, und es misst
 
-Die Faelle L1-L9 des Konzepts (§6.2) gegen den ECHTEN Kern und ECHTE
+Die Faelle L1-L10 des Konzepts (§6.2 + Datenfundament) gegen den ECHTEN Kern und ECHTE
 OCPP-Ladesaeulen (`cmd/vp-ocpp-sim`) ueber ECHTE Websockets.
 
 - **⚠ Jede Zusicherung liest, was eine Saeule ZIEHEN WUERDE**, abgeleitet aus
@@ -3319,6 +3345,11 @@ OCPP-Ladesaeulen (`cmd/vp-ocpp-sim`) ueber ECHTE Websockets.
     seinen Sonnen-Anteil, und wenn nichts mehr uebrig ist, PAUSIERT er mit
     genanntem Grund statt zu hungern), der Anschluss haelt, und die Ruecknahme
     stellt die Prioritaet des Kunden wieder her.
+  - **L10** liest den echten, wegen der absichtlich toten Cloud-Verbindung noch
+    nicht quittierten Disk-Spool: Boot/Status/Auth/Start/Stop/Meter/Diagnose/
+    Firmware/GetConfiguration samt Vendorfeldern, `transactionData`, Stopgrund
+    und den zwei nur durch L1-N/L2-N getrennten Messdimensionen sind vorhanden;
+    `RIG-TAG` und der simulierte AuthorizationKey fehlen im Klartext.
   - **⚠ Grosszuegige Fristen mit Grund:** der Rest des Standorts wird als
     MAXIMUM ueber 60 s genommen, und waehrend die Fahrzeuge herunterfahren
     liest der Zaehler ihren Zug kurz zu hoch. Beides UNTERSCHAETZT den

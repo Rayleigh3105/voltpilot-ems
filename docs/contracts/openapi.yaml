@@ -1103,6 +1103,94 @@ paths:
               schema: { $ref: "#/components/schemas/SiteCharging" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/ocpp/stations:
+    get:
+      tags: [sites]
+      summary: OCPP-1.6-Stationen mit Boot-, Verbindungs-, Stecker- und Fähigkeitszustand.
+      description: Read-only und RLS-gesichert; keine Live-Station wird angesprochen. Plattform-Admins wählen den Mandanten wie bei allen Kundenpfaden über X-Tenant-Id.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Stationen der Anlage.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/OcppStation" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/ocpp/events:
+    get:
+      tags: [sites]
+      summary: Redigiertes OCPP-Journal mit Call, CallResult, CallError und Verbindungsereignissen.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: messageType, in: query, schema: { enum: [Call, CallResult, CallError, Event] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 200 } }
+      responses:
+        "200":
+          description: Neueste Ereignisse zuerst; Geheimnisse bleiben auch im Payload redigiert.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/OcppProtocolEvent" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/ocpp/transactions:
+    get:
+      tags: [sites]
+      summary: OCPP-Ladevorgänge einschließlich Zählergrenzen, Stopgrund und maskierten Auth-Bezügen.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 200 } }
+      responses:
+        "200":
+          description: Neueste Ladevorgänge zuerst.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/OcppTransaction" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/ocpp/meter-values:
+    get:
+      tags: [sites]
+      summary: Dimensionsgetreue OCPP MeterValues und StopTransaction.transactionData.
+      description: Jede Zeile ist genau ein SampledValue; pointKey enthält measurand/context/format/phase/location/unit und verhindert dimensionsfremde Zusammenführung.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: pointKey, in: query, schema: { type: string } }
+        - { name: transactionId, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 1000 } }
+      responses:
+        "200":
+          description: Einzelne SampledValues, neueste zuerst.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/OcppMeterSample" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/ocpp/configuration:
+    get:
+      tags: [sites]
+      summary: GetConfiguration-Inventar und SupportedFeatureProfiles.
+      description: readonly, unknownKey, Standard-/Vendor-Key-Klassifikation und Redaktionsstatus. AuthorizationKey hat immer value=null.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: chargePointId, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Konfigurationen der Stationen.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/OcppConfiguration" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/ocpp/action-permissions:
+    get:
+      tags: [sites]
+      summary: D4-Rollenmatrix für den abhängigen Station-Command-Gateway-PR.
+      description: Reine Policy-Auskunft; dieser Slice stellt bewusst keinen schreibenden Stationspfad bereit.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Aktion -> für den angemeldeten Principal erlaubt.
+          content: { application/json: { schema: { $ref: "#/components/schemas/OcppActionPermissions" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/supply-price:
     get:
       tags: [sites]
@@ -5958,6 +6046,125 @@ components:
     Forbidden:
       description: Authenticated, but lacking the required role (e.g. a customer calling an admin endpoint).
   schemas:
+    OcppConnectorState:
+      type: object
+      properties:
+        connectorId: { type: integer, minimum: 0 }
+        status: { type: string }
+        errorCode: { type: string }
+        info: { type: string, nullable: true }
+        vendorId: { type: string, nullable: true }
+        vendorErrorCode: { type: string, nullable: true }
+        stationTimestamp: { type: string, format: date-time, nullable: true }
+        reportedAt: { type: string, format: date-time }
+    OcppStation:
+      type: object
+      properties:
+        deviceId: { type: string, format: uuid }
+        chargePointId: { type: string }
+        connected: { type: boolean }
+        connectedAt: { type: string, format: date-time, nullable: true }
+        disconnectedAt: { type: string, format: date-time, nullable: true }
+        lastSeen: { type: string, format: date-time, nullable: true }
+        bootedAt: { type: string, format: date-time, nullable: true }
+        chargeBoxSerialNumber: { type: string, nullable: true }
+        chargePointModel: { type: string, nullable: true }
+        chargePointSerialNumber: { type: string, nullable: true }
+        chargePointVendor: { type: string, nullable: true }
+        firmwareVersion: { type: string, nullable: true }
+        iccid: { type: string, nullable: true }
+        imsi: { type: string, nullable: true }
+        meterSerialNumber: { type: string, nullable: true }
+        meterType: { type: string, nullable: true }
+        diagnosticsStatus: { type: string, nullable: true }
+        diagnosticsStatusAt: { type: string, format: date-time, nullable: true }
+        firmwareStatus: { type: string, nullable: true }
+        firmwareStatusAt: { type: string, format: date-time, nullable: true }
+        connectors: { type: array, items: { $ref: "#/components/schemas/OcppConnectorState" } }
+        supportedFeatureProfiles: { type: array, items: { type: string } }
+    OcppProtocolEvent:
+      type: object
+      description: Privacy-redigiertes OCPP-Journal; idTags sind tagref_*, AuthorizationKey/Diagnose-URL/DataTransfer-Geheimnisse fehlen.
+      properties:
+        eventId: { type: string, format: uuid }
+        occurredAt: { type: string, format: date-time }
+        deviceId: { type: string, format: uuid }
+        chargePointId: { type: string }
+        direction: { enum: [station_to_csms, csms_to_station, internal] }
+        messageType: { enum: [Call, CallResult, CallError, Event] }
+        correlationId: { type: string, nullable: true }
+        action: { type: string }
+        errorCode: { type: string, nullable: true }
+        errorDescription: { type: string, nullable: true }
+        errorDetails: { type: object, nullable: true, additionalProperties: true }
+        payload: { type: object, additionalProperties: true }
+    OcppTransaction:
+      type: object
+      properties:
+        deviceId: { type: string, format: uuid }
+        chargePointId: { type: string }
+        transactionId: { type: integer }
+        connectorId: { type: integer, minimum: 0 }
+        startedAt: { type: string, format: date-time }
+        stoppedAt: { type: string, format: date-time, nullable: true }
+        meterStart: { type: integer, format: int64 }
+        meterStop: { type: integer, format: int64, nullable: true }
+        stopReason: { type: string, nullable: true }
+        startIdTagRef: { type: string, nullable: true, pattern: '^tagref_[0-9a-f]+$' }
+        stopIdTagRef: { type: string, nullable: true, pattern: '^tagref_[0-9a-f]+$' }
+        reservationId: { type: integer, nullable: true }
+        chargingProfileId: { type: integer, nullable: true }
+        chargingProfilePurpose: { type: string, nullable: true }
+        startAuthStatus: { type: string, nullable: true }
+        stopAuthStatus: { type: string, nullable: true }
+        parentIdTagRef: { type: string, nullable: true, pattern: '^tagref_[0-9a-f]+$' }
+        transactionData: { type: array, description: Nach 90 Tagen leer; Einzelwerte stehen außerdem dimensionsgetreu im MeterValue-Endpunkt. }
+        transactionDataPurgedAt: { type: string, format: date-time, nullable: true }
+    OcppMeterSample:
+      type: object
+      properties:
+        sampledAt: { type: string, format: date-time }
+        eventId: { type: string, format: uuid }
+        meterValueIndex: { type: integer }
+        sampledValueIndex: { type: integer }
+        deviceId: { type: string, format: uuid }
+        chargePointId: { type: string }
+        connectorId: { type: integer, minimum: 0 }
+        transactionId: { type: integer, nullable: true }
+        source: { enum: [MeterValues, TransactionData] }
+        pointKey: { type: string, description: Kanonischer Schlüssel aller sechs OCPP-SampledValue-Dimensionen. }
+        measurand: { type: string }
+        context: { type: string }
+        format: { type: string }
+        phase: { type: string }
+        location: { type: string }
+        unit: { type: string }
+        value: { type: string }
+        numericValue: { type: number, nullable: true, description: Nur endliche Raw-Zahlen; SignedData bleibt ausschließlich value. }
+    OcppConfigurationKey:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: string, nullable: true, description: Für AuthorizationKey ausnahmslos null. }
+        readonly: { type: boolean }
+        secret: { type: boolean }
+        redacted: { type: boolean }
+        standardKey: { type: boolean }
+        meaningKnown: { type: boolean }
+        reportedAt: { type: string, format: date-time }
+    OcppConfiguration:
+      type: object
+      properties:
+        deviceId: { type: string, format: uuid }
+        chargePointId: { type: string }
+        keys: { type: array, items: { $ref: "#/components/schemas/OcppConfigurationKey" } }
+        unknownKeys: { type: array, items: { type: string } }
+        supportedFeatureProfiles: { type: array, items: { type: string } }
+    OcppActionPermissions:
+      type: object
+      description: D4-Auskunft für den späteren Gateway; keine der Aktionen ist in diesem Slice aufrufbar.
+      properties:
+        actions: { type: object, additionalProperties: { type: boolean } }
     RegisterWriteRequest:
       type: object
       description: >

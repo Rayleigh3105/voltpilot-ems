@@ -19,6 +19,7 @@ import (
 
 	ocpp16 "github.com/lorenzodonini/ocpp-go/ocpp1.6"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/core"
+	"github.com/lorenzodonini/ocpp-go/ocpp1.6/firmware"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/smartcharging"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 	"github.com/lorenzodonini/ocpp-go/ws"
@@ -36,7 +37,10 @@ type transport struct {
 }
 
 func newTransport(s *Server, port int, path string) *transport {
-	wsrv := ws.NewServer()
+	// Journal at the websocket boundary: typed handlers cannot see malformed
+	// calls or CALLERROR frames, whereas Slice 10 must preserve all three OCPP-J
+	// message kinds. The wrapper delegates byte-for-byte after recording.
+	wsrv := &journalWsServer{WsServer: ws.NewServer(), journal: s.journal}
 	cs := ocpp16.NewCentralSystem(nil, wsrv)
 	t := &transport{srv: s, cs: cs, wsrv: wsrv, port: port, path: path, done: make(chan struct{})}
 
@@ -53,7 +57,30 @@ func newTransport(s *Server, port int, path string) *transport {
 	cs.SetNewChargePointHandler(func(cp ocpp16.ChargePointConnection) { s.onConnect(cp.ID()) })
 	cs.SetChargePointDisconnectedHandler(func(cp ocpp16.ChargePointConnection) { s.onDisconnect(cp.ID()) })
 	cs.SetCoreHandler(&coreHandler{srv: s})
+	cs.SetFirmwareManagementHandler(&firmwareHandler{srv: s})
 	return t
+}
+
+// journalWsServer decorates exactly the two byte-bearing methods. Embedding
+// keeps the complete ws.WsServer API delegated to the upstream implementation.
+type journalWsServer struct {
+	ws.WsServer
+	journal *Journal
+}
+
+func (s *journalWsServer) SetMessageHandler(handler func(ws.Channel, []byte) error) {
+	s.WsServer.SetMessageHandler(func(ch ws.Channel, data []byte) error {
+		s.journal.RecordWire("station_to_csms", ch.ID(), data)
+		return handler(ch, data)
+	})
+}
+
+func (s *journalWsServer) Write(id string, data []byte) error {
+	err := s.WsServer.Write(id, data)
+	if err == nil {
+		s.journal.RecordWire("csms_to_station", id, data)
+	}
+	return err
 }
 
 // start launches the server goroutine and returns once the socket accepts a
@@ -122,6 +149,24 @@ func (t *transport) disconnect(id string) {
 // --- the OCPP 1.6 Core profile, CSMS side ---
 
 type coreHandler struct{ srv *Server }
+
+// The two FirmwareManagement notifications are Station -> CSMS status data.
+// They are accepted and journalled by the websocket decorator; the handler
+// additionally keeps liveness current. No UpdateFirmware/GetDiagnostics
+// command is introduced here.
+type firmwareHandler struct{ srv *Server }
+
+func (h *firmwareHandler) OnDiagnosticsStatusNotification(id string,
+	_ *firmware.DiagnosticsStatusNotificationRequest) (*firmware.DiagnosticsStatusNotificationConfirmation, error) {
+	h.srv.touch(id, h.srv.opts.Now())
+	return firmware.NewDiagnosticsStatusNotificationConfirmation(), nil
+}
+
+func (h *firmwareHandler) OnFirmwareStatusNotification(id string,
+	_ *firmware.FirmwareStatusNotificationRequest) (*firmware.FirmwareStatusNotificationConfirmation, error) {
+	h.srv.touch(id, h.srv.opts.Now())
+	return firmware.NewFirmwareStatusNotificationConfirmation(), nil
+}
 
 // OnBootNotification accepts every registered station: registration IS the
 // admission decision, and it already happened at the websocket upgrade.

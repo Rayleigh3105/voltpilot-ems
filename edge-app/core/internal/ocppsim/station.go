@@ -2,11 +2,13 @@ package ocppsim
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
 	ocpp16 "github.com/lorenzodonini/ocpp-go/ocpp1.6"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/core"
+	"github.com/lorenzodonini/ocpp-go/ocpp1.6/firmware"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/smartcharging"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 )
@@ -84,6 +86,9 @@ func New(cfg Config) *Station {
 			"ChargingScheduleMaxPeriods":              "24",
 			"MaxChargingProfilesInstalled":            "10",
 			"MeterValueSampleInterval":                fmt.Sprint(int(cfg.MeterInterval / time.Second)),
+			"SupportedFeatureProfiles":                "Core,FirmwareManagement,SmartCharging",
+			"AuthorizationKey":                        "rig-secret-must-never-leave-edge",
+			"RigVendor.Mode":                          "complete",
 		},
 	}
 }
@@ -106,9 +111,26 @@ func (s *Station) Connect(endpoint string) error {
 	}
 	// Per OCPP a station reports every connector's status after boot.
 	for c := 1; c <= s.cfg.Connectors; c++ {
-		if _, err := cp.StatusNotification(c, core.NoError, core.ChargePointStatusAvailable); err != nil {
+		if _, err := cp.StatusNotification(c, core.NoError, core.ChargePointStatusAvailable,
+			func(r *core.StatusNotificationRequest) {
+				r.Timestamp = types.NewDateTime(s.cfg.Now())
+				if c == 1 {
+					r.Info = "rig connector healthy"
+					r.VendorId = "RigVendor"
+					r.VendorErrorCode = "RV-0"
+				}
+			}); err != nil {
 			return err
 		}
+	}
+	// These are station-originated observations, not remote actions. Emitting
+	// the terminal idle states makes the local rig exercise both status streams
+	// without asking a live station to upload or install anything.
+	if _, err := cp.DiagnosticsStatusNotification(firmware.DiagnosticsStatusIdle); err != nil {
+		return err
+	}
+	if _, err := cp.FirmwareStatusNotification(firmware.FirmwareStatusIdle); err != nil {
+		return err
 	}
 	return nil
 }
@@ -133,6 +155,9 @@ func (s *Station) Plug(connector int, v Vehicle) error {
 	start := int(s.energyWh[connector])
 	s.vehicles[connector] = v
 	s.mu.Unlock()
+	if _, err := s.cp.Authorize("RIG-TAG"); err != nil {
+		return err
+	}
 	conf, err := s.cp.StartTransaction(connector, "RIG-TAG", start, types.NewDateTime(s.cfg.Now()))
 	if err != nil {
 		return err
@@ -155,7 +180,19 @@ func (s *Station) Unplug(connector int) error {
 	if tx == 0 {
 		return nil
 	}
-	if _, err := s.cp.StopTransaction(meter, types.NewDateTime(s.cfg.Now()), tx); err != nil {
+	if _, err := s.cp.StopTransaction(meter, types.NewDateTime(s.cfg.Now()), tx,
+		func(r *core.StopTransactionRequest) {
+			r.IdTag = "RIG-TAG"
+			r.Reason = core.ReasonEVDisconnected
+			r.TransactionData = []types.MeterValue{{
+				Timestamp: types.NewDateTime(s.cfg.Now()),
+				SampledValue: []types.SampledValue{{
+					Value: fmt.Sprint(meter), Context: types.ReadingContextTransactionEnd,
+					Format: types.ValueFormatRaw, Measurand: types.MeasurandEnergyActiveImportRegister,
+					Location: types.LocationOutlet, Unit: types.UnitOfMeasureWh,
+				}},
+			}}
+		}); err != nil {
 		return err
 	}
 	_, err := s.cp.StatusNotification(connector, core.NoError, core.ChargePointStatusAvailable)
@@ -224,8 +261,18 @@ func (s *Station) PublishMeterValues() error {
 		if _, err := s.cp.MeterValues(c, []types.MeterValue{{
 			Timestamp: types.NewDateTime(now),
 			SampledValue: []types.SampledValue{
-				{Value: fmt.Sprintf("%.0f", kw*1000), Measurand: types.MeasurandPowerActiveImport, Unit: types.UnitOfMeasureW},
-				{Value: fmt.Sprintf("%.0f", wh), Measurand: types.MeasurandEnergyActiveImportRegister, Unit: types.UnitOfMeasureWh},
+				{Value: fmt.Sprintf("%.0f", kw*1000), Context: types.ReadingContextSamplePeriodic,
+					Format: types.ValueFormatRaw, Measurand: types.MeasurandPowerActiveImport,
+					Phase: types.PhaseL1, Location: types.LocationOutlet, Unit: types.UnitOfMeasureW},
+				{Value: fmt.Sprintf("%.0f", wh), Context: types.ReadingContextSamplePeriodic,
+					Format: types.ValueFormatRaw, Measurand: types.MeasurandEnergyActiveImportRegister,
+					Location: types.LocationOutlet, Unit: types.UnitOfMeasureWh},
+				{Value: "230.1", Context: types.ReadingContextSamplePeriodic,
+					Format: types.ValueFormatRaw, Measurand: types.MeasurandVoltage,
+					Phase: types.PhaseL1N, Location: types.LocationOutlet, Unit: types.UnitOfMeasureV},
+				{Value: "229.9", Context: types.ReadingContextSamplePeriodic,
+					Format: types.ValueFormatRaw, Measurand: types.MeasurandVoltage,
+					Phase: types.PhaseL2N, Location: types.LocationOutlet, Unit: types.UnitOfMeasureV},
 			},
 		}}); err != nil {
 			return err
@@ -299,7 +346,14 @@ func (s *Station) OnGetConfiguration(r *core.GetConfigurationRequest) (*core.Get
 	defer s.mu.Unlock()
 	var keys []core.ConfigurationKey
 	var unknown []string
-	for _, k := range r.Key {
+	requested := append([]string(nil), r.Key...)
+	if len(requested) == 0 {
+		for k := range s.config {
+			requested = append(requested, k)
+		}
+		sort.Strings(requested)
+	}
+	for _, k := range requested {
 		if v, ok := s.config[k]; ok {
 			val := v
 			keys = append(keys, core.ConfigurationKey{Key: k, Readonly: true, Value: &val})

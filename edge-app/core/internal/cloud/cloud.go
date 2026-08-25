@@ -196,7 +196,7 @@ func (o Options) brokerURL() string {
 func New(o Options) (*Link, error) {
 	l := &Link{identity: o.Identity, version: o.Version, networkFn: o.NetworkFn,
 		onSchedule: o.OnSchedule,
-		onCommand: o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
+		onCommand:  o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
 		onControlCert:    o.OnControlCert,
 		onChargingConfig: o.OnChargingConfig,
@@ -1614,6 +1614,29 @@ func (l *Link) PublishRegisterWriteResult(payload []byte) error {
 	tok := l.client.Publish(l.topic("v2/register-write-result"), 1, false, payload)
 	if !tok.WaitTimeout(10 * time.Second) {
 		return fmt.Errorf("register write result publish timed out")
+	}
+	return tok.Error()
+}
+
+// PublishOcppEvent uploads ONE already-redacted, durably queued OCPP journal
+// event on .../v2/ocpp-events (QoS1, non-retained). Identity is added here from
+// the enrolled link, never trusted from event bytes. The caller deletes its
+// local file only after this method returns nil.
+func (l *Link) PublishOcppEvent(event []byte) error {
+	var payload map[string]any
+	if err := json.Unmarshal(event, &payload); err != nil {
+		return fmt.Errorf("OCPP event envelope: %w", err)
+	}
+	payload["tenant_id"] = l.identity.TenantID
+	payload["site_id"] = l.identity.SiteID
+	payload["device_id"] = l.identity.DeviceID
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	tok := l.client.Publish(l.topic("v2/ocpp-events"), 1, false, raw)
+	if !tok.WaitTimeout(30 * time.Second) {
+		return fmt.Errorf("OCPP event publish timed out")
 	}
 	return tok.Error()
 }

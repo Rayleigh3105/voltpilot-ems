@@ -133,6 +133,18 @@ voltpilot:
       enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:true}
     cors:
       allowed-origins: ${VOLTPILOT_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  # Complete OCPP 1.6 station-originated journal. The edge removes credentials
+  # before durable spooling; this boundary applies the same policy again before
+  # Postgres. Compose enables the MQTT consumer, while broker-less tests keep it
+  # disabled. The pepper is secret in production and must remain stable so an
+  # idTag maps to the same opaque reference without becoming reversible.
+  ocpp:
+    mqtt-listener-enabled: ${VOLTPILOT_OCPP_MQTT_LISTENER_ENABLED:false}
+    # Stable per API deployment: clean-session=false lets EMQX queue QoS1
+    # station events while the API restarts. Use a distinct stable ID per
+    # replica if this service is ever scaled horizontally.
+    mqtt-client-id: ${VOLTPILOT_OCPP_MQTT_CLIENT_ID:voltpilot-api-ocpp}
+    privacy-pepper: ${VOLTPILOT_OCPP_PRIVACY_PEPPER:local-dev-only-change-me}
   # Dedicated cross-tenant datasource for the platform-admin API. Connects as the
   # voltpilot_admin BYPASSRLS role (created by Flyway V4) to the SAME database as
   # the app datasource (URL falls back to spring.datasource.url); only the role

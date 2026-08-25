@@ -27,6 +27,7 @@
     "realm": [
       { "name": "operator", "description": "Portal-User: customer, scoped to one tenant via tenant_id" },
       { "name": "admin", "description": "Tenant admin (legacy)" },
+      { "name": "site-admin", "description": "Site administrator: OCPP availability, soft reset, allowlisted configuration and local-auth operations" },
       { "name": "platform-admin", "description": "Portal-Admin: platform operator, manages tenants and users across all tenants" },
       { "name": "edge-release-publisher", "description": "OTA release automation: may ONLY register a signed edge release (POST /api/v1/admin/edge-releases + its next-seq read). Never a rollout, never a device target - see docs/ota-signing.md." }
     ]

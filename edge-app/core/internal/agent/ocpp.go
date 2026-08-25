@@ -125,6 +125,12 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 		active:       map[string]int{},
 	}
 	a.ocpp = rt
+	// Protocol events have their own durable queue: a WAN outage must not erase
+	// a transaction stop reason or an RFID authorization trace. Start draining
+	// before the socket so leftovers from a prior boot are delivered even when
+	// the OCPP listen port itself is currently unavailable.
+	a.done.Add(1)
+	go a.ocppJournalLoop(ctx)
 
 	if err := srv.Start(ctx); err != nil {
 		// The server failing to bind is a real fault and is SHOWN (the
@@ -138,6 +144,42 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 	go a.ocppLoop(ctx)
 	a.publishOcppState()
 	return nil
+}
+
+// ocppJournalLoop drains oldest-first and acknowledges local files only after
+// the broker's QoS1 confirmation. It never speaks to a station.
+func (a *Agent) ocppJournalLoop(ctx context.Context) {
+	defer a.done.Done()
+	tick := time.NewTicker(5 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		case <-a.ocpp.srv.ProtocolEventsChanged():
+		}
+		a.linkMu.Lock()
+		link := a.link
+		a.linkMu.Unlock()
+		if link == nil || !link.Connected() {
+			continue
+		}
+		for {
+			raw, token, ok := a.ocpp.srv.NextProtocolEvent()
+			if !ok {
+				break
+			}
+			if err := link.PublishOcppEvent(raw); err != nil {
+				slog.Warn("OCPP journal publish failed; event remains queued", "err", err)
+				break
+			}
+			if err := a.ocpp.srv.AckProtocolEvent(token); err != nil {
+				slog.Error("OCPP journal ack failed", "err", err)
+				break
+			}
+		}
+	}
 }
 
 // stopOcpp shuts the server down (called from the agent's own Stop).

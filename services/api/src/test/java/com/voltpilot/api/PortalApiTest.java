@@ -14,6 +14,7 @@ import java.time.ZonedDateTime;
 import java.util.List;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -136,6 +137,12 @@ class PortalApiTest {
     @Autowired
     com.voltpilot.api.rules.RuleEventWriter ruleEventWriter;
 
+    @Autowired
+    com.voltpilot.api.ocpp.OcppRepository ocppRepository;
+
+    @Autowired
+    com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
     // ---- token validation ---------------------------------------------------
 
     @Test
@@ -155,6 +162,142 @@ class PortalApiTest {
     void healthStaysOpen() {
         assertThat(rest.getForEntity(url("/health"), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void ocppFoundationPersistsCompleteDimensionedAndPrivacySafeStationData() throws Exception {
+        String cp = "VP-RIG-OCPP-16";
+        ingestOcpp(cp, 0, "internal", "Event", null, "Connected", "{}");
+        ingestOcpp(cp, 1, "station_to_csms", "Call", "boot", "BootNotification", """
+                {"chargePointVendor":"RigVendor","chargePointModel":"Complete-16",
+                 "chargePointSerialNumber":"SN-42","chargeBoxSerialNumber":"BOX-9",
+                 "firmwareVersion":"1.6.10","iccid":"iccid-test","imsi":"imsi-test",
+                 "meterSerialNumber":"MTR-7","meterType":"MID"}
+                """);
+        ingestOcpp(cp, 2, "station_to_csms", "Call", "status", "StatusNotification", """
+                {"connectorId":1,"status":"Faulted","errorCode":"OtherError",
+                 "info":"contactor diagnostic","vendorId":"RigVendor",
+                 "vendorErrorCode":"RV-17","timestamp":"2026-08-25T06:30:02Z"}
+                """);
+        ingestOcpp(cp, 3, "station_to_csms", "Call", "auth", "Authorize",
+                "{\"idTag\":\"clear-rfid-4711\"}");
+        ingestOcpp(cp, 4, "csms_to_station", "CallResult", "auth", "Authorize", """
+                {"idTagInfo":{"status":"Accepted","parentIdTag":"clear-parent-tag",
+                 "expiryDate":"2026-09-25T00:00:00Z"}}
+                """);
+        ingestOcpp(cp, 5, "station_to_csms", "Call", "start", "StartTransaction", """
+                {"connectorId":1,"idTag":"clear-rfid-4711","meterStart":1000,
+                 "reservationId":77,"timestamp":"2026-08-25T06:30:05Z"}
+                """);
+        ingestOcpp(cp, 6, "csms_to_station", "CallResult", "start", "StartTransaction", """
+                {"transactionId":42,"idTagInfo":{"status":"Accepted",
+                 "parentIdTag":"clear-parent-tag"}}
+                """);
+        ingestOcpp(cp, 7, "station_to_csms", "Call", "meter", "MeterValues", """
+                {"connectorId":1,"transactionId":42,"meterValue":[{
+                  "timestamp":"2026-08-25T06:31:00Z","sampledValue":[
+                   {"value":"230.1","measurand":"Voltage","context":"Sample.Periodic",
+                    "format":"Raw","phase":"L1-N","location":"Outlet","unit":"V"},
+                   {"value":"229.9","measurand":"Voltage","context":"Sample.Periodic",
+                    "format":"Raw","phase":"L2-N","location":"Outlet","unit":"V"},
+                   {"value":"signed-payload","measurand":"Energy.Active.Import.Register",
+                    "context":"Transaction.Begin","format":"SignedData","phase":"None",
+                    "location":"EV","unit":"Wh"}]}]}
+                """);
+        ingestOcpp(cp, 8, "station_to_csms", "Call", "stop", "StopTransaction", """
+                {"transactionId":42,"idTag":"clear-rfid-4711","meterStop":1450,
+                 "reason":"DeAuthorized","timestamp":"2026-08-25T06:32:00Z",
+                 "transactionData":[{"timestamp":"2026-08-25T06:32:00Z","sampledValue":[
+                   {"value":"1450","measurand":"Energy.Active.Import.Register",
+                    "context":"Transaction.End","format":"Raw","phase":"None",
+                    "location":"Outlet","unit":"Wh"}]}]}
+                """);
+        ingestOcpp(cp, 9, "csms_to_station", "CallResult", "stop", "StopTransaction",
+                "{\"idTagInfo\":{\"status\":\"Accepted\"}}");
+        ingestOcpp(cp, 10, "station_to_csms", "Call", "diag", "DiagnosticsStatusNotification",
+                "{\"status\":\"Uploaded\"}");
+        ingestOcpp(cp, 11, "station_to_csms", "Call", "fw", "FirmwareStatusNotification",
+                "{\"status\":\"Installed\"}");
+        ingestOcpp(cp, 12, "csms_to_station", "Call", "config", "GetConfiguration", "{}");
+        ingestOcpp(cp, 13, "station_to_csms", "CallResult", "config", "GetConfiguration", """
+                {"configurationKey":[
+                  {"key":"AuthorizationKey","readonly":false,"value":"never-store-this-secret"},
+                  {"key":"SupportedFeatureProfiles","readonly":true,
+                   "value":"Core,SmartCharging,FirmwareManagement"},
+                  {"key":"RigVendor.Mode","readonly":true,"value":"complete"}],
+                 "unknownKey":["NotImplemented.StandardKey"]}
+                """);
+        ingestOcpp(cp, 14, "station_to_csms", "CallError", "bad", "DataTransfer", "{}",
+                "NotSupported", "vendor transfer refused",
+                "{\"idTag\":\"clear-error-tag\",\"data\":\"secret-vendor-data\"}");
+        ingestOcpp(cp, 15, "csms_to_station", "Call", "profile", "SetChargingProfile", """
+                {"connectorId":1,"csChargingProfiles":{"chargingProfileId":1042,
+                 "transactionId":42,"stackLevel":0,"chargingProfilePurpose":"TxProfile",
+                 "chargingProfileKind":"Absolute","chargingSchedule":{"duration":120,
+                 "startSchedule":"2026-08-25T06:30:15Z","chargingRateUnit":"W",
+                 "minChargingRate":6000,"chargingSchedulePeriod":[
+                   {"startPeriod":0,"limit":11000,"numberPhases":3}]}}}
+                """);
+
+        String demo = token("demo", "demo");
+        ResponseEntity<String> stations = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/stations"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class);
+        assertThat(stations.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(stations.getBody()).contains(cp, "Complete-16", "RV-17", "Uploaded", "Installed",
+                "SmartCharging");
+
+        List<Map<String, Object>> meter = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/meter-values?transactionId=42"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {}).getBody();
+        assertThat(meter).hasSize(4);
+        assertThat(meter).extracting(v -> v.get("pointKey")).doesNotHaveDuplicates();
+        assertThat(meter).extracting(v -> v.get("pointKey").toString())
+                .anyMatch(v -> v.contains("phase=L1-N") && v.contains("location=Outlet")
+                        && v.contains("context=Sample.Periodic") && v.contains("unit=V"))
+                .anyMatch(v -> v.contains("format=SignedData") && v.contains("location=EV"));
+
+        String transactions = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/transactions"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class).getBody();
+        assertThat(transactions).contains("DeAuthorized", "1450", "reservationId", "tagref_",
+                        "\"chargingProfileId\":1042", "\"chargingProfilePurpose\":\"TxProfile\"")
+                .doesNotContain("clear-rfid-4711", "clear-parent-tag");
+
+        String configuration = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/configuration?chargePointId=" + cp), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class).getBody();
+        assertThat(configuration).contains("AuthorizationKey", "\"value\":null",
+                        "\"secret\":true", "RigVendor.Mode", "NotImplemented.StandardKey",
+                        "FirmwareManagement")
+                .doesNotContain("never-store-this-secret");
+
+        String events = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/events?limit=100"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class).getBody();
+        assertThat(events).contains("CallError", "NotSupported", "BootNotification")
+                .doesNotContain("clear-rfid-4711", "clear-parent-tag", "clear-error-tag",
+                        "never-store-this-secret", "secret-vendor-data");
+
+        String permissions = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/action-permissions"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class).getBody();
+        assertThat(permissions).contains("\"RemoteStartTransaction\":true",
+                        "\"ChangeConfiguration\":false", "\"UpdateFirmware\":false");
+
+        ResponseEntity<String> crossTenant = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/stations"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(crossTenant.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        HttpHeaders adminHeaders = bearer(token("admin", "admin"));
+        adminHeaders.set("X-Tenant-Id", "00000000-0000-0000-0000-000000000001");
+        ResponseEntity<String> admin = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/stations"), HttpMethod.GET,
+                new HttpEntity<>(adminHeaders), String.class);
+        assertThat(admin.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(admin.getBody()).contains(cp);
     }
 
     // ---- tenant isolation through the API -----------------------------------
@@ -6216,6 +6359,42 @@ class PortalApiTest {
     private static String ts(java.time.Instant instant) {
         return "timestamptz '" + instant.atZone(java.time.ZoneOffset.UTC)
                 .toLocalDateTime().toString().replace('T', ' ') + "+00'";
+    }
+
+    private void ingestOcpp(String chargePointId, int sequence, String direction,
+            String messageType, String correlationId, String action, String payload) throws Exception {
+        ingestOcpp(chargePointId, sequence, direction, messageType, correlationId, action,
+                payload, null, null, null);
+    }
+
+    private void ingestOcpp(String chargePointId, int sequence, String direction,
+            String messageType, String correlationId, String action, String payload,
+            String errorCode, String errorDescription, String errorDetails) throws Exception {
+        var envelope = objectMapper.createObjectNode();
+        envelope.put("schema_version", "1.0");
+        envelope.put("event_id", UUID.nameUUIDFromBytes(
+                (chargePointId + ":" + sequence).getBytes(StandardCharsets.UTF_8)).toString());
+        envelope.put("occurred_at", Instant.parse("2026-08-25T06:30:00Z")
+                .plusSeconds(sequence).toString());
+        envelope.put("charge_point_id", chargePointId);
+        envelope.put("direction", direction);
+        envelope.put("message_type", messageType);
+        if (correlationId != null) envelope.put("correlation_id", correlationId);
+        envelope.put("action", action);
+        if (errorCode != null) envelope.put("error_code", errorCode);
+        if (errorDescription != null) envelope.put("error_description", errorDescription);
+        if (errorDetails != null) envelope.set("error_details", objectMapper.readTree(errorDetails));
+        envelope.set("payload", objectMapper.readTree(payload));
+
+        UUID tenant = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID site = UUID.fromString(BERLIN_SITE);
+        UUID device = UUID.fromString("00000000-0000-0000-0000-000000000003");
+        com.voltpilot.api.tenant.TenantContext.set(tenant);
+        try {
+            assertThat(ocppRepository.ingest(tenant, site, device, envelope)).isTrue();
+        } finally {
+            com.voltpilot.api.tenant.TenantContext.clear();
+        }
     }
 
     private String url(String path) {

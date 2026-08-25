@@ -1639,7 +1639,7 @@ Der Anlass war eine Produktionsstörung (06./07.08.2026): eine DNS-Fehlleitung l
 (cd edge-app/core && go test ./...)                          # Go 1.24+; incl. in-process mTLS integration test
 (cd edge-app/nodered/vp-palette && npm install && npm test)  # vp-palette node tests
 edge-app/test/e2e-compose.sh                                 # isolated compose e2e (Docker; own project/ports)
-edge-app/test/e2e-ocpp.sh                                    # OCPP-Lastmanagement-Rig (L1-L9; Docker-FREI, nur Go + curl)
+edge-app/test/e2e-ocpp.sh                                    # OCPP-Lastmanagement-/Daten-Rig (L1-L10; Docker-FREI, nur Go + curl)
 ```
 
 Health endpoints on the JVM services are mapped to root: `GET /health` (Spring Boot Actuator).
@@ -3893,6 +3893,58 @@ ERTEILT die Einmal-Freigabe.
   „Jetzt voll laden" erreicht GENAU EINEN Ladevorgang, alle Ablehnungen ohne
   Wirkung, Mandanten-Zaun) · Edge `internal/chargingboost` +
   `agent/charging_boost_test.go`. Portal-Seite in `frontend/portal/AGENTS.md`.
+
+## OCPP-Datenfundament (Slice 10): vollständig lesen, noch NICHT fernsteuern
+
+Der Edge bleibt das lokale CSMS. Slice 10 transportiert sein vollständiges,
+bereits privacy-redigiertes OCPP-1.6-Journal per QoS1 auf
+`ems/{tenant}/{site}/{device}/v2/ocpp-events` zur API; es gibt bewusst KEINEN
+CSMS→Station-Command-Gateway und keine neue Station-Aktion.
+
+- **Migration `V20260840000000`** besitzt die normalisierten Stations-/Stecker-,
+  Autorisierungs-, Transaktions-, MeterValue-, Diagnose-/Firmware-,
+  Konfigurations-/unknownKey-/Capability-Readmodels plus das vollständige
+  Call/CallResult/CallError-Journal. Alle elf Tabellen tragen `tenant_id`, RLS
+  UND FORCE RLS; Roh-/Diagnose-/personenbezogene Daten laufen nach 90 Tagen aus,
+  der Retention-Job leert dann auch `transactionData` und `tagref_*` im
+  langlebigen, nicht-personenbezogenen Transaktionskopf.
+- **Ein SampledValue ist eine Zeile.** Der kanonische `point_key` enthält immer
+  `measurand/context/format/phase/location/unit`; fehlende OCPP-Felder bekommen
+  ausschließlich ihre Spec-Defaults bzw. den ehrlichen Sentinel `None`.
+  Phasen/Orte/Formate werden nie aggregiert oder zusammengeführt.
+- **Privacy ist zweistufig:** der Edge redigiert vor Disk; `OcppPrivacy` macht
+  dasselbe vor Postgres noch einmal (alte/kompromittierte Edge). Klare idTags
+  werden nur als stabile `tagref_*` gespeichert. `AuthorizationKey` und
+  secret-/password-/token-artige Vendor-Keys haben im DB- und API-Modell immer
+  `value=null`; Diagnose-/Firmware-URLs und untypisierte DataTransfer-Daten
+  landen nie roh im Journal. Achtung: `MeterValues.location=Outlet/EV/...` ist
+  eine Messdimension, keine URL.
+- **Zustellung ist über Neustarts belastbar:** der API-Listener verwendet die
+  stabile, konfigurierbare MQTT-Client-ID `VOLTPILOT_OCPP_MQTT_CLIENT_ID`, eine
+  persistente Broker-Session (`cleanSession=false`) und manuelle QoS1-ACKs erst
+  nach abgeschlossener DB-Verarbeitung. Pro horizontaler API-Replika ist eine
+  eigene stabile ID Pflicht; dieselbe ID auf zwei laufenden Pods würde sie
+  gegenseitig vom Broker trennen.
+- **Die API ist strikt GET-only:**
+  `/api/v1/sites/{siteId}/ocpp/{stations,events,transactions,meter-values,configuration,action-permissions}`.
+  Kunden lesen über normalen JWT-Tenant + RLS, Plattform-Admins wie bei allen
+  Site-Pfaden über `X-Tenant-Id`. `OcppActionPolicy` materialisiert D4 für den
+  abhängigen Gateway-PR: operator < site-admin < platform-admin; die Map ist
+  heute nur Auskunft und keine ausführbare Aktion. Beide Realm-Importe kennen
+  `site-admin`; bestehende Realms brauchen wie jede Realm-Änderung ein manuelles
+  Nachziehen. Das bestehende Realm-Role `admin` bleibt als rückwärtskompatibler
+  Alias derselben Anlagenadministrator-Stufe autorisiert.
+- **Bestehende Verträge bleiben stehen:** `device_charging_*`, Charging-Boost
+  und der Smart-Charging-Executor werden nicht ersetzt. Das bestehende
+  Commissioning fragt jetzt GetConfiguration mit leerer Key-Liste (= alle
+  Schlüssel), wertet für den Mechanismus aber weiterhin nur seine bekannten
+  Safe-Keys aus; das Journal bewahrt readonly, unknownKey,
+  SupportedFeatureProfiles und Vendor-Keys. Bestehende SetChargingProfile-
+  Calls werden nur als Profilbezug an die Transaktion DERIVIERT, nie ausgelöst.
+- Verträge: `docs/contracts/mqtt-ocpp-events.schema.json` + die sechs GET-Pfade
+  in `openapi.yaml`. Beweise: `OcppPrivacyTest`, `OcppEventListenerTest`,
+  `OcppActionPolicyTest`, der OCPP-Fall in `PortalApiTest`, der FORCE-RLS-
+  Angriff in `RlsIsolationTest`, Edge `csms/journal_test.go` und Rig L10.
 
 ## Anlagen-Zentrale Stufe 1: jedes Gerät hat EINE deep-linkbare Seite
 

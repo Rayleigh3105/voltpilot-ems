@@ -34,6 +34,10 @@
         "description": "Tenant admin (dev, legacy)"
       },
       {
+        "name": "site-admin",
+        "description": "Site administrator: OCPP availability, soft reset, allowlisted configuration and local-auth operations (dev)"
+      },
+      {
         "name": "platform-admin",
         "description": "Portal-Admin: platform operator, manages tenants and users across all tenants (dev)"
       },

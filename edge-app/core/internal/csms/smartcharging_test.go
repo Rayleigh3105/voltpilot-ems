@@ -3,6 +3,7 @@ package csms_test
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -164,7 +165,14 @@ func (s *station) OnGetConfiguration(r *core.GetConfigurationRequest) (*core.Get
 	defer s.mu.Unlock()
 	var keys []core.ConfigurationKey
 	var unknown []string
-	for _, k := range r.Key {
+	requested := append([]string(nil), r.Key...)
+	if len(requested) == 0 {
+		for k := range s.config {
+			requested = append(requested, k)
+		}
+		sort.Strings(requested)
+	}
+	for _, k := range requested {
 		if v, ok := s.config[k]; ok {
 			val := v
 			keys = append(keys, core.ConfigurationKey{Key: k, Readonly: true, Value: &val})
