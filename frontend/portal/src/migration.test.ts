@@ -9,11 +9,11 @@ import { hasTopology } from './adaptiveLive';
 import { modeChips } from './portfolio';
 import {
   ANWENDUNGEN,
+  AUSSERHALB_REGAL,
   REGAL,
+  betriebsmodellVorschlag,
   derivedAnwendungen,
   presetSchaltplan,
-  presetVorschlag,
-  regalFuerProfil,
   vorauswahl,
 } from './anwendungen';
 import { fleetKind, fleetTonalitaet, siteTonalitaet } from './fleet';
@@ -485,7 +485,10 @@ describe('Abbau-Invarianten (M6)', () => {
     // Stufe 5: die eigene Auswertung IST seither schaltbar - aber sie wird nie
     // ABGELEITET (wie `ueberschuss`): ihr Schalter ist reine Absicht, und eine
     // Anlage, die nie eine Kachel angelegt hat, bekommt keine erfundene.
-    expect(REGAL.map((a) => a.id)).toContain('eigene-auswertung');
+    // Seit Steuerung Stufe 0 steht sie ausserdem NICHT mehr im Regal - sie ist
+    // ausgeblendet, nicht gelöscht.
+    expect(REGAL.map((a) => a.id)).not.toContain('eigene-auswertung');
+    expect(AUSSERHALB_REGAL.map((a) => a.id)).toContain('eigene-auswertung');
   });
 
   it('Anwendungs-Preset Stufe 2: eine Anlage OHNE Profil rendert exakt wie vorher', () => {
@@ -502,16 +505,15 @@ describe('Abbau-Invarianten (M6)', () => {
         { plantKind: 'eigenverbrauch' },
       ]),
     ).toBe(fleetKind(['direktvermarktung', 'eigenverbrauch']));
-    //  2. das Regal wird nicht umsortiert und nichts eingeklappt,
-    const regal = regalFuerProfil(null);
-    expect(regal.vorne).toEqual(REGAL);
-    expect(regal.weitere).toEqual([]);
-    //  3. und der Assistent schlägt NICHTS vor, schaltet also auch nichts.
+    //  2. und der Assistent schlägt NICHTS vor, schaltet also auch nichts.
     expect(vorauswahl(null)).toEqual([]);
     const karten = [
       { id: 'marktvermarktung', label: 'Marktoptimierung', state: null, active: true, requirements: [] },
     ];
-    expect(presetVorschlag(null, karten)).toEqual({ ticken: [], zurueckgestellt: [] });
+    expect(betriebsmodellVorschlag(null, karten)).toEqual({
+      ticken: null,
+      zurueckgestellt: null,
+    });
     expect(presetSchaltplan([], ['marktvermarktung'], karten)).toEqual([]);
   });
 
@@ -535,6 +537,41 @@ describe('Abbau-Invarianten (M6)', () => {
     };
     expect(Object.keys(signals)).not.toContain('profil');
     expect(derivedAnwendungen(signals)).toEqual(['monitoring']);
+  });
+
+  it('Steuerung Stufe 0: eine Bestandsanlage verliert NICHTS - nur das Regal wird kurz', () => {
+    // Die Stufe blendet aus, sie löscht nicht. Der Beweis in vier Teilen:
+    //  1. das Regal führt genau die vier Betriebsmodelle,
+    expect(REGAL.map((a) => a.id)).toEqual([
+      'marktvermarktung',
+      'lastspitzenkappung',
+      'atypische-netznutzung',
+      'lastmanagement',
+    ]);
+    //  2. die anderen sind ausgeblendet, nicht weg,
+    expect(AUSSERHALB_REGAL.map((a) => a.id)).toEqual([
+      'monitoring',
+      'speicher-fahrplan',
+      'ueberschuss',
+      'verbraucher',
+      'eigene-auswertung',
+    ]);
+    //  3. das WILLENS-Overlay liest weiterhin JEDE Karte - ein gespeichertes
+    //     `aus` einer Regel-Anwendung darf nicht verloren gehen, sonst würde
+    //     ein abgeschalteter Modus stillschweigend wiederbelebt,
+    expect(
+      profileStatesFrom({
+        profiles: [{ id: 'marktvermarktung', state: 'an' } as never],
+        weitere: [{ id: 'ueberschuss', state: 'aus' } as never],
+      }),
+    ).toEqual({ marktvermarktung: 'an', ueberschuss: 'aus' });
+    //     ... auch aus der Antwort eines ÄLTEREN Backends ohne `weitere`.
+    expect(
+      profileStatesFrom({ profiles: [{ id: 'ueberschuss', state: 'aus' } as never] }),
+    ).toEqual({ ueberschuss: 'aus' });
+    //  4. und die M0-Projektion ist unberührt: eine nie migrierte Anlage
+    //     erzeugt weiterhin nichts.
+    expect(anlageSurface(NIE_MIGRIERT).modes).toEqual([]);
   });
 
   it('M7: die technische Schicht ist standardmäßig zu (ohne Admin-Token)', () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EarningsSite } from './api';
+import { anwendung } from './anwendungen';
 import type { EditorEntity, FlowDocument } from './flows/model';
 import { NBSP } from './format';
 import {
@@ -325,16 +326,65 @@ describe('profileRows (M4 Kapsel 1)', () => {
     expect(rows[0].contribution).toContain('laufende Abrechnungsperiode');
   });
 
-  it('never fabricates a 0 - without earnings the row reads "—"', () => {
+  it('never fabricates a 0 - without earnings the row shows NO contribution', () => {
     const rows = profileRows(
       [profile({ id: 'lastspitzenkappung', label: 'Lastspitzenkappung', active: true })],
       activeModes(GEWERBE),
       null,
     );
-    expect(rows[0].contribution).toBe('—');
+    // Stufe 0: statt eines „—" steht dort GAR NICHTS - die Zeile beantwortet
+    // „Was bringt mir das?" über ihren Nutzen-Satz, nicht über einen
+    // Gedankenstrich.
+    expect(rows[0].contribution).toBeNull();
+    expect(rows[0].benefit).toBe(anwendung('lastspitzenkappung')?.nutzen);
   });
 
-  it('an unattributable stream (automations, E15) reads "—", never a number', () => {
+  it('Stufe 0: die Zeile trägt Nutzen-Satz und Voraussetzungs-Chips', () => {
+    const rows = profileRows(
+      [profile({
+        id: 'marktvermarktung',
+        label: 'Marktoptimierung',
+        active: false,
+        requirements: [
+          { label: 'Speicher', met: true },
+          { label: 'Dynamischer Tarif oder Direktvermarktung', met: false },
+        ],
+      })],
+      [],
+      null,
+    );
+    expect(rows[0].benefit).toContain('Börsenpreisen');
+    expect(rows[0].requirements).toEqual([
+      { label: 'Speicher', met: true, text: 'Speicher' },
+      {
+        label: 'Dynamischer Tarif oder Direktvermarktung',
+        met: false,
+        text: 'Dynamischer Tarif oder Direktvermarktung fehlt',
+      },
+    ]);
+  });
+
+  it('Stufe 0: der ZWEITE Filter - nur Betriebsmodelle stehen im Regal', () => {
+    // Ein ÄLTERER Server schickt weiterhin alle neun Zeilen; die Kapsel bleibt
+    // trotzdem aufgeräumt. Eine dem Katalog UNBEKANNTE Id wird ausgelassen
+    // statt ohne Nutzen-Satz gerendert.
+    const rows = profileRows(
+      [
+        profile({ id: 'monitoring', label: 'Anlage beobachten', active: true }),
+        profile({ id: 'ueberschuss', label: 'Überschuss nutzen', active: false }),
+        profile({ id: 'eigene-auswertung', label: 'Eigene Auswertung', active: true }),
+        profile({ id: 'marktvermarktung', label: 'Marktoptimierung', active: false }),
+        profile({ id: 'brandneu', label: 'Brandneu', active: true }),
+      ],
+      [],
+      null,
+    );
+    expect(rows.map((r) => r.id)).toEqual(['marktvermarktung']);
+  });
+
+  it('eine AUTOMATION erreicht das Regal nie - sie ist eine Regel, kein Modell', () => {
+    // Sie war nie eine Anwendung; seit Stufe 0 hält der Katalog-Filter das
+    // strukturell fest, statt sie mit einem „—" als Modell zu rendern.
     const modes = activeModes({
       ...GEWERBE,
       flows: [flow('f-rule', 'Wallbox', [])],
@@ -345,7 +395,7 @@ describe('profileRows (M4 Kapsel 1)', () => {
       modes,
       EARNINGS,
     );
-    expect(rows[0].contribution).toBe('—');
+    expect(rows).toEqual([]);
   });
 
   it('a switched-off profile keeps its switch and shows no contribution', () => {
@@ -356,7 +406,7 @@ describe('profileRows (M4 Kapsel 1)', () => {
     );
     expect(rows[0].on).toBe(false);
     expect(rows[0].tone).toBe('off');
-    expect(rows[0].contribution).toBe('—');
+    expect(rows[0].contribution).toBeNull();
     expect(rows[0].blockedReason).toBeNull();
   });
 

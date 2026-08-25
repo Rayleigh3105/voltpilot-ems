@@ -68,7 +68,34 @@ export interface SiteProfile {
 }
 
 export interface SiteProfiles {
+  /**
+   * Das REGAL: seit Steuerung Stufe 0 genau die BETRIEBSMODELLE — der Server
+   * filtert, das Portal filtert über den Katalog ein zweites Mal.
+   */
   profiles: SiteProfile[];
+  /**
+   * Die sichtbaren Anwendungen, die NICHT im Regal stehen (Basis + Regel).
+   *
+   * ⚠ Sie sind kein Beiwerk: das Cockpit-Tor „ist Eigene Auswertung an?" und
+   * das Willens-Overlay der M0-Projektion lesen sie. Ein blosses Weglassen
+   * hätte beide still beschädigt — ein gespeichertes `aus` wäre verloren und
+   * ein abgeschalteter Modus wiederbelebt. Stufe 0 blendet aus, sie löscht
+   * nicht. Optional, damit ein ÄLTERES Backend (ohne das Feld) genau wie
+   * bisher gelesen wird.
+   */
+  weitere?: SiteProfile[];
+}
+
+/**
+ * ALLE gemeldeten Karten — Regal plus das, was daneben weiterläuft. Jede
+ * Fläche ausserhalb der Steuerung fragt hierüber, damit sie nicht davon
+ * abhängt, was das Regal gerade zeigt.
+ */
+export function alleProfile(
+  profiles: SiteProfiles | null | undefined,
+): SiteProfile[] {
+  if (!profiles) return [];
+  return [...(profiles.profiles ?? []), ...(profiles.weitere ?? [])];
 }
 
 /** Die Overlay-Eingabe: Anwendungs-Id → gespeicherter Wille. */
@@ -145,7 +172,9 @@ export function profileStatesFrom(
 ): ProfileStates | null {
   if (!profiles?.profiles) return null;
   const states: ProfileStates = {};
-  for (const p of profiles.profiles) {
+  // ⚠ Über ALLE Karten, nicht nur das Regal: ein gespeichertes `aus` einer
+  // Regel-Anwendung muss den abgeleiteten Modus weiterhin unterdrücken.
+  for (const p of alleProfile(profiles)) {
     if (p.state === 'an' || p.state === 'aus') states[p.id] = p.state;
   }
   return states;

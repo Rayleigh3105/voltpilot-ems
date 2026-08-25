@@ -177,15 +177,20 @@ class SiteProfileApiTest {
         // (Konzept §5.2). Es hat KEINEN Strategie-Knoten - Lastmanagement ist
         // Schutz, keine Marktteilnahme - und schaltet deshalb nichts frei.
         //
-        // Seit dem EINEN Anwendungs-Katalog (Zielbild-Stufe 1) fuehrt das Regal
-        // zusaetzlich die zwei BASIS-Anwendungen ("immer an", nicht schaltbar)
-        // und die REGEL-Anwendungen (Schalter = reine Absicht) - seit Stufe 5
-        // gehoert "eigene-auswertung" dazu. Der letzte RESERVIERTE Eintrag
-        // ("berichte") steht bewusst NICHT darin: ein Schalter, der nichts
-        // bewirken kann, waere eine Zusage, die niemand einloest.
-        assertThat(ids(shelf)).containsExactly("monitoring", "speicher-fahrplan", "ueberschuss",
-                "verbraucher", "marktvermarktung", "lastspitzenkappung", "atypische-netznutzung",
-                "lastmanagement", "eigene-auswertung");
+        // Seit Steuerung Stufe 0 "Entwirrung" fuehrt das REGAL genau die vier
+        // BETRIEBSMODELLE. Die Basis- und Regel-Anwendungen sind ausgeblendet,
+        // aber NICHT geloescht: ihre Zustaende reisen in "weitere" weiter, weil
+        // das Cockpit-Tor "Eigene Auswertung" und das Willens-Overlay der
+        // M0-Projektion sie lesen. Der RESERVIERTE Eintrag ("berichte") steht
+        // in keiner der beiden Listen: ein Schalter, der nichts bewirken kann,
+        // waere eine Zusage, die niemand einloest.
+        assertThat(ids(shelf)).containsExactly("marktvermarktung", "lastspitzenkappung",
+                "atypische-netznutzung", "lastmanagement");
+        assertThat(weitereIds(shelf)).containsExactly("monitoring", "speicher-fahrplan",
+                "ueberschuss", "verbraucher", "eigene-auswertung");
+        assertThat(shelf.toString()).doesNotContain("berichte");
+        // Und der Phantom-Verweis auf eine Seite, die es nicht gibt, ist weg.
+        assertThat(shelf.toString()).doesNotContain("Komponenten & Regeln");
         // Sie wird NIE abgeleitet (wie `ueberschuss`) und steht in keinem
         // Preset auf "an" - der Kunde schaltet sie selbst ein.
         assertThat(card(shelf, "eigene-auswertung").path("derivedActive").asBoolean()).isFalse();
@@ -202,9 +207,11 @@ class SiteProfileApiTest {
         // sie aus, und "ueberschuss" wird ueberhaupt nie abgeleitet.
         assertThat(card(shelf, "verbraucher").path("derivedActive").asBoolean()).isFalse();
         assertThat(card(shelf, "ueberschuss").path("derivedActive").asBoolean()).isFalse();
-        for (JsonNode card : shelf.path("profiles")) {
-            assertThat(card.path("state").isNull())
-                    .as("no row => derived default, the pre-M3 behaviour").isTrue();
+        for (String feld : List.of("profiles", "weitere")) {
+            for (JsonNode card : shelf.path(feld)) {
+                assertThat(card.path("state").isNull())
+                        .as("no row => derived default, the pre-M3 behaviour").isTrue();
+            }
         }
         // The shelf is honest about prerequisites even before anything is toggled.
         assertThat(card(shelf, "marktvermarktung").path("requirements").get(0).path("met")
@@ -419,16 +426,30 @@ class SiteProfileApiTest {
         return response.getBody();
     }
 
+    /** Die Ids des REGALS (seit Steuerung Stufe 0: die Betriebsmodelle). */
     private static List<String> ids(JsonNode shelf) {
         return java.util.stream.StreamSupport
                 .stream(shelf.path("profiles").spliterator(), false)
                 .map(n -> n.path("id").asText()).toList();
     }
 
+    /** Die Ids der Karten NEBEN dem Regal (Basis- und Regel-Anwendungen). */
+    private static List<String> weitereIds(JsonNode shelf) {
+        return java.util.stream.StreamSupport
+                .stream(shelf.path("weitere").spliterator(), false)
+                .map(n -> n.path("id").asText()).toList();
+    }
+
+    /**
+     * Eine Karte - egal ob im Regal oder daneben. Stufe 0 blendet aus, sie
+     * löscht nicht: jeder Zustand wird weiter beantwortet.
+     */
     private static JsonNode card(JsonNode shelf, String id) {
-        for (JsonNode node : shelf.path("profiles")) {
-            if (id.equals(node.path("id").asText())) {
-                return node;
+        for (String feld : List.of("profiles", "weitere")) {
+            for (JsonNode node : shelf.path(feld)) {
+                if (id.equals(node.path("id").asText())) {
+                    return node;
+                }
             }
         }
         throw new AssertionError("no profile card " + id);

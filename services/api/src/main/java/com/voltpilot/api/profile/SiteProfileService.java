@@ -33,7 +33,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Das ANWENDUNGS-Regal einer Anlage (Portal v3 M3, erweitert um den EINEN
- * Anwendungs-Katalog, Zielbild {@code vp-portal-zielbild-anwendungen} Stufe 1):
+ * Anwendungs-Katalog, Zielbild {@code vp-portal-zielbild-anwendungen} Stufe 1,
+ * und seit Steuerung Stufe 0 „Entwirrung" auf die BETRIEBSMODELLE verengt —
+ * {@code profiles} ist das Regal, {@code weitere} trägt die Zustände der
+ * Basis- und Regel-Anwendungen unverändert weiter):
  * dieser Dienst verheiratet den GESPEICHERTEN Kundenwillen
  * ({@link SiteProfileStateRepository}) mit den Ableitungs-Signalen
  * ({@link UsageProfileService}) zum Regal-Read-Model und führt die zwei
@@ -55,8 +58,9 @@ import org.springframework.web.server.ResponseStatusException;
  *   <li><b>regel</b> — der Schalter speichert nur die ABSICHT: kein Gate wird
  *       geöffnet, kein Starter gesät. Eingeschaltet ohne eine einzige
  *       Kunden-Regel liest die Karte den ehrlichen Leer-Zustand des Katalogs
- *       mit dem Einstieg in „Komponenten &amp; Regeln" — der Server erfindet
- *       keine Regel.</li>
+ *       mit dem Einstieg in die Regel-Kapsel der Steuerung — der Server
+ *       erfindet keine Regel. Seit Stufe 0 steht sie nicht mehr im Regal;
+ *       ihr Schalter bleibt über {@code PUT /profiles} erreichbar.</li>
  *   <li><b>geschaeft</b> — wie bisher: (a) genau die gated Knotentypen DIESER
  *       Anwendung freischalten, (b) ihren Starter säen, (c) {@code an}
  *       speichern. Ausschalten legt ihre Flows still, schließt die Knoten
@@ -127,8 +131,11 @@ public class SiteProfileService {
         FlowIndex index = indexFlows(siteId);
         AnwendungDerivation.Input in = derivationInput(site, plant, index);
 
-        List<SiteProfilesDto.Profile> cards = new ArrayList<>();
-        for (Anwendung a : anwendungen.regal()) {
+        // Das REGAL und das, was daneben weiterläuft — dieselbe Karte, aus
+        // derselben Rechnung: Stufe 0 blendet aus, sie löscht nicht.
+        List<SiteProfilesDto.Profile> regal = new ArrayList<>();
+        List<SiteProfilesDto.Profile> weitere = new ArrayList<>();
+        for (Anwendung a : anwendungen.sichtbare()) {
             String state = stored.get(a.id());
             boolean derived = AnwendungDerivation.derivedActive(a.id(), in);
             boolean active = SiteProfileStateRepository.STATE_AUS.equals(state) ? false
@@ -136,14 +143,16 @@ public class SiteProfileService {
             List<SiteProfilesDto.Requirement> requirements = requirements(a, in);
             FlowVersionRow flow = index.byNodeType.get(a.strategieKnoten());
             List<String> gated = List.copyOf(AnwendungKatalog.gatedNodeTypes(a, catalog));
-            cards.add(new SiteProfilesDto.Profile(a.id(), a.label(), state, derived, active,
-                    unlocks(a), requirements, active ? blockedReason(a, requirements, in) : null,
+            SiteProfilesDto.Profile card = new SiteProfilesDto.Profile(a.id(), a.label(), state,
+                    derived, active, unlocks(a), requirements,
+                    active ? blockedReason(a, requirements, in) : null,
                     active ? (flow != null ? ORIGIN_FLOW : ORIGIN_MASTERDATA) : null,
                     flow == null ? null
                             : new SiteProfilesDto.FlowRef(flow.flowId().toString(), flow.name()),
-                    gated, gated.isEmpty() || enabled.containsAll(gated)));
+                    gated, gated.isEmpty() || enabled.containsAll(gated));
+            (a.imRegal() ? regal : weitere).add(card);
         }
-        return new SiteProfilesDto(cards);
+        return new SiteProfilesDto(regal, weitere);
     }
 
     // -- write --------------------------------------------------------------

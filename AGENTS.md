@@ -3171,9 +3171,9 @@ The owner-approved UX/UI rework of the customer portal (one navigation, live coc
 
 ## Anwendungen (im Code: Modus-Profile): the per-Anlage profile state (Portal v3 M3)
 
-**⚠ The CUSTOMER word is „Anwendung" since 24.08.2026** (captain vocabulary, Stufe 0 of the Anwendungs-Programm — concept `data/vp-portal-zielbild-anwendungen` §2.7/§5): „Modus"/„Modus-Profil"/„Modi" appear in NO customer-facing string any more, and the portal's `copy.test.ts` guards that (its ONE documented exception is a DEVICE's operating mode, „auf Modus „eco““ — a different thing). **Every code id stays**: `ModeKind`, `ModusContainer`, `profiles.ts`, the route `/profiles`, the column `site_profile_state.profile`, `SiteProfileService`, the `vp-modus-*` CSS classes. Renaming any of those would be an API/schema change, which Stufe 0 deliberately is not — so this section keeps its Java/SQL vocabulary and only the WORD on screen changed.
+**⚠ The CUSTOMER word is „BETRIEBSMODELL" since 25.08.2026** (captain vocabulary, Steuerung Stufe 0 — see its own section above; it replaced „Anwendung", which had replaced „Modus" on 24.08.). „Anwendung" survives as the INTERNAL model and every code id; „Modus"/„Modus-Profil"/„Modi" appear in NO customer-facing string any more, and the portal's `copy.test.ts` guards that (its ONE documented exception is a DEVICE's operating mode, „auf Modus „eco““ — a different thing). **Every code id stays**: `ModeKind`, `ModusContainer`, `profiles.ts`, the route `/profiles`, the column `site_profile_state.profile`, `SiteProfileService`, the `vp-modus-*` CSS classes. Renaming any of those would be an API/schema change, which Stufe 0 deliberately is not — so this section keeps its Java/SQL vocabulary and only the WORD on screen changed.
 
-The ONE backend piece of the portal-v3 overhaul (spec [`docs/portal-v3/M3-profile.md`](docs/portal-v3/M3-profile.md)): a plant's feature set is a **shelf with switches** the customer operates themselves. **Every profile is a DIRECT customer toggle** (owner decision) - there are exactly two states, `an` and `aus`, and no "angefragt" state anywhere in the UI, the API or the DB. Additive throughout: a plant with no rows behaves byte-identically to before M3. **The shelf carries EIGHT Anwendungen since Stufe 1 (see the next section); the four GATED ones are `marktvermarktung`, `lastspitzenkappung`, `atypische-netznutzung` and `lastmanagement`. The `eigenverbrauch` card was REMOVED (report vp-nacht-bezug-e7 §3.3): self-consumption is base behaviour, not a selectable mode. Migration `V20260729010000` deletes any stored `eigenverbrauch` `site_profile_state` row + nulls any `private` override; a startup `SelfconsumptionFlowSweepRunner` retires existing `vp.strategy.selfconsumption` flows.**
+The ONE backend piece of the portal-v3 overhaul (spec [`docs/portal-v3/M3-profile.md`](docs/portal-v3/M3-profile.md)): a plant's feature set is a **shelf with switches** the customer operates themselves. **Every profile is a DIRECT customer toggle** (owner decision) - there are exactly two states, `an` and `aus`, and no "angefragt" state anywhere in the UI, the API or the DB. Additive throughout: a plant with no rows behaves byte-identically to before M3. **⚠ Since Steuerung Stufe 0 the SHELF (`SiteProfilesDto.profiles`) carries exactly the four BETRIEBSMODELLE `marktvermarktung`, `lastspitzenkappung`, `atypische-netznutzung`, `lastmanagement` (the catalog field `regal`); the five basis/rule applications ride ALONGSIDE it in `weitere` — hidden, never deleted (their states are still answered, and `PUT /profiles` still reaches them). The `eigenverbrauch` card was REMOVED (report vp-nacht-bezug-e7 §3.3): self-consumption is base behaviour, not a selectable mode. Migration `V20260729010000` deletes any stored `eigenverbrauch` `site_profile_state` row + nulls any `private` override; a startup `SelfconsumptionFlowSweepRunner` retires existing `vp.strategy.selfconsumption` flows.**
 
 - **State = INTENT only, never the derived profile.** `site_profile_state (site_id, profile, state an|aus, tenant_id, updated_at)` (migration `V20260723000000`, RLS + FORCE like `flow_definition`; `SiteProfileStateRepository` on the RLS-scoped `@Primary` JdbcTemplate). No row = "derived default" - the derivation (`UsageProfileService` signals / the portal's `activeModes`) stays the single truth (the AE7 rule). `aus` is load-bearing: it SUPPRESSES a still-derived mode, so switching a profile off cannot be silently undone by a re-derived signal.
 - **`GET/PUT /api/v1/sites/{id}/profiles`** (`SiteProfileController`, NO `@PreAuthorize` - authentication + RLS are the fence, foreign site 404; admins via the `X-Tenant-Id` switcher). The shelf card carries `state`/`derivedActive`/`active`, `unlocks`, `requirements` (✓ / fehlt), `blockedReason`, `origin`, `flowRef`, `gatedNodeTypes`/`gatedNodesEnabled`.
@@ -3261,6 +3261,55 @@ Zwillinge waren ungepinnt. Seit dieser Stufe ist er EINE Ressource
   `anwendungen.test.ts` (58) + `anwendungen.sync.test.ts` + der erweiterte `migration.test.ts`.
 - **NICHT in dieser Stufe:** das Profil-Preset an der Anlage (Stufe 2, siehe den nächsten
   Abschnitt) · der Layout-Speicher (Stufe 3) · das komponierte Portfolio (Stufe 4).
+
+## Steuerung Stufe 0 „Entwirrung": das Regal sind die BETRIEBSMODELLE
+
+Erste Stufe des Steuerungs-Umbaus (Konzept `data/vp-steuerung-konzept-b3` §2/§5 Stufe 0/§6b #1;
+Captain-Entscheide 25.08.2026). **Reines Ausblenden — KEINE Datenänderung:** keine Migration, keine
+Zeile in `site_profile_state` wird gelöscht oder geändert (das ist Paket 8/9), und alles ausserhalb
+des Regals verhält sich zeichengleich wie vorher.
+
+- **⚠ Der behobene Befund ist ZUSCHNITT, nicht Datenlage.** Das Regal zeigte NEUN Zeilen in EINER
+  Optik: zwei BASIS-Anwendungen mit einem `role="switch"`, den `SiteProfileService` mit **400**
+  („ist immer an und lässt sich nicht abschalten") beantwortet; drei REGEL-Anwendungen mit einem
+  Schalter, der ausser einer Absichts-Zeile **nichts** auslöst (kein Gate, kein Starter); und die
+  vier Geschäfts-Anwendungen. Dazu als Untertitel je Zeile der BEITRAG — eine Zahl nur bei einem
+  aktiven Modus, sonst „—", auf einer Privat-Anlage also **neun Mal „—"**.
+- **Das Katalog-Feld `regal`** (`anwendungen/catalog.json`, beide byte-gleichen Kopien) ist seither
+  die Regal-Frage; `sichtbar` bleibt daneben die ANDERE Frage („GIBT es die Anwendung schon?" —
+  `reserviert` = false). `regal` steht auf true für genau die vier Geschäfts-Anwendungen; das
+  Kundenwort dafür ist **„Betriebsmodell"** (Captain 25.08.: „Anwendung" ist kein Kundenwort mehr).
+  `AnwendungKatalog.regal()` liefert sie, `ausserhalbRegal()` den Rest, `sichtbare()` beides.
+- **⚠ ZWEI Listen in `SiteProfilesDto`, und die zweite war eine NOTWENDIGKEIT.** `profiles` ist das
+  Regal (server-seitig gefiltert), `weitere` trägt die Karten der Basis- und Regel-Anwendungen.
+  Sie mussten mitreisen, weil zwei bestehende Flächen sie LESEN und ein blosses Weglassen dort eine
+  stille Regression gewesen wäre: das Cockpit-Tor „ist Eigene Auswertung an?" (Anwendungs-Programm
+  Stufe 5) und das Willens-Overlay der M0-Projektion, das ein gespeichertes `aus` sonst verlöre und
+  einen abgeschalteten Modus wiederbelebte. **Stufe 0 blendet aus, sie löscht nicht** — jeder Zustand
+  wird weiter beantwortet, und `PUT /profiles` bleibt für JEDE sichtbare Anwendung erreichbar. Das
+  Feld ist additiv: ein älteres Portal liest nur `profiles` und sieht damit genau das Regal.
+- **⚠ Der Phantom-Satz ist aus dem Katalog verschwunden.** Die zwei `leer_zustand`-Sätze der
+  Regel-Anwendungen schickten den Kunden „unter „Komponenten & Regeln"" — eine Seite, die es NICHT
+  gibt (die Navigation kennt „Anlagen-Modell" und „Steuerung"; die Regel-Liste wohnt auf derselben
+  Seite eine Kapsel tiefer). Sie nennen jetzt „Regeln" auf dieser Seite; ein Test auf BEIDEN Seiten
+  verbietet den alten Namen katalogweit.
+- **⚠ Je Profil trägt HÖCHSTENS EIN Betriebsmodell `preset = "an"`** (Konzept §3.9): der Assistent
+  schlägt genau eines vor, nie zwei. Dafür ist `marktvermarktung.preset.gewerbe` auf `angeboten`
+  gerückt — `an` ist das STARTMODELL eines Profils, `angeboten` sein Rückfall, wenn dessen
+  Voraussetzungen fehlen („Gewerbe: Lastspitzenkappung, wenn Leistungspreis hinterlegt, sonst
+  Marktoptimierung, wenn Marktzugang"). Ein Profil OHNE `an` (Privat) schlägt NICHTS vor — der
+  Eigenverbrauchs-Fahrplan ist Grundverhalten, kein Modus. `vorauswahl` läuft beidseitig über das
+  Regal und liefert deshalb höchstens einen Eintrag; die Auswahl-Regel selbst lebt rein im Portal
+  (`anwendungen.betriebsmodellVorschlag`), die DATEN-Invariante „höchstens ein `an`" ist in
+  `AnwendungKatalogTest` festgenagelt.
+- **Beweise:** rein `AnwendungKatalogTest` (17: Regal = die vier Betriebsmodelle, `regal` folgt der
+  Klasse, ausgeblendet ≠ gelöscht, kein Phantom-Satz, höchstens ein Vorschlag je Profil) ·
+  Testcontainers `SiteProfileApiTest` (echte DB + Keycloak: `profiles` = das Regal, `weitere` = der
+  Rest, `berichte` in keiner der beiden, kein Phantom-Satz auf dem Draht). Portal-Seite (die Kapsel
+  „Betriebsmodelle", der zweite Filter, der Wizard-Schritt „Betrieb") in `frontend/portal/AGENTS.md`.
+- **NICHT in dieser Stufe:** die Jetzt-Zone (Stufe 1) · Regel-Karten + Folgen-Karte (Stufe 2) ·
+  Betriebsmodelle exklusiv (Stufe 5) · und ausdrücklich die DATENBEREINIGUNG (Stufe 9: eine
+  Migration löscht die `site_profile_state`-Zeilen der Klassen `basis`/`regel`).
 
 ## `site.profil`: das PRESET der Anlage (Anwendungs-Programm Stufe 2)
 

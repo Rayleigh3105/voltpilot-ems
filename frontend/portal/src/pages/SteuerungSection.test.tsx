@@ -227,8 +227,22 @@ beforeEach(() => {
     events: [],
   });
   vi.spyOn(api, 'siteProfiles').mockResolvedValue({
+    // Bewusst die Antwort eines ÄLTEREN Servers: er schickt alle Karten in
+    // EINER Liste, ohne `weitere`. Die Kapsel muss trotzdem aufgeräumt sein -
+    // der Katalog-Filter des Portals ist der zweite, unabhängige.
     profiles: [
-      profile({ id: 'lastspitzenkappung', label: 'Lastspitzenkappung', active: true }),
+      profile({ id: 'monitoring', label: 'Anlage beobachten', active: true }),
+      profile({ id: 'ueberschuss', label: 'Überschuss nutzen', active: false }),
+      profile({ id: 'eigene-auswertung', label: 'Eigene Auswertung', active: false }),
+      profile({
+        id: 'lastspitzenkappung',
+        label: 'Lastspitzenkappung',
+        active: true,
+        requirements: [
+          { label: 'Leistungspreis hinterlegt', met: false },
+          { label: 'Speicher', met: true },
+        ],
+      }),
       profile({
         id: 'marktvermarktung',
         label: 'Marktvermarktung',
@@ -254,7 +268,9 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     const { container } = render(<SteuerungSection site={site} />);
 
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Anwendungen' })).toBeInTheDocument());
+      expect(screen.getByRole('heading', { name: 'Betriebsmodelle' })).toBeInTheDocument());
+    // Steuerung Stufe 0: „Anwendungen" ist kein Kundenwort mehr.
+    expect(screen.queryByRole('heading', { name: 'Anwendungen' })).toBeNull();
     // Naming Set A: die Kapsel heißt „Regeln", nicht mehr „Automationen".
     expect(screen.getByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Automationen' })).toBeNull();
@@ -321,8 +337,7 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     render(<SteuerungSection site={site} />);
 
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Anwendungen' })).toBeInTheDocument());
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+      expect(screen.getByRole('heading', { name: 'Betriebsmodelle' })).toBeInTheDocument());
     expect(screen.getByText(/Lastspitzen-Reserve/)).toBeInTheDocument();
     expect(screen.queryByText(/Notstrom-Reserve/)).toBeNull();
   });
@@ -332,8 +347,35 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     vi.spyOn(api, 'siteProfiles').mockRejectedValue(new Error('older backend'));
     render(<SteuerungSection site={site} />);
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Anwendungen' })).toBeInTheDocument());
-    expect(screen.getByText(/noch keine Anwendungen hinterlegt/)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Betriebsmodelle' })).toBeInTheDocument());
+    expect(screen.getByText(/noch kein Betriebsmodell/)).toBeInTheDocument();
+  });
+
+  it('Stufe 0: das Regal zeigt NUR Betriebsmodelle, mit Nutzen-Satz und Chips', async () => {
+    // Der Befund davor: neun Zeilen in EINER Optik, jede mit „—" als Untertitel
+    // - Basis-Schalter, die der Server mit 400 ablehnt, und Absichts-Schalter
+    // ohne jede Wirkung. Ein ÄLTERER Server, der weiterhin alle neun schickt,
+    // bekommt trotzdem die aufgeräumte Kapsel (der zweite Filter).
+    setup();
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Betriebsmodelle' })).toBeInTheDocument());
+
+    expect(screen.queryByRole('switch', { name: /Anlage beobachten/ })).toBeNull();
+    expect(screen.queryByRole('switch', { name: /Überschuss nutzen/ })).toBeNull();
+    expect(screen.queryByRole('switch', { name: /Eigene Auswertung/ })).toBeNull();
+    expect(screen.getByRole('switch', { name: /Lastspitzenkappung/ })).toBeInTheDocument();
+
+    // „Was bringt mir das?" steht in der Zeile, nicht erst im Container.
+    expect(screen.getByText(/kappt die Bezugsspitze/)).toBeInTheDocument();
+    // „Was brauche ich?" ebenso - als Chip, nicht als Gedankenstrich.
+    expect(screen.getByText('Leistungspreis hinterlegt fehlt')).toBeInTheDocument();
+    // Ein erfüllter Chip trägt sein Häkchen und behauptet kein „fehlt".
+    expect(
+      document.querySelector('.vp-profrow-req.met')?.textContent,
+    ).toContain('Speicher');
+    // Der Phantom-Verweis auf eine Seite, die es nicht gibt, ist weg.
+    expect(screen.queryByText(/Komponenten & Regeln/)).toBeNull();
   });
 });
 

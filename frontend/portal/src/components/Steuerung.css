@@ -453,6 +453,67 @@
   color: var(--vp-warning, #b7791f) !important;
 }
 
+/* ⚠ Steuerung Stufe 0: die Zeile eines Betriebsmodells ist seit dem
+   Nutzen-Satz + den Chips MEHRZEILIG. Punkt, Chevron und Schalter gehören
+   damit zum TITEL, nicht in die vertikale Mitte eines Textblocks - bei vier
+   Zeilen stünden sie sonst neben dem Fliesstext und läsen sich, als gehörten
+   sie zu ihm. Nur die Profil-Zeile dreht das; die Automations-Zeile daneben
+   ist einzeilig und bleibt mittig. */
+.vp-profrow {
+  align-items: flex-start;
+}
+
+.vp-profrow > .vp-rowdot {
+  /* Auf die Höhe der ersten Textzeile gesetzt (Zeilenhöhe der Überschrift
+     minus Punktdurchmesser, halbiert) statt auf eine geratene Zahl. */
+  margin-top: calc((0.94rem * 1.45 - 9px) / 2);
+}
+
+.vp-profrow > .vp-profrow-open {
+  align-items: flex-start;
+}
+
+.vp-profrow > .vp-profrow-open > svg {
+  margin-top: calc((0.94rem * 1.45 - 16px) / 2);
+}
+
+/* Steuerung Stufe 0 „Entwirrung": die Zeile eines Betriebsmodells beantwortet
+   „Was bringt mir das?" (Nutzen-Satz) und „Was brauche ich?" (Chips) — vorher
+   stand dort auf jeder nicht laufenden Zeile ein „—". */
+.vp-profrow-benefit {
+  color: var(--vp-text-muted, #667);
+}
+
+.vp-profrow-reqs {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 6px !important;
+}
+
+.vp-profrow-req {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--vp-warning, #b7791f);
+  border-radius: 999px;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--vp-warning, #b7791f);
+  /* Ein fehlender Chip ist eine AUSSAGE, kein Fehler: er nennt den Weg. */
+  background: color-mix(in srgb, var(--vp-warning, #b7791f) 8%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.vp-profrow-req.met {
+  border-color: color-mix(in srgb, var(--vp-ok-ink, #2e7d32) 35%, transparent);
+  color: var(--vp-ok-ink, #2e7d32);
+  background: color-mix(in srgb, var(--vp-ok-ink, #2e7d32) 8%, transparent);
+}
+
+.vp-profrow-contrib {
+  color: var(--vp-navy, #1a365d);
+}
+
 /* --- Die schmale Schutz-Zeile ------------------------------------------- */
 
 .vp-protline {

@@ -72,6 +72,7 @@ import {
   AnpassenListe,
   AusgeblendetZeile,
 } from '../components/CockpitAnpassen';
+import { alleProfile } from '../profiles';
 import { useAnlageSurface } from '../useAnlageSurface';
 import type { AnlageSurface } from '../surface';
 import { anlageDecision, hasBlock } from '../cockpit';
@@ -1367,13 +1368,18 @@ export function AnlageSeite({
     if (ovSite != null && health.length > 0) out.push('zustand');
     return out;
   }, [blocks, controlView, guardView, fahrplanRow, strompreisRow, shownWidgets, ovSite, health]);
-  // ⚠ Die Quelle ist das REGAL, nicht `modes`: „Eigene Auswertung" wird nie
-  // ABGELEITET (ihr Schalter ist reine Absicht, Klasse `regel`), also taucht
-  // sie in der M0-Projektion gar nicht auf. `active` der Regal-Karte ist der
+  // ⚠ Die Quelle sind die ANWENDUNGS-Karten, nicht `modes`: „Eigene Auswertung"
+  // wird nie ABGELEITET (ihr Schalter ist reine Absicht, Klasse `regel`), also
+  // taucht sie in der M0-Projektion gar nicht auf. `active` der Karte ist der
   // EFFEKTIVE Zustand, den der Server nach dem Willens-Overlay meldet — er ist
   // die einzige Stelle, die die Frage beantworten kann.
-  const eigenAn =
-    siteProfiles?.profiles?.some((p) => p.id === 'eigene-auswertung' && p.active) ?? false;
+  // ⚠ Über `alleProfile`, nicht über `profiles.profiles`: seit Steuerung
+  // Stufe 0 steht eine Regel-Anwendung NICHT mehr im Regal, sie reist in
+  // `weitere` mit. Ein Blick nur ins Regal hätte jedem Kunden seine eigenen
+  // Auswertungen aus dem Cockpit genommen.
+  const eigenAn = alleProfile(siteProfiles).some(
+    (p) => p.id === 'eigene-auswertung' && p.active,
+  );
   const layout = useCockpitLayout({
     schluessel: site.id,
     siteId: site.id,

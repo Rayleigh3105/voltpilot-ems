@@ -28,8 +28,10 @@
     "  regel       - abschaltbar. Der Schalter ist reine ABSICHT: er",
     "                schaltet keinen Knoten frei und saet keinen Starter.",
     "                'an' ohne passende Regel ist der ehrliche Leer-Zustand",
-    "                aus 'leer_zustand' mit dem Einstieg in Komponenten &",
-    "                Regeln - der Server erfindet keine Regel.",
+    "                aus 'leer_zustand' mit dem Einstieg in die Regel-Kapsel",
+    "                der Steuerung - der Server erfindet keine Regel. Seit",
+    "                Stufe 0 steht eine Regel-Anwendung nicht mehr im Regal",
+    "                ('regal': false).",
     "  geschaeft   - abschaltbar. Der Schalter oeffnet die gated Knotentypen",
     "                DIESER Anwendung (abgeleitet aus dem Flow-Katalog, nie",
     "                eine Hand-Liste) und saet ihren Starter, sofern sie",
@@ -38,6 +40,27 @@
     "  reserviert  - Erweiterungspunkt. 'sichtbar': false, also kein Schalter",
     "                und keine Regal-Zeile: ein Schalter, der nichts bewirken",
     "                kann, waere eine Zusage, die niemand einloest.",
+    "",
+    "DAS REGAL ist seit Steuerung Stufe 0 'Entwirrung' (Scout",
+    "vp-steuerung-konzept-b3 §5 Stufe 0) NICHT mehr die Menge der sichtbaren",
+    "Anwendungen, sondern das eigene Feld 'regal'. Es steht auf true fuer",
+    "genau die vier GESCHAEFTS-Anwendungen - das Kundenwort dafuer ist",
+    "'Betriebsmodell' - und auf false fuer Basis- und Regel-Anwendungen.",
+    "Der Grund ist ein belegter Befund: drei Sorten in EINER Optik erzeugten",
+    "Schalter, die keine sind (basis, Server-400), und Absichts-Schalter",
+    "ohne Wirkung (regel, kein Gate, kein Starter). Das Feld ist ADDITIV -",
+    "es LOESCHT nichts: die Zustaende dieser Anwendungen bleiben gespeichert",
+    "und werden weiter beantwortet (SiteProfilesDto.weitere), das Regal",
+    "zeigt sie nur nicht mehr. 'sichtbar' bleibt daneben die Frage, ob es",
+    "die Anwendung ueberhaupt schon GIBT (reserviert = false).",
+    "",
+    "'preset' nennt je Profil HOECHSTENS EIN Betriebsmodell mit 'an'",
+    "(Konzept §3.9): der Assistent schlaegt genau eines vor, nie zwei. Ein",
+    "'angeboten'-Betriebsmodell ist sein RUECKFALL, wenn die Voraussetzungen",
+    "des vorgeschlagenen fehlen ('Gewerbe: Lastspitzenkappung, wenn",
+    "Leistungspreis hinterlegt, sonst Marktoptimierung, wenn Marktzugang').",
+    "Ein Profil OHNE 'an'-Betriebsmodell schlaegt nichts vor - Privat faehrt",
+    "den Eigenverbrauchs-Fahrplan, und der ist Grundverhalten.",
     "",
     "'voraussetzungen' sind {id, label, blocked_reason}: das LABEL ist der",
     "Chip, der 'blocked_reason' der ehrliche deutsche Satz, wenn GENAU diese",
@@ -425,6 +448,7 @@
       "nutzen": "Sie sehen jederzeit, was Ihre Anlage erzeugt, verbraucht und einspeist — und ob alles läuft.",
       "abschaltbar": false,
       "sichtbar": true,
+      "regal": false,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -470,6 +494,7 @@
       "nutzen": "VoltPilot plant Ihren Speicher alle 15 Minuten neu, damit möglichst viel von Ihrem eigenen Strom im Haus bleibt.",
       "abschaltbar": false,
       "sichtbar": true,
+      "regal": false,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -511,6 +536,7 @@
       "nutzen": "Ihre Geräte laufen dann, wenn mehr Solarstrom da ist, als das Haus gerade braucht.",
       "abschaltbar": true,
       "sichtbar": true,
+      "regal": false,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -531,7 +557,7 @@
         }
       ],
       "blocked_reason_immer": null,
-      "leer_zustand": "Eingeschaltet, aber noch ohne Regel: Legen Sie unter „Komponenten & Regeln“ eine Regel an, die ein Gerät bei Überschuss laufen lässt.",
+      "leer_zustand": "Eingeschaltet, aber noch ohne Regel: Legen Sie unter „Regeln“ auf dieser Seite eine Regel an, die ein Gerät bei Überschuss laufen lässt.",
       "bausteine": {
         "cockpit": ["geraete-automatik"],
         "ansichten": ["flow-editor"],
@@ -554,6 +580,7 @@
       "nutzen": "Sie legen fest, wann Ihre Geräte laufen sollen — VoltPilot schaltet sie zum passenden Zeitpunkt.",
       "abschaltbar": true,
       "sichtbar": true,
+      "regal": false,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -569,7 +596,7 @@
         }
       ],
       "blocked_reason_immer": null,
-      "leer_zustand": "Eingeschaltet, aber noch ohne Regel: Legen Sie unter „Komponenten & Regeln“ fest, wann Ihr Gerät laufen soll.",
+      "leer_zustand": "Eingeschaltet, aber noch ohne Regel: Legen Sie unter „Regeln“ auf dieser Seite fest, wann Ihr Gerät laufen soll.",
       "bausteine": {
         "cockpit": ["geraete-automatik"],
         "ansichten": ["flow-editor"],
@@ -592,6 +619,7 @@
       "nutzen": "VoltPilot lädt und entlädt Ihren Speicher nach den Börsenpreisen — teuer verkaufen, günstig laden.",
       "abschaltbar": true,
       "sichtbar": true,
+      "regal": true,
       "strategie_knoten": "vp.strategy.market",
       "starter": "arbitrage",
       "bedarf": {
@@ -626,7 +654,7 @@
       "unlock_chips": ["Marktpreise", "Prognosequalität", "Handels-Kachel", "Einspeise-Erlös"],
       "einstellungen": ["speicherschonung", "netzladen", "anzulegender-wert", "stromtarif"],
       "einstellungen_verweis": "einstellungen",
-      "preset": { "privat": "angeboten", "gewerbe": "an" }
+      "preset": { "privat": "angeboten", "gewerbe": "angeboten" }
     },
     {
       "id": "lastspitzenkappung",
@@ -637,6 +665,7 @@
       "nutzen": "Ihre Batterie kappt die Bezugsspitze Ihres Netzanschlusses und senkt damit Ihren Leistungspreis.",
       "abschaltbar": true,
       "sichtbar": true,
+      "regal": true,
       "strategie_knoten": "vp.strategy.peakshaving",
       "starter": "peak",
       "bedarf": {
@@ -682,6 +711,7 @@
       "nutzen": "Verlagert Verbrauch und Speicher aus den Hochlastzeitfenstern — für ein reduziertes Netzentgelt.",
       "abschaltbar": true,
       "sichtbar": true,
+      "regal": true,
       "strategie_knoten": "vp.strategy.atypical-grid",
       "starter": null,
       "bedarf": {
@@ -720,6 +750,7 @@
       "nutzen": "Verteilt die verfügbare Leistung Ihres Netzanschlusses auf die ladenden Fahrzeuge — Ihr Anschluss bleibt geschützt.",
       "abschaltbar": true,
       "sichtbar": true,
+      "regal": true,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -765,6 +796,7 @@
       "nutzen": "Sie stellen sich eigene Kennzahlen und Verläufe aus den Messwerten Ihrer Anlage zusammen - genau die Zahl, die Sie täglich sehen wollen.",
       "abschaltbar": true,
       "sichtbar": true,
+      "regal": false,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -803,6 +835,7 @@
       "nutzen": "Sie bekommen regelmäßig einen Bericht über Ihre Anlage.",
       "abschaltbar": true,
       "sichtbar": false,
+      "regal": false,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {

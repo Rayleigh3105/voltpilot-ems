@@ -21,20 +21,21 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   ANWENDUNGEN,
+  AUSSERHALB_REGAL,
   PRESETS,
   PROFIL_UNGESETZT,
   REGAL,
   anwendung,
   anwendungLabel,
   anwendungenSatz,
+  betriebsmodellVorschlag,
+  imRegal,
   istProfil,
   preset,
   presetSchaltplan,
-  presetVorschlag,
   presetWert,
   profilAenderungsFolgen,
   profilLabel,
-  regalFuerProfil,
   tonalitaetVon,
   vorauswahl,
   type RegalKarte,
@@ -287,22 +288,59 @@ describe('Katalog-Regeln', () => {
     }
   });
 
-  it('das Regal führt genau die sichtbaren Einträge, kanonisch sortiert', () => {
+  it('das Regal führt seit Stufe 0 GENAU die Betriebsmodelle, kanonisch sortiert', () => {
     expect(REGAL.map((a) => a.id)).toEqual([
-      'monitoring',
-      'speicher-fahrplan',
-      'ueberschuss',
-      'verbraucher',
       'marktvermarktung',
       'lastspitzenkappung',
       'atypische-netznutzung',
       'lastmanagement',
-      // Stufe 5: die eigene Auswertung ist seither schaltbar - sie steht aber
-      // in KEINEM Preset auf „an", der Kunde schaltet sie selbst ein.
-      'eigene-auswertung',
     ]);
     const raenge = ANWENDUNGEN.map((a) => a.rang);
     expect(new Set(raenge).size).toBe(raenge.length);
+  });
+
+  it('Stufe 0: `regal` folgt der KLASSE - Betriebsmodell ja, sonst nein', () => {
+    for (const a of ANWENDUNGEN) {
+      expect(a.regal, a.id).toBe(a.klasse === 'geschaeft');
+    }
+  });
+
+  it('Stufe 0 blendet aus, sie LÖSCHT nicht: Regal ∪ Rest ist alles Sichtbare', () => {
+    // Der tragende Satz dieser Stufe. Die ausgeblendeten Anwendungen existieren
+    // unverändert - ihre Zustände reisen in `SiteProfiles.weitere` weiter, weil
+    // das Cockpit-Tor „Eigene Auswertung" und das Willens-Overlay sie lesen.
+    expect(AUSSERHALB_REGAL.map((a) => a.id)).toEqual([
+      'monitoring',
+      'speicher-fahrplan',
+      'ueberschuss',
+      'verbraucher',
+      'eigene-auswertung',
+    ]);
+    expect([...REGAL, ...AUSSERHALB_REGAL].map((a) => a.id).sort()).toEqual(
+      ANWENDUNGEN.filter((a) => a.sichtbar).map((a) => a.id).sort(),
+    );
+    // `sichtbar` bleibt daneben die andere Frage: GIBT es die Anwendung schon?
+    expect(REGAL.every((a) => a.sichtbar)).toBe(true);
+    expect(AUSSERHALB_REGAL.every((a) => a.sichtbar)).toBe(true);
+  });
+
+  it('imRegal urteilt über eine UNBEKANNTE Id nie „ja"', () => {
+    expect(imRegal('marktvermarktung')).toBe(true);
+    expect(imRegal('ueberschuss')).toBe(false);
+    // Ein neuerer Server mit einer Anwendung, die diese Kopie nicht kennt:
+    // lieber auslassen als eine Zeile ohne Nutzen-Satz rendern.
+    expect(imRegal('brandneu')).toBe(false);
+    expect(imRegal(null)).toBe(false);
+  });
+
+  it('keine Anwendung nennt mehr die Phantom-Seite „Komponenten & Regeln"', () => {
+    // Sie existiert nicht: die Navigation kennt „Anlagen-Modell" und
+    // „Steuerung"; die Regel-Liste wohnt auf derselben Seite eine Kapsel
+    // tiefer. Der Satz schickte den Kunden in eine Sackgasse.
+    for (const a of ANWENDUNGEN) {
+      expect(a.leer_zustand ?? '', a.id).not.toContain('Komponenten & Regeln');
+    }
+    expect(anwendung('ueberschuss')?.leer_zustand).toContain('„Regeln“ auf dieser Seite');
   });
 
   it('nur eine Geschäfts-Anwendung trägt Strategie-Knoten oder Starter', () => {
@@ -419,87 +457,104 @@ describe('Presets: Vokabular und Datenlage', () => {
 });
 
 describe('vorauswahl: was ein Profil vorschlägt', () => {
-  it('folgt dem Katalog - Privat die Steuerung, Gewerbe das Geschäft', () => {
-    expect(vorauswahl('privat')).toEqual(['ueberschuss', 'verbraucher']);
-    expect(vorauswahl('gewerbe')).toEqual(['marktvermarktung', 'lastspitzenkappung']);
+  it('Stufe 0: HÖCHSTENS EIN Betriebsmodell je Profil - Privat keins', () => {
+    // Konzept §3.9: der Assistent schlägt genau eines vor, nie zwei. Dass es
+    // höchstens eines gibt, ist eine Eigenschaft der DATEN.
+    expect(vorauswahl('privat')).toEqual([]);
+    expect(vorauswahl('gewerbe')).toEqual(['lastspitzenkappung']);
     expect(vorauswahl(null)).toEqual([]);
+    for (const profil of ['privat', 'gewerbe'] as const) {
+      expect(vorauswahl(profil).length, profil).toBeLessThanOrEqual(1);
+    }
   });
 
-  it('nennt NIE eine Basis-Anwendung - sie hat gar keinen Schalter', () => {
+  it('nennt weder Basis- noch Regel-Anwendungen - sie gehören nicht ins Regal', () => {
     for (const profil of ['privat', 'gewerbe'] as const) {
       for (const id of vorauswahl(profil)) {
         expect(istBasis(id)).toBe(false);
         expect(istAbschaltbar(id)).toBe(true);
+        expect(imRegal(id)).toBe(true);
       }
     }
-    // Beide Basis-Anwendungen stehen im Katalog auf `an` - und trotzdem nicht
-    // in der Vorauswahl: sie laufen ohnehin.
+    // Die Basis-Anwendungen stehen im Katalog auf `an` - und trotzdem nicht in
+    // der Vorauswahl: sie laufen ohnehin und haben gar keinen Schalter. Die
+    // Regel-Anwendungen ebenso: Regeln entstehen später in der Steuerung.
     expect(presetWert('monitoring', 'privat')).toBe('an');
-    expect(vorauswahl('privat')).not.toContain('monitoring');
+    expect(presetWert('ueberschuss', 'privat')).toBe('an');
+    expect(vorauswahl('privat')).toEqual([]);
   });
 });
 
-describe('regalFuerProfil: ordnen, nie ausblenden', () => {
-  it('ohne Profil ist alles gleichrangig', () => {
-    const { vorne, weitere } = regalFuerProfil(null);
-    expect(vorne).toEqual(REGAL);
-    expect(weitere).toEqual([]);
-  });
-
-  it('klappt weg, was zu diesem Profil nicht passt - aber nichts Laufendes', () => {
-    const ohne = regalFuerProfil('privat');
-    expect(ohne.vorne.map((a) => a.id)).toContain('ueberschuss');
-    expect(ohne.weitere.map((a) => a.id)).toContain('lastspitzenkappung');
-
-    // Läuft die Lastspitzenkappung wirklich, steht sie VORNE - ihren
-    // Funktionsumfang vor dem Kunden zu verstecken wäre keine Ordnung.
-    const mit = regalFuerProfil('privat', ['lastspitzenkappung']);
-    expect(mit.vorne.map((a) => a.id)).toContain('lastspitzenkappung');
-    expect(mit.weitere.map((a) => a.id)).not.toContain('lastspitzenkappung');
-  });
-
-  it('verliert keine Anwendung: vorne ∪ weitere ist immer das ganze Regal', () => {
-    for (const profil of [null, 'privat', 'gewerbe']) {
-      const { vorne, weitere } = regalFuerProfil(profil);
-      expect([...vorne, ...weitere].map((a) => a.id).sort()).toEqual(
-        REGAL.map((a) => a.id).sort(),
-      );
-    }
-  });
-});
-
-describe('presetVorschlag: voraussetzungs-bewusst, und Zurückgestelltes wird GENANNT', () => {
-  const gewerbe = [
-    karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: true }] }),
+describe('betriebsmodellVorschlag: GENAU EINES, oder ehrlich keins', () => {
+  const markt = (met: boolean) =>
+    karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met }] });
+  const spitze = (met: boolean) =>
     karte('lastspitzenkappung', {
-      requirements: [{ label: 'Leistungspreis hinterlegt', met: false }],
-    }),
-  ];
+      requirements: [{ label: 'Leistungspreis hinterlegt', met }],
+    });
 
-  it('hakt nur an, was laufen KANN', () => {
-    const { ticken } = presetVorschlag('gewerbe', gewerbe);
-    expect(ticken).toEqual(['marktvermarktung']);
-  });
-
-  it('verschweigt das Zurückgestellte nicht - es nennt, was fehlt', () => {
-    const { zurueckgestellt } = presetVorschlag('gewerbe', gewerbe);
-    expect(zurueckgestellt).toEqual([
-      {
-        id: 'lastspitzenkappung',
-        label: 'Lastspitzenkappung',
-        fehlend: ['Leistungspreis hinterlegt'],
-      },
+  it('Gewerbe mit Leistungspreis: die Lastspitzenkappung, nie zwei', () => {
+    // Beide könnten - vorgeschlagen wird das Startmodell des Profils (`an`).
+    const { ticken, zurueckgestellt } = betriebsmodellVorschlag('gewerbe', [
+      markt(true),
+      spitze(true),
     ]);
+    expect(ticken).toBe('lastspitzenkappung');
+    expect(zurueckgestellt).toBeNull();
   });
 
-  it('schlägt ohne Profil GAR nichts vor', () => {
-    expect(presetVorschlag(null, gewerbe)).toEqual({ ticken: [], zurueckgestellt: [] });
+  it('Gewerbe OHNE Leistungspreis, aber mit Marktzugang: die Marktoptimierung', () => {
+    // Konzept §3.9 wörtlich: „sonst Marktoptimierung, wenn Marktzugang".
+    const { ticken } = betriebsmodellVorschlag('gewerbe', [markt(true), spitze(false)]);
+    expect(ticken).toBe('marktvermarktung');
   });
 
-  it('fasst eine Anwendung nicht an, die das Profil nicht vorschlägt', () => {
-    const { ticken, zurueckgestellt } = presetVorschlag('privat', gewerbe);
-    expect(ticken).toEqual([]);
-    expect(zurueckgestellt).toEqual([]);
+  it('kann keins laufen, wird das GEMEINTE genannt statt still angehakt', () => {
+    const { ticken, zurueckgestellt } = betriebsmodellVorschlag('gewerbe', [
+      markt(false),
+      spitze(false),
+    ]);
+    expect(ticken).toBeNull();
+    expect(zurueckgestellt).toEqual({
+      id: 'lastspitzenkappung',
+      label: 'Lastspitzenkappung',
+      fehlend: ['Leistungspreis hinterlegt'],
+    });
+  });
+
+  it('Privat schlägt NICHTS vor - auch wenn ein Rückfall laufen könnte', () => {
+    // Der Eigenverbrauchs-Fahrplan ist Grundverhalten, kein Modus: ohne
+    // Startwahl des Profils gibt es keine Empfehlung, die jemand getroffen hat.
+    expect(betriebsmodellVorschlag('privat', [markt(true), spitze(true)])).toEqual({
+      ticken: null,
+      zurueckgestellt: null,
+    });
+  });
+
+  it('ohne Profil GAR nichts', () => {
+    expect(betriebsmodellVorschlag(null, [markt(true)])).toEqual({
+      ticken: null,
+      zurueckgestellt: null,
+    });
+  });
+
+  it('ein Modell ohne gebaute Ökonomie ist nie Kandidat', () => {
+    // Die atypische Netznutzung ist für Gewerbe `angeboten`, trägt aber einen
+    // IMMER geltenden Sperrgrund - sie darf nie einspringen.
+    expect(anwendung('atypische-netznutzung')?.blocked_reason_immer).not.toBeNull();
+    const { ticken } = betriebsmodellVorschlag('gewerbe', [
+      spitze(false),
+      markt(false),
+      karte('atypische-netznutzung', { requirements: [] }),
+    ]);
+    expect(ticken).toBeNull();
+  });
+
+  it('ein Kandidat ohne Karte DIESES Servers wird übersprungen', () => {
+    // Ein Vorschlag, den der Server nicht kennt, liesse sich nicht einschalten.
+    const { ticken, zurueckgestellt } = betriebsmodellVorschlag('gewerbe', [markt(true)]);
+    expect(ticken).toBe('marktvermarktung');
+    expect(zurueckgestellt).toBeNull();
   });
 });
 

@@ -25,10 +25,11 @@ import {
 } from '../adaptiveOnboarding';
 import {
   PRESETS,
+  REGAL,
+  anwendung,
+  betriebsmodellVorschlag,
   istAbschaltbar,
   presetSchaltplan,
-  presetVorschlag,
-  regalFuerProfil,
   type Profil,
   type Zurueckgestellt,
 } from '../anwendungen';
@@ -1047,8 +1048,26 @@ function ManualBatteryStep({
 }
 
 /**
- * Schritt 4 · **Anwendungen** (Anwendungs-Programm Stufe 2, Konzept
- * `data/vp-portal-zielbild-anwendungen` §3.4). Vier Blöcke, alle überspringbar:
+ * Der Satz, der den Schritt schliesst (Konzept §3.9): der Assistent legt keine
+ * Regeln an, und er verschweigt das nicht — er sagt, wo sie entstehen.
+ */
+export const REGELN_SPAETER =
+  'Regeln legen Sie später in der Steuerung an - VoltPilot macht Ihnen Vorschläge.';
+
+/**
+ * Der ehrliche Satz eines Profils OHNE Betriebsmodell (Privat, und jede Anlage,
+ * deren Voraussetzungen fehlen). Der Eigenverbrauchs-Fahrplan ist seit dem
+ * 29.07.2026 GRUNDVERHALTEN, kein Modus — er wird deshalb benannt, nicht als
+ * Schalter angeboten.
+ */
+export const KEIN_BETRIEBSMODELL =
+  'Ohne Betriebsmodell fährt Ihr Speicher den Eigenverbrauchs-Fahrplan: '
+  + 'möglichst viel eigener Strom im Haus.';
+
+/**
+ * Schritt 4 · **Betrieb** (Anwendungs-Programm Stufe 2, verengt durch Steuerung
+ * Stufe 0 „Entwirrung", Konzept `vp-steuerung-konzept-b3` §3.9). Vier Blöcke,
+ * alle überspringbar:
  *
  *  - **Ihre Geräte** — was der SERVER aus den Stammdaten komponiert hat, sobald
  *    Schritt „Gerät" das Gerät beansprucht hat. Read-only für den Kunden.
@@ -1056,12 +1075,20 @@ function ManualBatteryStep({
  *    plus „Später entscheiden". Die Wahl schreibt `site.profil` und ist damit
  *    Vorauswahl + Tonalität + Reset-Basis; sie ist NIE ein Signal der
  *    Ableitung (Captain-Entscheid E3).
- *  - **Das Regal** — dieselben Schalter wie später unter „Steuerung", vom
- *    Preset vorbelegt. Ein Schalter ist ein `PUT /profiles`, also öffnet der
- *    SERVER das Tor und sät den Starter — **für jeden Kunden**, nicht mehr nur
- *    für einen Admin (das war die stille Lücke: `entitiesApi.autoStart` lief
- *    hinter einem `if (admin)`, ein Kunde bekam also nie einen Start-Flow).
+ *  - **Ihr Betriebsmodell** — GENAU EINES, aus dem Preset abgeleitet, oder
+ *    keins („Privat: Ihr Speicher fährt den Eigenverbrauchs-Fahrplan"). Sein
+ *    Schalter ist ein `PUT /profiles`, also öffnet der SERVER das Tor und sät
+ *    den Starter — **für jeden Kunden**, nicht mehr nur für einen Admin (das
+ *    war die stille Lücke: `entitiesApi.autoStart` lief hinter einem
+ *    `if (admin)`, ein Kunde bekam also nie einen Start-Flow).
  *  - **Umgang mit dem Speicher** — die Speicherschonung, unverändert.
+ *
+ * ⚠ **Das neunzeilige Regal ist aus dem Assistenten VERSCHWUNDEN** (Stufe 0):
+ * es zeigte Basis-Schalter, die der Server mit 400 ablehnt, und
+ * Regel-Schalter, die nichts auslösen — und wiederholte damit genau die
+ * Verwirrung, die die Steuerungs-Seite hatte. Regeln entstehen später in der
+ * Steuerung, mit Vorschlägen; der Assistent sagt das in einem Satz
+ * ({@link REGELN_SPAETER}).
  *
  * ⚠ Der frühere AE7-Vorwahl-Block („Womit sollen wir starten?") ist ERSATZLOS
  * entfallen: er schrieb `usage_profile_override`, eine Spalte, die seit F5
@@ -1091,8 +1118,7 @@ function AnwendungenStep({
   // eingeschaltete Schalter). Nur das wird geschrieben - wer den Schritt bloß
   // durchklickt, pinnt keine Absicht, die er nie geäußert hat.
   const [gewollt, setGewollt] = useState<ReadonlySet<string>>(new Set());
-  const [zurueckgestellt, setZurueckgestellt] = useState<Zurueckgestellt[]>([]);
-  const [weitereOffen, setWeitereOffen] = useState(false);
+  const [zurueckgestellt, setZurueckgestellt] = useState<Zurueckgestellt | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   // Hat der Kunde ein Preset angefasst? Nur dann wird `site.profil` geschrieben
@@ -1167,13 +1193,14 @@ function AnwendungenStep({
     profilBeruehrt.current = true;
     setProfil(p);
     if (!p || !karten) {
-      setZurueckgestellt([]);
+      setZurueckgestellt(null);
       return;
     }
-    const vorschlag = presetVorschlag(p, karten);
+    const vorschlag = betriebsmodellVorschlag(p, karten);
     // Die Vorauswahl WÄHLT AUS, sie schaltet nichts ab: was schon läuft, bleibt.
-    setGetickt(new Set([...aktiveIds(karten), ...vorschlag.ticken]));
-    setGewollt(new Set(vorschlag.ticken));
+    const eins = vorschlag.ticken ? [vorschlag.ticken] : [];
+    setGetickt(new Set([...aktiveIds(karten), ...eins]));
+    setGewollt(new Set(eins));
     setZurueckgestellt(vorschlag.zurueckgestellt);
   }
 
@@ -1232,35 +1259,36 @@ function AnwendungenStep({
 
   const summary = entitiesRecognisedSummary(entities);
   const kartenById = new Map((karten ?? []).map((k) => [k.id, k] as const));
-  const sichtbar = [...new Set([...getickt, ...aktiveIds(karten ?? [])])];
-  const { vorne, weitere } = regalFuerProfil(profil, sichtbar);
+  // Seit Steuerung Stufe 0 zeigt der Schritt NUR Betriebsmodelle: das
+  // vorgeschlagene plus jedes, das auf dieser Anlage schon läuft (es zu
+  // verschweigen hiesse, ihren Funktionsumfang vor ihr zu verbergen).
+  const zeilenIds = REGAL.filter(
+    (a) => getickt.has(a.id) || kartenById.get(a.id)?.active,
+  ).map((a) => a.id);
 
-  const zeile = (def: (typeof vorne)[number]) => {
-    const karte = kartenById.get(def.id);
+  const zeile = (id: string) => {
+    const def = anwendung(id);
+    const karte = kartenById.get(id);
     // Ein Katalog-Eintrag, den DIESER Server nicht kennt, wird nicht gezeigt -
     // ein Schalter ohne Gegenstück wäre eine Zusage, die niemand einlöst.
-    if (!karte) return null;
-    const an = getickt.has(def.id);
+    if (!def || !karte) return null;
+    const an = getickt.has(id);
     return (
-      <li key={def.id} className="vp-anw-row">
+      <li key={id} className="vp-anw-row">
         <span className="vp-anw-main">
           <span className="vp-anw-label">{def.label}</span>
           <span className="vp-anw-benefit">{def.nutzen}</span>
         </span>
-        {def.abschaltbar ? (
-          <button
-            type="button"
-            role="switch"
-            aria-checked={an}
-            aria-label={`${def.label} ${an ? 'ausschalten' : 'einschalten'}`}
-            className={`vp-switch${an ? ' on' : ''}`}
-            onClick={() => toggle(def.id)}
-          >
-            <span className="vp-switch-knob" aria-hidden="true" />
-          </button>
-        ) : (
-          <span className="vp-anw-immer">immer an</span>
-        )}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={an}
+          aria-label={`${def.label} ${an ? 'ausschalten' : 'einschalten'}`}
+          className={`vp-switch${an ? ' on' : ''}`}
+          onClick={() => toggle(id)}
+        >
+          <span className="vp-switch-knob" aria-hidden="true" />
+        </button>
       </li>
     );
   };
@@ -1269,8 +1297,8 @@ function AnwendungenStep({
     <div className="vp-onboarding-step">
       <h3>Wofür ist diese Anlage?</h3>
       <p className="vp-muted">
-        Daraus schlagen wir Ihre Anwendungen vor. Sie können alles später jederzeit auf der
-        Anlagen-Seite ändern.
+        Daraus schlagen wir vor, wie Ihr Speicher arbeitet. Sie können alles später jederzeit
+        auf der Anlagen-Seite ändern.
       </p>
 
       <section className="vp-onb-block">
@@ -1332,7 +1360,7 @@ function AnwendungenStep({
             <span className="vp-schonung-main">
               <span className="vp-schonung-label">Später entscheiden</span>
               <span className="vp-schonung-sentence">
-                Wir schlagen dann nichts vor - Sie schalten Anwendungen selbst zu.
+                Wir schlagen dann nichts vor - Sie wählen später selbst.
               </span>
             </span>
           </label>
@@ -1341,29 +1369,21 @@ function AnwendungenStep({
 
       {karten && karten.length > 0 && (
         <section className="vp-onb-block">
-          <h4 className="vp-onb-block-title">Ihre Anwendungen</h4>
-          <ul className="vp-anw-list">{vorne.map(zeile)}</ul>
-          {zurueckgestellt.length > 0 && (
-            <p className="vp-note vp-anw-zurueck">
-              {zurueckgestellt
-                .map((z) => `${z.label} schlagen wir noch nicht vor: ${z.fehlend.join(' und ')} fehlt.`)
-                .join(' ')}
+          <h4 className="vp-onb-block-title">Ihr Betriebsmodell</h4>
+          {zeilenIds.length > 0 ? (
+            <ul className="vp-anw-list">{zeilenIds.map(zeile)}</ul>
+          ) : (
+            <p className="vp-note" style={{ marginTop: 0 }}>
+              {KEIN_BETRIEBSMODELL}
             </p>
           )}
-          {weitere.length > 0 &&
-            (weitereOffen ? (
-              <ul className="vp-anw-list">{weitere.map(zeile)}</ul>
-            ) : (
-              <p className="vp-note" style={{ marginTop: 8 }}>
-                <button
-                  type="button"
-                  className="vp-linklike"
-                  onClick={() => setWeitereOffen(true)}
-                >
-                  Weitere Anwendungen anzeigen ({weitere.length})
-                </button>
-              </p>
-            ))}
+          {zurueckgestellt && (
+            <p className="vp-note vp-anw-zurueck">
+              {`${zurueckgestellt.label} schlagen wir noch nicht vor: `
+                + `${zurueckgestellt.fehlend.join(' und ')} fehlt.`}
+            </p>
+          )}
+          <p className="vp-note" style={{ marginTop: 8 }}>{REGELN_SPAETER}</p>
         </section>
       )}
 

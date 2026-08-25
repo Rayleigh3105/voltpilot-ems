@@ -536,10 +536,16 @@ export function SteuerungSection({
 }
 
 /**
- * Eine kompakte, ANTIPPBARE Profil-Zeile: Statuspunkt · Beitrag · Chevron
+ * Eine ANTIPPBARE Zeile eines BETRIEBSMODELLS: Statuspunkt · Name ·
+ * **Nutzen-Satz** · **Voraussetzungs-Chips** · ggf. der Beitrag · Chevron
  * (öffnet den Modus-Container) und rechts der Schalter. Der Schalter ist ein
  * eigener Knopf NEBEN der Öffnen-Fläche (kein verschachteltes `<button>`) und
  * stoppt die Propagation, damit ein Umschalten nie in den Container navigiert.
+ *
+ * ⚠ Der Beitrag steht nur da, wenn es ihn WIRKLICH gibt (Steuerung Stufe 0):
+ * vorher hing hier auf jeder nicht laufenden Zeile ein „—", das keine der vier
+ * Kundenfragen beantwortete. Die Antwort auf „Was bringt mir das?" ist der
+ * Nutzen-Satz, die auf „Was brauche ich?" sind die Chips.
  */
 function ProfileRowView({
   row,
@@ -563,7 +569,23 @@ function ProfileRowView({
       >
         <span className="vp-profrow-text">
           <strong>{row.label}</strong>
-          <span className="vp-profrow-contrib">{row.contribution}</span>
+          <span className="vp-profrow-benefit">{row.benefit}</span>
+          {row.requirements.length > 0 && (
+            <span className="vp-profrow-reqs">
+              {row.requirements.map((r) => (
+                <span
+                  key={r.label}
+                  className={`vp-profrow-req${r.met ? ' met' : ''}`}
+                >
+                  {r.met ? '✓ ' : ''}
+                  {r.text}
+                </span>
+              ))}
+            </span>
+          )}
+          {row.contribution && (
+            <span className="vp-profrow-contrib">{row.contribution}</span>
+          )}
           {row.blockedReason && <span className="vp-profrow-blocked">{row.blockedReason}</span>}
         </span>
         <Icon name="chevron-right" size={16} />

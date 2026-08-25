@@ -31,7 +31,13 @@ import { eurAmount, fmtNum } from './format';
 import { steeringAttributionNote } from './erloesKomposition';
 import { lifecycleLabel, type EditorEntity } from './flows/model';
 import { AUTOMATIC_MODULES } from './moduleSurface';
-import { blockedReason, type SiteProfile } from './profiles';
+import { imRegal } from './anwendungen';
+import {
+  benefitLine,
+  blockedReason,
+  requirementChips,
+  type SiteProfile,
+} from './profiles';
 import {
   VOLTPILOT_MANAGED,
   type ActiveMode,
@@ -324,11 +330,17 @@ export function socReservationStack(input: ReservationInput | null | undefined):
 // ---------------------------------------------------------------------------
 
 /**
- * Eine kompakte Profil-Zeile der Steuerung: Statuspunkt, EIN Satz mit dem, was
- * das Profil beiträgt (echte Zahl + Periode, sonst „—"), und der Schalter.
- * Das Detail (Nutzen, Einstellungen, Voraussetzungen, Ansichten) lebt im
- * Modus-Container (v3.1-M2), den ein Tipp auf die Zeile öffnet — hier steht nur,
- * was gerade läuft und was es bringt.
+ * Eine Zeile des Regals — seit Steuerung Stufe 0 „Entwirrung" die eines
+ * BETRIEBSMODELLS: Statuspunkt, Name, **Nutzen-Satz**, **Voraussetzungs-Chips**
+ * und der Schalter. Das Detail (Einstellungen, Ansichten) lebt weiter im
+ * Modus-Container, den ein Tipp auf die Zeile öffnet.
+ *
+ * ⚠ Der Nutzen-Satz und die Chips sind der Kern dieser Stufe: davor stand in
+ * der Zeile der BEITRAG — und der ist nur bei einem aktiven Modus eine Zahl,
+ * sonst „—". Auf einer Privat-Anlage las die Kapsel damit neun Mal „—" und
+ * beantwortete keine der vier Kundenfragen („Was bringt mir das? Was brauche
+ * ich?"). Der Beitrag bleibt, aber nur, wenn es ihn WIRKLICH gibt: `null`
+ * statt eines Gedankenstrichs.
  */
 export interface ProfileRow {
   id: string;
@@ -337,17 +349,27 @@ export interface ProfileRow {
   on: boolean;
   /** Der Statuspunkt: läuft / läuft-noch-nicht / aus. */
   tone: 'on' | 'blocked' | 'off';
-  /** „Wert des Eigenverbrauchs: 88,25 € · im gewählten Zeitraum" bzw. „—". */
-  contribution: string;
+  /** EIN Satz aus dem Katalog: was dieses Betriebsmodell dem Kunden tut. */
+  benefit: string;
+  /** Die ✓/fehlt-Chips des Servers — die Antwort auf „Was brauche ich?". */
+  requirements: { label: string; met: boolean; text: string }[];
+  /**
+   * „Wert des Eigenverbrauchs: 88,25 € · im gewählten Zeitraum", oder `null`,
+   * wenn es keine echte Zahl gibt (nie „—").
+   */
+  contribution: string | null;
   /** M3s ehrlicher Satz, wenn ein EINGESCHALTETES Profil nicht voll läuft. */
   blockedReason: string | null;
 }
 
-/** Der Beitrag eines Modus als EINE Zeile (echte Zahlen, sonst „—"). */
-function contributionLine(mode: ActiveMode | null, earnings: EarningsSite | null | undefined): string {
-  if (!mode) return '—';
+/** Der Beitrag eines Modus als EINE Zeile — `null`, wenn es keinen gibt. */
+function contributionLine(
+  mode: ActiveMode | null,
+  earnings: EarningsSite | null | undefined,
+): string | null {
+  if (!mode) return null;
   const rows = contributionRows(mode, earnings).filter((r) => r.value != null);
-  if (rows.length === 0) return '—';
+  if (rows.length === 0) return null;
   const period = periodLabel(rows[0].period);
   const sameperiod = rows.every((r) => r.period === rows[0].period);
   const parts = rows.map((r) => (sameperiod
@@ -357,10 +379,17 @@ function contributionLine(mode: ActiveMode | null, earnings: EarningsSite | null
 }
 
 /**
- * Die Profil-Kapsel: eine Zeile je Profil, mit dem Beitrag des zugehörigen
- * AKTIVEN Modus. Profil-Ids und `ModeKind` teilen sich dasselbe Vokabular
- * (M0/M3), deshalb wird hier nichts geraten — ein Profil ohne laufenden Modus
- * bekommt schlicht keine Zahl.
+ * Die Kapsel „Betriebsmodelle": eine Zeile je Betriebsmodell, mit dem Beitrag
+ * des zugehörigen AKTIVEN Modus. Profil-Ids und `ModeKind` teilen sich dasselbe
+ * Vokabular (M0/M3), deshalb wird hier nichts geraten — ein Modell ohne
+ * laufenden Modus bekommt schlicht keine Zahl.
+ *
+ * ⚠ **Der zweite Filter** (Steuerung Stufe 0): der Server liefert im Feld
+ * `profiles` bereits nur noch das Regal; `imRegal` prüft dieselbe Regel ein
+ * zweites Mal aus der byte-gleichen Katalog-Kopie. Ein ÄLTERER Server, der
+ * weiterhin alle neun Zeilen schickt, bekommt damit trotzdem die aufgeräumte
+ * Kapsel — und eine dem Katalog unbekannte Id (neuerer Server) wird
+ * ausgelassen statt ohne Nutzen-Satz gerendert.
  */
 export function profileRows(
   profiles: SiteProfile[] | null | undefined,
@@ -368,27 +397,38 @@ export function profileRows(
   earnings: EarningsSite | null | undefined,
 ): ProfileRow[] {
   const byKind = new Map(modes.map((m) => [String(m.kind), m] as const));
-  return (profiles ?? []).map((p) => {
-    const mode = byKind.get(p.id) ?? null;
-    const reason = blockedReason(p);
-    return {
-      id: p.id,
-      label: p.label,
-      on: p.active,
-      tone: p.active ? (reason ? 'blocked' : 'on') : 'off',
-      contribution: p.active ? contributionLine(mode, earnings) : '—',
-      blockedReason: reason,
-    };
-  });
+  return (profiles ?? [])
+    .filter((p) => imRegal(p.id))
+    .map((p) => {
+      const mode = byKind.get(p.id) ?? null;
+      const reason = blockedReason(p);
+      return {
+        id: p.id,
+        label: p.label,
+        on: p.active,
+        tone: (p.active ? (reason ? 'blocked' : 'on') : 'off') as ProfileRow['tone'],
+        benefit: benefitLine(p),
+        requirements: requirementChips(p),
+        contribution: p.active ? contributionLine(mode, earnings) : null,
+        blockedReason: reason,
+      };
+    });
 }
 
-export const PROFILE_CAPSULE_TITLE = 'Anwendungen';
+/**
+ * ⚠ Das Kundenwort ist seit dem Captain-Entscheid vom 25.08.2026
+ * **„Betriebsmodell"**; „Anwendung" bleibt das interne Modell und ist kein
+ * Kundenwort mehr.
+ */
+export const PROFILE_CAPSULE_TITLE = 'Betriebsmodelle';
 
 export const PROFILE_CAPSULE_INTRO =
-  'Was VoltPilot auf Ihrer Anlage tun darf — und was es Ihnen bringt.';
+  'Die Betriebsweise Ihres Speichers. Ohne Betriebsmodell fährt er den '
+  + 'Eigenverbrauchs-Fahrplan: möglichst viel eigener Strom im Haus.';
 
 export const PROFILE_CAPSULE_EMPTY =
-  'Für diese Anlage sind noch keine Anwendungen hinterlegt.';
+  'Für diese Anlage gibt es noch kein Betriebsmodell — Ihr Speicher fährt den '
+  + 'Eigenverbrauchs-Fahrplan.';
 
 // ---------------------------------------------------------------------------
 // M4 · Kapsel 2 — die Automations-Zeilen

@@ -247,7 +247,10 @@ public class AnwendungKatalog {
      * @param rang                die kanonische Regal-Reihenfolge
      * @param nutzen              EIN Satz: was die Anwendung für den Kunden tut
      * @param abschaltbar         false = Basis-Anwendung (ruhige Zeile „immer an")
-     * @param sichtbar            false = reserviert, erscheint nicht im Regal
+     * @param sichtbar            false = reserviert: es GIBT sie noch nicht
+     * @param regal               false = sie steht nicht im Regal der Steuerung
+     *                            (Basis- und Regel-Anwendungen seit Stufe 0);
+     *                            ihr Zustand wird trotzdem beantwortet
      * @param strategieKnoten     der {@code vp.strategy.*}-Knoten, oder null
      * @param starter             der AE7-Starter-Schlüssel, oder null
      * @param voraussetzungen     die ✓/fehlt-Chips samt ihren Sperr-Sätzen
@@ -260,7 +263,8 @@ public class AnwendungKatalog {
      * @param preset              die Vorauswahl je Profil
      */
     public record Anwendung(String id, String label, String kategorie, String klasse, int rang,
-            String nutzen, boolean abschaltbar, boolean sichtbar, String strategieKnoten,
+            String nutzen, boolean abschaltbar, boolean sichtbar, boolean regal,
+            String strategieKnoten,
             String starter, List<Voraussetzung> voraussetzungen, String blockedReasonImmer,
             String leerZustand, Bausteine bausteine, List<String> unlockChips,
             List<String> einstellungen, String einstellungenVerweis, Preset preset) {
@@ -274,11 +278,23 @@ public class AnwendungKatalog {
         public boolean istRegel() {
             return KLASSE_REGEL.equals(klasse);
         }
+
+        /** Ein BETRIEBSMODELL: das Kundenwort für eine Geschäfts-Anwendung. */
+        public boolean istBetriebsmodell() {
+            return KLASSE_GESCHAEFT.equals(klasse);
+        }
+
+        /** Steht sie im Regal der Steuerung? (sichtbar UND {@code regal}) */
+        public boolean imRegal() {
+            return sichtbar && regal;
+        }
     }
 
     private final JsonNode raw;
     private final Map<String, Anwendung> byId = new LinkedHashMap<>();
     private final List<Anwendung> sichtbare = new ArrayList<>();
+    private final List<Anwendung> imRegal = new ArrayList<>();
+    private final List<Anwendung> ausserhalbRegal = new ArrayList<>();
     private final Map<String, Profil> profileById = new LinkedHashMap<>();
     private final Map<String, LayoutDoc> presetLayoutById = new LinkedHashMap<>();
     private final Map<String, Baustein> bausteinById = new LinkedHashMap<>();
@@ -307,6 +323,7 @@ public class AnwendungKatalog {
             }
             if (a.sichtbar()) {
                 sichtbare.add(a);
+                (a.imRegal() ? imRegal : ausserhalbRegal).add(a);
             }
         }
         for (JsonNode p : raw.path("presets")) {
@@ -351,7 +368,8 @@ public class AnwendungKatalog {
         return new Anwendung(a.path("id").asText(), a.path("label").asText(),
                 a.path("kategorie").asText(), a.path("klasse").asText(), a.path("rang").asInt(),
                 a.path("nutzen").asText(), a.path("abschaltbar").asBoolean(false),
-                a.path("sichtbar").asBoolean(false), text(a, "strategie_knoten"),
+                a.path("sichtbar").asBoolean(false), a.path("regal").asBoolean(false),
+                text(a, "strategie_knoten"),
                 text(a, "starter"), List.copyOf(voraussetzungen), text(a, "blocked_reason_immer"),
                 text(a, "leer_zustand"), bausteine, strings(a.path("unlock_chips")),
                 strings(a.path("einstellungen")), text(a, "einstellungen_verweis"),
@@ -391,11 +409,40 @@ public class AnwendungKatalog {
     }
 
     /**
-     * Das REGAL: die sichtbaren Anwendungen in kanonischer Reihenfolge. Eine
-     * reservierte Anwendung steht bewusst NICHT darin — ein Schalter, der
-     * nichts bewirken kann, wäre eine Zusage, die niemand einlöst.
+     * Das REGAL der Steuerung: die vier BETRIEBSMODELLE in kanonischer
+     * Reihenfolge (Steuerung Stufe 0 „Entwirrung", Scout
+     * {@code vp-steuerung-konzept-b3} §5).
+     *
+     * <p>Bis Stufe 0 war das die Menge der SICHTBAREN Anwendungen, und damit
+     * standen drei Sorten in EINER Optik untereinander: Basis-Anwendungen mit
+     * einem Schalter, den der Server mit 400 ablehnt, Regel-Anwendungen mit
+     * einem Schalter ohne jede Wirkung, und die Geschäfts-Anwendungen. Seither
+     * entscheidet das Katalog-Feld {@code regal}, und der Server ist die EINE
+     * Stelle, die es tut — das Portal filtert ein zweites Mal über seine
+     * byte-gleiche Katalog-Kopie, kann die Menge aber nicht erfinden.
+     *
+     * <p><b>Es wird nur AUSGEBLENDET, nie gelöscht:</b> die Zustände der
+     * anderen Anwendungen bleiben gespeichert und werden weiter beantwortet
+     * ({@link #ausserhalbRegal()} → {@code SiteProfilesDto.weitere}), denn
+     * Flächen ausserhalb der Steuerung lesen sie (das Cockpit-Tor „ist Eigene
+     * Auswertung an?" und das Willens-Overlay der M0-Projektion).
      */
     public List<Anwendung> regal() {
+        return List.copyOf(imRegal);
+    }
+
+    /**
+     * Die sichtbaren Anwendungen, die NICHT im Regal stehen — Basis- und
+     * Regel-Anwendungen. Sie existieren unverändert, ihr Schalter ist über
+     * {@code PUT /profiles} unverändert erreichbar, und ihr Zustand reist
+     * neben dem Regal mit; nur die Steuerungs-Seite zeigt sie nicht mehr.
+     */
+    public List<Anwendung> ausserhalbRegal() {
+        return List.copyOf(ausserhalbRegal);
+    }
+
+    /** Alle sichtbaren Anwendungen — Regal UND das, was daneben weiterläuft. */
+    public List<Anwendung> sichtbare() {
         return List.copyOf(sichtbare);
     }
 
@@ -438,10 +485,19 @@ public class AnwendungKatalog {
      * {@code an} setzt — sichtbar und abschaltbar, in kanonischer Reihenfolge.
      *
      * <p>Sie wird aus dem {@code preset}-Feld JE ANWENDUNG abgeleitet, nie aus
-     * einer zweiten Liste am Profil. Eine BASIS-Anwendung steht nie darin: sie
-     * ist ohnehin an und hat gar keinen Schalter (ein Schaltversuch ist ein
-     * 400) — sie hier zu nennen hieße, eine Handlung vorzuschlagen, die der
-     * Server ablehnt.
+     * einer zweiten Liste am Profil. Seit Stufe 0 läuft sie über das REGAL,
+     * enthält also nur BETRIEBSMODELLE: eine Basis-Anwendung ist ohnehin an
+     * und hat gar keinen Schalter (ein Schaltversuch ist ein 400), und eine
+     * Regel-Anwendung vorzuschlagen hieße, eine Absicht zu setzen, die nichts
+     * auslöst — Regeln entstehen später in der Steuerung.
+     *
+     * <p><b>Höchstens EIN Eintrag je Profil</b> (Konzept §3.9): der Assistent
+     * schlägt genau ein Betriebsmodell vor. Das ist eine Eigenschaft der
+     * DATEN — im Katalog trägt je Profil höchstens ein Betriebsmodell
+     * {@code "an"} —, festgenagelt von {@code AnwendungKatalogTest}. Welches
+     * bei fehlender Voraussetzung einspringt, entscheidet die Fläche über die
+     * {@code angeboten}-Einträge und die Voraussetzungs-Chips derselben
+     * Antwort.
      *
      * <p><b>Ob eine vorgeschlagene Anwendung wirklich eingeschaltet wird,
      * entscheidet sie NICHT</b> — das tut die Fläche anhand der
@@ -559,7 +615,7 @@ public class AnwendungKatalog {
 
     public List<String> vorauswahl(String profil) {
         List<String> ids = new ArrayList<>();
-        for (Anwendung a : sichtbare) {
+        for (Anwendung a : imRegal) {
             if (a.abschaltbar() && PRESET_AN.equals(a.preset().fuer(profil))) {
                 ids.add(a.id());
             }

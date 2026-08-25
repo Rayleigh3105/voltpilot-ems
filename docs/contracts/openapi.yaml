@@ -1579,17 +1579,29 @@ paths:
   /api/v1/sites/{siteId}/profiles:
     get:
       tags: [profile]
-      summary: Anwendungs-Regal of the Anlage (Portal v3 M3 + Anwendungs-Katalog Stufe 1).
+      summary: Betriebsmodell-Regal of the Anlage (Portal v3 M3 + Steuerung Stufe 0).
       description: >
-        The plant's feature set as a shelf with switches, composed from the ONE
-        application catalog (`anwendungen/catalog.json`): the two BASIS entries
-        (Anlage beobachten, Speicher-Fahrplan - always on, `state` refused with
-        400), the two RULE applications (Ueberschuss nutzen, Verbraucher steuern
-        - the switch is pure intent: no gate is opened, no starter seeded) and
-        the four BUSINESS applications (Marktoptimierung, Lastspitzenkappung,
-        Atypische Netznutzung, Ladepark-Lastmanagement). Reserved catalog entries
-        are NOT served - a switch that cannot do anything would be a promise
-        nobody keeps.
+        The plant's feature set, composed from the ONE application catalog
+        (`anwendungen/catalog.json`) and returned as TWO lists.
+
+        `profiles` is the SHELF the Steuerung page renders - since Steuerung
+        Stufe 0 "Entwirrung" exactly the four BETRIEBSMODELLE (Marktoptimierung,
+        Lastspitzenkappung, Atypische Netznutzung, Ladepark-Lastmanagement),
+        server-filtered on the catalog field `regal`.
+
+        `weitere` carries the applications that are NOT on the shelf - the two
+        BASIS entries (Anlage beobachten, Speicher-Fahrplan; always on, `state`
+        refused with 400) and the RULE applications (Ueberschuss nutzen,
+        Verbraucher steuern, Eigene Auswertung; their switch is pure intent - no
+        gate is opened, no starter seeded). Stufe 0 HIDES them, it does not
+        delete them: their states are still answered here (surfaces outside the
+        Steuerung read them - the cockpit gate "is Eigene Auswertung on?" and the
+        intent overlay of the mode projection), and PUT still reaches them. The
+        field is ADDITIVE: an older client reads only `profiles` and thereby sees
+        exactly the shelf.
+
+        Reserved catalog entries appear in NEITHER list - a switch that cannot do
+        anything would be a promise nobody keeps.
         Every switchable application is a DIRECT customer toggle - there are exactly two states,
         `an` and `aus`, and no "angefragt" state anywhere. `state` is the STORED
         intent (null = no row = derived default, i.e. the pre-M3 behaviour);
@@ -9880,7 +9892,21 @@ components:
         updatedAt: { type: string, format: date-time, nullable: true }
     SiteProfiles:
       type: object
+      description: >
+        TWO lists over ONE computation: `profiles` is the shelf (the four
+        Betriebsmodelle), `weitere` the applications hidden from it since
+        Steuerung Stufe 0. Both carry the same card shape. `weitere` is
+        ADDITIVE - an older client reads only `profiles`.
       properties:
+        weitere:
+          type: array
+          description: >
+            The applications that are NOT on the shelf (classes basis and
+            regel). Hidden, never deleted: their states are still answered
+            because surfaces outside the Steuerung read them. Same item shape as
+            `profiles`.
+          items:
+            type: object
         profiles:
           type: array
           items:
@@ -9894,10 +9920,12 @@ components:
                   data-driven catalog `anwendungen/catalog.json` (byte-identical
                   in the portal), NOT this schema: adding an application is
                   catalog data, never a contract release (the
-                  `entitytypes/catalog.json` precedent). Today's visible shelf is
-                  monitoring, speicher-fahrplan, ueberschuss, verbraucher,
+                  `entitytypes/catalog.json` precedent). Today's SHELF is
                   marktvermarktung, lastspitzenkappung, atypische-netznutzung,
-                  lastmanagement; reserved catalog entries are never served.
+                  lastmanagement (catalog field `regal`); monitoring,
+                  speicher-fahrplan, ueberschuss, verbraucher and
+                  eigene-auswertung ride in `weitere`; reserved catalog entries
+                  are never served.
               label: { type: string, description: Customer-facing German name. }
               state:
                 type: string

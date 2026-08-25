@@ -398,7 +398,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
   });
 });
 
-describe('AnwendungenStep - Preset + Regal (Anwendungs-Programm Stufe 2)', () => {
+describe('Schritt Betrieb - Preset + EIN Betriebsmodell (Steuerung Stufe 0)', () => {
   /** Bis zum vierten Schritt durchklicken (Register + Gerät überspringen). */
   async function bisZumSchritt() {
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
@@ -406,10 +406,12 @@ describe('AnwendungenStep - Preset + Regal (Anwendungs-Programm Stufe 2)', () =>
     expect(await screen.findByText('Wofür ist diese Anlage?')).toBeInTheDocument();
   }
 
-  it('schreibt das Profil UND schaltet die vorgeschlagenen Anwendungen über das Regal ein', async () => {
+  it('Privat schlägt KEIN Betriebsmodell vor - und schaltet nichts', async () => {
     vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    // Ein Haushalt mit steuerbarem Gerät: das Privat-Preset schlägt Überschuss
-    // + Verbraucher vor, und BEIDE Voraussetzungen sind erfüllt.
+    // Der Befund der Stufe 0 an dieser Stelle: der Assistent wiederholte das
+    // neunzeilige Regal und setzte für einen Haushalt zwei Absichts-Schalter,
+    // die nichts auslösten. Jetzt fährt sein Speicher den Eigenverbrauchs-
+    // Fahrplan, und das steht als Satz da - nicht als Schalter.
     mockAdaptiveReads([
       karte('monitoring', { active: true }),
       karte('ueberschuss', {
@@ -427,26 +429,69 @@ describe('AnwendungenStep - Preset + Regal (Anwendungs-Programm Stufe 2)', () =>
     await bisZumSchritt();
 
     fireEvent.click(await screen.findByRole('radio', { name: /Privat/ }));
+    expect(await screen.findByText(/Eigenverbrauchs-Fahrplan/)).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: /Überschuss nutzen/ })).toBeNull();
+    expect(screen.queryByRole('switch', { name: /Verbraucher steuern/ })).toBeNull();
+    // Der Satz, der den Schritt schliesst: Regeln entstehen später.
+    expect(screen.getByText(/Regeln legen Sie später in der Steuerung an/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'privat'));
+    expect(toggle).not.toHaveBeenCalled();
+    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
+  });
+
+  it('Gewerbe schlägt GENAU EINES vor und schaltet genau dieses ein', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    // Beide könnten laufen - vorgeschlagen wird das Startmodell des Profils.
+    mockAdaptiveReads([
+      karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: true }] }),
+      karte('lastspitzenkappung', {
+        requirements: [{ label: 'Leistungspreis hinterlegt', met: true }],
+      }),
+    ]);
+    const preset = vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
+    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+    await bisZumSchritt();
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
-    await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'privat'));
-    // Genau die zwei Vorschläge des Privat-Presets - und NICHT die
-    // Marktoptimierung, die dort nur „angeboten" ist.
+    await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'gewerbe'));
     await waitFor(() =>
       expect(toggle.mock.calls.map((c) => [c[1], c[2]])).toEqual([
-        ['ueberschuss', 'an'],
-        ['verbraucher', 'an'],
+        ['lastspitzenkappung', 'an'],
       ]),
     );
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
-    // Die Zusammenfassung NENNT, was eingeschaltet wurde.
-    expect(screen.getByText(/Eingeschaltet: Überschuss nutzen, Verbraucher steuern\./)).toBeInTheDocument();
+    expect(screen.getByText(/Eingeschaltet: Lastspitzenkappung\./)).toBeInTheDocument();
   });
 
-  it('hakt eine vorgeschlagene Anwendung mit fehlender Voraussetzung NICHT an und sagt warum', async () => {
+  it('ohne Leistungspreis springt die Marktoptimierung ein - nie beide', async () => {
     vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    // Gewerbe schlägt Markt + Lastspitze vor - hier fehlt beiden ihre
-    // Voraussetzung, also wird NICHTS geschaltet und die Fläche nennt sie.
+    mockAdaptiveReads([
+      karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: true }] }),
+      karte('lastspitzenkappung', {
+        requirements: [{ label: 'Leistungspreis hinterlegt', met: false }],
+      }),
+    ]);
+    vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
+    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+    await bisZumSchritt();
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await waitFor(() =>
+      expect(toggle.mock.calls.map((c) => [c[1], c[2]])).toEqual([
+        ['marktvermarktung', 'an'],
+      ]),
+    );
+  });
+
+  it('kann keins laufen, wird das GEMEINTE genannt und nichts geschaltet', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
     mockAdaptiveReads([
       karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: false }] }),
       karte('lastspitzenkappung', {
@@ -460,7 +505,9 @@ describe('AnwendungenStep - Preset + Regal (Anwendungs-Programm Stufe 2)', () =>
 
     fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
     expect(
-      await screen.findByText(/Marktoptimierung schlagen wir noch nicht vor: Marktzugang fehlt\./),
+      await screen.findByText(
+        /Lastspitzenkappung schlagen wir noch nicht vor: Leistungspreis hinterlegt fehlt\./,
+      ),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
@@ -491,14 +538,18 @@ describe('AnwendungenStep - Preset + Regal (Anwendungs-Programm Stufe 2)', () =>
     expect(toggle).not.toHaveBeenCalled();
   });
 
-  it('eine BASIS-Anwendung hat keinen Schalter und landet nie im Plan', async () => {
+  it('eine BASIS-Anwendung erscheint gar nicht mehr - auch nicht als immer-an-Zeile', async () => {
+    // Stufe 0: die ruhige Zeile ist mit dem Regal aus dem Assistenten
+    // verschwunden. Was ohnehin läuft, braucht keine Zeile in einem Schritt,
+    // der nach der BETRIEBSWEISE fragt.
     vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
     mockAdaptiveReads([karte('monitoring', { derivedActive: true, active: true })]);
     const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
     render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
     await bisZumSchritt();
 
-    expect(screen.getByText('immer an')).toBeInTheDocument();
+    expect(screen.queryByText('immer an')).toBeNull();
+    expect(screen.getByText(/Eigenverbrauchs-Fahrplan/)).toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: /Anlage beobachten/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(screen.getByText(/„Zuhause“ ist da/)).toBeInTheDocument());

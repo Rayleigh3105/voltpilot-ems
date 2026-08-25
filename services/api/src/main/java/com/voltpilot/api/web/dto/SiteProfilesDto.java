@@ -6,6 +6,22 @@ import java.util.List;
  * The Modus-Profile shelf of one Anlage (Portal v3 M3, {@code GET/PUT
  * /api/v1/sites/{id}/profiles}).
  *
+ * <p><b>ZWEI Listen, und sie sind eine Teilung, keine zweite Wahrheit</b>
+ * (Steuerung Stufe 0 „Entwirrung"): {@code profiles} ist das REGAL — seit
+ * Stufe 0 genau die vier BETRIEBSMODELLE, server-seitig gefiltert über das
+ * Katalog-Feld {@code regal}; {@code weitere} sind die sichtbaren
+ * Anwendungen, die NICHT im Regal stehen (Basis- und Regel-Anwendungen).
+ *
+ * <p>Sie mussten mitreisen, weil zwei bestehende Flächen sie LESEN und ein
+ * blosses Weglassen dort eine stille Regression wäre: das Cockpit-Tor „ist
+ * Eigene Auswertung an?" (Anwendungs-Programm Stufe 5) und das
+ * Willens-Overlay der M0-Projektion, das ein gespeichertes {@code aus} sonst
+ * verlöre und einen abgeschalteten Modus wiederbelebte. Stufe 0 blendet aus,
+ * sie löscht nicht — deshalb wird jeder Zustand weiter beantwortet.
+ *
+ * <p>Ein ÄLTERES Portal liest nur {@code profiles} und sieht damit genau das
+ * Regal; das Feld ist additiv.
+ *
  * <p>Every profile is a DIRECT customer toggle - there are exactly two states,
  * {@code an} and {@code aus}, and no "angefragt" anywhere in the UI, the API or
  * the DB (owner decision, M3-profile.md). {@code state} is the STORED intent
@@ -17,7 +33,15 @@ import java.util.List;
  * switched ON but cannot fully run yet (no Leistungspreis, no market access) -
  * <b>never</b> a request prompt.
  */
-public record SiteProfilesDto(List<Profile> profiles) {
+public record SiteProfilesDto(List<Profile> profiles, List<Profile> weitere) {
+
+    /**
+     * Die Antwort einer Anlage, deren Regal LEER ist — sie sagt über nichts
+     * etwas aus.
+     */
+    public static SiteProfilesDto leer() {
+        return new SiteProfilesDto(List.of(), List.of());
+    }
 
     /**
      * One shelf card.

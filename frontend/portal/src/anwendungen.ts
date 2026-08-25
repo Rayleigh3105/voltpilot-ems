@@ -81,8 +81,14 @@ export interface AnwendungDef {
   /** EIN Satz: was die Anwendung für den Kunden tut. */
   nutzen: string;
   abschaltbar: boolean;
-  /** false = reserviert: kein Schalter, keine Regal-Zeile. */
+  /** false = reserviert: es GIBT diese Anwendung noch nicht. */
   sichtbar: boolean;
+  /**
+   * false = sie steht NICHT im Regal der Steuerung (Basis- und
+   * Regel-Anwendungen seit Steuerung Stufe 0). Ihr Zustand existiert
+   * unverändert weiter — nur die Seite zeigt sie nicht mehr.
+   */
+  regal: boolean;
   strategie_knoten: string | null;
   starter: string | null;
   bedarf: { rollen: string[]; actuate: string[]; messung: string[] };
@@ -125,11 +131,41 @@ export const ANWENDUNGEN: AnwendungDef[] = [...CATALOG.anwendungen].sort(
 const BY_ID = new Map(ANWENDUNGEN.map((a) => [a.id, a] as const));
 
 /**
- * Das REGAL: die sichtbaren Anwendungen. Eine reservierte steht bewusst nicht
- * darin — ein Schalter, der nichts bewirken kann, wäre eine Zusage, die niemand
- * einlöst.
+ * Das REGAL der Steuerung: seit Steuerung Stufe 0 „Entwirrung" (Scout
+ * `vp-steuerung-konzept-b3` §5) genau die vier BETRIEBSMODELLE — das
+ * Katalog-Feld `regal` sagt es, nicht mehr `sichtbar`.
+ *
+ * Der Befund davor: drei Sorten in EINER Optik. Eine Basis-Anwendung rendert
+ * einen Schalter, den der Server mit 400 ablehnt; eine Regel-Anwendung einen,
+ * der gar nichts auslöst. Beide sind seither ausgeblendet — **nicht gelöscht**:
+ * ihre Zustände reisen in `SiteProfiles.weitere` weiter, und die Flächen, die
+ * sie lesen (das Cockpit-Tor „Eigene Auswertung", das Willens-Overlay), sehen
+ * unverändert dasselbe.
+ *
+ * ⚠ Der Server ist die EINE Stelle, die filtert; dies hier ist der zweite,
+ * unabhängige Filter derselben Regel aus der byte-gleichen Katalog-Kopie — ein
+ * älterer Server kann damit keine Zeile ins Regal schmuggeln.
  */
-export const REGAL: AnwendungDef[] = ANWENDUNGEN.filter((a) => a.sichtbar);
+export const REGAL: AnwendungDef[] = ANWENDUNGEN.filter((a) => a.sichtbar && a.regal);
+
+/**
+ * Die sichtbaren Anwendungen, die NICHT im Regal stehen (Basis + Regel). Sie
+ * sind der Gegenpart zu {@link REGAL} und die Menge, deren Zustände weiter
+ * beantwortet werden.
+ */
+export const AUSSERHALB_REGAL: AnwendungDef[] = ANWENDUNGEN.filter(
+  (a) => a.sichtbar && !a.regal,
+);
+
+/**
+ * Steht diese Anwendung im Regal der Steuerung? Eine dem Katalog UNBEKANNTE Id
+ * (neuerer Server, ältere Kopie) steht **nicht** darin — das Regal zeigt nur,
+ * was es benennen kann, statt eine Zeile ohne Nutzen-Satz zu rendern.
+ */
+export function imRegal(id: string | null | undefined): boolean {
+  const def = anwendung(id);
+  return def != null && def.sichtbar && def.regal;
+}
 
 /** Die Anwendung mit dieser Id, oder null (ein neuerer Server, ältere Kopie). */
 export function anwendung(id: string | null | undefined): AnwendungDef | null {
@@ -227,44 +263,20 @@ export function presetWert(
 }
 
 /**
- * Die VORAUSWAHL eines Profils: die Anwendungen, deren Preset `an` sagt —
- * sichtbar und abschaltbar, in Katalog-Reihenfolge. Der Zwilling von Java
- * `AnwendungKatalog.vorauswahl`.
+ * Die VORAUSWAHL eines Profils: die Betriebsmodelle, deren Preset `an` sagt,
+ * in Katalog-Reihenfolge. Der Zwilling von Java `AnwendungKatalog.vorauswahl`.
  *
- * Eine BASIS-Anwendung steht nie darin: sie ist ohnehin an und hat gar keinen
- * Schalter (der Server lehnt einen Schaltversuch mit 400 ab) — sie hier zu
- * nennen hieße, eine Handlung vorzuschlagen, die es nicht gibt.
+ * Seit Steuerung Stufe 0 läuft sie über das REGAL, enthält also **höchstens
+ * einen** Eintrag: eine Basis-Anwendung ist ohnehin an und hat gar keinen
+ * Schalter (der Server lehnt einen Schaltversuch mit 400 ab), und eine
+ * Regel-Anwendung vorzuschlagen hiesse, eine Absicht zu setzen, die nichts
+ * auslöst. Was der Assistent daraus macht — und was einspringt, wenn eine
+ * Voraussetzung fehlt — entscheidet {@link betriebsmodellVorschlag}.
  */
 export function vorauswahl(profil: string | null | undefined): string[] {
   const p = preset(profil);
   if (!p) return [];
   return REGAL.filter((a) => a.abschaltbar && a.preset[p.id] === 'an').map((a) => a.id);
-}
-
-/**
- * Wie das Regal unter einem Profil aufgeräumt wird: was sofort dasteht und was
- * hinter „Weitere Anwendungen" zurücktritt. `verborgen` ist die dritte Klasse —
- * für dieses Profil unpassend, aber nie gelöscht (der Kunde kommt über
- * „Weitere Anwendungen" heran, und ohne Profil ist alles gleichrangig).
- *
- * ⚠ `immerVorne` ist die Ehrlichkeits-Ausnahme: **was auf DIESER Anlage schon
- * läuft, wird nie eingeklappt.** Ein aktiver Ladepark auf einer Privat-Anlage
- * hinter „Weitere Anwendungen" zu verstecken hieße, ihren Funktionsumfang vor
- * ihr zu verbergen — das Preset ordnet, es blendet nicht aus.
- */
-export function regalFuerProfil(
-  profil: string | null | undefined,
-  immerVorne: readonly string[] = [],
-): { vorne: AnwendungDef[]; weitere: AnwendungDef[] } {
-  const p = preset(profil);
-  if (!p) return { vorne: REGAL, weitere: [] };
-  const erzwungen = new Set(immerVorne);
-  const vorne = REGAL.filter(
-    (a) =>
-      a.preset[p.id] === 'an' || a.preset[p.id] === 'abgeleitet' || erzwungen.has(a.id),
-  );
-  const weitere = REGAL.filter((a) => !vorne.includes(a));
-  return { vorne, weitere };
 }
 
 // -- Die Anwendung des Presets auf EINE Anlage ------------------------------
@@ -294,31 +306,71 @@ export interface Zurueckgestellt {
 }
 
 /**
- * Was ein Profil auf DIESER Anlage vorschlägt.
+ * Der VORSCHLAG des Assistenten: **genau EIN Betriebsmodell**, oder keins
+ * (Steuerung Stufe 0, Konzept §3.9 — „Gewerbe: Lastspitzenkappung, wenn
+ * Leistungspreis hinterlegt, sonst Marktoptimierung, wenn Marktzugang; Privat:
+ * keins — Ihr Speicher fährt den Eigenverbrauchs-Fahrplan").
  *
- * ⚠ **Die Vorauswahl ist voraussetzungs-bewusst, und das ist eine
- * Ehrlichkeitsregel, kein Detail** (Konzept §4.2 „bei Marktzugang" / „bei
- * Leistungspreis"): ein Häkchen, das der Kunde nie gesetzt hat und das
- * anschließend „läuft noch nicht" sagt, wäre eine Zusage, die die Anlage nicht
- * halten kann. Ein Schalter, den der KUNDE selbst kippt, darf das sehr wohl —
- * dann benennt die Zeile ehrlich, was fehlt (Owner-Entscheid M3). Deshalb
- * kommt eine vorgeschlagene Anwendung mit unerfüllter Voraussetzung nicht ins
- * Häkchen, sondern in `zurueckgestellt` — sie wird GENANNT, nicht verschwiegen.
+ * Die Rangfolge steht in den DATEN, nicht in einer zweiten Liste: `an` ist das
+ * Betriebsmodell, mit dem ein Profil startet (höchstens EINES je Profil),
+ * `angeboten` sind seine Rückfälle. Daraus die vier Regeln:
+ *
+ *  - **Ohne `an`-Kandidaten wird NICHTS vorgeschlagen** — auch dann nicht, wenn
+ *    ein `angeboten`-Modell technisch könnte. Genau das ist „Privat: keins":
+ *    ein Rückfall ohne Startwahl wäre eine Empfehlung, die niemand getroffen
+ *    hat.
+ *  - **Vorgeschlagen wird nur, was laufen KANN** (alle Voraussetzungs-Chips
+ *    erfüllt) — ein Häkchen, das anschliessend „läuft noch nicht" sagt, wäre
+ *    eine Zusage, die die Anlage nicht halten kann (Konzept §4.2).
+ *  - **Was nicht kann, wird GENANNT, nicht verschwiegen**: das `an`-Modell
+ *    landet mit seinen fehlenden Voraussetzungen in `zurueckgestellt`.
+ *  - **Ein Modell, dessen Ökonomie gar nicht gebaut ist** (`blocked_reason_immer`
+ *    — heute die atypische Netznutzung), ist nie Kandidat.
+ *
+ * Ein Katalog-Eintrag ohne Karte dieses Servers wird übersprungen: ein
+ * Vorschlag, den der Server nicht kennt, liesse sich nicht einschalten.
  */
-export function presetVorschlag(
+export interface BetriebsmodellVorschlag {
+  /** Das vorgeschlagene Betriebsmodell, oder null. */
+  ticken: string | null;
+  /** Das gemeinte Modell samt fehlender Voraussetzungen, oder null. */
+  zurueckgestellt: Zurueckgestellt | null;
+}
+
+export function betriebsmodellVorschlag(
   profil: string | null | undefined,
   karten: RegalKarte[],
-): { ticken: string[]; zurueckgestellt: Zurueckgestellt[] } {
-  const ids = new Set(vorauswahl(profil));
-  const ticken: string[] = [];
-  const zurueckgestellt: Zurueckgestellt[] = [];
-  for (const karte of karten) {
-    if (!ids.has(karte.id)) continue;
-    const fehlend = (karte.requirements ?? []).filter((r) => !r.met).map((r) => r.label);
-    if (fehlend.length === 0) ticken.push(karte.id);
-    else zurueckgestellt.push({ id: karte.id, label: karte.label, fehlend });
+): BetriebsmodellVorschlag {
+  const p = preset(profil);
+  const leer: BetriebsmodellVorschlag = { ticken: null, zurueckgestellt: null };
+  if (!p) return leer;
+  const kandidat = (wert: PresetWert) =>
+    REGAL.filter(
+      (a) =>
+        a.klasse === 'geschaeft' &&
+        a.abschaltbar &&
+        a.blocked_reason_immer == null &&
+        a.preset[p.id] === wert,
+    );
+  const start = kandidat('an');
+  // Ohne Startwahl schlägt das Profil nichts vor - der Rückfall gilt nur
+  // INNERHALB eines Profils, das eines gewählt hat.
+  if (start.length === 0) return leer;
+  const byId = new Map(karten.map((k) => [k.id, k] as const));
+  const fehlendeVon = (k: RegalKarte) =>
+    (k.requirements ?? []).filter((r) => !r.met).map((r) => r.label);
+  for (const def of [...start, ...kandidat('angeboten')]) {
+    const karte = byId.get(def.id);
+    if (!karte) continue;
+    if (fehlendeVon(karte).length === 0) return { ticken: def.id, zurueckgestellt: null };
   }
-  return { ticken, zurueckgestellt };
+  const gemeint = byId.get(start[0].id);
+  return {
+    ticken: null,
+    zurueckgestellt: gemeint
+      ? { id: gemeint.id, label: gemeint.label, fehlend: fehlendeVon(gemeint) }
+      : null,
+  };
 }
 
 /**

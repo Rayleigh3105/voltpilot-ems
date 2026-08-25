@@ -24,14 +24,15 @@ class AnwendungKatalogTest {
     private final AnwendungKatalog katalog = new AnwendungKatalog(MAPPER);
 
     @Test
-    void theShelfIsTheVisibleEntriesInTheirCanonicalOrder() {
-        assertThat(katalog.regal().stream().map(Anwendung::id)).containsExactly("monitoring",
-                "speicher-fahrplan", "ueberschuss", "verbraucher", "marktvermarktung",
-                "lastspitzenkappung", "atypische-netznutzung", "lastmanagement",
-                // Stufe 5: die eigene Auswertung ist seither schaltbar - sie
-                // steht aber in KEINEM Preset auf „an", der Kunde schaltet sie
-                // selbst ein.
-                "eigene-auswertung");
+    void theShelfIsTheBetriebsmodelleInTheirCanonicalOrder() {
+        // Steuerung Stufe 0 „Entwirrung": das Regal ist nicht mehr die Menge
+        // der SICHTBAREN Anwendungen, sondern das Katalog-Feld `regal` - und
+        // das steht genau auf den vier Betriebsmodellen.
+        assertThat(katalog.regal().stream().map(Anwendung::id)).containsExactly(
+                "marktvermarktung", "lastspitzenkappung", "atypische-netznutzung",
+                "lastmanagement");
+        assertThat(katalog.find("eigene-auswertung").preset().privat()).isEqualTo("angeboten");
+        assertThat(katalog.find("eigene-auswertung").preset().gewerbe()).isEqualTo("angeboten");
         assertThat(katalog.find("eigene-auswertung").preset().privat()).isEqualTo("angeboten");
         assertThat(katalog.find("eigene-auswertung").preset().gewerbe()).isEqualTo("angeboten");
         // Die reservierten Einträge stehen im Katalog, aber NICHT im Regal - ein
@@ -229,26 +230,68 @@ class AnwendungKatalogTest {
     }
 
     @Test
-    void thePreselectionIsDerivedFromTheEntriesAndNeverNamesABasicApplication() {
-        assertThat(katalog.vorauswahl(AnwendungKatalog.PROFIL_PRIVAT))
-                .containsExactly(AnwendungKatalog.UEBERSCHUSS, AnwendungKatalog.VERBRAUCHER);
+    void thePreselectionNamesAtMostOneBetriebsmodellPerProfile() {
+        // Konzept §3.9: der Assistent schlägt GENAU EINES vor, nie zwei - und
+        // für einen Haushalt keins (sein Speicher fährt den
+        // Eigenverbrauchs-Fahrplan, und der ist Grundverhalten, kein Modus).
+        // Dass es höchstens eines gibt, ist eine Eigenschaft der DATEN; welches
+        // bei fehlender Voraussetzung einspringt, entscheidet die Fläche.
+        assertThat(katalog.vorauswahl(AnwendungKatalog.PROFIL_PRIVAT)).isEmpty();
         assertThat(katalog.vorauswahl(AnwendungKatalog.PROFIL_GEWERBE))
-                .containsExactly(AnwendungKatalog.MARKTVERMARKTUNG,
-                        AnwendungKatalog.LASTSPITZENKAPPUNG);
+                .containsExactly(AnwendungKatalog.LASTSPITZENKAPPUNG);
         assertThat(katalog.vorauswahl(null)).isEmpty();
         assertThat(katalog.vorauswahl("betreiber")).isEmpty();
-        // Die zwei Basis-Anwendungen stehen im Katalog auf „an" - und trotzdem
-        // NICHT in der Vorauswahl: sie laufen ohnehin und haben gar keinen
-        // Schalter, ein Vorschlag wäre eine Handlung, die der Server ablehnt.
+        // Die Basis-Anwendungen stehen im Katalog auf „an" - und trotzdem NICHT
+        // in der Vorauswahl: sie laufen ohnehin und haben gar keinen Schalter,
+        // ein Vorschlag wäre eine Handlung, die der Server ablehnt. Die
+        // Regel-Anwendungen ebenso: Regeln entstehen später in der Steuerung.
         assertThat(katalog.find(AnwendungKatalog.MONITORING).preset().privat()).isEqualTo("an");
+        assertThat(katalog.find(AnwendungKatalog.UEBERSCHUSS).preset().privat()).isEqualTo("an");
         for (String profil : List.of(AnwendungKatalog.PROFIL_PRIVAT,
                 AnwendungKatalog.PROFIL_GEWERBE)) {
+            assertThat(katalog.vorauswahl(profil)).as(profil).hasSizeLessThanOrEqualTo(1);
             for (String id : katalog.vorauswahl(profil)) {
                 assertThat(katalog.find(id).abschaltbar()).as(id).isTrue();
-                assertThat(katalog.find(id).sichtbar()).as(id).isTrue();
-                assertThat(katalog.find(id).istBasis()).as(id).isFalse();
+                assertThat(katalog.find(id).imRegal()).as(id).isTrue();
+                assertThat(katalog.find(id).istBetriebsmodell()).as(id).isTrue();
             }
         }
+    }
+
+    @Test
+    void stageZeroHidesTheShelfEntriesButNeverLosesThem() {
+        // Der tragende Satz der Stufe: sie blendet aus, sie löscht nicht. Die
+        // Zustände der ausgeblendeten Anwendungen reisen weiter (der Server
+        // legt sie in `SiteProfilesDto.weitere`), weil das Cockpit-Tor „Eigene
+        // Auswertung" und das Willens-Overlay sie lesen.
+        assertThat(katalog.ausserhalbRegal().stream().map(Anwendung::id)).containsExactly(
+                "monitoring", "speicher-fahrplan", "ueberschuss", "verbraucher",
+                "eigene-auswertung");
+        assertThat(katalog.sichtbare()).containsExactlyInAnyOrderElementsOf(
+                java.util.stream.Stream
+                        .concat(katalog.regal().stream(), katalog.ausserhalbRegal().stream())
+                        .toList());
+        // `regal` folgt der KLASSE; `sichtbar` bleibt daneben die andere Frage:
+        // GIBT es die Anwendung schon?
+        for (Anwendung a : katalog.alle()) {
+            assertThat(a.regal()).as(a.id()).isEqualTo(a.istBetriebsmodell());
+            assertThat(a.imRegal()).as(a.id()).isEqualTo(a.sichtbar() && a.regal());
+        }
+        assertThat(katalog.sichtbare().stream().map(Anwendung::id))
+                .doesNotContain(AnwendungKatalog.BERICHTE);
+    }
+
+    @Test
+    void noEntryPointsAtThePhantomPage() {
+        // Die Seite „Komponenten & Regeln" existiert nicht: die Navigation
+        // kennt „Anlagen-Modell" und „Steuerung", und die Regel-Liste wohnt auf
+        // derselben Seite eine Kapsel tiefer. Der Satz war eine Sackgasse.
+        for (Anwendung a : katalog.alle()) {
+            assertThat(a.leerZustand() == null ? "" : a.leerZustand()).as(a.id())
+                    .doesNotContain("Komponenten & Regeln");
+        }
+        assertThat(katalog.find(AnwendungKatalog.UEBERSCHUSS).leerZustand())
+                .contains("„Regeln“ auf dieser Seite");
     }
 
     @Test

@@ -22,10 +22,13 @@ import { fmtNum } from './format';
  * usage-profile + auto-start seeding need the Anlage's master data AND its
  * gateway device in place, so it is the last, adaptive step.
  *
- * Its LABEL is „Anwendungen" since the 24.08.2026 vocabulary decision (it was
- * „Nutzung"); the component id `NutzungStep` and every route stay.
+ * Its LABEL is **„Betrieb"** since Steuerung Stufe 0 „Entwirrung"
+ * (Captain 25.08.2026: „Anwendung" ist kein Kundenwort mehr; der Schritt fragt
+ * nach dem BETRIEB der Anlage — Profil, EIN Betriebsmodell, Speicherschonung).
+ * Es war davor „Anwendungen" und davor „Nutzung"; die Komponenten-Id und jede
+ * Route bleiben.
  */
-export const FLOW_STEPS = ['Anlage', 'Register', 'Gerät', 'Anwendungen'] as const;
+export const FLOW_STEPS = ['Anlage', 'Register', 'Gerät', 'Betrieb'] as const;
 
 export type FlowStep = 1 | 2 | 3 | 4;
 
