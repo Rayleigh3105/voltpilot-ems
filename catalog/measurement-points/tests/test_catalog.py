@@ -292,6 +292,18 @@ class CatalogTest(unittest.TestCase):
         self.assertTrue(all(point["point_key_template"] for point in ocpp))
         self.assertTrue(all(point["unit"] is None for point in ocpp))
 
+    def test_shelly_documented_frequency_and_minute_energy_units_are_pinned(self) -> None:
+        points = {point["point_key"]: point for point in self.points}
+        expected_units = {
+            "shelly.gen2plus.switch[*].freq": "Hz",
+            "shelly.gen2plus.cover[*].freq": "Hz",
+            "shelly.gen2plus.cover[*].aenergy.by_minute[*]": "mWh",
+        }
+        self.assertEqual(
+            {point_key: points[point_key]["unit"] for point_key in expected_units},
+            expected_units,
+        )
+
     def test_unknowns_are_explicit_and_untranslated(self) -> None:
         unknown = [point for point in self.points if point["semantic_status"] == "unknown"]
         self.assertEqual(len(unknown), 5)

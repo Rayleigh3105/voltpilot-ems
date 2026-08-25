@@ -38,7 +38,7 @@
   },
   "goe_german_source_rows": 174,
   "goe_keys_with_german_label": 177,
-  "manifest_sha256": "a36c7b58dd568dcbfe393ce6d7d09f24c0a84c66950856e742ed589464ba1e75",
+  "manifest_sha256": "57ba9e2bb0f51d0cb7bd6ce532cbfc90d5dc713f7d759bca7f21ab4f22b6ed0a",
   "shelly_raw_manifest_sha256": "3a68c3d0bedc74b7fc1dfdd9659743df241f45350abe1c7dbd5e8d8962a74d44",
   "source_versions": {
     "deye.hybrid_1p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",

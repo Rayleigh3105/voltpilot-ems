@@ -1,6 +1,6 @@
 {
   "annotations_sha256": "aaf199c4f003f546ab6e5baf56da644bd8f6504fa574ebf72b7b427b063d9d7c",
-  "extraction_spec_sha256": "f970abb93c340775a59c832ec8aa21e868ffd6cfbc7fc1e6ea4302f40ffcde70",
+  "extraction_spec_sha256": "cf80c284aec271d00dc76a8b256a5de77a70c2855f82476e2100879dbc2eaec8",
   "families": [
     {
       "components": [
@@ -966,7 +966,7 @@
             [
               "freq",
               "number",
-              null,
+              "Hz",
               "Frequenz",
               "gauge"
             ],
@@ -1651,7 +1651,7 @@
             [
               "freq",
               "number",
-              null,
+              "Hz",
               "Frequenz",
               "gauge"
             ],
@@ -1665,7 +1665,7 @@
             [
               "aenergy.by_minute[*]",
               "number",
-              null,
+              "mWh",
               "Minutenenergie",
               "gauge"
             ],

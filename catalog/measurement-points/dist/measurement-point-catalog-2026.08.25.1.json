@@ -64507,7 +64507,7 @@
       "source_revision": "official-html-retrieved-2026-08-25",
       "source_sha256": "9bdf3bf7c5b8c4d76283825c0d94afe83df44480ff681e0992e67e2b3f7e289a",
       "source_url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/",
-      "unit": null,
+      "unit": "mWh",
       "value_type": "number",
       "width_bits": null
     },
@@ -64823,7 +64823,7 @@
       "group": "cover[*]",
       "label_de": "Frequenz",
       "label_source": "freq",
-      "long_term_cadence_s": 900,
+      "long_term_cadence_s": 300,
       "min_cadence_s": 5,
       "optional": true,
       "point_key": "shelly.gen2plus.cover[*].freq",
@@ -64857,7 +64857,7 @@
       "source_revision": "official-html-retrieved-2026-08-25",
       "source_sha256": "9bdf3bf7c5b8c4d76283825c0d94afe83df44480ff681e0992e67e2b3f7e289a",
       "source_url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Cover/",
-      "unit": null,
+      "unit": "Hz",
       "value_type": "number",
       "width_bits": null
     },
@@ -69790,7 +69790,7 @@
       "group": "switch[*]",
       "label_de": "Frequenz",
       "label_source": "freq",
-      "long_term_cadence_s": 900,
+      "long_term_cadence_s": 300,
       "min_cadence_s": 5,
       "optional": true,
       "point_key": "shelly.gen2plus.switch[*].freq",
@@ -69817,7 +69817,7 @@
       "source_revision": "official-html-retrieved-2026-08-25",
       "source_sha256": "ab7dcc634be2acf32eeff196560f94ca10170249b14968f457a40188b75bb6be",
       "source_url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch/",
-      "unit": null,
+      "unit": "Hz",
       "value_type": "number",
       "width_bits": null
     },
@@ -103948,5 +103948,5 @@
     }
   ],
   "schema_version": "1.0",
-  "source_manifest_sha256": "a36c7b58dd568dcbfe393ce6d7d09f24c0a84c66950856e742ed589464ba1e75"
+  "source_manifest_sha256": "57ba9e2bb0f51d0cb7bd6ce532cbfc90d5dc713f7d759bca7f21ab4f22b6ed0a"
 }

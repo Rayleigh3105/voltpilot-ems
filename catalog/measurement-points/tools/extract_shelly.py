@@ -39,7 +39,7 @@ UNIT_EVIDENCE = {
     "%": ("%", "percent"),
     "A": ("[a]", ", a", "amps", "ampere"),
     "B": ("byte", "bytes"),
-    "Hz": ("[hz]", ", hz", "hertz"),
+    "Hz": ("[hz]", ", hz", " in hz", "hertz"),
     "K": (" in k", "kelvin"),
     "VA": ("[va]", "volt-ampere"),
     "V": ("[v]", "volts", "voltage"),

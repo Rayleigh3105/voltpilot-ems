@@ -653,7 +653,7 @@
             [
               "freq",
               "number",
-              null
+              "Hz"
             ],
             [
               "aenergy.total",
@@ -1120,7 +1120,7 @@
             [
               "freq",
               "number",
-              null
+              "Hz"
             ],
             [
               "aenergy.total",
@@ -1130,7 +1130,7 @@
             [
               "aenergy.by_minute[*]",
               "number",
-              null
+              "mWh"
             ],
             [
               "aenergy.minute_ts",
