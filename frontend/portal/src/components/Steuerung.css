@@ -640,3 +640,210 @@
 .vp-neuauto-disclose:hover {
   text-decoration: underline;
 }
+
+/* --------------------------------------------------------------------------
+   Zone ① „Jetzt" (Konzept `vp-steuerung-konzept-b3` §3.2, Stufe 1)
+
+   Eine Zeile je steuerbarer Sache. Sie ist bewusst RUHIG: der Zustand trägt,
+   Grund und Quelle stehen kleiner darunter, und die einzige Taste ist der
+   Handeingriff — wo es ihn gibt. Am Telefon (< 720 px) wird aus der Zeile eine
+   volle Karte (§3.1), der Handeingriff rutscht unter den Text.
+   -------------------------------------------------------------------------- */
+
+.vp-jetztrows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vp-jetztrow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3, 12px);
+  padding: var(--vp-space-3, 12px) 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-jetztrows > .vp-jetztrow:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* Der Punkt sitzt auf der Höhe der ersten Textzeile, nicht mittig. */
+.vp-jetztrow > .vp-rowdot {
+  margin-top: 6px;
+}
+
+.vp-jetztrow .vp-rowdot.ok { background: var(--vp-flow-batt, #16a34a); }
+.vp-jetztrow .vp-rowdot.warn { background: #b45309; }
+.vp-jetztrow .vp-rowdot.off { background: var(--vp-text-muted, #94a3b8); }
+
+.vp-jetztrow-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vp-jetztrow-text > strong {
+  font-size: var(--vp-text-sm, 14px);
+  line-height: 1.35;
+}
+
+.vp-jetztrow-state {
+  font-size: var(--vp-text-sm, 14px);
+  color: var(--vp-text, #0f172a);
+}
+
+.vp-jetztrow-why {
+  font-size: var(--vp-text-xs, 12px);
+  color: var(--vp-text-muted, #64748b);
+  line-height: 1.4;
+}
+
+.vp-jetztrow-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2, 8px);
+  font-size: var(--vp-text-xs, 12px);
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-jetztrow-src::before {
+  content: '';
+}
+
+.vp-jetztrow-until {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Der GRUND, warum es hier keinen Eingriff gibt — ruhig, nie als Fehler. */
+.vp-jetztrow-noact {
+  flex: 0 1 auto;
+  max-width: 22rem;
+  font-size: var(--vp-text-xs, 12px);
+  color: var(--vp-text-muted, #64748b);
+  line-height: 1.4;
+}
+
+.vp-jetztrow-act {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.vp-jetzt-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 8px);
+  background: transparent;
+  color: var(--vp-text, #0f172a);
+  font: inherit;
+  font-size: var(--vp-text-xs, 12px);
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.vp-jetzt-menu:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.vp-jetzt-menulist {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  padding: 4px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 8px);
+  background: var(--vp-surface, #fff);
+  box-shadow: var(--vp-shadow-md, 0 6px 18px rgba(15, 23, 42, 0.12));
+}
+
+.vp-jetzt-menuitem {
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--vp-radius-sm, 6px);
+  background: transparent;
+  color: var(--vp-text, #0f172a);
+  font: inherit;
+  font-size: var(--vp-text-sm, 14px);
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.vp-jetzt-menuitem:hover,
+.vp-jetzt-menuitem:focus-visible {
+  background: var(--vp-surface-muted, #f1f5f9);
+}
+
+/* Der Banner: ein laufender Handeingriff ist bernstein, nie rot — er ist
+   gewollt, kein Fehler. Der Weg zurück steht daneben. */
+.vp-jetzt-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2, 8px);
+  margin: 0 0 var(--vp-space-3, 12px);
+  padding: var(--vp-space-3, 12px);
+  border: 1px solid #f5d0a9;
+  border-radius: var(--vp-radius-md, 8px);
+  background: #fffaf0;
+  color: #7c4a10;
+  font-size: var(--vp-text-sm, 14px);
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.vp-jetzt-banner > span {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.vp-jetzt-banner-act {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border: 1px solid #d9a66c;
+  border-radius: var(--vp-radius-md, 8px);
+  background: #fff;
+  color: #7c4a10;
+  font: inherit;
+  font-size: var(--vp-text-xs, 12px);
+  cursor: pointer;
+  min-height: 44px;
+}
+
+@media (max-width: 720px) {
+  .vp-jetztrow {
+    flex-wrap: wrap;
+  }
+
+  .vp-jetztrow-act,
+  .vp-jetztrow-noact {
+    flex: 1 0 100%;
+    max-width: none;
+    padding-left: calc(9px + var(--vp-space-3, 12px));
+  }
+
+  .vp-jetzt-menu {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .vp-jetzt-menulist {
+    left: 0;
+    right: 0;
+  }
+}

@@ -32,9 +32,9 @@ import { PartHead } from './SteuerungParts';
 import { ConsumerOverrideDialog } from './ConsumerOverrideDialog';
 import { NeueRegelDialog } from './NeueRegelDialog';
 import { RegelDrawer } from './RegelDrawer';
-import { RegelKarteView, SofortBanner } from './RegelKarten';
+import { ConfirmDialog } from './ConfirmDialog';
+import { RegelKarteView } from './RegelKarten';
 import { RegelProtokoll } from './RegelProtokoll';
-import { RezeptGalerieView } from './RezeptGalerie';
 import { VerbraucherAnlegenDrawer, VerbraucherRegelDrawer } from './VerbraucherDrawers';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer, ConsumerOptions, ConsumerPolicyVersion } from '../consumers/types';
@@ -49,7 +49,7 @@ import {
   vorbefuellteRegel,
   vorbefuellterName,
 } from '../selbstbauBruecke';
-import { buildGuidedFlow, parseGuidedFlow, type GuidedRule } from '../flows/guidedBuilder';
+import { parseGuidedFlow, type GuidedRule } from '../flows/guidedBuilder';
 import type { BoundFlowApi, FlowDeviceAck, FlowSummary } from '../flows/flowsApi';
 import type { EditorEntity, FlowDocument } from '../flows/model';
 import { rolloutMessage } from '../flows/rollout';
@@ -57,19 +57,20 @@ import { GuidedRuleBuilder } from './GuidedRuleBuilder';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { showTechnicalLayer } from '../rollen';
 import {
+  KOMPONENTE_ANLEGEN,
   istVerbraucherRezept,
   rezept,
-  rezeptGalerie,
   rezeptPrefill,
   speicherSchutzRegel,
+  vorbelegungen,
   type RezeptId,
 } from '../regeln/rezepte';
 import { regelDetail } from '../regeln/detail';
+import { folgenZeilen, regelFolgen, vorrangArt, type FolgenKarte } from '../regeln/folgen';
 import { protokoll as protokollView } from '../regeln/verlauf';
 import {
   istGenerierteVerbraucherregel,
   regelKarten,
-  sofortBanner,
   type RegelKarte,
   type RezeptRegelInput,
 } from '../regeln/zustand';
@@ -145,7 +146,6 @@ export function RegelnKapsel({
   const [reloadKey, setReloadKey] = useState(0);
 
   const [creating, setCreating] = useState(false);
-  const [showHidden, setShowHidden] = useState(false);
   const [offen, setOffen] = useState<string | null>(null);
   const [wizard, setWizard] = useState(false);
   const [ruleFor, setRuleFor] = useState<Consumer | null>(null);
@@ -239,18 +239,13 @@ export function RegelnKapsel({
     });
   }, [flows, acks, consumers, status, fulfillment, overrides, policies, entities, ruleEvents]);
 
-  const namen = useMemo(
-    () => Object.fromEntries(consumers.map((c) => [c.id, c.name])),
-    [consumers],
-  );
   // Das Gesamt-Protokoll spricht die NAMEN der Karten - ein Ereignis ohne
   // zuordenbare Regel bleibt sichtbar, nennt aber keine (nie eine geratene).
   const protokoll = useMemo(
     () => protokollView(ruleEvents, Object.fromEntries(karten.map((k) => [k.key, k.name]))),
     [ruleEvents, karten],
   );
-  const banner = useMemo(() => sofortBanner(overrides, namen), [overrides, namen]);
-  const galerie = useMemo(() => rezeptGalerie({ entities, topology }), [entities, topology]);
+  const start = useMemo(() => vorbelegungen({ entities, topology }), [entities, topology]);
   const steuerbare = useMemo(
     () => consumers.filter((c) => c.connection === 'connected'),
     [consumers],
@@ -311,12 +306,23 @@ export function RegelnKapsel({
     setCreating(true);
   }, [entities]);
 
-  // --- Ein Rezept wählen ----------------------------------------------------
-  const waehleRezept = useCallback((id: RezeptId) => {
-    setCreating(false);
+  // --- Einen STARTPUNKT wählen ----------------------------------------------
+  /**
+   * Steuerung Stufe 2: ein Startpunkt VERBELEGT — er baut nichts fertig.
+   *
+   * ⚠ Das ist der Unterschied zur früheren Galerie: „Speicher schützen" hat
+   * dort hinter dem Rücken des Kunden einen Flow erzeugt und gespeichert (die
+   * Vorlagen-Mechanik, die der Captain abgelehnt hat). Jetzt füllt es den
+   * Baukasten, der Kunde sieht die Regel und entscheidet — und vor dem
+   * Aktivieren steht die Folgen-Karte. Die MASCHINEN dahinter sind unverändert:
+   * eine Verbraucher-Absicht kann der Wenn/Dann-Baukasten nicht ausdrücken,
+   * also öffnet sie den Verbraucher-Fragenbaum vorbefüllt.
+   */
+  const waehleStartpunkt = useCallback((id: RezeptId) => {
     const def = rezept(id);
     if (!def) return;
     if (istVerbraucherRezept(id)) {
+      setCreating(false);
       const c = templateConsumer(id, consumers);
       if (!c) {
         // Kein passendes Gerät: erst die Komponente, dann die Regel — nie eine
@@ -331,14 +337,42 @@ export function RegelnKapsel({
     if (id === 'storage-protect') {
       const rule = speicherSchutzRegel(entities);
       if (!rule) {
-        onError('Für dieses Rezept braucht Ihre Anlage einen Speicher und ein steuerbares Gerät.');
+        onError('Dafür braucht Ihre Anlage einen Speicher und ein steuerbares Gerät.');
         return;
       }
-      onBuiltFlow(def.titel, buildGuidedFlow(rule, def.titel, site.id));
+      setKomponentenRegel({ rule, name: def.titel });
+      setCreating(true);
     }
-  }, [consumers, entities, onBuiltFlow, onError, site.id]);
+  }, [consumers, entities, onError]);
 
   // --- Schnellschalter ------------------------------------------------------
+  /**
+   * Die FOLGEN-KARTE vor jeder Aktivierung (Konzept `vp-steuerung-konzept-b3`
+   * §3.5, Leitprinzip Regel 2). Sie steht IMMER vor dem Einschalten — auch
+   * dann, wenn wenig zu sagen ist.
+   *
+   * ⚠ Das AUSschalten fragt bewusst NICHT: es nimmt eine Erlaubnis zurück, es
+   * gibt keine her — dieselbe Regel wie beim Abschalten der Wellen-Automatik.
+   */
+  const [folgen, setFolgen] = useState<{ karte: RegelKarte; view: FolgenKarte } | null>(null);
+
+  const fragen = useCallback((karte: RegelKarte, an: boolean) => {
+    if (!an) return false;
+    const flow = karte.art === 'rezept' ? null : flows.find((f) => f.flowId === karte.id);
+    setFolgen({
+      karte,
+      view: regelFolgen({
+        name: karte.name,
+        satz: karte.satz,
+        art: vorrangArt(flow?.latestDocument ?? null, entities),
+        // Der Fahrplan-Block sagt seinen Grund; ohne geladenen Plan bleibt es
+        // beim allgemeinen „noch nicht berechenbar" (nie eine erfundene Zahl).
+        hatFahrplan: true,
+      }),
+    });
+    return true;
+  }, [entities, flows]);
+
   const toggle = useCallback(async (karte: RegelKarte, an: boolean) => {
     onBusy(true);
     onError('');
@@ -452,18 +486,10 @@ export function RegelnKapsel({
       </PartHead>
 
       <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-        {banner && (
-          <SofortBanner
-            text={banner.text}
-            hinweis={banner.hinweis}
-            busy={busy}
-            onBeenden={() => {
-              const laufend = overrides[0];
-              const c = consumers.find((x) => x.id === laufend?.entityId);
-              if (c) setSofort({ consumer: c, action: 'resume' });
-            }}
-          />
-        )}
+        {/* Steuerung Stufe 1: der Banner eines laufenden Handeingriffs wohnt
+            jetzt EINMAL — in Zone ① „Jetzt", wo der Eingriff auch gemacht
+            wird (Konzept b3 §3.2). Hier bleibt, was die REGEL angeht: ihre
+            Karte sagt „wartet — Sofortaktion hat Vorrang". */}
 
         {eingreifen && steuerbare.length > 0 && (
           <div className="vp-neuregel-bridge" role="group" aria-label="Sofortaktion">
@@ -491,16 +517,29 @@ export function RegelnKapsel({
         )}
 
         {karten.length === 0 ? (
-          // Leerer Zustand: die Galerie steht INLINE statt einer leeren Liste
-          // mit einem Knopf.
-          <RezeptGalerieView
-            galerie={galerie}
-            busy={busy}
-            showHidden={showHidden}
-            onToggleHidden={() => setShowHidden((v) => !v)}
-            onWaehlen={waehleRezept}
-            onKomponenteAnlegen={() => setWizard(true)}
-          />
+          // Leerer Zustand (Steuerung Stufe 2): EIN Satz mit dem Weg statt der
+          // Galerie — auf einer Anlage ohne schaltbares Gerät sah der Kunde
+          // sonst dieselbe Sackgasse dreimal (Befund B7 des Konzepts).
+          <div className="vp-regeln-leer" role="status">
+            {start.brauchtKomponente ? (
+              <>
+                <p>{KOMPONENTE_ANLEGEN}</p>
+                <Button size="sm" disabled={busy} onClick={() => setWizard(true)}>
+                  Komponente anlegen
+                </Button>
+              </>
+            ) : (
+              <>
+                <p>
+                  Noch keine Regel. Im Baukasten sagen Sie in Ihren Worten, was
+                  passieren soll — vor dem Aktivieren zeigt VoltPilot die Folgen.
+                </p>
+                <Button size="sm" disabled={busy} onClick={() => setCreating(true)}>
+                  Regel erstellen
+                </Button>
+              </>
+            )}
+          </div>
         ) : (
           <ul className="vp-regeln">
             {karten.map((k) => (
@@ -509,7 +548,9 @@ export function RegelnKapsel({
                 karte={k}
                 siteId={site.id}
                 busy={busy}
-                onToggle={(karte, an) => void toggle(karte, an)}
+                onToggle={(karte, an) => {
+                  if (!fragen(karte, an)) void toggle(karte, an);
+                }}
                 onOpen={(karte) => setOffen(karte.key)}
               />
             ))}
@@ -540,7 +581,9 @@ export function RegelnKapsel({
           busy={busy}
           loeschFolgen={loeschFolgen(offeneKarte)}
           onClose={() => setOffen(null)}
-          onToggle={(an) => void toggle(offeneKarte, an)}
+          onToggle={(an) => {
+            if (!fragen(offeneKarte, an)) void toggle(offeneKarte, an);
+          }}
           onBearbeiten={() => {
             setOffen(null);
             if (offenerConsumer) {
@@ -597,7 +640,8 @@ export function RegelnKapsel({
         lockedHint={lockedHint}
         initialRule={komponentenRegel?.rule ?? null}
         initialName={komponentenRegel?.name}
-        onRezept={waehleRezept}
+        onRezept={waehleStartpunkt}
+        onSolarUeberschuss={() => waehleStartpunkt('pv-surplus-consumer')}
         onKomponenteAnlegen={() => {
           setCreating(false);
           setWizard(true);
@@ -643,6 +687,23 @@ export function RegelnKapsel({
             setRuleFor(null);
             setRulePrefill(null);
             reloadConsumers();
+          }}
+        />
+      )}
+
+      {folgen && (
+        <ConfirmDialog
+          open
+          title={folgen.view.titel}
+          intro={folgen.view.intro}
+          consequences={folgenZeilen(folgen.view)}
+          confirmLabel={folgen.view.bestaetigen}
+          busy={busy}
+          onCancel={() => setFolgen(null)}
+          onConfirm={() => {
+            const k = folgen.karte;
+            setFolgen(null);
+            void toggle(k, true);
           }}
         />
       )}

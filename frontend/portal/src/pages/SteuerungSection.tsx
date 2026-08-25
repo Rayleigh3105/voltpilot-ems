@@ -34,6 +34,7 @@ import {
 } from '../api';
 import { ErrorState, TextSkeleton } from '../components/States';
 import { InfoTip } from '../components/InfoTip';
+import { JetztZone } from '../components/JetztZone';
 import { LadeparkKapsel } from '../components/LadeparkKapsel';
 import { RegelnKapsel } from '../components/RegelnKapsel';
 import { CoOptimizationStrip, PartHead } from '../components/SteuerungParts';
@@ -62,6 +63,7 @@ import {
   type ReservationInput,
 } from '../steuerungArea';
 import { type ProfileState, type SiteProfiles } from '../profiles';
+import { beanspruchtSpeicher } from '../regeln/zustand';
 import {
   activeModes,
   baseSurface,
@@ -256,6 +258,22 @@ export function SteuerungSection({
     [profiles, modes, earnings],
   );
   const protections = useMemo(() => protectionItems(siteState), [siteState]);
+  /**
+   * Beansprucht eine AKTIVE Regel den Speicher? Die Jetzt-Zone nennt danach
+   * ihre Quelle („Ihre Regel" statt „Fahrplan") — und beantwortet die Frage
+   * NICHT selbst: hier steht der Beleg (aktive Version + Anspruch aus dem
+   * Dokument), dieselbe Ableitung, die die Regel-Karte trägt.
+   */
+  const speicherRegelAktiv = useMemo(
+    () => (flows ?? []).some(
+      (f) => f.activeVersion != null && beanspruchtSpeicher(f.latestDocument ?? null, entities),
+    ),
+    [flows, entities],
+  );
+  const speicherName = useMemo(
+    () => entities.find((e) => e.entityType === 'battery-hybrid')?.label ?? null,
+    [entities],
+  );
   const battery = useMemo(
     () => (assets ?? []).find((a) => a.type === 'battery') ?? null,
     [assets],
@@ -453,6 +471,16 @@ export function SteuerungSection({
 
       {listState === 'idle' && flows && (
         <>
+          {/* --- Zone ① · Jetzt (Konzept b3 §3.2, Stufe 1) ------------------
+              Sie steht ZUERST, weil sie die häufigste Frage beantwortet: der
+              Kunde kommt, weil gerade etwas passiert — oder nicht passiert. */}
+          <JetztZone
+            site={siteState}
+            charging={charging}
+            speicherRegelAktiv={speicherRegelAktiv}
+            speicherName={speicherName}
+          />
+
           {/* --- Kapsel 1 · Anwendungen ------------------------------------ */}
           <section className="vp-capsule" aria-label={PROFILE_CAPSULE_TITLE}>
             <PartHead title={PROFILE_CAPSULE_TITLE} intro={PROFILE_CAPSULE_INTRO} />

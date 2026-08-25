@@ -143,93 +143,76 @@
   color: var(--vp-text-muted, #6C757D);
 }
 
-/* --- Die Rezept-Galerie -------------------------------------------------- */
+/* --- Die STARTPUNKTE + der leere Zustand (Steuerung Stufe 2) --------------
+   Die Rezept-Karten-Galerie ist entfallen; ihre Regeln leben als
+   Vorbelegungen im Baukasten (`vp-startpunkte`). */
 
-.vp-neuregel-frage {
-  margin: 0 0 4px;
-  font-size: 1rem;
-}
-
-.vp-neuregel-intro,
-.vp-neuregel-note {
-  margin: 0 0 12px;
-  font-size: 0.85rem;
-  color: var(--vp-text-muted, #6C757D);
-}
-
-.vp-rezepte {
+.vp-startpunkte {
   list-style: none;
-  margin: 0 0 12px;
+  margin: 0 0 4px;
   padding: 0;
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.vp-rezepte.muted { opacity: 0.85; }
+/* ⚠ Das Flex-Kind ist das <li>, NICHT der Knopf darin - eine Größenregel am
+   Knopf ist wirkungslos, und die Kacheln bekommen ausgefranste rechte Kanten
+   (im Browser gemessen: 432/453/481/495 px in einer 495-px-Reihe). */
+.vp-startpunkte > li {
+  flex: 1 1 220px;
+  min-width: 0;
+}
 
-.vp-rezept {
+.vp-startpunkt {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  flex-direction: column;
+  gap: 2px;
+  /* Ein Startpunkt ist eine EINLADUNG, kein Formularfeld - er darf wachsen,
+     aber nie schmaler werden als seine Zeile lesbar ist. */
+  width: 100%;
   min-width: 0;
   padding: 10px 12px;
+  text-align: left;
   border: 1px solid var(--vp-border, #E9ECEF);
   border-radius: var(--vp-radius-md, 12px);
   background: var(--vp-surface, #fff);
+  cursor: pointer;
 }
 
-.vp-rezept.bald,
-.vp-rezept.aus { background: var(--vp-surface-muted, #F8F9FA); }
+.vp-startpunkt:hover:not(:disabled) { border-color: var(--vp-action, #2C5282); }
+.vp-startpunkt:disabled { opacity: 0.6; cursor: default; }
 
-.vp-rezept-text {
-  flex: 1 1 auto;
-  min-width: 0;
-}
+.vp-startpunkt strong { font-size: 0.88rem; }
 
-.vp-rezept-text strong {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 0.9rem;
-}
-
-.vp-rezept-text p {
-  margin: 3px 0 0;
+.vp-startpunkt span {
   font-size: 0.8rem;
   line-height: 1.4;
   color: var(--vp-text-muted, #6C757D);
   overflow-wrap: anywhere;
 }
 
-.vp-rezept-fuss { font-size: 0.75rem !important; }
+.vp-guided-start { margin-bottom: 4px; }
 
-.vp-rezept-bald {
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: rgba(149, 185, 255, 0.16);
-  color: var(--vp-action, #2C5282);
-  font-size: 0.7rem;
-  font-weight: 700;
-}
-
-.vp-rezept-grund { color: #b45309 !important; }
-
-.vp-neuregel-bridge {
+.vp-neuregel-bridge,
+.vp-regeln-leer {
   margin: 0 0 12px;
   padding: 10px 12px;
   border-radius: var(--vp-radius-md, 12px);
   background: rgba(149, 185, 255, 0.08);
 }
 
-.vp-neuregel-bridge p {
+.vp-neuregel-bridge p,
+.vp-regeln-leer p {
   margin: 0 0 8px;
   font-size: 0.82rem;
+  line-height: 1.5;
   color: var(--vp-text-muted, #6C757D);
 }
 
-.vp-neuregel-hidden { margin-bottom: 12px; }
+.vp-neuregel-editor { margin-top: 4px; }
+
+.vp-neuauto-note { margin: 6px 0 8px; }
 
 /* --- Der Detail-Einschub -------------------------------------------------- */
 
@@ -305,11 +288,14 @@
 /* --- Mobil (<= 720 px) ---------------------------------------------------- */
 
 @media (max-width: 720px) {
-  .vp-regel,
-  .vp-rezept {
+  .vp-regel {
     flex-direction: column;
     align-items: stretch;
   }
+
+  /* Am Telefon steht ein Startpunkt je Zeile - zwei nebeneinander waeren
+     ~160 px breit und ihr Ergebnis-Satz nicht mehr lesbar. */
+  .vp-startpunkte > li { flex-basis: 100%; }
 
   .vp-regel-actions {
     justify-content: space-between;
@@ -398,4 +384,23 @@
 
 .vp-regel-chip.is-link:hover {
   border-color: var(--vp-link, #2c5282);
+}
+
+/* --------------------------------------------------------------------------
+   Solar-Überschuss als Bedingung (Steuerung Stufe 2, Konzept b3 §3.3)
+
+   Der Hinweis nimmt die ganze Zeile: er ERSETZT die Schwellwert-Felder, die
+   diese Bedingung nicht hat, statt neben ihnen zu stehen.
+   -------------------------------------------------------------------------- */
+
+.vp-guided-surplus {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 0;
+  padding: var(--vp-space-2, 8px) var(--vp-space-3, 12px);
+  border-radius: var(--vp-radius-md, 8px);
+  background: var(--vp-surface-muted, #f1f5f9);
+  color: var(--vp-text-muted, #475569);
+  font-size: var(--vp-text-xs, 12px);
+  line-height: 1.45;
 }

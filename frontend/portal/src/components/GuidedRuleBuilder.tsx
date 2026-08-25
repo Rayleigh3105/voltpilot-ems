@@ -21,6 +21,13 @@ import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { VpPicker } from './VpPicker';
+import {
+  UEBERSCHUSS_BLOCKIERT,
+  UEBERSCHUSS_HINWEIS,
+  UEBERSCHUSS_LABEL,
+  UEBERSCHUSS_WEITER,
+  hatUeberschuss,
+} from '../regeln/ueberschuss';
 import { VpTimePicker } from './VpTimePicker';
 import { anlageRoute, hashForRoute } from '../nav';
 import {
@@ -35,8 +42,13 @@ import {
   type ScheduleDays,
 } from '../flows/guidedBuilder';
 import type { EditorEntity, FlowDocument } from '../flows/model';
+import {
+  VORBELEGUNG_FRAGE,
+  type RezeptId,
+  type VorbelegungenView,
+} from '../regeln/rezepte';
 
-type CondKind = 'entity' | 'price' | 'schedule';
+type CondKind = 'entity' | 'price' | 'schedule' | 'surplus';
 
 interface CondForm {
   kind: CondKind;
@@ -131,6 +143,10 @@ function parseNum(raw: string): number | null {
 }
 
 function buildCondition(f: CondForm): GuidedCondition | null {
+  // Der Solar-Überschuss ist im Flow-Dokument nicht ausdrückbar (es gibt dafür
+  // keinen Katalog-Baustein) - hier entsteht deshalb NIE eine Bedingung
+  // daraus. `submit` fängt ihn schon vorher ab; das ist der zweite Riegel.
+  if (f.kind === 'surplus') return null;
   if (f.kind === 'schedule') {
     return { kind: 'schedule', from: f.from, to: f.to, days: f.days };
   }
@@ -148,12 +164,15 @@ export function GuidedRuleBuilder({
   siteId,
   onCancel,
   onBuild,
+  onSolarUeberschuss,
   busy = false,
   lockedKinds = [],
   lockedHint = 'Einrichtung durch VoltPilot',
   allowDiagnosticActions = false,
   initialRule = null,
   initialName,
+  vorbelegungen = null,
+  onVorbelegung,
 }: {
   entities: EditorEntity[];
   /** Stamped onto the emitted document so it validates clean before the save. */
@@ -161,6 +180,11 @@ export function GuidedRuleBuilder({
   onCancel: () => void;
   /** Emit the rule as a document + its name (ready to create + save). */
   onBuild: (name: string, doc: FlowDocument) => void;
+  /**
+   * Der Weg zur Solar-Überschuss-Regel. Fehlt er, wird die Bedingung gar nicht
+   * angeboten - ein Eintrag ohne Ziel wäre eine Sackgasse.
+   */
+  onSolarUeberschuss?: () => void;
   busy?: boolean;
   /**
    * Condition kinds whose catalog node is GATED and not yet enabled for this
@@ -185,6 +209,14 @@ export function GuidedRuleBuilder({
   initialRule?: GuidedRule | null;
   /** Der bestehende Name der Regel (sonst die Vorgabe). */
   initialName?: string;
+  /**
+   * Die STARTPUNKTE (Steuerung Stufe 2, Konzept §3.3 „ohne Rezept-Galerie"):
+   * die früheren Rezepte als Vorbelegungen ÜBER dem Formular. Absent = keine
+   * Reihe — die Fläche entscheidet, ob es welche gibt, nie der Baukasten.
+   */
+  vorbelegungen?: VorbelegungenView | null;
+  /** Ein Startpunkt wurde gewählt — die Fläche füllt vor bzw. öffnet die Maschine. */
+  onVorbelegung?: (id: RezeptId) => void;
 }) {
   const readable = readableEntities(entities);
   const targets = actionTargets(entities);
@@ -211,6 +243,12 @@ export function GuidedRuleBuilder({
     setConds((cs) => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)));
 
   const submit = () => {
+    // Ein Knopf, der in eine Ablehnung liefe, wird nicht angeboten: die
+    // Überschuss-Bedingung geht ihren eigenen Weg (Stufe 2).
+    if (hatUeberschuss(conds.map((c) => c.kind))) {
+      setError(UEBERSCHUSS_BLOCKIERT);
+      return;
+    }
     setError('');
     const conditions: GuidedCondition[] = [];
     for (const f of conds) {
@@ -278,6 +316,33 @@ export function GuidedRuleBuilder({
 
   return (
     <div className="vp-guided">
+      {vorbelegungen && onVorbelegung
+        && (vorbelegungen.liste.length > 0 || vorbelegungen.hinweis) && (
+        <div className="vp-guided-start">
+          <h4 className="vp-guided-head">{VORBELEGUNG_FRAGE}</h4>
+          {vorbelegungen.liste.length > 0 && (
+            <ul className="vp-startpunkte">
+              {vorbelegungen.liste.map((v) => (
+                <li key={v.id}>
+                  <button
+                    type="button"
+                    className="vp-startpunkt"
+                    disabled={busy}
+                    onClick={() => onVorbelegung(v.id)}
+                  >
+                    <strong>{v.titel}</strong>
+                    <span>{v.ergebnis}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {vorbelegungen.hinweis && (
+            <p className="vp-note vp-guided-note">{vorbelegungen.hinweis}</p>
+          )}
+        </div>
+      )}
+
       <div className="vp-guided-field">
         <label htmlFor="guided-name">Name der Regel</label>
         <input
@@ -326,10 +391,21 @@ export function GuidedRuleBuilder({
                     : null,
                 },
                 { value: 'schedule', label: 'Zeitfenster' },
+                // Steuerung Stufe 2: der Überschuss steht dort, wo der Kunde
+                // hinschaut - ausgeführt wird er von der Maschine, die ihn
+                // kann (siehe `regeln/ueberschuss.ts`). Ohne Weg dorthin wird
+                // er gar nicht erst angeboten.
+                ...(onSolarUeberschuss ? [{ value: 'surplus', label: UEBERSCHUSS_LABEL }] : []),
               ]}
               value={f.kind}
               onChange={(v) => setCond(i, { kind: v as CondKind })}
             />
+
+            {f.kind === 'surplus' && (
+              <p className="vp-guided-surplus" role="status">
+                {UEBERSCHUSS_HINWEIS}
+              </p>
+            )}
 
             {f.kind === 'entity' && (
               <>
@@ -511,7 +587,13 @@ export function GuidedRuleBuilder({
       </p>
 
       <div className="vp-guided-foot">
-        <Button size="sm" onClick={submit} disabled={busy}>Weiter zur Prüfung</Button>
+        {onSolarUeberschuss && hatUeberschuss(conds.map((c) => c.kind)) ? (
+          <Button size="sm" onClick={onSolarUeberschuss} disabled={busy}>
+            {UEBERSCHUSS_WEITER}
+          </Button>
+        ) : (
+          <Button size="sm" onClick={submit} disabled={busy}>Weiter zur Prüfung</Button>
+        )}
         <Button variant="outline" size="sm" onClick={onCancel} disabled={busy}>Abbrechen</Button>
       </div>
     </div>

@@ -42,7 +42,7 @@ import type { EditorEntity, FlowDocument } from '../flows/model';
 import { deriveClaims } from '../flows/model';
 import type { RuleEvents } from '../api';
 import { aktivitaetZeile, karteSchluessel } from './verlauf';
-import { flowSatz, SPEICHER_VORRANG_HINWEIS } from './satz';
+import { flowSatz, VORRANG_ZEILE } from './satz';
 
 /** Der Wohnort des Verlaufs — Stufe 5b, hier ehrlich leer. */
 export const VERLAUF_NOCH_NICHT =
@@ -349,8 +349,13 @@ export function rezeptChips(input: RezeptRegelInput): RegelChip[] {
 // Karten
 // ---------------------------------------------------------------------------
 
-/** Ob eine Regel den SPEICHER beansprucht (dann trägt sie den Vorrang-Hinweis). */
-function claimsStorage(doc: FlowDocument | null, entities: EditorEntity[]): boolean {
+/**
+ * Ob eine Regel den SPEICHER beansprucht (dann trägt sie den Vorrang-Hinweis).
+ * Exportiert, seit die Jetzt-Zone (Steuerung Stufe 1) dieselbe Frage stellt:
+ * „nennt diese Zeile den Fahrplan oder Ihre Regel als Quelle?" — sie darf sie
+ * nicht ein zweites Mal beantworten.
+ */
+export function beanspruchtSpeicher(doc: FlowDocument | null, entities: EditorEntity[]): boolean {
   if (!doc) return false;
   return deriveClaims(doc).some((claim) => {
     const e = entities.find((x) => x.id === claim.entityId);
@@ -381,7 +386,14 @@ export function flowKarte(input: FlowRegelInput, entities: EditorEntity[]): Rege
     ersatz,
     zustand,
     chips,
-    hinweis: claimsStorage(input.latestDocument, entities) ? SPEICHER_VORRANG_HINWEIS : null,
+    // Der Vorrang-Einzeiler (§3.6 Variante 3) steht an JEDER Regel, die
+    // wirklich etwas beansprucht - nach der beanspruchten Sache getrennt, weil
+    // „Ihre Regel geht vor" auf dem Speicher heute nicht gilt (siehe
+    // `VORRANG_ZEILE`). Eine Regel ohne Anspruch (nur Benachrichtigung) sagt
+    // dazu nichts: sie kann den Fahrplan gar nicht bremsen.
+    hinweis: chips.length === 0
+      ? null
+      : VORRANG_ZEILE[beanspruchtSpeicher(input.latestDocument, entities) ? 'speicher' : 'geraet'],
     aktivitaet: null,
     an: active,
     version: active ? input.activeVersion : input.latestVersion,
@@ -400,7 +412,8 @@ export function rezeptKarte(input: RezeptRegelInput, now: Date = new Date()): Re
     ersatz: `Regel für ${c.name}`,
     zustand: rezeptZustand(input, now),
     chips: rezeptChips(input),
-    hinweis: null,
+    // Eine Verbraucher-Regel schaltet immer ihr Gerät - der Einzeiler gilt.
+    hinweis: VORRANG_ZEILE.geraet,
     aktivitaet: null,
     an: c.controlActivation === 'active',
     version: null,

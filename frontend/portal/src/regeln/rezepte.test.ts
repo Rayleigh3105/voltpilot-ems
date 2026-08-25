@@ -6,17 +6,16 @@ import { buildGuidedFlow, parseGuidedFlow } from '../flows/guidedBuilder';
 import type { EditorEntity } from '../flows/model';
 import { validateFlow } from '../flows/validate';
 import {
-  GALERIE_FRAGE,
+  VORBELEGUNG_FRAGE,
   istVerbraucherRezept,
   REZEPTE,
   REZEPT_PREFILL,
   rezept,
-  rezeptGalerie,
-  rezeptGrund,
   rezeptPrefill,
   schaltbareKomponenten,
   speicherEntity,
   speicherSchutzRegel,
+  vorbelegungen,
 } from './rezepte';
 
 const WALLBOX: EditorEntity = {
@@ -55,7 +54,7 @@ function baseDraft(): ConsumerDraft {
   };
 }
 
-describe('Die Rezept-Galerie (5b.4)', () => {
+describe('Die Rezepte (5b.4) - seit Stufe 2 die Vorbelegungen', () => {
   it('führt die vier Verbraucher-Absichten plus Speicher-Schutz und Benachrichtigung', () => {
     expect(REZEPTE.map((r) => r.id)).toEqual([
       'pv-surplus-consumer',
@@ -114,55 +113,53 @@ describe('Die Rezept-Galerie (5b.4)', () => {
   });
 });
 
-describe('Die Galerie blendet aus statt auszugrauen', () => {
-  it('zeigt auf einer vollständigen Anlage alle nutzbaren Rezepte', () => {
-    const g = rezeptGalerie({ entities: [WALLBOX, SPEICHER, ZAEHLER] });
-    expect(g.passend.map((r) => r.id)).toEqual([
+describe('Die VORBELEGUNGEN sind Einladungen — nie ein toter Knopf (Stufe 2)', () => {
+  it('bietet auf einer vollständigen Anlage jeden nutzbaren Startpunkt an', () => {
+    const v = vorbelegungen({ entities: [WALLBOX, SPEICHER, ZAEHLER] });
+    expect(v.liste.map((r) => r.id)).toEqual([
       'pv-surplus-consumer', 'schedule-consumer', 'price-consumer',
       'deadline-consumer', 'storage-protect',
     ]);
-    expect(g.ausgeblendet).toHaveLength(0);
-    expect(g.aufklappZeile).toBeNull();
-    expect(g.brauchtKomponente).toBe(false);
+    expect(v.brauchtKomponente).toBe(false);
+    // „Sag mir Bescheid" fehlt, wird aber GEZÄHLT — verschwiegen wird nichts.
+    expect(v.hinweis).toBe('1 weiterer Startpunkt passt nicht zu Ihrer Anlage.');
   });
 
-  it('blendet das Speicher-Rezept ohne Speicher aus UND nennt den Grund', () => {
-    const g = rezeptGalerie({ entities: [WALLBOX] });
-    expect(g.passend.map((r) => r.id)).not.toContain('storage-protect');
-    expect(g.ausgeblendet.map((r) => r.id)).toEqual(['storage-protect']);
-    expect(g.ausgeblendet[0].grund).toContain('Speicher');
-    expect(g.aufklappZeile).toBe('1 weiteres Rezept passt nicht zu Ihrer Anlage');
+  it('lässt einen Startpunkt weg, den diese Anlage nicht bauen kann', () => {
+    const v = vorbelegungen({ entities: [WALLBOX] });
+    expect(v.liste.map((r) => r.id)).not.toContain('storage-protect');
+    expect(v.hinweis).toBe('2 weitere Startpunkte passen nicht zu Ihrer Anlage.');
   });
 
-  it('ohne schaltbares Gerät bietet sie den Weg an, statt eine Sackgasse zu zeigen', () => {
-    const g = rezeptGalerie({ entities: [SPEICHER, ZAEHLER] });
-    expect(g.passend).toHaveLength(0);
-    expect(g.brauchtKomponente).toBe(true);
-    expect(g.aufklappZeile).toContain('5');
-    for (const k of g.ausgeblendet) expect(k.grund).toContain('steuerbares Gerät');
+  it('nennt den GRUND, wenn alle Übersprungenen denselben haben', () => {
+    // Ohne schaltbares Gerät scheitert JEDES nutzbare Rezept am selben Fehlen.
+    const v = vorbelegungen({ entities: [SPEICHER, ZAEHLER] });
+    expect(v.liste).toHaveLength(0);
+    expect(v.brauchtKomponente).toBe(true);
+    expect(v.hinweis).toContain('6 weitere Startpunkte');
   });
 
-  it('„Sag mir Bescheid" wird GEZEIGT — ehrlich vertagt, mit dem echten Grund', () => {
-    const g = rezeptGalerie({ entities: [WALLBOX, SPEICHER] });
-    expect(g.bald.map((r) => r.id)).toEqual(['notify']);
-    const karte = g.bald[0];
-    expect(karte.bald).toBe(true);
-    expect(karte.waehlbar).toBe(false);
-    expect(karte.grund).toContain('Zustellweg');
-    // Es steht weder unter den passenden noch unter den ausgeblendeten.
-    expect([...g.passend, ...g.ausgeblendet].map((r) => r.id)).not.toContain('notify');
+  it('behauptet KEINEN gemeinsamen Grund, wenn die Übersprungenen verschiedene haben', () => {
+    // „Sag mir Bescheid" fehlt der Zustellweg, dem Speicher-Rezept der
+    // Speicher — eine Klammer mit EINEM Grund wäre für einen der beiden falsch.
+    const v = vorbelegungen({ entities: [WALLBOX] });
+    expect(v.hinweis).not.toContain('(');
   });
 
-  it('nennt den Grund auch je einzelnem Rezept', () => {
-    const notify = rezept('notify')!;
-    expect(rezeptGrund(notify, { entities: [WALLBOX] })).toContain('Zustellweg');
-    const speicher = rezept('storage-protect')!;
-    expect(rezeptGrund(speicher, { entities: [WALLBOX] })).toContain('Speicher');
-    expect(rezeptGrund(speicher, { entities: [WALLBOX, SPEICHER] })).toBeNull();
+  it('bietet „Speicher schützen" NUR an, wenn die Maschine es auch bauen kann', () => {
+    // ⚠ Im Browser aufgefallen: der Rollen-Vorfilter kennt eine Batterie am
+    // TYP, `speicherSchutzRegel` braucht aber einen gemessenen Ladestand — der
+    // Startpunkt wurde angeboten und tat beim Klick nichts.
+    const ohneSoc: EditorEntity = { ...SPEICHER, measure: [] };
+    const v = vorbelegungen({ entities: [WALLBOX, ohneSoc] });
+    expect(v.liste.map((r) => r.id)).not.toContain('storage-protect');
+    expect(speicherSchutzRegel([WALLBOX, ohneSoc])).toBeNull();
+    // Verschwiegen wird es trotzdem nicht.
+    expect(v.hinweis).toContain('2 weitere Startpunkte');
   });
 
-  it('die Einleitung fragt nach dem ERGEBNIS, nicht nach der Technik', () => {
-    expect(GALERIE_FRAGE).toBe('Was soll Ihre Anlage für Sie erledigen?');
+  it('fragt nach dem ERGEBNIS, nicht nach der Technik', () => {
+    expect(VORBELEGUNG_FRAGE).toBe('Womit anfangen?');
   });
 });
 

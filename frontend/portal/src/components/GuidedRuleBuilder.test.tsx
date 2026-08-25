@@ -178,3 +178,62 @@ describe('GuidedRuleBuilder · audit fixes', () => {
     expect(document.body.textContent).not.toMatch(/\(gesperrt\)/);
   });
 });
+
+describe('GuidedRuleBuilder · „Solar-Überschuss" (Steuerung Stufe 2)', () => {
+  function waehleUeberschuss() {
+    fireEvent.click(screen.getByRole('combobox', { name: 'Art der Bedingung' }));
+    fireEvent.click(screen.getByRole('option', { name: /Solar-Überschuss/ }));
+  }
+
+  it('bietet sie NUR an, wenn es einen Weg dorthin gibt', () => {
+    const { unmount } = render(
+      <GuidedRuleBuilder entities={ENTITIES} onCancel={() => {}} onBuild={vi.fn()} siteId="s1" />,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Art der Bedingung' }));
+    expect(screen.queryByRole('option', { name: /Solar-Überschuss/ })).toBeNull();
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });
+    unmount();
+
+    render(
+      <GuidedRuleBuilder
+        entities={ENTITIES} onCancel={() => {}} onBuild={vi.fn()} siteId="s1"
+        onSolarUeberschuss={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Art der Bedingung' }));
+    expect(screen.getByRole('option', { name: /Solar-Überschuss/ })).toBeInTheDocument();
+  });
+
+  it('nennt den Nutzen und führt auf den Weg, der sie ausführen kann', () => {
+    const weiter = vi.fn();
+    const onBuild = vi.fn();
+    render(
+      <GuidedRuleBuilder
+        entities={ENTITIES} onCancel={() => {}} onBuild={onBuild} siteId="s1"
+        onSolarUeberschuss={weiter}
+      />,
+    );
+    waehleUeberschuss();
+    expect(screen.getByText(/rechnet Ihr Gerät laufend selbst aus/)).toBeInTheDocument();
+
+    // Der Prüf-Knopf ist DURCH den Weg ersetzt - kein Knopf in eine Ablehnung.
+    expect(screen.queryByRole('button', { name: /Weiter zur Prüfung/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Regel für Solar-Überschuss anlegen/ }));
+    expect(weiter).toHaveBeenCalledTimes(1);
+    expect(onBuild).not.toHaveBeenCalled();
+  });
+
+  it('baut daraus NIE ein Dokument', () => {
+    const onBuild = vi.fn();
+    render(
+      <GuidedRuleBuilder
+        entities={ENTITIES} onCancel={() => {}} onBuild={onBuild} siteId="s1"
+        onSolarUeberschuss={vi.fn()}
+      />,
+    );
+    waehleUeberschuss();
+    // Auch eine zweite, gültige Bedingung daneben ändert daran nichts.
+    fireEvent.click(screen.getByRole('button', { name: /Bedingung/ }));
+    expect(onBuild).not.toHaveBeenCalled();
+  });
+});

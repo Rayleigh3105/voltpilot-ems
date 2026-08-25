@@ -263,7 +263,7 @@ afterEach(() => {
 });
 
 describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
-  it('renders exactly two capsules plus the protection line — die zweite heißt „Regeln"', async () => {
+  it('rendert DREI Zonen plus die Schutz-Zeile — Jetzt · Betriebsmodelle · Regeln', async () => {
     setup();
     const { container } = render(<SteuerungSection site={site} />);
 
@@ -274,7 +274,12 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     // Naming Set A: die Kapsel heißt „Regeln", nicht mehr „Automationen".
     expect(screen.getByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Automationen' })).toBeNull();
-    expect(container.querySelectorAll('section.vp-capsule')).toHaveLength(2);
+    // Steuerung Stufe 1: Zone ① „Jetzt" steht ZUERST (Konzept b3 §3.1) - die
+    // Seite hat seither drei Zonen auf EINEM Scroll, keine Reiter.
+    expect(screen.getByRole('heading', { name: 'Jetzt' })).toBeInTheDocument();
+    const zonen = container.querySelectorAll('section.vp-capsule');
+    expect(zonen).toHaveLength(3);
+    expect(zonen[0].getAttribute('aria-label')).toBe('Jetzt');
 
     // The retired four-part surface is gone - no toolbox, no active/offer mix.
     expect(screen.queryByRole('heading', { name: 'Aktive Modi' })).toBeNull();
@@ -384,7 +389,7 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
 // ---------------------------------------------------------------------------
 
 describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
-  it('hat GENAU EINEN „＋ Neue Regel"-Einstieg, dessen Dialog drei Türen bietet', async () => {
+  it('hat GENAU EINEN „＋ Neue Regel"-Einstieg, und dahinter steht der BAUKASTEN', async () => {
     setup();
     render(<SteuerungSection site={site} />);
 
@@ -397,14 +402,18 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
 
     fireEvent.click(plus[0]);
     const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent('Was soll Ihre Anlage für Sie erledigen?');
-    expect(dialog).toHaveTextContent('Eigene Wenn/Dann-Regel');
+    // Stufe 2: KEINE Galerie-Tür mehr - der Baukasten steht sofort da.
+    expect(dialog).toHaveTextContent('WENN');
+    expect(dialog).toHaveTextContent('DANN');
+    expect(dialog).toHaveTextContent('Name der Regel');
+    expect(dialog.textContent ?? '').not.toContain('Was soll Ihre Anlage für Sie erledigen?');
+    // Der Editor bleibt als ZWEITER, ruhiger Weg - eine andere Mechanik.
     expect(dialog).toHaveTextContent('Freier Editor');
     // A-1: der Name der Laufzeit ist keine Kundencopy.
     expect(dialog.textContent ?? '').not.toContain('Node-RED');
   });
 
-  it('die Galerie zeigt die Rezepte, blendet Unpassendes gezählt aus und vertagt EHRLICH', async () => {
+  it('die Rezepte sind STARTPUNKTE im Baukasten - und der vertagte fehlt, gezählt', async () => {
     setup();
     render(<SteuerungSection site={site} />);
     await waitFor(() =>
@@ -412,19 +421,20 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     fireEvent.click(screen.getByRole('button', { name: /Neue Regel/ }));
 
     const dialog = await screen.findByRole('dialog');
-    // Die vier Verbraucher-Absichten sind Rezepte.
+    expect(dialog).toHaveTextContent('Womit anfangen?');
+    // Die vier Verbraucher-Absichten plus der Speicher-Schutz sind Startpunkte.
     expect(dialog).toHaveTextContent('PV-Überschuss nutzen');
     expect(dialog).toHaveTextContent('Feste Zeiten');
     expect(dialog).toHaveTextContent('Günstige Stunden nutzen');
     expect(dialog).toHaveTextContent('Bis zu einer Frist erledigen');
     expect(dialog).toHaveTextContent('Speicher schützen');
-    // Captain-Entscheid: die Benachrichtigung wird GEZEIGT, ehrlich vertagt.
-    expect(dialog).toHaveTextContent('Sag mir Bescheid');
-    expect(dialog).toHaveTextContent('bald verfügbar');
-    expect(dialog).toHaveTextContent(/Zustellweg/);
+    // „Sag mir Bescheid" ist KEINE Einladung mehr (der Zustellweg fehlt) -
+    // aber es wird gezählt, nie verschwiegen.
+    expect(dialog.textContent ?? '').not.toContain('Sag mir Bescheid');
+    expect(dialog).toHaveTextContent(/passt nicht zu Ihrer Anlage/);
   });
 
-  it('ohne schaltbares Gerät ist die Galerie keine Sackgasse', async () => {
+  it('ohne schaltbares Gerät ist der leere Zustand EIN Satz mit dem Weg', async () => {
     const bound = setup();
     bound.entities.mockResolvedValue([
       { id: 'e-batt', entityType: 'battery-hybrid', label: 'Speicher', measure: ['soc_pct'], actuate: ['setpoint_kw'] },
@@ -433,10 +443,11 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Regeln' })).toBeInTheDocument());
 
-    // Der leere Zustand zeigt die Galerie INLINE - keine leere Liste.
-    expect(await screen.findByText('Was soll Ihre Anlage für Sie erledigen?')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Komponente anlegen' })).toBeInTheDocument();
-    expect(screen.getByText(/passen nicht zu Ihrer Anlage/)).toBeInTheDocument();
+    // Stufe 2: der Weg statt der Galerie - der Kunde sieht die Sackgasse
+    // nicht mehr dreimal (Befund B7).
+    expect(await screen.findByRole('button', { name: 'Komponente anlegen' })).toBeInTheDocument();
+    expect(screen.getByText(/Noch kein schaltbares Gerät/)).toBeInTheDocument();
+    expect(screen.queryByText('Was soll Ihre Anlage für Sie erledigen?')).toBeNull();
   });
 
   it('eine Flow-Regel wird eine Karte mit Klartext-Satz — und OHNE erfundenen Zähler', async () => {
@@ -490,7 +501,38 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     cList.mockResolvedValue([{ ...CONSUMER, controlActivation: 'paused' }]);
     render(<SteuerungSection site={site} />);
     fireEvent.click(await screen.findByRole('switch', { name: /Wallbox Garage einschalten/ }));
+    // Steuerung Stufe 2: vor JEDER Aktivierung steht die Folgen-Karte.
+    fireEvent.click(await screen.findByRole('button', { name: 'Regel aktivieren' }));
     await waitFor(() => expect(cResume).toHaveBeenCalledWith('s-1', 'e-wb'));
+  });
+
+  it('die Folgen-Karte steht VOR der Aktivierung — und das Abschalten fragt nicht', async () => {
+    setup();
+    cList.mockResolvedValue([{ ...CONSUMER, controlActivation: 'not_activated' }]);
+    render(<SteuerungSection site={site} />);
+
+    fireEvent.click(await screen.findByRole('switch', { name: /Wallbox Garage einschalten/ }));
+    // Die vier Blöcke stehen da, BEVOR irgendetwas geschaltet wurde.
+    expect(await screen.findByText(/Auswirkung auf den Fahrplan/)).toBeInTheDocument();
+    expect(screen.getByText(/Risiko:/)).toBeInTheDocument();
+    expect(screen.getByText(/Das bleibt gleich:/)).toBeInTheDocument();
+    expect(screen.getByText(/Ende \/ Rücknahme:/)).toBeInTheDocument();
+    expect(cActivatePolicy).not.toHaveBeenCalled();
+
+    // Abbrechen ändert nichts.
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() =>
+      expect(screen.queryByText(/Auswirkung auf den Fahrplan/)).toBeNull());
+    expect(cActivatePolicy).not.toHaveBeenCalled();
+  });
+
+  it('das ABSCHALTEN fragt nicht — es nimmt eine Erlaubnis zurück', async () => {
+    setup();
+    cList.mockResolvedValue([CONSUMER]);
+    render(<SteuerungSection site={site} />);
+    fireEvent.click(await screen.findByRole('switch', { name: /Wallbox Garage pausieren/ }));
+    await waitFor(() => expect(cPause).toHaveBeenCalledWith('s-1', 'e-wb'));
+    expect(screen.queryByText(/Auswirkung auf den Fahrplan/)).toBeNull();
   });
 
   it('eine Ablehnung beim Einschalten bleibt AUS und nennt den Server-Grund', async () => {
@@ -504,6 +546,7 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     render(<SteuerungSection site={site} />);
 
     fireEvent.click(await screen.findByRole('switch', { name: /Wallbox Garage einschalten/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Regel aktivieren' }));
     await waitFor(() => expect(cActivatePolicy).toHaveBeenCalled());
     expect(await screen.findByText(/Anwendung freischalten/)).toBeInTheDocument();
   });
@@ -514,12 +557,17 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     cStatus.mockResolvedValue([
       { entityId: 'e-wb', state: 'waiting', reasonCode: 'guard_min_off', reportedAt: '2026-08-10T12:00:00Z' },
     ]);
-    render(<SteuerungSection site={site} />);
-    expect(await screen.findByText(/Wartet auf passenden Zeitpunkt/)).toBeInTheDocument();
-    expect(screen.getByText(/Mindestpause des Geräts/)).toBeInTheDocument();
+    const { container } = render(<SteuerungSection site={site} />);
+    // Der Zustand steht seit Stufe 1 an ZWEI Orten, und das ist Absicht: die
+    // Jetzt-Zeile beantwortet „was tut das Gerät", die Regel-Karte „was tut
+    // die Regel". Geprüft wird deshalb gezielt die KARTE.
+    await screen.findAllByText(/Wartet auf passenden Zeitpunkt/);
+    const karte = container.querySelector('.vp-regel-zustand');
+    expect(karte?.textContent).toMatch(/Wartet auf passenden Zeitpunkt/);
+    expect(karte?.textContent).toMatch(/Mindestpause des Geräts/);
   });
 
-  it('ein laufender Eingriff steht als Banner über der Liste und lässt sich beenden', async () => {
+  it('ein laufender Eingriff steht EINMAL als Banner — in Zone ① — und lässt sich beenden', async () => {
     setup();
     cList.mockResolvedValue([CONSUMER]);
     cOverrides.mockResolvedValue([{
@@ -528,9 +576,12 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     }]);
     render(<SteuerungSection site={site} />);
 
-    expect(await screen.findByText(/Sofortaktion aktiv/)).toBeInTheDocument();
+    // Stufe 1: der Banner wohnt in der Jetzt-Zone (dort wird eingegriffen) —
+    // und NUR dort; die Regel-Karte sagt daneben, was mit der REGEL ist.
+    expect(await screen.findByText(/Handeingriff läuft:/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sofortaktion aktiv/)).toBeNull();
     expect(screen.getByText(/wartet — Sofortaktion hat Vorrang/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Jetzt beenden' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Automatik fortsetzen' }));
     // Der Haus-Dialog fragt vorher; erst die Bestätigung greift ein.
     fireEvent.click(await screen.findByRole('button', { name: 'Bestätigen' }));
     await waitFor(() => expect(cClearOverride).toHaveBeenCalledWith('s-1', 'e-wb'));
@@ -646,13 +697,33 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     fireEvent.click(screen.getByRole('button', { name: /Neue Regel/ }));
 
     const dialog = await screen.findByRole('dialog');
-    const karte = within(dialog).getByText('Feste Zeiten').closest('li') as HTMLElement;
-    fireEvent.click(within(karte).getByRole('button', { name: 'Wählen' }));
+    // Stufe 2: der Startpunkt ist ein Knopf IM Baukasten, keine Galerie-Karte.
+    fireEvent.click(within(dialog).getByRole('button', { name: /Feste Zeiten/ }));
 
     expect(await screen.findByText(/Regel für Wallbox Garage/)).toBeInTheDocument();
     // Auf diesem Weg entsteht KEIN Flow.
     expect(bound.create).not.toHaveBeenCalled();
   });
+  it('„Speicher schützen" FÜLLT den Baukasten vor, statt eine Regel zu erzeugen', async () => {
+    // ⚠ Der Kern des Captain-Entscheids „nur Builder": die frühere Galerie hat
+    // hier hinter dem Rücken des Kunden einen Flow gebaut UND gespeichert.
+    const bound = setup();
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Neue Regel/ })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Neue Regel/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /Speicher schützen/ }));
+
+    // Der Baukasten steht offen und trägt den vorbelegten Namen …
+    const feld = await within(dialog).findByLabelText('Name der Regel');
+    expect((feld as HTMLInputElement).value).toBe('Speicher schützen');
+    // … und es ist NICHTS gespeichert worden.
+    expect(bound.create).not.toHaveBeenCalled();
+    expect(bound.save).not.toHaveBeenCalled();
+  });
+
 
   it('ein ?verbraucher=-Lesezeichen öffnet den Regelbaukasten und räumt die Adresse auf', async () => {
     setup();

@@ -124,9 +124,12 @@ describe('Der Regel-Satz (5b.3)', () => {
     expect(flowSatz(eins, ENTITIES).ersatz).toBe('Eigene Regel · 1 Baustein');
   });
 
-  it('die IMMER-Zeile nennt die Rangordnung, ohne einen Live-Zustand zu behaupten', () => {
+  it('die IMMER-Zeile nennt, was KEINE Regel aushebelt — ohne einen Live-Zustand', () => {
     expect(IMMER_ZEILE).toContain('Geräteschutz');
-    expect(IMMER_ZEILE).toContain('Fahrplan');
+    expect(IMMER_ZEILE).toContain('Netzvorgaben');
     expect(IMMER_ZEILE).not.toMatch(/gerade|jetzt/i);
+    // Steuerung Stufe 2: der Fahrplan-Vorrang steht NICHT mehr hier — er gilt
+    // nicht für jede Regel gleich (siehe VORRANG_ZEILE).
+    expect(IMMER_ZEILE).not.toContain('Fahrplan');
   });
 });

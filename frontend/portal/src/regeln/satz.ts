@@ -22,17 +22,83 @@ import { parseGuidedFlow, type GuidedAction, type GuidedCondition, type GuidedRu
 /**
  * Die IMMER-Zeile der Regel-Karte (5b.5): was unabhängig von jeder Regel gilt.
  * Sie steht im Detail-Einschub unter WENN/DANN und ist bewusst der EINE Satz,
- * der die Rangordnung nennt, ohne einen Live-Zustand zu behaupten.
+ * der nennt, was keine Regel aushebelt — ohne einen Live-Zustand zu behaupten.
+ *
+ * ⚠ Der Fahrplan-Vorrang steht seit Steuerung Stufe 2 NICHT mehr hier: er gilt
+ * NICHT für jede Regel gleich (siehe {@link VORRANG_ZEILE}), und ein Satz, der
+ * ihn pauschal behauptet, wäre auf einer Geräte-Regel falsch.
  */
 export const IMMER_ZEILE =
-  'Geräteschutz, Netzvorgaben und der Vorrang von Fahrplan und Sofortaktionen bleiben wirksam.';
+  'Geräteschutz, Netzvorgaben und der Vorrang von Sofortaktionen bleiben wirksam.';
 
 /**
- * Der STATISCHE Erklärsatz auf einer Speicher-Regel (5b.1, Zeile „Hinweis"):
- * die Arbitrierungs-Ränge sind dokumentiert, WER gerade gewinnt meldet die Box
- * aber nicht fein genug — ein Live-Zustand wäre erfunden.
+ * Was eine Regel BEANSPRUCHT — und damit, wer bei ihr vorgeht.
+ * `speicher` = sie greift auf den Speicher zu, `geraet` = sie schaltet ein Gerät.
  */
-export const SPEICHER_VORRANG_HINWEIS = 'Der Fahrplan hat auf dem Speicher Vorrang.';
+export type VorrangArt = 'speicher' | 'geraet';
+
+/**
+ * Der Vorrang-Hinweis, **Variante 1** (Konzept `vp-steuerung-konzept-b3` §3.6,
+ * Captain-Entscheid S2): ruhig, konkret, mit dem Beispiel und dem Rückweg — der
+ * Text der FOLGEN-KARTE vor „Aktivieren".
+ *
+ * ⚠ **Er ist nach der beanspruchten Sache getrennt, und das ist keine Kosmetik,
+ * sondern die Echtheits-Regel des Hauses** („ein Satz, der eine Ursache
+ * behauptet, muss an einem Fakt hängen"). Belegt ist heute (§3.7, jede Zeile
+ * mit Codestelle):
+ *
+ *  - **Gerät:** die Regel geht wirklich vor. Für Verbraucher wirft der
+ *    Optimierer auf keiner Anlage einen konkurrierenden Wunsch ein
+ *    (`OPTIMIZER_CONTROLLABLE_LOADS_ENABLED` und `VOLTPILOT_V2_PLAN_SITES` sind
+ *    per Vorgabe aus), und eine generierte Verbraucherregel überholt den Plan
+ *    ohnehin.
+ *  - **Speicher:** heute gewinnt der FAHRPLAN — der Wunsch der Regel wird
+ *    überstimmt und greift erst in Plan-Lücken; eine Regel auf einem Speicher,
+ *    den ein Betriebsmodell fährt, lehnt der Server sogar ab. „Ihre Regel geht
+ *    vor" wäre hier eine Zusage, die die Anlage nicht hält.
+ *
+ * **Der Umschaltpunkt ist benannt:** sobald Stufe 3 (A3–A5 des Konzepts: der
+ * Plan konkurriert nicht mehr um beanspruchte Komponenten) ausgeliefert ist,
+ * bekommt der `speicher`-Zweig den Wortlaut des `geraet`-Zweigs — EINE
+ * Konstante, kein Umbau.
+ */
+export const VORRANG_FOLGEN: Record<VorrangArt, string> = {
+  geraet:
+    'Ihre Regel geht vor. Wenn sie greift, weicht der Fahrplan — Ihr Gerät läuft '
+    + 'dann, weil Sie es so wollten, auch wenn VoltPilot gerade anders geplant '
+    + 'hätte. Sie können die Regel jederzeit ausschalten, dann plant VoltPilot '
+    + 'wieder frei.',
+  speicher:
+    'Auf dem Speicher geht der Fahrplan vor: solange er läuft, führt Ihre Regel '
+    + 'ihn nicht aus, sondern greift erst, wenn kein Fahrplan da ist. Fährt ein '
+    + 'Betriebsmodell diesen Speicher, lehnt VoltPilot die Regel ganz ab und '
+    + 'sagt es Ihnen. Sie können die Regel jederzeit ausschalten.',
+};
+
+/**
+ * Derselbe Hinweis, **Variante 3** (§3.6): der Einzeiler unter dem Schalter der
+ * Regel-Zeile. Kürzeste Form desselben Fakts — nie belehrend, immer mit dem
+ * Rückweg im Satz davor (die Karte trägt ihn).
+ *
+ * ⚠ Er ist eine BEDINGTE Aussage („greift die Regel …"), keine Live-Behauptung.
+ * Ob eine Regel den Fahrplan GERADE ausbremst, meldet heute niemand fein genug
+ * (Konzept §3.7 C1) — dieser Zustand kommt mit Stufe 3, und bis dahin wird er
+ * nicht erfunden.
+ */
+export const VORRANG_ZEILE: Record<VorrangArt, string> = {
+  geraet:
+    'Regel vor Fahrplan: Greift die Regel, plant VoltPilot um sie herum — das '
+    + 'kann Ersparnis kosten. Wir zeigen es Ihnen, wenn es passiert.',
+  speicher:
+    'Fahrplan vor Regel: Solange ein Fahrplan läuft, steuert er den Speicher — '
+    + 'Ihre Regel greift in den Lücken.',
+};
+
+/**
+ * Der statische Erklärsatz auf einer SPEICHER-Regel — jetzt der Variante-3-Satz
+ * (§3.6). Der Name bleibt, damit die Karte nicht umgebaut werden muss.
+ */
+export const SPEICHER_VORRANG_HINWEIS = VORRANG_ZEILE.speicher;
 
 const DAY_WORD: Record<string, string> = {
   alle: 'täglich',

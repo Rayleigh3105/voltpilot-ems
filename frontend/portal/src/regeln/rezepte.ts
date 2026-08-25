@@ -1,23 +1,23 @@
 /**
- * Die REZEPT-GALERIE (Einheitsmodell Stufe 5a, Konzept `vp-komponenten-einheit-h2`
- * Teil 5b.4): die erste der drei Türen hinter „＋ Neue Regel".
+ * Die REZEPTE — seit Steuerung Stufe 2 die VORBELEGUNGEN des Baukastens
+ * (Konzept `vp-steuerung-konzept-b3` §3.3 + Stufenplan Stufe 2,
+ * Captain-Entscheid „nur Builder").
  *
- * Die Drei-Türen-Mechanik bleibt (Rezept → geführter Baukasten → freier
- * Editor); NEU ist nur die erste Tür. Die vier heutigen Verbraucher-Absichten
- * werden Rezepte und erzeugen ihre Regel über die BESTEHENDEN Wege — es
- * entsteht keine zweite Maschine:
+ * ⚠ Die KARTEN-GALERIE als erste Tür ist ERSATZLOS entfallen (`RezeptGalerie.tsx`
+ * gelöscht, `rezeptGalerie`/`GALERIE_*` mit ihr). Was bleibt, ist der Bestand
+ * an Absichten und die Maschine dahinter — sie füllen jetzt den Baukasten vor,
+ * statt hinter dem Rücken des Kunden eine fertige Regel zu erzeugen:
  *
  *  - Rezepte 1–4 füllen den Verbraucher-Regelbaukasten vor
- *    (`consumers/questions.ts` → `consumers/policy.ts`).
+ *    (`consumers/questions.ts` → `consumers/policy.ts`) — der Wenn/Dann-
+ *    Baukasten kann eine Frist-Aufgabe heute nicht ausdrücken, also öffnet die
+ *    Absicht die Maschine, die es kann.
  *  - Rezept 5 („Speicher schützen") ist eine Vorbefüllung des Wenn/Dann-
- *    Baukastens (`flows/guidedBuilder.ts` `buildGuidedFlow`).
- *  - Rezept 6 („Sag mir Bescheid") wird GEZEIGT und ehrlich als „bald
- *    verfügbar" markiert — mit dem echten Grund (der Zustellweg fehlt),
- *    nicht versteckt (Captain-Entscheid 11.08.2026).
- *
- * Unpassende Rezepte werden AUSGEBLENDET, nie ausgegraut — hinter einer
- * gezählten Zeile, und jede eingeblendete Karte nennt, was fehlt. Dafür wird
- * das bestehende `flows/templateFilter.ts`-Muster WIEDERVERWENDET.
+ *    Baukastens (`speicherSchutzRegel`).
+ *  - Rezept 6 („Sag mir Bescheid") wird NICHT angeboten — der Zustellweg fehlt;
+ *    ein Startpunkt ist eine Einladung, und eine, die niemand annehmen kann,
+ *    ist die Sackgasse, gegen die diese Stufe gebaut ist. Gezählt wird er
+ *    trotzdem (`vorbelegungen().hinweis`).
  *
  * PURE + unit-getestet (`rezepte.test.ts`).
  */
@@ -27,7 +27,7 @@ import { CONSUMER_TEMPLATE_PREFILL } from '../consumers/vorlagen';
 import type { GuidedRule } from '../flows/guidedBuilder';
 import type { EditorEntity } from '../flows/model';
 import type { TemplateRole } from '../flows/customerTemplates';
-import { hiddenDisclosure, missingReason, partition, plantRoles } from '../flows/templateFilter';
+import { partition, plantRoles, sharedReason } from '../flows/templateFilter';
 
 export type RezeptId =
   | 'pv-surplus-consumer'
@@ -159,91 +159,91 @@ export function istVerbraucherRezept(id: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Die Galerie
+// Der Kontext einer Anlage
 // ---------------------------------------------------------------------------
-
-export interface RezeptKarte {
-  id: RezeptId;
-  titel: string;
-  ergebnis: string;
-  fussnote: string;
-  /** Anklickbar? Ein „bald"-Rezept und ein unpassendes sind es nicht. */
-  waehlbar: boolean;
-  /** „bald verfügbar" — mit dem echten Grund in `grund`. */
-  bald: boolean;
-  /** Der ehrliche Grund (fehlende Rolle bzw. der Zustellweg), sonst null. */
-  grund: string | null;
-}
-
-export interface RezeptGalerie {
-  /** Was diese Anlage jetzt bauen kann. */
-  passend: RezeptKarte[];
-  /** Gezeigt, aber ehrlich vertagt (der Zustellweg fehlt). */
-  bald: RezeptKarte[];
-  /** Ausgeblendet hinter der gezählten Zeile — jede Karte nennt, was fehlt. */
-  ausgeblendet: RezeptKarte[];
-  /** Die gezählte Aufklapp-Zeile, oder null wenn nichts ausgeblendet ist. */
-  aufklappZeile: string | null;
-  /**
-   * Die Sackgassen-Rettung: keine einzige schaltbare Komponente. Dann bietet
-   * die Galerie „Komponente anlegen" an, statt eine leere Liste zu zeigen.
-   */
-  brauchtKomponente: boolean;
-}
 
 export interface RezeptKontext {
   entities: EditorEntity[];
   topology?: SiteTopology | null;
 }
 
-function karte(def: RezeptDef, grund: string | null): RezeptKarte {
-  return {
-    id: def.id,
-    titel: def.titel,
-    ergebnis: def.ergebnis,
-    fussnote: def.fussnote,
-    waehlbar: def.maschine !== 'bald' && grund == null,
-    bald: def.maschine === 'bald',
-    grund,
-  };
-}
+// ---------------------------------------------------------------------------
+// Die VORBELEGUNGEN des Baukastens (Steuerung Stufe 2)
+// ---------------------------------------------------------------------------
 
 /**
- * Die Galerie für DIESE Anlage. Ein Rezept, dessen Voraussetzung fehlt, wird
- * ausgeblendet (nie ausgegraut) und nennt beim Aufklappen den Grund; „Sag mir
- * Bescheid" steht immer sichtbar mit seinem echten Grund.
+ * Ein Rezept als STARTPUNKT im Baukasten (Konzept `vp-steuerung-konzept-b3`
+ * §3.3 „Der Builder (die EINE Regel-Mechanik) … ohne Rezept-Galerie", Stufenplan
+ * Stufe 2 „Rezept-Galerie entfällt (Rezepte werden Vorbelegungen des Builders)";
+ * Captain-Entscheid „nur Builder").
+ *
+ * ⚠ Es entsteht KEINE zweite Maschine und keine Vorlagen-Mechanik: eine
+ * Vorbelegung FÜLLT den Baukasten (bzw. den Verbraucher-Fragenbaum, der die
+ * Absicht ausführen kann) — sie erzeugt nie hinter dem Rücken des Kunden eine
+ * fertige Regel. Was danach passiert, entscheidet er im Baukasten, und vor dem
+ * Aktivieren steht die Folgen-Karte.
  */
-export function rezeptGalerie(ctx: RezeptKontext): RezeptGalerie {
-  const have = plantRoles({ entities: ctx.entities ?? [], topology: ctx.topology ?? null });
+export interface Vorbelegung {
+  id: RezeptId;
+  titel: string;
+  /** Der Ergebnis-Satz in Kundendeutsch — dieselbe Copy wie in der Galerie. */
+  ergebnis: string;
+}
+
+export interface VorbelegungenView {
+  /** Die anklickbaren Startpunkte — NUR was diese Anlage wirklich bauen kann. */
+  liste: Vorbelegung[];
+  /**
+   * Was NICHT angeboten wird, mit dem echten Grund, sofern alle Übersprungenen
+   * denselben haben — nie verschwiegen, aber auch nie als toter Knopf.
+   */
+  hinweis: string | null;
+  /** Die Sackgassen-Rettung: keine einzige schaltbare Komponente. */
+  brauchtKomponente: boolean;
+}
+
+/** Die Frage über der Startpunkt-Reihe. */
+export const VORBELEGUNG_FRAGE = 'Womit anfangen?';
+
+/**
+ * Die Startpunkte für DIESE Anlage.
+ *
+ * ⚠ Ein Startpunkt ist eine EINLADUNG — deshalb steht hier nur, was wählbar
+ * ist (ein „bald"-Rezept und ein unpassendes sind es nicht). Der Rest wird
+ * GEZÄHLT und, wo alle denselben Grund teilen, beim Namen genannt: das ist der
+ * Unterschied zwischen „ehrlich" und der Galerie, die dem Kunden dieselbe
+ * Sackgasse dreimal zeigte (Befund B7 des Konzepts).
+ */
+export function vorbelegungen(ctx: RezeptKontext): VorbelegungenView {
+  const eingabe = { entities: ctx.entities ?? [], topology: ctx.topology ?? null };
   const nutzbar = REZEPTE.filter((r) => r.maschine !== 'bald');
-  const teil = partition(nutzbar, { entities: ctx.entities ?? [], topology: ctx.topology ?? null });
-  const bald = REZEPTE.filter((r) => r.maschine === 'bald').map(
-    (r) => karte(r, r.baldGrund ?? null),
+  const teil = partition(nutzbar, eingabe);
+  // ⚠ Der Rollen-Vorfilter ist GRÖBER als die Maschine dahinter: `plantRoles`
+  // liest die Rolle aus Typ/Kategorie, `speicherSchutzRegel` braucht wirklich
+  // einen gemessenen Ladestand. Im Browser aufgefallen — der Startpunkt wurde
+  // angeboten und tat beim Klick nichts. Ein Startpunkt ist eine EINLADUNG,
+  // also entscheidet hier dieselbe Funktion, die danach baut.
+  const baubar = teil.fitting.filter(
+    (r) => r.id !== 'storage-protect' || speicherSchutzRegel(eingabe.entities) != null,
   );
+  const nichtBaubar = teil.fitting.length - baubar.length;
+  const bald = REZEPTE.filter((r) => r.maschine === 'bald').length;
+  const uebersprungen = teil.notFitting.length + bald + nichtBaubar;
+  // Der Grund wird NUR genannt, wenn er wirklich für alle Übersprungenen gilt —
+  // ein „bald"-Rezept hat seinen eigenen (der Zustellweg fehlt), also schweigt
+  // die Zeile dann über die Ursache, statt eine falsche zu behaupten.
+  const grund = bald === 0 && nichtBaubar === 0 ? sharedReason(teil) : null;
+  const zahl = uebersprungen === 1
+    ? '1 weiterer Startpunkt passt'
+    : `${uebersprungen} weitere Startpunkte passen`;
   return {
-    passend: teil.fitting.map((r) => karte(r, null)),
-    bald,
-    ausgeblendet: teil.notFitting.map((n) => karte(n.template, n.reason)),
-    aufklappZeile: hiddenDisclosure(teil, {
-      eins: '1 weiteres Rezept passt nicht zu Ihrer Anlage',
-      viele: (n) => `${n} weitere Rezepte passen nicht zu Ihrer Anlage`,
-    }),
-    brauchtKomponente: !have.has('consumer'),
+    liste: baubar.map((r) => ({ id: r.id, titel: r.titel, ergebnis: r.ergebnis })),
+    hinweis: uebersprungen === 0
+      ? null
+      : `${zahl} nicht zu Ihrer Anlage${grund ? ` (${grund})` : ''}.`,
+    brauchtKomponente: !plantRoles(eingabe).has('consumer'),
   };
 }
-
-/** Der ehrliche Grund eines einzelnen Rezepts (null = es passt). */
-export function rezeptGrund(def: RezeptDef, ctx: RezeptKontext): string | null {
-  if (def.maschine === 'bald') return def.baldGrund ?? null;
-  return missingReason(def, { entities: ctx.entities ?? [], topology: ctx.topology ?? null });
-}
-
-/** Die Einleitung über der Galerie (auch der leere Zustand der Kapsel). */
-export const GALERIE_FRAGE = 'Was soll Ihre Anlage für Sie erledigen?';
-
-export const GALERIE_INTRO =
-  'Wählen Sie ein Rezept — die Fragen passen sich an. Danach wird die Regel geprüft '
-  + 'und simuliert, bevor sie läuft.';
 
 export const KOMPONENTE_ANLEGEN =
   'Noch kein schaltbares Gerät? Legen Sie zuerst eine Komponente an — Ihr Regel-Entwurf '

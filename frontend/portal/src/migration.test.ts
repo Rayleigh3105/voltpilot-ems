@@ -20,6 +20,9 @@ import { fleetKind, fleetTonalitaet, siteTonalitaet } from './fleet';
 import { profileStatesFrom } from './profiles';
 import { profileRows } from './steuerungArea';
 import { showTechnicalLayer } from './rollen';
+import { JETZT_LEER, jetztZone } from './steuerungJetzt';
+import { regelFolgen } from './regeln/folgen';
+import { VORRANG_FOLGEN, VORRANG_ZEILE } from './regeln/satz';
 import {
   BAUSTEINE,
   CANONICAL_DESKTOP,
@@ -896,6 +899,49 @@ describe('Portfolio Revision 2 — Abbau-Invarianten', () => {
       'portfolioCockpit.ts',
       'portfolioVorschau.ts',
     ]) {
+      const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
+      expect(code, name).not.toMatch(/localStorage|sessionStorage/);
+    }
+  });
+});
+
+describe('Steuerung Stufen 1+2: eine Anlage OHNE Daten bleibt ehrlich leer', () => {
+  it('die Jetzt-Zone erfindet ohne Steuerbares keine Zeile', () => {
+    const v = jetztZone({ now: new Date('2026-08-25T12:00:00Z') });
+    expect(v.zeilen).toEqual([]);
+    expect(v.banner).toBeNull();
+    // Statt einer Zeile mit „—" steht dort der WEG.
+    expect(v.leer).toBe(JETZT_LEER);
+  });
+
+  it('die Jetzt-Zone behauptet ohne Rücklesen keinen Speicher-Zustand', () => {
+    const v = jetztZone({
+      speicher: {
+        control: null, expectControl: false,
+        plantKind: 'eigenverbrauch', now: new Date('2026-08-25T12:00:00Z'),
+      },
+      now: new Date('2026-08-25T12:00:00Z'),
+    });
+    expect(v.zeilen).toEqual([]);
+  });
+
+  it('die Folgen-Karte trägt ohne Fahrplan-Zahl NIE einen erfundenen Betrag', () => {
+    const k = regelFolgen({ name: 'R', satz: null, art: 'geraet' });
+    const alles = k.bloecke.flatMap((b) => b.zeilen).join(' ');
+    expect(alles).not.toMatch(/\d+[,.]\d+\s*(€|kWh)/);
+    expect(alles).toContain('Nicht abschätzbar');
+  });
+
+  it('der Vorrang-Hinweis behauptet auf dem Speicher nicht, dass die Regel vorgeht', () => {
+    // ⚠ Der Umschaltpunkt ist Stufe 3 (A3-A5 des Konzepts). Solange der
+    // Fahrplan den Speicher-Wunsch überstimmt, wäre „Ihre Regel geht vor"
+    // eine Zusage, die die Anlage nicht hält.
+    expect(VORRANG_FOLGEN.speicher).not.toContain('Ihre Regel geht vor');
+    expect(VORRANG_ZEILE.speicher).toContain('Fahrplan vor Regel');
+  });
+
+  it('die Jetzt-Zone speichert nichts im Browser', () => {
+    for (const name of ['steuerungJetzt.ts', 'components/JetztZone.tsx', 'regeln/folgen.ts']) {
       const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
       expect(code, name).not.toMatch(/localStorage|sessionStorage/);
     }
