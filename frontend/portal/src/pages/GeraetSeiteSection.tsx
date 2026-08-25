@@ -91,6 +91,7 @@ import { geraetView, type GeraetView } from '../adminGeraet';
 import { adminApi } from '../admin/adminApi';
 import { fleetApi } from '../admin/fleetApi';
 import { NO_DATA } from '../nodata';
+import { OcppWallboxPage } from './OcppWallboxPage';
 import '../components/AnlagenModell.css';
 import './GeraetSeite.css';
 
@@ -445,7 +446,16 @@ export function GeraetSeiteSection({
         </Card>
       )}
 
-      {view && view.gefunden && (
+      {view && view.gefunden && gesichtView?.gattung === 'ladepunkt' && chargePointIdOf(geraetId) && (
+        <OcppWallboxPage
+          siteId={site.id}
+          chargePointId={chargePointIdOf(geraetId) as string}
+          fallbackTitle={view.kopf.titel}
+          backHref={hashForRoute(anlageRoute(site.id, 'modell'))}
+        />
+      )}
+
+      {view && view.gefunden && gesichtView?.gattung !== 'ladepunkt' && (
         <>
           <Card padding="lg" radius="lg" className="vp-geraet-kopf">
             <div className="vp-geraet-titleline">

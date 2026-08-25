@@ -845,6 +845,188 @@ export interface Device {
   lanSource?: 'erreicht' | 'schnittstelle' | null;
 }
 
+/** Complete OCPP 1.6 read model. Optional values are facts the station did not report. */
+export interface OcppConnectorState {
+  connectorId: number;
+  status: string;
+  errorCode: string | null;
+  info: string | null;
+  vendorId: string | null;
+  vendorErrorCode: string | null;
+  stationTimestamp: string | null;
+  reportedAt: string;
+}
+
+export interface OcppStation {
+  deviceId: string;
+  chargePointId: string;
+  connected: boolean;
+  connectedAt: string | null;
+  disconnectedAt: string | null;
+  lastSeen: string | null;
+  bootedAt: string | null;
+  chargeBoxSerialNumber: string | null;
+  chargePointModel: string | null;
+  chargePointSerialNumber: string | null;
+  chargePointVendor: string | null;
+  firmwareVersion: string | null;
+  iccid: string | null;
+  imsi: string | null;
+  meterSerialNumber: string | null;
+  meterType: string | null;
+  diagnosticsStatus: string | null;
+  diagnosticsStatusAt: string | null;
+  firmwareStatus: string | null;
+  firmwareStatusAt: string | null;
+  connectors: OcppConnectorState[];
+  supportedFeatureProfiles: string[];
+}
+
+export interface OcppProtocolEvent {
+  eventId: string;
+  occurredAt: string;
+  deviceId: string;
+  chargePointId: string;
+  direction: string;
+  messageType: string;
+  correlationId: string | null;
+  action: string | null;
+  errorCode: string | null;
+  errorDescription: string | null;
+  errorDetails: unknown;
+  payload: unknown;
+}
+
+export interface OcppDataGap {
+  eventId: string;
+  reportedAt: string;
+  deviceId: string;
+  droppedCount: number;
+  totalDropped: number;
+  firstOccurredAt: string | null;
+  lastOccurredAt: string | null;
+  firstEventId: string | null;
+  lastEventId: string | null;
+  reasons: Record<string, number>;
+}
+
+export interface OcppTransaction {
+  deviceId: string;
+  chargePointId: string;
+  transactionId: number;
+  connectorId: number;
+  startedAt: string;
+  stoppedAt: string | null;
+  meterStart: number;
+  meterStop: number | null;
+  stopReason: string | null;
+  startIdTagRef: string | null;
+  stopIdTagRef: string | null;
+  reservationId: number | null;
+  chargingProfileId: number | null;
+  chargingProfilePurpose: string | null;
+  startAuthStatus: string | null;
+  stopAuthStatus: string | null;
+  parentIdTagRef: string | null;
+  transactionData: unknown;
+  transactionDataPurgedAt: string | null;
+}
+
+export interface OcppMeterSample {
+  sampledAt: string;
+  eventId: string;
+  meterValueIndex: number;
+  sampledValueIndex: number;
+  deviceId: string;
+  chargePointId: string;
+  connectorId: number;
+  transactionId: number | null;
+  source: string;
+  pointKey: string;
+  measurand: string | null;
+  context: string | null;
+  format: string | null;
+  phase: string | null;
+  location: string | null;
+  unit: string | null;
+  value: string;
+  numericValue: number | null;
+}
+
+export interface OcppConfigurationKey {
+  key: string;
+  value: string | null;
+  readonly: boolean;
+  secret: boolean;
+  redacted: boolean;
+  standardKey: boolean;
+  meaningKnown: boolean;
+  reportedAt: string;
+}
+
+export interface OcppConfiguration {
+  deviceId: string;
+  chargePointId: string;
+  keys: OcppConfigurationKey[];
+  unknownKeys: string[];
+  supportedFeatureProfiles: string[];
+}
+
+export interface OcppActionPermissions { actions: Record<string, boolean>; }
+
+export interface OcppAction {
+  id: string;
+  deviceId: string;
+  chargePointId: string;
+  action: string;
+  state: string;
+  correlationId: string;
+  idempotencyKey: string;
+  actor: string;
+  connectorId: number | null;
+  transactionId: number | null;
+  request: unknown;
+  response: unknown;
+  responseStatus: string | null;
+  effect: unknown;
+  reason: string | null;
+  preparedAt: string;
+  sentAt: string | null;
+  responseAt: string | null;
+  effectAt: string | null;
+  deadlineAt: string;
+  updatedAt: string;
+}
+
+export interface OcppActionIntent {
+  id: string;
+  action: string;
+  phrase: string;
+  fourEyes: boolean;
+  expiresAt: string;
+}
+
+export interface OcppActionAudit {
+  id: number;
+  actor: string;
+  state: string;
+  reason: string | null;
+  deviceId: string;
+  chargePointId: string;
+  connectorId: number | null;
+  transactionId: number | null;
+  occurredAt: string;
+}
+
+export interface OcppActionInput {
+  action: string;
+  connectorId?: number;
+  transactionId?: number;
+  request: Record<string, unknown>;
+  intentId?: string;
+  confirmationPhrase?: string;
+}
+
 /** Only type + label are editable; the externalRef is the device's identity. */
 export interface UpdateDeviceInput {
   kind?: string;
@@ -2800,6 +2982,56 @@ export const api = {
    */
   siteChargers: (siteId: string) =>
     request<SiteCharging>(`/api/v1/sites/${siteId}/chargers`),
+  /** Complete, tenant-scoped OCPP 1.6 station inventory for the device home. */
+  ocppStations: (siteId: string, signal?: AbortSignal) =>
+    request<OcppStation[]>(`/api/v1/sites/${siteId}/ocpp/stations`, { signal }),
+  ocppEvents: (siteId: string, limit = 200, signal?: AbortSignal) =>
+    request<OcppProtocolEvent[]>(`/api/v1/sites/${siteId}/ocpp/events?limit=${limit}`, { signal }),
+  ocppGaps: (siteId: string, limit = 200, signal?: AbortSignal) =>
+    request<OcppDataGap[]>(`/api/v1/sites/${siteId}/ocpp/gaps?limit=${limit}`, { signal }),
+  ocppTransactions: (siteId: string, limit = 200, signal?: AbortSignal) =>
+    request<OcppTransaction[]>(`/api/v1/sites/${siteId}/ocpp/transactions?limit=${limit}`, { signal }),
+  ocppMeterValues: (siteId: string, limit = 1000, signal?: AbortSignal) =>
+    request<OcppMeterSample[]>(`/api/v1/sites/${siteId}/ocpp/meter-values?limit=${limit}`, { signal }),
+  ocppConfiguration: (siteId: string, chargePointId: string, signal?: AbortSignal) =>
+    request<OcppConfiguration[]>(
+      `/api/v1/sites/${siteId}/ocpp/configuration?chargePointId=${encodeURIComponent(chargePointId)}`,
+      { signal },
+    ),
+  ocppActionPermissions: (siteId: string, signal?: AbortSignal) =>
+    request<OcppActionPermissions>(`/api/v1/sites/${siteId}/ocpp/action-permissions`, { signal }),
+  ocppActions: (siteId: string, chargePointId: string, limit = 100, signal?: AbortSignal) =>
+    request<OcppAction[]>(
+      `/api/v1/sites/${siteId}/ocpp/actions?chargePointId=${encodeURIComponent(chargePointId)}&limit=${limit}`,
+      { signal },
+    ),
+  createOcppActionIntent: (
+    siteId: string,
+    chargePointId: string,
+    body: Pick<OcppActionInput, 'action' | 'connectorId' | 'transactionId' | 'request'>,
+  ) => request<OcppActionIntent>(
+    `/api/v1/sites/${siteId}/ocpp/stations/${encodeURIComponent(chargePointId)}/action-intents`,
+    { method: 'POST', body: JSON.stringify(body) },
+  ),
+  createOcppAction: (
+    siteId: string,
+    chargePointId: string,
+    body: OcppActionInput,
+    idempotencyKey: string,
+  ) => request<OcppAction>(
+    `/api/v1/sites/${siteId}/ocpp/stations/${encodeURIComponent(chargePointId)}/actions`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(body),
+    },
+  ),
+  ocppAction: (siteId: string, actionId: string, signal?: AbortSignal) =>
+    request<OcppAction>(`/api/v1/sites/${siteId}/ocpp/actions/${actionId}`, { signal }),
+  ocppActionAudit: (siteId: string, actionId: string, signal?: AbortSignal) =>
+    request<OcppActionAudit[]>(`/api/v1/sites/${siteId}/ocpp/actions/${actionId}/audit`, { signal }),
+  cancelOcppAction: (siteId: string, actionId: string) =>
+    request<void>(`/api/v1/sites/${siteId}/ocpp/actions/${actionId}`, { method: 'DELETE' }),
   /**
    * Die laufenden HANDEINGRIFFE der Anlage (Steuerung Stufe 4): der Speicher-
    * Eingriff und die „Automatik pausieren"-Sperre. Der EINE Lesepfad, aus dem

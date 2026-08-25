@@ -1,0 +1,217 @@
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { api, ApiError, type OcppAction, type OcppStation } from '../api';
+import { OcppWallboxPage } from './OcppWallboxPage';
+
+const station: OcppStation = {
+  deviceId: 'd', chargePointId: 'CP-1', connected: true,
+  connectedAt: '2026-08-25T08:00:00Z', disconnectedAt: null, lastSeen: '2026-08-25T08:42:00Z',
+  bootedAt: '2026-08-25T07:59:00Z', chargeBoxSerialNumber: 'box-serial',
+  chargePointModel: 'P30', chargePointSerialNumber: 'station-serial', chargePointVendor: 'KEBA',
+  firmwareVersion: '1.9.4', iccid: '893491234567890', imsi: '262011234567890',
+  meterSerialNumber: 'meter-1', meterType: 'MID', diagnosticsStatus: 'Uploaded',
+  diagnosticsStatusAt: '2026-08-25T07:00:00Z', firmwareStatus: 'Installed',
+  firmwareStatusAt: '2026-08-24T07:00:00Z', supportedFeatureProfiles: ['SmartCharging'],
+  connectors: [{ connectorId: 1, status: 'Charging', errorCode: 'NoError', info: null,
+    vendorId: 'KEBA', vendorErrorCode: null, stationTimestamp: '2026-08-25T08:42:00Z', reportedAt: '2026-08-25T08:42:00Z' }],
+};
+
+const created: OcppAction = {
+  id: 'a', deviceId: 'd', chargePointId: 'CP-1', action: 'RemoteStopTransaction', state: 'sent',
+  correlationId: 'ocpp-a', idempotencyKey: 'i', actor: 'demo', connectorId: 1,
+  transactionId: 42, request: { transactionId: 42 }, response: null, responseStatus: null,
+  effect: null, reason: null, preparedAt: '2026-08-25T08:42:00Z', sentAt: '2026-08-25T08:42:00Z',
+  responseAt: null, effectAt: null, deadlineAt: '2026-08-25T08:42:30Z', updatedAt: '2026-08-25T08:42:00Z',
+};
+
+describe('OcppWallboxPage integration', () => {
+  beforeEach(() => {
+    vi.spyOn(api, 'ocppStations').mockResolvedValue([{ ...station, lastSeen: new Date().toISOString() }]);
+    vi.spyOn(api, 'ocppEvents').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppGaps').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppTransactions').mockResolvedValue([{ deviceId: 'd', chargePointId: 'CP-1', transactionId: 42, connectorId: 1, startedAt: new Date(Date.now() - 42 * 60_000).toISOString(), stoppedAt: null, meterStart: 0, meterStop: null, stopReason: null, startIdTagRef: 'private-reference', stopIdTagRef: null, reservationId: null, chargingProfileId: null, chargingProfilePurpose: null, startAuthStatus: 'Accepted', stopAuthStatus: null, parentIdTagRef: null, transactionData: null, transactionDataPurgedAt: null }]);
+    vi.spyOn(api, 'ocppMeterValues').mockResolvedValue([{ sampledAt: new Date().toISOString(), eventId: 'e', meterValueIndex: 0, sampledValueIndex: 0, deviceId: 'd', chargePointId: 'CP-1', connectorId: 1, transactionId: 42, source: 'MeterValues', pointKey: 'power', measurand: 'Power.Active.Import', context: 'Sample.Periodic', format: 'Raw', phase: null, location: 'Outlet', unit: 'W', value: '11000', numericValue: 11000 }]);
+    vi.spyOn(api, 'ocppConfiguration').mockResolvedValue([{ deviceId: 'd', chargePointId: 'CP-1', keys: [{ key: 'AuthorizationKey', value: null, readonly: false, secret: true, redacted: true, standardKey: false, meaningKnown: false, reportedAt: new Date().toISOString() }], unknownKeys: ['VendorMystery'], supportedFeatureProfiles: ['SmartCharging'] }]);
+    vi.spyOn(api, 'ocppActionPermissions').mockResolvedValue({ actions: Object.fromEntries([
+      'RemoteStartTransaction','RemoteStopTransaction','UnlockConnector','ReserveNow','CancelReservation','SetChargingProfile','ClearChargingProfile','GetCompositeSchedule',
+    ].map((action) => [action, true])) });
+    vi.spyOn(api, 'ocppActions').mockResolvedValue([]);
+    vi.spyOn(api, 'createOcppAction').mockResolvedValue(created);
+    vi.spyOn(api, 'ocppActionAudit').mockResolvedValue([]);
+    vi.spyOn(api, 'cancelOcppAction').mockResolvedValue(undefined);
+    vi.spyOn(api, 'ocppAction').mockResolvedValue({ ...created, state: 'cancelled' });
+  });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it('renders the complete IA, live hero, honest unknowns and visible role locks', async () => {
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    expect(await screen.findByRole('heading', { name: 'Auto lädt' })).toBeVisible();
+    for (const label of ['Jetzt', 'Stecker', 'Messwerte', 'Aktionen', 'Konfiguration', 'Ereignisse', 'Ladevorgänge', 'Software & Diagnose']) {
+      expect(screen.getByRole('link', { name: label })).toBeVisible();
+    }
+    expect(screen.getByText('11 kW')).toBeVisible();
+    expect(screen.getByText('••••••••')).toBeVisible();
+    fireEvent.click(screen.getByText(/unknownKey/));
+    expect(screen.getByText(/VendorMystery/)).toBeVisible();
+    const hardReset = screen.getByRole('button', { name: /Hart neu starten/ });
+    expect(hardReset).toBeDisabled();
+    expect(within(hardReset).getByText(/Plattformoperator/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Firmware aktualisieren/ })).toBeDisabled();
+  });
+
+  it('shows inputs and impact before sending, then keeps response and effect separate', async () => {
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    await screen.findByRole('heading', { name: 'Auto lädt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Laden stoppen' }));
+    expect(screen.getByText('Auswirkung')).toBeVisible();
+    expect(screen.getByText('Bestätigung')).toBeVisible();
+    expect(screen.getByLabelText('Transaktion *')).toHaveValue(42);
+    fireEvent.click(screen.getByRole('button', { name: 'Prüfen und senden' }));
+    await waitFor(() => expect(api.createOcppAction).toHaveBeenCalled());
+    expect(screen.getAllByText(/OCPP-Antwort ausstehend/).some((node) => node.textContent?.includes('Gesendet'))).toBe(true);
+    expect(screen.getAllByText(/Wirkung noch nicht prüfbar/).length).toBeGreaterThan(0);
+  });
+
+  it('reuses the idempotency key after an uncertain transport error and hides the raw server text', async () => {
+    vi.mocked(api.createOcppAction)
+      .mockRejectedValueOnce(new ApiError(503, 'java.net.SocketTimeoutException: broker token=abc'))
+      .mockResolvedValueOnce(created);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    await screen.findByRole('heading', { name: 'Auto lädt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Laden stoppen' }));
+    const send = screen.getByRole('button', { name: 'Prüfen und senden' });
+    fireEvent.click(send);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Doppelwirkung/);
+    expect(document.body).not.toHaveTextContent('token=abc');
+    fireEvent.click(send);
+    await waitFor(() => expect(api.createOcppAction).toHaveBeenCalledTimes(2));
+    const firstKey = vi.mocked(api.createOcppAction).mock.calls[0][3];
+    const secondKey = vi.mocked(api.createOcppAction).mock.calls[1][3];
+    expect(secondKey).toBe(firstKey);
+  });
+
+  it('masks assigned identifiers and every URI scheme across all untrusted OCPP DOM surfaces', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([{ ...station, lastSeen: new Date().toISOString(), connectors: [{
+      ...station.connectors[0], info: 'idTag=CONNECTOR-LEAK callback=mqtt://connector.internal/topic',
+    }] }]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([{ sampledAt: new Date().toISOString(), eventId: 'meter-secret', meterValueIndex: 0,
+      sampledValueIndex: 0, deviceId: 'd', chargePointId: 'CP-1', connectorId: 1, transactionId: 42,
+      source: 'MeterValues', pointKey: 'Vendor.Custom.Measure', measurand: 'Vendor.Custom.Measure', context: 'Sample.Periodic',
+      format: 'Raw', phase: null, location: 'Outlet', unit: null,
+      value: 'idTag=METER-LEAK endpoint=modbus://meter.internal/unit', numericValue: null }]);
+    vi.mocked(api.ocppEvents).mockResolvedValue([{ eventId: 'event-secret', occurredAt: new Date().toISOString(), deviceId: 'd',
+      chargePointId: 'CP-1', direction: 'station_to_csms', messageType: 'CallError', correlationId: 'idTag=EVENT-CORRELATION', action: 'DataTransfer',
+      errorCode: 'InternalError', errorDescription: 'idTag=EVENT-LEAK callback=coap://event.internal/diag',
+      errorDetails: { uploadUrl: 'ftp://event-pre.internal/diag' }, payload: { neutral: 'uri=s3://pre.internal/token/abc' } }]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([{ deviceId: 'd', chargePointId: 'CP-1', transactionId: 42, connectorId: 1,
+      startedAt: new Date(Date.now() - 60_000).toISOString(), stoppedAt: null, meterStart: 0, meterStop: null, stopReason: null,
+      startIdTagRef: null, stopIdTagRef: null, reservationId: null, chargingProfileId: null, chargingProfilePurpose: null,
+      startAuthStatus: 'Accepted', stopAuthStatus: null, parentIdTagRef: null,
+      transactionData: { callbackUrl: 'https://transaction-pre.internal/token/abc' }, transactionDataPurgedAt: null }]);
+    vi.mocked(api.ocppActions).mockResolvedValue([{ ...created, state: 'completed',
+      reason: 'idTag=ACTION-LEAK url=ftp://action.internal/file', request: { neutral: 'callback=wss://action-pre.internal/socket' } }]);
+    vi.mocked(api.ocppActionAudit).mockResolvedValue([{ id: 1, actor: 'idTag=AUDIT-ACTOR', state: 'completed',
+      reason: 'endpoint=ssh://audit.internal/private', deviceId: 'd', chargePointId: 'CP-1', connectorId: 1,
+      transactionId: 42, occurredAt: new Date().toISOString() }]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    await screen.findByRole('heading', { name: 'Auto lädt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Unveränderliche Auditspur laden' }));
+    await screen.findByRole('list', { name: 'Unveränderliche Auditspur' });
+    for (const leak of ['CONNECTOR-LEAK', 'connector.internal', 'METER-LEAK', 'meter.internal', 'EVENT-CORRELATION',
+      'EVENT-LEAK', 'event.internal', 'event-pre.internal', 'pre.internal', 'transaction-pre.internal',
+      'ACTION-LEAK', 'action.internal', 'action-pre.internal', 'AUDIT-ACTOR', 'audit.internal']) {
+      expect(document.body).not.toHaveTextContent(leak);
+    }
+  });
+
+  it('uses the house modal mechanics for description, focus trap, busy lock and focus return', async () => {
+    let resolveAction!: (value: OcppAction) => void;
+    vi.mocked(api.createOcppAction).mockReturnValue(new Promise((resolve) => { resolveAction = resolve; }));
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    await screen.findByRole('heading', { name: 'Auto lädt' });
+    const trigger = screen.getByRole('button', { name: 'Laden stoppen' });
+    trigger.focus(); fireEvent.click(trigger);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-describedby', 'ocpp-action-description');
+    const close = screen.getByRole('button', { name: 'Dialog schließen' });
+    const send = screen.getByRole('button', { name: 'Prüfen und senden' });
+    send.focus(); fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(send);
+    fireEvent.click(send);
+    await waitFor(() => expect(close).toBeDisabled());
+    fireEvent.click(close); fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeVisible();
+    await act(async () => { resolveAction(created); });
+    fireEvent.click(await screen.findByRole('button', { name: 'Zum Journal' }));
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('shows data gaps, immutable audit and cancellation of a prepared action', async () => {
+    const prepared = { ...created, state: 'prepared', sentAt: null };
+    vi.mocked(api.ocppActions).mockResolvedValue([prepared]);
+    vi.mocked(api.ocppGaps).mockResolvedValue([{ eventId: 'gap-1', reportedAt: new Date().toISOString(), deviceId: 'd',
+      droppedCount: 3, totalDropped: 7, firstOccurredAt: new Date(Date.now() - 60_000).toISOString(),
+      lastOccurredAt: new Date().toISOString(), firstEventId: 'a', lastEventId: 'b', reasons: { buffer_full: 3 } }]);
+    vi.mocked(api.ocppActionAudit).mockResolvedValue([{ id: 1, actor: 'operator@example.test', state: 'prepared', reason: null,
+      deviceId: 'd', chargePointId: 'CP-1', connectorId: 1, transactionId: 42, occurredAt: new Date().toISOString() }]);
+    vi.mocked(api.ocppAction).mockResolvedValue({ ...prepared, state: 'cancelled' });
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    expect(await screen.findByText(/1 belegte Datenlücke/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Unveränderliche Auditspur laden' }));
+    expect(await screen.findByRole('list', { name: 'Unveränderliche Auditspur' })).toHaveTextContent('Vorbereitet');
+    fireEvent.click(screen.getByRole('button', { name: 'Vor Versand abbrechen' }));
+    await waitFor(() => expect(api.cancelOcppAction).toHaveBeenCalledWith('s', prepared.id));
+    expect(await screen.findByText('Vor Versand abgebrochen')).toBeVisible();
+  });
+
+  it('hands a bound foreign-firmware intent to a second operator and executes it unchanged', async () => {
+    vi.mocked(api.ocppActionPermissions).mockResolvedValue({ actions: { UpdateFirmware: true } });
+    vi.spyOn(api, 'createOcppActionIntent').mockResolvedValue({ id: 'intent-foreign', action: 'UpdateFirmware',
+      phrase: 'UpdateFirmware CP-1 SAFE1234', fourEyes: true, expiresAt: '2099-01-01T00:00:00Z' });
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    await screen.findByRole('heading', { name: 'Auto lädt' });
+    fireEvent.click(screen.getByText('Betrieb').closest('summary')!);
+    fireEvent.click(screen.getByRole('button', { name: /Firmware aktualisieren/ }));
+    fireEvent.change(screen.getByLabelText('Allowlisted Firmware-URL *'), { target: { value: 'https://firmware.example/presigned' } });
+    fireEvent.change(screen.getByLabelText('Abruf ab *'), { target: { value: '2026-08-26T12:00' } });
+    fireEvent.change(screen.getByLabelText('SHA-256 *'), { target: { value: 'a'.repeat(64) } });
+    fireEvent.change(screen.getByLabelText('Signatur *'), { target: { value: 'signed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Starke Bestätigung vorbereiten' }));
+    const handoffCode = await screen.findByLabelText('Gebundener Übergabecode') as HTMLTextAreaElement;
+    expect(screen.getByRole('button', { name: 'Übergabe durch zweiten Operator erforderlich' })).toBeDisabled();
+    const code = handoffCode.value;
+    fireEvent.click(screen.getByRole('button', { name: 'Dialog schließen' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Firmware aktualisieren/ }));
+    fireEvent.click(screen.getByText('Vier-Augen-Übergabe eines anderen Operators übernehmen'));
+    fireEvent.change(screen.getByLabelText('Übergabecode'), { target: { value: code } });
+    fireEvent.click(screen.getByRole('button', { name: 'Übergabe prüfen' }));
+    expect(screen.getByText('Gebundene Übergabe übernommen')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Bestätigungsphrase'), { target: { value: 'UpdateFirmware CP-1 SAFE1234' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Prüfen und senden' }));
+    await waitFor(() => expect(api.createOcppAction).toHaveBeenCalled());
+    expect(vi.mocked(api.createOcppAction).mock.calls.at(-1)?.[2]).toMatchObject({
+      action: 'UpdateFirmware', intentId: 'intent-foreign', confirmationPhrase: 'UpdateFirmware CP-1 SAFE1234',
+      request: { location: 'https://firmware.example/presigned', sha256: 'a'.repeat(64), signature: 'signed' },
+    });
+  });
+
+  it('aborts an in-flight action poll when the station target changes', async () => {
+    vi.useFakeTimers();
+    const sent = { ...created, state: 'sent' };
+    let pollSignal: AbortSignal | undefined;
+    vi.mocked(api.ocppActions).mockResolvedValue([sent]);
+    vi.mocked(api.ocppActions).mockResolvedValueOnce([sent]).mockImplementationOnce((_site, _cp, _limit, signal) => {
+      pollSignal = signal;
+      return new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
+    });
+    const view = render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    expect(pollSignal).toBeDefined();
+    await act(async () => { view.rerender(<OcppWallboxPage siteId="s" chargePointId="CP-2" fallbackTitle="Wallbox" backHref="#back" />); });
+    expect(pollSignal?.aborted).toBe(true);
+  });
+});
