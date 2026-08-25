@@ -89,6 +89,10 @@ cat <<EOF
   Status topic:                  ems/${tenant}/${site}/${device_id}/status
   Schedule topic (subscribe):    ems/${tenant}/${site}/${device_id}/schedule
   Payload contract:              docs/contracts/mqtt-telemetry.schema.json
+  Measurement desired (sub):     ems/${tenant}/${site}/${device_id}/v2/measurement-config
+  Measurement status (pub):      ems/${tenant}/${site}/${device_id}/v2/measurement-config-status
+  Measurement samples (pub):     ems/${tenant}/${site}/${device_id}/v2/measurement-samples
+  Measurement contracts:         docs/contracts/v2/mqtt-measurement-*.schema.json
   Cert bundle:                   ${bundle}/
       device.crt / device.key    client identity (ship device.key SECRETLY)
       device-ca.crt              CA to verify the broker

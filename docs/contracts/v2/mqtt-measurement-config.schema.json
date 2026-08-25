@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/schemas/mqtt-measurement-config/2.0",
+  "title": "VoltPilot additional measurement desired state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "site_id", "device_id", "revision", "catalog_version", "selections"],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "tenant_id": {"$ref": "#/$defs/uuid"},
+    "site_id": {"$ref": "#/$defs/uuid"},
+    "device_id": {"$ref": "#/$defs/uuid"},
+    "revision": {"type": "integer", "minimum": 1},
+    "catalog_version": {"type": "string", "pattern": "^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$"},
+    "selections": {
+      "type": "array",
+      "maxItems": 2301,
+      "items": {"$ref": "#/$defs/selection"}
+    }
+  },
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "point_key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._*\\[\\]@-]{0,239}$"},
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["point_key", "cadence_s"],
+      "properties": {
+        "point_key": {"$ref": "#/$defs/point_key"},
+        "cadence_s": {"type": "integer", "minimum": 1, "maximum": 86400}
+      }
+    }
+  },
+  "x-topics": {
+    "desired": "ems/{tenant_id}/{site_id}/{device_id}/v2/measurement-config",
+    "status": "ems/{tenant_id}/{site_id}/{device_id}/v2/measurement-config-status"
+  },
+  "x-mqtt": {"qos": 1, "retained": true},
+  "x-identity-rule": "The three topic identity segments MUST byte-equal the payload identity fields.",
+  "x-revision-rule": "Revision is monotone per device. Edge applies the complete document atomically and ignores older/equal revisions."
+}

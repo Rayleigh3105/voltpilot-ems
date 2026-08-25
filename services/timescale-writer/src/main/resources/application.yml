@@ -48,6 +48,7 @@ voltpilot:
     telemetry-topic: ${REDPANDA_TELEMETRY_TOPIC:telemetry.raw}
     # v2 entity telemetry (dual-consume next to v1; docs/contracts/v2).
     telemetry-v2-topic: ${REDPANDA_TELEMETRY_V2_TOPIC:telemetry-v2.raw}
+    measurements-topic: ${REDPANDA_MEASUREMENTS_TOPIC:measurements.raw}
 
 management:
   endpoints:

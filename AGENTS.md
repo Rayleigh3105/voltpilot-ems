@@ -5418,6 +5418,48 @@ Push, kein anderer Wunsch, kein anderer Text.
   eine laufende Box das Feld, und ein Speicher-Eingriff erreicht sie nur, wenn ihr
   Verbraucher-Flag an ist.
 
+## Zusätzliche Messwerte: Desired State bis Timescale (Slices 6–8)
+
+- **Drei additive v2-Verträge, keine Änderung am Frozen-Pfad.** Die strikten
+  Schemas liegen in `docs/contracts/v2/mqtt-measurement-*.schema.json`:
+  `measurement-config` und `measurement-config-status` sind retained/QoS1,
+  `measurement-samples` QoS1/nicht-retained. Topic-Tenant/Site/Device müssen
+  bytegleich zum Payload sein. Die existierenden `edge/telemetry`- und übrigen
+  Frozen-Contracts bleiben unberührt; ältere Edges abonnieren das neue Topic
+  nicht und ignorieren es damit sicher.
+- **Der Edge aktiviert immer einen vollständigen Plan atomar.** Der Core prüft
+  Identität + monotone Revision, persistiert die gewünschte Konfiguration per
+  Rename und bridgt sie auf `edge/measurements/config`. Der Layer-1-Planer unter
+  `edge-app/nodered/measurements` tauscht Active-Plan+Due-Map nur bei komplett
+  erfolgreicher Prüfung. Er gruppiert Registerblöcke (max. 120 Wörter), lässt
+  Steueraufgaben immer vor Messpolls laufen und erzwingt D5: Warnung >120,
+  hart 600 Samples/min, 30 Requests/min, 20% Duty.
+- **Rohdaten-Ehrlichkeit ist eine Invariante.** Ohne erfolgreiche physische/
+  Protokoll-Lesung kein Sample; `raw` ist verpflichtend und kommt direkt vom
+  Wire/API/OCPP, `decoded` ist optional. Nie zurückrechnen, Einheit raten oder
+  bei Fehler eine Nullprobe erfinden. Deye-Ableitungen behalten einen exakten
+  Address=Word-Rohvektor; unbekannte Firmware-/Skalenregeln bleiben raw-only.
+  SunSpec Model 160 löst `module[i]` aus live entdeckter Base und `N` auf.
+- **Replay und Lücken sind explizit.** Der Core-Outbox unter
+  `data_dir/measurement-outbox` vergibt monotone Sequenzen, sendet älteste
+  zuerst und löscht erst nach QoS1-Bestätigung. Begrenzte Eviction schützt die
+  gerade gesendete Envelope; der nächste bestätigte Batch trägt genau die bis
+  dahin bekannten `gap`/`dropped_samples`, spätere Drops werden nicht vom
+  älteren ACK gelöscht.
+- **Cloud-Datenpfad:** EMQX → Ingest → eigenes `measurements.raw` →
+  Timescale-Writer. Der Writer setzt RLS-Tenant pro Transaktion, sperrt das
+  Device gegen Purge, respektiert No-Backfill/Auswahl-Cutover und speichert
+  idempotent in `device_measurement_sample`; Retention ist 90 Tage. Die
+  RLS-Hypertables `device_measurement_rollup_5m/_15m` werden per Timescale-Job
+  semantikabhängig gepflegt (Gauge min/max/avg, Counter positive Deltas +
+  Reset, State/Error/Bitfield/Text als On-Change-Ereignisse). Der Katalog fürs
+  Edge und die Metadatenmigration sind generiert; prüfen mit
+  `catalog/measurement-points/tools/package_edge_runtime.py --check`.
+- **mTLS/ACL braucht keine Sonderfreigabe.** Das vorhandene, device-eigene
+  `ems/{tenant}/{site}/{device}/v2/#` Publish+Subscribe-Grant deckt die drei
+  Topics ab; CN/Username bindet es an genau dieses Device. Änderungen an den
+  beiden Wildcard-Zeilen müssen weiter durch `tools/pki/test-acl-grants.sh`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

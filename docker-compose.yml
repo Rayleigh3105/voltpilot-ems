@@ -117,6 +117,10 @@ services:
         --brokers redpanda:29092
         --partitions ${REDPANDA_TELEMETRY_PARTITIONS:-3}
         --replicas 1 || true;
+        rpk topic create ${REDPANDA_MEASUREMENTS_TOPIC:-measurements.raw}
+        --brokers redpanda:29092
+        --partitions ${REDPANDA_TELEMETRY_PARTITIONS:-3}
+        --replicas 1 || true;
         rpk topic list --brokers redpanda:29092
     restart: "no"
 
@@ -421,6 +425,7 @@ services:
       REDPANDA_BOOTSTRAP_SERVERS: ${REDPANDA_BOOTSTRAP_SERVERS:-redpanda:29092}
       REDPANDA_TELEMETRY_TOPIC: ${REDPANDA_TELEMETRY_TOPIC:-telemetry.raw}
       REDPANDA_TELEMETRY_V2_TOPIC: ${REDPANDA_TELEMETRY_V2_TOPIC:-telemetry-v2.raw}
+      REDPANDA_MEASUREMENTS_TOPIC: ${REDPANDA_MEASUREMENTS_TOPIC:-measurements.raw}
       # Zero-touch provisioning resolver: looks a hello's ref up in the device
       # table (trusted backend credentials - a hello carries no tenant) and
       # answers claimed refs with the retained provision/{ref}/config.
@@ -463,6 +468,7 @@ services:
       REDPANDA_BOOTSTRAP_SERVERS: ${REDPANDA_BOOTSTRAP_SERVERS:-redpanda:29092}
       REDPANDA_TELEMETRY_TOPIC: ${REDPANDA_TELEMETRY_TOPIC:-telemetry.raw}
       REDPANDA_TELEMETRY_V2_TOPIC: ${REDPANDA_TELEMETRY_V2_TOPIC:-telemetry-v2.raw}
+      REDPANDA_MEASUREMENTS_TOPIC: ${REDPANDA_MEASUREMENTS_TOPIC:-measurements.raw}
       POSTGRES_JDBC_URL: jdbc:postgresql://timescaledb:5432/${POSTGRES_DB:-voltpilot}
       APP_DB_USER: ${APP_DB_USER:-voltpilot_app}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-voltpilot_app_dev_pw}

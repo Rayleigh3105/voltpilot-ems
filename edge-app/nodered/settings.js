@@ -48,6 +48,12 @@ module.exports = {
     net: require("net"),
     http: require("http"),
     https: require("https"),
+    // Additive v2 measurement runtime. Existing/frozen flow function sources
+    // are untouched; a customer I/O adapter can instantiate the read-only
+    // runtime from global context and inject its already configured transports.
+    vpMeasurementRuntime: require("./measurements/measurement-runtime"),
+    vpMeasurementDriver: require("./measurements/measurement-driver"),
+    vpMeasurementPlanner: require("./measurements/measurement-planner"),
   },
 
   // Durable context store for the Deye control SNAPSHOT (report §8, vp-deye-tou-dir-q5).

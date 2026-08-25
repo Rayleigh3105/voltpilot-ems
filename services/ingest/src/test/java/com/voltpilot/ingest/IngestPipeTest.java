@@ -63,6 +63,9 @@ class IngestPipeTest {
     private static final String V2_TOPIC =
             "ems/" + TENANT + "/" + SITE + "/" + DEVICE + "/v2/telemetry";
     private static final String V2_RAW_TOPIC = "telemetry-v2.raw";
+    private static final String MEASUREMENT_TOPIC =
+            "ems/" + TENANT + "/" + SITE + "/" + DEVICE + "/v2/measurement-samples";
+    private static final String MEASUREMENTS_RAW_TOPIC = "measurements.raw";
 
     @Container
     static final GenericContainer<?> EMQX = new GenericContainer<>(DockerImageName.parse("emqx/emqx:5.8.3"))
@@ -79,6 +82,7 @@ class IngestPipeTest {
                 () -> "tcp://" + EMQX.getHost() + ":" + EMQX.getMappedPort(1883));
         registry.add("spring.kafka.bootstrap-servers", REDPANDA::getBootstrapServers);
         registry.add("voltpilot.redpanda.telemetry-topic", () -> RAW_TOPIC);
+        registry.add("voltpilot.redpanda.measurements-topic", () -> MEASUREMENTS_RAW_TOPIC);
     }
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -153,6 +157,28 @@ class IngestPipeTest {
                     .get("channels").get("soc_pct").asDouble()).isEqualTo(62.5);
             assertThat(entities.get("7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071")
                     .get("channels").get("power_kw").asDouble()).isEqualTo(-49.7);
+        }
+    }
+
+    @Test
+    void additionalMeasurementFixtureFlowsToItsOwnRawTopic() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String payload = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "../../docs/contracts/v2/examples/mqtt-measurement-samples.valid.json"));
+
+        try (KafkaConsumer<String, String> consumer = consumer()) {
+            consumer.subscribe(List.of(MEASUREMENTS_RAW_TOPIC));
+            ConsumerRecord<String, String> record = publishUntilReceived(
+                    MEASUREMENT_TOPIC, payload, consumer, MEASUREMENTS_RAW_TOPIC);
+
+            assertThat(record.key()).isEqualTo(TENANT + ":" + SITE + ":" + DEVICE);
+            JsonNode event = mapper.readTree(record.value());
+            assertThat(event.get("schema_version").asText()).isEqualTo("1.0");
+            assertThat(event.get("catalog_version").asText()).isEqualTo("2026.08.25.1");
+            assertThat(event.get("sequence").asLong()).isEqualTo(42L);
+            assertThat(event.get("source_topic").asText()).isEqualTo(MEASUREMENT_TOPIC);
+            assertThat(event.get("samples").get(0).get("raw").asLong()).isEqualTo(537L);
+            assertThat(event.get("samples").get(0).get("decoded").asDouble()).isEqualTo(53.7);
         }
     }
 

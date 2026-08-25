@@ -37,12 +37,14 @@ voltpilot:
     # Single-level wildcards keep the two eras apart: the v1 filter never
     # matches the 6-segment v2 topic and vice versa (dual-consume).
     telemetry-v2-topic-filter: ${MQTT_TELEMETRY_V2_TOPIC_FILTER:ems/+/+/+/v2/telemetry}
+    measurement-topic-filter: ${MQTT_MEASUREMENT_TOPIC_FILTER:ems/+/+/+/v2/measurement-samples}
     qos: ${MQTT_QOS:1}
     username: ${MQTT_USERNAME:}
     password: ${MQTT_PASSWORD:}
   redpanda:
     telemetry-topic: ${REDPANDA_TELEMETRY_TOPIC:telemetry.raw}
     telemetry-v2-topic: ${REDPANDA_TELEMETRY_V2_TOPIC:telemetry-v2.raw}
+    measurements-topic: ${REDPANDA_MEASUREMENTS_TOPIC:measurements.raw}
   # v2 entity telemetry leg (envelope-only validation -> telemetry-v2.raw).
   # Disable to run a v1-only ingest.
   telemetry-v2:

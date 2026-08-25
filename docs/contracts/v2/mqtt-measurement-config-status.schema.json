@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/schemas/mqtt-measurement-config-status/2.0",
+  "title": "VoltPilot additional measurement apply acknowledgement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "site_id", "device_id", "revision", "applied_at", "accepted", "rejected", "edge_version"],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "tenant_id": {"$ref": "#/$defs/uuid"},
+    "site_id": {"$ref": "#/$defs/uuid"},
+    "device_id": {"$ref": "#/$defs/uuid"},
+    "revision": {"type": "integer", "minimum": 1},
+    "applied_at": {"type": "string", "format": "date-time"},
+    "accepted": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/point_key"}},
+    "rejected": {"type": "array", "items": {"$ref": "#/$defs/rejection"}},
+    "edge_version": {"type": "string", "minLength": 1, "maxLength": 128}
+  },
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "point_key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._*\\[\\]@-]{0,239}$"},
+    "rejection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["point_key", "reason"],
+      "properties": {
+        "point_key": {"$ref": "#/$defs/point_key"},
+        "reason": {"enum": ["unknown_point", "unsupported_catalog", "edge_too_old", "invalid_cadence", "budget_samples", "budget_requests", "budget_duty_cycle", "driver_unavailable", "ocpp_configuration_incompatible"]}
+      }
+    }
+  },
+  "x-topic": "ems/{tenant_id}/{site_id}/{device_id}/v2/measurement-config-status",
+  "x-mqtt": {"qos": 1, "retained": true},
+  "x-identity-rule": "The three topic identity segments MUST byte-equal the payload identity fields."
+}

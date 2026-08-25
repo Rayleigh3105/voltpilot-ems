@@ -1,0 +1,240 @@
+package com.voltpilot.writer;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+
+/** RLS-scoped, idempotent persistence for validated measurements.raw events. */
+@Repository
+public class MeasurementWriteRepository {
+    private final JdbcTemplate jdbc;
+
+    record Meta(boolean enabled, Instant enabledAt, Instant disabledAt, String applyStatus,
+            Instant appliedAt, String aggregationKind, Integer cadence) {}
+
+    record Previous(Double numeric, String text, String quality) {}
+
+    record Value(Double numeric, String text) {
+        static Value prefer(Value decoded, Value raw) {
+            return decoded.numeric != null || decoded.text != null ? decoded : raw;
+        }
+    }
+
+    public MeasurementWriteRepository(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    @Transactional
+    public int insert(MeasurementRawEvent event) {
+        jdbc.queryForObject("SELECT set_config('app.tenant_id', ?, true)", String.class,
+                event.tenant_id().toString());
+        List<Instant> purgeRows = jdbc.query("SELECT data_purged_before FROM device "
+                        + "WHERE id=? FOR SHARE",
+                (rs, row) -> instant(rs.getTimestamp(1)), event.device_id());
+        if (purgeRows.isEmpty()) {
+            return 0;
+        }
+        Instant purgedBefore = purgeRows.get(0);
+
+        int rows = 0;
+        for (JsonNode sample : event.samples()) {
+            String pointKey = sample.path("point_key").asText();
+            Instant observedAt = sampleTime(sample, event.observed_at());
+            Meta meta = metadata(event, pointKey);
+            if (meta == null || observedAt == null || atOrBefore(observedAt, purgedBefore)
+                    || meta.enabledAt() == null
+                    || observedAt.isBefore(meta.enabledAt()) || !withinCutover(meta, observedAt)) {
+                continue;
+            }
+
+            JsonNode rawNode = sample.get("raw");
+            JsonNode decodedNode = sample.get("decoded");
+            if (rawNode == null || !scalar(rawNode)) {
+                continue;
+            }
+            Value raw = value(rawNode);
+            Value decoded = decodedNode != null && scalar(decodedNode)
+                    ? value(decodedNode) : new Value(null, null);
+            int inserted = jdbc.update("INSERT INTO device_measurement_sample "
+                            + "(time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,"
+                            + "raw_text,decoded_numeric,decoded_text,quality,catalog_version,"
+                            + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples,"
+                            + "signed_data,signed_data_format) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                            + "ON CONFLICT DO NOTHING",
+                    Timestamp.from(observedAt), Timestamp.from(event.ingested_at()),
+                    event.tenant_id(), event.site_id(), event.device_id(), pointKey,
+                    raw.numeric(), raw.text(), decoded.numeric(), decoded.text(),
+                    sample.path("quality").asText(), event.catalog_version(), event.sequence(),
+                    meta.aggregationKind(), meta.cadence(), event.gap(), event.dropped_samples(),
+                    text(sample, "signed_data"), text(sample, "signed_data_format"));
+            if (inserted > 0) {
+                appendTransitions(event, pointKey, observedAt, raw, decoded,
+                        sample.path("quality").asText(), meta);
+                markFirstSample(event, pointKey, observedAt);
+                rows++;
+            }
+        }
+        if ((event.gap() || event.dropped_samples() > 0)
+                && !atOrBefore(event.observed_at(), purgedBefore)) {
+            insertGap(event);
+        }
+        return rows;
+    }
+
+    private Meta metadata(MeasurementRawEvent event, String pointKey) {
+        List<Meta> rows = jdbc.query("SELECT s.enabled,s.enabled_at,s.disabled_at,s.apply_status,"
+                        + "s.applied_at,"
+                        + "COALESCE(m.aggregation_kind,CASE s.retention_class "
+                        + "WHEN 'energy_counter' THEN 'counter' WHEN 'state_event' THEN 'event' "
+                        + "WHEN 'identity_configuration' THEN 'text' WHEN 'unclassified' THEN 'none' "
+                        + "ELSE 'gauge' END),COALESCE(m.long_term_cadence_s,s.long_term_cadence_s) "
+                        + "FROM device_measurement_selection s "
+                        + "LEFT JOIN measurement_catalog_point_metadata m "
+                        + "ON m.catalog_version=? AND m.point_key=s.point_key "
+                        + "WHERE s.device_id=? AND s.point_key=?",
+                (rs, n) -> new Meta(rs.getBoolean(1), instant(rs.getTimestamp(2)),
+                        instant(rs.getTimestamp(3)), rs.getString(4), instant(rs.getTimestamp(5)),
+                        rs.getString(6), (Integer) rs.getObject(7)),
+                event.catalog_version(), event.device_id(), pointKey);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private static boolean withinCutover(Meta meta, Instant observedAt) {
+        if (meta.enabled()) {
+            return !"rejected".equals(meta.applyStatus());
+        }
+        Instant cutover = meta.appliedAt() != null ? meta.appliedAt() : meta.disabledAt();
+        return cutover != null && !observedAt.isAfter(cutover.plusSeconds(30));
+    }
+
+    private void appendTransitions(MeasurementRawEvent event, String pointKey, Instant at,
+            Value raw, Value decoded, String quality, Meta meta) {
+        List<Previous> rows = jdbc.query("SELECT COALESCE(decoded_numeric,raw_numeric),"
+                        + "COALESCE(decoded_text,raw_text),quality FROM device_measurement_sample "
+                        + "WHERE device_id=? AND point_key=? AND "
+                        + "(time<? OR (time=? AND edge_sequence<?)) "
+                        + "ORDER BY time DESC,edge_sequence DESC LIMIT 1",
+                (rs, n) -> new Previous((Double) rs.getObject(1), rs.getString(2), rs.getString(3)),
+                event.device_id(), pointKey, Timestamp.from(at), Timestamp.from(at), event.sequence());
+        Previous previous = rows.isEmpty() ? null : rows.get(0);
+        if (previous == null) {
+            return;
+        }
+
+        Value current = Value.prefer(decoded, raw);
+        boolean changed = !Objects.equals(previous.numeric(), current.numeric())
+                || !Objects.equals(previous.text(), current.text());
+        String eventKind = null;
+        if ("counter".equals(meta.aggregationKind()) && previous.numeric() != null
+                && current.numeric() != null && current.numeric() < previous.numeric()) {
+            eventKind = "counter_reset";
+        } else if (changed && "bitfield".equals(meta.aggregationKind())) {
+            eventKind = "bitfield_change";
+        } else if (changed && "text".equals(meta.aggregationKind())) {
+            eventKind = "text_change";
+        } else if (changed && ("state".equals(meta.aggregationKind())
+                || "event".equals(meta.aggregationKind()))) {
+            eventKind = "state_change";
+        }
+        if (!Objects.equals(previous.quality(), quality) && !"good".equals(quality)) {
+            insertEvent(event, pointKey, at, "error_change", previous.numeric(),
+                    current.numeric(), previous.quality(), quality, "{}");
+        }
+        if (eventKind != null) {
+            String details = "bitfield_change".equals(eventKind)
+                    ? bitfieldDetails(previous.numeric(), current.numeric()) : "{}";
+            insertEvent(event, pointKey, at, eventKind, previous.numeric(), current.numeric(),
+                    previous.text(), current.text(), details);
+        }
+    }
+
+    private void insertGap(MeasurementRawEvent event) {
+        insertEvent(event, "_pipeline", event.observed_at(), "data_gap", null, null, null, null,
+                "{\"dropped_samples\":" + event.dropped_samples() + "}");
+    }
+
+    private void insertEvent(MeasurementRawEvent event, String pointKey, Instant at, String kind,
+            Double previousNumeric, Double valueNumeric, String previousText, String valueText,
+            String details) {
+        jdbc.update("INSERT INTO device_measurement_event(occurred_at,tenant_id,site_id,device_id,"
+                        + "point_key,event_kind,previous_numeric,value_numeric,previous_text,value_text,"
+                        + "catalog_version,edge_sequence,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?::jsonb) "
+                        + "ON CONFLICT DO NOTHING",
+                Timestamp.from(at), event.tenant_id(), event.site_id(), event.device_id(), pointKey,
+                kind, previousNumeric, valueNumeric, previousText, valueText, event.catalog_version(),
+                event.sequence(), details);
+    }
+
+    private void markFirstSample(MeasurementRawEvent event, String pointKey, Instant at) {
+        int changed = jdbc.update("UPDATE device_measurement_selection SET apply_status='first_sample',"
+                        + "apply_reason='Erster Wert gespeichert.',applied_at=COALESCE(applied_at,?) "
+                        + "WHERE device_id=? AND point_key=? AND enabled "
+                        + "AND apply_status<>'first_sample'",
+                Timestamp.from(at), event.device_id(), pointKey);
+        if (changed == 0) {
+            return;
+        }
+        jdbc.update("INSERT INTO device_measurement_selection_event(tenant_id,site_id,device_id,"
+                        + "point_key,desired_revision,event_kind,requested_at,requested_enabled,"
+                        + "requested_cadence_s,enabled_at,disabled_at,catalog_version,actor,apply_status,"
+                        + "apply_reason,applied_at,custom_definition,retention_class,raw_retention_days,"
+                        + "long_term_cadence_s,long_term_strategy) SELECT tenant_id,site_id,device_id,"
+                        + "point_key,desired_revision,'first_sample',?,enabled,cadence_s,enabled_at,"
+                        + "disabled_at,catalog_version,'writer','first_sample','Erster Wert gespeichert.',"
+                        + "?,custom_definition,retention_class,raw_retention_days,long_term_cadence_s,"
+                        + "long_term_strategy FROM device_measurement_selection "
+                        + "WHERE device_id=? AND point_key=? ON CONFLICT DO NOTHING",
+                Timestamp.from(at), Timestamp.from(at), event.device_id(), pointKey);
+    }
+
+    private static Value value(JsonNode node) {
+        if (node.isNumber()) {
+            return new Value(node.asDouble(), null);
+        }
+        return new Value(null, node.isTextual() ? node.asText()
+                : Boolean.toString(node.asBoolean()));
+    }
+
+    private static boolean scalar(JsonNode node) {
+        return node.isNumber() && Double.isFinite(node.asDouble())
+                || node.isTextual() || node.isBoolean();
+    }
+
+    private static Instant sampleTime(JsonNode sample, Instant fallback) {
+        try {
+            return sample.has("observed_at")
+                    ? Instant.parse(sample.get("observed_at").asText()) : fallback;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static Instant instant(Timestamp timestamp) {
+        return timestamp == null ? null : timestamp.toInstant();
+    }
+
+    private static boolean atOrBefore(Instant value, Instant watermark) {
+        return watermark != null && !value.isAfter(watermark);
+    }
+
+    private static String bitfieldDetails(Double previous, Double current) {
+        if (previous == null || current == null || previous < 0 || current < 0
+                || previous > Long.MAX_VALUE || current > Long.MAX_VALUE
+                || previous != Math.rint(previous) || current != Math.rint(current)) {
+            return "{}";
+        }
+        long before = previous.longValue();
+        long after = current.longValue();
+        return "{\"set_bits\":" + (after & ~before)
+                + ",\"cleared_bits\":" + (before & ~after) + "}";
+    }
+
+    private static String text(JsonNode node, String field) {
+        return node.has(field) && node.get(field).isTextual() ? node.get(field).asText() : null;
+    }
+}
