@@ -897,6 +897,19 @@ export interface OcppProtocolEvent {
   payload: unknown;
 }
 
+export interface OcppDataGap {
+  eventId: string;
+  reportedAt: string;
+  deviceId: string;
+  droppedCount: number;
+  totalDropped: number;
+  firstOccurredAt: string | null;
+  lastOccurredAt: string | null;
+  firstEventId: string | null;
+  lastEventId: string | null;
+  reasons: Record<string, number>;
+}
+
 export interface OcppTransaction {
   deviceId: string;
   chargePointId: string;
@@ -991,6 +1004,18 @@ export interface OcppActionIntent {
   phrase: string;
   fourEyes: boolean;
   expiresAt: string;
+}
+
+export interface OcppActionAudit {
+  id: number;
+  actor: string;
+  state: string;
+  reason: string | null;
+  deviceId: string;
+  chargePointId: string;
+  connectorId: number | null;
+  transactionId: number | null;
+  occurredAt: string;
 }
 
 export interface OcppActionInput {
@@ -2958,23 +2983,27 @@ export const api = {
   siteChargers: (siteId: string) =>
     request<SiteCharging>(`/api/v1/sites/${siteId}/chargers`),
   /** Complete, tenant-scoped OCPP 1.6 station inventory for the device home. */
-  ocppStations: (siteId: string) =>
-    request<OcppStation[]>(`/api/v1/sites/${siteId}/ocpp/stations`),
-  ocppEvents: (siteId: string, limit = 200) =>
-    request<OcppProtocolEvent[]>(`/api/v1/sites/${siteId}/ocpp/events?limit=${limit}`),
-  ocppTransactions: (siteId: string, limit = 200) =>
-    request<OcppTransaction[]>(`/api/v1/sites/${siteId}/ocpp/transactions?limit=${limit}`),
-  ocppMeterValues: (siteId: string, limit = 1000) =>
-    request<OcppMeterSample[]>(`/api/v1/sites/${siteId}/ocpp/meter-values?limit=${limit}`),
-  ocppConfiguration: (siteId: string, chargePointId: string) =>
+  ocppStations: (siteId: string, signal?: AbortSignal) =>
+    request<OcppStation[]>(`/api/v1/sites/${siteId}/ocpp/stations`, { signal }),
+  ocppEvents: (siteId: string, limit = 200, signal?: AbortSignal) =>
+    request<OcppProtocolEvent[]>(`/api/v1/sites/${siteId}/ocpp/events?limit=${limit}`, { signal }),
+  ocppGaps: (siteId: string, limit = 200, signal?: AbortSignal) =>
+    request<OcppDataGap[]>(`/api/v1/sites/${siteId}/ocpp/gaps?limit=${limit}`, { signal }),
+  ocppTransactions: (siteId: string, limit = 200, signal?: AbortSignal) =>
+    request<OcppTransaction[]>(`/api/v1/sites/${siteId}/ocpp/transactions?limit=${limit}`, { signal }),
+  ocppMeterValues: (siteId: string, limit = 1000, signal?: AbortSignal) =>
+    request<OcppMeterSample[]>(`/api/v1/sites/${siteId}/ocpp/meter-values?limit=${limit}`, { signal }),
+  ocppConfiguration: (siteId: string, chargePointId: string, signal?: AbortSignal) =>
     request<OcppConfiguration[]>(
       `/api/v1/sites/${siteId}/ocpp/configuration?chargePointId=${encodeURIComponent(chargePointId)}`,
+      { signal },
     ),
-  ocppActionPermissions: (siteId: string) =>
-    request<OcppActionPermissions>(`/api/v1/sites/${siteId}/ocpp/action-permissions`),
-  ocppActions: (siteId: string, chargePointId: string, limit = 100) =>
+  ocppActionPermissions: (siteId: string, signal?: AbortSignal) =>
+    request<OcppActionPermissions>(`/api/v1/sites/${siteId}/ocpp/action-permissions`, { signal }),
+  ocppActions: (siteId: string, chargePointId: string, limit = 100, signal?: AbortSignal) =>
     request<OcppAction[]>(
       `/api/v1/sites/${siteId}/ocpp/actions?chargePointId=${encodeURIComponent(chargePointId)}&limit=${limit}`,
+      { signal },
     ),
   createOcppActionIntent: (
     siteId: string,
@@ -2997,8 +3026,12 @@ export const api = {
       body: JSON.stringify(body),
     },
   ),
-  ocppAction: (siteId: string, actionId: string) =>
-    request<OcppAction>(`/api/v1/sites/${siteId}/ocpp/actions/${actionId}`),
+  ocppAction: (siteId: string, actionId: string, signal?: AbortSignal) =>
+    request<OcppAction>(`/api/v1/sites/${siteId}/ocpp/actions/${actionId}`, { signal }),
+  ocppActionAudit: (siteId: string, actionId: string, signal?: AbortSignal) =>
+    request<OcppActionAudit[]>(`/api/v1/sites/${siteId}/ocpp/actions/${actionId}/audit`, { signal }),
+  cancelOcppAction: (siteId: string, actionId: string) =>
+    request<void>(`/api/v1/sites/${siteId}/ocpp/actions/${actionId}`, { method: 'DELETE' }),
   /**
    * Die laufenden HANDEINGRIFFE der Anlage (Steuerung Stufe 4): der Speicher-
    * Eingriff und die „Automatik pausieren"-Sperre. Der EINE Lesepfad, aus dem

@@ -3,8 +3,9 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
   api,
-  ApiError,
   type OcppAction,
+  type OcppActionAudit,
+  type OcppDataGap,
   type OcppActionIntent,
   type OcppActionPermissions,
   type OcppConfiguration,
@@ -13,16 +14,26 @@ import {
   type OcppStation,
   type OcppTransaction,
 } from '../api';
+import { fokussierbare } from '../components/VpPanel';
 import {
   ACTION_GROUP_LABEL,
   OCPP_ACTIONS,
   ROLE_LABEL,
   actionNeedsIntent,
+  actionNeedsPolling,
+  actionFingerprint,
+  actionHandoffCode,
   actionRequest,
   actionState,
   maskReference,
+  parseActionHandoff,
+  redactSensitiveText,
+  safeActionError,
+  safeJson,
+  stationConnection,
   stationTitle,
   wallboxHero,
+  type OcppActionHandoff,
   type OcppActionDefinition,
   type OcppActionGroup,
 } from '../ocppWallbox';
@@ -37,6 +48,7 @@ const NAV = [
 interface OcppData {
   stations: OcppStation[];
   events: OcppProtocolEvent[];
+  gaps: OcppDataGap[];
   transactions: OcppTransaction[];
   meter: OcppMeterSample[];
   configuration: OcppConfiguration[];
@@ -45,7 +57,7 @@ interface OcppData {
 }
 
 const EMPTY_PERMISSIONS: OcppActionPermissions = { actions: {} };
-const EMPTY: OcppData = { stations: [], events: [], transactions: [], meter: [], configuration: [], permissions: EMPTY_PERMISSIONS, actions: [] };
+const EMPTY: OcppData = { stations: [], events: [], gaps: [], transactions: [], meter: [], configuration: [], permissions: EMPTY_PERMISSIONS, actions: [] };
 
 export function OcppWallboxPage({
   siteId, chargePointId, fallbackTitle, backHref,
@@ -57,51 +69,76 @@ export function OcppWallboxPage({
   const [meterSearch, setMeterSearch] = useState('');
   const [configSearch, setConfigSearch] = useState('');
   const [eventFilter, setEventFilter] = useState('alle');
+  const [pollError, setPollError] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     setError(null);
     Promise.allSettled([
-      api.ocppStations(siteId), api.ocppEvents(siteId), api.ocppTransactions(siteId),
-      api.ocppMeterValues(siteId), api.ocppConfiguration(siteId, chargePointId),
-      api.ocppActionPermissions(siteId), api.ocppActions(siteId, chargePointId),
+      api.ocppStations(siteId, controller.signal), api.ocppEvents(siteId, 200, controller.signal),
+      api.ocppGaps(siteId, 200, controller.signal), api.ocppTransactions(siteId, 200, controller.signal),
+      api.ocppMeterValues(siteId, 1000, controller.signal), api.ocppConfiguration(siteId, chargePointId, controller.signal),
+      api.ocppActionPermissions(siteId, controller.signal), api.ocppActions(siteId, chargePointId, 100, controller.signal),
     ]).then((result) => {
       if (!active) return;
       const value = <T,>(index: number, fallback: T): T => result[index].status === 'fulfilled'
         ? (result[index] as PromiseFulfilledResult<T>).value : fallback;
       setData({
-        stations: value(0, []), events: value(1, []), transactions: value(2, []),
-        meter: value(3, []), configuration: value(4, []), permissions: value(5, EMPTY_PERMISSIONS),
-        actions: value(6, []),
+        stations: value(0, []), events: value(1, []), gaps: value(2, []), transactions: value(3, []),
+        meter: value(4, []), configuration: value(5, []), permissions: value(6, EMPTY_PERMISSIONS),
+        actions: value(7, []),
       });
       const failed = result.filter((item) => item.status === 'rejected').length;
       if (failed === result.length) setError('Die OCPP-Gerätedaten konnten nicht geladen werden.');
       else if (failed) setError(`${failed} Teilbereiche sind gerade nicht erreichbar. Die übrigen Daten bleiben sichtbar.`);
     });
-    return () => { active = false; };
+    return () => { active = false; controller.abort(); };
   }, [siteId, chargePointId, reload]);
 
-  // Actions have their own short poll: response and observed effect are two
-  // different results and must move without a page reload.
+  const shouldPoll = data?.actions.some((action) => actionNeedsPolling(action)) ?? false;
+
+  // Response and observed effect are separate. A bounded timeout-afterrun keeps
+  // late evidence visible; cleanup aborts the active request before a target switch.
   useEffect(() => {
-    if (!data?.actions.some((action) => actionState(action.state).pending)) return;
-    const id = window.setInterval(() => {
-      void api.ocppActions(siteId, chargePointId).then((actions) => {
+    if (!shouldPoll) return;
+    let active = true;
+    let controller: AbortController | null = null;
+    let timer = 0;
+    const poll = async () => {
+      controller = new AbortController();
+      try {
+        const actions = await api.ocppActions(siteId, chargePointId, 100, controller.signal);
+        if (!active) return;
+        setPollError(false);
         setData((old) => old ? { ...old, actions } : old);
-      });
-    }, 3_000);
-    return () => window.clearInterval(id);
-  }, [data?.actions, siteId, chargePointId]);
+      } catch (cause) {
+        if (active && !(cause instanceof DOMException && cause.name === 'AbortError')) setPollError(true);
+      } finally {
+        if (active) timer = window.setTimeout(() => { void poll(); }, 3_000);
+      }
+    };
+    timer = window.setTimeout(() => { void poll(); }, 3_000);
+    return () => { active = false; window.clearTimeout(timer); controller?.abort(); };
+  }, [shouldPoll, siteId, chargePointId]);
 
   if (!data) {
     return <Card padding="lg" radius="lg"><p role="status">OCPP-Gerätedaten werden geladen …</p></Card>;
   }
   const station = data.stations.find((item) => item.chargePointId === chargePointId) ?? null;
   const events = data.events.filter((item) => item.chargePointId === chargePointId);
+  const gaps = data.gaps.filter((item) => item.deviceId === station?.deviceId);
   const transactions = data.transactions.filter((item) => item.chargePointId === chargePointId);
   const meter = data.meter.filter((item) => item.chargePointId === chargePointId);
   const configuration = data.configuration.find((item) => item.chargePointId === chargePointId) ?? null;
-  const hero = wallboxHero(transactions, meter, data.actions);
+  const hero = wallboxHero(transactions, meter, data.actions, now);
+  const connection = stationConnection(station, now);
   const title = stationTitle(station, fallbackTitle);
 
   const searchedMeter = meter.filter((row) => contains(row, meterSearch));
@@ -121,7 +158,7 @@ export function OcppWallboxPage({
             {[station?.chargePointSerialNumber, station?.firmwareVersion && `Firmware ${station.firmwareVersion}`].filter(Boolean).join(' · ') || 'Stationsdaten noch nicht gemeldet'}
           </p>
         </div>
-        <StatusPill ok={Boolean(station?.connected)}>{station?.connected ? 'Verbunden' : 'Offline'}</StatusPill>
+        <div className="vp-ocpp-connection"><StatusPill ok={connection.sendable}>{connection.label}</StatusPill><small>{connection.detail}</small></div>
       </header>
 
       {error && (
@@ -129,6 +166,7 @@ export function OcppWallboxPage({
           {error} <button type="button" className="vp-linkbtn" onClick={() => setReload((value) => value + 1)}>Erneut laden</button>
         </div>
       )}
+      {pollError && <div className="vp-alert vp-alert-warn" role="status">Der Aktionsstatus konnte gerade nicht aktualisiert werden. Der letzte belegte Stand bleibt sichtbar; VoltPilot versucht es erneut.</div>}
 
       <nav className="vp-ocpp-nav" aria-label="Bereiche der Ladesäule">
         {NAV.map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>)}
@@ -136,14 +174,14 @@ export function OcppWallboxPage({
 
       <section id="jetzt" className="vp-ocpp-section vp-ocpp-now" aria-labelledby="ocpp-jetzt-title">
         <div className="vp-ocpp-section-title">
-          <div><span>Jetzt</span><h2 id="ocpp-jetzt-title">{hero.transaction ? 'Auto lädt' : station?.connected ? 'Bereit für den nächsten Ladevorgang' : 'Station ist offline'}</h2></div>
+          <div><span>Jetzt</span><h2 id="ocpp-jetzt-title">{hero.transaction ? 'Auto lädt' : connection.sendable ? 'Bereit für den nächsten Ladevorgang' : connection.label}</h2></div>
           {hero.transaction && <StatusPill ok>Aktive Transaktion</StatusPill>}
         </div>
         {hero.transaction ? (
           <div className="vp-ocpp-hero-grid">
-            <div className="vp-ocpp-power"><span>Leistung</span><strong>{hero.power ?? '—'}</strong><small>{hero.power ? 'zuletzt von der Station gemeldet' : 'wird von dieser Station nicht geliefert'}</small></div>
+            <div className="vp-ocpp-power"><span>Leistung</span><strong>{hero.power ?? '—'}</strong><small>{hero.power ? 'aktueller Wert der laufenden Transaktion' : station?.connected && !connection.sendable ? 'kein aktueller Messwert verfügbar' : 'wird von dieser Station nicht geliefert'}</small></div>
             <div className="vp-ocpp-stats">
-              <Metric label="Energie" value={hero.energy} absent="nicht geliefert" />
+              <Metric label="Energie" value={hero.energy} absent={station?.connected && !connection.sendable ? 'kein aktueller Wert' : 'nicht geliefert'} />
               <Metric label="Dauer" value={hero.duration} absent="Startzeit fehlt" />
               {hero.soc && <Metric label="SoC" value={hero.soc} />}
               <Metric label="Transaktion" value={`#${hero.transaction.transactionId}`} />
@@ -159,8 +197,8 @@ export function OcppWallboxPage({
           </div>
         ) : (
           <div className="vp-ocpp-empty">
-            <p>{station?.connected ? 'Derzeit läuft keine OCPP-Transaktion.' : 'Befehle sind nicht sendbar, bis die Station wieder verbunden ist.'}</p>
-            <button type="button" className="vp-btn vp-btn--primary vp-btn--md" onClick={() => setActionOpen(findAction('RemoteStartTransaction'))} disabled={!station?.connected}>Laden starten</button>
+            <p>{connection.sendable ? 'Derzeit läuft keine OCPP-Transaktion.' : `Befehle sind nicht sendbar. ${connection.detail}`}</p>
+            <button type="button" className="vp-btn vp-btn--primary vp-btn--md" onClick={() => setActionOpen(findAction('RemoteStartTransaction'))} disabled={!connection.sendable}>Laden starten</button>
           </div>
         )}
       </section>
@@ -217,7 +255,9 @@ export function OcppWallboxPage({
             </details>
           ))}
         </div>
-        <ActionJournal actions={data.actions} />
+        <ActionJournal siteId={siteId} actions={data.actions} onChanged={(changed) => {
+          setData((old) => old ? { ...old, actions: old.actions.map((row) => row.id === changed.id ? changed : row) } : old);
+        }} />
       </OcppSection>
 
       <OcppSection id="konfiguration" label="Konfiguration" title="Gemeldet, änderbar und unbekannt">
@@ -241,6 +281,7 @@ export function OcppWallboxPage({
       </OcppSection>
 
       <OcppSection id="ereignisse" label="Ereignisse" title="OCPP-Journal mit Rohbeleg">
+        <GapEvidence gaps={gaps} />
         <div className="vp-ocpp-filters" role="group" aria-label="Ereignisse filtern">
           {['alle', 'fehler', 'StatusNotification', 'BootNotification', 'FirmwareStatusNotification', 'DiagnosticsStatusNotification'].map((filter) => (
             <button key={filter} type="button" aria-pressed={eventFilter === filter} onClick={() => setEventFilter(filter)}>{filter === 'alle' ? 'Alle' : filter === 'fehler' ? 'Fehler' : filter}</button>
@@ -270,7 +311,7 @@ export function OcppWallboxPage({
 
       {actionOpen && (
         <ActionDialog definition={actionOpen} siteId={siteId} chargePointId={chargePointId}
-          connected={Boolean(station?.connected)} transaction={hero.transaction}
+          connected={connection.sendable} connectionDetail={connection.detail} transaction={hero.transaction}
           onClose={() => setActionOpen(null)} onCreated={(action) => {
             setData((old) => old ? { ...old, actions: [action, ...old.actions.filter((row) => row.id !== action.id)] } : old);
           }} />
@@ -313,9 +354,20 @@ function MeterTable({ rows }: { rows: OcppMeterSample[] }) {
 function EventList({ rows }: { rows: OcppProtocolEvent[] }) {
   return <ol className="vp-ocpp-events">{rows.map((row) => <li key={row.eventId} className={row.messageType === 'CallError' || row.errorCode ? 'is-error' : ''}>
     <time>{time(row.occurredAt)}</time><div><strong>{row.action || row.messageType}</strong><span>{row.direction} · {row.messageType}{row.correlationId ? ` · ${row.correlationId}` : ''}</span>
-      {(row.errorCode || row.errorDescription) && <p>{row.errorCode || 'OCPP-Fehler'} · {row.errorDescription || 'keine Beschreibung geliefert'}</p>}
+      {(row.errorCode || row.errorDescription) && <p>{redactSensitiveText(row.errorCode || 'OCPP-Fehler')} · {row.errorDescription ? redactSensitiveText(row.errorDescription) : 'keine Beschreibung geliefert'}</p>}
       <details><summary>Technische Details und Rohbeleg</summary><pre>{safeJson({ errorDetails: row.errorDetails, payload: row.payload, eventId: row.eventId })}</pre></details>
     </div></li>)}</ol>;
+}
+
+function GapEvidence({ gaps }: { gaps: OcppDataGap[] }) {
+  if (!gaps.length) return <p className="vp-ocpp-gap-ok">Keine unvollständige Journalspanne gemeldet.</p>;
+  return <div className="vp-ocpp-gaps" role="status"><strong>{gaps.length} belegte Datenlücke{gaps.length === 1 ? '' : 'n'}</strong>
+    <p>In diesen Zeiträumen ist das Protokoll nachweislich unvollständig; fehlende Ereignisse werden nicht als „nicht passiert“ gewertet.</p>
+    <details><summary>Lückennachweise anzeigen</summary><ul>{gaps.map((gap) => <li key={gap.eventId}>
+      <span>{time(gap.reportedAt)} · {gap.droppedCount.toLocaleString('de-DE')} verworfene Ereignisse</span>
+      <small>{gap.firstOccurredAt ? time(gap.firstOccurredAt) : 'Beginn unbekannt'} bis {gap.lastOccurredAt ? time(gap.lastOccurredAt) : 'Ende unbekannt'} · Gründe {safeJson(gap.reasons)}</small>
+    </li>)}</ul></details>
+  </div>;
 }
 
 function TransactionList({ rows }: { rows: OcppTransaction[] }) {
@@ -331,98 +383,190 @@ function TransactionList({ rows }: { rows: OcppTransaction[] }) {
   </article>)}</div>;
 }
 
-function ActionJournal({ actions }: { actions: OcppAction[] }) {
+function ActionJournal({ siteId, actions, onChanged }: { siteId: string; actions: OcppAction[]; onChanged: (action: OcppAction) => void }) {
   if (!actions.length) return <div className="vp-ocpp-journal"><h3>Letzte Aktionen</h3><Empty text="Noch keine OCPP-Aktion ausgeführt." /></div>;
-  return <div className="vp-ocpp-journal"><h3>Letzte Aktionen</h3><ol>{actions.slice(0, 12).map((action) => {
-    const state = actionState(action.state); const late = action.state === 'timed_out' && Boolean(action.effectAt);
-    return <li key={action.id} className={`is-${state.tone}`}><div className="vp-ocpp-action-result-head"><strong>{findAction(action.action)?.label ?? action.action}</strong><time>{time(action.updatedAt)}</time></div>
-      <div className="vp-ocpp-two-results"><span><small>OCPP-Antwort</small>{state.response}{action.responseStatus ? ` · ${action.responseStatus}` : ''}</span><span><small>Wirkungsstatus</small>{late ? 'Wirkung verspätet beobachtet' : state.effect}</span></div>
-      {action.reason && <p>{action.reason}</p>}
-      <details><summary>Anforderung und technische Belege</summary><pre>{safeJson({ correlationId: action.correlationId, request: action.request, response: action.response, effect: action.effect })}</pre></details>
-    </li>;
-  })}</ol></div>;
+  return <div className="vp-ocpp-journal"><h3>Letzte Aktionen</h3><ol>{actions.slice(0, 12).map((action) =>
+    <ActionJournalItem key={action.id} siteId={siteId} action={action} onChanged={onChanged} />)}</ol></div>;
 }
 
-function ActionDialog({ definition, siteId, chargePointId, connected, transaction, onClose, onCreated }: {
+function ActionJournalItem({ siteId, action, onChanged }: { siteId: string; action: OcppAction; onChanged: (action: OcppAction) => void }) {
+  const [audit, setAudit] = useState<OcppActionAudit[] | null>(null);
+  const [auditBusy, setAuditBusy] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [rowError, setRowError] = useState<string | null>(null);
+  const state = actionState(action.state);
+  const deadline = Date.parse(action.deadlineAt);
+  const lateResponse = Boolean(action.responseAt && Number.isFinite(deadline) && Date.parse(action.responseAt) > deadline);
+  const lateEffect = Boolean(action.effectAt && Number.isFinite(deadline) && Date.parse(action.effectAt) > deadline);
+
+  async function loadAudit() {
+    if (auditBusy) return;
+    setAuditBusy(true); setRowError(null);
+    try { setAudit(await api.ocppActionAudit(siteId, action.id)); }
+    catch (cause) { setRowError(safeActionError(cause)); }
+    finally { setAuditBusy(false); }
+  }
+
+  async function cancel() {
+    if (cancelBusy) return;
+    setCancelBusy(true); setRowError(null);
+    try {
+      await api.cancelOcppAction(siteId, action.id);
+      onChanged(await api.ocppAction(siteId, action.id));
+      setAudit(null);
+    } catch (cause) { setRowError(safeActionError(cause)); }
+    finally { setCancelBusy(false); }
+  }
+
+  return <li className={`is-${state.tone}`}><div className="vp-ocpp-action-result-head"><strong>{OCPP_ACTIONS.find((item) => item.action === action.action)?.label ?? action.action}</strong><time>{time(action.updatedAt)}</time></div>
+    <div className="vp-ocpp-two-results"><span><small>OCPP-Antwort</small>{lateResponse ? 'Antwort verspätet eingetroffen' : state.response}{action.responseStatus ? ` · ${action.responseStatus}` : ''}</span><span><small>Wirkungsstatus</small>{lateEffect ? 'Wirkung verspätet beobachtet' : state.effect}</span></div>
+    {action.reason && <p>{redactSensitiveText(action.reason)}</p>}
+    {rowError && <div className="vp-alert vp-alert-err" role="alert">{rowError}</div>}
+    <div className="vp-ocpp-journal-actions">
+      {action.state === 'prepared' && <button type="button" className="vp-btn vp-btn--outline vp-btn--md" disabled={cancelBusy} onClick={() => { void cancel(); }}>{cancelBusy ? 'Wird abgebrochen …' : 'Vor Versand abbrechen'}</button>}
+      <button type="button" className="vp-linkbtn" disabled={auditBusy} onClick={() => { void loadAudit(); }}>{auditBusy ? 'Auditspur wird geladen …' : audit ? 'Auditspur aktualisieren' : 'Unveränderliche Auditspur laden'}</button>
+    </div>
+    {audit && <ol className="vp-ocpp-audit" aria-label="Unveränderliche Auditspur">{audit.map((entry) => <li key={entry.id}>
+      <time>{time(entry.occurredAt)}</time><strong>{actionState(entry.state).response}</strong><span>{redactSensitiveText(entry.actor)}{entry.reason ? ` · ${redactSensitiveText(entry.reason)}` : ''}</span>
+    </li>)}</ol>}
+    <details><summary>Anforderung und technische Belege</summary><pre>{safeJson({ correlationId: action.correlationId, request: action.request, response: action.response, effect: action.effect })}</pre></details>
+  </li>;
+}
+
+function ActionDialog({ definition, siteId, chargePointId, connected, connectionDetail, transaction, onClose, onCreated }: {
   definition: OcppActionDefinition; siteId: string; chargePointId: string; connected: boolean;
-  transaction: OcppTransaction | null; onClose: () => void; onCreated: (action: OcppAction) => void;
+  connectionDetail: string; transaction: OcppTransaction | null; onClose: () => void; onCreated: (action: OcppAction) => void;
 }) {
   const initial = Object.fromEntries(definition.fields.map((field) => [field.key, field.defaultValue ?? ''])) as Record<string, string>;
   if (transaction) { initial.transactionId ||= String(transaction.transactionId); initial.connectorId ||= String(transaction.connectorId); }
   const [values, setValues] = useState(initial);
   const [intent, setIntent] = useState<OcppActionIntent | null>(null);
   const [phrase, setPhrase] = useState('');
+  const [handoffInput, setHandoffInput] = useState('');
+  const [handoff, setHandoff] = useState<OcppActionHandoff | null>(null);
+  const [handoffCode, setHandoffCode] = useState('');
+  const [handoffError, setHandoffError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<OcppAction | null>(null);
-  const titleRef = useRef<HTMLHeadingElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const closeRef = useRef(onClose);
+  const attemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
+  const requestSeedRef = useRef(crypto.randomUUID());
+  closeRef.current = onClose;
   useEffect(() => {
-    titleRef.current?.focus();
+    const previousFocus = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !busy) onClose();
-    };
-    window.addEventListener('keydown', escape);
+    dialogRef.current?.focus();
     return () => {
-      window.removeEventListener('keydown', escape);
       document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
     };
-  }, [busy, onClose]);
-  const missing = definition.fields.find((field) => field.required && !values[field.key]?.trim());
-  const hard = actionNeedsIntent(definition.action, values);
+  }, []);
+  const missing = handoff ? undefined : definition.fields.find((field) => field.required && !values[field.key]?.trim());
+  const hard = Boolean(handoff) || actionNeedsIntent(definition.action, values);
+  const waitingForSecondOperator = Boolean(intent?.fourEyes && !handoff);
+
+  function requestClose() { if (!busy) closeRef.current(); }
+
+  function onDialogKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    if (event.key === 'Escape') {
+      if (!busy) { event.preventDefault(); event.stopPropagation(); requestClose(); }
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = fokussierbare(dialogRef.current);
+    if (!focusable.length) return;
+    const current = document.activeElement as HTMLElement | null;
+    const index = current ? focusable.indexOf(current) : -1;
+    const target = event.shiftKey
+      ? focusable[(index <= 0 ? focusable.length : index) - 1]
+      : focusable[(index + 1) % focusable.length];
+    event.preventDefault();
+    target?.focus();
+  }
+
+  function updateValue(key: string, value: string) {
+    setValues((current) => ({ ...current, [key]: value }));
+    requestSeedRef.current = crypto.randomUUID();
+    setIntent(null); setPhrase(''); setHandoff(null); setHandoffCode(''); setCopied(false);
+  }
+
+  function importHandoff() {
+    try {
+      const parsed = parseActionHandoff(handoffInput, { siteId, chargePointId, action: definition.action });
+      setHandoff(parsed); setIntent(parsed.intent); setPhrase(''); setHandoffError(null); setError(null);
+    } catch (cause) {
+      const kind = cause instanceof Error ? cause.message : 'format';
+      setHandoffError(kind === 'expired' ? 'Diese Übergabe ist abgelaufen. Der erste Operator muss eine neue erzeugen.'
+        : kind === 'binding' ? 'Die Übergabe gehört nicht zu dieser Station oder Aktion.'
+          : 'Der Übergabecode ist unvollständig oder beschädigt.');
+    }
+  }
 
   async function submit() {
-    if (missing || !connected || busy) return;
+    if (missing || !connected || busy || waitingForSecondOperator) return;
     setBusy(true); setError(null);
     try {
-      const request = actionRequest(definition.action, values);
-      const connectorId = values.connectorId ? Number(values.connectorId) : undefined;
-      const transactionId = values.transactionId ? Number(values.transactionId) : undefined;
+      const request = handoff?.request ?? actionRequest(definition.action, values, requestSeedRef.current);
+      const connectorId = handoff?.connectorId ?? (values.connectorId ? Number(values.connectorId) : undefined);
+      const transactionId = handoff?.transactionId ?? (values.transactionId ? Number(values.transactionId) : undefined);
       if (hard && !intent) {
         const next = await api.createOcppActionIntent(siteId, chargePointId, { action: definition.action, connectorId, transactionId, request });
-        setIntent(next); return;
+        setIntent(next);
+        if (next.fourEyes) setHandoffCode(actionHandoffCode({
+          version: 1, siteId, chargePointId, action: definition.action,
+          connectorId, transactionId, request, intent: next,
+        }));
+        return;
+      }
+      const fingerprint = actionFingerprint(definition.action, connectorId, transactionId, request);
+      if (attemptRef.current?.fingerprint !== fingerprint) {
+        attemptRef.current = { fingerprint, key: crypto.randomUUID() };
       }
       const action = await api.createOcppAction(siteId, chargePointId, {
         action: definition.action, connectorId, transactionId, request,
         ...(intent ? { intentId: intent.id, confirmationPhrase: phrase } : {}),
-      }, crypto.randomUUID());
+      }, attemptRef.current.key);
       setCreated(action); onCreated(action);
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Die Aktion konnte nicht vorbereitet werden.');
+      setError(safeActionError(cause));
     } finally { setBusy(false); }
   }
 
-  return <div className="vp-ocpp-dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
-    <section className={`vp-ocpp-dialog${hard ? ' is-hard' : ''}`} role="dialog" aria-modal="true" aria-labelledby="ocpp-action-title">
-      <header><div><p>OCPP 1.6 · {ACTION_GROUP_LABEL[definition.group]}</p><h2 id="ocpp-action-title" tabIndex={-1} ref={titleRef}>{definition.label}</h2></div><button type="button" onClick={onClose} aria-label="Dialog schließen">×</button></header>
+  return <div className="vp-ocpp-dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
+    <section ref={dialogRef} tabIndex={-1} className={`vp-ocpp-dialog${hard ? ' is-hard' : ''}`} role="dialog" aria-modal="true"
+      aria-labelledby="ocpp-action-title" aria-describedby="ocpp-action-description" onKeyDown={onDialogKeyDown}>
+      <header><div><p>OCPP 1.6 · {ACTION_GROUP_LABEL[definition.group]}</p><h2 id="ocpp-action-title">{definition.label}</h2></div><button type="button" onClick={requestClose} disabled={busy} aria-label="Dialog schließen">×</button></header>
       {created ? <div className="vp-ocpp-created"><StatusPill ok={actionState(created.state).tone === 'ok'}>{actionState(created.state).response}</StatusPill>
         <h3>Befehl ist erfasst</h3><p>{actionState(created.state).effect}. Diese zweite Aussage aktualisiert sich im Aktionsjournal.</p>
-        <button type="button" className="vp-btn vp-btn--primary vp-btn--md" onClick={onClose}>Zum Journal</button></div> : <>
-        <div className="vp-ocpp-impact"><strong>Auswirkung</strong><p>{definition.impact}</p><strong>Bestätigung</strong><p>{definition.confirmation}</p></div>
-        {!connected && <div className="vp-alert vp-alert-warn" role="alert">Nicht sendbar: Die Station ist offline. Eingaben bleiben sichtbar, Senden ist gesperrt.</div>}
+        <button type="button" className="vp-btn vp-btn--primary vp-btn--md" onClick={requestClose}>Zum Journal</button></div> : <>
+        <div id="ocpp-action-description" className="vp-ocpp-impact"><strong>Auswirkung</strong><p>{definition.impact}</p><strong>Bestätigung</strong><p>{definition.confirmation}</p></div>
+        {!connected && <div className="vp-alert vp-alert-warn" role="alert">Nicht sendbar: {connectionDetail} Eingaben bleiben sichtbar, Senden ist gesperrt.</div>}
         <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-          <div className="vp-ocpp-form-grid">{definition.fields.map((field) => <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span>
-            {field.kind === 'select' ? <select value={values[field.key] ?? ''} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })}>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-              : field.kind === 'textarea' ? <textarea value={values[field.key] ?? ''} placeholder={field.placeholder} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })} />
-                : <input type={field.kind} value={values[field.key] ?? ''} placeholder={field.placeholder} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })} />}
-            {field.help && <small>{field.help}</small>}</label>)}</div>
-          {intent && <div className="vp-ocpp-strong-confirm"><strong>Starke Bestätigung</strong><p>Geben Sie die einmalige Phrase exakt ein. Sie läuft {time(intent.expiresAt)} ab.{intent.fourEyes ? ' Für dieses fremde Artefakt ist zusätzlich ein anderer Plattformoperator erforderlich.' : ''}</p><code>{intent.phrase}</code><label><span>Bestätigungsphrase</span><input value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="off" /></label></div>}
+          {definition.action === 'UpdateFirmware' && !intent && <details className="vp-ocpp-handoff-import"><summary>Vier-Augen-Übergabe eines anderen Operators übernehmen</summary>
+            <label><span>Übergabecode</span><textarea value={handoffInput} onChange={(event) => setHandoffInput(event.target.value)} /></label>
+            {handoffError && <p className="vp-ocpp-validation" role="alert">{handoffError}</p>}
+            <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={importHandoff} disabled={!handoffInput.trim()}>Übergabe prüfen</button>
+          </details>}
+          {handoff ? <div className="vp-ocpp-handoff-bound"><strong>Gebundene Übergabe übernommen</strong><p>Station, Aktion, Nutzlast und Ablauf sind serverseitig gebunden. Änderungen sind nicht möglich.</p><pre>{safeJson({ action: handoff.action, connectorId: handoff.connectorId, transactionId: handoff.transactionId, request: handoff.request, expiresAt: handoff.intent.expiresAt })}</pre></div>
+            : <div className="vp-ocpp-form-grid">{definition.fields.map((field) => <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span>
+              {field.kind === 'select' ? <select value={values[field.key] ?? ''} onChange={(event) => updateValue(field.key, event.target.value)}>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+                : field.kind === 'textarea' ? <textarea value={values[field.key] ?? ''} placeholder={field.placeholder} onChange={(event) => updateValue(field.key, event.target.value)} />
+                  : <input type={field.kind} value={values[field.key] ?? ''} placeholder={field.placeholder} onChange={(event) => updateValue(field.key, event.target.value)} />}
+              {field.help && <small>{field.help}</small>}</label>)}</div>}
+          {intent?.fourEyes && !handoff && <div className="vp-ocpp-strong-confirm"><strong>Übergabe an zweiten Plattformoperator</strong><p>Dieser Intent darf nicht vom vorbereitenden Konto ausgeführt werden. Übergeben Sie den Code vor {time(intent.expiresAt)} an einen anderen Plattformoperator. Er öffnet dieselbe Aktion und übernimmt den Code.</p>
+            <label><span>Gebundener Übergabecode</span><textarea readOnly value={handoffCode} /></label>
+            <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={() => { void navigator.clipboard?.writeText(handoffCode).then(() => setCopied(true)); }}>{copied ? 'Übergabecode kopiert' : 'Übergabecode kopieren'}</button>
+          </div>}
+          {intent && (!intent.fourEyes || handoff) && <div className="vp-ocpp-strong-confirm"><strong>Starke Bestätigung</strong><p>Geben Sie die einmalige Phrase exakt ein. Sie läuft {time(intent.expiresAt)} ab.{handoff ? ' Sie bestätigen als zweiter Plattformoperator die unverändert gebundene Übergabe.' : ''}</p><code>{intent.phrase}</code><label><span>Bestätigungsphrase</span><input value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="off" /></label></div>}
           {error && <div className="vp-alert vp-alert-err" role="alert">{error}</div>}
           {missing && <p className="vp-ocpp-validation" role="status">Pflichtfeld fehlt: {missing.label}</p>}
-          <footer><button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={onClose} disabled={busy}>Abbrechen</button><button type="submit" className={`vp-btn vp-btn--md ${hard ? 'vp-ocpp-danger' : 'vp-btn--primary'}`} disabled={Boolean(missing) || !connected || busy || Boolean(intent && phrase !== intent.phrase)}>{busy ? 'Wird geprüft …' : hard && !intent ? 'Starke Bestätigung vorbereiten' : 'Prüfen und senden'}</button></footer>
+          <footer><button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={requestClose} disabled={busy}>Abbrechen</button><button type="submit" className={`vp-btn vp-btn--md ${hard ? 'vp-ocpp-danger' : 'vp-btn--primary'}`} disabled={Boolean(missing) || !connected || busy || waitingForSecondOperator || Boolean(intent && (!intent.fourEyes || handoff) && phrase !== intent.phrase)}>{busy ? 'Wird geprüft …' : waitingForSecondOperator ? 'Übergabe durch zweiten Operator erforderlich' : hard && !intent ? 'Starke Bestätigung vorbereiten' : 'Prüfen und senden'}</button></footer>
         </form>
       </>}
     </section>
   </div>;
-}
-
-function safeJson(value: unknown): string {
-  const redact = (input: unknown): unknown => {
-    if (Array.isArray(input)) return input.map(redact);
-    if (!input || typeof input !== 'object') return input;
-    return Object.fromEntries(Object.entries(input as Record<string, unknown>).map(([key, child]) => [key,
-      /password|secret|token|signature|location|idtag|imsi|iccid/i.test(key) ? '••••••••' : redact(child)]));
-  };
-  return JSON.stringify(redact(value), null, 2);
 }

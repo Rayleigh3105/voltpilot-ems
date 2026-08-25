@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type OcppAction, type OcppStation } from '../api';
+import { api, ApiError, type OcppAction, type OcppStation } from '../api';
 import { OcppWallboxPage } from './OcppWallboxPage';
 
 const station: OcppStation = {
@@ -26,8 +26,9 @@ const created: OcppAction = {
 
 describe('OcppWallboxPage integration', () => {
   beforeEach(() => {
-    vi.spyOn(api, 'ocppStations').mockResolvedValue([station]);
+    vi.spyOn(api, 'ocppStations').mockResolvedValue([{ ...station, lastSeen: new Date().toISOString() }]);
     vi.spyOn(api, 'ocppEvents').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppGaps').mockResolvedValue([]);
     vi.spyOn(api, 'ocppTransactions').mockResolvedValue([{ deviceId: 'd', chargePointId: 'CP-1', transactionId: 42, connectorId: 1, startedAt: new Date(Date.now() - 42 * 60_000).toISOString(), stoppedAt: null, meterStart: 0, meterStop: null, stopReason: null, startIdTagRef: 'private-reference', stopIdTagRef: null, reservationId: null, chargingProfileId: null, chargingProfilePurpose: null, startAuthStatus: 'Accepted', stopAuthStatus: null, parentIdTagRef: null, transactionData: null, transactionDataPurgedAt: null }]);
     vi.spyOn(api, 'ocppMeterValues').mockResolvedValue([{ sampledAt: new Date().toISOString(), eventId: 'e', meterValueIndex: 0, sampledValueIndex: 0, deviceId: 'd', chargePointId: 'CP-1', connectorId: 1, transactionId: 42, source: 'MeterValues', pointKey: 'power', measurand: 'Power.Active.Import', context: 'Sample.Periodic', format: 'Raw', phase: null, location: 'Outlet', unit: 'W', value: '11000', numericValue: 11000 }]);
     vi.spyOn(api, 'ocppConfiguration').mockResolvedValue([{ deviceId: 'd', chargePointId: 'CP-1', keys: [{ key: 'AuthorizationKey', value: null, readonly: false, secret: true, redacted: true, standardKey: false, meaningKnown: false, reportedAt: new Date().toISOString() }], unknownKeys: ['VendorMystery'], supportedFeatureProfiles: ['SmartCharging'] }]);
@@ -36,8 +37,11 @@ describe('OcppWallboxPage integration', () => {
     ].map((action) => [action, true])) });
     vi.spyOn(api, 'ocppActions').mockResolvedValue([]);
     vi.spyOn(api, 'createOcppAction').mockResolvedValue(created);
+    vi.spyOn(api, 'ocppActionAudit').mockResolvedValue([]);
+    vi.spyOn(api, 'cancelOcppAction').mockResolvedValue(undefined);
+    vi.spyOn(api, 'ocppAction').mockResolvedValue({ ...created, state: 'cancelled' });
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
   it('renders the complete IA, live hero, honest unknowns and visible role locks', async () => {
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
@@ -66,5 +70,132 @@ describe('OcppWallboxPage integration', () => {
     await waitFor(() => expect(api.createOcppAction).toHaveBeenCalled());
     expect(screen.getAllByText(/OCPP-Antwort ausstehend/).some((node) => node.textContent?.includes('Gesendet'))).toBe(true);
     expect(screen.getAllByText(/Wirkung noch nicht prüfbar/).length).toBeGreaterThan(0);
+  });
+
+  it('reuses the idempotency key after an uncertain transport error and hides the raw server text', async () => {
+    vi.mocked(api.createOcppAction)
+      .mockRejectedValueOnce(new ApiError(503, 'java.net.SocketTimeoutException: broker token=abc'))
+      .mockResolvedValueOnce(created);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    await screen.findByRole('heading', { name: 'Auto lädt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Laden stoppen' }));
+    const send = screen.getByRole('button', { name: 'Prüfen und senden' });
+    fireEvent.click(send);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Doppelwirkung/);
+    expect(document.body).not.toHaveTextContent('token=abc');
+    fireEvent.click(send);
+    await waitFor(() => expect(api.createOcppAction).toHaveBeenCalledTimes(2));
+    const firstKey = vi.mocked(api.createOcppAction).mock.calls[0][3];
+    const secondKey = vi.mocked(api.createOcppAction).mock.calls[1][3];
+    expect(secondKey).toBe(firstKey);
+  });
+
+  it('masks nested URL values in every technical DOM surface', async () => {
+    vi.mocked(api.ocppEvents).mockResolvedValue([{ eventId: 'event-secret', occurredAt: new Date().toISOString(), deviceId: 'd',
+      chargePointId: 'CP-1', direction: 'station_to_csms', messageType: 'CallError', correlationId: 'c', action: 'DataTransfer',
+      errorCode: 'InternalError', errorDescription: 'upload https://private.example/diag?token=secret',
+      errorDetails: { uploadUrl: 'https://private.example/diag?token=secret' }, payload: { neutral: 'https://secret.example/token/abc' } }]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([{ deviceId: 'd', chargePointId: 'CP-1', transactionId: 42, connectorId: 1,
+      startedAt: new Date(Date.now() - 60_000).toISOString(), stoppedAt: null, meterStart: 0, meterStop: null, stopReason: null,
+      startIdTagRef: null, stopIdTagRef: null, reservationId: null, chargingProfileId: null, chargingProfilePurpose: null,
+      startAuthStatus: 'Accepted', stopAuthStatus: null, parentIdTagRef: null,
+      transactionData: { callbackUrl: 'https://secret.example/token/abc' }, transactionDataPurgedAt: null }]);
+    vi.mocked(api.ocppActions).mockResolvedValue([{ ...created, state: 'completed', request: { callbackUrl: 'https://secret.example/token/abc' } }]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    await screen.findByRole('heading', { name: 'Auto lädt' });
+    expect(document.body).not.toHaveTextContent('private.example');
+    expect(document.body).not.toHaveTextContent('secret.example');
+    expect(document.body).not.toHaveTextContent('token=secret');
+  });
+
+  it('uses the house modal mechanics for description, focus trap, busy lock and focus return', async () => {
+    let resolveAction!: (value: OcppAction) => void;
+    vi.mocked(api.createOcppAction).mockReturnValue(new Promise((resolve) => { resolveAction = resolve; }));
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    await screen.findByRole('heading', { name: 'Auto lädt' });
+    const trigger = screen.getByRole('button', { name: 'Laden stoppen' });
+    trigger.focus(); fireEvent.click(trigger);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-describedby', 'ocpp-action-description');
+    const close = screen.getByRole('button', { name: 'Dialog schließen' });
+    const send = screen.getByRole('button', { name: 'Prüfen und senden' });
+    send.focus(); fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(send);
+    fireEvent.click(send);
+    await waitFor(() => expect(close).toBeDisabled());
+    fireEvent.click(close); fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeVisible();
+    await act(async () => { resolveAction(created); });
+    fireEvent.click(await screen.findByRole('button', { name: 'Zum Journal' }));
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('shows data gaps, immutable audit and cancellation of a prepared action', async () => {
+    const prepared = { ...created, state: 'prepared', sentAt: null };
+    vi.mocked(api.ocppActions).mockResolvedValue([prepared]);
+    vi.mocked(api.ocppGaps).mockResolvedValue([{ eventId: 'gap-1', reportedAt: new Date().toISOString(), deviceId: 'd',
+      droppedCount: 3, totalDropped: 7, firstOccurredAt: new Date(Date.now() - 60_000).toISOString(),
+      lastOccurredAt: new Date().toISOString(), firstEventId: 'a', lastEventId: 'b', reasons: { buffer_full: 3 } }]);
+    vi.mocked(api.ocppActionAudit).mockResolvedValue([{ id: 1, actor: 'operator@example.test', state: 'prepared', reason: null,
+      deviceId: 'd', chargePointId: 'CP-1', connectorId: 1, transactionId: 42, occurredAt: new Date().toISOString() }]);
+    vi.mocked(api.ocppAction).mockResolvedValue({ ...prepared, state: 'cancelled' });
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    expect(await screen.findByText(/1 belegte Datenlücke/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Unveränderliche Auditspur laden' }));
+    expect(await screen.findByRole('list', { name: 'Unveränderliche Auditspur' })).toHaveTextContent('Vorbereitet');
+    fireEvent.click(screen.getByRole('button', { name: 'Vor Versand abbrechen' }));
+    await waitFor(() => expect(api.cancelOcppAction).toHaveBeenCalledWith('s', prepared.id));
+    expect(await screen.findByText('Vor Versand abgebrochen')).toBeVisible();
+  });
+
+  it('hands a bound foreign-firmware intent to a second operator and executes it unchanged', async () => {
+    vi.mocked(api.ocppActionPermissions).mockResolvedValue({ actions: { UpdateFirmware: true } });
+    vi.spyOn(api, 'createOcppActionIntent').mockResolvedValue({ id: 'intent-foreign', action: 'UpdateFirmware',
+      phrase: 'UpdateFirmware CP-1 SAFE1234', fourEyes: true, expiresAt: '2099-01-01T00:00:00Z' });
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    await screen.findByRole('heading', { name: 'Auto lädt' });
+    fireEvent.click(screen.getByText('Betrieb').closest('summary')!);
+    fireEvent.click(screen.getByRole('button', { name: /Firmware aktualisieren/ }));
+    fireEvent.change(screen.getByLabelText('Allowlisted Firmware-URL *'), { target: { value: 'https://firmware.example/presigned' } });
+    fireEvent.change(screen.getByLabelText('Abruf ab *'), { target: { value: '2026-08-26T12:00' } });
+    fireEvent.change(screen.getByLabelText('SHA-256 *'), { target: { value: 'a'.repeat(64) } });
+    fireEvent.change(screen.getByLabelText('Signatur *'), { target: { value: 'signed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Starke Bestätigung vorbereiten' }));
+    const handoffCode = await screen.findByLabelText('Gebundener Übergabecode') as HTMLTextAreaElement;
+    expect(screen.getByRole('button', { name: 'Übergabe durch zweiten Operator erforderlich' })).toBeDisabled();
+    const code = handoffCode.value;
+    fireEvent.click(screen.getByRole('button', { name: 'Dialog schließen' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Firmware aktualisieren/ }));
+    fireEvent.click(screen.getByText('Vier-Augen-Übergabe eines anderen Operators übernehmen'));
+    fireEvent.change(screen.getByLabelText('Übergabecode'), { target: { value: code } });
+    fireEvent.click(screen.getByRole('button', { name: 'Übergabe prüfen' }));
+    expect(screen.getByText('Gebundene Übergabe übernommen')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Bestätigungsphrase'), { target: { value: 'UpdateFirmware CP-1 SAFE1234' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Prüfen und senden' }));
+    await waitFor(() => expect(api.createOcppAction).toHaveBeenCalled());
+    expect(vi.mocked(api.createOcppAction).mock.calls.at(-1)?.[2]).toMatchObject({
+      action: 'UpdateFirmware', intentId: 'intent-foreign', confirmationPhrase: 'UpdateFirmware CP-1 SAFE1234',
+      request: { location: 'https://firmware.example/presigned', sha256: 'a'.repeat(64), signature: 'signed' },
+    });
+  });
+
+  it('aborts an in-flight action poll when the station target changes', async () => {
+    vi.useFakeTimers();
+    const sent = { ...created, state: 'sent' };
+    let pollSignal: AbortSignal | undefined;
+    vi.mocked(api.ocppActions).mockResolvedValue([sent]);
+    vi.mocked(api.ocppActions).mockResolvedValueOnce([sent]).mockImplementationOnce((_site, _cp, _limit, signal) => {
+      pollSignal = signal;
+      return new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
+    });
+    const view = render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    expect(pollSignal).toBeDefined();
+    await act(async () => { view.rerender(<OcppWallboxPage siteId="s" chargePointId="CP-2" fallbackTitle="Wallbox" backHref="#back" />); });
+    expect(pollSignal?.aborted).toBe(true);
   });
 });

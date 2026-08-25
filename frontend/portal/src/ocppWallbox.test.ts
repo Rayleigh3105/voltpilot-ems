@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { OcppAction, OcppMeterSample, OcppTransaction } from './api';
+import type { OcppAction, OcppActionIntent, OcppMeterSample, OcppStation, OcppTransaction } from './api';
 import {
   OCPP_ACTIONS,
+  actionFingerprint,
+  actionHandoffCode,
   actionNeedsIntent,
+  actionNeedsPolling,
   actionRequest,
   actionState,
   maskReference,
+  parseActionHandoff,
+  safeActionError,
+  safeJson,
+  stationConnection,
   wallboxHero,
 } from './ocppWallbox';
 
@@ -34,6 +41,11 @@ describe('OCPP wallbox view model', () => {
     });
     expect(actionRequest('GetConfiguration', { keys: 'HeartbeatInterval, MeterValueSampleInterval' }))
       .toEqual({ key: ['HeartbeatInterval', 'MeterValueSampleInterval'] });
+    const limitedStart = { connectorId: '1', idTag: 'TAG-1', profileLimit: '11' };
+    expect(actionRequest('RemoteStartTransaction', limitedStart, 'same-operation'))
+      .toEqual(actionRequest('RemoteStartTransaction', limitedStart, 'same-operation'));
+    expect(actionRequest('RemoteStartTransaction', limitedStart, 'same-operation'))
+      .not.toEqual(actionRequest('RemoteStartTransaction', limitedStart, 'new-operation'));
   });
 
   it('requires a server intent for hard reset, firmware and full LocalAuth replacement', () => {
@@ -60,15 +72,39 @@ describe('OCPP wallbox view model', () => {
       unit, value: String(numericValue), numericValue,
     });
     const hero = wallboxHero([tx], [sample('Power.Active.Import', 11000, 'W'), sample('Energy.Active.Import.Register', 7400, 'Wh')], [
-      action({ request: { csChargingProfiles: { chargingSchedule: { chargingSchedulePeriod: [{ limit: 11000 }] } } } }),
-      action({ id: 'b', action: 'GetCompositeSchedule', state: 'completed', response: { chargingSchedule: { chargingSchedulePeriod: [{ limit: 11000 }] } }, effect: null }),
+      action({ updatedAt: '2026-08-25T08:42:00Z', request: { csChargingProfiles: { chargingSchedule: { chargingRateUnit: 'W', chargingSchedulePeriod: [{ limit: 11000 }] } } } }),
+      action({ id: 'b', action: 'GetCompositeSchedule', state: 'completed', updatedAt: '2026-08-25T08:42:00Z', response: { chargingSchedule: { chargingRateUnit: 'W', chargingSchedulePeriod: [{ limit: 11000 }] } }, effect: null }),
     ], Date.parse('2026-08-25T08:42:00Z'));
     expect(hero.power).toBe('11 kW');
     expect(hero.energy).toBe('7,4 kWh');
     expect(hero.duration).toBe('42 min');
     expect(hero.soc).toBeNull();
-    expect(hero.release).toContain('11.000');
-    expect(hero.applied).toContain('11.000');
+    expect(hero.release).toBe('11 kW');
+    expect(hero.applied).toBe('11 kW');
+  });
+
+  it('rejects stale or foreign hero evidence and keeps the actual charging-rate unit', () => {
+    const now = Date.parse('2026-08-25T09:00:00Z');
+    const tx: OcppTransaction = { deviceId: 'd', chargePointId: 'CP-1', transactionId: 42, connectorId: 1,
+      startedAt: '2026-08-25T08:00:00Z', stoppedAt: null, meterStart: 0, meterStop: null, stopReason: null,
+      startIdTagRef: null, stopIdTagRef: null, reservationId: null, chargingProfileId: null,
+      chargingProfilePurpose: null, startAuthStatus: 'Accepted', stopAuthStatus: null, parentIdTagRef: null,
+      transactionData: null, transactionDataPurgedAt: null };
+    const meter: OcppMeterSample[] = [{ sampledAt: '2026-08-25T08:54:59Z', eventId: 'old', meterValueIndex: 0,
+      sampledValueIndex: 0, deviceId: 'd', chargePointId: 'CP-1', connectorId: 1, transactionId: 42,
+      source: 'MeterValues', pointKey: 'Power.Active.Import', measurand: 'Power.Active.Import', context: null,
+      format: 'Raw', phase: null, location: null, unit: 'W', value: '22000', numericValue: 22000 }];
+    const actions = [
+      action({ id: 'wrong-rejected', state: 'rejected', connectorId: 1, updatedAt: '2026-08-25T08:59:59Z', request: { csChargingProfiles: { chargingSchedule: { chargingRateUnit: 'W', chargingSchedulePeriod: [{ limit: 22000 }] } } } }),
+      action({ id: 'wrong-connector', connectorId: 2, updatedAt: '2026-08-25T08:59:58Z', request: { csChargingProfiles: { chargingSchedule: { chargingRateUnit: 'A', chargingSchedulePeriod: [{ limit: 32 }] } } } }),
+      action({ id: 'right', connectorId: 1, updatedAt: '2026-08-25T08:59:57Z', request: { csChargingProfiles: { chargingSchedule: { chargingRateUnit: 'A', chargingSchedulePeriod: [{ limit: 16 }] } } } }),
+      action({ id: 'read-wrong', action: 'GetCompositeSchedule', connectorId: 2, state: 'completed', updatedAt: '2026-08-25T08:59:59Z', response: { chargingSchedule: { chargingRateUnit: 'W', chargingSchedulePeriod: [{ limit: 22000 }] } } }),
+      action({ id: 'read-right', action: 'GetCompositeSchedule', connectorId: 1, state: 'completed', updatedAt: '2026-08-25T08:59:57Z', response: { chargingSchedule: { chargingRateUnit: 'A', chargingSchedulePeriod: [{ limit: 16 }] } } }),
+    ];
+    const hero = wallboxHero([tx], meter, actions, now);
+    expect(hero.power).toBeNull();
+    expect(hero.release).toBe('16 A');
+    expect(hero.applied).toBe('16 A');
   });
 
   it('separates OCPP response, observed effect, timeout and late evidence', () => {
@@ -76,5 +112,35 @@ describe('OCPP wallbox view model', () => {
     expect(actionState('timed_out')).toMatchObject({ effect: expect.stringContaining('nicht innerhalb'), pending: false });
     expect(actionState('call_error')).toMatchObject({ response: expect.stringContaining('CallError'), tone: 'error' });
     expect(maskReference('abcdefghi')).toBe('abc••••ghi');
+  });
+
+  it('polls through a bounded timeout afterrun and stops after late evidence', () => {
+    const timedOut = action({ state: 'timed_out', deadlineAt: '2026-08-25T08:01:00Z', effectAt: null });
+    expect(actionNeedsPolling(timedOut, Date.parse('2026-08-25T08:05:00Z'))).toBe(true);
+    expect(actionNeedsPolling({ ...timedOut, effectAt: '2026-08-25T08:06:00Z' }, Date.parse('2026-08-25T08:07:00Z'))).toBe(false);
+    expect(actionNeedsPolling(timedOut, Date.parse('2026-08-25T08:12:00Z'))).toBe(false);
+  });
+
+  it('masks sensitive keys and value-shaped URLs recursively and never echoes raw API errors', () => {
+    const rendered = safeJson({ callbackUrl: 'https://secret.example/token/abc', nested: [{ neutral: 'upload https://private.example/diag?token=secret', imsi: '262011234567890' }] });
+    expect(rendered).not.toContain('secret.example');
+    expect(rendered).not.toContain('private.example');
+    expect(rendered).not.toContain('262011234567890');
+    expect(safeActionError({ status: 503, message: 'java.net.SocketTimeoutException token=abc' })).not.toContain('token=abc');
+  });
+
+  it('creates a bound, expiring four-eyes handoff and stable operation fingerprints', () => {
+    const intent: OcppActionIntent = { id: 'intent-1', action: 'UpdateFirmware', phrase: 'Update SAFE', fourEyes: true, expiresAt: '2099-01-01T00:00:00Z' };
+    const request = { location: 'https://firmware.example/presigned', sha256: 'a'.repeat(64), signature: 'sig' };
+    const code = actionHandoffCode({ version: 1, siteId: 's', chargePointId: 'CP-1', action: 'UpdateFirmware', connectorId: 1, request, intent });
+    expect(parseActionHandoff(code, { siteId: 's', chargePointId: 'CP-1', action: 'UpdateFirmware', now: 0 })).toMatchObject({ request, intent });
+    expect(() => parseActionHandoff(code, { siteId: 'other', chargePointId: 'CP-1', action: 'UpdateFirmware', now: 0 })).toThrow('binding');
+    expect(actionFingerprint('UpdateFirmware', 1, undefined, request)).toBe(actionFingerprint('UpdateFirmware', 1, undefined, { signature: 'sig', sha256: 'a'.repeat(64), location: 'https://firmware.example/presigned' }));
+  });
+
+  it('treats connected without a fresh life proof as stale and not sendable', () => {
+    const station = { connected: true, lastSeen: '2026-08-25T08:00:00Z' } as OcppStation;
+    expect(stationConnection(station, Date.parse('2026-08-25T08:04:59Z'))).toMatchObject({ sendable: true, label: 'Verbunden' });
+    expect(stationConnection(station, Date.parse('2026-08-25T08:05:01Z'))).toMatchObject({ sendable: false, label: 'Keine aktuellen Daten' });
   });
 });

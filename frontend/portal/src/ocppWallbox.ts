@@ -1,5 +1,6 @@
 import type {
   OcppAction,
+  OcppActionIntent,
   OcppMeterSample,
   OcppStation,
   OcppTransaction,
@@ -136,6 +137,9 @@ export const ROLE_LABEL: Record<OcppRole, string> = {
   operator: 'Kundenoperator', 'site-admin': 'Anlagenadministrator', 'platform-admin': 'Plattformoperator',
 };
 
+export const OCPP_FRESH_MS = 5 * 60_000;
+export const OCPP_LATE_EFFECT_POLL_MS = 10 * 60_000;
+
 export function actionNeedsIntent(action: string, values: Record<string, string>): boolean {
   return action === 'HardReset' || action === 'UpdateFirmware'
     || (action === 'SendLocalList' && values.updateType === 'Full');
@@ -147,15 +151,23 @@ const compact = (obj: Record<string, unknown>): Record<string, unknown> => Objec
   Object.entries(obj).filter(([, value]) => value !== undefined && value !== ''),
 );
 
+function numericOperationSeed(seed: string): number {
+  let hash = 2166136261;
+  for (const char of seed) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); }
+  return Math.abs(hash % 1_000_000) || 1;
+}
+
 /** Build only server-allowlisted OCPP fields; no arbitrary JSON crosses this boundary. */
-export function actionRequest(action: string, values: Record<string, string>): Record<string, unknown> {
+export function actionRequest(action: string, values: Record<string, string>, operationSeed = 'preview'): Record<string, unknown> {
   const connectorId = number(values.connectorId ?? '');
   switch (action) {
     case 'RemoteStartTransaction': {
       const limit = number(values.profileLimit ?? '');
       return compact({ connectorId, idTag: values.idTag,
         chargingProfile: limit == null ? undefined : {
-          chargingProfileId: Date.now() % 1_000_000, stackLevel: 0,
+          // One dialog intention owns one seed: retries are byte-identical,
+          // while a changed form intention gets a new profile identity.
+          chargingProfileId: numericOperationSeed(operationSeed), stackLevel: 0,
           chargingProfilePurpose: 'TxProfile', chargingProfileKind: 'Relative',
           chargingSchedule: { chargingRateUnit: 'W', chargingSchedulePeriod: [{ startPeriod: 0, limit: limit * 1000 }] },
         } });
@@ -194,6 +206,58 @@ export function actionRequest(action: string, values: Record<string, string>): R
   }
 }
 
+function sorted(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sorted);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, sorted(child)]));
+}
+
+/** Stable identity of one physical operator intention; transport retries keep its key. */
+export function actionFingerprint(action: string, connectorId: number | undefined,
+  transactionId: number | undefined, request: Record<string, unknown>): string {
+  return JSON.stringify(sorted({ action, connectorId, transactionId, request }));
+}
+
+export interface OcppActionHandoff {
+  version: 1;
+  siteId: string;
+  chargePointId: string;
+  action: string;
+  connectorId?: number;
+  transactionId?: number;
+  request: Record<string, unknown>;
+  intent: OcppActionIntent;
+}
+
+const HANDOFF_PREFIX = 'VP-OCPP-INTENT-1:';
+
+/** Portable, server-verified handoff: the server remains the authority for actor, payload and expiry. */
+export function actionHandoffCode(handoff: OcppActionHandoff): string {
+  return `${HANDOFF_PREFIX}${JSON.stringify(sorted(handoff))}`;
+}
+
+export function parseActionHandoff(code: string, expected: {
+  siteId: string; chargePointId: string; action: string; now?: number;
+}): OcppActionHandoff {
+  if (!code.trim().startsWith(HANDOFF_PREFIX)) throw new Error('format');
+  let parsed: unknown;
+  try { parsed = JSON.parse(code.trim().slice(HANDOFF_PREFIX.length)); } catch { throw new Error('format'); }
+  if (!parsed || typeof parsed !== 'object') throw new Error('format');
+  const value = parsed as Partial<OcppActionHandoff>;
+  if (value.version !== 1 || value.siteId !== expected.siteId
+      || value.chargePointId !== expected.chargePointId || value.action !== expected.action
+      || !value.intent || typeof value.intent.id !== 'string' || typeof value.intent.phrase !== 'string'
+      || typeof value.intent.expiresAt !== 'string' || value.intent.action !== expected.action || !value.intent.fourEyes
+      || !value.request || typeof value.request !== 'object' || Array.isArray(value.request)
+      || (value.connectorId != null && !Number.isInteger(value.connectorId))
+      || (value.transactionId != null && !Number.isInteger(value.transactionId))) throw new Error('binding');
+  const expires = Date.parse(value.intent.expiresAt);
+  if (!Number.isFinite(expires)) throw new Error('binding');
+  if (expires <= (expected.now ?? Date.now())) throw new Error('expired');
+  return value as OcppActionHandoff;
+}
+
 export interface OcppHero {
   transaction: OcppTransaction | null;
   power: string | null;
@@ -204,57 +268,108 @@ export interface OcppHero {
   applied: string;
 }
 
-function latest(samples: OcppMeterSample[], transactionId: number | null, token: string): OcppMeterSample | null {
-  return samples.filter((sample) => (transactionId == null || sample.transactionId === transactionId)
-    && `${sample.measurand ?? ''} ${sample.pointKey}`.toLowerCase().includes(token))
+function latest(samples: OcppMeterSample[], transaction: OcppTransaction, measurand: string, now: number): OcppMeterSample | null {
+  return samples.filter((sample) => sample.transactionId === transaction.transactionId
+    && sample.connectorId === transaction.connectorId
+    && [sample.measurand, sample.pointKey].some((value) => value?.toLowerCase() === measurand.toLowerCase())
+    && Number.isFinite(Date.parse(sample.sampledAt))
+    && now - Date.parse(sample.sampledAt) >= -60_000
+    && now - Date.parse(sample.sampledAt) <= OCPP_FRESH_MS)
     .sort((a, b) => Date.parse(b.sampledAt) - Date.parse(a.sampledAt))[0] ?? null;
 }
 
 function sampleValue(sample: OcppMeterSample | null, kind: 'power' | 'energy' | 'soc'): string | null {
   if (!sample) return null;
-  if (sample.numericValue == null) return `${sample.value}${sample.unit ? ` ${sample.unit}` : ''}`;
+  if (sample.numericValue == null) return null;
   let value = sample.numericValue;
   let unit = sample.unit ?? '';
-  if (kind === 'power' && unit.toLowerCase() === 'w') { value /= 1000; unit = 'kW'; }
-  if (kind === 'energy' && unit.toLowerCase() === 'wh') { value /= 1000; unit = 'kWh'; }
-  return `${value.toLocaleString('de-DE', { maximumFractionDigits: kind === 'soc' ? 0 : 1 })}${unit ? ` ${unit}` : ''}`;
+  const normalized = unit.toLowerCase();
+  if (kind === 'power') {
+    if (normalized === 'w') { value /= 1000; unit = 'kW'; }
+    else if (normalized !== 'kw') return null;
+  } else if (kind === 'energy') {
+    if (normalized === 'wh') { value /= 1000; unit = 'kWh'; }
+    else if (normalized !== 'kwh') return null;
+  } else {
+    if (normalized !== 'percent' && unit !== '%') return null;
+    unit = '%';
+  }
+  return `${value.toLocaleString('de-DE', { maximumFractionDigits: kind === 'soc' ? 0 : 1 })} ${unit}`;
 }
 
-function deepNumber(value: unknown, keys: string[]): number | null {
-  if (!value || typeof value !== 'object') return null;
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (keys.includes(key) && typeof child === 'number' && Number.isFinite(child)) return child;
-    const nested = deepNumber(child, keys);
-    if (nested != null) return nested;
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : null;
+}
+
+function scheduleLimit(value: unknown): { limit: number; unit: 'W' | 'A' } | null {
+  const root = record(value);
+  if (!root) return null;
+  const profile = record(root.csChargingProfiles);
+  const schedule = record(profile?.chargingSchedule) ?? record(root.chargingSchedule) ?? root;
+  const unit = schedule.chargingRateUnit;
+  const periods = schedule.chargingSchedulePeriod;
+  const limit = Array.isArray(periods) ? record(periods[0])?.limit : undefined;
+  return (unit === 'W' || unit === 'A') && typeof limit === 'number' && Number.isFinite(limit)
+    ? { limit, unit } : null;
+}
+
+function formatLimit(value: { limit: number; unit: 'W' | 'A' } | null): string | null {
+  if (!value) return null;
+  if (value.unit === 'W' && Math.abs(value.limit) >= 1000) {
+    return `${(value.limit / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} kW`;
   }
-  return null;
+  return `${value.limit.toLocaleString('de-DE', { maximumFractionDigits: 2 })} ${value.unit}`;
+}
+
+function actionMatchesTransaction(action: OcppAction, transaction: OcppTransaction): boolean {
+  return action.connectorId === transaction.connectorId
+    && (action.transactionId == null || action.transactionId === transaction.transactionId);
+}
+
+function actionIsFresh(action: OcppAction, now: number): boolean {
+  const updated = Date.parse(action.updatedAt);
+  return Number.isFinite(updated) && now - updated >= -60_000 && now - updated <= OCPP_FRESH_MS;
 }
 
 export function wallboxHero(transactions: OcppTransaction[], samples: OcppMeterSample[], actions: OcppAction[], now = Date.now()): OcppHero {
   const transaction = transactions.filter((tx) => tx.stoppedAt == null)
     .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))[0] ?? null;
-  const relevant = samples.filter((sample) => !transaction || sample.transactionId === transaction.transactionId);
-  const power = latest(relevant, transaction?.transactionId ?? null, 'power.active.import')
-    ?? latest(relevant, transaction?.transactionId ?? null, 'power');
-  const energy = latest(relevant, transaction?.transactionId ?? null, 'energy.active.import.register')
-    ?? latest(relevant, transaction?.transactionId ?? null, 'energy');
-  const soc = latest(relevant, transaction?.transactionId ?? null, 'soc');
-  const profile = actions.filter((action) => action.action === 'SetChargingProfile')
-    .sort((a, b) => Date.parse(b.preparedAt) - Date.parse(a.preparedAt))[0];
-  const readback = actions.filter((action) => action.action === 'GetCompositeSchedule'
-    && (action.state === 'completed' || action.state === 'effect_observed'))
-    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0];
-  const wanted = deepNumber(profile?.request, ['limit']);
-  const applied = deepNumber(readback?.effect ?? readback?.response, ['limit']);
+  const power = transaction ? latest(samples, transaction, 'Power.Active.Import', now) : null;
+  const energy = transaction ? latest(samples, transaction, 'Energy.Active.Import.Register', now) : null;
+  const soc = transaction ? latest(samples, transaction, 'SoC', now) : null;
+  const successful = new Set(['accepted_waiting_effect', 'effect_observed', 'completed']);
+  const profile = transaction ? actions.filter((action) => action.action === 'SetChargingProfile'
+    && successful.has(action.state) && actionMatchesTransaction(action, transaction) && actionIsFresh(action, now))
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0] : undefined;
+  const readback = transaction ? actions.filter((action) => action.action === 'GetCompositeSchedule'
+    && (action.state === 'completed' || action.state === 'effect_observed')
+    && actionMatchesTransaction(action, transaction) && actionIsFresh(action, now))
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0] : undefined;
+  const wanted = scheduleLimit(profile?.request);
+  const applied = scheduleLimit(readback?.effect) ?? scheduleLimit(readback?.response);
   const started = transaction ? Date.parse(transaction.startedAt) : NaN;
   const minutes = Number.isFinite(started) ? Math.max(0, Math.floor((now - started) / 60_000)) : null;
   return {
     transaction,
     power: sampleValue(power, 'power'), energy: sampleValue(energy, 'energy'), soc: sampleValue(soc, 'soc'),
     duration: minutes == null ? null : minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes} min`,
-    release: wanted == null ? 'keine Freigabe gemeldet' : `${wanted.toLocaleString('de-DE')} ${wanted > 1000 ? 'W' : 'A/W laut Profil'}`,
-    applied: applied == null ? 'noch nicht zurückgelesen' : `${applied.toLocaleString('de-DE')} laut CompositeSchedule`,
+    release: formatLimit(wanted) ?? 'keine bestätigte Freigabe gemeldet',
+    applied: formatLimit(applied) ?? 'noch nicht erfolgreich zurückgelesen',
   };
+}
+
+export function stationConnection(station: OcppStation | null, now = Date.now()): {
+  sendable: boolean; label: string; detail: string;
+} {
+  if (!station?.connected) return { sendable: false, label: 'Offline', detail: 'Keine aktive OCPP-Verbindung.' };
+  const seen = station.lastSeen ? Date.parse(station.lastSeen) : NaN;
+  if (!Number.isFinite(seen) || now - seen > OCPP_FRESH_MS) {
+    return { sendable: false, label: 'Keine aktuellen Daten', detail: station.lastSeen
+      ? `Letzter Lebensbeleg ${new Date(station.lastSeen).toLocaleString('de-DE')}.`
+      : 'Die Verbindung hat noch keinen aktuellen Lebensbeleg.' };
+  }
+  return { sendable: true, label: 'Verbunden', detail: `Aktueller Lebensbeleg ${new Date(seen).toLocaleString('de-DE')}.` };
 }
 
 export type ActionTone = 'ok' | 'warn' | 'error' | 'neutral';
@@ -272,9 +387,58 @@ export function actionState(state: string): { response: string; effect: string; 
     case 'edge_rejected': return { response: 'Edge hat den Versand abgelehnt', effect: 'Keine Wirkung erwartet', tone: 'error', pending: false };
     case 'effect_failed': return { response: 'CallResult · Befehl angenommen', effect: 'Wirkung widerspricht oder ist fehlgeschlagen', tone: 'error', pending: false };
     case 'timed_out': case 'effect_timeout': return { response: 'Frist abgelaufen', effect: 'Wirkung nicht innerhalb der Frist beobachtet', tone: 'warn', pending: false };
+    case 'late_response': return { response: 'Antwort verspätet eingetroffen', effect: 'Ursprünglicher Abschluss bleibt bestehen', tone: 'warn', pending: false };
+    case 'late_effect': return { response: 'Wirkung verspätet beobachtet', effect: 'Ursprünglicher Abschluss bleibt bestehen', tone: 'warn', pending: false };
     case 'cancelled': return { response: 'Vor Versand abgebrochen', effect: 'Keine Wirkung', tone: 'neutral', pending: false };
     default: return { response: state || 'Unbekannter Zustand', effect: 'Technischen Zustand prüfen', tone: 'neutral', pending: false };
   }
+}
+
+export function actionNeedsPolling(action: OcppAction, now = Date.now()): boolean {
+  if (actionState(action.state).pending) return true;
+  if ((action.state !== 'timed_out' && action.state !== 'effect_timeout') || action.effectAt) return false;
+  const deadline = Date.parse(action.deadlineAt);
+  return Number.isFinite(deadline) && now <= deadline + OCPP_LATE_EFFECT_POLL_MS;
+}
+
+const SECRET_KEY = /password|secret|token|signature|location|endpoint|callback(?:url|uri)?|(?:^|[_-])url(?:$|[_-])|(?:^|[_-])uri(?:$|[_-])|idtag|imsi|iccid|credential|authorization/i;
+const URL_VALUE = /https?:\/\/[^\s"'<>]+/gi;
+const ASSIGNED_SECRET = /\b(?:token|secret|password|signature|credential|authorization)\s*[=:]\s*[^\s,;]+/gi;
+const BEARER = /\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi;
+const JWT = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
+const OPAQUE_SECRET = /\b[A-Za-z0-9_-]{40,}\b/g;
+const LONG_IDENTIFIER = /\b\d{14,22}\b/g;
+
+/** Last-resort UI privacy barrier, recursive by key and by string value form. */
+export function redactSensitiveText(value: string): string {
+  return value.replace(URL_VALUE, '••••••••')
+    .replace(ASSIGNED_SECRET, '••••••••')
+    .replace(BEARER, '••••••••')
+    .replace(JWT, '••••••••')
+    .replace(OPAQUE_SECRET, '••••••••')
+    .replace(LONG_IDENTIFIER, '••••••••');
+}
+
+export function safeJson(value: unknown): string {
+  const redact = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(redact);
+    if (typeof input === 'string') return redactSensitiveText(input);
+    if (!input || typeof input !== 'object') return input;
+    return Object.fromEntries(Object.entries(input as Record<string, unknown>).map(([key, child]) => [key,
+      SECRET_KEY.test(key) ? '••••••••' : redact(child)]));
+  };
+  return JSON.stringify(redact(value), null, 2);
+}
+
+/** Customer-safe action error copy. Raw backend/proxy exception text never crosses into the DOM. */
+export function safeActionError(cause: unknown): string {
+  const status = cause && typeof cause === 'object' && 'status' in cause
+    ? Number((cause as { status?: unknown }).status) : 0;
+  if (status === 400 || status === 422) return 'Die Eingaben wurden nicht akzeptiert. Prüfen Sie die markierten Werte und versuchen Sie es erneut.';
+  if (status === 403) return 'Ihr Konto darf diese Aktion nicht ausführen. Die erforderliche Rolle ist im Aktionskatalog angegeben.';
+  if (status === 409) return 'Die Aktion steht im Konflikt mit einem laufenden Vorgang oder einer abgelaufenen Bestätigung. Laden Sie den Stand neu.';
+  if (status === 429) return 'Zu viele Aktionen in kurzer Zeit. Warten Sie einen Moment und versuchen Sie es erneut.';
+  return 'Die Aktion konnte nicht sicher abgeschlossen werden. Sie können denselben Versuch erneut senden; VoltPilot verhindert eine Doppelwirkung.';
 }
 
 export function maskReference(value: string | null): string {
