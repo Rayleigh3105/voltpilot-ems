@@ -102,6 +102,12 @@ func (s *Server) ExecuteCloudCommand(ctx context.Context, raw []byte, identity C
 	fingerprint := fmt.Sprintf("%x", sha256.Sum256(raw))
 	duplicate, err := s.commands.claim(cmd, fingerprint, wireAction, deadline, now)
 	if err != nil {
+		if errors.Is(err, ErrCommandStorage) {
+			// No claim/rejection boundary reached durable storage. Emitting a
+			// terminal edge rejection here would let the cloud close the action
+			// while a later broker replay can still execute it.
+			return err
+		}
 		if errors.Is(err, errCommandLedgerCapacity) {
 			reason := "OCPP-Befehl kann nicht sicher angenommen werden: Das At-most-once-Ledger ist ausgelastet"
 			s.journal.RecordCommandEventOnce(cmd.ChargePointID, cmd.CorrelationID, "CommandRejected",

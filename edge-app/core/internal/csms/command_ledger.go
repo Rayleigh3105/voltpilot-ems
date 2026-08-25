@@ -3,6 +3,7 @@ package csms
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +16,11 @@ const commandLedgerLimit = 4096
 const commandLedgerLateResponseRetention = 24 * time.Hour
 
 var errCommandLedgerCapacity = errors.New("OCPP-Befehlsledger ist mit noch gültigen Einträgen ausgelastet")
+
+// ErrCommandStorage marks a pre-station persistence failure. Callers must not
+// turn it into a terminal business result or acknowledge the MQTT command: no
+// durable at-most-once decision exists yet, so redelivery remains authoritative.
+var ErrCommandStorage = errors.New("OCPP-Befehl konnte nicht dauerhaft entschieden werden")
 
 type commandLedgerEntry struct {
 	ActionID            string    `json:"action_id"`
@@ -55,6 +61,8 @@ type commandLedger struct {
 	path               string
 	entries            map[string]commandLedgerEntry
 	capacityBlockUntil time.Time
+	// Test-only failure injection at the persistence boundary.
+	beforeSave func() error
 }
 
 func newCommandLedger(dataDir string) (*commandLedger, error) {
@@ -102,7 +110,7 @@ func (l *commandLedger) claim(cmd CloudCommand, fingerprint, wireAction string, 
 			l.capacityBlockUntil = deadline.UTC()
 			if err := l.save(); err != nil {
 				l.capacityBlockUntil = previous
-				return false, err
+				return false, fmt.Errorf("%w: %v", ErrCommandStorage, err)
 			}
 		}
 		return false, errCommandLedgerCapacity
@@ -118,7 +126,7 @@ func (l *commandLedger) claim(cmd CloudCommand, fingerprint, wireAction string, 
 		l.capacityBlockUntil = deadline.UTC()
 		if err := l.save(); err != nil {
 			l.capacityBlockUntil = time.Time{}
-			return false, err
+			return false, fmt.Errorf("%w: %v", ErrCommandStorage, err)
 		}
 		return false, errCommandLedgerCapacity
 	}
@@ -134,7 +142,7 @@ func (l *commandLedger) claim(cmd CloudCommand, fingerprint, wireAction string, 
 	l.entries[cmd.ActionID] = entry
 	if err := l.save(); err != nil {
 		delete(l.entries, cmd.ActionID)
-		return false, err
+		return false, fmt.Errorf("%w: %v", ErrCommandStorage, err)
 	}
 	return false, nil
 }
@@ -272,6 +280,11 @@ func commandLedgerEntryPrunable(e commandLedgerEntry, now time.Time) bool {
 }
 
 func (l *commandLedger) save() error {
+	if l.beforeSave != nil {
+		if err := l.beforeSave(); err != nil {
+			return err
+		}
+	}
 	doc := commandLedgerDocument{SchemaVersion: "1.0", Entries: make([]commandLedgerEntry, 0, len(l.entries))}
 	for _, e := range l.entries {
 		doc.Entries = append(doc.Entries, e)

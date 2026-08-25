@@ -408,6 +408,94 @@ func TestCommandLedgerCapacityWatermarkIsBoundedAcrossHighCardinalityRestartAndB
 	}
 }
 
+func TestCommandLedgerWatermarkExtensionSaveFailureStaysRetryableAcrossRestartBoundary(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	clockNow := now
+	d1 := now.Add(20 * time.Second)
+	d2 := now.Add(50 * time.Second)
+	ledger, err := newCommandLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminalID := "terminal-capacity-slot"
+	ledger.entries[terminalID] = commandLedgerEntry{ActionID: terminalID, Fingerprint: "terminal",
+		State: "responded", DeadlineAt: d1, UpdatedAt: now}
+	for i := 0; len(ledger.entries) < commandLedgerLimit; i++ {
+		id := fmt.Sprintf("save-fail-protected-%d", i)
+		ledger.entries[id] = commandLedgerEntry{ActionID: id, Fingerprint: id, State: "sent",
+			DeadlineAt: now.Add(time.Hour), UpdatedAt: now}
+	}
+	ledger.capacityBlockUntil = d1
+	if err := ledger.save(); err != nil {
+		t.Fatal(err)
+	}
+
+	identity := CommandIdentity{TenantID: "tenant-a", SiteID: "site-a", DeviceID: "device-a"}
+	raw := cloudCommand(now, func(c *CloudCommand) {
+		c.ActionID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+		c.CorrelationID = "ocpp-" + c.ActionID
+		c.DeadlineAt = d2.Format(time.RFC3339Nano)
+	})
+	s1, err := New(Options{Enabled: false, DataDir: dir, Now: func() time.Time { return clockNow }, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstSocket := &writeCountingWsServer{}
+	s1.chargers["cp-1"] = &ChargerState{Charger: Charger{ID: "cp-1"}, Connected: true}
+	s1.transport = &transport{srv: s1, wsrv: firstSocket}
+	s1.commands.beforeSave = func() error { return errors.New("forced watermark fsync failure") }
+	err = s1.ExecuteCloudCommand(context.Background(), raw, identity)
+	if !errors.Is(err, ErrCommandStorage) {
+		t.Fatalf("watermark extension save failure = %v, want retryable storage error", err)
+	}
+	if firstSocket.writes != 0 {
+		t.Fatalf("failed watermark extension wrote %d station frames", firstSocket.writes)
+	}
+	if _, _, ok := s1.NextProtocolEvent(); ok {
+		t.Fatal("failed watermark extension emitted terminal cloud evidence")
+	}
+	if !s1.commands.capacityBlockUntil.Equal(d1) {
+		t.Fatalf("failed extension changed in-memory watermark to %s, want D1 %s", s1.commands.capacityBlockUntil, d1)
+	}
+	s1.transport = nil
+	s1.Stop()
+
+	onDisk, err := newCommandLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !onDisk.capacityBlockUntil.Equal(d1) {
+		t.Fatalf("failed extension changed durable watermark to %s, want D1 %s", onDisk.capacityBlockUntil, d1)
+	}
+
+	// At the exact D1 boundary the old global block and one terminal slot are
+	// safely prunable. Because the failed attempt emitted no terminal outcome
+	// and remained unacknowledged, its QoS1 replay may now be claimed and sent.
+	clockNow = d1
+	s2, err := New(Options{Enabled: false, DataDir: dir, Now: func() time.Time { return clockNow }, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		s2.transport = nil
+		s2.Stop()
+	}()
+	secondSocket := &writeCountingWsServer{}
+	s2.chargers["cp-1"] = &ChargerState{Charger: Charger{ID: "cp-1"}, Connected: true}
+	s2.transport = &transport{srv: s2, wsrv: secondSocket}
+	if err := s2.ExecuteCloudCommand(context.Background(), raw, identity); err != nil {
+		t.Fatalf("retry after storage recovery at D1 = %v", err)
+	}
+	if secondSocket.writes != 1 {
+		t.Fatalf("durably claimed replay wrote %d station frames, want 1", secondSocket.writes)
+	}
+	entry, ok := s2.commands.entries["dddddddd-dddd-4ddd-8ddd-dddddddddddd"]
+	if !ok || entry.State != "sent" {
+		t.Fatalf("replay was not durably sent after recovery: %#v found=%v", entry, ok)
+	}
+}
+
 func TestCommandLedgerCapacityPrunesExpiredButRetainsUnexpiredTerminalEvidence(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)

@@ -36,7 +36,7 @@ type Link struct {
 	networkFn func() *NetworkSummary
 
 	onSchedule        func(payload []byte)
-	onCommand         func(payload []byte)
+	onCommand         func(payload []byte) bool
 	onEntities        func(payload []byte)
 	onPlanV2          func(payload []byte)
 	onFlows           func(payload []byte)
@@ -65,7 +65,9 @@ type Options struct {
 	OnSchedule func(payload []byte)
 	// OnCommand receives every (retained) ad-hoc command payload, e.g. the
 	// purge_data command (docs/contracts/mqtt-data-purge.schema.json).
-	OnCommand func(payload []byte)
+	// Return false only for a retryable failure that must remain unacknowledged
+	// at MQTT QoS1. Terminal/handled outcomes return true.
+	OnCommand func(payload []byte) bool
 	// OnEntities receives the retained v2 entity-registry push on
 	// .../v2/entities (docs/contracts/v2/edge-entity-config.md §1). An EMPTY
 	// payload is delivered too - it clears the registry (retained-clear). nil
@@ -214,6 +216,7 @@ func New(o Options) (*Link, error) {
 		SetConnectRetryInterval(5 * time.Second).
 		SetCleanSession(false).
 		SetOrderMatters(true).
+		SetAutoAckDisabled(true).
 		SetKeepAlive(30 * time.Second)
 
 	if o.DevURL == "" {
@@ -241,6 +244,7 @@ func New(o Options) (*Link, error) {
 			if l.onSchedule != nil {
 				l.onSchedule(msg.Payload())
 			}
+			msg.Ack()
 		}); tok.Wait() && tok.Error() != nil {
 			slog.Error("schedule subscribe failed", "topic", topic, "err", tok.Error())
 		}
@@ -249,9 +253,7 @@ func New(o Options) (*Link, error) {
 		// buffers right here on reconnect, BEFORE the publisher drains anything.
 		cmdTopic := l.topic("command")
 		if tok := c.Subscribe(cmdTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-			if l.onCommand != nil && len(msg.Payload()) > 0 {
-				l.onCommand(msg.Payload())
-			}
+			handleCommandMessage(l.onCommand, msg)
 		}); tok.Wait() && tok.Error() != nil {
 			slog.Error("command subscribe failed", "topic", cmdTopic, "err", tok.Error())
 		}
@@ -262,6 +264,7 @@ func New(o Options) (*Link, error) {
 			entTopic := l.topic("v2/entities")
 			if tok := c.Subscribe(entTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
 				l.onEntities(msg.Payload())
+				msg.Ack()
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 entities subscribe failed", "topic", entTopic, "err", tok.Error())
 			}
@@ -273,6 +276,7 @@ func New(o Options) (*Link, error) {
 			planTopic := l.topic("v2/plan")
 			if tok := c.Subscribe(planTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
 				l.onPlanV2(msg.Payload())
+				msg.Ack()
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 plan subscribe failed", "topic", planTopic, "err", tok.Error())
 			}
@@ -281,6 +285,7 @@ func New(o Options) (*Link, error) {
 			flowsTopic := l.topic("v2/flows")
 			if tok := c.Subscribe(flowsTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
 				l.onFlows(msg.Payload())
+				msg.Ack()
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 flows subscribe failed", "topic", flowsTopic, "err", tok.Error())
 			}
@@ -294,6 +299,7 @@ func New(o Options) (*Link, error) {
 			updTopic := l.topic("v2/update")
 			if tok := c.Subscribe(updTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
 				l.onUpdateTarget(msg.Payload())
+				msg.Ack()
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 update subscribe failed", "topic", updTopic, "err", tok.Error())
 			}
@@ -307,6 +313,7 @@ func New(o Options) (*Link, error) {
 			certTopic := l.topic("v2/control-certification")
 			if tok := c.Subscribe(certTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
 				l.onControlCert(msg.Payload())
+				msg.Ack()
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 control-certification subscribe failed", "topic", certTopic, "err", tok.Error())
 			}
@@ -320,6 +327,7 @@ func New(o Options) (*Link, error) {
 			cfgTopic := l.topic("v2/charging-config")
 			if tok := c.Subscribe(cfgTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
 				l.onChargingConfig(msg.Payload())
+				msg.Ack()
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 charging-config subscribe failed", "topic", cfgTopic, "err", tok.Error())
 			}
@@ -332,6 +340,7 @@ func New(o Options) (*Link, error) {
 			applyTopic := l.topic("v2/apply")
 			if tok := c.Subscribe(applyTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
 				l.onApplyRequest(msg.Payload())
+				msg.Ack()
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 apply subscribe failed", "topic", applyTopic, "err", tok.Error())
 			}
@@ -345,6 +354,7 @@ func New(o Options) (*Link, error) {
 				if len(msg.Payload()) > 0 {
 					l.onChargingBoost(msg.Payload())
 				}
+				msg.Ack()
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 charging-boost subscribe failed", "topic", boostTopic, "err", tok.Error())
 			}
@@ -359,6 +369,7 @@ func New(o Options) (*Link, error) {
 				if len(msg.Payload()) > 0 {
 					l.onProbeRequest(msg.Payload())
 				}
+				msg.Ack()
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 probe subscribe failed", "topic", probeTopic, "err", tok.Error())
 			}
@@ -373,6 +384,7 @@ func New(o Options) (*Link, error) {
 				if len(msg.Payload()) > 0 {
 					l.onRegisterWrite(msg.Payload())
 				}
+				msg.Ack()
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 register-write subscribe failed", "topic", regTopic, "err", tok.Error())
 			}
@@ -386,6 +398,7 @@ func New(o Options) (*Link, error) {
 				if len(msg.Payload()) > 0 {
 					l.onDesiredDownlink(msg.Payload())
 				}
+				msg.Ack()
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 desired subscribe failed", "topic", desiredTopic, "err", tok.Error())
 			}
@@ -403,6 +416,13 @@ func New(o Options) (*Link, error) {
 
 	l.client = pahomqtt.NewClient(opts)
 	return l, nil
+}
+
+func handleCommandMessage(handler func([]byte) bool, msg pahomqtt.Message) {
+	if handler != nil && len(msg.Payload()) > 0 && !handler(msg.Payload()) {
+		return
+	}
+	msg.Ack()
 }
 
 func mtlsConfig(keyPath, certPath, caPath, serverName string, insecure bool) (*tls.Config, error) {

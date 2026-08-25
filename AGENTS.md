@@ -4286,7 +4286,15 @@ und dieselbe Vendor/Message-Bindung am Edge zulässig.
   At-most-once-Sicherheit ohne Memory-/Disk-DoS. `ledger_capacity`-Feedback nutzt
   `action_id` plus unveränderliches `requested_at` als stabile Journalidentität:
   ein verlorenes PUBACK vervielfacht die Datei nicht, und nach Event-ACK wird
-  dieselbe `event_id` erneut geliefert, sodass Cloud-Dedup exakt bleibt.
+  dieselbe `event_id` erneut geliefert, sodass Cloud-Dedup exakt bleibt. Die
+  Transaktionsgrenze liegt VOR diesem Business-Feedback: scheitert das
+  Persistieren einer erstmaligen oder verlängernden Kapazitätssperre, entsteht
+  KEIN `CommandRejected`-Event. `ErrCommandStorage` läuft bis zum Cloud-Link
+  durch; dessen Paho-Client arbeitet für alle Topics mit manuellen ACKs und
+  lässt genau diesen Command unbestätigt, während alle übrigen Downlinks nach
+  ihrer bisherigen synchronen Verarbeitung ACKen. Damit darf eine Redelivery
+  nach Storage-Erholung noch ausführen, ohne einem bereits terminal
+  `edge_rejected` gemeldeten Ausgang zu widersprechen.
   Der `action_id` ist zugleich der OCPP-wire-id; die Journal-Korrelation ist
   wire-identisch. Nach Neustart wird sie aus dem immutable CALL-Spool UND dem
   Command-Ledger aufgebaut, weil ein normaler Cloud-QoS1-ACK die bereits
