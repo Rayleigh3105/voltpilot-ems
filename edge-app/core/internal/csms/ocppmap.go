@@ -17,6 +17,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/lorenzodonini/ocpp-go/ocpp"
 	ocpp16 "github.com/lorenzodonini/ocpp-go/ocpp1.6"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/core"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/firmware"
@@ -95,7 +96,7 @@ func (t *transport) start(ctx context.Context) error {
 	go func() {
 		for err := range errC {
 			if err != nil {
-				t.srv.log.Warn("OCPP-Server meldet einen Fehler", "err", err)
+				t.srv.log.Warn("OCPP-Server meldet einen Fehler", "err", privacySafeProtocolError(err))
 			}
 		}
 	}()
@@ -309,14 +310,30 @@ func await[T any](ctx context.Context, send func(cb func(T, error)) error) (T, e
 		}
 	})
 	if err != nil {
-		return zero, err
+		return zero, privacySafeProtocolError(err)
 	}
 	select {
 	case <-ctx.Done():
 		return zero, ctx.Err()
 	case r := <-ch:
-		return r.v, r.err
+		return r.v, privacySafeProtocolError(r.err)
 	}
+}
+
+// ocpp-go exposes CallError.errorDescription through error.Error() in addition
+// to the raw websocket frame. That free station/vendor prose must not escape
+// through commissioning state, command status or logs after the journal has
+// already redacted it. Keep the typed code; reduce description presence to the
+// same fixed marker used on disk and at the cloud boundary.
+func privacySafeProtocolError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var protocolErr *ocpp.Error
+	if errors.As(err, &protocolErr) {
+		return fmt.Errorf("OCPP CallError (%s): %s", protocolErr.Code, redactedErrorDescription)
+	}
+	return err
 }
 
 // toOcppProfile maps our plain profile onto the library's type. It is the ONLY

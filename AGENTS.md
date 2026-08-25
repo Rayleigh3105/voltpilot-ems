@@ -3907,7 +3907,12 @@ CSMS→Station-Command-Gateway und keine neue Station-Aktion.
   Call/CallResult/CallError-Journal. Alle elf Tabellen tragen `tenant_id`, RLS
   UND FORCE RLS; Roh-/Diagnose-/personenbezogene Daten laufen nach 90 Tagen aus,
   der Retention-Job leert dann auch `transactionData` und `tagref_*` im
-  langlebigen, nicht-personenbezogenen Transaktionskopf.
+  langlebigen, nicht-personenbezogenen Transaktionskopf. Das additive Review-
+  Hardening `V20260840010000` bindet jede OCPP-Zeile per Composite-FK an exakt
+  ihr `(device,site,tenant)` und kaskadiert beim Device-Delete; Geräte-Purge,
+  Unclaim, Site-Delete und Tenant-Offboarding löschen dieselben elf Tabellen
+  zusätzlich explizit in ihrer bestehenden DB-Transaktion. Der Retention-Job
+  bereinigt nun auch seit >90 Tagen unveränderte offene Transaktionen.
 - **Ein SampledValue ist eine Zeile.** Der kanonische `point_key` enthält immer
   `measurand/context/format/phase/location/unit`; fehlende OCPP-Felder bekommen
   ausschließlich ihre Spec-Defaults bzw. den ehrlichen Sentinel `None`.
@@ -3918,15 +3923,28 @@ CSMS→Station-Command-Gateway und keine neue Station-Aktion.
   secret-/password-/token-artige Vendor-Keys haben im DB- und API-Modell immer
   `value=null`; Diagnose-/Firmware-URLs und untypisierte DataTransfer-Daten
   landen nie roh im Journal. Achtung: `MeterValues.location=Outlet/EV/...` ist
-  eine Messdimension, keine URL.
+  eine Messdimension, keine URL. `CallError.error_description` ist untypisierter
+  Vendor-Freitext und wird deshalb an BEIDEN Grenzen vollständig auf
+  `[redacted-call-error-description]` reduziert; Error-Code und redigierte
+  Details bleiben erhalten. Auch der `ocpp-go`-Callback-/Status-/Log-Pfad wird
+  am Edge auf Code + Marker normiert. Eine DB-CHECK-Constraint verhindert
+  Umgehungen.
 - **Zustellung ist über Neustarts belastbar:** der API-Listener verwendet die
   stabile, konfigurierbare MQTT-Client-ID `VOLTPILOT_OCPP_MQTT_CLIENT_ID`, eine
   persistente Broker-Session (`cleanSession=false`) und manuelle QoS1-ACKs erst
   nach abgeschlossener DB-Verarbeitung. Pro horizontaler API-Replika ist eine
   eigene stabile ID Pflicht; dieselbe ID auf zwei laufenden Pods würde sie
   gegenseitig vom Broker trennen.
+- **Lücken werden nicht verschwiegen:** Überlauf (10.000 Dateien) sowie Event-
+  Write-/Commit-/Encode-Fehler erhöhen einen persistenten monotonen Zähler im
+  Edge-Ledger `ocpp-journal-gaps.json`. Der Upload priorisiert daraus ein
+  idempotentes internes `JournalGap` mit Anzahl, Gründen und betroffenem Zeit-/
+  Eventbereich; die Cloud persistiert es im normalen Journal und liefert es
+  explizit über `GET .../ocpp/gaps`. Ledger und Gap überleben Neustarts bis zum
+  QoS1-ACK. Purge entfernt OCPP-Spool-Dateien und alte Replays scheitern an
+  `device.data_purged_before` auch dann, wenn ein Edge nicht kooperiert.
 - **Die API ist strikt GET-only:**
-  `/api/v1/sites/{siteId}/ocpp/{stations,events,transactions,meter-values,configuration,action-permissions}`.
+  `/api/v1/sites/{siteId}/ocpp/{stations,events,gaps,transactions,meter-values,configuration,action-permissions}`.
   Kunden lesen über normalen JWT-Tenant + RLS, Plattform-Admins wie bei allen
   Site-Pfaden über `X-Tenant-Id`. `OcppActionPolicy` materialisiert D4 für den
   abhängigen Gateway-PR: operator < site-admin < platform-admin; die Map ist
@@ -3936,12 +3954,14 @@ CSMS→Station-Command-Gateway und keine neue Station-Aktion.
   Alias derselben Anlagenadministrator-Stufe autorisiert.
 - **Bestehende Verträge bleiben stehen:** `device_charging_*`, Charging-Boost
   und der Smart-Charging-Executor werden nicht ersetzt. Das bestehende
-  Commissioning fragt jetzt GetConfiguration mit leerer Key-Liste (= alle
-  Schlüssel), wertet für den Mechanismus aber weiterhin nur seine bekannten
-  Safe-Keys aus; das Journal bewahrt readonly, unknownKey,
-  SupportedFeatureProfiles und Vendor-Keys. Bestehende SetChargingProfile-
+  Commissioning liest die vier bekannten Safe-Keys GEZIELT vor jedem Profil.
+  Erst nach installierter Höchstgrenze + TxDefault folgt eine getrennte,
+  best-effort GetConfiguration-Abfrage mit leerer Key-Liste (= alle Schlüssel);
+  ihre Ablehnung kann die Schutzprofile nie verhindern. Das Journal bewahrt bei
+  Erfolg readonly, unknownKey, SupportedFeatureProfiles und Vendor-Keys.
+  Bestehende SetChargingProfile-
   Calls werden nur als Profilbezug an die Transaktion DERIVIERT, nie ausgelöst.
-- Verträge: `docs/contracts/mqtt-ocpp-events.schema.json` + die sechs GET-Pfade
+- Verträge: `docs/contracts/mqtt-ocpp-events.schema.json` + die sieben GET-Pfade
   in `openapi.yaml`. Beweise: `OcppPrivacyTest`, `OcppEventListenerTest`,
   `OcppActionPolicyTest`, der OCPP-Fall in `PortalApiTest`, der FORCE-RLS-
   Angriff in `RlsIsolationTest`, Edge `csms/journal_test.go` und Rig L10.

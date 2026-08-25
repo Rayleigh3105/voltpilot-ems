@@ -85,6 +85,8 @@ public class OcppRepository {
         String correlation = nullableText(envelope, "correlation_id");
         JsonNode payload = privacy.redact(envelope.path("payload"), action);
         JsonNode errorDetails = privacy.redact(envelope.path("error_details"), action);
+        String errorDescription = privacy.redactErrorDescription(
+                nullableText(envelope, "error_description"));
         int inserted = jdbc.update("INSERT INTO ocpp_protocol_event (occurred_at, event_id, tenant_id, "
                         + "site_id, device_id, charge_point_id, direction, message_type, correlation_id, "
                         + "action, error_code, error_description, error_details, payload) "
@@ -92,12 +94,13 @@ public class OcppRepository {
                         + "ON CONFLICT (event_id, occurred_at) DO NOTHING",
                 Timestamp.from(occurredAt), eventId, tenantId, siteId, deviceId, chargePointId,
                 direction, messageType, correlation, action, nullableText(envelope, "error_code"),
-                nullableText(envelope, "error_description"), json(errorDetails), json(payload));
+                errorDescription, json(errorDetails), json(payload));
         if (inserted == 0) {
             return false;
         }
 
-        if ("station_to_csms".equals(direction) || "internal".equals(direction)) {
+        if ("station_to_csms".equals(direction)
+                || ("internal".equals(direction) && !"JournalGap".equals(action))) {
             touchStation(tenantId, siteId, deviceId, chargePointId, occurredAt);
         }
         if ("Event".equals(messageType)) {
@@ -490,6 +493,27 @@ public class OcppRepository {
                 parse(rs.getString("error_details")), parse(rs.getString("payload"))), args.toArray());
     }
 
+    public List<OcppDto.DataGap> gaps(UUID siteId, int limit) {
+        return jdbc.query("SELECT event_id, occurred_at, device_id, payload FROM ocpp_protocol_event "
+                        + "WHERE site_id=? AND message_type='Event' AND action='JournalGap' "
+                        + "ORDER BY occurred_at DESC LIMIT ?",
+                (rs, n) -> {
+                    JsonNode payload = parse(rs.getString("payload"));
+                    Map<String, Long> reasons = new LinkedHashMap<>();
+                    JsonNode reasonNode = payload.path("reasons");
+                    if (reasonNode.isObject()) {
+                        reasonNode.fields().forEachRemaining(e -> reasons.put(e.getKey(), e.getValue().asLong()));
+                    }
+                    return new OcppDto.DataGap(UUID.fromString(rs.getString("event_id")),
+                            instant(rs, "occurred_at"), UUID.fromString(rs.getString("device_id")),
+                            payload.path("dropped_count").asLong(), payload.path("total_dropped").asLong(),
+                            parseInstant(payload.path("first_occurred_at").asText()),
+                            parseInstant(payload.path("last_occurred_at").asText()),
+                            payload.path("first_event_id").asText(null),
+                            payload.path("last_event_id").asText(null), reasons);
+                }, siteId, Math.max(1, Math.min(limit, 1000)));
+    }
+
     public List<OcppDto.Transaction> transactions(UUID siteId, int limit) {
         return jdbc.query("SELECT * FROM ocpp_transaction WHERE site_id=? ORDER BY started_at DESC LIMIT ?",
                 (rs, n) -> new OcppDto.Transaction(UUID.fromString(rs.getString("device_id")),
@@ -598,6 +622,10 @@ public class OcppRepository {
 
     private static UUID uuid(JsonNode n, String field) {
         try { return UUID.fromString(n.path(field).asText()); } catch (Exception e) { return null; }
+    }
+
+    private static Instant parseInstant(String value) {
+        try { return Instant.parse(value); } catch (Exception e) { return null; }
     }
 
     private static Integer nullableInt(JsonNode n, String field) {

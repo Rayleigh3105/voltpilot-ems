@@ -132,14 +132,19 @@ const (
 	KeyMeterValuesSampledData   = "MeterValuesSampledData"
 )
 
-// CapabilityKeys is what the CSMS asks a station for on connect. An empty key
-// list means "all keys" in OCPP 1.6. The load-management parser still consumes
-// only the four safe capability facts above, while the wire journal retains the
-// complete inventory (readonly flags, SupportedFeatureProfiles and vendor keys)
-// for Slice 10. This replaces the previous narrow read; it adds no new command.
+// CapabilityKeys is the narrow safety basis used before any charging profile
+// is installed. Some deployed OCPP 1.6 stations reject an empty/full
+// GetConfiguration request even though they answer a targeted key list.
 func CapabilityKeys() []string {
-	return []string{}
+	return []string{KeyAllowedChargingRateUnit, KeyMaxStackLevel,
+		KeyMaxPeriods, KeyMaxProfilesInstalled}
 }
+
+// InventoryKeys is a separate best-effort full GetConfiguration (empty list =
+// all keys in OCPP 1.6). Its wire result feeds Slice 10's complete readonly /
+// unknownKey / SupportedFeatureProfiles / vendor-key inventory, but it is never
+// load-bearing for the safety profiles above.
+func InventoryKeys() []string { return []string{} }
 
 // Capabilities is what a station said about its Smart-Charging support.
 type Capabilities struct {

@@ -20,6 +20,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class OcppPrivacy {
+    public static final String REDACTED_CALL_ERROR_DESCRIPTION =
+            "[redacted-call-error-description]";
     private final byte[] pepper;
 
     public OcppPrivacy(@Value("${voltpilot.ocpp.privacy-pepper:local-dev-only-change-me}")
@@ -32,6 +34,16 @@ public class OcppPrivacy {
                 : input.deepCopy();
         redactNode(copy, action == null ? "" : action);
         return copy;
+    }
+
+    /**
+     * OCPP CallError.errorDescription is arbitrary station/vendor prose with no
+     * field structure. It can contain credentials, URLs or idTags, so selective
+     * parsing can never be complete. Preserve presence only; typed errorCode
+     * and the recursively-redacted details remain available for diagnosis.
+     */
+    public String redactErrorDescription(String input) {
+        return input == null || input.isBlank() ? null : REDACTED_CALL_ERROR_DESCRIPTION;
     }
 
     private void redactNode(JsonNode node, String action) {

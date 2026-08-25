@@ -48,4 +48,20 @@ class OcppPrivacyTest {
         assertThat(transfer.path("vendorId").asText()).isEqualTo("Acme");
         assertThat(meter.path("sampledValue").get(0).path("location").asText()).isEqualTo("Outlet");
     }
+
+    @Test
+    void callErrorFreeTextIsNeverSelectivelyTrusted() {
+        for (String canary : new String[] {
+                "AuthorizationKey=cloud-secret",
+                "https://station.invalid/upload?token=url-secret",
+                "idTag=clear-rfid",
+                "client_secret=generic-secret"
+        }) {
+            assertThat(privacy.redactErrorDescription("failure: " + canary))
+                    .isEqualTo(OcppPrivacy.REDACTED_CALL_ERROR_DESCRIPTION)
+                    .doesNotContain(canary);
+        }
+        assertThat(privacy.redactErrorDescription(null)).isNull();
+        assertThat(privacy.redactErrorDescription("  ")).isNull();
+    }
 }

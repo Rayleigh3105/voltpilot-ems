@@ -743,6 +743,8 @@ class AdminApiTest {
         String deviceId = (String) claim.getBody().get("id");
         exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw) VALUES "
                 + "(now(), '" + tenantId + "', '" + siteId + "', '" + deviceId + "', 1.0)");
+        OcppTestData.seed(AdminApiTest::exec, tenantId, siteId, deviceId);
+        assertThat(queryLong(OcppTestData.countByTenantSql(tenantId))).isEqualTo(11);
 
         // Type-to-confirm: a wrong name is refused and NOTHING is deleted.
         assertThat(rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/delete"),
@@ -775,6 +777,7 @@ class AdminApiTest {
         assertThat(queryLong("SELECT count(*) FROM site WHERE tenant_id = '" + tenantId + "'")).isZero();
         assertThat(queryLong("SELECT count(*) FROM device WHERE tenant_id = '" + tenantId + "'")).isZero();
         assertThat(queryLong("SELECT count(*) FROM telemetry WHERE tenant_id = '" + tenantId + "'")).isZero();
+        assertThat(queryLong(OcppTestData.countByTenantSql(tenantId))).isZero();
 
         // Keycloak: the login is gone too.
         assertThat(tryToken("weggezogen-operator", "weg-pw-123")).doesNotContainKey("access_token");

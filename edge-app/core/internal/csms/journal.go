@@ -25,10 +25,13 @@ import (
 )
 
 const (
-	journalDirectory = "ocpp-journal"
-	journalKeyFile   = "ocpp-privacy.key"
-	journalMaxEvents = 10000
-	journalMaxWire   = 1024 * 1024
+	journalDirectory         = "ocpp-journal"
+	journalKeyFile           = "ocpp-privacy.key"
+	journalGapStateFile      = "ocpp-journal-gaps.json"
+	journalMaxEvents         = 10000
+	journalMaxWire           = 1024 * 1024
+	journalGapTokenPrefix    = "gap:"
+	redactedErrorDescription = "[redacted-call-error-description]"
 )
 
 // ProtocolEvent is the privacy-safe envelope queued on disk. Tenant/site/
@@ -48,22 +51,52 @@ type ProtocolEvent struct {
 	Payload          json.RawMessage `json:"payload"`
 }
 
+// journalGapState is a second, tiny durable ledger beside the bounded event
+// spool. A capacity eviction or failed event write must never disappear into a
+// local log: the next cloud upload is a JournalGap event describing the exact
+// affected event/time range and monotonically increasing total.
+type journalGapState struct {
+	SchemaVersion string       `json:"schema_version"`
+	TotalDropped  uint64       `json:"total_dropped"`
+	Pending       []journalGap `json:"pending,omitempty"`
+}
+
+type journalGap struct {
+	EventID         string            `json:"event_id"`
+	ReportedAt      string            `json:"reported_at"`
+	DroppedCount    uint64            `json:"dropped_count"`
+	TotalDropped    uint64            `json:"total_dropped"`
+	FirstOccurredAt string            `json:"first_occurred_at"`
+	LastOccurredAt  string            `json:"last_occurred_at"`
+	FirstEventID    string            `json:"first_event_id"`
+	LastEventID     string            `json:"last_event_id"`
+	Reasons         map[string]uint64 `json:"reasons"`
+	Sealed          bool              `json:"sealed"`
+}
+
 // Journal is a bounded, crash-safe spool: one atomically-renamed file per
 // event. A QoS1 cloud ACK removes exactly that file. Rewriting one ever-growing
 // JSON array for every 10-second MeterValues report would punish the edge disk;
 // small immutable files keep append and ACK O(1).
 type Journal struct {
-	dir     string
-	key     []byte
-	log     *slog.Logger
-	mu      sync.Mutex
-	closed  bool
-	count   int
-	changed chan struct{}
+	dir       string
+	statePath string
+	key       []byte
+	log       *slog.Logger
+	mu        sync.Mutex
+	closed    bool
+	count     int
+	changed   chan struct{}
 	// pending action maps make CALLRESULT/CALLERROR self-describing. OCPP gives
 	// those messages only a unique id; the action belongs to the paired CALL.
 	incoming map[string]string
 	outgoing map[string]string
+	gaps     journalGapState
+	// Injectable only for deterministic failure-path tests. Gap-state writes
+	// deliberately use the real filesystem, so an event-write failure can still
+	// leave durable evidence.
+	writeEventFile  func(string, []byte, os.FileMode) error
+	renameEventFile func(string, string) error
 }
 
 func newJournal(dataDir string, log *slog.Logger) (*Journal, error) {
@@ -85,8 +118,47 @@ func newJournal(dataDir string, log *slog.Logger) (*Journal, error) {
 			count++
 		}
 	}
-	return &Journal{dir: dir, key: key, log: log, changed: make(chan struct{}, 1),
-		count: count, incoming: map[string]string{}, outgoing: map[string]string{}}, nil
+	statePath := filepath.Join(dataDir, journalGapStateFile)
+	gaps, err := loadJournalGapState(statePath)
+	if err != nil {
+		return nil, err
+	}
+	j := &Journal{dir: dir, statePath: statePath, key: key, log: log,
+		changed: make(chan struct{}, 1), count: count,
+		incoming: map[string]string{}, outgoing: map[string]string{}, gaps: gaps,
+		writeEventFile: os.WriteFile, renameEventFile: os.Rename}
+	// Enforce the bound on restart too. A process may have died after the final
+	// rename but before the preceding instance could evict.
+	j.mu.Lock()
+	j.enforceBoundLocked()
+	j.mu.Unlock()
+	return j, nil
+}
+
+func loadJournalGapState(path string) (journalGapState, error) {
+	state := journalGapState{SchemaVersion: "1.0"}
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return state, nil
+	}
+	if err != nil {
+		return state, err
+	}
+	if err := json.Unmarshal(raw, &state); err != nil {
+		return state, fmt.Errorf("OCPP journal gap state: %w", err)
+	}
+	if state.SchemaVersion != "1.0" {
+		return state, fmt.Errorf("OCPP journal gap state schema %q, want 1.0", state.SchemaVersion)
+	}
+	for i := range state.Pending {
+		if state.Pending[i].EventID == "" || state.Pending[i].DroppedCount == 0 {
+			return state, errors.New("OCPP journal gap state contains an invalid pending gap")
+		}
+		if state.Pending[i].Reasons == nil {
+			state.Pending[i].Reasons = map[string]uint64{"unknown": state.Pending[i].DroppedCount}
+		}
+	}
+	return state, nil
 }
 
 func loadOrCreatePrivacyKey(path string) ([]byte, error) {
@@ -171,7 +243,13 @@ func (j *Journal) RecordWire(direction, chargePointID string, raw []byte) {
 			_ = json.Unmarshal(msg[2], &e.ErrorCode)
 		}
 		if len(msg) >= 4 {
-			_ = json.Unmarshal(msg[3], &e.ErrorDescription)
+			var description string
+			if json.Unmarshal(msg[3], &description) == nil && strings.TrimSpace(description) != "" {
+				// Free station/vendor prose has no parseable structure and may
+				// contain AuthorizationKey, URL tokens, idTags or arbitrary
+				// secret fields. Preserve presence only, before the first disk write.
+				e.ErrorDescription = redactedErrorDescription
+			}
 		}
 		if len(msg) >= 5 {
 			e.ErrorDetails = j.redact(msg[4], e.Action)
@@ -290,6 +368,7 @@ func (j *Journal) append(e ProtocolEvent) {
 	raw, err := json.Marshal(e)
 	if err != nil {
 		j.log.Error("OCPP journal event could not be encoded", "err", err)
+		j.recordDrop(e, "encode_failure")
 		return
 	}
 	j.mu.Lock()
@@ -300,17 +379,85 @@ func (j *Journal) append(e ProtocolEvent) {
 	name := strings.ReplaceAll(e.OccurredAt, ":", "-") + "_" + e.EventID + ".json"
 	tmp := filepath.Join(j.dir, "."+name+".tmp")
 	final := filepath.Join(j.dir, name)
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+	if err := j.writeEventFile(tmp, raw, 0o600); err != nil {
 		j.log.Error("OCPP journal event could not be persisted", "err", err)
+		j.recordDropLocked(e, "write_failure")
 		return
 	}
-	if err := os.Rename(tmp, final); err != nil {
+	if err := j.renameEventFile(tmp, final); err != nil {
 		_ = os.Remove(tmp)
 		j.log.Error("OCPP journal event could not be committed", "err", err)
+		j.recordDropLocked(e, "commit_failure")
 		return
 	}
 	j.count++
 	j.enforceBoundLocked()
+	select {
+	case j.changed <- struct{}{}:
+	default:
+	}
+}
+
+func (j *Journal) recordDrop(e ProtocolEvent, reason string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.closed {
+		return
+	}
+	j.recordDropLocked(e, reason)
+}
+
+func (j *Journal) recordDropLocked(e ProtocolEvent, reason string) {
+	j.gaps.TotalDropped++
+	var gap *journalGap
+	if n := len(j.gaps.Pending); n > 0 && !j.gaps.Pending[n-1].Sealed {
+		gap = &j.gaps.Pending[n-1]
+	} else {
+		j.gaps.Pending = append(j.gaps.Pending, journalGap{
+			EventID: newEventID(), ReportedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			FirstOccurredAt: e.OccurredAt,
+			FirstEventID:    e.EventID, Reasons: map[string]uint64{},
+		})
+		gap = &j.gaps.Pending[len(j.gaps.Pending)-1]
+	}
+	gap.DroppedCount++
+	gap.TotalDropped = j.gaps.TotalDropped
+	if gap.FirstOccurredAt == "" {
+		gap.FirstOccurredAt = e.OccurredAt
+	}
+	if gap.FirstEventID == "" {
+		gap.FirstEventID = e.EventID
+	}
+	gap.LastOccurredAt = e.OccurredAt
+	gap.LastEventID = e.EventID
+	gap.Reasons[reason]++
+	if err := j.persistGapStateLocked(); err != nil {
+		// Memory retains the evidence and every later append/Next retries it.
+		// A machine-wide disk failure cannot be made writable by application
+		// code, but it is never misreported as success.
+		j.log.Error("OCPP journal data-loss evidence could not be persisted", "err", err,
+			"total_dropped", j.gaps.TotalDropped)
+	}
+	j.signalChangedLocked()
+}
+
+func (j *Journal) persistGapStateLocked() error {
+	raw, err := json.Marshal(j.gaps)
+	if err != nil {
+		return err
+	}
+	tmp := j.statePath + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, j.statePath); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+func (j *Journal) signalChangedLocked() {
 	select {
 	case j.changed <- struct{}{}:
 	default:
@@ -337,12 +484,32 @@ func (j *Journal) enforceBoundLocked() {
 		return
 	}
 	drop := len(files) - journalMaxEvents
+	dropped := 0
 	for _, name := range files[:drop] {
+		e := ProtocolEvent{SchemaVersion: "1.0", EventID: eventIDFromJournalName(name),
+			OccurredAt: time.Now().UTC().Format(time.RFC3339Nano), Action: "Unknown",
+			MessageType: "Event", Direction: "internal", Payload: json.RawMessage(`{}`)}
+		if raw, readErr := os.ReadFile(filepath.Join(j.dir, name)); readErr == nil {
+			_ = json.Unmarshal(raw, &e)
+		}
 		if os.Remove(filepath.Join(j.dir, name)) == nil {
 			j.count--
+			dropped++
+			j.recordDropLocked(e, "capacity_overflow")
 		}
 	}
-	j.log.Error("OCPP journal capacity exceeded; oldest events dropped", "dropped", drop)
+	if dropped > 0 {
+		j.log.Error("OCPP journal capacity exceeded; oldest events dropped",
+			"dropped", dropped, "total_dropped", j.gaps.TotalDropped)
+	}
+}
+
+func eventIDFromJournalName(name string) string {
+	base := strings.TrimSuffix(name, ".json")
+	if len(base) >= 36 {
+		return base[len(base)-36:]
+	}
+	return "unknown"
 }
 
 func (j *Journal) filesLocked() ([]string, error) {
@@ -364,6 +531,30 @@ func (j *Journal) filesLocked() ([]string, error) {
 func (j *Journal) Next() ([]byte, string, bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if len(j.gaps.Pending) > 0 {
+		gap := &j.gaps.Pending[0]
+		if !gap.Sealed {
+			gap.Sealed = true
+			if err := j.persistGapStateLocked(); err != nil {
+				j.log.Error("OCPP journal gap seal could not be persisted", "err", err)
+			}
+		}
+		payload := mustJSON(map[string]any{
+			"dropped_count": gap.DroppedCount, "total_dropped": gap.TotalDropped,
+			"first_occurred_at": gap.FirstOccurredAt, "last_occurred_at": gap.LastOccurredAt,
+			"first_event_id": gap.FirstEventID, "last_event_id": gap.LastEventID,
+			"reasons": gap.Reasons,
+		})
+		e := ProtocolEvent{SchemaVersion: "1.0", EventID: gap.EventID,
+			OccurredAt: gap.ReportedAt, ChargePointID: "edge-journal",
+			Direction: "internal", MessageType: "Event", Action: "JournalGap", Payload: payload}
+		raw, err := json.Marshal(e)
+		if err != nil {
+			j.log.Error("OCPP journal gap could not be encoded", "err", err)
+			return nil, "", false
+		}
+		return raw, journalGapTokenPrefix + gap.EventID, true
+	}
 	files, err := j.filesLocked()
 	if err != nil || len(files) == 0 {
 		return nil, "", false
@@ -373,10 +564,61 @@ func (j *Journal) Next() ([]byte, string, bool) {
 		j.log.Error("OCPP journal event could not be read", "err", err)
 		return nil, "", false
 	}
+	var event ProtocolEvent
+	if json.Unmarshal(raw, &event) != nil || event.EventID == "" {
+		// A torn/corrupt file would otherwise block the oldest-first uploader
+		// forever. Remove it only together with a durable gap proof.
+		if os.Remove(filepath.Join(j.dir, files[0])) == nil {
+			if j.count > 0 {
+				j.count--
+			}
+			j.recordDropLocked(ProtocolEvent{EventID: eventIDFromJournalName(files[0]),
+				OccurredAt: time.Now().UTC().Format(time.RFC3339Nano)}, "corrupt_event")
+		}
+		return j.nextLockedAfterRepair()
+	}
 	return raw, files[0], true
 }
 
+func (j *Journal) nextLockedAfterRepair() ([]byte, string, bool) {
+	if len(j.gaps.Pending) == 0 {
+		return nil, "", false
+	}
+	gap := &j.gaps.Pending[0]
+	gap.Sealed = true
+	_ = j.persistGapStateLocked()
+	e := ProtocolEvent{SchemaVersion: "1.0", EventID: gap.EventID,
+		OccurredAt: gap.ReportedAt, ChargePointID: "edge-journal",
+		Direction: "internal", MessageType: "Event", Action: "JournalGap",
+		Payload: mustJSON(map[string]any{
+			"dropped_count": gap.DroppedCount, "total_dropped": gap.TotalDropped,
+			"first_occurred_at": gap.FirstOccurredAt, "last_occurred_at": gap.LastOccurredAt,
+			"first_event_id": gap.FirstEventID, "last_event_id": gap.LastEventID,
+			"reasons": gap.Reasons,
+		})}
+	raw, err := json.Marshal(e)
+	return raw, journalGapTokenPrefix + gap.EventID, err == nil
+}
+
 func (j *Journal) Ack(token string) error {
+	if strings.HasPrefix(token, journalGapTokenPrefix) {
+		id := strings.TrimPrefix(token, journalGapTokenPrefix)
+		if id == "" || strings.ContainsAny(id, `/\\`) {
+			return errors.New("invalid OCPP journal gap ack token")
+		}
+		j.mu.Lock()
+		defer j.mu.Unlock()
+		if len(j.gaps.Pending) == 0 || j.gaps.Pending[0].EventID != id {
+			return errors.New("unknown OCPP journal gap ack token")
+		}
+		acknowledged := j.gaps.Pending[0]
+		j.gaps.Pending = append([]journalGap(nil), j.gaps.Pending[1:]...)
+		if err := j.persistGapStateLocked(); err != nil {
+			j.gaps.Pending = append([]journalGap{acknowledged}, j.gaps.Pending...)
+			return err
+		}
+		return nil
+	}
 	if token == "" || filepath.Base(token) != token || !strings.HasSuffix(token, ".json") {
 		return errors.New("invalid OCPP journal ack token")
 	}
@@ -387,6 +629,48 @@ func (j *Journal) Ack(token string) error {
 		j.count--
 	}
 	return err
+}
+
+// PurgeThrough is the OCPP counterpart of telemetry/history PurgeThrough. It
+// is invoked by both local and cloud purge flows before replay can run. This is
+// intentional erasure, so it does not create a data-loss gap. The monotonic
+// all-time counter remains; pending gap events wholly inside the erased range
+// are removed so the purge cannot re-upload old OCPP metadata afterwards.
+func (j *Journal) PurgeThrough(watermark time.Time) error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	files, err := j.filesLocked()
+	if err != nil {
+		return err
+	}
+	for _, name := range files {
+		raw, readErr := os.ReadFile(filepath.Join(j.dir, name))
+		if readErr != nil {
+			return readErr
+		}
+		var event ProtocolEvent
+		if json.Unmarshal(raw, &event) != nil {
+			continue
+		}
+		at, parseErr := time.Parse(time.RFC3339Nano, event.OccurredAt)
+		if parseErr == nil && !at.After(watermark) {
+			if removeErr := os.Remove(filepath.Join(j.dir, name)); removeErr != nil {
+				return removeErr
+			}
+			if j.count > 0 {
+				j.count--
+			}
+		}
+	}
+	kept := j.gaps.Pending[:0]
+	for _, gap := range j.gaps.Pending {
+		last, parseErr := time.Parse(time.RFC3339Nano, gap.LastOccurredAt)
+		if parseErr != nil || last.After(watermark) {
+			kept = append(kept, gap)
+		}
+	}
+	j.gaps.Pending = kept
+	return j.persistGapStateLocked()
 }
 
 func (j *Journal) Changed() <-chan struct{} { return j.changed }

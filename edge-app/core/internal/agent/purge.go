@@ -43,6 +43,11 @@ func (a *Agent) PurgeRecordedData() (state.DataPurgeInfo, error) {
 		return state.DataPurgeInfo{}, err
 	}
 	a.hist.PurgeThrough(now)
+	if a.ocpp != nil {
+		if err := a.ocpp.srv.PurgeProtocolEventsThrough(now); err != nil {
+			return state.DataPurgeInfo{}, err
+		}
+	}
 
 	info := state.DataPurgeInfo{RequestedAt: now, CloudState: "ausstehend"}
 	if err := a.savePendingPurge(pendingPurge{RequestedAt: now}); err != nil {
@@ -128,6 +133,12 @@ func (a *Agent) onPurgeCommand(payload []byte) {
 		return
 	}
 	a.hist.PurgeThrough(watermark)
+	if a.ocpp != nil {
+		if err := a.ocpp.srv.PurgeProtocolEventsThrough(watermark); err != nil {
+			slog.Error("local OCPP journal purge failed", "err", err)
+			return
+		}
+	}
 	slog.Info("cloud purge command applied: local recordings wiped",
 		"purged_before", watermark, "dropped_buffered", dropped)
 

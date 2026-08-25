@@ -129,23 +129,55 @@ class DataRetentionPolicyTest {
         assertThat(hasProcedureJob("ocpp_sensitive_retention"))
                 .as("daily OCPP transaction-data purge job").isTrue();
 
-        try (Connection c = admin();
-                PreparedStatement insert = c.prepareStatement("""
+        try (Connection c = admin()) {
+            try (PreparedStatement master = c.prepareStatement("""
+                    INSERT INTO tenant (id, name) VALUES
+                      ('41000000-0000-0000-0000-000000000002', 'Retention Tenant');
+                    INSERT INTO site (id, tenant_id, name) VALUES
+                      ('41000000-0000-0000-0000-000000000003',
+                       '41000000-0000-0000-0000-000000000002', 'Retention Site');
+                    INSERT INTO device (id, tenant_id, site_id, external_ref, status) VALUES
+                      ('41000000-0000-0000-0000-000000000001',
+                       '41000000-0000-0000-0000-000000000002',
+                       '41000000-0000-0000-0000-000000000003', 'retention-device', 'claimed')
+                    """)) {
+                master.execute();
+            }
+            try (PreparedStatement insert = c.prepareStatement("""
                         INSERT INTO ocpp_transaction (
                           device_id, charge_point_id, transaction_id, tenant_id, site_id,
                           connector_id, started_at, stopped_at, meter_start, meter_stop,
                           start_id_tag_ref, stop_id_tag_ref, parent_id_tag_ref,
                           transaction_data, updated_at
-                        ) VALUES (
+                        ) VALUES
+                        (
                           '41000000-0000-0000-0000-000000000001', 'CP-RETENTION', 1,
                           '41000000-0000-0000-0000-000000000002',
                           '41000000-0000-0000-0000-000000000003', 1,
                           now() - interval '100 days', now() - interval '99 days', 10, 20,
                           'tagref:start', 'tagref:stop', 'tagref:parent',
                           '[{"timestamp":"old","sampledValue":[]}]'::jsonb, now()
+                        ),
+                        (
+                          '41000000-0000-0000-0000-000000000001', 'CP-RETENTION-OPEN', 2,
+                          '41000000-0000-0000-0000-000000000002',
+                          '41000000-0000-0000-0000-000000000003', 1,
+                          now() - interval '100 days', NULL, 10, NULL,
+                          'tagref:open-start', NULL, 'tagref:open-parent',
+                          '[{"timestamp":"abandoned","sampledValue":[]}]'::jsonb,
+                          now() - interval '99 days'
+                        ),
+                        (
+                          '41000000-0000-0000-0000-000000000001', 'CP-RETENTION-ACTIVE', 3,
+                          '41000000-0000-0000-0000-000000000002',
+                          '41000000-0000-0000-0000-000000000003', 1,
+                          now() - interval '100 days', NULL, 10, NULL,
+                          'tagref:active-start', NULL, 'tagref:active-parent',
+                          '[{"timestamp":"recent","sampledValue":[]}]'::jsonb, now()
                         )
                         """)) {
-            insert.executeUpdate();
+                insert.executeUpdate();
+            }
             try (PreparedStatement purge = c.prepareStatement(
                     "CALL ocpp_sensitive_retention(0, '{}'::jsonb)")) {
                 purge.execute();
@@ -157,15 +189,33 @@ class DataRetentionPolicyTest {
                         SELECT transaction_data, start_id_tag_ref, stop_id_tag_ref,
                                parent_id_tag_ref, transaction_data_purged_at
                           FROM ocpp_transaction
-                         WHERE charge_point_id = 'CP-RETENTION'
+                         WHERE charge_point_id IN ('CP-RETENTION', 'CP-RETENTION-OPEN')
+                         ORDER BY charge_point_id
+                        """)) {
+            try (ResultSet rs = ps.executeQuery()) {
+                int rows = 0;
+                while (rs.next()) {
+                    rows++;
+                    assertThat(rs.getString("transaction_data")).isEqualTo("[]");
+                    assertThat(rs.getString("start_id_tag_ref")).isNull();
+                    assertThat(rs.getString("stop_id_tag_ref")).isNull();
+                    assertThat(rs.getString("parent_id_tag_ref")).isNull();
+                    assertThat(rs.getTimestamp("transaction_data_purged_at")).isNotNull();
+                }
+                assertThat(rows).isEqualTo(2);
+            }
+        }
+        try (Connection c = admin();
+                PreparedStatement ps = c.prepareStatement("""
+                        SELECT transaction_data, start_id_tag_ref, transaction_data_purged_at
+                          FROM ocpp_transaction
+                         WHERE charge_point_id = 'CP-RETENTION-ACTIVE'
                         """)) {
             try (ResultSet rs = ps.executeQuery()) {
                 assertThat(rs.next()).isTrue();
-                assertThat(rs.getString("transaction_data")).isEqualTo("[]");
-                assertThat(rs.getString("start_id_tag_ref")).isNull();
-                assertThat(rs.getString("stop_id_tag_ref")).isNull();
-                assertThat(rs.getString("parent_id_tag_ref")).isNull();
-                assertThat(rs.getTimestamp("transaction_data_purged_at")).isNotNull();
+                assertThat(rs.getString("transaction_data")).contains("recent");
+                assertThat(rs.getString("start_id_tag_ref")).isEqualTo("tagref:active-start");
+                assertThat(rs.getTimestamp("transaction_data_purged_at")).isNull();
             }
         }
     }

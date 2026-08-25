@@ -142,6 +142,26 @@ class RlsIsolationTest {
                 }
             }).hasMessageContaining("row-level security");
         }
+
+        // Even the schema owner cannot manufacture a mixed tenant/site/device
+        // tuple or bypass the free-text secret boundary. These constraints are
+        // independent backstops beneath RLS and the repository redactor.
+        try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(), POSTGRES.getPassword()); Statement s = c.createStatement()) {
+            assertThatThrownBy(() -> s.executeUpdate(
+                    "INSERT INTO ocpp_station (device_id, charge_point_id, tenant_id, site_id, updated_at) "
+                            + "VALUES ('10000000-0000-0000-0000-000000000003','MIXED','" + TENANT_A
+                            + "','00000000-0000-0000-0000-000000000002',now())"))
+                    .hasMessageContaining("ocpp_station_device_scope_fk");
+            assertThatThrownBy(() -> s.executeUpdate(
+                    "INSERT INTO ocpp_protocol_event (occurred_at,event_id,tenant_id,site_id,device_id,"
+                            + "charge_point_id,direction,message_type,action,error_description,payload) VALUES ("
+                            + "now(),'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','" + TENANT_A + "',"
+                            + "'00000000-0000-0000-0000-000000000002',"
+                            + "'00000000-0000-0000-0000-000000000003','CP-SECRET','internal','Event',"
+                            + "'SecretProbe','AuthorizationKey=must-not-land','{}')"))
+                    .hasMessageContaining("ocpp_protocol_error_description_redacted_chk");
+        }
     }
 
     private List<String> sitesForTenant(String tenantId) throws Exception {

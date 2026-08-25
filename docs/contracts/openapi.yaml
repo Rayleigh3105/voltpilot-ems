@@ -1133,6 +1133,20 @@ paths:
           content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/OcppProtocolEvent" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/ocpp/gaps:
+    get:
+      tags: [sites]
+      summary: Dauerhafte Nachweise unvollständiger OCPP-Journalbereiche.
+      description: Aus action=JournalGap abgeleitet; meldet Überlauf sowie fehlgeschlagene Schreib-/Commitvorgänge mit monotonem Zähler und betroffenem Zeit-/Eventbereich. Read-only, RLS-gesichert und ohne Stationskontakt.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 200 } }
+      responses:
+        "200":
+          description: Neueste Datenlücken zuerst; eine leere Liste bedeutet, dass keine Lücke gemeldet wurde, nicht dass Verlust physikalisch unmöglich war.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/OcppDataGap" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/ocpp/transactions:
     get:
       tags: [sites]
@@ -6095,9 +6109,23 @@ components:
         correlationId: { type: string, nullable: true }
         action: { type: string }
         errorCode: { type: string, nullable: true }
-        errorDescription: { type: string, nullable: true }
+        errorDescription: { type: string, nullable: true, enum: ['[redacted-call-error-description]'], description: Untypisierter Originalfreitext wird nie ausgeliefert; nur dieser feste Anwesenheitsmarker. }
         errorDetails: { type: object, nullable: true, additionalProperties: true }
         payload: { type: object, additionalProperties: true }
+    OcppDataGap:
+      type: object
+      description: Cloud-persistenter Beleg eines unvollständigen OCPP-Bereichs; totalDropped ist je Edge monoton.
+      properties:
+        eventId: { type: string, format: uuid }
+        reportedAt: { type: string, format: date-time }
+        deviceId: { type: string, format: uuid }
+        droppedCount: { type: integer, format: int64, minimum: 1 }
+        totalDropped: { type: integer, format: int64, minimum: 1 }
+        firstOccurredAt: { type: string, format: date-time, nullable: true }
+        lastOccurredAt: { type: string, format: date-time, nullable: true }
+        firstEventId: { type: string, nullable: true }
+        lastEventId: { type: string, nullable: true }
+        reasons: { type: object, additionalProperties: { type: integer, format: int64, minimum: 1 } }
     OcppTransaction:
       type: object
       properties:

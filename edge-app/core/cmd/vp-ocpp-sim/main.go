@@ -41,6 +41,8 @@ func main() {
 		model      = flag.String("model", "RigStation", "self-reported model (display only)")
 		firmware   = flag.String("firmware", "0.0.0-rig", "self-reported firmware (display only)")
 		ampsOnly   = flag.Bool("amps-only", false, "report that only ampere limits are accepted")
+		rejectFull = flag.Bool("reject-full-configuration", false,
+			"reject empty-key/full GetConfiguration while accepting targeted reads")
 		meterEvery = flag.Duration("meter-interval", 2*time.Second, "how often meter values are published")
 	)
 	flag.Parse()
@@ -48,7 +50,8 @@ func main() {
 	st := ocppsim.New(ocppsim.Config{
 		ID: *id, Connectors: *connectors,
 		Vendor: *vendor, Model: *model, Firmware: *firmware,
-		AmpsOnly: *ampsOnly, MeterInterval: *meterEvery,
+		AmpsOnly: *ampsOnly, RejectFullConfiguration: *rejectFull,
+		MeterInterval: *meterEvery,
 	})
 
 	// Retry the dial: the rig starts stations and the box in whatever order,

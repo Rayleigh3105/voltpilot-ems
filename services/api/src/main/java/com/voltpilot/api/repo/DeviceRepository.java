@@ -108,6 +108,17 @@ public class DeviceRepository {
                 java.sql.Timestamp.from(purgedBefore), deviceId) > 0;
     }
 
+    /**
+     * The committed purge watermark for replay guards. This deliberately stays
+     * a separate lookup instead of becoming part of the public DeviceDto: it
+     * is an ingestion safety boundary, not customer-facing device state.
+     */
+    public Optional<java.time.Instant> dataPurgedBefore(UUID deviceId) {
+        return jdbc.query("SELECT data_purged_before FROM device "
+                        + "WHERE id = ? AND data_purged_before IS NOT NULL",
+                (rs, n) -> rs.getTimestamp(1).toInstant(), deviceId).stream().findFirst();
+    }
+
     /** Devices at a site (for the site-delete guard/preview), RLS-scoped. */
     /**
      * Records the box's OWN reachability (Anlagen-Zentrale Stufe 2, D5) - the

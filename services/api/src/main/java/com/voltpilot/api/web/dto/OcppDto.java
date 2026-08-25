@@ -28,6 +28,12 @@ public final class OcppDto {
             String action, String errorCode, String errorDescription, JsonNode errorDetails,
             JsonNode payload) {}
 
+    /** A durable, cloud-visible proof that a journal range is incomplete. */
+    public record DataGap(UUID eventId, Instant reportedAt, UUID deviceId,
+            long droppedCount, long totalDropped, Instant firstOccurredAt,
+            Instant lastOccurredAt, String firstEventId, String lastEventId,
+            Map<String, Long> reasons) {}
+
     public record Transaction(UUID deviceId, String chargePointId, int transactionId,
             int connectorId, Instant startedAt, Instant stoppedAt, long meterStart,
             Long meterStop, String stopReason, String startIdTagRef, String stopIdTagRef,

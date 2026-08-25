@@ -27,8 +27,9 @@ import org.springframework.stereotype.Service;
  *       can never resurrect the history we are about to delete - correctness
  *       never depends on the device cooperating.</li>
  *   <li><b>Delete + rollup rebuild</b> in one transaction
- *       ({@link SeriesRepository#purgeDeviceRecordings}): raw telemetry of the
- *       device goes, the site's rollups are recomputed from what remains.</li>
+ *       ({@link SeriesRepository#purgeDeviceRecordings}): raw telemetry and
+ *       every OCPP event/snapshot/transaction/configuration row of the device
+ *       go, the site's rollups are recomputed from what remains.</li>
  *   <li><b>Retained {@code purge_data} command</b> to the device (best-effort):
  *       an online device wipes its local buffer + history immediately; an
  *       offline one gets the retained command on reconnect. Either way the

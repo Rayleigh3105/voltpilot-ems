@@ -3276,6 +3276,11 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
   mit dem gerätespezifischen, 0600-geschützten `ocpp-privacy.key` zu stabilen
   `tagref_*`; `AuthorizationKey` und secret-/password-/token-artige Vendor-Keys,
   Diagnose-/Firmware-URLs und untypisierte `DataTransfer.data` werden redigiert.
+  Der völlig unstrukturierte `CallError.error_description` wird immer auf den
+  festen Anwesenheitsmarker `[redacted-call-error-description]` reduziert;
+  selektives Erkennen wäre für URL-Token/idTag/Vendor-Secrets nicht vollständig.
+  `privacySafeProtocolError` erzwingt denselben Marker auch im funktionalen
+  Callback-/Status-/Log-Pfad von `ocpp-go`, nicht nur im Wire-Journal.
   `location` ist NUR bei Diagnose/Firmware eine URL — bei `MeterValues` ist
   `Outlet`/`EV` eine unverzichtbare Messdimension und darf nie redigiert werden.
 - **Der Spool ist crashfest und geordnet:** eine atomisch umbenannte Datei je
@@ -3284,12 +3289,21 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
   `agent/ocpp.go` ist reine Sichtbarkeit und stellt keinen Downlink/Command-Pfad
   bereit. `Journal.Close` ist die Lifecycle-Barriere gegen verspätete
   Disconnect-Callbacks beim Shutdown.
+- **Ein voller Spool darf nie wie Vollständigkeit aussehen:** Kapazitäts-
+  Evictions und Event-Write-/Rename-/Encode-Fehler landen im separaten,
+  atomischen `data/ocpp-journal-gaps.json` mit monotonem Gesamtzähler und
+  Event-/Zeitbereich. `Next()` liefert den stabilen `JournalGap` vor normalen
+  Events; erst sein QoS1-ACK entfernt ihn. Neue Drops während eines in-flight
+  Gaps beginnen eine neue Generation, sodass ein ACK nie ungesehene Verluste
+  mitlöscht. `PurgeProtocolEventsThrough` entfernt bewusst gelöschte Events
+  ohne einen falschen Verlustbeleg zu erzeugen.
 - **Das GetConfiguration-Inventar ist absichtlich VOLLSTÄNDIG:**
-  `CapabilityKeys()` liefert die leere OCPP-Keyliste (= alle Schlüssel). Der
-  bestehende Commissioning-Mechanismus wertet weiterhin nur seine bekannten
-  Smart-Charging-Schlüssel aus; das Wire-Journal bewahrt zusätzlich readonly,
-  unknownKey, SupportedFeatureProfiles und Vendor-Keys. Es entsteht dadurch
-  keine neue Aktion.
+  `CapabilityKeys()` ist wieder die gezielte, lasttragende Abfrage der vier
+  Smart-Charging-Sicherheitswerte. NACH installierten Schutzprofilen fragt
+  `InventoryKeys()` best-effort mit leerer OCPP-Keyliste (= alle Schlüssel).
+  Eine Säule, die die Vollabfrage verweigert, bleibt damit sicher commissioned;
+  bei Erfolg bewahrt das Wire-Journal readonly, unknownKey,
+  SupportedFeatureProfiles und Vendor-Keys. Es entsteht keine neue Aktion.
 
 ## Das Lastmanagement-Rig `test/e2e-ocpp.sh`: Docker-frei, und es misst
 

@@ -183,7 +183,8 @@ echo "--- Ladesäulen verbinden"
   --connectors 2 --status "$S1_STATUS" >"$WORK/s1.log" 2>&1 &
 SIM_PIDS+=($!)
 "$WORK/vp-ocpp-sim" --csms "ws://127.0.0.1:${OCPP_PORT}/ocpp" --id SAEULE-2 \
-  --connectors 2 --status "$S2_STATUS" >"$WORK/s2.log" 2>&1 &
+  --connectors 2 --status "$S2_STATUS" --reject-full-configuration \
+  >"$WORK/s2.log" 2>&1 &
 SIM_PIDS+=($!)
 sims_up() { curl -sf "http://${S1_STATUS}/status" >/dev/null && curl -sf "http://${S2_STATUS}/status" >/dev/null; }
 waitfor 20 "beide Säulen melden sich" sims_up
@@ -440,7 +441,7 @@ pass "L9b: zurueckgenommen - der Standort steht wieder bei $AFTER kW auf der Son
 echo "--- L10: vollständiges OCPP-Datenjournal (Slice 10)"
 JOURNAL_DIR="$WORK/data/ocpp-journal"
 [ -d "$JOURNAL_DIR" ] || fail "L10: kein dauerhaftes OCPP-Journal angelegt"
-journal_has() { grep -R -q -- "$1" "$JOURNAL_DIR"; }
+journal_has() { grep -R -F -q -- "$1" "$JOURNAL_DIR"; }
 
 journal_has '"message_type":"Call"' || fail "L10: OCPP Call fehlt"
 journal_has '"message_type":"CallResult"' || fail "L10: OCPP CallResult fehlt"
@@ -459,6 +460,9 @@ journal_has '"key":"SupportedFeatureProfiles"' || fail "L10: SupportedFeaturePro
 journal_has '"key":"RigVendor.Mode"' || fail "L10: Vendor-Key fehlt"
 journal_has '"key":"AuthorizationKey"' || fail "L10: redigierter Secret-Key-Beleg fehlt"
 journal_has '"redacted":true' || fail "L10: AuthorizationKey ist nicht als redigiert markiert"
+journal_has '"message_type":"CallError"' || fail "L10: verweigerte Vollinventur nicht belegt"
+journal_has '"error_description":"[redacted-call-error-description]"' \
+  || fail "L10: CallError-Freitext ist nicht konservativ redigiert"
 
 # Zwei Spannungen unterscheiden sich NUR in der Phase. Beide muessen im Wire-
 # Journal mit allen Dimensionen stehen; die Cloud baut daraus verschiedene
@@ -474,8 +478,16 @@ fi
 if grep -R -q -- 'RIG-TAG' "$JOURNAL_DIR"; then
   fail "L10: idTag ist unmaskiert im Journal"
 fi
+for secret in rig-full-secret rig-url-token RIG-DESC-TAG rig-generic-secret; do
+  if grep -R -q -- "$secret" "$JOURNAL_DIR"; then
+    fail "L10: CallError-Freitext-Secret ${secret} ist unmaskiert im Journal"
+  fi
+  if grep -q -- "$secret" "$WORK/core.log"; then
+    fail "L10: CallError-Freitext-Secret ${secret} ist unmaskiert im Edge-Log"
+  fi
+done
 journal_has 'tagref_' || fail "L10: maskierter idTag-/LocalAuth-Bezug fehlt"
-pass "L10: Calls/Resultate, Station-/Transaktions-/Mess-/Konfigurationsdaten vollständig; Secrets vor Disk redigiert"
+pass "L10: Vollinventur best-effort, gezielte Sicherheitsabfrage erfolgreich; Events vollständig und Secrets vor Disk redigiert"
 
 # Fuer L4 zaehlt die PHYSISCHE Bahn: der Totmann wird ohne Quellen-Deckel
 # geprueft (er ist eine Eigenschaft der Saeule, nicht der Oekonomie).

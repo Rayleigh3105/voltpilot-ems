@@ -1,6 +1,7 @@
 package ocppsim
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -32,6 +33,9 @@ type Config struct {
 	// AmpsOnly makes the station report that it takes limits in amperes only —
 	// the firmware class the product refuses to guess for.
 	AmpsOnly bool
+	// RejectFullConfiguration models stations that refuse an empty OCPP key
+	// list but accept targeted GetConfiguration calls.
+	RejectFullConfiguration bool
 	// MeterInterval is how often it reports meter values. 0 = 10 s.
 	MeterInterval time.Duration
 	// Now is the clock (injectable, so a rig can compress time).
@@ -344,6 +348,11 @@ func (s *Station) OnGetCompositeSchedule(r *smartcharging.GetCompositeScheduleRe
 func (s *Station) OnGetConfiguration(r *core.GetConfigurationRequest) (*core.GetConfigurationConfirmation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(r.Key) == 0 && s.cfg.RejectFullConfiguration {
+		return nil, errors.New("AuthorizationKey=rig-full-secret " +
+			"https://rig.invalid/upload?token=rig-url-token idTag=RIG-DESC-TAG " +
+			"client_secret=rig-generic-secret")
+	}
 	var keys []core.ConfigurationKey
 	var unknown []string
 	requested := append([]string(nil), r.Key...)

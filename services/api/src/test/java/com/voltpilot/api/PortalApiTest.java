@@ -228,7 +228,9 @@ class PortalApiTest {
                  "unknownKey":["NotImplemented.StandardKey"]}
                 """);
         ingestOcpp(cp, 14, "station_to_csms", "CallError", "bad", "DataTransfer", "{}",
-                "NotSupported", "vendor transfer refused",
+                "NotSupported", "AuthorizationKey=cloud-desc-secret "
+                        + "https://station.invalid/x?token=cloud-url-token "
+                        + "idTag=cloud-description-tag client_secret=cloud-generic-secret",
                 "{\"idTag\":\"clear-error-tag\",\"data\":\"secret-vendor-data\"}");
         ingestOcpp(cp, 15, "csms_to_station", "Call", "profile", "SetChargingProfile", """
                 {"connectorId":1,"csChargingProfiles":{"chargingProfileId":1042,
@@ -237,6 +239,13 @@ class PortalApiTest {
                  "startSchedule":"2026-08-25T06:30:15Z","chargingRateUnit":"W",
                  "minChargingRate":6000,"chargingSchedulePeriod":[
                    {"startPeriod":0,"limit":11000,"numberPhases":3}]}}}
+                """);
+        ingestOcpp(cp, 16, "internal", "Event", null, "JournalGap", """
+                {"dropped_count":3,"total_dropped":7,
+                 "first_occurred_at":"2026-08-25T06:29:00Z",
+                 "last_occurred_at":"2026-08-25T06:29:30Z",
+                 "first_event_id":"gap-first","last_event_id":"gap-last",
+                 "reasons":{"capacity_overflow":2,"write_failure":1}}
                 """);
 
         String demo = token("demo", "demo");
@@ -276,9 +285,17 @@ class PortalApiTest {
         String events = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
                         + "/ocpp/events?limit=100"), HttpMethod.GET,
                 new HttpEntity<>(bearer(demo)), String.class).getBody();
-        assertThat(events).contains("CallError", "NotSupported", "BootNotification")
+        assertThat(events).contains("CallError", "NotSupported", "BootNotification",
+                        "[redacted-call-error-description]", "JournalGap")
                 .doesNotContain("clear-rfid-4711", "clear-parent-tag", "clear-error-tag",
-                        "never-store-this-secret", "secret-vendor-data");
+                        "never-store-this-secret", "secret-vendor-data", "cloud-desc-secret",
+                        "cloud-url-token", "cloud-description-tag", "cloud-generic-secret");
+
+        String gaps = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/ocpp/gaps"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class).getBody();
+        assertThat(gaps).contains("\"droppedCount\":3", "\"totalDropped\":7",
+                "gap-first", "gap-last", "capacity_overflow", "write_failure");
 
         String permissions = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
                         + "/ocpp/action-permissions"), HttpMethod.GET,
@@ -290,6 +307,9 @@ class PortalApiTest {
                         + "/ocpp/stations"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
         assertThat(crossTenant.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE + "/ocpp/gaps"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
         HttpHeaders adminHeaders = bearer(token("admin", "admin"));
         adminHeaders.set("X-Tenant-Id", "00000000-0000-0000-0000-000000000001");
@@ -815,6 +835,8 @@ class PortalApiTest {
                 + "VALUES (now(), '" + tenantA + "', '" + siteId + "', 'load', 'load-persistence', 1.2, now(), 60, 'test')");
         exec("INSERT INTO weather_forecast (time, tenant_id, site_id, run_at, temperature_c, source) "
                 + "VALUES (now(), '" + tenantA + "', '" + siteId + "', now(), 20.0, 'open-meteo')");
+        OcppTestData.seed(PortalApiTest::exec, tenantA, siteId, deviceId);
+        assertThat(queryLong(OcppTestData.countBySiteSql(siteId))).isEqualTo(11);
 
         // The deletion preview lists the concrete consequences for the dialog.
         ResponseEntity<Map<String, Object>> preview = rest.exchange(
@@ -840,6 +862,13 @@ class PortalApiTest {
         assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isZero();
+        // Legacy-defense proof for the SITE path itself: the published
+        // foundation briefly allowed orphan OCPP rows. Bypass FK triggers only
+        // while seeding that pre-hardening state; the real endpoint must sweep
+        // all eleven tables even though no device remains.
+        seedLegacyOrphanOcpp(tenantA, siteId, deviceId);
+        assertThat(queryLong(OcppTestData.countBySiteSql(siteId))).isEqualTo(11);
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.DELETE,
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
@@ -850,6 +879,7 @@ class PortalApiTest {
         assertThat(queryLong("SELECT count(*) FROM forecast WHERE site_id = '" + siteId + "'")).isZero();
         assertThat(queryLong("SELECT count(*) FROM weather_forecast WHERE site_id = '" + siteId + "'")).isZero();
         assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + siteId + "'")).isZero();
+        assertThat(queryLong(OcppTestData.countBySiteSql(siteId))).isZero();
     }
 
     @Test
@@ -865,6 +895,8 @@ class PortalApiTest {
         String deviceId = (String) claim.getBody().get("id");
         exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw) VALUES "
                 + "(now(), '" + tenantA + "', '" + BERLIN_SITE + "', '" + deviceId + "', 3.3)");
+        OcppTestData.seed(PortalApiTest::exec, tenantA, BERLIN_SITE, deviceId);
+        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isEqualTo(11);
 
         // Edit: kind + label. The externalRef is identity and stays untouched.
         ResponseEntity<Map<String, Object>> updated = rest.exchange(
@@ -895,6 +927,7 @@ class PortalApiTest {
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
         assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + deviceId + "'")).isZero();
+        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isZero();
         assertThat(queryLong("SELECT count(*) FROM device WHERE id = '" + deviceId + "'")).isZero();
 
         // The freed ref is claimable again (fresh row, fresh id).
@@ -934,6 +967,10 @@ class PortalApiTest {
                 + BERLIN_SITE + "' AND bucket = '2026-01-05T10:00:00Z'")).isEqualTo(2);
         assertThat(queryLong("SELECT count(*) FROM telemetry_rollup_15m WHERE site_id = '"
                 + BERLIN_SITE + "' AND bucket = '2026-01-05T10:15:00Z'")).isEqualTo(1);
+        OcppTestData.seed(PortalApiTest::exec, tenantA, BERLIN_SITE, purged);
+        OcppTestData.seed(PortalApiTest::exec, tenantA, BERLIN_SITE, kept);
+        assertThat(queryLong(OcppTestData.countByDeviceSql(purged))).isEqualTo(11);
+        assertThat(queryLong(OcppTestData.countByDeviceSql(kept))).isEqualTo(11);
 
         // Authorization: another tenant cannot purge it (RLS => 404).
         assertThat(rest.exchange(url("/api/v1/devices/" + purged + "/purge-data"), HttpMethod.POST,
@@ -941,6 +978,7 @@ class PortalApiTest {
                 .isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + purged + "'"))
                 .isEqualTo(2);
+        assertThat(queryLong(OcppTestData.countByDeviceSql(purged))).isEqualTo(11);
 
         // The owner purges: raw telemetry of THIS device is gone, the other
         // device's rows stay, and the watermark is stamped.
@@ -954,6 +992,8 @@ class PortalApiTest {
         assertThat(res.getBody().get("purgedBefore")).isNotNull();
         assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + purged + "'")).isZero();
         assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + kept + "'")).isEqualTo(1);
+        assertThat(queryLong(OcppTestData.countByDeviceSql(purged))).isZero();
+        assertThat(queryLong(OcppTestData.countByDeviceSql(kept))).isEqualTo(11);
         assertThat(queryLong("SELECT count(*) FROM device WHERE id = '" + purged
                 + "' AND data_purged_before IS NOT NULL")).isEqualTo(1);
 
@@ -6082,6 +6122,28 @@ class PortalApiTest {
             st.execute(sql);
         } catch (Exception e) {
             throw new IllegalStateException("seed failed: " + sql, e);
+        }
+    }
+
+    /** Seed the pre-hardening orphan state solely to exercise site cleanup. */
+    private static void seedLegacyOrphanOcpp(String tenant, String site, String device) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                Statement st = c.createStatement()) {
+            st.execute("SET session_replication_role = replica");
+            try {
+                OcppTestData.seed(sql -> {
+                    try {
+                        st.execute(sql);
+                    } catch (java.sql.SQLException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }, tenant, site, device);
+            } finally {
+                st.execute("SET session_replication_role = origin");
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("legacy OCPP orphan seed failed", e);
         }
     }
 

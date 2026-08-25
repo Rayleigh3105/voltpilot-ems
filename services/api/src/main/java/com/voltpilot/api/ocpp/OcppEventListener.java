@@ -7,6 +7,7 @@ import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -182,6 +183,18 @@ public class OcppEventListener {
                 log.warn("OCPP event for unknown device {} (tenant {}) skipped", deviceId, tenantId);
                 return false;
             }
+            // The retained purge command removes the edge spool before upload,
+            // but correctness must never depend on an online/cooperative edge.
+            // Reject an old journal replay against the same committed watermark
+            // that protects telemetry from resurrection.
+            Instant occurredAt = parseInstant(json.path("occurred_at").asText());
+            Optional<Instant> purgedBefore = devices.dataPurgedBefore(deviceId);
+            if (occurredAt != null && purgedBefore.isPresent()
+                    && !occurredAt.isAfter(purgedBefore.get())) {
+                log.info("OCPP event {} at {} is at/before device purge watermark {} - skipped",
+                        json.path("event_id").asText(), occurredAt, purgedBefore.get());
+                return false;
+            }
             return repository.ingest(tenantId, siteId, deviceId, json);
         } finally {
             TenantContext.clear();
@@ -190,6 +203,10 @@ public class OcppEventListener {
 
     private static UUID parseUuid(String value) {
         try { return UUID.fromString(value); } catch (Exception e) { return null; }
+    }
+
+    private static Instant parseInstant(String value) {
+        try { return Instant.parse(value); } catch (Exception e) { return null; }
     }
 
     @PreDestroy

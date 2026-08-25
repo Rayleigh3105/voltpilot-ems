@@ -139,7 +139,10 @@ func New(opts Options) (*Server, error) {
 // the agent's cloud uploader. They are deliberately not a command surface.
 func (s *Server) NextProtocolEvent() ([]byte, string, bool) { return s.journal.Next() }
 func (s *Server) AckProtocolEvent(token string) error       { return s.journal.Ack(token) }
-func (s *Server) ProtocolEventsChanged() <-chan struct{}    { return s.journal.Changed() }
+func (s *Server) PurgeProtocolEventsThrough(t time.Time) error {
+	return s.journal.PurgeThrough(t)
+}
+func (s *Server) ProtocolEventsChanged() <-chan struct{} { return s.journal.Changed() }
 
 // Enabled reports whether the feature flag is on.
 func (s *Server) Enabled() bool { return s.opts.Enabled }

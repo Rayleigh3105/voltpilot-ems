@@ -54,6 +54,13 @@ public class SiteOcppController {
         return ocpp.events(siteId, from, to, action, messageType, limit);
     }
 
+    @GetMapping("/gaps")
+    public List<OcppDto.DataGap> gaps(@PathVariable UUID siteId,
+            @RequestParam(defaultValue = "200") int limit) {
+        requireSite(siteId);
+        return ocpp.gaps(siteId, limit);
+    }
+
     @GetMapping("/transactions")
     public List<OcppDto.Transaction> transactions(@PathVariable UUID siteId,
             @RequestParam(defaultValue = "200") int limit) {
