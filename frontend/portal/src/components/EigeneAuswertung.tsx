@@ -49,7 +49,7 @@ function rolleVon(entityType: string | null): ComponentRole {
 
 /** Die Eimer des Tages als Reihe für `VerlaufChart` — dieselbe Form wie dort. */
 function serie(w: EigenerWert, einheitText: string): VerlaufSeries {
-  const points = w.verlauf.map((b) => ({
+  const points = (w.verlauf ?? []).map((b) => ({
     t: b.start,
     avg: b.avg,
     min: b.min,

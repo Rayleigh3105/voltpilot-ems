@@ -394,7 +394,12 @@ export interface EigenerWert {
   komponente: string | null;
   entityType: string | null;
   hinweis: string | null;
-  verlauf: EigenerEimer[];
+  /**
+   * Der Tagesverlauf. Ältere bzw. unvollständige Werte-Antworten können das
+   * additive Feld noch auslassen; die Fläche behandelt das wie eine leere
+   * Reihe und erfindet keine Messpunkte.
+   */
+  verlauf?: EigenerEimer[];
 }
 
 export interface EigeneAuswertungWerte {
