@@ -35,8 +35,7 @@ public final class CustomMeasurementPoint {
             @NotBlank @Size(max = 32) String unit,
             @NotNull @Min(1) @Max(86400) Integer cadenceS,
             @NotBlank String retentionClass,
-            @NotNull Boolean readOnly,
-            @Min(400) @Max(2000) Integer estimatedRequestMs) {
+            @NotNull Boolean readOnly) {
         /** Boot normally ignores unknown JSON; free registers must fail closed. */
         @JsonAnySetter
         public void rejectUnknownProperty(String name, Object ignored) {
@@ -48,7 +47,7 @@ public final class CustomMeasurementPoint {
     public record Canonical(String label, String sourceKind, int address, String selector,
             String valueType, int widthBits, boolean signed, String endian, BigDecimal scale,
             String unit, int cadenceS, String retentionClass, boolean readOnly,
-            int estimatedRequestMs) {}
+            int requestCostMs) {}
 
     public static Canonical validate(Definition d) {
         if (d == null) {
@@ -99,13 +98,10 @@ public final class CustomMeasurementPoint {
             throw bad("Die Kadenz muss zwischen 1 Sekunde und 24 Stunden liegen.");
         }
         MeasurementRetention.ofCustomClass(d.retentionClass());
-        int requestMs = d.estimatedRequestMs() == null ? 400 : d.estimatedRequestMs();
-        if (requestMs < 400 || requestMs > 2000) {
-            throw bad("Die konservative sichere Lesedauer muss zwischen 400 und 2000 ms liegen.");
-        }
         return new Canonical(d.label().trim(), source, d.address(), expectedSelector, type,
                 expected.width, expected.signed, endian, d.scale().stripTrailingZeros(), unit,
-                d.cadenceS(), lower(d.retentionClass()), true, requestMs);
+                d.cadenceS(), lower(d.retentionClass()), true,
+                MeasurementBudget.customRegisterRequestCostMs());
     }
 
     private record Type(int width, boolean signed) {

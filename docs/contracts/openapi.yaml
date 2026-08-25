@@ -8078,7 +8078,7 @@ components:
               enum: [live_power, phase_mppt_string, thermal_bms, energy_counter,
                      state_event, identity_configuration]
             readOnly: { type: boolean, const: true }
-            estimatedRequestMs: { type: integer, minimum: 400, maximum: 2000, default: 400, description: Konservative serverseitige Untergrenze; ein Client kann das Duty-Budget nicht kleinrechnen. }
+      description: Die Request-Kosten werden ausschließlich serverseitig konservativ angesetzt; der Client kann sie nicht vorgeben.
     MeasurementBudgetEstimate:
       type: object
       required: [enabledPointCount, samplesPerMinute, requestsPerMinute, dutyCyclePercent,
@@ -8094,7 +8094,15 @@ components:
         limitingDriverFamilies: { type: array, items: { type: string } }
         hardRejected: { type: boolean }
         reasons: { type: array, items: { type: string } }
-        pollGroups: { type: array, items: { type: object } }
+        pollGroups:
+          type: array
+          items:
+            type: object
+            properties:
+              pollGroup: { type: string }
+              requestsPerMinute: { type: number, minimum: 0 }
+              serverRequestCostMs: { type: integer, minimum: 0 }
+              dutyCyclePercent: { type: number, minimum: 0 }
         rawRetentionDays: { type: integer, const: 90 }
         assumedBytesPerSample: { type: integer, const: 96 }
         byteCorridorMin: { type: integer, const: 64 }

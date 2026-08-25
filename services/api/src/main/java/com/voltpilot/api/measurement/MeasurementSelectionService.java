@@ -122,7 +122,7 @@ public class MeasurementSelectionService {
         }
         List<MeasurementBudget.Candidate> candidates = candidates(repository.current(deviceId));
         candidates.add(new MeasurementBudget.Candidate("custom.preview", true,
-                custom.cadenceS(), customPollGroup(custom), custom.estimatedRequestMs(), retention,
+                custom.cadenceS(), customPollGroup(custom), custom.requestCostMs(), retention,
                 "custom"));
         return estimate(candidates);
     }
@@ -203,7 +203,7 @@ public class MeasurementSelectionService {
         checkRevision(deviceId, request.expectedRevision());
         List<MeasurementBudget.Candidate> candidates = candidates(repository.current(deviceId));
         MeasurementBudget.Candidate candidate = new MeasurementBudget.Candidate(pointKey, true,
-                custom.cadenceS(), customPollGroup(custom), custom.estimatedRequestMs(), retention,
+                custom.cadenceS(), customPollGroup(custom), custom.requestCostMs(), retention,
                 "custom");
         replace(candidates, candidate);
         MeasurementBudget.Estimate budget = estimate(candidates);
@@ -339,7 +339,10 @@ public class MeasurementSelectionService {
         try {
             Canonical custom = mapper.readValue(row.customDefinitionJson(), Canonical.class);
             return new Resolved(row.cadenceS(), customPollGroup(custom),
-                    custom.estimatedRequestMs(), row.retention(), row.customDefinitionJson(),
+                    // Never trust even a persisted/client-shaped JSON cost:
+                    // re-derive the server policy on every preview/apply path.
+                    MeasurementBudget.customRegisterRequestCostMs(), row.retention(),
+                    row.customDefinitionJson(),
                     "custom");
         } catch (Exception e) {
             throw new IllegalStateException("stored custom measurement definition unreadable", e);

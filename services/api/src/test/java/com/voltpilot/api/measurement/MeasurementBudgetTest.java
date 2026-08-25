@@ -3,6 +3,7 @@ package com.voltpilot.api.measurement;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -83,6 +84,53 @@ class MeasurementBudgetTest {
         assertThat(estimate.assumedBytesPerSample()).isEqualTo(96);
         assertThat(estimate.totalGbPerYear()).isBetween(0.014, 0.016);
         assertThat(estimate.volumeEstimateIncomplete()).isFalse();
+    }
+
+    @Test
+    void invalidCadenceCostAndRetentionInputsFailClosedWithFiniteNonNegativeResults() {
+        List<MeasurementBudget.Candidate> invalid = List.of(
+                point("zero", 0, "block", 400),
+                point("negative", -1, "block", 400),
+                point("extreme", Integer.MAX_VALUE, "block", 400),
+                point("cost", 60, "block", Integer.MAX_VALUE));
+
+        for (MeasurementBudget.Candidate candidate : invalid) {
+            var estimate = MeasurementBudget.estimate(Collections.singletonList(candidate));
+            assertThat(estimate.hardRejected()).isTrue();
+            assertThat(estimate.samplesPerMinute()).isFinite().isGreaterThanOrEqualTo(0.0);
+            assertThat(estimate.requestsPerMinute()).isFinite().isGreaterThanOrEqualTo(0.0);
+            assertThat(estimate.dutyCyclePercent()).isFinite().isGreaterThanOrEqualTo(0.0);
+            assertThat(estimate.rawGbPerYear()).isFinite().isGreaterThanOrEqualTo(0.0);
+            assertThat(estimate.longTermGbPerYear()).isFinite().isGreaterThanOrEqualTo(0.0);
+            assertThat(estimate.totalGbPerYear()).isFinite().isGreaterThanOrEqualTo(0.0);
+        }
+
+        var invalidRetention = MeasurementBudget.estimate(List.of(
+                new MeasurementBudget.Candidate("retention", true, 60, "block", 400,
+                        new MeasurementRetention("thermal_bms", -1, 900, "fifteen_minute"),
+                        "driver")));
+        assertThat(invalidRetention.hardRejected()).isTrue();
+        assertThat(invalidRetention.totalGbPerYear()).isEqualTo(0.0);
+
+        assertThat(MeasurementBudget.estimate(Collections.singletonList(null)).hardRejected())
+                .isTrue();
+        assertThat(MeasurementBudget.estimate(List.of(point("driver", 60, "driver", 400)),
+                Map.of("driver", -1)).hardRejected()).isTrue();
+    }
+
+    @Test
+    void numericAccumulationCannotEscapeFiniteResultContract() {
+        // A large valid input exercises accumulation and the finite-result guard
+        // without relying on a client-controlled floating-point value.
+        List<MeasurementBudget.Candidate> many = new ArrayList<>();
+        for (int i = 0; i < 100_000; i++) {
+            many.add(point("overflow-" + i, 1, "block-" + i, 60_000));
+        }
+        var estimate = MeasurementBudget.estimate(many);
+        assertThat(estimate.samplesPerMinute()).isFinite().isGreaterThanOrEqualTo(0.0);
+        assertThat(estimate.requestsPerMinute()).isFinite().isGreaterThanOrEqualTo(0.0);
+        assertThat(estimate.dutyCyclePercent()).isFinite().isGreaterThanOrEqualTo(0.0);
+        assertThat(estimate.totalGbPerYear()).isFinite().isGreaterThanOrEqualTo(0.0);
     }
 
     private static MeasurementBudget.Candidate point(String key, int cadence, String group,

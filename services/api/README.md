@@ -23,7 +23,7 @@ Multi-tenancy comes from the Keycloak `tenant_id` token claim; a request-scoped 
 | GET | `/devices/{deviceId}/measurement-selection/estimate?pointKey&cadenceS` | Preview 96-byte/90-day volume plus sample/request/duty budget without writing |
 | POST | `/devices/{deviceId}/measurement-selection/custom/estimate` | Run the same validation/budget preview for a not-yet-created free register |
 | PUT | `/devices/{deviceId}/measurement-selection/{pointKey}` | Optimistic/idempotent enable or deselect; server `enabledAt`, no backfill, no history deletion, never “applied” without Edge Ack |
-| POST | `/devices/{deviceId}/measurement-selection/custom` | “Eigenen Messwert hinzufügen”: strictly validated read-only free Modbus register (no write capability) |
+| POST | `/devices/{deviceId}/measurement-selection/custom` | “Eigenen Messwert hinzufügen”: strictly validated read-only free Modbus register (no write capability); request cost is server-side conservative (2000 ms), never client-supplied |
 | GET | `/sites/{siteId}/telemetry?from&to` | Recent telemetry for a site (defaults to last 24h) |
 | GET | `/sites/{siteId}/prices?from&to` | Day-ahead spot prices (15-min) for the site's bidding zone; defaults to ~today+tomorrow |
 | GET | `/sites/{siteId}/weather` | Latest weather forecast (hourly, coming days) for the site |

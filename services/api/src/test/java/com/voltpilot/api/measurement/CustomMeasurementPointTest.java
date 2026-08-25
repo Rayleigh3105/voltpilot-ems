@@ -21,7 +21,7 @@ class CustomMeasurementPointTest {
         assertThat(point.signed()).isFalse();
         assertThat(point.scale()).isEqualByComparingTo("0.1");
         assertThat(point.readOnly()).isTrue();
-        assertThat(point.estimatedRequestMs()).isEqualTo(400);
+        assertThat(point.requestCostMs()).isEqualTo(MeasurementBudget.CUSTOM_REGISTER_REQUEST_COST_MS);
     }
 
     @Test
@@ -38,7 +38,7 @@ class CustomMeasurementPointTest {
     void typeWidthSignScaleUnitCadenceAndReadSafetyAreValidated() {
         assertThatThrownBy(() -> CustomMeasurementPoint.validate(new Definition("Eigen", "modbus_holding",
                 -1, "holding:0xffff", "uint16", 16, false, "big", BigDecimal.ONE,
-                "kW", 60, "live_power", true, 400))).hasMessageContaining("Registeradresse");
+                "kW", 60, "live_power", true))).hasMessageContaining("Registeradresse");
         assertThatThrownBy(() -> CustomMeasurementPoint.validate(copy(valid(), true,
                 "holding:0x00e7", 231, "uint32", 16, false)))
                 .hasMessageContaining("Datentyp");
@@ -47,22 +47,19 @@ class CustomMeasurementPointTest {
                 .hasMessageContaining("Vorzeichen");
         assertThatThrownBy(() -> CustomMeasurementPoint.validate(new Definition("Eigen", "modbus_holding",
                 231, "holding:0x00e7", "uint16", 16, false, "little", BigDecimal.ONE,
-                "kW", 60, "live_power", true, 400))).hasMessageContaining("Wortreihenfolge");
+                "kW", 60, "live_power", true))).hasMessageContaining("Wortreihenfolge");
         assertThatThrownBy(() -> CustomMeasurementPoint.validate(new Definition("Eigen", "modbus_holding",
                 231, "holding:0x00e7", "uint16", 16, false, "big", BigDecimal.ZERO,
-                "kW", 60, "live_power", true, 400))).hasMessageContaining("Skala");
+                "kW", 60, "live_power", true))).hasMessageContaining("Skala");
         assertThatThrownBy(() -> CustomMeasurementPoint.validate(new Definition("Eigen", "modbus_holding",
                 231, "holding:0x00e7", "uint16", 16, false, "big", BigDecimal.ONE,
-                "\n", 60, "live_power", true, 400))).hasMessageContaining("Einheit");
+                "\n", 60, "live_power", true))).hasMessageContaining("Einheit");
         assertThatThrownBy(() -> CustomMeasurementPoint.validate(new Definition("Eigen", "modbus_holding",
                 231, "holding:0x00e7", "uint16", 16, false, "big", BigDecimal.ONE,
-                "kW", 0, "live_power", true, 400))).hasMessageContaining("Kadenz");
+                "kW", 0, "live_power", true))).hasMessageContaining("Kadenz");
         assertThatThrownBy(() -> CustomMeasurementPoint.validate(new Definition("Eigen", "modbus_holding",
                 231, "holding:0x00e7", "uint16", 16, false, "big", BigDecimal.ONE,
-                "kW", 60, "irgendwas", true, 400))).hasMessageContaining("Aufbewahrungsklasse");
-        assertThatThrownBy(() -> CustomMeasurementPoint.validate(new Definition("Eigen", "modbus_holding",
-                231, "holding:0x00e7", "uint16", 16, false, "big", BigDecimal.ONE,
-                "kW", 60, "live_power", true, 20))).hasMessageContaining("Lesedauer");
+                "kW", 60, "irgendwas", true))).hasMessageContaining("Aufbewahrungsklasse");
     }
 
     @Test
@@ -81,13 +78,12 @@ class CustomMeasurementPointTest {
     private static Definition valid() {
         return new Definition("Freie Einspeiseleistung", "modbus_holding", 231,
                 "holding:0x00e7", "uint16", 16, false, "big", new BigDecimal("0.1"),
-                "kW", 60, "live_power", true, null);
+                "kW", 60, "live_power", true);
     }
 
     private static Definition copy(Definition d, boolean readOnly, String selector, int address,
             String type, int width, boolean signed) {
         return new Definition(d.label(), d.sourceKind(), address, selector, type, width, signed,
-                d.endian(), d.scale(), d.unit(), d.cadenceS(), d.retentionClass(), readOnly,
-                d.estimatedRequestMs());
+                d.endian(), d.scale(), d.unit(), d.cadenceS(), d.retentionClass(), readOnly);
     }
 }

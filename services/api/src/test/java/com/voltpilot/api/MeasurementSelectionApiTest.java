@@ -169,13 +169,21 @@ class MeasurementSelectionApiTest {
                 Map.entry("unit", "kW"),
                 Map.entry("cadenceS", 60),
                 Map.entry("retentionClass", "live_power"),
-                Map.entry("readOnly", true),
-                Map.entry("estimatedRequestMs", 400));
+                Map.entry("readOnly", true));
         ResponseEntity<Map<String, Object>> customEstimate = rest.exchange(
                 url(path(DEVICE_A) + "/custom/estimate"), HttpMethod.POST,
                 new HttpEntity<>(definition, bearer(demo)), new ParameterizedTypeReference<>() {});
         assertThat(customEstimate.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(customEstimate.getBody()).containsEntry("hardRejected", false);
+        Map<String, Object> previewPollGroup = (Map<String, Object>)
+                ((List<?>) customEstimate.getBody().get("pollGroups")).get(0);
+        assertThat(previewPollGroup).containsEntry("serverRequestCostMs", 2000);
+        Map<String, Object> clientCost = new java.util.LinkedHashMap<>(definition);
+        clientCost.put("estimatedRequestMs", 400);
+        ResponseEntity<Map<String, Object>> clientCostRejected = rest.exchange(
+                url(path(DEVICE_A) + "/custom/estimate"), HttpMethod.POST,
+                new HttpEntity<>(clientCost, bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(clientCostRejected.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         // Preview is side-effect free: create still expects revision 2.
         ResponseEntity<Map<String, Object>> custom = post(demo, DEVICE_A,
                 Map.of("expectedRevision", 2, "idempotencyKey", customKey.toString(),
@@ -183,6 +191,12 @@ class MeasurementSelectionApiTest {
         assertThat(custom.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(custom.getBody()).containsEntry("desiredRevision", 3);
         assertThat((List<?>) custom.getBody().get("selections")).hasSize(2);
+        Map<String, Object> customSelection = ((List<Map<String, Object>>)
+                custom.getBody().get("selections")).stream()
+                .filter(s -> s.get("pointKey").toString().startsWith("custom."))
+                .findFirst().orElseThrow();
+        assertThat((Map<String, Object>) customSelection.get("customDefinition"))
+                .containsEntry("requestCostMs", 2000);
 
         Map<String, Object> writable = new java.util.LinkedHashMap<>(definition);
         writable.put("readOnly", false);

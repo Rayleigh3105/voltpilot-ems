@@ -4933,7 +4933,8 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   Katalogsuche/Facetten, Status/Audit, Budget-Preview, optimistic/idempotente
   Auswahl und „Eigenen Messwert hinzufügen“. Freie Register sind ausschließlich
   `modbus_holding|modbus_input`, `readOnly=true`, vollständig typ-/adress-/
-  skalen-/einheiten-/kadenzvalidiert; dieser Pfad hat keine Schreibfunktion.
+  skalen-/einheiten-/kadenzvalidiert; dieser Pfad hat keine Schreibfunktion und
+  setzt Request-Kosten ausschließlich serverseitig konservativ (2000 ms) an.
 - **Kein zweiter Katalog im API-Service.** Maven paketiert das kanonische
   `catalog/measurement-points/dist/measurement-point-catalog-*.json` bytegleich
   ins JAR. Deshalb baut das API-Image mit Repo-Root als Docker-Kontext und
