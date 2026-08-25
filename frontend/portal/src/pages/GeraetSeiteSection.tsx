@@ -417,7 +417,7 @@ export function GeraetSeiteSection({
   return (
     <div className="vp-geraet">
       <a className="vp-geraet-back" href={hashForRoute(anlageRoute(site.id, 'modell'))}>
-        <Icon name="chevron-left" size={16} /> Zurück zum Anlagen-Modell
+        <Icon name="chevron-left" size={16} /> Zurück zu den Komponenten
       </a>
 
       {!data && !error && (
@@ -637,7 +637,7 @@ export function GeraetSeiteSection({
               )} />
               <p className="vp-geraet-sec-sub">
                 <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>
-                  Regeln und Anwendungen dieser Anlage ansehen →
+                  Regeln und Betriebsmodelle dieser Anlage ansehen →
                 </a>
               </p>
             </Sektion>
@@ -1178,7 +1178,7 @@ function RegisterSektion({
           {zugang.weg === 'anlagen-modell' && (
             <>
               {' '}
-              <a href={hashForRoute(anlageRoute(siteId, 'modell'))}>Zum Anlagen-Modell →</a>
+              <a href={hashForRoute(anlageRoute(siteId, 'modell'))}>Zu den Komponenten →</a>
             </>
           )}
         </p>

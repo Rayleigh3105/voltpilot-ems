@@ -228,7 +228,10 @@ export function AppShell({
       label={<span className="vp-nav-lbl">{item.label}</span>}
       count={item.badge}
       active={anlage?.activeKey === item.key}
-      title={item.label}
+      // ⚠ Der Titel NENNT das Abzeichen, wo es eines gibt (Steuerung Stufe 8):
+      // ein nacktes „2" an einer Seitenleiste ist ein Rätsel, und der Satz ist
+      // die EINE Stelle, an der steht, was gezählt wurde.
+      title={item.badgeTitel ? `${item.label} — ${item.badgeTitel}` : item.label}
       onClick={() => openTarget(item.target)}
     />
   );

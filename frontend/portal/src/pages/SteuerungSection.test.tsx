@@ -504,7 +504,7 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Lastspitzenkappung öffnen/ }));
 
     expect(await screen.findByRole('button', { name: /Zur Steuerung/ })).toBeInTheDocument();
-    expect(screen.getByText('Ansichten dieser Anwendung')).toBeInTheDocument();
+    expect(screen.getByText('Ansichten dieses Betriebsmodells')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Regeln' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /Zur Steuerung/ }));

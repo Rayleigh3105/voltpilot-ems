@@ -67,6 +67,15 @@ public class AnwendungKatalog {
     public static final String KLASSE_BASIS = "basis";
     /** Schalter = reine ABSICHT: kein Gate, kein Starter. */
     public static final String KLASSE_REGEL = "regel";
+    /**
+     * NICHT schaltbar — und zwar nicht, weil sie immer läuft, sondern weil sie
+     * an einem ANDEREN Ort gesteuert wird: im Cockpit unter „Anpassen"
+     * (Steuerung Stufe 8; Captain 25.08.2026 „Beobachten/Auswertung nur im
+     * Cockpit"). Der Unterschied zu {@link #KLASSE_BASIS} ist der SATZ, den ein
+     * Schaltversuch bekommt: „ist immer an" wäre hier falsch — es gibt sehr
+     * wohl eine Wahl, sie wird nur woanders getroffen.
+     */
+    public static final String KLASSE_COCKPIT = "cockpit";
     /** Schalter öffnet die eigenen gated Knoten und sät den eigenen Starter. */
     public static final String KLASSE_GESCHAEFT = "geschaeft";
     /** Erweiterungspunkt: nicht sichtbar, nicht schaltbar. */
@@ -237,7 +246,7 @@ public class AnwendungKatalog {
      * deshalb ein eigenes Feld und keine Position in {@code order}.
      */
     public record LayoutDoc(List<String> order, List<String> hidden, List<String> shown,
-            String lead, List<CustomBaustein> custom) {
+            String lead, List<CustomBaustein> custom, List<String> seen) {
 
         /**
          * Ein Dokument OHNE eigene Auswertungen — die Form jedes Aufrufers vor
@@ -247,12 +256,18 @@ public class AnwendungKatalog {
          */
         public LayoutDoc(List<String> order, List<String> hidden, List<String> shown,
                 String lead) {
-            this(order, hidden, shown, lead, List.of());
+            this(order, hidden, shown, lead, List.of(), List.of());
+        }
+
+        /** Die Form der Stufe 5 — ohne die {@code seen}-Marken der Stufe 8. */
+        public LayoutDoc(List<String> order, List<String> hidden, List<String> shown,
+                String lead, List<CustomBaustein> custom) {
+            this(order, hidden, shown, lead, custom, List.of());
         }
 
         /** Das leere Dokument — es sagt über nichts etwas aus. */
         public static LayoutDoc leer() {
-            return new LayoutDoc(List.of(), List.of(), List.of(), null, List.of());
+            return new LayoutDoc(List.of(), List.of(), List.of(), null, List.of(), List.of());
         }
 
         /**
@@ -260,6 +275,13 @@ public class AnwendungKatalog {
          * Auswertung IST eine Aussage, auch ohne jede Reihenfolge — ein
          * Dokument, das nur Kacheln definiert, darf nicht als „keine Schicht"
          * durchfallen, sonst verschwänden sie beim Auflösen.
+         *
+         * <p>⚠ Eine {@code seen}-Marke ist AUSDRÜCKLICH keine: sie sagt nichts
+         * über die ANORDNUNG, sondern merkt sich, dass ein Erklärkasten
+         * weggeklickt wurde (Steuerung Stufe 8). Ein Dokument, das nur eine
+         * Marke trägt, muss beim Auflösen als „keine Schicht" durchfallen —
+         * sonst überschriebe ein weggeklickter Hinweis stillschweigend die
+         * Vorgabe des Betreibers.
          */
         public boolean istLeer() {
             return order.isEmpty() && hidden.isEmpty() && shown.isEmpty() && lead == null
@@ -312,6 +334,15 @@ public class AnwendungKatalog {
         /** Ihr Schalter speichert nur Absicht — kein Gate, kein Starter. */
         public boolean istRegel() {
             return KLASSE_REGEL.equals(klasse);
+        }
+
+        /**
+         * Sie wird im COCKPIT gesteuert, nicht in der Steuerung — es gibt hier
+         * keinen Schalter, und der Ablehnungs-Satz nennt deshalb den Weg statt
+         * „ist immer an" zu behaupten.
+         */
+        public boolean istCockpit() {
+            return KLASSE_COCKPIT.equals(klasse);
         }
 
         /** Ein BETRIEBSMODELL: das Kundenwort für eine Geschäfts-Anwendung. */

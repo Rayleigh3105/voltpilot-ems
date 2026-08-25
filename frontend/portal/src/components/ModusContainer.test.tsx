@@ -100,7 +100,7 @@ describe('ModusContainer (v3.1-M2 shell)', () => {
     expect(screen.getByText('Anzulegender Wert')).toBeInTheDocument();
 
     // The mode's own views (= the sidebar group's entries).
-    expect(screen.getByText('Ansichten dieser Anwendung')).toBeInTheDocument();
+    expect(screen.getByText('Ansichten dieses Betriebsmodells')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Fahrplan/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Marktpreise/ })).toBeInTheDocument();
 
@@ -155,10 +155,10 @@ describe('ModusContainer (v3.1-M2 shell)', () => {
     // But benefit, prerequisites and the mode's views still render.
     expect(screen.getByText('Voraussetzungen')).toBeInTheDocument();
     expect(screen.getByText(/Dynamischer Tarif fehlt/)).toBeInTheDocument();
-    expect(screen.getByText('Ansichten dieser Anwendung')).toBeInTheDocument();
+    expect(screen.getByText('Ansichten dieses Betriebsmodells')).toBeInTheDocument();
     // Inactive views are shown but not clickable (no empty-state landings).
     expect(screen.queryByRole('button', { name: /Fahrplan/ })).toBeNull();
-    expect(screen.getByText(/sobald Sie die Anwendung einschalten/)).toBeInTheDocument();
+    expect(screen.getByText(/sobald Sie das Betriebsmodell einschalten/)).toBeInTheDocument();
   });
 
   it('the head switch toggles the mode without navigating away', () => {

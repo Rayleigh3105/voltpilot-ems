@@ -465,4 +465,4 @@ export function protectionItems(site: { netzladenErlaubt?: boolean | null }): Pr
   return items;
 }
 
-export const PROTECTION_INTRO = 'Läuft immer mit, ganz ohne Anwendung:';
+export const PROTECTION_INTRO = 'Läuft immer mit, ganz ohne Betriebsmodell:';

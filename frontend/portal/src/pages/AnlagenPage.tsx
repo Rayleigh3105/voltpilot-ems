@@ -72,7 +72,6 @@ import {
   AnpassenListe,
   AusgeblendetZeile,
 } from '../components/CockpitAnpassen';
-import { alleProfile } from '../profiles';
 import { useAnlageSurface } from '../useAnlageSurface';
 import type { AnlageSurface } from '../surface';
 import { anlageDecision, hasBlock } from '../cockpit';
@@ -426,7 +425,11 @@ const SUB_PAGES: Partial<Record<AnlagenSub, { title: string; subtitle: string }>
       'Stromtarif, Vergütung, Speicher, Wechselrichter und der Standort Ihrer Anlage - an einem Ort.',
   },
   modell: {
-    title: 'Anlagen-Modell',
+    // ⚠ Der Bereich heisst seit Steuerung Stufe 8 „Komponenten" (§3.9,
+    // Captain 25.08.2026: „Komponenten & Regeln" → „Komponenten"). Die Regeln
+    // wohnen in der Steuerung — EIN Ort je Sache. Die Route `modell` bleibt,
+    // damit jedes Lesezeichen gilt.
+    title: 'Komponenten',
     subtitle: 'So ist Ihre Anlage verschaltet: Geräte, Komponenten und was das Cockpit daraus macht.',
   },
   steuerung: {
@@ -898,7 +901,6 @@ export function AnlageSeite({
   // "projected ? … : []" ternary any more.
   const {
     surface,
-    profiles: siteProfiles,
     entities: siteEntityPins,
     loading: surfaceLoading,
     failed: surfaceFailed,
@@ -1368,33 +1370,24 @@ export function AnlageSeite({
     if (ovSite != null && health.length > 0) out.push('zustand');
     return out;
   }, [blocks, controlView, guardView, fahrplanRow, strompreisRow, shownWidgets, ovSite, health]);
-  // ⚠ Die Quelle sind die ANWENDUNGS-Karten, nicht `modes`: „Eigene Auswertung"
-  // wird nie ABGELEITET (ihr Schalter ist reine Absicht, Klasse `regel`), also
-  // taucht sie in der M0-Projektion gar nicht auf. `active` der Karte ist der
-  // EFFEKTIVE Zustand, den der Server nach dem Willens-Overlay meldet — er ist
-  // die einzige Stelle, die die Frage beantworten kann.
-  // ⚠ Über `alleProfile`, nicht über `profiles.profiles`: seit Steuerung
-  // Stufe 0 steht eine Regel-Anwendung NICHT mehr im Regal, sie reist in
-  // `weitere` mit. Ein Blick nur ins Regal hätte jedem Kunden seine eigenen
-  // Auswertungen aus dem Cockpit genommen.
-  const eigenAn = alleProfile(siteProfiles).some(
-    (p) => p.id === 'eigene-auswertung' && p.active,
-  );
+  // ⚠ Steuerung Stufe 8: es gibt hier KEIN Tor mehr. „Eigene Auswertung" ist
+  // die Katalog-Klasse `cockpit` und hat keinen Schalter — der Weg zu einer
+  // eigenen Kachel ist der Anpassen-Modus, und wer dort eine anlegt, hat seine
+  // Absicht bewiesen. Der frühere Umweg (erst irgendwo einschalten, dann
+  // anlegen) war genau der Absichts-Schalter ohne Wirkung, den das Konzept
+  // abgeschafft hat.
   const layout = useCockpitLayout({
     schluessel: site.id,
     siteId: site.id,
     verfuegbar,
     blocks,
     isPhone,
-    eigeneAktiv: eigenAn,
   });
 
   // --- Anwendungs-Programm Stufe 5 · die EIGENEN Auswertungen ---------------
-  // Sie erscheinen nur, wenn die Anwendung „Eigene Auswertung" eingeschaltet
-  // ist: ihr Schalter ist reine Absicht (Klasse `regel`), und ein Baustein
-  // einer nicht aktiven Anwendung wird - wie jeder andere - still übersprungen.
-  // Die DEFINITIONEN bleiben dabei gespeichert, ein Wiedereinschalten stellt
-  // das Bild also her.
+  // Seit Steuerung Stufe 8 ohne jedes Tor: eine angelegte Kachel ist eine
+  // Kachel. Die DEFINITIONEN bleiben wie bisher im Layout-Dokument, ein
+  // ausgeblendeter Baustein behält seine Präferenz.
   const [eigenWerte, setEigenWerte] = useState<EigeneAuswertungWerte | null>(null);
   const [eigenDialog, setEigenDialog] = useState<
     { offen: true; bearbeiten: EigeneAuswertungDef | null } | null
@@ -1409,7 +1402,7 @@ export function AnlageSeite({
   useEffect(() => {
     // Fail-soft wie jeder Zusatz-Abruf des Cockpits: ohne Antwort bleiben die
     // Kacheln stehen und sagen „noch keine Werte" - nie eine erfundene Zahl.
-    if (!eigenAn || eigenIds === '') {
+    if (eigenIds === '') {
       setEigenWerte(null);
       return undefined;
     }
@@ -1425,7 +1418,7 @@ export function AnlageSeite({
     return () => {
       aktiv = false;
     };
-  }, [site.id, eigenAn, eigenIds, reloadKey]);
+  }, [site.id, eigenIds, reloadKey]);
   const eigenWerteById = useMemo(() => werteNachId(eigenWerte), [eigenWerte]);
   /**
    * Der Stift AN der Zeile einer eigenen Auswertung — nur dort. Ein Baustein
@@ -1786,11 +1779,10 @@ export function AnlageSeite({
           )}
           {/* Anwendungs-Programm Stufe 5: der EINE Weg zu einer eigenen
               Auswertung. Er steht im Anpassen-Modus, weil eine eigene Kachel
-              genau das ist - eine Anordnungs-Entscheidung des Kunden. Ist die
-              Anwendung „Eigene Auswertung" nicht eingeschaltet, gibt es ihn
-              nicht: ein Knopf, der nichts bewirken kann, wäre eine Zusage,
-              die niemand einlöst. */}
-          {layout.anpassen && eigenAn && (
+              genau das ist - eine Anordnungs-Entscheidung des Kunden. Seit
+              Steuerung Stufe 8 steht er dort OHNE vorheriges Einschalten
+              (Captain 25.08.2026: „Beobachten/Auswertung nur im Cockpit"). */}
+          {layout.anpassen && (
             <div className="vp-eigen-neu">
               <Button
                 variant="ghost"
@@ -1924,8 +1916,8 @@ function AnlageUnassigned({ onOpenModell }: { onOpenModell: () => void }) {
           <h4 style={{ marginBottom: 4 }}>Diese Anlage ist noch nicht zugeordnet</h4>
           <p className="vp-muted" style={{ margin: 0 }}>
             Ihre Anlage sendet bereits Messwerte, aber die Komponenten (PV, Speicher, Netz)
-            fehlen - vermutlich, weil mehrere Geräte gemeldet werden. Ordnen Sie sie im
-            Anlagen-Modell zu.
+            fehlen - vermutlich, weil mehrere Geräte gemeldet werden. Ordnen Sie sie unter
+            „Komponenten" zu.
           </p>
         </div>
       </div>

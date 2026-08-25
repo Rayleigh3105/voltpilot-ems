@@ -31,10 +31,11 @@ class AnwendungKatalogTest {
         assertThat(katalog.regal().stream().map(Anwendung::id)).containsExactly(
                 "marktvermarktung", "lastspitzenkappung", "atypische-netznutzung",
                 "lastmanagement");
-        assertThat(katalog.find("eigene-auswertung").preset().privat()).isEqualTo("angeboten");
-        assertThat(katalog.find("eigene-auswertung").preset().gewerbe()).isEqualTo("angeboten");
-        assertThat(katalog.find("eigene-auswertung").preset().privat()).isEqualTo("angeboten");
-        assertThat(katalog.find("eigene-auswertung").preset().gewerbe()).isEqualTo("angeboten");
+        // Steuerung Stufe 8: „Eigene Auswertung" hat gar keinen Schalter mehr -
+        // ein Preset kann sie deshalb nicht wählen.
+        assertThat(katalog.find("eigene-auswertung").klasse())
+                .isEqualTo(AnwendungKatalog.KLASSE_COCKPIT);
+        assertThat(katalog.find("eigene-auswertung").abschaltbar()).isFalse();
         // Die reservierten Einträge stehen im Katalog, aber NICHT im Regal - ein
         // Schalter, der nichts bewirken kann, wäre eine Zusage, die niemand
         // einlöst.
@@ -46,7 +47,7 @@ class AnwendungKatalogTest {
     void everyEntryUsesTheClosedVocabularyAndTheClassRules() {
         for (Anwendung a : katalog.alle()) {
             assertThat(a.klasse()).as(a.id())
-                    .isIn("basis", "regel", "geschaeft", "reserviert");
+                    .isIn("basis", "regel", "cockpit", "geschaeft", "reserviert");
             assertThat(a.kategorie()).as(a.id())
                     .isIn("basis", "steuerung", "geschaeft", "auswertung");
             assertThat(a.preset().privat()).as(a.id())
@@ -55,9 +56,12 @@ class AnwendungKatalogTest {
                     .isIn("an", "angeboten", "verborgen", "abgeleitet");
             assertThat(a.label()).as(a.id()).isNotBlank();
             assertThat(a.nutzen()).as(a.id()).isNotBlank();
-            // Eine Basis-Anwendung hat keinen Schalter, eine reservierte keine Zeile.
+            // Eine Basis-Anwendung hat keinen Schalter, weil sie IMMER laeuft; eine
+            // cockpit-Anwendung, weil sie AN EINEM ANDEREN ORT gesteuert wird
+            // (Steuerung Stufe 8). Eine reservierte hat keine Zeile.
             assertThat(a.abschaltbar()).as(a.id() + " abschaltbar")
-                    .isEqualTo(!AnwendungKatalog.KLASSE_BASIS.equals(a.klasse()));
+                    .isEqualTo(!AnwendungKatalog.KLASSE_BASIS.equals(a.klasse())
+                            && !AnwendungKatalog.KLASSE_COCKPIT.equals(a.klasse()));
             assertThat(a.sichtbar()).as(a.id() + " sichtbar")
                     .isEqualTo(!AnwendungKatalog.KLASSE_RESERVIERT.equals(a.klasse()));
             // Nur eine Geschäfts-Anwendung trägt Strategie-Knoten oder Starter.
@@ -65,18 +69,19 @@ class AnwendungKatalogTest {
                 assertThat(a.strategieKnoten()).as(a.id()).isNull();
                 assertThat(a.starter()).as(a.id()).isNull();
             }
-            // Eine Regel-Anwendung trägt ihren ehrlichen Leer-Zustand — sofern
-            // der SERVER die Leere überhaupt belegen kann. ⚠ Bei der eigenen
-            // Auswertung kann er das NICHT: sein Beleg (`hasCustomerRule`)
-            // zählt aktive Flows, nicht Kacheln. Was er nicht belegen kann,
-            // behauptet er nicht; der Leer-Hinweis lebt dort im Cockpit, wo der
-            // Knopf „+ Eigene Auswertung" steht.
+            // Eine Regel-Anwendung trägt ihren ehrlichen Leer-Zustand. ⚠ Die
+            // eigene Auswertung ist seit Stufe 8 KEINE Regel-Anwendung mehr
+            // (Klasse `cockpit`), und ihr Leer-Zustand bleibt bewusst NULL: der
+            // Server kann die Leere nicht belegen (sein `hasCustomerRule` zählt
+            // aktive Flows, nicht Kacheln), der Hinweis lebt im Cockpit.
             if (AnwendungKatalog.KLASSE_REGEL.equals(a.klasse())) {
-                if (AnwendungKatalog.EIGENE_AUSWERTUNG.equals(a.id())) {
-                    assertThat(a.leerZustand()).as(a.id()).isNull();
-                } else {
-                    assertThat(a.leerZustand()).as(a.id()).isNotBlank();
-                }
+                assertThat(a.leerZustand()).as(a.id()).isNotBlank();
+            }
+            if (AnwendungKatalog.KLASSE_COCKPIT.equals(a.klasse())) {
+                assertThat(a.leerZustand()).as(a.id()).isNull();
+                // ⚠ Ein Preset kann sie nicht wählen - sie hat keinen Schalter.
+                assertThat(a.preset().privat()).as(a.id()).isEqualTo("abgeleitet");
+                assertThat(a.preset().gewerbe()).as(a.id()).isEqualTo("abgeleitet");
             }
         }
     }

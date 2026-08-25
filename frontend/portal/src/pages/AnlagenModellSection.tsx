@@ -433,7 +433,7 @@ export function AnlagenModellSection({
       <Card className="vp-modell-card">
         {!data && !error && <TextSkeleton lines={5} />}
         {error && (
-          <ErrorState message="Das Anlagen-Modell konnte nicht geladen werden." onRetry={reload} />
+          <ErrorState message="Die Komponenten konnten nicht geladen werden." onRetry={reload} />
         )}
         {model && (
           <>

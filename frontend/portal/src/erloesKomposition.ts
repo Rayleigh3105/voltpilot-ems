@@ -125,7 +125,7 @@ export const ERLOES_HISTORIE: ErloesDrillIn = {
 };
 
 export const UNATTRIBUTED_FOOTNOTE =
-  'Jeder Strom kommt aus einer Anwendung. Wo „—" steht, gibt es noch keine Zurechnung je Regel – erfunden wird nichts.';
+  'Jeder Strom kommt aus einem Betriebsmodell. Wo „—" steht, gibt es noch keine Zurechnung je Regel – erfunden wird nichts.';
 
 /**
  * Die Earnings-Felder, aus denen eine Zeile liest. Das MUSS deckungsgleich mit

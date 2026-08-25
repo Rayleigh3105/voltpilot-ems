@@ -275,7 +275,7 @@ describe('zustandView — leise wenn gesund, laut nur mit Befund', () => {
       key: 'device',
       state: 'warn',
       text: 'Gerät: meldet sich nicht',
-      lever: { sub: 'modell', label: 'Anlagen-Modell' },
+      lever: { sub: 'modell', label: 'Komponenten' },
     });
     // Die gesunden Reste kollabieren zu einer Zeile.
     expect(v.okSummary).toBe('Fahrplan, Steuerung und Speicher: in Ordnung.');

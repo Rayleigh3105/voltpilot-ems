@@ -710,7 +710,7 @@ export const KEIN_SCHREIBWEG =
  */
 export const ERST_ALS_KOMPONENTE =
   'Dieses Gerät ist noch keine Komponente Ihrer Anlage - deshalb kennt VoltPilot '
-  + 'seinen Schreibweg nicht. Übernehmen Sie es im Anlagen-Modell, danach lassen '
+  + 'seinen Schreibweg nicht. Übernehmen Sie es unter „Komponenten", danach lassen '
   + 'sich seine Register lesen und schreiben.';
 
 export function geraetRegisterZugang(

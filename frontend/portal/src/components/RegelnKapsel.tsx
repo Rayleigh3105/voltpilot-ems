@@ -100,7 +100,7 @@ export function loeschFolgen(karte: RegelKarte): string[] {
     return [
       'Die Regel wird abgeschaltet — VoltPilot sendet dafür keine Befehle mehr.',
       'Ihr Gerät fällt auf seine sichere Grundeinstellung zurück.',
-      'Das Gerät selbst bleibt bestehen; Sie finden es im Anlagen-Modell.',
+      'Das Gerät selbst bleibt bestehen; Sie finden es unter „Komponenten".',
     ];
   }
   return [

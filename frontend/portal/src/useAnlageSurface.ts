@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { api, type Site, type SiteEntity } from './api';
 import { customerFlowApi } from './flows/flowsApi';
 import { profileStatesFrom, type SiteProfiles } from './profiles';
+import {
+  aufmerksamkeit,
+  type Aufmerksamkeit,
+} from './steuerungAufmerksamkeit';
 import { anlageSurface, type AnlageSurface, type SurfaceFlow } from './surface';
 
 /**
@@ -35,6 +39,18 @@ export interface AnlageSurfaceState {
   loading: boolean;
   /** true = the decision-critical `/entities` fetch failed. */
   failed: boolean;
+  /**
+   * Steuerung Stufe 8: was an dieser Anlage AUFMERKSAMKEIT braucht — die Zahl
+   * hinter dem Nav-Abzeichen. Eine Anlage ohne Handeingriff und ohne bremsende
+   * Regel liefert 0, und 0 rendert kein Abzeichen.
+   *
+   * ⚠ Die zwei Zusatz-Abrufe sind bewusst die BILLIGEN: `/interventions` ist
+   * der EINE Lesepfad der Jetzt-Zone, `/entity-strategies` ein schmales
+   * Aggregat über die aktiven Flows. Die Vorschläge bleiben ungezählt (die
+   * Begründung steht in `steuerungAufmerksamkeit.ts`) — die Schale lädt nicht
+   * die halbe Steuerungs-Seite, nur um eine Zahl zu malen.
+   */
+  aufmerksam: Aufmerksamkeit;
 }
 
 /**
@@ -51,6 +67,7 @@ export function useAnlageSurface(
   const [entityList, setEntityList] = useState<SiteEntity[] | null>(null);
   const [loading, setLoading] = useState(site != null);
   const [failed, setFailed] = useState(false);
+  const [aufmerksam, setAufmerksam] = useState<Aufmerksamkeit>(() => aufmerksamkeit(null));
 
   const siteId = site?.id ?? null;
   // The money/contract master data comes from the SiteDto we already hold, so
@@ -67,6 +84,7 @@ export function useAnlageSurface(
       setEntityList(null);
       setLoading(false);
       setFailed(false);
+      setAufmerksam(aufmerksamkeit(null));
       return undefined;
     }
     let active = true;
@@ -88,9 +106,24 @@ export function useAnlageSurface(
       // Fail-soft like everything else here - an older backend simply yields
       // no states, and the surface is byte-identical to before M3.
       api.siteProfiles(siteId).catch(() => null),
-    ]).then(([profile, entities, flows, shelf]) => {
+      // Steuerung Stufe 8 · die zwei Quellen des Aufmerksamkeits-Abzeichens.
+      // Fail-soft wie alles hier: ohne Antwort zählt die Ableitung schlicht
+      // nichts - nie eine erfundene Zahl an der Seitenleiste.
+      api.siteInterventions(siteId).catch(() => null),
+      api.entityStrategies(siteId).catch(() => null),
+    ]).then(([profile, entities, flows, shelf, eingriffe, strategien]) => {
       if (!active) return;
       setProfiles(shelf);
+      setAufmerksam(
+        aufmerksamkeit({
+          automationPaused: eingriffe?.automationPaused ?? null,
+          eingriffe: eingriffe?.interventions ?? null,
+          ansprueche: strategien ?? null,
+          // NICHT bewertet - siehe den Kopf von `steuerungAufmerksamkeit.ts`.
+          vorschlaege: null,
+          now: new Date(),
+        }),
+      );
       setEntityList(entities?.entities ?? null);
       setSurface(
         anlageSurface({
@@ -115,5 +148,5 @@ export function useAnlageSurface(
     };
   }, [siteId, plantKind, tarifArt, netzladen, leistungspreis, retryKey]);
 
-  return { surface, profiles, entities: entityList, loading, failed };
+  return { surface, profiles, entities: entityList, loading, failed, aufmerksam };
 }

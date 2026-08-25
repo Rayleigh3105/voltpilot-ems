@@ -112,17 +112,6 @@ interface UseCockpitLayoutInput<T extends string = BausteinId> {
   quelle?: LayoutQuelleApi;
   /** Die Anlage — nur für die Vorgabe-Route der Anlagen-Fläche. */
   siteId?: string;
-  /**
-   * Ist die Anwendung „Eigene Auswertung" auf dieser Anlage eingeschaltet?
-   * Vorgabe `true`, damit jeder bestehende Aufrufer zeichengleich bleibt.
-   *
-   * ⚠ Sie steuert nur die SICHTBARKEIT. Die Definitionen reisen auch bei
-   * `false` in jedes gespeicherte Dokument mit — sonst löschte ein Speichern
-   * bei abgeschalteter Anwendung genau das, was ein Wiedereinschalten
-   * zurückbringen soll (die tragende Regel der Stufe 3: „seine Präferenz
-   * bleibt gespeichert").
-   */
-  eigeneAktiv?: boolean;
 }
 
 function docOf(layer: { document: LayoutDocument } | null | undefined): LayoutDocument | null {
@@ -188,10 +177,17 @@ export function useCockpitLayout<T extends string = BausteinId>(
       }),
     [layers],
   );
-  /** ALLE Definitionen — sie wandern immer mit ins gespeicherte Dokument. */
-  const alleEigene = anpassen && entwurf ? entwurf.eigene : gespeicherteEigene;
-  /** Nur die SICHTBAREN — ist die Anwendung aus, rendert keine. */
-  const eigene = input.eigeneAktiv === false ? [] : alleEigene;
+  /**
+   * Die eigenen Auswertungen dieser Anlage.
+   *
+   * ⚠ Seit Steuerung Stufe 8 gibt es hier KEIN Tor mehr: „Eigene Auswertung"
+   * ist die Katalog-Klasse `cockpit` und hat gar keinen Schalter — eine Kachel
+   * entsteht im Anpassen-Modus und ist damit ab dem Anlegen sichtbar. Das
+   * frühere `eigeneAktiv` war der Umweg über eine Absicht, die man vorher
+   * irgendwo einschalten musste; ein Kunde, der eine Kachel anlegt, hat die
+   * Absicht bewiesen.
+   */
+  const eigene = anpassen && entwurf ? entwurf.eigene : gespeicherteEigene;
 
   /**
    * ⚠ Die kanonische Liste UND die verfügbare Menge tragen die eigenen

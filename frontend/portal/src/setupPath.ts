@@ -125,7 +125,7 @@ export const SETUP_NEXT_HINT =
   + 'und wählen danach Ihre Steuerung - wir führen Sie Schritt für Schritt.';
 
 export const SETUP_FOOT_NOTE =
-  'Sobald Geräte und eine Anwendung da sind, baut sich diese Seite von selbst - '
+  'Sobald Geräte und eine Steuerung da sind, baut sich diese Seite von selbst - '
   + 'aus genau dem, was Sie gewählt haben.';
 
 /** „Deye Wechselrichter und go-e Wallbox" — nie eine erfundene Aufzählung. */
@@ -187,12 +187,12 @@ export function setupPath(input: SetupPathInput | null | undefined): SetupPathVi
     num: 3,
     title: 'Steuerung wählen',
     line: uebernehmenDone
-      ? 'Aus Ihren Geräten schlagen wir passende Anwendungen vor - Eigenverbrauch zuerst. '
+      ? 'Aus Ihren Geräten schlagen wir eine passende Steuerung vor - Eigenverbrauch zuerst. '
         + 'Sie bestätigen, VoltPilot übernimmt.'
-      : 'Aus Ihren Geräten schlagen wir passende Anwendungen vor. Dieser Schritt öffnet sich, '
+      : 'Aus Ihren Geräten schlagen wir eine passende Steuerung vor. Dieser Schritt öffnet sich, '
         + 'sobald das erste Gerät übernommen ist.',
     state: uebernehmenDone ? 'current' : 'todo',
-    action: uebernehmenDone ? { kind: 'toolbox', label: 'Anwendung wählen' } : null,
+    action: uebernehmenDone ? { kind: 'toolbox', label: 'Betriebsmodell wählen' } : null,
   };
 
   const steps = [geraet, uebernehmen, steuerung];

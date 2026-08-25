@@ -542,7 +542,7 @@ export function baseSurface(site: AnlageSurfaceInput): BaseSurface {
     blocks: [
       block('status', 'Status', null),
       ...(isLadeparkOnly(input) ? [] : [block('energiefluss', 'Energiefluss', null)]),
-      block('toolbox-pointer', 'Anwendung hinzufügen', null),
+      block('toolbox-pointer', 'Betriebsmodell wählen', null),
     ],
     deepViews: sortDeepViews(deepViews),
     telemetryChannels: channels,

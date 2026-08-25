@@ -67,7 +67,7 @@ export function RegelKarteView({
                   key={c.key}
                   className={`vp-regel-chip ton-${c.ton} is-link`}
                   href={komponenteHash(siteId, c.key)}
-                  title={`„${c.label}" im Anlagen-Modell zeigen`}
+                  title={`„${c.label}" unter „Komponenten" zeigen`}
                 >
                   {c.label}
                 </a>

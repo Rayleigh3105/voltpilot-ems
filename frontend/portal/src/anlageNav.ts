@@ -63,6 +63,13 @@ export interface SidebarItem {
   target: NavTarget;
   /** Zahl-Abzeichen; null = keines (nur Steuerung, und nur > 0). */
   badge: number | null;
+  /**
+   * Was das Abzeichen ZÄHLT, als Satz (`title`/`aria-label`) — Steuerung
+   * Stufe 8. Ein nacktes „2" an einer Seitenleiste ist ein Rätsel; genau das
+   * war der Zustand, den diese Stufe behoben hat. `null` = kein Abzeichen,
+   * also auch kein Titel.
+   */
+  badgeTitel?: string | null;
 }
 
 /** Die fünf Bereiche einer Anlage. */
@@ -150,7 +157,11 @@ const VERLAUF_TABS: { key: string; label: string; sub: AnlagenSub; view: DeepVie
  * Befehle-Seite zeigt ohne Komponente den Verlauf der ganzen Anlage.
  */
 const ANLAGE_TABS: BereichTab[] = [
-  { key: 'modell', label: 'Modell', sub: 'modell' },
+  // ⚠ „Komponenten", nicht „Modell": seit Steuerung Stufe 8 heisst der Reiter
+  // wie das, was er zeigt (Konzept `vp-steuerung-konzept-b3` §3.9 — „Komponenten
+  // & Regeln" → „Komponenten"; die Regeln wohnen in der Steuerung, EIN Ort je
+  // Sache). Der SCHLÜSSEL `modell` und die Route bleiben — jedes Lesezeichen gilt.
+  { key: 'modell', label: 'Komponenten', sub: 'modell' },
   { key: 'technik', label: 'Einstellungen', sub: 'technik' },
   { key: 'befehle', label: 'Befehle an Geräte', sub: 'befehle' },
 ];
@@ -185,25 +196,29 @@ function bereich(
   sub: AnlagenSub | null,
   tabs: BereichTab[],
   badge: number | null = null,
+  badgeTitel: string | null = null,
 ): AnlageBereich {
-  return { key, label, icon, target: { kind: 'sub', sub }, badge, tabs };
+  return { key, label, icon, target: { kind: 'sub', sub }, badge, badgeTitel, tabs };
 }
 
 /**
- * Die fünf Bereiche einer Anlage. `activeModeCount` badgt die Steuerung
- * (Vorgabe: die Modus-Zahl der Projektion); 0/null/NaN rendert KEIN Abzeichen —
- * nie eine entmutigende „0".
+ * Die fünf Bereiche einer Anlage. `badgeAnzahl` badgt die Steuerung; 0/null/NaN
+ * rendert KEIN Abzeichen — nie eine entmutigende „0".
  *
- * ⚠ Das Abzeichen bleibt an der Steuerung, seine BEDEUTUNG wechselt mit dem
- * Steuerungs-Konzept (§3.1: „Zahl der Dinge, die Aufmerksamkeit brauchen"
- * statt „aktive Anwendungen"). Der Ort ändert sich dadurch nicht, also ist das
- * hier ein Argument-Wechsel im Aufrufer und kein Umbau.
+ * ⚠ **Seit Steuerung Stufe 8 zählt das Abzeichen AUFMERKSAMKEIT** (§3.1: „Zahl
+ * der Dinge, die Aufmerksamkeit brauchen" statt „aktive Anwendungen") — die
+ * Ableitung wohnt in `steuerungAufmerksamkeit.ts`, der Aufrufer reicht ihr
+ * Ergebnis hier durch. Der ORT hat sich nie geändert; genau deshalb war es ein
+ * Argument-Wechsel und kein Umbau. Die alte Vorgabe (die Modus-Zahl der
+ * Projektion) bleibt der Rückfall für einen Aufrufer, der nichts übergibt —
+ * so rendert ein älterer Testaufruf zeichengleich wie vorher.
  */
 export function anlageBereiche(
   surface: AnlageSurface | null | undefined,
-  activeModeCount?: number | null,
+  badgeAnzahl?: number | null,
+  badgeTitel?: string | null,
 ): AnlageBereich[] {
-  const raw = activeModeCount === undefined ? surface?.modes.length ?? null : activeModeCount;
+  const raw = badgeAnzahl === undefined ? surface?.modes.length ?? null : badgeAnzahl;
   const badge =
     typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : null;
   const views = surface?.deepViews ?? [];
@@ -235,7 +250,10 @@ export function anlageBereiche(
   );
   out.push(bereich('verlauf', 'Verlauf', 'history', verlaufTabs[0].sub, verlaufTabs));
 
-  out.push(bereich('steuerung', 'Steuerung', 'zap', 'steuerung', [], badge));
+  out.push(
+    bereich('steuerung', 'Steuerung', 'zap', 'steuerung', [], badge,
+      badge == null ? null : (badgeTitel ?? null)),
+  );
   out.push(bereich('anlage', 'Anlage', 'layers', 'modell', ANLAGE_TABS));
   return out;
 }
@@ -249,9 +267,13 @@ export function anlageBereiche(
  */
 export function anlageSidebar(
   surface: AnlageSurface | null | undefined,
-  activeModeCount?: number | null,
+  badgeAnzahl?: number | null,
+  badgeTitel?: string | null,
 ): AnlageSidebar {
-  return { bereiche: anlageBereiche(surface, activeModeCount), foot: [HELP_ITEM] };
+  return {
+    bereiche: anlageBereiche(surface, badgeAnzahl, badgeTitel),
+    foot: [HELP_ITEM],
+  };
 }
 
 /** Kürzere Telefon-Beschriftungen; die Seitenleiste behält die vollen Wörter. */
@@ -273,6 +295,7 @@ export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
     icon: b.icon,
     target: b.target,
     badge: b.badge,
+    badgeTitel: b.badgeTitel ?? null,
   }));
 }
 

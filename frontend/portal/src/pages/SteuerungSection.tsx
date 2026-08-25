@@ -34,6 +34,7 @@ import {
 import { ErrorState, TextSkeleton } from '../components/States';
 import { InfoTip } from '../components/InfoTip';
 import { JetztZone } from '../components/JetztZone';
+import { SteuerungIntro } from '../components/SteuerungIntro';
 import { LadeparkKapsel } from '../components/LadeparkKapsel';
 import { RegelnKapsel } from '../components/RegelnKapsel';
 import { Betriebsmodelle } from '../components/Betriebsmodelle';
@@ -366,7 +367,7 @@ export function SteuerungSection({
         fail(
           e instanceof ApiError && e.message
             ? e.message
-            : 'Die Anwendung konnte nicht umgeschaltet werden. Bitte später erneut versuchen.',
+            : 'Das Betriebsmodell konnte nicht umgeschaltet werden. Bitte später erneut versuchen.',
         );
       } finally {
         setToggling(null);
@@ -562,6 +563,12 @@ export function SteuerungSection({
 
       {listState === 'idle' && flows && (
         <>
+          {/* --- Erstbegegnung (Konzept b3 §3.9, Stufe 8) -------------------
+              Drei Zonen in drei Sätzen, einmal wegklickbar, je ORGANISATION
+              gemerkt. Er steht ÜBER den Zonen, weil er sie erklärt - und er
+              rendert sich selbst weg, sobald der Kunde ihn gesehen hat. */}
+          <SteuerungIntro />
+
           {/* --- Zone ① · Jetzt (Konzept b3 §3.2, Stufe 1) ------------------
               Sie steht ZUERST, weil sie die häufigste Frage beantwortet: der
               Kunde kommt, weil gerade etwas passiert — oder nicht passiert. */}

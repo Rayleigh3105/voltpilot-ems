@@ -120,7 +120,7 @@ export const ZUSTAND_LEVER: Record<
   HealthItem['key'],
   { sub: 'modell' | 'fahrplan' | 'steuerung' | 'technik'; label: string }
 > = {
-  device: { sub: 'modell', label: 'Anlagen-Modell' },
+  device: { sub: 'modell', label: 'Komponenten' },
   plan: { sub: 'fahrplan', label: 'Fahrplan' },
   control: { sub: 'steuerung', label: 'Steuerung' },
   battery: { sub: 'technik', label: 'Einstellungen' },

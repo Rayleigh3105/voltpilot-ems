@@ -13,6 +13,7 @@ import {
   REGAL,
   betriebsmodellVorschlag,
   derivedAnwendungen,
+  istCockpitGesteuert,
   presetSchaltplan,
   vorauswahl,
 } from './anwendungen';
@@ -487,11 +488,10 @@ describe('Abbau-Invarianten (M6)', () => {
     // Der RESERVIERTE Eintrag steht im Katalog, aber nie im Regal.
     expect(ANWENDUNGEN.map((a) => a.id)).toContain('berichte');
     expect(REGAL.map((a) => a.id)).not.toContain('berichte');
-    // Stufe 5: die eigene Auswertung IST seither schaltbar - aber sie wird nie
-    // ABGELEITET (wie `ueberschuss`): ihr Schalter ist reine Absicht, und eine
-    // Anlage, die nie eine Kachel angelegt hat, bekommt keine erfundene.
-    // Seit Steuerung Stufe 0 steht sie ausserdem NICHT mehr im Regal - sie ist
-    // ausgeblendet, nicht gelöscht.
+    // Steuerung Stufe 8: die eigene Auswertung hat ihren SCHALTER verloren
+    // (Klasse `cockpit`) - sie wird im Cockpit unter „Anpassen" gesteuert.
+    // Abgeleitet wird sie weiterhin NIE (wie `ueberschuss`), und im Regal steht
+    // sie seit Stufe 0 nicht: ausgeblendet, nicht gelöscht.
     expect(REGAL.map((a) => a.id)).not.toContain('eigene-auswertung');
     expect(AUSSERHALB_REGAL.map((a) => a.id)).toContain('eigene-auswertung');
   });
@@ -1098,6 +1098,93 @@ describe('Steuerung Stufe 6: ohne Zutaten gibt es keine Vorschlags-Karte', () =>
     for (const name of ['vorschlaege.ts', 'components/VorschlagsKarten.tsx']) {
       const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
       expect(code, name).not.toMatch(/localStorage|sessionStorage/);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Steuerung Stufen 8+9 „Umzüge + Datenbereinigung"
+// ---------------------------------------------------------------------------
+
+describe('Steuerung Stufen 8+9: Umzüge und Datenbereinigung', () => {
+  it('„Eigene Auswertung" hat KEINEN Schalter mehr — sie wohnt im Cockpit', () => {
+    // Stufe 8: die Klasse wechselt von `regel` auf `cockpit`. Der Unterschied
+    // zu `basis` ist NICHT „läuft immer", sondern „wird AN EINEM ANDEREN ORT
+    // gesteuert" — deshalb ein eigenes Wort und ein eigener Ablehnungs-Satz.
+    const eigen = ANWENDUNGEN.find((a) => a.id === 'eigene-auswertung');
+    expect(eigen?.klasse).toBe('cockpit');
+    expect(eigen?.abschaltbar).toBe(false);
+    expect(istCockpitGesteuert('eigene-auswertung')).toBe(true);
+    // Sie steht in KEINEM Preset auf „an": ein Preset kann sie nicht wählen.
+    expect(eigen?.preset.privat).toBe('abgeleitet');
+    expect(eigen?.preset.gewerbe).toBe('abgeleitet');
+    expect(vorauswahl('privat')).not.toContain('eigene-auswertung');
+    expect(vorauswahl('gewerbe')).not.toContain('eigene-auswertung');
+    // Und der Schaltplan legt für sie NIE einen Schalter um.
+    for (const profil of ['privat', 'gewerbe'] as const) {
+      const plan = presetSchaltplan(profil, [], []);
+      expect(plan.map((p) => p.id)).not.toContain('eigene-auswertung');
+    }
+  });
+
+  it('istCockpitGesteuert urteilt über eine UNBEKANNTE Id nie „ja"', () => {
+    expect(istCockpitGesteuert('marktvermarktung')).toBe(false);
+    expect(istCockpitGesteuert('monitoring')).toBe(false);
+    // Ein neuerer Server mit einer Anwendung, die diese Kopie nicht kennt.
+    expect(istCockpitGesteuert('brandneu')).toBe(false);
+    expect(istCockpitGesteuert(null)).toBe(false);
+    expect(istCockpitGesteuert(undefined)).toBe(false);
+  });
+
+  it('Stufe 9: die Klassen, deren Zeilen die Migration löscht, sind GENAU zwei', () => {
+    // Die Migration V20260847000000 löscht `site_profile_state`-Zeilen der
+    // Klassen `basis` und `regel` — die Ids stehen dort AUSGESCHRIEBEN (eine
+    // angewandte Migration darf ihre Wirkung nicht von einer Ressource
+    // abhängig machen, die sich morgen ändert). Dieser Wächter hält fest,
+    // WELCHE Ids das heute sind: wer eine Anwendung in eine dieser Klassen
+    // schiebt, muss die Migrations-Liste bewusst mitziehen.
+    const geloescht = ANWENDUNGEN
+      .filter((a) => a.klasse === 'basis' || a.klasse === 'regel')
+      .map((a) => a.id)
+      .sort();
+    expect(geloescht).toEqual(
+      ['monitoring', 'speicher-fahrplan', 'ueberschuss', 'verbraucher'].sort(),
+    );
+    // Was BLEIBT: die vier Betriebsmodelle und die cockpit-Anwendung. Ihre
+    // Zeilen tragen eine Entscheidung, die der Kunde wirklich getroffen hat.
+    const bleibt = ANWENDUNGEN
+      .filter((a) => a.klasse === 'geschaeft' || a.klasse === 'cockpit')
+      .map((a) => a.id)
+      .sort();
+    expect(bleibt).toEqual(
+      [
+        'marktvermarktung',
+        'lastspitzenkappung',
+        'atypische-netznutzung',
+        'lastmanagement',
+        'eigene-auswertung',
+      ].sort(),
+    );
+  });
+
+  it('das Kundenwort „Anwendung" kommt in keinem Katalog-Text mehr vor', () => {
+    // Stufe 8 Wortprüfung: „Betriebsmodell" ist das Kundenwort; „Anwendung"
+    // bleibt das INTERNE Modell (jede Code-Id, jeder Feldname). Der volle
+    // Wächter über alle Kundenflächen steht in `copy.test.ts`.
+    for (const a of ANWENDUNGEN) {
+      for (const [feld, text] of Object.entries({
+        label: a.label,
+        nutzen: a.nutzen,
+        leer_zustand: a.leer_zustand ?? '',
+      })) {
+        expect(text, `${a.id}.${feld}`).not.toMatch(/\bAnwendung(en)?\b/);
+      }
+    }
+  });
+
+  it('„Komponenten & Regeln" existiert nirgends mehr — die Seite heisst „Komponenten"', () => {
+    for (const a of ANWENDUNGEN) {
+      expect(a.leer_zustand ?? '', a.id).not.toContain('Komponenten & Regeln');
     }
   });
 });

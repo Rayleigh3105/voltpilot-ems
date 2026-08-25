@@ -532,7 +532,7 @@ export function TechnikSection({
               <dt className="vp-kv-k">
                 Profil
                 <InfoTip title="Profil dieser Anlage">
-                  Privat oder Gewerbe. Es entscheidet, welche Anwendungen wir Ihnen
+                  Privat oder Gewerbe. Es entscheidet, welches Betriebsmodell wir Ihnen
                   vorschlagen und in welchen Worten wir über Geld sprechen -
                   eingeschaltet oder abgeschaltet wird dadurch nichts.
                 </InfoTip>
@@ -723,7 +723,7 @@ export function TechnikSection({
         <h3 className="vp-tech-sub-title">Weitere Geräte</h3>
         <p className="vp-note" style={{ marginTop: 0 }}>
           Zusätzliche Erzeuger, Zähler und Verbraucher sehen Sie gebündelt im{' '}
-          <a href={`#/anlage/${site.id}/modell`}>Anlagen-Modell</a> - dort erscheinen sie
+          <a href={`#/anlage/${site.id}/modell`}>Komponenten</a> - dort erscheinen sie
           automatisch, sobald Ihr Gerät sie meldet.
         </p>
       </div>

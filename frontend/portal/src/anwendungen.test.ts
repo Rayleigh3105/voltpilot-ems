@@ -273,7 +273,7 @@ describe('Katalog ⟷ Manifest: kein Eintrag ohne Fläche', () => {
 describe('Katalog-Regeln', () => {
   it('Klassen, Kategorien und Preset-Werte kommen aus dem geschlossenen Vokabular', () => {
     for (const a of ANWENDUNGEN) {
-      expect(['basis', 'regel', 'geschaeft', 'reserviert']).toContain(a.klasse);
+      expect(['basis', 'regel', 'cockpit', 'geschaeft', 'reserviert']).toContain(a.klasse);
       expect(['basis', 'steuerung', 'geschaeft', 'auswertung']).toContain(a.kategorie);
       expect(['an', 'angeboten', 'verborgen', 'abgeleitet']).toContain(a.preset.privat);
       expect(['an', 'angeboten', 'verborgen', 'abgeleitet']).toContain(a.preset.gewerbe);
@@ -283,8 +283,12 @@ describe('Katalog-Regeln', () => {
 
   it('eine Basis-Anwendung ist nicht abschaltbar, eine reservierte nicht sichtbar', () => {
     for (const a of ANWENDUNGEN) {
-      if (a.klasse === 'basis') expect(a.abschaltbar, a.id).toBe(false);
-      else expect(a.abschaltbar, a.id).toBe(true);
+      // ⚠ Zwei Klassen ohne Schalter, aus VERSCHIEDENEN Gründen: `basis`
+      // läuft immer, `cockpit` wird an einem ANDEREN Ort gesteuert (im
+      // Cockpit unter „Anpassen", Steuerung Stufe 8).
+      if (a.klasse === 'basis' || a.klasse === 'cockpit') {
+        expect(a.abschaltbar, a.id).toBe(false);
+      } else expect(a.abschaltbar, a.id).toBe(true);
       if (a.klasse === 'reserviert') expect(a.sichtbar, a.id).toBe(false);
       else expect(a.sichtbar, a.id).toBe(true);
     }
@@ -355,16 +359,20 @@ describe('Katalog-Regeln', () => {
 
   it('die Regel-Anwendungen tragen ihren ehrlichen Leer-Zustand', () => {
     for (const a of ANWENDUNGEN) {
-      if (a.klasse !== 'regel') continue;
-      if (a.id === 'eigene-auswertung') {
-        // ⚠ Die EINE Ausnahme, und sie ist eine Ehrlichkeitsregel: der SERVER
-        // kann die Leere hier nicht belegen (sein Beleg `hasCustomerRule`
-        // zählt aktive Flows, nicht Kacheln). Was er nicht belegen kann,
-        // behauptet er nicht - der Leer-Hinweis lebt im Cockpit, wo der Knopf
-        // „+ Eigene Auswertung" steht (`eigeneAuswertung.LEER_SATZ`).
+      // ⚠ Seit Steuerung Stufe 8 ist „Eigene Auswertung" KEINE Regel-Anwendung
+      // mehr (Klasse `cockpit`) - ihr Leer-Zustand bleibt aus derselben
+      // Ehrlichkeitsregel NULL: der SERVER kann die Leere nicht belegen (sein
+      // `hasCustomerRule` zählt aktive Flows, nicht Kacheln), der Hinweis lebt
+      // im Cockpit (`eigeneAuswertung.LEER_SATZ`).
+      if (a.klasse === 'cockpit') {
         expect(a.leer_zustand, a.id).toBeNull();
+        expect(a.abschaltbar, a.id).toBe(false);
+        // Ein Preset kann sie nicht wählen - sie hat keinen Schalter.
+        expect(a.preset.privat, a.id).toBe('abgeleitet');
+        expect(a.preset.gewerbe, a.id).toBe('abgeleitet');
         continue;
       }
+      if (a.klasse !== 'regel') continue;
       expect(a.leer_zustand, a.id).toBeTruthy();
       expect(a.leer_zustand, a.id).toContain('Regeln');
     }

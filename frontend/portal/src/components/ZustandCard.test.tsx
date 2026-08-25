@@ -62,7 +62,7 @@ describe('ZustandCard', () => {
     // Die gesunden Reste als EINE gedämpfte Zeile.
     expect(container.textContent).toContain('Fahrplan, Steuerung und Speicher: in Ordnung.');
     // Der Hebel führt zur Unterseite.
-    fireEvent.click(getByRole('button', { name: /Anlagen-Modell/ }));
+    fireEvent.click(getByRole('button', { name: /Komponenten/ }));
     expect(onOpenSub).toHaveBeenCalledWith('modell');
   });
 
@@ -75,7 +75,7 @@ describe('ZustandCard', () => {
       const foot = container.querySelector('.vp-zustand-foot .vp-toolbox-line');
       expect(foot).not.toBeNull();
       expect(foot?.textContent).toContain('Ihre Anlage kann mehr');
-      fireEvent.click(getByRole('button', { name: /Anwendung hinzufügen/ }));
+      fireEvent.click(getByRole('button', { name: /Betriebsmodell wählen/ }));
       expect(onOpenModus).toHaveBeenCalledTimes(1);
       unmount();
     }

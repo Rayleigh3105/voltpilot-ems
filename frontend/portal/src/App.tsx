@@ -46,6 +46,7 @@ import { deviceHealthForSite, LIVENESS_POLL_MS } from './liveness';
 import { anlagenOptionen } from './anlagenWahl';
 import { useFreshnessPoll } from './useFreshnessPoll';
 import { useDeployWatch } from './deployWatch';
+import { aufmerksamkeitTitel } from './steuerungAufmerksamkeit';
 import { useAnlageSurface } from './useAnlageSurface';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawerLazy';
 import { LazyBoundary } from './components/Lazy';
@@ -736,7 +737,7 @@ function UnifiedPortal() {
   // REITER des Verlaufs, also gewöhnliche Unterseiten - ein eigener Zweig für
   // sie gibt es nicht mehr.
   const shellSite = page === 'anlagen' ? resolveAnlage(sites, route.siteId) : null;
-  const { surface } = useAnlageSurface(shellSite);
+  const { surface, aufmerksam } = useAnlageSurface(shellSite);
 
   // Die stille Auffrischung der Geräteliste - das Gegenstück zur Bezugszeit
   // oben. Vorher tickte hier nur eine Uhr über einem EINMAL geladenen
@@ -816,7 +817,11 @@ function UnifiedPortal() {
           flottenLabel: fleetLabel(betriebsart),
         }),
         onSelectSite: (id: string) => navigate(anlageRoute(id)),
-        sidebar: anlageSidebar(surface, surface?.modes.length ?? null),
+        // ⚠ Das Abzeichen zählt seit Steuerung Stufe 8 die Dinge, die
+        // AUFMERKSAMKEIT brauchen (§3.1) - nicht mehr die aktiven Anwendungen.
+        // Der ORT ist derselbe geblieben, also ist das hier genau der
+        // Argument-Wechsel, den `anlageNav.ts` vorgesehen hatte.
+        sidebar: anlageSidebar(surface, aufmerksam.anzahl, aufmerksamkeitTitel(aufmerksam)),
         // Hervorgehoben wird der BEREICH, in dem die offene Unterseite wohnt
         // (`activeAreaKey`) - ein Reiter darf die Leiste nie ins Nichts zeigen
         // lassen.

@@ -78,7 +78,7 @@ export const NO_DEVICE_TITLE = 'Für diese Anlage gibt es noch kein schaltbares 
 export const NO_DEVICE_BODY =
   'Eine Wenn/Dann-Regel schaltet ein Gerät - zum Beispiel eine Wallbox oder einen Heizstab. '
   + 'Solange keines Ihrer Geräte als schaltbar hinterlegt ist, kann die Regel nichts tun. '
-  + 'Im Anlagen-Modell ordnen Sie ein gemeldetes Gerät zu; danach steht es hier zur Auswahl.';
+  + 'Unter „Komponenten" ordnen Sie ein gemeldetes Gerät zu; danach steht es hier zur Auswahl.';
 
 function emptyCond(readable: EditorEntity[]): CondForm {
   const first = readable[0];
@@ -303,7 +303,7 @@ export function GuidedRuleBuilder({
               href={hashForRoute(anlageRoute(siteId, 'modell'))}
               onClick={onCancel}
             >
-              <Icon name="chevron-right" size={14} /> Zum Anlagen-Modell - Gerät zuordnen
+              <Icon name="chevron-right" size={14} /> Zu den Komponenten - Gerät zuordnen
             </a>
           )}
         </div>

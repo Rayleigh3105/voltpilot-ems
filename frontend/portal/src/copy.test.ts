@@ -102,7 +102,15 @@ const FORBIDDEN: Array<{ re: RegExp; why: string }> = [
   // dieser Wächter liest nur SICHTBARE Zeichenketten.
   { re: /Modus-Profil/, why: 'Stufe 0: „Anwendung" statt „Modus-Profil"' },
   { re: /\bModi\b/, why: 'Stufe 0: „Anwendungen" statt „Modi"' },
-  { re: /\bModus\b/, why: 'Stufe 0: „Anwendung" statt „Modus" (Geräte-Betriebsart siehe GERAETE_MODUS)' },
+  { re: /\bModus\b/, why: 'Stufe 0: „Betriebsmodell" statt „Modus" (Geräte-Betriebsart siehe GERAETE_MODUS)' },
+  // Steuerung Stufe 8 (Captain 25.08.2026, §7): „Anwendung" ist KEIN Kundenwort
+  // mehr - es bleibt das interne Modell (Katalog, `AnwendungDef`, die Route
+  // `/profiles`, der Java-Dienst). Das Kundenwort für das Schaltbare ist
+  // „Betriebsmodell"; wo es um etwas anderes ging, sagt der Satz seither, was
+  // gemeint ist („Steuerung", „Ihre Regeln"). Die WORTGRENZE ist load-bearing:
+  // Bezeichner wie `anwendungLabel` oder `AnwendungKlasse` bleiben unberührt,
+  // und der Wächter liest ohnehin nur SICHTBARE Zeichenketten.
+  { re: /\bAnwendung(en)?\b/, why: 'Stufe 8: „Betriebsmodell" statt „Anwendung"' },
 ];
 
 /**
@@ -216,6 +224,44 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
   });
 
   /**
+   * ⚠ Die zwei ANDEREN Kundentext-Wohnorte desselben Katalogs, die der Fall
+   * oben nicht anfasst: die PRESET-Sätze (die Karte des Assistenten) und die
+   * BAUSTEIN-Labels (jede Zeile des Anpassen-Modus). Ohne sie wäre der Katalog
+   * nur zur Hälfte im Wörterbuch — genau die Art Loch, gegen die dieser
+   * Wächter existiert.
+   */
+  it('Preset-Sätze und Baustein-Labels sprechen dasselbe Wörterbuch', () => {
+    const catalog = JSON.parse(
+      readFileSync(join(process.cwd(), 'src/anwendungen/catalog.json'), 'utf8'),
+    ) as {
+      presets: { id: string; label: string; satz: string }[];
+      bausteine: { id: string; label: string }[];
+      baustein_vorlagen?: { id: string; label: string; hinweis?: string | null }[];
+    };
+    expect(catalog.presets.length).toBeGreaterThan(1);
+    expect(catalog.bausteine.length).toBeGreaterThan(5);
+    const texte: [string, string][] = [
+      ...catalog.presets.flatMap((p) => [
+        [`preset ${p.id}`, p.label] as [string, string],
+        [`preset ${p.id}`, p.satz] as [string, string],
+      ]),
+      ...catalog.bausteine.map((b) => [`baustein ${b.id}`, b.label] as [string, string]),
+      ...(catalog.baustein_vorlagen ?? []).flatMap((v) => [
+        [`vorlage ${v.id}`, v.label] as [string, string],
+        [`vorlage ${v.id}`, v.hinweis ?? ''] as [string, string],
+      ]),
+    ];
+    const violations: string[] = [];
+    for (const [wo, text] of texte) {
+      for (const { re, why } of FORBIDDEN) {
+        const m = re.exec(text.replace(GERAETE_MODUS, ' '));
+        if (m) violations.push(`anwendungen/catalog.json · ${wo}: „${m[0]}" — ${why}`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  /**
    * Der Wächter über die AUSNAHME „Modus": sie darf nur die Geräte-Betriebsart
    * durchlassen. Träte sie eines Tages weiter auf, wäre der Wortwechsel still
    * wirkungslos geworden - genau das fällt hier auf, nicht erst im Portal.
@@ -231,6 +277,13 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
     expect(scan("const t = 'Modus hinzufügen';")).toContain('\\bModus\\b');
     expect(scan("const t = 'Ansichten dieses Modus';")).toContain('\\bModus\\b');
     expect(scan("const t = '2 Modi, ein Speicher';")).toContain('\\bModi\\b');
+    // Stufe 8: „Anwendung" ist kein Kundenwort mehr - in keiner Form.
+    expect(scan("const t = 'Anwendung hinzufügen';")).toContain('\\bAnwendung(en)?\\b');
+    expect(scan("const t = 'Ansichten dieser Anwendung';")).toContain('\\bAnwendung(en)?\\b');
+    expect(scan("const t = 'Ihre Anwendungen bleiben an';")).toContain('\\bAnwendung(en)?\\b');
+    // ... und die Bezeichner bleiben unberührt (die Wortgrenze trifft sie nicht).
+    expect(scan('import { anwendungLabel } from "./anwendungen";')).toEqual([]);
+    expect(scan('const d: AnwendungDef | null = anwendung(id);')).toEqual([]);
     // Und Bezeichner bleiben unberührt (der Wächter liest nur sichtbaren Text,
     // die Groß-/Kleinschreibung der Ids trifft die Wortgrenzen nicht).
     expect(scan('const MODUS: Record<string, string> = {};')).toEqual([]);

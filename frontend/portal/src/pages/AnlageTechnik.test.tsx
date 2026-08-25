@@ -570,7 +570,7 @@ describe('Einstellungen · Profil ändern (Anwendungs-Programm Stufe 2)', () => 
 
     // Die Folgenliste steht VOR dem Klick - und sie sagt, was GLEICH bleibt.
     expect(
-      screen.getByText(/Ihre eingeschalteten Anwendungen bleiben unverändert/),
+      screen.getByText(/Ihre eingeschalteten Betriebsmodelle bleiben unverändert/),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Profil' }));

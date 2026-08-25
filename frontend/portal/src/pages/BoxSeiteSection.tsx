@@ -203,7 +203,7 @@ export function BoxSeiteSection({
   return (
     <div className="vp-geraet vp-box">
       <a className="vp-geraet-back" href={hashForRoute(anlageRoute(site.id, 'modell'))}>
-        <Icon name="chevron-left" size={16} /> Zurück zum Anlagen-Modell
+        <Icon name="chevron-left" size={16} /> Zurück zu den Komponenten
       </a>
 
       {!data && !error && (

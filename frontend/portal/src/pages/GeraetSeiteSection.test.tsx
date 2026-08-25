@@ -410,14 +410,14 @@ describe('GeraetSeiteSection', () => {
   it('führt von den Steuerungs-Bezügen in die Steuerung dieser Anlage', async () => {
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    const link = await screen.findByRole('link', { name: /Regeln und Anwendungen dieser Anlage/ });
+    const link = await screen.findByRole('link', { name: /Regeln und Betriebsmodelle dieser Anlage/ });
     expect(link.getAttribute('href')).toBe('#/anlage/s-1/steuerung');
   });
 
   it('führt zurück ins Anlagen-Modell', async () => {
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    const back = await screen.findByRole('link', { name: /Zurück zum Anlagen-Modell/ });
+    const back = await screen.findByRole('link', { name: /Zurück zu den Komponenten/ });
     expect(back.getAttribute('href')).toBe('#/anlage/s-1/modell');
   });
 

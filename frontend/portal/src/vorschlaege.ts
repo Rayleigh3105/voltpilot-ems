@@ -552,8 +552,8 @@ export function keinVorschlagGrund(input: VorschlagInput): string | null {
       + 'sobald sie weiterläuft.';
   }
   if (input.consumers.length === 0) {
-    return 'Für Vorschläge braucht VoltPilot ein schaltbares Gerät — im '
-      + 'Anlagen-Modell legen Sie eines an.';
+    return 'Für Vorschläge braucht VoltPilot ein schaltbares Gerät — unter '
+      + '„Komponenten" legen Sie eines an.';
   }
   if (!input.slots || input.slots.length === 0) {
     return 'Für Vorschläge braucht VoltPilot einen Fahrplan — für diese Anlage '

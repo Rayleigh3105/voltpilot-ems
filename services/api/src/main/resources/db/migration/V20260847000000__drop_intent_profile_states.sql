@@ -1,0 +1,52 @@
+-- =============================================================================
+-- V20260847000000 - Steuerung Stufe 9 „Datenbereinigung": die gespeicherten
+-- ABSICHTEN der Anwendungen ohne Schalter verschwinden. DATEN-ONLY, prod-safe,
+-- idempotent, ADDITIV im Sinne von „es geht nichts verloren, was noch etwas
+-- bedeutet". Kein Schema, kein Index, kein Recht.
+-- -----------------------------------------------------------------------------
+-- WAS GELOESCHT WIRD, UND WARUM GENAU DAS:
+--
+--   basis  (monitoring, speicher-fahrplan)
+--     Diese Anwendungen laufen ohnehin. Ihre Zeilen konnten ueber die API gar
+--     nicht entstehen - `SiteProfileService.setState` antwortet auf einen
+--     Schaltversuch seit je mit 400 („ist immer an und laesst sich nicht
+--     abschalten"). Was hier steht, stammt aus der Zeit vor dieser Pruefung
+--     bzw. aus einem Import; ein gespeichertes `aus` unterdrueckte dabei sogar
+--     die Ableitung (das Willens-Overlay in `profiles.ts`) und war damit eine
+--     stille Falschaussage ueber eine laufende Anlage.
+--
+--   regel  (ueberschuss, verbraucher)
+--     Ihr Schalter war reine ABSICHT: er oeffnete keinen gated Knoten und saete
+--     keinen Starter (Klassen-Doku in `anwendungen/catalog.json`). Seit
+--     Steuerung Stufe 0 stehen sie nicht mehr im Regal, seit Stufe 2 rendert
+--     KEINE Flaeche mehr ihren Zustand. Eine gespeicherte Absicht ohne Wirkung
+--     und ohne Leser ist genau der Zustand, den diese Stufe beendet.
+--
+-- WAS AUSDRUECKLICH BLEIBT:
+--
+--   geschaeft  (marktvermarktung, lastspitzenkappung, atypische-netznutzung,
+--              lastmanagement)
+--     Das sind die BETRIEBSMODELLE - die vier Zeilen des Regals. Ihr Zustand
+--     ist der gespeicherte Kundenwille, an dem die Exklusivitaet (Stufe 5) und
+--     die Unterdrueckung eines abgeleiteten Signals haengen.
+--
+--   cockpit  (eigene-auswertung)
+--     Sie hat ihren Schalter mit Stufe 8 verloren (Katalog-Klasse `regel` ->
+--     `cockpit`), aber ihre Zeile hatte bis dahin eine ECHTE Wirkung: sie hat
+--     die eigenen Kacheln des Kunden ein- und ausgeblendet. Sie zu loeschen
+--     hiesse, eine Entscheidung zu vernichten, die der Kunde wirklich getroffen
+--     hat - waehrend sie stehen zu lassen nichts kostet (kein Leser, keine
+--     Wirkung). Die Haus-Disziplin dazu ist dieselbe wie bei der Rueckname
+--     einer Geraete-Freigabe: „eine Ruecknahme ist keine Beweisvernichtung".
+--
+-- Die Liste steht hier AUSGESCHRIEBEN und nicht als Abfrage ueber einen
+-- Katalog: eine Migration ist unveraenderlich und darf ihre Wirkung nicht von
+-- einer Ressource abhaengig machen, die sich morgen aendert.
+--
+-- Sie referenziert keinen Mandanten und keine Anlage, ist also auf jeder DB ein
+-- harmloses No-op, die diese Zeilen nie hatte. Datums-Version nach der
+-- AGENTS.md-Koordination (ueber dem hoechsten schon ausgelieferten Stand).
+-- =============================================================================
+
+DELETE FROM site_profile_state
+ WHERE profile IN ('monitoring', 'speicher-fahrplan', 'ueberschuss', 'verbraucher');

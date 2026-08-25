@@ -112,7 +112,7 @@ public class CockpitLayoutRepository {
             return new LayoutDoc(strings(node.path("order")), strings(node.path("hidden")),
                     strings(node.path("shown")),
                     node.hasNonNull("lead") ? node.get("lead").asText() : null,
-                    custom(node.path("custom")));
+                    custom(node.path("custom")), strings(node.path("seen")));
         } catch (Exception e) {
             // Ein unlesbares Dokument ist kein Fehler der Anlage: die Fläche
             // fällt auf den deterministischen Standard zurück.
@@ -178,6 +178,12 @@ public class CockpitLayoutRepository {
                 c.put("entityId", b.entityId());
                 c.put("channel", b.channel());
                 c.put("aggregat", b.aggregat());
+            }
+            // Stufe 8: die weggeklickten Erklärkästen. Nur schreiben, wenn es
+            // welche gibt - ein leeres Feld in JEDEM Dokument wäre Rauschen in
+            // einer Spalte, die es seit Stufe 3 ohne auskommt.
+            if (!doc.seen().isEmpty()) {
+                node.set("seen", mapper.valueToTree(doc.seen()));
             }
             return mapper.writeValueAsString(node);
         } catch (Exception e) {

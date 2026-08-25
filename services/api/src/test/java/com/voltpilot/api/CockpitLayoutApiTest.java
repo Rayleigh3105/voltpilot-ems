@@ -459,6 +459,66 @@ class CockpitLayoutApiTest {
      * ANDERE Zahl ergibt: Leistung 1/5/9/3 (jetzt 3, max 9), und ein
      * ZÄHLERSTAND 100 → 140,5 (Zuwachs 40,5; die Summe wäre 480,75).
      */
+    /**
+     * Steuerung Stufe 8: die Marke des ERKLÄRKASTENS reist im FREIEN Fach
+     * {@code scope=tenant / layer=eigen / surface=cockpit} — dem einen, das
+     * {@code forSite} für Mandanten-Zeilen NIE liest (dort zählt allein
+     * {@code layer=vorgabe}). Sie ist damit je ORGANISATION gemerkt, ohne einen
+     * neuen Speicher und ohne einer Anlage eine Layout-Schicht unterzuschieben.
+     *
+     * <p>⚠ Das ist der Beweis dafür, dass {@code seen} den ganzen Weg
+     * überlebt: Controller → Repository → {@code jsonb} → DTO. Ein Feld, das
+     * niemand zurückliest, wäre genau die stille Lücke, gegen die dieses Haus
+     * seine Lesepfade prüft.
+     */
+    @Test
+    void dieMarkeDesErklaerkastensUeberlebtImFreienMandantenFachOhneLayoutSchicht() {
+        String demo = token("demo", "demo");
+
+        // Ausgangslage: nichts gesehen, nichts gespeichert.
+        JsonNode vorher =
+                customer("/api/v1/tenant/cockpit-layout", HttpMethod.GET, demo, null).getBody();
+        assertThat(vorher.path("eigen").isNull()).isTrue();
+
+        // Der Kunde klickt „Verstanden" — GENAU der Aufruf des Portals
+        // (`api.saveTenantCockpitLayout('eigen', …, 'cockpit')`). ⚠ Das
+        // `layer=eigen` ist tragend: die Route hat die Vorgabe `vorgabe`, und
+        // die darf ein Kunde nicht schreiben (403) — genau die Rechte-Ordnung,
+        // die den freien `eigen`-Platz erst zum Wohnort der Marke macht.
+        JsonNode gemerkt = customer("/api/v1/tenant/cockpit-layout?layer=eigen", HttpMethod.PUT, demo,
+                Map.of("order", List.of(), "hidden", List.of(), "shown", List.of(),
+                        "seen", List.of("steuerung-intro")))
+                .getBody();
+        assertThat(strings(gemerkt.path("eigen").path("document").path("seen")))
+                .containsExactly("steuerung-intro");
+
+        // Sie überlebt einen frischen Abruf …
+        assertThat(strings(customer("/api/v1/tenant/cockpit-layout", HttpMethod.GET, demo, null)
+                .getBody().path("eigen").path("document").path("seen")))
+                .containsExactly("steuerung-intro");
+
+        // … und sie ist KEINE Layout-Schicht des Cockpits: `forSite` liest die
+        // Mandanten-Zeile AUSSCHLIESSLICH unter `layer=vorgabe`, die Marke
+        // wohnt aber in `eigen`. Sie darf deshalb in KEINER der drei Schichten
+        // auftauchen, die eine Anlage auflöst. ⚠ Geprüft wird genau das - NICHT
+        // „tenantVorgabe ist null": diese Klasse teilt sich den Mandanten, und
+        // ein Geschwister-Test hinterlässt dort legitim eine Vorgabe (JUnits
+        // Methodenordnung ist unspezifiziert).
+        JsonNode cockpit = customer(path(BERLIN_SITE), HttpMethod.GET, demo, null).getBody();
+        for (String schicht : List.of("eigen", "siteVorgabe", "tenantVorgabe")) {
+            assertThat(strings(cockpit.path(schicht).path("document").path("seen")))
+                    .as(schicht).doesNotContain("steuerung-intro");
+        }
+
+        // ⚠ Ein Kunde darf die kunden-weite VORGABE nicht anfassen — auch nicht
+        // versehentlich über die Route-Vorgabe.
+        assertThat(customer("/api/v1/tenant/cockpit-layout", HttpMethod.PUT, demo,
+                Map.of("seen", List.of("steuerung-intro"))).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
+        customer("/api/v1/tenant/cockpit-layout?layer=eigen", HttpMethod.DELETE, demo, null);
+    }
+
     private void seedWaermepumpe() {
         exec("DELETE FROM telemetry_v2 WHERE entity_id = '" + WP_ENTITY + "'");
         exec("DELETE FROM measurement_point WHERE id = '" + WP_ENTITY + "'");

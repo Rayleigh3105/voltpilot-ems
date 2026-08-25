@@ -55,7 +55,7 @@ public class SiteCockpitLayoutController {
 
     /** Der Rumpf eines Schreibvorgangs — NUR Absicht, nie die gerenderte Fläche. */
     public record LayoutRequest(List<String> order, List<String> hidden, List<String> shown,
-            String lead, List<CustomRequest> custom) {}
+            String lead, List<CustomRequest> custom, List<String> seen) {}
 
     /**
      * Eine EIGENE Auswertung im Rumpf (Anwendungs-Programm Stufe 5). Bewusst
@@ -123,7 +123,7 @@ public class SiteCockpitLayoutController {
             return LayoutDoc.leer();
         }
         return new LayoutDoc(list(request.order()), list(request.hidden()), list(request.shown()),
-                blankToNull(request.lead()), custom(request.custom()));
+                blankToNull(request.lead()), custom(request.custom()), list(request.seen()));
     }
 
     /** Die eigenen Auswertungen des Rumpfs — Trimmen, sonst unverändert. */

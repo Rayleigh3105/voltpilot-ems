@@ -907,3 +907,85 @@
     width: 100%;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Der ERKLÄRKASTEN der Steuerung (Stufe 8, Konzept §3.9 „Erstbegegnung")
+ *
+ * Ruhig, nie ein Alarm: er erklärt drei Zonen, er meldet nichts. Deshalb der
+ * neutrale Flächenton und kein Warn-/Aktions-Rand.
+ * ------------------------------------------------------------------------ */
+.vp-steuerung-intro {
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface-alt, #f7f9fc);
+  padding: var(--vp-space-4);
+  margin-bottom: var(--vp-space-4);
+}
+
+.vp-steuerung-intro-head {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--vp-space-3);
+}
+
+.vp-steuerung-intro-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* 30 px sichtbar, ≥44 px Trefferfläche über ::before - das `.vp-switch`-Muster
+   (ein 44-px-KASTEN zöge die Kopfzeile auseinander). */
+.vp-steuerung-intro-close {
+  position: relative;
+  flex: 0 0 auto;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-sm, 8px);
+  background: var(--vp-surface, #fff);
+  color: var(--vp-action);
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.vp-steuerung-intro-close::before {
+  content: '';
+  position: absolute;
+  inset: -8px -4px;
+}
+
+.vp-steuerung-intro-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+
+.vp-steuerung-intro-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-2);
+  min-width: 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.vp-steuerung-intro-num {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--vp-action);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

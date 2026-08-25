@@ -11,6 +11,9 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -539,7 +542,91 @@ class SiteProfileApiTest {
         customer("/api/v1/sites/" + siteId, HttpMethod.DELETE, demo, null);
     }
 
+    /**
+     * Steuerung Stufe 9 „Datenbereinigung": die gespeicherten ABSICHTEN der
+     * Anwendungen ohne Schalter verschwinden - und GENAU die.
+     *
+     * <p>Geprüft wird die Migration {@code V20260847000000} in ISOLATION (das
+     * {@code backfillLinksSingleDeviceSites…}-Muster in {@code PortalApiTest}):
+     * die Anweisung läuft beim Container-Start längst, also wird sie hier über
+     * eine Superuser-Verbindung (RLS umgehend) ein zweites Mal gegen frisch
+     * gesäte Zeilen gefahren. Das beweist zugleich ihre IDEMPOTENZ.
+     *
+     * <p>Die Erwartung ist der ganze Punkt der Stufe: die Klassen {@code basis}
+     * und {@code regel} verschwinden, die vier BETRIEBSMODELLE ({@code
+     * geschaeft}) und die {@code cockpit}-Anwendung „Eigene Auswertung" bleiben.
+     * Letztere hatte bis Stufe 8 eine ECHTE Wirkung - ihre Zeile zu löschen
+     * vernichtete eine Entscheidung, die der Kunde wirklich getroffen hat.
+     */
+    @Test
+    void theIntentOnlyProfileStatesAreDroppedAndTheOperatingModelsSurvive() {
+        String siteId = "aaaaaaa9-0000-0000-0000-000000000009";
+        exec("INSERT INTO site (id, tenant_id, name, bidding_zone) VALUES ('"
+                + siteId + "', '" + TENANT_A + "', 'Stufe 9', 'DE-LU')");
+        try {
+            // Je eine Zeile aus JEDER Klasse - die zwei, die gehen, und die
+            // zwei, die bleiben müssen.
+            exec("INSERT INTO site_profile_state (site_id, tenant_id, profile, state) VALUES "
+                    + "('" + siteId + "', '" + TENANT_A + "', 'monitoring', 'aus'), "
+                    + "('" + siteId + "', '" + TENANT_A + "', 'speicher-fahrplan', 'aus'), "
+                    + "('" + siteId + "', '" + TENANT_A + "', 'ueberschuss', 'an'), "
+                    + "('" + siteId + "', '" + TENANT_A + "', 'verbraucher', 'aus'), "
+                    + "('" + siteId + "', '" + TENANT_A + "', 'eigene-auswertung', 'an'), "
+                    + "('" + siteId + "', '" + TENANT_A + "', 'marktvermarktung', 'an'), "
+                    + "('" + siteId + "', '" + TENANT_A + "', 'lastspitzenkappung', 'aus')");
+            assertThat(queryLong("SELECT count(*) FROM site_profile_state WHERE site_id = '"
+                    + siteId + "'")).isEqualTo(7);
+
+            // Die Anweisung der Migration, wörtlich.
+            String migration = "DELETE FROM site_profile_state WHERE profile IN "
+                    + "('monitoring', 'speicher-fahrplan', 'ueberschuss', 'verbraucher')";
+            exec(migration);
+
+            assertThat(queryLong("SELECT count(*) FROM site_profile_state WHERE site_id = '"
+                    + siteId + "' AND profile IN ('monitoring', 'speicher-fahrplan',"
+                    + " 'ueberschuss', 'verbraucher')")).isZero();
+            assertThat(queryLong("SELECT count(*) FROM site_profile_state WHERE site_id = '"
+                    + siteId + "' AND profile = 'eigene-auswertung' AND state = 'an'"))
+                    .isEqualTo(1);
+            assertThat(queryLong("SELECT count(*) FROM site_profile_state WHERE site_id = '"
+                    + siteId + "' AND profile IN ('marktvermarktung', 'lastspitzenkappung')"))
+                    .isEqualTo(2);
+
+            // Idempotent: ein zweiter Lauf ändert nichts mehr.
+            exec(migration);
+            assertThat(queryLong("SELECT count(*) FROM site_profile_state WHERE site_id = '"
+                    + siteId + "'")).isEqualTo(3);
+        } finally {
+            exec("DELETE FROM site_profile_state WHERE site_id = '" + siteId + "'");
+            exec("DELETE FROM site WHERE id = '" + siteId + "'");
+        }
+    }
+
     // ---- helpers -------------------------------------------------------------
+
+    /** Anweisung als Postgres-SUPERUSER (umgeht RLS) - für den Migrations-Beweis. */
+    private static void exec(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                Statement st = c.createStatement()) {
+            st.execute(sql);
+        } catch (Exception e) {
+            throw new IllegalStateException("seed failed: " + sql, e);
+        }
+    }
+
+    /** Skalare Zählung als Superuser (sieht die Zeilen aller Mandanten). */
+    private static long queryLong(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery(sql)) {
+            rs.next();
+            return rs.getLong(1);
+        } catch (Exception e) {
+            throw new IllegalStateException("query failed: " + sql, e);
+        }
+    }
 
     private static String profilesPath() {
         return "/api/v1/sites/" + BERLIN_SITE + "/profiles";

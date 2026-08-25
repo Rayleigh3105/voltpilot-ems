@@ -86,6 +86,17 @@ export interface LayoutDocument {
    * (jedes Dokument vor dieser Stufe), gibt es keine — nie ein Fehler.
    */
   custom?: EigeneAuswertungDef[];
+  /**
+   * Die weggeklickten ERKLÄRKÄSTEN dieses Dokuments (Steuerung Stufe 8, §3.9 —
+   * „wegklickbar, gemerkt"). Bewusst hier und kein neuer Speicher: es ist eine
+   * Anzeige-Präferenz wie jede andere in diesem Dokument.
+   *
+   * ⚠ Sie ist AUSDRÜCKLICH keine Aussage über die Anordnung: `saysSomething`
+   * liest sie nicht, ein Dokument mit NUR einer Marke ist also keine Schicht.
+   * Sonst überschriebe ein weggeklickter Hinweis stillschweigend die Vorgabe
+   * des Betreibers.
+   */
+  seen?: string[];
 }
 
 /** Ein Baustein, wie der Katalog ihn beschreibt. */

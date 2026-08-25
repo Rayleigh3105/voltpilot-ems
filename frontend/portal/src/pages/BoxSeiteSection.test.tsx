@@ -380,7 +380,7 @@ describe('BoxSeiteSection', () => {
   it('führt zurück ins Anlagen-Modell', async () => {
     stub();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
-    const back = await screen.findByRole('link', { name: /Zurück zum Anlagen-Modell/ });
+    const back = await screen.findByRole('link', { name: /Zurück zu den Komponenten/ });
     expect(back.getAttribute('href')).toBe('#/anlage/s-1/modell');
   });
 });

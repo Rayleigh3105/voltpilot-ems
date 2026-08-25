@@ -752,7 +752,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   // ------------------------------------------------------------------
   const komponentenLeer =
     komponenten.length === 0
-      ? 'Dieses Gerät misst noch nichts — übernehmen Sie es im Anlagen-Modell als Komponente.'
+      ? 'Dieses Gerät misst noch nichts — übernehmen Sie es unter „Komponenten".'
       : null;
 
   // ------------------------------------------------------------------

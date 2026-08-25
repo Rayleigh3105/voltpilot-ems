@@ -390,7 +390,7 @@ public class CockpitLayoutService {
                     b.channel(), b.aggregat()));
         }
         return new LayoutDocumentDto(1, doc.order(), doc.hidden(), doc.shown(), doc.lead(),
-                List.copyOf(custom));
+                List.copyOf(custom), doc.seen());
     }
 
     private void requireSite(UUID siteId) {

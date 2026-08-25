@@ -61,6 +61,11 @@ import org.springframework.web.server.ResponseStatusException;
  *       mit dem Einstieg in die Regel-Kapsel der Steuerung — der Server
  *       erfindet keine Regel. Seit Stufe 0 steht sie nicht mehr im Regal;
  *       ihr Schalter bleibt über {@code PUT /profiles} erreichbar.</li>
+ *   <li><b>cockpit</b> — ebenfalls nicht schaltbar, aber aus einem ANDEREN
+ *       Grund: sie wird im Cockpit unter „Anpassen" gesteuert (Steuerung
+ *       Stufe 8). Ihr 400 nennt deshalb den WEG, statt „ist immer an" zu
+ *       behaupten — es gibt sehr wohl eine Wahl, sie wird nur woanders
+ *       getroffen.</li>
  *   <li><b>geschaeft</b> — wie bisher: (a) genau die gated Knotentypen DIESER
  *       Anwendung freischalten, (b) ihren Starter säen, (c) {@code an}
  *       speichern. Ausschalten legt ihre Flows still, schließt die Knoten
@@ -177,6 +182,18 @@ public class SiteProfileService {
         if (anwendung == null || !anwendung.sichtbar()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Unbekanntes Profil: " + profileId + ".");
+        }
+        // ⚠ Die COCKPIT-Klasse wird VOR der generischen Ablehnung geprüft: ihr
+        // Satz ist ein anderer. „Ist immer an" wäre hier eine Falschaussage —
+        // eine eigene Auswertung entsteht sehr wohl durch eine Wahl, sie wird
+        // nur an einem anderen Ort getroffen, und ein Satz, der das verschweigt,
+        // schickt den Kunden auf die Suche nach einem Schalter, den es nicht
+        // gibt (der Phantom-Seiten-Befund B3, eine Ebene tiefer).
+        if (anwendung.istCockpit()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "„" + anwendung.label() + "“ schalten Sie nicht hier ein — im Cockpit "
+                            + "unter „Anpassen“ legen Sie eine eigene Kachel oder einen "
+                            + "eigenen Verlauf an.");
         }
         if (!anwendung.abschaltbar()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,

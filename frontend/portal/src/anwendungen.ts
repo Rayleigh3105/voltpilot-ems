@@ -33,8 +33,16 @@ import rawCatalog from './anwendungen/catalog.json';
 // Vokabular
 // ---------------------------------------------------------------------------
 
-/** Woraus eine Anwendung besteht — und was ihr Schalter tut. */
-export type AnwendungKlasse = 'basis' | 'regel' | 'geschaeft' | 'reserviert';
+/**
+ * Woraus eine Anwendung besteht — und was ihr Schalter tut.
+ *
+ * ⚠ **`cockpit` ist NICHT `basis`** (Steuerung Stufe 8): beide haben keinen
+ * Schalter, aber aus verschiedenen Gründen. Eine Basis-Anwendung LÄUFT ohnehin
+ * („immer an"); eine Cockpit-Anwendung wird an einem ANDEREN Ort gesteuert —
+ * im Cockpit unter „Anpassen". Der Unterschied ist der Satz, den der Server auf
+ * einen Schaltversuch antwortet, und der darf den Weg nicht verschweigen.
+ */
+export type AnwendungKlasse = 'basis' | 'regel' | 'cockpit' | 'geschaeft' | 'reserviert';
 
 /** Die Sortierung im Regal und in der Wizard-Vorauswahl. */
 export type AnwendungKategorie = 'basis' | 'steuerung' | 'geschaeft' | 'auswertung';
@@ -244,6 +252,15 @@ export function istBasis(id: string | null | undefined): boolean {
 /** Ist sie eine Regel-Anwendung (Schalter = reine Absicht)? */
 export function istRegel(id: string | null | undefined): boolean {
   return anwendung(id)?.klasse === 'regel';
+}
+
+/**
+ * Wird sie im COCKPIT gesteuert statt in der Steuerung (Stufe 8)? Dann gibt es
+ * hier keinen Schalter — und die Fläche, die sie zeigt, fragt gar nicht erst
+ * nach einem Zustand.
+ */
+export function istCockpitGesteuert(id: string | null | undefined): boolean {
+  return anwendung(id)?.klasse === 'cockpit';
 }
 
 /**
@@ -510,9 +527,9 @@ export function profilAenderungsFolgen(neu: Profil | null): string[] {
   return [
     ton,
     neu
-      ? `Beim nächsten Anlegen schlagen wir die Anwendungen vor, die zu „${profilLabel(neu)}" passen.`
-      : 'Wir schlagen dann keine Anwendungen mehr vor.',
-    'Ihre eingeschalteten Anwendungen bleiben unverändert — hier wird nichts an- oder abgeschaltet.',
+      ? `Beim nächsten Anlegen schlagen wir das Betriebsmodell vor, das zu „${profilLabel(neu)}" passt.`
+      : 'Wir schlagen dann kein Betriebsmodell mehr vor.',
+    'Ihre eingeschalteten Betriebsmodelle bleiben unverändert — hier wird nichts an- oder abgeschaltet.',
     'Sie können das Profil jederzeit wieder ändern.',
   ];
 }

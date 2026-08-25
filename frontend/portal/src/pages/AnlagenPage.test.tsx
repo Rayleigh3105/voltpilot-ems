@@ -567,7 +567,7 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     await waitFor(() => expect(container.querySelector('.vp-toolbox-line')).toBeTruthy());
     const line = container.querySelector('.vp-toolbox-line')?.textContent ?? '';
     expect(line).toContain('Ihre Anlage kann mehr');
-    expect(line).toContain('Anwendung hinzufügen');
+    expect(line).toContain('Betriebsmodell wählen');
     expect(line).not.toMatch(/Lastspitzen|Marktvermarktung|Eigenverbrauch/);
   });
 
@@ -870,7 +870,7 @@ describe('Eine Warnung nennt ihre Ursache und ist in einem Klick erreichbar', ()
     expect(card?.querySelector('.vp-zustand.befund')).not.toBeNull();
     expect(card?.textContent).toContain('Zustand der Anlage');
     expect(card?.textContent).toContain('Gerät: meldet sich nicht');
-    expect(card?.textContent).toContain('Anlagen-Modell');
+    expect(card?.textContent).toContain('Komponenten');
   });
 
   it('alles grün: EINE ruhige Zeile mit dem Modus-Fuß in der Fläche (D5/D6)', async () => {
@@ -1502,7 +1502,11 @@ describe('Anwendungs-Programm Stufe 5 · die eigene Auswertung im Cockpit', () =
     expect(kachel.textContent).not.toMatch(/\b0,00\b/);
   });
 
-  it('zeigt eine Kachel NICHT, wenn die Anwendung aus ist — die Definition bleibt', async () => {
+  it('Stufe 8: eine Kachel rendert OHNE jeden Schalter — es gibt keinen mehr', async () => {
+    // „Eigene Auswertung" ist seit Steuerung Stufe 8 die Katalog-Klasse
+    // `cockpit`: sie hat keinen Schalter, ihre Kacheln entstehen im Cockpit
+    // unter „Anpassen". Ein Regal-Zustand `active: false` (ein ÄLTERER Server,
+    // der die Karte noch führt) darf sie deshalb nicht mehr verstecken.
     mockAdaptive(true, TOPO);
     mockSurface(MULTI, regal(false));
     stubLayout5({
@@ -1510,13 +1514,24 @@ describe('Anwendungs-Programm Stufe 5 · die eigene Auswertung im Cockpit', () =
       updatedBy: 'u',
       updatedAt: null,
     });
-    const werte = vi.spyOn(api, 'eigeneAuswertung');
+    vi.spyOn(api, 'eigeneAuswertung').mockResolvedValue({
+      at: '2026-08-25',
+      from: '',
+      to: '',
+      bucketMinutes: 15,
+      werte: [
+        {
+          ...KACHEL,
+          wert: 3.25,
+          kanalart: 'leistung',
+          komponente: 'Wärmepumpe',
+          einheit: 'kW',
+          grund: null,
+        },
+      ],
+    } as never);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
-    await new Promise((r) => setTimeout(r, 30));
-    expect(container.querySelector('.vp-eigen-kachel')).toBeNull();
-    // Und es wird nicht einmal gefragt: ohne die Anwendung gibt es nichts zu holen.
-    expect(werte).not.toHaveBeenCalled();
+    await waitFor(() => expect(container.querySelector('.vp-eigen-kachel')).toBeTruthy());
   });
 
   it('eine frisch angelegte Kachel sagt „noch nicht gespeichert", nie „keine Messwerte"', async () => {
@@ -1590,15 +1605,17 @@ describe('Anwendungs-Programm Stufe 5 · die eigene Auswertung im Cockpit', () =
     await waitFor(() => expect(container.ownerDocument.body.textContent).toContain('Komponente'));
   });
 
-  it('ohne die Anwendung gibt es den Knopf auch im Anpassen-Modus nicht', async () => {
+  it('Stufe 8: der Knopf steht im Anpassen-Modus IMMER — ohne vorheriges Einschalten', async () => {
+    // Der Umzug der Stufe 8: „Eigene Auswertung" verschwindet als Schalter und
+    // existiert nur noch hier. Also darf der Weg zu ihr nicht mehr davon
+    // abhängen, dass irgendwo vorher etwas eingeschaltet wurde.
     mockAdaptive(true, TOPO);
     mockSurface(MULTI, regal(false));
     stubLayout5();
-    const { container, getByLabelText } = renderSeite();
+    const { container, getByLabelText, getByText } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
     fireEvent.click(getByLabelText('Cockpit anpassen'));
     await waitFor(() => expect(container.querySelector('.vp-anpassen-bar')).toBeTruthy());
-    // Ein Knopf, der nichts bewirken kann, wird nicht angeboten.
-    expect(container.querySelector('.vp-eigen-neu')).toBeNull();
+    expect(getByText('+ Eigene Auswertung')).toBeTruthy();
   });
 });

@@ -260,8 +260,8 @@ export function ModusContainer({
 
         {/* --- Ansichten dieser Anwendung ------------------------------------ */}
         {views.length > 0 ? (
-          <section className="vp-modus-sect" aria-label="Ansichten dieser Anwendung">
-            <h3 className="vp-modus-secthead">Ansichten dieser Anwendung</h3>
+          <section className="vp-modus-sect" aria-label="Ansichten dieses Betriebsmodells">
+            <h3 className="vp-modus-secthead">Ansichten dieses Betriebsmodells</h3>
             <ul className="vp-modus-views">
               {views.map((v) =>
                 on ? (
@@ -286,7 +286,7 @@ export function ModusContainer({
             </ul>
             {!on ? (
               <p className="vp-modus-viewsnote">
-                Diese Ansichten werden verfügbar, sobald Sie die Anwendung einschalten.
+                Diese Ansichten werden verfügbar, sobald Sie das Betriebsmodell einschalten.
               </p>
             ) : null}
           </section>

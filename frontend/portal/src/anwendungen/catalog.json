@@ -1,5 +1,5 @@
 {
-  "catalog_version": "1.2.0",
+  "catalog_version": "1.3.0",
   "_comment": [
     "Der EINE Anwendungs-Katalog (Zielbild 'Portal fuer viele Kunden, viele",
     "Anwendungen', Scout vp-portal-zielbild-anwendungen §3.2/§4.1, Stufe 1).",
@@ -19,7 +19,7 @@
     "profile/AnwendungDerivation, TS src/anwendungen.ts derivedAnwendungen",
     "(das usage-profile-vectors.json-Muster).",
     "",
-    "VIER KLASSEN (Feld 'klasse'), und sie bestimmen, was ein Schalter TUT:",
+    "FUENF KLASSEN (Feld 'klasse'), und sie bestimmen, was ein Schalter TUT:",
     "  basis       - nicht abschaltbar. Die Anwendung laeuft, sobald ihre",
     "                Faehigkeit da ist; das Regal zeigt eine ruhige Zeile",
     "                'immer an'. (Captain 29.07.2026: Eigenverbrauch ist",
@@ -37,6 +37,13 @@
     "                eine Hand-Liste) und saet ihren Starter, sofern sie",
     "                beides hat (das Ladepark-Lastmanagement hat keines von",
     "                beidem - es ist SCHUTZ, keine Marktteilnahme).",
+    "  cockpit     - NICHT schaltbar, und zwar nicht weil sie immer laeuft,",
+    "                sondern weil sie AN EINEM ANDEREN ORT gesteuert wird: im",
+    "                Cockpit unter 'Anpassen'. Ein Schaltversuch ist ein 400,",
+    "                das den WEG nennt statt 'ist immer an' zu behaupten",
+    "                (Steuerung Stufe 8, Captain 25.08.2026: 'Beobachten/",
+    "                Auswertung nur im Cockpit'). Ihr 'preset' ist deshalb",
+    "                ueberall 'abgeleitet': ein Preset kann sie nicht waehlen.",
     "  reserviert  - Erweiterungspunkt. 'sichtbar': false, also kein Schalter",
     "                und keine Regal-Zeile: ein Schalter, der nichts bewirken",
     "                kann, waere eine Zusage, die niemand einloest.",
@@ -206,7 +213,7 @@
     "src/eigeneAuswertung.ts) und beidseitig ueber",
     "docs/contracts/v2/eigene-auswertung-vectors.json gepinnt."
   ],
-  "klassen": ["basis", "regel", "geschaeft", "reserviert"],
+  "klassen": ["basis", "regel", "cockpit", "geschaeft", "reserviert"],
   "kategorien": ["basis", "steuerung", "geschaeft", "auswertung"],
   "preset_werte": ["an", "angeboten", "verborgen", "abgeleitet"],
   "profile": ["privat", "gewerbe"],
@@ -860,10 +867,10 @@
       "id": "eigene-auswertung",
       "label": "Eigene Auswertung",
       "kategorie": "auswertung",
-      "klasse": "regel",
+      "klasse": "cockpit",
       "rang": 90,
       "nutzen": "Sie stellen sich eigene Kennzahlen und Verläufe aus den Messwerten Ihrer Anlage zusammen - genau die Zahl, die Sie täglich sehen wollen.",
-      "abschaltbar": true,
+      "abschaltbar": false,
       "sichtbar": true,
       "regal": false,
       "exklusiv_gruppe": null,
@@ -896,7 +903,7 @@
       "unlock_chips": ["Eigene Kacheln und Verläufe im Cockpit"],
       "einstellungen": [],
       "einstellungen_verweis": null,
-      "preset": { "privat": "angeboten", "gewerbe": "angeboten" }
+      "preset": { "privat": "abgeleitet", "gewerbe": "abgeleitet" }
     },
     {
       "id": "berichte",

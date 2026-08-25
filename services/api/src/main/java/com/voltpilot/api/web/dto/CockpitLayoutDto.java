@@ -45,7 +45,7 @@ public record CockpitLayoutDto(String surface, String profil, LayoutDocumentDto 
      *                zusätzlich in {@code order}/{@code hidden}.
      */
     public record LayoutDocumentDto(int version, List<String> order, List<String> hidden,
-            List<String> shown, String lead, List<CustomBausteinDto> custom) {}
+            List<String> shown, String lead, List<CustomBausteinDto> custom, List<String> seen) {}
 
     /**
      * Eine eigene Auswertung: Titel, Darstellung und die QUELLE (Komponente ×
