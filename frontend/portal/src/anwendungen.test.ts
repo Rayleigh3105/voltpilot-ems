@@ -21,6 +21,8 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   ANWENDUNGEN,
+  exklusivGeschwister,
+  exklusivGruppe,
   AUSSERHALB_REGAL,
   PRESETS,
   PROFIL_UNGESETZT,
@@ -631,5 +633,87 @@ describe('Copy der Abschluss- und Einstellungs-Fläche', () => {
     }
     expect(profilAenderungsFolgen('gewerbe').join(' ')).toMatch(/verdient/);
     expect(profilAenderungsFolgen('privat').join(' ')).toMatch(/gespart/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Steuerung Stufe 5 · Exklusivität + die zwei Voraussetzungs-Felder
+// ---------------------------------------------------------------------------
+
+describe('Exklusivitäts-Gruppen (Steuerung Stufe 5)', () => {
+  it('⚠ die Gruppe `speicher` sind GENAU die drei Modelle mit Strategie-Knoten', () => {
+    // Die argumentierte Abweichung vom Konzept-Wortlaut („alle vier"): das
+    // Ladepark-Lastmanagement ist SCHUTZ, hat keinen Strategie-Knoten, läuft
+    // auf der Box weiter und ist abgeleitet aktiv, sobald eine Säule da ist.
+    const gruppe = ANWENDUNGEN.filter((a) => a.exklusiv_gruppe === 'speicher').map((a) => a.id);
+    expect(gruppe.sort()).toEqual(
+      ['atypische-netznutzung', 'lastspitzenkappung', 'marktvermarktung'],
+    );
+    expect(exklusivGruppe('lastmanagement')).toBeNull();
+  });
+
+  it('nur REGAL-Einträge tragen überhaupt eine Gruppe', () => {
+    for (const a of ANWENDUNGEN) {
+      if (a.exklusiv_gruppe != null) expect(a.regal, a.id).toBe(true);
+    }
+  });
+
+  it('die Geschwister sind gegenseitig - und ein Modell ist nie sein eigener Geschwister', () => {
+    const markt = exklusivGeschwister('marktvermarktung');
+    expect(markt).not.toContain('marktvermarktung');
+    expect(markt.sort()).toEqual(['atypische-netznutzung', 'lastspitzenkappung']);
+    for (const id of markt) expect(exklusivGeschwister(id)).toContain('marktvermarktung');
+  });
+
+  it('ein Modell ohne Gruppe hat keine Geschwister - es konkurriert mit niemandem', () => {
+    expect(exklusivGeschwister('lastmanagement')).toEqual([]);
+    expect(exklusivGeschwister('gibt-es-nicht')).toEqual([]);
+  });
+
+  it('⚠ ein Preset schlägt höchstens EIN Modell derselben Gruppe vor', () => {
+    // Sonst stünden nach dem Assistenten zwei Häkchen, und der Server machte
+    // daraus stillschweigend eines.
+    for (const p of ['privat', 'gewerbe'] as const) {
+      const proGruppe = new Map<string, number>();
+      for (const a of vorauswahl(p)) {
+        const g = anwendung(a)?.exklusiv_gruppe;
+        if (!g) continue;
+        proGruppe.set(g, (proGruppe.get(g) ?? 0) + 1);
+      }
+      for (const [g, n] of proGruppe) expect(n, `${p}/${g}`).toBe(1);
+    }
+  });
+});
+
+describe('Voraussetzungen: art + behebung (Steuerung Stufe 5)', () => {
+  it('jede Voraussetzung trägt eine ART aus dem geschlossenen Vokabular', () => {
+    for (const a of ANWENDUNGEN) {
+      for (const v of a.voraussetzungen) {
+        expect(['hardware', 'einstellung'], `${a.id}/${v.id}`).toContain(v.art);
+      }
+    }
+  });
+
+  it('⚠ ein HARDWARE-Fakt hat keinen Weg - ein Klick löst ihn nicht', () => {
+    for (const a of ANWENDUNGEN) {
+      for (const v of a.voraussetzungen) {
+        if (v.art !== 'hardware') continue;
+        // Die eine Ausnahme: eine Komponente kann man ANLEGEN.
+        if (v.behebung) expect(v.behebung.ziel, `${a.id}/${v.id}`).toBe('modell');
+      }
+    }
+  });
+
+  it('das Behebungs-Ziel kommt aus dem geschlossenen Vokabular', () => {
+    const ziele = ['einstellungen', 'modell', 'ladepark', 'voltpilot'];
+    for (const a of ANWENDUNGEN) {
+      for (const v of a.voraussetzungen) {
+        if (!v.behebung) continue;
+        expect(ziele, `${a.id}/${v.id}`).toContain(v.behebung.ziel);
+        // ⚠ `voltpilot` hat KEIN Klickziel - dort steht ein Satz, kein Knopf.
+        if (v.behebung.ziel === 'voltpilot') expect(v.behebung.label).toBeNull();
+        else expect(v.behebung.label, `${a.id}/${v.id}`).toBeTruthy();
+      }
+    }
   });
 });

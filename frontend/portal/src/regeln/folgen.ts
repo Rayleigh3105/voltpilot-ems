@@ -142,6 +142,142 @@ export function regelFolgen(input: RegelFolgenInput): FolgenKarte {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Anlass 2 · Betriebsmodell wechseln (Steuerung Stufe 5)
+// ---------------------------------------------------------------------------
+
+/** Block 4 einer Modell-Umstellung — was KEIN Betriebsmodell anfasst. */
+export const WECHSEL_BLEIBT_GLEICH: string[] = [
+  'Ihre Regeln bleiben unverändert — ein Betriebsmodell schaltet keine ab.',
+  'Netzvorgaben (§ 14a), Einspeisegrenze, Abregelung und der Geräteschutz gelten weiter.',
+  'Umgang mit dem Speicher, Notstrom-Reserve und Ihre Einstellungen bleiben, wie sie sind.',
+];
+
+/** Block 5 — der Rückweg. */
+export const WECHSEL_RUECKNAHME =
+  'Sie können jederzeit zurückwechseln; auch das gilt ab dem nächsten Fahrplan.';
+
+/**
+ * Der Satz über den laufenden Slot. Er steht in JEDER Wechsel-Karte, weil er
+ * die häufigste Rückfrage nach dem Umschalten beantwortet („warum tut sich
+ * nichts?"): der Optimierer plant alle 15 Minuten neu, und was gerade läuft,
+ * läuft aus.
+ */
+export const WECHSEL_SLOT =
+  'Der laufende Viertelstunden-Slot läuft aus — VoltPilot bricht nichts mitten '
+  + 'im Slot ab.';
+
+export interface WechselFolgenInput {
+  /** Das Modell, das ENDET; null = es lief keins (der Grundmodus). */
+  von: string | null;
+  /** Das Modell, das BEGINNT. */
+  nach: string;
+  /**
+   * Was das endende Modell BISHER gebracht hat — eine GEMESSENE Zahl, kein
+   * Ausblick. Null, wenn es keine gibt; dann wird auch keine genannt.
+   */
+  belegVon?: string | null;
+  /**
+   * Warum das neue Modell noch nicht voll läuft (der Server-Satz der Karte).
+   * Er gehört in Block 3: eine Umstellung auf ein Modell, das ohne einen
+   * fehlenden Wert nichts tut, muss das VORHER sagen.
+   */
+  risikoNach?: string | null;
+}
+
+/**
+ * Die Folgen-Karte eines BETRIEBSMODELL-WECHSELS (Konzept §3.4/§3.5).
+ *
+ * ⚠ **Block 2 nennt eine gemessene Zahl, nie eine Vorhersage.** Was der Wechsel
+ * KOSTEN wird, weiß erst die Kunden-Vorschau (Stufe 7); bis dahin steht dort,
+ * was das endende Modell BISHER gebracht hat — ein Fakt — plus die ehrliche
+ * Aussage, dass die Änderung nicht bezifferbar ist. Eine geschätzte Differenz
+ * wäre genau die erfundene Zahl, die das Leitprinzip verbietet.
+ */
+export function wechselFolgen(input: WechselFolgenInput): FolgenKarte {
+  const endet = input.von
+    ? `„${input.von}" endet.`
+    : 'Ihr Speicher fährt bisher den Eigenverbrauchs-Fahrplan.';
+  const fahrplan: string[] = [];
+  if (input.von) {
+    fahrplan.push(
+      input.belegVon
+        ? `Bisher mit „${input.von}": ${input.belegVon}. Das bleibt in Ihren `
+          + 'Erlösen sichtbar.'
+        : `Der Beleg von „${input.von}" bleibt in Ihren Erlösen sichtbar.`,
+    );
+  }
+  fahrplan.push(
+    'Nicht abschätzbar: Was die Umstellung Ihnen bringt oder kostet, rechnet '
+    + 'VoltPilot noch nicht vorher aus.',
+  );
+  const risiko: string[] = [];
+  if (input.risikoNach) risiko.push(input.risikoNach);
+  risiko.push(
+    'Bis zum nächsten Fahrplan (spätestens in 15 Minuten) ändert sich an Ihrer '
+    + 'Anlage nichts.',
+  );
+  return {
+    titel: input.von
+      ? `Von „${input.von}" auf „${input.nach}" wechseln`
+      : `„${input.nach}" einschalten`,
+    intro: `${endet} „${input.nach}" beginnt mit dem nächsten Fahrplan.`,
+    bloecke: [
+      {
+        key: 'passiert',
+        titel: BLOCK_TITEL.passiert,
+        zeilen: [WECHSEL_SLOT],
+      },
+      { key: 'fahrplan', titel: BLOCK_TITEL.fahrplan, zeilen: fahrplan },
+      { key: 'risiko', titel: BLOCK_TITEL.risiko, zeilen: risiko },
+      { key: 'gleich', titel: BLOCK_TITEL.gleich, zeilen: [...WECHSEL_BLEIBT_GLEICH] },
+      { key: 'ende', titel: BLOCK_TITEL.ende, zeilen: [WECHSEL_RUECKNAHME] },
+    ],
+    bestaetigen: input.von ? 'Jetzt wechseln' : 'Einschalten',
+  };
+}
+
+/**
+ * Die Folgen-Karte eines AUSSCHALTENS — der Weg zurück in den Grundmodus.
+ *
+ * Er fragt trotzdem nach: anders als eine Regel-Rücknahme ändert er, WIE der
+ * Speicher fährt, und das ist eine Entscheidung über eine laufende Anlage.
+ */
+export function ausschaltFolgen(modell: string): FolgenKarte {
+  return {
+    titel: `„${modell}" ausschalten`,
+    intro: `„${modell}" endet. Ihr Speicher fährt danach wieder den `
+      + 'Eigenverbrauchs-Fahrplan: möglichst viel eigener Strom im Haus.',
+    bloecke: [
+      { key: 'passiert', titel: BLOCK_TITEL.passiert, zeilen: [WECHSEL_SLOT] },
+      {
+        key: 'fahrplan',
+        titel: BLOCK_TITEL.fahrplan,
+        zeilen: [
+          `Der Beleg von „${modell}" bleibt in Ihren Erlösen sichtbar.`,
+          'Nicht abschätzbar: Was die Umstellung Ihnen bringt oder kostet, '
+          + 'rechnet VoltPilot noch nicht vorher aus.',
+        ],
+      },
+      {
+        key: 'risiko',
+        titel: BLOCK_TITEL.risiko,
+        zeilen: [
+          'Bis zum nächsten Fahrplan (spätestens in 15 Minuten) ändert sich an '
+          + 'Ihrer Anlage nichts.',
+        ],
+      },
+      { key: 'gleich', titel: BLOCK_TITEL.gleich, zeilen: [...WECHSEL_BLEIBT_GLEICH] },
+      {
+        key: 'ende',
+        titel: BLOCK_TITEL.ende,
+        zeilen: ['Sie können es jederzeit wieder einschalten.'],
+      },
+    ],
+    bestaetigen: 'Ausschalten',
+  };
+}
+
 /**
  * Die Karte als FLACHE Folgenliste für den Haus-`ConfirmDialog`: jede Zeile
  * trägt ihre Block-Überschrift vorangestellt, damit die fünf Blöcke auch in

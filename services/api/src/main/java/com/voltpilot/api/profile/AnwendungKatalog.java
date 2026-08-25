@@ -85,8 +85,40 @@ public class AnwendungKatalog {
     /** Die Fläche „Portfolio-Cockpit" (Stufe 4) — sie hängt am KUNDEN. */
     public static final String FLAECHE_PORTFOLIO = "portfolio";
 
-    /** Eine Voraussetzung: der Chip, plus der Satz für genau ihr Fehlen. */
-    public record Voraussetzung(String id, String label, String blockedReason) {}
+    /** Eine Voraussetzung, deren Fehlen die Anlage STRUKTURELL ausschließt. */
+    public static final String ART_HARDWARE = "hardware";
+    /** Eine Voraussetzung, die jemand nur EINTRAGEN muss. */
+    public static final String ART_EINSTELLUNG = "einstellung";
+
+    /** Das Ziel eines Behebungs-Wegs — {@code voltpilot} ist KEIN Klickziel. */
+    public static final String ZIEL_VOLTPILOT = "voltpilot";
+
+    /**
+     * Wohin der Kunde muss, um eine Voraussetzung zu erfüllen (Stufe 5).
+     * {@code label} ist null für {@code ziel = voltpilot}: ein
+     * admin-conditionaler Wert hat keinen Knopf, den der Kunde drücken
+     * könnte — VoltPilot trägt ihn ein (Konzept §3.4).
+     */
+    public record Behebung(String ziel, String label) {}
+
+    /**
+     * Eine Voraussetzung: der Chip, plus der Satz für genau ihr Fehlen.
+     *
+     * <p>{@code art} trennt seit Stufe 5 die zwei Sorten: {@code hardware} =
+     * was die Anlage physisch hergeben muss (fehlt es, kann das Modell hier
+     * gar nicht laufen), {@code einstellung} = ein Wert, den jemand einträgt
+     * (dann zeigt die Ampel den Weg). Eine Voraussetzung OHNE {@code art}
+     * (älterer Katalog) gilt als {@code hardware} — die vorsichtigere
+     * Lesart: sie behauptet nie, ein Klick würde reichen.
+     */
+    public record Voraussetzung(String id, String label, String blockedReason, String art,
+            Behebung behebung) {
+
+        /** Fehlt sie, kann dieses Betriebsmodell auf der Anlage nicht laufen. */
+        public boolean istHardware() {
+            return !ART_EINSTELLUNG.equals(art);
+        }
+    }
 
     /**
      * Was eine Anwendung zur Oberfläche beiträgt.
@@ -251,6 +283,9 @@ public class AnwendungKatalog {
      * @param regal               false = sie steht nicht im Regal der Steuerung
      *                            (Basis- und Regel-Anwendungen seit Stufe 0);
      *                            ihr Zustand wird trotzdem beantwortet
+     * @param exklusivGruppe      die Exklusivitäts-Gruppe (Stufe 5) oder null:
+     *                            zwei Modelle DERSELBEN Gruppe sind nie zugleich
+     *                            an — der Schalter ist ein Radio
      * @param strategieKnoten     der {@code vp.strategy.*}-Knoten, oder null
      * @param starter             der AE7-Starter-Schlüssel, oder null
      * @param voraussetzungen     die ✓/fehlt-Chips samt ihren Sperr-Sätzen
@@ -264,7 +299,7 @@ public class AnwendungKatalog {
      */
     public record Anwendung(String id, String label, String kategorie, String klasse, int rang,
             String nutzen, boolean abschaltbar, boolean sichtbar, boolean regal,
-            String strategieKnoten,
+            String exklusivGruppe, String strategieKnoten,
             String starter, List<Voraussetzung> voraussetzungen, String blockedReasonImmer,
             String leerZustand, Bausteine bausteine, List<String> unlockChips,
             List<String> einstellungen, String einstellungenVerweis, Preset preset) {
@@ -287,6 +322,11 @@ public class AnwendungKatalog {
         /** Steht sie im Regal der Steuerung? (sichtbar UND {@code regal}) */
         public boolean imRegal() {
             return sichtbar && regal;
+        }
+
+        /** Gehört sie einer Exklusivitäts-Gruppe an? (Stufe 5) */
+        public boolean istExklusiv() {
+            return exklusivGruppe != null && !exklusivGruppe.isBlank();
         }
     }
 
@@ -357,8 +397,11 @@ public class AnwendungKatalog {
     private static Anwendung parse(JsonNode a) {
         List<Voraussetzung> voraussetzungen = new ArrayList<>();
         for (JsonNode v : a.path("voraussetzungen")) {
+            JsonNode b = v.path("behebung");
+            Behebung behebung = b.isObject()
+                    ? new Behebung(text(b, "ziel"), text(b, "label")) : null;
             voraussetzungen.add(new Voraussetzung(v.path("id").asText(), v.path("label").asText(),
-                    text(v, "blocked_reason")));
+                    text(v, "blocked_reason"), text(v, "art"), behebung));
         }
         JsonNode b = a.path("bausteine");
         Bausteine bausteine = new Bausteine(strings(b.path("cockpit")),
@@ -369,7 +412,7 @@ public class AnwendungKatalog {
                 a.path("kategorie").asText(), a.path("klasse").asText(), a.path("rang").asInt(),
                 a.path("nutzen").asText(), a.path("abschaltbar").asBoolean(false),
                 a.path("sichtbar").asBoolean(false), a.path("regal").asBoolean(false),
-                text(a, "strategie_knoten"),
+                text(a, "exklusiv_gruppe"), text(a, "strategie_knoten"),
                 text(a, "starter"), List.copyOf(voraussetzungen), text(a, "blocked_reason_immer"),
                 text(a, "leer_zustand"), bausteine, strings(a.path("unlock_chips")),
                 strings(a.path("einstellungen")), text(a, "einstellungen_verweis"),
@@ -444,6 +487,28 @@ public class AnwendungKatalog {
     /** Alle sichtbaren Anwendungen — Regal UND das, was daneben weiterläuft. */
     public List<Anwendung> sichtbare() {
         return List.copyOf(sichtbare);
+    }
+
+    /**
+     * Die ANDEREN Betriebsmodelle derselben Exklusivitäts-Gruppe (Stufe 5) —
+     * genau die, die beim Einschalten dieses Modells geordnet enden müssen.
+     *
+     * <p>Ohne Gruppe ist das Ergebnis LEER, und das ist die tragende Regel:
+     * ein Modell, das keiner Gruppe angehört, schaltet nie etwas anderes ab.
+     * Das Ladepark-Lastmanagement ist genau dieser Fall — es ist Schutz, kein
+     * Wettbewerber um den Speicher (Begründung im Katalog-Kopf).
+     */
+    public List<Anwendung> gruppengeschwister(Anwendung a) {
+        if (a == null || !a.istExklusiv()) {
+            return List.of();
+        }
+        List<Anwendung> out = new ArrayList<>();
+        for (Anwendung other : sichtbare) {
+            if (!other.id().equals(a.id()) && a.exklusivGruppe().equals(other.exklusivGruppe())) {
+                out.add(other);
+            }
+        }
+        return List.copyOf(out);
     }
 
     /** Die Anwendung mit dieser Id, oder null. */

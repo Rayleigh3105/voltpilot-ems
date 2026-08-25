@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AnlageFlow } from './AnlageFlow';
 import {
   api,
@@ -554,6 +554,118 @@ describe('Schritt Betrieb - Preset + EIN Betriebsmodell (Steuerung Stufe 0)', ()
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(screen.getByText(/„Zuhause“ ist da/)).toBeInTheDocument());
     expect(toggle).not.toHaveBeenCalled();
+  });
+
+  it('Stufe 5: der Schritt „Betrieb" ist eine RADIOGRUPPE - genau eines, oder keins', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    mockAdaptiveReads([
+      karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: true }] }),
+      karte('lastspitzenkappung', {
+        requirements: [{ label: 'Leistungspreis hinterlegt', met: true }],
+      }),
+    ]);
+    vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+    await bisZumSchritt();
+    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
+
+    const gruppe = await screen.findByRole('radiogroup', { name: 'Ihr Betriebsmodell' });
+    // ⚠ Ein Radio, KEIN Schalter - „beliebig viele" wäre die falsche Aussage,
+    // und der Server schaltete danach still eines ab.
+    expect(within(gruppe).queryByRole('switch')).toBeNull();
+    expect(within(gruppe).getByRole('radio', { name: 'Lastspitzenkappung' }))
+      .toHaveAttribute('aria-checked', 'true');
+    // Der Grundmodus IST der Weg zurück - ein Radio kann sich nicht selbst
+    // abwählen, ohne diese Zeile wäre die Vorauswahl eine Einbahnstraße.
+    expect(within(gruppe).getByRole('radio', { name: 'Kein Betriebsmodell' }))
+      .toHaveAttribute('aria-checked', 'false');
+    // Und der Assistent bietet nur an, was er wirklich vorschlägt - ein zweiter
+    // Radio-Knopf ohne Vorschlag wäre ein toter Knopf (Stufe 0).
+    expect(within(gruppe).getAllByRole('radio')).toHaveLength(2);
+  });
+
+  it('⚠ ein zweites sichtbares Modell HAKT das erste AB - nie zwei zugleich', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    // Der Altbestands-Fall im Assistenten: die Marktoptimierung LÄUFT schon
+    // (sie zu verschweigen hiesse, den Funktionsumfang zu verbergen), und das
+    // Gewerbe-Preset schlägt zusätzlich die Lastspitzenkappung vor.
+    mockAdaptiveReads([
+      karte('marktvermarktung', {
+        active: true,
+        requirements: [{ label: 'Marktzugang', met: true }],
+      }),
+      karte('lastspitzenkappung', {
+        requirements: [{ label: 'Leistungspreis hinterlegt', met: true }],
+      }),
+    ]);
+    vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
+    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+    await bisZumSchritt();
+    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
+
+    const gruppe = await screen.findByRole('radiogroup', { name: 'Ihr Betriebsmodell' });
+    fireEvent.click(within(gruppe).getByRole('radio', { name: /^Marktoptimierung/ }));
+    expect(within(gruppe).getByRole('radio', { name: 'Lastspitzenkappung' }))
+      .toHaveAttribute('aria-checked', 'false');
+    expect(within(gruppe).getByRole('radio', { name: /^Marktoptimierung/ }))
+      .toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    // Die Marktoptimierung LIEF schon - es wird nichts geschrieben, und schon
+    // gar kein `an` auf etwas, das nie gewählt wurde.
+    await waitFor(() => expect(screen.getByText(/„Zuhause“ ist da/)).toBeInTheDocument());
+    expect(toggle.mock.calls.map((c) => [c[1], c[2]]))
+      .not.toContainEqual(['lastspitzenkappung', 'an']);
+  });
+
+  it('„Kein Betriebsmodell" nimmt die Vorauswahl zurück - und schaltet dann nichts', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    mockAdaptiveReads([
+      karte('lastspitzenkappung', {
+        requirements: [{ label: 'Leistungspreis hinterlegt', met: true }],
+      }),
+    ]);
+    const preset = vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
+    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+    await bisZumSchritt();
+    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
+
+    const gruppe = await screen.findByRole('radiogroup', { name: 'Ihr Betriebsmodell' });
+    fireEvent.click(within(gruppe).getByRole('radio', { name: 'Kein Betriebsmodell' }));
+    expect(within(gruppe).getByRole('radio', { name: 'Kein Betriebsmodell' }))
+      .toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'gewerbe'));
+    // Wer nichts will, bekommt auch keinen Schreibvorgang.
+    expect(toggle).not.toHaveBeenCalled();
+  });
+
+  it('ein Modell OHNE Gruppe bleibt ein eigener SCHALTER neben der Radiogruppe', async () => {
+    // Das Ladepark-Lastmanagement ist SCHUTZ - es konkurriert mit keinem
+    // Betriebsmodell und darf neben jedem laufen.
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    mockAdaptiveReads([
+      karte('lastspitzenkappung', {
+        requirements: [{ label: 'Leistungspreis hinterlegt', met: true }],
+      }),
+      karte('lastmanagement', { derivedActive: true, active: true }),
+    ]);
+    vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+    await bisZumSchritt();
+    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
+
+    const gruppe = await screen.findByRole('radiogroup', { name: 'Ihr Betriebsmodell' });
+    expect(within(gruppe).getByRole('radio', { name: 'Lastspitzenkappung' })).toBeInTheDocument();
+    const schalter = within(gruppe).getByRole('switch', { name: /Ladepark-Lastmanagement/ });
+    expect(schalter).toHaveAttribute('aria-checked', 'true');
+    // Und die Modell-Wahl hakt ihn NICHT ab - er gehört keiner Gruppe an.
+    fireEvent.click(within(gruppe).getByRole('radio', { name: 'Kein Betriebsmodell' }));
+    expect(within(gruppe).getByRole('switch', { name: /Ladepark-Lastmanagement/ }))
+      .toHaveAttribute('aria-checked', 'true');
   });
 
   it('saves a changed Speicherschonung preset carrying the battery master data through', async () => {

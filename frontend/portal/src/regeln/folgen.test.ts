@@ -5,6 +5,11 @@ import { VORRANG_FOLGEN, VORRANG_ZEILE } from './satz';
 import {
   BLEIBT_GLEICH,
   BLOCK_TITEL,
+  WECHSEL_BLEIBT_GLEICH,
+  WECHSEL_RUECKNAHME,
+  WECHSEL_SLOT,
+  ausschaltFolgen,
+  wechselFolgen,
   KEIN_FAHRPLAN,
   NICHT_ABSCHAETZBAR,
   RUECKNAHME_REGEL,
@@ -146,5 +151,96 @@ describe('Die Folgen-Karte im Haus-Dialog', () => {
     // Jede Block-Überschrift genau einmal, Folgezeilen ohne Wiederholung.
     expect(zeilen.filter((z) => z.startsWith(BLOCK_TITEL.gleich))).toHaveLength(1);
     expect(zeilen).toHaveLength(1 + 1 + BLEIBT_GLEICH.length + 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Anlass 2 · Betriebsmodell wechseln (Steuerung Stufe 5)
+// ---------------------------------------------------------------------------
+
+describe('wechselFolgen', () => {
+  it('sagt in EINEM Satz, was ENDET und was BEGINNT', () => {
+    const k = wechselFolgen({ von: 'Lastspitzenkappung', nach: 'Marktoptimierung' });
+    expect(k.titel).toBe('Von „Lastspitzenkappung" auf „Marktoptimierung" wechseln');
+    expect(k.intro).toContain('„Lastspitzenkappung" endet.');
+    expect(k.intro).toContain('„Marktoptimierung" beginnt');
+    expect(k.bestaetigen).toBe('Jetzt wechseln');
+  });
+
+  it('nennt den Grundmodus beim Namen, wenn bisher KEIN Modell lief', () => {
+    const k = wechselFolgen({ von: null, nach: 'Marktoptimierung' });
+    expect(k.titel).toBe('„Marktoptimierung" einschalten');
+    expect(k.intro).toContain('Eigenverbrauchs-Fahrplan');
+    // Nichts endet - also wird auch nichts behauptet.
+    expect(k.intro).not.toContain('endet');
+    expect(k.bestaetigen).toBe('Einschalten');
+  });
+
+  it('⚠ nennt in Block 2 eine GEMESSENE Zahl - und sagt ehrlich, was es NICHT weiß', () => {
+    // Was der Wechsel BRINGT, rechnet erst die Kunden-Vorschau (Stufe 7). Eine
+    // geschätzte Differenz wäre genau die erfundene Zahl, die das Leitprinzip
+    // verbietet.
+    const k = wechselFolgen({
+      von: 'Lastspitzenkappung',
+      nach: 'Marktoptimierung',
+      belegVon: 'Vermiedene Leistungskosten: 3.600,00 €',
+    });
+    const fahrplan = k.bloecke.find((b) => b.key === 'fahrplan')!;
+    expect(fahrplan.zeilen[0]).toContain('3.600,00 €');
+    expect(fahrplan.zeilen.join(' ')).toContain('Nicht abschätzbar');
+  });
+
+  it('behauptet OHNE Beleg keine Zahl, sagt aber, dass der Nachweis bleibt', () => {
+    const k = wechselFolgen({ von: 'Lastspitzenkappung', nach: 'Marktoptimierung' });
+    const fahrplan = k.bloecke.find((b) => b.key === 'fahrplan')!;
+    expect(fahrplan.zeilen[0]).toBe(
+      'Der Beleg von „Lastspitzenkappung" bleibt in Ihren Erlösen sichtbar.',
+    );
+  });
+
+  it('trägt das RISIKO des neuen Modells, wenn es eines gibt', () => {
+    const k = wechselFolgen({
+      von: null,
+      nach: 'Marktoptimierung',
+      risikoNach: 'Läuft noch nicht: Ihrer Anlage fehlt ein dynamischer Tarif.',
+    });
+    expect(k.bloecke.find((b) => b.key === 'risiko')!.zeilen[0])
+      .toContain('dynamischer Tarif');
+  });
+
+  it('⚠ sagt, was GLEICH bleibt - sonst liest sich der Wechsel wie ein Lockern', () => {
+    const k = wechselFolgen({ von: 'A', nach: 'B' });
+    const gleich = k.bloecke.find((b) => b.key === 'gleich')!;
+    expect(gleich.zeilen).toEqual(WECHSEL_BLEIBT_GLEICH);
+    expect(gleich.zeilen.join(' ')).toContain('Ihre Regeln bleiben unverändert');
+    expect(gleich.zeilen.join(' ')).toContain('14a');
+  });
+
+  it('nennt den Zeitpunkt der Wirkung und den Rückweg', () => {
+    const k = wechselFolgen({ von: 'A', nach: 'B' });
+    expect(k.bloecke.find((b) => b.key === 'passiert')!.zeilen).toEqual([WECHSEL_SLOT]);
+    expect(k.bloecke.find((b) => b.key === 'ende')!.zeilen[0]).toBe(WECHSEL_RUECKNAHME);
+  });
+});
+
+describe('ausschaltFolgen', () => {
+  it('nennt den Grundmodus als das, was DANACH läuft', () => {
+    const k = ausschaltFolgen('Lastspitzenkappung');
+    expect(k.titel).toBe('„Lastspitzenkappung" ausschalten');
+    expect(k.intro).toContain('Eigenverbrauchs-Fahrplan');
+    expect(k.bestaetigen).toBe('Ausschalten');
+  });
+
+  it('behält dieselben Zusagen wie ein Wechsel - und den Rückweg', () => {
+    const k = ausschaltFolgen('Lastspitzenkappung');
+    expect(k.bloecke.find((b) => b.key === 'gleich')!.zeilen).toEqual(WECHSEL_BLEIBT_GLEICH);
+    expect(k.bloecke.find((b) => b.key === 'ende')!.zeilen[0])
+      .toBe('Sie können es jederzeit wieder einschalten.');
+  });
+
+  it('⚠ fragt trotzdem - anders als eine Regel-Rücknahme ändert es, WIE der Speicher fährt', () => {
+    // Die Ausnahme „AUSschalten fragt nicht" gilt Regeln, nicht Betriebsmodellen.
+    const k = ausschaltFolgen('Lastspitzenkappung');
+    expect(folgenZeilen(k).length).toBeGreaterThan(0);
   });
 });

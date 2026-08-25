@@ -392,6 +392,153 @@ class SiteProfileApiTest {
         customer(pfad, HttpMethod.PUT, demo, leer);
     }
 
+    /**
+     * **Steuerung Stufe 5 · die Exklusivität gehört dem SERVER.**
+     *
+     * Das Portal zeigt sie (Radio statt Schalter), erzwingen kann es sie nicht:
+     * ein direkter Aufruf muss dasselbe Ergebnis haben wie ein Klick. Der Test
+     * geht deshalb ausschließlich über die Route.
+     */
+    @Test
+    void exactlyOneOperatingModelRunsAndTheServerEndsTheOldOneCleanly() {
+        String admin = token("admin", "admin");
+        String demo = token("demo", "demo");
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/v2-entities/bootstrap", HttpMethod.POST,
+                admin, TENANT_A, Map.of());
+        giveMarketAccess(demo);
+
+        // -- 1. Der Katalog trägt die Gruppe auf dem Draht ----------------------
+        JsonNode shelf = customer(profilesPath(), HttpMethod.GET, demo, null).getBody();
+        assertThat(card(shelf, "marktvermarktung").path("exklusivGruppe").asText())
+                .isEqualTo("speicher");
+        assertThat(card(shelf, "lastspitzenkappung").path("exklusivGruppe").asText())
+                .isEqualTo("speicher");
+        // ⚠ Das Ladepark-Lastmanagement ist SCHUTZ - es konkurriert mit keinem
+        // Betriebsmodell und trägt deshalb KEINE Gruppe.
+        assertThat(card(shelf, "lastmanagement").path("exklusivGruppe").isNull()).isTrue();
+        // Ohne gespeicherten Willen gibt es kein „seit" - nie ein erfundenes Datum.
+        assertThat(card(shelf, "marktvermarktung").path("seit").isNull()).isTrue();
+
+        // -- 2. Das erste Modell an: es läuft, und es sagt seit wann ------------
+        JsonNode ein = toggle(demo, "marktvermarktung", "an");
+        assertThat(card(ein, "marktvermarktung").path("state").asText()).isEqualTo("an");
+        String seitMarkt = card(ein, "marktvermarktung").path("seit").asText();
+        assertThat(seitMarkt).as("`seit` kommt aus site_profile_state.updated_at").isNotBlank();
+        assertThat(gatedEnabled(demo, MARKET)).isTrue();
+        // Ein WIRKLICH laufender Flow - nur an ihm lässt sich zeigen, dass der
+        // Wechsel ihn geordnet beendet (ein Entwurf lief nie).
+        String marktFlow = seedMarketFlow(demo);
+        String base = "/api/v1/sites/" + BERLIN_SITE + "/flows/" + marktFlow;
+        customer(base + "/versions/1/validate", HttpMethod.POST, demo, Map.of());
+        String simId = customer(base + "/versions/1/simulate", HttpMethod.POST, demo, Map.of())
+                .getBody().path("simulationId").asText();
+        customer(base + "/versions/1/simulation/" + simId, HttpMethod.GET, demo, null);
+        assertThat(customer(base + "/versions/1/activate", HttpMethod.POST, demo, Map.of())
+                .getBody().path("activated").asBoolean()).isTrue();
+        assertThat(lifecycleOf(demo, marktFlow)).isEqualTo("active");
+
+        // -- 3. ⚠ Ein zweites Modell LÖST DAS ERSTE AB - in EINEM Aufruf -------
+        JsonNode gewechselt = toggle(demo, "lastspitzenkappung", "an");
+        assertThat(card(gewechselt, "lastspitzenkappung").path("state").asText()).isEqualTo("an");
+        // Das alte Modell ist SAUBER beendet: gespeichertes `aus` (nicht bloß
+        // „kein Eintrag" - ein abgeleitetes Signal dürfte es sonst wiederbeleben),
+        // sein gated Knoten wieder zu, sein Flow stillgelegt.
+        assertThat(card(gewechselt, "marktvermarktung").path("state").asText()).isEqualTo("aus");
+        assertThat(card(gewechselt, "marktvermarktung").path("active").asBoolean())
+                .as("`aus` unterdrückt auch die Ableitung aus den Stammdaten").isFalse();
+        assertThat(gatedEnabled(demo, MARKET)).isFalse();
+        assertThat(lifecycleOf(demo, marktFlow)).isEqualTo("retired");
+        assertThat(gatedEnabled(demo, PEAKSHAVING)).isTrue();
+        // Und das neue Modell trägt seinen EIGENEN Startzeitpunkt.
+        assertThat(card(gewechselt, "lastspitzenkappung").path("seit").isNull()).isFalse();
+
+        // -- 4. Ein gruppenloses Modell wird davon NICHT berührt ----------------
+        JsonNode mitLadepark = toggle(demo, "lastmanagement", "an");
+        assertThat(card(mitLadepark, "lastmanagement").path("state").asText()).isEqualTo("an");
+        assertThat(card(mitLadepark, "lastspitzenkappung").path("state").asText())
+                .as("Schutz konkurriert mit keinem Betriebsmodell").isEqualTo("an");
+        JsonNode zurueck = toggle(demo, "marktvermarktung", "an");
+        assertThat(card(zurueck, "lastmanagement").path("state").asText())
+                .as("ein Modell-Wechsel schaltet den Ladepark nie ab").isEqualTo("an");
+        assertThat(card(zurueck, "lastspitzenkappung").path("state").asText()).isEqualTo("aus");
+
+        // -- 5. `seit` springt NUR bei einem echten Wechsel ---------------------
+        // ⚠ `updated_at` wird nur bei einem WIRKLICHEN Zustandswechsel neu
+        // gesetzt (`IS DISTINCT FROM` im Upsert) - sonst wäre „läuft seit …"
+        // nach einem Doppelklick oder einem Assistenten-Durchlauf gelogen.
+        String seitVorher = card(zurueck, "marktvermarktung").path("seit").asText();
+        JsonNode nochmal = toggle(demo, "marktvermarktung", "an");
+        assertThat(card(nochmal, "marktvermarktung").path("seit").asText())
+                .as("idempotentes Schreiben verschiebt den Startzeitpunkt nicht")
+                .isEqualTo(seitVorher);
+
+        // -- 6. Der Weg ZURÜCK in den Grundmodus ------------------------------
+        JsonNode aus = toggle(demo, "marktvermarktung", "aus");
+        assertThat(card(aus, "marktvermarktung").path("state").asText()).isEqualTo("aus");
+        assertThat(card(aus, "marktvermarktung").path("seit").isNull())
+                .as("was nicht laeuft, traegt keinen Startzeitpunkt").isTrue();
+        for (JsonNode c : aus.path("profiles")) {
+            if ("lastmanagement".equals(c.path("id").asText())) continue;
+            assertThat(c.path("active").asBoolean())
+                    .as("Grundmodus: kein Betriebsmodell läuft (%s)", c.path("id").asText())
+                    .isFalse();
+        }
+        toggle(demo, "lastmanagement", "aus");
+    }
+
+    /**
+     * **ALTBESTAND:** eine Anlage, die ihre Wahl nie getroffen hat, wird
+     * GEFRAGT — ihr wird nichts abgeschaltet. Der Server räumt erst auf, wenn
+     * der Kunde wählt.
+     *
+     * <p>Der Zustand entsteht hier so, wie er im Feld entsteht: ZWEI Modelle
+     * derselben Gruppe sind aus den STAMMDATEN abgeleitet aktiv (Direkt-
+     * vermarktung + hinterlegter Leistungspreis), ohne dass je ein Schalter
+     * gedrückt wurde. Genau das bringt eine Bestandsanlage aus der Zeit vor
+     * dieser Stufe mit.
+     */
+    @Test
+    void aLegacyPlantWithTwoActiveModelsIsLeftUntouchedUntilTheCustomerChooses() {
+        String admin = token("admin", "admin");
+        String demo = token("demo", "demo");
+        // ⚠ Eine EIGENE Anlage: die Demo-Anlage teilt sich diese Klasse mit den
+        // anderen Tests, und ein dort gespeichertes `aus` unterdrückt genau die
+        // Ableitung, um die es hier geht. Der Altbestand entsteht so, wie er im
+        // Feld entsteht - aus STAMMDATEN, ohne dass je ein Schalter fiel.
+        String siteId = customer("/api/v1/sites", HttpMethod.POST, demo, Map.of(
+                "name", "Altbestand", "biddingZone", "DE-LU",
+                "plantKind", "direktvermarktung", "tarifArt", "dynamisch",
+                "tarifParamCtKwh", 18.0)).getBody().path("id").asText();
+        String pfad = "/api/v1/sites/" + siteId + "/profiles";
+        assertThat(exchange("/api/v1/admin/sites/" + siteId + "/optimizer-config",
+                HttpMethod.PUT, admin, TENANT_A, Map.of("leistungspreisEurKw", 120.0))
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        JsonNode altbestand = customer(pfad, HttpMethod.GET, demo, null).getBody();
+        assertThat(card(altbestand, "marktvermarktung").path("active").asBoolean()).isTrue();
+        assertThat(card(altbestand, "lastspitzenkappung").path("active").asBoolean()).isTrue();
+        // Beide OHNE gespeicherten Willen: die Anlage hat nie gewählt.
+        assertThat(card(altbestand, "marktvermarktung").path("state").isNull()).isTrue();
+        assertThat(card(altbestand, "lastspitzenkappung").path("state").isNull()).isTrue();
+
+        // ⚠ Das LESEN räumt NICHTS auf - es gibt keinen stillen Reparaturlauf.
+        // Was der Kunde nie entschieden hat, entscheidet der Server nicht für ihn.
+        JsonNode nochmal = customer(pfad, HttpMethod.GET, demo, null).getBody();
+        assertThat(card(nochmal, "marktvermarktung").path("active").asBoolean()).isTrue();
+        assertThat(card(nochmal, "lastspitzenkappung").path("active").asBoolean()).isTrue();
+
+        // Erst die KUNDENWAHL setzt die Exklusivität durch - und zwar mit einem
+        // gespeicherten `aus` auf dem abgeleiteten Geschwister: ohne das würde
+        // das Signal aus den Stammdaten es beim nächsten Lesen wiederbeleben.
+        JsonNode gewaehlt = customer(pfad, HttpMethod.PUT, demo,
+                Map.of("profile", "marktvermarktung", "state", "an")).getBody();
+        assertThat(card(gewaehlt, "marktvermarktung").path("state").asText()).isEqualTo("an");
+        assertThat(card(gewaehlt, "lastspitzenkappung").path("state").asText()).isEqualTo("aus");
+        assertThat(card(gewaehlt, "lastspitzenkappung").path("active").asBoolean()).isFalse();
+
+        customer("/api/v1/sites/" + siteId, HttpMethod.DELETE, demo, null);
+    }
+
     // ---- helpers -------------------------------------------------------------
 
     private static String profilesPath() {

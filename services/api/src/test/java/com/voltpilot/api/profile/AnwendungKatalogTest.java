@@ -351,4 +351,100 @@ class AnwendungKatalogTest {
                     .doesNotContain(AnwendungKatalog.EIGENE_AUSWERTUNG, AnwendungKatalog.BERICHTE);
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Steuerung Stufe 5 · Exklusivität + die zwei Voraussetzungs-Felder
+    // -----------------------------------------------------------------------
+
+    @Test
+    void theExclusiveGroupIsExactlyTheThreeStrategyBackedModels() {
+        // ⚠ Die argumentierte Abweichung vom Konzept-Wortlaut („alle vier"):
+        // das Ladepark-Lastmanagement ist SCHUTZ, hat keinen Strategie-Knoten,
+        // läuft auf der Box weiter, was auch immer eine Karte sagt, und ist
+        // abgeleitet aktiv, sobald eine Säule da ist. Es exklusiv zu machen
+        // hieße, eine Wechsel-Karte zu zeigen, deren erste Zeile eine
+        // Falschaussage über eine laufende Anlage wäre.
+        assertThat(katalog.alle().stream()
+                .filter(a -> "speicher".equals(a.exklusivGruppe()))
+                .map(Anwendung::id))
+                .containsExactlyInAnyOrder(
+                        "marktvermarktung", "lastspitzenkappung", "atypische-netznutzung");
+        assertThat(katalog.find(AnwendungKatalog.LASTMANAGEMENT).exklusivGruppe()).isNull();
+        // Und jedes exklusive Modell trägt seinen Strategie-Knoten.
+        for (Anwendung a : katalog.alle()) {
+            if (a.istExklusiv()) assertThat(a.strategieKnoten()).as(a.id()).isNotNull();
+        }
+    }
+
+    @Test
+    void onlyShelfEntriesCarryAGroup() {
+        for (Anwendung a : katalog.alle()) {
+            if (a.exklusivGruppe() != null) assertThat(a.regal()).as(a.id()).isTrue();
+        }
+    }
+
+    @Test
+    void groupSiblingsAreMutualAndNeverIncludeTheEntryItself() {
+        Anwendung markt = katalog.find(AnwendungKatalog.MARKTVERMARKTUNG);
+        assertThat(katalog.gruppengeschwister(markt).stream().map(Anwendung::id))
+                .containsExactlyInAnyOrder("lastspitzenkappung", "atypische-netznutzung")
+                .doesNotContain("marktvermarktung");
+        for (Anwendung g : katalog.gruppengeschwister(markt)) {
+            assertThat(katalog.gruppengeschwister(g).stream().map(Anwendung::id))
+                    .as(g.id()).contains("marktvermarktung");
+        }
+        // Ein Modell OHNE Gruppe hat keine Geschwister - es konkurriert mit
+        // niemandem und darf neben jedem Betriebsmodell laufen.
+        assertThat(katalog.gruppengeschwister(katalog.find(AnwendungKatalog.LASTMANAGEMENT)))
+                .isEmpty();
+        assertThat(katalog.gruppengeschwister(null)).isEmpty();
+    }
+
+    @Test
+    void aPresetProposesAtMostOneModelPerGroup() {
+        // Sonst stünden nach dem Assistenten zwei Häkchen, und der Server
+        // machte daraus stillschweigend eines.
+        for (String profil : java.util.List.of(
+                AnwendungKatalog.PROFIL_PRIVAT, AnwendungKatalog.PROFIL_GEWERBE)) {
+            java.util.Map<String, Long> proGruppe = katalog.vorauswahl(profil).stream()
+                    .map(katalog::find)
+                    .filter(a -> a != null && a.exklusivGruppe() != null)
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            Anwendung::exklusivGruppe, java.util.stream.Collectors.counting()));
+            for (var e : proGruppe.entrySet()) {
+                assertThat(e.getValue()).as(profil + "/" + e.getKey()).isEqualTo(1L);
+            }
+        }
+    }
+
+    @Test
+    void everyRequirementCarriesItsKindAndOnlyASolvableOneCarriesAWay() {
+        for (Anwendung a : katalog.alle()) {
+            for (AnwendungKatalog.Voraussetzung v : a.voraussetzungen()) {
+                String wo = a.id() + "/" + v.id();
+                assertThat(v.art()).as(wo)
+                        .isIn(AnwendungKatalog.ART_HARDWARE, AnwendungKatalog.ART_EINSTELLUNG);
+                // ⚠ Ein fehlendes `art` gilt als HARDWARE - die vorsichtigere
+                // Lesart: sie verspricht nie, ein Klick würde reichen.
+                assertThat(v.istHardware()).as(wo)
+                        .isEqualTo(!AnwendungKatalog.ART_EINSTELLUNG.equals(v.art()));
+                if (v.behebung() == null) continue;
+                assertThat(v.behebung().ziel()).as(wo)
+                        .isIn("einstellungen", "modell", "ladepark",
+                                AnwendungKatalog.ZIEL_VOLTPILOT);
+                if (AnwendungKatalog.ZIEL_VOLTPILOT.equals(v.behebung().ziel())) {
+                    // Ein admin-conditionaler Wert hat KEIN Klickziel - dort
+                    // steht der ehrliche Satz, kein Knopf ins Leere.
+                    assertThat(v.behebung().label()).as(wo).isNull();
+                } else {
+                    assertThat(v.behebung().label()).as(wo).isNotBlank();
+                }
+                // Ein HARDWARE-Fakt löst sich nicht per Klick; die eine
+                // Ausnahme ist die Komponente, die man ANLEGEN kann.
+                if (v.istHardware()) {
+                    assertThat(v.behebung().ziel()).as(wo).isEqualTo("modell");
+                }
+            }
+        }
+    }
 }

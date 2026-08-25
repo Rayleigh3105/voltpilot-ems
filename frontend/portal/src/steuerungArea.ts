@@ -188,142 +188,38 @@ export function modeActions(mode: ActiveMode): ModeActions {
 }
 
 // ---------------------------------------------------------------------------
-// 2 · Ko-Optimierungs-Streifen
+// 2 · Speicher-Modi
 // ---------------------------------------------------------------------------
 
-/** Welche Modi um DENSELBEN Speicher konkurrieren (und deshalb ko-optimiert werden). */
+/** Welche Modi um DENSELBEN Speicher konkurrieren. */
 const BATTERY_MODE_KINDS: ModeKind[] = ['lastspitzenkappung', 'marktvermarktung'];
 
 export function isBatteryMode(kind: ModeKind): boolean {
   return BATTERY_MODE_KINDS.includes(kind);
 }
 
-/**
- * Die speicher-beanspruchenden Modi. "In Vorbereitung"-Modi zählen NICHT mit —
- * was noch nicht rechnet, kann auch nicht mit-optimiert werden.
- */
-export function batteryModes(modes: ActiveMode[]): ActiveMode[] {
-  return modes.filter((m) => !m.preview && isBatteryMode(m.kind));
-}
-
-export interface CoOptimization {
-  count: number;
-  modeLabels: string[];
-  /** "3 Modi, ein Speicher — VoltPilot optimiert sie gemeinsam." */
-  sentence: string;
-  /** Wie die Auflösung passiert (der ehrliche Zusatz). */
-  detail: string;
-}
-
-/** Null unter zwei Speicher-Anwendungen — dann gibt es nichts zu ko-optimieren. */
-export function coOptimization(modes: ActiveMode[]): CoOptimization | null {
-  const battery = batteryModes(modes);
-  if (battery.length < 2) return null;
-  return {
-    count: battery.length,
-    modeLabels: battery.map((m) => m.label),
-    sentence: `${battery.length} Anwendungen, ein Speicher — VoltPilot optimiert sie gemeinsam.`,
-    detail:
-      'Alle 15 Minuten wird EIN gemeinsamer Fahrplan gerechnet, der alle Ziele zugleich ' +
-      'verfolgt — die Reservierungen unten legen fest, wer welchen Teil des Speichers sicher hat.',
-  };
-}
-
-// ---------------------------------------------------------------------------
-// 2 · Der SoC-Reservierungs-Stack
-// ---------------------------------------------------------------------------
-
-export interface ReservationInput {
-  /** Technische Untergrenze (Plattform/Anlage), z. B. 5 %. */
-  socMinPct?: number | null;
-  /** Obergrenze des nutzbaren Bandes, z. B. 95 %. */
-  socMaxPct?: number | null;
-  /** Notstrom-Reserve (harte SoC-Grenze, P11). */
-  backupReserveSocPct?: number | null;
-  /** Lastspitzen-Reserve (PS-2, `site.peak_reserve_soc_pct`). */
-  peakReserveSocPct?: number | null;
-}
-
-export interface ReservationLayer {
-  key: 'technisch' | 'notstrom' | 'lastspitze' | 'frei';
-  label: string;
-  /** Untere/obere Kante in Prozent (0..100) — die Balkengeometrie. */
-  fromPct: number;
-  toPct: number;
-  /** Eine erklärende Zeile. */
-  note: string;
-}
-
-function clampPct(v: number): number {
-  return Math.min(100, Math.max(0, v));
-}
-
-/**
- * Der Reservierungs-Stack (technische Untergrenze < Notstrom-Reserve <
- * Lastspitzen-Reserve < freies Band) als Balkensegmente. **Es wird nichts
- * erfunden:** eine nicht bekannte Schicht (Feld fehlt, Endpunkt für diesen
- * Nutzer nicht lesbar) erscheint gar nicht, und ohne jede bekannte Schicht ist
- * das Ergebnis leer — der Streifen zeigt dann nur den Ko-Optimierungs-Satz.
+/*
+ * ⚠ ERSATZLOS ENTFALLEN (Steuerung Stufe 5, Konzept §3.4): der
+ * **Ko-Optimierungs-Streifen** (`coOptimization`, `batteryModes`) und der
+ * **SoC-Reservierungs-Stack** (`socReservationStack`) samt ihrer Render-Hälfte
+ * `SteuerungParts.CoOptimizationStrip`.
  *
- * Die Schichten sind ABSOLUTE Grenzen, nicht additiv: die höchste bindet
- * (dieselbe Regel wie im Solver, `max` über die Reservierungen).
+ * Der Streifen sagte „N Anwendungen, ein Speicher — VoltPilot optimiert sie
+ * gemeinsam" und erschien ab ZWEI aktiven Speicher-Modi. Seit Stufe 5 gibt es
+ * diesen Zustand als gewollten nicht mehr: **es läuft immer nur EINES**, der
+ * Schalter ist ein Radio. Ein Streifen, der eine gleichzeitige Ko-Optimierung
+ * erklärt, wäre damit die Erklärung eines Zustands, den die Fläche gerade
+ * abschafft — und auf einer ALTBESTANDS-Anlage mit zwei aktiven Modellen die
+ * beruhigende Gegenrede zu der Wahl, um die die Zone dort ausdrücklich bittet.
+ *
+ * Der SoC-Stack hing an ihm (er war seine Fußzeile) und beschreibt die
+ * Aufteilung EINES Speichers zwischen mehreren Anwendungen — dieselbe Frage,
+ * dieselbe Antwort: sie stellt sich nicht mehr. Die einzelnen Reservierungen
+ * (Notstrom, Lastspitze) bleiben unverändert Einstellungen ihres Modus.
+ *
+ * Sie kommen zurück, wenn Multi-Use als eigenes Konzept gebaut wird — dann
+ * aber mit der Exklusivitäts-Gruppe als Eingabe, nicht mit einer Modus-Zählung.
  */
-export function socReservationStack(input: ReservationInput | null | undefined): ReservationLayer[] {
-  if (!input) return [];
-  const known: { key: ReservationLayer['key']; label: string; pct: number; note: string }[] = [];
-  if (input.socMinPct != null && Number.isFinite(input.socMinPct)) {
-    known.push({
-      key: 'technisch',
-      label: 'Technische Untergrenze',
-      pct: clampPct(input.socMinPct),
-      note: 'Schutz der Batterie — wird nie unterschritten.',
-    });
-  }
-  if (input.backupReserveSocPct != null && Number.isFinite(input.backupReserveSocPct)) {
-    known.push({
-      key: 'notstrom',
-      label: 'Notstrom-Reserve',
-      pct: clampPct(input.backupReserveSocPct),
-      note: 'Bleibt für Ihren Notstrombedarf reserviert — kein Preis überschreibt sie.',
-    });
-  }
-  if (input.peakReserveSocPct != null && Number.isFinite(input.peakReserveSocPct)) {
-    known.push({
-      key: 'lastspitze',
-      label: 'Lastspitzen-Reserve',
-      pct: clampPct(input.peakReserveSocPct),
-      note: 'Vorgehalten, um eine Bezugsspitze auch außerhalb des Fahrplans zu kappen.',
-    });
-  }
-  if (known.length === 0) return [];
-
-  const top = input.socMaxPct != null && Number.isFinite(input.socMaxPct)
-    ? clampPct(input.socMaxPct)
-    : 100;
-  const layers: ReservationLayer[] = [];
-  let cursor = 0;
-  for (const l of known) {
-    const to = Math.min(l.pct, top);
-    // Die Schichten werden in ihrer kanonischen Reihenfolge (technisch →
-    // Notstrom → Lastspitze) durchlaufen; eine Reservierung, die die bisher
-    // erreichte Kante nicht überragt, ist bereits abgedeckt (absolute Grenzen,
-    // die höchste bindet) - sie bekommt dann kein eigenes Segment.
-    if (to > cursor) {
-      layers.push({ key: l.key, label: l.label, fromPct: cursor, toPct: to, note: l.note });
-      cursor = to;
-    }
-  }
-  if (top > cursor) {
-    layers.push({
-      key: 'frei',
-      label: 'Frei für die Anwendungen',
-      fromPct: cursor,
-      toPct: top,
-      note: 'Dieser Teil wird von allen aktiven Anwendungen gemeinsam genutzt.',
-    });
-  }
-  return layers;
-}
 
 // ---------------------------------------------------------------------------
 // M4 · Kapsel 1 — die Anwendungs-Zeilen
@@ -362,8 +258,14 @@ export interface ProfileRow {
   blockedReason: string | null;
 }
 
-/** Der Beitrag eines Modus als EINE Zeile — `null`, wenn es keinen gibt. */
-function contributionLine(
+/**
+ * Der Beitrag eines Modus als EINE Zeile — `null`, wenn es keinen gibt.
+ *
+ * Seit Stufe 5 exportiert, weil die Betriebsmodell-Karte denselben LIVE-BELEG
+ * trägt wie die Regal-Zeile: zwei Ableitungen desselben Satzes wären zwei
+ * Wahrheiten über dasselbe Geld.
+ */
+export function contributionLine(
   mode: ActiveMode | null,
   earnings: EarningsSite | null | undefined,
 ): string | null {

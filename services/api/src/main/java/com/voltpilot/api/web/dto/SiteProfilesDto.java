@@ -1,5 +1,6 @@
 package com.voltpilot.api.web.dto;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -58,17 +59,40 @@ public record SiteProfilesDto(List<Profile> profiles, List<Profile> weitere) {
      * @param flowRef       the flow carrying its strategy, or null
      * @param gatedNodeTypes the node types the toggle opens (may be empty)
      * @param gatedNodesEnabled whether those types are enabled for the site
+     * @param exklusivGruppe die Exklusivitäts-Gruppe (Steuerung Stufe 5) oder
+     *                       null: zwei Modelle DERSELBEN Gruppe sind nie
+     *                       zugleich an, der Schalter ist dort ein Radio
+     * @param seit           seit wann es läuft — nur BELEGT (ein gespeichertes
+     *                       {@code an}); null bei einer abgeleitet aktiven oder
+     *                       ausgeschalteten Anwendung, nie ein erfundenes Datum
      */
     public record Profile(String id, String label, String state, boolean derivedActive,
             boolean active, Unlocks unlocks, List<Requirement> requirements, String blockedReason,
             String origin, FlowRef flowRef, List<String> gatedNodeTypes,
-            boolean gatedNodesEnabled) {}
+            boolean gatedNodesEnabled, String exklusivGruppe, Instant seit) {}
 
     /** What a profile contributes to the surface (views · widgets · money). */
     public record Unlocks(List<String> views, List<String> widgets, String moneyStream) {}
 
-    /** One prerequisite chip. */
-    public record Requirement(String label, boolean met) {}
+    /**
+     * One prerequisite chip.
+     *
+     * <p>{@code art} trennt seit Stufe 5 die zwei Sorten: {@code hardware} =
+     * was die Anlage physisch hergeben muss (fehlt es, kann das Modell hier
+     * gar nicht laufen — die Karte steht dann unter „Nicht möglich auf dieser
+     * Anlage"), {@code einstellung} = ein Wert, den jemand einträgt (dann
+     * zeigt die Ampel den WEG). {@code behebung} ist genau dieser Weg, oder
+     * null, wenn es nichts gibt, was ein Klick lösen könnte.
+     */
+    public record Requirement(String label, boolean met, String art, Behebung behebung) {}
+
+    /**
+     * Wohin der Kunde muss, um eine Voraussetzung zu erfüllen.
+     * {@code label} ist null für {@code ziel = "voltpilot"} — ein
+     * admin-conditionaler Wert hat kein Klickziel (Konzept §3.4:
+     * „Wir tragen ihn für Sie ein — VoltPilot").
+     */
+    public record Behebung(String ziel, String label) {}
 
     /** The flow that carries this profile's strategy, when there is one. */
     public record FlowRef(String flowId, String name) {}

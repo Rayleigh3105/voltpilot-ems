@@ -17,7 +17,8 @@ import {
   vorauswahl,
 } from './anwendungen';
 import { fleetKind, fleetTonalitaet, siteTonalitaet } from './fleet';
-import { profileStatesFrom } from './profiles';
+import { profileStatesFrom, type SiteProfile } from './profiles';
+import { betriebsmodellKarten, betriebsmodellZone } from './betriebsmodelle';
 import { profileRows } from './steuerungArea';
 import { showTechnicalLayer } from './rollen';
 import { JETZT_LEER, jetztZone } from './steuerungJetzt';
@@ -945,5 +946,104 @@ describe('Steuerung Stufen 1+2: eine Anlage OHNE Daten bleibt ehrlich leer', () 
       const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
       expect(code, name).not.toMatch(/localStorage|sessionStorage/);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Steuerung Stufe 5 — Bestandsanlagen und der Abbau
+// ---------------------------------------------------------------------------
+
+describe('Steuerung Stufe 5: eine Anlage OHNE aktives Betriebsmodell ist unberührt', () => {
+  const NOW = new Date('2026-08-25T12:00:00');
+
+  function profil(over: Partial<SiteProfile> & { id: string }): SiteProfile {
+    return {
+      label: over.id,
+      state: null,
+      derivedActive: false,
+      active: false,
+      unlocks: { views: [], widgets: [], moneyStream: null },
+      requirements: [],
+      blockedReason: null,
+      origin: null,
+      flowRef: null,
+      gatedNodeTypes: [],
+      gatedNodesEnabled: true,
+      ...over,
+    };
+  }
+
+  it('⚠ ohne aktives Modell steht der GRUNDMODUS - kein Altbestand, kein „seit"', () => {
+    // Der Zustand jeder Anlage, die nie ein Betriebsmodell eingeschaltet hat.
+    const zone = betriebsmodellZone(
+      [profil({ id: 'lastspitzenkappung' }), profil({ id: 'marktvermarktung' })],
+      [], null, NOW,
+    );
+    expect(zone.aktiv).toBeNull();
+    expect(zone.altbestand).toEqual([]);
+    expect(zone.radio.every((k) => k.seit === null && k.beleg === null)).toBe(true);
+  });
+
+  it('ohne Server-Antwort (älteres Backend) behauptet die Zone GAR NICHTS', () => {
+    expect(betriebsmodellZone(null, [], null, NOW)).toEqual({
+      radio: [], eigene: [], nichtMoeglich: [], aktiv: null, altbestand: [],
+    });
+    expect(betriebsmodellZone(undefined, [], null, NOW).radio).toEqual([]);
+  });
+
+  it('⚠ ein ÄLTERER Server ohne `exklusivGruppe` fällt auf den KATALOG zurück', () => {
+    // Die Gruppe ist eine Server-Angabe; kennt der Server sie nicht, entscheidet
+    // die byte-gleiche Katalog-Kopie - und die kennt sie. Ein Modell OHNE
+    // Gruppe (auch im Katalog) bleibt ein eigener Schalter.
+    const [markt, lade] = betriebsmodellKarten(
+      [profil({ id: 'marktvermarktung' }), profil({ id: 'lastmanagement' })],
+      [], null, NOW,
+    );
+    expect(markt.gruppe).toBe('speicher');
+    expect(lade.gruppe).toBeNull();
+  });
+
+  it('die Zone speichert nichts im Browser', () => {
+    for (const name of ['betriebsmodelle.ts', 'components/Betriebsmodelle.tsx']) {
+      const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
+      expect(code, name).not.toMatch(/localStorage|sessionStorage/);
+    }
+  });
+});
+
+describe('Steuerung Stufe 5 — Abbau-Invarianten', () => {
+  /**
+   * ⚠ Der Ko-Optimierungs-Streifen und der SoC-Reservierungs-Stack sind
+   * ERSATZLOS entfallen: es läuft immer nur EIN Betriebsmodell, ein Streifen
+   * über die gemeinsame Optimierung zweier erklärte also einen Zustand, den die
+   * Fläche gerade abschafft — und auf einem Altbestand argumentierte er GEGEN
+   * die Wahl, um die die Zone bittet.
+   */
+  it('coOptimization / socReservationStack / CoOptimizationStrip existieren nicht mehr', () => {
+    const dateien = [
+      'steuerungArea.ts',
+      'components/SteuerungParts.tsx',
+      'pages/SteuerungSection.tsx',
+    ];
+    for (const name of dateien) {
+      const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
+      expect(code, name).not.toMatch(/\bcoOptimization\b/);
+      expect(code, name).not.toMatch(/\bsocReservationStack\b/);
+      expect(code, name).not.toMatch(/\bCoOptimizationStrip\b/);
+      expect(code, name).not.toMatch(/\bbatteryModes\b/);
+    }
+  });
+
+  it('die Kunden-Steuerung ruft KEINE Admin-Route mehr auf', () => {
+    // Der Streifen war der einzige Verbraucher der admin-only
+    // `optimizerApi.configViaSwitcher` auf einer Kundenfläche.
+    const code = ohneKommentare(readFileSync(join(SRC, 'pages/SteuerungSection.tsx'), 'utf8'));
+    expect(code).not.toMatch(/optimizerApi/);
+  });
+
+  it('die alte Profil-ZEILE (ProfileRowView) ist durch die Karten ersetzt', () => {
+    const code = ohneKommentare(readFileSync(join(SRC, 'pages/SteuerungSection.tsx'), 'utf8'));
+    expect(code).not.toMatch(/ProfileRowView/);
+    expect(code).toMatch(/Betriebsmodelle/);
   });
 });

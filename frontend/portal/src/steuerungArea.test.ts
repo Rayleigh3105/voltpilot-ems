@@ -6,15 +6,12 @@ import { NBSP } from './format';
 import {
   PROFILE_CAPSULE_INTRO,
   automationRows,
-  batteryModes,
-  coOptimization,
   contributionRows,
   entityChips,
   modeActions,
   peakContributionNote,
   profileRows,
   protectionItems,
-  socReservationStack,
   storageEntities,
 } from './steuerungArea';
 import type { SiteProfile } from './profiles';
@@ -226,69 +223,6 @@ describe('modeActions', () => {
     expect(modeActions(atyp).canOpen).toBe(false);
   });
 });
-
-// ---------------------------------------------------------------------------
-// 2 · Ko-Optimierung + Reservierungs-Stack
-// ---------------------------------------------------------------------------
-
-describe('coOptimization', () => {
-  it('is null below two battery-claiming modes', () => {
-    // GEWERBE trägt nur noch die Lastspitzenkappung (Eigenverbrauch ist kein
-    // Modus mehr) - genau ein Batterie-Modus.
-    const single = activeModes(GEWERBE);
-    expect(batteryModes(single)).toHaveLength(1);
-    expect(coOptimization(single)).toBeNull();
-  });
-
-  it('names the count once two modes share one battery', () => {
-    const co = coOptimization(activeModes(MULTI))!;
-    expect(co.count).toBe(2);
-    expect(co.sentence).toBe('2 Anwendungen, ein Speicher — VoltPilot optimiert sie gemeinsam.');
-    expect(co.modeLabels).toEqual(['Lastspitzenkappung', 'Marktoptimierung']);
-  });
-
-  it('does not count automations or "in Vorbereitung" modes toward the battery set', () => {
-    const modes = activeModes(MULTI);
-    expect(modes.some((m) => m.kind === 'automation')).toBe(true);
-    expect(batteryModes(modes).map((m) => m.kind)).toEqual([
-      'lastspitzenkappung',
-      'marktvermarktung',
-    ]);
-  });
-});
-
-describe('socReservationStack', () => {
-  it('stacks technical floor < backup < peak < free band', () => {
-    const layers = socReservationStack({
-      socMinPct: 5,
-      socMaxPct: 95,
-      backupReserveSocPct: 20,
-      peakReserveSocPct: 35,
-    });
-    expect(layers.map((l) => [l.key, l.fromPct, l.toPct])).toEqual([
-      ['technisch', 0, 5],
-      ['notstrom', 5, 20],
-      ['lastspitze', 20, 35],
-      ['frei', 35, 95],
-    ]);
-  });
-
-  it('renders only the layers it actually knows — never a fabricated one', () => {
-    const layers = socReservationStack({ peakReserveSocPct: 30 });
-    expect(layers.map((l) => l.key)).toEqual(['lastspitze', 'frei']);
-    expect(layers[1].toPct).toBe(100);
-    expect(socReservationStack({})).toEqual([]);
-    expect(socReservationStack(null)).toEqual([]);
-  });
-
-  it('treats reservations as absolute (highest binds), not additive', () => {
-    // A backup reserve BELOW the technical floor adds no segment of its own.
-    const layers = socReservationStack({ socMinPct: 20, backupReserveSocPct: 10, socMaxPct: 95 });
-    expect(layers.map((l) => l.key)).toEqual(['technisch', 'frei']);
-    expect(layers[0].toPct).toBe(20);
-  });
-});
-
 
 // ---------------------------------------------------------------------------
 // M4 · Kapsel 1 — Profil-Zeilen
@@ -526,9 +460,6 @@ describe('protectionItems', () => {
     const text = [
       PROFILE_CAPSULE_INTRO,
       ...protectionItems({ netzladenErlaubt: false }).map((p) => `${p.label} ${p.tip}`),
-      ...socReservationStack({ socMinPct: 5, backupReserveSocPct: 20, peakReserveSocPct: 30 }).map(
-        (l) => `${l.label} ${l.note}`,
-      ),
     ].join(' ');
     for (const word of ['MILP', 'Modul', 'Solver', 'SoC-Band', 'flow_definition']) {
       expect(text).not.toContain(word);

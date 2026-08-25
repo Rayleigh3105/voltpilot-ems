@@ -1,5 +1,7 @@
 package com.voltpilot.api.repo;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -31,12 +33,24 @@ public class SiteProfileStateRepository {
         this.jdbc = jdbc;
     }
 
+    /**
+     * Der gespeicherte Wille samt dem Zeitpunkt seiner letzten ÄNDERUNG
+     * (Steuerung Stufe 5: „läuft seit …").
+     *
+     * <p>{@code seit} ist {@code updated_at} — und das trägt nur deshalb eine
+     * Aussage, weil {@link #upsert} den Stempel ausschließlich bei einem
+     * ECHTEN Zustandswechsel neu setzt (das {@code rollout_device.since}-Muster).
+     */
+    public record StoredState(String state, Instant seit) {}
+
     /** The stored states of a site, keyed by profile id (empty = all derived). */
-    public Map<String, String> findBySite(UUID siteId) {
-        Map<String, String> states = new LinkedHashMap<>();
-        jdbc.query("SELECT profile, state FROM site_profile_state WHERE site_id = ? "
-                + "ORDER BY profile", rs -> {
-                    states.put(rs.getString("profile"), rs.getString("state"));
+    public Map<String, StoredState> findBySite(UUID siteId) {
+        Map<String, StoredState> states = new LinkedHashMap<>();
+        jdbc.query("SELECT profile, state, updated_at FROM site_profile_state "
+                + "WHERE site_id = ? ORDER BY profile", rs -> {
+                    Timestamp ts = rs.getTimestamp("updated_at");
+                    states.put(rs.getString("profile"), new StoredState(rs.getString("state"),
+                            ts == null ? null : ts.toInstant()));
                 }, siteId);
         return states;
     }
@@ -68,10 +82,18 @@ public class SiteProfileStateRepository {
      * an upsert.
      */
     public void upsert(UUID tenantId, UUID siteId, String profile, String state) {
+        // ⚠ Der Stempel wird NUR bei einem echten Zustandswechsel neu gesetzt
+        // (`WHERE ... IS DISTINCT FROM`). Ohne das Prädikat setzte jedes
+        // erneute Speichern desselben Zustands - ein Doppelklick, ein
+        // Wizard-Durchlauf, ein Wechsel, der dieses Modell gar nicht betrifft -
+        // die Uhr zurück, und „läuft seit ..." wäre eine Falschaussage über
+        // eine laufende Anlage. Dasselbe Muster wie `rollout_device.since`.
         jdbc.update("INSERT INTO site_profile_state (site_id, profile, state, tenant_id) "
                 + "VALUES (?, ?, ?, ?) "
                 + "ON CONFLICT (site_id, profile) DO UPDATE SET state = EXCLUDED.state, "
-                + "updated_at = now()", siteId, profile, state, tenantId);
+                + "updated_at = now() "
+                + "WHERE site_profile_state.state IS DISTINCT FROM EXCLUDED.state",
+                siteId, profile, state, tenantId);
     }
 
     /** Drop the stored intent so the profile falls back to the derived default. */

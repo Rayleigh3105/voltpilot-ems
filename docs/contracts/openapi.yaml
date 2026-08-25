@@ -10503,6 +10503,33 @@ components:
                   properties:
                     label: { type: string }
                     met: { type: boolean }
+                    art:
+                      type: string
+                      enum: [hardware, einstellung]
+                      description: >
+                        Steuerung Stufe 5, ADDITIVE. `hardware` = what the plant
+                        must physically have; a missing one means the operating
+                        model cannot run HERE at all (the surface files the card
+                        under "Nicht moeglich auf dieser Anlage", with the
+                        reason). `einstellung` = a value somebody enters - the
+                        card stays, and the traffic light shows the WAY.
+                    behebung:
+                      type: object
+                      nullable: true
+                      description: >
+                        Where the customer has to go for it; null = there is
+                        nothing a click could solve, and no way is claimed.
+                      properties:
+                        ziel:
+                          type: string
+                          enum: [einstellungen, modell, ladepark, voltpilot]
+                        label:
+                          type: string
+                          nullable: true
+                          description: >
+                            null for `voltpilot` - an admin-conditional value has
+                            no button the customer could press; VoltPilot enters
+                            it (concept 3.4).
               blockedReason:
                 type: string
                 nullable: true
@@ -10518,6 +10545,34 @@ components:
                   name: { type: string }
               gatedNodeTypes: { type: array, items: { type: string } }
               gatedNodesEnabled: { type: boolean }
+              exklusivGruppe:
+                type: string
+                nullable: true
+                example: speicher
+                description: >
+                  Steuerung Stufe 5, ADDITIVE. Two operating models of the SAME
+                  group are never on together - the switch is a RADIO, and the
+                  server enforces it on write (switching one on ends every other
+                  of its group in the same transaction). Today's only group is
+                  `speicher`: the three models with a `vp.strategy.*` node that
+                  compete for the SAME battery. Ladepark-Lastmanagement has NO
+                  group on purpose - it is protection, not market participation,
+                  keeps guarding the connection on the box whatever a card says,
+                  and is derived-active from a connected charge point. There is
+                  deliberately NO DB check: an existing plant with two active
+                  models keeps them until the customer chooses (Multi-Use is its
+                  own concept).
+              seit:
+                type: string
+                format: date-time
+                nullable: true
+                description: >
+                  Since when it runs ("laeuft seit ..."), Steuerung Stufe 5,
+                  ADDITIVE. Only ever PROVEN: it is the `site_profile_state`
+                  row's `updated_at`, and that row exists only for an explicit
+                  customer decision. null for a DERIVED-active model (no row -
+                  every existing plant) and for a switched-off one; the surface
+                  then says "laeuft" without a date instead of inventing one.
     FlowNodeGovernance:
       type: object
       description: AE7 node governance - the gated strategy node types + per-site enablement.

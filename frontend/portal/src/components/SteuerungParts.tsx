@@ -1,6 +1,10 @@
 /**
- * Die Render-Bausteine der Steuerungs-Fläche (Modus-Karte, Ko-Optimierungs-
- * Streifen, Schutzfunktionen, Kopfzeile).
+ * Die Render-Bausteine der Steuerungs-Fläche (Modus-Karte, Schutzfunktionen,
+ * Kopfzeile).
+ *
+ * ⚠ `CoOptimizationStrip` ist mit Steuerung Stufe 5 ERSATZLOS entfallen —
+ * Begründung an der Stelle, an der auch seine Ableitung stand
+ * (`steuerungArea.ts`, Abschnitt „Speicher-Modi").
  * Jede Ableitung liegt im unit-getesteten `src/steuerungArea.ts`; hier wird
  * NUR gerendert (der `FleetOverview`/`ErloesKomposition`-Präzedenzfall).
  */
@@ -18,8 +22,6 @@ import {
   entityChips,
   modeActions,
   peakContributionNote,
-  type CoOptimization,
-  type ReservationLayer,
 } from '../steuerungArea';
 import type { ActiveMode } from '../surface';
 import './Steuerung.css';
@@ -116,61 +118,6 @@ export function ModeCard({
           </Button>
         )}
       </div>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 2 · Ko-Optimierungs-Streifen + SoC-Reservierungs-Stack
-// ---------------------------------------------------------------------------
-
-/**
- * Der Streifen erscheint erst ab ZWEI speicher-beanspruchenden Modi. Der
- * Reservierungs-Stack zeigt NUR bekannte Schichten — was der Endpunkt für
- * diesen Nutzer nicht liefert, wird nicht erfunden.
- */
-export function CoOptimizationStrip({
-  co,
-  layers,
-}: {
-  co: CoOptimization;
-  layers: ReservationLayer[];
-}) {
-  return (
-    <Card className="vp-coopt" padding="lg" radius="lg">
-      <div className="vp-coopt-head">
-        <Icon name="battery-charging" size={18} />
-        <p className="vp-coopt-sentence">{co.sentence}</p>
-      </div>
-      <p className="vp-coopt-detail">{co.detail}</p>
-      {layers.length > 0 ? (
-        <>
-          <div className="vp-soc-bar" role="img" aria-label="Reservierungen im Speicher">
-            {layers.map((l) => (
-              <span
-                key={l.key}
-                className={`vp-soc-seg ${l.key}`}
-                style={{ width: `${Math.max(0, l.toPct - l.fromPct)}%` }}
-              />
-            ))}
-          </div>
-          <dl className="vp-soc-legend">
-            {layers.map((l) => (
-              <div key={l.key} className="vp-soc-legenditem">
-                <span className={`vp-soc-swatch vp-soc-seg ${l.key}`} aria-hidden="true" />
-                <dt className="vp-soc-legendlabel">
-                  {l.label} · bis {Math.round(l.toPct)} %
-                </dt>
-                <dd className="vp-soc-legendnote">{l.note}</dd>
-              </div>
-            ))}
-          </dl>
-        </>
-      ) : (
-        <p className="vp-coopt-note">
-          Die Aufteilung des Speichers wird von VoltPilot eingerichtet.
-        </p>
-      )}
     </Card>
   );
 }

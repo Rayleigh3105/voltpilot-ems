@@ -63,3 +63,36 @@
 .vp-anw-zurueck {
   margin-top: var(--vp-space-2, 8px);
 }
+
+/* --- Radio statt Schalter (Steuerung Stufe 5) ----------------------------
+   ⚠ Ein EXKLUSIVES Betriebsmodell ist ein RADIO: es fährt immer genau eines,
+   oder keines. Wer hier wieder den `.vp-switch` einsetzt, macht daraus optisch
+   „beliebig viele" — und der Server schaltet dann still eines ab. Die
+   Geometrie ist die der Steuerungs-Zone (`Betriebsmodelle.css`). */
+
+.vp-anw-radio {
+  flex: 0 0 auto;
+  position: relative;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--vp-border, #cbd5e1);
+  background: var(--vp-surface, #fff);
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.vp-anw-radio.on {
+  border-color: var(--vp-action, #2c5282);
+  background: var(--vp-action, #2c5282);
+  box-shadow: inset 0 0 0 3px var(--vp-surface, #fff);
+}
+
+/* ≥44 px Trefferfläche, ohne die Zeilen auseinanderzuziehen (das
+   `.vp-switch`-Muster). */
+.vp-anw-radio::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
+}

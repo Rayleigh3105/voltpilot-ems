@@ -1,5 +1,5 @@
 {
-  "catalog_version": "1.1.0",
+  "catalog_version": "1.2.0",
   "_comment": [
     "Der EINE Anwendungs-Katalog (Zielbild 'Portal fuer viele Kunden, viele",
     "Anwendungen', Scout vp-portal-zielbild-anwendungen §3.2/§4.1, Stufe 1).",
@@ -62,11 +62,48 @@
     "Ein Profil OHNE 'an'-Betriebsmodell schlaegt nichts vor - Privat faehrt",
     "den Eigenverbrauchs-Fahrplan, und der ist Grundverhalten.",
     "",
+    "EXKLUSIVITAET ('exklusiv_gruppe', Steuerung Stufe 5). Zwei",
+    "Betriebsmodelle DERSELBEN Gruppe koennen nie zugleich an sein: der",
+    "Schalter ist ein Radio, und der Server erzwingt es beim Schreiben",
+    "(SiteProfileService schaltet das andere in derselben Transaktion ab).",
+    "Es gibt bewusst KEINEN DB-CHECK: eine Bestandsanlage mit zwei aktiven",
+    "Modellen behaelt sie, bis der Kunde selbst waehlt (Multi-Use ist ein",
+    "eigenes Konzept).",
+    "",
+    "⚠ DIE GRUPPE IST 'speicher', NICHT 'alle vier Geschaefts-Eintraege' -",
+    "eine argumentierte Abweichung vom Konzept-Wortlaut (§4 Tabelle). Sie",
+    "traegt genau die drei Modelle mit einem 'strategie_knoten', die um",
+    "DENSELBEN Speicher konkurrieren. Das Ladepark-Lastmanagement steht",
+    "bewusst in KEINER Gruppe: es ist SCHUTZ statt Marktteilnahme, hat",
+    "keinen Strategie-Knoten (sein Abschalten ist ein No-op - der Verteiler",
+    "bewacht den Anschluss auf der Box weiter) und ist ABGELEITET aktiv,",
+    "sobald eine Saeule da ist. Es exklusiv zu machen hiesse, einer",
+    "Ladepark-Anlage entweder die Marktoptimierung zu verbieten oder ihr",
+    "eine Wechsel-Karte zu zeigen, die eine Falschaussage traegt ('Ihr",
+    "Lastmanagement endet' - es endet nicht). Eine kuenftige Gruppe traegt",
+    "einfach einen anderen Namen.",
+    "",
     "'voraussetzungen' sind {id, label, blocked_reason}: das LABEL ist der",
     "Chip, der 'blocked_reason' der ehrliche deutsche Satz, wenn GENAU diese",
     "Voraussetzung fehlt (die erste unerfuellte gewinnt - byte-gleich zur",
     "frueheren Hand-Tabelle SiteProfileService.blockedReason). Die PRUEFUNG",
     "einer Voraussetzungs-Id bleibt Code (AnwendungDerivation.requirementMet).",
+    "",
+    "Seit Stufe 5 traegt jede Voraussetzung zusaetzlich 'art' und 'behebung':",
+    "  art        - 'hardware' = was die Anlage physisch hergeben muss",
+    "               (Speicher, Ladepunkt, Messwert). Fehlt davon etwas, kann",
+    "               das Betriebsmodell auf DIESER Anlage gar nicht laufen und",
+    "               steht eingeklappt unter 'Nicht moeglich auf dieser",
+    "               Anlage' - mit dem Grund, nie stillschweigend fehlend.",
+    "               'einstellung' = ein Wert, den jemand eintraegt (Tarif,",
+    "               Leistungspreis, Anschlussgrenze). Dann steht die Karte",
+    "               normal da und die Ampel zeigt den WEG.",
+    "  behebung   - wohin der Kunde dafuer muss: {ziel, label}. 'ziel' ist",
+    "               'einstellungen' | 'modell' | 'ladepark' | 'voltpilot';",
+    "               'voltpilot' hat KEIN label, weil es kein Klickziel ist -",
+    "               der Wert ist admin-conditional, VoltPilot traegt ihn ein",
+    "               (Konzept §3.4). null = es gibt nichts, was ein Klick",
+    "               loesen koennte; dann wird auch kein Weg behauptet.",
     "",
     "'bausteine' nennt, was die Anwendung zur Oberflaeche beitraegt. Fuer die",
     "vier Geschaefts-Anwendungen ist das gegen surface.ts manifestFor gepinnt",
@@ -449,6 +486,7 @@
       "abschaltbar": false,
       "sichtbar": true,
       "regal": false,
+      "exklusiv_gruppe": null,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -460,7 +498,9 @@
         {
           "id": "messwert",
           "label": "Messwerte kommen an",
-          "blocked_reason": "Ihre Anlage hat noch keinen Messwert gemeldet — sobald das erste Gerät liefert, sehen Sie hier Werte."
+          "blocked_reason": "Ihre Anlage hat noch keinen Messwert gemeldet — sobald das erste Gerät liefert, sehen Sie hier Werte.",
+          "art": "hardware",
+          "behebung": null
         }
       ],
       "blocked_reason_immer": null,
@@ -495,6 +535,7 @@
       "abschaltbar": false,
       "sichtbar": true,
       "regal": false,
+      "exklusiv_gruppe": null,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -506,7 +547,9 @@
         {
           "id": "speicher",
           "label": "Speicher",
-          "blocked_reason": "Ohne Speicher gibt es keinen Fahrplan — VoltPilot plant nur, was es laden und entladen kann."
+          "blocked_reason": "Ohne Speicher gibt es keinen Fahrplan — VoltPilot plant nur, was es laden und entladen kann.",
+          "art": "hardware",
+          "behebung": null
         }
       ],
       "blocked_reason_immer": null,
@@ -537,6 +580,7 @@
       "abschaltbar": true,
       "sichtbar": true,
       "regal": false,
+      "exklusiv_gruppe": null,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -548,12 +592,16 @@
         {
           "id": "pv",
           "label": "PV-Erzeugung",
-          "blocked_reason": "Ohne eigene PV-Erzeugung gibt es keinen Überschuss, den ein Gerät nutzen könnte."
+          "blocked_reason": "Ohne eigene PV-Erzeugung gibt es keinen Überschuss, den ein Gerät nutzen könnte.",
+          "art": "hardware",
+          "behebung": null
         },
         {
           "id": "steuerbares-geraet",
           "label": "Steuerbares Gerät",
-          "blocked_reason": "Es ist noch kein steuerbares Gerät angelegt — ohne eines gibt es nichts, was den Überschuss nutzen könnte."
+          "blocked_reason": "Es ist noch kein steuerbares Gerät angelegt — ohne eines gibt es nichts, was den Überschuss nutzen könnte.",
+          "art": "hardware",
+          "behebung": { "ziel": "modell", "label": "Komponente anlegen" }
         }
       ],
       "blocked_reason_immer": null,
@@ -581,6 +629,7 @@
       "abschaltbar": true,
       "sichtbar": true,
       "regal": false,
+      "exklusiv_gruppe": null,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -592,7 +641,9 @@
         {
           "id": "steuerbares-geraet",
           "label": "Steuerbares Gerät",
-          "blocked_reason": "Es ist noch kein steuerbares Gerät angelegt — ohne eines gibt es nichts zu schalten."
+          "blocked_reason": "Es ist noch kein steuerbares Gerät angelegt — ohne eines gibt es nichts zu schalten.",
+          "art": "hardware",
+          "behebung": { "ziel": "modell", "label": "Komponente anlegen" }
         }
       ],
       "blocked_reason_immer": null,
@@ -620,6 +671,7 @@
       "abschaltbar": true,
       "sichtbar": true,
       "regal": true,
+      "exklusiv_gruppe": "speicher",
       "strategie_knoten": "vp.strategy.market",
       "starter": "arbitrage",
       "bedarf": {
@@ -631,12 +683,16 @@
         {
           "id": "marktzugang",
           "label": "Dynamischer Tarif oder Direktvermarktung",
-          "blocked_reason": "Für den Handel fehlt der Marktzugang: Ihre Anlage hat weder einen dynamischen Stromtarif noch eine Direktvermarktung hinterlegt. Solange wird nichts am Markt gehandelt."
+          "blocked_reason": "Für den Handel fehlt der Marktzugang: Ihre Anlage hat weder einen dynamischen Stromtarif noch eine Direktvermarktung hinterlegt. Solange wird nichts am Markt gehandelt.",
+          "art": "einstellung",
+          "behebung": { "ziel": "einstellungen", "label": "Stromtarif hinterlegen" }
         },
         {
           "id": "speicher",
           "label": "Speicher",
-          "blocked_reason": "Ohne Speicher kann VoltPilot am Markt nichts verschieben."
+          "blocked_reason": "Ohne Speicher kann VoltPilot am Markt nichts verschieben.",
+          "art": "hardware",
+          "behebung": null
         }
       ],
       "blocked_reason_immer": null,
@@ -666,6 +722,7 @@
       "abschaltbar": true,
       "sichtbar": true,
       "regal": true,
+      "exklusiv_gruppe": "speicher",
       "strategie_knoten": "vp.strategy.peakshaving",
       "starter": "peak",
       "bedarf": {
@@ -677,12 +734,16 @@
         {
           "id": "leistungspreis",
           "label": "Leistungspreis hinterlegt",
-          "blocked_reason": "Ihr Leistungspreis ist noch nicht hinterlegt — ohne ihn kann VoltPilot Ihre Lastspitze nicht bewerten und kappt sie noch nicht."
+          "blocked_reason": "Ihr Leistungspreis ist noch nicht hinterlegt — ohne ihn kann VoltPilot Ihre Lastspitze nicht bewerten und kappt sie noch nicht.",
+          "art": "einstellung",
+          "behebung": { "ziel": "voltpilot", "label": null }
         },
         {
           "id": "speicher",
           "label": "Speicher",
-          "blocked_reason": "Ohne Speicher lässt sich Ihre Lastspitze nicht kappen."
+          "blocked_reason": "Ohne Speicher lässt sich Ihre Lastspitze nicht kappen.",
+          "art": "hardware",
+          "behebung": null
         }
       ],
       "blocked_reason_immer": null,
@@ -712,6 +773,7 @@
       "abschaltbar": true,
       "sichtbar": true,
       "regal": true,
+      "exklusiv_gruppe": "speicher",
       "strategie_knoten": "vp.strategy.atypical-grid",
       "starter": null,
       "bedarf": {
@@ -723,7 +785,9 @@
         {
           "id": "leistungsmessung",
           "label": "Leistungsmessung",
-          "blocked_reason": "Für dieses Profil fehlt noch eine Voraussetzung."
+          "blocked_reason": "Für dieses Profil fehlt noch eine Voraussetzung.",
+          "art": "einstellung",
+          "behebung": { "ziel": "voltpilot", "label": null }
         }
       ],
       "blocked_reason_immer": "VoltPilot berechnet die Netzentgelt-Ersparnis der atypischen Netznutzung für Ihre Anlage noch nicht - es wird dafür nichts gesteuert.",
@@ -751,6 +815,7 @@
       "abschaltbar": true,
       "sichtbar": true,
       "regal": true,
+      "exklusiv_gruppe": null,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -762,12 +827,16 @@
         {
           "id": "ladepunkt",
           "label": "Ladepunkt verbunden",
-          "blocked_reason": "Es hat sich noch keine Ladesäule gemeldet. Sobald eine verbunden ist, verteilt VoltPilot die verfügbare Leistung Ihres Netzanschlusses auf die ladenden Fahrzeuge."
+          "blocked_reason": "Es hat sich noch keine Ladesäule gemeldet. Sobald eine verbunden ist, verteilt VoltPilot die verfügbare Leistung Ihres Netzanschlusses auf die ladenden Fahrzeuge.",
+          "art": "hardware",
+          "behebung": null
         },
         {
           "id": "anschlussgrenze",
           "label": "Anschlussgrenze hinterlegt",
-          "blocked_reason": "Ihre Anschlussgrenze ist noch nicht hinterlegt - ohne sie gibt VoltPilot keine Ladeleistung frei. Sie steht in Ihrem Netzanschlussvertrag."
+          "blocked_reason": "Ihre Anschlussgrenze ist noch nicht hinterlegt - ohne sie gibt VoltPilot keine Ladeleistung frei. Sie steht in Ihrem Netzanschlussvertrag.",
+          "art": "einstellung",
+          "behebung": { "ziel": "ladepark", "label": "Anschlussgrenze eintragen" }
         }
       ],
       "blocked_reason_immer": null,
@@ -797,6 +866,7 @@
       "abschaltbar": true,
       "sichtbar": true,
       "regal": false,
+      "exklusiv_gruppe": null,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {
@@ -808,7 +878,9 @@
         {
           "id": "messwert",
           "label": "Messwerte kommen an",
-          "blocked_reason": "Ihre Anlage hat noch keinen Messwert gemeldet - ohne einen gibt es nichts auszuwerten."
+          "blocked_reason": "Ihre Anlage hat noch keinen Messwert gemeldet - ohne einen gibt es nichts auszuwerten.",
+          "art": "hardware",
+          "behebung": null
         }
       ],
       "blocked_reason_immer": null,
@@ -836,6 +908,7 @@
       "abschaltbar": true,
       "sichtbar": false,
       "regal": false,
+      "exklusiv_gruppe": null,
       "strategie_knoten": null,
       "starter": null,
       "bedarf": {

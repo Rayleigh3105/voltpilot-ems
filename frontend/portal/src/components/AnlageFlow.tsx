@@ -28,6 +28,7 @@ import {
   REGAL,
   anwendung,
   betriebsmodellVorschlag,
+  exklusivGeschwister,
   istAbschaltbar,
   presetSchaltplan,
   type Profil,
@@ -1118,6 +1119,13 @@ function AnwendungenStep({
   // eingeschaltete Schalter). Nur das wird geschrieben - wer den Schritt bloß
   // durchklickt, pinnt keine Absicht, die er nie geäußert hat.
   const [gewollt, setGewollt] = useState<ReadonlySet<string>>(new Set());
+  /**
+   * ⚠ Was der Schritt ANBIETET — es wächst, es schrumpft nie. Ohne dieses Set
+   * verschwände die Radiogruppe in dem Moment, in dem der Kunde „Kein
+   * Betriebsmodell" wählt (die Zeile stand nur, weil sie vorgeschlagen war),
+   * und mit ihr der Weg zurück: eine Abwahl wäre endgültig.
+   */
+  const [angeboten, setAngeboten] = useState<ReadonlySet<string>>(new Set());
   const [zurueckgestellt, setZurueckgestellt] = useState<Zurueckgestellt | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1164,7 +1172,10 @@ function AnwendungenStep({
       setKarten(regal);
       // Der Ausgangszustand ist die SERVER-Wahrheit, nie eine Vorbelegung:
       // was schon läuft, bleibt an, alles andere aus.
-      if (regal) setGetickt(new Set(aktiveIds(regal)));
+      if (regal) {
+        setGetickt(new Set(aktiveIds(regal)));
+        setAngeboten(new Set(aktiveIds(regal)));
+      }
       if (admin) {
         entitiesApi.typeCatalog().then(
           (c) => active && setCatalog(c.types),
@@ -1201,23 +1212,54 @@ function AnwendungenStep({
     const eins = vorschlag.ticken ? [vorschlag.ticken] : [];
     setGetickt(new Set([...aktiveIds(karten), ...eins]));
     setGewollt(new Set(eins));
+    setAngeboten((v) => new Set([...v, ...aktiveIds(karten), ...eins]));
     setZurueckgestellt(vorschlag.zurueckgestellt);
   }
 
+  /**
+   * ⚠ **Betriebsmodelle sind EXKLUSIV** (Steuerung Stufe 5): das Einschalten
+   * eines Modells nimmt jedes andere DERSELBEN Gruppe aus der Auswahl — hier
+   * wie später im Regal. Der Server tut dasselbe beim Schreiben; wäre es hier
+   * anders, zeigte der Assistent zwei Häkchen und der nächste Aufruf machte
+   * daraus stillschweigend eines.
+   *
+   * `presetSchaltplan` erzeugt aus einem entfernten Häkchen genau dann ein
+   * `aus`, wenn das Modell wirklich aktiv WAR — ein bloß vorgeschlagenes
+   * verschwindet ohne einen Aufruf.
+   */
   function toggle(id: string) {
     const an = !getickt.has(id);
-    setGetickt((vorher) => {
+    const geschwister = an ? exklusivGeschwister(id) : [];
+    const anwenden = (vorher: ReadonlySet<string>): ReadonlySet<string> => {
       const next = new Set(vorher);
-      if (an) next.add(id);
-      else next.delete(id);
+      if (an) {
+        next.add(id);
+        for (const other of geschwister) next.delete(other);
+      } else {
+        next.delete(id);
+      }
       return next;
-    });
-    setGewollt((vorher) => {
+    };
+    setGetickt(anwenden);
+    setGewollt(anwenden);
+  }
+
+  /**
+   * Ein Radio WÄHLT AUS — es hakt sich nicht bloß an. Der Unterschied zählt im
+   * Altbestands-Fall: laufen ZWEI Modelle derselben Gruppe, sind beide angehakt,
+   * und ein „nur einschalten, wenn aus"-Klick wäre auf beiden ein No-op — der
+   * Kunde könnte die Anlage im Assistenten gar nicht mehr entwirren.
+   */
+  function waehleModell(id: string) {
+    const geschwister = exklusivGeschwister(id);
+    const anwenden = (vorher: ReadonlySet<string>): ReadonlySet<string> => {
       const next = new Set(vorher);
-      if (an) next.add(id);
-      else next.delete(id);
+      next.add(id);
+      for (const other of geschwister) next.delete(other);
       return next;
-    });
+    };
+    setGetickt(anwenden);
+    setGewollt(anwenden);
   }
 
   async function next() {
@@ -1263,8 +1305,14 @@ function AnwendungenStep({
   // vorgeschlagene plus jedes, das auf dieser Anlage schon läuft (es zu
   // verschweigen hiesse, ihren Funktionsumfang vor ihr zu verbergen).
   const zeilenIds = REGAL.filter(
-    (a) => getickt.has(a.id) || kartenById.get(a.id)?.active,
+    (a) => angeboten.has(a.id) || getickt.has(a.id) || kartenById.get(a.id)?.active,
   ).map((a) => a.id);
+  // Gezeigte Modelle DER Exklusivitäts-Gruppe — nur mit ihnen gibt es eine
+  // Radiogruppe und damit eine Zeile „Kein Betriebsmodell".
+  const exklusiveIds = zeilenIds.filter((id) => anwendung(id)?.exklusiv_gruppe != null);
+  const hatExklusive = exklusiveIds.length > 0;
+  const exklusiveGetickt = exklusiveIds.filter((id) => getickt.has(id));
+  const keinsGewaehlt = exklusiveGetickt.length === 0;
 
   const zeile = (id: string) => {
     const def = anwendung(id);
@@ -1273,22 +1321,36 @@ function AnwendungenStep({
     // ein Schalter ohne Gegenstück wäre eine Zusage, die niemand einlöst.
     if (!def || !karte) return null;
     const an = getickt.has(id);
+    const exklusiv = def.exklusiv_gruppe != null;
     return (
       <li key={id} className="vp-anw-row">
         <span className="vp-anw-main">
           <span className="vp-anw-label">{def.label}</span>
           <span className="vp-anw-benefit">{def.nutzen}</span>
         </span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={an}
-          aria-label={`${def.label} ${an ? 'ausschalten' : 'einschalten'}`}
-          className={`vp-switch${an ? ' on' : ''}`}
-          onClick={() => toggle(id)}
-        >
-          <span className="vp-switch-knob" aria-hidden="true" />
-        </button>
+        {/* ⚠ Ein EXKLUSIVES Modell ist ein Radio, ein gruppenloses ein Schalter -
+            dieselbe Grammatik wie im Regal unter „Steuerung". */}
+        {exklusiv ? (
+          <button
+            type="button"
+            role="radio"
+            aria-checked={an}
+            aria-label={def.label}
+            className={`vp-anw-radio${an ? ' on' : ''}`}
+            onClick={() => waehleModell(id)}
+          />
+        ) : (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={an}
+            aria-label={`${def.label} ${an ? 'ausschalten' : 'einschalten'}`}
+            className={`vp-switch${an ? ' on' : ''}`}
+            onClick={() => toggle(id)}
+          >
+            <span className="vp-switch-knob" aria-hidden="true" />
+          </button>
+        )}
       </li>
     );
   };
@@ -1371,7 +1433,32 @@ function AnwendungenStep({
         <section className="vp-onb-block">
           <h4 className="vp-onb-block-title">Ihr Betriebsmodell</h4>
           {zeilenIds.length > 0 ? (
-            <ul className="vp-anw-list">{zeilenIds.map(zeile)}</ul>
+            <ul
+              className="vp-anw-list"
+              {...(hatExklusive
+                ? { role: 'radiogroup' as const, 'aria-label': 'Ihr Betriebsmodell' }
+                : {})}
+            >
+              {zeilenIds.map(zeile)}
+              {/* Der Grundmodus IST der Weg zurück: ein Radio kann sich nicht
+                  selbst abwählen, also braucht die Gruppe diese Zeile. */}
+              {hatExklusive && (
+                <li key="__keins" className="vp-anw-row">
+                  <span className="vp-anw-main">
+                    <span className="vp-anw-label">Kein Betriebsmodell</span>
+                    <span className="vp-anw-benefit">{KEIN_BETRIEBSMODELL}</span>
+                  </span>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={!keinsGewaehlt ? false : true}
+                    aria-label="Kein Betriebsmodell"
+                    className={`vp-anw-radio${keinsGewaehlt ? ' on' : ''}`}
+                    onClick={() => exklusiveGetickt.forEach((id) => toggle(id))}
+                  />
+                </li>
+              )}
+            </ul>
           ) : (
             <p className="vp-note" style={{ marginTop: 0 }}>
               {KEIN_BETRIEBSMODELL}

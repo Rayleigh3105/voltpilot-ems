@@ -22,7 +22,6 @@
  * selbst nach.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
   ApiError,
@@ -37,12 +36,12 @@ import { InfoTip } from '../components/InfoTip';
 import { JetztZone } from '../components/JetztZone';
 import { LadeparkKapsel } from '../components/LadeparkKapsel';
 import { RegelnKapsel } from '../components/RegelnKapsel';
-import { CoOptimizationStrip, PartHead } from '../components/SteuerungParts';
+import { Betriebsmodelle } from '../components/Betriebsmodelle';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ModusContainer } from '../components/ModusContainer';
 import { EINRICHTUNG_DURCH_VOLTPILOT } from '../moduleSurface';
 import { anlageRoute, befehleHash, hashForRoute, pageRoute, type AnlagenSub } from '../nav';
 import type { NavTarget } from '../anlageNav';
-import { optimizerApi } from '../optimizerApi';
 import {
   customerFlowApi,
   type FlowNodeGovernance,
@@ -55,13 +54,15 @@ import {
   PROFILE_CAPSULE_INTRO,
   PROFILE_CAPSULE_TITLE,
   PROTECTION_INTRO,
-  coOptimization,
-  profileRows,
   protectionItems,
-  socReservationStack,
-  type ProfileRow,
-  type ReservationInput,
 } from '../steuerungArea';
+import {
+  betriebsmodellZone,
+  type AmpelZeile,
+  type BetriebsmodellKarte,
+} from '../betriebsmodelle';
+import { ausschaltFolgen, folgenZeilen, wechselFolgen, type FolgenKarte }
+  from '../regeln/folgen';
 import { type ProfileState, type SiteProfiles } from '../profiles';
 import { beanspruchtSpeicher } from '../regeln/zustand';
 import {
@@ -123,7 +124,12 @@ export function SteuerungSection({
   // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft: ein älteres Backend
   // kennt die Route nicht, dann gibt es die Ladepark-Kapsel schlicht nicht.
   const [charging, setCharging] = useState<SiteCharging | null>(null);
-  const [reservation, setReservation] = useState<ReservationInput | null>(null);
+  /** Bezugszeit der Betriebsmodell-Zone; wird beim Nachladen neu gesetzt. */
+  const [zoneNow, setZoneNow] = useState(() => new Date());
+  /** Die offene Folgen-Karte (Wechsel/Ausschalten) samt ihrer Handlung. */
+  const [folgen, setFolgen] = useState<
+    { karte: FolgenKarte; run: () => void } | null
+  >(null);
   const [listState, setListState] = useState<'idle' | 'loading' | 'error'>('loading');
   const [editing, setEditing] = useState<Editing | null>(null);
   /**
@@ -174,7 +180,6 @@ export function SteuerungSection({
       api.usageProfile(site.id).catch(() => null),
       api.earnings('month').catch(() => null),
       api.siteProfiles(site.id).catch(() => null),
-      optimizerApi.configViaSwitcher(site.id).catch(() => null),
       // Der Speicher-Asset speist die Speicherschonungs-Einstellung im Container
       // (v3.1-M3); fail-soft wie der Rest.
       api.siteAssets(site.id).catch(() => null),
@@ -182,7 +187,7 @@ export function SteuerungSection({
       // die Ladepark-Kapsel entfällt - kein Sonderfall, nur nichts zu zeigen.
       api.siteChargers(site.id).catch(() => null),
     ])
-      .then(([list, entityList, gov, profile, money, shelf, config, siteAssets, chargePoints]) => {
+      .then(([list, entityList, gov, profile, money, shelf, siteAssets, chargePoints]) => {
         setFlows(list);
         setEntities(entityList);
         setGovernance(gov);
@@ -191,18 +196,11 @@ export function SteuerungSection({
         setProfiles(shelf);
         setAssets(siteAssets);
         setCharging(chargePoints);
-        setReservation({
-          socMinPct: config?.effective.socMinPct ?? null,
-          socMaxPct: config?.effective.socMaxPct ?? null,
-          backupReserveSocPct: config?.effective.backupReserveSocPct ?? null,
-          // Die Lastspitzen-Reserve steht READ-ONLY auf dem SiteDto, ist also
-          // auch ohne Admin-Route lesbar.
-          peakReserveSocPct: site.peakReserveSocPct ?? null,
-        });
+        setZoneNow(new Date());
         setListState('idle');
       })
       .catch(() => setListState('error'));
-  }, [flowApi, site.id, site.peakReserveSocPct]);
+  }, [flowApi, site.id]);
 
   useEffect(() => {
     reload();
@@ -251,11 +249,15 @@ export function SteuerungSection({
    */
   const baseViews = useMemo(() => baseSurface(surfaceInput).deepViews, [surfaceInput]);
 
-  const co = useMemo(() => coOptimization(modes), [modes]);
-  const layers = useMemo(() => socReservationStack(reservation), [reservation]);
-  const rows = useMemo(
-    () => profileRows(profiles?.profiles, modes, earnings),
-    [profiles, modes, earnings],
+  /**
+   * Zone ③ (Stufe 5). `now` ist ein Zustand statt `new Date()` im Rumpf, damit
+   * „läuft seit heute, 14:02" nicht bei jedem Render neu gerechnet wird — der
+   * Wert ändert sich nur beim Nachladen (die `liveness.ts`-Disziplin: Zustand
+   * und Bezugszeit gehören zusammen).
+   */
+  const zone = useMemo(
+    () => betriebsmodellZone(profiles?.profiles, modes, earnings, zoneNow),
+    [profiles, modes, earnings, zoneNow],
   );
   const protections = useMemo(() => protectionItems(siteState), [siteState]);
   /**
@@ -373,18 +375,107 @@ export function SteuerungSection({
     [site.id, reload, fail],
   );
 
+  /** Eine Unterseite DIESER Anlage öffnen (Behebungs-Wege, Container-Ziele). */
+  const openSub = useCallback(
+    (sub: AnlagenSub) => {
+      if (onOpenSub) onOpenSub(sub);
+      else window.location.hash = hashForRoute(anlageRoute(site.id, sub));
+    },
+    [onOpenSub, site.id],
+  );
+
+  /**
+   * Zone ③ · die RADIOGRUPPE. `null` = zurück in den Grundmodus.
+   *
+   * ⚠ **Es wird IMMER nur EIN Aufruf abgesetzt** — das Abschalten des alten
+   * Modells macht der SERVER in derselben Transaktion (`SiteProfileService`).
+   * Zwei Aufrufe nacheinander hätten ein Fenster, in dem beide oder keines an
+   * ist, und ein Fehlschlag dazwischen ließe die Anlage in genau diesem
+   * halben Zustand zurück.
+   */
+  const waehleModell = useCallback(
+    (karte: BetriebsmodellKarte | null) => {
+      // ⚠ Auf einer ALTBESTANDS-Anlage laufen mehrere zugleich; `zone.aktiv` ist
+      // dann bewusst null (es gibt kein EINES). Was durch die Wahl ENDET, sind
+      // die anderen laufenden — die Karte muss sie beim Namen nennen, sonst
+      // verschwiege sie genau die Folge, wegen der gefragt wird.
+      const endende = zone.altbestand.length > 0
+        ? zone.altbestand.filter((k) => k.id !== (karte?.id ?? null))
+        : (zone.aktiv && zone.aktiv.id !== (karte?.id ?? null) ? [zone.aktiv] : []);
+      // Die Wahl, die schon gilt, ist keine Entscheidung — ein Radio kann sich
+      // nicht selbst abwählen, und eine Rückfrage darüber wäre Rauschen.
+      if (endende.length === 0 && (karte?.id ?? null) === (zone.aktiv?.id ?? null)) return;
+      if (!karte) {
+        if (endende.length === 0) return;
+        // Zurück in den Grundmodus: es endet ALLES, was gerade läuft.
+        setFolgen({
+          karte: ausschaltFolgen(endende.map((k) => k.label).join('" und „')),
+          run: () => {
+            for (const k of endende) void toggleProfile(k.id, 'aus');
+          },
+        });
+        return;
+      }
+      setFolgen({
+        karte: wechselFolgen({
+          von: endende.length > 0 ? endende.map((k) => k.label).join('" und „') : null,
+          nach: karte.label,
+          belegVon: endende.length === 1 ? endende[0].beleg : null,
+          risikoNach: karte.blockedReason,
+        }),
+        run: () => void toggleProfile(karte.id, 'an'),
+      });
+    },
+    [zone, toggleProfile],
+  );
+
+  /** Zone ③ · ein Modell OHNE Gruppe (eigener Schalter, keine Wechsel-Karte). */
+  const schalteModell = useCallback(
+    (karte: BetriebsmodellKarte, an: boolean) => {
+      if (!an) {
+        setFolgen({
+          karte: ausschaltFolgen(karte.label),
+          run: () => void toggleProfile(karte.id, 'aus'),
+        });
+        return;
+      }
+      setFolgen({
+        karte: wechselFolgen({ von: null, nach: karte.label, risikoNach: karte.blockedReason }),
+        run: () => void toggleProfile(karte.id, 'an'),
+      });
+    },
+    [toggleProfile],
+  );
+
+  /**
+   * Der Behebungs-Weg einer Ampel-Zeile. Es gibt bewusst NUR die drei Ziele,
+   * die es wirklich gibt — ein viertes Wort führt nirgendwohin, also wird auch
+   * nichts getan (der Server sendet nie eines, das der Katalog nicht kennt).
+   */
+  const geheWeg = useCallback(
+    (zeile: AmpelZeile) => {
+      if (!zeile.weg) return;
+      if (zeile.weg.ziel === 'einstellungen') openSub('technik');
+      else if (zeile.weg.ziel === 'modell') openSub('modell');
+      else if (zeile.weg.ziel === 'ladepark') {
+        // Der Ladepark wohnt auf DIESER Seite — ein Nav-Sprung führte im Kreis.
+        document.getElementById('vp-ladepark')?.scrollIntoView({ block: 'start' });
+      }
+    },
+    [openSub],
+  );
+
   /** Eine Ansicht dieses Modus öffnen (Container → Sidebar-Ziel). */
   const navigateView = useCallback(
     (target: NavTarget) => {
       if (target.kind === 'sub') {
         if (target.sub == null) return;
-        if (onOpenSub) onOpenSub(target.sub);
-        else window.location.hash = hashForRoute(anlageRoute(site.id, target.sub));
+        openSub(target.sub);
       } else if (target.kind === 'page') {
         window.location.hash = hashForRoute(pageRoute(target.page));
       }
     },
-    [onOpenSub, site.id],
+    [openSub],
   );
 
   /** „Flow öffnen" aus dem Container: den echten Flow des Modus öffnen. */
@@ -481,40 +572,31 @@ export function SteuerungSection({
             speicherName={speicherName}
           />
 
-          {/* --- Kapsel 1 · Anwendungen ------------------------------------ */}
-          <section className="vp-capsule" aria-label={PROFILE_CAPSULE_TITLE}>
-            <PartHead title={PROFILE_CAPSULE_TITLE} intro={PROFILE_CAPSULE_INTRO} />
-            <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-              {rows.length === 0 ? (
-                <p className="vp-capsule-empty">{PROFILE_CAPSULE_EMPTY}</p>
-              ) : (
-                <ul className="vp-profrows">
-                  {rows.map((row) => (
-                    <ProfileRowView
-                      key={row.id}
-                      row={row}
-                      busy={toggling === row.id}
-                      onToggle={toggleProfile}
-                      onOpen={setOpenContainer}
-                    />
-                  ))}
-                </ul>
-              )}
-              {co && (
-                <div className="vp-capsule-foot">
-                  <CoOptimizationStrip co={co} layers={layers} />
-                </div>
-              )}
-            </Card>
-          </section>
+          {/* --- Zone ③ · Betriebsmodelle (Konzept b3 §3.4, Stufe 5) --------
+              Radio statt unabhängiger Schalter: es fährt immer genau EINES,
+              oder der Grundmodus. Die Exklusivität erzwingt der SERVER — hier
+              steht nur, wie sie aussieht und was der Kunde vorher liest. */}
+          <Betriebsmodelle
+            zone={zone}
+            title={PROFILE_CAPSULE_TITLE}
+            intro={PROFILE_CAPSULE_INTRO}
+            emptyText={PROFILE_CAPSULE_EMPTY}
+            busyId={toggling}
+            onWaehlen={waehleModell}
+            onSchalten={schalteModell}
+            onOpen={setOpenContainer}
+            onWeg={geheWeg}
+          />
 
           {/* --- Ladepark (nur mit Ladesäulen) ----------------------------- */}
           {charging && charging.chargers.length > 0 && (
-            <LadeparkKapsel
-              site={siteState}
-              charging={charging}
-              hasPv={signals?.hasPv === true}
-            />
+            <div id="vp-ladepark">
+              <LadeparkKapsel
+                site={siteState}
+                charging={charging}
+                hasPv={signals?.hasPv === true}
+              />
+            </div>
           )}
 
           {/* --- Kapsel 2 · Regeln (Naming Set A) -------------------------- */}
@@ -557,81 +639,24 @@ export function SteuerungSection({
             ))}
           </p>
 
+          {folgen && (
+            <ConfirmDialog
+              open
+              title={folgen.karte.titel}
+              intro={folgen.karte.intro}
+              consequences={folgenZeilen(folgen.karte)}
+              confirmLabel={folgen.karte.bestaetigen}
+              busy={toggling != null}
+              onConfirm={() => {
+                const run = folgen.run;
+                setFolgen(null);
+                run();
+              }}
+              onCancel={() => setFolgen(null)}
+            />
+          )}
         </>
       )}
     </div>
-  );
-}
-
-/**
- * Eine ANTIPPBARE Zeile eines BETRIEBSMODELLS: Statuspunkt · Name ·
- * **Nutzen-Satz** · **Voraussetzungs-Chips** · ggf. der Beitrag · Chevron
- * (öffnet den Modus-Container) und rechts der Schalter. Der Schalter ist ein
- * eigener Knopf NEBEN der Öffnen-Fläche (kein verschachteltes `<button>`) und
- * stoppt die Propagation, damit ein Umschalten nie in den Container navigiert.
- *
- * ⚠ Der Beitrag steht nur da, wenn es ihn WIRKLICH gibt (Steuerung Stufe 0):
- * vorher hing hier auf jeder nicht laufenden Zeile ein „—", das keine der vier
- * Kundenfragen beantwortete. Die Antwort auf „Was bringt mir das?" ist der
- * Nutzen-Satz, die auf „Was brauche ich?" sind die Chips.
- */
-function ProfileRowView({
-  row,
-  busy,
-  onToggle,
-  onOpen,
-}: {
-  row: ProfileRow;
-  busy: boolean;
-  onToggle: (id: string, next: ProfileState) => void;
-  onOpen: (id: string) => void;
-}) {
-  return (
-    <li className={`vp-profrow${row.on ? ' on' : ''}`}>
-      <span className={`vp-rowdot ${row.tone}`} aria-hidden="true" />
-      <button
-        type="button"
-        className="vp-profrow-open"
-        aria-label={`${row.label} öffnen`}
-        onClick={() => onOpen(row.id)}
-      >
-        <span className="vp-profrow-text">
-          <strong>{row.label}</strong>
-          <span className="vp-profrow-benefit">{row.benefit}</span>
-          {row.requirements.length > 0 && (
-            <span className="vp-profrow-reqs">
-              {row.requirements.map((r) => (
-                <span
-                  key={r.label}
-                  className={`vp-profrow-req${r.met ? ' met' : ''}`}
-                >
-                  {r.met ? '✓ ' : ''}
-                  {r.text}
-                </span>
-              ))}
-            </span>
-          )}
-          {row.contribution && (
-            <span className="vp-profrow-contrib">{row.contribution}</span>
-          )}
-          {row.blockedReason && <span className="vp-profrow-blocked">{row.blockedReason}</span>}
-        </span>
-        <Icon name="chevron-right" size={16} />
-      </button>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={row.on}
-        aria-label={`${row.label} ${row.on ? 'ausschalten' : 'einschalten'}`}
-        className={`vp-switch${row.on ? ' on' : ''}`}
-        disabled={busy}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggle(row.id, row.on ? 'aus' : 'an');
-        }}
-      >
-        <span className="vp-switch-knob" aria-hidden="true" />
-      </button>
-    </li>
   );
 }

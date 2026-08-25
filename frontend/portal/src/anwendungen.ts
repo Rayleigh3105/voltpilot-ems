@@ -48,11 +48,36 @@ export type Profil = 'privat' | 'gewerbe';
 /** Die Geld-Sprache eines Profils. */
 export type Tonalitaet = 'sparen' | 'verdienen';
 
+/**
+ * Die zwei SORTEN einer Voraussetzung (Steuerung Stufe 5):
+ *  - `hardware`    — was die Anlage physisch hergeben muss. Fehlt davon etwas,
+ *    kann das Betriebsmodell HIER gar nicht laufen.
+ *  - `einstellung` — ein Wert, den jemand einträgt. Dann steht die Karte
+ *    normal da, und die Ampel zeigt den Weg.
+ */
+export type VoraussetzungsArt = 'hardware' | 'einstellung';
+
+/** Wohin der Kunde muss, um eine Voraussetzung zu erfüllen. */
+export type BehebungsZiel = 'einstellungen' | 'modell' | 'ladepark' | 'voltpilot';
+
+export interface AnwendungBehebung {
+  ziel: BehebungsZiel;
+  /**
+   * Die Beschriftung des Wegs — `null` für `voltpilot`: ein admin-conditionaler
+   * Wert hat kein Klickziel, VoltPilot trägt ihn ein (Konzept §3.4).
+   */
+  label: string | null;
+}
+
 export interface AnwendungVoraussetzung {
   id: string;
   label: string;
   /** Der ehrliche Satz, wenn GENAU diese Voraussetzung fehlt. */
   blocked_reason: string | null;
+  /** Hardware oder Einstellung (Stufe 5). */
+  art: VoraussetzungsArt;
+  /** Der Weg zur Behebung, oder null — dann wird auch keiner behauptet. */
+  behebung: AnwendungBehebung | null;
 }
 
 export interface AnwendungBausteine {
@@ -89,6 +114,15 @@ export interface AnwendungDef {
    * unverändert weiter — nur die Seite zeigt sie nicht mehr.
    */
   regal: boolean;
+  /**
+   * Die Exklusivitäts-Gruppe (Stufe 5) oder `null`: zwei Betriebsmodelle
+   * DERSELBEN Gruppe sind nie zugleich an — ihr Schalter ist ein Radio, und
+   * der SERVER erzwingt es beim Schreiben. Heute gibt es genau eine Gruppe
+   * (`speicher`) mit den drei Modellen, die um denselben Speicher
+   * konkurrieren; das Ladepark-Lastmanagement gehört bewusst keiner an
+   * (Begründung im Katalog-Kopf).
+   */
+  exklusiv_gruppe: string | null;
   strategie_knoten: string | null;
   starter: string | null;
   bedarf: { rollen: string[]; actuate: string[]; messung: string[] };
@@ -170,6 +204,31 @@ export function imRegal(id: string | null | undefined): boolean {
 /** Die Anwendung mit dieser Id, oder null (ein neuerer Server, ältere Kopie). */
 export function anwendung(id: string | null | undefined): AnwendungDef | null {
   return id ? (BY_ID.get(id) ?? null) : null;
+}
+
+/**
+ * Die Exklusivitäts-Gruppe einer Anwendung, oder `null` (Steuerung Stufe 5).
+ * Eine dem Katalog UNBEKANNTE Id gehört zu keiner Gruppe — was wir nicht kennen,
+ * schaltet nichts anderes ab.
+ */
+export function exklusivGruppe(id: string | null | undefined): string | null {
+  return anwendung(id)?.exklusiv_gruppe ?? null;
+}
+
+/**
+ * Die ANDEREN sichtbaren Anwendungen derselben Gruppe — genau die, die beim
+ * Einschalten dieser hier enden. Ohne Gruppe ist das Ergebnis LEER, und das ist
+ * die tragende Regel: ein Modell ohne Gruppe schaltet nie etwas anderes ab.
+ *
+ * ⚠ Der SERVER erzwingt die Exklusivität beim Schreiben; diese Funktion sorgt
+ * nur dafür, dass eine Fläche VOR dem Absenden dasselbe zeigt, was danach gilt.
+ */
+export function exklusivGeschwister(id: string): string[] {
+  const gruppe = exklusivGruppe(id);
+  if (!gruppe) return [];
+  return ANWENDUNGEN.filter(
+    (a) => a.sichtbar && a.id !== id && a.exklusiv_gruppe === gruppe,
+  ).map((a) => a.id);
 }
 
 /** Ihr kundenseitiger Name; ohne Katalog-Eintrag die Id selbst (nie geraten). */

@@ -1,0 +1,260 @@
+/* ==========================================================================
+   Zone ③ · Betriebsmodelle (Steuerung Stufe 5)
+   ==========================================================================
+   Komponenten-lokal wie `Steuerung.css`/`Regeln.css` — `index.css` bleibt
+   unangetastet.
+
+   ⚠ Ein RADIO ist kein Schalter, und das muss man SEHEN: der Punkt links ist
+   rund und gefüllt, wenn er gewählt ist. Wer hier den `.vp-switch` des Regals
+   wieder einsetzt, macht aus „genau eines" wieder „beliebig viele".
+   ========================================================================== */
+
+.vp-bm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vp-bm-eigene {
+  margin-top: var(--vp-space-4, 16px);
+  padding-top: var(--vp-space-3, 12px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+
+.vp-bm-card {
+  display: grid;
+  /* Auswahl-Fläche | Chevron — die Ampel spannt darunter über beide Spalten. */
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--vp-space-2, 8px);
+  padding: var(--vp-space-3, 12px) 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-bm-list > .vp-bm-card:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* --- Die Auswahl-Fläche -------------------------------------------------- */
+
+.vp-bm-pick {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vp-bm-pick:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.vp-bm-pick:hover:not(:disabled) strong {
+  color: var(--vp-action, #2c5282);
+}
+
+/* Der Punkt gehört zum TITEL, nicht zum Fließtext — dieselbe Versatz-Rechnung
+   wie bei `.vp-profrow` (Zeilenhöhe der Überschrift). */
+.vp-bm-dot {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 2px solid var(--vp-border, #cbd5e1);
+  background: var(--vp-surface, #fff);
+  box-sizing: border-box;
+}
+
+.vp-bm-card.on .vp-bm-dot {
+  border-color: var(--vp-action, #2c5282);
+  /* Der gefüllte Kern über einen Innenschatten — kein zweites Element nötig. */
+  box-shadow: inset 0 0 0 3px var(--vp-surface, #fff);
+  background: var(--vp-action, #2c5282);
+}
+
+.vp-bm-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-bm-nutzen {
+  color: var(--vp-text-muted, #64748b);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.vp-bm-seit {
+  color: var(--vp-success, #38a169);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.vp-bm-beleg {
+  color: var(--vp-text-muted, #64748b);
+  font-size: 0.8rem;
+}
+
+.vp-bm-blocked {
+  color: var(--vp-warning, #dd6b20);
+  font-size: 0.8rem;
+}
+
+.vp-bm-open {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-text-muted, #94a3b8);
+  cursor: pointer;
+}
+
+.vp-bm-open:hover {
+  color: var(--vp-action, #2c5282);
+}
+
+/* --- Die Voraussetzungs-Ampel -------------------------------------------- */
+
+.vp-bm-ampel {
+  grid-column: 1 / -1;
+  list-style: none;
+  margin: var(--vp-space-2, 8px) 0 0 30px; /* bündig unter dem Titel */
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-bm-ampel > li {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vp-bm-req {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  background: var(--vp-surface-2, #f8fafc);
+  color: var(--vp-text-muted, #64748b);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-bm-ampel > li.met .vp-bm-req {
+  border-color: color-mix(in srgb, var(--vp-success, #38a169) 30%, transparent);
+  color: var(--vp-success, #38a169);
+}
+
+.vp-bm-weg {
+  /* Ein Weg ist ein Weg, kein Alarm — er sieht aus wie ein Link. */
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.76rem;
+  color: var(--vp-link, #2c5282);
+  text-decoration: underline;
+  cursor: pointer;
+  position: relative;
+}
+
+/* ≥44 px Trefferfläche ohne die Zeile auseinanderzuziehen (das
+   `.vp-switch`-Muster). */
+.vp-bm-weg::before {
+  content: '';
+  position: absolute;
+  inset: -14px -6px;
+}
+
+.vp-bm-vp {
+  color: var(--vp-text-muted, #94a3b8);
+  font-size: 0.76rem;
+}
+
+/* --- Altbestand + „Nicht möglich" ---------------------------------------- */
+
+.vp-bm-alt {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-2, 8px);
+  margin-bottom: var(--vp-space-4, 16px);
+  padding: var(--vp-space-3, 12px);
+  border-radius: var(--vp-radius-md, 10px);
+  border: 1px solid color-mix(in srgb, var(--vp-warning, #dd6b20) 35%, transparent);
+  background: color-mix(in srgb, var(--vp-warning, #dd6b20) 8%, transparent);
+  min-width: 0;
+}
+
+.vp-bm-alt > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--vp-warning, #dd6b20);
+}
+
+.vp-bm-alt > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.vp-bm-unmoeglich {
+  margin-top: var(--vp-space-4, 16px);
+  padding-top: var(--vp-space-3, 12px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-bm-unmoeglich > summary {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  color: var(--vp-text-muted, #64748b);
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.vp-bm-unmoeglich > ul {
+  list-style: none;
+  margin: var(--vp-space-2, 8px) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--vp-text-muted, #64748b);
+  font-size: 0.84rem;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .vp-bm-ampel {
+    margin-left: 0;
+  }
+}

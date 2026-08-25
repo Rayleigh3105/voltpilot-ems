@@ -126,7 +126,7 @@ public class SiteProfileService {
 
     private SiteProfilesDto shelf(UUID siteId, SiteDto site) {
         UsageProfileService.PlantSignals plant = usageProfiles.plantSignals(siteId, site);
-        Map<String, String> stored = states.findBySite(siteId);
+        Map<String, SiteProfileStateRepository.StoredState> stored = states.findBySite(siteId);
         Set<String> enabled = gatedNodes.enabledNodeTypes(siteId);
         FlowIndex index = indexFlows(siteId);
         AnwendungDerivation.Input in = derivationInput(site, plant, index);
@@ -136,7 +136,8 @@ public class SiteProfileService {
         List<SiteProfilesDto.Profile> regal = new ArrayList<>();
         List<SiteProfilesDto.Profile> weitere = new ArrayList<>();
         for (Anwendung a : anwendungen.sichtbare()) {
-            String state = stored.get(a.id());
+            SiteProfileStateRepository.StoredState row = stored.get(a.id());
+            String state = row == null ? null : row.state();
             boolean derived = AnwendungDerivation.derivedActive(a.id(), in);
             boolean active = SiteProfileStateRepository.STATE_AUS.equals(state) ? false
                     : SiteProfileStateRepository.STATE_AN.equals(state) || derived;
@@ -149,7 +150,8 @@ public class SiteProfileService {
                     active ? (flow != null ? ORIGIN_FLOW : ORIGIN_MASTERDATA) : null,
                     flow == null ? null
                             : new SiteProfilesDto.FlowRef(flow.flowId().toString(), flow.name()),
-                    gated, gated.isEmpty() || enabled.containsAll(gated));
+                    gated, gated.isEmpty() || enabled.containsAll(gated),
+                    a.exklusivGruppe(), seit(row, active));
             (a.imRegal() ? regal : weitere).add(card);
         }
         return new SiteProfilesDto(regal, weitere);
@@ -188,12 +190,82 @@ public class SiteProfileService {
         }
         UUID tenantId = TenantContext.get();
         if (SiteProfileStateRepository.STATE_AN.equals(state)) {
+            loeseAb(siteId, tenantId, anwendung, site);
             switchOn(siteId, tenantId, anwendung, site);
         } else {
             switchOff(siteId, tenantId, anwendung);
         }
         states.upsert(tenantId, siteId, anwendung.id(), state);
         return shelf(siteId, site);
+    }
+
+    /**
+     * <b>Betriebsmodelle sind EXKLUSIV</b> (Steuerung Stufe 5, Konzept
+     * {@code vp-steuerung-konzept-b3} §3.4: „Immer nur EIN Betriebsmodell"):
+     * schaltet der Kunde eines seiner Gruppe ein, endet jedes andere derselben
+     * Gruppe — hier, in DERSELBEN Transaktion wie das Einschalten.
+     *
+     * <p><b>Die Sequenz ist bindend, nicht Stil</b> (sie steht wortgleich in
+     * der Wechsel-Karte, die der Kunde vorher sieht):
+     * <ol>
+     *   <li><b>Zuerst ABLÖSEN, dann einschalten.</b> Damit ist die Zusage „nur
+     *       eines" in JEDEM Moment der Transaktion wahr; wäre es umgekehrt,
+     *       stünden für die Dauer des Aufrufs zwei Strategien auf demselben
+     *       Speicher. Der Starter des neuen Modells fällt sonst zusätzlich in
+     *       den ehrlichen {@code already_has_flow}-No-op des alten Flows.</li>
+     *   <li><b>{@link #switchOff} legt den Strategie-Flow des alten Modells
+     *       still</b> — ein echter Rückzug: {@code FlowService.deactivate}
+     *       setzt die aktive Version auf {@code retired} UND veröffentlicht
+     *       den Roll-out-Satz neu, der Flow verschwindet also auch vom GERÄT.
+     *       Danach werden seine gated Knotentypen wieder geschlossen.</li>
+     *   <li><b>Der gespeicherte Wille wird auf {@code aus} gesetzt</b>, damit
+     *       ein weiterhin ABGELEITETES Signal (ein hinterlegter Leistungspreis,
+     *       eine Direktvermarktung) das abgelöste Modell nicht stillschweigend
+     *       wiederbelebt — genau die Aufgabe, für die es {@code aus} gibt.</li>
+     *   <li>Erst dann läuft {@link #switchOn} für das neue Modell.</li>
+     * </ol>
+     *
+     * <p><b>Was hier ausdrücklich NICHT passiert:</b> der laufende
+     * Viertelstunden-Slot wird nicht abgebrochen, und der Optimierer wird nicht
+     * angestoßen — er rechnet ohnehin alle 15 Minuten neu. Deshalb sagt die
+     * Wechsel-Karte „beginnt mit dem nächsten Fahrplan", nie „sofort".
+     *
+     * <p><b>Kein DB-CHECK</b> (Konzept §4): eine BESTANDSANLAGE mit zwei
+     * aktiven Modellen behält sie, bis der Kunde selbst wählt. Ein Constraint
+     * würde ihr beim nächsten beliebigen Schreibvorgang eine Wahl aufzwingen,
+     * die sie nie getroffen hat; Multi-Use ist ein eigenes Konzept.
+     *
+     * <p><b>Kein Journal-Eintrag</b> (bewusste Abweichung von der Konzept-
+     * Notiz): es gibt keine Anwendungs-Journal-Tabelle, und eine neue nur für
+     * diesen Übergang anzulegen wäre ein zweiter Speicher neben dem, der die
+     * Wahrheit schon trägt ({@code site_profile_state} IST der Zustand, und
+     * der stillgelegte Flow trägt seine eigene Versions-Historie). Der Übergang
+     * wird stattdessen protokolliert.
+     */
+    private void loeseAb(UUID siteId, UUID tenantId, Anwendung neu, SiteDto site) {
+        List<Anwendung> geschwister = anwendungen.gruppengeschwister(neu);
+        if (geschwister.isEmpty()) {
+            return;
+        }
+        Map<String, SiteProfileStateRepository.StoredState> stored = states.findBySite(siteId);
+        AnwendungDerivation.Input in = derivationInput(site,
+                usageProfiles.plantSignals(siteId, site), indexFlows(siteId));
+        for (Anwendung alt : geschwister) {
+            SiteProfileStateRepository.StoredState row = stored.get(alt.id());
+            String state = row == null ? null : row.state();
+            if (SiteProfileStateRepository.STATE_AUS.equals(state)) {
+                continue;
+            }
+            boolean aktiv = SiteProfileStateRepository.STATE_AN.equals(state)
+                    || AnwendungDerivation.derivedActive(alt.id(), in);
+            if (!aktiv) {
+                continue;
+            }
+            log.info("Betriebsmodell-Wechsel auf Anlage {}: „{}“ endet, „{}“ beginnt "
+                    + "(Gruppe {})", siteId, alt.label(), neu.label(), neu.exklusivGruppe());
+            switchOff(siteId, tenantId, alt);
+            states.upsert(tenantId, siteId, alt.id(), SiteProfileStateRepository.STATE_AUS);
+        }
     }
 
     /**
@@ -310,13 +382,36 @@ public class SiteProfileService {
         return "dynamisch".equals(site.tarifArt()) || "direktvermarktung".equals(site.plantKind());
     }
 
+    /**
+     * Seit wann dieses Betriebsmodell läuft — {@code null}, wo es nicht BELEGT
+     * ist (Steuerung Stufe 5).
+     *
+     * <p>Der Stempel ist {@code site_profile_state.updated_at} und trägt nur
+     * dann eine Aussage, wenn der gespeicherte Wille {@code an} ist: eine
+     * ABGELEITET aktive Anwendung hat gar keine Zeile (jede Bestandsanlage),
+     * und ein gespeichertes {@code aus} beschreibt das Ende, nicht den Beginn.
+     * In beiden Fällen sagt die Fläche „läuft" ohne Datum, statt eines zu
+     * erfinden — dieselbe „nie eine erfundene Zahl"-Disziplin wie überall hier.
+     */
+    private static java.time.Instant seit(SiteProfileStateRepository.StoredState row,
+            boolean active) {
+        if (row == null || !active || !SiteProfileStateRepository.STATE_AN.equals(row.state())) {
+            return null;
+        }
+        return row.seit();
+    }
+
     /** Die Voraussetzungs-Chips: Label aus dem Katalog, Urteil aus der Regel. */
     private List<SiteProfilesDto.Requirement> requirements(Anwendung a,
             AnwendungDerivation.Input in) {
         List<SiteProfilesDto.Requirement> chips = new ArrayList<>();
         for (Voraussetzung v : a.voraussetzungen()) {
+            AnwendungKatalog.Behebung b = v.behebung();
             chips.add(new SiteProfilesDto.Requirement(v.label(),
-                    AnwendungDerivation.requirementMet(v.id(), in)));
+                    AnwendungDerivation.requirementMet(v.id(), in),
+                    v.istHardware() ? AnwendungKatalog.ART_HARDWARE
+                            : AnwendungKatalog.ART_EINSTELLUNG,
+                    b == null ? null : new SiteProfilesDto.Behebung(b.ziel(), b.label())));
         }
         return chips;
     }

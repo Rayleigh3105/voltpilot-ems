@@ -2,11 +2,11 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { SteuerungSection } from './SteuerungSection';
 import { api, type Site } from '../api';
-import { optimizerApi } from '../optimizerApi';
 import * as flowsApi from '../flows/flowsApi';
 import type { SiteProfile } from '../profiles';
 import type { Consumer, ConsumerOptions } from '../consumers/types';
 import { buildGuidedFlow } from '../flows/guidedBuilder';
+import { DURCH_VOLTPILOT } from '../betriebsmodelle';
 
 // The read-only canvas preview needs real layout; the derivation it renders is
 // covered by the flow-editor tests.
@@ -238,29 +238,99 @@ beforeEach(() => {
         id: 'lastspitzenkappung',
         label: 'Lastspitzenkappung',
         active: true,
+        seit: '2026-08-12T09:15:00Z',
         requirements: [
-          { label: 'Leistungspreis hinterlegt', met: false },
-          { label: 'Speicher', met: true },
+          // Der Server sendet seit Stufe 5 die ART und ihren WEG mit: ein
+          // Leistungspreis ist eine EINSTELLUNG, kein Hardware-Fakt - die Karte
+          // bleibt also wählbar und bekommt den Direktlink.
+          {
+            label: 'Leistungspreis hinterlegt',
+            met: false,
+            art: 'einstellung',
+            behebung: { ziel: 'voltpilot', label: null },
+          },
+          { label: 'Speicher', met: true, art: 'hardware', behebung: null },
         ],
       }),
       profile({
         id: 'marktvermarktung',
         label: 'Marktvermarktung',
         active: true,
-        blockedReason: 'Läuft noch nicht: Ihrer Anlage fehlt ein dynamischer Tarif.',
+        requirements: [
+          {
+            label: 'Marktzugang',
+            met: false,
+            art: 'einstellung',
+            behebung: { ziel: 'einstellungen', label: 'Stromtarif hinterlegen' },
+          },
+        ],
       }),
-      profile({ id: 'atypische-netznutzung', label: 'Atypische Netznutzung', active: false }),
+      profile({
+        id: 'atypische-netznutzung',
+        label: 'Atypische Netznutzung',
+        active: false,
+        requirements: [
+          // HARDWARE - und die fehlt: diese Karte landet unter „Nicht möglich".
+          { label: 'Leistungsmessung', met: false, art: 'hardware', behebung: null },
+        ],
+      }),
     ],
   });
   vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
-  vi.spyOn(optimizerApi, 'configViaSwitcher').mockResolvedValue({
-    effective: { socMinPct: 5, socMaxPct: 95, backupReserveSocPct: 20, wearCostCtPerKwh: 4 },
-  } as never);
 });
 
 afterEach(() => {
   window.location.hash = '';
 });
+
+/**
+ * Der NORMALFALL nach Stufe 5: genau EIN Betriebsmodell läuft. Die Grundantwort
+ * oben ist bewusst ein ALTBESTAND (zwei aktive) - das ist der Zustand jeder nie
+ * gewählten Bestandsanlage; wer die Radiogruppe im Normalfall prüft, setzt ihn
+ * mit diesem Helfer.
+ */
+function nurEinsAktiv() {
+  vi.spyOn(api, 'siteProfiles').mockResolvedValue({
+    profiles: [
+      profile({
+        id: 'lastspitzenkappung',
+        label: 'Lastspitzenkappung',
+        active: true,
+        seit: '2026-08-12T09:15:00Z',
+        requirements: [
+          {
+            label: 'Leistungspreis hinterlegt',
+            met: false,
+            art: 'einstellung',
+            behebung: { ziel: 'voltpilot', label: null },
+          },
+          { label: 'Speicher', met: true, art: 'hardware', behebung: null },
+        ],
+      }),
+      profile({
+        id: 'marktvermarktung',
+        label: 'Marktvermarktung',
+        active: false,
+        requirements: [
+          {
+            label: 'Marktzugang',
+            met: false,
+            art: 'einstellung',
+            behebung: { ziel: 'einstellungen', label: 'Stromtarif hinterlegen' },
+          },
+        ],
+      }),
+      profile({
+        id: 'atypische-netznutzung',
+        label: 'Atypische Netznutzung',
+        active: false,
+        requirements: [
+          { label: 'Leistungsmessung', met: false, art: 'hardware', behebung: null },
+        ],
+      }),
+    ],
+  });
+}
 
 describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
   it('rendert DREI Zonen plus die Schutz-Zeile — Jetzt · Betriebsmodelle · Regeln', async () => {
@@ -292,30 +362,136 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     expect(screen.getByText('EEG: nur Solarladen')).toBeInTheDocument();
   });
 
-  it('profile rows carry a real number, a real switch and the honest blocked reason', async () => {
+  it('Stufe 5: die Betriebsmodelle sind RADIOS - genau eines läuft, und es sagt seit wann', async () => {
     setup();
+    nurEinsAktiv();
     render(<SteuerungSection site={site} />);
 
     await waitFor(() =>
-      expect(screen.getByRole('switch', { name: /Lastspitzenkappung/ })).toBeInTheDocument());
+      expect(screen.getByRole('radio', { name: /Lastspitzenkappung/ })).toBeInTheDocument());
+    // ⚠ Ein Radio, KEIN Schalter: „beliebig viele" wäre die falsche Aussage,
+    // und der Server schaltete danach still eines ab.
+    expect(screen.queryByRole('switch', { name: /Lastspitzenkappung/ })).toBeNull();
+    expect(screen.getByRole('radio', { name: /Lastspitzenkappung/ }))
+      .toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Marktvermarktung/ }))
+      .toHaveAttribute('aria-checked', 'false');
+    // Der Grundmodus IST eine Wahl - ohne ihn wäre das erste Einschalten eine
+    // Einbahnstraße.
+    expect(screen.getByRole('radio', { name: /Eigenverbrauchs-Fahrplan/ })).toBeInTheDocument();
+    // Live-Beleg + „läuft seit …" am laufenden Modell.
     expect(screen.getByText(/3\.600/)).toBeInTheDocument();
-    expect(screen.getByText(/dynamischer Tarif/)).toBeInTheDocument();
+    expect(screen.getByText(/läuft seit/)).toBeInTheDocument();
     expect(screen.queryByText(/Angefragt/)).toBeNull();
-    const off = screen.getByRole('switch', { name: /Atypische Netznutzung einschalten/ });
-    expect(off).toHaveAttribute('aria-checked', 'false');
-    fireEvent.click(off);
-    await waitFor(() =>
-      expect(api.setSiteProfile).toHaveBeenCalledWith('s-1', 'atypische-netznutzung', 'an'));
   });
 
-  it('renders the co-optimization reserve stack in the profile capsule', async () => {
+  it('vor dem Umschalten steht die WECHSEL-Karte - erst ihr Ja schreibt', async () => {
     setup();
+    nurEinsAktiv();
     render(<SteuerungSection site={site} />);
     await waitFor(() =>
-      expect(screen.getByText('2 Anwendungen, ein Speicher — VoltPilot optimiert sie gemeinsam.'))
-        .toBeInTheDocument());
-    expect(screen.getByText(/Notstrom-Reserve/)).toBeInTheDocument();
-    expect(screen.getByText(/Lastspitzen-Reserve/)).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /Marktvermarktung/ })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('radio', { name: /Marktvermarktung/ }));
+
+    // Sie nennt, was ENDET, was BEGINNT - und was GLEICH bleibt.
+    expect(await screen.findByText(/Lastspitzenkappung.+endet\./)).toBeInTheDocument();
+    expect(screen.getByText(/ein Betriebsmodell schaltet keine ab/)).toBeInTheDocument();
+    // Und die EHRLICHE Lücke: was es bringt, rechnet niemand vorher aus.
+    expect(screen.getByText(/Nicht abschätzbar/)).toBeInTheDocument();
+    // ⚠ Ein Klick allein schreibt NICHTS.
+    expect(api.setSiteProfile).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt wechseln' }));
+    await waitFor(() =>
+      expect(api.setSiteProfile).toHaveBeenCalledWith('s-1', 'marktvermarktung', 'an'));
+    // ⚠ GENAU EIN Aufruf - das Abschalten des alten Modells macht der Server.
+    expect((api.setSiteProfile as unknown as { mock: { calls: unknown[] } }).mock.calls)
+      .toHaveLength(1);
+  });
+
+  it('der Grundmodus ist der Weg ZURÜCK, und er fragt ebenfalls', async () => {
+    setup();
+    nurEinsAktiv();
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: /Eigenverbrauchs-Fahrplan/ })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('radio', { name: /Eigenverbrauchs-Fahrplan/ }));
+    expect(await screen.findByText(/Lastspitzenkappung.+endet\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Ausschalten' }));
+    await waitFor(() =>
+      expect(api.setSiteProfile).toHaveBeenCalledWith('s-1', 'lastspitzenkappung', 'aus'));
+  });
+
+  it('die Voraussetzungs-Ampel führt zum Beheben - und sagt, wo VoltPilot es tut', async () => {
+    setup();
+    nurEinsAktiv();
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: /Marktvermarktung/ })).toBeInTheDocument());
+
+    // Ein Wert, den VoltPilot einträgt, bekommt KEINEN Knopf, sondern den Satz.
+    expect(screen.getByText(DURCH_VOLTPILOT)).toBeInTheDocument();
+    // Ein Wert, den der Kunde selbst pflegt, bekommt den Direktlink.
+    fireEvent.click(screen.getByRole('button', { name: /Stromtarif hinterlegen/ }));
+    expect(window.location.hash).toContain('/technik');
+  });
+
+  it('was diese Anlage NICHT kann, steht eingeklappt - mit seinem Grund', async () => {
+    setup();
+    nurEinsAktiv();
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: /Lastspitzenkappung/ })).toBeInTheDocument());
+
+    // Eine HARDWARE-Voraussetzung, die fehlt, macht die Karte unmöglich - sie
+    // steht nicht als toter Radio-Knopf zwischen den wählbaren.
+    expect(screen.queryByRole('radio', { name: /Atypische Netznutzung/ })).toBeNull();
+    expect(screen.getByText(/Nicht möglich auf dieser Anlage/)).toBeInTheDocument();
+    expect(screen.getByText(/Atypische Netznutzung — dafür fehlt Leistungsmessung\./))
+      .toBeInTheDocument();
+  });
+
+  it('ALTBESTAND: zwei aktive Modelle werden GEFRAGT, nie automatisch abgeschaltet', async () => {
+    setup();
+    vi.spyOn(api, 'siteProfiles').mockResolvedValue({
+      profiles: [
+        profile({ id: 'lastspitzenkappung', label: 'Lastspitzenkappung', active: true }),
+        profile({ id: 'marktvermarktung', label: 'Marktvermarktung', active: true }),
+      ],
+    });
+    render(<SteuerungSection site={site} />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Bitte wählen Sie ein Betriebsmodell')).toBeInTheDocument());
+    expect(screen.getByText(/VoltPilot schaltet von sich aus nichts ab/)).toBeInTheDocument();
+    // Beide stehen weiter als laufend da - nichts wurde entschieden.
+    expect(screen.getByRole('radio', { name: /Lastspitzenkappung/ }))
+      .toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Marktvermarktung/ }))
+      .toHaveAttribute('aria-checked', 'true');
+    expect(api.setSiteProfile).not.toHaveBeenCalled();
+
+    // Erst die KUNDENWAHL setzt die Exklusivität durch.
+    fireEvent.click(screen.getByRole('radio', { name: /Marktvermarktung/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Jetzt wechseln' }));
+    await waitFor(() =>
+      expect(api.setSiteProfile).toHaveBeenCalledWith('s-1', 'marktvermarktung', 'an'));
+  });
+
+  it('der Co-Optimierungs-Streifen ist ERSATZLOS weg', async () => {
+    // Stufe 5: es läuft immer nur EIN Betriebsmodell - ein Streifen, der die
+    // gemeinsame Optimierung zweier erklärt, erklärte einen Zustand, den die
+    // Fläche gerade abschafft.
+    setup();
+    const { container } = render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Betriebsmodelle' })).toBeInTheDocument());
+    expect(container.querySelector('.vp-coopt')).toBeNull();
+    expect(screen.queryByText(/optimiert sie gemeinsam/)).toBeNull();
+    expect(screen.queryByText(/Notstrom-Reserve/)).toBeNull();
+    expect(screen.queryByText(/Lastspitzen-Reserve/)).toBeNull();
   });
 
   it('tapping a profile row opens its Anwendungs-Container (v3.1-M2)', async () => {
@@ -338,13 +514,28 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
   it('stays honest when the optional endpoints are unavailable (older backend / 403)', async () => {
     setup();
     vi.spyOn(api, 'earnings').mockRejectedValue(new Error('nope'));
-    vi.spyOn(optimizerApi, 'configViaSwitcher').mockRejectedValue(new Error('403'));
     render(<SteuerungSection site={site} />);
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Betriebsmodelle' })).toBeInTheDocument());
-    expect(screen.getByText(/Lastspitzen-Reserve/)).toBeInTheDocument();
-    expect(screen.queryByText(/Notstrom-Reserve/)).toBeNull();
+    // Die Zone steht - nur der LIVE-BELEG fehlt, und er wird nicht erfunden.
+    expect(screen.getByRole('radio', { name: /Lastspitzenkappung/ })).toBeInTheDocument();
+    expect(screen.queryByText(/3\.600/)).toBeNull();
+  });
+
+  it('ein ÄLTERER Server ohne Exklusivitäts-Gruppe fällt auf eigene Schalter zurück', async () => {
+    // Die Gruppe kommt vom Server; kennt er sie nicht, ist jede Karte wieder
+    // ein eigener Schalter - genau das Verhalten vor dieser Stufe. Der Katalog
+    // trägt sie hier trotzdem, also ist der Rückfall der KATALOG-Wert.
+    setup();
+    vi.spyOn(api, 'siteProfiles').mockResolvedValue({
+      profiles: [profile({ id: 'lastmanagement', label: 'Ladepark-Lastmanagement', active: false })],
+    });
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: /Ladepark-Lastmanagement/ })).toBeInTheDocument());
+    // Es gehört keiner Gruppe an - es konkurriert mit niemandem.
+    expect(screen.queryByRole('radio', { name: /Ladepark-Lastmanagement/ })).toBeNull();
   });
 
   it('renders a calm empty profile capsule when the backend has no profiles', async () => {
@@ -357,6 +548,7 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
   });
 
   it('Stufe 0: das Regal zeigt NUR Betriebsmodelle, mit Nutzen-Satz und Chips', async () => {
+    nurEinsAktiv();
     // Der Befund davor: neun Zeilen in EINER Optik, jede mit „—" als Untertitel
     // - Basis-Schalter, die der Server mit 400 ablehnt, und Absichts-Schalter
     // ohne jede Wirkung. Ein ÄLTERER Server, der weiterhin alle neun schickt,
@@ -369,15 +561,15 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     expect(screen.queryByRole('switch', { name: /Anlage beobachten/ })).toBeNull();
     expect(screen.queryByRole('switch', { name: /Überschuss nutzen/ })).toBeNull();
     expect(screen.queryByRole('switch', { name: /Eigene Auswertung/ })).toBeNull();
-    expect(screen.getByRole('switch', { name: /Lastspitzenkappung/ })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Lastspitzenkappung/ })).toBeInTheDocument();
 
     // „Was bringt mir das?" steht in der Zeile, nicht erst im Container.
     expect(screen.getByText(/kappt die Bezugsspitze/)).toBeInTheDocument();
-    // „Was brauche ich?" ebenso - als Chip, nicht als Gedankenstrich.
+    // „Was brauche ich?" ebenso - als Ampel-Chip, nicht als Gedankenstrich.
     expect(screen.getByText('Leistungspreis hinterlegt fehlt')).toBeInTheDocument();
     // Ein erfüllter Chip trägt sein Häkchen und behauptet kein „fehlt".
     expect(
-      document.querySelector('.vp-profrow-req.met')?.textContent,
+      document.querySelector('.vp-bm-ampel > li.met .vp-bm-req')?.textContent,
     ).toContain('Speicher');
     // Der Phantom-Verweis auf eine Seite, die es nicht gibt, ist weg.
     expect(screen.queryByText(/Komponenten & Regeln/)).toBeNull();

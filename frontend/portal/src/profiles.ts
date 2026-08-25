@@ -36,9 +36,27 @@ import type { ActiveMode } from './surface';
 /** Die EINZIGEN zwei Zustände. Es gibt bewusst kein „angefragt". */
 export type ProfileState = 'an' | 'aus';
 
+/** Die zwei Sorten einer Voraussetzung (Steuerung Stufe 5, Katalog-Daten). */
+export type RequirementArt = 'hardware' | 'einstellung';
+
+/** Wohin der Kunde muss, um eine Voraussetzung zu erfüllen. */
+export interface RequirementBehebung {
+  ziel: string;
+  /** null für `voltpilot` — ein admin-conditionaler Wert hat kein Klickziel. */
+  label: string | null;
+}
+
 export interface ProfileRequirement {
   label: string;
   met: boolean;
+  /**
+   * `hardware` = was die Anlage physisch hergeben muss, `einstellung` = ein
+   * Wert, den jemand einträgt. OPTIONAL: ein ÄLTERER Server sendet es nicht,
+   * und dann gilt die vorsichtigere Lesart `hardware` (siehe `betriebsmodelle.ampel`).
+   */
+  art?: RequirementArt | null;
+  /** Der Weg zur Behebung, oder null — dann wird auch keiner behauptet. */
+  behebung?: RequirementBehebung | null;
 }
 
 export interface ProfileUnlocks {
@@ -65,6 +83,17 @@ export interface SiteProfile {
   flowRef: { flowId: string; name: string } | null;
   gatedNodeTypes: string[];
   gatedNodesEnabled: boolean;
+  /**
+   * Die Exklusivitäts-Gruppe (Steuerung Stufe 5) oder null. OPTIONAL: ein
+   * ÄLTERER Server kennt sie nicht, und dann ist jede Karte wieder ein eigener
+   * Schalter — genau das Verhalten vor dieser Stufe.
+   */
+  exklusivGruppe?: string | null;
+  /**
+   * Seit wann es läuft (ISO). Nur BELEGT: ein abgeleitet aktives oder
+   * ausgeschaltetes Modell trägt hier null, nie ein erfundenes Datum.
+   */
+  seit?: string | null;
 }
 
 export interface SiteProfiles {
