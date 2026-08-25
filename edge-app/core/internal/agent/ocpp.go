@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -144,6 +146,39 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 	go a.ocppLoop(ctx)
 	a.publishOcppState()
 	return nil
+}
+
+// onCloudCommand shares the existing per-device command topic with purge_data.
+// OCPP commands are one-shot and non-retained; the edge never acknowledges an
+// expired/replayed command by pretending it reached a station.
+func (a *Agent) onCloudCommand(payload []byte) bool {
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(payload, &envelope) == nil && envelope.Type == "ocpp_command" {
+		if a.ocpp == nil {
+			slog.Warn("OCPP command received while CSMS is unavailable")
+			return true
+		}
+		a.entMu.Lock()
+		identity := csms.CommandIdentity{TenantID: a.entIdentity.TenantID,
+			SiteID: a.entIdentity.SiteID, DeviceID: a.entIdentity.DeviceID}
+		a.entMu.Unlock()
+		if err := a.ocpp.srv.ExecuteCloudCommand(a.ctx, payload, identity); err != nil {
+			slog.Warn("OCPP cloud command was not sent", "err", err)
+			// A failed durable pre-send decision is transport-retryable, not a
+			// terminal business rejection. Leaving QoS1 unacknowledged makes the
+			// broker redeliver after storage/restart recovery.
+			return acknowledgeOcppCommand(err)
+		}
+		return true
+	}
+	a.onPurgeCommand(payload)
+	return true
+}
+
+func acknowledgeOcppCommand(err error) bool {
+	return !errors.Is(err, csms.ErrCommandStorage)
 }
 
 // ocppJournalLoop drains oldest-first and acknowledges local files only after

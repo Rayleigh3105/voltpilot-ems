@@ -1136,7 +1136,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		Version:    Version,
 		NetworkFn:  a.networkSummary,
 		OnSchedule: a.onSchedule,
-		OnCommand:  a.onPurgeCommand,
+		OnCommand:  a.onCloudCommand,
 		OnEntities: a.onEntityRegistryPush,
 		OnPlanV2:   a.onPlanV2,
 		OnFlows:    a.onFlows,

@@ -138,6 +138,24 @@ public class ProvisioningPublisher {
         }
     }
 
+    /** Publish one non-retained OCPP command. A command is deliberately not
+     * retained: replaying a reset/start/profile after reconnect would be an
+     * unsafe surprise. The durable action row and OCPP journal are the record. */
+    public boolean publishOcppCommand(UUID tenantId, UUID siteId, UUID deviceId,
+            String payload) {
+        try {
+            synchronized (lock) {
+                connected().publish(ProvisioningTopics.commandTopic(tenantId, siteId, deviceId),
+                        payload.getBytes(StandardCharsets.UTF_8), 1, false);
+            }
+            log.info("Published non-retained OCPP command for device {}", deviceId);
+            return true;
+        } catch (Exception e) {
+            log.warn("Could not publish OCPP command for device {}: {}", deviceId, e.getMessage());
+            return false;
+        }
+    }
+
     static String purgeCommandPayload(UUID tenantId, UUID siteId, UUID deviceId,
             java.time.Instant purgedBefore) {
         // Shape per docs/contracts/mqtt-data-purge.schema.json ($defs/command).

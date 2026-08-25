@@ -45,6 +45,7 @@ type ProtocolEvent struct {
 	Direction        string          `json:"direction"`
 	MessageType      string          `json:"message_type"`
 	CorrelationID    string          `json:"correlation_id,omitempty"`
+	WireID           string          `json:"wire_id,omitempty"`
 	Action           string          `json:"action"`
 	ErrorCode        string          `json:"error_code,omitempty"`
 	ErrorDescription string          `json:"error_description,omitempty"`
@@ -90,9 +91,14 @@ type Journal struct {
 	changed   chan struct{}
 	// pending action maps make CALLRESULT/CALLERROR self-describing. OCPP gives
 	// those messages only a unique id; the action belongs to the paired CALL.
-	incoming map[string]string
-	outgoing map[string]string
-	gaps     journalGapState
+	incoming             map[string]string
+	outgoing             map[string]string
+	externalByWire       map[string]string
+	externalCallSeen     map[string]bool
+	externalResponseSeen map[string]bool
+	onCommandResult      func(chargePointID, wireID, action string, payload json.RawMessage)
+	onCommandError       func(chargePointID, wireID, action string)
+	gaps                 journalGapState
 	// Injectable only for deterministic failure-path tests. Gap-state writes
 	// deliberately use the real filesystem, so an event-write failure can still
 	// leave durable evidence.
@@ -131,15 +137,57 @@ func newJournal(dataDir string, log *slog.Logger) (*Journal, error) {
 	j := &Journal{dir: dir, statePath: statePath, key: key, log: log,
 		changed: make(chan struct{}, 1), count: count,
 		incoming: map[string]string{}, outgoing: map[string]string{}, gaps: gaps,
-		writeEventFile: os.WriteFile, renameEventFile: os.Rename,
+		externalByWire: map[string]string{}, externalCallSeen: map[string]bool{},
+		externalResponseSeen: map[string]bool{},
+		writeEventFile:       os.WriteFile, renameEventFile: os.Rename,
 		readEventFile: os.ReadFile, removeEventFile: os.Remove,
 		writeGapFile: os.WriteFile, renameGapFile: os.Rename}
+	// Rebuild in-flight wire correlation from the immutable CALL spool. A box
+	// crash between CALL and CALLRESULT must not turn the late result into an
+	// unrelated or uncorrelated command.
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		raw, readErr := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if readErr != nil {
+			continue
+		}
+		var event ProtocolEvent
+		if json.Unmarshal(raw, &event) == nil && event.MessageType == "Call" &&
+			event.Direction == "csms_to_station" && event.WireID != "" && event.CorrelationID != "" {
+			key := event.ChargePointID + "\x00" + event.WireID
+			j.externalByWire[key] = event.CorrelationID
+			j.externalCallSeen[key] = true
+			j.outgoing[key] = event.Action
+		}
+	}
 	// Enforce the bound on restart too. A process may have died after the final
 	// rename but before the preceding instance could evict.
 	j.mu.Lock()
 	j.enforceBoundLocked()
 	j.mu.Unlock()
 	return j, nil
+}
+
+// RestoreCommandMappings overlays the durable command ledger after the
+// journal has rebuilt what remains in its spool. Ledger mappings are the
+// authority once a normal QoS1 ACK has removed the outbound CALL file.
+func (j *Journal) RestoreCommandMappings(mappings []commandWireMapping) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for _, mapping := range mappings {
+		if mapping.ChargePointID == "" || mapping.WireID == "" ||
+			mapping.WireAction == "" || mapping.CorrelationID == "" {
+			continue
+		}
+		key := mapping.ChargePointID + "\x00" + mapping.WireID
+		j.externalByWire[key] = mapping.CorrelationID
+		j.outgoing[key] = mapping.WireAction
+		if mapping.CallSeen {
+			j.externalCallSeen[key] = true
+		}
+	}
 }
 
 func loadJournalGapState(path string) (journalGapState, error) {
@@ -218,8 +266,9 @@ func (j *Journal) RecordWire(direction, chargePointID string, raw []byte) {
 	}
 	var kind int
 	_ = json.Unmarshal(msg[0], &kind)
-	_ = json.Unmarshal(msg[1], &e.CorrelationID)
-	key := chargePointID + "\x00" + e.CorrelationID
+	_ = json.Unmarshal(msg[1], &e.WireID)
+	e.CorrelationID = e.WireID
+	key := chargePointID + "\x00" + e.WireID
 
 	switch kind {
 	case 2: // CALL
@@ -235,17 +284,33 @@ func (j *Journal) RecordWire(direction, chargePointID string, raw []byte) {
 			j.incoming[key] = e.Action
 		} else {
 			j.outgoing[key] = e.Action
+			if external := j.externalByWire[key]; external != "" {
+				e.CorrelationID = external
+				j.externalCallSeen[key] = true
+				if j.externalResponseSeen[key] {
+					delete(j.externalByWire, key)
+					delete(j.externalCallSeen, key)
+					delete(j.externalResponseSeen, key)
+					delete(j.outgoing, key)
+				}
+			}
 		}
 		j.mu.Unlock()
 	case 3: // CALLRESULT
 		e.MessageType = "CallResult"
 		e.Action = j.takeAction(direction, key)
+		if direction == "station_to_csms" {
+			e.CorrelationID = j.externalCorrelation(key)
+		}
 		if len(msg) >= 3 {
 			e.Payload = j.redact(msg[2], e.Action)
 		}
 	case 4: // CALLERROR
 		e.MessageType = "CallError"
 		e.Action = j.takeAction(direction, key)
+		if direction == "station_to_csms" {
+			e.CorrelationID = j.externalCorrelation(key)
+		}
 		if len(msg) >= 3 {
 			_ = json.Unmarshal(msg[2], &e.ErrorCode)
 		}
@@ -266,6 +331,46 @@ func (j *Journal) RecordWire(direction, chargePointID string, raw []byte) {
 		e.Action = "UnknownMessageType"
 	}
 	j.append(e)
+	if kind == 3 && direction == "station_to_csms" && e.CorrelationID != "" && j.onCommandResult != nil {
+		j.onCommandResult(chargePointID, e.WireID, e.Action, e.Payload)
+	} else if kind == 4 && direction == "station_to_csms" && e.CorrelationID != "" && j.onCommandError != nil {
+		j.onCommandError(chargePointID, e.WireID, e.Action)
+	}
+}
+
+// BindWire associates an API operation with the exact wire id chosen by the
+// command adapter. It is never an action-name queue.
+func (j *Journal) BindWire(chargePointID, wireID, action, correlation string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	key := chargePointID + "\x00" + wireID
+	j.externalByWire[key] = correlation
+	j.outgoing[key] = action
+}
+
+func (j *Journal) UnbindWire(chargePointID, wireID string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	key := chargePointID + "\x00" + wireID
+	delete(j.externalByWire, key)
+	delete(j.externalCallSeen, key)
+	delete(j.externalResponseSeen, key)
+	delete(j.outgoing, key)
+}
+
+func (j *Journal) externalCorrelation(key string) string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	correlation := j.externalByWire[key]
+	if correlation != "" {
+		j.externalResponseSeen[key] = true
+		if j.externalCallSeen[key] {
+			delete(j.externalByWire, key)
+			delete(j.externalCallSeen, key)
+			delete(j.externalResponseSeen, key)
+		}
+	}
+	return correlation
 }
 
 func (j *Journal) takeAction(direction, key string) string {
@@ -276,7 +381,9 @@ func (j *Journal) takeAction(direction, key string) string {
 		m = j.incoming
 	}
 	action := m[key]
-	delete(m, key)
+	if direction != "station_to_csms" || j.externalByWire[key] == "" || j.externalCallSeen[key] {
+		delete(m, key)
+	}
 	if action == "" {
 		return "Unknown"
 	}
@@ -288,6 +395,27 @@ func (j *Journal) RecordConnection(chargePointID, action string, at time.Time) {
 		OccurredAt: at.UTC().Format(time.RFC3339Nano), ChargePointID: chargePointID,
 		Direction: "internal", MessageType: "Event", Action: action,
 		Payload: json.RawMessage(`{}`)})
+}
+
+// RecordCommandEvent gives cloud operators a durable, privacy-safe reason why
+// a syntactically valid downlink was not written to a station.
+func (j *Journal) RecordCommandEvent(chargePointID, correlation, action, actionID, code, reason string, at time.Time) {
+	j.append(ProtocolEvent{SchemaVersion: "1.0", EventID: newEventID(), OccurredAt: at.UTC().Format(time.RFC3339Nano),
+		ChargePointID: chargePointID, Direction: "internal", MessageType: "Event",
+		CorrelationID: correlation, Action: action,
+		Payload: mustJSON(map[string]any{"action_id": actionID, "code": code, "reason": reason})})
+}
+
+// RecordCommandEventOnce uses the command UUID and immutable requested_at as a
+// stable spool identity. Capacity replays therefore cannot multiply local
+// files after a lost PUBACK; if the first event was already acknowledged, the
+// cloud receives the same event_id again and its durable event dedup remains
+// authoritative.
+func (j *Journal) RecordCommandEventOnce(chargePointID, correlation, action, actionID, code, reason string, at time.Time) {
+	j.appendOnce(ProtocolEvent{SchemaVersion: "1.0", EventID: actionID, OccurredAt: at.UTC().Format(time.RFC3339Nano),
+		ChargePointID: chargePointID, Direction: "internal", MessageType: "Event",
+		CorrelationID: correlation, Action: action,
+		Payload: mustJSON(map[string]any{"action_id": actionID, "code": code, "reason": reason})})
 }
 
 // redact applies the privacy boundary BEFORE bytes reach disk. idTags become a
@@ -372,6 +500,14 @@ func (j *Journal) tagRef(value string) string {
 }
 
 func (j *Journal) append(e ProtocolEvent) {
+	j.appendInternal(e, false)
+}
+
+func (j *Journal) appendOnce(e ProtocolEvent) {
+	j.appendInternal(e, true)
+}
+
+func (j *Journal) appendInternal(e ProtocolEvent, idempotent bool) {
 	raw, err := json.Marshal(e)
 	if err != nil {
 		j.log.Error("OCPP journal event could not be encoded", "err", err)
@@ -384,6 +520,15 @@ func (j *Journal) append(e ProtocolEvent) {
 		return
 	}
 	tmp, final := journalEventPaths(j.dir, e)
+	if idempotent {
+		if _, err := os.Stat(final); err == nil {
+			return
+		} else if !errors.Is(err, os.ErrNotExist) {
+			j.log.Error("OCPP journal idempotency check failed", "err", err)
+			j.recordDropLocked(e, "read_failure")
+			return
+		}
+	}
 	if err := j.writeEventFile(tmp, raw, 0o600); err != nil {
 		j.log.Error("OCPP journal event could not be persisted", "err", err)
 		j.recordDropLocked(e, "write_failure")

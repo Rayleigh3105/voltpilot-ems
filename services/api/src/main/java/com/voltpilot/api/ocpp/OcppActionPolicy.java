@@ -7,8 +7,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 /**
- * D4 as a server-side policy, before a command gateway exists. The dependent
- * PR must ask this policy; the UI map is only an explanation, never authority.
+ * D4 server-side policy for the command gateway. The UI map is only an
+ * explanation, never authority.
  */
 @Component
 public class OcppActionPolicy {
@@ -20,6 +20,13 @@ public class OcppActionPolicy {
             "TriggerMessage"};
     private static final String[] PLATFORM = {"HardReset", "GetDiagnostics", "UpdateFirmware",
             "DataTransfer"};
+
+    public static final java.util.Set<String> ACTIONS = java.util.Set.of(
+            "RemoteStartTransaction", "RemoteStopTransaction", "UnlockConnector", "SoftReset",
+            "HardReset", "ChangeAvailability", "TriggerMessage", "GetConfiguration",
+            "ChangeConfiguration", "ClearCache", "GetDiagnostics", "UpdateFirmware", "ReserveNow",
+            "CancelReservation", "GetLocalListVersion", "SendLocalList", "SetChargingProfile",
+            "ClearChargingProfile", "GetCompositeSchedule", "DataTransfer");
 
     public OcppDto.ActionPermissions permissions(Authentication auth) {
         boolean platform = has(auth, "ROLE_platform-admin");

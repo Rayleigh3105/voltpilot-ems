@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/mqtt-ocpp-command.schema.json",
+  "title": "Cloud -> Edge OCPP 1.6 command",
+  "description": "One-shot, non-retained command on the claimed device command topic. The edge sends it to the local OCPP CSMS only when the station is connected; CallResult/CallError and effect evidence return through mqtt-ocpp-events.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "type", "tenant_id", "site_id", "device_id", "charge_point_id", "action_id", "correlation_id", "requested_at", "deadline_at", "request_hash", "action", "request"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "type": {"const": "ocpp_command"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "site_id": {"type": "string", "format": "uuid"},
+    "device_id": {"type": "string", "format": "uuid"},
+    "charge_point_id": {"type": "string", "minLength": 1, "maxLength": 64},
+    "action_id": {"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "correlation_id": {"type": "string", "pattern": "^ocpp-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "deadline_at": {"type": "string", "format": "date-time"},
+    "request_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "data_transfer_schema_id": {"type": "string", "maxLength": 128},
+    "action": {"enum": ["RemoteStartTransaction", "RemoteStopTransaction", "UnlockConnector", "SoftReset", "HardReset", "ChangeAvailability", "TriggerMessage", "GetConfiguration", "ChangeConfiguration", "ClearCache", "GetDiagnostics", "UpdateFirmware", "ReserveNow", "CancelReservation", "GetLocalListVersion", "SendLocalList", "SetChargingProfile", "ClearChargingProfile", "GetCompositeSchedule", "DataTransfer"]},
+    "request": {"type": "object"}
+  },
+  "allOf": [{"if":{"properties":{"action":{"const":"DataTransfer"}}},"then":{"required":["data_transfer_schema_id"]}}]
+}

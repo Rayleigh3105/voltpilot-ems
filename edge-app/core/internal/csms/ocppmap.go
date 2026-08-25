@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -41,7 +42,11 @@ func newTransport(s *Server, port int, path string) *transport {
 	// Journal at the websocket boundary: typed handlers cannot see malformed
 	// calls or CALLERROR frames, whereas Slice 10 must preserve all three OCPP-J
 	// message kinds. The wrapper delegates byte-for-byte after recording.
-	wsrv := &journalWsServer{WsServer: ws.NewServer(), journal: s.journal}
+	upstream := ws.NewServer()
+	timeouts := ws.NewServerTimeoutConfig()
+	timeouts.WriteWait = commandSocketWriteWait
+	upstream.SetTimeoutConfig(timeouts)
+	wsrv := &journalWsServer{WsServer: upstream, journal: s.journal}
 	cs := ocpp16.NewCentralSystem(nil, wsrv)
 	t := &transport{srv: s, cs: cs, wsrv: wsrv, port: port, path: path, done: make(chan struct{})}
 
@@ -67,6 +72,7 @@ func newTransport(s *Server, port int, path string) *transport {
 type journalWsServer struct {
 	ws.WsServer
 	journal *Journal
+	writeMu sync.Mutex
 }
 
 func (s *journalWsServer) SetMessageHandler(handler func(ws.Channel, []byte) error) {
@@ -77,6 +83,11 @@ func (s *journalWsServer) SetMessageHandler(handler func(ws.Channel, []byte) err
 }
 
 func (s *journalWsServer) Write(id string, data []byte) error {
+	// Upstream has a one-slot per-station handoff queue. Serializing every
+	// producer here prevents an unbounded stack of blocked writes from defeating
+	// the command gateway's deadline reserve.
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	err := s.WsServer.Write(id, data)
 	if err == nil {
 		s.journal.RecordWire("csms_to_station", id, data)

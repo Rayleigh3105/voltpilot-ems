@@ -2,9 +2,11 @@ package csms_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +18,68 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 )
+
+func TestCloudChangeConfigurationPersistsResponseAndPerformsReadback(t *testing.T) {
+	now := time.Now().UTC()
+	s, endpoint := startServerWithClock(t, func() time.Time { return now }, "CMD-CP")
+	_, station := connectStation(t, s, endpoint, "CMD-CP", func() time.Time { return now })
+	cmd := map[string]any{"schema_version": "1.0", "type": "ocpp_command", "tenant_id": "tenant-a",
+		"site_id": "site-a", "device_id": "device-a", "charge_point_id": "CMD-CP",
+		"action_id": "33333333-3333-4333-8333-333333333333", "correlation_id": "ocpp-33333333-3333-4333-8333-333333333333",
+		"requested_at": now.Format(time.RFC3339Nano), "deadline_at": now.Add(30 * time.Second).Format(time.RFC3339Nano),
+		"request_hash": strings.Repeat("c", 64), "action": "ChangeConfiguration",
+		"request": map[string]any{"key": "HeartbeatInterval", "value": "123"}}
+	raw, _ := json.Marshal(cmd)
+	if err := s.ExecuteCloudCommand(context.Background(), raw, csms.CommandIdentity{TenantID: "tenant-a", SiteID: "site-a", DeviceID: "device-a"}); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	readbackDeadline := time.Now().Add(2 * time.Second)
+	ready := false
+	for time.Now().Before(readbackDeadline) {
+		station.mu.Lock()
+		ready = station.targetedConfigurationReads > 0 && station.config["HeartbeatInterval"] == "123"
+		station.mu.Unlock()
+		if ready {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !ready {
+		t.Fatal("ChangeConfiguration response did not trigger a targeted persisted readback")
+	}
+	if err := s.ExecuteCloudCommand(context.Background(), raw, csms.CommandIdentity{TenantID: "tenant-a", SiteID: "site-a", DeviceID: "device-a"}); err != nil {
+		t.Fatalf("QoS1 replay: %v", err)
+	}
+	station.mu.Lock()
+	changedCount := len(station.changed)
+	station.mu.Unlock()
+	if changedCount != 1 {
+		t.Fatalf("replayed command executed %d times", changedCount)
+	}
+	seenResult, seenReadback := false, false
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && !(seenResult && seenReadback) {
+		eventRaw, token, ok := s.NextProtocolEvent()
+		if !ok {
+			time.Sleep(5 * time.Millisecond)
+			continue
+		}
+		var event csms.ProtocolEvent
+		_ = json.Unmarshal(eventRaw, &event)
+		if event.MessageType == "CallResult" && event.Action == "ChangeConfiguration" && event.CorrelationID == "ocpp-33333333-3333-4333-8333-333333333333" {
+			seenResult = true
+		}
+		if event.MessageType == "CallResult" && event.Action == "GetConfiguration" && strings.HasPrefix(event.CorrelationID, "readback-") {
+			seenReadback = true
+		}
+		if err := s.AckProtocolEvent(token); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !seenResult || !seenReadback {
+		t.Fatalf("persisted choreography missing: response=%v readback=%v", seenResult, seenReadback)
+	}
+}
 
 // station is a charge point that REALLY behaves like one for the parts that
 // matter here: it stores the profiles it is told to store, answers
