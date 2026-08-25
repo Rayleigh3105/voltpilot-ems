@@ -1,5 +1,5 @@
 -- Independent-review hardening for the additive measurement pipeline.
--- The preceding measurement schema is V20260846000000 after the PR 513 rebase.
+-- The preceding measurement schema is V20260848000000 in the agreed PR 510 merge sequence.
 
 -- JSON integers/decimals must survive verbatim numeric conversion (not IEEE-754).
 ALTER TABLE device_measurement_sample

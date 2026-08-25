@@ -182,7 +182,8 @@ class MeasurementRuntime {
   }
 
   trimWindow(window, ms) {
-    while (window.length && (typeof window[0] === 'number' ? window[0] : window[0].at) <= ms - 60000) window.shift();
+    while (window.length && !window[0].pending
+      && (typeof window[0] === 'number' ? window[0] : window[0].at) <= ms - 60000) window.shift();
   }
 
   consumeRequest(kind) {
@@ -196,6 +197,13 @@ class MeasurementRuntime {
     // device can therefore never spend capacity that was not admitted. On
     // completion the reservation is reconciled to measured monotonic occupancy.
     const reserve = RESERVATION_MS[kind] ?? (COST_MS[kind] || 4000);
+    // A request may outlive its conservative admission reservation. Until it
+    // completes, count its live monotonic occupancy so another request cannot
+    // enter on the strength of a stale 4 s reservation after the bus has
+    // already been occupied longer than that.
+    for (const pending of this.requestWindow) if (pending.pending) {
+      pending.cost = Math.max(pending.cost, Math.max(1, ms - pending.started));
+    }
     const duty = this.requestWindow.reduce((sum, x) => sum + x.cost, 0);
     if ((duty + reserve) / 600 > LIMITS.dutyPercent) return null;
     const ticket = { at:ms, started:ms, cost:reserve, pending:true };

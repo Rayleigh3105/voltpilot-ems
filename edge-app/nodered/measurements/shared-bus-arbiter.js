@@ -5,7 +5,7 @@
 const targets = new Map();
 
 function state(target) {
-  const key=String(target||'primary');
+  const key=canonicalTarget(target);
   let value=targets.get(key);
   if(!value){value={active:false,controls:[],polls:[]};targets.set(key,value);}
   return value;
@@ -53,6 +53,15 @@ function acquireControl(target){return acquire(target,'control');}
 function targetKey(connection,defaultPort){
   const value=connection||{};
   return String(value.ip||value.host||'primary')+':'+String(Number(value.port)||defaultPort||502);
+}
+
+function canonicalTarget(target){
+  // Palette poll nodes pass their connection plan directly, while generated
+  // control paths pass the already-rendered host:port string. Both forms must
+  // identify one physical lane; String(object) would create "[object Object]"
+  // and let a control overlap the palette read on the same device.
+  if(target&&typeof target==='object') return targetKey(target,502);
+  return String(target||'primary');
 }
 
 function resetForTest(){targets.clear();}

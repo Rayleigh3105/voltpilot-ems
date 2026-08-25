@@ -36,3 +36,41 @@ test('an explicit control lease remains held until readback releases it',async()
   await poll;
   assert.equal(polled,true);
 });
+
+test('palette object poll and host:port control share one physical bus lane',async()=>{
+  arbiter.resetForTest();
+  const order=[];
+  let active=0;
+  let maxActive=0;
+  let releasePoll;
+  const pollGate=new Promise(resolve=>{releasePoll=resolve;});
+  const enter=(label)=>{
+    active+=1;
+    maxActive=Math.max(maxActive,active);
+    order.push(label+'-start');
+  };
+  const leave=(label)=>{
+    order.push(label+'-end');
+    active-=1;
+  };
+
+  const poll=arbiter.runPoll({host:'logger',port:502,unitId:1},async()=>{
+    enter('palette-poll');
+    await pollGate;
+    leave('palette-poll');
+  });
+  await new Promise(resolve=>setImmediate(resolve));
+  const control=arbiter.runControl(arbiter.targetKey({host:'logger',port:502},502),async()=>{
+    enter('control');
+    leave('control');
+  });
+  await new Promise(resolve=>setImmediate(resolve));
+
+  assert.equal(maxActive,1,'one physical host:port must never receive overlapping operations');
+  assert.deepEqual(order,['palette-poll-start']);
+  releasePoll();
+  await Promise.all([poll,control]);
+  assert.deepEqual(order,[
+    'palette-poll-start','palette-poll-end','control-start','control-end'
+  ]);
+});

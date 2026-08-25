@@ -5440,10 +5440,13 @@ Push, kein anderer Wunsch, kein anderer Text.
   Reconnect wird derselbe Desired State ohne erneutes Cloud-Publish abgeglichen.
   Planer und bestehende Lese-/Steuerknoten teilen sich den **prozessweiten**
   `shared-bus-arbiter`: Steuerung gewinnt die nächste Lease, neue Polls warten,
-  und die Lease bleibt bis nach dem Readback und Socket-Abbau belegt. Der Planer
+  und die Lease bleibt bis nach dem Readback und Socket-Abbau belegt. Objekt-Pläne
+  aus Palette-Polls und bereits gerenderte `host:port`-Schlüssel der Controls
+  werden dabei zwingend auf DIESELBE Lane normalisiert. Der Planer
   gruppiert Registerblöcke (max. 120 Wörter) und erzwingt D5 bei Apply **und**
   zur Laufzeit: Warnung >120, hart 600 Samples/min, 30 Requests/min, 20% Duty;
-  Duty misst monotone echte Bus-Belegungszeit mit konservativer Vorreservierung,
+  Duty misst monotone echte Bus-Belegungszeit mit konservativer Vorreservierung;
+  solange ein Request läuft, zählt `max(Reservierung, monotone Laufzeit)`,
   parallele Ticks werden zu genau einem physischen Poll zusammengeführt. Das
   Produktionsimage MUSS `settings.js`, `measurements/`, `vp-palette/` und
   `deye/` gemeinsam paketieren/reseeden; der Image-Layout-Test darf nie aus dem

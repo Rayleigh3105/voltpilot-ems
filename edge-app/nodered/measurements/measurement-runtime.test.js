@@ -159,6 +159,39 @@ test('duty budget reconciles reservations to real monotonic bus occupancy', asyn
   assert.equal(attempts,3); // timeout reservations fill the same hard 20% window.
 });
 
+test('in-flight occupancy beyond its reservation blocks another request', async () => {
+  let mono=0;
+  let runs=0;
+  let release;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const runtime=new MeasurementRuntime({monotonicNow:()=>mono},()=>{});
+  const first=runtime.runMeasuredRequest('modbus_holding',async()=>{
+    runs+=1;
+    await gate;
+    return 'first';
+  });
+  await new Promise(resolve=>setImmediate(resolve));
+
+  // The live request has occupied the bus for 12,001 ms, beyond its 4 s admission
+  // reservation. Counting only that stale reservation would admit this second
+  // 4 s request: 12,001 + 4,000 = 16,001 ms, beyond the hard 12,000 ms/min
+  // (20 %) duty window from the independent boundary probe.
+  mono=12001;
+  assert.equal(mono+4000,16001);
+  assert.ok(mono+4000>12000);
+  const second=await runtime.runMeasuredRequest('modbus_holding',async()=>{
+    runs+=1;
+    return 'second';
+  });
+  assert.equal(second,MeasurementRuntime.BUDGET_BLOCKED);
+  assert.equal(runs,1);
+  assert.equal(runtime.requestWindow.reduce((sum,entry)=>sum+entry.cost,0),12001);
+
+  release();
+  assert.equal(await first,'first');
+  assert.equal(runtime.requestWindow[0].cost,12001);
+});
+
 test('event-driven OCPP obeys selected cadence',()=>{
   const sent=[]; const runtime=new MeasurementRuntime({ocppCapability:{supportedMeasurands:['Voltage'],maxLength:100}},(t,p)=>sent.push({t,p}),()=>new Date('2026-08-25T12:00:00Z'));
   runtime.apply(config([{point_key:'ocpp.1_6.metervalues.voltage.context[*].format[*].phase[*].location[*].unit[*]',cadence_s:60}]));
