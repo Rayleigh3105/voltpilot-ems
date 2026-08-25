@@ -110,6 +110,7 @@ class ConsumerApiTest {
     @Autowired
     com.voltpilot.api.repo.ConsumerRequirementStateRepository requirementStateRepository;
 
+
     @Autowired
     org.springframework.jdbc.core.JdbcTemplate jdbc;
 
@@ -906,6 +907,153 @@ class ConsumerApiTest {
                 + "\"device_id\":\"" + device + "\","
                 + "\"consumers\":{\"" + entityId + "\":{\"state\":\"" + state + "\""
                 + (extra == null ? "" : "," + extra) + "}}}";
+    }
+
+    /**
+     * Steuerung Stufe 4 „Handeingriffe" (Konzept `vp-steuerung-konzept-b3` §3.2
+     * + §3.7 B2/B5/B6, Captain-Entscheid S1 = A) - die CLOUD-Reise gegen echte
+     * DB + Keycloak. Die EDGE-Hälfte (Pause → Failsafe, Batterie-Tor) ist der
+     * in-process Simulator-Beweis {@code agent.TestAutomationPause…}.
+     *
+     * <ol>
+     *   <li>ohne Dauer gibt es KEINEN Eingriff - und keine Zeile;</li>
+     *   <li>„Ladestand halten" wird notiert, ist über den EINEN Lesepfad
+     *       sichtbar und trägt sein Ende;</li>
+     *   <li>„Speicher jetzt laden" ERSETZT ihn (höchstens einer je Komponente),
+     *       und ein negativer Sollwert ist eine benannte Ablehnung;</li>
+     *   <li>„Automatik pausieren" ist eine EIGENE Zeile ohne Komponente und
+     *       reist als {@code automation_paused_until} im Registry-Push;</li>
+     *   <li>jede Rücknahme wirkt sofort, und die Papier-Spur steht im Audit;</li>
+     *   <li>eine fremde Anlage ist 404, nie 403.</li>
+     * </ol>
+     */
+    @org.junit.jupiter.api.Test
+    void handeingriffeAmSpeicherUndAnDerAnlageSindDauerpflichtigUndZurueckzunehmen() {
+        String tok = token("demo", "demo");
+        UUID tenantA = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        String base = "/api/v1/sites/" + BERLIN_SITE;
+        try {
+            // (1) Eine Dauer ist PFLICHT - ohne sie entsteht nichts.
+            ResponseEntity<Map<String, Object>> ohne = post(tok, base + "/battery-override",
+                    Map.of("kind", "speicher_halten"));
+            assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(String.valueOf(ohne.getBody().get("message")))
+                    .contains("läuft nie unbegrenzt");
+            assertThat(interventions(tok).get("interventions")).asList().isEmpty();
+
+            // (2) „Ladestand halten" - notiert, sichtbar, mit Ende.
+            ResponseEntity<Map<String, Object>> halten = post(tok, base + "/battery-override",
+                    Map.of("kind", "speicher_halten", "durationMinutes", 120));
+            assertThat(halten.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(halten.getBody().get("applied")).isEqualTo(Boolean.TRUE);
+            assertThat(halten.getBody().get("kind")).isEqualTo("speicher_halten");
+            assertThat(halten.getBody().get("endsAt")).isNotNull();
+            // S1 = A: „halten" IST setpoint 0 - kein neues Kommando.
+            assertThat(Double.parseDouble(String.valueOf(halten.getBody()
+                    .get("effectivePowerKw")))).isEqualTo(0.0);
+
+            Map<String, Object> nach = interventions(tok);
+            assertThat(nach.get("automationPaused")).isEqualTo(Boolean.FALSE);
+            List<?> rows = (List<?>) nach.get("interventions");
+            assertThat(rows).hasSize(1);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> row = (Map<String, Object>) rows.get(0);
+            assertThat(row.get("kind")).isEqualTo("speicher_halten");
+            assertThat(row.get("entityId")).isNotNull();
+            assertThat(row.get("endsAt")).isNotNull();
+
+            // (3) „Speicher jetzt laden" ERSETZT ihn - höchstens einer je
+            // Komponente (das partielle Unique der Migration).
+            ResponseEntity<Map<String, Object>> laden = post(tok, base + "/battery-override",
+                    Map.of("kind", "speicher_laden", "durationMinutes", 60, "setpointKw", 3.0));
+            assertThat(laden.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(laden.getBody().get("kind")).isEqualTo("speicher_laden");
+            assertThat(((List<?>) interventions(tok).get("interventions"))).hasSize(1);
+
+            // Ein NEGATIVER Sollwert wird BENANNT abgelehnt, nie geklemmt.
+            ResponseEntity<Map<String, Object>> minus = post(tok, base + "/battery-override",
+                    Map.of("kind", "speicher_laden", "durationMinutes", 60, "setpointKw", -3.0));
+            assertThat(minus.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(String.valueOf(minus.getBody().get("message")))
+                    .contains("Ladestand halten");
+            // Und ein unbekanntes Wort ebenso.
+            assertThat(post(tok, base + "/battery-override",
+                    Map.of("kind", "entladen", "durationMinutes", 60)).getStatusCode())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+
+            // (4) Die ANLAGEN-Pause ist eine eigene Zeile OHNE Komponente ...
+            ResponseEntity<Map<String, Object>> pause = post(tok, base + "/automation-pause",
+                    Map.of("kind", "pause", "durationMinutes", 240));
+            assertThat(pause.getStatusCode()).isEqualTo(HttpStatus.OK);
+            Map<String, Object> mitPause = interventions(tok);
+            assertThat(mitPause.get("automationPaused")).isEqualTo(Boolean.TRUE);
+            assertThat(mitPause.get("pausedUntil")).isNotNull();
+            // ... sie steht NEBEN dem Speicher-Eingriff, nicht statt seiner.
+            assertThat((List<?>) mitPause.get("interventions")).hasSize(1);
+
+            // ... und der Registry-Push trägt sie WIRKLICH - bewiesen an den
+            // retained BYTES in ProvisioningClaimTest (echtes EMQX), weil das
+            // die Frage ist, auf die es ankommt: kommt die Sperre am Gerät an.
+
+            // (5) Beide Rücknahmen wirken sofort.
+            assertThat(rest.exchange(url(base + "/automation-pause"), HttpMethod.DELETE,
+                    new HttpEntity<>(bearer(tok)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {})
+                    .getBody().get("kind")).isEqualTo("resume");
+            assertThat(interventions(tok).get("automationPaused")).isEqualTo(Boolean.FALSE);
+
+            assertThat(rest.exchange(url(base + "/battery-override"), HttpMethod.DELETE,
+                    new HttpEntity<>(bearer(tok)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {})
+                    .getBody().get("kind")).isEqualTo("resume");
+            assertThat((List<?>) interventions(tok).get("interventions")).isEmpty();
+
+            // Die Papier-Spur steht im Audit - der Verlauf ist nachlesbar.
+            TenantContext.set(tenantA);
+            try {
+                List<String> events = jdbc.queryForList(
+                        "SELECT event_type FROM consumer_audit_event WHERE site_id = ? "
+                                + "AND event_type LIKE '%override%' OR event_type LIKE 'automation%'",
+                        String.class, UUID.fromString(BERLIN_SITE));
+                assertThat(events).contains("device_override_started", "device_override_cleared",
+                        "automation_paused", "automation_resumed");
+            } finally {
+                TenantContext.clear();
+            }
+        } finally {
+            // Die Anlage wird geteilt - jeden Eingriff zurückgeben.
+            rest.exchange(url(base + "/automation-pause"), HttpMethod.DELETE,
+                    new HttpEntity<>(bearer(tok)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {});
+            rest.exchange(url(base + "/battery-override"), HttpMethod.DELETE,
+                    new HttpEntity<>(bearer(tok)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {});
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void handeingriffeSindMandantenGefenced() {
+        // demo2 gehört Tenant B - Berlin ist für ihn schlicht nicht auffindbar.
+        String fremd = token("demo2", "demo2");
+        String base = "/api/v1/sites/" + BERLIN_SITE;
+        assertThat(rest.exchange(url(base + "/interventions"), HttpMethod.GET,
+                new HttpEntity<>(bearer(fremd)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(post(fremd, base + "/battery-override",
+                Map.of("kind", "speicher_halten", "durationMinutes", 60)).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(post(fremd, base + "/automation-pause",
+                Map.of("kind", "pause", "durationMinutes", 60)).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    private Map<String, Object> interventions(String token) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/interventions"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
     }
 
     private Map<String, Object> create(String token, Map<String, Object> body) {

@@ -9,6 +9,7 @@ import com.voltpilot.api.components.ComponentAuthority;
 import com.voltpilot.api.entities.EntityRegistryRepository.BatteryAsset;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.repo.AssetRepository;
+import com.voltpilot.api.repo.DeviceOverrideRepository;
 import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import java.math.BigDecimal;
@@ -107,6 +108,7 @@ public class EntityRegistryService {
     private final EntityTypeCatalog catalog;
     private final AssetRepository assets;
     private final FlowClaimRepository claims;
+    private final DeviceOverrideRepository overrides;
     private final Clock clock;
 
     /**
@@ -118,20 +120,22 @@ public class EntityRegistryService {
     @org.springframework.beans.factory.annotation.Autowired
     public EntityRegistryService(EntityRegistryRepository repo,
             ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
-            EntityTypeCatalog catalog, AssetRepository assets, FlowClaimRepository claims) {
-        this(repo, publisher, mapper, catalog, assets, claims, Clock.systemUTC());
+            EntityTypeCatalog catalog, AssetRepository assets, FlowClaimRepository claims,
+            DeviceOverrideRepository overrides) {
+        this(repo, publisher, mapper, catalog, assets, claims, overrides, Clock.systemUTC());
     }
 
     EntityRegistryService(EntityRegistryRepository repo,
             ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
             EntityTypeCatalog catalog, AssetRepository assets, FlowClaimRepository claims,
-            Clock clock) {
+            DeviceOverrideRepository overrides, Clock clock) {
         this.repo = repo;
         this.publisher = publisher;
         this.mapper = mapper;
         this.catalog = catalog;
         this.assets = assets;
         this.claims = claims;
+        this.overrides = overrides;
         this.clock = clock;
     }
 
@@ -980,6 +984,16 @@ public class EntityRegistryService {
         if (ComponentAuthority.isPortalManaged(componentAuthority)) {
             push.put("component_authority", ComponentAuthority.PORTAL);
         }
+        // Steuerung Stufe 4 (§3.7 B5): „Automatik pausieren". Fahrplan UND Regeln
+        // ruhen bis zu diesem Zeitpunkt, jede Komponente fällt auf ihren
+        // Registry-Failsafe (Speicher = Eigenverbrauch, Gerät = release/off) -
+        // die Zahl dafür kann nur die Box rechnen, deshalb reist hier ein ENDE
+        // und kein Sollwert. Additiv und ABSOLUT: eine Box, die beim Ablauf
+        // offline war, hebt die Sperre nach ihrer eigenen Uhr wieder auf, statt
+        // auf eine Nachricht zu warten, die nie kommt. Ohne Pause fehlt das
+        // Feld - die Nutzlast ist dann byte-gleich zu vorher.
+        overrides.activePause(siteId)
+                .ifPresent(pause -> push.put("automation_paused_until", pause.endsAt().toString()));
         // The consumer cycle-guard limits (min-on/min-off/starts per day) live
         // in consumer_profile - the ONE profile truth - and ride the push as
         // guards.limits fields (D-9: limits live in registry config, never in

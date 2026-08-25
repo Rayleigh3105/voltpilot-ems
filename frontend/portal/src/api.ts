@@ -271,6 +271,38 @@ export interface WeatherForecast {
   points: WeatherPoint[];
 }
 
+/** Ein laufender Handeingriff (Steuerung Stufe 4). */
+export interface Intervention {
+  kind: string;
+  /** null = die ganze Anlage (die Pause), sonst die Komponente. */
+  entityId: string | null;
+  targetValueKw: number | null;
+  endsAt: string;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+/** Alles, was gerade von Hand gesetzt ist. */
+export interface SiteInterventions {
+  automationPaused: boolean;
+  /** Bis wann die Pause läuft; null = keine Pause. */
+  pausedUntil: string | null;
+  interventions: Intervention[];
+}
+
+/** Was ein Eingriffs-Aufruf bewirkt hat. */
+export interface InterventionOutcome {
+  applied: boolean;
+  /** Ist der Wunsch wirklich hinausgegangen? Sonst sagt `message` das. */
+  pushed: boolean;
+  kind: string;
+  endsAt: string | null;
+  effectivePowerKw: number | null;
+  /** true = der Eingriff dauert länger als die 4-h-Kappe und wird erneuert. */
+  ttlRenewed: boolean;
+  message: string;
+}
+
 export interface ScheduleSlot {
   start: string;
   batteryKw: number | null;
@@ -2709,6 +2741,39 @@ export const api = {
    */
   siteChargers: (siteId: string) =>
     request<SiteCharging>(`/api/v1/sites/${siteId}/chargers`),
+  /**
+   * Die laufenden HANDEINGRIFFE der Anlage (Steuerung Stufe 4): der Speicher-
+   * Eingriff und die „Automatik pausieren"-Sperre. Der EINE Lesepfad, aus dem
+   * die Jetzt-Zone ihre Zeilen-Countdowns UND ihr Banner baut - abgelaufene
+   * Eingriffe lesen server-seitig als abwesend, hier kommt nie ein Geist an.
+   */
+  siteInterventions: (siteId: string) =>
+    request<SiteInterventions>(`/api/v1/sites/${siteId}/interventions`),
+  /** „Speicher jetzt laden" / „Ladestand halten" - Dauer ist PFLICHT. */
+  startBatteryOverride: (
+    siteId: string,
+    body: { kind: 'speicher_laden' | 'speicher_halten'; durationMinutes?: number;
+      endsAt?: string; setpointKw?: number },
+  ) => request<InterventionOutcome>(`/api/v1/sites/${siteId}/battery-override`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  /** „Automatik fortsetzen" für den Speicher. */
+  clearBatteryOverride: (siteId: string) =>
+    request<InterventionOutcome>(`/api/v1/sites/${siteId}/battery-override`, {
+      method: 'DELETE',
+    }),
+  /** „Automatik pausieren" - Fahrplan UND Regeln ruhen für die Dauer. */
+  pauseAutomation: (
+    siteId: string,
+    body: { durationMinutes?: number; endsAt?: string },
+  ) => request<InterventionOutcome>(`/api/v1/sites/${siteId}/automation-pause`, {
+    method: 'POST', body: JSON.stringify({ kind: 'pause', ...body }),
+  }),
+  /** „Automatik fortsetzen" für die ganze Anlage. */
+  resumeAutomation: (siteId: string) =>
+    request<InterventionOutcome>(`/api/v1/sites/${siteId}/automation-pause`, {
+      method: 'DELETE',
+    }),
   /** Die im Portal gepflegte Anschlussgrenze + Vorrang-Wahl. */
   chargingConfig: (siteId: string) =>
     request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-config`),

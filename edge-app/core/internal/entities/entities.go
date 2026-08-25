@@ -159,6 +159,23 @@ type Registry struct {
 	Revision    string    `json:"revision"`
 	PublishedAt time.Time `json:"published_at"`
 	Entities    []Entity  `json:"entities"`
+	// PausedUntil is the operator's „Automatik pausieren" (Steuerung Stufe 4,
+	// §3.7 B5): until this instant the plan executors inject NOTHING and the
+	// arbiter ignores every desire BELOW the market class, so every component
+	// falls to its registry failsafe - the battery to self-consumption, a
+	// device to release/off. That is exactly „so, als gäbe es VoltPilot
+	// nicht", and it is the only value the cloud could NOT have sent as a
+	// setpoint (PV − load is a number only the box can compute).
+	//
+	// ⚠ It is an ABSOLUTE instant, never a duration: the registry push is
+	// RETAINED, so a box that was offline when the pause expired must be able
+	// to lift it by its OWN clock instead of waiting for a message that may
+	// never come. ABSENT (the zero value) = no pause, which is what every
+	// older cloud sends and what every unpaused plant sends.
+	//
+	// ⚠ What a pause does NOT touch: measuring, the guard chain, § 14a, the
+	// curtailment and the export guard. They all live BELOW arbitration.
+	PausedUntil time.Time `json:"automation_paused_until,omitempty"`
 	// ComponentAuthority is WHO owns this PLANT's device configuration
 	// (Einheitsmodell Stufe 1, contract registry_push.component_authority):
 	// "portal" = the cloud is the Soll and the box DERIVES its local
@@ -187,6 +204,12 @@ func (r Registry) FirstOfType(entityType string) *Entity {
 		}
 	}
 	return nil
+}
+
+// Paused reports whether the operator's „Automatik pausieren" is in force at
+// `now` (Steuerung Stufe 4, §3.7 B5). A zero instant is never a pause.
+func (r Registry) Paused(now time.Time) bool {
+	return !r.PausedUntil.IsZero() && now.Before(r.PausedUntil)
 }
 
 // Claimed reports whether an ACTIVE customer rule claims this entity
@@ -228,6 +251,7 @@ func ParseRegistryPush(payload []byte, id Identity) (Registry, []string, error) 
 		Revision           string    `json:"revision"`
 		PublishedAt        time.Time `json:"published_at"`
 		ComponentAuthority string    `json:"component_authority"`
+		PausedUntil        time.Time `json:"automation_paused_until"`
 		Entities           []Entity  `json:"entities"`
 	}
 	if err := json.Unmarshal(payload, &push); err != nil {
@@ -246,7 +270,7 @@ func ParseRegistryPush(payload []byte, id Identity) (Registry, []string, error) 
 	}
 
 	reg := Registry{Revision: push.Revision, PublishedAt: push.PublishedAt,
-		ComponentAuthority: push.ComponentAuthority}
+		ComponentAuthority: push.ComponentAuthority, PausedUntil: push.PausedUntil}
 	var skipped []string
 	seen := map[string]bool{}
 	for _, e := range push.Entities {

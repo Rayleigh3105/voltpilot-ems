@@ -485,6 +485,48 @@ class ProvisioningClaimTest {
                 assertThat(e.has("edge_source_id")).isFalse();
             }
         }
+
+        // Steuerung Stufe 4 (§3.7 B5): „Automatik pausieren" reist im SELBEN
+        // retained Push - hier an den echten BYTES, weil das die Frage ist, auf
+        // die es ankommt (kommt die Sperre am Gerät an?). Sie ist ein ABSOLUTER
+        // Zeitpunkt, damit eine Box, die beim Ablauf offline war, ihn nach ihrer
+        // EIGENEN Uhr aufheben kann - eine Dauer in einer retained Nachricht
+        // wäre bei jedem Verbindungsaufbau neu.
+        assertThat(pinned.has("automation_paused_until"))
+                .as("ohne Pause fehlt das Feld - die Nutzlast ist byte-gleich zu vorher")
+                .isFalse();
+        ResponseEntity<Map<String, Object>> paused = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/automation-pause"),
+                org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>(Map.of("kind", "pause", "durationMinutes", 120), customer),
+                new org.springframework.core.ParameterizedTypeReference<>() {});
+        assertThat(paused.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String pausedPayload = pollRetainedContaining(topic, "automation_paused_until", 15);
+        assertThat(pausedPayload).as("re-pushed registry carrying the operator pause").isNotNull();
+        JsonNode pausedNode = mapper.readTree(pausedPayload);
+        assertThat(java.time.Instant.parse(pausedNode.get("automation_paused_until").asText()))
+                .isAfter(java.time.Instant.now());
+
+        // „Automatik fortsetzen" nimmt sie im selben Weg zurück.
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/automation-pause"),
+                org.springframework.http.HttpMethod.DELETE, new HttpEntity<>(customer),
+                new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {})
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+        String resumedPayload = pollRetainedWithout(topic, "automation_paused_until", 15);
+        assertThat(resumedPayload).as("re-pushed registry WITHOUT the pause").isNotNull();
+    }
+
+    /** Poll the retained topic until the payload no longer contains a marker. */
+    private String pollRetainedWithout(String topic, String marker, int timeoutSeconds)
+            throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
+        while (System.nanoTime() < deadline) {
+            String payload = pollRetained(topic, 2);
+            if (payload != null && !payload.contains(marker)) {
+                return payload;
+            }
+        }
+        return null;
     }
 
     /** Poll the retained topic until the payload contains a marker (re-push). */

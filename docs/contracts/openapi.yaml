@@ -1109,6 +1109,130 @@ paths:
         "404": { description: Anlage, Säule oder Stecker unbekannt (deutscher Grund im Körper). }
         "409": { description: An diesem Stecker läuft gerade kein Ladevorgang. }
         "503": { description: Die Box war nicht erreichbar - es entstand keine Freigabe. }
+  /api/v1/sites/{siteId}/interventions:
+    get:
+      tags: [sites]
+      summary: Die laufenden Handeingriffe der Anlage (Steuerung Stufe 4).
+      description: >
+        Der EINE Lesepfad der Jetzt-Zone: der Speicher-Eingriff („Ladestand
+        halten" / „Speicher jetzt laden") und die „Automatik pausieren"-Sperre.
+        Ein ABGELAUFENER Eingriff liest server-seitig als ABWESEND (§16) - hier
+        kommt nie ein Geist an. RLS-gefenced wie jede `/sites/**`-Route (fremde
+        Anlage 404, Admins über den `X-Tenant-Id`-Umschalter); eine leere Liste
+        mit `automationPaused: false` ist der Normalzustand jeder Anlage.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Laufende Eingriffe + die Pause.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  automationPaused: { type: boolean }
+                  pausedUntil:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: Bis wann die Pause läuft; null = keine Pause.
+                  interventions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind:
+                          type: string
+                          enum: [speicher_halten, speicher_laden]
+                        entityId: { type: string, format: uuid }
+                        targetValueKw: { type: number, nullable: true }
+                        endsAt: { type: string, format: date-time }
+                        createdBy: { type: string, nullable: true }
+                        createdAt: { type: string, format: date-time }
+        "404": { description: Anlage nicht gefunden (auch bei fremdem Mandanten). }
+  /api/v1/sites/{siteId}/battery-override:
+    post:
+      tags: [sites]
+      summary: „Speicher jetzt laden" / „Ladestand halten" (Captain-Entscheid S1 = A).
+      description: >
+        Ein TTL-gebundener Handeingriff am Speicher. Es gibt KEIN neues
+        Kommando: „halten" ist `setpoint_kw = 0`, „laden" ein positiver
+        Sollwert - beides reist über den BESTEHENDEN `v2/desired`-Weg und wird
+        auf dem Gerät durch die BESTEHENDE Guard-Kette geklemmt. Ob dabei aus
+        dem NETZ geladen werden darf, entscheidet deshalb die Box gegen ihre
+        Registry-Angabe `charge_from_grid_allowed` (D-8) - nicht diese Route.
+        Eine Dauer oder Endzeit ist PFLICHT (400 sonst); über der 4-h-Kappe des
+        Arbiters wird der Wunsch cloud-seitig ERNEUERT, nie der Vertrag gedehnt.
+        Ein NEGATIVER Sollwert ist eine benannte Ablehnung, nie eine Klemmung -
+        einen „jetzt entladen"-Eingriff gibt es nicht.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind:
+                  type: string
+                  enum: [speicher_halten, speicher_laden]
+                durationMinutes: { type: integer, minimum: 15 }
+                endsAt: { type: string, format: date-time }
+                setpointKw:
+                  type: number
+                  description: >
+                    Nur bei `speicher_laden`; ohne Angabe die volle
+                    Ladeleistung. Auf die Nennleistung gekappt.
+      responses:
+        "200": { description: Der Eingriff ist notiert (und, wenn möglich, gesendet). }
+        "400": { description: Ohne Dauer, mit unbekannter Art oder mit negativem Sollwert. }
+        "404": { description: Anlage nicht gefunden. }
+        "409": { description: Diese Anlage hat keinen steuerbaren Speicher. }
+    delete:
+      tags: [sites]
+      summary: „Automatik fortsetzen" für den Speicher - wirkt sofort.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Der Eingriff ist beendet. }
+        "404": { description: Anlage nicht gefunden. }
+  /api/v1/sites/{siteId}/automation-pause:
+    post:
+      tags: [sites]
+      summary: „Automatik pausieren" - Fahrplan UND Regeln ruhen für die Dauer.
+      description: >
+        Die Sperre reist im RETAINED Registry-Push als ABSOLUTER Zeitpunkt
+        (`automation_paused_until`), damit eine Box, die beim Ablauf offline
+        war, sie nach ihrer EIGENEN Uhr aufheben kann. Auf dem Gerät fällt dann
+        jede Komponente auf ihren Registry-Failsafe: der Speicher auf
+        Eigenverbrauch, ein Gerät auf release/off. Was NICHT pausiert: Messen,
+        die Guard-Kette, § 14a, die Abregelung und die Einspeise-Wache - sie
+        liegen unterhalb der Arbitrierung.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                durationMinutes: { type: integer, minimum: 15 }
+                endsAt: { type: string, format: date-time }
+      responses:
+        "200": { description: Die Pause läuft. }
+        "400": { description: Ohne Dauer oder Endzeit. }
+        "404": { description: Anlage nicht gefunden. }
+    delete:
+      tags: [sites]
+      summary: „Automatik fortsetzen" für die ganze Anlage - wirkt sofort.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Die Automatik läuft wieder. }
+        "404": { description: Anlage nicht gefunden. }
   /api/v1/sites/{siteId}/chargers:
     get:
       tags: [sites]

@@ -72,6 +72,7 @@ public class DeviceController {
     private final ControlCertificationService controlCertification;
     private final ObjectProvider<ChargingConfigPublisher> chargingConfig;
     private final MoveProvisioningOutboxService moveOutbox;
+    private final com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
             SeriesRepository series, AssetRepository assets,
@@ -84,7 +85,8 @@ public class DeviceController {
             EntityAutoComposer autoCompose,
             ControlCertificationService controlCertification,
             ObjectProvider<ChargingConfigPublisher> chargingConfig,
-            MoveProvisioningOutboxService moveOutbox) {
+            MoveProvisioningOutboxService moveOutbox,
+            com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides) {
         this.devices = devices;
         this.sites = sites;
         this.series = series;
@@ -99,6 +101,7 @@ public class DeviceController {
         this.controlCertification = controlCertification;
         this.chargingConfig = chargingConfig;
         this.moveOutbox = moveOutbox;
+        this.deviceOverrides = deviceOverrides;
     }
 
     @GetMapping
@@ -333,6 +336,12 @@ public class DeviceController {
         // Selbst-Blockade, die bei der Steuerungs-Freigabe dokumentiert ist.
         chargingConfig.ifAvailable(p ->
                 p.clear(tenantId, device.siteId(), device.id()));
+        // Steuerung Stufe 4: ein Handeingriff an einem Gerät, das niemandem mehr
+        // gehört, ist keine Aussage mehr - und eine „Automatik pausieren"-Sperre
+        // auf einer Anlage ohne Gerät hätte gar keine Wirkung mehr. Anders als
+        // beim retained Slot oben ist DAS hier eine DB-Zeile auf dem @Primary-Pfad,
+        // also derselben Verbindung wie das Unclaim - kein Selbst-Blockade-Risiko.
+        deviceOverrides.clearSite(device.siteId());
         return ResponseEntity.noContent().build();
     }
 

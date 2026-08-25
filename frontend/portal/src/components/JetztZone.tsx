@@ -22,7 +22,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type ControlStatus, type CurtailmentStatus, type SchedulePlan, type Site } from '../api';
+import {
+  api,
+  type ControlStatus,
+  type CurtailmentStatus,
+  type SchedulePlan,
+  type Site,
+  type SiteInterventions,
+} from '../api';
 import { PartHead } from './SteuerungParts';
 import { ConsumerOverrideDialog } from './ConsumerOverrideDialog';
 import { consumersApi } from '../consumers/consumersApi';
@@ -34,12 +41,35 @@ import {
   JETZT_INTRO,
   JETZT_TITEL,
   jetztZone,
+  PAUSE_BANNER_ID,
   type JetztZeile,
 } from '../steuerungJetzt';
+import {
+  DAUERN,
+  endeVon,
+  HANDEINGRIFF_LABEL,
+  handeingriffFolgen,
+  planVerzicht,
+  type HandeingriffAktion,
+  type SpeicherAktion,
+} from '../handeingriff';
+import { HandeingriffDialog } from './HandeingriffDialog';
 import './Steuerung.css';
 
 /** Der Takt, in dem der Countdown neu gerechnet wird (eine Minute genügt). */
 const TICK_MS = 30_000;
+
+/**
+ * Die VORAUSGEWÄHLTE Dauer des Speicher-/Anlagen-Eingriffs. Sie ist bewusst
+ * kurz: ein Eingriff, den man vergisst, soll von selbst enden - länger wählt
+ * der Kunde im Dialog.
+ */
+const HAND_DEFAULT_DAUER = '2h';
+
+function handEnde(now: Date, key: string): Date {
+  const gewaehlt = DAUERN.find((d) => d.key === key) ?? DAUERN[2];
+  return endeVon(gewaehlt, now);
+}
 
 export function JetztZone({
   site,
@@ -66,11 +96,27 @@ export function JetztZone({
   const [consumers, setConsumers] = useState<Consumer[]>([]);
   const [status, setStatus] = useState<ConsumerRuntimeStatus[]>([]);
   const [overrides, setOverrides] = useState<ManualOverride[]>([]);
+  const [interventions, setInterventions] = useState<SiteInterventions | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const [busy, setBusy] = useState(false);
   const [offen, setOffen] = useState<string | null>(null);
   const [eingriff, setEingriff] = useState<{ consumer: Consumer; aktion: SofortAktion } | null>(null);
+  /** Der Speicher-/Anlagen-Eingriff (Stufe 4) - eigener Dialog, eigene Dauern. */
+  /**
+   * ⚠ Der Eingriff trägt seinen UMFANG mit, nicht nur seine Handlung: „Automatik
+   * fortsetzen" gibt es zweimal - für den Speicher und für die ganze Anlage -,
+   * und beide können gleichzeitig laufen. Aus `resume` allein wäre nicht
+   * ableitbar, welchen der beiden der Kunde gerade gedrückt hat.
+   */
+  const [hand, setHand] = useState<
+    { aktion: HandeingriffAktion; umfang: 'speicher' | 'anlage' } | null>(null);
+  /**
+   * ⚠ Die gewählte Dauer lebt HIER, nicht im Dialog: die Folgen-Karte muss
+   * beschreiben, was der Knopf tun WIRD - Endzeit UND Fahrplan-Verzicht hängen
+   * an ihr. Mit dialog-interner Auswahl stünde dort dauerhaft die Vorauswahl.
+   */
+  const [handDauer, setHandDauer] = useState(HAND_DEFAULT_DAUER);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), TICK_MS);
@@ -87,6 +133,11 @@ export function JetztZone({
     consumersApi.list(site.id).then((l) => alive && setConsumers(l ?? [])).catch(() => {});
     consumersApi.status(site.id).then((s) => alive && setStatus(s ?? [])).catch(() => {});
     consumersApi.overrides(site.id).then((o) => alive && setOverrides(o ?? [])).catch(() => {});
+    // Stufe 4: die laufenden Handeingriffe + die Pause. Fail-soft wie alles
+    // hier - ein älteres Backend kennt die Route nicht, dann bleibt die Zone
+    // Zeichen für Zeichen die der Stufe 1.
+    api.siteInterventions(site.id)
+      .then((i) => alive && setInterventions(i ?? null)).catch(() => {});
     return () => { alive = false; };
   }, [site.id, reloadKey]);
 
@@ -107,6 +158,8 @@ export function JetztZone({
         curtail,
         plantKind: site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
         regelHaeltAn: speicherRegelAktiv,
+        eingriff: interventions?.interventions.find((i) => i.entityId != null) ?? null,
+        pausiert: interventions?.automationPaused === true,
         now,
       },
       geraete: consumers.map((c) => ({
@@ -117,10 +170,11 @@ export function JetztZone({
       })),
       charging,
       overrides,
+      interventions,
       now,
     });
-  }, [plan, control, curtail, consumers, status, overrides, charging, site.plantKind,
-    speicherRegelAktiv, speicherName, now]);
+  }, [plan, control, curtail, consumers, status, overrides, interventions, charging,
+    site.plantKind, speicherRegelAktiv, speicherName, now]);
 
   const bestaetigen = useCallback(async (minutes?: number) => {
     if (!eingriff) return;
@@ -145,6 +199,52 @@ export function JetztZone({
     }
   }, [eingriff, site.id, reload]);
 
+  /** Die Zahl der Folgen-Karte - aus DEMSELBEN Plan, den das Diagramm zeichnet. */
+  const handFolgen = useMemo(() => {
+    if (!hand) return null;
+    const ende = handEnde(now, handDauer);
+    return handeingriffFolgen({
+      aktion: hand.aktion,
+      endeText: ende.toLocaleTimeString('de-DE',
+        { hour: '2-digit', minute: '2-digit' }) + ' Uhr',
+      // ⚠ Ladestand und Ladeleistung stehen auf DIESER Fläche nicht belegt zur
+      // Verfügung (das Rücklesen trägt den Sollwert, nicht den Stand) - die
+      // Folgen-Karte lässt die Klammern dann weg, statt eine Zahl zu erfinden.
+      socPct: null,
+      leistungKw: null,
+      verzicht: planVerzicht(plan?.slots ?? null, now, ende),
+    });
+  }, [hand, handDauer, plan, now]);
+
+  const handBestaetigen = useCallback(async (minutes: number | null) => {
+    if (!hand) return;
+    setBusy(true);
+    try {
+      // ⚠ „bis morgen früh" reist als absolutes ENDE, jede andere Dauer als
+      // Minuten - genau das, was der Server erwartet (er rechnet die Zone der
+      // Anlage selbst, hier steht sie nur für die Vorschau).
+      const body = minutes == null
+        ? { endsAt: handEnde(new Date(), handDauer).toISOString() }
+        : { durationMinutes: minutes };
+      if (hand.aktion === 'pause') {
+        await api.pauseAutomation(site.id, body);
+      } else if (hand.aktion === 'resume') {
+        if (hand.umfang === 'anlage') await api.resumeAutomation(site.id);
+        else await api.clearBatteryOverride(site.id);
+      } else {
+        await api.startBatteryOverride(site.id,
+          { kind: hand.aktion as SpeicherAktion, ...body });
+      }
+    } catch {
+      // Ein abgelehnter Eingriff lässt die Zone stehen, wie sie war - nie ein
+      // Schein-Erfolg. Den Grund zeigt die Seite über ihren Fehler-Streifen.
+    } finally {
+      setHand(null);
+      setBusy(false);
+      reload();
+    }
+  }, [hand, handDauer, site.id, reload]);
+
   const bannerGeraet = view.banner
     ? consumers.find((c) => c.id === view.banner!.entityId) ?? null
     : null;
@@ -157,12 +257,26 @@ export function JetztZone({
           <p className="vp-jetzt-banner" role="status">
             <Icon name="alert-triangle" size={16} />
             <span>{view.banner.text}</span>
-            {bannerGeraet && (
+            {view.banner.entityId !== PAUSE_BANNER_ID && bannerGeraet ? (
               <button
                 type="button"
                 className="vp-jetzt-banner-act"
                 disabled={busy}
                 onClick={() => setEingriff({ consumer: bannerGeraet, aktion: 'resume' })}
+              >
+                {view.banner.aktion}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="vp-jetzt-banner-act"
+                disabled={busy}
+                onClick={() => setHand({
+                  aktion: 'resume',
+                  // Der Banner der ANLAGEN-Pause trägt den Sentinel; jeder
+                  // andere bannerlose Rückweg gilt dem Speicher.
+                  umfang: view.banner!.entityId === PAUSE_BANNER_ID ? 'anlage' : 'speicher',
+                })}
               >
                 {view.banner.aktion}
               </button>
@@ -182,15 +296,47 @@ export function JetztZone({
                 busy={busy}
                 onToggle={() => setOffen((o) => (o === z.key ? null : z.key))}
                 onAktion={(a) => {
-                  const c = consumers.find((x) => x.id === z.entityId);
                   setOffen(null);
-                  if (c) setEingriff({ consumer: c, aktion: a });
+                  if (z.art === 'speicher') {
+                    setHandDauer(HAND_DEFAULT_DAUER);
+                    setHand({ aktion: a as HandeingriffAktion, umfang: 'speicher' });
+                    return;
+                  }
+                  const c = consumers.find((x) => x.id === z.entityId);
+                  if (c) setEingriff({ consumer: c, aktion: a as SofortAktion });
                 }}
               />
             ))}
           </ul>
         )}
       </Card>
+
+      {/* Die ANLAGEN-Pause ist keine Zeile: sie gilt allen. */}
+      {!view.leer && !interventions?.automationPaused && (
+        <p className="vp-jetzt-pausezeile">
+          <button
+            type="button"
+            className="vp-jetzt-pausebtn"
+            disabled={busy}
+            onClick={() => {
+              setHandDauer(HAND_DEFAULT_DAUER);
+              setHand({ aktion: 'pause', umfang: 'anlage' });
+            }}
+          >
+            {HANDEINGRIFF_LABEL.pause}
+          </button>
+        </p>
+      )}
+
+      <HandeingriffDialog
+        folgen={handFolgen}
+        busy={busy}
+        withDuration={hand?.aktion !== 'resume'}
+        dauerKey={handDauer}
+        onDauer={setHandDauer}
+        onConfirm={(m) => void handBestaetigen(m)}
+        onCancel={() => setHand(null)}
+      />
 
       <ConsumerOverrideDialog
         action={eingriff?.aktion ?? null}
@@ -220,7 +366,7 @@ function JetztZeileView({
   offen: boolean;
   busy: boolean;
   onToggle: () => void;
-  onAktion: (a: SofortAktion) => void;
+  onAktion: (a: SofortAktion | HandeingriffAktion) => void;
 }): JSX.Element {
   return (
     <li className="vp-jetztrow">
@@ -257,7 +403,9 @@ function JetztZeileView({
                   className="vp-jetzt-menuitem"
                   onClick={() => onAktion(a)}
                 >
-                  {SOFORT_LABEL[a]}
+                  {a in SOFORT_LABEL
+                    ? SOFORT_LABEL[a as SofortAktion]
+                    : HANDEINGRIFF_LABEL[a as HandeingriffAktion]}
                 </button>
               ))}
             </span>

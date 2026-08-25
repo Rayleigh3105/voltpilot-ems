@@ -216,6 +216,12 @@
                              prueft ComponentAdoptionWiringTest an der echten
                              application.yml. -->
                         <voltpilot.components.adoption.reconcile-enabled>false</voltpilot.components.adoption.reconcile-enabled>
+                        <!-- Der Erneuerungs-Takt der Handeingriffe (Steuerung
+                             Stufe 4, B6) ist in PRODUKTION an (application.yml,
+                             matchIfMissing) - im Testlauf aus, aus demselben
+                             Grund wie die zwei Sammler darueber. Wer ihn prueft,
+                             ruft renewOnce() direkt. -->
+                        <voltpilot.interventions.renewal-enabled>false</voltpilot.interventions.renewal-enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

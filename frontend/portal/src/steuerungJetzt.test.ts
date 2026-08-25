@@ -9,7 +9,6 @@ import {
   GERAET_NICHT_VERBUNDEN,
   JETZT_LEER,
   LADEPARK_KEIN_EINGRIFF,
-  SPEICHER_KEIN_EINGRIFF,
   geraetZeile,
   jetztBanner,
   jetztZone,
@@ -139,13 +138,49 @@ describe('Zone ① Jetzt — die Speicher-Zeile', () => {
     expect(speicherZustand(null)).toBe('pausiert');
   });
 
-  it('bietet KEINEN Handeingriff an und sagt warum (Stufe 4 baut ihn)', () => {
+  it('bietet seit Stufe 4 beide Speicher-Eingriffe an', () => {
     const z = speicherZeile({
       control: control(), expectControl: true, slots: [slot()],
       plantKind: 'eigenverbrauch', now: NOW,
     });
+    expect(z!.aktionen).toEqual(['speicher_laden', 'speicher_halten']);
+    expect(z!.keinEingriff).toBeNull();
+  });
+
+  it('⚠ ohne belegte Steuerbarkeit steht der GRUND statt eines Knopfes', () => {
+    const z = speicherZeile({
+      control: control(), expectControl: true, slots: [slot()],
+      plantKind: 'eigenverbrauch', steuerbar: false, now: NOW,
+    });
     expect(z!.aktionen).toEqual([]);
-    expect(z!.keinEingriff).toBe(SPEICHER_KEIN_EINGRIFF);
+    expect(z!.keinEingriff).toContain('steuert diesen Speicher noch nicht');
+  });
+
+  it('ein laufender Eingriff IST die Quelle und bietet nur den Rückweg', () => {
+    const z = speicherZeile({
+      control: control(), expectControl: true, slots: [slot()],
+      plantKind: 'eigenverbrauch', now: NOW,
+      // Die Regel wäre sonst die Quelle - der Handeingriff schlägt sie.
+      regelHaeltAn: true,
+      eingriff: {
+        kind: 'speicher_halten', entityId: 'e-batt', targetValueKw: 0,
+        endsAt: new Date(NOW.getTime() + 90 * 60_000).toISOString(),
+        createdBy: null, createdAt: NOW.toISOString(),
+      },
+    });
+    expect(z!.quelle).toBe('handeingriff');
+    expect(z!.quelleText).toContain('Handeingriff bis');
+    expect(z!.bis).toBeTruthy();
+    expect(z!.aktionen).toEqual(['resume']);
+  });
+
+  it('während einer ANLAGEN-Pause greift man nicht einzeln ein', () => {
+    const z = speicherZeile({
+      control: control(), expectControl: true, slots: [slot()],
+      plantKind: 'eigenverbrauch', pausiert: true, now: NOW,
+    });
+    expect(z!.aktionen).toEqual([]);
+    expect(z!.keinEingriff).toContain('pausiert gerade');
   });
 
   it('nennt die Regel als Quelle NUR, wenn der Aufrufer sie belegt', () => {

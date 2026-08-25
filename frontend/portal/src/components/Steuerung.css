@@ -847,3 +847,63 @@
     right: 0;
   }
 }
+
+/* --- Steuerung Stufe 4: Handeingriffe ------------------------------------ */
+
+/*
+ * Die ANLAGEN-Pause ist keine Zeile, sondern eine ruhige Handlung UNTER der
+ * Liste: sie gilt allen Komponenten, und als Zeile stünde sie fälschlich
+ * neben ihnen. Deshalb ein Ghost-Knopf, kein Menü-Eintrag.
+ */
+.vp-jetzt-pausezeile {
+  margin: 12px 0 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.vp-jetzt-pausebtn {
+  padding: 8px 14px;
+  min-height: 44px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 8px);
+  background: transparent;
+  color: var(--vp-text-muted, #64748b);
+  font: inherit;
+  font-size: var(--vp-text-xs, 12px);
+  cursor: pointer;
+}
+
+.vp-jetzt-pausebtn:hover:not(:disabled) {
+  border-color: var(--vp-brand, #6b8afd);
+  color: var(--vp-text, #0f172a);
+}
+
+.vp-jetzt-pausebtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Die vier festen Blöcke der Folgen-Karte (§3.5) - jeder mit seiner Überschrift,
+   damit „Risiko" und „Das bleibt gleich" nie zu einer Textwand verschmelzen. */
+.vp-handeingriff-block + .vp-handeingriff-block {
+  margin-top: 14px;
+}
+
+.vp-handeingriff-block h4 {
+  margin: 0 0 6px;
+  font-size: var(--vp-text-xs, 12px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted, #64748b);
+}
+
+@media (max-width: 720px) {
+  .vp-jetzt-pausezeile {
+    justify-content: stretch;
+  }
+
+  .vp-jetzt-pausebtn {
+    width: 100%;
+  }
+}

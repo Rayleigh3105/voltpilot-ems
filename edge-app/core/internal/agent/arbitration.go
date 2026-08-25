@@ -85,6 +85,7 @@ func (a *Agent) newArbiter() *desired.Arbiter {
 			a.invMu.Unlock()
 			return a.Cfg.ControlEnabled && a.controlCertified(family)
 		},
+		Suspended:       a.automationPaused,
 		StorageFailsafe: a.storageFailsafe,
 		PublishCommand: func(entityID string, payload []byte) {
 			a.publishEntityRetained(entities.CommandTopic(entityID), payload)
@@ -278,6 +279,17 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 	if len(reg.Entities) == 0 {
 		return
 	}
+	// Steuerung Stufe 4 (§3.7 B5): while the operator's „Automatik pausieren"
+	// holds, no plan desire is injected at all. Combined with the arbiter's
+	// Suspended gate (which drops the rules' flow-class wishes too) every
+	// entity falls to its registry failsafe - the honest reading of „so, als
+	// gäbe es VoltPilot nicht".
+	if reg.Paused(now) {
+		for id := range a.pausedWithdrawSet() {
+			a.arb.Withdraw(id, desired.Source{Kind: desired.SourcePlanExecutor}.Key(), false)
+		}
+		return
+	}
 	a.arbMu.Lock()
 	v2 := a.curPlan2
 	prevHeld := a.planHeld
@@ -377,6 +389,28 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 	a.arbMu.Lock()
 	a.planHeld = held
 	a.arbMu.Unlock()
+}
+
+// automationPaused reports the operator's „Automatik pausieren" (Steuerung
+// Stufe 4). It reads the APPLIED registry, so an older cloud (no field) and
+// every unpaused plant answer false - byte-for-byte the pre-Stufe-4 behaviour.
+func (a *Agent) automationPaused() bool {
+	a.entMu.Lock()
+	reg := a.entRegistry
+	a.entMu.Unlock()
+	return reg.Paused(time.Now().UTC())
+}
+
+// pausedWithdrawSet is the set of entities the plan executors held when the
+// pause began - withdrawing them CLEANLY (stale=false) lets the arbiter
+// re-select at once, and since every remaining wish is gated away the entity
+// lands on its failsafe without a detour.
+func (a *Agent) pausedWithdrawSet() map[string]string {
+	a.arbMu.Lock()
+	prev := a.planHeld
+	a.planHeld = map[string]string{}
+	a.arbMu.Unlock()
+	return prev
 }
 
 // composedPeakTarget is the effective PS-3 site import target: the v1 plan's

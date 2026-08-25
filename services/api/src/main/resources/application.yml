@@ -297,6 +297,14 @@ voltpilot:
       enabled: ${VOLTPILOT_ENTITIES_BACKFILL_ENABLED:true}
       reconcile-enabled: ${VOLTPILOT_ENTITIES_BACKFILL_RECONCILE_ENABLED:true}
       interval-ms: ${VOLTPILOT_ENTITIES_BACKFILL_INTERVAL_MS:300000}
+  # Steuerung Stufe 4 (B6): ein Handeingriff über der 4-h-Arbiter-Kappe wird
+  # ERNEUERT statt den Vertrag D-5 zu dehnen. Vorgabe AN - ein per Vorgabe
+  # ausgeschaltetes Flag müsste im gitops-Repo nachgezogen werden (die
+  # dokumentierte OTA-Listener-Falle); der Testlauf schaltet ihn über die
+  # surefire-Systemeigenschaft aus.
+  interventions:
+    renewal-enabled: ${VOLTPILOT_INTERVENTIONS_RENEWAL_ENABLED:true}
+    renewal-interval-ms: ${VOLTPILOT_INTERVENTIONS_RENEWAL_INTERVAL_MS:600000}
   # Einheitsmodell Stufe 2: die BESTANDS-ÜBERNAHME läuft AUTOMATISCH
   # (Captain-Entscheid E2). Sobald eine box-verwaltete Anlage ihren
   # Einrichtungs-Stand VOLLSTÄNDIG meldet - also nach dem Box-Update, das die

@@ -39,12 +39,25 @@
  *
  * REIN + unit-getestet (`steuerungJetzt.test.ts`); die Fläche rendert nur.
  */
-import type { ControlStatus, CurtailmentStatus, ScheduleSlot, SchedulePlan } from './api';
+import type {
+  ControlStatus,
+  CurtailmentStatus,
+  Intervention,
+  ScheduleSlot,
+  SchedulePlan,
+  SiteInterventions,
+} from './api';
 import { CONTROL_DEADBAND_KW, batteryDirection, controlReasonSlot, controlStrip } from './control';
 import { curtailTruth, curtailTruthForSlot, type CurtailTruth } from './curtailment';
 import { slotWhy, type PlanWhyFacts, type WhySlot } from './fahrplanWhy';
 import { overrideLine, sofortAktionen, type ManualOverride, type SofortAktion } from './consumers/fulfillment';
 import { consumerStatusLine, STATUS_UNKNOWN_TEXT, type ConsumerRuntimeStatus } from './consumers/status';
+import {
+  pauseBanner,
+  speicherAktionen,
+  speicherKeinEingriff,
+  type HandeingriffAktion,
+} from './handeingriff';
 import type { Consumer } from './consumers/types';
 import { budgetBand, chargerName, type SiteCharging } from './ladepunkte';
 import { fmtNum } from './format';
@@ -78,8 +91,12 @@ export interface JetztZeile {
   /** Der Countdown eines laufenden Handeingriffs („noch 1 Std. 12 Min."). */
   bis: string | null;
   ton: JetztTon;
-  /** Die Handeingriffe, die diese Zeile WIRKLICH anbietet (leer = keine). */
-  aktionen: SofortAktion[];
+  /**
+   * Die Handeingriffe, die diese Zeile WIRKLICH anbietet (leer = keine).
+   * Verbraucher sprechen das `SofortAktion`-Vokabular, der Speicher das der
+   * Stufe 4 (`speicher_laden`/`speicher_halten`) — `resume` teilen sich beide.
+   */
+  aktionen: (SofortAktion | HandeingriffAktion)[];
   /** Warum es keinen Handeingriff gibt — nur gesetzt, wenn `aktionen` leer ist. */
   keinEingriff: string | null;
 }
@@ -113,15 +130,6 @@ export const JETZT_LEER =
   'Für diese Anlage steuert VoltPilot noch nichts. Sobald ein Speicher oder ein '
   + 'schaltbares Gerät eingerichtet ist, steht hier, was es gerade tut.';
 
-/**
- * Warum der Speicher (noch) keinen Handeingriff hat. Der Weg dorthin ist
- * gebaut, der Knopf nicht — und ein Knopf, der nichts bewirkt, ist schlimmer
- * als keiner.
- */
-export const SPEICHER_KEIN_EINGRIFF =
-  'Ein Eingriff von Hand am Speicher ist noch nicht möglich — Ihr Fahrplan und '
-  + 'Ihre Regeln steuern ihn.';
-
 /** Warum ein nicht verbundenes Gerät keinen Handeingriff hat. */
 export const GERAET_NICHT_VERBUNDEN =
   'Dieses Gerät meldet sich gerade nicht — ein Eingriff käme nicht an.';
@@ -136,6 +144,13 @@ export const LADEPARK_KEIN_EINGRIFF =
   + 'Anschlussgrenze ein.';
 
 export const BANNER_AKTION = 'Automatik fortsetzen';
+
+/**
+ * Die `entityId` des PAUSE-Banners. Die Pause gilt der ANLAGE und hat deshalb
+ * keine Komponente - ein Sentinel ist ehrlicher als eine geliehene Id, weil
+ * die Fläche daran erkennt, welchen Rückweg sie aufrufen muss.
+ */
+export const PAUSE_BANNER_ID = '__anlage__';
 
 // ---------------------------------------------------------------------------
 // Zeit
@@ -190,6 +205,19 @@ export interface SpeicherInput {
    * es aus den aktiven Regeln (ein Server-Fakt); geraten wird es hier nie.
    */
   regelHaeltAn?: boolean;
+  /**
+   * Der laufende Handeingriff an diesem Speicher (Stufe 4); null = keiner.
+   * Er kommt aus `GET /interventions` — geraten wird er nie.
+   */
+  eingriff?: Intervention | null;
+  /** Pausiert die ganze Anlage gerade? Dann greift man nicht einzeln ein. */
+  pausiert?: boolean;
+  /**
+   * Ob VoltPilot diesen Speicher überhaupt STEUERT. Ohne das gibt es keinen
+   * Knopf, sondern den Grund — ein Knopf, der nichts bewirkt, ist schlimmer
+   * als keiner.
+   */
+  steuerbar?: boolean;
   now: Date;
 }
 
@@ -236,19 +264,37 @@ export function speicherZeile(input: SpeicherInput): JetztZeile | null {
     ? 'Ihre Regel'
     : (quelle === 'fahrplan' ? 'Fahrplan' : null);
 
+  // Steuerung Stufe 4: der laufende Eingriff schlägt jede andere Quelle - er
+  // IST der Befehl, der gerade wirkt.
+  const eingriff = input.eingriff ?? null;
+  const gate = {
+    laufend: eingriff != null,
+    steuerbar: input.steuerbar ?? (strip.state === 'healthy' || strip.state === 'mismatch'),
+    pausiert: input.pausiert === true,
+  };
+  const aktionen = speicherAktionen(gate);
+  const bis = eingriff ? uhrzeit(eingriff.endsAt) : null;
+  const rest = eingriff ? restZeit(eingriff.endsAt, input.now) : null;
+
   return {
     key: 'speicher',
     art: 'speicher',
-    entityId: null,
+    entityId: eingriff?.entityId ?? null,
     name: input.name?.trim() ? input.name.trim() : 'Speicher',
     zustand,
     grund: traegt ? why : (strip.reason ?? why),
-    quelle,
-    quelleText,
-    bis: null,
+    quelle: eingriff ? 'handeingriff' : quelle,
+    quelleText: eingriff
+      ? `Handeingriff${bis ? ` bis ${bis} Uhr` : ''}`
+      : quelleText,
+    bis: rest,
     ton: strip.tone,
-    aktionen: [],
-    keinEingriff: SPEICHER_KEIN_EINGRIFF,
+    aktionen,
+    // ⚠ Die zwei Ableitungen sind KOMPLEMENTÄR: wo `speicherAktionen` leer
+    // liefert, nennt `speicherKeinEingriff` den Grund - und umgekehrt. Deshalb
+    // gibt es hier keinen Rückfall-Satz mehr (der der Stufe 1 wäre seit Stufe 4
+    // sogar falsch: den Knopf gibt es).
+    keinEingriff: aktionen.length === 0 ? speicherKeinEingriff(gate) : null,
   };
 }
 
@@ -373,7 +419,32 @@ export function jetztBanner(
   overrides: ManualOverride[] | null | undefined,
   namen: Record<string, string>,
   now: Date = new Date(),
+  interventions?: SiteInterventions | null,
 ): JetztBanner | null {
+  // ⚠ Die ANLAGEN-Pause geht vor: sie beschreibt den Zustand der ganzen
+  // Anlage, ein Geräte-Eingriff nur den einer Zeile. Zwei Banner gäbe es nie -
+  // und das obere muss das Umfassendere sein.
+  if (interventions?.automationPaused && interventions.pausedUntil) {
+    const bis = uhrzeit(interventions.pausedUntil);
+    return {
+      text: pauseBanner(bis ? `${bis} Uhr` : 'auf Weiteres',
+        restZeit(interventions.pausedUntil, now)),
+      aktion: BANNER_AKTION,
+      entityId: PAUSE_BANNER_ID,
+    };
+  }
+  for (const o of interventions?.interventions ?? []) {
+    if (o.entityId == null) continue;
+    const bis = uhrzeit(o.endsAt);
+    const rest = restZeit(o.endsAt, now);
+    if (!bis) continue;
+    const was = o.kind === 'speicher_laden' ? 'lädt' : 'hält seinen Ladestand';
+    return {
+      text: `Handeingriff läuft: Speicher ${was} bis ${bis} Uhr${rest ? ` (${rest})` : ''}`,
+      aktion: BANNER_AKTION,
+      entityId: o.entityId,
+    };
+  }
   for (const o of overrides ?? []) {
     const line = overrideLine(o, now);
     if (!line) continue;
@@ -400,6 +471,8 @@ export interface JetztInput {
   geraete?: GeraetInput[];
   charging?: SiteCharging | null;
   overrides?: ManualOverride[] | null;
+  /** Die laufenden Handeingriffe + die Pause (Stufe 4); null = keine geladen. */
+  interventions?: SiteInterventions | null;
   now: Date;
 }
 
@@ -420,7 +493,7 @@ export function jetztZone(input: JetztInput): JetztView {
 
   return {
     zeilen,
-    banner: jetztBanner(input.overrides, namen, input.now),
+    banner: jetztBanner(input.overrides, namen, input.now, input.interventions),
     leer: zeilen.length === 0 ? JETZT_LEER : null,
   };
 }

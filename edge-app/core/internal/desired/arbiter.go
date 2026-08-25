@@ -32,6 +32,19 @@ type Deps struct {
 	PeakShave func(now time.Time, kw float64, l guards.Limits, r guards.Reading) (float64, bool)
 	// ControlEnabled is the two-gate posture stamped onto entity commands.
 	ControlEnabled func() bool
+	// Suspended is the operator's „Automatik pausieren" (Steuerung Stufe 4,
+	// §3.7 B5). While it holds, the arbiter IGNORES every desire below the
+	// market class - the plan executors already inject nothing, so every
+	// entity falls to its REGISTRY FAILSAFE: the battery to self-consumption,
+	// a device to release/off. That is the honest reading of „so, als gäbe es
+	// VoltPilot nicht", and it is the ONE value the cloud could never have
+	// sent as a setpoint (PV − load is the box's own arithmetic).
+	//
+	// ⚠ It is a GATE, not a rank change: D-4's classes and their order are
+	// untouched, and everything ABOVE market (contract, grid, safety) keeps
+	// binding - a pause must never suspend a compliance command. nil = never
+	// suspended, which is byte-for-byte the pre-Stufe-4 behaviour.
+	Suspended func() bool
 	// StorageFailsafe computes a storage entity's registry failsafe value
 	// (self-consumption composed with the reserve floor, the v1 fallback).
 	// ok=false = no usable reading, command nothing (never regulate blind).
@@ -452,9 +465,15 @@ func (st *entState) currentHolder() *Desired {
 // wins rank ties, otherwise the earliest-received (deterministic, no
 // oscillation).
 func (a *Arbiter) selectHolder(st *entState, now time.Time) *Desired {
+	suspended := a.deps.Suspended != nil && a.deps.Suspended()
 	var best *Desired
 	for _, d := range st.desires {
 		if d.Expired(now) {
+			continue
+		}
+		if suspended && d.effectiveRank() <= ClassMarket.rank() {
+			// „Automatik pausieren": plan, rules and manual wishes rest;
+			// compliance (contract/grid/safety) never does.
 			continue
 		}
 		if best == nil {

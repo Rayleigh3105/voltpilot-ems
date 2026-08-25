@@ -40,6 +40,8 @@ beforeEach(() => {
   vi.spyOn(api, 'schedule').mockResolvedValue({ deviceId: null, slots: [] } as never);
   vi.spyOn(api, 'controlStatus').mockResolvedValue(null as never);
   vi.spyOn(api, 'curtailmentStatus').mockResolvedValue(null as never);
+  vi.spyOn(api, 'siteInterventions').mockResolvedValue(
+    { automationPaused: false, pausedUntil: null, interventions: [] } as never);
 });
 
 describe('Zone ① „Jetzt" (Steuerung Stufe 1)', () => {
@@ -103,5 +105,128 @@ describe('Zone ① „Jetzt" (Steuerung Stufe 1)', () => {
     render(<JetztZone site={site} />);
     expect(await screen.findByText(/meldet sich gerade nicht/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /eingreifen/ })).toBeNull();
+  });
+});
+
+describe('Zone ① „Jetzt" — die Handeingriffe (Steuerung Stufe 4)', () => {
+  /** Ein Fahrplan, der die nächsten vier Stunden mit 4 kW Entladung plant. */
+  function planMitSlots(stunden = 4) {
+    const slots = [];
+    for (let i = 0; i < stunden * 4; i++) {
+      slots.push({
+        start: new Date(Date.now() + i * 15 * 60_000).toISOString(),
+        batteryKw: -4, gridKw: null, socPct: null, priceEurMwh: null,
+        costEur: null, baselineCostEur: null, importPriceCtKwh: 32,
+      });
+    }
+    return { deviceId: 'd-1', slots };
+  }
+
+  it('bietet „Automatik pausieren" an und zeigt seine Folgen-Karte', async () => {
+    vi.spyOn(api, 'schedule').mockResolvedValue(planMitSlots() as never);
+    render(<JetztZone site={site} />);
+    const knopf = await screen.findByRole('button', { name: 'Automatik pausieren' });
+    fireEvent.click(knopf);
+    // Die vier festen Blöcke des Konzepts (§3.5).
+    expect(await screen.findByText('Das passiert')).toBeInTheDocument();
+    expect(screen.getByText('Auswirkung auf den Fahrplan')).toBeInTheDocument();
+    expect(screen.getByText('Das bleibt gleich')).toBeInTheDocument();
+    expect(screen.getByText('Ende / Rücknahme')).toBeInTheDocument();
+    expect(screen.getByText(/Eigenverbrauch/)).toBeInTheDocument();
+  });
+
+  it('⚠ die Folgen-Karte FOLGT der gewählten Dauer — sonst beschriebe sie eine andere Handlung',
+    async () => {
+      // Vier Stunden Plan: die 2-h-Vorauswahl ist abschätzbar, „bis morgen früh"
+      // reicht über den Horizont hinaus und muss den GRUND nennen.
+      vi.spyOn(api, 'schedule').mockResolvedValue(planMitSlots(4) as never);
+      render(<JetztZone site={site} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Automatik pausieren' }));
+      expect(await screen.findByText(/Der Fahrplan hätte/)).toBeInTheDocument();
+
+      const picker = screen.getByLabelText('Dauer des Eingriffs');
+      fireEvent.click(picker);
+      fireEvent.click(await screen.findByText('Bis morgen früh (06:00)'));
+      await waitFor(() =>
+        expect(screen.getByText(/reicht nicht bis zum gewählten Ende/)).toBeInTheDocument());
+      expect(screen.queryByText(/Der Fahrplan hätte/)).not.toBeInTheDocument();
+    });
+
+  it('ein laufender Eingriff steht im Banner UND in der Zeile', async () => {
+    vi.spyOn(api, 'schedule').mockResolvedValue(planMitSlots() as never);
+    vi.spyOn(api, 'siteInterventions').mockResolvedValue({
+      automationPaused: false, pausedUntil: null,
+      interventions: [{
+        kind: 'speicher_halten', entityId: 'e-batt', targetValueKw: 0,
+        endsAt: new Date(Date.now() + 90 * 60_000).toISOString(),
+        createdBy: 'demo', createdAt: new Date().toISOString(),
+      }],
+    } as never);
+    render(<JetztZone site={site} />);
+    expect(await screen.findByText(/Handeingriff läuft: Speicher hält seinen Ladestand/))
+      .toBeInTheDocument();
+    expect(screen.getAllByText(/Automatik fortsetzen/).length).toBeGreaterThan(0);
+  });
+
+  it('eine laufende ANLAGEN-Pause geht im Banner VOR und bietet ihren eigenen Rückweg',
+    async () => {
+      vi.spyOn(api, 'schedule').mockResolvedValue(planMitSlots() as never);
+      vi.spyOn(api, 'siteInterventions').mockResolvedValue({
+        automationPaused: true,
+        pausedUntil: new Date(Date.now() + 3 * 3600_000).toISOString(),
+        interventions: [{
+          kind: 'speicher_halten', entityId: 'e-batt', targetValueKw: 0,
+          endsAt: new Date(Date.now() + 90 * 60_000).toISOString(),
+          createdBy: 'demo', createdAt: new Date().toISOString(),
+        }],
+      } as never);
+      render(<JetztZone site={site} />);
+      expect(await screen.findByText(/Automatik pausiert bis/)).toBeInTheDocument();
+      // ... und NICHT der Geräte-Eingriff (zwei Banner gäbe es nie).
+      expect(screen.queryByText(/Handeingriff läuft/)).not.toBeInTheDocument();
+      // Während der Pause wird sie nicht ein zweites Mal angeboten.
+      expect(screen.queryByRole('button', { name: 'Automatik pausieren' })).not.toBeInTheDocument();
+    });
+
+  it('⚠ „Automatik fortsetzen" trifft den RICHTIGEN Umfang, wenn BEIDES läuft', async () => {
+    // Speicher-Eingriff UND Anlagen-Pause gleichzeitig: aus dem Wort „resume"
+    // allein wäre nicht ableitbar, welchen der beiden der Kunde meint.
+    vi.spyOn(api, 'schedule').mockResolvedValue(planMitSlots() as never);
+    vi.spyOn(api, 'siteInterventions').mockResolvedValue({
+      automationPaused: true,
+      pausedUntil: new Date(Date.now() + 3 * 3600_000).toISOString(),
+      interventions: [{
+        kind: 'speicher_halten', entityId: 'e-batt', targetValueKw: 0,
+        endsAt: new Date(Date.now() + 90 * 60_000).toISOString(),
+        createdBy: 'demo', createdAt: new Date().toISOString(),
+      }],
+    } as never);
+    const resumeAnlage = vi.spyOn(api, 'resumeAutomation').mockResolvedValue({} as never);
+    const clearSpeicher = vi.spyOn(api, 'clearBatteryOverride').mockResolvedValue({} as never);
+
+    render(<JetztZone site={site} />);
+    // Der BANNER gehört der Pause - er muss die ANLAGE fortsetzen.
+    fireEvent.click(await screen.findByRole('button', { name: 'Automatik fortsetzen' }));
+    // Danach steht derselbe Wortlaut zweimal (Banner + Bestätigen im Dialog) -
+    // der ZWEITE ist der des Dialogs.
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: 'Automatik fortsetzen' }))
+        .toHaveLength(2));
+    const knoepfe = screen.getAllByRole('button', { name: 'Automatik fortsetzen' });
+    fireEvent.click(knoepfe[knoepfe.length - 1]);
+    await waitFor(() => expect(resumeAnlage).toHaveBeenCalledTimes(1));
+    expect(clearSpeicher).not.toHaveBeenCalled();
+  });
+
+  it('ein älteres Backend ohne die Route lässt die Zone still (fail-soft)', async () => {
+    vi.spyOn(api, 'schedule').mockResolvedValue(planMitSlots() as never);
+    vi.spyOn(api, 'siteInterventions').mockRejectedValue(new Error('404'));
+    render(<JetztZone site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Jetzt' })).toBeInTheDocument());
+    expect(screen.queryByText(/Handeingriff läuft/)).not.toBeInTheDocument();
+    // Der Pause-Knopf steht trotzdem - er hängt an der Zone, nicht am Abruf.
+    expect(await screen.findByRole('button', { name: 'Automatik pausieren' }))
+      .toBeInTheDocument();
   });
 });

@@ -381,6 +381,20 @@ Betreiber-Handbuch: [`docs/ota-signing.md`](docs/ota-signing.md) §6.0.
   Vorgabe-Konfiguration NIE angewandt — die Selbstheilung repariert Prüfsummen,
   sie holt keine übersprungene Migration nach. (Deshalb heißt die Trust-Set-
   Migration `V20260806010000` und nicht `V20260804010000`.)
+- **⚠ Wer eine Migration UMBENENNT, muss `target/` wegräumen — sonst prüft der
+  Testlauf den ALTEN Stand mit** (echter Fall beim Rebase der Steuerung Stufe 4,
+  25.08.2026). Maven kopiert Ressourcen nach `target/classes`, LÖSCHT dort aber
+  nichts: nach einem `git mv` liegen beide Dateien nebeneinander, und wenn die
+  alte Version mit einer inzwischen gemergten fremden Migration kollidiert,
+  bricht Flyway mit `Found more than one migration with version …` ab. Der
+  Schaden sieht dabei NICHT nach seiner Ursache aus — der Spring-Kontext kommt
+  gar nicht hoch, also fallen DUTZENDE Testklassen mit `Errors` (nicht
+  `Failures`) in einer Kaskade, deren erste Zeile von einer beliebigen Bohne
+  handelt (`chargerComponentComposer`), und die echte Ursache steht erst am Ende
+  der `Caused by`-Kette. **Regel: nach jedem Umbenennen/Löschen einer Migration
+  `./mvnw clean test`, nie nur `test`** — und bei einer Fehler-Kaskade über
+  fremde Klassen zuerst `ls target/classes/db/migration` lesen, bevor man den
+  eigenen Code verdächtigt.
 - **Betreiber-Ablauf:** einmalig je Flotte das Set ins Portal (`PUT`, curl in
   §6.0), danach bekommt es JEDE neue Box automatisch; eine BESTANDSBOX holt es
   mit `./install.sh --refresh-trust` nach (ausdrückliche Handlung des Betreibers
@@ -5112,6 +5126,101 @@ anderer Text. Das ist beidseitig festgenagelt (Go `R1`, Python `test_an_unclaime
   Plan-Skip) reist mit dem nächsten Edge-Release — bis dahin ist `owner_claimed` ein Feld, das eine
   laufende Box überliest, und der Optimierer hält die beanspruchte Batterie bereits (der Plan
   befiehlt dann Sollwert 0 statt einer Dispatch-Kurve). Keine neue Pflicht-Variable.
+
+## Steuerung Stufe 4 „Handeingriffe": der Speicher von Hand, und die Anlage kurz in Ruhe
+
+Vierte Stufe des Steuerungs-Umbaus (Konzept `data/vp-steuerung-konzept-b3` §3.2 + §3.5 + §3.7
+B1–B6; **Captain-Entscheid S1 = A**). Es entsteht **kein zweiter Steuerweg**: der Speicher-Eingriff
+reist über GENAU denselben `v2/desired`-Umschlag wie die Verbraucher-Sofortaktion (Quelle
+`local-ui`, Klasse `flow` mit `override`, gebundene TTL) und wird auf dem Gerät durch DIESELBE
+Guard-Kette geklemmt. Neu ist nur, WELCHE Komponente angesprochen wird — und dass eine Anlage als
+GANZES ruhen kann.
+
+**Ohne Handeingriff ist alles byte-identisch:** keine Zeile in `device_override` ⇒ kein Feld im
+Push, kein anderer Wunsch, kein anderer Text.
+
+- **⚠ S1 = A ist eine KONSTRUKTIONS-Aussage: es gibt kein neues Kommando.** „Ladestand halten" ist
+  `setpoint_kw = 0`, „Speicher jetzt laden" ein positiver `setpoint_kw` — beides seit E1a im
+  Vokabular. **Und die EEG-Regel bleibt strukturell, nicht als Zusage:** ob dabei aus dem NETZ
+  geladen werden darf, entscheidet `guards.Clamp` auf der Box gegen die Registry-Angabe
+  `charge_from_grid_allowed` (D-8, abwesend/false = nur Solar), und die bindet dort für JEDEN
+  Halter. Die Cloud hat dafür kein Feld und keinen Weg, sie zu umgehen. Variante B des Entscheids
+  („nicht unter X % entladen") hätte einen SoC-Boden in D-14 gebraucht und ist ausdrücklich NICHT
+  gebaut.
+- **⚠ Ein NEGATIVER Sollwert wird ABGELEHNT, nie geklemmt** (`Handeingriff.sollwert`): es gibt
+  keinen „jetzt entladen"-Eingriff, und aus einer Zahl mit falschem Vorzeichen eine andere Handlung
+  zu machen wäre geraten. Die Ablehnung nennt den Weg („Ladestand halten stoppt den Speicher").
+- **`device_override`** (Migration `V20260845000000`, mandantengebunden mit RLS + FORCE):
+  `speicher_halten` · `speicher_laden` · `pause`. **Höchstens EIN lebender Eingriff je Komponente
+  und EINE Pause je Anlage** — zwei partielle Unique-Indizes, kein Anwendungscode. Eine abgelaufene
+  Zeile liest als ABWESEND (§16); ⚠ das BIGSERIAL braucht sein eigenes
+  `GRANT USAGE ON SEQUENCE` (die dokumentierte `rollout_event`-Falle). `consumer_override` bleibt
+  UNANGETASTET — es ist der Verbraucher-Eingriff mit eigenem Vokabular und eigenem Lesepfad.
+- **⚠ EIN CHECK WIRD GEWEITET, INDEM MAN DEN AKTUELLEN STAND ABSCHREIBT — nie den der
+  Tabellen-Migration (eigener Defekt dieser Stufe, behoben).** Das Audit-Vokabular von
+  `consumer_audit_event` wird seit je durch DROP + ADD ersetzt (eine angewandte Migration ist
+  unveränderlich); wer dabei die Ur-Liste kopiert, ENTFERNT lautlos die Wörter jeder Stufe
+  dazwischen. Hier fielen die drei `switch_*` der Geräte-Freigabe (`V20260821000000`) heraus, und
+  der Schaden fiel erst dort auf, wo so ein Wort geschrieben wird — als nackter HTTP 500 in
+  `SelfBuildComponentApiTest`, eine ganze Stufe von der Ursache entfernt. Wächter gegen die KLASSE
+  ist das reine `ConsumerAuditEventTypesTest`: jedes Wort, das der EINE Schreibpfad
+  `ConsumerAuditRepository.append(site, entity, "wort")` einfügt, muss die ZULETZT gesetzte
+  CHECK-Definition annehmen (mutationsgeprüft). **Gilt für jede künftige Weitung dieses CHECKs.**
+- **⚠ „Automatik pausieren" reist im REGISTRY-PUSH, nicht als Wunsch je Komponente** — eine
+  argumentierte Abweichung von der Skizze in §3.7 B5. Der Speicher soll in der Pause den
+  EIGENVERBRAUCH fahren („so, als gäbe es VoltPilot nicht"), und PV − Last kann nur die Box rechnen;
+  die Cloud hätte eine Zahl erfinden müssen. Über die Sperre fällt stattdessen jede Komponente auf
+  ihren REGISTRY-FAILSAFE, und der IST für den Speicher `self-consumption` und für ein Gerät
+  `release`/`off`. Zusätzlich ist es damit dieselbe Mechanik wie die Stufe-3-Beanspruchung — eine
+  Sache, nicht zwei.
+- **⚠ `automation_paused_until` ist ein ABSOLUTER Zeitpunkt, nie eine Dauer.** Der Push ist
+  RETAINED: eine Box, die beim Ablauf offline war, muss die Sperre nach ihrer EIGENEN Uhr aufheben
+  können, statt auf eine Nachricht zu warten, die vielleicht nie kommt (`Registry.Paused(now)`).
+- **Edge: die Pause hat ZWEI Hälften, und beide sind nötig.** `runPlanExecutors` speist nichts mehr
+  ein (der Fahrplan ruht) UND `desired.Deps.Suspended` lässt den Arbiter jede Wunsch-Klasse
+  **unterhalb `market`** ignorieren (die Regeln ruhen). **⚠ Es ist ein TOR, kein Rang-Wechsel:**
+  D-4s Klassen und ihre Ordnung sind unangetastet, und alles ÜBER market (contract, grid, safety)
+  bindet weiter — eine Pause darf nie einen Compliance-Befehl aussetzen. `Suspended` nil = niemals
+  pausiert = byte-identisch zum Vor-Stufe-4-Verhalten.
+- **⚠ Das Edge-Tor des Handeingriffs ist ENTITÄTS-ABHÄNGIG** (B3, `agent/override.go`): ein
+  VERBRAUCHER-Wunsch hängt weiter am Verbraucher-Hauptschalter (`VP_CONSUMER_CONTROL_ENABLED`,
+  Vorgabe AUS), ein SPEICHER-Wunsch an dem Schalter, der den Wechselrichter wirklich regiert —
+  `VP_CONTROL_ENABLED` plus die Modell-Zertifizierung, dieselben zwei Tore, die auch die
+  Fahrplan-Sollwerte passieren. Ihn am CONSUMER-Flag aufzuhängen hätte den Speicher-Eingriff auf
+  jeder Anlage tot gemacht. Eine UNBEKANNTE Entität behält das strenge Tor: was wir nicht
+  klassifizieren können, weiten wir nicht.
+- **B6: über 4 h wird ERNEUERT, nie der Vertrag gedehnt.** `DeviceOverrideRenewalRunner` (10-min-Takt)
+  sendet den laufenden Wunsch neu aus, solange sein `ends_at` in der Zukunft liegt, und räumt
+  abgelaufene Zeilen weg; der gesendete TTL bleibt unter `desired.OverrideTTLCap` (D-5 = 4 h). **Er
+  erfindet nie eine Verlängerung** — ist die Frist vorbei, verfällt der Wunsch auf dem Gerät von
+  SELBST, dafür muss der Takt nicht einmal laufen. ⚠ Wie jeder `@Scheduled` ist er im Testlauf
+  abgeschaltet (surefire-Systemeigenschaft `voltpilot.interventions.renewal-enabled=false`) und in
+  Produktion an (`matchIfMissing`) — die dokumentierte Falle mit zwischengespeicherten
+  Spring-Kontexten und gestoppten Testcontainern.
+- **Routen** (`SiteInterventionController`, mandantenbezogen wie jede `/sites/**`-Route, kein
+  `@PreAuthorize`, fremde Anlage **404**): `GET /interventions` (der EINE Lesepfad der Jetzt-Zone —
+  Zeilen-Countdown UND Banner), `POST/DELETE /battery-override`, `POST/DELETE /automation-pause`.
+- **Die reine Hälfte ist `interventions/Handeingriff`** (Docker-frei geprüft, das
+  `Tagesprotokoll`/`FleetPflege`-Muster; jede zeitabhängige Funktion nimmt ihr `now`): Vokabular,
+  Dauer-Pflicht (15 min … 24 h), „bis morgen früh" in der Zone der Anlage, die TTL-Kappe und die
+  Erneuerungs-Frist.
+- **Unclaim räumt ab:** ein Eingriff an einem Gerät, das niemandem mehr gehört, ist keine Aussage
+  mehr. ⚠ Anders als der retained Slot der Ladepunkt-Konfiguration ist das eine DB-Zeile auf dem
+  `@Primary`-Pfad — also derselben Verbindung wie das Unclaim, kein Selbst-Blockade-Risiko (die bei
+  der Steuerungs-Freigabe dokumentierte Falle).
+- **Beweise:** rein `HandeingriffTest` (10) · Go `agent/automation_pause_test.go` (H1 die Pause
+  fällt jede Komponente auf ihren Failsafe und ein frischer Plan bricht sie nicht · H2 die Box hebt
+  sie nach ihrer EIGENEN Uhr wieder auf · H3 das Batterie-Tor bei ausgeschaltetem Verbraucher-Flag,
+  und ohne `VP_CONTROL_ENABLED` bleibt der ganze Downlink tot) · Testcontainers
+  `ConsumerApiTest.handeingriffeAmSpeicherUndAnDerAnlageSindDauerpflichtigUndZurueckzunehmen` +
+  `…SindMandantenGefenced` · `ProvisioningClaimTest` (die Pause an den RETAINED BYTES, und ihr
+  Verschwinden bei der Rücknahme) · Portal `handeingriff.test.ts` (19) + `steuerungJetzt.test.ts`.
+- **Ops:** keine neue Pflicht-Variable. Der Erneuerungs-Takt hängt an
+  `VOLTPILOT_INTERVENTIONS_RENEWAL_ENABLED` (Vorgabe AN — ein per Vorgabe ausgeschaltetes Flag
+  müsste im gitops-Repo nachgezogen werden, die dokumentierte OTA-Listener-Falle). Die EDGE-Hälfte
+  (Pause-Sperre + entitäts-abhängiges Tor) reist mit dem nächsten Edge-Release; bis dahin überliest
+  eine laufende Box das Feld, und ein Speicher-Eingriff erreicht sie nur, wenn ihr
+  Verbraucher-Flag an ist.
 
 ## Maintaining this file
 
