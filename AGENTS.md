@@ -4274,6 +4274,19 @@ und dieselbe Vendor/Message-Bindung am Edge zulässig.
   lehnt die Edge weitere Commands mit `ledger_capacity` ab. Nach Deadline dürfen
   terminale Belege weg; ausstehende claimed/sent/readback-Belege bleiben für
   späte Stationsantworten noch 24 h korrelierbar und werden erst danach bereinigt.
+  **Kapazitätsablehnungen sind ebenfalls restart-fest, aber konstant begrenzt:**
+  statt einer durch neue `action_id`s unbeschränkt wachsenden Tombstone-Map hält
+  dasselbe Ledger genau einen `capacity_block_until`-Watermark, das Maximum aller
+  bisher kapazitätsbedingt abgelehnten Envelope-Deadlines. Solange er aktiv ist,
+  wird jeder noch so unterschiedliche neue/replayte Command vor Claim und
+  Stationsbyte abgelehnt und darf den Watermark nur nach hinten verlängern; am
+  exakten Ablaufzeitpunkt sind alle darunter abgelehnten Envelopes selbst
+  abgelaufen. Das ist bewusst fail-closed und tauscht bei Überlast Verfügbarkeit
+  (globaler Command-Stopp bis höchstens zur höchsten zulässigen Deadline) gegen
+  At-most-once-Sicherheit ohne Memory-/Disk-DoS. `ledger_capacity`-Feedback nutzt
+  `action_id` plus unveränderliches `requested_at` als stabile Journalidentität:
+  ein verlorenes PUBACK vervielfacht die Datei nicht, und nach Event-ACK wird
+  dieselbe `event_id` erneut geliefert, sodass Cloud-Dedup exakt bleibt.
   Der `action_id` ist zugleich der OCPP-wire-id; die Journal-Korrelation ist
   wire-identisch. Nach Neustart wird sie aus dem immutable CALL-Spool UND dem
   Command-Ledger aufgebaut, weil ein normaler Cloud-QoS1-ACK die bereits

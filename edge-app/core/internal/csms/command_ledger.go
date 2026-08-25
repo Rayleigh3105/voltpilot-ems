@@ -42,17 +42,19 @@ type commandWireMapping struct {
 }
 
 type commandLedgerDocument struct {
-	SchemaVersion string               `json:"schema_version"`
-	Entries       []commandLedgerEntry `json:"entries"`
+	SchemaVersion      string               `json:"schema_version"`
+	Entries            []commandLedgerEntry `json:"entries"`
+	CapacityBlockUntil *time.Time           `json:"capacity_block_until,omitempty"`
 }
 
 // commandLedger is the durable at-most-once boundary. Claim is fsynced via an
 // atomic rename before the first station byte is written. A crash may lose a
 // command, but can never replay a physical action after restart.
 type commandLedger struct {
-	mu      sync.Mutex
-	path    string
-	entries map[string]commandLedgerEntry
+	mu                 sync.Mutex
+	path               string
+	entries            map[string]commandLedgerEntry
+	capacityBlockUntil time.Time
 }
 
 func newCommandLedger(dataDir string) (*commandLedger, error) {
@@ -72,6 +74,9 @@ func newCommandLedger(dataDir string) (*commandLedger, error) {
 	for _, e := range doc.Entries {
 		l.entries[e.ActionID] = e
 	}
+	if doc.CapacityBlockUntil != nil {
+		l.capacityBlockUntil = doc.CapacityBlockUntil.UTC()
+	}
 	return l, nil
 }
 
@@ -87,11 +92,34 @@ func (l *commandLedger) claim(cmd CloudCommand, fingerprint, wireAction string, 
 		return true, nil
 	}
 	l.prune(now)
+	if now.Before(l.capacityBlockUntil) {
+		// A single watermark remembers an arbitrary number of capacity-rejected
+		// envelopes with constant disk and memory use. Every such envelope has a
+		// deadline at or before the maximum. Until then none may reach a station;
+		// afterwards they are all expired at the immutable envelope boundary.
+		if deadline.After(l.capacityBlockUntil) {
+			previous := l.capacityBlockUntil
+			l.capacityBlockUntil = deadline.UTC()
+			if err := l.save(); err != nil {
+				l.capacityBlockUntil = previous
+				return false, err
+			}
+		}
+		return false, errCommandLedgerCapacity
+	}
 	if len(l.entries) >= commandLedgerLimit {
 		// Every remaining entry is protected: either its immutable command
 		// deadline is still live or its exact mapping is inside the bounded late-
 		// response window. Eviction could therefore repeat a physical station
 		// action or make its late outcome anonymous. Apply backpressure instead.
+		// A per-action rejection map would turn sustained distinct IDs into a
+		// durable memory/disk DoS. The global watermark deliberately trades
+		// availability for bounded at-most-once safety.
+		l.capacityBlockUntil = deadline.UTC()
+		if err := l.save(); err != nil {
+			l.capacityBlockUntil = time.Time{}
+			return false, err
+		}
 		return false, errCommandLedgerCapacity
 	}
 	entry := commandLedgerEntry{ActionID: cmd.ActionID, Fingerprint: fingerprint, Action: cmd.Action,
@@ -219,6 +247,9 @@ func (l *commandLedger) prune(now time.Time) {
 			delete(l.entries, id)
 		}
 	}
+	if !l.capacityBlockUntil.IsZero() && !now.Before(l.capacityBlockUntil) {
+		l.capacityBlockUntil = time.Time{}
+	}
 }
 
 func commandLedgerEntryPrunable(e commandLedgerEntry, now time.Time) bool {
@@ -244,6 +275,10 @@ func (l *commandLedger) save() error {
 	doc := commandLedgerDocument{SchemaVersion: "1.0", Entries: make([]commandLedgerEntry, 0, len(l.entries))}
 	for _, e := range l.entries {
 		doc.Entries = append(doc.Entries, e)
+	}
+	if !l.capacityBlockUntil.IsZero() {
+		blockUntil := l.capacityBlockUntil.UTC()
+		doc.CapacityBlockUntil = &blockUntil
 	}
 	sort.Slice(doc.Entries, func(i, j int) bool { return doc.Entries[i].ActionID < doc.Entries[j].ActionID })
 	raw, err := json.Marshal(doc)

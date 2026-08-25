@@ -1,18 +1,32 @@
 package csms
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/core"
+	"github.com/lorenzodonini/ocpp-go/ws"
 )
+
+type writeCountingWsServer struct {
+	ws.WsServer
+	writes int
+}
+
+func (s *writeCountingWsServer) Write(_ string, _ []byte) error {
+	s.writes++
+	return nil
+}
 
 func TestCommandRequestCoversCompleteOcpp16Surface(t *testing.T) {
 	valid := map[string]string{
@@ -130,6 +144,7 @@ func TestCommandCrashAfterDurableClaimNeverReplays(t *testing.T) {
 func TestCommandLedgerCapacityBackpressurePreservesOldestLiveReplayAcrossRestart(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	clockNow := now
 	oldestID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 	oldestRaw := cloudCommand(now, func(c *CloudCommand) {
 		c.ActionID = oldestID
@@ -154,7 +169,7 @@ func TestCommandLedgerCapacityBackpressurePreservesOldestLiveReplayAcrossRestart
 		ChargePointID: oldest.ChargePointID, CorrelationID: oldest.CorrelationID}
 	liveTerminalID := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 	ledger.entries[liveTerminalID] = commandLedgerEntry{ActionID: liveTerminalID,
-		Fingerprint: "terminal-fingerprint", State: "responded", DeadlineAt: now.Add(30 * time.Second),
+		Fingerprint: "terminal-fingerprint", State: "responded", DeadlineAt: now.Add(2 * time.Second),
 		UpdatedAt: now.Add(-30 * time.Minute), Action: "ClearCache", WireAction: "ClearCache",
 		ChargePointID: "cp-1", CorrelationID: "ocpp-" + liveTerminalID}
 	for i := 0; len(ledger.entries) < commandLedgerLimit; i++ {
@@ -168,10 +183,13 @@ func TestCommandLedgerCapacityBackpressurePreservesOldestLiveReplayAcrossRestart
 	}
 
 	identity := CommandIdentity{TenantID: "tenant-a", SiteID: "site-a", DeviceID: "device-a"}
-	s1, err := New(Options{Enabled: false, DataDir: dir, Now: func() time.Time { return now }, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	s1, err := New(Options{Enabled: false, DataDir: dir, Now: func() time.Time { return clockNow }, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		t.Fatal(err)
 	}
+	firstSocket := &writeCountingWsServer{}
+	s1.chargers["cp-1"] = &ChargerState{Charger: Charger{ID: "cp-1"}, Connected: true}
+	s1.transport = &transport{srv: s1, wsrv: firstSocket}
 	newRaw := cloudCommand(now, func(c *CloudCommand) {
 		c.ActionID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 		c.CorrelationID = "ocpp-" + c.ActionID
@@ -179,6 +197,9 @@ func TestCommandLedgerCapacityBackpressurePreservesOldestLiveReplayAcrossRestart
 	if err := s1.ExecuteCloudCommand(context.Background(), newRaw, identity); err == nil ||
 		!strings.Contains(err.Error(), "At-most-once-Ledger ist ausgelastet") {
 		t.Fatalf("full live ledger must apply explicit backpressure, got %v", err)
+	}
+	if firstSocket.writes != 0 {
+		t.Fatalf("capacity-rejected command wrote %d station frames", firstSocket.writes)
 	}
 	eventRaw, token, ok := s1.NextProtocolEvent()
 	if !ok {
@@ -195,9 +216,9 @@ func TestCommandLedgerCapacityBackpressurePreservesOldestLiveReplayAcrossRestart
 	if err := json.Unmarshal(rejection.Payload, &rejectionPayload); err != nil || rejectionPayload["code"] != "ledger_capacity" {
 		t.Fatalf("capacity payload = %#v err=%v", rejectionPayload, err)
 	}
-	if err := s1.AckProtocolEvent(token); err != nil {
-		t.Fatal(err)
-	}
+	// Deliberately do not ACK: this is the reviewer's lost-PUBACK window.
+	_ = token
+	s1.transport = nil
 	s1.Stop()
 
 	restarted, err := newCommandLedger(dir)
@@ -216,16 +237,174 @@ func TestCommandLedgerCapacityBackpressurePreservesOldestLiveReplayAcrossRestart
 	if _, ok := restarted.entries["cccccccc-cccc-4ccc-8ccc-cccccccccccc"]; ok {
 		t.Fatal("backpressured command was persisted as accepted")
 	}
+	if want := now.Add(30 * time.Second); !restarted.capacityBlockUntil.Equal(want) {
+		t.Fatalf("capacity block = %s, want %s", restarted.capacityBlockUntil, want)
+	}
 
-	// Exact QoS1 replay after the restart must still hit the original durable
-	// fingerprint and become a no-op before station lookup.
-	s2, err := New(Options{Enabled: false, DataDir: dir, Now: func() time.Time { return now.Add(time.Second) }, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	// A terminal slot becomes safely prunable, but the rejected envelope is
+	// still live. Persist that free slot exactly as in the reproduced failure.
+	clockNow = now.Add(3 * time.Second)
+	restarted.mu.Lock()
+	restarted.prune(clockNow)
+	if err := restarted.save(); err != nil {
+		restarted.mu.Unlock()
+		t.Fatal(err)
+	}
+	restarted.mu.Unlock()
+	if len(restarted.entries) != commandLedgerLimit-1 {
+		t.Fatalf("ledger size after terminal slot freed = %d, want %d", len(restarted.entries), commandLedgerLimit-1)
+	}
+	if !restarted.capacityBlockUntil.Equal(now.Add(30 * time.Second)) {
+		t.Fatal("freeing a slot cleared the live capacity watermark")
+	}
+
+	// Exact QoS1 replay after restart must remain rejected before station write
+	// even though capacity is now available.
+	s2, err := New(Options{Enabled: false, DataDir: dir, Now: func() time.Time { return clockNow }, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s2.Stop()
+	defer func() {
+		s2.transport = nil
+		s2.Stop()
+	}()
+	secondSocket := &writeCountingWsServer{}
+	s2.chargers["cp-1"] = &ChargerState{Charger: Charger{ID: "cp-1"}, Connected: true}
+	s2.transport = &transport{srv: s2, wsrv: secondSocket}
+	if err := s2.ExecuteCloudCommand(context.Background(), newRaw, identity); err == nil ||
+		!strings.Contains(err.Error(), "At-most-once-Ledger ist ausgelastet") {
+		t.Fatalf("capacity replay after free slot/restart = %v", err)
+	}
+	if secondSocket.writes != 0 {
+		t.Fatalf("capacity replay wrote %d station frames", secondSocket.writes)
+	}
+	if _, ok := s2.commands.entries["cccccccc-cccc-4ccc-8ccc-cccccccccccc"]; ok {
+		t.Fatal("capacity replay claimed the newly free execution slot")
+	}
+
+	// The stable event identity makes the replay idempotent in the durable
+	// journal: the original unacknowledged rejection is still the only event.
+	eventRaw, replayToken, ok := s2.NextProtocolEvent()
+	if !ok {
+		t.Fatal("original capacity feedback was lost across restart")
+	}
+	var replayEvent ProtocolEvent
+	if err := json.Unmarshal(eventRaw, &replayEvent); err != nil {
+		t.Fatal(err)
+	}
+	if replayEvent.EventID != "cccccccc-cccc-4ccc-8ccc-cccccccccccc" {
+		t.Fatalf("capacity event id = %q, want stable action id", replayEvent.EventID)
+	}
+	if err := s2.AckProtocolEvent(replayToken); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := s2.NextProtocolEvent(); ok {
+		t.Fatal("capacity replay created duplicate durable feedback")
+	}
+	// If feedback was ACKed but the command PUBACK was lost, re-emit the same
+	// cloud event identity. The API can deduplicate it without suppressing the
+	// rejection outcome, while the station still remains untouched.
+	if err := s2.ExecuteCloudCommand(context.Background(), newRaw, identity); err == nil ||
+		!strings.Contains(err.Error(), "At-most-once-Ledger ist ausgelastet") {
+		t.Fatalf("post-feedback-ACK command replay = %v", err)
+	}
+	reemittedRaw, reemittedToken, ok := s2.NextProtocolEvent()
+	if !ok {
+		t.Fatal("capacity feedback was not re-emitted after its ACK")
+	}
+	var reemitted ProtocolEvent
+	if err := json.Unmarshal(reemittedRaw, &reemitted); err != nil {
+		t.Fatal(err)
+	}
+	if reemitted.EventID != replayEvent.EventID {
+		t.Fatalf("re-emitted capacity event id = %q, want %q", reemitted.EventID, replayEvent.EventID)
+	}
+	if err := s2.AckProtocolEvent(reemittedToken); err != nil {
+		t.Fatal(err)
+	}
+	if secondSocket.writes != 0 {
+		t.Fatalf("post-feedback-ACK replay wrote %d station frames", secondSocket.writes)
+	}
+
+	// Existing claimed fingerprints retain their stronger collision semantics.
 	if err := s2.ExecuteCloudCommand(context.Background(), oldestRaw, identity); err != nil {
 		t.Fatalf("oldest exact replay after capacity/restart must be a no-op: %v", err)
+	}
+	oldestChanged := cloudCommand(now, func(c *CloudCommand) {
+		c.ActionID = oldestID
+		c.CorrelationID = "ocpp-" + oldestID
+		c.RequestHash = strings.Repeat("b", 64)
+	})
+	if err := s2.ExecuteCloudCommand(context.Background(), oldestChanged, identity); err == nil ||
+		!strings.Contains(err.Error(), "dauerhaft vorgemerkt") {
+		t.Fatalf("existing fingerprint collision did not fail closed: %v", err)
+	}
+}
+
+func TestCommandLedgerCapacityWatermarkIsBoundedAcrossHighCardinalityRestartAndBoundary(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	ledger, err := newCommandLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminalID := "terminal-slot"
+	ledger.entries[terminalID] = commandLedgerEntry{ActionID: terminalID, Fingerprint: "terminal",
+		State: "responded", DeadlineAt: now.Add(time.Second), UpdatedAt: now}
+	for i := 0; len(ledger.entries) < commandLedgerLimit; i++ {
+		id := fmt.Sprintf("protected-%d", i)
+		ledger.entries[id] = commandLedgerEntry{ActionID: id, Fingerprint: id, State: "sent",
+			DeadlineAt: now.Add(time.Hour), UpdatedAt: now}
+	}
+	if err := ledger.save(); err != nil {
+		t.Fatal(err)
+	}
+	maxDeadline := now.Add(10 * time.Minute)
+	first := CloudCommand{ActionID: "rejected-0", Action: "ClearCache"}
+	if duplicate, err := ledger.claim(first, "rejected-0", "ClearCache", maxDeadline, now); duplicate || !errors.Is(err, errCommandLedgerCapacity) {
+		t.Fatalf("initial capacity claim: duplicate=%v err=%v", duplicate, err)
+	}
+	initialBytes, err := os.ReadFile(ledger.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 10000; i++ {
+		id := fmt.Sprintf("rejected-%d", i)
+		cmd := CloudCommand{ActionID: id, Action: "ClearCache"}
+		deadline := now.Add(time.Duration(i%600+1) * time.Second)
+		if duplicate, err := ledger.claim(cmd, id, "ClearCache", deadline, now); duplicate || !errors.Is(err, errCommandLedgerCapacity) {
+			t.Fatalf("high-cardinality claim %d: duplicate=%v err=%v", i, duplicate, err)
+		}
+	}
+	afterBytes, err := os.ReadFile(ledger.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(afterBytes) != len(initialBytes) || !bytes.Equal(afterBytes, initialBytes) {
+		t.Fatalf("10,000 rejected IDs grew durable state: before=%d after=%d", len(initialBytes), len(afterBytes))
+	}
+	if len(ledger.entries) != commandLedgerLimit || !ledger.capacityBlockUntil.Equal(maxDeadline) {
+		t.Fatalf("bounded state changed: entries=%d block=%s", len(ledger.entries), ledger.capacityBlockUntil)
+	}
+
+	restarted, err := newCommandLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duplicate, err := restarted.claim(CloudCommand{ActionID: "restart-replay", Action: "ClearCache"},
+		"restart-replay", "ClearCache", maxDeadline, maxDeadline.Add(-time.Nanosecond)); duplicate || !errors.Is(err, errCommandLedgerCapacity) {
+		t.Fatalf("restart before boundary: duplicate=%v err=%v", duplicate, err)
+	}
+	boundaryCommand := CloudCommand{ActionID: "after-boundary", Action: "ClearCache"}
+	if duplicate, err := restarted.claim(boundaryCommand, "after-boundary", "ClearCache",
+		maxDeadline.Add(time.Minute), maxDeadline); err != nil || duplicate {
+		t.Fatalf("claim at exact expired watermark boundary: duplicate=%v err=%v", duplicate, err)
+	}
+	if !restarted.capacityBlockUntil.IsZero() {
+		t.Fatalf("expired capacity watermark survived boundary: %s", restarted.capacityBlockUntil)
+	}
+	if _, ok := restarted.entries[terminalID]; ok {
+		t.Fatal("expired terminal slot was not safely pruned at boundary")
 	}
 }
 

@@ -406,6 +406,18 @@ func (j *Journal) RecordCommandEvent(chargePointID, correlation, action, actionI
 		Payload: mustJSON(map[string]any{"action_id": actionID, "code": code, "reason": reason})})
 }
 
+// RecordCommandEventOnce uses the command UUID and immutable requested_at as a
+// stable spool identity. Capacity replays therefore cannot multiply local
+// files after a lost PUBACK; if the first event was already acknowledged, the
+// cloud receives the same event_id again and its durable event dedup remains
+// authoritative.
+func (j *Journal) RecordCommandEventOnce(chargePointID, correlation, action, actionID, code, reason string, at time.Time) {
+	j.appendOnce(ProtocolEvent{SchemaVersion: "1.0", EventID: actionID, OccurredAt: at.UTC().Format(time.RFC3339Nano),
+		ChargePointID: chargePointID, Direction: "internal", MessageType: "Event",
+		CorrelationID: correlation, Action: action,
+		Payload: mustJSON(map[string]any{"action_id": actionID, "code": code, "reason": reason})})
+}
+
 // redact applies the privacy boundary BEFORE bytes reach disk. idTags become a
 // stable per-edge HMAC reference; URLs, AuthorizationKey and untyped vendor
 // DataTransfer data never enter the journal in clear text.
@@ -488,6 +500,14 @@ func (j *Journal) tagRef(value string) string {
 }
 
 func (j *Journal) append(e ProtocolEvent) {
+	j.appendInternal(e, false)
+}
+
+func (j *Journal) appendOnce(e ProtocolEvent) {
+	j.appendInternal(e, true)
+}
+
+func (j *Journal) appendInternal(e ProtocolEvent, idempotent bool) {
 	raw, err := json.Marshal(e)
 	if err != nil {
 		j.log.Error("OCPP journal event could not be encoded", "err", err)
@@ -500,6 +520,15 @@ func (j *Journal) append(e ProtocolEvent) {
 		return
 	}
 	tmp, final := journalEventPaths(j.dir, e)
+	if idempotent {
+		if _, err := os.Stat(final); err == nil {
+			return
+		} else if !errors.Is(err, os.ErrNotExist) {
+			j.log.Error("OCPP journal idempotency check failed", "err", err)
+			j.recordDropLocked(e, "read_failure")
+			return
+		}
+	}
 	if err := j.writeEventFile(tmp, raw, 0o600); err != nil {
 		j.log.Error("OCPP journal event could not be persisted", "err", err)
 		j.recordDropLocked(e, "write_failure")
