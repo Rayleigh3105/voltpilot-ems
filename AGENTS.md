@@ -4621,6 +4621,32 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   `4xxxx`→FC3 −40001) stehen als solche im Code UND als Termin-Liste in
   `KACO.md` §12.
 
+## Versionierter Messpunktkatalog (`catalog/measurement-points`)
+
+- **Eine Wahrheit für Portal, Cloud und Edge.** Der kanonische, deterministisch
+  erzeugte Bestand liegt versioniert unter `catalog/measurement-points/dist/`;
+  künftige Consumer lesen dieses Artefakt bzw. ein bytegleich daraus erzeugtes
+  Paket und pflegen keine zweite Point-Key-/Label-/Einheitenliste. Slice 0
+  ändert bewusst keinen bestehenden Telemetrie- oder MQTT-Vertrag und aktiviert
+  keinen Laufzeit-Poller.
+- **Quellen bleiben vendort und gepinnt.** `sources/manifest.json` nennt für
+  Deye, 19 SunSpec-Modelle (inkl. dynamischem Model 160), 316 go-e-Keys,
+  Shelly-Generationen/-Komponenten und OCPP-1.6-MeterValues immer URL,
+  Commit/Revision und SHA-256. Der normale Generator/Validator ist
+  Standardbibliothek-only und greift weder auf Netz noch Geräte zu.
+- **Unknown-Ehrlichkeit und dynamische Adressen sind Vertragsregeln.** Keine
+  Einheit oder Semantik aus Kürzeln/Adressen raten; stattdessen
+  `semantic_status=unknown|vendor_label_only` und `null`. SunSpec-Basen sind
+  immer live `discovered`; Model 160 behält pro `module[i]` einen eigenen
+  Point-Key. `edge_min_version=unreleased` ist für diese reine
+  Katalogscheibe absichtlich ehrlich.
+- **Jede inhaltliche Änderung ist eine neue Katalogversion.** `VERSION`
+  erhöhen, altes Artefakt nicht umschreiben, dann `generate.py --check`,
+  `validate.py` und die Unittests aus der Katalog-README ausführen. Bestände,
+  Quellstände, Dubletten/Adressen und deterministische Bytes sind
+  regressionsgesichert; das optionale Deye-YAML-Update nutzt ausschließlich die
+  in `requirements-update.txt` gepinnte PyYAML-Version.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

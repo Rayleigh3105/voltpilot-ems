@@ -1,0 +1,116 @@
+{
+  "schema_version": "1.0",
+  "sources": [
+    {
+      "adapter": "deye",
+      "family": "string",
+      "id": "deye.string",
+      "input_path": "sources/deye/deye_string.normalized.json",
+      "input_sha256": "c869121caaf2e4f8f7f19612b8730dc95eff03979a3ce687a099916e92e06e4a",
+      "path": "sources/deye/deye_string.yaml",
+      "source_commit": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
+      "source_revision": null,
+      "source_sha256": "b9d37f508e0457e5f80855cfa84b446323104d5812788af0824520d0c75725ce",
+      "source_url": "https://github.com/davidrapan/ha-solarman/blob/ac1d88b83268beeb0511b8a1b7fc8e17deddc044/custom_components/solarman/inverter_definitions/deye_string.yaml"
+    },
+    {
+      "adapter": "deye",
+      "family": "hybrid_1p",
+      "id": "deye.hybrid_1p",
+      "input_path": "sources/deye/deye_hybrid.normalized.json",
+      "input_sha256": "43eda2d1c46bf6e14f1d1628adf975f1198a28e8668ad6818c7a0383dd5a9e68",
+      "path": "sources/deye/deye_hybrid.yaml",
+      "source_commit": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
+      "source_revision": null,
+      "source_sha256": "5ec40445fdb66cc2389f92c190eec0be40a970ef3ac0acdfd651af207716a51b",
+      "source_url": "https://github.com/davidrapan/ha-solarman/blob/ac1d88b83268beeb0511b8a1b7fc8e17deddc044/custom_components/solarman/inverter_definitions/deye_hybrid.yaml"
+    },
+    {
+      "adapter": "deye",
+      "family": "hybrid_3p",
+      "id": "deye.hybrid_3p",
+      "input_path": "sources/deye/deye_p3.normalized.json",
+      "input_sha256": "78584daea3f6abfbe19e0c20f779cd713d3f6ae4fe2db911ebaa0ce770c28a84",
+      "path": "sources/deye/deye_p3.yaml",
+      "source_commit": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
+      "source_revision": null,
+      "source_sha256": "2b10a4ef79f65bed1447bc1be5553dc4d73495464b2ebbdfedf21763aba4cecd",
+      "source_url": "https://github.com/davidrapan/ha-solarman/blob/ac1d88b83268beeb0511b8a1b7fc8e17deddc044/custom_components/solarman/inverter_definitions/deye_p3.yaml"
+    },
+    {
+      "adapter": "deye",
+      "family": "micro",
+      "id": "deye.micro",
+      "input_path": "sources/deye/deye_micro.normalized.json",
+      "input_sha256": "b325bb17448f9d81f3e9011d027c4a15dfadb2827fa88b3b63492feee10193b9",
+      "path": "sources/deye/deye_micro.yaml",
+      "source_commit": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
+      "source_revision": null,
+      "source_sha256": "18d11190205f0af5c9b99dde05a0e57173743563a47e819ed52d156a8c84d816",
+      "source_url": "https://github.com/davidrapan/ha-solarman/blob/ac1d88b83268beeb0511b8a1b7fc8e17deddc044/custom_components/solarman/inverter_definitions/deye_micro.yaml"
+    },
+    {
+      "adapter": "sunspec",
+      "family": "sunspec",
+      "id": "sunspec.models",
+      "models": [
+        [1, "04af1c080d2fe21cb620233c5d20308d3386170deec035694c8c1f13720ad31d"],
+        [101, "9d223f5e09734c70cec9435ac107f1e41fa54029ba2895f57e513a8f9d8df2bc"],
+        [102, "170e06f58b60d88d11d98768a62c39a3484225daf309fa1b76c7a1f5f68ab63f"],
+        [103, "5b5dd26a9cb8058e32c1f70f5c3a9681d326cbb37068d1f3b9765b5188fe7455"],
+        [111, "d2cecde6034a9036ebf9f41322c1d81697ab444e88fd9e6aa44284866b94a0fa"],
+        [112, "f1dd86e8ab05708f7f75ff40252f74527178b7fbce4cd7c09f385bc7655ebbff"],
+        [113, "d66b811a52f97b81ebc3d47c1685073d570e7c9ae183d3d0aad92ea0d3a37e7f"],
+        [120, "9fef637dfe8ba3974abf776642360df5d1ecc8ed6ff8b6ffc72fd6d94c7b6c02"],
+        [121, "fb85cfcad89093ff5175347a28eb5739bc55e81510b8388347710cc2257300cb"],
+        [122, "f2b45a4a2ceb3de6734bdc279744b7f06445c5f44101ba922cf73dd34f250554"],
+        [123, "bceda31f15c184034c2c8c2bb80c54e4e45c6bacd54b4fccab837b3651e6364a"],
+        [124, "2ff59d8c13569778f8ec89cfc0f260242a23f0506b5c8400079dc96e740c9354"],
+        [160, "43934f58ae2de0aec647e439d195dd29d623d90579b7e3b0e003d5920c26a2d0"],
+        [201, "2a6a16fbfb01a92a3f96b05ffa88d9617fb09978ad715a74baab4e692628a19c"],
+        [202, "81efe33b403e85eeb77dddf3b482c21ad8631d1967115383a783491d6143ebd2"],
+        [203, "0038b9bf820a91e3629ca6d0cf12c4eddedd25127f1fbbb93aa458209e83012b"],
+        [211, "cbdcfc2edb890f40edbf61598bf60e3b6ddba2a68c9e6ae34bd6c8cec05eaf4b"],
+        [212, "c6eed3a2e0993baa41c6188080a3cb837f271dc09465ba085db65456da9f3ccb"],
+        [213, "7492f37c4ed60986e1a1a11201a8458e93ed454ca090941187e02cb0b4874dcf"]
+      ],
+      "path_pattern": "sources/sunspec/model_{model_id}.json",
+      "source_commit": "90b4a331dcca1d6eac69c1bead952fddcc5852e0",
+      "source_revision": null,
+      "source_url_pattern": "https://github.com/sunspec/models/blob/90b4a331dcca1d6eac69c1bead952fddcc5852e0/json/model_{model_id}.json"
+    },
+    {
+      "adapter": "goe",
+      "family": "goe.api_v2",
+      "german_labels_path": "sources/goe/apikeys-de.md",
+      "german_labels_sha256": "47d57737f6da07496df0cec4a70296e73a855f902863e8fd9e29aebe154b0d66",
+      "german_labels_url": "https://github.com/goecharger/go-eCharger-API-v2/blob/b4d7f85325f5fd7243d007f7fd639ac2db16c5da/apikeys-de.md",
+      "id": "goe.api_v2",
+      "path": "sources/goe/apikeys_Firmware_60.4_sorted.md",
+      "source_commit": "b4d7f85325f5fd7243d007f7fd639ac2db16c5da",
+      "source_revision": "firmware-60.4",
+      "source_sha256": "0523e51f21be7b474b5a58fbca95722ca75779ef278d40ec59738e91f64aca9d",
+      "source_url": "https://github.com/goecharger/go-eCharger-API-v2/blob/b4d7f85325f5fd7243d007f7fd639ac2db16c5da/API_KEYS_FIRMWARE/apikeys_Firmware_60.4_sorted.md"
+    },
+    {
+      "adapter": "shelly",
+      "family": "shelly",
+      "id": "shelly.status",
+      "path": "sources/shelly/status-fields.json",
+      "source_commit": null,
+      "source_revision": "docs-1.0-snapshot-2026-08-24",
+      "source_sha256": "71f223a46602f32e53ad2a9206ef942eb2629f09b900f6416d76516c9103565f",
+      "source_url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/"
+    },
+    {
+      "adapter": "ocpp",
+      "family": "ocpp.1_6",
+      "id": "ocpp.1_6.meter_values",
+      "path": "sources/ocpp/types.go",
+      "source_commit": "a1eec917af884db0585752f909a61893aa667480",
+      "source_revision": "ocpp-go-v0.19.0",
+      "source_sha256": "1e27bab28fe8e45e2026d52bbc2bda8b0df162245a972c64f162e32f863ed5b6",
+      "source_url": "https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp1.6/types/types.go"
+    }
+  ]
+}

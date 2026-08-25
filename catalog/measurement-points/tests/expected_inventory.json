@@ -1,0 +1,58 @@
+{
+  "catalog_version": "2026.08.25.1",
+  "deye_direct_register_points": {
+    "hybrid_1p": 193,
+    "hybrid_3p": 590,
+    "micro": 54,
+    "string": 52
+  },
+  "family_counts": {
+    "goe.api_v2": 316,
+    "hybrid_1p": 199,
+    "hybrid_3p": 624,
+    "micro": 60,
+    "ocpp.1_6": 22,
+    "shelly.gen1": 61,
+    "shelly.gen2plus": 151,
+    "string": 60,
+    "sunspec.model_1": 9,
+    "sunspec.model_101": 45,
+    "sunspec.model_102": 45,
+    "sunspec.model_103": 45,
+    "sunspec.model_111": 33,
+    "sunspec.model_112": 33,
+    "sunspec.model_113": 33,
+    "sunspec.model_120": 28,
+    "sunspec.model_121": 32,
+    "sunspec.model_122": 22,
+    "sunspec.model_123": 26,
+    "sunspec.model_124": 26,
+    "sunspec.model_160": 19,
+    "sunspec.model_201": 74,
+    "sunspec.model_202": 74,
+    "sunspec.model_203": 74,
+    "sunspec.model_211": 64,
+    "sunspec.model_212": 64,
+    "sunspec.model_213": 64
+  },
+  "goe_german_source_rows": 174,
+  "goe_keys_with_german_label": 177,
+  "manifest_sha256": "21c422233dcd40f7e9cb1b1baf19a763510f49dec336704912075f180958c35e",
+  "source_versions": {
+    "deye.hybrid_1p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
+    "deye.hybrid_3p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
+    "deye.micro": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
+    "deye.string": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
+    "goe.api_v2": "b4d7f85325f5fd7243d007f7fd639ac2db16c5da",
+    "ocpp.1_6.meter_values": "a1eec917af884db0585752f909a61893aa667480",
+    "shelly.status": "docs-1.0-snapshot-2026-08-24",
+    "sunspec.models": "90b4a331dcca1d6eac69c1bead952fddcc5852e0"
+  },
+  "template_counts": {
+    "ocpp.1_6": 22,
+    "shelly.gen1": 32,
+    "shelly.gen2plus": 119,
+    "sunspec.model_160": 10
+  },
+  "total_points": 2303
+}

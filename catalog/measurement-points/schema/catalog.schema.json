@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/schemas/measurement-point-catalog/1.0",
+  "title": "VoltPilot measurement-point catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "catalog_version",
+    "edge_min_version",
+    "families",
+    "points",
+    "schema_version",
+    "source_manifest_sha256"
+  ],
+  "properties": {
+    "catalog_version": {"type": "string", "pattern": "^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$"},
+    "edge_min_version": {"type": "string", "minLength": 1},
+    "schema_version": {"const": "1.0"},
+    "source_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "families": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["family", "point_count", "template_count"],
+        "properties": {
+          "family": {"type": "string", "minLength": 1},
+          "point_count": {"type": "integer", "minimum": 1},
+          "template_count": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "points": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/point"}
+    }
+  },
+  "$defs": {
+    "nullableString": {"type": ["string", "null"]},
+    "nullableBoolean": {"type": ["boolean", "null"]},
+    "nullableInteger": {"type": ["integer", "null"], "minimum": 0},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "scale": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {"enum": ["none", "factor", "divisor", "conditional_factor", "sunssf", "protocol_value"]},
+        "value": {},
+        "point": {"type": "string", "minLength": 1}
+      },
+      "allOf": [
+        {"if": {"properties": {"kind": {"enum": ["factor", "divisor", "conditional_factor"]}}}, "then": {"required": ["value"]}},
+        {"if": {"properties": {"kind": {"const": "sunssf"}}}, "then": {"required": ["point"]}}
+      ]
+    },
+    "modbusAddress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "registers", "width_words"],
+      "properties": {
+        "kind": {"const": "modbus_holding"},
+        "registers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "integer", "minimum": 0, "maximum": 65535}
+        },
+        "width_words": {"type": "integer", "minimum": 1}
+      }
+    },
+    "sunspecAddress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base", "kind", "model_id", "offset_words", "width_words"],
+      "properties": {
+        "base": {"const": "discovered"},
+        "kind": {"const": "sunspec_relative"},
+        "model_id": {"type": "integer", "minimum": 1},
+        "offset_words": {
+          "oneOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "string", "pattern": "^[0-9]+\\+index\\*[1-9][0-9]*\\+[0-9]+$"}
+          ]
+        },
+        "width_words": {"type": "integer", "minimum": 1}
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "address",
+        "aggregation_kind",
+        "catalog_version",
+        "default_cadence_s",
+        "edge_min_version",
+        "endian",
+        "family",
+        "group",
+        "label_de",
+        "label_source",
+        "long_term_cadence_s",
+        "min_cadence_s",
+        "point_key",
+        "poll_group",
+        "readable",
+        "scale",
+        "selector",
+        "semantic_status",
+        "signed",
+        "source_commit",
+        "source_kind",
+        "source_revision",
+        "source_sha256",
+        "source_url",
+        "unit",
+        "value_type",
+        "width_bits"
+      ],
+      "properties": {
+        "access": {"type": "string"},
+        "address": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/modbusAddress"}, {"$ref": "#/$defs/sunspecAddress"}]},
+        "aggregation_kind": {"enum": ["gauge", "counter", "state", "event", "bitfield", "text", "none"]},
+        "catalog_version": {"type": "string", "minLength": 1},
+        "decoder": {"type": "object"},
+        "default_cadence_s": {"$ref": "#/$defs/nullableInteger"},
+        "derived_from": {"type": "array", "items": {"type": "string"}},
+        "dimensions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["contexts", "formats", "locations", "phases", "units"],
+          "properties": {
+            "contexts": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+            "formats": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+            "locations": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+            "phases": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+            "units": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+          }
+        },
+        "dynamic": {"type": "boolean"},
+        "edge_min_version": {"type": "string", "minLength": 1},
+        "endian": {"enum": ["big", "word_little_byte_big", null]},
+        "family": {"type": "string", "minLength": 1},
+        "group": {"type": "string", "minLength": 1},
+        "label_de": {"$ref": "#/$defs/nullableString"},
+        "label_source": {"$ref": "#/$defs/nullableString"},
+        "label_source_sha256": {"$ref": "#/$defs/sha256"},
+        "label_source_url": {"type": "string", "pattern": "^https://"},
+        "long_term_cadence_s": {"$ref": "#/$defs/nullableInteger"},
+        "mandatory": {"type": "boolean"},
+        "min_cadence_s": {"$ref": "#/$defs/nullableInteger"},
+        "optional": {"type": "boolean"},
+        "point_key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._*\\[\\]@-]*$"},
+        "point_key_template": {"type": "boolean"},
+        "poll_group": {"type": "string", "minLength": 1},
+        "readable": {"type": "boolean"},
+        "scale": {"$ref": "#/$defs/scale"},
+        "selector": {"type": "string", "minLength": 1},
+        "semantic_status": {"enum": ["known", "vendor_label_only", "unknown"]},
+        "signed": {"$ref": "#/$defs/nullableBoolean"},
+        "source_commit": {"$ref": "#/$defs/nullableString"},
+        "source_key_raw": {"type": "string", "minLength": 1},
+        "source_kind": {"enum": ["modbus_holding", "sunspec_model", "http_api_key", "rest_json", "rpc_json", "ocpp_sampled_value"]},
+        "source_revision": {"$ref": "#/$defs/nullableString"},
+        "source_sha256": {"$ref": "#/$defs/sha256"},
+        "source_url": {"type": "string", "pattern": "^https://"},
+        "unit": {"$ref": "#/$defs/nullableString"},
+        "value_type": {"type": "string", "minLength": 1},
+        "width_bits": {"$ref": "#/$defs/nullableInteger"}
+      }
+    }
+  }
+}

@@ -1,0 +1,2 @@
+# Update-only dependency. Catalog generation and validation need no packages.
+PyYAML==6.0.2

@@ -1,0 +1,419 @@
+{
+  "schema_version": "1.0",
+  "snapshot_date": "2026-08-24",
+  "families": [
+    {
+      "family": "shelly.gen1",
+      "source_url": "https://shelly-api-docs.shelly.cloud/gen1/#shelly-status",
+      "source_kind": "rest_json",
+      "components": [
+        {
+          "component": "device_info",
+          "endpoint": "/shelly",
+          "cadence_s": 3600,
+          "fields": [
+            ["type", "string", null, "Gerätetyp", "text"],
+            ["mac", "string", null, "MAC-Adresse", "text"],
+            ["auth", "bool", null, "Authentifizierung aktiv", "state"],
+            ["fw", "string", null, "Firmware", "text"],
+            ["longid", "bool", null, "Lange Gerätekennung", "state"],
+            ["num_outputs", "uint", null, "Anzahl Ausgänge", "state"],
+            ["num_meters", "uint", null, "Anzahl Leistungsmesser", "state"]
+          ]
+        },
+        {
+          "component": "wifi_sta",
+          "endpoint": "/status",
+          "cadence_s": 60,
+          "fields": [
+            ["wifi_sta.connected", "bool", null, "WLAN verbunden", "state"],
+            ["wifi_sta.ssid", "string", null, "WLAN-Name", "text"],
+            ["wifi_sta.ip", "string", null, "IP-Adresse", "text"],
+            ["wifi_sta.rssi", "int", "dBm", "WLAN-Signal", "gauge"]
+          ]
+        },
+        {
+          "component": "services",
+          "endpoint": "/status",
+          "cadence_s": 60,
+          "fields": [
+            ["cloud.enabled", "bool", null, "Shelly Cloud aktiviert", "state"],
+            ["cloud.connected", "bool", null, "Shelly Cloud verbunden", "state"],
+            ["mqtt.connected", "bool", null, "MQTT verbunden", "state"]
+          ]
+        },
+        {
+          "component": "system",
+          "endpoint": "/status",
+          "cadence_s": 300,
+          "fields": [
+            ["time", "string", null, "Lokale Uhrzeit", "text"],
+            ["unixtime", "uint", "s", "Unix-Zeit", "gauge"],
+            ["serial", "uint", null, "Neustartzähler", "counter"],
+            ["has_update", "bool", null, "Update verfügbar", "state"],
+            ["mac", "string", null, "MAC-Adresse", "text"],
+            ["cfg_changed", "uint", null, "Konfigurationsänderung", "counter"],
+            ["actions_stats", "object", null, "Aktionsstatistik", "none"],
+            ["uptime", "uint", "s", "Laufzeit", "gauge"],
+            ["ram_total", "uint", "B", "RAM gesamt", "gauge"],
+            ["ram_free", "uint", "B", "RAM frei", "gauge"],
+            ["fs_size", "uint", "B", "Flash gesamt", "gauge"],
+            ["fs_free", "uint", "B", "Flash frei", "gauge"]
+          ]
+        },
+        {
+          "component": "relay[*]",
+          "endpoint": "/status",
+          "cadence_s": 10,
+          "fields": [
+            ["relays[*].ison", "bool", null, "Schaltzustand", "state"],
+            ["relays[*].has_timer", "bool", null, "Timer aktiv", "state"],
+            ["relays[*].timer_started", "uint", "s", "Timer gestartet", "gauge"],
+            ["relays[*].timer_duration", "uint", "s", "Timerdauer", "gauge"],
+            ["relays[*].timer_remaining", "uint", "s", "Verbleibende Timerzeit", "gauge"],
+            ["relays[*].overpower", "bool", null, "Überleistungszustand", "state"],
+            ["relays[*].source", "string", null, "Schaltquelle", "state"]
+          ]
+        },
+        {
+          "component": "meter[*]",
+          "endpoint": "/status",
+          "cadence_s": 30,
+          "fields": [
+            ["meters[*].power", "number", "W", "Wirkleistung", "gauge"],
+            ["meters[*].overpower", "number", "W", "Überleistung", "gauge"],
+            ["meters[*].is_valid", "bool", null, "Messwert gültig", "state"],
+            ["meters[*].timestamp", "uint", "s", "Messzeitpunkt", "gauge"],
+            ["meters[*].counters[*]", "number", "Wmin", "Minutenwert", "gauge"],
+            ["meters[*].total", "number", "Wmin", "Gesamtenergie", "counter"]
+          ]
+        },
+        {
+          "component": "input[*]",
+          "endpoint": "/status",
+          "cadence_s": 10,
+          "fields": [
+            ["inputs[*].input", "bool", null, "Eingangspegel", "state"],
+            ["inputs[*].event", "string", null, "Letztes Eingangsereignis", "event"],
+            ["inputs[*].event_cnt", "uint", null, "Ereigniszähler", "counter"]
+          ]
+        },
+        {
+          "component": "thermal",
+          "endpoint": "/status",
+          "cadence_s": 60,
+          "fields": [
+            ["temperature", "number", "°C", "Gerätetemperatur", "gauge"],
+            ["overtemperature", "bool", null, "Übertemperatur", "event"],
+            ["temperature_status", "string", null, "Temperaturzustand", "state"]
+          ]
+        },
+        {
+          "component": "external_sensor[*]",
+          "endpoint": "/status",
+          "cadence_s": 60,
+          "fields": [
+            ["ext_temperature.*.tC", "number", "°C", "Externe Temperatur", "gauge"],
+            ["ext_temperature.*.tF", "number", "°F", "Externe Temperatur", "gauge"],
+            ["ext_humidity.*.hum", "number", "%", "Externe Luftfeuchte", "gauge"]
+          ]
+        },
+        {
+          "component": "emeter[*]",
+          "endpoint": "/status",
+          "cadence_s": 30,
+          "fields": [
+            ["emeters[*].voltage", "number", "V", "Spannung", "gauge"],
+            ["emeters[*].current", "number", "A", "Strom", "gauge"],
+            ["emeters[*].power", "number", "W", "Wirkleistung", "gauge"],
+            ["emeters[*].pf", "number", null, "Leistungsfaktor", "gauge"],
+            ["emeters[*].total", "number", "Wh", "Bezogene Wirkenergie", "counter"],
+            ["emeters[*].total_returned", "number", "Wh", "Rückgespeiste Wirkenergie", "counter"]
+          ]
+        },
+        {
+          "component": "light_cover[*]",
+          "endpoint": "/status",
+          "cadence_s": 30,
+          "fields": [
+            ["lights[*].ison", "bool", null, "Licht eingeschaltet", "state"],
+            ["lights[*].brightness", "number", "%", "Helligkeit", "gauge"],
+            ["lights[*].white", "number", null, "Weißkanal", "gauge"],
+            ["lights[*].temp", "number", "K", "Farbtemperatur", "gauge"],
+            ["rollers[*].state", "string", null, "Abdeckungszustand", "state"],
+            ["rollers[*].current_pos", "number", "%", "Aktuelle Position", "gauge"],
+            ["rollers[*].power", "number", "W", "Wirkleistung", "gauge"]
+          ]
+        }
+      ]
+    },
+    {
+      "family": "shelly.gen2plus",
+      "source_url": "https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/",
+      "source_kind": "rpc_json",
+      "components": [
+        {
+          "component": "device_info",
+          "method": "Shelly.GetDeviceInfo",
+          "cadence_s": 3600,
+          "fields": [
+            ["id", "string", null, "Gerätekennung", "text"],
+            ["mac", "string", null, "MAC-Adresse", "text"],
+            ["model", "string", null, "Modell", "text"],
+            ["gen", "uint", null, "API-Generation", "state"],
+            ["fw_id", "string", null, "Firmware-Kennung", "text"],
+            ["ver", "string", null, "Firmware-Version", "text"],
+            ["app", "string", null, "Anwendung", "text"],
+            ["auth_en", "bool", null, "Authentifizierung aktiv", "state"],
+            ["auth_domain", "string", null, "Authentifizierungsbereich", "text"],
+            ["profile", "string", null, "Geräteprofil", "state"]
+          ]
+        },
+        {
+          "component": "sys",
+          "method": "Sys.GetStatus",
+          "cadence_s": 300,
+          "fields": [
+            ["mac", "string", null, "MAC-Adresse", "text"],
+            ["restart_required", "bool", null, "Neustart erforderlich", "state"],
+            ["time", "string", null, "Lokale Uhrzeit", "text"],
+            ["unixtime", "uint", "s", "Unix-Zeit", "gauge"],
+            ["uptime", "uint", "s", "Laufzeit", "gauge"],
+            ["ram_size", "uint", "B", "RAM gesamt", "gauge"],
+            ["ram_free", "uint", "B", "RAM frei", "gauge"],
+            ["fs_size", "uint", "B", "Flash gesamt", "gauge"],
+            ["fs_free", "uint", "B", "Flash frei", "gauge"],
+            ["cfg_rev", "uint", null, "Konfigurationsrevision", "counter"],
+            ["kvs_rev", "uint", null, "KVS-Revision", "counter"],
+            ["schedule_rev", "uint", null, "Zeitplanrevision", "counter"],
+            ["webhook_rev", "uint", null, "Webhook-Revision", "counter"],
+            ["available_updates", "object", null, "Verfügbare Updates", "none"],
+            ["reset_reason", "uint", null, "Neustartgrund", "state"]
+          ]
+        },
+        {
+          "component": "wifi",
+          "method": "Wifi.GetStatus",
+          "cadence_s": 60,
+          "fields": [
+            ["sta_ip", "string", null, "WLAN-IP-Adresse", "text"],
+            ["status", "string", null, "WLAN-Zustand", "state"],
+            ["ssid", "string", null, "WLAN-Name", "text"],
+            ["rssi", "int", "dBm", "WLAN-Signal", "gauge"],
+            ["ap_client_count", "uint", null, "Verbundene AP-Clients", "gauge"]
+          ]
+        },
+        {
+          "component": "cloud",
+          "method": "Cloud.GetStatus",
+          "cadence_s": 60,
+          "fields": [
+            ["connected", "bool", null, "Shelly Cloud verbunden", "state"]
+          ]
+        },
+        {
+          "component": "mqtt",
+          "method": "Mqtt.GetStatus",
+          "cadence_s": 60,
+          "fields": [
+            ["connected", "bool", null, "MQTT verbunden", "state"]
+          ]
+        },
+        {
+          "component": "switch[*]",
+          "method": "Switch.GetStatus?id=*",
+          "cadence_s": 10,
+          "fields": [
+            ["id", "uint", null, "Komponentenkennung", "state"],
+            ["source", "string", null, "Schaltquelle", "state"],
+            ["output", "bool", null, "Schaltzustand", "state"],
+            ["temperature.tC", "number", "°C", "Temperatur", "gauge"],
+            ["temperature.tF", "number", "°F", "Temperatur", "gauge"],
+            ["apower", "number", "W", "Wirkleistung", "gauge"],
+            ["voltage", "number", "V", "Spannung", "gauge"],
+            ["current", "number", "A", "Strom", "gauge"],
+            ["pf", "number", null, "Leistungsfaktor", "gauge"],
+            ["freq", "number", "Hz", "Frequenz", "gauge"],
+            ["aenergy.total", "number", "Wh", "Bezogene Wirkenergie", "counter"],
+            ["aenergy.by_minute[*]", "number", "mWh", "Minutenenergie", "gauge"],
+            ["aenergy.minute_ts", "uint", "s", "Zeitpunkt der Minutenenergie", "gauge"],
+            ["ret_aenergy.total", "number", "Wh", "Rückgespeiste Wirkenergie", "counter"],
+            ["ret_aenergy.by_minute[*]", "number", "mWh", "Rückgespeiste Minutenenergie", "gauge"],
+            ["ret_aenergy.minute_ts", "uint", "s", "Zeitpunkt der Rückenergie", "gauge"],
+            ["errors[*]", "string", null, "Fehler", "event"]
+          ]
+        },
+        {
+          "component": "pm1[*]",
+          "method": "PM1.GetStatus?id=*",
+          "cadence_s": 30,
+          "fields": [
+            ["id", "uint", null, "Komponentenkennung", "state"],
+            ["voltage", "number", "V", "Spannung", "gauge"],
+            ["current", "number", "A", "Strom", "gauge"],
+            ["apower", "number", "W", "Wirkleistung", "gauge"],
+            ["aprtpower", "number", "VA", "Scheinleistung", "gauge"],
+            ["pf", "number", null, "Leistungsfaktor", "gauge"],
+            ["freq", "number", "Hz", "Frequenz", "gauge"],
+            ["aenergy.total", "number", "Wh", "Bezogene Wirkenergie", "counter"],
+            ["aenergy.by_minute[*]", "number", "mWh", "Minutenenergie", "gauge"],
+            ["aenergy.minute_ts", "uint", "s", "Zeitpunkt der Minutenenergie", "gauge"],
+            ["ret_aenergy.total", "number", "Wh", "Rückgespeiste Wirkenergie", "counter"],
+            ["ret_aenergy.by_minute[*]", "number", "mWh", "Rückgespeiste Minutenenergie", "gauge"],
+            ["ret_aenergy.minute_ts", "uint", "s", "Zeitpunkt der Rückenergie", "gauge"],
+            ["errors[*]", "string", null, "Fehler", "event"]
+          ]
+        },
+        {
+          "component": "em[*]",
+          "method": "EM.GetStatus?id=*",
+          "cadence_s": 30,
+          "phase_prefixes": ["a", "b", "c"],
+          "phase_fields": [
+            ["current", "number", "A", "Strom", "gauge"],
+            ["voltage", "number", "V", "Spannung", "gauge"],
+            ["act_power", "number", "W", "Wirkleistung", "gauge"],
+            ["aprt_power", "number", "VA", "Scheinleistung", "gauge"],
+            ["pf", "number", null, "Leistungsfaktor", "gauge"],
+            ["freq", "number", "Hz", "Frequenz", "gauge"]
+          ],
+          "fields": [
+            ["total_current", "number", "A", "Gesamtstrom", "gauge"],
+            ["total_act_power", "number", "W", "Gesamtwirkleistung", "gauge"],
+            ["total_aprt_power", "number", "VA", "Gesamtscheinleistung", "gauge"],
+            ["errors[*]", "string", null, "Fehler", "event"]
+          ]
+        },
+        {
+          "component": "emdata[*]",
+          "method": "EMData.GetStatus?id=*",
+          "cadence_s": 60,
+          "fields": [
+            ["id", "uint", null, "Komponentenkennung", "state"],
+            ["a_total_act_energy", "number", "Wh", "Bezogene Wirkenergie Phase A", "counter"],
+            ["a_total_act_ret_energy", "number", "Wh", "Rückgespeiste Wirkenergie Phase A", "counter"],
+            ["b_total_act_energy", "number", "Wh", "Bezogene Wirkenergie Phase B", "counter"],
+            ["b_total_act_ret_energy", "number", "Wh", "Rückgespeiste Wirkenergie Phase B", "counter"],
+            ["c_total_act_energy", "number", "Wh", "Bezogene Wirkenergie Phase C", "counter"],
+            ["c_total_act_ret_energy", "number", "Wh", "Rückgespeiste Wirkenergie Phase C", "counter"],
+            ["total_act", "number", "Wh", "Bezogene Gesamtwirkenergie", "counter"],
+            ["total_act_ret", "number", "Wh", "Rückgespeiste Gesamtwirkenergie", "counter"],
+            ["errors[*]", "string", null, "Fehler", "event"]
+          ]
+        },
+        {
+          "component": "em1[*]",
+          "method": "EM1.GetStatus?id=*",
+          "cadence_s": 30,
+          "fields": [
+            ["id", "uint", null, "Komponentenkennung", "state"],
+            ["voltage", "number", "V", "Spannung", "gauge"],
+            ["current", "number", "A", "Strom", "gauge"],
+            ["act_power", "number", "W", "Wirkleistung", "gauge"],
+            ["aprt_power", "number", "VA", "Scheinleistung", "gauge"],
+            ["pf", "number", null, "Leistungsfaktor", "gauge"],
+            ["freq", "number", "Hz", "Frequenz", "gauge"],
+            ["errors[*]", "string", null, "Fehler", "event"]
+          ]
+        },
+        {
+          "component": "em1data[*]",
+          "method": "EM1Data.GetStatus?id=*",
+          "cadence_s": 60,
+          "fields": [
+            ["id", "uint", null, "Komponentenkennung", "state"],
+            ["total_act_energy", "number", "Wh", "Bezogene Wirkenergie", "counter"],
+            ["total_act_ret_energy", "number", "Wh", "Rückgespeiste Wirkenergie", "counter"],
+            ["errors[*]", "string", null, "Fehler", "event"]
+          ]
+        },
+        {
+          "component": "input[*]",
+          "method": "Input.GetStatus?id=*",
+          "cadence_s": 60,
+          "fields": [
+            ["id", "uint", null, "Eingangskennung", "state"],
+            ["state", "bool|number|null", null, "Eingangsstatus", "state"]
+          ]
+        },
+        {
+          "component": "temperature[*]",
+          "method": "Temperature.GetStatus?id=*",
+          "cadence_s": 60,
+          "fields": [
+            ["id", "uint", null, "Temperatursensorkennung", "state"],
+            ["tC", "number", "°C", "Temperatur", "gauge"],
+            ["tF", "number", "°F", "Temperatur", "gauge"],
+            ["errors[*]", "string", null, "Temperaturfehler", "event"]
+          ]
+        },
+        {
+          "component": "humidity[*]",
+          "method": "Humidity.GetStatus?id=*",
+          "cadence_s": 60,
+          "fields": [
+            ["id", "uint", null, "Feuchtesensorkennung", "state"],
+            ["rh", "number", "%", "Relative Luftfeuchte", "gauge"],
+            ["errors[*]", "string", null, "Feuchtefehler", "event"]
+          ]
+        },
+        {
+          "component": "devicepower[*]",
+          "method": "DevicePower.GetStatus?id=*",
+          "cadence_s": 60,
+          "fields": [
+            ["id", "uint", null, "Komponentenkennung", "state"],
+            ["battery.V", "number", "V", "Batteriespannung", "gauge"],
+            ["battery.percent", "number", "%", "Batterieladestand", "gauge"],
+            ["external.present", "bool", null, "Externe Versorgung vorhanden", "state"]
+          ]
+        },
+        {
+          "component": "cover[*]",
+          "method": "Cover.GetStatus?id=*",
+          "cadence_s": 30,
+          "fields": [
+            ["id", "uint", null, "Komponentenkennung", "state"],
+            ["source", "string", null, "Schaltquelle", "state"],
+            ["state", "string", null, "Abdeckungszustand", "state"],
+            ["apower", "number", "W", "Wirkleistung", "gauge"],
+            ["voltage", "number", "V", "Spannung", "gauge"],
+            ["current", "number", "A", "Strom", "gauge"],
+            ["pf", "number", null, "Leistungsfaktor", "gauge"],
+            ["freq", "number", "Hz", "Frequenz", "gauge"],
+            ["aenergy.total", "number", "Wh", "Bezogene Wirkenergie", "counter"],
+            ["aenergy.by_minute[*]", "number", "mWh", "Minutenenergie", "gauge"],
+            ["aenergy.minute_ts", "uint", "s", "Zeitpunkt der Minutenenergie", "gauge"],
+            ["current_pos", "number", "%", "Aktuelle Position", "gauge"],
+            ["target_pos", "number", "%", "Zielposition", "gauge"],
+            ["pos_control", "bool", null, "Positionssteuerung verfügbar", "state"],
+            ["temperature.tC", "number", "°C", "Temperatur", "gauge"],
+            ["temperature.tF", "number", "°F", "Temperatur", "gauge"],
+            ["errors[*]", "string", null, "Fehler", "event"]
+          ]
+        },
+        {
+          "component": "light_rgb_rgbw[*]",
+          "method": "Light|RGB|RGBW.GetStatus?id=*",
+          "cadence_s": 30,
+          "fields": [
+            ["id", "uint", null, "Komponentenkennung", "state"],
+            ["source", "string", null, "Schaltquelle", "state"],
+            ["output", "bool", null, "Schaltzustand", "state"],
+            ["brightness", "number", "%", "Helligkeit", "gauge"],
+            ["rgb", "array", null, "RGB-Farbwert", "state"],
+            ["white", "number", null, "Weißkanal", "gauge"],
+            ["temp", "number", "K", "Farbtemperatur", "gauge"],
+            ["apower", "number", "W", "Wirkleistung", "gauge"],
+            ["voltage", "number", "V", "Spannung", "gauge"],
+            ["current", "number", "A", "Strom", "gauge"],
+            ["aenergy.total", "number", "Wh", "Bezogene Wirkenergie", "counter"],
+            ["aenergy.by_minute[*]", "number", "mWh", "Minutenenergie", "gauge"],
+            ["aenergy.minute_ts", "uint", "s", "Zeitpunkt der Minutenenergie", "gauge"],
+            ["errors[*]", "string", null, "Fehler", "event"]
+          ]
+        }
+      ]
+    }
+  ]
+}

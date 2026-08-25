@@ -1,0 +1,4 @@
+# Vendored source snapshots remain byte-exact, including upstream whitespace.
+sources/deye/*.yaml -whitespace
+sources/goe/*.md -whitespace
+sources/ocpp/LICENSE -whitespace
