@@ -30,7 +30,8 @@ jobs:
       matrix:
         include:
           - component: api
-            context: ./services/api
+            context: .
+            dockerfile: ./services/api/Dockerfile
             build_args: ""
           - component: ingest
             context: ./services/ingest

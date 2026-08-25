@@ -32,6 +32,13 @@ tags:
       can be disabled platform-wide via VOLTPILOT_REGISTRATION_ENABLED=false.
   - name: sites
   - name: devices
+  - name: measurement-selection
+    description: >
+      Revisionierte Auswahl zusätzlicher Geräte-Messwerte aus dem kanonischen
+      Katalog plus ausschließlich lesbare freie Register. Die Cloud speichert
+      hier nur den gewünschten Zustand: bis zum separaten Edge-Ack bleibt der
+      Apply-Status pending_edge. Aktivierung gilt serverseitig ab enabledAt
+      ohne Backfill; Abwahl löscht weder Messhistorie noch Auswahlereignisse.
   - name: enrollment
     description: >
       First-boot device enrollment over HTTPS (the "kinderleicht" mTLS
@@ -583,6 +590,140 @@ paths:
               schema: { $ref: "#/components/schemas/DevicePurgeResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Device not found for this tenant. }
+  /api/v1/devices/{deviceId}/measurement-selection:
+    get:
+      tags: [measurement-selection]
+      summary: Gewünschte Messwertauswahl, Apply-Status, Audit und Datenvolumen.
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Aktueller gewünschter Zustand; pending_edge ist ausdrücklich nicht angewendet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MeasurementSelectionState" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Gerät gehört nicht zum aktuellen Mandanten. }
+  /api/v1/devices/{deviceId}/measurement-selection/catalog:
+    get:
+      tags: [measurement-selection]
+      summary: Katalogsuche mit Gruppen- und Semantikstatus-Facetten.
+      description: >
+        Durchsucht deutschen/originalen Namen, Point-Key, Adresse/Selektor,
+        API-Key/OCPP-Measurand, Gruppe und Einheit. `availableOnly` nutzt nur
+        tatsächlich gemeldete Familien; unbekannte Semantik bleibt sichtbar.
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: family, in: query, schema: { type: array, items: { type: string } } }
+        - { name: group, in: query, schema: { type: string } }
+        - { name: semanticStatus, in: query, schema: { type: string, enum: [known, vendor_label_only, unknown] } }
+        - { name: recorded, in: query, schema: { type: boolean } }
+        - { name: availableOnly, in: query, schema: { type: boolean, default: false } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 250, default: 100 } }
+      responses:
+        "200":
+          description: Gefilterte Seite plus Facetten; enthält die Aktion „Eigenen Messwert hinzufügen“.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MeasurementCatalogPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Gerät gehört nicht zum aktuellen Mandanten. }
+  /api/v1/devices/{deviceId}/measurement-selection/estimate:
+    get:
+      tags: [measurement-selection]
+      summary: Daten- und Gerätebudget einer möglichen Änderung vorab schätzen.
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: pointKey, in: query, required: true, schema: { type: string } }
+        - { name: enabled, in: query, schema: { type: boolean, default: true } }
+        - { name: cadenceS, in: query, schema: { type: integer, minimum: 1, maximum: 86400 } }
+      responses:
+        "200":
+          description: Reine Vorschau; schreibt nichts und erhöht keine Revision.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MeasurementBudgetEstimate" }
+        "400": { description: Unbekannter Punkt oder unzulässige Kadenz. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Gerät gehört nicht zum aktuellen Mandanten. }
+  /api/v1/devices/{deviceId}/measurement-selection/{pointKey}:
+    put:
+      tags: [measurement-selection]
+      summary: Katalog-Messpunkt revisioniert aktivieren oder abwählen.
+      description: >
+        `expectedRevision` ist ein optimistic lock je Gerät; `idempotencyKey`
+        macht Retries stabil. Aktivieren stempelt enabledAt auf Serverzeit.
+        Abwählen ist ein Update mit disabledAt, kein Delete. Ohne Edge-Ack wird
+        stets pending_edge zurückgegeben. Ein hart überschrittenes D5-Budget
+        antwortet 422 und lässt Auswahl/Audit unverändert.
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: pointKey, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MeasurementSelectionChangeRequest" }
+      responses:
+        "200":
+          description: Neuer gewünschter Zustand oder idempotente Wiederholung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MeasurementSelectionState" }
+        "400": { description: Punkt/Kadenz ist nicht lesbar bzw. unzulässig. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Gerät gehört nicht zum aktuellen Mandanten. }
+        "409": { description: Revision veraltet oder Idempotenzschlüssel anders belegt. }
+        "422": { description: 600 Samples/min, engeres Treiberbudget, 20 % Duty oder 30 Requests/min überschritten. }
+  /api/v1/devices/{deviceId}/measurement-selection/custom/estimate:
+    post:
+      tags: [measurement-selection]
+      summary: Eigenes Register vor dem Anlegen validieren und budgetieren.
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomMeasurementPointDefinition" }
+      responses:
+        "200":
+          description: Reine Vorschau mit derselben Validierung wie das Anlegen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MeasurementBudgetEstimate" }
+        "400": { description: Definition ist unvollständig, unsicher oder nicht read-only. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Gerät gehört nicht zum aktuellen Mandanten. }
+  /api/v1/devices/{deviceId}/measurement-selection/custom:
+    post:
+      tags: [measurement-selection]
+      summary: Eigenen Messwert hinzufügen (ausschließlich lesbares Register).
+      description: >
+        Validiert Adresse und dazu passenden Selektor, Datentyp/Breite,
+        Vorzeichen/Endian, Skala, Einheit, Kadenz, Aufbewahrungsklasse und
+        Lesesicherheit. Unbekannte oder schreibende Felder werden nicht
+        akzeptiert; es entsteht keinerlei Register-Schreibfunktion.
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomMeasurementPointRequest" }
+      responses:
+        "200":
+          description: Eigener Messwert als pending_edge gewünschte Auswahl angelegt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MeasurementSelectionState" }
+        "400": { description: Definition ist unvollständig, unsicher oder nicht read-only. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Gerät gehört nicht zum aktuellen Mandanten. }
+        "409": { description: Revision veraltet oder Idempotenzschlüssel anders belegt. }
+        "422": { description: Hartes technisches Messwertbudget überschritten. }
   /api/v1/devices/claim:
     post:
       tags: [devices]
@@ -7897,6 +8038,186 @@ components:
           description: >
             v2 entity registry (E1a): the pilot domain type when this row is a
             v2 entity, else null. Set by the admin bootstrap only.
+    MeasurementSelectionChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision, idempotencyKey, enabled]
+      properties:
+        expectedRevision: { type: integer, format: int64, minimum: 0 }
+        idempotencyKey: { type: string, format: uuid }
+        enabled: { type: boolean }
+        cadenceS: { type: integer, minimum: 1, maximum: 86400, nullable: true }
+    CustomMeasurementPointDefinition:
+      $ref: "#/components/schemas/CustomMeasurementPointRequest/properties/definition"
+    CustomMeasurementPointRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision, idempotencyKey, definition]
+      properties:
+        expectedRevision: { type: integer, format: int64, minimum: 0 }
+        idempotencyKey: { type: string, format: uuid }
+        definition:
+          type: object
+          additionalProperties: false
+          required: [label, sourceKind, address, selector, valueType, widthBits, signed,
+                     endian, scale, unit, cadenceS, retentionClass, readOnly]
+          properties:
+            label: { type: string, maxLength: 120 }
+            sourceKind: { type: string, enum: [modbus_holding, modbus_input] }
+            address: { type: integer, minimum: 0, maximum: 65535 }
+            selector: { type: string, example: "holding:0x00e7" }
+            valueType: { type: string, enum: [uint16, int16, uint32, int32, float32, float64] }
+            widthBits: { type: integer, enum: [16, 32, 64] }
+            signed: { type: boolean }
+            endian: { type: string, enum: [big, word_little_byte_big] }
+            scale: { type: number, not: { const: 0 } }
+            unit: { type: string, minLength: 1, maxLength: 32 }
+            cadenceS: { type: integer, minimum: 1, maximum: 86400 }
+            retentionClass:
+              type: string
+              enum: [live_power, phase_mppt_string, thermal_bms, energy_counter,
+                     state_event, identity_configuration]
+            readOnly: { type: boolean, const: true }
+      description: Die Request-Kosten werden ausschließlich serverseitig konservativ angesetzt; der Client kann sie nicht vorgeben.
+    MeasurementBudgetEstimate:
+      type: object
+      required: [enabledPointCount, samplesPerMinute, requestsPerMinute, dutyCyclePercent,
+                 softWarning, hardSamplesPerMinute, hardRejected, rawRetentionDays,
+                 assumedBytesPerSample, totalGbPerYear]
+      properties:
+        enabledPointCount: { type: integer, description: Kein Limit; rein informativ. }
+        samplesPerMinute: { type: number }
+        requestsPerMinute: { type: number }
+        dutyCyclePercent: { type: number }
+        softWarning: { type: boolean, description: true ab 120 Samples/min. }
+        hardSamplesPerMinute: { type: number, maximum: 600, description: 600 oder engeres konfiguriertes Treiberbudget. }
+        limitingDriverFamilies: { type: array, items: { type: string } }
+        hardRejected: { type: boolean }
+        reasons: { type: array, items: { type: string } }
+        pollGroups:
+          type: array
+          items:
+            type: object
+            properties:
+              pollGroup: { type: string }
+              requestsPerMinute: { type: number, minimum: 0 }
+              serverRequestCostMs: { type: integer, minimum: 0 }
+              dutyCyclePercent: { type: number, minimum: 0 }
+        rawRetentionDays: { type: integer, const: 90 }
+        assumedBytesPerSample: { type: integer, const: 96 }
+        byteCorridorMin: { type: integer, const: 64 }
+        byteCorridorMax: { type: integer, const: 128 }
+        rawGbPerYear: { type: number }
+        longTermGbPerYear: { type: number }
+        totalGbPerYear: { type: number }
+        volumeEstimateIncomplete: { type: boolean, description: true bei nicht seriös schätzbaren Ereignisraten. }
+        retentionSummary: { type: string }
+        limitSummary: { type: string }
+    MeasurementCatalogPage:
+      type: object
+      properties:
+        catalogVersion: { type: string, example: 2026.08.25.1 }
+        edgeMinVersion: { type: string }
+        customPointActionLabel: { type: string, const: Eigenen Messwert hinzufügen }
+        total: { type: integer }
+        offset: { type: integer }
+        limit: { type: integer }
+        groups: { type: array, items: { type: object, properties: { value: { type: string }, count: { type: integer } } } }
+        semanticStatuses: { type: array, items: { type: object, properties: { value: { type: string }, count: { type: integer } } } }
+        points:
+          type: array
+          items:
+            type: object
+            properties:
+              family: { type: string }
+              pointKey: { type: string }
+              sourceKind: { type: string }
+              address: { type: object, nullable: true }
+              selector: { type: string }
+              widthBits: { type: integer, nullable: true }
+              valueType: { type: string }
+              signed: { type: boolean, nullable: true }
+              endian: { type: string, nullable: true }
+              scale: { type: object }
+              unit: { type: string, nullable: true }
+              group: { type: string }
+              labelDe: { type: string, nullable: true }
+              labelSource: { type: string, nullable: true }
+              semanticStatus: { type: string, enum: [known, vendor_label_only, unknown] }
+              aggregationKind: { type: string }
+              defaultCadenceS: { type: integer, nullable: true }
+              minCadenceS: { type: integer, nullable: true }
+              longTermCadenceS: { type: integer, nullable: true }
+              pollGroup: { type: string }
+              sourceUrl: { type: string }
+              sourceCommit: { type: string }
+              readable: { type: boolean }
+              edgeMinVersion: { type: string }
+              dynamic: { type: boolean }
+              retention: { type: object }
+              selected: { type: boolean }
+              selectedCadenceS: { type: integer, nullable: true }
+    MeasurementSelectionState:
+      type: object
+      properties:
+        deviceId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        desiredRevision: { type: integer, format: int64 }
+        catalogVersion: { type: string }
+        status: { type: string, enum: [no_selection, pending_edge, rejected, applied, first_sample] }
+        statusReason: { type: string }
+        activationNotice: { type: string }
+        disableNotice: { type: string }
+        volumeEstimate: { $ref: "#/components/schemas/MeasurementBudgetEstimate" }
+        selections:
+          type: array
+          items:
+            type: object
+            properties:
+              pointKey: { type: string }
+              enabled: { type: boolean }
+              cadenceS: { type: integer, nullable: true }
+              desiredRevision: { type: integer, format: int64 }
+              enabledAt: { type: string, format: date-time, nullable: true }
+              disabledAt: { type: string, format: date-time, nullable: true }
+              catalogVersion: { type: string }
+              changedBy: { type: string }
+              changedByName: { type: string, nullable: true }
+              applyStatus: { type: string, enum: [pending_edge, applied, rejected, first_sample] }
+              applyReason: { type: string, nullable: true }
+              appliedAt: { type: string, format: date-time, nullable: true }
+              customDefinition: { type: object, nullable: true }
+              retentionClass: { type: string }
+              rawRetentionDays: { type: integer, const: 90 }
+              longTermCadenceS: { type: integer, enum: [300, 900], nullable: true }
+              longTermStrategy: { type: string }
+        events:
+          type: array
+          description: Append-only Auswahlhistorie, neueste Revision zuerst.
+          items:
+            type: object
+            properties:
+              id: { type: integer, format: int64 }
+              pointKey: { type: string }
+              desiredRevision: { type: integer, format: int64 }
+              eventKind: { type: string, enum: [selection_requested, edge_ack, first_sample] }
+              idempotencyKey: { type: string, format: uuid, nullable: true }
+              requestedAt: { type: string, format: date-time }
+              requestedEnabled: { type: boolean }
+              requestedCadenceS: { type: integer, nullable: true }
+              enabledAt: { type: string, format: date-time, nullable: true }
+              disabledAt: { type: string, format: date-time, nullable: true }
+              catalogVersion: { type: string }
+              actor: { type: string }
+              actorName: { type: string, nullable: true }
+              applyStatus: { type: string }
+              applyReason: { type: string, nullable: true }
+              appliedAt: { type: string, format: date-time, nullable: true }
+              customDefinition: { type: object, nullable: true }
+              retentionClass: { type: string }
+              rawRetentionDays: { type: integer, const: 90 }
+              longTermCadenceS: { type: integer, enum: [300, 900], nullable: true }
+              longTermStrategy: { type: string }
     V2Entity:
       type: object
       description: >

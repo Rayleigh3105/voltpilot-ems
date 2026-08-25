@@ -135,6 +135,21 @@
     </dependencies>
 
     <build>
+        <!-- The versioned measurement-point catalog remains ONE generated truth
+             at repo root. Package that canonical dist artifact into the api jar
+             instead of maintaining a copied/hand-edited API catalog. -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>${project.basedir}/../../catalog/measurement-points/dist</directory>
+                <targetPath>measurementcatalog</targetPath>
+                <includes>
+                    <include>measurement-point-catalog-*.json</include>
+                </includes>
+            </resource>
+        </resources>
         <!-- Load the canonical dev realm (single source of truth) onto the test
              classpath so the Keycloak Testcontainer imports the same realm the
              compose stack uses - no drifting copy. -->

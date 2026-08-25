@@ -250,7 +250,8 @@ services:
   # ---------------------------------------------------------------------------
   api:
     build:
-      context: ./services/api
+      context: .
+      dockerfile: services/api/Dockerfile
     container_name: voltpilot-api
     restart: unless-stopped
     depends_on:
