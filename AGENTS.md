@@ -4295,7 +4295,16 @@ und dieselbe Vendor/Message-Bindung am Edge zulässig.
   lässt genau diesen Command unbestätigt, während alle übrigen Downlinks nach
   ihrer bisherigen synchronen Verarbeitung ACKen. Damit darf eine Redelivery
   nach Storage-Erholung noch ausführen, ohne einem bereits terminal
-  `edge_rejected` gemeldeten Ausgang zu widersprechen.
+  `edge_rejected` gemeldeten Ausgang zu widersprechen. **Persistente MQTT-
+  Sessions brauchen ihre lokalen Routes vor dem Netzwerk-Connect:** Paho kann
+  bei `CleanSession=false` ein brokerseitiges inflight DUP unmittelbar nach
+  CONNACK und damit noch vor `OnConnect` zustellen. `cloud.New` registriert
+  deshalb ausnahmslos alle aktivierten Downlink-Handler per `AddRoute`, bevor
+  `Connect` möglich ist; `OnConnect` stellt getrennt und idempotent nur die
+  QoS1-Subscriptions mit nil-Handler wieder her. Niemals einen Downlink-Handler
+  zurück in `OnConnect` verschieben — ein sauberer Prozessneustart könnte sonst
+  einen unbestätigten sicherheitsrelevanten Command bis zum nächsten
+  Verbindungsabbruch liegen lassen.
   Der `action_id` ist zugleich der OCPP-wire-id; die Journal-Korrelation ist
   wire-identisch. Nach Neustart wird sie aus dem immutable CALL-Spool UND dem
   Command-Ledger aufgebaut, weil ein normaler Cloud-QoS1-ACK die bereits

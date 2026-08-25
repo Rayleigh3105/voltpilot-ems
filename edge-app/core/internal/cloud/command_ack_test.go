@@ -46,6 +46,66 @@ func TestCommandMessageAcknowledgesOnlyDurablyDecidedOutcome(t *testing.T) {
 	}
 }
 
+func TestNewRegistersEveryLocalDownlinkRouteBeforeConnect(t *testing.T) {
+	handler := func([]byte) {}
+	link, err := New(Options{
+		Identity: enroll.Identity{TenantID: testTenant, SiteID: testSite, DeviceID: testDevice},
+		DevURL:   "tcp://127.0.0.1:1", OnSchedule: handler,
+		OnCommand: func([]byte) bool { return true }, OnEntities: handler, OnPlanV2: handler,
+		OnFlows: handler, OnUpdateTarget: handler, OnApplyRequest: handler,
+		OnProbeRequest: handler, OnRegisterWrite: handler, OnDesiredDownlink: handler,
+		OnControlCert: handler, OnChargingConfig: handler, OnChargingBoost: handler,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if link.client.IsConnected() {
+		t.Fatal("New must not start the network connection")
+	}
+	if !link.routesReady {
+		t.Fatal("all local routes must be ready before Connect can resume a persistent session")
+	}
+	want := map[string]bool{}
+	for _, leaf := range []string{"schedule", "command", "v2/entities", "v2/plan", "v2/flows",
+		"v2/update", "v2/control-certification", "v2/charging-config", "v2/apply",
+		"v2/charging-boost", "v2/probe", "v2/register-write", "v2/desired"} {
+		want[link.topic(leaf)] = true
+	}
+	if len(link.downlinks) != len(want) {
+		t.Fatalf("pre-registered routes = %d, want %d", len(link.downlinks), len(want))
+	}
+	for _, route := range link.downlinks {
+		if !want[route.topic] || route.handler == nil {
+			t.Fatalf("unexpected or handlerless pre-connect route %q", route.topic)
+		}
+		delete(want, route.topic)
+	}
+	if len(want) != 0 {
+		t.Fatalf("routes missing before Connect: %v", want)
+	}
+}
+
+func TestNonCommandDownlinksKeepTheirExplicitAckAndEmptyPayloadSemantics(t *testing.T) {
+	var calls int
+	nonEmpty := &commandAckMessage{payload: []byte(`{"value":1}`)}
+	ackingDownlink(func([]byte) { calls++ }, false)(nil, nonEmpty)
+	if calls != 1 || nonEmpty.acks != 1 {
+		t.Fatalf("non-empty downlink calls=%d ACKs=%d, want 1/1", calls, nonEmpty.acks)
+	}
+
+	ignoredEmpty := &commandAckMessage{}
+	ackingDownlink(func([]byte) { calls++ }, false)(nil, ignoredEmpty)
+	if calls != 1 || ignoredEmpty.acks != 1 {
+		t.Fatalf("ignored empty downlink calls=%d ACKs=%d, want 1/1", calls, ignoredEmpty.acks)
+	}
+
+	deliveredEmpty := &commandAckMessage{}
+	ackingDownlink(func([]byte) { calls++ }, true)(nil, deliveredEmpty)
+	if calls != 2 || deliveredEmpty.acks != 1 {
+		t.Fatalf("retained-clear downlink calls=%d ACKs=%d, want 2/1", calls, deliveredEmpty.acks)
+	}
+}
+
 func TestRetryableCommandRemainsUnacknowledgedInRealBroker(t *testing.T) {
 	sink := startStatusSink(t)
 	clientID := "vp-command-manual-ack"

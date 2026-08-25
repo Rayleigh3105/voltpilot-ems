@@ -25,8 +25,10 @@ import (
 
 // Link is the cloud MQTT connection.
 type Link struct {
-	client   pahomqtt.Client
-	identity enroll.Identity
+	client      pahomqtt.Client
+	identity    enroll.Identity
+	downlinks   []downlinkRoute
+	routesReady bool
 	// version is the BUILD stamp (agent.Version). It is a link-level field on
 	// purpose: OTA Stufe 0 requires the top-level `version` to ride EVERY
 	// heartbeat, so it must not be a per-call argument a future caller could
@@ -49,6 +51,11 @@ type Link struct {
 	onChargingConfig  func(payload []byte)
 	onChargingBoost   func(payload []byte)
 	onConnect         func(connected bool)
+}
+
+type downlinkRoute struct {
+	topic   string
+	handler pahomqtt.MessageHandler
 }
 
 // Options configure the link.
@@ -239,168 +246,13 @@ func New(o Options) (*Link, error) {
 
 	opts.OnConnect = func(c pahomqtt.Client) {
 		slog.Info("cloud link connected", "broker", o.brokerURL())
-		topic := l.topic("schedule")
-		if tok := c.Subscribe(topic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-			if l.onSchedule != nil {
-				l.onSchedule(msg.Payload())
-			}
-			msg.Ack()
-		}); tok.Wait() && tok.Error() != nil {
-			slog.Error("schedule subscribe failed", "topic", topic, "err", tok.Error())
-		}
-		// Ad-hoc cloud commands, e.g. the retained purge_data command. Retained
-		// delivery means a device that was OFFLINE during a purge wipes its
-		// buffers right here on reconnect, BEFORE the publisher drains anything.
-		cmdTopic := l.topic("command")
-		if tok := c.Subscribe(cmdTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-			handleCommandMessage(l.onCommand, msg)
-		}); tok.Wait() && tok.Error() != nil {
-			slog.Error("command subscribe failed", "topic", cmdTopic, "err", tok.Error())
-		}
-		// The retained v2 entity-registry push (only when the entity layer is
-		// wired): retained delivery makes every (re)connect converge; an empty
-		// payload IS forwarded - it clears the registry.
-		if l.onEntities != nil {
-			entTopic := l.topic("v2/entities")
-			if tok := c.Subscribe(entTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-				l.onEntities(msg.Payload())
-				msg.Ack()
-			}); tok.Wait() && tok.Error() != nil {
-				slog.Error("v2 entities subscribe failed", "topic", entTopic, "err", tok.Error())
-			}
-		}
-		// The retained schedule-2.0 plan and the retained flow deployment set
-		// live in the same v2/# subtree (D-2); empty payloads ARE forwarded
-		// (retained-clear semantics).
-		if l.onPlanV2 != nil {
-			planTopic := l.topic("v2/plan")
-			if tok := c.Subscribe(planTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-				l.onPlanV2(msg.Payload())
-				msg.Ack()
-			}); tok.Wait() && tok.Error() != nil {
-				slog.Error("v2 plan subscribe failed", "topic", planTopic, "err", tok.Error())
-			}
-		}
-		if l.onFlows != nil {
-			flowsTopic := l.topic("v2/flows")
-			if tok := c.Subscribe(flowsTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-				l.onFlows(msg.Payload())
-				msg.Ack()
-			}); tok.Wait() && tok.Error() != nil {
-				slog.Error("v2 flows subscribe failed", "topic", flowsTopic, "err", tok.Error())
-			}
-		}
-		// The retained OTA update assignment (OTA Stufe 2), in the same v2/#
-		// subtree the per-device ACL already covers (D-2). Retained delivery is
-		// the whole distribution mechanism: a box that was offline when the
-		// rollout started picks its assignment up right here on reconnect -
-		// there is no push, and there never can be one behind NAT.
-		if l.onUpdateTarget != nil {
-			updTopic := l.topic("v2/update")
-			if tok := c.Subscribe(updTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-				l.onUpdateTarget(msg.Payload())
-				msg.Ack()
-			}); tok.Wait() && tok.Error() != nil {
-				slog.Error("v2 update subscribe failed", "topic", updTopic, "err", tok.Error())
-			}
-		}
-		// The retained platform control-certification document, in the same
-		// v2/# subtree the per-device ACL already covers (D-2) - no broker
-		// change. Retained is the whole mechanism again: a box that was offline
-		// when an operator armed it picks the document up on reconnect. An empty
-		// payload IS forwarded - it withdraws the document.
-		if l.onControlCert != nil {
-			certTopic := l.topic("v2/control-certification")
-			if tok := c.Subscribe(certTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-				l.onControlCert(msg.Payload())
-				msg.Ack()
-			}); tok.Wait() && tok.Error() != nil {
-				slog.Error("v2 control-certification subscribe failed", "topic", certTopic, "err", tok.Error())
-			}
-		}
-		// Die retained Lastmanagement-Konfiguration, im selben v2/#-Teilbaum
-		// (D-2, keine Broker-Aenderung). Retained ist wieder der ganze
-		// Mechanismus: eine Box, die beim Speichern offline war, holt ihre
-		// Anschlussgrenze beim naechsten Verbindungsaufbau selbst ab. Eine
-		// leere Nutzlast WIRD weitergereicht - sie nimmt das Dokument zurueck.
-		if l.onChargingConfig != nil {
-			cfgTopic := l.topic("v2/charging-config")
-			if tok := c.Subscribe(cfgTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-				l.onChargingConfig(msg.Payload())
-				msg.Ack()
-			}); tok.Wait() && tok.Error() != nil {
-				slog.Error("v2 charging-config subscribe failed", "topic", cfgTopic, "err", tok.Error())
-			}
-		}
-		// Die NICHT-retained Einmal-Freigabe (Portal-Apply). Sie liegt
-		// ausdruecklich NICHT auf dem retained Zuweisungs-Slot: retained
-		// wuerde bei jedem Reconnect erneut zugestellt, und eine
-		// Einmal-Freigabe darf nie replayt werden.
-		if l.onApplyRequest != nil {
-			applyTopic := l.topic("v2/apply")
-			if tok := c.Subscribe(applyTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-				l.onApplyRequest(msg.Payload())
-				msg.Ack()
-			}); tok.Wait() && tok.Error() != nil {
-				slog.Error("v2 apply subscribe failed", "topic", applyTopic, "err", tok.Error())
-			}
-		}
-		// Die NICHT-retained Einmal-Uebersteuerung „Jetzt voll laden". Aus
-		// demselben Grund wie die Freigabe NICHT retained: sonst saesse ein
-		// Fahrzeug bei jedem Reconnect wieder auf Netzstrom.
-		if l.onChargingBoost != nil {
-			boostTopic := l.topic("v2/charging-boost")
-			if tok := c.Subscribe(boostTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-				if len(msg.Payload()) > 0 {
-					l.onChargingBoost(msg.Payload())
-				}
-				msg.Ack()
-			}); tok.Wait() && tok.Error() != nil {
-				slog.Error("v2 charging-boost subscribe failed", "topic", boostTopic, "err", tok.Error())
-			}
-		}
-		// Die NICHT-retained Einmal-Anfrage des Probe-Kanals. Aus demselben
-		// Grund wie die Freigabe nicht retained: eine Vorschau, die bei jedem
-		// Reconnect erneut zugestellt wird, klopft beliebig oft an einem
-		// Kundengeraet an.
-		if l.onProbeRequest != nil {
-			probeTopic := l.topic("v2/probe")
-			if tok := c.Subscribe(probeTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-				if len(msg.Payload()) > 0 {
-					l.onProbeRequest(msg.Payload())
-				}
-				msg.Ack()
-			}); tok.Wait() && tok.Error() != nil {
-				slog.Error("v2 probe subscribe failed", "topic", probeTopic, "err", tok.Error())
-			}
-		}
-		// Der NICHT-retained Einmal-Schreibauftrag aus dem Portal. Aus
-		// demselben Grund nicht retained wie Freigabe und Vorschau - und hier
-		// waere ein Replay teurer als anderswo: jeder Reconnect kostete einen
-		// EEPROM-Schreibzyklus auf einem Kundengeraet.
-		if l.onRegisterWrite != nil {
-			regTopic := l.topic("v2/register-write")
-			if tok := c.Subscribe(regTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-				if len(msg.Payload()) > 0 {
-					l.onRegisterWrite(msg.Payload())
-				}
-				msg.Ack()
-			}); tok.Wait() && tok.Error() != nil {
-				slog.Error("v2 register-write subscribe failed", "topic", regTopic, "err", tok.Error())
-			}
-		}
-		// The NON-RETAINED manual override envelope (Verbrauchssteuerung §11).
-		// Not retained on purpose: a manual wish is never revived as an immortal
-		// desire (§16); an offline box simply misses a stale intervention.
-		if l.onDesiredDownlink != nil {
-			desiredTopic := l.topic("v2/desired")
-			if tok := c.Subscribe(desiredTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-				if len(msg.Payload()) > 0 {
-					l.onDesiredDownlink(msg.Payload())
-				}
-				msg.Ack()
-			}); tok.Wait() && tok.Error() != nil {
-				slog.Error("v2 desired subscribe failed", "topic", desiredTopic, "err", tok.Error())
+		// Routes are installed on the process-new Paho client before Connect.
+		// OnConnect only restores broker subscriptions. With CleanSession=false,
+		// an inflight QoS1 DUP may arrive immediately after CONNACK, before this
+		// callback starts; registering a handler here would lose that delivery.
+		for _, route := range l.downlinks {
+			if tok := c.Subscribe(route.topic, 1, nil); tok.Wait() && tok.Error() != nil {
+				slog.Error("downlink subscribe failed", "topic", route.topic, "err", tok.Error())
 			}
 		}
 		if l.onConnect != nil {
@@ -414,8 +266,48 @@ func New(o Options) (*Link, error) {
 		}
 	}
 
+	l.downlinks = l.buildDownlinkRoutes()
 	l.client = pahomqtt.NewClient(opts)
+	for _, route := range l.downlinks {
+		l.client.AddRoute(route.topic, route.handler)
+	}
+	l.routesReady = true
 	return l, nil
+}
+
+func (l *Link) buildDownlinkRoutes() []downlinkRoute {
+	routes := []downlinkRoute{
+		{l.topic("schedule"), ackingDownlink(l.onSchedule, true)},
+		{l.topic("command"), func(_ pahomqtt.Client, msg pahomqtt.Message) {
+			handleCommandMessage(l.onCommand, msg)
+		}},
+	}
+	add := func(leaf string, handler func([]byte), deliverEmpty bool) {
+		if handler != nil {
+			routes = append(routes, downlinkRoute{l.topic(leaf), ackingDownlink(handler, deliverEmpty)})
+		}
+	}
+	add("v2/entities", l.onEntities, true)
+	add("v2/plan", l.onPlanV2, true)
+	add("v2/flows", l.onFlows, true)
+	add("v2/update", l.onUpdateTarget, true)
+	add("v2/control-certification", l.onControlCert, true)
+	add("v2/charging-config", l.onChargingConfig, true)
+	add("v2/apply", l.onApplyRequest, true)
+	add("v2/charging-boost", l.onChargingBoost, false)
+	add("v2/probe", l.onProbeRequest, false)
+	add("v2/register-write", l.onRegisterWrite, false)
+	add("v2/desired", l.onDesiredDownlink, false)
+	return routes
+}
+
+func ackingDownlink(handler func([]byte), deliverEmpty bool) pahomqtt.MessageHandler {
+	return func(_ pahomqtt.Client, msg pahomqtt.Message) {
+		if handler != nil && (deliverEmpty || len(msg.Payload()) > 0) {
+			handler(msg.Payload())
+		}
+		msg.Ack()
+	}
 }
 
 func handleCommandMessage(handler func([]byte) bool, msg pahomqtt.Message) {
@@ -449,6 +341,9 @@ func mtlsConfig(keyPath, certPath, caPath, serverName string, insecure bool) (*t
 
 // Connect starts the (retrying) connection attempt; non-blocking.
 func (l *Link) Connect() {
+	if !l.routesReady {
+		panic("cloud downlink routes must be ready before Connect")
+	}
 	l.client.Connect()
 }
 
