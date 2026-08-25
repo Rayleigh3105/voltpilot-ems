@@ -324,7 +324,7 @@ function formatLimit(value: { limit: number; unit: 'W' | 'A' } | null): string |
 
 function actionMatchesTransaction(action: OcppAction, transaction: OcppTransaction): boolean {
   return action.connectorId === transaction.connectorId
-    && (action.transactionId == null || action.transactionId === transaction.transactionId);
+    && action.transactionId === transaction.transactionId;
 }
 
 function actionIsFresh(action: OcppAction, now: number): boolean {
@@ -402,8 +402,8 @@ export function actionNeedsPolling(action: OcppAction, now = Date.now()): boolea
 }
 
 const SECRET_KEY = /password|secret|token|signature|location|endpoint|callback(?:url|uri)?|(?:^|[_-])url(?:$|[_-])|(?:^|[_-])uri(?:$|[_-])|idtag|imsi|iccid|credential|authorization/i;
-const URL_VALUE = /https?:\/\/[^\s"'<>]+/gi;
-const ASSIGNED_SECRET = /\b(?:token|secret|password|signature|credential|authorization)\s*[=:]\s*[^\s,;]+/gi;
+const ASSIGNED_SECRET = /\b(?:token|secret|password|signature|credential|authorization|idtag|url|uri|endpoint|callback(?:url|uri)?)\s*[=:]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi;
+const URI_VALUE = /\b[a-z][a-z0-9+.-]*:(?:\/\/)?[^\s"'<>]+/gi;
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi;
 const JWT = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
 const OPAQUE_SECRET = /\b[A-Za-z0-9_-]{40,}\b/g;
@@ -411,8 +411,8 @@ const LONG_IDENTIFIER = /\b\d{14,22}\b/g;
 
 /** Last-resort UI privacy barrier, recursive by key and by string value form. */
 export function redactSensitiveText(value: string): string {
-  return value.replace(URL_VALUE, '••••••••')
-    .replace(ASSIGNED_SECRET, '••••••••')
+  return value.replace(ASSIGNED_SECRET, '••••••••')
+    .replace(URI_VALUE, '••••••••')
     .replace(BEARER, '••••••••')
     .replace(JWT, '••••••••')
     .replace(OPAQUE_SECRET, '••••••••')
@@ -449,5 +449,5 @@ export function maskReference(value: string | null): string {
 
 export function stationTitle(station: OcppStation | null, fallback: string): string {
   const parts = [station?.chargePointVendor, station?.chargePointModel].filter(Boolean);
-  return parts.length ? parts.join(' ') : fallback;
+  return parts.length ? redactSensitiveText(parts.join(' ')) : fallback;
 }

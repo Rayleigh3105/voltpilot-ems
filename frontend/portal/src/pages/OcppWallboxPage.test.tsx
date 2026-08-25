@@ -90,22 +90,38 @@ describe('OcppWallboxPage integration', () => {
     expect(secondKey).toBe(firstKey);
   });
 
-  it('masks nested URL values in every technical DOM surface', async () => {
+  it('masks assigned identifiers and every URI scheme across all untrusted OCPP DOM surfaces', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([{ ...station, lastSeen: new Date().toISOString(), connectors: [{
+      ...station.connectors[0], info: 'idTag=CONNECTOR-LEAK callback=mqtt://connector.internal/topic',
+    }] }]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([{ sampledAt: new Date().toISOString(), eventId: 'meter-secret', meterValueIndex: 0,
+      sampledValueIndex: 0, deviceId: 'd', chargePointId: 'CP-1', connectorId: 1, transactionId: 42,
+      source: 'MeterValues', pointKey: 'Vendor.Custom.Measure', measurand: 'Vendor.Custom.Measure', context: 'Sample.Periodic',
+      format: 'Raw', phase: null, location: 'Outlet', unit: null,
+      value: 'idTag=METER-LEAK endpoint=modbus://meter.internal/unit', numericValue: null }]);
     vi.mocked(api.ocppEvents).mockResolvedValue([{ eventId: 'event-secret', occurredAt: new Date().toISOString(), deviceId: 'd',
-      chargePointId: 'CP-1', direction: 'station_to_csms', messageType: 'CallError', correlationId: 'c', action: 'DataTransfer',
-      errorCode: 'InternalError', errorDescription: 'upload https://private.example/diag?token=secret',
-      errorDetails: { uploadUrl: 'https://private.example/diag?token=secret' }, payload: { neutral: 'https://secret.example/token/abc' } }]);
+      chargePointId: 'CP-1', direction: 'station_to_csms', messageType: 'CallError', correlationId: 'idTag=EVENT-CORRELATION', action: 'DataTransfer',
+      errorCode: 'InternalError', errorDescription: 'idTag=EVENT-LEAK callback=coap://event.internal/diag',
+      errorDetails: { uploadUrl: 'ftp://event-pre.internal/diag' }, payload: { neutral: 'uri=s3://pre.internal/token/abc' } }]);
     vi.mocked(api.ocppTransactions).mockResolvedValue([{ deviceId: 'd', chargePointId: 'CP-1', transactionId: 42, connectorId: 1,
       startedAt: new Date(Date.now() - 60_000).toISOString(), stoppedAt: null, meterStart: 0, meterStop: null, stopReason: null,
       startIdTagRef: null, stopIdTagRef: null, reservationId: null, chargingProfileId: null, chargingProfilePurpose: null,
       startAuthStatus: 'Accepted', stopAuthStatus: null, parentIdTagRef: null,
-      transactionData: { callbackUrl: 'https://secret.example/token/abc' }, transactionDataPurgedAt: null }]);
-    vi.mocked(api.ocppActions).mockResolvedValue([{ ...created, state: 'completed', request: { callbackUrl: 'https://secret.example/token/abc' } }]);
+      transactionData: { callbackUrl: 'https://transaction-pre.internal/token/abc' }, transactionDataPurgedAt: null }]);
+    vi.mocked(api.ocppActions).mockResolvedValue([{ ...created, state: 'completed',
+      reason: 'idTag=ACTION-LEAK url=ftp://action.internal/file', request: { neutral: 'callback=wss://action-pre.internal/socket' } }]);
+    vi.mocked(api.ocppActionAudit).mockResolvedValue([{ id: 1, actor: 'idTag=AUDIT-ACTOR', state: 'completed',
+      reason: 'endpoint=ssh://audit.internal/private', deviceId: 'd', chargePointId: 'CP-1', connectorId: 1,
+      transactionId: 42, occurredAt: new Date().toISOString() }]);
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
     await screen.findByRole('heading', { name: 'Auto lädt' });
-    expect(document.body).not.toHaveTextContent('private.example');
-    expect(document.body).not.toHaveTextContent('secret.example');
-    expect(document.body).not.toHaveTextContent('token=secret');
+    fireEvent.click(screen.getByRole('button', { name: 'Unveränderliche Auditspur laden' }));
+    await screen.findByRole('list', { name: 'Unveränderliche Auditspur' });
+    for (const leak of ['CONNECTOR-LEAK', 'connector.internal', 'METER-LEAK', 'meter.internal', 'EVENT-CORRELATION',
+      'EVENT-LEAK', 'event.internal', 'event-pre.internal', 'pre.internal', 'transaction-pre.internal',
+      'ACTION-LEAK', 'action.internal', 'action-pre.internal', 'AUDIT-ACTOR', 'audit.internal']) {
+      expect(document.body).not.toHaveTextContent(leak);
+    }
   });
 
   it('uses the house modal mechanics for description, focus trap, busy lock and focus return', async () => {

@@ -10,6 +10,7 @@ import {
   actionState,
   maskReference,
   parseActionHandoff,
+  redactSensitiveText,
   safeActionError,
   safeJson,
   stationConnection,
@@ -107,6 +108,23 @@ describe('OCPP wallbox view model', () => {
     expect(hero.applied).toBe('16 A');
   });
 
+  it('rejects fresh successful hero actions without the exact running transaction id', () => {
+    const now = Date.parse('2026-08-25T09:00:00Z');
+    const tx: OcppTransaction = { deviceId: 'd', chargePointId: 'CP-1', transactionId: 42, connectorId: 1,
+      startedAt: '2026-08-25T08:00:00Z', stoppedAt: null, meterStart: 0, meterStop: null, stopReason: null,
+      startIdTagRef: null, stopIdTagRef: null, reservationId: null, chargingProfileId: null,
+      chargingProfilePurpose: null, startAuthStatus: 'Accepted', stopAuthStatus: null, parentIdTagRef: null,
+      transactionData: null, transactionDataPurgedAt: null };
+    const schedule = { chargingSchedule: { chargingRateUnit: 'A', chargingSchedulePeriod: [{ limit: 32 }] } };
+    const hero = wallboxHero([tx], [], [
+      action({ state: 'completed', connectorId: 1, transactionId: null, updatedAt: '2026-08-25T08:59:59Z', request: { csChargingProfiles: schedule } }),
+      action({ action: 'GetCompositeSchedule', state: 'completed', connectorId: 1, transactionId: null,
+        updatedAt: '2026-08-25T08:59:59Z', response: schedule }),
+    ], now);
+    expect(hero.release).toBe('keine bestätigte Freigabe gemeldet');
+    expect(hero.applied).toBe('noch nicht erfolgreich zurückgelesen');
+  });
+
   it('separates OCPP response, observed effect, timeout and late evidence', () => {
     expect(actionState('accepted_waiting_effect')).toMatchObject({ response: expect.stringContaining('angenommen'), effect: expect.stringContaining('noch nicht'), pending: true });
     expect(actionState('timed_out')).toMatchObject({ effect: expect.stringContaining('nicht innerhalb'), pending: false });
@@ -122,9 +140,15 @@ describe('OCPP wallbox view model', () => {
   });
 
   it('masks sensitive keys and value-shaped URLs recursively and never echoes raw API errors', () => {
-    const rendered = safeJson({ callbackUrl: 'https://secret.example/token/abc', nested: [{ neutral: 'upload https://private.example/diag?token=secret', imsi: '262011234567890' }] });
+    const text = redactSensitiveText('idTag=TAG-LEAK callback=mqtt://callback.internal/topic endpoint=coap://endpoint.internal uri=urn:private:device url=s3://secret-bucket/key open wss://socket.internal/path');
+    const rendered = safeJson({ callbackUrl: 'https://secret.example/token/abc', nested: [{ neutral: text, imsi: '262011234567890' }] });
+    expect(text).not.toContain('TAG-LEAK');
+    expect(text).not.toContain('callback.internal');
+    expect(text).not.toContain('endpoint.internal');
+    expect(text).not.toContain('private:device');
+    expect(text).not.toContain('secret-bucket');
+    expect(text).not.toContain('socket.internal');
     expect(rendered).not.toContain('secret.example');
-    expect(rendered).not.toContain('private.example');
     expect(rendered).not.toContain('262011234567890');
     expect(safeActionError({ status: 503, message: 'java.net.SocketTimeoutException token=abc' })).not.toContain('token=abc');
   });

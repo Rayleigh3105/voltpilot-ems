@@ -10,21 +10,21 @@ const station = { deviceId: 'device-1', chargePointId: 'CP-CARPORT', connected: 
   supportedFeatureProfiles: ['Core', 'SmartCharging', 'Reservation', 'LocalAuthListManagement', 'RemoteTrigger', 'FirmwareManagement'],
   connectors: [
     { connectorId: 1, status: 'Charging', errorCode: 'NoError', info: null, vendorId: 'KEBA', vendorErrorCode: null, stationTimestamp: now, reportedAt: now },
-    { connectorId: 2, status: 'Available', errorCode: 'NoError', info: 'vendor field remains honest', vendorId: 'KEBA', vendorErrorCode: 'V-0', stationTimestamp: now, reportedAt: now },
+    { connectorId: 2, status: 'Available', errorCode: 'NoError', info: 'idTag=CONNECTOR-LEAK callback=mqtt://connector.internal/topic', vendorId: 'KEBA', vendorErrorCode: 'V-0', stationTimestamp: now, reportedAt: now },
   ] };
 const transaction = { deviceId: 'device-1', chargePointId: 'CP-CARPORT', transactionId: 1842, connectorId: 1,
   startedAt: ago(42 * 60_000), stoppedAt: null, meterStart: 1000, meterStop: null, stopReason: null,
   startIdTagRef: 'private-idtag-reference', stopIdTagRef: null, reservationId: null, chargingProfileId: 12,
   chargingProfilePurpose: 'TxProfile', startAuthStatus: 'Accepted', stopAuthStatus: null, parentIdTagRef: null,
   transactionData: { sampledValue: [{ value: 'private', idTag: 'must-hide' }], callbackUrl: 'https://secret.example/token/abc' }, transactionDataPurgedAt: null };
-const sample = (id: string, measurand: string, value: number, unit: string) => ({ sampledAt: now, eventId: id,
+const sample = (id: string, measurand: string, value: string | number, unit: string, numericValue: number | null = typeof value === 'number' ? value : null) => ({ sampledAt: now, eventId: id,
   meterValueIndex: 0, sampledValueIndex: 0, deviceId: 'device-1', chargePointId: 'CP-CARPORT', connectorId: 1,
   transactionId: 1842, source: 'MeterValues', pointKey: measurand, measurand, context: 'Sample.Periodic',
-  format: 'Raw', phase: null, location: 'Outlet', unit, value: String(value), numericValue: value });
+  format: 'Raw', phase: null, location: 'Outlet', unit, value: String(value), numericValue });
 const late = { id: 'late-1', deviceId: 'device-1', chargePointId: 'CP-CARPORT', action: 'SoftReset', state: 'timed_out',
   correlationId: 'ocpp-late', idempotencyKey: 'late', actor: 'operator@example.test', connectorId: null, transactionId: null,
   request: { callbackUrl: 'https://secret.example/token/abc' }, response: { status: 'Accepted' }, responseStatus: 'Accepted', effect: { action: 'BootNotification' },
-  reason: 'Passender Folgebeleg BootNotification später beobachtet.', preparedAt: ago(4 * 60_000), sentAt: ago(4 * 60_000), responseAt: ago(3 * 60_000),
+  reason: 'idTag=ACTION-LEAK url=ftp://action.internal/file', preparedAt: ago(4 * 60_000), sentAt: ago(4 * 60_000), responseAt: ago(3 * 60_000),
   effectAt: now, deadlineAt: ago(60_000), updatedAt: now };
 
 const timedOut = { ...late, effect: null, effectAt: null, reason: null, updatedAt: ago(60_000) };
@@ -55,12 +55,12 @@ async function mock(page: Page, options: { failFirstAction?: boolean; slowAction
       actions = [created, ...actions]; return route.fulfill({ status: 201, json: created });
     }
     if (route.request().method() === 'DELETE' && /\/actions\/[^/]+$/.test(path)) return route.fulfill({ status: 204 });
-    if (path.endsWith('/audit')) return route.fulfill({ json: [{ id: 1, actor: 'operator@example.test', state: 'prepared', reason: null, deviceId: 'device-1', chargePointId: 'CP-CARPORT', connectorId: 1, transactionId: 1842, occurredAt: now }] });
+    if (path.endsWith('/audit')) return route.fulfill({ json: [{ id: 1, actor: 'idTag=AUDIT-ACTOR', state: 'prepared', reason: 'endpoint=ssh://audit.internal/private', deviceId: 'device-1', chargePointId: 'CP-CARPORT', connectorId: 1, transactionId: 1842, occurredAt: now }] });
     if (path.endsWith('/stations')) return route.fulfill({ json: [station] });
-    if (path.endsWith('/events')) return route.fulfill({ json: [{ eventId: 'event-1', occurredAt: now, deviceId: 'device-1', chargePointId: 'CP-CARPORT', direction: 'station_to_csms', messageType: 'CallError', correlationId: 'wire-7', action: 'DataTransfer', errorCode: 'NotSupported', errorDescription: 'upload https://private.example/diag?token=secret', errorDetails: { uploadUrl: 'https://private.example/diag?token=secret' }, payload: { password: 'must-hide', neutral: 'https://secret.example/token/abc', unknownVendorField: 7 } }] });
+    if (path.endsWith('/events')) return route.fulfill({ json: [{ eventId: 'event-1', occurredAt: now, deviceId: 'device-1', chargePointId: 'CP-CARPORT', direction: 'station_to_csms', messageType: 'CallError', correlationId: 'idTag=EVENT-CORRELATION', action: 'DataTransfer', errorCode: 'NotSupported', errorDescription: 'idTag=EVENT-LEAK callback=coap://event.internal/diag', errorDetails: { uploadUrl: 'ftp://event-pre.internal/diag' }, payload: { password: 'must-hide', neutral: 'uri=s3://pre.internal/token/abc', unknownVendorField: 7 } }] });
     if (path.endsWith('/gaps')) return route.fulfill({ json: [{ eventId: 'gap-1', reportedAt: now, deviceId: 'device-1', droppedCount: 2, totalDropped: 2, firstOccurredAt: ago(90_000), lastOccurredAt: ago(60_000), firstEventId: 'lost-a', lastEventId: 'lost-b', reasons: { buffer_full: 2 } }] });
     if (path.endsWith('/transactions')) return route.fulfill({ json: [transaction] });
-    if (path.endsWith('/meter-values')) return route.fulfill({ json: [sample('power', 'Power.Active.Import', 11000, 'W'), sample('energy', 'Energy.Active.Import.Register', 7400, 'Wh'), sample('soc', 'SoC', 62, 'Percent'), sample('vendor', 'Vendor.Custom.Measure', 1847, '')] });
+    if (path.endsWith('/meter-values')) return route.fulfill({ json: [sample('power', 'Power.Active.Import', 11000, 'W'), sample('energy', 'Energy.Active.Import.Register', 7400, 'Wh'), sample('soc', 'SoC', 62, 'Percent'), sample('vendor', 'Vendor.Custom.Measure', 'idTag=METER-LEAK endpoint=modbus://meter.internal/unit', '')] });
     if (path.endsWith('/configuration')) return route.fulfill({ json: [{ deviceId: 'device-1', chargePointId: 'CP-CARPORT', keys: [{ key: 'AuthorizationKey', value: null, readonly: false, secret: true, redacted: true, standardKey: false, meaningKnown: false, reportedAt: now }, { key: 'HeartbeatInterval', value: '60', readonly: false, secret: false, redacted: false, standardKey: true, meaningKnown: true, reportedAt: now }], unknownKeys: ['KEBA.Custom.Mode'], supportedFeatureProfiles: station.supportedFeatureProfiles }] });
     if (path.endsWith('/action-permissions')) return route.fulfill({ json: { actions: Object.fromEntries(['RemoteStartTransaction','RemoteStopTransaction','UnlockConnector','ReserveNow','CancelReservation','SetChargingProfile','ClearChargingProfile','GetCompositeSchedule','ChangeAvailability','SoftReset','HardReset','GetConfiguration','ChangeConfiguration','ClearCache','GetLocalListVersion','SendLocalList','TriggerMessage','GetDiagnostics','UpdateFirmware','DataTransfer'].map((key) => [key, true])) } });
     if (path.endsWith('/actions')) {
@@ -83,6 +83,8 @@ test('complete wallbox home stays responsive and exposes response/effect choreog
   await expect(page.getByText('11 kW')).toBeVisible();
   await expect(page.getByText('62 %').first()).toBeVisible();
   await expect(page.getByText(/1 belegte Datenlücke/)).toBeVisible();
+  await page.getByRole('button', { name: 'Unveränderliche Auditspur laden' }).click();
+  await expect(page.getByRole('list', { name: 'Unveränderliche Auditspur' })).toBeVisible();
   for (const name of ['Jetzt', 'Stecker', 'Messwerte', 'Aktionen', 'Konfiguration', 'Ereignisse', 'Ladevorgänge', 'Software & Diagnose']) await expect(page.getByRole('link', { name })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 
@@ -95,9 +97,9 @@ test('complete wallbox home stays responsive and exposes response/effect choreog
   await page.getByRole('button', { name: 'Zum Journal' }).click();
   await expect(page.getByText('Wirkung verspätet beobachtet')).toBeVisible();
   const body = await page.locator('body').innerText();
-  expect(body).not.toContain('secret.example');
-  expect(body).not.toContain('private.example');
-  expect(body).not.toContain('token=secret');
+  for (const leak of ['CONNECTOR-LEAK', 'connector.internal', 'METER-LEAK', 'meter.internal', 'EVENT-CORRELATION',
+    'EVENT-LEAK', 'event.internal', 'event-pre.internal', 'pre.internal', 'ACTION-LEAK', 'action.internal',
+    'AUDIT-ACTOR', 'audit.internal']) expect(body).not.toContain(leak);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
   const contrastFailures = await page.evaluate(() => {
     type Rgba = [number, number, number, number];

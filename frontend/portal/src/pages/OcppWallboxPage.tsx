@@ -152,10 +152,10 @@ export function OcppWallboxPage({
 
       <header className="vp-ocpp-head">
         <div>
-          <p className="vp-ocpp-eyebrow">OCPP 1.6J · {chargePointId}</p>
+          <p className="vp-ocpp-eyebrow">OCPP 1.6J · {redactSensitiveText(chargePointId)}</p>
           <h1>{title}</h1>
           <p className="vp-ocpp-sub">
-            {[station?.chargePointSerialNumber, station?.firmwareVersion && `Firmware ${station.firmwareVersion}`].filter(Boolean).join(' · ') || 'Stationsdaten noch nicht gemeldet'}
+            {redactSensitiveText([station?.chargePointSerialNumber, station?.firmwareVersion && `Firmware ${station.firmwareVersion}`].filter(Boolean).join(' · ')) || 'Stationsdaten noch nicht gemeldet'}
           </p>
         </div>
         <div className="vp-ocpp-connection"><StatusPill ok={connection.sendable}>{connection.label}</StatusPill><small>{connection.detail}</small></div>
@@ -209,14 +209,14 @@ export function OcppWallboxPage({
             {station!.connectors.map((connector) => (
               <article key={connector.connectorId} className="vp-ocpp-connector">
                 <div><span>Stecker {connector.connectorId}</span><strong>{connectorStatus(connector.status)}</strong></div>
-                <StatusPill ok={connector.status === 'Available' || connector.status === 'Charging'}>{connector.status}</StatusPill>
+                <StatusPill ok={connector.status === 'Available' || connector.status === 'Charging'}>{redactSensitiveText(connector.status)}</StatusPill>
                 <dl>
-                  <div><dt>Fehlercode</dt><dd>{connector.errorCode || 'Kein Fehler gemeldet'}</dd></div>
+                  <div><dt>Fehlercode</dt><dd>{connector.errorCode ? redactSensitiveText(connector.errorCode) : 'Kein Fehler gemeldet'}</dd></div>
                   <div><dt>Letzte Nachricht</dt><dd>{time(connector.reportedAt)}</dd></div>
                   <div><dt>Steuerung</dt><dd>{data.permissions.actions.RemoteStartTransaction ? 'steuerbar' : 'nur gelesen'}</dd></div>
                 </dl>
                 {(connector.info || connector.vendorId || connector.vendorErrorCode) && (
-                  <details><summary>Herstellerangaben</summary><p>{connector.vendorId || 'Vendor unbekannt'} · {connector.vendorErrorCode || 'kein Vendor-Fehler'} · {connector.info || 'keine Zusatzinfo'}</p></details>
+                  <details><summary>Herstellerangaben</summary><p>{connector.vendorId ? redactSensitiveText(connector.vendorId) : 'Vendor unbekannt'} · {connector.vendorErrorCode ? redactSensitiveText(connector.vendorErrorCode) : 'kein Vendor-Fehler'} · {connector.info ? redactSensitiveText(connector.info) : 'keine Zusatzinfo'}</p></details>
                 )}
               </article>
             ))}
@@ -266,8 +266,8 @@ export function OcppWallboxPage({
           <div className="vp-ocpp-config-list">
             {searchedConfig.map((key) => (
               <article key={key.key} className="vp-ocpp-config-row">
-                <div><strong>{key.key}</strong><span>{key.standardKey ? 'OCPP-Standard' : 'Herstellerfeld'} · {key.meaningKnown ? 'Bedeutung bekannt' : 'Bedeutung unbekannt'}</span></div>
-                <code>{key.secret || key.redacted ? '••••••••' : key.value === '' ? '(leer)' : key.value ?? '—'}</code>
+                <div><strong>{redactSensitiveText(key.key)}</strong><span>{key.standardKey ? 'OCPP-Standard' : 'Herstellerfeld'} · {key.meaningKnown ? 'Bedeutung bekannt' : 'Bedeutung unbekannt'}</span></div>
+                <code>{key.secret || key.redacted ? '••••••••' : key.value === '' ? '(leer)' : key.value == null ? '—' : redactSensitiveText(key.value)}</code>
                 <span>{key.readonly ? 'nur gelesen' : 'änderbar'} · bestätigt {time(key.reportedAt)}</span>
               </article>
             ))}
@@ -275,7 +275,7 @@ export function OcppWallboxPage({
         ) : <Empty text={configuration ? 'Kein Schlüssel passt zur Suche.' : 'Die Konfiguration wurde noch nicht gelesen.'} />}
         {(configuration?.unknownKeys ?? []).length > 0 && (
           <details className="vp-ocpp-unknown"><summary>unknownKey ({configuration!.unknownKeys.length})</summary>
-            <ul>{configuration!.unknownKeys.map((key) => <li key={key}><code>{key}</code> · von der Station ausdrücklich als unbekannt gemeldet</li>)}</ul>
+            <ul>{configuration!.unknownKeys.map((key) => <li key={key}><code>{redactSensitiveText(key)}</code> · von der Station ausdrücklich als unbekannt gemeldet</li>)}</ul>
           </details>
         )}
       </OcppSection>
@@ -305,7 +305,7 @@ export function OcppWallboxPage({
           <Fact label="Mobilfunk" value={[maskReference(station?.iccid ?? null), maskReference(station?.imsi ?? null)].filter((v) => v !== '—').join(' · ') || null} mono />
         </dl>
         <details className="vp-ocpp-unknown" open><summary>Gemeldete Fähigkeiten</summary>
-          {(station?.supportedFeatureProfiles ?? []).length ? <ul>{station!.supportedFeatureProfiles.map((profile) => <li key={profile}>{profile}</li>)}</ul> : <p>Die Station hat keine Feature Profiles gemeldet. Das ist nicht gleichbedeutend mit „nicht unterstützt“.</p>}
+          {(station?.supportedFeatureProfiles ?? []).length ? <ul>{station!.supportedFeatureProfiles.map((profile) => <li key={profile}>{redactSensitiveText(profile)}</li>)}</ul> : <p>Die Station hat keine Feature Profiles gemeldet. Das ist nicht gleichbedeutend mit „nicht unterstützt“.</p>}
         </details>
       </OcppSection>
 
@@ -327,7 +327,7 @@ function Metric({ label, value, absent = 'nicht geliefert' }: { label: string; v
   return <div><span>{label}</span><strong>{value ?? '—'}</strong>{!value && <small>{absent}</small>}</div>;
 }
 function Fact({ label, value, detail, mono }: { label: string; value?: string | null; detail?: string | null; mono?: boolean }) {
-  return <div><dt>{label}</dt><dd className={mono ? 'vp-mono' : undefined}>{value || 'nicht gemeldet'}{detail && <small>{detail}</small>}</dd></div>;
+  return <div><dt>{label}</dt><dd className={mono ? 'vp-mono' : undefined}>{value ? redactSensitiveText(value) : 'nicht gemeldet'}{detail && <small>{redactSensitiveText(detail)}</small>}</dd></div>;
 }
 function Empty({ text }: { text: string }) { return <div className="vp-ocpp-empty"><Icon name="activity" size={18} /><p>{text}</p></div>; }
 function Search({ value, onChange, label, placeholder }: { value: string; onChange: (value: string) => void; label: string; placeholder: string }) {
@@ -335,25 +335,25 @@ function Search({ value, onChange, label, placeholder }: { value: string; onChan
 }
 function StatusPill({ ok, children }: { ok: boolean; children: React.ReactNode }) { return <span className={`vp-ocpp-pill ${ok ? 'is-ok' : 'is-off'}`}><i />{children}</span>; }
 function findAction(action: string): OcppActionDefinition { return OCPP_ACTIONS.find((item) => item.action === action)!; }
-function time(value: string): string { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'medium' }); }
+function time(value: string): string { const date = new Date(value); return Number.isNaN(date.getTime()) ? redactSensitiveText(value) : date.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'medium' }); }
 function contains(value: unknown, query: string): boolean { return !query.trim() || JSON.stringify(value).toLowerCase().includes(query.trim().toLowerCase()); }
-function connectorStatus(status: string): string { return ({ Available: 'Frei', Preparing: 'Fahrzeug erkannt', Charging: 'Lädt', SuspendedEV: 'Auto pausiert', SuspendedEVSE: 'Station pausiert', Finishing: 'Wird beendet', Reserved: 'Reserviert', Unavailable: 'Außer Betrieb', Faulted: 'Störung' } as Record<string, string>)[status] ?? `Unbekannter Zustand · ${status}`; }
+function connectorStatus(status: string): string { return ({ Available: 'Frei', Preparing: 'Fahrzeug erkannt', Charging: 'Lädt', SuspendedEV: 'Auto pausiert', SuspendedEVSE: 'Station pausiert', Finishing: 'Wird beendet', Reserved: 'Reserviert', Unavailable: 'Außer Betrieb', Faulted: 'Störung' } as Record<string, string>)[status] ?? `Unbekannter Zustand · ${redactSensitiveText(status)}`; }
 
 function MeterTable({ rows }: { rows: OcppMeterSample[] }) {
   return <div className="vp-ocpp-table-wrap"><table className="vp-ocpp-table"><thead><tr><th>Zeit / Stecker</th><th>Measurand</th><th>Wert</th><th>Einordnung</th><th>Quelle / Rohbeleg</th></tr></thead><tbody>
     {rows.map((row) => <tr key={`${row.eventId}-${row.meterValueIndex}-${row.sampledValueIndex}`}>
       <td data-label="Zeit / Stecker">{time(row.sampledAt)}<small>Stecker {row.connectorId}{row.transactionId != null ? ` · Tx #${row.transactionId}` : ''}</small></td>
-      <td data-label="Measurand"><strong>{row.measurand || 'Unbekanntes Measurand'}</strong><small>{row.pointKey}</small></td>
-      <td data-label="Wert"><strong>{row.numericValue ?? row.value} {row.unit || ''}</strong><small>roh: {row.value} · Format {row.format || 'unbekannt'}</small></td>
-      <td data-label="Einordnung">{[row.context, row.phase, row.location].filter(Boolean).join(' · ') || 'keine Semantik gemeldet'}</td>
-      <td data-label="Quelle / Rohbeleg">{row.source}<small>Event {row.eventId}</small></td>
+      <td data-label="Measurand"><strong>{row.measurand ? redactSensitiveText(row.measurand) : 'Unbekanntes Measurand'}</strong><small>{redactSensitiveText(row.pointKey)}</small></td>
+      <td data-label="Wert"><strong>{row.numericValue ?? redactSensitiveText(row.value)} {row.unit ? redactSensitiveText(row.unit) : ''}</strong><small>roh: {redactSensitiveText(row.value)} · Format {row.format ? redactSensitiveText(row.format) : 'unbekannt'}</small></td>
+      <td data-label="Einordnung">{redactSensitiveText([row.context, row.phase, row.location].filter(Boolean).join(' · ')) || 'keine Semantik gemeldet'}</td>
+      <td data-label="Quelle / Rohbeleg">{redactSensitiveText(row.source)}<small>Event {redactSensitiveText(row.eventId)}</small></td>
     </tr>)}
   </tbody></table></div>;
 }
 
 function EventList({ rows }: { rows: OcppProtocolEvent[] }) {
   return <ol className="vp-ocpp-events">{rows.map((row) => <li key={row.eventId} className={row.messageType === 'CallError' || row.errorCode ? 'is-error' : ''}>
-    <time>{time(row.occurredAt)}</time><div><strong>{row.action || row.messageType}</strong><span>{row.direction} · {row.messageType}{row.correlationId ? ` · ${row.correlationId}` : ''}</span>
+    <time>{time(row.occurredAt)}</time><div><strong>{redactSensitiveText(row.action || row.messageType)}</strong><span>{redactSensitiveText(`${row.direction} · ${row.messageType}${row.correlationId ? ` · ${row.correlationId}` : ''}`)}</span>
       {(row.errorCode || row.errorDescription) && <p>{redactSensitiveText(row.errorCode || 'OCPP-Fehler')} · {row.errorDescription ? redactSensitiveText(row.errorDescription) : 'keine Beschreibung geliefert'}</p>}
       <details><summary>Technische Details und Rohbeleg</summary><pre>{safeJson({ errorDetails: row.errorDetails, payload: row.payload, eventId: row.eventId })}</pre></details>
     </div></li>)}</ol>;
@@ -372,7 +372,7 @@ function GapEvidence({ gaps }: { gaps: OcppDataGap[] }) {
 
 function TransactionList({ rows }: { rows: OcppTransaction[] }) {
   return <div className="vp-ocpp-transactions">{rows.map((row) => <article key={`${row.chargePointId}-${row.transactionId}`}>
-    <div className="vp-ocpp-transaction-head"><div><span>Transaktion #{row.transactionId} · Stecker {row.connectorId}</span><strong>{row.stoppedAt ? 'Abgeschlossen' : 'Läuft'}</strong></div><StatusPill ok={!row.stoppedAt}>{row.stoppedAt ? row.stopReason || 'beendet' : 'aktiv'}</StatusPill></div>
+    <div className="vp-ocpp-transaction-head"><div><span>Transaktion #{row.transactionId} · Stecker {row.connectorId}</span><strong>{row.stoppedAt ? 'Abgeschlossen' : 'Läuft'}</strong></div><StatusPill ok={!row.stoppedAt}>{row.stoppedAt ? redactSensitiveText(row.stopReason || 'beendet') : 'aktiv'}</StatusPill></div>
     <dl><Fact label="Beginn" value={time(row.startedAt)} /><Fact label="Ende" value={row.stoppedAt ? time(row.stoppedAt) : null} />
       <Fact label="Zähler" value={`${row.meterStart}${row.meterStop != null ? ` → ${row.meterStop}` : ' → läuft'}`} />
       <Fact label="Energie" value={row.meterStop != null ? `${((row.meterStop - row.meterStart) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} kWh` : null} />
@@ -418,8 +418,8 @@ function ActionJournalItem({ siteId, action, onChanged }: { siteId: string; acti
     finally { setCancelBusy(false); }
   }
 
-  return <li className={`is-${state.tone}`}><div className="vp-ocpp-action-result-head"><strong>{OCPP_ACTIONS.find((item) => item.action === action.action)?.label ?? action.action}</strong><time>{time(action.updatedAt)}</time></div>
-    <div className="vp-ocpp-two-results"><span><small>OCPP-Antwort</small>{lateResponse ? 'Antwort verspätet eingetroffen' : state.response}{action.responseStatus ? ` · ${action.responseStatus}` : ''}</span><span><small>Wirkungsstatus</small>{lateEffect ? 'Wirkung verspätet beobachtet' : state.effect}</span></div>
+  return <li className={`is-${state.tone}`}><div className="vp-ocpp-action-result-head"><strong>{redactSensitiveText(OCPP_ACTIONS.find((item) => item.action === action.action)?.label ?? action.action)}</strong><time>{time(action.updatedAt)}</time></div>
+    <div className="vp-ocpp-two-results"><span><small>OCPP-Antwort</small>{redactSensitiveText(lateResponse ? 'Antwort verspätet eingetroffen' : state.response)}{action.responseStatus ? ` · ${redactSensitiveText(action.responseStatus)}` : ''}</span><span><small>Wirkungsstatus</small>{redactSensitiveText(lateEffect ? 'Wirkung verspätet beobachtet' : state.effect)}</span></div>
     {action.reason && <p>{redactSensitiveText(action.reason)}</p>}
     {rowError && <div className="vp-alert vp-alert-err" role="alert">{rowError}</div>}
     <div className="vp-ocpp-journal-actions">
@@ -427,7 +427,7 @@ function ActionJournalItem({ siteId, action, onChanged }: { siteId: string; acti
       <button type="button" className="vp-linkbtn" disabled={auditBusy} onClick={() => { void loadAudit(); }}>{auditBusy ? 'Auditspur wird geladen …' : audit ? 'Auditspur aktualisieren' : 'Unveränderliche Auditspur laden'}</button>
     </div>
     {audit && <ol className="vp-ocpp-audit" aria-label="Unveränderliche Auditspur">{audit.map((entry) => <li key={entry.id}>
-      <time>{time(entry.occurredAt)}</time><strong>{actionState(entry.state).response}</strong><span>{redactSensitiveText(entry.actor)}{entry.reason ? ` · ${redactSensitiveText(entry.reason)}` : ''}</span>
+      <time>{time(entry.occurredAt)}</time><strong>{redactSensitiveText(actionState(entry.state).response)}</strong><span>{redactSensitiveText(entry.actor)}{entry.reason ? ` · ${redactSensitiveText(entry.reason)}` : ''}</span>
     </li>)}</ol>}
     <details><summary>Anforderung und technische Belege</summary><pre>{safeJson({ correlationId: action.correlationId, request: action.request, response: action.response, effect: action.effect })}</pre></details>
   </li>;
@@ -540,8 +540,8 @@ function ActionDialog({ definition, siteId, chargePointId, connected, connection
     <section ref={dialogRef} tabIndex={-1} className={`vp-ocpp-dialog${hard ? ' is-hard' : ''}`} role="dialog" aria-modal="true"
       aria-labelledby="ocpp-action-title" aria-describedby="ocpp-action-description" onKeyDown={onDialogKeyDown}>
       <header><div><p>OCPP 1.6 · {ACTION_GROUP_LABEL[definition.group]}</p><h2 id="ocpp-action-title">{definition.label}</h2></div><button type="button" onClick={requestClose} disabled={busy} aria-label="Dialog schließen">×</button></header>
-      {created ? <div className="vp-ocpp-created"><StatusPill ok={actionState(created.state).tone === 'ok'}>{actionState(created.state).response}</StatusPill>
-        <h3>Befehl ist erfasst</h3><p>{actionState(created.state).effect}. Diese zweite Aussage aktualisiert sich im Aktionsjournal.</p>
+      {created ? <div className="vp-ocpp-created"><StatusPill ok={actionState(created.state).tone === 'ok'}>{redactSensitiveText(actionState(created.state).response)}</StatusPill>
+        <h3>Befehl ist erfasst</h3><p>{redactSensitiveText(actionState(created.state).effect)}. Diese zweite Aussage aktualisiert sich im Aktionsjournal.</p>
         <button type="button" className="vp-btn vp-btn--primary vp-btn--md" onClick={requestClose}>Zum Journal</button></div> : <>
         <div id="ocpp-action-description" className="vp-ocpp-impact"><strong>Auswirkung</strong><p>{definition.impact}</p><strong>Bestätigung</strong><p>{definition.confirmation}</p></div>
         {!connected && <div className="vp-alert vp-alert-warn" role="alert">Nicht sendbar: {connectionDetail} Eingaben bleiben sichtbar, Senden ist gesperrt.</div>}
