@@ -14,6 +14,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -24,7 +25,93 @@ import (
 	"github.com/mochi-mqtt/server/v2/packets"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 )
+
+func TestFailedLocalPurgeKeepsRestartSafeIntentAndRetriesCleanup(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	cfg.LocalMQTTAddr = "127.0.0.1:0"
+	cfg.HTTPAddr = "127.0.0.1:0"
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.purgeOcpp = func(time.Time) error { return errors.New("injected OCPP remove failure") }
+	if _, err := a.PurgeRecordedData(); err == nil {
+		t.Fatal("local OCPP failure was reported as a successful purge")
+	}
+	pending, ok := a.loadPendingPurge()
+	if !ok || !pending.LocalCleanupPending {
+		t.Fatalf("cloud intent was not persisted before cleanup failure: %+v / %v", pending, ok)
+	}
+	if got := a.State.Get().DataPurge; got == nil || got.LocalState != "fehler" {
+		t.Fatalf("local retry state not visible: %+v", got)
+	}
+	a.Stop()
+
+	// A new process restores the intent. Once the injected storage failure is
+	// gone, startup cleanup is idempotently retried and marked complete while
+	// the cloud request itself remains queued until confirmation.
+	restarted, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Stop()
+	if got := restarted.State.Get().DataPurge; got == nil || got.LocalState != "ausstehend" {
+		t.Fatalf("restart did not surface pending local cleanup: %+v", got)
+	}
+	restarted.retryPendingLocalPurge()
+	pending, ok = restarted.loadPendingPurge()
+	if !ok || pending.LocalCleanupPending {
+		t.Fatalf("recovered cleanup did not retain/advance cloud intent: %+v / %v", pending, ok)
+	}
+	if got := restarted.State.Get().DataPurge; got == nil || got.LocalState != "bereinigt" {
+		t.Fatalf("recovered local cleanup not visible: %+v", got)
+	}
+}
+
+func TestPurgeDoesNotTouchLocalRecordingsUntilCloudIntentIsDurable(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	cfg.LocalMQTTAddr = "127.0.0.1:0"
+	cfg.HTTPAddr = "127.0.0.1:0"
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Stop()
+	old := time.Now().UTC().Add(-time.Hour)
+	if _, err := a.buf.Append(old, map[string]float64{"power_kw": 1}); err != nil {
+		t.Fatal(err)
+	}
+	a.hist.Add(history.Sample{Ts: old})
+	cleanupCalled := false
+	a.purgeOcpp = func(time.Time) error {
+		cleanupCalled = true
+		return nil
+	}
+	// savePendingPurge writes this exact temporary path before its atomic
+	// rename. A directory there is a deterministic, cross-platform write fault.
+	if err := os.Mkdir(a.purgeRequestPath()+".tmp", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.PurgeRecordedData(); err == nil {
+		t.Fatal("intent persistence failure was reported as a successful purge")
+	}
+	if cleanupCalled {
+		t.Fatal("local cleanup ran before cloud intent became restart-safe")
+	}
+	if got := a.buf.Pending(); got != 1 {
+		t.Fatalf("buffer changed before durable intent: pending=%d", got)
+	}
+	if got := a.hist.Len(); got != 1 {
+		t.Fatalf("history changed before durable intent: len=%d", got)
+	}
+	if _, err := os.Stat(a.purgeRequestPath()); !os.IsNotExist(err) {
+		t.Fatalf("failed intent unexpectedly produced final request: %v", err)
+	}
+}
 
 func TestDataPurgeOfflineRoundTrip(t *testing.T) {
 	if testing.Short() {
@@ -218,6 +305,100 @@ func TestDataPurgeOfflineRoundTrip(t *testing.T) {
 	}
 	if matched < 2 {
 		t.Fatalf("post-purge samples lost (%d/2 uploaded)", matched)
+	}
+}
+
+func TestFailedLocalPurgeRequestIsRepublishedAfterProcessRestartAndReconnect(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	p := newPKI(t)
+	cloudPort := freePort(t)
+	cb := startCloudBroker(t, p, fmt.Sprintf("127.0.0.1:%d", cloudPort))
+	defer cb.stop()
+	stub := startEnrollmentStub(t, p, cloudPort)
+
+	var reqMu sync.Mutex
+	var requests []map[string]any
+	subscribe := func() {
+		if err := cb.server.Subscribe("ems/+/+/+/status", 97,
+			func(_ *mochi.Client, _ packets.Subscription, pk packets.Packet) {
+				var m map[string]any
+				if json.Unmarshal(pk.Payload, &m) == nil && m["type"] == "purge_request" {
+					reqMu.Lock()
+					requests = append(requests, m)
+					reqMu.Unlock()
+				}
+			}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	subscribe()
+
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	cfg.PortalBaseURL = stub.URL
+	cfg.Ref = "VP-ITEST-PURGE-RESTART-01"
+	cfg.LocalMQTTAddr = fmt.Sprintf("127.0.0.1:%d", freePort(t))
+	cfg.HTTPAddr = "127.0.0.1:0"
+	cfg.SetpointIntervalSeconds = 1
+	cfg.SetpointInterval = time.Second
+
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := a.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 30*time.Second, "first process connected", func() bool {
+		return a.State.Get().CloudConnected
+	})
+	cb.stop()
+	waitFor(t, 15*time.Second, "first process notices outage", func() bool {
+		return !a.State.Get().CloudConnected
+	})
+	a.purgeOcpp = func(time.Time) error { return errors.New("injected local journal I/O failure") }
+	if _, err := a.PurgeRecordedData(); err == nil {
+		t.Fatal("injected local purge failure was not surfaced")
+	}
+	want, ok := a.loadPendingPurge()
+	if !ok || !want.LocalCleanupPending {
+		t.Fatalf("failed local purge lost cloud intent: %+v / %v", want, ok)
+	}
+	cancel()
+	a.Stop()
+
+	// Simulate a new process with recovered local storage but no cloud. Start
+	// retries local cleanup before the broker reconnect path can publish.
+	restarted, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	if err := restarted.Start(ctx2); err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Stop()
+	if pending, ok := restarted.loadPendingPurge(); !ok || pending.LocalCleanupPending {
+		t.Fatalf("startup did not retry local cleanup: %+v / %v", pending, ok)
+	}
+
+	cb.start()
+	subscribe()
+	waitFor(t, 60*time.Second, "restart-safe purge request sent after reconnect", func() bool {
+		reqMu.Lock()
+		defer reqMu.Unlock()
+		return len(requests) > 0
+	})
+	reqMu.Lock()
+	got := requests[len(requests)-1]
+	reqMu.Unlock()
+	gotAt, err := time.Parse(time.RFC3339Nano, got["ts"].(string))
+	if err != nil || !gotAt.Equal(want.RequestedAt) {
+		t.Fatalf("reconnect changed/lost original purge intent: %v / %v", got, err)
 	}
 }
 

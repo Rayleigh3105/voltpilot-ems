@@ -244,6 +244,130 @@ func TestJournalPurgeRemovesOldEventsAndGapMetadataWithoutInventingADrop(t *test
 	}
 }
 
+func TestJournalPurgeConservativelyRemovesCorruptAndUnreadableBytes(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		makeBroken func(*testing.T, *Journal, string)
+	}{
+		{name: "corrupt JSON", makeBroken: func(t *testing.T, _ *Journal, path string) {
+			if err := os.WriteFile(path, []byte(`{"truncated":`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "read error", makeBroken: func(t *testing.T, j *Journal, path string) {
+			if err := os.WriteFile(path, []byte(`{"bytes":"must be erased"}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			j.readEventFile = func(got string) ([]byte, error) {
+				if got == path {
+					return nil, errors.New("injected read failure")
+				}
+				return os.ReadFile(got)
+			}
+		}},
+		{name: "undecodable timestamp", makeBroken: func(t *testing.T, _ *Journal, path string) {
+			if err := os.WriteFile(path, []byte(`{"occurred_at":"not-a-time"}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			j, err := newJournal(dir, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(j.dir, "2026-08-25T06-00-00Z_30000000-0000-4000-8000-000000000001.json")
+			tc.makeBroken(t, j, path)
+			j.count++
+
+			if err := j.PurgeThrough(time.Date(2026, 8, 25, 7, 0, 0, 0, time.UTC)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Fatalf("uninspectable journal bytes survived all-data purge: %v", err)
+			}
+		})
+	}
+}
+
+func TestJournalPurgeRemoveAndGapStateFailuresStayRetryable(t *testing.T) {
+	t.Run("remove failure", func(t *testing.T) {
+		dir := t.TempDir()
+		j, err := newJournal(dir, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		old := eventForPurge("40000000-0000-4000-8000-000000000001",
+			time.Date(2026, 8, 25, 6, 0, 0, 0, time.UTC))
+		j.append(old)
+		files, _ := j.filesLocked()
+		path := filepath.Join(j.dir, files[0])
+		j.removeEventFile = func(got string) error {
+			if got == path {
+				return errors.New("injected remove failure")
+			}
+			return os.Remove(got)
+		}
+		watermark := time.Date(2026, 8, 25, 7, 0, 0, 0, time.UTC)
+		if err := j.PurgeThrough(watermark); err == nil {
+			t.Fatal("remove failure was reported as a successful purge")
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("failed removal must remain retryable: %v", err)
+		}
+		j.removeEventFile = os.Remove
+		if err := j.PurgeThrough(watermark); err != nil {
+			t.Fatalf("retry after remove recovery: %v", err)
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("retry did not erase old event: %v", err)
+		}
+	})
+
+	t.Run("gap-state commit failure", func(t *testing.T) {
+		dir := t.TempDir()
+		log := slog.New(slog.NewTextHandler(io.Discard, nil))
+		j, err := newJournal(dir, log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		old := eventForPurge("50000000-0000-4000-8000-000000000001",
+			time.Date(2026, 8, 25, 6, 0, 0, 0, time.UTC))
+		j.writeEventFile = func(string, []byte, os.FileMode) error { return errors.New("drop") }
+		j.append(old)
+		j.writeEventFile = os.WriteFile
+		j.renameGapFile = func(string, string) error { return errors.New("injected gap-state failure") }
+		watermark := time.Date(2026, 8, 25, 7, 0, 0, 0, time.UTC)
+		if err := j.PurgeThrough(watermark); err == nil {
+			t.Fatal("gap-state failure was reported as a successful purge")
+		}
+
+		// The failed commit left the old durable ledger intact. A restart sees
+		// it and can retry the same intentional erasure once storage recovers.
+		restarted, err := newJournal(dir, log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if raw, _, ok := restarted.Next(); !ok || !strings.Contains(string(raw), `"action":"JournalGap"`) {
+			t.Fatal("failed gap-state purge did not remain durable/retryable")
+		}
+		if err := restarted.PurgeThrough(watermark); err != nil {
+			t.Fatalf("gap-state retry failed: %v", err)
+		}
+		if _, _, ok := restarted.Next(); ok {
+			t.Fatal("old gap metadata survived successful retry")
+		}
+	})
+}
+
+func eventForPurge(id string, at time.Time) ProtocolEvent {
+	return ProtocolEvent{SchemaVersion: "1.0", EventID: id,
+		OccurredAt: at.Format(time.RFC3339Nano), ChargePointID: "CP-PURGE-FAILURE",
+		Direction: "internal", MessageType: "Event", Action: "Connected",
+		Payload: json.RawMessage(`{}`)}
+}
+
 func TestProtocolJournalSurvivesRestartUntilAcknowledged(t *testing.T) {
 	dir := t.TempDir()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))

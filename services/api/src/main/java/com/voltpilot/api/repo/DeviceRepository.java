@@ -100,7 +100,9 @@ public class DeviceRepository {
      * replayed old samples can never resurrect purged history. Deliberately its
      * own auto-committed statement, run BEFORE the series delete transaction:
      * once committed, nothing older than the watermark can be written anymore,
-     * and the delete then sweeps whatever raced in. False when RLS hides the
+     * and the delete then sweeps whatever raced in. DevicePurgeService holds a
+     * database-wide per-device session lock across both commits; OCPP ingest
+     * takes the same key before re-reading this value. False when RLS hides the
      * device (=> 404).
      */
     public boolean setDataPurgedBefore(UUID deviceId, java.time.Instant purgedBefore) {

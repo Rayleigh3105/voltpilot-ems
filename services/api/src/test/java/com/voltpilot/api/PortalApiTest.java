@@ -15,6 +15,10 @@ import java.util.List;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -1025,6 +1029,126 @@ class PortalApiTest {
                 new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
         assertThat(again.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(((Number) again.getBody().get("purgedRows")).longValue()).isEqualTo(1);
+    }
+
+    /**
+     * A database-controlled race: the purge is stopped inside its watermark
+     * UPDATE after it already owns the production per-device lock. OCPP ingest
+     * is then started and observed waiting on that same lock. Once released,
+     * purge finishes first and the post-watermark event must commit together
+     * with every derived StatusNotification row - never as a partial survivor.
+     */
+    @Test
+    void postWatermarkOcppIngestWaitsForPurgeAndSurvivesCompletely() throws Exception {
+        String demo = token("demo", "demo");
+        UUID tenant = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID site = UUID.fromString(BERLIN_SITE);
+        UUID device = UUID.fromString(claimDevice(demo, "edge-purge-race-01"));
+        UUID eventId = UUID.randomUUID();
+        String cp = "VP-PURGE-RACE-" + device.toString().substring(0, 8);
+        Instant occurredAt = Instant.now().plusSeconds(3600);
+        var envelope = statusEnvelope(eventId, occurredAt, cp);
+        long gateKey = 8_252_026_082_501L;
+        String trigger = "vp_test_purge_gate";
+        String function = trigger + "_fn";
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+
+        try (Connection gate = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                Statement gateStatement = gate.createStatement()) {
+            gateStatement.execute("SELECT pg_advisory_lock(" + gateKey + ")");
+            exec("CREATE OR REPLACE FUNCTION " + function + "() RETURNS trigger LANGUAGE plpgsql AS $$ "
+                    + "BEGIN IF NEW.id = '" + device + "'::uuid "
+                    + "AND NEW.data_purged_before IS DISTINCT FROM OLD.data_purged_before THEN "
+                    + "PERFORM pg_advisory_xact_lock(" + gateKey + "); END IF; RETURN NEW; END $$");
+            exec("CREATE TRIGGER " + trigger + " BEFORE UPDATE OF data_purged_before ON device "
+                    + "FOR EACH ROW EXECUTE FUNCTION " + function + "()");
+
+            Future<ResponseEntity<Map<String, Object>>> purge = pool.submit(() -> rest.exchange(
+                    url("/api/v1/devices/" + device + "/purge-data"), HttpMethod.POST,
+                    new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {}));
+            awaitBlockedStatement("UPDATE device SET data_purged_before");
+
+            Future<Boolean> ingest = pool.submit(() -> {
+                com.voltpilot.api.tenant.TenantContext.set(tenant);
+                try {
+                    return ocppRepository.ingest(tenant, site, device, envelope);
+                } finally {
+                    com.voltpilot.api.tenant.TenantContext.clear();
+                }
+            });
+            awaitBlockedStatement("SELECT pg_advisory_xact_lock");
+            assertThat(purge.isDone()).isFalse();
+            assertThat(ingest.isDone()).isFalse();
+
+            // This is the only release point: purge completes its atomic sweep,
+            // releases the device lock, then ingest re-checks T and commits.
+            try (java.sql.ResultSet unlocked = gateStatement.executeQuery(
+                    "SELECT pg_advisory_unlock(" + gateKey + ")")) {
+                assertThat(unlocked.next()).isTrue();
+                assertThat(unlocked.getBoolean(1)).isTrue();
+            }
+            ResponseEntity<Map<String, Object>> purged = purge.get(15, TimeUnit.SECONDS);
+            assertThat(purged.getStatusCode()).isEqualTo(HttpStatus.OK);
+            Instant watermark = Instant.parse((String) purged.getBody().get("purgedBefore"));
+            assertThat(occurredAt).isAfter(watermark);
+            assertThat(ingest.get(15, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(queryLong("SELECT count(*) FROM ocpp_protocol_event WHERE device_id = '"
+                    + device + "' AND event_id = '" + eventId + "'")).isEqualTo(1);
+            assertThat(queryLong("SELECT count(*) FROM ocpp_station WHERE device_id = '"
+                    + device + "' AND charge_point_id = '" + cp + "'")).isEqualTo(1);
+            assertThat(queryLong("SELECT count(*) FROM ocpp_connector_status_event WHERE device_id = '"
+                    + device + "' AND event_id = '" + eventId + "'")).isEqualTo(1);
+            assertThat(queryLong("SELECT count(*) FROM ocpp_connector_state WHERE device_id = '"
+                    + device + "' AND charge_point_id = '" + cp + "' AND connector_id = 1"))
+                    .isEqualTo(1);
+
+            // An old replay sees the committed watermark only after acquiring
+            // the same lock and is rejected without recreating any row.
+            var old = statusEnvelope(UUID.randomUUID(), watermark, cp);
+            com.voltpilot.api.tenant.TenantContext.set(tenant);
+            try {
+                assertThat(ocppRepository.ingest(tenant, site, device, old)).isFalse();
+            } finally {
+                com.voltpilot.api.tenant.TenantContext.clear();
+            }
+        } finally {
+            pool.shutdownNow();
+            exec("DROP TRIGGER IF EXISTS " + trigger + " ON device");
+            exec("DROP FUNCTION IF EXISTS " + function + "()");
+        }
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode statusEnvelope(
+            UUID eventId, Instant occurredAt, String chargePointId) throws Exception {
+        var envelope = objectMapper.createObjectNode();
+        envelope.put("schema_version", "1.0");
+        envelope.put("event_id", eventId.toString());
+        envelope.put("occurred_at", occurredAt.toString());
+        envelope.put("charge_point_id", chargePointId);
+        envelope.put("direction", "station_to_csms");
+        envelope.put("message_type", "Call");
+        envelope.put("correlation_id", eventId.toString());
+        envelope.put("action", "StatusNotification");
+        envelope.set("payload", objectMapper.readTree("""
+                {"connectorId":1,"status":"Charging","errorCode":"NoError"}
+                """));
+        return envelope;
+    }
+
+    private static void awaitBlockedStatement(String prefix) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            String escaped = prefix.replace("'", "''");
+            if (queryLong("SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() "
+                    + "AND datname = current_database() AND wait_event_type = 'Lock' "
+                    + "AND query LIKE '" + escaped + "%'") > 0) {
+                return;
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError("statement did not reach deterministic lock gate: " + prefix);
     }
 
     private String claimDevice(String token, String externalRef) {

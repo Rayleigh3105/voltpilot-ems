@@ -99,7 +99,9 @@ public class SeriesRepository {
     public long purgeDeviceRecordings(UUID deviceId, UUID siteId, Instant purgedBefore) {
         // OCPP snapshots and raw events are recordings too. They are not
         // bounded by telemetry's watermark because their own occurred_at can
-        // be a station clock; erase the complete device history atomically.
+        // be a station clock. DevicePurgeService's session lock serializes this
+        // complete sweep with OcppRepository's transaction lock, so no ingress
+        // can cross the eleven deletes or disappear after T.
         deleteOcpp("device_id", deviceId);
         long purged = purgedBefore == null
                 ? jdbc.update("DELETE FROM telemetry WHERE device_id = ?", deviceId)

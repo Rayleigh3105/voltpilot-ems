@@ -3296,7 +3296,13 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
   Events; erst sein QoS1-ACK entfernt ihn. Neue Drops während eines in-flight
   Gaps beginnen eine neue Generation, sodass ein ACK nie ungesehene Verluste
   mitlöscht. `PurgeProtocolEventsThrough` entfernt bewusst gelöschte Events
-  ohne einen falschen Verlustbeleg zu erzeugen.
+  ohne einen falschen Verlustbeleg zu erzeugen. Beim All-Data-Purge werden auch
+  korruptes JSON, nicht lesbare Dateien und Events ohne dekodierbaren Zeitstempel
+  konservativ gelöscht; ein Remove-/Gap-Ledger-Commitfehler bleibt retrybar.
+  `agent/purge.go` persistiert deshalb die Cloud-Löschabsicht mit
+  `local_cleanup_pending=true` VOR dieser falliblen Bereinigung, wiederholt sie
+  beim nächsten Start vor dem Cloud-Reconnect und sendet denselben Zeitstempel
+  nach Reconnect erneut. Nie lokale Teil-Löschung ohne restart-festen Cloudauftrag.
 - **Das GetConfiguration-Inventar ist absichtlich VOLLSTÄNDIG:**
   `CapabilityKeys()` ist wieder die gezielte, lasttragende Abfrage der vier
   Smart-Charging-Sicherheitswerte. NACH installierten Schutzprofilen fragt

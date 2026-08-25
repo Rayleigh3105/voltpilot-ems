@@ -199,6 +199,9 @@ type Agent struct {
 	// which is the default - the box then behaves byte-for-byte as it did
 	// before the feature existed.
 	ocpp *ocppRuntime
+	// purgeOcpp is a narrow failure-injection seam for the all-recordings purge
+	// tests. nil means the real OCPP runtime (or no OCPP feature at all).
+	purgeOcpp func(time.Time) error
 
 	// Per-node live flow state (Portal v3 M5 Part C), recorded from the local
 	// bus and folded into the heartbeat ONLY when the feature flag is on.
@@ -800,6 +803,10 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := a.startOcpp(ctx); err != nil {
 		return err
 	}
+	// A customer intent is persisted BEFORE cleanup. If a prior boot died or
+	// hit an I/O fault during that cleanup, retry it now that every local store
+	// (including the optional OCPP journal) is open, before cloud reconnect.
+	a.retryPendingLocalPurge()
 	// E2 flow deployment: reconcile the persisted set at boot (self-heal from
 	// truth) and keep reconciling periodically.
 	a.flowDep.Reconcile()

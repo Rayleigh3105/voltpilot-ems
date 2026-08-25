@@ -201,13 +201,20 @@ type Snapshot struct {
 }
 
 // DataPurgeInfo is the UI-facing state of a device-triggered data purge.
-// The local wipe always happens immediately; CloudState tracks the cloud half:
+// LocalState and CloudState expose the two independently retryable halves:
 //
+//	LocalState:
+//	"ausstehend" - restart-safe intent exists; local cleanup must retry
+//	"fehler"     - the latest local cleanup failed; intent remains durable
+//	"bereinigt"  - local buffer/history/OCPP journal cleanup completed
+//
+//	CloudState:
 //	"ausstehend"  - request not yet sent (device offline); re-sent on connect
 //	"angefordert" - request published, waiting for the cloud's confirmation
 //	"bestaetigt"  - the cloud's purge_data command arrived (then cleared soon after)
 type DataPurgeInfo struct {
 	RequestedAt time.Time `json:"requested_at"`
+	LocalState  string    `json:"local_state,omitempty"`
 	CloudState  string    `json:"cloud_state"`
 	ConfirmedAt time.Time `json:"confirmed_at,omitzero"`
 }

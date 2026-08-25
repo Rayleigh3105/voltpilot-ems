@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.purge.DeviceDataLock;
+import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.web.dto.OcppDto;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -57,11 +59,16 @@ public class OcppRepository {
     private final JdbcTemplate jdbc;
     private final OcppPrivacy privacy;
     private final ObjectMapper mapper;
+    private final DeviceRepository devices;
+    private final DeviceDataLock dataLock;
 
-    public OcppRepository(JdbcTemplate jdbc, OcppPrivacy privacy, ObjectMapper mapper) {
+    public OcppRepository(JdbcTemplate jdbc, OcppPrivacy privacy, ObjectMapper mapper,
+            DeviceRepository devices, DeviceDataLock dataLock) {
         this.jdbc = jdbc;
         this.privacy = privacy;
         this.mapper = mapper;
+        this.devices = devices;
+        this.dataLock = dataLock;
     }
 
     /** Idempotently stores one edge-journal envelope and derives its read models. */
@@ -80,6 +87,15 @@ public class OcppRepository {
                 || !Set.of("station_to_csms", "csms_to_station", "internal").contains(direction)
                 || !Set.of("Call", "CallResult", "CallError", "Event").contains(messageType)
                 || action == null || action.isBlank()) {
+            return false;
+        }
+        // Purge holds this key from its separately committed watermark through
+        // the complete OCPP sweep. Re-checking inside this transaction after
+        // the lock means an event is either swept as pre-purge, rejected as an
+        // old replay, or committed with every derived row after the sweep.
+        dataLock.lockTransaction(deviceId);
+        var purgedBefore = devices.dataPurgedBefore(deviceId);
+        if (purgedBefore.isPresent() && !occurredAt.isAfter(purgedBefore.get())) {
             return false;
         }
         String correlation = nullableText(envelope, "correlation_id");

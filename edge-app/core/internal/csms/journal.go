@@ -97,6 +97,10 @@ type Journal struct {
 	// leave durable evidence.
 	writeEventFile  func(string, []byte, os.FileMode) error
 	renameEventFile func(string, string) error
+	readEventFile   func(string) ([]byte, error)
+	removeEventFile func(string) error
+	writeGapFile    func(string, []byte, os.FileMode) error
+	renameGapFile   func(string, string) error
 }
 
 func newJournal(dataDir string, log *slog.Logger) (*Journal, error) {
@@ -126,7 +130,9 @@ func newJournal(dataDir string, log *slog.Logger) (*Journal, error) {
 	j := &Journal{dir: dir, statePath: statePath, key: key, log: log,
 		changed: make(chan struct{}, 1), count: count,
 		incoming: map[string]string{}, outgoing: map[string]string{}, gaps: gaps,
-		writeEventFile: os.WriteFile, renameEventFile: os.Rename}
+		writeEventFile: os.WriteFile, renameEventFile: os.Rename,
+		readEventFile: os.ReadFile, removeEventFile: os.Remove,
+		writeGapFile: os.WriteFile, renameGapFile: os.Rename}
 	// Enforce the bound on restart too. A process may have died after the final
 	// rename but before the preceding instance could evict.
 	j.mu.Lock()
@@ -447,10 +453,10 @@ func (j *Journal) persistGapStateLocked() error {
 		return err
 	}
 	tmp := j.statePath + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+	if err := j.writeGapFile(tmp, raw, 0o600); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, j.statePath); err != nil {
+	if err := j.renameGapFile(tmp, j.statePath); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
@@ -489,10 +495,10 @@ func (j *Journal) enforceBoundLocked() {
 		e := ProtocolEvent{SchemaVersion: "1.0", EventID: eventIDFromJournalName(name),
 			OccurredAt: time.Now().UTC().Format(time.RFC3339Nano), Action: "Unknown",
 			MessageType: "Event", Direction: "internal", Payload: json.RawMessage(`{}`)}
-		if raw, readErr := os.ReadFile(filepath.Join(j.dir, name)); readErr == nil {
+		if raw, readErr := j.readEventFile(filepath.Join(j.dir, name)); readErr == nil {
 			_ = json.Unmarshal(raw, &e)
 		}
-		if os.Remove(filepath.Join(j.dir, name)) == nil {
+		if j.removeEventFile(filepath.Join(j.dir, name)) == nil {
 			j.count--
 			dropped++
 			j.recordDropLocked(e, "capacity_overflow")
@@ -559,7 +565,7 @@ func (j *Journal) Next() ([]byte, string, bool) {
 	if err != nil || len(files) == 0 {
 		return nil, "", false
 	}
-	raw, err := os.ReadFile(filepath.Join(j.dir, files[0]))
+	raw, err := j.readEventFile(filepath.Join(j.dir, files[0]))
 	if err != nil {
 		j.log.Error("OCPP journal event could not be read", "err", err)
 		return nil, "", false
@@ -568,7 +574,7 @@ func (j *Journal) Next() ([]byte, string, bool) {
 	if json.Unmarshal(raw, &event) != nil || event.EventID == "" {
 		// A torn/corrupt file would otherwise block the oldest-first uploader
 		// forever. Remove it only together with a durable gap proof.
-		if os.Remove(filepath.Join(j.dir, files[0])) == nil {
+		if j.removeEventFile(filepath.Join(j.dir, files[0])) == nil {
 			if j.count > 0 {
 				j.count--
 			}
@@ -624,7 +630,7 @@ func (j *Journal) Ack(token string) error {
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	err := os.Remove(filepath.Join(j.dir, token))
+	err := j.removeEventFile(filepath.Join(j.dir, token))
 	if err == nil && j.count > 0 {
 		j.count--
 	}
@@ -644,17 +650,47 @@ func (j *Journal) PurgeThrough(watermark time.Time) error {
 		return err
 	}
 	for _, name := range files {
-		raw, readErr := os.ReadFile(filepath.Join(j.dir, name))
+		path := filepath.Join(j.dir, name)
+		raw, readErr := j.readEventFile(path)
 		if readErr != nil {
-			return readErr
+			// This is an explicit all-recordings erasure. If bytes cannot be
+			// inspected, retaining them would turn an I/O/permission fault into
+			// a privacy bypass. Conservatively remove the whole immutable event;
+			// only a failed remove remains a retryable purge error.
+			if removeErr := j.removeEventFile(path); removeErr != nil {
+				return fmt.Errorf("remove unreadable OCPP journal event %s: %w", name, removeErr)
+			}
+			if j.count > 0 {
+				j.count--
+			}
+			continue
 		}
 		var event ProtocolEvent
 		if json.Unmarshal(raw, &event) != nil {
+			// Corrupt/undecodable bytes have no trustworthy timestamp. An
+			// all-data purge must erase them, never report a successful skip.
+			if removeErr := j.removeEventFile(path); removeErr != nil {
+				return fmt.Errorf("remove corrupt OCPP journal event %s: %w", name, removeErr)
+			}
+			if j.count > 0 {
+				j.count--
+			}
 			continue
 		}
 		at, parseErr := time.Parse(time.RFC3339Nano, event.OccurredAt)
-		if parseErr == nil && !at.After(watermark) {
-			if removeErr := os.Remove(filepath.Join(j.dir, name)); removeErr != nil {
+		if parseErr != nil {
+			// Syntactically valid JSON with no trustworthy time is still an
+			// undecodable recording. It cannot safely be classified as newer.
+			if removeErr := j.removeEventFile(path); removeErr != nil {
+				return fmt.Errorf("remove timestamp-less OCPP journal event %s: %w", name, removeErr)
+			}
+			if j.count > 0 {
+				j.count--
+			}
+			continue
+		}
+		if !at.After(watermark) {
+			if removeErr := j.removeEventFile(path); removeErr != nil {
 				return removeErr
 			}
 			if j.count > 0 {

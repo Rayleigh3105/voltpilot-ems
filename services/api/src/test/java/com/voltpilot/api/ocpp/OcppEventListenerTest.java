@@ -40,7 +40,6 @@ class OcppEventListenerTest {
             assertThat(TenantContext.get()).isEqualTo(TENANT);
             return true;
         });
-        when(devices.dataPurgedBefore(DEVICE)).thenReturn(Optional.empty());
         listener = new OcppEventListener("tcp://localhost:1883", "", "", "test-ocpp-listener", devices,
                 repository, new ObjectMapper());
     }
@@ -66,11 +65,10 @@ class OcppEventListenerTest {
     }
 
     @Test
-    void eventAtOrBeforeCommittedPurgeWatermarkCannotResurrectHistory() {
-        when(devices.dataPurgedBefore(DEVICE)).thenReturn(
-                Optional.of(Instant.parse("2026-08-25T06:30:00Z")));
+    void repositoryOwnsTheAtomicPurgeWatermarkDecision() {
+        when(repository.ingest(eq(TENANT), eq(SITE), eq(DEVICE), any())).thenReturn(false);
         assertThat(listener.handle(TOPIC, event(DEVICE).getBytes(StandardCharsets.UTF_8))).isFalse();
-        verify(repository, never()).ingest(any(), any(), any(), any());
+        verify(repository).ingest(eq(TENANT), eq(SITE), eq(DEVICE), any());
         assertThat(TenantContext.get()).isNull();
     }
 
