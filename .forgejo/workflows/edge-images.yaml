@@ -65,7 +65,10 @@ jobs:
   test:
     name: Edge release gate
     runs-on: ubuntu-latest-mo
-    timeout-minutes: 60
+    # Race-instrumented Go + the two system rigs on a shared runner; roomy
+    # enough that a slow neighbour never reds a sound release, tight enough
+    # that a wedged step still frees the runner the same hour.
+    timeout-minutes: 90
 
     steps:
       - name: Checkout Repository
@@ -98,7 +101,16 @@ jobs:
         # Integration packages briefly reserve ephemeral listeners before the
         # real server binds them. Keep packages serial so two rigs cannot steal
         # each other's port and turn a sound release into a flaky red gate.
-        run: go test -race -p 1 ./...
+        #
+        # ⚠ -timeout is EXPLICIT and PER PACKAGE, and 40 min is a WEDGE
+        # DETECTOR, not a budget: race-instrumented internal/agent finishes in
+        # ~3 min, so anything near this ceiling is a HANG to investigate, not a
+        # slow runner to accommodate. The tag run edge-2026.08.20 died on go
+        # test's 10-min default here and read as "too slow" - it was a real
+        # deadlock (see internal/localbus Bus.Close). Raising a timeout is what
+        # you do AFTER measuring, never instead: with the deadline explicit the
+        # next wedge still stops the gate, just with a stack worth reading.
+        run: go test -race -p 1 -timeout 40m ./...
 
       - name: Node-RED runtime and drivers
         working-directory: edge-app

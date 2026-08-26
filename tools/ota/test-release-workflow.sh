@@ -70,7 +70,10 @@ runs = "\n".join(
 )
 for required in (
     "package_edge_runtime.py --check",
-    "go test -race -p 1 ./...",
+    # -timeout is pinned along with -race/-p 1: go test's 10-min DEFAULT is per
+    # package and internal/agent runs close to it under -race on a shared
+    # runner, so an explicit deadline is part of what makes this gate reliable.
+    "go test -race -p 1 -timeout",
     "-not -path '*/node_modules/*'",
     '(( ${#tests[@]} > 0 ))',
     "node --test",
