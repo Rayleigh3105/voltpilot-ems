@@ -5096,7 +5096,9 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   keinen Laufzeit-Poller.
 - **Quellen bleiben vendort und gepinnt.** `sources/manifest.json` nennt für
   Deye, 19 SunSpec-Modelle (inkl. dynamischem Model 160), 316 go-e-Keys,
-  Shelly-Generationen/-Komponenten und OCPP-1.6-MeterValues immer URL,
+  Shelly-Generationen/-Komponenten, OCPP-1.6-MeterValues sowie die exakt von den
+  In-Repo-Decodern gelesenen Fronius-Solar-API-, KACO-HTTP- und
+  KOSTAL-PLENTICORE-Punkte immer URL,
   Commit/Revision und SHA-256. Der normale Generator/Validator ist
   Standardbibliothek-only und greift weder auf Netz noch Geräte zu.
 - **Deye-Keys werden NIE neu aus Labels berechnet.** Der append-only
@@ -5152,8 +5154,9 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   `modbus_holding|modbus_input`, `readOnly=true`, vollständig typ-/adress-/
   skalen-/einheiten-/kadenzvalidiert; dieser Pfad hat keine Schreibfunktion und
   setzt Request-Kosten ausschließlich serverseitig konservativ (2000 ms) an.
-- **Kein zweiter Katalog im API-Service.** Maven paketiert das kanonische
-  `catalog/measurement-points/dist/measurement-point-catalog-*.json` bytegleich
+- **Kein zweiter Katalog im API-Service.** Maven paketiert die in
+  `measurement.catalog.version` festgelegte kanonische Datei aus
+  `catalog/measurement-points/dist/` bytegleich
   ins JAR. Deshalb baut das API-Image mit Repo-Root als Docker-Kontext und
   `services/api/Dockerfile`; Compose und beide Deploy-Workflows müssen diese
   Kontextform beibehalten.
@@ -5164,6 +5167,32 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   für Thermik/BMS/Zähler; Zustände/Ereignisse und Identitätsänderungen behalten
   ihre eigene Historienstrategie. MQTT, Edge-Pollplan und Sample-Hypertable
   gehören ausdrücklich in die folgenden Slices.
+
+## Zusätzliche Messwerte: Bibliothek und Historie (Slice 9)
+
+- Die gemeinsame `MeasurementLibrary` hängt an jeder Komponenten-Geräteseite
+  einschließlich OCPP. Der ruhige Einstieg zeigt nur empfohlene, aktive oder
+  schon gelesene Punkte; der vollständige Drawer heißt immer
+  **„Messwert-Bibliothek“** und bietet serverseitige Suche/Facetten sowie den
+  getrennten read-only-Freiregisterweg. Verfügbarkeit bedeutet entweder
+  tatsächlich gelesen oder ausdrücklich nur „für die konfigurierte Familie
+  vorgesehen, noch nicht gelesen“; eine Familienzuordnung ist kein Beweis, dass
+  ein konkretes Modell/Register antwortet.
+- `MeasurementCatalogFamilies` ist die verbindliche Brücke von `builtin.json`
+  zum kanonischen Katalog: `sunspec|sunspec_live` expandieren auf alle 19
+  `sunspec.model_*`, go-e/Shelly/OCPP auf ihre Katalogfamilien, direkte Deye-,
+  Fronius-, KACO- und KOSTAL-Familien bleiben exakt. Der katalogweite Test lädt
+  das echte `builtin.json`; eine neue Binding-Familie ohne Katalogabdeckung muss
+  rot werden.
+- Punktverläufe liegen unter
+  `/api/v1/devices/{deviceId}/measurement-selection/{pointKey}/history|export`.
+  Gauge-Buckets liefern Mittel/Min/Max, Counter nur positive Deltas, Zustände
+  den letzten Wert; Auswahl-/Ack-/First-Sample-, Lücken- und Resetmarker bleiben
+  getrennt. Rohwahl gibt es nur bei vorhandenen Wire-Rohdaten. CSV trägt
+  Point-Key, Labels, Einheit, Aggregation, Semantik, Katalogversion und
+  Darstellung. Die Anlagen-Auswahl liefert höchstens 40 kürzlich gemessene,
+  semantisch bekannte numerische Optionen und vergleicht höchstens drei
+  kompatible Punkte; unterschiedliche Einheiten erhalten getrennte Achsen.
 
 ## Steuerung Stufen 8+9: die UMZÜGE und die Datenbereinigung
 

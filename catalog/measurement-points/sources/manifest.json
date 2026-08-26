@@ -117,6 +117,15 @@
       "source_revision": "ocpp-go-v0.19.0",
       "source_sha256": "1e27bab28fe8e45e2026d52bbc2bda8b0df162245a972c64f162e32f863ed5b6",
       "source_url": "https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp1.6/types/types.go"
+    },
+    {
+      "adapter": "builtin_inverter",
+      "family": "builtin.inverter",
+      "id": "builtin.inverter.runtime",
+      "path": "sources/builtin/inverter-runtime.json",
+      "source_revision": "voltpilot-runtime-2026-08-26",
+      "source_sha256": "d5d1395af25bfc16ade478e6c79bb58fd10df0f99b8951d64ff8de78bbdaff2f",
+      "source_url": "https://codeberg.org/voltpilot/voltpilot-ems"
     }
   ]
 }

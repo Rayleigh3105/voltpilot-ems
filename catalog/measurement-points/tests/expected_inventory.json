@@ -1,5 +1,5 @@
 {
-  "catalog_version": "2026.08.25.1",
+  "catalog_version": "2026.08.26.1",
   "deye_lock_sha256": "2e378e218ab59cbca39b24169330d95fa40f830b51312d21818b75f332cb954f",
   "deye_direct_register_points": {
     "hybrid_1p": 193,
@@ -8,9 +8,13 @@
     "string": 52
   },
   "family_counts": {
+    "fronius_solar_api": 5,
     "goe.api_v2": 316,
     "hybrid_1p": 199,
     "hybrid_3p": 624,
+    "kaco_http": 7,
+    "kaco_http_hybrid": 16,
+    "kostal_plenticore": 12,
     "micro": 60,
     "ocpp.1_6": 22,
     "shelly.gen1": 59,
@@ -38,9 +42,10 @@
   },
   "goe_german_source_rows": 174,
   "goe_keys_with_german_label": 177,
-  "manifest_sha256": "57ba9e2bb0f51d0cb7bd6ce532cbfc90d5dc713f7d759bca7f21ab4f22b6ed0a",
+  "manifest_sha256": "1230fdb7298630031af189bc390be6001190cf7fa7412c9d0601b5ec9f4ee382",
   "shelly_raw_manifest_sha256": "3a68c3d0bedc74b7fc1dfdd9659743df241f45350abe1c7dbd5e8d8962a74d44",
   "source_versions": {
+    "builtin.inverter.runtime": "voltpilot-runtime-2026-08-26",
     "deye.hybrid_1p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
     "deye.hybrid_3p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
     "deye.micro": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
@@ -51,10 +56,11 @@
     "sunspec.models": "90b4a331dcca1d6eac69c1bead952fddcc5852e0"
   },
   "template_counts": {
+    "kaco_http_hybrid": 2,
     "ocpp.1_6": 22,
     "shelly.gen1": 32,
     "shelly.gen2plus": 120,
     "sunspec.model_160": 10
   },
-  "total_points": 2301
+  "total_points": 2341
 }

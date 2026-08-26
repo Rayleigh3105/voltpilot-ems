@@ -41,6 +41,9 @@ public class MeasurementSelectionRepository {
             String customDefinitionJson, String retentionClass, int rawRetentionDays,
             Integer longTermCadenceS, String longTermStrategy) {}
 
+    public record Observation(Instant lastReadAt, String rawValue, String decodedValue,
+            String quality, boolean gap, long droppedSamples) {}
+
     private static final String ROW_COLUMNS =
             "tenant_id, site_id, device_id, point_key, enabled, cadence_s, desired_revision, "
             + "enabled_at, disabled_at, catalog_version, changed_by, changed_by_name, "
@@ -105,6 +108,30 @@ public class MeasurementSelectionRepository {
                 (org.springframework.jdbc.core.RowCallbackHandler) rs ->
                         out.add(rs.getString(1)), deviceId);
         return Set.copyOf(out);
+    }
+
+    public Set<String> recordedPointKeys(UUID deviceId) {
+        Set<String> out = new LinkedHashSet<>();
+        jdbc.query("SELECT point_key FROM device_measurement_selection WHERE device_id = ? "
+                        + "UNION SELECT DISTINCT point_key FROM device_measurement_sample WHERE device_id = ?",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.add(rs.getString(1)),
+                deviceId, deviceId);
+        return Set.copyOf(out);
+    }
+
+    public Map<String, Observation> latestObservations(UUID deviceId) {
+        Map<String, Observation> out = new LinkedHashMap<>();
+        jdbc.query("SELECT DISTINCT ON (point_key) point_key, time, "
+                        + "COALESCE(raw_text, raw_numeric::text) raw_value, "
+                        + "COALESCE(decoded_text, decoded_numeric::text) decoded_value, "
+                        + "quality, gap, dropped_samples FROM device_measurement_sample "
+                        + "WHERE device_id = ? ORDER BY point_key, time DESC, edge_sequence DESC",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(rs.getString("point_key"),
+                        new Observation(rs.getTimestamp("time").toInstant(),
+                                rs.getString("raw_value"), rs.getString("decoded_value"),
+                                rs.getString("quality"), rs.getBoolean("gap"),
+                                rs.getLong("dropped_samples"))), deviceId);
+        return Map.copyOf(out);
     }
 
     public long revision(UUID deviceId) {

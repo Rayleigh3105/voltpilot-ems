@@ -92,6 +92,7 @@ import { adminApi } from '../admin/adminApi';
 import { fleetApi } from '../admin/fleetApi';
 import { NO_DATA } from '../nodata';
 import { OcppWallboxPage } from './OcppWallboxPage';
+import { MeasurementLibrary } from '../components/MeasurementLibrary';
 import '../components/AnlagenModell.css';
 import './GeraetSeite.css';
 
@@ -720,6 +721,7 @@ export function GeraetSeiteSection({
 
         </>
       )}
+      {view && view.gefunden && <MeasurementLibrary deviceId={boxDevice?.id} />}
     </div>
   );
 }

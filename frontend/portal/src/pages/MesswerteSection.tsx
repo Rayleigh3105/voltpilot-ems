@@ -45,6 +45,7 @@ import { InfoTip } from '../components/InfoTip';
 import { ChartHeadline, ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
 import { VerlaufExplorer } from '../components/VerlaufExplorer';
+import { SiteMeasurementComparison } from '../components/SiteMeasurementComparison';
 import { HistoryEnergieChart } from '../HistoryChart';
 import {
   DeltaZeile,
@@ -593,6 +594,7 @@ export function MesswerteSection({
           anchor={anchor}
           initialTargets={init.targets}
         />
+        <SiteMeasurementComparison siteId={site.id} />
       </WeltDisclosure>
 
       <WeltFuss welt={welt} />

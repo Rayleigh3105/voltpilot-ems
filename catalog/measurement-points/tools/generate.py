@@ -339,6 +339,11 @@ def generate_deye_points(
             decoder=record["decoder"],
             derived_from=[f"holding:0x{address:04x}" for address in derived_registers],
             point_key_aliases=lock_entry["aliases"],
+            recommended=name in {
+                "PV Power", "Grid Power", "Load Power", "Battery Power", "Battery SOC",
+                "Device State", "Device Alarm", "Device Fault", "Temperature",
+                "Today Production", "Total Production",
+            },
             readable=True,
         )
 
@@ -654,7 +659,59 @@ def generate_ocpp(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
         )
 
 
+def generate_builtin_inverter(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
+    """Package the points already proven by the in-repo inverter decoders.
+
+    The JSON source is intentionally boring and explicit: it mirrors only fields
+    and registers the runtime actually reads. It is not a guessed vendor-wide map.
+    """
+    document = read_json(source_file(source))
+    by_family = {family["family"]: family for family in document["families"]}
+    for family in document["families"]:
+        inherited = by_family.get(family.get("inherits"), {}).get("points", [])
+        for item in [*inherited, *family["points"]]:
+            address = None
+            source_kind = "rest_json"
+            selector = item.get("selector", "")
+            if "address" in item:
+                registers = list(range(item["address"], item["address"] + item["width_words"]))
+                address = {"kind": "modbus_holding", "registers": registers,
+                           "width_words": item["width_words"]}
+                source_kind = "modbus_holding"
+                selector = "holding:" + ",".join(f"0x{register:04x}" for register in registers)
+            yield base_point(
+                family=family["family"],
+                point_key=f"{family['family']}.{item['key']}",
+                source_kind=source_kind,
+                address=address,
+                selector=selector,
+                width_bits=item.get("width_words", 0) * 16 or None,
+                value_type=item["value_type"],
+                signed=item["signed"],
+                endian=item.get("endian"),
+                scale=item["scale"],
+                unit=item["unit"],
+                group=item["group"],
+                label_de=item["label_de"],
+                label_source=item["label_source"],
+                semantic_status="known",
+                aggregation_kind=item["aggregation_kind"],
+                default_cadence_s=item["cadence_s"],
+                min_cadence_s=item["cadence_s"],
+                long_term_cadence_s=long_term_cadence(
+                    item["unit"], item["aggregation_kind"],
+                    f"{item['group']} {item['label_source']}",
+                ),
+                poll_group=f"{family['family']}:{item['group'].lower().replace(' ', '-')}",
+                source={**source, "source_url": family["source_url"],
+                        "source_revision": family["source_revision"]},
+                dynamic=item.get("dynamic", False),
+                point_key_template=item.get("dynamic", False),
+                recommended=item.get("recommended", False),
+                readable=True,
+            )
 ADAPTERS = {
+    "builtin_inverter": generate_builtin_inverter,
     "deye": generate_deye,
     "goe": generate_goe,
     "ocpp": generate_ocpp,

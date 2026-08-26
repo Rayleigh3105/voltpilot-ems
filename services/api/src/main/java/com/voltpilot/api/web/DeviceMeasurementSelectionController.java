@@ -7,6 +7,7 @@ import com.voltpilot.api.measurement.MeasurementBudget;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.measurement.MeasurementConfigPublisher;
 import com.voltpilot.api.measurement.MeasurementSelectionService;
+import com.voltpilot.api.measurement.MeasurementHistoryService;
 import com.voltpilot.api.measurement.MeasurementSelectionService.Actor;
 import com.voltpilot.api.measurement.MeasurementSelectionService.Change;
 import com.voltpilot.api.measurement.MeasurementSelectionService.CustomChange;
@@ -17,6 +18,9 @@ import jakarta.validation.constraints.PositiveOrZero;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.time.Instant;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -62,12 +66,37 @@ public class DeviceMeasurementSelectionController {
     private final MeasurementSelectionService selections;
     private final MeasurementCatalog catalog;
     private final ObjectProvider<MeasurementConfigPublisher> publisher;
+    private final MeasurementHistoryService history;
 
     public DeviceMeasurementSelectionController(MeasurementSelectionService selections,
-            MeasurementCatalog catalog, ObjectProvider<MeasurementConfigPublisher> publisher) {
+            MeasurementCatalog catalog, ObjectProvider<MeasurementConfigPublisher> publisher,
+            MeasurementHistoryService history) {
         this.selections = selections;
         this.catalog = catalog;
         this.publisher = publisher;
+        this.history = history;
+    }
+
+    @GetMapping("/{pointKey}/history")
+    public MeasurementHistoryService.History history(@PathVariable UUID deviceId,
+            @PathVariable String pointKey, @RequestParam(defaultValue = "24h") String range,
+            @RequestParam(required = false) Instant from,
+            @RequestParam(required = false) Instant to,
+            @RequestParam(defaultValue = "decoded") String representation) {
+        return history.history(deviceId, pointKey, range, from, to, representation);
+    }
+
+    @GetMapping(value = "/{pointKey}/export", produces = "text/csv")
+    public ResponseEntity<byte[]> export(@PathVariable UUID deviceId,
+            @PathVariable String pointKey, @RequestParam(defaultValue = "24h") String range,
+            @RequestParam(required = false) Instant from,
+            @RequestParam(required = false) Instant to,
+            @RequestParam(defaultValue = "decoded") String representation) {
+        var result = history.history(deviceId, pointKey, range, from, to, representation);
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=messwert-" + pointKey.replaceAll("[^a-zA-Z0-9._-]", "_") + ".csv")
+                .body(history.csv(result));
     }
 
     /** Desired state + immutable history + current annual-volume estimate. */
@@ -95,7 +124,8 @@ public class DeviceMeasurementSelectionController {
         try {
             return catalog.search(q, family, group, semanticStatus, recorded, availableOnly,
                     selections.availableFamilies(deviceId), selections.selectedCadences(deviceId),
-                    offset, limit);
+                    selections.recordedPointKeys(deviceId),
+                    selections.latestObservations(deviceId), offset, limit);
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
                     e.getMessage());

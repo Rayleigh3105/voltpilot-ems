@@ -6,6 +6,8 @@ import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.sql.Connection;
+import java.sql.Statement;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -81,7 +83,7 @@ class MeasurementSelectionApiTest {
     private final TestRestTemplate rest = new TestRestTemplate();
 
     @Test
-    void desiredSelectionIsNoBackfillRevisionedIdempotentAndNeverPretendsApplied() {
+    void desiredSelectionIsNoBackfillRevisionedIdempotentAndNeverPretendsApplied() throws Exception {
         String demo = token("demo", "demo");
         String demo2 = token("demo2", "demo2");
 
@@ -197,6 +199,24 @@ class MeasurementSelectionApiTest {
                 .findFirst().orElseThrow();
         assertThat((Map<String, Object>) customSelection.get("customDefinition"))
                 .containsEntry("requestCostMs", 2000);
+        String customPointKey = "custom." + customKey.toString().replace("-", "");
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_sample "
+                    + "(time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,"
+                    + "decoded_numeric,quality,catalog_version,edge_sequence,aggregation_kind,"
+                    + "long_term_cadence_s,gap,dropped_samples) VALUES (now()-interval '1 minute',now(),"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','"
+                    + customPointKey + "',123,12.3,'good','2026.08.26.1',82001,'gauge',300,false,0)");
+        }
+        ResponseEntity<Map<String, Object>> customHistory = get(demo,
+                path(DEVICE_A) + "/" + customPointKey + "/history?range=24h");
+        assertThat(customHistory.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((Map<String, Object>) customHistory.getBody().get("meta"))
+                .containsEntry("label", "Eigene Einspeiseleistung")
+                .containsEntry("unit", "kW")
+                .containsEntry("aggregationKind", "gauge");
 
         Map<String, Object> writable = new java.util.LinkedHashMap<>(definition);
         writable.put("readOnly", false);
@@ -226,6 +246,48 @@ class MeasurementSelectionApiTest {
         assertThat((String) overBudget.getBody().get("message"))
                 .contains("Messwertbudget");
         assertThat(get(demo, path(DEVICE_A)).getBody()).containsEntry("desiredRevision", 3);
+    }
+
+    @Test
+    void pointHistoryAggregatesDecodedGaugesMarksGapsAndExportsMetadata() throws Exception {
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_sample "
+                    + "(time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,"
+                    + "decoded_numeric,quality,catalog_version,edge_sequence,aggregation_kind,"
+                    + "long_term_cadence_s,gap,dropped_samples) VALUES "
+                    + "(date_trunc('hour',now())-interval '1 hour'+interval '1 minute',now(),"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + POINT
+                    + "',10,1,'good','2026.08.26.1',81001,'gauge',300,false,0),"
+                    + "(date_trunc('hour',now())-interval '1 hour'+interval '2 minutes',now(),"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + POINT
+                    + "',20,2,'good','2026.08.26.1',81002,'gauge',300,true,3) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+        String demo = token("demo", "demo");
+        ResponseEntity<Map<String, Object>> history = get(demo,
+                path(DEVICE_A) + "/" + POINT + "/history?range=24h&representation=decoded");
+        assertThat(history.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> meta = (Map<String, Object>) history.getBody().get("meta");
+        assertThat(meta).containsEntry("pointKey", POINT)
+                .containsEntry("aggregationKind", "gauge")
+                .containsEntry("representation", "decoded")
+                .containsEntry("rawAvailable", true);
+        Map<String, Object> bucket = (Map<String, Object>)
+                ((List<?>) history.getBody().get("data")).get(0);
+        assertThat(((Number) bucket.get("value")).doubleValue()).isEqualTo(1.5);
+        assertThat(((Number) bucket.get("minimum")).doubleValue()).isEqualTo(1.0);
+        assertThat(((Number) bucket.get("maximum")).doubleValue()).isEqualTo(2.0);
+        assertThat(bucket).containsEntry("gap", true).containsEntry("sampleCount", 2);
+
+        ResponseEntity<String> csv = rest.exchange(url(path(DEVICE_A) + "/" + POINT
+                        + "/export?range=24h&representation=raw"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class);
+        assertThat(csv.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(csv.getHeaders().getContentDisposition().getFilename()).contains("messwert-");
+        assertThat(csv.getBody()).contains("# point_key=", "# aggregation=", "# representation=\"raw\"");
     }
 
     @SuppressWarnings("unchecked")

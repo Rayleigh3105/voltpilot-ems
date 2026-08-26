@@ -233,6 +233,20 @@ function stub(over: {
   targets?: RegisterWriteTarget[];
   writes?: RegisterWriteEvent[];
 } = {}) {
+  vi.spyOn(api, 'measurementSelection').mockResolvedValue({
+    deviceId: 'gw', siteId: 's-1', desiredRevision: 0, catalogVersion: '2026.08.26.1',
+    status: 'idle', statusReason: 'Keine zusätzlichen Messwerte ausgewählt.',
+    activationNotice: 'Startet jetzt, kein Backfill.',
+    disableNotice: 'Historie bleibt erhalten.', selections: [],
+    volumeEstimate: { enabledPointCount: 0, samplesPerMinute: 0, requestsPerMinute: 0,
+      dutyCyclePercent: 0, softWarning: false, hardRejected: false, reasons: [],
+      rawGbPerYear: 0, longTermGbPerYear: 0, totalGbPerYear: 0, retentionSummary: '' },
+  });
+  vi.spyOn(api, 'measurementCatalog').mockResolvedValue({
+    catalogVersion: '2026.08.26.1', edgeMinVersion: 'unreleased',
+    customPointActionLabel: 'Eigenen Messwert hinzufügen', total: 0, offset: 0, limit: 100,
+    groups: [], semanticStatuses: [], points: [],
+  });
   vi.spyOn(api, 'siteEntities').mockImplementation(
     over.entities ?? (() => Promise.resolve(entities)),
   );

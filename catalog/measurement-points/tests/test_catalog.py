@@ -117,6 +117,54 @@ class CatalogTest(unittest.TestCase):
         }
         self.assertEqual(direct, EXPECTED["deye_direct_register_points"])
 
+    def test_every_deye_map_exposes_all_authored_pv_string_measurements(self) -> None:
+        """No UI shortlist may collapse the vendor maps to total PV only."""
+        manifest = {source["family"]: source for source in self.manifest["sources"]
+                    if source["adapter"] == "deye"}
+        for family in ("string", "hybrid_1p", "hybrid_3p", "micro"):
+            document = json.loads((ROOT / manifest[family]["input_path"]).read_text())["document"]
+            authored = {
+                item["name"] for group in document["parameters"] for item in group["items"]
+                if isinstance(item.get("name"), str)
+                and __import__("re").fullmatch(r"PV\d+ (Power|Current|Voltage)", item["name"])
+            }
+            packaged = {point["label_source"] for point in self.points
+                        if point["family"] == family}
+            self.assertTrue(authored, family)
+            self.assertEqual(authored, authored & packaged, family)
+
+    def test_every_named_deye_map_measurement_is_in_the_catalog(self) -> None:
+        """Pin full per-map coverage: phases, battery, grid, temperature, faults and meters too."""
+        manifest = {source["family"]: source for source in self.manifest["sources"]
+                    if source["adapter"] == "deye"}
+        for family in ("string", "hybrid_1p", "hybrid_3p", "micro"):
+            document = json.loads((ROOT / manifest[family]["input_path"]).read_text())["document"]
+            authored = {
+                item["name"] for group in document["parameters"] for item in group["items"]
+                if isinstance(item.get("name"), str) and item["name"].strip()
+            }
+            packaged = {point["label_source"] for point in self.points
+                        if point["family"] == family}
+            self.assertTrue(authored, family)
+            self.assertEqual(set(), authored - packaged, family)
+
+    def test_inverter_runtime_families_are_source_honest_and_complete(self) -> None:
+        expected = {
+            "fronius_solar_api": 5,
+            "kaco_http": 7,
+            "kaco_http_hybrid": 16,
+            "kostal_plenticore": 12,
+        }
+        counts = collections.Counter(point["family"] for point in self.points)
+        for family, count in expected.items():
+            self.assertEqual(counts[family], count)
+        kostal = [point for point in self.points if point["family"] == "kostal_plenticore"]
+        self.assertEqual(
+            {register for point in kostal for register in point["address"]["registers"]},
+            {5, 56, 57, 252, 253, 514, 531, 582, 588, 1068, 1069,
+             1076, 1077, 1078, 1079, 1080, 1082},
+        )
+
     def test_point_keys_and_selectors_are_unambiguous(self) -> None:
         keys = [point["point_key"] for point in self.points]
         self.assertEqual(keys, sorted(keys))
