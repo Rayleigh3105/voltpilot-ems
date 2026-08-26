@@ -58,7 +58,7 @@ class UpdateStatusListenerTest {
             String target, Long targetSeq, String channel, String state, String reason,
             String lastKnownGood, String targetVerdict, String blocker, String rootKeyIds,
             String trustSetKeyIds, String trustSetGeneratedAt, String trustSetSignedBy,
-            String trustSetError, Boolean canApply) {
+            String trustSetError) {
     }
 
     private Row ingest(String bodyFields) {
@@ -82,25 +82,23 @@ class UpdateStatusListenerTest {
         ArgumentCaptor<String> trustGen = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> trustBy = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> trustErr = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<Boolean> canApply = ArgumentCaptor.forClass(Boolean.class);
         verify(store).upsert(eq(DEVICE), eq(SITE), version.capture(), backend.capture(),
                 current.capture(), currentSeq.capture(), target.capture(), targetSeq.capture(),
                 channel.capture(), state.capture(), reason.capture(), lkg.capture(),
                 verdict.capture(), blocker.capture(), roots.capture(), trustKeys.capture(),
-                trustGen.capture(), trustBy.capture(), trustErr.capture(), canApply.capture(),
+                trustGen.capture(), trustBy.capture(), trustErr.capture(),
                 any());
         return new Row(version.getValue(), backend.getValue(), current.getValue(),
                 currentSeq.getValue(), target.getValue(), targetSeq.getValue(),
                 channel.getValue(), state.getValue(), reason.getValue(), lkg.getValue(),
                 verdict.getValue(), blocker.getValue(), roots.getValue(), trustKeys.getValue(),
-                trustGen.getValue(), trustBy.getValue(), trustErr.getValue(),
-                canApply.getValue());
+                trustGen.getValue(), trustBy.getValue(), trustErr.getValue());
     }
 
     private void assertNothingStored() {
         verify(store, never()).upsert(any(), any(), any(), any(), any(), any(), any(), any(),
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any());
+                any());
     }
 
     /**
@@ -188,31 +186,6 @@ class UpdateStatusListenerTest {
                 + "\"update\":{\"backend\":\"compose\",\"state\":\"idle\"}");
 
         assertThat(row.blocker()).isNull();
-    }
-
-    /**
-     * Die vom Gerät gemeldete FÄHIGKEIT, eine Portal-Freigabe aufzugreifen
-     * ({@code can_apply}, Portal-Apply) ist DREIWERTIG - und genau das ist der
-     * ganze Punkt: ein älterer Edge-Stand meldet sie nicht, und daraus darf nie
-     * ein behauptetes „kann nicht" werden (die Oberfläche verweigerte sonst
-     * einem Gerät den Knopf, das ihn sehr wohl bedienen kann).
-     */
-    @Test
-    void theApplyCapabilityIsThreeValued() {
-        assertThat(capability("true")).isTrue();
-        assertThat(capability("false")).isFalse();
-        // Ein ÄLTERER Stand: das Feld fehlt - „unbekannt", nie „nein".
-        assertThat(capability(null)).isNull();
-        // Und ein Wert, der kein Boolean ist, wird VERWORFEN statt gedeutet.
-        assertThat(capability("\"ja\"")).isNull();
-    }
-
-    /** Ein Herzschlag mit (oder ohne) `can_apply` - auf einem frischen Mock. */
-    private Boolean capability(String rawValue) {
-        setUp();
-        return ingest("\"version\":\"edge-2026.08.0\",\"update\":{\"backend\":\"compose\","
-                + "\"state\":\"deferred\""
-                + (rawValue == null ? "" : ",\"can_apply\":" + rawValue) + "}").canApply();
     }
 
     /**
@@ -418,7 +391,7 @@ class UpdateStatusListenerTest {
         // … und der Stand wird trotzdem ganz normal fortgeschrieben.
         verify(store).upsert(eq(DEVICE), eq(SITE), eq("edge-2026.08.10"), any(), any(), any(),
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any());
+                any(), any(), any());
     }
 
     /** Ein leerer Block behauptet nichts - nie eine Adresse aus dem Nichts. */
@@ -461,6 +434,6 @@ class UpdateStatusListenerTest {
                 eq(Instant.parse("2026-08-21T09:11:44Z")), eq("erreicht"));
         verify(store, never()).upsert(any(), any(), any(), any(), any(), any(), any(), any(),
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any());
+                any());
     }
 }
