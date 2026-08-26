@@ -214,6 +214,11 @@ describe('EdgeUpdatesPage', () => {
     fireEvent.click(within(drawer).getByTestId('choose-all').querySelector('input')!);
     fireEvent.click(within(drawer).getByRole('button', { name: 'Aktualisieren' }));
     expect(await screen.findByText(/nicht signiert/)).toBeInTheDocument();
+    // Die Auswahl bleibt stehen: der Betreiber soll den Grund lesen und es
+    // erneut versuchen können, statt von vorn anzufangen.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).getByTestId('choose-all')
+      .querySelector('input')!).toBeChecked();
   });
 
   it('führt aus dem Drawer auf die EINE Geräteseite - mit gesetztem Mandanten', async () => {

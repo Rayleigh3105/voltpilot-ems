@@ -131,16 +131,24 @@ export function EdgeUpdatesPage({
     return () => window.clearInterval(t);
   }, []);
 
-  async function act(fn: () => Promise<unknown>) {
+  /**
+   * Eine Schreib-Handlung samt Neuladen. Gibt zurück, OB sie geklappt hat -
+   * die Aufrufer schließen ihren Drawer nur dann. Ein Fehlschlag lässt die
+   * Auswahl stehen, statt sie mit dem Grund zusammen wegzuräumen: der
+   * Betreiber soll den Satz lesen und es erneut versuchen können.
+   */
+  async function act(fn: () => Promise<unknown>): Promise<boolean> {
     setBusy(true);
     setActionError(null);
     try {
       await fn();
       await load();
+      return true;
     } catch (e) {
       // Der Server liefert seinen deutschen Grund mit - er wird gezeigt, nicht
       // durch eine allgemeine Floskel ersetzt.
       setActionError(e instanceof ApiError ? e.message : 'Die Aktion ist fehlgeschlagen.');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -337,12 +345,14 @@ export function EdgeUpdatesPage({
             busy={busy}
             onClose={() => setDeviceFor(null)}
             onAssign={async (releaseSeq) => {
-              await act(() => adminApi.setUpdateTarget(row.deviceId, { releaseSeq }));
-              setDeviceFor(null);
+              if (await act(() => adminApi.setUpdateTarget(row.deviceId, { releaseSeq }))) {
+                setDeviceFor(null);
+              }
             }}
             onRevert={async () => {
-              await act(() => adminApi.revertUpdateTarget(row.deviceId));
-              setDeviceFor(null);
+              if (await act(() => adminApi.revertUpdateTarget(row.deviceId))) {
+                setDeviceFor(null);
+              }
             }}
             onOpenGeraetseite={
               onJumpToTenant
@@ -368,10 +378,10 @@ export function EdgeUpdatesPage({
           busy={busy}
           onClose={() => setRolloutFor(null)}
           onStart={async (devices) => {
-            await act(() =>
+            const ok = await act(() =>
               adminApi.createRollout({ releaseSeq: rolloutFor.releaseSeq, devices }),
             );
-            setRolloutFor(null);
+            if (ok) setRolloutFor(null);
           }}
         />
       )}
