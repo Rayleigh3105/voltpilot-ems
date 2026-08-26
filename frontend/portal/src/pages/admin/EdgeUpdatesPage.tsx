@@ -467,6 +467,7 @@ function RolloutCard({
               key={d.deviceId}
               device={d}
               row={live.get(d.deviceId) ?? null}
+              rolloutRelease={rollout.releaseVersion}
               onOpen={onOpenDevice}
             />
           ))}
@@ -486,16 +487,23 @@ function RolloutCard({
 function RolloutDeviceRow({
   device,
   row,
+  rolloutRelease,
   onOpen,
 }: {
   device: RolloutDevice;
   row: FleetRow | null;
+  /** Das Release DIESER Aktualisierung - der Kopf der Karte nennt es einmal. */
+  rolloutRelease: string;
   onOpen: (deviceId: string) => void;
 }) {
   const name = rolloutDeviceName(device);
   const state = row?.state ?? device.state;
   const reason = row?.reason ?? device.reason;
   const lever = blockerLever(row?.blocker);
+  // Das Soll steht nur dort, wo es vom Kopf der Karte ABWEICHT: dieses Gerät
+  // hat inzwischen eine NEUERE Zuweisung bekommen, und dann wäre der Kopf für
+  // genau diese Zeile eine Falschaussage.
+  const otherSoll = row?.soll && row.soll !== rolloutRelease ? row.soll : null;
   return (
     <tr>
       <td data-label="Anlage">
@@ -510,7 +518,14 @@ function RolloutDeviceRow({
           <div className="vp-muted vp-text-sm">{device.tenantName}</div>
         )}
       </td>
-      <td data-label="Ist">{row?.ist ?? '–'}</td>
+      <td data-label="Ist">
+        {row?.ist ?? '–'}
+        {otherSoll && (
+          <div className="vp-muted vp-text-sm" data-testid="other-soll">
+            inzwischen zugewiesen: {otherSoll}
+          </div>
+        )}
+      </td>
       <td data-label="Zustand"><StateChip state={state} /></td>
       {/* Jede nicht-grüne Zeile trägt ihren Grund. Der HEBEL kommt aus dem
           maschinenlesbaren Namen, nie aus einer Stichwortsuche im Satz. */}

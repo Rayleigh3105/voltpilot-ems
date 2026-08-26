@@ -143,6 +143,22 @@ describe('EdgeUpdatesPage', () => {
     expect(row).not.toHaveTextContent('veraltet');
   });
 
+  it('nennt eine INZWISCHEN abweichende Zuweisung an der Zeile', async () => {
+    // Der Kopf der Karte nennt das Release DIESER Aktualisierung. Hat ein Gerät
+    // danach ein anderes bekommen, wäre der Kopf für genau diese Zeile eine
+    // Falschaussage - also steht das echte Soll daneben.
+    const d = data();
+    d.fleet[1].soll = 'edge-2026.08.1';
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+    const devices = await screen.findByTestId('rollout-devices');
+    const row = within(devices).getByText('Auernheim').closest('tr')! as HTMLElement;
+    expect(within(row).getByTestId('other-soll')).toHaveTextContent('edge-2026.08.1');
+    // Das Gerät auf demselben Stand trägt die Zeile NICHT.
+    const same = within(devices).getByText('Pilsting').closest('tr')! as HTMLElement;
+    expect(within(same).queryByTestId('other-soll')).toBeNull();
+  });
+
   it('nennt den HEBEL einer stehenden Sperre, statt nur ihren Satz', async () => {
     const d = data();
     d.fleet[1].state = 'blockiert';
