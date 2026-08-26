@@ -1,19 +1,19 @@
 # OTA-Signaturkette: Zeremonie, Release, Verlust, TOFU
 
-> **Stufe 3 „Autonom" (das Anwenden ohne Menschen am Gerät) hat ein eigenes
-> Betreiber-Handbuch: [`ota-autonomie.md`](ota-autonomie.md).** Es ist gebaut
-> und im Labor geprüft - und nirgendwo eingeschaltet.
+> **Wie ein Release ins Portal kommt und auf die Geräte, steht im eigenen
+> Betreiber-Handbuch: [`ota-autonomie.md`](ota-autonomie.md).** Dieses hier
+> beschreibt nur die Unterschrift darunter.
 
-Betreiber-Handbuch zu **OTA Stufe 1 „Vertrauen"** (Scout `vp-ota-rollout-h4` §5/§8/§9,
+Betreiber-Handbuch zur **Signaturkette** (Scout `vp-ota-rollout-h4` §5/§8/§9,
 Captain-Entscheide D1–D6). Es beschreibt genau eine Sache: **wie ein Edge-Release
 unterschrieben wird und wie ein Gerät diese Unterschrift prüft.**
 
-> **Was Stufe 1 NICHT tut: sie wendet nichts an.** Es gibt weiterhin keinen
-> Schreibpfad zu irgendeinem Gerät, keinen Downlink und keinen Updater. Ein
-> Gerät kann ein Release nach dieser Anleitung nur **prüfen und melden**
-> („Release edge-2026.08.0 verifiziert, Anwendung erst in Stufe 2/3").
-> Verteilt wird in Stufe 2, angewandt in Stufe 3 — und beides ist ab jetzt
-> kryptografisch gedeckt.
+> **Was diese Kette NICHT tut: sie verteilt nichts und wendet nichts an.** Sie
+> ist die Bedingung dafür — nur ein signiertes Release ist überhaupt
+> verteilbar, und nur ein gegen die eingebackene Wurzel geprüftes wird
+> angewandt.
+> Verteilt und angewandt wird über das Portal — und beides ist kryptografisch
+> gedeckt.
 
 Kontrakte: [`contracts/ota-release-manifest.schema.json`](contracts/ota-release-manifest.schema.json)
 und [`contracts/ota-signature.schema.json`](contracts/ota-signature.schema.json).
@@ -568,10 +568,11 @@ tools/ota/test-release-workflow.sh   # der ECHTE run:-Text des Workflows
 
 ---
 
-## 5. Auf einem Gerät prüfen (beaufsichtigt)
+## 5. Auf einem Gerät prüfen — ohne Portal, per Datei
 
-In Stufe 1 gibt es **keinen Downlink**. Der Prüfpfad ist eine Datei — und genau
-so wird der Sidecar der Stufe 3 später erneut verifizieren.
+Der Normalweg ist das Portal (`docs/ota-autonomie.md`). Zum PRÜFEN einer
+frischen Zeremonie geht es auch ohne: der Prüfpfad ist eine Datei, und genau so
+verifiziert der Sidecar später erneut.
 
 ```bash
 # auf der Box, im Datenverzeichnis des Cores (Volume vp-edge-data)
@@ -587,7 +588,7 @@ curl -s http://127.0.0.1:8484/health | jq '{version, ota_state, ota_reason}'
 
 | `ota_reason` | Bedeutung |
 |---|---|
-| `Release edge-2026.08.0 (Stand 12) verifiziert, signiert mit 'rel-2026-a'. Anwendung erst in Stufe 2/3.` | Kette und Politik in Ordnung. **Es passiert nichts weiter** — das ist der Endzustand dieser Stufe. |
+| `Release edge-2026.08.0 (Stand 12) verifiziert, signiert mit 'rel-2026-a'. …` | Kette und Politik in Ordnung. Ohne eine Zuweisung aus dem Portal passiert nichts weiter. |
 | `Release edge-2026.08.0 ist verifiziert und laeuft hier bereits.` | Dieses Gerät fährt bereits diesen Stand. |
 | `Release … setzt mindestens Stand 9 voraus, hier laeuft 8 …` | Anti-Rollback-Boden: eine Zwischenstufe fehlt. Signatur war in Ordnung. |
 | `Release … ist nicht neuer als der laufende Stand … nicht als Rueckschritt freigegeben.` | Replay-Schutz. Ein gewollter Rückschritt braucht `--allow-downgrade`. |
@@ -599,8 +600,8 @@ Dasselbe steht im 15-s-Herzschlag im `update`-Block (`state` + `reason`) und
 damit in der Cloud.
 
 **Der eigene Stand (`current.json`) ist optional.** Solange ihn nichts schreibt
-(erst Stufe 3 tut das), sagt der Verifizierer ehrlich, dass der Boden nicht
-bewertbar war, statt eine Sequenznummer zu erfinden. Für einen gezielten Test
+(erst ein angewandtes Update tut das), sagt der Verifizierer ehrlich, dass der
+Boden nicht bewertbar war, statt eine Sequenznummer zu erfinden. Für einen gezielten Test
 kann man ihn von Hand hinlegen:
 
 ```json
@@ -734,7 +735,7 @@ scp-Zweizeiler, ausdrücklich eine Handlung des Betreibers an genau dieser Box:
    trägt das Image die Wurzel nicht — dann stimmt der Digest nicht. Meldet es
    „Das Vertrauens-Set oder seine Signatur fehlt.", fehlt Schritt 4 (genau
    diesen Grund erkennt auch `update.sh --from-target` und druckt den Weg).
-6. **Der Crossover-Stand steht seit Stufe 4 im PORTAL** — jedes Gerät meldet
+6. **Der Crossover-Stand steht im PORTAL** — jedes Gerät meldet
    seine Vertrauens-Identität im Herzschlag, und unter **Plattform →
    Edge-Updates** trägt die Flotten-Matrix je Gerät eine Spalte *Vertrauen*
    (`gekreuzt ✓` / `Crossover offen` / `unbekannt`) plus die ruhige Zeile
@@ -748,9 +749,9 @@ Zwischen zwei Boxen liegt bewusst ein Abstand (mindestens ein voller Tageslauf
 auf der ersten Box, Canary = Pilsting), damit ein Fehler nicht die ganze Flotte
 erwischt.
 
-### Das Trust-Set bleibt out-of-band — auch in Stufe 2
+### Das Trust-Set bleibt out-of-band
 
-Seit Stufe 2 kommt das **Release** über den Downlink (retained auf
+Das **Release** kommt über den Downlink (retained auf
 `ems/{t}/{s}/{d}/v2/update`). Das **root-signierte Trust-Set** kommt weiterhin
 NICHT über diesen Weg, sondern liegt je Box im Datenverzeichnis: es ist der
 Widerrufs-Anker, und den Widerruf über denselben Kanal zu verteilen, über den
@@ -829,8 +830,8 @@ vp-ota sign --key root-2026-a.key --domain trust-set --in trust-set-neu.json
 
 **Schritt 2 — GEGENPRÜFEN, bevor irgendetwas hinausgeht.** `vp-ota trust`
 prüft das Set ALLEIN gegen die eingebackene Wurzel — es braucht dafür kein
-Release, und genau deshalb gibt es diesen Unterbefehl: bis Stufe 4 hätte man
-ein Manifest erfinden müssen, um seinen eigenen Widerruf zu prüfen.
+Release, und genau deshalb gibt es diesen Unterbefehl: ohne ihn hätte man ein
+Manifest erfinden müssen, um seinen eigenen Widerruf zu prüfen.
 
 ```bash
 vp-ota trust --root baked --trust-set trust-set-neu.json
@@ -859,8 +860,8 @@ ist kein Fehler, sondern der Grund für Schritt 5.
 **Schritt 4 — nachziehen:** `--key-id rel-2026-b` in `vp-ota manifest` und die
 Repo-Variable `EDGE_SIGNING_KEY_ID`.
 
-**Schritt 5 — den Fortschritt VERFOLGEN, statt ihn zu glauben.** Seit Stufe 4
-meldet jedes Gerät seine Vertrauens-Identität im Herzschlag; im Portal unter
+**Schritt 5 — den Fortschritt VERFOLGEN, statt ihn zu glauben.** Jedes Gerät
+meldet seine Vertrauens-Identität im Herzschlag; im Portal unter
 **Plattform → Edge-Updates** steht je Gerät, welches Set es fährt (Spalte
 *Vertrauen*, Details im Geräte-Ausklapp). Der Drill ist **fertig, wenn jede
 Box den neuen Stempel zeigt** — bis dahin ist der alte Schlüssel auf den
