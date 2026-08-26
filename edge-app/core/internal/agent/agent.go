@@ -38,6 +38,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/netinfo"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/neutralcal"
@@ -66,11 +67,16 @@ type Agent struct {
 	State *state.Store
 	Bus   *localbus.Bus
 
-	buf       *buffer.Buffer
-	hist      *history.Ring
-	planStore *plan.Store
-	invStore  *inverter.Store
-	invCat    inverter.Catalog
+	buf                 *buffer.Buffer
+	hist                *history.Ring
+	planStore           *plan.Store
+	invStore            *inverter.Store
+	invCat              inverter.Catalog
+	measurementOutbox   *measurements.Outbox
+	measurementMu       sync.Mutex
+	measurementIdentity measurements.Identity
+	measurementRevision int64
+	measurementConfig   []byte
 
 	mu            sync.Mutex
 	currentPlan   *plan.Plan
@@ -491,6 +497,11 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	measurementOutbox, err := measurements.OpenOutbox(
+		filepath.Join(cfg.DataDir, "measurement-outbox"), 10000)
+	if err != nil {
+		return nil, err
+	}
 	ps, err := plan.NewStore(cfg.DataDir)
 	if err != nil {
 		return nil, err
@@ -541,23 +552,24 @@ func New(cfg config.Config) (*Agent, error) {
 		slog.Warn("stored despike settings unreadable; using defaults", "err", err)
 	}
 	a := &Agent{
-		Cfg:          cfg,
-		State:        state.New(ref, Version),
-		buf:          buf,
-		hist:         history.New(historyCapacity),
-		planStore:    ps,
-		invStore:     is,
-		invCat:       inverter.DefaultCatalog(),
-		srcStore:     ss,
-		balStore:     bs,
-		mirStore:     ms,
-		net:          ns,
-		installerLog: iwl,
-		srcReadings:  map[string]sourceReading{},
-		entReadings:  map[string]entReading{},
-		testReads:    map[string]chan testconn.Result{},
-		probeReads:   map[string]chan []probeBusResult{},
-		probeLimiter: probe.NewLimiter(probe.DefaultRateWindow, probe.DefaultRateBudget),
+		Cfg:               cfg,
+		State:             state.New(ref, Version),
+		buf:               buf,
+		measurementOutbox: measurementOutbox,
+		hist:              history.New(historyCapacity),
+		planStore:         ps,
+		invStore:          is,
+		invCat:            inverter.DefaultCatalog(),
+		srcStore:          ss,
+		balStore:          bs,
+		mirStore:          ms,
+		net:               ns,
+		installerLog:      iwl,
+		srcReadings:       map[string]sourceReading{},
+		entReadings:       map[string]entReading{},
+		testReads:         map[string]chan testconn.Result{},
+		probeReads:        map[string]chan []probeBusResult{},
+		probeLimiter:      probe.NewLimiter(probe.DefaultRateWindow, probe.DefaultRateBudget),
 		registerLimiter: registerwrite.NewLimiter(
 			registerwrite.DefaultRateWindow, registerwrite.DefaultRateBudget),
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),
@@ -581,6 +593,16 @@ func New(cfg config.Config) (*Agent, error) {
 			SocPct: guards.Unknown(), PvKw: guards.Unknown(),
 			LoadKw: guards.Unknown(), GridLimitKw: guards.Unknown(),
 		},
+	}
+	if raw, err := os.ReadFile(filepath.Join(cfg.DataDir, "measurement-config.json")); err == nil {
+		var header struct {
+			Revision int64 `json:"revision"`
+		}
+		if json.Unmarshal(raw, &header) == nil && header.Revision > 0 {
+			a.measurementRevision, a.measurementConfig = header.Revision, raw
+		}
+	} else if !os.IsNotExist(err) {
+		slog.Warn("stored measurement config unreadable", "err", err)
 	}
 	// Boot-without-network: the disk-cached plan is available immediately.
 	if p, err := ps.Load(); err == nil && p != nil {
@@ -762,6 +784,12 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := bus.Subscribe(localbus.TopicFlowNodeStatus, 9, a.onFlowNodeStatus); err != nil {
 		return err
 	}
+	if err := bus.Subscribe(measurements.LocalStatusTopic, 16, a.onMeasurementStatus); err != nil {
+		return err
+	}
+	if err := bus.Subscribe(measurements.LocalSamplesTopic, 17, a.onMeasurementSamples); err != nil {
+		return err
+	}
 
 	// Re-publish the persisted inverter selection retained, so a Node-RED that
 	// (re)joins the bus after a reboot immediately self-wires the right adapter.
@@ -802,6 +830,10 @@ func (a *Agent) Start(ctx context.Context) error {
 	// executor. A no-op while VP_OCPP_ENABLED is off (the default), so a box
 	// without charge points pays nothing for it.
 	if err := a.startOcpp(ctx); err != nil {
+		return err
+	}
+	if err := bus.Subscribe(measurements.LocalOcppConfigTopic, 18,
+		a.onOcppMeasurementConfiguration); err != nil {
 		return err
 	}
 	// A customer intent is persisted BEFORE cleanup. If a prior boot died or
@@ -1125,6 +1157,8 @@ func (a *Agent) pokeReconcile() {
 func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string) error {
 	// The v2 entity-registry push must match this identity (topic==payload).
 	a.setEntityIdentity(id.TenantID, id.SiteID, id.DeviceID)
+	a.setMeasurementIdentity(id.TenantID, id.SiteID, id.DeviceID)
+	var link *cloud.Link
 	link, err := cloud.New(cloud.Options{
 		Identity:    id,
 		KeyPath:     keyPath,
@@ -1159,7 +1193,8 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		OnChargingBoost:  a.onChargingBoost,
 		// Verbrauchssteuerung §11/§14.13: der manuelle Eingriff. NICHT retained -
 		// siehe override.go.
-		OnDesiredDownlink: a.onDesiredDownlink,
+		OnDesiredDownlink:   a.onDesiredDownlink,
+		OnMeasurementConfig: a.onMeasurementConfig,
 		OnConnect: func(connected bool) {
 			a.State.Update(func(s *state.Snapshot) {
 				s.CloudConnected = connected
@@ -1174,6 +1209,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 			})
 			if connected {
 				a.kick()
+				a.republishMeasurementStatus(link)
 				// A purge requested while the device was offline is queued on
 				// disk; (re-)send it now that the cloud is reachable again.
 				a.trySendPurgeRequest()
@@ -2810,7 +2846,9 @@ func (a *Agent) publisherLoop(ctx context.Context) {
 		if link == nil || !link.Connected() {
 			continue
 		}
-		for {
+		// Bound each drain turn so a multi-hour replay in either additive
+		// pipeline cannot starve the other one after reconnect.
+		for sent := 0; sent < 256; sent++ {
 			e, ok := a.buf.Next()
 			if !ok {
 				break
@@ -2839,6 +2877,28 @@ func (a *Agent) publisherLoop(ctx context.Context) {
 				return
 			default:
 			}
+		}
+		for sent := 0; sent < 256; sent++ {
+			e, ok := a.measurementOutbox.Next()
+			if !ok {
+				break
+			}
+			if err := link.PublishMeasurementSamples(e.Raw); err != nil {
+				slog.Warn("measurement publish failed; will retry", "seq", e.Sequence, "err", err)
+				break
+			}
+			if err := a.measurementOutbox.Ack(e.Sequence); err != nil {
+				slog.Error("measurement outbox ack failed", "err", err)
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+		}
+		if a.buf.Pending() > 0 || a.measurementOutbox.Pending() > 0 {
+			a.kick()
 		}
 	}
 }

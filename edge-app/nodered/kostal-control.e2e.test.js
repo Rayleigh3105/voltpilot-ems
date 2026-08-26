@@ -14,6 +14,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const vm = require('node:vm');
 const net = require('node:net');
+const sharedBus = require('./measurements/shared-bus-arbiter');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -101,7 +102,7 @@ async function runNode(func, msg, extra) {
       get: (k, store) => (store === 'file' ? (extra.fileStore || {})[k] : flowStore[k]),
       set: (k, v, store) => { if (store === 'file') { (extra.fileStore = extra.fileStore || {})[k] = v; } else { flowStore[k] = v; } },
     },
-    global: { get: (k) => (k === 'net' ? net : undefined) },
+    global: { get: (k) => (k === 'net' ? net : (k === 'vpSharedBusArbiter' ? sharedBus : undefined)) },
     Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, Map, Set, setTimeout, clearTimeout,
   };
   vm.createContext(sandbox);

@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -31,11 +32,14 @@ import (
 type transport struct {
 	srv  *Server
 	cs   ocpp16.CentralSystem
-	wsrv ws.WsServer
+	wsrv ws.Server
 	port int
 	path string
 
-	done chan struct{}
+	done         chan struct{}
+	stopServer   func()
+	drainTimeout time.Duration
+	stopping     atomic.Bool
 }
 
 func newTransport(s *Server, port int, path string) *transport {
@@ -46,13 +50,19 @@ func newTransport(s *Server, port int, path string) *transport {
 	timeouts := ws.NewServerTimeoutConfig()
 	timeouts.WriteWait = commandSocketWriteWait
 	upstream.SetTimeoutConfig(timeouts)
-	wsrv := &journalWsServer{WsServer: upstream, journal: s.journal}
+	wsrv := &journalWsServer{Server: upstream, journal: s.journal}
 	cs := ocpp16.NewCentralSystem(nil, wsrv)
-	t := &transport{srv: s, cs: cs, wsrv: wsrv, port: port, path: path, done: make(chan struct{})}
+	t := &transport{
+		srv: s, cs: cs, wsrv: wsrv, port: port, path: path, done: make(chan struct{}),
+		stopServer: cs.Stop, drainTimeout: commandSocketWriteWait + time.Second,
+	}
 
 	// The allowlist gate. Returning false makes the library refuse the
 	// websocket upgrade, so an unregistered station never reaches a handler.
 	cs.SetNewChargingStationValidationHandler(func(id string, _ *http.Request) bool {
+		if t.stopping.Load() {
+			return false
+		}
 		if s.admitted(id) {
 			return true
 		}
@@ -68,15 +78,15 @@ func newTransport(s *Server, port int, path string) *transport {
 }
 
 // journalWsServer decorates exactly the two byte-bearing methods. Embedding
-// keeps the complete ws.WsServer API delegated to the upstream implementation.
+// keeps the complete ws.Server API delegated to the upstream implementation.
 type journalWsServer struct {
-	ws.WsServer
+	ws.Server
 	journal *Journal
 	writeMu sync.Mutex
 }
 
-func (s *journalWsServer) SetMessageHandler(handler func(ws.Channel, []byte) error) {
-	s.WsServer.SetMessageHandler(func(ch ws.Channel, data []byte) error {
+func (s *journalWsServer) SetMessageHandler(handler ws.MessageHandler) {
+	s.Server.SetMessageHandler(func(ch ws.Channel, data []byte) error {
 		s.journal.RecordWire("station_to_csms", ch.ID(), data)
 		return handler(ch, data)
 	})
@@ -88,7 +98,7 @@ func (s *journalWsServer) Write(id string, data []byte) error {
 	// the command gateway's deadline reserve.
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	err := s.WsServer.Write(id, data)
+	err := s.Server.Write(id, data)
 	if err == nil {
 		s.journal.RecordWire("csms_to_station", id, data)
 	}
@@ -143,7 +153,72 @@ func (t *transport) start(ctx context.Context) error {
 }
 
 func (t *transport) stop() {
-	t.cs.Stop()
+	// Stop admitting reconnects before draining. The post-v0.19 upstream channel
+	// lifecycle serializes Close with websocket cleanup; waiting for every
+	// admitted socket to disappear then also ensures no writePump can report into
+	// errC while Server.Stop closes it. This keeps both closeC and errC owned by
+	// the dependency's synchronized lifecycle, without a local dependency fork.
+	// StopConnection itself may wait on that lifecycle mutex, so run one bounded
+	// worker for all sockets rather than letting an inline call defeat the drain
+	// deadline or spawning a new goroutine on every poll.
+	t.stopping.Store(true)
+	t.srv.mu.Lock()
+	ids := make([]string, 0, len(t.srv.chargers))
+	for id := range t.srv.chargers {
+		ids = append(ids, id)
+	}
+	t.srv.mu.Unlock()
+	closeDone := make(chan struct{})
+	go func() {
+		defer close(closeDone)
+		for _, id := range ids {
+			if _, ok := t.wsrv.GetChannel(id); !ok {
+				continue
+			}
+			_ = t.wsrv.StopConnection(id, websocket.CloseError{
+				Code: websocket.CloseNormalClosure,
+				Text: "Edge wird beendet",
+			})
+		}
+	}()
+
+	drainTimer := time.NewTimer(t.drainTimeout)
+	drainTicker := time.NewTicker(5 * time.Millisecond)
+	defer drainTimer.Stop()
+	defer drainTicker.Stop()
+	drained := false
+drain:
+	for {
+		open := false
+		for _, id := range ids {
+			if _, ok := t.wsrv.GetChannel(id); ok {
+				open = true
+				break
+			}
+		}
+		if !open {
+			drained = true
+			break
+		}
+		select {
+		case <-drainTimer.C:
+			break drain
+		case <-drainTicker.C:
+		}
+	}
+	if !drained {
+		t.srv.log.Warn("OCPP-WebSockets nicht innerhalb der Drain-Frist beendet; synchronisierter Server-Stop übernimmt",
+			"timeout", t.drainTimeout)
+	}
+	t.stopServer()
+	joinTimer := time.NewTimer(t.drainTimeout)
+	select {
+	case <-closeDone:
+		joinTimer.Stop()
+	case <-joinTimer.C:
+		t.srv.log.Warn("OCPP-Close-Worker blieb trotz synchronisiertem Server-Stop blockiert; Prozess-Shutdown läuft weiter",
+			"timeout", t.drainTimeout)
+	}
 	select {
 	case <-t.done:
 	case <-time.After(3 * time.Second):
@@ -234,7 +309,9 @@ func (h *coreHandler) OnStartTransaction(id string, req *core.StartTransactionRe
 func (h *coreHandler) OnStopTransaction(id string, req *core.StopTransactionRequest) (*core.StopTransactionConfirmation, error) {
 	now := h.srv.opts.Now()
 	for _, mv := range req.TransactionData {
-		h.srv.onMeterValues(id, connectorOfTransaction(h.srv, id, req.TransactionId), ParseMeterValues(mapSamples(mv.SampledValue)), now)
+		samples := mapSamples(mv.SampledValue)
+		h.srv.emitSampledValues(samples, now)
+		h.srv.onMeterValues(id, connectorOfTransaction(h.srv, id, req.TransactionId), ParseMeterValues(samples), now)
 	}
 	h.srv.onStopTransaction(id, req.TransactionId, now)
 	return core.NewStopTransactionConfirmation(), nil
@@ -244,7 +321,9 @@ func (h *coreHandler) OnStopTransaction(id string, req *core.StopTransactionRequ
 func (h *coreHandler) OnMeterValues(id string, req *core.MeterValuesRequest) (*core.MeterValuesConfirmation, error) {
 	now := h.srv.opts.Now()
 	for _, mv := range req.MeterValue {
-		r := ParseMeterValues(mapSamples(mv.SampledValue))
+		samples := mapSamples(mv.SampledValue)
+		h.srv.emitSampledValues(samples, now)
+		r := ParseMeterValues(samples)
 		if r.Dropped > 0 {
 			h.srv.log.Debug("Messwerte einer Ladesäule teilweise verworfen",
 				"charge_point_id", id, "connector", req.ConnectorId, "dropped", r.Dropped)
@@ -295,9 +374,17 @@ func mapSamples(in []types.SampledValue) []SampledReading {
 			Unit:      string(s.Unit),
 			Phase:     string(s.Phase),
 			Context:   string(s.Context),
+			Format:    string(s.Format),
+			Location:  string(s.Location),
 		})
 	}
 	return out
+}
+
+func (s *Server) emitSampledValues(samples []SampledReading, now time.Time) {
+	if s.opts.OnSampledValues != nil && len(samples) > 0 {
+		s.opts.OnSampledValues(samples, now)
+	}
 }
 
 // --- Smart Charging + configuration, CSMS -> station ---

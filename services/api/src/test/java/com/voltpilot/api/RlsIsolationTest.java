@@ -276,6 +276,77 @@ class RlsIsolationTest {
                 .hasMessageContaining("permission denied");
     }
 
+    @Test
+    void additionalSamplesAreTenantFencedAndRollUpBySemanticKind() throws Exception {
+        String site = "00000000-0000-0000-0000-000000000002";
+        String device = "00000000-0000-0000-0000-000000000003";
+        try (Connection c = appDataSource().getConnection()) {
+            setTenant(c, TENANT_A);
+            try (Statement s = c.createStatement()) {
+                s.executeUpdate("INSERT INTO device_measurement_sample "
+                        + "(time,tenant_id,site_id,device_id,point_key,raw_numeric,decoded_numeric,"
+                        + "quality,catalog_version,edge_sequence,aggregation_kind,long_term_cadence_s) "
+                        + "VALUES "
+                        + "('2026-08-25T12:00:01Z','" + TENANT_A + "','" + site + "','" + device
+                        + "','test.rollup.gauge',100,10,'good','2026.08.25.1',1,'gauge',300),"
+                        + "('2026-08-25T12:00:31Z','" + TENANT_A + "','" + site + "','" + device
+                        + "','test.rollup.gauge',200,20,'good','2026.08.25.1',2,'gauge',300),"
+                        + "('2026-08-25T12:00:01Z','" + TENANT_A + "','" + site + "','" + device
+                        + "','test.rollup.counter',1000,100,'good','2026.08.25.1',3,'counter',900),"
+                        + "('2026-08-25T12:16:01Z','" + TENANT_A + "','" + site + "','" + device
+                        + "','test.rollup.counter',1100,110,'good','2026.08.25.1',4,'counter',900),"
+                        + "('2026-08-25T12:31:01Z','" + TENANT_A + "','" + site + "','" + device
+                        + "','test.rollup.counter',50,5,'good','2026.08.25.1',5,'counter',900),"
+                        + "(now()-INTERVAL '30 days','" + TENANT_A + "','" + site + "','" + device
+                        + "','test.rollup.replay',300,30,'good','2026.08.25.1',6,'gauge',300),"
+                        + "(now()-INTERVAL '30 days'+INTERVAL '1 second','" + TENANT_A + "','" + site
+                        + "','" + device + "','test.rollup.replay',9990,999,'invalid',"
+                        + "'2026.08.25.1',7,'gauge',300)");
+            }
+        }
+
+        assertThat(scalar(TENANT_A, "SELECT count(*) FROM device_measurement_sample "
+                + "WHERE point_key LIKE 'test.rollup.%'")).isEqualTo(7L);
+        assertThat(scalar(TENANT_B, "SELECT count(*) FROM device_measurement_sample "
+                + "WHERE point_key LIKE 'test.rollup.%'")).isZero();
+        assertThat(scalarWithoutTenant("SELECT count(*) FROM device_measurement_sample")).isZero();
+
+        try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(), POSTGRES.getPassword()); Statement s = c.createStatement()) {
+            s.execute("CALL refresh_device_measurement_rollup('device_measurement_rollup_5m', "
+                    + "INTERVAL '5 minutes', '2026-08-25T11:00:00Z')");
+            s.execute("CALL refresh_device_measurement_rollup('device_measurement_rollup_15m', "
+                    + "INTERVAL '15 minutes', '2026-08-25T11:00:00Z')");
+            // The scheduled job must include replay well beyond the old two-day
+            // horizon, while an invalid value in the same bucket contributes
+            // neither to average nor sample_count.
+            s.execute("CALL device_measurement_rollup_job(0, '{}'::jsonb)");
+            try (ResultSet rs = s.executeQuery("SELECT avg_numeric FROM device_measurement_rollup_5m "
+                    + "WHERE point_key='test.rollup.gauge'")) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getDouble(1)).isEqualTo(15.0);
+            }
+            try (ResultSet rs = s.executeQuery("SELECT sum(positive_delta),sum(counter_reset_count) "
+                    + "FROM device_measurement_rollup_15m WHERE point_key='test.rollup.counter'")) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getDouble(1)).isEqualTo(10.0);
+                assertThat(rs.getLong(2)).isEqualTo(1L);
+            }
+            try (ResultSet rs = s.executeQuery("SELECT avg_numeric,sample_count "
+                    + "FROM device_measurement_rollup_5m WHERE point_key='test.rollup.replay'")) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getBigDecimal(1)).isEqualByComparingTo("30");
+                assertThat(rs.getLong(2)).isEqualTo(1L);
+            }
+            try (ResultSet rs = s.executeQuery("SELECT count(*) FROM timescaledb_information.jobs "
+                    + "WHERE proc_name='policy_retention' AND hypertable_name="
+                    + "'device_measurement_sample' AND config->>'drop_after'='90 days'")) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getLong(1)).isEqualTo(1L);
+            }
+        }
+    }
+
     private List<String> sitesForTenant(String tenantId) throws Exception {
         List<String> names = new ArrayList<>();
         try (Connection c = appDataSource().getConnection()) {

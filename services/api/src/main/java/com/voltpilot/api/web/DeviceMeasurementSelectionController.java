@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.voltpilot.api.measurement.CustomMeasurementPoint.Definition;
 import com.voltpilot.api.measurement.MeasurementBudget;
 import com.voltpilot.api.measurement.MeasurementCatalog;
+import com.voltpilot.api.measurement.MeasurementConfigPublisher;
 import com.voltpilot.api.measurement.MeasurementSelectionService;
 import com.voltpilot.api.measurement.MeasurementSelectionService.Actor;
 import com.voltpilot.api.measurement.MeasurementSelectionService.Change;
@@ -17,6 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -59,11 +61,13 @@ public class DeviceMeasurementSelectionController {
 
     private final MeasurementSelectionService selections;
     private final MeasurementCatalog catalog;
+    private final ObjectProvider<MeasurementConfigPublisher> publisher;
 
     public DeviceMeasurementSelectionController(MeasurementSelectionService selections,
-            MeasurementCatalog catalog) {
+            MeasurementCatalog catalog, ObjectProvider<MeasurementConfigPublisher> publisher) {
         this.selections = selections;
         this.catalog = catalog;
+        this.publisher = publisher;
     }
 
     /** Desired state + immutable history + current annual-volume estimate. */
@@ -120,9 +124,11 @@ public class DeviceMeasurementSelectionController {
     public State change(@PathVariable UUID deviceId, @PathVariable String pointKey,
             @Valid @RequestBody SelectionChangeRequest request,
             @AuthenticationPrincipal Jwt caller) {
-        return selections.change(deviceId, pointKey,
+        State state = selections.change(deviceId, pointKey,
                 new Change(request.expectedRevision().longValue(), request.idempotencyKey(),
                         request.enabled().booleanValue(), request.cadenceS()), actor(caller));
+        publish(deviceId, state);
+        return state;
     }
 
     /** “Eigenen Messwert hinzufügen”: validated, read-only free register. */
@@ -130,9 +136,16 @@ public class DeviceMeasurementSelectionController {
     public State custom(@PathVariable UUID deviceId,
             @Valid @RequestBody CustomPointRequest request,
             @AuthenticationPrincipal Jwt caller) {
-        return selections.addCustom(deviceId,
+        State state = selections.addCustom(deviceId,
                 new CustomChange(request.expectedRevision(), request.idempotencyKey(),
                         request.definition()), actor(caller));
+        publish(deviceId, state);
+        return state;
+    }
+
+    private void publish(UUID deviceId, State state) {
+        MeasurementConfigPublisher p = publisher.getIfAvailable();
+        if (p != null) p.publish(selections.requireDevice(deviceId), state);
     }
 
     private static Actor actor(Jwt caller) {

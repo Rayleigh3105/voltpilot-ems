@@ -56,6 +56,7 @@ class WriterPipeTest {
     private static final String OBSERVED_AT = "2026-07-01T08:58:45.827Z";
     private static final String RAW_TOPIC = "telemetry.raw";
     private static final String V2_RAW_TOPIC = "telemetry-v2.raw";
+    private static final String MEASUREMENTS_RAW_TOPIC = "measurements.raw";
     private static final String APP_PW = "voltpilot_app_test_pw";
 
     @Container
@@ -75,6 +76,7 @@ class WriterPipeTest {
     static void wire(DynamicPropertyRegistry registry) {
         registry.add("spring.kafka.bootstrap-servers", REDPANDA::getBootstrapServers);
         registry.add("voltpilot.redpanda.telemetry-topic", () -> RAW_TOPIC);
+        registry.add("voltpilot.redpanda.measurements-topic", () -> MEASUREMENTS_RAW_TOPIC);
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", () -> "voltpilot_app");
         registry.add("spring.datasource.password", () -> APP_PW);
@@ -406,6 +408,200 @@ class WriterPipeTest {
         assertThat(v2RowsForDevice(plainDevice)).isZero();
     }
 
+    @Test
+    void additionalMeasurementsAreNoBackfillIdempotentAndTenantFenced() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "30000000-0000-0000-0000-000000000003";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            st.execute("INSERT INTO device(id,tenant_id,site_id,data_purged_before) VALUES ('"
+                    + device + "','" + TENANT_A + "','" + SITE
+                    + "','2026-08-25T11:30:00Z')");
+            st.execute("INSERT INTO measurement_catalog_point_metadata VALUES "
+                    + "('2026.08.25.1','deye.hybrid_1p.battery.battery-temperature','gauge',900),"
+                    + "('2026.08.25.1','deye.hybrid_1p.battery.battery-voltage','gauge',900)");
+            st.execute("INSERT INTO device_measurement_selection(tenant_id,site_id,device_id,"
+                    + "point_key,enabled,cadence_s,desired_revision,enabled_at,catalog_version,"
+                    + "changed_by,apply_status,applied_at,retention_class,raw_retention_days,"
+                    + "long_term_cadence_s,long_term_strategy) VALUES "
+                    + "('" + TENANT_A + "','" + SITE + "','" + device
+                    + "','deye.hybrid_1p.battery.battery-temperature',true,60,1,"
+                    + "'2026-08-25T11:00:00Z','2026.08.25.1','test','applied',"
+                    + "'2026-08-25T11:00:01Z','thermal_bms',90,900,'fifteen_minute'),"
+                    + "('" + TENANT_A + "','" + SITE + "','" + device
+                    + "','deye.hybrid_1p.battery.battery-voltage',true,60,1,"
+                    + "'2026-08-25T11:00:00Z','2026.08.25.1','test','applied',"
+                    + "'2026-08-25T11:00:01Z','thermal_bms',90,900,'fifteen_minute')");
+            for (String[] point : new String[][] {
+                    {"test.energy", "counter"}, {"test.state", "state"},
+                    {"test.text", "text"}, {"test.flags", "bitfield"}}) {
+                st.execute("INSERT INTO measurement_catalog_point_metadata VALUES "
+                        + "('2026.08.25.1','" + point[0] + "','" + point[1] + "',900)");
+                st.execute("INSERT INTO device_measurement_selection(tenant_id,site_id,device_id,"
+                        + "point_key,enabled,cadence_s,desired_revision,enabled_at,catalog_version,"
+                        + "changed_by,apply_status,applied_at,retention_class,raw_retention_days,"
+                        + "long_term_cadence_s,long_term_strategy) VALUES ('" + TENANT_A + "','"
+                        + SITE + "','" + device + "','" + point[0] + "',true,60,1,"
+                        + "'2026-08-25T11:00:00Z','2026.08.25.1','test','applied',"
+                        + "'2026-08-25T11:00:01Z','state_event',90,900,'event_history')");
+            }
+        }
+        String event = "{\"schema_version\":\"1.0\",\"event_id\":\"" + UUID.randomUUID()
+                + "\",\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + device
+                + "\",\"catalog_version\":\"2026.08.25.1\",\"sequence\":41,"
+                + "\"observed_at\":\"2026-08-25T12:00:00Z\","
+                + "\"ingested_at\":\"2026-08-25T12:00:01Z\","
+                + "\"source_topic\":\"ems/" + TENANT_A + "/" + SITE + "/" + device
+                + "/v2/measurement-samples\",\"gap\":true,\"dropped_samples\":2,"
+                + "\"samples\":[{\"point_key\":\"deye.hybrid_1p.battery.battery-temperature\","
+                + "\"raw\":250,\"decoded\":25,\"quality\":\"good\"},{\"point_key\":"
+                + "\"deye.hybrid_1p.battery.battery-voltage\",\"observed_at\":"
+                + "\"2026-08-25T11:15:00Z\",\"raw\":5200,\"decoded\":52,"
+                + "\"quality\":\"good\"},{\"point_key\":\"test.energy\",\"raw\":1000,"
+                + "\"decoded\":100,\"quality\":\"good\"},{\"point_key\":\"test.state\","
+                + "\"raw\":1,\"decoded\":1,\"quality\":\"good\"},{\"point_key\":"
+                + "\"test.text\",\"raw\":\"A\",\"decoded\":\"A\",\"quality\":\"good\"},"
+                + "{\"point_key\":\"test.flags\",\"raw\":3,\"decoded\":3,"
+                + "\"quality\":\"good\"}]}";
+        String transitionEvent = event.replaceFirst("\\\"event_id\\\":\\\"[^\\\"]+",
+                        "\\\"event_id\\\":\\\"" + UUID.randomUUID())
+                .replace("\"sequence\":41", "\"sequence\":42")
+                .replace("2026-08-25T12:00:00Z", "2026-08-25T12:01:00Z")
+                .replace("\"raw\":250,\"decoded\":25,\"quality\":\"good\"",
+                        "\"raw\":300,\"decoded\":30,\"quality\":\"device_error\"")
+                .replace("\"raw\":1000,\"decoded\":100", "\"raw\":50,\"decoded\":5")
+                .replace("\"raw\":1,\"decoded\":1", "\"raw\":2,\"decoded\":2")
+                .replace("\"raw\":\"A\",\"decoded\":\"A\"",
+                        "\"raw\":\"B\",\"decoded\":\"B\"")
+                .replace("\"raw\":3,\"decoded\":3", "\"raw\":5,\"decoded\":5")
+                .replace("\"gap\":true,\"dropped_samples\":2",
+                        "\"gap\":false,\"dropped_samples\":0");
+        try (KafkaProducer<String, String> producer = producer()) {
+            String key = TENANT_A + ":" + SITE + ":" + device;
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, key, event)).get();
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, key, event)).get();
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, key, transitionEvent)).get();
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, key, transitionEvent)).get();
+            producer.flush();
+        }
+
+        awaitMeasurementRows(device, 10);
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT raw_numeric,decoded_numeric,catalog_version,"
+                        + "edge_sequence FROM device_measurement_sample WHERE device_id='" + device
+                        + "' AND point_key='deye.hybrid_1p.battery.battery-temperature' "
+                        + "AND edge_sequence=41")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getDouble(1)).isEqualTo(250.0);
+            assertThat(rs.getDouble(2)).isEqualTo(25.0);
+            assertThat(rs.getString(3)).isEqualTo("2026.08.25.1");
+            assertThat(rs.getLong(4)).isEqualTo(41L);
+        }
+        assertThat(measurementRowsVisible(TENANT_A, device)).isEqualTo(10L);
+        assertThat(measurementRowsVisible(TENANT_B, device)).isZero();
+        // The second selected sample is newer than enabled_at, but remains
+        // absent because replay may never resurrect pre-purge history.
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT event_kind,details::text "
+                        + "FROM device_measurement_event WHERE device_id='" + device + "'")) {
+            java.util.Map<String, String> events = new java.util.HashMap<>();
+            while (rs.next()) events.put(rs.getString(1), rs.getString(2));
+            assertThat(events.keySet()).contains("data_gap", "error_change", "counter_reset",
+                    "state_change", "text_change", "bitfield_change");
+            assertThat(events.get("bitfield_change")).contains("set_bits", "cleared_bits");
+        }
+    }
+
+    @Test
+    void concreteOcppSelectionPreservesLargeRawAndRecordsQualityRecovery() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "30000000-0000-0000-0000-0000000000f3";
+        String template = "ocpp.1_6.metervalues.voltage.context[*].format[*].phase[*].location[*].unit[*]";
+        String concrete = "ocpp.1_6.metervalues.voltage.context[sample-periodic].format[raw].phase[l1-n].location[outlet].unit[v]";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            st.execute("INSERT INTO device(id,tenant_id,site_id) VALUES ('" + device + "','"
+                    + TENANT_A + "','" + SITE + "')");
+            st.execute("INSERT INTO measurement_catalog_point_metadata VALUES ('2026.08.25.1','"
+                    + template + "','gauge',900)");
+            st.execute("INSERT INTO device_measurement_selection(tenant_id,site_id,device_id,"
+                    + "point_key,enabled,cadence_s,desired_revision,enabled_at,catalog_version,"
+                    + "changed_by,apply_status,applied_at,retention_class,raw_retention_days,"
+                    + "long_term_cadence_s,long_term_strategy) VALUES ('" + TENANT_A + "','"
+                    + SITE + "','" + device + "','" + template + "',true,60,1,"
+                    + "'2026-08-25T11:00:00Z','2026.08.25.1','test','applied',"
+                    + "'2026-08-25T11:00:01Z','state_event',90,900,'fifteen_minute')");
+        }
+        try (KafkaProducer<String, String> producer = producer()) {
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, TENANT_A + ":" + SITE
+                    + ":" + device, measurementEvent(device, concrete, 50,
+                            "2026-08-25T12:00:00Z", "good"))).get();
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, TENANT_A + ":" + SITE
+                    + ":" + device, measurementEvent(device, concrete, 51,
+                            "2026-08-25T12:01:00Z", "device_error"))).get();
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, TENANT_A + ":" + SITE
+                    + ":" + device, measurementEvent(device, concrete, 52,
+                            "2026-08-25T12:02:00Z", "good"))).get();
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, TENANT_A + ":" + SITE
+                    + ":" + device, measurementStringEvent(device, concrete, 53,
+                            "2026-08-25T12:03:00Z", "9007199254740993"))).get();
+            producer.flush();
+        }
+        awaitMeasurementRows(device, 4);
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT raw_numeric::text FROM device_measurement_sample "
+                        + "WHERE device_id='" + device + "' ORDER BY edge_sequence LIMIT 1")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isEqualTo("9007199254740993");
+        }
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT raw_text,decoded_numeric,decoded_text "
+                        + "FROM device_measurement_sample "
+                        + "WHERE device_id='" + device + "' AND edge_sequence=53")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isEqualTo("9007199254740993");
+            assertThat(rs.getBigDecimal(2)).as("rounded decoded must stay absent").isNull();
+            assertThat(rs.getString(3)).as("decoded string was not emitted by the edge").isNull();
+        }
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT count(*) FROM device_measurement_event "
+                        + "WHERE device_id='" + device + "' AND event_kind='error_change'")) {
+            rs.next();
+            assertThat(rs.getLong(1)).as("error transition and good recovery").isEqualTo(2);
+        }
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT apply_status FROM device_measurement_selection "
+                        + "WHERE device_id='" + device + "' AND point_key='" + template + "'")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isEqualTo("first_sample");
+        }
+    }
+
+    private static String measurementEvent(String device, String point, long sequence,
+            String observedAt, String quality) {
+        return "{\"schema_version\":\"1.0\",\"event_id\":\"" + UUID.randomUUID()
+                + "\",\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + device
+                + "\",\"catalog_version\":\"2026.08.25.1\",\"sequence\":" + sequence
+                + ",\"observed_at\":\"" + observedAt + "\",\"ingested_at\":\""
+                + observedAt + "\",\"source_topic\":\"ems/" + TENANT_A + "/" + SITE + "/"
+                + device + "/v2/measurement-samples\",\"gap\":false,\"dropped_samples\":0,"
+                + "\"samples\":[{\"point_key\":\"" + point
+                + "\",\"raw\":9007199254740993,\"quality\":\"" + quality + "\"}]}";
+    }
+
+    private static String measurementStringEvent(String device, String point, long sequence,
+            String observedAt, String raw) {
+        return "{\"schema_version\":\"1.0\",\"event_id\":\"" + UUID.randomUUID()
+                + "\",\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + device
+                + "\",\"catalog_version\":\"2026.08.25.1\",\"sequence\":" + sequence
+                + ",\"observed_at\":\"" + observedAt + "\",\"ingested_at\":\""
+                + observedAt + "\",\"source_topic\":\"ems/" + TENANT_A + "/" + SITE + "/"
+                + device + "/v2/measurement-samples\",\"gap\":false,\"dropped_samples\":0,"
+                + "\"samples\":[{\"point_key\":\"" + point
+                + "\",\"raw\":\"" + raw + "\",\"quality\":\"good\"}]}";
+    }
+
     private static String migratedEvent(String device, String site) {
         return "{"
                 + "\"schema_version\":\"1.0\","
@@ -428,6 +624,37 @@ class WriterPipeTest {
                         "SELECT count(*) FROM telemetry_v2 WHERE device_id = '" + device + "'")) {
             rs.next();
             return rs.getLong(1);
+        }
+    }
+
+    private void awaitMeasurementRows(String device, int expected) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
+        long count = -1;
+        while (System.nanoTime() < deadline) {
+            try (Connection c = admin(); Statement st = c.createStatement();
+                    ResultSet rs = st.executeQuery("SELECT count(*) FROM device_measurement_sample "
+                            + "WHERE device_id='" + device + "'")) {
+                rs.next();
+                count = rs.getLong(1);
+            }
+            if (count == expected) return;
+            Thread.sleep(500);
+        }
+        throw new AssertionError("expected " + expected + " measurement row(s), saw " + count);
+    }
+
+    private long measurementRowsVisible(String tenant, String device) throws Exception {
+        Properties p = new Properties();
+        p.put("user", "voltpilot_app");
+        p.put("password", APP_PW);
+        try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(), p);
+                Statement st = c.createStatement()) {
+            st.execute("SELECT set_config('app.tenant_id','" + tenant + "',false)");
+            try (ResultSet rs = st.executeQuery("SELECT count(*) FROM device_measurement_sample "
+                    + "WHERE device_id='" + device + "'")) {
+                rs.next();
+                return rs.getLong(1);
+            }
         }
     }
 

@@ -13,6 +13,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
@@ -112,6 +113,27 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 		Port:    a.Cfg.OcppPort,
 		DataDir: a.Cfg.DataDir,
 		Log:     slog.Default().WithGroup("ocpp"),
+		OnSampledValues: func(samples []csms.SampledReading, observedAt time.Time) {
+			raw, marshalErr := json.Marshal(struct {
+				ObservedAt time.Time             `json:"observed_at"`
+				Samples    []csms.SampledReading `json:"samples"`
+			}{observedAt.UTC(), samples})
+			if marshalErr == nil && a.Bus != nil {
+				if publishErr := a.Bus.Publish("edge/measurements/ocpp-meter-values", raw, false); publishErr != nil {
+					slog.Warn("OCPP-Messwerte konnten lokal nicht publiziert werden", "err", publishErr)
+				}
+			}
+		},
+		OnMeasurementConfigurationResult: func(result csms.MeasurementConfigurationResult) {
+			raw, marshalErr := json.Marshal(result)
+			if marshalErr == nil && a.Bus != nil {
+				if publishErr := a.Bus.Publish(measurements.LocalOcppConfigResultTopic,
+					raw, false); publishErr != nil {
+					slog.Warn("OCPP-Messkonfiguration Ergebnis konnte lokal nicht publiziert werden",
+						"err", publishErr)
+				}
+			}
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("Ladepunkt-Server: %w", err)

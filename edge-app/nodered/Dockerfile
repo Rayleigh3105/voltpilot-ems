@@ -66,6 +66,8 @@ RUN chmod 0755 /usr/local/bin/deye /usr/local/bin/vp-nodered-entrypoint.sh \
 # vp-palette (local package) + Modbus nodes + bcryptjs (adminAuth hash in
 # settings.js), installed alongside the template.
 COPY vp-palette /opt/vp-template/vp-palette
+COPY measurements /opt/vp-template/measurements
+COPY deye /opt/vp-template/deye
 COPY package.json /opt/vp-template/package.json
 RUN cd /opt/vp-template && npm install --omit=dev
 

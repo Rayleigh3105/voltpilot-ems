@@ -1,0 +1,1 @@
+{"schema_version":"2.0","tenant_id":"00000000-0000-0000-0000-000000000001","site_id":"00000000-0000-0000-0000-000000000002","device_id":"00000000-0000-0000-0000-000000000003","revision":7,"applied_at":"2026-08-25T12:00:00Z","accepted":["deye.hybrid_1p.battery.battery"],"rejected":[],"edge_version":"2026.08.25"}

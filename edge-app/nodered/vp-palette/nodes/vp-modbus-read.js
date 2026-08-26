@@ -28,6 +28,7 @@
 
 const conn = require('../lib/modbus-conn.js');
 const codec = require('../lib/modbus-tcp.js');
+const sharedBus = require('../../measurements/shared-bus-arbiter');
 
 var privateHost = require('../lib/private-host');
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -129,14 +130,14 @@ module.exports = function (RED) {
         return;
       }
       busySince = now;
-      conn.readRegisters({
+      sharedBus.runPoll({ host: host, port: port, unitId: unitId }, () => conn.readRegisters({
         host: host,
         port: port,
         unitId: unitId,
         fc: fc,
         addr: address,
         count: codec.registerCount(readCfg.dataType),
-      })
+      }))
         .then((regs) => {
           const value = computeValue(regs, readCfg);
           if (value === null) {

@@ -11,6 +11,7 @@ const vm = require('node:vm');
 const net = require('node:net');
 const http = require('node:http');
 const https = require('node:https');
+const sharedBus = require('./measurements/shared-bus-arbiter');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -120,7 +121,7 @@ async function runFunctionNode(func, msg) {
     node: { status() {}, error() {}, warn() {}, send() {} },
     context: { get: (k) => ctxStore[k], set: (k, v) => { ctxStore[k] = v; } },
     flow: { get() {}, set() {} },
-    global: { get: (k) => ({ net, http, https }[k]) },
+    global: { get: (k) => ({ net, http, https, vpSharedBusArbiter: sharedBus }[k]) },
     Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, Map, setTimeout, clearTimeout,
   };
   const script = new vm.Script('(function(){' + func + '\n})()');

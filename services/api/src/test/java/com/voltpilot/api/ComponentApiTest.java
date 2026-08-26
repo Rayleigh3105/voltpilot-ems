@@ -563,6 +563,32 @@ class ComponentApiTest {
                     statement.setObject(5, deviceId);
                     statement.executeUpdate();
                 }
+                try (var statement = c.prepareStatement(
+                        "INSERT INTO device_measurement_sample (time, received_at, tenant_id, "
+                                + "site_id, device_id, point_key, raw_numeric, quality, catalog_version, "
+                                + "edge_sequence, aggregation_kind, long_term_cadence_s) "
+                                + "VALUES (?, ?, ?::uuid, ?::uuid, ?, ?, 7.5, 'good', "
+                                + "'move-regression', 1, 'gauge', 300)")) {
+                    statement.setObject(1, java.sql.Timestamp.from(sampleTime));
+                    statement.setObject(2, java.sql.Timestamp.from(sampleTime));
+                    statement.setString(3, TENANT_A);
+                    statement.setString(4, source.toString());
+                    statement.setObject(5, deviceId);
+                    statement.setString(6, BATTERY_CURRENT_POINT);
+                    statement.executeUpdate();
+                }
+                try (var statement = c.prepareStatement(
+                        "INSERT INTO device_measurement_event (occurred_at, tenant_id, site_id, "
+                                + "device_id, point_key, event_kind, value_text, catalog_version, "
+                                + "edge_sequence) VALUES (?, ?::uuid, ?::uuid, ?, ?, "
+                                + "'state_change', 'before-move', 'move-regression', 1)")) {
+                    statement.setObject(1, java.sql.Timestamp.from(sampleTime));
+                    statement.setString(2, TENANT_A);
+                    statement.setString(3, source.toString());
+                    statement.setObject(4, deviceId);
+                    statement.setString(5, BATTERY_CURRENT_POINT);
+                    statement.executeUpdate();
+                }
             }
 
             JsonNode preview = getJson("/api/v1/devices/" + deviceId + "/move-preview", customer);
@@ -592,12 +618,47 @@ class ComponentApiTest {
                     .isEqualTo(HttpStatus.CONFLICT);
 
             try (Connection c = superuser(); Statement st = c.createStatement()) {
+                st.execute("INSERT INTO device_measurement_sample (time, received_at, tenant_id, "
+                        + "site_id, device_id, point_key, raw_numeric, quality, catalog_version, "
+                        + "edge_sequence, aggregation_kind, long_term_cadence_s) VALUES ("
+                        + "'2026-08-24T10:00:30Z', '2026-08-24T10:00:30Z', '" + TENANT_A
+                        + "', '" + target + "', '" + deviceId + "', '" + BATTERY_CURRENT_POINT
+                        + "', 8.5, 'good', 'move-regression', 2, 'gauge', 300)");
+                st.execute("CALL refresh_device_measurement_rollup("
+                        + "'device_measurement_rollup_5m', interval '5 minutes', "
+                        + "'2026-08-24T10:00:00Z')");
                 try (var rs = st.executeQuery("SELECT count(*), min(site_id::text) FROM telemetry "
                         + "WHERE device_id = '" + deviceId + "'")) {
                     assertThat(rs.next()).isTrue();
                     assertThat(rs.getInt(1)).isEqualTo(1);
                     assertThat(rs.getString(2)).as("alte Samples behalten ihren damaligen Standort")
                             .isEqualTo(source.toString());
+                }
+                try (var rs = st.executeQuery("SELECT site_id::text, count(*) FROM "
+                        + "device_measurement_sample WHERE device_id = '" + deviceId
+                        + "' GROUP BY site_id ORDER BY site_id::text")) {
+                    Map<String, Integer> sites = new java.util.HashMap<>();
+                    while (rs.next()) sites.put(rs.getString(1), rs.getInt(2));
+                    assertThat(sites).as("Rohmessungen bleiben am historischen Standort")
+                            .containsExactlyInAnyOrderEntriesOf(Map.of(
+                                    source.toString(), 1, target.toString(), 1));
+                }
+                try (var rs = st.executeQuery("SELECT site_id::text, value_text FROM "
+                        + "device_measurement_event WHERE device_id = '" + deviceId + "'")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString(1)).as("Messereignisse wandern nicht mit")
+                            .isEqualTo(source.toString());
+                    assertThat(rs.getString(2)).isEqualTo("before-move");
+                    assertThat(rs.next()).isFalse();
+                }
+                try (var rs = st.executeQuery("SELECT site_id::text, sample_count FROM "
+                        + "device_measurement_rollup_5m WHERE device_id = '" + deviceId
+                        + "' AND point_key = '" + BATTERY_CURRENT_POINT + "'")) {
+                    Map<String, Long> sites = new java.util.HashMap<>();
+                    while (rs.next()) sites.put(rs.getString(1), rs.getLong(2));
+                    assertThat(sites).as("ein Umzug innerhalb eines Buckets überschreibt kein Standort-Rollup")
+                            .containsExactlyInAnyOrderEntriesOf(Map.of(
+                                    source.toString(), 1L, target.toString(), 1L));
                 }
                 try (var rs = st.executeQuery("SELECT count(*) FROM device_site_assignment "
                         + "WHERE device_id = '" + deviceId + "' AND from_site_id = '" + source

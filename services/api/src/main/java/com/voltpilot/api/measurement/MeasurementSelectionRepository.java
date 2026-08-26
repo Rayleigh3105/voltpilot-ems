@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 /** RLS-scoped persistence for current desired selections and their paper trail. */
 @Repository
@@ -113,6 +115,16 @@ public class MeasurementSelectionRepository {
         return value == null ? 0L : value;
     }
 
+    /** Highest full-plan acknowledgement already applied for this device. */
+    public long acknowledgedRevision(UUID deviceId) {
+        Long value = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(desired_revision), 0) "
+                        + "FROM device_measurement_selection_event "
+                        + "WHERE device_id = ? AND event_kind = 'edge_ack'",
+                Long.class, deviceId);
+        return value == null ? 0L : value;
+    }
+
     public Event eventByRequest(UUID deviceId, UUID requestId) {
         List<Event> rows = jdbc.query("SELECT " + EVENT_COLUMNS
                         + " FROM device_measurement_selection_event "
@@ -191,6 +203,69 @@ public class MeasurementSelectionRepository {
                 applyReason, customJson,
                 retention.retentionClass(), retention.rawRetentionDays(),
                 retention.longTermCadenceS(), retention.longTermStrategy());
+    }
+
+    /** Apply one monotone full-plan acknowledgement atomically. */
+    @Transactional
+    public int applyAcknowledgement(UUID deviceId, long revision, Instant appliedAt,
+            Collection<String> accepted, Map<String, String> rejected, String edgeVersion) {
+        int updated = jdbc.update("UPDATE device_measurement_selection SET "
+                        + "apply_status = CASE "
+                        + " WHEN NOT enabled THEN 'applied' "
+                        + " WHEN point_key = ANY (string_to_array(?, E'\\x1f')) THEN 'applied' "
+                        + " WHEN point_key = ANY (string_to_array(?, E'\\x1f')) THEN 'rejected' "
+                        + " ELSE apply_status END, "
+                        + "apply_reason = CASE "
+                        + " WHEN NOT enabled OR point_key = ANY (string_to_array(?, E'\\x1f')) THEN ? "
+                        + " WHEN point_key = ANY (string_to_array(?, E'\\x1f')) THEN ?::jsonb ->> point_key "
+                        + " ELSE apply_reason END, "
+                        + "applied_at = CASE WHEN NOT enabled OR point_key = ANY (string_to_array(?, E'\\x1f')) "
+                        + " THEN ? ELSE NULL END "
+                        + "WHERE device_id = ? AND desired_revision <= ?",
+                joined(accepted), joined(rejected.keySet()), joined(accepted),
+                "Vom Edge " + edgeVersion + " angewendet.", joined(rejected.keySet()),
+                jsonObject(rejected), joined(accepted), Timestamp.from(appliedAt), deviceId,
+                revision);
+
+        jdbc.update("INSERT INTO device_measurement_selection_event "
+                        + "(tenant_id,site_id,device_id,point_key,desired_revision,event_kind,"
+                        + "requested_at,requested_enabled,requested_cadence_s,enabled_at,disabled_at,"
+                        + "catalog_version,actor,actor_name,apply_status,apply_reason,applied_at,"
+                        + "custom_definition,retention_class,raw_retention_days,long_term_cadence_s,"
+                        + "long_term_strategy) "
+                        + "SELECT e.tenant_id,e.site_id,e.device_id,e.point_key,e.desired_revision,"
+                        + "'edge_ack',?,e.requested_enabled,e.requested_cadence_s,e.enabled_at,"
+                        + "e.disabled_at,e.catalog_version,'edge',?,"
+                        + "CASE WHEN jsonb_exists(?::jsonb,e.point_key) THEN 'rejected' ELSE 'applied' END,"
+                        + "COALESCE(?::jsonb ->> e.point_key, ?),"
+                        + "CASE WHEN jsonb_exists(?::jsonb,e.point_key) THEN NULL ELSE ? END,"
+                        + "e.custom_definition,"
+                        + "e.retention_class,e.raw_retention_days,e.long_term_cadence_s,"
+                        + "e.long_term_strategy FROM device_measurement_selection_event e "
+                        + "WHERE e.device_id=? AND e.desired_revision=? "
+                        + "AND e.event_kind='selection_requested' ON CONFLICT DO NOTHING",
+                Timestamp.from(appliedAt), edgeVersion, jsonObject(rejected), jsonObject(rejected),
+                "Vom Edge " + edgeVersion + " angewendet.", jsonObject(rejected),
+                Timestamp.from(appliedAt), deviceId, revision);
+        return updated;
+    }
+
+    private static String joined(Collection<String> values) {
+        return String.join("\u001f", values);
+    }
+
+    private static String jsonObject(Map<String, String> values) {
+        StringBuilder out = new StringBuilder("{");
+        for (Map.Entry<String, String> e : values.entrySet()) {
+            if (out.length() > 1) out.append(',');
+            out.append('"').append(escape(e.getKey())).append("\":\"")
+                    .append(escape(e.getValue())).append('"');
+        }
+        return out.append('}').toString();
+    }
+
+    private static String escape(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private static Row mapRow(ResultSet rs, int n) throws SQLException {

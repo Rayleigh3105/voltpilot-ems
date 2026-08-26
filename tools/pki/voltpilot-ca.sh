@@ -203,6 +203,8 @@ write_acl_grant() {
 %%<<device ${device} tenant ${tenant} site ${site}>>
 {allow, {username, "${device}"}, publish,   ["${base}/telemetry", "${base}/status"]}.
 {allow, {username, "${device}"}, subscribe, ["${base}/schedule", "${base}/command", "${base}/config"]}.
+{deny, {username, "${device}"}, publish,   ["${base}/v2/measurement-config"]}.
+{deny, {username, "${device}"}, subscribe, ["${base}/v2/measurement-config-status", "${base}/v2/measurement-samples"]}.
 {allow, {username, "${device}"}, publish,   ["${base}/v2/#"]}.
 {allow, {username, "${device}"}, subscribe, ["${base}/v2/#"]}.
 %%<<end device ${device}>>

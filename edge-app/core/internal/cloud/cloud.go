@@ -37,20 +37,21 @@ type Link struct {
 	// networkFn is the link-level reachability source (see Options.NetworkFn).
 	networkFn func() *NetworkSummary
 
-	onSchedule        func(payload []byte)
-	onCommand         func(payload []byte) bool
-	onEntities        func(payload []byte)
-	onPlanV2          func(payload []byte)
-	onFlows           func(payload []byte)
-	onUpdateTarget    func(payload []byte)
-	onApplyRequest    func(payload []byte)
-	onProbeRequest    func(payload []byte)
-	onRegisterWrite   func(payload []byte)
-	onDesiredDownlink func(payload []byte)
-	onControlCert     func(payload []byte)
-	onChargingConfig  func(payload []byte)
-	onChargingBoost   func(payload []byte)
-	onConnect         func(connected bool)
+	onSchedule          func(payload []byte)
+	onCommand           func(payload []byte) bool
+	onEntities          func(payload []byte)
+	onPlanV2            func(payload []byte)
+	onFlows             func(payload []byte)
+	onUpdateTarget      func(payload []byte)
+	onApplyRequest      func(payload []byte)
+	onProbeRequest      func(payload []byte)
+	onRegisterWrite     func(payload []byte)
+	onDesiredDownlink   func(payload []byte)
+	onMeasurementConfig func(payload []byte) bool
+	onControlCert       func(payload []byte)
+	onChargingConfig    func(payload []byte)
+	onChargingBoost     func(payload []byte)
+	onConnect           func(connected bool)
 }
 
 type downlinkRoute struct {
@@ -173,6 +174,12 @@ type Options struct {
 	// fortsetzen"). NON-retained like the apply approval: a manual wish must
 	// never be revived as an immortal retained desire (§16).
 	OnDesiredDownlink func(payload []byte)
+	// OnMeasurementConfig receives the retained complete additional-measurement
+	// desired state. Older binaries omit this callback and therefore safely
+	// ignore the additive topic. Return true only after the desired state has
+	// been durably adopted; false keeps the QoS1 delivery unacknowledged so the
+	// broker retries it.
+	OnMeasurementConfig func(payload []byte) bool
 	// OnConnect is called with the connection state on every transition.
 	OnConnect func(connected bool)
 	// ClientID override for dev; production leaves it to the broker (CN).
@@ -211,9 +218,10 @@ func New(o Options) (*Link, error) {
 		onChargingConfig: o.OnChargingConfig,
 		onChargingBoost:  o.OnChargingBoost,
 		onApplyRequest:   o.OnApplyRequest, onProbeRequest: o.OnProbeRequest,
-		onRegisterWrite:   o.OnRegisterWrite,
-		onDesiredDownlink: o.OnDesiredDownlink,
-		onConnect:         o.OnConnect}
+		onRegisterWrite:     o.OnRegisterWrite,
+		onDesiredDownlink:   o.OnDesiredDownlink,
+		onMeasurementConfig: o.OnMeasurementConfig,
+		onConnect:           o.OnConnect}
 
 	opts := pahomqtt.NewClientOptions().
 		AddBroker(o.brokerURL()).
@@ -298,6 +306,11 @@ func (l *Link) buildDownlinkRoutes() []downlinkRoute {
 	add("v2/probe", l.onProbeRequest, false)
 	add("v2/register-write", l.onRegisterWrite, false)
 	add("v2/desired", l.onDesiredDownlink, false)
+	if l.onMeasurementConfig != nil {
+		routes = append(routes, downlinkRoute{l.topic("v2/measurement-config"), func(_ pahomqtt.Client, msg pahomqtt.Message) {
+			handleMeasurementConfigMessage(l.onMeasurementConfig, msg)
+		}})
+	}
 	return routes
 }
 
@@ -312,6 +325,19 @@ func ackingDownlink(handler func([]byte), deliverEmpty bool) pahomqtt.MessageHan
 
 func handleCommandMessage(handler func([]byte) bool, msg pahomqtt.Message) {
 	if handler != nil && len(msg.Payload()) > 0 && !handler(msg.Payload()) {
+		return
+	}
+	msg.Ack()
+}
+
+func handleMeasurementConfigMessage(handler func([]byte) bool, msg pahomqtt.Message) {
+	// An empty retained payload only clears the broker-side desired document;
+	// it has no local desired state to apply and is therefore terminal.
+	if len(msg.Payload()) == 0 {
+		msg.Ack()
+		return
+	}
+	if handler == nil || !handler(msg.Payload()) {
 		return
 	}
 	msg.Ack()
@@ -1534,6 +1560,25 @@ func (l *Link) PublishRegisterWriteResult(payload []byte) error {
 	tok := l.client.Publish(l.topic("v2/register-write-result"), 1, false, payload)
 	if !tok.WaitTimeout(10 * time.Second) {
 		return fmt.Errorf("register write result publish timed out")
+	}
+	return tok.Error()
+}
+
+// PublishMeasurementConfigStatus publishes the latest apply receipt retained;
+// reconnecting cloud consumers see the edge's actual revision immediately.
+func (l *Link) PublishMeasurementConfigStatus(payload []byte) error {
+	tok := l.client.Publish(l.topic("v2/measurement-config-status"), 1, true, payload)
+	if !tok.WaitTimeout(10 * time.Second) {
+		return fmt.Errorf("measurement status publish timed out")
+	}
+	return tok.Error()
+}
+
+// PublishMeasurementSamples drains one durable outbox envelope QoS1/non-retained.
+func (l *Link) PublishMeasurementSamples(payload []byte) error {
+	tok := l.client.Publish(l.topic("v2/measurement-samples"), 1, false, payload)
+	if !tok.WaitTimeout(30 * time.Second) {
+		return fmt.Errorf("measurement samples publish timed out")
 	}
 	return tok.Error()
 }

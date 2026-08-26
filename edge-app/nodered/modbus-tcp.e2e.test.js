@@ -15,6 +15,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const vm = require('node:vm');
 const net = require('node:net');
+const sharedBus = require('./measurements/shared-bus-arbiter');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -94,7 +95,7 @@ async function runFunctionNode(func, msg, ctxStore = {}, flowStore = {}) {
     node: { status() {}, error() {}, warn() {}, log() {}, send() {} },
     context: { get: (k) => ctxStore[k], set: (k, v) => { ctxStore[k] = v; } },
     flow: { get: (k) => flowStore[k], set: (k, v) => { flowStore[k] = v; } },
-    global: { get: (k) => (k === 'net' ? net : undefined) },
+    global: { get: (k) => (k === 'net' ? net : (k === 'vpSharedBusArbiter' ? sharedBus : undefined)) },
     Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, setTimeout, clearTimeout,
   };
   const script = new vm.Script('(function(){' + func + '\n})()');

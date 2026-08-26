@@ -54,8 +54,10 @@ CREATE POLICY telemetry_isolation ON telemetry
 CREATE TABLE IF NOT EXISTS device (
     id                 UUID PRIMARY KEY,
     tenant_id          UUID NOT NULL,
+    site_id            UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000002',
     data_purged_before TIMESTAMPTZ
 );
+CREATE UNIQUE INDEX uq_device_tenant_site_identity ON device(id, tenant_id, site_id);
 
 -- SELECT + UPDATE like the real grant (api V2 grants the app role full DML on
 -- device): the writer's SELECT ... FOR SHARE watermark lock (audit B6b)
@@ -118,5 +120,88 @@ ALTER TABLE telemetry_v2 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE telemetry_v2 FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS telemetry_v2_isolation ON telemetry_v2;
 CREATE POLICY telemetry_v2_isolation ON telemetry_v2
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+-- Slices 6-8 additional-measurement writer schema. This mirrors only columns
+-- touched by MeasurementWriteRepository; the complete DDL is API migration
+-- V20260841000000/V20260842000000 and is separately run by RlsIsolationTest.
+CREATE TABLE measurement_catalog_point_metadata (
+    catalog_version TEXT NOT NULL, point_key TEXT NOT NULL,
+    aggregation_kind TEXT NOT NULL, long_term_cadence_s INTEGER,
+    PRIMARY KEY(catalog_version,point_key)
+);
+GRANT SELECT ON measurement_catalog_point_metadata TO voltpilot_app;
+
+CREATE TABLE device_measurement_selection (
+    tenant_id UUID NOT NULL, site_id UUID NOT NULL, device_id UUID NOT NULL,
+    point_key TEXT NOT NULL, enabled BOOLEAN NOT NULL, cadence_s INTEGER,
+    desired_revision BIGINT NOT NULL, enabled_at TIMESTAMPTZ, disabled_at TIMESTAMPTZ,
+    catalog_version TEXT NOT NULL, changed_by TEXT NOT NULL, changed_at TIMESTAMPTZ DEFAULT now(),
+    apply_status TEXT NOT NULL, apply_reason TEXT, applied_at TIMESTAMPTZ,
+    custom_definition JSONB, retention_class TEXT NOT NULL, raw_retention_days INTEGER NOT NULL,
+    long_term_cadence_s INTEGER, long_term_strategy TEXT NOT NULL,
+    PRIMARY KEY(device_id,point_key),
+    FOREIGN KEY(device_id,tenant_id,site_id) REFERENCES device(id,tenant_id,site_id)
+);
+GRANT SELECT,UPDATE ON device_measurement_selection TO voltpilot_app;
+ALTER TABLE device_measurement_selection ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_measurement_selection FORCE ROW LEVEL SECURITY;
+CREATE POLICY device_measurement_selection_isolation ON device_measurement_selection
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+CREATE TABLE device_measurement_selection_event (
+    id BIGSERIAL PRIMARY KEY, tenant_id UUID NOT NULL, site_id UUID NOT NULL, device_id UUID NOT NULL,
+    point_key TEXT NOT NULL, desired_revision BIGINT NOT NULL, event_kind TEXT NOT NULL,
+    requested_at TIMESTAMPTZ NOT NULL, requested_enabled BOOLEAN NOT NULL,
+    requested_cadence_s INTEGER, enabled_at TIMESTAMPTZ, disabled_at TIMESTAMPTZ,
+    catalog_version TEXT NOT NULL, actor TEXT NOT NULL, actor_name TEXT,
+    apply_status TEXT NOT NULL, apply_reason TEXT, applied_at TIMESTAMPTZ,
+    custom_definition JSONB, retention_class TEXT NOT NULL, raw_retention_days INTEGER NOT NULL,
+    long_term_cadence_s INTEGER, long_term_strategy TEXT NOT NULL,
+    UNIQUE(device_id,desired_revision,event_kind)
+);
+GRANT SELECT,INSERT ON device_measurement_selection_event TO voltpilot_app;
+GRANT USAGE ON SEQUENCE device_measurement_selection_event_id_seq TO voltpilot_app;
+ALTER TABLE device_measurement_selection_event ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_measurement_selection_event FORCE ROW LEVEL SECURITY;
+CREATE POLICY device_measurement_selection_event_isolation ON device_measurement_selection_event
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+CREATE TABLE device_measurement_sample (
+    time TIMESTAMPTZ NOT NULL, received_at TIMESTAMPTZ NOT NULL, tenant_id UUID NOT NULL,
+    site_id UUID NOT NULL, device_id UUID NOT NULL, point_key TEXT NOT NULL,
+    raw_numeric NUMERIC, raw_text TEXT, decoded_numeric NUMERIC,
+    decoded_text TEXT, quality TEXT NOT NULL, catalog_version TEXT NOT NULL,
+    edge_sequence BIGINT NOT NULL, aggregation_kind TEXT NOT NULL, long_term_cadence_s INTEGER,
+    gap BOOLEAN NOT NULL, dropped_samples BIGINT NOT NULL, signed_data TEXT,
+    signed_data_format TEXT,
+    CHECK ((raw_numeric IS NOT NULL)::int + (raw_text IS NOT NULL)::int = 1)
+);
+SELECT create_hypertable('device_measurement_sample','time',if_not_exists=>TRUE);
+CREATE UNIQUE INDEX uq_device_measurement_sample_idempotency
+    ON device_measurement_sample(device_id,point_key,time,edge_sequence);
+GRANT SELECT,INSERT ON device_measurement_sample TO voltpilot_app;
+ALTER TABLE device_measurement_sample ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_measurement_sample FORCE ROW LEVEL SECURITY;
+CREATE POLICY device_measurement_sample_isolation ON device_measurement_sample
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+CREATE TABLE device_measurement_event (
+    occurred_at TIMESTAMPTZ NOT NULL, tenant_id UUID NOT NULL, site_id UUID NOT NULL,
+    device_id UUID NOT NULL, point_key TEXT NOT NULL, event_kind TEXT NOT NULL,
+    previous_numeric NUMERIC, value_numeric NUMERIC,
+    previous_text TEXT, value_text TEXT, catalog_version TEXT NOT NULL,
+    edge_sequence BIGINT NOT NULL, details JSONB NOT NULL,
+    UNIQUE(device_id,point_key,occurred_at,edge_sequence,event_kind)
+);
+SELECT create_hypertable('device_measurement_event','occurred_at',if_not_exists=>TRUE);
+GRANT SELECT,INSERT ON device_measurement_event TO voltpilot_app;
+ALTER TABLE device_measurement_event ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_measurement_event FORCE ROW LEVEL SECURITY;
+CREATE POLICY device_measurement_event_isolation ON device_measurement_event
     USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
     WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);

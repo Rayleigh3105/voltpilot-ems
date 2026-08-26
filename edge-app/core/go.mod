@@ -18,7 +18,7 @@ require (
 
 require (
 	github.com/gorilla/websocket v1.5.3
-	github.com/lorenzodonini/ocpp-go v0.19.0
+	github.com/lorenzodonini/ocpp-go v0.19.1-0.20250301194846-e61d3d8e9f4b
 	github.com/rs/xid v1.4.0 // indirect
 	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect

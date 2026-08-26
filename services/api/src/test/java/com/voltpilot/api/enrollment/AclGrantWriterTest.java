@@ -56,6 +56,14 @@ class AclGrantWriterTest {
         // is pinned shell-side in tools/pki/test-acl-grants.sh - change both
         // together (the EdgeRef shared-vector discipline).
         assertThat(content).contains(block(DEVICE) + "%%<<END GENERATED DEVICE GRANTS>>");
+        String base = "ems/" + TENANT + "/" + SITE + "/" + DEVICE + "/v2/";
+        assertThat(content.indexOf("deny, {username, \"" + DEVICE
+                + "\"}, publish,   [\"" + base + "measurement-config\"") )
+                .isLessThan(content.indexOf("allow, {username, \"" + DEVICE
+                        + "\"}, publish,   [\"" + base + "#\"") );
+        assertThat(content).contains("deny, {username, \"" + DEVICE
+                + "\"}, subscribe, [\"" + base + "measurement-config-status\", \""
+                + base + "measurement-samples\"]");
         // The surrounding policy is untouched.
         assertThat(content).contains("vp-internal").contains("{allow, all}.");
     }
@@ -490,6 +498,10 @@ class AclGrantWriterTest {
                 + "/telemetry\", \"" + base + "/status\"]}.\n"
                 + "{allow, {username, \"" + device + "\"}, subscribe, [\"" + base
                 + "/schedule\", \"" + base + "/command\", \"" + base + "/config\"]}.\n"
+                + "{deny, {username, \"" + device + "\"}, publish,   [\"" + base
+                + "/v2/measurement-config\"]}.\n"
+                + "{deny, {username, \"" + device + "\"}, subscribe, [\"" + base
+                + "/v2/measurement-config-status\", \"" + base + "/v2/measurement-samples\"]}.\n"
                 + "{allow, {username, \"" + device + "\"}, publish,   [\"" + base + "/v2/#\"]}.\n"
                 + "{allow, {username, \"" + device + "\"}, subscribe, [\"" + base + "/v2/#\"]}.\n"
                 + "%%<<end device " + device + ">>\n";
