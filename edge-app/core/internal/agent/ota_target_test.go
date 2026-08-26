@@ -333,7 +333,7 @@ func TestSupervisedApplyIsRecordedOnlyWhenItIsDemonstrablyTrue(t *testing.T) {
 func TestContractExampleEnvelopeIsParsedAsSpecified(t *testing.T) {
 	base := filepath.Join("..", "..", "..", "..", "docs", "contracts", "examples")
 	for _, name := range []string{
-		"mqtt-ota-target.valid.two-devices.json",
+		"mqtt-ota-target.valid.from-a-rollout.json",
 		"mqtt-ota-target.valid.single-device.json",
 	} {
 		raw, err := os.ReadFile(filepath.Join(base, name))
