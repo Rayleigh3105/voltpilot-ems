@@ -40,8 +40,7 @@ public class RolloutWatcher {
     /**
      * Alle 60 s. Die Kadenz muss deutlich unter dem Offline-Fenster
      * ({@link RolloutStates#OFFLINE_AFTER}, 5 min) liegen, damit ein Gerät
-     * nicht länger als nötig in einem überholten Zustand steht - und deutlich
-     * darüber wäre der Auto-Halt zu träge, um beim ersten Fehlschlag zu greifen.
+     * nicht länger als nötig in einem überholten Zustand steht.
      */
     @Scheduled(fixedDelayString = "${voltpilot.ota.watcher-interval-ms:60000}",
             initialDelayString = "${voltpilot.ota.watcher-initial-delay-ms:30000}")

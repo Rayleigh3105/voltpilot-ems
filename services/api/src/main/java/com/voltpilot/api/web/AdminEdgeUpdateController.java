@@ -7,9 +7,7 @@ import com.voltpilot.api.web.dto.EdgeUpdatesDto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -104,144 +102,35 @@ public class AdminEdgeUpdateController {
         return rollouts.journalMarkdown(Math.max(1, Math.min(limit, 5000)));
     }
 
-    // ── Rollouts ─────────────────────────────────────────────────────────
-
-    /** Eine Welle: Name + die Geräte, die sie erfasst. */
-    public record WaveRequest(String name, @NotEmpty List<UUID> devices) {
-    }
+    // ── Die EINE Handlung ────────────────────────────────────────────────
 
     /**
-     * Ein Rollout: WELCHES Release, in welchem Ring, in welchen Wellen.
+     * Eine Aktualisierung: WELCHES Release auf WELCHE Geräte.
      *
-     * <p>Die Wellen kommen ausdrücklich vom Aufrufer und nicht aus einer
-     * Automatik: bei einer Flotte dieser Größe ist „hand-advanced" die richtige
-     * Antwort (D4), und wer die Wellen schneidet, trifft eine Entscheidung, die
-     * niemand raten sollte.
+     * <p>Das ist der ganze Fluss (Captain-Order 26.08.2026) - kein Ring, keine
+     * Wellen, kein zweiter Knopf. Was danach passiert, passiert von selbst.
      */
-    public record CreateRolloutRequest(@NotNull Long releaseSeq,
-            @Pattern(regexp = "canary|stable") String channel,
-            @NotEmpty List<WaveRequest> waves, Boolean autoAdvance) {
+    public record UpdateRequest(@NotNull Long releaseSeq, @NotEmpty List<UUID> devices) {
     }
 
     @PostMapping("/rollouts")
     public ResponseEntity<Map<String, String>> createRollout(
-            @Valid @RequestBody CreateRolloutRequest req, @AuthenticationPrincipal Jwt caller) {
-        List<RolloutService.WaveSpec> waves = new ArrayList<>();
-        for (WaveRequest w : req.waves()) {
-            waves.add(new RolloutService.WaveSpec(
-                    w.name() == null || w.name().isBlank() ? "Welle" : w.name().trim(),
-                    w.devices()));
-        }
-        UUID id = rollouts.createRollout(req.releaseSeq(),
-                req.channel() == null ? "stable" : req.channel(), waves,
-                // ABSENT = Hand-Vorschub (D4). Ein älterer Aufrufer, der das
-                // Feld nicht kennt, bekommt damit exakt das bisherige Verhalten.
-                Boolean.TRUE.equals(req.autoAdvance()), actor(caller));
+            @Valid @RequestBody UpdateRequest req, @AuthenticationPrincipal Jwt caller) {
+        UUID id = rollouts.createRollout(req.releaseSeq(), req.devices(), actor(caller));
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("rolloutId", id.toString()));
-    }
-
-    public record AutoAdvanceRequest(@NotNull Boolean enabled) {
-    }
-
-    /**
-     * Den Wellen-Vorschub umschalten - die OPTION der Stufe 4.
-     *
-     * <p>Sie lockert nichts: dasselbe Bake-Kriterium, derselbe Auto-Halt,
-     * derselbe endgültige Not-Aus. Sie ersetzt nur den Klick auf „Nächste
-     * Welle", wenn das Kriterium ohnehin erfüllt ist.
-     */
-    @PostMapping("/rollouts/{rolloutId}/auto-advance")
-    public ResponseEntity<Void> autoAdvance(@PathVariable UUID rolloutId,
-            @Valid @RequestBody AutoAdvanceRequest req, @AuthenticationPrincipal Jwt caller) {
-        rollouts.setAutoAdvance(rolloutId, req.enabled(), actor(caller));
-        return ResponseEntity.noContent().build();
-    }
-
-    /** Die nächste Welle - server-seitig verweigert, solange das Bake offen ist. */
-    @PostMapping("/rollouts/{rolloutId}/promote")
-    public ResponseEntity<Void> promote(@PathVariable UUID rolloutId,
-            @AuthenticationPrincipal Jwt caller) {
-        rollouts.promote(rolloutId, actor(caller));
-        return ResponseEntity.noContent().build();
-    }
-
-    @PostMapping("/rollouts/{rolloutId}/pause")
-    public ResponseEntity<Void> pause(@PathVariable UUID rolloutId,
-            @AuthenticationPrincipal Jwt caller) {
-        rollouts.pause(rolloutId, actor(caller));
-        return ResponseEntity.noContent().build();
-    }
-
-    @PostMapping("/rollouts/{rolloutId}/resume")
-    public ResponseEntity<Void> resume(@PathVariable UUID rolloutId,
-            @AuthenticationPrincipal Jwt caller) {
-        rollouts.resume(rolloutId, actor(caller));
-        return ResponseEntity.noContent().build();
-    }
-
-    public record HaltRequest(String reason) {
-    }
-
-    /** Der Not-Aus. Bewusst endgültig - siehe {@code RolloutService.halt}. */
-    @PostMapping("/rollouts/{rolloutId}/halt")
-    public ResponseEntity<Void> halt(@PathVariable UUID rolloutId,
-            @RequestBody(required = false) HaltRequest req,
-            @AuthenticationPrincipal Jwt caller) {
-        String reason = req == null || req.reason() == null || req.reason().isBlank()
-                ? "Von Hand eingefroren." : req.reason().trim();
-        rollouts.halt(rolloutId, reason, actor(caller));
-        return ResponseEntity.noContent().build();
     }
 
     // ── Einzelgerät ──────────────────────────────────────────────────────
 
-    /**
-     * Die Zuweisung EINES Geräts (Kanal + Pin auf der Geräte-Registry-Seite,
-     * §7.1).
-     *
-     * <p>{@code pinned} ist die Ansage „dieses Gerät bleibt, wo es ist": ein
-     * Rollout überschreibt eine gepinnte Zuweisung nicht, sondern überspringt
-     * das Gerät sichtbar.
-     */
-    public record UpdateTargetRequest(@NotNull Long releaseSeq,
-            @Pattern(regexp = "canary|stable") String channel, Boolean pinned) {
+    /** Die Zuweisung EINES Geräts (der Weg über die Geräte-Seite). */
+    public record UpdateTargetRequest(@NotNull Long releaseSeq) {
     }
 
     @PostMapping("/devices/{deviceId}/update-target")
     public ResponseEntity<Void> setTarget(@PathVariable UUID deviceId,
             @Valid @RequestBody UpdateTargetRequest req, @AuthenticationPrincipal Jwt caller) {
-        rollouts.assign(deviceId, req.releaseSeq(),
-                req.channel() == null ? "stable" : req.channel(),
-                Boolean.TRUE.equals(req.pinned()), null, actor(caller));
+        rollouts.assign(deviceId, req.releaseSeq(), null, actor(caller));
         return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * <b>Jetzt anwenden</b> - die EINMALIGE Freigabe aus dem Portal (UX-Konzept
-     * {@code vp-admin-geraete-ux-k2} §6 / E3, Captain-Go 05.08.2026).
-     *
-     * <p>Es ist die einzige Route dieser Klasse, deren Wirkung über „eine
-     * Nachricht liegt bereit" hinausgeht - und trotzdem ist die
-     * Sicherheits-Haltung UNVERÄNDERT: sie erteilt exakt die Freigabe, die
-     * bisher ein Mensch an der {@code :8484}-Oberfläche hinter dem
-     * Geräte-Passwort erteilt hat, für EIN Release und EINEN Vorgang, 15 Minuten
-     * gültig. Angewandt wird sie vom Gerät selbst, das jedes weitere Tor
-     * (Signaturkette, Boden, Neutral-Zeit, Interlock, Selbsttest, Rücknahme)
-     * unverändert durchläuft - siehe {@link RolloutService#requestApply}.
-     *
-     * <p>Sie ist ausdrücklich NUR für {@code platform-admin}: die schmale
-     * Publisher-Rolle ({@code edge-release-publisher}) erreicht sie nicht - sie
-     * darf registrieren, nie ein Gerät anfassen. Das ist keine zusätzliche
-     * Prüfung, sondern die klassenweite {@code @PreAuthorize} dieser Klasse
-     * (der Publisher-Client liegt allein auf
-     * {@code AdminEdgeReleaseController}, das genau deshalb keine
-     * klassenweite Annotation trägt).
-     */
-    @PostMapping("/devices/{deviceId}/apply")
-    public ResponseEntity<Void> requestApply(@PathVariable UUID deviceId,
-            @AuthenticationPrincipal Jwt caller) {
-        rollouts.requestApply(deviceId, actor(caller));
-        return ResponseEntity.accepted().build();
     }
 
     @PostMapping("/devices/{deviceId}/update-target/revert")

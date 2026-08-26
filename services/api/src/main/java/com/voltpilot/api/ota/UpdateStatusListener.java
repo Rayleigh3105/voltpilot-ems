@@ -305,7 +305,6 @@ public class UpdateStatusListener {
                     // behauptetes „kann nicht anwenden", und die Oberfläche würde
                     // einem älteren Stand einen Knopf verweigern, den er sehr wohl
                     // bedienen kann.
-                    hasUpdate ? bool(update.get("can_apply")) : null,
                     reportedAt);
         } finally {
             TenantContext.clear();
