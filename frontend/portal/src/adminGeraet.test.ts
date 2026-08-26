@@ -331,10 +331,9 @@ describe('geraetView - die sieben Sektionen aus vier Reads', () => {
       reason: 'Autonomie blockiert: die Neutral-Zeit ist für diese Familie nicht belegt.',
     };
     const v = geraetView(input({ devices: [blockiert] }), NOW)!;
-    expect(v.software.hebel).toBeTruthy();
-    // Die Warnung VOR dem Knopf sagt denselben Satz - das darf nicht zweimal
-    // auf einer Karte stehen.
-    expect(v.software.hebelDoppelt).toBe(true);
+    // Die Neutral-Zeit ist als TOR entfallen; eine Box mit älterem Image meldet
+    // das Wort noch, und der Hebel sagt genau das - nie den alten Handgriff.
+    expect(v.software.hebel).toContain('gibt es nicht mehr');
     // Der Satz der Box wird DURCHGEREICHT, nie umformuliert.
     expect(v.software.grund).toBe(blockiert.reason);
   });

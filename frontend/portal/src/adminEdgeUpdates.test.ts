@@ -135,8 +135,21 @@ describe('Vier-Klassen-Grammatik', () => {
 
 describe('Hebel einer Sperre', () => {
   it('nennt den Hebel zum maschinenlesbaren Namen', () => {
-    expect(blockerLever('neutralzeit')).toContain('VP_OTA_NEUTRAL_VERIFIED');
     expect(blockerLever('platte')).toContain('Platz');
+    expect(blockerLever('kette')).toContain('Signaturkette');
+  });
+
+  it('schickt zu einem ENTFALLENEN Tor nicht auf den alten Handgriff', () => {
+    // Eine Box mit älterem Image meldet die Wörter noch - der Hebel darf aber
+    // nicht auf einen Weg zeigen, den es nicht mehr gibt (Prüfstand-Nachweis,
+    // Freigabe am Gerät). Er sagt stattdessen, dass genau dieses Update ihn
+    // wegräumt.
+    for (const legacy of ['neutralzeit', 'neutralzeit_zu_kurz', 'interlock',
+      'kern_still', 'freigabe_release']) {
+      const lever = blockerLever(legacy)!;
+      expect(lever).toContain('gibt es nicht mehr');
+      expect(lever).not.toContain('VP_OTA_NEUTRAL_VERIFIED');
+    }
   });
 
   it('erfindet KEINEN Hebel zu einem unbekannten Namen', () => {

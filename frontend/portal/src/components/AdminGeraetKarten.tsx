@@ -295,7 +295,7 @@ function ZuweisungsForm({
           disabled={busy || seq == null}
           onClick={() => void onAssign(seq as number)}
         >
-          Release zuweisen
+          Aktualisieren
         </Button>
         {hatSoll && onRevert && (
           <Button variant="outline" disabled={busy} onClick={() => void onRevert()}>

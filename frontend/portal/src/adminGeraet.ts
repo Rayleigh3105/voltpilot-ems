@@ -104,13 +104,6 @@ export interface GeraetSoftware {
   zeilen: Zeile[];
   /** Der Hebel zu einer stehenden Sperre; null = keine gemeldet. */
   hebel: string | null;
-  /**
-   * Sagt die Warnung VOR dem Anwenden-Knopf denselben Satz? Dann gehört er
-   * genau EINMAL auf die Karte - und zwar dorthin, wo gleich geklickt wird
-   * (die Haus-Regel „nichts steht zweimal auf einer Karte"). Im Browser
-   * aufgefallen, nicht im Test.
-   */
-  hebelDoppelt: boolean;
   /** Der Satz der Box zum aktuellen Zustand, VERBATIM. */
   grund: string | null;
   /** Darf hier überhaupt etwas zugewiesen werden? (nur ein verbundenes Gerät) */
@@ -327,10 +320,6 @@ function software(
   return {
     zeilen,
     hebel,
-    // Der Hebel steht seit dem Ein-Schritt-Umbau nur noch EINMAL auf der Karte
-    // (es gibt keinen zweiten Ort, an dem er gleich noch einmal auftauchen
-    // könnte) - das Feld bleibt für die Fläche, die es liest.
-    hebelDoppelt: false,
     grund: device.reason ?? null,
     verbunden,
     signierteReleases: releases.filter((r) => r.signed),

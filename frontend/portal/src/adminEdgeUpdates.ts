@@ -195,32 +195,41 @@ export function stateLabel(state: string | null | undefined): {
  * kennt, bekommt KEINEN Hebel: der Grund des Geräts steht ohnehin daneben und
  * ist die Aussage - ein geratener Hebel wäre eine Anweisung ins Leere.
  */
+const LEGACY_LEVER =
+  'Diese Sperre gibt es nicht mehr - die Box läuft noch auf einem älteren '
+  + 'Image. Sie fällt weg, sobald dieses Update durchgelaufen ist.';
+
 const BLOCKER_LEVERS: Record<string, string> = {
-  neutralzeit:
-    'Neutral-Zeit der Wechselrichter-Familie am Prüfstand belegen und in '
-    + 'VP_OTA_NEUTRAL_VERIFIED eintragen.',
-  neutralzeit_zu_kurz:
-    'Die belegte Neutral-Zeit lässt keine brauchbare Wachhund-Frist zu - Wert am '
-    + 'Prüfstand überprüfen.',
-  platte: 'Platz auf dem Datenträger der Box schaffen.',
-  interlock:
-    'Die Anlage führt gerade einen Sollwert aus. Sie wird von selbst wieder frei - '
-    + 'oder das Release wird als eilig markiert.',
-  kern_still: 'Der Kern meldet seinen Zustand nicht - Zustand der Box am Gerät prüfen.',
+  // Die Sperren, die es HEUTE noch gibt.
   kette: 'Signaturkette prüfen: Vertrauens-Set und Release-Signatur auf der Box.',
   politik:
     'Das Release gilt für diese Box nicht (Anti-Rollback-Boden oder Rückschritt) - '
     + 'ein passendes Release zuweisen.',
-  zurueckgenommen:
-    'Dieses Release wurde auf dieser Box schon einmal zurückgenommen und läuft nie '
-    + 'von selbst wieder an - ein ANDERES Release zuweisen.',
   backend: 'Das Release ist nicht für das Apply-Backend dieser Box bestimmt.',
   state_schema: 'Das Release kennt den Datenstand dieser Box nicht.',
-  freigabe_release: 'Die erteilte Freigabe galt einem anderen Release.',
+  platte:
+    'Platz auf dem Datenträger der Box schaffen - die Box hat ihre abgelösten '
+    + 'Abbilder schon selbst weggeräumt.',
+  zurueckgenommen:
+    'Genau diese Zuweisung wurde hier schon einmal zurückgenommen. Erneut '
+    + 'aktualisieren (auch mit demselben Release) startet einen neuen Versuch.',
+  // Die Tore der VORBEREITUNG - sie halten den Tausch auf, bevor etwas stoppt.
   laden: 'Die Images konnten nicht geladen werden - Registry-Zugang der Box prüfen.',
   rueckfallziel: 'Das Rückfallziel konnte nicht gesichert werden.',
   sicherung: 'Die Sicherung des Datenstands ist nicht gelungen.',
   unlesbar: 'Eine Protokoll-Datei der Box ist unlesbar.',
+
+  // ── Nur noch zum LESEN ──────────────────────────────────────────────────
+  // Diese Tore sind mit dem Ein-Schritt-Umbau ERSATZLOS entfallen. Eine Box
+  // mit älterem Image meldet sie noch, also bleibt das Vokabular vollständig -
+  // aber der Hebel ist bei allen derselbe: dieses Image ablösen. Ihn auf den
+  // alten Handgriff zeigen zu lassen (Prüfstand, Freigabe am Gerät) wäre eine
+  // Anweisung auf einen Weg, den es nicht mehr gibt.
+  neutralzeit: LEGACY_LEVER,
+  neutralzeit_zu_kurz: LEGACY_LEVER,
+  interlock: LEGACY_LEVER,
+  kern_still: LEGACY_LEVER,
+  freigabe_release: LEGACY_LEVER,
 };
 
 export function blockerLever(blocker: string | null | undefined): string | null {
