@@ -122,24 +122,6 @@
       };
     }
 
-    // OTA Stufe 3, Eil-Pfad: eine EILIGE autonome Aktualisierung stellt die
-    // Anlage für die Sekunden des Tauschs bewusst neutral, statt mitten in
-    // einen laufenden Sollwert zu tauschen. Das ist ein eigener Modus und
-    // gehört an den ANFANG: solange er gilt, beschreibt keine der folgenden
-    // Aussagen (Freigabe, Rückmeldung, Bestätigung) das, was gerade wirklich
-    // passiert - und eine unbenannte Neutralstellung liest sich wie ein Defekt.
-    if (s.mode === "ota_neutral") {
-      return {
-        chip: { tone: "brand", label: "Aktualisierung" },
-        title: "Die Anlage steht für eine Aktualisierung bewusst still.",
-        text: "VoltPilot spielt gerade eine dringende Aktualisierung ein und hat die " +
-          "Batterie dafür absichtlich neutral gestellt. Der Fahrplan läuft danach " +
-          "von selbst weiter.",
-        showNow: false, showTable: false, calibrating: false, banner: null,
-        stateKey: "ota-neutral"
-      };
-    }
-
     // First-Light calibration is the chicken-and-egg case: the model is (still)
     // UNCERTIFIED, yet the calibration write produced a register readback - and on
     // an uncertified device a readback can ONLY come from a calibration test

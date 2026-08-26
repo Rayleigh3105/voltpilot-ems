@@ -21,6 +21,21 @@ import (
 // blockieren, obwohl nach dem dritten Neustart bereits alles gesagt ist.
 const CrashLoopRestarts = 3
 
+// DefaultWatchdogDeadline ist die Frist, nach der ein Tausch ohne gruenes
+// Selbsttest-Urteil zurueckgenommen wird.
+//
+// Sie war frueher aus der Inverter-Neutral-Zeit T abgeleitet und STRIKT
+// darunter gehalten. Diese Ableitung ist mit der Neutral-Zeit-Regel entfallen
+// (Order 26.08.2026): T zu belegen war ein Handgriff am Geraet, und ein
+// Wechselrichter, der nach T von selbst neutral wird, ist damit im SICHEREN
+// Zustand - das ist genau das, was ein Neustart, ein Stromausfall und der
+// bisherige Handpfad `update.sh` ohnehin taeglich ausloesen.
+//
+// Zehn Minuten sind grosszuegig fuer Pull, Tausch und Selbsttest und kurz
+// genug, dass ein haengender Stand nicht stundenlang steht. Ueberstimmbar mit
+// VP_OTA_WATCHDOG_SECONDS.
+const DefaultWatchdogDeadline = 10 * time.Minute
+
 // StartGrace ist die Zeit, die ein frisch getauschter Container haben muss,
 // bevor „laeuft nicht" als Befund gilt. Ein `up -d` ist Stoppen-dann-Starten;
 // die Sekunden dazwischen sind kein Fehlschlag.
@@ -94,8 +109,7 @@ func Resume(in ResumeInput) (ResumeAction, string) {
 		return ResumeRevert, "Der Selbsttest des neuen Standes ist fehlgeschlagen: " + reason
 	}
 
-	// 3. Die Frist. Sie liegt strikt unter der Neutral-Zeit des
-	//    Wechselrichters - ein Haenger kann sie also nie ueberleben.
+	// 3. Die Frist.
 	if dl, err := time.Parse(TimeFormat, in.Pending.DeadlineAt); err == nil {
 		if !in.Now.Before(dl) {
 			return ResumeRevert, "Die Wachhund-Frist ist abgelaufen, ohne dass der neue Stand " +

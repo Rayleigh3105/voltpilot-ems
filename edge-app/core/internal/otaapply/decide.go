@@ -1,12 +1,35 @@
 package otaapply
 
-// Die Torwaechter. JEDE Regel, die ein autonomes Anwenden verhindern kann,
-// steht hier - rein, ohne I/O, mit einem deutschen Grund je Ausgang.
+// Die Torwaechter.
 //
-// Die REIHENFOLGE ist bindend, nicht Stil. Sie geht von „darf ueberhaupt
-// jemand?" ueber „ist der Gegenstand vertrauenswuerdig?" zu „ist dieses Geraet
-// gerade in der Lage?" - und jede Stufe kann nur ABLEHNEN, nie freigeben, was
-// eine fruehere abgelehnt hat.
+// # Das Leitprinzip (Captain-Order 26.08.2026 „Release waehlen, Geraete
+// waehlen, fertig")
+//
+// **Jedes Tor ueber den ZUSTAND DES GERAETS ist gefallen. Jede Eigenschaft des
+// SIGNIERTEN RELEASE ist geblieben.**
+//
+// Das ist die Trennlinie, an der dieses Paket haengt, und sie ist nicht
+// kosmetisch: eine Release-Eigenschaft wird bei jedem Takt automatisch aus dem
+// in der CI signierten Manifest bewertet und braucht NIE einen Menschen am
+// Geraet; ein Geraete-Zustands-Tor braucht genau das. Weggefallen sind deshalb
+// der Autonomie-Schalter, die Einmal-Freigabe, die Neutral-Zeit-Regel, der
+// Interlock, „der Kern meldet sich nicht" und die Dauersperre nach einer
+// Ruecknahme.
+//
+// # Warum das nicht unsicherer ist
+//
+// Der bis dahin offiziell gesegnete Handpfad `update.sh --from-target` tauscht
+// die Container ROH: ohne Neutral-Zeit-Nachweis, ohne Interlock, ohne
+// Selbsttest, ohne Ruecknahme. Der autonome Pfad bleibt nach diesem Umbau
+// STRIKT sicherer als das, was wir vorher von Hand getan haben - Signaturkette,
+// Images-vor-dem-Stopp, dreifach gesichertes Rueckfallziel, Brotkrume,
+// sequenzierter Tausch, Selbsttest, LKG-Ruecknahme und Wachhund sind
+// unangetastet. Die entfallenen Tore verhinderten also keine Gefahr, die der
+// Handpfad nicht ohnehin taeglich eingegangen ist.
+//
+// Die REIHENFOLGE der verbliebenen Pruefungen ist bindend: erst „ist der
+// Gegenstand vertrauenswuerdig?", dann „passt er zu diesem Geraet?", dann „ist
+// physisch Platz?".
 
 import (
 	"fmt"
@@ -19,19 +42,16 @@ import (
 type Action string
 
 const (
-	// ActionIdle: nichts zu tun (kein Ziel, laeuft schon, oder ausgeschaltet).
+	// ActionIdle: nichts zu tun (kein Ziel oder laeuft schon).
 	ActionIdle Action = "idle"
-	// ActionApply: alle Tore offen - anwenden.
+	// ActionApply: alle Pruefungen bestanden - anwenden.
 	ActionApply Action = "apply"
 	// ActionDefer: heute nicht, aber es ist kein Fehler. Wird spaeter erneut
 	// bewertet, ohne dass ein Mensch etwas tun muss.
 	ActionDefer Action = "defer"
-	// ActionRefuse: es wird NIE angewandt, solange sich nichts aendert -
-	// gebrochene Kette, unpassendes Backend, unverifizierte Neutral-Zeit.
+	// ActionRefuse: es wird nicht angewandt, solange sich das RELEASE nicht
+	// aendert - gebrochene Kette, unpassendes Backend, unlesbarer Datenstand.
 	ActionRefuse Action = "refuse"
-	// ActionNeutral: der Eil-Pfad - der Kern soll die Anlage erst neutral
-	// parken, danach wird angewandt.
-	ActionNeutral Action = "neutral"
 )
 
 // Decision ist das Ergebnis eines Torlaufs.
@@ -42,8 +62,8 @@ type Decision struct {
 	State string
 	// Reason ist der deutsche Grund. Bei allem ausser ActionIdle PFLICHT.
 	Reason string
-	// Blocker ist der MASCHINENLESBARE Name des Tores, das hier zugemacht hat
-	// (leer = keines, also idle oder anwenden).
+	// Blocker ist der MASCHINENLESBARE Name der Pruefung, die hier zugemacht
+	// hat (leer = keine, also idle oder anwenden).
 	//
 	// Er steht NEBEN Reason, weil beide verschiedene Fragen beantworten: Reason
 	// ist der Satz fuer einen Menschen, Blocker ist das, worauf ein Log, eine
@@ -57,32 +77,36 @@ type Decision struct {
 
 // Die Blocker-Namen. Sie sind ein VERTRAG zwischen Sidecar-Log,
 // `updater-state.json` und dem Herzschlag - kurz, stabil, ohne Umlaute.
+//
+// Sie sind ausdruecklich NICHT nur die verbliebenen: das Portal und ein
+// Bestandsgeraet muessen die alten Woerter weiter LESEN koennen (eine Box mit
+// aelterem Image meldet sie noch). Erzeugt werden nur die ersten fuenf.
 const (
 	// BlockerChain: die Vertrauenskette oder die Form ist kaputt (Vorfall).
 	BlockerChain = "kette"
-	// BlockerPolicy: gueltig signiert, gilt hier aber nicht (Boden, Rueckschritt).
+	// BlockerPolicy: gueltig signiert, gilt hier aber nicht (Anti-Rollback-Boden).
 	BlockerPolicy = "politik"
-	// BlockerRolledBack: genau dieses Release wurde hier schon zurueckgenommen.
-	BlockerRolledBack = "zurueckgenommen"
 	// BlockerBackend: das Release ist nicht fuer dieses Apply-Backend bestimmt.
 	BlockerBackend = "backend"
 	// BlockerStateSchema: das Release kennt unseren /data-Stand nicht.
 	BlockerStateSchema = "state_schema"
-	// BlockerCoreSilent: der Kern meldet seinen Zustand nicht.
-	BlockerCoreSilent = "kern_still"
-	// BlockerDisk: der Plattenwaechter.
+	// BlockerDisk: der Plattenwaechter - eine PHYSISCHE Grenze, kein Tor. Er
+	// schlaegt erst zu, NACHDEM der Sidecar seine abgeloesten Abbilder
+	// weggeraeumt hat (siehe otaupdater.Engine.Tick).
 	BlockerDisk = "platte"
-	// BlockerNeutralTime: die Anlage STEUERT und die Neutral-Zeit T ihrer
-	// Familie ist nicht belegt - der Fall, fuer den es §3 gibt.
-	BlockerNeutralTime = "neutralzeit"
-	// BlockerNeutralTooShort: ein belegtes T, unter dem keine brauchbare
-	// Wachhund-Frist Platz hat.
+	// BlockerRolledBack: genau diese ZUWEISUNG wurde hier schon zurueckgenommen.
+	// Eine NEUE Zuweisung - auch desselben Release - versucht es wieder.
+	BlockerRolledBack = "zurueckgenommen"
+
+	// --- Nur noch zum LESEN: Woerter, die eine aeltere Box melden kann. -----
+	// Sie werden hier nicht mehr erzeugt; das Vokabular bleibt trotzdem
+	// vollstaendig, damit ein Bestandsgeraet keine unbekannte Sperre meldet.
+	BlockerCoreSilent      = "kern_still"
+	BlockerNeutralTime     = "neutralzeit"
 	BlockerNeutralTooShort = "neutralzeit_zu_kurz"
-	// BlockerInterlock: es wird gerade ein von neutral abweichender Sollwert
-	// ausgefuehrt.
-	BlockerInterlock = "interlock"
-	// BlockerApprovalRelease: die Freigabe galt einem anderen Release.
+	BlockerInterlock       = "interlock"
 	BlockerApprovalRelease = "freigabe_release"
+
 	// BlockerPull/BlockerRollback/BlockerSnapshot sind die Tore der
 	// VORBEREITUNG - sie halten den Tausch auf, bevor irgendetwas gestoppt wird.
 	BlockerPull     = "laden"
@@ -127,23 +151,14 @@ const BackendCompose = otaverify.BackendCompose
 // vollschreibt, nimmt sich genau die Rueckfallebene, fuer die er sie braucht.
 const DefaultDiskGuardBytes uint64 = 2 << 30 // 2 GiB
 
-// MaxCoreSignalAge ist das Alter, ab dem der Kern als „meldet sich nicht"
-// gilt. Er schreibt alle zwei Sekunden; eine Minute Toleranz ueberbrueckt
-// jeden Neustart, ohne einen wirklich toten Kern zu uebersehen.
-const MaxCoreSignalAge = 60 * time.Second
-
 // DecisionInput ist alles, was fuer die Entscheidung bekannt sein muss.
 type DecisionInput struct {
-	// Autonomous ist der Schalter (Datei ODER Not-Ein-Umgebungsvariable).
-	Autonomous bool
-	// Request ist eine EINMALIGE, von einem Menschen ausgeloeste Freigabe
-	// ([ApplyRequest], OTA Stufe 4). nil = keine.
-	Request *ApplyRequest
-	// AppliedRequestToken ist der zuletzt vom Sidecar ausgefuehrte Token -
-	// damit dieselbe Freigabe nie zweimal wirkt.
-	AppliedRequestToken string
 	// HasTarget: liegt ueberhaupt eine Zuweisung vor?
 	HasTarget bool
+	// Assignment ist der `assigned_at`-Stempel DIESER Zuweisung. Er ist der
+	// Schluessel, an dem eine zurueckgenommene Anwendung haengt - siehe
+	// [FailedRelease].
+	Assignment string
 	// Verdict ist das Urteil des EIGENEN Verifizierers des Sidecars.
 	Verdict otaverify.Verdict
 	// StateSchemaOnDisk ist die Version des lokalen /data-Zustands.
@@ -151,33 +166,17 @@ type DecisionInput struct {
 	// FreeBytes/RequiredBytes ist der Plattenwaechter.
 	FreeBytes     uint64
 	RequiredBytes uint64
-	// Signal ist die Momentaufnahme des Kerns (nil = nie geschrieben).
-	Signal *CoreSignal
-	// Failed ist der Merkzettel ueber ein hier bereits zurueckgenommenes
-	// Release (nil = keines).
+	// Failed ist der Merkzettel ueber eine hier bereits zurueckgenommene
+	// Zuweisung (nil = keine).
 	Failed *FailedRelease
-	// Neutral ist die aufgeloeste Aussage zur Familie aus dem Signal.
-	Neutral NeutralTimeout
 	// ConfiguredDeadline ist die konfigurierte Wachhund-Frist.
 	ConfiguredDeadline time.Duration
 	Now                time.Time
 }
 
-// Decide laeuft die Tore ab.
+// Decide laeuft die Pruefungen ab.
 func Decide(in DecisionInput) Decision {
-	// --- 1. Darf ueberhaupt jemand? ---------------------------------------
-	//
-	// ZWEI Wege durch dieses eine Tor, und nur durch dieses: der Schalter
-	// (Autonomie) oder eine EINMALIGE Freigabe durch einen Menschen am Geraet
-	// (`:8484` „Jetzt anwenden", OTA Stufe 4). Jedes weitere Tor unten gilt
-	// fuer beide UNVERAENDERT - die Freigabe verkuerzt keinen Pruefschritt,
-	// sie ersetzt nur die Frage „wann".
-	manual := in.ManualApproval()
-	if !in.Autonomous && !manual {
-		// Kein Grund noetig: „ausgeschaltet" ist kein Befund ueber ein Release.
-		// Die Oberflaeche liest das aus UpdaterState.Autonomous.
-		return Decision{Action: ActionIdle, State: StateIdle}
-	}
+	// --- 1. Gibt es ueberhaupt etwas zu tun? ------------------------------
 	if !in.HasTarget {
 		return Decision{Action: ActionIdle, State: StateIdle}
 	}
@@ -186,8 +185,7 @@ func Decide(in DecisionInput) Decision {
 	switch in.Verdict.Outcome {
 	case otaverify.OutcomeRejected:
 		// Eine gebrochene Kette ist ein SICHERHEITS-Ereignis und darf nie wie
-		// „passt gerade nicht" aussehen - genau das Signal, auf das der
-		// Rollout im Portal automatisch anhaelt.
+		// „passt gerade nicht" aussehen.
 		return Decision{Action: ActionRefuse, State: StateFailed, Blocker: BlockerChain,
 			Reason: in.Verdict.Reason}
 	case otaverify.OutcomeDeferred:
@@ -207,18 +205,6 @@ func Decide(in DecisionInput) Decision {
 		return Decision{Action: ActionRefuse, State: StateFailed, Blocker: BlockerChain,
 			Reason: "Das Urteil nennt kein Manifest - es wird nichts angewandt."}
 	}
-	if in.Failed.Blocks(m.Release) {
-		// Nie wieder von selbst - siehe [FailedRelease]. Das ist ein HALT, kein
-		// Fehlschlag im Sinne der Kette: die Signatur war in Ordnung, die
-		// Anwendung nicht.
-		reason := "Release " + m.Release + " wurde auf diesem Geraet bereits " +
-			"zurueckgenommen und wird nicht erneut von selbst angewandt."
-		if in.Failed.Reason != "" {
-			reason += " Grund damals: " + in.Failed.Reason
-		}
-		return Decision{Action: ActionRefuse, State: StateRolledBack,
-			Blocker: BlockerRolledBack, Reason: reason}
-	}
 	if in.Verdict.AlreadyRunning {
 		return Decision{Action: ActionIdle, State: StateSucceeded,
 			Reason: "Release " + m.Release + " laeuft hier bereits."}
@@ -232,98 +218,50 @@ func Decide(in DecisionInput) Decision {
 	if in.StateSchemaOnDisk > 0 && m.StateSchema < in.StateSchemaOnDisk {
 		// Das Release kennt unser /data-Format nicht. Es anzuwenden hiesse,
 		// einem alten Stand einen neueren Zustand vorzusetzen - der klassische
-		// Weg, Identitaet und Puffer zu zerlegen.
+		// Weg, Identitaet und Puffer zu zerlegen. Es feuert AUSSCHLIESSLICH
+		// bei einem ausdruecklichen Rueckschritt.
 		return Decision{Action: ActionRefuse, State: StateDeferred, Blocker: BlockerStateSchema,
 			Reason: fmt.Sprintf("Dieses Release unterstuetzt den lokalen Datenstand nicht "+
 				"(state_schema %d, auf dem Geraet %d).", m.StateSchema, in.StateSchemaOnDisk)}
 	}
 
-	// --- 4. Ist dieses Geraet gerade in der Lage? --------------------------
-	if age := in.Signal.Age(in.Now); age > MaxCoreSignalAge {
-		// Ohne den Zustand des Kerns weiss der Sidecar nicht, ob gerade
-		// gesteuert wird - und ein Tausch im Blindflug ist genau das, was die
-		// ganze Stufe verhindern soll.
-		return Decision{Action: ActionDefer, State: StateDeferred, Blocker: BlockerCoreSilent,
-			Reason: "Der Kern meldet seinen Zustand nicht (zuletzt vor " +
-				age.Round(time.Second).String() + ") - ohne ihn wird nichts angewandt."}
+	// --- 4. Wurde GENAU DIESE Zuweisung hier schon zurueckgenommen? -------
+	//
+	// Das ist die Runaway-Bremse und ausdruecklich KEINE Dauersperre mehr: sie
+	// haengt am `assigned_at`-Stempel, also loest ein erneutes „Aktualisieren"
+	// im Portal sie von selbst - auch fuer dasselbe Release. Ohne sie drehte
+	// eine Box mit einem hier nicht lauffaehigen Release im Kreis und naehme
+	// sich bei jedem Versuch erneut die Sekunden ohne Steuerung.
+	if in.Failed.Blocks(m.Release, in.Assignment) {
+		reason := "Release " + m.Release + " wurde auf diesem Geraet bereits " +
+			"zurueckgenommen. Eine erneute Zuweisung im Portal versucht es wieder."
+		if in.Failed.Reason != "" {
+			reason += " Grund damals: " + in.Failed.Reason
+		}
+		return Decision{Action: ActionRefuse, State: StateRolledBack,
+			Blocker: BlockerRolledBack, Reason: reason}
 	}
+
+	// --- 5. Ist physisch Platz? -------------------------------------------
+	//
+	// Kein Tor, sondern eine physische Grenze: der Sidecar hat unmittelbar
+	// davor seine abgeloesten Abbilder weggeraeumt. Reicht es dann immer noch
+	// nicht, wird das ehrlich gemeldet statt blind getauscht.
 	if in.RequiredBytes > 0 && in.FreeBytes < in.RequiredBytes {
 		return Decision{Action: ActionDefer, State: StateDeferred, Blocker: BlockerDisk,
 			Reason: fmt.Sprintf("Zu wenig freier Speicherplatz (%s frei, %s noetig) - "+
-				"ein Tausch ohne Platz fuer das Rueckfallziel wird nicht begonnen.",
+				"ein Tausch ohne Platz fuer das Rueckfallziel wird nicht begonnen. "+
+				"Abgeloeste Abbilder wurden bereits entfernt.",
 				humanBytes(in.FreeBytes), humanBytes(in.RequiredBytes))}
 	}
 
-	// Die Neutral-Zeit ist NUR tragend, wenn dieses Geraet wirklich steuert:
-	// eine Anlage ohne Steuerpfad haelt kein Kommando, das T ueberleben
-	// koennte. Steuert sie aber, ist eine unverifizierte Familie eine harte
-	// Sperre - der Vorentwurf ist da eindeutig.
-	if in.Signal.ControlActive {
-		if !in.Neutral.Verified {
-			// Der Grund NENNT den Hebel: ohne den Namen der Umgebungsvariablen
-			// ist „nicht belegt" eine Sackgasse, mit ihm eine Aufgabe.
-			return Decision{Action: ActionRefuse, State: StateDeferred,
-				Blocker: BlockerNeutralTime,
-				Reason: "Diese Anlage steuert. " + in.Neutral.Note +
-					" Es wird deshalb nicht autonom angewandt (am Pruefstand belegen und " +
-					"in VP_OTA_NEUTRAL_VERIFIED eintragen, oder den gefuehrten " +
-					"Neutral-Zeit-Test auf :8484 durchfuehren)."}
-		}
-		if !NeutralSupportsWatchdog(in.Neutral) {
-			return Decision{Action: ActionRefuse, State: StateDeferred,
-				Blocker: BlockerNeutralTooShort,
-				Reason: fmt.Sprintf("Die belegte Neutral-Zeit (%s) laesst keine Wachhund-Frist "+
-					"unter ihr zu - es wird nicht autonom angewandt.", in.Neutral.T)}
-		}
+	deadline := in.ConfiguredDeadline
+	if deadline <= 0 {
+		deadline = DefaultWatchdogDeadline
 	}
-
-	// Der „nicht mitten im Schreiben"-Interlock.
-	if in.Signal.Dispatching {
-		if !m.Urgent {
-			return Decision{Action: ActionDefer, State: StateDeferred, Blocker: BlockerInterlock,
-				Reason: "Es wird gerade ein von neutral abweichender Sollwert ausgefuehrt - " +
-					"der Tausch wartet auf das Ende des Zeitfensters."}
-		}
-		if in.Signal.NeutralHeldSince == "" {
-			// Eil-Pfad: NICHT ewig verschieben, aber auch nicht mitten hinein
-			// tauschen - erst bewusst neutral stellen, dann tauschen.
-			return Decision{Action: ActionNeutral, State: StateDeferred,
-				Reason: "Eil-Aktualisierung: die Anlage wird zuerst bewusst neutral gestellt, " +
-					"danach wird getauscht."}
-		}
-	}
-
-	// Die Freigabe gilt fuer GENAU DAS Release, das der Mensch gesehen hat.
-	// Steht inzwischen ein anderes Ziel da, ist das keine Freigabe mehr - eine
-	// Zustimmung zu „edge-2026.08.0" ist keine zu dem, was zwei Minuten spaeter
-	// zugewiesen wurde. Diese Pruefung steht bewusst HIER unten, nach dem
-	// Verifizieren: vorher gibt es kein vertrauenswuerdiges Release, mit dem
-	// sich vergleichen liesse.
-	if !in.Autonomous && manual && in.Request.Release != "" && in.Request.Release != m.Release {
-		return Decision{Action: ActionIdle, State: StateDeferred, Blocker: BlockerApprovalRelease,
-			Reason: "Die Freigabe galt fuer Release " + in.Request.Release + ", zugewiesen ist " +
-				"inzwischen " + m.Release + " - es wird nichts angewandt."}
-	}
-
-	reason := "Release " + m.Release + " ist geprueft und wird angewandt."
-	if !in.Autonomous {
-		reason = "Release " + m.Release + " ist geprueft und wurde am Geraet freigegeben - " +
-			"es wird jetzt angewandt."
-	}
-	return Decision{Action: ActionApply, State: StateDownloading, Reason: reason,
-		Deadline: WatchdogDeadline(in.Neutral, in.Signal.ControlActive, in.ConfiguredDeadline)}
-}
-
-// ManualApproval sagt, ob eine gueltige, noch nicht ausgefuehrte Freigabe
-// vorliegt.
-//
-// Drei Bedingungen, jede fuer sich noetig: sie existiert, sie ist FRISCH
-// ([ApplyRequestWindow] - eine vergessene Freigabe darf nicht Tage spaeter
-// zuschlagen), und ihr Token wurde noch nicht ausgefuehrt - genau das macht sie
-// EINMALIG und verhindert die Tausch-Schleife, gegen die es auch `failed.json`
-// gibt.
-func (in DecisionInput) ManualApproval() bool {
-	return in.Request.Fresh(in.Now) && in.Request.Token != in.AppliedRequestToken
+	return Decision{Action: ActionApply, State: StateDownloading,
+		Reason:   "Release " + m.Release + " ist geprueft und wird angewandt.",
+		Deadline: deadline}
 }
 
 // ApplyingAckDecision sagt, ob der Sidecar auf den durablen `applying`-Bericht

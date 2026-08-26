@@ -43,7 +43,6 @@ type Link struct {
 	onPlanV2            func(payload []byte)
 	onFlows             func(payload []byte)
 	onUpdateTarget      func(payload []byte)
-	onApplyRequest      func(payload []byte)
 	onProbeRequest      func(payload []byte)
 	onRegisterWrite     func(payload []byte)
 	onDesiredDownlink   func(payload []byte)
@@ -121,17 +120,6 @@ type Options struct {
 	// on the box - the connection limit is a PHYSICAL limit, so its watchdog
 	// must not hang off the WAN.
 	OnChargingConfig func(payload []byte)
-	// OnApplyRequest receives the NON-RETAINED one-shot apply approval on
-	// .../v2/apply (docs/contracts/mqtt-ota-apply.schema.json, „Portal-Apply").
-	// nil = the portal-apply downlink is not wired.
-	//
-	// ⚠ NON-retained is the load-bearing half of this feature: a retained
-	// message is redelivered on EVERY reconnect, so a one-shot approval placed
-	// there would not be one - it would re-apply for as long as it sat on the
-	// broker. An offline box therefore never gets a missed approval delivered
-	// late, and that is intended: a consent from three hours ago is not a
-	// consent for now.
-	OnApplyRequest func(payload []byte)
 	// OnChargingBoost receives the NON-RETAINED one-shot override „Jetzt voll
 	// laden" on .../v2/charging-boost (contract
 	// docs/contracts/mqtt-charging-boost.schema.json, Lastmanagement Stufe 4).
@@ -214,10 +202,10 @@ func New(o Options) (*Link, error) {
 		onSchedule: o.OnSchedule,
 		onCommand:  o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
-		onControlCert:    o.OnControlCert,
-		onChargingConfig: o.OnChargingConfig,
-		onChargingBoost:  o.OnChargingBoost,
-		onApplyRequest:   o.OnApplyRequest, onProbeRequest: o.OnProbeRequest,
+		onControlCert:       o.OnControlCert,
+		onChargingConfig:    o.OnChargingConfig,
+		onChargingBoost:     o.OnChargingBoost,
+		onProbeRequest:      o.OnProbeRequest,
 		onRegisterWrite:     o.OnRegisterWrite,
 		onDesiredDownlink:   o.OnDesiredDownlink,
 		onMeasurementConfig: o.OnMeasurementConfig,
@@ -301,7 +289,6 @@ func (l *Link) buildDownlinkRoutes() []downlinkRoute {
 	add("v2/update", l.onUpdateTarget, true)
 	add("v2/control-certification", l.onControlCert, true)
 	add("v2/charging-config", l.onChargingConfig, true)
-	add("v2/apply", l.onApplyRequest, true)
 	add("v2/charging-boost", l.onChargingBoost, false)
 	add("v2/probe", l.onProbeRequest, false)
 	add("v2/register-write", l.onRegisterWrite, false)
@@ -985,33 +972,6 @@ type UpdateSummary struct {
 	//
 	// ABSENT and EMPTY mean different things on purpose - see TrustSummary.
 	Trust *TrustSummary `json:"trust,omitempty"`
-	// CanApply says whether a Portal-Apply approval would actually be picked up
-	// RIGHT NOW - i.e. an assignment is verified AND a Stufe-3 sidecar is
-	// running here (the `:8484` card's own gate, `otaapply.ApplyView.CanApply`).
-	//
-	// It exists because the portal must not offer a button that cannot work.
-	// The honest alternative - offering it always and letting the device refuse
-	// silently - is exactly the „ein Rätsel statt einer Verweigerung" failure
-	// the blocker field was added to end.
-	//
-	// It is a CAPABILITY, never an authorization: a `true` grants nothing, and
-	// a device that never reports it is simply „unbekannt" cloud-side, never
-	// „geht nicht". That THIRD state is why the field is emitted
-	// UNCONDITIONALLY (no omitempty): a build that knows the question always
-	// answers it, so „absent" can only ever mean „an older build", never „no".
-	CanApply bool `json:"can_apply"`
-	// NeutralVerified is the device-MEASURED Inverter-Neutral-Zeit T for the
-	// CURRENTLY selected inverter family (docs/ota-autonomie.md §3), produced
-	// by the guided :8484 First-Light Neutral-Zeit-Test - the belegte
-	// Ergaenzung zum Betreiber-Eintrag VP_OTA_NEUTRAL_VERIFIED. nil = never
-	// measured on this device (or no inverter selected).
-	//
-	// It is a FACT about the device, never an authorization: whether it
-	// actually opens the autonomous-apply gate is decided entirely on-device
-	// by otaapply.NeutralTable.ForWithMeasured, where the operator's env
-	// entry ALWAYS wins when present. An older device simply never sends this
-	// field.
-	NeutralVerified *NeutralVerifiedSummary `json:"neutral_verified,omitempty"`
 }
 
 // NeutralVerifiedSummary is one geraete-lokal gemessener Neutral-Zeit-Nachweis

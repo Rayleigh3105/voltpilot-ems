@@ -33,25 +33,28 @@ func blockedLines(t *testing.T, r *rig) (blocked, cleared int) {
 	return
 }
 
-// TestTheNeutralTimeRefusalIsNamedOnceAndNotEveryTick ist der Soak-Fall
-// woertlich: eine steuernde Anlage ohne belegtes T.
-func TestTheNeutralTimeRefusalIsNamedOnceAndNotEveryTick(t *testing.T) {
+// TestADiskRefusalIsNamedOnceAndNotEveryTick ist der Soak-Fall in seiner
+// heutigen Form: die Sperre, die eine Box wirklich noch aufhalten kann.
+//
+// (Bis zum 26.08.2026 stand hier die Neutral-Zeit-Sperre. Sie ist mit allen
+// anderen Geraete-Zustands-Toren entfallen; die SICHTBARKEITS-Regel, die der
+// Canary-Soak erzwungen hat, gilt unveraendert fuer die verbliebenen.)
+func TestADiskRefusalIsNamedOnceAndNotEveryTick(t *testing.T) {
 	r := newRig(t)
+	r.e.o.DiskGuard = 4 << 30
+	r.e.o.FreeBytes = func(string) (uint64, error) { return 100 << 20, nil }
 	r.assign(nil)
-	r.signalCore(func(s *otaapply.CoreSignal) { s.ControlActive = true })
-
 	r.tick()
 
 	st := r.state()
-	if st.Blocker != otaapply.BlockerNeutralTime {
+	if st.Blocker != otaapply.BlockerDisk {
 		t.Fatalf("Blocker soll %q sein, ist %q (Grund: %q)",
-			otaapply.BlockerNeutralTime, st.Blocker, st.Reason)
+			otaapply.BlockerDisk, st.Blocker, st.Reason)
 	}
-	// Der Grund muss den HEBEL nennen, sonst ist er eine Sackgasse.
-	for _, want := range []string{"steuert", "hybrid_3p", "VP_OTA_NEUTRAL_VERIFIED"} {
-		if !strings.Contains(st.Reason, want) {
-			t.Fatalf("der Grund nennt %q nicht: %q", want, st.Reason)
-		}
+	// Der Grund muss sagen, dass schon aufgeraeumt wurde - sonst liest er sich
+	// als „raeum doch mal auf", obwohl der Sidecar genau das getan hat.
+	if !strings.Contains(st.Reason, "bereits entfernt") {
+		t.Fatalf("der Grund nennt das Aufraeumen nicht: %q", st.Reason)
 	}
 	if !st.Blocked() {
 		t.Fatal("ein gesetzter Blocker muss als Sperre gelten")
@@ -59,9 +62,12 @@ func TestTheNeutralTimeRefusalIsNamedOnceAndNotEveryTick(t *testing.T) {
 	if got := st.BlockedReason(); !strings.HasPrefix(got, otaapply.BlockedPrefix) {
 		t.Fatalf("der Satz fuer die Oberflaeche traegt das Praefix nicht: %q", got)
 	}
-	// Es wurde NICHTS getauscht - die Sichtbarkeit aendert an der Sperre nichts.
-	if len(r.fd.log) != 0 {
-		t.Fatalf("eine Sperre darf kein docker-Kommando ausloesen, es liefen: %v", r.fd.log)
+	// Es wurde NICHTS GEHOLT und nichts getauscht - die Sichtbarkeit aendert an
+	// der Sperre nichts.
+	for _, cmd := range r.fd.log {
+		if strings.Contains(cmd, " pull ") || strings.Contains(cmd, "compose") {
+			t.Fatalf("eine Sperre darf weder holen noch tauschen, es lief: %q", cmd)
+		}
 	}
 
 	blocked, cleared := blockedLines(t, r)
@@ -69,14 +75,13 @@ func TestTheNeutralTimeRefusalIsNamedOnceAndNotEveryTick(t *testing.T) {
 		t.Fatalf("die erste Sperre soll GENAU EINMAL genannt werden, gezaehlt %d/%d",
 			blocked, cleared)
 	}
-	if !strings.Contains(r.logs.String(), otaapply.BlockerNeutralTime) {
+	if !strings.Contains(r.logs.String(), otaapply.BlockerDisk) {
 		t.Fatalf("das Protokoll traegt den Blocker-Namen nicht: %s", r.logs.String())
 	}
 
 	// Vier weitere Durchlaeufe an derselben Sperre: kein einziges Wort mehr.
 	for i := 0; i < 4; i++ {
 		r.now = r.now.Add(5 * 1e9)
-		r.signalCore(func(s *otaapply.CoreSignal) { s.ControlActive = true })
 		r.tick()
 	}
 	if blocked, _ = blockedLines(t, r); blocked != 1 {
@@ -89,22 +94,28 @@ func TestTheNeutralTimeRefusalIsNamedOnceAndNotEveryTick(t *testing.T) {
 // ein Betreiber wartet.
 func TestAChangedBlockerIsNamedAgainAndALiftedOneIsToo(t *testing.T) {
 	r := newRig(t)
+	r.e.o.DiskGuard = 4 << 30
+	r.e.o.FreeBytes = func(string) (uint64, error) { return 100 << 20, nil }
 	r.assign(nil)
-	r.signalCore(func(s *otaapply.CoreSignal) { s.ControlActive = true })
 	r.tick()
 
-	// Jetzt meldet sich der Kern nicht mehr - ein ANDERES Tor.
-	r.now = r.now.Add(10 * 60 * 1e9)
+	// Jetzt kennt das Release unseren Datenstand nicht - ein ANDERES Tor.
+	r.writeOta(otaapply.FileCurrent, map[string]any{
+		"release": "edge-2026.07.9", "release_seq": 11, "state_schema": 9})
+	r.now = r.now.Add(5 * 1e9)
 	r.tick()
-	if st := r.state(); st.Blocker != otaapply.BlockerCoreSilent {
-		t.Fatalf("Blocker soll %q sein, ist %q", otaapply.BlockerCoreSilent, st.Blocker)
+	if st := r.state(); st.Blocker != otaapply.BlockerStateSchema {
+		t.Fatalf("Blocker soll %q sein, ist %q", otaapply.BlockerStateSchema, st.Blocker)
 	}
 	if blocked, _ := blockedLines(t, r); blocked != 2 {
 		t.Fatalf("eine ANDERE Sperre ist eine neue Aussage, gezaehlt %d", blocked)
 	}
 
-	// Und nun faellt jede Sperre: der Kern meldet sich wieder und steuert nicht.
-	r.signalCore(func(*otaapply.CoreSignal) {})
+	// Und nun faellt jede Sperre: Datenstand passt wieder, Platz ist da.
+	r.writeOta(otaapply.FileCurrent, map[string]any{
+		"release": "edge-2026.07.9", "release_seq": 11, "state_schema": 3})
+	r.e.o.FreeBytes = func(string) (uint64, error) { return 8 << 30, nil }
+	r.now = r.now.Add(5 * 1e9)
 	r.tick()
 	if st := r.state(); st.Blocker != "" {
 		t.Fatalf("ohne Sperre darf kein Blocker stehen bleiben: %q", st.Blocker)

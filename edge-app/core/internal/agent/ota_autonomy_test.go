@@ -12,7 +12,6 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
-	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
@@ -31,71 +30,31 @@ func autonomyAgent(t *testing.T) *Agent {
 	}
 }
 
-func TestTheCoreSignalIsWrittenAndCarriesTheInterlockInput(t *testing.T) {
+// Der Kern hinterlegt seinen Zustand fuer den Sidecar.
+//
+// Er ist seit der Vereinfachung vom 26.08.2026 KEIN Tor mehr (weder „meldet
+// sich nicht" noch „steuert gerade" haelt einen Tausch auf) - er traegt nur
+// noch die Tatsachen, die der Selbsttest danach braucht.
+func TestTheCoreSignalIsWritten(t *testing.T) {
 	a := autonomyAgent(t)
+	a.State.Update(func(s *state.Snapshot) {
+		s.ControlEnabled, s.ControlCertified = true, true
+		s.Mode, s.SetpointKw = state.ModeSchedule, -4.2
+	})
 	a.otaSignalOnce()
 
 	sig, err := otaapply.ReadJSON[otaapply.CoreSignal](a.Cfg.DataDir, otaapply.FileCoreSignal)
-	if err != nil {
-		t.Fatalf("der Zustand muss hinterlegt werden: %v", err)
+	if err != nil || sig == nil {
+		t.Fatalf("kein Signal hinterlegt: %v", err)
+	}
+	// ControlActive ist eine TATSACHE fuer den Selbsttest, kein Tor: es braucht
+	// eine wirklich gewaehlte Wechselrichter-Familie, die dieser nackte Agent
+	// nicht hat - genau deshalb ist es hier false und haelt trotzdem nichts auf.
+	if sig.ControlActive {
+		t.Fatal("ohne gewaehlten Wechselrichter steuert die Anlage nicht")
 	}
 	if sig.Version != Version {
-		t.Fatalf("die Build-Stempelung muss mitreisen: %q", sig.Version)
-	}
-	if sig.ControlActive || sig.Dispatching {
-		t.Fatalf("ohne Freigabe steuert nichts: %+v", sig)
-	}
-	if sig.Age(time.Now()) > time.Minute {
-		t.Fatalf("der Stempel muss frisch sein, ist %s alt", sig.Age(time.Now()))
-	}
-}
-
-// Der Interlock haengt an ZWEI Bedingungen: es wird wirklich gesteuert UND der
-// Sollwert weicht von neutral ab.
-func TestDispatchingNeedsBothARealControlPathAndANonNeutralSetpoint(t *testing.T) {
-	a := autonomyAgent(t)
-	a.invMu.Lock()
-	a.inv = &inverter.Selection{Family: "hybrid_3p"}
-	a.invMu.Unlock()
-
-	cases := []struct {
-		name    string
-		snap    state.Snapshot
-		control bool
-		want    bool
-	}{
-		{"nur lesend - die heutige Flotte", state.Snapshot{
-			Mode: state.ModeSchedule, SetpointKw: -7.1}, false, false},
-		{"freigegeben, aber neutral", state.Snapshot{
-			ControlEnabled: true, ControlCertified: true,
-			Mode: state.ModeSchedule, SetpointKw: 0}, true, false},
-		{"freigegeben und entlaedt", state.Snapshot{
-			ControlEnabled: true, ControlCertified: true,
-			Mode: state.ModeSchedule, SetpointKw: -7.1}, true, true},
-		{"Not-Aus gezogen", state.Snapshot{
-			ControlEnabled: false, ControlCertified: true,
-			Mode: state.ModeSchedule, SetpointKw: -7.1}, false, false},
-		{"ohne Messwerte", state.Snapshot{
-			ControlEnabled: true, ControlCertified: true,
-			Mode: state.ModeNoReading}, true, false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := a.otaControlActive(c.snap); got != c.control {
-				t.Fatalf("ControlActive: erwartet %v, ist %v", c.control, got)
-			}
-			if got := a.otaDispatching(c.snap); got != c.want {
-				t.Fatalf("Dispatching: erwartet %v, ist %v", c.want, got)
-			}
-		})
-	}
-
-	// Ohne gewaehlten Wechselrichter steuert nichts - auch mit Freigabe nicht.
-	a.invMu.Lock()
-	a.inv = nil
-	a.invMu.Unlock()
-	if a.otaControlActive(state.Snapshot{ControlEnabled: true, ControlCertified: true}) {
-		t.Fatal("ohne Geraetewahl gibt es keinen Steuerpfad")
+		t.Fatalf("die Build-Stempelung fehlt: %q", sig.Version)
 	}
 }
 
@@ -181,7 +140,7 @@ func TestTheHeartbeatIsUnchangedWithoutTheSidecar(t *testing.T) {
 	// Ein Sidecar, der nichts tut, aendert nichts.
 	if err := otaapply.WriteJSON(a.Cfg.DataDir, otaapply.FileUpdaterState,
 		otaapply.UpdaterState{UpdatedAt: time.Now().UTC().Format(otaapply.TimeFormat),
-			State: otaapply.StateIdle, Autonomous: false}); err != nil {
+			State: otaapply.StateIdle}); err != nil {
 		t.Fatal(err)
 	}
 	if got := *a.updateSummary(); got != before {
@@ -196,7 +155,6 @@ func TestAWorkingSidecarOwnsTheApplicationStateWhileTheCoreKeepsTheVerdict(t *te
 			UpdatedAt: time.Now().UTC().Format(otaapply.TimeFormat),
 			State:     otaapply.StateApplying, Reason: "Die Komponente 'core' wird getauscht.",
 			Release: "edge-2026.08.0", ReleaseSeq: 12, LastKnownGood: "edge-2026.07.2",
-			Autonomous: true,
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -227,11 +185,11 @@ func TestABlockedSidecarOwnsTheReasonInsteadOfTheVerifiersFriendlySentence(t *te
 		otaapply.UpdaterState{
 			UpdatedAt: time.Now().UTC().Format(otaapply.TimeFormat),
 			State:     otaapply.StateDeferred,
-			Blocker:   otaapply.BlockerNeutralTime,
-			Reason: "Diese Anlage steuert. Fuer die Familie 'hybrid_3p' ist die Neutral-Zeit " +
-				"des Wechselrichters NICHT verifiziert. Es wird deshalb nicht autonom " +
-				"angewandt (am Pruefstand belegen und in VP_OTA_NEUTRAL_VERIFIED eintragen).",
-			Release: "edge-2026.08.2", ReleaseSeq: 14, Autonomous: true,
+			Blocker:   otaapply.BlockerDisk,
+			Reason: "Zu wenig freier Speicherplatz (100 MiB frei, 2.0 GiB noetig) - " +
+				"ein Tausch ohne Platz fuer das Rueckfallziel wird nicht begonnen. " +
+				"Abgeloeste Abbilder wurden bereits entfernt.",
+			Release: "edge-2026.08.2", ReleaseSeq: 14,
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +201,7 @@ func TestABlockedSidecarOwnsTheReasonInsteadOfTheVerifiersFriendlySentence(t *te
 	if !strings.HasPrefix(sum.Reason, otaapply.BlockedPrefix) {
 		t.Fatalf("eine Sperre muss als solche erkennbar sein: %q", sum.Reason)
 	}
-	for _, want := range []string{"steuert", "hybrid_3p", "VP_OTA_NEUTRAL_VERIFIED"} {
+	for _, want := range []string{"Speicherplatz", "bereits entfernt"} {
 		if !strings.Contains(sum.Reason, want) {
 			t.Fatalf("der Grund nennt %q nicht: %q", want, sum.Reason)
 		}
@@ -259,7 +217,7 @@ func TestABlockedSidecarOwnsTheReasonInsteadOfTheVerifiersFriendlySentence(t *te
 	// Der NAME der Sperre reist seit dem Admin-UX-Umbau mit: der Satz bleibt
 	// die Aussage, aber die Cloud darf ihn nicht nach Stichworten durchsuchen
 	// muessen, um „blockiert" von „unterwegs" zu unterscheiden.
-	if sum.Blocker != otaapply.BlockerNeutralTime {
+	if sum.Blocker != otaapply.BlockerDisk {
 		t.Fatalf("der maschinenlesbare Sperr-Name fehlt: %q", sum.Blocker)
 	}
 }
@@ -276,7 +234,7 @@ func TestNoBlockerNameIsReportedWithoutABlock(t *testing.T) {
 		otaapply.UpdaterState{
 			UpdatedAt: time.Now().UTC().Format(otaapply.TimeFormat),
 			State:     otaapply.StateApplying, Reason: "Die Komponente 'core' wird getauscht.",
-			Release: "edge-2026.08.0", ReleaseSeq: 12, Autonomous: true,
+			Release: "edge-2026.08.0", ReleaseSeq: 12,
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -292,11 +250,10 @@ func TestABlockerIsCarriedEvenNextToAnIdleState(t *testing.T) {
 	a := autonomyAgent(t)
 	if err := otaapply.WriteJSON(a.Cfg.DataDir, otaapply.FileUpdaterState,
 		otaapply.UpdaterState{
-			UpdatedAt:  time.Now().UTC().Format(otaapply.TimeFormat),
-			State:      otaapply.StateIdle,
-			Blocker:    otaapply.BlockerApprovalRelease,
-			Reason:     "Die Freigabe galt fuer Release edge-2026.08.1.",
-			Autonomous: false,
+			UpdatedAt: time.Now().UTC().Format(otaapply.TimeFormat),
+			State:     otaapply.StateIdle,
+			Blocker:   otaapply.BlockerApprovalRelease,
+			Reason:    "Die Freigabe galt fuer Release edge-2026.08.1.",
 		}); err != nil {
 		t.Fatal(err)
 	}

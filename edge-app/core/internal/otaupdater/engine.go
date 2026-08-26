@@ -53,9 +53,7 @@ type Options struct {
 	// denn genau das waere die Vertrauensuebernahme, gegen die die
 	// kalt/heiss-Trennung gebaut ist.
 	Roots *otaverify.KeySet
-	// Neutral ist die Tabelle der belegten Inverter-Neutral-Zeiten.
-	Neutral *otaapply.NeutralTable
-	// Deadline ist die konfigurierte Wachhund-Frist (wird durch T gedeckelt).
+	// Deadline ist die konfigurierte Wachhund-Frist.
 	Deadline time.Duration
 	// DiskGuard ist der geforderte freie Platz.
 	DiskGuard uint64
@@ -64,9 +62,6 @@ type Options struct {
 	// [otaapply.DefaultPrunePolicy] zurueck; das einzelne Geraet ueberstimmt sie
 	// mit `<data>/ota/prune.json`.
 	Prune otaapply.PrunePolicy
-	// ForceAutonomous ist der Not-Ein aus der Umgebung (Laborstand). Der
-	// eigentliche Schalter ist die Datei.
-	ForceAutonomous bool
 	// AckWait ist die Frist fuer den durablen `applying`-Bericht des Kerns.
 	AckWait time.Duration
 	// HealthWait ist die Frist, in der ein getauschter Container laufen muss.
@@ -169,14 +164,7 @@ func (e *Engine) Tick(ctx context.Context) error {
 		})
 	}
 
-	autonomous := e.o.ForceAutonomous || otaapply.ReadAutonomy(e.o.DataDir).Enabled
 	sig, _ := otaapply.ReadJSON[otaapply.CoreSignal](e.o.DataDir, otaapply.FileCoreSignal)
-	// Die EINMALIGE Freigabe eines Menschen am Geraet (`:8484` „Jetzt
-	// anwenden", OTA Stufe 4). Sie oeffnet ausschliesslich das erste Tor; der
-	// zuletzt ausgefuehrte Token steht in UNSEREM Zustand, damit dieselbe
-	// Anfrage nie zweimal wirkt (und jede Datei genau einen Schreiber hat).
-	req, _ := otaapply.ReadJSON[otaapply.ApplyRequest](e.o.DataDir, otaapply.FileApplyRequest)
-	appliedToken := e.appliedRequestToken()
 
 	env, err := otaapply.LoadTarget(e.o.DataDir)
 	hasTarget := err == nil
@@ -188,11 +176,20 @@ func (e *Engine) Tick(ctx context.Context) error {
 		// Normalfall.
 	default:
 		return e.report(otaapply.UpdaterState{
-			State:      otaapply.StateFailed,
-			Blocker:    otaapply.BlockerUnreadable,
-			Autonomous: autonomous,
-			Reason:     "Die abgelegte Zuweisung ist unlesbar: " + err.Error(),
+			State:   otaapply.StateFailed,
+			Blocker: otaapply.BlockerUnreadable,
+			Reason:  "Die abgelegte Zuweisung ist unlesbar: " + err.Error(),
 		})
+	}
+
+	// AUFRAEUMEN VOR DEM MESSEN: der Plattenwaechter soll den echten freien
+	// Platz sehen, nicht unseren eigenen Muell. Bis zur Vereinfachung vom
+	// 26.08.2026 raeumte der Sidecar erst NACH einem bestaetigten Tausch auf -
+	// eine Box, die er einmal wegen Platzmangels verweigert hatte, kam damit
+	// nie wieder frei (die dokumentierte Grenze des Pilsting-Falls). Es ist
+	// nicht-fatal und niemals ratend: bei unvollstaendiger Sicht bricht es ab.
+	if hasTarget && verdict.Outcome == otaverify.OutcomeOK {
+		e.pruneBeforeSwap(ctx)
 	}
 
 	free, ferr := e.o.FreeBytes(e.o.DataDir)
@@ -202,49 +199,27 @@ func (e *Engine) Tick(ctx context.Context) error {
 		free = 0
 	}
 
-	family := ""
-	if sig != nil {
-		family = sig.InverterFamily
+	assignment := ""
+	if env != nil {
+		assignment = env.AssignedAt
 	}
 	dec := otaapply.Decide(otaapply.DecisionInput{
-		Autonomous:          autonomous,
-		Request:             req,
-		AppliedRequestToken: appliedToken,
-		HasTarget:           hasTarget,
-		Verdict:             verdict,
-		StateSchemaOnDisk:   e.stateSchemaOnDisk(),
-		FreeBytes:           free,
-		RequiredBytes:       e.o.DiskGuard,
-		Signal:              sig,
-		Failed:              e.failedRelease(),
-		// ForWithMeasured zieht additiv den geraete-lokal GEMESSENEN Nachweis
-		// heran (der gefuehrte First-Light-Neutral-Zeit-Test auf `:8484`,
-		// internal/neutralcal), aber NUR wenn die Betreiber-Tabelle
-		// (VP_OTA_NEUTRAL_VERIFIED) fuer diese Familie schweigt - die
-		// Umgebungsvariable bleibt bindend und hat Vorrang. Die Datei wird
-		// JEDEN Takt frisch gelesen (wie CoreSignal/Autonomy), weil der
-		// laufende Kern sie waehrend des Sidecar-Betriebs neu schreiben kann.
-		Neutral:            e.o.Neutral.ForWithMeasured(family, otaapply.LoadNeutralEvidence(e.o.DataDir)),
+		HasTarget:          hasTarget,
+		Assignment:         assignment,
+		Verdict:            verdict,
+		StateSchemaOnDisk:  e.stateSchemaOnDisk(),
+		FreeBytes:          free,
+		RequiredBytes:      e.o.DiskGuard,
+		Failed:             e.failedRelease(),
 		ConfiguredDeadline: e.o.Deadline,
 		Now:                now,
 	})
 
 	st := otaapply.UpdaterState{
-		State:               dec.State,
-		Reason:              dec.Reason,
-		Blocker:             dec.Blocker,
-		Autonomous:          autonomous,
-		LastKnownGood:       e.lastKnownGood(),
-		AppliedRequestToken: appliedToken,
-	}
-	if dec.Action == otaapply.ActionApply && !autonomous && req != nil {
-		// QUITTIEREN, BEVOR getauscht wird. Ein Absturz mitten im Tausch darf
-		// niemals dazu fuehren, dass dieselbe Freigabe beim Neustart einen
-		// ZWEITEN Tausch ausloest - die Wiederaufnahme laeuft ueber die
-		// Brotkrume, nicht ueber die Freigabe.
-		st.AppliedRequestToken = req.Token
-		e.o.Log.Info("OTA: am Geraet freigegebene Anwendung", "release", st.Release,
-			"freigegeben_von", req.RequestedBy)
+		State:         dec.State,
+		Reason:        dec.Reason,
+		Blocker:       dec.Blocker,
+		LastKnownGood: e.lastKnownGood(),
 	}
 	if verdict.Manifest != nil {
 		st.Release = verdict.Manifest.Release
@@ -257,10 +232,6 @@ func (e *Engine) Tick(ctx context.Context) error {
 	switch dec.Action {
 	case otaapply.ActionApply:
 		return e.apply(ctx, verdict.Manifest, dec, st, now)
-	case otaapply.ActionNeutral:
-		st.NeedNeutral = true
-		st.Phase = "neutral"
-		return e.report(st)
 	default:
 		return e.report(st)
 	}
@@ -307,8 +278,7 @@ func (e *Engine) apply(ctx context.Context, m *otaverify.Manifest, dec otaapply.
 			// gestoppt. Beim naechsten Takt wird es erneut versucht.
 			return e.report(otaapply.UpdaterState{
 				State: otaapply.StateDeferred, Blocker: otaapply.BlockerPull,
-				Autonomous: st.Autonomous,
-				Release:    st.Release, ReleaseSeq: st.ReleaseSeq,
+				Release: st.Release, ReleaseSeq: st.ReleaseSeq,
 				LastKnownGood: st.LastKnownGood,
 				Reason:        "Das Image '" + name + "' konnte nicht geladen werden: " + err.Error(),
 			})
@@ -324,8 +294,7 @@ func (e *Engine) apply(ctx context.Context, m *otaverify.Manifest, dec otaapply.
 	if err != nil {
 		return e.report(otaapply.UpdaterState{
 			State: otaapply.StateDeferred, Blocker: otaapply.BlockerRollback,
-			Autonomous: st.Autonomous,
-			Release:    st.Release, ReleaseSeq: st.ReleaseSeq,
+			Release: st.Release, ReleaseSeq: st.ReleaseSeq,
 			Reason: "Das Rueckfallziel konnte nicht gesichert werden (" + err.Error() +
 				") - ohne Rueckfallziel wird nicht getauscht.",
 		})
@@ -333,8 +302,7 @@ func (e *Engine) apply(ctx context.Context, m *otaverify.Manifest, dec otaapply.
 	if err := otaapply.Snapshot(e.o.DataDir); err != nil {
 		return e.report(otaapply.UpdaterState{
 			State: otaapply.StateDeferred, Blocker: otaapply.BlockerSnapshot,
-			Autonomous: st.Autonomous,
-			Release:    st.Release, ReleaseSeq: st.ReleaseSeq,
+			Release: st.Release, ReleaseSeq: st.ReleaseSeq,
 			Reason: "Der Zustand unter /data konnte nicht gesichert werden (" + err.Error() +
 				") - ohne Sicherung wird nicht getauscht.",
 		})
@@ -388,7 +356,7 @@ func (e *Engine) resume(ctx context.Context, p *otaapply.PendingConfirm, now tim
 	if p.Phase == otaapply.PhaseSelfTest {
 		// Getauscht ist getauscht - jetzt urteilt der neue Stand ueber sich.
 		return e.report(otaapply.UpdaterState{
-			State: otaapply.StateSelfTest, Autonomous: true,
+			State:   otaapply.StateSelfTest,
 			Release: p.Release, ReleaseSeq: p.ReleaseSeq,
 			LastKnownGood: e.lastKnownGood(), Phase: otaapply.PhaseSelfTest,
 			DeadlineAt: p.DeadlineAt,
@@ -412,7 +380,7 @@ func (e *Engine) driveSwap(ctx context.Context, p *otaapply.PendingConfirm, now 
 		// gewartet - aber nicht ewig, sonst waere eine Box ohne Broker nie
 		// aktualisierbar.
 		return e.report(otaapply.UpdaterState{
-			State: otaapply.StateApplying, Autonomous: true,
+			State:   otaapply.StateApplying,
 			Release: p.Release, ReleaseSeq: p.ReleaseSeq, Phase: "await_ack",
 			DeadlineAt: p.DeadlineAt, NeedApplyingAck: true, AckToken: p.Token,
 			Reason: "Der Tausch wartet auf den durablen Zustandsbericht des Kerns.",
@@ -432,7 +400,7 @@ func (e *Engine) driveSwap(ctx context.Context, p *otaapply.PendingConfirm, now 
 			return e.revert(ctx, p, "Die Brotkrume konnte nicht fortgeschrieben werden: "+err.Error())
 		}
 		return e.report(otaapply.UpdaterState{
-			State: otaapply.StateSelfTest, Autonomous: true,
+			State:   otaapply.StateSelfTest,
 			Release: p.Release, ReleaseSeq: p.ReleaseSeq, Phase: otaapply.PhaseSelfTest,
 			DeadlineAt: p.DeadlineAt, LastKnownGood: e.lastKnownGood(),
 			Reason: "Der neue Stand prueft sich selbst.",
@@ -446,7 +414,7 @@ func (e *Engine) driveSwap(ctx context.Context, p *otaapply.PendingConfirm, now 
 	p.Phase = otaapply.PhaseForComponent(name)
 	_ = otaapply.WriteJSON(e.o.DataDir, otaapply.FilePendingConfirm, p)
 	_ = e.report(otaapply.UpdaterState{
-		State: otaapply.StateApplying, Autonomous: true,
+		State:   otaapply.StateApplying,
 		Release: p.Release, ReleaseSeq: p.ReleaseSeq, Phase: p.Phase,
 		DeadlineAt: p.DeadlineAt,
 		Reason:     "Die Komponente '" + name + "' wird getauscht.",
@@ -539,7 +507,7 @@ func (e *Engine) commit(ctx context.Context, p *otaapply.PendingConfirm, reason 
 	e.pruneSuperseded(ctx, p, lkg)
 
 	return e.report(otaapply.UpdaterState{
-		State: otaapply.StateSucceeded, Autonomous: true,
+		State:   otaapply.StateSucceeded,
 		Release: p.Release, ReleaseSeq: p.ReleaseSeq,
 		LastKnownGood: p.Release, Reason: reason,
 	})
@@ -549,7 +517,7 @@ func (e *Engine) commit(ctx context.Context, p *otaapply.PendingConfirm, reason 
 func (e *Engine) revert(ctx context.Context, p *otaapply.PendingConfirm, reason string) error {
 	e.o.Log.Error("OTA: Tausch wird zurueckgenommen", "release", p.Release, "grund", reason)
 	_ = e.report(otaapply.UpdaterState{
-		State: otaapply.StateApplying, Autonomous: true,
+		State:   otaapply.StateApplying,
 		Release: p.Release, ReleaseSeq: p.ReleaseSeq, Phase: "revert",
 		Reason: "Der Tausch wird zurueckgenommen: " + reason,
 	})
@@ -620,10 +588,15 @@ func (e *Engine) revert(ctx context.Context, p *otaapply.PendingConfirm, reason 
 			"dateien", strings.Join(restored, ", "))
 	}
 
-	// Merken, dass GENAU DIESES Release hier nicht laeuft - sonst begaenne der
+	// Merken, dass GENAU DIESE ZUWEISUNG hier nicht laeuft - sonst begaenne der
 	// naechste Takt denselben Tausch von vorn (siehe otaapply.FailedRelease).
+	//
+	// Der Stempel ist der ganze Unterschied zur frueheren Dauersperre: ein
+	// erneutes „Aktualisieren" im Portal erzeugt einen neuen `assigned_at` und
+	// loest den Merkzettel damit von selbst - auch fuer dasselbe Release.
 	failed := otaapply.FailedRelease{Release: p.Release, ReleaseSeq: p.ReleaseSeq,
-		Reason: reason, At: e.o.Now().UTC().Format(otaapply.TimeFormat), Attempts: 1}
+		Assignment: e.currentAssignment(),
+		Reason:     reason, At: e.o.Now().UTC().Format(otaapply.TimeFormat), Attempts: 1}
 	if prev := e.failedRelease(); prev != nil && prev.Release == p.Release {
 		failed.Attempts = prev.Attempts + 1
 	}
@@ -652,7 +625,7 @@ func (e *Engine) revert(ctx context.Context, p *otaapply.PendingConfirm, reason 
 			strings.Join(problems, "; ") + ")."
 	}
 	return e.report(otaapply.UpdaterState{
-		State: otaapply.StateRolledBack, Autonomous: true,
+		State:   otaapply.StateRolledBack,
 		Release: p.Release, ReleaseSeq: p.ReleaseSeq,
 		LastKnownGood: p.Previous.Release, Reason: full,
 	})
@@ -820,16 +793,15 @@ func (e *Engine) lastKnownGood() string {
 	return lkg.Release
 }
 
-// appliedRequestToken ist die Quittung ueber die zuletzt ausgefuehrte
-// einmalige Freigabe. Sie lebt in UNSEREM Zustand (nicht in einer Loeschung
-// der Anfrage-Datei), damit jede Datei des Protokolls genau EINEN Schreiber
-// hat - dieselbe Regel, aus der `current.json` nur der Kern schreibt.
-func (e *Engine) appliedRequestToken() string {
-	st, err := otaapply.ReadJSON[otaapply.UpdaterState](e.o.DataDir, otaapply.FileUpdaterState)
-	if err != nil || st == nil {
+// currentAssignment ist der `assigned_at`-Stempel der aktuell abgelegten
+// Zuweisung ("" = keine bzw. unlesbar). Er ist der Schluessel, an dem eine
+// zurueckgenommene Anwendung haengt.
+func (e *Engine) currentAssignment() string {
+	env, err := otaapply.LoadTarget(e.o.DataDir)
+	if err != nil || env == nil {
 		return ""
 	}
-	return st.AppliedRequestToken
+	return env.AssignedAt
 }
 
 func (e *Engine) envPath() string { return filepath.Join(e.o.DeployDir, ".env") }
@@ -878,7 +850,7 @@ func (e *Engine) logBlocker(st otaapply.UpdaterState) {
 	case st.Blocker != "":
 		// WARN, nicht INFO: eine Zuweisung liegt, und sie wird nicht angewandt.
 		e.o.Log.Warn("OTA: autonomes Anwenden blockiert", "blocker", st.Blocker,
-			"grund", st.Reason, "release", st.Release, "autonomie", st.Autonomous)
+			"grund", st.Reason, "release", st.Release)
 	case e.blockerKnown && e.blocker != "":
 		e.o.Log.Info("OTA: Sperre aufgehoben", "vorher", e.blocker, "zustand", st.State)
 	}

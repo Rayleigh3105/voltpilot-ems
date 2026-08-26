@@ -473,30 +473,7 @@
           </div>
         </section>
 
-        <!-- Neutral-Zeit messen (docs/ota-autonomie.md §3): der gefuehrte
-             First-Light-Test, der die Inverter-Neutral-Zeit T am GERAET misst
-             statt am Pruefstand. Ein kleiner, klar von neutral abweichender
-             Sollwert wird geschrieben und bestaetigt, danach schreibt die Box
-             GAR NICHTS mehr und beobachtet ueber den normalen Lesepfad, wie
-             lange der Wechselrichter ihn haelt. Nur relevant fuer eine Anlage,
-             die wirklich steuert - siehe #controlCard fuer die Freigabe. -->
-        <section class="card" id="neutralCard" hidden>
-          <div class="chart-head">
-            <h3 class="chart-title"><span class="ico" style="background:var(--pv-soft, var(--bg-2));color:var(--pv, #f0b400)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span>Neutral-Zeit messen</h3>
-          </div>
-          <p class="cal-hint">
-            Für ein autonomes Update muss bekannt sein, wie lange der Wechselrichter einen
-            Sollwert von selbst hält, wenn er nicht mehr aufgefrischt wird. Der Test schreibt
-            dafür kurz einen kleinen, klar erkennbaren Wert, hört dann bewusst auf zu schreiben
-            und misst, bis die Anlage von selbst wieder neutral wird. Die Anlage bleibt dabei
-            sicher: harte Zeitgrenze, jederzeit abbrechbar, es wird nie eine Grenze verändert.
-          </p>
-          <p class="cal-err" id="neutralErr" hidden></p>
-          <div id="neutralBody"></div>
-          <div class="ctrl-summary muted" id="neutralEmpty" hidden>
-            <p id="neutralEmptyText"></p>
-          </div>
-        </section>
+        
       </div>
     </div>
 
@@ -785,48 +762,7 @@
           </div>
         </section>
 
-        <!-- OTA Stufe 4: der beaufsichtigte „Jetzt anwenden"-Knopf. Er steht
-             hier, weil eine Aktualisierung eine seltene, bewusste Handlung ist -
-             und weil sie hinter dasselbe Betreiber-Passwort gehoert wie die
-             Kalibrierung. Ohne zugewiesenes Release oder ohne laufenden
-             Aktualisierer rendert die Karte GAR NICHT (ota.js) - eine Karte,
-             die nur sagen kann „geht hier nicht", ist Laerm. -->
-        <section class="card set-card" id="otaCard" hidden>
-          <div class="set-card-head">
-            <h2 class="set-title">Software-Aktualisierung</h2>
-            <p class="set-desc" id="otaDesc"></p>
-          </div>
-          <dl class="kv" id="otaKv"></dl>
-          <p class="set-desc" id="otaReason" hidden></p>
-          <div class="set-actions" id="otaActions" hidden>
-            <button type="button" class="btn-primary" id="otaApplyBtn">Jetzt anwenden</button>
-          </div>
-          <p class="form-ok set-flash" id="otaFlash" hidden></p>
-          <p class="form-error set-flash" id="otaErr" hidden></p>
-        </section>
-
-        <!-- Teil C: der Autonomie-Schalter OHNE SHELL. Er setzt ausschliesslich
-             ota/autonomy.json - dieselbe Datei, die ein Betreiber sonst per
-             Docker-Volume von Hand anlegen muesste. Jedes Tor der Torkette
-             (Signaturkette, Anti-Rollback-Boden, Plattenwaechter,
-             Neutral-Zeit-Regel, Interlock, Selbsttest, Wachhund) gilt
-             unveraendert - dieser Schalter erteilt keine neue Befugnis. -->
-        <section class="card set-card" id="autonomyCard">
-          <div class="set-card-head">
-            <h2 class="set-title">Automatische Aktualisierung</h2>
-            <p class="set-desc">Wenn eingeschaltet, wendet diese Box vom Portal zugewiesene
-              Software-Stände selbst an - beaufsichtigt bleibt es trotzdem: Signaturkette,
-              Rückfallziel, Selbsttest und die Neutral-Zeit-Regel gelten unverändert.</p>
-          </div>
-          <label class="mirror-toggle-row" for="autonomyToggle">
-            <span class="cal-switch">
-              <input type="checkbox" id="autonomyToggle">
-              <span class="cal-slider"></span>
-            </span>
-            <span id="autonomyLabel">Automatische Aktualisierung</span>
-          </label>
-          <p class="form-error set-flash" id="autonomyErr" hidden></p>
-        </section>
+        
 
         <div class="area-title">
           Unumkehrbar
@@ -981,9 +917,7 @@
   <script src="control.js"></script>
   <script src="calibration.js"></script>
   <script src="curtail.js"></script>
-  <script src="neutral.js"></script>
   <script src="ocpp.js"></script>
-  <script src="ota.js"></script>
   <script src="einrichten.js"></script>
 </body>
 </html>

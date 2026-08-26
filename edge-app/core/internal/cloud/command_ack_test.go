@@ -75,7 +75,7 @@ func TestNewRegistersEveryLocalDownlinkRouteBeforeConnect(t *testing.T) {
 		Identity: enroll.Identity{TenantID: testTenant, SiteID: testSite, DeviceID: testDevice},
 		DevURL:   "tcp://127.0.0.1:1", OnSchedule: handler,
 		OnCommand: func([]byte) bool { return true }, OnEntities: handler, OnPlanV2: handler,
-		OnFlows: handler, OnUpdateTarget: handler, OnApplyRequest: handler,
+		OnFlows: handler, OnUpdateTarget: handler,
 		OnProbeRequest: handler, OnRegisterWrite: handler, OnDesiredDownlink: handler,
 		OnControlCert: handler, OnChargingConfig: handler, OnChargingBoost: handler,
 		OnMeasurementConfig: func([]byte) bool { return true },
@@ -91,7 +91,7 @@ func TestNewRegistersEveryLocalDownlinkRouteBeforeConnect(t *testing.T) {
 	}
 	want := map[string]bool{}
 	for _, leaf := range []string{"schedule", "command", "v2/entities", "v2/plan", "v2/flows",
-		"v2/update", "v2/control-certification", "v2/charging-config", "v2/apply",
+		"v2/update", "v2/control-certification", "v2/charging-config",
 		"v2/charging-boost", "v2/probe", "v2/register-write", "v2/desired",
 		"v2/measurement-config"} {
 		want[link.topic(leaf)] = true

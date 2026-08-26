@@ -55,28 +55,17 @@ func main() {
 	dataDir := env("VP_DATA_DIR", "/data")
 	deployDir := env("VP_DEPLOY_DIR", "/deploy")
 
-	neutral, err := otaapply.ParseNeutralTable(env("VP_OTA_NEUTRAL_VERIFIED", ""))
-	if err != nil {
-		// Eine unlesbare Tabelle ist ein Abbruch, kein „dann eben leer": leer
-		// hiesse „nichts verifiziert", waehrend der Betreiber glaubt,
-		// verifiziert zu haben.
-		log.Error("VP_OTA_NEUTRAL_VERIFIED ist unlesbar", "grund", err)
-		os.Exit(2)
-	}
-
 	e := otaupdater.New(otaupdater.Options{
-		DataDir:         dataDir,
-		DeployDir:       deployDir,
-		ComposeFiles:    composeFiles(),
-		Runner:          &otaupdater.ExecRunner{Timeout: envDuration("VP_OTA_CMD_TIMEOUT_SECONDS", 10*time.Minute)},
-		Neutral:         neutral,
-		Deadline:        envDuration("VP_OTA_WATCHDOG_SECONDS", 10*time.Minute),
-		DiskGuard:       envBytes("VP_OTA_DISK_GUARD_MB", otaapply.DefaultDiskGuardBytes),
-		Prune:           prunePolicy(),
-		ForceAutonomous: envBool("VP_OTA_AUTONOMOUS", false),
-		AckWait:         envDuration("VP_OTA_ACK_WAIT_SECONDS", 45*time.Second),
-		HealthWait:      envDuration("VP_OTA_HEALTH_WAIT_SECONDS", 120*time.Second),
-		Log:             log,
+		DataDir:      dataDir,
+		DeployDir:    deployDir,
+		ComposeFiles: composeFiles(),
+		Runner:       &otaupdater.ExecRunner{Timeout: envDuration("VP_OTA_CMD_TIMEOUT_SECONDS", 10*time.Minute)},
+		Deadline:     envDuration("VP_OTA_WATCHDOG_SECONDS", 10*time.Minute),
+		DiskGuard:    envBytes("VP_OTA_DISK_GUARD_MB", otaapply.DefaultDiskGuardBytes),
+		Prune:        prunePolicy(),
+		AckWait:      envDuration("VP_OTA_ACK_WAIT_SECONDS", 45*time.Second),
+		HealthWait:   envDuration("VP_OTA_HEALTH_WAIT_SECONDS", 120*time.Second),
+		Log:          log,
 	})
 
 	if err := setupRegistryAuth(dataDir, log); err != nil {
@@ -87,8 +76,6 @@ func main() {
 
 	log.Info("vp-edge-updater gestartet", "version", Version, "daten", dataDir,
 		"deploy", deployDir, "takt", interval.String(),
-		"autonomie_erzwungen", envBool("VP_OTA_AUTONOMOUS", false),
-		"neutral_verifiziert", strings.Join(neutral.Families(), ","),
 		"aufraeumen", prunePolicy().Enabled,
 		"aufraeumen_aufgehoben", prunePolicy().KeepReleases)
 

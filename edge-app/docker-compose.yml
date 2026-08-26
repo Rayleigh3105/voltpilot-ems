@@ -125,19 +125,16 @@ services:
       # access for per-customer flow wiring. NOT for customers.
       - "${VP_NODERED_PORT:-1881}:1880"
 
-  # --- ota profile: der Apply-Sidecar (OTA Stufe 3 „Autonom") -------------
-  # ZWEI unabhaengige Tore, und beide sind zu:
-  #   1. Das Profil `ota` - ohne `--profile ota` laeuft dieser Container gar
-  #      nicht, und die Box verhaelt sich zeichengleich wie eine ohne ihn.
-  #   2. Der Schalter je Geraet (<data>/ota/autonomy.json bzw.
-  #      VP_OTA_AUTONOMOUS) - Vorgabe AUS. Ohne ihn beobachtet und meldet der
-  #      Sidecar nur; er fuehrt kein einziges veraenderndes docker-Kommando aus.
+  # --- Der Apply-Sidecar (OTA „Autonom") ---------------------------------
+  # Ein GEWOEHNLICHER Dienst wie core und nodered: seit der Vereinfachung vom
+  # 26.08.2026 gibt es weder ein Compose-Profil noch einen Schalter je Geraet.
+  # Weist das Portal ein Release zu, verifiziert diese Box es selbst gegen ihre
+  # eingebackene Wurzel und wendet es an - ohne dass jemand auf das Geraet muss.
   # Er besitzt den Docker-Socket und hat deshalb BEWUSST kein Netz und keinen
   # Host-Port. Der Deploy-Ordner ist eingehaengt, weil der Tausch genau den
   # Hebel benutzt, den auch update.sh benutzt (.env-Pin + compose up).
   # Betreiber-Anleitung: docs/ota-autonomie.md
   updater:
-    profiles: [ota]
     build:
       context: ./core
       dockerfile: Dockerfile.updater
@@ -146,20 +143,13 @@ services:
     restart: unless-stopped
     network_mode: none
     environment:
-      # Der Not-Ein fuer den Laborstand. Auf einem Kundengeraet bleibt er leer;
-      # der eigentliche Schalter ist die Datei unter /data/ota/autonomy.json.
-      VP_OTA_AUTONOMOUS: ${VP_OTA_AUTONOMOUS:-false}
-      # Die am Pruefstand BELEGTEN Inverter-Neutral-Zeiten (familie:sekunden).
-      # Leer = keine belegt = eine steuernde Anlage wird nicht autonom
-      # aktualisiert. Siehe docs/ota-autonomie.md.
-      VP_OTA_NEUTRAL_VERIFIED: ${VP_OTA_NEUTRAL_VERIFIED:-}
       VP_OTA_WATCHDOG_SECONDS: ${VP_OTA_WATCHDOG_SECONDS:-600}
       VP_OTA_DISK_GUARD_MB: ${VP_OTA_DISK_GUARD_MB:-2048}
-      # Nach einem BESTAETIGTEN Tausch die abgeloesten Abbilder entfernen -
-      # sonst waechst die Karte zu, bis der Plattenwaechter das naechste
-      # Update verweigert. VP_OTA_PRUNE_KEEP ist die Zahl der abgeloesten
-      # Releases, die je Komponente liegen bleiben. Je Geraet ueberstimmbar
-      # mit /data/ota/prune.json.
+      # Abgeloeste Abbilder entfernen - VOR jedem Tausch (damit der
+      # Plattenwaechter den echten freien Platz sieht) und nach jedem
+      # bestaetigten. VP_OTA_PRUNE_KEEP ist die Zahl der abgeloesten Releases,
+      # die je Komponente liegen bleiben. Je Geraet ueberstimmbar mit
+      # /data/ota/prune.json.
       VP_OTA_PRUNE: ${VP_OTA_PRUNE:-true}
       VP_OTA_PRUNE_KEEP: ${VP_OTA_PRUNE_KEEP:-1}
       # Eine Box mit Host-Netz-Overlay muss beide Dateien nennen.

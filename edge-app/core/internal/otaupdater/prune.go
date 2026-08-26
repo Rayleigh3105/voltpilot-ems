@@ -16,6 +16,7 @@ package otaupdater
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,6 +96,99 @@ func (d *docker) containerImageIDs(ctx context.Context) ([]string, error) {
 func (d *docker) removeImage(ctx context.Context, ref string) error {
 	_, err := d.run.Run(ctx, "docker", "image", "rm", ref)
 	return err
+}
+
+// pruneBeforeSwap raeumt VOR dem Messen des freien Platzes auf.
+//
+// # Warum das hier steht und nicht (nur) nach dem Tausch
+//
+// Bis zur Vereinfachung vom 26.08.2026 raeumte der Sidecar ausschliesslich am
+// ENDE eines bestaetigten Tausches auf. Daraus folgte die dokumentierte Grenze
+// des Pilsting-Falls: eine Box, die der Plattenwaechter einmal blockiert hatte,
+// kam nie wieder frei - ohne Tausch kein Aufraeumen, ohne Aufraeumen kein Platz,
+// ohne Platz kein Tausch. Genau diese Sackgasse war eines der Tore, die die
+// Order abgeschafft hat. Der Plattenwaechter ist seither eine PHYSISCHE Grenze,
+// die erst zaehlt, NACHDEM unser eigener Muell weg ist.
+//
+// Es gelten woertlich dieselben Regeln wie beim Aufraeumen nach dem Tausch
+// (siehe [pruneSuperseded]): nur Repositories, die dieses Geraet selbst
+// getauscht hat; nie ein Abbild, an dem ein Container haengt (auch ein
+// GESTOPPTER Rueckfall-Halter); nie der Rueckfall-Namensraum; nie das gerade
+// zugewiesene Ziel; nie mit `-f`; und bei unvollstaendiger Sicht wird
+// ABGEBROCHEN statt geraten.
+//
+// Ein Fehlschlag ist nicht-fatal: das Aufraeumen ist die Kuer, der Tausch die
+// Pflicht - reicht der Platz danach immer noch nicht, sagt der Waechter das
+// ehrlich.
+func (e *Engine) pruneBeforeSwap(ctx context.Context) {
+	policy := otaapply.ResolvePrunePolicy(e.o.DataDir, e.o.Prune)
+	if !policy.Enabled {
+		return
+	}
+	lkg := e.currentLKG()
+	target := e.assignedTargetRefs()
+	targetMap := map[string]string{}
+	for i, ref := range target {
+		targetMap[strconv.Itoa(i)] = ref
+	}
+
+	repos := prunableRepos(targetMap, otaapply.LKG{}, lkg)
+	if len(repos) == 0 {
+		return
+	}
+	var images []otaapply.ImageRecord
+	for _, repo := range repos {
+		recs, err := e.d.listImages(ctx, repo)
+		if err != nil {
+			e.o.Log.Warn("OTA: die Abbilder von '"+repo+"' sind nicht auflistbar - "+
+				"es wird nichts aufgeraeumt", "err", err)
+			return
+		}
+		images = append(images, recs...)
+	}
+	inUse, err := e.d.containerImageIDs(ctx)
+	if err != nil {
+		e.o.Log.Warn("OTA: die belegten Abbilder sind nicht feststellbar - "+
+			"es wird nichts aufgeraeumt", "err", err)
+		return
+	}
+
+	var protectedRefs []string
+	protectedRefs = append(protectedRefs, target...)
+	for _, img := range lkg.Images {
+		protectedRefs = append(protectedRefs, img.Digest, img.Ref, img.Tag)
+	}
+	plan := otaapply.PlanPrune(otaapply.PruneInput{
+		Policy:    policy,
+		Images:    images,
+		InUse:     inUse,
+		Protected: e.resolveIDs(ctx, protectedRefs),
+	})
+	if plan.Skipped != "" || len(plan.Remove) == 0 {
+		return
+	}
+	removed := 0
+	for _, r := range plan.Remove {
+		if err := e.d.removeImage(ctx, r.Ref); err != nil {
+			e.o.Log.Warn("OTA: ein abgeloestes Abbild konnte nicht entfernt werden",
+				"abbild", r.Ref, "err", err)
+			continue
+		}
+		removed++
+	}
+	if removed > 0 {
+		e.o.Log.Info("OTA: vor dem Tausch abgeloeste Abbilder entfernt",
+			"entfernt", removed, "aufgehoben_je_repository", policy.KeepReleases)
+	}
+}
+
+// currentLKG liest das abgelegte Rueckfallziel (leer = keines).
+func (e *Engine) currentLKG() otaapply.LKG {
+	lkg, err := otaapply.ReadJSON[otaapply.LKG](e.o.DataDir, otaapply.FileLKG)
+	if err != nil || lkg == nil {
+		return otaapply.LKG{}
+	}
+	return *lkg
 }
 
 // pruneSuperseded entfernt die Abbilder abgeloester Releases.
