@@ -57,10 +57,73 @@ on:
       - 'edge-*'
 
 jobs:
+  # A tag publishes customer-side runtime code. Gate the exact packaged
+  # catalog, core, Node-RED runtime and palette before any registry write; the
+  # two realistic rigs then prove OCPP and the complete sim -> edge -> cloud ->
+  # schedule loop. A release workflow without this dependency could otherwise
+  # push an image that the regular cloud-service matrix never exercises.
+  test:
+    name: Edge release gate
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: edge-app/core/go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: edge-app/nodered/vp-palette/package-lock.json
+
+      - name: Canonical measurement catalog + packaged Edge runtime
+        run: |
+          python3 catalog/measurement-points/tools/update_deye_key_lock.py --check
+          python3 catalog/measurement-points/tools/extract_shelly.py --check
+          python3 catalog/measurement-points/tools/generate.py --check
+          python3 catalog/measurement-points/tools/validate.py
+          python3 -m unittest discover -s catalog/measurement-points/tests -p 'test_*.py'
+          python3 catalog/measurement-points/tools/package_edge_runtime.py --check
+
+      - name: Go core (race)
+        working-directory: edge-app/core
+        # Integration packages briefly reserve ephemeral listeners before the
+        # real server binds them. Keep packages serial so two rigs cannot steal
+        # each other's port and turn a sound release into a flaky red gate.
+        run: go test -race -p 1 ./...
+
+      - name: Node-RED runtime and drivers
+        working-directory: edge-app
+        run: |
+          mapfile -t tests < <(find nodered -type f -name '*.test.js' \
+            -not -path '*/node_modules/*' -print | sort)
+          node --test "${tests[@]}"
+
+      - name: vp-palette
+        working-directory: edge-app/nodered/vp-palette
+        run: |
+          npm ci
+          npm test
+
+      - name: OCPP system rig
+        run: bash edge-app/test/e2e-ocpp.sh
+
+      - name: Edge compose system rig
+        run: bash edge-app/test/e2e-compose.sh
+
   # Build + push each edge-app image in parallel. Tags: :latest and
   # :${{ github.sha }}, mirroring the deploy.yaml build-push pattern.
   build:
     name: Build & Push ${{ matrix.component }}
+    needs: test
     runs-on: ubuntu-latest-mo
     # Multi-arch QEMU builds are slow but bounded; never wedge the runner.
     timeout-minutes: 90

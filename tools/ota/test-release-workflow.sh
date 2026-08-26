@@ -55,6 +55,32 @@ command -v python3 >/dev/null || {
 	exit 1
 }
 
+# Before a tag or manual run can write an Edge image to the registry, the
+# release workflow must exercise every runtime layer it packages. Keep this
+# structural assertion here because deploy.yaml already runs this self-check;
+# accidentally removing the dependency then fails the normal main gate too.
+python3 - "$WORKFLOW" <<'PY'
+import sys, yaml
+
+workflow = yaml.safe_load(open(sys.argv[1]))
+jobs = workflow["jobs"]
+assert jobs["build"]["needs"] == "test"
+runs = "\n".join(
+    step.get("run", "") for step in jobs["test"]["steps"]
+)
+for required in (
+    "package_edge_runtime.py --check",
+    "go test -race -p 1 ./...",
+    "-not -path '*/node_modules/*'",
+    "node --test",
+    "npm test",
+    "edge-app/test/e2e-ocpp.sh",
+    "edge-app/test/e2e-compose.sh",
+):
+    assert required in runs, required
+PY
+ok "Edge-Images werden erst nach Katalog-, Runtime-, Race- und Systemtests gebaut"
+
 # --- den Schritt aus dem Workflow herausschneiden ----------------------------
 python3 - "$WORKFLOW" "$STEP" "$TMP" <<'PY'
 import sys, yaml

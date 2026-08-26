@@ -117,7 +117,11 @@ public class MeasurementSelectionRepository {
         jdbc.query("SELECT point_key FROM device_measurement_selection WHERE device_id = ? "
                         + "UNION SELECT point_key FROM device_measurement_point_state "
                         + "WHERE tenant_id=? AND site_id=? AND device_id=?",
-                (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.add(rs.getString(1)),
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                    String pointKey = rs.getString(1);
+                    out.add(pointKey);
+                    out.add(templateKey(pointKey));
+                },
                 deviceId, scope.tenantId(), scope.siteId(), deviceId);
         return Set.copyOf(out);
     }
@@ -131,12 +135,26 @@ public class MeasurementSelectionRepository {
                         + "COALESCE(decoded_text, decoded_numeric::text) decoded_value, "
                         + "quality, gap, dropped_samples FROM device_measurement_point_state "
                         + "WHERE tenant_id=? AND site_id=? AND device_id=? ORDER BY point_key",
-                (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(rs.getString("point_key"),
-                        new Observation(rs.getTimestamp("last_read_at").toInstant(),
-                                rs.getString("raw_value"), rs.getString("decoded_value"),
-                                rs.getString("quality"), rs.getBoolean("gap"),
-                                rs.getLong("dropped_samples"))), scope.tenantId(), scope.siteId(), deviceId);
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                    String pointKey = rs.getString("point_key");
+                    Observation observation = new Observation(
+                            rs.getTimestamp("last_read_at").toInstant(),
+                            rs.getString("raw_value"), rs.getString("decoded_value"),
+                            rs.getString("quality"), rs.getBoolean("gap"),
+                            rs.getLong("dropped_samples"));
+                    out.merge(pointKey, observation, MeasurementSelectionRepository::latest);
+                    out.merge(templateKey(pointKey), observation,
+                            MeasurementSelectionRepository::latest);
+                }, scope.tenantId(), scope.siteId(), deviceId);
         return Map.copyOf(out);
+    }
+
+    static String templateKey(String pointKey) {
+        return pointKey == null ? null : pointKey.replaceAll("\\[[^]\\r\\n]+]", "[*]");
+    }
+
+    private static Observation latest(Observation left, Observation right) {
+        return left.lastReadAt().isAfter(right.lastReadAt()) ? left : right;
     }
 
     public long revision(UUID deviceId) {

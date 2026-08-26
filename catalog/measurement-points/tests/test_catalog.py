@@ -86,6 +86,10 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(api_artifact["catalog_version"], canonical)
         self.assertEqual(edge_artifact["catalog_version"], canonical)
 
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        canonical_link = f"dist/measurement-point-catalog-{canonical}.json"
+        self.assertIn(f"[`{canonical_link}`]({canonical_link})", readme)
+
     def test_schema_and_semantic_validator_accept_artifact(self) -> None:
         for schema in (ROOT / "schema").glob("*.schema.json"):
             document = json.loads(schema.read_text(encoding="utf-8"))

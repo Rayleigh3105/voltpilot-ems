@@ -6,7 +6,7 @@ keinen bestehenden Telemetrie-/MQTT-Vertrag, aktiviert keinen Poller und schreib
 keine Register.
 
 Das aktuelle, kanonische Artefakt ist
-[`dist/measurement-point-catalog-2026.08.26.2.json`](dist/measurement-point-catalog-2026.08.26.2.json).
+[`dist/measurement-point-catalog-2026.08.26.3.json`](dist/measurement-point-catalog-2026.08.26.3.json).
 Es wird ohne Netz- oder Gerätezugriff ausschließlich aus den unter `sources/`
 eingecheckten Snapshots erzeugt. `sources/manifest.json` pinnt Commit bzw.
 Dokumentationsstand und SHA-256. Das Artefakt enthält keinen Erzeugungszeitstempel;
