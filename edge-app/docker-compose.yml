@@ -52,6 +52,14 @@ services:
       # exakt der einkompilierte Default; der eigentliche Gerätegate ist die
       # Freigabe pro Modell (First-Light / Zertifizierungs-Allowlist).
       VP_CONTROL_ENABLED: ${VP_CONTROL_ENABLED:-true}
+      # Wechselrichter-Automatik (Selbstregel-Modus): in einem Deckungs-Slot gibt
+      # die Box den Sollwert an die Eigenverbrauchs-Schleife des Wechselrichters
+      # ab, statt alle 10 s einen Wert zu schreiben. Standard 'true' = exakt der
+      # einkompilierte Default - das eigentliche Tor ist die Pruefstand-Freigabe
+      # je Modell+Firmware in Layer 1 (heute LEER, der Modus greift also auf
+      # keinem ausgelieferten Geraet). Auf 'false' setzen, um EINE Anlage ohne
+      # Image-Aenderung auf die bewiesene 10-Sekunden-Nachfuehrung zurueckzunehmen.
+      VP_NATIVE_SELF_REGULATION_ENABLED: ${VP_NATIVE_SELF_REGULATION_ENABLED:-true}
       # Verbrauchssteuerung §19 Inkrement 5: der Verbraucher-Steuerungs-Schalter,
       # getrennt vom Wechselrichter-Not-Aus oben. Standard 'false' = der Edge
       # sendet nie ein Verbraucher-Kommando (Sofortaktion/Fahrplan), bis er je

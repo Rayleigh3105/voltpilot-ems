@@ -3967,6 +3967,50 @@ The customer-facing automation editor + the production GO-LIVE of flow activatio
 - **🔴 GO-LIVE: `VOLTPILOT_FLOWS_ACTIVATION_ENABLED` defaults `true` in `docker-compose.prod.yml` + `.env.prod.example`** - customer automations really control devices from the v3 release. The safety net is STRUCTURAL (flow → desire → arbitration → guard chain, all DO-NOT-TOUCH). **Two rollback levers, both rehearsed in the dress rehearsal, documented in `docs/deploy.md` "Automationen (Flow-Aktivierung)":** (1) set the flag `false` + redeploy the api → NEW activations refuse `activation_disabled` (does NOT un-deploy retained artifacts); (2) `POST /sites/{siteId}/flows/{flowId}/deactivate` stops ONE live rule (never flag-gated). The api tests that pin `activation_disabled` (`FlowApiTest`/`CustomerFlowApiTest`) now set the flag OFF explicitly (they PROVE the flag still works). `tools/deploy/verify-migration-deploy.sh` asserts the prod compose resolves the flag ON.
 - **Tests:** flowc `compile.test.js`/`serve.test.js` (function-node fixture: watchdog present, shadowed handles, sandboxed run, pinned hash, cloud-runtime refusal); portal `positions`/`rollout`/`liveValues`/`stepList` pure suites + `FlowCanvas.test.tsx` (drag updates positions, read-only preview stays non-interactive, live chips, no-state-without-block) - note `src/test/setup.ts` gained a jsdom `PointerEvent` polyfill (jsdom drops clientX otherwise); api `FlowLayoutApiTest` + `FlowNodeStatusListenerTest` + the `FlowGraphValidatorTest` code-node vectors; edge `agent/flow_node_status_test.go` + `vp-palette` `node_status_spec.js`. Guard chain + arbitration untouched and green (they are the safety argument).
 
+## Wechselrichter-Automatik (Selbstregel-Modus): der Deckungs-Slot ohne 10-s-Sollwert
+
+Captain-Auftrag 26.08.2026 (Scout `data/vp-verbrauch-decken-selbstregel`): „wenn
+der Fahrplan Verbrauch decken vorsieht, möchte ich, dass wir keinen Sollwert
+vorgeben und den jede 10 Sekunden nachregeln … ich will, dass wir den jeweiligen
+Wechselrichter in den Zustand bringen, wo er selbst regelt". **Alles ist ADDITIV:
+eine Anlage, deren Layer 1 kein Prüfstand-Zertifikat trägt — also jede
+ausgelieferte Anlage — verhält sich byte-identisch wie vorher**, und das ist als
+Test festgenagelt.
+
+- **KEIN neues Vertragsfeld** (Captain-Entscheid 1/7). Die Wolke markiert einen
+  Slot längst als „Decken lohnt sich" (`cover_load_from_battery` /
+  `unplanned_load_discharge`, `slot_trim.py`); WIE das ausgeführt wird — der
+  10-s-Follower oder die Automatik des Geräts — war immer eine Entscheidung der
+  EDGE. Der frozen `mqtt-schedule`-Vertrag ist unberührt, die Cloud und das
+  Portal kennen das Wort `autonomous_discharge` seit PR #514 und brauchten
+  KEINE Änderung.
+- **Die Arbeitsteilung steht in `docs/contracts/v2/plan-execution-ownership.md`**
+  („Native self-regulation"): Wolke = der Preis, Layer 1 = die Register + das
+  Zertifikat, Kern = die AUFSICHT und die Rücknahme, Rücklesen = der BELEG.
+- **⚠ „Selbst regeln" heisst SOLLWERT weglassen, nicht AUFSICHT weglassen**
+  (Captain-Entscheid 2): der Kern beobachtet weiter und nimmt die Batterie
+  zurück — am Reserve-Boden, bei bedrohter Lastspitze, bei veralteter Messung
+  oder Rückmeldung, am Slot-Ende, bei Not-Aus/Pause/Claim, und wenn das Gerät
+  den Modus nicht bestätigt. Der SICHERE Zustand bleibt unverändert der
+  guard-geklemmte Sollwert-Pfad (Entscheid 6).
+- **Die Fähigkeit ist „Laden sperren + autonome Entladung"** (Entscheid 3), nicht
+  volle Eigenverbrauchsregelung: die Aufnahme eines Tag-Überschusses bleibt eine
+  Wolken-Entscheidung (`charge_surplus_to_battery`).
+- **Deye ohne Fernsteuer-Firmware bleibt beim Follower** (Entscheid 4) — dort ist
+  jeder Moduswechsel EEPROM mit ~20 s Latenz.
+- **Generisch für JEDEN fähigen Wechselrichter** (Entscheid 8): Deye Remote,
+  Fronius Model 124, KOSTAL PLENTICORE, KACO NH3 haben je ihren Primitive
+  (`nativeSelfConsumption`), **alle vier PLANNED-ONLY** — es wird in diesem PR
+  KEIN Produktiv-Gerät freigegeben. Sequenzen, Beleg-Register und die offenen
+  Prüfstand-Punkte: `edge-app/nodered/UNPLANNED-LOAD-BENCH.md` + die vier
+  Adapter-Docs.
+- Edge-Details (die Beweis-Schleife, Rücknahme-vs-Verweigerung, die EEG-Regel,
+  der Simulator-Katalog, der Not-Aus): `edge-app/CLAUDE.md`
+  „Wechselrichter-Automatik".
+- **Ops:** keine neue Pflicht-Variable, keine Migration, keine Cloud-Änderung.
+  `VP_NATIVE_SELF_REGULATION_ENABLED` (Vorgabe AN, Opt-out) ist der Not-Aus je
+  Box. Die Edge-Hälfte reist mit dem nächsten Edge-Release.
+
 ## Known future work (not yet built)
 
 **Historie v2** (captain-agreed deferred scope, deliberately NOT in v1): CO2 balance, milestones, PDF export, peak analysis; also a per-tenant timezone (v1 pins period boundaries to Europe/Berlin) and separating battery-to-grid export in the Eigenverbrauch formula. Forecasting ML beyond the shadow-mode foundation (quantile objectives/uncertainty bands, per-Bundesland holidays, a full ML PV model beyond residual correction, promotion *proposals* - the registry, XGBoost challengers, daily evaluation and Prognosequalität are BUILT, see "Shadow-mode forecasting"); MaStR follow-ups (AT/CH registry adapters behind the same PlantRegistryClient port, a manual kWp/orientation entry fallback in the link drawer for unregistered plants, re-sync/refresh automation - the SEE lookup+confirm+apply v1 is BUILT, see its section); direct-marketing provider integrations; portal KPIs endpoint; self-registration hardening (email verification and captcha - SMTP would also unlock self-service password reset, today recovery is the support reset in the Benutzer page; registration rate limiting, Keycloak brute-force lockout, the support password reset, and the onboarding wizard are built - see the portal + auth sections; `VOLTPILOT_REGISTRATION_ENABLED=false` stays the off-switch for closed platforms); optimizer extensions (the per-site EEG grid-charging switch is **BUILT** - see "Per-site grid-charging switch"; the "davon Arbitrage-Gewinn" hero split is **BUILT** too - see "Arbitrage-Ausweis"; still open: peak-shaving/capacity tariffs, multi-battery sites, dynamic supplier tariffs, feed-in spreads, plan-vs-actual KPIs from the persisted `schedule` runs); live telemetry channel (WS/SSE - the portal still polls REST); mTLS zero-touch follow-ups (the HTTPS **first-boot enrollment is BUILT** - see its section; the **api-triggered broker authz reload right after a grant write/removal is now BUILT** too - see "Broker authz auto-reload"; `tools/pki/reload-broker-authz.sh` (`emqx ctl conf reload` does NOT re-read the ACL file) is kept as the deploy/cron backstop; remaining: email/ops alerting on issuance anomalies, and moving the plain-MQTT provisioning hello onto a bootstrap-cert 8883 path so the dev listener can close in prod); real Modbus/SunSpec hardware I/O (only the simulator exists today); Cloud/K8s/Hetzner manifests + GitOps; Prometheus/Grafana/Loki/OTel; Mender OTA. The **live ingest pipe now works** (EMQX -> ingest -> Redpanda -> writer -> TimescaleDB; see its section) - remaining hardening there: a malformed-message dead-letter topic (today is log+skip) and MQTT mTLS/authn on the EMQX ingress (the unique index on `telemetry (device_id, time)` backing the writer's idempotent insert is BUILT - api migration `V20260712000000`, which also made the rollup aggregates NULL-safe: `greatest(x, 0)` coerced an absent channel to 0, understating mixed buckets and fabricating grid=0 for generation-only sites; the same fix is in-sync in `HistoryRepository` and `SeriesRepository`, and the purge path is race-hardened - watermark-bounded purge DELETE + a `FOR SHARE` device-row lock in the writer's insert transaction). Core-schema Flyway migrations run in `services/api` (RLS enforced), and `services/market-data` (`day_ahead_prices`) and `services/forecast` (`forecast` hypertable, V3) ship their own migrations; a unified migration-version scheme across services is still to be reconciled.

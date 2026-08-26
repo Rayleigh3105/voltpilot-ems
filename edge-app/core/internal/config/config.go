@@ -70,6 +70,24 @@ type Config struct {
 	// runbook turns it on per plant after the pilot. VP_CONTROL_ENABLED still
 	// wins as the global stop.
 	ConsumerControlEnabled bool `json:"consumer_control_enabled"`
+	// NativeSelfRegulationEnabled is the operator's own switch for the NATIVE
+	// SELF-REGULATION (Selbstregel-Modus): in a slot the cloud marked worth
+	// covering from the battery, hand the setpoint back to the inverter's own
+	// self-consumption loop instead of writing a recomputed watt value every
+	// 10 s (guards/nativemode.go).
+	//
+	// Default TRUE - an OPT-OUT, like VP_OCPP_ENABLED, and for the same reason:
+	// a default-OFF flag would have to be carried into every deployment to have
+	// any effect, and the documented failure mode of that pattern is that it is
+	// forgotten. THE REAL GATE IS ELSEWHERE and is not weakened by this default:
+	// Layer 1 refuses the native primitive unless THIS exact model+firmware
+	// carries a bench certificate (edge-app/nodered/unplanned-load-native.js,
+	// whose production catalog is EMPTY), and the core withdraws an intent that
+	// is never confirmed. So on every device shipped today the mode simply never
+	// engages, and this switch exists for the case the two gates cannot answer:
+	// rolling one plant back to the proven 10-second follower without touching
+	// the image, the certificate or the plan.
+	NativeSelfRegulationEnabled bool `json:"native_self_regulation_enabled"`
 	// ControlCertifiedFamilies is the per-model bench-certification allowlist,
 	// keyed by register-map family (report §6.7). Only a selected inverter whose
 	// family is listed here may ever receive a live write, AND only when
@@ -214,31 +232,32 @@ func Defaults() Config {
 		// NOT a working enrollment endpoint - shipping it as the default made a
 		// device with no VP_PORTAL_BASE_URL fail to enroll. Keep this in lockstep
 		// with edge-app/docker-compose.yml VP_PORTAL_BASE_URL.
-		PortalBaseURL:            "https://portal.voltpilot.de",
-		MQTTHost:                 "mqtt.voltpilot.de",
-		MQTTPort:                 8883,
-		DataDir:                  "/data",
-		LocalMQTTAddr:            ":1883",
-		HTTPAddr:                 ":8484",
-		MaxChargeKw:              50,
-		MaxDischargeKw:           50,
-		SocMinPct:                5,
-		SocMaxPct:                95,
-		BufferHours:              48,
-		SetpointIntervalSeconds:  10,
-		ReconcileIntervalSeconds: 300,
-		UnclaimConfirmMinutes:    20,
-		UnclaimConfirmPolls:      4,
-		ControlEnabled:           true, // ON by default; the certification allowlist is the per-device gate
-		ControlCertifiedFamilies: []string{"sunspec"},
-		GridChargeAllowed:        false,
-		OcppEnabled:              true, // opt-OUT since 2026-08-24; the allowlist is the gate, not this flag
-		OcppPort:                 8887,
-		CalibrationMaxKw:         1.0,              // small: the first live write must be tiny (report §5.7)
-		CalibrationTTLSeconds:    30,               // auto-revert to neutral fast; the write never latches
-		CalibrationTTL:           30 * time.Second, // derived; Load() recomputes it from the seconds
-		MirrorAdvertisePort:      502,              // lockstep with the compose mapping ${VP_MIRROR_PORT:-502}:1502
-		NodeRedUser:              "voltpilot",
+		PortalBaseURL:               "https://portal.voltpilot.de",
+		MQTTHost:                    "mqtt.voltpilot.de",
+		MQTTPort:                    8883,
+		DataDir:                     "/data",
+		LocalMQTTAddr:               ":1883",
+		HTTPAddr:                    ":8484",
+		MaxChargeKw:                 50,
+		MaxDischargeKw:              50,
+		SocMinPct:                   5,
+		SocMaxPct:                   95,
+		BufferHours:                 48,
+		SetpointIntervalSeconds:     10,
+		ReconcileIntervalSeconds:    300,
+		UnclaimConfirmMinutes:       20,
+		UnclaimConfirmPolls:         4,
+		ControlEnabled:              true, // ON by default; the certification allowlist is the per-device gate
+		NativeSelfRegulationEnabled: true, // opt-out; the Layer-1 capability catalog is the real gate
+		ControlCertifiedFamilies:    []string{"sunspec"},
+		GridChargeAllowed:           false,
+		OcppEnabled:                 true, // opt-OUT since 2026-08-24; the allowlist is the gate, not this flag
+		OcppPort:                    8887,
+		CalibrationMaxKw:            1.0,              // small: the first live write must be tiny (report §5.7)
+		CalibrationTTLSeconds:       30,               // auto-revert to neutral fast; the write never latches
+		CalibrationTTL:              30 * time.Second, // derived; Load() recomputes it from the seconds
+		MirrorAdvertisePort:         502,              // lockstep with the compose mapping ${VP_MIRROR_PORT:-502}:1502
+		NodeRedUser:                 "voltpilot",
 	}
 }
 
@@ -370,6 +389,7 @@ func applyEnv(cfg *Config) {
 		}
 	}
 	boolEnv("VP_CONTROL_ENABLED", &cfg.ControlEnabled)
+	boolEnv("VP_NATIVE_SELF_REGULATION_ENABLED", &cfg.NativeSelfRegulationEnabled)
 	boolEnv("VP_CONSUMER_CONTROL_ENABLED", &cfg.ConsumerControlEnabled)
 	boolEnv("VP_GRID_CHARGE_ALLOWED", &cfg.GridChargeAllowed)
 	boolEnv("VP_OCPP_ENABLED", &cfg.OcppEnabled)

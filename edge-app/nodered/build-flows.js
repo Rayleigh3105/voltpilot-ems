@@ -22,6 +22,17 @@
  */
 const fs = require('fs');
 const path = require('path');
+
+// embedModule - embed a repo module VERBATIM into a function-node body (a
+// Node-RED flow cannot `require` a repo file at runtime); flows-sync.test.js
+// pins each embed against the file, so editing a module without re-running
+// build-flows.js fails there instead of shipping a stale copy.
+// Defined UP HERE because several sources below are built at module-evaluation
+// time and call it.
+const embedModule = (file) =>
+  '(function () { var module = { exports: {} };\n' +
+  fs.readFileSync(path.join(__dirname, file), 'utf8') +
+  '\nreturn module.exports; })()';
 // The router's register facts come STRAIGHT from the routing module (not a
 // hand-copied literal) so the inlined flow body can never drift from the tested
 // table - the same reason the codecs are embedded rather than retyped.
@@ -992,7 +1003,82 @@ const controlReleaseSource = [
 // plan, and (report §7.5) decide NORMAL vs RELEASE. `selectionExpr` is the JS
 // expression that yields the selection - the self-wiring auto tab reads
 // flow.inverter_config; the Simulator tab hardcodes the sim selection.
-const controlPlanFunc = (selectionExpr) => [
+// nativeGenericSource - the flow-side half of the NATIVE SELF-REGULATION
+// ("Selbstregel-Modus"): in a slot the CLOUD marked worth covering from the
+// battery the core publishes `battery_mode: "native"` on edge/setpoint, and the
+// executor must then STOP WRITING THE SETPOINT and instead put the device into
+// its own self-consumption loop - once - and only read its state back.
+//
+// ⚠ SCOPE, deliberately: this inline planner covers ONLY the generic
+// modbus_tcp/SunSpec tier, which is the one the generic executor below can
+// actually execute (and the one the simulator implements). The Deye-remote,
+// Fronius-124, KOSTAL and KACO-NH3 primitives live in
+// inverter-control-routing.js `nativeSelfConsumption` and are proven there;
+// their EXECUTORS are follow-up work, and until then those adapters simply keep
+// the 10-second follower - which is the safe, shipped path. flows-sync.test.js
+// pins this copy against the module for the tier it does cover, and pins that it
+// returns null for every tier it does not.
+//
+// The certificate gate is the EMBEDDED unplanned-load-native.js - the production
+// catalog is EMPTY, so on every device shipped today this returns a plan with no
+// writes and the plan node falls back to the follower with a named status.
+const nativeGenericSource = [
+  "var __NATIVE = " + embedModule('unplanned-load-native.js') + ";",
+  "function nativePlanGeneric(sel, sp, catalog) {",
+  "  if (!sel || sel.communication !== 'modbus_tcp') return null;",
+  "  var conn = sel.connection || {};",
+  "  var ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';",
+  "  if (!ip) return null;",
+  "  var port = Number(conn.port) > 0 ? Number(conn.port) : 502;",
+  "  var unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : 1;",
+  "  var family = typeof sel.family === 'string' ? sel.family.trim() : '';",
+  "  var certified = family === 'sunspec' || sp.device_certified === true;",
+  "  var controlEnabled = sp.control_enabled === true;",
+  "  // Clearing the EMS-control flag hands the device back to its own regulation;",
+  "  // zeroing the setpoint makes sure no stale watt value can be re-adopted.",
+  "  var planned = [",
+  "    { role: 'control_enable', fc: 6, addr: 41, value: 0, encode: { kind: 'flag', native: true }, dwell_s: 0, min_change: 0 },",
+  "    { role: 'battery_power', fc: 6, addr: 40, value: 0, encode: { kind: 'kw_x100_s16', scale: 100, kw: 0 }, dwell_s: 0, min_change: 0 }",
+  "  ];",
+  "  // ⚠ CURTAILMENT IS NOT PART OF THE HAND-OVER. The native mode concerns the",
+  "  // BATTERY; the slot's PV feed-in cap is a separate, cloud-owned command, and",
+  "  // freezing it here would let a curtailment outlive its slot. So it rides",
+  "  // along as an ordinary write (gated by the ordinary control gate, NOT by the",
+  "  // certificate) and it is part of the write-once signature, so a CHANGED cap",
+  "  // is re-written while an unchanged one costs nothing.",
+  "  var pvKw = (typeof sp.pv_limit_kw === 'number' && isFinite(sp.pv_limit_kw) && sp.pv_limit_kw >= 0) ? sp.pv_limit_kw : null;",
+  "  var pvRaw = pvKw === null ? 0xffff : (Math.max(0, Math.round(pvKw * 100)) & 0xffff);",
+  "  var pvOp = { role: 'pv_limit', fc: 6, addr: 42, value: pvRaw, encode: { kind: 'pv_limit_x100_u16', scale: 100, sentinel: 0xffff, kw: pvKw }, dwell_s: 0, min_change: 0 };",
+  "  var proofs = [",
+  "    { role: 'control_enable', fc: 3, addr: 41, expect: 0, tolerance: 0 },",
+  "    { role: 'battery_power', fc: 3, addr: 40, expect: 0, tolerance: 1 }",
+  "  ];",
+  "  var out = { adapter: 'modbus_tcp', family: family, profile: family, mode: 'native', supported: true,",
+  "    certified: certified, controlEnabled: controlEnabled,",
+  "    target: ip + ':' + port, connection: { ip: ip, port: port, unit_id: unitId },",
+  "    writes: [], readbacks: [], observations: [], planned: planned, plannedReadbacks: proofs,",
+  "    gridChargeProof: null, proofKind: 'register' };",
+  "  // EEG: with no charging-source register on this compact profile the device",
+  "  // cannot PROVE it will not grid-charge, so an EEG site is refused.",
+  "  if (sp.grid_charge_allowed !== true) { out.reason = 'EEG-Anlage: dieser Wechselrichter kann nicht belegen, dass er nicht aus dem Netz laedt'; return out; }",
+  "  if (!controlEnabled) { out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)' : 'Modell noch nicht freigegeben'; return out; }",
+  "  if (!certified) { out.reason = 'Modell noch nicht freigegeben'; return out; }",
+  "  var cap = __NATIVE.exactCapability({ brand: sel.brand, model: sel.model, firmware: conn.firmware || sel.firmware }, catalog);",
+  "  if (!cap) { out.reason = 'Wechselrichter-Automatik fuer dieses Modell noch nicht am Pruefstand freigegeben'; return out; }",
+  "  if (!__NATIVE.certificateMatchesPlan(cap, planned, proofs)) { out.reason = 'Pruefstand-Freigabe und Schreibplan stimmen nicht ueberein - Freigabe erneuern'; return out; }",
+  "  out.writes = planned.map(function (w) { return Object.assign({}, w); }).concat([pvOp]);",
+  "  out.readbacks = proofs.map(function (r) { return Object.assign({}, r); }).concat([{ role: 'pv_limit', fc: 3, addr: 42, expect: pvRaw, tolerance: 1 }]);",
+  "  out.certificate = { brand: cap.brand, model: cap.model, firmware: cap.firmware, simulator_only: cap.simulatorOnly === true, bench_record: cap.benchRecord || '' };",
+  "  return out;",
+  "}",
+].join('\n');
+
+// The plan node. `nativeCatalogExpr` is the NATIVE capability catalog this tab
+// passes: the AUTO tab passes the PRODUCTION one (empty until a bench session
+// fills it), the SIMULATOR tab the simulator-only one - whose entry can by
+// construction only match the compact sim register block, never a customer
+// device (see unplanned-load-native.js).
+const controlPlanFunc = (selectionExpr, nativeCatalogExpr = '__NATIVE.CERTIFIED_NATIVE_CAPABILITIES') => [
   "// Steuerung / Schreibplan - der Herzschlag der Selbstverdrahtung auf der",
   "// SCHREIB-Seite: nimmt den (bereits guard-begrenzten) Sollwert vom Core und",
   "// baut den Schreibplan fuer die aktive Auswahl. Traegt KOPIEN von controlRoute()",
@@ -1002,6 +1088,7 @@ const controlPlanFunc = (selectionExpr) => [
   "// zertifiziert ist ('sunspec'; Deye bleibt bis zur Pruefstand-Freigabe nur lesend).",
   controlRouteSource,
   controlReleaseSource,
+  nativeGenericSource,
   "// setpointStale - Totmann-Pruefung (report §7.5): der Core ist verstummt, wenn der",
   "// letzte Sollwert-Zeitstempel aelter als 20 min ist. Fehlender/unlesbarer ts = nicht stale.",
   "var setpointStale = function (ts) { if (typeof ts !== 'string' || ts === '') return false; var t = Date.parse(ts); if (!isFinite(t)) return false; return Date.now() - t > 1200000; };",
@@ -1050,6 +1137,42 @@ const controlPlanFunc = (selectionExpr) => [
   "var hadWrites = Array.isArray(plan.writes) && plan.writes.length > 0;",
   "var failsafe = (sp.control_enabled !== true) || setpointStale(sp.ts);",
   "var wasControlling = context.get('was_controlling') === true;",
+  "// NATIVE SELF-REGULATION (Selbstregel-Modus): the CORE published battery_mode",
+  "// 'native' for this covering slot, i.e. it wants the SETPOINT handed back to the",
+  "// inverter's own loop. We answer with EVIDENCE, never with obedience: only an",
+  "// exact bench certificate releases the primitive, and only a device that reads",
+  "// its own state back counts as native. Without one we fall through to the",
+  "// ordinary plan (the proven 10-second follower) and SAY so - the core then",
+  "// withdraws its intent after its grace, and nothing was ever half-handed-over.",
+  "// WRITE ONCE, THEN ONLY READ: the transition is a state change, not a heartbeat",
+  "// (unlike the remote-mode watchdog kick). The write plan's signature is",
+  "// remembered per node, so a slot costs ONE write and then pure readbacks - which",
+  "// is the whole point of the mode on a one-client logger. A CHANGED plan (e.g. a",
+  "// new curtailment cap) re-writes by itself, because the signature changes.",
+  "// A device that lost the state (a reboot) is caught by the readback, not here:",
+  "// its state register stops matching, the core sees no confirmation and takes the",
+  "// battery back - the same one mechanism that answers every other doubt.",
+  "// ⚠ AFTER the failsafe check on purpose: a kill-off or a SILENT CORE must",
+  "// still run the ONE controller-owned hand-back below, not a second, parallel",
+  "// way of letting go. A retained 'native' setpoint that outlives the core would",
+  "// otherwise keep this branch alive forever and the release would never fire.",
+  "if (sp.battery_mode === 'native' && !failsafe) {",
+  "  var nat = nativePlanGeneric(sel, sp, " + nativeCatalogExpr + ");",
+  "  if (nat && nat.writes.length > 0) {",
+  "    var sig = JSON.stringify(nat.writes);",
+  "    if (context.get('native_written') === sig) { nat.writes = []; }",
+  "    else { context.set('native_written', sig); }",
+  "    context.set('was_controlling', false);",
+  "    msg.control = nat;",
+  "    node.status({ fill: 'green', shape: 'dot', text: nat.family + ': Wechselrichter-Automatik' + (nat.writes.length ? ' (umgeschaltet)' : ' (haelt)') });",
+  "    return msg;",
+  "  }",
+  "  context.set('native_written', null);",
+  "  node.warn('Wechselrichter-Automatik nicht moeglich: ' + ((nat && nat.reason) || 'dieser Adapter hat keine native Selbstregelung') + ' - es bleibt bei der 10-Sekunden-Nachfuehrung');",
+  "} else {",
+  "  context.set('native_written', null);",
+  "}",
+
   "if (hadWrites && !failsafe) {",
   "  context.set('was_controlling', true);",
   "  msg.control = plan;",
@@ -1228,7 +1351,23 @@ const controlExecFunc = [
   "      const all = registers.every((r) => r.match);",
   "      node.status({ fill: all ? 'green' : 'red', shape: 'dot', text: all ? ('bestätigt (' + registers.length + ')') : 'Abweichung' });",
   "      const sp = msg.setpoint || {};",
-  "      msg.payload = { ts: new Date().toISOString(), family: ctrl.family, source: sp.source || '', slot_start: sp.slot_start, control_enabled: !!ctrl.controlEnabled, certified: !!ctrl.certified, registers: registers };",
+  "      // `mode` is the EVIDENCE half of the native self-regulation: only a cycle",
+  "      // that really ran the native primitive says 'native', so 'we stopped writing'",
+  "      // and 'we died' can never look the same to the core (which withdraws an",
+  "      // intent it does not see confirmed). 'release' / 'normal' unchanged.",
+  "      const mode = ctrl.mode === 'release' ? 'release' : (ctrl.mode === 'native' ? 'native' : 'normal');",
+  "      msg.payload = { ts: new Date().toISOString(), family: ctrl.family, source: sp.source || '', slot_start: sp.slot_start, control_enabled: !!ctrl.controlEnabled, certified: !!ctrl.certified, mode: mode, registers: registers };",
+  "      // The device's own answer to 'can you charge from the grid?', read from the",
+  "      // register the adapter named. Deliberately OUTSIDE the commanded-vs-actual",
+  "      // comparison (like remote_status_raw) so it can neither fabricate nor break",
+  "      // all_match - it is a separate statement, and its ABSENCE means 'the device",
+  "      // did not say', which on an EEG site counts as not proven.",
+  "      if (mode === 'native' && ctrl.gridChargeProof) {",
+  "        const g = ctrl.gridChargeProof;",
+  "        txid = (txid + 1) & 0xffff; const gt = txid;",
+  "        try { const gr = await txn(buildRead(txid, g.addr, 1), (b) => parseRead(b, gt)); msg.payload.native = { grid_charge_blocked: Math.abs((gr[0] & 0xffff) - (g.expect & 0xffff)) <= (g.tolerance || 0) }; } catch (e) { /* no answer = no statement */ }",
+  "        context.set('ctxid', txid);",
+  "      }",
   "      finish(null, msg);",
   "    } catch (e) { finish(e); }",
   "  });",
@@ -1239,10 +1378,6 @@ const controlExecFunc = [
 // Node-RED flow cannot `require` a repo file at runtime); flows-sync.test.js
 // pins each embed against the file, so editing a module without re-running
 // build-flows.js fails there instead of shipping a stale copy.
-const embedModule = (file) =>
-  '(function () { var module = { exports: {} };\n' +
-  fs.readFileSync(path.join(__dirname, file), 'utf8') +
-  '\nreturn module.exports; })()';
 
 // The Deye Solarman-V5 control executor (report §4.4b/§5/§7.9): the write twin of
 // controlExecFunc for the solarman_v5 adapter. It writes the ToU/power plan over
@@ -3283,7 +3418,12 @@ const measurementNodes = [
 const simFn = (id, name, func, outputs, wires) => ({
   id, type: 'function', z: 'tab-sim', name, func, outputs, noerr: 0, initialize: '', finalize: '', libs: [], x: 0, y: 0, wires,
 });
-const SIM_SELECTION = "{ schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec', communication: 'modbus_tcp', connection: { ip: 'edge-sim', port: 502, unit_id: 1 } }";
+// The simulator tab's fixed selection. `model`/`connection.firmware` were added
+// with the native self-regulation: a capability certificate keys on the exact
+// (brand, model, firmware) triple, and without an identity the SIMULATOR-ONLY
+// entry could not be addressed at all. They name a piece of software, so they
+// can never collide with a customer device.
+const SIM_SELECTION = "{ schema_version: '1.0', brand: 'generic_modbus', model: 'sunspec-sim', family: 'sunspec', communication: 'modbus_tcp', connection: { ip: 'edge-sim', port: 502, unit_id: 1, firmware: 'sim' } }";
 const simControlNodes = [
   {
     id: 'sim-control-note', type: 'comment', z: 'tab-sim',
@@ -3294,7 +3434,7 @@ const simControlNodes = [
     id: 'sim-sollwert', type: 'vp-sollwert', z: 'tab-sim', name: 'Sollwert vom Core', core: 'cfg-vp-core',
     x: 140, y: 360, wires: [['sim-control-plan']],
   },
-  Object.assign(simFn('sim-control-plan', 'Steuerung / Schreibplan', controlPlanFunc(SIM_SELECTION), 1, [['sim-control-exec']]), { x: 380, y: 360 }),
+  Object.assign(simFn('sim-control-plan', 'Steuerung / Schreibplan', controlPlanFunc(SIM_SELECTION, '__NATIVE.SIMULATOR_NATIVE_CAPABILITIES'), 1, [['sim-control-exec']]), { x: 380, y: 360 }),
   Object.assign(simFn('sim-control-exec', 'Steuerung schreiben + zuruecklesen', controlExecFunc, 1, [['sim-control-readback']]), { x: 650, y: 360 }),
   { id: 'sim-control-readback', type: 'vp-control-readback', z: 'tab-sim', name: 'Rueckmeldung an Core', core: 'cfg-vp-core', x: 930, y: 360, wires: [] },
 ];

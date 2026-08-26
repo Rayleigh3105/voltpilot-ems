@@ -2102,3 +2102,133 @@ test('KACO steht in KEINER Freigabeliste', () => {
     assert.strictEqual(C.CERTIFIED_CONTROL_FAMILIES.has(fam), false, fam);
   }
 });
+
+// --- NATIVE SELF-REGULATION (Selbstregel-Modus) ------------------------------
+//
+// Per tier: the primitive is the tier's RELEASE write list plus the STATE
+// readback that proves it, and it stays PLANNED-ONLY until a bench certificate
+// releases it. So each case below asserts three things: the documented sequence,
+// the proof register, and that nothing is executable today.
+
+// Reuses the fixtures the setpoint-path tests already use, so the native
+// primitive is judged against the SAME devices.
+const nat = (sel, over = {}) =>
+  C.nativeSelfConsumption(sel, { controlEnabled: true, deviceCertified: true, ...over });
+
+test('nativ: Deye REMOTE gibt die Fernsteuerung zurueck und belegt es an 1100', () => {
+  const r = nat(DEYE_REMOTE_SEL, { deye: OWNER_CAP });
+  assert.strictEqual(r.supported, true);
+  assert.strictEqual(r.adapter, 'solarman_v5');
+  // Disabling remote mode IS the hand-over: the inverter then runs its OWN
+  // configuration, which is the native self-consumption loop.
+  assert.deepStrictEqual(r.planned.map((w) => [w.addr, w.value]), [[0x044c, 0]]);
+  assert.deepStrictEqual(r.plannedReadbacks.map((b) => [b.addr, b.expect]), [[0x044c, 0]]);
+  // 1121 stays an OBSERVATION - out of the comparison so it can never fabricate
+  // or break a verdict (the same rule the setpoint path applies).
+  assert.deepStrictEqual(r.observations.map((o) => o.addr), [0x0461]);
+  // The EEG proof is the device's own Program-1 charging enum.
+  assert.strictEqual(r.gridChargeProof.addr, 0x00ac);
+  assert.strictEqual(r.gridChargeProof.expect, 0);
+  // Planned only: no certificate exists for any Deye.
+  assert.deepStrictEqual(r.writes, []);
+  assert.match(r.reason, /Pruefstand|Prüfstand/);
+});
+
+test('nativ: Deye OHNE Fernsteuer-Firmware ist bewusst nicht unterstuetzt', () => {
+  const r = nat(DEYE_SEL, { deye: TOU_CAP });
+  assert.strictEqual(r.supported, false);
+  assert.deepStrictEqual(r.writes, []);
+  assert.match(r.reason, /10-Sekunden-Nachf/);
+});
+
+test('nativ: Fronius Model 124 = StorCtl_Mod 0, mit ChaGriSet als EEG-Beleg', () => {
+  const disc = froniusDiscoveryWithStorage();
+  const r = nat(FRONIUS_SEL, { sunspec: disc });
+  assert.strictEqual(r.supported, true);
+  assert.strictEqual(r.adapter, 'fronius_sunspec');
+  // planStorage(0) IS the primitive - its own comment says "NONE = release
+  // control -> the inverter self-consumes". We reuse it rather than re-deriving
+  // discovered addresses.
+  const modeWrite = r.planned.find((w) => w.role === 'battery_storage_mode');
+  assert.ok(modeWrite, 'the storage mode must be part of the plan');
+  assert.strictEqual(modeWrite.value, 0);
+  assert.strictEqual(r.gridChargeProof.addr, disc.storage.chaGriSetAddr);
+  assert.deepStrictEqual(r.writes, []);
+});
+
+test('nativ: Fronius ohne Discovery erfindet keine Adresse', () => {
+  const r = nat(FRONIUS_SEL, {});
+  assert.strictEqual(r.supported, false);
+  assert.deepStrictEqual(r.writes, []);
+});
+
+test('nativ: KOSTAL gibt zurueck, indem es NICHT MEHR SCHREIBT - Beleg behavioral', () => {
+  const r = nat(kostalSel());
+  assert.strictEqual(r.supported, true);
+  assert.strictEqual(r.adapter, 'kostal_modbus');
+  // The hand-over is the ABSENCE of a write: after the webserver timeout the
+  // inverter returns to its internal battery management.
+  assert.deepStrictEqual(r.planned, []);
+  assert.strictEqual(r.proofKind, 'behavioral');
+  // 1080 reads 2 in BOTH states, so no register distinguishes them - 582 is the
+  // observation the bench criterion keys on.
+  assert.deepStrictEqual(r.plannedReadbacks.map((b) => b.addr), [1080]);
+  assert.deepStrictEqual(r.observations.map((o) => o.addr), [582]);
+  // And with no readable charge-source statement an EEG site is refused.
+  assert.strictEqual(r.gridChargeProof, null);
+  const eeg = nat(kostalSel(), { solarOnlyCharge: true });
+  assert.deepStrictEqual(eeg.writes, []);
+  assert.match(eeg.reason, /EEG/);
+});
+
+test('nativ: KACO NH3 schreibt 41104 = 2 (Eigenverbrauch) - sein einziger Failsafe', () => {
+  const r = nat(KACO_NH3_SEL);
+  assert.strictEqual(r.supported, true);
+  assert.strictEqual(r.adapter, 'kaco_nh3');
+  assert.deepStrictEqual(r.planned.map((w) => [w.addr, w.value]), [[41104, 2]]);
+  assert.deepStrictEqual(r.plannedReadbacks.map((b) => [b.addr, b.expect]), [[41104, 2]]);
+  assert.deepStrictEqual(r.writes, []);
+});
+
+test('nativ: ohne Batterie gibt es keine Automatik', () => {
+  const kacoSunspec = {
+    schema_version: '1.0', brand: 'kaco', family: 'sunspec_live',
+    communication: 'sunspec_tcp', control_tier: 1, connection: { ip: '10.0.0.4', port: 502 },
+  };
+  assert.strictEqual(nat(kacoSunspec).supported, false);
+});
+
+test('nativ: der Not-Aus und die fehlende Freigabe halten - jede mit ihrem Grund', () => {
+  const sim = {
+    schema_version: '1.0', brand: 'generic_modbus', model: 'sunspec-sim', family: 'sunspec',
+    communication: 'modbus_tcp', connection: { ip: '10.0.0.5', port: 502, unit_id: 1, firmware: 'sim' },
+  };
+  const cat = require('./unplanned-load-native').SIMULATOR_NATIVE_CAPABILITIES;
+  // Kill-switch off: nothing is handed over, and the reason names the stop.
+  const off = C.nativeSelfConsumption(sim, { controlEnabled: false, catalog: cat });
+  assert.deepStrictEqual(off.writes, []);
+  assert.match(off.reason, /Not-Aus/);
+  // An uncertified FAMILY cannot hand over either (the same disjunction the
+  // setpoint path uses: what may be driven may be handed over, nothing else).
+  const foreign = { ...sim, family: 'hybrid_3p', communication: 'modbus_tcp' };
+  const un = C.nativeSelfConsumption(foreign, { controlEnabled: true, catalog: cat });
+  assert.deepStrictEqual(un.writes, []);
+  assert.match(un.reason, /freigegeben/);
+  // Released, and the certificate matches the shipped plan.
+  const ok = C.nativeSelfConsumption(sim, { controlEnabled: true, catalog: cat });
+  assert.strictEqual(ok.writes.length, 3); // the native pair + the PV cap
+  assert.strictEqual(ok.certificate.simulator_only, true);
+});
+
+test('nativ: eine Freigabe, die den Schreibplan nicht mehr beschreibt, wird verweigert', () => {
+  const sim = {
+    schema_version: '1.0', brand: 'generic_modbus', model: 'sunspec-sim', family: 'sunspec',
+    communication: 'modbus_tcp', connection: { ip: '10.0.0.5', port: 502, unit_id: 1, firmware: 'sim' },
+  };
+  const drifted = require('./unplanned-load-native').SIMULATOR_NATIVE_CAPABILITIES.map((c) => ({
+    ...c, chargeBlockWrites: [{ addr: 41, value: 0 }], // the bench measured ONE write
+  }));
+  const r = C.nativeSelfConsumption(sim, { controlEnabled: true, catalog: drifted });
+  assert.deepStrictEqual(r.writes, []);
+  assert.match(r.reason, /stimmen nicht ueberein|Freigabe erneuern/);
+});

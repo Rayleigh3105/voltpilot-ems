@@ -130,3 +130,31 @@ Die Registerkarte gilt für G1 ab UI 01.16.05025 (Praxis-Untergrenze der
 Feld-Integrationen) und ist mit der aktuellen Doku Rev. 2.9 (G1 ab UI
 01.30.12092, G2, G3/MP G3) deckungsgleich für die hier gelesenen Register.
 Vor Inbetriebnahme Firmware aktualisieren (Webserver), Stand notieren.
+
+## Wechselrichter-Automatik (Selbstregel-Modus)
+
+In einem Slot, den die Wolke als „Verbrauch decken lohnt sich" markiert
+(`cover_load_from_battery` / `unplanned_load_discharge`), darf die Box aufhören,
+alle 10 Sekunden einen Sollwert zu schreiben, und die Regelung dem Gerät selbst
+überlassen. Vertrag + Aufsicht: `docs/contracts/v2/plan-execution-ownership.md`
+und `edge-app/core/internal/guards/nativemode.go`; Prüfstand-Tor:
+[`UNPLANNED-LOAD-BENCH.md`](UNPLANNED-LOAD-BENCH.md).
+
+**Der Schreibplan ist der RELEASE-Plan dieses Tiers plus ein
+Zustands-Rücklesen als BELEG — einmal geschrieben, danach nur noch gelesen.**
+
+| | |
+|---|---|
+| **hinein** | **GAR NICHTS** — aufhören zu schreiben IST die Übergabe: nach dem im Webserver eingestellten Timeout (30–60 s) verwirft der Wechselrichter den externen Sollwert und kehrt zur internen Batteriesteuerung zurück. |
+| **heraus** | `1034` wieder schreiben — sofort wirksam. |
+| **Nachweis** | ⚠ **BEHAVIORAL, kein Register.** `1080` liest in BEIDEN Zuständen 2, es gibt also keinen Registerwert, der sie unterscheidet. Der Prüfstand muss beobachten, dass `582` (Batterieleistung) der Hauslast folgt, während wir nichts schreiben. |
+| **EEG** | kein lesbares Ladequellen-Register ⇒ auf einer EEG-Anlage wird die Automatik VERWEIGERT. |
+| **Totmann** | der geräteeigene (Webserver-Timeout). |
+
+**⚠ Die Hinein-Latenz ist der Timeout T (bis 60 s)** — deutlich länger als bei
+jedem anderen Adapter. Sie ist genau die Größe, gegen die die Marge über dem
+Reserve-Boden bemessen ist, und Kriterium 8 verlangt, sie zu messen.
+
+**Was der Prüfstand noch beweisen muss:** T am konkreten Gerät, der behaviorale
+Nachweis über mindestens 5 Minuten mit Lastwechsel, und der widersprüchlich
+belegte „sticky 0"-Fall (gibt ein weiter geschriebenes `0` intern zurück?).

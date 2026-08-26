@@ -30,6 +30,7 @@
  *  -----+---------------------+-------------------------+-------------------------
  *   40  | batt_setpoint       | int16, 0.01 kW, +charge | control model 124 (WChaGra)
  *   41  | setpoint_enable     | uint16, 1 = EMS control | control model 123 conn
+ *        |                     | 0 = the inverter regulates ITSELF (self-consumption)
  *   42  | pv_limit            | uint16, 0.01 kW,        | control model 123 WMaxLim
  *        |                     | 0xFFFF = no limit       | (PV curtailment cap)
  *
@@ -37,6 +38,15 @@
  * schedule contract's optional pv_limit_kw). It can only ever REDUCE
  * generation - the model takes min(diurnal PV, limit) and a limit above the
  * current output changes nothing. 0xFFFF (the power-on default) disables it.
+ *
+ * SELF-CONSUMPTION (the NATIVE self-regulation the edge can hand control to):
+ * while setpoint_enable is 0 the model does what every real hybrid does on its
+ * own - it follows the house: battery = pv - load, clamped to the rated band and
+ * the SoC window, so grid ~ 0. Only with setpoint_enable = 1 does it obey the
+ * commanded setpoint. That distinction is the whole point of the register, and
+ * without it the simulator could not stand in for a device the edge stops
+ * writing to (it used to obey the last commanded value forever and merely LOG
+ * the flag, so "we handed over" and "we died" were literally the same state).
  *
  * grid_limit_kw (the value the contract carries) is derived by the edge as
  * wmax_lim_pct/100 * grid_conn_nameplate. §14a is enforced by the grid
@@ -94,8 +104,13 @@ function tick() {
   // Load: base +/- a small swing.
   const load = LOAD_BASE_KW + 2 * Math.sin((2 * Math.PI * (t % 40)) / 40);
 
-  // Battery obeys the last commanded setpoint, clamped by power and SoC limits.
-  let batt = Math.max(-MAX_DISCHARGE_KW, Math.min(MAX_CHARGE_KW, commandedKw));
+  // WHO decides the battery power: the EMS while it asserts control (register 41
+  // = 1), the inverter ITSELF otherwise. `enabled = 0` is not "idle" - it is the
+  // device's own self-consumption loop, the state the edge's native mode hands
+  // it back to. Both paths then pass the SAME rated/SoC clamps, because those
+  // are physics, not policy.
+  const wanted = enabled ? commandedKw : (pv - load);
+  let batt = Math.max(-MAX_DISCHARGE_KW, Math.min(MAX_CHARGE_KW, wanted));
   if (soc >= 100 && batt > 0) batt = 0;
   if (soc <= 0 && batt < 0) batt = 0;
 
@@ -140,7 +155,11 @@ const vector = {
       );
     } else if (addr === R.ENABLE) {
       enabled = regs[addr];
-      console.log(`[sim] EMS control ${enabled ? 'ENABLED' : 'disabled'} (reg[${R.ENABLE}]=${enabled})`);
+      console.log(
+        enabled
+          ? `[sim] EMS control ENABLED (reg[${R.ENABLE}]=${enabled}) - the battery follows the commanded setpoint`
+          : `[sim] EMS control disabled (reg[${R.ENABLE}]=0) - SELF-CONSUMPTION: the inverter follows the house itself`
+      );
     } else if (addr === R.PVLIMIT) {
       pvLimitKw = regs[addr] === NO_PV_LIMIT ? null : regs[addr] / 100;
       console.log(

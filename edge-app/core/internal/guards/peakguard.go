@@ -155,6 +155,20 @@ func (t *PeakTracker) AllowedImport(now time.Time, limitKw float64) (float64, bo
 	return allowed, true
 }
 
+// HeldImport returns the import (kW) the tracker is currently holding forward -
+// the newest measured site import, floored at 0 like everything else here. It is
+// the "what is the meter doing RIGHT NOW" half of NativePeakThreat: native
+// self-regulation holds no lever, so its supervision has to key on the measured
+// import instead of on what a correction would do to a commanded value.
+// ok=false = tracker inactive (no/stale grid measurement).
+func (t *PeakTracker) HeldImport(now time.Time) (float64, bool) {
+	_, _, held, ok := t.project(now)
+	if !ok {
+		return 0, false
+	}
+	return held, true
+}
+
 // QuarterMean returns the running quarter's mean import so far (kW) for the
 // local "Betrieb" card. Right at the quarter start (nothing integrated yet)
 // it reports the held sample value. ok=false = tracker inactive.

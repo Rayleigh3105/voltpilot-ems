@@ -1171,6 +1171,11 @@ type ExecutionSummary struct {
 	//	"trim"     - price-aware in-slot trim (guards.PriceTrimmer)
 	//	"absorb"   - in-slot surplus absorption (guards.SurplusCharger): the
 	//	             commanded CHARGE was RAISED to the measured PV surplus
+	//	"autonomous_discharge" - NATIVE SELF-REGULATION: in a covering slot the
+	//	             setpoint was handed back to the inverter, which now decides
+	//	             its own watts. Reported ONLY once the device has CONFIRMED
+	//	             the mode on its readback - "we stopped writing" and "we
+	//	             died" must never look the same to the cloud.
 	//	"fallback" - no fresh plan: the built-in self-consumption rule
 	//
 	// A cloud that does not know a mode DROPS it (the strict filter in the api's
@@ -1183,7 +1188,9 @@ type ExecutionSummary struct {
 	Direction string `json:"direction,omitempty"`
 	// PlannedKw is the setpoint BEFORE the correction - what the plan/holder
 	// asked for, so the portal can show plan and execution side by side instead
-	// of two contradicting numbers under one word. Only set for follow/trim.
+	// of two contradicting numbers under one word. Set for follow/trim/absorb;
+	// for autonomous_discharge it is the REFERENCE the edge would command if it
+	// took the battery back on the next tick (nothing is written in that mode).
 	PlannedKw *float64 `json:"planned_kw,omitempty"`
 	// DeficitKw is the measured house deficit max(load - pv, 0) a "follow"
 	// discharge tracks; absent when unknown (the correction is inactive then -

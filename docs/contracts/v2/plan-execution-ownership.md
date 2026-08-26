@@ -132,6 +132,56 @@ sequenceDiagram
     Note over FLOW: the flow SEES the clamp (arbitration output port)<br/>but cannot circumvent it
 ```
 
+## Native self-regulation ("Selbstregel-Modus") - who owns the SETPOINT
+
+In a slot the cloud marked worth covering from the battery
+(`cover_load_from_battery` / `unplanned_load_discharge`) the edge may stop
+writing a watt value altogether and hand the SETPOINT ITSELF back to the
+inverter's own self-consumption loop. **No contract field was added for this**:
+the cloud already says *whether* covering is economic, and *how* it is executed
+has always been an edge decision - the `unplanned_load_discharge` wording in
+`mqtt-schedule.schema.json` says so explicitly ("Native charge-block/autonomous-
+discharge is permitted only for an exact certified model/firmware capability;
+every other inverter uses the guarded exact-setpoint LoadFollower").
+
+The ownership split INSIDE the edge is the part that needs stating:
+
+| Concern | Owner |
+|---|---|
+| Is this slot worth covering at all (the price decision) | **cloud** (`slot_trim.py`) |
+| May this device regulate itself (exact model/firmware certificate) | **Layer 1** (`unplanned-load-native.js`) - only it knows the registers |
+| The register sequence into and out of the mode | **Layer 1 adapter** (`nativeSelfConsumption`) |
+| Whether the mode is entered at all right now (supervision) | **core** (`guards.NativeMode`) |
+| Taking the battery back | **core** - and it can, on every tick |
+| Proving the device really is regulating itself | **Layer 1 readback** (`mode: "native"`), consumed by the core |
+
+Two rules follow from that split, and they are what make the mode safe:
+
+1. **The core publishes an INTENT, Layer 1 answers with EVIDENCE.** `edge/setpoint`
+   carries the additive `battery_mode: "setpoint" | "native"` (absent = setpoint,
+   so an older Layer 1 is byte-for-byte unchanged). Layer 1 executes the native
+   primitive only with an exact certificate and then reports `mode: "native"` on
+   `edge/control/readback`. **An intent that is never confirmed is withdrawn**
+   after a bounded grace and the proven 10-second follower carries the slot -
+   because otherwise "we stopped writing" and "we died" would be the same state.
+   Only a CONFIRMED mode is reported to the cloud as
+   `execution.mode = "autonomous_discharge"`.
+2. **"Selbst regeln" means dropping the setpoint, not the supervision.** The guard
+   chain protects a value we command; with no commanded value left, every guard
+   that used to bite through the setpoint becomes an OBSERVATION with a
+   TAKE-BACK. The core leaves the mode - immediately, on the tick it sees it -
+   when the SoC reaches the full reserve floor (plus a margin), when the running
+   quarter hour's measured import threatens the billing-peak target, when the
+   measurement or the readback stops being fresh, when the slot ends or the plan
+   goes stale, and on plant rest / a foreign arbitration holder / an owner claim.
+   On an EEG site the device must additionally PROVE from its own configuration
+   that it cannot charge from the grid; silence counts as not proven.
+
+The SAFE STATE is unchanged: native is a wanted, proven mode, never a failsafe.
+Whenever the supervision is in doubt the edge returns to the setpoint path, whose
+safe value is the guard-clamped 0 kW / self-consumption computation that shipped
+long before it.
+
 ## Boundary summary
 
 | Concern | Owner |

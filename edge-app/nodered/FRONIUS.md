@@ -596,3 +596,29 @@ Seit dieser Runde regelt die Box selbst:
 - Home Assistant Fronius / `pyfronius` - Referenzimplementierung
 - Design-Bericht `vp-fronius-control-scout-c4` - die Steuer-Design-Entscheidung
   (SunSpec Modbus statt `config/timeofuse`)
+
+## Wechselrichter-Automatik (Selbstregel-Modus)
+
+In einem Slot, den die Wolke als „Verbrauch decken lohnt sich" markiert
+(`cover_load_from_battery` / `unplanned_load_discharge`), darf die Box aufhören,
+alle 10 Sekunden einen Sollwert zu schreiben, und die Regelung dem Gerät selbst
+überlassen. Vertrag + Aufsicht: `docs/contracts/v2/plan-execution-ownership.md`
+und `edge-app/core/internal/guards/nativemode.go`; Prüfstand-Tor:
+[`UNPLANNED-LOAD-BENCH.md`](UNPLANNED-LOAD-BENCH.md).
+
+**Der Schreibplan ist der RELEASE-Plan dieses Tiers plus ein
+Zustands-Rücklesen als BELEG — einmal geschrieben, danach nur noch gelesen.**
+
+| | |
+|---|---|
+| **hinein** | `planStorage(0)` — Raten 0, `StorCtl_Mod <- 0` ZULETZT. Das ist wörtlich, was der Planer schon heute für 0 kW tut („idle (0 kW) sets NONE = release control -> the inverter self-consumes"), also wird er wiederverwendet statt die ENTDECKTEN Adressen ein zweites Mal abzuleiten. |
+| **heraus** | `planStorage(kw)` — der gewöhnliche Schreibplan. |
+| **Nachweis** | `StorCtl_Mod == 0` an der ENTDECKTEN Adresse. EEG-Beleg: `ChaGriSet == PV`. |
+| **Totmann** | `InOutWRte_RvrtTms` wird geschrieben, sein Verhalten auf Modell 124 ist bei Fronius aber NICHT dokumentiert — Prüfstand-Punkt. |
+
+Ohne Discovery gibt es KEINEN Plan (nie eine erfundene Adresse), und ohne
+Zertifikat keine ausführbaren Schreibbefehle — wie auf dem Sollwert-Pfad.
+
+**Was der Prüfstand noch beweisen muss:** ob 124 den Revert-Timer ehrt, die Latenz
+beider Übergänge, und dass `ChaGriSet` zusammen mit der Web-UI-Einstellung
+wirklich das Netzladen sperrt.

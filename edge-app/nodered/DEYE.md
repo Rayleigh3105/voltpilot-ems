@@ -662,3 +662,31 @@ warten.
 - [`edge-app/README.md`](../README.md) - Edge-App-Überblick, vp-palette, "Einen neuen Kunden verdrahten".
 - <https://github.com/StephanJoubert/home_assistant_solarman>, <https://github.com/jmccrohan/pysolarmanv5> - die Solarman-V5-Referenzen.
 - <https://github.com/s10l/deye-logger-at-cmd> - die `deye`-CLI (Fallback-Transport).
+
+## Wechselrichter-Automatik (Selbstregel-Modus)
+
+In einem Slot, den die Wolke als „Verbrauch decken lohnt sich" markiert
+(`cover_load_from_battery` / `unplanned_load_discharge`), darf die Box aufhören,
+alle 10 Sekunden einen Sollwert zu schreiben, und die Regelung dem Gerät selbst
+überlassen. Vertrag + Aufsicht: `docs/contracts/v2/plan-execution-ownership.md`
+und `edge-app/core/internal/guards/nativemode.go`; Prüfstand-Tor:
+[`UNPLANNED-LOAD-BENCH.md`](UNPLANNED-LOAD-BENCH.md).
+
+**Der Schreibplan ist der RELEASE-Plan dieses Tiers plus ein
+Zustands-Rücklesen als BELEG — einmal geschrieben, danach nur noch gelesen.**
+
+| | |
+|---|---|
+| **hinein** (nur Remote-Firmware) | `1100 <- 0` — die Fernsteuerung abschalten IST die Übergabe: der Wechselrichter fährt danach seine EIGENE Konfiguration (Work Mode + Time-of-Use), also genau seine Eigenverbrauchs-Schleife. Es wird KEINE Installateurs-Einstellung angefasst, es gibt also nichts zurückzuspielen. |
+| **heraus** | der gewöhnliche Remote-Schreibplan (`1101` Totmann zuerst, `1104`, `1105`, `1109`, `1100 <- 1` zuletzt). |
+| **Nachweis** | `1100 == 0`. `1121` bleibt eine BEOBACHTUNG (nie Teil des Vergleichs). EEG-Beleg: die Program-1-Charging-Enum (`0x00AC` auf `hybrid_3p`) muss `Disabled` lesen. |
+| **Totmann** | der geräteeigene (1101) — aufhören zu schreiben IST hier der Failsafe. |
+
+**⚠ Der ToU-Pfad (ohne Fernsteuer-Firmware) ist bewusst NICHT unterstützt**
+(Captain-Entscheid 26.08.2026): dort ist jeder Moduswechsel ein
+EEPROM-Schreibvorgang mit ~20 s Richtungs-Latenz und Snapshot/Restore-Pflicht —
+„nativ" kostete dort Schreibzyklen und brächte weder Latenz- noch
+Socket-Gewinn. Diese Geräte behalten die 10-Sekunden-Nachführung.
+
+**Was der Prüfstand noch beweisen muss:** die Latenz beider Übergänge (Kriterium 8),
+dass `1100` in beiden Zuständen wirklich unterscheidet (9) und der EEG-Beleg (10).
