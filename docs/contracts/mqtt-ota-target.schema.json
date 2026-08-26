@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.de/contracts/mqtt-ota-target.schema.json",
   "title": "Cloud -> Edge Update-Ziel (OTA Stufe 2 „Verteilen“)",
-  "description": "Das der Anlage ZUGEWIESENE Release, RETAINED (QoS1) auf ems/{tenant_id}/{site_id}/{device_id}/v2/update. Additiv: ein Gerät ohne diese Stufe abonniert das Topic nicht und die Nachricht liegt ungelesen auf dem Broker.\n\nDIE EINE REGEL: das signierte Manifest reist BYTE-FÜR-BYTE unverändert. Es steht deshalb base64-kodiert in manifest_b64 (und die abgetrennte Signaturdatei in signature_b64) - eine JSON-Einbettung als Objekt würde beim Serialisieren Schlüsselreihenfolge, Leerraum und Zahlenformat normalisieren und die Signatur lautlos unprüfbar machen. Jede Station auf dem Weg (Register-Spalte `text`, dieser Umschlag, die Datei auf dem Gerät) reicht dieselben Bytes durch.\n\nDIE ZWEITE REGEL: der Umschlag ist ROUTING, keine Autorität. release/release_seq/channel/rollout_id dienen der Zuordnung und der Diagnose; JEDE Entscheidung des Geräts (welches Release, welche Ordnung, welche Artefakte, Anti-Rollback-Boden, Backend-Verträglichkeit) wird ausschließlich aus dem VERIFIZIERTEN Manifest gelesen. Widerspricht der Umschlag dem Manifest, gewinnt das Manifest - der Umschlag ist unsigniert.\n\nDas root-signierte Trust-Set reist in dieser Stufe bewusst NICHT mit: es ist der Widerrufs-Anker und wird beim TOFU-Crossover je Box abgelegt (docs/ota-signing.md §6). Ein Gerät ohne Trust-Set lehnt fail-closed ab und nennt das als Grund.\n\nEs gibt in dieser Stufe KEINEN autonomen Anwendungspfad auf dem Gerät: das Gerät verifiziert, legt das Ziel ab und meldet es. Angewandt wird beaufsichtigt (update.sh --from-target).",
+  "description": "Das der Anlage ZUGEWIESENE Release, RETAINED (QoS1) auf ems/{tenant_id}/{site_id}/{device_id}/v2/update. Additiv: ein Gerät ohne diese Stufe abonniert das Topic nicht und die Nachricht liegt ungelesen auf dem Broker.\n\nDIE EINE REGEL: das signierte Manifest reist BYTE-FÜR-BYTE unverändert. Es steht deshalb base64-kodiert in manifest_b64 (und die abgetrennte Signaturdatei in signature_b64) - eine JSON-Einbettung als Objekt würde beim Serialisieren Schlüsselreihenfolge, Leerraum und Zahlenformat normalisieren und die Signatur lautlos unprüfbar machen. Jede Station auf dem Weg (Register-Spalte `text`, dieser Umschlag, die Datei auf dem Gerät) reicht dieselben Bytes durch.\n\nDIE ZWEITE REGEL: der Umschlag ist ROUTING, keine Autorität. release/release_seq/rollout_id dienen der Zuordnung und der Diagnose; JEDE Entscheidung des Geräts (welches Release, welche Ordnung, welche Artefakte, Anti-Rollback-Boden, Backend-Verträglichkeit) wird ausschließlich aus dem VERIFIZIERTEN Manifest gelesen. Widerspricht der Umschlag dem Manifest, gewinnt das Manifest - der Umschlag ist unsigniert.\n\nDas root-signierte Trust-Set reist in dieser Stufe bewusst NICHT mit: es ist der Widerrufs-Anker und wird beim TOFU-Crossover je Box abgelegt (docs/ota-signing.md §6). Ein Gerät ohne Trust-Set lehnt fail-closed ab und nennt das als Grund.\n\nSeit der Vereinfachung vom 26.08.2026 WENDET das Gerät ein so zugewiesenes, selbst verifiziertes Release AN - ohne dass jemand an das Gerät muss. Ein Kanal (canary/stable) ist damit entfallen: die Auswahl der Geräte IST die Welle. Ein älterer Umschlag mit channel wird von der Box schlicht überlesen.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -42,11 +42,6 @@
       "type": "integer",
       "minimum": 1,
       "description": "Nur zur Anzeige/Zuordnung. Die wirksame Ordnung steht im signierten Manifest."
-    },
-    "channel": {
-      "type": "string",
-      "enum": ["canary", "stable"],
-      "description": "Der Ring, aus dem die Zuweisung stammt - reine Diagnose, das Gerät leitet daraus nichts ab."
     },
     "rollout_id": {
       "$ref": "#/$defs/uuid",

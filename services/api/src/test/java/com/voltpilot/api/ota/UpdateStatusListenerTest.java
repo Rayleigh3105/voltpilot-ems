@@ -55,7 +55,7 @@ class UpdateStatusListenerTest {
 
     /** One heartbeat in; the captured upsert arguments out. */
     private record Row(String version, String backend, String current, Long currentSeq,
-            String target, Long targetSeq, String channel, String state, String reason,
+            String target, Long targetSeq, String state, String reason,
             String lastKnownGood, String targetVerdict, String blocker, String rootKeyIds,
             String trustSetKeyIds, String trustSetGeneratedAt, String trustSetSignedBy,
             String trustSetError) {
@@ -71,7 +71,6 @@ class UpdateStatusListenerTest {
         ArgumentCaptor<Long> currentSeq = ArgumentCaptor.forClass(Long.class);
         ArgumentCaptor<String> target = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<Long> targetSeq = ArgumentCaptor.forClass(Long.class);
-        ArgumentCaptor<String> channel = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> state = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> lkg = ArgumentCaptor.forClass(String.class);
@@ -84,20 +83,20 @@ class UpdateStatusListenerTest {
         ArgumentCaptor<String> trustErr = ArgumentCaptor.forClass(String.class);
         verify(store).upsert(eq(DEVICE), eq(SITE), version.capture(), backend.capture(),
                 current.capture(), currentSeq.capture(), target.capture(), targetSeq.capture(),
-                channel.capture(), state.capture(), reason.capture(), lkg.capture(),
+                state.capture(), reason.capture(), lkg.capture(),
                 verdict.capture(), blocker.capture(), roots.capture(), trustKeys.capture(),
                 trustGen.capture(), trustBy.capture(), trustErr.capture(),
                 any());
         return new Row(version.getValue(), backend.getValue(), current.getValue(),
                 currentSeq.getValue(), target.getValue(), targetSeq.getValue(),
-                channel.getValue(), state.getValue(), reason.getValue(), lkg.getValue(),
+                state.getValue(), reason.getValue(), lkg.getValue(),
                 verdict.getValue(), blocker.getValue(), roots.getValue(), trustKeys.getValue(),
                 trustGen.getValue(), trustBy.getValue(), trustErr.getValue());
     }
 
     private void assertNothingStored() {
         verify(store, never()).upsert(any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
                 any());
     }
 
@@ -120,7 +119,6 @@ class UpdateStatusListenerTest {
         assertThat(row.currentSeq()).isNull();
         assertThat(row.target()).isNull();
         assertThat(row.targetSeq()).isNull();
-        assertThat(row.channel()).isNull();
         assertThat(row.reason()).isNull();
         assertThat(row.lastKnownGood()).isNull();
     }
@@ -235,7 +233,8 @@ class UpdateStatusListenerTest {
         assertThat(good.currentSeq()).isEqualTo(11L);
         assertThat(good.targetSeq()).isEqualTo(12L);
         assertThat(good.target()).isEqualTo("edge-2026.08.0");
-        assertThat(good.channel()).isEqualTo("stable");
+        // Ein Kanal reist seit dem Ein-Schritt-Umbau gar nicht mehr - eine ältere
+        // Box darf ihn trotzdem melden, er wird schlicht überlesen.
         assertThat(good.state()).isEqualTo("downloading");
         assertThat(good.lastKnownGood()).isEqualTo("edge-2026.07.1");
 
@@ -391,7 +390,7 @@ class UpdateStatusListenerTest {
         // … und der Stand wird trotzdem ganz normal fortgeschrieben.
         verify(store).upsert(eq(DEVICE), eq(SITE), eq("edge-2026.08.10"), any(), any(), any(),
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any());
+                any(), any());
     }
 
     /** Ein leerer Block behauptet nichts - nie eine Adresse aus dem Nichts. */
@@ -433,7 +432,7 @@ class UpdateStatusListenerTest {
         verify(devices).setLanAddress(eq(DEVICE), eq("192.168.254.51:8484"),
                 eq(Instant.parse("2026-08-21T09:11:44Z")), eq("erreicht"));
         verify(store, never()).upsert(any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
                 any());
     }
 }

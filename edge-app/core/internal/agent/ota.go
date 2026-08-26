@@ -54,12 +54,11 @@ type otaVerdict struct {
 	// release/seq sind nur bei bestandener Signaturpruefung gesetzt.
 	release string
 	seq     int64
-	// target/targetSeq/channel beschreiben die CLOUD-Zuweisung (Stufe 2) und
+	// target/targetSeq beschreiben die CLOUD-Zuweisung und
 	// sind leer, solange keine vorliegt. Sobald ein Manifest geprueft ist,
 	// stammen sie aus DIESEM, nicht aus dem unsignierten Umschlag.
 	target    string
 	targetSeq int64
-	channel   string
 	// targetVerdict ist das Urteil des Verifizierers ueber die Zuweisung
 	// (ok | deferred | rejected), leer ohne Zuweisung. Es steht NEBEN state,
 	// weil beide verschiedene Fragen beantworten: state ist der Zustand der
@@ -451,7 +450,6 @@ func (a *Agent) updateSummary() *cloud.UpdateSummary {
 		State:         v.state,
 		Reason:        v.reason,
 		Target:        v.target,
-		Channel:       v.channel,
 		TargetVerdict: v.targetVerdict,
 		Trust:         a.otaTrust(),
 	}

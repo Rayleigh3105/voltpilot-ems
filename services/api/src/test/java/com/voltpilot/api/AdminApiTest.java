@@ -3344,24 +3344,11 @@ class AdminApiTest {
         // ⚠ Die Rumpfe sind bewusst GUELTIG: Bean-Validation laeuft bei der
         // Argument-Aufloesung und damit VOR @PreAuthorize, ein krummer Rumpf
         // ergaebe also 400 statt 403 - und haette hier gar nichts bewiesen.
-        UUID rollout = UUID.randomUUID();
         UUID device = UUID.randomUUID();
-        List<Map<String, Object>> waves =
-                List.of(Map.of("name", "Welle 1", "devices", List.of(device.toString())));
         assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts",
-                Map.of("releaseSeq", seq, "channel", "canary", "waves", waves));
-        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts/" + rollout
-                + "/promote", Map.of());
-        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts/" + rollout
-                + "/pause", Map.of());
-        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts/" + rollout
-                + "/resume", Map.of());
-        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts/" + rollout
-                + "/halt", Map.of("reason", "weil"));
-        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts/" + rollout
-                + "/auto-advance", Map.of("enabled", true));
+                Map.of("releaseSeq", seq, "devices", List.of(device.toString())));
         assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/devices/" + device
-                + "/update-target", Map.of("releaseSeq", seq, "channel", "stable"));
+                + "/update-target", Map.of("releaseSeq", seq));
         assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/devices/" + device
                 + "/update-target/revert", Map.of());
         // Lesen ist ebenfalls zu - auch das Lesen ist Aufklaerung ueber die
@@ -3500,10 +3487,10 @@ class AdminApiTest {
         // (6) Und die Rollen-Grenze bleibt, wie sie war: hochladen ja, alles
         // andere nein. Ein KUNDE erreicht beides nicht.
         assertForbidden(publisher, HttpMethod.GET, "/api/v1/admin/edge-trust-set", null);
+        // ⚠ Der Rumpf ist bewusst GÜLTIG: Bean-Validation läuft VOR
+        // @PreAuthorize, ein krummer ergäbe 400 statt 403.
         assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts",
-                Map.of("releaseSeq", 1, "channel", "canary", "waves",
-                        List.of(Map.of("name", "W", "devices",
-                                List.of(UUID.randomUUID().toString())))));
+                Map.of("releaseSeq", 1, "devices", List.of(UUID.randomUUID().toString())));
         String customer = token("demo", "demo");
         assertThat(putTrustSet(customer, Map.of("trustSet", set, "signature", sig))
                 .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);

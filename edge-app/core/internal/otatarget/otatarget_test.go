@@ -18,7 +18,6 @@ func envelopeJSON(t *testing.T, mutate func(map[string]any)) []byte {
 		"device_id":      "00000000-0000-0000-0000-000000000003",
 		"release":        "edge-2026.08.0",
 		"release_seq":    12,
-		"channel":        ChannelStable,
 		"manifest_b64":   base64.StdEncoding.EncodeToString([]byte(`{"release":"edge-2026.08.0"}`)),
 		"signature_b64":  base64.StdEncoding.EncodeToString([]byte(`{"alg":"ed25519"}`)),
 	}
@@ -62,7 +61,6 @@ func TestEnvelopeRejections(t *testing.T) {
 		{"keine UUID", func(m map[string]any) { m["device_id"] = "nicht-uuid" }, "device_id"},
 		{"Release ohne Schema", func(m map[string]any) { m["release"] = "3bf8c038a1b2" }, "release"},
 		{"Sequenz 0", func(m map[string]any) { m["release_seq"] = 0 }, "release_seq"},
-		{"unbekannter Kanal", func(m map[string]any) { m["channel"] = "beta" }, "Kanal"},
 		{"Signatur fehlt", func(m map[string]any) { delete(m, "signature_b64") }, "gehoeren zusammen"},
 		{"Manifest fehlt", func(m map[string]any) { delete(m, "manifest_b64") }, "gehoeren zusammen"},
 		{"kaputtes Base64", func(m map[string]any) { m["manifest_b64"] = "!!!nicht base64!!!" }, "Base64"},

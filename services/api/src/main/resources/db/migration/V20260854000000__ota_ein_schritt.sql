@@ -63,3 +63,6 @@ DROP TABLE IF EXISTS device_apply_request;
 -- aufzugreifen. Mit der Freigabe selbst ist sie gegenstandslos: ein Gerät
 -- wendet ein zugewiesenes, selbst verifiziertes Release von sich aus an.
 ALTER TABLE device_update_status DROP COLUMN IF EXISTS can_apply;
+-- Der vom Gerät gemeldete Kanal (canary/stable) - ohne Canary-Ring
+-- bedeutungslos, und der Umschlag trägt ihn seit dem Umbau gar nicht mehr.
+ALTER TABLE device_update_status DROP COLUMN IF EXISTS channel;

@@ -929,7 +929,6 @@ type UpdateSummary struct {
 	CurrentSeq    *int64 `json:"current_seq,omitempty"`
 	Target        string `json:"target,omitempty"`
 	TargetSeq     *int64 `json:"target_seq,omitempty"`
-	Channel       string `json:"channel,omitempty"`
 	State         string `json:"state"`
 	Reason        string `json:"reason,omitempty"`
 	LastKnownGood string `json:"last_known_good,omitempty"`

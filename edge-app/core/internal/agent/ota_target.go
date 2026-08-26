@@ -80,7 +80,7 @@ func (a *Agent) onUpdateTarget(payload []byte) {
 		return
 	}
 	slog.Info("OTA: Zuweisung empfangen", "release", env.Release,
-		"release_seq", env.ReleaseSeq, "kanal", env.Channel)
+		"release_seq", env.ReleaseSeq)
 	// Sofort prüfen, damit der nächste Herzschlag (15 s) schon das Urteil trägt
 	// statt bis zum 30-s-Takt des Prüfers zu warten.
 	a.otaCheckOnce()
@@ -137,7 +137,6 @@ func (a *Agent) otaVerifyTarget(raw []byte) otaVerdict {
 				state:         cloud.UpdateStateFailed,
 				target:        env.Release,
 				targetSeq:     env.ReleaseSeq,
-				channel:       env.Channel,
 				targetVerdict: string(otaverify.OutcomeRejected),
 				reason: "Der eingebackene Vertrauensanker ist unlesbar - die zugewiesene " +
 					"Aktualisierung kann nicht geprueft werden.",
@@ -169,7 +168,6 @@ func (a *Agent) otaVerifyTarget(raw []byte) otaVerdict {
 	out := otaVerdict{
 		target:        env.Release,
 		targetSeq:     env.ReleaseSeq,
-		channel:       env.Channel,
 		reason:        res.Reason,
 		targetVerdict: string(res.Outcome),
 	}
@@ -250,7 +248,6 @@ func (a *Agent) OtaTarget() otatarget.View {
 	}
 	view.Release = env.Release
 	view.ReleaseSeq = env.ReleaseSeq
-	view.Channel = env.Channel
 	view.RolloutID = env.RolloutID
 	view.AssignedAt = env.AssignedAt
 
