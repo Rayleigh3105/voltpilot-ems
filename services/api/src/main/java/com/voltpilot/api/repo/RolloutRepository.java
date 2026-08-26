@@ -80,7 +80,7 @@ public class RolloutRepository {
         jdbc.update("""
                 INSERT INTO device_update_target (device_id, release_seq, release_version,
                         rollout_id, assigned_by, assigned_at, published_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, now(), NULL)
+                VALUES (?, ?, ?, ?, ?, now(), NULL)
                 ON CONFLICT (device_id) DO UPDATE SET release_seq = EXCLUDED.release_seq,
                         release_version = EXCLUDED.release_version,
                         rollout_id = EXCLUDED.rollout_id,
@@ -103,12 +103,12 @@ public class RolloutRepository {
 
     public record RolloutRow(UUID id, long releaseSeq, String releaseVersion,
             String state,
-            String haltedReason, String createdBy, Instant createdAt, Instant updatedAt) {
+            String createdBy, Instant createdAt, Instant updatedAt) {
     }
 
     private static final String ROLLOUT_SELECT = """
             SELECT id, release_seq, release_version, state,
-                   halted_reason, created_by, created_at, updated_at
+                   created_by, created_at, updated_at
               FROM rollout
             """;
 
@@ -161,14 +161,13 @@ public class RolloutRepository {
             String createdBy) {
         jdbc.update("""
                 INSERT INTO rollout (id, release_seq, release_version, state, created_by)
-                VALUES (?, ?, ?, ?, 'active', ?::jsonb, 0, ?, ?)
+                VALUES (?, ?, ?, 'active', ?)
                 """, id, releaseSeq, releaseVersion, createdBy);
     }
 
 
-    public void setRolloutState(UUID id, String state, String haltedReason) {
-        jdbc.update("UPDATE rollout SET state = ?, halted_reason = ?, updated_at = now() "
-                + "WHERE id = ?", state, haltedReason, id);
+    public void setRolloutState(UUID id, String state) {
+        jdbc.update("UPDATE rollout SET state = ?, updated_at = now() WHERE id = ?", state, id);
     }
 
 
@@ -207,7 +206,7 @@ public class RolloutRepository {
         jdbc.update("""
                 INSERT INTO rollout_device (rollout_id, device_id, state, reason, since,
                                             device_ref, site_name)
-                VALUES (?, ?, ?, ?, ?, now(), ?, ?)
+                VALUES (?, ?, ?, ?, now(), ?, ?)
                 ON CONFLICT (rollout_id, device_id) DO NOTHING
                 """, rolloutId, deviceId, state, reason, deviceRef, siteName);
     }
@@ -367,7 +366,6 @@ public class RolloutRepository {
                 rs.getLong("release_seq"),
                 rs.getString("release_version"),
                 rs.getString("state"),
-                rs.getString("halted_reason"),
                 rs.getString("created_by"),
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));

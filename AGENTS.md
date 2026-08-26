@@ -298,7 +298,7 @@ Zuweisung desselben Release versucht wieder).
   (`/admin/**` + `@PreAuthorize` + BYPASSRLS-`RolloutRepository`). **⚠ Footgun:**
   das `BIGSERIAL` braucht ein EIGENES `GRANT USAGE ON SEQUENCE` — V4s
   `ALTER DEFAULT PRIVILEGES` deckt Tabellen ab, Sequenzen sind eine andere
-  Objektklasse. Migration **`V20260826000000`** räumt danach die toten Spalten
+  Objektklasse. Migration **`V20260854000000`** räumt danach die toten Spalten
   (`rollout.channel/auto_advance/waves/current_wave/halted_reason`,
   `device_update_target.channel/pinned`) und `device_apply_request` ab.
 - **⚠ In `RolloutService` steht bewusst KEIN `@Transactional`.** Springs

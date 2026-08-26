@@ -40,6 +40,8 @@ UPDATE rollout SET state = 'done' WHERE state IN ('paused', 'halted');
 ALTER TABLE rollout DROP CONSTRAINT IF EXISTS rollout_state_check;
 ALTER TABLE rollout ADD CONSTRAINT rollout_state_check
     CHECK (state IN ('active', 'done'));
+-- Der Grund eines Not-Aus - ohne Not-Aus gegenstandslos.
+ALTER TABLE rollout DROP COLUMN IF EXISTS halted_reason;
 
 -- Mehrere Verteilungen dürfen nebeneinander laufen: der Admin soll jederzeit
 -- ein Release auf beliebige Geräte schieben können, ohne erst eine frühere

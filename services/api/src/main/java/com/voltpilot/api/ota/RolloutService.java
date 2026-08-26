@@ -236,7 +236,7 @@ public class RolloutService {
                 }
             }
             if (allDone) {
-                rollouts.setRolloutState(r.id(), "done", null);
+                rollouts.setRolloutState(r.id(), "done");
                 rollouts.appendEvent(SYSTEM_ACTOR, "rollout_done", r.id(), null, null);
             }
         }
