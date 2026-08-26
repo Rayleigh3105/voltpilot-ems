@@ -1205,7 +1205,7 @@ gibt in dieser Stufe KEINEN Apply-Pfad und keinen Downlink.
   `agent/ota_test.go`, `web` `TestHealthCarriesBuildVersion`. Cloud-Seite +
   Release-Register: root `AGENTS.md` „OTA Stufe 0".
 
-## OTA Stufe 1: das Geraet PRUEFT ein Release - und wendet weiterhin nichts an
+## Die Signaturkette: das Geraet PRUEFT ein Release gegen seine eingebackene Wurzel
 
 `internal/otaverify` (rein, nur Standardbibliothek - der Core bekommt dafuer
 KEINE neue Abhaengigkeit) + `agent/ota.go`. Vollstaendiges Bild inkl. Zeremonie:
