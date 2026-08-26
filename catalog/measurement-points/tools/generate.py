@@ -127,8 +127,13 @@ def scale_metadata(item: dict[str, Any]) -> dict[str, Any]:
 
 def long_term_cadence(unit: str | None, aggregation: str, text: str) -> int | None:
     haystack = text.lower()
-    if aggregation in {"event", "state", "bitfield", "text", "none"}:
+    if aggregation == "none":
         return None
+    if aggregation in {"event", "state", "bitfield", "text"}:
+        # State-like samples must enter both durable physical rollups. 900 s is
+        # their storage cadence; the refresh procedure intentionally also
+        # admits them to the 5-minute table so 7/30-day windows remain usable.
+        return 900
     if aggregation == "counter":
         return 900
     if unit in {"W", "kW", "VA", "var", "A", "V", "Hz", "PF", "Pct"}:
@@ -211,9 +216,16 @@ def deye_decoder(item: dict[str, Any]) -> dict[str, Any]:
     decoder_fields = (
         "rule", "scale", "divide", "mask", "bit", "bitmask", "offset", "magnitude",
         "inverted", "registers", "sensors", "lookup", "range", "validation", "value",
-        "enabled_lookup", "name_lookup", "l", "alt",
+        "enabled_lookup", "name_lookup", "l", "alt", "hex", "delimiter", "remove", "dec",
     )
     return {field: item[field] for field in decoder_fields if field in item}
+
+
+def deye_source_key(item: dict[str, Any]) -> str:
+    """The pinned parser's ``entity_key(name, platform)`` lookup identifier."""
+    platform = item.get("platform", "number" if "configurable" in item else "sensor")
+    value = f"{item.get('name') or ''}_{platform}"
+    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
 
 
 def deye_lock_fingerprint(registers: list[int], derived_registers: list[int], decoder: dict[str, Any]) -> str:
@@ -227,6 +239,7 @@ def deye_lock_fingerprint(registers: list[int], derived_registers: list[int], de
 
 def deye_source_records(source: dict[str, Any], document: dict[str, Any]) -> Iterable[dict[str, Any]]:
     default_cadence = document.get("default", {}).get("update_interval")
+    default_digits = document.get("default", {}).get("digits", 6)
     family = source["family"]
     for group in document["parameters"]:
         group_name = group["group"]
@@ -250,6 +263,7 @@ def deye_source_records(source: dict[str, Any], document: dict[str, Any]) -> Ite
             source_locator = f"{group_name}/{name or f'<unnamed:{ordinal}>'}"
             yield {
                 "decoder": decoder,
+                "default_digits": default_digits,
                 "derived_registers": derived_registers,
                 "group_cadence": group_cadence,
                 "group_name": group_name,
@@ -310,6 +324,25 @@ def generate_deye_points(
         value_type, signed = deye_value_type(item, width_bits)
         aggregation = deye_aggregation(item, value_type)
         cadence = item.get("update_interval", record["group_cadence"])
+        runtime_decoder = dict(record["decoder"])
+        runtime_decoder["source_key"] = deye_source_key(item)
+        runtime_decoder["digits"] = item.get("digits", record["default_digits"])
+        item_range = item.get("range") or {}
+        validation = item.get("validation") or {}
+        if family == "hybrid_3p" and any(
+            isinstance(value, list)
+            for value in (
+                item.get("scale"), item_range.get("min"), item_range.get("max"),
+                validation.get("min"), validation.get("max"),
+            )
+        ):
+            # ha-solarman's pinned autodetection maps these register-0 device
+            # types to mod=1; all other P3 devices use the source default mod=0.
+            runtime_decoder["variant"] = {
+                "register": 0,
+                "index_1_values": [0x0006, 0x0007, 0x0600, 0x0008, 0x0601],
+                "default_index": 0,
+            }
         yield base_point(
             family=family,
             point_key=lock_entry["point_key"],
@@ -336,9 +369,14 @@ def generate_deye_points(
             ),
             poll_group=f"deye:{family}:{slug(group_name)}:{cadence or 'source-default'}",
             source=source,
-            decoder=record["decoder"],
+            decoder=runtime_decoder,
             derived_from=[f"holding:0x{address:04x}" for address in derived_registers],
             point_key_aliases=lock_entry["aliases"],
+            recommended=name in {
+                "PV Power", "Grid Power", "Load Power", "Battery Power", "Battery SOC",
+                "Device State", "Device Alarm", "Device Fault", "Temperature",
+                "Today Production", "Total Production",
+            },
             readable=True,
         )
 
@@ -654,7 +692,66 @@ def generate_ocpp(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
         )
 
 
+def generate_builtin_inverter(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
+    """Package the points already proven by the in-repo inverter decoders.
+
+    The JSON source is intentionally boring and explicit: it mirrors only fields
+    and registers the runtime actually reads. It is not a guessed vendor-wide map.
+    """
+    document = read_json(source_file(source))
+    by_family = {family["family"]: family for family in document["families"]}
+    for family in document["families"]:
+        inherited = by_family.get(family.get("inherits"), {}).get("points", [])
+        for item in [*inherited, *family["points"]]:
+            address = None
+            source_kind = "rest_json"
+            selector = item.get("selector", "")
+            if "address" in item:
+                registers = list(range(item["address"], item["address"] + item["width_words"]))
+                address = {"kind": "modbus_holding", "registers": registers,
+                           "width_words": item["width_words"]}
+                source_kind = "modbus_holding"
+                selector = "holding:" + ",".join(f"0x{register:04x}" for register in registers)
+            yield base_point(
+                family=family["family"],
+                point_key=f"{family['family']}.{item['key']}",
+                source_kind=source_kind,
+                address=address,
+                selector=selector,
+                width_bits=item.get("width_words", 0) * 16 or None,
+                value_type=item["value_type"],
+                signed=item["signed"],
+                endian=item.get("endian"),
+                scale=item["scale"],
+                unit=item["unit"],
+                group=item["group"],
+                label_de=item["label_de"],
+                label_source=item["label_source"],
+                semantic_status="known",
+                aggregation_kind=item["aggregation_kind"],
+                default_cadence_s=item["cadence_s"],
+                min_cadence_s=item["cadence_s"],
+                long_term_cadence_s=long_term_cadence(
+                    item["unit"], item["aggregation_kind"],
+                    f"{item['group']} {item['label_source']}",
+                ),
+                # One JSON poll group is exactly one physical endpoint. KACO's
+                # device=2/device=3/device=4 payloads are separate requests;
+                # grouping only by the display group silently dropped fields.
+                poll_group=(f"{family['family']}:{selector.split('#', 1)[0]}"
+                            if source_kind == "rest_json"
+                            else f"{family['family']}:{item['group'].lower().replace(' ', '-')}"),
+                source={**source, "source_url": family["source_url"],
+                        "source_revision": family["source_revision"]},
+                **({"decoder": {"byte_order": family["byte_order"]}}
+                   if item.get("width_words", 0) > 1 and family.get("byte_order") else {}),
+                dynamic=item.get("dynamic", False),
+                point_key_template=item.get("dynamic", False),
+                recommended=item.get("recommended", False),
+                readable=True,
+            )
 ADAPTERS = {
+    "builtin_inverter": generate_builtin_inverter,
     "deye": generate_deye,
     "goe": generate_goe,
     "ocpp": generate_ocpp,

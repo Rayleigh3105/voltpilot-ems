@@ -190,6 +190,23 @@ CREATE POLICY device_measurement_sample_isolation ON device_measurement_sample
     USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
     WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 
+CREATE TABLE device_measurement_point_state (
+    tenant_id UUID NOT NULL, site_id UUID NOT NULL, device_id UUID NOT NULL,
+    point_key TEXT NOT NULL, first_read_at TIMESTAMPTZ NOT NULL,
+    last_read_at TIMESTAMPTZ NOT NULL, edge_sequence BIGINT NOT NULL,
+    raw_numeric NUMERIC, raw_text TEXT, decoded_numeric NUMERIC, decoded_text TEXT,
+    quality TEXT NOT NULL, gap BOOLEAN NOT NULL, dropped_samples BIGINT NOT NULL,
+    catalog_version TEXT NOT NULL,
+    PRIMARY KEY(tenant_id,site_id,device_id,point_key),
+    CHECK ((raw_numeric IS NOT NULL)::int + (raw_text IS NOT NULL)::int = 1)
+);
+GRANT SELECT,INSERT,UPDATE ON device_measurement_point_state TO voltpilot_app;
+ALTER TABLE device_measurement_point_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_measurement_point_state FORCE ROW LEVEL SECURITY;
+CREATE POLICY device_measurement_point_state_isolation ON device_measurement_point_state
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
 CREATE TABLE device_measurement_event (
     occurred_at TIMESTAMPTZ NOT NULL, tenant_id UUID NOT NULL, site_id UUID NOT NULL,
     device_id UUID NOT NULL, point_key TEXT NOT NULL, event_kind TEXT NOT NULL,

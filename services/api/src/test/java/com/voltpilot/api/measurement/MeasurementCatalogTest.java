@@ -14,9 +14,9 @@ class MeasurementCatalogTest {
     @Test
     void canonicalArtifactSupportsSearchFacetsAndSemanticHonesty() {
         var result = catalog.search("Batteriestrom", Set.of("hybrid_1p"), null, null,
-                null, false, Set.of(), Map.of(), 0, 20);
+                null, false, Set.of(), Map.of(), Set.of(), Map.of(), 0, 20);
 
-        assertThat(result.catalogVersion()).isEqualTo("2026.08.25.1");
+        assertThat(result.catalogVersion()).isEqualTo("2026.08.26.3");
         assertThat(result.customPointActionLabel()).isEqualTo("Eigenen Messwert hinzufügen");
         assertThat(result.points()).isNotEmpty();
         assertThat(result.points()).allSatisfy(p -> {
@@ -34,12 +34,12 @@ class MeasurementCatalogTest {
     void selectorsAndUnitsAreSearchableAndRecordedFilterUsesCurrentSelection() {
         String key = "deye.hybrid_1p.battery.battery-current";
         var bySelector = catalog.search("holding:0x00bf", Set.of(), null, null, null,
-                false, Set.of(), Map.of(key, 30), 0, 10);
+                false, Set.of(), Map.of(key, 30), Set.of(key), Map.of(), 0, 10);
         assertThat(bySelector.points()).extracting(MeasurementCatalog.Point::pointKey)
                 .contains(key);
 
         var recorded = catalog.search("", Set.of(), null, null, true,
-                false, Set.of(), Map.of(key, 30), 0, 10);
+                false, Set.of(), Map.of(key, 30), Set.of(key), Map.of(), 0, 10);
         assertThat(recorded.total()).isEqualTo(1);
         assertThat(recorded.points().get(0).selected()).isTrue();
         assertThat(recorded.points().get(0).selectedCadenceS()).isEqualTo(30);

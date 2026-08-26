@@ -845,6 +845,112 @@ export interface Device {
   lanSource?: 'erreicht' | 'schnittstelle' | null;
 }
 
+export interface MeasurementCatalogPoint {
+  family: string;
+  pointKey: string;
+  sourceKind: string;
+  address: { kind: string; registers?: number[]; widthWords?: number; modelId?: number; offsetWords?: number | string } | null;
+  selector: string;
+  widthBits: number | null;
+  valueType: string;
+  signed: boolean | null;
+  endian: string | null;
+  scale: { kind: string; value?: number | number[] };
+  unit: string | null;
+  group: string;
+  labelDe: string | null;
+  labelSource: string | null;
+  semanticStatus: 'known' | 'vendor_label_only' | 'unknown';
+  aggregationKind: string;
+  defaultCadenceS: number | null;
+  minCadenceS: number | null;
+  longTermCadenceS: number | null;
+  pollGroup: string;
+  sourceUrl: string;
+  sourceCommit: string | null;
+  sourceRevision: string | null;
+  dynamic: boolean;
+  recommended: boolean;
+  available: boolean;
+  availabilityStatus: 'read' | 'family_configured' | 'not_configured';
+  availabilityReason: string;
+  recorded: boolean;
+  selected: boolean;
+  selectedCadenceS: number | null;
+  lastReadAt: string | null;
+  rawValue: string | null;
+  decodedValue: string | null;
+  quality: string | null;
+  gap: boolean;
+  droppedSamples: number;
+  estimatedDataPerYearBytes: number;
+}
+
+export interface MeasurementCatalogResult {
+  catalogVersion: string;
+  edgeMinVersion: string;
+  customPointActionLabel: 'Eigenen Messwert hinzufügen';
+  total: number;
+  offset: number;
+  limit: number;
+  groups: { value: string; count: number }[];
+  semanticStatuses: { value: string; count: number }[];
+  points: MeasurementCatalogPoint[];
+}
+
+export interface MeasurementBudgetEstimate {
+  enabledPointCount: number;
+  samplesPerMinute: number;
+  requestsPerMinute: number;
+  dutyCyclePercent: number;
+  softWarning: boolean;
+  hardRejected: boolean;
+  reasons: string[];
+  rawGbPerYear: number;
+  longTermGbPerYear: number;
+  totalGbPerYear: number;
+  retentionSummary: string;
+}
+
+export interface MeasurementSelectionState {
+  deviceId: string;
+  siteId: string;
+  desiredRevision: number;
+  catalogVersion: string;
+  status: 'idle' | 'pending_edge' | 'applied' | 'first_sample' | 'partially_rejected';
+  statusReason: string;
+  activationNotice: string;
+  disableNotice: string;
+  selections: Array<{
+    pointKey: string; enabled: boolean; cadenceS: number | null; applyStatus: string;
+    applyReason: string | null; enabledAt: string | null; disabledAt: string | null;
+    label: string; family: string; group: string; semanticStatus: string;
+    customDefinition: {
+      label: string; sourceKind: string; address: number; selector: string; valueType: string;
+      widthBits: number; signed: boolean; endian: string; scale: number; unit: string;
+      cadenceS: number; retentionClass: string; readOnly: boolean; requestCostMs: number;
+    } | null;
+  }>;
+  volumeEstimate: MeasurementBudgetEstimate;
+}
+
+export type MeasurementRange = '24h' | '7d' | '30d' | '90d' | 'year' | 'free';
+export interface MeasurementHistory {
+  meta: {
+    pointKey: string; label: string; sourceLabel: string | null; unit: string | null;
+    aggregationKind: string; semanticStatus: string; catalogVersion: string | null;
+    representation: 'raw' | 'decoded'; rawAvailable: boolean; from: string; to: string;
+    bucketSeconds: number; aggregationExplanation: string; siteId: string; entityId?: string | null;
+  };
+  data: Array<{ time: string; value: number | null; minimum: number | null; maximum: number | null; text: string | null; sampleCount: number; gap: boolean }>;
+  markers: Array<{ time: string; kind: string; label: string }>;
+}
+
+export interface MeasurementComparisonOption {
+  deviceId: string; deviceLabel: string; pointKey: string; label: string; unit: string;
+  aggregationKind: string; compatibilityKey: string; lastReadAt: string;
+}
+
 /** Complete OCPP 1.6 read model. Optional values are facts the station did not report. */
 export interface OcppConnectorState {
   connectorId: number;
@@ -2830,6 +2936,34 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
+export async function downloadMeasurementExport(
+  deviceId: string,
+  pointKey: string,
+  range: MeasurementRange,
+  representation: 'raw' | 'decoded',
+  from?: string,
+  to?: string,
+  siteId?: string,
+  entityId?: string,
+) {
+  const token = await freshToken();
+  const path = `/api/v1/devices/${deviceId}/measurement-selection/${encodeURIComponent(pointKey)}/export?range=${range}&representation=${representation}${from ? `&from=${encodeURIComponent(from)}` : ''}${to ? `&to=${encodeURIComponent(to)}` : ''}${siteId ? `&siteId=${encodeURIComponent(siteId)}` : ''}${entityId ? `&entityId=${encodeURIComponent(entityId)}` : ''}`;
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+    },
+  });
+  if (!response.ok) throw new ApiError(response.status, 'Der Export konnte nicht erstellt werden.');
+  const blob = await response.blob();
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = `messwert-${pointKey.replace(/[^a-zA-Z0-9._-]/g, '_')}.csv`;
+  link.click();
+  URL.revokeObjectURL(href);
+}
+
 export interface RegisterInput {
   name: string;
   email: string;
@@ -2940,6 +3074,42 @@ export const api = {
    * Eine leere Liste heißt „kein Gerät hat je gemeldet", nicht „alle aktuell".
    */
   edgeVersions: () => request<EdgeVersion[]>('/api/v1/edge-versions'),
+  measurementSelection: (deviceId: string) =>
+    request<MeasurementSelectionState>(`/api/v1/devices/${deviceId}/measurement-selection`),
+  measurementCatalog: (deviceId: string, params: URLSearchParams) =>
+    request<MeasurementCatalogResult>(
+      `/api/v1/devices/${deviceId}/measurement-selection/catalog?${params.toString()}`,
+    ),
+  measurementEstimate: (deviceId: string, pointKey: string, cadenceS: number, enabled: boolean) =>
+    request<MeasurementBudgetEstimate>(
+      `/api/v1/devices/${deviceId}/measurement-selection/estimate?pointKey=${encodeURIComponent(pointKey)}&enabled=${enabled}&cadenceS=${cadenceS}`,
+    ),
+  changeMeasurementSelection: (
+    deviceId: string,
+    pointKey: string,
+    body: { expectedRevision: number; idempotencyKey: string; enabled: boolean; cadenceS?: number },
+  ) => request<MeasurementSelectionState>(
+    `/api/v1/devices/${deviceId}/measurement-selection/${encodeURIComponent(pointKey)}`,
+    { method: 'PUT', body: JSON.stringify(body) },
+  ),
+  addCustomMeasurement: (deviceId: string, body: Record<string, unknown>) =>
+    request<MeasurementSelectionState>(`/api/v1/devices/${deviceId}/measurement-selection/custom`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  customMeasurementEstimate: (deviceId: string, definition: Record<string, unknown>) =>
+    request<MeasurementBudgetEstimate>(
+      `/api/v1/devices/${deviceId}/measurement-selection/custom/estimate`,
+      { method: 'POST', body: JSON.stringify(definition) },
+    ),
+  measurementHistory: (
+    deviceId: string, pointKey: string, range: MeasurementRange,
+    representation: 'raw' | 'decoded', from?: string, to?: string, siteId?: string,
+    entityId?: string,
+  ) => request<MeasurementHistory>(
+    `/api/v1/devices/${deviceId}/measurement-selection/${encodeURIComponent(pointKey)}/history?range=${range}&representation=${representation}${from ? `&from=${encodeURIComponent(from)}` : ''}${to ? `&to=${encodeURIComponent(to)}` : ''}${siteId ? `&siteId=${encodeURIComponent(siteId)}` : ''}${entityId ? `&entityId=${encodeURIComponent(entityId)}` : ''}`,
+  ),
+  measurementComparisonOptions: (siteId: string) =>
+    request<MeasurementComparisonOption[]>(`/api/v1/sites/${siteId}/measurement-history/options`),
   /**
    * Realized earnings (measured, per site + totals) for a Berlin period. `at`
    * (ISO day) picks the period instance - e.g. a past month tapped in the

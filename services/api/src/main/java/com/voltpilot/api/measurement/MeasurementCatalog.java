@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.time.Instant;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.core.io.Resource;
@@ -43,16 +44,33 @@ public class MeasurementCatalog {
             JsonNode scale, String unit, String group, String labelDe, String labelSource,
             String semanticStatus, String aggregationKind, Integer defaultCadenceS,
             Integer minCadenceS, Integer longTermCadenceS, String pollGroup, String sourceUrl,
-            String sourceCommit, boolean readable, String edgeMinVersion, boolean dynamic,
-            RetentionView retention,
-            boolean selected, Integer selectedCadenceS) {
+            String sourceCommit, String sourceRevision, boolean readable, String edgeMinVersion,
+            boolean dynamic, boolean recommended, RetentionView retention,
+            boolean available, String availabilityStatus, String availabilityReason,
+            boolean recorded, boolean selected, Integer selectedCadenceS,
+            Instant lastReadAt, String rawValue, String decodedValue, String quality,
+            boolean gap, long droppedSamples, long estimatedDataPerYearBytes) {
 
-        Point selected(Integer cadence) {
+        Point view(Integer cadence, boolean wasRecorded, boolean familyAvailable,
+                MeasurementSelectionRepository.Observation observation) {
+            boolean seen = observation != null;
+            String availability = seen ? "read" : familyAvailable ? "family_configured" : "not_configured";
+            String reason = seen ? "Von diesem Gerät gelesen."
+                    : familyAvailable ? "Für die konfigurierte Anbindungsfamilie vorgesehen; noch nicht gelesen."
+                    : "Für die aktuelle Geräteanbindung nicht als verfügbar bestätigt.";
+            int effectiveCadence = cadence == null
+                    ? defaultCadenceS == null ? 300 : defaultCadenceS : cadence;
+            long annualBytes = Math.round(365.25 * 24 * 3600 / Math.max(1, effectiveCadence)
+                    * MeasurementBudget.BYTES_PER_SAMPLE);
             return new Point(family, pointKey, sourceKind, address, selector, widthBits, valueType,
                     signed, endian, scale, unit, group, labelDe, labelSource, semanticStatus,
                     aggregationKind, defaultCadenceS, minCadenceS, longTermCadenceS, pollGroup,
-                    sourceUrl, sourceCommit, readable, edgeMinVersion, dynamic, retention,
-                    cadence != null, cadence);
+                    sourceUrl, sourceCommit, sourceRevision, readable, edgeMinVersion, dynamic,
+                    recommended, retention, seen || familyAvailable, availability, reason,
+                    wasRecorded, cadence != null, cadence,
+                    seen ? observation.lastReadAt() : null, seen ? observation.rawValue() : null,
+                    seen ? observation.decodedValue() : null, seen ? observation.quality() : null,
+                    seen && observation.gap(), seen ? observation.droppedSamples() : 0L, annualBytes);
         }
 
         Point instantiate(String actualKey) {
@@ -72,7 +90,9 @@ public class MeasurementCatalog {
                     endian, scale, unit, group, labelDe, labelSource, semanticStatus,
                     aggregationKind, defaultCadenceS, minCadenceS, longTermCadenceS,
                     pollGroup.replace("[*]", "[" + index + "]"), sourceUrl, sourceCommit,
-                    readable, edgeMinVersion, false, retention, false, null);
+                    sourceRevision, readable, edgeMinVersion, false, recommended, retention,
+                    false, "not_configured", "Noch nicht vom Gerät bestätigt.", false, false,
+                    null, null, null, null, null, false, 0, 0);
         }
     }
 
@@ -105,9 +125,12 @@ public class MeasurementCatalog {
                     nullableInt(n.get("default_cadence_s")),
                     nullableInt(n.get("min_cadence_s")),
                     nullableInt(n.get("long_term_cadence_s")), text(n, "poll_group"),
-                    text(n, "source_url"), text(n, "source_commit"),
+                    text(n, "source_url"), text(n, "source_commit"), text(n, "source_revision"),
                     n.path("readable").asBoolean(false), text(n, "edge_min_version"),
-                    n.path("dynamic").asBoolean(false), RetentionView.of(retention), false, null);
+                    n.path("dynamic").asBoolean(false), n.path("recommended").asBoolean(false),
+                    RetentionView.of(retention), false, "not_configured",
+                    "Noch nicht vom Gerät bestätigt.", false, false, null, null, null, null, null,
+                    false, 0, 0);
             if (p.pointKey() == null || indexed.put(p.pointKey(), p) != null) {
                 throw new IllegalStateException("duplicate/missing measurement point key: "
                         + p.pointKey());
@@ -123,6 +146,10 @@ public class MeasurementCatalog {
 
     public String version() {
         return version;
+    }
+
+    public Set<String> families() {
+        return points.stream().map(Point::family).collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     public Point resolve(String pointKey) {
@@ -147,7 +174,10 @@ public class MeasurementCatalog {
 
     public SearchResult search(String query, Set<String> families, String group,
             String semanticStatus, Boolean recorded, boolean availableOnly,
-            Set<String> availableFamilies, Map<String, Integer> selected, int offset, int limit) {
+            Set<String> availableFamilies, Map<String, Integer> selected,
+            Set<String> recordedPointKeys,
+            Map<String, MeasurementSelectionRepository.Observation> observations,
+            int offset, int limit) {
         if (semanticStatus != null && !SEMANTIC_STATUSES.contains(semanticStatus)) {
             throw new IllegalArgumentException("Unbekannter Semantikstatus.");
         }
@@ -161,13 +191,14 @@ public class MeasurementCatalog {
                 .filter(p -> !availableOnly || availableFamilies.contains(p.family()))
                 .filter(p -> group == null || group.equals(p.group()))
                 .filter(p -> semanticStatus == null || semanticStatus.equals(p.semanticStatus()))
-                .filter(p -> recorded == null || recorded.equals(selected.containsKey(p.pointKey())))
+                .filter(p -> recorded == null || recorded.equals(recordedPointKeys.contains(p.pointKey())))
                 .filter(p -> q.isEmpty() || searchable(p).contains(q))
                 .toList();
         List<Facet> groups = facets(filtered, Point::group);
         List<Facet> semantics = facets(filtered, Point::semanticStatus);
         List<Point> page = filtered.stream().skip(safeOffset).limit(safeLimit)
-                .map(p -> p.selected(selected.get(p.pointKey()))).toList();
+                .map(p -> p.view(selected.get(p.pointKey()), recordedPointKeys.contains(p.pointKey()),
+                        availableFamilies.contains(p.family()), observations.get(p.pointKey()))).toList();
         return new SearchResult(version, edgeMinVersion, CUSTOM_ACTION_LABEL, filtered.size(),
                 safeOffset, safeLimit, groups, semantics, page);
     }

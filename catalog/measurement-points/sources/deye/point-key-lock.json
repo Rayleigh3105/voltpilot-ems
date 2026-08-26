@@ -497,7 +497,8 @@
       "aliases": [],
       "family": "hybrid_1p",
       "fingerprints": [
-        "4f1d6ef810e13513a9d184eaf8c9d0345c7f4a8720a636316117abd37e10fc85"
+        "4f1d6ef810e13513a9d184eaf8c9d0345c7f4a8720a636316117abd37e10fc85",
+        "6936e9cf356a94a1b44ffa12da978802c6b2a73cfddd04e30dd431568d4ef50b"
       ],
       "point_key": "deye.hybrid_1p.info.device-communication-board-firmware-version",
       "source_locators": [
@@ -509,6 +510,7 @@
       "aliases": [],
       "family": "hybrid_1p",
       "fingerprints": [
+        "4c884e406fd833e18fdf7143b98c81b4e78aefa1cc0d031cfaba3c5c9b2acf02",
         "81f7ca46f67e39e111151d04f83fa619da5c898cc705bb283bbcb4c150085280"
       ],
       "point_key": "deye.hybrid_1p.info.device-control-board-firmware-version",
@@ -557,6 +559,7 @@
       "aliases": [],
       "family": "hybrid_1p",
       "fingerprints": [
+        "314a30dde166891671958bfde8feb140c528f40362db93e1cf94d146a8b26b6c",
         "fcb33cf54c6fd242ea7d99b4687dd8c69b48cb321e507570de5f91de8249cdde"
       ],
       "point_key": "deye.hybrid_1p.info.device-protocol-version",
@@ -2465,7 +2468,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "5d0d5de9b3afcc81e83c099abdbc4bb7badee765eab538b9c638a9d50951a353"
+        "5d0d5de9b3afcc81e83c099abdbc4bb7badee765eab538b9c638a9d50951a353",
+        "68f01d2d6a3a6ab12ce5ad236ab163a53d68d24a2e047a004c2014a0e9e2b4b7"
       ],
       "point_key": "deye.hybrid_3p.battery-1.battery-1-hardware-version",
       "source_locators": [
@@ -2573,7 +2577,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "abeee64f8a89b5df6ca665cadbd51aa0de271360b63693e716534084603a459d"
+        "abeee64f8a89b5df6ca665cadbd51aa0de271360b63693e716534084603a459d",
+        "b35b8c53741ecefdfae8dcab6b6c66684fb2e4e37c474f40d0dc6325e29a24e3"
       ],
       "point_key": "deye.hybrid_3p.battery-1.battery-1-software-version",
       "source_locators": [
@@ -2693,7 +2698,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "7102dfb05885928692183bb09772e9130ae3dd1868d461bf5a6412ad2d54924a"
+        "7102dfb05885928692183bb09772e9130ae3dd1868d461bf5a6412ad2d54924a",
+        "bcc0d33f43d2e386851d963908ed7caaaa6118e027ce7dfa75972649a27429a2"
       ],
       "point_key": "deye.hybrid_3p.battery-10.battery-10-hardware-version",
       "source_locators": [
@@ -2801,6 +2807,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "476df4ce9903423607ea9386758db0cdedad5b34d396c596be4c93b57055f986",
         "ca1e001d40650d5e92f7882071d5eaa26b269550dece6e2a3b082c3680813a11"
       ],
       "point_key": "deye.hybrid_3p.battery-10.battery-10-software-version",
@@ -2921,6 +2928,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "15d65dd0bcd94514927d1d8e593daff08ef6e38565e3e359be13a7c8b4189975",
         "592969ca39a97d08066697102ba4a688c8a14ec460dcf47068d40d6585235679"
       ],
       "point_key": "deye.hybrid_3p.battery-11.battery-11-hardware-version",
@@ -3029,6 +3037,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "7061c2aae93ad160108f710ed9826df98ad0473dafab5f09008362a38f1c2edc",
         "b111ebcb5d13f03aa1fdf12903ed3c1cd3e4caf368bda0ad0495d4e2b5be8107"
       ],
       "point_key": "deye.hybrid_3p.battery-11.battery-11-software-version",
@@ -3149,6 +3158,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "5ee935e3b91dd4922f292c4c01d967c58f2ba957d8e019a7a1ddf18c5780b3b3",
         "bb89efb69bb59d3b1e9565ef4bd284533c01c50e139bd2c796133a42768c087c"
       ],
       "point_key": "deye.hybrid_3p.battery-12.battery-12-hardware-version",
@@ -3257,7 +3267,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "67fca000f270658fb8970a623f00d4db4ed76e15b1fee6d160be585377297fba"
+        "67fca000f270658fb8970a623f00d4db4ed76e15b1fee6d160be585377297fba",
+        "8ff0a49df1045d25c2d984a1f32510ceebabe60c1332c11a522d13c1c8b97503"
       ],
       "point_key": "deye.hybrid_3p.battery-12.battery-12-software-version",
       "source_locators": [
@@ -3377,7 +3388,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "5ecbb85073a42c68a0fc26274fd7c7982f2dadf5749311cab23c058bd6863009"
+        "5ecbb85073a42c68a0fc26274fd7c7982f2dadf5749311cab23c058bd6863009",
+        "f076ebeba0070adc08fbdd525acc41fef2119ab0c399dc9ae96e68d4c3af22b7"
       ],
       "point_key": "deye.hybrid_3p.battery-13.battery-13-hardware-version",
       "source_locators": [
@@ -3485,7 +3497,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "9bbb82a630f1e73afdc0ff405db794e8fad9f128516c13701730df29055ce013"
+        "9bbb82a630f1e73afdc0ff405db794e8fad9f128516c13701730df29055ce013",
+        "f19b95d66a4df83aa654003a34db88a6cf556b2f904b8abd731ae0303572526f"
       ],
       "point_key": "deye.hybrid_3p.battery-13.battery-13-software-version",
       "source_locators": [
@@ -3605,6 +3618,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "822c967c774cb3a2464b8f0a41df4f9a2f2b334e9f33403001c0f9a8f5f6aaec",
         "93cd3d5ac6f998f324ece6203f6023e0768011350cfd4b0f5907d6d53487ed6c"
       ],
       "point_key": "deye.hybrid_3p.battery-14.battery-14-hardware-version",
@@ -3713,7 +3727,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "6cc7c68c2a4b0125701cd80b5846cf1958cc52544a24779e9d0f8d470191c960"
+        "6cc7c68c2a4b0125701cd80b5846cf1958cc52544a24779e9d0f8d470191c960",
+        "df3b7adcc3eff10c18b7c65be454ffe31b5162dfa91dcac8d75ce53ec3d762b2"
       ],
       "point_key": "deye.hybrid_3p.battery-14.battery-14-software-version",
       "source_locators": [
@@ -3833,6 +3848,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "067ed19c89d79824dc8c88d3e4faced7c2e85208c36960cad3f582a3a4da54fe",
         "976e10adb1891c2ef3f4451fb39644c06835bd74d03c46bdace5a6353885a765"
       ],
       "point_key": "deye.hybrid_3p.battery-15.battery-15-hardware-version",
@@ -3941,7 +3957,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "9c4875f963d5255fafe98bd195f125fc79192ee0dfd36d5135b5c71195bf3716"
+        "9c4875f963d5255fafe98bd195f125fc79192ee0dfd36d5135b5c71195bf3716",
+        "eb1785e2e3984011d11280fc75a3b2979f47169a754bc4b8cd179c48371eca8f"
       ],
       "point_key": "deye.hybrid_3p.battery-15.battery-15-software-version",
       "source_locators": [
@@ -4061,7 +4078,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "8434af081e022da507e794a161f5d22365dfb1858517605986121a3ebe46e161"
+        "8434af081e022da507e794a161f5d22365dfb1858517605986121a3ebe46e161",
+        "d09875c6c94fce50f26725ce014ef1c2c15de1e919e36110b2ed98833a04a50d"
       ],
       "point_key": "deye.hybrid_3p.battery-16.battery-16-hardware-version",
       "source_locators": [
@@ -4169,6 +4187,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "b1a167fd68537af4d424c89839b8b2169645b94c8255d25059814a62199d6eea",
         "fb859d217c4521c92d17c92788eaad61362745583392dfcd3fb640c4972d31d8"
       ],
       "point_key": "deye.hybrid_3p.battery-16.battery-16-software-version",
@@ -4289,6 +4308,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "1b53c4f37df31218f1cb2da66dd813d99c30c37fdfee49d8fb1a1783704c8699",
         "95a3d7072f90f6b3fcc42193797c80435a3d32cd41a7ff51402622e9a19abda7"
       ],
       "point_key": "deye.hybrid_3p.battery-17.battery-17-hardware-version",
@@ -4397,7 +4417,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "a0428dd1f17bf99b440d549abe8399e9ee5b97b747d7dde86d8e405f77e2514e"
+        "a0428dd1f17bf99b440d549abe8399e9ee5b97b747d7dde86d8e405f77e2514e",
+        "ad957bdf410619659487977e54e057a0645861639330cf66aafbe101abca0d13"
       ],
       "point_key": "deye.hybrid_3p.battery-17.battery-17-software-version",
       "source_locators": [
@@ -4517,6 +4538,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "1d837a566833fd3b44ea8f0cf207148c0948416504069d33beb9307d3bbeeba9",
         "988152eb3994a51cab370e305dff67232e8187e872bc51f05f8a61e29af836b6"
       ],
       "point_key": "deye.hybrid_3p.battery-18.battery-18-hardware-version",
@@ -4625,7 +4647,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "56d1b539240ea3e473b4260cd58bca5c17abc334c59ec554342518562da8b046"
+        "56d1b539240ea3e473b4260cd58bca5c17abc334c59ec554342518562da8b046",
+        "5fc699e7614fe64b06c4a8f19aa7f363e6ee0880cc9a1c8772f8cd09dc04362e"
       ],
       "point_key": "deye.hybrid_3p.battery-18.battery-18-software-version",
       "source_locators": [
@@ -4745,7 +4768,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "3b05677da20ed23200813cfdb533ec2cae5d5c7a30ec2d32bb5e8920f0367c6f"
+        "3b05677da20ed23200813cfdb533ec2cae5d5c7a30ec2d32bb5e8920f0367c6f",
+        "c4412e6ea454e1466dae18ba7c35dce0348ca3c19334cf53d337f6a3436e0077"
       ],
       "point_key": "deye.hybrid_3p.battery-19.battery-19-hardware-version",
       "source_locators": [
@@ -4853,7 +4877,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "04e2a81ae0eafe4ca4823c3b1af065a68e23aba1ff8b4be8de66545d99335b6c"
+        "04e2a81ae0eafe4ca4823c3b1af065a68e23aba1ff8b4be8de66545d99335b6c",
+        "f4eaedb6e796895a6834455d4960ee3979e9686cbe5b4223efb393bde4f703d5"
       ],
       "point_key": "deye.hybrid_3p.battery-19.battery-19-software-version",
       "source_locators": [
@@ -4973,7 +4998,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "1c95b1bee97a7911989eb7f5013536cd5b227e76781e9afab2aa67926b9be63c"
+        "1c95b1bee97a7911989eb7f5013536cd5b227e76781e9afab2aa67926b9be63c",
+        "620774a0af47a9c21b302e9b940d5cba2975fc1d0457a612d25a293e9b4b38bc"
       ],
       "point_key": "deye.hybrid_3p.battery-2.battery-2-hardware-version",
       "source_locators": [
@@ -5081,6 +5107,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "2f328afeddfd43535a10d0a95edd2095dba05561b88ceceb829f1042733186f6",
         "4858d9568c3108eef2def354930a06720817d6b9ed981089a696977080849ce5"
       ],
       "point_key": "deye.hybrid_3p.battery-2.battery-2-software-version",
@@ -5201,7 +5228,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "af00c447722ccf2d25aa7fa821157caf44c4ee36ef900b3ccc574148c6f3cf0f"
+        "af00c447722ccf2d25aa7fa821157caf44c4ee36ef900b3ccc574148c6f3cf0f",
+        "f766253a11b1132d728f690d471e3f629120b5124c25d72e6ebc054b29e1842f"
       ],
       "point_key": "deye.hybrid_3p.battery-20.battery-20-hardware-version",
       "source_locators": [
@@ -5309,6 +5337,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "b93571c67743fb432d2279e229217784375556b610bacaeeb77c6c361f2bf390",
         "eddb6b08227866f4500966b08d1e3687ffe3588b2a482be48ecfec3affdb5695"
       ],
       "point_key": "deye.hybrid_3p.battery-20.battery-20-software-version",
@@ -5429,7 +5458,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "074e975fd78c0ececfb17eb698b4b7407d0f4146936cd436139d59fbcb63d7b1"
+        "074e975fd78c0ececfb17eb698b4b7407d0f4146936cd436139d59fbcb63d7b1",
+        "9a74833c949f899de1a6aeda9bddd46de7a0b43dbca600d741b1cbb35a1d4204"
       ],
       "point_key": "deye.hybrid_3p.battery-3.battery-3-hardware-version",
       "source_locators": [
@@ -5537,6 +5567,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "6afa9a5aee461d2f7681e65aad1cdd34184daaafcc8276c6ce56115a857bf84b",
         "dcb24ea23162af2fab7d8f30b8ab9e3c90a083c3a5c8f0decb623ffa0ddd5cdc"
       ],
       "point_key": "deye.hybrid_3p.battery-3.battery-3-software-version",
@@ -5657,7 +5688,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "4668264aa4af1f8412bdff4fabe6be96c1398b2ed6f22557c81f2397890b68c2"
+        "4668264aa4af1f8412bdff4fabe6be96c1398b2ed6f22557c81f2397890b68c2",
+        "a4ea145fdea38b8c1be09f797b46ae6ffb62fa305c13ab2e76bfaa1f3a8533ab"
       ],
       "point_key": "deye.hybrid_3p.battery-4.battery-4-hardware-version",
       "source_locators": [
@@ -5765,7 +5797,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "1ba2efc3c528357f56b836a2228fcfc8148e7e4922561f7b01688037c83ca6f7"
+        "1ba2efc3c528357f56b836a2228fcfc8148e7e4922561f7b01688037c83ca6f7",
+        "81ce9cce0cd8aaafba724e40114b53d8009f66003185601c38ee76f22640bbef"
       ],
       "point_key": "deye.hybrid_3p.battery-4.battery-4-software-version",
       "source_locators": [
@@ -5885,6 +5918,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "428cc3b20b9de96d2055d030278bcd362b91b2e3a426d1481a294fa3d246bf3c",
         "6f0b24e90d4d8a67415d65deacbf849443af8abaf43abf0a13dc015de4fdc882"
       ],
       "point_key": "deye.hybrid_3p.battery-5.battery-5-hardware-version",
@@ -5993,7 +6027,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "7b22982b5b99f4bb90b21ed5027d616ace69786eaff7b2f10311c01ff8f5f3cc"
+        "7b22982b5b99f4bb90b21ed5027d616ace69786eaff7b2f10311c01ff8f5f3cc",
+        "a73c5878ea3f3cebbe4efad1de8218dbbcdfcfae93644e0e906ccf0a2483f4c6"
       ],
       "point_key": "deye.hybrid_3p.battery-5.battery-5-software-version",
       "source_locators": [
@@ -6113,7 +6148,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "113d257bd9bb0deeae1e264c29c0b469bcf3f93b5d41068fb48847e3bbf071b0"
+        "113d257bd9bb0deeae1e264c29c0b469bcf3f93b5d41068fb48847e3bbf071b0",
+        "d14efbf7eefa4b622c7695bff637a354b6e72f0c6893f4d6ab411a0a330e5ac0"
       ],
       "point_key": "deye.hybrid_3p.battery-6.battery-6-hardware-version",
       "source_locators": [
@@ -6221,6 +6257,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "075aa6ef3499a3cd60cb6f75ec5aaa4e831996185bd2a803da32121939a61923",
         "1575a6504d7589f4e977be91bd9ed78946dd70048ab83d50cf5c48cc9026b916"
       ],
       "point_key": "deye.hybrid_3p.battery-6.battery-6-software-version",
@@ -6341,6 +6378,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "512cd8a3a7d5c2702072bbd98639c5bec4b9fc432d3fda8c05888e0021f61671",
         "eae7ce6d3cf0f6c8d2e524055bb9c5fe20f45c758e5329e8e00540af74f607a0"
       ],
       "point_key": "deye.hybrid_3p.battery-7.battery-7-hardware-version",
@@ -6449,7 +6487,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "45fc9786914544123bb9f0acab6920bf3c217b1256e223bbc54a748d61a54188"
+        "45fc9786914544123bb9f0acab6920bf3c217b1256e223bbc54a748d61a54188",
+        "a52df0422e73cfea1083648eb4747112064a4560a2dcaae6175fbd7f94dc9f78"
       ],
       "point_key": "deye.hybrid_3p.battery-7.battery-7-software-version",
       "source_locators": [
@@ -6569,6 +6608,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "3a1988e92a318faf4dbb4435c135bdce720792739f108bb75295dc000fb46dd8",
         "6e9004f9653701261628137a986dc23b590d5de4ce9236536b6960a5cc6cf836"
       ],
       "point_key": "deye.hybrid_3p.battery-8.battery-8-hardware-version",
@@ -6677,7 +6717,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "bd5eaa5cb3471eb2eae2edeca3a99a9485cd7eb16a6bc7de9ecd940e788d7c26"
+        "bd5eaa5cb3471eb2eae2edeca3a99a9485cd7eb16a6bc7de9ecd940e788d7c26",
+        "f9c54294df25e2c6b81728a52578c570ebfe147221833312cba2574abb5f5500"
       ],
       "point_key": "deye.hybrid_3p.battery-8.battery-8-software-version",
       "source_locators": [
@@ -6797,7 +6838,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "341ba8084d2c7612247fcce890416bbd7423fc04b008d204b901ba49db945afc"
+        "341ba8084d2c7612247fcce890416bbd7423fc04b008d204b901ba49db945afc",
+        "a49524bb38f92c8f212d979d7bd708a8f4fe99a7793295e09dc654af58db9bd8"
       ],
       "point_key": "deye.hybrid_3p.battery-9.battery-9-hardware-version",
       "source_locators": [
@@ -6905,6 +6947,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "dbdd11730f07005c5a85099e8c924f1101d73412c2874fe1b72246e662bee8e4",
         "ee439f93afe6b3c8ce9226b99fa132324eb161d2a03dd9b73eef9682c8efd437"
       ],
       "point_key": "deye.hybrid_3p.battery-9.battery-9-software-version",
@@ -7661,7 +7704,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "4be77120edf0e53ac6b82b9514344bc04f347d47924d25350ad0af4f7da0715b"
+        "4be77120edf0e53ac6b82b9514344bc04f347d47924d25350ad0af4f7da0715b",
+        "69411b3d2bab0a0e2d658afd04aaeda2588405f04c2d16eea0e2eeafd110c3de"
       ],
       "point_key": "deye.hybrid_3p.info.device-afci-version",
       "source_locators": [
@@ -7673,7 +7717,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "b5aca1aa6804613b12de34b186cdc4b6c2dec07b82d421b8cc11830c8d1dfa3d"
+        "b5aca1aa6804613b12de34b186cdc4b6c2dec07b82d421b8cc11830c8d1dfa3d",
+        "fe20276a34a0c8a45288f1fa63d3ccb06758c8d9d6572bc09d072c504b9acaac"
       ],
       "point_key": "deye.hybrid_3p.info.device-communication-board-firmware-version",
       "source_locators": [
@@ -7685,6 +7730,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "672d1c71b4619a4f3285d17ed728cdde4f26093d4a990121ff5b58a133c2045c",
         "b08f41325400d9257f9c7b980d539da1539778faf2eb40c8c9ccfcabd7a0bebc"
       ],
       "point_key": "deye.hybrid_3p.info.device-control-board-firmware-version",
@@ -7697,7 +7743,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "897ee5853e89da368cad709209c09295320fa049bafb4b5a07ed6e8f2db35df1"
+        "897ee5853e89da368cad709209c09295320fa049bafb4b5a07ed6e8f2db35df1",
+        "bbc85b94435601df01668394fcac0dbe63b9fd5169c4707b8a738daefeb4c16d"
       ],
       "point_key": "deye.hybrid_3p.info.device-mcu-board-version",
       "source_locators": [
@@ -7709,7 +7756,8 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
-        "a9d109a7345610e76f4e6f30fbc7c36009d43bcbbc56c8f2c105329ef5254921"
+        "a9d109a7345610e76f4e6f30fbc7c36009d43bcbbc56c8f2c105329ef5254921",
+        "ba74f76537805d2df6cca43d3065179af31f7fb61db0451bdda22ac50581344b"
       ],
       "point_key": "deye.hybrid_3p.info.device-mcu-version",
       "source_locators": [
@@ -7757,6 +7805,7 @@
       "aliases": [],
       "family": "hybrid_3p",
       "fingerprints": [
+        "314a30dde166891671958bfde8feb140c528f40362db93e1cf94d146a8b26b6c",
         "fcb33cf54c6fd242ea7d99b4687dd8c69b48cb321e507570de5f91de8249cdde"
       ],
       "point_key": "deye.hybrid_3p.info.device-protocol-version",
@@ -10049,7 +10098,8 @@
       "aliases": [],
       "family": "micro",
       "fingerprints": [
-        "4f1d6ef810e13513a9d184eaf8c9d0345c7f4a8720a636316117abd37e10fc85"
+        "4f1d6ef810e13513a9d184eaf8c9d0345c7f4a8720a636316117abd37e10fc85",
+        "6936e9cf356a94a1b44ffa12da978802c6b2a73cfddd04e30dd431568d4ef50b"
       ],
       "point_key": "deye.micro.info.device-communication-board-firmware-version",
       "source_locators": [
@@ -10061,6 +10111,7 @@
       "aliases": [],
       "family": "micro",
       "fingerprints": [
+        "4c884e406fd833e18fdf7143b98c81b4e78aefa1cc0d031cfaba3c5c9b2acf02",
         "81f7ca46f67e39e111151d04f83fa619da5c898cc705bb283bbcb4c150085280"
       ],
       "point_key": "deye.micro.info.device-control-board-firmware-version",
@@ -10121,6 +10172,7 @@
       "aliases": [],
       "family": "micro",
       "fingerprints": [
+        "314a30dde166891671958bfde8feb140c528f40362db93e1cf94d146a8b26b6c",
         "fcb33cf54c6fd242ea7d99b4687dd8c69b48cb321e507570de5f91de8249cdde"
       ],
       "point_key": "deye.micro.info.device-protocol-version",
@@ -10937,7 +10989,8 @@
       "aliases": [],
       "family": "string",
       "fingerprints": [
-        "4f1d6ef810e13513a9d184eaf8c9d0345c7f4a8720a636316117abd37e10fc85"
+        "4f1d6ef810e13513a9d184eaf8c9d0345c7f4a8720a636316117abd37e10fc85",
+        "6936e9cf356a94a1b44ffa12da978802c6b2a73cfddd04e30dd431568d4ef50b"
       ],
       "point_key": "deye.string.info.device-communication-board-firmware-version",
       "source_locators": [
@@ -10949,6 +11002,7 @@
       "aliases": [],
       "family": "string",
       "fingerprints": [
+        "4c884e406fd833e18fdf7143b98c81b4e78aefa1cc0d031cfaba3c5c9b2acf02",
         "81f7ca46f67e39e111151d04f83fa619da5c898cc705bb283bbcb4c150085280"
       ],
       "point_key": "deye.string.info.device-control-board-firmware-version",
@@ -10997,6 +11051,7 @@
       "aliases": [],
       "family": "string",
       "fingerprints": [
+        "314a30dde166891671958bfde8feb140c528f40362db93e1cf94d146a8b26b6c",
         "fcb33cf54c6fd242ea7d99b4687dd8c69b48cb321e507570de5f91de8249cdde"
       ],
       "point_key": "deye.string.info.device-protocol-version",

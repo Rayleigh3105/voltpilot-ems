@@ -290,6 +290,15 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
 });
 
 describe('Abbau-Invarianten (M6)', () => {
+  it('der Picker-Nullbestand gilt für jede Produktionsdatei, auch neue Geräteflächen', () => {
+    for (const file of sourceFiles()) {
+      const code = ohneKommentare(readFileSync(file, 'utf8'));
+      expect(code, file).not.toMatch(/<select(?:\s|>)/i);
+      expect(code, file).not.toMatch(/type\s*=\s*["'](?:date|time|datetime-local)["']/i);
+      expect(code, file).not.toMatch(/<datalist(?:\s|>)/i);
+    }
+  });
+
   it('FACES ist vollständig weg — kein adaptiveNav-Modul, keine FACES-Konstante', () => {
     const files = sourceFiles();
     expect(files.some((f) => /adaptiveNav\.tsx?$/.test(f))).toBe(false);

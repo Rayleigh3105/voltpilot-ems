@@ -499,6 +499,19 @@ class WriterPipeTest {
         }
         assertThat(measurementRowsVisible(TENANT_A, device)).isEqualTo(10L);
         assertThat(measurementRowsVisible(TENANT_B, device)).isZero();
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT first_read_at,last_read_at,edge_sequence,"
+                        + "decoded_numeric,quality FROM device_measurement_point_state WHERE device_id='"
+                        + device + "' AND point_key='deye.hybrid_1p.battery.battery-temperature'")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getTimestamp("first_read_at").toInstant())
+                    .isEqualTo(Instant.parse("2026-08-25T12:00:00Z"));
+            assertThat(rs.getTimestamp("last_read_at").toInstant())
+                    .isEqualTo(Instant.parse("2026-08-25T12:01:00Z"));
+            assertThat(rs.getLong("edge_sequence")).isEqualTo(42L);
+            assertThat(rs.getDouble("decoded_numeric")).isEqualTo(30.0);
+            assertThat(rs.getString("quality")).isEqualTo("device_error");
+        }
         // The second selected sample is newer than enabled_at, but remains
         // absent because replay may never resurrect pre-purge history.
         try (Connection c = admin(); Statement st = c.createStatement();

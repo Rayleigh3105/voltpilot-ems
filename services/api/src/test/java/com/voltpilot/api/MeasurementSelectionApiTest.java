@@ -6,6 +6,8 @@ import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.sql.Connection;
+import java.sql.Statement;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -81,7 +83,7 @@ class MeasurementSelectionApiTest {
     private final TestRestTemplate rest = new TestRestTemplate();
 
     @Test
-    void desiredSelectionIsNoBackfillRevisionedIdempotentAndNeverPretendsApplied() {
+    void desiredSelectionIsNoBackfillRevisionedIdempotentAndNeverPretendsApplied() throws Exception {
         String demo = token("demo", "demo");
         String demo2 = token("demo2", "demo2");
 
@@ -197,6 +199,24 @@ class MeasurementSelectionApiTest {
                 .findFirst().orElseThrow();
         assertThat((Map<String, Object>) customSelection.get("customDefinition"))
                 .containsEntry("requestCostMs", 2000);
+        String customPointKey = "custom." + customKey.toString().replace("-", "");
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_sample "
+                    + "(time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,"
+                    + "decoded_numeric,quality,catalog_version,edge_sequence,aggregation_kind,"
+                    + "long_term_cadence_s,gap,dropped_samples) VALUES (now()-interval '1 minute',now(),"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','"
+                    + customPointKey + "',123,12.3,'good','2026.08.26.1',82001,'gauge',300,false,0)");
+        }
+        ResponseEntity<Map<String, Object>> customHistory = get(demo,
+                path(DEVICE_A) + "/" + customPointKey + "/history?range=24h");
+        assertThat(customHistory.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((Map<String, Object>) customHistory.getBody().get("meta"))
+                .containsEntry("label", "Eigene Einspeiseleistung")
+                .containsEntry("unit", "kW")
+                .containsEntry("aggregationKind", "gauge");
 
         Map<String, Object> writable = new java.util.LinkedHashMap<>(definition);
         writable.put("readOnly", false);
@@ -226,6 +246,292 @@ class MeasurementSelectionApiTest {
         assertThat((String) overBudget.getBody().get("message"))
                 .contains("Messwertbudget");
         assertThat(get(demo, path(DEVICE_A)).getBody()).containsEntry("desiredRevision", 3);
+    }
+
+    @Test
+    void pointHistoryAggregatesDecodedGaugesMarksGapsAndExportsMetadata() throws Exception {
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_sample "
+                    + "(time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,"
+                    + "decoded_numeric,quality,catalog_version,edge_sequence,aggregation_kind,"
+                    + "long_term_cadence_s,gap,dropped_samples) VALUES "
+                    + "(date_trunc('hour',now())-interval '1 hour'+interval '1 minute',now(),"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + POINT
+                    + "',10,1,'good','2026.08.26.1',81001,'gauge',300,false,0),"
+                    + "(date_trunc('hour',now())-interval '1 hour'+interval '2 minutes',now(),"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + POINT
+                    + "',20,2,'good','2026.08.26.1',81002,'gauge',300,true,3) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+        String demo = token("demo", "demo");
+        ResponseEntity<Map<String, Object>> history = get(demo,
+                path(DEVICE_A) + "/" + POINT + "/history?range=24h&representation=decoded");
+        assertThat(history.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> meta = (Map<String, Object>) history.getBody().get("meta");
+        assertThat(meta).containsEntry("pointKey", POINT)
+                .containsEntry("aggregationKind", "gauge")
+                .containsEntry("representation", "decoded")
+                .containsEntry("rawAvailable", true);
+        Map<String, Object> bucket = (Map<String, Object>)
+                ((List<?>) history.getBody().get("data")).get(0);
+        assertThat(((Number) bucket.get("value")).doubleValue()).isEqualTo(1.5);
+        assertThat(((Number) bucket.get("minimum")).doubleValue()).isEqualTo(1.0);
+        assertThat(((Number) bucket.get("maximum")).doubleValue()).isEqualTo(2.0);
+        assertThat(bucket).containsEntry("gap", true).containsEntry("sampleCount", 2);
+
+        ResponseEntity<String> csv = rest.exchange(url(path(DEVICE_A) + "/" + POINT
+                        + "/export?range=24h&representation=raw"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class);
+        assertThat(csv.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(csv.getHeaders().getContentDisposition().getFilename()).contains("messwert-");
+        assertThat(csv.getBody()).contains("# point_key=", "# aggregation=", "# representation=\"raw\"");
+    }
+
+    @Test
+    void reviewHistoryUsesDurableRollupsGoodQualityHistoricalSiteAndCompleteMarkers()
+            throws Exception {
+        String gauge = "deye.hybrid_1p.battery.battery-voltage";
+        String counter = "deye.hybrid_1p.meter.total-production";
+        String statePoint = "deye.hybrid_1p.control.device-state";
+        UUID historicalSite = UUID.fromString("00000000-0000-0000-0000-000000000099");
+        UUID entity = UUID.fromString("00000000-0000-0000-0000-000000000098");
+        UUID sameFamilyEntity = UUID.fromString("00000000-0000-0000-0000-000000000095");
+        UUID foreignDevice = UUID.fromString("00000000-0000-0000-0000-000000000097");
+        UUID foreignEntity = UUID.fromString("00000000-0000-0000-0000-000000000096");
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO site(id,tenant_id,name,bidding_zone) VALUES ('"
+                    + historicalSite + "','00000000-0000-0000-0000-000000000001',"
+                    + "'Historischer Standort','DE-LU') ON CONFLICT DO NOTHING");
+            statement.execute("INSERT INTO device_measurement_rollup_15m(bucket,tenant_id,site_id,"
+                    + "device_id,point_key,aggregation_kind,first_numeric,last_numeric,min_numeric,"
+                    + "max_numeric,avg_numeric,positive_delta,counter_reset_count,first_text,last_text,"
+                    + "change_count,sample_count,catalog_version) VALUES (now()-interval '120 days',"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + gauge
+                    + "','gauge',48,52,48,52,50,NULL,0,NULL,NULL,0,12,'2026.08.26.2'),"
+                    + "(now()-interval '60 days','00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + gauge
+                    + "','gauge',38,42,38,42,40,NULL,0,NULL,NULL,0,12,'2026.08.26.2') "
+                    + "ON CONFLICT DO NOTHING");
+            statement.execute("INSERT INTO device_measurement_sample(time,received_at,tenant_id,"
+                    + "site_id,device_id,point_key,raw_numeric,decoded_numeric,quality,catalog_version,"
+                    + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples) VALUES "
+                    + "(date_trunc('hour',now())-interval '3 hours'+interval '1 minute',now(),"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + gauge
+                    + "',100,10,'good','2026.08.26.2',83001,'gauge',300,false,0),"
+                    + "(date_trunc('hour',now())-interval '3 hours'+interval '2 minutes',now(),"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + gauge
+                    + "',10000,1000,'invalid','2026.08.26.2',83002,'gauge',300,false,0),"
+                    + "(now()-interval '1 hour',now(),'00000000-0000-0000-0000-000000000001','"
+                    + historicalSite + "','" + DEVICE_A + "','" + counter
+                    + "',100,100,'good','2026.08.26.2',83101,'counter',900,false,0),"
+                    + "(now()-interval '59 minutes',now(),'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + counter
+                    + "',110,110,'good','2026.08.26.2',83102,'counter',900,false,0),"
+                    + "(now()-interval '58 minutes',now(),'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + counter
+                    + "',115,115,'good','2026.08.26.2',83103,'counter',900,false,0) "
+                    + "ON CONFLICT DO NOTHING");
+            statement.execute("INSERT INTO device_measurement_event(occurred_at,tenant_id,site_id,"
+                    + "device_id,point_key,event_kind,previous_numeric,value_numeric,previous_text,"
+                    + "value_text,catalog_version,edge_sequence,details) VALUES "
+                    + "(now()-interval '20 minutes','00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + statePoint
+                    + "','state_change',1,2,NULL,NULL,'2026.08.26.2',83201,'{}'),"
+                    + "(now()-interval '19 minutes','00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + statePoint
+                    + "','error_change',NULL,NULL,'good','device_error','2026.08.26.2',83202,'{}') "
+                    + "ON CONFLICT DO NOTHING");
+            statement.execute("INSERT INTO measurement_point(id,tenant_id,site_id,role,label,family,"
+                    + "device_id) VALUES ('" + entity + "','00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','battery-hybrid','Deye',"
+                    + "'hybrid_1p','" + DEVICE_A + "'),('" + sameFamilyEntity
+                    + "','00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','pv-inverter','Deye 2',"
+                    + "'hybrid_1p','" + DEVICE_A + "') ON CONFLICT DO NOTHING");
+            statement.execute("INSERT INTO device(id,tenant_id,site_id,external_ref,kind,status) VALUES ('"
+                    + foreignDevice + "','00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','review-foreign-component',"
+                    + "'inverter','claimed') ON CONFLICT DO NOTHING");
+            statement.execute("INSERT INTO measurement_point(id,tenant_id,site_id,role,label,family,"
+                    + "device_id) VALUES ('" + foreignEntity
+                    + "','00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','pv-inverter','Fremde Box',"
+                    + "'micro','" + foreignDevice + "') ON CONFLICT DO NOTHING");
+            statement.execute("INSERT INTO component_change_event(tenant_id,site_id,entity_id,revision,"
+                    + "event_type,effective_at,from_value,to_value) VALUES "
+                    + "('00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + entity
+                    + "',2,'family_changed',now()-interval '18 minutes','string','hybrid_1p'),"
+                    + "('00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + sameFamilyEntity
+                    + "',2,'family_changed',now()-interval '17 minutes','micro','hybrid_1p'),"
+                    + "('00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + foreignEntity
+                    + "',2,'family_changed',now()-interval '17 minutes','string','micro')");
+        }
+        String demo = token("demo", "demo");
+        ResponseEntity<Map<String, Object>> year = get(demo,
+                path(DEVICE_A) + "/" + gauge + "/history?range=year");
+        assertThat((List<?>) year.getBody().get("data")).anySatisfy(row ->
+                assertThat(((Map<?, ?>) row).get("value")).isEqualTo(50.0));
+        ResponseEntity<Map<String, Object>> ninetyDays = get(demo,
+                path(DEVICE_A) + "/" + gauge + "/history?range=90d");
+        assertThat((List<?>) ninetyDays.getBody().get("data")).anySatisfy(row ->
+                assertThat(((Map<?, ?>) row).get("value")).isEqualTo(40.0));
+
+        ResponseEntity<Map<String, Object>> quality = get(demo,
+                path(DEVICE_A) + "/" + gauge + "/history?range=24h");
+        assertThat((List<Map<String, Object>>) quality.getBody().get("data")).anySatisfy(row ->
+                assertThat(((Number) row.get("value")).doubleValue()).isEqualTo(10.0));
+
+        ResponseEntity<Map<String, Object>> currentCounter = get(demo,
+                path(DEVICE_A) + "/" + counter + "/history?range=24h&siteId="
+                        + "00000000-0000-0000-0000-000000000002");
+        List<Map<String, Object>> currentRows =
+                (List<Map<String, Object>>) currentCounter.getBody().get("data");
+        assertThat(currentRows).isNotEmpty().allSatisfy(row ->
+                assertThat(((Number) row.get("value")).doubleValue()).isLessThanOrEqualTo(5.0));
+        ResponseEntity<Map<String, Object>> oldCounter = get(demo,
+                path(DEVICE_A) + "/" + counter + "/history?range=24h&siteId=" + historicalSite);
+        List<Map<String, Object>> oldRows =
+                (List<Map<String, Object>>) oldCounter.getBody().get("data");
+        assertThat(oldRows).isNotEmpty().allSatisfy(row ->
+                assertThat(((Number) row.get("value")).doubleValue()).isZero());
+
+        ResponseEntity<Map<String, Object>> markers = get(demo,
+                path(DEVICE_A) + "/" + statePoint + "/history?range=24h&entityId=" + entity);
+        List<Map<String, Object>> markerRows =
+                (List<Map<String, Object>>) markers.getBody().get("markers");
+        assertThat(markerRows).extracting(row -> row.get("kind"))
+                .contains("state_change", "error_change", "family_changed");
+        assertThat(markerRows).extracting(row -> row.get("label"))
+                .noneMatch(label -> label.toString().contains("micro"));
+        assertThat(((Map<?, ?>) markers.getBody().get("meta")).get("entityId"))
+                .isEqualTo(entity.toString());
+    }
+
+    @Test
+    void exportNeutralizesSpreadsheetFormulaPrefixes() throws Exception {
+        String statePoint = "deye.hybrid_1p.control.device-state";
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_sample(time,received_at,tenant_id,site_id,"
+                    + "device_id,point_key,raw_text,decoded_text,quality,catalog_version,edge_sequence,"
+                    + "aggregation_kind,long_term_cadence_s,gap,dropped_samples) VALUES (now()-interval "
+                    + "'5 minutes',now(),'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + statePoint
+                    + "','=HYPERLINK(\"https://example.invalid\")','=HYPERLINK(\"https://example.invalid\")',"
+                    + "'good','2026.08.26.2',83301,'state',NULL,false,0) ON CONFLICT DO NOTHING");
+        }
+        ResponseEntity<String> csv = rest.exchange(url(path(DEVICE_A) + "/" + statePoint
+                        + "/export?range=24h"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(csv.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(csv.getBody()).contains("\"'=HYPERLINK(\"\"https://example.invalid\"\")\"")
+                .doesNotContain(",\"=HYPERLINK");
+    }
+
+    @Test
+    void stateHistorySurvivesRawRetentionAndSeedsTheStateAtTheWindowBoundary()
+            throws Exception {
+        String statePoint = "deye.hybrid_1p.info.device-rated-phase";
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_sample(time,received_at,tenant_id,"
+                    + "site_id,device_id,point_key,raw_numeric,decoded_text,quality,catalog_version,"
+                    + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples) VALUES "
+                    + "(now()-interval '380 days',now(),'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + statePoint
+                    + "',1,'Single-Phase','good','2026.08.26.3',88401,'state',900,false,0),"
+                    + "(now()-interval '120 days',now(),'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + statePoint
+                    + "',3,'Three-Phase','good','2026.08.26.3',88402,'state',900,false,0) "
+                    + "ON CONFLICT DO NOTHING");
+            statement.execute("CALL refresh_device_measurement_rollup("
+                    + "'device_measurement_rollup_15m'::regclass,interval '15 minutes',"
+                    + "now()-interval '400 days')");
+            statement.execute("DELETE FROM device_measurement_sample WHERE device_id='" + DEVICE_A
+                    + "' AND edge_sequence IN (88401,88402)");
+        }
+        ResponseEntity<Map<String, Object>> history = get(token("demo", "demo"),
+                path(DEVICE_A) + "/" + statePoint + "/history?range=year");
+        List<Map<String, Object>> rows =
+                (List<Map<String, Object>>) history.getBody().get("data");
+        assertThat(rows).isNotEmpty();
+        assertThat(rows.get(0)).containsEntry("text", "Single-Phase")
+                .containsEntry("sampleCount", 0);
+        assertThat(rows).anySatisfy(row -> assertThat(row.get("text")).isEqualTo("Three-Phase"));
+        assertThat(rows).allSatisfy(row -> assertThat(row.get("value")).isNull());
+    }
+
+    @Test
+    void historyAndCsvKeepNumericPrecisionBeyondJavascriptSafeIntegers() throws Exception {
+        String point = "deye.hybrid_1p.info.device-rated-power";
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_sample(time,received_at,tenant_id,"
+                    + "site_id,device_id,point_key,raw_numeric,decoded_numeric,quality,catalog_version,"
+                    + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples) VALUES "
+                    + "(now()-interval '5 minutes',now(),"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + point
+                    + "',9007199254740993,9007199254740993,'good','2026.08.26.3',88501,"
+                    + "'gauge',300,false,0) ON CONFLICT DO NOTHING");
+        }
+        String demo = token("demo", "demo");
+        ResponseEntity<String> json = rest.exchange(url(path(DEVICE_A) + "/" + point
+                        + "/history?range=24h&representation=decoded"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class);
+        assertThat(json.getBody()).contains("\"value\":9007199254740993")
+                .doesNotContain("9007199254740992");
+        ResponseEntity<String> csv = rest.exchange(url(path(DEVICE_A) + "/" + point
+                        + "/export?range=24h&representation=decoded"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class);
+        assertThat(csv.getBody()).contains(",9007199254740993,")
+                .doesNotContain("9007199254740992");
+    }
+
+    @Test
+    void catalogReadsBoundedMaterializedPointStateInsteadOfRawHistory() throws Exception {
+        String point = "deye.hybrid_1p.battery.battery-temperature";
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_sample(time,received_at,tenant_id,site_id,"
+                    + "device_id,point_key,raw_numeric,decoded_numeric,quality,catalog_version,"
+                    + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples) VALUES "
+                    + "(now()-interval '10 minutes',now(),'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + point
+                    + "',250,25,'good','2026.08.26.2',83401,'gauge',300,false,0) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+        String demo = token("demo", "demo");
+        ResponseEntity<Map<String, Object>> before = get(demo,
+                path(DEVICE_A) + "/catalog?q=battery-temperature&recorded=true&limit=10");
+        assertThat(before.getBody()).containsEntry("total", 0);
+
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_point_state(tenant_id,site_id,device_id,"
+                    + "point_key,first_read_at,last_read_at,edge_sequence,raw_numeric,decoded_numeric,"
+                    + "quality,gap,dropped_samples,catalog_version) VALUES ("
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + point
+                    + "',now()-interval '10 minutes',now()-interval '10 minutes',83401,250,25,"
+                    + "'good',false,0,'2026.08.26.2')");
+        }
+        ResponseEntity<Map<String, Object>> after = get(demo,
+                path(DEVICE_A) + "/catalog?q=battery-temperature&recorded=true&limit=10");
+        assertThat(after.getBody()).containsEntry("total", 1);
+        Map<String, Object> row = (Map<String, Object>)
+                ((List<?>) after.getBody().get("points")).get(0);
+        assertThat(row).containsEntry("recorded", true).containsEntry("decodedValue", "25");
     }
 
     @SuppressWarnings("unchecked")

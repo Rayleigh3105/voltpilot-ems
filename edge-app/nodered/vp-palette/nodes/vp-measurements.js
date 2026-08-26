@@ -70,6 +70,13 @@ function shapeShellyStatus(points, status) {
   return status;
 }
 
+function inverterJSONEndpoint(selector, serial) {
+  let endpoint=String(selector||'').split('#')[0];
+  if (!endpoint.includes('{serial}')) return endpoint;
+  if (!serial) throw new Error('keine Seriennummer');
+  return endpoint.replaceAll('{serial}',encodeURIComponent(String(serial)));
+}
+
 async function discoverSunSpec(read) {
   for (const candidate of [40000, 50000, 0]) {
     let sid;
@@ -146,7 +153,7 @@ module.exports = function (RED) {
         const conn = inverter && inverter.connection || {};
         if (!conn.ip) throw new Error('keine Geräteverbindung');
         const source = points[0].source_kind;
-        const endpoint=String(points[0].selector||'').split('#')[0];
+        const endpoint=inverterJSONEndpoint(points[0].selector,conn.serial);
         const path = source === 'http_api_key' ? '/api/status'
           : source === 'rest_json' ? endpoint
           : endpoint.startsWith('Shelly.GetDeviceInfo') ? '/rpc/Shelly.GetDeviceInfo'
@@ -166,6 +173,9 @@ module.exports = function (RED) {
     };
     const runtime = new Runtime.MeasurementRuntime(io, (topic, payload, retained) => {
       core.client.publish(topic, JSON.stringify(payload), { qos:1, retain:!!retained });
+    });
+    const measurementOptions = () => ({
+      byteOrder:inverter && inverter.connection && inverter.connection.byte_order,
     });
     const subscribe = () => core.client.subscribe([CONFIG, INVERTER, OCPP, OCPP_RESULT, CONTROL], { qos:1 });
     if (core.client.connected) subscribe();
@@ -190,14 +200,17 @@ module.exports = function (RED) {
           if (['fronius_sunspec','sunspec_tcp'].includes(inverter.communication)) {
             discoverSunSpec(io.readModbus).then((discovery) => {
               io.discovery=discovery;
-              if (desired) runtime.apply(desired, {});
+              if (desired) runtime.apply(desired, measurementOptions());
             }).catch((error)=>node.warn('SunSpec-Erkennung: '+error.message));
+          }
+          if (desired && !['fronius_sunspec','sunspec_tcp'].includes(inverter.communication)) {
+            runtime.apply(desired, measurementOptions());
           }
           return;
         }
         if (topic === CONFIG) {
           desired = value;
-          const plan = runtime.apply(value, {});
+          const plan = runtime.apply(value, measurementOptions());
           node.status(plan.pending ? { fill:'blue',shape:'ring',text:'OCPP-Abgleich Revision ' + value.revision }
             : plan.applied ? { fill:'green',shape:'dot',text:'Revision ' + value.revision }
             : { fill:'yellow',shape:'ring',text:'Plan abgelehnt' });
@@ -221,3 +234,4 @@ module.exports.request = request;
 module.exports.getJSON = getJSON;
 module.exports.discoverSunSpec = discoverSunSpec;
 module.exports.shapeShellyStatus = shapeShellyStatus;
+module.exports.inverterJSONEndpoint = inverterJSONEndpoint;

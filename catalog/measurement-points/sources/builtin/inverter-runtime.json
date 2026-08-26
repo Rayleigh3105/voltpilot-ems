@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "families": [
+    {
+      "family": "fronius_solar_api",
+      "source_url": "https://www.fronius.com/en/solar-energy/installers-partners/technical-data/all-products/system-monitoring/open-interfaces/fronius-solar-api-json-/fronius-solar-api-json-",
+      "source_revision": "Solar API v1 GetPowerFlowRealtimeData",
+      "points": [
+        {"key":"grid-power","selector":"/solar_api/v1/GetPowerFlowRealtimeData.fcgi#Body.Data.Site.P_Grid","group":"Netz","label_de":"Netzleistung","label_source":"P_Grid","unit":"W","value_type":"float64","signed":true,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"pv-power","selector":"/solar_api/v1/GetPowerFlowRealtimeData.fcgi#Body.Data.Site.P_PV","group":"PV","label_de":"PV-Leistung","label_source":"P_PV","unit":"W","value_type":"float64","signed":false,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"load-power","selector":"/solar_api/v1/GetPowerFlowRealtimeData.fcgi#Body.Data.Site.P_Load","group":"Verbrauch","label_de":"Hausleistung (Originalvorzeichen)","label_source":"P_Load","unit":"W","value_type":"float64","signed":true,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"battery-power-crosscheck","selector":"/solar_api/v1/GetPowerFlowRealtimeData.fcgi#Body.Data.Site.P_Akku","group":"Batterie","label_de":"Batterieleistung (Gegenprobe)","label_source":"P_Akku","unit":"W","value_type":"float64","signed":true,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":false},
+        {"key":"battery-soc","selector":"/solar_api/v1/GetPowerFlowRealtimeData.fcgi#Body.Data.Inverters.1.SOC","group":"Batterie","label_de":"Batterieladestand","label_source":"Inverters[1].SOC","unit":"%","value_type":"float64","signed":false,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":60,"recommended":true}
+      ]
+    },
+    {
+      "family": "kaco_http",
+      "source_url": "https://kaco-newenergy.com/downloads/",
+      "source_revision": "blueplanet NX local HTTP API",
+      "points": [
+        {"key":"ac-power","selector":"/getdevdata.cgi?device=2&sn={serial}#pac","group":"AC","label_de":"AC-Leistung","label_source":"pac","unit":"W","value_type":"int32","signed":true,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"frequency","selector":"/getdevdata.cgi?device=2&sn={serial}#fac","group":"AC","label_de":"Netzfrequenz","label_source":"fac","unit":"cHz","value_type":"uint16","signed":false,"scale":{"kind":"factor","value":0.01},"aggregation_kind":"gauge","cadence_s":60,"recommended":true},
+        {"key":"temperature","selector":"/getdevdata.cgi?device=2&sn={serial}#tmp","group":"Temperatur","label_de":"Gerätetemperatur","label_source":"tmp","unit":"0,1 °C","value_type":"int16","signed":true,"scale":{"kind":"factor","value":0.1},"aggregation_kind":"gauge","cadence_s":300,"recommended":true},
+        {"key":"energy-total","selector":"/getdevdata.cgi?device=2&sn={serial}#eto","group":"Zähler","label_de":"Gesamterzeugung","label_source":"eto","unit":"0,1 kWh","value_type":"uint32","signed":false,"scale":{"kind":"factor","value":0.1},"aggregation_kind":"counter","cadence_s":300,"recommended":true},
+        {"key":"energy-today","selector":"/getdevdata.cgi?device=2&sn={serial}#etd","group":"Zähler","label_de":"Erzeugung heute","label_source":"etd","unit":"0,1 kWh","value_type":"uint32","signed":false,"scale":{"kind":"factor","value":0.1},"aggregation_kind":"counter","cadence_s":300,"recommended":true},
+        {"key":"error","selector":"/getdevdata.cgi?device=2&sn={serial}#err","group":"Status & Fehler","label_de":"Fehlerstatus","label_source":"err","unit":null,"value_type":"uint32","signed":false,"scale":{"kind":"none"},"aggregation_kind":"bitfield","cadence_s":60,"recommended":true},
+        {"key":"grid-power","selector":"/getdevdata.cgi?device=3&sn={serial}#pac","group":"Netz","label_de":"Netzleistung","label_source":"meter.pac","unit":"W","value_type":"int32","signed":true,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true}
+      ]
+    },
+    {
+      "family": "kaco_http_hybrid",
+      "source_url": "https://kaco-newenergy.com/downloads/",
+      "source_revision": "blueplanet NH3 local HTTP API",
+      "inherits": "kaco_http",
+      "points": [
+        {"key":"pv-voltage[*]","selector":"/getdevdata.cgi?device=2&sn={serial}#vpv[*]","group":"PV / MPPT","label_de":"PV-String-Spannung","label_source":"vpv[*]","unit":"0,1 V","value_type":"uint16","signed":false,"scale":{"kind":"factor","value":0.1},"aggregation_kind":"gauge","cadence_s":30,"recommended":true,"dynamic":true},
+        {"key":"pv-current[*]","selector":"/getdevdata.cgi?device=2&sn={serial}#ipv[*]","group":"PV / MPPT","label_de":"PV-String-Strom","label_source":"ipv[*]","unit":"0,01 A","value_type":"uint16","signed":false,"scale":{"kind":"factor","value":0.01},"aggregation_kind":"gauge","cadence_s":30,"recommended":true,"dynamic":true},
+        {"key":"battery-power","selector":"/getdevdata.cgi?device=4&sn={serial}#pb","group":"Batterie","label_de":"Batterieleistung (Originalvorzeichen)","label_source":"pb","unit":"W","value_type":"int32","signed":true,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"battery-soc","selector":"/getdevdata.cgi?device=4&sn={serial}#soc","group":"Batterie","label_de":"Batterieladestand","label_source":"soc","unit":"%","value_type":"uint16","signed":false,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":60,"recommended":true},
+        {"key":"battery-voltage","selector":"/getdevdata.cgi?device=4&sn={serial}#vb","group":"Batterie","label_de":"Batteriespannung","label_source":"vb","unit":"0,01 V","value_type":"uint16","signed":false,"scale":{"kind":"factor","value":0.01},"aggregation_kind":"gauge","cadence_s":60,"recommended":true},
+        {"key":"battery-current","selector":"/getdevdata.cgi?device=4&sn={serial}#cb","group":"Batterie","label_de":"Batteriestrom","label_source":"cb","unit":"0,1 A","value_type":"int16","signed":true,"scale":{"kind":"factor","value":0.1},"aggregation_kind":"gauge","cadence_s":60,"recommended":true},
+        {"key":"battery-soh","selector":"/getdevdata.cgi?device=4&sn={serial}#soh","group":"Batterie","label_de":"Batteriegesundheit","label_source":"soh","unit":"%","value_type":"uint16","signed":false,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":300,"recommended":false},
+        {"key":"charge-state","selector":"/getdevdata.cgi?device=4&sn={serial}#cst","group":"Status & Fehler","label_de":"Ladezustand","label_source":"cst","unit":null,"value_type":"enum16","signed":false,"scale":{"kind":"none"},"aggregation_kind":"state","cadence_s":60,"recommended":true},
+        {"key":"battery-state","selector":"/getdevdata.cgi?device=4&sn={serial}#bst","group":"Status & Fehler","label_de":"Batteriestatus","label_source":"bst","unit":null,"value_type":"enum16","signed":false,"scale":{"kind":"none"},"aggregation_kind":"state","cadence_s":60,"recommended":true}
+      ]
+    },
+    {
+      "family": "kostal_plenticore",
+      "source_url": "https://www.kostal-solar-electric.com/download/",
+      "source_revision": "KOSTAL Interface description MODBUS TCP Rev. 2.9",
+      "byte_order": {"connection_key":"byte_order","register":5,"little_value":0,"big_value":1,"default":"little"},
+      "points": [
+        {"key":"byte-order","address":5,"width_words":1,"group":"Identität","label_de":"MODBUS-Byte-Reihenfolge","label_source":"MODBUS Byte Order","unit":null,"value_type":"uint16","signed":false,"endian":"big","scale":{"kind":"none"},"aggregation_kind":"state","cadence_s":3600,"recommended":false},
+        {"key":"inverter-state","address":56,"width_words":2,"group":"Status & Fehler","label_de":"Wechselrichterstatus","label_source":"Inverter state","unit":null,"value_type":"uint32","signed":false,"endian":"word_little_byte_big","scale":{"kind":"none"},"aggregation_kind":"state","cadence_s":60,"recommended":true},
+        {"key":"grid-power","address":252,"width_words":2,"group":"Netz","label_de":"Netzleistung des Energiezählers","label_source":"Total active power (powermeter)","unit":"W","value_type":"float32","signed":true,"endian":"word_little_byte_big","scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"battery-soc","address":514,"width_words":1,"group":"Batterie","label_de":"Batterieladestand","label_source":"Battery actual SOC","unit":"%","value_type":"uint16","signed":false,"endian":"big","scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":60,"recommended":true},
+        {"key":"inverter-max-power","address":531,"width_words":1,"group":"Identität","label_de":"Nennleistung","label_source":"Inverter max power","unit":"W","value_type":"uint16","signed":false,"endian":"big","scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":3600,"recommended":false},
+        {"key":"battery-power","address":582,"width_words":1,"group":"Batterie","label_de":"Batterieleistung (Originalvorzeichen)","label_source":"Actual battery charge/discharge power","unit":"W","value_type":"int16","signed":true,"endian":"big","scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"battery-type","address":588,"width_words":1,"group":"Identität","label_de":"Batterietyp","label_source":"Battery type","unit":null,"value_type":"enum16","signed":false,"endian":"big","scale":{"kind":"none"},"aggregation_kind":"state","cadence_s":3600,"recommended":false},
+        {"key":"battery-work-capacity","address":1068,"width_words":2,"group":"Batterie","label_de":"Nutzbare Batteriekapazität","label_source":"Battery work capacity","unit":"Wh","value_type":"float32","signed":false,"endian":"word_little_byte_big","scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":900,"recommended":true},
+        {"key":"bms-max-charge","address":1076,"width_words":2,"group":"BMS","label_de":"BMS-Ladegrenze","label_source":"BMS max charge power","unit":"W","value_type":"float32","signed":false,"endian":"word_little_byte_big","scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":300,"recommended":true},
+        {"key":"bms-max-discharge","address":1078,"width_words":2,"group":"BMS","label_de":"BMS-Entladegrenze","label_source":"BMS max discharge power","unit":"W","value_type":"float32","signed":false,"endian":"word_little_byte_big","scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":300,"recommended":true},
+        {"key":"battery-management-mode","address":1080,"width_words":1,"group":"Status & Fehler","label_de":"Batteriemanagement-Modus","label_source":"Battery management mode","unit":null,"value_type":"enum16","signed":false,"endian":"big","scale":{"kind":"none"},"aggregation_kind":"state","cadence_s":300,"recommended":true},
+        {"key":"sensor-type","address":1082,"width_words":1,"group":"Identität","label_de":"Energiezähler-Typ","label_source":"Energy sensor type","unit":null,"value_type":"enum16","signed":false,"endian":"big","scale":{"kind":"none"},"aggregation_kind":"state","cadence_s":3600,"recommended":false}
+      ]
+    }
+  ]
+}

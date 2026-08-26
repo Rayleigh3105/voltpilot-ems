@@ -86,12 +86,23 @@ public class MeasurementSelectionService {
 
     public Set<String> availableFamilies(UUID deviceId) {
         requireDevice(deviceId);
-        return repository.availableFamilies(deviceId);
+        return MeasurementCatalogFamilies.expand(repository.availableFamilies(deviceId),
+                catalog.families());
     }
 
     public Map<String, Integer> selectedCadences(UUID deviceId) {
         requireDevice(deviceId);
         return repository.selectedCadences(deviceId);
+    }
+
+    public Set<String> recordedPointKeys(UUID deviceId) {
+        requireDevice(deviceId);
+        return repository.recordedPointKeys(deviceId);
+    }
+
+    public Map<String, MeasurementSelectionRepository.Observation> latestObservations(UUID deviceId) {
+        requireDevice(deviceId);
+        return repository.latestObservations(deviceId);
     }
 
     /** Preview one catalog-point change without writing or incrementing revision. */

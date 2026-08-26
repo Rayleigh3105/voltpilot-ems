@@ -9,10 +9,28 @@ const os = require('os');
 const path = require('path');
 const { catalogDocument, resolvePoint, decodeJSON } = require('./measurement-driver');
 const { MeasurementRuntime } = require('./measurement-runtime');
-const { discoverSunSpec, shapeShellyStatus, getJSON } = require('../vp-palette/nodes/vp-measurements');
+const { discoverSunSpec, shapeShellyStatus, getJSON, inverterJSONEndpoint } = require('../vp-palette/nodes/vp-measurements');
 
 const config = (selections, revision = 1) => ({
   revision, catalog_version: catalogDocument.catalog_version, selections,
+});
+
+test('API-produced current catalog plan is accepted and executed by the Edge runtime', async () => {
+  // MeasurementContractsTest byte-pins this shared fixture to the real API publisher output.
+  const fixture = path.resolve(
+    __dirname, '../../../docs/contracts/v2/examples/mqtt-measurement-config.valid.json',
+  );
+  const payload = JSON.parse(fs.readFileSync(fixture, 'utf8'));
+  assert.equal(payload.catalog_version, '2026.08.26.3');
+  const runtime = new MeasurementRuntime(
+    {readModbus: async () => [50]}, () => {}, () => new Date('2026-08-25T12:00:00Z'),
+  );
+  const plan = runtime.apply(payload);
+  assert.equal(plan.applied, true);
+  assert.deepEqual(plan.accepted, ['deye.hybrid_1p.battery.battery']);
+  const samples = await runtime.tick();
+  assert.equal(samples.length, 1);
+  assert.equal(samples[0].decoded, 50);
 });
 
 test('production image and reseed layouts package every settings dependency', () => {
@@ -121,6 +139,34 @@ test('non-contiguous Deye rule reads declared low/high words and decodes word-li
   assert.deepEqual(reads,[616,705]);
   assert.equal(samples[0].raw,'0268=fffe,02c1=ffff');
   assert.equal(samples[0].decoded,-2);
+});
+
+test('KOSTAL runtime reads register 5 and decodes the detected big-word layout', async () => {
+  const reads=[];
+  const runtime=new MeasurementRuntime({readModbus:async ({start,count})=>{
+    reads.push([start,count]);
+    if(start===5)return [1];
+    if(start===252)return [0x42c8,0x0000];
+    return Array(count).fill(0);
+  }},()=>{},()=>new Date('2026-08-25T12:00:00Z'));
+  runtime.apply(config([{point_key:'kostal_plenticore.grid-power',cadence_s:60}]));
+  const samples=await runtime.tick();
+  assert.deepEqual(reads,[[5,1],[252,2]]);
+  assert.equal(samples[0].decoded,100);
+});
+
+test('Deye validation lookup reads its referenced point and invalidate-all drops the tick', async () => {
+  const reads=[]; const published=[];
+  const runtime=new MeasurementRuntime({readModbus:async ({start,count})=>{
+    reads.push([start,count]);
+    if(start===16)return [1000,0]; // pinned rated-power rule 4 => 100 W
+    if(start===175)return [111]; // exceeds the referenced 100 W * 1.1
+    return Array(count).fill(0);
+  }},(topic,payload)=>published.push({topic,payload}),()=>new Date('2026-08-25T12:00:00Z'));
+  runtime.apply(config([{point_key:'deye.hybrid_1p.load.power',cadence_s:60}]));
+  assert.deepEqual(await runtime.tick(),[]);
+  assert.deepEqual(reads,[[16,2],[175,1]]);
+  assert.equal(published.some((entry)=>entry.topic==='edge/measurements/samples'),false);
 });
 
 test('concurrent ticks join one physical read and runtime request budget remains hard', async () => {
@@ -276,4 +322,11 @@ test('production HTTP transport preserves 2^53+1 and uint64 max as decimal raw s
   assert.equal(decodeJSON(resolvePoint('goe.api_v2.c0e'), payload).raw, '9007199254740993');
   assert.equal(decodeJSON(resolvePoint('goe.api_v2.eto'), payload).raw, '18446744073709551615');
   assert.match(JSON.stringify(payload), /"c0e":"9007199254740993"/);
+});
+
+test('production KACO transport interpolates and URL-escapes the configured serial',()=>{
+  assert.equal(inverterJSONEndpoint('/getdevdata.cgi?device=2&sn={serial}#pac','NX 12/34'),
+    '/getdevdata.cgi?device=2&sn=NX%2012%2F34');
+  assert.throws(()=>inverterJSONEndpoint('/getdevdata.cgi?device=2&sn={serial}#pac',''),
+    /Seriennummer/);
 });

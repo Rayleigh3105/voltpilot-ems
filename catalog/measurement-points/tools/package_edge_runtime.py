@@ -20,7 +20,7 @@ REPO = ROOT.parents[1]
 SOURCE = ROOT / "dist" / f"measurement-point-catalog-{CATALOG_VERSION}.json"
 EDGE = REPO / "edge-app" / "nodered" / "measurements" / "catalog.json"
 SQL = (REPO / "services" / "api" / "src" / "main" / "resources" / "db" /
-       "migration" / "V20260848010000__measurement_catalog_metadata.sql")
+       "migration" / "V20260853010000__measurement_catalog_metadata_slice9_r2.sql")
 
 EDGE_FIELDS = (
     "address", "aggregation_kind", "catalog_version", "decoder",

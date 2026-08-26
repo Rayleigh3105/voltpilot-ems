@@ -8,10 +8,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO = ROOT.parents[1]
 TOOLS = ROOT / "tools"
 sys.path.insert(0, str(TOOLS))
 
@@ -65,6 +67,25 @@ class CatalogTest(unittest.TestCase):
             self.assertEqual(first.read_bytes(), second.read_bytes())
             self.assertEqual(first.read_bytes(), ARTIFACT.read_bytes())
 
+    def test_release_artifacts_share_the_canonical_catalog_version(self) -> None:
+        canonical = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        pom_root = ET.parse(REPO / "services" / "api" / "pom.xml").getroot()
+        namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
+        pom_version = pom_root.findtext(
+            "m:properties/m:measurement.catalog.version", namespaces=namespace)
+        resource_include = pom_root.findtext(
+            "m:build/m:resources/m:resource[2]/m:includes/m:include", namespaces=namespace)
+        api_artifact = json.loads((ROOT / "dist" /
+            f"measurement-point-catalog-{pom_version}.json").read_text(encoding="utf-8"))
+        edge_artifact = json.loads((REPO / "edge-app" / "nodered" / "measurements" /
+            "catalog.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(pom_version, canonical)
+        self.assertEqual(resource_include,
+                         "measurement-point-catalog-${measurement.catalog.version}.json")
+        self.assertEqual(api_artifact["catalog_version"], canonical)
+        self.assertEqual(edge_artifact["catalog_version"], canonical)
+
     def test_schema_and_semantic_validator_accept_artifact(self) -> None:
         for schema in (ROOT / "schema").glob("*.schema.json"):
             document = json.loads(schema.read_text(encoding="utf-8"))
@@ -116,6 +137,82 @@ class CatalogTest(unittest.TestCase):
             for family in EXPECTED["deye_direct_register_points"]
         }
         self.assertEqual(direct, EXPECTED["deye_direct_register_points"])
+
+    def test_every_deye_map_exposes_all_authored_pv_string_measurements(self) -> None:
+        """No UI shortlist may collapse the vendor maps to total PV only."""
+        manifest = {source["family"]: source for source in self.manifest["sources"]
+                    if source["adapter"] == "deye"}
+        for family in ("string", "hybrid_1p", "hybrid_3p", "micro"):
+            document = json.loads((ROOT / manifest[family]["input_path"]).read_text())["document"]
+            authored = {
+                item["name"] for group in document["parameters"] for item in group["items"]
+                if isinstance(item.get("name"), str)
+                and __import__("re").fullmatch(r"PV\d+ (Power|Current|Voltage)", item["name"])
+            }
+            packaged = {point["label_source"] for point in self.points
+                        if point["family"] == family}
+            self.assertTrue(authored, family)
+            self.assertEqual(authored, authored & packaged, family)
+
+    def test_every_named_deye_map_measurement_is_in_the_catalog(self) -> None:
+        """Pin full per-map coverage: phases, battery, grid, temperature, faults and meters too."""
+        manifest = {source["family"]: source for source in self.manifest["sources"]
+                    if source["adapter"] == "deye"}
+        for family in ("string", "hybrid_1p", "hybrid_3p", "micro"):
+            document = json.loads((ROOT / manifest[family]["input_path"]).read_text())["document"]
+            authored = {
+                item["name"] for group in document["parameters"] for item in group["items"]
+                if isinstance(item.get("name"), str) and item["name"].strip()
+            }
+            packaged = {point["label_source"] for point in self.points
+                        if point["family"] == family}
+            self.assertTrue(authored, family)
+            self.assertEqual(set(), authored - packaged, family)
+
+    def test_inverter_runtime_families_are_source_honest_and_complete(self) -> None:
+        expected = {
+            "fronius_solar_api": 5,
+            "kaco_http": 7,
+            "kaco_http_hybrid": 16,
+            "kostal_plenticore": 12,
+        }
+        counts = collections.Counter(point["family"] for point in self.points)
+        for family, count in expected.items():
+            self.assertEqual(counts[family], count)
+        kostal = [point for point in self.points if point["family"] == "kostal_plenticore"]
+        self.assertEqual(
+            {register for point in kostal for register in point["address"]["registers"]},
+            {5, 56, 57, 252, 253, 514, 531, 582, 588, 1068, 1069,
+             1076, 1077, 1078, 1079, 1080, 1082},
+        )
+        byte_order = [point["decoder"].get("byte_order") for point in kostal
+                      if point["address"]["width_words"] > 1]
+        self.assertTrue(byte_order)
+        self.assertTrue(all(value == byte_order[0] for value in byte_order))
+        self.assertEqual(byte_order[0], {
+            "connection_key": "byte_order", "register": 5,
+            "little_value": 0, "big_value": 1, "default": "little",
+        })
+
+    def test_all_pinned_deye_rule_1_and_2_runtime_semantics_are_packaged(self) -> None:
+        semantic_fields = {"range", "mask", "bit", "bitmask", "offset", "divide",
+                           "validation", "lookup"}
+        affected = [point for point in self.points
+                    if point.get("address")
+                    and (point.get("decoder") or {}).get("rule") in (1, 2)
+                    and semantic_fields & point["decoder"].keys()]
+        self.assertEqual(len(affected), 339)
+        self.assertEqual(collections.Counter(point["family"] for point in affected), {
+            "hybrid_1p": 93, "hybrid_3p": 213, "micro": 22, "string": 11,
+        })
+        self.assertTrue(all(point["decoder"].get("source_key") for point in affected))
+        self.assertTrue(all("digits" in point["decoder"] for point in affected))
+
+    def test_state_like_points_are_eligible_for_durable_long_term_rollups(self) -> None:
+        state_like = [point for point in self.points
+                      if point["aggregation_kind"] in {"state", "event", "bitfield", "text"}]
+        self.assertTrue(state_like)
+        self.assertTrue(all(point["long_term_cadence_s"] == 900 for point in state_like))
 
     def test_point_keys_and_selectors_are_unambiguous(self) -> None:
         keys = [point["point_key"] for point in self.points]
