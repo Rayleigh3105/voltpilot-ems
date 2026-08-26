@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 const { catalogDocument, resolvePoint, decodeJSON } = require('./measurement-driver');
 const { MeasurementRuntime } = require('./measurement-runtime');
-const { discoverSunSpec, shapeShellyStatus, getJSON } = require('../vp-palette/nodes/vp-measurements');
+const { discoverSunSpec, shapeShellyStatus, getJSON, inverterJSONEndpoint } = require('../vp-palette/nodes/vp-measurements');
 
 const config = (selections, revision = 1) => ({
   revision, catalog_version: catalogDocument.catalog_version, selections,
@@ -276,4 +276,11 @@ test('production HTTP transport preserves 2^53+1 and uint64 max as decimal raw s
   assert.equal(decodeJSON(resolvePoint('goe.api_v2.c0e'), payload).raw, '9007199254740993');
   assert.equal(decodeJSON(resolvePoint('goe.api_v2.eto'), payload).raw, '18446744073709551615');
   assert.match(JSON.stringify(payload), /"c0e":"9007199254740993"/);
+});
+
+test('production KACO transport interpolates and URL-escapes the configured serial',()=>{
+  assert.equal(inverterJSONEndpoint('/getdevdata.cgi?device=2&sn={serial}#pac','NX 12/34'),
+    '/getdevdata.cgi?device=2&sn=NX%2012%2F34');
+  assert.throws(()=>inverterJSONEndpoint('/getdevdata.cgi?device=2&sn={serial}#pac',''),
+    /Seriennummer/);
 });

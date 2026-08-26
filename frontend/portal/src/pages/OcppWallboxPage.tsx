@@ -15,6 +15,7 @@ import {
   type OcppTransaction,
 } from '../api';
 import { fokussierbare } from '../components/VpPanel';
+import { VpPicker } from '../components/VpPicker';
 import {
   ACTION_GROUP_LABEL,
   OCPP_ACTIONS,
@@ -552,11 +553,12 @@ function ActionDialog({ definition, siteId, chargePointId, connected, connection
             <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={importHandoff} disabled={!handoffInput.trim()}>Übergabe prüfen</button>
           </details>}
           {handoff ? <div className="vp-ocpp-handoff-bound"><strong>Gebundene Übergabe übernommen</strong><p>Station, Aktion, Nutzlast und Ablauf sind serverseitig gebunden. Änderungen sind nicht möglich.</p><pre>{safeJson({ action: handoff.action, connectorId: handoff.connectorId, transactionId: handoff.transactionId, request: handoff.request, expiresAt: handoff.intent.expiresAt })}</pre></div>
-            : <div className="vp-ocpp-form-grid">{definition.fields.map((field) => <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span>
-              {field.kind === 'select' ? <select value={values[field.key] ?? ''} onChange={(event) => updateValue(field.key, event.target.value)}>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-                : field.kind === 'textarea' ? <textarea value={values[field.key] ?? ''} placeholder={field.placeholder} onChange={(event) => updateValue(field.key, event.target.value)} />
+            : <div className="vp-ocpp-form-grid">{definition.fields.map((field) => field.kind === 'select'
+              ? <VpPicker key={field.key} label={`${field.label}${field.required ? ' *' : ''}`} hint={field.help} value={values[field.key] ?? ''} options={field.options ?? []} onChange={(value) => updateValue(field.key, value)} />
+              : <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span>
+                {field.kind === 'textarea' ? <textarea value={values[field.key] ?? ''} placeholder={field.placeholder} onChange={(event) => updateValue(field.key, event.target.value)} />
                   : <input type={field.kind} value={values[field.key] ?? ''} placeholder={field.placeholder} onChange={(event) => updateValue(field.key, event.target.value)} />}
-              {field.help && <small>{field.help}</small>}</label>)}</div>}
+                {field.help && <small>{field.help}</small>}</label>)}</div>}
           {intent?.fourEyes && !handoff && <div className="vp-ocpp-strong-confirm"><strong>Übergabe an zweiten Plattformoperator</strong><p>Dieser Intent darf nicht vom vorbereitenden Konto ausgeführt werden. Übergeben Sie den Code vor {time(intent.expiresAt)} an einen anderen Plattformoperator. Er öffnet dieselbe Aktion und übernimmt den Code.</p>
             <label><span>Gebundener Übergabecode</span><textarea readOnly value={handoffCode} /></label>
             <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={() => { void navigator.clipboard?.writeText(handoffCode).then(() => setCopied(true)); }}>{copied ? 'Übergabecode kopiert' : 'Übergabecode kopieren'}</button>

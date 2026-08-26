@@ -211,7 +211,7 @@ def deye_decoder(item: dict[str, Any]) -> dict[str, Any]:
     decoder_fields = (
         "rule", "scale", "divide", "mask", "bit", "bitmask", "offset", "magnitude",
         "inverted", "registers", "sensors", "lookup", "range", "validation", "value",
-        "enabled_lookup", "name_lookup", "l", "alt",
+        "enabled_lookup", "name_lookup", "l", "alt", "hex", "delimiter", "remove", "dec",
     )
     return {field: item[field] for field in decoder_fields if field in item}
 
@@ -702,7 +702,12 @@ def generate_builtin_inverter(source: dict[str, Any]) -> Iterable[dict[str, Any]
                     item["unit"], item["aggregation_kind"],
                     f"{item['group']} {item['label_source']}",
                 ),
-                poll_group=f"{family['family']}:{item['group'].lower().replace(' ', '-')}",
+                # One JSON poll group is exactly one physical endpoint. KACO's
+                # device=2/device=3/device=4 payloads are separate requests;
+                # grouping only by the display group silently dropped fields.
+                poll_group=(f"{family['family']}:{selector.split('#', 1)[0]}"
+                            if source_kind == "rest_json"
+                            else f"{family['family']}:{item['group'].lower().replace(' ', '-')}"),
                 source={**source, "source_url": family["source_url"],
                         "source_revision": family["source_revision"]},
                 dynamic=item.get("dynamic", False),

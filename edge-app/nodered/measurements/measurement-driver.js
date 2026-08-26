@@ -104,18 +104,74 @@ function decodeDerived(point, wireWords) {
 function baseNumber(point, words) {
   const b = Buffer.alloc(words.length * 2);
   words.forEach((w, i) => b.writeUInt16BE(w & 0xffff, i * 2));
+  const ordered = point.endian === 'word_little_byte_big' && words.length > 1
+    ? [...words].reverse() : words;
+  const n = Buffer.alloc(ordered.length * 2);
+  ordered.forEach((w, i) => n.writeUInt16BE(w & 0xffff, i * 2));
   switch (point.value_type) {
     case 'int16': case 'sunssf': return b.readInt16BE(0);
     case 'uint16': case 'enum16': case 'bitfield16': case 'count': return b.readUInt16BE(0);
-    case 'int32': return point.endian === 'word_little_byte_big'
-      ? Buffer.from([b[2], b[3], b[0], b[1]]).readInt32BE(0) : b.readInt32BE(0);
-    case 'uint32': case 'acc32': case 'bitfield32': return point.endian === 'word_little_byte_big'
-      ? Buffer.from([b[2], b[3], b[0], b[1]]).readUInt32BE(0) : b.readUInt32BE(0);
-    case 'float32': return b.readFloatBE(0);
-    case 'float64': return b.readDoubleBE(0);
-    case 'string': return b.toString('ascii').replace(/\0+$/, '');
+    case 'int32': return n.readInt32BE(0);
+    case 'uint32': case 'acc32': case 'bitfield32': return n.readUInt32BE(0);
+    case 'float32': return n.readFloatBE(0);
+    case 'float64': return n.readDoubleBE(0);
+    case 'string': case 'ascii_string': return b.toString('ascii').replace(/[\0\xff]+$/g, '').trim();
+    case 'bitfield64': return BigInt('0x' + n.toString('hex')).toString(10);
+    case 'datetime': return decodeDateTime(words);
+    case 'time': return decodeTime(point, words);
+    case 'version': return decodeVersion(point, words);
     default: return null;
   }
+}
+
+function decodeDateTime(words) {
+  const values=words.map((word)=>word&0xffff);
+  if (values.length >= 6) {
+    const [year,month,day,hour,minute,second]=values;
+    if (year>=1970&&year<=9999&&month>=1&&month<=12&&day>=1&&day<=31
+        &&hour<=23&&minute<=59&&second<=59) {
+      return `${String(year).padStart(4,'0')}-${String(month).padStart(2,'0')}`
+        + `-${String(day).padStart(2,'0')}T${String(hour).padStart(2,'0')}`
+        + `:${String(minute).padStart(2,'0')}:${String(second).padStart(2,'0')}`;
+    }
+  }
+  // Deye also uses a packed six-byte RTC layout (YY MM DD hh mm ss).
+  const bytes=Buffer.alloc(words.length*2); words.forEach((w,i)=>bytes.writeUInt16BE(w&0xffff,i*2));
+  if (bytes.length>=6) {
+    const [yy,month,day,hour,minute,second]=bytes;
+    if (month>=1&&month<=12&&day>=1&&day<=31&&hour<=23&&minute<=59&&second<=59) {
+      return `20${String(yy).padStart(2,'0')}-${String(month).padStart(2,'0')}`
+        + `-${String(day).padStart(2,'0')}T${String(hour).padStart(2,'0')}`
+        + `:${String(minute).padStart(2,'0')}:${String(second).padStart(2,'0')}`;
+    }
+  }
+  return null;
+}
+
+function decodeTime(point, words) {
+  const values=words.map((word)=>word&0xffff);
+  const divisor=Number(point.decoder&&point.decoder.hex||point.decoder&&point.decoder.dec||100);
+  let hour,minute,second=null;
+  if (values.length===1) [hour,minute]=[Math.floor(values[0]/divisor),values[0]%divisor];
+  else [hour,minute,second]=values;
+  return hour<=23&&minute<=59&&(second==null||second<=59)
+    ? `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`
+      + (second==null?'':`:${String(second).padStart(2,'0')}`)
+    : null;
+}
+
+function decodeVersion(point, words) {
+  const decoder=point.decoder||{};
+  const digitDelimiter=typeof decoder.delimiter==='string'?decoder.delimiter:'.';
+  const registerDelimiter=typeof decoder.delimiter==='object'
+    ? String(decoder.delimiter.register==null?'-':decoder.delimiter.register) : '-';
+  const within=typeof decoder.delimiter==='object'
+    ? String(decoder.delimiter.digit==null?'.':decoder.delimiter.digit) : digitDelimiter;
+  const radix=Object.prototype.hasOwnProperty.call(decoder,'hex')?16:10;
+  let value=words.map((word)=>[12,8,4,0].map((shift)=>((word>>shift)&15).toString(radix))
+    .join(within)).join(registerDelimiter).toUpperCase();
+  if (decoder.remove!=null) value=value.split(String(decoder.remove)).join('');
+  return value;
 }
 
 /** Decode once at the edge. Unknown/conditional scale deliberately omits decoded. */
@@ -131,8 +187,8 @@ function decodeRegisters(point, words, scaleFactors, addresses) {
     return { point_key: point.point_key, raw, quality: 'invalid' };
   }
   const scale = point.scale || { kind: 'none' };
-  if (scale.kind === 'factor') decoded *= Number(scale.value);
-  else if (scale.kind === 'divisor') decoded /= Number(scale.value);
+  if (scale.kind === 'factor' && typeof decoded === 'number') decoded *= Number(scale.value);
+  else if (scale.kind === 'divisor' && typeof decoded === 'number') decoded /= Number(scale.value);
   else if (scale.kind === 'sunssf') {
     const sf = scaleFactors && scaleFactors[scale.point];
     if (!Number.isInteger(sf) || sf === -32768) decoded = undefined;
@@ -151,7 +207,12 @@ function pathValue(root, selector) {
 function scalarSample(point, key, value) {
   if (value === undefined || value === null || (typeof value === 'number' && !Number.isFinite(value))) return null;
   if (['number', 'string', 'boolean'].includes(typeof value)) {
-    return { point_key: key, raw: value, decoded: value, quality: 'good' };
+    const out={ point_key:key, raw:value, decoded:value, quality:'good' };
+    const scale=point.scale||{kind:'none'};
+    if (typeof value==='number'&&scale.kind==='factor') out.decoded=value*Number(scale.value);
+    else if (typeof value==='number'&&scale.kind==='divisor') out.decoded=value/Number(scale.value);
+    if (typeof out.decoded==='number'&&!Number.isFinite(out.decoded)) return null;
+    return out;
   }
   // The wire contract intentionally keeps raw scalar. Preserve readable JSON
   // objects/arrays as JSON text instead of silently discarding them or

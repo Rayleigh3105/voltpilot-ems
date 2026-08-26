@@ -1,6 +1,6 @@
 {
-  "catalog_version": "2026.08.26.1",
-  "deye_lock_sha256": "2e378e218ab59cbca39b24169330d95fa40f830b51312d21818b75f332cb954f",
+  "catalog_version": "2026.08.26.2",
+  "deye_lock_sha256": "30d4ff814fbb0e17a2322370b6763666ce5181b6468700ab1dab3b879d737b02",
   "deye_direct_register_points": {
     "hybrid_1p": 193,
     "hybrid_3p": 590,
@@ -42,10 +42,10 @@
   },
   "goe_german_source_rows": 174,
   "goe_keys_with_german_label": 177,
-  "manifest_sha256": "1230fdb7298630031af189bc390be6001190cf7fa7412c9d0601b5ec9f4ee382",
+  "manifest_sha256": "08a016d49bbcd8ecd752a1032c4b6e9733d1fb1ba85856a482af2dffafe95f35",
   "shelly_raw_manifest_sha256": "3a68c3d0bedc74b7fc1dfdd9659743df241f45350abe1c7dbd5e8d8962a74d44",
   "source_versions": {
-    "builtin.inverter.runtime": "voltpilot-runtime-2026-08-26",
+    "builtin.inverter.runtime": "voltpilot-runtime-2026-08-26-r2",
     "deye.hybrid_1p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
     "deye.hybrid_3p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
     "deye.micro": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",

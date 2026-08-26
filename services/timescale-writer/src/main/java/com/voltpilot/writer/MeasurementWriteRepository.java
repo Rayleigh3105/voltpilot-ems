@@ -75,6 +75,8 @@ public class MeasurementWriteRepository {
                     meta.aggregationKind(), meta.cadence(), event.gap(), event.dropped_samples(),
                     text(sample, "signed_data"), text(sample, "signed_data_format"));
             if (inserted > 0) {
+                updatePointState(event, pointKey, observedAt, raw, decoded,
+                        sample.path("quality").asText());
                 appendTransitions(event, pointKey, observedAt, raw, decoded,
                         sample.path("quality").asText(), meta);
                 markFirstSample(event, meta.selectionKey(), observedAt);
@@ -86,6 +88,28 @@ public class MeasurementWriteRepository {
             insertGap(event);
         }
         return rows;
+    }
+
+    private void updatePointState(MeasurementRawEvent event, String pointKey, Instant observedAt,
+            Value raw, Value decoded, String quality) {
+        jdbc.update("INSERT INTO device_measurement_point_state (tenant_id,site_id,device_id,"
+                        + "point_key,first_read_at,last_read_at,edge_sequence,raw_numeric,raw_text,"
+                        + "decoded_numeric,decoded_text,quality,gap,dropped_samples,catalog_version) "
+                        + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT "
+                        + "(tenant_id,site_id,device_id,point_key) DO UPDATE SET "
+                        + "first_read_at=LEAST(device_measurement_point_state.first_read_at,"
+                        + "EXCLUDED.first_read_at),last_read_at=EXCLUDED.last_read_at,"
+                        + "edge_sequence=EXCLUDED.edge_sequence,raw_numeric=EXCLUDED.raw_numeric,"
+                        + "raw_text=EXCLUDED.raw_text,decoded_numeric=EXCLUDED.decoded_numeric,"
+                        + "decoded_text=EXCLUDED.decoded_text,quality=EXCLUDED.quality,gap=EXCLUDED.gap,"
+                        + "dropped_samples=EXCLUDED.dropped_samples,catalog_version=EXCLUDED.catalog_version "
+                        + "WHERE (EXCLUDED.last_read_at,EXCLUDED.edge_sequence) > "
+                        + "(device_measurement_point_state.last_read_at,"
+                        + "device_measurement_point_state.edge_sequence)",
+                event.tenant_id(), event.site_id(), event.device_id(), pointKey,
+                Timestamp.from(observedAt), Timestamp.from(observedAt), event.sequence(),
+                raw.numeric(), raw.text(), decoded.numeric(), decoded.text(), quality,
+                event.gap(), event.dropped_samples(), event.catalog_version());
     }
 
     private Meta metadata(MeasurementRawEvent event, String pointKey) {
@@ -122,11 +146,12 @@ public class MeasurementWriteRepository {
             Value raw, Value decoded, String quality, Meta meta) {
         List<Previous> rows = jdbc.query("SELECT COALESCE(decoded_numeric,raw_numeric),"
                         + "COALESCE(decoded_text,raw_text),quality FROM device_measurement_sample "
-                        + "WHERE device_id=? AND point_key=? AND "
+                        + "WHERE tenant_id=? AND site_id=? AND device_id=? AND point_key=? AND "
                         + "(time<? OR (time=? AND edge_sequence<?)) "
                         + "ORDER BY time DESC,edge_sequence DESC LIMIT 1",
                 (rs, n) -> new Previous(rs.getBigDecimal(1), rs.getString(2), rs.getString(3)),
-                event.device_id(), pointKey, Timestamp.from(at), Timestamp.from(at), event.sequence());
+                event.tenant_id(), event.site_id(), event.device_id(), pointKey,
+                Timestamp.from(at), Timestamp.from(at), event.sequence());
         Previous previous = rows.isEmpty() ? null : rows.get(0);
         if (previous == null) {
             return;

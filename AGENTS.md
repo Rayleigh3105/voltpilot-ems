@@ -5186,13 +5186,25 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   rot werden.
 - Punktverläufe liegen unter
   `/api/v1/devices/{deviceId}/measurement-selection/{pointKey}/history|export`.
-  Gauge-Buckets liefern Mittel/Min/Max, Counter nur positive Deltas, Zustände
-  den letzten Wert; Auswahl-/Ack-/First-Sample-, Lücken- und Resetmarker bleiben
-  getrennt. Rohwahl gibt es nur bei vorhandenen Wire-Rohdaten. CSV trägt
-  Point-Key, Labels, Einheit, Aggregation, Semantik, Katalogversion und
-  Darstellung. Die Anlagen-Auswahl liefert höchstens 40 kürzlich gemessene,
+  Bis 48 h wird qualitätsgefiltertes Raw gebucketet, längere Bereiche lesen die
+  dauerhaften 5-/15-min-Rollups; jede Abfrage partitioniert historisch nach
+  Tenant, Standort, Gerät und Punkt. Gauge-Buckets liefern gewichtetes
+  Mittel/Min/Max, Counter nur standortlokale positive Deltas, Zustände den
+  letzten Wert; Auswahl-/Ack-/First-Sample-, Lücken-, Reset-, State-, Fehler-,
+  Bitfield-, Text- und komponentengenaue Familienmarker bleiben getrennt.
+  Rohwahl gibt es nur bei vorhandenen Wire-Rohdaten. CSV trägt Point-Key,
+  Standort, Labels, Einheit, Aggregation, Semantik, Katalogversion und
+  Darstellung und neutralisiert Spreadsheet-Formelpräfixe. Die Katalogroute
+  liest Verfügbarkeit/letzten Wert ausschließlich aus dem writer-gepflegten,
+  RLS-gesicherten `device_measurement_point_state`, nie per DISTINCT-Scan aus
+  dem Raw-Hypertable. Die Anlagen-Auswahl liefert höchstens 40 kürzlich gemessene,
   semantisch bekannte numerische Optionen und vergleicht höchstens drei
   kompatible Punkte; unterschiedliche Einheiten erhalten getrennte Achsen.
+- Neue Portalflächen dürfen keine nativen `select`, `date`, `time`,
+  `datetime-local` oder `datalist` einführen; der repo-weite Nullbestandstest in
+  `frontend/portal/src/migration.test.ts` erzwingt `VpPicker`, `VpDatePicker`
+  und `VpTimePicker`. Eine Punkt-/Drawer-Öffnung beginnt immer dekodiert; ein
+  abgelehntes Rohfenster bietet sichtbar die Rückkehr zu dekodierten Werten.
 
 ## Steuerung Stufen 8+9: die UMZÜGE und die Datenbereinigung
 
@@ -5492,6 +5504,13 @@ Push, kein anderer Wunsch, kein anderer Text.
   Dasselbe gilt für OCPP `SampledValue.value`: der Wire-String bleibt `raw`;
   bei Integern außerhalb `Number.isSafeInteger` entfällt `decoded`, damit
   Writer/Rollup nie eine gerundete Ableitung dem exakten Rohwert vorziehen.
+  `word_little_byte_big` vertauscht bei allen mehrwortigen Zahlen einschließlich
+  float32/float64 die 16-Bit-Wörter (auch für freie Register). Die direkten
+  Deye-Maps dekodieren außerdem bitfield64/datetime/time/version/ascii_string.
+  KACO-HTTP interpoliert die URL-escaped Seriennummer, hält jeden physischen
+  Endpoint in einer eigenen Pollgruppe, dimensioniert dynamische MPPT-Keys und
+  wendet die katalogisierte JSON-Skala an; Register/Endpoints werden dabei nie
+  erfunden.
 - **Replay und Lücken sind explizit.** Der Core-Outbox unter
   `data_dir/measurement-outbox` vergibt monotone Sequenzen, sendet älteste
   zuerst und löscht erst nach QoS1-Bestätigung. Begrenzte Eviction schützt die

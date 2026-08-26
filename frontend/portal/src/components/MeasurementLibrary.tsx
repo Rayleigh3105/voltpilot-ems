@@ -17,6 +17,9 @@ import {
 } from '../api';
 import { useEChart } from '../useEChart';
 import { ConfirmDialog } from './ConfirmDialog';
+import { VpDatePicker } from './VpDatePicker';
+import { VpPicker } from './VpPicker';
+import { VpTimePicker } from './VpTimePicker';
 import './MeasurementLibrary.css';
 
 const ranges: Array<[MeasurementRange, string]> = [
@@ -184,6 +187,7 @@ export function MeasurementLibrary({ deviceId }: { deviceId: string | null | und
   const [unsupported, setUnsupported] = useState(false);
   const [historyPoint, setHistoryPoint] = useState<MeasurementCatalogPoint | null>(null);
   const [history, setHistory] = useState<MeasurementHistory | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [range, setRange] = useState<MeasurementRange>('24h');
   const [freeFrom, setFreeFrom] = useState(() => new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 16));
   const [freeTo, setFreeTo] = useState(() => new Date().toISOString().slice(0, 16));
@@ -226,10 +230,11 @@ export function MeasurementLibrary({ deviceId }: { deviceId: string | null | und
   useEffect(() => {
     if (!historyPoint || !deviceId) return;
     setHistory(null);
+    setHistoryError(null);
     const from = range === 'free' ? isoOrUndefined(freeFrom) : undefined;
     const to = range === 'free' ? isoOrUndefined(freeTo) : undefined;
     api.measurementHistory(deviceId, historyPoint.pointKey, range, representation, from, to)
-      .then(setHistory, (e) => setError(e instanceof Error ? e.message : 'Der Verlauf konnte nicht geladen werden.'));
+      .then(setHistory, (e) => setHistoryError(e instanceof Error ? e.message : 'Der Verlauf konnte nicht geladen werden.'));
   }, [historyPoint, range, representation, freeFrom, freeTo, deviceId]);
 
   const customPoints = useMemo<MeasurementCatalogPoint[]>(() => (state?.selections ?? [])
@@ -279,6 +284,20 @@ export function MeasurementLibrary({ deviceId }: { deviceId: string | null | und
     setPendingEnabled(!point.selected);
     setPendingCadence(point.selectedCadenceS ?? point.defaultCadenceS ?? 30);
     setError(null);
+  };
+
+  const openHistory = (point: MeasurementCatalogPoint) => {
+    setRepresentation('decoded');
+    setHistory(null);
+    setHistoryError(null);
+    setHistoryPoint(point);
+  };
+
+  const setFreePart = (side: 'from' | 'to', part: 'date' | 'time', value: string) => {
+    const current = side === 'from' ? freeFrom : freeTo;
+    const [date = '', time = '00:00'] = current.split('T');
+    const next = part === 'date' ? `${value}T${time}` : `${date}T${value}`;
+    (side === 'from' ? setFreeFrom : setFreeTo)(next);
   };
 
   const confirmToggle = async () => {
@@ -355,7 +374,7 @@ export function MeasurementLibrary({ deviceId }: { deviceId: string | null | und
         )}
         {!quiet ? <p role="status">Messwerte werden geladen …</p> : important.length === 0 ? (
           <p className="vp-measure-empty">Noch keine Punkte für die erkannte Anbindung bestätigt. Die vollständige Bibliothek zeigt bekannte und frei ergänzbare Punkte.</p>
-        ) : <div className="vp-measure-list">{important.map((point) => <PointRow key={point.pointKey} point={point} applyStatus={state?.selections.find((selection) => selection.pointKey === point.pointKey)?.applyStatus} onToggle={toggle} onHistory={(p) => setHistoryPoint(p)} />)}</div>}
+        ) : <div className="vp-measure-list">{important.map((point) => <PointRow key={point.pointKey} point={point} applyStatus={state?.selections.find((selection) => selection.pointKey === point.pointKey)?.applyStatus} onToggle={toggle} onHistory={openHistory} />)}</div>}
       </Card>
 
       <Drawer open={open} onClose={() => setOpen(false)} title="Messwert-Bibliothek" footer={
@@ -364,14 +383,14 @@ export function MeasurementLibrary({ deviceId }: { deviceId: string | null | und
         <p className="vp-measure-drawer-intro">Alle bekannten Punkte. Suche umfasst deutschen und originalen Namen, Registeradresse, API-Key oder OCPP-Measurand sowie Einheit.</p>
         <Input label="Messwert suchen" value={query} onChange={(e) => { setQuery(e.target.value); setOffset(0); }} placeholder="z. B. PV2 Strom, 0x00bf, P_Grid, Energy.Active.Import, V" />
         <div className="vp-measure-filters" aria-label="Messwertfilter">
-          <label>Gruppe<select value={group} onChange={(e) => { setGroup(e.target.value); setOffset(0); }}><option value="">Alle Gruppen</option>{catalog?.groups.map((f) => <option key={f.value} value={f.value}>{f.value} ({f.count})</option>)}</select></label>
-          <label>Verfügbarkeit<select value={availability} onChange={(e) => { setAvailability(e.target.value as 'all' | 'available'); setOffset(0); }}><option value="all">Alle bekannten</option><option value="available">Für Gerät verfügbar</option></select></label>
-          <label>Semantik<select value={semantic} onChange={(e) => { setSemantic(e.target.value); setOffset(0); }}><option value="">Alle</option><option value="known">Bekannt</option><option value="vendor_label_only">Nur Herstellerbezeichnung</option><option value="unknown">Unbekannt</option></select></label>
-          <label>Aufzeichnung<select value={recorded} onChange={(e) => { setRecorded(e.target.value as typeof recorded); setOffset(0); }}><option value="all">Alle</option><option value="true">Mit Historie</option><option value="false">Ohne Historie</option></select></label>
+          <VpPicker label="Gruppe" value={group} options={[{ value: '', label: 'Alle Gruppen' }, ...(catalog?.groups ?? []).map((f) => ({ value: f.value, label: `${f.value} (${f.count})` }))]} onChange={(value) => { setGroup(value); setOffset(0); }} />
+          <VpPicker label="Verfügbarkeit" value={availability} options={[{ value: 'all', label: 'Alle bekannten' }, { value: 'available', label: 'Für Gerät verfügbar' }]} onChange={(value) => { setAvailability(value as typeof availability); setOffset(0); }} />
+          <VpPicker label="Semantik" value={semantic} options={[{ value: '', label: 'Alle' }, { value: 'known', label: 'Bekannt' }, { value: 'vendor_label_only', label: 'Nur Herstellerbezeichnung' }, { value: 'unknown', label: 'Unbekannt' }]} onChange={(value) => { setSemantic(value); setOffset(0); }} />
+          <VpPicker label="Aufzeichnung" value={recorded} options={[{ value: 'all', label: 'Alle' }, { value: 'true', label: 'Mit Historie' }, { value: 'false', label: 'Ohne Historie' }]} onChange={(value) => { setRecorded(value as typeof recorded); setOffset(0); }} />
         </div>
         {error && <p role="alert" className="vp-assist-error">{error}</p>}
         <p className="vp-measure-result" aria-live="polite">{catalog ? `${(catalog.total + visibleCustomPoints.length).toLocaleString('de-DE')} Punkte gefunden` : 'Liste wird geladen …'}</p>
-        <div className="vp-measure-list">{[...visibleCustomPoints, ...(catalog?.points ?? [])].map((point) => <PointRow key={point.pointKey} point={point} applyStatus={state?.selections.find((selection) => selection.pointKey === point.pointKey)?.applyStatus} onToggle={toggle} onHistory={(p) => setHistoryPoint(p)} />)}</div>
+        <div className="vp-measure-list">{[...visibleCustomPoints, ...(catalog?.points ?? [])].map((point) => <PointRow key={point.pointKey} point={point} applyStatus={state?.selections.find((selection) => selection.pointKey === point.pointKey)?.applyStatus} onToggle={toggle} onHistory={openHistory} />)}</div>
         {catalog && catalog.total > catalog.limit && <nav className="vp-measure-pages" aria-label="Ergebnisseiten"><Button variant="ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - catalog.limit))}>Zurück</Button><span>{offset + 1}–{Math.min(offset + catalog.limit, catalog.total)} von {catalog.total}</span><Button variant="ghost" disabled={offset + catalog.limit >= catalog.total} onClick={() => setOffset(offset + catalog.limit)}>Weiter</Button></nav>}
       </Drawer>
 
@@ -396,11 +415,11 @@ export function MeasurementLibrary({ deviceId }: { deviceId: string | null | und
         extra={pendingEnabled ? <Input label="Kadenz in Sekunden" type="number" min={pending?.minCadenceS ?? 1} max={86400} value={pendingCadence} onChange={(e) => setPendingCadence(Number(e.target.value))} error={estimate?.hardRejected ? estimate.reasons.join(' ') : null} /> : null}
       />
 
-      <Drawer open={historyPoint != null} onClose={() => { setHistoryPoint(null); setHistory(null); }} title={historyPoint ? `Verlauf · ${pointLabel(historyPoint)}` : 'Verlauf'} footer={history && historyPoint ? <Button variant="outline" onClick={() => void downloadMeasurementExport(deviceId, historyPoint.pointKey, range, representation, range === 'free' ? isoOrUndefined(freeFrom) : undefined, range === 'free' ? isoOrUndefined(freeTo) : undefined)}>CSV mit Metadaten exportieren</Button> : null}>
+      <Drawer open={historyPoint != null} onClose={() => { setHistoryPoint(null); setHistory(null); setHistoryError(null); setRepresentation('decoded'); }} title={historyPoint ? `Verlauf · ${pointLabel(historyPoint)}` : 'Verlauf'} footer={history && historyPoint ? <Button variant="outline" onClick={() => void downloadMeasurementExport(deviceId, historyPoint.pointKey, range, representation, range === 'free' ? isoOrUndefined(freeFrom) : undefined, range === 'free' ? isoOrUndefined(freeTo) : undefined)}>CSV mit Metadaten exportieren</Button> : null}>
         <div className="vp-measure-range" aria-label="Zeitraum">{ranges.map(([key, label]) => <button type="button" key={key} className={range === key ? 'is-active' : ''} onClick={() => setRange(key)}>{label}</button>)}</div>
-        {range === 'free' && <div className="vp-measure-free"><Input label="Von" type="datetime-local" value={freeFrom} onChange={(e) => setFreeFrom(e.target.value)} /><Input label="Bis" type="datetime-local" value={freeTo} onChange={(e) => setFreeTo(e.target.value)} /></div>}
-        {history?.meta.rawAvailable && <div className="vp-measure-range" aria-label="Wertdarstellung"><button type="button" className={representation === 'decoded' ? 'is-active' : ''} onClick={() => setRepresentation('decoded')}>Dekodiert</button><button type="button" className={representation === 'raw' ? 'is-active' : ''} onClick={() => setRepresentation('raw')}>Rohwert</button></div>}
-        {!history ? <p role="status">Verlauf wird geladen …</p> : history.data.length === 0 ? <p className="vp-measure-empty">Für diesen Zeitraum sind keine Werte gespeichert. Eine frühere Abwahl löscht die Historie nicht.</p> : <><HistoryChart history={history} /><p className="vp-measure-hint">{history.meta.aggregationExplanation}</p><ul className="vp-measure-marker-list">{history.markers.map((m) => <li key={`${m.time}-${m.kind}`}><time>{new Date(m.time).toLocaleString('de-DE')}</time> · {m.label}</li>)}</ul></>}
+        {range === 'free' && <div className="vp-measure-free"><div><VpDatePicker label="Von · Datum" value={freeFrom.split('T')[0]} onChange={(value) => setFreePart('from', 'date', value)} /><VpTimePicker label="Von · Uhrzeit" value={freeFrom.split('T')[1] ?? ''} onChange={(value) => setFreePart('from', 'time', value)} /></div><div><VpDatePicker label="Bis · Datum" value={freeTo.split('T')[0]} onChange={(value) => setFreePart('to', 'date', value)} /><VpTimePicker label="Bis · Uhrzeit" value={freeTo.split('T')[1] ?? ''} onChange={(value) => setFreePart('to', 'time', value)} /></div></div>}
+        {(history?.meta.rawAvailable || representation === 'raw') && <div className="vp-measure-range" aria-label="Wertdarstellung"><button type="button" className={representation === 'decoded' ? 'is-active' : ''} onClick={() => setRepresentation('decoded')}>Dekodiert</button><button type="button" className={representation === 'raw' ? 'is-active' : ''} onClick={() => setRepresentation('raw')}>Rohwert</button></div>}
+        {historyError ? <div className="vp-assist-error" role="alert"><p>{historyError}</p>{representation === 'raw' && <Button size="sm" variant="outline" onClick={() => setRepresentation('decoded')}>Dekodierte Werte laden</Button>}</div> : !history ? <p role="status">Verlauf wird geladen …</p> : history.data.length === 0 ? <p className="vp-measure-empty">Für diesen Zeitraum sind keine Werte gespeichert. Eine frühere Abwahl löscht die Historie nicht.</p> : <><HistoryChart history={history} /><p className="vp-measure-hint">{history.meta.aggregationExplanation}</p><ul className="vp-measure-marker-list">{history.markers.map((m) => <li key={`${m.time}-${m.kind}`}><time>{new Date(m.time).toLocaleString('de-DE')}</time> · {m.label}</li>)}</ul></>}
       </Drawer>
 
       <Drawer open={customOpen} onClose={() => setCustomOpen(false)} title="Eigenen Messwert hinzufügen" footer={<><Button variant="ghost" onClick={checkCustom}>Last und Volumen prüfen</Button><Button onClick={addCustom} disabled={!customEstimate || customEstimate.hardRejected || busy}>Jetzt aufzeichnen</Button></>}>
@@ -408,9 +427,9 @@ export function MeasurementLibrary({ deviceId }: { deviceId: string | null | und
         <div className="vp-measure-custom">
           <Input label="Bezeichnung" value={custom.label} onChange={(e) => { setCustom({ ...custom, label: e.target.value }); setCustomEstimate(null); }} />
           <Input label="Registeradresse (dezimal)" type="number" min="0" max="65535" value={custom.address} onChange={(e) => { setCustom({ ...custom, address: e.target.value }); setCustomEstimate(null); }} />
-          <label>Registerart<select value={custom.sourceKind} onChange={(e) => { setCustom({ ...custom, sourceKind: e.target.value }); setCustomEstimate(null); }}><option value="modbus_holding">Holding Register</option><option value="modbus_input">Input Register</option></select></label>
-          <label>Datentyp<select value={custom.valueType} onChange={(e) => { setCustom({ ...custom, valueType: e.target.value }); setCustomEstimate(null); }}>{['uint16', 'int16', 'uint32', 'int32', 'float32', 'float64'].map((v) => <option key={v}>{v}</option>)}</select></label>
-          <label>Byte-/Wortreihenfolge<select value={custom.endian} onChange={(e) => { setCustom({ ...custom, endian: e.target.value }); setCustomEstimate(null); }}><option value="big">Big Endian</option><option value="word_little_byte_big">Wörter vertauscht, Bytes big endian</option></select></label>
+          <VpPicker label="Registerart" value={custom.sourceKind} options={[{ value: 'modbus_holding', label: 'Holding Register' }, { value: 'modbus_input', label: 'Input Register' }]} onChange={(value) => { setCustom({ ...custom, sourceKind: value }); setCustomEstimate(null); }} />
+          <VpPicker label="Datentyp" value={custom.valueType} options={['uint16', 'int16', 'uint32', 'int32', 'float32', 'float64'].map((value) => ({ value, label: value }))} onChange={(value) => { setCustom({ ...custom, valueType: value }); setCustomEstimate(null); }} />
+          <VpPicker label="Byte-/Wortreihenfolge" value={custom.endian} options={[{ value: 'big', label: 'Big Endian' }, { value: 'word_little_byte_big', label: 'Wörter vertauscht, Bytes big endian' }]} onChange={(value) => { setCustom({ ...custom, endian: value }); setCustomEstimate(null); }} />
           <Input label="Skala" type="number" step="any" value={custom.scale} onChange={(e) => { setCustom({ ...custom, scale: e.target.value }); setCustomEstimate(null); }} />
           <Input label="Einheit" value={custom.unit} onChange={(e) => { setCustom({ ...custom, unit: e.target.value }); setCustomEstimate(null); }} />
           <Input label="Kadenz in Sekunden" type="number" min="1" max="86400" value={custom.cadenceS} onChange={(e) => { setCustom({ ...custom, cadenceS: e.target.value }); setCustomEstimate(null); }} />

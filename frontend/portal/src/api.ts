@@ -940,7 +940,7 @@ export interface MeasurementHistory {
     pointKey: string; label: string; sourceLabel: string | null; unit: string | null;
     aggregationKind: string; semanticStatus: string; catalogVersion: string | null;
     representation: 'raw' | 'decoded'; rawAvailable: boolean; from: string; to: string;
-    bucketSeconds: number; aggregationExplanation: string;
+    bucketSeconds: number; aggregationExplanation: string; siteId: string;
   };
   data: Array<{ time: string; value: number | null; minimum: number | null; maximum: number | null; text: string | null; sampleCount: number; gap: boolean }>;
   markers: Array<{ time: string; kind: string; label: string }>;
@@ -3101,9 +3101,9 @@ export const api = {
     ),
   measurementHistory: (
     deviceId: string, pointKey: string, range: MeasurementRange,
-    representation: 'raw' | 'decoded', from?: string, to?: string,
+    representation: 'raw' | 'decoded', from?: string, to?: string, siteId?: string,
   ) => request<MeasurementHistory>(
-    `/api/v1/devices/${deviceId}/measurement-selection/${encodeURIComponent(pointKey)}/history?range=${range}&representation=${representation}${from ? `&from=${encodeURIComponent(from)}` : ''}${to ? `&to=${encodeURIComponent(to)}` : ''}`,
+    `/api/v1/devices/${deviceId}/measurement-selection/${encodeURIComponent(pointKey)}/history?range=${range}&representation=${representation}${from ? `&from=${encodeURIComponent(from)}` : ''}${to ? `&to=${encodeURIComponent(to)}` : ''}${siteId ? `&siteId=${encodeURIComponent(siteId)}` : ''}`,
   ),
   measurementComparisonOptions: (siteId: string) =>
     request<MeasurementComparisonOption[]>(`/api/v1/sites/${siteId}/measurement-history/options`),

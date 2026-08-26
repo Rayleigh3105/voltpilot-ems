@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { api, type MeasurementCatalogPoint } from '../api';
+import { api, type MeasurementCatalogPoint, type MeasurementHistory } from '../api';
 import { MeasurementLibrary } from './MeasurementLibrary';
 
 const estimate = {
@@ -87,5 +87,64 @@ describe('MeasurementLibrary', () => {
     expect(screen.getByText('Eigenes Register · Eigene Messwerte')).toBeVisible();
     expect(screen.getByText('0x0200')).toBeVisible();
     expect(screen.getByText('Historie vorhanden')).toBeVisible();
+  });
+
+  it('resets raw representation for the next point and always offers decoded recovery', async () => {
+    const a = { ...point, pointKey: 'point.a', recorded: true, lastReadAt: '2026-08-26T00:00:00Z' };
+    const b = { ...point, pointKey: 'point.b', labelDe: 'PV3 Strom', recorded: true,
+      lastReadAt: '2026-08-26T00:00:00Z' };
+    vi.mocked(api.measurementCatalog).mockResolvedValue({
+      catalogVersion: '2026.08.26.1', edgeMinVersion: 'unreleased',
+      customPointActionLabel: 'Eigenen Messwert hinzufügen', total: 2, offset: 0, limit: 100,
+      groups: [{ value: 'PV', count: 2 }], semanticStatuses: [], points: [a, b],
+    });
+    const makeHistory = (pointKey: string, representation: 'raw' | 'decoded'): MeasurementHistory => ({
+      meta: { pointKey, label: pointKey, sourceLabel: pointKey, unit: 'A', aggregationKind: 'gauge',
+        semanticStatus: 'known', catalogVersion: '2026.08.26.1', representation,
+        rawAvailable: pointKey === 'point.a', from: '2026-08-25T00:00:00Z',
+        to: '2026-08-26T00:00:00Z', bucketSeconds: 300, aggregationExplanation: 'Mittelwert', siteId: 's' },
+      data: [], markers: [],
+    });
+    vi.spyOn(api, 'measurementHistory').mockImplementation(async (_device, pointKey, _range, representation) => {
+      if (pointKey === 'point.b' && representation === 'raw') throw new Error('Keine Rohdaten');
+      return makeHistory(pointKey, representation);
+    });
+
+    render(<MeasurementLibrary deviceId="d" />);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Verlauf ansehen' }))[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Rohwert' }));
+    await waitFor(() => expect(api.measurementHistory).toHaveBeenCalledWith(
+      'd', 'point.a', '24h', 'raw', undefined, undefined,
+    ));
+    fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Verlauf ansehen' })[1]);
+    await waitFor(() => expect(api.measurementHistory).toHaveBeenCalledWith(
+      'd', 'point.b', '24h', 'decoded', undefined, undefined,
+    ));
+    expect(screen.queryByText('Keine Rohdaten')).not.toBeInTheDocument();
+  });
+
+  it('offers a decoded recovery action when a raw window is rejected', async () => {
+    const recorded = { ...point, recorded: true, lastReadAt: '2026-08-26T00:00:00Z' };
+    vi.mocked(api.measurementCatalog).mockResolvedValue({
+      catalogVersion: '2026.08.26.1', edgeMinVersion: 'unreleased',
+      customPointActionLabel: 'Eigenen Messwert hinzufügen', total: 1, offset: 0, limit: 100,
+      groups: [], semanticStatuses: [], points: [recorded],
+    });
+    vi.spyOn(api, 'measurementHistory').mockImplementation(async (_device, pointKey, _range, representation) => {
+      if (representation === 'raw') throw new Error('Für diesen Zeitraum sind keine echten Rohdaten vorhanden.');
+      return { meta: { pointKey, label: pointKey, sourceLabel: pointKey, unit: 'A', aggregationKind: 'gauge',
+        semanticStatus: 'known', catalogVersion: '2026.08.26.1', representation: 'decoded',
+        rawAvailable: true, from: '2026-08-25T00:00:00Z', to: '2026-08-26T00:00:00Z',
+        bucketSeconds: 300, aggregationExplanation: 'Mittelwert', siteId: 's' }, data: [], markers: [] };
+    });
+    render(<MeasurementLibrary deviceId="d" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Verlauf ansehen' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Rohwert' }));
+    expect(await screen.findByRole('button', { name: 'Dekodierte Werte laden' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Dekodierte Werte laden' }));
+    await waitFor(() => expect(api.measurementHistory).toHaveBeenLastCalledWith(
+      'd', recorded.pointKey, '24h', 'decoded', undefined, undefined,
+    ));
   });
 });

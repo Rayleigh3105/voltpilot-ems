@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type MeasurementComparisonOption, type MeasurementHistory, type MeasurementRange } from '../api';
 import { useEChart } from '../useEChart';
+import { VpPicker } from './VpPicker';
 import './MeasurementLibrary.css';
 
 function ComparisonChart({ rows }: { rows: Array<{ option: MeasurementComparisonOption; history: MeasurementHistory }> }) {
@@ -38,10 +39,10 @@ export function SiteMeasurementComparison({ siteId }: { siteId: string }) {
   useEffect(() => { api.measurementComparisonOptions(siteId).then(setOptions, () => setError('Zusätzliche Messwerte sind gerade nicht erreichbar.')); }, [siteId]);
   useEffect(() => {
     let active = true;
-    Promise.all(selected.map(async (option) => ({ option, history: await api.measurementHistory(option.deviceId, option.pointKey, range, 'decoded') })))
+    Promise.all(selected.map(async (option) => ({ option, history: await api.measurementHistory(option.deviceId, option.pointKey, range, 'decoded', undefined, undefined, siteId) })))
       .then((result) => active && setSeries(result), () => active && setError('Der Vergleich konnte nicht geladen werden.'));
     return () => { active = false; };
-  }, [selected, range]);
+  }, [selected, range, siteId]);
   const compatibility = selected[0]?.compatibilityKey;
   const visible = useMemo(() => (options ?? []).filter((o) => !compatibility || o.compatibilityKey === compatibility), [options, compatibility]);
   const toggle = (option: MeasurementComparisonOption) => {
@@ -52,7 +53,7 @@ export function SiteMeasurementComparison({ siteId }: { siteId: string }) {
   };
   return (
     <section className="vp-site-measure-compare" aria-labelledby="vp-site-measure-title">
-      <div className="vp-site-measure-head"><div><h3 id="vp-site-measure-title">Zusätzliche Messwerte</h3><p>Bis zu drei semantisch gleiche Punkte. Einheiten erhalten getrennte Achsen.</p></div><label>Zeitraum<select value={range} onChange={(e) => setRange(e.target.value as MeasurementRange)}><option value="24h">24 Stunden</option><option value="7d">7 Tage</option><option value="30d">30 Tage</option><option value="90d">90 Tage</option><option value="year">Jahr</option></select></label></div>
+      <div className="vp-site-measure-head"><div><h3 id="vp-site-measure-title">Zusätzliche Messwerte</h3><p>Bis zu drei semantisch gleiche Punkte. Einheiten erhalten getrennte Achsen.</p></div><VpPicker label="Zeitraum" value={range} options={[['24h', '24 Stunden'], ['7d', '7 Tage'], ['30d', '30 Tage'], ['90d', '90 Tage'], ['year', 'Jahr']].map(([value, label]) => ({ value, label }))} onChange={(value) => setRange(value as MeasurementRange)} /></div>
       {error && <p role="alert" className="vp-assist-error">{error}</p>}
       {!options ? <p role="status">Vergleichspunkte werden geladen …</p> : options.length === 0 ? <p className="vp-measure-empty">Noch keine aufgezeichneten, semantisch bekannten Zusatzmesswerte. Die Bibliothek auf einer Geräteseite startet deren Aufzeichnung.</p> : <>
         <div className="vp-site-measure-options" aria-label="Vergleichspunkte">{visible.map((option) => {

@@ -70,6 +70,13 @@ function shapeShellyStatus(points, status) {
   return status;
 }
 
+function inverterJSONEndpoint(selector, serial) {
+  let endpoint=String(selector||'').split('#')[0];
+  if (!endpoint.includes('{serial}')) return endpoint;
+  if (!serial) throw new Error('keine Seriennummer');
+  return endpoint.replaceAll('{serial}',encodeURIComponent(String(serial)));
+}
+
 async function discoverSunSpec(read) {
   for (const candidate of [40000, 50000, 0]) {
     let sid;
@@ -146,7 +153,7 @@ module.exports = function (RED) {
         const conn = inverter && inverter.connection || {};
         if (!conn.ip) throw new Error('keine Geräteverbindung');
         const source = points[0].source_kind;
-        const endpoint=String(points[0].selector||'').split('#')[0];
+        const endpoint=inverterJSONEndpoint(points[0].selector,conn.serial);
         const path = source === 'http_api_key' ? '/api/status'
           : source === 'rest_json' ? endpoint
           : endpoint.startsWith('Shelly.GetDeviceInfo') ? '/rpc/Shelly.GetDeviceInfo'
@@ -221,3 +228,4 @@ module.exports.request = request;
 module.exports.getJSON = getJSON;
 module.exports.discoverSunSpec = discoverSunSpec;
 module.exports.shapeShellyStatus = shapeShellyStatus;
+module.exports.inverterJSONEndpoint = inverterJSONEndpoint;

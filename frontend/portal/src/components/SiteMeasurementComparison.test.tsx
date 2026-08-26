@@ -16,7 +16,7 @@ const history: MeasurementHistory = {
     aggregationKind: 'gauge', semanticStatus: 'known', catalogVersion: '2026.08.26.1',
     representation: 'decoded', rawAvailable: true, from: '2026-08-25T00:00:00Z',
     to: '2026-08-26T00:00:00Z', bucketSeconds: 300,
-    aggregationExplanation: 'Mittelwert; Minimum und Maximum.',
+    aggregationExplanation: 'Mittelwert; Minimum und Maximum.', siteId: 'site',
   },
   data: [{ time: '2026-08-26T00:00:00Z', value: 42, minimum: 40, maximum: 44, text: null, sampleCount: 3, gap: false }],
   markers: [],
@@ -39,6 +39,9 @@ describe('SiteMeasurementComparison', () => {
     expect(screen.getByRole('button', { name: 'Gerät b · Netzleistung (kW)' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Gerät c · Temperatur (°C)' })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('img', { name: 'Vergleich ausgewählter Messwerte' })).toBeVisible());
+    expect(api.measurementHistory).toHaveBeenCalledWith(
+      'a', 'point.a', '7d', 'decoded', undefined, undefined, 'site',
+    );
     expect(screen.getByText('Bis zu drei semantisch gleiche Punkte. Einheiten erhalten getrennte Achsen.')).toBeVisible();
   });
 });

@@ -7,7 +7,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,7 +26,7 @@ public class MeasurementHistoryService {
     public record Meta(String pointKey, String label, String sourceLabel, String unit,
             String aggregationKind, String semanticStatus, String catalogVersion,
             String representation, boolean rawAvailable, Instant from, Instant to,
-            int bucketSeconds, String aggregationExplanation) {}
+            int bucketSeconds, String aggregationExplanation, UUID siteId) {}
     public record History(Meta meta, List<Datum> data, List<Marker> markers) {}
     public record ComparisonOption(UUID deviceId, String deviceLabel, String pointKey,
             String label, String unit, String aggregationKind, String compatibilityKey,
@@ -42,9 +44,17 @@ public class MeasurementHistoryService {
     }
 
     public History history(UUID deviceId, String pointKey, String range, Instant freeFrom,
-            Instant freeTo, String representation) {
-        if (selections.deviceScope(deviceId) == null) {
+            Instant freeTo, String representation, UUID requestedSiteId) {
+        MeasurementSelectionRepository.DeviceScope scope = selections.deviceScope(deviceId);
+        if (scope == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
+        }
+        UUID siteId = requestedSiteId == null ? scope.siteId() : requestedSiteId;
+        Boolean siteVisible = jdbc.queryForObject(
+                "SELECT EXISTS(SELECT 1 FROM site WHERE tenant_id=? AND id=?)",
+                Boolean.class, scope.tenantId(), siteId);
+        if (!Boolean.TRUE.equals(siteVisible)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
         Point point = catalog.resolve(pointKey);
         if (point == null && selections.recordedPointKeys(deviceId).stream().noneMatch(pointKey::equals)) {
@@ -53,40 +63,24 @@ public class MeasurementHistoryService {
         CustomMeta custom = point == null ? customMeta(deviceId, pointKey) : null;
         Window window = window(range, freeFrom, freeTo);
         String selectedRepresentation = "raw".equals(representation) ? "raw" : "decoded";
-        String numeric = selectedRepresentation.equals("raw") ? "raw_numeric"
-                : "COALESCE(decoded_numeric,raw_numeric)";
-        String text = selectedRepresentation.equals("raw") ? "raw_text"
-                : "COALESCE(decoded_text,raw_text)";
-        String sql = "WITH ordered AS (SELECT time, aggregation_kind, gap, " + numeric
-                + " value_numeric, " + text + " value_text, lag(" + numeric + ") OVER "
-                + "(ORDER BY time,edge_sequence) previous_numeric FROM device_measurement_sample "
-                + "WHERE device_id=? AND point_key=? AND time>=? AND time<=?), bucketed AS ("
-                + "SELECT time_bucket(CAST(? AS interval),time) bucket, aggregation_kind, "
-                + "avg(value_numeric) avg_value,min(value_numeric) min_value,max(value_numeric) max_value,"
-                + "sum(CASE WHEN previous_numeric IS NOT NULL AND value_numeric>=previous_numeric "
-                + "THEN value_numeric-previous_numeric ELSE 0 END) positive_delta,"
-                + "last(value_numeric,time) last_numeric,last(value_text,time) last_text,count(*) samples,"
-                + "bool_or(gap) has_gap FROM ordered GROUP BY 1,2) SELECT *, CASE "
-                + "WHEN aggregation_kind='counter' THEN positive_delta "
-                + "WHEN aggregation_kind='gauge' THEN avg_value ELSE last_numeric END chart_value "
-                + "FROM bucketed ORDER BY bucket LIMIT 2200";
-        List<Datum> data = jdbc.query(sql, (rs, n) -> new Datum(
-                rs.getTimestamp("bucket").toInstant(), nullableDouble(rs, "chart_value"),
-                nullableDouble(rs, "min_value"), nullableDouble(rs, "max_value"),
-                rs.getString("last_text"), rs.getLong("samples"), rs.getBoolean("has_gap")),
-                deviceId, pointKey, Timestamp.from(window.from()), Timestamp.from(window.to()),
-                window.bucket());
+        boolean rollup = selectedRepresentation.equals("decoded")
+                && window.duration().compareTo(Duration.ofDays(2)) > 0;
+        List<Datum> data = rollup
+                ? rollupData(scope, siteId, deviceId, pointKey, window)
+                : rawData(scope, siteId, deviceId, pointKey, window, selectedRepresentation);
         boolean rawAvailable = Boolean.TRUE.equals(jdbc.queryForObject(
-                "SELECT EXISTS(SELECT 1 FROM device_measurement_sample WHERE device_id=? "
-                        + "AND point_key=? AND time>=? AND time<=? AND "
+                "SELECT EXISTS(SELECT 1 FROM device_measurement_sample WHERE tenant_id=? "
+                        + "AND site_id=? AND device_id=? AND point_key=? AND quality='good' "
+                        + "AND time>=? AND time<=? AND "
                         + "(raw_numeric IS NOT NULL OR raw_text IS NOT NULL))",
-                Boolean.class, deviceId, pointKey, Timestamp.from(window.from()),
+                Boolean.class, scope.tenantId(), siteId, deviceId, pointKey,
+                Timestamp.from(window.from()),
                 Timestamp.from(window.to())));
         if (selectedRepresentation.equals("raw") && !rawAvailable) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Für diesen Zeitraum sind keine echten Rohdaten vorhanden.");
         }
-        List<Marker> markers = markers(deviceId, pointKey, window);
+        List<Marker> markers = markers(scope, siteId, deviceId, point, pointKey, window);
         String aggregation = point == null ? custom == null ? "unknown" : "gauge"
                 : point.aggregationKind();
         String explanation = switch (aggregation) {
@@ -101,8 +95,63 @@ public class MeasurementHistoryService {
                 aggregation, point == null ? "unknown" : point.semanticStatus(),
                 point == null ? custom == null ? null : custom.catalogVersion() : catalog.version(),
                 selectedRepresentation, rawAvailable,
-                window.from(), window.to(), window.bucketSeconds(), explanation);
+                window.from(), window.to(), window.bucketSeconds(), explanation, siteId);
         return new History(meta, data, markers);
+    }
+
+    public History history(UUID deviceId, String pointKey, String range, Instant freeFrom,
+            Instant freeTo, String representation) {
+        return history(deviceId, pointKey, range, freeFrom, freeTo, representation, null);
+    }
+
+    private List<Datum> rawData(MeasurementSelectionRepository.DeviceScope scope, UUID siteId,
+            UUID deviceId, String pointKey, Window window, String representation) {
+        String numeric = representation.equals("raw") ? "raw_numeric"
+                : "COALESCE(decoded_numeric,raw_numeric)";
+        String text = representation.equals("raw") ? "raw_text"
+                : "COALESCE(decoded_text,raw_text)";
+        String sql = "WITH ordered AS (SELECT time,aggregation_kind,gap," + numeric
+                + " value_numeric," + text + " value_text,lag(" + numeric + ") OVER "
+                + "(PARTITION BY tenant_id,site_id,device_id,point_key ORDER BY time,edge_sequence) "
+                + "previous_numeric FROM device_measurement_sample WHERE tenant_id=? AND site_id=? "
+                + "AND device_id=? AND point_key=? AND quality='good' AND time>=? AND time<=?),"
+                + "bucketed AS (SELECT time_bucket(CAST(? AS interval),time) bucket,aggregation_kind,"
+                + "avg(value_numeric) avg_value,min(value_numeric) min_value,max(value_numeric) max_value,"
+                + "sum(CASE WHEN previous_numeric IS NOT NULL AND value_numeric>=previous_numeric "
+                + "THEN value_numeric-previous_numeric ELSE 0 END) positive_delta,"
+                + "last(value_numeric,time) last_numeric,last(value_text,time) last_text,count(*) samples,"
+                + "bool_or(gap) has_gap FROM ordered GROUP BY 1,2) SELECT *,CASE "
+                + "WHEN aggregation_kind='counter' THEN positive_delta "
+                + "WHEN aggregation_kind='gauge' THEN avg_value ELSE last_numeric END chart_value "
+                + "FROM bucketed ORDER BY bucket LIMIT 2200";
+        return jdbc.query(sql, MeasurementHistoryService::mapDatum,
+                scope.tenantId(), siteId, deviceId, pointKey, Timestamp.from(window.from()),
+                Timestamp.from(window.to()), window.bucket());
+    }
+
+    private List<Datum> rollupData(MeasurementSelectionRepository.DeviceScope scope, UUID siteId,
+            UUID deviceId, String pointKey, Window window) {
+        String table = window.duration().compareTo(Duration.ofDays(31)) <= 0
+                ? "device_measurement_rollup_5m" : "device_measurement_rollup_15m";
+        String sql = "WITH bucketed AS (SELECT time_bucket(CAST(? AS interval),bucket) chart_bucket,"
+                + "aggregation_kind,sum(avg_numeric*sample_count)/NULLIF(sum(sample_count),0) avg_value,"
+                + "min(min_numeric) min_value,max(max_numeric) max_value,sum(positive_delta) positive_delta,"
+                + "last(last_numeric,bucket) last_numeric,last(last_text,bucket) last_text,"
+                + "sum(sample_count) samples,false has_gap FROM " + table
+                + " WHERE tenant_id=? AND site_id=? AND device_id=? AND point_key=? "
+                + "AND bucket>=? AND bucket<=? GROUP BY 1,2) SELECT chart_bucket bucket,*,CASE "
+                + "WHEN aggregation_kind='counter' THEN positive_delta "
+                + "WHEN aggregation_kind='gauge' THEN avg_value ELSE last_numeric END chart_value "
+                + "FROM bucketed ORDER BY chart_bucket LIMIT 2200";
+        return jdbc.query(sql, MeasurementHistoryService::mapDatum, window.bucket(),
+                scope.tenantId(), siteId, deviceId, pointKey, Timestamp.from(window.from()),
+                Timestamp.from(window.to()));
+    }
+
+    private static Datum mapDatum(java.sql.ResultSet rs, int ignored) throws java.sql.SQLException {
+        return new Datum(rs.getTimestamp("bucket").toInstant(), nullableDouble(rs, "chart_value"),
+                nullableDouble(rs, "min_value"), nullableDouble(rs, "max_value"),
+                rs.getString("last_text"), rs.getLong("samples"), rs.getBoolean("has_gap"));
     }
 
     public byte[] csv(History history) {
@@ -116,6 +165,7 @@ public class MeasurementHistoryService {
                 .append("# semantic_status=").append(csv(m.semanticStatus())).append('\n')
                 .append("# catalog_version=").append(csv(m.catalogVersion())).append('\n')
                 .append("# representation=").append(csv(m.representation())).append('\n')
+                .append("# site_id=").append(csv(m.siteId().toString())).append('\n')
                 .append("time,value,min,max,text,sample_count,gap\n");
         for (Datum d : history.data()) {
             out.append(d.time()).append(',').append(value(d.value())).append(',')
@@ -135,9 +185,9 @@ public class MeasurementHistoryService {
         }
         record Seen(UUID deviceId, String deviceLabel, String pointKey, Instant lastReadAt) {}
         List<Seen> seen = jdbc.query("SELECT d.id device_id, COALESCE(d.name,d.external_ref) device_label,"
-                        + "s.point_key,max(s.time) last_read FROM device_measurement_sample s "
-                        + "JOIN device d ON d.id=s.device_id WHERE s.site_id=? GROUP BY d.id,2,s.point_key "
-                        + "ORDER BY last_read DESC LIMIT 200",
+                        + "s.point_key,s.last_read_at last_read FROM device_measurement_point_state s "
+                        + "JOIN device d ON d.id=s.device_id WHERE s.site_id=? "
+                        + "ORDER BY s.last_read_at DESC LIMIT 200",
                 (rs, n) -> new Seen(rs.getObject("device_id", UUID.class),
                         rs.getString("device_label"), rs.getString("point_key"),
                         rs.getTimestamp("last_read").toInstant()), siteId);
@@ -157,33 +207,73 @@ public class MeasurementHistoryService {
         return List.copyOf(result);
     }
 
-    private List<Marker> markers(UUID deviceId, String pointKey, Window w) {
+    private List<Marker> markers(MeasurementSelectionRepository.DeviceScope scope, UUID siteId,
+            UUID deviceId, Point point, String pointKey, Window w) {
         List<Marker> result = new ArrayList<>();
         result.addAll(jdbc.query("SELECT requested_at marker_time,event_kind,requested_enabled,apply_status "
-                        + "FROM device_measurement_selection_event WHERE device_id=? AND point_key=? "
+                        + "FROM device_measurement_selection_event WHERE tenant_id=? AND site_id=? "
+                        + "AND device_id=? AND point_key=? "
                         + "AND requested_at>=? AND requested_at<=? ORDER BY requested_at",
                 (rs, n) -> new Marker(rs.getTimestamp("marker_time").toInstant(),
                         rs.getString("event_kind"), selectionLabel(rs.getString("event_kind"),
                                 rs.getBoolean("requested_enabled"), rs.getString("apply_status"))),
-                deviceId, pointKey, Timestamp.from(w.from()), Timestamp.from(w.to())));
-        result.addAll(jdbc.query("SELECT occurred_at marker_time,event_kind FROM device_measurement_event "
-                        + "WHERE device_id=? AND point_key=? AND occurred_at>=? AND occurred_at<=? "
-                        + "AND event_kind IN ('data_gap','counter_reset') ORDER BY occurred_at",
-                (rs, n) -> new Marker(rs.getTimestamp("marker_time").toInstant(),
-                        rs.getString("event_kind"), "data_gap".equals(rs.getString("event_kind"))
-                                ? "Datenlücke" : "Zählerneustart"), deviceId, pointKey,
+                scope.tenantId(), siteId, deviceId, pointKey,
                 Timestamp.from(w.from()), Timestamp.from(w.to())));
+        result.addAll(jdbc.query("SELECT occurred_at marker_time,event_kind,previous_numeric,"
+                        + "value_numeric,previous_text,value_text FROM device_measurement_event "
+                        + "WHERE tenant_id=? AND site_id=? AND device_id=? "
+                        + "AND point_key IN (?,'_pipeline') AND occurred_at>=? AND occurred_at<=? "
+                        + "AND event_kind IN ('data_gap','counter_reset','state_change','error_change',"
+                        + "'bitfield_change','text_change') ORDER BY occurred_at",
+                (rs, n) -> new Marker(rs.getTimestamp("marker_time").toInstant(),
+                        rs.getString("event_kind"), eventLabel(rs)), scope.tenantId(), siteId,
+                deviceId, pointKey, Timestamp.from(w.from()), Timestamp.from(w.to())));
+        Set<String> families = componentFamilies(point);
         result.addAll(jdbc.query("SELECT effective_at marker_time,event_type,from_value,to_value "
-                        + "FROM component_change_event WHERE site_id=(SELECT site_id FROM device WHERE id=?) "
+                        + "FROM component_change_event e JOIN measurement_point mp ON mp.id=e.entity_id "
+                        + "WHERE e.tenant_id=? AND e.site_id=? AND mp.device_id=? "
                         + "AND event_type='family_changed' AND effective_at>=? AND effective_at<=? "
                         + "ORDER BY effective_at",
-                (rs, n) -> new Marker(rs.getTimestamp("marker_time").toInstant(),
-                        rs.getString("event_type"), "Anbindungsfamilie gewechselt: "
-                                + display(rs.getString("from_value")) + " → "
-                                + display(rs.getString("to_value"))),
-                deviceId, Timestamp.from(w.from()), Timestamp.from(w.to())));
+                (rs, n) -> families.isEmpty() || families.contains(rs.getString("from_value"))
+                                || families.contains(rs.getString("to_value"))
+                        ? new Marker(rs.getTimestamp("marker_time").toInstant(),
+                                rs.getString("event_type"), "Anbindungsfamilie gewechselt: "
+                                        + display(rs.getString("from_value")) + " → "
+                                        + display(rs.getString("to_value"))) : null,
+                scope.tenantId(), siteId, deviceId, Timestamp.from(w.from()),
+                Timestamp.from(w.to())).stream().filter(java.util.Objects::nonNull).toList());
         result.sort(java.util.Comparator.comparing(Marker::time));
         return List.copyOf(result);
+    }
+
+    private static Set<String> componentFamilies(Point point) {
+        if (point == null || point.family() == null) return Set.of();
+        Set<String> out = new LinkedHashSet<>();
+        out.add(point.family());
+        if (point.family().startsWith("sunspec.model_")) {
+            out.add("sunspec"); out.add("sunspec_live"); out.add("fronius_sunspec");
+        }
+        return Set.copyOf(out);
+    }
+
+    private static String eventLabel(java.sql.ResultSet rs) throws java.sql.SQLException {
+        String kind = rs.getString("event_kind");
+        if ("data_gap".equals(kind)) return "Datenlücke";
+        if ("counter_reset".equals(kind)) return "Zählerneustart";
+        String before = display(rs.getString("previous_text"));
+        String after = display(rs.getString("value_text"));
+        if (rs.getString("previous_text") == null && rs.getObject("previous_numeric") != null) {
+            before = rs.getString("previous_numeric");
+        }
+        if (rs.getString("value_text") == null && rs.getObject("value_numeric") != null) {
+            after = rs.getString("value_numeric");
+        }
+        return switch (kind) {
+            case "error_change" -> "Qualität/Fehler: " + before + " → " + after;
+            case "bitfield_change" -> "Bitfeld: " + before + " → " + after;
+            case "text_change" -> "Text: " + before + " → " + after;
+            default -> "Zustand: " + before + " → " + after;
+        };
     }
 
     private CustomMeta customMeta(UUID deviceId, String pointKey) {
@@ -227,10 +317,11 @@ public class MeasurementHistoryService {
                 : duration.compareTo(Duration.ofDays(31)) <= 0 ? 900
                 : duration.compareTo(Duration.ofDays(100)) <= 0 ? 3600 : 21600;
         return new Window(from.truncatedTo(ChronoUnit.SECONDS), to.truncatedTo(ChronoUnit.SECONDS),
-                bucketSeconds + " seconds", bucketSeconds);
+                bucketSeconds + " seconds", bucketSeconds, duration);
     }
 
-    private record Window(Instant from, Instant to, String bucket, int bucketSeconds) {}
+    private record Window(Instant from, Instant to, String bucket, int bucketSeconds,
+            Duration duration) {}
     private record CustomMeta(String label, String unit, String catalogVersion) {}
 
     private static Double nullableDouble(java.sql.ResultSet rs, String name)
@@ -241,6 +332,7 @@ public class MeasurementHistoryService {
     private static String value(Double value) { return value == null ? "" : value.toString(); }
     private static String csv(String value) {
         if (value == null) return "";
+        if (!value.isEmpty() && "=+-@\t\r".indexOf(value.charAt(0)) >= 0) value = "'" + value;
         return '"' + value.replace("\"", "\"\"") + '"';
     }
 }
