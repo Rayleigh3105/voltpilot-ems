@@ -22,15 +22,97 @@
  * one truth would otherwise be a silent way for a firmware-specific bench result
  * to bless a sequence nobody measured.
  *
- * It never performs I/O. Production deliberately passes the exported, EMPTY
- * CERTIFIED_NATIVE_CAPABILITIES catalog until a model+firmware has completed the
- * bench gate, so on every device shipped today the mode simply never engages.
+ * It never performs I/O. Production passes the exported
+ * CERTIFIED_NATIVE_CAPABILITIES catalog; a model+firmware that is not in it can
+ * never hand a battery over, so the mode simply never engages there.
  */
-const CERTIFIED_NATIVE_CAPABILITIES = Object.freeze([]);
 
 /**
- * SIMULATOR_NATIVE_CAPABILITIES is the ONE non-empty catalog in this repo, and it
- * is deliberately not part of the production one.
+ * DEYE_REMOTE_PR978_FIRMWARE - the firmware CONDITION the Deye pilot certificate
+ * is keyed on, and it is deliberately NOT an operator-typed string.
+ *
+ * ⚠ ON THIS FAMILY THE ONLY TRUSTWORTHY STATEMENT ABOUT THE FIRMWARE IS THE ONE
+ * THE DEVICE MADE. `inverter-control-routing.js classifyDeyeCapability` reads the
+ * "Customized register" block 1100..1121 (Deye MODBUS protocol V105.1+) and
+ * classifies the PR #978 register layout - mode selector 1104, strategy 1105,
+ * SIGNED power setpoint 1109 - as `layout: 'pr978', supported: true`; the sticky
+ * per-device decision (`deyeUpdateSticky`) holds that verdict across restarts.
+ * That verdict IS this key. Two consequences that are the whole point:
+ *   - a Deye whose firmware carries no remote block, or the older v105_1 layout
+ *     (AC-side setpoint 1111), never produces this key and therefore never
+ *     matches - it keeps the proven 10-second follower;
+ *   - a firmware UPDATE that removes the block (it has happened in the field,
+ *     photovoltaikforum 247695) stops matching BY ITSELF, with nobody editing a
+ *     catalog.
+ */
+const DEYE_REMOTE_PR978_FIRMWARE = 'remote-pr978';
+
+const CERTIFIED_NATIVE_CAPABILITIES = Object.freeze([
+  /**
+   * THE PILOT (captain decision 2026-08-26: "kein separater Prüfstand - der
+   * Deye-Pilot IST der Prüfstand").
+   *
+   * WHAT THIS ENTRY IS BOUND TO, and it is as narrow as the detection allows:
+   *   brand    'deye'
+   *   model    'sun-30k-sg01hp3' - the CATALOG MODEL ID the core publishes on
+   *            edge/inverter/config (inverter.go deyeModels(): label
+   *            "SUN-30K-SG01HP3-EU", family hybrid_3p, 30 kW). NOT the family:
+   *            every other SG01HP3/SG04LP3 size keeps the follower until its own
+   *            entry exists.
+   *   firmware the PROBED PR-978 remote layout (see above), never a typed string.
+   *
+   * THE EVIDENCE this release stands on is in-repo and read-only:
+   *   - the live capability probe of the owner's SUN-30K-SG01HP3-EU (2026-07-27,
+   *     logger 192.168.254.210:8899, serial 1127365518, slave 1): FC03 of
+   *     0x044C..0x0461 answered 1100=0x0000, 1101=0xFFFF, 1104=0x0000,
+   *     1105=0x0002, 1121=0x0000 -> the PR #978 layout (DEYE_REMOTE_REG header
+   *     in inverter-control-routing.js, edge-app/AGENTS.md "Deye REMOTE MODE");
+   *   - that same device is the First-Light-certified pilot driving the plan on
+   *     the REMOTE path today, so the hand-over register 1100 is one VoltPilot
+   *     already writes every tick on exactly this inverter.
+   *
+   * WHAT IT DOES NOT RELEASE: the supervision. guards/nativemode.go keeps taking
+   * the battery back at the reserve floor, on a threatened billing peak, on a
+   * lost measurement or readback, at the end of the slot, on plant rest and when
+   * the mode is never confirmed. And the adapter still refuses at RUNTIME when
+   * the device's own Time-of-Use configuration cannot cover the house - see
+   * `deyeNativePrecondition` in inverter-control-routing.js.
+   */
+  Object.freeze({
+    brand: 'deye', model: 'sun-30k-sg01hp3', firmware: DEYE_REMOTE_PR978_FIRMWARE,
+    capability: 'native_charge_block_discharge_auto',
+    certified: true, readback: true, watchdog: true,
+    // The interlock below is lifted PER ENTRY and only together with the record
+    // that names what was measured - never by deleting the branch.
+    interlockLifted: 'deye',
+    // Disabling remote mode IS the hand-over: the inverter then runs its OWN
+    // configuration (Work Mode + Time-of-Use), which is its self-consumption
+    // loop. It touches no installer setting, so there is nothing to restore.
+    // These bytes MUST equal what nativeSelfConsumption plans for this tier -
+    // `certificateMatchesPlan` refuses when they drift apart.
+    chargeBlockWrites: [{ addr: 0x044c, value: 0 }],
+    readbackChecks: [{ addr: 0x044c, expect: 0 }],
+    // ⚠ THE RETURN IS THE ORDINARY REMOTE PLAN, not a second copy of it. The full
+    // take-back sequence (1101 watchdog FIRST, 1104, 1105, 1109, 1100 LAST) is
+    // owned by deyeRemoteControl/controlRelease; writing it out here would be a
+    // second source of truth for an order that is already load-bearing there. So
+    // the certificate names the DECISIVE register of the transition - the enable
+    // that ends the native mode - and its proof.
+    releaseWrites: [{ addr: 0x044c, value: 1 }],
+    releaseReadbackChecks: [{ addr: 0x044c, expect: 1 }],
+    // The device's own dead-man's switch (1101). On this path "stop writing" IS
+    // the failsafe: the inverter leaves remote mode by itself with nothing
+    // changed - which is also why the native mode costs no watchdog of ours.
+    watchdogSpec: { timeoutS: 60, note: 'geräteeigener Totmann 1101 (DEYE_REMOTE_WATCHDOG_DEFAULT_S)' },
+    benchRecord: 'Pilot-Freigabe 2026-08-26 (Captain-Entscheid "der Pilot ist der Prüfstand"): '
+      + 'Live-Sonde 2026-07-27 SUN-30K-SG01HP3-EU, PR-978-Remote-Layout; '
+      + 'Beobachtungs-Checkliste in edge-app/nodered/UNPLANNED-LOAD-BENCH.md',
+  }),
+]);
+
+/**
+ * SIMULATOR_NATIVE_CAPABILITIES is deliberately NOT part of the production
+ * catalog, and it never becomes one.
  *
  * ⚠ IT CERTIFIES A PIECE OF SOFTWARE, NEVER A DEVICE. The entry names the
  * generic SunSpec/`modbus_tcp` profile, which is not real SunSpec at all: it is
@@ -67,15 +149,20 @@ const SIMULATOR_NATIVE_CAPABILITIES = Object.freeze([
  * not record BOTH transitions' bytes and readbacks did not answer criterion 1,
  * so it cannot release anything.
  *
- * ⚠ THE DEYE INTERLOCK. Deye stays refused even if a broad catalog entry is
- * supplied by accident - its remote/ToU write path is not evidence that the
- * firmware holds charge off while autonomous discharge, reserve enforcement,
- * export prevention and the watchdog all stay correct. Since 2026-08-26 the
- * interlock is LIFTABLE, but only by an explicit, per-entry mechanism, never by
- * deleting this branch: the certificate must carry `interlockLifted: 'deye'`
- * AND a non-empty `benchRecord` naming the session that measured it. That way a
- * future release lifts it TOGETHER WITH its committed evidence, and a wildcard
- * entry can still never do it silently.
+ * ⚠ THE DEYE INTERLOCK STANDS - it is LIFTED PER ENTRY, never deleted. Deye is
+ * refused even by a COMPLETE catalog entry unless that entry carries BOTH
+ * `interlockLifted: 'deye'` AND a non-empty `benchRecord` naming the evidence.
+ * The reason it exists is unchanged: a Deye remote/ToU write path is not by
+ * itself evidence that the firmware holds charge off while autonomous discharge,
+ * reserve enforcement, export prevention and the watchdog all stay correct.
+ *
+ * Since 2026-08-26 EXACTLY ONE entry carries the lift - the pilot
+ * (deye / sun-30k-sg01hp3 / the probed PR-978 remote layout), on the captain's
+ * decision "kein separater Prüfstand - der Deye-Pilot IST der Prüfstand". Every
+ * other Deye model, and the same model on a firmware without the remote block,
+ * still hits this branch and keeps the proven 10-second follower. A wildcard or
+ * accidentally broad entry can still never lift it silently, because the lift is
+ * a property of the ENTRY, not of the manufacturer.
  */
 function exactCapability(selection, catalog = CERTIFIED_NATIVE_CAPABILITIES) {
   if (!selection || !selection.brand || !selection.model || !selection.firmware) return null;
@@ -148,6 +235,7 @@ function nativeWritePlan(request, catalog = CERTIFIED_NATIVE_CAPABILITIES) {
 }
 
 module.exports = {
+  DEYE_REMOTE_PR978_FIRMWARE,
   CERTIFIED_NATIVE_CAPABILITIES,
   SIMULATOR_NATIVE_CAPABILITIES,
   exactCapability,

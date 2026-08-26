@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  DEYE_REMOTE_PR978_FIRMWARE,
   CERTIFIED_NATIVE_CAPABILITIES, SIMULATOR_NATIVE_CAPABILITIES,
   exactCapability, certificateMatchesPlan, nativeWritePlan,
 } = require('./unplanned-load-native');
@@ -19,8 +20,16 @@ const safe = {
   selection: { brand: 'Example', model: 'Lab-1', firmware: '1.2.3' },
 };
 
-test('production catalog contains no native writes until bench evidence exists', () => {
-  assert.deepEqual(CERTIFIED_NATIVE_CAPABILITIES, []);
+test('production releases the pilot and NOTHING else', () => {
+  // Since 2026-08-26 the catalog is no longer empty - it carries EXACTLY the
+  // pilot, and this test is what keeps "exactly" true: a second entry, or a
+  // broader key on this one, has to be a deliberate edit here.
+  assert.equal(CERTIFIED_NATIVE_CAPABILITIES.length, 1);
+  const pilot = CERTIFIED_NATIVE_CAPABILITIES[0];
+  assert.deepEqual(
+    { brand: pilot.brand, model: pilot.model, firmware: pilot.firmware },
+    { brand: 'deye', model: 'sun-30k-sg01hp3', firmware: DEYE_REMOTE_PR978_FIRMWARE });
+  // Any other device is still on the proven follower.
   assert.deepEqual(nativeWritePlan(safe), {
     path: 'idle_follow', writes: [], readback: [], reason: 'native_not_certified',
   });
@@ -126,7 +135,58 @@ test('the simulator catalog certifies SOFTWARE and can match nothing else', () =
   assert.equal(e.simulatorOnly, true);
   assert.equal(e.brand, 'generic_modbus');
   assert.equal(e.model, 'sunspec-sim');
-  // It is NOT in the production catalog - that is what keeps every real device
-  // on the follower until a bench session says otherwise.
-  assert.deepEqual(CERTIFIED_NATIVE_CAPABILITIES, []);
+  // It is NOT in the production catalog - a piece of software must never be able
+  // to release a customer's inverter.
+  assert.ok(!CERTIFIED_NATIVE_CAPABILITIES.some((c) => c.simulatorOnly === true));
+  assert.ok(!CERTIFIED_NATIVE_CAPABILITIES.some((c) => c.brand === e.brand && c.model === e.model));
+});
+
+// --- THE PILOT RELEASE (2026-08-26) ------------------------------------------
+//
+// The captain's decision was "kein separater Prüfstand - der Deye-Pilot IST der
+// Prüfstand". These tests pin what that release is BOUND to, because the whole
+// safety argument of the catalog is that the binding is narrow.
+
+const PILOT_KEY = { brand: 'deye', model: 'sun-30k-sg01hp3', firmware: DEYE_REMOTE_PR978_FIRMWARE };
+
+test('the pilot matches on its exact model AND the probed firmware, nothing wider', () => {
+  assert.ok(exactCapability(PILOT_KEY), 'the pilot itself resolves');
+
+  // A SISTER MODEL of the same family is not released - the register map is
+  // shared, the bench result is not.
+  for (const model of ['sun-50k-sg01hp3', 'sun-29.9k-sg01hp3', 'sun-12k-sg04lp3']) {
+    assert.equal(exactCapability({ ...PILOT_KEY, model }), null, model);
+  }
+  // The same device on a firmware WITHOUT the PR-978 remote block: the adapter
+  // never produces this key, and an operator-typed string can never stand in
+  // for it.
+  for (const firmware of ['', undefined, 'V105.1', 'remote-v105_1', 'sim']) {
+    assert.equal(exactCapability({ ...PILOT_KEY, firmware }), null, String(firmware));
+  }
+  // And it is a Deye, so the interlock still applies to it - it only passes
+  // because ITS OWN entry carries both halves of the lift.
+  const pilot = CERTIFIED_NATIVE_CAPABILITIES[0];
+  assert.equal(pilot.interlockLifted, 'deye');
+  assert.ok(typeof pilot.benchRecord === 'string' && pilot.benchRecord !== '');
+  assert.equal(exactCapability(PILOT_KEY, [{ ...pilot, interlockLifted: undefined }]), null);
+  assert.equal(exactCapability(PILOT_KEY, [{ ...pilot, benchRecord: '' }]), null);
+});
+
+test('the pilot certificate describes the hand-over the adapter really plans', () => {
+  // The Deye hand-over is a SINGLE write: disabling remote mode (1100 <- 0), with
+  // the same register read back as the proof. If the adapter ever plans something
+  // else, certificateMatchesPlan refuses - this pins the bytes the release stands
+  // on so that refusal cannot be silently "fixed" by editing the certificate.
+  const pilot = CERTIFIED_NATIVE_CAPABILITIES[0];
+  assert.deepEqual(pilot.chargeBlockWrites, [{ addr: 0x044c, value: 0 }]);
+  assert.deepEqual(pilot.readbackChecks, [{ addr: 0x044c, expect: 0 }]);
+  assert.equal(certificateMatchesPlan(pilot,
+    [{ addr: 0x044c, value: 0 }], [{ addr: 0x044c, expect: 0 }]), true);
+  // The take-back is the ORDINARY remote plan; the certificate names its decisive
+  // register (the enable that ends the native mode), never a second copy of the
+  // full ordered sequence.
+  assert.deepEqual(pilot.releaseWrites, [{ addr: 0x044c, value: 1 }]);
+  assert.deepEqual(pilot.releaseReadbackChecks, [{ addr: 0x044c, expect: 1 }]);
+  // The dead-man is the DEVICE's own (1101) - "stop writing" is the failsafe here.
+  assert.equal(pilot.watchdogSpec.timeoutS, 60);
 });

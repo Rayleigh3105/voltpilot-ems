@@ -2232,3 +2232,206 @@ test('nativ: eine Freigabe, die den Schreibplan nicht mehr beschreibt, wird verw
   assert.deepStrictEqual(r.writes, []);
   assert.match(r.reason, /stimmen nicht ueberein|Freigabe erneuern/);
 });
+
+const NATIVE = require('./unplanned-load-native');
+
+// --- THE PILOT RELEASE (2026-08-26) ------------------------------------------
+//
+// Captain decision: "kein separater Pruefstand - der Deye-Pilot IST der
+// Pruefstand". The certificate is released for exactly ONE (brand, model,
+// probed firmware) triple; everything below pins how narrow that is and what
+// still refuses at RUNTIME even with the certificate in hand.
+
+// The pilot as the core publishes it on edge/inverter/config: `model` is the
+// CATALOG MODEL ID (inverter.go deyeModels(), label "SUN-30K-SG01HP3-EU"), and
+// there is deliberately NO connection.firmware - on this family the firmware
+// key is the DEVICE's own answer to the capability probe.
+const PILOT_SEL = {
+  schema_version: '1.0', brand: 'deye', model: 'sun-30k-sg01hp3', family: 'hybrid_3p',
+  communication: 'solarman_v5',
+  connection: { ip: '192.168.254.210', port: 8899, serial: '1127365518', mb_slave_id: 1 },
+};
+// The device's own Time-of-Use configuration, read via the adapter's
+// `preconditions` before the hand-over: armed, target SoC at/below the reserve
+// floor, grid charging disabled.
+const PILOT_OWN_CFG = { tou_enable: 0x00ff, program_target_soc: 15, program_charge_enable: 0 };
+const pilotOpts = (over = {}) => ({
+  controlEnabled: true, deviceCertified: true, deye: OWNER_CAP,
+  effectiveFloorSocPct: 20, deyeOwnConfig: PILOT_OWN_CFG, ...over,
+});
+
+test('Pilot-Freigabe: der Deye des Piloten gibt die Fernsteuerung wirklich ab', () => {
+  const r = C.nativeSelfConsumption(PILOT_SEL, pilotOpts());
+  assert.strictEqual(r.supported, true);
+  // ONE write: disabling remote mode IS the hand-over.
+  assert.deepStrictEqual(r.writes.map((w) => [w.addr, w.value]), [[0x044c, 0]]);
+  assert.deepStrictEqual(r.readbacks.map((b) => [b.addr, b.expect]), [[0x044c, 0]]);
+  // The certificate is keyed on the PROBED firmware, not a typed string.
+  assert.strictEqual(r.certificate.brand, 'deye');
+  assert.strictEqual(r.certificate.model, 'sun-30k-sg01hp3');
+  assert.strictEqual(r.certificate.firmware, NATIVE.DEYE_REMOTE_PR978_FIRMWARE);
+  assert.strictEqual(r.certificate.simulator_only, false);
+  assert.notStrictEqual(r.certificate.bench_record, '');
+  // The EEG proof register and the 1121 observation are unchanged.
+  assert.strictEqual(r.gridChargeProof.addr, 0x00ac);
+  assert.deepStrictEqual(r.observations.map((o) => o.addr), [0x0461]);
+  // And it NAMES what an executor has to read before letting go.
+  assert.deepStrictEqual(r.preconditions.map((p) => [p.role, p.addr]),
+    [['tou_enable', 0x0092], ['program_target_soc', 0x00a6], ['grid_charge_enable', 0x00ac]]);
+});
+
+test('Pilot-Freigabe: sie gilt NUR diesem Modell und NUR mit der gesondeten Firmware', () => {
+  // A sister model of the same family: same register map, but the bench result
+  // belongs to one product.
+  const sister = { ...PILOT_SEL, model: 'sun-50k-sg01hp3' };
+  const s = C.nativeSelfConsumption(sister, pilotOpts());
+  assert.deepStrictEqual(s.writes, []);
+  assert.match(s.reason, /Pruefstand|Prüfstand/);
+
+  // A legacy selection without a model id can never match an exact certificate.
+  const noModel = { ...PILOT_SEL, model: undefined };
+  assert.deepStrictEqual(C.nativeSelfConsumption(noModel, pilotOpts()).writes, []);
+
+  // The SAME model whose firmware carries no remote block at all: the adapter
+  // has no primitive there and says so - never a native write.
+  const touOnly = C.nativeSelfConsumption(PILOT_SEL, pilotOpts({ deye: TOU_CAP }));
+  assert.strictEqual(touOnly.supported, false);
+  assert.deepStrictEqual(touOnly.writes, []);
+  assert.match(touOnly.reason, /10-Sekunden-Nachf/);
+
+  // And the OLDER v105_1 register layout (AC-side setpoint 1111) is present but
+  // not what the adapter writes - so it never produces the firmware key either.
+  const v105 = C.classifyDeyeCapability({
+    deviceType: 0x0008,
+    remoteBlock: (() => {
+      const b = new Array(22).fill(0);
+      b[1101 - 1100] = 0xffff; b[1106 - 1100] = 1; b[1111 - 1100] = 200;
+      b[1104 - 1100] = 9; // out of the pr978 range, so only the v105_1 shape fits
+      return b;
+    })(),
+  });
+  assert.strictEqual(v105.layout, 'v105_1');
+  const old = C.nativeSelfConsumption(PILOT_SEL, pilotOpts({ deye: v105 }));
+  assert.strictEqual(old.supported, false);
+  assert.deepStrictEqual(old.writes, []);
+
+  // An operator-typed firmware string cannot stand in for the probe...
+  const typed = { ...PILOT_SEL,
+    connection: { ...PILOT_SEL.connection, firmware: NATIVE.DEYE_REMOTE_PR978_FIRMWARE } };
+  assert.deepStrictEqual(C.nativeSelfConsumption(typed, pilotOpts({ deye: TOU_CAP })).writes, []);
+  // ...and it cannot BLOCK it either: a leftover string in the stored connection
+  // (an old config, a hand-edited file) is not evidence, so the PROBE wins and
+  // the pilot still resolves. Without that precedence a stale field would have
+  // silently kept a released device on the follower.
+  const stale = { ...PILOT_SEL, connection: { ...PILOT_SEL.connection, firmware: 'V1' } };
+  const r = C.nativeSelfConsumption(stale, pilotOpts());
+  assert.deepStrictEqual(r.writes.map((w) => [w.addr, w.value]), [[0x044c, 0]]);
+  assert.strictEqual(r.certificate.firmware, NATIVE.DEYE_REMOTE_PR978_FIRMWARE);
+});
+
+test('Pilot-Freigabe: eine REMOTE-Entscheidung mit fremder Registerlage gibt nichts frei', () => {
+  // The reachable shape this guards: the sticky decision says REMOTE (seeded from
+  // the core's First-Light grant, deyeSeedStickyFromGrant) while the last
+  // DEFINITIVE probe classified the older v105_1 layout. deyeEffectiveCap then
+  // synthesises a remote-path capability carrying THAT layout - and the adapter
+  // writes only the PR-978 register set, so its firmware key must not be handed
+  // out. Path alone is not enough; the LAYOUT is part of the gate.
+  const v105 = C.classifyDeyeCapability({
+    deviceType: 0x0008,
+    remoteBlock: (() => {
+      const b = new Array(22).fill(0);
+      b[1101 - 1100] = 0xffff; b[1104 - 1100] = 9; b[1106 - 1100] = 1; b[1111 - 1100] = 200;
+      return b;
+    })(),
+  });
+  assert.strictEqual(v105.layout, 'v105_1');
+  const sticky = { path: 'remote', since: 1, contrary: 0, everRemote: true, verdict: v105 };
+  const eff = C.deyeEffectiveCap(null, sticky);
+  assert.strictEqual(eff.supported, true, 'the decision really selects the remote path');
+  assert.strictEqual(eff.layout, 'v105_1', 'while carrying the foreign layout');
+  const r = C.nativeSelfConsumption(PILOT_SEL, pilotOpts({ deye: null, deyeSticky: sticky }));
+  assert.strictEqual(r.supported, false);
+  assert.deepStrictEqual(r.writes, []);
+  assert.match(r.reason, /10-Sekunden-Nachf/);
+});
+
+test('Pilot-Freigabe: die eigene Konfiguration des Geraets kann sie zur Laufzeit verweigern', () => {
+  // Deye manual (SUN-29.9..50K-SG01HP3-EU-BM3/BM4, 2025-08-19): without Time of
+  // Use the inverter "can charge normally, but only discharge to provide the
+  // inverter's self-consumption power, without discharging to power the loads" -
+  // so letting go would NOT produce a covering mode, and nothing downstream
+  // could tell (the device would still report the native mode correctly).
+  const noTou = C.nativeSelfConsumption(PILOT_SEL,
+    pilotOpts({ deyeOwnConfig: { ...PILOT_OWN_CFG, tou_enable: 0x0000 } }));
+  assert.deepStrictEqual(noTou.writes, []);
+  assert.match(noTou.reason, /Zeitfenster-Programm .*nicht aktiv/);
+
+  // A target SoC ABOVE our reserve floor ends the covering early.
+  const highTarget = C.nativeSelfConsumption(PILOT_SEL,
+    pilotOpts({ deyeOwnConfig: { ...PILOT_OWN_CFG, program_target_soc: 40 } }));
+  assert.deepStrictEqual(highTarget.writes, []);
+  assert.match(highTarget.reason, /Ziel-Ladeniveau/);
+
+  // On an EEG site the device's own charging enum must already say "not from
+  // grid" BEFORE we let go - the after-proof (gridChargeProof) is not enough.
+  const eeg = C.nativeSelfConsumption(PILOT_SEL, pilotOpts({
+    solarOnlyCharge: true, deyeOwnConfig: { ...PILOT_OWN_CFG, program_charge_enable: 1 },
+  }));
+  assert.deepStrictEqual(eeg.writes, []);
+  assert.match(eeg.reason, /EEG/);
+  // Same site, charging disabled -> released.
+  assert.strictEqual(C.nativeSelfConsumption(PILOT_SEL,
+    pilotOpts({ solarOnlyCharge: true })).writes.length, 1);
+
+  // UNKNOWN is a refusal, never an assumption - each of these on its own.
+  for (const over of [
+    { deyeOwnConfig: undefined },
+    { deyeOwnConfig: { ...PILOT_OWN_CFG, tou_enable: undefined } },
+    { deyeOwnConfig: { ...PILOT_OWN_CFG, program_target_soc: undefined } },
+    { effectiveFloorSocPct: undefined },
+  ]) {
+    const r = C.nativeSelfConsumption(PILOT_SEL, pilotOpts(over));
+    assert.deepStrictEqual(r.writes, [], JSON.stringify(over));
+    assert.ok(r.reason && r.reason.length > 0, 'a refusal always names itself');
+  }
+});
+
+test('Pilot-Freigabe: Not-Aus und fehlende Geraete-Freigabe halten unveraendert', () => {
+  const off = C.nativeSelfConsumption(PILOT_SEL, pilotOpts({ controlEnabled: false }));
+  assert.deepStrictEqual(off.writes, []);
+  assert.match(off.reason, /Not-Aus/);
+  const un = C.nativeSelfConsumption(PILOT_SEL, pilotOpts({ deviceCertified: false }));
+  assert.deepStrictEqual(un.writes, []);
+  assert.match(un.reason, /freigegeben/);
+});
+
+test('deyeNativePrecondition ist rein und urteilt nur ueber Belegtes', () => {
+  const ok = { tou_enable: 0x00ff, program_target_soc: 10, program_charge_enable: 0 };
+  assert.strictEqual(C.deyeNativePrecondition(ok, { floorPct: 20 }), null);
+  // A target EQUAL to the floor is fine - the device stops exactly where we would.
+  assert.strictEqual(C.deyeNativePrecondition({ ...ok, program_target_soc: 20 }, { floorPct: 20 }), null);
+  // Only bit0 is the enable; the weekday bits above it must not be required.
+  assert.strictEqual(C.deyeNativePrecondition({ ...ok, tou_enable: 0x0003 }, { floorPct: 20 }), null);
+  assert.ok(C.deyeNativePrecondition({ ...ok, tou_enable: 0x00fe }, { floorPct: 20 }));
+  // An out-of-range SoC is not a reading.
+  assert.ok(C.deyeNativePrecondition({ ...ok, program_target_soc: 255 }, { floorPct: 20 }));
+  // Without the EEG posture the charging enum is not judged (it is an economic
+  // matter there, not a compliance one - and the plan already priced the slot).
+  assert.strictEqual(
+    C.deyeNativePrecondition({ ...ok, program_charge_enable: 1 }, { floorPct: 20 }), null);
+
+  // ⚠ An ABSENT register must not read as a real 0 (Number(null) === 0). Both
+  // outcomes refuse, but only one of them tells the operator the truth.
+  assert.match(C.deyeNativePrecondition({ ...ok, tou_enable: null }, { floorPct: 20 }),
+    /nicht gelesen werden/);
+  assert.match(C.deyeNativePrecondition({ ...ok, program_target_soc: null }, { floorPct: 20 }),
+    /nicht gelesen werden/);
+  assert.match(C.deyeNativePrecondition(ok, { floorPct: null }),
+    /Reserve-Untergrenze der Anlage ist nicht bekannt/);
+  // A floor of 0 is a real floor, not a missing one.
+  assert.ok(C.deyeNativePrecondition(ok, { floorPct: 0 }).includes('0 %'));
+  // On an EEG site an absent charging enum is refused, never read as Disabled.
+  assert.match(
+    C.deyeNativePrecondition({ ...ok, program_charge_enable: null }, { floorPct: 20, solarOnly: true }),
+    /EEG/);
+});
