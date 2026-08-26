@@ -45,7 +45,9 @@ class RolloutJournalTest {
         // 11:00Z ist 13:00 Berliner Zeit - der Betreiber liest die Zeit, in der
         // er gehandelt hat.
         assertThat(md).contains("| 13:00:00 |");
-        assertThat(md).contains("Rollout gestartet").contains("Welle freigegeben");
+        // Das heutige Wort - und ein Wort der Wellen-Ära, das NICHT mehr entsteht,
+        // aber in alten Zeilen noch lesbar bleiben muss.
+        assertThat(md).contains("Aktualisierung gestartet").contains("Welle freigegeben");
         assertThat(md).contains("Pilsting-Edge (Pilsting)");
     }
 

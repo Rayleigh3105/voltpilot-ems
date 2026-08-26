@@ -56,9 +56,16 @@ public final class RolloutJournal {
     private static final DateTimeFormatter DAY =
             DateTimeFormatter.ofPattern("dd.MM.yyyy").withZone(ZONE);
 
-    /** Die deutschen Namen der Ereignisse - dieselben Wörter wie im Portal. */
+    /**
+     * Die deutschen Namen der Ereignisse - dieselben Wörter wie im Portal.
+     *
+     * <p>Die Wörter der Wellen-/Freigabe-Ära stehen hier weiter, obwohl seit
+     * dem Ein-Schritt-Umbau (26.08.2026) keines davon mehr ENTSTEHT: das
+     * Journal ist append-only, und eine Zeile von damals soll auch morgen noch
+     * lesbar sein - genau dafür gibt es den Export.
+     */
     private static final Map<String, String> EVENTS = Map.ofEntries(
-            Map.entry("rollout_created", "Rollout gestartet"),
+            Map.entry("rollout_created", "Aktualisierung gestartet"),
             Map.entry("wave_released", "Welle freigegeben"),
             Map.entry("wave_auto_released", "Welle AUTOMATISCH freigegeben"),
             Map.entry("auto_advance_on", "Wellen-Automatik eingeschaltet"),
@@ -67,7 +74,7 @@ public final class RolloutJournal {
             Map.entry("rollout_resumed", "Rollout fortgesetzt"),
             Map.entry("rollout_halted", "Rollout eingefroren"),
             Map.entry("rollout_auto_halted", "Rollout AUTOMATISCH angehalten"),
-            Map.entry("rollout_done", "Rollout abgeschlossen"),
+            Map.entry("rollout_done", "Aktualisierung abgeschlossen"),
             Map.entry("rollout_last_wave", "Letzte Welle freigegeben"),
             Map.entry("target_assigned", "Release zugewiesen"),
             Map.entry("target_reverted", "Zuweisung zurückgenommen"),
