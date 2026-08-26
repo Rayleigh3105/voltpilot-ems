@@ -1,14 +1,16 @@
-// Command vp-edge-updater ist der Apply-Sidecar der OTA-Stufe 3 „Autonom".
+// Command vp-edge-updater ist der Apply-Sidecar: er wendet ein zugewiesenes
+// Release an, ohne dass jemand an das Geraet muss.
 //
 // Er besitzt `/var/run/docker.sock` und ist der EINZIGE, der die Container der
 // Edge-App tauscht. Er hat kein Netz, keinen Host-Port, keine MQTT-Verbindung
 // und keine Identitaet; mit dem Kern spricht er ausschliesslich ueber Dateien
 // in `/data/ota` (siehe internal/otaapply).
 //
-// **Vorgabe ist AUS.** Ohne `<data>/ota/autonomy.json` mit `enabled: true`
-// (bzw. den Not-Ein `VP_OTA_AUTONOMOUS=true` fuer den Laborstand) wendet er
-// nichts an - er beobachtet und meldet. Eine Box mit diesem Container
-// verhaelt sich dann zeichengleich wie eine ohne ihn.
+// **Er laeuft immer.** Seit der Vereinfachung vom 26.08.2026 gibt es keinen
+// Geraete-Schalter und kein Compose-Profil mehr: liegt eine Zuweisung, wird
+// getauscht. Was ihn noch aufhalten kann, sind ausschliesslich Eigenschaften
+// des SIGNIERTEN Release (Kette, Anti-Rollback-Boden, Backend, Datenstand) und
+// die physische Plattengrenze - nie der Zustand der Anlage.
 //
 // # Wer aktualisiert den Aktualisierer
 //

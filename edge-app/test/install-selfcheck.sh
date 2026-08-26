@@ -8,16 +8,16 @@
 #   1. `install.sh --print-compose` emits a compose that
 #        - carries the generated marker, name voltpilot-edge, both registry
 #          images (core + nodered), both named volumes, pull_policy: always;
-#        - contains NO build:/context: (a device never builds) and NO
-#          sim/edge-sim (real mode only). The ONLY profile it may carry is
-#          `ota` on the `updater` service - the OTA-Stufe-3 apply sidecar,
-#          which is opt-in per device and does nothing until its own switch
-#          is set (docs/ota-autonomie.md).
+#        - contains NO build:/context: (a device never builds), NO
+#          sim/edge-sim (real mode only) and NO profile at all: since the
+#          one-step simplification (26.08.2026) the apply sidecar `updater`
+#          is a normal service, so an installed box updates itself without
+#          any further step (docs/ota-autonomie.md).
 #   2. If `docker compose` (v2) is available: the emitted compose passes
 #        `docker compose -f - config` (valid), and its resolved service
-#        definition is byte-identical to the repo compose's - BOTH in the
-#        default (no-sim, no-ota) resolution AND with `--profile ota`, so
-#        neither the everyday stack nor the sidecar can drift.
+#        definition is byte-identical to the repo compose's - and the repo
+#        compose resolves the SAME with and without a profile flag, so no
+#        service can hide behind one again.
 #   3. shellcheck is clean (if installed).
 #
 # Docker-free by default (steps 1 + 3 always run); the equivalence proof
@@ -62,18 +62,13 @@ grep_none 'edge-sim'
 if printf '%s\n' "$COMPOSE" | grep -qiE '(^|[^a-z])sim([^a-z]|$)'; then
   fail "generated compose references the simulator"
 fi
-# The ONLY profile a device compose may carry is `ota` (the apply sidecar).
-# Asserted PRECISELY rather than banned outright: the ban existed to keep the
-# simulator off a customer device, and that intent is preserved - while a
-# blanket ban would have made the sidecar unreachable on an installer-built
-# box, i.e. exactly the drift the lockstep exists to prevent.
-profiles="$(printf '%s\n' "$COMPOSE" | grep -E '^[[:space:]]*profiles:' || true)"
-if [ -n "$profiles" ]; then
-  if [ "$(printf '%s\n' "$profiles" | wc -l | tr -d ' ')" != "1" ]; then
-    fail "generated compose carries more than one profile block: $profiles"
-  fi
-  printf '%s\n' "$profiles" | grep -qE '^[[:space:]]*profiles:[[:space:]]*\[ota\][[:space:]]*$' \
-    || fail "the only allowed profile is [ota], got: $profiles"
+# A device compose carries NO profile at all any more: the apply sidecar is a
+# normal service since the one-step simplification (26.08.2026). The old `ota`
+# profile was one of the two gates that kept an installed box from updating
+# itself - and the ban on OTHER profiles (the simulator) is preserved by this
+# stricter form.
+if printf '%s\n' "$COMPOSE" | grep -qE '^[[:space:]]*profiles:'; then
+  fail "generated compose must carry NO profile - the updater is a normal service"
 fi
 # shellcheck disable=SC2016
 grep_has 'image: ${VP_EDGE_UPDATER_IMAGE:-git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-updater:${VP_EDGE_IMAGE_TAG:-latest}}'
@@ -81,28 +76,26 @@ grep_has 'image: ${VP_EDGE_UPDATER_IMAGE:-git.tecmaxx.de/mamotec/voltpilot-ems/e
 # it owns the docker socket, so it must have NO network of its own.
 grep_has '/var/run/docker.sock:/var/run/docker.sock'
 grep_has 'network_mode: none'
-# Autonomy is OFF unless the operator says otherwise - in the compose default
-# AND (independently) in the per-device switch file.
-# shellcheck disable=SC2016
-grep_has 'VP_OTA_AUTONOMOUS: ${VP_OTA_AUTONOMOUS:-false}'
-pass "structural: marker, images, volumes, pull_policy; no build/context/sim; ota profile fenced"
+# The device switch is GONE, not just defaulted: a compose that still carries
+# it would mean the removal was half-done.
+grep_none 'VP_OTA_AUTONOMOUS'
+grep_none 'VP_OTA_NEUTRAL_VERIFIED'
+pass "structural: marker, images, volumes, pull_policy; no build/context/sim; no profile, no autonomy switch"
 
-# --- 1b. A FRESH install brings the updater's PROFILE along by default -----
-# (Teil C, docs/ota-autonomie.md): two independent gates stay two independent
-# gates - the compose profile ships enabled so the sidecar OBSERVES and
-# REPORTS from the very first `up -d`, while the per-device switch
-# (VP_OTA_AUTONOMOUS / ota/autonomy.json, asserted OFF above) is UNTOUCHED. A
-# regression here would either silently drop the sidecar again (two manual
-# steps per box, the very bug this closes) or - far worse - would need to be
-# paired with flipping the device switch's default, which this check would
-# also catch since it is asserted separately above.
-if ! grep -qE 'dc --profile ota pull [^|&;]*\bcore\b[^|&;]*\bnodered\b[^|&;]*\bupdater\b' "$INSTALL"; then
-  fail "pull_and_up must pull core, nodered AND the updater WITH --profile ota by default"
+# --- 1b. A FRESH install brings the updater along, no flag needed -----------
+# It is a normal service now, so `pull`/`up -d` without any profile argument
+# must cover it. A regression here would silently drop the sidecar again -
+# the very bug the one-step simplification closes.
+if grep -qE 'dc (pull|up)[^|&;\n]*--profile' "$INSTALL"; then
+  fail "install.sh must not pass --profile any more - the updater is a normal service"
 fi
-if ! grep -qE 'dc --profile ota up -d\b' "$INSTALL"; then
-  fail "pull_and_up must bring the stack up WITH --profile ota by default"
+if ! grep -qE 'dc pull' "$INSTALL"; then
+  fail "pull_and_up must pull the whole stack"
 fi
-pass "fresh installs pull + start core, nodered AND the updater sidecar (profile 'ota') by default; the device switch stays untouched"
+if ! grep -qE 'dc up -d\b' "$INSTALL"; then
+  fail "pull_and_up must bring the whole stack up"
+fi
+pass "fresh installs pull + start core, nodered AND the updater sidecar - no flag, no profile"
 
 # --- 2. docker compose validity + equivalence to the repo real-mode config.
 if docker compose version >/dev/null 2>&1; then
@@ -127,15 +120,15 @@ if docker compose version >/dev/null 2>&1; then
     fail "generated compose drifted from the repo real-mode compose"
   fi
 
-  # The SAME equivalence with the ota profile on: the apply sidecar must not
-  # drift between the repo compose and the one a device generates either.
+  # And the repo compose must resolve IDENTICALLY with a profile flag on: a
+  # service that reappears only with `--profile` would be a gate in disguise.
   emptyd="$(mktemp -d)"
   repo_ota="$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" docker compose --project-directory "$emptyd" --profile ota -f docker-compose.yml config 2>/dev/null \
             | grep -vE '^[[:space:]]*(build:|context:|dockerfile:)')"
   gen_ota="$(printf '%s\n' "$COMPOSE" | env -i PATH="$PATH" HOME="${HOME:-/tmp}" docker compose --project-directory "$emptyd" --profile ota -f - config 2>/dev/null)"
   rmdir "$emptyd" 2>/dev/null || true
   if [ "$repo_ota" = "$gen_ota" ]; then
-    pass "generated compose == repo 'docker compose --profile ota config' (minus build:)"
+    pass "a profile flag changes NOTHING - the sidecar is a normal service"
   else
     printf '%s\n' "--- diff --profile ota (repo <  | generated >) ---" >&2
     diff <(printf '%s\n' "$repo_ota") <(printf '%s\n' "$gen_ota") >&2 || true
