@@ -2449,3 +2449,292 @@ test('eine TOTE Reservierung kann den Bus nicht festhalten', async () => {
     server.close();
   }
 });
+
+
+// --- NATIVE SELF-REGULATION on the Deye REMOTE tier (the released pilot) -----
+//
+// The execution path of "Wechselrichter-Automatik" on a Deye, driven END TO END
+// from flows.json: the AUTO plan node ("Steuerung / Schreibplan") and the Deye
+// Solarman-V5 executor, against the same in-process logger the tests above use.
+//
+// The one question it answers is the one the whole feature stands or falls on -
+// and on this tier it is asked of a device that must first PROVE its own
+// Time-of-Use configuration can cover the house at all:
+//
+//   Decken-Slot -> Vorbedingung gelesen -> EIN Schreibvorgang (1100 <- 0)
+//   -> nur noch Lesen -> Beleg -> Ruecknahme
+//
+// SAFETY: nothing here mutates the certified-family allowlist. The pilot is
+// released through the PRODUCTION catalog entry in unplanned-load-native.js
+// (deye / sun-30k-sg01hp3 / the probed PR-978 layout), which is exactly what the
+// plan node consults - so what these tests exercise is the shipped release, not
+// an un-gating.
+
+const DEYE_NATIVE_PLAN = byId['auto-control-plan'].func;
+
+// The owner's inverter as the core publishes it on edge/inverter/config: the
+// CATALOG MODEL ID (never the label), the family, the nameplate.
+function nativeSel(port) {
+  return {
+    schema_version: '1.0', brand: 'deye', model: 'sun-30k-sg01hp3', family: 'hybrid_3p',
+    communication: 'solarman_v5', control_tier: 3, rated_kw: 30,
+    connection: { ip: '127.0.0.1', port, serial: '2985159064', mb_slave_id: 1, power_scale: 10 },
+  };
+}
+
+// The live probe of the owner's SUN-30K-SG01HP3-EU (2026-07-27): 1100=0,
+// 1101=0xFFFF, 1104=0, 1105=2, 1121=0 -> the PR-978 layout. Everything else in
+// the block reads 0, which is what a real answer looks like.
+const REG_REMOTE = { mode: 0x044c, watchdog: 0x044d, powerControlMode: 0x0450, batteryStrategy: 0x0451, constantPower: 0x0455, status: 0x0461 };
+const REG_TOU = { touEnable: 0x0092, progSoc1: 0x00a6, progCharge1: 0x00ac };
+
+function nativeStore(overrides = {}) {
+  return {
+    0x0000: 0x0008, // HV identity -> power scale 10 (the N1 auto-detect)
+    [REG_REMOTE.mode]: 0,
+    [REG_REMOTE.watchdog]: 0xffff,
+    [REG_REMOTE.powerControlMode]: 0,
+    [REG_REMOTE.batteryStrategy]: 2,
+    [REG_REMOTE.status]: 0,
+    // The inverter's OWN Time-of-Use program: armed all week, discharging down
+    // to 5 % (past a 10 % reserve floor), never charging from the grid.
+    [REG_TOU.touEnable]: 0x00ff,
+    [REG_TOU.progSoc1]: 5,
+    [REG_TOU.progCharge1]: 0,
+    ...overrides,
+  };
+}
+
+// The core's published command. `battery_mode` is the additive native field;
+// device_certified_path seeds the plan node's sticky remote decision exactly as
+// a First-Light-granted pilot does after a restart.
+function nativeSetpoint(mode, extra = {}) {
+  return {
+    battery_setpoint_kw: -7.087, source: 'schedule', ts: new Date().toISOString(),
+    control_enabled: true, device_certified: true, device_certified_path: 'remote',
+    grid_charge_allowed: true, soc_min_pct: 5, soc_max_pct: 95,
+    effective_floor_soc_pct: 10,
+    battery_mode: mode,
+    battery_native_duty: mode === 'native' ? 'cover_load' : undefined,
+    ...extra,
+  };
+}
+
+// One rig = one plant: ONE shared flow store (the capability probe, the sticky
+// path decision and the native config cache all live there, exactly as in
+// Node-RED) plus one context per node.
+function makeNativeRig(port, sel = nativeSel(port)) {
+  const planCtx = {};
+  const execCtx = {};
+  const flowStore = { inverter_config: sel };
+  const warns = [];
+  // Kept apart on purpose: the PLAN node's status is the one that carries a
+  // standing native refusal, the executor's is the write/readback verdict.
+  const planStatuses = [];
+  const execStatuses = [];
+  const sandbox = (msg, ctxStore, statuses) => ({
+    msg,
+    node: {
+      status(st) { statuses.push(st && st.text); }, error() {},
+      warn(l) { warns.push(String(l)); }, log() {}, send() {},
+    },
+    context: { get: (k) => ctxStore[k], set: (k, v) => { ctxStore[k] = v; } },
+    flow: { get: (k) => flowStore[k], set: (k, v) => { flowStore[k] = v; } },
+    global: { get: (k) => (k === 'net' ? net : (k === 'vpSharedBusArbiter' ? sharedBus : undefined)) },
+    Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, setTimeout, clearTimeout,
+  });
+  const tick = async (setpoint) => {
+    const msg = { setpoint };
+    const planBox = sandbox(msg, planCtx, planStatuses);
+    vm.createContext(planBox);
+    const planned = vm.runInContext('(function () {\n' + DEYE_NATIVE_PLAN + '\n})()', planBox);
+    if (!planned) return { plan: null, out: null };
+    const execBox = sandbox(msg, execCtx, execStatuses);
+    vm.createContext(execBox);
+    const ret = vm.runInContext('(function () {\n' + DEYE_EXEC + '\n})()', execBox);
+    const out = ret && typeof ret.then === 'function' ? await ret : ret;
+    return { plan: msg.control, out };
+  };
+  return { tick, warns, planStatuses, execStatuses, flowStore };
+}
+
+test('a covering slot goes native on the Deye pilot: ONE write (1100 <- 0), then only reads', async () => {
+  const { server, port, writes, store } = await startSolarmanServer(nativeStore());
+  try {
+    const rig = makeNativeRig(port);
+
+    // 1. The plant arrives on the ordinary REMOTE setpoint path - the proven
+    //    10-second follower every Deye pilot runs today.
+    const first = await rig.tick(nativeSetpoint('setpoint'));
+    assert.strictEqual(first.plan.controlPath, 'remote', 'the pilot plans on the remote path');
+    assert.strictEqual(first.out.payload.mode, 'normal');
+    assert.strictEqual(store[REG_REMOTE.mode], 1, 'remote mode is armed');
+    assert.ok(writes.some((w) => w.reg === REG_REMOTE.constantPower), 'the setpoint is written');
+
+    // 2. The core asks for the native mode. The FIRST such tick has not read the
+    //    inverter's own Time-of-Use configuration yet, so the last gate refuses -
+    //    honestly, by name - and the follower carries the slot. That tick is what
+    //    fills the cache: the executor reads the three registers.
+    const cfgKey = 'deye_native_cfg:127.0.0.1:' + port;
+    assert.ok(!rig.flowStore[cfgKey], 'nothing was read before a native intent stood');
+    const pending = await rig.tick(nativeSetpoint('native'));
+    assert.notStrictEqual(pending.plan.mode, 'native', 'no hand-over without the device answer');
+    assert.ok(rig.warns.some((w) => /eigene Konfiguration/.test(w)),
+      'the refusal names itself: ' + JSON.stringify(rig.warns));
+    assert.deepStrictEqual(
+      { tou: rig.flowStore[cfgKey].tou_enable, soc: rig.flowStore[cfgKey].program_target_soc, chg: rig.flowStore[cfgKey].grid_charge_enable },
+      { tou: 0x00ff, soc: 5, chg: 0 },
+      'the executor read the inverter own Time-of-Use program');
+    assert.strictEqual(store[REG_REMOTE.mode], 1, 'and nothing was handed over on that tick');
+
+    // 3. THE HAND-OVER. Exactly one register write: 1100 <- 0.
+    const before = writes.length;
+    const nat = await rig.tick(nativeSetpoint('native'));
+    assert.strictEqual(nat.plan.mode, 'native');
+    assert.deepStrictEqual(
+      JSON.parse(JSON.stringify(nat.plan.writes.map((w) => ({ addr: w.addr, value: w.value })))),
+      [{ addr: REG_REMOTE.mode, value: 0 }],
+      'disabling remote mode IS the hand-over - nothing else is written');
+    assert.deepStrictEqual(writes.slice(before).map((w) => ({ reg: w.reg, value: w.value })),
+      [{ reg: REG_REMOTE.mode, value: 0 }], 'and that is the only frame that reached the logger');
+    assert.strictEqual(store[REG_REMOTE.mode], 0, 'the inverter now runs its own loop');
+
+    // The EVIDENCE half: the mode is claimed because 1100 really read back 0, and
+    // the device answered the EEG question from its own Program-1 charging enum.
+    assert.strictEqual(nat.out.payload.mode, 'native', 'the readback is the evidence');
+    assert.strictEqual(nat.out.payload.native.grid_charge_blocked, true);
+    assert.ok(nat.out.payload.registers.every((r) => r.match), 'and it holds what it says');
+    assert.ok(rig.planStatuses.some((t) => /Wechselrichter-Automatik \(umgeschaltet\)/.test(t || '')),
+      'the node names the hand-over: ' + JSON.stringify(rig.planStatuses.slice(-2)));
+    assert.ok(rig.execStatuses.some((t) => /Wechselrichter-Automatik/.test(t || '')),
+      'and so does the readback: ' + JSON.stringify(rig.execStatuses.slice(-2)));
+
+    // 4. Further native ticks write NOTHING - they only read the state back. That
+    //    is the whole point of the mode on a one-client logger.
+    const after = writes.length;
+    for (let i = 0; i < 3; i += 1) {
+      const t = await rig.tick(nativeSetpoint('native'));
+      assert.strictEqual(t.plan.writes.length, 0, 'write once, then only read');
+      assert.strictEqual(t.out.payload.mode, 'native');
+      assert.strictEqual(t.out.payload.wrote, false);
+    }
+    assert.strictEqual(writes.length, after, 'not one further register write');
+    assert.strictEqual(store[REG_REMOTE.mode], 0);
+
+    // 5. THE TAKE-BACK is the ordinary remote plan in its UNCHANGED order:
+    //    watchdog FIRST, enable LAST (the setpoint in between).
+    const backFrom = writes.length;
+    const back = await rig.tick(nativeSetpoint('setpoint'));
+    assert.notStrictEqual(back.plan.mode, 'native');
+    const backWrites = writes.slice(backFrom).map((w) => w.reg);
+    assert.strictEqual(backWrites[0], REG_REMOTE.watchdog, 'watchdog first');
+    assert.strictEqual(backWrites[backWrites.length - 1], REG_REMOTE.mode, 'enable LAST');
+    assert.ok(backWrites.indexOf(REG_REMOTE.constantPower) > 0, 'the setpoint is written again');
+    assert.strictEqual(store[REG_REMOTE.mode], 1, 'remote mode is armed again');
+    assert.strictEqual(back.out.payload.mode, 'normal', 'and the readback says so');
+  } finally {
+    server.close();
+  }
+});
+
+test('the pilot refuses when its own Time-of-Use program cannot cover the house', async () => {
+  // Bit 0 of 0x0092 is the ENABLE; without it the Deye manual is unambiguous -
+  // the inverter charges normally but only discharges for its own consumption,
+  // never into the loads. The supervision could not catch this (the device would
+  // report the mode correctly), so the refusal has to happen BEFORE the hand-over.
+  const { server, port, writes, store } = await startSolarmanServer(
+    nativeStore({ [REG_TOU.touEnable]: 0x00fe }));
+  try {
+    const rig = makeNativeRig(port);
+    await rig.tick(nativeSetpoint('setpoint'));
+    await rig.tick(nativeSetpoint('native')); // fills the cache
+    const t = await rig.tick(nativeSetpoint('native'));
+
+    assert.notStrictEqual(t.plan.mode, 'native', 'nothing is handed over');
+    assert.ok(rig.warns.some((w) => /Time of Use/.test(w) && /10-Sekunden-Nachfuehrung/.test(w)),
+      'the refusal names the cause AND the path it stays on: ' + JSON.stringify(rig.warns));
+    // ⚠ SAID ONCE, SHOWN ALWAYS: a standing refusal must not write a log line
+    // every ~10 s (it would bury the lines the bench checklist reads), but it
+    // must stay visible - so the node carries the cause on every tick.
+    await rig.tick(nativeSetpoint('native'));
+    await rig.tick(nativeSetpoint('native'));
+    assert.strictEqual(rig.warns.filter((w) => /Time of Use/.test(w)).length, 1,
+      'the standing cause is logged once, not once per tick: ' + JSON.stringify(rig.warns));
+    assert.ok(/Automatik: .*Time of Use/.test(rig.planStatuses[rig.planStatuses.length - 1] || ''),
+      'and the node still shows it on the LAST tick: ' + JSON.stringify(rig.planStatuses.slice(-2)));
+    assert.strictEqual(store[REG_REMOTE.mode], 1, 'remote mode stays armed');
+    assert.ok(writes.some((w) => w.reg === REG_REMOTE.constantPower),
+      'and the proven follower keeps writing the setpoint');
+    assert.strictEqual(t.out.payload.mode, 'normal');
+    assert.strictEqual(t.out.payload.native, undefined, 'no evidence block for a mode we are not in');
+  } finally {
+    server.close();
+  }
+});
+
+test('an EEG plant is refused unless the inverter own program already blocks grid charging', async () => {
+  const { server, port, store } = await startSolarmanServer(
+    nativeStore({ [REG_TOU.progCharge1]: 1 })); // Program 1 Charging = Grid
+  try {
+    const rig = makeNativeRig(port);
+    const eeg = () => nativeSetpoint('native', { grid_charge_allowed: false });
+    await rig.tick(nativeSetpoint('setpoint', { grid_charge_allowed: false }));
+    await rig.tick(eeg());
+    const t = await rig.tick(eeg());
+    assert.notStrictEqual(t.plan.mode, 'native');
+    assert.ok(rig.warns.some((w) => /EEG-Anlage/.test(w)),
+      'the compliance refusal names itself: ' + JSON.stringify(rig.warns));
+    assert.strictEqual(store[REG_REMOTE.mode], 1, 'nothing was handed over');
+  } finally {
+    server.close();
+  }
+});
+
+test('a hand-over the device does not confirm is NOT reported as native', async () => {
+  // dropWrites models the live-Pilsting shape: the logger accepts the frame and
+  // echoes it, but the register never changes. 1100 keeps reading 1, so there is
+  // no proof - and "we stopped writing" must never look like "the inverter
+  // regulates itself". The core then withdraws the intent (nachweis_fehlt).
+  const { server, port, store } = await startSolarmanServer(nativeStore(), { dropWrites: true });
+  try {
+    const rig = makeNativeRig(port);
+    await rig.tick(nativeSetpoint('setpoint'));
+    await rig.tick(nativeSetpoint('native'));
+    const t = await rig.tick(nativeSetpoint('native'));
+
+    assert.strictEqual(t.plan.mode, 'native', 'the plan node did hand over');
+    assert.strictEqual(store[REG_REMOTE.mode], 0, 'setup: the register never moved (it was 0 all along)');
+    // The store starts at 0 and dropWrites keeps it there, so the proof HOLDS -
+    // flip the device instead: it reports remote mode still ON.
+    store[REG_REMOTE.mode] = 1;
+    const t2 = await rig.tick(nativeSetpoint('native'));
+    assert.strictEqual(t2.out.payload.mode, 'normal',
+      'a mode the device does not confirm is never claimed');
+    assert.strictEqual(t2.out.payload.native, undefined,
+      'and no grid-charge statement is made about a mode we are not in');
+  } finally {
+    server.close();
+  }
+});
+
+test('every OTHER Deye stays on the proven follower - the release is bound to the pilot', async () => {
+  const { server, port, store, writes } = await startSolarmanServer(nativeStore());
+  try {
+    // Same family, same firmware layout, a different catalog model id.
+    const other = nativeSel(port);
+    other.model = 'sun-12k-sg04lp3';
+    const rig = makeNativeRig(port, other);
+    await rig.tick(nativeSetpoint('setpoint'));
+    await rig.tick(nativeSetpoint('native'));
+    const t = await rig.tick(nativeSetpoint('native'));
+
+    assert.notStrictEqual(t.plan.mode, 'native');
+    assert.ok(rig.warns.some((w) => /Pruefstand|Prüfstand/.test(w)),
+      'the refusal names the missing release: ' + JSON.stringify(rig.warns));
+    assert.strictEqual(store[REG_REMOTE.mode], 1, 'remote mode stays armed');
+    assert.ok(writes.some((w) => w.reg === REG_REMOTE.constantPower),
+      'and the setpoint keeps being written');
+  } finally {
+    server.close();
+  }
+});

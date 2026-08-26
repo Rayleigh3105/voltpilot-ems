@@ -333,6 +333,39 @@
   }
 
   /* ------------------------------------------------------------------
+     deriveNative - „Wechselrichter-Automatik" (Selbstregel-Modus).
+
+     In a slot the cloud marked worth covering from the battery, the SETPOINT
+     ITSELF was handed back to the inverter: it now decides how many watts to
+     pull, and VoltPilot writes nothing for the rest of the slot. That is the
+     outermost fact about this quarter hour, so it LEADS the reason chain - while
+     it holds, no setpoint is being written at all, and naming one of the in-slot
+     corrections here would explain a value nobody sent.
+
+     It keeps „gewollt" and „bestätigt" apart, because „wir haben aufgehört zu
+     schreiben" and „VoltPilot ist gestorben" must never read the same on a
+     surface. The German sentence is the CORE's (guards.NativeMode writes it
+     once); this card renders it and invents nothing.
+     ------------------------------------------------------------------ */
+  function deriveNative(s) {
+    var n = s && s.native;
+    if (!n || !n.active) return null;
+    // The reference value is still computed and published so the take-back is
+    // instant and the surfaces have a number - it is simply not written.
+    var ref = (typeof n.reference_kw === "number" && isFinite(n.reference_kw))
+      ? " (Vergleichswert: " + nf1.format(n.reference_kw) + " kW)" : "";
+    var head = n.proven
+      ? "Wechselrichter-Automatik (hält): VoltPilot schreibt in dieser Viertelstunde " +
+        "keinen Sollwert" + ref + "."
+      : "Wechselrichter-Automatik angefordert: bis der Wechselrichter sie bestätigt, " +
+        "führt VoltPilot den Sollwert weiter nach" + ref + ".";
+    return {
+      text: head + (n.text ? " " + n.text : "") +
+        " Das ist eine bewusste Übergabe, kein Fehler des Wechselrichters."
+    };
+  }
+
+  /* ------------------------------------------------------------------
      deriveCarsFirst - „Auto vor Speicher" (OCPP-Lastmanagement Stufe 4).
 
      The customer decided their VEHICLES get the PV surplus before the battery
@@ -787,8 +820,11 @@
       // cars-first cap runs AFTER the absorption (with cars-first that surplus
       // is not the battery's to take), so where it bit its value is the
       // published one and it speaks first.
+      // The native mode speaks FIRST: while the setpoint is handed over, none of
+      // the in-slot corrections below is being written, so any of their lines
+      // would explain a value that never left the box.
       var reason = d.showNow
-        ? (deriveCarsFirst(s) || deriveAbsorb(s) || deriveTrim(s) || deriveFollow(s))
+        ? (deriveNative(s) || deriveCarsFirst(s) || deriveAbsorb(s) || deriveTrim(s) || deriveFollow(s))
         : null;
       show(reasonEl, !!reason);
       if (reason) reasonEl.textContent = reason.text;
@@ -812,6 +848,7 @@
     deriveTrim: deriveTrim,
     deriveFollow: deriveFollow,
     deriveAbsorb: deriveAbsorb,
+    deriveNative: deriveNative,
     deriveCarsFirst: deriveCarsFirst,
     deriveCurtail: deriveCurtail,
     deriveExportGuard: deriveExportGuard,

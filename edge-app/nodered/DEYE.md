@@ -703,6 +703,24 @@ Ziel-Ladeniveau (`0x00A6`) über der Reserve-Untergrenze der Anlage, oder auf ei
 EEG-Anlage eine Program-1-Charging-Enum (`0x00AC`) ungleich `Disabled`. Unbekannt
 zählt als Verweigerung.
 
+**Wer die drei Register liest, und wann** (der Ausführungspfad, seit 26.08.2026):
+der Plan-Knoten kann nicht lesen, also liest sie der **Deye-Executor** auf jedem
+Takt, an dem eine Absicht auf Selbstregelung steht — **vor jedem Schreibvorgang
+dieses Zyklus** — und legt sie je Logger im flüchtigen Flow-Kontext
+`deye_native_cfg:<host:port>` ab (wie `deye_cap:`). Der Plan-Knoten urteilt aus
+diesem höchstens EINEN Takt alten Stand. Praktische Folge: der **erste** Takt
+eines Decken-Slots verweigert ehrlich („die eigene Konfiguration … ist nicht
+bekannt"), der **zweite** schaltet um — rund 10 s später und damit weit
+innerhalb der Nachweisfrist des Kerns. Der Umschalt-Schreibvorgang ist genau
+einer (`1100 <- 0`); danach zeigt `docker compose logs nodered` bis zum
+Slot-Ende nur noch Lesungen.
+
+**`mode: "native"` wird nur gemeldet, wenn `1100` wirklich 0 zurückliest** —
+alles andere ist kein Beleg, wird als gewöhnlicher Zyklus gemeldet, und der Kern
+holt die Batterie nach seiner Frist zurück (`nachweis_fehlt`). Nur ein belegter
+Takt liest zusätzlich `0x00AC` als EEG-Beleg und veröffentlicht ihn als
+`native.grid_charge_blocked`; sein Fehlen heißt „das Gerät hat nichts gesagt".
+
 **Was der Prüfstand noch beweisen muss:** die Latenz beider Übergänge (Kriterium 8),
 dass `1100` in beiden Zuständen wirklich unterscheidet (9) und der EEG-Beleg (10) –
 am PILOTEN, im ersten Decken-Slot. Die Beobachtungs-Checkliste dafür steht in

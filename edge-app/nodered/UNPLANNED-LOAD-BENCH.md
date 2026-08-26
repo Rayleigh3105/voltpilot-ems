@@ -138,21 +138,53 @@ und die Rücknahme bei Reserve-Boden + 3 %, bedrohter Lastspitze, veralteten
 Messwerten, verlorenem Rücklesen, fremdem Halter oder fehlender Bestätigung.
 Der sichere Zustand bleibt der guard-geklemmte Sollwert-Pfad.
 
-### ⚠ Was VOR der ersten Beobachtung noch fehlt
+### Der Ausführungspfad (seit 26.08.2026 gebaut)
 
-Der Katalog-Eintrag ist die FREIGABE; er ist noch nicht der Ausführungspfad.
-Der Flow-Planknoten (`build-flows.js nativePlanGeneric`) deckt bis heute nur
-den generischen `modbus_tcp`-Tier ab und gibt für `solarman_v5` `null` zurück,
-und der Deye-Executor liest `gridChargeProof` nicht zurück. Solange das so ist,
-fällt der Pilot in einem Decken-Slot weiterhin auf die 10-Sekunden-Nachführung
-und der Kern zieht seine Absicht nach der Nachweisfrist zurück
-(`nachweis_fehlt`). Die zwei fehlenden Stücke:
+Der Katalog-Eintrag ist die FREIGABE; hier steht, was sie ausführt. Beides ist
+seit dieser Runde vorhanden - der Pilot fällt in einem Decken-Slot nicht mehr
+auf die 10-Sekunden-Nachführung zurück.
 
-1. der Plan-Knoten muss den Deye-Tier über `nativeSelfConsumption` planen
-   (inkl. der `preconditions`-Lesungen vor der Übergabe), und
-2. der Deye-Executor muss bei `mode === 'native'` den `gridChargeProof` lesen
-   und als `native.grid_charge_blocked` mitveröffentlichen - genau das, was der
-   generische Executor heute schon tut.
+**HINEIN** (`build-flows.js nativePlanDeye`, die synchron gehaltene Kopie von
+`nativeSelfConsumption`s `solarman_v5`-Zweig; `flows-sync.test.js` pinnt beide
+gegeneinander): genau **ein** Schreibvorgang `1100 <- 0`. Das Abschalten des
+Fernsteuer-Modus IST die Übergabe - der Wechselrichter fährt danach seine EIGENE
+Work-Mode/Zeitfenster-Konfiguration, also seine Eigenverbrauchs-Regelung. Danach
+läuft der Slot als reine **Lese**-Kadenz: Beleg `1100` (muss 0 lesen),
+Beobachtung `1121`, die drei Vorbedingungs-Register und der Netzlade-Beleg. Kein
+Sollwert-Schreibvorgang im Slot; ein unveränderter Plan wird nicht erneut
+geschrieben (die Signatur des Schreibplans wird je Knoten gemerkt).
+
+**HINAUS**: der unveränderte gewöhnliche Fernsteuer-Schreibplan
+(`1101` Totmann ZUERST, `1104`, `1105`, `1109`, `1100 <- 1` ZULETZT), Eigentum
+von `controlRoute`. Es gibt keine zweite Rücknahme-Sequenz.
+
+**Die Vorbedingung greift VOR der Übergabe.** Der Plan-Knoten kann nicht lesen,
+also liest der **Executor** die drei Register (`0x0092`, `0x00A6`, `0x00AC`) auf
+jedem Takt, an dem eine Absicht auf Selbstregelung steht - und zwar **vor jedem
+Schreibvorgang dieses Zyklus** - und legt sie je Logger unter
+`deye_native_cfg:<host:port>` ab (flüchtig; ein Neustart liest neu). Der
+Plan-Knoten urteilt aus diesem höchstens EINEN Takt alten Stand
+(`deyeNativePrecondition`, synchron gehaltene Kopie). **Nicht gelesen = nicht
+bekannt = Verweigerung**, mit deutschem Grund, und die Anlage bleibt auf der
+bewährten Nachführung. Folge, die man kennen muss: der ERSTE Takt eines
+Decken-Slots hat den Stand noch nicht und verweigert deshalb ehrlich - erst der
+zweite (rund 10 s später) schaltet um. Das liegt weit innerhalb der Nachweisfrist
+des Kerns (~60 s).
+
+**Der Beleg.** Der Executor meldet `mode: "native"` **nur**, wenn `1100`
+wirklich 0 zurückgelesen hat; alles andere ist kein Beleg und wird als
+gewöhnlicher Zyklus gemeldet - der Kern sieht dann keine Bestätigung und nimmt
+die Batterie nach seiner Frist zurück (`nachweis_fehlt`). Nur in einem
+belegten Takt wird zusätzlich der `gridChargeProof` gelesen und als
+`native.grid_charge_blocked` veröffentlicht; sein FEHLEN heißt „das Gerät hat
+nichts gesagt" und zählt auf einer EEG-Anlage als nicht belegt.
+
+**Beweise** (Docker-frei): `deye-control.e2e.test.js` - die Reise am echten
+Solarman-Stub (ein Schreibvorgang, danach nur Lesungen, Beleg, Rücknahme in
+unveränderter Reihenfolge), die Verweigerung bei nicht aktivem Zeitfenster-
+Programm, die EEG-Verweigerung, „ohne Beleg kein `native`" und „jeder ANDERE
+Deye bleibt auf der Nachführung"; `flows-sync.test.js` - Plan-Knoten gegen Modul
+(Bytes, Beleg-Register, Vorbedingungs-Register und jeder deutsche Grund).
 
 ### Checkliste für den ersten Decken-Slot am Piloten
 
