@@ -130,6 +130,16 @@ func TestSwitchTestArmsTheAutoOffBeforeItWrites(t *testing.T) {
 		t.Fatal("das automatische Aus ist ausgeblieben - ein Test ohne Rücklauf " +
 			"hätte das Gerät eingeschaltet zurückgelassen")
 	}
+
+	// Receiving the request proves the watchdog fired, but its deliberately
+	// unanswered exchange still owns the shortened test timeout. Wait until it
+	// has really left the waiter map before Cleanup restores the package
+	// default; otherwise the cleanup write races that goroutine's timeout read.
+	waitFor(t, 3*time.Second, "der Auto-Aus-Roundtrip ist vollständig beendet", func() bool {
+		box.a.switchMu.Lock()
+		defer box.a.switchMu.Unlock()
+		return len(box.a.switchWaiters) == 0
+	})
 }
 
 /** Der Abbruch entwaffnet den Wachhund und schreibt den Aus-Wert SOFORT. */

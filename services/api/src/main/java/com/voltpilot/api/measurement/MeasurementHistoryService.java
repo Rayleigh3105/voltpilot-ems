@@ -82,10 +82,11 @@ public class MeasurementHistoryService {
                         aggregation);
         boolean rawAvailable = Boolean.TRUE.equals(jdbc.queryForObject(
                 "SELECT EXISTS(SELECT 1 FROM device_measurement_sample WHERE tenant_id=? "
-                        + "AND site_id=? AND device_id=? AND point_key=? AND quality='good' "
+                        + "AND site_id=? AND device_id=? AND "
+                        + pointKeyPredicate("point_key", pointKey) + " AND quality='good' "
                         + "AND time>=? AND time<=? AND "
                         + "(raw_numeric IS NOT NULL OR raw_text IS NOT NULL))",
-                Boolean.class, scope.tenantId(), siteId, deviceId, pointKey,
+                Boolean.class, scope.tenantId(), siteId, deviceId, pointKeyValue(pointKey),
                 Timestamp.from(window.from()),
                 Timestamp.from(window.to())));
         if (selectedRepresentation.equals("raw") && !rawAvailable) {
@@ -131,7 +132,8 @@ public class MeasurementHistoryService {
                 + " value_numeric," + text + " value_text,lag(" + numeric + ") OVER "
                 + "(PARTITION BY tenant_id,site_id,device_id,point_key ORDER BY time,edge_sequence) "
                 + "previous_numeric FROM device_measurement_sample WHERE tenant_id=? AND site_id=? "
-                + "AND device_id=? AND point_key=? AND quality='good' AND time>=? AND time<=?),"
+                + "AND device_id=? AND " + pointKeyPredicate("point_key", pointKey)
+                + " AND quality='good' AND time>=? AND time<=?),"
                 + "bucketed AS (SELECT time_bucket(CAST(? AS interval),time) bucket,aggregation_kind,"
                 + "avg(value_numeric) avg_value,min(value_numeric) min_value,max(value_numeric) max_value,"
                 + "sum(CASE WHEN previous_numeric IS NOT NULL AND value_numeric>=previous_numeric "
@@ -142,7 +144,8 @@ public class MeasurementHistoryService {
                 + "WHEN aggregation_kind='gauge' THEN avg_value ELSE last_numeric END chart_value "
                 + "FROM bucketed ORDER BY bucket LIMIT 2200";
         List<Datum> data = new ArrayList<>(jdbc.query(sql, MeasurementHistoryService::mapDatum,
-                scope.tenantId(), siteId, deviceId, pointKey, Timestamp.from(window.from()),
+                scope.tenantId(), siteId, deviceId, pointKeyValue(pointKey),
+                Timestamp.from(window.from()),
                 Timestamp.from(window.to()), window.bucket()));
         prependRawState(scope, siteId, deviceId, pointKey, window, representation,
                 aggregation, data);
@@ -158,14 +161,16 @@ public class MeasurementHistoryService {
                 + "min(min_numeric) min_value,max(max_numeric) max_value,sum(positive_delta) positive_delta,"
                 + "last(last_numeric,bucket) last_numeric,last(last_text,bucket) last_text,"
                 + "sum(sample_count) samples,false has_gap FROM " + table
-                + " WHERE tenant_id=? AND site_id=? AND device_id=? AND point_key=? "
+                + " WHERE tenant_id=? AND site_id=? AND device_id=? AND "
+                + pointKeyPredicate("point_key", pointKey) + " "
                 + "AND bucket>=? AND bucket<=? GROUP BY 1,2) SELECT chart_bucket bucket,*,CASE "
                 + "WHEN aggregation_kind='counter' THEN positive_delta "
                 + "WHEN aggregation_kind='gauge' THEN avg_value ELSE last_numeric END chart_value "
                 + "FROM bucketed ORDER BY chart_bucket LIMIT 2200";
         List<Datum> data = new ArrayList<>(jdbc.query(sql,
                 MeasurementHistoryService::mapDatum, window.bucket(),
-                scope.tenantId(), siteId, deviceId, pointKey, Timestamp.from(window.from()),
+                scope.tenantId(), siteId, deviceId, pointKeyValue(pointKey),
+                Timestamp.from(window.from()),
                 Timestamp.from(window.to())));
         prependRollupState(table, scope, siteId, deviceId, pointKey, window, aggregation, data);
         return List.copyOf(data);
@@ -182,10 +187,12 @@ public class MeasurementHistoryService {
         List<Datum> seed = jdbc.query("SELECT ?::timestamptz bucket," + numeric
                         + " chart_value,NULL::numeric min_value,NULL::numeric max_value," + text
                         + " last_text,0::bigint samples,false has_gap FROM device_measurement_sample "
-                        + "WHERE tenant_id=? AND site_id=? AND device_id=? AND point_key=? "
+                        + "WHERE tenant_id=? AND site_id=? AND device_id=? AND "
+                        + pointKeyPredicate("point_key", pointKey) + " "
                         + "AND quality='good' AND time<? ORDER BY time DESC,edge_sequence DESC LIMIT 1",
                 MeasurementHistoryService::mapDatum, Timestamp.from(window.from()),
-                scope.tenantId(), siteId, deviceId, pointKey, Timestamp.from(window.from()));
+                scope.tenantId(), siteId, deviceId, pointKeyValue(pointKey),
+                Timestamp.from(window.from()));
         if (!seed.isEmpty()) data.add(0, seed.get(0));
     }
 
@@ -196,9 +203,11 @@ public class MeasurementHistoryService {
         List<Datum> seed = jdbc.query("SELECT ?::timestamptz bucket,last_numeric chart_value,"
                         + "NULL::numeric min_value,NULL::numeric max_value,last_text,0::bigint samples,"
                         + "false has_gap FROM " + table + " WHERE tenant_id=? AND site_id=? "
-                        + "AND device_id=? AND point_key=? AND bucket<? ORDER BY bucket DESC LIMIT 1",
+                        + "AND device_id=? AND " + pointKeyPredicate("point_key", pointKey)
+                        + " AND bucket<? ORDER BY bucket DESC LIMIT 1",
                 MeasurementHistoryService::mapDatum, Timestamp.from(window.from()),
-                scope.tenantId(), siteId, deviceId, pointKey, Timestamp.from(window.from()));
+                scope.tenantId(), siteId, deviceId, pointKeyValue(pointKey),
+                Timestamp.from(window.from()));
         if (!seed.isEmpty()) data.add(0, seed.get(0));
     }
 
@@ -258,6 +267,9 @@ public class MeasurementHistoryService {
         List<ComparisonOption> result = new ArrayList<>();
         for (Seen item : seen) {
             Point point = catalog.resolve(item.pointKey());
+            if (point == null) {
+                point = catalog.resolve(MeasurementSelectionRepository.templateKey(item.pointKey()));
+            }
             if (point == null || !"known".equals(point.semanticStatus()) || point.unit() == null
                     || !(point.aggregationKind().equals("gauge")
                             || point.aggregationKind().equals("counter"))) continue;
@@ -286,12 +298,14 @@ public class MeasurementHistoryService {
         result.addAll(jdbc.query("SELECT occurred_at marker_time,event_kind,previous_numeric,"
                         + "value_numeric,previous_text,value_text FROM device_measurement_event "
                         + "WHERE tenant_id=? AND site_id=? AND device_id=? "
-                        + "AND point_key IN (?,'_pipeline') AND occurred_at>=? AND occurred_at<=? "
+                        + "AND (" + pointKeyPredicate("point_key", pointKey)
+                        + " OR point_key='_pipeline') AND occurred_at>=? AND occurred_at<=? "
                         + "AND event_kind IN ('data_gap','counter_reset','state_change','error_change',"
                         + "'bitfield_change','text_change') ORDER BY occurred_at",
                 (rs, n) -> new Marker(rs.getTimestamp("marker_time").toInstant(),
                         rs.getString("event_kind"), eventLabel(rs)), scope.tenantId(), siteId,
-                deviceId, pointKey, Timestamp.from(w.from()), Timestamp.from(w.to())));
+                deviceId, pointKeyValue(pointKey), Timestamp.from(w.from()),
+                Timestamp.from(w.to())));
         if (entityId != null) {
             result.addAll(jdbc.query("SELECT effective_at marker_time,event_type,from_value,to_value "
                             + "FROM component_change_event WHERE tenant_id=? AND site_id=? "
@@ -346,6 +360,17 @@ public class MeasurementHistoryService {
 
     private static String display(String value) {
         return value == null || value.isBlank() ? "unbekannt" : value;
+    }
+
+    private static String pointKeyPredicate(String column, String pointKey) {
+        return pointKey != null && pointKey.contains("[*]")
+                ? column + " LIKE ? ESCAPE '\\'" : column + "=?";
+    }
+
+    private static String pointKeyValue(String pointKey) {
+        if (pointKey == null || !pointKey.contains("[*]")) return pointKey;
+        return pointKey.replace("\\", "\\\\").replace("%", "\\%")
+                .replace("_", "\\_").replace("[*]", "[%]");
     }
 
     private static Window window(String range, Instant freeFrom, Instant freeTo) {

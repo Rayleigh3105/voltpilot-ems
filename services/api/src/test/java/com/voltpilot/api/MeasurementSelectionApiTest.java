@@ -534,6 +534,75 @@ class MeasurementSelectionApiTest {
         assertThat(row).containsEntry("recorded", true).containsEntry("decodedValue", "25");
     }
 
+    @Test
+    void ocppTemplateShowsConcreteMeterValuesInCatalogHistoryAndCsvWithoutWeakeningRls()
+            throws Exception {
+        String template = "ocpp.1_6.metervalues.energy.active.import.register.context[*]"
+                + ".format[*].phase[*].location[*].unit[*]";
+        String concrete = "ocpp.1_6.metervalues.energy.active.import.register"
+                + ".context[sample-periodic].format[raw].phase[none].location[outlet].unit[wh]";
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_sample(time,received_at,tenant_id,"
+                    + "site_id,device_id,point_key,raw_text,decoded_numeric,quality,catalog_version,"
+                    + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples) VALUES "
+                    + "(now()-interval '6 minutes',now(),"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + concrete
+                    + "','12000.0',12000.0,'good','2026.08.26.3',89901,'counter',300,false,0),"
+                    + "(now()-interval '5 minutes',now(),"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + concrete
+                    + "','12345.6',12345.6,'good','2026.08.26.3',89902,'counter',300,false,0) "
+                    + "ON CONFLICT DO NOTHING");
+            statement.execute("INSERT INTO device_measurement_point_state(tenant_id,site_id,device_id,"
+                    + "point_key,first_read_at,last_read_at,edge_sequence,raw_text,decoded_numeric,"
+                    + "quality,gap,dropped_samples,catalog_version) VALUES ("
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + concrete
+                    + "',now()-interval '6 minutes',now()-interval '5 minutes',89902,'12345.6',"
+                    + "12345.6,'good',false,0,'2026.08.26.3') ON CONFLICT DO NOTHING");
+        }
+
+        String encoded = java.net.URLEncoder.encode(template, java.nio.charset.StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        String demo = token("demo", "demo");
+        ResponseEntity<Map<String, Object>> catalog = get(demo,
+                path(DEVICE_A) + "/catalog?family=ocpp.1_6&recorded=true&limit=30");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> point = ((List<Map<String, Object>>) catalog.getBody().get("points"))
+                .stream().filter(p -> template.equals(p.get("pointKey"))).findFirst().orElseThrow();
+        assertThat(point).containsEntry("recorded", true)
+                .containsEntry("decodedValue", "12345.6")
+                .containsEntry("quality", "good");
+
+        ResponseEntity<Map<String, Object>> history = rest.exchange(java.net.URI.create(url(
+                        path(DEVICE_A) + "/" + encoded + "/history?range=24h")), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(history.getStatusCode()).as("OCPP history response: %s", history.getBody())
+                .isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> meta = (Map<String, Object>) history.getBody().get("meta");
+        assertThat(meta)
+                .containsEntry("pointKey", template).containsEntry("rawAvailable", true);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> data = (List<Map<String, Object>>) history.getBody().get("data");
+        assertThat(data).isNotEmpty().anySatisfy(bucket ->
+                assertThat(((Number) bucket.get("value")).doubleValue()).isEqualTo(345.6));
+
+        ResponseEntity<String> csv = rest.exchange(java.net.URI.create(url(path(DEVICE_A) + "/"
+                        + encoded + "/export?range=24h")), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class);
+        assertThat(csv.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(csv.getBody()).contains("# point_key=", "345.6");
+
+        ResponseEntity<Map<String, Object>> foreign = rest.exchange(java.net.URI.create(url(
+                        path(DEVICE_A) + "/" + encoded + "/history?range=24h")), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> first(ResponseEntity<Map<String, Object>> response,
             String key) {
