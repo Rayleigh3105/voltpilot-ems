@@ -592,32 +592,18 @@ Zusätzlich pro Anlage: gated Strategie-Bausteine (Markt, Lastspitzenkappung, at
 bleiben freischaltpflichtig - der Kunde öffnet sie über den Anwendungs-Schalter (M3), der
 serverseitig genau die Bausteine dieses Profils freigibt; die Aktivierung prüft das erneut.
 
-## Edge-Rollouts: Wellen-Vorschub + der optionale Audit-Spiegel
+## Edge-Updates: der Ablauf und der optionale Audit-Spiegel
 
-Beides gehört zur OTA-Stufe 4 („Politur") und ist **optional** — eine Flotte,
-die nichts davon anfasst, verhält sich exakt wie vorher.
+**Ein Edge-Update ist ein Schritt.** Plattform → **Edge-Updates** → Release
+wählen → Geräte ankreuzen → **Aktualisieren**. Die Zuweisung geht retained an
+die Geräte, jedes prüft sie gegen seine eingebackene Wurzel und tauscht sich
+selbst aus — es gibt keine Wellen, keine Freigabe-Stufe und keinen Handgriff am
+Gerät. Ein Fehlschlag ist Information: die Zeile wird rot und nennt ihren
+Grund, die übrigen Geräte laufen weiter. Betreiber-Handbuch:
+[`docs/ota-autonomie.md`](ota-autonomie.md).
 
-### Wellen automatisch weiterschalten (Vorgabe: AUS)
-
-Ein Rollout kann die nächste Welle selbst freigeben, sobald das Bake-Kriterium
-erfüllt ist. **Es ändert sich nur, WER „Nächste Welle" drückt** — dasselbe
-Kriterium (24 h gesund UND ein bestätigter Steuerzyklus, wo VoltPilot steuert),
-derselbe automatische Halt bei jedem `failed`/`rolled_back`/„im Update
-verstummt", derselbe endgültige Not-Aus.
-
-* **Beim Start:** das Häkchen „Automatisch weiter, wenn das Bake-Kriterium
-  erfüllt ist" im Rollout-Dialog (Plattform → Edge-Updates → *Rollout starten*).
-* **Später:** der Knopf neben dem Modus-Abzeichen am aktiven Rollout — in beide
-  Richtungen, solange der Rollout läuft oder pausiert ist. Ein **eingefrorener**
-  Rollout lässt sich nicht umschalten (Weitermachen ist ein neuer Rollout).
-* **Was gerade passiert**, steht als Satz unter dem Knopf („Automatischer
-  Vorschub: … Offen: Noch 21 Std. gesunder Betrieb.").
-* **Im Journal** erscheint jede automatische Freigabe als
-  `Welle automatisch freigegeben` mit dem Urheber `automatisch` — nie unter
-  einem menschlichen Namen.
-
-Bei ≤ 10 Geräten ist Hand-Vorschub weiterhin die richtige Vorgabe (Entscheid
-D4); die Automatik lohnt sich, sobald mehrere Wellen über Tage laufen.
+Boxen, die vor dem 26.08.2026 eingerichtet wurden, brauchen **einmal**
+`cd <deploy-dir> && ./update.sh` — danach nie wieder.
 
 ### Audit-Spiegel ins gitops (optional, rein dokumentarisch)
 

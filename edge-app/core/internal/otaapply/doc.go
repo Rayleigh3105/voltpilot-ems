@@ -1,4 +1,4 @@
-// Package otaapply is the PURE half of OTA Stufe 3 „Autonom": the on-disk
+// Package otaapply is the PURE half of the apply path: the on-disk
 // protocol between the core and the `vp-edge-updater` sidecar, plus every rule
 // that decides whether an update may be applied at all.
 //
@@ -18,7 +18,6 @@
 //
 //	<data>/ota/target.json          Kern      (Stufe 2, retained Zuweisung)
 //	<data>/ota/current.json         Kern      (Anti-Rollback-Boden, nur je hoeher)
-//	<data>/ota/autonomy.json        Betreiber (der Schalter, Vorgabe AUS)
 //	<data>/ota/core-signal.json     Kern      -> Sidecar
 //	<data>/ota/updater-state.json   Sidecar   -> Kern (und die Oberflaechen)
 //	<data>/ota/pending-confirm.json Sidecar   (die Brotkrume ueber einen Neustart)
@@ -37,4 +36,13 @@
 //  3. **Was nicht entschieden werden kann, wird nicht angewandt.** Jede Regel
 //     hier faellt im Zweifel auf „nicht anwenden" und traegt einen deutschen
 //     Grund; ein „unbekannt" ist nie ein „geht schon".
+//
+// # Was hier KEIN Tor mehr ist (Vereinfachung 26.08.2026)
+//
+// Der Geraete-Schalter, die Neutral-Zeit, der Interlock, die Einmal-Freigabe
+// und die Dauersperre nach einer Ruecknahme sind ERSATZLOS entfallen: sie
+// waren Tore ueber den ZUSTAND DER ANLAGE, und jedes davon verlangte einen
+// Menschen am Geraet. Was bleibt, sind ausschliesslich Eigenschaften des
+// SIGNIERTEN Release (Kette, Anti-Rollback-Boden, Backend, Datenstand) - die
+// bewertet der Takt selbst - und die physische Plattengrenze.
 package otaapply

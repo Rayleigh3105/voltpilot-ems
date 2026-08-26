@@ -1,449 +1,154 @@
-# OTA Stufe 3 „Autonom" — Betreiber-Handbuch
+# Edge-Updates — Betreiber-Handbuch
 
-Stufe 0 hat den Stand SICHTBAR gemacht, Stufe 1 hat ihn KRYPTOGRAFISCH GEDECKT,
-Stufe 2 hat ihn VERTEILT — angewandt hat ihn immer noch ein Mensch am Gerät
-(`update.sh --from-target`). Stufe 3 baut die Maschine, die das selbst tut:
-den Sidecar **`vp-edge-updater`**.
+> **Der ganze Ablauf in einem Satz:** Im Portal unter *Plattform → Edge-Updates*
+> das Release wählen, die Geräte ankreuzen, **Aktualisieren** drücken. Die
+> Geräte holen sich die Software und tauschen sich selbst aus.
+>
+> **Es gibt keinen zweiten Schritt.** Niemand muss auf ein Gerät, keine Shell,
+> kein Passwort, keine Freigabe am Gerät, keine Wellen, kein Canary-Ring.
 
-> **Sie ist gebaut und im Labor geprüft.** Autonomes Anwenden hat zwei
-> unabhängige Tore. **Seit einer frischen Installation läuft das erste Tor
-> (Compose-Profil `ota`) standardmäßig mit** — der Sidecar beobachtet und
-> meldet von Anfang an, ohne einen zweiten Handgriff (`install.sh`,
-> §7 unten). **Das zweite Tor — der Geräte-Schalter — bleibt unverändert
-> AUS**, bis ein Betreiber ihn bewusst setzt (§8: auf `:8484`, ganz ohne
-> Shell, oder von Hand in `/data/ota/autonomy.json`). Eine Box mit laufendem
-> Sidecar, aber ausgeschaltetem Schalter, wendet nichts an — sie beobachtet
-> nur und meldet, exakt wie eine ganz ohne Sidecar.
-
-**Auf Bestandsboxen ändert sich nichts von selbst.** `update.sh` erkennt den
-laufenden Zustand einer Box und behält ihn bei (§5, `detect_ota_profile`) —
-eine Box ohne laufenden Sidecar bleibt eine Box ohne laufenden Sidecar, bis
-sie neu installiert oder der Sidecar von Hand (`docker compose --profile ota
-up -d updater`) nachgezogen wird.
-
-Zeremonie und Signaturkette: [`ota-signing.md`](ota-signing.md).
-Rollout-Steuerung im Portal: dort §6b und die Seite „Edge-Updates".
+Seit dem **26.08.2026** ist jedes Tor entfallen, das den Zustand der ANLAGE
+bewertete und dafür einen Menschen vor Ort brauchte: der Geräte-Schalter, das
+Compose-Profil, der Neutral-Zeit-Nachweis, der Interlock, die Einmal-Freigabe
+und die Dauersperre nach einer Rücknahme. Was bleibt, sind Eigenschaften des
+**signierten Release** — die bewertet das Gerät im Takt selbst — und die
+physische Grenze der Speicherkarte.
 
 ---
 
-## 1. Was der Sidecar ist — und was er ausdrücklich nicht ist
-
-| | |
-|---|---|
-| **Er besitzt** | `/var/run/docker.sock` — er ist der EINZIGE, der Container tauscht |
-| **Er hat NICHT** | Netz (`network_mode: none`), Host-Port, MQTT-Verbindung, Geräte-Identität |
-| **Er spricht mit dem Kern** | ausschließlich über Dateien in `/data/ota` — jede Datei hat genau EINEN Schreiber |
-| **Er entscheidet** | nichts allein: jede Regel liegt im reinen `internal/otaapply` und ist ohne Container prüfbar |
-
-**Ehrlich zur Privilegien-Lage.** `docker.sock` ist Host-root. Ein übernommener
-Sidecar *kann* einen privilegierten Container starten. Der Schutz ist deshalb
-ausdrücklich **nicht** die Netz-Grenze, sondern: er handelt ausschließlich auf
-Eingaben, die er **selbst** gegen **seine eigene eingebackene Wurzel**
-signaturgeprüft hat — er glaubt dem Kern nichts —, und seine Angriffsfläche ist
-minimal (kein Zuhörer, kein Netz-Stack, ein Parser).
-
-**Wer aktualisiert den Aktualisierer?** Nicht er selbst. Sein eigenes Image
-steht bewusst nicht in der Artefakt-Liste, die er tauscht
-(`otaapply.UpdaterComponent` lässt es heraus und protokolliert das laut) — ein
-Prozess, der sich mitten in einer Orchestrierung ersetzt, verliert genau den
-Zustand, mit dem er den Vorgang zu Ende fahren müsste. Sidecar-Updates sind
-selten, beaufsichtigt und out-of-band:
-
-```bash
-cd /srv/voltpilot-edge
-./update.sh --ota                     # zieht auch das Sidecar-Image
-# oder gezielt:
-docker compose --profile ota up -d updater
-```
-
----
-
-## 2. Der Ablauf eines autonomen Updates
+## 1. Was passiert, wenn Sie „Aktualisieren" drücken
 
 ```
-Zuweisung (retained, Stufe 2)
+Zuweisung geht retained an die gewählten Geräte
+   │        (eine Box, die gerade offline ist, holt sie beim nächsten
+   │         Verbindungsaufbau selbst ab - nichts geht verloren)
    │
-   ├─ Sidecar verifiziert SELBST  (eigene Wurzel, eigener Anti-Rollback-Boden)
-   ├─ Tore: Schalter · Backend · state_schema · Kern meldet sich · Platte ·
-   │        Neutral-Zeit T · „nicht mitten im Schreiben" · schon zurückgerollt?
+   ├─ Das Gerät verifiziert SELBST  (eigene eingebackene Wurzel,
+   │                                 eigener Anti-Rollback-Boden)
+   ├─ HOLEN       beide Images, VOR jedem Stopp → Digest gegengeprüft
+   ├─ SICHERN     Rückfallziel dreifach: :lkg-Tag · gestoppter Halter-Container ·
+   │              `docker save`-Archiv   +  Sicherung des /data-Bestands
+   ├─ BROTKRUME   vor dem ersten Tausch
+   ├─ MELDEN      der Kern setzt `applying` durabel ab
+   ├─ TAUSCHEN    eine Komponente nach der anderen: erst core, dann nodered
+   ├─ SELBSTTEST  der NEUE Stand urteilt über sich (inkl. Steuer-Trockenlauf)
    │
-   ├─ HOLEN  (beide Images, VOR jedem Stopp) → Digest gegengeprüft
-   ├─ SICHERN  Rückfallziel dreifach: :lkg-Tag · gestoppter Halter-Container ·
-   │           `docker save`-Archiv   +   Gruppen-Sicherung des /data-Bestands
-   ├─ BROTKRUME  pending-confirm.json — VOR dem ersten Tausch
-   ├─ MELDEN  der Kern setzt `applying` DURABEL ab (QoS1, mit Ack)
-   ├─ TAUSCHEN  eine Komponente nach der anderen: core, dann nodered
-   ├─ SELBSTTEST  der NEUE Kern urteilt über sich (inkl. Steuer-Trockenlauf)
-   │
-   ├─ bestanden → BESTÄTIGEN (Rückfallziel wandert auf den neuen Stand)
-   └─ nicht bestanden / Frist / Flattern → ZURÜCKNEHMEN (offline, ohne Registry)
+   ├─ bestanden        → BESTÄTIGEN  (Rückfallziel wandert auf den neuen Stand)
+   └─ nicht bestanden  → ZURÜCKNEHMEN (offline, ohne Registry)
 ```
 
-Fünf Eigenschaften, auf die es ankommt:
+Die vier Eigenschaften, auf die es ankommt:
 
 1. **Sequenziert.** Es wird immer nur EINE Komponente getauscht. Während der
-   Kern getauscht wird, lebt die Staleness-Failsafe von Node-RED — und danach
-   umgekehrt. Beide Failsafe-Kopien sind NIE gleichzeitig weg.
-2. **Nur was sich unterscheidet** wird getauscht.
+   Kern getauscht wird, lebt die Ausfallsicherung von Node-RED — und danach
+   umgekehrt. Beide sind NIE gleichzeitig weg.
+2. **Getauscht wird nur, was sich unterscheidet.**
 3. **Die Brotkrume liegt vor dem ersten Tausch.** Ein Neustart mitten im
-   Vorgang führt ihn deterministisch zu Ende, statt etwas Neues zu beginnen
-   (Einzelschreiber-Semantik).
-4. **Der durable `applying`-Bericht** ist die letzte Handlung vor dem Stoppen.
-   Nur dadurch ist „im Update verstummt" ein eigener Zustand statt
-   ununterscheidbar von „die Box ist weg". Ohne Broker wird nach einer
-   begrenzten Frist trotzdem getauscht — eine Box ohne Cloud-Verbindung muss
-   aktualisierbar bleiben.
-5. **Was hier einmal zurückgerollt wurde, läuft nie wieder von selbst an**
-   (`/data/ota/failed.json`). Ohne diese Regel drehte sich die Anlage im Kreis:
-   die Zuweisung liegt ja noch, das Release läuft nach der Rücknahme immer noch
-   nicht — der nächste Takt begänne denselben Tausch. Weiter geht es über ein
-   ANDERES Release oder dadurch, dass ein Betreiber die Datei entfernt.
+   Vorgang führt ihn zu Ende, statt etwas Neues zu beginnen.
+4. **Eine Box ohne Cloud-Verbindung bleibt aktualisierbar.** Der durable
+   `applying`-Bericht ist die letzte Handlung vor dem Stoppen (nur dadurch ist
+   „im Update verstummt" ein eigener Zustand statt „die Box ist weg") — kommt
+   er nicht durch, wird nach einer begrenzten Frist trotzdem getauscht.
+
+**Fehlschlag ist Information, keine Sperre.** Fällt ein Gerät durch, wird seine
+Zeile rot und nennt den Grund; die übrigen Geräte laufen weiter, und die
+nächste Zuweisung versucht es einfach wieder.
 
 ---
 
-## 3. Die Inverter-Neutral-Zeit **T** — das eine, was noch fehlt
+## 2. Was ein Update noch aufhalten kann
 
-Während eines Tausches erneuert für Sekunden niemand den Sollwert. Hängt sich
-die getauschte Komponente auf, bleibt genau ein Rückhalt: der Wechselrichter
-fällt nach seiner **Kommunikations-Verlust-Zeit T** von selbst auf neutral
-zurück. Die Wachhund-Frist liegt deshalb **strikt unter T** — das ist
-Arithmetik, keine Absicht (`otaapply.WatchdogDeadline`, Marge = T/5, mind. 5 s).
+Alles davon bewertet das Gerät **selbst, im Takt** — keiner dieser Punkte
+braucht jemanden vor Ort.
 
-**Heute ist für KEINE Familie ein T belegt.** Also gilt:
-
-> Eine Anlage, die wirklich **steuert** (Not-Aus an UND Freigabe erteilt UND
-> Wechselrichter gewählt), wird ohne belegtes T **nicht** autonom aktualisiert.
-> Eine Anlage, die nur **liest** — das ist die heutige Flotte — hat kein
-> gehaltenes Kommando, das T überleben könnte, und darf.
-
-### T am Prüfstand belegen
-
-1. Anlage steuert nachweislich (First-Light-Freigabe erteilt, Sollwert ≠ 0).
-2. Layer 1 hart trennen (Node-RED stoppen bzw. Kabel ziehen) — **nicht** den
-   Sollwert auf 0 setzen: gemessen wird das Verhalten bei KOMMUNIKATIONSVERLUST.
-3. Messen, ab wann der Wechselrichter nachweislich neutral ist (Batterie-
-   leistung an einem unabhängigen Messpunkt, nicht am selben Register).
-4. Mehrfach wiederholen, den GRÖSSTEN gemessenen Wert nehmen, aufrunden.
-5. Eintragen:
-
-```bash
-# .env auf dem Gerät
-VP_OTA_NEUTRAL_VERIFIED=hybrid_3p:90,sunspec:45
-```
-
-Format `familie:sekunden`, mehrere durch Komma. **Ein unlesbarer Eintrag bricht
-den Sidecar-Start ab** — eine still verworfene Zeile hieße „nicht verifiziert",
-während der Betreiber glaubt, verifiziert zu haben. Ein T, unter dem keine
-brauchbare Frist Platz hat (< ~19 s), wird ebenfalls abgelehnt.
-
-Für eine Familie, deren T sich nicht belegen lässt, bleibt der Weg des
-Vorentwurfs: ein winziger externer Neutral-Herzschlag außerhalb des
-tauschbaren Satzes. Der ist **nicht gebaut**.
-
-### T am GERÄT messen — der gefuehrte Neutral-Zeit-Test auf `:8484`
-
-Der Pruefstand-Weg oben braucht ein physisch getrenntes Kabel und einen
-Menschen mit einer Stoppuhr. Seit `internal/neutralcal` ist T stattdessen eine
-**messbare Eigenschaft**, die die Box selbst ermittelt — unter „Einrichten →
-Steuerung → Neutral-Zeit messen", direkt neben der PV-Abregelungs-Karte.
-
-**Das Verfahren (die Software-Näherung des Pruefstand-Schritts 2/3 oben):**
-
-1. Die Box schreibt einen kleinen, klar von neutral abweichenden Sollwert
-   (`neutralcal.TestKw`, aktuell 0,5 kW — bewusst niedrig, es geht um
-   Erkennbarkeit, nicht um Leistung) und frischt ihn auf, bis das Register
-   die Ankunft bestätigt UND die gemessene Batterieleistung die Abweichung
-   zeigt (zwei aufeinanderfolgende frische Messwerte — ein einzelner Ausreißer
-   beweist nichts).
-2. **Dann hört sie bewusst auf zu schreiben** — kein weiterer Sollwert, keine
-   Neutral-Freigabe, GAR NICHTS auf `edge/setpoint`. Das ist der ganze
-   Mechanismus: Layer 1 reagiert nur auf eine NEUE Nachricht, und ohne eine
-   neue Nachricht bleibt der Wechselrichter sich selbst überlassen — genau der
-   Ausfall, den die Wachhund-Frist überleben muss.
-3. Der GEWÖHNLICHE Telemetrie-Lesepfad läuft unveraendert weiter (nichts wird
-   gestoppt) und beobachtet, wie lange es dauert, bis die gemessene
-   Batterieleistung von selbst — dreimal in Folge, frisch — ins Neutralband
-   zurückkehrt.
-
-**Das Urteil ist immer eines von vier, nie eine erfundene Zahl:**
-
-| Urteil | Bedeutung |
-|---|---|
-| `bestanden` | Beide Hälften bewiesen — die Karte bietet „Als Nachweis übernehmen" an |
-| `nicht_beweisbar` | Die Anlage hat sich nie messbar von neutral entfernt (z. B. SoC-Grenze), oder die Messwerte sind ausgeblieben — eine Aussage über den LAUF, nie über T |
-| `kein_nachweis` | Das Register hat den Testwert nie bestätigt, oder die Rückkehr blieb im Zeitfenster aus — bitte wiederholen |
-| `laeuft` | Test noch aktiv |
-
-**T wird KONSERVATIV berichtet, nie optimistisch:** die Sekundenzahl ist auf
-den letzten Messwert verankert, der nachweislich noch AUSSERHALB des
-Neutralbands lag — nie auf den ersten, der zufällig schon eingeschwungen
-aussah. Ein zu schnell gemessenes T unterschätzt sich damit selbst (und
-scheitert ggf. an der Mindestfrist), aber es ÜBERSCHÄTZT NIE — die
-sicherheitskritische Richtung, denn die Wachhund-Frist muss strikt darunter
-bleiben.
-
-**Sicherheitsnetz:** harte Obergrenze für die Schreibphase
-(`neutralcal.DepartureTimeout`, 90 s) und für den ganzen Test
-(`neutralcal.DefaultTTL`, 6 min); jederzeit per Knopf abbrechbar
-(„Test abbrechen"); ein laufender Neutral-Zeit-Test bricht selbst ab, sobald
-eine EILIGE Aktualisierung die Anlage neutral parken möchte oder eine
-Kalibrierung startet — er hat dann ohnehin nichts mehr zu beweisen. Die
-Freigabe folgt derselben `X-VP-Calibration-Token`-Schranke wie die
-Batteriekalibrierung; der Test ändert nie eine Guard-Grenze und weitet nie
-eine Befugnis.
-
-**Ein bestandener Test trägt sich in `/data/ota/neutral-verified.json` ein**
-(je Familie eine Zeile: Sekunden, Zeitpunkt, Testparameter).
-`otaapply.NeutralTable.ForWithMeasured` zieht diesen Beleg GLEICHWERTIG zu
-einem `VP_OTA_NEUTRAL_VERIFIED`-Eintrag heran — **die Umgebungsvariable
-gewinnt aber IMMER**, wenn sie für dieselbe Familie gesetzt ist, auch mit
-einer kleineren Zahl: ein Betreiber, der bereits die konservative,
-wiederholte Pruefstands-Messung gemacht hat (Schritt 4 oben), wird nie
-stillschweigend überstimmt. Ohne einen Env-Eintrag öffnet der geräte-lokale
-Nachweis das Tor genauso wie ein Eintrag in der `.env`.
-
-### So sieht die Verweigerung aus — im Log und im Portal
-
-Bis zum Canary-Soak am 04.08.2026 verweigerte der Sidecar in diesem Fall
-**vollkommen still**: im Protokoll standen nur die Startzeilen, und der
-Herzschlag trug weiter den freundlichen Satz des Verifizierers („Release … ist
-verifiziert – die Anwendung erfolgt beaufsichtigt am Gerät"). Der Betreiber sah
-„wartet" und hatte keine Möglichkeit zu erfahren, worauf. Jede Sperre trägt
-deshalb jetzt einen **maschinenlesbaren Namen** (`blocker`, Vokabular in
-`otaapply` — hier `neutralzeit`) und wird an drei Stellen sichtbar:
-
-```bash
-# 1. Das Sidecar-Protokoll - EINE Zeile je ÄNDERUNG der Sperre, nicht je Takt.
-docker compose --profile ota logs updater | grep blockiert
-#  WARN OTA: autonomes Anwenden blockiert blocker=neutralzeit
-#       grund="Diese Anlage steuert. Fuer die Familie 'hybrid_3p' ist die
-#       Neutral-Zeit des Wechselrichters NICHT verifiziert. …"
-
-# 2. Die Zustandsdatei - maschinenlesbar, für jede Oberfläche.
-docker run --rm -v vp-edge-data:/data alpine cat /data/ota/updater-state.json
-#  { "state": "deferred", "blocker": "neutralzeit", "reason": "…" }
-```
-
-**3. Das Portal.** Der Kern faltet den Grund in den `update`-Block des
-Herzschlags (mit dem Vorsatz **„Autonomie blockiert: …"**, damit „wartet" und
-„blockiert" nie gleich aussehen) und ersetzt damit den Satz des Verifizierers,
-solange die Sperre steht. Seit dem Admin-UX-Umbau reist zusätzlich der
-maschinenlesbare NAME mit, und das Portal zeigt ihn an drei Stellen:
-
-* Das Gerät steht auf **`blockiert`** (bis dahin fiel es in den
-  Fortschritts-Ton „ausstehend" — eine stehende Sperre sah aus wie Bewegung).
-* Die Spalte **Grund** zeigt den deutschen Satz der Box, und darunter steht der
-  **HEBEL** („Neutral-Zeit … in `VP_OTA_NEUTRAL_VERIFIED` eintragen").
-* Beim Knopf **„Auf Gerät anwenden"** steht derselbe Hebel als „Achtung"-Zeile
-  **VOR dem Klick** — eine Freigabe würde hier verpuffen, und das muss man
-  vorher wissen, nicht hinterher raten.
-
-Der Zustand ist bewusst weiter `deferred` — es ist keine Störung, sondern eine
-bewusst nicht getroffene Entscheidung; nur der Grund muss stimmen.
-
-Fällt die Sperre (T eingetragen, Steuerung abgeschaltet, Platte aufgeräumt),
-steht **eine** Zeile „Sperre aufgehoben" im Protokoll und der Herzschlag trägt
-wieder seinen gewöhnlichen Satz. Ein Gerät ohne Sperre meldet das Feld gar nicht
-— alles hier ist additiv.
-
----
-
-## 4. Der Registry-Zugang je Gerät
-
-Der autonome Pull braucht stehende Zugangsdaten. Forgejos Token-Modell ist
-**benutzer-** und nicht repository-bezogen (es gibt keine Deploy-Token für die
-Paket-Registry), also gibt es zwei ehrliche Möglichkeiten. Gewählt ist:
-
-> **Ein reiner Lese-Bot-Benutzer (`read:package`) — und daran EIN BENANNTES
-> TOKEN JE GERÄT.** Forgejo erlaubt beliebig viele benannte Token je Benutzer
-> und das Zurücknehmen eines einzelnen. „Gerät X den Zugang entziehen" ist damit
-> ein Klick, ohne die übrige Flotte zu berühren.
-
-**Die Grenze wird benannt, nicht versteckt:** alle diese Token tragen denselben
-Umfang, ein gestohlenes Gerät kann also jedes Edge-Image ziehen. Bei dieser
-Flottengröße ist das vertretbar — es ist Lesezugriff auf Software, die ohnehin
-auf jeder Box liegt.
-
-*Rückfall, falls die Token-Pflege zu viel wird:* EIN flottenweites
-Nur-Lese-Token mit dokumentierter Rotation. Am Code ändert das nichts — er
-liest ohnehin je Gerät eine Datei.
-
-### Einrichten (einmal je Box, beim TOFU-Crossover)
-
-1. In Forgejo als Bot-Benutzer `voltpilot-edge-pull` ein Token anlegen,
-   Umfang **nur** `read:package`, Name = die Geräte-Referenz.
-2. Auf dem Gerät ablegen (0600, im `vp-edge-data`-Volume neben `device.key`):
-
-```bash
-docker run --rm -v vp-edge-data:/data alpine:3.20 sh -c \
-  'mkdir -p /data/ota && cat > /data/ota/registry-auth.json <<JSON
-{ "registry": "git.tecmaxx.de", "username": "voltpilot-edge-pull", "token": "<TOKEN>" }
-JSON
-chmod 600 /data/ota/registry-auth.json'
-```
-
-3. Rotation = neues Token anlegen, Datei ersetzen, altes Token in Forgejo
-   löschen. Der Sidecar liest die Datei bei jedem Start.
-
-Fehlt die Datei, benutzt der Sidecar die Anmeldung des Docker-Daemons (der
-Zustand, in dem eine heute von Hand gepflegte Box ohnehin ist).
-
----
-
-## 5. Einschalten — die Reihenfolge ist bindend
-
-**Nichts davon gehört auf eine Kundenanlage, bevor die Matrix aus §6 auf der
-Canary-Box (Pilsting) mit echten Steuerzyklen bestanden ist.**
-
-**Auf einer FRISCH installierten Box (`edge-app/install.sh`) läuft Tor 1
-bereits** — `./update.sh --ota` in Schritt 1 unten ist dann nur noch für
-BESTANDSBOXEN nötig, die vor dieser Änderung installiert wurden.
-
-```bash
-cd /srv/voltpilot-edge
-
-# 1. NUR Bestandsboxen: Sidecar-Image holen und starten (Tor 1) - er
-#    beobachtet nur. Eine frische Installation hat das bereits.
-./update.sh --ota
-
-# 2. Beobachten: was sagt er über sich?
-docker compose --profile ota logs -f updater
-docker run --rm -v vp-edge-data:/data alpine cat /data/ota/updater-state.json
-
-# 3. Erst wenn das stimmt: der Schalter je Gerät (Tor 2) - OHNE SHELL auf
-#    `:8484` unter „Einrichten → Automatische Aktualisierung" (siehe unten),
-#    oder von Hand:
-docker run --rm -v vp-edge-data:/data alpine sh -c \
-  'printf "{\"enabled\":true,\"note\":\"Canary Pilsting, Soak <Datum>\"}\n" \
-   > /data/ota/autonomy.json'
-```
-
-**Wieder ausschalten** — sofort wirksam, ohne Neustart: derselbe Schalter auf
-`:8484`, oder von Hand:
-
-```bash
-docker run --rm -v vp-edge-data:/data alpine \
-  sh -c 'printf "{\"enabled\":false}\n" > /data/ota/autonomy.json'
-```
-
-Ein laufender Vorgang wird davon **nicht** abgebrochen (er wird zu Ende
-gefahren oder zurückgenommen — beides endet in einem definierten Zustand). Der
-harte Not-Aus ist `docker compose --profile ota stop updater`.
-
-### Der Schalter OHNE SHELL, auf `:8484`
-
-„Einrichten → Steuerung → Automatische Aktualisierung" (`GET`/`POST
-/api/ota/autonomy`, hinter demselben `X-VP-Calibration-Token` wie jede andere
-physische Steuer-Mutation) schreibt **ausschließlich** `/data/ota/autonomy.json`
-— dieselbe Datei, die der Sidecar ohnehin jeden Takt liest. Jedes weitere Tor
-der Kette (Signaturkette, Anti-Rollback-Boden, Plattenwächter, Neutral-Zeit-Regel,
-Interlock, Selbsttest, Wachhund, `failed.json`) gilt **unverändert** — dieser
-Schalter erteilt keine neue Befugnis, er ersetzt nur den `docker run`-Einzeiler
-oben durch einen Klick. Ohne laufenden Sidecar (Profil `ota` aus) hat der
-Schalter keine Wirkung — die Karte sagt das.
-
-**Empfehlung zur Flotten-Vorgabe (eine Entscheidung des Betreibers, keine
-technische):** die Vorgabe des GERÄTE-Schalters bleibt bewusst AUS, auch nach
-dieser Änderung. Erst nachdem die Canary-Box (Pilsting) die Fehlerinjektions-
-Matrix (§6) MIT belegtem T und echten Steuerzyklen im Dauerbetrieb bestanden
-hat, ist eine flottenweite Umstellung auf AN eine Abwägung wert — und dann
-eher schrittweise (einzelne Wellen) als auf einen Schlag.
-
-### Alle Stellschrauben
-
-| Variable | Vorgabe | Bedeutung |
+| Grund im Portal | Bedeutung | Ihr Hebel |
 |---|---|---|
-| `VP_OTA_AUTONOMOUS` | `false` | Not-Ein aus der Umgebung. Der eigentliche Schalter ist `autonomy.json`. |
-| `VP_OTA_NEUTRAL_VERIFIED` | leer | Belegte Neutral-Zeiten, `familie:sekunden` (§3) - gewinnt immer über einen am Gerät GEMESSENEN Nachweis (`/data/ota/neutral-verified.json`, §3). |
-| `VP_OTA_WATCHDOG_SECONDS` | `600` | Wachhund-Frist; wird durch T zusätzlich gedeckelt. |
-| `VP_OTA_DISK_GUARD_MB` | `2048` | Freier Platz, unter dem nicht getauscht wird. |
-| `VP_OTA_PRUNE` | `true` | Abgelöste Abbilder nach einem **bestätigten** Tausch entfernen (§5b). |
-| `VP_OTA_PRUNE_KEEP` | `1` | Wie viele abgelöste Releases je Komponente liegen bleiben. |
-| `VP_OTA_COMPOSE_FILES` | `docker-compose.yml` | Bei Host-Netz-Overlay BEIDE Dateien, durch `:` getrennt. |
-| `VP_OTA_ACK_WAIT_SECONDS` | `45` | Wartezeit auf den durablen `applying`-Bericht. |
-| `VP_OTA_TICK_SECONDS` | `5` | Takt. |
+| `kette` | Signatur, Trust-Set oder Form stimmen nicht. **Sicherheits-Ereignis.** | Signaturkette prüfen (`docs/ota-signing.md`) |
+| `politik` | Gültig signiert, gilt für diese Box aber nicht (Anti-Rollback-Boden, Rückschritt) | ein passendes Release zuweisen |
+| `backend` | Das Release ist nicht für dieses Apply-Backend gemacht | — |
+| `state_schema` | Das Release kann den Datenstand dieser Box nicht lesen (nur bei Rückschritt) | ein neueres Release zuweisen |
+| `platte` | Zu wenig Platz — **nachdem** die Box ihre abgelösten Abbilder selbst weggeräumt hat. Eine physische Grenze. | Karte aufräumen, `VP_OTA_DISK_GUARD_MB` prüfen |
+| `zurueckgenommen` | Genau **diese** Zuweisung wurde hier schon einmal zurückgenommen (kein endloser Kreis). | erneut aktualisieren — auch mit demselben Release — startet einen neuen Versuch |
+
+Dazu die drei Tore der **Vorbereitung** (`laden`, `rueckfallziel`, `sicherung`):
+sie halten den Tausch auf, **bevor** irgendetwas gestoppt wird — die Anlage
+läuft dabei ununterbrochen weiter.
+
+> **Boxen mit älterem Image** melden gelegentlich noch ein Wort aus der alten
+> Welt (`neutralzeit`, `interlock`, `kern_still`, `freigabe_release`). Das
+> Portal sagt dann ausdrücklich, dass es diese Sperre nicht mehr gibt und dass
+> sie mit genau diesem Update wegfällt.
 
 ---
 
-## 5b. Alte Abbilder: der Sidecar räumt hinter sich auf
+## 3. Bestandsboxen: EIN Befehl, danach nie wieder
+
+Eine **frisch installierte** Box bringt den Apply-Sidecar von selbst mit
+(`install.sh` startet ihn als gewöhnlichen Dienst). Boxen, die vor dem
+26.08.2026 eingerichtet wurden, brauchen ihn **einmal**:
+
+```bash
+cd /srv/voltpilot-edge && ./update.sh
+```
+
+(bzw. das Deploy-Verzeichnis dieser Box). Der Befehl zieht die neue
+`docker-compose.yml`, holt die Images und startet den `updater` dauerhaft mit.
+Ab dann läuft jedes weitere Update über das Portal.
+
+**Der Registry-Zugang wird dabei automatisch eingerichtet:** `install.sh` und
+`update.sh` lesen den Eintrag aus der `docker login`-Anmeldung des Hosts und
+legen ihn als `/data/ota/registry-auth.json` ab. Kein zusätzliches Geheimnis,
+keine Handarbeit. *Ehrliche Grenze:* benutzt der Host einen Credential-Helper
+(`credsStore`), steht dort kein Klartext — der Installer warnt dann laut und
+nennt den Befehl, mit dem Sie die Datei von Hand ablegen.
+
+---
+
+## 4. Alte Abbilder: die Box räumt hinter sich auf
 
 Jedes Update holt **zwei** neue Abbilder und hebt das Rückfallziel dreifach
-auf. Ohne Aufräumen wächst die Karte deshalb mit jeder Runde — auf der
-Canary-Box gemessen (Raspberry Pi 5, 15-GB-Karte, 09.08.2026):
+auf. Ohne Aufräumen wächst die Karte mit jeder Runde — auf der Canary-Box
+gemessen (Raspberry Pi 5, 15-GB-Karte, 09.08.2026): 58 Abbilder, 3 in Benutzung,
+5,8 GB rückgewinnbar, und der Plattenwächter verweigerte deshalb einen
+legitimen Rollout.
 
-```
-Images   58 total   3 active   7.283GB   RECLAIMABLE 5.826GB (79%)
-```
+**Wann es läuft:** nach einem **bestätigten** Tausch — nie vorher, nie mitten
+drin, und nach einer **Rücknahme gar nicht** (dort ist jedes Abbild potenziell
+das, worauf gleich zurückgefallen wird).
 
-86 % voll, und der **Plattenwächter verweigerte einen legitimen Rollout**
-(„Platz auf dem Datenträger schaffen"). Die Verweigerung war richtig, der Grund
-war unser Müll.
+**Was nie entfernt wird**, in dieser Reihenfolge geprüft:
 
-**Wann es läuft:** nach einem **BESTÄTIGTEN** Tausch — also nachdem der
-Selbsttest bestanden ist, das Rückfallziel auf den neuen Stand gehoben wurde
-und die Brotkrume weg ist. Nie vorher, nie mitten drin, und nach einer
-**Rücknahme gar nicht**: solange ein Vorgang läuft, ist jedes Abbild potenziell
-das, worauf gleich zurückgefallen wird.
+1. jedes Abbild, auf das **irgendein** Container zeigt — laufend ODER gestoppt
+   (das deckt die `vp-edge-lkg-*`-Halter ohne Sonderregel ab);
+2. alles im Rückfall-Namensraum `vp-edge-lkg-*`, auch ohne Halter;
+3. der laufende Stand und eine bereits vorab geholte **nächste** Zuweisung;
+4. **alles, was nicht älter ist als der laufende Stand**;
+5. je Repository die `VP_OTA_PRUNE_KEEP` (Vorgabe 1) jüngsten Verwaisten.
 
-**Was nie entfernt wird** (die Sicherheits-Invariante, in dieser Reihenfolge
-geprüft):
+Das `docker save`-Archiv ist eine Datei und per Konstruktion außer Reichweite.
+Entfernt wird **je Name**, nie mit `-f`, nie pauschal. Schalter:
+`VP_OTA_PRUNE` / `VP_OTA_PRUNE_KEEP` in der `.env`, oder je Gerät
+`/data/ota/prune.json` (fehlende Datei = an, **unlesbare Datei = nichts
+entfernen**).
 
-1. jedes Abbild, auf das **irgendein** Container zeigt — laufend ODER gestoppt.
-   Das deckt core/nodered/updater **und** die gestoppten
-   `vp-edge-lkg-*`-Halter, die das Rückfall-Image tragen, ohne Sonderregel ab;
-2. alles im Rückfall-Namensraum `vp-edge-lkg-*`, auch wenn sein Halter fehlen
-   sollte;
-3. der laufende Zielstand und eine bereits vorab geholte **nächste** Zuweisung
-   (genau die nähme ein pauschales `docker image prune -a` mit);
-4. **alles, was nicht älter ist als der hier laufende Stand.** Entfernt werden
-   „Abbilder *früherer* Releases" — was jünger ist, ist keines davon, sondern
-   etwas voraus Bereitgelegtes (ein handverlesener Kandidat, ein vorab
-   geholtes Image). Ein Abbild ohne lesbare Bau-Zeit gilt als jung und bleibt;
-5. je Komponente die `VP_OTA_PRUNE_KEEP` jüngsten verwaisten Abbilder — bei der
-   Vorgabe also der zuletzt abgelöste Stand.
+> **Bekannte Grenze:** eine schon blockierte Bestandsbox kommt hierüber nicht
+> frei (ohne Tausch kein Aufräumen). Dort einmal von Hand
+> `docker image prune -a` — durch den Halter-Container nachweislich sicher.
 
-Das `docker save`-Archiv unter `/data/ota/lkg/` ist eine **Datei** und liegt
-per Konstruktion außerhalb der Reichweite jeder Abbild-Entfernung.
+---
 
-Entfernt wird **je Name** (`docker image rm <repo>:<tag>` bzw. `<repo>@<digest>`),
-nie mit `-f` und nie pauschal: docker verweigert die Löschung, solange ein
-Container das Abbild hält — eine dritte Sicherungsebene, die ein `-f` gerade
-aushebeln würde. Die Kandidatenmenge sind ausschließlich die Repositories, die
-dieses Gerät selbst getauscht hat; ein von außen abgelegtes Abbild
-(`tools/pki`, Prüfstand, ein fremder Container auf derselben Box) kommt nie in
-die Nähe. Das Sidecar-Image selbst steht auch nicht darin (es tauscht sich
-nicht selbst) — seine alten Abbilder bleiben liegen; das ist die vorsichtige
-Richtung.
+## 5. Alle Stellschrauben
 
-**Es ist die Kür, nicht die Pflicht.** Jeder Fehlschlag wird nur protokolliert;
-ein Update scheitert nie an der Reinigung. Und was nicht sicher entschieden
-werden kann, wird nicht entfernt: antwortet `docker images` oder `docker ps`
-nicht vollständig, bricht das Aufräumen ab und sagt das im Log.
+Alles hat brauchbare Vorgaben; im Normalfall fassen Sie nichts davon an.
 
-**Abschalten — flottenweit oder je Gerät:**
-
-```bash
-# a) flottenweit in der .env des Deploy-Verzeichnisses
-VP_OTA_PRUNE=false
-VP_OTA_PRUNE_KEEP=3        # oder: mehr abgeloeste Staende aufheben
-
-# b) je Geraet, ohne die .env anzufassen
-cat > /var/lib/docker/volumes/<projekt>_vp-edge-data/_data/ota/prune.json <<'EOF'
-{ "enabled": false, "note": "Diagnose - vorerst nichts entfernen" }
-EOF
-```
-
-Die Datei gewinnt über die Umgebung. **Fehlt** sie, gilt die Vorgabe (aufräumen
-— das Nicht-Aufräumen war der Defekt); ist sie **unlesbar**, wird nicht
-geraten, sondern nichts entfernt. Nur `keep_releases` zu setzen schaltet nichts
-ab (beide Felder sind unabhängig).
-
-> **Eine Bestandsbox, die der Plattenwächter bereits blockiert, kommt hierüber
-> nicht frei** — ohne Tausch kein Aufräumen. Dort einmal von Hand
-> `docker image prune -a` (das ist **sicher**: der gestoppte
-> `vp-edge-lkg-*`-Halter schützt das Rückfall-Image, in der Matrix mit einem
-> echten, label-gefilterten `docker image prune -a` belegt), danach hält der
-> Sidecar die Karte selbst sauber.
+| Variable | Vorgabe | Wozu |
+|---|---|---|
+| `VP_OTA_TICK_SECONDS` | 5 | Wie oft der Sidecar nachsieht |
+| `VP_OTA_WATCHDOG_SECONDS` | 600 | Frist bis zur Rücknahme, wenn der Selbsttest ausbleibt |
+| `VP_OTA_DISK_GUARD_MB` | 2048 | Freiraum, unter dem nicht getauscht wird |
+| `VP_OTA_ACK_WAIT_SECONDS` | 45 | Wie lange auf den durablen `applying`-Bericht gewartet wird |
+| `VP_OTA_HEALTH_WAIT_SECONDS` | 120 | Wie lange der neue Stand Zeit hat, gesund zu werden |
+| `VP_OTA_PRUNE` / `_KEEP` | `true` / 1 | Aufräumen abgelöster Abbilder (§4) |
 
 ---
 
@@ -465,9 +170,8 @@ edge-app/test/ota-soak/run.sh happy prune
 
 | Fall | Was injiziert wird | Erwartetes Ende |
 |---|---|---|
-| `autonomy_off` | nichts — der Auslieferungszustand | kein einziges docker-Kommando, v1 läuft |
 | `happy` | nichts | v2 bestätigt |
-| `selftest_fail` | Selbsttest urteilt „nicht bestanden" | zurückgenommen, v1 läuft, kein erneuter Versuch |
+| `selftest_fail` | Selbsttest urteilt „nicht bestanden" | zurückgenommen, v1 läuft, kein erneuter Versuch auf dieselbe Zuweisung |
 | `prune` | Rückfall-Image + Halter + Tags entfernt | Rücknahme aus dem `docker save`-Archiv |
 | `registry_outage` | Registry gestoppt | verschoben, nichts gestoppt, kein Vorgang hinterlassen |
 | `wedged_pull` | Pull gegen ein nicht geroutetes Netz | Aufruf gedeckelt, verschoben, v1 läuft |
@@ -475,48 +179,33 @@ edge-app/test/ota-soak/run.sh happy prune
 | `clock_skew` | uralter Kern-Zustand · abgelaufenes `valid_until` | (a) verschoben (b) angewandt — `valid_until` ist advisory |
 | `broker_outage` | durabler Bericht nicht absetzbar | nach der Frist trotzdem getauscht |
 | `disk_full` | Plattenwächter über dem Freiraum | verschoben, nicht einmal geholt |
-| `image_cleanup` | zwei bestätigte Updates hintereinander | nur laufender + EIN abgelöster Stand bleiben; Rückfall-Tag, Halter und Archiv unangetastet, fremde Abbilder nicht angefasst (§5b) |
+| `image_cleanup` | zwei bestätigte Updates hintereinander | nur laufender + EIN abgelöster Stand bleiben; Rückfall-Tag, Halter und Archiv unangetastet (§4) |
 
 **Rechner-Disziplin, im Skript verdrahtet:** eigenes Compose-Projekt, eigene
-hohe Ports, eigene Volumes; immer nur EIN Stapel gleichzeitig (nach JEDEM Fall
-wird abgeräumt); **es wird nie ein `docker system prune` ausgeführt** — der
-`prune`-Fall räumt ausschließlich die eigenen Images weg und belegt die
-Überlebensregel zusätzlich mit einem *label-gefilterten* echten
-`docker image prune -a`. Ein Fehlschlag legt Protokollstand und Sidecar-Log
-unter `edge-app/test/ota-soak/last-failure/` ab.
-
-### Auf echter Hardware (Pilsting) — Aufgabe des Betreibers
-
-Die Matrix ist auf einer Wegwerf-Umgebung gebaut und **ersetzt den Soak auf der
-Canary-Box nicht**. Dort zusätzlich:
-
-- die Freigabe für die Familie muss den Tausch **überleben** (der Selbsttest
-  prüft es; ein Verlust ist ein Fehlschlag und führt zur Rücknahme);
-- mindestens **ein echter Steuerzyklus** nach dem Tausch — das ist die
-  Bake-Regel des Portals (D4), keine Aufgabe des Sidecars;
-- T für die Familie **vorher** belegen (§3), sonst verweigert der Sidecar auf
-  einer steuernden Anlage ohnehin.
+hohe Ports, eigene Volumes; immer nur EIN Stapel gleichzeitig; **es wird nie ein
+`docker system prune` ausgeführt**. Ein Fehlschlag legt Protokollstand und
+Sidecar-Log unter `edge-app/test/ota-soak/last-failure/` ab.
 
 ---
 
 ## 7. Nachsehen, wenn etwas klemmt
 
+Zuerst im Portal: die Geräte-Zeile trägt Zustand, Grund und Hebel. Wenn das
+nicht reicht:
+
 ```bash
-docker compose --profile ota logs --tail 100 updater
+docker compose logs --tail 100 updater
 docker run --rm -v vp-edge-data:/data alpine sh -c 'cat /data/ota/updater-state.json'
 docker run --rm -v vp-edge-data:/data alpine sh -c 'ls -la /data/ota'
 ```
 
 | Meldung | Bedeutung |
 |---|---|
-| `Autonomous: false` | Der Schalter ist aus — der Normalzustand. |
-| `kein Vertrauensanker eingebacken` | Das Image trägt keine Wurzel (Auslieferungszustand vor der Zeremonie). |
-| `Fuer die Familie … NICHT verifiziert` | §3: T belegen oder die Steuerung ausschalten. |
-| `Der Kern meldet seinen Zustand nicht` | Der Kern läuft nicht bzw. `/data` ist nicht geteilt. |
-| `wurde … bereits zurueckgenommen` | §2 Punkt 5 — ein anderes Release zuweisen oder `failed.json` entfernen. |
-| `Zu wenig freier Speicherplatz` | Platte aufräumen bzw. `VP_OTA_DISK_GUARD_MB` prüfen. |
-| Zustand bleibt `self_test` | Der neue Kern urteilt noch bzw. gar nicht — dann greift die Frist. |
+| `kein Vertrauensanker eingebacken` | Das Image trägt keine Wurzel — das Trust-Set fehlt (`docs/ota-signing.md` §6.0). |
+| `Zu wenig freier Speicherplatz` | §4 — Karte aufräumen bzw. `VP_OTA_DISK_GUARD_MB` prüfen. |
+| `wurde … bereits zurueckgenommen` | Diese Zuweisung ist verbraucht; im Portal erneut aktualisieren. |
+| Zustand bleibt `self_test` | Der neue Stand urteilt noch bzw. gar nicht — dann greift die Frist und es wird zurückgenommen. |
 
-**Von Hand übernehmen** geht jederzeit: `update.sh --from-target` benutzt
-denselben `.env`-Hebel und dieselben geprüften Digests. Ein autonom angewandter
-Stand ist von einem von Hand angewandten nicht zu unterscheiden.
+**Von Hand übernehmen** geht weiterhin: `update.sh --from-target` benutzt
+dieselben geprüften Digests, die das Gerät verifiziert hat. Ein autonom
+angewandter Stand ist von einem von Hand angewandten nicht zu unterscheiden.

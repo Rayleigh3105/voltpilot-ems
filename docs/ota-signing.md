@@ -756,7 +756,7 @@ NICHT über diesen Weg, sondern liegt je Box im Datenverzeichnis: es ist der
 Widerrufs-Anker, und den Widerruf über denselben Kanal zu verteilen, über den
 auch die widerrufenen Sachen kamen, ist eine Kreisabhängigkeit. Ein Gerät ohne
 Trust-Set lehnt eine Zuweisung deshalb **fail-closed** ab und sagt das als
-Grund — sichtbar in der Flotten-Matrix, nie stillschweigend.
+Grund — sichtbar in der Geräte-Zeile, nie stillschweigend.
 
 **Die Einrichtungs-Automatik (§6.0) ändert daran nichts** — sie ist genau
 deshalb an die INSTALLATION gebunden und nicht an die Laufzeit:
@@ -779,38 +779,15 @@ bräuchte zusätzlich einen monotonen Zähler im signierten Set gegen Replay
 
 ## 6b. Ein zugewiesenes Release anwenden
 
-Ab Stufe 2 entscheidet das **Portal**, welches Release eine Box bekommt; die
-Box prüft es selbst und legt es ab. Das ANWENDEN ist seither auf drei Wegen
-möglich — alle drei münden im selben Code und in derselben Torkette, keiner
-schaltet Autonomie ein.
+**Im Regelfall gar nicht** — das erledigt die Box selbst. Plattform →
+**Edge-Updates** → Release wählen → Geräte ankreuzen → **Aktualisieren**. Die
+Zuweisung geht retained hinaus, die Box verifiziert sie gegen ihre eingebackene
+Wurzel und tauscht. Es gibt keinen zweiten Schritt und keine Freigabe mehr;
+Details in [`docs/ota-autonomie.md`](ota-autonomie.md).
 
-### Weg 1 (Regelfall): der Knopf im Portal
+### Der Rückfall: von Hand, ohne Sidecar
 
-Plattform → **Edge-Updates** → Karte „Sie sind dran" → **Auf Gerät anwenden**.
-Der Knopf fragt nach und nennt die Folgen; danach geht eine **einmalige
-Freigabe** an die Box (nicht-retained, 15 Minuten gültig, für GENAU dieses
-Release). Die Box wendet an, sobald ihre eigenen Bedingungen erfüllt sind —
-Signaturkette, Boden, Neutral-Zeit, Interlock, Selbsttest und automatische
-Rücknahme gelten unverändert.
-
-Drei Dinge, die die Oberfläche vorher sagt und die man kennen muss:
-
-* **Steht dort eine „Achtung"-Zeile**, wird die Box die Anwendung
-  VERWEIGERN, bis der genannte Hebel umgelegt ist (typisch: die Neutral-Zeit
-  einer steuernden Anlage, siehe `docs/ota-autonomie.md` §3). Der Knopf bleibt
-  bedienbar — die Entscheidung ist Ihre —, aber die Freigabe verpufft dann.
-* **„Gerät kann gerade nicht anwenden"** heißt: dort läuft kein Aktualisierer
-  (Compose-Profil `ota`). Dann hilft nur Weg 3.
-* **„Freigabe nicht abgeholt"** heißt: die Box war offline. Eine Freigabe wird
-  bewusst NICHT nachgeliefert — eine Zustimmung von vor drei Stunden ist keine
-  Zustimmung für jetzt. Einfach erneut freigeben, sobald die Box wieder da ist.
-
-### Weg 2: der Knopf an der Box
-
-`:8484` → ④ Erweitert → **Jetzt anwenden** (hinter dem Betreiber-Passwort).
-Identisch zu Weg 1, nur lokal erteilt.
-
-### Weg 3: von Hand, ohne Aktualisierer
+Nur, wenn auf der Box (noch) kein Aktualisierer läuft:
 
 ```bash
 # 1. Was hat das Portal dieser Box zugewiesen, und hat sie es selbst geprüft?
@@ -828,8 +805,6 @@ geprüft ist (`verdict != ok`) — die Artefakt-Digests gibt der Core dann gar
 nicht erst heraus. Nach einem erfolgreichen Lauf meldet die Box den angewandten
 Stand zurück (`POST /api/ota/applied`); dieser Aufruf kann ausschließlich
 bestätigen, was nachweislich läuft, und hebt den Anti-Rollback-Boden nur je an.
-
-Im Portal steht die Box danach unter Plattform → Edge-Updates auf
 **bestätigt ✓**; der Rollout gibt die nächste Welle erst frei, wenn sie 24 h
 gesund läuft und (wo VoltPilot steuert) mindestens ein echter Steuerzyklus
 bestätigt wurde.
