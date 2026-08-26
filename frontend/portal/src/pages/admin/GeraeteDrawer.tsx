@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { VpPicker } from '../../components/VpPicker';
@@ -8,13 +7,11 @@ import { REGISTRY_AUFKLEBER, REGISTRY_SELBST } from '../../adminGeraet';
 import { versionLabel } from '../../onboardingFunnel';
 import {
   actorLabel,
-  applyView,
   blockerLever,
   crossoverState,
   eventLabel,
   formatTrustStamp,
   stateLabel,
-  type DeviceApply,
   type EdgeUpdatesRelease,
   type JournalEntry,
 } from '../../adminEdgeUpdates';
@@ -39,8 +36,6 @@ export interface DrawerDevice {
   ist: string | null;
   soll: string | null;
   sollSeq: number | null;
-  channel: string | null;
-  pinned: boolean;
   state: string | null;
   reason: string | null;
   blocker?: string | null;
@@ -54,7 +49,6 @@ export interface DrawerDevice {
   provisioned?: boolean;
   note?: string | null;
   trust?: Parameters<typeof crossoverState>[0];
-  apply?: DeviceApply | null;
 }
 
 /**
@@ -80,7 +74,6 @@ export function GeraeteDrawer({
   onClose,
   onAssign,
   onRevert,
-  onApply,
   onOpenGeraetseite,
 }: {
   device: DrawerDevice;
@@ -88,14 +81,8 @@ export function GeraeteDrawer({
   journal: JournalEntry[];
   busy: boolean;
   onClose: () => void;
-  onAssign?: (releaseSeq: number, channel: string, pinned: boolean) => Promise<void>;
+  onAssign?: (releaseSeq: number) => Promise<void>;
   onRevert?: () => Promise<void>;
-  /**
-   * Die EINMALIGE Freigabe zum Anwenden. Ohne diesen Aufrufer rendert der
-   * Knopf gar nicht - eine Fläche, die eine Handlung anbietet, die ihr Host
-   * nicht ausführen kann, ist eine Attrappe.
-   */
-  onApply?: () => Promise<void>;
   /**
    * Der Weg auf die EINE Geräteseite (Anlagen-Zentrale Stufe 3, PR 3b). Sie
    * liegt hinter dem RLS-Zaun in der Mandanten-Ansicht, der Drawer kann sie
@@ -107,15 +94,12 @@ export function GeraeteDrawer({
 }) {
   const signed = releases.filter((r) => r.signed);
   const [seq, setSeq] = useState<number | null>(device.sollSeq ?? signed[0]?.releaseSeq ?? null);
-  const [channel, setChannel] = useState(device.channel ?? 'stable');
-  const [pinned, setPinned] = useState(device.pinned);
   const history = device.deviceId
     ? journal.filter((e) => e.deviceId === device.deviceId).slice(0, 10)
     : [];
   const cross = crossoverState(device.trust);
   const lever = blockerLever(device.blocker);
   const connected = device.deviceId != null;
-  const apply = applyView(device);
 
   return (
     <Drawer open title={device.siteName ?? device.label ?? device.externalRef} onClose={onClose}>
@@ -186,16 +170,6 @@ export function GeraeteDrawer({
                 {stateLabel(device.state).label}
               </span>
             </dd>
-            <dt>Kanal</dt>
-            <dd>
-              {device.channel ?? '–'}
-              {device.pinned && (
-                <>
-                  {' '}
-                  <Badge variant="off">festgenagelt</Badge>
-                </>
-              )}
-            </dd>
             <dt>Vertrauen</dt>
             <dd>{cross.label}</dd>
             {device.trust && device.trust.trustSetKeyIds.length > 0 && (
@@ -229,39 +203,6 @@ export function GeraeteDrawer({
           {lever && (
             <p className="vp-text-sm vp-lever" data-testid="drawer-lever">Hebel: {lever}</p>
           )}
-          {/* Der Zustand einer schon ERTEILTEN Freigabe - er steht NEBEN dem
-              Geräte-Zustand, weil beide verschiedene Fragen beantworten. */}
-          {apply.approval && (
-            <p className="vp-text-sm" data-testid="drawer-approval">
-              <Badge variant={apply.approval.tone === 'busy' ? 'warn' : apply.approval.tone}>
-                {apply.approval.label}
-              </Badge>
-              {apply.approval.reason ? ` ${apply.approval.reason}` : ''}
-            </p>
-          )}
-          {onApply && connected && (
-            <div className="vp-apply-block" data-testid="drawer-apply">
-              {/* Was die Anwendung verhindern WIRD, steht VOR dem Knopf - eine
-                  Verweigerung danach wäre ein Rätsel. */}
-              {apply.warn && (
-                <p className="vp-text-sm vp-lever" data-testid="drawer-apply-warn">
-                  Achtung: {apply.warn}
-                </p>
-              )}
-              {apply.hint && (
-                <p className="vp-muted vp-text-sm" data-testid="drawer-apply-hint">
-                  {apply.hint}
-                </p>
-              )}
-              <Button
-                variant="outline"
-                disabled={busy || !apply.canClick}
-                onClick={() => void onApply()}
-              >
-                {apply.label}
-              </Button>
-            </div>
-          )}
         </>
       ) : (
         <p className="vp-muted">
@@ -278,7 +219,11 @@ export function GeraeteDrawer({
           </p>
         ) : (
           <>
-            <h4>Release zuweisen</h4>
+            <h4>Aktualisieren</h4>
+            <p className="vp-muted vp-text-sm">
+              Ein Klick genügt: das Gerät holt die Images und tauscht sich selbst aus.
+              Niemand muss an das Gerät.
+            </p>
             <VpPicker
               label="Release"
               options={signed.map((r) => ({
@@ -288,34 +233,16 @@ export function GeraeteDrawer({
               value={seq == null ? '' : String(seq)}
               onChange={(v) => setSeq(Number(v))}
             />
-            <VpPicker
-              label="Kanal"
-              options={[
-                { value: 'stable', label: 'stable' },
-                { value: 'canary', label: 'canary' },
-              ]}
-              value={channel}
-              onChange={setChannel}
-            />
-            <label className="vp-check-row">
-              <input
-                type="checkbox"
-                checked={pinned}
-                onChange={(e) => setPinned(e.target.checked)}
-              />{' '}
-              Festnageln – ein Rollout überschreibt dieses Gerät dann nicht, sondern
-              überspringt es sichtbar.
-            </label>
             <div className="vp-row-gap">
-              {/* „Release zuweisen", nicht „Jetzt aktualisieren": der Knopf
-                  veröffentlicht eine Zuweisung - das ANWENDEN bleibt
-                  beaufsichtigt am Gerät. */}
+              {/* Seit dem Ein-Schritt-Umbau ist der Knopf die GANZE Handlung:
+                  die Zuweisung geht retained hinaus, das Gerät wendet sie
+                  selbst an. Es gibt keinen zweiten Schritt am Gerät. */}
               <Button
                 variant="primary"
                 disabled={busy || seq == null}
-                onClick={() => void onAssign(seq as number, channel, pinned)}
+                onClick={() => void onAssign(seq as number)}
               >
-                Release zuweisen
+                Aktualisieren
               </Button>
               {device.soll && onRevert && (
                 <Button variant="outline" disabled={busy} onClick={() => void onRevert()}>

@@ -299,7 +299,7 @@ public class RolloutService {
         // Angezeigt wird die JÜNGSTE Aktualisierung, auch eine abgeschlossene:
         // sie darf nicht in dem Augenblick von der Seite verschwinden, in dem
         // sie fertig wird.
-        Optional<RolloutRepository.RolloutRow> live = rollouts.latestRollout();
+        List<RolloutRepository.RolloutRow> recent = rollouts.recentRollouts(5);
 
         // Releases + „läuft auf N Geräten".
         Map<String, Integer> runningPerRelease = new HashMap<>();
@@ -321,10 +321,14 @@ public class RolloutService {
                     rel.createdAt(), runningPerRelease.getOrDefault(rel.version(), 0)));
         }
 
+        // Welche Geräte gerade in IRGENDEINER der jüngsten Verteilungen stehen.
+        // Die jüngste Zuweisung gewinnt (die Liste kommt neueste-zuerst), damit
+        // ein Gerät, das eine zweite Aktualisierung bekommen hat, unter ihr
+        // gezählt wird.
         Map<UUID, RolloutRepository.RolloutDeviceRow> inRollout = new HashMap<>();
-        if (live.isPresent()) {
-            for (RolloutRepository.RolloutDeviceRow rd : rollouts.devicesOf(live.get().id())) {
-                inRollout.put(rd.deviceId(), rd);
+        for (RolloutRepository.RolloutRow r : recent) {
+            for (RolloutRepository.RolloutDeviceRow rd : rollouts.devicesOf(r.id())) {
+                inRollout.putIfAbsent(rd.deviceId(), rd);
             }
         }
         List<EdgeUpdatesDto.FleetRowDto> rows = new ArrayList<>();
@@ -360,14 +364,16 @@ public class RolloutService {
             }
         }
 
-        EdgeUpdatesDto.RolloutDto rolloutDto = live.map(r -> rolloutDto(r, fleet, now))
-                .orElse(null);
+        List<EdgeUpdatesDto.RolloutDto> rolloutDtos = new ArrayList<>();
+        for (RolloutRepository.RolloutRow r : recent) {
+            rolloutDtos.add(rolloutDto(r, fleet, now));
+        }
         List<EdgeUpdatesDto.EventDto> journal = new ArrayList<>();
         for (RolloutRepository.EventRow e : rollouts.recentEvents(200)) {
             journal.add(new EdgeUpdatesDto.EventDto(e.id(), e.at(), e.actor(), e.event(),
                     e.rolloutId(), e.deviceId(), e.detail()));
         }
-        return new EdgeUpdatesDto(releaseDtos, rolloutDto, rows, journal,
+        return new EdgeUpdatesDto(releaseDtos, rolloutDtos, rows, journal,
                 new EdgeUpdatesDto.KpiDto(known, upToDate, unknown, inRollout.size(), failed,
                         newest));
     }

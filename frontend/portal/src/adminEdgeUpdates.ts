@@ -418,9 +418,17 @@ export function formatTrustStamp(raw: string): string {
   return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-/** Ein Journal-Ereignis in einem deutschen Satz. */
+/**
+ * Ein Journal-Ereignis in einem deutschen Satz.
+ *
+ * Die Wörter der Wellen-/Freigabe-Ära (`wave_*`, `rollout_paused`, …) stehen
+ * hier weiter, obwohl der Server sie nicht mehr schreibt: das Journal ist
+ * append-only, und eine Zeile von damals soll auch morgen noch lesbar sein.
+ * Neu entsteht keines davon.
+ */
 const EVENT_LABELS: Record<string, string> = {
-  rollout_created: 'Rollout gestartet',
+  rollout_created: 'Aktualisierung gestartet',
+  rollout_done: 'Aktualisierung abgeschlossen',
   wave_released: 'Welle freigegeben',
   wave_auto_released: 'Welle automatisch freigegeben',
   auto_advance_on: 'Wellen-Automatik eingeschaltet',
@@ -429,7 +437,6 @@ const EVENT_LABELS: Record<string, string> = {
   rollout_resumed: 'Rollout fortgesetzt',
   rollout_halted: 'Rollout eingefroren',
   rollout_auto_halted: 'Rollout AUTOMATISCH angehalten',
-  rollout_done: 'Rollout abgeschlossen',
   rollout_last_wave: 'Letzte Welle freigegeben',
   target_assigned: 'Release zugewiesen',
   target_reverted: 'Zuweisung zurückgenommen',

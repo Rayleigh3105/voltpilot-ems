@@ -3525,21 +3525,21 @@ paths:
       summary: Everything the platform page "Edge-Updates" shows (OTA Stufe 2).
       description: >
         ONE server-side aggregate (the /admin/fleet discipline): the release
-        register, the newest rollout with its wave board, the fleet matrix
-        (Anlage · Mandant · Ist · Soll · Zustand · seit · Grund) and the
+        register, the most recent updates with their device rows, the fleet
+        matrix (Anlage · Mandant · Ist · Soll · Zustand · seit · Grund) and the
         append-only audit journal.
         HONESTY RULES, enforced server-side: "unbekannt" is never "veraltet"
         (a device that reports nothing says nothing about its age), "offline" is
         never "fehlgeschlagen" (the assignment waits retained on the broker and
         is picked up on reconnect), every non-green state carries its reason,
         and the KPI percentages count only the REACHABLE set.
-        The rollout shown is the NEWEST one whatever its state - a rollout that
-        just auto-halted must not vanish from the page in the very moment
-        something went wrong. Platform-admin only; there is deliberately NO
-        customer-facing surface for updates.
+        `rollouts` carries the newest updates whatever their state (a LIST since
+        several updates may run side by side); one that just finished must not
+        vanish from the page in the very moment it completed. Platform-admin
+        only; there is deliberately NO customer-facing surface for updates.
       responses:
         "200":
-          description: Releases, the newest rollout, the fleet matrix, the journal and the KPI.
+          description: Releases, the recent updates, the fleet matrix, the journal and the KPI.
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/devices:

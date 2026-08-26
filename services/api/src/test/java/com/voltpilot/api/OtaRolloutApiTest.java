@@ -193,7 +193,7 @@ class OtaRolloutApiTest {
         assertThat(sollOf(page, b))
                 .as("es gibt keine zweite Welle mehr - BEIDE sind sofort dran")
                 .isEqualTo("edge-2026.08.0");
-        assertThat(page.get("activeRollout").get("total").asInt()).isEqualTo(2);
+        assertThat(page.get("rollouts").get(0).get("total").asInt()).isEqualTo(2);
 
         // ── 3. Die Manifest-Bytes kommen BYTE FUER BYTE an ────────────────
         byte[] raw = assignments.poll(15, TimeUnit.SECONDS);
@@ -213,7 +213,7 @@ class OtaRolloutApiTest {
         rollouts.reconcile(Instant.now());
         page = readModel(admin);
         assertThat(stateOf(page, b)).isEqualTo("offline_holt_nach");
-        assertThat(page.get("activeRollout").get("state").asText()).isEqualTo("active");
+        assertThat(page.get("rollouts").get(0).get("state").asText()).isEqualTo("active");
 
         // ── 5. Ein gemeldetes `failed` haelt NICHTS mehr an ───────────────
         //
@@ -225,7 +225,7 @@ class OtaRolloutApiTest {
         rollouts.reconcile(Instant.now());
         page = readModel(admin);
         assertThat(stateOf(page, b)).isEqualTo("fehlgeschlagen");
-        assertThat(page.get("activeRollout").get("failed").asInt()).isEqualTo(1);
+        assertThat(page.get("rollouts").get(0).get("failed").asInt()).isEqualTo(1);
         assertThat(sollOf(page, a)).as("die Zuweisung des anderen Geraets bleibt")
                 .isEqualTo("edge-2026.08.0");
 

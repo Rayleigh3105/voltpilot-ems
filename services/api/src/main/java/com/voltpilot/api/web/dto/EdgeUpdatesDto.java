@@ -7,14 +7,14 @@ import java.util.UUID;
 /**
  * Der EINE Lese-Aggregat hinter {@code GET /api/v1/admin/edge-updates}: alles,
  * was die Plattform-Seite „Edge-Updates" (Scout §7.3) zeigt - Releases, der
- * aktive Rollout mit seinem Wellen-Board, die Flotten-Matrix und das Journal.
+ * die jüngsten Aktualisierungen mit ihren Geräten, die Flotte und das Journal.
  *
  * <p>Er folgt der Disziplin von {@link AdminFleetDto}: server-seitig
  * aggregiert (keine Client-Schleife), und <b>was niemand gemessen hat, ist
  * {@code null} und trägt seinen Grund</b> - nie eine erfundene Null, nie ein
  * geratener Zustand.
  */
-public record EdgeUpdatesDto(List<ReleaseDto> releases, RolloutDto activeRollout,
+public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollouts,
         List<FleetRowDto> fleet, List<EventDto> journal, KpiDto kpi) {
 
     /**

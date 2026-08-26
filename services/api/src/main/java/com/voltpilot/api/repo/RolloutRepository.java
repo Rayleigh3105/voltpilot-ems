@@ -124,6 +124,21 @@ public class RolloutRepository {
     }
 
     /**
+     * Die JÜNGSTEN Verteilungen, unabhängig von ihrem Zustand - was die Seite
+     * „Edge-Updates" zeigt.
+     *
+     * <p>Eine LISTE, seit die Ein-Schritt-Vereinfachung die Sperre
+     * „höchstens ein lebender Rollout" entfernt hat: mehrere Aktualisierungen
+     * dürfen nebeneinander laufen, und die Seite muss sie alle zeigen können.
+     * Eine gerade abgeschlossene bleibt bewusst sichtbar - sie darf nicht in
+     * dem Augenblick verschwinden, in dem sie fertig wird.
+     */
+    public List<RolloutRow> recentRollouts(int limit) {
+        return jdbc.query(ROLLOUT_SELECT + " ORDER BY created_at DESC LIMIT " + limit,
+                RolloutRepository::mapRollout);
+    }
+
+    /**
      * Der JÜNGSTE Rollout, unabhängig von seinem Zustand - was die Seite
      * „Aktiver Rollout" zeigt.
      *
