@@ -81,7 +81,6 @@ func otaEnvelopeBytes(t *testing.T, release string, seq int64, manifest, sig []b
 		"device_id":      deviceID,
 		"release":        release,
 		"release_seq":    seq,
-		"channel":        otatarget.ChannelCanary,
 		"manifest_b64":   base64.StdEncoding.EncodeToString(manifest),
 		"signature_b64":  base64.StdEncoding.EncodeToString(sig),
 	}
@@ -107,9 +106,6 @@ func TestAssignedReleaseIsVerifiedPersistedAndReportedWithoutApplying(t *testing
 	}
 	if u.Target != "edge-2026.08.0" || u.TargetSeq == nil || *u.TargetSeq != 12 {
 		t.Fatalf("Ziel wird nicht gemeldet: target=%q seq=%v", u.Target, u.TargetSeq)
-	}
-	if u.Channel != otatarget.ChannelCanary {
-		t.Errorf("channel = %q", u.Channel)
 	}
 	if !strings.Contains(u.Reason, "beaufsichtigt") {
 		t.Errorf("der Grund muss sagen, dass beaufsichtigt angewandt wird: %q", u.Reason)

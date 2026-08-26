@@ -35,8 +35,8 @@ func TestUpdateSummaryReportsTheStampedVersionAndNothingItCannotKnow(t *testing.
 	if u.CurrentSeq != nil || u.TargetSeq != nil {
 		t.Fatal("a sequence number is the CLOUD register's ordering - the device must never guess one")
 	}
-	if u.Target != "" || u.Channel != "" {
-		t.Fatal("there is no target assignment on the device before Stufe 2")
+	if u.Target != "" {
+		t.Fatal("there is no target assignment on the device before an update was pushed")
 	}
 	if u.LastKnownGood != "" {
 		t.Fatal("a box that never applied an update has no last-known-good; claiming the " +

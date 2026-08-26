@@ -411,7 +411,7 @@ func (a *Agent) otaSnapshot() otaVerdict {
 // since Stufe 1 - the German reason of the last verification. Everything else
 // stays ABSENT rather than invented:
 //
-//   - CurrentSeq/TargetSeq/Target/Channel need the cloud's release register and
+//   - CurrentSeq/TargetSeq/Target need the cloud's release register and
 //     a target assignment - neither exists on the device before Stufe 2. (The
 //     locally readable current.json is deliberately NOT reported as
 //     current_seq: it is a local floor input, not the register's ordering.)
@@ -430,7 +430,7 @@ func (a *Agent) otaSnapshot() otaVerdict {
 // Seit Stufe 2 ist ein Teil davon FUELLBAR - aber jedes Feld nur aus einer
 // Quelle, die es wirklich belegt:
 //
-//   - Target/TargetSeq/Channel stehen NUR, wenn eine Cloud-Zuweisung vorliegt,
+//   - Target/TargetSeq stehen NUR, wenn eine Cloud-Zuweisung vorliegt,
 //     und stammen dann aus dem VERIFIZIERTEN Manifest (der Umschlag ist
 //     unsigniert; wo die Pruefung scheiterte, bleibt sein Wert stehen, aber
 //     TargetVerdict sagt „rejected" dazu).
