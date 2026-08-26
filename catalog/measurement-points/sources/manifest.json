@@ -124,7 +124,7 @@
       "id": "builtin.inverter.runtime",
       "path": "sources/builtin/inverter-runtime.json",
       "source_revision": "voltpilot-runtime-2026-08-26-r2",
-      "source_sha256": "60420e76d6addb32d17ba699cd33331acedc7aee2b01f9635ee5d7968f60fb97",
+      "source_sha256": "a6839be2ae894af9b1b5a7062edf55291aa5e28880e8fa60e73b7e199e61ca46",
       "source_url": "https://codeberg.org/voltpilot/voltpilot-ems"
     }
   ]

@@ -940,7 +940,7 @@ export interface MeasurementHistory {
     pointKey: string; label: string; sourceLabel: string | null; unit: string | null;
     aggregationKind: string; semanticStatus: string; catalogVersion: string | null;
     representation: 'raw' | 'decoded'; rawAvailable: boolean; from: string; to: string;
-    bucketSeconds: number; aggregationExplanation: string; siteId: string;
+    bucketSeconds: number; aggregationExplanation: string; siteId: string; entityId?: string | null;
   };
   data: Array<{ time: string; value: number | null; minimum: number | null; maximum: number | null; text: string | null; sampleCount: number; gap: boolean }>;
   markers: Array<{ time: string; kind: string; label: string }>;
@@ -2943,9 +2943,11 @@ export async function downloadMeasurementExport(
   representation: 'raw' | 'decoded',
   from?: string,
   to?: string,
+  siteId?: string,
+  entityId?: string,
 ) {
   const token = await freshToken();
-  const path = `/api/v1/devices/${deviceId}/measurement-selection/${encodeURIComponent(pointKey)}/export?range=${range}&representation=${representation}${from ? `&from=${encodeURIComponent(from)}` : ''}${to ? `&to=${encodeURIComponent(to)}` : ''}`;
+  const path = `/api/v1/devices/${deviceId}/measurement-selection/${encodeURIComponent(pointKey)}/export?range=${range}&representation=${representation}${from ? `&from=${encodeURIComponent(from)}` : ''}${to ? `&to=${encodeURIComponent(to)}` : ''}${siteId ? `&siteId=${encodeURIComponent(siteId)}` : ''}${entityId ? `&entityId=${encodeURIComponent(entityId)}` : ''}`;
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -3102,8 +3104,9 @@ export const api = {
   measurementHistory: (
     deviceId: string, pointKey: string, range: MeasurementRange,
     representation: 'raw' | 'decoded', from?: string, to?: string, siteId?: string,
+    entityId?: string,
   ) => request<MeasurementHistory>(
-    `/api/v1/devices/${deviceId}/measurement-selection/${encodeURIComponent(pointKey)}/history?range=${range}&representation=${representation}${from ? `&from=${encodeURIComponent(from)}` : ''}${to ? `&to=${encodeURIComponent(to)}` : ''}${siteId ? `&siteId=${encodeURIComponent(siteId)}` : ''}`,
+    `/api/v1/devices/${deviceId}/measurement-selection/${encodeURIComponent(pointKey)}/history?range=${range}&representation=${representation}${from ? `&from=${encodeURIComponent(from)}` : ''}${to ? `&to=${encodeURIComponent(to)}` : ''}${siteId ? `&siteId=${encodeURIComponent(siteId)}` : ''}${entityId ? `&entityId=${encodeURIComponent(entityId)}` : ''}`,
   ),
   measurementComparisonOptions: (siteId: string) =>
     request<MeasurementComparisonOption[]>(`/api/v1/sites/${siteId}/measurement-history/options`),

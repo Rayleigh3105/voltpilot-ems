@@ -1,15 +1,14 @@
 package com.voltpilot.api.measurement;
 
 import com.voltpilot.api.measurement.MeasurementCatalog.Point;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -20,13 +19,13 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class MeasurementHistoryService {
 
-    public record Datum(Instant time, Double value, Double minimum, Double maximum,
+    public record Datum(Instant time, BigDecimal value, BigDecimal minimum, BigDecimal maximum,
             String text, long sampleCount, boolean gap) {}
     public record Marker(Instant time, String kind, String label) {}
     public record Meta(String pointKey, String label, String sourceLabel, String unit,
             String aggregationKind, String semanticStatus, String catalogVersion,
             String representation, boolean rawAvailable, Instant from, Instant to,
-            int bucketSeconds, String aggregationExplanation, UUID siteId) {}
+            int bucketSeconds, String aggregationExplanation, UUID siteId, UUID entityId) {}
     public record History(Meta meta, List<Datum> data, List<Marker> markers) {}
     public record ComparisonOption(UUID deviceId, String deviceLabel, String pointKey,
             String label, String unit, String aggregationKind, String compatibilityKey,
@@ -44,7 +43,7 @@ public class MeasurementHistoryService {
     }
 
     public History history(UUID deviceId, String pointKey, String range, Instant freeFrom,
-            Instant freeTo, String representation, UUID requestedSiteId) {
+            Instant freeTo, String representation, UUID requestedSiteId, UUID entityId) {
         MeasurementSelectionRepository.DeviceScope scope = selections.deviceScope(deviceId);
         if (scope == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
@@ -56,18 +55,31 @@ public class MeasurementHistoryService {
         if (!Boolean.TRUE.equals(siteVisible)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
+        if (entityId != null) {
+            Boolean entityVisible = jdbc.queryForObject(
+                    "SELECT EXISTS(SELECT 1 FROM measurement_point WHERE tenant_id=? AND site_id=? "
+                            + "AND device_id=? AND id=?)",
+                    Boolean.class, scope.tenantId(), siteId, deviceId, entityId);
+            if (!Boolean.TRUE.equals(entityVisible)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Messkomponente nicht gefunden.");
+            }
+        }
         Point point = catalog.resolve(pointKey);
         if (point == null && selections.recordedPointKeys(deviceId).stream().noneMatch(pointKey::equals)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Messwert nicht gefunden.");
         }
         CustomMeta custom = point == null ? customMeta(deviceId, pointKey) : null;
+        String aggregation = point == null ? custom == null ? "unknown" : "gauge"
+                : point.aggregationKind();
         Window window = window(range, freeFrom, freeTo);
         String selectedRepresentation = "raw".equals(representation) ? "raw" : "decoded";
         boolean rollup = selectedRepresentation.equals("decoded")
                 && window.duration().compareTo(Duration.ofDays(2)) > 0;
         List<Datum> data = rollup
-                ? rollupData(scope, siteId, deviceId, pointKey, window)
-                : rawData(scope, siteId, deviceId, pointKey, window, selectedRepresentation);
+                ? rollupData(scope, siteId, deviceId, pointKey, window, aggregation)
+                : rawData(scope, siteId, deviceId, pointKey, window, selectedRepresentation,
+                        aggregation);
         boolean rawAvailable = Boolean.TRUE.equals(jdbc.queryForObject(
                 "SELECT EXISTS(SELECT 1 FROM device_measurement_sample WHERE tenant_id=? "
                         + "AND site_id=? AND device_id=? AND point_key=? AND quality='good' "
@@ -80,9 +92,7 @@ public class MeasurementHistoryService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Für diesen Zeitraum sind keine echten Rohdaten vorhanden.");
         }
-        List<Marker> markers = markers(scope, siteId, deviceId, point, pointKey, window);
-        String aggregation = point == null ? custom == null ? "unknown" : "gauge"
-                : point.aggregationKind();
+        List<Marker> markers = markers(scope, siteId, deviceId, entityId, pointKey, window);
         String explanation = switch (aggregation) {
             case "counter" -> "Zähler: positive Differenzen je Zeitfenster; Resets werden nicht als Verbrauch gezählt.";
             case "gauge" -> "Messwert: Mittelwert je Zeitfenster; Minimum und Maximum bleiben sichtbar.";
@@ -95,17 +105,24 @@ public class MeasurementHistoryService {
                 aggregation, point == null ? "unknown" : point.semanticStatus(),
                 point == null ? custom == null ? null : custom.catalogVersion() : catalog.version(),
                 selectedRepresentation, rawAvailable,
-                window.from(), window.to(), window.bucketSeconds(), explanation, siteId);
+                window.from(), window.to(), window.bucketSeconds(), explanation, siteId, entityId);
         return new History(meta, data, markers);
     }
 
     public History history(UUID deviceId, String pointKey, String range, Instant freeFrom,
+            Instant freeTo, String representation, UUID requestedSiteId) {
+        return history(deviceId, pointKey, range, freeFrom, freeTo, representation,
+                requestedSiteId, null);
+    }
+
+    public History history(UUID deviceId, String pointKey, String range, Instant freeFrom,
             Instant freeTo, String representation) {
-        return history(deviceId, pointKey, range, freeFrom, freeTo, representation, null);
+        return history(deviceId, pointKey, range, freeFrom, freeTo, representation, null, null);
     }
 
     private List<Datum> rawData(MeasurementSelectionRepository.DeviceScope scope, UUID siteId,
-            UUID deviceId, String pointKey, Window window, String representation) {
+            UUID deviceId, String pointKey, Window window, String representation,
+            String aggregation) {
         String numeric = representation.equals("raw") ? "raw_numeric"
                 : "COALESCE(decoded_numeric,raw_numeric)";
         String text = representation.equals("raw") ? "raw_text"
@@ -124,13 +141,16 @@ public class MeasurementHistoryService {
                 + "WHEN aggregation_kind='counter' THEN positive_delta "
                 + "WHEN aggregation_kind='gauge' THEN avg_value ELSE last_numeric END chart_value "
                 + "FROM bucketed ORDER BY bucket LIMIT 2200";
-        return jdbc.query(sql, MeasurementHistoryService::mapDatum,
+        List<Datum> data = new ArrayList<>(jdbc.query(sql, MeasurementHistoryService::mapDatum,
                 scope.tenantId(), siteId, deviceId, pointKey, Timestamp.from(window.from()),
-                Timestamp.from(window.to()), window.bucket());
+                Timestamp.from(window.to()), window.bucket()));
+        prependRawState(scope, siteId, deviceId, pointKey, window, representation,
+                aggregation, data);
+        return List.copyOf(data);
     }
 
     private List<Datum> rollupData(MeasurementSelectionRepository.DeviceScope scope, UUID siteId,
-            UUID deviceId, String pointKey, Window window) {
+            UUID deviceId, String pointKey, Window window, String aggregation) {
         String table = window.duration().compareTo(Duration.ofDays(31)) <= 0
                 ? "device_measurement_rollup_5m" : "device_measurement_rollup_15m";
         String sql = "WITH bucketed AS (SELECT time_bucket(CAST(? AS interval),bucket) chart_bucket,"
@@ -143,14 +163,56 @@ public class MeasurementHistoryService {
                 + "WHEN aggregation_kind='counter' THEN positive_delta "
                 + "WHEN aggregation_kind='gauge' THEN avg_value ELSE last_numeric END chart_value "
                 + "FROM bucketed ORDER BY chart_bucket LIMIT 2200";
-        return jdbc.query(sql, MeasurementHistoryService::mapDatum, window.bucket(),
+        List<Datum> data = new ArrayList<>(jdbc.query(sql,
+                MeasurementHistoryService::mapDatum, window.bucket(),
                 scope.tenantId(), siteId, deviceId, pointKey, Timestamp.from(window.from()),
-                Timestamp.from(window.to()));
+                Timestamp.from(window.to())));
+        prependRollupState(table, scope, siteId, deviceId, pointKey, window, aggregation, data);
+        return List.copyOf(data);
+    }
+
+    private void prependRawState(MeasurementSelectionRepository.DeviceScope scope, UUID siteId,
+            UUID deviceId, String pointKey, Window window, String representation,
+            String aggregation, List<Datum> data) {
+        if (!stateLike(aggregation) || startsAtWindow(data, window)) return;
+        String numeric = representation.equals("raw") ? "raw_numeric"
+                : "COALESCE(decoded_numeric,raw_numeric)";
+        String text = representation.equals("raw") ? "raw_text"
+                : "COALESCE(decoded_text,raw_text)";
+        List<Datum> seed = jdbc.query("SELECT ?::timestamptz bucket," + numeric
+                        + " chart_value,NULL::numeric min_value,NULL::numeric max_value," + text
+                        + " last_text,0::bigint samples,false has_gap FROM device_measurement_sample "
+                        + "WHERE tenant_id=? AND site_id=? AND device_id=? AND point_key=? "
+                        + "AND quality='good' AND time<? ORDER BY time DESC,edge_sequence DESC LIMIT 1",
+                MeasurementHistoryService::mapDatum, Timestamp.from(window.from()),
+                scope.tenantId(), siteId, deviceId, pointKey, Timestamp.from(window.from()));
+        if (!seed.isEmpty()) data.add(0, seed.get(0));
+    }
+
+    private void prependRollupState(String table, MeasurementSelectionRepository.DeviceScope scope,
+            UUID siteId, UUID deviceId, String pointKey, Window window, String aggregation,
+            List<Datum> data) {
+        if (!stateLike(aggregation) || startsAtWindow(data, window)) return;
+        List<Datum> seed = jdbc.query("SELECT ?::timestamptz bucket,last_numeric chart_value,"
+                        + "NULL::numeric min_value,NULL::numeric max_value,last_text,0::bigint samples,"
+                        + "false has_gap FROM " + table + " WHERE tenant_id=? AND site_id=? "
+                        + "AND device_id=? AND point_key=? AND bucket<? ORDER BY bucket DESC LIMIT 1",
+                MeasurementHistoryService::mapDatum, Timestamp.from(window.from()),
+                scope.tenantId(), siteId, deviceId, pointKey, Timestamp.from(window.from()));
+        if (!seed.isEmpty()) data.add(0, seed.get(0));
+    }
+
+    private static boolean stateLike(String aggregation) {
+        return List.of("state", "event", "bitfield", "text").contains(aggregation);
+    }
+
+    private static boolean startsAtWindow(List<Datum> data, Window window) {
+        return !data.isEmpty() && data.get(0).time().equals(window.from());
     }
 
     private static Datum mapDatum(java.sql.ResultSet rs, int ignored) throws java.sql.SQLException {
-        return new Datum(rs.getTimestamp("bucket").toInstant(), nullableDouble(rs, "chart_value"),
-                nullableDouble(rs, "min_value"), nullableDouble(rs, "max_value"),
+        return new Datum(rs.getTimestamp("bucket").toInstant(), nullableDecimal(rs, "chart_value"),
+                nullableDecimal(rs, "min_value"), nullableDecimal(rs, "max_value"),
                 rs.getString("last_text"), rs.getLong("samples"), rs.getBoolean("has_gap"));
     }
 
@@ -166,6 +228,8 @@ public class MeasurementHistoryService {
                 .append("# catalog_version=").append(csv(m.catalogVersion())).append('\n')
                 .append("# representation=").append(csv(m.representation())).append('\n')
                 .append("# site_id=").append(csv(m.siteId().toString())).append('\n')
+                .append("# entity_id=").append(csv(m.entityId() == null ? null
+                        : m.entityId().toString())).append('\n')
                 .append("time,value,min,max,text,sample_count,gap\n");
         for (Datum d : history.data()) {
             out.append(d.time()).append(',').append(value(d.value())).append(',')
@@ -208,7 +272,7 @@ public class MeasurementHistoryService {
     }
 
     private List<Marker> markers(MeasurementSelectionRepository.DeviceScope scope, UUID siteId,
-            UUID deviceId, Point point, String pointKey, Window w) {
+            UUID deviceId, UUID entityId, String pointKey, Window w) {
         List<Marker> result = new ArrayList<>();
         result.addAll(jdbc.query("SELECT requested_at marker_time,event_kind,requested_enabled,apply_status "
                         + "FROM device_measurement_selection_event WHERE tenant_id=? AND site_id=? "
@@ -228,32 +292,20 @@ public class MeasurementHistoryService {
                 (rs, n) -> new Marker(rs.getTimestamp("marker_time").toInstant(),
                         rs.getString("event_kind"), eventLabel(rs)), scope.tenantId(), siteId,
                 deviceId, pointKey, Timestamp.from(w.from()), Timestamp.from(w.to())));
-        Set<String> families = componentFamilies(point);
-        result.addAll(jdbc.query("SELECT effective_at marker_time,event_type,from_value,to_value "
-                        + "FROM component_change_event e JOIN measurement_point mp ON mp.id=e.entity_id "
-                        + "WHERE e.tenant_id=? AND e.site_id=? AND mp.device_id=? "
-                        + "AND event_type='family_changed' AND effective_at>=? AND effective_at<=? "
-                        + "ORDER BY effective_at",
-                (rs, n) -> families.isEmpty() || families.contains(rs.getString("from_value"))
-                                || families.contains(rs.getString("to_value"))
-                        ? new Marker(rs.getTimestamp("marker_time").toInstant(),
-                                rs.getString("event_type"), "Anbindungsfamilie gewechselt: "
-                                        + display(rs.getString("from_value")) + " → "
-                                        + display(rs.getString("to_value"))) : null,
-                scope.tenantId(), siteId, deviceId, Timestamp.from(w.from()),
-                Timestamp.from(w.to())).stream().filter(java.util.Objects::nonNull).toList());
+        if (entityId != null) {
+            result.addAll(jdbc.query("SELECT effective_at marker_time,event_type,from_value,to_value "
+                            + "FROM component_change_event WHERE tenant_id=? AND site_id=? "
+                            + "AND entity_id=? AND event_type='family_changed' "
+                            + "AND effective_at>=? AND effective_at<=? ORDER BY effective_at",
+                    (rs, n) -> new Marker(rs.getTimestamp("marker_time").toInstant(),
+                            rs.getString("event_type"), "Anbindungsfamilie gewechselt: "
+                                    + display(rs.getString("from_value")) + " → "
+                                    + display(rs.getString("to_value"))),
+                    scope.tenantId(), siteId, entityId, Timestamp.from(w.from()),
+                    Timestamp.from(w.to())));
+        }
         result.sort(java.util.Comparator.comparing(Marker::time));
         return List.copyOf(result);
-    }
-
-    private static Set<String> componentFamilies(Point point) {
-        if (point == null || point.family() == null) return Set.of();
-        Set<String> out = new LinkedHashSet<>();
-        out.add(point.family());
-        if (point.family().startsWith("sunspec.model_")) {
-            out.add("sunspec"); out.add("sunspec_live"); out.add("fronius_sunspec");
-        }
-        return Set.copyOf(out);
     }
 
     private static String eventLabel(java.sql.ResultSet rs) throws java.sql.SQLException {
@@ -324,12 +376,13 @@ public class MeasurementHistoryService {
             Duration duration) {}
     private record CustomMeta(String label, String unit, String catalogVersion) {}
 
-    private static Double nullableDouble(java.sql.ResultSet rs, String name)
+    private static BigDecimal nullableDecimal(java.sql.ResultSet rs, String name)
             throws java.sql.SQLException {
-        double value = rs.getDouble(name);
-        return rs.wasNull() ? null : value;
+        return rs.getBigDecimal(name);
     }
-    private static String value(Double value) { return value == null ? "" : value.toString(); }
+    private static String value(BigDecimal value) {
+        return value == null ? "" : value.toPlainString();
+    }
     private static String csv(String value) {
         if (value == null) return "";
         if (!value.isEmpty() && "=+-@\t\r".indexOf(value.charAt(0)) >= 0) value = "'" + value;

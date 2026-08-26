@@ -123,6 +123,34 @@ test('non-contiguous Deye rule reads declared low/high words and decodes word-li
   assert.equal(samples[0].decoded,-2);
 });
 
+test('KOSTAL runtime reads register 5 and decodes the detected big-word layout', async () => {
+  const reads=[];
+  const runtime=new MeasurementRuntime({readModbus:async ({start,count})=>{
+    reads.push([start,count]);
+    if(start===5)return [1];
+    if(start===252)return [0x42c8,0x0000];
+    return Array(count).fill(0);
+  }},()=>{},()=>new Date('2026-08-25T12:00:00Z'));
+  runtime.apply(config([{point_key:'kostal_plenticore.grid-power',cadence_s:60}]));
+  const samples=await runtime.tick();
+  assert.deepEqual(reads,[[5,1],[252,2]]);
+  assert.equal(samples[0].decoded,100);
+});
+
+test('Deye validation lookup reads its referenced point and invalidate-all drops the tick', async () => {
+  const reads=[]; const published=[];
+  const runtime=new MeasurementRuntime({readModbus:async ({start,count})=>{
+    reads.push([start,count]);
+    if(start===16)return [1000,0]; // pinned rated-power rule 4 => 100 W
+    if(start===175)return [111]; // exceeds the referenced 100 W * 1.1
+    return Array(count).fill(0);
+  }},(topic,payload)=>published.push({topic,payload}),()=>new Date('2026-08-25T12:00:00Z'));
+  runtime.apply(config([{point_key:'deye.hybrid_1p.load.power',cadence_s:60}]));
+  assert.deepEqual(await runtime.tick(),[]);
+  assert.deepEqual(reads,[[16,2],[175,1]]);
+  assert.equal(published.some((entry)=>entry.topic==='edge/measurements/samples'),false);
+});
+
 test('concurrent ticks join one physical read and runtime request budget remains hard', async () => {
   let reads=0; let release;
   const gate=new Promise(resolve=>{release=resolve;});

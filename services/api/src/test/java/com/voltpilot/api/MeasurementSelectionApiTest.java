@@ -298,6 +298,7 @@ class MeasurementSelectionApiTest {
         String statePoint = "deye.hybrid_1p.control.device-state";
         UUID historicalSite = UUID.fromString("00000000-0000-0000-0000-000000000099");
         UUID entity = UUID.fromString("00000000-0000-0000-0000-000000000098");
+        UUID sameFamilyEntity = UUID.fromString("00000000-0000-0000-0000-000000000095");
         UUID foreignDevice = UUID.fromString("00000000-0000-0000-0000-000000000097");
         UUID foreignEntity = UUID.fromString("00000000-0000-0000-0000-000000000096");
         try (Connection connection = POSTGRES.createConnection("");
@@ -350,6 +351,9 @@ class MeasurementSelectionApiTest {
             statement.execute("INSERT INTO measurement_point(id,tenant_id,site_id,role,label,family,"
                     + "device_id) VALUES ('" + entity + "','00000000-0000-0000-0000-000000000001',"
                     + "'00000000-0000-0000-0000-000000000002','battery-hybrid','Deye',"
+                    + "'hybrid_1p','" + DEVICE_A + "'),('" + sameFamilyEntity
+                    + "','00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','pv-inverter','Deye 2',"
                     + "'hybrid_1p','" + DEVICE_A + "') ON CONFLICT DO NOTHING");
             statement.execute("INSERT INTO device(id,tenant_id,site_id,external_ref,kind,status) VALUES ('"
                     + foreignDevice + "','00000000-0000-0000-0000-000000000001',"
@@ -365,6 +369,9 @@ class MeasurementSelectionApiTest {
                     + "('00000000-0000-0000-0000-000000000001',"
                     + "'00000000-0000-0000-0000-000000000002','" + entity
                     + "',2,'family_changed',now()-interval '18 minutes','string','hybrid_1p'),"
+                    + "('00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + sameFamilyEntity
+                    + "',2,'family_changed',now()-interval '17 minutes','micro','hybrid_1p'),"
                     + "('00000000-0000-0000-0000-000000000001',"
                     + "'00000000-0000-0000-0000-000000000002','" + foreignEntity
                     + "',2,'family_changed',now()-interval '17 minutes','string','micro')");
@@ -399,13 +406,15 @@ class MeasurementSelectionApiTest {
                 assertThat(((Number) row.get("value")).doubleValue()).isZero());
 
         ResponseEntity<Map<String, Object>> markers = get(demo,
-                path(DEVICE_A) + "/" + statePoint + "/history?range=24h");
+                path(DEVICE_A) + "/" + statePoint + "/history?range=24h&entityId=" + entity);
         List<Map<String, Object>> markerRows =
                 (List<Map<String, Object>>) markers.getBody().get("markers");
         assertThat(markerRows).extracting(row -> row.get("kind"))
                 .contains("state_change", "error_change", "family_changed");
         assertThat(markerRows).extracting(row -> row.get("label"))
                 .noneMatch(label -> label.toString().contains("micro"));
+        assertThat(((Map<?, ?>) markers.getBody().get("meta")).get("entityId"))
+                .isEqualTo(entity.toString());
     }
 
     @Test
@@ -427,6 +436,66 @@ class MeasurementSelectionApiTest {
         assertThat(csv.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(csv.getBody()).contains("\"'=HYPERLINK(\"\"https://example.invalid\"\")\"")
                 .doesNotContain(",\"=HYPERLINK");
+    }
+
+    @Test
+    void stateHistorySurvivesRawRetentionAndSeedsTheStateAtTheWindowBoundary()
+            throws Exception {
+        String statePoint = "deye.hybrid_1p.info.device-rated-phase";
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_sample(time,received_at,tenant_id,"
+                    + "site_id,device_id,point_key,raw_numeric,decoded_text,quality,catalog_version,"
+                    + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples) VALUES "
+                    + "(now()-interval '380 days',now(),'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + statePoint
+                    + "',1,'Single-Phase','good','2026.08.26.3',88401,'state',900,false,0),"
+                    + "(now()-interval '120 days',now(),'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + statePoint
+                    + "',3,'Three-Phase','good','2026.08.26.3',88402,'state',900,false,0) "
+                    + "ON CONFLICT DO NOTHING");
+            statement.execute("CALL refresh_device_measurement_rollup("
+                    + "'device_measurement_rollup_15m'::regclass,interval '15 minutes',"
+                    + "now()-interval '400 days')");
+            statement.execute("DELETE FROM device_measurement_sample WHERE device_id='" + DEVICE_A
+                    + "' AND edge_sequence IN (88401,88402)");
+        }
+        ResponseEntity<Map<String, Object>> history = get(token("demo", "demo"),
+                path(DEVICE_A) + "/" + statePoint + "/history?range=year");
+        List<Map<String, Object>> rows =
+                (List<Map<String, Object>>) history.getBody().get("data");
+        assertThat(rows).isNotEmpty();
+        assertThat(rows.get(0)).containsEntry("text", "Single-Phase")
+                .containsEntry("sampleCount", 0);
+        assertThat(rows).anySatisfy(row -> assertThat(row.get("text")).isEqualTo("Three-Phase"));
+        assertThat(rows).allSatisfy(row -> assertThat(row.get("value")).isNull());
+    }
+
+    @Test
+    void historyAndCsvKeepNumericPrecisionBeyondJavascriptSafeIntegers() throws Exception {
+        String point = "deye.hybrid_1p.info.device-rated-power";
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_sample(time,received_at,tenant_id,"
+                    + "site_id,device_id,point_key,raw_numeric,decoded_numeric,quality,catalog_version,"
+                    + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples) VALUES "
+                    + "(now()-interval '5 minutes',now(),"
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + point
+                    + "',9007199254740993,9007199254740993,'good','2026.08.26.3',88501,"
+                    + "'gauge',300,false,0) ON CONFLICT DO NOTHING");
+        }
+        String demo = token("demo", "demo");
+        ResponseEntity<String> json = rest.exchange(url(path(DEVICE_A) + "/" + point
+                        + "/history?range=24h&representation=decoded"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class);
+        assertThat(json.getBody()).contains("\"value\":9007199254740993")
+                .doesNotContain("9007199254740992");
+        ResponseEntity<String> csv = rest.exchange(url(path(DEVICE_A) + "/" + point
+                        + "/export?range=24h&representation=decoded"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class);
+        assertThat(csv.getBody()).contains(",9007199254740993,")
+                .doesNotContain("9007199254740992");
     }
 
     @Test

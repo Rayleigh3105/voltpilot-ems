@@ -83,8 +83,10 @@ public class DeviceMeasurementSelectionController {
             @RequestParam(required = false) Instant from,
             @RequestParam(required = false) Instant to,
             @RequestParam(defaultValue = "decoded") String representation,
-            @RequestParam(required = false) UUID siteId) {
-        return history.history(deviceId, pointKey, range, from, to, representation, siteId);
+            @RequestParam(required = false) UUID siteId,
+            @RequestParam(required = false) UUID entityId) {
+        return history.history(deviceId, pointKey, range, from, to, representation, siteId,
+                entityId);
     }
 
     @GetMapping(value = "/{pointKey}/export", produces = "text/csv")
@@ -93,8 +95,10 @@ public class DeviceMeasurementSelectionController {
             @RequestParam(required = false) Instant from,
             @RequestParam(required = false) Instant to,
             @RequestParam(defaultValue = "decoded") String representation,
-            @RequestParam(required = false) UUID siteId) {
-        var result = history.history(deviceId, pointKey, range, from, to, representation, siteId);
+            @RequestParam(required = false) UUID siteId,
+            @RequestParam(required = false) UUID entityId) {
+        var result = history.history(deviceId, pointKey, range, from, to, representation, siteId,
+                entityId);
         return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=messwert-" + pointKey.replaceAll("[^a-zA-Z0-9._-]", "_") + ".csv")

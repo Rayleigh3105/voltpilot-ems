@@ -48,6 +48,7 @@
       "family": "kostal_plenticore",
       "source_url": "https://www.kostal-solar-electric.com/download/",
       "source_revision": "KOSTAL Interface description MODBUS TCP Rev. 2.9",
+      "byte_order": {"connection_key":"byte_order","register":5,"little_value":0,"big_value":1,"default":"little"},
       "points": [
         {"key":"byte-order","address":5,"width_words":1,"group":"Identität","label_de":"MODBUS-Byte-Reihenfolge","label_source":"MODBUS Byte Order","unit":null,"value_type":"uint16","signed":false,"endian":"big","scale":{"kind":"none"},"aggregation_kind":"state","cadence_s":3600,"recommended":false},
         {"key":"inverter-state","address":56,"width_words":2,"group":"Status & Fehler","label_de":"Wechselrichterstatus","label_source":"Inverter state","unit":null,"value_type":"uint32","signed":false,"endian":"word_little_byte_big","scale":{"kind":"none"},"aggregation_kind":"state","cadence_s":60,"recommended":true},

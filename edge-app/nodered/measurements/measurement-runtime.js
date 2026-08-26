@@ -19,6 +19,7 @@ class MeasurementRuntime {
     this.active = null; this.scheduler = new Scheduler(); this.due = new Map();
     this.tickPromise = null; this.requestWindow = []; this.sampleWindow = [];
     this.ocppDue = new Map(); this.applyGeneration = 0;
+    this.decoderState = { previous:new Map(), values:new Map() };
   }
 
   apply(config, options) {
@@ -70,6 +71,7 @@ class MeasurementRuntime {
     // survives because due is replaced together with active.
     const due = new Map(candidate.selections.map((s) => [s.point.point_key, 0]));
     this.active = candidate; this.due = due;
+    this.decoderState = { previous:new Map(), values:new Map() };
   }
 
   publishStatus(config, candidate) {
@@ -106,6 +108,14 @@ class MeasurementRuntime {
       if (task.kind === 'modbus') await this.readBlock(task.block, dueKeys, wireWords);
       else if (task.kind === 'json') samples.push(...await this.readJSON(task.group, dueKeys));
     }
+    for (const prerequisite of this.active.decoderPrerequisites || []) {
+      if (!dueKeys.has(prerequisite.trigger_key)) continue;
+      const addresses = this.addresses(prerequisite.point);
+      if (addresses.length && addresses.every((address) => wireWords.has(address))) {
+        decodeRegisters(prerequisite.point, addresses.map((address) => wireWords.get(address)),
+          this.io.scaleFactors, addresses, this.decoderOptions(prerequisite.point, wireWords));
+      }
+    }
     for (const selected of this.active.selections) {
       if (!dueKeys.has(selected.point.point_key)) continue;
       let sample = null;
@@ -113,12 +123,24 @@ class MeasurementRuntime {
         const addresses = this.addresses(selected.point);
         if (addresses.length && addresses.every((address) => wireWords.has(address))) {
           sample = decodeRegisters(selected.point, addresses.map((address) => wireWords.get(address)),
-            this.io.scaleFactors, addresses);
+            this.io.scaleFactors, addresses, this.decoderOptions(selected.point, wireWords));
         }
       } else if (derivedAddresses(selected.point).length) sample = decodeDerived(selected.point, wireWords);
       if (sample) samples.push(sample);
     }
+    if (samples.some((sample) => sample.invalidate_all)) return [];
     return this.publishSamples(samples, now);
+  }
+
+  decoderOptions(point, wireWords) {
+    const decoder = point.decoder || {};
+    return {
+      byteOrder:this.active && this.active.byteOrder,
+      byteOrderWord:decoder.byte_order && wireWords.get(decoder.byte_order.register),
+      variantWord:decoder.variant && wireWords.get(decoder.variant.register),
+      previousValues:this.decoderState.previous,
+      decodedValues:this.decoderState.values,
+    };
   }
 
   async readBlock(block, dueKeys, wireWords) {

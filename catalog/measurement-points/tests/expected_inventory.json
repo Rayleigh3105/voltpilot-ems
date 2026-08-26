@@ -1,5 +1,5 @@
 {
-  "catalog_version": "2026.08.26.2",
+  "catalog_version": "2026.08.26.3",
   "deye_lock_sha256": "30d4ff814fbb0e17a2322370b6763666ce5181b6468700ab1dab3b879d737b02",
   "deye_direct_register_points": {
     "hybrid_1p": 193,
@@ -42,7 +42,7 @@
   },
   "goe_german_source_rows": 174,
   "goe_keys_with_german_label": 177,
-  "manifest_sha256": "08a016d49bbcd8ecd752a1032c4b6e9733d1fb1ba85856a482af2dffafe95f35",
+  "manifest_sha256": "90acdd5641bd4907d7fdc3b6fe53a56913513fea22d81e4f78752e76152edf66",
   "shelly_raw_manifest_sha256": "3a68c3d0bedc74b7fc1dfdd9659743df241f45350abe1c7dbd5e8d8962a74d44",
   "source_versions": {
     "builtin.inverter.runtime": "voltpilot-runtime-2026-08-26-r2",

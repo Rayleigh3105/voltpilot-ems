@@ -101,10 +101,36 @@ function decodeDerived(point, wireWords) {
   return out;
 }
 
-function baseNumber(point, words) {
+function variantIndex(decoder, options) {
+  const variant = decoder && decoder.variant;
+  if (!variant) return 0;
+  const word = options && options.variantWord;
+  return Array.isArray(variant.index_1_values) && variant.index_1_values.includes(word)
+    ? 1 : Number(variant.default_index) || 0;
+}
+
+function variantValue(value, decoder, options) {
+  if (!Array.isArray(value)) return value;
+  const index = variantIndex(decoder, options);
+  return value[Math.min(index, value.length - 1)];
+}
+
+function effectiveEndian(point, options) {
+  const byteOrder = point.decoder && point.decoder.byte_order;
+  if (!byteOrder) return point.endian;
+  const configured = options && options.byteOrder;
+  if (configured === 'big') return 'big';
+  if (configured === 'little' || configured === 'word_little_byte_big') {
+    return 'word_little_byte_big';
+  }
+  const detected = options && options.byteOrderWord;
+  return detected === byteOrder.big_value ? 'big' : 'word_little_byte_big';
+}
+
+function baseNumber(point, words, options) {
   const b = Buffer.alloc(words.length * 2);
   words.forEach((w, i) => b.writeUInt16BE(w & 0xffff, i * 2));
-  const ordered = point.endian === 'word_little_byte_big' && words.length > 1
+  const ordered = effectiveEndian(point, options) === 'word_little_byte_big' && words.length > 1
     ? [...words].reverse() : words;
   const n = Buffer.alloc(ordered.length * 2);
   ordered.forEach((w, i) => n.writeUInt16BE(w & 0xffff, i * 2));
@@ -122,6 +148,109 @@ function baseNumber(point, words) {
     case 'version': return decodeVersion(point, words);
     default: return null;
   }
+}
+
+function deyeLookup(value, dictionary) {
+  if (!Array.isArray(dictionary) || dictionary.length === 0) return value;
+  let fallback = dictionary[0].value;
+  for (const entry of dictionary) {
+    let key = Object.prototype.hasOwnProperty.call(entry, 'bit')
+      ? (Array.isArray(entry.bit)
+        ? entry.bit.reduce((bits, bit) => bits + Math.pow(2, bit), 0)
+        : Math.pow(2, entry.bit))
+      : entry.key;
+    if (entry.mode === '|' && (value & key) === key) key = value;
+    if (entry.default != null || key === 'default') fallback = entry.value;
+    if (Array.isArray(key) ? key.includes(value) : key === value) return entry.value;
+  }
+  return fallback;
+}
+
+function deyeBound(value, decoder, options) {
+  return variantValue(value, decoder, options);
+}
+
+function deyeInvalid(decoder, value, options) {
+  const validation = decoder.validation;
+  if (!validation) return { invalid:0 };
+  let invalid = 0;
+  let min = deyeBound(validation.min, decoder, options);
+  let max = deyeBound(validation.max, decoder, options);
+  if (validation.lookup) {
+    const reference = options && options.decodedValues && options.decodedValues.get(validation.lookup);
+    if (typeof reference === 'number' && Number.isFinite(reference) && reference !== 0) {
+      if (min == null) min = -Math.abs(reference);
+      if (max == null) max = Math.abs(reference);
+    }
+  }
+  const boundScale = deyeBound(validation.scale, decoder, options);
+  if (boundScale != null) {
+    if (min != null) min *= Number(boundScale);
+    if (max != null) max *= Number(boundScale);
+  }
+  if (min != null && min > value || max != null && max < value) invalid |= 1;
+  const dev = deyeBound(validation.dev, decoder, options);
+  const previous = options && options.previousValues;
+  const prior = previous && previous.get(decoder.source_key);
+  if (dev && value && prior != null && Math.abs(value - prior) > dev) invalid |= 2;
+  else if (!invalid && previous) previous.set(decoder.source_key, value);
+  const mask = validation.invalidate_all;
+  return { invalid, invalidateAll: invalid > 0
+    && Object.prototype.hasOwnProperty.call(validation, 'invalidate_all')
+    && (mask == null || Boolean(invalid & mask)) };
+}
+
+function deyeRule12(point, words, raw, options) {
+  const decoder = point.decoder;
+  let value = 0n;
+  for (let i = 0; i < words.length; i++) value += BigInt(words[i] & 0xffff) << BigInt(i * 16);
+  if ([2, 4].includes(decoder.rule)) {
+    const bits = BigInt(words.length * 16);
+    const sign = 1n << (bits - 1n);
+    if (value >= sign) value = decoder.magnitude
+      ? -(value & (sign - 1n)) : value - (1n << bits);
+  }
+  let decoded = Number(value);
+  const range = decoder.range;
+  if (range) {
+    const min = deyeBound(range.min, decoder, options);
+    const max = deyeBound(range.max, decoder, options);
+    if (min != null && decoded < min || max != null && decoded > max) {
+      decoded = deyeBound(range.default, decoder, options);
+      if (decoded == null) return { point_key:point.point_key, raw, quality:'invalid' };
+    }
+  }
+  if (decoder.mask != null) decoded = Number(BigInt(Math.trunc(decoded)) & BigInt(decoder.mask));
+  if (decoder.bit != null) decoded = Number((BigInt(Math.trunc(decoded))
+    >> BigInt(decoder.bit)) & 1n);
+  if (decoder.bitmask != null) decoded = Number((BigInt(Math.trunc(decoded))
+    & BigInt(decoder.bitmask)) / BigInt(decoder.bitmask));
+  if (decoder.lookup) {
+    decoded = deyeLookup(decoded, decoder.lookup);
+  } else {
+    const offset = deyeBound(decoder.offset, decoder, options);
+    const scale = deyeBound(decoder.scale, decoder, options);
+    const divide = deyeBound(decoder.divide, decoder, options);
+    if (offset != null) decoded -= Number(offset);
+    if (scale != null) decoded *= Number(scale);
+    if (divide != null) decoded = Math.floor(decoded / Number(divide));
+  }
+  if ([2, 4].includes(decoder.rule) && decoder.inverted) decoded = -decoded;
+  const checked = deyeInvalid(decoder, decoded, options);
+  if (checked.invalid) {
+    const fallback = deyeBound(decoder.validation.default, decoder, options);
+    if (fallback == null) return { point_key:point.point_key, raw, quality:'invalid',
+      ...(checked.invalidateAll ? { invalidate_all:true } : {}) };
+    decoded = fallback;
+  }
+  if (typeof decoded === 'number') {
+    const digits = Number(decoder.digits);
+    if (Number.isInteger(digits) && digits >= 0) decoded = Number(decoded.toFixed(digits));
+  }
+  if (options && options.decodedValues && decoder.source_key) {
+    options.decodedValues.set(decoder.source_key, decoded);
+  }
+  return { point_key:point.point_key, raw, decoded, quality:'good' };
 }
 
 function decodeDateTime(words) {
@@ -175,14 +304,18 @@ function decodeVersion(point, words) {
 }
 
 /** Decode once at the edge. Unknown/conditional scale deliberately omits decoded. */
-function decodeRegisters(point, words, scaleFactors, addresses) {
+function decodeRegisters(point, words, scaleFactors, addresses, options) {
   const width = point.address && point.address.width_words;
   if (!Array.isArray(words) || !width || words.length !== width) return null;
   const contiguous = !Array.isArray(addresses) || addresses.length < 2
     || addresses.every((address, i) => i === 0 || address === addresses[i - 1] + 1);
   const raw = contiguous ? wordsRaw(words) : addresses.map((address, i) =>
     `${address.toString(16).padStart(4, '0')}=${(words[i] & 0xffff).toString(16).padStart(4, '0')}`).join(',');
-  let decoded = baseNumber(point, words);
+  if (point.decoder && [1, 2, 3, 4].includes(point.decoder.rule)
+      && !Array.isArray(point.decoder.sensors)) {
+    return deyeRule12(point, words, raw, options || {});
+  }
+  let decoded = baseNumber(point, words, options);
   if (decoded === null || (typeof decoded === 'number' && !Number.isFinite(decoded))) {
     return { point_key: point.point_key, raw, quality: 'invalid' };
   }
@@ -300,4 +433,4 @@ function decodeOcppSampledValue(value) {
 module.exports = { catalogDocument, resolvePoint, decodeRegisters, decodeJSON,
   decodeJSONSamples, decodeDerived, derivedAddresses, decodeOcppSampledValue, ocppPointKey,
   templateKey, _helpers: { templateKey, evalDynamicOffset, pathValue, concreteKey, expandPath,
-    customPoint } };
+    customPoint, effectiveEndian, deyeLookup, variantIndex } };

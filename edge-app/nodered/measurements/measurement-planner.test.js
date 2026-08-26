@@ -11,7 +11,7 @@ test('full concrete catalog load stays bounded and fails closed on D5', { timeou
 test('D5 soft warning does not reject an otherwise safe grouped plan',()=>{const points=catalogDocument.points.filter(p=>p.address&&p.min_cadence_s<=60&&(p.family==='hybrid_3p'||p.family==='hybrid_1p')).slice(0,121);const p=buildPlan(cfg(points.map(p=>({point_key:p.point_key,cadence_s:60}))));assert.equal(p.applied,true);assert.equal(p.metrics.samplesPerMinute,121);assert.equal(p.metrics.warning,'budget_warning_samples')});
 test('control queue always precedes poll work',()=>{const s=new Scheduler();s.enqueuePoll('poll');s.enqueueControl('control');assert.equal(s.next(),'control');assert.equal(s.next(),'poll')});
 test('SunSpec 160 modules use discovered base and live N',()=>{const d={models:{160:{base:41000,moduleCount:2}}};const p=resolvePoint('sunspec.model_160.module[1].dcw',d);assert.equal(p.address.offset_words,41);assert.equal(resolvePoint('sunspec.model_160.module[2].dcw',d),null)});
-test('raw is wire-derived and unknown conditional scale is not guessed',()=>{const p=resolvePoint('deye.hybrid_1p.battery.battery-current');const s=decodeRegisters(p,[1234]);assert.equal(s.raw,1234);assert.equal('decoded'in s,false)});
+test('raw is wire-derived and pinned conditional scale uses its documented default variant',()=>{const p=resolvePoint('deye.hybrid_1p.battery.battery-current');const s=decodeRegisters(p,[1234]);assert.equal(s.raw,1234);assert.equal(s.decoded,12.34)});
 test('derived Deye values use only actually read wire words',()=>{const p=resolvePoint('deye.hybrid_1p.pv.pv-power');const words=new Map([[186,100],[187,200],[188,300],[189,400]]);const s=decodeDerived(p,words);assert.equal(s.raw,'00ba=0064,00bb=00c8,00bc=012c,00bd=0190');assert.equal(s.decoded,1000);words.delete(189);assert.equal(decodeDerived(p,words),null)});
 test('attribute-only vendor points reject explicitly instead of inventing a read',()=>{const p=buildPlan(cfg([{point_key:'deye.hybrid_1p.battery.battery-state',cadence_s:60}]));assert.equal(p.applied,true);assert.deepEqual(p.accepted,[]);assert.deepEqual(p.rejected,[{point_key:'deye.hybrid_1p.battery.battery-state',reason:'driver_unavailable'}])});
 test('go-e filters and Shelly selectors read only existing fields',()=>{const g=resolvePoint('goe.api_v2.alw');assert.equal(decodeJSON(g,{alw:false}).raw,false);const sh=resolvePoint('shelly.gen1.device_info.fw');assert.equal(decodeJSON(sh,{fw:'1.14'}).raw,'1.14');assert.equal(decodeJSON(sh,{}),null)});
@@ -36,15 +36,66 @@ test('KACO hybrid keeps MPPT dimensions, scales JSON and separates physical endp
   assert.ok(plan.httpGroups.some((group)=>group.includes('device=4')));
 });
 
-test('word-little floating point applies to KOSTAL and free float64 registers',()=>{
-  assert.equal(decodeRegisters(resolvePoint('kostal_plenticore.grid-power'),[0x0000,0x42c8]).decoded,100);
+test('KOSTAL explicit and register-5 auto byte order cover both documented word layouts',()=>{
+  const kostal=resolvePoint('kostal_plenticore.grid-power');
+  assert.equal(decodeRegisters(kostal,[0x0000,0x42c8],null,null,{byteOrder:'little'}).decoded,100);
+  assert.equal(decodeRegisters(kostal,[0x42c8,0x0000],null,null,{byteOrder:'big'}).decoded,100);
+  assert.equal(decodeRegisters(kostal,[0x0000,0x42c8],null,null,{byteOrderWord:0}).decoded,100);
+  assert.equal(decodeRegisters(kostal,[0x42c8,0x0000],null,null,{byteOrderWord:1}).decoded,100);
+  const automatic=buildPlan(cfg([{point_key:kostal.point_key,cadence_s:60}]));
+  assert.ok(automatic.blocks.some((block)=>block.start<=5&&block.start+block.count>5));
+  const explicit=buildPlan(cfg([{point_key:kostal.point_key,cadence_s:60}]),{byteOrder:'big'});
+  assert.ok(explicit.blocks.every((block)=>!(block.start<=5&&block.start+block.count>5)));
   const custom=resolvePoint('custom.float64',undefined,{sourceKind:'modbus_holding',address:42,
     widthBits:64,valueType:'float64',signed:true,endian:'word_little_byte_big',scale:1});
   assert.equal(decodeRegisters(custom,[0,0,0,0x4059]).decoded,100);
 });
 
+test('all 339 pinned Deye rule-1/2 semantic points remain executable across every family',()=>{
+  const semantic=new Set(['range','mask','bit','bitmask','offset','divide','validation','lookup']);
+  const affected=catalogDocument.points.filter((point)=>point.address&&[1,2].includes(point.decoder&&point.decoder.rule)
+    && Object.keys(point.decoder).some((key)=>semantic.has(key)));
+  assert.equal(affected.length,339);
+  assert.deepEqual(Object.fromEntries(['hybrid_1p','hybrid_3p','micro','string'].map((family)=>
+    [family,affected.filter((point)=>point.family===family).length])),
+  {hybrid_1p:93,hybrid_3p:213,micro:22,string:11});
+  for(const point of affected){
+    const decoded=decodeRegisters(point,Array(point.address.width_words).fill(0));
+    assert.ok(decoded&&typeof decoded.raw!=='undefined',point.point_key);
+  }
+  const vectors=[
+    ['deye.string.grid.temperature',1250,25],
+    ['deye.hybrid_1p.info.device-mppts',0x0302,3],
+    ['deye.hybrid_3p.battery-1.battery-1-temperature',1250,25],
+    ['deye.micro.control.device-state',4,'Fault'],
+  ];
+  for(const [key,word,expected] of vectors) assert.equal(decodeRegisters(resolvePoint(key),[word]).decoded,expected,key);
+  assert.equal(decodeRegisters(resolvePoint('deye.hybrid_1p.bms.battery-bms-other-symbol'),[2]).decoded,'OCP');
+  assert.equal(decodeRegisters(resolvePoint('deye.hybrid_1p.work-mode.ac-coupling'),[64]).decoded,'Grid');
+  assert.equal(decodeRegisters(resolvePoint('deye.hybrid_1p.info.device-mppts'),[0x0f02]).decoded,2);
+});
+
+test('Deye model variant, validation lookup, deviation and invalidate-all mirror the pinned parser',()=>{
+  const voltage=resolvePoint('deye.hybrid_3p.battery.battery-voltage');
+  assert.equal(decodeRegisters(voltage,[5000],null,null,{variantWord:0}).decoded,50);
+  assert.equal(decodeRegisters(voltage,[500],null,null,{variantWord:6}).decoded,50);
+  const variantPlan=buildPlan(cfg([{point_key:voltage.point_key,cadence_s:60}]));
+  assert.ok(variantPlan.blocks.some((block)=>block.start<=0&&block.start+block.count>0));
+  const values=new Map([['device_rated_power_sensor',100]]);
+  const power=resolvePoint('deye.hybrid_1p.load.power');
+  const invalid=decodeRegisters(power,[111],null,null,{decodedValues:values,previousValues:new Map()});
+  assert.equal(invalid.quality,'invalid');
+  assert.equal(invalid.invalidate_all,true);
+  const previous=new Map();
+  const daily=resolvePoint('deye.hybrid_1p.meter.today-production');
+  assert.equal(decodeRegisters(daily,[1000],null,null,{previousValues:previous}).decoded,100);
+  const jump=decodeRegisters(daily,[2501],null,null,{previousValues:previous});
+  assert.equal(jump.quality,'invalid');
+  assert.equal(jump.invalidate_all,true);
+});
+
 test('all directly readable Deye wire types decode without invented registers',()=>{
-  assert.equal(decodeRegisters(resolvePoint('deye.hybrid_1p.control.device-fault'),[1,0,0,0]).decoded,'1');
+  assert.equal(decodeRegisters(resolvePoint('deye.hybrid_1p.control.device-fault'),[1,0,0,0]).decoded,'Problem');
   assert.equal(decodeRegisters(resolvePoint('deye.hybrid_1p.control.date-time'),
     [0x1a08,0x1a0c,0x2238]).decoded,'2026-08-26T12:34:56');
   assert.equal(decodeRegisters(resolvePoint('deye.hybrid_1p.work-mode.program-1-time'),[630]).decoded,'06:30');

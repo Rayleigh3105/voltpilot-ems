@@ -15,7 +15,7 @@ class MeasurementHistoryServiceTest {
         var service = new MeasurementHistoryService(null, null, null);
         var meta = new MeasurementHistoryService.Meta("point", "Label", "Source", null,
                 "text", "known", "v", "decoded", true, Instant.EPOCH,
-                Instant.EPOCH.plusSeconds(60), 300, "Letzter Wert.", UUID.randomUUID());
+                Instant.EPOCH.plusSeconds(60), 300, "Letzter Wert.", UUID.randomUUID(), null);
         List<MeasurementHistoryService.Datum> rows = List.of(
                 datum("=SUM(A1:A2)"), datum("+1"), datum("-1"), datum("@cmd"),
                 datum("\tformula"), datum("\rformula"), datum("harmlos"));

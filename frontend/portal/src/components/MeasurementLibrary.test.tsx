@@ -115,11 +115,13 @@ describe('MeasurementLibrary', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Rohwert' }));
     await waitFor(() => expect(api.measurementHistory).toHaveBeenCalledWith(
       'd', 'point.a', '24h', 'raw', undefined, undefined,
+      undefined, undefined,
     ));
     fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Verlauf ansehen' })[1]);
     await waitFor(() => expect(api.measurementHistory).toHaveBeenCalledWith(
       'd', 'point.b', '24h', 'decoded', undefined, undefined,
+      undefined, undefined,
     ));
     expect(screen.queryByText('Keine Rohdaten')).not.toBeInTheDocument();
   });
@@ -145,6 +147,41 @@ describe('MeasurementLibrary', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dekodierte Werte laden' }));
     await waitFor(() => expect(api.measurementHistory).toHaveBeenLastCalledWith(
       'd', recorded.pointKey, '24h', 'decoded', undefined, undefined,
+      undefined, undefined,
     ));
+  });
+
+  it('announces the selected period and representation as pressed controls', async () => {
+    const recorded = { ...point, recorded: true, lastReadAt: '2026-08-26T00:00:00Z' };
+    vi.mocked(api.measurementCatalog).mockResolvedValue({
+      catalogVersion: '2026.08.26.3', edgeMinVersion: 'unreleased',
+      customPointActionLabel: 'Eigenen Messwert hinzufügen', total: 1, offset: 0, limit: 100,
+      groups: [], semanticStatuses: [], points: [recorded],
+    });
+    vi.spyOn(api, 'measurementHistory').mockImplementation(async (_device, pointKey, range,
+      representation) => ({
+      meta: { pointKey, label: pointKey, sourceLabel: pointKey, unit: 'A',
+        aggregationKind: 'gauge', semanticStatus: 'known', catalogVersion: '2026.08.26.3',
+        representation, rawAvailable: true, from: '2026-08-25T00:00:00Z',
+        to: '2026-08-26T00:00:00Z', bucketSeconds: range === '7d' ? 3600 : 300,
+        aggregationExplanation: 'Mittelwert', siteId: 's' }, data: [], markers: [],
+    }));
+
+    render(<MeasurementLibrary deviceId="d" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Verlauf ansehen' }));
+    const day = await screen.findByRole('button', { name: '24 h' });
+    const week = screen.getByRole('button', { name: '7 Tage' });
+    expect(day).toHaveAttribute('aria-pressed', 'true');
+    expect(week).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(week);
+    await waitFor(() => expect(week).toHaveAttribute('aria-pressed', 'true'));
+    expect(day).toHaveAttribute('aria-pressed', 'false');
+    const decoded = screen.getByRole('button', { name: 'Dekodiert' });
+    const raw = screen.getByRole('button', { name: 'Rohwert' });
+    expect(decoded).toHaveAttribute('aria-pressed', 'true');
+    expect(raw).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(raw);
+    await waitFor(() => expect(raw).toHaveAttribute('aria-pressed', 'true'));
+    expect(decoded).toHaveAttribute('aria-pressed', 'false');
   });
 });

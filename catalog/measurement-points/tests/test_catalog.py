@@ -164,6 +164,34 @@ class CatalogTest(unittest.TestCase):
             {5, 56, 57, 252, 253, 514, 531, 582, 588, 1068, 1069,
              1076, 1077, 1078, 1079, 1080, 1082},
         )
+        byte_order = [point["decoder"].get("byte_order") for point in kostal
+                      if point["address"]["width_words"] > 1]
+        self.assertTrue(byte_order)
+        self.assertTrue(all(value == byte_order[0] for value in byte_order))
+        self.assertEqual(byte_order[0], {
+            "connection_key": "byte_order", "register": 5,
+            "little_value": 0, "big_value": 1, "default": "little",
+        })
+
+    def test_all_pinned_deye_rule_1_and_2_runtime_semantics_are_packaged(self) -> None:
+        semantic_fields = {"range", "mask", "bit", "bitmask", "offset", "divide",
+                           "validation", "lookup"}
+        affected = [point for point in self.points
+                    if point.get("address")
+                    and (point.get("decoder") or {}).get("rule") in (1, 2)
+                    and semantic_fields & point["decoder"].keys()]
+        self.assertEqual(len(affected), 339)
+        self.assertEqual(collections.Counter(point["family"] for point in affected), {
+            "hybrid_1p": 93, "hybrid_3p": 213, "micro": 22, "string": 11,
+        })
+        self.assertTrue(all(point["decoder"].get("source_key") for point in affected))
+        self.assertTrue(all("digits" in point["decoder"] for point in affected))
+
+    def test_state_like_points_are_eligible_for_durable_long_term_rollups(self) -> None:
+        state_like = [point for point in self.points
+                      if point["aggregation_kind"] in {"state", "event", "bitfield", "text"}]
+        self.assertTrue(state_like)
+        self.assertTrue(all(point["long_term_cadence_s"] == 900 for point in state_like))
 
     def test_point_keys_and_selectors_are_unambiguous(self) -> None:
         keys = [point["point_key"] for point in self.points]

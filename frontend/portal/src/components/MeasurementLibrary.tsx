@@ -167,7 +167,9 @@ function PointRow({ point, applyStatus, onToggle, onHistory }: {
   );
 }
 
-export function MeasurementLibrary({ deviceId }: { deviceId: string | null | undefined }) {
+export function MeasurementLibrary({ deviceId, siteId, entityId }: {
+  deviceId: string | null | undefined; siteId?: string; entityId?: string;
+}) {
   const [state, setState] = useState<MeasurementSelectionState | null>(null);
   const [quiet, setQuiet] = useState<MeasurementCatalogResult | null>(null);
   const [catalog, setCatalog] = useState<MeasurementCatalogResult | null>(null);
@@ -233,9 +235,10 @@ export function MeasurementLibrary({ deviceId }: { deviceId: string | null | und
     setHistoryError(null);
     const from = range === 'free' ? isoOrUndefined(freeFrom) : undefined;
     const to = range === 'free' ? isoOrUndefined(freeTo) : undefined;
-    api.measurementHistory(deviceId, historyPoint.pointKey, range, representation, from, to)
+    api.measurementHistory(deviceId, historyPoint.pointKey, range, representation, from, to,
+      siteId, entityId)
       .then(setHistory, (e) => setHistoryError(e instanceof Error ? e.message : 'Der Verlauf konnte nicht geladen werden.'));
-  }, [historyPoint, range, representation, freeFrom, freeTo, deviceId]);
+  }, [historyPoint, range, representation, freeFrom, freeTo, deviceId, siteId, entityId]);
 
   const customPoints = useMemo<MeasurementCatalogPoint[]>(() => (state?.selections ?? [])
     .filter((selection) => selection.customDefinition)
@@ -415,10 +418,10 @@ export function MeasurementLibrary({ deviceId }: { deviceId: string | null | und
         extra={pendingEnabled ? <Input label="Kadenz in Sekunden" type="number" min={pending?.minCadenceS ?? 1} max={86400} value={pendingCadence} onChange={(e) => setPendingCadence(Number(e.target.value))} error={estimate?.hardRejected ? estimate.reasons.join(' ') : null} /> : null}
       />
 
-      <Drawer open={historyPoint != null} onClose={() => { setHistoryPoint(null); setHistory(null); setHistoryError(null); setRepresentation('decoded'); }} title={historyPoint ? `Verlauf · ${pointLabel(historyPoint)}` : 'Verlauf'} footer={history && historyPoint ? <Button variant="outline" onClick={() => void downloadMeasurementExport(deviceId, historyPoint.pointKey, range, representation, range === 'free' ? isoOrUndefined(freeFrom) : undefined, range === 'free' ? isoOrUndefined(freeTo) : undefined)}>CSV mit Metadaten exportieren</Button> : null}>
-        <div className="vp-measure-range" aria-label="Zeitraum">{ranges.map(([key, label]) => <button type="button" key={key} className={range === key ? 'is-active' : ''} onClick={() => setRange(key)}>{label}</button>)}</div>
+      <Drawer open={historyPoint != null} onClose={() => { setHistoryPoint(null); setHistory(null); setHistoryError(null); setRepresentation('decoded'); }} title={historyPoint ? `Verlauf · ${pointLabel(historyPoint)}` : 'Verlauf'} footer={history && historyPoint ? <Button variant="outline" onClick={() => void downloadMeasurementExport(deviceId, historyPoint.pointKey, range, representation, range === 'free' ? isoOrUndefined(freeFrom) : undefined, range === 'free' ? isoOrUndefined(freeTo) : undefined, siteId, entityId)}>CSV mit Metadaten exportieren</Button> : null}>
+        <div className="vp-measure-range" aria-label="Zeitraum">{ranges.map(([key, label]) => <button type="button" key={key} aria-pressed={range === key} className={range === key ? 'is-active' : ''} onClick={() => setRange(key)}>{label}</button>)}</div>
         {range === 'free' && <div className="vp-measure-free"><div><VpDatePicker label="Von · Datum" value={freeFrom.split('T')[0]} onChange={(value) => setFreePart('from', 'date', value)} /><VpTimePicker label="Von · Uhrzeit" value={freeFrom.split('T')[1] ?? ''} onChange={(value) => setFreePart('from', 'time', value)} /></div><div><VpDatePicker label="Bis · Datum" value={freeTo.split('T')[0]} onChange={(value) => setFreePart('to', 'date', value)} /><VpTimePicker label="Bis · Uhrzeit" value={freeTo.split('T')[1] ?? ''} onChange={(value) => setFreePart('to', 'time', value)} /></div></div>}
-        {(history?.meta.rawAvailable || representation === 'raw') && <div className="vp-measure-range" aria-label="Wertdarstellung"><button type="button" className={representation === 'decoded' ? 'is-active' : ''} onClick={() => setRepresentation('decoded')}>Dekodiert</button><button type="button" className={representation === 'raw' ? 'is-active' : ''} onClick={() => setRepresentation('raw')}>Rohwert</button></div>}
+        {(history?.meta.rawAvailable || representation === 'raw') && <div className="vp-measure-range" aria-label="Wertdarstellung"><button type="button" aria-pressed={representation === 'decoded'} className={representation === 'decoded' ? 'is-active' : ''} onClick={() => setRepresentation('decoded')}>Dekodiert</button><button type="button" aria-pressed={representation === 'raw'} className={representation === 'raw' ? 'is-active' : ''} onClick={() => setRepresentation('raw')}>Rohwert</button></div>}
         {historyError ? <div className="vp-assist-error" role="alert"><p>{historyError}</p>{representation === 'raw' && <Button size="sm" variant="outline" onClick={() => setRepresentation('decoded')}>Dekodierte Werte laden</Button>}</div> : !history ? <p role="status">Verlauf wird geladen …</p> : history.data.length === 0 ? <p className="vp-measure-empty">Für diesen Zeitraum sind keine Werte gespeichert. Eine frühere Abwahl löscht die Historie nicht.</p> : <><HistoryChart history={history} /><p className="vp-measure-hint">{history.meta.aggregationExplanation}</p><ul className="vp-measure-marker-list">{history.markers.map((m) => <li key={`${m.time}-${m.kind}`}><time>{new Date(m.time).toLocaleString('de-DE')}</time> · {m.label}</li>)}</ul></>}
       </Drawer>
 

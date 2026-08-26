@@ -174,6 +174,9 @@ module.exports = function (RED) {
     const runtime = new Runtime.MeasurementRuntime(io, (topic, payload, retained) => {
       core.client.publish(topic, JSON.stringify(payload), { qos:1, retain:!!retained });
     });
+    const measurementOptions = () => ({
+      byteOrder:inverter && inverter.connection && inverter.connection.byte_order,
+    });
     const subscribe = () => core.client.subscribe([CONFIG, INVERTER, OCPP, OCPP_RESULT, CONTROL], { qos:1 });
     if (core.client.connected) subscribe();
     core.client.on('connect', subscribe);
@@ -197,14 +200,17 @@ module.exports = function (RED) {
           if (['fronius_sunspec','sunspec_tcp'].includes(inverter.communication)) {
             discoverSunSpec(io.readModbus).then((discovery) => {
               io.discovery=discovery;
-              if (desired) runtime.apply(desired, {});
+              if (desired) runtime.apply(desired, measurementOptions());
             }).catch((error)=>node.warn('SunSpec-Erkennung: '+error.message));
+          }
+          if (desired && !['fronius_sunspec','sunspec_tcp'].includes(inverter.communication)) {
+            runtime.apply(desired, measurementOptions());
           }
           return;
         }
         if (topic === CONFIG) {
           desired = value;
-          const plan = runtime.apply(value, {});
+          const plan = runtime.apply(value, measurementOptions());
           node.status(plan.pending ? { fill:'blue',shape:'ring',text:'OCPP-Abgleich Revision ' + value.revision }
             : plan.applied ? { fill:'green',shape:'dot',text:'Revision ' + value.revision }
             : { fill:'yellow',shape:'ring',text:'Plan abgelehnt' });

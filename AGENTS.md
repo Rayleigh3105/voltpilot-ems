@@ -5192,6 +5192,12 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   Mittel/Min/Max, Counter nur standortlokale positive Deltas, Zustände den
   letzten Wert; Auswahl-/Ack-/First-Sample-, Lücken-, Reset-, State-, Fehler-,
   Bitfield-, Text- und komponentengenaue Familienmarker bleiben getrennt.
+  Für den Familienmarker bindet die Geräteseite ihre konkrete
+  `measurement_point`-ID als `entityId`; nur Gerät/Familienname zu vergleichen
+  ist bei zwei gleichen Wechselrichtern am selben Gateway unzulässig.
+  State/Event/Bitfield/Text sind außerdem echte 15-min-Langzeitreihen (nicht
+  nur Marker): am Fensteranfang wird der letzte Zustand davor als Startwert
+  eingesetzt, auch wenn die 90-Tage-Rohdaten schon gelöscht sind.
   Rohwahl gibt es nur bei vorhandenen Wire-Rohdaten. CSV trägt Point-Key,
   Standort, Labels, Einheit, Aggregation, Semantik, Katalogversion und
   Darstellung und neutralisiert Spreadsheet-Formelpräfixe. Die Katalogroute
@@ -5205,6 +5211,8 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   `frontend/portal/src/migration.test.ts` erzwingt `VpPicker`, `VpDatePicker`
   und `VpTimePicker`. Eine Punkt-/Drawer-Öffnung beginnt immer dekodiert; ein
   abgelehntes Rohfenster bietet sichtbar die Rückkehr zu dekodierten Werten.
+  Zeitraum- und Darstellungs-Schalter sind echte Toggle-Gruppen und müssen
+  ihren Zustand zusätzlich zur Farbe mit `aria-pressed` ausgeben.
 
 ## Steuerung Stufen 8+9: die UMZÜGE und die Datenbereinigung
 
@@ -5507,6 +5515,14 @@ Push, kein anderer Wunsch, kein anderer Text.
   `word_little_byte_big` vertauscht bei allen mehrwortigen Zahlen einschließlich
   float32/float64 die 16-Bit-Wörter (auch für freie Register). Die direkten
   Deye-Maps dekodieren außerdem bitfield64/datetime/time/version/ascii_string.
+  Für die 339 direkten Deye-Rule-1/2-Punkte ist die Semantik des gepinnten
+  `ha-solarman`-Parsers ausführbar: Register 0 ist das niederwertige Wort;
+  Range läuft vor Mask/Bit/Bitmask, Lookup überspringt Offset/Scale/Divide,
+  und Validation/Default/Dev/Invalidate-all sowie P3-Modellvarianten bleiben
+  quelltreu. Validation-Lookups lesen ihren Referenzpunkt intern mit, ohne ihn
+  als ausgewählten Messwert zu veröffentlichen. KOSTAL-Mehrwortwerte nehmen
+  entweder `connection.byte_order` oder erkennen über Register 5 (0=little,
+  1=big); Auto-Erkennung ist Teil des Pollplans und damit der Lastrechnung.
   KACO-HTTP interpoliert die URL-escaped Seriennummer, hält jeden physischen
   Endpoint in einer eigenen Pollgruppe, dimensioniert dynamische MPPT-Keys und
   wendet die katalogisierte JSON-Skala an; Register/Endpoints werden dabei nie
@@ -5527,7 +5543,9 @@ Push, kein anderer Wunsch, kein anderer Text.
   idempotent in `device_measurement_sample`; konkrete OCPP-/JSON-Wildcard-Keys
   werden gegen ihren ausgewählten Template-Key aufgelöst. Sichere numerische
   JSON-Rohwerte werden als `NUMERIC`, als Dezimalstring transportierte Wide-
-  Integer als exakter `raw_text` gespeichert; Retention ist 90 Tage. Die
+  Integer als exakter `raw_text` gespeichert; Retention ist 90 Tage. History-
+  API und CSV lesen SQL-`NUMERIC` als `BigDecimal` (nie `getDouble`), damit
+  z. B. `9007199254740993` bis zur JSON-/CSV-Ausgabe exakt bleibt. Die
   RLS-Hypertables `device_measurement_rollup_5m/_15m` werden per Timescale-Job
   über die vollen 90 Replay-Tage nur aus `quality='good'` semantikabhängig
   gepflegt (Gauge min/max/avg, Counter positive Deltas + Reset,

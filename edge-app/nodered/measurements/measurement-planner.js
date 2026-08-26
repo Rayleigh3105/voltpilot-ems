@@ -23,7 +23,22 @@ function addressFor(point, discovery) {
   return null;
 }
 
-function groupModbus(points, discovery) {
+function decoderDependencies(point, options) {
+  const decoder = point.decoder || {};
+  const dependencies = [];
+  if (decoder.variant && Number.isInteger(decoder.variant.register)) {
+    dependencies.push(decoder.variant.register);
+  }
+  const byteOrder = decoder.byte_order;
+  const configured = options && options.byteOrder;
+  if (byteOrder && Number.isInteger(byteOrder.register)
+      && !['big', 'little', 'word_little_byte_big'].includes(configured)) {
+    dependencies.push(byteOrder.register);
+  }
+  return dependencies;
+}
+
+function groupModbus(points, discovery, options) {
   const grouped = new Map();
   for (const selected of points) {
     const key = `${selected.point.family}:${selected.point.source_kind}:${selected.cadence_s}`;
@@ -34,7 +49,9 @@ function groupModbus(points, discovery) {
       // A vendor decoder may combine physically non-contiguous words. Put
       // every declared register on the wire; never turn [616,705] into
       // the invented contiguous range 616..617.
-      for (const start of [...new Set(registers)]) list.push({ selected, start, count: 1 });
+      for (const start of [...new Set(registers.concat(decoderDependencies(selected.point, options)))]) {
+        list.push({ selected, start, count: 1 });
+      }
     } else if (address) list.push(Object.assign({ selected }, address));
     else for (const start of derivedAddresses(selected.point)) list.push({ selected, start, count: 1 });
     grouped.set(key, list);
@@ -50,7 +67,8 @@ function groupModbus(points, discovery) {
           source_kind:item.selected.point.source_kind, points: [] };
         blocks.push(block);
       } else block.count = Math.max(block.count, end - block.start);
-      if (!block.points.includes(item.selected.point.point_key)) block.points.push(item.selected.point.point_key);
+      const triggerKey = item.selected.trigger_key || item.selected.point.point_key;
+      if (!block.points.includes(triggerKey)) block.points.push(triggerKey);
     }
   }
   return blocks;
@@ -114,7 +132,18 @@ function buildPlan(config, options) {
     for (const x of ocpp) rejected.push({ point_key:x.requested_key,reason:'ocpp_configuration_incompatible' });
   }
   const acceptedCandidates = valid.filter((x) => choreography.ok || x.point.source_kind !== 'ocpp_sampled_value');
-  const blocks = groupModbus(acceptedCandidates, options.discovery);
+  const prerequisites = acceptedCandidates.flatMap((selected) => {
+    const lookup = selected.point.decoder && selected.point.decoder.validation
+      && selected.point.decoder.validation.lookup;
+    if (!lookup) return [];
+    const point = catalogDocument.points.find((candidate) => candidate.family === selected.point.family
+      && candidate.decoder && candidate.decoder.source_key === lookup && candidate.address);
+    return point ? [{ point, cadence_s:selected.cadence_s,
+      requested_key:selected.requested_key, trigger_key:selected.point.point_key }] : [];
+  });
+  const uniquePrerequisites = [...new Map(prerequisites.map((item) =>
+    [`${item.point.point_key}:${item.cadence_s}:${item.trigger_key}`, item])).values()];
+  const blocks = groupModbus(acceptedCandidates.concat(uniquePrerequisites), options.discovery, options);
   const nonModbusGroups = new Map();
   for (const x of acceptedCandidates.filter((v) => !['modbus_holding','modbus_input','sunspec_model','ocpp_sampled_value'].includes(v.point.source_kind))) {
     const key = `${x.point.poll_group}:${x.cadence_s}`; nonModbusGroups.set(key, x);
@@ -135,6 +164,8 @@ function buildPlan(config, options) {
   const accepted = [...new Set(acceptedCandidates.map((x)=>x.requested_key))];
   return { applied:true, revision:config.revision, catalog_version:config.catalog_version,
     accepted, rejected, selections:acceptedCandidates,
+    decoderPrerequisites:uniquePrerequisites,
+    byteOrder:options.byteOrder,
     blocks, httpGroups:[...nonModbusGroups.keys()], ocppConfiguration:choreography.changes,
     metrics:{samplesPerMinute:samples,requestsPerMinute:requests,dutyPercent:duty,warning} };
 }
@@ -147,4 +178,5 @@ class Scheduler {
   next(){return this.control.length?this.control.shift():this.poll.shift();}
 }
 
-module.exports = { LIMITS, COST_MS, buildPlan, groupModbus, compatibleOcpp, Scheduler };
+module.exports = { LIMITS, COST_MS, buildPlan, groupModbus, compatibleOcpp, Scheduler,
+  decoderDependencies };

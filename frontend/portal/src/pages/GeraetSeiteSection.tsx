@@ -721,7 +721,8 @@ export function GeraetSeiteSection({
 
         </>
       )}
-      {view && view.gefunden && <MeasurementLibrary deviceId={boxDevice?.id} />}
+      {view && view.gefunden && <MeasurementLibrary deviceId={boxDevice?.id}
+        siteId={site.id} entityId={editRow?.id} />}
     </div>
   );
 }
