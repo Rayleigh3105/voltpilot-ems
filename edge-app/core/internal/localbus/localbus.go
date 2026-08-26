@@ -197,6 +197,11 @@ type Bus struct {
 	server *mqtt.Server
 }
 
+// listenerID names the single TCP listener the bus runs on. Close() needs it
+// by name to shut the listener down BEFORE the library walks the client map -
+// see the comment there.
+const listenerID = "local-bus"
+
 // Start brings the embedded broker up on addr (e.g. ":1883").
 // The bus is a LAN-local trust zone (the compose network / the device
 // itself); it deliberately runs open like the dev EMQX listener.
@@ -208,7 +213,7 @@ func Start(addr string, logger *slog.Logger) (*Bus, error) {
 	if err := server.AddHook(new(auth.AllowHook), nil); err != nil {
 		return nil, err
 	}
-	tcp := listeners.NewTCP(listeners.Config{ID: "local-bus", Address: addr})
+	tcp := listeners.NewTCP(listeners.Config{ID: listenerID, Address: addr})
 	if err := server.AddListener(tcp); err != nil {
 		return nil, err
 	}
@@ -233,6 +238,41 @@ func (b *Bus) Publish(topic string, payload []byte, retain bool) error {
 }
 
 // Close shuts the broker down.
+//
+// ⚠ mochi-mqtt (v2.7.9, and every released version before it) DEADLOCKS its
+// own shutdown whenever a client drops while Close() runs. `Clients.
+// GetByListener` takes the client-map read lock and then calls `Clients.Len()`,
+// which takes the SAME read lock again - and Go's RWMutex documents that a
+// recursive RLock blocks as soon as a writer has queued, so that it cannot be
+// starved. The writer is the perfectly ordinary post-disconnect
+// `Clients.Delete` of any client that happens to drop in that window, so a
+// busy bus wedges Close() FOREVER. Reproduced under `-race`; the same two
+// stacks (GetByListener/Len blocked on RLock, attachClient/Delete blocked on
+// Lock) killed the CI edge release gate on the 600 s go-test timeout.
+//
+// We cannot reach into the library, so we take the deadlocking call site out
+// of the picture instead of trying to dodge its race: shut the listener down
+// OURSELVES first, disconnecting its clients through a walk that never locks
+// recursively (`Clients.GetAll` copies under one RLock). `TCP.Close` guards
+// its client walk with `CompareAndSwapUint32(&l.end, 0, 1)`, so the library's
+// own Close() - which runs right after - finds the listener already ended and
+// SKIPS `GetByListener` entirely. It still waits for the client goroutines
+// (`Listeners.CloseAll` ends in `ClientsWg.Wait()`), so nothing leaks.
+//
+// Behaviour is unchanged for every client: it still receives the same
+// server-shutting-down DISCONNECT it always did, just from us.
 func (b *Bus) Close() error {
+	b.server.Listeners.Close(listenerID, b.disconnectListenerClients)
 	return b.server.Close()
+}
+
+// disconnectListenerClients is our own, non-recursive twin of mochi's
+// Server.closeListenerClients.
+func (b *Bus) disconnectListenerClients(listener string) {
+	for _, cl := range b.server.Clients.GetAll() {
+		if cl.Net.Listener != listener || cl.Closed() {
+			continue
+		}
+		_ = b.server.DisconnectClient(cl, packets.ErrServerShuttingDown)
+	}
 }
