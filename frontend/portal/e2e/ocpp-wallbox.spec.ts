@@ -79,13 +79,16 @@ test('complete wallbox home stays responsive and exposes response/effect choreog
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
   page.on('pageerror', (error) => consoleErrors.push(error.message));
   await mock(page); await page.goto('/e2e/ocpp-wallbox.html');
-  await expect(page.getByRole('heading', { name: 'Auto lädt' })).toBeVisible();
-  await expect(page.getByText('11 kW')).toBeVisible();
-  await expect(page.getByText('62 %').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Wallbox online · Anschluss 1 lädt/ })).toBeVisible();
+  await expect(page.getByText('11 kW', { exact: true })).toBeVisible();
+  await expect(page.getByText('6,4 kWh')).toBeVisible();
+  const service = page.getByTestId('ocpp-service');
+  await expect(service).not.toHaveAttribute('open', '');
+  await service.locator('summary').first().click();
   await expect(page.getByText(/1 belegte Datenlücke/)).toBeVisible();
   await page.getByRole('button', { name: 'Unveränderliche Auditspur laden' }).click();
   await expect(page.getByRole('list', { name: 'Unveränderliche Auditspur' })).toBeVisible();
-  for (const name of ['Jetzt', 'Stecker', 'Messwerte', 'Aktionen', 'Konfiguration', 'Ereignisse', 'Ladevorgänge', 'Software & Diagnose']) await expect(page.getByRole('link', { name })).toBeVisible();
+  for (const name of ['Connectoren', 'MeterValues', 'Aktionen', 'Konfiguration', 'Ereignisse', 'Transaktionen', 'Software & Firmware']) await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 
   await page.getByRole('button', { name: 'Laden stoppen', exact: true }).click();
@@ -140,6 +143,7 @@ test('complete wallbox home stays responsive and exposes response/effect choreog
 
 test('hard action requires the server phrase and never overflows its sheet', async ({ page }) => {
   await mock(page); await page.goto('/e2e/ocpp-wallbox.html');
+  await page.getByTestId('ocpp-service').locator('summary').first().click();
   await page.locator('.vp-ocpp-action-group').filter({ hasText: 'Betrieb' }).locator('summary').click();
   await page.getByRole('button', { name: /Hart neu starten/ }).click();
   await page.getByRole('button', { name: 'Starke Bestätigung vorbereiten' }).click();
@@ -181,6 +185,7 @@ test('transport retry is idempotent and the modal traps focus while every close 
 test('timed-out actions keep polling until late effect evidence arrives', async ({ page }) => {
   await mock(page, { lateAfterPoll: true });
   await page.goto('/e2e/ocpp-wallbox.html');
+  await page.getByTestId('ocpp-service').locator('summary').first().click();
   await expect(page.getByText('Wirkung nicht innerhalb der Frist beobachtet')).toBeVisible();
   await expect(page.getByText('Wirkung verspätet beobachtet')).toBeVisible({ timeout: 7_000 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
@@ -189,6 +194,7 @@ test('timed-out actions keep polling until late effect evidence arrives', async 
 test('foreign firmware has an executable bound handoff to a second operator', async ({ page }) => {
   await mock(page, { fourEyes: true });
   await page.goto('/e2e/ocpp-wallbox.html');
+  await page.getByTestId('ocpp-service').locator('summary').first().click();
   await page.locator('.vp-ocpp-action-group').filter({ hasText: 'Betrieb' }).locator('summary').click();
   const firmware = page.getByRole('button', { name: /Firmware aktualisieren/ });
   await firmware.click();

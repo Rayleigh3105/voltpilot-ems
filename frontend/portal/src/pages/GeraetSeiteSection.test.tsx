@@ -435,6 +435,48 @@ describe('GeraetSeiteSection', () => {
     expect(back.getAttribute('href')).toBe('#/anlage/s-1/modell');
   });
 
+  it('öffnet auch an der OCPP-Wallbox den vollständigen bestehenden Bearbeiten-Flow', async () => {
+    stub();
+    vi.mocked(api.siteChargers).mockResolvedValue({
+      budget: null,
+      chargers: [{
+        deviceId: 'gw', chargePointId: 'CP-1', label: 'Garage', priority: false,
+        connected: true, ready: true, lastSeen: FRISCH, connectors: [{
+          connectorId: 1, status: 'Available', charging: false, powerKw: 0,
+        }],
+      }],
+    });
+    vi.mocked(api.siteComponents).mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{
+        id: 'wallbox-1', label: 'Garage', role: 'consumer', entityType: 'ev-charger',
+        communication: 'ocpp', templateRef: 'ocpp-wallbox', definitionVersion: 3,
+        edgeSourceId: 'cp-CP-1', syncStatus: 'in_sync',
+      }],
+    });
+    vi.spyOn(api, 'componentTemplates').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppStations').mockResolvedValue([{ deviceId: 'gw', chargePointId: 'CP-1', connected: true,
+      connectedAt: FRISCH, disconnectedAt: null, lastSeen: FRISCH, bootedAt: FRISCH,
+      chargeBoxSerialNumber: null, chargePointModel: 'P30', chargePointSerialNumber: 'serial-1',
+      chargePointVendor: 'KEBA', firmwareVersion: '1.9.4', iccid: null, imsi: null,
+      meterSerialNumber: null, meterType: null, diagnosticsStatus: null, diagnosticsStatusAt: null,
+      firmwareStatus: null, firmwareStatusAt: null, supportedFeatureProfiles: [],
+      connectors: [{ connectorId: 1, status: 'Available', errorCode: 'NoError', info: null,
+        vendorId: null, vendorErrorCode: null, stationTimestamp: FRISCH, reportedAt: FRISCH }],
+    }]);
+    vi.spyOn(api, 'ocppEvents').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppGaps').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppTransactions').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppMeterValues').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppConfiguration').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppActionPermissions').mockResolvedValue({ actions: {} });
+    vi.spyOn(api, 'ocppActions').mockResolvedValue([]);
+
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="cp-CP-1" devices={[box]} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Bearbeiten' }));
+    expect(await screen.findByRole('heading', { name: 'Gerät bearbeiten' })).toBeVisible();
+  });
+
   it('zeigt die Befehle DIESES Geräts und führt auf die volle Liste', async () => {
     // Der Wechselrichter trägt seit der Ziel-Attribution seinen Speicher-Strom
     // (`deviceIsBox: false`) - die Seite fragt den Server mit SEINER Kennung.

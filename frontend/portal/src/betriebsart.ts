@@ -1,4 +1,5 @@
 import type { Betriebsart } from './api';
+import { anlageRoute, isPortfolioPage, pageRoute, type Route } from './nav';
 
 /**
  * U0 shell decision (design vp-ems-ui-overhaul §2 / epic UO #509): which
@@ -142,6 +143,50 @@ export function redirectOverviewToAnlage(i: ShellInput): boolean {
  */
 export function redirectToPortfolio(i: ShellInput): boolean {
   return showPortfolioNav(i);
+}
+
+/**
+ * One post-hydration canonical destination for the shell. The caller applies
+ * at most one history replacement; no intermediate `#/anlagen` or
+ * `#/uebersicht` route is ever emitted.
+ */
+export function canonicalShellRoute(input: {
+  shell: ShellInput;
+  route: Route;
+  siteIds: string[];
+}): Route | null {
+  const { shell, route, siteIds } = input;
+  if (!shell.loaded || !shell.tenantReady) return null;
+  const fleet = isFleetShell(shell.betriebsart, siteIds.length);
+  const nakedAnlage = route.page === 'anlagen' && route.siteId == null && route.sub == null;
+  const invalidSite = route.page === 'anlagen'
+    && route.siteId != null
+    && !siteIds.includes(route.siteId);
+
+  // Admins keep their explicit customer overview. Only the established fleet
+  // landing and the retired naked list route are canonicalized for them.
+  if (shell.isAdmin) {
+    if (fleet && (route.page === 'uebersicht' || nakedAnlage)) return pageRoute('portfolio');
+    return null;
+  }
+
+  if (fleet) {
+    if (route.page === 'uebersicht' || nakedAnlage || invalidSite) return pageRoute('portfolio');
+    return null;
+  }
+
+  const soleSiteId = siteIds.length === 1 ? siteIds[0] : null;
+  if (!soleSiteId) return null;
+  if (route.page === 'uebersicht' || nakedAnlage || isPortfolioPage(route.page)) {
+    return anlageRoute(soleSiteId);
+  }
+  if (invalidSite) {
+    // Preserve the requested deep section/device while correcting the only
+    // invalid segment. This avoids silently rendering the sole site under a
+    // foreign URL, which `resolveAnlage` would otherwise do.
+    return { ...route, siteId: soleSiteId };
+  }
+  return null;
 }
 
 /**
