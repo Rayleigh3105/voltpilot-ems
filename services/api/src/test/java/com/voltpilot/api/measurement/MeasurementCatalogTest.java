@@ -16,7 +16,7 @@ class MeasurementCatalogTest {
         var result = catalog.search("Batteriestrom", Set.of("hybrid_1p"), null, null,
                 null, false, Set.of(), Map.of(), Set.of(), Map.of(), 0, 20);
 
-        assertThat(result.catalogVersion()).isEqualTo("2026.08.26.1");
+        assertThat(result.catalogVersion()).isEqualTo("2026.08.26.3");
         assertThat(result.customPointActionLabel()).isEqualTo("Eigenen Messwert hinzufügen");
         assertThat(result.points()).isNotEmpty();
         assertThat(result.points()).allSatisfy(p -> {

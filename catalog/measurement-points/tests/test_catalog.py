@@ -8,10 +8,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO = ROOT.parents[1]
 TOOLS = ROOT / "tools"
 sys.path.insert(0, str(TOOLS))
 
@@ -64,6 +66,25 @@ class CatalogTest(unittest.TestCase):
                 )
             self.assertEqual(first.read_bytes(), second.read_bytes())
             self.assertEqual(first.read_bytes(), ARTIFACT.read_bytes())
+
+    def test_release_artifacts_share_the_canonical_catalog_version(self) -> None:
+        canonical = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        pom_root = ET.parse(REPO / "services" / "api" / "pom.xml").getroot()
+        namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
+        pom_version = pom_root.findtext(
+            "m:properties/m:measurement.catalog.version", namespaces=namespace)
+        resource_include = pom_root.findtext(
+            "m:build/m:resources/m:resource[2]/m:includes/m:include", namespaces=namespace)
+        api_artifact = json.loads((ROOT / "dist" /
+            f"measurement-point-catalog-{pom_version}.json").read_text(encoding="utf-8"))
+        edge_artifact = json.loads((REPO / "edge-app" / "nodered" / "measurements" /
+            "catalog.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(pom_version, canonical)
+        self.assertEqual(resource_include,
+                         "measurement-point-catalog-${measurement.catalog.version}.json")
+        self.assertEqual(api_artifact["catalog_version"], canonical)
+        self.assertEqual(edge_artifact["catalog_version"], canonical)
 
     def test_schema_and_semantic_validator_accept_artifact(self) -> None:
         for schema in (ROOT / "schema").glob("*.schema.json"):

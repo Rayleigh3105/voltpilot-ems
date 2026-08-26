@@ -70,6 +70,10 @@ function statusLabel(point: MeasurementCatalogPoint) {
   return 'Nicht als verfügbar bestätigt';
 }
 
+function resultLabel(count: number) {
+  return `${count.toLocaleString('de-DE')} ${count === 1 ? 'Punkt' : 'Punkte'} gefunden`;
+}
+
 function applySteps(status: string) {
   const applied = ['applied', 'first_sample'].includes(status);
   const sampled = status === 'first_sample';
@@ -188,6 +192,7 @@ export function MeasurementLibrary({ deviceId, siteId, entityId }: {
   const [error, setError] = useState<string | null>(null);
   const [unsupported, setUnsupported] = useState(false);
   const [historyPoint, setHistoryPoint] = useState<MeasurementCatalogPoint | null>(null);
+  const [historyReturnToLibrary, setHistoryReturnToLibrary] = useState(false);
   const [history, setHistory] = useState<MeasurementHistory | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [range, setRange] = useState<MeasurementRange>('24h');
@@ -290,10 +295,21 @@ export function MeasurementLibrary({ deviceId, siteId, entityId }: {
   };
 
   const openHistory = (point: MeasurementCatalogPoint) => {
+    setHistoryReturnToLibrary(open);
+    setOpen(false);
     setRepresentation('decoded');
     setHistory(null);
     setHistoryError(null);
     setHistoryPoint(point);
+  };
+
+  const closeHistory = () => {
+    setHistoryPoint(null);
+    setHistory(null);
+    setHistoryError(null);
+    setRepresentation('decoded');
+    if (historyReturnToLibrary) setOpen(true);
+    setHistoryReturnToLibrary(false);
   };
 
   const setFreePart = (side: 'from' | 'to', part: 'date' | 'time', value: string) => {
@@ -392,7 +408,7 @@ export function MeasurementLibrary({ deviceId, siteId, entityId }: {
           <VpPicker label="Aufzeichnung" value={recorded} options={[{ value: 'all', label: 'Alle' }, { value: 'true', label: 'Mit Historie' }, { value: 'false', label: 'Ohne Historie' }]} onChange={(value) => { setRecorded(value as typeof recorded); setOffset(0); }} />
         </div>
         {error && <p role="alert" className="vp-assist-error">{error}</p>}
-        <p className="vp-measure-result" aria-live="polite">{catalog ? `${(catalog.total + visibleCustomPoints.length).toLocaleString('de-DE')} Punkte gefunden` : 'Liste wird geladen …'}</p>
+        <p className="vp-measure-result" aria-live="polite">{catalog ? resultLabel(catalog.total + visibleCustomPoints.length) : 'Liste wird geladen …'}</p>
         <div className="vp-measure-list">{[...visibleCustomPoints, ...(catalog?.points ?? [])].map((point) => <PointRow key={point.pointKey} point={point} applyStatus={state?.selections.find((selection) => selection.pointKey === point.pointKey)?.applyStatus} onToggle={toggle} onHistory={openHistory} />)}</div>
         {catalog && catalog.total > catalog.limit && <nav className="vp-measure-pages" aria-label="Ergebnisseiten"><Button variant="ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - catalog.limit))}>Zurück</Button><span>{offset + 1}–{Math.min(offset + catalog.limit, catalog.total)} von {catalog.total}</span><Button variant="ghost" disabled={offset + catalog.limit >= catalog.total} onClick={() => setOffset(offset + catalog.limit)}>Weiter</Button></nav>}
       </Drawer>
@@ -418,7 +434,7 @@ export function MeasurementLibrary({ deviceId, siteId, entityId }: {
         extra={pendingEnabled ? <Input label="Kadenz in Sekunden" type="number" min={pending?.minCadenceS ?? 1} max={86400} value={pendingCadence} onChange={(e) => setPendingCadence(Number(e.target.value))} error={estimate?.hardRejected ? estimate.reasons.join(' ') : null} /> : null}
       />
 
-      <Drawer open={historyPoint != null} onClose={() => { setHistoryPoint(null); setHistory(null); setHistoryError(null); setRepresentation('decoded'); }} title={historyPoint ? `Verlauf · ${pointLabel(historyPoint)}` : 'Verlauf'} footer={history && historyPoint ? <Button variant="outline" onClick={() => void downloadMeasurementExport(deviceId, historyPoint.pointKey, range, representation, range === 'free' ? isoOrUndefined(freeFrom) : undefined, range === 'free' ? isoOrUndefined(freeTo) : undefined, siteId, entityId)}>CSV mit Metadaten exportieren</Button> : null}>
+      <Drawer open={historyPoint != null} onClose={closeHistory} title={historyPoint ? `Verlauf · ${pointLabel(historyPoint)}` : 'Verlauf'} footer={history && historyPoint ? <Button variant="outline" onClick={() => void downloadMeasurementExport(deviceId, historyPoint.pointKey, range, representation, range === 'free' ? isoOrUndefined(freeFrom) : undefined, range === 'free' ? isoOrUndefined(freeTo) : undefined, siteId, entityId)}>CSV mit Metadaten exportieren</Button> : null}>
         <div className="vp-measure-range" aria-label="Zeitraum">{ranges.map(([key, label]) => <button type="button" key={key} aria-pressed={range === key} className={range === key ? 'is-active' : ''} onClick={() => setRange(key)}>{label}</button>)}</div>
         {range === 'free' && <div className="vp-measure-free"><div><VpDatePicker label="Von · Datum" value={freeFrom.split('T')[0]} onChange={(value) => setFreePart('from', 'date', value)} /><VpTimePicker label="Von · Uhrzeit" value={freeFrom.split('T')[1] ?? ''} onChange={(value) => setFreePart('from', 'time', value)} /></div><div><VpDatePicker label="Bis · Datum" value={freeTo.split('T')[0]} onChange={(value) => setFreePart('to', 'date', value)} /><VpTimePicker label="Bis · Uhrzeit" value={freeTo.split('T')[1] ?? ''} onChange={(value) => setFreePart('to', 'time', value)} /></div></div>}
         {(history?.meta.rawAvailable || representation === 'raw') && <div className="vp-measure-range" aria-label="Wertdarstellung"><button type="button" aria-pressed={representation === 'decoded'} className={representation === 'decoded' ? 'is-active' : ''} onClick={() => setRepresentation('decoded')}>Dekodiert</button><button type="button" aria-pressed={representation === 'raw'} className={representation === 'raw' ? 'is-active' : ''} onClick={() => setRepresentation('raw')}>Rohwert</button></div>}

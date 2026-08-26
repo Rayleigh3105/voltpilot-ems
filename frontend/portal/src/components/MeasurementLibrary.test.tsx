@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { api, type MeasurementCatalogPoint, type MeasurementHistory } from '../api';
 import { MeasurementLibrary } from './MeasurementLibrary';
 
@@ -49,11 +49,66 @@ describe('MeasurementLibrary', () => {
     expect(screen.getByText('PV2 Strom')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Messwert-Bibliothek' }));
     expect(await screen.findByLabelText('Messwert suchen')).toHaveAttribute('placeholder', expect.stringContaining('P_Grid'));
+    expect(await screen.findByText('1 Punkt gefunden')).toBeVisible();
     expect(screen.getAllByText('Adresse / Schlüssel').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/0x02a6/).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Roh / dekodiert').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Nur Herstellerbezeichnung').length).toBeGreaterThan(0);
     expect(document.body).not.toHaveTextContent('Expertenmodus');
+  });
+
+  it('uses plural result copy for every count except one', async () => {
+    vi.mocked(api.measurementCatalog).mockResolvedValue({
+      catalogVersion: '2026.08.26.3', edgeMinVersion: 'unreleased',
+      customPointActionLabel: 'Eigenen Messwert hinzufügen', total: 2, offset: 0, limit: 100,
+      groups: [{ value: 'PV', count: 2 }], semanticStatuses: [],
+      points: [point, { ...point, pointKey: 'point.two', labelDe: 'PV3 Strom' }],
+    });
+    const { unmount } = render(<MeasurementLibrary deviceId="d" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Messwert-Bibliothek' }));
+    expect(await screen.findByText('2 Punkte gefunden')).toBeVisible();
+    expect(screen.queryByText('2 Punkt gefunden')).not.toBeInTheDocument();
+
+    unmount();
+    vi.mocked(api.measurementCatalog).mockResolvedValue({
+      catalogVersion: '2026.08.26.3', edgeMinVersion: 'unreleased',
+      customPointActionLabel: 'Eigenen Messwert hinzufügen', total: 0, offset: 0, limit: 100,
+      groups: [], semanticStatuses: [], points: [],
+    });
+    render(<MeasurementLibrary deviceId="d" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Messwert-Bibliothek' }));
+    expect(await screen.findByText('0 Punkte gefunden')).toBeVisible();
+  });
+
+  it('swaps the library for history and Escape returns to exactly one modal', async () => {
+    const recorded = { ...point, recorded: true, lastReadAt: '2026-08-26T00:00:00Z' };
+    vi.mocked(api.measurementCatalog).mockResolvedValue({
+      catalogVersion: '2026.08.26.3', edgeMinVersion: 'unreleased',
+      customPointActionLabel: 'Eigenen Messwert hinzufügen', total: 1, offset: 0, limit: 100,
+      groups: [], semanticStatuses: [], points: [recorded],
+    });
+    vi.spyOn(api, 'measurementHistory').mockResolvedValue({
+      meta: { pointKey: recorded.pointKey, label: 'PV2 Strom', sourceLabel: 'PV2 Current',
+        unit: 'A', aggregationKind: 'gauge', semanticStatus: 'known',
+        catalogVersion: '2026.08.26.3', representation: 'decoded', rawAvailable: true,
+        from: '2026-08-25T00:00:00Z', to: '2026-08-26T00:00:00Z', bucketSeconds: 300,
+        aggregationExplanation: 'Mittelwert', siteId: 's' }, data: [], markers: [],
+    });
+
+    render(<MeasurementLibrary deviceId="d" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Messwert-Bibliothek' }));
+    const library = await screen.findByRole('dialog', { name: 'Messwert-Bibliothek' });
+    fireEvent.click(await within(library).findByRole('button', { name: 'Verlauf ansehen' }));
+    const history = await screen.findByRole('dialog', { name: 'Verlauf · PV2 Strom' });
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).toHaveLength(1);
+    expect(screen.queryByLabelText('Messwert suchen')).not.toBeInTheDocument();
+    expect(history).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(await screen.findByRole('dialog', { name: 'Messwert-Bibliothek' })).toBeVisible();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(screen.queryByRole('dialog', { name: 'Verlauf · PV2 Strom' })).not.toBeInTheDocument();
   });
 
   it('shows cadence, load, volume and no-backfill before activation', async () => {

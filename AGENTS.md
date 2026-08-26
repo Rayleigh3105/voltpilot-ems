@@ -5128,7 +5128,10 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   `validate.py` und die Unittests aus der Katalog-README ausführen. Bestände,
   Quellstände, Dubletten/Adressen und deterministische Bytes sind
   regressionsgesichert; das optionale Deye-YAML-Update nutzt ausschließlich die
-  in `requirements-update.txt` gepinnte PyYAML-Version.
+  in `requirements-update.txt` gepinnte PyYAML-Version. Der Release-Test hält
+  `VERSION`, die Maven-Ressourcenauswahl der API und den paketierten Edge-Katalog
+  auf exakt derselben Version; der gemeinsame API-Publisher-Fixture muss durch
+  den echten Edge-Planer und die Runtime laufen.
 
 ## Zusätzliche Messwerte: Auswahl- und Auditfundament (Slice 5)
 
@@ -5212,7 +5215,10 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   und `VpTimePicker`. Eine Punkt-/Drawer-Öffnung beginnt immer dekodiert; ein
   abgelehntes Rohfenster bietet sichtbar die Rückkehr zu dekodierten Werten.
   Zeitraum- und Darstellungs-Schalter sind echte Toggle-Gruppen und müssen
-  ihren Zustand zusätzlich zur Farbe mit `aria-pressed` ausgeben.
+  ihren Zustand zusätzlich zur Farbe mit `aria-pressed` ausgeben. Öffnet der
+  Verlauf aus der Bibliothek, ersetzt er deren Modal vollständig; Escape
+  schließt den Verlauf und stellt genau diese Bibliothek wieder her, sodass nie
+  zwei `aria-modal`-Dialoge gleichzeitig exponiert sind.
 
 ## Steuerung Stufen 8+9: die UMZÜGE und die Datenbereinigung
 

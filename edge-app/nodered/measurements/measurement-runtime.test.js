@@ -15,6 +15,24 @@ const config = (selections, revision = 1) => ({
   revision, catalog_version: catalogDocument.catalog_version, selections,
 });
 
+test('API-produced current catalog plan is accepted and executed by the Edge runtime', async () => {
+  // MeasurementContractsTest byte-pins this shared fixture to the real API publisher output.
+  const fixture = path.resolve(
+    __dirname, '../../../docs/contracts/v2/examples/mqtt-measurement-config.valid.json',
+  );
+  const payload = JSON.parse(fs.readFileSync(fixture, 'utf8'));
+  assert.equal(payload.catalog_version, '2026.08.26.3');
+  const runtime = new MeasurementRuntime(
+    {readModbus: async () => [50]}, () => {}, () => new Date('2026-08-25T12:00:00Z'),
+  );
+  const plan = runtime.apply(payload);
+  assert.equal(plan.applied, true);
+  assert.deepEqual(plan.accepted, ['deye.hybrid_1p.battery.battery']);
+  const samples = await runtime.tick();
+  assert.equal(samples.length, 1);
+  assert.equal(samples[0].decoded, 50);
+});
+
 test('production image and reseed layouts package every settings dependency', () => {
   const root = path.resolve(__dirname, '..');
   const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
