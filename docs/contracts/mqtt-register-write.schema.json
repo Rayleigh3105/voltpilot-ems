@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.de/contracts/mqtt-register-write.schema.json",
   "title": "Cloud <-> Edge Register-Schreibkanal (Konzept vp-reg-schreib-konzept-p8 §2.2, Stufe 1 „Der Portal-Trigger\" + Stufe 2 „Freie Register\")",
-  "description": "Der EINMAL-SCHREIB aus dem Portal: die Cloud bittet die Box, EIN Register eines Geraets einmal zu lesen (mode 'lesen' = die Vorschau) bzw. einmal zu beschreiben (mode 'schreiben'), und bekommt Ist-Wert, Rueckgelesenes und ein Urteil zurueck. Zwei Nachrichten im per-Geraet-ACL-gedeckten v2/#-Teilbaum (D-2, KEINE Broker-Aenderung): .../v2/register-write (Cloud -> Edge) und .../v2/register-write-result (Edge -> Cloud), korreliert ueber request_id.\n\nWAS ER IST: der ZWEITE TRIGGER auf denselben Einmal-Schreib-Kern, den die Box seit `edge-app/core/internal/installerwrite` besitzt (Politik `Admit` + Mechanismus `Agent.WriteOnce`). Der erste Trigger ist die lokale :8484-Wartungs-Taste. Es gibt bewusst KEINEN zweiten Schreibweg, den man spaeter getrennt absichern muesste (die Portal-Apply-Doktrin aus mqtt-ota-apply).\n\nWAS ER NICHT IST: ein Steuerungs-Kanal und keine Register-Schreib-API. WELCHE Adresse eine Box ausfuehrt, entscheidet allein die Box (seit Stufe 2 „Freie Register\": jedes Holding-Register bzw. jede Spule, Wert 0..65535 - was refused wird, sind die Regeln, die die Box selbst pruefen kann: Transport, Registerwort, privates Ziel, und das EINE harte refused_control_owned). Der Umschlag ist ROUTING, nie Autoritaet - die Box glaubt der Cloud nichts, was sie selbst pruefen kann (die OTA-Sidecar-Disziplin).\n\nWARUM EIN EIGENER KANAL statt einer Erweiterung des Probe-Kanals (bewusste Entscheidung): (a) der Probe-Kopf verspricht 'no-persistence - er beantwortet eine Frage von JETZT', dieser Kanal erzeugt eine DAUERHAFTE Konfig-Aenderung mit PFLICHT-Journal; (b) die Schreib-Ops des Probe-Kanals tragen strukturell einen Auto-Aus (TTL <= 120 s) - hier ist das Stehenbleiben der Zweck; (c) die Primaer-Lane (Solarman-V5 ueber die Steuer-Arbitrierung) passt nicht in Probes `transport: modbus_tcp`-Form. Geteilt werden die REGELN (Identitaet, requested_at-Fenster, LAN-Whitelist, Ratenbegrenzung, Fehlerklassen), nicht die Topics.\n\nWARUM NICHT-RETAINED (dieselbe tragende Entscheidung wie bei mqtt-ota-apply und beim Probe-Kanal): eine retained Nachricht wird bei JEDEM Verbindungsaufbau erneut zugestellt - ein Einmal-Schreib, der beim naechsten Reconnect wieder erscheint, waere keiner, sondern ein Schreibzyklus je Reconnect auf einem EEPROM-Register.\n\nNICHT-retained allein genuegt NICHT: das Geraet haelt eine dauerhafte Sitzung (cleanSession=false), der Broker darf eine QoS1-Nachricht also NACHLIEFERN. Die zweite Haelfte ist requested_at - die Box uebernimmt diesen Stempel als Beginn ihres Fensters (60 s) statt des Empfangs-Zeitpunkts, eine nachgelieferte Anfrage ist bei ihrer Ankunft also bereits verfallen und wird VERWORFEN. Die dritte Haelfte ist die zuletzt ausgefuehrte request_id, die sich die Box merkt: dieselbe Anfrage kann nie zweimal schreiben. Es gibt NIRGENDS einen Nachhol-Speicher (Captain-Entscheid 4: „nur live\").",
+  "description": "Der EINMAL-SCHREIB aus dem Portal: die Cloud bittet die Box, EIN Register eines Geraets einmal zu lesen (mode 'lesen' = die Vorschau) bzw. einmal zu beschreiben (mode 'schreiben'), und bekommt Ist-Wert, Rueckgelesenes und ein Urteil zurueck. Zwei Nachrichten im per-Geraet-ACL-gedeckten v2/#-Teilbaum (D-2, KEINE Broker-Aenderung): .../v2/register-write (Cloud -> Edge) und .../v2/register-write-result (Edge -> Cloud), korreliert ueber request_id.\n\nWAS ER IST: der ZWEITE TRIGGER auf denselben Einmal-Schreib-Kern, den die Box seit `edge-app/core/internal/installerwrite` besitzt (Politik `Admit` + Mechanismus `Agent.WriteOnce`). Der erste Trigger ist die lokale :8484-Wartungs-Taste. Es gibt bewusst KEINEN zweiten Schreibweg, den man spaeter getrennt absichern muesste (dieselbe Doktrin, mit der auch der OTA-Apply-Pfad genau EINEN gemeinsamen Kern hat).\n\nWAS ER NICHT IST: ein Steuerungs-Kanal und keine Register-Schreib-API. WELCHE Adresse eine Box ausfuehrt, entscheidet allein die Box (seit Stufe 2 „Freie Register\": jedes Holding-Register bzw. jede Spule, Wert 0..65535 - was refused wird, sind die Regeln, die die Box selbst pruefen kann: Transport, Registerwort, privates Ziel, und das EINE harte refused_control_owned). Der Umschlag ist ROUTING, nie Autoritaet - die Box glaubt der Cloud nichts, was sie selbst pruefen kann (die OTA-Sidecar-Disziplin).\n\nWARUM EIN EIGENER KANAL statt einer Erweiterung des Probe-Kanals (bewusste Entscheidung): (a) der Probe-Kopf verspricht 'no-persistence - er beantwortet eine Frage von JETZT', dieser Kanal erzeugt eine DAUERHAFTE Konfig-Aenderung mit PFLICHT-Journal; (b) die Schreib-Ops des Probe-Kanals tragen strukturell einen Auto-Aus (TTL <= 120 s) - hier ist das Stehenbleiben der Zweck; (c) die Primaer-Lane (Solarman-V5 ueber die Steuer-Arbitrierung) passt nicht in Probes `transport: modbus_tcp`-Form. Geteilt werden die REGELN (Identitaet, requested_at-Fenster, LAN-Whitelist, Ratenbegrenzung, Fehlerklassen), nicht die Topics.\n\nWARUM NICHT-RETAINED (dieselbe tragende Entscheidung wie beim Probe-Kanal): eine retained Nachricht wird bei JEDEM Verbindungsaufbau erneut zugestellt - ein Einmal-Schreib, der beim naechsten Reconnect wieder erscheint, waere keiner, sondern ein Schreibzyklus je Reconnect auf einem EEPROM-Register.\n\nNICHT-retained allein genuegt NICHT: das Geraet haelt eine dauerhafte Sitzung (cleanSession=false), der Broker darf eine QoS1-Nachricht also NACHLIEFERN. Die zweite Haelfte ist requested_at - die Box uebernimmt diesen Stempel als Beginn ihres Fensters (60 s) statt des Empfangs-Zeitpunkts, eine nachgelieferte Anfrage ist bei ihrer Ankunft also bereits verfallen und wird VERWORFEN. Die dritte Haelfte ist die zuletzt ausgefuehrte request_id, die sich die Box merkt: dieselbe Anfrage kann nie zweimal schreiben. Es gibt NIRGENDS einen Nachhol-Speicher (Captain-Entscheid 4: „nur live\").",
   "x-topics": {
     "register_write_request": "ems/{tenant_id}/{site_id}/{device_id}/v2/register-write  (Cloud -> Edge, QoS1, NICHT retained)",
     "register_write_result": "ems/{tenant_id}/{site_id}/{device_id}/v2/register-write-result  (Edge -> Cloud, QoS1, NICHT retained)"
@@ -18,8 +18,12 @@
     "socket-discipline": "Der Schreibvorgang laeuft ueber die bestehende Verbindungs-Disziplin der Box: EIN Socket je Ziel ueber ALLE Leser und Schreiber hinweg, dieselbe Warteschlange wie der laufende Poll und der Steuer-Executor. Der Modbus-Spiegel bleibt unberuehrt nur-lesend."
   },
   "oneOf": [
-    { "$ref": "#/$defs/register_write_request" },
-    { "$ref": "#/$defs/register_write_result" }
+    {
+      "$ref": "#/$defs/register_write_request"
+    },
+    {
+      "$ref": "#/$defs/register_write_result"
+    }
   ],
   "$defs": {
     "register_write_request": {
@@ -27,30 +31,84 @@
       "title": "register_write_request (Cloud -> Edge, .../v2/register-write)",
       "additionalProperties": false,
       "required": [
-        "schema_version", "type", "tenant_id", "site_id", "device_id",
-        "request_id", "requested_at", "mode", "target", "register"
+        "schema_version",
+        "type",
+        "tenant_id",
+        "site_id",
+        "device_id",
+        "request_id",
+        "requested_at",
+        "mode",
+        "target",
+        "register"
       ],
       "allOf": [
         {
           "description": "Ein echter Schreibvorgang braucht BEIDES: den Wert und die ausdrueckliche Bestaetigung. Das confirm-Feld baut das Portal aus dem, was der Mensch gesehen hat - es ist Protokoll-Sicherheit, kein Tipp-Zwang.",
-          "if": { "properties": { "mode": { "const": "schreiben" } }, "required": ["mode"] },
-          "then": { "required": ["value", "confirm"] }
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "schreiben"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "value",
+              "confirm"
+            ]
+          }
         },
         {
           "description": "Ein Probelauf schreibt NICHTS und traegt deshalb weder Wert noch Bestaetigung - ein Umschlag, der beides mitfuehrt, ist eine widerspruechliche Anweisung.",
-          "if": { "properties": { "mode": { "const": "lesen" } }, "required": ["mode"] },
-          "then": { "not": { "anyOf": [{ "required": ["value"] }, { "required": ["confirm"] }] } }
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "lesen"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "value"
+                  ]
+                },
+                {
+                  "required": [
+                    "confirm"
+                  ]
+                }
+              ]
+            }
+          }
         }
       ],
       "properties": {
-        "schema_version": { "const": "1.0" },
-        "type": { "const": "register_write_request" },
+        "schema_version": {
+          "const": "1.0"
+        },
+        "type": {
+          "const": "register_write_request"
+        },
         "tenant_id": {
           "$ref": "#/$defs/uuid",
           "description": "MUSS dem Topic entsprechen - die Box verwirft eine Anfrage, deren Identitaet nicht auf ihr eigenes Topic passt."
         },
-        "site_id": { "$ref": "#/$defs/uuid" },
-        "device_id": { "$ref": "#/$defs/uuid" },
+        "site_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "device_id": {
+          "$ref": "#/$defs/uuid"
+        },
         "request_id": {
           "type": "string",
           "pattern": "^[0-9a-f]{16,64}$",
@@ -67,13 +125,24 @@
           "description": "Das JWT-Subject des Aufrufers - Papier-Spur im Audit der Box. Es autorisiert NICHTS: WER schreiben darf, hat die Cloud vor dem Senden entschieden (Rollen + RLS)."
         },
         "mode": {
-          "enum": ["lesen", "schreiben"],
+          "enum": [
+            "lesen",
+            "schreiben"
+          ],
           "description": "'lesen' = Probelauf/Vorschau (es wird NICHTS geschrieben), 'schreiben' = der EINE Schreibvorgang."
         },
-        "target": { "$ref": "#/$defs/target" },
-        "register": { "$ref": "#/$defs/register" },
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "register": {
+          "$ref": "#/$defs/register"
+        },
         "write_fc": {
-          "enum": [5, 6, 16],
+          "enum": [
+            5,
+            6,
+            16
+          ],
           "description": "Die Schreib-Funktion. Weggelassen entscheidet die Box (Spule -> 5, Holding -> 16). FC16 ist die Vorauswahl fuers Holding-Register, nicht FC6: viele Deye-/Fronius-Firmwares NEHMEN einen FC6-Rahmen an und uebernehmen ihn nie (die belegte Lektion des Steuerpfads)."
         },
         "value": {
@@ -103,9 +172,13 @@
           "type": "object",
           "title": "Lane 'primary' - der konfigurierte primaere Wechselrichter",
           "additionalProperties": false,
-          "required": ["kind"],
+          "required": [
+            "kind"
+          ],
           "properties": {
-            "kind": { "const": "primary" }
+            "kind": {
+              "const": "primary"
+            }
           },
           "description": "Die Box loest ihren eigenen primaeren Wechselrichter auf (fuer Deye: die Solarman-Lane mit der Steuer-Arbitrierung). Die Cloud nennt bewusst weder Host noch Unit: sie kann einen Schreibvorgang damit nie auf ein anderes Geraet umlenken (Struktur statt Pruefung)."
         },
@@ -113,10 +186,17 @@
           "type": "object",
           "title": "Lane 'entity' - eine Komponente der Anlage",
           "additionalProperties": false,
-          "required": ["kind", "entity_id"],
+          "required": [
+            "kind",
+            "entity_id"
+          ],
           "properties": {
-            "kind": { "const": "entity" },
-            "entity_id": { "$ref": "#/$defs/uuid" }
+            "kind": {
+              "const": "entity"
+            },
+            "entity_id": {
+              "$ref": "#/$defs/uuid"
+            }
           },
           "description": "NUR die entity_id reist. Die Box loest den Transport aus IHRER angewandten Definition auf - die Cloud kann einen Kunden-Schreibvorgang nie auf einen fremden Host umlenken."
         },
@@ -124,17 +204,32 @@
           "type": "object",
           "title": "Lane 'lan' - eine freie Adresse im Kunden-LAN",
           "additionalProperties": false,
-          "required": ["kind", "host"],
+          "required": [
+            "kind",
+            "host"
+          ],
           "properties": {
-            "kind": { "const": "lan" },
+            "kind": {
+              "const": "lan"
+            },
             "host": {
               "type": "string",
               "minLength": 1,
               "maxLength": 253,
               "description": "Die Box prueft SELBST, ob die Adresse belegbar privat ist (dieselbe LAN-Whitelist wie der Probe-Kanal, docs/contracts/lan-host-vectors.json). Ein nackter Hostname wird abgelehnt, weil er sich aus der Zeichenkette nicht als privat nachweisen laesst."
             },
-            "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 502 },
-            "unit_id": { "type": "integer", "minimum": 0, "maximum": 255, "default": 1 }
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "default": 502
+            },
+            "unit_id": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255,
+              "default": 1
+            }
           }
         }
       ]
@@ -143,10 +238,16 @@
       "type": "object",
       "title": "Das Register",
       "additionalProperties": false,
-      "required": ["kind", "address"],
+      "required": [
+        "kind",
+        "address"
+      ],
       "properties": {
         "kind": {
-          "enum": ["holding", "coil"],
+          "enum": [
+            "holding",
+            "coil"
+          ],
           "description": "Holding-Register (16-bit-Wort) oder Spule (0/1)."
         },
         "address": {
@@ -162,18 +263,46 @@
       "title": "register_write_result (Edge -> Cloud, .../v2/register-write-result)",
       "additionalProperties": false,
       "required": [
-        "schema_version", "type", "tenant_id", "site_id", "device_id",
-        "request_id", "answered_at", "mode", "ok"
+        "schema_version",
+        "type",
+        "tenant_id",
+        "site_id",
+        "device_id",
+        "request_id",
+        "answered_at",
+        "mode",
+        "ok"
       ],
       "properties": {
-        "schema_version": { "const": "1.0" },
-        "type": { "const": "register_write_result" },
-        "tenant_id": { "$ref": "#/$defs/uuid" },
-        "site_id": { "$ref": "#/$defs/uuid" },
-        "device_id": { "$ref": "#/$defs/uuid" },
-        "request_id": { "type": "string", "pattern": "^[0-9a-f]{16,64}$" },
-        "answered_at": { "type": "string", "format": "date-time" },
-        "mode": { "enum": ["lesen", "schreiben"] },
+        "schema_version": {
+          "const": "1.0"
+        },
+        "type": {
+          "const": "register_write_result"
+        },
+        "tenant_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "site_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "device_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16,64}$"
+        },
+        "answered_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "mode": {
+          "enum": [
+            "lesen",
+            "schreiben"
+          ]
+        },
         "ok": {
           "type": "boolean",
           "description": "Der Austausch ist sauber gelaufen. Bei mode 'schreiben' sagt ok NICHTS darueber, ob das Geraet den Wert UEBERNOMMEN hat - das sagt allein 'adopted'."
@@ -203,7 +332,9 @@
           "maxLength": 200,
           "description": "WOHIN die Box geschrieben hat, in Klartext ('Deye SUN-30K-SG01HP3 · 192.168.0.28 · Unit 1'). Ziel-Echo: bei Anlagen mit mehreren Geraeten ist das Ziel eine bewusste Auswahl, nie ein Default im Verborgenen."
         },
-        "error_code": { "$ref": "#/$defs/error_code" },
+        "error_code": {
+          "$ref": "#/$defs/error_code"
+        },
         "message": {
           "type": "string",
           "maxLength": 400,
@@ -230,7 +361,8 @@
         "busy"
       ],
       "x-meanings": {
-        "invalid_request": "Der Auftrag ist so, wie er ankam, nicht ausfuehrbar - eine kaputte Form (fehlender Wert, unbekannte Registerart, Lane ohne Kennung, ein Ziel, das nicht nachweisbar im Kunden-Netz liegt) ODER ein Auftrag, der bei Ankunft schon abgelaufen war (siehe x-semantics.expiry). Nichts wurde gelesen und nichts geschrieben. Er wird ausdruecklich BEANTWORTET statt verworfen: aus der Cloud ist Stille ununterscheidbar von einem toten Geraet.", "not_supported": "Diese Box fuehrt diese FORM nicht aus - eine Lane, die sie (noch) nicht kennt, ein Transport, ueber den sie nicht schreibt (eine Spule ueber den Solarman-Logger; eine Komponente, die selbst am Solarman-Logger haengt und deshalb auf die primaere Lane gehoert), oder eine Komponente, die auf diesem Geraet nicht eingerichtet ist. Ein aelterer Stand antwortet damit ehrlich, statt still zu verwerfen.",
+        "invalid_request": "Der Auftrag ist so, wie er ankam, nicht ausfuehrbar - eine kaputte Form (fehlender Wert, unbekannte Registerart, Lane ohne Kennung, ein Ziel, das nicht nachweisbar im Kunden-Netz liegt) ODER ein Auftrag, der bei Ankunft schon abgelaufen war (siehe x-semantics.expiry). Nichts wurde gelesen und nichts geschrieben. Er wird ausdruecklich BEANTWORTET statt verworfen: aus der Cloud ist Stille ununterscheidbar von einem toten Geraet.",
+        "not_supported": "Diese Box fuehrt diese FORM nicht aus - eine Lane, die sie (noch) nicht kennt, ein Transport, ueber den sie nicht schreibt (eine Spule ueber den Solarman-Logger; eine Komponente, die selbst am Solarman-Logger haengt und deshalb auf die primaere Lane gehoert), oder eine Komponente, die auf diesem Geraet nicht eingerichtet ist. Ein aelterer Stand antwortet damit ehrlich, statt still zu verwerfen.",
         "gate_disabled": "Der Schreibpfad ist auf dieser Box nicht scharfgeschaltet (Feature-Gate aus).",
         "refused_policy": "Die Box fuehrt diese ADRESSE oder diesen WERT nicht aus. Seit Stufe 2 ist das Register frei, also bleiben die Regeln, die eine Anfrage in sich falsch machen: kein Registerwort (0..65535), eine Spule mit einem anderen Wert als 0/1, ein Funktionscode, der nicht zur Registerart passt, oder eine fehlende/falsche Bestaetigung. Bewusst getrennt von not_supported: das eine sagt 'diese Box kann das nicht', das andere 'diese Box darf das nicht'.",
         "refused_control_owned": "Das Register gehoert gerade der laufenden Steuerung. Die EINE harte Ablehnung dieses Kanals - siehe x-semantics.self-conflict.",

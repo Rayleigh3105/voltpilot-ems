@@ -2,17 +2,31 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.de/contracts/mqtt-charging-boost.schema.json",
   "title": "Cloud -> Edge Einmal-Uebersteuerung eines Ladevorgangs („Jetzt voll laden“, OCPP-Lastmanagement Stufe 4)",
-  "description": "Die Uebersteuerung der UEBERSCHUSS-PRIORITAET fuer GENAU EINEN laufenden Ladevorgang. NICHT-RETAINED, QoS1, auf ems/{tenant_id}/{site_id}/{device_id}/v2/charging-boost - im selben v2/#-Teilbaum, den die per-Geraet-ACL seit D-2 abdeckt (KEINE Broker-Aenderung).\n\nWAS SIE IST: woertlich die Freigabe der :8484-Taste „Jetzt voll laden“ mit anderem TRANSPORT - beide muenden in denselben Kern (Agent.OcppBoost), es gibt also keinen zweiten Weg zum Uebersteuern, den man spaeter getrennt absichern muesste (die Portal-Apply-Doktrin).\n\nWAS SIE NICHT IST: eine Grenze. Sie nimmt EINEN Ladevorgang von der QUELLEN-Politik aus, damit er auch Netzstrom ziehen darf. Anschlussgrenze, Sicherheitsabstand, Paragraf-14a-Huelle, Mindestleistung, Vorrang-Rang und das in der Saeule hinterlegte Ausfall-Profil binden ihn danach exakt wie jeden anderen - und die Prioritaet ALLER ANDEREN Ladevorgaenge bleibt unveraendert. Die Uebersteuerung schlaegt die OEKONOMIE, nie die PHYSIK.\n\nWARUM NICHT-RETAINED, und das ist die tragende Entscheidung: eine retained Nachricht wird bei JEDEM Verbindungsaufbau erneut zugestellt. Eine Einmal-Uebersteuerung, die beim naechsten Reconnect wieder erscheint, waere keine - sie wuerde ein Fahrzeug beliebig oft erneut auf Netzstrom setzen.\n\nNICHT-retained allein genuegt aber NICHT: das Geraet haelt eine dauerhafte Sitzung (cleanSession=false), der Broker darf eine QoS1-Nachricht also NACHLIEFERN. Die zweite Haelfte ist deshalb `requested_at`: das Geraet uebernimmt diesen Stempel als Beginn des Fensters, statt den Empfangs-Zeitpunkt zu nehmen - eine nachgelieferte Uebersteuerung ist bei ihrer Ankunft bereits abgelaufen und wird VERWORFEN.\n\nFOLGE FUER EINE OFFLINE-BOX: eine verpasste Uebersteuerung wirkt NICHT mehr. Das ist beabsichtigt - eine Zustimmung von vor drei Stunden ist keine Zustimmung fuer jetzt, und ein Fahrzeug, das inzwischen abgesteckt wurde, darf ihre Wirkung nicht erben.\n\nSIE GILT GENAU EINER SITZUNG: eine neue Sitzung am selben Stecker ist ein anderes Fahrzeug und erbt sie nie (das Geraet bindet sie an die laufende Transaktion). Ohne laufenden Ladevorgang wird sie abgelehnt - eine Zusage ueber ein Fahrzeug, das nicht da ist, waere erfunden.",
+  "description": "Die Uebersteuerung der UEBERSCHUSS-PRIORITAET fuer GENAU EINEN laufenden Ladevorgang. NICHT-RETAINED, QoS1, auf ems/{tenant_id}/{site_id}/{device_id}/v2/charging-boost - im selben v2/#-Teilbaum, den die per-Geraet-ACL seit D-2 abdeckt (KEINE Broker-Aenderung).\n\nWAS SIE IST: woertlich die Freigabe der :8484-Taste „Jetzt voll laden“ mit anderem TRANSPORT - beide muenden in denselben Kern (Agent.OcppBoost), es gibt also keinen zweiten Weg zum Uebersteuern, den man spaeter getrennt absichern muesste (dieselbe Ein-Kern-Doktrin wie beim OTA-Apply-Pfad).\n\nWAS SIE NICHT IST: eine Grenze. Sie nimmt EINEN Ladevorgang von der QUELLEN-Politik aus, damit er auch Netzstrom ziehen darf. Anschlussgrenze, Sicherheitsabstand, Paragraf-14a-Huelle, Mindestleistung, Vorrang-Rang und das in der Saeule hinterlegte Ausfall-Profil binden ihn danach exakt wie jeden anderen - und die Prioritaet ALLER ANDEREN Ladevorgaenge bleibt unveraendert. Die Uebersteuerung schlaegt die OEKONOMIE, nie die PHYSIK.\n\nWARUM NICHT-RETAINED, und das ist die tragende Entscheidung: eine retained Nachricht wird bei JEDEM Verbindungsaufbau erneut zugestellt. Eine Einmal-Uebersteuerung, die beim naechsten Reconnect wieder erscheint, waere keine - sie wuerde ein Fahrzeug beliebig oft erneut auf Netzstrom setzen.\n\nNICHT-retained allein genuegt aber NICHT: das Geraet haelt eine dauerhafte Sitzung (cleanSession=false), der Broker darf eine QoS1-Nachricht also NACHLIEFERN. Die zweite Haelfte ist deshalb `requested_at`: das Geraet uebernimmt diesen Stempel als Beginn des Fensters, statt den Empfangs-Zeitpunkt zu nehmen - eine nachgelieferte Uebersteuerung ist bei ihrer Ankunft bereits abgelaufen und wird VERWORFEN.\n\nFOLGE FUER EINE OFFLINE-BOX: eine verpasste Uebersteuerung wirkt NICHT mehr. Das ist beabsichtigt - eine Zustimmung von vor drei Stunden ist keine Zustimmung fuer jetzt, und ein Fahrzeug, das inzwischen abgesteckt wurde, darf ihre Wirkung nicht erben.\n\nSIE GILT GENAU EINER SITZUNG: eine neue Sitzung am selben Stecker ist ein anderes Fahrzeug und erbt sie nie (das Geraet bindet sie an die laufende Transaktion). Ohne laufenden Ladevorgang wird sie abgelehnt - eine Zusage ueber ein Fahrzeug, das nicht da ist, waere erfunden.",
   "type": "object",
-  "required": ["schema_version", "tenant_id", "site_id", "device_id", "charge_point_id", "connector_id", "requested_at"],
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "site_id",
+    "device_id",
+    "charge_point_id",
+    "connector_id",
+    "requested_at"
+  ],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
       "const": "1.0",
       "description": "Vertragsversion; ein Geraet, das sie nicht kennt, VERWIRFT die Nachricht (fail-closed) und behaelt die Prioritaet des Kunden."
     },
-    "tenant_id": { "type": "string", "format": "uuid" },
-    "site_id": { "type": "string", "format": "uuid" },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "site_id": {
+      "type": "string",
+      "format": "uuid"
+    },
     "device_id": {
       "type": "string",
       "format": "uuid",

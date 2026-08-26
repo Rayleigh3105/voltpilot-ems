@@ -1387,7 +1387,7 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „Edge-Updates: EIN Schritt" und
     blockiert (`up.Blocked()`), also bleibt der Herzschlag einer gesunden Box
     byte-gleich. Das frueher hier stehende „Cloud/Portal unveraendert" gilt
     damit nicht mehr - die Cloud-Seite steht in der Root-`AGENTS.md`
-    („Admin-UX-Umbau P1"), inklusive des Uebergangs fuer Baende ohne das Feld
+    („Edge-Updates: EIN Schritt"), inklusive des Uebergangs fuer Baende ohne das Feld
     (`RolloutStates.BLOCKED_PREFIX` ist der gepinnte Zwilling von
     `otaapply.BlockedPrefix` - **beide zusammen aendern**).
 - **Der Sidecar ist ein NORMALER Dienst** (kein Profil mehr), also nimmt
