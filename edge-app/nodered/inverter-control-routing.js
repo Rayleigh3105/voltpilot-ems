@@ -56,6 +56,7 @@
 
 const deyeDecode = require('./deye/deye-decode');
 const sunspec = require('./sunspec/model-discovery');
+const unplannedNative = require('./unplanned-load-native');
 
 const COMM_SOLARMAN = 'solarman_v5';
 const COMM_MODBUS = 'modbus_tcp';
@@ -810,6 +811,310 @@ function controlRelease(selection, opts = {}) {
   }
 
   return idle('unbekannte Kommunikationsmethode');
+}
+
+/**
+ * nativeSelfConsumption - the NATIVE SELF-REGULATION primitive ("Selbstregel-
+ * Modus"): in a slot the CLOUD marked worth covering from the battery, hand the
+ * SETPOINT ITSELF back to the inverter and let its own self-consumption loop
+ * decide how many watts to pull, instead of writing a recomputed watt value
+ * every 10 s (guards/nativemode.go carries the core-side supervision).
+ *
+ * ⚠ WHAT IT IS, in one line: the existing RELEASE write list of this tier PLUS a
+ * STATE READBACK as proof, written ONCE and then only read. The return path is
+ * the ordinary controlRoute plan - so there is no second way into or out of the
+ * device, and every register here is one this file already writes today.
+ *
+ * ⚠ THE PROOF IS THE POINT. Once we stop writing, "the inverter regulates itself
+ * because we asked it to" and "VoltPilot died" look identical from the cloud
+ * (the scout's risk 5). So the primitive is only ever reported as executed when
+ * the DEVICE's own state register says so - and the core withdraws an intent it
+ * never sees confirmed. That is why `readbacks` here are the mode/state
+ * registers, not the setpoint.
+ *
+ * ⚠ THE GATE IS THE CERTIFICATE, NOT THIS FILE. `planned` is always computed (the
+ * bench artefact - the same discipline as every uncertified adapter here), but
+ * `writes`/`readbacks` stay EMPTY unless unplanned-load-native.js releases an
+ * exact (manufacturer, model, firmware) entry AND that entry's recorded bytes
+ * still match what this adapter plans. So on every device shipped today the
+ * result is supported:true, writes:[] - the honest "we know how, nobody measured
+ * it yet".
+ *
+ * ⚠ DEYE ToU IS DELIBERATELY UNSUPPORTED (captain decision, 2026-08-26). On the
+ * ToU path every mode change is an EEPROM write with ~20 s direction latency and
+ * a snapshot/restore duty, so "native" would buy nothing there and cost write
+ * cycles; that path keeps the 10-second follower.
+ *
+ *   selection: the parsed edge/inverter/config (or null)
+ *   opts: { catalog?, sunspec?, deye?, deyeSticky?, controlEnabled?,
+ *           deviceCertified?, solarOnlyCharge? }
+ *     - catalog: the native capability catalog (production = empty; the flow's
+ *       SIMULATOR tab passes SIMULATOR_NATIVE_CAPABILITIES)
+ *     - solarOnlyCharge: the site's EEG posture. When true the device must PROVE
+ *       from its OWN configuration that it cannot grid-charge, because that ban
+ *       moves into the device the moment we stop commanding (scout risk 2, the
+ *       dualControllerSignal pattern). A tier with no such register REFUSES on an
+ *       EEG site rather than hoping.
+ *
+ * Returns { adapter, family, tier, mode:'native', supported, certified,
+ *           controlEnabled, target, connection, writes, readbacks, observations,
+ *           planned, plannedReadbacks, gridChargeProof, reason }.
+ */
+function nativeSelfConsumption(selection, opts = {}) {
+  const controlEnabled = opts.controlEnabled === true;
+  const solarOnly = opts.solarOnlyCharge === true;
+  const catalog = Array.isArray(opts.catalog) ? opts.catalog : unplannedNative.CERTIFIED_NATIVE_CAPABILITIES;
+  const idle = (reason) => ({
+    adapter: 'idle', family: '', tier: CONTROL_TIER.READ_ONLY, mode: 'native',
+    supported: false, certified: false, controlEnabled,
+    writes: [], readbacks: [], observations: [], planned: [], plannedReadbacks: [], reason,
+  });
+  if (!selection) return idle('keine Auswahl');
+  const conn = selection.connection || {};
+  const ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';
+  if (!ip) return idle('keine IP-Adresse');
+  const family = typeof selection.family === 'string' ? selection.family.trim() : '';
+  const tier = resolveControlTier(selection);
+  const comm = selection.communication;
+  // Same disjunction as controlRoute/controlRelease: whatever may be DRIVEN may
+  // be handed over, and nothing else.
+  const certified = CERTIFIED_CONTROL_FAMILIES.has(family) || opts.deviceCertified === true;
+
+  const built = nativeForTier({ selection, conn, ip, family, tier, comm, opts });
+  if (!built) return idle('unbekannte Kommunikationsmethode');
+  if (built.unsupported) {
+    return {
+      ...idle(built.reason), adapter: built.adapter, family, tier,
+    };
+  }
+
+  const out = {
+    adapter: built.adapter, family, tier, mode: 'native', supported: true,
+    certified, controlEnabled,
+    target: built.target, connection: built.connection,
+    writes: [], readbacks: [], observations: built.observations || [],
+    planned: built.planned, plannedReadbacks: built.readbacks,
+    gridChargeProof: built.gridChargeProof || null,
+    proofKind: built.proofKind || 'register',
+  };
+
+  // EEG: the ban on grid charging moves into the DEVICE's own configuration the
+  // moment we stop commanding, so it has to be readable. A tier without such a
+  // register refuses on an EEG site - a compliance rule may not rest on hope.
+  if (solarOnly && !out.gridChargeProof) {
+    out.reason = 'EEG-Anlage: dieser Wechselrichter kann nicht belegen, dass er nicht aus dem Netz lädt';
+    return out;
+  }
+  if (!controlEnabled) {
+    out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)' : 'Modell noch nicht freigegeben';
+    return out;
+  }
+  if (!certified) {
+    out.reason = 'Modell noch nicht freigegeben';
+    return out;
+  }
+
+  const capability = unplannedNative.exactCapability(nativeSelectionKey(selection), catalog);
+  if (!capability) {
+    out.reason = 'Wechselrichter-Automatik für dieses Modell noch nicht am Prüfstand freigegeben';
+    return out;
+  }
+  // The certificate ATTESTS the adapter's bytes. If they drifted apart, nothing
+  // on this device has been measured - refuse rather than execute an untested
+  // sequence under a certificate that describes a different one.
+  if (!unplannedNative.certificateMatchesPlan(capability, built.planned, built.readbacks)) {
+    out.reason = 'Prüfstand-Freigabe und Schreibplan stimmen nicht überein - Freigabe erneuern';
+    return out;
+  }
+  out.writes = built.planned.map((w) => ({ ...w })).concat(built.extraWrites || []);
+  out.readbacks = built.readbacks.map((r) => ({ ...r })).concat(built.extraReadbacks || []);
+  out.certificate = { brand: capability.brand, model: capability.model, firmware: capability.firmware,
+    simulator_only: capability.simulatorOnly === true, bench_record: capability.benchRecord || '' };
+  return out;
+}
+
+/**
+ * nativeSelectionKey - the (brand, model, firmware) triple the certificate is
+ * keyed on. The firmware string is what the operator recorded at the bench; a
+ * selection without one can never match an exact certificate, which is the
+ * intended fail-closed behaviour (a firmware update may remove the very
+ * behaviour that was measured).
+ */
+function nativeSelectionKey(selection) {
+  return {
+    brand: selection.brand,
+    model: selection.model,
+    firmware: (selection.connection && selection.connection.firmware) || selection.firmware,
+  };
+}
+
+// nativeForTier builds the per-tier primitive: the release write list PLUS the
+// state readback that proves it. Returns null for an unknown transport and
+// { unsupported: true, reason } for a tier that deliberately has none.
+function nativeForTier({ selection, conn, ip, family, tier, comm, opts }) {
+  if (tier === CONTROL_TIER.TOU && comm === COMM_SOLARMAN) {
+    const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;
+    const writeFc = resolveDeyeWriteFc(conn);
+    const reg = deyeFamilyControlReg(family);
+    const cap = deyeEffectiveCap(
+      (opts && opts.deye && typeof opts.deye === 'object') ? opts.deye : null,
+      (opts && opts.deyeSticky && typeof opts.deyeSticky === 'object') ? opts.deyeSticky : null);
+    const remoteOff = conn.remote_mode === 'off' || conn.remote_mode === false;
+    if (remoteOff || !reg || deyeControlPath(cap) !== DEYE_PATH_REMOTE) {
+      // ⚠ Deye ToU: no native primitive, and that is a decision, not a gap. Every
+      // mode change there is an EEPROM write with ~20 s direction latency and a
+      // snapshot/restore duty, so handing over and taking back would cost more
+      // write cycles than the 10-second follower it replaces.
+      return {
+        unsupported: true, adapter: 'solarman_v5',
+        reason: 'Deye ohne Fernsteuer-Firmware: die Zeitfenster-Steuerung bleibt bei der 10-Sekunden-Nachführung',
+      };
+    }
+    // REMOTE: disabling remote mode IS the hand-over - the inverter then runs its
+    // OWN configuration (Work Mode + Time-of-Use), which is precisely the native
+    // self-consumption loop. Nothing installer-level is touched, so there is
+    // nothing to restore on the way back.
+    const planned = [{
+      role: 'remote_mode', fc: writeFc, addr: DEYE_REMOTE_REG.mode, value: DEYE_REMOTE_MODE.OFF,
+      encode: { kind: 'remote_mode', enum: 'off', native: true },
+      dwell_s: 0, min_change: 0, bench_pending: true,
+    }];
+    return {
+      adapter: 'solarman_v5', target: ip + ':' + port,
+      connection: { ip, port, serial: conn.serial,
+        mb_slave_id: Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1,
+        remote_mode: 'auto' },
+      planned,
+      // 1100 == 0 is the device saying "I am no longer remote-controlled".
+      readbacks: [{ role: 'remote_mode', fc: 3, addr: DEYE_REMOTE_REG.mode, expect: DEYE_REMOTE_MODE.OFF, tolerance: 0 }],
+      // 1121 is the remote execution state - an OBSERVATION, deliberately kept
+      // out of the comparison so it can never fabricate or break a verdict.
+      observations: [{ role: 'remote_status', fc: 3, addr: DEYE_REMOTE_REG.status }],
+      // With remote off the device follows its own Program-1 charging enum, so
+      // "Disabled" (0) is the readable proof that it will not charge from grid.
+      gridChargeProof: { role: 'grid_charge_enable', fc: 3,
+        addr: reg.progChargeBase + DEYE_CONTROL_SLOT, expect: DEYE_PROG_CHARGE.DISABLED, tolerance: 0 },
+    };
+  }
+  if (tier === CONTROL_TIER.VENDOR_EMS && comm === COMM_KOSTAL) {
+    const port = Number(conn.port) > 0 ? Number(conn.port) : KOSTAL_DEFAULT_PORT;
+    const unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : KOSTAL_DEFAULT_UNIT_ID;
+    const byteOrder = conn.byte_order === 'little' || conn.byte_order === 'big' ? conn.byte_order : 'auto';
+    // ⚠ KOSTAL's hand-over is the ABSENCE of a write: after the webserver-configured
+    // timeout the inverter discards the external setpoint and returns to its
+    // internal battery management. So the primitive writes NOTHING at all.
+    //
+    // ⚠ AND ITS PROOF IS BEHAVIOURAL, not a register: 1080 reads 2 ("external via
+    // Modbus") in BOTH states, so no register distinguishes them. The bench
+    // criterion for this family is therefore observing 582 (battery power)
+    // follow the house - which is why the certificate, not this adapter, is the
+    // thing that may release it.
+    return {
+      adapter: 'kostal_modbus', target: ip + ':' + port,
+      connection: { ip, port, unit_id: unitId, byte_order: byteOrder },
+      planned: [],
+      readbacks: [{ role: 'mgmt_mode', fc: 3, addr: KOSTAL_REG.MGMT_MODE, expect: KOSTAL_MGMT_EXTERNAL_MODBUS, tolerance: 0 }],
+      observations: [{ role: 'battery_power', fc: 3, addr: 582, count: 2, decode: 'float32' }],
+      proofKind: 'behavioral',
+      // The internal battery management does not charge from the grid, but no
+      // register STATES that - so an EEG site gets no proof and is refused.
+      gridChargeProof: null,
+    };
+  }
+  if (tier === CONTROL_TIER.SUNSPEC && comm === COMM_MODBUS) {
+    const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
+    const unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : 1;
+    // The generic/simulator profile: clearing the EMS-control flag hands the
+    // device back to its own regulation, and zeroing the setpoint makes sure no
+    // stale watt value can be re-adopted if the flag is set again.
+    const planned = [
+      { role: 'control_enable', fc: 6, addr: SUNSPEC_REG.ENABLE, value: 0, encode: { kind: 'flag', native: true }, dwell_s: 0, min_change: 0 },
+      { role: 'battery_power', fc: 6, addr: SUNSPEC_REG.SETPOINT, value: 0, encode: { kind: 'kw_x100_s16', scale: 100, kw: 0 }, dwell_s: 0, min_change: 0 },
+    ];
+    // ⚠ CURTAILMENT IS NOT PART OF THE HAND-OVER. The native mode concerns the
+    // BATTERY; the slot's PV feed-in cap is a separate, cloud-owned command, and
+    // freezing it here would let a curtailment outlive its slot. So it rides
+    // along as an ORDINARY write - gated by the ordinary control gate, never by
+    // the certificate, and therefore deliberately outside `planned` (which is
+    // what the certificate attests byte for byte).
+    const pvKw = isFiniteNum(opts.pvLimitKw) && opts.pvLimitKw >= 0 ? opts.pvLimitKw : null;
+    const pvRaw = pvKw == null ? NO_PV_LIMIT : Math.max(0, Math.round(pvKw * 100)) & 0xffff;
+    return {
+      adapter: 'modbus_tcp', target: ip + ':' + port,
+      connection: { ip, port, unit_id: unitId },
+      planned,
+      readbacks: [
+        { role: 'control_enable', fc: 3, addr: SUNSPEC_REG.ENABLE, expect: 0, tolerance: 0 },
+        { role: 'battery_power', fc: 3, addr: SUNSPEC_REG.SETPOINT, expect: 0, tolerance: 1 },
+      ],
+      extraWrites: [{ role: 'pv_limit', fc: 6, addr: SUNSPEC_REG.PVLIMIT, value: pvRaw,
+        encode: { kind: 'pv_limit_x100_u16', scale: 100, sentinel: NO_PV_LIMIT, kw: pvKw }, dwell_s: 0, min_change: 0 }],
+      extraReadbacks: [{ role: 'pv_limit', fc: 3, addr: SUNSPEC_REG.PVLIMIT, expect: pvRaw, tolerance: 1 }],
+      observations: [],
+      // The compact profile carries no charging-source register, so an EEG site
+      // is refused rather than assumed safe.
+      gridChargeProof: null,
+    };
+  }
+  if (tier === CONTROL_TIER.SUNSPEC && comm === COMM_FRONIUS) {
+    const port = Number(conn.control_port) > 0 ? Number(conn.control_port) : DEFAULT_FRONIUS_CONTROL_PORT;
+    const unitId = Number(conn.control_unit_id) > 0 ? Number(conn.control_unit_id) : 1;
+    const discovery = opts.sunspec || null;
+    // planStorage(0) IS the native primitive on Model 124: its own comment says
+    // "idle (0 kW) sets NONE = release control -> the inverter self-consumes".
+    // We reuse it verbatim rather than re-deriving the addresses - the bases are
+    // DISCOVERED live and must never be fabricated.
+    const storage = sunspec.planStorage({ discovery, batterySetpointKw: 0 });
+    if (!storage.ok) {
+      return {
+        unsupported: true, adapter: 'fronius_sunspec',
+        reason: 'Fronius SunSpec: ' + storage.reason,
+      };
+    }
+    const s = discovery && discovery.storage ? discovery.storage : null;
+    return {
+      adapter: 'fronius_sunspec', target: ip + ':' + port,
+      connection: { ip, port, unit_id: unitId },
+      planned: storage.writes.map((w) => ({ ...w, bench_pending: true })),
+      readbacks: storage.readbacks.map((r) => ({ ...r })),
+      observations: [],
+      // ChaGriSet is the vendor's own grid-charge gate; PV (0) is the readable
+      // proof. It is AND-ed with a web-UI setting, so the bench has to confirm
+      // the pair - the certificate is what states it was confirmed.
+      gridChargeProof: s && s.chaGriSetAddr != null
+        ? { role: 'grid_charge_gate', fc: 3, addr: s.chaGriSetAddr, expect: 0, tolerance: 0 }
+        : null,
+    };
+  }
+  if (tier === CONTROL_TIER.SUNSPEC && comm === COMM_KACO_MODBUS) {
+    const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
+    const unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : 1;
+    // 41104 = 2 ("Eigenverbrauch") is the documented self-consumption mode. It is
+    // also this family's ONLY failsafe (no watchdog register is documented), so
+    // the native mode and the safe state are literally the same write here.
+    const planned = [{
+      role: 'work_mode', fc: 6, addr: KACO_NH3_CONTROL_REG.MODE,
+      value: KACO_NH3_CONTROL_REG.MODE_SELF_CONSUMPTION,
+      encode: { kind: 'enum', native: true }, dwell_s: 0, min_change: 0, bench_pending: true,
+    }];
+    return {
+      adapter: 'kaco_nh3', target: ip + ':' + port,
+      connection: { ip, port, unit_id: unitId },
+      planned,
+      readbacks: [{ role: 'work_mode', fc: 3, addr: KACO_NH3_CONTROL_REG.MODE,
+        expect: KACO_NH3_CONTROL_REG.MODE_SELF_CONSUMPTION, tolerance: 0 }],
+      observations: [],
+      // AISWEI documents no charging-source register, so no EEG proof exists.
+      gridChargeProof: null,
+    };
+  }
+  if (tier === CONTROL_TIER.SUNSPEC && (comm === COMM_SUNSPEC_TCP || comm === COMM_KACO_HTTP)) {
+    return {
+      unsupported: true, adapter: comm === COMM_KACO_HTTP ? 'kaco_http' : 'kaco_sunspec',
+      reason: 'ohne Batterie gibt es keine Wechselrichter-Automatik',
+    };
+  }
+  return null;
 }
 
 /**
@@ -2329,6 +2634,7 @@ module.exports = {
   installerWriteRoute,
   controlRoute,
   controlRelease,
+  nativeSelfConsumption,
   setpointStale,
   dualControllerSignal,
 };

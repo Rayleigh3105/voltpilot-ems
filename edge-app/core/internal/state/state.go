@@ -83,6 +83,16 @@ type Snapshot struct {
 	// command, and only up to the surplus.
 	Absorb *AbsorbInfo `json:"absorb,omitempty"`
 
+	// Native is the native self-regulation (Selbstregel-Modus): in a covering
+	// slot the SETPOINT itself was handed back to the inverter, which now decides
+	// how many watts to pull from the battery. Non-nil ONLY while the intent
+	// stands (pending or proven) - a plain covering slot on the 10-second
+	// follower has no block at all. It carries the German sentence written once
+	// in guards.NativeMode and the honest distinction between "wanted" and
+	// "proven by the device", because "we stopped writing" and "we died" must
+	// never look the same on a surface.
+	Native *NativeInfo `json:"native,omitempty"`
+
 	// ExportGuard is the live feed-in watchdog at the grid connection point
 	// (dynamische Einspeisebegrenzung), non-nil whenever the site HAS a feed-in
 	// limit configured - including while it is only watching, because a
@@ -267,6 +277,31 @@ type AbsorbInfo struct {
 	SurplusKw *float64 `json:"surplus_kw,omitempty"`
 }
 
+// NativeInfo is the UI-facing state of the native self-regulation: the cloud
+// marked this slot worth covering from the battery, and instead of writing a
+// recomputed watt value every 10 s the edge handed the setpoint back to the
+// inverter's own self-consumption loop. Read-only display of a decision already
+// taken - the supervision itself lives in guards.NativeMode.
+type NativeInfo struct {
+	// Active is always true when the block exists (it is omitted otherwise).
+	Active bool `json:"active"`
+	// Proven separates "we asked the device to regulate itself" from "the device
+	// confirmed that it does". Only a PROVEN mode may be reported to the cloud
+	// as autonomous_discharge; while it is false the card says the confirmation
+	// is still outstanding rather than claiming a state nobody measured.
+	Proven bool `json:"proven"`
+	// Duty is guards.NativeDutyCoverLoad / NativeDutyUnplanned - which cloud
+	// slot duty authorised it.
+	Duty string `json:"duty,omitempty"`
+	// ReferenceKw is the setpoint the edge WOULD command right now. It is still
+	// computed and published (so the take-back is instant and the surfaces have
+	// a number), it is simply not written to the inverter.
+	ReferenceKw float64 `json:"reference_kw"`
+	// Reason is the closed-vocabulary code, Text its German sentence.
+	Reason string `json:"reason"`
+	Text   string `json:"text"`
+}
+
 // ExportGuardInfo is the UI-facing state of the dynamic feed-in limitation: the
 // site has a feed-in limit at the grid connection point, and the device is
 // regulating its CONTROLLABLE producers against the MEASURED connection point so
@@ -392,6 +427,20 @@ type ControlInfo struct {
 	// Confirm (0 after a held cycle). Shown as the technician's detail.
 	MismatchCycles    int `json:"mismatch_cycles,omitempty"`
 	UnconfirmedCycles int `json:"unconfirmed_cycles,omitempty"`
+	// Mode is WHICH kind of plan Layer 1 executed for this cycle: "normal" (the
+	// ordinary setpoint write), "release" (the neutral hand-back) or "native"
+	// (the native self-regulation primitive: the device was handed its own
+	// control and only its state registers were read back). It is the EVIDENCE
+	// half of the native mode - without it "we stopped writing" and "we died"
+	// are indistinguishable from the cloud, which is why the supervision keys on
+	// it and withdraws an intent it never sees confirmed. Empty for an older
+	// Layer-1 build.
+	Mode string `json:"mode,omitempty"`
+	// NativeGridChargeBlocked is the device's own answer to "can you charge from
+	// the grid in your current configuration?", read back by the native
+	// primitive. TRI-STATE on purpose: nil = the device did not say, which on an
+	// EEG site counts as NOT proven - a compliance rule may not rest on silence.
+	NativeGridChargeBlocked *bool `json:"native_grid_charge_blocked,omitempty"`
 	// ControlPath names WHICH surface drove the write on a Deye: "remote" = the
 	// Tier-2 register block 1100-1121 (a true signed watt setpoint, armed behind the
 	// inverter's own watchdog, touching no installer setting), "tou" = the legacy

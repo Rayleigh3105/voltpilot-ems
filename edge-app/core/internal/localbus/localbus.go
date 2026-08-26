@@ -20,6 +20,18 @@
 //	                grant it cannot otherwise see. ADDITIVE: an absent field means
 //	                "no runtime grant", i.e. the pre-existing static-allowlist-only
 //	                behaviour.
+//	                `battery_mode` is "setpoint" | "native" (ADDITIVE; ABSENT =
+//	                "setpoint" = the pre-existing behaviour). "native" is the
+//	                NATIVE SELF-REGULATION intent: in a slot the cloud marked
+//	                worth covering from the battery, Layer 1 must NOT write
+//	                battery_setpoint_kw - it runs its certified native primitive
+//	                ONCE and then only reads the device's own state back. The
+//	                setpoint is still published, as the display/take-back
+//	                REFERENCE. Layer 1 answers on edge/control/readback with
+//	                mode:"native" (plus native.grid_charge_blocked where the
+//	                family has such a register); an intent that is never
+//	                confirmed is WITHDRAWN by the core after a bounded grace -
+//	                see internal/guards/nativemode.go.
 //	edge/status     Layer 1 -> core   inverter link state (retained):
 //	                {"inverter_link": "up"|"down", "ts"?: RFC3339}
 //	edge/control/readback  Layer 1 -> core   NOT retained. Per-register

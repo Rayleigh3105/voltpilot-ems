@@ -3969,6 +3969,98 @@ Goroutinen warten dann FÜR IMMER.
   `attachClient` → `Clients.Delete`. Das ist DIESER Deadlock, kein langsamer
   Testlauf.
 
+## Wechselrichter-Automatik: der Sollwert wird ABGEGEBEN, die Aufsicht NIE
+
+Der Selbstregel-Modus (Konzept: firstmate `vp-verbrauch-decken-selbstregel`;
+Captain-Entscheide 26.08.2026). In einem Slot, den die WOLKE als „Verbrauch
+decken lohnt sich" markiert, hört die Box auf, alle 10 s einen Sollwert zu
+schreiben, und übergibt die Regelung an die Eigenverbrauchs-Schleife des
+Wechselrichters. **Kein Vertragsfeld** — die Wolke sagt längst, OB Decken
+ökonomisch ist; WIE es ausgeführt wird, war immer eine Edge-Entscheidung.
+
+- **⚠ DER SATZ, an dem alles hängt: „selbst regeln" heisst SOLLWERT WEGLASSEN,
+  NICHT AUFSICHT WEGLASSEN.** Die Guard-Kette schützt einen Wert, den wir
+  KOMMANDIEREN; ohne kommandierten Wert wird jeder Guard, der bisher über den
+  Sollwert biss, zu einer BEOBACHTUNG mit RÜCKNAHME. Die Regel ist rein
+  (`core/internal/guards/nativemode.go`, jede Funktion nimmt ihr `now` — das
+  `otaapply`/`calibration`-Muster), `agent/native.go` ist nur Verdrahtung.
+- **⚠ DIE ZWEITE TEILUNG, INNERHALB der Edge, ist der Grund für die
+  Beweis-Schleife:** der KERN kennt Slot-Pflicht, Messwerte, Reserve-Boden und
+  Lastspitzen-Budget — aber nur LAYER 1 kennt die Registerkarte und damit, ob
+  dieses Modell+diese Firmware überhaupt eine Prüfstand-Freigabe hat
+  (`nodered/unplanned-load-native.js`). Der Kern veröffentlicht deshalb eine
+  ABSICHT (`battery_mode: "native"` auf `edge/setpoint`, additiv — ABWESEND =
+  `setpoint` = byte-identisch zu vorher), und Layer 1 antwortet mit einem BELEG
+  (`mode: "native"` auf `edge/control/readback`). **Eine Absicht, die nie
+  bestätigt wird, wird nach einer begrenzten Frist ZURÜCKGENOMMEN** — sonst wären
+  „wir haben aufgehört zu schreiben" und „wir sind tot" derselbe Zustand
+  (Risiko 5 des Scouts). Nur ein BESTÄTIGTER Modus wird der Cloud als
+  `execution.mode = autonomous_discharge` gemeldet.
+- **Die Rücknahme-Gründe sind ein GESCHLOSSENES Vokabular mit je einem deutschen
+  Satz** (`guards.NativeReasonText`) — eine Verweigerung, die niemand benennt,
+  liest sich wie ein Defekt (die Canary-Soak-Lehre, auf den Sollwert-Pfad
+  angewandt).
+- **⚠ RÜCKNAHME vs. VERWEIGERUNG, und der Unterschied ist absichtlich:** eine
+  RÜCKNAHME (Reserve-Boden, veraltete Messung, verlorenes Rücklesen, bedrohte
+  Lastspitze, fehlender Nachweis) ist ein EREIGNIS auf einem flatternden Kanal
+  und wird für den REST DES SLOTS gemerkt — ein Wiedereintritt würde den Modus
+  des Geräts im 10-Sekunden-Takt umschalten. Eine VERWEIGERUNG (Anlagen-Pause,
+  der Betreiber-Schalter) ist ein ZUSTAND, den jemand bewusst gesetzt hat: fällt
+  er weg, ist sofortiges Wiederaufnehmen genau das Gewollte.
+- **⚠ Die Lastspitzen-Frage keyt auf den ZÄHLER, nicht auf eine Korrektur**
+  (`guards.NativePeakThreat` + `PeakTracker.HeldImport`): „würde PeakShave den
+  Referenzwert senken?" könnte in einem Deckungs-Slot nie feuern (der Referenzwert
+  treibt das Netz ohnehin auf 0), die Aufsicht wäre also dekorativ.
+- **⚠ EEG: die Netzlade-Sperre wandert in die GERÄTE-Konfiguration**, sobald wir
+  aufhören zu kommandieren. Das Gerät muss es also BELEGEN (`gridChargeProof` je
+  Adapter, im Rücklesen als `native.grid_charge_blocked`); Schweigen zählt als
+  NICHT belegt. Ein Tier ohne solches Register wird auf einer EEG-Anlage
+  verweigert, statt zu hoffen.
+- **Der Adapter-Primitive ist der RELEASE-Plan seines Tiers PLUS ein
+  Zustands-Rücklesen als Beleg — einmal schreiben, dann nur lesen**
+  (`nodered/inverter-control-routing.js` `nativeSelfConsumption`; Sequenzen,
+  Beleg-Register und was der Prüfstand noch beweisen muss: die vier Adapter-Docs
+  + `UNPLANNED-LOAD-BENCH.md`). **Deye ToU ist bewusst NICHT unterstützt**
+  (EEPROM-Wechsel, ~20 s Latenz — „nativ" kostete dort mehr, als es spart).
+- **⚠ Die ABREGELUNG ist NICHT Teil der Übergabe:** der Modus betrifft die
+  BATTERIE; die Einspeise-Kappe des Slots ist ein eigenes, wolken-eigenes
+  Kommando, und sie einzufrieren liesse eine Drosselung ihren Slot überleben.
+  Sie reitet als GEWÖHNLICHER Schreibbefehl mit (am gewöhnlichen Steuer-Tor, nie
+  am Zertifikat) und gehört zur Einmal-Signatur, damit eine GEÄNDERTE Kappe neu
+  geschrieben wird.
+- **Das Zertifikat ATTESTIERT die Bytes des Adapters, es definiert sie nicht**
+  (`certificateMatchesPlan`): driften Prüfstands-Aufzeichnung und ausgelieferter
+  Adapter auseinander, wurde an diesem Gerät nichts gemessen ⇒ Verweigerung. Der
+  Deye-Interlock fällt nur per Eintrag, mit `interlockLifted: 'deye'` UND einem
+  benannten `benchRecord` — nie durch Löschen des Zweigs.
+- **⚠ Der EINZIGE nicht-leere Katalog ist `SIMULATOR_NATIVE_CAPABILITIES`, und er
+  zertifiziert SOFTWARE.** Sein Tripel (`generic_modbus` / `sunspec-sim` / `sim`)
+  kann nur den Simulator treffen, und er ist ausschliesslich im SIMULATOR-Tab
+  verdrahtet (dessen Auswahl ein fester Literal ist). Der Auto-Tab reicht den
+  PRODUKTIONS-Katalog durch, der leer ist.
+- **Der Simulator hat dafür ein Eigenverbrauchs-Modell bekommen**
+  (`edge/sim/sunspec-sim.js`): bei `setpoint_enable = 0` folgt die Batterie
+  `pv - load`, sonst dem Sollwert. Vorher gehorchte er ewig dem letzten Wert und
+  LOGGTE das Flag nur — „übergeben" und „tot" waren dort buchstäblich derselbe
+  Zustand, und der Modus wäre nicht beweisbar gewesen.
+- **Schalter:** `VP_NATIVE_SELF_REGULATION_ENABLED` (Vorgabe AN, ein OPT-OUT wie
+  `VP_OCPP_ENABLED`) — das echte Tor ist der Zertifikats-Katalog, dieser Schalter
+  ist der Hebel, EINE Anlage ohne Image-/Zertifikats-/Plan-Änderung auf die
+  bewiesene Nachführung zurückzunehmen.
+- Beweise: `guards/nativemode_test.go` · `agent/native_mode_test.go` (die vier
+  Fragen: Bestandsanlage byte-identisch, Übergabe nur bestätigt, jede
+  Aufsichts-Bedingung nimmt zurück + rastet, EEG) ·
+  `nodered/inverter-control-routing.test.js` (die Sequenz + das Beleg-Register je
+  Adapter) · `nodered/unplanned-load-native.test.js` (Interlock, Drift, Simulator)
+  · `nodered/flows-sync.test.js` (die inline Kopie == das Modul; jedes nicht
+  abgedeckte Tier VERWEIGERT statt zu improvisieren) ·
+  **`nodered/native-selfregulation.e2e.test.js`** (docker-frei, die ECHTEN
+  Knoten-Bodies aus `flows.json` gegen einen selbst-regelnden In-Process-Server:
+  Decken-Slot → nativ → EIN Schreibvorgang → keine Sollwert-Writes mehr → Netz ≈ 0
+  ohne unser Zutun → Rücknahme im nächsten Takt; ohne Zertifikat bleibt es bei
+  der Nachführung, und der Rücklese-`mode` behauptet NIE einen Zustand, in dem
+  das Gerät nicht ist).
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

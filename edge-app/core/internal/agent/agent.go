@@ -113,6 +113,13 @@ type Agent struct {
 	// the charge-side counterpart of trim, which only ever lowers; the edge
 	// enforces, the cloud priced).
 	absorb *guards.SurplusCharger
+	// native carries the per-slot supervision of the NATIVE SELF-REGULATION: in
+	// a covering slot the setpoint itself is handed back to the inverter, which
+	// then decides its own watts - and this type is what takes it back at the
+	// reserve floor, on a threatened billing peak, on a lost measurement/readback
+	// and when the device never confirms the mode (guards/nativemode.go). Never a
+	// failsafe: on any doubt the proven 10-second follower carries the slot.
+	native *guards.NativeMode
 	// export is the REAL-TIME feed-in watchdog (dynamische Einspeisebegrenzung):
 	// it regulates the CONTROLLABLE producers against the MEASURED connection
 	// point so the site's feed-in limit holds no matter what the house does -
@@ -580,6 +587,9 @@ func New(cfg config.Config) (*Agent, error) {
 			LoadKw: guards.Unknown(), GridLimitKw: guards.Unknown(),
 		},
 	}
+	// The native supervision's proof grace derives from the setpoint cadence, so
+	// it is constructed after the Agent literal (a.Cfg is set there).
+	a.native = guards.NewNativeMode(a.nativeProofGrace())
 	if raw, err := os.ReadFile(filepath.Join(cfg.DataDir, "measurement-config.json")); err == nil {
 		var header struct {
 			Revision int64 `json:"revision"`
@@ -1819,6 +1829,20 @@ const (
 // control_source carries too, repeated here so ONE block answers the question.
 // Values are COPIED out of the snapshot, never aliased.
 func executionSummary(snap state.Snapshot) *cloud.ExecutionSummary {
+	// NATIVE SELF-REGULATION is checked FIRST because it OUTRANKS every
+	// correction below: in a native slot the inverter itself decides the watts,
+	// so "the follower deepened the discharge" would describe a computation
+	// nobody executed. Only a PROVEN mode makes the claim - while the device has
+	// not confirmed it, the reference value IS what the executor writes, so the
+	// honest report is the correction that produced it.
+	if n := snap.Native; n != nil && n.Active && n.Proven {
+		return &cloud.ExecutionSummary{
+			Mode:                 execModeAutonomousDischarge,
+			PlannedKw:            copyFloat(&n.ReferenceKw),
+			EffectiveFloorSocPct: copyFloat(snap.EffectiveFloorSocPct),
+			MeasurementsFresh:    true,
+		}
+	}
 	if a := snap.Absorb; a != nil && a.Active {
 		return &cloud.ExecutionSummary{
 			Mode:      execModeAbsorb,
@@ -2022,6 +2046,13 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 			PossibleConflict       bool   `json:"possible_conflict"`
 			Reason                 string `json:"reason"`
 		} `json:"dual_controller"`
+		// Native is the additive evidence block of the native self-regulation:
+		// Layer 1 states whether it really ran the native primitive and what the
+		// device answered about its own grid-charging configuration. Absent for
+		// every other cycle and for an older Layer-1 build.
+		Native struct {
+			GridChargeBlocked *bool `json:"grid_charge_blocked"`
+		} `json:"native"`
 		Registers []struct {
 			Role         string   `json:"role"`
 			Fc           int      `json:"fc"`
@@ -2066,11 +2097,18 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		ConflictReason:   m.DualController.Reason,
 		Blocked:          m.Blocked,
 		Reason:           m.Reason,
+		Mode:             m.Mode,
 		Verify:           cycle,
 		UnreadRoles:      m.UnreadRoles,
 	}
 	if info.Reason == "" && cycle == controlCycleUnconfirmed {
 		info.Reason = m.VerifyReason
+	}
+	// TRI-STATE, deliberately: nil = "the device did not say", which on an EEG
+	// site counts as NOT proven - a compliance rule may not rest on silence.
+	if m.Native.GridChargeBlocked != nil {
+		v := *m.Native.GridChargeBlocked
+		info.NativeGridChargeBlocked = &v
 	}
 	for _, r := range m.Registers {
 		info.Registers = append(info.Registers, state.ControlRegister{
@@ -2252,6 +2290,9 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// bypasses the certification allowlist so the first real write can prove
 	// sign/scale. Returns true when it handled the tick.
 	if a.calibrationOverride(now, r, limits) {
+		// A bounded First-Light write owns the inverter for its TTL, so no
+		// economic execution mode may carry an armed state across it.
+		a.native.Release()
 		return
 	}
 
@@ -2330,12 +2371,17 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.Trim = nil
 			s.Follow = nil
 			s.Absorb = nil
+			// Without a reading the native supervision cannot supervise at all,
+			// so a previous claim is cleared rather than left standing - the
+			// same rule the three corrections above follow.
+			s.Native = nil
 			s.CarsFirstCapKw = nil
 			s.ExportGuard = exportGuard
 		})
 		a.trim.Release()
 		a.follow.Release()
 		a.absorb.Release()
+		a.native.Release()
 		return
 	}
 
@@ -2591,6 +2637,25 @@ func (a *Agent) applySetpoint(now time.Time) {
 	certSource := a.certSource(family)
 	controlEnabled := a.Cfg.ControlEnabled && certified
 
+	// NATIVE SELF-REGULATION (Selbstregel-Modus, guards/nativemode.go): in a slot
+	// the CLOUD marked worth covering from the battery, hand the SETPOINT itself
+	// back to the inverter's own self-consumption loop instead of writing a
+	// recomputed watt value every 10 s. It runs LAST of the decisions - after
+	// every clamp, every in-slot correction and both peak/export guards - for two
+	// reasons: `kw` is then the REFERENCE the take-back would command on the very
+	// next tick (so a withdrawal is instant, not a recomputation), and the mode
+	// can never be entered on a value the guard chain has not finished with.
+	//
+	// It publishes an INTENT. Layer 1 owns the register knowledge and therefore
+	// the certificate, so it decides whether it CAN, and answers on the control
+	// readback; an intent that is never confirmed is withdrawn after a bounded
+	// grace and the proven follower carries the slot. `kw` is published either
+	// way - unchanged for the executor to write in setpoint mode, and as the
+	// display/take-back reference in native mode.
+	nativeDec, nativeInfo := a.nativeDecide(now, p, r, kw,
+		marketCorrectionsAllowed, controlEnabled, measurementFresh, freshWindow,
+		effectiveFloor, peakTarget, solarOnly)
+
 	msg := map[string]any{
 		"battery_setpoint_kw": kw,
 		"source":              source,
@@ -2621,6 +2686,16 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// protections may not apply in remote mode. Additive; an adapter that ignores
 		// it is unchanged.
 		"soc_max_pct": a.Cfg.SocMaxPct,
+		// battery_mode is ADDITIVE and always present since the native mode
+		// shipped: "setpoint" (write battery_setpoint_kw, the byte-for-byte
+		// pre-feature behaviour) or "native" (do NOT write it - run the
+		// certified native primitive and read the device's state back instead).
+		// An ABSENT field means "setpoint" for a Layer 1 that predates it.
+		"battery_mode": batteryModeSetpoint,
+	}
+	if nativeDec.Native {
+		msg["battery_mode"] = batteryModeNative
+		msg["battery_native_duty"] = nativeDec.Duty
 	}
 	if effectiveFloor != nil {
 		msg["effective_floor_soc_pct"] = *effectiveFloor
@@ -2681,6 +2756,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.Absorb = absorbInfo
 		s.CarsFirstCapKw = carsFirstCap
 		s.ExportGuard = exportGuard
+		s.Native = nativeInfo
 	})
 }
 

@@ -1724,3 +1724,61 @@ test('der Lese-Poll tritt fuer eine Reservierung zurueck - aber nur GEBUNDEN', (
     'der Rueckzug deckt den ganzen Worst Case des Einmal-Auftrags ab');
   assert.ok(/erzwungen/.test(src), 'das Erzwingen bleibt hoerbar');
 });
+
+// --- NATIVE SELF-REGULATION: the inline planner vs. the module ---------------
+//
+// The flow carries an INLINE planner for the generic modbus_tcp tier only (the
+// one its executor can actually execute). The full per-tier primitive lives in
+// inverter-control-routing.js. These two guards keep that split honest: the
+// inline copy must agree with the module on the tier it covers, and it must
+// REFUSE - not improvise - on every tier it does not.
+test('the inline native planner agrees with the module on the generic tier', () => {
+  const { nativeSelfConsumption } = require('./inverter-control-routing');
+  const nat = require('./unplanned-load-native');
+  const sel = {
+    schema_version: '1.0', brand: 'generic_modbus', model: 'sunspec-sim', family: 'sunspec',
+    communication: 'modbus_tcp', control_tier: 1,
+    connection: { ip: '10.0.0.9', port: 502, unit_id: 1, firmware: 'sim' },
+  };
+  const sp = {
+    battery_setpoint_kw: -7.087, control_enabled: true, device_certified: true,
+    grid_charge_allowed: true, battery_mode: 'native', pv_limit_kw: 12.5,
+    ts: new Date().toISOString(), source: 'schedule',
+  };
+  // The SIM tab's selection is a fixed literal, so this drives the AUTO plan node
+  // (which reads flow.inverter_config) with the simulator catalog swapped in - the
+  // ONE substitution, asserted so a changed expression fails loudly.
+  const body = byId['auto-control-plan'].func
+    .replace('__NATIVE.CERTIFIED_NATIVE_CAPABILITIES', '__NATIVE.SIMULATOR_NATIVE_CAPABILITIES');
+  assert.ok(body !== byId['auto-control-plan'].func, 'the catalog expression changed - update this guard');
+  const inline = runFunctionNode(body, { msg: { setpoint: sp }, flow: { inverter_config: sel } }).msg.control;
+  const module_ = nativeSelfConsumption(sel, {
+    controlEnabled: true, deviceCertified: true, solarOnlyCharge: false,
+    catalog: nat.SIMULATOR_NATIVE_CAPABILITIES, pvLimitKw: 12.5,
+  });
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(inline.writes.map((w) => ({ addr: w.addr, value: w.value })))),
+    module_.writes.map((w) => ({ addr: w.addr, value: w.value })),
+    'inline and module must plan the same bytes for the tier they share');
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(inline.readbacks.map((r) => ({ addr: r.addr, expect: r.expect })))),
+    module_.readbacks.map((r) => ({ addr: r.addr, expect: r.expect })),
+    'and the same proof registers');
+});
+
+test('the inline native planner refuses every tier it does not cover', () => {
+  const deye = {
+    schema_version: '1.0', brand: 'deye', model: 'SUN-30K-SG01HP3-EU', family: 'hybrid_3p',
+    communication: 'solarman_v5', control_tier: 3,
+    connection: { ip: '10.0.0.8', port: 8899, serial: 2985159064, firmware: 'V1' },
+  };
+  const sp = {
+    battery_setpoint_kw: -7, control_enabled: true, device_certified: true,
+    grid_charge_allowed: true, battery_mode: 'native',
+    ts: new Date().toISOString(), source: 'schedule',
+  };
+  const out = runFunctionNode(byId['auto-control-plan'].func,
+    { msg: { setpoint: sp }, flow: { inverter_config: deye } }).msg.control;
+  assert.notStrictEqual(out && out.mode, 'native',
+    'an uncovered tier must fall back to the follower, never improvise a sequence');
+});

@@ -330,3 +330,27 @@ Erst danach - und erst nach einer beaufsichtigten Prüfstand-Sitzung nach
 - `FRONIUS.md` §5b - derselbe Lesepfad aus der Fronius-Sicht
 - `edge-app/INVERTER-CONFIG.md` - der Vertrag der retained `edge/inverter/config`
 - `CONTROL-BENCH.md` → KACO - die Prüfstand-Checkliste
+
+## Wechselrichter-Automatik (Selbstregel-Modus)
+
+In einem Slot, den die Wolke als „Verbrauch decken lohnt sich" markiert
+(`cover_load_from_battery` / `unplanned_load_discharge`), darf die Box aufhören,
+alle 10 Sekunden einen Sollwert zu schreiben, und die Regelung dem Gerät selbst
+überlassen. Vertrag + Aufsicht: `docs/contracts/v2/plan-execution-ownership.md`
+und `edge-app/core/internal/guards/nativemode.go`; Prüfstand-Tor:
+[`UNPLANNED-LOAD-BENCH.md`](UNPLANNED-LOAD-BENCH.md).
+
+**Der Schreibplan ist der RELEASE-Plan dieses Tiers plus ein
+Zustands-Rücklesen als BELEG — einmal geschrieben, danach nur noch gelesen.**
+
+| | |
+|---|---|
+| **hinein** | `41104 <- 2` („Eigenverbrauch"). |
+| **heraus** | `41104 <- 4` („Customer defined") + Flag + Leistung + SoC-Grenzen — der gewöhnliche Schreibplan. |
+| **Nachweis** | `41104 == 2`. |
+| **EEG** | AISWEI dokumentiert kein Ladequellen-Register ⇒ auf einer EEG-Anlage wird die Automatik VERWEIGERT. |
+| **Totmann** | ⚠ **KEINER dokumentiert.** Der Failsafe ist UNSERER — und hier fallen Failsafe und nativer Modus zusammen: `41104 <- 2` ist beides. |
+
+**Was der Prüfstand noch beweisen muss:** ALLES. An einem KACO wurde nie etwas
+gemessen; ob `41104` RAM oder EEPROM ist, ist unbekannt (Kriterium 8 misst
+dann auch, wie oft der Modus wechseln darf).
