@@ -41,7 +41,8 @@ cd "$(dirname "$0")/.."
 
 PROJECT="vpedge-e2e-v2-$$"
 COMPOSE=(docker compose -p "$PROJECT" -f docker-compose.yml -f test/docker-compose.e2e.yml -f test/docker-compose.e2e-v2.yml --profile sim)
-export VP_WEB_PORT=28484 VP_NODERED_PORT=21881 VP_BUS_PORT=21884
+# Alle fuenf - siehe die Begruendung in test/e2e-compose.sh.
+export VP_WEB_PORT=28484 VP_NODERED_PORT=21881 VP_BUS_PORT=21884 VP_MIRROR_PORT=21502 VP_OCPP_PORT=28887
 export VP_NODERED_PASSWORD=vp-e2e-v2-editor-pass
 
 TENANT="00000000-0000-0000-0000-000000000001"
@@ -225,6 +226,11 @@ echo "--- build images (plain docker build)"
 docker build -t git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:latest core >/dev/null
 docker build -t git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:latest nodered >/dev/null
 docker build -t git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-sim:latest ../edge/sim >/dev/null
+# Der Stand-in-Broker traegt seine Konfiguration seit 26.08.2026 EINGEBACKEN
+# (test/Dockerfile.broker) - ein Bind-Mount aus dem Workspace funktioniert auf
+# einem containerisierten Runner nicht. Er wird hier mitgebaut, damit `up -d`
+# ohne --build auskommt wie die drei darueber.
+docker build -t voltpilot-edge-e2e-broker:local -f test/Dockerfile.broker test >/dev/null
 
 echo "--- up (project $PROJECT)"
 "${COMPOSE[@]}" up -d

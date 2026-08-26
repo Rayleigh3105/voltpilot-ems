@@ -1,0 +1,24 @@
+# Der Stand-in-Cloud-Broker des E2E-Rigs, mit EINGEBACKENER Konfiguration.
+#
+# ⚠ WARUM NICHT `- ./test/mosquitto.conf:/mosquitto/config/mosquitto.conf`
+# (der Zustand bis zum 26.08.2026, CI-Lauf 281): der Forgejo-Runner faehrt den
+# Job SELBST in einem Container und spricht den Docker-Daemon des HOSTS an. Ein
+# Bind-Mount wird vom DAEMON aufgeloest, also gegen das Dateisystem des Hosts -
+# und dort gibt es den Workspace-Pfad des Jobs nicht. Linux-Docker legt eine
+# fehlende Bind-Quelle als leeres VERZEICHNIS an und scheitert dann daran, ein
+# Verzeichnis auf eine DATEI zu mounten:
+#
+#   error mounting "/workspace/.../test/mosquitto.conf" to
+#   "/mosquitto/config/mosquitto.conf": ... Are you trying to mount a
+#   directory onto a file (or vice-versa)?
+#
+# Ein BUILD-Kontext hat dieses Problem nicht: den streamt der CLI-Client aus
+# SEINEM Dateisystem zum Daemon. Deshalb ist ein winziges Image der Weg, der
+# lokal und auf dem Runner DERSELBE ist - und nicht ein Rueckfall, den nur die
+# kaputte Umgebung faehrt (die Doktrin aus frontend/portal/test/smoke-lib.sh).
+#
+# Bewusst kein compose `configs:` mit `content:` - das braucht Compose >= 2.23,
+# und die Compose-Version des Runners ist nichts, was dieses Rig voraussetzen
+# darf. Die Konfiguration bleibt eine eigene, lesbare Datei.
+FROM eclipse-mosquitto:2
+COPY mosquitto.conf /mosquitto/config/mosquitto.conf
