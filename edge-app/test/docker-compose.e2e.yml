@@ -3,12 +3,38 @@
 # Node-RED -> core -> "cloud") runs isolated with no real cloud stack.
 # Used by test/e2e-compose.sh with its own project name + high ports - never
 # against a live stack.
+#
+# ⚠ KEIN Dienst hier darf einen BIND-MOUNT aus dem Arbeitsverzeichnis tragen.
+# Der Docker-Daemon loest einen Bind gegen SEIN Dateisystem auf; laeuft der Job
+# selbst im Container (Forgejo-Runner), gibt es den Workspace-Pfad dort nicht.
+# Begruendung und die Alternative stehen in Dockerfile.broker.
 services:
   cloud-broker:
-    image: eclipse-mosquitto:2
-    volumes:
-      # Relative to the PROJECT directory (the base compose file's dir).
-      - ./test/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    # Bild statt Bind: die Konfiguration ist eingebacken (Dockerfile.broker).
+    build:
+      # ⚠ Relative Pfade in einer Compose-Datei loesen gegen das PROJEKT-
+      # verzeichnis auf (den Ordner der ERSTEN -f-Datei, also edge-app/), NICHT
+      # gegen den Ordner dieser Datei. Deshalb ./test, nicht . - `dockerfile`
+      # zaehlt danach relativ zum Kontext.
+      context: ./test
+      dockerfile: Dockerfile.broker
+    # Expliziter Name, damit ihn auch test/e2e-v2-compose.sh mit plain
+    # `docker build` vorbauen kann: dieses Rig faehrt `up -d` OHNE --build
+    # (Hosts mit altem buildx koennen `compose build` nicht).
+    image: voltpilot-edge-e2e-broker:local
+
+  # Der OTA-Apply-Sidecar gehoert NICHT in dieses Rig. Er ist kein Glied der
+  # Kette, die hier bewiesen wird (sim -> nodered -> core -> cloud -> Fahrplan
+  # -> Sollwert), und er traegt mit `.:/deploy` genau den Bind-Mount aus dem
+  # Arbeitsverzeichnis, den ein containerisierter Runner nicht aufloesen kann.
+  # Dass er im GERAETE-Compose ohne jedes Profil mitlaeuft, ist Gegenstand von
+  # test/install-selfcheck.sh - nicht dieses Rigs.
+  #
+  # Ein nicht angefordertes Profil ist die einzige Art, einen Dienst aus einem
+  # Overlay heraus wegzulassen: Compose kann einen Dienst der Basisdatei nicht
+  # loeschen, und `volumes: !reset` braeuchte Compose >= 2.24.
+  updater:
+    profiles: ["nicht-im-e2e"]
 
   core:
     depends_on:
