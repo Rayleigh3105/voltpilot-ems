@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -31,11 +32,14 @@ import (
 type transport struct {
 	srv  *Server
 	cs   ocpp16.CentralSystem
-	wsrv ws.WsServer
+	wsrv ws.Server
 	port int
 	path string
 
-	done chan struct{}
+	done         chan struct{}
+	stopServer   func()
+	drainTimeout time.Duration
+	stopping     atomic.Bool
 }
 
 func newTransport(s *Server, port int, path string) *transport {
@@ -46,13 +50,19 @@ func newTransport(s *Server, port int, path string) *transport {
 	timeouts := ws.NewServerTimeoutConfig()
 	timeouts.WriteWait = commandSocketWriteWait
 	upstream.SetTimeoutConfig(timeouts)
-	wsrv := &journalWsServer{WsServer: upstream, journal: s.journal}
+	wsrv := &journalWsServer{Server: upstream, journal: s.journal}
 	cs := ocpp16.NewCentralSystem(nil, wsrv)
-	t := &transport{srv: s, cs: cs, wsrv: wsrv, port: port, path: path, done: make(chan struct{})}
+	t := &transport{
+		srv: s, cs: cs, wsrv: wsrv, port: port, path: path, done: make(chan struct{}),
+		stopServer: cs.Stop, drainTimeout: commandSocketWriteWait + time.Second,
+	}
 
 	// The allowlist gate. Returning false makes the library refuse the
 	// websocket upgrade, so an unregistered station never reaches a handler.
 	cs.SetNewChargingStationValidationHandler(func(id string, _ *http.Request) bool {
+		if t.stopping.Load() {
+			return false
+		}
 		if s.admitted(id) {
 			return true
 		}
@@ -68,15 +78,15 @@ func newTransport(s *Server, port int, path string) *transport {
 }
 
 // journalWsServer decorates exactly the two byte-bearing methods. Embedding
-// keeps the complete ws.WsServer API delegated to the upstream implementation.
+// keeps the complete ws.Server API delegated to the upstream implementation.
 type journalWsServer struct {
-	ws.WsServer
+	ws.Server
 	journal *Journal
 	writeMu sync.Mutex
 }
 
-func (s *journalWsServer) SetMessageHandler(handler func(ws.Channel, []byte) error) {
-	s.WsServer.SetMessageHandler(func(ch ws.Channel, data []byte) error {
+func (s *journalWsServer) SetMessageHandler(handler ws.MessageHandler) {
+	s.Server.SetMessageHandler(func(ch ws.Channel, data []byte) error {
 		s.journal.RecordWire("station_to_csms", ch.ID(), data)
 		return handler(ch, data)
 	})
@@ -88,7 +98,7 @@ func (s *journalWsServer) Write(id string, data []byte) error {
 	// the command gateway's deadline reserve.
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	err := s.WsServer.Write(id, data)
+	err := s.Server.Write(id, data)
 	if err == nil {
 		s.journal.RecordWire("csms_to_station", id, data)
 	}
@@ -143,38 +153,42 @@ func (t *transport) start(ctx context.Context) error {
 }
 
 func (t *transport) stop() {
-	// ocpp-go v0.19 closes and nils its error channel in WsServer.Stop while a
-	// connection's writePump may still report its final close error. Drain every
-	// known socket first and wait until the dependency has removed it; only then
-	// may Stop close that shared channel. This local lifecycle barrier avoids a
-	// dependency fork and leaves command-ledger/reconnect semantics untouched.
+	// Stop admitting reconnects before draining. The post-v0.19 upstream channel
+	// lifecycle serializes Close with websocket cleanup; waiting for every
+	// admitted socket to disappear then also ensures no writePump can report into
+	// errC while Server.Stop closes it. This keeps both closeC and errC owned by
+	// the dependency's synchronized lifecycle, without a local dependency fork.
+	t.stopping.Store(true)
 	t.srv.mu.Lock()
 	ids := make([]string, 0, len(t.srv.chargers))
 	for id := range t.srv.chargers {
 		ids = append(ids, id)
 	}
 	t.srv.mu.Unlock()
-	for _, id := range ids {
-		_ = t.wsrv.StopConnection(id, websocket.CloseError{
-			Code: websocket.CloseNormalClosure,
-			Text: "Edge wird beendet",
-		})
-	}
-	deadline := time.Now().Add(commandSocketWriteWait + time.Second)
+	deadline := time.Now().Add(t.drainTimeout)
+	drained := false
 	for time.Now().Before(deadline) {
 		open := false
 		for _, id := range ids {
-			if t.wsrv.Connections(id) != nil {
+			if _, ok := t.wsrv.GetChannel(id); ok {
 				open = true
-				break
+				_ = t.wsrv.StopConnection(id, websocket.CloseError{
+					Code: websocket.CloseNormalClosure,
+					Text: "Edge wird beendet",
+				})
 			}
 		}
 		if !open {
+			drained = true
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.cs.Stop()
+	if !drained {
+		t.srv.log.Warn("OCPP-WebSockets nicht innerhalb der Drain-Frist beendet; synchronisierter Server-Stop übernimmt",
+			"timeout", t.drainTimeout)
+	}
+	t.stopServer()
 	select {
 	case <-t.done:
 	case <-time.After(3 * time.Second):

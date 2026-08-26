@@ -5484,6 +5484,11 @@ Push, kein anderer Wunsch, kein anderer Text.
   über die vollen 90 Replay-Tage nur aus `quality='good'` semantikabhängig
   gepflegt (Gauge min/max/avg, Counter positive Deltas + Reset,
   State/Error/Bitfield/Text als On-Change-Ereignisse einschließlich Recovery).
+  V20260850000000 trennt historische Sample/Event-FKs vom veränderlichen
+  `device.site_id`; bei einem Geräteumzug bleiben Raw/Event/Rollup am damaligen
+  Standort, und Counter-`lag` beginnt je `(tenant,site,device,point)` neu, damit
+  die erste Zielmessung kein Delta vom Quellstandort erbt. V48/V49 bleiben als
+  bereits preview-fähige Migrationen checksum-immutabel.
   Der Katalog fürs
   Edge und die Metadatenmigration sind generiert; prüfen mit
   `catalog/measurement-points/tools/package_edge_runtime.py --check`.

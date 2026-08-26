@@ -3288,11 +3288,16 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
   `ems/{t}/{s}/{d}/v2/ocpp-events` löscht genau diese Datei. Der Upload-Loop in
   `agent/ocpp.go` ist reine Sichtbarkeit und stellt keinen Downlink/Command-Pfad
   bereit. `Journal.Close` ist die Lifecycle-Barriere gegen verspätete
-  Disconnect-Callbacks beim Shutdown. Davor drainiert `transport.stop` alle
-  bekannten WebSockets bis `ocpp-go` sie aus seinem Connection-Register
-  entfernt hat; erst danach darf v0.19 `WsServer.Stop` seinen ungeschützten
-  Error-Kanal schließen (sonst konkurriert `writePump.error` damit unter
-  `-race`). Diese Reihenfolge nicht auf `Stop()`-direkt zurückbauen.
+  Disconnect-Callbacks beim Shutdown. Davor blockiert `transport.stop` neue
+  Reconnects und drainiert zugelassene WebSockets begrenzt auf
+  `commandSocketWriteWait + 1s`; im Normalpfad sind danach Register und Pumps
+  leer, bei einer nicht kooperierenden Dependency übernimmt der synchronisierte
+  `Server.Stop` als bounded Fallback (niemals eine unbegrenzte Stop-Schleife).
+  Der Core pinnt dazu den ersten
+  offiziellen post-v0.19-Upstream-Stand mit per-Socket-Mutex: v0.19.0 hatte
+  sowohl `writePump.error` gegen `errC`-Close als auch `StopConnection` gegen
+  `cleanupConnection`/`closeC` ungeschützt. Diese Reihenfolge und den Pin nicht
+  auf v0.19.0 oder `Stop()`-direkt zurückbauen.
 - **Ein voller Spool darf nie wie Vollständigkeit aussehen:** Kapazitäts-
   Evictions und Event-Write-/Rename-/Encode-Fehler landen im separaten,
   atomischen `data/ocpp-journal-gaps.json` mit monotonem Gesamtzähler und

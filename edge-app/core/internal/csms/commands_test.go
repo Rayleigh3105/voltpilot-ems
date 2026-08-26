@@ -19,7 +19,7 @@ import (
 )
 
 type writeCountingWsServer struct {
-	ws.WsServer
+	ws.Server
 	writes int
 }
 
