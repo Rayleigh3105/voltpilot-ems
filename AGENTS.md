@@ -4002,13 +4002,32 @@ Test festgenagelt.
   jeder Moduswechsel EEPROM mit ~20 s Latenz.
 - **Generisch für JEDEN fähigen Wechselrichter** (Entscheid 8): Deye Remote,
   Fronius Model 124, KOSTAL PLENTICORE, KACO NH3 haben je ihren Primitive
-  (`nativeSelfConsumption`), **alle vier PLANNED-ONLY** — es wird in diesem PR
-  KEIN Produktiv-Gerät freigegeben. Sequenzen, Beleg-Register und die offenen
+  (`nativeSelfConsumption`). Sequenzen, Beleg-Register und die offenen
   Prüfstand-Punkte: `edge-app/nodered/UNPLANNED-LOAD-BENCH.md` + die vier
   Adapter-Docs.
+- **⚠ SEIT DEM 26.08.2026 IST GENAU EIN GERÄT FREIGEGEBEN: der Deye-Pilot**
+  (Captain-Entscheid „kein separater Prüfstand — der Pilot IST der Prüfstand").
+  Der Katalog-Eintrag hängt an `deye` + der Katalog-Modell-Id
+  `sun-30k-sg01hp3` + der vom GERÄT gesondeten PR-978-Registerlage — **nicht an
+  der Familie, nicht an einem getippten Firmware-String**. Fronius, KOSTAL und
+  KACO bleiben PLANNED-ONLY, jedes andere Deye-Modell und dieselbe Baureihe ohne
+  Fernsteuer-Firmware bleiben beim 10-s-Follower, und der Deye-Interlock ist
+  nicht gefallen, sondern per Eintrag gehoben (`interlockLifted` +
+  `benchRecord`). **Auch mit Freigabe verweigert die Box zur Laufzeit**, wenn die
+  eigene Zeitfenster-Konfiguration des Wechselrichters die Deckung nicht hergibt
+  (`deyeNativePrecondition`; unbekannt = Verweigerung). Bindung, Belege und die
+  Beobachtungs-Checkliste für den ersten Decken-Slot:
+  `edge-app/nodered/UNPLANNED-LOAD-BENCH.md` „Pilot-Freigabe 2026-08-26".
 - Edge-Details (die Beweis-Schleife, Rücknahme-vs-Verweigerung, die EEG-Regel,
   der Simulator-Katalog, der Not-Aus): `edge-app/CLAUDE.md`
   „Wechselrichter-Automatik".
+- **⚠ Die Freigabe ist die BEDINGUNG, noch nicht die Wirkung (Stand 26.08.2026):**
+  der Deye-AUSFÜHRUNGSPFAD fehlt weiterhin — der Flow-Planknoten
+  (`build-flows.js nativePlanGeneric`) deckt nur den generischen
+  `modbus_tcp`-Tier ab, und der Deye-Executor liest den `gridChargeProof` nicht
+  zurück. Bis beides steht, fällt der Pilot im Decken-Slot auf die
+  10-Sekunden-Nachführung und der Kern zieht seine Absicht nach der
+  Nachweisfrist zurück (`nachweis_fehlt`) — sichtbar, nie stumm.
 - **Ops:** keine neue Pflicht-Variable, keine Migration, keine Cloud-Änderung.
   `VP_NATIVE_SELF_REGULATION_ENABLED` (Vorgabe AN, Opt-out) ist der Not-Aus je
   Box. Die Edge-Hälfte reist mit dem nächsten Edge-Release.

@@ -688,5 +688,22 @@ EEPROM-Schreibvorgang mit ~20 s Richtungs-Latenz und Snapshot/Restore-Pflicht �
 „nativ" kostete dort Schreibzyklen und brächte weder Latenz- noch
 Socket-Gewinn. Diese Geräte behalten die 10-Sekunden-Nachführung.
 
+**Freigegeben seit dem 26.08.2026 – für GENAU EIN Modell.** Captain-Entscheid:
+„kein separater Prüfstand – der Deye-Pilot IST der Prüfstand". Der Katalog-Eintrag
+(`unplanned-load-native.js`) hängt an `deye` + der Katalog-Modell-Id
+**`sun-30k-sg01hp3`** + der vom GERÄT gesondeten **PR-978-Registerlage** – nicht an
+der Familie und nicht an einem getippten Firmware-String. Jedes andere Deye-Modell
+und dieselbe Baureihe ohne Fernsteuer-Firmware behalten die 10-Sekunden-Nachführung.
+
+**⚠ Auch mit der Freigabe verweigert die Box, wenn die eigene Konfiguration des
+Wechselrichters die Deckung nicht hergibt** (`deyeNativePrecondition`, vor der
+Übergabe gelesen): Zeitfenster-Programm nicht aktiv (`0x0092` Bit 0 – ohne ToU
+entlädt der Wechselrichter laut Handbuch nicht in die Hausanschlüsse),
+Ziel-Ladeniveau (`0x00A6`) über der Reserve-Untergrenze der Anlage, oder auf einer
+EEG-Anlage eine Program-1-Charging-Enum (`0x00AC`) ungleich `Disabled`. Unbekannt
+zählt als Verweigerung.
+
 **Was der Prüfstand noch beweisen muss:** die Latenz beider Übergänge (Kriterium 8),
-dass `1100` in beiden Zuständen wirklich unterscheidet (9) und der EEG-Beleg (10).
+dass `1100` in beiden Zuständen wirklich unterscheidet (9) und der EEG-Beleg (10) –
+am PILOTEN, im ersten Decken-Slot. Die Beobachtungs-Checkliste dafür steht in
+[`UNPLANNED-LOAD-BENCH.md`](UNPLANNED-LOAD-BENCH.md) „Pilot-Freigabe 2026-08-26".

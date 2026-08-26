@@ -4033,11 +4033,39 @@ Wechselrichters. **Kein Vertragsfeld** — die Wolke sagt längst, OB Decken
   Adapter auseinander, wurde an diesem Gerät nichts gemessen ⇒ Verweigerung. Der
   Deye-Interlock fällt nur per Eintrag, mit `interlockLifted: 'deye'` UND einem
   benannten `benchRecord` — nie durch Löschen des Zweigs.
-- **⚠ Der EINZIGE nicht-leere Katalog ist `SIMULATOR_NATIVE_CAPABILITIES`, und er
-  zertifiziert SOFTWARE.** Sein Tripel (`generic_modbus` / `sunspec-sim` / `sim`)
-  kann nur den Simulator treffen, und er ist ausschliesslich im SIMULATOR-Tab
-  verdrahtet (dessen Auswahl ein fester Literal ist). Der Auto-Tab reicht den
-  PRODUKTIONS-Katalog durch, der leer ist.
+- **⚠ `SIMULATOR_NATIVE_CAPABILITIES` zertifiziert SOFTWARE, nie ein Gerät.** Sein
+  Tripel (`generic_modbus` / `sunspec-sim` / `sim`) kann nur den Simulator treffen,
+  und er ist ausschliesslich im SIMULATOR-Tab verdrahtet (dessen Auswahl ein
+  fester Literal ist). Der Auto-Tab reicht den PRODUKTIONS-Katalog durch.
+- **⚠ DER PRODUKTIONS-KATALOG TRÄGT SEIT DEM 26.08.2026 GENAU EINEN EINTRAG: den
+  Deye-Piloten** (Captain-Entscheid „kein separater Prüfstand — der Pilot IST der
+  Prüfstand"). Gebunden an `deye` + die KATALOG-MODELL-ID `sun-30k-sg01hp3` + die
+  vom GERÄT gesondete PR-978-Registerlage — **nicht an die Familie und nicht an
+  einen getippten Firmware-String**: `nativeSelectionKey` nimmt die
+  `firmwareEvidence` des Tiers (`DEYE_REMOTE_PR978_FIRMWARE`) VOR
+  `connection.firmware`, also stoppt ein Firmware-Update, das den Block 1100-1121
+  entfernt, die Freigabe von selbst, und ein alter String im gespeicherten
+  Verbindungssatz kann sie weder erschleichen noch blockieren. Der Deye-Interlock
+  ist damit NICHT gefallen — er ist per Eintrag gehoben (`interlockLifted` +
+  `benchRecord`), jedes andere Deye-Modell fällt weiter durch ihn.
+- **⚠ Und die Freigabe allein reicht nicht: `deyeNativePrecondition` verweigert
+  zur LAUFZEIT**, wenn die EIGENE Konfiguration des Wechselrichters die Deckung
+  nicht hergibt — Zeitfenster-Programm nicht aktiv (Deye-Handbuch: ohne ToU
+  entlädt er nicht in die Hausanschlüsse), Ziel-Ladeniveau über der
+  Reserve-Untergrenze, oder auf einer EEG-Anlage eine Program-1-Charging-Enum
+  ungleich `Disabled`. **Unbekannt zählt als Verweigerung** — die Aufsicht könnte
+  diesen Fall nicht fangen (das Gerät meldet den Modus korrekt, es deckt nur
+  nicht). Die Registerliste dafür steht als `preconditions` auf dem Ergebnis: ein
+  Executor liest sie VOR der Übergabe und reicht die Werte als `deyeOwnConfig`
+  zurück.
+- **⚠ NOCH NICHT ANGESCHLOSSEN (Stand 26.08.2026): der Deye-Ausführungspfad.**
+  Der Plan-Knoten (`build-flows.js nativePlanGeneric`) deckt nur den generischen
+  `modbus_tcp`-Tier ab und gibt für `solarman_v5` `null` zurück; der
+  Deye-Executor liest `gridChargeProof` nicht zurück. Der Pilot fällt deshalb im
+  Decken-Slot weiterhin auf die 10-Sekunden-Nachführung und der Kern zieht seine
+  Absicht nach der Nachweisfrist zurück (`nachweis_fehlt`). Die Freigabe ist die
+  Bedingung, nicht die Wirkung — die zwei fehlenden Stücke stehen in
+  `nodered/UNPLANNED-LOAD-BENCH.md` „Pilot-Freigabe 2026-08-26".
 - **Der Simulator hat dafür ein Eigenverbrauchs-Modell bekommen**
   (`edge/sim/sunspec-sim.js`): bei `setpoint_enable = 0` folgt die Batterie
   `pv - load`, sonst dem Sollwert. Vorher gehorchte er ewig dem letzten Wert und

@@ -57,6 +57,9 @@
 const deyeDecode = require('./deye/deye-decode');
 const sunspec = require('./sunspec/model-discovery');
 const unplannedNative = require('./unplanned-load-native');
+// The firmware CONDITION the Deye pilot certificate is keyed on - imported, never
+// re-spelled here, so adapter and certificate can never disagree about the key.
+const DEYE_REMOTE_PR978_FIRMWARE = unplannedNative.DEYE_REMOTE_PR978_FIRMWARE;
 
 const COMM_SOLARMAN = 'solarman_v5';
 const COMM_MODBUS = 'modbus_tcp';
@@ -855,10 +858,14 @@ function controlRelease(selection, opts = {}) {
  *       moves into the device the moment we stop commanding (scout risk 2, the
  *       dualControllerSignal pattern). A tier with no such register REFUSES on an
  *       EEG site rather than hoping.
+ *     - deyeOwnConfig / effectiveFloorSocPct: the device's own Time-of-Use
+ *       configuration (as read via `preconditions`) and the platform's reserve
+ *       floor - the RUNTIME refusal on the Deye tier, see deyeNativePrecondition.
+ *       Absent = refused, never assumed.
  *
  * Returns { adapter, family, tier, mode:'native', supported, certified,
  *           controlEnabled, target, connection, writes, readbacks, observations,
- *           planned, plannedReadbacks, gridChargeProof, reason }.
+ *           planned, plannedReadbacks, preconditions, gridChargeProof, reason }.
  */
 function nativeSelfConsumption(selection, opts = {}) {
   const controlEnabled = opts.controlEnabled === true;
@@ -867,7 +874,8 @@ function nativeSelfConsumption(selection, opts = {}) {
   const idle = (reason) => ({
     adapter: 'idle', family: '', tier: CONTROL_TIER.READ_ONLY, mode: 'native',
     supported: false, certified: false, controlEnabled,
-    writes: [], readbacks: [], observations: [], planned: [], plannedReadbacks: [], reason,
+    writes: [], readbacks: [], observations: [], planned: [], plannedReadbacks: [],
+    preconditions: [], reason,
   });
   if (!selection) return idle('keine Auswahl');
   const conn = selection.connection || {};
@@ -896,6 +904,9 @@ function nativeSelfConsumption(selection, opts = {}) {
     planned: built.planned, plannedReadbacks: built.readbacks,
     gridChargeProof: built.gridChargeProof || null,
     proofKind: built.proofKind || 'register',
+    // What an executor must READ from the device BEFORE the hand-over. Empty on
+    // every tier whose own configuration cannot make the hand-over meaningless.
+    preconditions: built.preconditions || [],
   };
 
   // EEG: the ban on grid charging moves into the DEVICE's own configuration the
@@ -914,7 +925,7 @@ function nativeSelfConsumption(selection, opts = {}) {
     return out;
   }
 
-  const capability = unplannedNative.exactCapability(nativeSelectionKey(selection), catalog);
+  const capability = unplannedNative.exactCapability(nativeSelectionKey(selection, built), catalog);
   if (!capability) {
     out.reason = 'Wechselrichter-Automatik für dieses Modell noch nicht am Prüfstand freigegeben';
     return out;
@@ -926,6 +937,18 @@ function nativeSelfConsumption(selection, opts = {}) {
     out.reason = 'Prüfstand-Freigabe und Schreibplan stimmen nicht überein - Freigabe erneuern';
     return out;
   }
+  // ⚠ LAST GATE, and deliberately AFTER the certificate: the certificate answers
+  // "can this model+firmware do it", the precondition answers "will THIS
+  // customer's configuration actually cover the house once we let go". Ordering
+  // it here also keeps the honest "not bench-released yet" reason for every
+  // device that has no certificate at all.
+  if (built.precondition) {
+    const refusal = built.precondition(opts);
+    if (refusal) {
+      out.reason = refusal;
+      return out;
+    }
+  }
   out.writes = built.planned.map((w) => ({ ...w })).concat(built.extraWrites || []);
   out.readbacks = built.readbacks.map((r) => ({ ...r })).concat(built.extraReadbacks || []);
   out.certificate = { brand: capability.brand, model: capability.model, firmware: capability.firmware,
@@ -935,17 +958,95 @@ function nativeSelfConsumption(selection, opts = {}) {
 
 /**
  * nativeSelectionKey - the (brand, model, firmware) triple the certificate is
- * keyed on. The firmware string is what the operator recorded at the bench; a
- * selection without one can never match an exact certificate, which is the
- * intended fail-closed behaviour (a firmware update may remove the very
- * behaviour that was measured).
+ * keyed on. `model` is the CATALOG MODEL ID the core publishes on
+ * edge/inverter/config (inverter.go `Selection.Model`, e.g. 'sun-30k-sg01hp3'),
+ * never a free-text label.
+ *
+ * ⚠ THE FIRMWARE HAS TWO SOURCES, AND THE DEVICE'S OWN ANSWER WINS. A tier that
+ * can DETECT its firmware capability states it as `firmwareEvidence`
+ * (Deye remote: the probed PR-978 layout) - on such a family an operator-typed
+ * string is not evidence and must not be able to claim a certificate. Everything
+ * else falls back to the recorded `connection.firmware`; a selection with
+ * neither can never match an exact certificate, which is the intended
+ * fail-closed behaviour (a firmware update may remove the very behaviour that
+ * was measured).
  */
-function nativeSelectionKey(selection) {
+function nativeSelectionKey(selection, built) {
   return {
     brand: selection.brand,
     model: selection.model,
-    firmware: (selection.connection && selection.connection.firmware) || selection.firmware,
+    firmware: (built && built.firmwareEvidence)
+      || (selection.connection && selection.connection.firmware) || selection.firmware,
   };
+}
+
+/**
+ * deyeNativePrecondition - the RUNTIME refusal that stands BETWEEN a released
+ * certificate and an actual hand-over on a Deye.
+ *
+ * ⚠ WHY IT EXISTS: the certificate says "this model+firmware executes the
+ * primitive correctly". It cannot say what the CUSTOMER's inverter is configured
+ * to do afterwards - and on a Deye that decides whether letting go produces a
+ * covering mode at all (see the `preconditions` comment in nativeForTier). The
+ * supervision cannot catch this one: a device that runs but never covers still
+ * reports `native` on its state register, so the core would see a PROVEN mode
+ * while the house quietly imports.
+ *
+ * Fail-closed by construction: `cfg` absent or incomplete is a REFUSAL, never an
+ * assumption ("lieber verweigern als blind umschalten"). Every reason is German
+ * and names what the operator has to look at.
+ *
+ *   cfg: { tou_enable, program_target_soc, program_charge_enable } - raw register
+ *        values, as read from the device
+ *   floorPct: the platform's effective reserve floor (null = unknown)
+ *   solarOnly: the site's EEG posture
+ *
+ * Returns null when the device may be let go, else the German reason.
+ */
+function deyeNativePrecondition(cfg, { floorPct, solarOnly } = {}) {
+  // ⚠ Number(null) and Number('') are BOTH 0, so a MISSING register would read as
+  // a real zero and produce the wrong sentence ("Programm nicht aktiv" instead of
+  // "nicht gelesen"). Both refuse, but only one of them tells the operator the
+  // truth - so an absent value is never coerced.
+  const reg = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN);
+  if (!cfg || typeof cfg !== 'object') {
+    return 'Die eigene Konfiguration des Wechselrichters ist nicht bekannt - es wird nicht umgeschaltet';
+  }
+  const tou = reg(cfg.tou_enable);
+  if (!Number.isFinite(tou)) {
+    return 'Das Zeitfenster-Programm des Wechselrichters konnte nicht gelesen werden - es wird nicht umgeschaltet';
+  }
+  // Bit 0 is "Enabled"; the weekday bits above it say WHEN. Without the enable
+  // bit the manual is unambiguous: the inverter will not discharge to the loads.
+  if ((tou & DEYE_TOU_ENABLE_BIT) === 0) {
+    return 'Das Zeitfenster-Programm (Time of Use) des Wechselrichters ist nicht aktiv - '
+      + 'ohne es deckt er laut Handbuch nicht den Hausverbrauch aus der Batterie';
+  }
+  const targetSoc = reg(cfg.program_target_soc);
+  if (!Number.isFinite(targetSoc) || targetSoc < 0 || targetSoc > 100) {
+    return 'Das Ziel-Ladeniveau des Zeitfenster-Programms konnte nicht gelesen werden - es wird nicht umgeschaltet';
+  }
+  // The device stops discharging at ITS target SoC. If that sits above our
+  // reserve floor the inverter would end the covering earlier than the
+  // supervision expects - and nothing would report it, because the mode itself
+  // stays correct. An unknown floor cannot be judged, so it refuses too.
+  const floor = reg(floorPct);
+  if (!Number.isFinite(floor)) {
+    return 'Die Reserve-Untergrenze der Anlage ist nicht bekannt - es wird nicht umgeschaltet';
+  }
+  if (targetSoc > floor) {
+    return 'Das Ziel-Ladeniveau des Zeitfenster-Programms (' + targetSoc + ' %) liegt über der '
+      + 'Reserve-Untergrenze der Anlage (' + floor + ' %) - der Wechselrichter würde '
+      + 'die Deckung zu früh beenden';
+  }
+  if (solarOnly === true) {
+    const charge = reg(cfg.program_charge_enable);
+    if (!Number.isFinite(charge) || charge !== DEYE_PROG_CHARGE.DISABLED) {
+      return 'EEG-Anlage: das Zeitfenster-Programm des Wechselrichters erlaubt das Laden aus dem Netz '
+        + '- es wird nicht umgeschaltet';
+    }
+  }
+  return null;
 }
 
 // nativeForTier builds the per-tier primitive: the release write list PLUS the
@@ -960,7 +1061,13 @@ function nativeForTier({ selection, conn, ip, family, tier, comm, opts }) {
       (opts && opts.deye && typeof opts.deye === 'object') ? opts.deye : null,
       (opts && opts.deyeSticky && typeof opts.deyeSticky === 'object') ? opts.deyeSticky : null);
     const remoteOff = conn.remote_mode === 'off' || conn.remote_mode === false;
-    if (remoteOff || !reg || deyeControlPath(cap) !== DEYE_PATH_REMOTE) {
+    // ⚠ THE LAYOUT IS PART OF THE GATE, not only the path. `supported` is already
+    // false for the older v105_1 layout, but stating it here is what makes the
+    // certificate's firmware key (DEYE_REMOTE_PR978_FIRMWARE) a MEASURED fact
+    // rather than an assumption: this branch only ever hands the key out for the
+    // register layout the adapter actually writes.
+    const pr978 = cap && cap.layout === DEYE_REMOTE_LAYOUT_PR978;
+    if (remoteOff || !reg || deyeControlPath(cap) !== DEYE_PATH_REMOTE || !pr978) {
       // ⚠ Deye ToU: no native primitive, and that is a decision, not a gap. Every
       // mode change there is an EEPROM write with ~20 s direction latency and a
       // snapshot/restore duty, so handing over and taking back would cost more
@@ -994,6 +1101,29 @@ function nativeForTier({ selection, conn, ip, family, tier, comm, opts }) {
       // "Disabled" (0) is the readable proof that it will not charge from grid.
       gridChargeProof: { role: 'grid_charge_enable', fc: 3,
         addr: reg.progChargeBase + DEYE_CONTROL_SLOT, expect: DEYE_PROG_CHARGE.DISABLED, tolerance: 0 },
+      // ⚠ THE FIRMWARE KEY IS THE DEVICE'S OWN ANSWER, never an operator string.
+      // See DEYE_REMOTE_PR978_FIRMWARE in unplanned-load-native.js: the probe
+      // classified this register layout, the sticky decision holds it, and a
+      // firmware that loses the block stops matching by itself.
+      firmwareEvidence: DEYE_REMOTE_PR978_FIRMWARE,
+      // ⚠ WHAT THE DEVICE'S OWN CONFIGURATION MUST SAY BEFORE WE LET GO. Deye's
+      // manual (SUN-29.9..50K-SG01HP3-EU-BM3/BM4, 2025-08-19) is explicit: "When
+      // ... 'Time Of Use' is not enabled, the inverter can charge normally, but
+      // only discharge to provide the inverter's self-consumption power, without
+      // discharging to power the loads." So on THIS family "stop commanding" only
+      // produces a COVERING mode when the device's own Time-of-Use program is
+      // armed and permits discharging down past the platform's reserve floor.
+      // The adapter is pure, so these are READ SPECS - an executor performs them
+      // BEFORE the hand-over and passes the values back as opts.deyeOwnConfig.
+      preconditions: [
+        { role: 'tou_enable', fc: 3, addr: reg.touEnable },
+        { role: 'program_target_soc', fc: 3, addr: reg.progSocBase + DEYE_CONTROL_SLOT },
+        { role: 'grid_charge_enable', fc: 3, addr: reg.progChargeBase + DEYE_CONTROL_SLOT },
+      ],
+      precondition: (o) => deyeNativePrecondition(o && o.deyeOwnConfig, {
+        floorPct: o && o.effectiveFloorSocPct,
+        solarOnly: o && o.solarOnlyCharge === true,
+      }),
     };
   }
   if (tier === CONTROL_TIER.VENDOR_EMS && comm === COMM_KOSTAL) {
@@ -1564,6 +1694,8 @@ const DEYE_ENERGY_PATTERN = { BATTERY_FIRST: 0, LOAD_FIRST: 1 };
 const DEYE_SOLAR_SELL = { OFF: 0, ON: 1 };
 // "Time of Use" enable: 0x00FF = "Week" (all 7 weekday bits) with bit0 = Enabled.
 const DEYE_TOU_ENABLED_ALL_WEEK = 0x00ff;
+// bit0 of that register is the ENABLE itself; the bits above it are the weekdays.
+const DEYE_TOU_ENABLE_BIT = 0x0001;
 // "Program N Charging" enum: Disabled / Grid / Generator / Both.
 const DEYE_PROG_CHARGE = { DISABLED: 0, GRID: 1, GENERATOR: 2, BOTH: 3 };
 // VoltPilot drives ONE live ToU program slot (Program 1, zero-based index 0).
@@ -1665,6 +1797,11 @@ const DEYE_DEVICE_TYPES_LV = [0x0005, 0x0500]; // ha-solarman mod 0 -> scale 1
 const DEYE_DEVICE_TYPES_HV = [0x0006, 0x0007, 0x0600, 0x0008, 0x0601]; // mod 1 -> scale 10
 
 const DEYE_REMOTE_MODE = { OFF: 0, ON: 1 };
+// The register layout `classifyDeyeCapability` names when the block is the PR #978
+// one (mode selector 1104, strategy 1105, SIGNED power setpoint 1109) - the ONLY
+// layout this adapter writes, and therefore the only one whose firmware may key a
+// native-mode certificate.
+const DEYE_REMOTE_LAYOUT_PR978 = 'pr978';
 const DEYE_POWER_CONTROL_MODE = { AC_SIDE: 0, BATTERY_SIDE: 1, GRID_SIDE: 2 };
 const DEYE_BATTERY_STRATEGY = {
   VOLTAGE: 0, CURRENT: 1, POWER: 2, SOC: 3, VOLT_CURRENT: 4, POWER_SOC: 5,
@@ -1799,7 +1936,7 @@ function classifyDeyeCapability(probe) {
   const modeOk = inRange(mode, 0, 3);
   const wdOk = plausibleWatchdog(wd);
   if (modeOk && wdOk && inRange(at(1104), 0, 2) && inRange(at(1105), 0, 5)) {
-    out.present = true; out.layout = 'pr978'; out.supported = true; out.path = DEYE_PATH_REMOTE;
+    out.present = true; out.layout = DEYE_REMOTE_LAYOUT_PR978; out.supported = true; out.path = DEYE_PATH_REMOTE;
     out.reason = 'Fernsteuerung (Remote Mode) verfügbar';
     return out;
   }
@@ -1914,7 +2051,7 @@ function deyeEffectiveCap(cap, sticky) {
   if (s.path === DEYE_PATH_REMOTE) {
     return {
       present: true, supported: true, path: DEYE_PATH_REMOTE,
-      layout: (s.verdict && s.verdict.layout) || 'pr978', scaleClass,
+      layout: (s.verdict && s.verdict.layout) || DEYE_REMOTE_LAYOUT_PR978, scaleClass,
       definitive: true, sticky: true,
       reason: 'Fernsteuerung (Remote Mode) - nachgewiesener Steuerpfad dieses Geräts',
     };
@@ -2635,6 +2772,7 @@ module.exports = {
   controlRoute,
   controlRelease,
   nativeSelfConsumption,
+  deyeNativePrecondition,
   setpointStale,
   dualControllerSignal,
 };
