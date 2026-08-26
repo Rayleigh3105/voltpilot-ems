@@ -46,6 +46,7 @@ const byId = Object.fromEntries(flows.map((n) => [n.id, n]));
 // records every flow.set as {k, v} so a test can prove a key was NEVER set.
 async function runFunctionNode(func, {
   msg = {}, flow = {}, sends = [], warns = [], logs = [], ctx = {}, flowLog = null,
+  clock = Date,
 } = {}) {
   const sandbox = {
     msg,
@@ -62,12 +63,38 @@ async function runFunctionNode(func, {
       set: (k, v) => { if (flowLog) flowLog.push({ k, v }); flow[k] = v; },
     },
     global: { get: (k) => (k === 'net' ? net : (k === 'vpSharedBusArbiter' ? sharedBus : undefined)) },
-    Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, Map,
+    // The node's clock is INJECTED (default: the real Date). Every flow test
+    // already hands the vm context its own `Date` binding - that existing seam
+    // is what lets a test state an elapsed-budget fact instead of racing a
+    // timer for it; see testClock() and the HANG-path test.
+    Buffer, Date: clock, Math, isFinite, Number, Array, Object, JSON, Promise, Map,
     setTimeout, clearTimeout,
   };
   const script = new vm.Script('(function(){' + func + '\n})()');
   const ret = script.runInContext(vm.createContext(sandbox));
   return ret && typeof ret.then === 'function' ? await ret : ret;
+}
+
+// testClock - a Date the node reads, offset from the real one by an amount the
+// test controls. REAL durations are untouched: every timer, socket timeout and
+// wall-clock assertion in this file keeps using the real Date; only the clock
+// INSIDE the vm sandbox jumps.
+//
+// WHY (measured, 2026-08-26): the executor caps a hung op to the REMAINING
+// cycle budget, so against a never-answering gateway the op expires EXACTLY on
+// the deadline - and whether the NEXT unit then sees `Date.now() > deadlineAt`
+// is a sub-millisecond coin flip (a libuv timer may fire a hair before
+// `Date.now()` reaches its due time). Under CPU load it loses: the next unit
+// slips past the budget check and does a second op on the OP_TIMEOUT_MIN_MS
+// floor, so the "Zeitbudget erschoepft" cause never appears. Widening the
+// budget only moves the tie; stating the elapsed time removes it.
+function testClock() {
+  let offset = 0;
+  class ShiftedDate extends Date {
+    constructor(...args) { if (args.length === 0) super(Date.now() + offset); else super(...args); }
+    static now() { return Date.now() + offset; }
+  }
+  return { Date: ShiftedDate, advance(ms) { offset += ms; } };
 }
 
 // A Modbus-TCP gateway over per-unit register images: FC3 reads + FC6 writes
@@ -93,7 +120,7 @@ async function runFunctionNode(func, {
 //            that only speaks FC6), so the flip-back has something to fail on.
 function startGateway(imgByUnit, {
   hang = false, swallow = false, revertMs = 0, revert = {}, enaQuirk = 0,
-  transactionalOnly = false, fc16 = 'accept',
+  transactionalOnly = false, fc16 = 'accept', onRequest = null,
 } = {}) {
   return new Promise((resolve) => {
     let connections = 0;
@@ -103,7 +130,16 @@ function startGateway(imgByUnit, {
     const blockWrites = [];
     const server = net.createServer((sock) => {
       connections++;
-      if (hang) return; // accept, never answer
+      if (hang) {
+        // Accept, DRAIN, never answer - a half-dead Datamanager still reads
+        // its socket. Draining is inert for the reply path (there is none) and
+        // gives a test the one causal hook it needs: "the request is on the
+        // wire". `onRequest` is optional; every hang test without it behaves
+        // exactly as before.
+        sock.on('error', () => {});
+        if (onRequest) sock.on('data', () => { onRequest(); });
+        return;
+      }
       let acc = Buffer.alloc(0);
       sock.on('error', () => {});
       sock.on('data', (chunk) => {
@@ -267,17 +303,17 @@ function curtailSetpoint(port, sourceIds, over) {
 // Run the real chain: sources-store over the source list, then
 // sources-curtail-plan over the setpoint (its returned msg carries the fleet,
 // exactly what the wire delivers), then sources-curtail-exec.
-async function runExec({ sources, setpoint, flow, ctx, flowLog }) {
+async function runExec({ sources, setpoint, flow, ctx, flowLog, clock = Date }) {
   const sends = [];
   const warns = [];
   const logs = [];
-  await runFunctionNode(byId['sources-store'].func, { msg: { payload: sources }, flow, sends: [], warns: [], logs: [] });
+  await runFunctionNode(byId['sources-store'].func, { msg: { payload: sources }, flow, sends: [], warns: [], logs: [], clock });
   const planned = await runFunctionNode(byId['sources-curtail-plan'].func, {
-    msg: { setpoint }, flow, sends: [], warns: [], logs: [],
+    msg: { setpoint }, flow, sends: [], warns: [], logs: [], clock,
   });
   assert.ok(planned && planned.curtailFleet, 'the plan node produced a fleet');
   await runFunctionNode(byId['sources-curtail-exec'].func, {
-    msg: planned, flow, sends, warns, logs, ctx, flowLog,
+    msg: planned, flow, sends, warns, logs, ctx, flowLog, clock,
   });
   return { sends: sends.map((m) => m.payload), warns, logs };
 }
@@ -425,7 +461,23 @@ test('REFUSAL path: gateway unreachable - blocked publish, claim still released'
 test('HANG path: a never-answering gateway ends inside the time budget, claim released, causes published', async () => {
   const img1 = unitImage(25);
   const img2 = unitImage(30);
-  const gw = await startGateway({ 1: img1, 2: img2 }, { hang: true });
+  // Unit 2's refusal must be a FACT, not a race. The executor caps a hung op to
+  // the remaining budget, so unit 1's write expires exactly ON the deadline and
+  // unit 2's `Date.now() > deadlineAt` decides on a hair (measured under CPU
+  // load: it loses, unit 2 then does a second floor-timeout op and the exhausted
+  // budget never gets named). So the node's clock jumps once the hung write is
+  // on the wire - AFTER unit 1's op timeout was computed and armed, so unit 1
+  // still burns its full real 1200 ms and still fails with the socket 'Timeout'.
+  // Real time is untouched; the `took` bound below still measures the wall clock.
+  // Any jump larger than the remaining budget makes unit 2's refusal
+  // unambiguous; 5 s leaves ~4 s of slack over the 1.2 s budget.
+  const CLOCK_JUMP_MS = 5000;
+  const clock = testClock();
+  let bumped = false;
+  const gw = await startGateway({ 1: img1, 2: img2 }, {
+    hang: true,
+    onRequest: () => { if (!bumped) { bumped = true; clock.advance(CLOCK_JUMP_MS); } },
+  });
   try {
     const flow = {
       curtail_deadline_ms: 1200, // test-only override (sv5_acquire_ms precedent)
@@ -437,9 +489,10 @@ test('HANG path: a never-answering gateway ends inside the time budget, claim re
     const { sends, warns } = await runExec({
       sources: [froniusSource('src-a', gw.port, 1), froniusSource('src-b', gw.port, 2)],
       setpoint: curtailSetpoint(gw.port, ['src-a', 'src-b']),
-      flow, ctx: {}, flowLog,
+      flow, ctx: {}, flowLog, clock: clock.Date,
     });
     const took = Date.now() - started;
+    assert.ok(bumped, 'the hung write reached the gateway (the clock hook fired)');
     assert.ok(took < 6000, 'the cycle is bounded by the budget (took ' + took + ' ms)');
     assert.strictEqual(flow[claimKey(gw.port)], 0, 'claim released on the hang path');
     assert.ok(sends.some((p) => p.blocked && p.reason.includes('Schreiben fehlgeschlagen')),
