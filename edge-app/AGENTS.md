@@ -3293,6 +3293,11 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
   `commandSocketWriteWait + 1s`; im Normalpfad sind danach Register und Pumps
   leer, bei einer nicht kooperierenden Dependency übernimmt der synchronisierte
   `Server.Stop` als bounded Fallback (niemals eine unbegrenzte Stop-Schleife).
+  Auch `StopConnection` selbst darf nicht inline in der Deadline-Schleife
+  liegen: genau ein Close-Worker versucht alle Sockets einmal, die Hauptroutine
+  prüft unabhängig ihre monotone Frist, ruft dann den synchronisierten Fallback
+  auf und joint den Worker wiederum begrenzt. So kann ein Mutex-stauender Close
+  weder die Frist umgehen noch pro Poll neue Shutdown-Goroutinen erzeugen.
   Der Core pinnt dazu den ersten
   offiziellen post-v0.19-Upstream-Stand mit per-Socket-Mutex: v0.19.0 hatte
   sowohl `writePump.error` gegen `errC`-Close als auch `StopConnection` gegen

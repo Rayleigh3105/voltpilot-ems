@@ -158,6 +158,9 @@ func (t *transport) stop() {
 	// admitted socket to disappear then also ensures no writePump can report into
 	// errC while Server.Stop closes it. This keeps both closeC and errC owned by
 	// the dependency's synchronized lifecycle, without a local dependency fork.
+	// StopConnection itself may wait on that lifecycle mutex, so run one bounded
+	// worker for all sockets rather than letting an inline call defeat the drain
+	// deadline or spawning a new goroutine on every poll.
 	t.stopping.Store(true)
 	t.srv.mu.Lock()
 	ids := make([]string, 0, len(t.srv.chargers))
@@ -165,30 +168,57 @@ func (t *transport) stop() {
 		ids = append(ids, id)
 	}
 	t.srv.mu.Unlock()
-	deadline := time.Now().Add(t.drainTimeout)
+	closeDone := make(chan struct{})
+	go func() {
+		defer close(closeDone)
+		for _, id := range ids {
+			if _, ok := t.wsrv.GetChannel(id); !ok {
+				continue
+			}
+			_ = t.wsrv.StopConnection(id, websocket.CloseError{
+				Code: websocket.CloseNormalClosure,
+				Text: "Edge wird beendet",
+			})
+		}
+	}()
+
+	drainTimer := time.NewTimer(t.drainTimeout)
+	drainTicker := time.NewTicker(5 * time.Millisecond)
+	defer drainTimer.Stop()
+	defer drainTicker.Stop()
 	drained := false
-	for time.Now().Before(deadline) {
+drain:
+	for {
 		open := false
 		for _, id := range ids {
 			if _, ok := t.wsrv.GetChannel(id); ok {
 				open = true
-				_ = t.wsrv.StopConnection(id, websocket.CloseError{
-					Code: websocket.CloseNormalClosure,
-					Text: "Edge wird beendet",
-				})
+				break
 			}
 		}
 		if !open {
 			drained = true
 			break
 		}
-		time.Sleep(5 * time.Millisecond)
+		select {
+		case <-drainTimer.C:
+			break drain
+		case <-drainTicker.C:
+		}
 	}
 	if !drained {
 		t.srv.log.Warn("OCPP-WebSockets nicht innerhalb der Drain-Frist beendet; synchronisierter Server-Stop übernimmt",
 			"timeout", t.drainTimeout)
 	}
 	t.stopServer()
+	joinTimer := time.NewTimer(t.drainTimeout)
+	select {
+	case <-closeDone:
+		joinTimer.Stop()
+	case <-joinTimer.C:
+		t.srv.log.Warn("OCPP-Close-Worker blieb trotz synchronisiertem Server-Stop blockiert; Prozess-Shutdown läuft weiter",
+			"timeout", t.drainTimeout)
+	}
 	select {
 	case <-t.done:
 	case <-time.After(3 * time.Second):
