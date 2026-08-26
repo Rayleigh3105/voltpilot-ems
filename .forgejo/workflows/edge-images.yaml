@@ -146,7 +146,7 @@ jobs:
   # beschreibt, was der Sidecar ANWENDET - und er wendet sich nie selbst an
   # (otaapply.UpdaterComponent laesst ihn aus der Artefakt-Liste heraus, laut
   # protokolliert). Seine eigenen Aktualisierungen sind selten, beaufsichtigt
-  # und out-of-band: `docker compose --profile ota up -d updater`.
+  # und out-of-band: `docker compose up -d updater`.
   manifest:
     name: Release signieren + veroeffentlichen
     needs: build
