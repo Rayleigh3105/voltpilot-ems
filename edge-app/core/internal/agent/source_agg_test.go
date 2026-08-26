@@ -519,16 +519,22 @@ func TestDeleteSourceRollsBackOnPersistFailure(t *testing.T) {
 	s := addErzeuger(t, a, 40)
 	feedSource(a, s.ID, 30)
 
-	// Make the source store's atomic write fail: the data dir (where
-	// sources.json.tmp is created) becomes read-only.
-	dir := a.Cfg.DataDir
-	if err := os.Chmod(dir, 0o500); err != nil {
+	// Make the source store's atomic write fail by putting a DIRECTORY where
+	// it writes its scratch file: the write then dies with EISDIR.
+	//
+	// ⚠ Deliberately NOT chmod. The CI runner is root, root ignores the write
+	// bit, so the permission variant of this test passed on every developer
+	// machine while it red the edge release gate (tag edge-2026.08.21) - the
+	// delete simply SUCCEEDED there. A type collision has no such escape
+	// hatch; see sources.Store.TempPath.
+	tmp := a.srcStore.TempPath()
+	if err := os.Mkdir(tmp, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	t.Cleanup(func() { _ = os.RemoveAll(tmp) })
 
 	if err := a.DeleteSource(s.ID); err == nil {
-		t.Fatal("expected DeleteSource to fail while the store is unwritable")
+		t.Fatal("expected DeleteSource to fail while the store cannot write its scratch file")
 	}
 	// The source must still be configured, its live reading kept, and the
 	// aggregation still summing it.
@@ -544,8 +550,8 @@ func TestDeleteSourceRollsBackOnPersistFailure(t *testing.T) {
 		t.Fatalf("source no longer aggregated after failed delete: pv=%v", snap.PvKw)
 	}
 
-	// Once the store is writable again the delete goes through normally.
-	if err := os.Chmod(dir, 0o755); err != nil {
+	// Once the scratch path is free again the delete goes through normally.
+	if err := os.Remove(tmp); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.DeleteSource(s.ID); err != nil {

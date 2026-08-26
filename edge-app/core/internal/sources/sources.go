@@ -440,12 +440,29 @@ func (s *Store) Save(list []Source) error {
 	if err != nil {
 		return err
 	}
-	tmp := s.path + ".tmp"
+	tmp := s.TempPath()
 	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, s.path)
 }
+
+// TempPath is the scratch file Save writes before the atomic rename.
+//
+// It is EXPORTED for exactly one caller shape: a test that needs the persist
+// to FAIL (the rollback guards in agent.AddSource/DeleteSource). Put a
+// DIRECTORY here and the write dies with EISDIR - a TYPE error, which no
+// privilege can override; it is the same trick enroll's
+// TestLocalInitFailureSurfacesDeviceError uses from the other side (a regular
+// file where a directory belongs -> ENOTDIR).
+//
+// ⚠ NEVER force such a failure with file permissions instead. The CI runner
+// is root, root bypasses the DAC write check, so `chmod 0500` on the data dir
+// changes nothing there - the write succeeds, the "expected a failure"
+// assertion fires and reds the release gate on a perfectly sound tree, while
+// every developer machine stays green. That is precisely how the edge release
+// gate failed on tag edge-2026.08.21 (agent.TestDeleteSourceRollsBackOnPersistFailure).
+func (s *Store) TempPath() string { return s.path + ".tmp" }
 
 // Load returns the persisted list, ok=false if none exists yet.
 func (s *Store) Load() ([]Source, bool, error) {
