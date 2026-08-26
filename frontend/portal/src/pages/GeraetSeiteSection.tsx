@@ -670,16 +670,12 @@ export function GeraetSeiteSection({
                 onNavigateSteuerung={() => {
                   window.location.hash = hashForRoute(pageRoute('steuerungs-freigabe'));
                 }}
-                onAssign={adminView.device.deviceId ? async (releaseSeq, channel, pinned) => {
+                onAssign={adminView.device.deviceId ? async (releaseSeq: number) => {
                   await adminAktion(() => adminApi.setUpdateTarget(
-                    adminView.device.deviceId as string, { releaseSeq, channel, pinned }));
+                    adminView.device.deviceId as string, { releaseSeq }));
                 } : undefined}
                 onRevert={adminView.device.deviceId && adminView.device.soll ? async () => {
                   await adminAktion(() => adminApi.revertUpdateTarget(
-                    adminView.device.deviceId as string));
-                } : undefined}
-                onApply={adminView.device.deviceId && adminView.device.soll ? () => {
-                  void adminAktion(() => adminApi.requestApply(
                     adminView.device.deviceId as string));
                 } : undefined}
               />

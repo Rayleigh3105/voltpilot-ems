@@ -5,7 +5,7 @@ import {
   type PlatformCertVerdict,
   type Site,
 } from '../api';
-import type { DeviceApply, DeviceTrust, EdgeUpdates } from '../adminEdgeUpdates';
+import type { DeviceTrust, EdgeUpdates } from '../adminEdgeUpdates';
 import type { AdminVorlage } from '../adminVorlagen';
 import type { FlottenAnlage } from '../adminKomponentenFlotte';
 import type { PlattformModellWahlZustand } from '../prognose';
@@ -128,8 +128,6 @@ export interface AdminDeviceRow {
   ist: string | null;
   soll: string | null;
   sollSeq: number | null;
-  channel: string | null;
-  pinned: boolean;
   state: string | null;
   reason: string | null;
   blocker: string | null;
@@ -139,8 +137,6 @@ export interface AdminDeviceRow {
   note: string | null;
   provisionedAt: string | null;
   trust?: DeviceTrust | null;
-  /** Der Portal-Apply-Block - dieselbe Struktur wie in der Flotten-Zeile. */
-  apply?: DeviceApply | null;
 }
 
 export interface ProvisionDeviceInput {
@@ -419,74 +415,40 @@ export const adminApi = {
       method: 'DELETE',
     }),
 
-  // ── OTA Stufe 2 „Verteilen" ─────────────────────────────────────────────
+  // ── Edge-Releases verteilen ─────────────────────────────────────────────
   //
-  // Alle Schreibwege sind platform-admin-gefenced; die Ehrlichkeits- und
-  // Freigabe-REGELN stehen server-seitig (RolloutStates/BakeGate) - das Portal
-  // rendert sie, es entscheidet nichts nach.
+  // Alle Schreibwege sind platform-admin-gefenced; die Ehrlichkeits-REGELN
+  // stehen server-seitig (`RolloutStates`) - das Portal rendert sie, es
+  // entscheidet nichts nach. Seit dem Ein-Schritt-Umbau gibt es genau EINEN
+  // Schreibweg für den Normalfall (`createRollout`) und die zwei
+  // Einzelgeräte-Hebel; Wellen-Freigabe, Pause, Not-Aus und die
+  // Anwenden-Freigabe sind ERSATZLOS entfallen, weil das Gerät selbst anwendet.
 
   /** Alles, was die Seite „Edge-Updates" zeigt, in EINEM Aufruf. */
   edgeUpdates: () => request<EdgeUpdates>('/api/v1/admin/edge-updates'),
 
   /**
    * Das INVENTAR aller Geräte über den ganzen Lebenszyklus (Seite „Geräte") -
-   * die Vereinigung von Aufkleber-Registry und echter Flotte. Bis zum
-   * Konsolidierungs-Umbau kannte die Registry-Seite die realen Bestandsboxen
-   * (selbst generierte `edge-`Referenzen) gar nicht.
+   * die Vereinigung von Aufkleber-Registry und echter Flotte.
    */
   listDevices: () =>
     request<{ devices: AdminDeviceRow[] }>('/api/v1/admin/devices')
       .then((r) => r.devices),
 
-  /** Rollout aus einem SIGNIERTEN Register-Eintrag starten (409 sonst). */
-  createRollout: (input: {
-    releaseSeq: number;
-    channel?: string;
-    waves: { name: string; devices: string[] }[];
-    /**
-     * OTA Stufe 4: die Wellen-AUTOMATIK. ABSENT = Hand-Vorschub, und das
-     * bleibt die Vorgabe (D4) - der Server liest ein fehlendes Feld genauso.
-     */
-    autoAdvance?: boolean;
-  }) =>
+  /**
+   * Release wählen, Geräte wählen, fertig: EIN Aufruf weist allen gewählten
+   * Geräten das Release zu. Ein UNSIGNIERTES Release wird abgelehnt (409) -
+   * ohne Manifest-Bytes hätte ein Gerät nichts, was es gegen seine
+   * eingebackene Wurzel prüfen könnte.
+   */
+  createRollout: (input: { releaseSeq: number; devices: string[] }) =>
     request<{ rolloutId: string }>('/api/v1/admin/rollouts', {
       method: 'POST',
       body: JSON.stringify(input),
     }),
 
-  /** Nächste Welle - der Server verweigert sie (409), solange das Bake offen ist. */
-  promoteRollout: (rolloutId: string) =>
-    request<void>(`/api/v1/admin/rollouts/${rolloutId}/promote`, { method: 'POST' }),
-
-  /**
-   * Den Wellen-Vorschub umschalten (Stufe 4). Lockert nichts: dasselbe
-   * Bake-Kriterium, derselbe Auto-Halt, derselbe endgültige Not-Aus.
-   */
-  setAutoAdvance: (rolloutId: string, enabled: boolean) =>
-    request<void>(`/api/v1/admin/rollouts/${rolloutId}/auto-advance`, {
-      method: 'POST',
-      body: JSON.stringify({ enabled }),
-    }),
-
-  pauseRollout: (rolloutId: string) =>
-    request<void>(`/api/v1/admin/rollouts/${rolloutId}/pause`, { method: 'POST' }),
-
-  resumeRollout: (rolloutId: string) =>
-    request<void>(`/api/v1/admin/rollouts/${rolloutId}/resume`, { method: 'POST' }),
-
-  /** Not-Aus. Endgültig: „weitermachen" ist ein neuer, bewusster Rollout. */
-  haltRollout: (rolloutId: string, reason?: string) =>
-    request<void>(`/api/v1/admin/rollouts/${rolloutId}/halt`, {
-      method: 'POST',
-      body: JSON.stringify({ reason: reason ?? 'Von Hand eingefroren.' }),
-    }),
-
-  /** Einzelgerät: Release + Kanal + Pin setzen. */
-  setUpdateTarget: (deviceId: string, input: {
-    releaseSeq: number;
-    channel?: string;
-    pinned?: boolean;
-  }) =>
+  /** Einzelgerät: Release zuweisen. */
+  setUpdateTarget: (deviceId: string, input: { releaseSeq: number }) =>
     request<void>(`/api/v1/admin/devices/${deviceId}/update-target`, {
       method: 'POST',
       body: JSON.stringify(input),
@@ -497,18 +459,6 @@ export const adminApi = {
     request<void>(`/api/v1/admin/devices/${deviceId}/update-target/revert`, {
       method: 'POST',
     }),
-
-  /**
-   * Die EINMALIGE Freigabe zum Anwenden (Portal-Apply).
-   *
-   * Sie ist wörtlich die Freigabe, die der Betreiber bisher an der
-   * Geräteseite der Box hinter dem Geräte-Passwort erteilt hat - nur der
-   * Transport ist ein anderer. Sie gilt für EIN Release und EINEN Vorgang und
-   * verfällt nach 15 Minuten; angewandt wird sie vom Gerät, das jedes weitere
-   * Tor unverändert durchläuft.
-   */
-  requestApply: (deviceId: string) =>
-    request<void>(`/api/v1/admin/devices/${deviceId}/apply`, { method: 'POST' }),
 
   // ── Einheitsmodell Stufe 6: Vorlagen-Verwaltung + Komponenten-Flotte ──────
   // Bewusst mandantenlos: das Vorlagen-Register ist global (eine Aussage über

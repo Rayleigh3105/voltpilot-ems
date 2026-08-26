@@ -30,14 +30,12 @@ export function AdminGeraetKarten({
   onNavigateSteuerung,
   onAssign,
   onRevert,
-  onApply,
 }: {
   view: GeraetView;
   busy: boolean;
   onNavigateSteuerung: () => void;
-  onAssign?: (releaseSeq: number, channel: string, pinned: boolean) => Promise<void>;
+  onAssign?: (releaseSeq: number) => Promise<void>;
   onRevert?: () => Promise<void>;
-  onApply?: () => void;
 }) {
   const { software, vertrauen, steuerung, grenzen, verbindung, verlauf } = view;
   return (
@@ -52,51 +50,15 @@ export function AdminGeraetKarten({
                   {software.grund}
                 </p>
               )}
-              {/* Der Hebel steht genau EINMAL: trägt der Anwenden-Block
-                  gleich denselben Satz, gehört er dorthin, wo geklickt wird. */}
-              {software.hebel && !(onApply && software.hebelDoppelt) && (
+              {software.hebel && (
                 <p className="vp-text-sm vp-lever" data-testid="geraet-hebel">
                   Hebel: {software.hebel}
                 </p>
-              )}
-              {software.apply.approval && (
-                <p className="vp-text-sm" data-testid="geraet-freigabe">
-                  <Badge
-                    variant={
-                      software.apply.approval.tone === 'busy'
-                        ? 'warn'
-                        : software.apply.approval.tone
-                    }
-                  >
-                    {software.apply.approval.label}
-                  </Badge>
-                  {software.apply.approval.reason ? ` ${software.apply.approval.reason}` : ''}
-                </p>
-              )}
-              {onApply && (
-                <div className="vp-apply-block" data-testid="geraet-apply">
-                  {/* Was die Anwendung verhindern WIRD, steht VOR dem Knopf. */}
-                  {software.apply.warn && (
-                    <p className="vp-text-sm vp-lever">Achtung: {software.apply.warn}</p>
-                  )}
-                  {software.apply.hint && (
-                    <p className="vp-muted vp-text-sm">{software.apply.hint}</p>
-                  )}
-                  <Button
-                    variant="outline"
-                    disabled={busy || !software.apply.canClick}
-                    onClick={onApply}
-                  >
-                    {software.apply.label}
-                  </Button>
-                </div>
               )}
               {onAssign && (
                 <ZuweisungsForm
                   releases={software.signierteReleases}
                   sollSeq={view.device.sollSeq}
-                  channel={view.device.channel}
-                  pinned={view.device.pinned}
                   hatSoll={view.device.soll != null}
                   busy={busy}
                   onAssign={onAssign}
@@ -285,14 +247,14 @@ export function badgeVariant(tone: Tone): 'ok' | 'warn' | 'off' {
 }
 
 /**
- * Release zuweisen / Zuweisung zurücknehmen - wortgleich mit dem Drawer
- * (derselbe Knopf-Wortlaut: er WEIST ZU, das Anwenden bleibt beaufsichtigt).
+ * Release zuweisen / Zuweisung zurücknehmen.
+ *
+ * Seit dem Ein-Schritt-Umbau ist das ALLES: kein Kanal, kein Festnageln, kein
+ * zweiter Knopf „Auf Gerät anwenden" - das Gerät wendet selbst an.
  */
 function ZuweisungsForm({
   releases,
   sollSeq,
-  channel: initialChannel,
-  pinned: initialPinned,
   hatSoll,
   busy,
   onAssign,
@@ -300,16 +262,12 @@ function ZuweisungsForm({
 }: {
   releases: EdgeUpdatesRelease[];
   sollSeq: number | null;
-  channel: string | null;
-  pinned: boolean;
   hatSoll: boolean;
   busy: boolean;
-  onAssign: (releaseSeq: number, channel: string, pinned: boolean) => Promise<void>;
+  onAssign: (releaseSeq: number) => Promise<void>;
   onRevert?: () => Promise<void>;
 }) {
   const [seq, setSeq] = useState<number | null>(sollSeq ?? releases[0]?.releaseSeq ?? null);
-  const [channel, setChannel] = useState(initialChannel ?? 'stable');
-  const [pinned, setPinned] = useState(initialPinned);
 
   if (releases.length === 0) {
     return (
@@ -328,25 +286,14 @@ function ZuweisungsForm({
         value={seq == null ? '' : String(seq)}
         onChange={(v) => setSeq(Number(v))}
       />
-      <VpPicker
-        label="Kanal"
-        options={[
-          { value: 'stable', label: 'stable' },
-          { value: 'canary', label: 'canary' },
-        ]}
-        value={channel}
-        onChange={setChannel}
-      />
-      <label className="vp-check-row">
-        <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} />{' '}
-        Festnageln – ein Rollout überschreibt dieses Gerät dann nicht, sondern überspringt es
-        sichtbar.
-      </label>
+      <p className="vp-muted vp-text-sm">
+        Das Gerät lädt und tauscht danach von selbst. Es ist kein weiterer Schritt nötig.
+      </p>
       <div className="vp-row-gap">
         <Button
           variant="primary"
           disabled={busy || seq == null}
-          onClick={() => void onAssign(seq as number, channel, pinned)}
+          onClick={() => void onAssign(seq as number)}
         >
           Release zuweisen
         </Button>
