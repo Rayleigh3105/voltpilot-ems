@@ -48,14 +48,9 @@ public record AdminDevicesDto(List<DeviceRowDto> devices) {
      */
     public record DeviceRowDto(UUID deviceId, String externalRef, String label,
             UUID siteId, String siteName, UUID tenantId, String tenantName, String kind,
-            String ist, String soll, Long sollSeq, String channel, boolean pinned,
+            String ist, String soll, Long sollSeq,
             String state, String reason, String blocker, Instant lastSeenAt, Instant reportedAt,
             boolean provisioned, String note, Instant provisionedAt,
-            EdgeUpdatesDto.TrustDto trust,
-            // Der Portal-Apply-Block - dieselbe Struktur und dieselbe Bedeutung
-            // wie in der Flotten-Zeile, damit der GETEILTE Geräte-Drawer beide
-            // Aggregate mit EINEM Renderer zeigen kann. `null` bei einer
-            // gedruckten, nie verbundenen ID: über die ist nichts abzuleiten.
-            EdgeUpdatesDto.ApplyDto apply) {
+            EdgeUpdatesDto.TrustDto trust) {
     }
 }

@@ -3525,21 +3525,21 @@ paths:
       summary: Everything the platform page "Edge-Updates" shows (OTA Stufe 2).
       description: >
         ONE server-side aggregate (the /admin/fleet discipline): the release
-        register, the newest rollout with its wave board, the fleet matrix
-        (Anlage · Mandant · Ist · Soll · Zustand · seit · Grund) and the
+        register, the most recent updates with their device rows, the fleet
+        matrix (Anlage · Mandant · Ist · Soll · Zustand · seit · Grund) and the
         append-only audit journal.
         HONESTY RULES, enforced server-side: "unbekannt" is never "veraltet"
         (a device that reports nothing says nothing about its age), "offline" is
         never "fehlgeschlagen" (the assignment waits retained on the broker and
         is picked up on reconnect), every non-green state carries its reason,
         and the KPI percentages count only the REACHABLE set.
-        The rollout shown is the NEWEST one whatever its state - a rollout that
-        just auto-halted must not vanish from the page in the very moment
-        something went wrong. Platform-admin only; there is deliberately NO
-        customer-facing surface for updates.
+        `rollouts` carries the newest updates whatever their state (a LIST since
+        several updates may run side by side); one that just finished must not
+        vanish from the page in the very moment it completed. Platform-admin
+        only; there is deliberately NO customer-facing surface for updates.
       responses:
         "200":
-          description: Releases, the newest rollout, the fleet matrix, the journal and the KPI.
+          description: Releases, the recent updates, the fleet matrix, the journal and the KPI.
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/devices:
@@ -3569,201 +3569,57 @@ paths:
   /api/v1/admin/rollouts:
     post:
       tags: [admin]
-      summary: Start a rollout of a SIGNED release in waves (OTA Stufe 2).
+      summary: Update a set of devices to ONE signed release - in one step.
       description: >
-        Only a SIGNED release can be rolled out (409 otherwise): without
-        manifest bytes a device has nothing to check against its baked-in root,
-        and the downlink would be an instruction without evidence.
-        The FIRST wave is assigned immediately; every further wave is
-        hand-advanced (decision D4) unless `autoAdvance` is true (OTA Stufe 4) -
-        which changes only WHO presses "next wave": the same bake criterion, the
-        same automatic halt on any failure, the same final emergency stop. At most ONE rollout may be live (active or
-        paused) - two concurrent distributions could assign the same device two
-        targets, and an auto-halt would no longer be attributable.
+        The WHOLE flow (Captain order 2026-08-26): pick a release, pick the
+        devices, done. There are no waves, no canary ring, no bake criterion and
+        no second button - every chosen device gets its assignment in this call,
+        verifies the signed manifest itself against its baked-in root, and
+        applies it. Nobody has to touch the device.
+
+
+        Only a SIGNED release can be distributed (409 otherwise): without
+        manifest bytes a device has nothing to check, and the downlink would be
+        an instruction without evidence. That is the ONLY precondition left -
+        and it is a property of the RELEASE, not of the device.
+
+
+        Several updates may run SIDE BY SIDE - the former "at most one live
+        rollout" bar was a gate that blocked a legitimate second order. What
+        stays unique is what matters: exactly one assignment per DEVICE.
+
+
         Assigning publishes the signed manifest RETAINED on
-        `ems/{t}/{s}/{d}/v2/update` (contract mqtt-ota-target.schema.json). It
-        applies NOTHING: the device verifies, and a human at the device applies
-        (`update.sh --from-target`).
+        `ems/{t}/{s}/{d}/v2/update` (contract mqtt-ota-target.schema.json), so a
+        device that is offline right now picks it up on its next connect.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [releaseSeq, waves]
+              required: [releaseSeq, devices]
               properties:
                 releaseSeq: { type: integer, format: int64 }
-                channel: { type: string, enum: [canary, stable] }
-                autoAdvance:
-                  type: boolean
-                  default: false
-                  description: >
-                    OTA Stufe 4: release the next wave automatically once the
-                    bake criterion is met. ABSENT = hand-advanced, which stays
-                    the default (D4).
-                waves:
+                devices:
                   type: array
-                  items:
-                    type: object
-                    required: [devices]
-                    properties:
-                      name: { type: string }
-                      devices:
-                        type: array
-                        items: { type: string, format: uuid }
+                  minItems: 1
+                  items: { type: string, format: uuid }
       responses:
-        "201": { description: Rollout created; the first wave is assigned. }
-        "400": { description: No waves, an empty wave, an unknown device, or a device in two waves. }
+        "201": { description: Started; every chosen device has its assignment. }
+        "400": { description: No devices, or an unknown device. }
         "404": { description: The release is not registered. }
-        "409": { description: The release is not signed, or a rollout is already live. }
+        "409": { description: The release is not signed. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-  /api/v1/admin/rollouts/{rolloutId}/promote:
-    post:
-      tags: [admin]
-      summary: Release the next wave - gated by the bake criterion.
-      description: >
-        REFUSED (409, with the reason) while the running wave is not fully
-        confirmed. The criterion is decision D4: 24 h healthy AND at least one
-        real control cycle per device. The cycle half is THREE-valued - on a
-        plant where VoltPilot does not (yet) control, that evidence cannot
-        exist, so it reports "nicht_pruefbar" and is visibly excluded rather
-        than silently assumed. The gate lives on the server, not only in a
-        greyed-out button.
-      parameters:
-        - name: rolloutId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "204": { description: The next wave is assigned. }
-        "404": { description: Rollout not found. }
-        "409": { description: Bake criterion still open, all waves released, or the rollout is not active. }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-  /api/v1/admin/rollouts/{rolloutId}/auto-advance:
-    post:
-      tags: [admin]
-      summary: Switch the wave advance between automatic and by hand (OTA Stufe 4).
-      description: >
-        Loosens NOTHING - the same bake criterion, the same automatic halt, the
-        same final emergency stop; it only replaces the click on "next wave"
-        once the criterion is met anyway. Reversible while the rollout is active
-        or paused; a HALTED or DONE rollout refuses (409) because continuing is
-        a new, deliberate rollout.
-      parameters:
-        - name: rolloutId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [enabled]
-              properties:
-                enabled: { type: boolean }
-      responses:
-        "204": { description: Switched (idempotent). }
-        "404": { description: Rollout not found. }
-        "409": { description: The rollout is halted or done. }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-  /api/v1/admin/rollout-journal.md:
-    get:
-      tags: [admin]
-      summary: The append-only audit journal as Markdown (OTA Stufe 4, optional gitops mirror).
-      description: >
-        An EXPORT, not a deploy. The api holds no gitops write token; committing
-        the file is done outside by an operator or cron
-        (`tools/deploy/mirror-rollout-journal.sh`, see docs/deploy.md) - a write
-        credential in the api would be a new attack surface for something that,
-        per decision D2, must not be in the acting path at all. The authority
-        over the fleet's desired state remains the portal DB plus the retained
-        MQTT message; nothing is ever read back from the mirror.
-        The output is DETERMINISTIC - the same state yields the same bytes, so a
-        repeated mirror run produces no commit.
-      parameters:
-        - name: limit
-          in: query
-          schema: { type: integer, default: 1000, maximum: 5000 }
-      responses:
-        "200":
-          description: The journal.
-          content:
-            text/markdown:
-              schema: { type: string }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-  /api/v1/admin/rollouts/{rolloutId}/pause:
-    post:
-      tags: [admin]
-      summary: Pause a rollout (reversible).
-      parameters:
-        - name: rolloutId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "204": { description: Paused - nothing further is assigned. }
-        "409": { description: Only a running rollout can be paused. }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-  /api/v1/admin/rollouts/{rolloutId}/resume:
-    post:
-      tags: [admin]
-      summary: Resume a paused rollout.
-      parameters:
-        - name: rolloutId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "204": { description: Running again. }
-        "409": { description: Only a paused rollout can be resumed. }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-  /api/v1/admin/rollouts/{rolloutId}/halt:
-    post:
-      tags: [admin]
-      summary: Not-Aus - freeze a rollout (deliberately final).
-      description: >
-        Nothing further is distributed. Assignments already made REMAIN -
-        withdrawing them would send a half-updated fleet to a third state; what
-        stops is the rolling on. "Continue" after a freeze is a new, deliberate
-        rollout, not a click that skips the cause.
-        The watcher triggers the same transition automatically on any device
-        reporting failed / rolled_back / gone silent while applying (D4).
-      parameters:
-        - name: rolloutId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                reason: { type: string }
-      responses:
-        "204": { description: Frozen. }
-        "404": { description: Rollout not found. }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
+
   /api/v1/admin/devices/{deviceId}/update-target:
     post:
       tags: [admin]
-      summary: Assign ONE device a release (channel + pin).
+      summary: Assign ONE device a release.
       description: >
-        The single-device path behind "Jetzt aktualisieren" and the channel/pin
-        controls of the device registry page. `pinned` is the statement "this
-        device stays where it is" - a rollout does not overwrite a pinned
-        assignment, it visibly SKIPS the device. Only a signed release is
-        assignable (409 otherwise).
+        The single-device path (the device page). Only a signed release is
+        assignable (409 otherwise); the device does the rest by itself.
       parameters:
         - name: deviceId
           in: path
@@ -3778,69 +3634,13 @@ paths:
               required: [releaseSeq]
               properties:
                 releaseSeq: { type: integer, format: int64 }
-                channel: { type: string, enum: [canary, stable] }
-                pinned: { type: boolean }
       responses:
         "204": { description: Assigned; the signed manifest went out retained. }
         "404": { description: Device or release not found. }
         "409": { description: The release is not signed. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-  /api/v1/admin/devices/{deviceId}/apply:
-    post:
-      tags: [admin]
-      summary: Approve applying the assigned release ONCE ("Jetzt anwenden").
-      description: >
-        The one-shot apply approval (OTA Portal-Apply, concept
-        `vp-admin-geraete-ux-k2` §6/E3). It is WORD FOR WORD the approval the
-        operator used to give at the device's own `:8484` page behind the device
-        password - only the transport changed: it travels NON-RETAINED on
-        `ems/{t}/{s}/{d}/v2/apply` (contract
-        `docs/contracts/mqtt-ota-apply.schema.json`) and the device consumes it
-        through the very same code path its own button uses.
 
-
-        The security posture is therefore UNCHANGED: the approval opens ONLY the
-        first gate of the device's apply decision, for exactly ONE release (the
-        one the operator saw) and exactly ONE operation, and it expires after 15
-        minutes. Device autonomy stays OFF, and every later gate - signature
-        chain against the baked root, anti-rollback floor, the neutral-time rule
-        of a CONTROLLING plant, interlock, disk guard, self-test, LKG rollback,
-        the rollout's auto-halt - applies unchanged. It is a POINT-IN-TIME
-        authorization, never a content authorization.
-
-
-        NON-retained is load-bearing: a retained message is redelivered on every
-        reconnect, so a one-shot approval placed there would not be one. A box
-        that is offline right now therefore does NOT get the approval delivered
-        later - deliberately, because a consent from three hours ago is not a
-        consent for now. The portal shows that as the approval state
-        `verfallen` ("nicht abgeholt") instead of waiting silently; the state
-        rides the additive `apply` block of the fleet/device rows.
-
-
-        Platform-admin ONLY - the narrow `edge-release-publisher` account never
-        reaches a device.
-      parameters:
-        - name: deviceId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "202": { description: The approval went out to the device. }
-        "404": { description: Device not found. }
-        "409":
-          description: >
-            Nothing to apply (no assignment), the device REJECTED the assigned
-            release (broken chain), the device reports it cannot apply right now
-            (no updater running), or an approval is already open. The German
-            reason is in the `message` body.
-        "503":
-          description: >
-            The approval could NOT be sent (broker unreachable). Nothing was
-            approved and nothing recorded - the approval IS the message.
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/devices/{deviceId}/update-target/revert:
     post:
       tags: [admin]

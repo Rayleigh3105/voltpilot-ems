@@ -40,22 +40,6 @@ public final class RolloutStates {
     public static final String AKTUELL = "aktuell";
     public static final String AUSSTEHEND = "ausstehend";
     /**
-     * <b>„Sie sind dran"</b> - das Gerät hat das zugewiesene Release GEPRÜFT
-     * und wartet auf das beaufsichtigte Anwenden durch einen Menschen (OTA
-     * Stufe 2: {@code state=deferred ∧ target_verdict=ok}).
-     *
-     * <p>Er trennt den einen Fall, in dem der ADMIN der fehlende Akteur ist,
-     * von „die Zuweisung ist unterwegs" - bis hierher fielen beide in
-     * {@link #AUSSTEHEND} und trugen damit denselben Fortschritts-Ton, obwohl
-     * sich ohne eine Handlung nie wieder etwas bewegt (Reibung R1 des
-     * UX-Deep-Dives {@code vp-admin-geraete-ux-k2}). Die Unterscheidung war
-     * schon maschinenlesbar angelegt - sie wurde nur nicht ausgespielt.
-     *
-     * <p>Er hält den Rollout NICHT an (es ist kein Vorfall) und zählt NICHT
-     * als bestätigt (die Welle wartet wirklich).
-     */
-    public static final String WARTET_AUF_ANWENDUNG = "wartet_auf_anwendung";
-    /**
      * <b>Autonomie blockiert</b> - das Gerät meldet eine STEHENDE Sperre
      * ({@code otaapply.Blocker*}: Neutral-Zeit, Platte, Interlock, stiller
      * Kern, …). Signatur und Politik sind in Ordnung, aber das Gerät DARF
@@ -199,37 +183,22 @@ public final class RolloutStates {
             return new Verdict(ZURUECKGESTELLT, reasonOr(r,
                     "Das zugewiesene Release gilt für dieses Gerät nicht."));
         }
-        // Eine STEHENDE Sperre schlägt „wartet auf Sie": auf einer blockierten
-        // Box wartet niemand auf den Admin - sie darf gar nicht anwenden, und
-        // ein Klick würde daran nichts ändern.
+        // Eine STEHENDE Sperre ist ein eigener Zustand: das Gerät hat das
+        // Release geprüft und wendet es trotzdem gerade nicht an, und der
+        // GRUND kommt von ihm (nur es weiß, warum).
+        //
+        // Seit der Vereinfachung vom 26.08.2026 gibt es hier bewusst KEIN
+        // „wartet auf Anwendung" mehr: nach dem Klick auf „Aktualisieren"
+        // wartet niemand mehr auf einen Menschen. Ein `deferred` ohne Sperre
+        // ist damit schlicht „unterwegs".
         if (isBlocked(r)) {
             return new Verdict(BLOCKIERT, reasonOr(r,
                     "Dieses Gerät meldet eine Sperre, aber keinen Grund dazu."));
         }
-        // „Sie sind dran": geprüft und in Ordnung, das Anwenden ist beaufsichtigt.
-        if ("deferred".equals(r.state()) && "ok".equals(r.verdict())) {
-            return new Verdict(WARTET_AUF_ANWENDUNG, reasonOr(r,
-                    "Das Release ist auf diesem Gerät verifiziert und wartet auf das "
-                            + "beaufsichtigte Anwenden."));
-        }
         return new Verdict(AUSSTEHEND, r.reason());
     }
 
-    /**
-     * Löst der Zustand einen AUTO-HALT aus? (D4: jeder {@code failed} /
-     * {@code rolled_back} / „im Update verstummt" hält die Verteilung an.)
-     *
-     * <p>Bewusst NICHT dabei: {@code offline_holt_nach} (der Normalfall hinter
-     * NAT) und {@code zurueckgestellt} (eine Politik-Entscheidung, kein
-     * Vorfall) - ein Auto-Halt bei einer offline gegangenen Box würde jeden
-     * Rollout am ersten Funkloch beenden.
-     */
-    public static boolean haltsRollout(String state) {
-        return FEHLGESCHLAGEN.equals(state) || ZURUECKGEROLLT.equals(state)
-                || IM_UPDATE_VERSTUMMT.equals(state);
-    }
-
-    /** Zustände, die für die Wellen-Freigabe als abgeschlossen zählen. */
+    /** Zustände, die als „dieses Gerät ist fertig" zählen. */
     public static boolean isConfirmed(String state) {
         return BESTAETIGT.equals(state);
     }
@@ -260,10 +229,10 @@ public final class RolloutStates {
      *
      * <p><b>Er ist der ÜBERGANG, nicht die Regel.</b> Die dauerhafte Antwort ist
      * das maschinenlesbare {@code blocker}-Feld - aber die heutige Flotte fährt
-     * Stände, die es noch nicht senden, und für sie wäre „wartet auf Anwendung"
-     * die falscheste aller Aussagen: dort wartet niemand auf den Admin. Sobald
-     * eine Box das Feld meldet, entscheidet es allein; diese Prüfung greift dann
-     * gar nicht mehr, weil sie nach ihm kommt.
+     * Stände, die es noch nicht senden, und für sie wäre „unterwegs" die
+     * falscheste aller Aussagen. Sobald eine Box das Feld meldet, entscheidet
+     * es allein; diese Prüfung greift dann gar nicht mehr, weil sie nach ihm
+     * kommt.
      */
     public static final String BLOCKED_PREFIX = "Autonomie blockiert: ";
 

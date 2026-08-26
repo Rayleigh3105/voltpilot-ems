@@ -1,14 +1,16 @@
-// Command vp-edge-updater ist der Apply-Sidecar der OTA-Stufe 3 „Autonom".
+// Command vp-edge-updater ist der Apply-Sidecar: er wendet ein zugewiesenes
+// Release an, ohne dass jemand an das Geraet muss.
 //
 // Er besitzt `/var/run/docker.sock` und ist der EINZIGE, der die Container der
 // Edge-App tauscht. Er hat kein Netz, keinen Host-Port, keine MQTT-Verbindung
 // und keine Identitaet; mit dem Kern spricht er ausschliesslich ueber Dateien
 // in `/data/ota` (siehe internal/otaapply).
 //
-// **Vorgabe ist AUS.** Ohne `<data>/ota/autonomy.json` mit `enabled: true`
-// (bzw. den Not-Ein `VP_OTA_AUTONOMOUS=true` fuer den Laborstand) wendet er
-// nichts an - er beobachtet und meldet. Eine Box mit diesem Container
-// verhaelt sich dann zeichengleich wie eine ohne ihn.
+// **Er laeuft immer.** Seit der Vereinfachung vom 26.08.2026 gibt es keinen
+// Geraete-Schalter und kein Compose-Profil mehr: liegt eine Zuweisung, wird
+// getauscht. Was ihn noch aufhalten kann, sind ausschliesslich Eigenschaften
+// des SIGNIERTEN Release (Kette, Anti-Rollback-Boden, Backend, Datenstand) und
+// die physische Plattengrenze - nie der Zustand der Anlage.
 //
 // # Wer aktualisiert den Aktualisierer
 //
@@ -55,28 +57,17 @@ func main() {
 	dataDir := env("VP_DATA_DIR", "/data")
 	deployDir := env("VP_DEPLOY_DIR", "/deploy")
 
-	neutral, err := otaapply.ParseNeutralTable(env("VP_OTA_NEUTRAL_VERIFIED", ""))
-	if err != nil {
-		// Eine unlesbare Tabelle ist ein Abbruch, kein „dann eben leer": leer
-		// hiesse „nichts verifiziert", waehrend der Betreiber glaubt,
-		// verifiziert zu haben.
-		log.Error("VP_OTA_NEUTRAL_VERIFIED ist unlesbar", "grund", err)
-		os.Exit(2)
-	}
-
 	e := otaupdater.New(otaupdater.Options{
-		DataDir:         dataDir,
-		DeployDir:       deployDir,
-		ComposeFiles:    composeFiles(),
-		Runner:          &otaupdater.ExecRunner{Timeout: envDuration("VP_OTA_CMD_TIMEOUT_SECONDS", 10*time.Minute)},
-		Neutral:         neutral,
-		Deadline:        envDuration("VP_OTA_WATCHDOG_SECONDS", 10*time.Minute),
-		DiskGuard:       envBytes("VP_OTA_DISK_GUARD_MB", otaapply.DefaultDiskGuardBytes),
-		Prune:           prunePolicy(),
-		ForceAutonomous: envBool("VP_OTA_AUTONOMOUS", false),
-		AckWait:         envDuration("VP_OTA_ACK_WAIT_SECONDS", 45*time.Second),
-		HealthWait:      envDuration("VP_OTA_HEALTH_WAIT_SECONDS", 120*time.Second),
-		Log:             log,
+		DataDir:      dataDir,
+		DeployDir:    deployDir,
+		ComposeFiles: composeFiles(),
+		Runner:       &otaupdater.ExecRunner{Timeout: envDuration("VP_OTA_CMD_TIMEOUT_SECONDS", 10*time.Minute)},
+		Deadline:     envDuration("VP_OTA_WATCHDOG_SECONDS", 10*time.Minute),
+		DiskGuard:    envBytes("VP_OTA_DISK_GUARD_MB", otaapply.DefaultDiskGuardBytes),
+		Prune:        prunePolicy(),
+		AckWait:      envDuration("VP_OTA_ACK_WAIT_SECONDS", 45*time.Second),
+		HealthWait:   envDuration("VP_OTA_HEALTH_WAIT_SECONDS", 120*time.Second),
+		Log:          log,
 	})
 
 	if err := setupRegistryAuth(dataDir, log); err != nil {
@@ -87,8 +78,6 @@ func main() {
 
 	log.Info("vp-edge-updater gestartet", "version", Version, "daten", dataDir,
 		"deploy", deployDir, "takt", interval.String(),
-		"autonomie_erzwungen", envBool("VP_OTA_AUTONOMOUS", false),
-		"neutral_verifiziert", strings.Join(neutral.Families(), ","),
 		"aufraeumen", prunePolicy().Enabled,
 		"aufraeumen_aufgehoben", prunePolicy().KeepReleases)
 

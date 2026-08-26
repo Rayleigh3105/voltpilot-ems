@@ -391,12 +391,15 @@ type rig struct {
 	root    ed25519.PrivateKey
 	rel     ed25519.PrivateKey
 	roots   *otaverify.KeySet
+	// assignedAt ist der Stempel, den assign() benutzt.
+	assignedAt string
 }
 
 func newRig(t *testing.T) *rig {
 	t.Helper()
 	r := &rig{t: t, dataDir: t.TempDir(), deploy: t.TempDir(),
-		now: time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)}
+		assignedAt: "2026-08-03T10:00:00Z",
+		now:        time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)}
 	r.fd = newFakeDocker(t)
 	r.fd.envPath = filepath.Join(r.deploy, ".env")
 
@@ -417,8 +420,7 @@ func newRig(t *testing.T) *rig {
 
 	r.e = New(Options{
 		DataDir: r.dataDir, DeployDir: r.deploy, Runner: r.fd, Roots: r.roots,
-		Neutral: mustTable(t, ""), Deadline: 10 * time.Minute,
-		DiskGuard: 1 << 20, ForceAutonomous: true,
+		Deadline: 10 * time.Minute, DiskGuard: 1 << 20,
 		AckWait: time.Second, HealthWait: 5 * time.Second,
 		Now:       func() time.Time { return r.now },
 		FreeBytes: func(string) (uint64, error) { return 8 << 30, nil },
@@ -427,15 +429,6 @@ func newRig(t *testing.T) *rig {
 	})
 	r.signalCore(func(*otaapply.CoreSignal) {})
 	return r
-}
-
-func mustTable(t *testing.T, spec string) *otaapply.NeutralTable {
-	t.Helper()
-	tab, err := otaapply.ParseNeutralTable(spec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return tab
 }
 
 func (r *rig) writeOta(name string, v any) []byte {
@@ -469,6 +462,15 @@ func (r *rig) sign(name string, key ed25519.PrivateKey, domain string, doc []byt
 // Stufe 2, byte-gleich wie sie vom Broker kaeme).
 func (r *rig) assign(mut func(*otaverify.Manifest)) {
 	r.t.Helper()
+	r.assignAt(r.assignedAt, mut)
+}
+
+// assignAt legt eine Zuweisung mit einem BESTIMMTEN `assigned_at`-Stempel ab.
+// Der Stempel ist seit der Vereinfachung vom 26.08.2026 der Schluessel, an dem
+// eine zurueckgenommene Anwendung haengt - ein neuer Stempel IST das erneute
+// „Aktualisieren" im Portal.
+func (r *rig) assignAt(assignedAt string, mut func(*otaverify.Manifest)) {
+	r.t.Helper()
 	m := otaverify.Manifest{
 		SchemaVersion: otaverify.ManifestSchemaVersion,
 		Release:       "edge-2026.08.0", ReleaseSeq: 12, TargetCommit: "3bf8c038a1b2",
@@ -500,6 +502,7 @@ func (r *rig) assign(mut func(*otaverify.Manifest)) {
 		"site_id":   "00000000-0000-0000-0000-000000000002",
 		"device_id": "00000000-0000-0000-0000-000000000003",
 		"release":   m.Release, "release_seq": m.ReleaseSeq, "channel": "canary",
+		"assigned_at":   assignedAt,
 		"manifest_b64":  base64.StdEncoding.EncodeToString(raw),
 		"signature_b64": base64.StdEncoding.EncodeToString(sigRaw),
 	}
@@ -576,19 +579,20 @@ func (r *rig) runToSelfTest() {
 // Die Tests
 // ---------------------------------------------------------------------------
 
-// DIE Vorgabe: ohne Schalter passiert GAR NICHTS am System.
-func TestWithAutonomyOffNotASingleDockerCommandRuns(t *testing.T) {
+// DIE Vorgabe: ohne ZUWEISUNG passiert GAR NICHTS am System.
+//
+// Der frueher hier stehende Fall („ohne Schalter passiert nichts") ist mit dem
+// Autonomie-Schalter entfallen - es gibt keinen Schalter mehr. Was bleibt, ist
+// die Zusage, dass eine Box ohne Auftrag das System nicht anfasst.
+func TestWithoutAnAssignmentNotASingleDockerCommandRuns(t *testing.T) {
 	r := newRig(t)
-	r.e.o.ForceAutonomous = false
-	r.assign(nil)
 	r.tick()
 
 	if len(r.fd.log) != 0 {
-		t.Fatalf("ausgeschaltet darf NICHTS am System tun, hat aber: %v", r.fd.log)
+		t.Fatalf("ohne Zuweisung darf NICHTS am System geschehen, hat aber: %v", r.fd.log)
 	}
-	st := r.state()
-	if st.State != otaapply.StateIdle || st.Autonomous {
-		t.Fatalf("erwartet idle/nicht-autonom, ist %+v", st)
+	if st := r.state(); st.State != otaapply.StateIdle {
+		t.Fatalf("erwartet idle, ist %+v", st)
 	}
 	if r.pending() != nil {
 		t.Fatal("es darf keine Brotkrume entstehen")
@@ -828,74 +832,6 @@ func TestACrashLoopRevertsWithoutWaitingForTheDeadline(t *testing.T) {
 	}
 }
 
-func TestTheInterlockDefersWhileASetpointIsDispatchingAndTouchesNothing(t *testing.T) {
-	r := newRig(t)
-	r.e.o.Neutral = mustTable(t, "hybrid_3p:120")
-	r.assign(nil)
-	r.signalCore(func(s *otaapply.CoreSignal) {
-		s.ControlActive = true
-		s.Dispatching = true
-		s.SetpointKw = -7.1
-	})
-
-	r.tick()
-
-	if len(r.fd.log) != 0 {
-		t.Fatalf("mitten im Sollwert darf nichts geschehen: %v", r.fd.log)
-	}
-	st := r.state()
-	if st.State != otaapply.StateDeferred || !strings.Contains(st.Reason, "Zeitfensters") {
-		t.Fatalf("erwartet Verschiebung mit Grund, ist %+v", st)
-	}
-}
-
-func TestAnUrgentReleaseAsksTheCoreForANeutralWindowInsteadOfDeferringForever(t *testing.T) {
-	r := newRig(t)
-	r.e.o.Neutral = mustTable(t, "hybrid_3p:120")
-	r.assign(func(m *otaverify.Manifest) { m.Urgent = true })
-	r.signalCore(func(s *otaapply.CoreSignal) {
-		s.ControlActive = true
-		s.Dispatching = true
-	})
-
-	r.tick()
-	st := r.state()
-	if !st.NeedNeutral {
-		t.Fatalf("der Eil-Pfad muss den Kern um die Neutralstellung bitten: %+v", st)
-	}
-	if len(r.fd.log) != 0 {
-		t.Fatalf("vor der bestaetigten Neutralstellung darf nichts geschehen: %v", r.fd.log)
-	}
-
-	// Der Kern meldet die Anlage bestaetigt neutral.
-	r.now = r.now.Add(30 * time.Second)
-	r.signalCore(func(s *otaapply.CoreSignal) {
-		s.ControlActive = true
-		s.Dispatching = true
-		s.NeutralHeldSince = r.now.Add(-25 * time.Second).Format(otaapply.TimeFormat)
-	})
-	r.tick()
-	if r.fd.ran("pull") != 2 {
-		t.Fatalf("nach der Neutralstellung muss getauscht werden: %v", r.fd.log)
-	}
-}
-
-func TestAControllingPlantWithAnUnverifiedNeutralTimeoutIsRefused(t *testing.T) {
-	r := newRig(t) // leere Tabelle = nichts verifiziert
-	r.assign(nil)
-	r.signalCore(func(s *otaapply.CoreSignal) { s.ControlActive = true })
-
-	r.tick()
-
-	if len(r.fd.log) != 0 {
-		t.Fatalf("ohne belegtes T darf nichts geschehen: %v", r.fd.log)
-	}
-	st := r.state()
-	if !strings.Contains(st.Reason, "hybrid_3p") {
-		t.Fatalf("der Grund muss die Familie benennen: %q", st.Reason)
-	}
-}
-
 func TestTheDiskGuardRefusesBeforeAnythingIsPulled(t *testing.T) {
 	r := newRig(t)
 	r.e.o.DiskGuard = 4 << 30
@@ -904,11 +840,21 @@ func TestTheDiskGuardRefusesBeforeAnythingIsPulled(t *testing.T) {
 
 	r.tick()
 
-	if len(r.fd.log) != 0 {
-		t.Fatalf("ohne Platz wird nicht einmal geholt: %v", r.fd.log)
+	// Der Sidecar raeumt VORHER auf (das sind reine Lese-Kommandos plus ggf.
+	// ein `image rm`) - genau das ist seit dem 26.08.2026 der Punkt: der
+	// Waechter soll den echten freien Platz sehen. Was NICHT passieren darf,
+	// ist Holen oder Tauschen.
+	for _, cmd := range r.fd.log {
+		if strings.Contains(cmd, " pull ") || strings.Contains(cmd, "compose") ||
+			strings.Contains(cmd, "docker save") || strings.Contains(cmd, "docker create") {
+			t.Fatalf("ohne Platz wird weder geholt noch getauscht, es lief: %q", cmd)
+		}
 	}
 	if st := r.state(); !strings.Contains(st.Reason, "Speicherplatz") {
 		t.Fatalf("Grund: %q", st.Reason)
+	}
+	if st := r.state(); !strings.Contains(st.Reason, "bereits entfernt") {
+		t.Fatalf("der Grund sagt nicht, dass vorher aufgeraeumt wurde: %q", st.Reason)
 	}
 }
 
@@ -926,8 +872,8 @@ func TestARestartMidSwapResumesTheRunInsteadOfStartingOver(t *testing.T) {
 	// Neuer Prozess, alles vergessen ausser der Platte.
 	fresh := New(Options{
 		DataDir: r.dataDir, DeployDir: r.deploy, Runner: r.fd, Roots: r.roots,
-		Neutral: mustTable(t, ""), Deadline: 10 * time.Minute, DiskGuard: 1 << 20,
-		ForceAutonomous: true, AckWait: time.Millisecond, HealthWait: 5 * time.Second,
+		Deadline: 10 * time.Minute, DiskGuard: 1 << 20,
+		AckWait: time.Millisecond, HealthWait: 5 * time.Second,
 		Now:       func() time.Time { return r.now },
 		FreeBytes: func(string) (uint64, error) { return 8 << 30, nil },
 		Token:     func() string { return "tok-2" },
@@ -1016,8 +962,8 @@ func TestAnUnchangedComponentIsNeverSwapped(t *testing.T) {
 // dabei ueber den Grund die Unwahrheit gesagt.
 func TestWithoutAnInjectedRootTheBakedAnchorIsUsed(t *testing.T) {
 	e := New(Options{DataDir: t.TempDir(), DeployDir: t.TempDir(),
-		Runner: newFakeDocker(t), Neutral: mustTable(t, ""),
-		Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+		Runner: newFakeDocker(t),
+		Log:    slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if e.o.Roots == nil {
 		t.Fatal("ohne Test-Naht muss die EINGEBACKENE Wurzel geladen werden")
 	}

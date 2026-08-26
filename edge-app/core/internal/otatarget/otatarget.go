@@ -18,7 +18,7 @@
 //
 // # Warum der Umschlag KEINE Autoritaet ist
 //
-// release/release_seq/channel im Umschlag sind Routing und Diagnose. Der
+// release/release_seq im Umschlag sind Routing und Diagnose. Der
 // Umschlag ist UNSIGNIERT; jede Entscheidung (welches Release, welche Ordnung,
 // welche Artefakte, Boden, Backend) wird ausschliesslich aus dem VERIFIZIERTEN
 // Manifest gelesen. Widersprechen sich beide, gewinnt das Manifest.
@@ -51,12 +51,6 @@ var (
 	uuidRe    = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 )
 
-// Channels des Rollouts (reine Diagnose auf dem Geraet).
-const (
-	ChannelCanary = "canary"
-	ChannelStable = "stable"
-)
-
 // Envelope ist die geparste Zuweisung.
 //
 // Manifest/Signature sind die DEKODIERTEN Rohbytes - genau das, was
@@ -67,7 +61,6 @@ type Envelope struct {
 	DeviceID   string
 	Release    string
 	ReleaseSeq int64
-	Channel    string
 	RolloutID  string
 	AssignedAt string
 	Manifest   []byte
@@ -82,7 +75,6 @@ type wireEnvelope struct {
 	DeviceID      string `json:"device_id"`
 	Release       string `json:"release"`
 	ReleaseSeq    int64  `json:"release_seq"`
-	Channel       string `json:"channel,omitempty"`
 	RolloutID     string `json:"rollout_id,omitempty"`
 	AssignedAt    string `json:"assigned_at,omitempty"`
 	ManifestB64   string `json:"manifest_b64"`
@@ -126,9 +118,6 @@ func ParseEnvelope(raw []byte) (*Envelope, error) {
 	if w.ReleaseSeq < 1 {
 		return nil, errors.New("release_seq muss >= 1 sein")
 	}
-	if w.Channel != "" && w.Channel != ChannelCanary && w.Channel != ChannelStable {
-		return nil, fmt.Errorf("unbekannter Kanal '%s'", w.Channel)
-	}
 	if w.RolloutID != "" && !uuidRe.MatchString(w.RolloutID) {
 		return nil, errors.New("rollout_id ist keine UUID")
 	}
@@ -148,7 +137,7 @@ func ParseEnvelope(raw []byte) (*Envelope, error) {
 	}
 	return &Envelope{
 		TenantID: w.TenantID, SiteID: w.SiteID, DeviceID: w.DeviceID,
-		Release: w.Release, ReleaseSeq: w.ReleaseSeq, Channel: w.Channel,
+		Release: w.Release, ReleaseSeq: w.ReleaseSeq,
 		RolloutID: w.RolloutID, AssignedAt: w.AssignedAt,
 		Manifest: manifest, Signature: signature,
 	}, nil
@@ -230,7 +219,6 @@ type View struct {
 	// Verdict != "ok".
 	Release    string `json:"release,omitempty"`
 	ReleaseSeq int64  `json:"release_seq,omitempty"`
-	Channel    string `json:"channel,omitempty"`
 	RolloutID  string `json:"rollout_id,omitempty"`
 	AssignedAt string `json:"assigned_at,omitempty"`
 	// Running sagt, ob dieses Geraet den zugewiesenen Stand BEREITS faehrt.

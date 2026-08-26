@@ -1205,7 +1205,7 @@ gibt in dieser Stufe KEINEN Apply-Pfad und keinen Downlink.
   `agent/ota_test.go`, `web` `TestHealthCarriesBuildVersion`. Cloud-Seite +
   Release-Register: root `AGENTS.md` „OTA Stufe 0".
 
-## OTA Stufe 1: das Geraet PRUEFT ein Release - und wendet weiterhin nichts an
+## Die Signaturkette: das Geraet PRUEFT ein Release gegen seine eingebackene Wurzel
 
 `internal/otaverify` (rein, nur Standardbibliothek - der Core bekommt dafuer
 KEINE neue Abhaengigkeit) + `agent/ota.go`. Vollstaendiges Bild inkl. Zeremonie:
@@ -1245,18 +1245,18 @@ Was hier gelten muss:
   `internal/agent/ota_verify_test.go`.
 
 
-## OTA Stufe 2: das Geraet EMPFAENGT sein Ziel - und wendet es weiterhin nicht selbst an
+## Der Downlink: das Geraet EMPFAENGT sein Ziel (und wendet es seit 26.08.2026 selbst an)
 
 `internal/otatarget` (rein: Umschlag parsen + ablegen) + `agent/ota_target.go`.
-Cloud-Seite, Tabellen und Rollout-Logik: root `AGENTS.md` „OTA Stufe 2";
-Betreiber-Ablauf: `docs/ota-signing.md` §6b. Was hier gelten muss:
+Cloud-Seite, Tabellen und Rollout-Logik: root `AGENTS.md` „Edge-Updates: EIN
+Schritt"; Betreiber-Ablauf: `docs/ota-autonomie.md`. Was hier gelten muss:
 
 - **Der Downlink ist ein TRANSPORTWEG, keine Autoritaet.** Die
   Vertrauensentscheidung faellt unveraendert auf dem Geraet gegen die
   EINGEBACKENE Wurzel (`internal/otaverify`, Stufe 1); die Cloud prueft die
-  Signatur bewusst nicht. Der Umschlag ist UNSIGNIERT - `release`/`release_seq`/
-  `channel` sind Routing und Diagnose, und sobald ein Manifest geprueft ist,
-  gewinnt AUSSCHLIESSLICH dieses.
+  Signatur bewusst nicht. Der Umschlag ist UNSIGNIERT - `release`/`release_seq`
+  sind Routing und Diagnose, und sobald ein Manifest geprueft ist, gewinnt
+  AUSSCHLIESSLICH dieses.
 - **Abgelegt werden die ROHEN Umschlag-Bytes in EINER Datei**
   (`<data_dir>/ota/target.json`, atomar tmp+rename). Ein Umschlag, den wir
   zerlegen und neu zusammensetzen, koennte die Manifest-Bytes veraendern - und
@@ -1297,19 +1297,22 @@ Betreiber-Ablauf: `docs/ota-signing.md` §6b. Was hier gelten muss:
   Digests, Boden = `deferred`, fremde Identitaet verworfen, Ruecknahme,
   Aufzeichnen nur des nachweislich Laufenden), Kontrakt-Beispiele PER PFAD.
 
-## OTA Stufe 3: das Geraet wendet SELBST an - gebaut, nirgends eingeschaltet
+## Das Geraet wendet SELBST an - ohne Tor, ohne Schalter, ohne Menschen
 
 `internal/otaapply` (rein) + `internal/otaupdater` (Docker) + `cmd/vp-edge-updater`
 (der Sidecar) + `agent/ota_autonomy.go` (die Kern-Haelfte). Vollstaendiges Bild
-inkl. Betreiber-Ablauf: root `AGENTS.md` „OTA Stufe 3" und
+inkl. Betreiber-Ablauf: root `AGENTS.md` „Edge-Updates: EIN Schritt" und
 [`docs/ota-autonomie.md`](../docs/ota-autonomie.md). Was HIER gelten muss:
 
-- **ZWEI unabhaengige Tore, beide zu.** Das Compose-Profil `ota` (ohne
-  `--profile ota` laeuft der Container gar nicht) UND der Schalter je Geraet
-  (`<data>/ota/autonomy.json`, Vorgabe AUS; `VP_OTA_AUTONOMOUS` ist der Not-Ein
-  fuer den Laborstand). Ohne beides ist die Box zeichengleich wie vorher -
-  `TestWithAutonomyOffNotASingleDockerCommandRuns` und der Matrix-Fall
-  `autonomy_off` nageln das fest.
+- **⚠ Seit dem 26.08.2026 gibt es KEIN Tor mehr ueber den Zustand der Anlage.**
+  Compose-Profil, Geraete-Schalter (`autonomy.json`/`VP_OTA_AUTONOMOUS`),
+  Neutral-Zeit T, Interlock, Eil-Pfad und die Einmal-Freigabe sind ERSATZLOS
+  entfallen (Code, nicht nur Vorgaben). Was ein Anwenden noch verhindern kann,
+  sind ausschliesslich Eigenschaften des SIGNIERTEN Release - Kette,
+  Anti-Rollback-Boden, `compat.backends`, `state_schema` - und die physische
+  Plattengrenze. Das Sicherheits-Argument: der bis dahin gesegnete Handpfad
+  `update.sh --from-target` tauscht **roh**, ohne Selbsttest und ohne Ruecknahme;
+  der autonome Pfad ist strikt sicherer als das.
 - **Der Sidecar glaubt dem Kern NICHTS.** Er liest die Manifest-Bytes selbst
   und verifiziert gegen SEINE eingebackene Wurzel und SEINEN Boden. Die EINE
   Stelle, die beide aufrufen, ist `otaapply.VerifyManifest` - „unabhaengig
@@ -1324,7 +1327,7 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „OTA Stufe 3" und
 - **Das Protokoll ist ein DATEI-Kanal in `/data/ota`, jede Datei mit GENAU EINEM
   Schreiber** (Kern: `target.json`/`current.json`/`self-test.json`/`core-signal.json`;
   Sidecar: `updater-state.json`/`pending-confirm.json`/`lkg.json`/`failed.json`;
-  Betreiber: `autonomy.json`). Alles tmp+rename. Der Sidecar hat kein Netz und
+  Betreiber: `prune.json`). Alles tmp+rename. Der Sidecar hat kein Netz und
   keinen Port - er KANN den Kern nicht anrufen.
 - **Sequenziert, nie beide Failsafe-Kopien zugleich weg:** getauscht wird nur,
   was sich UNTERSCHEIDET, und immer nur EINE Komponente je Durchlauf (`core`,
@@ -1351,16 +1354,13 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „OTA Stufe 3" und
   `GridLimitKw: 0` heisst „§14a-Grenze 0 kW", nicht „unbekannt"** (unbekannt ist
   `guards.Unknown()`); eine mit `{}` gebaute Messung laesst den Envelope-Guard
   gegen eine Null-Grenze rechnen - im Trockenlauf genau so aufgefallen.
-- **Der Interlock + `state.ModeOtaNeutral`:** solange ein von neutral
-  abweichender Sollwert laeuft, wird verschoben; ein EILIGES Release
-  (`urgent` im SIGNIERTEN Manifest) laesst den Kern die Anlage zuerst bewusst
-  neutral stellen. `otaNeutralOverride` sitzt in `applySetpoint` NACH der
-  Kalibrierung (ein First-Light-Test gewinnt) und hat einen harten Deckel von
-  10 min plus eine 60-s-TTL auf die Bitte - ein verschwundener Sidecar parkt die
-  Anlage nie.
-- **Was einmal zurueckgerollt wurde, laeuft NIE wieder von selbst an**
+- **Was einmal zurueckgerollt wurde, laeuft nicht von selbst wieder an**
   (`failed.json`). Ohne das begann der naechste Takt denselben Tausch von vorn -
   die Zuweisung liegt ja noch. In der Fehlerinjektions-Matrix aufgefallen.
+  **⚠ Seit dem Ein-Schritt-Umbau gilt die Sperre der ZUWEISUNG, nicht dem
+  Release fuer immer:** eine NEUE Zuweisung - auch desselben Release - startet
+  einen neuen Versuch (Blocker `zurueckgenommen`). Die Dauersperre war das eine
+  Tor, das nur ueber eine Shell zu loesen war.
 - **⚠ Eine Sperre wird GENANNT - je AENDERUNG, nie je Takt** (Canary-Soak
   04.08.2026): jedes geschlossene Tor traegt seit dem einen maschinenlesbaren
   Namen (`Decision.Blocker` -> `UpdaterState.Blocker`, Vokabular
@@ -1373,10 +1373,10 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „OTA Stufe 3" und
   protokollierte aber NICHTS, und der Herzschlag trug weiter den freundlichen
   Satz des Verifizierers: der Betreiber sah „wartet" ohne jede Chance zu
   erfahren, worauf. Wer ein neues Tor einbaut, gibt ihm einen Blocker-Namen und
-  einen Grund, der den HEBEL nennt (bei der Neutral-Zeit: Familie +
-  `VP_OTA_NEUTRAL_VERIFIED`). Beweise: `otaupdater/blocker_test.go`,
+  einen Grund, der den HEBEL nennt (beim Plattenwaechter: aufraeumen bzw.
+  `VP_OTA_DISK_GUARD_MB`). Beweise: `otaupdater/blocker_test.go`,
   `otaapply/decide_test.go`, `agent/ota_autonomy_test.go`; Betreiber-Sicht:
-  `docs/ota-autonomie.md` §3.
+  `docs/ota-autonomie.md` §2.
   - **Seit dem Admin-UX-Umbau (05.08.2026) reist der NAME zusaetzlich in die
     Cloud:** `cloud.UpdateSummary.Blocker` (`blocker`, `omitempty`) traegt ihn
     NEBEN dem deutschen `reason` - dieselbe Begruendung, aus der
@@ -1387,13 +1387,12 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „OTA Stufe 3" und
     blockiert (`up.Blocked()`), also bleibt der Herzschlag einer gesunden Box
     byte-gleich. Das frueher hier stehende „Cloud/Portal unveraendert" gilt
     damit nicht mehr - die Cloud-Seite steht in der Root-`AGENTS.md`
-    („Admin-UX-Umbau P1"), inklusive des Uebergangs fuer Baende ohne das Feld
+    („Edge-Updates: EIN Schritt"), inklusive des Uebergangs fuer Baende ohne das Feld
     (`RolloutStates.BLOCKED_PREFIX` ist der gepinnte Zwilling von
     `otaapply.BlockedPrefix` - **beide zusammen aendern**).
-- **`update.sh` muss das `ota`-Profil kennen:** `up -d --remove-orphans` wuerde
-  den Sidecar sonst als Waise ENTFERNEN und einer eingerichteten Box
-  stillschweigend die Autonomie nehmen. `detect_ota_profile` erkennt ihn,
-  `--ota` erzwingt es bei gestoppten Containern.
+- **Der Sidecar ist ein NORMALER Dienst** (kein Profil mehr), also nimmt
+  `up -d --remove-orphans` ihn selbstverstaendlich mit. Genau das ist der Weg
+  fuer Bestandsboxen: EIN `./update.sh` je Box holt ihn dauerhaft dazu.
 - **Der Sidecar tauscht sich NIE selbst** (`otaapply.TargetRefs` laesst
   `updater` aus, `ReleaseNamesUpdater` protokolliert es laut); seine eigenen
   Updates sind beaufsichtigt und out-of-band.
@@ -1448,15 +1447,14 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „OTA Stufe 3" und
   - **Bekannte Grenze:** eine Box, die der Plattenwaechter schon blockiert,
     kommt hierueber nicht frei (ohne Tausch kein Aufraeumen) - dort einmal von
     Hand `docker image prune -a`, was durch den Halter-Container nachweislich
-    sicher ist. Betreiber-Handbuch: `docs/ota-autonomie.md` §5b.
+    sicher ist. Betreiber-Handbuch: `docs/ota-autonomie.md` §4.
 - Beweise: `internal/otaapply` (die Tore + Wiederaufnahme + Sequenz + Snapshot +
   Schalter + `prune_test.go`: die Regel inkl. Halter, Namensraum, Kulanz je
   Repository, alle Namen einer Kennung, Schalter-Vorzeichen), `internal/otaupdater`
   (die Orchestrierung gegen eine geschriebene docker-Welt; `prune_test.go`:
   Rueckfallebene ueberlebt, Ruecknahme raeumt nicht, vorab geholtes Ziel bleibt,
   ein Reinigungs-Fehlschlag kippt keinen bestaetigten Tausch),
-  `agent/ota_autonomy_test.go`, `internal/web/jstest/ui.test.js`
-  (die Neutral-Aussage) und die Matrix `test/ota-soak/run.sh` (11 Faelle gegen
+  `agent/ota_autonomy_test.go` und die Matrix `test/ota-soak/run.sh` (10 Faelle gegen
   echten Docker, echte Signaturkette, echte Registry - `image_cleanup` faehrt
   ZWEI bestaetigte Updates und prueft danach Stueck fuer Stueck, was weg ist
   und was steht).
@@ -1494,13 +1492,13 @@ Begruendung: root `AGENTS.md` „Trust-Set-Bereitstellung beim Einrichten" +
 - Beweis (echter Docker, mutationsgetestet - die naive Verzeichnis-Kopie faellt
   durch): `test/install-selfcheck.sh` Abschnitte 2b/2c.
 
-## OTA Stufe 4: das Vertrauen wird MELDBAR - und ein Knopf ersetzt SSH
+## Die VERTRAUENS-IDENTITAET im Herzschlag
 
-Zwei additive Dinge, beide ohne jeden neuen Wirkpfad zum Wechselrichter. Cloud-
-Seite + Portal: root `AGENTS.md` „OTA Stufe 4"; Rotations-Drill:
+Additiv, ohne jeden neuen Wirkpfad zum Wechselrichter. Cloud-Seite + Portal:
+root `AGENTS.md` „Edge-Updates: EIN Schritt"; Rotations-Drill:
 [`docs/ota-signing.md`](../docs/ota-signing.md) §7.1.
 
-- **Der Herzschlag traegt die VERTRAUENS-IDENTITAET** (`cloud.TrustSummary` im
+- **Der Herzschlag traegt die Vertrauens-Identitaet** (`cloud.TrustSummary` im
   `update`-Block, gebaut in `agent/ota.go otaRefreshTrust`, zwischengespeichert
   mit eigenem mtime-Stempel - die Ed25519-Pruefung laeuft nur bei geaendertem
   Trust-Set). Sie beantwortet „traegt diese Box ein schluesseltragendes Image?"
@@ -1517,53 +1515,15 @@ Seite + Portal: root `AGENTS.md` „OTA Stufe 4"; Rotations-Drill:
     mit LEERER `root_key_ids` (`[]`, nie `null` - deshalb das explizite
     `append([]string{}, ...)`), und das heisst „Crossover offen" - der
     dokumentierte Vor-TOFU-Zustand, kein Fehler.
-- **`:8484` „Jetzt anwenden"** (`agent/ota_apply.go`, `static/ota.js`, Karte in
-  ④ Erweitert): der Kern legt hinter dem BESTEHENDEN Betreiber-Passwort
-  (`calGuard`, `X-VP-Calibration-Token`) eine EINMALIGE Freigabe ab
-  (`otaapply.ApplyRequest`); angewandt wird sie vom Stufe-3-Sidecar.
-  - **Es ist KEINE Autonomie.** Sie oeffnet ausschliesslich das ERSTE Tor von
-    `otaapply.Decide` - fuer GENAU EINEN Vorgang (Token, quittiert in
-    `UpdaterState.AppliedRequestToken`, damit jede Datei GENAU EINEN Schreiber
-    behaelt) und GENAU EIN Release (die Freigabe gilt dem Stand, den der Mensch
-    SAH; eine inzwischen eingetroffene Zuweisung ist nicht mitfreigegeben) -
-    und sie verfaellt nach `ApplyRequestWindow` (15 min). Jedes weitere Tor
-    gilt unveraendert; `TestAnApprovalNeverSkipsAnyLaterGate` vergleicht dafuer
-    freigegeben gegen autonom Fall fuer Fall. `autonomy.json` bleibt unberuehrt
-    AUS.
-  - **Ohne laufenden Sidecar rendert die Karte NICHT** und der Endpunkt lehnt
-    mit dem ehrlichen Grund ab (dann bleibt `update.sh --from-target` der Weg) -
-    eine Karte, die nur sagen kann „geht hier nicht", ist Laerm.
-  - `static/*` ist `//go:embed`-ed - Kern nach jeder Aenderung neu bauen.
-
-- **Dieselbe Freigabe kommt seit dem Admin-UX-Umbau P3 auch aus dem PORTAL**
-  (`agent/ota_apply_downlink.go`, Kontrakt
-  `docs/contracts/mqtt-ota-apply.schema.json`) - und das ist ausdruecklich
-  KEIN zweiter Weg zum Anwenden:
-  - **Beide muenden in `OtaRequestApplyWithToken`.** Die `:8484`-Taste erzeugt
-    ihren Token selbst, das Portal bringt einen mit (damit es SEINEN Vorgang
-    spaeter wiedererkennt); alles danach ist woertlich derselbe Code. Wer hier
-    einen zweiten Pfad einzieht, muss jedes Tor ein zweites Mal absichern.
-  - **⚠ NICHT-retained, und das ist die tragende Entscheidung.** Der Abonnent
-    liegt auf `v2/apply`, ausdruecklich NICHT auf dem retained
-    Zuweisungs-Slot `v2/update`: retained wird bei jedem Reconnect erneut
-    zugestellt, eine Einmal-Freigabe waere damit keine. **Das allein genuegt
-    aber nicht** - der Link haelt eine DAUERHAFTE Sitzung
-    (`cleanSession=false`), der Broker darf eine QoS1-Nachricht also
-    nachliefern. Die zweite Haelfte ist deshalb `requested_at`: der Stempel
-    des UMSCHLAGS ist der Beginn des 15-Minuten-Fensters, nicht der
-    Empfangs-Zeitpunkt, also ist eine nachgelieferte Freigabe bei ihrer
-    Ankunft schon abgelaufen und wird abgelehnt statt abgelegt. Die Cloud
-    zeigt dafuer „Freigabe nicht abgeholt".
-  - **Verworfen wird STUMM zum Broker und LAUT im Protokoll:** falsche Form,
-    fremde Identitaet (die Regel von Telemetrie/purge_data/Zuweisung), und -
-    der eigene Fall dieses Pfades - eine Freigabe, die ein ANDERES als das
-    zugewiesene Release nennt. Eine Zustimmung gilt fuer das, was der Mensch
-    SAH.
-  - **`update.can_apply` im Herzschlag** (`cloud.UpdateSummary.CanApply`) ist
-    die FAEHIGKEIT, nie eine Erlaubnis: laeuft hier ein Sidecar, und ist die
-    Zuweisung geprueft? Sie wird bewusst OHNE `omitempty` gesendet - ein
-    Build, der die Frage kennt, beantwortet sie IMMER, damit „abwesend"
-    cloud-seitig nur „aelterer Build" heissen kann.
+- **⚠ ENTFALLEN am 26.08.2026: die Einmal-Freigabe.** Sowohl die
+  `:8484`-Taste „Jetzt anwenden" (`agent/ota_apply.go`, `static/ota.js`) als
+  auch ihr Portal-Zwilling (`agent/ota_apply_downlink.go`, Kontrakt
+  `mqtt-ota-apply.schema.json`, Topic `v2/apply`) sind ERSATZLOS weg. Sie
+  existierten nur, weil die Autonomie per Vorgabe AUS war; ohne dieses Tor
+  haben sie keinen Gegenstand mehr. **Wer je wieder einen zweiten Weg zum
+  Anwenden einzieht, muss jedes Tor ein zweites Mal absichern** - der Grund,
+  aus dem es damals genau EINEN gemeinsamen Kern gab
+  (`OtaRequestApplyWithToken`).
 
 ## Per-source status in the heartbeat (#524)
 
@@ -2444,97 +2404,22 @@ aus `sources.js`). Regeln, die halten müssen:
   am Server nichts, Bestätigen kippt das Vorzeichen UND leert
   `calibration-certified.json`.
 
-## Neutral-Zeit-Test: T wird MESSBAR statt behauptet (`internal/neutralcal`)
+## Teil C: JEDE Installation bringt den Aktualisierer mit - ohne Flag
 
-Bis hierher war die Inverter-Neutral-Zeit T (root `AGENTS.md` "OTA Stufe 3" §3,
-`docs/ota-autonomie.md` §3) nur am Pruefstand mit physisch getrenntem Kabel zu
-belegen. `internal/neutralcal` (rein, keine I/O - dieselbe Disziplin wie
-`internal/calibration`/`internal/curtailcal`) macht T zu einer MESSBAREN
-Eigenschaft, die die Box am `:8484`-Card „Neutral-Zeit messen" selbst
-ermittelt: ein kleiner, klar von neutral abweichender Sollwert wird
-geschrieben und bestaetigt (Register-Ruecklesung + gemessene Batterieleistung
-zeigt die Abweichung), dann hoert die Box **bewusst auf zu schreiben** -
-KEINE weitere Nachricht auf `edge/setpoint`, nicht einmal eine
-Neutral-Freigabe - und der GEWOEHNLICHE Telemetrie-Lesepfad (unveraendert,
-nichts wird gestoppt) beobachtet, wie lange es dauert, bis die gemessene
-Batterieleistung von selbst - dreimal in Folge, frisch - ins Neutralband
-zurueckkehrt.
+`install.sh`s `pull_and_up()` zieht und startet den ganzen Stapel
+(`dc pull` / `dc up -d`) - der `updater` ist seit dem 26.08.2026 ein
+GEWOEHNLICHER Dienst ohne Compose-Profil, also braucht es dafuer keine
+Sonderbehandlung mehr. `update.sh` bringt ihn aus demselben Grund auf einer
+BESTANDSBOX mit: `up -d --remove-orphans` startet ihn wie jeden anderen
+Dienst. **Das ist der EINE Handgriff je Bestandsbox** (`cd <deploy-dir> &&
+./update.sh`), danach nie wieder.
 
-- **Das Verdikt ist eines von vier, NIE eine erfundene Zahl:** `bestanden`
-  (beide Haelften bewiesen - Register UND die Ruecklkehr), `nicht_beweisbar`
-  (die Anlage hat sich nie messbar von neutral entfernt, z. B. SoC-Grenze -
-  oder es fehlen Messwerte: eine Aussage ueber den LAUF, nie ueber T),
-  `kein_nachweis` (Register nie bestaetigt, oder keine Rueckkehr im
-  Zeitfenster - bitte wiederholen), `laeuft`.
-- **T wird KONSERVATIV berichtet, nie optimistisch** (`measuredSeconds` in
-  `neutralcal.go`): verankert auf den letzten Messwert, der NACHWEISLICH noch
-  AUSSERHALB des Neutralbands lag, nie auf den ersten, der zufaellig schon
-  eingeschwungen aussah - eine ueberschaetzte Zahl waere die gefaehrliche
-  Richtung, denn die Wachhund-Frist (`otaapply.WatchdogDeadline`) muss strikt
-  darunter bleiben.
-- **Sicherheitsnetz:** `DepartureTimeout` (90 s) bindet die Schreibphase
-  enger als die Gesamt-TTL (`DefaultTTL`, 6 min); ein `time.AfterFunc`-Wachhund
-  (`agent/neutral.go`, analog `calWatchdog`/`curtailWatchdog`) nimmt die
-  Steuerung unabhaengig vom Oberflaechen-Takt wieder auf; jederzeit per Knopf
-  abbrechbar (`NeutralAbort`); ein laufender Test bricht SELBST ab, sobald
-  eine EILIGE OTA-Aktualisierung die Anlage neutral parken will
-  (`otaNeutralRequestPending`, sonst wuerde `otaNeutralOverride` bis zu 6 min
-  verhungern) oder eine Kalibrierung startet (`neutralPreflight` refuses
-  waehrend `a.cal.Engaged`). Derselbe `X-VP-Calibration-Token`-Gate wie
-  Kalibrierung/Abregelung; die Guard-Kette (`guards.Clamp`) laeuft
-  UNVERAENDERT ueber jeden geschriebenen Wert.
-- **Ein bestandener Test traegt sich in `ota/neutral-verified.json` ein**
-  (`otaapply.SaveNeutralRecord`, je Familie eine Zeile, Schema-versioniert wie
-  `calibration-certified.json`). `otaapply.NeutralTable.ForWithMeasured`
-  zieht ihn GLEICHWERTIG zu `VP_OTA_NEUTRAL_VERIFIED` heran - **die
-  Umgebungsvariable gewinnt IMMER**, auch mit einer kleineren Zahl (ein
-  Betreiber, der die konservative Pruefstands-Messung bereits gemacht hat,
-  wird nie ueberstimmt); der Sidecar (`otaupdater.Engine.Tick`) laedt die
-  Datei JEDEN Takt frisch (wie `CoreSignal`/`Autonomy`), weil der laufende
-  Kern sie waehrend des Sidecar-Betriebs neu schreiben kann.
-- **Wiring:** `neutralTestOverride` sitzt in `applySetpoint` NACH
-  `calibrationOverride` und VOR `otaNeutralOverride` (dieselbe Prioritaet wie
-  Kalibrierung: „ein First-Light-Test gewinnt"); `onLocalTelemetry` speist
-  `neutralObserve` mit der gemessenen `battery_power_kw` (derselbe Wert, den
-  `lastBattKw` fuer die Kalibrier-Gegenprobe haelt); `onControlReadback`
-  routet einen Readback mit `source:"neutral_test"` in `NoteRegister` (ein
-  neuer Discriminator neben `"calibration"`, nicht `"ota_neutral"`). Ein
-  additiver `neutral_verified`-Block im Herzschlag (`cloud.UpdateSummary`,
-  `agent.neutralVerifiedSummary`) traegt den Nachweis der AKTUELLEN Familie
-  als reine TATSACHE mit - er entscheidet cloud-seitig nichts, die Torkette
-  laeuft ausschliesslich auf dem Geraet.
-- Beweise: `internal/neutralcal` (die Regel-Tests: Verdikte, Grenzfaelle,
-  konservative Verankerung, Abort-Invarianz, TTL/Departure-Timeout-Grenzen),
-  `internal/otaapply` (Vorrang der Env-Variable, Datei-Rundlauf, Schema-
-  Versions-Ablehnung), `internal/otaupdater` (Sidecar-Ebene: der gemessene
-  Nachweis oeffnet das Tor, eine kuerzere Env-Zahl gewinnt trotzdem, zu kurz/
-  unlesbar/veraltete Version sperrt weiterhin), `internal/agent`
-  (Override-Verdrahtung, Interlock, Record/Abort), `internal/web`
-  (`/api/neutral/*`-Endpunkte + der Admin-Gate, Seiten-Struktur).
+Der frueher noetige GERAETE-Schalter (`ota/autonomy.json`,
+`VP_OTA_AUTONOMOUS`) und sein `:8484`-Knopf sind ERSATZLOS entfallen: es gibt
+nichts mehr einzuschalten. Beweis: `edge-app/test/install-selfcheck.sh`
+(docker-frei: die generierte Compose traegt GAR KEIN Profil und keinen
+Autonomie-Schalter mehr, und `pull`/`up -d` laufen ohne `--profile`).
 
-## Teil C: eine frische Installation bringt den Aktualisierer gleich mit
-
-`install.sh`s `pull_and_up()` zieht und startet seit dieser Aenderung
-IMMER mit `--profile ota` (`dc --profile ota pull core nodered updater` /
-`dc --profile ota up -d`) - **nur das COMPOSE-PROFIL (Tor 1)**. Der
-GERAETE-Schalter (`ota/autonomy.json`, Tor 2) bleibt bewusst bei seiner
-Vorgabe AUS (`VP_OTA_AUTONOMOUS: ${VP_OTA_AUTONOMOUS:-false}` in
-`generate_compose()` unveraendert) - eine frische Box beobachtet und meldet
-also von Anfang an, wendet aber nichts an, bis ein Betreiber den Schalter
-bewusst setzt. `update.sh` ist davon NICHT betroffen: seine eigene
-`detect_ota_profile()` erkennt weiterhin den TATSAECHLICH laufenden Zustand
-einer Bestandsbox und nimmt `--profile ota` nur auf, wenn der Sidecar dort
-schon lief - eine vor dieser Aenderung installierte Box bekommt das neue
-Verhalten also NICHT rueckwirkend durch ein blosses Update, nur eine neue
-Installation. Der Schalter selbst ist jetzt zusaetzlich OHNE SHELL setzbar:
-`:8484` → Einrichten → „Automatische Aktualisierung" (`GET`/`POST
-/api/ota/autonomy`, hinter demselben `X-VP-Calibration-Token` wie jede
-andere physische Steuer-Mutation - `agent.OtaSetAutonomy` schreibt
-AUSSCHLIESSLICH die eine Datei, die der Sidecar ohnehin jeden Takt liest).
-Beweise: `edge-app/test/install-selfcheck.sh` (docker-frei: die Pull-/Up-
-Zeilen tragen `--profile ota`; die generierte Compose haelt
-`VP_OTA_AUTONOMOUS` weiterhin bei `false`) + `internal/web`
-(Admin-Gate + Seiten-Struktur fuer den Schalter).
 
 ## Die Steuerungs-Zertifizierung hat jetzt DREI Quellen - die dritte ist die Plattform
 

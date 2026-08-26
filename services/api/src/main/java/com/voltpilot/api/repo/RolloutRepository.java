@@ -42,12 +42,12 @@ public class RolloutRepository {
     /** Die Zuweisung eines Geräts, angereichert um seine Identität. */
     public record TargetRow(UUID deviceId, UUID tenantId, UUID siteId, String siteName,
             String tenantName, String externalRef, long releaseSeq, String releaseVersion,
-            String channel, boolean pinned, UUID rolloutId, String assignedBy, Instant assignedAt,
+            UUID rolloutId, String assignedBy, Instant assignedAt,
             Instant publishedAt, String manifest, String signature) {
     }
 
     private static final String TARGET_SELECT = """
-            SELECT t.device_id, t.release_seq, t.release_version, t.channel, t.pinned,
+            SELECT t.device_id, t.release_seq, t.release_version,
                    t.rollout_id, t.assigned_by, t.assigned_at, t.published_at,
                    d.external_ref, d.site_id, s.name AS site_name,
                    s.tenant_id, ten.name AS tenant_name,
@@ -75,18 +75,18 @@ public class RolloutRepository {
      * nicht hinausgegangen, und der Drift-Wächter soll es aufgreifen, falls der
      * unmittelbare Publish scheitert.
      */
-    public void upsertTarget(UUID deviceId, long releaseSeq, String releaseVersion, String channel,
-            boolean pinned, UUID rolloutId, String assignedBy) {
+    public void upsertTarget(UUID deviceId, long releaseSeq, String releaseVersion,
+            UUID rolloutId, String assignedBy) {
         jdbc.update("""
-                INSERT INTO device_update_target (device_id, release_seq, release_version, channel,
-                        pinned, rollout_id, assigned_by, assigned_at, published_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, now(), NULL)
+                INSERT INTO device_update_target (device_id, release_seq, release_version,
+                        rollout_id, assigned_by, assigned_at, published_at)
+                VALUES (?, ?, ?, ?, ?, now(), NULL)
                 ON CONFLICT (device_id) DO UPDATE SET release_seq = EXCLUDED.release_seq,
-                        release_version = EXCLUDED.release_version, channel = EXCLUDED.channel,
-                        pinned = EXCLUDED.pinned, rollout_id = EXCLUDED.rollout_id,
+                        release_version = EXCLUDED.release_version,
+                        rollout_id = EXCLUDED.rollout_id,
                         assigned_by = EXCLUDED.assigned_by, assigned_at = now(),
                         published_at = NULL
-                """, deviceId, releaseSeq, releaseVersion, channel, pinned, rolloutId, assignedBy);
+                """, deviceId, releaseSeq, releaseVersion, rolloutId, assignedBy);
     }
 
     public void markPublished(UUID deviceId) {
@@ -101,14 +101,14 @@ public class RolloutRepository {
 
     // ── Rollouts ─────────────────────────────────────────────────────────
 
-    public record RolloutRow(UUID id, long releaseSeq, String releaseVersion, String channel,
-            String state, String wavesJson, int currentWave, boolean autoAdvance,
-            String haltedReason, String createdBy, Instant createdAt, Instant updatedAt) {
+    public record RolloutRow(UUID id, long releaseSeq, String releaseVersion,
+            String state,
+            String createdBy, Instant createdAt, Instant updatedAt) {
     }
 
     private static final String ROLLOUT_SELECT = """
-            SELECT id, release_seq, release_version, channel, state, waves::text AS waves,
-                   current_wave, auto_advance, halted_reason, created_by, created_at, updated_at
+            SELECT id, release_seq, release_version, state,
+                   created_by, created_at, updated_at
               FROM rollout
             """;
 
@@ -117,25 +117,35 @@ public class RolloutRepository {
                 RolloutRepository::mapRollout);
     }
 
+    /** Die noch laufenden Verteilungen (der Wächter schreibt ihre Zustände fort). */
+    public java.util.List<RolloutRow> activeRollouts() {
+        return jdbc.query(ROLLOUT_SELECT + " WHERE state = 'active' ORDER BY created_at",
+                RolloutRepository::mapRollout);
+    }
+
     /**
-     * Der EINE laufende Rollout ({@code active} oder {@code paused}) - ein
-     * partieller Unique-Index in der Migration garantiert, dass es höchstens
-     * einen gibt.
+     * Die JÜNGSTEN Verteilungen, unabhängig von ihrem Zustand - was die Seite
+     * „Edge-Updates" zeigt.
+     *
+     * <p>Eine LISTE, seit die Ein-Schritt-Vereinfachung die Sperre
+     * „höchstens ein lebender Rollout" entfernt hat: mehrere Aktualisierungen
+     * dürfen nebeneinander laufen, und die Seite muss sie alle zeigen können.
+     * Eine gerade abgeschlossene bleibt bewusst sichtbar - sie darf nicht in
+     * dem Augenblick verschwinden, in dem sie fertig wird.
      */
-    public Optional<RolloutRow> liveRollout() {
-        return jdbc.query(ROLLOUT_SELECT + " WHERE state IN ('active','paused')",
-                RolloutRepository::mapRollout).stream().findFirst();
+    public List<RolloutRow> recentRollouts(int limit) {
+        return jdbc.query(ROLLOUT_SELECT + " ORDER BY created_at DESC LIMIT " + limit,
+                RolloutRepository::mapRollout);
     }
 
     /**
      * Der JÜNGSTE Rollout, unabhängig von seinem Zustand - was die Seite
      * „Aktiver Rollout" zeigt.
      *
-     * <p>Bewusst NICHT {@link #liveRollout()}: ein gerade AUTOMATISCH
-     * angehaltener Rollout ist der Moment, in dem der Betreiber ihn am
-     * dringendsten sieht - er dürfte nicht in dem Augenblick von der Seite
-     * verschwinden, in dem etwas schiefgegangen ist. {@code liveRollout} bleibt
-     * die Regel „höchstens einer bewegt die Flotte"; diese hier ist die Anzeige.
+     * <p>Bewusst NICHT nur die laufenden: eine gerade abgeschlossene
+     * Aktualisierung ist der Moment, in dem der Betreiber sie am dringendsten
+     * sieht - sie darf nicht in dem Augenblick von der Seite verschwinden, in
+     * dem sie fertig wird (oder ein Gerät gemeldet hat, dass es nicht ging).
      */
     public Optional<RolloutRow> latestRollout() {
         return jdbc.query(ROLLOUT_SELECT + " ORDER BY created_at DESC LIMIT 1",
@@ -147,38 +157,19 @@ public class RolloutRepository {
                 .stream().findFirst();
     }
 
-    public void insertRollout(UUID id, long releaseSeq, String releaseVersion, String channel,
-            String wavesJson, boolean autoAdvance, String createdBy) {
+    public void insertRollout(UUID id, long releaseSeq, String releaseVersion,
+            String createdBy) {
         jdbc.update("""
-                INSERT INTO rollout (id, release_seq, release_version, channel, state, waves,
-                        current_wave, auto_advance, created_by)
-                VALUES (?, ?, ?, ?, 'active', ?::jsonb, 0, ?, ?)
-                """, id, releaseSeq, releaseVersion, channel, wavesJson, autoAdvance, createdBy);
+                INSERT INTO rollout (id, release_seq, release_version, state, created_by)
+                VALUES (?, ?, ?, 'active', ?)
+                """, id, releaseSeq, releaseVersion, createdBy);
     }
 
-    /**
-     * Die Wellen-Automatik eines laufenden Rollouts umschalten.
-     *
-     * <p>Bewusst nachträglich schaltbar: ein Betreiber, der die erste Welle von
-     * Hand begleitet hat und dann Vertrauen gefasst hat, soll den Rest nicht
-     * abbrechen und neu starten müssen - und umgekehrt muss er eine laufende
-     * Automatik anhalten können, ohne den Not-Aus (der endgültig ist) zu
-     * benutzen.
-     */
-    public void setAutoAdvance(UUID id, boolean autoAdvance) {
-        jdbc.update("UPDATE rollout SET auto_advance = ?, updated_at = now() WHERE id = ?",
-                autoAdvance, id);
+
+    public void setRolloutState(UUID id, String state) {
+        jdbc.update("UPDATE rollout SET state = ?, updated_at = now() WHERE id = ?", state, id);
     }
 
-    public void setRolloutState(UUID id, String state, String haltedReason) {
-        jdbc.update("UPDATE rollout SET state = ?, halted_reason = ?, updated_at = now() "
-                + "WHERE id = ?", state, haltedReason, id);
-    }
-
-    public void setCurrentWave(UUID id, int wave) {
-        jdbc.update("UPDATE rollout SET current_wave = ?, updated_at = now() WHERE id = ?",
-                wave, id);
-    }
 
     // ── Geräte eines Rollouts ────────────────────────────────────────────
 
@@ -192,14 +183,14 @@ public class RolloutRepository {
      * {@code null} für Rollouts, die vor dieser Migration gestartet wurden;
      * dann greift der Live-Join wie bisher.
      */
-    public record RolloutDeviceRow(UUID rolloutId, UUID deviceId, int wave, String state,
+    public record RolloutDeviceRow(UUID rolloutId, UUID deviceId, String state,
             String reason, Instant since, String deviceRef, String siteName) {
     }
 
     public List<RolloutDeviceRow> devicesOf(UUID rolloutId) {
-        return jdbc.query("SELECT rollout_id, device_id, wave, state, reason, since, "
+        return jdbc.query("SELECT rollout_id, device_id, state, reason, since, "
                 + "device_ref, site_name "
-                + "FROM rollout_device WHERE rollout_id = ? ORDER BY wave, device_id",
+                + "FROM rollout_device WHERE rollout_id = ? ORDER BY device_id",
                 RolloutRepository::mapRolloutDevice, rolloutId);
     }
 
@@ -210,14 +201,14 @@ public class RolloutRepository {
      * lautet „wie hieß dieses Gerät, ALS es in die Welle kam", und ein FK auf
      * {@code device} würde die Antwort beim Unclaim löschen.
      */
-    public void insertRolloutDevice(UUID rolloutId, UUID deviceId, int wave, String state,
+    public void insertRolloutDevice(UUID rolloutId, UUID deviceId, String state,
             String reason, String deviceRef, String siteName) {
         jdbc.update("""
-                INSERT INTO rollout_device (rollout_id, device_id, wave, state, reason, since,
+                INSERT INTO rollout_device (rollout_id, device_id, state, reason, since,
                                             device_ref, site_name)
-                VALUES (?, ?, ?, ?, ?, now(), ?, ?)
+                VALUES (?, ?, ?, ?, now(), ?, ?)
                 ON CONFLICT (rollout_id, device_id) DO NOTHING
-                """, rolloutId, deviceId, wave, state, reason, deviceRef, siteName);
+                """, rolloutId, deviceId, state, reason, deviceRef, siteName);
     }
 
     /**
@@ -264,58 +255,11 @@ public class RolloutRepository {
 
     // ── Portal-Apply: die erteilte Einmal-Freigabe ───────────────────────
 
-    /**
-     * Der BELEG über eine erteilte Freigabe (Migration V20260807010000).
-     *
-     * <p>Sie ist ausdrücklich nicht die Autorisierung - die ist die
-     * NICHT-retained MQTT-Nachricht, die schon draußen ist, wenn diese Zeile
-     * entsteht. Sie existiert, damit die Oberfläche „erteilt, wartet" sagen kann
-     * und, nach dem 15-Minuten-Fenster ohne Wirkung, „nicht abgeholt" statt
-     * still weiterzuwarten.
-     */
-    public record ApplyRequestRow(UUID deviceId, String token, String releaseVersion,
-            Long releaseSeq, String requestedBy, Instant requestedAt) {
-    }
 
-    /** Genau EINE Zeile je Gerät - eine neue Freigabe ERSETZT die alte. */
-    public void upsertApplyRequest(UUID deviceId, String token, String releaseVersion,
-            Long releaseSeq, String requestedBy) {
-        jdbc.update("""
-                INSERT INTO device_apply_request
-                       (device_id, token, release_version, release_seq, requested_by, requested_at)
-                VALUES (?, ?, ?, ?, ?, now())
-                ON CONFLICT (device_id) DO UPDATE SET token = EXCLUDED.token,
-                       release_version = EXCLUDED.release_version,
-                       release_seq = EXCLUDED.release_seq,
-                       requested_by = EXCLUDED.requested_by,
-                       requested_at = EXCLUDED.requested_at
-                """, deviceId, token, releaseVersion, releaseSeq, requestedBy);
-    }
 
-    public List<ApplyRequestRow> allApplyRequests() {
-        return jdbc.query("SELECT device_id, token, release_version, release_seq, requested_by, "
-                + "requested_at FROM device_apply_request", RolloutRepository::mapApplyRequest);
-    }
 
-    public Optional<ApplyRequestRow> applyRequest(UUID deviceId) {
-        return jdbc.query("SELECT device_id, token, release_version, release_seq, requested_by, "
-                + "requested_at FROM device_apply_request WHERE device_id = ?",
-                RolloutRepository::mapApplyRequest, deviceId).stream().findFirst();
-    }
 
-    public boolean deleteApplyRequest(UUID deviceId) {
-        return jdbc.update("DELETE FROM device_apply_request WHERE device_id = ?", deviceId) > 0;
-    }
 
-    private static ApplyRequestRow mapApplyRequest(ResultSet rs, int rowNum) throws SQLException {
-        return new ApplyRequestRow(
-                rs.getObject("device_id", UUID.class),
-                rs.getString("token"),
-                rs.getString("release_version"),
-                (Long) rs.getObject("release_seq"),
-                rs.getString("requested_by"),
-                instant(rs, "requested_at"));
-    }
 
     // ── Flottensicht: was meldet welches Gerät? ──────────────────────────
 
@@ -325,8 +269,7 @@ public class RolloutRepository {
      * <p>Alles ab {@code reportedVersion} kann {@code null} sein - dann hat das
      * Gerät (noch) nichts gemeldet und heißt „unbekannt", NIE „veraltet".
      * {@code controlCheckedAt}/{@code controlConfirmed}/{@code controlCertified}
-     * kommen aus {@code device_control_status} und tragen das zweite
-     * Bake-Kriterium (≥1 echter Steuerzyklus).
+     * kommen aus {@code device_control_status} - reine Diagnose.
      */
     public record FleetDeviceRow(UUID deviceId, String externalRef, String deviceName,
             UUID siteId, String siteName, UUID tenantId, String tenantName,
@@ -335,15 +278,7 @@ public class RolloutRepository {
             String reportedBlocker, Instant reportedAt, Instant lastSeenAt,
             Instant controlCheckedAt, Boolean controlConfirmed, Boolean controlCertified,
             String rootKeyIds, String trustSetKeyIds, String trustSetGeneratedAt,
-            String trustSetError,
-            /*
-             * DREIWERTIG wie die Vertrauens-Spalten: null = ein älterer
-             * Edge-Stand meldet die Fähigkeit nicht („unbekannt"), false = die
-             * Box sagt selbst, dass hier gerade nichts angewandt werden kann,
-             * true = sie würde eine Freigabe aufgreifen. Deshalb ein
-             * Boolean-Objekt und niemals ein primitives boolean mit Default.
-             */
-            Boolean canApply) {
+            String trustSetError) {
     }
 
     /**
@@ -356,7 +291,7 @@ public class RolloutRepository {
                 SELECT d.id AS device_id, d.external_ref, d.name AS device_name,
                        d.site_id, s.name AS site_name, s.tenant_id, t.name AS tenant_name,
                        u.version, u.current_version, u.target_version, u.state, u.target_verdict,
-                       u.reason, u.blocker, u.can_apply, u.reported_at,
+                       u.reason, u.blocker, u.reported_at,
                        u.root_key_ids, u.trust_set_key_ids, u.trust_set_generated_at,
                        u.trust_set_error,
                        ls.last_seen,
@@ -399,8 +334,7 @@ public class RolloutRepository {
                         rs.getString("root_key_ids"),
                         rs.getString("trust_set_key_ids"),
                         rs.getString("trust_set_generated_at"),
-                        rs.getString("trust_set_error"),
-                        (Boolean) rs.getObject("can_apply")));
+                        rs.getString("trust_set_error")));
     }
 
     /** Prüft, ob eine Geräte-Id überhaupt existiert (bevor sie ein Ziel bekommt). */
@@ -418,8 +352,6 @@ public class RolloutRepository {
                 rs.getString("external_ref"),
                 rs.getLong("release_seq"),
                 rs.getString("release_version"),
-                rs.getString("channel"),
-                rs.getBoolean("pinned"),
                 rs.getObject("rollout_id", UUID.class),
                 rs.getString("assigned_by"),
                 instant(rs, "assigned_at"),
@@ -433,12 +365,7 @@ public class RolloutRepository {
                 rs.getObject("id", UUID.class),
                 rs.getLong("release_seq"),
                 rs.getString("release_version"),
-                rs.getString("channel"),
                 rs.getString("state"),
-                rs.getString("waves"),
-                rs.getInt("current_wave"),
-                rs.getBoolean("auto_advance"),
-                rs.getString("halted_reason"),
                 rs.getString("created_by"),
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));
@@ -448,7 +375,6 @@ public class RolloutRepository {
         return new RolloutDeviceRow(
                 rs.getObject("rollout_id", UUID.class),
                 rs.getObject("device_id", UUID.class),
-                rs.getInt("wave"),
                 rs.getString("state"),
                 rs.getString("reason"),
                 instant(rs, "since"),

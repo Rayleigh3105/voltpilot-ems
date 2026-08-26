@@ -282,7 +282,6 @@ public class UpdateStatusListener {
                     hasUpdate ? number(update.get("current_seq")) : null,
                     hasUpdate ? text(update.get("target")) : null,
                     hasUpdate ? number(update.get("target_seq")) : null,
-                    hasUpdate ? text(update.get("channel")) : null,
                     hasUpdate ? state(update.get("state")) : null,
                     hasUpdate ? text(update.get("reason")) : null,
                     hasUpdate ? text(update.get("last_known_good")) : null,
@@ -305,7 +304,6 @@ public class UpdateStatusListener {
                     // behauptetes „kann nicht anwenden", und die Oberfläche würde
                     // einem älteren Stand einen Knopf verweigern, den er sehr wohl
                     // bedienen kann.
-                    hasUpdate ? bool(update.get("can_apply")) : null,
                     reportedAt);
         } finally {
             TenantContext.clear();

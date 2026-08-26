@@ -184,28 +184,14 @@ describe('AdminGeraetKarten - die Plattform-Sicht EINES Geräts', () => {
     const onAssign = vi.fn().mockResolvedValue(undefined);
     const onRevert = vi.fn().mockResolvedValue(undefined);
     render(<AdminGeraetKarten {...base} view={view()!} onAssign={onAssign} onRevert={onRevert} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Release zuweisen' }));
-    expect(onAssign).toHaveBeenCalledWith(14, 'stable', false);
+    fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
+    // Kein Kanal, kein Pin: EIN Argument, und danach macht das Gerät den Rest.
+    expect(onAssign).toHaveBeenCalledWith(14);
     fireEvent.click(screen.getByRole('button', { name: 'Zuweisung zurücknehmen' }));
     expect(onRevert).toHaveBeenCalled();
   });
 
-  it('nennt VOR dem Anwenden, was es verhindern wird', () => {
-    const blockiert: AdminDeviceRow = {
-      ...BOX,
-      state: 'blockiert',
-      blocker: 'neutralzeit',
-      reason: 'Autonomie blockiert: die Neutral-Zeit ist nicht belegt.',
-    };
-    render(
-      <AdminGeraetKarten {...base} view={view({ devices: [blockiert] })!} onApply={vi.fn()} />,
-    );
-    // Der Satz steht GENAU EINMAL - dort, wo gleich geklickt wird.
-    expect(screen.getByTestId('geraet-apply')).toHaveTextContent('Achtung:');
-    expect(screen.queryByTestId('geraet-hebel')).toBeNull();
-  });
-
-  it('behält den Hebel, wo es gar keinen Anwenden-Knopf gibt', () => {
+  it('nennt den Hebel einer stehenden Sperre - genau EINMAL auf der Karte', () => {
     const blockiert: AdminDeviceRow = {
       ...BOX,
       state: 'blockiert',
@@ -216,9 +202,12 @@ describe('AdminGeraetKarten - die Plattform-Sicht EINES Geräts', () => {
     expect(screen.getByTestId('geraet-hebel')).toHaveTextContent('Hebel:');
   });
 
-  it('bietet den Anwenden-Knopf nicht an, wenn der Wirt ihn nicht ausführen kann', () => {
-    render(<AdminGeraetKarten {...base} view={view()!} />);
+  it('bietet NIRGENDS einen zweiten Schritt am Gerät an', () => {
+    // Der „Auf dem Gerät anwenden"-Knopf ist mit dem Ein-Schritt-Umbau
+    // ERSATZLOS entfallen - das Gerät wendet selbst an.
+    render(<AdminGeraetKarten {...base} view={view()!} onAssign={vi.fn()} />);
     expect(screen.queryByTestId('geraet-apply')).toBeNull();
+    expect(screen.queryByRole('button', { name: /anwenden/i })).toBeNull();
   });
 
   it('bietet einer gedruckten ID keine Zuweisung an - und sagt an JEDER Sektion warum', () => {

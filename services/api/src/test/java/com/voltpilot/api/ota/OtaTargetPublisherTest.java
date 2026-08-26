@@ -37,7 +37,7 @@ class OtaTargetPublisherTest {
                 + "  \"notes\": \"Solarman-Lesepfad gehärtet\"\n}\n";
         String signature = "{\"alg\":\"ed25519\",\"key_id\":\"rel-2026-a\"}\n";
 
-        byte[] raw = OtaTargetPublisher.envelope(T, S, D, "edge-2026.08.0", 12, "canary",
+        byte[] raw = OtaTargetPublisher.envelope(T, S, D, "edge-2026.08.0", 12,
                 UUID.fromString("7a1f0c22-4c5e-4a1a-9f0b-2c3d4e5f6a7b"), manifest, signature,
                 Instant.parse("2026-08-05T08:15:00Z"));
 
@@ -55,7 +55,7 @@ class OtaTargetPublisherTest {
     void envelopeMatchesTheContract() throws Exception {
         UUID rollout = UUID.fromString("7a1f0c22-4c5e-4a1a-9f0b-2c3d4e5f6a7b");
         JsonNode env = json.readTree(OtaTargetPublisher.envelope(T, S, D, "edge-2026.08.0", 12,
-                "canary", rollout, "{}", "{}", Instant.parse("2026-08-05T08:15:00Z")));
+                rollout, "{}", "{}", Instant.parse("2026-08-05T08:15:00Z")));
 
         assertThat(env.get("schema_version").asText()).isEqualTo("1.0");
         assertThat(env.get("type").asText()).isEqualTo("update_target");
@@ -64,7 +64,6 @@ class OtaTargetPublisherTest {
         assertThat(env.get("device_id").asText()).isEqualTo(D.toString());
         assertThat(env.get("release").asText()).isEqualTo("edge-2026.08.0");
         assertThat(env.get("release_seq").asLong()).isEqualTo(12);
-        assertThat(env.get("channel").asText()).isEqualTo("canary");
         assertThat(env.get("rollout_id").asText()).isEqualTo(rollout.toString());
         assertThat(env.get("assigned_at").asText()).isEqualTo("2026-08-05T08:15:00Z");
     }
@@ -73,10 +72,9 @@ class OtaTargetPublisherTest {
     @DisplayName("optionale Felder werden WEGGELASSEN, nie leer gesetzt")
     void optionalFieldsAreOmitted() throws Exception {
         JsonNode env = json.readTree(OtaTargetPublisher.envelope(T, S, D, "edge-2026.08.0", 12,
-                null, null, "{}", "{}", null));
-        // Ein leerer Kanal oder eine leere Rollout-Id wären eine Aussage über
-        // etwas, das es nicht gibt (und das Schema verbietet sie).
-        assertThat(env.has("channel")).isFalse();
+                null, "{}", "{}", null));
+        // Eine leere Rollout-Id wäre eine Aussage über etwas, das es nicht
+        // gibt (und das Schema verbietet sie).
         assertThat(env.has("rollout_id")).isFalse();
         assertThat(env.has("assigned_at")).isFalse();
     }
@@ -92,7 +90,7 @@ class OtaTargetPublisherTest {
     @DisplayName("ein Anführungszeichen im Release kann den Umschlag nicht sprengen")
     void quotesCannotBreakTheEnvelope() throws Exception {
         JsonNode env = json.readTree(OtaTargetPublisher.envelope(T, S, D,
-                "edge-2026.08.0\",\"boese\":\"1", 12, "stable", null, "{}", "{}", null));
+                "edge-2026.08.0\",\"boese\":\"1", 12, null, "{}", "{}", null));
         assertThat(env.has("boese")).isFalse();
         assertThat(env.get("release").asText()).isEqualTo("edge-2026.08.0\",\"boese\":\"1");
     }

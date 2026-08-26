@@ -3,24 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EdgeUpdates } from '../../adminEdgeUpdates';
 
 const edgeUpdates = vi.fn();
-const promoteRollout = vi.fn();
-const haltRollout = vi.fn();
+const createRollout = vi.fn();
 const setUpdateTarget = vi.fn();
-const setAutoAdvance = vi.fn();
-const requestApply = vi.fn();
+const revertUpdateTarget = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
     edgeUpdates: (...a: unknown[]) => edgeUpdates(...a),
-    promoteRollout: (...a: unknown[]) => promoteRollout(...a),
-    haltRollout: (...a: unknown[]) => haltRollout(...a),
-    pauseRollout: vi.fn(),
-    resumeRollout: vi.fn(),
-    createRollout: vi.fn(),
+    createRollout: (...a: unknown[]) => createRollout(...a),
     setUpdateTarget: (...a: unknown[]) => setUpdateTarget(...a),
-    setAutoAdvance: (...a: unknown[]) => setAutoAdvance(...a),
-    revertUpdateTarget: vi.fn(),
-    requestApply: (...a: unknown[]) => requestApply(...a),
+    revertUpdateTarget: (...a: unknown[]) => revertUpdateTarget(...a),
   },
 }));
 
@@ -39,45 +31,35 @@ const data = (over: Partial<EdgeUpdates> = {}): EdgeUpdates => ({
       runningOnDevices: 2,
     },
   ],
-  activeRollout: {
-    id: 'r1', releaseVersion: 'edge-2026.08.0', releaseSeq: 12, channel: 'stable',
-    state: 'active', currentWave: 1, waveCount: 2, haltedReason: null, createdBy: 'admin',
-    createdAt: '2026-08-05T08:00:00Z', canPromote: false,
-    promoteBlockedReason: 'Noch 21 Std. gesunder Betrieb bis zur Freigabe.',
-    waves: [
+  rollouts: [{
+    id: 'r1', releaseVersion: 'edge-2026.08.0', releaseSeq: 12,
+    state: 'active', createdBy: 'admin', createdAt: '2026-08-05T08:00:00Z',
+    total: 2, confirmed: 1, failed: 0,
+    devices: [
       {
-        index: 1, name: 'Canary', released: true, confirmed: false,
-        devices: [{
-          deviceId: 'd1', label: 'edge-a1', siteName: 'Pilsting', tenantName: 'Kunde A',
-          state: 'bestaetigt', reason: null, since: '2026-08-05T08:00:00Z',
-          bakeRemainingMinutes: 1260, bakeCycle: 'nicht_pruefbar',
-          bakeReason: 'Auf dieser Anlage steuert VoltPilot (noch) nicht.',
-        }],
+        deviceId: 'd1', label: 'edge-a1', siteName: 'Pilsting', tenantName: 'Kunde A',
+        state: 'bestaetigt', reason: null, since: '2026-08-05T08:00:00Z',
       },
       {
-        index: 2, name: 'Flotte', released: false, confirmed: false,
-        devices: [{
-          deviceId: 'd2', label: 'edge-b2', siteName: 'Auernheim', tenantName: 'Kunde A',
-          state: 'unbekannt',
-          reason: 'Dieses Gerät hat noch keinen Software-Stand gemeldet.',
-          since: null, bakeRemainingMinutes: null, bakeCycle: null, bakeReason: null,
-        }],
+        deviceId: 'd2', label: 'edge-b2', siteName: 'Auernheim', tenantName: 'Kunde A',
+        state: 'unbekannt',
+        reason: 'Dieses Gerät hat noch keinen Software-Stand gemeldet.', since: null,
       },
     ],
-  },
+  }],
   fleet: [
     {
       deviceId: 'd1', label: 'edge-a1', externalRef: 'edge-a1', siteId: 's1',
       siteName: 'Pilsting', tenantId: 't1',
       tenantName: 'Kunde A', ist: 'edge-2026.08.0', soll: 'edge-2026.08.0', sollSeq: 12,
-      channel: 'canary', pinned: false, state: 'bestaetigt', reason: null,
+      state: 'bestaetigt', reason: null,
       since: '2026-08-05T08:00:00Z', reportedAt: '2026-08-05T09:00:00Z', rolloutId: 'r1',
     },
     {
       deviceId: 'd2', label: 'edge-b2', externalRef: 'edge-b2', siteId: 's2',
       siteName: 'Auernheim', tenantId: 't1',
-      tenantName: 'Kunde A', ist: null, soll: null, sollSeq: null, channel: null,
-      pinned: false, state: 'unbekannt',
+      tenantName: 'Kunde A', ist: null, soll: null, sollSeq: null,
+      state: 'unbekannt',
       reason: 'Dieses Gerät hat noch keinen Software-Stand gemeldet.',
       since: null, reportedAt: null, rolloutId: null,
     },
@@ -89,10 +71,13 @@ const data = (over: Partial<EdgeUpdates> = {}): EdgeUpdates => ({
     },
     {
       id: 1, at: '2026-08-05T08:00:00Z', actor: 'admin', event: 'rollout_created',
-      rolloutId: 'r1', deviceId: null, detail: 'edge-2026.08.0 → stable',
+      rolloutId: 'r1', deviceId: null, detail: 'edge-2026.08.0',
     },
   ],
-  kpi: { known: 1, upToDate: 1, unknown: 1, inRollout: 1, failed: 0, newestRelease: 'edge-2026.08.0' },
+  kpi: {
+    known: 1, upToDate: 1, unknown: 1, inRollout: 1, failed: 0,
+    newestRelease: 'edge-2026.08.0',
+  },
   ...over,
 });
 
@@ -102,360 +87,160 @@ describe('EdgeUpdatesPage', () => {
     edgeUpdates.mockResolvedValue(data());
   });
 
-  it('zeigt die Abschnitte - und die Flotten-Matrix ist ENTFALLEN (E2)', async () => {
+  it('zeigt Releases, die laufende Aktualisierung und den Verlauf', async () => {
     render(<EdgeUpdatesPage />);
-    expect(await screen.findByText('Releases')).toBeInTheDocument();
-    expect(screen.getByText('Aktiver Rollout')).toBeInTheDocument();
-    expect(screen.getByText('Verlauf')).toBeInTheDocument();
-    // Sie war die strukturelle Ursache der „zwei Wahrheiten auf einer Seite";
-    // ihre drei Aufgaben haben bessere Wohnorte. Statt ihrer steht ein
-    // Verweis - der Informationsgehalt geht nirgends verloren.
-    expect(screen.queryByText('Flotten-Matrix')).toBeNull();
-    expect(screen.queryByTestId('fleet')).toBeNull();
-    expect(screen.getByTestId('fleet-pointer')).toHaveTextContent('Geräte-Übersicht');
+    expect(await screen.findByTestId('releases')).toBeInTheDocument();
+    expect(await screen.findByTestId('rollout-card')).toBeInTheDocument();
+    expect(await screen.findByTestId('journal')).toBeInTheDocument();
   });
 
-  it('bietet ein Rollout NUR für ein signiertes Release an', async () => {
+  it('bietet ein Update NUR für ein signiertes Release an', async () => {
     render(<EdgeUpdatesPage />);
-    await screen.findByText('Releases');
-    // Ohne Manifest-Bytes hat ein Gerät nichts zu prüfen - kein Knopf.
-    expect(screen.getAllByRole('button', { name: /Rollout starten/ })).toHaveLength(1);
-    expect(screen.getByText(/Nicht signiert – nicht verteilbar/)).toBeInTheDocument();
-    expect(screen.getByText(/signiert \(rel-2026-a\)/)).toBeInTheDocument();
+    const table = await screen.findByTestId('releases');
+    const rows = within(table).getAllByRole('row');
+    // Das signierte Release trägt den Knopf, das unsignierte den Grund.
+    expect(within(rows[1]).getByRole('button', { name: /Aktualisieren/ })).toBeEnabled();
+    expect(within(rows[2]).queryByRole('button')).toBeNull();
+    expect(rows[2]).toHaveTextContent('Nicht signiert');
   });
 
-  it('sperrt „Nächste Welle" MIT Grund', async () => {
+  it('ist EIN Schritt: Release wählen, Geräte ankreuzen, aktualisieren', async () => {
+    // Das ist der Kern des Umbaus. Es gibt keine Welle, keinen Canary, keinen
+    // Kanal und keinen zweiten Knopf „Auf Gerät anwenden".
+    createRollout.mockResolvedValue({ rolloutId: 'r2' });
     render(<EdgeUpdatesPage />);
-    const btn = await screen.findByRole('button', { name: /Nächste Welle/ });
-    expect(btn).toBeDisabled();
-    expect(screen.getByTestId('promote-hint')).toHaveTextContent('21 Std.');
-    // Und der Server ist die eigentliche Sperre - der Knopf ruft gar nicht erst.
-    expect(promoteRollout).not.toHaveBeenCalled();
+    const table = await screen.findByTestId('releases');
+    fireEvent.click(within(table).getAllByRole('button', { name: /Aktualisieren/ })[0]);
+
+    const drawer = await screen.findByRole('dialog');
+    fireEvent.click(within(drawer).getByTestId('choose-all').querySelector('input')!);
+    // Die Zusammenfassung sagt VOR dem Klick, was passiert.
+    expect(within(drawer).getByTestId('start-summary')).toHaveTextContent('niemand muss an ein Gerät');
+
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Aktualisieren' }));
+    await waitFor(() =>
+      // Die Reihenfolge ist die der Liste (Aufmerksamkeit zuerst), nicht die
+      // der Flotten-Antwort.
+      expect(createRollout).toHaveBeenCalledWith({ releaseSeq: 12, devices: ['d2', 'd1'] }),
+    );
   });
 
-  it('nennt einen nicht prüfbaren Steuerzyklus beim Namen', async () => {
+  it('bietet NIRGENDS einen zweiten Schritt am Gerät an', async () => {
     render(<EdgeUpdatesPage />);
-    await screen.findByText('Releases');
-    expect(screen.getByText(/Steuerzyklus nicht prüfbar/)).toBeInTheDocument();
+    await screen.findByTestId('rollout-card');
+    for (const gone of [/Nächste Welle/, /Jetzt anwenden/, /Auf dem Gerät anwenden/,
+      /Not-Aus/, /Rollout einfrieren/, /Pausieren/]) {
+      expect(screen.queryByRole('button', { name: gone })).toBeNull();
+    }
   });
 
   it('zeigt ein Gerät ohne Meldung als „unbekannt" MIT Grund - nie als veraltet', async () => {
     render(<EdgeUpdatesPage />);
-    // Seit dem Wegfall der Matrix trägt das Wellen-Board diese Wahrheit - und
-    // zwar als EINZIGE Fläche der Seite (keine zwei Antworten mehr).
-    expect(await screen.findByText('Auernheim')).toBeInTheDocument();
-    expect(document.body.textContent).toContain('unbekannt');
-    expect(document.body.textContent).toContain('noch keinen Software-Stand gemeldet');
-    expect(document.body.textContent).not.toContain('veraltet');
+    const devices = await screen.findByTestId('rollout-devices');
+    const row = within(devices).getByText('Auernheim').closest('tr')!;
+    expect(row).toHaveTextContent('unbekannt');
+    expect(row).toHaveTextContent('noch keinen Software-Stand gemeldet');
+    expect(row).not.toHaveTextContent('veraltet');
+  });
+
+  it('nennt eine INZWISCHEN abweichende Zuweisung an der Zeile', async () => {
+    // Der Kopf der Karte nennt das Release DIESER Aktualisierung. Hat ein Gerät
+    // danach ein anderes bekommen, wäre der Kopf für genau diese Zeile eine
+    // Falschaussage - also steht das echte Soll daneben.
+    const d = data();
+    d.fleet[1].soll = 'edge-2026.08.1';
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+    const devices = await screen.findByTestId('rollout-devices');
+    const row = within(devices).getByText('Auernheim').closest('tr')! as HTMLElement;
+    expect(within(row).getByTestId('other-soll')).toHaveTextContent('edge-2026.08.1');
+    // Das Gerät auf demselben Stand trägt die Zeile NICHT.
+    const same = within(devices).getByText('Pilsting').closest('tr')! as HTMLElement;
+    expect(within(same).queryByTestId('other-soll')).toBeNull();
+  });
+
+  it('nennt den HEBEL einer stehenden Sperre, statt nur ihren Satz', async () => {
+    const d = data();
+    d.fleet[1].state = 'blockiert';
+    d.fleet[1].blocker = 'platte';
+    d.fleet[1].reason = 'Autonomie blockiert: zu wenig Platz.';
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+    const devices = await screen.findByTestId('rollout-devices');
+    const row = within(devices).getByText('Auernheim').closest('tr')!;
+    expect(row).toHaveTextContent('Hebel:');
+  });
+
+  it('rendert in der Geräte-Liste NIE eine UUID', async () => {
+    const d = data();
+    d.rollouts[0].devices[1] = {
+      deviceId: '7a1f0c2e-1111-2222-3333-444455556666', label: null, siteName: null,
+      tenantName: null, state: 'unbekannt', reason: null, since: null, removed: true,
+    };
+    d.fleet = [d.fleet[0]];
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+    const devices = await screen.findByTestId('rollout-devices');
+    expect(devices).not.toHaveTextContent('7a1f0c2e-1111');
+    expect(devices).toHaveTextContent('Entferntes Gerät');
   });
 
   it('blendet das Zustands-Protokoll aus dem Verlauf aus', async () => {
     render(<EdgeUpdatesPage />);
     const journal = await screen.findByTestId('journal');
-    expect(journal).toHaveTextContent('Rollout gestartet');
-    expect(journal).not.toHaveTextContent('Zustand geändert');
+    expect(journal).toHaveTextContent('Aktualisierung gestartet');
+    expect(within(journal).queryByText(/bestaetigt/)).toBeNull();
   });
 
-  it('warnt LAUT und benennt die Anlage', async () => {
+  it('warnt LAUT und benennt die Anlage - ohne irgendetwas anzuhalten', async () => {
     const d = data();
-    d.fleet[1].state = 'fehlgeschlagen';
-    d.fleet[1].reason = 'Signatur ungültig';
+    d.fleet[0].state = 'fehlgeschlagen';
+    d.fleet[0].reason = 'Selbsttest fehlgeschlagen.';
     edgeUpdates.mockResolvedValue(d);
     render(<EdgeUpdatesPage />);
-    // Der Banner NENNT die Anlage - ein Alarm ohne Adresse ist Lärm.
-    expect(await screen.findByTestId('loud-banner')).toHaveTextContent('Auernheim');
+    expect(await screen.findByTestId('loud-banner')).toHaveTextContent('Pilsting');
+    // Der Rollout läuft weiter - ein Fehlschlag ist INFORMATION.
+    expect(await screen.findByTestId('rollout-card')).toHaveTextContent('läuft');
   });
 
-  it('zeigt den GRUND eines eingefrorenen Rollouts', async () => {
-    const d = data();
-    d.activeRollout!.state = 'halted';
-    d.activeRollout!.haltedReason = 'Automatisch angehalten - ein Gerät meldet: fehlgeschlagen';
-    edgeUpdates.mockResolvedValue(d);
-    render(<EdgeUpdatesPage />);
-    expect(await screen.findByTestId('halted-reason')).toHaveTextContent('Automatisch angehalten');
-    expect(screen.getByText('eingefroren ⚠')).toBeInTheDocument();
-  });
-
-  it('weist ein Einzelgerät über die Wellen-Zeile zu', async () => {
+  it('weist ein Einzelgerät über die Geräte-Zeile zu - ohne Kanal und ohne Pin', async () => {
     setUpdateTarget.mockResolvedValue(undefined);
     render(<EdgeUpdatesPage />);
-    // Die Wellen-Zeile ist seit dem Wegfall der Matrix der Weg ins Gerät.
-    fireEvent.click(await screen.findByText('Auernheim'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Auernheim' }));
 
     const drawer = await screen.findByRole('dialog');
-    // Nur signierte Releases stehen zur Wahl.
     expect(drawer).toHaveTextContent('edge-2026.08.0');
-    // Der Knopf heißt „Release zuweisen", nicht „Jetzt aktualisieren": er
-    // veröffentlicht eine Zuweisung, das ANWENDEN bleibt beaufsichtigt am
-    // Gerät - der alte Wortlaut versprach genau das, was danach nicht geschah.
-    expect(screen.queryByRole('button', { name: 'Jetzt aktualisieren' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Release zuweisen' }));
+    expect(drawer).not.toHaveTextContent('Kanal');
+    expect(within(drawer).queryByText(/Festnageln/)).toBeNull();
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Aktualisieren' }));
     await waitFor(() =>
-      expect(setUpdateTarget).toHaveBeenCalledWith('d2', {
-        releaseSeq: 12, channel: 'stable', pinned: false,
-      }),
+      expect(setUpdateTarget).toHaveBeenCalledWith('d2', { releaseSeq: 12 }),
     );
-  });
-
-  it('zeigt am bestätigten Gerät WANN gemeldet wurde und die eindeutige Soll==Ist-Aussage', async () => {
-    render(<EdgeUpdatesPage />);
-    // d1 (Pilsting) ist im Fixture `state: 'bestaetigt'` mit einem
-    // `reportedAt`-Stempel - der Drawer muss beides zeigen, nie nur den
-    // Badge-Text „bestätigt ✓".
-    fireEvent.click(await screen.findByText('Pilsting'));
-    const drawer = await screen.findByRole('dialog');
-    expect(drawer).toHaveTextContent('Ist gemeldet');
-    const confirmed = within(drawer).getByTestId('drawer-confirmed');
-    expect(confirmed).toHaveTextContent('Ist entspricht dem Soll');
-    expect(confirmed).toHaveTextContent('bestätigt');
-  });
-
-  it('behauptet ohne bestätigten Zustand KEINE Soll==Ist-Gleichheit', async () => {
-    render(<EdgeUpdatesPage />);
-    // d2 (Auernheim) ist `state: 'unbekannt'` - ein Gerät ohne bestätigten
-    // Zustand darf nie „Ist entspricht dem Soll" behaupten, auch nicht mit
-    // einem gemeldeten Ist-Stempel.
-    fireEvent.click(await screen.findByText('Auernheim'));
-    const drawer = await screen.findByRole('dialog');
-    expect(within(drawer).queryByTestId('drawer-confirmed')).toBeNull();
   });
 
   it('zeigt eine Ablehnung des Servers WÖRTLICH', async () => {
     const { ApiError } = await import('../../api');
-    promoteRollout.mockRejectedValue(new ApiError(409, 'Die laufende Welle ist noch nicht bestätigt: Noch 3 Std.'));
-    const d = data();
-    d.activeRollout!.canPromote = true;
-    d.activeRollout!.promoteBlockedReason = null;
-    edgeUpdates.mockResolvedValue(d);
+    createRollout.mockRejectedValue(
+      new ApiError(409, 'Das Release ist nicht signiert und kann nicht verteilt werden.'),
+    );
     render(<EdgeUpdatesPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /Nächste Welle/ }));
-    expect(await screen.findByText(/noch nicht bestätigt/)).toBeInTheDocument();
-  });
-});
-
-// ── OTA Stufe 4 „Politur" ──────────────────────────────────────────────────
-
-describe('Wellen-Automatik + TOFU-Abschluss auf der Seite', () => {
-  it('sagt, in welchem Modus der Rollout läuft - und warum die Welle wartet', async () => {
-    edgeUpdates.mockResolvedValue(data({
-      activeRollout: {
-        ...data().activeRollout!,
-        autoAdvance: true,
-        advanceNote: 'Automatischer Vorschub: die nächste Welle wird freigegeben, sobald das '
-          + 'Bake-Kriterium erfüllt ist. Offen: Noch 21 Std. gesunder Betrieb.',
-      },
-    }));
-    render(<EdgeUpdatesPage />);
-
-    await waitFor(() => expect(screen.getByTestId('advance-mode')).toBeInTheDocument());
-    expect(screen.getByTestId('advance-mode')).toHaveTextContent('Automatischer Wellen-Vorschub');
-    expect(screen.getByTestId('advance-note')).toHaveTextContent('Offen:');
+    const table = await screen.findByTestId('releases');
+    fireEvent.click(within(table).getAllByRole('button', { name: /Aktualisieren/ })[0]);
+    const drawer = await screen.findByRole('dialog');
+    fireEvent.click(within(drawer).getByTestId('choose-all').querySelector('input')!);
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Aktualisieren' }));
+    expect(await screen.findByText(/nicht signiert/)).toBeInTheDocument();
+    // Die Auswahl bleibt stehen: der Betreiber soll den Grund lesen und es
+    // erneut versuchen können, statt von vorn anzufangen.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).getByTestId('choose-all')
+      .querySelector('input')!).toBeChecked();
   });
 
-  it('schaltet den Vorschub um - und fragt VORHER im Haus-Muster, was sich ändert', async () => {
-    edgeUpdates.mockResolvedValue(data());
-    setAutoAdvance.mockResolvedValue(undefined);
-    render(<EdgeUpdatesPage />);
-
-    await waitFor(() => expect(screen.getByTestId('advance-mode')).toBeInTheDocument());
-    expect(screen.getByTestId('advance-mode')).toHaveTextContent('Wellen von Hand');
-    fireEvent.click(screen.getByRole('button', { name: /Automatisch weiterschalten/ }));
-
-    // Der Klick schaltet NICHT sofort um - erst die Folgenliste, dann die Tat.
-    const list = await screen.findByTestId('confirm-consequences');
-    // Sie nennt, was GLEICH bleibt: sonst liest sich das Umlegen wie ein
-    // Lockern der Regeln.
-    expect(list).toHaveTextContent('Bake-Kriterium');
-    expect(list).toHaveTextContent('automatische Halt');
-    expect(list).toHaveTextContent('Not-Aus');
-    expect(setAutoAdvance).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Automatik einschalten' }));
-    await waitFor(() => expect(setAutoAdvance).toHaveBeenCalledWith('r1', true));
-  });
-
-  it('friert NUR nach der Folgenliste ein - und nennt die Endgültigkeit', async () => {
-    edgeUpdates.mockResolvedValue(data());
-    haltRollout.mockResolvedValue(undefined);
-    render(<EdgeUpdatesPage />);
-
-    fireEvent.click(await screen.findByRole('button', { name: /Einfrieren/ }));
-    const list = await screen.findByTestId('confirm-consequences');
-    expect(list).toHaveTextContent('ENDGÜLTIG');
-    // Bereits erteilte Zuweisungen BLEIBEN - das steht in der Rückfrage, nicht
-    // erst hinterher.
-    expect(list).toHaveTextContent('BLEIBEN bestehen');
-    expect(haltRollout).not.toHaveBeenCalled();
-
-    // Abbrechen ändert nichts.
-    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
-    await waitFor(() => expect(screen.queryByTestId('confirm-consequences')).toBeNull());
-    expect(haltRollout).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: /Einfrieren/ }));
-    await screen.findByTestId('confirm-consequences');
-    fireEvent.click(screen.getByRole('button', { name: 'Endgültig einfrieren' }));
-    await waitFor(() => expect(haltRollout).toHaveBeenCalledWith('r1'));
-  });
-
-  it('traegt den ruhigen Crossover-Hinweis im Verweis auf die Geraete-Seite', async () => {
-    const d = data();
-    d.fleet[0].trust = {
-      rootKeyIds: [], trustSetKeyIds: [], trustSetGeneratedAt: null,
-      trustSetError: 'Diesem Stand ist kein Vertrauensanker eingebacken.',
-    };
-    edgeUpdates.mockResolvedValue(d);
-    render(<EdgeUpdatesPage />);
-
-    // Die SPALTE „Vertrauen" wohnt seit E2 auf der Geraete-Seite; hier bleibt
-    // die ruhige Zeile, weil sie eine Aufgabe der ganzen Flotte benennt.
-    const pointer = await screen.findByTestId('fleet-pointer');
-    expect(pointer).toHaveTextContent('Crossover offen: 1 Gerät');
-  });
-
-  it('behauptet ohne gemeldeten Vertrauensanker keinen offenen Crossover', async () => {
-    edgeUpdates.mockResolvedValue(data());
-    render(<EdgeUpdatesPage />);
-
-    const pointer = await screen.findByTestId('fleet-pointer');
-    // Zwei Geraete OHNE trust-Block: das ist „unbekannt" und wird als solches
-    // genannt - nie als „Crossover offen".
-    expect(pointer).toHaveTextContent('melden ihren Vertrauensanker nicht');
-    expect(pointer).not.toHaveTextContent('Crossover offen');
-  });
-});
-
-describe('Beobachten: die Vier-Klassen-Grammatik auf der Seite', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    edgeUpdates.mockResolvedValue(data());
-  });
-
-  it('führt mit „Sie sind dran" und nennt Ort und Weg', async () => {
-    const d = data();
-    d.activeRollout!.canPromote = true;
-    d.fleet[1].state = 'wartet_auf_anwendung';
-    d.fleet[1].soll = 'edge-2026.08.0';
-    edgeUpdates.mockResolvedValue(d);
-    render(<EdgeUpdatesPage />);
-
-    const card = await screen.findByTestId('handeln');
-    expect(card).toHaveTextContent('Welle 2 „Flotte" freigeben');
-    expect(card).toHaveTextContent('Auernheim');
-    // Seit dem Portal-Apply IST der WEG ein Knopf - nicht mehr eine Anleitung
-    // zum Tunnel auf die Box. Er steht direkt in der Karte.
-    expect(within(card).getByRole('button', { name: /Auf Gerät anwenden/ })).toBeEnabled();
-    expect(screen.getByTestId('handeln-count')).toHaveTextContent('2 Schritte');
-  });
-
-  /**
-   * Der Knopf des Portal-Apply: eine Handlung, die eine Kundenanlage neu
-   * startet, fragt NIE ohne Rückfrage - und die Rückfrage nennt die Folgen,
-   * inklusive der Zusage, die sie NICHT gibt.
-   */
-  it('erteilt die Freigabe erst nach einer Rückfrage, die die Folgen NENNT', async () => {
-    const d = data();
-    d.fleet[1].state = 'wartet_auf_anwendung';
-    d.fleet[1].soll = 'edge-2026.08.0';
-    d.fleet[1].apply = { canApply: true, state: null, reason: null, release: null,
-      requestedAt: null, requestedBy: null };
-    edgeUpdates.mockResolvedValue(d);
-    render(<EdgeUpdatesPage />);
-
-    const card = await screen.findByTestId('handeln');
-    fireEvent.click(within(card).getByRole('button', { name: /Auf Gerät anwenden/ }));
-
-    const dialog = await screen.findByTestId('confirm-consequences');
-    expect(dialog).toHaveTextContent('ohne VoltPilot-Steuerung');
-    expect(dialog).toHaveTextContent('15 Minuten');
-    // Die wichtigste Zusage ist die, die NICHT gegeben wird.
-    expect(dialog).toHaveTextContent('NICHT eingeschaltet');
-    // Bis hierher ist NICHTS passiert.
-    expect(requestApply).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Jetzt freigeben' }));
-    await waitFor(() => expect(requestApply).toHaveBeenCalledWith('d2'));
-  });
-
-  /**
-   * Was die Anwendung verhindern WIRD, steht VOR dem Klick - sonst ist die
-   * Verweigerung danach ein Rätsel (die Lehre des Canary-Soaks).
-   */
-  it('nennt die stehende Sperre samt Hebel, bevor jemand klickt', async () => {
-    const d = data();
-    d.fleet[1].state = 'wartet_auf_anwendung';
-    d.fleet[1].soll = 'edge-2026.08.0';
-    d.fleet[1].blocker = 'neutralzeit';
-    d.fleet[1].apply = { canApply: true, state: null, reason: null, release: null,
-      requestedAt: null, requestedBy: null };
-    edgeUpdates.mockResolvedValue(d);
-    render(<EdgeUpdatesPage />);
-
-    expect(await screen.findByTestId('handeln-warn'))
-      .toHaveTextContent('VP_OTA_NEUTRAL_VERIFIED');
-  });
-
-  /**
-   * Eine Box, die selbst sagt „ich kann gerade nicht", bekommt keinen Knopf,
-   * der ins Leere läuft - sondern den ehrlichen Weg am Gerät.
-   */
-  it('bietet keinen Knopf an, wo das Portal nachweislich nicht helfen kann', async () => {
-    const d = data();
-    d.fleet[1].state = 'wartet_auf_anwendung';
-    d.fleet[1].soll = 'edge-2026.08.0';
-    d.fleet[1].apply = { canApply: false, state: null, reason: null, release: null,
-      requestedAt: null, requestedBy: null };
-    edgeUpdates.mockResolvedValue(d);
-    render(<EdgeUpdatesPage />);
-
-    const card = await screen.findByTestId('handeln');
-    expect(within(card).getByRole('button', { name: /kann gerade nicht/ })).toBeDisabled();
-    expect(card).toHaveTextContent('8484');
-  });
-
-  it('zeigt die Karte GAR NICHT, wenn nichts ansteht', async () => {
-    render(<EdgeUpdatesPage />);
-    await screen.findByText('Aktiver Rollout');
-    expect(screen.queryByTestId('handeln')).toBeNull();
-  });
-
-  it('trägt „wartet auf Sie" in einem anderen Kleid als „ausstehend"', async () => {
-    const d = data();
-    d.fleet[0].state = 'ausstehend';
-    d.fleet[1].state = 'wartet_auf_anwendung';
-    edgeUpdates.mockResolvedValue(d);
-    render(<EdgeUpdatesPage />);
-
-    await screen.findByText('Aktiver Rollout');
-    // DER Kern des Umbaus: die zwei Situationen sehen nie wieder gleich aus.
-    expect(screen.getAllByTestId('state-action').length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId('state-busy').length).toBeGreaterThan(0);
-  });
-
-  it('nennt den HEBEL einer Sperre, statt nur ihren Satz', async () => {
-    const d = data();
-    d.fleet[1].state = 'blockiert';
-    d.fleet[1].blocker = 'neutralzeit';
-    d.fleet[1].reason = 'Autonomie blockiert: keine belegte Neutral-Zeit.';
-    edgeUpdates.mockResolvedValue(d);
-    render(<EdgeUpdatesPage />);
-
-    await screen.findByText('Aktiver Rollout');
-    expect(screen.getAllByTestId('lever')[0]).toHaveTextContent('VP_OTA_NEUTRAL_VERIFIED');
-    expect(screen.getAllByTestId('state-blocked').length).toBeGreaterThan(0);
-  });
-
-  /*
-    Anlagen-Zentrale Stufe 3 (PR 3b): der Drawer bleibt der Schnellblick - sein
-    Weg in die Vollansicht zielt seither auf die EINE Geräteseite in der
-    Mandanten-Ansicht (vorher auf die abgelöste Plattform-Vollansicht).
-  */
   it('führt aus dem Drawer auf die EINE Geräteseite - mit gesetztem Mandanten', async () => {
     const jump = vi.fn();
     render(<EdgeUpdatesPage onJumpToTenant={jump} />);
-    await screen.findByText('Aktiver Rollout');
-    fireEvent.click(document.querySelectorAll('.vp-wave-device.vp-row-click')[0]);
-
+    fireEvent.click(await screen.findByRole('button', { name: 'Pilsting' }));
     fireEvent.click(await screen.findByRole('button', { name: /Geräteseite öffnen/ }));
     expect(jump).toHaveBeenCalledWith('t1', {
       page: 'anlagen',
@@ -466,74 +251,39 @@ describe('Beobachten: die Vier-Klassen-Grammatik auf der Seite', () => {
     });
   });
 
-  it('bietet den Weg gar nicht an, wenn der Wirt nicht umschalten kann', async () => {
-    render(<EdgeUpdatesPage />);
-    await screen.findByText('Aktiver Rollout');
-    fireEvent.click(document.querySelectorAll('.vp-wave-device.vp-row-click')[0]);
-    await screen.findByText('Identität');
-    expect(screen.queryByRole('button', { name: /Geräteseite öffnen/ })).toBeNull();
-  });
-
-  it('rendert in der Wellen-Liste NIE eine UUID', async () => {
-    const d = data();
-    d.activeRollout!.waves[0].devices[0] = {
-      ...d.activeRollout!.waves[0].devices[0],
-      deviceId: 'cdba2ee8-91f3-4c1a-9d3e-000000000001',
-      label: null, siteName: null, tenantName: null, removed: true,
-    };
-    edgeUpdates.mockResolvedValue(d);
-    render(<EdgeUpdatesPage />);
-
-    await screen.findByText('Aktiver Rollout');
-    expect(screen.getByText(/Entferntes Gerät/)).toBeInTheDocument();
-    expect(document.body.textContent).not.toContain('91f3-4c1a');
-  });
-
-  it('rahmt einen eingefrorenen Rollout als Abschlussbild und ordnet die Historie unter',
-    async () => {
-      const d = data();
-      d.activeRollout!.state = 'halted';
-      // Die Zeile ist beim Einfrieren als fehlgeschlagen eingefroren worden,
-      // heute meldet dasselbe Gerät „bestätigt" - genau die Zwei-Wahrheiten-
-      // Reibung, die hier zur Präsentation wird.
-      d.activeRollout!.waves[0].devices[0].state = 'fehlgeschlagen';
-      d.fleet[0].state = 'bestaetigt';
-      edgeUpdates.mockResolvedValue(d);
-      render(<EdgeUpdatesPage />);
-
-      expect(await screen.findByTestId('frozen-framing')).toHaveTextContent('eingefroren');
-      expect(screen.getByTestId('wave-history')).toHaveTextContent('beim Abschluss');
-    });
-
   it('zeigt die Bezugszeit der gezeigten Daten', async () => {
     render(<EdgeUpdatesPage />);
-    // Ohne sie ist „nichts bewegt sich" von „niemand hat nachgesehen" nicht zu
-    // trennen - genau das Gefühl vom 04.08.2026.
     expect(await screen.findByTestId('freshness')).toHaveTextContent('Stand:');
-    expect(screen.getByTestId('freshness')).toHaveTextContent('alle 30 s');
   });
 
   it('pollt sich SELBST, statt auf einen Knopfdruck zu warten', async () => {
     vi.useFakeTimers();
     try {
       render(<EdgeUpdatesPage />);
-      await vi.advanceTimersByTimeAsync(0);
-      const initial = edgeUpdates.mock.calls.length;
-      await vi.advanceTimersByTimeAsync(31_000);
-      // Ein Beobachtungs-Werkzeug, das man von Hand aktualisieren muss,
-      // erzeugt genau das „hängt es?"-Gefühl, für das dieser Umbau existiert.
-      expect(edgeUpdates.mock.calls.length).toBeGreaterThan(initial);
+      await vi.waitFor(() => expect(edgeUpdates).toHaveBeenCalledTimes(1));
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(edgeUpdates.mock.calls.length).toBeGreaterThan(1);
     } finally {
       vi.useRealTimers();
     }
   });
 
   it('sagt im Ruhezustand in EINEM Satz, wie die Flotte steht', async () => {
-    edgeUpdates.mockResolvedValue(data({ activeRollout: null }));
+    edgeUpdates.mockResolvedValue(data({ rollouts: [] }));
     render(<EdgeUpdatesPage />);
-
     const line = await screen.findByTestId('resting-line');
-    expect(line).toHaveTextContent('Kein Rollout aktiv');
+    expect(line).toHaveTextContent('1/1 Geräte auf edge-2026.08.0');
     expect(line).toHaveTextContent('unbekannt, nicht veraltet');
+    expect(screen.queryByTestId('rollout-card')).toBeNull();
+  });
+
+  it('trägt den ruhigen Crossover-Hinweis im Verweis auf die Geräte-Seite', async () => {
+    const d = data();
+    d.fleet[0].trust = {
+      rootKeyIds: [], trustSetKeyIds: [], trustSetGeneratedAt: null, trustSetError: null,
+    };
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+    expect(await screen.findByTestId('fleet-pointer')).toHaveTextContent('Crossover offen');
   });
 });

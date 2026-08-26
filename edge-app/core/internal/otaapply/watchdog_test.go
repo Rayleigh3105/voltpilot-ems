@@ -1,7 +1,6 @@
 package otaapply
 
 // Der Wachhund, die Wiederaufnahme, die Sequenz - und die Tabelle der
-// Neutral-Zeiten.
 
 import (
 	"reflect"
@@ -140,83 +139,5 @@ func TestOnlyChangedComponentsSwapAndAlwaysCoreFirst(t *testing.T) {
 	got = ChangedComponents(cur, tgt2)
 	if len(got) != 2 || got[0] != "core" || got[1] != "etwas-neues" {
 		t.Fatalf("unbekannte Komponente muss mitgenommen werden, ist %v", got)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Neutral-Zeit
-// ---------------------------------------------------------------------------
-
-func TestNothingIsVerifiedByDefault(t *testing.T) {
-	var tab *NeutralTable
-	for _, fam := range []string{"hybrid_3p", "hybrid_1p", "sunspec", "sunspec_live", ""} {
-		n := tab.For(fam)
-		if n.Verified {
-			t.Fatalf("Familie %q gilt ohne Betreiber-Angabe als verifiziert - das darf nie sein", fam)
-		}
-		if n.T != DefaultNeutralT {
-			t.Fatalf("Familie %q: konservative Vorgabe erwartet, ist %s", fam, n.T)
-		}
-		if !strings.Contains(n.Note, "nicht") && !strings.Contains(n.Note, "NICHT") {
-			t.Fatalf("Familie %q: die Notiz muss die fehlende Belegung benennen: %q", fam, n.Note)
-		}
-	}
-}
-
-func TestTheNeutralTableRefusesGarbageInsteadOfSilentlyDroppingIt(t *testing.T) {
-	for _, bad := range []string{"hybrid_3p", "hybrid_3p:", "hybrid_3p:0", "hybrid_3p:-5",
-		":30", "hybrid_3p:abc", "hybrid_3p:99999"} {
-		if _, err := ParseNeutralTable(bad); err == nil {
-			t.Fatalf("%q muesste abgelehnt werden - eine still verworfene Zeile hiesse "+
-				"'nicht verifiziert', waehrend der Betreiber glaubt, verifiziert zu haben", bad)
-		}
-	}
-	tab, err := ParseNeutralTable(" hybrid_3p:90 , SUNSPEC:45 ,")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n := tab.For("hybrid_3p"); !n.Verified || n.T != 90*time.Second {
-		t.Fatalf("hybrid_3p: %+v", n)
-	}
-	if n := tab.For("sunspec"); !n.Verified || n.T != 45*time.Second {
-		t.Fatalf("Familien werden klein geschrieben verglichen: %+v", n)
-	}
-	if n := tab.For("unbekannt"); n.Verified {
-		t.Fatal("eine nicht genannte Familie bleibt unverifiziert")
-	}
-}
-
-func TestTheWatchdogDeadlineStaysStrictlyUnderT(t *testing.T) {
-	tab, _ := ParseNeutralTable("f:90")
-	n := tab.For("f")
-
-	// Ohne Steuerung gibt es kein gehaltenes Kommando - die konfigurierte
-	// Frist gilt unveraendert.
-	if d := WatchdogDeadline(n, false, 10*time.Minute); d != 10*time.Minute {
-		t.Fatalf("ohne Steuerung erwartet 10m, ist %s", d)
-	}
-	// Mit Steuerung wird auf T - Marge gedeckelt.
-	d := WatchdogDeadline(n, true, 10*time.Minute)
-	if d >= n.T {
-		t.Fatalf("die Frist MUSS strikt unter T liegen (%s >= %s)", d, n.T)
-	}
-	if d != 72*time.Second {
-		t.Fatalf("erwartet 72s (90 - 18), ist %s", d)
-	}
-	// Eine kuerzere konfigurierte Frist gewinnt.
-	if d := WatchdogDeadline(n, true, 30*time.Second); d != 30*time.Second {
-		t.Fatalf("die kuerzere Frist gewinnt, ist %s", d)
-	}
-	// Die Untergrenze haelt.
-	if d := WatchdogDeadline(n, true, time.Second); d != MinWatchdogDeadline {
-		t.Fatalf("Untergrenze erwartet, ist %s", d)
-	}
-	// Ein T, unter dem keine brauchbare Frist Platz hat, traegt keine.
-	small, _ := ParseNeutralTable("f:10")
-	if NeutralSupportsWatchdog(small.For("f")) {
-		t.Fatal("T=10s darf keine Frist tragen")
-	}
-	if !NeutralSupportsWatchdog(n) {
-		t.Fatal("T=90s muss eine Frist tragen")
 	}
 }

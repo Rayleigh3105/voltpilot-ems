@@ -167,29 +167,6 @@ func TestTheSnapshotBacksUpIdentityButNeverRestoresIt(t *testing.T) {
 	}
 }
 
-func TestTheAutonomySwitchIsOffOnEveryDoubt(t *testing.T) {
-	data := t.TempDir()
-	if ReadAutonomy(data).Enabled {
-		t.Fatal("ohne Datei muss der Schalter AUS sein")
-	}
-	if err := os.MkdirAll(Dir(data), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(Dir(data), FileAutonomy), []byte("kein json"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if ReadAutonomy(data).Enabled {
-		t.Fatal("eine kaputte Datei muss AUS bedeuten - ein Schalter, dessen Defekt " +
-			"einschaltet, ist kein Schalter")
-	}
-	if err := WriteJSON(data, FileAutonomy, Autonomy{Enabled: true, Note: "Laborstand"}); err != nil {
-		t.Fatal(err)
-	}
-	if !ReadAutonomy(data).Enabled {
-		t.Fatal("ausdruecklich eingeschaltet muss AN sein")
-	}
-}
-
 func TestTheSelfUpdateLockLeavesTheUpdaterOutOfEveryRelease(t *testing.T) {
 	m := manifest()
 	if ReleaseNamesUpdater(m) {

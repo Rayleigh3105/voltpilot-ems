@@ -24,10 +24,8 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math"
 	"net"
 	"net/http"
 	"strings"
@@ -35,7 +33,6 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
-	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaverify"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -47,22 +44,9 @@ const (
 	// wartet darauf, und eine Sekunde zu lange gewartet ist eine Sekunde
 	// laenger im Zustand „gerade wird getauscht".
 	otaSignalInterval = 2 * time.Second
-	// otaNeutralSettle ist die Zeit, die die Anlage nachweislich neutral
-	// gestanden haben muss, bevor der Eil-Pfad weitergeht.
-	otaNeutralSettle = 20 * time.Second
-	// otaNeutralRequestTTL ist die Zeit, nach der eine unbeantwortete Bitte um
-	// Neutralstellung verfaellt. Ein verschwundener Sidecar darf die Anlage
-	// nicht dauerhaft parken.
-	otaNeutralRequestTTL = 60 * time.Second
-	// otaNeutralMaxHold deckelt die Neutralstellung hart. Auch ein Sidecar,
-	// der alle zwei Sekunden weiter bittet, bekommt sie nicht laenger.
-	otaNeutralMaxHold = 10 * time.Minute
 	// otaSelfTestSettle ist die Zeit, die dem NEUEN Stand gegeben wird, bevor
 	// er ueber sich urteilt (MQTT-Verbindung, erste Messwerte).
 	otaSelfTestSettle = 25 * time.Second
-	// otaSetpointDeadbandKw ist die Grenze, ab der ein Sollwert als „von
-	// neutral abweichend" gilt (dieselbe Groessenordnung wie ueberall sonst).
-	otaSetpointDeadbandKw = 0.05
 )
 
 // otaSignalLoop schreibt den Zustand des Kerns und beantwortet die Bitten des
@@ -93,8 +77,6 @@ func (a *Agent) otaSignalOnce() {
 		CloudConnected: snap.CloudConnected,
 		ControlActive:  a.otaControlActive(snap),
 		InverterFamily: a.currentFamily(),
-		Dispatching:    a.otaDispatching(snap),
-		SetpointKw:     snap.SetpointKw,
 	}
 
 	// --- Der durable `applying`-Bericht. ---------------------------------
@@ -128,20 +110,6 @@ func (a *Agent) otaSignalOnce() {
 				sig.ApplyingAckedAt = a.otaAckedAt
 			}
 		}
-	}
-
-	// --- Die Bitte um Neutralstellung (Eil-Pfad). -------------------------
-	a.otaMu.Lock()
-	if up != nil && up.NeedNeutral {
-		if a.otaNeutralReq.IsZero() {
-			slog.Warn("OTA: Eil-Aktualisierung - die Anlage wird bewusst neutral gestellt")
-		}
-		a.otaNeutralReq = now
-	}
-	held := a.otaNeutralSince
-	a.otaMu.Unlock()
-	if !held.IsZero() && now.Sub(held) >= otaNeutralSettle {
-		sig.NeutralHeldSince = held.UTC().Format(otaapply.TimeFormat)
 	}
 
 	if err := otaapply.WriteJSON(a.Cfg.DataDir, otaapply.FileCoreSignal, sig); err != nil {
@@ -183,87 +151,6 @@ func (a *Agent) otaPublishApplying(up *otaapply.UpdaterState) error {
 // globale Not-Aus UND die Freigabe fuer dieses Modell.
 func (a *Agent) otaControlActive(snap state.Snapshot) bool {
 	return snap.ControlEnabled && snap.ControlCertified && a.currentFamily() != ""
-}
-
-// otaDispatching sagt, ob GERADE ein von neutral abweichender Sollwert
-// ausgefuehrt wird - der „nicht mitten im Schreiben"-Interlock.
-func (a *Agent) otaDispatching(snap state.Snapshot) bool {
-	if !a.otaControlActive(snap) {
-		return false
-	}
-	switch snap.Mode {
-	case state.ModeSchedule, state.ModeSelfConsume, state.ModeDesired, state.ModeCalibration, state.ModeNeutralTest:
-		return math.Abs(snap.SetpointKw) > otaSetpointDeadbandKw
-	default:
-		return false
-	}
-}
-
-// otaNeutralRequestPending sagt, ob GERADE eine frische Bitte des Sidecars um
-// Neutralstellung ansteht (der Eil-Pfad, otaNeutralOverride) - lesend, ohne
-// Seiteneffekt. Ein laufender Neutral-Zeit-Test konsultiert es als eigenes
-// Sicherheitsnetz: eine EILIGE OTA-Aktualisierung darf fuer die Dauer eines
-// Tests nie verhungern, denn otaNeutralOverride sitzt in der Kette dahinter
-// und kaeme sonst nicht zum Zug.
-func (a *Agent) otaNeutralRequestPending(now time.Time) bool {
-	a.otaMu.Lock()
-	defer a.otaMu.Unlock()
-	return !a.otaNeutralReq.IsZero() && now.Sub(a.otaNeutralReq) <= otaNeutralRequestTTL
-}
-
-// otaNeutralOverride publiziert die Neutralstellung des Eil-Pfades statt des
-// Plan-/Arbiter-Wertes und meldet true, wenn er den Takt uebernommen hat.
-//
-// Er sitzt in `applySetpoint` NACH der Kalibrierung: ein laufender
-// First-Light-Test gewinnt (und macht das Geraet ohnehin „dispatching", also
-// verschiebt der gewoehnliche Interlock den Tausch dann von selbst).
-func (a *Agent) otaNeutralOverride(now time.Time) bool {
-	a.otaMu.Lock()
-	req := a.otaNeutralReq
-	since := a.otaNeutralSince
-	switch {
-	case req.IsZero() || now.Sub(req) > otaNeutralRequestTTL:
-		// Keine (frische) Bitte: Neutralstellung beenden.
-		if !since.IsZero() {
-			slog.Info("OTA: Neutralstellung beendet")
-		}
-		a.otaNeutralReq, a.otaNeutralSince = time.Time{}, time.Time{}
-		a.otaMu.Unlock()
-		return false
-	case !since.IsZero() && now.Sub(since) > otaNeutralMaxHold:
-		// Harter Deckel: ein haengender Sidecar parkt die Anlage nicht ewig.
-		slog.Error("OTA: Neutralstellung nach " + otaNeutralMaxHold.String() +
-			" hart beendet - der Updater hat nicht weitergemacht")
-		a.otaNeutralReq, a.otaNeutralSince = time.Time{}, time.Time{}
-		a.otaMu.Unlock()
-		return false
-	case since.IsZero():
-		a.otaNeutralSince = now
-	}
-	a.otaMu.Unlock()
-
-	// Dieselbe Form wie das Rueckgabe-Fenster der Kalibrierung: neutral UND
-	// control_enabled=false, damit der Executor die Steuerung wirklich
-	// zurueckgibt statt eine 0 zu schreiben.
-	msg := map[string]any{
-		"battery_setpoint_kw": 0.0,
-		"source":              "ota_neutral",
-		"ts":                  now.Format(time.RFC3339Nano),
-		"control_enabled":     false,
-		"device_certified":    a.controlCertified(a.currentFamily()),
-		"grid_charge_allowed": false,
-		"soc_min_pct":         a.Cfg.SocMinPct,
-		"soc_max_pct":         a.Cfg.SocMaxPct,
-	}
-	raw, _ := json.Marshal(msg)
-	if err := a.Bus.Publish(localbus.TopicSetpoint, raw, true); err != nil {
-		slog.Error("OTA: Neutralstellung konnte nicht veroeffentlicht werden", "err", err)
-	}
-	a.State.Update(func(s *state.Snapshot) {
-		s.Mode = state.ModeOtaNeutral
-		s.SetpointKw = 0
-	})
-	return true
 }
 
 // ---------------------------------------------------------------------------

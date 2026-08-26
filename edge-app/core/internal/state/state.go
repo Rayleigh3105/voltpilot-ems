@@ -16,18 +16,6 @@ const (
 	ModeNoReading   Mode = "keine_messwerte" // no inverter reading -> no setpoint
 	ModeDesired     Mode = "wunsch"          // a v2 desired (flow/override) holds the battery entity
 	ModeCalibration Mode = "kalibrierung"    // a First-Light calibration test is driving the battery
-	// ModeOtaNeutral: an URGENT autonomous update deliberately parks the plant
-	// neutral for the seconds of the swap (OTA Stufe 3 escape hatch). It is its
-	// OWN mode because the honest answer to "what drives the setpoint right
-	// now" is neither the plan nor self-consumption - and a surface that shows
-	// a cause must be able to name this one.
-	ModeOtaNeutral Mode = "ota_neutral"
-	// ModeNeutralTest: a guided Neutral-Zeit-Test (docs/ota-autonomie.md §3)
-	// is measuring the inverter's Kommunikations-Verlust-Zeit T - during its
-	// silent phase NOTHING is written at all, which is the entire mechanism,
-	// so this mode names the reason a surface must not mistake for a stuck
-	// setpoint.
-	ModeNeutralTest Mode = "neutralzeit_test"
 )
 
 // Snapshot is one consistent view of the agent for the UI / health endpoint.

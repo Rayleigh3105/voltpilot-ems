@@ -29,7 +29,7 @@ cd "$(dirname "$0")"
 # shellcheck source=lib.sh
 . ./lib.sh
 
-SCENARIOS=(autonomy_off happy selftest_fail prune registry_outage wedged_pull
+SCENARIOS=(happy selftest_fail prune registry_outage wedged_pull
            mid_flip_reboot clock_skew broker_outage disk_full image_cleanup)
 
 usage() {
@@ -118,24 +118,6 @@ start_on_v1() {
 # =========================================================================
 # Die Faelle
 # =========================================================================
-
-# Der Ausgangsfall: OHNE Schalter passiert nichts. Er steht ganz vorn, weil
-# er die Vorgabe der ganzen Stufe ist.
-scenario_autonomy_off() {
-  SEEN_STATE=""; SEEN_REASON=""
-  set_env VP_OTA_AUTONOMOUS "false"
-  start_on_v1
-  assign edge-2026.08.0 12 "$CORE_V2" "$NR_V2"
-  settle 8
-  assert_state idle "ohne Schalter"
-  if [ -f "${DATA}/ota/pending-confirm.json" ]; then
-    bad "es ist ein Vorgang entstanden, obwohl die Autonomie aus ist"
-  else
-    ok "kein Vorgang entstanden"
-  fi
-  assert_alive v1
-  set_env VP_OTA_AUTONOMOUS "true"
-}
 
 # Die Referenz: alles geht gut.
 scenario_happy() {

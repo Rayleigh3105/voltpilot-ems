@@ -400,7 +400,6 @@ function DeviceInventory({
               <th>Referenz</th>
               <th>Edge-Stand</th>
               <th>Vertrauen</th>
-              <th>Kanal</th>
               <th aria-label="Aktionen" />
             </tr>
           </thead>
@@ -449,21 +448,6 @@ function DeviceInventory({
                              dot title={cross.detail ?? undefined}>
                         {cross.label}
                       </Badge>
-                    ) : (
-                      <span className="vp-muted">–</span>
-                    )}
-                  </td>
-                  <td data-label="Kanal">
-                    {connected ? (
-                      <>
-                        {d.channel ?? '–'}
-                        {d.pinned && (
-                          <>
-                            {' '}
-                            <Badge variant="off">festgenagelt</Badge>
-                          </>
-                        )}
-                      </>
                     ) : (
                       <span className="vp-muted">–</span>
                     )}

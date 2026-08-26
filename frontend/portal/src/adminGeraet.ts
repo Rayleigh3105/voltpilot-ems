@@ -30,12 +30,10 @@
 import type { AdminDeviceRow, ControlCandidate } from './admin/adminApi';
 import type { AdminFleetSite } from './admin/fleetApi';
 import {
-  applyView,
   blockerLever,
   crossoverState,
   formatTrustStamp,
   stateLabel,
-  type ApplyView,
   type CrossoverState,
   type EdgeUpdatesRelease,
   type JournalEntry,
@@ -106,17 +104,8 @@ export interface GeraetSoftware {
   zeilen: Zeile[];
   /** Der Hebel zu einer stehenden Sperre; null = keine gemeldet. */
   hebel: string | null;
-  /**
-   * Sagt die Warnung VOR dem Anwenden-Knopf denselben Satz? Dann gehört er
-   * genau EINMAL auf die Karte - und zwar dorthin, wo gleich geklickt wird
-   * (die Haus-Regel „nichts steht zweimal auf einer Karte"). Im Browser
-   * aufgefallen, nicht im Test.
-   */
-  hebelDoppelt: boolean;
   /** Der Satz der Box zum aktuellen Zustand, VERBATIM. */
   grund: string | null;
-  /** Die EINE Apply-Ableitung - Handeln-Karte, Drawer und Seite sagen dasselbe. */
-  apply: ApplyView;
   /** Darf hier überhaupt etwas zugewiesen werden? (nur ein verbundenes Gerät) */
   verbunden: boolean;
   /** Signierte Releases - nur die sind verteilbar. */
@@ -326,22 +315,12 @@ function software(
       wert: device.soll ? versionLabel(device.soll, releases) : DASH,
     });
     zeilen.push({ label: 'Zustand', wert: st.label, tone: toneOf(st.tone) });
-    zeilen.push({
-      label: 'Kanal',
-      wert: device.channel ?? DASH,
-      detail: device.pinned
-        ? 'Festgenagelt - ein Rollout überspringt dieses Gerät sichtbar.'
-        : null,
-    });
   }
   const hebel = blockerLever(device.blocker);
-  const apply = applyView(device);
   return {
     zeilen,
     hebel,
-    hebelDoppelt: hebel != null && hebel === apply.warn,
     grund: device.reason ?? null,
-    apply,
     verbunden,
     signierteReleases: releases.filter((r) => r.signed),
   };

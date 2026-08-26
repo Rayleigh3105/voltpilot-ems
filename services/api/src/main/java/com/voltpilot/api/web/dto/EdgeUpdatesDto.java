@@ -7,14 +7,14 @@ import java.util.UUID;
 /**
  * Der EINE Lese-Aggregat hinter {@code GET /api/v1/admin/edge-updates}: alles,
  * was die Plattform-Seite „Edge-Updates" (Scout §7.3) zeigt - Releases, der
- * aktive Rollout mit seinem Wellen-Board, die Flotten-Matrix und das Journal.
+ * die jüngsten Aktualisierungen mit ihren Geräten, die Flotte und das Journal.
  *
  * <p>Er folgt der Disziplin von {@link AdminFleetDto}: server-seitig
  * aggregiert (keine Client-Schleife), und <b>was niemand gemessen hat, ist
  * {@code null} und trägt seinen Grund</b> - nie eine erfundene Null, nie ein
  * geratener Zustand.
  */
-public record EdgeUpdatesDto(List<ReleaseDto> releases, RolloutDto activeRollout,
+public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollouts,
         List<FleetRowDto> fleet, List<EventDto> journal, KpiDto kpi) {
 
     /**
@@ -30,43 +30,32 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, RolloutDto activeRollout
     }
 
     /**
-     * Der aktive Rollout mit seinem Wellen-Board.
+     * Die laufende bzw. zuletzt gestartete Aktualisierung: EIN Release, die
+     * gewaehlten Geraete, ihr Fortschritt.
      *
-     * <p>{@code canPromote}/{@code promoteBlockedReason}: die nächste Welle ist
-     * gesperrt, bis das Bake-Kriterium erfüllt ist - und der GRUND steht dabei
-     * (verbleibende Zeit bzw. fehlender Steuerzyklus). Ein deaktivierter Knopf
-     * ohne Begründung ist eine Sackgasse.
+     * <p>Seit der Vereinfachung vom 26.08.2026 gibt es hier keine Wellen, keinen
+     * Kanal, kein Bake-Kriterium und keinen Freigabe-Knopf mehr - der Admin
+     * waehlt Release und Geraete, alles Weitere passiert von selbst. Was bleibt,
+     * ist die Beobachtung.
      */
-    public record RolloutDto(UUID id, String releaseVersion, long releaseSeq, String channel,
-            String state, int currentWave, int waveCount, String haltedReason, String createdBy,
-            Instant createdAt, boolean canPromote, String promoteBlockedReason,
-            boolean autoAdvance, String advanceNote, List<WaveDto> waves) {
-    }
-
-    /** Eine Welle: ihre Geräte und ob sie vollständig bestätigt ist. */
-    public record WaveDto(int index, String name, boolean released, boolean confirmed,
-            List<WaveDeviceDto> devices) {
+    public record RolloutDto(UUID id, String releaseVersion, long releaseSeq,
+            String state, String createdBy, Instant createdAt,
+            int total, int confirmed, int failed, List<RolloutDeviceDto> devices) {
     }
 
     /**
-     * Ein Gerät innerhalb einer Welle.
+     * Ein Geraet dieser Aktualisierung.
      *
-     * <p>{@code bakeCycle} ist DREIWERTIG ({@code erfuellt}/{@code offen}/
-     * {@code nicht_pruefbar}) - siehe {@code BakeGate}: auf einer Anlage, auf
-     * der VoltPilot nicht steuert, ist ein echter Steuerzyklus strukturell
-     * nicht zu belegen, und das wird gesagt statt unterstellt.
-     *
-     * <p>{@code label}/{@code siteName} sind {@code null}, wenn weder das Gerät
-     * noch ein Namens-Schnappschuss existiert - eine UUID wird ausdrücklich NIE
-     * geliefert (sie beantwortet die Frage der Zeile nicht). {@code removed}
-     * sagt, dass dieses Gerät die Plattform inzwischen VERLASSEN hat: die
-     * Wellen-Definition ist eingefroren, ein Unclaim + Re-Claim prägt aber eine
-     * neue Geräte-Id - und „ist weg" ist etwas anderes als „meldet sich nicht".
+     * <p>{@code label}/{@code siteName} sind ein SCHNAPPSCHUSS vom Zeitpunkt der
+     * Zuweisung ({@code null} + {@code removed} bei einem inzwischen entfernten
+     * Geraet): die Frage lautet „wie hiess dieses Geraet, ALS es in die
+     * Aktualisierung kam" - ein Fremdschluessel wuerde die Historie beim Unclaim
+     * loeschen oder ihn blockieren.
      */
-    public record WaveDeviceDto(UUID deviceId, String label, String siteName, String tenantName,
-            String state, String reason, Instant since, Long bakeRemainingMinutes,
-            String bakeCycle, String bakeReason, boolean removed) {
+    public record RolloutDeviceDto(UUID deviceId, String label, String siteName,
+            String tenantName, String state, String reason, Instant since, boolean removed) {
     }
+
 
     /**
      * Eine Zeile der Flotten-Matrix: Anlage · Mandant · Ist · Soll · Zustand ·
@@ -90,34 +79,8 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, RolloutDto activeRollout
     public record FleetRowDto(UUID deviceId, String label, String externalRef,
             UUID siteId, String siteName,
             UUID tenantId, String tenantName, String ist, String soll, Long sollSeq,
-            String channel, boolean pinned, String state, String reason, String blocker,
-            Instant since, Instant reportedAt, UUID rolloutId, TrustDto trust, ApplyDto apply) {
-    }
-
-    /**
-     * Was mit dem ANWENDEN dieses Geräts gerade ist (Portal-Apply, §6/E3).
-     *
-     * <p>Er steht NEBEN {@code state}, nicht darin - dieselbe Begründung, aus
-     * der {@code blocker} neben {@code reason} steht: {@code state} beantwortet
-     * „was ist mit dem GERÄT", dieser Block „was ist mit der FREIGABE". Ein
-     * Gerät kann gleichzeitig {@code wartet_auf_anwendung} sein und eine
-     * Freigabe offen, abgeholt oder verfallen haben; jede Vermischung
-     * verschluckte einen der beiden Sätze.
-     *
-     * <p>{@code canApply} ist die vom GERÄT gemeldete Fähigkeit und
-     * DREIWERTIG: {@code null} = ein älterer Edge-Stand meldet sie nicht, also
-     * unbekannt - NIE „geht nicht"; {@code false} = die Box sagt selbst, dass
-     * dort gerade nichts angewandt werden kann (meist läuft kein
-     * Aktualisierer); {@code true} = sie würde eine Freigabe aufgreifen. Sie
-     * ist eine Fähigkeit, nie eine Erlaubnis.
-     *
-     * <p>{@code state}/{@code reason} beschreiben eine ERTEILTE Freigabe
-     * ({@code erteilt} · {@code abgeholt} · {@code verfallen}) und sind
-     * {@code null}, solange es keine gibt - über etwas, das nie erteilt wurde,
-     * wird nichts behauptet.
-     */
-    public record ApplyDto(Boolean canApply, String state, String reason, String release,
-            Instant requestedAt, String requestedBy) {
+            String state, String reason, String blocker,
+            Instant since, Instant reportedAt, UUID rolloutId, TrustDto trust) {
     }
 
     /**
@@ -150,12 +113,11 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, RolloutDto activeRollout
      * ein Gerät ohne Meldung geht weder in den Zähler noch in den Nenner ein,
      * denn über sein Alter ist nichts bekannt.
      *
-     * <p>{@code waitingForAdmin} ist das „Sie sind dran"-Signal: Geräte im
-     * Zustand {@code wartet_auf_anwendung}, plus eine freigebbare Welle. Ohne
-     * es ist der EINZIGE Zustand, in dem sich ohne den Betreiber nie wieder
-     * etwas bewegt, unsichtbar, bis jemand die Seite öffnet.
+     * <p>Ein „Sie sind dran"-Zähler existiert bewusst NICHT mehr: seit der
+     * Vereinfachung vom 26.08.2026 wartet nach dem Klick auf „Aktualisieren"
+     * niemand mehr auf einen Menschen.
      */
     public record KpiDto(int known, int upToDate, int unknown, int inRollout, int failed,
-            int waitingForAdmin, String newestRelease) {
+            String newestRelease) {
     }
 }

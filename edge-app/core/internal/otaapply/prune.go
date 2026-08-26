@@ -105,7 +105,7 @@ func DefaultPrunePolicy() PrunePolicy {
 // 0" unterscheidbar bleiben: ein Betreiber, der nur die Zahl setzen will, soll
 // das Aufraeumen nicht versehentlich abschalten.
 //
-// SCHREIBER: der Betreiber (wie bei `autonomy.json`). Der Sidecar liest sie nur.
+// SCHREIBER: der Betreiber. Der Sidecar liest sie nur.
 type PruneSwitch struct {
 	Enabled      *bool  `json:"enabled,omitempty"`
 	KeepReleases *int   `json:"keep_releases,omitempty"`

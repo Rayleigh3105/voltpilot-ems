@@ -183,8 +183,6 @@ services:
     restart: unless-stopped
     network_mode: none
     environment:
-      VP_OTA_AUTONOMOUS: \${VP_OTA_AUTONOMOUS:-true}
-      VP_OTA_NEUTRAL_VERIFIED: \${VP_OTA_NEUTRAL_VERIFIED:-}
       VP_OTA_TICK_SECONDS: \${VP_OTA_TICK_SECONDS:-2}
       VP_OTA_WATCHDOG_SECONDS: \${VP_OTA_WATCHDOG_SECONDS:-120}
       VP_OTA_DISK_GUARD_MB: \${VP_OTA_DISK_GUARD_MB:-1}

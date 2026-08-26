@@ -448,24 +448,19 @@ services:
       # access for per-customer flow wiring. NOT for customers.
       - "\${VP_NODERED_PORT:-1881}:1880"
 
-  # --- Profil "ota": der Apply-Sidecar (OTA Stufe 3 "Autonom") ------------
-  # ZWEI unabhaengige Tore, und beide sind zu:
-  #   1. Das Profil - ohne "--profile ota" laeuft dieser Container gar nicht,
-  #      und die Box verhaelt sich zeichengleich wie eine ohne ihn.
-  #   2. Der Schalter je Geraet (/data/ota/autonomy.json bzw.
-  #      VP_OTA_AUTONOMOUS) - Vorgabe AUS. Ohne ihn beobachtet und meldet der
-  #      Sidecar nur; er fuehrt kein einziges veraenderndes docker-Kommando aus.
+  # --- Der Apply-Sidecar (OTA "Autonom") ---------------------------------
+  # Ein GEWOEHNLICHER Dienst wie core und nodered: seit der Vereinfachung vom
+  # 26.08.2026 gibt es weder ein Compose-Profil noch einen Schalter je Geraet.
+  # Weist das Portal ein Release zu, verifiziert diese Box es selbst gegen ihre
+  # eingebackene Wurzel und wendet es an - ohne dass jemand auf das Geraet muss.
   # Er besitzt den Docker-Socket und hat deshalb BEWUSST kein Netz und keinen
   # Host-Port. Betreiber-Anleitung: docs/ota-autonomie.md
   updater:
-    profiles: [ota]
     image: \${VP_EDGE_UPDATER_IMAGE:-${UPDATER_REPO}:\${VP_EDGE_IMAGE_TAG:-latest}}
     pull_policy: always
     restart: unless-stopped
     network_mode: none
     environment:
-      VP_OTA_AUTONOMOUS: \${VP_OTA_AUTONOMOUS:-false}
-      VP_OTA_NEUTRAL_VERIFIED: \${VP_OTA_NEUTRAL_VERIFIED:-}
       VP_OTA_WATCHDOG_SECONDS: \${VP_OTA_WATCHDOG_SECONDS:-600}
       VP_OTA_DISK_GUARD_MB: \${VP_OTA_DISK_GUARD_MB:-2048}
       VP_OTA_PRUNE: \${VP_OTA_PRUNE:-true}
@@ -782,22 +777,16 @@ pull_and_up() {
     return
   fi
 
-  # Eine FRISCHE Installation bringt den Aktualisierer (Profil "ota", OTA
-  # Stufe 3) gleich MIT - er ist eines von ZWEI unabhängigen Toren, siehe
-  # generate_compose() oben. Ohne das zweite Tor (der Geräte-Schalter
-  # /data/ota/autonomy.json, weiterhin per VOREINSTELLUNG AUS) BEOBACHTET und
-  # MELDET er nur - kein einziges veränderndes docker-Kommando läuft, bis ein
-  # Betreiber den Schalter bewusst setzt (auf :8484 unter „Automatische
-  # Aktualisierung", oder von Hand in /data/ota/autonomy.json). Das ist der
-  # Unterschied zwischen „die Box KANN sich selbst aktualisieren, sobald
-  # jemand das erlaubt" (jetzt Standard) und „niemand hat sich je darum
-  # gekümmert" (der bisherige Standard, der jede neue Box zwei Handgriffe
-  # kostete). Siehe docs/ota-autonomie.md.
+  # Der Aktualisierer ist seit der Vereinfachung vom 26.08.2026 ein
+  # GEWOEHNLICHER Dienst: kein Compose-Profil, kein Schalter je Geraet. Weist
+  # das Portal ein Release zu, verifiziert diese Box es selbst gegen ihre
+  # eingebackene Wurzel und wendet es an - niemand muss dafuer auf das Geraet.
+  # Siehe docs/ota-autonomie.md.
   if [ "$SKIP_PULL" -eq 1 ]; then
     warn "--skip-pull: 'docker compose pull' übersprungen."
   else
     info "Ziehe die aktuellen Registry-Images ..."
-    if ! dc --profile ota pull core nodered updater; then
+    if ! dc pull; then
       err "Das Ziehen der Images ist fehlgeschlagen."
       info "Häufige Ursachen: nicht an ${REGISTRY} angemeldet, keine Netzverbindung,"
       info "oder kein Image für diese Architektur. Prüfe: docker login ${REGISTRY}"
@@ -807,12 +796,12 @@ pull_and_up() {
   fi
 
   info "Starte die Container (up -d, Volumes bleiben erhalten) ..."
-  if ! dc --profile ota up -d; then
+  if ! dc up -d; then
     err "'docker compose up -d' ist fehlgeschlagen."
     info "Logs ansehen: (cd '${TARGET_DIR}' && docker compose logs)"
     die "Start fehlgeschlagen."
   fi
-  ok "core + nodered + Aktualisierer gestartet (Autonomie bleibt AUS, bis sie bewusst eingeschaltet wird)."
+  ok "core + nodered + Aktualisierer gestartet - kuenftige Releases kommen aus dem Portal."
 }
 
 # =========================================================================
@@ -895,6 +884,104 @@ place_trust_set() {
   dc cp "${dir}/${TRUST_SIG_FILE}" "core:${EDGE_OTA_DIR}/${TRUST_SIG_FILE}" >/dev/null 2>&1 \
     || return 1
   return 0
+}
+
+# =========================================================================
+# Registry-Zugang fuer den Aktualisierer - AUTOMATISCH aus dem Host-Login.
+# =========================================================================
+#
+# Der Aktualisierer laeuft in einem eigenen Container und sieht die
+# `~/.docker/config.json` des HOSTS nicht; `docker pull` schickt die
+# Zugangsdaten vom CLIENT, nicht vom Daemon. Bis zur Vereinfachung vom
+# 26.08.2026 war das der letzte Handgriff je Box: ein benanntes Token von Hand
+# nach /data/ota/registry-auth.json kopieren.
+#
+# Er faellt weg, weil der Installer die Zugangsdaten schon in der Hand hat: er
+# hat DIESE Box gerade an genau dieser Registry angemeldet. Wir lesen also den
+# `auths`-Eintrag aus der Host-Konfiguration und legen ihn dem Sidecar hin -
+# kein neues Geheimnis, kein Klick, und bei jedem Update heilt es sich selbst.
+#
+# EHRLICHE GRENZE: benutzt der Host einen Credential-Helper (`credsStore`),
+# steht in `config.json` kein Klartext-Eintrag. Dann warnen wir laut und nennen
+# den einen Befehl - ein geratener Zugang waere schlimmer als keiner.
+readonly EDGE_REGISTRY_AUTH_FILE="registry-auth.json"
+
+# Gibt "benutzer<TAB>token" auf stdout aus, oder nichts.
+host_registry_credentials() {
+  local cfg="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
+  [ -f "$cfg" ] || return 1
+  python3 - "$cfg" "$REGISTRY" <<'PY_CRED' 2>/dev/null || return 1
+import base64, json, sys
+cfg, registry = sys.argv[1], sys.argv[2]
+try:
+    with open(cfg, encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception:
+    sys.exit(1)
+auths = data.get("auths") or {}
+entry = None
+for key, value in auths.items():
+    host = key.split("://")[-1].rstrip("/")
+    if host == registry or host.endswith("/" + registry):
+        entry = value
+        break
+if not isinstance(entry, dict):
+    sys.exit(1)
+raw = entry.get("auth")
+if raw:
+    try:
+        user, _, token = base64.b64decode(raw).decode("utf-8").partition(":")
+    except Exception:
+        sys.exit(1)
+else:
+    user, token = entry.get("username", ""), entry.get("password", "")
+if not user or not token:
+    sys.exit(1)
+sys.stdout.write(user + "\t" + token)
+PY_CRED
+}
+
+install_registry_auth() {
+  [ "$DRY_RUN" -eq 1 ] && return 0
+  command -v python3 >/dev/null 2>&1 || { registry_auth_manual_hint; return 0; }
+
+  local creds user token
+  if ! creds="$(host_registry_credentials)" || [ -z "$creds" ]; then
+    registry_auth_manual_hint
+    return 0
+  fi
+  user="${creds%%$'\t'*}"
+  token="${creds#*$'\t'}"
+
+  local tmp; tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmp'" RETURN
+  printf '{"registry":"%s","username":"%s","token":"%s"}\n' \
+    "$REGISTRY" "$user" "$token" > "${tmp}/${EDGE_REGISTRY_AUTH_FILE}"
+  chmod 600 "${tmp}/${EDGE_REGISTRY_AUTH_FILE}"
+
+  # EINZELNE DATEI in ein BESTEHENDES Verzeichnis - nie das Verzeichnis selbst
+  # (docker cp setzt sonst dessen Besitzer auf die uid des Hosts, und der
+  # unprivilegierte Core koennte danach weder target.json noch current.json
+  # schreiben; siehe place_trust_set).
+  dc exec -T core mkdir -p "$EDGE_OTA_DIR" >/dev/null 2>&1 || true
+  if dc cp "${tmp}/${EDGE_REGISTRY_AUTH_FILE}" \
+      "core:${EDGE_OTA_DIR}/${EDGE_REGISTRY_AUTH_FILE}" >/dev/null 2>&1; then
+    ok "Registry-Zugang für den Aktualisierer hinterlegt (aus der Anmeldung dieser Box)."
+  else
+    warn "Der Registry-Zugang konnte nicht abgelegt werden."
+    registry_auth_manual_hint
+  fi
+  return 0
+}
+
+registry_auth_manual_hint() {
+  warn "Der Registry-Zugang für den Aktualisierer konnte nicht automatisch abgeleitet werden."
+  info "Meist nutzt der Host einen Credential-Helper. Einmalig auf DIESER Box:"
+  info "  ${C_CYAN}docker compose exec -T core sh -c 'cat > ${EDGE_OTA_DIR}/${EDGE_REGISTRY_AUTH_FILE}' <<'JSON'"
+  info "  {\"registry\":\"${REGISTRY}\",\"username\":\"<bot>\",\"token\":\"<token>\"}"
+  info "  JSON${C_RESET}"
+  info "Bis dahin kann der Aktualisierer die Images nicht ziehen; alles Übrige läuft."
 }
 
 install_trust_set() {
@@ -1196,6 +1283,7 @@ main() {
   compose_validate
   pull_and_up
   install_trust_set
+  install_registry_auth
   show_reference_and_verify
   print_summary
 }

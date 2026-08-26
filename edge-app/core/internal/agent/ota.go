@@ -54,12 +54,11 @@ type otaVerdict struct {
 	// release/seq sind nur bei bestandener Signaturpruefung gesetzt.
 	release string
 	seq     int64
-	// target/targetSeq/channel beschreiben die CLOUD-Zuweisung (Stufe 2) und
+	// target/targetSeq beschreiben die CLOUD-Zuweisung und
 	// sind leer, solange keine vorliegt. Sobald ein Manifest geprueft ist,
 	// stammen sie aus DIESEM, nicht aus dem unsignierten Umschlag.
 	target    string
 	targetSeq int64
-	channel   string
 	// targetVerdict ist das Urteil des Verifizierers ueber die Zuweisung
 	// (ok | deferred | rejected), leer ohne Zuweisung. Es steht NEBEN state,
 	// weil beide verschiedene Fragen beantworten: state ist der Zustand der
@@ -412,7 +411,7 @@ func (a *Agent) otaSnapshot() otaVerdict {
 // since Stufe 1 - the German reason of the last verification. Everything else
 // stays ABSENT rather than invented:
 //
-//   - CurrentSeq/TargetSeq/Target/Channel need the cloud's release register and
+//   - CurrentSeq/TargetSeq/Target need the cloud's release register and
 //     a target assignment - neither exists on the device before Stufe 2. (The
 //     locally readable current.json is deliberately NOT reported as
 //     current_seq: it is a local floor input, not the register's ordering.)
@@ -431,7 +430,7 @@ func (a *Agent) otaSnapshot() otaVerdict {
 // Seit Stufe 2 ist ein Teil davon FUELLBAR - aber jedes Feld nur aus einer
 // Quelle, die es wirklich belegt:
 //
-//   - Target/TargetSeq/Channel stehen NUR, wenn eine Cloud-Zuweisung vorliegt,
+//   - Target/TargetSeq stehen NUR, wenn eine Cloud-Zuweisung vorliegt,
 //     und stammen dann aus dem VERIFIZIERTEN Manifest (der Umschlag ist
 //     unsigniert; wo die Pruefung scheiterte, bleibt sein Wert stehen, aber
 //     TargetVerdict sagt „rejected" dazu).
@@ -451,7 +450,6 @@ func (a *Agent) updateSummary() *cloud.UpdateSummary {
 		State:         v.state,
 		Reason:        v.reason,
 		Target:        v.target,
-		Channel:       v.channel,
 		TargetVerdict: v.targetVerdict,
 		Trust:         a.otaTrust(),
 	}
@@ -469,15 +467,5 @@ func (a *Agent) updateSummary() *cloud.UpdateSummary {
 	// die Wahrheit ueber die PRUEFUNG, target_verdict). Ohne Sidecar bzw. bei
 	// `idle` ist der Block zeichengleich der der Stufe 2.
 	a.otaUpdaterOverlay(sum)
-	// Ob eine Portal-Freigabe ueberhaupt aufgegriffen wuerde, weiss NUR die
-	// Box (laeuft hier ein Sidecar? ist die Zuweisung geprueft?). Sie sagt es,
-	// damit das Portal keinen Knopf anbietet, der nichts bewirken kann - es
-	// ist eine FAEHIGKEIT, keine Erlaubnis (`UpdateSummary.CanApply`).
-	sum.CanApply = a.OtaApplyState().CanApply
-	// Der geraete-lokal gemessene Neutral-Zeit-Nachweis (der gefuehrte
-	// First-Light-Test auf `:8484`) reist als reine Tatsache mit - er
-	// entscheidet cloud-seitig nichts, die Torkette laeuft ausschliesslich
-	// auf dem Geraet.
-	sum.NeutralVerified = a.neutralVerifiedSummary()
 	return sum
 }

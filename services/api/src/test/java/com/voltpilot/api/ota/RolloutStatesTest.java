@@ -78,7 +78,6 @@ class RolloutStatesTest {
                 NOW);
         assertThat(v.state()).isEqualTo(RolloutStates.IM_UPDATE_VERSTUMMT);
         assertThat(v.reason()).isNotBlank();
-        assertThat(RolloutStates.haltsRollout(v.state())).isTrue();
     }
 
     @Test
@@ -94,7 +93,6 @@ class RolloutStatesTest {
                 reported("edge-2026.07.2", "rolled_back", "ok", null, NOW), NOW);
         assertThat(rolled.state()).isEqualTo(RolloutStates.ZURUECKGEROLLT);
         assertThat(rolled.reason()).isNotBlank();
-        assertThat(RolloutStates.haltsRollout(rolled.state())).isTrue();
     }
 
     @Test
@@ -103,13 +101,11 @@ class RolloutStatesTest {
         // „geprüft und in Ordnung, aber das Anwenden ist beaufsichtigt" ist der
         // Zustand, in dem der ADMIN der fehlende Akteur ist - er hat seit dem
         // UX-Umbau ein eigenes Wort und liegt nie wieder im Fortschritts-Ton.
+        // Seit der Vereinfachung vom 26.08.2026 ist „geprüft und in Ordnung"
+        // schlicht UNTERWEGS: es wartet niemand mehr auf einen Menschen.
         RolloutStates.Verdict pending = RolloutStates.derive(TARGET,
-                reported("edge-2026.07.2", "deferred", "ok", "verifiziert - beaufsichtigt", NOW),
-                NOW);
-        assertThat(pending.state()).isEqualTo(RolloutStates.WARTET_AUF_ANWENDUNG);
-        // Er ist KEIN Vorfall und zählt NICHT als bestätigt: die Welle wartet
-        // wirklich, aber die Verteilung wird nicht eingefroren.
-        assertThat(RolloutStates.haltsRollout(pending.state())).isFalse();
+                reported("edge-2026.07.2", "deferred", "ok", "verifiziert", NOW), NOW);
+        assertThat(pending.state()).isEqualTo(RolloutStates.AUSSTEHEND);
         assertThat(RolloutStates.isConfirmed(pending.state())).isFalse();
 
         RolloutStates.Verdict policy = RolloutStates.derive(TARGET,
@@ -118,12 +114,10 @@ class RolloutStatesTest {
         assertThat(policy.state()).isEqualTo(RolloutStates.ZURUECKGESTELLT);
         assertThat(policy.reason()).isEqualTo("Boden nicht erreicht");
         // Eine Politik-Entscheidung ist KEIN Vorfall - sie hält keinen Rollout an.
-        assertThat(RolloutStates.haltsRollout(policy.state())).isFalse();
 
         RolloutStates.Verdict broken = RolloutStates.derive(TARGET,
                 reported("edge-2026.07.2", "failed", "rejected", "Signatur ungueltig", NOW), NOW);
         assertThat(broken.state()).isEqualTo(RolloutStates.FEHLGESCHLAGEN);
-        assertThat(RolloutStates.haltsRollout(broken.state())).isTrue();
     }
 
     /**
@@ -150,8 +144,8 @@ class RolloutStatesTest {
                 blocked("edge-2026.07.2", "deferred", "ok", blocked, "neutralzeit"), NOW);
         assertThat(v.state()).isEqualTo(RolloutStates.BLOCKIERT);
         assertThat(v.reason()).isEqualTo(blocked);
-        // Eine Sperre ist kein Vorfall: sie hält den Rollout NICHT an.
-        assertThat(RolloutStates.haltsRollout(v.state())).isFalse();
+        // Eine Sperre ist kein Vorfall und zählt nicht als bestätigt.
+        assertThat(RolloutStates.isConfirmed(v.state())).isFalse();
     }
 
     /**
@@ -173,8 +167,8 @@ class RolloutStatesTest {
         // aus einem freundlichen Satz wird nie ein Befund.
         assertThat(RolloutStates.derive(TARGET,
                 reported("edge-2026.07.2", "deferred", "ok",
-                        "Release ist verifiziert - die Anwendung erfolgt beaufsichtigt.", NOW),
-                NOW).state()).isEqualTo(RolloutStates.WARTET_AUF_ANWENDUNG);
+                        "Release ist verifiziert.", NOW),
+                NOW).state()).isEqualTo(RolloutStates.AUSSTEHEND);
     }
 
     /**

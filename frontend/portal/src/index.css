@@ -4966,10 +4966,6 @@ button.vp-tech-card-h.toggle {
   display: grid;
   gap: var(--vp-space-2);
 }
-.vp-wave-device {
-  padding-left: var(--vp-space-3);
-  border-left: 2px solid var(--vp-color-border, rgba(0, 0, 0, 0.08));
-}
 .vp-check-row {
   display: flex;
   align-items: center;
@@ -5081,12 +5077,12 @@ button.vp-tech-card-h.toggle {
 @media (prefers-reduced-motion: reduce) {
   .vp-ustate-busy .vp-ustate-dot { animation: none; }
 }
-/* SIE sind dran - gefüllt, laut genug zum Auffallen, aber ohne Bewegung. */
-.vp-ustate-action {
-  background: var(--vp-action, #2c5282);
-  color: #fff;
-}
-.vp-ustate-action .vp-ustate-dot { background: #fff; }
+/* Die frühere fünfte Klasse `action` („SIE sind dran") ist mit dem
+   Ein-Schritt-Umbau (26.08.2026) ENTFALLEN - niemand ist mehr dran, das Gerät
+   wendet selbst an. Damit bleibt genau die Unterscheidung, die eine Aussage
+   trägt: `busy` pulsiert („hier bewegt sich etwas ohne Sie"), alles andere
+   steht still. Wer eine zweite Animation einführt, nimmt der ersten ihre
+   Bedeutung. */
 /* blockiert / zurückgestellt - bernstein, kein Alarm, aber nie Fortschritt. */
 .vp-ustate-blocked {
   background: #fff3e0;
@@ -5116,20 +5112,6 @@ button.vp-tech-card-h.toggle {
   overflow-wrap: anywhere;
 }
 
-/* Die „Sie sind dran"-Karte: der Ort für den Job, der bis hierher keinen
-   hatte. Navy-Rand statt Warn-Rot - es ist keine Störung, sondern eine
-   Aufgabe. */
-.vp-handeln {
-  border-left: 4px solid var(--vp-action, #2c5282);
-}
-.vp-handeln-item {
-  padding: var(--vp-space-3, 12px) 0;
-  border-bottom: 1px solid var(--vp-border, #e2e8f0);
-  min-width: 0;
-}
-.vp-handeln-item:last-child { border-bottom: 0; }
-.vp-handeln-item > .vp-btn { margin-top: 8px; }
-
 /* Das Fortschritts-Rückgrat: EIN Balken über die ERREICHBARE Menge. Was nicht
    hineinzählt (offline, ohne Meldung), steht daneben und nie im Nenner. */
 .vp-backbone { margin: var(--vp-space-3, 12px) 0 var(--vp-space-4, 16px); }
@@ -5152,14 +5134,12 @@ button.vp-tech-card-h.toggle {
 /* Der Punkt der Legende trägt die Klassenfarbe als FLÄCHE - im Balken ist die
    Klasse der Hintergrund, in der Legende der Punkt. */
 .vp-backbone-key .vp-ustate-dot.vp-ustate-busy,
-.vp-backbone-key .vp-ustate-dot.vp-ustate-action,
 .vp-backbone-key .vp-ustate-dot.vp-ustate-blocked,
 .vp-backbone-key .vp-ustate-dot.vp-ustate-incident,
 .vp-backbone-key .vp-ustate-dot.vp-ustate-calm {
   padding: 0;
 }
 .vp-backbone-key .vp-ustate-dot.vp-ustate-busy { background: var(--vp-primary-deep, #2b6cb0); }
-.vp-backbone-key .vp-ustate-dot.vp-ustate-action { background: var(--vp-action, #2c5282); }
 .vp-backbone-key .vp-ustate-dot.vp-ustate-blocked { background: var(--vp-warn-ink, #b45309); }
 .vp-backbone-key .vp-ustate-dot.vp-ustate-incident { background: var(--vp-industry-end, #c62828); }
 /* „bestätigt" ist im Rückgrat der GUTE Ausgang - Legendenpunkt und
@@ -5168,14 +5148,9 @@ button.vp-tech-card-h.toggle {
 .vp-backbone-key .vp-ustate-dot.vp-ustate-calm { background: var(--vp-flow-batt, #16a34a); }
 /* Der Balken selbst: die Klasse ist hier die Fläche. */
 .vp-backbone-seg.vp-ustate-busy { background: var(--vp-primary-deep, #2b6cb0); }
-.vp-backbone-seg.vp-ustate-action { background: var(--vp-action, #2c5282); }
 .vp-backbone-seg.vp-ustate-blocked { background: var(--vp-warn-ink, #b45309); }
 .vp-backbone-seg.vp-ustate-incident { background: var(--vp-industry-end, #c62828); }
 .vp-backbone-seg.vp-ustate-calm { background: var(--vp-flow-batt, #16a34a); }
-
-/* Die Geschichte einer eingefrorenen Welle: gedämpfte Fußnote UNTER der
-   Live-Wahrheit, nie ihr gleichrangiger Nachbar. */
-.vp-wave-history { font-style: italic; opacity: 0.75; }
 
 /* Eine breite Tabelle scrollt in ihrem EIGENEN Container, statt von der
    `overflow: hidden`-Karte abgeschnitten zu werden (die Haus-Regel für breite

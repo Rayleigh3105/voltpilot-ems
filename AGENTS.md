@@ -202,7 +202,7 @@ Die erste Stufe des OTA-Konzepts (Scout `vp-ota-rollout-h4` §9; Captain-Entsche
 
 ## OTA Stufe 1 „Vertrauen": jedes künftige Anwenden ist kryptografisch gedeckt
 
-Die zweite Stufe des OTA-Konzepts (Scout `vp-ota-rollout-h4` §5/§8/§9; Captain-Entscheid **D3: kalte Wurzel offline beim Owner, Releases out-of-band owner-signiert — KEIN heißer Schlüssel in CI**). Sie schafft die Signaturkette und **KEINEN einzigen Schreibpfad zu irgendeinem Gerät**; die stärkste Aussage, die ein Gerät produzieren kann, ist „Release edge-2026.08.0 verifiziert, Anwendung erst in Stufe 2/3". Betreiber-Handbuch inkl. Zeremonie, Verlust-/Rotationsfall und TOFU-Checkliste: [`docs/ota-signing.md`](docs/ota-signing.md).
+Die zweite Stufe des OTA-Konzepts (Scout `vp-ota-rollout-h4` §5/§8/§9; Captain-Entscheid **D3: kalte Wurzel offline beim Owner, Releases out-of-band owner-signiert — KEIN heißer Schlüssel in CI**). Sie schafft die Signaturkette, die JEDES Anwenden deckt — sie verteilt selbst nichts und wendet selbst nichts an, sie ist die BEDINGUNG dafür: nur ein signiertes Release ist verteilbar, und nur ein gegen die eingebackene Wurzel geprüftes wird angewandt (der Verteil- und Anwendungspfad steht im Abschnitt „Edge-Updates: EIN Schritt"). Betreiber-Handbuch inkl. Zeremonie, Verlust-/Rotationsfall und TOFU-Checkliste: [`docs/ota-signing.md`](docs/ota-signing.md).
 
 - **Die Signatur ist ABGETRENNT, und das ist der ganze Punkt.** Ein `signature`-Feld IM Manifest müsste sich über sich selbst rechnen, also zum Prüfen entfernt und der Rest NEU SERIALISIERT werden — genau die Mehrdeutigkeit (Schlüsselreihenfolge, Unicode-Escapes, Zahlenformat, doppelte Schlüssel), aus der Signatur-Umgehungen entstehen. Signiert wird deshalb `kontext || dateibytes` mit dem Dokument **Byte für Byte unverändert** (`otaverify.SigningInput` ist die EINE Stelle, an der diese Bytes entstehen — Signierwerkzeug und Gerät rufen dieselbe Funktion, also können sie nicht auseinanderlaufen). Der Kontext (`voltpilot-ota-release-v1\n` / `voltpilot-ota-trust-set-v1\n`) ist Domain-Trennung: ohne ihn wären beide Dokumente „irgendein JSON mit Ed25519" und ein root-signiertes Trust-Set ginge als Manifest durch. **Folge für JEDE Station auf dem Weg: eine signierte Datei wird nie umformatiert, nie durch `jq` geschickt, nie aus einem CI-Log kopiert und NIEMALS in eine `jsonb`-Spalte gelegt** (jsonb normalisiert und macht die Signatur lautlos unprüfbar — deshalb ist `edge_release.manifest` `text`).
 - **Ed25519, ohne Algorithmus-Agilität.** Go-Standardbibliothek = keine neue Abhängigkeit auf dem Gerät (der Core trägt heute nur paho + mochi), deterministisch, keine ASN.1-Fläche. `AlgEd25519` ist der EINZIGE akzeptierte Wert — ein anderer ist eine Ablehnung, nie ein Fallback (die JWT-`alg`-Lücke).
@@ -220,107 +220,287 @@ Die zweite Stufe des OTA-Konzepts (Scout `vp-ota-rollout-h4` §5/§8/§9; Captai
 - **Beweise:** `otaverify/verify_test.go` (manipulierte Bytes, reine UMFORMATIERUNG, fremder Schlüssel, nicht-root-signiertes Trust-Set, Domain-Verwechslung, `alg`-Herunterhandeln, key_id-Widerspruch, Boden/Rückschritt/Backend, Ablauf-vs-Widerruf, fail-closed ohne Wurzel, Kontrakt-Beispiele per PFAD) · `cmd/vp-ota/main_test.go` (echte Zeremonie im Temp-Verzeichnis, 0600, Rollentrennung, bytegenauer Register-Rumpf) · `agent/ota_verify_test.go` · `AdminApiTest.aSignedReleaseIsRegisteredByteExactAndNeverContradictsItsManifest` (bewusst „unaufgeräumtes" Manifest, Zeichen für Zeichen zurück).
 
 
-## OTA Stufe 2 „Verteilen": das Portal ENTSCHEIDET, das Gerät PRÜFT, ein Mensch WENDET AN
+## Edge-Updates: EIN Schritt — Release wählen, Geräte wählen, fertig
 
-Die dritte Stufe des OTA-Konzepts (Scout `vp-ota-rollout-h4` §5/§7/§9; Captain-Entscheid **D4: Canary = Pilsting, Bake = 24 h gesund UND ≥1 echter Steuerzyklus, Auto-Halt bei jedem failed/rolled_back/verstummt, Wellen hand-advanced**). **Danach braucht kein Rollout-BESCHLUSS mehr SSH** — Entscheidung, Verteilung und Sichtbarkeit sind Portal; das ANWENDEN bleibt beaufsichtigt am Gerät (ein autonomer Apply-Pfad samt Selbsttest, Watchdog und LKG-Rollback ist Stufe 3 und existiert nicht).
+Die Zusammenfassung der OTA-Stufen 2–4 und der Admin-UX-Umbauten P1–P3 nach der
+**Vereinfachung vom 26.08.2026** (Captain-Auftrag „alle Blocker/Tore, die ein
+Release verhindern können, entfernen"). Vorher entschied das Portal, verteilte
+retained — und danach musste ein Mensch an das Gerät. Jetzt gilt:
 
-- **Der Verteilweg ist RETAINED, und das ist der ganze Mechanismus.** `OtaTargetPublisher` legt das signierte Manifest retained (QoS1) auf `ems/{t}/{s}/{d}/v2/update` (Kontrakt `docs/contracts/mqtt-ota-target.schema.json` + drei Beispiele, vom Go-Parser PER PFAD gelesen). Hinter NAT gibt es keinen Push: eine Box, die beim Rollout-Start offline war, holt ihre Zuweisung beim nächsten Verbindungsaufbau selbst ab. Das Topic liegt im `v2/#`-Teilbaum, den die per-Gerät-ACL längst abdeckt (D-2) — **keine Broker-Änderung**. `published_at` heißt deshalb ausdrücklich NICHT „zugestellt"; das beantwortet allein der gemeldete Ist.
-- **⚠ Die Manifest-Bytes reisen BYTE FÜR BYTE.** Sie stehen base64-kodiert im Umschlag (`manifest_b64`/`signature_b64`), nie als eingebettetes JSON-Objekt: ein Objekt müsste zum Prüfen neu serialisiert werden, und genau diese Mehrdeutigkeit (Schlüsselreihenfolge, Leerraum, Zahlenformat) macht die Signatur lautlos unprüfbar. Der Umschlag wird aus demselben Grund von HAND zusammengesetzt (`OtaTargetPublisher.envelope`) statt über einen Objekt-Mapper. Die Kette ist damit: `edge_release.manifest` (`text`, nie `jsonb`) → base64 → Datei auf dem Gerät → Verifizierer. **Der Umschlag ist UNSIGNIERT und deshalb keine Autorität** — `release`/`release_seq`/`channel` sind Routing und Diagnose; jede Entscheidung des Geräts kommt aus dem VERIFIZIERTEN Manifest.
-- **Nur ein SIGNIERTES Release ist verteilbar** (409 sonst, auf beiden Schreibwegen): ohne Manifest-Bytes hat ein Gerät nichts, was es gegen seine eingebackene Wurzel prüfen könnte — eine Anweisung ohne Beleg. Das **Trust-Set reist bewusst NICHT mit** (es ist der Widerrufs-Anker; es über denselben Kanal zu verteilen wäre eine Kreisabhängigkeit) und bleibt beim TOFU-Crossover je Box abgelegt — ein Gerät ohne Trust-Set lehnt fail-closed ab und nennt das als Grund.
-- **Vier additive Tabellen** (Migration `V20260805000000`): `device_update_target` (eine Zeile je Gerät = der Soll-Stand), `rollout` (Wellen-Definition als `jsonb` + Zustand active|paused|halted|done + Wellen-Zeiger; partieller Unique-Index = **höchstens EIN lebender Rollout**), `rollout_device`, `rollout_event` (append-only Journal). **GLOBAL, ohne tenant_id und ohne RLS** wie `edge_release`/`provisioned_device` — das sind Plattform-Betriebsdaten, es gibt per §7.1 KEINE Kunden-Fläche, und eine `tenant_id` würde einen Kunden-Pfad suggerieren, den es nie geben darf; gefenced ist stattdessen der Endpunkt (`/admin/**` + `@PreAuthorize` + BYPASSRLS-`RolloutRepository`, die `/admin/fleet`-Disziplin). Die App-Rolle bekommt hier NICHTS. **Footgun:** das `BIGSERIAL` braucht ein EIGENES `GRANT USAGE ON SEQUENCE` — V4s `ALTER DEFAULT PRIVILEGES` deckt Tabellen ab, Sequenzen sind eine andere Objektklasse (sonst: „permission denied for sequence" auf genau dem Schreibpfad, der die Papier-Spur trägt).
-- **⚠ In `RolloutService` steht bewusst KEIN `@Transactional`.** Springs Transaktionsmanager hängt am `@Primary` (Mandanten-Datenpfad), alle Schreibvorgänge laufen aber über `adminJdbcTemplate` — die Annotation öffnete eine Transaktion auf der FALSCHEN Verbindung und BEHAUPTETE Atomarität, die es nicht gibt (dieselbe Falle, wegen der `TenantRepository.offboard` seine Transaktion von Hand führt). Getragen wird es von der Reihenfolge: vollständig prüfen, bevor das Erste geschrieben wird, und jeder Schritt für sich idempotent.
-- **Endpunkte** (`AdminEdgeUpdateController`, platform-admin): `GET /api/v1/admin/edge-updates` (der EINE Lese-Aggregat der Seite), `POST /api/v1/admin/rollouts` + `…/{id}/promote|pause|resume|halt`, `POST /api/v1/admin/devices/{id}/update-target` + `…/revert`. In `openapi.yaml`. Der **Not-Aus ist endgültig** (weitermachen = ein neuer, bewusster Rollout), und **bereits erteilte Zuweisungen bleiben BESTEHEN** — sie zurückzunehmen schickte eine halb aktualisierte Flotte auf einen dritten Stand.
-- **Zwei reine, Docker-frei getestete Regeln** (das `Tagesprotokoll`/`FleetPflege`-Muster): `RolloutStates` (die Zustandsmaschine §7.2 + die Ehrlichkeitsregeln: **unbekannt ≠ veraltet**, **offline ≠ fehlgeschlagen**, jede rote Zeile trägt ihren Grund; `im_update_verstummt` existiert nur, weil `applying` durabel VOR dem Stoppen gemeldet wird) und `BakeGate` (D4). **Neu gegenüber §7.2: `zurueckgestellt`** — ein Politik-Halt (Anti-Rollback-Boden, falsches Backend, gepinntes Gerät) ist weder ausstehend noch fehlgeschlagen und hält **keinen** Rollout an; der Scout schrieb die Maschine für den autonomen Fall, in dem es diesen Zustand nicht gibt.
-- **Das Bake-Kriterium ist DREIWERTIG, und das ist der Kompromiss, der es ehrlich macht.** „24 h gesund" kommt aus `rollout_device.since` (das nur bei einem echten Zustandswechsel neu gesetzt wird). „≥1 echter Steuerzyklus" kommt aus `device_control_status` (bestätigter Rückleseabgleich NACH der Bestätigung des neuen Stands) — das ist sauber ableitbar, aber nur auf einer Anlage, die überhaupt STEUERT. Die heutigen Bestandsboxen sind read-only, also gibt es `Cycle.NICHT_PRUEFBAR`: die Welle darf weiter, und die Oberfläche sagt SICHTBAR, dass dieser Teil nicht prüfbar war. Ein Gerät MIT Steuerpfad muss den Beleg wirklich liefern. Die Alternativen wären gewesen: die Welle nie freigeben (das Feature wäre tot) oder den Zyklus behaupten (eine erfundene Aussage über eine Kundenanlage).
-- **Der Wächter** (`RolloutWatcher`, 60 s, am Flag `voltpilot.ota.mqtt-listener-enabled` — ohne Status-Ingest gäbe es kein Ist, gegen das er urteilen könnte; `OtaSchedulingConfig` schaltet `@EnableScheduling` nur dafür ein) schreibt die Zustände fort, **hält bei jedem `failed`/`rolled_back`/verstummt AUTOMATISCH an** (D4; `offline` und `zurueckgestellt` ausdrücklich NICHT — sonst endete jeder Rollout am ersten Funkloch) und **re-publiziert driftende Zuweisungen** (Gerät kennt sein Ziel nicht + zuletzt vor > `voltpilot.ota.republish-after`, Vorgabe 30 min, veröffentlicht). Er ist wie die MQTT-Listener ein **Replica-Singleton** (heute 1 api-Replica; jeder Schritt idempotent, bei mehreren Replicas gäbe es doppelte Journal-Einträge — dieselbe Lösung wie dort).
-- **Der `update`-Block trägt seit dieser Stufe `target_verdict`** (`ok|deferred|rejected`, Spalte in `device_update_status`): er steht NEBEN `state`, weil beide verschiedene Fragen beantworten — `state` ist der Zustand der ANWENDUNG, `target_verdict` der der PRÜFUNG. „Verifiziert, wartet auf den Menschen" und „gültig signiert, gilt hier aber nicht" sind BEIDES `state=deferred`; nur dieses Feld trennt sie maschinenlesbar, sonst müsste die Oberfläche den deutschen Grund nach Stichworten durchsuchen. Ein unbekanntes Wort wird beim Ingest VERWORFEN wie ein unbekannter Zustand.
-- **Unclaim räumt ab:** `DeviceController.unclaim` löscht die Zuweisung und leert den retained Slot (`RolloutService.onDeviceUnclaimed`, best-effort und nie werfend) — dieselbe Hygiene wie beim Provisionierungs-Config und beim Entity-Push.
-- **Edge-Seite** (`edge-app/AGENTS.md` „OTA Stufe 2"): abonnieren, verifizieren, ablegen, melden — **kein Apply**. `update.sh --from-target` liest über `GET /api/ota/target` genau die Digests, die DIESES Gerät verifiziert hat (bei `verdict != ok` gibt der Core sie gar nicht heraus), und meldet danach über `POST /api/ota/applied` zurück.
-- **Beweise:** rein `RolloutStatesTest` (8) + `BakeGateTest` (7) + `OtaTargetPublisherTest` (5, u. a. „unaufgeräumte" Manifest-Bytes kommen bytegleich zurück); Testcontainers `OtaRolloutApiTest` (echtes TimescaleDB + Keycloak + EMQX: unsigniertes Release verweigert, retained Zuweisung bytegenau beim Gerät, Wellen-Freigabe SERVER-seitig gesperrt, 24-h-Bake, Auto-Halt bei `failed` vs. **kein** Halt bei offline, Pin wird übersprungen statt überfahren, Unclaim leert den Slot, Journal-Urheber, Rollen-Grenze, zweiter lebender Rollout 409); edge `internal/otatarget` + `agent/ota_target_test.go` (10) + `update-selfcheck.sh` `--from-target`.
-- **Ops:** keine neuen Pflicht-Variablen. Der Verteilweg reitet auf `voltpilot.provisioning.*` (derselbe Broker wie Provisionierung/Entity-Push), der Wächter am schon gesetzten `VOLTPILOT_OTA_MQTT_LISTENER_ENABLED` — im gitops-Repo (`apps/voltpilot/base/api/api.env`) muss dieses Flag stehen, sonst laufen weder Ingest noch Wächter in prod.
+> **Im Portal Release wählen, Geräte ankreuzen, „Aktualisieren". Das Gerät holt
+> und tauscht selbst. Es gibt keinen zweiten Schritt.**
 
-## OTA Stufe 3 „Autonom": das Gerät wendet selbst an - GEBAUT, nirgends eingeschaltet
+Betreiber-Handbuch: [`docs/ota-autonomie.md`](docs/ota-autonomie.md);
+Signatur-Zeremonie: [`docs/ota-signing.md`](docs/ota-signing.md); Edge-Details:
+`edge-app/AGENTS.md`.
 
-Die vierte Stufe des OTA-Konzepts (Scout `vp-ota-rollout-h4` §9 Stufe 3 + §8 Punkte 4/5/7; der tiefe Vorentwurf `vp-edge-ota-concept` §3). Danach braucht auch das ANWENDEN keinen Menschen mehr am Gerät. **Autonomes Anwenden hat ZWEI unabhängige Tore, und beide sind zu:** das Compose-Profil `ota` (der Sidecar-Container läuft sonst gar nicht) und der Schalter je Gerät (`<data>/ota/autonomy.json`, Vorgabe AUS; Not-Ein `VP_OTA_AUTONOMOUS` für den Laborstand). Eine Box ohne beides verhält sich ZEICHENGLEICH wie vor dieser Stufe. Betreiber-Handbuch: [`docs/ota-autonomie.md`](docs/ota-autonomie.md); Edge-Details: `edge-app/AGENTS.md`.
+### ⚠ DIE LEITENTSCHEIDUNG, an der alles hängt
 
-- **Der Schnitt: `internal/otaapply` (rein) ⟷ `internal/otaupdater` (Docker) ⟷ `cmd/vp-edge-updater` (Prozess).** JEDE Regel, die ein Anwenden verhindern kann, liegt im reinen Paket und ist ohne einen einzigen Container prüfbar (das `Tagesprotokoll`/`FleetPflege`/`SlotEconomics`-Muster); der Sidecar berührt die Aussenwelt ausschliesslich über die EINE `Runner`-Schnittstelle, weshalb die gesamte Orchestrierung - und damit jede Regel, die an einer REIHENFOLGE hängt - gegen einen Stellvertreter prüfbar ist.
-- **Kern und Sidecar sprechen über DATEIEN in `/data/ota`, jede mit GENAU EINEM Schreiber** (`target.json`/`current.json`/`self-test.json` Kern, `updater-state.json`/`pending-confirm.json`/`lkg.json`/`failed.json` Sidecar, `autonomy.json` Betreiber). Der Sidecar hat bewusst kein Netz, keinen Host-Port, keine MQTT-Verbindung und keine Identität - er kann den Kern gar nicht anrufen. Alle Dateien tmp+rename, damit ein Neustart MITTEN im Tausch deterministisch bewertbar bleibt.
-- **Die drei Sätze, auf denen die Sicherheit ruht:** (1) der Sidecar glaubt dem Kern NICHTS - er liest die Manifest-Bytes selbst und verifiziert gegen SEINE eigene eingebackene Wurzel und SEINEN eigenen Boden (`otaapply.VerifyManifest` ist die EINE Stelle, die beide aufrufen - „unabhängig verifizieren" heisst zwei Prozesse, nicht zwei Implementierungen derselben Regel); (2) nur der KERN darf bezeugen, was läuft, deshalb schreibt nur er `current.json`; (3) was nicht entschieden werden kann, wird nicht angewandt - jede Regel fällt im Zweifel auf „nicht anwenden" und trägt einen deutschen Grund.
-- **Ehrlich zur Privilegien-Lage** (Vorentwurf §3 Befund A2): `docker.sock` ist Host-root, ein übernommener Sidecar KANN einen privilegierten Container starten. Der Schutz ist ausdrücklich NICHT die Netz-Grenze, sondern die selbst geprüfte Signatur der Eingaben plus eine minimale Angriffsfläche.
-- **Der Ablauf, sequenziert:** holen (beide Images, VOR jedem Stopp) → Digest gegenprüfen → Rückfallziel DREIFACH sichern (`:lkg`-Tag + GESTOPPTER Halter-Container + `docker save`-Archiv; der Halter ist der Mechanismus, mit dem das Image ein `docker system prune -a` überlebt - ein blosser Tag genügt NICHT) → Gruppen-Sicherung des kleinen `/data`-Bestands → **Brotkrume VOR dem ersten Tausch** → der Kern meldet `applying` DURABEL → **EINE Komponente nach der anderen** (`core`, dann `nodered`; während der Kern getauscht wird, lebt die Staleness-Failsafe von Node-RED und danach umgekehrt - NIE beide zugleich, der strukturelle Fix des Befunds B1) → Selbsttest des NEUEN Kerns → bestätigen oder zurücknehmen. Getauscht wird nur, was sich UNTERSCHEIDET.
-- **Der Selbsttest ist nie vakuum** (Befund B2): entscheidend ist der SYNTHETISCHE Steuer-Trockenlauf (`agent.otaSyntheticControlDryRun`), der IMMER läuft - auch nachts und im Leerlauf - und die echte Guard-Kette dieses NEUEN Binärs gegen ihre tragenden Zusagen prüft (Nennband, SoC-Decke/-Boden, EEG-Solar-Klemme, §14a-Hülle). Ein Stand, der steuerungskaputt, aber im Leerlauf gesund ist, kann sich damit nicht selbst segnen. Dazu: läuft WIRKLICH das Ziel-Release (gegen die Build-Stempelung), antwortet `/health`, und - wenn die Anlage VOR dem Tausch gesteuert hat - ist die First-Light-Freigabe noch da (`PendingConfirm.ControlActiveBefore`; ein Update, das sie verliert, machte die Anlage stillschweigend nur noch lesend).
-- **⚠ Der Plattenwaechter rechnet mit `f_frsize`, NICHT mit `f_bsize`** (`otaupdater/disk_linux.go`). POSIX: `f_bsize` ist die BEVORZUGTE E/A-Blockgroesse, `f_frsize` die fundamentale - und `f_bavail` zaehlt in `f_frsize`-Einheiten. Auf ext4 sind beide 4096 und der Unterschied faellt nie auf; auf einem virtiofs-Mount meldet `f_bsize` 256 KiB, und der Waechter sah 9,5 TiB statt 38 GiB (in der Matrix aufgefallen). Ein Waechter, der zu viel Platz sieht, ist kein Waechter.
-- **⚠ `guards.Reading`s Nullwert `GridLimitKw: 0` heisst „§14a-Grenze 0 kW", NICHT „unbekannt"** - unbekannt ist ausschliesslich `guards.Unknown()` (NaN). Eine mit `{}` gebaute Messung lässt den Envelope-Guard gegen eine Null-Grenze rechnen; im Trockenlauf fiel genau das auf.
-- **Die Inverter-Neutral-Zeit T ist die eine EXTERNE Abhängigkeit** (Scout §10). Die Wachhund-Frist liegt STRIKT unter T (`otaapply.WatchdogDeadline`, Marge T/5 mind. 5 s, Untergrenze 15 s) - Arithmetik, keine Absicht. Eine Anlage, die wirklich STEUERT (Not-Aus an UND Freigabe UND Wechselrichter gewählt), wird ohne belegtes T NICHT autonom aktualisiert; eine nur LESENDE Anlage - die heutige Flotte - hält kein Kommando, das T überleben könnte, und darf. Belegt wird T am Prüfstand und über `VP_OTA_NEUTRAL_VERIFIED=familie:sekunden` eingetragen; ein unlesbarer Eintrag BRICHT den Sidecar-Start ab (eine still verworfene Zeile hiesse „nicht verifiziert", während der Betreiber glaubt, verifiziert zu haben). **T ist seit `internal/neutralcal` (edge-app, 06.08.2026) zusätzlich am GERÄT MESSBAR** statt nur am Pruefstand belegbar: ein gefuehrter First-Light-Test auf `:8484` ("Neutral-Zeit messen") schreibt einen kleinen, klar von neutral abweichenden Sollwert, hört dann bewusst auf ihn aufzufrischen und misst über den normalen Telemetrie-Lesepfad die Rückkehr - ein bestandener Test trägt sich in `ota/neutral-verified.json` ein, das `otaapply.NeutralTable.ForWithMeasured` GLEICHWERTIG zu `VP_OTA_NEUTRAL_VERIFIED` heranzieht (die Umgebungsvariable behält aber IMMER Vorrang). Details: `edge-app/AGENTS.md` "Neutral-Zeit-Test".
-- **Der Interlock + der Eil-Pfad:** solange ein von neutral abweichender Sollwert ausgeführt wird, wird VERSCHOBEN. Ein EILIGES Release verschiebt nicht, sondern lässt den Kern die Anlage zuerst bewusst neutral stellen (eigener `state.ModeOtaNeutral`, mit eigener Aussage auf der `:8484`-Steuerungskarte; harter Deckel 10 min, TTL 60 s, damit ein verschwundener Sidecar die Anlage nie parkt). Der Schalter dafür ist das ADDITIVE `urgent` im SIGNIERTEN Manifest (`schema_version` bleibt 1.0, absent = der geduldige Weg) - eine Anweisung an eine laufende Kundenanlage gehört nicht in den unsignierten Umschlag.
-- **Was hier einmal zurückgerollt wurde, läuft NIE wieder von selbst an** (`failed.json`). Ohne diese Regel drehte die Anlage sich im Kreis: die Zuweisung liegt ja noch, das Release läuft nach der Rücknahme immer noch nicht - der nächste Takt begänne denselben Tausch, endlos, jedes Mal mit den Sekunden ohne Steuerung. **In der Fehlerinjektions-Matrix aufgefallen, nicht im Unit-Test.** Weiter geht es über ein ANDERES Release (der Rollout im Portal hält bei `rolled_back` ohnehin automatisch an) oder dadurch, dass ein Betreiber die Datei entfernt; ein bestätigter Tausch löscht sie.
-- **Wer den Aktualisierer aktualisiert: nicht er selbst.** `otaapply.TargetRefs` lässt `updater` aus der Artefakt-Liste heraus und protokolliert das LAUT (`ReleaseNamesUpdater`) - ein Prozess, der sich mitten in einer Orchestrierung ersetzt, verliert den Zustand, mit dem er den Vorgang zu Ende fahren müsste. Sidecar-Updates sind selten, beaufsichtigt, out-of-band (`update.sh --ota`). Der `manifest`-Job in `edge-images.yaml` nennt ihn deshalb nicht.
-- **`/data`: gesichert ≠ zurückgespielt** (bewusste Abweichung vom Vorentwurf, in `otaapply/snapshot.go` begründet). Die Identität (`device.key`/`device.crt`/`identity.json`) wird GESICHERT, aber NIE automatisch zurückgespielt: `enroll.Reconcile` übernimmt im Betrieb legitim eine neue device_id, und ein automatisches Zurücksetzen stellte genau den Identitäts-Drift wieder her, dessen Behebung eine eigene Runde gekostet hat. Zurückgespielt wird nur der vom BETREIBER eingerichtete Zustand (Freigaben, Gerätewahl, Quellen, Filter).
-- **Registry-Zugang: ein Nur-Lese-Bot-Benutzer (`read:package`), daran EIN BENANNTES TOKEN JE GERÄT** (Forgejos Token sind benutzer-, nicht repo-bezogen; mehrere benannte Token je Benutzer sind möglich und einzeln widerrufbar). Abgelegt unter `/data/ota/registry-auth.json`, NIE in einem Image. Benannte Grenze: alle Token tragen denselben Umfang, ein gestohlenes Gerät kann jedes Edge-Image ziehen. Rückfall wäre EIN flottenweites Token - am Code ändert das nichts.
-- **Compose/Installer:** Dienst `updater` im Profil `ota`, in BEIDEN Composes (Repo + `install.sh generate_compose()`), `network_mode: none`, Docker-Socket + Deploy-Verzeichnis eingehängt. `install-selfcheck.sh` prüft jetzt BEIDE Auflösungen (Vorgabe UND `--profile ota`) auf Gleichheit und nagelt fest, dass das EINZIGE erlaubte Profil `ota` ist. `update.sh` erkennt einen laufenden Sidecar und nimmt `--profile ota` in seine Compose-Argumente auf - **tragend, nicht Komfort:** `up -d --remove-orphans` würde ihn sonst als Waise ENTFERNEN und einer eingerichteten Box stillschweigend die Autonomie nehmen (`--ota` erzwingt es bei gestoppten Containern). Das Image `edge-app-updater` ist der dritte Eintrag der `edge-images.yaml`-Matrix; es teilt den Build-Kontext mit dem Kern, weil Sidecar und Kern `otaverify`/`otaapply` WÖRTLICH teilen müssen.
-- **Beweise:** rein `otaapply` (Tore inkl. „ausgeschaltet braucht keinen Grund", gebrochene Kette = `failed`, unverifiziertes T sperrt NUR eine steuernde Anlage, Frist strikt unter T, Interlock + Eil-Pfad, Plattenwächter, jeder Nicht-idle-Ausgang trägt einen deutschen Grund; Wiederaufnahme: Flattern schlägt die Frist, fremdes Selbsttest-Urteil zählt nicht, unlesbare Frist = Rücknahme, fehlender Healthcheck ist KEIN Befund; Sequenz, `.env`-Hebel, Snapshot-Regel, Schalter-fail-closed) · `otaupdater` gegen eine geschriebene docker-Welt (Autonomie aus ⇒ NULL Kommandos, Reihenfolge holen→sichern→Brotkrume→EINE Komponente, falscher Digest stoppt vor jedem Tausch, Selbsttest-Fehlschlag ⇒ Rücknahme, `prune`-Fall lädt das Archiv, Wachhund, Flattern, Neustart setzt FORT statt neu zu beginnen, kein erneuter Versuch nach einer Rücknahme) · `agent/ota_autonomy_test.go` (Zustandskanal, Interlock-Eingang, Trockenlauf, Selbsttest-Urteile, Herzschlag ohne Sidecar BYTE-GLEICH) · `internal/web/jstest/ui.test.js` (die Neutral-Aussage) · und die **Fehlerinjektions-Matrix** `edge-app/test/ota-soak/run.sh` (10 Fälle gegen echten Docker, echte Signaturkette, echte Registry).
-- **⚠ Eine Verweigerung muss SICHTBAR sein - sonst ist sie ein Rätsel (Canary-Soak 04.08.2026, PR `fm/vp-ota-tguard-sichtbar-f7`).** Autonomie an, ein verifiziertes Release zugewiesen, die Anlage steuert ohne belegtes T: der Sidecar verweigerte korrekt - und **vollkommen still**. Im Protokoll standen nur die Startzeilen (`report()` loggte nie), und der Herzschlag trug weiter den freundlichen Satz des VERIFIZIERERS („verifiziert - die Anwendung erfolgt beaufsichtigt am Gerät"), weil `otaUpdaterOverlay` den Grund des Sidecars nur unterhalb seiner `idle`-Abkürzung überlagerte. Drei additive Dinge beheben das, ohne eine einzige Regel zu lockern: (1) **jedes geschlossene Tor trägt einen maschinenlesbaren Namen** (`Decision.Blocker` → `UpdaterState.Blocker`, Vokabular `otaapply.Blocker*`: `neutralzeit`, `kern_still`, `platte`, `interlock`, `politik`, `kette`, …) - das `target_verdict`-neben-`state`-Muster, damit keine Oberfläche einen deutschen Satz nach Stichworten durchsuchen muss; (2) **Sidecar UND Kern protokollieren die Sperre bei jeder ÄNDERUNG, nie je Takt** (5-s- bzw. 15-s-Takt: „jeder Durchlauf" wäre Rauschen, in dem der Hinweis untergeht; der Nullwert sorgt dafür, dass ein bereits blockiert startender Sidecar seine Sperre im ERSTEN Durchlauf nennt, und das Aufheben wird ebenfalls genau einmal gesagt); (3) **eine stehende Sperre gewinnt im `update`-Block VOR jeder anderen Überlagerung** und ersetzt den Verifizierer-Satz durch `otaapply.BlockedPrefix` + Grund („Autonomie blockiert: …", die EINE Formulierung für Log, Datei und Herzschlag - „wartet" und „blockiert" dürfen nirgends gleich aussehen). Der Zustand bleibt `deferred` (keine Störung, sondern eine bewusst nicht getroffene Entscheidung); der Grund NENNT den Hebel (Familie + `VP_OTA_NEUTRAL_VERIFIED`). **Cloud- und Portal-Seite unverändert:** der Text reist im schon existierenden `reason`-Feld, `RolloutStates.derive` gibt ihn in der Flotten-Zeile `ausstehend` durch, die Spalte „Grund" rendert ihn - kein Schema, kein DTO, kein Payload-Feld. Beweise: `otaapply` (Blocker je Tor, offener Weg nennt KEINEN, der Grund nennt den Hebel, Präfix-Regel), `otaupdater/blocker_test.go` (der Soak-Fall wörtlich: genau EINE Zeile, kein Docker-Kommando, vier weitere Takte schweigen, anderer Blocker = neue Aussage, Aufhebung genau einmal), `agent/ota_autonomy_test.go` (der Sidecar besitzt den Grund, auch neben `idle`; ohne Sperre byte-gleich), `RolloutStatesTest`.
-- **⚠ Der Sidecar RÄUMT SEINE ABGELÖSTEN ABBILDER WEG - nach einem BESTÄTIGTEN Tausch, nie vorher (Pilsting 09.08.2026, PR `fm/vp-ota-autoprune-p3`).** Er holte je Update beide neuen Abbilder und sicherte das Rückfallziel dreifach, entsorgte die abgelösten aber NIE: `docker system df` meldete auf der 15-GB-Karte **58 Abbilder, 3 in Benutzung, 5,8 GB rückgewinnbar** - und der Plattenwächter verweigerte deshalb einen legitimen Rollout. Die Verweigerung war richtig, der Grund war unser Müll. Regel rein in `otaapply.PlanPrune` (docker-frei), Wirkung in `otaupdater/prune.go`, aufgerufen ausschliesslich am ENDE von `Engine.commit` - nach einer **Rücknahme gar nicht** (dort ist jedes Abbild potenziell das, worauf gleich zurückgefallen wird). **Die Nie-entfernen-Menge ist der ganze Punkt:** ein Abbild, auf das IRGENDEIN Container zeigt (laufend ODER gestoppt - das deckt die `vp-edge-lkg-*`-HALTER ohne Sonderregel ab, also genau den Mechanismus, mit dem das Rückfall-Image ein `prune -a` überlebt); alles im Rückfall-Namensraum (`otaapply.LKGTagPrefix`, geteilt mit `lkgTag`/`lkgHolder`) auch OHNE Halter, denn **docker schützt hier nicht** - einen Tag abzuhängen gelingt trotz Container; das laufende Ziel und eine bereits vorab geholte NÄCHSTE Zuweisung (nur nach bestandener Signaturprüfung gelesen - erst prüfen, dann parsen); **alles, was nicht ÄLTER ist als der laufende Stand** (der Anker je Repository - entfernt werden „Abbilder FRÜHERER Releases", was jünger ist, ist voraus Bereitgelegtes; **in der Matrix aufgefallen, nicht im Unit-Test**: ohne die Regel sammelte ein früherer Fall die für spätere Fälle vorab angelegten Stellvertreter ein); und je Repository die `VP_OTA_PRUNE_KEEP` (Vorgabe 1) jüngsten Verwaisten. Das `docker save`-Archiv ist eine DATEI und per Konstruktion ausser Reichweite. Entfernt wird **je NAME** (`docker image rm <repo>:<tag>` bzw. `<repo>@<digest>`), **nie mit `-f`** (das hebelte die dritte Sicherungsebene aus: docker verweigert die Löschung, solange ein Container hält) und **nie pauschal** (`image prune -a` nähme das vorab geholte Ziel und jedes von aussen abgelegte Abbild mit); die Kandidatenmenge sind nur die Repositories, die dieses Gerät SELBST getauscht hat. Nicht-fatal, aber nie ratend: ein Fehlschlag wird nur protokolliert (die Reinigung ist die Kür, der Tausch die Pflicht), eine unvollständige Sicht (`docker images`/`docker ps` antwortet nicht) BRICHT das Aufräumen ab. Schalter `VP_OTA_PRUNE`/`VP_OTA_PRUNE_KEEP` (in BEIDEN Composes - Lockstep) + `<data>/ota/prune.json` je Gerät, mit **umgekehrten Vorzeichen zur Autonomie**: fehlende Datei = Vorgabe AN, UNLESBARE Datei = nichts entfernen. **Bekannte Grenze:** eine schon blockierte Bestandsbox kommt hierüber nicht frei (ohne Tausch kein Aufräumen) - dort einmal von Hand `docker image prune -a`, was durch den Halter-Container nachweislich sicher ist. Beweise: `otaapply/prune_test.go` (20 reine Fälle) · `otaupdater/prune_test.go` (11 gegen die geschriebene docker-Welt) · Soak-Fall `image_cleanup` (zwei bestätigte Updates gegen echten Docker: die Abbilder des überholten Standes weg - Tag UND Digest -, laufender Stand + der eine aufgehobene Vorgänger + Rückfall-Tag + Halter + Archiv stehen, `alpine:3.20` unangetastet). Betreiber-Handbuch: [`docs/ota-autonomie.md`](docs/ota-autonomie.md) §5b.
-- **Was diese Stufe NICHT tut:** sie schaltet nirgends etwas ein, sie ersetzt den Soak auf der Canary-Box nicht (dort zusätzlich: T belegen, Freigabe-Überleben, ≥1 echter Steuerzyklus = die Bake-Regel D4 des Portals), und sie ändert nichts an der Cloud-Seite - der Herzschlag trägt dieselben Wörter wie seit Stufe 0.
+> **Jedes Tor über den ZUSTAND DES GERÄTS ist gefallen. Jede Eigenschaft des
+> SIGNIERTEN RELEASE bleibt.**
 
-## OTA Stufe 4 „Politur": Wellen-Automatik als OPTION, Vertrauen wird SICHTBAR
+Eine Release-Eigenschaft bewertet der Takt automatisch und braucht NIE einen
+Menschen am Gerät; ein Geräte-Zustands-Tor braucht genau das. **Ersatzlos
+entfallen** (Code, nicht nur Vorgaben): Compose-Profil `ota` · Geräte-Schalter
+`autonomy.json` + `VP_OTA_AUTONOMOUS` · die Einmal-Freigabe (`:8484`-Taste UND
+Portal-Apply, samt `mqtt-ota-apply.schema.json`, `device_apply_request`,
+`ApplyApproval`) · die Neutral-Zeit **T** samt `internal/neutralcal` und dem
+`:8484`-Messtest · der Interlock + Eil-Pfad (`ModeOtaNeutral`, Manifest-Feld
+`urgent`) · `kern_still` · Wellen + `BakeGate` + `auto_advance` + `promote` ·
+Auto-Halt · Pause/Resume/Not-Aus · „höchstens EIN lebender Rollout" · `pinned` ·
+Kanal `canary`/`stable` · Zustand `wartet_auf_anwendung`. **Das
+Sicherheits-Argument:** der bis dahin gesegnete Handpfad `update.sh
+--from-target` tauscht **roh** — ohne Neutral-Zeit, ohne Interlock, ohne
+Selbsttest, ohne Rücknahme. Der autonome Pfad ist nach dem Umbau **strikt
+sicherer als das, was von Hand ohnehin getan wurde**.
 
-Die abschliessende Stufe des OTA-Konzepts (Scout `vp-ota-rollout-h4` §9 Stufe 4, §6 D2, §8.2). Alles ist ADDITIV und OPTIONAL: eine Flotte, die keinen der neuen Schalter anfasst, verhält sich zeichengleich wie nach Stufe 3.
+**Was BLEIBT** (alles automatisch bewertet): Signaturkette gegen die
+eingebackene Wurzel · Trust-Set · `alg`-Pinning + Domain-Trennung ·
+Anti-Rollback-Boden `min_from_seq`/`allow_downgrade` · `compat.backends` ·
+`state_schema` · der Plattenwächter als **physische** Grenze (er misst erst,
+NACHDEM aufgeräumt wurde) · die Sperre gegen eine schon zurückgenommene
+Zuweisung (`zurueckgenommen`, per ZUWEISUNG, nicht mehr für immer — eine neue
+Zuweisung desselben Release versucht wieder).
 
-- **Wellen-Automatik (`rollout.auto_advance`, Migration `V20260806000000`, Vorgabe FALSE).** Sie ändert AUSSCHLIESSLICH, **wer „Nächste Welle" drückt** — dasselbe `BakeGate` (24 h + Steuerzyklus inkl. `NICHT_PRUEFBAR`), derselbe Auto-Halt, derselbe endgültige Not-Aus. **Die Sicherheit hängt an der REIHENFOLGE, nicht an einer Prüfung:** der Automatik-Zweig steht im `else` des Auto-Halts in `RolloutService.reconcile`, ein gerade angehaltener Rollout erreicht ihn also strukturell nie; `paused` fällt über `state != active` heraus. Gesetzt beim Start (`POST /admin/rollouts` `autoAdvance`, absent = Hand) und nachträglich umlegbar (`POST /admin/rollouts/{id}/auto-advance`, ein eingefrorener/fertiger Rollout ist 409 — Weitermachen ist ein neuer Rollout). Journal: `wave_auto_released`/`auto_advance_on|off`, Urheber `system` bzw. das JWT-Subject. `RolloutDto.advanceNote` ist der EINE Satz, warum die nächste Welle gerade (nicht) kommt — ohne ihn wäre die Automatik ein unsichtbarer Zustand.
-- **Vertrauens-Identität je Gerät (TOFU-Abschluss + Rotations-Drill).** Die Edge meldet im `update`-Block additiv `trust` (`cloud.TrustSummary`: `root_key_ids` der EINGEBACKENEN Wurzel + die key_ids/`generated_at` des GEPRÜFTEN Trust-Sets). Gebildet von `otaverify.InspectTrust` — der EINEN Funktion, die Werkzeug (`vp-ota trust`) und Gerät teilen —, die die ersten zwei Schritte von `Verify` fährt: **ein Trust-Set, das die Wurzel nicht unterschrieben hat, wird NICHT berichtet**, sonst könnte jeder, der `/data` beschreibt, der Flotte eine Schlüsselmenge vorspielen. Persistiert in `device_update_status` als komma-getrennte SORTIERTE Liste (key_ids enthalten per Kontrakt kein Komma; der Ingest verwirft alles, was nicht `^[a-z0-9][a-z0-9._-]{0,63}$` ist — die Regel des unbekannten Zustands).
-  - **⚠ DREI Zustände, und sie sind der ganze Punkt:** `NULL` = ein älterer Edge-Stand meldet nichts → **„unbekannt", nie „nicht gekreuzt"**; `''` = ein Image OHNE Wurzel → **Crossover offen** (der dokumentierte Vor-TOFU-Zustand, eine offene Aufgabe, KEIN Fehler); sonst gekreuzt. Deshalb ist die Spalte `TEXT` ohne Default und der Listener unterscheidet „kein trust-Block" von „Block mit leerer Liste". Laut (Warnton) ist nur der VIERTE Fall: Wurzel da, Trust-Set abgelehnt — ein Vorfall.
-  - Gerendert von der reinen `frontend/portal/src/adminEdgeUpdates.ts` (`crossoverState`/`crossoverHint`/`trustSetSpread`/`advanceMode`): Spalte „Vertrauen" in der Flotten-Matrix, das Set im Geräte-Ausklapp, und die ruhige Zeile „Crossover offen: n Geräte" über der Flotte (sie zählt NUR belegt Offene; Unbekanntes wird getrennt genannt, weil daraus keine Aufgabe folgt).
-- **Rotations-Drill: `vp-ota trust` schliesst die Werkzeug-Lücke.** `vp-ota verify` verlangt ein Manifest — im Drill gibt es aber ein neues Trust-Set und noch KEIN Release, man hätte also eines erfinden müssen, um den eigenen Widerruf zu prüfen. `trust` prüft das Set ALLEIN gegen die Wurzel und druckt genau die Zeichenkette, die das Gerät danach meldet. **Der VERTEILWEG ist unverändert der beaufsichtigte je Box** (§6 „Das Trust-Set bleibt out-of-band" — es ist der Widerrufs-Anker); NEU ist, dass der Fortschritt im Portal SICHTBAR ist statt in einer handgeführten Liste zu stehen. Vollständiger Drill inkl. Rollback: `docs/ota-signing.md` §7.1/§7.1b. **Ein automatischer Trust-Set-Downlink wurde bewusst NICHT gebaut** — er widerspräche der in Stufe 2 dokumentierten Entscheidung und bräuchte zusätzlich einen monotonen Zähler im signierten Set gegen Replay; das ist ein Captain-Entscheid, kein Implementierungsdetail.
-- **Audit-Spiegel ins gitops: EXPORT, kein Deploy (D2).** `GET /api/v1/admin/rollout-journal.md` (platform-admin) rendert das append-only Journal als Markdown (rein: `ota/RolloutJournal`, Docker-frei getestet). **Die api hält KEIN gitops-Schreib-Token** — committet wird ausserhalb durch `tools/deploy/mirror-rollout-journal.sh` (Mensch oder Cron). Die Ausgabe ist DETERMINISTISCH (kein „erzeugt am"-Kopf), derselbe Zustand erzeugt also keinen Commit; es fliesst nichts zurück, und die Datei sagt in ihrem eigenen Kopf, dass die Portal-DB die Autorität ist. Operator-Anleitung: `docs/deploy.md` „Edge-Rollouts".
-- **`:8484` „Jetzt anwenden" — der beaufsichtigte Pfad ist vollständig.** Bis hierher brauchte das ANWENDEN SSH. Jetzt legt der Kern hinter DEMSELBEN Betreiber-Passwort wie die Kalibrierung (`calGuard`, `X-VP-Calibration-Token`) eine EINMALIGE Freigabe ab (`otaapply.ApplyRequest`), die der Stufe-3-Sidecar beim nächsten Takt aufgreift. **Es ist ausdrücklich KEINE Autonomie:** die Freigabe öffnet ausschliesslich das ERSTE Tor von `otaapply.Decide`, für GENAU EINEN Vorgang (Token, quittiert in `UpdaterState.AppliedRequestToken` — jede Datei behält genau EINEN Schreiber) und GENAU EIN Release (die Freigabe gilt dem Stand, den der Mensch SAH; eine inzwischen eingetroffene Zuweisung ist nicht mitfreigegeben), und sie verfällt nach 15 min. Jedes weitere Tor gilt unverändert — `TestAnApprovalNeverSkipsAnyLaterGate` vergleicht dafür freigegeben gegen autonom Fall für Fall. **Daraus folgt der Satz, der den Knopf rechtfertigt: er ist SICHERER als das, was er ersetzt** (`update.sh --from-target` tauscht roh, ohne Selbsttest und ohne Rücknahme). Ohne laufenden Sidecar (Profil `ota` aus) rendert die Karte nicht und der Endpunkt lehnt mit dem ehrlichen Grund ab; `autonomy.json` bleibt unberührt AUS.
-- **Beweise:** rein `otaverify/inspect_test.go` · `otaapply/apply_request_test.go` · `RolloutJournalTest` (8) · portal `adminEdgeUpdates.test.ts` (+13) ; Testcontainers `OtaRolloutApiTest` (7, davon 4 neu: Automatik gibt nur auf demselben Bake frei · Auto-Halt schlägt sie · Hand bleibt Vorgabe + Schalter reversibel · Vertrauens-Identität in der Matrix mit allen drei Zuständen · Journal-Export + Rollen-Grenze) ; Edge `agent/ota_trust_test.go`, `agent/ota_apply_test.go`, `web` (Passwort-Gate, 400-mit-Grund, //go:embed) ; CLI `cmd/vp-ota/main_test.go` (echter Rotations-Drill: der abgelöste Schlüssel ist danach nachweislich wertlos, das alte Set bleibt als Rückweg gültig).
-- **Ops:** keine neuen Pflicht-Variablen. Die Automatik hängt am schon gesetzten `VOLTPILOT_OTA_MQTT_LISTENER_ENABLED` (ohne Status-Ingest gäbe es kein Ist, gegen das der Wächter urteilen könnte); der `:8484`-Knopf am schon existierenden `VP_CALIBRATION_ADMIN_SECRET` und am Compose-Profil `ota`.
+### Der Verteilweg (unverändert seit Stufe 2)
 
-## Admin-UX-Umbau P1 „Beobachten": DREI Situationen, DREI Kleider
+- **RETAINED, und das ist der ganze Mechanismus.** `OtaTargetPublisher` legt das
+  signierte Manifest retained (QoS1) auf `ems/{t}/{s}/{d}/v2/update` (Kontrakt
+  `docs/contracts/mqtt-ota-target.schema.json` + Beispiele, vom Go-Parser PER
+  PFAD gelesen). Hinter NAT gibt es keinen Push: eine Box, die beim Start
+  offline war, holt ihre Zuweisung beim nächsten Verbindungsaufbau selbst ab.
+  Das Topic liegt im `v2/#`-Teilbaum der per-Gerät-ACL — **keine
+  Broker-Änderung**. `published_at` heißt deshalb NICHT „zugestellt".
+- **⚠ Die Manifest-Bytes reisen BYTE FÜR BYTE.** Sie stehen base64-kodiert im
+  Umschlag (`manifest_b64`/`signature_b64`), nie als eingebettetes JSON-Objekt:
+  ein Objekt müsste zum Prüfen neu serialisiert werden, und genau diese
+  Mehrdeutigkeit (Schlüsselreihenfolge, Leerraum, Zahlenformat) macht die
+  Signatur lautlos unprüfbar. Der Umschlag wird aus demselben Grund von HAND
+  zusammengesetzt (`OtaTargetPublisher.envelope`). Kette:
+  `edge_release.manifest` (`text`, nie `jsonb`) → base64 → Datei auf dem Gerät →
+  Verifizierer. **Der Umschlag ist UNSIGNIERT und deshalb keine Autorität** —
+  `release`/`release_seq` sind Routing und Diagnose.
+- **Nur ein SIGNIERTES Release ist verteilbar** (409 sonst, auf beiden
+  Schreibwegen): ohne Manifest-Bytes hat ein Gerät nichts, was es gegen seine
+  eingebackene Wurzel prüfen könnte. Das **Trust-Set reist bewusst NICHT mit**
+  (es ist der Widerrufs-Anker) und kommt beim Einrichten über
+  `install.sh` — siehe den Trust-Set-Abschnitt.
 
-UX-Deep-Dive `data/vp-admin-geraete-ux-k2` (Captain-Go 05.08.2026, alle Empfehlungen E1–E5). Der erste echte Rollout hakte nicht an Daten, sondern daran, dass die Seite **drei grundverschiedene Situationen in EIN Wort steckte**: „ausstehend" hieß zugleich *unterwegs*, *wartet auf DEN ADMIN* und *Autonomie blockiert* — alle drei im BUSY-Ton, also so aussehend, als bewege sich etwas. Der eine Zustand, in dem sich OHNE den Betreiber nie wieder etwas bewegt, war damit unsichtbar. Alles hier ist additiv; eine ältere Edge und ein älteres Portal verhalten sich zeichengleich wie vorher.
+### Cloud-Seite
 
-- **Zwei NEUE Server-Wörter, beide in `RolloutStates.derive` und nirgends sonst** (die Ableitung bleibt EINSEITIG im Backend, das Portal konsumiert): **`wartet_auf_anwendung`** (`state=deferred ∧ target_verdict=ok` — die Unterscheidung war seit Stufe 2 maschinenlesbar angelegt und wurde nur nicht ausgespielt) und **`blockiert`**. Beide halten KEINEN Rollout an und zählen NICHT als bestätigt — `haltsRollout`/`isConfirmed` sind unverändert.
-- **⚠ Die Reihenfolge in `derive` ist bindend, nicht Stil:** `rejected` → `verdict=deferred` (Politik, unverändert `zurueckgestellt`) → **Sperre** → **`wartet_auf_anwendung`** → `ausstehend`. Die Sperre steht VOR „Sie sind dran", weil auf einer blockierten Box niemand auf den Admin wartet: sie DARF gar nicht anwenden, und ein Klick änderte daran nichts.
-- **Der Blocker reist maschinenlesbar** (`otaapply.Blocker*` → Edge `cloud.UpdateSummary.Blocker` `omitempty` → Ingest-Spalte `device_update_status.blocker` → `FleetRowDto.blocker`). Der deutsche `reason` bleibt die AUSSAGE; der Name ist das Etikett, an dem das Portal den HEBEL nennt (`adminEdgeUpdates.blockerLever`) — die Haus-Regel „keine Oberfläche durchsucht deutsche Sätze", dasselbe Muster wie `target_verdict` NEBEN `state`. Ein Wort außerhalb des Vokabulars wird beim Ingest VERWORFEN, und zu einem unbekannten Namen wird KEIN Hebel erfunden.
-- **⚠ `RolloutStates.BLOCKED_PREFIX` ist der ÜBERGANG für die heutige Flotte, nicht die Regel.** Die Bestandsboxen senden das Feld noch nicht, und für sie wäre „wartet auf Anwendung" die falscheste aller Aussagen. Deshalb erkennt `isBlocked` zusätzlich den gepinnten Satzanfang `otaapply.BlockedPrefix` („Autonomie blockiert: ") — cross-side-gepinnt wie `refCheckChar`; **die beiden Konstanten zusammen ändern**. Sobald eine Box den Namen meldet, entscheidet er allein (er wird zuerst geprüft).
-- **Die Wellen-Historie behält ihre NAMEN** (Migration `V20260807000000`, additiv): `rollout_device.{device_ref, site_name}` sind ein Schnappschuss vom ZUWEISUNGS-Zeitpunkt. Ein FK wäre falsch — er löschte die Historie beim Unclaim oder blockierte ihn; die Frage lautet „wie hieß dieses Gerät, ALS es in die Welle kam". `WaveDeviceDto.label/siteName` sind sonst `null` + `removed: true`, und `adminEdgeUpdates.waveDeviceName` rendert **NIE eine UUID** (vorher fiel die Zeile nach einem Unclaim + Re-Claim auf `id.toString()` zurück und stand als nackte Kennung zwischen Klarnamen).
-- **Portal: die VIER-KLASSEN-GRAMMATIK** (`StateClass` in `adminEdgeUpdates.ts`, CSS-Block „Edge-Updates" am Ende von `index.css`): `busy` läuft von selbst · `action` SIE sind dran · `blocked` · `incident` · `calm`. **⚠ Die Animation ist eine AUSSAGE, kein Schmuck: NUR `busy` pulsiert** („hier bewegt sich etwas ohne Sie"), `action` ist ausdrücklich STATISCH — wer eine zweite Animation einführt, nimmt der ersten ihre Bedeutung. Jede Klasse trägt zusätzlich ihr WORT, nie nur die Farbe.
-- **Die „Sie sind dran"-Karte** (`handelnItems`) ist der Wohnort des Jobs, der bis hierher keinen hatte (§2 J6): Welle-freigeben + Anwenden-am-Gerät gebündelt, je mit dem WEG (`APPLY_HOW`, `:8484` → „Jetzt anwenden"). **Leer heißt: die Karte verschwindet.** Dazu `progressBackbone` (segmentierter Balken über die ERREICHBARE Menge, offline/unbekannt DANEBEN statt im Nenner — die bestehende Quoten-Regel), `frozenFraming`/`waveRowView` (ein eingefrorener Rollout ist ein ABSCHLUSSBILD: **live führt überall**, der Ausgang beim Abschluss ist eine gedämpfte Fußnote und erscheint nur bei ABWEICHUNG — damit ist die Zwei-Wahrheiten-Reibung Präsentation statt Widerspruch), `restingLine` (eine ruhige Zeile statt leerer Karten) und `freshnessLabel` (30-s-Selbstpoll über `useFreshnessPoll` + sichtbares „Stand: vor X" — Zustand und Bezugszeit werden ZUSAMMEN gesetzt, ein Fehlschlag kippt nichts).
-- **Puls-Signal:** `KpiDto.waitingForAdmin` (Geräte in `wartet_auf_anwendung` + eine freigebbare Welle) → `kpiText` ergänzt „· 1 Aktion wartet auf Sie" und `kpiTone` wird `busy`. Ein ÄLTERES Backend ohne das Feld schweigt — es wird nichts gezählt, was niemand gemeldet hat.
-- **P0-Fixes derselben Runde:** der Knopf heißt **„Release zuweisen"** statt „Jetzt aktualisieren" (er weist zu, das ANWENDEN bleibt beaufsichtigt — der alte Wortlaut versprach genau das, was danach nicht geschah), und Releases/Verlauf treten in ein `details` zurück, solange ein Rollout läuft. Der `edgeStand`-Präfix-Bug (P0a) wurde separat gefixt, siehe „OTA Stufe 0".
-- **Beweise:** `RolloutStatesTest` (die zwei Wörter, Reihenfolge, BLOCKED_PREFIX-Übergang beidseitig, Sperre ohne Grund) · `UpdateStatusListenerTest` (Blocker-Ingest, unbekanntes Wort verworfen, älterer Stand ohne Feld) · Go `agent/ota_autonomy_test.go` (der Name reist mit, ohne Sperre KEIN Name) · Testcontainers `OtaRolloutApiTest.theThreeSituationsAreToldApartAndTheWaveKeepsItsNames` (die drei Situationen server-seitig unterscheidbar, Hebel im DTO, KPI-Signal, Name überlebt den Unclaim) · portal `adminEdgeUpdates.test.ts` (+25) und `EdgeUpdatesPage.test.tsx` (+9: Karte führt, Karte verschwindet, zwei Kleider, Hebel, keine UUID, Abschlussbild, Bezugszeit, Selbstpoll, Ruhezeile).
-- **Ops:** keine neuen Pflicht-Variablen — alles hängt am schon gesetzten `VOLTPILOT_OTA_MQTT_LISTENER_ENABLED`.
+- **Vier additive Tabellen** (`V20260805000000`): `device_update_target` (eine
+  Zeile je Gerät = der Soll-Stand), `rollout`, `rollout_device` (mit dem
+  Namens-SCHNAPPSCHUSS `device_ref`/`site_name` aus `V20260807000000` — ein FK
+  wäre falsch, die Frage lautet „wie hieß dieses Gerät, ALS es in die
+  Aktualisierung kam"), `rollout_event` (append-only Journal). **GLOBAL, ohne
+  `tenant_id` und ohne RLS** wie `edge_release`/`provisioned_device` — es gibt
+  per Konstruktion KEINE Kunden-Fläche; gefenced ist der Endpunkt
+  (`/admin/**` + `@PreAuthorize` + BYPASSRLS-`RolloutRepository`). **⚠ Footgun:**
+  das `BIGSERIAL` braucht ein EIGENES `GRANT USAGE ON SEQUENCE` — V4s
+  `ALTER DEFAULT PRIVILEGES` deckt Tabellen ab, Sequenzen sind eine andere
+  Objektklasse. Migration **`V20260854000000`** räumt danach die toten Spalten
+  (`rollout.channel/auto_advance/waves/current_wave/halted_reason`,
+  `rollout_device.wave`, `device_update_target.channel/pinned`,
+  `device_update_status.can_apply/channel`), den partiellen Unique-Index
+  `uq_rollout_one_live` und die Tabelle `device_apply_request` ab; das
+  Zustands-CHECK von `rollout` kennt nur noch `active`/`done` und überführt
+  Bestandszeilen (`paused`/`halted`) dorthin. **⚠ Wer eine Migration UMBENENNT,
+  räumt `target/` weg** — die dokumentierte `Found more than one migration with
+  version …`-Falle traf beim Bau erneut zu.
+- **⚠ In `RolloutService` steht bewusst KEIN `@Transactional`.** Springs
+  Transaktionsmanager hängt am `@Primary` (Mandanten-Datenpfad), alle
+  Schreibvorgänge laufen aber über `adminJdbcTemplate` — die Annotation öffnete
+  eine Transaktion auf der FALSCHEN Verbindung und BEHAUPTETE Atomarität, die es
+  nicht gibt. Getragen wird es von der Reihenfolge: vollständig prüfen, bevor
+  das Erste geschrieben wird, und jeder Schritt für sich idempotent.
+- **Endpunkte** (`AdminEdgeUpdateController`, platform-admin):
+  `GET /api/v1/admin/edge-updates` (der EINE Lese-Aggregat der Seite — seit dem
+  Umbau mit **`rollouts` als LISTE**, weil mehrere Aktualisierungen nebeneinander
+  laufen dürfen), `POST /api/v1/admin/rollouts` **`{releaseSeq, devices[]}`**,
+  `POST /api/v1/admin/devices/{id}/update-target` **`{releaseSeq}`** +
+  `…/revert`, `GET /api/v1/admin/rollout-journal.md`. In `openapi.yaml`.
+- **`ota/RolloutStates` ist die reine, Docker-frei getestete Regel** (das
+  `Tagesprotokoll`/`FleetPflege`-Muster) mit den Ehrlichkeitsregeln: **unbekannt
+  ≠ veraltet**, **offline ≠ fehlgeschlagen**, jede rote Zeile trägt ihren Grund;
+  `im_update_verstummt` existiert nur, weil `applying` durabel VOR dem Stoppen
+  gemeldet wird; `zurueckgestellt` ist ein Politik-Halt und weder ausstehend noch
+  fehlgeschlagen. **`wartet_auf_anwendung` ist ERSATZLOS entfallen** — niemand
+  ist mehr dran; ein Server, der das Wort noch sendet, wird im Portal zu
+  „unbekannt", nie zu „aktuell".
+- **Der Wächter** (`RolloutWatcher`, 60 s, am Flag
+  `voltpilot.ota.mqtt-listener-enabled`) schreibt die Zustände fort und
+  **re-publiziert driftende Zuweisungen** (Gerät kennt sein Ziel nicht + zuletzt
+  vor > `voltpilot.ota.republish-after`, Vorgabe 30 min). Er hält **NICHTS mehr
+  an** — ein Fehlschlag ist Information, die anderen Geräte laufen weiter. Wie
+  die MQTT-Listener ein Replica-Singleton (jeder Schritt idempotent).
+- **Der `update`-Block trägt `target_verdict`** (`ok|deferred|rejected`, Spalte
+  in `device_update_status`): er steht NEBEN `state`, weil beide verschiedene
+  Fragen beantworten — `state` ist der Zustand der ANWENDUNG, `target_verdict`
+  der der PRÜFUNG. Ein unbekanntes Wort wird beim Ingest VERWORFEN.
+  Ebenso additiv: `blocker` (der maschinenlesbare Name einer stehenden Sperre,
+  `otaapply.Blocker*`) → `FleetRowDto.blocker` → der HEBEL im Portal
+  (`adminEdgeUpdates.blockerLever`) — die Haus-Regel „keine Oberfläche
+  durchsucht deutsche Sätze".
+  **⚠ `RolloutStates.BLOCKED_PREFIX`** erkennt zusätzlich den gepinnten
+  Satzanfang `otaapply.BlockedPrefix` („Autonomie blockiert: ") für Boxen, die
+  den Namen noch nicht melden — **die beiden Konstanten zusammen ändern.**
+- **Unclaim räumt ab:** `RolloutService.onDeviceUnclaimed` löscht die Zuweisung
+  und leert den retained Slot (best-effort, nie werfend).
 
-## Admin-UX-Umbau P2 „Konsolidierung": ein Gerät hat EINEN Ort
+### Portal
 
-UX-Deep-Dive `data/vp-admin-geraete-ux-k2` §4 (E1/E2/E4), Captain-Go 05.08.2026. Der behobene Befund war ZUSCHNITT: ein Gerät war über drei Teil-Wahrheiten verstreut (Registry: der Aufkleber · Flotten-Matrix: das Update · Puls: die Anlage), und **die Seite namens „Geräte-Registry" enthielt die echte Flotte gar nicht** — ihre Tabelle listete ausschließlich `VP-`Aufkleber-IDs, während die Bestandsboxen über selbst generierte `edge-`Referenzen verbunden sind und dort mit NULL Zeilen auftauchten.
+EINE Fläche (`pages/admin/EdgeUpdatesPage.tsx` über der reinen
+`src/adminEdgeUpdates.ts`): Releases-Tabelle → je signiertem Release
+„Aktualisieren ▸" → Drawer mit „Alle Geräte" + Checkbox je Gerät (jedes trägt
+seinen ZUSTAND und ggf. einen **Einwand als HINWEIS, nie als Sperre**) →
+Zusammenfassung „Das passiert jetzt" → **Aktualisieren**. Darunter je laufender
+Aktualisierung eine Karte mit Fortschritts-Rückgrat (über die ERREICHBARE Menge;
+offline/unbekannt stehen DANEBEN, nie im Nenner) und einer Zeile je Gerät
+(Ist · Zustand · Grund · Hebel). Der geteilte `GeraeteDrawer` weist ein
+Einzelgerät zu (`onAssign(releaseSeq)` — kein Kanal, kein Pin). Es gibt
+**nirgends** einen zweiten Knopf; die Vier-Klassen-Grammatik ist auf `busy`
+(läuft von selbst, pulsiert) · `blocked` · `incident` · `calm` geschrumpft, die
+frühere fünfte Klasse `action` („SIE sind dran") ist entfallen.
 
-- **EIN additiver Read: `GET /api/v1/admin/devices`** (`AdminDevicesDto`, `RolloutService.devices`) — die VEREINIGUNG von Aufkleber-Registry und echter Flotte, verbunden über die Referenz. Genau eine Hälfte darf fehlen, und welche, sagt die Zeile: `deviceId == null` = gedruckte, noch unverbundene ID · `provisioned == false` = verbundenes Gerät, dessen Referenz nie aus der Registry kam (der Normalfall der Bestandsflotte). **Es entsteht KEINE neue Wahrheit:** die Zustände kommen aus derselben `deviceVerdict`/`RolloutStates`-Ableitung wie die Flotten-Zeile. **Eine Zeile, die noch kein Gerät IST, trägt KEINEN Zustand** — „unbekannt" wäre schon eine Behauptung über ein Gerät, das es nicht gibt. Rollen-Grenze und BYPASSRLS-Disziplin sind die des ganzen `/admin/**`-Aggregats.
-- **`EdgeUpdatesDto.FleetRowDto` trägt additiv `externalRef`** neben `label`: `label` ist der ANZEIGE-Name (Gerätename, sonst die Referenz), und die Referenz als „Name" auszugeben wäre auf einem benannten Gerät schlicht falsch — der geteilte Drawer zeigt beide.
-- **Portal „Geräte"** (E4, umbenannt; die Nav-Id `geraete-registry` BLEIBT, damit jedes Lesezeichen gilt): VIER Funnel-Stufen (die vierte, **„Vertrauen gekreuzt"**, schließt ihn — „verbunden" ist nicht das Onboarding-Ende, erst der TOFU-Crossover macht eine Box update-fähig; die Information wohnte als Spalte in der Matrix der ANDEREN Seite) und EINE Tabelle über alle Geräte. Gezählt wird nur BELEGTES: ein Gerät ohne gemeldeten Anker ist „unbekannt" und geht weder in den Zähler noch in die offene Zahl.
-- **E2: die Flotten-Matrix ist ENTFALLEN.** Sie war die strukturelle Ursache der „zwei Wahrheiten auf einer Seite" (Board = historisch, Matrix = live, als gleichrangige Nachbarn). Ihre drei Aufgaben haben bessere Wohnorte: Flotten-Zustand → Puls-Spalte „Edge-Stand", Rollout-Beobachtung → das Wellen-Board (es zeigt ohnehin JEDES Gerät des Rollouts), Geräte-Drilldown → die Geräte-Seite. Statt ihrer steht ein ruhiger Verweis; kein Informationsgehalt geht verloren. **Das revidiert bewusst §7.3 des OTA-Scouts.**
-- **EIN geteilter Geräte-Drawer** (`pages/admin/GeraeteDrawer.tsx`), geöffnet von der Geräte-Zeile UND der Wellen-Zeile — er kehrt damit an die Stelle zurück, die OTA-Scout §7.1 vorgesehen hatte (die Implementierung war auf die Matrix ausgewichen, weil `ProvisionedDeviceDto` keine Geräte-Id trägt). Sein Eingabe-Typ `DrawerDevice` ist bewusst ein eigener, schmaler Typ: die zwei Seiten sind verschiedene Server-Aggregate, und ohne den gemeinsamen Typ wäre der Drawer entweder dupliziert (zwei Wahrheiten über dasselbe Gerät) oder an eines der Aggregate gefesselt.
-- **Rückfragen im HAUS-MUSTER** (`components/ConfirmDialog.tsx`, die nicht-destruktive Schwester von `DangerZone`): Not-Aus, Wellen-Automatik und Registry-Löschung tragen eine FOLGENLISTE statt eines nativen `window.confirm`. Eine Umstellung nennt darin ausdrücklich, was GLEICH bleibt — sonst liest sich jedes Umlegen wie ein Lockern der Regeln; das AUSschalten der Automatik fragt gar nicht (es nimmt eine Erleichterung zurück, es gibt keine her).
-- **Start-Drawer:** je Kandidat der ZUSTAND + der Einwand („meldet sich gerade nicht - eine Welle 1 aus diesem Gerät stünde still", „festgenagelt", „Vertrauen noch nicht gekreuzt"), ein **belegter** Canary-Vorschlag (`proven` = stand in Welle 1 des letzten Rollouts, D4 — ohne vorherigen Rollout wird NICHTS vorgeschlagen, die Auswahl bleibt Handarbeit) und die Zusammenfassung „Das passiert beim Start", die auch nennt, was NICHT passiert (übersprungene Pins, offline nachholend — beides sieht später wie ein Fehler aus, wenn es hier nicht angekündigt wurde).
-- **Tag + Build statt Roh-Stempel** (`onboardingFunnel.versionLabel`): `edge-2026.08.1-9b37439a02c1` → `edge-2026.08.1 (Build 9b37439a)`. Getrennt wird nach der PRÄFIX-Regel des Hauses; **eine nackte SHA bleibt VERBATIM** — sie zu zerlegen erfände ein Release-Tag, mit dem der Bau nie erzeugt wurde.
-- **Der Copy-Wächter (`frontend/portal/src/copy.test.ts`) nimmt jetzt die REINEN Admin-Schichten aus** (`adminEdgeUpdates`/`adminFleet`/`adminPulse`/`onboardingFunnel`) — sie liegen in `src/`, weil dort die reinen Module wohnen, beliefern aber ausschließlich `pages/admin/*` und sprechen legitim Betreiber-Vokabular. **Damit die Ausnahme kein Loch wird, prüft ein zweiter Test, dass keine Kundenfläche sie importiert.**
-- **Beweise:** `OtaRolloutApiTest.theDeviceInventoryUnitesTheStickerRegistryWithTheRealFleet` (echte DB: `edge-`Box + gedruckte ID, kein Zustand auf einer Nicht-Gerät-Zeile, keine Doppelzeile, Rollen-Grenze) · portal `onboardingFunnel.test.ts` (+9: Stufe 4 inkl. „unbekannt zählt nicht", keine Kachel ohne Flotte, „verbunden" über die echte Flotte; Inventar-Sortierung; Tag+Build inkl. nackter SHA) · `adminEdgeUpdates.test.ts` (+4: Kandidaten-Einwände, belegter Canary, Start-Zusammenfassung) · `GeraeteRegistryPage.test.tsx` (+6) · `EdgeUpdatesPage.test.tsx` (Matrix WEG + Verweis, Wellen-Zeile weist zu, beide Haus-Dialoge).
+### Edge-Seite (Kurzform; Details in `edge-app/AGENTS.md`)
 
-## Admin-UX-Umbau P3 „Portal-Apply": der Knopf ersetzt den Tunnel
+- **Der Schnitt:** `internal/otaapply` (rein) ⟷ `internal/otaupdater` (Docker)
+  ⟷ `cmd/vp-edge-updater` (Prozess). JEDE Regel, die ein Anwenden verhindern
+  kann, liegt im reinen Paket und ist ohne einen einzigen Container prüfbar.
+- **Kern und Sidecar sprechen über DATEIEN in `/data/ota`, jede mit GENAU EINEM
+  Schreiber** (`target.json`/`current.json`/`self-test.json` Kern,
+  `updater-state.json`/`pending-confirm.json`/`lkg.json`/`failed.json` Sidecar).
+  Der Sidecar hat kein Netz, keinen Host-Port, keine MQTT-Verbindung und keine
+  Identität. Alle Dateien tmp+rename.
+- **Die drei Sätze, auf denen die Sicherheit ruht:** (1) der Sidecar glaubt dem
+  Kern NICHTS — er liest die Manifest-Bytes selbst und verifiziert gegen SEINE
+  eigene eingebackene Wurzel und SEINEN eigenen Boden (`otaapply.VerifyManifest`
+  ist die EINE Stelle, die beide aufrufen); (2) nur der KERN darf bezeugen, was
+  läuft, deshalb schreibt nur er `current.json`; (3) was nicht entschieden werden
+  kann, wird nicht angewandt — jede Regel fällt im Zweifel auf „nicht anwenden"
+  und trägt einen deutschen Grund.
+- **Ehrlich zur Privilegien-Lage:** `docker.sock` ist Host-root, ein übernommener
+  Sidecar KANN einen privilegierten Container starten. Der Schutz ist
+  ausdrücklich NICHT die Netz-Grenze, sondern die selbst geprüfte Signatur der
+  Eingaben plus eine minimale Angriffsfläche.
+- **Der Ablauf, sequenziert:** holen (beide Images, VOR jedem Stopp) →
+  Digest-Gegenprüfung → Rückfallziel DREIFACH sichern (`:lkg`-Tag + GESTOPPTER
+  Halter-Container + `docker save`-Archiv; der Halter ist der Mechanismus, mit
+  dem das Image ein `docker system prune -a` überlebt) → Gruppen-Sicherung des
+  `/data`-Bestands → **Brotkrume VOR dem ersten Tausch** → der Kern meldet
+  `applying` DURABEL → **EINE Komponente nach der anderen** (`core`, dann
+  `nodered` — nie beide zugleich, damit immer eine Ausfallsicherung lebt) →
+  Selbsttest des NEUEN Kerns → bestätigen oder zurücknehmen. Getauscht wird nur,
+  was sich UNTERSCHEIDET.
+- **Der Selbsttest ist nie vakuum:** entscheidend ist der SYNTHETISCHE
+  Steuer-Trockenlauf (`agent.otaSyntheticControlDryRun`), der IMMER läuft und die
+  echte Guard-Kette dieses NEUEN Binärs gegen ihre tragenden Zusagen prüft
+  (Nennband, SoC-Decke/-Boden, EEG-Solar-Klemme, §14a-Hülle).
+- **⚠ Der Plattenwächter rechnet mit `f_frsize`, NICHT mit `f_bsize`**
+  (`otaupdater/disk_linux.go`). POSIX: `f_bsize` ist die BEVORZUGTE
+  E/A-Blockgröße, `f_frsize` die fundamentale — und `f_bavail` zählt in
+  `f_frsize`-Einheiten. Auf ext4 sind beide 4096; auf einem virtiofs-Mount meldet
+  `f_bsize` 256 KiB, und der Wächter sah 9,5 TiB statt 38 GiB.
+- **⚠ `guards.Reading`s Nullwert `GridLimitKw: 0` heißt „§14a-Grenze 0 kW", NICHT
+  „unbekannt"** — unbekannt ist ausschließlich `guards.Unknown()` (NaN).
+- **Was hier einmal zurückgerollt wurde, läuft nicht von selbst wieder an**
+  (`failed.json`) — sonst drehte die Anlage sich im Kreis. **Die Sperre gilt
+  seit dem Umbau der ZUWEISUNG, nicht dem Release für immer:** eine neue
+  Zuweisung (auch desselben Release) startet einen neuen Versuch.
+- **Wer den Aktualisierer aktualisiert: nicht er selbst.** `otaapply.TargetRefs`
+  lässt `updater` aus der Artefakt-Liste heraus und protokolliert das LAUT — ein
+  Prozess, der sich mitten in einer Orchestrierung ersetzt, verliert den Zustand,
+  mit dem er den Vorgang zu Ende fahren müsste.
+- **`/data`: gesichert ≠ zurückgespielt.** Die Identität (`device.key`/`.crt`/
+  `identity.json`) wird GESICHERT, aber NIE automatisch zurückgespielt:
+  `enroll.Reconcile` übernimmt im Betrieb legitim eine neue device_id.
+- **⚠ Der Sidecar RÄUMT SEINE ABGELÖSTEN ABBILDER WEG — nach einem BESTÄTIGTEN
+  Tausch, nie vorher** (Pilsting 09.08.2026). Regel rein in
+  `otaapply.PlanPrune`, Wirkung in `otaupdater/prune.go`, aufgerufen
+  ausschließlich am ENDE von `Engine.commit` — nach einer **Rücknahme gar
+  nicht**. **Die Nie-entfernen-Menge ist der ganze Punkt:** ein Abbild, auf das
+  IRGENDEIN Container zeigt (laufend ODER gestoppt — das deckt die
+  `vp-edge-lkg-*`-HALTER ohne Sonderregel ab); alles im Rückfall-Namensraum
+  (`otaapply.LKGTagPrefix`) auch OHNE Halter; das laufende Ziel und eine bereits
+  vorab geholte NÄCHSTE Zuweisung; **alles, was nicht ÄLTER ist als der laufende
+  Stand**; und je Repository die `VP_OTA_PRUNE_KEEP` (Vorgabe 1) jüngsten
+  Verwaisten. Entfernt wird **je NAME**, **nie mit `-f`** und **nie pauschal**.
+  Schalter `VP_OTA_PRUNE`/`VP_OTA_PRUNE_KEEP` + `<data>/ota/prune.json` mit
+  **umgekehrten Vorzeichen**: fehlende Datei = AN, UNLESBARE Datei = nichts
+  entfernen. **Bekannte Grenze:** eine schon blockierte Bestandsbox kommt hierüber
+  nicht frei — dort einmal von Hand `docker image prune -a`.
+- **⚠ Eine Verweigerung muss SICHTBAR sein** (Canary-Soak 04.08.2026): jedes
+  geschlossene Tor trägt einen maschinenlesbaren Namen (`Decision.Blocker` →
+  `UpdaterState.Blocker`), Sidecar UND Kern protokollieren die Sperre bei jeder
+  ÄNDERUNG (nie je Takt), und eine stehende Sperre gewinnt im `update`-Block VOR
+  jeder anderen Überlagerung (`otaapply.BlockedPrefix` + Grund). Der Zustand
+  bleibt `deferred` — keine Störung, sondern eine bewusst nicht getroffene
+  Entscheidung.
+- **Registry-Zugang: AUTOMATISCH abgeleitet.** `install.sh`/`update.sh` lesen den
+  `auths`-Eintrag der Registry aus der `docker login`-Konfiguration des Hosts und
+  legen ihn als `/data/ota/registry-auth.json` ab (0600, per `docker compose cp`
+  als EINZELNE Datei in ein BESTEHENDES Verzeichnis — siehe die
+  `docker cp`-Besitzer-Falle im Trust-Set-Abschnitt). Kein neues Geheimnis, kein
+  CI-Secret. *Grenze:* mit einem Credential-Helper (`credsStore`) steht dort kein
+  Klartext — dann warnt der Installer laut und nennt den Handpfad.
+- **Compose/Installer:** `updater` ist ein **normaler Dienst** in BEIDEN Composes
+  (Repo + `install.sh generate_compose()`), `network_mode: none`, Docker-Socket +
+  Deploy-Verzeichnis eingehängt — **kein Profil mehr**. `install-selfcheck.sh`
+  nagelt fest, dass ein Geräte-Compose GAR KEIN Profil trägt und dass
+  `pull`/`up -d` den Sidecar ohne jedes Flag mitnehmen.
+- **Bestandsboxen:** EIN Befehl je Box, danach nie wieder —
+  `cd <deploy-dir> && ./update.sh`. Er zieht die neue `docker-compose.yml`, holt
+  die Images und startet den `updater` dauerhaft mit.
 
-UX-Deep-Dive `data/vp-admin-geraete-ux-k2` §6/E3, Captain-Go 05.08.2026. Nach P1/P2 war die Kette lückenlos SICHTBAR — und brach genau an ihrem unbequemsten Punkt: entschieden und verteilt im Portal, **angewandt per SSH und Geräte-Passwort je Box**. Diese Stufe schließt sie; alles ist additiv, eine ältere Edge und ein älteres Portal verhalten sich zeichengleich wie vorher.
+### Vertrauens-Identität je Gerät (aus Stufe 4, unverändert)
 
-- **DIE SICHERHEITS-AUSSAGE ist eine Konstruktions-Aussage, keine Beteuerung:** das Portal erteilt exakt die Freigabe, die der Betreiber bisher an der `:8484`-Taste gab, und das Gerät führt sie durch **GENAU DEN Pfad**, den diese Taste benutzt (`agent.OtaRequestApplyWithToken`, der gemeinsame Kern beider Wege — es gibt keinen zweiten Weg zum Anwenden, den man später getrennt absichern müsste). Sie öffnet ausschließlich das ERSTE Tor von `otaapply.Decide`, für EIN Release und EINEN Vorgang, und verfällt nach 15 Minuten. `autonomy.json` bleibt unberührt AUS; Signaturkette, Anti-Rollback-Boden, Neutral-Zeit-Regel, Interlock, Plattenwächter, Selbsttest, LKG-Rücknahme, `failed.json` und der Auto-Halt gelten wörtlich weiter. Es ist eine **ZEITPUNKT-Autorisierung, nie eine Inhalts-Autorisierung** — WAS laufen darf, entscheidet allein das signierte Manifest gegen die eingebackene Wurzel.
-- **⚠ Der Umschlag ist NICHT-RETAINED, und das ist die tragende Entscheidung.** Kontrakt `docs/contracts/mqtt-ota-apply.schema.json` auf `ems/{t}/{s}/{d}/v2/apply` (der `v2/#`-Teilbaum der per-Gerät-ACL, **keine Broker-Änderung**). Eine retained Nachricht wird bei JEDEM Verbindungsaufbau erneut zugestellt — eine Einmal-Freigabe, die beim nächsten Reconnect wieder erscheint, wäre keine. **⚠ Nicht-retained allein genügt nicht:** die Box hält eine DAUERHAFTE Sitzung (`cleanSession=false`), der Broker darf also nachliefern. Die zweite Hälfte ist `requested_at` — **das Gerät übernimmt diesen Stempel als Beginn seines Fensters** statt des Empfangs-Zeitpunkts, eine nachgelieferte Freigabe ist bei der Ankunft also bereits abgelaufen und wird ABGELEHNT statt abgelegt (ein unlesbarer Stempel gilt gar nicht). **Folge, die JEDE Oberfläche kennen muss:** eine verpasste Freigabe wirkt NICHT mehr (eine Zustimmung von vor drei Stunden ist keine Zustimmung für jetzt) — deshalb der eigene Zustand „Freigabe nicht abgeholt" statt stillen Wartens.
-- **Endpunkt `POST /api/v1/admin/devices/{id}/apply`** (`AdminEdgeUpdateController`, in `openapi.yaml`): platform-admin ONLY über die klassenweite `@PreAuthorize` — die schmale `edge-release-publisher`-Rolle liegt gar nicht erst auf dieser Klasse und erreicht damit nie ein Gerät. `RolloutService.requestApply` verweigert mit deutschem Grund: ohne Zuweisung, für ein vom Gerät **abgelehntes** Release (gebrochene Kette = Sicherheits-Ereignis, kein „probier es halt"), wenn die Box selbst `can_apply:false` meldet, und solange eine Freigabe offen ist. **⚠ Reihenfolge: erst VERÖFFENTLICHEN, dann protokollieren** — die Freigabe IST die Nachricht; geht sie nicht hinaus (503), darf kein Beleg entstehen, der eine Freigabe behauptet, die es nie gab.
-- **Zwei additive Speicher (Migration `V20260807010000`):** `device_update_status.can_apply` (die vom Gerät gemeldete FÄHIGKEIT, **DREIWERTIG** wie die Vertrauens-Spalten: NULL = älterer Stand, „unbekannt" — NIE „geht nicht"; false = die Box sagt selbst, dass sie nichts anwenden kann; true = sie würde aufgreifen) und `device_apply_request` (eine Zeile je Gerät, der BELEG über die erteilte Freigabe — GLOBAL ohne `tenant_id`/RLS wie `rollout`, gefenced ist der Endpunkt). Der VERLAUF liegt im append-only Journal (`apply_requested` mit dem JWT-Subject); Unclaim räumt die Zeile mit ab.
-- **Die Freigabe hat ihre EIGENE Ableitung** (`ota/ApplyApproval`, rein + Docker-frei getestet): `erteilt` · `abgeholt` · `verfallen`. Sie steht NEBEN `RolloutStates` statt darin — dieselbe Begründung wie `target_verdict` neben `state`: das eine sagt, was mit dem GERÄT ist, das andere, was mit der FREIGABE ist. **`abgeholt` wird nur BELEGT behauptet** (das Gerät meldet `applying`/`rolling_back`, oder es läuft nachweislich auf dem freigegebenen Stand) — den Token sieht die Cloud nie, er lebt ausschließlich zwischen Gerät und Sidecar.
-- **Edge: ein Abonnent, kein neuer Mechanismus.** `cloud.Options.OnApplyRequest` → `agent.onApplyRequest` prüft Form + Topic-==-Payload-Identität (die Regel von Telemetrie/purge_data/Zuweisung) + dass die Freigabe zum ZUGEWIESENEN Release passt, und ruft dann `OtaRequestApplyWithToken`. Jede Ablehnung ist stumm zum Broker und LAUT im Protokoll. Additiv meldet der Herzschlag `update.can_apply` (`cloud.UpdateSummary.CanApply`, bewusst OHNE `omitempty`: ein Build, der die Frage kennt, beantwortet sie IMMER — „abwesend" kann damit nur „älterer Build" heißen).
-- **Portal:** die reine `adminEdgeUpdates.applyView` ist die EINE Ableitung des Knopfes (Handeln-Karte + geteilter Geräte-Drawer sagen damit garantiert dasselbe). Vier Regeln: ein Knopf, der strukturell nichts bewirken kann, wird **nicht angeboten** (dort steht der Weg am Gerät, `APPLY_HOW`); **„unbekannt" ist nie „nein"** (ein älterer Stand behält den Knopf plus ehrlichen Hinweis); **was die Anwendung verhindern WIRD, steht VOR dem Klick** (der Hebel aus `blockerLever` — die Lehre des Canary-Soaks); und eine offene Freigabe wird nicht doppelt erteilt. Der Klick geht durch den Haus-`ConfirmDialog` mit der Folgenliste — inklusive der Zusage, die er ausdrücklich NICHT gibt („Automatische Updates werden dadurch NICHT eingeschaltet").
-- **Beweise:** rein `ApplyApprovalTest` (6) + `UpdateStatusListenerTest` (die Dreiwertigkeit) · Testcontainers `OtaRolloutApiTest.aPortalApprovalReachesTheDeviceNonRetainedAndEveryRefusalNamesItsReason` (echtes EMQX: der Umschlag kommt auf dem Geräte-Topic an, ein SPÄTER verbundener Abonnent bekommt ihn NICHT — der Retained-Beweis —, alle vier Verweigerungen, Journal-Urheber, `verfallen` → `abgeholt`, Rollen-Grenze) · Go `agent/ota_apply_downlink_test.go` (Kontrakt-Beispiele PER PFAD, fremdes Release/Gerät, Form, `autonomy.json` bleibt aus) · portal `adminEdgeUpdates.test.ts` (+9) und `EdgeUpdatesPage.test.tsx` (+3).
-- **Ops:** keine neuen Pflicht-Variablen. Der Verteilweg reitet auf `voltpilot.provisioning.*` (derselbe Broker wie Provisionierung und Zuweisung).
+Die Edge meldet im `update`-Block additiv `trust` (`cloud.TrustSummary`:
+`root_key_ids` der EINGEBACKENEN Wurzel + die key_ids/`generated_at` des
+GEPRÜFTEN Trust-Sets), gebildet von `otaverify.InspectTrust` — der EINEN
+Funktion, die Werkzeug (`vp-ota trust`) und Gerät teilen: **ein Trust-Set, das
+die Wurzel nicht unterschrieben hat, wird NICHT berichtet**. Persistiert in
+`device_update_status` als komma-getrennte SORTIERTE Liste; der Ingest verwirft,
+was nicht `^[a-z0-9][a-z0-9._-]{0,63}$` ist.
+**⚠ DREI Zustände:** `NULL` = ein älterer Edge-Stand meldet nichts →
+**„unbekannt", nie „nicht gekreuzt"**; `''` = ein Image OHNE Wurzel →
+**Crossover offen** (der dokumentierte Vor-TOFU-Zustand, eine offene Aufgabe,
+KEIN Fehler); sonst gekreuzt. Laut ist nur der VIERTE Fall: Wurzel da, Trust-Set
+abgelehnt. Gerendert von `adminEdgeUpdates` (`crossoverState`/`crossoverHint`/
+`trustSetSpread`).
+
+### Audit-Spiegel ins gitops: EXPORT, kein Deploy
+
+`GET /api/v1/admin/rollout-journal.md` (platform-admin) rendert das append-only
+Journal als Markdown (rein: `ota/RolloutJournal`). **Die api hält KEIN
+gitops-Schreib-Token** — committet wird außerhalb durch
+`tools/deploy/mirror-rollout-journal.sh`. Die Ausgabe ist DETERMINISTISCH (kein
+„erzeugt am"-Kopf), derselbe Zustand erzeugt also keinen Commit; es fließt nichts
+zurück.
+
+### Beweise
+
+rein: `otaverify/verify_test.go` · `otaapply` (die verbliebenen Tore, gebrochene
+Kette = `failed`, Sequenz, Snapshot-Regel, Prune-Regeln, jeder Nicht-idle-Ausgang
+trägt einen deutschen Grund) · `otaupdater` gegen eine geschriebene docker-Welt
+(Reihenfolge holen→sichern→Brotkrume→EINE Komponente, falscher Digest stoppt vor
+jedem Tausch, Selbsttest-Fehlschlag ⇒ Rücknahme, `prune`-Fall lädt das Archiv,
+Wachhund, Neustart setzt FORT) · `RolloutStatesTest` · `OtaTargetPublisherTest`
+(„unaufgeräumte" Manifest-Bytes kommen bytegleich zurück) · `RolloutJournalTest`
+· portal `adminEdgeUpdates.test.ts` + `EdgeUpdatesPage.test.tsx`.
+Testcontainers: `OtaRolloutApiTest` (echtes TimescaleDB + Keycloak + EMQX:
+unsigniertes Release verweigert, retained Zuweisung bytegenau beim Gerät, KEINE
+zweite Welle — beide Geräte sind sofort dran —, `failed` hält NICHTS an, Unclaim
+leert den Slot, Journal-Urheber, Rollen-Grenze) · `AdminApiTest`.
+Fehlerinjektions-Matrix: `edge-app/test/ota-soak/run.sh` (10 Fälle gegen echten
+Docker, echte Signaturkette, echte Registry).
+
+### Ops
+
+Keine neuen Pflicht-Variablen. Der Verteilweg reitet auf
+`voltpilot.provisioning.*`, der Wächter am schon gesetzten
+`VOLTPILOT_OTA_MQTT_LISTENER_ENABLED` — im gitops-Repo
+(`apps/voltpilot/base/api/api.env`) muss dieses Flag stehen, sonst laufen weder
+Ingest noch Wächter in prod.
 
 ## Trust-Set-Bereitstellung beim Einrichten: das Portal ist der Auslieferpunkt
 
@@ -1678,7 +1858,6 @@ The edge flows are exercised end-to-end against the simulator (not a unit test):
 - `mqtt-schedule.schema.json` - the Cloud -> Edge battery dispatch plan (retained QoS1, 15-min slots, `+`=charge/`-`=discharge), incl. fail-safe semantics (`x-failsafe`). Frozen by adopting the shape the Node-RED schedule-exec flow already consumed, plus plan metadata (`plan_id`/`generated_at`/`horizon_slots`) the edge ignores. Two ADDITIVE extensions (`schema_version` stays 1.0): the OPTIONAL per-slot `pv_limit_kw` inverter feed-in cap implementing negative-price curtailment (Phase 3) - absent = no limit, and an edge that ignores unknown optional fields keeps working (verified: the Node-RED flow does plain field access, the Go edge `plan.Parse` unmarshals into a fixed struct); and the OPTIONAL top-level `grid_charge_allowed` (optimizer Stage 4/P5, mirrors `site.netzladen_erlaubt`): `false` = the edge MUST clamp commanded battery CHARGE to `max(measured pv, 0)` before a register write (PV-bus Bilanzierung since FK3, captain decision 2026-07-16 - the battery may charge up to the full ACTUAL PV production while the house imports in parallel; measured pv is the inverter's actual output, already post-curtailment, so this is the on-device twin of the solver's `charge <= pv − curtail` constraint on MEASURED values; unknown pv still blocks charge entirely), ABSENT = allowed remains the CONTRACT reading (pre-P5 compat), but the Go edge-app deviates FAIL-SAFE since the 2026-07-12 security-audit fix: `plan.SolarOnlyCharge()` clamps on an absent field (and a nil plan) too - only an explicit `true` releases the clamp. Deliberate tradeoff (captain approved): the optimizer always publishes the field, so a merchant site's real plans are unaffected; only legacy/hand-crafted payloads change behavior, and an EEG site behind such a payload must never grid-charge. The Node-RED dev edge (`edge/node-red`) is untouched. See "Negative-price curtailment + Marktprämie" and the edge-app guards. A THIRD and FOURTH additive extension (2026-07-30, `schema_version` still 1.0), the two halves of the in-slot forecast-vs-meter gap: the OPTIONAL per-slot **`charge_from_surplus_only`** (charge side - see "Price-aware in-slot trim" below) and **`cover_load_from_battery`** (discharge side - see "In-slot load following"). Both are per-slot booleans, both are FAIL-OPEN on absence (an unpriced hint must never reshape dispatch), and both compose most-restrictive-wins with `grid_charge_allowed`. A FIFTH (2026-08-02, `schema_version` still 1.0) completes the family with the only duty that RAISES a charge: the OPTIONAL per-slot **`charge_surplus_to_battery`** (see "In-slot surplus absorption" below), same fail-open rule, same composition. A SIXTH (2026-08-06, `schema_version` still 1.0) is RUN-level and, unlike the five above, a COMPLIANCE datum rather than an economic hint: the OPTIONAL top-level **`grid_export_limit_kw`** (= `site.max_feed_in_kw`/FK1) is the site's feed-in limit at the grid connection point, which the edge REGULATES in real time against the measured connection point (see "Dynamische Einspeisebegrenzung" below). Absent = no limit (a limit is never invented), and its measurement-loss failsafe is deliberately the OPPOSITE of the economic duties' (hold, then contract to a safe static cap - blind must not mean unlimited).
 - `mqtt-provisioning.schema.json` - the zero-touch onboarding handshake (`provision/{ref}/hello` -> retained `provision/{ref}/config`); ADDITIVE, the frozen telemetry/schedule contracts are untouched. See "Zero-touch device onboarding".
 - `mqtt-ota-target.schema.json` - the Cloud -> Edge OTA assignment (retained QoS1 on `ems/{t}/{s}/{d}/v2/update`, OTA Stufe 2): the SIGNED manifest bytes travel base64-encoded so they arrive BYTE FOR BYTE (the signature goes over exactly them); the envelope itself is UNSIGNED and therefore routing/diagnostics only - every decision comes from the verified manifest. ADDITIVE: an older device never subscribes and the message sits unread. See "OTA Stufe 2".
-- `mqtt-ota-apply.schema.json` - the Cloud -> Edge ONE-SHOT apply approval (NON-retained QoS1 on `ems/{t}/{s}/{d}/v2/apply`, „Portal-Apply"): word for word the approval the operator used to give at the device's own `:8484` button, with another transport - it opens ONLY the first gate of the device's apply decision, for ONE release and ONE operation, and expires after 15 minutes. **NON-retained is load-bearing** (retained would be redelivered on every reconnect, so a one-shot approval would not be one), and `requested_at` is its second half: the device adopts that stamp as the start of its window instead of the arrival time, so a QoS1 message the broker redelivers late is already expired. ADDITIVE: an older device never subscribes. See „Admin-UX-Umbau P3".
 - `mqtt-charging-boost.schema.json` - die Cloud -> Edge EINMAL-Freigabe „Jetzt voll laden" (NICHT-retained QoS1 auf `ems/{t}/{s}/{d}/v2/charging-boost`, OCPP-Lastmanagement Stufe 4): wortgleich die Übersteuerung, die der Kunde an der `:8484`-Taste gibt, mit einem anderen Transport - sie nimmt GENAU EINEN Ladevorgang von der Quellen-Politik aus und rührt Anschlussgrenze, Sicherheitsabstand, §14a und das Ausfall-Profil NICHT an. **NICHT-retained ist tragend** (eine retained Übersteuerung käme bei jedem Verbindungsaufbau erneut, wäre also keine Einmal-Freigabe), und `requested_at` ist die zweite Hälfte: die Box übernimmt den Stempel als Beginn ihres Fensters statt des Empfangs-Zeitpunkts, eine nachgelieferte QoS1-Nachricht ist bei der Ankunft also abgelaufen. ADDITIV: eine ältere Box abonniert das Topic nie. Siehe „OCPP-Lastmanagement Stufe 4".
 - `mqtt-data-purge.schema.json` - the device data purge ("Datenaufzeichnungen löschen"): edge -> cloud `purge_request` on the EXISTING status up-topic, cloud -> edge RETAINED `purge_data` command on the EXISTING command down-topic (no ACL change); ADDITIVE. See "Device data purge".
 - **`docs/contracts/examples/`** - the executable v1 fixtures (2 valid + 1 invalid per covered schema, the v2 discipline; `examples/README.md` says WHY each invalid one is invalid, since the schemas are `additionalProperties:false` and a `_why` key would invalidate for the wrong reason). Read BY PATH from real tests - `services/optimization/tests/test_contract.py` (jsonschema, both directions, plus a fixture-vs-publisher check) and `edge-app/core/internal/plan/plan_test.go` (the Go executor parses the same bytes) - so moving a fixture breaks the contract check deliberately.
@@ -2459,7 +2638,8 @@ Register einer Kundenanlage aus der Ferne beschreiben — der Auslöser ist das 
 Register `0x00E7` von 33,0 auf 70,0 kW anzuheben, ohne Vor-Ort-Termin. **Diese Stufe ist der ZWEITE
 TRIGGER auf denselben Einmal-Schreib-Kern**, den die Box seit `edge-app/core/internal/installerwrite`
 besitzt (Politik `Admit` + Mechanismus `Agent.WriteOnce`, erster Trigger: die lokale `:8484`-Taste) —
-**kein zweiter Schreibweg**, den man später getrennt absichern müsste (die Portal-Apply-Doktrin).
+**kein zweiter Schreibweg**, den man später getrennt absichern müsste (dieselbe Doktrin,
+mit der der OTA-Pfad nur EINEN Apply-Kern hat).
 
 - **Der Kontrakt ist EIGEN, nicht eine Probe-Erweiterung** (`docs/contracts/mqtt-register-write.schema.json`
   + 4 gültige/1 ungültige Fixture): der Probe-Kopf verspricht „no-persistence — er beantwortet eine
