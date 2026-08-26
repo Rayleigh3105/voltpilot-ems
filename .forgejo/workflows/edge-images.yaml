@@ -113,10 +113,18 @@ jobs:
         run: go test -race -p 1 -timeout 40m ./...
 
       - name: Node-RED runtime and drivers
+        # ⚠ vp-palette ist AUSGESCHLOSSEN, weil es seinen EIGENEN Schritt hat:
+        # seine Specs sind Mocha (`describe`), und unter `node --test` sind sie
+        # `describe is not defined`. Heute trennt sie nur die Namenskonvention
+        # (`*_spec.js` gegen `*.test.js`) - eine einzige kuenftige
+        # `*.test.js`-Datei unter vp-palette wuerde diesen Schritt sonst still
+        # reissen. Derselbe Grund, aus dem `node --test` an der nodered-Wurzel
+        # heute schon fehlschlaegt (Node sammelt jedes `test/`-Verzeichnis ein);
+        # die reproduzierbare Form ist `npm test` in edge-app/nodered.
         working-directory: edge-app
         run: |
           mapfile -t tests < <(find nodered -type f -name '*.test.js' \
-            -not -path '*/node_modules/*' -print | sort)
+            -not -path '*/node_modules/*' -not -path '*/vp-palette/*' -print | sort)
           (( ${#tests[@]} > 0 )) || { echo "No Node-RED test files found" >&2; exit 1; }
           node --test "${tests[@]}"
 

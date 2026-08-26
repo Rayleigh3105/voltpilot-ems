@@ -534,19 +534,51 @@ test('Deye executor ignores a non-Deye plan (the modbus executor owns that path)
 // startSingleClientSolarmanServer accepts exactly ONE client at a time; a second
 // concurrent connect is destroyed and flagged (state.sawConcurrent). Optional
 // latencyMs delays every response so an in-flight read genuinely overlaps a write.
+//
+// ⚠ EIN GESCHLOSSENER SOCKET IST NICHT SOFORT WEG - DER STUB DARF DEN
+// UEBERGANG NICHT ALS ZWEITEN KLIENTEN LESEN (Gate-Fehlschlag edge-2026.08.22,
+// zwei Tests, nur auf Linux). `state.live` haengt am 'close'-Ereignis des
+// SERVER-Sockets, und das ist ein I/O-Ereignis: es wird erst in der naechsten
+// Poll-Phase zugestellt. Genau dazwischen verbindet sich der naechste Halter -
+// die UEBERGABE der Bus-Warteschlange ist ja absichtlich unmittelbar (siehe
+// bus-arbitration.js: „wer freigibt, UEBERGIBT"). Auf macOS gewann die
+// close-Zustellung das Rennen, auf Linux gewann das accept: der Stub verwarf
+// die legitime Folgeverbindung, der Knoten wartete sein volles Socket-Budget ab
+// und meldete `unreachable`/`Zeitueberschreitung`. Beide Ausgaenge sind erlaubt
+// - der Test war also auf JEDER Plattform ein Rennen, Linux verlor es nur
+// zuverlaessig.
+//
+// Der Stub urteilt deshalb ueber die ECHTE Ueberlappung statt ueber die
+// Zustellreihenfolge zweier Ereignisse:
+//   (1) Haelt der Halter eine OFFENE Anfrage (Bytes empfangen, Antwort noch
+//       nicht geschrieben), ist eine zweite Verbindung unzweideutig ein zweiter
+//       Klient -> sofort melden und verwerfen. Das ist der Kollisionsfall, fuer
+//       den es diesen Server ueberhaupt gibt (Lese-Poll mitten im Block, waehrend
+//       der Schreiber verbindet), und er bleibt scharf.
+//   (2) Ist der Halter still, KANN sein Schliessen nur noch unterwegs sein: die
+//       neue Verbindung wird geparkt (ein net.Socket ist ohne 'data'-Hoerer
+//       pausiert, es geht kein Byte verloren) und bedient, sobald der Halter
+//       wirklich zu ist. Bleibt er ueber `concurrentGraceMs` hinaus offen, war es
+//       doch ein zweiter Klient -> melden und verwerfen.
+// Das ist HOEHERE Treue, keine Aufweichung: ein echter LSW3-Stick gibt seinen
+// Platz frei, sobald das FIN da ist - er wartet nicht auf eine JS-Ereignisrunde.
 function startSingleClientSolarmanServer(initial = {}, opts = {}) {
   const store = Object.assign({}, initial);
   const writes = [];
   const state = { live: 0, totalConns: 0, sawConcurrent: false };
   const latencyMs = opts.latencyMs || 0;
+  // Grosszuegig gegenueber der Zustellrunde (Mikrosekunden), winzig gegenueber
+  // jeder echten Ueberlappung in diesen Tests (der Halter bleibt dort offen).
+  const graceMs = opts.concurrentGraceMs === undefined ? 500 : opts.concurrentGraceMs;
   return new Promise((resolve) => {
-    const server = net.createServer((sock) => {
-      state.totalConns += 1;
-      if (state.live > 0) { state.sawConcurrent = true; sock.destroy(); return; } // single client
+    let holder = null; // { sock, pending } - wer den Logger gerade haelt
+    const serve = (sock) => {
+      const me = { sock, pending: 0 };
+      holder = me;
       state.live += 1;
       let acc = Buffer.alloc(0);
       sock.on('error', () => {});
-      sock.on('close', () => { state.live -= 1; });
+      sock.on('close', () => { state.live -= 1; if (holder === me) holder = null; });
       sock.on('data', (chunk) => {
         acc = Buffer.concat([acc, chunk]);
         let need;
@@ -588,14 +620,48 @@ function startSingleClientSolarmanServer(initial = {}, opts = {}) {
             respMb = Buffer.concat([body, Buffer.from([crc & 0xff, (crc >> 8) & 0xff])]);
           } else { sock.destroy(); return; }
           const resp = buildV5Response(serial, seq, respMb);
-          if (latencyMs > 0) setTimeout(() => { try { sock.write(resp); } catch (e) { /* closed */ } }, latencyMs);
-          else sock.write(resp);
+          me.pending += 1;
+          if (latencyMs > 0) setTimeout(() => { me.pending -= 1; try { sock.write(resp); } catch (e) { /* closed */ } }, latencyMs);
+          else { me.pending -= 1; sock.write(resp); }
           try { need = SV5.expectedFrameLength(acc); } catch (e) { sock.destroy(); return; }
         }
       });
+    };
+    const refuse = (sock) => { state.sawConcurrent = true; sock.destroy(); };
+    const server = net.createServer((sock) => {
+      state.totalConns += 1;
+      if (!holder) { serve(sock); return; }
+      // (1) Der Halter ist mitten in einer Anfrage - ein zweiter Klient, sofort.
+      if (holder.pending > 0) { refuse(sock); return; }
+      // (2) Der Halter ist still: sein Schliessen kann noch unterwegs sein.
+      const waiting = holder;
+      const timer = setTimeout(() => { waiting.sock.removeListener('close', onGone); refuse(sock); }, graceMs);
+      // Warten ZWEI auf denselben Halter, ist der zweite ein echter zweiter
+      // Klient - er hat sich neben einen Wartenden gestellt, nicht hinter einen
+      // Schliessenden. Sonst haetten kurz zwei Halter `state.live` auf 2.
+      const onGone = () => { clearTimeout(timer); if (holder) refuse(sock); else serve(sock); };
+      waiting.sock.once('close', onGone);
     });
     server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port, store, writes, state }));
   });
+}
+
+// v5ReadRequest - ein V5-gerahmter FC3-Leseauftrag von Hand. Die zwei
+// Ein-Klient-Tests unten muessen wirklich eine Anfrage OFFEN halten; alle
+// anderen Tests fahren den Knoten, der seinen Rahmen selbst baut.
+function v5ReadRequest(serial, seq, slave, start, count) {
+  const b = Buffer.alloc(6);
+  b[0] = slave; b[1] = 0x03; b.writeUInt16BE(start, 2); b.writeUInt16BE(count, 4);
+  const c = SV5.modbusCrc16(b);
+  const mb = Buffer.concat([b, Buffer.from([c & 0xff, (c >> 8) & 0xff])]);
+  const h = Buffer.alloc(11);
+  h[0] = 0xa5; h.writeUInt16LE(15 + mb.length, 1); h.writeUInt16LE(0x4510, 3);
+  h.writeUInt16LE(seq & 0xffff, 5); h.writeUInt32LE(SV5.normLoggerSerial(serial), 7);
+  const pre = Buffer.alloc(15); pre[0] = 0x02;
+  const fr = Buffer.concat([h, pre, mb, Buffer.from([0x00, 0x15])]);
+  let sum = 0; for (let i = 1; i < fr.length - 2; i++) sum = (sum + fr[i]) & 0xff;
+  fr[fr.length - 2] = sum & 0xff;
+  return fr;
 }
 
 // The read poll's msg.deye context (what the router emits): identity + one read block.
@@ -614,15 +680,75 @@ test('single-client Solarman server RSTs a second concurrent connection (models 
   // Sanity: the server models the real constraint the old stub lacked - only one
   // TCP client at a time. This is what makes the coordination proof below meaningful.
   const { server, port, state } = await startSingleClientSolarmanServer({}, { latencyMs: 50 });
+  const s1 = net.connect(port, '127.0.0.1');
   try {
-    const s1 = net.connect(port, '127.0.0.1');
     await new Promise((res, rej) => { s1.once('connect', res); s1.once('error', rej); });
     const s2 = net.connect(port, '127.0.0.1');
     // the second concurrent connect is refused/closed by the single-client server
     await new Promise((res) => { s2.once('close', res); s2.once('error', () => {}); });
     assert.strictEqual(state.sawConcurrent, true, 'the server flagged the concurrent connection');
-    s1.destroy();
   } finally {
+    // s. u.: ein offener Klient laesst server.close() warten - eine gerissene
+    // Zusicherung muss ROT werden, nicht haengen.
+    s1.destroy();
+    server.close();
+  }
+});
+
+test('single-client server: ein Halter MITTEN in einer Anfrage macht den zweiten Klienten SOFORT sichtbar', async () => {
+  // Die scharfe Kante des Modells: waehrend eine Anfrage offen ist (Bytes da,
+  // Antwort noch nicht geschrieben), ist eine zweite Verbindung unzweideutig ein
+  // zweiter Klient - genau die Kollision, fuer die dieser Server gebaut wurde.
+  // Sie wird OHNE Karenz gemeldet, sonst koennte ein kurzer Halter eine echte
+  // Ueberlappung ueberdecken.
+  const { server, port, state } = await startSingleClientSolarmanServer(
+    { 0x024c: 7 }, { latencyMs: 400, concurrentGraceMs: 5000 });
+  // ⚠ Die Sockets im finally: eine gerissene Zusicherung darf den Lauf ROT
+  // machen, nie AUFHAENGEN - ein offener Klient laesst server.close() warten
+  // und das ganze Gate liefe in seine 90-Minuten-Schranke.
+  const open = [];
+  try {
+    const s1 = net.connect(port, '127.0.0.1'); open.push(s1);
+    await new Promise((res, rej) => { s1.once('connect', res); s1.once('error', rej); });
+    s1.write(v5ReadRequest('2985159064', 1, 1, 0x024c, 1));
+    await waitFor(() => state.totalConns === 1 && state.live === 1);
+    await new Promise((r) => setTimeout(r, 30)); // Anfrage angekommen, Antwort haengt noch
+    const t0 = Date.now();
+    const s2 = net.connect(port, '127.0.0.1'); open.push(s2);
+    await new Promise((res) => { s2.once('close', res); s2.once('error', () => {}); });
+    assert.strictEqual(state.sawConcurrent, true, 'die echte Ueberlappung ist gemeldet');
+    assert.ok(Date.now() - t0 < 200, 'und zwar sofort, nicht erst nach der Karenz');
+  } finally {
+    open.forEach((s) => s.destroy());
+    server.close();
+  }
+});
+
+test('single-client server: ein Nachfolger, dessen Vorgaenger gerade SCHLIESST, ist kein zweiter Klient', async () => {
+  // Der Gate-Fehlschlag edge-2026.08.22 (nur Linux): `state.live` haengt am
+  // 'close' des Server-Sockets, einem I/O-Ereignis. Die UEBERGABE der
+  // Bus-Warteschlange verbindet den naechsten Halter absichtlich unmittelbar -
+  // also im selben Durchlauf, bevor dieses 'close' zugestellt ist. Das ist
+  // KEINE Ueberlappung; der Server bedient den Nachfolger und meldet nichts.
+  const { server, port, state } = await startSingleClientSolarmanServer({ 0x024c: 7 });
+  const open = []; // s. o.: rot, nie haengend
+  try {
+    const s1 = net.connect(port, '127.0.0.1'); open.push(s1);
+    await new Promise((res, rej) => { s1.once('connect', res); s1.once('error', rej); });
+    s1.write(v5ReadRequest('2985159064', 1, 1, 0x024c, 1));
+    await new Promise((r) => s1.once('data', r));
+    s1.destroy();                       // ab hier ist das Schliessen UNTERWEGS
+    const s2 = net.connect(port, '127.0.0.1'); open.push(s2);
+    await new Promise((res, rej) => { s2.once('connect', res); s2.once('error', rej); });
+    s2.write(v5ReadRequest('2985159064', 2, 1, 0x024c, 1));
+    const got = await Promise.race([
+      new Promise((r) => s2.once('data', () => r('data'))),
+      new Promise((r) => setTimeout(() => r('timeout'), 4000)),
+    ]);
+    assert.strictEqual(got, 'data', 'der Nachfolger wird bedient, nicht verworfen');
+    assert.strictEqual(state.sawConcurrent, false, 'und er gilt nie als zweiter Klient');
+  } finally {
+    open.forEach((s) => s.destroy());
     server.close();
   }
 });
