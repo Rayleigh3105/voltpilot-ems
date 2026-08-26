@@ -548,6 +548,37 @@ Fresh CI/Testcontainers DBs have no prior history, so they never drift and alway
 
 **Forward-looking cleanup:** moving the VM to the blank production profile (`SPRING_PROFILES_ACTIVE=` in `.env`, then `docker compose -f docker-compose.prod.yml up -d --force-recreate api`) stops it running the dev seeds at all, so there is eventually no dev-seed drift left to heal. The already-seeded demo rows stay in the DB (blank does not delete them - see the launch cleanup below).
 
+### Migrationen dürfen OUT-OF-ORDER ankommen - Versionsnummer = Erstellzeit, nie umnummerieren
+
+**Die Regel in einem Satz:** die Versionsnummer einer Migration ist der Zeitpunkt, zu dem sie GESCHRIEBEN wurde; die Reihenfolge, in der eine langlebige Datenbank sie sieht, ist die Reihenfolge, in der ihr PR GEMERGT wurde - und bei parallelen Branches fallen die beiden auseinander.
+Deshalb steht `spring.flyway.out-of-order: true` in `services/api/src/main/resources/application.yml`, und deshalb wird **eine Migration niemals umnummeriert**, um "die Lücke zu schließen".
+
+**Der Vorfall vom 26.08.2026.** `V20260846010000` (#509) wurde nach `V20260847000000` (#516) gemergt, `V20260842000000` (#512) nach `V20260844000000` (#507).
+Prod hatte die höheren Versionen längst angewandt, also stellte Flyway die Nachzügler in den Zustand `IGNORED` und brach den Start ab:
+
+```
+Validate failed: Detected resolved migration not applied to database: 20260846010000
+```
+
+Folge: zwölf Migrationen blieben unangewandt, der Optimierer schrieb in Spalten, die es nicht gab (`schedule.unplanned_load_discharge`), und die Flotte stand eine Nacht ohne Fahrplan.
+
+**Warum die Selbstheilung hier NICHT greift.** `repair()` räumt ausschließlich die Buchführung von Migrationen auf, die ANGEWANDT SIND (Prüfsumme/Beschreibung/Typ, fehlgeschlagene Einträge, applied-but-not-resolved).
+Eine Migration, die gar nicht in der History steht, fasst es per Konstruktion nicht an - der Retry scheiterte identisch.
+`SelfHealingFlywayMigrationStrategy` unterscheidet die beiden Klassen deshalb seit diesem Fix: bei einem Out-of-order-Nachzügler loggt es einen `ERROR`, der die Migration, die Ursache und den Hebel nennt, und wirft sofort - statt "self-healing ... retrying" zu behaupten und dann doch zu sterben.
+
+**Was das NICHT lockert:** Prüfsummen-/Beschreibungs-/Typ-Validierung ist unverändert (eine editierte, bereits angewandte Migration bricht den Start weiterhin ab), und eine FRISCHE Datenbank wendet weiterhin in Versionsreihenfolge an.
+Genau daraus folgt die Umnummerierungs-Regel: wer eine Version nach oben zieht, verschiebt sie auf einer frischen DB an eine andere Stelle der Kette - und bricht dort etwas, das in Prod längst lief.
+
+**Was daraus für den Autor einer Migration folgt:**
+
+- **Version = Erstellzeit** (`V<UTC-Zeitstempel>__<beschreibung>.sql`), nie an den aktuellen Stand von `main` angepasst.
+- **Jede Migration muss für sich stehen.** Sie darf sich nur auf den Schema-Stand ihrer EIGENEN Version verlassen, nicht auf eine höher nummerierte, die in Prod schon gelaufen sein könnte. Das ist die eine Regel, die kein Test statisch prüfen kann - Versionsreihenfolge (frische DB) und Merge-Reihenfolge (Prod) sind beide gültige Reihenfolgen.
+- **Zwei Kollisionen fängt `MigrationHygieneTest` früh ab** (rein, ohne Docker, läuft in jedem Gate): zwei Migrationen mit derselben Version - auch die Variante, bei der eine umbenannte Datei als Leiche in `target/classes` überlebt - und dieselbe Spalte zweimal per `ADD COLUMN` ohne `IF NOT EXISTS`.
+- **Nach jedem Umbenennen/Löschen einer Migration `./mvnw clean test`**, nie nur `test` (siehe AGENTS.md).
+
+**Break-glass:** `SPRING_FLYWAY_OUT_OF_ORDER=false` schaltet es wieder ab (Boots relaxed env binding; genau der Hebel, mit dem der Hotfix am 26.08.2026 die Instanz wieder hochbrachte, bevor es die Zeile in `application.yml` gab).
+Danach lehnt jeder Nachzügler den Start wieder ab.
+
 ### Break-glass: manual repair (should not be needed)
 
 The self-healing strategy above makes this unnecessary, but if you ever need to realign a recorded checksum by hand (e.g. the strategy is disabled, or you are on an older image), the manual equivalent of what `repair()` does is a direct `UPDATE`.

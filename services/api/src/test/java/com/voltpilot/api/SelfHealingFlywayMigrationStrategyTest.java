@@ -2,6 +2,7 @@ package com.voltpilot.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -11,13 +12,17 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.voltpilot.api.config.SelfHealingFlywayMigrationStrategy;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.Map;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
+import org.flywaydb.core.api.exception.FlywayValidateException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -84,6 +89,70 @@ class SelfHealingFlywayMigrationStrategyTest {
                 });
     }
 
+    /**
+     * The drift class {@code repair()} CANNOT fix: a migration whose version sits
+     * below the already-applied high-water mark (the 2026-08-26 production
+     * incident). The old code logged "self-healing ... retrying", ran a repair
+     * that by construction touches only APPLIED migrations, and then died with
+     * the identical exception - so the deploy log actively pointed away from the
+     * cause. It must now name the migration, the reason and the fix, and it must
+     * NOT pretend to heal.
+     */
+    @Test
+    void anOutOfOrderArrivalIsNamedWithItsFixInsteadOfAFakeSelfHeal(@TempDir Path migrations) throws Exception {
+        // A database that already applied the higher version...
+        Files.writeString(migrations.resolve("V20260201000000__higher_merged_first.sql"),
+                "CREATE TABLE fm_selfheal_higher (id int PRIMARY KEY);\n");
+        synthetic(migrations, false).load().migrate();
+        // ...and a deploy that brings the lower one, merged later.
+        Files.writeString(migrations.resolve("V20260101000000__lower_merged_second.sql"),
+                "CREATE TABLE fm_selfheal_lower (id int PRIMARY KEY);\n");
+
+        ListAppender<ILoggingEvent> logs = attachAppender();
+        Flyway flyway = spy(synthetic(migrations, false).load());
+
+        assertThatThrownBy(() -> new SelfHealingFlywayMigrationStrategy().migrate(flyway))
+                .isInstanceOf(FlywayValidateException.class);
+
+        // No pointless repair, and above all no "self-healing" claim.
+        verify(flyway, never()).repair();
+        assertThat(logs.list).noneSatisfy(e ->
+                assertThat(e.getFormattedMessage()).contains("self-healing"));
+        // Instead: an ERROR that names the migration, the cause and the lever.
+        assertThat(logs.list).anySatisfy(e -> {
+            assertThat(e.getLevel()).isEqualTo(Level.ERROR);
+            assertThat(e.getFormattedMessage())
+                    .contains("20260101000000")
+                    .contains("repair() CANNOT fix")
+                    .contains("spring.flyway.out-of-order=true");
+        });
+    }
+
+    /**
+     * The counterpart: with out-of-order allowed - what the api ships - the very
+     * same late arrival is a plain migrate. No exception, no repair, no drift
+     * log at all.
+     */
+    @Test
+    void theSameLateArrivalIsAPlainMigrateOnceOutOfOrderIsAllowed(@TempDir Path migrations) throws Exception {
+        Files.writeString(migrations.resolve("V20260201000000__higher_merged_first.sql"),
+                "CREATE TABLE fm_selfheal_higher (id int PRIMARY KEY);\n");
+        synthetic(migrations, true).load().migrate();
+        Files.writeString(migrations.resolve("V20260101000000__lower_merged_second.sql"),
+                "CREATE TABLE fm_selfheal_lower (id int PRIMARY KEY);\n");
+
+        ListAppender<ILoggingEvent> logs = attachAppender();
+        Flyway flyway = spy(synthetic(migrations, true).load());
+
+        assertThatCode(() -> new SelfHealingFlywayMigrationStrategy().migrate(flyway))
+                .doesNotThrowAnyException();
+
+        verify(flyway, never()).repair();
+        assertThat(count("SELECT count(*) FROM flyway_schema_history "
+                + "WHERE version = '20260101000000' AND success")).isEqualTo(1L);
+        assertThat(logs.list).isEmpty();
+    }
+
     @Test
     void healthyDatabaseDoesAPlainStrictMigrateWithNoRepair() throws Exception {
         ListAppender<ILoggingEvent> logs = attachAppender();
@@ -99,6 +168,16 @@ class SelfHealingFlywayMigrationStrategyTest {
                 + DRIFTED_DEV_VERSION + "'")).isEqualTo(1L);
         assertThat(logs.list).noneSatisfy(e ->
                 assertThat(e.getFormattedMessage()).contains("self-healing"));
+    }
+
+    /** Synthetic migrations in a temp directory - the out-of-order mechanism alone. */
+    private FluentConfiguration synthetic(Path dir, boolean outOfOrder) {
+        return Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("filesystem:" + dir.toAbsolutePath())
+                .baselineOnMigrate(true)
+                .baselineVersion("0")
+                .outOfOrder(outOfOrder);
     }
 
     /** The `local`-profile Flyway config: prod-safe core + the DEV-ONLY seeds. */
