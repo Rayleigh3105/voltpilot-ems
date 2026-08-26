@@ -1727,11 +1727,13 @@ test('der Lese-Poll tritt fuer eine Reservierung zurueck - aber nur GEBUNDEN', (
 
 // --- NATIVE SELF-REGULATION: the inline planner vs. the module ---------------
 //
-// The flow carries an INLINE planner for the generic modbus_tcp tier only (the
-// one its executor can actually execute). The full per-tier primitive lives in
-// inverter-control-routing.js. These two guards keep that split honest: the
-// inline copy must agree with the module on the tier it covers, and it must
-// REFUSE - not improvise - on every tier it does not.
+// The flow carries INLINE planners for the two tiers its executors can really
+// execute: the generic modbus_tcp profile and the DEYE REMOTE block (the
+// released pilot). The full per-tier primitive lives in
+// inverter-control-routing.js. These guards keep that split honest: each inline
+// copy must agree with the module on the tier it covers - down to the German
+// reason of every refusal, because that is what the operator reads - and the
+// pair must REFUSE, not improvise, on every tier they do not.
 test('the inline native planner agrees with the module on the generic tier', () => {
   const { nativeSelfConsumption } = require('./inverter-control-routing');
   const nat = require('./unplanned-load-native');
@@ -1766,19 +1768,176 @@ test('the inline native planner agrees with the module on the generic tier', () 
     'and the same proof registers');
 });
 
-test('the inline native planner refuses every tier it does not cover', () => {
-  const deye = {
-    schema_version: '1.0', brand: 'deye', model: 'SUN-30K-SG01HP3-EU', family: 'hybrid_3p',
-    communication: 'solarman_v5', control_tier: 3,
-    connection: { ip: '10.0.0.8', port: 8899, serial: 2985159064, firmware: 'V1' },
+// The DEYE REMOTE tier is the SECOND one the flow covers (the released pilot).
+// Same two guards as the generic tier: the inline copy must agree with the module
+// on the bytes it plans, and on the German reason of every refusal - the reasons
+// are what the operator reads, so a drift there is a drift in the product.
+const DEYE_NATIVE_SEL = {
+  schema_version: '1.0', brand: 'deye', model: 'sun-30k-sg01hp3', family: 'hybrid_3p',
+  communication: 'solarman_v5', control_tier: 3, rated_kw: 30,
+  connection: { ip: '10.0.0.8', port: 8899, serial: 2985159064, mb_slave_id: 1, power_scale: 10 },
+};
+// The device's own Time-of-Use configuration, as the executor caches it: armed,
+// discharging down to 5 % - i.e. past a 10 % reserve floor - and not grid-charging.
+// `at` is the executor's read timestamp: the plan node treats an OLD cache as
+// "not read" (see the freshness note there), so every fixture carries a live one.
+const DEYE_NATIVE_CFG = { at: Date.now(), tou_enable: 0x00ff, program_target_soc: 5, grid_charge_enable: 0 };
+// The remote-mode capability the executor's probe classifies (PR-978 layout).
+function deyeNativeSticky() {
+  return { path: 'remote', since: Date.now(), contrary: 0, everRemote: true, seededFromGrant: true };
+}
+function deyeNativeSetpoint(extra = {}) {
+  return {
+    battery_setpoint_kw: -7, control_enabled: true, device_certified: true,
+    device_certified_path: 'remote', grid_charge_allowed: true, battery_mode: 'native',
+    effective_floor_soc_pct: 10, soc_min_pct: 5, soc_max_pct: 95,
+    ts: new Date().toISOString(), source: 'schedule', ...extra,
   };
+}
+// Run the AUTO plan node with the Deye selection + the executor's two caches.
+function deyeNativePlan(sp, opts = {}) {
+  // ⚠ `'cfg' in opts`, never a default parameter: an EXPLICIT `cfg: undefined`
+  // is the "nothing was read" case and must stay undefined, not fall back to a
+  // healthy configuration (that silently made the refusal case plan a hand-over).
+  const cfg = 'cfg' in opts ? opts.cfg : DEYE_NATIVE_CFG;
+  const sel = opts.sel || DEYE_NATIVE_SEL;
+  const target = sel.connection.ip + ':' + sel.connection.port;
+  return runFunctionNode(byId['auto-control-plan'].func, {
+    msg: { setpoint: sp },
+    flow: {
+      inverter_config: sel,
+      ['deye_path:' + target]: deyeNativeSticky(),
+      ['deye_native_cfg:' + target]: cfg,
+    },
+  }).msg.control;
+}
+
+test('the inline native planner agrees with the module on the DEYE remote tier', () => {
+  const { nativeSelfConsumption } = require('./inverter-control-routing');
+  const sp = deyeNativeSetpoint();
+  const inline = deyeNativePlan(sp);
+  const module_ = nativeSelfConsumption(DEYE_NATIVE_SEL, {
+    controlEnabled: true, deviceCertified: true, solarOnlyCharge: false,
+    deyeSticky: deyeNativeSticky(), deyeOwnConfig: DEYE_NATIVE_CFG,
+    effectiveFloorSocPct: 10,
+  });
+  assert.strictEqual(module_.writes.length, 1, 'the module plans exactly the hand-over');
+  assert.deepStrictEqual(
+    inline.writes.map((w) => ({ addr: w.addr, value: w.value })),
+    module_.writes.map((w) => ({ addr: w.addr, value: w.value })),
+    'inline and module must plan the same bytes for the tier they share');
+  assert.deepStrictEqual(
+    inline.readbacks.map((r) => ({ addr: r.addr, expect: r.expect })),
+    module_.readbacks.map((r) => ({ addr: r.addr, expect: r.expect })),
+    'and the same proof register');
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(inline.gridChargeProof)),
+    JSON.parse(JSON.stringify(module_.gridChargeProof)),
+    'and the same EEG proof register');
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(inline.nativePreconditions)),
+    JSON.parse(JSON.stringify(module_.preconditions)),
+    'and the same registers to read BEFORE the hand-over');
+});
+
+test('the inline native planner refuses like the module, with the same German reason', () => {
+  const { nativeSelfConsumption } = require('./inverter-control-routing');
+  const both = (spExtra, opts, planOpts) => {
+    const sp = deyeNativeSetpoint(spExtra);
+    const inline = deyeNativePlan(sp, planOpts);
+    const module_ = nativeSelfConsumption(planOpts && planOpts.sel ? planOpts.sel : DEYE_NATIVE_SEL, {
+      controlEnabled: sp.control_enabled === true, deviceCertified: true,
+      solarOnlyCharge: sp.grid_charge_allowed !== true,
+      deyeSticky: deyeNativeSticky(),
+      deyeOwnConfig: (planOpts && 'cfg' in planOpts) ? planOpts.cfg : DEYE_NATIVE_CFG,
+      effectiveFloorSocPct: sp.effective_floor_soc_pct,
+      ...opts,
+    });
+    return { inline, module_ };
+  };
+
+  // 1. The inverter's own Time-of-Use program is not armed: without it the manual
+  //    is unambiguous - it will not discharge to the loads.
+  let r = both({}, {}, { cfg: { ...DEYE_NATIVE_CFG, tou_enable: 0x00fe } });
+  assert.match(r.module_.reason, /Time of Use/);
+  assert.strictEqual(r.module_.writes.length, 0);
+  // The plan node falls back to the follower, so the reason travels as the WARN;
+  // what must hold here is that no native plan reached msg.control.
+  assert.notStrictEqual(r.inline.mode, 'native', 'an unarmed ToU program hands nothing over');
+
+  // 2. The program stops discharging ABOVE our reserve floor.
+  r = both({ effective_floor_soc_pct: 3 }, {}, {});
+  assert.match(r.module_.reason, /Reserve-Untergrenze/);
+  assert.notStrictEqual(r.inline.mode, 'native');
+
+  // 3. An EEG site whose program still permits grid charging.
+  r = both({ grid_charge_allowed: false }, {}, { cfg: { ...DEYE_NATIVE_CFG, grid_charge_enable: 1 } });
+  assert.match(r.module_.reason, /EEG-Anlage/);
+  assert.notStrictEqual(r.inline.mode, 'native');
+
+  // 4. Nothing read at all - the honest "not known", never an assumed zero.
+  r = both({}, {}, { cfg: undefined });
+  assert.match(r.module_.reason, /eigene Konfiguration/);
+  assert.notStrictEqual(r.inline.mode, 'native');
+
+  // 5. Any OTHER Deye model: the certificate is bound to the pilot alone.
+  const other = { ...DEYE_NATIVE_SEL, model: 'sun-12k-sg04lp3' };
+  r = both({}, {}, { sel: other });
+  assert.match(r.module_.reason, /Pr\u00fcfstand/);
+  assert.notStrictEqual(r.inline.mode, 'native');
+
+  // 6. INLINE-ONLY, and deliberately so: a cache the executor stopped refreshing
+  //    is not knowledge. The module receives whatever its caller hands in, so the
+  //    freshness lives at the plan node's READ - which is why this case has no
+  //    module twin to compare against.
+  const stale = deyeNativePlan(deyeNativeSetpoint(),
+    { cfg: { ...DEYE_NATIVE_CFG, at: Date.now() - 6 * 60 * 1000 } });
+  assert.notStrictEqual(stale.mode, 'native', 'a stale cache hands nothing over');
+  const undated = deyeNativePlan(deyeNativeSetpoint(),
+    { cfg: { tou_enable: 0x00ff, program_target_soc: 5, grid_charge_enable: 0 } });
+  assert.notStrictEqual(undated.mode, 'native', 'and neither does an undated one');
+});
+
+test('the inline native planner refuses every tier it does not cover', () => {
   const sp = {
     battery_setpoint_kw: -7, control_enabled: true, device_certified: true,
     grid_charge_allowed: true, battery_mode: 'native',
     ts: new Date().toISOString(), source: 'schedule',
   };
-  const out = runFunctionNode(byId['auto-control-plan'].func,
-    { msg: { setpoint: sp }, flow: { inverter_config: deye } }).msg.control;
-  assert.notStrictEqual(out && out.mode, 'native',
-    'an uncovered tier must fall back to the follower, never improvise a sequence');
+  // Fronius Model 124, KOSTAL and KACO NH3 all HAVE a primitive in the module -
+  // their EXECUTORS are follow-up work, so the flow must keep the proven follower
+  // rather than improvise a sequence nothing in this flow could carry out.
+  const uncovered = [
+    { schema_version: '1.0', brand: 'fronius', model: 'gen24', family: 'fronius_hybrid',
+      communication: 'fronius_solar_api', control_tier: 1,
+      connection: { ip: '10.0.0.7', control_port: 502, control_unit_id: 1 } },
+    { schema_version: '1.0', brand: 'kostal', model: 'plenticore', family: 'kostal_hybrid',
+      communication: 'kostal_modbus', control_tier: 2,
+      connection: { ip: '10.0.0.6', port: 1502, unit_id: 71 } },
+    { schema_version: '1.0', brand: 'kaco', model: 'nh3', family: 'kaco_nh3',
+      communication: 'kaco_modbus', control_tier: 1,
+      connection: { ip: '10.0.0.5', port: 502, unit_id: 1 } },
+  ];
+  for (const sel of uncovered) {
+    const out = runFunctionNode(byId['auto-control-plan'].func,
+      { msg: { setpoint: sp }, flow: { inverter_config: sel } }).msg.control;
+    assert.notStrictEqual(out && out.mode, 'native',
+      `an uncovered tier must fall back to the follower (${sel.communication})`);
+  }
+  // And a Deye WITHOUT the remote firmware stays on the follower too - the Deye
+  // ToU path deliberately has no primitive (EEPROM latency + snapshot duty).
+  const touDeye = {
+    schema_version: '1.0', brand: 'deye', model: 'sun-30k-sg01hp3', family: 'hybrid_3p',
+    communication: 'solarman_v5', control_tier: 3, rated_kw: 30,
+    connection: { ip: '10.0.0.8', port: 8899, serial: 2985159064, power_scale: 10 },
+  };
+  const touOut = runFunctionNode(byId['auto-control-plan'].func, {
+    msg: { setpoint: sp },
+    flow: {
+      inverter_config: touDeye,
+      'deye_path:10.0.0.8:8899': { path: 'tou', since: Date.now(), contrary: 0, everRemote: false },
+    },
+  }).msg.control;
+  assert.notStrictEqual(touOut && touOut.mode, 'native',
+    'Deye ToU has no native primitive - the follower carries the slot');
 });

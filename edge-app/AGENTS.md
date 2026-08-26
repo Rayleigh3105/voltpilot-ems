@@ -4058,14 +4058,47 @@ Wechselrichters. **Kein Vertragsfeld** — die Wolke sagt längst, OB Decken
   nicht). Die Registerliste dafür steht als `preconditions` auf dem Ergebnis: ein
   Executor liest sie VOR der Übergabe und reicht die Werte als `deyeOwnConfig`
   zurück.
-- **⚠ NOCH NICHT ANGESCHLOSSEN (Stand 26.08.2026): der Deye-Ausführungspfad.**
-  Der Plan-Knoten (`build-flows.js nativePlanGeneric`) deckt nur den generischen
-  `modbus_tcp`-Tier ab und gibt für `solarman_v5` `null` zurück; der
-  Deye-Executor liest `gridChargeProof` nicht zurück. Der Pilot fällt deshalb im
-  Decken-Slot weiterhin auf die 10-Sekunden-Nachführung und der Kern zieht seine
-  Absicht nach der Nachweisfrist zurück (`nachweis_fehlt`). Die Freigabe ist die
-  Bedingung, nicht die Wirkung — die zwei fehlenden Stücke stehen in
-  `nodered/UNPLANNED-LOAD-BENCH.md` „Pilot-Freigabe 2026-08-26".
+- **DER DEYE-AUSFÜHRUNGSPFAD (26.08.2026): `nativePlanDeye` + die zwei Lesungen
+  des Executors.** Der Plan-Knoten deckt seit dieser Runde ZWEI Tiers ab —
+  `nativePlanGeneric` (modbus_tcp/SunSpec) und `nativePlanDeye` (die
+  Fernsteuer-Registerlage), beide synchron gehaltene Kopien von
+  `nativeSelfConsumption` und beide von `flows-sync.test.js` gegen das Modul
+  gepinnt. HINEIN = **ein** Schreibvorgang `1100 <- 0`, danach nur noch Lesen;
+  HINAUS = der unveränderte gewöhnliche Fernsteuer-Plan (`1101`, `1104`, `1105`,
+  `1109`, `1100 <- 1` ZULETZT). Es gibt keine zweite Rücknahme-Sequenz.
+- **⚠ DIE VORBEDINGUNG GREIFT VOR DER ÜBERGABE, und sie braucht eine Lesung, die
+  ein Plan-Knoten nicht machen kann.** Deshalb liest der **Executor** die drei
+  Register (`0x0092` Zeitfenster-Freigabe, `0x00A6` Ziel-Ladeniveau, `0x00AC`
+  Program-1-Charging) auf jedem Takt, an dem eine Absicht auf Selbstregelung
+  steht — **vor jedem Schreibvorgang dieses Zyklus** — und legt sie je Logger
+  unter `deye_native_cfg:<host:port>` (flüchtig, wie `deye_cap:`) ab; der
+  Plan-Knoten urteilt daraus mit der synchron gehaltenen Kopie von
+  `deyeNativePrecondition`. **Nicht gelesen = nicht bekannt = Verweigerung**, mit
+  deutschem Grund. Folge, die man kennen muss: der ERSTE Takt eines Decken-Slots
+  verweigert ehrlich („die eigene Konfiguration … ist nicht bekannt"), der zweite
+  schaltet um — weit innerhalb der Nachweisfrist des Kerns (~60 s). Und der Stand
+  ist nie älter als EIN Takt, weil er in jedem native-Takt neu gelesen wird; ein
+  Wechsel der Geräte-Konfiguration innerhalb dieser 10 s wird also erst vom
+  nächsten Takt bemerkt, der die Batterie dann zurückholt.
+- **⚠ `mode: "native"` wird NUR gemeldet, wenn `1100` wirklich 0 zurückliest.**
+  Alles andere ist kein Beleg und wird als gewöhnlicher Zyklus veröffentlicht —
+  der Kern sieht keine Bestätigung und nimmt die Batterie nach seiner Frist
+  zurück (`nachweis_fehlt`). Nur ein belegter Takt liest zusätzlich den
+  `gridChargeProof` und veröffentlicht ihn als `native.grid_charge_blocked`;
+  sein FEHLEN heißt „das Gerät hat nichts gesagt" und zählt auf einer EEG-Anlage
+  als nicht belegt (dieselbe Dreiwertigkeit wie im generischen Executor).
+- **Ein stehender Grund wird EINMAL gesagt, nicht alle 10 s.** Der Plan-Knoten
+  merkt sich den letzten Verweigerungs-Grund und schreibt nur bei einer
+  ÄNDERUNG eine Zeile — ein Wechselrichter mit abgeschaltetem Zeitfenster-Programm
+  füllte sonst das Protokoll für den ganzen Slot und begrübe genau die Zeilen,
+  die die Beobachtungs-Checkliste liest. Der Knoten-Status trägt den Zustand
+  ohnehin durchgehend.
+- **Die `:8484`-Betriebsseite nennt den Modus** (`control.js deriveNative`): die
+  Begründungszeile liest „Wechselrichter-Automatik (hält)" bzw. „… angefordert",
+  hält also „gewollt" und „bestätigt" auseinander, und sie steht **an erster
+  Stelle** der Begründungskette — solange die Automatik hält, wird gar kein
+  Sollwert geschrieben, und eine Zeile über Nachführung/Begrenzung erklärte einen
+  Wert, den niemand gesendet hat.
 - **Der Simulator hat dafür ein Eigenverbrauchs-Modell bekommen**
   (`edge/sim/sunspec-sim.js`): bei `setpoint_enable = 0` folgt die Batterie
   `pv - load`, sonst dem Sollwert. Vorher gehorchte er ewig dem letzten Wert und

@@ -465,6 +465,91 @@ test("control: an absorbed setpoint keeps the healthy CONFIRMED state", () => {
   assert.ok(absorbFor(state), "and the reason line is there");
 });
 
+// --- „Wechselrichter-Automatik" (Selbstregel-Modus) --------------------------
+//
+// In a covering slot the SETPOINT ITSELF is handed back to the inverter. Two
+// things must hold on the card: it says „gewollt" and „bestätigt" apart (the
+// whole point - „we stopped writing" and „VoltPilot died" must never read the
+// same), and it SPEAKS FIRST, because while it holds no in-slot correction is
+// being written and any of their lines would explain a value nobody sent.
+function nativeFor(state) {
+  return load(["control.js"]).VPControl.deriveNative(state);
+}
+
+test("control: a CONFIRMED native mode reads 'Wechselrichter-Automatik (hält)'", () => {
+  const d = nativeFor({
+    native: {
+      active: true, proven: true, duty: "cover_load", reference_kw: -7.087,
+      reason: "aktiv", text: "Der Wechselrichter regelt den Verbrauch gerade selbst.",
+    },
+  });
+  assert.ok(d, "an active mode must produce a reason line");
+  assert.match(d.text, /Wechselrichter-Automatik \(h\u00e4lt\)/, "the state is named: " + d.text);
+  assert.match(d.text, /keinen Sollwert/, "and WHAT it means: " + d.text);
+  assert.match(d.text, /-7,1 kW/, "the reference value is still shown: " + d.text);
+  assert.match(d.text, /regelt den Verbrauch gerade selbst/, "the core's own sentence rides along");
+  assert.ok(!/nicht \u00fcbernommen|Abweichung|Fehler des Wechselrichters\.$/.test(d.text.replace(/kein Fehler des Wechselrichters\.$/, "")),
+    "a deliberate hand-over must never read as a failed write: " + d.text);
+});
+
+test("control: an UNCONFIRMED native mode never claims the device is doing it", () => {
+  const d = nativeFor({
+    native: {
+      active: true, proven: false, duty: "cover_load", reference_kw: -7.087,
+      reason: "wartet_auf_bestaetigung",
+      text: "Der Wechselrichter soll selbst regeln - die R\u00fcckmeldung des Ger\u00e4ts steht noch aus.",
+    },
+  });
+  assert.ok(d);
+  assert.ok(!/h\u00e4lt/.test(d.text), "a pending mode must not claim it holds: " + d.text);
+  assert.match(d.text, /angefordert/, "it is named as wanted: " + d.text);
+  assert.match(d.text, /weiter nach/, "and the follower is still carrying the slot: " + d.text);
+});
+
+test("control: no native mode -> no line (the card reads exactly as before)", () => {
+  assert.strictEqual(nativeFor({}), null);
+  assert.strictEqual(nativeFor({ native: null }), null);
+  assert.strictEqual(nativeFor({ native: { active: false } }), null,
+    "an inactive mode claims nothing");
+});
+
+test("control: the native line SPEAKS FIRST - no in-slot correction explains a value nobody sent", () => {
+  // The guards still compute their corrections while the mode holds (the
+  // reference value is published), so both blocks reach the card at once. Only
+  // ONE line is rendered, and it has to be the outermost fact - so this drives
+  // the real onState() and reads what actually landed in #ctrlReason.
+  const reasonEl = { textContent: "", hidden: true };
+  const doc = fakeDocument();
+  // ONLY #ctrlReason resolves: every other lookup stays null, which the render
+  // helpers are guarded against (show(null) and the early returns of
+  // renderNow/renderTable), so this exercises the chain and nothing else.
+  doc.getElementById = (id) => (id === "ctrlReason" ? reasonEl : null);
+
+  const regs = [{ role: "remote_mode", commanded_raw: 0, actual_raw: 0, match: true, verdict: "held" }];
+  const state = {
+    inverter: { configured: true }, control_certified: true, control_enabled: true,
+    control: { confirm: "held", all_match: true, registers: regs, source: "schedule", mode: "native" },
+    native: { active: true, proven: true, reference_kw: -7.087, text: "Der Wechselrichter regelt den Verbrauch gerade selbst." },
+    follow: { active: true, direction: "deepen", deficit_kw: 7.087, planned_kw: -4.3 },
+  };
+  const C = load(["control.js"], { document: doc }).VPControl;
+  assert.ok(C.deriveFollow(state), "setup: the follow block really is present");
+  assert.strictEqual(C.deriveState(state).showNow, true, "setup: a reason is shown at all");
+
+  C.onState(state);
+  assert.match(reasonEl.textContent, /Wechselrichter-Automatik/,
+    "the hand-over is what the card explains: " + reasonEl.textContent);
+  assert.ok(!/Entladung angehoben|Nachf\u00fchrung/.test(reasonEl.textContent),
+    "and NOT a correction that was never written: " + reasonEl.textContent);
+
+  // Without the mode the very same state falls back to the follow line - so the
+  // assertion above is about the ORDER, not about follow being absent.
+  const without = { ...state, native: null };
+  C.onState(without);
+  assert.match(reasonEl.textContent, /Entladung angehoben/,
+    "without the hand-over the correction speaks again: " + reasonEl.textContent);
+});
+
 test("status hero: an unanswered readback says 'keine Bestätigung', a confirmed refusal says 'übernimmt nicht'", () => {
   const regs = [{ role: "remote_mode", commanded_raw: 1, actual_raw: null, match: false, verdict: "unread" }];
   const silent = statusFor({ ...HEALTHY, control: { confirm: "no_answer", all_match: null, registers: regs } });

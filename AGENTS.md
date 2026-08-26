@@ -4021,13 +4021,23 @@ Test festgenagelt.
 - Edge-Details (die Beweis-Schleife, Rücknahme-vs-Verweigerung, die EEG-Regel,
   der Simulator-Katalog, der Not-Aus): `edge-app/CLAUDE.md`
   „Wechselrichter-Automatik".
-- **⚠ Die Freigabe ist die BEDINGUNG, noch nicht die Wirkung (Stand 26.08.2026):**
-  der Deye-AUSFÜHRUNGSPFAD fehlt weiterhin — der Flow-Planknoten
-  (`build-flows.js nativePlanGeneric`) deckt nur den generischen
-  `modbus_tcp`-Tier ab, und der Deye-Executor liest den `gridChargeProof` nicht
-  zurück. Bis beides steht, fällt der Pilot im Decken-Slot auf die
-  10-Sekunden-Nachführung und der Kern zieht seine Absicht nach der
-  Nachweisfrist zurück (`nachweis_fehlt`) — sichtbar, nie stumm.
+- **Der Deye-AUSFÜHRUNGSPFAD steht seit dem 26.08.2026** (er war die offene
+  zweite Hälfte der Freigabe): der Flow-Planknoten deckt jetzt ZWEI Tiers ab —
+  `nativePlanGeneric` (modbus_tcp/SunSpec) und **`nativePlanDeye`** (die
+  Fernsteuer-Registerlage), beide synchron gehaltene Kopien von
+  `nativeSelfConsumption` und beide gegen das Modul gepinnt. HINEIN = **ein**
+  Schreibvorgang `1100 <- 0`, danach nur noch Lesen; HINAUS = der unveränderte
+  gewöhnliche Fernsteuer-Plan (`1101`, `1104`, `1105`, `1109`, `1100 <- 1`
+  ZULETZT). **⚠ Die Vorbedingung braucht eine Lesung, die ein Plan-Knoten nicht
+  machen kann:** der Executor liest die drei Register (`0x0092`/`0x00A6`/`0x00AC`)
+  auf jedem native-Takt VOR jedem Schreibvorgang und legt sie je Logger flüchtig
+  ab; nicht gelesen = nicht bekannt = Verweigerung mit deutschem Grund. Folge:
+  der ERSTE Takt eines Decken-Slots verweigert ehrlich, der zweite schaltet um —
+  weit innerhalb der Nachweisfrist des Kerns. **`mode: "native"` wird nur
+  gemeldet, wenn `1100` wirklich 0 zurückliest**; nur ein belegter Takt liest
+  zusätzlich den `gridChargeProof` (`native.grid_charge_blocked`, dreiwertig).
+  Details + die Beobachtungs-Checkliste: `edge-app/AGENTS.md` und
+  `edge-app/nodered/UNPLANNED-LOAD-BENCH.md`.
 - **Ops:** keine neue Pflicht-Variable, keine Migration, keine Cloud-Änderung.
   `VP_NATIVE_SELF_REGULATION_ENABLED` (Vorgabe AN, Opt-out) ist der Not-Aus je
   Box. Die Edge-Hälfte reist mit dem nächsten Edge-Release.

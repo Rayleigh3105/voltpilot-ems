@@ -2728,6 +2728,11 @@ module.exports = {
   DEYE_SOLAR_SELL,
   DEYE_PROG_CHARGE,
   DEYE_TOU_ENABLED_ALL_WEEK,
+  // The ENABLE bit of the Time-of-Use register (bit 0; the bits above it are the
+  // weekdays). Exported because the flow's native planner takes this fact
+  // STRAIGHT from here rather than retyping it - the same discipline as the
+  // register maps (build-flows.js).
+  DEYE_TOU_ENABLE_BIT,
   DEYE_CONTROL_SLOT,
   CERTIFIED_CONTROL_FAMILIES,
   SETPOINT_STALE_MS,
@@ -2737,6 +2742,10 @@ module.exports = {
   DEYE_REMOTE_REG,
   DEYE_REMOTE_PROBE,
   DEYE_REMOTE_MODE,
+  // The register layout the adapter writes (and the ONLY one whose firmware may
+  // key a native-mode certificate). Exported for the same reason as the bit
+  // above: the flow's native planner must not retype it.
+  DEYE_REMOTE_LAYOUT_PR978,
   DEYE_POWER_CONTROL_MODE,
   DEYE_BATTERY_STRATEGY,
   DEYE_REMOTE_SETPOINT_LIMIT,
