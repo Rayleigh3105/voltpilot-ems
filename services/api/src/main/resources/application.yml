@@ -41,6 +41,36 @@ spring:
     # so prod boots cleanly - without loosening checksum/other validation, so
     # dev + CI still catch an accidental edit of an already-applied migration.
     ignore-migration-patterns: "*:missing"
+    # Apply a migration whose version is BELOW the highest already-applied one.
+    #
+    # ⚠ WHY (production incident 2026-08-26): the version number is the moment a
+    # migration was AUTHORED, but the order it reaches a long-lived database is
+    # the order its PR was MERGED - and those two diverge whenever branches run
+    # in parallel. Two real pairs from that week: V20260846010000 (#509) merged
+    # AFTER V20260847000000 (#516), and V20260842000000 (#512) merged AFTER
+    # V20260844000000 (#507). Prod had already applied the higher versions, so
+    # Flyway's default (out-of-order = false) put the newcomers in state IGNORED
+    # and aborted the boot with "Detected resolved migration not applied to
+    # database: 20260846010000". Twelve migrations then stayed unapplied, the
+    # optimizer wrote into columns that did not exist (schedule.unplanned_load_
+    # discharge) and the fleet went a night without a Fahrplan.
+    #
+    # ⚠ repair() CANNOT fix this - it only realigns the bookkeeping of migrations
+    # that ARE applied (checksums/descriptions/types) - so the
+    # SelfHealingFlywayMigrationStrategy deliberately does NOT try: it names the
+    # migration and this setting instead of claiming a heal that never happens.
+    #
+    # What it does NOT loosen: checksum/description/type validation is untouched
+    # (an edited applied migration still fails), and a FRESH database still
+    # applies everything in version order - which is exactly why "never renumber
+    # a migration" stays the rule (docs/deploy.md). Out-of-order only decides
+    # whether a late arrival is applied or refused.
+    #
+    # Break-glass: SPRING_FLYWAY_OUT_OF_ORDER=false turns it off again (Boot's
+    # relaxed env binding - the same knob the 2026-08-26 gitops hotfix used to
+    # turn it ON before this line existed). Deliberately a literal here, not a
+    # ${ENV:default} placeholder, so there is exactly ONE path to the value.
+    out-of-order: true
     placeholders:
       appDbUser: ${APP_DB_USER:voltpilot_app}
       appDbPassword: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
