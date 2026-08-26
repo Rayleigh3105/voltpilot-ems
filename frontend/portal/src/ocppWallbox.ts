@@ -1,6 +1,7 @@
 import type {
   OcppAction,
   OcppActionIntent,
+  OcppConnectorState,
   OcppMeterSample,
   OcppStation,
   OcppTransaction,
@@ -405,6 +406,51 @@ export interface WallboxState {
   actionLabel: string | null;
 }
 
+export interface WallboxConnectorSnapshot {
+  connector: OcppConnectorState | null;
+  connectorId: number | null;
+  fresh: boolean;
+  detail: string;
+}
+
+/**
+ * One connector truth for the whole page. An active transaction may only use
+ * its exact connector; a fresh station heartbeat never freshens an old
+ * StatusNotification.
+ */
+export function wallboxConnectorSnapshot(
+  station: OcppStation | null,
+  transaction: OcppTransaction | null,
+  now = Date.now(),
+): WallboxConnectorSnapshot {
+  const connector = transaction
+    ? station?.connectors.find((item) => item.connectorId === transaction.connectorId) ?? null
+    : station?.connectors[0] ?? null;
+  const connectorId = transaction?.connectorId ?? connector?.connectorId ?? null;
+  if (!connector) return {
+    connector: null,
+    connectorId,
+    fresh: false,
+    detail: connectorId == null
+      ? 'Die Wallbox hat noch keinen Anschlusszustand gemeldet.'
+      : `Für Anschluss ${connectorId} liegt kein aktueller Zustand vor.`,
+  };
+  const reportedAt = Date.parse(connector.reportedAt);
+  const age = now - reportedAt;
+  const fresh = Number.isFinite(reportedAt) && age >= -60_000 && age <= OCPP_FRESH_MS;
+  const lastReported = Number.isFinite(reportedAt)
+    ? new Date(reportedAt).toLocaleString('de-DE')
+    : 'ohne gültigen Zeitstempel';
+  return {
+    connector,
+    connectorId,
+    fresh,
+    detail: fresh
+      ? `Anschluss ${connector.connectorId} wurde aktuell gemeldet.`
+      : `Anschluss ${connector.connectorId} wurde zuletzt ${lastReported} gemeldet.`,
+  };
+}
+
 /** Customer-language state for one physical wallbox; raw OCPP stays secondary. */
 export function wallboxState(
   station: OcppStation | null,
@@ -412,11 +458,9 @@ export function wallboxState(
   now = Date.now(),
 ): WallboxState {
   const connection = stationConnection(station, now);
-  const transactionConnector = hero.transaction
-    ? station?.connectors.find((item) => item.connectorId === hero.transaction?.connectorId) ?? null
-    : null;
-  const connector = transactionConnector ?? station?.connectors[0] ?? null;
-  const connectorId = connector?.connectorId ?? hero.transaction?.connectorId ?? null;
+  const snapshot = wallboxConnectorSnapshot(station, hero.transaction, now);
+  const connector = snapshot.connector;
+  const connectorId = snapshot.connectorId;
   const rawStatus = connector?.status ?? null;
   const connectorName = connectorId == null ? 'Der Anschluss' : `Anschluss ${connectorId}`;
 
@@ -439,6 +483,15 @@ export function wallboxState(
     sentence: 'Die Wallbox liefert gerade keine aktuellen Daten.',
     detail: connection.detail,
     connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Verbindung prüfen',
+  };
+  if (!snapshot.fresh) return {
+    kind: connector ? 'stale' : 'unknown', tone: 'warn',
+    badge: connector ? 'Anschlussdaten veraltet' : 'Anschlussstatus fehlt',
+    sentence: connectorId == null
+      ? 'Wallbox online · der Anschlusszustand ist noch nicht gemeldet.'
+      : `Wallbox online · der Zustand von Anschluss ${connectorId} ist nicht aktuell.`,
+    detail: snapshot.detail,
+    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Status prüfen',
   };
   if (rawStatus === 'Faulted' || Boolean(connector?.errorCode && connector.errorCode !== 'NoError')) return {
     kind: 'faulted', tone: 'error', badge: 'Störung',
@@ -464,7 +517,7 @@ export function wallboxState(
     detail: rawStatus === 'Reserved' ? 'Der Anschluss ist reserviert.' : 'Die Wallbox hat den Anschluss außer Betrieb gemeldet.',
     connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Status prüfen',
   };
-  if (hero.transaction || rawStatus === 'Charging') return {
+  if (rawStatus === 'Charging') return {
     kind: 'charging', tone: 'ok', badge: 'Lädt',
     sentence: `Wallbox online · ${connectorName} lädt${hero.power ? ` mit ${hero.power}` : ''}.`,
     detail: hero.transaction
@@ -478,7 +531,9 @@ export function wallboxState(
     kind: 'available', tone: 'ok', badge: 'Verfügbar',
     sentence: `Wallbox online · ${connectorName} ist verfügbar.`,
     detail: 'Sobald ein Fahrzeug angeschlossen ist, kann der Ladevorgang beginnen.',
-    connectorId, connectorStatus: rawStatus, action: 'RemoteStartTransaction', actionLabel: 'Laden starten',
+    connectorId, connectorStatus: rawStatus,
+    action: hero.transaction ? 'service' : 'RemoteStartTransaction',
+    actionLabel: hero.transaction ? 'Ladevorgang prüfen' : 'Laden starten',
   };
   return {
     kind: 'unknown', tone: 'warn', badge: 'Status fehlt',

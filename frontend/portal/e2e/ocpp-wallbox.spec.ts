@@ -89,6 +89,11 @@ test('complete wallbox home stays responsive and exposes response/effect choreog
   await page.getByRole('button', { name: 'Unveränderliche Auditspur laden' }).click();
   await expect(page.getByRole('list', { name: 'Unveränderliche Auditspur' })).toBeVisible();
   for (const name of ['Connectoren', 'MeterValues', 'Aktionen', 'Konfiguration', 'Ereignisse', 'Transaktionen', 'Software & Firmware']) await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
+  const hashBeforeServiceNavigation = await page.evaluate(() => window.location.hash);
+  await page.getByRole('button', { name: 'MeterValues', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#messwerte')).toBeFocused();
+  expect(await page.evaluate(() => window.location.hash)).toBe(hashBeforeServiceNavigation);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 
   await page.getByRole('button', { name: 'Laden stoppen', exact: true }).click();

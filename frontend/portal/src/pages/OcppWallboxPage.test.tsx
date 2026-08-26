@@ -26,7 +26,12 @@ const created: OcppAction = {
 
 describe('OcppWallboxPage integration', () => {
   beforeEach(() => {
-    vi.spyOn(api, 'ocppStations').mockResolvedValue([{ ...station, lastSeen: new Date().toISOString() }]);
+    const reportedAt = new Date().toISOString();
+    vi.spyOn(api, 'ocppStations').mockResolvedValue([{
+      ...station,
+      lastSeen: reportedAt,
+      connectors: station.connectors.map((connector) => ({ ...connector, reportedAt })),
+    }]);
     vi.spyOn(api, 'ocppEvents').mockResolvedValue([]);
     vi.spyOn(api, 'ocppGaps').mockResolvedValue([]);
     vi.spyOn(api, 'ocppTransactions').mockResolvedValue([{ deviceId: 'd', chargePointId: 'CP-1', transactionId: 42, connectorId: 1, startedAt: new Date(Date.now() - 42 * 60_000).toISOString(), stoppedAt: null, meterStart: 1000, meterStop: null, stopReason: null, startIdTagRef: 'private-reference', stopIdTagRef: null, reservationId: null, chargingProfileId: null, chargingProfilePurpose: null, startAuthStatus: 'Accepted', stopAuthStatus: null, parentIdTagRef: null, transactionData: null, transactionDataPurgedAt: null }]);
@@ -84,6 +89,9 @@ describe('OcppWallboxPage integration', () => {
     fireEvent.click(screen.getByText('Service & Diagnose'));
     const before = window.location.hash;
     fireEvent.click(screen.getByRole('button', { name: 'MeterValues' }));
+    const target = document.getElementById('messwerte');
+    await waitFor(() => expect(document.activeElement).toBe(target));
+    expect(target).toHaveAttribute('tabindex', '-1');
     expect(window.location.hash).toBe(before);
   });
 
@@ -98,7 +106,7 @@ describe('OcppWallboxPage integration', () => {
       connected,
       lastSeen: new Date().toISOString(),
       connectors: [{ ...station.connectors[0], status: connectorStatus,
-        errorCode: connectorStatus === 'Faulted' ? 'GroundFailure' : 'NoError' }],
+        errorCode: connectorStatus === 'Faulted' ? 'GroundFailure' : 'NoError', reportedAt: new Date().toISOString() }],
     }]);
     vi.mocked(api.ocppTransactions).mockResolvedValue([]);
     vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
@@ -127,6 +135,50 @@ describe('OcppWallboxPage integration', () => {
     expect(missing.container.querySelector('[data-state="unknown"]')).toBeInTheDocument();
   });
 
+  it('keeps a stale connector out of status, reason and connector settings despite a fresh heartbeat', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([{
+      ...station,
+      lastSeen: new Date().toISOString(),
+      connectors: [{ ...station.connectors[0], status: 'Charging', reportedAt: new Date(Date.now() - 10 * 60_000).toISOString() }],
+    }]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" charger={{
+      deviceId: 'd', chargePointId: 'CP-1', priority: true, connected: true, ready: true,
+      connectors: [{ connectorId: 1, charging: true, allocatedKw: 11, boost: true, reasonText: 'lädt mit Netzfreigabe' }],
+    }} />);
+    expect(await screen.findByRole('heading', { name: /Zustand von Anschluss 1 ist nicht aktuell/ })).toBeVisible();
+    expect(screen.getByText('Anschluss 1 zuletzt: Lädt')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Status prüfen' })).toBeVisible();
+    expect(document.body).not.toHaveTextContent('lädt mit Netzfreigabe');
+    expect(document.body).not.toHaveTextContent('11 kW');
+    expect(screen.getByText('Aktuelle Freigabe').nextElementSibling).toHaveTextContent('nicht gemeldet');
+    expect(screen.getByText('Sofort laden').nextElementSibling).toHaveTextContent('nicht aktiv');
+  });
+
+  it('never uses connector 1 status or settings for an open transaction on connector 2', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([{
+      ...station,
+      lastSeen: new Date().toISOString(),
+      connectors: [{ ...station.connectors[0], status: 'Charging', reportedAt: new Date().toISOString() }],
+    }]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([{
+      deviceId: 'd', chargePointId: 'CP-1', transactionId: 43, connectorId: 2,
+      startedAt: new Date(Date.now() - 60_000).toISOString(), stoppedAt: null, meterStart: 0, meterStop: null,
+      stopReason: null, startIdTagRef: null, stopIdTagRef: null, reservationId: null, chargingProfileId: null,
+      chargingProfilePurpose: null, startAuthStatus: 'Accepted', stopAuthStatus: null, parentIdTagRef: null,
+      transactionData: null, transactionDataPurgedAt: null,
+    }]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" charger={{
+      deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: true,
+      connectors: [{ connectorId: 1, charging: true, allocatedKw: 22, boost: true, reasonText: 'Connector 1 lädt' }],
+    }} />);
+    expect(await screen.findByRole('heading', { name: /Zustand von Anschluss 2 ist nicht aktuell/ })).toBeVisible();
+    expect(screen.getByText('Anschluss 2: kein aktueller Zustand')).toBeVisible();
+    expect(document.body).not.toHaveTextContent('Connector 1 lädt');
+    expect(document.body).not.toHaveTextContent('22 kW');
+    expect(screen.getByRole('button', { name: 'Status prüfen' })).toBeVisible();
+  });
+
   it('keeps loading and full API failure explicit and recoverable', async () => {
     vi.mocked(api.ocppStations).mockReturnValueOnce(new Promise(() => {}));
     const loading = render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
@@ -149,7 +201,7 @@ describe('OcppWallboxPage integration', () => {
       ...station,
       lastSeen: new Date().toISOString(),
       supportedFeatureProfiles: [],
-      connectors: [{ ...station.connectors[0], status: 'Available' }],
+      connectors: [{ ...station.connectors[0], status: 'Available', reportedAt: new Date().toISOString() }],
     }]);
     vi.mocked(api.ocppActionPermissions).mockResolvedValue({ actions: {} });
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
@@ -193,7 +245,7 @@ describe('OcppWallboxPage integration', () => {
 
   it('masks assigned identifiers and every URI scheme across all untrusted OCPP DOM surfaces', async () => {
     vi.mocked(api.ocppStations).mockResolvedValue([{ ...station, lastSeen: new Date().toISOString(), connectors: [{
-      ...station.connectors[0], info: 'idTag=CONNECTOR-LEAK callback=mqtt://connector.internal/topic',
+      ...station.connectors[0], reportedAt: new Date().toISOString(), info: 'idTag=CONNECTOR-LEAK callback=mqtt://connector.internal/topic',
     }] }]);
     vi.mocked(api.ocppMeterValues).mockResolvedValue([{ sampledAt: new Date().toISOString(), eventId: 'meter-secret', meterValueIndex: 0,
       sampledValueIndex: 0, deviceId: 'd', chargePointId: 'CP-1', connectorId: 1, transactionId: 42,
@@ -267,6 +319,22 @@ describe('OcppWallboxPage integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Vor Versand abbrechen' }));
     await waitFor(() => expect(api.cancelOcppAction).toHaveBeenCalledWith('s', prepared.id));
     expect(await screen.findByText('Vor Versand abgebrochen')).toBeVisible();
+  });
+
+  it('suppresses a negative completed meter delta in both session summaries', async () => {
+    vi.mocked(api.ocppTransactions).mockResolvedValue([{
+      deviceId: 'd', chargePointId: 'CP-1', transactionId: 44, connectorId: 1,
+      startedAt: new Date(Date.now() - 60 * 60_000).toISOString(), stoppedAt: new Date().toISOString(),
+      meterStart: 2000, meterStop: 1000, stopReason: 'Local', startIdTagRef: null, stopIdTagRef: null,
+      reservationId: null, chargingProfileId: null, chargingProfilePurpose: null, startAuthStatus: 'Accepted',
+      stopAuthStatus: 'Accepted', parentIdTagRef: null, transactionData: null, transactionDataPurgedAt: null,
+    }]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
+    await screen.findByRole('heading', { name: /Wallbox online/ });
+    fireEvent.click(screen.getByText('Service & Diagnose'));
+    expect(screen.getAllByText('Energie nicht verfügbar')).toHaveLength(2);
+    expect(document.body).not.toHaveTextContent('-1 kWh');
   });
 
   it('hands a bound foreign-firmware intent to a second operator and executes it unchanged', async () => {

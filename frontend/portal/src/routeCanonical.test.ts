@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalShellRoute, type ShellInput } from './betriebsart';
-import { anlageRoute, pageRoute, type Route } from './nav';
+import { canonicalShellHash, canonicalShellRoute, type ShellInput } from './betriebsart';
+import { anlageRoute, pageRoute, parseRoute, type Route } from './nav';
 
 const shell = (over: Partial<ShellInput> = {}): ShellInput => ({
   isAdmin: false,
@@ -52,6 +52,15 @@ describe('post-hydration route canonicalization', () => {
     });
   });
 
+  it('preserves the complete browser query suffix while correcting an invalid site', () => {
+    const source = '#/anlage/missing/messwerte?m=e%3Ac&z=woche&at=2026-05-01';
+    window.history.replaceState(null, '', source);
+    const target = canonical(parseRoute(window.location.hash));
+    expect(target).toEqual({ page: 'anlagen', siteId: 'sole', sub: 'messwerte' });
+    window.history.replaceState(null, '', canonicalShellHash(target as Route, window.location.hash));
+    expect(window.location.hash).toBe('#/anlage/sole/messwerte?m=e%3Ac&z=woche&at=2026-05-01');
+  });
+
   it('lands a fleet shell once on Portfolio and preserves valid site deep links', () => {
     const fleet = { betriebsart: 'betreiber' as const };
     expect(canonical(pageRoute('uebersicht'), fleet, ['a'])).toEqual(pageRoute('portfolio'));
@@ -65,5 +74,32 @@ describe('post-hydration route canonicalization', () => {
     expect(canonical(pageRoute('uebersicht'), { loaded: false })).toBeNull();
     expect(canonical(pageRoute('uebersicht'), { tenantReady: false })).toBeNull();
     expect(canonical(pageRoute('uebersicht'), {}, [])).toBeNull();
+  });
+
+  it('canonicalizes the complete admin portfolio matrix for 0, 1 and 2 sites', () => {
+    for (const betriebsart of ['endkunde', 'betreiber', null] as const) {
+      for (const count of [0, 1, 2]) {
+        const siteIds = Array.from({ length: count }, (_, index) => `site-${index + 1}`);
+        const over = { isAdmin: true, betriebsart };
+        const fleet = betriebsart === 'betreiber' || count >= 2;
+        const expectedLanding = fleet ? pageRoute('portfolio') : null;
+        const expectedPortfolio = fleet ? null : pageRoute('uebersicht');
+
+        expect(canonical(pageRoute('uebersicht'), over, siteIds), `${betriebsart}/${count} overview`)
+          .toEqual(expectedLanding);
+        expect(canonical(pageRoute('anlagen'), over, siteIds), `${betriebsart}/${count} naked Anlage`)
+          .toEqual(expectedLanding);
+        for (const page of ['portfolio', 'portfolio-messwerte', 'portfolio-erloese'] as const) {
+          expect(canonical(pageRoute(page), over, siteIds), `${betriebsart}/${count} ${page}`)
+            .toEqual(expectedPortfolio);
+        }
+        if (count > 0) {
+          expect(canonical(anlageRoute(siteIds[0]), over, siteIds), `${betriebsart}/${count} valid site`)
+            .toBeNull();
+          expect(canonical(anlageRoute('missing'), over, siteIds), `${betriebsart}/${count} invalid site`)
+            .toEqual(fleet ? pageRoute('portfolio') : pageRoute('uebersicht'));
+        }
+      }
+    }
   });
 });

@@ -33,6 +33,7 @@ import {
   safeActionError,
   safeJson,
   stationConnection,
+  wallboxConnectorSnapshot,
   wallboxHero,
   wallboxState,
   type OcppActionHandoff,
@@ -175,13 +176,13 @@ export function OcppWallboxPage({
   const configuration = data.configuration.find((item) => item.chargePointId === chargePointId) ?? null;
   const hero = wallboxHero(transactions, meter, data.actions, now);
   const connection = stationConnection(station, now);
+  const connectorSnapshot = wallboxConnectorSnapshot(station, hero.transaction, now);
+  const connectorCurrent = connection.sendable && connectorSnapshot.fresh;
   const state = wallboxState(station, hero, now);
-  const connector = station?.connectors.find((item) => item.connectorId === state.connectorId)
-    ?? station?.connectors[0]
-    ?? null;
-  const chargerConnector = charger?.connectors?.find((item) => item.connectorId === state.connectorId)
-    ?? charger?.connectors?.[0]
-    ?? null;
+  const connector = connectorSnapshot.connector;
+  const chargerConnector = connectorCurrent
+    ? charger?.connectors?.find((item) => item.connectorId === connectorSnapshot.connectorId) ?? null
+    : null;
   const completedTransactions = transactions
     .filter((transaction) => transaction.stoppedAt != null)
     .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
@@ -201,8 +202,11 @@ export function OcppWallboxPage({
   function openService(sectionId?: string) {
     if (serviceRef.current) serviceRef.current.open = true;
     window.requestAnimationFrame(() => {
-      (sectionId ? document.getElementById(sectionId) : serviceRef.current)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const target = sectionId
+        ? document.getElementById(sectionId)
+        : serviceRef.current?.querySelector<HTMLElement>('summary');
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
 
@@ -232,8 +236,10 @@ export function OcppWallboxPage({
           </span>
           <span>{station?.lastSeen ? `zuletzt gesehen ${shortTime(station.lastSeen)}` : 'noch nicht gesehen'}</span>
           <span>{connector
-            ? `Anschluss ${connector.connectorId}${connection.sendable ? '' : ' zuletzt'}: ${connectorStatus(connector.status)}`
-            : 'Anschlusszustand nicht gemeldet'}</span>
+            ? `Anschluss ${connector.connectorId}${connectorCurrent ? '' : ' zuletzt'}: ${connectorStatus(connector.status)}`
+            : connectorSnapshot.connectorId == null
+              ? 'Anschlusszustand nicht gemeldet'
+              : `Anschluss ${connectorSnapshot.connectorId}: kein aktueller Zustand`}</span>
         </div>
       </Card>
 
@@ -248,7 +254,7 @@ export function OcppWallboxPage({
         <div className="vp-ocpp-now-main">
           <span className={`vp-ocpp-state-mark is-${state.tone}`}><i /> {state.badge}</span>
           <h2 id="ocpp-jetzt-title">{state.sentence}</h2>
-          <p>{chargerConnector?.reasonText?.trim() || state.detail}</p>
+          <p>{connectorCurrent ? chargerConnector?.reasonText?.trim() || state.detail : state.detail}</p>
           {state.kind === 'charging' && (
             <div className="vp-ocpp-power">
               <strong>{hero.power ?? 'Nicht verfügbar'}</strong>
@@ -286,7 +292,7 @@ export function OcppWallboxPage({
           <Fact label="Verfügbarkeit" value={state.badge} />
           <Fact label="Connector" value={state.connectorId == null
             ? 'nicht gemeldet'
-            : `${state.connectorId} · ${state.connectorStatus ? connectorStatus(state.connectorStatus) : 'Zustand nicht gemeldet'}${connection.sendable ? '' : ' · letzter Stand'}`} />
+            : `${state.connectorId} · ${state.connectorStatus ? connectorStatus(state.connectorStatus) : 'Zustand nicht gemeldet'}${connectorCurrent ? '' : ' · letzter Stand'}`} />
         </dl>
       </section>
 
@@ -492,7 +498,7 @@ function DeviceBreadcrumb({
 }
 
 function OcppSection({ id, label, title, children }: { id: string; label: string; title: string; children: React.ReactNode }) {
-  return <section id={id} className="vp-ocpp-section"><div className="vp-ocpp-section-title"><div><span>{label}</span><h2>{title}</h2></div></div>{children}</section>;
+  return <section id={id} className="vp-ocpp-section" tabIndex={-1}><div className="vp-ocpp-section-title"><div><span>{label}</span><h2>{title}</h2></div></div>{children}</section>;
 }
 function Fact({ label, value, detail, mono }: { label: string; value?: string | null; detail?: string | null; mono?: boolean }) {
   return <div><dt>{label}</dt><dd className={mono ? 'vp-mono' : undefined}>{value ? redactSensitiveText(value) : 'nicht gemeldet'}{detail && <small>{redactSensitiveText(detail)}</small>}</dd></div>;
@@ -552,7 +558,7 @@ function TransactionList({ rows }: { rows: OcppTransaction[] }) {
     <div className="vp-ocpp-transaction-head"><div><span>Transaktion #{row.transactionId} · Stecker {row.connectorId}</span><strong>{row.stoppedAt ? 'Abgeschlossen' : 'Läuft'}</strong></div><StatusPill ok={!row.stoppedAt}>{row.stoppedAt ? redactSensitiveText(row.stopReason || 'beendet') : 'aktiv'}</StatusPill></div>
     <dl><Fact label="Beginn" value={time(row.startedAt)} /><Fact label="Ende" value={row.stoppedAt ? time(row.stoppedAt) : null} />
       <Fact label="Zähler" value={`${row.meterStart}${row.meterStop != null ? ` → ${row.meterStop}` : ' → läuft'}`} />
-      <Fact label="Energie" value={row.meterStop != null ? `${((row.meterStop - row.meterStart) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} kWh` : null} />
+      <Fact label="Energie" value={completedEnergy(row) ?? 'Energie nicht verfügbar'} />
       <Fact label="Autorisierung" value={`${maskReference(row.startIdTagRef)}${row.stopIdTagRef ? ` → ${maskReference(row.stopIdTagRef)}` : ''}`} mono />
       <Fact label="Reservierung / Profil" value={[row.reservationId != null && `#${row.reservationId}`, row.chargingProfileId != null && `Profil #${row.chargingProfileId}`, row.chargingProfilePurpose].filter(Boolean).join(' · ') || null} />
     </dl>

@@ -15,6 +15,7 @@ import {
   safeJson,
   stationConnection,
   wallboxHero,
+  wallboxConnectorSnapshot,
   wallboxState,
 } from './ocppWallbox';
 
@@ -112,9 +113,12 @@ describe('OCPP wallbox view model', () => {
       connected: true, lastSeen: '2026-08-25T08:42:00Z', connectors: [],
     } as unknown as OcppStation;
     const emptyHero = wallboxHero([], [], [], now);
-    expect(wallboxState({ ...base, connectors: [{ connectorId: 1, status: 'Available', errorCode: 'NoError' }] } as OcppStation, emptyHero, now))
+    const connector = (status: string, errorCode = 'NoError') => ({
+      connectorId: 1, status, errorCode, reportedAt: '2026-08-25T08:42:00Z',
+    });
+    expect(wallboxState({ ...base, connectors: [connector('Available')] } as OcppStation, emptyHero, now))
       .toMatchObject({ kind: 'available', badge: 'Verfügbar', action: 'RemoteStartTransaction' });
-    expect(wallboxState({ ...base, connectors: [{ connectorId: 1, status: 'SuspendedEVSE', errorCode: 'NoError' }] } as OcppStation, emptyHero, now))
+    expect(wallboxState({ ...base, connectors: [connector('SuspendedEVSE')] } as OcppStation, emptyHero, now))
       .toMatchObject({ kind: 'waiting', badge: 'Wartet', actionLabel: 'Jetzt laden' });
     const activeTransaction = {
       deviceId: 'd', chargePointId: 'CP-1', transactionId: 42, connectorId: 1,
@@ -124,14 +128,62 @@ describe('OCPP wallbox view model', () => {
       stopAuthStatus: null, parentIdTagRef: null, transactionData: null, transactionDataPurgedAt: null,
     } satisfies OcppTransaction;
     expect(wallboxState(
-      { ...base, connectors: [{ connectorId: 1, status: 'SuspendedEVSE', errorCode: 'NoError' }] } as OcppStation,
+      { ...base, connectors: [connector('SuspendedEVSE')] } as OcppStation,
       { ...emptyHero, transaction: activeTransaction },
       now,
     )).toMatchObject({ kind: 'waiting', action: 'service', actionLabel: 'Ladevorgang prüfen' });
-    expect(wallboxState({ ...base, connectors: [{ connectorId: 1, status: 'Faulted', errorCode: 'GroundFailure' }] } as OcppStation, emptyHero, now))
+    expect(wallboxState({ ...base, connectors: [connector('Faulted', 'GroundFailure')] } as OcppStation, emptyHero, now))
       .toMatchObject({ kind: 'faulted', badge: 'Störung', action: 'service' });
     expect(wallboxState({ ...base, connected: false } as OcppStation, emptyHero, now))
       .toMatchObject({ kind: 'offline', badge: 'Offline', actionLabel: 'Verbindung prüfen' });
+  });
+
+  it('does not let a fresh station heartbeat freshen an old connector status', () => {
+    const now = Date.parse('2026-08-25T09:00:00Z');
+    const stationWithOldConnector = {
+      connected: true,
+      lastSeen: '2026-08-25T09:00:00Z',
+      connectors: [{ connectorId: 1, status: 'Available', errorCode: 'NoError', reportedAt: '2026-08-25T08:50:00Z' }],
+    } as OcppStation;
+    const hero = wallboxHero([], [], [], now);
+    expect(stationConnection(stationWithOldConnector, now)).toMatchObject({ sendable: true, label: 'Online' });
+    expect(wallboxConnectorSnapshot(stationWithOldConnector, null, now)).toMatchObject({ connectorId: 1, fresh: false });
+    expect(wallboxState(stationWithOldConnector, hero, now)).toMatchObject({
+      kind: 'stale',
+      action: 'service',
+      actionLabel: 'Status prüfen',
+    });
+  });
+
+  it('never falls back to another connector for an open transaction', () => {
+    const now = Date.parse('2026-08-25T09:00:00Z');
+    const transaction = {
+      deviceId: 'd', chargePointId: 'CP-1', transactionId: 42, connectorId: 2,
+      startedAt: '2026-08-25T08:00:00Z', stoppedAt: null, meterStart: 0, meterStop: null,
+      stopReason: null, startIdTagRef: null, stopIdTagRef: null, reservationId: null,
+      chargingProfileId: null, chargingProfilePurpose: null, startAuthStatus: 'Accepted',
+      stopAuthStatus: null, parentIdTagRef: null, transactionData: null, transactionDataPurgedAt: null,
+    } satisfies OcppTransaction;
+    const stationWithOnlyConnectorOne = {
+      connected: true,
+      lastSeen: '2026-08-25T09:00:00Z',
+      connectors: [{ connectorId: 1, status: 'Available', errorCode: 'NoError', reportedAt: '2026-08-25T09:00:00Z' }],
+    } as OcppStation;
+    const hero = wallboxHero([transaction], [], [], now);
+    expect(wallboxConnectorSnapshot(stationWithOnlyConnectorOne, transaction, now)).toEqual({
+      connector: null,
+      connectorId: 2,
+      fresh: false,
+      detail: 'Für Anschluss 2 liegt kein aktueller Zustand vor.',
+    });
+    expect(wallboxState(stationWithOnlyConnectorOne, hero, now)).toMatchObject({
+      kind: 'unknown',
+      connectorId: 2,
+      connectorStatus: null,
+      action: 'service',
+      actionLabel: 'Status prüfen',
+    });
+    expect(wallboxState(stationWithOnlyConnectorOne, hero, now).sentence).not.toContain('Anschluss 1');
   });
 
   it('rejects stale or foreign hero evidence and keeps the actual charging-rate unit', () => {

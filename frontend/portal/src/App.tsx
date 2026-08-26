@@ -16,6 +16,7 @@ import {
 } from './api';
 import { adminApi, type Tenant } from './admin/adminApi';
 import {
+  canonicalShellHash,
   canonicalShellRoute,
   fleetLabel,
   redirectAdminToPlattform,
@@ -647,7 +648,7 @@ function UnifiedPortal() {
     const shell = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length };
     const target = canonicalShellRoute({ shell, route, siteIds: sites.map((site) => site.id) });
     if (!target) return;
-    window.history.replaceState(null, '', hashForRoute(target));
+    window.history.replaceState(null, '', canonicalShellHash(target, window.location.hash));
     setRoute(target);
   }, [
     isAdmin,

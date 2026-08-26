@@ -1,5 +1,5 @@
 import type { Betriebsart } from './api';
-import { anlageRoute, isPortfolioPage, pageRoute, type Route } from './nav';
+import { anlageRoute, hashForRoute, isPortfolioPage, pageRoute, type Route } from './nav';
 
 /**
  * U0 shell decision (design vp-ems-ui-overhaul §2 / epic UO #509): which
@@ -163,10 +163,15 @@ export function canonicalShellRoute(input: {
     && route.siteId != null
     && !siteIds.includes(route.siteId);
 
-  // Admins keep their explicit customer overview. Only the established fleet
-  // landing and the retired naked list route are canonicalized for them.
+  // Admins keep their explicit customer overview. A fleet context has exactly
+  // one portfolio landing; without that shell level, old portfolio bookmarks
+  // return to the customer overview instead of rendering an orphaned surface.
   if (shell.isAdmin) {
-    if (fleet && (route.page === 'uebersicht' || nakedAnlage)) return pageRoute('portfolio');
+    if (fleet) {
+      if (route.page === 'uebersicht' || nakedAnlage || invalidSite) return pageRoute('portfolio');
+      return null;
+    }
+    if (isPortfolioPage(route.page) || invalidSite) return pageRoute('uebersicht');
     return null;
   }
 
@@ -187,6 +192,16 @@ export function canonicalShellRoute(input: {
     return { ...route, siteId: soleSiteId };
   }
   return null;
+}
+
+/**
+ * Build the single canonical replacement without losing route-local filter,
+ * zoom or time parameters. Route intentionally models only the path, so the
+ * query suffix must travel byte-for-byte from the browser hash.
+ */
+export function canonicalShellHash(target: Route, currentHash: string): string {
+  const queryStart = currentHash.indexOf('?');
+  return `${hashForRoute(target)}${queryStart < 0 ? '' : currentHash.slice(queryStart)}`;
 }
 
 /**

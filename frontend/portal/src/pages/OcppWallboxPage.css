@@ -56,6 +56,7 @@
 .vp-ocpp-nav button:hover, .vp-ocpp-nav button:focus-visible { background: var(--ocpp-soft); color: var(--ocpp-ink); }
 
 .vp-ocpp-section { scroll-margin-top: 66px; min-width: 0; padding: clamp(20px, 4vw, 40px); border: 1px solid var(--ocpp-border); border-radius: var(--vp-radius-lg, 14px); background: var(--ocpp-surface); }
+.vp-ocpp-section:focus { outline: 3px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282)); outline-offset: 3px; }
 .vp-ocpp-section-title { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--vp-space-3, 12px); margin-bottom: var(--vp-space-5, 20px); }
 .vp-ocpp-section-title > div { min-width: 0; }
 .vp-ocpp-section-title span { display: block; margin-bottom: 3px; color: var(--vp-link, #2c5282); font-size: .76rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
