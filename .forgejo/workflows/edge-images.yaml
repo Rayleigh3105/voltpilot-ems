@@ -105,6 +105,7 @@ jobs:
         run: |
           mapfile -t tests < <(find nodered -type f -name '*.test.js' \
             -not -path '*/node_modules/*' -print | sort)
+          (( ${#tests[@]} > 0 )) || { echo "No Node-RED test files found" >&2; exit 1; }
           node --test "${tests[@]}"
 
       - name: vp-palette

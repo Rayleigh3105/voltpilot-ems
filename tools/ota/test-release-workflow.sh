@@ -72,6 +72,7 @@ for required in (
     "package_edge_runtime.py --check",
     "go test -race -p 1 ./...",
     "-not -path '*/node_modules/*'",
+    '(( ${#tests[@]} > 0 ))',
     "node --test",
     "npm test",
     "edge-app/test/e2e-ocpp.sh",
@@ -80,6 +81,40 @@ for required in (
     assert required in runs, required
 PY
 ok "Edge-Images werden erst nach Katalog-, Runtime-, Race- und Systemtests gebaut"
+
+# Gegenprobe fuer Node 22: `node --test` ohne Dateipfade endet erfolgreich.
+# Deshalb fuehren wir den ECHTEN Workflow-Schritt in einem absichtlich leeren
+# nodered/-Baum aus und stellen sicher, dass der Nichtleer-Guard vorher
+# abbricht und der erfolgreich endende node-Stub nie erreicht wird.
+python3 - "$WORKFLOW" "$TMP/nodered-test-step.sh" <<'PY'
+import sys, yaml
+
+workflow, out = sys.argv[1], sys.argv[2]
+steps = yaml.safe_load(open(workflow))["jobs"]["test"]["steps"]
+step = next(s for s in steps if s.get("name") == "Node-RED runtime and drivers")
+open(out, "w").write(step["run"])
+PY
+mkdir -p "$TMP/no-node-red-tests/nodered" "$TMP/node-stub-bin"
+cat >"$TMP/node-stub-bin/node" <<EOF
+#!/usr/bin/env bash
+touch "$TMP/node-was-called"
+exit 0
+EOF
+chmod +x "$TMP/node-stub-bin/node"
+if (
+	cd "$TMP/no-node-red-tests"
+	PATH="$TMP/node-stub-bin:$PATH" bash "$TMP/nodered-test-step.sh"
+) >"$TMP/no-tests.out" 2>"$TMP/no-tests.err"; then
+	bad "leerer Node-RED-Fundlauf bricht ab" "Status ungleich 0" "Status 0"
+else
+	ok "leerer Node-RED-Fundlauf bricht trotz erfolgreichem node-Stub ab"
+fi
+has "$TMP/no-tests.err" "No Node-RED test files found" "der Nichtleer-Guard erklaert den Abbruch"
+if [ -e "$TMP/node-was-called" ]; then
+	bad "node --test wird ohne Dateien nicht aufgerufen" "node nicht aufgerufen" "node wurde aufgerufen"
+else
+	ok "node --test wird ohne Dateien nicht aufgerufen"
+fi
 
 # --- den Schritt aus dem Workflow herausschneiden ----------------------------
 python3 - "$WORKFLOW" "$STEP" "$TMP" <<'PY'
