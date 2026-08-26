@@ -1447,7 +1447,7 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „Edge-Updates: EIN Schritt" und
   - **Bekannte Grenze:** eine Box, die der Plattenwaechter schon blockiert,
     kommt hierueber nicht frei (ohne Tausch kein Aufraeumen) - dort einmal von
     Hand `docker image prune -a`, was durch den Halter-Container nachweislich
-    sicher ist. Betreiber-Handbuch: `docs/ota-autonomie.md` §5b.
+    sicher ist. Betreiber-Handbuch: `docs/ota-autonomie.md` §4.
 - Beweise: `internal/otaapply` (die Tore + Wiederaufnahme + Sequenz + Snapshot +
   Schalter + `prune_test.go`: die Regel inkl. Halter, Namensraum, Kulanz je
   Repository, alle Namen einer Kennung, Schalter-Vorzeichen), `internal/otaupdater`
