@@ -49,6 +49,18 @@ tags:
       indefinitely (claiming may happen days after first boot); on 429 back
       off harder (>= 5 min). Disabled unless the deployment stages the device
       CA (VOLTPILOT_ENROLLMENT_ENABLED; see docker-compose.prod.yml).
+  - name: measurements
+    description: >
+      Zusätzliche Messwerte eines Geräts: der gewünschte, revisionierte
+      Pollplan, sein Katalog, seine Budget-Vorschau und der Verlauf je Punkt.
+      Mandanten-Zaun ist der normale Geräte-/RLS-Pfad (fremdes Gerät = 404),
+      Plattform-Admins nutzen den X-Tenant-Id-Umschalter.
+      Seit Geräteseite Stufe 3b trägt jede Auswahl optional die KOMPONENTE,
+      der sie gehört (entityId). Ohne den Parameter antwortet jede Route
+      Zeichen für Zeichen wie vorher: die Auswahl gehört dann dem Gerät als
+      Ganzem. Zwei baugleiche Wechselrichter hinter EINER Box führen damit
+      getrennte Listen - während Revision und Budget geräteweit bleiben (es
+      gibt EIN veröffentlichtes Plan-Dokument und EINEN physischen Bus).
   - name: telemetry
   - name: market
   - name: weather
@@ -613,6 +625,412 @@ paths:
       responses:
         "200": { description: Pending, applied, or refused move provisioning., content: { application/json: { schema: { $ref: "#/components/schemas/MoveProvisioningStatus" } } } }
         "404": { description: Device not found for this tenant. }
+  /api/v1/devices/{deviceId}/measurement-selection:
+    get:
+      tags: [measurements]
+      summary: Gewünschter Pollplan, Papier-Spur und Jahresvolumen-Schätzung.
+      description: >
+        Der gespeicherte SOLL-Zustand. `applyStatus` ist niemals eine
+        Anwendungs-Zusage: `pending_edge` heißt, die Box hat noch nicht
+        quittiert. `entityId` schneidet Auswahl UND Papier-Spur auf EINE
+        Komponente zu; `desiredRevision` (das Optimistic-Concurrency-Token des
+        einen veröffentlichten Plans) und `volumeEstimate` (die physische Last
+        des einen Busses) bleiben dabei geräteweit.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: entityId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: >
+            Die Komponente (measurement_point) dieses Geräts. Sie muss an
+            derselben Anlage stehen; eine fremde ist 404. Ohne den Parameter
+            antwortet die Route für das GANZE Gerät.
+      responses:
+        "200":
+          description: Soll-Zustand des Geräts bzw. der Komponente.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MeasurementSelectionState" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Gerät oder Komponente nicht gefunden (RLS). }
+  /api/v1/devices/{deviceId}/measurement-selection/catalog:
+    get:
+      tags: [measurements]
+      summary: Der versionierte Messpunkt-Katalog, durchsuchbar und facettiert.
+      description: >
+        Liefert nur lesbare Punkte. `availableOnly` filtert auf die
+        Anbindungs-Familien, die zu diesem Ziel passen: MIT `entityId` ist das
+        die Familie DIESER Komponente, ohne ihn die Vereinigung der Punkte, die
+        die Geräte-UUID tragen - auf einer Box mit mehreren Komponenten also
+        die des komponierten Hybriden und damit die falsche Frage je Komponente.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: entityId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Die Komponente, deren Familie und Auswahl gelten sollen.
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+          description: >
+            Freitext über Label, Selektor/Adresse/API-Schlüssel, Einheit,
+            Gruppe und Punkt-Schlüssel.
+        - name: family
+          in: query
+          required: false
+          schema: { type: array, items: { type: string } }
+          description: >
+            Katalog-Familien, etwa `goe.api_v2` oder `sunspec.model_103`.
+        - name: group
+          in: query
+          required: false
+          schema: { type: string }
+        - name: semanticStatus
+          in: query
+          required: false
+          schema: { type: string }
+          description: >
+            `known`, `vendor_label_only` oder `unknown` - Letzteres trägt weder
+            Einheit noch Semantik.
+        - name: recorded
+          in: query
+          required: false
+          schema: { type: boolean }
+          description: >
+            Nur schon (bzw. noch nicht) gemessene Punkte. Geräteweit - Samples
+            tragen bis Stufe 3c keine Komponenten-Dimension.
+        - name: availableOnly
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, default: 0 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 100 }
+      responses:
+        "200":
+          description: >
+            Seite des Katalogs samt Facetten-Zählern, je Punkt mit Label,
+            Einheit, Adresse/Selektor, Kadenz-Vorgaben, Aufbewahrung, ob er
+            ausgewählt bzw. gemessen ist und dem letzten bekannten Wert.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400": { description: Unbekannte Facette oder ungültige Seite. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Gerät oder Komponente nicht gefunden (RLS). }
+  /api/v1/devices/{deviceId}/measurement-selection/estimate:
+    get:
+      tags: [measurements]
+      summary: Volumen- und Gerätelast-Vorschau vor dem Klick; schreibt nichts.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: entityId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: >
+            Die Komponente, deren Auswahl ersetzt wird. Die Schätzung zählt
+            weiterhin den GANZEN Bus.
+        - name: pointKey
+          in: query
+          required: true
+          schema: { type: string }
+        - name: enabled
+          in: query
+          required: false
+          schema: { type: boolean, default: true }
+        - name: cadenceS
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 86400 }
+          description: >
+            Ohne Angabe die Katalog-Vorgabe des Punktes. Unterhalb seiner
+            sicheren Geräteempfehlung ist die Anfrage 400.
+      responses:
+        "200":
+          description: >
+            Samples/min, Requests/min, Duty-Cycle und die Jahresvolumen-Spanne,
+            dazu die Grenzen (Warnung ab 120 Samples/min; hart bei 600
+            Samples/min, 30 Requests/min oder 20 % Duty). Es gibt kein
+            Punktzahl-Limit.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400": { description: Unbekannter Punkt oder unzulässige Kadenz. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Gerät oder Komponente nicht gefunden (RLS). }
+  /api/v1/devices/{deviceId}/measurement-selection/custom/estimate:
+    post:
+      tags: [measurements]
+      summary: Dieselbe Vorschau für ein noch nicht angelegtes freies Register.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: entityId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomMeasurementDefinition" }
+      responses:
+        "200":
+          description: Budget-Vorschau.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400":
+          description: >
+            Ungültige Definition - unter anderem ein mitgeschickter
+            Schreibparameter oder eine selbst gewählte Kostenannahme.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Gerät oder Komponente nicht gefunden (RLS). }
+  /api/v1/devices/{deviceId}/measurement-selection/custom:
+    post:
+      tags: [measurements]
+      summary: Eigenen Messwert hinzufügen - ein validiertes, NUR LESBARES freies Register.
+      description: >
+        Der Punkt-Schlüssel wird serverseitig aus dem Idempotenzschlüssel
+        gebildet (`custom.<hex>`); die Definition ist per Kontrakt read-only und
+        trägt keine Schreibfunktion. Die Request-Kostenannahme setzt
+        ausschließlich der Server (konservativ), ein Client-Wert ist 400.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: entityId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Die Komponente, der das Register gehört.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision, idempotencyKey, definition]
+              properties:
+                expectedRevision: { type: integer, format: int64, minimum: 0 }
+                idempotencyKey: { type: string, format: uuid }
+                definition: { $ref: "#/components/schemas/CustomMeasurementDefinition" }
+      responses:
+        "200":
+          description: Soll-Zustand nach dem Anlegen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MeasurementSelectionState" }
+        "400": { description: Ungültige Definition oder fehlender Idempotenzschlüssel. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Gerät oder Komponente nicht gefunden (RLS). }
+        "409":
+          description: >
+            Veraltete Revision, oder derselbe Idempotenzschlüssel für eine
+            andere Änderung.
+        "422": { description: Technisches Messwertbudget überschritten. }
+  /api/v1/devices/{deviceId}/measurement-selection/{pointKey}:
+    put:
+      tags: [measurements]
+      summary: Revisionierte An-/Abwahl eines Katalogpunktes.
+      description: >
+        Abwählen ist ein UPDATE, nie ein DELETE: die Auswahlzeile und ihre
+        Ereignisse bleiben, nur künftige Proben hören auf. Aktivieren stempelt
+        `enabledAt` serverseitig - es wird nichts rückwirkend ergänzt. Die
+        Wiederholung mit demselben Idempotenzschlüssel und derselben Nutzlast
+        ist ein echter Replay und erzeugt keine neue Revision.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: pointKey
+          in: path
+          required: true
+          schema: { type: string }
+        - name: entityId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: >
+            Die Komponente, der diese Auswahl gehört. Derselbe Punkt kann so auf
+            zwei baugleichen Geräten hinter einer Box getrennt beobachtet
+            werden. Ohne den Parameter gehört die Auswahl dem Gerät.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision, idempotencyKey, enabled]
+              properties:
+                expectedRevision: { type: integer, format: int64, minimum: 0 }
+                idempotencyKey: { type: string, format: uuid }
+                enabled: { type: boolean }
+                cadenceS: { type: integer, minimum: 1, maximum: 86400, nullable: true }
+      responses:
+        "200":
+          description: >
+            Soll-Zustand nach der Änderung, auf die Komponente zugeschnitten,
+            wenn eine genannt wurde.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MeasurementSelectionState" }
+        "400":
+          description: >
+            Unbekannter oder nicht lesbarer Punkt, unzulässige Kadenz oder
+            fehlender Idempotenzschlüssel.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Gerät oder Komponente nicht gefunden (RLS). }
+        "409":
+          description: >
+            Veraltete Revision, oder derselbe Idempotenzschlüssel für eine
+            andere Änderung.
+        "422": { description: Technisches Messwertbudget überschritten. }
+  /api/v1/devices/{deviceId}/measurement-selection/{pointKey}/history:
+    get:
+      tags: [measurements]
+      summary: Verlauf EINES Messpunktes, semantisch aggregiert.
+      description: >
+        Bis 48 h wird qualitätsgefiltertes Raw gebucketet, längere Zeiträume
+        lesen die dauerhaften 5-/15-min-Rollups. Gauge liefert gewichtetes
+        Mittel/Min/Max, Counter nur positive Deltas (Resets zählen nicht als
+        Verbrauch), Zustände den letzten Wert. `representation=raw` gibt es nur,
+        wo echte Rohdaten vorliegen, sonst 400.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: pointKey
+          in: path
+          required: true
+          schema: { type: string }
+        - name: range
+          in: query
+          required: false
+          schema: { type: string, default: "24h" }
+          description: >
+            `24h`, `7d`, `30d`, `90d`, `year` oder frei über from/to.
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: representation
+          in: query
+          required: false
+          schema: { type: string, enum: [decoded, raw], default: decoded }
+        - name: siteId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: >
+            Der historische Standort nach einem Geräte-Umzug; ohne Angabe der
+            aktuelle.
+        - name: entityId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: >
+            Die Komponente, deren Familienwechsel als Marker mitreisen sollen.
+            Sie muss an der abgefragten Anlage stehen - dieselbe Regel wie bei
+            einer Auswahl je Komponente.
+      responses:
+        "200":
+          description: >
+            Meta, Datenpunkte und Marker (Auswahl-, Lücken-, Reset-, Zustands-
+            und Familienwechsel).
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400":
+          description: >
+            Unbekannter Zeitraum, oder für diesen Zeitraum liegen keine echten
+            Rohdaten vor.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: >
+            Gerät, Anlage, Komponente oder Messwert nicht gefunden (RLS).
+  /api/v1/devices/{deviceId}/measurement-selection/{pointKey}/export:
+    get:
+      tags: [measurements]
+      summary: Derselbe Verlauf als CSV.
+      description: >
+        Trägt Punkt-Schlüssel, Standort, Labels, Einheit, Aggregation, Semantik,
+        Katalogfassung und Darstellung im Kopf und neutralisiert Formel-Präfixe
+        von Tabellenkalkulationen.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: pointKey
+          in: path
+          required: true
+          schema: { type: string }
+        - name: range
+          in: query
+          required: false
+          schema: { type: string, default: "24h" }
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: representation
+          in: query
+          required: false
+          schema: { type: string, enum: [decoded, raw], default: decoded }
+        - name: siteId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: entityId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: CSV.
+          content:
+            "text/csv":
+              schema: { type: string }
+        "400":
+          description: >
+            Unbekannter Zeitraum, oder für diesen Zeitraum liegen keine echten
+            Rohdaten vor.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: >
+            Gerät, Anlage, Komponente oder Messwert nicht gefunden (RLS).
   /api/v1/devices/claim:
     post:
       tags: [devices]
@@ -11412,3 +11830,156 @@ components:
               baselineCostEur: { type: number, nullable: true }
               wearCostEur: { type: number, nullable: true }
               slotRole: { type: string, nullable: true }
+    MeasurementSelectionState:
+      type: object
+      description: >
+        Der gewünschte Pollplan eines Geräts (oder einer seiner Komponenten)
+        samt seiner append-only Papier-Spur. Nichts hier behauptet eine
+        Anwendung: `applyStatus` wird erst durch die Quittung der Box wahr.
+      properties:
+        deviceId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        entityId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Die Komponente, auf die diese Sicht zugeschnitten ist. null = das
+            ganze Gerät (die Semantik vor Geräteseite Stufe 3b).
+        desiredRevision:
+          type: integer
+          format: int64
+          description: >
+            Monotone Revision des einen veröffentlichten Plan-Dokuments. Sie ist
+            GERÄTEWEIT, auch in einer Komponenten-Sicht, und ist das
+            `expectedRevision` der nächsten Änderung.
+        catalogVersion: { type: string }
+        status:
+          type: string
+          enum: [no_selection, pending_edge, rejected, first_sample, applied]
+        statusReason: { type: string, nullable: true }
+        activationNotice: { type: string, nullable: true }
+        disableNotice: { type: string, nullable: true }
+        selections:
+          type: array
+          items: { $ref: "#/components/schemas/MeasurementSelectionPoint" }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/MeasurementSelectionEvent" }
+        volumeEstimate:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: >
+            Die Budget-/Volumen-Schätzung. Sie zählt IMMER das ganze Gerät - der
+            Bus ist physisch einer, auch wenn die Sicht eine Komponente zeigt.
+    MeasurementSelectionPoint:
+      type: object
+      properties:
+        entityId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Die Komponente, die diesen Punkt beobachtet; null = das Gerät.
+        pointKey: { type: string }
+        enabled: { type: boolean }
+        cadenceS: { type: integer, nullable: true }
+        desiredRevision: { type: integer, format: int64 }
+        enabledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Serverseitige No-Backfill-Grenze: aufgezeichnet wird ab hier,
+            frühere Werte werden nie ergänzt.
+        disabledAt: { type: string, format: date-time, nullable: true }
+        catalogVersion: { type: string }
+        changedBy: { type: string }
+        changedByName: { type: string, nullable: true }
+        changedAt: { type: string, format: date-time }
+        applyStatus:
+          type: string
+          enum: [pending_edge, applied, rejected, first_sample]
+        applyReason: { type: string, nullable: true }
+        appliedAt: { type: string, format: date-time, nullable: true }
+        customDefinition:
+          nullable: true
+          description: Bei einem freien Register die vollständige, nur lesbare Definition.
+          allOf:
+            - $ref: "#/components/schemas/CustomMeasurementDefinition"
+        retentionClass: { type: string }
+        rawRetentionDays: { type: integer }
+        longTermCadenceS: { type: integer, nullable: true }
+        longTermStrategy: { type: string }
+        label: { type: string, nullable: true }
+        family: { type: string, nullable: true }
+        group: { type: string, nullable: true }
+        semanticStatus: { type: string }
+    MeasurementSelectionEvent:
+      type: object
+      description: >
+        Eine unveränderliche Zeile der Papier-Spur. Spätere Zustandsübergänge
+        derselben Revision werden ANGEHÄNGT, nie in die Anforderung gepatcht.
+      properties:
+        id: { type: integer, format: int64 }
+        entityId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Zuordnungsnotiz der Anforderung. Ohne Fremdschlüssel, damit die
+            Spur die Komponente überlebt, über die sie berichtet.
+        pointKey: { type: string }
+        desiredRevision: { type: integer, format: int64 }
+        eventKind:
+          type: string
+          enum: [selection_requested, edge_ack, first_sample]
+        idempotencyKey: { type: string, format: uuid, nullable: true }
+        requestedAt: { type: string, format: date-time }
+        requestedEnabled: { type: boolean }
+        requestedCadenceS: { type: integer, nullable: true }
+        enabledAt: { type: string, format: date-time, nullable: true }
+        disabledAt: { type: string, format: date-time, nullable: true }
+        catalogVersion: { type: string }
+        actor: { type: string }
+        actorName: { type: string, nullable: true }
+        applyStatus: { type: string }
+        applyReason: { type: string, nullable: true }
+        appliedAt: { type: string, format: date-time, nullable: true }
+        customDefinition:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/CustomMeasurementDefinition"
+        retentionClass: { type: string }
+        rawRetentionDays: { type: integer }
+        longTermCadenceS: { type: integer, nullable: true }
+        longTermStrategy: { type: string }
+    CustomMeasurementDefinition:
+      type: object
+      description: >
+        Ein freies Modbus-Register als vollständige, NUR LESBARE Definition. Es
+        gibt hier keinen Schreibweg: ein Schreibparameter im Rumpf ist 400, und
+        `requestCostMs` setzt ausschließlich der Server konservativ.
+      required: [label, sourceKind, address, selector, valueType, widthBits, signed,
+        endian, scale, unit, cadenceS, retentionClass, readOnly]
+      properties:
+        label: { type: string, minLength: 1, maxLength: 120 }
+        sourceKind: { type: string, enum: [modbus_holding, modbus_input] }
+        address: { type: integer, minimum: 0, maximum: 65535 }
+        selector: { type: string, minLength: 1, maxLength: 80 }
+        valueType:
+          type: string
+          enum: [uint16, int16, uint32, int32, float32, float64]
+        widthBits: { type: integer, enum: [16, 32, 64] }
+        signed: { type: boolean }
+        endian: { type: string, enum: [big, word_little_byte_big] }
+        scale: { type: number }
+        unit: { type: string, minLength: 1, maxLength: 32 }
+        cadenceS: { type: integer, minimum: 1, maximum: 86400 }
+        retentionClass: { type: string, minLength: 1 }
+        readOnly: { type: boolean, enum: [true] }
+        requestCostMs:
+          type: integer
+          readOnly: true
+          description: Serverseitige, konservative Kostenannahme; im Request nicht erlaubt.
+

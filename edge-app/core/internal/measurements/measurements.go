@@ -36,8 +36,15 @@ type Identity struct {
 	DeviceID string `json:"device_id"`
 }
 type Selection struct {
-	PointKey   string          `json:"point_key"`
-	CadenceS   int             `json:"cadence_s"`
+	PointKey string `json:"point_key"`
+	CadenceS int    `json:"cadence_s"`
+	// EntityID names the component a selection belongs to (cloud Stufe 3b). It
+	// is accepted and IGNORED here on purpose: this build still polls every
+	// point over the primary inverter's connection, so binding a read to a
+	// component is Stufe 3c work. The field exists because the decoder rejects
+	// unknown fields - without it the whole plan of a box would be refused the
+	// moment the cloud starts sending per-component selections.
+	EntityID   string          `json:"entity_id,omitempty"`
 	Definition json.RawMessage `json:"definition,omitempty"`
 }
 type Config struct {

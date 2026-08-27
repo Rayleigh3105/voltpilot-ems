@@ -52,6 +52,33 @@ func TestCustomConfigCarriesExecutableDefinitionOnlyForCustomKeys(t *testing.T) 
 		t.Fatal("catalog point accepted custom definition")
 	}
 }
+
+// The cloud may bind a selection to a component (Stufe 3b) long before this
+// build can use that binding. The plan must still apply: refusing the unknown
+// field would take a whole box's measurements away over routing metadata.
+func TestPerComponentSelectionIsAcceptedAndIgnoredUntilStufe3c(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docs", "contracts", "v2",
+		"examples", "mqtt-measurement-config.valid.per-component.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := ParseConfig(raw, testID, 1)
+	if err != nil {
+		t.Fatalf("per-component plan refused: %v", err)
+	}
+	if len(c.Selections) != 2 {
+		t.Fatalf("selections %d", len(c.Selections))
+	}
+	if c.Selections[0].EntityID == "" || c.Selections[1].EntityID != "" {
+		t.Fatalf("entity binding lost/invented: %#v", c.Selections)
+	}
+	// Ignored means ignored: the poll plan of this build is unchanged by it.
+	if c.Selections[0].PointKey != "deye.hybrid_1p.battery.battery" ||
+		c.Selections[0].CadenceS != 10 {
+		t.Fatalf("selection changed: %#v", c.Selections[0])
+	}
+}
+
 func TestOutboxReplaysInOrderAndReportsBoundedDrop(t *testing.T) {
 	dir := t.TempDir()
 	o, e := OpenOutbox(dir, 2)

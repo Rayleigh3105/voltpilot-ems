@@ -528,6 +528,21 @@ class ComponentApiTest {
                             "idempotencyKey", UUID.randomUUID().toString(),
                             "enabled", true, "cadenceS", 60));
             assertThat(selected.getStatusCode()).isEqualTo(HttpStatus.OK);
+            // Stufe 3b: a second selection of the SAME register, bound to a
+            // component of the SOURCE site that carries no device_id - the
+            // shape a location move must survive without a transient FK break.
+            UUID movedComponent = UUID.randomUUID();
+            try (Connection c = superuser(); Statement st = c.createStatement()) {
+                st.execute("INSERT INTO measurement_point(id,tenant_id,site_id,role,label,family) "
+                        + "VALUES ('" + movedComponent + "','" + TENANT_A + "','" + source
+                        + "','pv-inverter','Umzug Komponente','hybrid_1p')");
+            }
+            assertThat(put("/api/v1/devices/" + deviceId + "/measurement-selection/"
+                            + BATTERY_CURRENT_POINT + "?entityId=" + movedComponent,
+                    customer, Map.of("expectedRevision", 1,
+                            "idempotencyKey", UUID.randomUUID().toString(),
+                            "enabled", true, "cadenceS", 60)).getStatusCode())
+                    .isEqualTo(HttpStatus.OK);
             Instant sampleTime = Instant.parse("2026-08-24T10:00:00Z");
             try (Connection c = superuser(); var statement = c.prepareStatement(
                     "INSERT INTO telemetry (time, received_at, tenant_id, site_id, device_id, "
@@ -666,25 +681,43 @@ class ComponentApiTest {
                     assertThat(rs.next()).isTrue();
                     assertThat(rs.getInt(1)).isEqualTo(1);
                 }
-                try (var rs = st.executeQuery("SELECT site_id::text, tenant_id::text, enabled "
-                        + "FROM device_measurement_selection WHERE device_id = '" + deviceId
-                        + "' AND point_key = '" + BATTERY_CURRENT_POINT + "'")) {
+                try (var rs = st.executeQuery("SELECT site_id::text, tenant_id::text, enabled, "
+                        + "entity_id::text FROM device_measurement_selection WHERE device_id = '"
+                        + deviceId + "' AND point_key = '" + BATTERY_CURRENT_POINT
+                        + "' ORDER BY entity_id NULLS FIRST")) {
                     assertThat(rs.next()).isTrue();
                     assertThat(rs.getString(1)).as("der aktuelle Pollplan folgt dem Gerät")
                             .isEqualTo(target.toString());
                     assertThat(rs.getString(2)).isEqualTo(TENANT_A);
                     assertThat(rs.getBoolean(3)).isTrue();
+                    assertThat(rs.getString(4)).as("die Box-Zeile bleibt ungebunden").isNull();
+                    // The component stayed at the SOURCE site (it carries no
+                    // device_id, so a move never takes it along) - which is
+                    // exactly why the entity FK binds tenant only.
+                    assertThat(rs.next()).as("die komponentenweise Auswahl überlebt den Umzug")
+                            .isTrue();
+                    assertThat(rs.getString(1)).isEqualTo(target.toString());
+                    assertThat(rs.getString(4)).isEqualTo(movedComponent.toString());
+                    assertThat(rs.next()).isFalse();
                 }
                 try (var rs = st.executeQuery("SELECT site_id::text, tenant_id::text, "
-                        + "requested_enabled, event_kind FROM device_measurement_selection_event "
-                        + "WHERE device_id = '" + deviceId + "' AND point_key = '"
-                        + BATTERY_CURRENT_POINT + "'")) {
+                        + "requested_enabled, event_kind, entity_id::text FROM "
+                        + "device_measurement_selection_event WHERE device_id = '" + deviceId
+                        + "' AND point_key = '" + BATTERY_CURRENT_POINT
+                        + "' ORDER BY entity_id NULLS FIRST")) {
                     assertThat(rs.next()).isTrue();
                     assertThat(rs.getString(1)).as("das unveränderliche Ereignis behält seinen damaligen Standort")
                             .isEqualTo(source.toString());
                     assertThat(rs.getString(2)).isEqualTo(TENANT_A);
                     assertThat(rs.getBoolean(3)).isTrue();
                     assertThat(rs.getString(4)).isEqualTo("selection_requested");
+                    assertThat(rs.getString(5)).isNull();
+                    // Its component-bound twin is a second, equally immutable
+                    // row - the paper trail keeps the site where it happened.
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString(1)).isEqualTo(source.toString());
+                    assertThat(rs.getString(4)).isEqualTo("selection_requested");
+                    assertThat(rs.getString(5)).isEqualTo(movedComponent.toString());
                     assertThat(rs.next()).isFalse();
                 }
                 try (var rs = st.executeQuery("SELECT site_id::text, tenant_id::text, connected "
