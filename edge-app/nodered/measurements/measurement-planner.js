@@ -1,11 +1,36 @@
 'use strict';
 
 const { catalogDocument, resolvePoint, derivedAddresses } = require('./measurement-driver');
+const { TARGET_PRIMARY, resolveTarget } = require('./measurement-binding');
 
 const LIMITS = Object.freeze({ samplesPerMinute: 600, requestsPerMinute: 30, dutyPercent: 20 });
 const COST_MS = Object.freeze({ modbus_holding: 400, modbus_input: 400,
   sunspec_model: 400, http_api_key: 250,
   rest_json: 250, rpc_json: 250, ocpp_sampled_value: 0 });
+
+/**
+ * Per-target lookups (Stufe 3c). `discovery`/`byteOrder` stay the PRIMARY
+ * inverter's values - every pre-3c caller keeps working unchanged - while
+ * `discoveries`/`byteOrders` carry the same facts for a bound source. A target
+ * with no entry has no discovery: a `sunspec_relative` point on it is then
+ * refused as `driver_unavailable` instead of being read at the PRIMARY's model
+ * base, which would be a wrong address on the right device.
+ */
+function discoveryFor(options, targetKey) {
+  if (options && options.discoveries
+      && Object.prototype.hasOwnProperty.call(options.discoveries, targetKey)) {
+    return options.discoveries[targetKey];
+  }
+  return targetKey === TARGET_PRIMARY ? (options && options.discovery) : null;
+}
+
+function byteOrderFor(options, targetKey) {
+  if (options && options.byteOrders
+      && Object.prototype.hasOwnProperty.call(options.byteOrders, targetKey)) {
+    return options.byteOrders[targetKey];
+  }
+  return targetKey === TARGET_PRIMARY ? (options && options.byteOrder) : undefined;
+}
 
 function addressFor(point, discovery) {
   if (!point.address) return null;
@@ -23,14 +48,14 @@ function addressFor(point, discovery) {
   return null;
 }
 
-function decoderDependencies(point, options) {
+function decoderDependencies(point, options, targetKey) {
   const decoder = point.decoder || {};
   const dependencies = [];
   if (decoder.variant && Number.isInteger(decoder.variant.register)) {
     dependencies.push(decoder.variant.register);
   }
   const byteOrder = decoder.byte_order;
-  const configured = options && options.byteOrder;
+  const configured = byteOrderFor(options, targetKey || TARGET_PRIMARY);
   if (byteOrder && Number.isInteger(byteOrder.register)
       && !['big', 'little', 'word_little_byte_big'].includes(configured)) {
     dependencies.push(byteOrder.register);
@@ -38,18 +63,25 @@ function decoderDependencies(point, options) {
   return dependencies;
 }
 
-function groupModbus(points, discovery, options) {
+function groupModbus(points, options) {
   const grouped = new Map();
+  const targets = new Map();
   for (const selected of points) {
-    const key = `${selected.point.family}:${selected.point.source_kind}:${selected.cadence_s}`;
+    // ⚠ The TARGET is part of the grouping key. Two devices behind one box can
+    // carry the same family and the same register; merging them into one block
+    // would read one device's addresses over the other's connection.
+    const target = selected.target || { key:TARGET_PRIMARY, sourceId:null };
+    const key = `${target.key}:${selected.point.family}:${selected.point.source_kind}:${selected.cadence_s}`;
+    targets.set(key, target);
     const list = grouped.get(key) || [];
-    const address = addressFor(selected.point, discovery);
+    const address = addressFor(selected.point, discoveryFor(options, target.key));
     const registers = selected.point.address && selected.point.address.registers;
     if (address && Array.isArray(registers)) {
       // A vendor decoder may combine physically non-contiguous words. Put
       // every declared register on the wire; never turn [616,705] into
       // the invented contiguous range 616..617.
-      for (const start of [...new Set(registers.concat(decoderDependencies(selected.point, options)))]) {
+      for (const start of [...new Set(registers.concat(
+        decoderDependencies(selected.point, options, target.key)))]) {
         list.push({ selected, start, count: 1 });
       }
     } else if (address) list.push(Object.assign({ selected }, address));
@@ -64,7 +96,7 @@ function groupModbus(points, discovery, options) {
       const end = item.start + item.count;
       if (!block || item.start > block.start + block.count + 1 || end - block.start > 120) {
         block = { key, start: item.start, count: item.count, cadence_s: item.selected.cadence_s,
-          source_kind:item.selected.point.source_kind, points: [] };
+          source_kind:item.selected.point.source_kind, target:targets.get(key), points: [] };
         blocks.push(block);
       } else block.count = Math.max(block.count, end - block.start);
       const triggerKey = item.selected.trigger_key || item.selected.point.point_key;
@@ -104,27 +136,41 @@ function buildPlan(config, options) {
   const seen = new Set();
   for (const s of config.selections || []) {
     if (seen.has(s.point_key)) { rejected.push({ point_key:s.point_key,reason:'unknown_point' }); continue; }
-    seen.add(s.point_key); const p = resolvePoint(s.point_key, options.discovery, s.definition);
+    seen.add(s.point_key);
+    // Resolve once against the PRIMARY's discovery to learn what kind of point
+    // this is (a sunspec wildcard TEMPLATE and every non-sunspec point resolve
+    // discovery-free), bind it, then resolve again with the bound target's own
+    // discovery where that differs.
+    let p = resolvePoint(s.point_key, options.discovery, s.definition);
     if (!p || !p.readable) { rejected.push({ point_key:s.point_key,reason:'unknown_point' }); continue; }
     if (!Number.isInteger(s.cadence_s) || s.cadence_s < (p.min_cadence_s || 1) || s.cadence_s > 86400) {
       rejected.push({ point_key:s.point_key,reason:'invalid_cadence' }); continue;
+    }
+    // ⚠ Stufe 3c: an unresolvable component binding is REFUSED here, never read
+    // against the primary inverter's connection.
+    const target = resolveTarget(s, p, options.binding);
+    if (target.reason) { rejected.push({ point_key:s.point_key,reason:target.reason }); continue; }
+    const discovery = discoveryFor(options, target.key);
+    if (discovery !== options.discovery) {
+      p = resolvePoint(s.point_key, discovery, s.definition);
+      if (!p || !p.readable) { rejected.push({ point_key:s.point_key,reason:'unknown_point' }); continue; }
     }
     if (['modbus_holding','modbus_input','sunspec_model'].includes(p.source_kind)
         && !p.address && derivedAddresses(p).length === 0) {
       rejected.push({ point_key:s.point_key,reason:'driver_unavailable' }); continue;
     }
     if (p.point_key.includes('[*]') && p.family === 'sunspec.model_160') {
-      const n = Number(options.discovery && options.discovery.models
-        && options.discovery.models[160] && options.discovery.models[160].moduleCount);
+      const n = Number(discovery && discovery.models
+        && discovery.models[160] && discovery.models[160].moduleCount);
       if (!Number.isInteger(n) || n < 1) {
         rejected.push({ point_key:s.point_key, reason:'driver_unavailable' }); continue;
       }
       for (let index = 0; index < n; index++) {
         const key = s.point_key.replace('[*]', `[${index}]`);
-        const concrete = resolvePoint(key, options.discovery);
-        if (concrete) valid.push({ point:concrete,cadence_s:s.cadence_s,requested_key:s.point_key });
+        const concrete = resolvePoint(key, discovery);
+        if (concrete) valid.push({ point:concrete,cadence_s:s.cadence_s,requested_key:s.point_key,target });
       }
-    } else valid.push({ point:p,cadence_s:s.cadence_s,requested_key:s.point_key });
+    } else valid.push({ point:p,cadence_s:s.cadence_s,requested_key:s.point_key,target });
   }
   const ocpp = valid.filter((x) => x.point.source_kind === 'ocpp_sampled_value');
   const choreography = compatibleOcpp(ocpp, options.ocppCapability);
@@ -138,15 +184,16 @@ function buildPlan(config, options) {
     if (!lookup) return [];
     const point = catalogDocument.points.find((candidate) => candidate.family === selected.point.family
       && candidate.decoder && candidate.decoder.source_key === lookup && candidate.address);
-    return point ? [{ point, cadence_s:selected.cadence_s,
+    return point ? [{ point, cadence_s:selected.cadence_s, target:selected.target,
       requested_key:selected.requested_key, trigger_key:selected.point.point_key }] : [];
   });
   const uniquePrerequisites = [...new Map(prerequisites.map((item) =>
-    [`${item.point.point_key}:${item.cadence_s}:${item.trigger_key}`, item])).values()];
-  const blocks = groupModbus(acceptedCandidates.concat(uniquePrerequisites), options.discovery, options);
+    [`${item.target.key}:${item.point.point_key}:${item.cadence_s}:${item.trigger_key}`, item])).values()];
+  const blocks = groupModbus(acceptedCandidates.concat(uniquePrerequisites), options);
   const nonModbusGroups = new Map();
   for (const x of acceptedCandidates.filter((v) => !['modbus_holding','modbus_input','sunspec_model','ocpp_sampled_value'].includes(v.point.source_kind))) {
-    const key = `${x.point.poll_group}:${x.cadence_s}`; nonModbusGroups.set(key, x);
+    // Same rule as the modbus blocks: one HTTP request per (target, group).
+    const key = `${x.target.key}:${x.point.poll_group}:${x.cadence_s}`; nonModbusGroups.set(key, x);
   }
   const samples = acceptedCandidates.reduce((n,x) => n + 60/x.cadence_s, 0);
   const requests = blocks.reduce((n,b) => n + 60/b.cadence_s, 0)
@@ -165,8 +212,9 @@ function buildPlan(config, options) {
   return { applied:true, revision:config.revision, catalog_version:config.catalog_version,
     accepted, rejected, selections:acceptedCandidates,
     decoderPrerequisites:uniquePrerequisites,
-    byteOrder:options.byteOrder,
-    blocks, httpGroups:[...nonModbusGroups.keys()], ocppConfiguration:choreography.changes,
+    byteOrder:options.byteOrder, byteOrders:options.byteOrders,
+    blocks, httpGroups:[...nonModbusGroups.entries()].map(([key, x]) => ({ key, target:x.target })),
+    ocppConfiguration:choreography.changes,
     metrics:{samplesPerMinute:samples,requestsPerMinute:requests,dutyPercent:duty,warning} };
 }
 
@@ -179,4 +227,4 @@ class Scheduler {
 }
 
 module.exports = { LIMITS, COST_MS, buildPlan, groupModbus, compatibleOcpp, Scheduler,
-  decoderDependencies };
+  decoderDependencies, discoveryFor, byteOrderFor };
