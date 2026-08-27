@@ -3,7 +3,7 @@
  *
  * Diese Datei rechnet und formuliert; sie rendert nichts und ruft nichts ab.
  * Damit ist jede Regel der Auswahl ohne DOM prüfbar - dasselbe Muster wie
- * `src/befehleFilter.ts`, `src/historieZeit.ts` und `src/komponentenAssistent.ts`.
+ * `src/historieZeit.ts` und `src/komponentenAssistent.ts`.
  *
  * ⚠ Die TASTATUR ist hier ein Rechen-Gegenstand, kein Nebeneffekt. Der
  * Eigenbau darf dem nativen Select in nichts nachstehen (Konzept

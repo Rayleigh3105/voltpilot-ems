@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BefehleSection } from './BefehleSection';
 import { api, type CommandEntry, type CommandHistory, type Site } from '../api';
+import { SEITE, VERLAUF_TAGE } from '../befehleVerlauf';
 
 const site = { id: 's1', name: 'Hof Herzogau' } as Site;
 
@@ -137,6 +138,53 @@ describe('BefehleSection', () => {
         .toBeInTheDocument());
   });
 
+  /**
+   * Geräteseiten Stufe 2 (§6.1, Captain-Entscheid D4a): die anlagenweite Seite
+   * bekommt DIESELBE filterlose Liste - neueste Zeile oben, keine Bedienleiste.
+   */
+  it('führt mit der JÜNGSTEN Zeile und trägt keinerlei Filter mehr', async () => {
+    vi.spyOn(api, 'commandHistory').mockResolvedValue(history({
+      total: 212,
+      entries: [
+        periode({ id: 1 }),
+        periode({
+          id: 2,
+          startedAt: '2026-08-16T09:00:00Z',
+          endedAt: null,
+          commandedKwFirst: 4.2,
+          commandedKwLast: 4.2,
+          commandedKwMin: 4.2,
+          commandedKwMax: 4.2,
+        }),
+      ],
+    }));
+    render(<BefehleSection site={site} entityId="e1" />);
+
+    const zeilen = await screen.findAllByText(/mit .* kW/);
+    // Die neueste Zeile steht OBEN - „was zuletzt", nicht „wie der Tag verlief".
+    expect(zeilen[0].textContent).toMatch(/Laden mit/);
+    // Die Bilanz kommt vom SERVER, nie aus den geladenen Seiten.
+    expect(screen.getByText(/212 Befehle in den letzten 90 Tagen/)).toBeInTheDocument();
+    // Keine Filter, keine Suche, kein Treffer-Zähler.
+    expect(screen.queryByRole('button', { name: /Filter/ })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Suchen/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Nur Abweichungen' })).not.toBeInTheDocument();
+  });
+
+  /** Das Fenster IST die Aufbewahrung - weiter zurück gibt es nichts. */
+  it('fragt die letzten 90 Berliner Kalendertage seitenweise ab', async () => {
+    const spy = vi.spyOn(api, 'commandHistory').mockResolvedValue(history());
+    render(<BefehleSection site={site} entityId="e1" />);
+
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    const [, args] = spy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(args.limit).toBe(SEITE);
+    expect(args.range).toBeUndefined();
+    const tage = (Date.parse(`${args.to}T00:00:00Z`) - Date.parse(`${args.from}T00:00:00Z`))
+      / 86_400_000;
+    expect(tage).toBe(VERLAUF_TAGE - 1);
+  });
+
   it('meldet einen Fehlschlag ehrlich, statt einen leeren Verlauf zu behaupten', async () => {
     vi.spyOn(api, 'commandHistory').mockRejectedValue(new Error('offline'));
     render(<BefehleSection site={site} entityId="e1" />);
@@ -145,63 +193,8 @@ describe('BefehleSection', () => {
       expect(screen.getByText(/Verlauf nicht abrufbar/)).toBeInTheDocument());
   });
 
-  /**
-   * Die SUCHE (Geräteseiten Revision B §6, Captain-Punkt 4). Struktur filtert
-   * der Server, der Freitext läuft über die ANGEZEIGTEN Sätze - und die Leiste
-   * sagt, worin sie sucht.
-   */
-  it('schickt einen Schnell-Chip als STRUKTUR-Filter an den Server', async () => {
-    const spy = vi.spyOn(api, 'commandHistory').mockResolvedValue(history({ total: 212, matched: 212 }));
-    render(<BefehleSection site={site} entityId="e1" />);
-    await waitFor(() => expect(spy).toHaveBeenCalled());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Nur Abweichungen' }));
-    await waitFor(() =>
-      expect(spy).toHaveBeenCalledWith('s1', expect.objectContaining({ verdicts: 'abweichend' })));
-    // Ein zweiter Klick NIMMT ihn zurück - ein Filter, den man nur setzen kann,
-    // ist eine Sackgasse.
-    fireEvent.click(screen.getByRole('button', { name: 'Nur Abweichungen' }));
-    await waitFor(() =>
-      expect(spy).toHaveBeenLastCalledWith('s1', expect.objectContaining({ verdicts: null })));
-  });
-
-  it('nennt BEIDE Zahlen, sobald ein Filter greift', async () => {
-    vi.spyOn(api, 'commandHistory').mockResolvedValue(
-      history({ total: 212, matched: 14, entries: [periode()] }));
-    render(<BefehleSection site={site} entityId="e1" />);
-
-    await waitFor(() => expect(screen.getByText(/212 Zeilen/)).toBeInTheDocument());
-  });
-
   /** Der Freitext läuft NUR über die gezeigten Sätze - kein zweiter Abruf. */
-  it('durchsucht clientseitig die angezeigten Sätze', async () => {
-    const spy = vi.spyOn(api, 'commandHistory').mockResolvedValue(history({
-      total: 2,
-      matched: 2,
-      entries: [periode(), periode({ id: 2, commandedKwFirst: 4.2, commandedKwLast: 4.2,
-        commandedKwMin: 4.2, commandedKwMax: 4.2 })],
-    }));
-    render(<BefehleSection site={site} entityId="e1" />);
-    await waitFor(() => expect(screen.getByText(/Laden mit/)).toBeInTheDocument());
-    const rufe = spy.mock.calls.length;
-
-    fireEvent.change(screen.getByPlaceholderText(/Suchen/), { target: { value: 'entladen' } });
-    await waitFor(() => expect(screen.queryByText(/Laden mit/)).not.toBeInTheDocument());
-    expect(screen.getByText(/Entladen mit/)).toBeInTheDocument();
-    expect(spy.mock.calls.length).toBe(rufe);
-  });
-
   /** Ein Filter, der nichts trifft, ist NICHT dasselbe wie ein leerer Zeitraum. */
-  it('nennt bei einem leeren Treffer, wie viele Zeilen der Zeitraum trägt', async () => {
-    vi.spyOn(api, 'commandHistory').mockResolvedValue(history({ total: 212, matched: 0 }));
-    render(<BefehleSection site={site} entityId="e1" />);
-    await waitFor(() => expect(screen.getByPlaceholderText(/Suchen/)).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Nur über das Portal' }));
-    await waitFor(() =>
-      expect(screen.getByText(/212 Zeilen in diesem Zeitraum/)).toBeInTheDocument());
-  });
-
   /** „Mehr laden" wird nie angeboten, wo es nichts mehr gibt. */
   it('bietet „Ältere laden" nur mit einem Server-Cursor an', async () => {
     vi.spyOn(api, 'commandHistory').mockResolvedValue(history({ entries: [periode()] }));
@@ -256,7 +249,7 @@ describe('BefehleSection', () => {
       expect(api.commandHistory).toHaveBeenCalledWith('s1', expect.objectContaining({
         entity: null,
         device: 'src-7c1e9a2b',
-        range: 'day',
+        limit: SEITE,
       })),
     );
     // Der Name kommt aus dem gemeldeten Einrichtungs-Stand (Marke + Kurzmodell),
@@ -300,55 +293,8 @@ describe('BefehleSection', () => {
       expect(api.commandHistory).toHaveBeenCalledWith('s1', expect.objectContaining({
         entity: 'e1',
         device: null,
-        range: 'day',
+        limit: SEITE,
       })),
     );
-  });
-});
-
-/*
-  Picker-System Welle 1: Zeitraum und die zwei Datumsfelder sind Haus-Picker.
-  Die WERTE bleiben byte-gleich - genau das prüfen diese zwei Fälle.
-*/
-describe('die Filter-Leiste nach der Picker-Umstellung', () => {
-  it('schickt denselben Zeitraum-Wert wie das abgelöste Browser-Auswahlfeld', async () => {
-    vi.spyOn(api, 'commandHistory').mockResolvedValue(history({ entries: [periode()] }));
-    render(<BefehleSection site={site} />);
-    await screen.findByRole('button', { name: /Filter/ });
-
-    fireEvent.click(screen.getByRole('button', { name: /Filter/ }));
-    fireEvent.click(await screen.findByRole('combobox', { name: 'Zeitraum' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Diese Woche' }));
-
-    await waitFor(() =>
-      expect(api.commandHistory).toHaveBeenCalledWith(
-        's1',
-        expect.objectContaining({ range: 'week' }),
-      ));
-  });
-
-  it('gibt aus dem Kalender ein ISO-Datum ab - wie das native Feld zuvor', async () => {
-    vi.spyOn(api, 'commandHistory').mockResolvedValue(history({ entries: [periode()] }));
-    render(<BefehleSection site={site} />);
-    await screen.findByRole('button', { name: /Filter/ });
-
-    fireEvent.click(screen.getByRole('button', { name: /Filter/ }));
-    fireEvent.click(await screen.findByRole('combobox', { name: 'Zeitraum' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Zeitraum wählen' }));
-
-    fireEvent.click(await screen.findByRole('combobox', { name: 'Von' }));
-    fireEvent.click(screen.getAllByRole('gridcell', { name: '15' })[0]);
-    fireEvent.click(await screen.findByRole('combobox', { name: 'Bis' }));
-    fireEvent.click(screen.getAllByRole('gridcell', { name: '20' })[0]);
-
-    // Ein halber eigener Zeitraum wird nicht geschickt - erst mit BEIDEN Tagen.
-    await waitFor(() =>
-      expect(api.commandHistory).toHaveBeenCalledWith(
-        's1',
-        expect.objectContaining({
-          from: expect.stringMatching(/^\d{4}-\d{2}-15$/),
-          to: expect.stringMatching(/^\d{4}-\d{2}-20$/),
-        }),
-      ));
   });
 });

@@ -351,7 +351,9 @@ describe('BoxSeiteSection', () => {
     stub();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
     expect(await screen.findByTestId('sektion-befehle')).toBeInTheDocument();
-    expect(api.commandHistory).toHaveBeenCalledWith('s-1', { device: 'edge-45gz7da' });
+    expect(api.commandHistory).toHaveBeenCalledWith('s-1', expect.objectContaining({
+      device: 'edge-45gz7da',
+    }));
     expect(screen.getByText(/stehen auf der\s+Seite dieses Geräts/)).toBeInTheDocument();
     const alle = screen.getByRole('link', { name: /Alle Befehle dieser Anlage/ });
     expect(alle.getAttribute('href')).toBe('#/anlage/s-1/befehle');
