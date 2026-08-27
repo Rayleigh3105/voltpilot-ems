@@ -1,94 +1,51 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
+import { useMemo } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
-  ANLAGEN_BILD_BREITE,
   ANLAGEN_SPALTEN_X,
   ANLAGEN_ZONE,
   layoutAnlagenBild,
   type AnlagenBild as AnlagenBildModell,
   type AnlagenKnoten,
-  type AnlagenSlot,
   type AnlagenZone,
+  type DatenService,
 } from '../anlagenBild';
 import type { AdoptableSource } from '../rollen';
 import './AnlagenBild.css';
 
-export type AnlagenAddAuthority = 'portal' | 'box' | 'unknown';
-
+/**
+ * Das elektrische Anlagenbild als NAVIGATIONS-Fläche (Captain-Auftrag
+ * 27.08.2026): ein echtes Gerät IST ein Link auf seine Detailseite, die
+ * Datenverbindungs-Karte der Box führt auf die Box-Seite. Es gibt keine
+ * Detail-Seitenleiste, keine inline „hinzufügen"-Plätze und keinen
+ * „Verbindungen anzeigen"-Schalter mehr.
+ *
+ * Auf zeiger-fähigen Geräten (Rechner) blendet ein Gerät die zusätzlichen
+ * Angaben aus der früheren Seitenleiste als **zurückhaltende Hover-Fläche** ein
+ * (dieselbe Fläche erscheint bei Tastaturfokus); sie fängt die Navigation nie
+ * ab und bleibt im Bild. Auf Touch/Telefon gibt es KEINE Hover-Ersatzfläche —
+ * ein Tipp öffnet direkt die Geräteseite, wo die vollständigen Angaben stehen.
+ */
 export function AnlagenBild({
   bild,
   desktop,
-  authority,
-  selectedId,
-  previewId,
-  onSelect,
-  onClosePreview,
-  onAdd,
   onAssign,
-  onEdit,
 }: {
   bild: AnlagenBildModell;
   desktop: boolean;
-  authority: AnlagenAddAuthority;
-  selectedId: string | null;
-  previewId: string | null;
-  onSelect: (karteId: string) => void;
-  onClosePreview: () => void;
-  onAdd: (slot: AnlagenSlot) => void;
+  /** Ein noch nicht übernommenes Gerät führt in einem Zug in die Zuordnung. */
   onAssign: (source: AdoptableSource) => void;
-  onEdit: (karteId: string) => void;
 }) {
-  const [kommunikation, setKommunikation] = useState(false);
-  const preview = bild.knoten.find((k) => k.karteId === previewId) ?? null;
-
   return (
     <section className="vp-ab" aria-label="Elektrisches Anlagenbild">
-      <div className="vp-ab-toolbar">
-        <p>
-          Feste Leitungen zeigen die elektrische Zuordnung. Es werden keine Leistungsflüsse
-          oder Richtungen dargestellt.
-        </p>
-        <button
-          type="button"
-          className="vp-ab-comm"
-          aria-pressed={kommunikation}
-          disabled={!bild.service}
-          onClick={() => setKommunikation((offen) => !offen)}
-        >
-          <Icon name="link" size={16} />
-          {kommunikation ? 'Verbindungen ausblenden' : 'Verbindungen anzeigen'}
-        </button>
-      </div>
+      <p className="vp-ab-intro">
+        Feste Leitungen zeigen die elektrische Zuordnung. Es werden keine Leistungsflüsse
+        oder Richtungen dargestellt.
+      </p>
 
       {desktop ? (
-        <DesktopBild
-          bild={bild}
-          kommunikation={kommunikation}
-          authority={authority}
-          selectedId={selectedId}
-          onSelect={onSelect}
-          onAdd={onAdd}
-        />
+        <DesktopBild bild={bild} onAssign={onAssign} />
       ) : (
-        <MobilerPfad
-          bild={bild}
-          kommunikation={kommunikation}
-          authority={authority}
-          selectedId={selectedId}
-          onSelect={onSelect}
-          onAdd={onAdd}
-        />
-      )}
-
-      {preview && (
-        <GeraeteVorschau
-          knoten={preview}
-          authority={authority}
-          onClose={onClosePreview}
-          onAssign={onAssign}
-          onEdit={() => onEdit(preview.karteId)}
-        />
+        <MobilerPfad bild={bild} onAssign={onAssign} />
       )}
     </section>
   );
@@ -96,23 +53,13 @@ export function AnlagenBild({
 
 function DesktopBild({
   bild,
-  kommunikation,
-  authority,
-  selectedId,
-  onSelect,
-  onAdd,
+  onAssign,
 }: {
   bild: AnlagenBildModell;
-  kommunikation: boolean;
-  authority: AnlagenAddAuthority;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  onAdd: (slot: AnlagenSlot) => void;
+  onAssign: (source: AdoptableSource) => void;
 }) {
   const layout = useMemo(() => layoutAnlagenBild(bild), [bild]);
   const knoten = new Map(bild.knoten.map((k) => [k.id, k]));
-  const slots = new Map(bild.slots.map((s) => [s.id, s]));
-  const mitteX = ANLAGEN_BILD_BREITE / 2;
   const consumerY = layout.items.find((i) => i.zone === 'consumer')?.y ?? layout.busY + 84;
 
   return (
@@ -137,33 +84,18 @@ function DesktopBild({
               className={`vp-ab-wire is-${linie.art}`}
             />
           ))}
-          {kommunikation &&
-            layout.items
-              .filter((i) => i.art === 'knoten')
-              .map((i) => (
-                <line
-                  key={`kommunikation-${i.id}`}
-                  x1={mitteX}
-                  y1={layout.serviceY + 27}
-                  x2={i.x + i.w / 2}
-                  y2={i.y + i.h / 2}
-                  className="vp-ab-wire is-communication"
-                />
-              ))}
         </svg>
 
-        {(['pv', 'storage', 'grid'] as AnlagenZone[]).map((zone) => {
-          return (
-            <div
-              key={zone}
-              className={`vp-ab-zone-label zone-${zone}`}
-              style={{ left: ANLAGEN_SPALTEN_X[zone], top: 22 }}
-            >
-              <Icon name={ANLAGEN_ZONE[zone].icon} size={15} />
-              {ANLAGEN_ZONE[zone].label}
-            </div>
-          );
-        })}
+        {(['pv', 'storage', 'grid'] as AnlagenZone[]).map((zone) => (
+          <div
+            key={zone}
+            className={`vp-ab-zone-label zone-${zone}`}
+            style={{ left: ANLAGEN_SPALTEN_X[zone], top: 22 }}
+          >
+            <Icon name={ANLAGEN_ZONE[zone].icon} size={15} />
+            {ANLAGEN_ZONE[zone].label}
+          </div>
+        ))}
 
         <div
           className="vp-ab-zone-label zone-consumer"
@@ -189,42 +121,22 @@ function DesktopBild({
         </div>
 
         {layout.items.map((item) => {
-          const style = { left: item.x, top: item.y, width: item.w, minHeight: item.h };
-          if (item.art === 'slot') {
-            const slot = slots.get(item.id);
-            return slot ? (
-              <Slot key={item.id} slot={slot} style={style} authority={authority} onAdd={onAdd} />
-            ) : null;
-          }
           const node = knoten.get(item.id);
-          return node ? (
+          if (!node) return null;
+          return (
             <Knoten
               key={item.id}
               knoten={node}
-              style={style}
-              selected={node.karteId === selectedId}
-              onSelect={onSelect}
+              style={{ left: item.x, top: item.y, width: item.w, minHeight: item.h }}
+              onAssign={onAssign}
             />
-          ) : null;
+          );
         })}
 
-        <div
-          className={`vp-ab-service${kommunikation ? ' is-on' : ''}`}
+        <ServiceKarte
+          service={bild.service}
           style={{ left: 26, top: layout.serviceY, width: layout.breite - 52 }}
-        >
-          <span className="vp-ab-service-icon"><Icon name="wifi" size={18} /></span>
-          {bild.service ? (
-            <span>
-              <strong>Datenverbindung · {bild.service.titel}</strong>
-              <small>{bild.service.zustand}</small>
-            </span>
-          ) : (
-            <span>
-              <strong>Datenverbindung nicht gemeldet</strong>
-              <small>VoltPilot zeigt keine Kommunikationslinien ohne bekannte Box.</small>
-            </span>
-          )}
-        </div>
+        />
       </div>
     </div>
   );
@@ -234,24 +146,15 @@ const MOBILE_ORDER: AnlagenZone[] = ['pv', 'storage', 'house', 'grid', 'consumer
 
 function MobilerPfad({
   bild,
-  kommunikation,
-  authority,
-  selectedId,
-  onSelect,
-  onAdd,
+  onAssign,
 }: {
   bild: AnlagenBildModell;
-  kommunikation: boolean;
-  authority: AnlagenAddAuthority;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  onAdd: (slot: AnlagenSlot) => void;
+  onAssign: (source: AdoptableSource) => void;
 }) {
   return (
     <div className="vp-ab-mobile" data-testid="anlagenbild-mobil">
       {MOBILE_ORDER.map((zone) => {
         const knoten = bild.knoten.filter((k) => k.zone === zone);
-        const slots = bild.slots.filter((s) => s.zone === zone);
         return (
           <section key={zone} className={`vp-ab-mobile-zone zone-${zone}`} aria-label={ANLAGEN_ZONE[zone].label}>
             <h3>
@@ -266,57 +169,65 @@ function MobilerPfad({
                 </div>
               )}
               {knoten.map((knoten) => (
-                <Knoten
-                  key={knoten.id}
-                  knoten={knoten}
-                  selected={knoten.karteId === selectedId}
-                  onSelect={onSelect}
-                  kommunikation={kommunikation}
-                />
-              ))}
-              {slots.map((slot) => (
-                <Slot key={slot.id} slot={slot} authority={authority} onAdd={onAdd} />
+                <Knoten key={knoten.id} knoten={knoten} onAssign={onAssign} mobil />
               ))}
             </div>
           </section>
         );
       })}
-      {bild.service && (
-        <div className={`vp-ab-mobile-service${kommunikation ? ' is-on' : ''}`}>
-          <Icon name="wifi" size={17} />
-          <span>
-            <strong>Datenverbindung · {bild.service.titel}</strong>
-            <small>{bild.service.zustand}</small>
-          </span>
-        </div>
-      )}
+      <ServiceKarte service={bild.service} mobil />
     </div>
   );
 }
 
+/**
+ * Ein Gerät. Ein echtes Gerät (mit Detailseite) ist ein LINK — ein Klick oder
+ * Enter/Space führt direkt dorthin, nie in eine Seitenleiste. Ein noch nicht
+ * übernommenes Gerät („neu") trägt stattdessen die Übernahme-Aktion.
+ *
+ * Auf dem Rechner (nicht `mobil`) zeigt eine Hover-/Fokus-Fläche die
+ * zusätzlichen Angaben; sie ist `pointer-events: none` und fängt die
+ * Navigation deshalb nie ab.
+ */
 function Knoten({
   knoten,
-  selected,
-  onSelect,
   style,
-  kommunikation = false,
+  onAssign,
+  mobil = false,
 }: {
   knoten: AnlagenKnoten;
-  selected: boolean;
-  onSelect: (karteId: string) => void;
   style?: React.CSSProperties;
-  kommunikation?: boolean;
+  onAssign: (source: AdoptableSource) => void;
+  mobil?: boolean;
 }) {
-  const live = knoten.werte[0] ?? null;
-  return (
-    <button
-      type="button"
-      className={`vp-ab-node zone-${knoten.zone} state-${knoten.zustand}${selected ? ' selected' : ''}`}
-      style={style}
-      aria-pressed={selected}
-      data-anlagen-knoten={knoten.karteId}
-      onClick={() => onSelect(knoten.karteId)}
-    >
+  const live = knoten.werte.find((wert) => wert.zone === knoten.zone) ?? null;
+  const hoverOben = knoten.zone === 'house' || knoten.zone === 'consumer';
+  const cls = `vp-ab-node zone-${knoten.zone} state-${knoten.zustand}${
+    hoverOben ? ' is-hover-above' : ''
+  }`;
+  const hoverId = mobil
+    ? undefined
+    : `vp-ab-hover-${knoten.karteId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+  // Das explizite Label ersetzt den sichtbaren Nachfahren-Text. Es MUSS daher
+  // die wesentlichen sichtbaren Fakten selbst tragen — auch auf Touch, wo es
+  // absichtlich keinen Tooltip/Info-Ersatz gibt.
+  const rollenLabel = knoten.nebenrollen.map((rolle) =>
+    rolle === 'storage' ? 'Speicher integriert' : ANLAGEN_ZONE[rolle].label,
+  );
+  const liveLabel = live
+    ? `${knoten.zone === 'pv' ? 'PV-Produktion' : live.label}: ${live.wert}`
+    : null;
+  const ariaLabel = [
+    knoten.titel,
+    knoten.untertitel,
+    liveLabel,
+    ...rollenLabel,
+    knoten.zustandLabel,
+    knoten.zustandDetail,
+  ].filter(Boolean).join(', ');
+
+  const inhalt = (
+    <>
       <span className="vp-ab-node-top">
         <span className="vp-ab-node-title">{knoten.titel}</span>
         {live && <span className="vp-ab-node-live">{live.wert}</span>}
@@ -327,213 +238,161 @@ function Knoten({
         <strong>{knoten.zustandLabel}</strong>
         {knoten.zustandDetail && <span> · {knoten.zustandDetail}</span>}
       </span>
-      {kommunikation && <span className="vp-ab-node-comm">Datenweg über VoltPilot-Box</span>}
-    </button>
+      {/* Ein Hybrid zeigt seine Speicher-/Netz-Rolle sichtbar an seiner
+          PV-Darstellung — das physische Gerät steht nie zweimal im Bild. */}
+      {knoten.nebenrollen.length > 0 && (
+        <span className="vp-ab-node-roles">
+          {knoten.nebenrollen.map((rolle) => (
+            <span key={rolle} className={`vp-ab-role zone-${rolle}`}>
+              {rolle === 'storage' ? 'Speicher integriert' : ANLAGEN_ZONE[rolle].label}
+            </span>
+          ))}
+        </span>
+      )}
+      {hoverId && <HoverFlaeche knoten={knoten} id={hoverId} />}
+    </>
   );
-}
 
-function Slot({
-  slot,
-  authority,
-  onAdd,
-  style,
-}: {
-  slot: AnlagenSlot;
-  authority: AnlagenAddAuthority;
-  onAdd: (slot: AnlagenSlot) => void;
-  style?: React.CSSProperties;
-}) {
-  return (
-    <button
-      type="button"
-      className={`vp-ab-slot zone-${slot.zone}`}
-      style={style}
-      disabled={authority !== 'portal'}
-      onClick={() => onAdd(slot)}
-      aria-describedby={authority !== 'portal' ? `${slot.id}-authority` : undefined}
-    >
-      <span className="vp-ab-slot-icon"><Icon name={slot.icon} size={17} /></span>
-      <span>
-        <strong>{slot.label}</strong>
-        <small id={authority !== 'portal' ? `${slot.id}-authority` : undefined}>
-          Optional
-          {authority === 'box' && ' · an der Box verwaltet'}
-          {authority === 'unknown' && ' · hier nicht freigegeben'}
-        </small>
-      </span>
-    </button>
-  );
-}
-
-function GeraeteVorschau({
-  knoten,
-  authority,
-  onClose,
-  onAssign,
-  onEdit,
-}: {
-  knoten: AnlagenKnoten;
-  authority: AnlagenAddAuthority;
-  onClose: () => void;
-  onAssign: (source: AdoptableSource) => void;
-  onEdit: () => void;
-}) {
-  const panel = useRef<HTMLElement>(null);
-  const close = useRef<HTMLButtonElement>(null);
-  const layer = useRef<HTMLDivElement>(null);
-  const titleId = `vp-ab-preview-${knoten.karteId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-
-  useEffect(() => {
-    const vorher = document.activeElement as HTMLElement | null;
-    const overflow = document.body.style.overflow;
-    const hintergrund = [...document.body.children]
-      .filter((element) => element !== layer.current)
-      .map((element) => ({
-        element,
-        inert: element.hasAttribute('inert'),
-        ariaHidden: element.getAttribute('aria-hidden'),
-      }));
-    document.body.style.overflow = 'hidden';
-    for (const { element } of hintergrund) {
-      element.setAttribute('inert', '');
-      element.setAttribute('aria-hidden', 'true');
-    }
-    close.current?.focus();
-    const key = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', key);
-    return () => {
-      document.body.style.overflow = overflow;
-      document.removeEventListener('keydown', key);
-      for (const { element, inert, ariaHidden } of hintergrund) {
-        if (!inert) element.removeAttribute('inert');
-        if (ariaHidden === null) element.removeAttribute('aria-hidden');
-        else element.setAttribute('aria-hidden', ariaHidden);
-      }
-      vorher?.focus();
-    };
-  }, [knoten.karteId, onClose]);
-
-  const trap = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key !== 'Tab') return;
-    const fokus = [...(panel.current?.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ) ?? [])];
-    if (fokus.length === 0) return;
-    const jetzt = document.activeElement as HTMLElement | null;
-    const index = jetzt ? fokus.indexOf(jetzt) : -1;
-    const ziel = event.shiftKey
-      ? fokus[(index <= 0 ? fokus.length : index) - 1]
-      : fokus[(index + 1) % fokus.length];
-    event.preventDefault();
-    ziel?.focus();
-  };
-
-  return createPortal(
-    <div ref={layer} className="vp-ab-preview-layer">
-      <div className="vp-ab-preview-scrim" aria-hidden="true" onClick={onClose} />
-      <aside
-        ref={panel}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="vp-ab-preview"
-        onKeyDown={trap}
+  if (knoten.href) {
+    return (
+      <a
+        className={cls}
+        style={style}
+        href={knoten.href}
+        data-anlagen-knoten={knoten.karteId}
+        aria-label={ariaLabel}
+        aria-describedby={hoverId}
       >
-        <div className="vp-ab-preview-grip" aria-hidden="true" />
-        <header>
-          <div>
-            <span className="vp-ab-preview-kicker">{ANLAGEN_ZONE[knoten.zone].label}</span>
-            <h2 id={titleId}>{knoten.titel}</h2>
-            <p>{knoten.untertitel}</p>
-          </div>
-          <button ref={close} type="button" className="vp-ab-preview-close" onClick={onClose} aria-label="Vorschau schließen">
-            <Icon name="x" size={20} />
-          </button>
-        </header>
+        {inhalt}
+      </a>
+    );
+  }
+  if (knoten.quelle) {
+    return (
+      <button
+        type="button"
+        className={cls}
+        style={style}
+        data-anlagen-knoten={knoten.karteId}
+        aria-label={`${ariaLabel}, jetzt zuordnen`}
+        aria-describedby={hoverId}
+        onClick={() => onAssign(knoten.quelle as AdoptableSource)}
+      >
+        {inhalt}
+      </button>
+    );
+  }
+  // Weder Detailseite noch Übernahme (selten): eine ruhige, nicht-interaktive
+  // Kachel statt eines Links ins Leere.
+  return (
+    <div className={cls} style={style} data-anlagen-knoten={knoten.karteId}>
+      {inhalt}
+    </div>
+  );
+}
 
-        <div className="vp-ab-preview-body">
-          <p className={`vp-ab-preview-state state-${knoten.zustand}`}>
-            <span aria-hidden="true" className="vp-ab-state-mark" />
-            <strong>{knoten.zustandLabel}</strong>
-            {knoten.zustandDetail && <span> · {knoten.zustandDetail}</span>}
-          </p>
-          <dl className="vp-ab-preview-facts">
-            <div>
-              <dt>Elektrischer Ort</dt>
-              <dd>{ANLAGEN_ZONE[knoten.zone].label}</dd>
-            </div>
-            {knoten.verbindung && (
-              <div>
-                <dt>Verbindung</dt>
-                <dd>{knoten.verbindung}</dd>
-              </div>
-            )}
-          </dl>
+/**
+ * Die zurückhaltende Hover-/Fokus-Fläche mit den Angaben, die früher in der
+ * Seitenleiste standen: elektrischer Ort, Verbindung, letzte Werte. Sie ist
+ * per `aria-describedby` mit dem Gerät verknüpft, damit sie bei Tastaturfokus
+ * angesagt wird.
+ */
+function HoverFlaeche({ knoten, id }: { knoten: AnlagenKnoten; id: string }) {
+  return (
+    <span className="vp-ab-hover" role="tooltip" id={id}>
+      <span className="vp-ab-hover-head">
+        <span className="vp-ab-hover-kicker">{ANLAGEN_ZONE[knoten.zone].label}</span>
+        <span className={`vp-ab-hover-state state-${knoten.zustand}`}>
+          <span aria-hidden="true" className="vp-ab-state-mark" />
+          <strong>{knoten.zustandLabel}</strong>
+          {knoten.zustandDetail && <span> · {knoten.zustandDetail}</span>}
+        </span>
+      </span>
+      {knoten.verbindung && <span className="vp-ab-hover-conn">{knoten.verbindung}</span>}
+      {knoten.werte.length > 0 ? (
+        <span className="vp-ab-hover-values">
+          {knoten.werte.map((wert) => (
+            <span key={`${wert.label}:${wert.wert}`} className="vp-ab-hover-value">
+              <strong>{wert.wert}</strong>
+              <span>{wert.label}</span>
+              {wert.stand && <small>{wert.stand}</small>}
+            </span>
+          ))}
+        </span>
+      ) : (
+        <span className="vp-ab-hover-empty">
+          Keine aktuellen Werte gemeldet. Ein fehlender Wert wird nicht als 0 angezeigt.
+        </span>
+      )}
+    </span>
+  );
+}
 
-          <section className="vp-ab-preview-values" aria-label="Letzte Werte">
-            <h3>Letzte Werte</h3>
-            {knoten.werte.length > 0 ? (
-              <div className="vp-ab-preview-valuegrid">
-                {knoten.werte.map((wert) => (
-                  <div key={`${wert.label}:${wert.wert}`}>
-                    <strong>{wert.wert}</strong>
-                    <span>{wert.label}</span>
-                    {wert.stand && <small>{wert.stand}</small>}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p>Keine aktuellen Werte gemeldet. Ein fehlender Wert wird nicht als 0 angezeigt.</p>
-            )}
-          </section>
-        </div>
+/**
+ * Die Datenverbindungs-Karte der Box — ein LINK auf die Box-Seite, wie eine
+ * Geräte-Karte. Sie zeigt die lokale Netz-Adresse (NIE eine WAN-Adresse) und
+ * den installierten Software-Stand; fehlende Angaben werden ehrlich benannt.
+ */
+function ServiceKarte({
+  service,
+  style,
+  mobil = false,
+}: {
+  service: DatenService | null;
+  style?: React.CSSProperties;
+  mobil?: boolean;
+}) {
+  const cls = mobil ? 'vp-ab-mobile-service' : 'vp-ab-service';
+  if (!service) {
+    return (
+      <div className={cls} style={style}>
+        <span className="vp-ab-service-icon"><Icon name="wifi" size={18} /></span>
+        <span className="vp-ab-service-body">
+          <strong>Datenverbindung nicht gemeldet</strong>
+          <small>VoltPilot zeigt keine Datenverbindung ohne bekannte Box.</small>
+        </span>
+      </div>
+    );
+  }
 
-        <footer>
-          {knoten.quelle ? (
-            <button
-              type="button"
-              className="vp-btn vp-btn--primary vp-btn--md"
-              onClick={() => {
-                onClose();
-                onAssign(knoten.quelle as AdoptableSource);
-              }}
-            >
-              Übernehmen
-            </button>
-          ) : knoten.href ? (
-            <a className="vp-btn vp-btn--primary vp-btn--md" href={knoten.href}>
-              Gerät öffnen
-            </a>
-          ) : (
-            <button type="button" className="vp-btn vp-btn--primary vp-btn--md" disabled>
-              Gerät öffnen
-            </button>
-          )}
-          <button
-            type="button"
-            className="vp-btn vp-btn--outline vp-btn--md"
-            disabled={authority !== 'portal' || !knoten.href}
-            aria-describedby={`${titleId}-edit-hint`}
-            onClick={() => {
-              onClose();
-              onEdit();
-            }}
-          >
-            Bearbeiten
-          </button>
-          <p id={`${titleId}-edit-hint`}>
-            {authority === 'portal'
-              ? 'Öffnet denselben geführten Ablauf mit den aktuellen Werten.'
-              : authority === 'box'
-                ? 'Dieses Gerät wird an Ihrer VoltPilot-Box verwaltet.'
-                : 'Für diese Anlage ist keine Gerätebearbeitung freigegeben.'}
-          </p>
-        </footer>
-      </aside>
-    </div>,
-    document.body,
+  const inhalt = (
+    <>
+      <span className="vp-ab-service-icon"><Icon name="wifi" size={18} /></span>
+      <span className="vp-ab-service-body">
+        <strong>Datenverbindung · {service.titel}</strong>
+        <small>{service.zustand}</small>
+        <span className="vp-ab-service-facts">
+          <span className="vp-ab-service-fact">
+            <span className="k">Im Netzwerk</span>
+            <span className={`v${service.lan.mono ? ' vp-mono' : ''}`}>{service.lan.wert}</span>
+          </span>
+          <span className="vp-ab-service-fact">
+            <span className="k">Software</span>
+            <span className={`v${service.version.bekannt ? ' vp-mono' : ''}`}>{service.version.wert}</span>
+          </span>
+        </span>
+      </span>
+      {service.href && (
+        <span className="vp-ab-service-go" aria-hidden="true">
+          <Icon name="chevron-right" size={18} />
+        </span>
+      )}
+    </>
+  );
+
+  if (service.href) {
+    const label =
+      `Datenverbindung zu VoltPilot: ${service.titel}, ${service.zustand}. ` +
+      `Adresse im Netzwerk: ${service.lan.wert}. Software: ${service.version.wert}.`;
+    return (
+      <a className={cls} style={style} href={service.href} aria-label={label}>
+        {inhalt}
+      </a>
+    );
+  }
+  return (
+    <div className={cls} style={style}>
+      {inhalt}
+    </div>
   );
 }

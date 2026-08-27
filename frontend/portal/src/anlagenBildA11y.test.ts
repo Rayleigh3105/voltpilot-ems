@@ -55,7 +55,22 @@ describe('Anlagenbild · WCAG-AA-Kontrast', () => {
       /\.vp-ab-service small,\s*\.vp-ab-mobile-service small\s*\{[^}]*color:\s*var\(--vp-action\)/s,
     );
     expect(bildCss).toMatch(
-      /\.vp-ab-preview-valuegrid span,\s*\.vp-ab-preview-valuegrid small\s*\{[^}]*color:\s*var\(--vp-action\)/s,
+      /\.vp-ab-hover-value span,\s*\.vp-ab-hover-value small\s*\{[^}]*color:\s*var\(--vp-action\)/s,
+    );
+  });
+
+  it('setzt Rollen-Chips und Service-Schlüssel auf AA-feste Schrift vor bg-light', () => {
+    expect(bildCss).toMatch(/\.vp-ab-role\s*\{[^}]*color:\s*var\(--vp-text-dark\)/s);
+    expect(bildCss).toMatch(
+      /\.vp-ab-service-fact \.k\s*\{[^}]*color:\s*var\(--vp-text-dark\)/s,
+    );
+    expect(contrast(token('text-dark'), token('bg-light'))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('hält die Hover-Fläche passiv und beschränkt sie auf feine Zeiger', () => {
+    expect(bildCss).toMatch(/\.vp-ab-hover\s*\{[^}]*pointer-events:\s*none/s);
+    expect(bildCss).toMatch(
+      /@media \(hover: hover\) and \(pointer: fine\)[^{]*\{[^}]*\.vp-ab-node:hover \.vp-ab-hover/s,
     );
   });
 
