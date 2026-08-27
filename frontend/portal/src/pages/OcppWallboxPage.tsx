@@ -304,7 +304,9 @@ export function OcppWallboxPage({
               <Fact label="Vorrang" value={charger.priority ? 'hat Vorrang' : 'normal eingeordnet'} />
               <Fact label="Aktuelle Freigabe" value={chargerConnector?.allocatedKw != null ? `${chargerConnector.allocatedKw.toLocaleString('de-DE', { maximumFractionDigits: 1 })} kW` : 'nicht gemeldet'} />
               {chargerConnector?.nextTurn && <Fact label="Nächster Start" value={shortTime(chargerConnector.nextTurn)} />}
-              <Fact label="Sofort laden" value={chargerConnector?.boost ? 'aktiv' : 'nicht aktiv'} />
+              <Fact label="Sofort laden" value={chargerConnector == null
+                ? 'nicht verfügbar'
+                : chargerConnector.boost ? 'aktiv' : 'nicht aktiv'} />
             </dl>
             {settingsHref && <a className="vp-ocpp-card-link" href={settingsHref}>Ladeeinstellungen der Anlage öffnen <Icon name="chevron-right" size={14} /></a>}
           </Card>

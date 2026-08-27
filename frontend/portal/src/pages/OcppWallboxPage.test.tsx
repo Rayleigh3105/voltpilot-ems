@@ -151,7 +151,7 @@ describe('OcppWallboxPage integration', () => {
     expect(document.body).not.toHaveTextContent('lädt mit Netzfreigabe');
     expect(document.body).not.toHaveTextContent('11 kW');
     expect(screen.getByText('Aktuelle Freigabe').nextElementSibling).toHaveTextContent('nicht gemeldet');
-    expect(screen.getByText('Sofort laden').nextElementSibling).toHaveTextContent('nicht aktiv');
+    expect(screen.getByText('Sofort laden').nextElementSibling).toHaveTextContent('nicht verfügbar');
   });
 
   it('never uses connector 1 status or settings for an open transaction on connector 2', async () => {
@@ -176,6 +176,7 @@ describe('OcppWallboxPage integration', () => {
     expect(screen.getByText('Anschluss 2: kein aktueller Zustand')).toBeVisible();
     expect(document.body).not.toHaveTextContent('Connector 1 lädt');
     expect(document.body).not.toHaveTextContent('22 kW');
+    expect(screen.getByText('Sofort laden').nextElementSibling).toHaveTextContent('nicht verfügbar');
     expect(screen.getByRole('button', { name: 'Status prüfen' })).toBeVisible();
   });
 
