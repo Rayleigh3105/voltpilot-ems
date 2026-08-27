@@ -152,9 +152,15 @@ const VERLAUF_TABS: { key: string; label: string; sub: AnlagenSub; view: DeepVie
 ];
 
 /**
- * Die REITER des Bereichs „Anlage": Modell · Einstellungen · Befehle an
- * Geräte. Alle drei sind STRUKTURELL da (sie folgen keinem Modus) — die
- * Befehle-Seite zeigt ohne Komponente den Verlauf der ganzen Anlage.
+ * Die REITER des Bereichs „Anlage": Komponenten · Einstellungen. Beide sind
+ * STRUKTURELL da (sie folgen keinem Modus).
+ *
+ * ⚠ **„Befehle an Geräte" ist als SEITEN-Reiter ERSATZLOS entfallen**
+ * (Captain-Auftrag 27.08.2026): Gerätebefehle stehen ausschließlich auf der
+ * jeweiligen Geräte-Detailseite. Die Route `befehle` bleibt gültig (jeder
+ * per-Gerät-Absprung `…/befehle?geraet=` / `…?komponente=` funktioniert weiter)
+ * — sie hat nur keinen eigenen Reiter mehr und hebt wie {@link SUB_BEREICH}
+ * `geraet`/`box` ihren Wirt, den Bereich „Anlage", hervor.
  */
 const ANLAGE_TABS: BereichTab[] = [
   // ⚠ „Komponenten", nicht „Modell": seit Steuerung Stufe 8 heisst der Reiter
@@ -163,7 +169,6 @@ const ANLAGE_TABS: BereichTab[] = [
   // Sache). Der SCHLÜSSEL `modell` und die Route bleiben — jedes Lesezeichen gilt.
   { key: 'modell', label: 'Komponenten', sub: 'modell' },
   { key: 'technik', label: 'Einstellungen', sub: 'technik' },
-  { key: 'befehle', label: 'Befehle an Geräte', sub: 'befehle' },
 ];
 
 /** Welcher Bereich eine Unterseite beherbergt — die EINE Zuordnung. */
@@ -179,12 +184,12 @@ const SUB_BEREICH: Record<AnlagenSub, BereichId> = {
   steuerung: 'steuerung',
   modell: 'anlage',
   technik: 'anlage',
+  // Die BEFEHLE-Seite, die GERÄTE-DETAILSEITE und die BOX-Seite haben KEINEN
+  // eigenen Reiter (Befehle stehen auf der jeweiligen Geräteseite; die beiden
+  // anderen sind eine Ebene UNTER dem Anlagen-Modell) - sie heben trotzdem
+  // ihren Wirt, den Bereich „Anlage", hervor; sonst stünde die Navigation ohne
+  // Markierung da, während der Kunde offensichtlich IN der Zentrale ist.
   befehle: 'anlage',
-  // Die GERÄTE-DETAILSEITE und die BOX-Seite sind eine Ebene UNTER dem
-  // Anlagen-Modell (die eine braucht eine Geräte-Referenz, die andere IST das
-  // Tor der Zentrale) - beide haben keinen eigenen Reiter und heben deshalb
-  // ihren Wirt hervor; sonst stünde die Navigation ohne Markierung da,
-  // während der Kunde offensichtlich IN der Zentrale ist.
   geraet: 'anlage',
   box: 'anlage',
 };

@@ -18,11 +18,11 @@ import { anlageSurface, type AnlageSurfaceInput } from './surface';
 /**
  * Jede `AnlagenSub`, die es gibt - die Wahrheit für „nichts ist verwaist".
  *
- * ⚠ `geraet` und `box` stehen bewusst NICHT hier: die Geräte-Detailseite
- * braucht eine Geräte-Referenz im Pfad, und die BOX-Seite ist das TOR der
- * Zentrale - ein Reiter könnte beides gar nicht erzeugen. Sie sind eine Ebene
- * UNTER dem Bereich „Anlage" und heben ihn hervor (`activeAreaKey`),
- * erreichbar ausschließlich von dort.
+ * ⚠ `geraet`, `box` und `befehle` stehen bewusst NICHT hier: Geräte- und
+ * Box-Seite brauchen eine Referenz im Pfad; die Befehlsseite wird nur noch aus
+ * der jeweiligen Geräte-Detailseite gefiltert geöffnet. Ein Anlagen-Reiter
+ * könnte diese Ziele nicht korrekt erzeugen. Sie heben weiterhin den Bereich
+ * „Anlage" hervor (`activeAreaKey`).
  */
 const ALL_SUBS: AnlagenSub[] = [
   'fahrplan',
@@ -36,7 +36,6 @@ const ALL_SUBS: AnlagenSub[] = [
   'steuerung',
   'modell',
   'technik',
-  'befehle',
 ];
 
 const ENTITIES: AnlageSurfaceInput['entities'] = [
@@ -192,9 +191,9 @@ describe('die REITER entstehen aus dem M0-Read-Model', () => {
     ]);
   });
 
-  it('gibt dem Bereich „Anlage" seine drei strukturellen Reiter', () => {
+  it('gibt dem Bereich „Anlage" nur Komponenten und Einstellungen', () => {
     for (const surface of [MARKT, PRIVAT, null]) {
-      expect(tabsOf(anlageBereiche(surface), 'anlage')).toEqual(['modell', 'technik', 'befehle']);
+      expect(tabsOf(anlageBereiche(surface), 'anlage')).toEqual(['modell', 'technik']);
     }
   });
 
@@ -289,7 +288,7 @@ describe('tabsFor - EINE Ableitung für Leiste und Reiter', () => {
       'prognose',
       'wetter',
     ]);
-    expect(tabsFor(s, 'technik').map((t) => t.sub)).toEqual(['modell', 'technik', 'befehle']);
+    expect(tabsFor(s, 'technik').map((t) => t.sub)).toEqual(['modell', 'technik']);
   });
 
   it('liefert LEER, wo der Bereich EINE Seite ist', () => {
@@ -336,7 +335,12 @@ describe('nichts ist verwaist: jede AnlagenSub hat einen Bereich oder einen Reit
   });
 
   it('ordnet JEDE Unterseite genau einem Bereich zu', () => {
-    for (const sub of [...ALL_SUBS, 'geraet' as AnlagenSub, 'box' as AnlagenSub]) {
+    for (const sub of [
+      ...ALL_SUBS,
+      'befehle' as AnlagenSub,
+      'geraet' as AnlagenSub,
+      'box' as AnlagenSub,
+    ]) {
       expect(FUENF.concat('ladevorgaenge')).toContain(bereichFor(sub));
     }
   });

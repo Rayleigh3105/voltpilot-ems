@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
   api,
+  type EdgeVersion,
   type EntityStrategy,
   type Device,
   type Site,
@@ -102,9 +103,10 @@ import '../components/KomponenteAssistent.css';
  * synchronisierte Zweitsicht. Beide werden ausschließlich aus `plantModel`
  * und `zentraleListe` projiziert, nicht als zweites Datenmodell gespeichert.
  *
- * Tapping a device highlights the components it measures (the interaction of
- * the old layout, kept). A newly reported device is assigned in one move
- * (`ZuordnenDialog`); an orphaned pin leads straight back into the SAME
+ * A real device in the Anlagenbild navigates directly to its detail page; the
+ * synchronized list remains the place for component actions. A newly reported
+ * device is assigned in one move (`ZuordnenDialog`); an orphaned pin leads
+ * straight back into the SAME
  * „Wieder verbinden"-Fluss (PR #271) instead of minting a duplicate.
  *
  * The customer dictionary is Gerät / Komponente / Messwert (D3) — the words
@@ -131,6 +133,12 @@ export function AnlagenModellSection({
   const [data, setData] = useState<SiteEntities | null>(null);
   const [topology, setTopology] = useState<SiteTopology | null>(null);
   const [sources, setSources] = useState<SiteSource[] | null>(null);
+  /**
+   * Der Software-Stand der Box (für die Datenverbindungs-Karte des
+   * Anlagenbilds) - FAIL-SOFT: ein älteres Backend liefert nichts, dann bleibt
+   * die Karte ohne Versionsangabe.
+   */
+  const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
   /**
    * Die Ladesäulen (§13 R7) - FAIL-SOFT: ein älteres Backend kennt die Route
    * nicht, dann fehlt schlicht ihre Karte. Ohne sie war eine Säule bis hierher
@@ -173,11 +181,6 @@ export function AnlagenModellSection({
   const [ansicht, setAnsicht] = useState<ZentraleAnsicht>(() =>
     parseZentraleAnsicht(typeof window === 'undefined' ? '' : window.location.hash),
   );
-  /** Auswahl ist eine Identität, die zwischen Anlagenbild und Liste überlebt. */
-  const [selectedKarteId, setSelectedKarteId] = useState<string | null>(null);
-  /** Die Vorschau ist getrennt: Schließen entfernt nie die Auswahl. */
-  const [previewKarteId, setPreviewKarteId] = useState<string | null>(null);
-  const ansichtWechselt = useRef(false);
   // Einheitsmodell Stufe 6: aus einer EIGENEN Vorlage ein Gerät machen - der
   // Assistent öffnet dann direkt in der Selbstbau-Tür, vorbefüllt.
   const [vorlage, setVorlage] = useState<SiteComponentTemplate | null>(null);
@@ -226,6 +229,11 @@ export function AnlagenModellSection({
       (list) => active && setConsumers(list ?? []),
       () => active && setConsumers([]),
     );
+    // Der Software-Stand der Box für die Datenverbindungs-Karte, fail-soft.
+    api.edgeVersions().then(
+      (v) => active && setEdgeVersions(v),
+      () => active && setEdgeVersions(null),
+    );
     return () => {
       active = false;
     };
@@ -263,26 +271,12 @@ export function AnlagenModellSection({
   }, []);
 
   const zeigeAnsicht = (naechste: ZentraleAnsicht) => {
-    ansichtWechselt.current = true;
     setAnsicht(naechste);
     const ziel = zentraleAnsichtHash(site.id, naechste);
     if (typeof window !== 'undefined' && window.location.hash !== ziel) {
       window.history.replaceState(null, '', ziel);
     }
   };
-
-  useEffect(() => {
-    if (!ansichtWechselt.current) return;
-    ansichtWechselt.current = false;
-    if (!selectedKarteId) return;
-    const attribut = ansicht === 'schaltbild' ? 'data-anlagen-knoten' : 'data-anlagen-karte';
-    const id = window.requestAnimationFrame(() => {
-      document
-        .querySelector<HTMLElement>(`[${attribut}="${CSS.escape(selectedKarteId)}"]`)
-        ?.focus();
-    });
-    return () => window.cancelAnimationFrame(id);
-  }, [ansicht, selectedKarteId]);
 
   const runSofort = async (durationMinutes?: number) => {
     if (!sofort) return;
@@ -313,6 +307,12 @@ export function AnlagenModellSection({
    * (keine oder mehrere Boxen) wird KEIN Weg angeboten, statt einen zu raten.
    */
   const boxRef = useMemo(() => boxRefOf(devices, site.id), [devices, site.id]);
+  /** Die EINE Box + ihr Software-Stand für die Datenverbindungs-Karte. */
+  const boxDevice = useMemo(() => boxOf(devices, site.id), [devices, site.id]);
+  const boxEdge = useMemo(
+    () => edgeVersions?.find((v) => v.deviceId === boxDevice?.id) ?? null,
+    [edgeVersions, boxDevice],
+  );
 
   /** Die vereinte Liste (§13) - EIN Aufruf, alles Übrige rendert nur. */
   const karten = useMemo(
@@ -371,7 +371,17 @@ export function AnlagenModellSection({
   }, [karten.length, gesprungen, sprungZiel]);
 
   /** Anlagenbild und Liste lesen exakt dieselben Kartenidentitäten. */
-  const bild = useMemo(() => (model ? anlagenBild(karten) : null), [model, karten]);
+  const bild = useMemo(
+    () =>
+      model
+        ? anlagenBild(karten, {
+            boxDevice,
+            edge: boxEdge,
+            now: devicesFetchedAt ?? undefined,
+          })
+        : null,
+    [model, karten, boxDevice, boxEdge, devicesFetchedAt],
+  );
 
   const isEmpty =
     model != null &&
@@ -477,8 +487,8 @@ export function AnlagenModellSection({
             {components && components.componentAuthority !== 'portal' && (
               <p className="vp-am-authority">
                 {components.componentAuthority === 'box'
-                  ? 'Diese Anlage wird an Ihrer VoltPilot-Box verwaltet. Freie Plätze zeigen, was elektrisch möglich ist; Änderungen nehmen Sie an der Box vor.'
-                  : 'Für diese Anlage ist keine Gerätebearbeitung im Portal freigegeben. Freie Plätze zeigen nur, was elektrisch möglich ist.'}
+                  ? 'Diese Anlage wird an Ihrer VoltPilot-Box verwaltet. Änderungen nehmen Sie an der Box vor.'
+                  : 'Für diese Anlage ist keine Gerätebearbeitung im Portal freigegeben.'}
               </p>
             )}
 
@@ -489,23 +499,10 @@ export function AnlagenModellSection({
                   <strong>Ihre Anlage wartet auf das erste Gerät.</strong>
                   <span>
                     {portalManaged
-                      ? 'Wählen Sie einen freien Platz oder starten Sie mit „Gerät hinzufügen".'
-                      : 'Die freien Plätze zeigen den möglichen Aufbau, ohne fehlende Geräte zu erfinden.'}
+                      ? 'Nutzen Sie „Gerät hinzufügen", um das erste Gerät anzubinden.'
+                      : 'Sobald Ihre Box ein Gerät meldet, erscheint es hier.'}
                   </span>
                 </div>
-                {portalManaged && (
-                  <button
-                    type="button"
-                    className="vp-btn vp-btn--primary vp-btn--sm"
-                    onClick={() => {
-                      setAddTyp(null);
-                      setAddRolle(null);
-                      setAddOpen(true);
-                    }}
-                  >
-                    Gerät hinzufügen
-                  </button>
-                )}
               </div>
             )}
 
@@ -555,7 +552,7 @@ export function AnlagenModellSection({
               </div>
               <span className="vp-am-ansicht-hint">
                 {ansicht === 'schaltbild'
-                  ? 'Elektrische Struktur und freie Plätze'
+                  ? 'Elektrische Struktur'
                   : 'Dieselben Geräte mit allen Komponentenaktionen'}
               </span>
             </div>
@@ -566,35 +563,11 @@ export function AnlagenModellSection({
                 role="tabpanel"
                 aria-labelledby="vp-anlagenbild-tab"
               >
-                <AnlagenBild
-                  bild={bild}
-                  desktop={isDesktop}
-                  authority={
-                    components?.componentAuthority === 'portal'
-                      ? 'portal'
-                      : components?.componentAuthority === 'box'
-                        ? 'box'
-                        : 'unknown'
-                  }
-                  selectedId={selectedKarteId}
-                  previewId={previewKarteId}
-                  onSelect={(id) => {
-                    setSelectedKarteId(id);
-                    setPreviewKarteId(id);
-                  }}
-                  onClosePreview={() => setPreviewKarteId(null)}
-                  onAdd={(slot) => {
-                    setAddTyp(slot.typ);
-                    setAddRolle(slot.initialRolle);
-                    setAddOpen(true);
-                  }}
-                  onAssign={setAssign}
-                  onEdit={editForKarte}
-                />
+                <AnlagenBild bild={bild} desktop={isDesktop} onAssign={setAssign} />
               </div>
             )}
 
-            {/* Die bestehende Liste bleibt vollständig und teilt Auswahl/Fokus. */}
+            {/* Die bestehende Liste bleibt vollständig als synchronisierte Zweitsicht. */}
             <div
               id="vp-anlagenliste"
               role="tabpanel"
@@ -612,7 +585,7 @@ export function AnlagenModellSection({
 
               {karten.length === 0 && (
                 <p className="vp-am-list-empty">
-                  Noch keine Geräte vorhanden. Im Anlagenbild sehen Sie die möglichen Plätze.
+                  Noch keine Geräte vorhanden.
                 </p>
               )}
 
@@ -620,7 +593,6 @@ export function AnlagenModellSection({
                 <GeraeteKarteView
                   key={k.id}
                   karte={k}
-                  selected={selectedKarteId === k.id}
                   siteId={site.id}
                   onAssign={setAssign}
                   onRename={setRename}
@@ -853,7 +825,6 @@ const HEALTH_TONE: Record<ComponentHealth, 'ok' | 'warn' | 'off'> = {
  */
 function GeraeteKarteView({
   karte,
-  selected,
   siteId,
   onAssign,
   onRename,
@@ -869,7 +840,6 @@ function GeraeteKarteView({
   onEdit,
 }: {
   karte: GeraeteKarte;
-  selected: boolean;
   siteId: string;
   onAssign: (s: AdoptableSource) => void;
   onRename?: (c: PlantComponent) => void;
@@ -888,10 +858,9 @@ function GeraeteKarteView({
   const k = karte;
   return (
     <section
-      className={`vp-am-karte is-${k.art}${selected ? ' is-selected' : ''}`}
+      className={`vp-am-karte is-${k.art}`}
       aria-label={k.titel}
       data-anlagen-karte={k.id}
-      tabIndex={selected ? -1 : undefined}
     >
       <div className="vp-am-karte-head">
         <span className={`vp-health-dot vp-health-${k.ton}`} />

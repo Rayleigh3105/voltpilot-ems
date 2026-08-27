@@ -5,6 +5,7 @@ import {
   api,
   ApiError,
   type Device,
+  type EdgeVersion,
   type Site,
   type SiteEntities,
   type SiteSource,
@@ -180,6 +181,7 @@ function stub() {
   // Die Säulen der vereinten Liste (§13 R7) - fail-soft, aber gestubbt, damit
   // ein Render nicht auf einen echten Abruf wartet.
   vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
+  vi.spyOn(api, 'edgeVersions').mockResolvedValue([]);
   vi.spyOn(entitiesApi, 'typeCatalog').mockResolvedValue({
     catalog_version: '1.0.0',
     types: [
@@ -825,8 +827,12 @@ describe('AnlagenModellSection — elektrisches Anlagenbild', () => {
     }));
   }
 
-  it('ist am Desktop der parameterlose Standardeinstieg mit fünf elektrischen Zonen', async () => {
+  it('ist am Desktop der parameterlose Standardeinstieg ohne inline Anlege-Plätze', async () => {
     stub();
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [],
+    });
     alsDesktop(true);
     window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
@@ -839,52 +845,48 @@ describe('AnlagenModellSection — elektrisches Anlagenbild', () => {
     for (const zone of ['PV', 'Speicher', 'Hausverteilung', 'Netz', 'Verbraucher']) {
       expect(screen.getAllByText(zone).length).toBeGreaterThan(0);
     }
-    expect(screen.getByRole('button', { name: /Speicher hinzufügen.*Optional/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Ladesäule anbinden.*Optional/ })).toBeDisabled();
+    expect(await screen.findAllByRole('button', { name: 'Gerät hinzufügen' })).toHaveLength(1);
+    for (const inline of [
+      /PV-Wechselrichter hinzufügen/,
+      /Speicher hinzufügen/,
+      /Ladesäule anbinden/,
+      /Verbraucher hinzufügen/,
+    ]) {
+      expect(screen.queryByText(inline)).toBeNull();
+    }
+    expect(screen.queryByRole('button', { name: 'Verbindungen anzeigen' })).toBeNull();
     expect(document.getElementById('vp-anlagenliste')).toHaveAttribute('hidden');
     expect(window.location.hash).toBe(`#/anlage/${site.id}/modell`);
   });
 
-  it('öffnet per Geräteklick nur die Vorschau mit ehrlichem Zustand und ohne Mutation', async () => {
+  it('navigiert per Geräteklick direkt zur Detailseite und öffnet keinen Drawer', async () => {
     stub();
     alsDesktop(true);
     window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
     const create = vi.spyOn(api, 'createComponent');
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Deye SUN-30K/ }));
-    const dialog = await screen.findByRole('dialog', { name: 'Deye SUN-30K' });
-    expect(within(dialog).getByText('Ungesteuert')).toBeInTheDocument();
-    expect(within(dialog).getByRole('link', { name: 'Gerät öffnen' })).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Bearbeiten' })).toBeDisabled();
+    const geraet = await screen.findByRole('link', { name: /Deye SUN-30K/ });
+    expect(geraet).toHaveAttribute('href', '#/anlage/s-1/geraet/VP-ABC123/inv');
+    fireEvent.click(geraet);
+    expect(screen.queryByRole('dialog', { name: 'Deye SUN-30K' })).toBeNull();
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('hält den Fokus ab dem ersten rückwärts-Tab im Modal und sperrt den Hintergrund', async () => {
+  it('macht die früheren Zusatzangaben per Tastaturfokus erreichbar, ohne verschachtelte Aktion', async () => {
     stub();
     alsDesktop(true);
     window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
-    const { container } = render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
-    const node = await screen.findByRole('button', { name: /Fronius Anlage/ });
+    const node = await screen.findByRole('link', { name: /Fronius Anlage/ });
     node.focus();
-    fireEvent.click(node);
-    const dialog = await screen.findByRole('dialog', { name: 'Fronius Anlage' });
-    const close = within(dialog).getByRole('button', { name: 'Vorschau schließen' });
-    const open = within(dialog).getByRole('link', { name: 'Gerät öffnen' });
-    await waitFor(() => expect(close).toHaveFocus());
-    expect(container).toHaveAttribute('inert');
-    expect(container).toHaveAttribute('aria-hidden', 'true');
-
-    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
-    expect(open).toHaveFocus();
-    fireEvent.keyDown(dialog, { key: 'Tab' });
-    expect(close).toHaveFocus();
-
-    fireEvent.click(close);
-    expect(container).not.toHaveAttribute('inert');
-    expect(container).not.toHaveAttribute('aria-hidden');
-    await waitFor(() => expect(node).toHaveFocus());
+    expect(node).toHaveFocus();
+    const tooltipId = node.getAttribute('aria-describedby');
+    expect(tooltipId).toBeTruthy();
+    expect(document.getElementById(tooltipId as string)).toHaveAttribute('role', 'tooltip');
+    expect(node.querySelector('a, button, [tabindex]')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('zeigt ein neues Gerät als Zuordnungsaufgabe und öffnet Übernehmen in der Primäransicht', async () => {
@@ -894,12 +896,7 @@ describe('AnlagenModellSection — elektrisches Anlagenbild', () => {
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Neues Gerät gefunden/ }));
-    const preview = await screen.findByRole('dialog', { name: 'Neues Gerät gefunden' });
-    expect(within(preview).getByText('Zuordnung ausstehend')).toBeInTheDocument();
-    expect(within(preview).queryByText('Gestört')).toBeNull();
-    fireEvent.click(within(preview).getByRole('button', { name: 'Übernehmen' }));
     const zuordnen = await screen.findByRole('dialog', { name: 'Gerät zuordnen' });
-    expect(screen.queryByRole('dialog', { name: 'Neues Gerät gefunden' })).toBeNull();
     await waitFor(() => expect(zuordnen).toHaveFocus());
   });
 
@@ -912,38 +909,39 @@ describe('AnlagenModellSection — elektrisches Anlagenbild', () => {
     expect(await screen.findByTestId('anlagenbild-mobil')).toBeInTheDocument();
     expect(screen.queryByTestId('anlagenbild-desktop')).toBeNull();
     expect(screen.getByRole('tab', { name: 'Liste' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Fronius Anlage/ }));
-    expect(await screen.findByRole('dialog', { name: 'Fronius Anlage' })).toBeInTheDocument();
+    const geraet = screen.getByRole('link', { name: /Fronius Anlage/ });
+    expect(geraet).not.toHaveAttribute('aria-describedby');
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Info|Details/ })).toBeNull();
+    fireEvent.click(geraet);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('behält Auswahl und Fokus beim Wechsel in die synchronisierte Liste', async () => {
+  it('bewahrt die synchronisierte Liste als zweite Ansicht', async () => {
     stub();
     alsDesktop(true);
     window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Fronius Anlage/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Vorschau schließen' }));
+    await screen.findByRole('link', { name: /Fronius Anlage/ });
     fireEvent.click(screen.getByRole('tab', { name: 'Liste' }));
     const karte = await screen.findByRole('region', { name: 'Fronius Anlage' });
-    expect(karte).toHaveClass('is-selected');
-    await waitFor(() => expect(document.activeElement).toBe(karte));
+    expect(karte).toBeVisible();
+    expect(screen.getByRole('tab', { name: 'Liste' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('blendet Kommunikationsverbindungen nur auf Wunsch ein', async () => {
+  it('enthält weder den Verbindungsschalter noch Kommunikationskanten', async () => {
     stub();
     alsDesktop(true);
     window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
     const { container } = render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
-    const toggle = await screen.findByRole('button', { name: 'Verbindungen anzeigen' });
+    await screen.findByTestId('anlagenbild-desktop');
+    expect(screen.queryByRole('button', { name: 'Verbindungen anzeigen' })).toBeNull();
     expect(container.querySelector('.vp-ab-wire.is-communication')).toBeNull();
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    expect(container.querySelectorAll('.vp-ab-wire.is-communication').length).toBeGreaterThan(0);
     expect(container.querySelector('marker')).toBeNull();
   });
 
-  it('bedient Ansichts-Tabs per Pfeiltaste und führt den Fokus nach der Vorschau zurück', async () => {
+  it('bedient die erhaltenen Ansichts-Tabs per Pfeiltaste', async () => {
     stub();
     alsDesktop(true);
     window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
@@ -954,17 +952,82 @@ describe('AnlagenModellSection — elektrisches Anlagenbild', () => {
     fireEvent.keyDown(bildTab, { key: 'ArrowRight' });
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Liste' })).toHaveFocus());
     expect(screen.getByRole('tab', { name: 'Liste' })).toHaveAttribute('tabindex', '0');
+  });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Anlagenbild' }));
-    const node = await screen.findByRole('button', { name: /Fronius Anlage/ });
-    node.focus();
-    fireEvent.click(node);
-    const dialog = await screen.findByRole('dialog', { name: 'Fronius Anlage' });
-    await waitFor(() =>
-      expect(within(dialog).getByRole('button', { name: 'Vorschau schließen' })).toHaveFocus(),
+  it('zeigt den Hybrid einmal unter PV, mit PV-Produktion und integrierter Speicherrolle', async () => {
+    stub();
+    alsDesktop(true);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    const diagram = await screen.findByRole('region', { name: 'Elektrisches Anlagenbild' });
+    const hybrid = within(diagram).getByRole('link', { name: /Deye SUN-30K/ });
+    expect(within(diagram).getAllByRole('link', { name: /Deye SUN-30K/ })).toHaveLength(1);
+    expect(hybrid).toHaveClass('zone-pv');
+    expect(hybrid).toHaveTextContent(/5,8\s+kW/);
+    expect(hybrid).toHaveTextContent('Speicher integriert');
+  });
+
+  it('macht die komplette Box-Karte zum Link und zeigt LAN-Adresse plus Edge-Stand', async () => {
+    stub();
+    alsDesktop(true);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    const edge: EdgeVersion = {
+      deviceId: 'gw',
+      siteId: 's-1',
+      coreVersion: 'edge-2026.08.1-9b37439a1234',
+      paletteVersion: null,
+      reportedAt: new Date().toISOString(),
+      newestRelease: 'edge-2026.08.1',
+      upToDate: true,
+    };
+    vi.mocked(api.edgeVersions).mockResolvedValue([edge]);
+    render(
+      <AnlagenModellSection
+        site={site}
+        devices={[
+          {
+            ...boxDevice,
+            lanHost: '192.168.20.14:8484',
+            lanSource: 'erreicht',
+            lanSeenAt: new Date().toISOString(),
+          },
+        ]}
+      />,
     );
-    fireEvent.keyDown(dialog, { key: 'Escape' });
-    await waitFor(() => expect(node).toHaveFocus());
+
+    expect(await screen.findByText('192.168.20.14:8484')).toBeInTheDocument();
+    expect(screen.getByText('edge-2026.08.1 (Build 9b37439a)')).toBeInTheDocument();
+    const boxLink = screen.getByRole('link', { name: /Datenverbindung zu VoltPilot/ });
+    expect(boxLink).toHaveAttribute('href', '#/anlage/s-1/box/VP-ABC123');
+    boxLink.focus();
+    expect(boxLink).toHaveFocus();
+    fireEvent.click(boxLink);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('zeigt fehlende Box-Metadaten ruhig und lässt keine öffentliche Adresse durch', async () => {
+    stub();
+    alsDesktop(true);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    render(
+      <AnlagenModellSection
+        site={site}
+        devices={[
+          {
+            ...boxDevice,
+            lanHost: '203.0.113.42:8484',
+            lanSource: 'erreicht',
+            lanSeenAt: new Date().toISOString(),
+          },
+        ]}
+      />,
+    );
+
+    expect(await screen.findByText('meldet Ihre Box noch nicht')).toBeInTheDocument();
+    expect(screen.getByText('meldet keinen Stand')).toBeInTheDocument();
+    const boxLink = screen.getByRole('link', { name: /Datenverbindung zu VoltPilot/ });
+    expect(boxLink.outerHTML).not.toContain('203.0.113.42');
   });
 });
 
@@ -1053,7 +1116,7 @@ describe('der Anlege-Einstieg', () => {
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
     expect(await screen.findByText(/Diese Anlage wird an Ihrer VoltPilot-Box verwaltet/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Gerät hinzufügen' })).toBeNull();
-    expect(screen.getByRole('button', { name: /Speicher hinzufügen.*Optional/ })).toBeDisabled();
+    expect(screen.queryByText(/Speicher hinzufügen/)).toBeNull();
   });
 
   it('erfindet bei einer unbekannten Berechtigung keine Verwaltung durch die Box', async () => {
@@ -1070,7 +1133,7 @@ describe('der Anlege-Einstieg', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/wird an Ihrer VoltPilot-Box verwaltet/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Gerät hinzufügen' })).toBeNull();
-    expect(screen.getByRole('button', { name: /Speicher hinzufügen.*Optional/ })).toBeDisabled();
+    expect(screen.queryByText(/Speicher hinzufügen/)).toBeNull();
   });
 
   it('fordert in der leeren portal-verwalteten Anlage aktiv zum ersten Gerät auf', async () => {
@@ -1092,13 +1155,11 @@ describe('der Anlege-Einstieg', () => {
     expect(
       await screen.findByText('Ihre Anlage wartet auf das erste Gerät.'),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Gerät hinzufügen' })).toHaveLength(2);
-    expect(
-      await screen.findByRole('button', { name: /PV-Wechselrichter hinzufügen.*Optional/ }),
-    ).toBeEnabled();
+    expect(screen.getAllByRole('button', { name: 'Gerät hinzufügen' })).toHaveLength(1);
+    expect(screen.queryByText(/PV-Wechselrichter hinzufügen/)).toBeNull();
   });
 
-  it('öffnet einen freien Platz direkt im passenden bestehenden Anlegeweg', async () => {
+  it('behält auch bei bestehender Anlage nur den einen generischen Anlegeweg', async () => {
     stub();
     window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
     vi.spyOn(api, 'siteComponents').mockResolvedValue({
@@ -1108,13 +1169,11 @@ describe('der Anlege-Einstieg', () => {
     vi.spyOn(api, 'componentTemplates').mockResolvedValue([]);
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
-    const slot = await screen.findByRole('button', { name: /Speicher hinzufügen.*Optional/ });
-    expect(slot).toBeEnabled();
-    fireEvent.click(slot);
+    const add = await screen.findByRole('button', { name: 'Gerät hinzufügen' });
+    expect(screen.queryByText(/Speicher hinzufügen/)).toBeNull();
+    fireEvent.click(add);
     const dialog = await screen.findByRole('dialog', { name: 'Gerät anbinden' });
-    expect(within(dialog).getByText('Welches Gerät ist es?')).toBeInTheDocument();
-    expect(within(dialog).queryByText('Was möchten Sie anbinden?')).toBeNull();
-    expect(within(dialog).getByTestId('rollen-wahl').querySelector('.is-on')?.textContent)
-      .toContain('Wechselrichter / Speicher');
+    expect(within(dialog).getByText('Was möchten Sie anbinden?')).toBeInTheDocument();
+    expect(within(dialog).getByTestId('typ-wechselrichter')).toBeInTheDocument();
   });
 });

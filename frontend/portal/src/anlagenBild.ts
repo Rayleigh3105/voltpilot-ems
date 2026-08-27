@@ -1,23 +1,31 @@
 /**
- * Das elektrische Anlagenbild der Anlagen-Zentrale (Geräte-Erlebnis Slice 1).
+ * Das elektrische Anlagenbild der Anlagen-Zentrale (Geräte-Erlebnis Slice 1,
+ * vereinfacht Captain-Auftrag 27.08.2026).
  *
  * Es ist bewusst eine REINE Projektion des schon geladenen Lesesatzes:
  * `zentraleListe` liefert die Geräte samt Komponenten und Zuständen, hier
- * werden daraus elektrische Orte, optionale Plätze und deterministische
- * Koordinaten. Es gibt keine gespeicherten Pixelpositionen und kein zweites
- * Backend-Modell.
+ * werden daraus elektrische Orte und deterministische Koordinaten. Es gibt
+ * keine gespeicherten Pixelpositionen und kein zweites Backend-Modell.
  *
  * Ehrlichkeit ist Teil des Typs: ein fehlender Livewert erzeugt keine Kachel,
  * ein alter Wert behält den Zustands-/Zeittext seiner Gerätekarte und jeder
  * Zustand trägt ein Wort zusätzlich zu seiner Farbe.
+ *
+ * ⚠ **Der Einstieg ist ein NAVIGATIONS-Bild, keine Auswahl-Fläche.** Ein echtes
+ * Gerät IST ein Link auf seine Detailseite; die früheren inline „hinzufügen"-
+ * Plätze und die Detail-Seitenleiste sind ersatzlos entfallen (der EINE
+ * „Gerät hinzufügen"-Knopf bleibt der Anlege-Weg). Deshalb trägt dieser Typ
+ * keine Slots mehr — nur Knoten und die Datenverbindungs-Karte der Box.
  */
-import type { IconName } from '../designsystem/components/core/Icon';
-import type { TypId } from './anlegenFlow';
 import type { ComponentRole } from './komponenten';
-import type { KomponentenRolle } from './komponentenAssistent';
 import type { AdoptableSource } from './rollen';
 import type { GeraeteKarte } from './zentraleListe';
+import type { Device, EdgeVersion } from './api';
 import { fmtNum } from './format';
+import { lanZeile, LAN_UNBEKANNT } from './geraetSeite';
+import { versionLabel } from './edgeVersionLabel';
+import { isPrivateHost } from './selbstbau';
+import type { IconName } from '../designsystem/components/core/Icon';
 
 export type AnlagenZone = 'pv' | 'storage' | 'house' | 'grid' | 'consumer';
 export type AnlagenZustand =
@@ -41,6 +49,8 @@ export const ANLAGEN_ZONE: Record<
 export interface AnlagenWert {
   label: string;
   wert: string;
+  /** Der elektrische Ort des Werts; die Karten-Kopfzahl folgt ihrem Knoten. */
+  zone: AnlagenZone;
   /** Derselbe Frischeanker wie am Gerät; null = die Quelle nennt keinen. */
   stand: string | null;
 }
@@ -53,9 +63,16 @@ export interface AnlagenKnoten {
   zone: AnlagenZone;
   /** Alle tatsächlich gemeldeten elektrischen Rollen dieses Geräts. */
   rollen: AnlagenZone[];
+  /**
+   * Die WEITEREN elektrischen Rollen neben der Spalte, in der der Knoten steht
+   * — die sichtbare Zuordnung eines Hybriden zu seinem Speicher (ohne die
+   * abgeleitete Hausverteilung, die kein eigenes Gerät ist).
+   */
+  nebenrollen: AnlagenZone[];
   zustand: AnlagenZustand;
   zustandLabel: string;
   zustandDetail: string | null;
+  /** Die Geräte-Detailseite; ein echtes Gerät IST ein Link darauf. */
   href: string | null;
   werte: AnlagenWert[];
   /** Ein belegter Satz der vorhandenen Karte, nie eine geratene Adresse. */
@@ -64,25 +81,34 @@ export interface AnlagenKnoten {
   quelle: AdoptableSource | null;
 }
 
-export interface AnlagenSlot {
-  id: string;
-  zone: AnlagenZone;
-  label: string;
-  typ: TypId;
-  /** Elektrische Absicht für die vorhandene Anlege-API; null = Typ-Ableitung. */
-  initialRolle: KomponentenRolle | null;
-  icon: IconName;
+/** Die private/lokale Adresse der Box im Kundennetz — NIE eine WAN-Adresse. */
+export interface DatenServiceLan {
+  wert: string;
+  detail: string;
+  mono: boolean;
+  /** false = die Box meldet (noch) keine Adresse; NIE „nicht erreichbar". */
+  bekannt: boolean;
+}
+
+/** Der installierte VoltPilot-Edge-Softwarestand. */
+export interface DatenServiceVersion {
+  wert: string;
+  /** false = die Box hat noch keinen Stand gemeldet. */
+  bekannt: boolean;
 }
 
 export interface DatenService {
   titel: string;
   zustand: string;
   ton: 'ok' | 'warn' | 'off';
+  /** Die Box-Detailseite; null = keine (dann ist die Karte kein Link). */
+  href: string | null;
+  lan: DatenServiceLan;
+  version: DatenServiceVersion;
 }
 
 export interface AnlagenBild {
   knoten: AnlagenKnoten[];
-  slots: AnlagenSlot[];
   service: DatenService | null;
 }
 
@@ -94,8 +120,15 @@ const ROLE_ZONE: Record<ComponentRole, AnlagenZone> = {
   consumer: 'consumer',
 };
 
-/** Ein Hybrid wohnt einmal am Speicherzweig, nicht zusätzlich in PV und Haus. */
-const ZONEN_RANG: AnlagenZone[] = ['storage', 'pv', 'grid', 'consumer', 'house'];
+/**
+ * ⚠ **Ein Hybrid wohnt am PV-Zweig, nicht am Speicherzweig** (Captain-Auftrag
+ * 27.08.2026): ein Wechselrichter mit PV UND Speicher wird EINMAL unter PV
+ * dargestellt, seine Speicher-Rolle als {@link AnlagenKnoten.nebenrollen}
+ * sichtbar daneben — das physische Gerät erscheint NIE zusätzlich als zweiter
+ * Knoten im Speicher. `pv` steht deshalb vor `storage` im Rang. Die
+ * Hausverteilung ist der abgeleitete Bus und rangiert zuletzt.
+ */
+const ZONEN_RANG: AnlagenZone[] = ['pv', 'storage', 'grid', 'consumer', 'house'];
 
 function gemeldeteZone(role: string | null | undefined): AnlagenZone | null {
   switch (role) {
@@ -114,14 +147,7 @@ function gemeldeteZone(role: string | null | undefined): AnlagenZone | null {
   }
 }
 
-function zoneFuer(karte: GeraeteKarte): AnlagenZone {
-  if (karte.art === 'ladepunkt') return 'consumer';
-  const rollen = new Set(karte.komponenten.map((c) => ROLE_ZONE[c.role]));
-  const quelle = karte.art === 'neu' ? gemeldeteZone(karte.quelle?.role) : null;
-  if (quelle) rollen.add(quelle);
-  return ZONEN_RANG.find((zone) => rollen.has(zone)) ?? 'house';
-}
-
+/** Die elektrischen Rollen einer Karte, geordnet nach {@link ZONEN_RANG}. */
 function rollenFuer(karte: GeraeteKarte): AnlagenZone[] {
   const rollen = new Set(karte.komponenten.map((c) => ROLE_ZONE[c.role]));
   if (karte.art === 'ladepunkt') rollen.add('consumer');
@@ -165,18 +191,29 @@ function standAus(zustand: string): string | null {
   return teile.slice(1).join(' · ');
 }
 
-function werteFuer(karte: GeraeteKarte): AnlagenWert[] {
+function werteFuer(karte: GeraeteKarte, hauptzone: AnlagenZone): AnlagenWert[] {
   const stand = standAus(karte.zustand);
   const gesehen = new Set<string>();
   const out: AnlagenWert[] = [];
-  for (const c of karte.komponenten) {
+  // Die sichtbare Kopfzahl beantwortet dieselbe Frage wie die Spalte. Beim
+  // Hybrid steht deshalb die PV-Produktion vor SoC/Batterieleistung. Fehlt der
+  // PV-Wert, bleibt die Kopfzahl leer; ein Speicherwert wird nicht als
+  // vermeintliche PV-Produktion nach oben gezogen.
+  const komponenten = [...karte.komponenten].sort((a, b) => {
+    const aHaupt = ROLE_ZONE[a.role] === hauptzone ? 0 : 1;
+    const bHaupt = ROLE_ZONE[b.role] === hauptzone ? 0 : 1;
+    return aHaupt - bHaupt;
+  });
+  for (const c of komponenten) {
     if (!c.reading) continue;
-    const key = `${c.label}:${c.reading.unit}`;
+    const zone = ROLE_ZONE[c.role];
+    const key = `${zone}:${c.label}:${c.reading.unit}`;
     if (gesehen.has(key)) continue;
     gesehen.add(key);
     out.push({
       label: c.label,
       wert: fmtNum(c.reading.value, c.reading.unit),
+      zone,
       stand,
     });
     if (out.length === 3) break;
@@ -186,86 +223,122 @@ function werteFuer(karte: GeraeteKarte): AnlagenWert[] {
 
 function knotenFuer(karte: GeraeteKarte): AnlagenKnoten {
   const zustand = zustandFuer(karte);
+  const rollen = rollenFuer(karte);
+  const zone = rollen[0] ?? 'house';
+  // Die WEITEREN Rollen zeigen einem Hybriden seine Speicher-/Netz-Funktion an
+  // — die Hausverteilung ist kein eigenes Gerät und bleibt aus den Chips.
+  const nebenrollen = rollen.filter((r) => r !== zone && r !== 'house');
   return {
     id: `knoten:${karte.id}`,
     karteId: karte.id,
     titel: karte.titel,
     untertitel: karte.untertitel,
-    zone: zoneFuer(karte),
-    rollen: rollenFuer(karte),
+    zone,
+    rollen,
+    nebenrollen,
     zustand,
     zustandLabel: ZUSTAND_LABEL[zustand],
     zustandDetail: karte.zustand || null,
     href: karte.href,
-    werte: werteFuer(karte),
+    werte: werteFuer(karte, zone),
     verbindung: karte.zusatz,
     quelle: karte.quelle ?? null,
   };
 }
 
 /**
- * Die sichtbaren freien Plätze. Nur der maßgebliche Netz-Zähler ist
- * kardinalitätsbegrenzt: sobald ein Netzgerät belegt ist, wird kein zweiter
- * Standardplatz angeboten. Alle übrigen Plätze sind ausdrücklich optional.
+ * Die Datenverbindungs-Karte der Box: sie IST ein Link auf die Box-Seite und
+ * zeigt ihre lokale Netz-Adresse (nie eine WAN-Adresse) samt dem installierten
+ * Software-Stand. Beides wird ehrlich behandelt — eine Box, die (noch) nichts
+ * meldet, bekommt einen ruhigen Platzhalter statt einer erfundenen Angabe.
  */
-function slotsFuer(knoten: AnlagenKnoten[]): AnlagenSlot[] {
-  const slots: AnlagenSlot[] = [
-    {
-      id: 'slot-pv',
-      zone: 'pv',
-      label: 'PV-Wechselrichter hinzufügen',
-      typ: 'wechselrichter',
-      initialRolle: null,
-      icon: 'sun',
-    },
-    {
-      id: 'slot-storage',
-      zone: 'storage',
-      label: 'Speicher hinzufügen',
-      typ: 'wechselrichter',
-      initialRolle: 'inverter',
-      icon: 'battery',
-    },
-    {
-      id: 'slot-charger',
-      zone: 'consumer',
-      label: 'Ladesäule anbinden',
-      typ: 'ladesaeule',
-      initialRolle: null,
-      icon: 'battery-charging',
-    },
-    {
-      id: 'slot-consumer',
-      zone: 'consumer',
-      label: 'Verbraucher hinzufügen',
-      typ: 'verbraucher',
-      initialRolle: null,
-      icon: 'zap',
-    },
-  ];
-  if (!knoten.some((k) => k.rollen.includes('grid'))) {
-    slots.splice(2, 0, {
-      id: 'slot-grid',
-      zone: 'grid',
-      label: 'Netz-Zähler hinzufügen',
-      typ: 'zaehler',
-      initialRolle: null,
-      icon: 'activity',
-    });
+export interface AnlagenBildOptions {
+  /** Die EINE VoltPilot-Box dieser Anlage (für ihre gemeldete LAN-Adresse). */
+  boxDevice?: Device | null;
+  /** Der Software-Stand dieser Box aus `GET /edge-versions`. */
+  edge?: EdgeVersion | null;
+  /** Bezugszeit für den Frischeanker der LAN-Adresse. */
+  now?: number;
+}
+
+/**
+ * Ein `lanHost` ist ein Anzeige-Beleg, aber kein Freibrief: der Host-Kopf kann
+ * auch über einen öffentlichen Reverse-Proxy entstanden sein. Die Box-Karte
+ * zeigt deshalb nur eine nach dem bestehenden, vertragsgeteilten LAN-Prüfer
+ * belegbar private/lokale Adresse. Port und Klammern bleiben für die Anzeige
+ * unverändert; Pfade, Userinfo und ungültige Ports sind keine Host-Adresse.
+ */
+function privateLanAddress(raw: string | null | undefined): string | null {
+  const address = (raw ?? '').trim();
+  if (!address || address.length > 255 || /[\s/@?#]/.test(address)) return null;
+
+  let host = address;
+  const bracketed = /^\[([^\]]+)](?::(\d{1,5}))?$/.exec(address);
+  if (bracketed) {
+    host = bracketed[1];
+    if (bracketed[2] && Number(bracketed[2]) > 65_535) return null;
+  } else {
+    const colonCount = (address.match(/:/g) ?? []).length;
+    if (colonCount === 1) {
+      const withPort = /^(.+):(\d{1,5})$/.exec(address);
+      if (!withPort || Number(withPort[2]) > 65_535) return null;
+      host = withPort[1];
+    }
+    // Mehrere Doppelpunkte ohne Klammern sind ein reines IPv6-Literal. Ein
+    // Port daran wäre nicht eindeutig und wird vom privaten Prüfer abgelehnt.
   }
-  return slots;
+  // Der geteilte Selbstbau-Prüfer erlaubt Loopback mit Absicht für lokale
+  // Modbus-Ziele. Auf der Box-Karte wäre das jedoch keine Adresse IM
+  // KUNDENNETZ, sondern nur die Box selbst — deshalb gilt hier die engere
+  // Anzeige-Regel.
+  const normalizedHost = host.toLowerCase();
+  if (normalizedHost === '::1' || normalizedHost.startsWith('127.')) return null;
+  return isPrivateHost(host) ? address : null;
+}
+
+function boxLan(device: Device | null, now: number): DatenServiceLan {
+  const privateAddress = privateLanAddress(device?.lanHost);
+  const safeDevice = device
+    ? { ...device, lanHost: privateAddress, lanSeenAt: privateAddress ? device.lanSeenAt : null }
+    : undefined;
+  const zeile = lanZeile(safeDevice, now);
+  return {
+    wert: zeile.wert,
+    detail: zeile.detail ?? '',
+    mono: !!zeile.mono,
+    bekannt: zeile.wert !== LAN_UNBEKANNT,
+  };
+}
+
+function boxVersion(edge: EdgeVersion | null): DatenServiceVersion {
+  const stand = (edge?.coreVersion ?? '').trim();
+  if (!stand) return { wert: 'meldet keinen Stand', bekannt: false };
+  const soll = (edge?.newestRelease ?? '').trim();
+  return { wert: versionLabel(stand, soll ? [{ version: soll }] : []), bekannt: true };
+}
+
+function datenService(box: GeraeteKarte, opts: AnlagenBildOptions): DatenService {
+  const now = opts.now ?? Date.now();
+  return {
+    titel: box.titel,
+    zustand: box.zustand,
+    ton: box.ton,
+    href: box.href,
+    lan: boxLan(opts.boxDevice ?? null, now),
+    version: boxVersion(opts.edge ?? null),
+  };
 }
 
 /** Alles, was das Anlagenbild braucht, aus der synchronen Geräte-Zweitsicht. */
-export function anlagenBild(karten: GeraeteKarte[]): AnlagenBild {
+export function anlagenBild(
+  karten: GeraeteKarte[],
+  opts: AnlagenBildOptions = {},
+): AnlagenBild {
   const box = karten.find((k) => k.art === 'box') ?? null;
   const knoten = karten.filter((k) => k.art !== 'box').map(knotenFuer);
   return {
     knoten,
-    slots: slotsFuer(knoten),
-    service: box
-      ? { titel: box.titel, zustand: box.zustand, ton: box.ton }
-      : null,
+    service: box ? datenService(box, opts) : null,
   };
 }
 
@@ -276,7 +349,7 @@ export function anlagenBild(karten: GeraeteKarte[]): AnlagenBild {
 export const ANLAGEN_BILD_BREITE = 1040;
 export const ANLAGEN_KNOTEN_BREITE = 204;
 export const ANLAGEN_KNOTEN_HOEHE = 84;
-const SLOT_HOEHE = 74;
+const ANLAGEN_ROLLEN_ZEILE_HOEHE = 22;
 const ABSTAND = 14;
 const OBEN = 62;
 export const ANLAGEN_SPALTEN_X: Record<AnlagenZone, number> = {
@@ -287,10 +360,8 @@ export const ANLAGEN_SPALTEN_X: Record<AnlagenZone, number> = {
   consumer: 810,
 };
 
-export type AnlagenLayoutArt = 'knoten' | 'slot';
 export interface AnlagenLayoutItem {
   id: string;
-  art: AnlagenLayoutArt;
   zone: AnlagenZone;
   x: number;
   y: number;
@@ -316,21 +387,23 @@ export interface AnlagenBildLayout {
   linien: AnlagenLinie[];
 }
 
-type LayoutQuelle = Pick<AnlagenKnoten, 'id' | 'zone'> | Pick<AnlagenSlot, 'id' | 'zone'>;
-
-function zonenQuellen(bild: AnlagenBild, zone: AnlagenZone): Array<{
-  quelle: LayoutQuelle;
-  art: AnlagenLayoutArt;
-}> {
-  return [
-    ...bild.knoten.filter((k) => k.zone === zone).map((quelle) => ({ quelle, art: 'knoten' as const })),
-    ...bild.slots.filter((s) => s.zone === zone).map((quelle) => ({ quelle, art: 'slot' as const })),
-  ];
+function zonenKnoten(bild: AnlagenBild, zone: AnlagenZone): AnlagenKnoten[] {
+  return bild.knoten.filter((k) => k.zone === zone);
 }
 
-function stapelHoehe(anzahl: number): number {
-  if (anzahl === 0) return 0;
-  return anzahl * ANLAGEN_KNOTEN_HOEHE + (anzahl - 1) * ABSTAND;
+function knotenHoehe(knoten: AnlagenKnoten): number {
+  if (knoten.nebenrollen.length === 0) return ANLAGEN_KNOTEN_HOEHE;
+  // Zwei Rollen passen in die 204-px-Karte auf eine Zeile; eine dritte bekommt
+  // deterministisch eine weitere. So kann der sichtbare Hybrid-Hinweis den
+  // nächsten Knoten nie überdecken.
+  return ANLAGEN_KNOTEN_HOEHE +
+    Math.ceil(knoten.nebenrollen.length / 2) * ANLAGEN_ROLLEN_ZEILE_HOEHE;
+}
+
+function stapelHoehe(knoten: AnlagenKnoten[]): number {
+  if (knoten.length === 0) return 0;
+  return knoten.reduce((summe, item) => summe + knotenHoehe(item), 0) +
+    (knoten.length - 1) * ABSTAND;
 }
 
 /**
@@ -340,30 +413,24 @@ function stapelHoehe(anzahl: number): number {
  */
 export function layoutAnlagenBild(bild: AnlagenBild): AnlagenBildLayout {
   const obenZonen: AnlagenZone[] = ['pv', 'storage', 'grid'];
-  const obenGruppen = Object.fromEntries(obenZonen.map((z) => [z, zonenQuellen(bild, z)])) as Record<
-    AnlagenZone,
-    ReturnType<typeof zonenQuellen>
-  >;
-  const maxOben = Math.max(...obenZonen.map((z) => stapelHoehe(obenGruppen[z].length)), 0);
+  const obenGruppen = Object.fromEntries(
+    obenZonen.map((z) => [z, zonenKnoten(bild, z)]),
+  ) as Record<AnlagenZone, AnlagenKnoten[]>;
+  const maxOben = Math.max(...obenZonen.map((z) => stapelHoehe(obenGruppen[z])), 0);
   const busY = Math.max(320, OBEN + maxOben + 64);
   const untenStart = busY + 84;
-  const haus = zonenQuellen(bild, 'house');
-  const verbraucher = zonenQuellen(bild, 'consumer');
-  const untenHoehe = Math.max(stapelHoehe(haus.length), stapelHoehe(verbraucher.length), 80);
+  const haus = zonenKnoten(bild, 'house');
+  const verbraucher = zonenKnoten(bild, 'consumer');
+  const untenHoehe = Math.max(stapelHoehe(haus), stapelHoehe(verbraucher), 80);
   const serviceY = untenStart + untenHoehe + 64;
   const items: AnlagenLayoutItem[] = [];
 
-  const setze = (
-    gruppe: ReturnType<typeof zonenQuellen>,
-    zone: AnlagenZone,
-    startY: number,
-  ) => {
+  const setze = (gruppe: AnlagenKnoten[], zone: AnlagenZone, startY: number) => {
     let y = startY;
-    for (const { quelle, art } of gruppe) {
-      const h = art === 'slot' ? SLOT_HOEHE : ANLAGEN_KNOTEN_HOEHE;
+    for (const knoten of gruppe) {
+      const h = knotenHoehe(knoten);
       items.push({
-        id: quelle.id,
-        art,
+        id: knoten.id,
         zone,
         x: ANLAGEN_SPALTEN_X[zone],
         y,
