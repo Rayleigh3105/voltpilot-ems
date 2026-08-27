@@ -30,6 +30,12 @@ const (
 
 var pointKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._*\[\]@-]{0,239}$`)
 
+// entityIDPattern is the contract's uuid shape. A selection's entity_id now
+// picks the DEVICE a point is read from, so a malformed one must never reach
+// the binding layer as an unresolvable key - it is a broken document, not a
+// missing component.
+var entityIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
 type Identity struct {
 	TenantID string `json:"tenant_id"`
 	SiteID   string `json:"site_id"`
@@ -38,12 +44,13 @@ type Identity struct {
 type Selection struct {
 	PointKey string `json:"point_key"`
 	CadenceS int    `json:"cadence_s"`
-	// EntityID names the component a selection belongs to (cloud Stufe 3b). It
-	// is accepted and IGNORED here on purpose: this build still polls every
-	// point over the primary inverter's connection, so binding a read to a
-	// component is Stufe 3c work. The field exists because the decoder rejects
-	// unknown fields - without it the whole plan of a box would be refused the
-	// moment the cloud starts sending per-component selections.
+	// EntityID names the component a selection belongs to (cloud Stufe 3b).
+	// Since Stufe 3c it SELECTS the device the point is read from: Node-RED
+	// resolves it through the per-entity registry pin (edge_source_id) to a
+	// source in edge/sources/config, and REFUSES the point when it cannot -
+	// never reads it against the primary inverter. This layer only carries and
+	// shape-checks it; the resolution rule lives in
+	// edge-app/nodered/measurements/measurement-binding.js.
 	EntityID   string          `json:"entity_id,omitempty"`
 	Definition json.RawMessage `json:"definition,omitempty"`
 }
@@ -87,6 +94,9 @@ func ParseConfig(raw []byte, id Identity, appliedRevision int64) (Config, error)
 	for _, s := range c.Selections {
 		if !pointKeyPattern.MatchString(s.PointKey) || s.CadenceS < 1 || s.CadenceS > 86400 {
 			return c, errors.New("invalid selection")
+		}
+		if s.EntityID != "" && !entityIDPattern.MatchString(s.EntityID) {
+			return c, errors.New("invalid selection entity_id")
 		}
 		if seen[s.PointKey] {
 			return c, fmt.Errorf("duplicate point %s", s.PointKey)
@@ -139,7 +149,11 @@ type Rejection struct {
 
 var reasons = map[string]bool{"unknown_point": true, "unsupported_catalog": true, "edge_too_old": true,
 	"invalid_cadence": true, "budget_samples": true, "budget_requests": true, "budget_duty_cycle": true,
-	"driver_unavailable": true, "ocpp_configuration_incompatible": true}
+	"driver_unavailable": true, "ocpp_configuration_incompatible": true,
+	// Stufe 3c: the selection names a component this box cannot place on a
+	// device it reads. Refusing is the point - reading it against the primary
+	// inverter would be a wrong value on the right-looking point.
+	"binding_unavailable": true}
 
 func WrapStatus(raw []byte, id Identity, edgeVersion string) ([]byte, error) {
 	var s LocalStatus

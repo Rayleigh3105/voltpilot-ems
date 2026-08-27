@@ -4,9 +4,18 @@ const net = require('net');
 const http = require('http');
 const https = require('https');
 const losslessJSON = require('../lib/lossless-json');
+const sourcesConfig = require('./vp-sources-config');
+const binding = require('../../measurements/measurement-binding');
 
 const CONFIG = 'edge/measurements/config';
 const INVERTER = 'edge/inverter/config';
+// Stufe 3c: the two retained documents that turn a selection's `entity_id`
+// into the device it must be read from - the pin lives in the per-entity
+// registry, the connection behind it in the source list.
+const SOURCES = sourcesConfig.TOPIC;
+const ENTITY_CONFIG = 'edge/entities/+/config';
+const ENTITY_PREFIX = 'edge/entities/';
+const SUNSPEC_COMMUNICATIONS = ['fronius_sunspec', 'sunspec_tcp'];
 const OCPP = 'edge/measurements/ocpp-meter-values';
 const OCPP_RESULT = 'edge/measurements/ocpp-configuration-result';
 const OCPP_CONFIG = 'edge/measurements/ocpp-configuration';
@@ -120,19 +129,33 @@ module.exports = function (RED) {
     }
     let inverter = null; let txid = 0; let sequence = 0; let desired = null;
     const ocppPending = new Map();
+    // The live binding context. It is MUTATED in place so every runtime.apply()
+    // sees the current maps without re-wiring io.
+    const bindingContext = { entities:{}, sources:{} };
+    const discovered = new Map();
+    let reconciling = Promise.resolve();
+
+    // The read-time half of the binding lives in the pure module (it THROWS for
+    // a bound component whose device this box does not publish - a gap in time,
+    // never a read of the primary).
+    const deviceFor = (target) =>
+      binding.resolveDevice(target, { inverter, sources:bindingContext.sources });
     const io = {
       // The setpoint lane announces control before the existing write flow
       // touches the device. Measurement requests yield a bounded exclusive
       // window, so control communication cannot queue behind catalog polling.
-      runBusTask: async (_priority, run) => {
-        const conn=inverter&&inverter.connection||{};
+      runBusTask: async (_priority, run, target) => {
+        let device = null;
+        try { device = deviceFor(target); } catch (_) { device = null; }
+        const conn=device&&device.connection||{};
         return busArbiter.runPoll(busArbiter.targetKey(conn,
-          inverter&&inverter.communication==='solarman_v5'?8899:502),run);
+          device&&device.communication==='solarman_v5'?8899:502),run);
       },
-      readModbus: async ({ start, count, source_kind }) => {
-        const conn = inverter && inverter.connection || {};
+      readModbus: async ({ start, count, source_kind, target }) => {
+        const device = deviceFor(target);
+        const conn = device.connection || {};
         if (!conn.ip) throw new Error('keine Geräteverbindung');
-        if (inverter.communication === 'solarman_v5') {
+        if (device.communication === 'solarman_v5') {
           const frame = deye.buildReadRequest({ loggerSerial:conn.serial,
             sequence:sequence++, slaveId:Number(conn.mb_slave_id) || 1, startReg:start, count });
           const response = await request(conn.ip, Number(conn.port) || 8899, frame,
@@ -149,8 +172,8 @@ module.exports = function (RED) {
         return modbus.parseReadResponse(response, { expectTxid:requestId,
           expectUnit:Number(conn.unit_id) || 1, expectFn:fc });
       },
-      readJSON: async ({ filter, points }) => {
-        const conn = inverter && inverter.connection || {};
+      readJSON: async ({ filter, points, target }) => {
+        const conn = deviceFor(target).connection || {};
         if (!conn.ip) throw new Error('keine Geräteverbindung');
         const source = points[0].source_kind;
         const endpoint=inverterJSONEndpoint(points[0].selector,conn.serial);
@@ -164,6 +187,8 @@ module.exports = function (RED) {
         const payload=await getJSON(url);
         return source==='rpc_json'?shapeShellyStatus(points,payload):payload;
       },
+      binding: bindingContext,
+      discoveries: {},
       ocppCapability: { supported:true, readonly:false, maxLength:1024 },
       applyOcppConfiguration: ({ revision, configuration }) => new Promise((resolve) => {
         ocppPending.set(revision, resolve);
@@ -174,14 +199,102 @@ module.exports = function (RED) {
     const runtime = new Runtime.MeasurementRuntime(io, (topic, payload, retained) => {
       core.client.publish(topic, JSON.stringify(payload), { qos:1, retain:!!retained });
     });
-    const measurementOptions = () => ({
-      byteOrder:inverter && inverter.connection && inverter.connection.byte_order,
-    });
-    const subscribe = () => core.client.subscribe([CONFIG, INVERTER, OCPP, OCPP_RESULT, CONTROL], { qos:1 });
+    const byteOrderOf = (device) => device && device.connection && device.connection.byte_order;
+    const measurementOptions = () => {
+      const byteOrders = {};
+      for (const [id, source] of Object.entries(bindingContext.sources)) {
+        byteOrders[binding.sourceTargetKey(id)] = byteOrderOf(source);
+      }
+      return { byteOrder:byteOrderOf(inverter), byteOrders };
+    };
+    // A (re)connect replays every retained document at once - one entity config
+    // per component. Applying (and publishing a status the core forwards to the
+    // cloud) once PER message would turn that burst into a status storm, so the
+    // binding-driven re-applies coalesce into one. A new PLAN still applies
+    // synchronously: its status is the acknowledgement the cloud waits for.
+    let applyScheduled = null;
+    const scheduleApply = () => {
+      if (applyScheduled) return;
+      applyScheduled = setTimeout(() => { applyScheduled = null; applyDesired(); }, 0);
+      if (typeof applyScheduled.unref === 'function') applyScheduled.unref();
+    };
+    const applyDesired = () => {
+      if (!desired) return;
+      const plan = runtime.apply(desired, measurementOptions());
+      node.status(plan.pending ? { fill:'blue',shape:'ring',text:'OCPP-Abgleich Revision ' + desired.revision }
+        : plan.applied ? { fill:'green',shape:'dot',text:'Revision ' + desired.revision }
+        : { fill:'yellow',shape:'ring',text:'Plan abgelehnt' });
+    };
+    // A SunSpec point's address is MODEL-RELATIVE, so every sunspec target needs
+    // its OWN discovery walk. A target without one has no address: the planner
+    // then refuses its sunspec points as driver_unavailable instead of reading
+    // the PRIMARY's model base on a different device.
+    const fingerprint = (device) => JSON.stringify([device.communication, device.connection]);
+    const ensureDiscovery = async (targetKey, target, device) => {
+      if (!SUNSPEC_COMMUNICATIONS.includes(device.communication)) {
+        if (discovered.delete(targetKey)) delete io.discoveries[targetKey];
+        if (targetKey === binding.TARGET_PRIMARY) io.discovery = undefined;
+        return false;
+      }
+      if (discovered.get(targetKey) === fingerprint(device)) return false;
+      const found = await discoverSunSpec((r) => io.readModbus(Object.assign({}, r, { target })));
+      io.discoveries[targetKey] = found;
+      if (targetKey === binding.TARGET_PRIMARY) io.discovery = found;
+      discovered.set(targetKey, fingerprint(device));
+      return true;
+    };
+    // Serialized: discovery walks share the one physical bus per target, and a
+    // burst of retained messages on (re)connect must not start the same walk twice.
+    const reconcile = () => {
+      reconciling = reconciling.then(async () => {
+        const seen = new Set();
+        const targets = [];
+        if (inverter && inverter.connection && inverter.connection.ip) {
+          targets.push([binding.TARGET_PRIMARY, { key:binding.TARGET_PRIMARY, sourceId:null }, inverter]);
+        }
+        for (const [id, source] of Object.entries(bindingContext.sources)) {
+          targets.push([binding.sourceTargetKey(id), { key:binding.sourceTargetKey(id), sourceId:id }, source]);
+        }
+        for (const [key, target, device] of targets) {
+          seen.add(key);
+          try { await ensureDiscovery(key, target, device); }
+          catch (error) { node.warn('SunSpec-Erkennung (' + key + '): ' + error.message); }
+        }
+        for (const key of [...discovered.keys()]) {
+          if (seen.has(key)) continue;
+          discovered.delete(key); delete io.discoveries[key];
+          if (key === binding.TARGET_PRIMARY) io.discovery = undefined;
+        }
+        applyDesired();
+      }).catch((error) => node.warn('Messruntime: ' + error.message));
+      return reconciling;
+    };
+    const subscribe = () => core.client.subscribe(
+      [CONFIG, INVERTER, SOURCES, ENTITY_CONFIG, OCPP, OCPP_RESULT, CONTROL], { qos:1 });
     if (core.client.connected) subscribe();
     core.client.on('connect', subscribe);
     const onMessage = (topic, raw) => {
       try {
+        if (topic === SOURCES) {
+          // parse() returns null for an unusable payload (distinguished from a
+          // cleared [] config) - keep the previous map rather than unbinding
+          // every component on one malformed retained message.
+          const list = sourcesConfig.parse(raw);
+          if (list === null) { node.warn(SOURCES + ': unbrauchbare Quellen-Konfiguration verworfen'); return; }
+          bindingContext.sources = binding.sourceMap(list);
+          reconcile();
+          return;
+        }
+        if (topic.startsWith(ENTITY_PREFIX) && topic.endsWith('/config')) {
+          const id = topic.slice(ENTITY_PREFIX.length, -'/config'.length);
+          const entity = binding.parseEntityConfig(raw);
+          // An EMPTY retained payload is the core's "entity removed" clear.
+          if (!entity) delete bindingContext.entities[id];
+          else if (entity.entity_id === id) bindingContext.entities[id] = entity;
+          else return; // identity rule: payload must match its own topic.
+          scheduleApply();
+          return;
+        }
         const value = JSON.parse(raw.toString());
         if (topic === OCPP_RESULT) {
           const resolve = ocppPending.get(value.revision);
@@ -197,23 +310,12 @@ module.exports = function (RED) {
         }
         if (topic === INVERTER) {
           inverter = value;
-          if (['fronius_sunspec','sunspec_tcp'].includes(inverter.communication)) {
-            discoverSunSpec(io.readModbus).then((discovery) => {
-              io.discovery=discovery;
-              if (desired) runtime.apply(desired, measurementOptions());
-            }).catch((error)=>node.warn('SunSpec-Erkennung: '+error.message));
-          }
-          if (desired && !['fronius_sunspec','sunspec_tcp'].includes(inverter.communication)) {
-            runtime.apply(desired, measurementOptions());
-          }
+          reconcile();
           return;
         }
         if (topic === CONFIG) {
           desired = value;
-          const plan = runtime.apply(value, measurementOptions());
-          node.status(plan.pending ? { fill:'blue',shape:'ring',text:'OCPP-Abgleich Revision ' + value.revision }
-            : plan.applied ? { fill:'green',shape:'dot',text:'Revision ' + value.revision }
-            : { fill:'yellow',shape:'ring',text:'Plan abgelehnt' });
+          applyDesired();
         } else if (topic === OCPP) {
           const values = value.samples || value;
           runtime.onMeterValues(values, value.observed_at ? new Date(value.observed_at) : undefined);
@@ -223,7 +325,7 @@ module.exports = function (RED) {
     core.client.on('message', onMessage);
     const timer = setInterval(() => runtime.tick().catch((error) => node.warn(error.message)), 250);
     node.on('close', (done) => {
-      clearInterval(timer); core.client.removeListener('message', onMessage);
+      clearInterval(timer); if (applyScheduled) clearTimeout(applyScheduled); core.client.removeListener('message', onMessage);
       core.client.removeListener('connect', subscribe); done();
     });
   }
@@ -235,3 +337,5 @@ module.exports.getJSON = getJSON;
 module.exports.discoverSunSpec = discoverSunSpec;
 module.exports.shapeShellyStatus = shapeShellyStatus;
 module.exports.inverterJSONEndpoint = inverterJSONEndpoint;
+module.exports.SOURCES = SOURCES;
+module.exports.ENTITY_CONFIG = ENTITY_CONFIG;
