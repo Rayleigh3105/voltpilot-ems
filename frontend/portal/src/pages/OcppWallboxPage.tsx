@@ -41,6 +41,7 @@ import {
   type OcppActionGroup,
 } from '../ocppWallbox';
 import './GeraetSeite.css';
+import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
 import './OcppWallboxPage.css';
 
 const SERVICE_NAV = [
@@ -161,7 +162,7 @@ export function OcppWallboxPage({
   if (!data) {
     return (
       <div className="vp-ocpp" data-testid="ocpp-wallbox-page">
-        <DeviceBreadcrumb siteHref={siteHref} devicesHref={backHref} title={fallbackTitle} />
+        <GeraetBrotkrume anlageHref={siteHref} komponentenHref={backHref} titel={fallbackTitle} />
         <Card padding="lg" radius="lg" className="vp-geraet-kopf vp-ocpp-loading">
           <p role="status">Wallbox-Daten werden geladen …</p>
         </Card>
@@ -212,7 +213,7 @@ export function OcppWallboxPage({
 
   return (
     <div className="vp-ocpp" data-testid="ocpp-wallbox-page">
-      <DeviceBreadcrumb siteHref={siteHref} devicesHref={backHref} title={fallbackTitle} />
+      <GeraetBrotkrume anlageHref={siteHref} komponentenHref={backHref} titel={fallbackTitle} />
 
       <Card padding="lg" radius="lg" className="vp-geraet-kopf vp-ocpp-head">
         <div className="vp-geraet-titleline">
@@ -476,26 +477,6 @@ export function OcppWallboxPage({
           }} />
       )}
     </div>
-  );
-}
-
-function DeviceBreadcrumb({
-  siteHref,
-  devicesHref,
-  title,
-}: {
-  siteHref: string;
-  devicesHref: string;
-  title: string;
-}) {
-  return (
-    <nav className="vp-ocpp-breadcrumb" aria-label="Pfad zur Geräteseite">
-      <a href={siteHref}>Anlage</a>
-      <Icon name="chevron-right" size={13} />
-      <a href={devicesHref}>Geräte</a>
-      <Icon name="chevron-right" size={13} />
-      <span aria-current="page">{title}</span>
-    </nav>
   );
 }
 

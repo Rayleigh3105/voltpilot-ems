@@ -92,7 +92,9 @@ import { adminApi } from '../admin/adminApi';
 import { fleetApi } from '../admin/fleetApi';
 import { NO_DATA } from '../nodata';
 import { OcppWallboxPage } from './OcppWallboxPage';
+import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
 import { MeasurementLibrary } from '../components/MeasurementLibrary';
+import { BEOBACHTEN_HINWEIS, beobachtenMoeglich, geraetFamilien } from '../registerFamilie';
 import '../components/AnlagenModell.css';
 import './GeraetSeite.css';
 
@@ -394,6 +396,32 @@ export function GeraetSeiteSection({
   }, [view, data, components, sources, charging, control, curtailment, strategies,
     geraetId, geraeteRef, box?.id, now]);
 
+  /**
+   * Die Katalog-Familien DIESES Geräts - der Filter der Messbibliothek
+   * (Stufe 0, §7.3). Dieselbe Soll-vor-Ist-Reihenfolge wie `communication`
+   * oben; ein Ladepunkt spricht per Konstruktion OCPP.
+   */
+  const messFamilien = useMemo<string[] | null>(() => {
+    if (!view || !view.gefunden) return [];
+    const setup = (data?.localSetup ?? []).find((l) => l.id === geraetId);
+    const row = (components?.components ?? []).find(
+      (r) => r.edgeSourceId === geraetId
+        || view.komponenten.some((c) => c.entityId === r.id),
+    );
+    const familien = geraetFamilien({
+      soll: row?.family ?? null,
+      ist: setup?.family ?? null,
+      ladepunkt: gesichtView?.gattung === 'ladepunkt',
+    });
+    // ⚠ Kennt niemand die Familie des PRIMÄREN Wechselrichters, fällt die
+    // Fläche auf die Box-Semantik zurück (`null`) statt die Sektion zu
+    // verstecken: die Familien-Vereinigung der Box IST auf dieser einen Seite
+    // die richtige Antwort - genau deshalb sah der Fehler dort ja korrekt aus.
+    // Auf jedem anderen Gerät bleibt es bei der Ausblende-Regel.
+    if (familien.length === 0 && geraetId === 'inverter') return null;
+    return familien;
+  }, [view, data, components, geraetId, gesichtView]);
+
   // Die drei Gattungs-eigenen Sektionen - abgeleitet aus dem, was schon
   // geladen ist; jede Zeile nennt ihren Grund, keine wird erfunden.
   const grenzen: Zeile[] = useMemo(
@@ -418,10 +446,16 @@ export function GeraetSeiteSection({
 
   return (
     <div className="vp-geraet">
+      {/* GENAU EIN Rückweg (Stufe 0, §2.1/§4.2): der Knopf „Anlage {Name}" und
+          die Bereichs-Reiter stehen über einer Geräteseite nicht mehr, also
+          trägt die Brotkrume den ganzen Weg. Auf dem Ladepunkt-Pfad rendert
+          `OcppWallboxPage` dieselbe - nie zwei übereinander. */}
       {gesichtView?.gattung !== 'ladepunkt' && (
-        <a className="vp-geraet-back" href={hashForRoute(anlageRoute(site.id, 'modell'))}>
-          <Icon name="chevron-left" size={16} /> Zurück zu den Komponenten
-        </a>
+        <GeraetBrotkrume
+          anlageHref={hashForRoute(anlageRoute(site.id))}
+          komponentenHref={hashForRoute(anlageRoute(site.id, 'modell'))}
+          titel={view?.gefunden ? view.kopf.titel : 'Gerät'}
+        />
       )}
 
       {!data && !error && (
@@ -726,8 +760,24 @@ export function GeraetSeiteSection({
           onSaved={(result) => setComponents(result)}
         />
       )}
-      {view && view.gefunden && <MeasurementLibrary deviceId={boxDevice?.id}
-        siteId={site.id} entityId={editRow?.id} />}
+      {/* Die Messbibliothek hängt am TRANSPORT der Box (dort wohnt die
+          Selektion), zeigt aber den Katalog DIESES Geräts (Stufe 0, §7.4 3a).
+          Ohne Katalog-Familie entsteht sie gar nicht - `familien: []` ist die
+          Ausblende-Regel, kein leerer Kasten. */}
+      {view && view.gefunden && (
+        <MeasurementLibrary
+          deviceId={boxDevice?.id}
+          siteId={site.id}
+          entityId={editRow?.id}
+          familien={messFamilien ?? undefined}
+          eigeneErlaubt={geraetId === 'inverter'}
+          beobachtenHinweis={
+            beobachtenMoeglich({ geraetId, familien: messFamilien ?? [] })
+              ? null
+              : BEOBACHTEN_HINWEIS
+          }
+        />
+      )}
     </div>
   );
 }

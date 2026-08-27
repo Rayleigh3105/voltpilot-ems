@@ -1,0 +1,28 @@
+.vp-geraet-brotkrume {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  min-width: 0;
+  /* ≥44px Trefferfläche - die Brotkrume IST seit Stufe 0 der einzige Rückweg
+     der Seite, also der meistgenutzte Weg darauf. */
+  min-height: 44px;
+  /* Gegen jede gemischte Oberfläche abgedunkelt: der Basis-Token landete im
+     echten Compositing bei 4,45–4,47:1, knapp unter WCAG AA. */
+  color: color-mix(in srgb, var(--vp-text-muted, #6c757d) 82%, var(--vp-text, #1a1a1a));
+  font-size: .88rem;
+}
+
+.vp-geraet-brotkrume a,
+.vp-geraet-brotkrume span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 44px;
+  padding: 5px 4px;
+  overflow-wrap: anywhere;
+}
+
+.vp-geraet-brotkrume a { color: var(--vp-link, #2c5282); text-decoration: none; }
+.vp-geraet-brotkrume a:hover { text-decoration: underline; }
+.vp-geraet-brotkrume [aria-current="page"] { color: var(--vp-text, #1a202c); font-weight: 650; }

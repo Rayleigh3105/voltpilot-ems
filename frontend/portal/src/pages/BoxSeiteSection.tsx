@@ -16,6 +16,7 @@ import {
 import type { SiteCharging } from '../ladepunkte';
 import { boxGeraeteListe, boxSeite, GERAETE_HINWEIS, type BoxSeiteView } from '../boxSeite';
 import type { BoxGeraet, Zeile } from '../geraetSeite';
+import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
 import { DangerZone } from '../components/DangerZone';
 import { unclaimConsequences } from '../components/DeviceDrawers';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
@@ -202,9 +203,13 @@ export function BoxSeiteSection({
 
   return (
     <div className="vp-geraet vp-box">
-      <a className="vp-geraet-back" href={hashForRoute(anlageRoute(site.id, 'modell'))}>
-        <Icon name="chevron-left" size={16} /> Zurück zu den Komponenten
-      </a>
+      {/* GENAU EIN Rückweg (Stufe 0, §2.1/§4.2) - dieselbe Brotkrume wie auf
+          jeder Geräteseite; die Box ist die letzte Stufe des Pfades. */}
+      <GeraetBrotkrume
+        anlageHref={hashForRoute(anlageRoute(site.id))}
+        komponentenHref={hashForRoute(anlageRoute(site.id, 'modell'))}
+        titel={view?.gefunden ? view.titel : 'VoltPilot-Box'}
+      />
 
       {!data && !error && (
         <Card padding="lg" radius="lg">

@@ -14,23 +14,6 @@
   min-width: 0;
 }
 
-.vp-geraet-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  align-self: flex-start;
-  /* ≥44px Trefferfläche - der Rückweg ist der meistgenutzte Weg der Seite. */
-  min-height: 44px;
-  padding: 6px 6px 6px 2px;
-  color: var(--vp-text-muted, #4a5568);
-  font-size: 0.9rem;
-  text-decoration: none;
-}
-
-.vp-geraet-back:hover {
-  color: var(--vp-link, #2c5282);
-}
-
 /* --- Kopf ---------------------------------------------------------------- */
 
 .vp-geraet-kopf h1 {

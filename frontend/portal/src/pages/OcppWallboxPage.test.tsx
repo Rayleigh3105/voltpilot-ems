@@ -58,7 +58,10 @@ describe('OcppWallboxPage integration', () => {
     expect(screen.getByText(/OCPP-Wallbox · KEBA · P30/)).toBeVisible();
     const breadcrumb = screen.getByRole('navigation', { name: 'Pfad zur Geräteseite' });
     expect(within(breadcrumb).getByRole('link', { name: 'Anlage' })).toHaveAttribute('href', '#site');
-    expect(within(breadcrumb).getByRole('link', { name: 'Geräte' })).toHaveAttribute('href', '#devices');
+    // Die mittlere Stufe heisst wie die Seite, auf die sie zeigt: seit Stufe 0
+    // ist die Brotkrume die geteilte `GeraetBrotkrume`, und der Bereich wurde in
+    // Steuerung Stufe 8 zu Komponenten umbenannt.
+    expect(within(breadcrumb).getByRole('link', { name: 'Komponenten' })).toHaveAttribute('href', '#devices');
     expect(screen.getByText('11 kW')).toBeVisible();
     expect(screen.getByText('6,4 kWh')).toBeVisible();
     expect(view.container.querySelectorAll('.vp-ocpp-primary-action .vp-btn')).toHaveLength(1);
