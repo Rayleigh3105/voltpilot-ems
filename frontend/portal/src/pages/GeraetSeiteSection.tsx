@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { VpPicker } from '../components/VpPicker';
@@ -35,8 +36,8 @@ import {
 } from '../geraetSeite';
 import {
   abregelungDiesesGeraets,
+  blattHinweis,
   gesicht,
-  OHNE_REGISTER_SATZ,
   type Gesicht,
   type Held,
   type HeldKachel,
@@ -52,7 +53,6 @@ import { anlageRoute, befehleGeraetHash, boxSeiteHash, hashForRoute, pageRoute }
 import {
   ABRUF_HINWEIS,
   abrufZeile,
-  KEINE_REGISTER,
   LESE_FEHLGESCHLAGEN,
   QUELLE_WORT,
   registerSicht,
@@ -102,7 +102,14 @@ import { HandeingriffDialog } from '../components/HandeingriffDialog';
 import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';
-import { sofortAktionen, type ManualOverride, type SofortAktion } from '../consumers/fulfillment';
+import {
+  sofortAktionen,
+  fulfilmentSummary,
+  type ConsumerFulfilment,
+  type ManualOverride,
+  type SofortAktion,
+} from '../consumers/fulfillment';
+import { consumerHasMeasurement } from '../consumers/questions';
 import { controlStrip } from '../control';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { showTechnicalLayer } from '../rollen';
@@ -122,7 +129,9 @@ import {
   kopfHinweis,
   kurz,
   rahmen,
+  parseKachel,
   type Befund,
+  type RahmenSektionId,
   type SektionAngebot,
 } from '../geraetRahmen';
 import { BeobachteteRegister } from '../components/BeobachteteRegister';
@@ -207,6 +216,9 @@ export function GeraetSeiteSection({
   const [interventions, setInterventions] = useState<SiteInterventions | null>(null);
   const [consumers, setConsumers] = useState<Consumer[]>([]);
   const [overrides, setOverrides] = useState<ManualOverride[]>([]);
+  // §5.4: die Erfüllungs-Kopfzeile des Helden. Sie wird NUR geholt, wenn es
+  // wirklich einen Verbraucher gibt - sonst gäbe es nichts zu erfüllen.
+  const [fulfilment, setFulfilment] = useState<ConsumerFulfilment | null>(null);
   const [plan, setPlan] = useState<SchedulePlan | null>(null);
   const [regOffen, setRegOffen] = useState(false);
   const [hand, setHand] = useState<HandeingriffAktion | null>(null);
@@ -420,6 +432,20 @@ export function GeraetSeiteSection({
     }
   }
 
+  /**
+   * Der Verbraucher DIESES Geräts - die Grundlage der §5.4-Zeilen (Erfüllung,
+   * D3-Messfähigkeit) UND der Sofortaktion.
+   *
+   * ⚠ Er steht VOR dem Gesicht, obwohl `consumers` erst geladen wird, wenn das
+   * Gesicht die Gattung `verbraucher` gesagt hat: die Gattung hängt an Rolle
+   * und Entitätstyp, nie an dieser Liste, also konvergiert es in zwei Läufen -
+   * eine Schleife gibt es nicht. Umgekehrt wäre es ein TDZ-Fehler.
+   */
+  const eigenerVerbraucher = useMemo(() => {
+    const ids = new Set((view?.komponenten ?? []).map((c) => c.entityId));
+    return consumers.find((c) => ids.has(c.id)) ?? null;
+  }, [consumers, view]);
+
   // ------------------------------------------------------------------
   // Das GESICHT dieser Seite - was oben steht und welche Sektionen folgen.
   // Es entscheidet NUR die Auswahl; jede Sektion bleibt das geteilte Bauteil.
@@ -452,10 +478,18 @@ export function GeraetSeiteSection({
       control: control && box?.id && control.deviceId === box.id ? control : null,
       curtailment,
       regeln: regelNamenOf(strategies, view.komponenten),
+      // §5.1/§5.3/§5.8: die EINZIGE Quelle mit einem Wert JE KANAL - die
+      // Batterieleistung des Hybriden, der Relais-Zustand eines Schalters und
+      // die selbst definierten Kanäle des Eigenbaus.
+      topologie: topology?.entities ?? null,
+      // §5.4: WÖRTLICH die geteilte Erfüllungs-Kopfzeile bzw. die geteilte
+      // D3-Regel - ein zweites Urteil hier wäre eine zweite Wahrheit.
+      erfuellung: fulfilment ? fulfilmentSummary(fulfilment).headline : null,
+      gemessen: eigenerVerbraucher ? consumerHasMeasurement(eigenerVerbraucher) : null,
       now,
     });
   }, [view, data, components, sources, charging, control, curtailment, strategies,
-    geraetId, geraeteRef, box?.id, now]);
+    topology, fulfilment, eigenerVerbraucher, geraetId, geraeteRef, box?.id, now]);
 
   /**
    * Die Katalog-Familien DIESES Geräts - der Filter der Messbibliothek
@@ -501,10 +535,6 @@ export function GeraetSeiteSection({
     () => ladeparkZeilen(charging, geraetId),
     [charging, geraetId],
   );
-  const ohneRegisterSatz = gesichtView && !gesichtView.sektionen.includes('register')
-    ? (gesichtView.gattung === 'ladepunkt' ? KEINE_REGISTER.ladepunkt : OHNE_REGISTER_SATZ)
-    : null;
-
   // ------------------------------------------------------------------
   // DER RAHMEN (Geräteseiten Stufe 1, Konzept §4)
   //
@@ -597,6 +627,22 @@ export function GeraetSeiteSection({
   }, [site.id, brauchtSpeicher, brauchtVerbraucher, reloadKey]);
 
   /**
+   * Die Erfüllung DIESES Verbrauchers (§5.4). Eigener Effekt, weil sie an der
+   * Verbraucher-KENNUNG hängt, nicht an der Anlage - und fail-soft wie jeder
+   * Neben-Abruf: ohne sie fehlt die Zeile, die Seite bleibt.
+   */
+  useEffect(() => {
+    const id = eigenerVerbraucher?.id;
+    if (!id) { setFulfilment(null); return undefined; }
+    let active = true;
+    void consumersApi.fulfillment(site.id, id).then(
+      (v) => { if (active) setFulfilment(v); },
+      () => { if (active) setFulfilment(null); },
+    );
+    return () => { active = false; };
+  }, [site.id, eigenerVerbraucher?.id, reloadKey]);
+
+  /**
    * Der Register-Zugang DIESES Geräts - er entscheidet, ob die Aktionszeile
    * „Register schreiben" anbietet UND ob die Register-Sektion ihren Knopf
    * zeigt. Er wird EINMAL hier gerechnet: zwei Ableitungen könnten über
@@ -624,11 +670,6 @@ export function GeraetSeiteSection({
    * Speicher-Handlungen kommen aus `speicherAktionen`, die Geräte-Handlungen
    * aus `sofortAktionen`, der Register-Weg aus dem Zugang oben.
    */
-  const eigenerVerbraucher = useMemo(() => {
-    const ids = new Set((view?.komponenten ?? []).map((c) => c.entityId));
-    return consumers.find((c) => ids.has(c.id)) ?? null;
-  }, [consumers, view]);
-
   const aktionen = useMemo(() => {
     if (!gesichtView) return [];
     const strip = control && box?.id && control.deviceId === box.id
@@ -738,6 +779,10 @@ export function GeraetSeiteSection({
   const rahmenView = useMemo(() => {
     if (!view?.gefunden || !gesichtView) return rahmen([]);
     const hat = (id: SektionId) => gesichtView.sektionen.includes(id);
+    // ⚠ Der Grund einer entfallenen Sektion wird NICHT hier formuliert - das
+    // Gesicht hat ihn schon gesagt (§4.6: er verschwindet nie, er zieht um).
+    const entfallGrund = (id: RahmenSektionId) =>
+      gesichtView.entfallen.find((e) => e.id === id)?.grund ?? null;
     const letzte = letzteZeile;
     const angebote: (SektionAngebot | null)[] = [
       heldTraegt ? { id: GESICHT_ZU_RAHMEN.jetzt, ton: view.kopf.zustand.ton } : null,
@@ -749,16 +794,20 @@ export function GeraetSeiteSection({
           // wäre dieselbe Aussage zweimal auf einer Karte (die Haus-Regel).
           kurzfassung: letzte ? kurz(`zuletzt ${letzte.zeit}`, letzte.urteil) : null,
         }
-        : null,
-      // „Steuerung & Grenzen" gibt es IMMER: die Steuerungs-Bezüge sind in
-      // jeder Gattung dieselbe Auskunft.
-      {
-        id: 'steuerung',
-        kurzfassung: kurz(
-          view.kopf.steuerAbzeichen,
-          grenzen.length > 0 ? `${grenzen.length} Grenzen` : null,
-        ),
-      },
+        : { id: 'befehle', entfaellt: true, grund: entfallGrund('befehle') },
+      // ⚠ „Steuerung & Grenzen" gibt es seit Stufe 4 NICHT mehr immer: ein
+      // Zähler wird von niemandem gesteuert und trägt keine Grenze, die Sektion
+      // erklärte dort nur ihre eigene Nicht-Zuständigkeit (§4.6). Entschieden
+      // wird das im Gesicht - der Grund zieht mit in die Diagnose.
+      gesichtView.steuerung
+        ? {
+          id: 'steuerung',
+          kurzfassung: kurz(
+            view.kopf.steuerAbzeichen,
+            grenzen.length > 0 ? `${grenzen.length} Grenzen` : null,
+          ),
+        }
+        : { id: 'steuerung', entfaellt: true, grund: entfallGrund('steuerung') },
       hat('komponenten')
         ? {
           id: GESICHT_ZU_RAHMEN.komponenten,
@@ -778,7 +827,7 @@ export function GeraetSeiteSection({
           kurzfassung: beobKurz
             ?? (registerSektion ? 'lesen · beobachten · schreiben' : 'beobachten'),
         }
-        : { id: 'register', entfaellt: true, grund: ohneRegisterSatz },
+        : { id: 'register', entfaellt: true, grund: entfallGrund('register') },
       hat('verbindung')
         ? {
           id: GESICHT_ZU_RAHMEN.verbindung,
@@ -793,7 +842,7 @@ export function GeraetSeiteSection({
           id: GESICHT_ZU_RAHMEN.software,
           kurzfassung: view.software.length > 0 ? view.software[0].wert : null,
         }
-        : null,
+        : { id: 'software', entfaellt: true, grund: entfallGrund('software') },
       view.diagnose.length > 0
         ? { id: 'diagnose', kurzfassung: `${view.diagnose.length} Angaben` }
         : null,
@@ -802,7 +851,7 @@ export function GeraetSeiteSection({
     return rahmen(angebote);
   }, [
     view, gesichtView, heldTraegt, letzteZeile, grenzen, registerSektion,
-    hatMessbibliothek, ohneRegisterSatz, adminView, beobKurz,
+    hatMessbibliothek, adminView, beobKurz,
   ]);
 
   /**
@@ -835,6 +884,47 @@ export function GeraetSeiteSection({
     ];
     return kopfHinweis(befunde, rahmenView.sektionen.map((s) => s.id));
   }, [control, curtailment, box?.id, view?.art, now, rahmenView]);
+
+  /**
+   * Die angesprungene Kachel (§5.3) - sie kommt als PARAMETER im Hash, nie als
+   * zweites `#` (der HashRouter läse es als Route). Gelesen wird beim Aufbau
+   * UND bei jedem Hash-Wechsel, wie der Abschnitts-Sprung des Rahmens: ein
+   * Klick aus einer schon offenen Seite muss ebenfalls wirken.
+   */
+  const [angesprungeneKachel, setAngesprungeneKachel] = useState<string | null>(
+    () => (typeof window === 'undefined' ? null : parseKachel(window.location.hash)),
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const lesen = () => setAngesprungeneKachel(parseKachel(window.location.hash));
+    lesen();
+    window.addEventListener('hashchange', lesen);
+    return () => window.removeEventListener('hashchange', lesen);
+  }, []);
+
+  /**
+   * Der HILFETEXT dieses Blatts (§5.4): eine Wärmepumpe ist ein schaltbarer
+   * Verbraucher - das steht als Satz da, nie als Titel (Captain-Entscheid).
+   */
+  const hinweisSatz = useMemo(() => {
+    if (!view?.gefunden || !gesichtView) return null;
+    return blattHinweis(gesichtView, {
+      komponenten: view.komponenten,
+      entities: data?.entities ?? null,
+    });
+  }, [view, gesichtView, data]);
+
+  /**
+   * Die PRIMÄRE Handlung des Verbraucher-Blatts (§5.4). Sie steht im JETZT,
+   * damit sie nicht erst hinter der Aktionszeile auftaucht - und sie ist
+   * dieselbe, die die Zeile darunter anbietet (kein zweiter Auslöse-Pfad).
+   */
+  const heldAktion = useMemo(() => {
+    if (gesichtView?.gattung !== 'verbraucher') return null;
+    const erste = aktionen.find((a) => a.art === 'verbraucher');
+    if (!erste) return null;
+    return { text: erste.label, onClick: () => aktionAusloesen(erste) };
+  }, [gesichtView, aktionen, aktionAusloesen]);
 
   return (
     <div className="vp-geraet">
@@ -962,7 +1052,14 @@ export function GeraetSeiteSection({
         >
           {/* 1 · Jetzt - ohne Klapp-Kopf (§4.5). */}
           <RahmenSektion id="jetzt">
-            {gesichtView && <HeldKarte held={gesichtView.held} stand={view.liveStand} />}
+            {gesichtView && (
+              <HeldKarte
+                held={gesichtView.held}
+                stand={view.liveStand}
+                markiert={angesprungeneKachel}
+                aktion={heldAktion}
+              />
+            )}
           </RahmenSektion>
 
           {/* 2 · Befehle */}
@@ -1010,6 +1107,7 @@ export function GeraetSeiteSection({
                 (z) => !(gesichtView?.sektionen.includes('einspeise')
                   && z.label === WAECHTER_LABEL),
               )} />
+              {hinweisSatz && <p className="vp-note">{hinweisSatz}</p>}
               <p className="vp-geraet-sec-sub">
                 <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>
                   Regeln und Betriebsmodelle dieser Anlage ansehen →
@@ -1192,7 +1290,25 @@ function Block({
  * kommen aus `geraetGesicht.ts`. Ohne Kachel UND ohne Satz entsteht gar keine
  * Karte - ein leerer Held wäre die Box-Lehre in klein.
  */
-function HeldKarte({ held, stand }: { held: Held; stand: string | null }) {
+function HeldKarte({
+  held, stand, markiert, aktion,
+}: {
+  held: Held;
+  stand: string | null;
+  /**
+   * Die angesprungene Kachel (§5.3): die Batterie hat keine eigene Seite, ihre
+   * Komponenten-Karte führt auf `?abschnitt=jetzt&kachel=speicher`. Markiert
+   * wird über den STABILEN Schlüssel, nie über das Label - der Kunde darf eine
+   * Komponente umbenennen.
+   */
+  markiert?: string | null;
+  /**
+   * Die primäre Handlung dieses Blatts (§5.4): am Verbraucher steht die
+   * Sofortaktion im JETZT, nicht erst in der Aktionszeile darunter. Sie LÖST
+   * nur aus - gehandelt wird im bestehenden Dialog.
+   */
+  aktion?: { text: string; onClick: () => void } | null;
+}) {
   if (held.kacheln.length === 0 && !held.satz) return null;
   return (
     <Card padding="lg" radius="lg" className="vp-geraet-held" data-testid="geraet-held">
@@ -1207,8 +1323,10 @@ function HeldKarte({ held, stand }: { held: Held; stand: string | null }) {
           {held.kacheln.map((k: HeldKachel) => (
             <div
               className={`vp-geraet-kachel${k.gross ? ' is-gross' : ''}${
-                k.ton ? ` is-${k.ton}` : ''}`}
-              key={k.label}
+                k.ton ? ` is-${k.ton}` : ''}${
+                markiert && k.key === markiert ? ' is-markiert' : ''}`}
+              key={k.key}
+              data-kachel={k.key}
             >
               <span className="l">{k.label}</span>
               <span className="v">{k.wert}</span>
@@ -1230,6 +1348,18 @@ function HeldKarte({ held, stand }: { held: Held; stand: string | null }) {
         <p className={`vp-geraet-heldsatz is-${held.satzTon}`} data-testid="geraet-heldsatz">
           {held.satz}
         </p>
+      )}
+      {held.zeilen.length > 0 && (
+        <ul className="vp-geraet-heldzeilen">
+          {held.zeilen.map((z) => <li key={z}>{z}</li>)}
+        </ul>
+      )}
+      {aktion && (
+        <div className="vp-geraet-heldaktion">
+          <Button variant="outline" size="sm" onClick={aktion.onClick}>
+            {aktion.text}
+          </Button>
+        </div>
       )}
       {held.hinweis && <p className="vp-note">{held.hinweis}</p>}
     </Card>
