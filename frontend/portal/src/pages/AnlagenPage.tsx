@@ -487,12 +487,19 @@ function AnlagenSubPage({
   // Ein Bereich, der EINE Seite ist (Cockpit, Steuerung), liefert keine.
   const sidebar = anlageSidebar(surface);
   const tabs = tabsFor(sidebar, sub);
+  // ⚠ Eine Unterseite EINE Ebene tiefer trägt ihren Rückweg selbst - als
+  // Brotkrume `Anlage › Komponenten › {Gerät}` in ihrem eigenen Kopf. Der Knopf
+  // hier stünde darüber als ZWEITER Rückweg auf denselben Weg (Stufe 0, §2.1,
+  // Captain-Entscheid D1a); `tabsFor` schweigt aus demselben Grund.
+  const eigenerRueckweg = sub === 'geraet' || sub === 'box';
   return (
     <>
-      <button type="button" className="vp-fleet-back" onClick={onBack}>
-        <Icon name="chevron-left" size={18} />
-        Anlage {site.name}
-      </button>
+      {!eigenerRueckweg && (
+        <button type="button" className="vp-fleet-back" onClick={onBack}>
+          <Icon name="chevron-left" size={18} />
+          Anlage {site.name}
+        </button>
+      )}
       {meta && (
         <div className="vp-page-head">
           <div className="titles">

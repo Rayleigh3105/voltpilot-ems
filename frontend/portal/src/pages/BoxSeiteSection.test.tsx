@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BoxSeiteSection } from './BoxSeiteSection';
+import { SEKTIONS_ORDNUNG } from '../geraetRahmen';
 import * as auth from '../auth';
 import { adminApi } from '../admin/adminApi';
 import { fleetApi } from '../admin/fleetApi';
@@ -294,7 +295,7 @@ describe('BoxSeiteSection', () => {
     expect(within(kacheln).getByText('Software')).toBeInTheDocument();
     expect(within(kacheln).getByText('Im Netzwerk')).toBeInTheDocument();
 
-    expect(screen.getByText('Geräte an dieser Box')).toBeInTheDocument();
+    expect(screen.getByTestId('sektion-komponenten')).toBeInTheDocument();
     // Beide gemeldeten Geräte führen auf ihre EIGENE Seite.
     const links = screen.getAllByRole('link').map((a) => a.getAttribute('href'));
     expect(links).toContain('#/anlage/s-1/geraet/edge-45gz7da/inverter');
@@ -349,7 +350,7 @@ describe('BoxSeiteSection', () => {
   it('zeigt, was die Box überbringt, und führt auf die ganze Anlage', async () => {
     stub();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
-    expect(await screen.findByText('Was Ihre Box überbringt')).toBeInTheDocument();
+    expect(await screen.findByTestId('sektion-befehle')).toBeInTheDocument();
     expect(api.commandHistory).toHaveBeenCalledWith('s-1', { device: 'edge-45gz7da' });
     expect(screen.getByText(/stehen auf der\s+Seite dieses Geräts/)).toBeInTheDocument();
     const alle = screen.getByRole('link', { name: /Alle Befehle dieser Anlage/ });
@@ -377,11 +378,15 @@ describe('BoxSeiteSection', () => {
     expect(screen.getByRole('button', { name: /Erneut/ })).toBeInTheDocument();
   });
 
-  it('führt zurück ins Anlagen-Modell', async () => {
+  it('traegt GENAU EINEN Rueckweg: die Brotkrume Anlage - Komponenten - Box', async () => {
     stub();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
-    const back = await screen.findByRole('link', { name: /Zurück zu den Komponenten/ });
-    expect(back.getAttribute('href')).toBe('#/anlage/s-1/modell');
+    const pfad = await screen.findByRole('navigation', { name: 'Pfad zur Geräteseite' });
+    expect(within(pfad).getByRole('link', { name: 'Anlage' }).getAttribute('href'))
+      .toBe('#/anlage/s-1');
+    expect(within(pfad).getByRole('link', { name: 'Komponenten' }).getAttribute('href'))
+      .toBe('#/anlage/s-1/modell');
+    expect(screen.queryByRole('link', { name: /Zurück zu den Komponenten/ })).toBeNull();
   });
 });
 
@@ -451,8 +456,11 @@ describe('BoxSeiteSection · Plattform-Sicht', () => {
     stub();
     stubAdmin();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
-    const block = await screen.findByTestId('box-admin');
-    expect(within(block).getByText(/Plattform-Sicht/)).toBeTruthy();
+    // Seit Stufe 1 ist sie die LETZTE Sektion des Rahmens - ihr Name steht auf
+    // der Klappe, ihr Inhalt dahinter.
+    const sektion = await screen.findByTestId('sektion-plattform');
+    expect(within(sektion).getByText('Plattform-Sicht (Admin)')).toBeTruthy();
+    expect(within(sektion).getByTestId('box-admin')).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
   });
 
@@ -465,5 +473,35 @@ describe('BoxSeiteSection · Plattform-Sicht', () => {
     await screen.findByRole('heading', { level: 1 });
     await waitFor(() => expect(adminApi.listDevices).toHaveBeenCalled());
     expect(screen.queryByTestId('box-admin')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Geräteseiten Stufe 1: DER RAHMEN - dieselbe Ordnung wie an jedem Gerät
+// ---------------------------------------------------------------------------
+
+describe('BoxSeiteSection · Rahmen', () => {
+  it('lässt AUS, was eine Box nicht hat - und sortiert nie um', async () => {
+    stub();
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    const rahmen = await screen.findByTestId('box-rahmen');
+    const ids = Array.from(rahmen.querySelectorAll('[data-testid^="sektion-"]'))
+      .map((el) => el.getAttribute('data-testid')!.slice(8));
+
+    // §4.4: die kanonische Reihenfolge, auch wenn Sektionen fehlen.
+    expect(ids).toEqual([...ids].sort(
+      (a, b) => SEKTIONS_ORDNUNG.indexOf(a as never) - SEKTIONS_ORDNUNG.indexOf(b as never),
+    ));
+    // Ein Rechner hat keine Register, und „Verbindung"/„Software" SIND hier
+    // der Held - sie ein zweites Mal zu führen wäre dieselbe Aussage zweimal.
+    expect(ids).not.toContain('register');
+    expect(ids).not.toContain('verbindung');
+    expect(ids).not.toContain('software');
+    expect(ids).toContain('jetzt');
+    expect(ids).toContain('komponenten');
+
+    // D2a: Standard offen = Jetzt + Befehle.
+    expect(screen.getByTestId('sektion-befehle')).toHaveAttribute('open');
+    expect(screen.getByTestId('sektion-komponenten')).not.toHaveAttribute('open');
   });
 });

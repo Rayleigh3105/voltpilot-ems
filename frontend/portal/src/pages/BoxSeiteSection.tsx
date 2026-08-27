@@ -16,6 +16,8 @@ import {
 import type { SiteCharging } from '../ladepunkte';
 import { boxGeraeteListe, boxSeite, GERAETE_HINWEIS, type BoxSeiteView } from '../boxSeite';
 import type { BoxGeraet, Zeile } from '../geraetSeite';
+import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
+import { GeraetRahmen, RahmenSektion } from '../components/GeraetRahmen';
 import { DangerZone } from '../components/DangerZone';
 import { unclaimConsequences } from '../components/DeviceDrawers';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
@@ -28,6 +30,7 @@ import {
 } from '../befehle';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { showTechnicalLayer } from '../rollen';
+import { kurz, rahmen, type SektionAngebot } from '../geraetRahmen';
 import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
 import { geraetView, type GeraetView } from '../adminGeraet';
 import { adminApi } from '../admin/adminApi';
@@ -200,11 +203,67 @@ export function BoxSeiteSection({
 
   const ausschnitt = geraeteAusschnitt(commands, now, 5);
 
+  /**
+   * Der RAHMEN dieser Box (Geräteseiten Stufe 1, §4.4).
+   *
+   * ⚠ Die Box LÄSST AUS, was sie strukturell nicht hat - sie sortiert nie um.
+   * „Register" entfällt (ein Rechner hat keine), und „Verbindung"/„Software"
+   * entfallen, weil ihr INHALT der Held ist: die drei Kacheln oben SIND die
+   * Verbindung zu VoltPilot, der Software-Stand und die Adresse im Netzwerk.
+   * Sie ein zweites Mal als Sektion zu führen wäre dieselbe Aussage zweimal auf
+   * einem Bildschirm (die Haus-Regel).
+   */
+  const rahmenView = useMemo(() => {
+    const angebote: (SektionAngebot | null)[] = [
+      { id: 'jetzt' },
+      {
+        id: 'befehle',
+        kurzfassung: kurz(
+          ausschnitt.zeilen.length > 0
+            ? `${ausschnitt.zeilen.length} zuletzt`
+            : null,
+        ),
+      },
+      view?.gefunden && (view.grenzen.length > 0 || view.grenzenLeer)
+        ? {
+          // ⚠ „Steuerung & Grenzen" wäre hier falsch - die Box STEUERT nichts,
+          // und die Grenzen gelten der ANLAGE. Wessen sie sind, sagt die
+          // Kurzfassung; der Titel bleibt kurz genug für die Anker-Spalte.
+          id: 'steuerung',
+          titel: 'Schutz & Grenzen',
+          kurzfassung: kurz(
+            'der ganzen Anlage',
+            view.grenzen.length > 0 ? `${view.grenzen.length} Angaben` : null,
+          ),
+        }
+        : null,
+      view?.gefunden
+        ? {
+          id: 'komponenten',
+          titel: 'Geräte an dieser Box',
+          kurzfassung: kurz(view.geraete.length > 0
+            ? `${view.geraete.length} ${view.geraete.length === 1 ? 'Gerät' : 'Geräte'}`
+            : null),
+        }
+        : null,
+      { id: 'diagnose', titel: 'Technik' },
+      showTechnicalLayer() && adminView ? { id: 'plattform' } : null,
+    ];
+    return rahmen(angebote);
+  }, [view, ausschnitt, adminView]);
+
   return (
     <div className="vp-geraet vp-box">
-      <a className="vp-geraet-back" href={hashForRoute(anlageRoute(site.id, 'modell'))}>
-        <Icon name="chevron-left" size={16} /> Zurück zu den Komponenten
-      </a>
+      {/* GENAU EIN Rückweg (Stufe 0, §2.1/§4.2). Im GEFUNDENEN Fall trägt ihn
+          der RAHMEN selbst - hier steht die Brotkrume nur über den
+          Lade-/Fehler-/Leer-Zuständen, damit auch die einen Rückweg haben. */}
+      {!(view && view.gefunden) && (
+        <GeraetBrotkrume
+          anlageHref={hashForRoute(anlageRoute(site.id))}
+          komponentenHref={hashForRoute(anlageRoute(site.id, 'modell'))}
+          titel="VoltPilot-Box"
+        />
+      )}
 
       {!data && !error && (
         <Card padding="lg" radius="lg">
@@ -232,49 +291,84 @@ export function BoxSeiteSection({
       )}
 
       {view && view.gefunden && (
-        <>
-          <Card padding="lg" radius="lg" className="vp-geraet-kopf">
-            <h1>{view.titel}</h1>
-            <div className="vp-geraet-meta">
-              <span>{view.unterzeile}</span>
-              <span className="vp-mono vp-geraet-kennung">{view.kennung}</span>
-              <span
-                className={`vp-pill vp-pill-${view.zustand.ton}`}
-                data-testid="box-zustand"
-              >
-                <span className={`vp-health-dot vp-health-${view.zustand.ton}`} />
-                {view.zustand.wort}
-                {view.zustand.detail && <small> · {view.zustand.detail}</small>}
-              </span>
+        <GeraetRahmen
+          testId="box-rahmen"
+          geraetKey={`${site.id}:box:${view.kennung}`}
+          view={rahmenView}
+          brotkrume={{
+            anlageHref: hashForRoute(anlageRoute(site.id)),
+            komponentenHref: hashForRoute(anlageRoute(site.id, 'modell')),
+          }}
+          kopf={{
+            titel: view.titel,
+            gattungWort: view.unterzeile,
+            kennung: view.kennung,
+            zustand: view.zustand,
+          }}
+        >
+          {/* 1 · Jetzt - der HELD: die drei Fragen, die eine Box beantwortet.
+                 Ohne Klapp-Kopf (§4.5). */}
+          <RahmenSektion id="jetzt">
+            <div className="vp-box-kacheln" data-testid="box-kacheln">
+              {view.kacheln.map((k) => (
+                <Card key={k.key} padding="lg" radius="lg" className={`vp-box-kachel is-${k.ton}`}>
+                  <span className="l">{k.label}</span>
+                  <span className={`v${k.mono ? ' vp-mono' : ''}`}>{k.wert}</span>
+                  {k.satz && <p className="s">{k.satz}</p>}
+                  {k.zeilen.map((z) => (
+                    <p className="z" key={z}>{z}</p>
+                  ))}
+                  {k.url && (
+                    <a className="vp-box-oberflaeche" href={k.url} target="_blank" rel="noreferrer">
+                      Lokale Oberfläche öffnen <Icon name="chevron-right" size={14} />
+                    </a>
+                  )}
+                </Card>
+              ))}
             </div>
-          </Card>
+          </RahmenSektion>
 
-          {/* Der HELD: die drei Fragen, die eine Box beantwortet. */}
-          <div className="vp-box-kacheln" data-testid="box-kacheln">
-            {view.kacheln.map((k) => (
-              <Card key={k.key} padding="lg" radius="lg" className={`vp-box-kachel is-${k.ton}`}>
-                <span className="l">{k.label}</span>
-                <span className={`v${k.mono ? ' vp-mono' : ''}`}>{k.wert}</span>
-                {k.satz && <p className="s">{k.satz}</p>}
-                {k.zeilen.map((z) => (
-                  <p className="z" key={z}>{z}</p>
+          {/* 2 · Befehle - was die Box ÜBERBRINGT (die anlagenweiten). */}
+          <RahmenSektion id="befehle">
+            {ausschnitt.zeilen.length > 0 && (
+              <ol className="vp-geraet-befehle">
+                {ausschnitt.zeilen.map((z) => (
+                  <li key={z.id} className={`vp-geraet-befehl is-${z.ton}`}>
+                    <span className="zeit">{z.zeit}</span>
+                    <div className="tx">
+                      {z.strom && <span className="strom">{z.strom}</span>}
+                      <p>{z.satz}</p>
+                      {z.urteil && <span className="urteil">{z.urteil}</span>}
+                    </div>
+                  </li>
                 ))}
-                {k.url && (
-                  <a className="vp-box-oberflaeche" href={k.url} target="_blank" rel="noreferrer">
-                    Lokale Oberfläche öffnen <Icon name="chevron-right" size={14} />
-                  </a>
-                )}
-              </Card>
-            ))}
-          </div>
+              </ol>
+            )}
+            {ausschnitt.leer && <p className="vp-note">{ausschnitt.leer}</p>}
+            <p className="vp-note">{GERAETE_BEFEHLE}</p>
+            <p className="vp-note">
+              {aufzeichnungSeit(commands?.recordingSince ?? null)}
+              {' · '}
+              {genauigkeitsSatz(commands?.accuracySeconds ?? 15)}
+            </p>
+            <a
+              className="vp-geraet-komp-link"
+              href={hashForRoute(anlageRoute(site.id, 'befehle'))}
+            >
+              Alle Befehle dieser Anlage
+              <Icon name="chevron-right" size={14} />
+            </a>
+          </RahmenSektion>
 
-          {/* Die Geräte SIND die Seite - die Zentrale führt hierher, diese
-              Liste führt weiter. */}
-          <Card padding="lg" radius="lg" className="vp-geraet-sec breit">
-            <div className="vp-geraet-sec-head">
-              <Icon name="cpu" size={16} />
-              <h2>Geräte an dieser Box</h2>
-            </div>
+          {/* 3 · Steuerung & Grenzen - der Box-Titel benennt die ANLAGE, weil
+                 die Grenzen ihr gelten und nicht dem Rechner. */}
+          <RahmenSektion id="steuerung">
+            {view.grenzenLeer && <p className="vp-note">{view.grenzenLeer}</p>}
+            <ZeilenListe zeilen={view.grenzen} />
+          </RahmenSektion>
+
+          {/* 4 · Komponenten - die GERÄTE sind hier die Absprungliste. */}
+          <RahmenSektion id="komponenten">
             {view.geraeteLeer && <p className="vp-note">{view.geraeteLeer}</p>}
             {view.geraete.length > 0 && (
               <>
@@ -291,99 +385,50 @@ export function BoxSeiteSection({
                 <p className="vp-note">{GERAETE_HINWEIS}</p>
               </>
             )}
-          </Card>
+          </RahmenSektion>
 
-          <div className="vp-geraet-grid">
-            {/* Was die Box ÜBERBRINGT - die anlagenweiten Befehle. */}
-            <Card padding="lg" radius="lg" className="vp-geraet-sec breit">
-              <div className="vp-geraet-sec-head">
-                <Icon name="activity" size={16} />
-                <h2>Was Ihre Box überbringt</h2>
+          {/* 8 · Diagnose - hier landen auch die Gründe der entfallenen
+                 Sektionen (§4.6), damit keine still verschwindet. */}
+          <RahmenSektion id="diagnose">
+            {rahmenView.entfallen.map((grund) => (
+              <p className="vp-note" key={grund}>{grund}</p>
+            ))}
+            <ZeilenListe zeilen={view.technik} />
+          </RahmenSektion>
+
+          {/* 9 · Plattform-Sicht - additiv, hinter dem EINEN Tor (M7). */}
+          <RahmenSektion id="plattform">
+            {adminView && (
+              <div data-testid="box-admin">
+                <AdminGeraetKarten
+                  view={adminView}
+                  busy={adminBusy}
+                  onNavigateSteuerung={() => {
+                    window.location.hash = hashForRoute(pageRoute('steuerungs-freigabe'));
+                  }}
+                  onAssign={adminView.device.deviceId ? async (releaseSeq: number) => {
+                    await adminAktion(() => adminApi.setUpdateTarget(
+                      adminView.device.deviceId as string, { releaseSeq }));
+                  } : undefined}
+                  onRevert={adminView.device.deviceId && adminView.device.soll ? async () => {
+                    await adminAktion(() => adminApi.revertUpdateTarget(
+                      adminView.device.deviceId as string));
+                  } : undefined}
+                />
+                {adminFehler && <p className="vp-alert vp-alert-err">{adminFehler}</p>}
               </div>
-              {ausschnitt.zeilen.length > 0 && (
-                <ol className="vp-geraet-befehle">
-                  {ausschnitt.zeilen.map((z) => (
-                    <li key={z.id} className={`vp-geraet-befehl is-${z.ton}`}>
-                      <span className="zeit">{z.zeit}</span>
-                      <div className="tx">
-                        {z.strom && <span className="strom">{z.strom}</span>}
-                        <p>{z.satz}</p>
-                        {z.urteil && <span className="urteil">{z.urteil}</span>}
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              )}
-              {ausschnitt.leer && <p className="vp-note">{ausschnitt.leer}</p>}
-              <p className="vp-note">{GERAETE_BEFEHLE}</p>
-              <p className="vp-note">
-                {aufzeichnungSeit(commands?.recordingSince ?? null)}
-                {' · '}
-                {genauigkeitsSatz(commands?.accuracySeconds ?? 15)}
-              </p>
-              <a
-                className="vp-geraet-komp-link"
-                href={hashForRoute(anlageRoute(site.id, 'befehle'))}
-              >
-                Alle Befehle dieser Anlage
-                <Icon name="chevron-right" size={14} />
-              </a>
-            </Card>
+            )}
+          </RahmenSektion>
 
-            <Card padding="lg" radius="lg" className="vp-geraet-sec breit">
-              <div className="vp-geraet-sec-head">
-                <Icon name="shield" size={16} />
-                <h2>Schutz &amp; Grenzen Ihrer Anlage</h2>
-              </div>
-              {view.grenzenLeer && <p className="vp-note">{view.grenzenLeer}</p>}
-              <ZeilenListe zeilen={view.grenzen} />
-            </Card>
-
-            <Card padding="lg" radius="lg" className="vp-geraet-sec breit">
-              <div className="vp-geraet-sec-head">
-                <Icon name="settings" size={16} />
-                <h2>Technik</h2>
-              </div>
-              <details className="vp-geraet-diagnose">
-                <summary>
-                  <Icon name="chevron-right" size={12} /> Technische Angaben
-                </summary>
-                <ZeilenListe zeilen={view.technik} />
-              </details>
-            </Card>
-          </div>
-
-          {showTechnicalLayer() && adminView && (
-            <details className="vp-geraet-admin" data-testid="box-admin">
-              <summary>
-                <Icon name="shield" size={16} /> Plattform-Sicht (Admin)
-              </summary>
-              <AdminGeraetKarten
-                view={adminView}
-                busy={adminBusy}
-                onNavigateSteuerung={() => {
-                  window.location.hash = hashForRoute(pageRoute('steuerungs-freigabe'));
-                }}
-                onAssign={adminView.device.deviceId ? async (releaseSeq: number) => {
-                  await adminAktion(() => adminApi.setUpdateTarget(
-                    adminView.device.deviceId as string, { releaseSeq }));
-                } : undefined}
-                onRevert={adminView.device.deviceId && adminView.device.soll ? async () => {
-                  await adminAktion(() => adminApi.revertUpdateTarget(
-                    adminView.device.deviceId as string));
-                } : undefined}
-              />
-              {adminFehler && <p className="vp-alert vp-alert-err">{adminFehler}</p>}
-            </details>
-          )}
-
+          {/* Die Gefahrenzone gehört KEINER Sektion (§4.4 kennt sie nicht) und
+              steht deshalb unter dem Stapel - wie zuvor. */}
           {boxDevice && (
             <Card padding="lg" radius="lg">
               <span className="vp-card-label">Unumkehrbar</span>
               <GefahrenZone device={boxDevice} onRemoved={onDeviceRemoved} />
             </Card>
           )}
-        </>
+        </GeraetRahmen>
       )}
     </div>
   );

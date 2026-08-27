@@ -14,23 +14,6 @@
   min-width: 0;
 }
 
-.vp-geraet-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  align-self: flex-start;
-  /* ≥44px Trefferfläche - der Rückweg ist der meistgenutzte Weg der Seite. */
-  min-height: 44px;
-  padding: 6px 6px 6px 2px;
-  color: var(--vp-text-muted, #4a5568);
-  font-size: 0.9rem;
-  text-decoration: none;
-}
-
-.vp-geraet-back:hover {
-  color: var(--vp-link, #2c5282);
-}
-
 /* --- Kopf ---------------------------------------------------------------- */
 
 .vp-geraet-kopf h1 {
@@ -136,6 +119,12 @@
 
 /* --- Sektionen ----------------------------------------------------------- */
 
+/* ⚠ Seit Geräteseiten Stufe 1 ordnet der RAHMEN die Sektionen EINSPALTIG
+   (`.vp-rahmen-sektionen`, §4.4) - das frühere `auto-fit`-Raster ordnete nach
+   BREITE statt nach Bedeutung. Übrig bleibt es als KACHEL-Raster INNERHALB
+   einer Sektion (heute: die Karten der Plattform-Sicht); die Sektions-Hülle
+   `.vp-geraet-sec[.breit]` und ihr Kopf `.vp-geraet-sec-head` sind ersatzlos
+   entfallen - sie hatten keinen Aufrufer mehr (der `roleLabel`-Präzedenzfall). */
 .vp-geraet-grid {
   display: grid;
   /* min(...) ist tragend: eine nackte 320-px-Untergrenze überläuft, sobald das
@@ -144,30 +133,6 @@
   gap: var(--vp-space-4, 16px);
   align-items: start; /* sonst zieht die längste Karte die kurzen auf ihre Höhe */
   min-width: 0;
-}
-
-.vp-geraet-sec {
-  min-width: 0;
-}
-
-.vp-geraet-sec.breit {
-  grid-column: 1 / -1;
-}
-
-.vp-geraet-sec-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  color: var(--vp-text-muted, #4a5568);
-}
-
-.vp-geraet-sec-head h2 {
-  margin: 0;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--vp-text, #1a202c);
 }
 
 .vp-geraet-sec-sub {

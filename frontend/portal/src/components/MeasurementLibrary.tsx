@@ -171,9 +171,53 @@ function PointRow({ point, applyStatus, onToggle, onHistory }: {
   );
 }
 
-export function MeasurementLibrary({ deviceId, siteId, entityId }: {
+/**
+ * Die Messwert-Bibliothek eines Geräts.
+ *
+ * ⚠ **`deviceId` ist die BOX** - dort hängt die Selektion (`(device_id,
+ * point_key)`), und daran ändert Stufe 0 nichts. Was sie ändert, ist die
+ * ANZEIGE: `familien` schneidet Katalog, Beobachtungs-Liste und Vorauswahl auf
+ * das Gerät zu, dessen Seite die Bibliothek trägt (Konzept
+ * `vp-geraeteseite-rahmen-r2` §7.4 Schritt 3a, Captain-Entscheid D5a).
+ *
+ * - `familien` **fehlt** → die alte Box-Semantik, Zeichen für Zeichen (der
+ *   Aufrufer kennt kein Gerät).
+ * - `familien` ist **leer** → für dieses Gerät kennt VoltPilot keine
+ *   Registerliste; es entsteht GAR KEINE Sektion, nie ein leerer Kasten.
+ * - sonst → `?family=…` statt `availableOnly`: die Verfügbarkeits-Frage der Box
+ *   ist auf einer Geräteseite die falsche (sie liefert die Vereinigung ALLER
+ *   komponierten Punkte dieser Box - genau der gemeldete Fehler).
+ */
+export function MeasurementLibrary({
+  deviceId, siteId, entityId, familien, eigeneErlaubt = true, beobachtenHinweis = null,
+}: {
   deviceId: string | null | undefined; siteId?: string; entityId?: string;
+  /** Die Katalog-Familien DIESES Geräts (`registerFamilie.geraetFamilien`). */
+  familien?: readonly string[] | null;
+  /**
+   * Ob eigene (frei definierte) Modbus-Register hierher gehören. Sie werden
+   * gegen den PRIMÄREN Wechselrichter gelesen, also stehen sie nur auf dessen
+   * Seite - auf einer Wallbox wären sie eine Zusage gegen die falsche Adresse.
+   */
+  eigeneErlaubt?: boolean;
+  /** Ein Satz, wenn die Box einen Punkt dieses Geräts heute nicht lesen kann. */
+  beobachtenHinweis?: string | null;
 }) {
+  // Die Familien-Adresse EINMAL gebaut: sie geht in beide Katalog-Abrufe und
+  // darf zwischen ihnen nicht abweichen.
+  const familienListe = familien == null ? null : [...familien];
+  const geraeteSicht = familienListe != null;
+  /**
+   * Die AUSBLENDE-Regel (§7.3) - und sie greift schon VOR dem ersten Abruf:
+   * für ein Gerät ohne Katalog-Familie gibt es nichts zu fragen, also wird auch
+   * nichts gefragt. Ein Abruf, dessen Antwort niemand rendert, ist Last ohne
+   * Aussage.
+   */
+  const stumm = familienListe != null && familienListe.length === 0;
+  const familienParams = (params: URLSearchParams) => {
+    for (const family of familienListe ?? []) params.append('family', family);
+    return params;
+  };
   const [state, setState] = useState<MeasurementSelectionState | null>(null);
   const [quiet, setQuiet] = useState<MeasurementCatalogResult | null>(null);
   const [catalog, setCatalog] = useState<MeasurementCatalogResult | null>(null);
@@ -204,28 +248,32 @@ export function MeasurementLibrary({ deviceId, siteId, entityId }: {
   const [customEstimate, setCustomEstimate] = useState<MeasurementBudgetEstimate | null>(null);
 
   const loadState = () => {
-    if (!deviceId) return;
+    if (!deviceId || stumm) return;
     api.measurementSelection(deviceId).then(setState, () => setUnsupported(true));
   };
   const loadQuiet = () => {
-    if (!deviceId) return;
-    const params = new URLSearchParams({ availableOnly: 'true', limit: '250' });
+    if (!deviceId || stumm) return;
+    // Auf einer Geräteseite fragt `availableOnly` die Box („was kann DIESE Box
+    // lesen") - der Familien-Schnitt fragt das Gerät. Nie beides.
+    const params = geraeteSicht
+      ? familienParams(new URLSearchParams({ limit: '250' }))
+      : new URLSearchParams({ availableOnly: 'true', limit: '250' });
     api.measurementCatalog(deviceId, params).then(setQuiet, () => setUnsupported(true));
   };
-  useEffect(() => { setUnsupported(false); loadState(); loadQuiet(); }, [deviceId]);
+  useEffect(() => { setUnsupported(false); loadState(); loadQuiet(); }, [deviceId, familienListe?.join(',')]);
 
   useEffect(() => {
-    if (!open || !deviceId) return;
+    if (!open || !deviceId || stumm) return;
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams({ q: query, offset: String(offset), limit: '100' });
       if (group) params.set('group', group);
       if (semantic) params.set('semanticStatus', semantic);
-      if (availability === 'available') params.set('availableOnly', 'true');
+      if (!geraeteSicht && availability === 'available') params.set('availableOnly', 'true');
       if (recorded !== 'all') params.set('recorded', recorded);
-      api.measurementCatalog(deviceId, params).then(setCatalog, () => setError('Die vollständige Liste konnte nicht geladen werden.'));
+      api.measurementCatalog(deviceId, familienParams(params)).then(setCatalog, () => setError('Die vollständige Liste konnte nicht geladen werden.'));
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [open, deviceId, query, group, semantic, availability, recorded, offset, state]);
+  }, [open, deviceId, familienListe?.join(','), query, group, semantic, availability, recorded, offset, state]);
 
   useEffect(() => {
     if (!pending || !deviceId) return;
@@ -245,7 +293,11 @@ export function MeasurementLibrary({ deviceId, siteId, entityId }: {
       .then(setHistory, (e) => setHistoryError(e instanceof Error ? e.message : 'Der Verlauf konnte nicht geladen werden.'));
   }, [historyPoint, range, representation, freeFrom, freeTo, deviceId, siteId, entityId]);
 
-  const customPoints = useMemo<MeasurementCatalogPoint[]>(() => (state?.selections ?? [])
+  // ⚠ Eigene Register tragen KEINE Katalog-Familie, lassen sich also nicht
+  // schneiden. Sie werden gegen den primären Wechselrichter gelesen - deshalb
+  // entscheidet der Wirt (`eigeneErlaubt`), ob sie hierher gehören, statt sie
+  // überall oder nirgends zu zeigen.
+  const customPoints = useMemo<MeasurementCatalogPoint[]>(() => (eigeneErlaubt ? (state?.selections ?? []) : [])
     .filter((selection) => selection.customDefinition)
     .map((selection) => {
       const definition = selection.customDefinition!;
@@ -270,7 +322,7 @@ export function MeasurementLibrary({ deviceId, siteId, entityId }: {
         droppedSamples: 0,
         estimatedDataPerYearBytes: Math.round(365.25 * 24 * 3600 / Math.max(1, effectiveCadence) * 96),
       };
-    }), [state]);
+    }), [state, eigeneErlaubt]);
 
   const visibleCustomPoints = useMemo(() => customPoints.filter((point) => {
     const normalized = query.trim().toLocaleLowerCase('de-DE');
@@ -282,6 +334,8 @@ export function MeasurementLibrary({ deviceId, siteId, entityId }: {
   }), [customPoints, group, query, recorded, semantic]);
 
   const important = useMemo(() => {
+    // `quiet` kommt seit Stufe 0 schon geräte-gefiltert vom Server; die eigenen
+    // Register hat `customPoints` bereits nach `eigeneErlaubt` entschieden.
     const all = [...customPoints, ...(quiet?.points ?? [])];
     const preferred = all.filter((p) => p.selected || p.recommended || p.recorded || p.lastReadAt);
     return (preferred.length ? preferred : all).slice(0, 8);
@@ -368,10 +422,17 @@ export function MeasurementLibrary({ deviceId, siteId, entityId }: {
   };
 
   if (!deviceId) return null;
+  // Die AUSBLENDE-Regel (§7.3): ohne Katalog-Familie gibt es für dieses Gerät
+  // keine Registerliste - dann entsteht kein Kasten, der nur das erklärt.
+  if (stumm) return null;
   if (unsupported) return (
     <Card padding="lg" radius="lg" className="vp-measure-entry">
       <h2>Zusätzliche Messwerte</h2>
-      <p>Diese VoltPilot-Box unterstützt die Messwert-Bibliothek mit ihrem aktuellen Softwarestand noch nicht.</p>
+      {/* Der Grund ist der Abruf, nicht der Softwarestand einer Box: die
+          Auswahl kommt aus der Cloud, und ein Fehlschlag sagt nichts über die
+          Box. Frühere Fassungen behaupteten genau das - und sprachen auf einer
+          Geräteseite obendrein über die Box statt über das Gerät. */}
+      <p>Für dieses Gerät konnte die Messwert-Bibliothek nicht geladen werden.</p>
     </Card>
   );
 
@@ -388,6 +449,9 @@ export function MeasurementLibrary({ deviceId, siteId, entityId }: {
             Messwert-Bibliothek
           </Button>
         </div>
+        {beobachtenHinweis && (
+          <p className="vp-measure-hint" data-testid="measure-beobachten-hinweis">{beobachtenHinweis}</p>
+        )}
         {state && state.status !== 'idle' && (
           <p className="vp-measure-global-status" role="status"><strong>{state.statusReason}</strong> {state.volumeEstimate.totalGbPerYear.toFixed(3)} GB/Jahr geplant.</p>
         )}
@@ -397,13 +461,20 @@ export function MeasurementLibrary({ deviceId, siteId, entityId }: {
       </Card>
 
       <Drawer open={open} onClose={() => setOpen(false)} title="Messwert-Bibliothek" footer={
-        <Button variant="outline" onClick={() => setCustomOpen(true)}>Eigenen Messwert hinzufügen</Button>
+        eigeneErlaubt
+          ? <Button variant="outline" onClick={() => setCustomOpen(true)}>Eigenen Messwert hinzufügen</Button>
+          : null
       }>
         <p className="vp-measure-drawer-intro">Alle bekannten Punkte. Suche umfasst deutschen und originalen Namen, Registeradresse, API-Key oder OCPP-Measurand sowie Einheit.</p>
         <Input label="Messwert suchen" value={query} onChange={(e) => { setQuery(e.target.value); setOffset(0); }} placeholder="z. B. PV2 Strom, 0x00bf, P_Grid, Energy.Active.Import, V" />
         <div className="vp-measure-filters" aria-label="Messwertfilter">
           <VpPicker label="Gruppe" value={group} options={[{ value: '', label: 'Alle Gruppen' }, ...(catalog?.groups ?? []).map((f) => ({ value: f.value, label: `${f.value} (${f.count})` }))]} onChange={(value) => { setGroup(value); setOffset(0); }} />
-          <VpPicker label="Verfügbarkeit" value={availability} options={[{ value: 'all', label: 'Alle bekannten' }, { value: 'available', label: 'Für Gerät verfügbar' }]} onChange={(value) => { setAvailability(value as typeof availability); setOffset(0); }} />
+          {/* ⚠ „Für Gerät verfügbar" fragt server-seitig die Familien-VEREINIGUNG
+              der BOX ab - auf einer Geräteseite also die falsche Frage (der
+              gemeldete Fehler). Dort schneidet schon `?family=`. */}
+          {!geraeteSicht && (
+            <VpPicker label="Verfügbarkeit" value={availability} options={[{ value: 'all', label: 'Alle bekannten' }, { value: 'available', label: 'Für Gerät verfügbar' }]} onChange={(value) => { setAvailability(value as typeof availability); setOffset(0); }} />
+          )}
           <VpPicker label="Semantik" value={semantic} options={[{ value: '', label: 'Alle' }, { value: 'known', label: 'Bekannt' }, { value: 'vendor_label_only', label: 'Nur Herstellerbezeichnung' }, { value: 'unknown', label: 'Unbekannt' }]} onChange={(value) => { setSemantic(value); setOffset(0); }} />
           <VpPicker label="Aufzeichnung" value={recorded} options={[{ value: 'all', label: 'Alle' }, { value: 'true', label: 'Mit Historie' }, { value: 'false', label: 'Ohne Historie' }]} onChange={(value) => { setRecorded(value as typeof recorded); setOffset(0); }} />
         </div>
