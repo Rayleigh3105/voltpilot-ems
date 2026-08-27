@@ -1128,3 +1128,158 @@ describe('Stufe 3a · die Messbibliothek, richtig herum', () => {
     expect(vi.mocked(api.measurementCatalog).mock.calls[0][1].get('entityId')).toBe('fr1');
   });
 });
+
+/**
+ * Geräteseiten Stufe 4 - DIE NEUN BLÄTTER am gerenderten DOM.
+ *
+ * `geraetGesicht.test.ts` prüft die AUSWAHL (welche Sektion, welche Kachel);
+ * hier steht, dass sie auch ankommt: die angesprungene Kachel, die primäre
+ * Handlung des Verbraucher-Blatts und der Grund einer entfallenen Sektion in
+ * der Diagnose (§4.6).
+ */
+describe('Stufe 4 · die Blätter am DOM', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.location.hash = '';
+  });
+
+  it('§5.3 · markiert die Speicher-Kachel, wenn sie angesprungen wurde', async () => {
+    stub();
+    window.location.hash = '#/anlage/s-1/geraet/edge-45gz7da/inverter'
+      + '?abschnitt=jetzt&kachel=speicher';
+    const { container } = render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
+    );
+    await screen.findByTestId('geraet-held');
+    await waitFor(() => {
+      const k = container.querySelector('[data-kachel="speicher"]');
+      expect(k).not.toBeNull();
+      expect(k?.className).toMatch(/is-markiert/);
+    });
+    // ⚠ Nur DIE eine - eine Markierung an jeder Kachel wäre keine.
+    expect(container.querySelectorAll('.is-markiert')).toHaveLength(1);
+  });
+
+  it('⚠ ohne den Parameter wird NICHTS markiert', async () => {
+    stub();
+    const { container } = render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
+    );
+    await screen.findByTestId('geraet-held');
+    expect(container.querySelector('[data-kachel="speicher"]')).not.toBeNull();
+    expect(container.querySelectorAll('.is-markiert')).toHaveLength(0);
+  });
+
+  it('§5.4 · das Verbraucher-Blatt trägt seine Sofortaktion im JETZT', async () => {
+    const verbraucher: Consumer = {
+      id: 'wb',
+      siteId: 's-1',
+      label: 'Wallbox',
+      type: 'wallbox',
+      connection: 'connected',
+      controlKind: 'continuous',
+      ratedPowerKw: 11,
+      enabled: true,
+      version: 1,
+      controlActivation: 'active',
+      confirmationChannel: 'power_kw',
+    } as unknown as Consumer;
+    stub({ consumers: [verbraucher] });
+    vi.spyOn(api, 'siteEntities').mockResolvedValue({
+      registry: null,
+      entities: [{
+        id: 'wb',
+        entityType: 'wallbox',
+        typeLabel: 'Wallbox',
+        role: 'consumer',
+        label: 'Wallbox',
+        control: true,
+        deviceId: 'gw',
+        edgeSourceId: 'src-goe',
+        capabilities: { measure: ['power_kw'], actuate: ['setpoint_kw'], failsafe: 'release' },
+        guardConfig: null,
+        health: 'ok',
+        lastTelemetryAt: FRISCH,
+        syncStatus: 'in_sync',
+        staleOnDevice: false,
+        capacityKwp: null,
+      }] as never,
+      localSetup: [{
+        id: 'src-goe', kind: 'source', label: 'go-e Charger', role: 'consumer',
+        brand: 'goe', communication: 'goe_http_api', family: null, adoptedEntityId: 'wb',
+      }] as never,
+    } as unknown as SiteEntities);
+    vi.spyOn(api, 'siteSources').mockResolvedValue([
+      {
+        deviceId: 'gw', sourceId: 'src-goe', kind: 'source', role: 'consumer',
+        label: 'go-e Charger', brand: 'goe', model: null,
+        pvKw: null, powerKw: null, loadKw: 7.4,
+        health: 'ok', readAt: FRISCH, reportedAt: FRISCH,
+      },
+    ] as unknown as SiteSource[]);
+    vi.spyOn(consumersApi, 'fulfillment').mockResolvedValue({
+      tasks: [{ state: 'running', atRisk: false }],
+    } as never);
+
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-goe" devices={[box]} />,
+    );
+    const held = await screen.findByTestId('geraet-held');
+    // Die Handlung steht IM Helden, nicht erst in der Aktionszeile darunter -
+    // und es ist DIESELBE, die die Zeile darunter anbietet (kein zweiter
+    // Auslöse-Pfad).
+    const knopf = await within(held).findByRole('button', { name: /Jetzt starten/i });
+    expect(knopf).toBeTruthy();
+    // Und die ZEILEN tragen die geteilte D3-Aussage - „gemessen" wird nur
+    // gesagt, wo `consumerHasMeasurement` es belegt.
+    const zeilen = held.querySelector('.vp-geraet-heldzeilen');
+    expect(zeilen?.textContent).toMatch(/gemessen/i);
+  });
+
+  it('⚠ §5.6 · der Zähler nennt in der Diagnose, warum er keine Befehle hat', async () => {
+    stub();
+    vi.spyOn(api, 'siteEntities').mockResolvedValue({
+      registry: null,
+      entities: [{
+        id: 'meter',
+        entityType: 'grid-meter',
+        typeLabel: 'Netz-Zähler',
+        role: 'grid',
+        label: 'Netzanschluss',
+        control: false,
+        deviceId: 'gw',
+        edgeSourceId: 'src-meter',
+        capabilities: { measure: ['power_kw'], actuate: [], failsafe: 'measure-only' },
+        guardConfig: null,
+        health: 'ok',
+        lastTelemetryAt: FRISCH,
+        syncStatus: 'in_sync',
+        staleOnDevice: false,
+        capacityKwp: null,
+      }] as never,
+      localSetup: [{
+        id: 'src-meter', kind: 'source', label: 'Zähler', role: 'grid-meter',
+        brand: null, communication: 'modbus_tcp', family: null, adoptedEntityId: 'meter',
+      }] as never,
+    } as unknown as SiteEntities);
+    vi.spyOn(api, 'siteSources').mockResolvedValue([
+      {
+        deviceId: 'gw', sourceId: 'src-meter', kind: 'source', role: 'grid-meter',
+        label: 'Zähler', brand: null, model: null,
+        pvKw: null, powerKw: -3.4, loadKw: null,
+        health: 'ok', readAt: FRISCH, reportedAt: FRISCH,
+      },
+    ] as unknown as SiteSource[]);
+
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-meter" devices={[box]} />,
+    );
+    await screen.findByTestId('geraet-held');
+    // Die Sektion ist weg - ihr Grund steht in der Diagnose (§4.6).
+    await waitFor(() => {
+      expect(screen.queryByTestId('sektion-befehle')).toBeNull();
+    });
+    const diagnose = screen.getByTestId('sektion-diagnose');
+    expect(within(diagnose).getByText(/Befehl/i)).toBeTruthy();
+  });
+});

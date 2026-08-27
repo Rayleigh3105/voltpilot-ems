@@ -40,9 +40,13 @@
  *
  * Rein + framework-frei (der `komponenten.ts`/`geraetSeite.ts`-Präzedenzfall).
  */
-import type { ControlStatus, CurtailmentStatus, SiteEntity, SiteSource } from './api';
-import { controlStrip } from './control';
+import type {
+  ControlStatus, CurtailmentStatus, SiteEntity, SiteSource, TopologyEntity,
+} from './api';
+import { channelLabel } from './channels';
+import { controlStrip, freigabeWort } from './control';
 import { fmtNum } from './format';
+import { KEINE_REGISTER } from './geraetRegister';
 import type { GeraetArt, GeraetTon } from './geraetSeite';
 import { NUR_GELESEN } from './geraetSeite';
 import type { PlantComponent } from './komponenten';
@@ -80,6 +84,14 @@ export type SektionId =
 
 /** Eine Kachel des Helds. */
 export interface HeldKachel {
+  /**
+   * Der stabile Schlüssel dieser Kachel - zugleich der SPRUNGPUNKT eines
+   * Deep-Links (`?abschnitt=jetzt&kachel=speicher`, Blatt 3 / §5.3).
+   *
+   * ⚠ Er ist nicht das Label: der Kunde darf eine Kachel umbenennen (der
+   * Speicher heißt „Keller"), die Adresse darf davon nicht abhängen.
+   */
+  key: string;
   label: string;
   /** Der formatierte Wert, oder `—`. */
   wert: string;
@@ -100,14 +112,57 @@ export interface Held {
   satzTon: GeraetTon;
   /** Ein ruhiger Zusatz unter dem Satz (Nennleistung, Grund), oder null. */
   hinweis: string | null;
+  /**
+   * Ruhige ZUSATZ-Zeilen unter dem Satz - der Freigabe-Stand in einem Wort
+   * (§5.1) und die Erfüllungs-Zeile eines Verbrauchers (§5.4/§5.7).
+   *
+   * ⚠ Jede kommt aus ihrer GETEILTEN Ableitung (`control.freigabeWort`,
+   * `consumers/fulfillment.fulfilmentSummary`) und wird hier nur EINGEREIHT -
+   * eine eigene Formulierung wäre ein zweites Urteil. Was nicht belegt ist,
+   * steht gar nicht da; die Liste ist dann leer, nie „—".
+   */
+  zeilen: string[];
   /** Auslastung als ruhiger Balken - nur wo ein BELEGTER Bezug existiert. */
   balken: { pct: number; label: string } | null;
 }
 
+/**
+ * Eine STRUKTURELL entfallene Sektion samt ihrem Grund (§4.6).
+ *
+ * ⚠ Der Grund verschwindet nie, er ZIEHT UM: in die Diagnose. „Diese Seite hat
+ * keine Register" muss eine beantwortbare Frage bleiben statt einer stillen
+ * Lücke - die Box-Lehre der Stufe 1, verallgemeinert auf jedes Blatt.
+ */
+export interface EntfalleneSektion {
+  /** Das Rahmen-Fach, in dem sie stünde. */
+  id: 'befehle' | 'steuerung' | 'register' | 'software';
+  grund: string;
+}
+
 export interface Gesicht {
   gattung: Gattung;
+  /**
+   * Blatt 8 (§5.8): dieses Gerät hat der KUNDE selbst beschrieben
+   * (`modbus-generic` = nur messen, `modbus-load` = schaltbar nach Freigabe).
+   *
+   * ⚠ Es ist BELEGT, nicht geraten - der Beleg ist `freigabeFaehig` an der
+   * Komponente, das genau die zwei Selbstbau-Typen trägt. Und es ist eine
+   * EIGENSCHAFT neben der Gattung, keine eigene: ein selbst gebauter Sensor
+   * bleibt der Zähler-Fläche treu (§5.6 nennt ihn dort ausdrücklich), ein
+   * selbst gebauter Schalter der Verbraucher-Fläche - nur ihr JETZT zeigt die
+   * eigenen Kanäle, und ihre Software-Sektion entfällt.
+   */
+  eigenbau: boolean;
   held: Held;
   sektionen: SektionId[];
+  /**
+   * Hat „Steuerung & Grenzen" auf DIESEM Blatt etwas zu sagen? (§5.6: an einem
+   * Zähler entfällt sie - „VoltPilot steuert dieses Gerät nicht" ist keine
+   * Sektion wert, sondern eine Zeile in der Diagnose.)
+   */
+  steuerung: boolean;
+  /** Was strukturell entfällt - mit dem Grund für die Diagnose (§4.6). */
+  entfallen: EntfalleneSektion[];
 }
 
 export interface GesichtInput {
@@ -133,6 +188,29 @@ export interface GesichtInput {
   curtailment?: CurtailmentStatus | null;
   /** Die Namen der Regeln, die eine Komponente dieses Geräts anfassen. */
   regeln?: string[];
+  /**
+   * Die Kanal-WERTE der Entitäten dieser Anlage (`GET /topology`) - die einzige
+   * Quelle, die je Kanal einen Live-Wert trägt. Sie speist die Batterie-Kachel
+   * des Hybriden und die selbst definierten Kanäle des Eigenbaus (§5.1/§5.8);
+   * ohne sie fehlen genau diese Kacheln, nie eine erfundene 0.
+   */
+  topologie?: TopologyEntity[] | null;
+  /**
+   * Die Erfüllungs-Zeile eines Verbrauchers - WÖRTLICH die geteilte
+   * `fulfilmentSummary(...).headline` (§5.4/§5.7). Leer = keine wiederkehrende
+   * Aufgabe; dann steht dort nichts.
+   */
+  erfuellung?: string | null;
+  /**
+   * Die D3-BESTÄTIGUNGSSTUFE eines Verbrauchers (§5.7): `true` = die Leistung
+   * wird GEMESSEN, `false` = die Energie wird ANGENOMMEN (Nennleistung × Zeit).
+   *
+   * ⚠ `null`/absent heißt „nicht bekannt" und behauptet keines von beidem - die
+   * Zeile entfällt dann. Der Wert kommt aus der geteilten
+   * `consumers/questions.consumerHasMeasurement`; eine zweite Heuristik hier
+   * wäre ein Zwilling, der abdriftet.
+   */
+  gemessen?: boolean | null;
   now?: number;
 }
 
@@ -145,6 +223,75 @@ const OHNE_REGISTER = new Set(['fronius_solar_api', 'goe_http_api', 'shelly_http
 
 /** Ab welcher Leistung ein Verbraucher als „läuft" gilt (die Rausch-Schwelle). */
 const LAEUFT_AB_KW = 0.05;
+
+/**
+ * Die KANONISCHE Ordnung der Gesicht-Sektionen - sie spiegelt
+ * `geraetRahmen.SEKTIONS_ORDNUNG` (die vier Steuerungs-Sektionen fallen dort in
+ * EIN Fach).
+ *
+ * ⚠ Ein Blatt LÄSST AUS, was sein Typ nicht hat, sortiert aber NIE um: sonst
+ * stünde dasselbe Fach auf zwei Geräten an zwei Orten. Der Rahmen sortiert
+ * ohnehin kanonisch - dass die Liste hier schon geordnet ist, macht die
+ * Sektions-Auswahl LESBAR und den Test zur Aussage über die Ordnung.
+ */
+const KANONISCH: readonly SektionId[] = [
+  'jetzt',
+  'befehle',
+  'grenzen',
+  'einspeise',
+  'ausfallschutz',
+  'ladepark',
+  'komponenten',
+  'register',
+  'verbindung',
+  'software',
+];
+
+/** Die vier Sektionen, die im Rahmen in „Steuerung & Grenzen" aufgehen. */
+const STEUERUNGS_SEKTIONEN: readonly SektionId[] = [
+  'grenzen', 'einspeise', 'ausfallschutz', 'ladepark',
+];
+
+/**
+ * Der Satz, der die entfallene BEFEHLS-Sektion ersetzt (§5.6).
+ *
+ * An einen Zähler geht kein Befehl - ein leerer Kasten, der genau das erklärt,
+ * ist die Box-Lehre in klein.
+ */
+export const KEINE_BEFEHLE_SATZ =
+  'An einen Zähler schickt VoltPilot keine Befehle - er wird nur gelesen.';
+
+/**
+ * Der Satz, der die entfallene SOFTWARE-Sektion ersetzt (§5.8).
+ *
+ * ⚠ Er gilt AUSSCHLIESSLICH dem Selbstbau: ein Deye oder Fronius HAT eine
+ * Hersteller-Software (wir lesen sie nur nicht), ein selbst beschriebenes
+ * Modbus-Gerät hat gar keine - die Sektion hätte dort keinen Gegenstand.
+ */
+export const OHNE_SOFTWARE_SATZ =
+  'Ein selbst beschriebenes Modbus-Gerät meldet keinen Software-Stand - Ihre Box liest dort '
+  + 'nur die Register, die Sie angelegt haben.';
+
+/**
+ * Der Satz, der die entfallene Sektion „Steuerung & Grenzen" ersetzt (§5.6).
+ *
+ * Sie entfällt, wo es über die Steuerung NICHTS zu sagen gäbe außer der
+ * Nicht-Zuständigkeit - der Zähler ist der Regelfall.
+ */
+export const KEINE_STEUERUNG_SATZ =
+  'VoltPilot steuert dieses Gerät nicht und hat für es keine Grenzen hinterlegt - '
+  + 'es wird nur gelesen.';
+
+/**
+ * Der Hilfetext des Blatts „Schaltbarer Verbraucher" (§5.7).
+ *
+ * ⚠ Er steht im HILFETEXT, nie im Titel: eine Wärmepumpe ist im Katalog kein
+ * eigener Typ, sie läuft als generische Last über ein Schaltrelais. Ein Blatt
+ * „Wärmepumpe" behauptete eine Gerätekenntnis, die die Plattform nicht hat.
+ */
+export const WAERMEPUMPE_HINWEIS =
+  'Eine Wärmepumpe führt VoltPilot als schaltbaren Verbraucher: geschaltet wird das Relais '
+  + 'davor, nicht die Pumpe selbst.';
 
 /**
  * Der Satz, wenn KEINE Kachel des Helds einen Wert trägt.
@@ -191,30 +338,94 @@ export function gattungVon(input: {
   return 'geraet';
 }
 
-/** Die Sektions-Folge je Gattung. */
-function sektionenVon(gattung: Gattung, registerMoeglich: boolean): SektionId[] {
-  const register: SektionId[] = registerMoeglich ? ['register'] : [];
-  switch (gattung) {
+/**
+ * Welche Sektionen ein Blatt HAT (§5.1-§5.9) - kanonisch sortiert.
+ *
+ * ⚠ Das Ergebnis läuft durch {@link KANONISCH}: die Auswahl ist eine MENGE, die
+ * Ordnung gehört dem Rahmen.
+ */
+function sektionenVon(i: {
+  gattung: Gattung;
+  registerMoeglich: boolean;
+  eigenbau: boolean;
+}): SektionId[] {
+  const hat = new Set<SektionId>(['jetzt', 'komponenten', 'verbindung']);
+  if (i.registerMoeglich) hat.add('register');
+  // Software: eine Aussage über die Hersteller-Software des Geräts. Ein selbst
+  // beschriebenes Modbus-Gerät HAT keine (§5.8) - dort entfällt die Sektion,
+  // ihr Grund zieht in die Diagnose.
+  if (!i.eigenbau) hat.add('software');
+  switch (i.gattung) {
     case 'wechselrichter-speicher':
     case 'wechselrichter':
       // Die Grenzen stehen DIREKT über dem Werkzeug: die Zeile „Ihr
       // Wechselrichter begrenzt auf 33,0 kW - hinterlegt sind 70,0 kW" ist
       // genau das, was einen Register-Schreibvorgang motiviert.
-      return ['jetzt', 'befehle', 'komponenten', 'grenzen', ...register, 'verbindung', 'software'];
+      hat.add('befehle');
+      hat.add('grenzen');
+      break;
     case 'pv-melder':
-      return ['jetzt', 'einspeise', 'befehle', 'komponenten', ...register, 'verbindung', 'software'];
+      hat.add('befehle');
+      hat.add('einspeise');
+      break;
     case 'zaehler':
       // Kein Befehls-Kasten: an einen Zähler geht kein Befehl, und ein leerer
-      // Kasten mit seiner eigenen Erklärung ist die Box-Lehre.
-      return ['jetzt', 'komponenten', ...register, 'verbindung', 'software'];
+      // Kasten mit seiner eigenen Erklärung ist die Box-Lehre. Ein SELBSTBAU-
+      // Sensor bekommt trotzdem „Grenzen" - dort wohnt sein Freigabe-Einstieg.
+      if (i.eigenbau) hat.add('grenzen');
+      break;
     case 'verbraucher':
-      return ['jetzt', 'befehle', 'komponenten', ...register, 'verbindung', 'software'];
+      // §5.7: Nennleistung, Schonzeiten und der Totmann-Hinweis wohnen in den
+      // Grenzen - vor dieser Stufe hatte ein Verbraucher sie gar nicht.
+      hat.add('befehle');
+      hat.add('grenzen');
+      break;
     case 'ladepunkt':
-      return ['jetzt', 'befehle', 'ausfallschutz', 'komponenten', 'verbindung', 'ladepark',
-        'software'];
+      hat.add('befehle');
+      hat.add('ausfallschutz');
+      hat.add('ladepark');
+      break;
     default:
-      return ['jetzt', 'befehle', 'komponenten', ...register, 'verbindung', 'software'];
+      hat.add('befehle');
+      if (i.eigenbau) hat.add('grenzen');
+      break;
   }
+  return KANONISCH.filter((id) => hat.has(id));
+}
+
+/**
+ * Der Live-Wert EINES Kanals einer Entität aus dem Topologie-Lesemodell.
+ *
+ * ⚠ Es ist die einzige Quelle, die je Kanal einen Wert trägt (`/sources` kennt
+ * nur die vier Sammel-Kanäle). Ohne sie fehlt die Kachel - nie eine erfundene 0.
+ */
+function kanalWert(
+  topologie: TopologyEntity[] | null | undefined,
+  entityId: string,
+  channel: string,
+): { wert: number; unit: string | null } | null {
+  const e = (topologie ?? []).find((t) => t.id === entityId);
+  const c = e?.capabilities?.find((k) => k.channel === channel);
+  const v = num(c?.value);
+  return v == null ? null : { wert: v, unit: c?.unit ?? null };
+}
+
+/** Eine Zahl aus dem Guard-Block einer Entität - gelesen, nie geschlossen. */
+function guardZahl(
+  entities: SiteEntity[] | null | undefined,
+  entityId: string,
+  key: string,
+): number | null {
+  const limits = (entities ?? []).find((e) => e.id === entityId)?.guards?.limits;
+  return num((limits as Record<string, unknown> | undefined)?.[key]);
+}
+
+/** Der Entitätstyp einer Komponente - für die Blatt-eigenen Hilfetexte. */
+function entityTypeOf(
+  entities: SiteEntity[] | null | undefined,
+  entityId: string,
+): string | null {
+  return (entities ?? []).find((e) => e.id === entityId)?.entityType ?? null;
 }
 
 /** Die gepflegte Nennleistung der PV-Komponenten dieses Geräts (kWp). */
@@ -233,6 +444,7 @@ number | null {
 /** Die Netz-Kachel: die Richtung ist ein WORT, nie ein Vorzeichen. */
 function netzKachel(grid: number | null, gross = false): HeldKachel {
   return {
+    key: 'netz',
     label: 'Netz',
     wert: kw(grid == null ? null : Math.abs(grid)),
     wort: grid == null ? null : grid < 0 ? 'Einspeisung' : grid > 0 ? 'Bezug' : 'ausgeglichen',
@@ -240,16 +452,53 @@ function netzKachel(grid: number | null, gross = false): HeldKachel {
   };
 }
 
-/** Der Speicher-Wert einer Komponente dieses Geräts (Ladestand + Richtung). */
-function speicherKachel(komponenten: PlantComponent[]): HeldKachel | null {
-  const c = komponenten.find((k) => k.role === 'storage' && k.reading != null);
-  if (!c || !c.reading) return null;
-  return {
-    label: 'Ladestand',
-    wert: fmtNum(c.reading.value, c.reading.unit),
-    wort: c.reading.caption,
-    gross: true,
-  };
+/**
+ * Der SPEICHER-TEIL des Hybrid-Blatts (§5.1): Ladestand · Batterieleistung mit
+ * Richtungs-WORT · Reserve.
+ *
+ * ⚠ Die Batterieleistung kommt aus dem KANAL der Speicher-Entität, nie aus
+ * einer Bilanz-Ableitung - und ihre Richtung ist ein Wort (die `live.ts`-
+ * Konvention: `+` lädt, `−` gibt ab). Die Reserve wird GELESEN
+ * (`guards.limits.soc_min_pct`), nie aus einem Messwert geschlossen.
+ */
+export const SPEICHER_KACHEL = 'speicher';
+
+/**
+ * Die Beschriftung des §5.3-Absprungs. Sie sagt, WO der Speicher wohnt - er
+ * hat keine eigene Seite, und ein „Geräteseite öffnen" an einer Batterie-Zeile
+ * verspräche eine, die es nicht gibt.
+ */
+export const SPEICHER_BLATT_LABEL = 'Speicher am Wechselrichter';
+
+function speicherKacheln(input: GesichtInput): HeldKachel[] {
+  const c = input.komponenten.find((k) => k.role === 'storage');
+  if (!c) return [];
+  const out: HeldKachel[] = [];
+  if (c.reading) {
+    out.push({
+      key: SPEICHER_KACHEL,
+      label: 'Ladestand',
+      wert: fmtNum(c.reading.value, c.reading.unit),
+      wort: c.reading.caption,
+      gross: true,
+    });
+  }
+  const batt = kanalWert(input.topologie, c.entityId, 'battery_power_kw');
+  if (batt) {
+    out.push({
+      key: 'batterie',
+      label: 'Batterieleistung',
+      wert: kw(Math.abs(batt.wert)),
+      wort: Math.abs(batt.wert) <= LAEUFT_AB_KW
+        ? 'ruht'
+        : batt.wert > 0 ? 'lädt' : 'gibt ab',
+    });
+  }
+  const reserve = guardZahl(input.entities, c.entityId, 'soc_min_pct');
+  if (reserve != null) {
+    out.push({ key: 'reserve', label: 'Reserve', wert: `${reserve} %`, wort: 'nicht unterschritten' });
+  }
+  return out;
 }
 
 /**
@@ -301,16 +550,29 @@ export function abregelungDiesesGeraets(
   };
 }
 
-/** Der Held der Gattung B/B' - das Live-Bild plus der EINE Steuerungs-Satz. */
+/**
+ * Der Held der Gattung B/B' (§5.1/§5.2) - PV-Teil, Speicher-Teil, und Netz/Haus
+ * NUR, wenn dieses Gerät sie misst.
+ *
+ * ⚠ Die letzte Regel ist der behobene Befund: „Netz —" und „Haus —" standen
+ * bisher an JEDEM Wechselrichter, auch an einem, der gar keinen CT hat. Zwei
+ * Striche sind keine Auskunft; die Kacheln entfallen dort ersatzlos.
+ */
 function heldWechselrichter(input: GesichtInput, mitSpeicher: boolean): Held {
   const src = input.src ?? null;
   const kacheln: HeldKachel[] = [];
   const pv = num(src?.pvKw);
-  kacheln.push({ label: 'Solarstrom', wert: kw(pv), wort: null, gross: !mitSpeicher });
-  const speicher = mitSpeicher ? speicherKachel(input.komponenten) : null;
-  if (speicher) kacheln.push(speicher);
-  kacheln.push(netzKachel(num(src?.powerKw)));
-  kacheln.push({ label: 'Haus', wert: kw(num(src?.loadKw)), wort: 'abgeleitet' });
+  // Der PV-Teil steht IMMER: ein Wechselrichter erzeugt, das ist seine Rolle -
+  // eine fehlende Zahl ist dort eine Aussage über die Messung, kein fehlender
+  // Gegenstand.
+  kacheln.push({ key: 'pv', label: 'Solarstrom', wert: kw(pv), wort: null, gross: !mitSpeicher });
+  if (mitSpeicher) kacheln.push(...speicherKacheln(input));
+  const grid = num(src?.powerKw);
+  if (grid != null) kacheln.push(netzKachel(grid));
+  const load = num(src?.loadKw);
+  if (load != null) {
+    kacheln.push({ key: 'haus', label: 'Haus', wert: kw(load), wort: 'abgeleitet' });
+  }
 
   const gesteuert = input.komponenten.filter((c) => c.control);
   if (gesteuert.length === 0) {
@@ -320,18 +582,24 @@ function heldWechselrichter(input: GesichtInput, mitSpeicher: boolean): Held {
       satz: NUR_GELESEN,
       satzTon: 'off',
       hinweis: null,
+      zeilen: [],
       balken: null,
     };
   }
   // ⚠ DIESELBE Ableitung wie Cockpit und Befehle-Seite - drei Flächen, ein
   // Satz. Ein eigener hier wäre eine zweite Wahrheit über denselben Sollwert.
   const strip = controlStrip(input.control ?? null, new Date(input.now ?? Date.now()), true);
+  // §5.1 „Zweite Zeile: Freigabe-Stand in einem Wort". ⚠ Er kommt aus der EINEN
+  // Ableitung in `control.ts` - der lange Satz und das kurze Wort sind zwei
+  // Längen derselben Aussage; `null` (unbekannt) behauptet NICHTS.
+  const freigabe = freigabeWort(input.control ?? null);
   return {
     titel: 'Jetzt',
     kacheln,
     satz: strip?.sentence ?? null,
     satzTon: strip?.tone === 'warn' ? 'warn' : strip?.tone === 'ok' ? 'ok' : 'off',
     hinweis: strip?.execution ?? strip?.reason ?? null,
+    zeilen: freigabe ? [`Freigabe: ${freigabe.wort}`] : [],
     balken: null,
   };
 }
@@ -342,10 +610,10 @@ function heldPvMelder(input: GesichtInput): Held {
     ?? num(input.komponenten.find((c) => c.role === 'pv' && c.reading)?.reading?.value ?? null);
   const kwp = kwpVon(input.komponenten, input.entities);
   const kacheln: HeldKachel[] = [
-    { label: 'Erzeugung jetzt', wert: kw(pv), wort: null, gross: true },
+    { key: 'pv', label: 'Erzeugung jetzt', wert: kw(pv), wort: null, gross: true },
   ];
   if (kwp != null) {
-    kacheln.push({ label: 'Nennleistung', wert: fmtNum(kwp, 'kWp'), wort: 'gepflegt' });
+    kacheln.push({ key: 'kwp', label: 'Nennleistung', wert: fmtNum(kwp, 'kWp'), wort: 'gepflegt' });
   }
   const satz = pv == null
     ? 'Dieses Gerät meldet gerade keine Erzeugung.'
@@ -361,6 +629,7 @@ function heldPvMelder(input: GesichtInput): Held {
     // direkt unter dem Held ist ihr Ort, und derselbe Satz zweimal auf einem
     // Bildschirm ist die dokumentierte Doppelung (im Browser aufgefallen).
     hinweis: null,
+    zeilen: [],
     // ⚠ Nur mit BELEGTEM Bezug: ohne gepflegte Nennleistung gäbe es keinen
     // Maßstab, und ein Balken ohne Maßstab ist eine erfundene Aussage.
     balken: pv != null && kwp != null && kwp > 0
@@ -370,7 +639,22 @@ function heldPvMelder(input: GesichtInput): Held {
 }
 
 /** Der Held der Gattung D - Bezug oder Einspeisung, und ob er maßgeblich ist. */
-function heldZaehler(input: GesichtInput): Held {
+function heldZaehler(input: GesichtInput, eigenbau: boolean): Held {
+  // ⚠ §5.8 gilt AUCH hier: ein selbst gebauter Sensor ist katalog-seitig ein
+  // `meter` und damit ein Zähler - aber er misst keinen Netzanschluss, sondern
+  // SEINE Kanäle. Sie sind sein Gesicht; „Netz —" wäre dort keine Auskunft.
+  const eigene = eigenbau ? eigenbauKacheln(input) : [];
+  if (eigene.length > 0) {
+    return {
+      titel: 'Jetzt',
+      kacheln: eigene,
+      satz: null,
+      satzTon: 'ok',
+      hinweis: null,
+      zeilen: [NUR_GELESEN],
+      balken: null,
+    };
+  }
   const grid = num(input.src?.powerKw)
     ?? num(input.komponenten.find((c) => c.role === 'grid' && c.reading)?.reading?.value ?? null);
   const massgeblich = input.komponenten.some((c) => c.role === 'grid' && c.primary);
@@ -390,20 +674,37 @@ function heldZaehler(input: GesichtInput): Held {
     hinweis: massgeblich
       ? 'Dieser Zähler ist maßgeblich für die Bilanz Ihrer Anlage.'
       : 'Die maßgebliche Messung Ihrer Bilanz liefert ein anderes Gerät.',
+    // §5.6 „Braucht NICHT: Freigabe, Sofortaktionen, Speicher-Kacheln" - an
+    // einen Zähler geht kein Befehl, also gibt es auch nichts freizugeben.
+    zeilen: [NUR_GELESEN],
     balken: null,
   };
 }
 
-/** Der Held der Gattung E - läuft es, und warum? */
-function heldVerbraucher(input: GesichtInput): Held {
-  const eigen = input.komponenten.find((c) => c.role === 'consumer' && c.reading);
+/**
+ * Der Held der Gattung E (§5.4 Wallbox · §5.7 schaltbarer Verbraucher) - läuft
+ * es, mit wie viel, und warum?
+ *
+ * ⚠ Die D3-BESTÄTIGUNGSSTUFE steht als WORT an der Kachel: ein Shelly ohne
+ * Leistungsmessung meldet nur sein Relais, die Energie ist dort ANGENOMMEN
+ * (Nennleistung × Zeit). Sie zu verschweigen ließe eine geschätzte Zahl wie
+ * eine gemessene aussehen.
+ */
+function heldVerbraucher(input: GesichtInput, eigenbau: boolean): Held {
+  const eigen = input.komponenten.find((c) => c.role === 'consumer');
   const leistung = num(input.src?.loadKw) ?? num(eigen?.reading?.value ?? null);
-  const laeuft = leistung == null ? null : leistung > LAEUFT_AB_KW;
+  const gemessen = input.gemessen ?? null;
+  // Ohne Leistungsmessung ist der Zustand das RELAIS, nicht eine Leistung:
+  // `relay_on` kommt als 0/1 über den Kanal (die Kanäle sind 0/1-Zahlen).
+  const relais = eigen ? kanalWert(input.topologie, eigen.entityId, 'relay_on') : null;
+  const laeuft = leistung != null
+    ? leistung > LAEUFT_AB_KW
+    : relais != null ? relais.wert > 0 : null;
   const regeln = input.regeln ?? [];
   const satz = laeuft == null
     ? 'Dieses Gerät meldet gerade keinen Wert.'
     : laeuft
-      ? `Läuft gerade mit ${fmtNum(leistung as number, 'kW')}.`
+      ? (leistung != null ? `Läuft gerade mit ${fmtNum(leistung, 'kW')}.` : 'Läuft gerade.')
       : 'Läuft gerade nicht.';
   // ⚠ Der GRUND wird nur genannt, wo eine Regel dieses Gerät wirklich anfasst -
   // „warum" ohne Beleg wäre eine Behauptung über eine Automatik, die es
@@ -413,18 +714,45 @@ function heldVerbraucher(input: GesichtInput): Held {
     : regeln.length === 1
       ? `Geschaltet von der Regel „${regeln[0]}".`
       : `Geschaltet von den Regeln „${regeln.join('", „')}".`;
-  return {
-    titel: 'Zustand',
-    kacheln: [{
+  const kachel: HeldKachel = leistung != null || gemessen !== false
+    ? {
+      key: 'leistung',
       label: 'Leistung',
       wert: kw(leistung),
       wort: laeuft == null ? null : laeuft ? 'läuft' : 'aus',
       ton: laeuft == null ? 'off' : laeuft ? 'ok' : null,
       gross: true,
-    }],
+    }
+    : {
+      // Ohne Messung gibt es keine Leistung zu zeigen - nur den Zustand.
+      key: 'relais',
+      label: 'Zustand',
+      wert: laeuft == null ? NO_DATA : laeuft ? 'Ein' : 'Aus',
+      wort: 'ohne Leistungsmessung',
+      ton: laeuft == null ? 'off' : laeuft ? 'ok' : null,
+      gross: true,
+    };
+  const zeilen: string[] = [];
+  if (gemessen != null) {
+    zeilen.push(gemessen
+      ? 'Energie: gemessen'
+      : 'Energie: angenommen (Nennleistung × Zeit)');
+  }
+  // ⚠ Die Erfüllungs-Zeile ist WÖRTLICH die geteilte `fulfilmentSummary`-
+  // Kopfzeile (§5.4/§5.7) - eine eigene Formulierung wäre ein zweites Urteil
+  // über dieselben Aufgaben.
+  const erfuellung = (input.erfuellung ?? '').trim();
+  if (erfuellung) zeilen.push(erfuellung);
+  return {
+    titel: 'Zustand',
+    // ⚠ §5.8: ein SELBST gebauter Schalter misst zusätzlich, was der Kunde bei
+    // ihm definiert hat. Der Schalt-Zustand führt (er ist die erste Frage),
+    // seine Kanäle stehen daneben - sie werden nie verschwiegen.
+    kacheln: [kachel, ...(eigenbau ? eigenbauKacheln(input) : [])],
     satz,
     satzTon: laeuft == null ? 'off' : 'ok',
     hinweis,
+    zeilen,
     balken: null,
   };
 }
@@ -437,6 +765,7 @@ function heldLadepunkt(input: GesichtInput): Held {
     const p = num(k.powerKw);
     const zugeteilt = num(k.allocatedKw);
     return {
+      key: `stecker:${k.connectorId}`,
       label: `Stecker ${k.connectorId}`,
       wert: k.charging ? kw(p) : (p != null && p > LAEUFT_AB_KW ? kw(p) : 'frei'),
       wort: k.charging
@@ -464,21 +793,77 @@ function heldLadepunkt(input: GesichtInput): Held {
     // erste, der einen trägt, spricht für die Säule.
     hinweis: stecker.map((k) => k.reasonText?.trim()).find((t) => !!t)
       ?? (charger?.note?.trim() ? charger.note.trim() : null),
+    zeilen: [],
     balken: null,
   };
 }
 
+/**
+ * Die SELBST definierten Kanäle als Kacheln (§5.8, Blatt Eigenbau).
+ *
+ * ⚠ Sie ist die einzige Kachel-Quelle, die aus der Kanal-LISTE der Komponente
+ * kommt: bei einem selbst gebauten Gerät IST sie die Vorlage, es gibt keine
+ * feste Rollen-Semantik dahinter. Ein Kanal ohne Wert erscheint GAR NICHT - nie
+ * eine erfundene 0.
+ */
+function eigenbauKacheln(input: GesichtInput): HeldKachel[] {
+  const out: HeldKachel[] = [];
+  const gesehen = new Set<string>();
+  for (const c of input.komponenten) {
+    for (const m of c.channels) {
+      if (gesehen.has(m.raw)) continue;
+      const v = kanalWert(input.topologie, c.entityId, m.raw);
+      if (!v) continue;
+      gesehen.add(m.raw);
+      out.push({
+        key: `kanal:${m.raw}`,
+        // Der Name ist der, den der Kunde beim Anlegen getippt hat - die
+        // geteilte `channelLabel` fällt für einen unbekannten Kanal auf genau
+        // ihn zurück, statt ihn zu verstecken oder zu erfinden.
+        label: channelLabel(m.raw),
+        wert: v.unit ? fmtNum(v.wert, v.unit) : String(v.wert),
+        wort: null,
+        gross: out.length === 0,
+      });
+    }
+  }
+  return out;
+}
+
 /** Der Held der Rückfall-Gattung: zeigen, was gemeldet wird - nichts deuten. */
-function heldGeraet(input: GesichtInput): Held {
+function heldGeraet(input: GesichtInput, eigenbau: boolean): Held {
   const src = input.src ?? null;
-  const kacheln: HeldKachel[] = [];
-  const pv = num(src?.pvKw);
-  const grid = num(src?.powerKw);
-  const load = num(src?.loadKw);
-  if (pv != null) kacheln.push({ label: 'Solarstrom', wert: kw(pv), wort: null, gross: true });
-  if (grid != null) kacheln.push(netzKachel(grid, pv == null));
-  if (load != null) {
-    kacheln.push({ label: 'Verbrauch', wert: kw(load), wort: null, gross: pv == null && grid == null });
+  const kacheln: HeldKachel[] = eigenbau ? eigenbauKacheln(input) : [];
+  if (kacheln.length === 0) {
+    const pv = num(src?.pvKw);
+    const grid = num(src?.powerKw);
+    const load = num(src?.loadKw);
+    if (pv != null) {
+      kacheln.push({ key: 'pv', label: 'Solarstrom', wert: kw(pv), wort: null, gross: true });
+    }
+    if (grid != null) kacheln.push(netzKachel(grid, pv == null));
+    if (load != null) {
+      kacheln.push({
+        key: 'haus',
+        label: 'Verbrauch',
+        wert: kw(load),
+        wort: null,
+        gross: pv == null && grid == null,
+      });
+    }
+  }
+  // Ein SCHALTBARES Selbstbau-Gerät nennt seinen Schalter-Zustand und den
+  // Sicherheitswert - beides GELESEN, nie geschlossen.
+  const schalt = eigenbau ? input.komponenten.find((c) => c.schaltbar) : undefined;
+  if (schalt) {
+    const relais = kanalWert(input.topologie, schalt.entityId, 'relay_on');
+    kacheln.push({
+      key: 'schalter',
+      label: 'Schalter',
+      wert: relais == null ? NO_DATA : relais.wert > 0 ? 'Ein' : 'Aus',
+      wort: relais == null ? null : relais.wert > 0 ? 'geschaltet' : 'aus',
+      ton: relais == null ? 'off' : relais.wert > 0 ? 'ok' : null,
+    });
   }
   return {
     titel: 'Jetzt',
@@ -486,6 +871,9 @@ function heldGeraet(input: GesichtInput): Held {
     satz: kacheln.length === 0 ? 'Dieses Gerät hat noch keine Messwerte geliefert.' : null,
     satzTon: kacheln.length === 0 ? 'off' : 'ok',
     hinweis: null,
+    zeilen: schalt
+      ? ['Fällt VoltPilot aus, geht dieses Gerät in seinen Sicherheitswert.']
+      : [],
     balken: null,
   };
 }
@@ -500,6 +888,11 @@ export function gesicht(input: GesichtInput): Gesicht {
   const gattung = gattungVon(input);
   const registerMoeglich = gattung !== 'ladepunkt'
     && !OHNE_REGISTER.has((input.communication ?? '').trim());
+  // ⚠ BELEGT, nicht geraten: `freigabeFaehig` trägt genau die zwei Selbstbau-
+  // Typen (`modbus-generic`/`modbus-load`) - es ist die Portal-Seite derselben
+  // Menge, mit der auch der Freigabe-Assistent gattert.
+  const eigenbau = input.komponenten.some((c) => c.freigabeFaehig);
+  const sektionen = sektionenVon({ gattung, registerMoeglich, eigenbau });
   const held = gattung === 'wechselrichter-speicher'
     ? heldWechselrichter(input, true)
     : gattung === 'wechselrichter'
@@ -507,19 +900,65 @@ export function gesicht(input: GesichtInput): Gesicht {
       : gattung === 'pv-melder'
         ? heldPvMelder(input)
         : gattung === 'zaehler'
-          ? heldZaehler(input)
+          ? heldZaehler(input, eigenbau)
           : gattung === 'verbraucher'
-            ? heldVerbraucher(input)
+            ? heldVerbraucher(input, eigenbau)
             : gattung === 'ladepunkt'
               ? heldLadepunkt(input)
-              : heldGeraet(input);
+              : heldGeraet(input, eigenbau);
   // ⚠ EINE Regel für JEDE Gattung: trägt keine Kachel einen Wert, wird der
   // Grund GENANNT - eine Reihe von „—" ist keine Auskunft.
   const stumm = held.kacheln.length === 0 || held.kacheln.every((k) => k.wert === NO_DATA);
   const ehrlich: Held = stumm && !held.hinweis
     ? { ...held, hinweis: KEINE_MESSWERTE }
     : held;
-  return { gattung, held: ehrlich, sektionen: sektionenVon(gattung, registerMoeglich) };
+
+  // „Steuerung & Grenzen" gibt es, wo es über die Steuerung etwas zu SAGEN
+  // gibt - eine Sektion, die nur ihre Nicht-Zuständigkeit erklärt, entfällt
+  // (§4.6 + §5.6: der Zähler ist der Regelfall).
+  const steuerung = STEUERUNGS_SEKTIONEN.some((id) => sektionen.includes(id))
+    || input.komponenten.some((c) => c.control)
+    || (input.regeln ?? []).length > 0
+    // Der Einspeise-Wächter wird NUR an einem ERZEUGENDEN Gerät genannt - an
+    // einem Zähler wäre er eine Aussage über ein fremdes Gerät (die Regel von
+    // `geraetSeite.waechterSatz`).
+    || (Boolean(input.curtailment?.exportGuard)
+      && input.komponenten.some((c) => c.role === 'pv'));
+
+  const entfallen: EntfalleneSektion[] = [];
+  if (!sektionen.includes('befehle')) {
+    entfallen.push({ id: 'befehle', grund: KEINE_BEFEHLE_SATZ });
+  }
+  if (!steuerung) entfallen.push({ id: 'steuerung', grund: KEINE_STEUERUNG_SATZ });
+  if (!registerMoeglich) {
+    entfallen.push({
+      id: 'register',
+      grund: gattung === 'ladepunkt' ? KEINE_REGISTER.ladepunkt : OHNE_REGISTER_SATZ,
+    });
+  }
+  if (!sektionen.includes('software')) {
+    entfallen.push({ id: 'software', grund: OHNE_SOFTWARE_SATZ });
+  }
+
+  return { gattung, eigenbau, held: ehrlich, sektionen, steuerung, entfallen };
+}
+
+/**
+ * Der Hilfetext DIESES Blatts, oder null (§5.7).
+ *
+ * Heute gibt es genau einen: die Wärmepumpe ist im Katalog kein eigener Typ -
+ * sie läuft als `generic-load`/`pump` über ein Schaltrelais, und das Blatt sagt
+ * das im HILFETEXT, nie im Titel.
+ */
+export function blattHinweis(
+  g: Gesicht,
+  input: Pick<GesichtInput, 'komponenten' | 'entities'>,
+): string | null {
+  if (g.gattung !== 'verbraucher') return null;
+  const typen = input.komponenten
+    .filter((c) => c.role === 'consumer')
+    .map((c) => entityTypeOf(input.entities, c.entityId));
+  return typen.some((t) => t === 'generic-load' || t === 'pump') ? WAERMEPUMPE_HINWEIS : null;
 }
 
 /**

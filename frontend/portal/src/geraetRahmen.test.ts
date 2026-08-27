@@ -8,6 +8,7 @@ import {
   kopfHinweis,
   kurz,
   parseAbschnitt,
+  parseKachel,
   rahmen,
   SEKTION_FRAGE,
   SEKTION_ICON,
@@ -301,6 +302,35 @@ describe('Deep-Link `?abschnitt=` — ein Parameter, keine zweite Raute (§4.3)'
     for (const id of SEKTIONS_ORDNUNG) {
       expect(parseAbschnitt(abschnittHash('#/anlage/s1/box/vp-1', id))).toBe(id);
     }
+  });
+
+  // ⚠ §5.3: die Batterie hat KEINE eigene Seite - ihre Komponenten-Zeile führt
+  // auf das Hybrid-Blatt und markiert dort GENAU ihre Kachel.
+  it('nennt zusätzlich die angesprungene KACHEL - als zweiter Parameter', () => {
+    const h = abschnittHash('#/anlage/s1/geraet/vp-1/inverter', 'jetzt', 'speicher');
+    expect(h).toBe('#/anlage/s1/geraet/vp-1/inverter?abschnitt=jetzt&kachel=speicher');
+    expect(h.slice(1)).not.toContain('#');
+    expect(parseKachel(h)).toBe('speicher');
+    expect(parseAbschnitt(h)).toBe('jetzt');
+  });
+
+  it('lässt die Kachel unangetastet, wenn keine genannt wird', () => {
+    // Ein Aufrufer, der nur die Sektion setzt, darf eine gesetzte Kachel nicht
+    // stillschweigend verlieren - `undefined` heisst „nichts ändern".
+    expect(abschnittHash('#/anlage/s1/geraet/vp-1?kachel=speicher', 'befehle'))
+      .toBe('#/anlage/s1/geraet/vp-1?kachel=speicher&abschnitt=befehle');
+    // Ausdrückliches `null` nimmt sie heraus.
+    expect(abschnittHash('#/anlage/s1/geraet/vp-1?abschnitt=jetzt&kachel=speicher', 'jetzt', null))
+      .toBe('#/anlage/s1/geraet/vp-1?abschnitt=jetzt');
+  });
+
+  it('behauptet ohne Parameter KEINE Kachel', () => {
+    expect(parseKachel('#/anlage/s1/geraet/vp-1')).toBeNull();
+    expect(parseKachel('#/anlage/s1/geraet/vp-1?abschnitt=jetzt')).toBeNull();
+    // Ein leerer Wert ist keine Kachel - nie ein Sprung ins Nichts.
+    expect(parseKachel('#/anlage/s1/geraet/vp-1?kachel=')).toBeNull();
+    expect(parseKachel('#/anlage/s1/geraet/vp-1?kachel=%20')).toBeNull();
+    expect(parseKachel('')).toBeNull();
   });
 
   it('gibt jeder Sektion einen eigenen Sprungpunkt', () => {

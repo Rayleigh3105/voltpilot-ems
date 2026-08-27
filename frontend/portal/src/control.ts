@@ -337,6 +337,35 @@ function pendingSentence(status: ControlStatus): string {
 }
 
 /**
+ * Der Freigabe-Stand in EINEM Wort (Geräteseiten Stufe 4, Konzept
+ * `vp-geraeteseite-rahmen-r2` §5.1: „Zweite Zeile: Freigabe-Stand in einem
+ * Wort").
+ *
+ * ⚠ Er wohnt HIER, weil hier schon {@link pendingSentence} wohnt - der lange
+ * Satz und das kurze Wort sind zwei Längen DERSELBEN Aussage, und zwei
+ * Ableitungen darüber wären zwei Urteile über dieselbe Freigabe.
+ *
+ * ⚠ **`unknown`/null behauptet NICHTS** (`null`): ein Gerät, das sich zum
+ * Register nie geäußert hat, ist nicht „nicht freigegeben" - wer die zwei
+ * zusammenfallen lässt, schickt einen Kunden zu einem Prüfstand, den er nicht
+ * braucht (die Haus-Regel des Plattform-Registers).
+ */
+export function freigabeWort(
+  status: ControlStatus | null | undefined,
+): { wort: string; ton: 'ok' | 'warn' | 'off' } | null {
+  if (!status) return null;
+  if (status.certified) return { wort: 'freigegeben', ton: 'ok' };
+  switch (status.platformCertVerdict) {
+    case 'covered_not_activated':
+      return { wort: 'für diese Anlage einschalten', ton: 'warn' };
+    case 'not_covered':
+      return { wort: 'Prüfstand nötig', ton: 'off' };
+    default:
+      return null;
+  }
+}
+
+/**
  * controlStrip - derive the calm "Steuerung" strip from the latest control
  * confirmation.
  *

@@ -170,8 +170,10 @@ describe('jede Gattung beantwortet ihre EIGENE erste Frage', () => {
     expect(g.held.titel).toBe('Erzeugung');
     expect(g.held.satz).toBe(`Erzeugt gerade 21,2${NBSP}kW von 27,0${NBSP}kWp.`);
     expect(g.held.balken?.pct).toBeCloseTo((21.2 / 27) * 100, 5);
-    // Die Einspeise-Begrenzung steht DIREKT hinter dem Held.
-    expect(g.sektionen[1]).toBe('einspeise');
+    // ⚠ Seit Stufe 4 ist die Reihenfolge KANONISCH (§4.4) - die
+    // Einspeise-Begrenzung ist da, sie steht nur nicht mehr frei sortiert
+    // direkt hinter dem Held.
+    expect(g.sektionen).toContain('einspeise');
   });
 
   it('⚠ C · ohne gepflegte Nennleistung gibt es KEINEN Balken', () => {
@@ -315,5 +317,181 @@ describe('abregelungDiesesGeraets', () => {
   it('ohne Status und ohne Einheit gibt es gar keine Zeile', () => {
     expect(abregelungDiesesGeraets(null, 'src-fr1')).toBeNull();
     expect(abregelungDiesesGeraets(basis({ units: 0, certifiedUnits: 0 }), 'x')).toBeNull();
+  });
+});
+
+/**
+ * Geräteseiten Stufe 4 - DIE NEUN BLÄTTER.
+ *
+ * Der behobene Befund war ZUSCHNITT, nicht Gestaltung: die Gattungs-Auswahl
+ * stand seit Stufe 2, aber jedes Blatt bekam noch dieselben Sektionen in
+ * derselben Ordnung und dieselben Kacheln. Hier steht je Gattung, was sie
+ * BRAUCHT - und die Gegenprobe, was sie ausdrücklich NICHT braucht (§4.6:
+ * strukturell Leeres entfällt, sein Grund zieht in die Diagnose).
+ */
+describe('Stufe 4 · je Gattung genau das, was sie braucht', () => {
+  const kanonisch = [
+    'jetzt', 'befehle', 'komponenten', 'register', 'verbindung', 'software',
+  ] as const;
+
+  /** Die Ordnung ist FEST (§4.4) - ein Blatt lässt aus, es sortiert nie um. */
+  function istKanonisch(sektionen: readonly string[]) {
+    const nur = sektionen.filter((s) => (kanonisch as readonly string[]).includes(s));
+    return nur.every((s, i) => kanonisch.indexOf(s as never)
+      >= kanonisch.indexOf(nur[Math.max(0, i - 1)] as never));
+  }
+
+  it('B · der Hybrid trägt PV-Teil, Speicher-Teil und die Grundausstattung', () => {
+    const g = gesicht(input({
+      komponenten: [
+        komponente({ role: 'storage', entityId: 'e-batt', reading: { value: 62, unit: '%', caption: 'lädt' } as never }),
+        komponente({ id: 'k-2', role: 'pv', entityId: 'e-pv' }),
+        komponente({ id: 'k-3', role: 'grid', entityId: 'e-netz' }),
+      ],
+      // Netz/Haus stehen NUR, weil dieses Gerät sie MISST - die Zahl kommt aus
+      // der gemeldeten Quelle, nie aus einer Komponenten-Zeile daneben.
+      src: src({ pvKw: 8.4, powerKw: 2.1, loadKw: 3.9 }),
+      topologie: [
+        { id: 'e-batt', capabilities: [{ channel: 'battery_power_kw', unit: 'kW', value: 4.2 }] },
+      ] as never,
+    }));
+    expect(g.gattung).toBe('wechselrichter-speicher');
+    const keys = g.held.kacheln.map((k) => k.key);
+    // PV-Teil UND Speicher-Teil - der Hybrid ist beides.
+    expect(keys).toContain('pv');
+    expect(keys).toContain('speicher');
+    // Die Batterieleistung ist GEMESSEN (Topologie), nie eine Bilanz-Ableitung.
+    expect(keys).toContain('batterie');
+    // Netz/Haus nur, weil DIESES Gerät sie misst.
+    expect(keys).toContain('netz');
+    expect(istKanonisch(g.sektionen)).toBe(true);
+  });
+
+  it('⚠ B · was dieses Gerät NICHT misst, bekommt keine Kachel', () => {
+    const g = gesicht(input({
+      komponenten: [komponente({ role: 'storage', reading: { value: 40, unit: '%', caption: null } as never })],
+    }));
+    const keys = g.held.kacheln.map((k) => k.key);
+    expect(keys).toContain('speicher');
+    expect(keys).not.toContain('netz');
+    expect(keys).not.toContain('haus');
+    // Ohne gemessene Batterieleistung wird sie nicht abgeleitet.
+    expect(keys).not.toContain('batterie');
+  });
+
+  it('D · der Zähler braucht KEINE Befehle - an ihn geht keiner', () => {
+    const g = gesicht(input({
+      art: 'quelle',
+      geraetId: 'src-zaehler',
+      rolle: 'grid-meter',
+      communication: 'modbus_tcp',
+      komponenten: [komponente({ role: 'grid', entityId: 'e-netz' })],
+      src: src({ sourceId: 'src-zaehler', powerKw: -3.4 }),
+    }));
+    expect(g.gattung).toBe('zaehler');
+    expect(g.sektionen).not.toContain('befehle');
+    // Der Grund verschwindet nicht, er zieht in die Diagnose (§4.6).
+    expect(g.entfallen.find((e) => e.id === 'befehle')?.grund).toBeTruthy();
+    // Und ein Zähler wird von niemandem gesteuert.
+    expect(g.steuerung).toBe(false);
+    expect(g.entfallen.find((e) => e.id === 'steuerung')?.grund).toBeTruthy();
+  });
+
+  it('E · die Wallbox führt mit ihrer Ladeleistung und ihrer Erfüllung', () => {
+    const g = gesicht(input({
+      art: 'quelle',
+      geraetId: 'src-goe',
+      rolle: 'consumer',
+      communication: 'goe_http_api',
+      komponenten: [komponente({ role: 'consumer', entityId: 'e-wb', label: 'Wallbox' })],
+      src: src({ sourceId: 'src-goe', loadKw: 11 }),
+      erfuellung: 'Heute: 1 von 2 Aufgaben erfüllt',
+      gemessen: true,
+    }));
+    expect(g.gattung).toBe('verbraucher');
+    expect(g.held.kacheln.map((k) => k.key)).toContain('leistung');
+    expect(g.held.zeilen).toContain('Heute: 1 von 2 Aufgaben erfüllt');
+    // D3: ohne Messung wird nie „erfüllt" behauptet - hier IST gemessen.
+    expect(g.held.zeilen.some((z) => /gemessen/.test(z))).toBe(true);
+  });
+
+  it('⚠ E · ohne Messung sagt das Blatt es, statt Erfüllung zu behaupten', () => {
+    const g = gesicht(input({
+      art: 'quelle',
+      rolle: 'consumer',
+      communication: 'shelly_http',
+      komponenten: [komponente({ role: 'consumer', entityId: 'e-hz' })],
+      gemessen: false,
+    }));
+    expect(g.held.zeilen.some((z) => /angenommen|ohne Leistungsmessung|nicht gemessen/i.test(z)))
+      .toBe(true);
+    // Ein HTTP-Gerät hat keine Modbus-Register - die Sektion entfällt MIT Grund.
+    expect(g.sektionen).not.toContain('register');
+    expect(g.entfallen.find((e) => e.id === 'register')?.grund).toBeTruthy();
+  });
+
+  it('⚠ E · ohne gemeldete Erfüllung behauptet das Blatt keine', () => {
+    const g = gesicht(input({
+      art: 'quelle',
+      rolle: 'consumer',
+      communication: 'shelly_http',
+      komponenten: [komponente({ role: 'consumer', entityId: 'e-hz' })],
+    }));
+    expect(g.held.zeilen).toEqual([]);
+  });
+
+  it('F · die Ladesäule braucht keine Register - sie spricht OCPP', () => {
+    const g = gesicht(input({
+      art: 'ladepunkt',
+      geraetId: 'cp-A1',
+      communication: null,
+      komponenten: [],
+      charger: {
+        chargePointId: 'A1',
+        connected: true,
+        connectors: [],
+      } as unknown as ChargePoint,
+    }));
+    expect(g.gattung).toBe('ladepunkt');
+    expect(g.sektionen).not.toContain('register');
+    expect(g.entfallen.find((e) => e.id === 'register')?.grund).toMatch(/OCPP|Register/i);
+  });
+
+  it('⚠ G · ein Eigenbau hat KEINE Software, die wir lesen könnten', () => {
+    const g = gesicht(input({
+      art: 'quelle',
+      geraetId: 'src-eigen',
+      rolle: null,
+      communication: 'modbus_tcp',
+      komponenten: [komponente({
+        role: 'grid',
+        entityId: 'e-eigen',
+        freigabeFaehig: true,
+        channels: [{ raw: 'druck_bar', label: 'Druck' }] as never,
+      })],
+      topologie: [
+        { id: 'e-eigen', capabilities: [{ channel: 'druck_bar', unit: 'bar', value: 2.4 }] },
+      ] as never,
+    }));
+    expect(g.eigenbau).toBe(true);
+    expect(g.sektionen).not.toContain('software');
+    expect(g.entfallen.find((e) => e.id === 'software')?.grund).toBeTruthy();
+    // Seine SELBST definierten Kanäle sind sein Gesicht. ⚠ Der Name kommt aus
+    // der geteilten `channelLabel`, die für einen unbekannten Kanal auf den
+    // ROHNAMEN zurückfällt - statt ihn zu verstecken oder zu erfinden.
+    expect(g.held.kacheln.map((k) => k.key)).toContain('kanal:druck_bar');
+    expect(g.held.kacheln.find((k) => k.key === 'kanal:druck_bar')?.wert)
+      .toBe(`2,4${NBSP}bar`);
+  });
+
+  it('⚠ die Ordnung ist KANONISCH - kein Blatt sortiert um', () => {
+    const gattungen = [
+      input({ komponenten: [komponente({ role: 'storage' })] }),
+      input({ art: 'quelle', rolle: 'pv-generation', komponenten: [komponente({ role: 'pv' })] }),
+      input({ art: 'quelle', rolle: 'grid-meter', komponenten: [komponente({ role: 'grid' })] }),
+      input({ art: 'quelle', rolle: 'consumer', komponenten: [komponente({ role: 'consumer' })] }),
+      input({ art: 'ladepunkt', komponenten: [] }),
+    ];
+    for (const i of gattungen) expect(istKanonisch(gesicht(i).sektionen)).toBe(true);
   });
 });

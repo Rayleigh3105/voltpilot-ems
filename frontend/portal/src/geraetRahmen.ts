@@ -385,15 +385,41 @@ export function parseAbschnitt(hash: string): RahmenSektionId | null {
 }
 
 /**
- * Eine Geräte-Adresse mit gezielter Sektion. Der bestehende Query-Teil bleibt
- * erhalten (eine Adresse kann schon `?` tragen), `abschnitt` wird ersetzt.
+ * Der Parametername der angesprungenen KACHEL (§5.3).
+ *
+ * ⚠ Die Batterie hat KEINE eigene Seite - ihr Gesicht ist der Speicher-Teil des
+ * Hybrid-Blatts, und ihre Komponenten-Karte im Anlagen-Modell führt deshalb auf
+ * die Hybrid-Seite mit `?abschnitt=jetzt&kachel=speicher`. Der Schlüssel ist
+ * der stabile `HeldKachel.key`, NIE das Label: der Kunde darf eine Komponente
+ * umbenennen, die Adresse darf davon nicht abhängen.
  */
-export function abschnittHash(basisHash: string, id: RahmenSektionId | null): string {
+const KACHEL_PARAM = 'kachel';
+
+/** Die angesprungene Kachel aus einem Hash - null, wenn keine genannt ist. */
+export function parseKachel(hash: string): string | null {
+  const q = hash.indexOf('?');
+  if (q < 0) return null;
+  const value = new URLSearchParams(hash.slice(q + 1)).get(KACHEL_PARAM);
+  return value && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Eine Geräte-Adresse mit gezielter Sektion (und optional gezielter Kachel).
+ * Der bestehende Query-Teil bleibt erhalten (eine Adresse kann schon `?`
+ * tragen), `abschnitt`/`kachel` werden ersetzt.
+ */
+export function abschnittHash(
+  basisHash: string,
+  id: RahmenSektionId | null,
+  kachel?: string | null,
+): string {
   const q = basisHash.indexOf('?');
   const basis = q < 0 ? basisHash : basisHash.slice(0, q);
   const params = new URLSearchParams(q < 0 ? '' : basisHash.slice(q + 1));
   if (id) params.set(PARAM, id);
   else params.delete(PARAM);
+  if (kachel) params.set(KACHEL_PARAM, kachel);
+  else if (kachel === null) params.delete(KACHEL_PARAM);
   const rest = params.toString();
   return rest ? `${basis}?${rest}` : basis;
 }
