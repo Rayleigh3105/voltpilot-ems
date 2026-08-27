@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { AnlageSeite } from './AnlagenPage';
+import { AnlageSeite, AnlagenPage } from './AnlagenPage';
 import { api, type Site } from '../api';
 import * as adaptive from '../useAdaptiveLive';
 import * as surfaceHook from '../useAnlageSurface';
@@ -313,6 +313,50 @@ beforeEach(() => {
   // starten immer mit dem Default (eingeklappt).
   sessionStorage.clear();
   stubApi();
+});
+
+/**
+ * Geraeteseiten Stufe 0 (Konzept `vp-geraeteseite-rahmen-r2` Paragraph 2.1,
+ * Captain-Entscheid D1a): ueber einer GERAETE- oder BOX-Seite standen drei
+ * Elemente uebereinander, die alle "zurueck" bedeuten - der Knopf
+ * "Anlage {Name}", die Reiter-Leiste ihres Bereichs (in der die Seite gar nicht
+ * vorkommt, also war kein Reiter aktiv) und der Link "Zurueck zu den
+ * Komponenten". Uebrig bleibt GENAU EINER: die Brotkrume im Seitenkopf.
+ */
+describe('Stufe 0 · eine Geraeteseite traegt weder Bereichs-Reiter noch den Anlagen-Knopf', () => {
+  function renderSub(sub: string, geraet: unknown = null) {
+    return render(
+      <AnlagenPage
+        sites={[site]}
+        devices={[]}
+        devicesFetchedAt={null}
+        route={{ page: 'anlagen', siteId: 's-1', sub: sub as never, geraet: geraet as never }}
+        onNavigate={() => {}}
+        onReload={() => {}}
+        surface={anlageSurface({ entities: [], config: { plantKind: 'eigenverbrauch' } })}
+      />,
+    );
+  }
+
+  it('rendert Leiste und Knopf auf dem WIRT der beiden Seiten', () => {
+    // Der Kontrast-Beweis, und zwar im SELBEN Bereich: die Komponenten-Seite
+    // traegt die volle Leiste - der Test darunter ist damit kein Vakuum.
+    const { container } = renderSub('modell');
+    expect(container.querySelectorAll('.vp-bereich-tab')).toHaveLength(3);
+    expect(container.querySelector('.vp-fleet-back')).not.toBeNull();
+  });
+
+  it('laesst beides auf der BOX-Seite weg', () => {
+    const { container } = renderSub('box', { ref: 'edge-1', geraetId: null });
+    expect(container.querySelector('.vp-bereich-tabs')).toBeNull();
+    expect(container.querySelector('.vp-fleet-back')).toBeNull();
+  });
+
+  it('laesst beides auch auf der GERAETE-Seite weg', () => {
+    const { container } = renderSub('geraet', { ref: 'edge-1', geraetId: 'inverter' });
+    expect(container.querySelector('.vp-bereich-tabs')).toBeNull();
+    expect(container.querySelector('.vp-fleet-back')).toBeNull();
+  });
 });
 
 describe('Endzustand „nicht zugeordnet": Anlage MIT Daten, ohne v2-Komponenten (Captain-Nachtrag 06.08.2026)', () => {

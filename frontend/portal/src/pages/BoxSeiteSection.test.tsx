@@ -377,11 +377,15 @@ describe('BoxSeiteSection', () => {
     expect(screen.getByRole('button', { name: /Erneut/ })).toBeInTheDocument();
   });
 
-  it('führt zurück ins Anlagen-Modell', async () => {
+  it('traegt GENAU EINEN Rueckweg: die Brotkrume Anlage - Komponenten - Box', async () => {
     stub();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
-    const back = await screen.findByRole('link', { name: /Zurück zu den Komponenten/ });
-    expect(back.getAttribute('href')).toBe('#/anlage/s-1/modell');
+    const pfad = await screen.findByRole('navigation', { name: 'Pfad zur Geräteseite' });
+    expect(within(pfad).getByRole('link', { name: 'Anlage' }).getAttribute('href'))
+      .toBe('#/anlage/s-1');
+    expect(within(pfad).getByRole('link', { name: 'Komponenten' }).getAttribute('href'))
+      .toBe('#/anlage/s-1/modell');
+    expect(screen.queryByRole('link', { name: /Zurück zu den Komponenten/ })).toBeNull();
   });
 });
 

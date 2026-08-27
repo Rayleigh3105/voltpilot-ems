@@ -84,6 +84,9 @@ const entities: SiteEntities = {
       role: null,
       brand: 'deye',
       model: 'SUN-30K-SG01HP3-EU',
+      // Die vom Gerät GEMELDETE Anbindungsfamilie (PR 2b) - sie entscheidet
+      // seit Stufe 0, welchen Register-Katalog die Messbibliothek zeigt.
+      family: 'hybrid_3p',
       label: null,
       reportedAt: FRISCH,
       adoptedEntityId: null,
@@ -94,9 +97,34 @@ const entities: SiteEntities = {
       role: 'pv-generation',
       brand: 'fronius_sunspec',
       model: 'Eco 27.0-3-S',
+      family: 'sunspec_live',
       label: null,
       reportedAt: FRISCH,
       adoptedEntityId: 'fr1',
+    },
+    {
+      id: 'src-goe',
+      kind: 'source',
+      role: 'consumer',
+      brand: 'go-e',
+      model: 'Charger Gemini',
+      family: 'goe_http_api',
+      label: null,
+      reportedAt: FRISCH,
+      adoptedEntityId: null,
+    },
+    {
+      // Ein Selbstbau-Gerät: die Box meldet es, der Katalog kennt dafür keine
+      // Registerliste - genau der Fall der Ausblende-Regel.
+      id: 'src-eigen',
+      kind: 'source',
+      role: 'consumer',
+      brand: null,
+      model: null,
+      family: 'modbus-generic',
+      label: null,
+      reportedAt: FRISCH,
+      adoptedEntityId: null,
     },
   ],
   staleOnDevice: [],
@@ -148,6 +176,36 @@ const sources: SiteSource[] = [
     pvKw: 21.2,
     powerKw: null,
     loadKw: null,
+    health: 'ok',
+    readAt: FRISCH,
+    reportedAt: FRISCH,
+  },
+  {
+    deviceId: 'gw',
+    sourceId: 'src-goe',
+    kind: 'source',
+    role: 'consumer',
+    label: null,
+    brand: 'go-e',
+    model: 'Charger Gemini',
+    pvKw: null,
+    powerKw: null,
+    loadKw: 7.4,
+    health: 'ok',
+    readAt: FRISCH,
+    reportedAt: FRISCH,
+  },
+  {
+    deviceId: 'gw',
+    sourceId: 'src-eigen',
+    kind: 'source',
+    role: 'consumer',
+    label: null,
+    brand: null,
+    model: null,
+    pvKw: null,
+    powerKw: null,
+    loadKw: 0.4,
     health: 'ok',
     readAt: FRISCH,
     reportedAt: FRISCH,
@@ -428,11 +486,20 @@ describe('GeraetSeiteSection', () => {
     expect(link.getAttribute('href')).toBe('#/anlage/s-1/steuerung');
   });
 
-  it('führt zurück ins Anlagen-Modell', async () => {
+  it('traegt GENAU EINEN Rueckweg: die Brotkrume Anlage - Komponenten - Geraet', async () => {
     stub();
-    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    const back = await screen.findByRole('link', { name: /Zurück zu den Komponenten/ });
-    expect(back.getAttribute('href')).toBe('#/anlage/s-1/modell');
+    const view = render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    const pfad = await screen.findByRole('navigation', { name: 'Pfad zur Geräteseite' });
+    expect(within(pfad).getByRole('link', { name: 'Anlage' }).getAttribute('href'))
+      .toBe('#/anlage/s-1');
+    expect(within(pfad).getByRole('link', { name: 'Komponenten' }).getAttribute('href'))
+      .toBe('#/anlage/s-1/modell');
+    expect(pfad.querySelector('[aria-current="page"]')?.textContent).toBeTruthy();
+    // Der frueher direkt darunter stehende ZWEITE Rueckweg ist ersatzlos
+    // entfallen (Stufe 0, Paragraph 2.1) - er zeigte auf dieselbe Seite.
+    expect(screen.queryByRole('link', { name: /Zurück zu den Komponenten/ })).toBeNull();
+    expect(view.container.querySelectorAll('nav[aria-label="Pfad zur Geräteseite"]'))
+      .toHaveLength(1);
   });
 
   it('öffnet auch an der OCPP-Wallbox den vollständigen bestehenden Bearbeiten-Flow', async () => {
@@ -706,5 +773,76 @@ describe('GeraetSeiteSection · Plattform-Sicht', () => {
     await screen.findByRole('heading', { level: 1 });
     await waitFor(() => expect(adminApi.listDevices).toHaveBeenCalled());
     expect(screen.queryByTestId('geraet-admin')).toBeNull();
+  });
+});
+
+/**
+ * Geraeteseiten Stufe 0, Teil (b) - der gemeldete Messbibliothek-Fehler
+ * (Konzept `vp-geraeteseite-rahmen-r2` Paragraph 2.3/7.1, Captain-Entscheid D5a).
+ *
+ * Die Bibliothek fragte mit der Geraete-UUID der BOX nach "welche Punkte kann
+ * die Box lesen" - und das ist server-seitig die Familien-VEREINIGUNG aller
+ * komponierten Punkte dieser Box, praktisch also die Familie des primaeren
+ * Wechselrichters. Auf JEDER Geraeteseite. Seit Stufe 0 schneidet `?family=`
+ * auf das Geraet, dessen Seite die Bibliothek traegt.
+ */
+describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () => {
+  /** Die `?family=`-Werte des ruhigen (ersten) Katalog-Abrufs. */
+  function gefragteFamilien(): string[] {
+    const call = vi.mocked(api.measurementCatalog).mock.calls[0];
+    return call ? call[1].getAll('family') : [];
+  }
+
+  it('Wallbox sieht keine Wechselrichter-Register', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-goe" devices={[box]} />);
+    await screen.findByRole('heading', { name: 'Wichtige zusätzliche Messwerte' });
+    await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
+    expect(gefragteFamilien()).toEqual(['goe.api_v2']);
+    // Genau der gemeldete Fehler: die Familie des Deye taucht nicht mehr auf,
+    // und die Box-Frage wird gar nicht mehr gestellt.
+    expect(gefragteFamilien()).not.toContain('hybrid_3p');
+    for (const call of vi.mocked(api.measurementCatalog).mock.calls) {
+      expect(call[1].get('availableOnly')).toBeNull();
+    }
+  });
+
+  it('ein zweiter Wechselrichter sieht NUR seine eigene Familie', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />);
+    await screen.findByRole('heading', { name: 'Wichtige zusätzliche Messwerte' });
+    await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
+    const familien = gefragteFamilien();
+    expect(familien).not.toContain('hybrid_3p');
+    expect(familien.length).toBeGreaterThan(0);
+    expect(familien.every((f) => f.startsWith('sunspec.model_'))).toBe(true);
+  });
+
+  it('nennt die ehrliche Grenze: die Box liest heute nur ueber den primaeren Wechselrichter', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />);
+    const hinweis = await screen.findByTestId('measure-beobachten-hinweis');
+    expect(hinweis.textContent).toMatch(/primären Wechselrichter/);
+  });
+
+  it('haelt auf dem primaeren Wechselrichter beide Zusagen: eigener Katalog, kein Hinweis', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    await screen.findByRole('heading', { name: 'Wichtige zusätzliche Messwerte' });
+    await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
+    expect(gefragteFamilien()).toEqual(['hybrid_3p']);
+    expect(screen.queryByTestId('measure-beobachten-hinweis')).toBeNull();
+  });
+
+  it('Geraet ohne Katalog-Familie: KEINE Messbibliothek, kein leerer Kasten', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-eigen" devices={[box]} />);
+    // Die Seite selbst steht (der Beweis ist nicht vakuum) ...
+    await screen.findByRole('heading', { level: 1 });
+    await waitFor(() => expect(api.siteSources).toHaveBeenCalled());
+    // ... nur die Bibliothek entfaellt, und sie fragt auch nichts ab.
+    expect(screen.queryByRole('heading', { name: 'Wichtige zusätzliche Messwerte' })).toBeNull();
+    expect(screen.queryByText('Zusätzliche Messwerte')).toBeNull();
+    expect(api.measurementCatalog).not.toHaveBeenCalled();
   });
 });

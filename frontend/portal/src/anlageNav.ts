@@ -305,14 +305,30 @@ export function bereichFor(sub: AnlagenSub | null): BereichId {
 }
 
 /**
+ * Unterseiten EINE Ebene unter ihrem Bereich - sie tragen nie dessen Reiter.
+ *
+ * ⚠ Die Geräte- und die Box-Seite wohnen im Bereich „Anlage" (`SUB_BEREICH`,
+ * damit die Seitenleiste ihren Wirt hervorhebt), stehen aber eine Ebene
+ * DARUNTER: sie zeigen EIN Gerät. Ein Bereichs-Umschalter über einem einzelnen
+ * Gerät läse sich, als wechselte er dessen Ansicht (die Disziplin der
+ * Plattform-Geräteseite, `GERAETE_BEREICH`) - und weil die Unterseite in
+ * keinem der Reiter steht, wäre obendrein keiner aktiv. Ihr Rückweg ist die
+ * Brotkrume im Seitenkopf, und zwar GENAU EINMAL
+ * (Konzept `vp-geraeteseite-rahmen-r2` §2.1/§4.2, Captain-Entscheid D1a).
+ */
+const OHNE_BEREICHS_REITER: ReadonlySet<AnlagenSub> = new Set(['geraet', 'box']);
+
+/**
  * Die Reiter, die über einer offenen Unterseite stehen — leer, wo der Bereich
- * EINE Seite ist (Cockpit, Steuerung) oder nur einen Reiter hätte.
+ * EINE Seite ist (Cockpit, Steuerung), wo er nur einen Reiter hätte oder wo die
+ * Unterseite eine Ebene unter ihm wohnt ({@link OHNE_BEREICHS_REITER}).
  *
  * ⚠ Sie kommen aus DEMSELBEN Modell wie die Seitenleiste. Eine zweite
  * Ableitung ließe Leiste und Reiter über dieselbe Anlage Verschiedenes
  * behaupten.
  */
 export function tabsFor(sidebar: AnlageSidebar, sub: AnlagenSub | null): BereichTab[] {
+  if (sub != null && OHNE_BEREICHS_REITER.has(sub)) return [];
   const key = bereichFor(sub);
   const tabs = sidebar.bereiche.find((b) => b.key === key)?.tabs ?? [];
   return tabs.length > 1 ? tabs : [];

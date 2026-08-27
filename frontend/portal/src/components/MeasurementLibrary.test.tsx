@@ -240,3 +240,97 @@ describe('MeasurementLibrary', () => {
     expect(decoded).toHaveAttribute('aria-pressed', 'false');
   });
 });
+
+/**
+ * Geraeteseiten Stufe 0 (Konzept `vp-geraeteseite-rahmen-r2` Paragraph 7.4
+ * Schritt 3a): `familien` schneidet Katalog, Vorauswahl und Bibliothek auf das
+ * Geraet zu, dessen Seite die Bibliothek traegt. Fehlt der Prop, bleibt alles
+ * Zeichen fuer Zeichen die alte Box-Semantik.
+ */
+describe('MeasurementLibrary · der Geraete-Schnitt (Stufe 0)', () => {
+  beforeEach(() => {
+    vi.spyOn(api, 'measurementSelection').mockResolvedValue(state);
+    vi.spyOn(api, 'measurementCatalog').mockResolvedValue({
+      catalogVersion: '2026.08.26.3', edgeMinVersion: 'unreleased',
+      customPointActionLabel: 'Eigenen Messwert hinzufügen', total: 1, offset: 0, limit: 100,
+      groups: [{ value: 'PV', count: 1 }], semanticStatuses: [],
+      points: [point],
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const eigenes = {
+    pointKey: 'custom.1', enabled: true, cadenceS: 30, applyStatus: 'applied',
+    applyReason: null, enabledAt: '2026-08-26T00:00:00Z', disabledAt: null,
+    label: 'Kessel Vorlauf', family: null as unknown as string, group: 'Eigene Messwerte',
+    semanticStatus: 'unknown',
+    customDefinition: {
+      label: 'Kessel Vorlauf', sourceKind: 'modbus_holding', address: 42, selector: 'holding:0x002a',
+      valueType: 'uint16', widthBits: 16, signed: false, endian: 'big', scale: 1, unit: 'C',
+      cadenceS: 30, retentionClass: 'gauge', readOnly: true, requestCostMs: 2000,
+    },
+  };
+
+  it('sendet die Familien und fragt die Box nicht mehr nach ihrer Vereinigung', async () => {
+    render(<MeasurementLibrary deviceId="d" familien={['goe.api_v2']} />);
+    await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
+    const params = vi.mocked(api.measurementCatalog).mock.calls[0][1];
+    expect(params.getAll('family')).toEqual(['goe.api_v2']);
+    expect(params.get('availableOnly')).toBeNull();
+    // Und der Filter, der genau diese falsche Frage stellt, wird nicht angeboten.
+    fireEvent.click(await screen.findByRole('button', { name: 'Messwert-Bibliothek' }));
+    expect(screen.queryByText('Verfügbarkeit')).toBeNull();
+  });
+
+  it('bleibt ohne den Prop Zeichen fuer Zeichen die alte Box-Semantik', async () => {
+    render(<MeasurementLibrary deviceId="d" />);
+    await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
+    const params = vi.mocked(api.measurementCatalog).mock.calls[0][1];
+    expect(params.getAll('family')).toEqual([]);
+    expect(params.get('availableOnly')).toBe('true');
+  });
+
+  it('zeigt eigene Register nur dort, wo die Box sie liest - nie auf einem fremden Geraet', async () => {
+    vi.mocked(api.measurementSelection).mockResolvedValue({ ...state, selections: [eigenes] } as never);
+    const { unmount } = render(
+      <MeasurementLibrary deviceId="d" familien={['hybrid_3p']} eigeneErlaubt />,
+    );
+    expect(await screen.findByText('Kessel Vorlauf')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Messwert-Bibliothek' }));
+    expect(await screen.findByRole('button', { name: 'Eigenen Messwert hinzufügen' })).toBeVisible();
+
+    unmount();
+    render(<MeasurementLibrary deviceId="d" familien={['goe.api_v2']} eigeneErlaubt={false} />);
+    await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
+    expect(screen.queryByText('Kessel Vorlauf')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Messwert-Bibliothek' }));
+    expect(screen.queryByRole('button', { name: 'Eigenen Messwert hinzufügen' })).toBeNull();
+  });
+
+  it('entsteht ohne Katalog-Familie gar nicht und fragt dann auch nichts ab', async () => {
+    const { container } = render(<MeasurementLibrary deviceId="d" familien={[]} />);
+    await waitFor(() => expect(container.innerHTML).toBe(''));
+    expect(api.measurementCatalog).not.toHaveBeenCalled();
+    expect(api.measurementSelection).not.toHaveBeenCalled();
+  });
+
+  it('spricht im Fehlerfall ueber das GERAET, nicht ueber die Box', async () => {
+    vi.mocked(api.measurementSelection).mockRejectedValue(new Error('down'));
+    render(<MeasurementLibrary deviceId="d" familien={['hybrid_3p']} />);
+    expect(await screen.findByText(/Für dieses Gerät konnte die Messwert-Bibliothek nicht geladen werden/))
+      .toBeVisible();
+    expect(document.body).not.toHaveTextContent('Diese VoltPilot-Box');
+  });
+
+  it('traegt den ehrlichen Hinweis genau dann, wenn der Wirt ihn setzt', async () => {
+    const { unmount } = render(
+      <MeasurementLibrary deviceId="d" familien={['goe.api_v2']} beobachtenHinweis="Nur der primäre Wechselrichter." />,
+    );
+    expect(await screen.findByTestId('measure-beobachten-hinweis')).toHaveTextContent(
+      'Nur der primäre Wechselrichter.');
+    unmount();
+    render(<MeasurementLibrary deviceId="d" familien={['hybrid_3p']} />);
+    await screen.findByRole('heading', { name: 'Wichtige zusätzliche Messwerte' });
+    expect(screen.queryByTestId('measure-beobachten-hinweis')).toBeNull();
+  });
+});
