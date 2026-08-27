@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError, type OcppAction, type OcppStation } from '../api';
 import { OcppWallboxPage } from './OcppWallboxPage';
+import { SEKTIONS_ORDNUNG } from '../geraetRahmen';
 
 const station: OcppStation = {
   deviceId: 'd', chargePointId: 'CP-1', connected: true,
@@ -68,9 +69,13 @@ describe('OcppWallboxPage integration', () => {
     expect(view.container).not.toHaveTextContent('Erwartetes Ende');
     expect(view.container).not.toHaveTextContent('Kosten bisher');
     expect(view.container).not.toHaveTextContent('Solaranteil');
-    const service = screen.getByTestId('ocpp-service');
-    expect(service).not.toHaveAttribute('open');
-    fireEvent.click(within(service).getByText('Service & Diagnose'));
+    // Seit Geräteseiten Stufe 1 fährt auch die Säule durch den EINEN Rahmen:
+    // der frühere Sammel-Aufklapper „Service & Diagnose" ist in die kanonische
+    // Sektions-Folge aufgegangen. Standard offen sind nur Jetzt + Befehle (D2a).
+    expect(screen.queryByTestId('ocpp-service')).toBeNull();
+    const diagnose = screen.getByTestId('sektion-diagnose');
+    expect(diagnose).not.toHaveAttribute('open');
+    fireEvent.click(within(diagnose).getByText('Diagnose (technisch)'));
     expect(screen.getByText('Aktiver OCPP-Ladestand')).toBeVisible();
     expect(screen.getByText('keine bestätigte Freigabe gemeldet')).toBeVisible();
     expect(screen.getByText('noch nicht erfolgreich zurückgelesen')).toBeVisible();
@@ -84,15 +89,34 @@ describe('OcppWallboxPage integration', () => {
     expect(screen.getByRole('button', { name: /Firmware aktualisieren/ })).toBeDisabled();
   });
 
+  it('runs through the same frame as every other device page', async () => {
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#devices" siteHref="#site" />);
+    const rahmen = await screen.findByTestId('ocpp-rahmen');
+    const ids = Array.from(rahmen.querySelectorAll('[data-testid^="sektion-"]'))
+      .map((el) => el.getAttribute('data-testid')!.slice(8));
+
+    // §4.4: identische Sektions-ORDNUNG wie an Hybrid und Box.
+    expect(ids).toEqual([...ids].sort(
+      (a, b) => SEKTIONS_ORDNUNG.indexOf(a as never) - SEKTIONS_ORDNUNG.indexOf(b as never),
+    ));
+    // D2a: Standard offen = Jetzt + Befehle, alles Übrige zugeklappt.
+    expect(screen.getByTestId('sektion-befehle')).toHaveAttribute('open');
+    expect(screen.getByTestId('sektion-diagnose')).not.toHaveAttribute('open');
+    // D3: „Register" wäre an einer Säule das falsche Wort, die Fähigkeit nicht.
+    expect(within(screen.getByTestId('sektion-register')).getByText('Messwerte', { selector: '.nm' })).toBeVisible();
+  });
+
   it('uses routing-neutral service navigation', async () => {
     Element.prototype.scrollIntoView = vi.fn();
     window.history.replaceState(null, '', '#/anlage/s/geraet/edge-1/cp-CP-1');
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#devices" />);
     await screen.findByRole('heading', { name: /Wallbox online/ });
-    fireEvent.click(screen.getByText('Service & Diagnose'));
     const before = window.location.hash;
-    fireEvent.click(screen.getByRole('button', { name: 'MeterValues' }));
-    const target = document.getElementById('messwerte');
+    // ⚠ Gesprungen wird über `id` + Fokus, NIE über einen `#anker` - die App
+    // ist hash-geroutet (§4.3). Die Sprungnavigation des Rahmens ist die eine
+    // Umsetzung dieser Regel; sie klappt die Sektion zugleich auf.
+    fireEvent.click(screen.getAllByRole('button', { name: /^Messwerte/ })[0]);
+    const target = document.getElementById('geraet-abschnitt-register');
     await waitFor(() => expect(document.activeElement).toBe(target));
     expect(target).toHaveAttribute('tabindex', '-1');
     expect(window.location.hash).toBe(before);
@@ -211,7 +235,6 @@ describe('OcppWallboxPage integration', () => {
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
     expect(await screen.findByRole('button', { name: 'Laden starten' })).toBeDisabled();
     expect(screen.getByText(/Fernaktion ist für Ihr Konto nicht freigegeben/)).toBeVisible();
-    fireEvent.click(screen.getByText('Service & Diagnose'));
     expect(screen.getByRole('button', { name: /Firmware aktualisieren/ })).toBeDisabled();
     expect(screen.getAllByText(/NotSupported möglich/).length).toBeGreaterThan(0);
   });
@@ -272,7 +295,6 @@ describe('OcppWallboxPage integration', () => {
       transactionId: 42, occurredAt: new Date().toISOString() }]);
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
     await screen.findByRole('heading', { name: /Wallbox online · Anschluss 1 lädt/ });
-    fireEvent.click(screen.getByText('Service & Diagnose'));
     fireEvent.click(screen.getByRole('button', { name: 'Unveränderliche Auditspur laden' }));
     await screen.findByRole('list', { name: 'Unveränderliche Auditspur' });
     for (const leak of ['CONNECTOR-LEAK', 'connector.internal', 'METER-LEAK', 'meter.internal', 'EVENT-CORRELATION',
@@ -316,8 +338,13 @@ describe('OcppWallboxPage integration', () => {
       deviceId: 'd', chargePointId: 'CP-1', connectorId: 1, transactionId: 42, occurredAt: new Date().toISOString() }]);
     vi.mocked(api.ocppAction).mockResolvedValue({ ...prepared, state: 'cancelled' });
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
-    fireEvent.click(await screen.findByText('Service & Diagnose'));
-    expect(await screen.findByText(/1 belegte Datenlücke/)).toBeVisible();
+    // ⚠ Eine belegte Lücke bleibt entdeckbar, obwohl „Diagnose" zugeklappt
+    // startet: die geschlossene Zeile SAGT sie (§4.5 - eine Klappe, die nicht
+    // sagt, was hinter ihr liegt, ist die Wand, die der Rahmen beendet).
+    const diagnose = await screen.findByTestId('sektion-diagnose');
+    expect(within(diagnose).getByText(/1 Lücken?/)).toBeVisible();
+    fireEvent.click(within(diagnose).getByText('Diagnose (technisch)'));
+    expect(screen.getByText(/1 belegte Datenlücke/)).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Unveränderliche Auditspur laden' }));
     expect(await screen.findByRole('list', { name: 'Unveränderliche Auditspur' })).toHaveTextContent('Vorbereitet');
     fireEvent.click(screen.getByRole('button', { name: 'Vor Versand abbrechen' }));
@@ -336,7 +363,6 @@ describe('OcppWallboxPage integration', () => {
     vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
     await screen.findByRole('heading', { name: /Wallbox online/ });
-    fireEvent.click(screen.getByText('Service & Diagnose'));
     expect(screen.getAllByText('Energie nicht verfügbar')).toHaveLength(2);
     expect(document.body).not.toHaveTextContent('-1 kWh');
   });
@@ -347,7 +373,6 @@ describe('OcppWallboxPage integration', () => {
       phrase: 'UpdateFirmware CP-1 SAFE1234', fourEyes: true, expiresAt: '2099-01-01T00:00:00Z' });
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
     await screen.findByRole('heading', { name: /Wallbox online · Anschluss 1 lädt/ });
-    fireEvent.click(screen.getByText('Service & Diagnose'));
     fireEvent.click(screen.getByText('Betrieb').closest('summary')!);
     fireEvent.click(screen.getByRole('button', { name: /Firmware aktualisieren/ }));
     fireEvent.change(screen.getByLabelText('Allowlisted Firmware-URL *'), { target: { value: 'https://firmware.example/presigned' } });

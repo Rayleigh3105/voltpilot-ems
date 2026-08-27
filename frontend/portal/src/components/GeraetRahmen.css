@@ -1,0 +1,339 @@
+/* ===========================================================================
+   DER RAHMEN aller Geräteseiten (Konzept `vp-geraeteseite-rahmen-r2` §4).
+
+   ⚠ Die Sektionen stehen EINSPALTIG untereinander (§4.4) - das frühere
+   `auto-fit`-Raster ordnete nach BREITE statt nach Bedeutung: bei 1440 px
+   standen Befehle und Komponenten nebeneinander, bei 1100 px rutschte die
+   Zuordnung. Kacheln INNERHALB einer Sektion dürfen weiterhin rastern.
+   =========================================================================== */
+
+.vp-rahmen {
+  min-width: 0;
+}
+
+/* --- Kopf ---------------------------------------------------------------- */
+
+.vp-rahmen-titel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-rahmen-gattung {
+  margin: 0;
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+/* Höchstens EINE Hinweis-Zeile - ruhig, nie ein Alarm-Balken. */
+.vp-rahmen-hinweis {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  border-radius: var(--vp-radius-md, 10px);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-rahmen-hinweis svg {
+  flex: none;
+  transform: translateY(2px);
+}
+
+.vp-rahmen-hinweis.is-warn {
+  background: var(--vp-warn-soft, #fdf6e3);
+  color: var(--vp-warn-ink, #7a5b12);
+}
+
+.vp-rahmen-hinweis.is-off {
+  background: var(--vp-neutral-soft, #eef1f5);
+  color: var(--vp-text-muted, #4a5568);
+}
+
+.vp-rahmen-hinweis .vp-linkbtn {
+  font-size: 0.86rem;
+}
+
+/* --- Körper: Anker-Spalte + Sektionen ------------------------------------ */
+
+.vp-rahmen-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-space-5, 20px);
+  min-width: 0;
+  margin-top: var(--vp-space-4, 16px);
+}
+
+/* Die Anker-Spalte lebt erst ab 1024 px (§4.3) - darunter trägt die
+   Chip-Leiste dieselben Sektionen. */
+@media (min-width: 1024px) {
+  .vp-rahmen-body {
+    grid-template-columns: 214px minmax(0, 1fr);
+  }
+}
+
+.vp-rahmen-sektionen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+/* --- Sprungnavigation am Rechner ----------------------------------------- */
+
+.vp-rahmen-nav {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .vp-rahmen-nav {
+    position: sticky;
+    /* Die Schalen-Kopfzeile ist 68 px hoch und klebt selbst. */
+    top: 84px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-self: start;
+    min-width: 0;
+    border-left: 1px solid var(--vp-border, #e2e8f0);
+  }
+}
+
+.vp-rahmen-nav button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 8px 12px;
+  margin-left: -1px;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--vp-radius-sm, 6px) var(--vp-radius-sm, 6px) 0;
+  background: transparent;
+  color: var(--vp-text-gray, #4a5568);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.vp-rahmen-nav button .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vp-rahmen-nav button > svg:first-child {
+  flex: none;
+  color: var(--vp-tech-faint, #a0aec0);
+}
+
+.vp-rahmen-nav button .vp-health-dot {
+  margin-left: auto;
+  flex: none;
+}
+
+.vp-rahmen-nav button .zu {
+  display: inline-flex;
+  flex: none;
+  color: var(--vp-tech-faint, #a0aec0);
+}
+
+/* Der Punkt schiebt den Klapp-Pfeil sonst aus der Zeile. */
+.vp-rahmen-nav button .vp-health-dot + .zu {
+  margin-left: 0;
+}
+
+.vp-rahmen-nav button:hover {
+  color: var(--vp-text-dark, #1a202c);
+  background: var(--vp-bg-light, #f7fafc);
+}
+
+.vp-rahmen-nav button.on {
+  color: var(--vp-text-dark, #1a202c);
+  font-weight: 650;
+  border-left-color: var(--vp-action, #4a6cf7);
+}
+
+.vp-rahmen-nav button.on > svg:first-child {
+  color: var(--vp-action, #4a6cf7);
+}
+
+.vp-rahmen-nav button:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, #4a6cf7);
+  outline-offset: -2px;
+}
+
+/* --- Sprungnavigation am Telefon ----------------------------------------- */
+
+.vp-rahmen-chips {
+  position: sticky;
+  /* Derselbe Ort, an dem die Historie ihre Zeit-Leiste klebt. */
+  top: 68px;
+  z-index: 5;
+  min-width: 0;
+  margin: var(--vp-space-4, 16px) 0 0;
+  /* Waagerecht scrollend statt umbrechend: die Leiste bleibt EINE Zeile, und
+     der Daumen wischt sie - eine dreizeilige Chip-Wolke wäre keine Leiste. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.vp-rahmen-chips::-webkit-scrollbar {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .vp-rahmen-chips {
+    display: none;
+  }
+}
+
+.vp-rahmen-chips .vp-seg {
+  /* `inline-flex` + `min-content` hält die Chips in EINER Zeile, auch wenn sie
+     zusammen breiter sind als der Bildschirm. */
+  width: max-content;
+  min-width: 100%;
+  flex-wrap: nowrap;
+  background: var(--vp-surface, #fff);
+  box-shadow: var(--vp-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.06));
+}
+
+.vp-rahmen-chips .vp-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  /* ≥44 px Trefferfläche - die Leiste ist am Telefon der einzige Sprungweg. */
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.vp-rahmen-chips .vp-seg button.is-an {
+  background: var(--vp-surface, #fff);
+  color: var(--vp-text-dark, #1a202c);
+  box-shadow: var(--vp-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.08));
+}
+
+/* --- Eine Sektion -------------------------------------------------------- */
+
+.vp-rahmen-sek {
+  min-width: 0;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 14px);
+  background: var(--vp-surface, #fff);
+  box-shadow: var(--vp-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.05));
+}
+
+/* „Jetzt" trägt keine eigene Hülle: ihr Inhalt ist selbst eine Karte. */
+.vp-rahmen-sek.is-offen {
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.vp-rahmen-sek:focus-visible,
+.vp-rahmen-sek > summary:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, #4a6cf7);
+  outline-offset: 2px;
+}
+
+.vp-rahmen-sek > summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  /* ≥44 px: die Zeile IST der Umschalter der Sektion. */
+  min-height: 52px;
+  padding: 12px var(--vp-space-5, 20px);
+  color: var(--vp-text-muted, #4a5568);
+  cursor: pointer;
+  list-style: none;
+}
+
+.vp-rahmen-sek > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vp-rahmen-sek > summary > svg:first-child {
+  flex: none;
+  color: var(--vp-tech-faint, #a0aec0);
+  transition: transform 0.15s ease;
+}
+
+.vp-rahmen-sek[open] > summary > svg:first-child {
+  transform: rotate(90deg);
+}
+
+.vp-rahmen-sek > summary .nm {
+  flex: none;
+  color: var(--vp-text, #1a202c);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.vp-rahmen-sek > summary .kf {
+  min-width: 0;
+  margin-left: auto;
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.82rem;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Die Kurzfassung ist eine Zugabe, kein Inhalt: am Telefon fällt sie unter den
+   Namen statt die Zeile zu sprengen. */
+@media (max-width: 560px) {
+  .vp-rahmen-sek > summary {
+    flex-wrap: wrap;
+    padding: 10px 14px;
+  }
+
+  .vp-rahmen-sek > summary .kf {
+    flex-basis: 100%;
+    margin-left: 25px;
+    text-align: left;
+    white-space: normal;
+  }
+}
+
+.vp-rahmen-sek-body {
+  padding: 0 var(--vp-space-5, 20px) var(--vp-space-5, 20px);
+  min-width: 0;
+}
+
+/* Ein Unter-Block innerhalb einer Sektion (etwa „Einspeise-Begrenzung" in
+   „Steuerung & Grenzen"). Vier Kästen wurden EINER - die Zwischen-Überschrift
+   hält die vier Auskünfte trotzdem auseinander. */
+.vp-rahmen-block + .vp-rahmen-block {
+  margin-top: var(--vp-space-5, 20px);
+  padding-top: var(--vp-space-4, 16px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+
+.vp-rahmen-block > h3 {
+  margin: 0 0 10px;
+  color: var(--vp-text, #1a202c);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.vp-rahmen-block > h3 svg {
+  vertical-align: -2px;
+  margin-right: 6px;
+  color: var(--vp-tech-faint, #a0aec0);
+}
