@@ -5481,11 +5481,13 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
 
 ## Zusätzliche Messwerte: Bibliothek und Historie (Slice 9)
 
-- Die gemeinsame `MeasurementLibrary` hängt an jeder Komponenten-Geräteseite
-  einschließlich OCPP. Der ruhige Einstieg zeigt nur empfohlene, aktive oder
-  schon gelesene Punkte; der vollständige Drawer heißt immer
-  **„Messwert-Bibliothek“** und bietet serverseitige Suche/Facetten sowie den
-  getrennten read-only-Freiregisterweg. Verfügbarkeit bedeutet entweder
+- Die gemeinsame Messbibliothek hängt an jeder Komponenten-Geräteseite
+  einschließlich OCPP. **⚠ Ihr Bauteil heißt seit Geräteseiten Stufe 3a
+  `components/BeobachteteRegister.tsx`** (`MeasurementLibrary` ist darin
+  aufgelöst, siehe `frontend/portal/AGENTS.md`): sie FÜHRT jetzt mit den
+  beobachteten Punkten, der vollständige Katalog liegt hinter
+  „＋ Register/Messwert beobachten" und bietet serverseitige Suche/Facetten
+  sowie den getrennten read-only-Freiregisterweg. Verfügbarkeit bedeutet entweder
   tatsächlich gelesen oder ausdrücklich nur „für die konfigurierte Familie
   vorgesehen, noch nicht gelesen“; eine Familienzuordnung ist kein Beweis, dass
   ein konkretes Modell/Register antwortet.
