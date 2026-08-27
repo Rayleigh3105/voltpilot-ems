@@ -307,20 +307,185 @@ for it in items:
 	esac
 }
 
+# --- Der manuelle Weg: den Release-Tag anlegen -------------------------------
+#
+# Ein Release entsteht durch einen Tag (Captain-Entscheid D5, docs/ota-signing.md
+# §4). Der Knopf „Run workflow" ist NUR ein bequemer Weg, genau diesen Tag zu
+# erzeugen - er ersetzt die Quelle nicht, er bedient sie.
+
+# ⚠ DAS SCHEMA IST `edge-<JJJJ>.<MM>.<N>`, UND `N` IST EIN LAUFENDER ZAEHLER JE
+# MONAT - KEIN KALENDERTAG. Nachgemessen am Bestand: am 04.08.2026 entstanden
+# `.0`, `.1` und `.2`, am 26.08.2026 `.19` bis `.24`. Ein Tag des Monats waere
+# weder je `0` noch mehrfach am selben Datum vergeben. Wer hier „TT" liest,
+# erzeugt Namen, die mit dem Bestand kollidieren - und die Kollision faellt erst
+# beim Push auf, also nachdem der Lauf schon losgelaufen ist.
+#
+# Fuehrende Nullen sind ausgeschlossen (`.09` und `.9` waeren zwei Namen fuer
+# dieselbe Zahl); der Monat ist zweistellig, weil er es im Bestand ist.
+OTA_RELEASE_RE='^edge-[0-9]{4}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$'
+OTA_RELEASE_MONTH_RE='^[0-9]{4}\.(0[1-9]|1[0-2])$'
+
+# ota_check_release <name> - bricht LAUT ab, wenn der Name nicht dem Schema
+# folgt. Ein erfundenes Schema waere schlimmer als eine Ablehnung: der Name
+# steht IM signierten Manifest und im Register, beides fuer immer.
+ota_check_release() {
+	[[ "${1-}" =~ $OTA_RELEASE_RE ]] ||
+		ota_die "Release-Name '${1-}' folgt nicht dem Schema edge-<JJJJ>.<MM>.<N> (N ist ein laufender Zaehler je Monat, KEIN Kalendertag). Es wurde nichts angelegt."
+}
+
+# ota_next_release <JJJJ.MM> - liest die vorhandenen Tag-Namen von STDIN und
+# druckt den naechsten freien Namen dieses Monats. Ein Monat ohne Tag beginnt
+# bei 0 (so faengt auch der Bestand an).
+#
+# Nicht-kanonische Namen (`.09`, `.x`) werden UEBERSPRUNGEN statt mitgezaehlt:
+# dieses Werkzeug erzeugt sie nie, also kann es sie auch nicht fortschreiben -
+# und ein Name, den es fuer belegt haelt, ohne es zu sein, waere eine Luecke in
+# der Ordnung.
+ota_next_release() {
+	local ym="${1-}" line n max=-1
+	[[ "$ym" =~ $OTA_RELEASE_MONTH_RE ]] ||
+		ota_die "Monat '${ym}' ist nicht JJJJ.MM"
+	while IFS= read -r line; do
+		case "$line" in
+		"edge-$ym."*) n="${line#"edge-$ym."}" ;;
+		*) continue ;;
+		esac
+		case "$n" in
+		'' | *[!0-9]*) continue ;;
+		0) ;;
+		0*) continue ;;
+		esac
+		if [ "$n" -gt "$max" ]; then max="$n"; fi
+	done
+	printf 'edge-%s.%d' "$ym" "$((max + 1))"
+}
+
+# ota_forgejo_git_auth_header <token> <user> <password>
+#
+# Der `Authorization:`-Wert fuer einen git-Push ueber HTTPS. Anders als beim
+# API-Aufruf ist hier IMMER `Basic` noetig: Forgejos Basic-Methode feuert auch
+# auf Git-Pfaden und nimmt einen persoenlichen Zugriffs-Token als PASSWORT
+# entgegen (der Benutzername ist dann beliebig) - `token <t>` ist dort keine
+# gueltige Form. Quelle: forgejo v13.0.4 services/auth/basic.go
+# (`isGitRawOrAttachOrLFSPath`, dann `GetAccessTokenBySHA(passwd)`).
+#
+# ⚠ DER AUTOMATISCHE ACTIONS-TOKEN TAUGT HIER NICHT, und das ist der ganze
+# Grund, warum diese Funktion neben ota_forgejo_auth_header steht: er
+# authentifiziert als der Actions-BENUTZER (basic.go: `GetRunningTaskByToken`
+# -> `NewActionsUser()`), und ein Push von DEM loest per Konstruktion keinen
+# Lauf aus (services/actions/notifier_helper.go: `if input.Doer.IsActions()` ->
+# „avoiding triggering cyclically"; Forgejo-Doku „Automatic token": „In order to
+# avoid infinite recursion, no workflow will be triggered as a side effect of a
+# change authored with this token."). Der Tag laege dann da - ohne dass je ein
+# Release entstuende.
+ota_forgejo_git_auth_header() {
+	local token="${1-}" user="${2-}" pass="${3-}" b64
+	if [ -n "$token" ]; then
+		# Benutzername beliebig; das Geheimnis ist das Passwort-Feld.
+		b64="$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
+	elif [ -n "$user" ] && [ -n "$pass" ]; then
+		b64="$(printf '%s:%s' "$user" "$pass" | base64 | tr -d '\n')"
+	else
+		return 1
+	fi
+	printf 'Basic %s' "$b64"
+}
+
+# ota_git_remote - die Push-URL des Repos. EIN Ort, dieselben Vorgaben wie der
+# Asset-Weg; VP_OTA_GIT_REMOTE ueberstimmt sie ganz (der Selbsttest zeigt sie
+# damit auf ein lokales bare-Repo).
+ota_git_remote() {
+	printf '%s' "${VP_OTA_GIT_REMOTE:-${VP_OTA_FORGEJO_BASE:-$OTA_FORGEJO_DEFAULT}/${VP_OTA_FORGEJO_REPO:-$OTA_REPO_DEFAULT}.git}"
+}
+
+# ota_git_authed <auth-header> <git-argumente...> - git mit einem
+# Authorization-Header, der ueber die UMGEBUNG reist statt ueber argv.
+ota_git_authed() {
+	local auth="$1"
+	shift
+	GIT_CONFIG_COUNT=1 \
+		GIT_CONFIG_KEY_0=http.extraheader \
+		GIT_CONFIG_VALUE_0="Authorization: $auth" \
+		git "$@"
+}
+
+# ota_tag_release <release> <commit> [annotation]
+#
+# Legt den ANNOTIERTEN Tag an und pusht ihn. Die Regeln, an denen alles haengt:
+#
+#   * KEIN `-f`, KEIN Ueberschreiben. Ein vorhandener Tag ist ein LAUTER
+#     Abbruch - eine Version zweimal zu vergeben ist genau die Luege, die im
+#     Register niemand mehr bemerkt (§4.3 „Nie ueberschreiben - neuen Tag
+#     ziehen").
+#   * ANNOTIERT (`git tag -a`), weil die Annotation die einzige
+#     release-spezifische Eingabe traegt (min-from-seq, urgent, Notiz). Ein
+#     leichter Tag laesse den Lauf die COMMIT-Nachricht lesen.
+#   * Die Tagger-Identitaet wird MITGEGEBEN: auf einem frischen Runner gibt es
+#     keine globale git-Identitaet, und `git tag -a` endet dann mit Status 128
+#     (der Fall, an dem Lauf #183 starb). Sie steht auf DIESEM Kommando, nicht
+#     in einer frueheren Zeile.
+#   * Das Geheimnis reist ueber die UMGEBUNG (GIT_CONFIG_* seit git 2.31), nie
+#     ueber die Kommandozeile: die ist auf dem Runner fuer jeden Prozess lesbar
+#     (dieselbe Regel wie bei ota_token).
+ota_tag_release() {
+	local release="${1-}" commit="${2-}" ann="${3-}" remote auth
+	ota_check_release "$release"
+	[ -n "$commit" ] || ota_die "Kein Commit angegeben, auf den der Tag zeigen soll"
+
+	# Erst pruefen, dann anlegen: alles, was scheitern darf, scheitert VOR dem
+	# ersten Schreibvorgang.
+	auth="$(ota_forgejo_git_auth_header "${VP_OTA_FORGEJO_TOKEN:-}" \
+		"${FORGEJO_USERNAME:-}" "${FORGEJO_PASSWORD:-}")" ||
+		ota_die "Keine Forgejo-Zugangsdaten fuer den Tag-Push (VP_OTA_FORGEJO_TOKEN oder FORGEJO_USERNAME/FORGEJO_PASSWORD). Der automatische Actions-Token ist hier bewusst KEIN Rueckfall - mit ihm laege der Tag da, ohne einen Release-Lauf auszuloesen."
+
+	# ⚠ actions/checkout legt den automatischen Token als http.extraheader ins
+	# Repo. Bliebe er liegen, ginge er beim Push MIT hinaus und der Push liefe
+	# als Actions-Benutzer - also ohne Folge-Lauf. `persist-credentials: false`
+	# verhindert das; diese Pruefung ist der Waechter dagegen, dass es jemand
+	# zuruecknimmt.
+	if git config --get-regexp '^http\..*[Ee]xtraheader$' >/dev/null 2>&1; then
+		ota_die "Im Checkout liegt ein http.extraheader (der automatische Actions-Token). Ein Push wuerde damit als Actions-Benutzer laufen und KEINEN Tag-Lauf ausloesen - actions/checkout braucht 'persist-credentials: false'."
+	fi
+
+	remote="$(ota_git_remote)"
+	git rev-parse -q --verify "$commit^{commit}" >/dev/null 2>&1 ||
+		ota_die "Commit '$commit' ist im Checkout nicht auffindbar"
+	if git rev-parse -q --verify "refs/tags/$release" >/dev/null 2>&1; then
+		ota_die "Tag $release existiert bereits (im Checkout). Es wird NICHTS ueberschrieben - naechste freie Nummer nehmen."
+	fi
+	if [ -n "$(ota_git_authed "$auth" ls-remote --tags "$remote" "refs/tags/$release")" ]; then
+		ota_die "Tag $release existiert bereits im Repo. Es wird NICHTS ueberschrieben - naechste freie Nummer nehmen."
+	fi
+
+	git -c "user.name=${OTA_TAGGER_NAME:-VoltPilot Release}" \
+		-c "user.email=${OTA_TAGGER_EMAIL:-release@voltpilot.de}" \
+		tag -a "$release" "$commit" -m "$ann" ||
+		ota_die "Tag $release konnte nicht angelegt werden"
+
+	ota_git_authed "$auth" push "$remote" "refs/tags/$release:refs/tags/$release" ||
+		ota_die "Tag $release konnte nicht gepusht werden - es ist NICHTS veroeffentlicht."
+
+	ota_info "Tag $release angelegt auf $commit und gepusht."
+}
+
 # --- Ablauf ------------------------------------------------------------------
 
 ota_usage() {
 	cat >&2 <<'EOF'
 release-publish.sh - ein signiertes Edge-Release veroeffentlichen
 
-  sign        <manifest> <keyfile>                signieren + gegen die eingebackene Wurzel pruefen
-  publish     <manifest> <tag>                    Forgejo-Assets + Register-Eintrag
-  next-seq    <portal> <token>                    "<nextSeq> <currentSeq>"
-  token       <token-url> <client-id> <secret>    client_credentials-Token
+  sign         <manifest> <keyfile>               signieren + gegen die eingebackene Wurzel pruefen
+  publish      <manifest> <tag>                   Forgejo-Assets + Register-Eintrag
+  next-seq     <portal> <token>                   "<nextSeq> <currentSeq>"
+  token        <token-url> <client-id> <secret>   client_credentials-Token
+  next-release <JJJJ.MM>                          naechster freier Tag-Name (Tags auf STDIN)
+  tag-release  <release> <commit> [annotation]    annotierten Tag anlegen + pushen
 
 Umgebung (publish): VP_OTA_PORTAL, VP_OTA_PORTAL_TOKEN, VP_OTA_FORGEJO_BASE,
 VP_OTA_FORGEJO_REPO, VP_OTA_FORGEJO_TOKEN | FORGEJO_USERNAME+FORGEJO_PASSWORD,
 VP_OTA_TRUST_SET.
+Umgebung (tag-release): VP_OTA_FORGEJO_TOKEN | FORGEJO_USERNAME+FORGEJO_PASSWORD,
+VP_OTA_GIT_REMOTE, OTA_TAGGER_NAME, OTA_TAGGER_EMAIL.
 
 Vollstaendiger Ablauf + einmalige Einrichtung: docs/ota-signing.md
 EOF
@@ -391,6 +556,8 @@ ota_main() {
 	next-seq) ota_next_seq "$@" ;;
 	token) ota_token "$@" ;;
 	state-schema) ota_state_schema "$@" ;;
+	next-release) ota_next_release "$@" ;;
+	tag-release) ota_tag_release "$@" ;;
 	-h | --help | help | '') ota_usage; return 2 ;;
 	*)
 		printf 'Unbekannter Befehl: %s\n\n' "$cmd" >&2

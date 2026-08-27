@@ -2,7 +2,8 @@ name: Build & Push Edge-App Images
 
 # Builds + pushes the customer-side Edge-App images to the Forgejo registry so
 # the operator can PULL them on the edge device instead of building locally
-# (the edge docker-compose.yml already names these images). Manual trigger.
+# (the edge docker-compose.yml already names these images). Triggered by an
+# `edge-*` tag; the manual trigger CREATES such a tag - see the paragraph below.
 #
 # Builds a MULTI-ARCH manifest list (linux/amd64 + linux/arm64) under each tag
 # so a Raspberry Pi (arm64/v8) pulls the arm64 variant automatically. Runs on
@@ -20,6 +21,30 @@ name: Build & Push Edge-App Images
 # Kette gegen die eingebackene Wurzel, haengt die vier Dateien als
 # Release-Assets an und traegt das Release ins Portal-Register ein.
 # „git tag -> fertig" (Captain-Order 04.08.2026).
+#
+# DER MANUELLE WEG („Run workflow", Captain-Entscheid 27.08.2026): er legt den
+# TAG an, mehr nicht. D5 bleibt die eine Wahrheit - der Tag ist die Quelle fuer
+# Versionsnamen, Release-Notiz und Reproduzierbarkeit; der Knopf ist nur ein
+# bequemer Weg, ihn zu erzeugen. Ein manueller Lauf bestimmt also den Namen
+# (Eingabe `release`, sonst die naechste freie Nummer des laufenden Monats),
+# legt den ANNOTIERTEN Tag am gewaehlten Commit an, pusht ihn - und ist fertig.
+# Der `push: tags: edge-*`-Trigger startet daraufhin den regulaeren TAG-Lauf,
+# der Gate, Images, Manifest, Signatur, Assets und Register erledigt. Deshalb
+# baut der manuelle Lauf selbst NICHTS: `test` haengt an
+# `ref_type == 'tag'`, und `build`/`manifest` haengen daran ueber `needs` -
+# kein doppelter Build.
+#
+# ⚠ DER TAG-PUSH BRAUCHT EIN ECHTES KONTO (VP_OTA_FORGEJO_TOKEN, sonst
+# FORGEJO_USERNAME/PASSWORD) und faellt NIE auf den automatischen Actions-Token
+# zurueck. Der authentifiziert als der Actions-BENUTZER, und Forgejo loest fuer
+# dessen Aenderungen per Konstruktion keinen Lauf aus: „In order to avoid
+# infinite recursion, no workflow will be triggered as a side effect of a change
+# authored with this token" (Forgejo-Doku, Abschnitt „Automatic token"; im Code
+# v13.0.4 services/actions/notifier_helper.go `if input.Doer.IsActions()`, und
+# services/auth/basic.go macht aus dem Task-Token `NewActionsUser()`). Mit ihm
+# laege der Tag da, ohne dass je ein Release entstuende - genau die halb
+# veroeffentlichte Lage, die dieser Workflow ueberall sonst vermeidet. Fehlen
+# beide Zugangsdaten, bricht der Lauf LAUT ab, BEVOR ein Tag entsteht.
 #
 # ⚠ DIESE AUTOMATIK REVIDIERT ENTSCHEID D3 BEWUSST: der Release-Schluessel ist
 # jetzt ein heisses CI-Geheimnis. Die vier Kompensationen sind LOAD-BEARING und
@@ -52,11 +77,118 @@ name: Build & Push Edge-App Images
 #   EDGE_MIN_FROM_SEQ, EDGE_STATE_SCHEMA, EDGE_SIGNING_KEY_ID
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Release-Tag (leer = naechste freie Nummer des Monats, z. B. edge-2026.08.25)'
+        required: false
+        type: string
+      notes:
+        description: 'Release-Notiz (wird die Tag-Annotation; leer ist erlaubt)'
+        required: false
+        type: string
   push:
     tags:
       - 'edge-*'
 
 jobs:
+  # DER MANUELLE WEG. Er erzeugt GENAU EINE Sache: den annotierten `edge-*`-Tag.
+  # Alles Weitere - Gate, Images, Manifest, Signatur, Assets, Register - macht
+  # der Lauf, den dieser Tag ausloest (siehe den Kopfkommentar). Dieser Job baut
+  # deshalb nichts und braucht weder Go noch Node noch Docker.
+  tag:
+    name: Release-Tag anlegen (manueller Lauf)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest-mo
+    # Zwei git-Kommandos gegen ein Repo - alles darueber ist ein Haenger.
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          # Die naechste freie Nummer wird aus den VORHANDENEN Tags bestimmt -
+          # ohne sie im Klon gaebe es keine Ordnung, nur eine geratene 0.
+          fetch-depth: 0
+          # ⚠ LOAD-BEARING: sonst legt checkout den automatischen Actions-Token
+          # als `http.extraheader` ins Repo, er ginge beim Push MIT hinaus, der
+          # Push liefe als Actions-Benutzer - und Forgejo loest fuer den per
+          # Konstruktion keinen Lauf aus. Der Tag laege dann da, ohne Release.
+          # `ota_tag_release` prueft das zusaetzlich und bricht laut ab.
+          persist-credentials: false
+
+      - name: Release-Namen bestimmen
+        id: name
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+
+          if [ -n "${RELEASE_INPUT:-}" ]; then
+            # Whitespace faellt weg (ein Eingabefeld sammelt gern ein
+            # Leerzeichen ein); das SCHEMA wird geprueft statt geraten.
+            release="$(printf '%s' "${RELEASE_INPUT:-}" | tr -d '[:space:]')"
+            ota_check_release "$release"
+            echo "Vorgegebener Release-Name: $release"
+          else
+            # Der Monat folgt der BERLINER Uhr - der Plattform-Zeitzone und der
+            # Uhr, an der die bisherigen Tags entstanden sind.
+            ym="$(TZ=Europe/Berlin date +%Y.%m)"
+            release="$(git tag -l 'edge-*' | ota_next_release "$ym")"
+            echo "Naechster freier Name im Monat $ym: $release"
+          fi
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+        env:
+          RELEASE_INPUT: ${{ inputs.release }}
+
+      # Erst hier entsteht etwas. Kein `-f`, kein Ueberschreiben: ein
+      # vorhandener Tag ist ein LAUTER Abbruch (die Regel des Registers - eine
+      # Version zweimal zu vergeben ist die Luege, die dort niemand bemerkt).
+      - name: Tag anlegen und pushen
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+          ota_tag_release "$RELEASE" "$TARGET_COMMIT" "${NOTES:-}"
+        env:
+          RELEASE: ${{ steps.name.outputs.release }}
+          TARGET_COMMIT: ${{ github.sha }}
+          NOTES: ${{ inputs.notes }}
+          VP_OTA_FORGEJO_TOKEN: ${{ secrets.VP_OTA_FORGEJO_TOKEN }}
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
+
+      - name: Ergebnis
+        run: |
+          set -euo pipefail
+          report() {
+            cat <<EOF
+          Tag ${RELEASE} ist angelegt (${SOURCE_REF} @ ${TARGET_COMMIT:0:12}) und gepusht.
+
+          Damit UEBERNIMMT DER TAG-LAUF: Gate -> Images -> Manifest -> signieren
+          -> gegen die eingebackene Wurzel pruefen -> Assets -> Register. Er
+          steht unter Actions als eigener Lauf dieses Workflows zu ${RELEASE}.
+          Dieser Lauf hier ist fertig und hat selbst NICHTS gebaut.
+
+          Was NICHT passiert ist - und mit Absicht nie aus CI passiert:
+            * kein Rollout gestartet, keine Welle freigegeben
+            * keinem Geraet ein Ziel zugewiesen
+          Beides ist Portal -> Plattform -> Edge-Updates (Plattform-Admin).
+
+          Taucht dort KEIN Lauf zu ${RELEASE} auf, wurde der Tag mit einem Konto
+          gepusht, das keine Laeufe ausloest. Dann den Tag zuruecknehmen
+          (git push origin :refs/tags/${RELEASE}) und den Weg von Hand gehen -
+          docs/ota-signing.md §4.
+          EOF
+          }
+          report
+          # Bequemlichkeit, kein Wirkpfad: laeuft der Runner ohne
+          # Zusammenfassungs-Datei, genuegt das Protokoll oben.
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            report >> "$GITHUB_STEP_SUMMARY" || true
+          fi
+        env:
+          RELEASE: ${{ steps.name.outputs.release }}
+          TARGET_COMMIT: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref_name }}
+
   # A tag publishes customer-side runtime code. Gate the exact packaged
   # catalog, core, Node-RED runtime and palette before any registry write; the
   # two realistic rigs then prove OCPP and the complete sim -> edge -> cloud ->
@@ -64,6 +196,10 @@ jobs:
   # push an image that the regular cloud-service matrix never exercises.
   test:
     name: Edge release gate
+    # Der manuelle Lauf legt nur den Tag an; gebaut wird im TAG-Lauf, den er
+    # ausloest. `build` und `manifest` haengen ueber `needs` daran, also reicht
+    # diese eine Bedingung, um einen doppelten Build auszuschliessen.
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest-mo
     # Race-instrumented Go + the two system rigs on a shared runner; roomy
     # enough that a slow neighbour never reds a sound release, tight enough

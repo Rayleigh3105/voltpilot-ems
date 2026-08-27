@@ -237,8 +237,9 @@ Keine /data-Migration.'
 git push origin edge-2026.08.0
 ```
 
-**Das ist alles.** Der Tag-Lauf von `.forgejo/workflows/edge-images.yaml` macht
-danach in dieser Reihenfolge:
+**Das ist alles.** (Kein Terminal zur Hand? Derselbe Weg per Knopf — §4.3.)
+Der Tag-Lauf von `.forgejo/workflows/edge-images.yaml` macht danach in dieser
+Reihenfolge:
 
 1. baut beide Images multi-arch (Versionsstempel `<tag>-<kurzsha>`),
 2. liest die Digests der **Manifest-Listen** aus der Registry zurück (die
@@ -315,6 +316,43 @@ auch eine mit Gleichheitszeichen — bleibt Fließtext und wird zur Release-Noti
 Der Lauf ist **wiederholbar**: eine vorhandene Forgejo-Release wird
 wiederverwendet, ein gleichnamiges Asset ersetzt, und eine bytegleiche
 Registrierung ist ein 200 statt eines 409.
+
+### 4.3 Ohne Terminal: „Run workflow" legt den Tag an
+
+Wer gerade kein Terminal hat, startet denselben Weg aus der Forgejo-Oberfläche:
+**Actions → „Build & Push Edge-App Images" → Run workflow**, Branch wählen,
+optional `release` und `notes` ausfüllen.
+
+Der manuelle Lauf legt **nur den Tag an** — annotiert, am Kopf des gewählten
+Branches — und pusht ihn. Den Rest macht der Tag-Lauf, den dieser Push auslöst
+(§4 Schritte 1–8). Der manuelle Lauf baut deshalb selbst nichts; sein
+Ergebnis-Schritt nennt den Tag und wohin man für den Release-Lauf schaut.
+
+| Eingabe | leer gelassen | ausgefüllt |
+|---|---|---|
+| `release` | die **nächste freie Nummer des laufenden Monats** — `N` ist ein laufender Zähler je Monat, kein Kalendertag (`edge-2026.08.24` → `edge-2026.08.25`) | genau dieser Name, gegen das Schema geprüft |
+| `notes` | leere Annotation (erlaubt) | wird die Tag-Annotation und damit die Release-Notiz |
+
+Drei Dinge, die man wissen muss:
+
+* **Ein vorhandener Tag ist ein lauter Abbruch.** Nichts wird überschrieben —
+  dieselbe Regel wie beim Register (§4.2 letzte Zeile).
+* **Die seltenen Direktiven** (`min-from-seq=`, `urgent=true`,
+  `allow-downgrade=true`) gehören in eine eigene Zeile der Annotation. Wer sie
+  braucht, nimmt den `git tag -a`-Weg aus §4 — er ist dafür gedacht.
+* **Der Tag-Push braucht ein echtes Konto** (`VP_OTA_FORGEJO_TOKEN`, sonst
+  `FORGEJO_USERNAME`/`FORGEJO_PASSWORD`, §4d Schritt 3). Der automatische
+  Actions-Token ist bewusst **kein** Rückfall: Forgejo löst für dessen
+  Änderungen per Konstruktion keinen Lauf aus („In order to avoid infinite
+  recursion, no workflow will be triggered as a side effect of a change authored
+  with this token" — Forgejo-Doku, „Automatic token"). Mit ihm läge der Tag da,
+  ohne dass je ein Release entstünde. Fehlen beide Zugangsdaten, bricht der Lauf
+  ab, **bevor** ein Tag entsteht.
+
+Taucht nach dem Lauf kein Tag-Lauf zu diesem Namen unter Actions auf, dann ist
+genau das passiert: Tag zurücknehmen
+(`git push origin :refs/tags/edge-JJJJ.MM.N`) und den Weg aus §4 bzw. §4b
+gehen.
 
 ### 4b. Der Handpfad (unverändert gültig)
 
@@ -539,7 +577,13 @@ Repo → **Settings → Actions → Secrets**:
 |---|---|
 | `VP_OTA_RELEASE_KEY` | der **gesamte Inhalt** von `rel-2026-a.key` (die JSON-Datei, nicht nur das Feld) |
 | `VP_OTA_PUBLISHER_CLIENT_SECRET` | das Client-Secret aus Schritt 2 |
-| `VP_OTA_FORGEJO_TOKEN` | *optional* — Repo-Token mit `repo (write)` für die Release-Assets. Fehlt es, nimmt der Lauf `FORGEJO_USERNAME`/`FORGEJO_PASSWORD` (die für die Registry ohnehin da sind). |
+| `VP_OTA_FORGEJO_TOKEN` | *optional* — Repo-Token mit `repo (write)` für die Release-Assets **und den Tag-Push des Knopf-Wegs** (§4.3). Fehlt es, nimmt der Lauf `FORGEJO_USERNAME`/`FORGEJO_PASSWORD` (die für die Registry ohnehin da sind). |
+
+> **⚠ Für §4.3 muss eines von beiden ein ECHTES Konto sein.** Der automatische
+> Actions-Token taugt dort nicht: Forgejo löst für seine Änderungen keinen Lauf
+> aus, der Tag läge also da, ohne dass je ein Release entstünde. Trägt das
+> Konto 2FA/Sicherheitsschlüssel, lehnt Forgejo Benutzer/Passwort ab — dann ist
+> `VP_OTA_FORGEJO_TOKEN` Pflicht, nicht Kür.
 
 ```bash
 cat rel-2026-a.key   # -> vollständig in VP_OTA_RELEASE_KEY einfügen
