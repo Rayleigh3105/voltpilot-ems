@@ -300,8 +300,14 @@ describe('anlagenBild — die Datenverbindungs-Karte der Box', () => {
     expect(JSON.stringify(bild.service)).not.toContain('203.0.113.42');
   });
 
-  it('zeigt auch Loopback nicht als Adresse im Kundennetz', () => {
-    for (const lanHost of ['127.0.0.1:8484', '[::1]:8484']) {
+  it('zeigt keine Loopback-Schreibweise und keinen Port 0 als Adresse im Kundennetz', () => {
+    for (const lanHost of [
+      '127.0.0.1:8484',
+      '[::1]:8484',
+      '[::ffff:127.0.0.1]:8484',
+      '192.168.0.28:0',
+      '[fd12:3456:789a::28]:0',
+    ]) {
       const bild = anlagenBild([boxKarte()], {
         boxDevice: {
           ...box,
@@ -313,6 +319,21 @@ describe('anlagenBild — die Datenverbindungs-Karte der Box', () => {
       });
       expect(bild.service?.lan.bekannt).toBe(false);
       expect(JSON.stringify(bild.service)).not.toContain(lanHost);
+    }
+  });
+
+  it('lässt belegbare RFC1918- und ULA-Adressen mit gültigem Port durch', () => {
+    for (const lanHost of ['10.23.4.5:1', '[fd12:3456:789a::28]:65535']) {
+      const bild = anlagenBild([boxKarte()], {
+        boxDevice: {
+          ...box,
+          lanHost,
+          lanSource: 'erreicht',
+          lanSeenAt: new Date().toISOString(),
+        },
+        now: Date.now(),
+      });
+      expect(bild.service?.lan).toMatchObject({ bekannt: true, wert: lanHost });
     }
   });
 

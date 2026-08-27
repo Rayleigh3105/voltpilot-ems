@@ -59,6 +59,14 @@ describe('Anlagenbild · WCAG-AA-Kontrast', () => {
     );
   });
 
+  it('setzt Rollen-Chips und Service-Schlüssel auf AA-feste Schrift vor bg-light', () => {
+    expect(bildCss).toMatch(/\.vp-ab-role\s*\{[^}]*color:\s*var\(--vp-text-dark\)/s);
+    expect(bildCss).toMatch(
+      /\.vp-ab-service-fact \.k\s*\{[^}]*color:\s*var\(--vp-text-dark\)/s,
+    );
+    expect(contrast(token('text-dark'), token('bg-light'))).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('hält die Hover-Fläche passiv und beschränkt sie auf feine Zeiger', () => {
     expect(bildCss).toMatch(/\.vp-ab-hover\s*\{[^}]*pointer-events:\s*none/s);
     expect(bildCss).toMatch(

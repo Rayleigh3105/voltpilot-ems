@@ -208,7 +208,23 @@ function Knoten({
   const hoverId = mobil
     ? undefined
     : `vp-ab-hover-${knoten.karteId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-  const ariaLabel = `${knoten.titel} — ${knoten.zustandLabel}`;
+  // Das explizite Label ersetzt den sichtbaren Nachfahren-Text. Es MUSS daher
+  // die wesentlichen sichtbaren Fakten selbst tragen — auch auf Touch, wo es
+  // absichtlich keinen Tooltip/Info-Ersatz gibt.
+  const rollenLabel = knoten.nebenrollen.map((rolle) =>
+    rolle === 'storage' ? 'Speicher integriert' : ANLAGEN_ZONE[rolle].label,
+  );
+  const liveLabel = live
+    ? `${knoten.zone === 'pv' ? 'PV-Produktion' : live.label}: ${live.wert}`
+    : null;
+  const ariaLabel = [
+    knoten.titel,
+    knoten.untertitel,
+    liveLabel,
+    ...rollenLabel,
+    knoten.zustandLabel,
+    knoten.zustandDetail,
+  ].filter(Boolean).join(', ');
 
   const inhalt = (
     <>
@@ -258,7 +274,7 @@ function Knoten({
         className={cls}
         style={style}
         data-anlagen-knoten={knoten.karteId}
-        aria-label={`${knoten.titel} — ${knoten.zustandLabel}, jetzt zuordnen`}
+        aria-label={`${ariaLabel}, jetzt zuordnen`}
         aria-describedby={hoverId}
         onClick={() => onAssign(knoten.quelle as AdoptableSource)}
       >

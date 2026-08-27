@@ -226,7 +226,7 @@ button.vp-ab-node:hover {
   border-left-width: 3px;
   border-radius: var(--vp-radius-full);
   background: var(--vp-bg-light);
-  color: var(--vp-text-gray);
+  color: var(--vp-text-dark);
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -387,7 +387,7 @@ a.vp-ab-mobile-service:hover {
 }
 .vp-ab-service-fact .k {
   flex: 0 0 auto;
-  color: var(--vp-text-gray);
+  color: var(--vp-text-dark);
   font-size: var(--vp-text-badge);
   font-weight: 700;
 }

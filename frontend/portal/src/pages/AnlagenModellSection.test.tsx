@@ -966,6 +966,23 @@ describe('AnlagenModellSection — elektrisches Anlagenbild', () => {
     expect(hybrid).toHaveClass('zone-pv');
     expect(hybrid).toHaveTextContent(/5,8\s+kW/);
     expect(hybrid).toHaveTextContent('Speicher integriert');
+    expect(hybrid).toHaveAccessibleName(
+      /Deye SUN-30K.*PV-Produktion: 5,8\s+kW.*Speicher integriert/,
+    );
+  });
+
+  it('trägt PV-Produktion und Speicherrolle auch mobil im Accessible Name', async () => {
+    stub();
+    alsDesktop(false);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    const hybrid = await screen.findByRole('link', {
+      name: /Deye SUN-30K.*PV-Produktion: 5,8\s+kW.*Speicher integriert/,
+    });
+    expect(hybrid).not.toHaveAttribute('aria-describedby');
+    expect(hybrid).toHaveTextContent('Speicher integriert');
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
   it('macht die komplette Box-Karte zum Link und zeigt LAN-Adresse plus Edge-Stand', async () => {
@@ -1028,6 +1045,57 @@ describe('AnlagenModellSection — elektrisches Anlagenbild', () => {
     expect(screen.getByText('meldet keinen Stand')).toBeInTheDocument();
     const boxLink = screen.getByRole('link', { name: /Datenverbindung zu VoltPilot/ });
     expect(boxLink.outerHTML).not.toContain('203.0.113.42');
+  });
+
+  it.each([
+    '[::ffff:127.0.0.1]:8484',
+    '192.168.20.14:0',
+  ])('hält die ungültige Kundennetz-Adresse %s aus Text und Accessible Name', async (lanHost) => {
+    stub();
+    alsDesktop(true);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    render(
+      <AnlagenModellSection
+        site={site}
+        devices={[
+          {
+            ...boxDevice,
+            lanHost,
+            lanSource: 'erreicht',
+            lanSeenAt: new Date().toISOString(),
+          },
+        ]}
+      />,
+    );
+
+    expect(await screen.findByText('meldet Ihre Box noch nicht')).toBeInTheDocument();
+    const boxLink = screen.getByRole('link', { name: /Datenverbindung zu VoltPilot/ });
+    expect(boxLink).not.toHaveTextContent(lanHost);
+    expect(boxLink.getAttribute('aria-label')).not.toContain(lanHost);
+  });
+
+  it('zeigt eine gültige ULA-Adresse in Text und Accessible Name', async () => {
+    stub();
+    alsDesktop(false);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    const lanHost = '[fd12:3456:789a::14]:8484';
+    render(
+      <AnlagenModellSection
+        site={site}
+        devices={[
+          {
+            ...boxDevice,
+            lanHost,
+            lanSource: 'erreicht',
+            lanSeenAt: new Date().toISOString(),
+          },
+        ]}
+      />,
+    );
+
+    expect(await screen.findByText(lanHost)).toBeInTheDocument();
+    const boxLink = screen.getByRole('link', { name: /Datenverbindung zu VoltPilot/ });
+    expect(boxLink.getAttribute('aria-label')).toContain(lanHost);
   });
 });
 

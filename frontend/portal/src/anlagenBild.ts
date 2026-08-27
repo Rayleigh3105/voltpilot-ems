@@ -276,12 +276,12 @@ function privateLanAddress(raw: string | null | undefined): string | null {
   const bracketed = /^\[([^\]]+)](?::(\d{1,5}))?$/.exec(address);
   if (bracketed) {
     host = bracketed[1];
-    if (bracketed[2] && Number(bracketed[2]) > 65_535) return null;
+    if (bracketed[2] && !gueltigerPort(bracketed[2])) return null;
   } else {
     const colonCount = (address.match(/:/g) ?? []).length;
     if (colonCount === 1) {
       const withPort = /^(.+):(\d{1,5})$/.exec(address);
-      if (!withPort || Number(withPort[2]) > 65_535) return null;
+      if (!withPort || !gueltigerPort(withPort[2])) return null;
       host = withPort[1];
     }
     // Mehrere Doppelpunkte ohne Klammern sind ein reines IPv6-Literal. Ein
@@ -291,9 +291,28 @@ function privateLanAddress(raw: string | null | undefined): string | null {
   // Modbus-Ziele. Auf der Box-Karte wäre das jedoch keine Adresse IM
   // KUNDENNETZ, sondern nur die Box selbst — deshalb gilt hier die engere
   // Anzeige-Regel.
-  const normalizedHost = host.toLowerCase();
-  if (normalizedHost === '::1' || normalizedHost.startsWith('127.')) return null;
+  if (istLoopbackHost(host)) return null;
   return isPrivateHost(host) ? address : null;
+}
+
+/** Port 0 ist kein erreichbarer Kunden-Endpunkt; erlaubt ist exakt 1..65535. */
+function gueltigerPort(raw: string): boolean {
+  const port = Number(raw);
+  return Number.isInteger(port) && port >= 1 && port <= 65_535;
+}
+
+/**
+ * Loopback nach Host-FAMILIE statt nur nach Schreibweise erkennen. Der
+ * geteilte Selbstbau-Prüfer akzeptiert `127/8` absichtlich für lokale Modbus-
+ * Ziele und faltet `::ffff:127.x.y.z` auf IPv4 zurück; auf der Kundenkarte
+ * müssen BEIDE Darstellungen draußen bleiben.
+ */
+function istLoopbackHost(raw: string): boolean {
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === '::1') return true;
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(normalized);
+  const ipv4 = mapped?.[1] ?? normalized;
+  return ipv4.startsWith('127.');
 }
 
 function boxLan(device: Device | null, now: number): DatenServiceLan {

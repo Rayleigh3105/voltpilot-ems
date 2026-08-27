@@ -661,7 +661,9 @@ describe('F2 · In der Vergangenheit navigieren', () => {
 
     // EIN Sprung, kein Klick-Marathon - und nie in die Zukunft.
     fireEvent.click(feld);
-    expect(screen.getByRole('gridcell', { name: String(heute.getDate()) })).not.toBeDisabled();
+    expect(
+      screen.getByRole('gridcell', { name: String(heute.getDate()), selected: true }),
+    ).not.toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Voriger Monat' }));
     const ziel = screen.getAllByRole('gridcell', { name: '15' })[0];
     fireEvent.click(ziel);

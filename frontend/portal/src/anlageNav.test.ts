@@ -347,11 +347,11 @@ describe('nichts ist verwaist: jede AnlagenSub hat einen Bereich oder einen Reit
 });
 
 describe('tabsFor - eine Ebene unter dem Bereich traegt keine Bereichs-Reiter', () => {
-  it('gibt der Geraete- und der Box-Seite KEINE Reiter, obwohl ihr Bereich drei hat', () => {
+  it('gibt der Geraete- und der Box-Seite KEINE Reiter, obwohl ihr Bereich zwei hat', () => {
     const sidebar = anlageSidebar(anlageSurface({ entities: ENTITIES, config: {} }));
     // Der Wirt hat wirklich mehr als einen Reiter - der Beweis waere sonst
     // vakuum (die Regel `tabs.length > 1` haette ohnehin geschwiegen).
-    expect(tabsFor(sidebar, 'modell').map((t) => t.sub)).toEqual(['modell', 'technik', 'befehle']);
+    expect(tabsFor(sidebar, 'modell').map((t) => t.sub)).toEqual(['modell', 'technik']);
     // ... und genau diese Leiste steht ueber einem einzelnen Geraet NICHT:
     // sie gehoert dem BEREICH, die Seite zeigt EIN Geraet, und keiner ihrer
     // Reiter waere aktiv (Stufe 0, Paragraph 2.1).

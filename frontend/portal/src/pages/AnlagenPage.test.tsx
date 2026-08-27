@@ -342,7 +342,7 @@ describe('Stufe 0 · eine Geraeteseite traegt weder Bereichs-Reiter noch den Anl
     // Der Kontrast-Beweis, und zwar im SELBEN Bereich: die Komponenten-Seite
     // traegt die volle Leiste - der Test darunter ist damit kein Vakuum.
     const { container } = renderSub('modell');
-    expect(container.querySelectorAll('.vp-bereich-tab')).toHaveLength(3);
+    expect(container.querySelectorAll('.vp-bereich-tab')).toHaveLength(2);
     expect(container.querySelector('.vp-fleet-back')).not.toBeNull();
   });
 
