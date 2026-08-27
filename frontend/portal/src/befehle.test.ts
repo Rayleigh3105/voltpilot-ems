@@ -9,7 +9,6 @@ import {
   film,
   fussnote,
   geraetKopfSatz,
-  geraeteAusschnitt,
   kopfSatz,
   leerSatz,
   NUR_LESEN,
@@ -462,33 +461,5 @@ describe('die GERÄTE-Sicht (Anlagen-Zentrale Stufe 1)', () => {
     // der Befehl seit der Ziel-Attribution auch.
     expect(GERAETE_BEFEHLE).toContain('Gerät');
     expect(GERAETE_BEFEHLE).not.toContain('Box');
-  });
-
-  it('kappt den Ausschnitt am ÄLTESTEN Ende und SAGT, dass gekappt wurde', () => {
-    const entries = [1, 2, 3, 4, 5, 6, 7].map((n) =>
-      periode({ id: n, startedAt: `2026-08-16T0${n}:00:00Z`, endedAt: `2026-08-16T0${n}:30:00Z` }),
-    );
-    const v = geraeteAusschnitt(history({ entries }), Date.parse('2026-08-16T12:00:00Z'), 5);
-    expect(v.zeilen).toHaveLength(5);
-    // Wer auf ein Gerät schaut, will die LETZTEN Befehle sehen.
-    expect(v.zeilen[v.zeilen.length - 1].id).toBe(7);
-    expect(v.weitere).toBe(2);
-    expect(v.leer).toBeNull();
-  });
-
-  it('sagt bei leerem Ausschnitt den EHRLICHEN Grund', () => {
-    // Aufgezeichnet, aber nichts geschickt.
-    const leer = geraeteAusschnitt(history({ entries: [] }), Date.now(), 5);
-    expect(leer.zeilen).toHaveLength(0);
-    expect(leer.leer).toMatch(/kein Befehl geschickt/);
-    // Noch gar nicht hingesehen - die entlastende Aussage wäre erfunden.
-    const nie = geraeteAusschnitt(history({ entries: [], recordingSince: null }), Date.now(), 5);
-    expect(nie.leer).toMatch(/Aufzeichnung hat noch nicht begonnen/);
-    // Ein Gerät, an das gar nicht geschrieben wird: der Kopf trägt NUR_LESEN,
-    // die Liste wiederholt ihn nicht.
-    const nurLesen = geraeteAusschnitt(
-      history({ entries: [], writes: false }), Date.now(), 5,
-    );
-    expect(nurLesen.leer).toBe('Deshalb ist dieser Verlauf leer.');
   });
 });

@@ -4,7 +4,6 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import {
   api,
   ApiError,
-  type CommandHistory,
   type ControlStatus,
   type CurtailmentStatus,
   type Device,
@@ -25,9 +24,10 @@ import { anlageRoute, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
 import {
   aufzeichnungSeit,
   genauigkeitsSatz,
-  geraeteAusschnitt,
   GERAETE_BEFEHLE,
 } from '../befehle';
+import { neuesteZeile } from '../befehleVerlauf';
+import { BefehleVerlauf, useBefehleVerlauf } from '../components/BefehleVerlauf';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { showTechnicalLayer } from '../rollen';
 import { kurz, rahmen, type SektionAngebot } from '../geraetRahmen';
@@ -85,7 +85,6 @@ export function BoxSeiteSection({
   const [curtailment, setCurtailment] = useState<CurtailmentStatus | null>(null);
   const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
-  const [commands, setCommands] = useState<CommandHistory | null>(null);
   const [adminView, setAdminView] = useState<GeraetView | null>(null);
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminFehler, setAdminFehler] = useState<string | null>(null);
@@ -117,11 +116,6 @@ export function BoxSeiteSection({
     soft(api.curtailmentStatus(site.id), setCurtailment);
     soft(api.edgeVersions(), setEdgeVersions);
     soft(api.siteChargers(site.id), setCharging);
-    // Was die Box ÜBERBRINGT: der Server entscheidet, was ihr gehört - seit der
-    // Ziel-Attribution sind das genau die ANLAGENWEITEN Zeilen.
-    if (boxDevice) {
-      soft(api.commandHistory(site.id, { device: boxDevice.externalRef }), setCommands);
-    }
     setNow(Date.now());
     if (showTechnicalLayer() && boxDevice) {
       void Promise.all([
@@ -201,7 +195,11 @@ export function BoxSeiteSection({
     curtailment, sources, charging, now,
   ]);
 
-  const ausschnitt = geraeteAusschnitt(commands, now, 5);
+  // Geräteseiten Stufe 2: DERSELBE Verlauf wie überall - neueste Zeile oben,
+  // „Ältere laden", keine Filter. Der Server entscheidet weiterhin, was der Box
+  // gehört (`?device=`); die Fläche schneidet nichts selbst zurecht.
+  const verlauf = useBefehleVerlauf({ siteId: site.id, geraetRef: boxDevice?.externalRef ?? null });
+  const letzteZeile = useMemo(() => neuesteZeile(verlauf.view), [verlauf.view]);
 
   /**
    * Der RAHMEN dieser Box (Geräteseiten Stufe 1, §4.4).
@@ -218,11 +216,7 @@ export function BoxSeiteSection({
       { id: 'jetzt' },
       {
         id: 'befehle',
-        kurzfassung: kurz(
-          ausschnitt.zeilen.length > 0
-            ? `${ausschnitt.zeilen.length} zuletzt`
-            : null,
-        ),
+        kurzfassung: kurz(letzteZeile?.satz ?? null),
       },
       view?.gefunden && (view.grenzen.length > 0 || view.grenzenLeer)
         ? {
@@ -250,7 +244,7 @@ export function BoxSeiteSection({
       showTechnicalLayer() && adminView ? { id: 'plattform' } : null,
     ];
     return rahmen(angebote);
-  }, [view, ausschnitt, adminView]);
+  }, [view, letzteZeile, adminView]);
 
   return (
     <div className="vp-geraet vp-box">
@@ -330,26 +324,17 @@ export function BoxSeiteSection({
 
           {/* 2 · Befehle - was die Box ÜBERBRINGT (die anlagenweiten). */}
           <RahmenSektion id="befehle">
-            {ausschnitt.zeilen.length > 0 && (
-              <ol className="vp-geraet-befehle">
-                {ausschnitt.zeilen.map((z) => (
-                  <li key={z.id} className={`vp-geraet-befehl is-${z.ton}`}>
-                    <span className="zeit">{z.zeit}</span>
-                    <div className="tx">
-                      {z.strom && <span className="strom">{z.strom}</span>}
-                      <p>{z.satz}</p>
-                      {z.urteil && <span className="urteil">{z.urteil}</span>}
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            )}
-            {ausschnitt.leer && <p className="vp-note">{ausschnitt.leer}</p>}
+            {/* ⚠ Die Box trägt hier KEINE Aktionszeile - und zwar aus dem
+                Grund, aus dem sie auch keine Register-Sektion hat: sie ist ein
+                Rechner, an sie selbst geht kein Befehl. Sie ÜBERBRINGT nur;
+                abgesetzt wird auf der Seite des Geräts, das ausführt (§6.2).
+                Ein Knopf ohne Schreibweg wäre einer ins Leere. */}
+            <BefehleVerlauf state={verlauf} />
             <p className="vp-note">{GERAETE_BEFEHLE}</p>
             <p className="vp-note">
-              {aufzeichnungSeit(commands?.recordingSince ?? null)}
+              {aufzeichnungSeit(verlauf.history?.recordingSince ?? null)}
               {' · '}
-              {genauigkeitsSatz(commands?.accuracySeconds ?? 15)}
+              {genauigkeitsSatz(verlauf.history?.accuracySeconds ?? 15)}
             </p>
             <a
               className="vp-geraet-komp-link"

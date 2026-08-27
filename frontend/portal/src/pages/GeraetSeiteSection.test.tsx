@@ -3,7 +3,10 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { GeraetSeiteSection } from './GeraetSeiteSection';
 import * as auth from '../auth';
 import { SEKTIONS_ORDNUNG, sektionKey, type RahmenSektionId } from '../geraetRahmen';
+import { SEITE } from '../befehleVerlauf';
 import { adminApi } from '../admin/adminApi';
+import { consumersApi } from '../consumers/consumersApi';
+import type { Consumer } from '../consumers/types';
 import { fleetApi } from '../admin/fleetApi';
 import {
   api,
@@ -12,6 +15,7 @@ import {
   type RegisterWriteTarget,
   type Site,
   type SiteEntities,
+  type SiteInterventions,
   type SiteSource,
   type SiteTopology,
 } from '../api';
@@ -289,6 +293,8 @@ function targets(over: Partial<RegisterWriteTarget>[] = []): RegisterWriteTarget
 function stub(over: {
   entities?: () => Promise<SiteEntities>;
   commands?: CommandHistory;
+  interventions?: SiteInterventions;
+  consumers?: Consumer[];
   targets?: RegisterWriteTarget[];
   writes?: RegisterWriteEvent[];
 } = {}) {
@@ -337,6 +343,16 @@ function stub(over: {
   vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
   vi.spyOn(api, 'commandHistory').mockResolvedValue(over.commands ?? commands());
+  // Die Aktionszeile (Stufe 2 §6.2) - was ein Blatt ABSETZEN kann. Alle drei
+  // sind fail-soft und gattungs-getaktet: ein Zähler bezahlt sie nie.
+  vi.spyOn(api, 'siteInterventions').mockResolvedValue(
+    over.interventions ?? { automationPaused: false, pausedUntil: null, interventions: [] },
+  );
+  vi.spyOn(api, 'schedule').mockResolvedValue(
+    { slots: [], generatedAt: null } as never,
+  );
+  vi.spyOn(consumersApi, 'list').mockResolvedValue(over.consumers ?? []);
+  vi.spyOn(consumersApi, 'overrides').mockResolvedValue([]);
   vi.spyOn(api, 'registerWriteTargets').mockResolvedValue(over.targets ?? targets());
   vi.spyOn(api, 'registerWriteHistory').mockResolvedValue(over.writes ?? []);
   vi.spyOn(api, 'registerKnowledge').mockResolvedValue([
@@ -554,16 +570,85 @@ describe('GeraetSeiteSection', () => {
     expect(await screen.findByTestId('sektion-befehle')).toBeInTheDocument();
     // Der Server entscheidet, was zu diesem Gerät gehört - die Fläche fragt ihn
     // mit der Adresse, unter der die Seite geöffnet wurde.
-    expect(api.commandHistory).toHaveBeenCalledWith('s-1', { device: 'inverter' });
-    const alle = screen.getByRole('link', { name: /Alle anzeigen/ });
+    expect(api.commandHistory).toHaveBeenCalledWith('s-1', expect.objectContaining({
+      device: 'inverter',
+      limit: SEITE,
+    }));
+    const alle = screen.getByRole('link', { name: /Auf der Befehle-Seite/ });
     expect(alle.getAttribute('href')).toBe('#/anlage/s-1/befehle?geraet=inverter');
-    // Der Schnell-Chip filtert den MINI-Film clientseitig UND reist im Link
-    // mit - der Zustand geht am Sprung nicht verloren (Revision B §6).
-    fireEvent.click(screen.getByRole('button', { name: 'Nur Abweichungen' }));
-    expect(screen.getByRole('link', { name: /Alle anzeigen/ }).getAttribute('href'))
-      .toContain('ergebnis=abweichend');
+    // Geräteseiten Stufe 2: KEINE Filter mehr - weder auf der Seite noch als
+    // Zustand im Link (Captain-Entscheid D4a).
+    expect(screen.queryByRole('button', { name: 'Nur Abweichungen' })).not.toBeInTheDocument();
+    expect(alle.getAttribute('href')).not.toContain('ergebnis=');
     // Und die Grenze wird ERKLÄRT: die anlagenweiten Befehle gehören der Box.
     expect(screen.getByText(/Anlagenweite Befehle/)).toBeInTheDocument();
+  });
+
+  /**
+   * Die AKTIONSZEILE (Stufe 2 §6.2): sie steht OBEN und LÖST nur aus - geöffnet
+   * wird der BESTEHENDE Dialog, es entsteht kein zweiter Auslöse-Pfad.
+   */
+  it('bietet am HYBRID die Speicher-Handlungen und öffnet ihre Folgen-Karte', async () => {
+    // Steuerbar heisst: das Rücklesen DIESES Geräts trägt wirklich.
+    stub({ commands: commands({ deviceIsBox: false, deviceRef: 'inverter' }) });
+    // Steuerbar heisst: das Rücklesen DIESES Geräts trägt wirklich - genau die
+    // Bedingung, mit der auch die Jetzt-Zone der Steuerung urteilt.
+    vi.spyOn(api, 'controlStatus').mockResolvedValue({
+      deviceId: 'gw',
+      commandedKw: -6.5,
+      confirmedKw: -6.5,
+      allMatch: true,
+      controlEnabled: true,
+      certified: true,
+      mismatchRoles: null,
+      slotStart: null,
+      checkedAt: FRISCH,
+    } as never);
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+
+    const zeile = await screen.findByRole('button', { name: /Befehl an dieses Gerät/ });
+    fireEvent.click(zeile);
+    fireEvent.click(await screen.findByRole('button', { name: 'Speicher jetzt laden' }));
+
+    // Es ist die BESTEHENDE Folgen-Karte - und der Klick allein schreibt
+    // NICHTS: erst ihr Ja setzt den Eingriff ab.
+    const setzen = vi.spyOn(api, 'startBatteryOverride');
+    expect(await screen.findByText(/Das passiert/)).toBeInTheDocument();
+    expect(setzen).not.toHaveBeenCalled();
+  });
+
+  it('bietet an einem PV-Melder nur den Register-Weg', async () => {
+    stub({ commands: commands({ deviceIsBox: false, deviceRef: 'src-7c1e9a2b' }) });
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
+    );
+
+    const zeile = await screen.findByRole('button', { name: /Befehl an dieses Gerät/ });
+    fireEvent.click(zeile);
+    // Der Register-Weg ist DERSELBE Drawer wie in der Register-Sektion - ein
+    // Mechanismus, zwei Orte (das Sofortaktions-Muster).
+    const liste = zeile.parentElement as HTMLElement;
+    expect(within(liste).getByRole('button', { name: 'Register schreiben' })).toBeInTheDocument();
+    // Ein PV-Melder hat keine Speicher-Handlung - was der Zustand nicht
+    // hergibt, wird nicht angeboten.
+    expect(within(liste).queryByRole('button', { name: 'Speicher jetzt laden' }))
+      .not.toBeInTheDocument();
+  });
+
+  it('bietet GAR KEINE Zeile an, wo es nichts abzusetzen gibt', async () => {
+    // Ohne belegten Schreibweg (leere Ziel-Liste) und ohne Speicher-Handlung
+    // bleibt die Zeile weg - nie ein Knopf ins Leere.
+    vi.spyOn(api, 'controlStatus').mockResolvedValue(null);
+    stub({
+      commands: commands({ deviceIsBox: false, deviceRef: 'src-7c1e9a2b' }),
+      targets: [],
+    });
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
+    );
+
+    expect(await screen.findByTestId('sektion-befehle')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Befehl an dieses Gerät/ })).not.toBeInTheDocument();
   });
 
   it('erklärt an einem Gerät HINTER der Box, wo die anlagenweiten Befehle stehen', async () => {
@@ -591,11 +676,11 @@ describe('GeraetSeiteSection', () => {
     stub();
     vi.spyOn(api, 'commandHistory').mockRejectedValue(new Error('down'));
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    // Die Sektion bleibt - sie sagt, dass noch nicht aufgezeichnet wurde,
-    // statt eine leere Behauptung zu machen.
+    // Die Sektion bleibt - ein Ausfall wird BENANNT, nie als leerer Verlauf
+    // ausgegeben (das wäre die entlastende Aussage, die niemand geprüft hat).
     expect(await screen.findByTestId('sektion-befehle')).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByText(/Aufzeichnung hat noch nicht begonnen/)).toBeInTheDocument(),
+      expect(screen.getByText(/Verlauf nicht abrufbar/)).toBeInTheDocument(),
     );
   });
 

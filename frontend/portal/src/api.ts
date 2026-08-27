@@ -3383,7 +3383,7 @@ export const api = {
       /**
        * Die drei STRUKTUR-Filter (Geräteseiten Revision B §6), komma-getrennt.
        * Ein Wort ausserhalb des Server-Vokabulars ist eine benannte 400 - das
-       * Portal schickt deshalb nur, was `befehleFilter.ts` kennt.
+       * Portal schickt deshalb nur Werte aus dem hier notierten Vokabular.
        */
       streams?: string | null;
       sources?: string | null;
