@@ -38,6 +38,7 @@ const ajv = new Ajv2020({ strict: false });
 | `mqtt-telemetry-2.0.invalid.string-channel.json` | mqtt-telemetry-2.0 | **invalid** — channel value is a string (channels are always numbers) |
 | `mqtt-measurement-config.valid.json` | mqtt-measurement-config | valid — packaged catalog selection |
 | `mqtt-measurement-config.valid.custom.json` | mqtt-measurement-config | valid — complete read-only custom Modbus input definition survives desired-state transport |
+| `mqtt-measurement-config.valid.per-component.json` | mqtt-measurement-config | valid — additive `entity_id` binds one selection to one component (Stufe 3b); since Stufe 3c the edge resolves it to that component's device and refuses (`binding_unavailable`) when it cannot. The second entry keeps the device-wide box semantics |
 | `mqtt-measurement-config.invalid.identity.json` | mqtt-measurement-config | **semantic invalid** — schema-valid payload whose tenant differs from the fixture topic identity; refused by the Core validator |
 | `mqtt-measurement-config-status.valid.json` | mqtt-measurement-config-status | valid — monotone apply receipt |
 | `mqtt-measurement-samples.valid.json` | mqtt-measurement-samples | valid — exact raw sample batch |

@@ -34,8 +34,14 @@ import { fmtNum } from './format';
  */
 const ZONE = 'Europe/Berlin';
 
-/** Der Berliner Kalendertag eines Zeitpunkts („2026-08-19"), oder null. */
-function berlinTag(iso: string | null | undefined): string | null {
+/**
+ * Der Berliner Kalendertag eines Zeitpunkts („2026-08-19"), oder null.
+ *
+ * ⚠ Exportiert, seit der VERLAUF (Geräteseiten Stufe 2) seine Datumszeilen
+ * daraus bildet: die Zone ist HIER festgenagelt, und ein zweiter Tages-Begriff
+ * daneben wäre genau die zweite Wahrheit, gegen die dieser Kopf gebaut ist.
+ */
+export function berlinTag(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
@@ -48,6 +54,15 @@ export type BefehlTon = 'ok' | 'warn' | 'info' | 'ruhig';
 /** Eine Zeile des Tages-Films. */
 export interface BefehlZeile {
   id: number;
+  /**
+   * Der Berliner Kalendertag des BEGINNS („2026-08-19"), oder null.
+   *
+   * ⚠ Er trägt die Datumszeile des Verlaufs (Stufe 2) - gruppiert wird nach dem
+   * BEGINN, weil das Ende einer über Mitternacht laufenden Periode per
+   * Konstruktion im Fenster liegt und ein zweites Datum Rauschen wäre (dieselbe
+   * Begründung wie in {@link spanne}).
+   */
+  tag: string | null;
   art: 'periode' | 'ereignis';
   /**
    * „06:10–09:30" bzw. „17:55" - IMMER Europe/Berlin, die Zone, in der der
@@ -278,28 +293,6 @@ export const GERAETE_BEFEHLE =
   'Befehle an ein einzelnes Gerät - zum Beispiel der Speicher-Sollwert - stehen auf der '
   + 'Seite dieses Geräts.';
 
-/**
- * Der AUSSCHNITT für die Geräteseite (§7.4): die jüngsten Zeilen des Zeitraums
- * plus die zwei Sätze, die eine leere Liste ehrlich machen.
- *
- * <p>Gekappt wird am ÄLTESTEN Ende - wer auf ein Gerät schaut, will die
- * letzten Befehle sehen -, und dass gekappt wurde, SAGT die Fläche
- * (`weitere`), statt still zu kürzen.
- */
-export function geraeteAusschnitt(history: CommandHistory | null, now: number, max: number): {
-  zeilen: BefehlZeile[];
-  weitere: number;
-  leer: string | null;
-} {
-  const alle = film(history, now);
-  const zeilen = alle.length > max ? alle.slice(alle.length - max) : alle;
-  return {
-    zeilen,
-    weitere: Math.max(0, alle.length - zeilen.length),
-    leer: zeilen.length === 0 ? leerSatz(history, true) : null,
-  };
-}
-
 /** Der Schreibweg als Etikett; ein unbekannter bleibt ungenannt. */
 export function stromLabel(stream: string): string | null {
   return STROM[stream] ?? null;
@@ -317,13 +310,24 @@ export function pfadWort(pfad: string | null | undefined): string | null {
  * Reihenfolge kommt schon so an). Eine Zeile, deren Vokabular dieser
  * Portal-Stand nicht kennt, wird ÜBERSPRUNGEN statt geraten.
  */
-export function film(history: CommandHistory | null, now: number): BefehlZeile[] {
+export function film(
+  history: CommandHistory | null,
+  now: number,
+  opts: { datiert?: boolean } = {},
+): BefehlZeile[] {
   if (!history) return [];
   // Der ERSTE Tag des Fensters. Er ist der Bezug, gegen den eine Zeile
   // entscheidet, ob sie ihr Datum mitnennen muss - ohne ihn läse sich eine
   // Zeile, die vor dem Fenster begann, als hätte sie HEUTE um 23:45 begonnen
   // (der 19.08.2026 gemeldete Fall).
-  const fensterTag = berlinTag(history.from);
+  //
+  // ⚠ `datiert: false` schaltet genau das AB - und zwar nur dort, wo eine
+  // andere Fläche das Datum schon trägt: der VERLAUF (Stufe 2) gruppiert nach
+  // Tagen und schreibt es in seine Datumszeile. Beides zugleich wäre dieselbe
+  // Auskunft zweimal in einer Zeile („18.08. 22:00" unter der Überschrift
+  // „Dienstag, 18. August 2026"). Ohne diese Angabe bleibt es beim datierten
+  // Verhalten - eine Fläche verliert das Datum nie versehentlich.
+  const fensterTag = opts.datiert === false ? null : berlinTag(history.from);
   const out: BefehlZeile[] = [];
   for (const e of history.entries) {
     const zeile = e.stream === 'register'
@@ -352,6 +356,7 @@ function registerZeile(e: CommandEntry, fensterTag: string | null): BefehlZeile 
   if (!r) return null;
   return {
     id: e.id,
+    tag: berlinTag(e.startedAt),
     art: 'ereignis',
     zeit: spanne(e.startedAt, e.endedAt, false, fensterTag),
     satz: journalSatz(r),
@@ -382,6 +387,7 @@ function ereignisZeile(e: CommandEntry, fensterTag: string | null): BefehlZeile 
   if (!wort) return null; // nie ein geratenes Ereignis
   return {
     id: e.id,
+    tag: berlinTag(e.startedAt),
     art: 'ereignis',
     zeit: spanne(e.startedAt, e.endedAt, false, fensterTag),
     satz: wort.satz,
@@ -399,6 +405,7 @@ function periodenZeile(e: CommandEntry, now: number, fensterTag: string | null):
   const urteil = e.verdict == null ? null : URTEIL[e.verdict] ?? null;
   return {
     id: e.id,
+    tag: berlinTag(e.startedAt),
     art: 'periode',
     zeit: spanne(e.startedAt, e.endedAt, laufend, fensterTag),
     satz: periodenSatz(e),

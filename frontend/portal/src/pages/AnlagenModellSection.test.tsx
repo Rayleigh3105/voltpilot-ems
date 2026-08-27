@@ -446,6 +446,32 @@ describe('AnlagenModellSection — Variante A', () => {
     expect(within(speicher).queryByRole('button', { name: /Zuordnung ändern/ })).toBeNull();
   });
 
+  /**
+   * Geräteseiten Stufe 4, §5.3: die Batterie hat KEINE eigene Seite - ihr
+   * Gesicht ist der Speicher-Teil des Hybrid-Blatts. Ihre Zeile führt deshalb
+   * dorthin und markiert dort genau ihre Kachel.
+   */
+  it('§5.3 · die Speicher-Zeile führt auf das Hybrid-Blatt mit markierter Kachel', async () => {
+    stub();
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Deye SUN-30K' });
+    const speicher = screen.getByText('Speicher').closest('.vp-am-comp') as HTMLElement;
+    const link = within(speicher).getByRole('link', { name: /Speicher am Wechselrichter/ });
+    expect(link.getAttribute('href')).toMatch(/abschnitt=jetzt/);
+    expect(link.getAttribute('href')).toMatch(/kachel=speicher/);
+    // ⚠ Ein Parameter im Hash, nie eine zweite Raute (der HashRouter läse sie
+    // als Route).
+    expect((link.getAttribute('href') ?? '').slice(1)).not.toContain('#');
+  });
+
+  it('⚠ §5.3 · eine NICHT-Speicher-Zeile bekommt den Absprung nicht', async () => {
+    stub();
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Deye SUN-30K' });
+    const netz = screen.getByText('Netzanschluss').closest('.vp-am-comp') as HTMLElement;
+    expect(within(netz).queryByRole('link', { name: /Speicher am Wechselrichter/ })).toBeNull();
+  });
+
   it('uses no forbidden customer vocabulary in the customer view', async () => {
     stub();
     const { container } = render(<AnlagenModellSection site={site} devices={[boxDevice]} />);

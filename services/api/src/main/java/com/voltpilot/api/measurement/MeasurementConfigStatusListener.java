@@ -37,9 +37,17 @@ public class MeasurementConfigStatusListener {
     private static final Set<String> ROOT_FIELDS = Set.of("schema_version", "tenant_id", "site_id",
             "device_id", "revision", "applied_at", "accepted", "rejected", "edge_version");
     private static final Set<String> REJECTION_FIELDS = Set.of("point_key", "reason");
+    // The CLOSED rejection vocabulary of mqtt-measurement-config-status. An
+    // unknown word invalidates the WHOLE acknowledgement (see the loop below),
+    // so a reason the edge starts sending must land here in the same release -
+    // otherwise every point of that device stays pending_edge forever.
+    // `binding_unavailable` is Geraeteseite Stufe 3c: the edge could not resolve
+    // the selection's component (entity_id) to a device it reads and therefore
+    // refused the point instead of reading it over the primary inverter.
     static final Set<String> REASONS = Set.of("unknown_point", "unsupported_catalog",
             "edge_too_old", "invalid_cadence", "budget_samples", "budget_requests",
-            "budget_duty_cycle", "driver_unavailable", "ocpp_configuration_incompatible");
+            "budget_duty_cycle", "driver_unavailable", "ocpp_configuration_incompatible",
+            "binding_unavailable");
 
     private final String brokerUrl, username, password;
     private final MeasurementSelectionRepository repository;

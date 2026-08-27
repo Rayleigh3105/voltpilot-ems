@@ -56,10 +56,15 @@ public class MeasurementHistoryService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
         if (entityId != null) {
+            // Scoped exactly like the family marker below (tenant + site +
+            // entity) and like a per-component measurement selection. A
+            // `device_id=?` predicate would additionally exclude every
+            // component the assistant or a takeover created - those carry no
+            // device_id at all - and 404 the very pages this marker is for.
             Boolean entityVisible = jdbc.queryForObject(
                     "SELECT EXISTS(SELECT 1 FROM measurement_point WHERE tenant_id=? AND site_id=? "
-                            + "AND device_id=? AND id=?)",
-                    Boolean.class, scope.tenantId(), siteId, deviceId, entityId);
+                            + "AND id=?)",
+                    Boolean.class, scope.tenantId(), siteId, entityId);
             if (!Boolean.TRUE.equals(entityVisible)) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Messkomponente nicht gefunden.");

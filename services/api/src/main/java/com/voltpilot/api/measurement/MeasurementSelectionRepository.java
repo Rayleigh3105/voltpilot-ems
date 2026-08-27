@@ -21,7 +21,7 @@ public class MeasurementSelectionRepository {
 
     public record DeviceScope(UUID tenantId, UUID siteId, UUID deviceId) {}
 
-    public record Row(UUID tenantId, UUID siteId, UUID deviceId, String pointKey,
+    public record Row(UUID tenantId, UUID siteId, UUID deviceId, UUID entityId, String pointKey,
             boolean enabled, Integer cadenceS, long desiredRevision, Instant enabledAt,
             Instant disabledAt, String catalogVersion, String changedBy, String changedByName,
             Instant changedAt, String applyStatus, String applyReason, Instant appliedAt,
@@ -33,7 +33,8 @@ public class MeasurementSelectionRepository {
         }
     }
 
-    public record Event(long id, UUID tenantId, UUID siteId, UUID deviceId, String pointKey,
+    public record Event(long id, UUID tenantId, UUID siteId, UUID deviceId, UUID entityId,
+            String pointKey,
             long desiredRevision, String eventKind, UUID idempotencyKey, Instant requestedAt,
             boolean requestedEnabled, Integer requestedCadenceS, Instant enabledAt,
             Instant disabledAt, String catalogVersion, String actor, String actorName,
@@ -45,13 +46,15 @@ public class MeasurementSelectionRepository {
             String quality, boolean gap, long droppedSamples) {}
 
     private static final String ROW_COLUMNS =
-            "tenant_id, site_id, device_id, point_key, enabled, cadence_s, desired_revision, "
+            "tenant_id, site_id, device_id, entity_id, point_key, enabled, cadence_s, "
+            + "desired_revision, "
             + "enabled_at, disabled_at, catalog_version, changed_by, changed_by_name, "
             + "changed_at, apply_status, apply_reason, applied_at, custom_definition::text AS custom_json, "
             + "retention_class, raw_retention_days, long_term_cadence_s, long_term_strategy";
 
     private static final String EVENT_COLUMNS =
-            "id, tenant_id, site_id, device_id, point_key, desired_revision, event_kind, idempotency_key, "
+            "id, tenant_id, site_id, device_id, entity_id, point_key, desired_revision, "
+            + "event_kind, idempotency_key, "
             + "requested_at, requested_enabled, requested_cadence_s, enabled_at, disabled_at, "
             + "catalog_version, actor, "
             + "actor_name, apply_status, apply_reason, applied_at, custom_definition::text AS custom_json, "
@@ -90,24 +93,52 @@ public class MeasurementSelectionRepository {
                 MeasurementSelectionRepository::mapRow, deviceId);
     }
 
-    public Map<String, Integer> selectedCadences(UUID deviceId) {
+    /**
+     * The cadences a catalog view must mark as selected. Scoped to ONE
+     * component when entityId is given, otherwise to the whole device (the
+     * pre-3b box semantics).
+     */
+    public Map<String, Integer> selectedCadences(UUID deviceId, UUID entityId) {
         Map<String, Integer> out = new LinkedHashMap<>();
         jdbc.query("SELECT point_key, cadence_s FROM device_measurement_selection "
-                        + "WHERE device_id = ? AND enabled",
+                        + "WHERE device_id = ? AND enabled" + entityFilter(entityId),
                 (org.springframework.jdbc.core.RowCallbackHandler) rs ->
                         out.put(rs.getString("point_key"),
                                 (Integer) rs.getObject("cadence_s")),
-                deviceId);
+                args(deviceId, entityId));
         return out;
     }
 
-    public Set<String> availableFamilies(UUID deviceId) {
+    /**
+     * The binding families a catalog view may offer. With a component the
+     * answer is ITS family; without one it stays the pre-3b union over the
+     * points that carry this device_id - which on a multi-component box is the
+     * composed hybrid's family and therefore the wrong question per component.
+     */
+    public Set<String> availableFamilies(UUID deviceId, UUID entityId) {
         Set<String> out = new LinkedHashSet<>();
+        if (entityId != null) {
+            jdbc.query("SELECT family FROM measurement_point WHERE id = ? AND family IS NOT NULL",
+                    (org.springframework.jdbc.core.RowCallbackHandler) rs ->
+                            out.add(rs.getString(1)), entityId);
+            return Set.copyOf(out);
+        }
         jdbc.query("SELECT DISTINCT family FROM measurement_point "
                         + "WHERE device_id = ? AND family IS NOT NULL ORDER BY family",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs ->
                         out.add(rs.getString(1)), deviceId);
         return Set.copyOf(out);
+    }
+
+    /**
+     * The RLS-visible component's site, or null when it is not visible at all.
+     * The site is the caller's fence check: a component of ANOTHER plant is not
+     * a valid selection owner even inside the same tenant.
+     */
+    public UUID entitySiteId(UUID entityId) {
+        List<UUID> rows = jdbc.query("SELECT site_id FROM measurement_point WHERE id = ?",
+                (rs, n) -> rs.getObject("site_id", UUID.class), entityId);
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     public Set<String> recordedPointKeys(UUID deviceId) {
@@ -149,6 +180,19 @@ public class MeasurementSelectionRepository {
         return Map.copyOf(out);
     }
 
+    /**
+     * NULL entity_id is a VALUE here (the box semantics), so an absent entity
+     * means "the whole device" rather than "the unbound rows"; the unique key
+     * follows the same rule through NULLS NOT DISTINCT.
+     */
+    private static String entityFilter(UUID entityId) {
+        return entityId == null ? "" : " AND entity_id = ?";
+    }
+
+    private static Object[] args(UUID deviceId, UUID entityId) {
+        return entityId == null ? new Object[] {deviceId} : new Object[] {deviceId, entityId};
+    }
+
     static String templateKey(String pointKey) {
         return pointKey == null ? null : pointKey.replaceAll("\\[[^]\\r\\n]+]", "[*]");
     }
@@ -183,30 +227,39 @@ public class MeasurementSelectionRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    public List<Event> events(UUID deviceId, int limit) {
+    public List<Event> events(UUID deviceId, UUID entityId, int limit) {
+        int bounded = Math.max(1, Math.min(limit, 250));
+        Object[] args = entityId == null ? new Object[] {deviceId, bounded}
+                : new Object[] {deviceId, entityId, bounded};
         return jdbc.query("SELECT " + EVENT_COLUMNS
-                        + " FROM device_measurement_selection_event WHERE device_id = ? "
-                        + "ORDER BY desired_revision DESC, id DESC LIMIT ?",
-                MeasurementSelectionRepository::mapEvent, deviceId, Math.max(1, Math.min(limit, 250)));
+                        + " FROM device_measurement_selection_event WHERE device_id = ?"
+                        + entityFilter(entityId)
+                        + " ORDER BY desired_revision DESC, id DESC LIMIT ?",
+                MeasurementSelectionRepository::mapEvent, args);
     }
 
     /**
      * Upserts desired state. The transition timestamps come only from DB now():
      * enabling starts now, disabling preserves enabled_at and never deletes.
      */
-    public Row save(DeviceScope scope, String pointKey, boolean enabled, Integer cadenceS,
+    public Row save(DeviceScope scope, UUID entityId, String pointKey, boolean enabled,
+            Integer cadenceS,
             long revision, String catalogVersion, String actor, String actorName,
             String applyReason, String customJson, MeasurementRetention retention) {
         return jdbc.queryForObject(
                 "INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, "
+                        + "entity_id, "
                         + "point_key, enabled, cadence_s, desired_revision, enabled_at, disabled_at, "
                         + "catalog_version, changed_by, changed_by_name, changed_at, apply_status, "
                         + "apply_reason, applied_at, custom_definition, retention_class, "
                         + "raw_retention_days, long_term_cadence_s, long_term_strategy) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN now() ELSE NULL END, "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN now() ELSE NULL END, "
                         + "CASE WHEN ? THEN NULL ELSE now() END, ?, ?, ?, now(), 'pending_edge', ?, "
                         + "NULL, ?::jsonb, ?, ?, ?, ?) "
-                        + "ON CONFLICT (device_id, point_key) DO UPDATE SET "
+                        // NULLS NOT DISTINCT makes the box-semantics row (entity_id
+                        // NULL) exactly one row per point_key again, so the arbiter
+                        // needs no invented sentinel uuid.
+                        + "ON CONFLICT (device_id, entity_id, point_key) DO UPDATE SET "
                         + "enabled = EXCLUDED.enabled, cadence_s = EXCLUDED.cadence_s, "
                         + "desired_revision = EXCLUDED.desired_revision, "
                         + "enabled_at = CASE WHEN EXCLUDED.enabled THEN "
@@ -226,28 +279,32 @@ public class MeasurementSelectionRepository {
                         + "long_term_strategy = EXCLUDED.long_term_strategy "
                         + "RETURNING " + ROW_COLUMNS,
                 MeasurementSelectionRepository::mapRow,
-                scope.tenantId(), scope.siteId(), scope.deviceId(), pointKey, enabled, cadenceS,
+                scope.tenantId(), scope.siteId(), scope.deviceId(), entityId, pointKey, enabled,
+                cadenceS,
                 revision, enabled, enabled, catalogVersion, actor, actorName, applyReason,
                 customJson, retention.retentionClass(), retention.rawRetentionDays(),
                 retention.longTermCadenceS(), retention.longTermStrategy());
     }
 
-    public Event appendEvent(DeviceScope scope, String pointKey, long revision, UUID requestId,
+    public Event appendEvent(DeviceScope scope, UUID entityId, String pointKey, long revision,
+            UUID requestId,
             boolean enabled, Integer cadenceS, Instant enabledAt, Instant disabledAt,
             String catalogVersion, String actor, String actorName, String applyReason, String customJson,
             MeasurementRetention retention) {
         return jdbc.queryForObject(
                 "INSERT INTO device_measurement_selection_event (tenant_id, site_id, device_id, "
+                        + "entity_id, "
                         + "point_key, desired_revision, event_kind, idempotency_key, requested_at, "
                         + "requested_enabled, requested_cadence_s, enabled_at, disabled_at, "
                         + "catalog_version, actor, actor_name, "
                         + "apply_status, apply_reason, applied_at, custom_definition, retention_class, "
                         + "raw_retention_days, long_term_cadence_s, long_term_strategy) "
-                        + "VALUES (?, ?, ?, ?, ?, 'selection_requested', ?, now(), ?, ?, ?, ?, ?, ?, ?, "
+                        + "VALUES (?, ?, ?, ?, ?, ?, 'selection_requested', ?, now(), ?, ?, ?, ?, ?, ?, ?, "
                         + "'pending_edge', ?, NULL, "
                         + "?::jsonb, ?, ?, ?, ?) RETURNING " + EVENT_COLUMNS,
                 MeasurementSelectionRepository::mapEvent,
-                scope.tenantId(), scope.siteId(), scope.deviceId(), pointKey, revision, requestId,
+                scope.tenantId(), scope.siteId(), scope.deviceId(), entityId, pointKey, revision,
+                requestId,
                 enabled, cadenceS, timestamp(enabledAt), timestamp(disabledAt), catalogVersion,
                 actor, actorName,
                 applyReason, customJson,
@@ -255,7 +312,16 @@ public class MeasurementSelectionRepository {
                 retention.longTermCadenceS(), retention.longTermStrategy());
     }
 
-    /** Apply one monotone full-plan acknowledgement atomically. */
+    /**
+     * Apply one monotone full-plan acknowledgement atomically.
+     *
+     * <p>⚠ The edge acknowledges POINT KEYS, not components - it has no
+     * component binding before Stufe 3c. An acknowledgement therefore reaches
+     * every row of this device carrying that key. That is the honest reflection
+     * of what the box did (it reads a register once, over the primary
+     * inverter's connection); the per-component precision follows with the edge
+     * release that also consumes {@code entity_id} from the desired state.
+     */
     @Transactional
     public int applyAcknowledgement(UUID deviceId, long revision, Instant appliedAt,
             Collection<String> accepted, Map<String, String> rejected, String edgeVersion) {
@@ -269,8 +335,12 @@ public class MeasurementSelectionRepository {
                         + " WHEN NOT enabled OR point_key = ANY (string_to_array(?, E'\\x1f')) THEN ? "
                         + " WHEN point_key = ANY (string_to_array(?, E'\\x1f')) THEN ?::jsonb ->> point_key "
                         + " ELSE apply_reason END, "
+                        // ⚠ A bare ? in a CASE whose other branch is an untyped
+                        // NULL resolves to text, and the assignment to the
+                        // timestamptz column then fails. Cast every timestamp
+                        // parameter of this statement explicitly.
                         + "applied_at = CASE WHEN NOT enabled OR point_key = ANY (string_to_array(?, E'\\x1f')) "
-                        + " THEN ? ELSE NULL END "
+                        + " THEN CAST(? AS timestamptz) ELSE NULL END "
                         + "WHERE device_id = ? AND desired_revision <= ?",
                 joined(accepted), joined(rejected.keySet()), joined(accepted),
                 "Vom Edge " + edgeVersion + " angewendet.", joined(rejected.keySet()),
@@ -278,17 +348,20 @@ public class MeasurementSelectionRepository {
                 revision);
 
         jdbc.update("INSERT INTO device_measurement_selection_event "
-                        + "(tenant_id,site_id,device_id,point_key,desired_revision,event_kind,"
+                        + "(tenant_id,site_id,device_id,entity_id,point_key,desired_revision,event_kind,"
                         + "requested_at,requested_enabled,requested_cadence_s,enabled_at,disabled_at,"
                         + "catalog_version,actor,actor_name,apply_status,apply_reason,applied_at,"
                         + "custom_definition,retention_class,raw_retention_days,long_term_cadence_s,"
                         + "long_term_strategy) "
-                        + "SELECT e.tenant_id,e.site_id,e.device_id,e.point_key,e.desired_revision,"
-                        + "'edge_ack',?,e.requested_enabled,e.requested_cadence_s,e.enabled_at,"
+                        + "SELECT e.tenant_id,e.site_id,e.device_id,e.entity_id,e.point_key,"
+                        + "e.desired_revision,"
+                        + "'edge_ack',CAST(? AS timestamptz),e.requested_enabled,"
+                        + "e.requested_cadence_s,e.enabled_at,"
                         + "e.disabled_at,e.catalog_version,'edge',?,"
                         + "CASE WHEN jsonb_exists(?::jsonb,e.point_key) THEN 'rejected' ELSE 'applied' END,"
                         + "COALESCE(?::jsonb ->> e.point_key, ?),"
-                        + "CASE WHEN jsonb_exists(?::jsonb,e.point_key) THEN NULL ELSE ? END,"
+                        + "CASE WHEN jsonb_exists(?::jsonb,e.point_key) THEN NULL "
+                        + "ELSE CAST(? AS timestamptz) END,"
                         + "e.custom_definition,"
                         + "e.retention_class,e.raw_retention_days,e.long_term_cadence_s,"
                         + "e.long_term_strategy FROM device_measurement_selection_event e "
@@ -320,7 +393,8 @@ public class MeasurementSelectionRepository {
 
     private static Row mapRow(ResultSet rs, int n) throws SQLException {
         return new Row(rs.getObject("tenant_id", UUID.class), rs.getObject("site_id", UUID.class),
-                rs.getObject("device_id", UUID.class), rs.getString("point_key"),
+                rs.getObject("device_id", UUID.class), rs.getObject("entity_id", UUID.class),
+                rs.getString("point_key"),
                 rs.getBoolean("enabled"), (Integer) rs.getObject("cadence_s"),
                 rs.getLong("desired_revision"), instant(rs, "enabled_at"),
                 instant(rs, "disabled_at"), rs.getString("catalog_version"),
@@ -335,6 +409,7 @@ public class MeasurementSelectionRepository {
     private static Event mapEvent(ResultSet rs, int n) throws SQLException {
         return new Event(rs.getLong("id"), rs.getObject("tenant_id", UUID.class),
                 rs.getObject("site_id", UUID.class), rs.getObject("device_id", UUID.class),
+                rs.getObject("entity_id", UUID.class),
                 rs.getString("point_key"), rs.getLong("desired_revision"),
                 rs.getString("event_kind"), rs.getObject("idempotency_key", UUID.class),
                 instant(rs, "requested_at"),

@@ -3,10 +3,28 @@
 const { buildPlan, Scheduler } = require('./measurement-planner');
 const { resolvePoint, decodeRegisters, decodeDerived, derivedAddresses,
   decodeJSONSamples, decodeOcppSampledValue, templateKey } = require('./measurement-driver');
-const { LIMITS, COST_MS } = require('./measurement-planner');
+const { LIMITS, COST_MS, discoveryFor, byteOrderFor } = require('./measurement-planner');
+const { TARGET_PRIMARY } = require('./measurement-binding');
 const RESERVATION_MS = Object.freeze({ modbus_holding:4000, modbus_input:4000,
   sunspec_model:4000, http_api_key:4000, rest_json:4000, rpc_json:4000,
   ocpp_sampled_value:0 });
+
+/** The target key one planned selection/block belongs to (default: primary). */
+function targetKeyOf(selected) {
+  return (selected && selected.target && selected.target.key) || TARGET_PRIMARY;
+}
+
+/** Per-target bucket of the words read in this tick. */
+function wordsOf(wireWords, targetKey) {
+  let bucket = wireWords.get(targetKey);
+  if (!bucket) { bucket = new Map(); wireWords.set(targetKey, bucket); }
+  return bucket;
+}
+
+/** The HTTP poll-group key; must stay identical to the planner's. */
+function httpGroupKey(selected) {
+  return `${targetKeyOf(selected)}:${selected.point.poll_group}:${selected.cadence_s}`;
+}
 
 /**
  * Read-only runtime. Every I/O primitive is injected for bench simulation;
@@ -24,6 +42,7 @@ class MeasurementRuntime {
 
   apply(config, options) {
     const planning = Object.assign({ discovery:this.io.discovery,
+      discoveries:this.io.discoveries, binding:this.io.binding,
       ocppCapability:this.io.ocppCapability }, options || {});
     const candidate = buildPlan(config, planning);
     if (candidate.applied) {
@@ -102,6 +121,9 @@ class MeasurementRuntime {
     const blocks = this.active.blocks.filter((b) => b.points.some((p) => dueKeys.has(p)));
     for (const block of blocks) this.scheduler.enqueuePoll({ kind: 'modbus', block });
     for (const group of this.active.httpGroups) this.scheduler.enqueuePoll({ kind: 'json', group });
+    // ⚠ Wire words are kept PER TARGET. Register 616 of a bound Fronius and
+    // register 616 of the primary Deye are different facts; one flat map would
+    // decode one device's words with the other's point.
     const samples = []; const wireWords = new Map();
     for (let task; (task = this.scheduler.next());) {
       if (task.kind === 'control') { await task.run(); continue; }
@@ -110,32 +132,36 @@ class MeasurementRuntime {
     }
     for (const prerequisite of this.active.decoderPrerequisites || []) {
       if (!dueKeys.has(prerequisite.trigger_key)) continue;
-      const addresses = this.addresses(prerequisite.point);
-      if (addresses.length && addresses.every((address) => wireWords.has(address))) {
-        decodeRegisters(prerequisite.point, addresses.map((address) => wireWords.get(address)),
-          this.io.scaleFactors, addresses, this.decoderOptions(prerequisite.point, wireWords));
+      const words = wordsOf(wireWords, targetKeyOf(prerequisite));
+      const addresses = this.addresses(prerequisite.point, targetKeyOf(prerequisite));
+      if (addresses.length && addresses.every((address) => words.has(address))) {
+        decodeRegisters(prerequisite.point, addresses.map((address) => words.get(address)),
+          this.io.scaleFactors, addresses, this.decoderOptions(prerequisite.point, words,
+            targetKeyOf(prerequisite)));
       }
     }
     for (const selected of this.active.selections) {
       if (!dueKeys.has(selected.point.point_key)) continue;
+      const words = wordsOf(wireWords, targetKeyOf(selected));
       let sample = null;
       if (selected.point.address) {
-        const addresses = this.addresses(selected.point);
-        if (addresses.length && addresses.every((address) => wireWords.has(address))) {
-          sample = decodeRegisters(selected.point, addresses.map((address) => wireWords.get(address)),
-            this.io.scaleFactors, addresses, this.decoderOptions(selected.point, wireWords));
+        const addresses = this.addresses(selected.point, targetKeyOf(selected));
+        if (addresses.length && addresses.every((address) => words.has(address))) {
+          sample = decodeRegisters(selected.point, addresses.map((address) => words.get(address)),
+            this.io.scaleFactors, addresses, this.decoderOptions(selected.point, words,
+              targetKeyOf(selected)));
         }
-      } else if (derivedAddresses(selected.point).length) sample = decodeDerived(selected.point, wireWords);
+      } else if (derivedAddresses(selected.point).length) sample = decodeDerived(selected.point, words);
       if (sample) samples.push(sample);
     }
     if (samples.some((sample) => sample.invalidate_all)) return [];
     return this.publishSamples(samples, now);
   }
 
-  decoderOptions(point, wireWords) {
+  decoderOptions(point, wireWords, targetKey) {
     const decoder = point.decoder || {};
     return {
-      byteOrder:this.active && this.active.byteOrder,
+      byteOrder:byteOrderFor(this.active || {}, targetKey || TARGET_PRIMARY),
       byteOrderWord:decoder.byte_order && wireWords.get(decoder.byte_order.register),
       variantWord:decoder.variant && wireWords.get(decoder.variant.register),
       previousValues:this.decoderState.previous,
@@ -145,21 +171,28 @@ class MeasurementRuntime {
 
   async readBlock(block, dueKeys, wireWords) {
     if (typeof this.io.readModbus !== 'function') return [];
+    const target = block.target || { key:TARGET_PRIMARY, sourceId:null };
     let words;
+    // The target reaches the I/O layer, which resolves the CONNECTION at read
+    // time and throws when it cannot. A source that vanished between plan and
+    // poll therefore produces a gap, never a read of the primary.
     try { words = await this.runMeasuredRequest(block.source_kind || 'modbus_holding',
-      () => this.runBusTask(() => this.io.readModbus({ start:block.start,
-        count:block.count, source_kind:block.source_kind, priority:'measurement' }))); }
+      () => this.runBusTask(target, () => this.io.readModbus({ start:block.start,
+        count:block.count, source_kind:block.source_kind, target, priority:'measurement' }))); }
     catch (_) { return []; } // silence is a gap in time, never a synthetic zero sample.
     if (words === MeasurementRuntime.BUDGET_BLOCKED) return [];
     if (!Array.isArray(words) || words.length < block.count) return [];
-    for (let i = 0; i < block.count; i++) wireWords.set(block.start + i, words[i]);
+    const bucket = wordsOf(wireWords, target.key);
+    for (let i = 0; i < block.count; i++) bucket.set(block.start + i, words[i]);
     return [];
   }
 
   async readJSON(group, dueKeys) {
     if (typeof this.io.readJSON !== 'function') return [];
+    // A planned http group is {key, target}: one request per (target, group).
+    const { key, target } = group;
     const selected = this.active.selections.filter((x) => dueKeys.has(x.point.point_key)
-      && `${x.point.poll_group}:${x.cadence_s}` === group);
+      && httpGroupKey(x) === key);
     if (!selected.length) return [];
     // go-e filter combines every selected API key into one request. Shelly RPC
     // groups by component/method through poll_group and one status response.
@@ -167,7 +200,7 @@ class MeasurementRuntime {
       .map((x) => x.point.selector.split('filter=')[1]).filter(Boolean).join(',');
     let payload;
     try { payload = await this.runMeasuredRequest(selected[0].point.source_kind,
-      () => this.io.readJSON({ group, filter, points:selected.map((x)=>x.point) })); }
+      () => this.io.readJSON({ group:key, target, filter, points:selected.map((x)=>x.point) })); }
     catch (_) { return []; }
     if (payload === MeasurementRuntime.BUDGET_BLOCKED) return [];
     const payloads = payload && Array.isArray(payload.__vpResponses)
@@ -190,17 +223,19 @@ class MeasurementRuntime {
     return this.publishSamples(samples, at);
   }
 
-  addresses(point) {
+  addresses(point, targetKey) {
     if (Array.isArray(point.address.registers)) return point.address.registers;
     if (point.address.kind !== 'sunspec_relative') return [];
-    const model = this.io.discovery && this.io.discovery.models[point.address.model_id];
+    const discovery = discoveryFor(this.io, targetKey || TARGET_PRIMARY);
+    const model = discovery && discovery.models && discovery.models[point.address.model_id];
     if (!model || !Number.isInteger(model.base) || !Number.isInteger(point.address.offset_words)) return [];
     const start = model.base + point.address.offset_words;
     return Array.from({ length:point.address.width_words }, (_, i) => start + i);
   }
 
-  runBusTask(run) {
-    return typeof this.io.runBusTask === 'function' ? this.io.runBusTask('measurement', run) : run();
+  runBusTask(target, run) {
+    return typeof this.io.runBusTask === 'function'
+      ? this.io.runBusTask('measurement', run, target) : run();
   }
 
   trimWindow(window, ms) {
@@ -261,4 +296,4 @@ class MeasurementRuntime {
 
 MeasurementRuntime.BUDGET_BLOCKED = Symbol('budget-blocked');
 
-module.exports = { MeasurementRuntime, RESERVATION_MS };
+module.exports = { MeasurementRuntime, RESERVATION_MS, httpGroupKey };

@@ -32,8 +32,10 @@ test('KACO hybrid keeps MPPT dimensions, scales JSON and separates physical endp
   ]));
   assert.equal(plan.applied,true);
   assert.equal(plan.httpGroups.length,2);
-  assert.ok(plan.httpGroups.some((group)=>group.includes('device=2')));
-  assert.ok(plan.httpGroups.some((group)=>group.includes('device=4')));
+  // Stufe 3c: a group is {key, target}; both belong to the unbound primary here.
+  assert.ok(plan.httpGroups.every((group)=>group.target.key==='primary'));
+  assert.ok(plan.httpGroups.some((group)=>group.key.includes('device=2')));
+  assert.ok(plan.httpGroups.some((group)=>group.key.includes('device=4')));
 });
 
 test('KOSTAL explicit and register-5 auto byte order cover both documented word layouts',()=>{

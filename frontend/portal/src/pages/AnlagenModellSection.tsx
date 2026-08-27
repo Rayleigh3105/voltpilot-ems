@@ -59,6 +59,8 @@ import { ErrorState, TextSkeleton } from '../components/States';
 import { fmtNum } from '../format';
 import { NO_DATA } from '../nodata';
 import { BEFEHLE_LABEL } from '../befehle';
+import { SPEICHER_BLATT_LABEL, SPEICHER_KACHEL } from '../geraetGesicht';
+import { abschnittHash } from '../geraetRahmen';
 import {
   anlageRoute,
   befehleHash,
@@ -926,6 +928,7 @@ function GeraeteKarteView({
               onSofort={onSofort}
               technik={technik}
               ohneMesswert={ohneMesswertFor(c)}
+              geraetHref={k.href}
             />
           ))}
         </div>
@@ -953,6 +956,7 @@ function ComponentRow({
   onSofort,
   technik,
   ohneMesswert,
+  geraetHref,
 }: {
   component: PlantComponent;
   /** Für den Absprung in den Befehls-Verlauf DIESER Komponente. */
@@ -973,6 +977,13 @@ function ComponentRow({
    * sie wird hier nie abgeleitet, und ohne Beleg steht sie nicht da.
    */
   ohneMesswert?: { badge: string; satz: string } | null;
+  /**
+   * Der Weg auf die Geräteseite DIESER Karte - `null`, wo es keinen gibt (eine
+   * Box ohne eindeutige Referenz, ein synthetisches Gerät). Er trägt den
+   * §5.3-Absprung des Speichers: die Batterie hat KEINE eigene Seite, ihr
+   * Gesicht ist der Speicher-Teil des Hybrid-Blatts.
+   */
+  geraetHref?: string | null;
 }) {
   const c = component;
   // Die PV-Aspekt-Zeile hat keine eigene Entität - sie hat damit auch keine
@@ -1157,6 +1168,20 @@ function ComponentRow({
             <span className="vp-am-actions">
               <a className="vp-am-action" href={befehleHash(siteId, c.entityId)}>
                 <Icon name="shield" size={13} /> {BEFEHLE_LABEL}
+              </a>
+            </span>
+          )}
+          {/* §5.3: die BATTERIE hat kein eigenes Blatt - sie ist der
+              Speicher-Teil des Hybrid-Gesichts. Der Absprung markiert dort
+              genau ihre Kachel (`?abschnitt=jetzt&kachel=speicher`); ohne
+              Geräteseite gibt es ihn nicht (die `registerZugang`-Regel). */}
+          {c.role === 'storage' && geraetHref && (
+            <span className="vp-am-actions">
+              <a
+                className="vp-am-action"
+                href={abschnittHash(geraetHref, 'jetzt', SPEICHER_KACHEL)}
+              >
+                <Icon name="battery" size={13} /> {SPEICHER_BLATT_LABEL}
               </a>
             </span>
           )}

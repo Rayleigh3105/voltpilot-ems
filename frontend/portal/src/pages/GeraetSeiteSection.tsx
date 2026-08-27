@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { VpPicker } from '../components/VpPicker';
 import {
   api,
   ApiError,
-  type CommandHistory,
+  type SchedulePlan,
+  type SiteInterventions,
   type DeviceExportLimit,
   type RegisterKnowledgeFamily,
   type RegisterWriteEvent,
@@ -34,14 +36,13 @@ import {
 } from '../geraetSeite';
 import {
   abregelungDiesesGeraets,
+  blattHinweis,
   gesicht,
-  OHNE_REGISTER_SATZ,
   type Gesicht,
   type Held,
   type HeldKachel,
   type SektionId,
 } from '../geraetGesicht';
-import { inUrl, LEER, type BefehlFilter } from '../befehleFilter';
 import { plantModel, type PlantComponent } from '../komponenten';
 import { fmtNum } from '../format';
 import { deviceLimitLine, exportGuardView, WAECHTER_LABEL } from '../curtailment';
@@ -52,7 +53,6 @@ import { anlageRoute, befehleGeraetHash, boxSeiteHash, hashForRoute, pageRoute }
 import {
   ABRUF_HINWEIS,
   abrufZeile,
-  KEINE_REGISTER,
   LESE_FEHLGESCHLAGEN,
   QUELLE_WORT,
   registerSicht,
@@ -77,10 +77,39 @@ import {
   aufzeichnungSeit,
   GERAETE_BEFEHLE,
   genauigkeitsSatz,
-  geraeteAusschnitt,
   NUR_LESEN,
-  type BefehlZeile,
 } from '../befehle';
+import {
+  aktionsZeile,
+  neuesteZeile,
+  type VerlaufAktion,
+} from '../befehleVerlauf';
+import {
+  BefehleAktionszeile,
+  BefehleVerlauf,
+  useBefehleVerlauf,
+  type VerlaufState,
+} from '../components/BefehleVerlauf';
+import {
+  DAUERN,
+  endeVon,
+  handeingriffFolgen,
+  planVerzicht,
+  speicherAktionen,
+  type HandeingriffAktion,
+} from '../handeingriff';
+import { HandeingriffDialog } from '../components/HandeingriffDialog';
+import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
+import { consumersApi } from '../consumers/consumersApi';
+import type { Consumer } from '../consumers/types';
+import {
+  sofortAktionen,
+  fulfilmentSummary,
+  type ConsumerFulfilment,
+  type ManualOverride,
+  type SofortAktion,
+} from '../consumers/fulfillment';
+import { consumerHasMeasurement } from '../consumers/questions';
 import { controlStrip } from '../control';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { showTechnicalLayer } from '../rollen';
@@ -100,16 +129,24 @@ import {
   kopfHinweis,
   kurz,
   rahmen,
+  parseKachel,
   type Befund,
+  type RahmenSektionId,
   type SektionAngebot,
 } from '../geraetRahmen';
-import { MeasurementLibrary } from '../components/MeasurementLibrary';
-import { BEOBACHTEN_HINWEIS, beobachtenMoeglich, geraetFamilien } from '../registerFamilie';
+import { BeobachteteRegister } from '../components/BeobachteteRegister';
+import {
+  BRUECKE_LABEL,
+  BRUECKE_NICHT_MOEGLICH,
+  brueckeAusLesung,
+  type BrueckeVorschlag,
+} from '../beobachteteRegister';
+import { beobachtenMoeglich, geraetFamilien } from '../registerFamilie';
 import '../components/AnlagenModell.css';
 // ⚠ Ein Bauteil bringt sein Stylesheet SELBST mit (die RegelKarten-Lehre): die
-// Befehls-Sektion rendert den Schnell-Chip `.vp-bf-chip`, dessen Regeln in
-// `Befehle.css` wohnen - ohne diesen Import stand er als nackter Knopf da,
-// sobald ein Kunde direkt auf einer Geräteseite ankam (im Browser gefunden).
+// Befehls-Sektion rendert den VERLAUF, dessen Regeln in `Befehle.css` wohnen -
+// ohne diesen Import stünde er ungestylt da, sobald ein Kunde direkt auf einer
+// Geräteseite ankommt (im Browser gefunden).
 import './Befehle.css';
 import './GeraetSeite.css';
 
@@ -174,10 +211,34 @@ export function GeraetSeiteSection({
   const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]> | null>(null);
-  const [commands, setCommands] = useState<CommandHistory | null>(null);
+  // Geräteseiten Stufe 2: der VERLAUF lädt sich selbst (Fenster, Cursor,
+  // stiller Takt) - dieselbe Mechanik wie auf der Befehle-Seite.
+  const [interventions, setInterventions] = useState<SiteInterventions | null>(null);
+  const [consumers, setConsumers] = useState<Consumer[]>([]);
+  const [overrides, setOverrides] = useState<ManualOverride[]>([]);
+  // §5.4: die Erfüllungs-Kopfzeile des Helden. Sie wird NUR geholt, wenn es
+  // wirklich einen Verbraucher gibt - sonst gäbe es nichts zu erfüllen.
+  const [fulfilment, setFulfilment] = useState<ConsumerFulfilment | null>(null);
+  const [plan, setPlan] = useState<SchedulePlan | null>(null);
+  const [regOffen, setRegOffen] = useState(false);
+  const [hand, setHand] = useState<HandeingriffAktion | null>(null);
+  const [handDauer, setHandDauer] = useState('2h');
+  const [eingriff, setEingriff] = useState<{ consumer: Consumer; aktion: SofortAktion } | null>(null);
+  const [aktionBusy, setAktionBusy] = useState(false);
   const [targets, setTargets] = useState<RegisterWriteTarget[] | null>(null);
   const [writes, setWrites] = useState<RegisterWriteEvent[] | null>(null);
   const [knowledge, setKnowledge] = useState<RegisterKnowledgeFamily[] | null>(null);
+  /**
+   * Die BRÜCKE (Stufe 3a §7.2 Teil 3): eine gelesene Zeile wird zur
+   * Beobachtung. Sie reist als ZUSTAND durch den Wirt, weil Lesung (Teil 3)
+   * und Beobachtungs-Liste (Teil 1) zwei Bauteile sind - und wird nach dem
+   * Öffnen des Formulars wieder abgeräumt, damit derselbe Vorschlag nicht bei
+   * jedem Render erneut aufspringt.
+   */
+  const [bruecke, setBruecke] = useState<BrueckeVorschlag | null>(null);
+  const brueckeVerbraucht = useCallback(() => setBruecke(null), []);
+  /** Die Kurzfassung der Register-Sektion - sie kommt aus der Beobachtungs-Fläche. */
+  const [beobKurz, setBeobKurz] = useState<string | null>(null);
   // Die PLATTFORM-Sicht: vier zusätzliche Reads, die es NUR hinter dem einen
   // Tor überhaupt gibt (M7 `showTechnicalLayer`) - ein Kunde holt sie nie.
   const [adminView, setAdminView] = useState<GeraetView | null>(null);
@@ -218,9 +279,6 @@ export function GeraetSeiteSection({
     soft(api.edgeVersions(), setEdgeVersions);
     soft(api.siteChargers(site.id), setCharging);
     soft(api.entityStrategies(site.id), setStrategies);
-    // Sektion F: der Verlauf DIESES Geräts. Der Server entscheidet, was zu ihm
-    // gehört (`?device=`) - die Fläche schneidet nichts selbst zurecht.
-    soft(api.commandHistory(site.id, { device: geraetId ?? geraeteRef }), setCommands);
     // Sektion E: die Ziele des Register-Werkzeugs. Ohne sie gibt es keinen
     // Knopf - nie einen, der ins Leere führt.
     //
@@ -374,6 +432,20 @@ export function GeraetSeiteSection({
     }
   }
 
+  /**
+   * Der Verbraucher DIESES Geräts - die Grundlage der §5.4-Zeilen (Erfüllung,
+   * D3-Messfähigkeit) UND der Sofortaktion.
+   *
+   * ⚠ Er steht VOR dem Gesicht, obwohl `consumers` erst geladen wird, wenn das
+   * Gesicht die Gattung `verbraucher` gesagt hat: die Gattung hängt an Rolle
+   * und Entitätstyp, nie an dieser Liste, also konvergiert es in zwei Läufen -
+   * eine Schleife gibt es nicht. Umgekehrt wäre es ein TDZ-Fehler.
+   */
+  const eigenerVerbraucher = useMemo(() => {
+    const ids = new Set((view?.komponenten ?? []).map((c) => c.entityId));
+    return consumers.find((c) => ids.has(c.id)) ?? null;
+  }, [consumers, view]);
+
   // ------------------------------------------------------------------
   // Das GESICHT dieser Seite - was oben steht und welche Sektionen folgen.
   // Es entscheidet NUR die Auswahl; jede Sektion bleibt das geteilte Bauteil.
@@ -406,10 +478,18 @@ export function GeraetSeiteSection({
       control: control && box?.id && control.deviceId === box.id ? control : null,
       curtailment,
       regeln: regelNamenOf(strategies, view.komponenten),
+      // §5.1/§5.3/§5.8: die EINZIGE Quelle mit einem Wert JE KANAL - die
+      // Batterieleistung des Hybriden, der Relais-Zustand eines Schalters und
+      // die selbst definierten Kanäle des Eigenbaus.
+      topologie: topology?.entities ?? null,
+      // §5.4: WÖRTLICH die geteilte Erfüllungs-Kopfzeile bzw. die geteilte
+      // D3-Regel - ein zweites Urteil hier wäre eine zweite Wahrheit.
+      erfuellung: fulfilment ? fulfilmentSummary(fulfilment).headline : null,
+      gemessen: eigenerVerbraucher ? consumerHasMeasurement(eigenerVerbraucher) : null,
       now,
     });
   }, [view, data, components, sources, charging, control, curtailment, strategies,
-    geraetId, geraeteRef, box?.id, now]);
+    topology, fulfilment, eigenerVerbraucher, geraetId, geraeteRef, box?.id, now]);
 
   /**
    * Die Katalog-Familien DIESES Geräts - der Filter der Messbibliothek
@@ -455,10 +535,6 @@ export function GeraetSeiteSection({
     () => ladeparkZeilen(charging, geraetId),
     [charging, geraetId],
   );
-  const ohneRegisterSatz = gesichtView && !gesichtView.sektionen.includes('register')
-    ? (gesichtView.gattung === 'ladepunkt' ? KEINE_REGISTER.ladepunkt : OHNE_REGISTER_SATZ)
-    : null;
-
   // ------------------------------------------------------------------
   // DER RAHMEN (Geräteseiten Stufe 1, Konzept §4)
   //
@@ -487,27 +563,227 @@ export function GeraetSeiteSection({
    * Rahmen ein KNOTEN, weil sie in die Register-Sektion gehört (§4.4 Zeile 5)
    * - und auf dem Ladepunkt-Pfad in dessen eigene Messwert-Sektion.
    */
-  const messbibliothek = view?.gefunden ? (
-    <MeasurementLibrary
+  const beobachtung = view?.gefunden ? (
+    <BeobachteteRegister
       deviceId={boxDevice?.id}
       siteId={site.id}
       entityId={editRow?.id}
       familien={messFamilien ?? undefined}
       eigeneErlaubt={geraetId === 'inverter'}
-      beobachtenHinweis={
-        beobachtenMoeglich({ geraetId, familien: messFamilien ?? [] })
-          ? null
-          : BEOBACHTEN_HINWEIS
-      }
+      registerFaehig={registerSektion}
+      geraetName={view.kopf.titel}
+      lesbar={beobachtenMoeglich({ geraetId, familien: messFamilien ?? [] })}
+      bruecke={bruecke}
+      onBrueckeVerbraucht={brueckeVerbraucht}
+      onKurzfassung={setBeobKurz}
     />
   ) : null;
 
-  const ausschnitt = useMemo(() => geraeteAusschnitt(commands, now, 5), [commands, now]);
+  // ------------------------------------------------------------------
+  // Sektion 2 · Befehle (Geräteseiten Stufe 2, Konzept §6)
+  //
+  // Der Server entscheidet, was zu diesem Gerät gehört (`?device=`) - die
+  // Fläche schneidet nichts selbst zurecht. Der Haken lädt dieselbe Liste wie
+  // die Befehle-Seite; gepollt wird hier NICHT (die Seite hat ihren eigenen
+  // 30-s-Takt, ein zweiter daneben wäre doppelte Last).
+  // ------------------------------------------------------------------
+  const verlauf = useBefehleVerlauf({
+    siteId: site.id, geraetRef: geraetId ?? geraeteRef,
+  });
+  const letzteZeile = useMemo(() => neuesteZeile(verlauf.view), [verlauf.view]);
+
+  /**
+   * Was dieses Blatt ABSETZEN kann (§6.2) - fail-soft und GATTUNGS-GETAKTET:
+   * ein Zähler oder ein PV-Melder bezahlt die drei Abrufe nie, weil seine
+   * Aktionszeile ohnehin leer bliebe.
+   *
+   * ⚠ Er hängt an der GATTUNG, nicht am Gerät: sie steht erst fest, wenn der
+   * eine tragende Abruf zurück ist - deshalb ein EIGENER Effekt neben dem
+   * Haupt-Abruf, kein zweiter Zweig darin.
+   */
+  const gattung = gesichtView?.gattung ?? null;
+  const brauchtSpeicher = gattung === 'wechselrichter-speicher';
+  const brauchtVerbraucher = gattung === 'verbraucher' || gattung === 'geraet';
+  useEffect(() => {
+    if (!brauchtSpeicher && !brauchtVerbraucher) return undefined;
+    let active = true;
+    const soft = <T,>(p: Promise<T>, set: (v: T) => void, leer: T) => {
+      void p.then(
+        (v) => { if (active) set(v); },
+        () => { if (active) set(leer); },
+      );
+    };
+    if (brauchtSpeicher) {
+      soft(api.siteInterventions(site.id), setInterventions, null);
+      // Der Fahrplan trägt den PLAN-VERZICHT der Folgen-Karte. Ohne ihn sagt
+      // sie ehrlich „nicht abschätzbar" - eine Zahl wird nie erfunden.
+      soft(api.schedule(site.id), setPlan, null);
+    }
+    if (brauchtVerbraucher) {
+      soft(consumersApi.list(site.id), setConsumers, []);
+      soft(consumersApi.overrides(site.id), setOverrides, []);
+    }
+    return () => { active = false; };
+  }, [site.id, brauchtSpeicher, brauchtVerbraucher, reloadKey]);
+
+  /**
+   * Die Erfüllung DIESES Verbrauchers (§5.4). Eigener Effekt, weil sie an der
+   * Verbraucher-KENNUNG hängt, nicht an der Anlage - und fail-soft wie jeder
+   * Neben-Abruf: ohne sie fehlt die Zeile, die Seite bleibt.
+   */
+  useEffect(() => {
+    const id = eigenerVerbraucher?.id;
+    if (!id) { setFulfilment(null); return undefined; }
+    let active = true;
+    void consumersApi.fulfillment(site.id, id).then(
+      (v) => { if (active) setFulfilment(v); },
+      () => { if (active) setFulfilment(null); },
+    );
+    return () => { active = false; };
+  }, [site.id, eigenerVerbraucher?.id, reloadKey]);
+
+  /**
+   * Der Register-Zugang DIESES Geräts - er entscheidet, ob die Aktionszeile
+   * „Register schreiben" anbietet UND ob die Register-Sektion ihren Knopf
+   * zeigt. Er wird EINMAL hier gerechnet: zwei Ableitungen könnten über
+   * denselben Schreibweg Verschiedenes behaupten.
+   *
+   * ⚠ `targets == null` heisst „lädt noch" - dann wird NICHTS behauptet, weder
+   * ein Weg noch sein Fehlen.
+   */
+  const zugang: GeraetRegisterZugang = useMemo(() => {
+    if (!view?.gefunden) return { moeglich: false, grund: null, vorwahl: null, weg: null };
+    if (targets == null) return { moeglich: false, grund: null, vorwahl: null, weg: null };
+    if (!box?.id) return { moeglich: false, grund: KEIN_SCHREIBWEG, vorwahl: null, weg: null };
+    return geraetRegisterZugang(targets, {
+      art: view.art,
+      deviceId: box.id,
+      entityIds: view.komponenten.map((c) => c.entityId),
+    });
+  }, [view, targets, box?.id]);
+
+  /**
+   * Die AKTIONSZEILE über dem Verlauf (§6.2). Sie LÖST nur aus - geöffnet wird
+   * jeweils der BESTEHENDE Dialog, es entsteht kein zweiter Auslöse-Pfad.
+   *
+   * ⚠ Was der Zustand nicht hergibt, wird nicht angeboten: die
+   * Speicher-Handlungen kommen aus `speicherAktionen`, die Geräte-Handlungen
+   * aus `sofortAktionen`, der Register-Weg aus dem Zugang oben.
+   */
+  const aktionen = useMemo(() => {
+    if (!gesichtView) return [];
+    const strip = control && box?.id && control.deviceId === box.id
+      ? controlStrip(control, new Date(now))
+      : null;
+    return aktionsZeile({
+      gattung: gesichtView.gattung,
+      speicher: speicherAktionen({
+        laufend: (interventions?.interventions ?? []).some((i) => i.entityId != null),
+        // Steuerbar heisst: das Rücklesen dieses Geräts trägt wirklich - genau
+        // die Bedingung, mit der auch die Jetzt-Zone der Steuerung urteilt.
+        steuerbar: strip?.state === 'healthy' || strip?.state === 'mismatch',
+        pausiert: interventions?.automationPaused === true,
+      }),
+      verbraucher: eigenerVerbraucher
+        ? sofortAktionen({
+            connected: eigenerVerbraucher.connection === 'connected',
+            hasOverride: overrides.some((o) => o.entityId === eigenerVerbraucher.id),
+          })
+        : [],
+      registerMoeglich: zugang.moeglich,
+    });
+  }, [gesichtView, control, box?.id, now, interventions, eigenerVerbraucher, overrides, zugang]);
+
+  /**
+   * Der EINE Auslöser der Aktionszeile. Er ÖFFNET nur - gehandelt wird in dem
+   * Dialog, den die jeweilige Handlung schon hat (kein zweiter Auslöse-Pfad).
+   */
+  const aktionAusloesen = useCallback((a: VerlaufAktion) => {
+    if (a.art === 'register') setRegOffen(true);
+    else if (a.art === 'speicher') setHand(a.wert as HandeingriffAktion);
+    else if (a.art === 'verbraucher' && eigenerVerbraucher) {
+      setEingriff({ consumer: eigenerVerbraucher, aktion: a.wert as SofortAktion });
+    }
+  }, [eigenerVerbraucher]);
+
+  /**
+   * Die Folgen-Karte des Speicher-Eingriffs - dieselbe Komposition wie in der
+   * Jetzt-Zone der Steuerung (`handeingriffFolgen`), damit die zwei Flächen
+   * über dieselbe Handlung nichts Verschiedenes versprechen.
+   */
+  const handEnde = useCallback((key: string) => {
+    const gewaehlt = DAUERN.find((d) => d.key === key) ?? DAUERN[2];
+    return endeVon(gewaehlt, new Date(now));
+  }, [now]);
+
+  const handFolgen = useMemo(() => {
+    if (!hand) return null;
+    const ende = handEnde(handDauer);
+    return handeingriffFolgen({
+      aktion: hand,
+      endeText: `${ende.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`,
+      // ⚠ Ladestand und Ladeleistung stehen auf DIESER Fläche nicht belegt zur
+      // Verfügung - die Karte lässt die Klammern weg, statt eine Zahl zu
+      // erfinden (wörtlich die Regel der Jetzt-Zone).
+      socPct: null,
+      leistungKw: null,
+      verzicht: planVerzicht(plan?.slots ?? null, new Date(now), ende),
+    });
+  }, [hand, handDauer, handEnde, plan, now]);
+
+  const handBestaetigen = useCallback(async (minutes: number | null) => {
+    if (!hand) return;
+    setAktionBusy(true);
+    try {
+      // ⚠ „bis morgen früh" reist als absolutes ENDE, jede andere Dauer als
+      // Minuten - genau das, was der Server erwartet.
+      const body = minutes == null
+        ? { endsAt: handEnde(handDauer).toISOString() }
+        : { durationMinutes: minutes };
+      if (hand === 'resume') await api.clearBatteryOverride(site.id);
+      else {
+        await api.startBatteryOverride(site.id,
+          { kind: hand as 'speicher_laden' | 'speicher_halten', ...body });
+      }
+      setReloadKey((k) => k + 1);
+    } catch {
+      // Ein abgelehnter Eingriff lässt die Seite stehen, wie sie war - nie ein
+      // Schein-Erfolg.
+    } finally {
+      setAktionBusy(false);
+      setHand(null);
+    }
+  }, [hand, handDauer, handEnde, site.id]);
+
+  const eingriffBestaetigen = useCallback(async (minuten?: number) => {
+    if (!eingriff) return;
+    setAktionBusy(true);
+    try {
+      if (eingriff.aktion === 'resume') {
+        await consumersApi.clearOverride(site.id, eingriff.consumer.id);
+      } else {
+        await consumersApi.startOverride(site.id, eingriff.consumer.id, {
+          action: eingriff.aktion,
+          durationMinutes: minuten,
+        });
+      }
+      setReloadKey((k) => k + 1);
+    } catch {
+      // Wie oben: nie ein Schein-Erfolg.
+    } finally {
+      setAktionBusy(false);
+      setEingriff(null);
+    }
+  }, [eingriff, site.id]);
 
   const rahmenView = useMemo(() => {
     if (!view?.gefunden || !gesichtView) return rahmen([]);
     const hat = (id: SektionId) => gesichtView.sektionen.includes(id);
-    const letzte = ausschnitt.zeilen[ausschnitt.zeilen.length - 1] ?? null;
+    // ⚠ Der Grund einer entfallenen Sektion wird NICHT hier formuliert - das
+    // Gesicht hat ihn schon gesagt (§4.6: er verschwindet nie, er zieht um).
+    const entfallGrund = (id: RahmenSektionId) =>
+      gesichtView.entfallen.find((e) => e.id === id)?.grund ?? null;
+    const letzte = letzteZeile;
     const angebote: (SektionAngebot | null)[] = [
       heldTraegt ? { id: GESICHT_ZU_RAHMEN.jetzt, ton: view.kopf.zustand.ton } : null,
       hat('befehle')
@@ -518,16 +794,20 @@ export function GeraetSeiteSection({
           // wäre dieselbe Aussage zweimal auf einer Karte (die Haus-Regel).
           kurzfassung: letzte ? kurz(`zuletzt ${letzte.zeit}`, letzte.urteil) : null,
         }
-        : null,
-      // „Steuerung & Grenzen" gibt es IMMER: die Steuerungs-Bezüge sind in
-      // jeder Gattung dieselbe Auskunft.
-      {
-        id: 'steuerung',
-        kurzfassung: kurz(
-          view.kopf.steuerAbzeichen,
-          grenzen.length > 0 ? `${grenzen.length} Grenzen` : null,
-        ),
-      },
+        : { id: 'befehle', entfaellt: true, grund: entfallGrund('befehle') },
+      // ⚠ „Steuerung & Grenzen" gibt es seit Stufe 4 NICHT mehr immer: ein
+      // Zähler wird von niemandem gesteuert und trägt keine Grenze, die Sektion
+      // erklärte dort nur ihre eigene Nicht-Zuständigkeit (§4.6). Entschieden
+      // wird das im Gesicht - der Grund zieht mit in die Diagnose.
+      gesichtView.steuerung
+        ? {
+          id: 'steuerung',
+          kurzfassung: kurz(
+            view.kopf.steuerAbzeichen,
+            grenzen.length > 0 ? `${grenzen.length} Grenzen` : null,
+          ),
+        }
+        : { id: 'steuerung', entfaellt: true, grund: entfallGrund('steuerung') },
       hat('komponenten')
         ? {
           id: GESICHT_ZU_RAHMEN.komponenten,
@@ -542,9 +822,12 @@ export function GeraetSeiteSection({
           // D3: „Register" wäre an einem HTTP-Gerät das falsche Wort, die
           // Fähigkeit ist es nicht.
           titel: registerSektion ? null : 'Messwerte',
-          kurzfassung: registerSektion ? 'lesen · beobachten · schreiben' : 'beobachten',
+          // ⚠ Die Beobachtungs-Kurzfassung kommt aus der Fläche, die sie kennt
+          // (Stufe 3a); ohne eine einzige Beobachtung bleibt es beim Angebot.
+          kurzfassung: beobKurz
+            ?? (registerSektion ? 'lesen · beobachten · schreiben' : 'beobachten'),
         }
-        : { id: 'register', entfaellt: true, grund: ohneRegisterSatz },
+        : { id: 'register', entfaellt: true, grund: entfallGrund('register') },
       hat('verbindung')
         ? {
           id: GESICHT_ZU_RAHMEN.verbindung,
@@ -559,7 +842,7 @@ export function GeraetSeiteSection({
           id: GESICHT_ZU_RAHMEN.software,
           kurzfassung: view.software.length > 0 ? view.software[0].wert : null,
         }
-        : null,
+        : { id: 'software', entfaellt: true, grund: entfallGrund('software') },
       view.diagnose.length > 0
         ? { id: 'diagnose', kurzfassung: `${view.diagnose.length} Angaben` }
         : null,
@@ -567,8 +850,8 @@ export function GeraetSeiteSection({
     ];
     return rahmen(angebote);
   }, [
-    view, gesichtView, heldTraegt, ausschnitt, grenzen, registerSektion,
-    hatMessbibliothek, ohneRegisterSatz, adminView,
+    view, gesichtView, heldTraegt, letzteZeile, grenzen, registerSektion,
+    hatMessbibliothek, adminView, beobKurz,
   ]);
 
   /**
@@ -601,6 +884,47 @@ export function GeraetSeiteSection({
     ];
     return kopfHinweis(befunde, rahmenView.sektionen.map((s) => s.id));
   }, [control, curtailment, box?.id, view?.art, now, rahmenView]);
+
+  /**
+   * Die angesprungene Kachel (§5.3) - sie kommt als PARAMETER im Hash, nie als
+   * zweites `#` (der HashRouter läse es als Route). Gelesen wird beim Aufbau
+   * UND bei jedem Hash-Wechsel, wie der Abschnitts-Sprung des Rahmens: ein
+   * Klick aus einer schon offenen Seite muss ebenfalls wirken.
+   */
+  const [angesprungeneKachel, setAngesprungeneKachel] = useState<string | null>(
+    () => (typeof window === 'undefined' ? null : parseKachel(window.location.hash)),
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const lesen = () => setAngesprungeneKachel(parseKachel(window.location.hash));
+    lesen();
+    window.addEventListener('hashchange', lesen);
+    return () => window.removeEventListener('hashchange', lesen);
+  }, []);
+
+  /**
+   * Der HILFETEXT dieses Blatts (§5.4): eine Wärmepumpe ist ein schaltbarer
+   * Verbraucher - das steht als Satz da, nie als Titel (Captain-Entscheid).
+   */
+  const hinweisSatz = useMemo(() => {
+    if (!view?.gefunden || !gesichtView) return null;
+    return blattHinweis(gesichtView, {
+      komponenten: view.komponenten,
+      entities: data?.entities ?? null,
+    });
+  }, [view, gesichtView, data]);
+
+  /**
+   * Die PRIMÄRE Handlung des Verbraucher-Blatts (§5.4). Sie steht im JETZT,
+   * damit sie nicht erst hinter der Aktionszeile auftaucht - und sie ist
+   * dieselbe, die die Zeile darunter anbietet (kein zweiter Auslöse-Pfad).
+   */
+  const heldAktion = useMemo(() => {
+    if (gesichtView?.gattung !== 'verbraucher') return null;
+    const erste = aktionen.find((a) => a.art === 'verbraucher');
+    if (!erste) return null;
+    return { text: erste.label, onClick: () => aktionAusloesen(erste) };
+  }, [gesichtView, aktionen, aktionAusloesen]);
 
   return (
     <div className="vp-geraet">
@@ -654,7 +978,7 @@ export function GeraetSeiteSection({
           ) ?? null}
           canEdit={components?.componentAuthority === 'portal' && Boolean(editRow)}
           onEdit={() => setEditOpen(true)}
-          messwerte={messbibliothek}
+          messwerte={beobachtung}
         />
       )}
 
@@ -728,7 +1052,14 @@ export function GeraetSeiteSection({
         >
           {/* 1 · Jetzt - ohne Klapp-Kopf (§4.5). */}
           <RahmenSektion id="jetzt">
-            {gesichtView && <HeldKarte held={gesichtView.held} stand={view.liveStand} />}
+            {gesichtView && (
+              <HeldKarte
+                held={gesichtView.held}
+                stand={view.liveStand}
+                markiert={angesprungeneKachel}
+                aktion={heldAktion}
+              />
+            )}
           </RahmenSektion>
 
           {/* 2 · Befehle */}
@@ -736,8 +1067,9 @@ export function GeraetSeiteSection({
             <BefehleSektion
               siteId={site.id}
               geraetRef={geraetId ?? geraeteRef}
-              history={commands}
-              ausschnitt={ausschnitt}
+              state={verlauf}
+              aktionen={aktionen}
+              onAktion={aktionAusloesen}
             />
           </RahmenSektion>
 
@@ -775,6 +1107,7 @@ export function GeraetSeiteSection({
                 (z) => !(gesichtView?.sektionen.includes('einspeise')
                   && z.label === WAECHTER_LABEL),
               )} />
+              {hinweisSatz && <p className="vp-note">{hinweisSatz}</p>}
               <p className="vp-geraet-sec-sub">
                 <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>
                   Regeln und Betriebsmodelle dieser Anlage ansehen →
@@ -797,14 +1130,21 @@ export function GeraetSeiteSection({
 
           {/* 5 · Register - Lesen, Beobachten und Schreiben an EINEM Ort. */}
           <RahmenSektion id="register">
+            {/* 1+2 · Beobachtete Register und der Katalog DIESES Geräts. */}
+            {beobachtung}
+            {/* 3 · Lesen und Schreiben - mit der Brücke „Beobachten" je Lesung. */}
             {registerSektion && (
               <RegisterSektion
+                onBeobachten={setBruecke}
                 siteId={site.id}
                 boxDeviceId={box?.id ?? null}
                 geraetName={view.kopf.titel}
                 art={view.art}
                 entityIds={view.komponenten.map((c) => c.entityId)}
                 targets={targets}
+                zugang={zugang}
+                offen={regOffen}
+                setOffen={setRegOffen}
                 exportLimit={view.art === 'hauptgeraet'
                   ? curtailment?.deviceExportLimit ?? null
                   : null}
@@ -818,7 +1158,6 @@ export function GeraetSeiteSection({
                 now={now}
               />
             )}
-            {messbibliothek}
           </RahmenSektion>
 
           {/* 6 · Verbindung */}
@@ -889,6 +1228,25 @@ export function GeraetSeiteSection({
         onCancel={() => !rollbackBusy && setRollbackTarget(null)}
         onConfirm={() => void rollback()}
       />
+      {/* Die zwei BESTEHENDEN Dialoge der Aktionszeile - kein neuer Weg, nur
+          ein weiterer Wirt (§6.2). */}
+      <HandeingriffDialog
+        folgen={handFolgen}
+        busy={aktionBusy}
+        withDuration={hand !== 'resume'}
+        dauerKey={handDauer}
+        onDauer={setHandDauer}
+        onConfirm={(m) => void handBestaetigen(m)}
+        onCancel={() => !aktionBusy && setHand(null)}
+      />
+      <ConsumerOverrideDialog
+        action={eingriff?.aktion ?? null}
+        consumerName={eingriff?.consumer.name ?? ''}
+        effectivePowerKw={eingriff?.consumer.ratedPowerKw ?? null}
+        busy={aktionBusy}
+        onConfirm={(m) => void eingriffBestaetigen(m)}
+        onCancel={() => !aktionBusy && setEingriff(null)}
+      />
       {editOpen && editRow && (
         <AnlegenFlow
           siteId={site.id}
@@ -932,7 +1290,25 @@ function Block({
  * kommen aus `geraetGesicht.ts`. Ohne Kachel UND ohne Satz entsteht gar keine
  * Karte - ein leerer Held wäre die Box-Lehre in klein.
  */
-function HeldKarte({ held, stand }: { held: Held; stand: string | null }) {
+function HeldKarte({
+  held, stand, markiert, aktion,
+}: {
+  held: Held;
+  stand: string | null;
+  /**
+   * Die angesprungene Kachel (§5.3): die Batterie hat keine eigene Seite, ihre
+   * Komponenten-Karte führt auf `?abschnitt=jetzt&kachel=speicher`. Markiert
+   * wird über den STABILEN Schlüssel, nie über das Label - der Kunde darf eine
+   * Komponente umbenennen.
+   */
+  markiert?: string | null;
+  /**
+   * Die primäre Handlung dieses Blatts (§5.4): am Verbraucher steht die
+   * Sofortaktion im JETZT, nicht erst in der Aktionszeile darunter. Sie LÖST
+   * nur aus - gehandelt wird im bestehenden Dialog.
+   */
+  aktion?: { text: string; onClick: () => void } | null;
+}) {
   if (held.kacheln.length === 0 && !held.satz) return null;
   return (
     <Card padding="lg" radius="lg" className="vp-geraet-held" data-testid="geraet-held">
@@ -947,8 +1323,10 @@ function HeldKarte({ held, stand }: { held: Held; stand: string | null }) {
           {held.kacheln.map((k: HeldKachel) => (
             <div
               className={`vp-geraet-kachel${k.gross ? ' is-gross' : ''}${
-                k.ton ? ` is-${k.ton}` : ''}`}
-              key={k.label}
+                k.ton ? ` is-${k.ton}` : ''}${
+                markiert && k.key === markiert ? ' is-markiert' : ''}`}
+              key={k.key}
+              data-kachel={k.key}
             >
               <span className="l">{k.label}</span>
               <span className="v">{k.wert}</span>
@@ -970,6 +1348,18 @@ function HeldKarte({ held, stand }: { held: Held; stand: string | null }) {
         <p className={`vp-geraet-heldsatz is-${held.satzTon}`} data-testid="geraet-heldsatz">
           {held.satz}
         </p>
+      )}
+      {held.zeilen.length > 0 && (
+        <ul className="vp-geraet-heldzeilen">
+          {held.zeilen.map((z) => <li key={z}>{z}</li>)}
+        </ul>
+      )}
+      {aktion && (
+        <div className="vp-geraet-heldaktion">
+          <Button variant="outline" size="sm" onClick={aktion.onClick}>
+            {aktion.text}
+          </Button>
+        </div>
       )}
       {held.hinweis && <p className="vp-note">{held.hinweis}</p>}
     </Card>
@@ -1150,6 +1540,8 @@ function GeleseneRegisterTabelle({
   knowledge,
   entityIds,
   abruf,
+  bruecken,
+  onBeobachten,
   now,
 }: {
   art: string;
@@ -1161,6 +1553,13 @@ function GeleseneRegisterTabelle({
   entityIds: string[];
   /** Die auf ABRUF gelesenen Zeilen dieser Sitzung - sie werden nie gespeichert. */
   abruf: RegisterZeile[];
+  /**
+   * Die BRÜCKE je gelesener Zeile: `null` heißt „aus dieser Lesung lässt sich
+   * keine Beobachtung anlegen" (eine Spule), und der Grund steht dann dort -
+   * ein Knopf, der nichts bewirken kann, wird nicht angeboten.
+   */
+  bruecken?: Record<string, BrueckeVorschlag | null>;
+  onBeobachten?: (vorschlag: BrueckeVorschlag) => void;
   now: number;
 }) {
   const sicht = registerSicht({
@@ -1206,7 +1605,24 @@ function GeleseneRegisterTabelle({
                 <td data-label="Roh">{z.roh}</td>
                 <td data-label="Dekodiert">{z.dekodiert}</td>
                 <td data-label="Gelesen">{z.gelesen}</td>
-                <td data-label="Quelle">{QUELLE_WORT[z.quelle]}</td>
+                <td data-label="Quelle">
+                  {QUELLE_WORT[z.quelle]}
+                  {/* Die Brücke: lesen, gut finden, behalten (§7.2 Teil 3). */}
+                  {bruecken && z.key in bruecken && (
+                    bruecken[z.key] ? (
+                      <button
+                        type="button"
+                        className="vp-geraet-btn vp-beob-bruecke"
+                        data-testid={`beob-bruecke-${z.key}`}
+                        onClick={() => onBeobachten?.(bruecken[z.key]!)}
+                      >
+                        <Icon name="plus" size={12} /> {BRUECKE_LABEL}
+                      </button>
+                    ) : (
+                      <span className="vp-muted vp-text-sm">{BRUECKE_NICHT_MOEGLICH}</span>
+                    )
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1237,43 +1653,52 @@ function RegisterSektion({
   art,
   entityIds,
   targets,
+  zugang,
+  offen,
+  setOffen,
   exportLimit,
   writes,
   source,
   familie,
   knowledge,
+  onBeobachten,
   now,
 }: {
   siteId: string;
   boxDeviceId: string | null;
   geraetName: string;
-  /** Die Gattung entscheidet das Ziel - das Hauptgerät IST die primäre Lane. */
+  /** Die Gattung entscheidet, welche Register die Tabelle erklären kann. */
   art: GeraetArt;
   entityIds: string[];
   targets: RegisterWriteTarget[] | null;
+  /**
+   * Der Register-Zugang DIESES Geräts - gerechnet EINMAL im Wirt, damit die
+   * Aktionszeile über dem Verlauf und der Knopf hier nicht auseinanderlaufen.
+   */
+  zugang: GeraetRegisterZugang;
+  /** Der Einschub wohnt im Wirt: er hat ZWEI Auslöser (Zeile + Knopf). */
+  offen: boolean;
+  setOffen: (offen: boolean) => void;
   exportLimit: DeviceExportLimit | null;
   writes: RegisterWriteEvent[] | null;
   source: SiteSource | null;
   familie: string | null;
   knowledge: RegisterKnowledgeFamily[] | null;
+  /** Die Brücke nach Teil 1 - der Wirt reicht den Vorschlag weiter. */
+  onBeobachten?: (vorschlag: BrueckeVorschlag) => void;
   now: number;
 }) {
-  const [offen, setOffen] = useState(false);
   const [leseAdresse, setLeseAdresse] = useState('');
   const [leseArt, setLeseArt] = useState<'holding' | 'input' | 'coil'>('holding');
   const [liest, setLiest] = useState(false);
   const [leseFehler, setLeseFehler] = useState<string | null>(null);
   const [abruf, setAbruf] = useState<RegisterZeile[]>([]);
-  // ⚠ Geschrieben wird IMMER über die Box - sie hält die Verbindung zum Gerät.
-  // Ohne sie gibt es kein Ziel und damit keinen Knopf.
-  const zugang: GeraetRegisterZugang = targets == null
-    // Noch nicht geladen: es wird NICHTS behauptet - weder ein Weg noch sein
-    // Fehlen.
-    ? { moeglich: false, grund: null, vorwahl: null, weg: null }
-    : boxDeviceId
-      ? geraetRegisterZugang(targets, { art, deviceId: boxDeviceId, entityIds })
-      // Ohne beanspruchte Box gibt es kein Gerät, über das geschrieben würde.
-      : { moeglich: false, grund: KEIN_SCHREIBWEG, vorwahl: null, weg: null };
+  /**
+   * Je gelesener Zeile ihr Beobachtungs-Vorschlag. Er entsteht AM LESEN, wo
+   * Adresse, Registerart und das gelesene Paar vorliegen - aus der fertigen
+   * Tabellen-Zeile ließe er sich nicht mehr rekonstruieren, ohne zu raten.
+   */
+  const [bruecken, setBruecken] = useState<Record<string, BrueckeVorschlag | null>>({});
   const verlaufFilter = useMemo(
     () => (rows: RegisterWriteEvent[]) => geraeteVerlauf(rows, { box: false, entityIds }),
     [entityIds.join('|')],
@@ -1306,8 +1731,20 @@ function RegisterSektion({
         setLeseFehler(sicht.satz);
         return;
       }
+      const zeile = abrufZeile(adresse, out, new Date());
+      setBruecken((bisher) => ({
+        ...bisher,
+        [zeile.key]: brueckeAusLesung({
+          adresse,
+          art: leseArt,
+          registerLabel: out.registerLabel,
+          scaleUnit: out.scaleUnit,
+          beforeRaw: out.beforeRaw,
+          beforeScaled: out.beforeScaled,
+        }),
+      }));
       setAbruf((bisher) => [
-        abrufZeile(adresse, out, new Date()),
+        zeile,
         // Dieselbe Adresse zweimal zu lesen ersetzt die Zeile, statt sie zu
         // verdoppeln - zwei Stände desselben Registers wären zwei Wahrheiten.
         ...bisher.filter((z) => z.key !== `abruf:${adresse.toLowerCase()}`),
@@ -1331,6 +1768,8 @@ function RegisterSektion({
         knowledge={knowledge}
         entityIds={entityIds}
         abruf={abruf}
+        bruecken={bruecken}
+        onBeobachten={onBeobachten}
         now={now}
       />
       {zugang.moeglich && (
@@ -1410,70 +1849,41 @@ function RegisterSektion({
 }
 
 /**
- * F · Befehle an dieses Gerät (Anlagen-Zentrale Stufe 1, Konzept §7.4).
+ * F · Befehle an dieses Gerät (Geräteseiten Stufe 2, Konzept §6).
  *
- * <p>Sie zeigt die JÜNGSTEN Zeilen des heutigen Tages und führt für alles
- * Weitere auf die Befehle-Seite (Captain-Entscheid D3: die Seite bleibt, die
- * Geräteseite zeigt die gefilterte Sicht) - es entsteht also keine zweite
- * Verlaufs-Fläche, nur ein Ausschnitt derselben.
+ * <p>Der VERLAUF: neueste Zeile oben, {@link SEITE} Zeilen, „Ältere laden" bis
+ * zur Aufbewahrungsgrenze - <b>keine Filter, keine Suche, kein Treffer-Zähler</b>
+ * (Captain-Entscheid D4a). Die Liste ist DASSELBE Bauteil wie auf der
+ * Befehle-Seite; zwei Verlaufs-Formen wären zwei Wahrheiten.
+ *
+ * <p><b>Absetzen steht OBEN</b> (§6.2): die Aktionszeile löst nur aus - geöffnet
+ * wird jeweils der BESTEHENDE Dialog, es entsteht kein zweiter Auslöse-Pfad.
+ * Die Antwort erscheint als neue oberste Zeile, sobald der Verlauf sie trägt.
  *
  * <p><b>Sie erfindet keinen Satz:</b> Zeilen, Leer-Satz und Aufzeichnungs-Beginn
- * kommen aus der reinen `src/befehle.ts`, die auch die Befehle-Seite rendert.
+ * kommen aus der reinen `src/befehle.ts` bzw. `src/befehleVerlauf.ts`.
  * Was zu diesem Gerät gehört, entscheidet der SERVER (`?device=`).
  */
 function BefehleSektion({
   siteId,
   geraetRef,
-  history,
-  ausschnitt: alle,
+  state,
+  aktionen,
+  onAktion,
 }: {
   siteId: string;
   geraetRef: string;
-  history: CommandHistory | null;
-  /**
-   * Der Ausschnitt kommt FERTIG vom Wirt - er baut damit auch die Kurzfassung
-   * der geschlossenen Sektion, und zwei Ableitungen derselben fünf Zeilen
-   * wären zwei Wahrheiten.
-   */
-  ausschnitt: { zeilen: BefehlZeile[]; weitere: number; leer: string | null };
+  /** Der Verlauf kommt FERTIG vom Wirt - er baut daraus auch die Kurzfassung. */
+  state: VerlaufState;
+  /** Was dieses Blatt absetzen kann; leer ⇒ gar keine Zeile (§6.2). */
+  aktionen: VerlaufAktion[];
+  onAktion: (a: VerlaufAktion) => void;
 }) {
-  // Der Schnell-Chip (Geräteseiten Revision B §6): er filtert den MINI-Film
-  // clientseitig - die Zeilen sind schon da, ein zweiter Abruf wäre Aufwand
-  // ohne Gewinn - und reist im „Alle anzeigen"-Link als Filter mit, damit der
-  // Zustand nicht am Sprung verloren geht.
-  //
-  // ⚠ Der zweite Chip der Spezifikation („Heute") fehlt hier BEWUSST: dieser
-  // Ausschnitt IST der Tag (der Abruf oben nimmt den Vorgabe-Zeitraum), ein
-  // Chip könnte also nichts ändern. Ein Bedienelement, das nichts bewirken
-  // kann, wird nicht angeboten - dieselbe Regel wie beim Anwenden-Knopf.
-  const [nurAbweichungen, setNurAbweichungen] = useState(false);
-  const ausschnitt = useMemo(
-    () => (nurAbweichungen
-      ? {
-        ...alle,
-        zeilen: alle.zeilen.filter((z) => z.ton === 'warn'),
-      }
-      : alle),
-    [alle, nurAbweichungen],
-  );
-  const chipFilter: BefehlFilter = {
-    ...LEER,
-    ergebnis: nurAbweichungen ? ['abweichend'] : [],
-  };
+  const { history } = state;
   return (
     <>
-      {/* EIN Chip, mehr nicht: alles Weitere beantwortet die Befehle-Seite,
-          und der Zustand reist über die Adresse mit. */}
-      <div className="vp-bf-chips vp-geraet-befehl-chips">
-        <button
-          type="button"
-          className={`vp-bf-chip${nurAbweichungen ? ' is-an' : ''}`}
-          aria-pressed={nurAbweichungen}
-          onClick={() => setNurAbweichungen((v) => !v)}
-        >
-          Nur Abweichungen
-        </button>
-      </div>
+      {/* Absetzen steht OBEN - die Antwort erscheint darunter als neue Zeile. */}
+      <BefehleAktionszeile aktionen={aktionen} onAktion={onAktion} />
       {/* Die F4-Antwort: an dieses Gerät geht gar kein Befehl. Sie steht VOR
           der Liste, damit ein leerer Verlauf nicht als Zufall gelesen wird. */}
       {history && !history.writes && (
@@ -1481,21 +1891,7 @@ function BefehleSektion({
           <Icon name="shield" size={15} /> {NUR_LESEN}
         </p>
       )}
-      {ausschnitt.zeilen.length > 0 && (
-        <ol className="vp-geraet-befehle">
-          {ausschnitt.zeilen.map((z) => (
-            <li key={z.id} className={`vp-geraet-befehl is-${z.ton}`}>
-              <span className="zeit">{z.zeit}</span>
-              <div className="tx">
-                {z.strom && <span className="strom">{z.strom}</span>}
-                <p>{z.satz}</p>
-                {z.urteil && <span className="urteil">{z.urteil}</span>}
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
-      {ausschnitt.leer && <p className="vp-note">{ausschnitt.leer}</p>}
+      <BefehleVerlauf state={state} />
       <p className="vp-note">
         {aufzeichnungSeit(history?.recordingSince ?? null)}
         {' · '}
@@ -1512,18 +1908,11 @@ function BefehleSektion({
           engerer Ausschnitt - sonst führte der Weg zurück auf dieselbe Liste. */}
       <a
         className="vp-geraet-komp-link"
-        href={inUrl(
-          history?.deviceIsBox === true
-            ? hashForRoute(anlageRoute(siteId, 'befehle'))
-            : befehleGeraetHash(siteId, geraetRef),
-          chipFilter,
-        )}
+        href={history?.deviceIsBox === true
+          ? hashForRoute(anlageRoute(siteId, 'befehle'))
+          : befehleGeraetHash(siteId, geraetRef)}
       >
-        {history?.deviceIsBox === true
-          ? 'Alle Befehle dieser Anlage'
-          : ausschnitt.weitere > 0
-            ? `Alle anzeigen (${ausschnitt.weitere} weitere)`
-            : 'Alle anzeigen'}
+        {history?.deviceIsBox === true ? 'Alle Befehle dieser Anlage' : 'Auf der Befehle-Seite'}
         <Icon name="chevron-right" size={14} />
       </a>
     </>

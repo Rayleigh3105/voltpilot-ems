@@ -694,6 +694,46 @@
   color: var(--vp-text-muted, #4a5568);
 }
 
+/* Die angesprungene Kachel (§5.3). Sie wird HERVORGEHOBEN, nicht markiert:
+   die Batterie hat keine eigene Seite, ihr Absprung landet hier - und die
+   Hervorhebung ist die ANTWORT auf den Klick, kein Zustand. */
+.vp-geraet-heldkacheln .vp-geraet-kachel.is-markiert {
+  outline: 2px solid var(--vp-action, #2c5282);
+  outline-offset: 2px;
+}
+
+/* Die Zeilen unter den Kacheln (§5.4: Erfüllung, Freigabe-Stand, D3). Sie
+   tragen, was ein einzelner Wert nicht sagen kann - nie eine zweite Zahl. */
+.vp-geraet-heldzeilen {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.vp-geraet-heldzeilen li {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* Die PRIMÄRE Handlung des Blatts (§5.4) - sie steht im JETZT, nicht erst in
+   der Aktionszeile darunter. Am Telefon nimmt sie die volle Breite. */
+.vp-geraet-heldaktion {
+  display: flex;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .vp-geraet-heldaktion > button {
+    width: 100%;
+  }
+}
+
 /* --- „Register jetzt lesen" (Konzept §7, zweiter Absatz) ------------------ */
 
 .vp-geraet-lesen {

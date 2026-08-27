@@ -3,7 +3,10 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { GeraetSeiteSection } from './GeraetSeiteSection';
 import * as auth from '../auth';
 import { SEKTIONS_ORDNUNG, sektionKey, type RahmenSektionId } from '../geraetRahmen';
+import { SEITE } from '../befehleVerlauf';
 import { adminApi } from '../admin/adminApi';
+import { consumersApi } from '../consumers/consumersApi';
+import type { Consumer } from '../consumers/types';
 import { fleetApi } from '../admin/fleetApi';
 import {
   api,
@@ -12,6 +15,7 @@ import {
   type RegisterWriteTarget,
   type Site,
   type SiteEntities,
+  type SiteInterventions,
   type SiteSource,
   type SiteTopology,
 } from '../api';
@@ -109,6 +113,9 @@ const entities: SiteEntities = {
       role: 'consumer',
       brand: 'go-e',
       model: 'Charger Gemini',
+      // ⚠ Der WEG entscheidet über die Register-Sektion (`geraetGesicht`), die
+      // FAMILIE über den Katalog - beide gehören zu einem HTTP-Gerät.
+      communication: 'goe_http_api',
       family: 'goe_http_api',
       label: null,
       reportedAt: FRISCH,
@@ -289,6 +296,8 @@ function targets(over: Partial<RegisterWriteTarget>[] = []): RegisterWriteTarget
 function stub(over: {
   entities?: () => Promise<SiteEntities>;
   commands?: CommandHistory;
+  interventions?: SiteInterventions;
+  consumers?: Consumer[];
   targets?: RegisterWriteTarget[];
   writes?: RegisterWriteEvent[];
 } = {}) {
@@ -337,6 +346,16 @@ function stub(over: {
   vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
   vi.spyOn(api, 'commandHistory').mockResolvedValue(over.commands ?? commands());
+  // Die Aktionszeile (Stufe 2 §6.2) - was ein Blatt ABSETZEN kann. Alle drei
+  // sind fail-soft und gattungs-getaktet: ein Zähler bezahlt sie nie.
+  vi.spyOn(api, 'siteInterventions').mockResolvedValue(
+    over.interventions ?? { automationPaused: false, pausedUntil: null, interventions: [] },
+  );
+  vi.spyOn(api, 'schedule').mockResolvedValue(
+    { slots: [], generatedAt: null } as never,
+  );
+  vi.spyOn(consumersApi, 'list').mockResolvedValue(over.consumers ?? []);
+  vi.spyOn(consumersApi, 'overrides').mockResolvedValue([]);
   vi.spyOn(api, 'registerWriteTargets').mockResolvedValue(over.targets ?? targets());
   vi.spyOn(api, 'registerWriteHistory').mockResolvedValue(over.writes ?? []);
   vi.spyOn(api, 'registerKnowledge').mockResolvedValue([
@@ -554,16 +573,85 @@ describe('GeraetSeiteSection', () => {
     expect(await screen.findByTestId('sektion-befehle')).toBeInTheDocument();
     // Der Server entscheidet, was zu diesem Gerät gehört - die Fläche fragt ihn
     // mit der Adresse, unter der die Seite geöffnet wurde.
-    expect(api.commandHistory).toHaveBeenCalledWith('s-1', { device: 'inverter' });
-    const alle = screen.getByRole('link', { name: /Alle anzeigen/ });
+    expect(api.commandHistory).toHaveBeenCalledWith('s-1', expect.objectContaining({
+      device: 'inverter',
+      limit: SEITE,
+    }));
+    const alle = screen.getByRole('link', { name: /Auf der Befehle-Seite/ });
     expect(alle.getAttribute('href')).toBe('#/anlage/s-1/befehle?geraet=inverter');
-    // Der Schnell-Chip filtert den MINI-Film clientseitig UND reist im Link
-    // mit - der Zustand geht am Sprung nicht verloren (Revision B §6).
-    fireEvent.click(screen.getByRole('button', { name: 'Nur Abweichungen' }));
-    expect(screen.getByRole('link', { name: /Alle anzeigen/ }).getAttribute('href'))
-      .toContain('ergebnis=abweichend');
+    // Geräteseiten Stufe 2: KEINE Filter mehr - weder auf der Seite noch als
+    // Zustand im Link (Captain-Entscheid D4a).
+    expect(screen.queryByRole('button', { name: 'Nur Abweichungen' })).not.toBeInTheDocument();
+    expect(alle.getAttribute('href')).not.toContain('ergebnis=');
     // Und die Grenze wird ERKLÄRT: die anlagenweiten Befehle gehören der Box.
     expect(screen.getByText(/Anlagenweite Befehle/)).toBeInTheDocument();
+  });
+
+  /**
+   * Die AKTIONSZEILE (Stufe 2 §6.2): sie steht OBEN und LÖST nur aus - geöffnet
+   * wird der BESTEHENDE Dialog, es entsteht kein zweiter Auslöse-Pfad.
+   */
+  it('bietet am HYBRID die Speicher-Handlungen und öffnet ihre Folgen-Karte', async () => {
+    // Steuerbar heisst: das Rücklesen DIESES Geräts trägt wirklich.
+    stub({ commands: commands({ deviceIsBox: false, deviceRef: 'inverter' }) });
+    // Steuerbar heisst: das Rücklesen DIESES Geräts trägt wirklich - genau die
+    // Bedingung, mit der auch die Jetzt-Zone der Steuerung urteilt.
+    vi.spyOn(api, 'controlStatus').mockResolvedValue({
+      deviceId: 'gw',
+      commandedKw: -6.5,
+      confirmedKw: -6.5,
+      allMatch: true,
+      controlEnabled: true,
+      certified: true,
+      mismatchRoles: null,
+      slotStart: null,
+      checkedAt: FRISCH,
+    } as never);
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+
+    const zeile = await screen.findByRole('button', { name: /Befehl an dieses Gerät/ });
+    fireEvent.click(zeile);
+    fireEvent.click(await screen.findByRole('button', { name: 'Speicher jetzt laden' }));
+
+    // Es ist die BESTEHENDE Folgen-Karte - und der Klick allein schreibt
+    // NICHTS: erst ihr Ja setzt den Eingriff ab.
+    const setzen = vi.spyOn(api, 'startBatteryOverride');
+    expect(await screen.findByText(/Das passiert/)).toBeInTheDocument();
+    expect(setzen).not.toHaveBeenCalled();
+  });
+
+  it('bietet an einem PV-Melder nur den Register-Weg', async () => {
+    stub({ commands: commands({ deviceIsBox: false, deviceRef: 'src-7c1e9a2b' }) });
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
+    );
+
+    const zeile = await screen.findByRole('button', { name: /Befehl an dieses Gerät/ });
+    fireEvent.click(zeile);
+    // Der Register-Weg ist DERSELBE Drawer wie in der Register-Sektion - ein
+    // Mechanismus, zwei Orte (das Sofortaktions-Muster).
+    const liste = zeile.parentElement as HTMLElement;
+    expect(within(liste).getByRole('button', { name: 'Register schreiben' })).toBeInTheDocument();
+    // Ein PV-Melder hat keine Speicher-Handlung - was der Zustand nicht
+    // hergibt, wird nicht angeboten.
+    expect(within(liste).queryByRole('button', { name: 'Speicher jetzt laden' }))
+      .not.toBeInTheDocument();
+  });
+
+  it('bietet GAR KEINE Zeile an, wo es nichts abzusetzen gibt', async () => {
+    // Ohne belegten Schreibweg (leere Ziel-Liste) und ohne Speicher-Handlung
+    // bleibt die Zeile weg - nie ein Knopf ins Leere.
+    vi.spyOn(api, 'controlStatus').mockResolvedValue(null);
+    stub({
+      commands: commands({ deviceIsBox: false, deviceRef: 'src-7c1e9a2b' }),
+      targets: [],
+    });
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
+    );
+
+    expect(await screen.findByTestId('sektion-befehle')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Befehl an dieses Gerät/ })).not.toBeInTheDocument();
   });
 
   it('erklärt an einem Gerät HINTER der Box, wo die anlagenweiten Befehle stehen', async () => {
@@ -591,11 +679,11 @@ describe('GeraetSeiteSection', () => {
     stub();
     vi.spyOn(api, 'commandHistory').mockRejectedValue(new Error('down'));
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    // Die Sektion bleibt - sie sagt, dass noch nicht aufgezeichnet wurde,
-    // statt eine leere Behauptung zu machen.
+    // Die Sektion bleibt - ein Ausfall wird BENANNT, nie als leerer Verlauf
+    // ausgegeben (das wäre die entlastende Aussage, die niemand geprüft hat).
     expect(await screen.findByTestId('sektion-befehle')).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByText(/Aufzeichnung hat noch nicht begonnen/)).toBeInTheDocument(),
+      expect(screen.getByText(/Verlauf nicht abrufbar/)).toBeInTheDocument(),
     );
   });
 
@@ -800,7 +888,7 @@ describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () =>
   it('Wallbox sieht keine Wechselrichter-Register', async () => {
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-goe" devices={[box]} />);
-    await screen.findByRole('heading', { name: 'Wichtige zusätzliche Messwerte' });
+    await screen.findByRole('heading', { name: 'Beobachtete Messwerte' });
     await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
     expect(gefragteFamilien()).toEqual(['goe.api_v2']);
     // Genau der gemeldete Fehler: die Familie des Deye taucht nicht mehr auf,
@@ -814,7 +902,7 @@ describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () =>
   it('ein zweiter Wechselrichter sieht NUR seine eigene Familie', async () => {
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />);
-    await screen.findByRole('heading', { name: 'Wichtige zusätzliche Messwerte' });
+    await screen.findByRole('heading', { name: 'Beobachtete Register' });
     await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
     const familien = gefragteFamilien();
     expect(familien).not.toContain('hybrid_3p');
@@ -832,7 +920,7 @@ describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () =>
   it('haelt auf dem primaeren Wechselrichter beide Zusagen: eigener Katalog, kein Hinweis', async () => {
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    await screen.findByRole('heading', { name: 'Wichtige zusätzliche Messwerte' });
+    await screen.findByRole('heading', { name: 'Beobachtete Register' });
     await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
     expect(gefragteFamilien()).toEqual(['hybrid_3p']);
     expect(screen.queryByTestId('measure-beobachten-hinweis')).toBeNull();
@@ -845,8 +933,8 @@ describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () =>
     await screen.findByRole('heading', { level: 1 });
     await waitFor(() => expect(api.siteSources).toHaveBeenCalled());
     // ... nur die Bibliothek entfaellt, und sie fragt auch nichts ab.
-    expect(screen.queryByRole('heading', { name: 'Wichtige zusätzliche Messwerte' })).toBeNull();
-    expect(screen.queryByText('Zusätzliche Messwerte')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Beobachtete Register' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Beobachtete Messwerte' })).toBeNull();
     expect(api.measurementCatalog).not.toHaveBeenCalled();
   });
 });
@@ -944,5 +1032,254 @@ describe('GeraetSeiteSection · Rahmen', () => {
     await waitFor(() => expect(screen.getByTestId('sektion-register')).toHaveAttribute('open'));
     await waitFor(() => expect(document.activeElement)
       .toBe(screen.getByTestId('sektion-register')));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Geräteseiten Stufe 3a: „Beobachtete Register" (Konzept §7.2/§7.4)
+// ---------------------------------------------------------------------------
+
+describe('Stufe 3a · die Messbibliothek, richtig herum', () => {
+  it('trägt am Wechselrichter alle DREI Teile - beobachtet, hinzufügen, lesen/schreiben', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    const sektion = await screen.findByTestId('sektion-register');
+
+    // 1 · die Beobachtungen führen (situativ leer: die Sektion BLEIBT und sagt,
+    //     wie man sie füllt).
+    expect(await within(sektion).findByRole('heading', { name: 'Beobachtete Register' })).toBeTruthy();
+    expect(await within(sektion).findByText(/Noch kein Register beobachtet/)).toBeTruthy();
+    // 2 · der Katalog DIESES Geräts.
+    expect(within(sektion).getByRole('button', { name: /Register beobachten/ })).toBeTruthy();
+    // 3 · lesen und schreiben - am selben Ort.
+    expect(within(sektion).getByTestId('geraet-regread')).toBeTruthy();
+    expect(within(sektion).getByLabelText('Adresse des Registers, das jetzt gelesen wird')).toBeTruthy();
+  });
+
+  it('die Wallbox trägt nur die zwei Beobachtungs-Teile - kein Lesen, kein Schreiben', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-goe" devices={[box]} />);
+    const sektion = await screen.findByTestId('sektion-register');
+
+    // D3a: dieselbe Liste, das andere Wort - die Fähigkeit ist dieselbe.
+    expect(await within(sektion).findByRole('heading', { name: 'Beobachtete Messwerte' })).toBeTruthy();
+    expect(within(sektion).getByRole('button', { name: /Messwert beobachten/ })).toBeTruthy();
+    // Ein HTTP-Gerät hat keine Register: der Teil entfällt, statt leer dazustehen.
+    expect(within(sektion).queryByTestId('geraet-regread')).toBeNull();
+    expect(within(sektion).queryByText('Register jetzt lesen')).toBeNull();
+  });
+
+  it('die BRÜCKE: aus einer Lesung wird eine Beobachtung - vorbefüllt, nicht gespeichert', async () => {
+    stub();
+    vi.spyOn(api, 'registerWritePreview').mockResolvedValue({
+      requestId: 'r-1', mode: 'lesen', ok: true, outcome: 'gelesen',
+      beforeRaw: 3000, afterRaw: null, beforeScaled: 30, afterScaled: null,
+      adopted: null, errorCode: null, message: null, targetLabel: null,
+      address: 231, addressHex: '0x00E7', registerLabel: 'Einspeisegrenze',
+      registerClass: 'netz_compliance', scaleNote: null, scaleUnit: 'kW',
+      noteRequired: true, confirm: null,
+    } as never);
+    vi.spyOn(api, 'customMeasurementEstimate').mockResolvedValue({
+      enabledPointCount: 1, samplesPerMinute: 2, requestsPerMinute: 2, dutyCyclePercent: 1,
+      softWarning: false, hardRejected: false, reasons: [], rawGbPerYear: 0.1,
+      longTermGbPerYear: 0, totalGbPerYear: 0.1, retentionSummary: '90 Tage roh',
+    });
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    await screen.findByTestId('sektion-register');
+
+    fireEvent.change(screen.getByLabelText('Adresse des Registers, das jetzt gelesen wird'), {
+      target: { value: '0x00E7' },
+    });
+    fireEvent.click(screen.getByTestId('geraet-regread'));
+    // Die gelesene Zeile bietet die Brücke an ...
+    const bruecke = await screen.findByTestId('beob-bruecke-abruf:0x00e7');
+    fireEvent.click(bruecke);
+
+    // ... und das Formular steht VORBEFÜLLT offen.
+    const dialog = await screen.findByRole('dialog', { name: 'Eigenen Messwert hinzufügen' });
+    expect(within(dialog).getByLabelText('Bezeichnung')).toHaveValue('Einspeisegrenze');
+    expect(within(dialog).getByLabelText('Registeradresse (dezimal)')).toHaveValue(231);
+    expect(within(dialog).getByLabelText('Einheit')).toHaveValue('kW');
+    // Bis hierher ist NICHTS angelegt - erst der Klick im Formular schreibt.
+    expect(api.customMeasurementEstimate).not.toHaveBeenCalled();
+  });
+
+  it('trägt die KOMPONENTE dieser Seite in jeden Auswahl-Aufruf', async () => {
+    stub();
+    // Erst eine Komponente MIT Vorlage ist die bearbeitbare Zeile dieser Seite -
+    // und nur sie schneidet die Auswahl (`editRow`).
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{
+        id: 'fr1',
+        communication: 'fronius_sunspec',
+        connection: { ip: '192.168.254.30', port: 502, unit_id: 1, interval_s: 5 },
+        definitionVersion: 3,
+        edgeSourceId: 'src-7c1e9a2b',
+        templateRef: 'builtin:fronius:eco-27',
+      }],
+    } as never);
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />);
+    await screen.findByRole('heading', { name: 'Beobachtete Register' });
+    await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
+
+    // Der TRANSPORT bleibt die Box, die AUSWAHL gehört der Komponente (Stufe 3b).
+    expect(api.measurementSelection).toHaveBeenCalledWith('gw', 'fr1');
+    expect(vi.mocked(api.measurementCatalog).mock.calls[0][1].get('entityId')).toBe('fr1');
+  });
+});
+
+/**
+ * Geräteseiten Stufe 4 - DIE NEUN BLÄTTER am gerenderten DOM.
+ *
+ * `geraetGesicht.test.ts` prüft die AUSWAHL (welche Sektion, welche Kachel);
+ * hier steht, dass sie auch ankommt: die angesprungene Kachel, die primäre
+ * Handlung des Verbraucher-Blatts und der Grund einer entfallenen Sektion in
+ * der Diagnose (§4.6).
+ */
+describe('Stufe 4 · die Blätter am DOM', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.location.hash = '';
+  });
+
+  it('§5.3 · markiert die Speicher-Kachel, wenn sie angesprungen wurde', async () => {
+    stub();
+    window.location.hash = '#/anlage/s-1/geraet/edge-45gz7da/inverter'
+      + '?abschnitt=jetzt&kachel=speicher';
+    const { container } = render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
+    );
+    await screen.findByTestId('geraet-held');
+    await waitFor(() => {
+      const k = container.querySelector('[data-kachel="speicher"]');
+      expect(k).not.toBeNull();
+      expect(k?.className).toMatch(/is-markiert/);
+    });
+    // ⚠ Nur DIE eine - eine Markierung an jeder Kachel wäre keine.
+    expect(container.querySelectorAll('.is-markiert')).toHaveLength(1);
+  });
+
+  it('⚠ ohne den Parameter wird NICHTS markiert', async () => {
+    stub();
+    const { container } = render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
+    );
+    await screen.findByTestId('geraet-held');
+    expect(container.querySelector('[data-kachel="speicher"]')).not.toBeNull();
+    expect(container.querySelectorAll('.is-markiert')).toHaveLength(0);
+  });
+
+  it('§5.4 · das Verbraucher-Blatt trägt seine Sofortaktion im JETZT', async () => {
+    const verbraucher: Consumer = {
+      id: 'wb',
+      siteId: 's-1',
+      label: 'Wallbox',
+      type: 'wallbox',
+      connection: 'connected',
+      controlKind: 'continuous',
+      ratedPowerKw: 11,
+      enabled: true,
+      version: 1,
+      controlActivation: 'active',
+      confirmationChannel: 'power_kw',
+    } as unknown as Consumer;
+    stub({ consumers: [verbraucher] });
+    vi.spyOn(api, 'siteEntities').mockResolvedValue({
+      registry: null,
+      entities: [{
+        id: 'wb',
+        entityType: 'wallbox',
+        typeLabel: 'Wallbox',
+        role: 'consumer',
+        label: 'Wallbox',
+        control: true,
+        deviceId: 'gw',
+        edgeSourceId: 'src-goe',
+        capabilities: { measure: ['power_kw'], actuate: ['setpoint_kw'], failsafe: 'release' },
+        guardConfig: null,
+        health: 'ok',
+        lastTelemetryAt: FRISCH,
+        syncStatus: 'in_sync',
+        staleOnDevice: false,
+        capacityKwp: null,
+      }] as never,
+      localSetup: [{
+        id: 'src-goe', kind: 'source', label: 'go-e Charger', role: 'consumer',
+        brand: 'goe', communication: 'goe_http_api', family: null, adoptedEntityId: 'wb',
+      }] as never,
+    } as unknown as SiteEntities);
+    vi.spyOn(api, 'siteSources').mockResolvedValue([
+      {
+        deviceId: 'gw', sourceId: 'src-goe', kind: 'source', role: 'consumer',
+        label: 'go-e Charger', brand: 'goe', model: null,
+        pvKw: null, powerKw: null, loadKw: 7.4,
+        health: 'ok', readAt: FRISCH, reportedAt: FRISCH,
+      },
+    ] as unknown as SiteSource[]);
+    vi.spyOn(consumersApi, 'fulfillment').mockResolvedValue({
+      tasks: [{ state: 'running', atRisk: false }],
+    } as never);
+
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-goe" devices={[box]} />,
+    );
+    const held = await screen.findByTestId('geraet-held');
+    // Die Handlung steht IM Helden, nicht erst in der Aktionszeile darunter -
+    // und es ist DIESELBE, die die Zeile darunter anbietet (kein zweiter
+    // Auslöse-Pfad).
+    const knopf = await within(held).findByRole('button', { name: /Jetzt starten/i });
+    expect(knopf).toBeTruthy();
+    // Und die ZEILEN tragen die geteilte D3-Aussage - „gemessen" wird nur
+    // gesagt, wo `consumerHasMeasurement` es belegt.
+    const zeilen = held.querySelector('.vp-geraet-heldzeilen');
+    expect(zeilen?.textContent).toMatch(/gemessen/i);
+  });
+
+  it('⚠ §5.6 · der Zähler nennt in der Diagnose, warum er keine Befehle hat', async () => {
+    stub();
+    vi.spyOn(api, 'siteEntities').mockResolvedValue({
+      registry: null,
+      entities: [{
+        id: 'meter',
+        entityType: 'grid-meter',
+        typeLabel: 'Netz-Zähler',
+        role: 'grid',
+        label: 'Netzanschluss',
+        control: false,
+        deviceId: 'gw',
+        edgeSourceId: 'src-meter',
+        capabilities: { measure: ['power_kw'], actuate: [], failsafe: 'measure-only' },
+        guardConfig: null,
+        health: 'ok',
+        lastTelemetryAt: FRISCH,
+        syncStatus: 'in_sync',
+        staleOnDevice: false,
+        capacityKwp: null,
+      }] as never,
+      localSetup: [{
+        id: 'src-meter', kind: 'source', label: 'Zähler', role: 'grid-meter',
+        brand: null, communication: 'modbus_tcp', family: null, adoptedEntityId: 'meter',
+      }] as never,
+    } as unknown as SiteEntities);
+    vi.spyOn(api, 'siteSources').mockResolvedValue([
+      {
+        deviceId: 'gw', sourceId: 'src-meter', kind: 'source', role: 'grid-meter',
+        label: 'Zähler', brand: null, model: null,
+        pvKw: null, powerKw: -3.4, loadKw: null,
+        health: 'ok', readAt: FRISCH, reportedAt: FRISCH,
+      },
+    ] as unknown as SiteSource[]);
+
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-meter" devices={[box]} />,
+    );
+    await screen.findByTestId('geraet-held');
+    // Die Sektion ist weg - ihr Grund steht in der Diagnose (§4.6).
+    await waitFor(() => {
+      expect(screen.queryByTestId('sektion-befehle')).toBeNull();
+    });
+    const diagnose = screen.getByTestId('sektion-diagnose');
+    expect(within(diagnose).getByText(/Befehl/i)).toBeTruthy();
   });
 });

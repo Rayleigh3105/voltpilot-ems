@@ -5510,11 +5510,13 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
 
 ## Zusätzliche Messwerte: Bibliothek und Historie (Slice 9)
 
-- Die gemeinsame `MeasurementLibrary` hängt an jeder Komponenten-Geräteseite
-  einschließlich OCPP. Der ruhige Einstieg zeigt nur empfohlene, aktive oder
-  schon gelesene Punkte; der vollständige Drawer heißt immer
-  **„Messwert-Bibliothek“** und bietet serverseitige Suche/Facetten sowie den
-  getrennten read-only-Freiregisterweg. Verfügbarkeit bedeutet entweder
+- Die gemeinsame Messbibliothek hängt an jeder Komponenten-Geräteseite
+  einschließlich OCPP. **⚠ Ihr Bauteil heißt seit Geräteseiten Stufe 3a
+  `components/BeobachteteRegister.tsx`** (`MeasurementLibrary` ist darin
+  aufgelöst, siehe `frontend/portal/AGENTS.md`): sie FÜHRT jetzt mit den
+  beobachteten Punkten, der vollständige Katalog liegt hinter
+  „＋ Register/Messwert beobachten" und bietet serverseitige Suche/Facetten
+  sowie den getrennten read-only-Freiregisterweg. Verfügbarkeit bedeutet entweder
   tatsächlich gelesen oder ausdrücklich nur „für die konfigurierte Familie
   vorgesehen, noch nicht gelesen“; eine Familienzuordnung ist kein Beweis, dass
   ein konkretes Modell/Register antwortet.
@@ -5556,6 +5558,143 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   Verlauf aus der Bibliothek, ersetzt er deren Modal vollständig; Escape
   schließt den Verlauf und stellt genau diese Bibliothek wieder her, sodass nie
   zwei `aria-modal`-Dialoge gleichzeitig exponiert sind.
+
+## Mess-Selektion JE KOMPONENTE (Geräteseite Stufe 3b, Server)
+
+Bis hierher war die Auswahl je `(device_id, point_key)` gespeichert, also je BOX: zwei baugleiche
+Wechselrichter hinter EINER Box (die zwei Fronius Eco von Herzogau) teilten sich zwangsläufig eine
+Liste, und die Wallbox-Seite konnte gar keine eigene führen. Migration
+`V20260855000000` ergänzt `device_measurement_selection` + `_event` um ein nullables `entity_id`.
+**Additiv im Wortsinn: ohne `entityId` antwortet jede Route Zeichen für Zeichen wie vorher.**
+
+- **⚠ `entity_id = NULL` IST DIE BISHERIGE BOX-SEMANTIK, nicht „unbekannt".** Der Schlüssel wird
+  `(device_id, entity_id, point_key)` als **`UNIQUE NULLS NOT DISTINCT`** (PG15+) — so bleibt die
+  Box-Zeile genau EINE je point_key, ohne einen Sentinel-UUID-Ausdruck zu erfinden, und
+  `ON CONFLICT (device_id, entity_id, point_key)` kann darauf schliessen. Es ist bewusst eine
+  UNIQUE-Bedingung statt einer PK: eine PK-Spalte müsste NOT NULL sein, und NULL ist hier eine
+  Aussage.
+- **⚠ Der Fremdschlüssel bindet `(entity_id, tenant_id)`, BEWUSST OHNE `site_id`** — obwohl der
+  Geräte-FK daneben das volle Tripel bindet. Grund ist der Geräte-Umzug (`DeviceRepository.move`):
+  dort wandert `device.site_id` und nimmt diese Zeilen über `ON UPDATE CASCADE` mit, während eine
+  Komponente OHNE `device_id` am alten Standort zurückbleibt. Ein site-gebundener FK wäre mitten im
+  Umzug verletzt. Der Mandant IST der Zaun (RLS); die Standort-Gleichheit ist eine ANLEGE-Regel des
+  Dienstes, keine Invariante über einen Umzug hinweg. Bewiesen von
+  `ComponentApiTest.movingADeviceKeepsItsIdentityAndHistoricalTelemetry`.
+- **⚠ Die Papier-Spur bekommt AUSDRÜCKLICH KEINEN Fremdschlüssel** (das `rule_event`-/
+  `rollout_device`-Muster): sie ist append-only und muss die Komponente überleben, über die sie
+  berichtet. `entity_id` ist dort eine Zuordnungsnotiz.
+- **`requireEntity` ist die EINE Auflösungsregel** (`MeasurementSelectionService`): RLS-sichtbar UND
+  an der Anlage DIESES Geräts, sonst 404. Sie verlangt ausdrücklich **kein** `measurement_point.device_id`
+  — jede vom Assistenten oder per Übernahme angelegte Komponente hat keins, und genau die sollen
+  beobachtbar sein. `MeasurementHistoryService` prüft `entityId` seither nach derselben Regel (das
+  frühere `AND device_id=?` hat genau diese Komponenten mit 404 abgewiesen).
+- **Geräteweit bleiben drei Dinge, und das ist die Aussage:** die **Revision** (das
+  Optimistic-Concurrency-Token des EINEN veröffentlichten Plan-Dokuments), das **Budget** (der Bus
+  ist physisch einer) und `recordedPointKeys`/`latestObservations` (Samples tragen bis Stufe 3c
+  keine Komponenten-Dimension — eine „schon gemessen"-Aussage je Komponente wäre erfunden).
+  Zugeschnitten werden nur Auswahl und Papier-Spur.
+- **⚠ Der Publisher schreibt EINE Zeile je POINT KEY.** Der Edge-Parser lehnt einen doppelten
+  point_key ab und kennt bis Stufe 3c keine Komponenten-Bindung; zwei Komponenten auf demselben
+  Register kommen deshalb als EIN Eintrag mit der SCHNELLSTEN gewünschten Kadenz an (die Box liest
+  ohnehin einmal), und `entity_id` reist nur mit, wo die Bindung EINDEUTIG ist.
+- **⚠ Ohne die Edge-Toleranz hätte das jede Box gebrickt:** `measurements.ParseConfig` nutzt
+  `DisallowUnknownFields()`, ein unbekanntes `entity_id` hätte also den GANZEN Plan verworfen. Das
+  Feld ist deshalb in `measurements.Selection` ergänzt und wird IGNORIERT — „die Box ignoriert es
+  bis Stufe 3c" ist damit eine Eigenschaft des Codes, nicht eine Absicht
+  (`TestPerComponentSelectionIsAcceptedAndIgnoredUntilStufe3c`). **Wirksam wird das erst mit dem
+  nächsten Edge-Release**; bis dahin ist eine komponentengebundene Auswahl für eine laufende Box
+  ein unbekanntes Feld.
+- **⚠ Die Quittung der Box kennt nur POINT KEYS** (`applyAcknowledgement`), erreicht also jede Zeile
+  dieses Geräts mit diesem Schlüssel. Das ist die ehrliche Abbildung dessen, was die Box tat (EIN
+  Lesevorgang über die Verbindung des primären Wechselrichters); die Präzision je Komponente kommt
+  mit Stufe 3c.
+- **⚠ EIN NACKTES `?` IN EINEM `CASE`, DESSEN ANDERER ZWEIG EIN UNTYPISIERTES `NULL` IST, WIRD ZU
+  `text` — und die Zuweisung an eine `timestamptz`-Spalte scheitert** („column … is of type timestamp
+  with time zone but expression is of type text"). Genau daran ist `applyAcknowledgement` seit Slice 5
+  gescheitert: die Anweisung hatte NUR eine Mock-Abdeckung (`verify(repository).applyAcknowledgement(…)`),
+  gegen eine echte Datenbank lief sie nie. Der `MeasurementConfigStatusListener` fängt jede Ausnahme,
+  protokolliert sie auf DEBUG und gibt `false` zurück — die Quittung verschwand also lautlos und jede
+  Auswahl blieb für immer `pending_edge`. Nichts hat dabei GELOGEN (`pending_edge` ist per
+  Konstruktion keine Apply-Zusage), aber angekommen ist sie nie. Behoben durch explizite
+  `CAST(? AS timestamptz)` an allen drei Zeitstempel-Parametern beider Anweisungen; der Beweis ist
+  seither `MeasurementSelectionApiTest` (Schritt 8), das die Quittung über die echte Repository-Bohne
+  fährt. **Regel: eine Anweisung, die nur ein Mock je gesehen hat, ist ungeprüft** — und jeder
+  Zeitstempel-Parameter in einem `CASE` oder einer `INSERT … SELECT`-Liste braucht seinen Cast.
+- **Routen:** `GET /measurement-selection[?entityId=]`, `/catalog?entityId=`, `/estimate?entityId=`,
+  `PUT /{pointKey}?entityId=`, `POST /custom[?entityId=]`, `POST /custom/estimate[?entityId=]`;
+  History/Export trugen `entityId` schon. Alle acht stehen seit dieser Runde in `openapi.yaml`
+  (Tag `measurements`) — vorher war die ganze Familie dort nicht dokumentiert.
+- **Beweise:** `MeasurementSelectionApiTest.selectionsAreScopedPerComponentWhileTheDeviceKeepsOnePlanAndOneBudget`
+  (echte DB + Keycloak: derselbe Punkt auf zwei Komponenten, getrennte Listen, geräteweite Revision
+  und geräteweites Budget, Katalog-Familie je Komponente, fremde Anlage 404 auf jeder Route) ·
+  `MeasurementContractsTest.publisherBindsAnUnambiguousComponentAndCollapsesTheSameRegisterOfTwo` ·
+  `ComponentApiTest` (Umzug) · Go `internal/measurements`.
+- **NICHT in dieser Stufe:** die Portal-Fläche (Stufe 3a). Die Bindung auf der BOX ist seither
+  gebaut — siehe den nächsten Abschnitt.
+
+## Geräteseite Stufe 3c: die Box liest einen Punkt über SEINE Komponente
+
+Die Edge-Hälfte der Mess-Selektion (Scout `data/vp-geraeteseite-rahmen-r2` §2.3 Schicht 3 + §7.4;
+sie schließt das dritte und letzte Loch des Messbibliothek-Bugs). **Alles ist ADDITIV: ein Plan ohne
+eine einzige `entity_id` — also jede Anlage, deren Portal-Fläche 3a noch nicht ausgeliefert ist —
+wird byte-identisch geplant wie vorher** (in `measurement-target.test.js` festgenagelt).
+
+- **⚠ DER BEHOBENE BEFUND: die Box pollte JEDEN Punkt gegen `edge/inverter/config`.** Ein auf einem
+  zweiten Fronius oder einer Wallbox gewähltes Register wurde also von der DEYE-Adresse gelesen — ein
+  falscher Wert auf einem richtig aussehenden Punkt. Genau deshalb mussten 3a und 3b ehrlich
+  eingeschränkt bleiben („Beobachten wird für dieses Gerät mit dem nächsten Box-Stand möglich").
+- **⚠ DIE LEITREGEL: eine Bindung, die die Box nicht auflösen kann, wird VERWEIGERT — nie gegen den
+  Primären gelesen.** Der Kontrakt bekam dafür EIN neues Wort im geschlossenen Ablehnungs-Vokabular:
+  **`binding_unavailable`** (`mqtt-measurement-config-status.schema.json`). **Es musste an DREI
+  Stellen nachgezogen werden** — Schema, Go `measurements.reasons` und die Java-Menge
+  `MeasurementConfigStatusListener.REASONS`: ein Wort, das der Server nicht kennt, verwirft die
+  GANZE Quittung, und jeder Punkt des Geräts bliebe für immer `pending_edge` (genau der Defekt, den
+  PR 536 behoben hat). **Wer eine weitere Ablehnung einführt, zieht alle drei mit.**
+- **Die Regel ist rein** (`edge-app/nodered/measurements/measurement-binding.js`, ohne I/O und ohne
+  Uhr — das `otaapply`/`probe`-Muster): `entity_id` → der Pin `edge_source_id` aus der
+  per-Entitäts-Registry (`edge/entities/{id}/config`) → eine Quelle in `edge/sources/config`, über
+  deren Verbindung gelesen wird. `vp-measurements.js` abonniert die zwei retained Dokumente
+  zusätzlich und ist ausschließlich Verdrahtung.
+- **⚠ Die drei Auflösungen zum PRIMÄREN sind Absicht, nicht Bequemlichkeit:** kein `entity_id`
+  (der Vor-3c-Vertrag), der Pin `inverter` (die reservierte Kennung der Box) und eine
+  PLATTFORM-KOMPONIERTE Zeile ohne Pin (`battery-hybrid`/`grid-meter`/`house-load` — sie SIND die
+  Kanäle des primären Wechselrichters, `edge-app/core/internal/entities/compose.go` `composedType`).
+  Die Liste ist beidseitig gepinnt — **beide zusammen ändern**; eine dort ergänzte Komponente wird
+  hier sonst ehrlich verweigert, verliert aber ihre Beobachtung.
+- **⚠ Der TARGET gehört in den Gruppierungs-Schlüssel des Planers, und die Runtime hält die
+  gelesenen Wörter PRO TARGET.** Zwei Geräte hinter EINER Box können dieselbe Familie und dasselbe
+  Register tragen; ein gemeinsamer Block läse die Adressen des einen über die Verbindung des
+  anderen, und eine flache Wort-Karte dekodierte Gerät A mit den Wörtern von B.
+- **Die VERBINDUNG wird zur LESEZEIT aufgelöst**, nie in den Plan eingebacken: eine Quelle, die
+  zwischen Plan und Poll verschwindet, ergibt eine Lücke in der Zeit — nie eine Lesung des Primären.
+  Dieselbe Regel deckt die core-eigenen Transporte ab (eine Shelly-Quelle steht per Konstruktion
+  nicht in `edge/sources/config`, ihre Bindung ist also unauflösbar und wird benannt).
+- **Ein SunSpec-Punkt braucht die Discovery SEINES Geräts** (Adressen sind modell-relativ): der
+  Knoten läuft sie je sunspec-Target serialisiert, und ein Target ohne eigene Discovery wird als
+  `driver_unavailable` verweigert, statt die Modell-Basis des Primären zu borgen.
+- **Die Verweigerung heilt sich selbst:** Registry und Messplan sind zwei unabhängige retained
+  Dokumente; welches zuletzt landet, löst ein Neu-Anwenden aus, also veröffentlicht ein späterer
+  Push einen korrigierten Status.
+- **⚠ OCPP hat keine Verbindung**, eine Bindung wählt und verweigert dort also nichts (ein
+  Ladepunkt ist eine echte Komponente ohne Pin — ihn zu verweigern schaltete OCPP still ab). Ebenso
+  trägt der SAMPLE-Pfad weiterhin nur `point_key`: **„schon gemessen" bleibt geräteweit**, die
+  Komponenten-Zuordnung beantwortet allein die Auswahl in der Cloud.
+- **Go-seitig ändert sich nur die Prüfung:** die Bytes reisen unverändert an Layer 1 (die Signatur
+  liegt über genau ihnen), und `entity_id` wird zusätzlich gegen die UUID-Form des Kontrakts geprüft
+  — eine kaputte Kennung ist ein defektes DOKUMENT, keine fehlende Komponente, und darf die
+  Bindungs-Schicht nie als unauflösbarer Schlüssel erreichen.
+- **⚠ Wirksam erst mit dem NÄCHSTEN Edge-Release** — eine laufende Box behält ihr Image; bis dahin
+  überliest sie `entity_id` und pollt jeden Punkt gegen den Primären (das dokumentierte
+  Vor-3c-Verhalten). Cloud, Portal und Server sind unverändert lieferbar.
+- **Beweise:** rein `measurement-binding.test.js` (die Regel + der Lockstep gegen `compose.go`) ·
+  `measurement-target.test.js` (Planer/Runtime: eigenes Gerät, zwei Geräte auf DEMSELBEN Register,
+  Verweigerung ohne eine einzige Lesung, eigene SunSpec-Basis, ein ungebundener Plan ist
+  byte-identisch, HTTP-Gruppen und Byte-Order je Target) · `measurement-node.test.js` (die
+  Verdrahtung des Knotens gegen einen In-Process-RED/mqtt-Ersatz: Abonnements, Annahme, Ablehnung,
+  Selbstheilung, „eine unbrauchbare Quellenliste bindet nichts ab") · Go `internal/measurements`
+  (Form + Vokabular) + `agent/measurement_binding_test.go` (die Bindung erreicht Layer 1
+  BYTE-IDENTISCH; eine kaputte Kennung erreicht ihn nie). Vier der fünf tragenden Regeln sind
+  mutationsgeprüft.
 
 ## Steuerung Stufen 8+9: die UMZÜGE und die Datenbereinigung
 

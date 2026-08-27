@@ -7,6 +7,7 @@ import jakarta.annotation.PreDestroy;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
@@ -61,19 +62,55 @@ public class MeasurementConfigPublisher {
         }
     }
 
+    /**
+     * One entry per POINT KEY, in the order the state lists them.
+     *
+     * <p>⚠ The document is the plan of ONE device and the edge keys its poll
+     * plan on the point key alone (it rejects a duplicate outright). Two
+     * components of the same box that observe the same register therefore
+     * collapse into one entry carrying the FASTEST requested cadence - the box
+     * performs exactly one read either way, and the faster of the two wishes is
+     * the conservative one. {@code entity_id} rides along only when the key
+     * belongs unambiguously to ONE component: it is routing metadata for the
+     * Stufe-3c edge, and an ambiguous binding would be an invented one.
+     */
     byte[] payload(DeviceScope scope, State state) throws Exception {
-        List<Map<String, Object>> selections = state.selections().stream()
-                .filter(MeasurementSelectionService.SelectionPoint::enabled)
-                .map(p -> {
-                    Map<String, Object> selection = new LinkedHashMap<>();
-                    selection.put("point_key", p.pointKey());
-                    selection.put("cadence_s", p.cadenceS());
-                    if (p.customDefinition() != null) {
-                        selection.put("definition", p.customDefinition());
-                    }
-                    return selection;
-                })
-                .toList();
+        Map<String, Map<String, Object>> byPointKey = new LinkedHashMap<>();
+        Map<String, Boolean> unambiguousEntity = new LinkedHashMap<>();
+        for (MeasurementSelectionService.SelectionPoint p : state.selections()) {
+            if (!p.enabled()) {
+                continue;
+            }
+            Map<String, Object> selection = byPointKey.get(p.pointKey());
+            if (selection == null) {
+                selection = new LinkedHashMap<>();
+                selection.put("point_key", p.pointKey());
+                selection.put("cadence_s", p.cadenceS());
+                if (p.customDefinition() != null) {
+                    selection.put("definition", p.customDefinition());
+                }
+                if (p.entityId() != null) {
+                    selection.put("entity_id", p.entityId());
+                }
+                byPointKey.put(p.pointKey(), selection);
+                unambiguousEntity.put(p.pointKey(), Boolean.TRUE);
+                continue;
+            }
+            Object cadence = selection.get("cadence_s");
+            if (p.cadenceS() != null && (!(cadence instanceof Integer existing)
+                    || p.cadenceS().intValue() < existing.intValue())) {
+                selection.put("cadence_s", p.cadenceS());
+            }
+            if (!Objects.equals(p.entityId(), selection.get("entity_id"))) {
+                unambiguousEntity.put(p.pointKey(), Boolean.FALSE);
+            }
+        }
+        for (Map.Entry<String, Map<String, Object>> e : byPointKey.entrySet()) {
+            if (!Boolean.TRUE.equals(unambiguousEntity.get(e.getKey()))) {
+                e.getValue().remove("entity_id");
+            }
+        }
+        List<Map<String, Object>> selections = List.copyOf(byPointKey.values());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema_version", "2.0");
         payload.put("tenant_id", scope.tenantId());

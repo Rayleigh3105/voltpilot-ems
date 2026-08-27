@@ -1205,16 +1205,18 @@ je Ebene einen Test).
   - **Der Weg dorthin ist die Plattform-Liste: ein VERBUNDENES Gerät wird weitergeleitet** (`adminGeraet.kundenGeraetZiel` → `onJumpToTenant(tenantId, {sub:'geraet'})`, also Mandanten-Umschalter UND Adresse). **Eine gedruckte, noch nicht verbundene Aufkleber-ID springt NIRGENDWOHIN** (es gibt kein Gerät, über das etwas zu sagen wäre) und behält ihre Plattform-Vollansicht; ebenso eine Zeile ohne Mandant oder Anlage — die Adresse wäre nicht auflösbar. **⚠ Der Sprung-Rückruf liegt in einer Ref**: `App.tsx` erzeugt `jumpToTenant` inline, in den Effekt-Abhängigkeiten löste er bei JEDEM Render neu aus.
   - **⚠ `minmax(320px, 1fr)` ohne `min()` überläuft**, sobald das Karten-Raster in einem gepolsterten Wirt steht (Telefon + Aufklapper: 375 − 32 Seiten- − 24 Aufklapper-Polster = 319 px). `pages/GeraetSeite.css` nimmt seither `minmax(min(320px, 100%), 1fr)` — dieselbe Härtung, die das Admin-Raster in `index.css` seit je trägt.
 
-- **Die Befehle-Seite hat eine SUCHE und einen FILTER — und der Zustand lebt in der URL (Geräteseiten Stufe 3, R3b; Server-Seite in der Root-`AGENTS.md`).** Die reine, unit-getestete `src/befehleFilter.ts` ist die EINE Ableitung (Zustand ↔ URL · Server-Parameter · Freitext · Treffer-Satz · Leer-Gründe); `components/BefehleFilterLeiste.tsx` rendert nur, CSS komponenten-lokal am Ende von `pages/Befehle.css` (`index.css` unangetastet).
-  - **⚠ Der FREITEXT läuft über die ANGEZEIGTEN Sätze, nie über Rohfelder** (`suche`): Satz, Urteil, Herkunft, Strom-Etikett und JEDE Roh-Blick-Zeile — dort steht „0x00E7". Eine Server-Suche fände nur die Rohfelder und widerspräche dem, was der Kunde liest. Mehrere Wörter müssen ALLE vorkommen, Reihenfolge egal; ein zweiter Abruf entsteht dabei NICHT (im Test nachgezählt).
-  - **⚠ Der Treffer-Satz nimmt BEIDE Zahlen vom SERVER** (`matched`/`total`) und zählt nicht selbst nach — sonst zählte er eine gekappte Seite statt des Fensters und behauptete „12 von 12", während 3.400 Zeilen dahinter liegen. Nur wo der Freitext ZUSÄTZLICH greift, tritt die gezeigte Zahl davor, und der Satz sagt dann, WORIN gesucht wurde. **Ein älteres Backend meldet keine Zahlen ⇒ es steht dort NICHTS**, statt eine Bilanz zu erfinden.
-  - **Ein leerer Treffer nennt seinen Grund** (`leerMitFilter`: „212 Zeilen in diesem Zeitraum — keine davon passt zu …") — „noch nicht hingesehen" (`befehle.leerSatz`) und „hingesehen und nichts gefunden" sind zwei verschiedene Auskünfte.
-  - **⚠ Ein Wort aus der URL, das dieser Portal-Stand nicht kennt, wird VERWORFEN** (`ausUrl`) — ein Lesezeichen oder Support-Link eines älteren Stands darf nicht in eine Server-Ablehnung laufen; verworfen wird nur das eine Wort. `inUrl` lässt die Vorgabe WEG (eine Adresse ohne Filter sieht auch ohne Parameter aus, das `zentraleAnsichtHash`-Muster) und schreibt per `replaceState` — kein Verlaufs-Eintrag je Klick.
-  - **Die drei SCHNELL-CHIPS sind die drei Fragen der Support-Fälle** (nur Abweichungen · nur Register · nur über das Portal) und bleiben am Telefon SICHTBAR, während die volle Leiste ein Sheet wird — sie dürfen nie hinter einem Knopf verschwinden. **Ein zweiter Klick nimmt einen Chip ZURÜCK** (ein Filter, den man nur setzen kann, ist eine Sackgasse).
-  - **⚠ „Ältere laden" wird nur angeboten, wo der Server `nextBefore` meldet** (die `registerZugang`-Regel: ein Knopf ins Leere wird nicht gezeigt). Die Seiten werden über die `id` gemischt, weil der Server `<=` vergleicht und die Grenzzeile deshalb zweimal kommt — lieber doppelt als lautlos verloren.
-  - **Auf der GERÄTESEITE steht genau EIN Chip** („Nur Abweichungen"): er filtert den schon geladenen Mini-Film clientseitig und reist im „Alle anzeigen"-Link mit. **⚠ Der zweite Chip der Spezifikation („Heute") fehlt BEWUSST** — der Ausschnitt IST der Tag (der Abruf nimmt den Vorgabe-Zeitraum), ein Chip könnte dort nichts ändern.
-  - **⚠ Ein Filter-Chip ist 34 px sichtbar mit 44-px-Trefferfläche über `::before`** (das `.vp-switch`-Muster): drei Chips müssen bei 375 px nebeneinander passen, ein 44-px-KASTEN zöge die Reihe auseinander, statt sie bedienbar zu machen.
-  - **Beweise:** `befehleFilter.test.ts` (27) · `pages/BefehleSection.test.tsx` (+5) · `pages/GeraetSeiteSection.test.tsx` (der Chip filtert und reist im Link mit). Im echten Chrome (`emulate`, Wegwerf-Harness) bei **1440** und **375** gemessen: 0 px horizontaler Überlauf, 0 überstehende Elemente, Sheet am Telefon randlos über die volle Breite, keine Konsolenmeldungen.
+- **Die Befehle sind ein VERLAUF: neueste zuerst, keine Filter, Absetzen oben (Geräteseiten Stufe 2, Konzept `data/vp-geraeteseite-rahmen-r2` §6; Captain-Entscheide **D2a** Befehle standardmäßig offen · **D4a** die anlagenweite Seite bekommt DIESELBE filterlose Liste).** Der behobene Befund war ZUSCHNITT, nicht fehlende Auskunft: die Befehle-Seite war eine RECHERCHE-Fläche — drei Schnell-Chips, eine aufklappbare Filter-Leiste mit vier Struktur-Feldern, ein Freitext und ein Treffer-Zähler standen ÜBER einer Liste, die den Tag von MORGENS nach ABENDS erzählte. Wer nachsieht, was VoltPilot zuletzt geschickt hat, liest aber die JÜNGSTE Zeile zuerst und sucht nichts — er schaut nach. **`befehleFilter.ts` und `components/BefehleFilterLeiste.tsx` sind ERSATZLOS entfallen** (grep-Beweis im PR), samt der `.vp-bf*`-CSS und dem Schnell-Chip der Geräteseite.
+  - **ALLE Regeln liegen rein in `src/befehleVerlauf.ts`** (Reihenfolge · Datumszeilen · Seiten-Mischung · Bilanz · Aktionszeile), gerendert von `components/BefehleVerlauf.tsx` — EIN Bauteil und EIN Haken für DREI Wirte (Befehle-Seite · Geräteseite · Box). **Zwei Verlaufs-Formen wären zwei Wahrheiten**, und die Seiten-Mechanik (Fenster, Cursor, stiller Takt) gibt es damit nur einmal statt dreimal daneben.
+  - **⚠ Es wird KEIN Satz neu formuliert.** Jede Zeile bleibt der bestehende Film-Satz aus `befehle.film()` (Ton, Urteil, Roh-Blick), der Leer-Satz kommt aus `befehle.leerSatz()`, der Deckel-Hinweis aus `befehle.deckelSatz()`.
+  - **⚠ Das Datum steht GENAU EINMAL.** `film(history, now, { datiert: false })` schaltet die Zeilen-Datierung ab, weil hier die GRUPPEN-Zeile sie trägt; gruppiert wird nach dem BEGINN (das Ende einer über Mitternacht laufenden Periode liegt per Konstruktion im Fenster — ein zweites Datum wäre Rauschen). Dafür trägt `BefehlZeile` das neue Feld `tag` (der Berliner Kalendertag des Beginns, `null` wenn unlesbar), und `befehle.berlinTag` ist exportiert.
+  - **⚠ Die Grenzzeile kommt ZWEIMAL, und das ist Absicht:** der Server vergleicht `before` mit `<=`, damit an der Seitengrenze keine Zeile lautlos verloren geht — gemischt wird über die `id` (lieber doppelt als verloren). „Ältere laden" erscheint nur mit einem Server-`nextBefore` (die `registerZugang`-Regel: nie ein Knopf ins Leere).
+  - **⚠ Die Bilanz („212 Befehle in den letzten 90 Tagen") kommt vom SERVER** (`total`) und wird NIE aus den geladenen Seiten gezählt — sonst behauptete die Fläche „20 Befehle", während 3.400 dahinter liegen. Ein älteres Backend meldet sie nicht; dann steht dort NICHTS statt einer erfundenen Zahl, und eine 0 sagt schon der Leer-Satz. Ein unlesbarer Zeitpunkt bekommt seine EIGENE Gruppe („Zeitpunkt unbekannt"), statt still der Gruppe darüber zugeschlagen zu werden.
+  - **Das Fenster IST die Aufbewahrung** (`verlaufFenster`: 90 Berliner Kalendertage, `SEITE` = 20 Zeilen). Gerechnet wird auf der PLATTFORM-Zone, nicht auf der des Browsers — der Server spannt sein Fenster in genau dieser Zone auf. `range=` reist nicht mehr mit.
+  - **Die AKTIONSZEILE „Befehl an dieses Gerät ▾" steht OBEN** (§6.2), damit die Antwort darunter als neue Zeile erscheint. **⚠ Sie LÖST nur aus — es entsteht kein zweiter Auslöse-Pfad:** jede Aktion öffnet den BESTEHENDEN Dialog (Handeingriff-Folgenkarte, `ConsumerOverrideDialog`, `RegisterWriteDrawer`), und Dauer-Pflicht, Folgenliste und Rückfrage bleiben dort, wo sie schon geprüft sind. Der Klick auf eine Aktion schreibt NICHTS — erst das Ja ihres Dialogs.
+  - **⚠ Was der Zustand nicht hergibt, wird nicht angeboten:** die Speicher-Handlungen kommen fertig aus `handeingriff.speicherAktionen`, die Geräte-Handlungen aus `consumers/fulfillment.sofortAktionen`, der Register-Weg nur mit einem BELEGTEN Schreibweg. Ein Zähler und eine Ladesäule bekommen GAR KEINE Zeile (an einen Zähler geht kein Befehl; die OCPP-Säule trägt ihren eigenen Aktions-Katalog samt Rollen-Gattern), und die BOX auch nicht — sie hat aus demselben Grund keine Register-Sektion: sie ist ein Rechner, sie ÜBERBRINGT nur.
+  - **⚠ Die Zusatz-Abrufe der Aktionszeile sind GATTUNGS-GETAKTET** (`GeraetSeiteSection`, eigener Effekt neben dem Haupt-Abruf): ein Zähler oder PV-Melder bezahlt `siteInterventions`/`schedule`/`consumersApi` nie, weil seine Zeile ohnehin leer bliebe. Alle fail-soft — ein Ausfall lässt die Zeile schmaler werden, nie die Seite kippen. Der Register-Zugang wird EINMAL im Wirt gerechnet und an die Register-Sektion durchgereicht, damit Zeile und Knopf nicht auseinanderlaufen.
+  - **⚠ `width: 100%` auf einem Flex-Kind genügt NICHT** — `flex-shrink` staucht es wieder auf seine Inhaltsbreite (bei 375 px gemessen: 162 statt 293 px). Die Aktions-Liste ist am Telefon deshalb eine SPALTE.
+  - **Beweise:** `befehleVerlauf.test.ts` (24: Umkehrung, Datumszeilen inkl. Heute/Gestern/Mitternacht, Seiten-Dedupe, Cursor, Bilanz, die Aktionszeile je Gattung) · `pages/BefehleSection.test.tsx` (+2: jüngste Zeile oben, kein Filter im DOM, das 90-Tage-Fenster) · `pages/GeraetSeiteSection.test.tsx` (+3: Hybrid öffnet die Folgen-Karte ohne zu schreiben, PV-Melder nur Register, ohne Schreibweg GAR KEINE Zeile) · `pages/BoxSeiteSection.test.tsx`. Im echten Chrome (`emulate`, Wegwerf-Harness) bei **1440** und **375** an Hybrid, Wallbox und Anlagen-Seite gemessen: 0 px horizontaler Überlauf, Aktions-Knöpfe 44 px, keine Konsolenmeldungen.
 
 ## Der Anbinde-Assistent einer Ladesäule (Geräteseiten Stufe 3, E1)
 
@@ -1371,6 +1373,71 @@ Die Wallbox zeigte damit `hybrid_3p`-Register.
   verstecken: die Vereinigung der Box IST auf dieser einen Seite die richtige
   Antwort — genau deshalb sah der Fehler dort ja korrekt aus.
 
+## Geräteseiten Stufe 3a: „Beobachtete Register" — die Messbibliothek, richtig herum
+
+Konzept `data/vp-geraeteseite-rahmen-r2` §7.2/§7.4 (Captain-Entscheide **D3a** die Liste gibt
+es auch für HTTP/OCPP-Geräte · **D5a**). Sie führt die Stufe-0-Auskunft („welchen Katalog zeigt
+diese Seite?") zu Ende: die Sektion beginnt jetzt mit dem, was DIESES Gerät WIRKLICH aufzeichnet.
+**Reine Portal-Arbeit — kein Endpunkt, keine Migration**; sie baut auf der Komponenten-Selektion
+des Servers auf (PR 536, Root-`AGENTS.md` „Mess-Selektion JE KOMPONENTE").
+
+- **⚠ `MeasurementLibrary` ist darin AUFGELÖST, nicht dupliziert** (Datei + Test gelöscht, das
+  Stylesheet heißt seither `components/Messwerte.css` und wird von `SiteMeasurementComparison`
+  mitbenutzt). Die Drawer-Bauteile (`PointRow`, `HistoryChart`, das Formular für ein eigenes
+  Register) sind WÖRTLICH mitgewandert — eine zweite Kopie hieße, jede Ehrlichkeitsregel und
+  jeden Ablehnungs-Satz zweimal zu pflegen. Neu sind die reine `src/beobachteteRegister.ts` und
+  die Fläche `components/BeobachteteRegister.tsx`.
+- **Die Sektion hat DREI Teile in dieser Reihenfolge** (§7.2): **1** die beobachteten Punkte als
+  Zeilen (Name · Adresse mono · Wert + Einheit + Frische · 24-h-`MiniLineSpark` · „Verlauf" /
+  „Nicht mehr beobachten" · Zustands-Chip), **2** „＋ Register beobachten" (der Katalog-Einschub
+  DIESES Geräts, sein Titel NENNT es) und **3** die unveränderte `RegisterSektion` (lesen +
+  schreiben). Für ein HTTP-/OCPP-Gerät (`registerFaehig === false`) gibt es nur 1+2, und alles
+  heißt „Messwert" statt „Register" (`wortwahl`/`TITEL`/`HINZU`/`LEER` — D3: die Fähigkeit ist
+  dieselbe, „Register" wäre dort das falsche Wort).
+- **⚠ DIE BRÜCKE ist der Grund, warum Teil 3 in derselben Sektion bleibt:** jede über „Jetzt
+  lesen" abgerufene Zeile bekommt „Beobachten" (`brueckeAusLesung` → `BrueckeVorschlag` →
+  `bruecke`-Prop → das Formular öffnet VORBEFÜLLT). Der Vorschlag entsteht **zur LESEZEIT**
+  (`jetztLesen`), weil Adresse, Registerart und das Roh/Skaliert-PAAR nur dort vorliegen — aus
+  einer fertigen `RegisterZeile` ließe sich die Skala nur RATEN. Eine SPULE und eine unlesbare
+  Adresse bekommen deshalb keinen Knopf, sondern `BRUECKE_NICHT_MOEGLICH` (die
+  `registerZugang`-Regel: ein Knopf, der nichts bewirken kann, wird nicht angeboten).
+- **Vier Ehrlichkeitsregeln, jede einzeln gepinnt:** ein Wert wird GELESEN, nie gerechnet · die
+  Einheit kommt aus dem Katalog, nie geraten · ein Punkt, den die Box heute nicht lesen kann,
+  behauptet KEINE Beobachtung (`wartet` + `WARTET_AUF_BOX`) — **ein angekommener WERT gewinnt
+  aber**, er ist der Beweis · und nur eine EINGESCHALTETE Auswahl ist eine Beobachtung (eine
+  abgewählte ist Historie, keine Zeile).
+- **⚠ Die Adresse steht in BEIDEN Lesehöhen gleich** — Zeile und Katalog-Einschub gehen durch
+  dieselbe `adresse()`; wer im Einschub wieder den rohen `selector` rendert, lässt dieselbe
+  Adresse an zwei Orten verschieden aussehen.
+- **`entityId` reist in JEDEN Aufruf** (Auswahl · Katalog · Vorschau · Umschalten · eigenes
+  Register · Verlauf/Export): es ist die Komponente DIESER Seite (`editRow?.id`, die schon für
+  den Verlauf benutzt wurde). **Ohne sie ist alles byte-gleich die Box-Semantik** — die
+  Box-Seite und ein Gerät ohne gepflegte Komponente verhalten sich zeichengleich wie vorher.
+- **Die Kurzfassung der geschlossenen Sektion kommt von der FLÄCHE nach oben**
+  (`kurzfassung` → `onKurzfassung` → `beobKurz`, ein stabiler `useState`-Setter, React bricht bei
+  gleichem String ab): „3 beobachtet · Ladestand 87 % vor 12 s". Der Rahmen leitet sie NICHT
+  selbst ab — zwei Zähler über dieselben Zeilen wären zwei Wahrheiten.
+- **Die Ausblende-Regel der Stufe 0 gilt unverändert:** ohne Katalog-Familie entsteht die Fläche
+  gar nicht und fragt auch nichts ab; der Fehlerfall spricht über das GERÄT.
+- **⚠ Die Stufe-3c-Grenze hat ein ENDE mit Ansage.** `BEOBACHTEN_HINWEIS`/`beobachtenMoeglich`
+  (`registerFamilie.ts`, Stufe 0) sagen „für dieses Gerät wird Beobachten mit einem der nächsten
+  Box-Stände möglich" — die Edge-Hälfte (#538, „ein Messpunkt wird über SEINE Komponente gelesen")
+  ist gebaut und reist mit dem nächsten Edge-Release. **Eine laufende Box behält ihr Image**, der
+  Satz bleibt also je Box wahr, bis sie aktualisiert ist; er verschwindet dadurch nicht von selbst
+  (es gibt keinen Rückkanal „ich kann das jetzt"). Wer ihn entfernt, entfernt ihn für ALLE Boxen —
+  das ist eine bewusste Entscheidung nach der Flotten-Aktualisierung, kein Aufräumen.
+- **⚠ Für Tests: ein gerendertes ECharts stürzt in jsdom ab** (zrender ohne Canvas, „Cannot set
+  properties of null (setting 'dpr')") — die Verlaufs-Attrappe liefert deshalb `data: []` (die
+  Darstellungs-Umschalter stehen VOR dem Datenzweig, sie bleiben also prüfbar); und die
+  Wallbox-Fixture braucht `communication: 'goe_http_api'`, denn über die Register-Sektion
+  entscheidet der WEG (`geraetGesicht`), über den Katalog die FAMILIE.
+- **Beweise:** `beobachteteRegister.test.ts` (22, rein) · `components/BeobachteteRegister.test.tsx`
+  (20: die Liste führt, der leere Zustand nennt den Weg, das HTTP-Wort, die Kurzfassung nach oben,
+  „Nicht mehr beobachten" fragt VORHER, der Katalog-Einschub samt Verlauf-Tausch/Escape, die
+  Komponente in jedem Aufruf, die Box-Semantik ohne sie, die Stufe-3c-Grenze, die Brücke) ·
+  `pages/GeraetSeiteSection.test.tsx` (die drei Teile, die Wallbox ohne Lesen/Schreiben, die
+  Brücke bis ins vorbefüllte Formular, `entityId` in den Auswahl-Aufrufen).
+
 ## Geräteseiten Stufe 1: DER RAHMEN, durch den JEDE Geräteseite fährt
 
 Konzept `data/vp-geraeteseite-rahmen-r2` §4 (Captain-Entscheide **D1a** Brotkrume ·
@@ -1469,6 +1536,75 @@ erklären, standen an drei Orten. **Rein Portal — kein Endpunkt, keine Migrati
   überstehende Elemente (die zwei waagerecht scrollenden Leisten bleiben in ihrem
   eigenen Container), Chips 44 px, keine Konsolenmeldungen.
 
+## Geräteseiten Stufe 4: DIE NEUN BLÄTTER — je Gerätetyp genau das, was er braucht
+
+Scout `data/vp-geraeteseite-rahmen-r2` §5 (die Geräteliste aus dem Code + die neun Blätter) + §8
+Stufe 4; Captain-Entscheide **Batterie = Teil des Hybriden** (kein eigenes Blatt, §5.3) und
+**Wärmepumpe = schaltbarer Verbraucher** (Hilfetext, nie Titel). **Reine Portal-Arbeit — kein
+Endpunkt, keine Migration, kein Feld auf dem Draht:** jeder Wert kommt aus einer BESTEHENDEN
+Ableitung (`controlStrip` · `abregelungDiesesGeraets` · `speicherAktionen` · `sofortAktionen` ·
+`fulfilmentSummary` · `consumerHasMeasurement` · `lanZeile` · `einspeiseSektion` ·
+`deviceLimitLine` · `channelLabel`), es entsteht kein zweiter Satz und keine zweite Zahl.
+
+- **`src/geraetGesicht.ts` entscheidet je Gattung den HELDEN und die SEKTIONS-MENGE**, die
+  Ordnung gehört seit Stufe 1 dem Rahmen (`KANONISCH` filtert die kanonische §4.4-Folge — **ein
+  Blatt LÄSST AUS, es sortiert nie um**). `components/GeraetRahmen.tsx` und die Sektions-Bauteile
+  sind unverändert geteilt: sieben Gesichter wären sieben Stellen, an denen eine Regel vergessen
+  werden kann.
+- **⚠ `eigenbau` ist eine EIGENSCHAFT, keine Gattung.** §5.6 und §5.8 überlappen (`modbus-generic`
+  steht in beiden), und `komponenten.componentRole` gibt einem selbst gebauten Sensor per Katalog
+  die Rolle `grid` → Gattung `zaehler`, einem Schalter `consumer` → `verbraucher`. Der Beleg ist
+  `PlantComponent.freigabeFaehig`; ein Eigenbau BEHÄLT damit sein Blatt und bekommt zusätzlich
+  seine SELBST definierten Kanäle als Kacheln (`eigenbauKacheln`, in Zähler-, Verbraucher- UND
+  Rückfall-Gesicht) — und verliert die Software-Sektion (§5.8: „nicht lesbar → Sektion entfällt").
+- **⚠ `Held.zeilen` trägt, was eine Kachel nicht sagen kann** — die D3-Bestätigungsstufe („Energie:
+  gemessen" vs. „angenommen (Nennleistung × Zeit)") und die Erfüllungs-Kopfzeile, beide WÖRTLICH
+  aus ihrer geteilten Ableitung. **Ohne gemeldete Erfüllung steht dort NICHTS**, und ohne
+  `gemessen`-Beleg wird die Stufe gar nicht behauptet.
+- **⚠ `HeldKachel.key` ist der stabile Sprung-Anker, NIE das Label** — der Kunde darf eine
+  Komponente umbenennen, die Adresse darf davon nicht abhängen. `SPEICHER_KACHEL` ist der eine
+  exportierte Schlüssel, den die Batterie-Zeile des Anlagen-Modells anspringt.
+- **§5.3 · die Batterie hat KEINE eigene Seite.** Ihre Komponenten-Zeile führt auf das Hybrid-Blatt
+  (`abschnittHash(karteHref, 'jetzt', SPEICHER_KACHEL)` → `?abschnitt=jetzt&kachel=speicher`) und
+  markiert dort genau ihre Kachel (`.is-markiert`, eine ANTWORT auf den Klick, kein Zustand).
+  **`?kachel=` ist ein PARAMETER im Hash, nie eine zweite Raute** (der HashRouter läse sie als
+  Route) — gelesen beim Aufbau UND bei `hashchange`, wie der Abschnitts-Sprung des Rahmens.
+  Ohne Geräteseite gibt es den Absprung nicht (die `registerZugang`-Regel).
+- **§4.6 ist jetzt VOLLSTÄNDIG bedient: `Gesicht.entfallen` trägt je entfallener Sektion ihren
+  GRUND**, und der Wirt reicht ihn als `SektionAngebot.grund` weiter — in die Diagnose. Vier
+  Sektionen können strukturell wegfallen: `befehle` (an einen Zähler geht keiner), `steuerung`
+  (`Gesicht.steuerung` — sie erklärte dort nur ihre eigene Nicht-Zuständigkeit), `register` (HTTP /
+  OCPP) und `software` (Eigenbau). Der frühere lokale `ohneRegisterSatz` des Wirts ist ERSATZLOS
+  entfallen — zwei Formulierungen desselben Grundes wären zwei Urteile.
+- **⚠ „Steuerung & Grenzen" gibt es seit Stufe 4 NICHT mehr immer.** Der Wirt hatte es hart
+  verdrahtet („gibt es IMMER: die Steuerungs-Bezüge sind in jeder Gattung dieselbe Auskunft") —
+  auf einem Zähler war das eine Sektion, die nur sagt, dass sie nichts zu sagen hat.
+- **§5.4 · die primäre Handlung steht IM Helden**, nicht erst in der Aktionszeile darunter — und es
+  ist DIESELBE, die die Zeile anbietet (`aktionen.find(a => a.art === 'verbraucher')` → derselbe
+  `aktionAusloesen`): **kein zweiter Auslöse-Pfad**, die Folgenliste bleibt im bestehenden Dialog.
+- **§5.7 · `blattHinweis` ist ein HILFETEXT, nie ein Titel** (Captain): eine Wärmepumpe ist im
+  Katalog kein eigener Typ, sie läuft als `generic-load`/`pump` über ein Schaltrelais. Er steht in
+  „Steuerung & Grenzen", wo die Grenzen dieses Geräts stehen. Seine Signatur ist bewusst
+  `Pick<GesichtInput, 'komponenten' | 'entities'>` — ein Aufrufer soll dafür keinen ganzen
+  Gesichts-Eingang zusammenbauen müssen.
+- **⚠ `eigenerVerbraucher` steht im Wirt VOR dem Gesicht**, obwohl `consumers` erst geladen wird,
+  wenn das Gesicht die Gattung `verbraucher` gesagt hat: die Gattung hängt an Rolle und
+  Entitätstyp, nie an dieser Liste, also konvergiert es in zwei Läufen — eine Schleife gibt es
+  nicht. Umgekehrt wäre es ein TDZ-Fehler.
+- **§5.9 · die Box** (`BoxSeiteSection`) und **§5.5 · die Ladesäule** (`OcppWallboxPage`) waren
+  schon vor dieser Stufe eigene Blätter im Rahmen und sind unangetastet.
+- **⚠ Die REGISTER-Sektion gehört Stufe 3a** (`BeobachteteRegister`, der Abschnitt darüber): Stufe 4
+  entscheidet nur, OB es sie gibt (`registerMoeglich`) und mit welchem Grund sie sonst entfällt — ihr
+  INHALT und ihre Kurzfassung (`beobKurz`) bleiben unangetastet. Die beiden greifen an genau einer
+  Stelle ineinander: der frühere lokale `ohneRegisterSatz` des Wirts ist durch `entfallGrund('register')`
+  ersetzt, damit derselbe Grund nicht an zwei Stellen formuliert wird.
+- **Beweise:** `geraetGesicht.test.ts` (27, davon 9 neu: je Gattung die Kacheln UND die
+  „braucht NICHT"-Gegenprobe — Zähler ohne Befehle und ohne Steuerung, Eigenbau ohne Software,
+  Wallbox ohne Register, die kanonische Ordnung über alle Gattungen) · `geraetRahmen.test.ts` (47,
+  +3 für `?kachel=`) · `pages/GeraetSeiteSection.test.tsx` (38, +4 am DOM) ·
+  `pages/AnlagenModellSection.test.tsx` (50, +2 für den §5.3-Absprung). **Die vier DOM-Wächter und
+  der Absprung sind mutationsgeprüft** — jede zurückgedrehte Regel lässt sie fallen.
+
 ## VpPicker: EIN Picker fuer die ganze Plattform - kein natives `<select>` mehr
 
 Konzept `data/vp-picker-system` (Captain-genehmigt 21.08.2026, woertlich: „alle
@@ -1549,7 +1685,7 @@ Edge-`:8484`-Fassung.
 
 - **Die MODELL-Suche des Anlege-Flusses ist EIN Picker mit Gruppen (Welle 1).** Suchfeld + Marken-Auswahl + Modell-Auswahl waren DREI Bedienelemente fuer EINE Frage; jetzt ist es ein `VpPicker` mit den Marken als GRUPPEN. **Die Suche ist dieselbe tolerante wie zuvor** — sie wohnt nur nicht mehr in `komponentenAssistent.ts`, sondern in `picker/suche.ts` und gilt damit fuer jede Auswahlliste des Portals. Familie und Modellcode reisen als unsichtbare `keywords` mit, `modellZusatz` ist die Nebenzeile. Der frueher separate Stufen-Weg ist damit **kein zweiter Pfad mehr, sondern eine Bewegung in derselben Liste**; der Modell-Hebel des Verbindungstests fuehrt zurueck in den Picker, der auf dem gewaehlten Modell (und damit in dessen Marken-Gruppe) oeffnet.
 
-- **Welle 1 · die drei Formular-Flaechen: GuidedRuleBuilder · BefehleFilterLeiste · HistorieWelt-Sprungfeld.** Neun `<select>` und vier native `type="date"`/`type="time"`-Felder sind weg; **die WERTE und jede Pflichtpruefung sind unveraendert** (`schaltFreigabe`/`befehleFilter`/`historieZeit` haben keine Zeile bekommen) - es ist eine reine Darstellungs-Schicht.
+- **Welle 1 · die drei Formular-Flaechen: GuidedRuleBuilder · die (inzwischen entfallene) Befehle-Filterleiste · HistorieWelt-Sprungfeld.** Neun `<select>` und vier native `type="date"`/`type="time"`-Felder sind weg; **die WERTE und jede Pflichtpruefung sind unveraendert** (`schaltFreigabe`/`historieZeit` haben keine Zeile bekommen) - es ist eine reine Darstellungs-Schicht. ⚠ Die Befehle-Filterleiste selbst gibt es seit Geräteseiten Stufe 2 nicht mehr (der Verlauf hat keine Filter); ihre Picker-Faelle sind mit ihr entfallen.
   - **⚠ Eine GESPERRTE Bedingung bleibt SICHTBAR und nennt ihren Grund.** Das native `<option disabled>` konnte den Governance-Satz nur im `title` tragen; die Zeile traegt ihn jetzt als `disabledHint` LESBAR unter dem Namen (die Haus-Regel „ein Zustand ohne Grund ist ein Raetsel"). Wer die Liste vorfiltert, nimmt dem Kunden die Auskunft, WARUM etwas fehlt.
   - **⚠ Das Zeitfenster nimmt weiterhin eine FREI getippte Uhrzeit an.** `VpTimePicker` ist ein Feld mit Vorschlagsliste, kein Auswahlfeld - `18:30`/`1830`/`18` fuehren alle zu `18:30`, und `min`/`max` des abgeloesten nativen Felds gelten unveraendert. Ein Raster als einzige Eingabe wuerde aendern, WELCHE Regeln sich bauen lassen.
   - **⚠ Das Sprungfeld der Historie war NATIV mit der Begruendung „der Browser bringt seinen Kalender mit" - genau die Begruendung ist gefallen** (Captain-Entscheid 1): der System-Kalender beginnt auf einem englisch eingestellten Rechner am SONNTAG, was eine Kalenderwochen-Auswahl unbrauchbar macht. Der Haus-Kalender beginnt am Montag und traegt seine KW-Spalte; der WERT bleibt ISO, `ankerAusWert` liest ihn unveraendert.

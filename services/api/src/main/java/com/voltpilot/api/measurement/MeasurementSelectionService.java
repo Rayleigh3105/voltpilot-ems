@@ -36,7 +36,7 @@ public class MeasurementSelectionService {
     public record CustomChange(long expectedRevision, UUID idempotencyKey,
             Definition definition) {}
 
-    public record SelectionPoint(String pointKey, boolean enabled, Integer cadenceS,
+    public record SelectionPoint(UUID entityId, String pointKey, boolean enabled, Integer cadenceS,
             long desiredRevision, Instant enabledAt, Instant disabledAt, String catalogVersion,
             String changedBy, String changedByName, Instant changedAt, String applyStatus,
             String applyReason, Instant appliedAt, JsonNode customDefinition,
@@ -44,7 +44,8 @@ public class MeasurementSelectionService {
             String longTermStrategy, String label, String family, String group,
             String semanticStatus) {}
 
-    public record SelectionEvent(long id, String pointKey, long desiredRevision, String eventKind,
+    public record SelectionEvent(long id, UUID entityId, String pointKey, long desiredRevision,
+            String eventKind,
             UUID idempotencyKey, Instant requestedAt, boolean requestedEnabled,
             Integer requestedCadenceS, Instant enabledAt, Instant disabledAt,
             String catalogVersion, String actor, String actorName, String applyStatus,
@@ -52,7 +53,15 @@ public class MeasurementSelectionService {
             String retentionClass, int rawRetentionDays, Integer longTermCadenceS,
             String longTermStrategy) {}
 
-    public record State(UUID deviceId, UUID siteId, long desiredRevision, String catalogVersion,
+    /**
+     * {@code entityId} echoes the component this view is scoped to; null means
+     * the whole device (the pre-3b box semantics). {@code desiredRevision} and
+     * {@code volumeEstimate} stay DEVICE-wide even in a component view: the
+     * revision is the optimistic-concurrency token of the one published plan,
+     * and the budget is the physical load of the one bus.
+     */
+    public record State(UUID deviceId, UUID siteId, UUID entityId, long desiredRevision,
+            String catalogVersion,
             String status, String statusReason, String activationNotice, String disableNotice,
             List<SelectionPoint> selections, List<SelectionEvent> events,
             MeasurementBudget.Estimate volumeEstimate) {}
@@ -79,22 +88,53 @@ public class MeasurementSelectionService {
         return scope;
     }
 
-    public State state(UUID deviceId) {
-        DeviceScope scope = requireDevice(deviceId);
-        return state(scope);
+    /**
+     * Resolves the optional component a selection belongs to. It must be
+     * RLS-visible AND stand at the device's own site; a component of another
+     * plant is 404, never a silently accepted owner. It deliberately does NOT
+     * require {@code measurement_point.device_id} to match: every component the
+     * assistant or a takeover creates carries no device_id at all, and those are
+     * exactly the ones a device page must be able to observe.
+     */
+    public UUID requireEntity(DeviceScope scope, UUID entityId) {
+        if (entityId == null) {
+            return null;
+        }
+        UUID siteId = repository.entitySiteId(entityId);
+        if (siteId == null || !siteId.equals(scope.siteId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Komponente nicht gefunden.");
+        }
+        return entityId;
     }
 
-    public Set<String> availableFamilies(UUID deviceId) {
-        requireDevice(deviceId);
-        return MeasurementCatalogFamilies.expand(repository.availableFamilies(deviceId),
+    /** The whole device (the pre-3b box semantics). */
+    public State state(UUID deviceId) {
+        return state(deviceId, null);
+    }
+
+    public State state(UUID deviceId, UUID entityId) {
+        DeviceScope scope = requireDevice(deviceId);
+        return state(scope, requireEntity(scope, entityId));
+    }
+
+    public Set<String> availableFamilies(UUID deviceId, UUID entityId) {
+        DeviceScope scope = requireDevice(deviceId);
+        return MeasurementCatalogFamilies.expand(
+                repository.availableFamilies(deviceId, requireEntity(scope, entityId)),
                 catalog.families());
     }
 
-    public Map<String, Integer> selectedCadences(UUID deviceId) {
-        requireDevice(deviceId);
-        return repository.selectedCadences(deviceId);
+    public Map<String, Integer> selectedCadences(UUID deviceId, UUID entityId) {
+        DeviceScope scope = requireDevice(deviceId);
+        return repository.selectedCadences(deviceId, requireEntity(scope, entityId));
     }
 
+    /**
+     * Device-wide on purpose: samples are stored per (device, point_key) and
+     * carry no component dimension before Stufe 3c. Claiming a per-component
+     * "already recorded" would be an invented precision.
+     */
     public Set<String> recordedPointKeys(UUID deviceId) {
         requireDevice(deviceId);
         return repository.recordedPointKeys(deviceId);
@@ -105,24 +145,31 @@ public class MeasurementSelectionService {
         return repository.latestObservations(deviceId);
     }
 
-    /** Preview one catalog-point change without writing or incrementing revision. */
-    public MeasurementBudget.Estimate preview(UUID deviceId, String pointKey, boolean enabled,
-            Integer cadenceS) {
-        requireDevice(deviceId);
+    /**
+     * Preview one catalog-point change without writing or incrementing revision.
+     * The candidate set stays DEVICE-wide - the bus budget is physical - while
+     * the replaced candidate is the one of THIS component.
+     */
+    public MeasurementBudget.Estimate preview(UUID deviceId, UUID entityId, String pointKey,
+            boolean enabled, Integer cadenceS) {
+        DeviceScope scope = requireDevice(deviceId);
+        UUID entity = requireEntity(scope, entityId);
         List<Row> current = repository.current(deviceId);
-        Row old = find(current, pointKey);
+        Row old = find(current, entity, pointKey);
         Resolved resolved = resolveForChange(pointKey, enabled, cadenceS, old);
         Integer effective = enabled ? resolved.cadenceS() : old == null ? null : old.cadenceS();
         List<MeasurementBudget.Candidate> candidates = candidates(current);
-        replace(candidates, new MeasurementBudget.Candidate(pointKey, enabled, effective,
+        replace(candidates, new MeasurementBudget.Candidate(candidateKey(entity, pointKey),
+                enabled, effective,
                 resolved.pollGroup(), resolved.requestCostMs(), resolved.retention(),
                 resolved.family()));
         return estimate(candidates);
     }
 
     /** Preview a free register with the exact same validation/budget as create. */
-    public MeasurementBudget.Estimate previewCustom(UUID deviceId, Definition definition) {
-        requireDevice(deviceId);
+    public MeasurementBudget.Estimate previewCustom(UUID deviceId, UUID entityId,
+            Definition definition) {
+        requireEntity(requireDevice(deviceId), entityId);
         Canonical custom;
         MeasurementRetention retention;
         try {
@@ -139,13 +186,15 @@ public class MeasurementSelectionService {
     }
 
     @Transactional
-    public State change(UUID deviceId, String pointKey, Change request, Actor actor) {
+    public State change(UUID deviceId, UUID entityId, String pointKey, Change request,
+            Actor actor) {
         if (request == null || request.idempotencyKey() == null) {
             throw bad("Für eine Auswahländerung fehlt der Idempotenzschlüssel.");
         }
         DeviceScope scope = lock(deviceId);
+        UUID entity = requireEntity(scope, entityId);
         List<Row> current = repository.current(deviceId);
-        Row old = find(current, pointKey);
+        Row old = find(current, entity, pointKey);
         Event previous = repository.eventByRequest(deviceId, request.idempotencyKey());
         if (previous != null) {
             // A retry must remain stable even if the canonical catalog changed
@@ -156,9 +205,9 @@ public class MeasurementSelectionService {
                     ? request.cadenceS() == null ? previous.requestedCadenceS()
                             : request.cadenceS()
                     : previous.requestedCadenceS();
-            ensureSame(previous, pointKey, request.enabled(), replayCadence,
+            ensureSame(previous, entity, pointKey, request.enabled(), replayCadence,
                     old == null ? null : old.customDefinitionJson());
-            return state(scope);
+            return state(scope, entity);
         }
         if (!request.enabled() && old == null) {
             throw bad("Dieser Messpunkt ist nicht ausgewählt.");
@@ -169,25 +218,28 @@ public class MeasurementSelectionService {
 
         checkRevision(deviceId, request.expectedRevision());
         List<MeasurementBudget.Candidate> candidates = candidates(current);
-        replace(candidates, resolved.candidate(pointKey, request.enabled(), effectiveCadence));
+        replace(candidates, resolved.candidate(candidateKey(entity, pointKey), request.enabled(),
+                effectiveCadence));
         MeasurementBudget.Estimate budget = estimate(candidates);
         rejectHardBudget(budget);
 
         long next = request.expectedRevision() + 1;
         String version = old != null && !request.enabled()
                 ? old.catalogVersion() : catalog.version();
-        Row saved = repository.save(scope, pointKey, request.enabled(), effectiveCadence, next, version,
+        Row saved = repository.save(scope, entity, pointKey, request.enabled(), effectiveCadence,
+                next, version,
                 subject(actor), display(actor), PENDING_REASON, resolved.customJson(),
                 resolved.retention());
-        repository.appendEvent(scope, pointKey, next, request.idempotencyKey(), request.enabled(),
+        repository.appendEvent(scope, entity, pointKey, next, request.idempotencyKey(),
+                request.enabled(),
                 effectiveCadence, saved.enabledAt(), saved.disabledAt(), version, subject(actor),
                 display(actor), PENDING_REASON, resolved.customJson(), resolved.retention());
-        return state(scope);
+        return state(scope, entity);
     }
 
     /** Creates and enables one server-keyed, read-only free register. */
     @Transactional
-    public State addCustom(UUID deviceId, CustomChange request, Actor actor) {
+    public State addCustom(UUID deviceId, UUID entityId, CustomChange request, Actor actor) {
         if (request == null || request.idempotencyKey() == null) {
             throw bad("Für den eigenen Messwert fehlt der Idempotenzschlüssel.");
         }
@@ -206,14 +258,16 @@ public class MeasurementSelectionService {
             throw bad(e.getMessage());
         }
         DeviceScope scope = lock(deviceId);
+        UUID entity = requireEntity(scope, entityId);
         Event previous = repository.eventByRequest(deviceId, request.idempotencyKey());
         if (previous != null) {
-            ensureSame(previous, pointKey, true, custom.cadenceS(), customJson);
-            return state(scope);
+            ensureSame(previous, entity, pointKey, true, custom.cadenceS(), customJson);
+            return state(scope, entity);
         }
         checkRevision(deviceId, request.expectedRevision());
         List<MeasurementBudget.Candidate> candidates = candidates(repository.current(deviceId));
-        MeasurementBudget.Candidate candidate = new MeasurementBudget.Candidate(pointKey, true,
+        MeasurementBudget.Candidate candidate = new MeasurementBudget.Candidate(
+                candidateKey(entity, pointKey), true,
                 custom.cadenceS(), customPollGroup(custom), custom.requestCostMs(), retention,
                 "custom");
         replace(candidates, candidate);
@@ -221,19 +275,24 @@ public class MeasurementSelectionService {
         rejectHardBudget(budget);
 
         long next = request.expectedRevision() + 1;
-        Row saved = repository.save(scope, pointKey, true, custom.cadenceS(), next, catalog.version(),
+        Row saved = repository.save(scope, entity, pointKey, true, custom.cadenceS(), next,
+                catalog.version(),
                 subject(actor), display(actor), PENDING_REASON, customJson, retention);
-        repository.appendEvent(scope, pointKey, next, request.idempotencyKey(), true,
+        repository.appendEvent(scope, entity, pointKey, next, request.idempotencyKey(), true,
                 custom.cadenceS(), saved.enabledAt(), saved.disabledAt(), catalog.version(),
                 subject(actor), display(actor), PENDING_REASON, customJson, retention);
-        return state(scope);
+        return state(scope, entity);
     }
 
-    private State state(DeviceScope scope) {
-        List<Row> rows = repository.current(scope.deviceId());
-        List<SelectionEvent> events = repository.events(scope.deviceId(), 100).stream()
+    private State state(DeviceScope scope, UUID entityId) {
+        List<Row> all = repository.current(scope.deviceId());
+        List<Row> rows = entityId == null ? all
+                : all.stream().filter(r -> entityId.equals(r.entityId())).toList();
+        List<SelectionEvent> events = repository.events(scope.deviceId(), entityId, 100).stream()
                 .map(this::eventView).toList();
-        long revision = events.isEmpty() ? 0 : events.get(0).desiredRevision();
+        // The revision is the DEVICE-wide concurrency token of the one published
+        // plan, so a component view must not report its own last event number.
+        long revision = repository.revision(scope.deviceId());
         boolean pending = rows.stream().anyMatch(r -> "pending_edge".equals(r.applyStatus()));
         boolean rejected = rows.stream().anyMatch(r -> "rejected".equals(r.applyStatus()));
         List<Row> enabledRows = rows.stream().filter(Row::enabled).toList();
@@ -249,12 +308,14 @@ public class MeasurementSelectionService {
                         .orElse("Die VoltPilot-Box hat die Auswahl abgelehnt.")
                 : firstSample ? "Der erste Wert aller aktiven zusätzlichen Messpunkte wurde gespeichert."
                 : "Von der VoltPilot-Box bestätigt.";
-        return new State(scope.deviceId(), scope.siteId(), revision, catalog.version(), status,
+        return new State(scope.deviceId(), scope.siteId(), entityId, revision, catalog.version(),
+                status,
                 reason,
                 "Aufzeichnung startet serverseitig ab enabledAt; frühere Werte werden nicht ergänzt.",
                 "Eine Abwahl stoppt zukünftige Proben; bisherige Werte und Auswahlereignisse bleiben erhalten.",
                 rows.stream().map(this::pointView).toList(), events,
-                estimate(candidates(rows)));
+                // The bus budget is physical: it always counts the whole device.
+                estimate(candidates(all)));
     }
 
     private SelectionPoint pointView(Row row) {
@@ -262,7 +323,7 @@ public class MeasurementSelectionService {
         JsonNode custom = parse(row.customDefinitionJson());
         String label = p == null ? custom == null ? null : custom.path("label").asText(null)
                 : p.labelDe() == null ? p.labelSource() : p.labelDe();
-        return new SelectionPoint(row.pointKey(), row.enabled(), row.cadenceS(),
+        return new SelectionPoint(row.entityId(), row.pointKey(), row.enabled(), row.cadenceS(),
                 row.desiredRevision(), row.enabledAt(), row.disabledAt(), row.catalogVersion(),
                 row.changedBy(), row.changedByName(), row.changedAt(), row.applyStatus(),
                 row.applyReason(), row.appliedAt(), custom, row.retentionClass(),
@@ -274,7 +335,8 @@ public class MeasurementSelectionService {
     }
 
     private SelectionEvent eventView(Event e) {
-        return new SelectionEvent(e.id(), e.pointKey(), e.desiredRevision(), e.eventKind(),
+        return new SelectionEvent(e.id(), e.entityId(), e.pointKey(), e.desiredRevision(),
+                e.eventKind(),
                 e.idempotencyKey(),
                 e.requestedAt(), e.requestedEnabled(), e.requestedCadenceS(), e.enabledAt(),
                 e.disabledAt(), e.catalogVersion(), e.actor(), e.actorName(), e.applyStatus(),
@@ -286,19 +348,20 @@ public class MeasurementSelectionService {
     private List<MeasurementBudget.Candidate> candidates(List<Row> rows) {
         List<MeasurementBudget.Candidate> out = new ArrayList<>();
         for (Row row : rows) {
+            String key = candidateKey(row.entityId(), row.pointKey());
             if (row.customDefinitionJson() != null) {
                 Resolved c = resolveCustom(row);
-                out.add(c.candidate(row.pointKey(), row.enabled(), row.cadenceS()));
+                out.add(c.candidate(key, row.enabled(), row.cadenceS()));
                 continue;
             }
             Point p = catalog.resolve(row.pointKey());
             if (p == null) {
                 // A removed historical catalog point remains visible but does not
                 // acquire an invented request cost. Existing cadence still counts.
-                out.add(new MeasurementBudget.Candidate(row.pointKey(), row.enabled(),
+                out.add(new MeasurementBudget.Candidate(key, row.enabled(),
                         row.cadenceS(), null, MeasurementBudget.requestCostMs(null), row.retention(), null));
             } else {
-                out.add(new MeasurementBudget.Candidate(row.pointKey(), row.enabled(),
+                out.add(new MeasurementBudget.Candidate(key, row.enabled(),
                         row.cadenceS(), p.pollGroup(),
                         MeasurementBudget.requestCostMs(p.sourceKind()), row.retention(),
                         p.family()));
@@ -363,8 +426,9 @@ public class MeasurementSelectionService {
 
     private record Resolved(Integer cadenceS, String pollGroup, int requestCostMs,
             MeasurementRetention retention, String customJson, String family) {
-        MeasurementBudget.Candidate candidate(String pointKey, boolean enabled, Integer cadence) {
-            return new MeasurementBudget.Candidate(pointKey, enabled, cadence, pollGroup,
+        MeasurementBudget.Candidate candidate(String candidateKey, boolean enabled,
+                Integer cadence) {
+            return new MeasurementBudget.Candidate(candidateKey, enabled, cadence, pollGroup,
                     requestCostMs, retention, family);
         }
     }
@@ -386,9 +450,10 @@ public class MeasurementSelectionService {
         }
     }
 
-    private void ensureSame(Event previous, String pointKey, boolean enabled,
+    private void ensureSame(Event previous, UUID entityId, String pointKey, boolean enabled,
             Integer cadence, String customJson) {
         if (!previous.pointKey().equals(pointKey)
+                || !Objects.equals(previous.entityId(), entityId)
                 || previous.requestedEnabled() != enabled
                 || !Objects.equals(previous.requestedCadenceS(), cadence)
                 || !jsonEquals(previous.customDefinitionJson(), customJson)) {
@@ -423,8 +488,21 @@ public class MeasurementSelectionService {
         return MeasurementBudget.estimate(candidates, budgetProperties.driverSampleLimits());
     }
 
-    private static Row find(List<Row> rows, String pointKey) {
-        return rows.stream().filter(r -> r.pointKey().equals(pointKey)).findFirst().orElse(null);
+    private static Row find(List<Row> rows, UUID entityId, String pointKey) {
+        return rows.stream()
+                .filter(r -> r.pointKey().equals(pointKey)
+                        && Objects.equals(r.entityId(), entityId))
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * The identity a budget candidate is deduplicated by. Without a component
+     * it is the bare point key - byte-identical to the pre-3b budget - and with
+     * one it is scoped, so two identical inverters behind one box are counted
+     * as the two reads they will be from Stufe 3c on.
+     */
+    private static String candidateKey(UUID entityId, String pointKey) {
+        return entityId == null ? pointKey : entityId + "|" + pointKey;
     }
 
     private static void replace(List<MeasurementBudget.Candidate> list,

@@ -1,6 +1,7 @@
 package measurements
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -52,6 +53,61 @@ func TestCustomConfigCarriesExecutableDefinitionOnlyForCustomKeys(t *testing.T) 
 		t.Fatal("catalog point accepted custom definition")
 	}
 }
+
+// The cloud may bind a selection to a component (Stufe 3b) long before this
+// build can use that binding. The plan must still apply: refusing the unknown
+// field would take a whole box's measurements away over routing metadata.
+func TestPerComponentSelectionCarriesItsBindingAndIsShapeChecked(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docs", "contracts", "v2",
+		"examples", "mqtt-measurement-config.valid.per-component.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := ParseConfig(raw, testID, 1)
+	if err != nil {
+		t.Fatalf("per-component plan refused: %v", err)
+	}
+	if len(c.Selections) != 2 {
+		t.Fatalf("selections %d", len(c.Selections))
+	}
+	// Stufe 3c: the binding SELECTS the device Node-RED reads the point over.
+	// An absent one is the pre-3c "belongs to the device as a whole" and must
+	// stay absent - inventing one would bind a plan to a component nobody named.
+	if c.Selections[0].EntityID != "00000000-0000-0000-0000-0000000000a1" || c.Selections[1].EntityID != "" {
+		t.Fatalf("entity binding lost/invented: %#v", c.Selections)
+	}
+	if c.Selections[0].PointKey != "deye.hybrid_1p.battery.battery" ||
+		c.Selections[0].CadenceS != 10 {
+		t.Fatalf("selection changed: %#v", c.Selections[0])
+	}
+
+	// A malformed binding is a broken DOCUMENT, not a missing component: it must
+	// never reach the binding layer as an unresolvable key.
+	broken := bytes.Replace(raw, []byte("00000000-0000-0000-0000-0000000000a1"), []byte("not-a-uuid"), 1)
+	if _, err := ParseConfig(broken, testID, 1); err == nil {
+		t.Fatal("a malformed entity_id was accepted")
+	}
+}
+
+func TestTheBindingRefusalIsPartOfTheStatusVocabulary(t *testing.T) {
+	// The edge refuses a point whose component it cannot place on a device it
+	// reads. The word must survive WrapStatus, or the WHOLE acknowledgement is
+	// dropped and every point of that device stays pending forever.
+	local := []byte(`{"revision":4,"applied_at":"2026-08-27T10:00:00Z","accepted":[],` +
+		`"rejected":[{"point_key":"sunspec.model_103.w","reason":"binding_unavailable"}]}`)
+	wrapped, err := WrapStatus(local, testID, "edge-2026.08.27")
+	if err != nil {
+		t.Fatalf("binding refusal refused by WrapStatus: %v", err)
+	}
+	if !bytes.Contains(wrapped, []byte(`"reason":"binding_unavailable"`)) {
+		t.Fatalf("refusal reason lost: %s", wrapped)
+	}
+	unknown := bytes.Replace(local, []byte("binding_unavailable"), []byte("because_i_said_so"), 1)
+	if _, err := WrapStatus(unknown, testID, "edge-2026.08.27"); err == nil {
+		t.Fatal("an unknown reason must not reach the cloud")
+	}
+}
+
 func TestOutboxReplaysInOrderAndReportsBoundedDrop(t *testing.T) {
 	dir := t.TempDir()
 	o, e := OpenOutbox(dir, 2)

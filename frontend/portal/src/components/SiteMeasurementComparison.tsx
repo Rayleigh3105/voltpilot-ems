@@ -3,7 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { api, type MeasurementComparisonOption, type MeasurementHistory, type MeasurementRange } from '../api';
 import { useEChart } from '../useEChart';
 import { VpPicker } from './VpPicker';
-import './MeasurementLibrary.css';
+import './Messwerte.css';
 
 function ComparisonChart({ rows }: { rows: Array<{ option: MeasurementComparisonOption; history: MeasurementHistory }> }) {
   const units = Array.from(new Set(rows.map((r) => r.option.unit)));
