@@ -53,6 +53,20 @@ fails() {
 		ok "$what"
 	fi
 }
+# …und mit der richtigen BEGRUENDUNG. Wo git selbst schon ablehnen wuerde, ist
+# der eigene Waechter genau das wert: ein Satz, der den Weg nennt, statt einer
+# Meldung, die den Operator raten laesst.
+fails_saying() {
+	local what="$1" needle="$2" out
+	shift 2
+	if out="$( "$@" 2>&1 )"; then
+		bad "$what" "Abbruch mit '$needle'" "erfolgreich durchgelaufen"
+	elif printf '%s' "$out" | grep -qF -- "$needle"; then
+		ok "$what"
+	else
+		bad "$what" "Abbruch mit '$needle'" "$(printf '%s' "$out" | tail -n 1)"
+	fi
+}
 
 echo "== reine Funktionen =="
 
@@ -110,6 +124,159 @@ fails "eine Schluesseldatei ohne key_id bricht ab" ota_key_id "$TMP/ohne.key"
 eq "ein Repo-Token gewinnt" "token abc" "$(ota_forgejo_auth_header abc user pw)"
 eq "Rueckfall auf Basic-Auth" "Basic dXNlcjpwdw==" "$(ota_forgejo_auth_header '' user pw)"
 fails "ohne jede Zugangsdaten: Fehler statt anonymem Versuch" ota_forgejo_auth_header '' '' ''
+
+# --- Tag-Schema + der manuelle Weg -------------------------------------------
+# ⚠ N IST EIN LAUFENDER ZAEHLER JE MONAT, KEIN KALENDERTAG. Der Bestand belegt
+# es: am 04.08.2026 entstanden `.0`, `.1`, `.2`, am 26.08.2026 `.19` bis `.24`.
+# Diese Vektoren sind der Waechter dagegen, dass jemand „TT" hineinliest.
+eq "ein leerer Monat beginnt bei 0 (so faengt auch der Bestand an)" \
+	"edge-2026.09.0" "$(printf '' | ota_next_release 2026.09)"
+eq "die naechste freie Nummer zaehlt WEITER, sie datiert nicht" \
+	"edge-2026.08.25" \
+	"$(printf 'edge-2026.08.0\nedge-2026.08.24\nedge-2026.08.9\n' | ota_next_release 2026.08)"
+eq "ein anderer Monat zaehlt nicht mit" \
+	"edge-2026.09.0" \
+	"$(printf 'edge-2026.08.24\nedge-2025.09.7\n' | ota_next_release 2026.09)"
+eq "die Ordnung ist numerisch, nicht alphabetisch (9 < 24)" \
+	"edge-2026.08.25" \
+	"$(printf 'edge-2026.08.9\nedge-2026.08.24\n' | ota_next_release 2026.08)"
+eq "nicht-kanonische Namen werden uebersprungen statt mitgezaehlt" \
+	"edge-2026.08.4" \
+	"$(printf 'edge-2026.08.3\nedge-2026.08.09\nedge-2026.08.x\nedge-2026.08.\n' | ota_next_release 2026.08)"
+eq "der ECHTE Bestand des Repos ergibt einen Namen nach Schema" "0" \
+	"$(git -C "$ROOT" tag -l 'edge-*' | ota_next_release "$(date +%Y).01" |
+		grep -cvE '^edge-[0-9]{4}\.01\.(0|[1-9][0-9]*)$')"
+fails "ein krummer Monat bricht ab" ota_next_release 2026.13
+
+ota_check_release edge-2026.08.25 && ok "ein gueltiger Name geht durch"
+fails "einstelliger Monat: abgelehnt" ota_check_release edge-2026.8.1
+fails "fuehrende Null in N: abgelehnt (zwei Namen fuer eine Zahl)" ota_check_release edge-2026.08.09
+fails "fremdes Praefix: abgelehnt" ota_check_release v1.2.3
+fails "leerer Name: abgelehnt" ota_check_release ''
+
+# Der Push-Header MUSS `Basic` sein: Forgejos Basic-Methode feuert auf
+# Git-Pfaden und nimmt den Token als PASSWORT (services/auth/basic.go);
+# `token <t>` ist dort keine gueltige Form - das ist der API-Weg daneben.
+eq "der Git-Header ist Basic, mit dem Token im PASSWORT-Feld" \
+	"Basic $(printf 'x-access-token:abc' | base64 | tr -d '\n')" \
+	"$(ota_forgejo_git_auth_header abc user pw)"
+eq "Rueckfall auf Benutzer/Passwort" \
+	"Basic $(printf 'user:pw' | base64 | tr -d '\n')" \
+	"$(ota_forgejo_git_auth_header '' user pw)"
+fails "ohne Zugangsdaten: Fehler statt anonymem Push" ota_forgejo_git_auth_header '' '' ''
+if ota_forgejo_git_auth_header abc user pw | grep -q '^token '; then
+	bad "der Git-Header ist NIE die API-Form 'token <t>'" "Basic …" "token …"
+else
+	ok "der Git-Header ist NIE die API-Form 'token <t>'"
+fi
+
+eq "die Push-URL ist die des Repos" \
+	"https://git.tecmaxx.de/mamotec/voltpilot-ems.git" "$(ota_git_remote)"
+
+echo
+echo "== Tag anlegen + pushen (gegen ein lokales bare-Repo) =="
+# GIT_CONFIG_GLOBAL/SYSTEM auf /dev/null: so sieht es auf einem FRISCHEN Runner
+# aus - ohne globale Identitaet. Genau daran starb Lauf #183 mit Status 128,
+# weil `git tag -a` einen Tagger braucht.
+TAGWS="$TMP/tagws"
+mkdir -p "$TAGWS"
+git init -q --bare "$TMP/remote.git"
+(
+	cd "$TAGWS"
+	# shellcheck disable=SC2030,SC2031  # jede Subshell ist ihr eigener Lauf -
+	# genau dafuer stehen die Zuweisungen DARIN (sie duerfen nicht nach draussen wirken).
+	export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+	git init -q .
+	GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
+		git commit -q --allow-empty -m init
+	git tag edge-2026.08.24
+) >/dev/null
+
+# tagrun <release> <annotation> - der Aufruf, wie ihn der Workflow macht.
+tagrun() {
+	(
+		cd "$TAGWS"
+		# shellcheck disable=SC2030,SC2031  # jede Subshell ist ihr eigener Lauf -
+		# genau dafuer stehen die Zuweisungen DARIN (sie duerfen nicht nach draussen wirken).
+		export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+		# shellcheck disable=SC2030,SC2031  # bewusst nur in dieser Subshell
+		export VP_OTA_GIT_REMOTE="file://$TMP/remote.git"
+		export FORGEJO_USERNAME=u FORGEJO_PASSWORD=p
+		ota_tag_release "$1" "$(git rev-parse HEAD)" "$2"
+	)
+}
+
+ANN_IN='Solarman-Lesepfad gehaertet.
+min-from-seq=9
+Keine /data-Migration.'
+if out="$(tagrun edge-2026.08.25 "$ANN_IN" 2>&1)"; then
+	ok "der Tag wird angelegt und gepusht - OHNE globale git-Identitaet"
+else
+	bad "der Tag wird angelegt und gepusht" "Erfolg" "$out"
+fi
+eq "er ist ANNOTIERT (ein leichter Tag liesse den Lauf die Commit-Nachricht lesen)" \
+	"tag" "$(git -C "$TAGWS" cat-file -t "$(git -C "$TAGWS" rev-parse edge-2026.08.25)")"
+eq "er liegt im entfernten Repo" "edge-2026.08.25" \
+	"$(git -C "$TAGWS" ls-remote --tags "file://$TMP/remote.git" |
+		sed -n 's#.*refs/tags/\(edge-[0-9.]*\)$#\1#p')"
+# Die Naht, auf die es ankommt: der Tag-Lauf liest die Annotation GENAU so.
+ANN_OUT="$(git -C "$TAGWS" for-each-ref refs/tags/edge-2026.08.25 --format='%(contents)')"
+eq "die Direktive der Annotation kommt beim Tag-Lauf an" "9" \
+	"$(ota_tag_directive min-from-seq "$ANN_OUT")"
+eq "…und der Fliesstext wird die Release-Notiz" \
+	"Solarman-Lesepfad gehaertet. Keine /data-Migration." "$(ota_tag_notes "$ANN_OUT")"
+
+# BEIDE Waechter einzeln - und jeder mit seinem eigenen Satz. git wuerde in
+# beiden Faellen ohnehin ablehnen; der Wert des Waechters ist die Auskunft
+# „naechste freie Nummer nehmen" statt eines nackten „tag already exists".
+fails_saying "ein LOKAL vorhandener Tag bricht ab und nennt den Weg" \
+	"existiert bereits (im Checkout)" tagrun edge-2026.08.25 x
+git -C "$TAGWS" tag -d edge-2026.08.25 >/dev/null
+fails_saying "…und ein nur ENTFERNT vorhandener ebenso" \
+	"existiert bereits im Repo" tagrun edge-2026.08.25 x
+eq "…und es wurde dabei NICHTS ueberschrieben (der Tag zeigt noch auf denselben Commit)" \
+	"1" "$(git -C "$TAGWS" ls-remote --tags "file://$TMP/remote.git" 'refs/tags/edge-2026.08.25' | grep -c .)"
+fails "ein Name ausserhalb des Schemas legt gar nichts erst an" tagrun edge-2026.8.1 x
+
+# Ohne Zugangsdaten darf NICHTS entstehen - und der automatische Actions-Token
+# ist hier bewusst kein Rueckfall (er loest keinen Lauf aus).
+if (
+	cd "$TAGWS"
+	# shellcheck disable=SC2030,SC2031  # jede Subshell ist ihr eigener Lauf -
+	# genau dafuer stehen die Zuweisungen DARIN (sie duerfen nicht nach draussen wirken).
+	export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+	# shellcheck disable=SC2030,SC2031  # bewusst nur in dieser Subshell
+	export VP_OTA_GIT_REMOTE="file://$TMP/remote.git"
+	ota_tag_release edge-2026.08.26 "$(git rev-parse HEAD)" x
+) >/dev/null 2>&1; then
+	bad "ohne Zugangsdaten bricht es ab" "Abbruch" "durchgelaufen"
+else
+	ok "ohne Zugangsdaten bricht es ab (kein anonymer, folgenloser Push)"
+fi
+eq "…und es ist dabei KEIN Tag entstanden" "" \
+	"$(git -C "$TAGWS" tag -l edge-2026.08.26)"
+
+# ⚠ Der Waechter gegen die stille Variante desselben Fehlers: bleibt der
+# automatische Token als http.extraheader im Checkout liegen, liefe der Push
+# als Actions-Benutzer - der Tag laege da, ohne dass je ein Release entstuende.
+git -C "$TAGWS" config 'http.https://example.invalid/.extraheader' 'Authorization: basic zzz'
+fails "ein liegengebliebener http.extraheader bricht ab (persist-credentials: false)" \
+	tagrun edge-2026.08.26 x
+git -C "$TAGWS" config --unset-all 'http.https://example.invalid/.extraheader'
+
+# Der Push traegt das Geheimnis NIE auf der Kommandozeile - es reist ueber die
+# Umgebung (GIT_CONFIG_*), weil argv auf dem Runner fuer jeden Prozess lesbar
+# ist. Dieselbe Regel wie bei ota_token.
+if grep -qE 'git .*-c[[:space:]]+http\.extraheader' "$HERE/release-publish.sh"; then
+	bad "das Push-Geheimnis steht nicht auf der Kommandozeile" "GIT_CONFIG_*" "-c http.extraheader"
+else
+	ok "das Push-Geheimnis reist ueber die Umgebung, nicht ueber argv"
+fi
+if grep -qE 'push .*--force|push .*-f( |$)' "$HERE/release-publish.sh"; then
+	bad "es wird nie erzwungen gepusht" "kein --force" "--force gefunden"
+else
+	ok "es wird nie erzwungen gepusht"
+fi
 
 # --- Token-URL ---------------------------------------------------------------
 eq "die Token-URL haengt unter /auth (prod-Realm-Pfad)" \
