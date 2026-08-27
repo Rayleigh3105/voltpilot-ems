@@ -1,6 +1,7 @@
 import type {
   OcppAction,
   OcppActionIntent,
+  OcppConnectorState,
   OcppMeterSample,
   OcppStation,
   OcppTransaction,
@@ -262,7 +263,6 @@ export interface OcppHero {
   transaction: OcppTransaction | null;
   power: string | null;
   energy: string | null;
-  soc: string | null;
   duration: string | null;
   release: string;
   applied: string;
@@ -278,23 +278,35 @@ function latest(samples: OcppMeterSample[], transaction: OcppTransaction, measur
     .sort((a, b) => Date.parse(b.sampledAt) - Date.parse(a.sampledAt))[0] ?? null;
 }
 
-function sampleValue(sample: OcppMeterSample | null, kind: 'power' | 'energy' | 'soc'): string | null {
+function powerValue(sample: OcppMeterSample | null): string | null {
   if (!sample) return null;
   if (sample.numericValue == null) return null;
   let value = sample.numericValue;
   let unit = sample.unit ?? '';
   const normalized = unit.toLowerCase();
-  if (kind === 'power') {
-    if (normalized === 'w') { value /= 1000; unit = 'kW'; }
-    else if (normalized !== 'kw') return null;
-  } else if (kind === 'energy') {
-    if (normalized === 'wh') { value /= 1000; unit = 'kWh'; }
-    else if (normalized !== 'kwh') return null;
-  } else {
-    if (normalized !== 'percent' && unit !== '%') return null;
-    unit = '%';
-  }
-  return `${value.toLocaleString('de-DE', { maximumFractionDigits: kind === 'soc' ? 0 : 1 })} ${unit}`;
+  if (normalized === 'w') { value /= 1000; unit = 'kW'; }
+  else if (normalized !== 'kw') return null;
+  return `${value.toLocaleString('de-DE', { maximumFractionDigits: 1 })} ${unit}`;
+}
+
+/**
+ * OCPP's `Energy.Active.Import.Register` is normally a cumulative register,
+ * not the energy of the current session. It becomes session energy only when
+ * the fresh sample belongs to the same transaction/connector and can be
+ * subtracted from StartTransaction.meterStart (whose OCPP unit is Wh).
+ */
+function sessionEnergy(sample: OcppMeterSample | null, transaction: OcppTransaction): string | null {
+  if (!sample || sample.numericValue == null || !Number.isFinite(transaction.meterStart)) return null;
+  const unit = (sample.unit ?? '').toLowerCase();
+  const currentWh = unit === 'wh'
+    ? sample.numericValue
+    : unit === 'kwh'
+      ? sample.numericValue * 1000
+      : null;
+  if (currentWh == null) return null;
+  const deltaWh = currentWh - transaction.meterStart;
+  if (!Number.isFinite(deltaWh) || deltaWh < 0) return null;
+  return `${(deltaWh / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} kWh`;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -337,7 +349,6 @@ export function wallboxHero(transactions: OcppTransaction[], samples: OcppMeterS
     .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))[0] ?? null;
   const power = transaction ? latest(samples, transaction, 'Power.Active.Import', now) : null;
   const energy = transaction ? latest(samples, transaction, 'Energy.Active.Import.Register', now) : null;
-  const soc = transaction ? latest(samples, transaction, 'SoC', now) : null;
   const successful = new Set(['accepted_waiting_effect', 'effect_observed', 'completed']);
   const profile = transaction ? actions.filter((action) => action.action === 'SetChargingProfile'
     && successful.has(action.state) && actionMatchesTransaction(action, transaction) && actionIsFresh(action, now))
@@ -352,7 +363,8 @@ export function wallboxHero(transactions: OcppTransaction[], samples: OcppMeterS
   const minutes = Number.isFinite(started) ? Math.max(0, Math.floor((now - started) / 60_000)) : null;
   return {
     transaction,
-    power: sampleValue(power, 'power'), energy: sampleValue(energy, 'energy'), soc: sampleValue(soc, 'soc'),
+    power: powerValue(power),
+    energy: transaction ? sessionEnergy(energy, transaction) : null,
     duration: minutes == null ? null : minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes} min`,
     release: formatLimit(wanted) ?? 'keine bestätigte Freigabe gemeldet',
     applied: formatLimit(applied) ?? 'noch nicht erfolgreich zurückgelesen',
@@ -366,10 +378,169 @@ export function stationConnection(station: OcppStation | null, now = Date.now())
   const seen = station.lastSeen ? Date.parse(station.lastSeen) : NaN;
   if (!Number.isFinite(seen) || now - seen > OCPP_FRESH_MS) {
     return { sendable: false, label: 'Keine aktuellen Daten', detail: station.lastSeen
-      ? `Letzter Lebensbeleg ${new Date(station.lastSeen).toLocaleString('de-DE')}.`
-      : 'Die Verbindung hat noch keinen aktuellen Lebensbeleg.' };
+      ? `Zuletzt gesehen ${new Date(station.lastSeen).toLocaleString('de-DE')}.`
+      : 'Es liegt noch kein aktueller Verbindungsstatus vor.' };
   }
-  return { sendable: true, label: 'Verbunden', detail: `Aktueller Lebensbeleg ${new Date(seen).toLocaleString('de-DE')}.` };
+  return { sendable: true, label: 'Online', detail: `Zuletzt gesehen ${new Date(seen).toLocaleString('de-DE')}.` };
+}
+
+export type WallboxStateKind =
+  | 'charging'
+  | 'waiting'
+  | 'available'
+  | 'unavailable'
+  | 'offline'
+  | 'stale'
+  | 'faulted'
+  | 'unknown';
+
+export interface WallboxState {
+  kind: WallboxStateKind;
+  tone: 'ok' | 'warn' | 'error' | 'off';
+  badge: string;
+  sentence: string;
+  detail: string;
+  connectorId: number | null;
+  connectorStatus: string | null;
+  action: 'RemoteStartTransaction' | 'RemoteStopTransaction' | 'service' | null;
+  actionLabel: string | null;
+}
+
+export interface WallboxConnectorSnapshot {
+  connector: OcppConnectorState | null;
+  connectorId: number | null;
+  fresh: boolean;
+  detail: string;
+}
+
+/**
+ * One connector truth for the whole page. An active transaction may only use
+ * its exact connector; a fresh station heartbeat never freshens an old
+ * StatusNotification.
+ */
+export function wallboxConnectorSnapshot(
+  station: OcppStation | null,
+  transaction: OcppTransaction | null,
+  now = Date.now(),
+): WallboxConnectorSnapshot {
+  const connector = transaction
+    ? station?.connectors.find((item) => item.connectorId === transaction.connectorId) ?? null
+    : station?.connectors[0] ?? null;
+  const connectorId = transaction?.connectorId ?? connector?.connectorId ?? null;
+  if (!connector) return {
+    connector: null,
+    connectorId,
+    fresh: false,
+    detail: connectorId == null
+      ? 'Die Wallbox hat noch keinen Anschlusszustand gemeldet.'
+      : `Für Anschluss ${connectorId} liegt kein aktueller Zustand vor.`,
+  };
+  const reportedAt = Date.parse(connector.reportedAt);
+  const age = now - reportedAt;
+  const fresh = Number.isFinite(reportedAt) && age >= -60_000 && age <= OCPP_FRESH_MS;
+  const lastReported = Number.isFinite(reportedAt)
+    ? new Date(reportedAt).toLocaleString('de-DE')
+    : 'ohne gültigen Zeitstempel';
+  return {
+    connector,
+    connectorId,
+    fresh,
+    detail: fresh
+      ? `Anschluss ${connector.connectorId} wurde aktuell gemeldet.`
+      : `Anschluss ${connector.connectorId} wurde zuletzt ${lastReported} gemeldet.`,
+  };
+}
+
+/** Customer-language state for one physical wallbox; raw OCPP stays secondary. */
+export function wallboxState(
+  station: OcppStation | null,
+  hero: OcppHero,
+  now = Date.now(),
+): WallboxState {
+  const connection = stationConnection(station, now);
+  const snapshot = wallboxConnectorSnapshot(station, hero.transaction, now);
+  const connector = snapshot.connector;
+  const connectorId = snapshot.connectorId;
+  const rawStatus = connector?.status ?? null;
+  const connectorName = connectorId == null ? 'Der Anschluss' : `Anschluss ${connectorId}`;
+
+  if (!station) return {
+    kind: 'unknown', tone: 'off', badge: 'Keine Gerätedaten',
+    sentence: 'Die Wallbox hat noch keinen aktuellen Gerätestatus gemeldet.',
+    detail: 'Sobald die erste OCPP-Nachricht eintrifft, erscheint hier ihr Zustand.',
+    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Verbindung prüfen',
+  };
+  if (!station.connected) return {
+    kind: 'offline', tone: 'off', badge: 'Offline',
+    sentence: station.lastSeen
+      ? `Wallbox seit ${new Date(station.lastSeen).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr nicht erreichbar.`
+      : 'Wallbox noch nicht erreichbar.',
+    detail: 'Ein lokaler Ladevorgang kann an der Wallbox weiterlaufen.',
+    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Verbindung prüfen',
+  };
+  if (!connection.sendable) return {
+    kind: 'stale', tone: 'warn', badge: 'Daten veraltet',
+    sentence: 'Die Wallbox liefert gerade keine aktuellen Daten.',
+    detail: connection.detail,
+    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Verbindung prüfen',
+  };
+  if (!snapshot.fresh) return {
+    kind: connector ? 'stale' : 'unknown', tone: 'warn',
+    badge: connector ? 'Anschlussdaten veraltet' : 'Anschlussstatus fehlt',
+    sentence: connectorId == null
+      ? 'Wallbox online · der Anschlusszustand ist noch nicht gemeldet.'
+      : `Wallbox online · der Zustand von Anschluss ${connectorId} ist nicht aktuell.`,
+    detail: snapshot.detail,
+    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Status prüfen',
+  };
+  if (rawStatus === 'Faulted' || Boolean(connector?.errorCode && connector.errorCode !== 'NoError')) return {
+    kind: 'faulted', tone: 'error', badge: 'Störung',
+    sentence: `Wallbox online · ${connectorName} meldet eine Störung.`,
+    detail: 'Stecker trennen, 10 Sekunden warten und erneut verbinden. Technische Angaben stehen unter Service & Diagnose.',
+    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Störung prüfen',
+  };
+  if (rawStatus === 'Preparing' || rawStatus === 'SuspendedEV' || rawStatus === 'SuspendedEVSE' || rawStatus === 'Finishing') return {
+    kind: 'waiting', tone: 'warn', badge: 'Wartet',
+    sentence: `Wallbox online · ${connectorName} ist angesteckt und wartet.`,
+    detail: rawStatus === 'SuspendedEVSE'
+      ? 'Die Wallbox pausiert das Laden nach der aktuell geltenden Steuerung.'
+      : rawStatus === 'SuspendedEV'
+        ? 'Das angeschlossene Fahrzeug ruft gerade keine Leistung ab.'
+        : 'Der Anschluss bereitet den nächsten Ladevorgang vor.',
+    connectorId, connectorStatus: rawStatus,
+    action: hero.transaction ? 'service' : 'RemoteStartTransaction',
+    actionLabel: hero.transaction ? 'Ladevorgang prüfen' : 'Jetzt laden',
+  };
+  if (rawStatus === 'Unavailable' || rawStatus === 'Reserved') return {
+    kind: 'unavailable', tone: 'warn', badge: 'Nicht verfügbar',
+    sentence: `Wallbox online · ${connectorName} ist derzeit nicht verfügbar.`,
+    detail: rawStatus === 'Reserved' ? 'Der Anschluss ist reserviert.' : 'Die Wallbox hat den Anschluss außer Betrieb gemeldet.',
+    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Status prüfen',
+  };
+  if (rawStatus === 'Charging') return {
+    kind: 'charging', tone: 'ok', badge: 'Lädt',
+    sentence: `Wallbox online · ${connectorName} lädt${hero.power ? ` mit ${hero.power}` : ''}.`,
+    detail: hero.transaction
+      ? `Ladevorgang seit ${new Date(hero.transaction.startedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr.`
+      : 'Die Wallbox meldet einen Ladevorgang; die zugehörigen Sitzungsdaten fehlen noch.',
+    connectorId, connectorStatus: rawStatus,
+    action: hero.transaction ? 'RemoteStopTransaction' : 'service',
+    actionLabel: hero.transaction ? 'Laden stoppen' : 'Ladevorgang prüfen',
+  };
+  if (rawStatus === 'Available') return {
+    kind: 'available', tone: 'ok', badge: 'Verfügbar',
+    sentence: `Wallbox online · ${connectorName} ist verfügbar.`,
+    detail: 'Sobald ein Fahrzeug angeschlossen ist, kann der Ladevorgang beginnen.',
+    connectorId, connectorStatus: rawStatus,
+    action: hero.transaction ? 'service' : 'RemoteStartTransaction',
+    actionLabel: hero.transaction ? 'Ladevorgang prüfen' : 'Laden starten',
+  };
+  return {
+    kind: 'unknown', tone: 'warn', badge: 'Status fehlt',
+    sentence: 'Wallbox online · der Anschlusszustand ist noch nicht gemeldet.',
+    detail: 'VoltPilot wartet auf die nächste Statusmeldung der Wallbox.',
+    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Status prüfen',
+  };
 }
 
 export type ActionTone = 'ok' | 'warn' | 'error' | 'neutral';

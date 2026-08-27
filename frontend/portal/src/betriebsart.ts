@@ -1,4 +1,5 @@
 import type { Betriebsart } from './api';
+import { anlageRoute, hashForRoute, isPortfolioPage, pageRoute, type Route } from './nav';
 
 /**
  * U0 shell decision (design vp-ems-ui-overhaul §2 / epic UO #509): which
@@ -142,6 +143,65 @@ export function redirectOverviewToAnlage(i: ShellInput): boolean {
  */
 export function redirectToPortfolio(i: ShellInput): boolean {
   return showPortfolioNav(i);
+}
+
+/**
+ * One post-hydration canonical destination for the shell. The caller applies
+ * at most one history replacement; no intermediate `#/anlagen` or
+ * `#/uebersicht` route is ever emitted.
+ */
+export function canonicalShellRoute(input: {
+  shell: ShellInput;
+  route: Route;
+  siteIds: string[];
+}): Route | null {
+  const { shell, route, siteIds } = input;
+  if (!shell.loaded || !shell.tenantReady) return null;
+  const fleet = isFleetShell(shell.betriebsart, siteIds.length);
+  const nakedAnlage = route.page === 'anlagen' && route.siteId == null && route.sub == null;
+  const invalidSite = route.page === 'anlagen'
+    && route.siteId != null
+    && !siteIds.includes(route.siteId);
+
+  // Admins keep their explicit customer overview. A fleet context has exactly
+  // one portfolio landing; without that shell level, old portfolio bookmarks
+  // return to the customer overview instead of rendering an orphaned surface.
+  if (shell.isAdmin) {
+    if (fleet) {
+      if (route.page === 'uebersicht' || nakedAnlage || invalidSite) return pageRoute('portfolio');
+      return null;
+    }
+    if (isPortfolioPage(route.page) || invalidSite) return pageRoute('uebersicht');
+    return null;
+  }
+
+  if (fleet) {
+    if (route.page === 'uebersicht' || nakedAnlage || invalidSite) return pageRoute('portfolio');
+    return null;
+  }
+
+  const soleSiteId = siteIds.length === 1 ? siteIds[0] : null;
+  if (!soleSiteId) return null;
+  if (route.page === 'uebersicht' || nakedAnlage || isPortfolioPage(route.page)) {
+    return anlageRoute(soleSiteId);
+  }
+  if (invalidSite) {
+    // Preserve the requested deep section/device while correcting the only
+    // invalid segment. This avoids silently rendering the sole site under a
+    // foreign URL, which `resolveAnlage` would otherwise do.
+    return { ...route, siteId: soleSiteId };
+  }
+  return null;
+}
+
+/**
+ * Build the single canonical replacement without losing route-local filter,
+ * zoom or time parameters. Route intentionally models only the path, so the
+ * query suffix must travel byte-for-byte from the browser hash.
+ */
+export function canonicalShellHash(target: Route, currentHash: string): string {
+  const queryStart = currentHash.indexOf('?');
+  return `${hashForRoute(target)}${queryStart < 0 ? '' : currentHash.slice(queryStart)}`;
 }
 
 /**

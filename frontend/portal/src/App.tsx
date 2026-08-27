@@ -16,10 +16,10 @@ import {
 } from './api';
 import { adminApi, type Tenant } from './admin/adminApi';
 import {
+  canonicalShellHash,
+  canonicalShellRoute,
   fleetLabel,
   redirectAdminToPlattform,
-  redirectOverviewToAnlage,
-  redirectToPortfolio,
   showOverviewNav,
   showPortfolioNav,
 } from './betriebsart';
@@ -31,7 +31,6 @@ import {
   isGeraeteBereich,
   hashForRoute,
   isBootHash,
-  isPortfolioPage,
   pageRoute,
   PLATFORM_PAGES,
   routeFromHash,
@@ -640,59 +639,28 @@ function UnifiedPortal() {
     setRoute(pageRoute('plattform-uebersicht'));
   }, [isAdmin]);
 
-  // U0 shell frame: a customer WITHOUT a fleet level (endkunde below 2
-  // Anlagen - the single-plant merge, captain decision 2, 2026-07-07) has NO
-  // "Übersicht"; any landing there (default boot hash, old bookmark) forwards
-  // to the Anlagen entry. A BETREIBER is never forwarded - the Übersicht IS
-  // their fleet/portfolio landing, even with one Standort. replace() keeps
-  // the history clean (Back leaves the app, never bounces here). Admins are
-  // untouched - they browse tenants and keep the Übersicht.
+  // One stable post-hydration canonicalization. The old three independent
+  // redirects could emit `uebersicht -> anlagen -> portfolio -> uebersicht`
+  // for a one-site customer. The pure decision below sees one shell snapshot,
+  // chooses the final target directly and performs at most one replacement.
   useEffect(() => {
     if (error != null) return;
     const shell = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length };
-    // Betreiber (U5): the Portfolio page is the landing. A betreiber landing on
-    // the default #/uebersicht boot hash / an old bookmark is sent to
-    // #/portfolio; a non-betreiber that hits #/portfolio (frame changed, stale
-    // bookmark) is sent back to #/uebersicht (which itself may forward an
-    // endkunde without a fleet level to their Anlage below).
-    if (redirectToPortfolio(shell)) {
-      if (route.page === 'uebersicht') {
-        window.location.replace(hashForRoute(pageRoute('portfolio')));
-        setRoute(pageRoute('portfolio'));
-      }
-      return;
-    }
-    // Das gilt für die ganze Portfolio-EBENE - auch für ihre zwei Welten
-    // (PR G): wer keinen Betreiber-Rahmen hat, landet dort nie.
-    if (isPortfolioPage(route.page) && loaded && tenantReady) {
-      window.location.replace(hashForRoute(pageRoute('uebersicht')));
-      setRoute(pageRoute('uebersicht'));
-      return;
-    }
-    if (route.page === 'uebersicht' && redirectOverviewToAnlage(shell)) {
-      window.location.replace(hashForRoute(pageRoute('anlagen')));
-      setRoute(pageRoute('anlagen'));
-      return;
-    }
-    // Navigations-Runde „zwei Ebenen" (E3 + Captain-Schärfung): die LISTE
-    // `#/anlagen` ist ersatzlos aufgegangen - das Portfolio IST sie. Ein
-    // Lesezeichen darauf landet dort, WO es eine Flotten-Ebene gibt; ein
-    // Einzel-Anlagen-Kunde bleibt unberührt (`resolveAnlage` löst die Route
-    // ohnehin auf seine eine Anlage auf).
-    if (route.page === 'anlagen' && route.siteId == null && route.sub == null) {
-      window.location.replace(hashForRoute(pageRoute('portfolio')));
-      setRoute(pageRoute('portfolio'));
-    }
+    const target = canonicalShellRoute({ shell, route, siteIds: sites.map((site) => site.id) });
+    if (!target) return;
+    window.history.replaceState(null, '', canonicalShellHash(target, window.location.hash));
+    setRoute(target);
   }, [
     isAdmin,
     loaded,
     tenantReady,
     betriebsart,
     error,
-    sites.length,
+    sites,
     route.page,
     route.siteId,
     route.sub,
+    route.geraet,
   ]);
 
   // An Anlage opened by route is also the context of the site-scoped pages

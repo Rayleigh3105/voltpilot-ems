@@ -418,9 +418,11 @@ export function GeraetSeiteSection({
 
   return (
     <div className="vp-geraet">
-      <a className="vp-geraet-back" href={hashForRoute(anlageRoute(site.id, 'modell'))}>
-        <Icon name="chevron-left" size={16} /> Zurück zu den Komponenten
-      </a>
+      {gesichtView?.gattung !== 'ladepunkt' && (
+        <a className="vp-geraet-back" href={hashForRoute(anlageRoute(site.id, 'modell'))}>
+          <Icon name="chevron-left" size={16} /> Zurück zu den Komponenten
+        </a>
+      )}
 
       {!data && !error && (
         <Card padding="lg" radius="lg">
@@ -453,6 +455,13 @@ export function GeraetSeiteSection({
           chargePointId={chargePointIdOf(geraetId) as string}
           fallbackTitle={view.kopf.titel}
           backHref={hashForRoute(anlageRoute(site.id, 'modell'))}
+          siteHref={hashForRoute(anlageRoute(site.id))}
+          settingsHref={hashForRoute(anlageRoute(site.id, 'ladevorgaenge'))}
+          charger={(charging?.chargers ?? []).find(
+            (item) => item.chargePointId === chargePointIdOf(geraetId),
+          ) ?? null}
+          canEdit={components?.componentAuthority === 'portal' && Boolean(editRow)}
+          onEdit={() => setEditOpen(true)}
         />
       )}
 
@@ -683,15 +692,6 @@ export function GeraetSeiteSection({
             </details>
           )}
 
-          {editOpen && editRow && (
-            <AnlegenFlow
-              siteId={site.id}
-              box={boxDevice}
-              bearbeiten={editRow}
-              onClose={() => setEditOpen(false)}
-              onSaved={(result) => setComponents(result)}
-            />
-          )}
           {moveOpen && boxDevice && (
             <GeraetVerschiebenDialog
               device={boxDevice}
@@ -716,6 +716,15 @@ export function GeraetSeiteSection({
           />
 
         </>
+      )}
+      {editOpen && editRow && (
+        <AnlegenFlow
+          siteId={site.id}
+          box={boxDevice}
+          bearbeiten={editRow}
+          onClose={() => setEditOpen(false)}
+          onSaved={(result) => setComponents(result)}
+        />
       )}
       {view && view.gefunden && <MeasurementLibrary deviceId={boxDevice?.id}
         siteId={site.id} entityId={editRow?.id} />}
