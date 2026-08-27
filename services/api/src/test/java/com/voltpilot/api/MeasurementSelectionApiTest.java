@@ -2,13 +2,17 @@ package com.voltpilot.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.measurement.MeasurementSelectionRepository;
+import com.voltpilot.api.tenant.TenantContext;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.sql.Connection;
 import java.sql.Statement;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -79,6 +83,9 @@ class MeasurementSelectionApiTest {
 
     @LocalServerPort
     int port;
+
+    @Autowired
+    MeasurementSelectionRepository repository;
 
     private final TestRestTemplate rest = new TestRestTemplate();
 
@@ -603,6 +610,171 @@ class MeasurementSelectionApiTest {
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    /**
+     * Stufe 3b: two identical inverters behind ONE box keep separate observation
+     * lists, while the box keeps ONE plan, ONE revision and ONE physical budget.
+     */
+    @Test
+    void selectionsAreScopedPerComponentWhileTheDeviceKeepsOnePlanAndOneBudget()
+            throws Exception {
+        UUID device = UUID.fromString("00000000-0000-0000-0000-0000000000b0");
+        UUID left = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
+        UUID right = UUID.fromString("00000000-0000-0000-0000-0000000000b2");
+        UUID wallbox = UUID.fromString("00000000-0000-0000-0000-0000000000b3");
+        UUID otherSite = UUID.fromString("00000000-0000-0000-0000-0000000000b4");
+        UUID otherSiteEntity = UUID.fromString("00000000-0000-0000-0000-0000000000b5");
+        String goePoint = null;
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device(id,tenant_id,site_id,external_ref,kind,status) "
+                    + "VALUES ('" + device + "','00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','stufe3b-box','inverter','claimed') "
+                    + "ON CONFLICT DO NOTHING");
+            statement.execute("INSERT INTO site(id,tenant_id,name,bidding_zone) VALUES ('"
+                    + otherSite + "','00000000-0000-0000-0000-000000000001',"
+                    + "'Stufe3b Nachbaranlage','DE-LU') ON CONFLICT DO NOTHING");
+            // device_id stays NULL on purpose: that is the shape every component
+            // the assistant or a takeover creates, and exactly the one a device
+            // page has to be able to observe.
+            statement.execute("INSERT INTO measurement_point(id,tenant_id,site_id,role,label,"
+                    + "family) VALUES ('" + left + "','00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','pv-inverter','Fronius Eco 1',"
+                    + "'hybrid_1p'),('" + right + "','00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','pv-inverter','Fronius Eco 2',"
+                    + "'hybrid_1p'),('" + wallbox + "','00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','consumer','Wallbox',"
+                    + "'goe_http_api'),('" + otherSiteEntity
+                    + "','00000000-0000-0000-0000-000000000001','" + otherSite
+                    + "','pv-inverter','Fremde Anlage','hybrid_1p') ON CONFLICT DO NOTHING");
+        }
+        String demo = token("demo", "demo");
+
+        // 1) The box row: no entityId at all is the pre-3b semantics.
+        ResponseEntity<Map<String, Object>> boxWrite = put(demo, device, POINT, null,
+                Map.of("expectedRevision", 0, "idempotencyKey", UUID.randomUUID().toString(),
+                        "enabled", true, "cadenceS", 60));
+        assertThat(boxWrite.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(boxWrite.getBody()).containsEntry("desiredRevision", 1)
+                .containsEntry("entityId", null);
+        assertThat(first(boxWrite, "selections")).containsEntry("entityId", null);
+
+        // 2) The SAME register on two components - impossible under the old
+        //    (device_id, point_key) key, and the whole point of this stage.
+        ResponseEntity<Map<String, Object>> leftWrite = put(demo, device, POINT, left,
+                Map.of("expectedRevision", 1, "idempotencyKey", UUID.randomUUID().toString(),
+                        "enabled", true, "cadenceS", 60));
+        assertThat(leftWrite.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(leftWrite.getBody()).containsEntry("entityId", left.toString());
+        ResponseEntity<Map<String, Object>> rightWrite = put(demo, device, POINT, right,
+                Map.of("expectedRevision", 2, "idempotencyKey", UUID.randomUUID().toString(),
+                        "enabled", true, "cadenceS", 30));
+        assertThat(rightWrite.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        // 3) Separate lists; the revision and the bus budget stay device-wide.
+        ResponseEntity<Map<String, Object>> leftView = get(demo,
+                path(device) + "?entityId=" + left);
+        assertThat((List<?>) leftView.getBody().get("selections")).hasSize(1);
+        assertThat(first(leftView, "selections")).containsEntry("entityId", left.toString())
+                .containsEntry("cadenceS", 60);
+        assertThat((List<?>) leftView.getBody().get("events")).hasSize(1);
+        assertThat(leftView.getBody()).containsEntry("desiredRevision", 3);
+        assertThat((Map<String, Object>) leftView.getBody().get("volumeEstimate"))
+                .containsEntry("enabledPointCount", 3);
+        ResponseEntity<Map<String, Object>> rightView = get(demo,
+                path(device) + "?entityId=" + right);
+        assertThat(first(rightView, "selections")).containsEntry("cadenceS", 30);
+        ResponseEntity<Map<String, Object>> deviceView = get(demo, path(device));
+        assertThat((List<?>) deviceView.getBody().get("selections")).hasSize(3);
+        assertThat((List<?>) deviceView.getBody().get("events")).hasSize(3);
+
+        // 4) Deselecting one component leaves its twin and the box row alone.
+        ResponseEntity<Map<String, Object>> off = put(demo, device, POINT, left,
+                Map.of("expectedRevision", 3, "idempotencyKey", UUID.randomUUID().toString(),
+                        "enabled", false));
+        assertThat(off.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(first(off, "selections")).containsEntry("enabled", false);
+        assertThat(first(get(demo, path(device) + "?entityId=" + right), "selections"))
+                .containsEntry("enabled", true);
+        assertThat(((List<Map<String, Object>>) get(demo, path(device)).getBody()
+                .get("selections")).stream()
+                .filter(row -> row.get("entityId") == null)
+                .findFirst().orElseThrow()).containsEntry("enabled", true);
+
+        // 5) The catalog answers with the FAMILY OF THE COMPONENT, not the
+        //    union the box carries (which is empty here - no point names it).
+        ResponseEntity<Map<String, Object>> wallboxCatalog = get(demo,
+                path(device) + "?entityId=" + wallbox);
+        assertThat(wallboxCatalog.getStatusCode()).isEqualTo(HttpStatus.OK);
+        ResponseEntity<Map<String, Object>> goeOnly = get(demo, path(device)
+                + "/catalog?entityId=" + wallbox + "&availableOnly=true&limit=200");
+        List<Map<String, Object>> goePoints =
+                (List<Map<String, Object>>) goeOnly.getBody().get("points");
+        assertThat(goePoints).isNotEmpty()
+                .allSatisfy(row -> assertThat(row.get("pointKey").toString())
+                        .startsWith("goe.api_v2."));
+        goePoint = goePoints.get(0).get("pointKey").toString();
+        ResponseEntity<Map<String, Object>> deyeOnly = get(demo, path(device)
+                + "/catalog?entityId=" + left + "&availableOnly=true&limit=200");
+        assertThat((List<Map<String, Object>>) deyeOnly.getBody().get("points")).isNotEmpty()
+                .allSatisfy(row -> assertThat(row.get("pointKey").toString())
+                        .startsWith("deye.hybrid_1p."));
+
+        // 6) A component of ANOTHER plant is 404 on every entity-scoped route,
+        //    before anything is read or written.
+        assertThat(get(demo, path(device) + "?entityId=" + otherSiteEntity).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(get(demo, path(device) + "/catalog?entityId=" + otherSiteEntity)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(get(demo, path(device) + "/estimate?entityId=" + otherSiteEntity
+                + "&pointKey=" + POINT).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(put(demo, device, POINT, otherSiteEntity,
+                Map.of("expectedRevision", 4, "idempotencyKey", UUID.randomUUID().toString(),
+                        "enabled", true)).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(get(token("demo2", "demo2"), path(device) + "?entityId=" + left)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // 7) The estimate is entity-aware and still counts the whole bus. No
+        //    cadence is passed: the catalog default of THIS point is the only
+        //    one guaranteed to clear its own safe-device minimum.
+        ResponseEntity<Map<String, Object>> estimate = get(demo, path(device)
+                + "/estimate?entityId=" + wallbox + "&pointKey=" + goePoint);
+        assertThat(estimate.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(((Number) estimate.getBody().get("enabledPointCount")).intValue())
+                .isEqualTo(3);
+        assertThat(get(demo, path(device)).getBody()).containsEntry("desiredRevision", 4);
+
+        // 8) The box acknowledges POINT KEYS - it has no component binding
+        //    before Stufe 3c - so one receipt reaches every row of this device
+        //    carrying that key, and the appended edge_ack keeps each row's own
+        //    component. This is also the only coverage the ack SQL has against
+        //    a real database.
+        TenantContext.set(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+        try {
+            repository.applyAcknowledgement(device, 4, Instant.parse("2026-08-27T10:00:00Z"),
+                    List.of(POINT), Map.of(), "edge-2026.08.24");
+        } finally {
+            TenantContext.clear();
+        }
+        List<Map<String, Object>> acked = (List<Map<String, Object>>)
+                get(demo, path(device)).getBody().get("selections");
+        assertThat(acked).filteredOn(row -> POINT.equals(row.get("pointKey")))
+                .isNotEmpty()
+                .allSatisfy(row -> assertThat(row).containsEntry("applyStatus", "applied"));
+        // The receipt is appended for the acknowledged REVISION, and revision 4
+        // was the deselect on `left` - so the edge_ack lands in ITS paper trail,
+        // carrying its component.
+        assertThat((List<Map<String, Object>>) get(demo, path(device) + "?entityId=" + left)
+                .getBody().get("events"))
+                .filteredOn(e -> "edge_ack".equals(e.get("eventKind")))
+                .hasSize(1)
+                .allSatisfy(e -> assertThat(e).containsEntry("entityId", left.toString()));
+        assertThat((List<Map<String, Object>>) get(demo, path(device) + "?entityId=" + right)
+                .getBody().get("events"))
+                .filteredOn(e -> "edge_ack".equals(e.get("eventKind")))
+                .as("die Quittung einer fremden Revision taucht hier nicht auf")
+                .isEmpty();
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> first(ResponseEntity<Map<String, Object>> response,
             String key) {
@@ -616,7 +788,13 @@ class MeasurementSelectionApiTest {
 
     private ResponseEntity<Map<String, Object>> put(String token, UUID device, String point,
             Map<String, Object> body) {
-        return rest.exchange(url(path(device) + "/" + point), HttpMethod.PUT,
+        return put(token, device, point, null, body);
+    }
+
+    private ResponseEntity<Map<String, Object>> put(String token, UUID device, String point,
+            UUID entityId, Map<String, Object> body) {
+        String query = entityId == null ? "" : "?entityId=" + entityId;
+        return rest.exchange(url(path(device) + "/" + point + query), HttpMethod.PUT,
                 new HttpEntity<>(body, bearer(token)), new ParameterizedTypeReference<>() {});
     }
 

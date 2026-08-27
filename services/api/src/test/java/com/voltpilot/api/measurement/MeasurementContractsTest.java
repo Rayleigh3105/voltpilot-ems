@@ -37,11 +37,11 @@ class MeasurementContractsTest {
     void publisherPayloadIsTheCommittedValidFixture() throws Exception {
         MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
                 "tcp://unused:1883", "", "", mapper);
-        SelectionPoint point = new SelectionPoint("deye.hybrid_1p.battery.battery", true, 10,
+        SelectionPoint point = new SelectionPoint(null, "deye.hybrid_1p.battery.battery", true, 10,
                 7, null, null, "2026.08.26.3", "test", null, null, "pending_edge",
                 null, null, null, "thermal_bms", 90, 900, "fifteen_minute",
                 null, null, null, null);
-        State state = new State(DEVICE, SITE, 7, "2026.08.26.3", "pending_edge", null,
+        State state = new State(DEVICE, SITE, null, 7, "2026.08.26.3", "pending_edge", null,
                 null, null, List.of(point), List.of(), null);
         var actual = mapper.readTree(publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), state));
         var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
@@ -61,10 +61,10 @@ class MeasurementContractsTest {
                 + "\"signed\":false,\"endian\":\"big\",\"scale\":1,\"unit\":\"V\","
                 + "\"cadenceS\":30,\"retentionClass\":\"unclassified\",\"readOnly\":true,"
                 + "\"requestCostMs\":400}");
-        SelectionPoint point = new SelectionPoint("custom.abc", true, 30, 8, null, null,
+        SelectionPoint point = new SelectionPoint(null, "custom.abc", true, 30, 8, null, null,
                 "2026.08.25.1", "test", null, null, "pending_edge", null, null, definition,
                 "unclassified", 90, 900, "fifteen_minute", "Test", "custom", "custom", "known");
-        State state = new State(DEVICE, SITE, 8, "2026.08.25.1", "pending_edge", null,
+        State state = new State(DEVICE, SITE, null, 8, "2026.08.25.1", "pending_edge", null,
                 null, null, List.of(point), List.of(), null);
         var payload = mapper.readTree(publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), state));
         assertThat(payload.at("/selections/0/definition")).isEqualTo(definition);
@@ -113,12 +113,63 @@ class MeasurementContractsTest {
 
     @SuppressWarnings("unchecked")
     @Test
+    void publisherBindsAnUnambiguousComponentAndCollapsesTheSameRegisterOfTwo()
+            throws Exception {
+        MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
+                "tcp://unused:1883", "", "", mapper);
+        UUID left = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
+        UUID right = UUID.fromString("00000000-0000-0000-0000-0000000000a2");
+        String shared = "deye.hybrid_1p.battery.battery";
+
+        State bound = new State(DEVICE, SITE, null, 9, "2026.08.26.3", "pending_edge", null,
+                null, null,
+                List.of(selection(left, shared, 10),
+                        selection(null, "deye.hybrid_1p.battery.battery-voltage", 30)),
+                List.of(), null);
+        var payload = mapper.readTree(
+                publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), bound));
+        var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
+                "v2", "examples", "mqtt-measurement-config.valid.per-component.json")));
+        assertThat(payload).isEqualTo(fixture);
+
+        // The edge keys its poll plan on the point key alone and refuses a
+        // duplicate, so two components watching ONE register arrive once - with
+        // the faster wish and WITHOUT a binding nobody could honour.
+        State ambiguous = new State(DEVICE, SITE, null, 10, "2026.08.26.3", "pending_edge",
+                null, null, null,
+                List.of(selection(left, shared, 30), selection(right, shared, 10)),
+                List.of(), null);
+        var collapsed = mapper.readTree(
+                publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), ambiguous));
+        assertThat(collapsed.at("/selections")).hasSize(1);
+        assertThat(collapsed.at("/selections/0/cadence_s").asInt()).isEqualTo(10);
+        assertThat(collapsed.at("/selections/0/entity_id").isMissingNode()).isTrue();
+
+        // A component row next to the box row for the same key is ambiguous too.
+        State mixed = new State(DEVICE, SITE, null, 11, "2026.08.26.3", "pending_edge",
+                null, null, null,
+                List.of(selection(null, shared, 30), selection(left, shared, 60)),
+                List.of(), null);
+        var mixedPayload = mapper.readTree(
+                publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), mixed));
+        assertThat(mixedPayload.at("/selections")).hasSize(1);
+        assertThat(mixedPayload.at("/selections/0/entity_id").isMissingNode()).isTrue();
+        assertThat(mixedPayload.at("/selections/0/cadence_s").asInt()).isEqualTo(30);
+    }
+
+    private static SelectionPoint selection(UUID entityId, String pointKey, Integer cadenceS) {
+        return new SelectionPoint(entityId, pointKey, true, cadenceS, 9, null, null,
+                "2026.08.26.3", "test", null, null, "pending_edge", null, null, null,
+                "thermal_bms", 90, 900, "fifteen_minute", null, null, null, null);
+    }
+
+    @Test
     void pendingDesiredRevisionIsRepublishedByReconciliation() {
         JdbcTemplate admin = mock(JdbcTemplate.class);
         MeasurementSelectionService service = mock(MeasurementSelectionService.class);
         MeasurementConfigPublisher publisher = mock(MeasurementConfigPublisher.class);
         DeviceScope scope = new DeviceScope(TENANT, SITE, DEVICE);
-        State state = new State(DEVICE, SITE, 9, "2026.08.25.1", "pending_edge", null,
+        State state = new State(DEVICE, SITE, null, 9, "2026.08.25.1", "pending_edge", null,
                 null, null, List.of(), List.of(), null);
         when(admin.query(anyString(), any(RowMapper.class))).thenReturn(List.of(scope));
         when(service.state(DEVICE)).thenReturn(state);

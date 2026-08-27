@@ -105,10 +105,18 @@ public class DeviceMeasurementSelectionController {
                 .body(history.csv(result));
     }
 
-    /** Desired state + immutable history + current annual-volume estimate. */
+    /**
+     * Desired state + immutable history + current annual-volume estimate.
+     *
+     * <p>{@code entityId} scopes selections and paper trail to ONE component of
+     * this device; without it the answer is the whole device, which before
+     * Stufe 3b was the only thing a selection could belong to. The revision and
+     * the volume estimate stay device-wide either way.
+     */
     @GetMapping
-    public State state(@PathVariable UUID deviceId) {
-        return selections.state(deviceId);
+    public State state(@PathVariable UUID deviceId,
+            @RequestParam(required = false) UUID entityId) {
+        return selections.state(deviceId, entityId);
     }
 
     /**
@@ -119,6 +127,7 @@ public class DeviceMeasurementSelectionController {
     @GetMapping("/catalog")
     public MeasurementCatalog.SearchResult catalog(
             @PathVariable UUID deviceId,
+            @RequestParam(required = false) UUID entityId,
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Set<String> family,
             @RequestParam(required = false) String group,
@@ -129,7 +138,8 @@ public class DeviceMeasurementSelectionController {
             @RequestParam(defaultValue = "100") int limit) {
         try {
             return catalog.search(q, family, group, semanticStatus, recorded, availableOnly,
-                    selections.availableFamilies(deviceId), selections.selectedCadences(deviceId),
+                    selections.availableFamilies(deviceId, entityId),
+                    selections.selectedCadences(deviceId, entityId),
                     selections.recordedPointKeys(deviceId),
                     selections.latestObservations(deviceId), offset, limit);
         } catch (IllegalArgumentException e) {
@@ -142,25 +152,28 @@ public class DeviceMeasurementSelectionController {
     @GetMapping("/estimate")
     public MeasurementBudget.Estimate estimate(
             @PathVariable UUID deviceId,
+            @RequestParam(required = false) UUID entityId,
             @RequestParam String pointKey,
             @RequestParam(defaultValue = "true") boolean enabled,
             @RequestParam(required = false) Integer cadenceS) {
-        return selections.preview(deviceId, pointKey, enabled, cadenceS);
+        return selections.preview(deviceId, entityId, pointKey, enabled, cadenceS);
     }
 
     /** The same preview for a not-yet-created free register. */
     @PostMapping("/custom/estimate")
     public MeasurementBudget.Estimate estimateCustom(@PathVariable UUID deviceId,
+            @RequestParam(required = false) UUID entityId,
             @Valid @RequestBody Definition definition) {
-        return selections.previewCustom(deviceId, definition);
+        return selections.previewCustom(deviceId, entityId, definition);
     }
 
     /** Revisioned enable/disable. Disabling is an update, never a delete. */
     @PutMapping("/{pointKey}")
     public State change(@PathVariable UUID deviceId, @PathVariable String pointKey,
+            @RequestParam(required = false) UUID entityId,
             @Valid @RequestBody SelectionChangeRequest request,
             @AuthenticationPrincipal Jwt caller) {
-        State state = selections.change(deviceId, pointKey,
+        State state = selections.change(deviceId, entityId, pointKey,
                 new Change(request.expectedRevision().longValue(), request.idempotencyKey(),
                         request.enabled().booleanValue(), request.cadenceS()), actor(caller));
         publish(deviceId, state);
@@ -170,18 +183,26 @@ public class DeviceMeasurementSelectionController {
     /** “Eigenen Messwert hinzufügen”: validated, read-only free register. */
     @PostMapping("/custom")
     public State custom(@PathVariable UUID deviceId,
+            @RequestParam(required = false) UUID entityId,
             @Valid @RequestBody CustomPointRequest request,
             @AuthenticationPrincipal Jwt caller) {
-        State state = selections.addCustom(deviceId,
+        State state = selections.addCustom(deviceId, entityId,
                 new CustomChange(request.expectedRevision(), request.idempotencyKey(),
                         request.definition()), actor(caller));
         publish(deviceId, state);
         return state;
     }
 
+    /**
+     * One retained document per DEVICE: a component-scoped write must still
+     * publish the device's complete desired state, never the filtered view it
+     * returned to the caller.
+     */
     private void publish(UUID deviceId, State state) {
         MeasurementConfigPublisher p = publisher.getIfAvailable();
-        if (p != null) p.publish(selections.requireDevice(deviceId), state);
+        if (p == null) return;
+        p.publish(selections.requireDevice(deviceId),
+                state.entityId() == null ? state : selections.state(deviceId));
     }
 
     private static Actor actor(Jwt caller) {
