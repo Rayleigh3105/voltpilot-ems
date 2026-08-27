@@ -125,8 +125,14 @@ import {
   type Befund,
   type SektionAngebot,
 } from '../geraetRahmen';
-import { MeasurementLibrary } from '../components/MeasurementLibrary';
-import { BEOBACHTEN_HINWEIS, beobachtenMoeglich, geraetFamilien } from '../registerFamilie';
+import { BeobachteteRegister } from '../components/BeobachteteRegister';
+import {
+  BRUECKE_LABEL,
+  BRUECKE_NICHT_MOEGLICH,
+  brueckeAusLesung,
+  type BrueckeVorschlag,
+} from '../beobachteteRegister';
+import { beobachtenMoeglich, geraetFamilien } from '../registerFamilie';
 import '../components/AnlagenModell.css';
 // ⚠ Ein Bauteil bringt sein Stylesheet SELBST mit (die RegelKarten-Lehre): die
 // Befehls-Sektion rendert den VERLAUF, dessen Regeln in `Befehle.css` wohnen -
@@ -210,6 +216,17 @@ export function GeraetSeiteSection({
   const [targets, setTargets] = useState<RegisterWriteTarget[] | null>(null);
   const [writes, setWrites] = useState<RegisterWriteEvent[] | null>(null);
   const [knowledge, setKnowledge] = useState<RegisterKnowledgeFamily[] | null>(null);
+  /**
+   * Die BRÜCKE (Stufe 3a §7.2 Teil 3): eine gelesene Zeile wird zur
+   * Beobachtung. Sie reist als ZUSTAND durch den Wirt, weil Lesung (Teil 3)
+   * und Beobachtungs-Liste (Teil 1) zwei Bauteile sind - und wird nach dem
+   * Öffnen des Formulars wieder abgeräumt, damit derselbe Vorschlag nicht bei
+   * jedem Render erneut aufspringt.
+   */
+  const [bruecke, setBruecke] = useState<BrueckeVorschlag | null>(null);
+  const brueckeVerbraucht = useCallback(() => setBruecke(null), []);
+  /** Die Kurzfassung der Register-Sektion - sie kommt aus der Beobachtungs-Fläche. */
+  const [beobKurz, setBeobKurz] = useState<string | null>(null);
   // Die PLATTFORM-Sicht: vier zusätzliche Reads, die es NUR hinter dem einen
   // Tor überhaupt gibt (M7 `showTechnicalLayer`) - ein Kunde holt sie nie.
   const [adminView, setAdminView] = useState<GeraetView | null>(null);
@@ -516,18 +533,19 @@ export function GeraetSeiteSection({
    * Rahmen ein KNOTEN, weil sie in die Register-Sektion gehört (§4.4 Zeile 5)
    * - und auf dem Ladepunkt-Pfad in dessen eigene Messwert-Sektion.
    */
-  const messbibliothek = view?.gefunden ? (
-    <MeasurementLibrary
+  const beobachtung = view?.gefunden ? (
+    <BeobachteteRegister
       deviceId={boxDevice?.id}
       siteId={site.id}
       entityId={editRow?.id}
       familien={messFamilien ?? undefined}
       eigeneErlaubt={geraetId === 'inverter'}
-      beobachtenHinweis={
-        beobachtenMoeglich({ geraetId, familien: messFamilien ?? [] })
-          ? null
-          : BEOBACHTEN_HINWEIS
-      }
+      registerFaehig={registerSektion}
+      geraetName={view.kopf.titel}
+      lesbar={beobachtenMoeglich({ geraetId, familien: messFamilien ?? [] })}
+      bruecke={bruecke}
+      onBrueckeVerbraucht={brueckeVerbraucht}
+      onKurzfassung={setBeobKurz}
     />
   ) : null;
 
@@ -755,7 +773,10 @@ export function GeraetSeiteSection({
           // D3: „Register" wäre an einem HTTP-Gerät das falsche Wort, die
           // Fähigkeit ist es nicht.
           titel: registerSektion ? null : 'Messwerte',
-          kurzfassung: registerSektion ? 'lesen · beobachten · schreiben' : 'beobachten',
+          // ⚠ Die Beobachtungs-Kurzfassung kommt aus der Fläche, die sie kennt
+          // (Stufe 3a); ohne eine einzige Beobachtung bleibt es beim Angebot.
+          kurzfassung: beobKurz
+            ?? (registerSektion ? 'lesen · beobachten · schreiben' : 'beobachten'),
         }
         : { id: 'register', entfaellt: true, grund: ohneRegisterSatz },
       hat('verbindung')
@@ -781,7 +802,7 @@ export function GeraetSeiteSection({
     return rahmen(angebote);
   }, [
     view, gesichtView, heldTraegt, letzteZeile, grenzen, registerSektion,
-    hatMessbibliothek, ohneRegisterSatz, adminView,
+    hatMessbibliothek, ohneRegisterSatz, adminView, beobKurz,
   ]);
 
   /**
@@ -867,7 +888,7 @@ export function GeraetSeiteSection({
           ) ?? null}
           canEdit={components?.componentAuthority === 'portal' && Boolean(editRow)}
           onEdit={() => setEditOpen(true)}
-          messwerte={messbibliothek}
+          messwerte={beobachtung}
         />
       )}
 
@@ -1011,8 +1032,12 @@ export function GeraetSeiteSection({
 
           {/* 5 · Register - Lesen, Beobachten und Schreiben an EINEM Ort. */}
           <RahmenSektion id="register">
+            {/* 1+2 · Beobachtete Register und der Katalog DIESES Geräts. */}
+            {beobachtung}
+            {/* 3 · Lesen und Schreiben - mit der Brücke „Beobachten" je Lesung. */}
             {registerSektion && (
               <RegisterSektion
+                onBeobachten={setBruecke}
                 siteId={site.id}
                 boxDeviceId={box?.id ?? null}
                 geraetName={view.kopf.titel}
@@ -1035,7 +1060,6 @@ export function GeraetSeiteSection({
                 now={now}
               />
             )}
-            {messbibliothek}
           </RahmenSektion>
 
           {/* 6 · Verbindung */}
@@ -1386,6 +1410,8 @@ function GeleseneRegisterTabelle({
   knowledge,
   entityIds,
   abruf,
+  bruecken,
+  onBeobachten,
   now,
 }: {
   art: string;
@@ -1397,6 +1423,13 @@ function GeleseneRegisterTabelle({
   entityIds: string[];
   /** Die auf ABRUF gelesenen Zeilen dieser Sitzung - sie werden nie gespeichert. */
   abruf: RegisterZeile[];
+  /**
+   * Die BRÜCKE je gelesener Zeile: `null` heißt „aus dieser Lesung lässt sich
+   * keine Beobachtung anlegen" (eine Spule), und der Grund steht dann dort -
+   * ein Knopf, der nichts bewirken kann, wird nicht angeboten.
+   */
+  bruecken?: Record<string, BrueckeVorschlag | null>;
+  onBeobachten?: (vorschlag: BrueckeVorschlag) => void;
   now: number;
 }) {
   const sicht = registerSicht({
@@ -1442,7 +1475,24 @@ function GeleseneRegisterTabelle({
                 <td data-label="Roh">{z.roh}</td>
                 <td data-label="Dekodiert">{z.dekodiert}</td>
                 <td data-label="Gelesen">{z.gelesen}</td>
-                <td data-label="Quelle">{QUELLE_WORT[z.quelle]}</td>
+                <td data-label="Quelle">
+                  {QUELLE_WORT[z.quelle]}
+                  {/* Die Brücke: lesen, gut finden, behalten (§7.2 Teil 3). */}
+                  {bruecken && z.key in bruecken && (
+                    bruecken[z.key] ? (
+                      <button
+                        type="button"
+                        className="vp-geraet-btn vp-beob-bruecke"
+                        data-testid={`beob-bruecke-${z.key}`}
+                        onClick={() => onBeobachten?.(bruecken[z.key]!)}
+                      >
+                        <Icon name="plus" size={12} /> {BRUECKE_LABEL}
+                      </button>
+                    ) : (
+                      <span className="vp-muted vp-text-sm">{BRUECKE_NICHT_MOEGLICH}</span>
+                    )
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1481,6 +1531,7 @@ function RegisterSektion({
   source,
   familie,
   knowledge,
+  onBeobachten,
   now,
 }: {
   siteId: string;
@@ -1503,6 +1554,8 @@ function RegisterSektion({
   source: SiteSource | null;
   familie: string | null;
   knowledge: RegisterKnowledgeFamily[] | null;
+  /** Die Brücke nach Teil 1 - der Wirt reicht den Vorschlag weiter. */
+  onBeobachten?: (vorschlag: BrueckeVorschlag) => void;
   now: number;
 }) {
   const [leseAdresse, setLeseAdresse] = useState('');
@@ -1510,6 +1563,12 @@ function RegisterSektion({
   const [liest, setLiest] = useState(false);
   const [leseFehler, setLeseFehler] = useState<string | null>(null);
   const [abruf, setAbruf] = useState<RegisterZeile[]>([]);
+  /**
+   * Je gelesener Zeile ihr Beobachtungs-Vorschlag. Er entsteht AM LESEN, wo
+   * Adresse, Registerart und das gelesene Paar vorliegen - aus der fertigen
+   * Tabellen-Zeile ließe er sich nicht mehr rekonstruieren, ohne zu raten.
+   */
+  const [bruecken, setBruecken] = useState<Record<string, BrueckeVorschlag | null>>({});
   const verlaufFilter = useMemo(
     () => (rows: RegisterWriteEvent[]) => geraeteVerlauf(rows, { box: false, entityIds }),
     [entityIds.join('|')],
@@ -1542,8 +1601,20 @@ function RegisterSektion({
         setLeseFehler(sicht.satz);
         return;
       }
+      const zeile = abrufZeile(adresse, out, new Date());
+      setBruecken((bisher) => ({
+        ...bisher,
+        [zeile.key]: brueckeAusLesung({
+          adresse,
+          art: leseArt,
+          registerLabel: out.registerLabel,
+          scaleUnit: out.scaleUnit,
+          beforeRaw: out.beforeRaw,
+          beforeScaled: out.beforeScaled,
+        }),
+      }));
       setAbruf((bisher) => [
-        abrufZeile(adresse, out, new Date()),
+        zeile,
         // Dieselbe Adresse zweimal zu lesen ersetzt die Zeile, statt sie zu
         // verdoppeln - zwei Stände desselben Registers wären zwei Wahrheiten.
         ...bisher.filter((z) => z.key !== `abruf:${adresse.toLowerCase()}`),
@@ -1567,6 +1638,8 @@ function RegisterSektion({
         knowledge={knowledge}
         entityIds={entityIds}
         abruf={abruf}
+        bruecken={bruecken}
+        onBeobachten={onBeobachten}
         now={now}
       />
       {zugang.moeglich && (

@@ -661,7 +661,11 @@ describe('F2 · In der Vergangenheit navigieren', () => {
 
     // EIN Sprung, kein Klick-Marathon - und nie in die Zukunft.
     fireEvent.click(feld);
-    expect(screen.getByRole('gridcell', { name: String(heute.getDate()) })).not.toBeDisabled();
+    // ⚠ Die Tages-ZAHL ist im Gitter nicht eindeutig (der Überhang des
+    // Nachbarmonats trägt sie ein zweites Mal - an einem 27. sind es zwei
+    // Zellen „27"). Eindeutig ist `aria-current`, und genau das meint die
+    // Zusicherung: HEUTE ist wählbar.
+    expect(screen.getByRole('gridcell', { current: 'date' })).not.toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Voriger Monat' }));
     const ziel = screen.getAllByRole('gridcell', { name: '15' })[0];
     fireEvent.click(ziel);

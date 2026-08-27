@@ -56,3 +56,39 @@
   .vp-measure-chart { height: 280px; }
   .vp-site-measure-head { align-items: stretch; flex-direction: column; }
 }
+
+/* ---------------------------------------------------------------------------
+ * Beobachtete Register / Messwerte (Geräteseiten Stufe 3a)
+ *
+ * Die Liste ist die ERSTE Antwort der Sektion („was beobachte ich hier?"), der
+ * Katalog-Einschub darunter die zweite. Jede Zeile trägt ihren Zustand als
+ * WORT - die Tönung ist der Zusatz, nie der Träger.
+ * ------------------------------------------------------------------------- */
+.vp-beob { min-width: 0; }
+.vp-beob-title { margin: 0 0 var(--vp-space-3); font-size: var(--vp-text-lg); }
+.vp-beob-list { display: grid; gap: var(--vp-space-2); list-style: none; margin: 0; padding: 0; }
+.vp-beob-row { border: 1px solid var(--vp-border); border-radius: var(--vp-radius-md); background: var(--vp-surface); padding: var(--vp-space-3); min-width: 0; }
+.vp-beob-kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; min-width: 0; }
+.vp-beob-name { font-weight: 700; overflow-wrap: anywhere; }
+.vp-beob-adr { color: var(--vp-text-gray); font-size: var(--vp-text-sm); }
+.vp-beob-zustand { margin-left: auto; border-radius: 999px; font-size: .75rem; padding: .18rem .5rem; background: var(--vp-surface-muted); color: var(--vp-text-gray); }
+.vp-beob-zustand.is-ok { background: var(--vp-success-soft); color: var(--vp-success-dark); }
+.vp-beob-zustand.is-warn { background: var(--vp-warning-soft); color: var(--vp-warning-dark); }
+.vp-beob-wertzeile { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .35rem; min-width: 0; }
+.vp-beob-wert { font-size: var(--vp-text-lg); font-weight: 700; }
+.vp-beob-frische { color: var(--vp-text-gray); font-size: var(--vp-text-sm); }
+.vp-beob-spark { margin-left: auto; }
+.vp-beob-grund { color: var(--vp-text-gray); font-size: var(--vp-text-sm); margin: .35rem 0 0; }
+.vp-beob-akt { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .35rem; }
+.vp-beob-hinzu { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: var(--vp-space-3); }
+.vp-beob-bruecke { margin-top: .3rem; }
+
+/*
+ * ⚠ Am Telefon stapeln die zwei Zeilen-Aktionen, und ein `sm`-Knopf misst
+ * 36 px. Sie wachsen dort auf 44 px - dieselbe Regel, die diese Datei für die
+ * Zeilen des Katalog-Einschubs schon trägt (`.vp-measure-row__actions`).
+ */
+@media (max-width: 719px) {
+  .vp-beob-akt { gap: .5rem; }
+  .vp-beob-akt .vp-btn { min-height: 44px; }
+}

@@ -113,6 +113,9 @@ const entities: SiteEntities = {
       role: 'consumer',
       brand: 'go-e',
       model: 'Charger Gemini',
+      // ⚠ Der WEG entscheidet über die Register-Sektion (`geraetGesicht`), die
+      // FAMILIE über den Katalog - beide gehören zu einem HTTP-Gerät.
+      communication: 'goe_http_api',
       family: 'goe_http_api',
       label: null,
       reportedAt: FRISCH,
@@ -885,7 +888,7 @@ describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () =>
   it('Wallbox sieht keine Wechselrichter-Register', async () => {
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-goe" devices={[box]} />);
-    await screen.findByRole('heading', { name: 'Wichtige zusätzliche Messwerte' });
+    await screen.findByRole('heading', { name: 'Beobachtete Messwerte' });
     await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
     expect(gefragteFamilien()).toEqual(['goe.api_v2']);
     // Genau der gemeldete Fehler: die Familie des Deye taucht nicht mehr auf,
@@ -899,7 +902,7 @@ describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () =>
   it('ein zweiter Wechselrichter sieht NUR seine eigene Familie', async () => {
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />);
-    await screen.findByRole('heading', { name: 'Wichtige zusätzliche Messwerte' });
+    await screen.findByRole('heading', { name: 'Beobachtete Register' });
     await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
     const familien = gefragteFamilien();
     expect(familien).not.toContain('hybrid_3p');
@@ -917,7 +920,7 @@ describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () =>
   it('haelt auf dem primaeren Wechselrichter beide Zusagen: eigener Katalog, kein Hinweis', async () => {
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    await screen.findByRole('heading', { name: 'Wichtige zusätzliche Messwerte' });
+    await screen.findByRole('heading', { name: 'Beobachtete Register' });
     await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
     expect(gefragteFamilien()).toEqual(['hybrid_3p']);
     expect(screen.queryByTestId('measure-beobachten-hinweis')).toBeNull();
@@ -930,8 +933,8 @@ describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () =>
     await screen.findByRole('heading', { level: 1 });
     await waitFor(() => expect(api.siteSources).toHaveBeenCalled());
     // ... nur die Bibliothek entfaellt, und sie fragt auch nichts ab.
-    expect(screen.queryByRole('heading', { name: 'Wichtige zusätzliche Messwerte' })).toBeNull();
-    expect(screen.queryByText('Zusätzliche Messwerte')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Beobachtete Register' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Beobachtete Messwerte' })).toBeNull();
     expect(api.measurementCatalog).not.toHaveBeenCalled();
   });
 });
@@ -1029,5 +1032,99 @@ describe('GeraetSeiteSection · Rahmen', () => {
     await waitFor(() => expect(screen.getByTestId('sektion-register')).toHaveAttribute('open'));
     await waitFor(() => expect(document.activeElement)
       .toBe(screen.getByTestId('sektion-register')));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Geräteseiten Stufe 3a: „Beobachtete Register" (Konzept §7.2/§7.4)
+// ---------------------------------------------------------------------------
+
+describe('Stufe 3a · die Messbibliothek, richtig herum', () => {
+  it('trägt am Wechselrichter alle DREI Teile - beobachtet, hinzufügen, lesen/schreiben', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    const sektion = await screen.findByTestId('sektion-register');
+
+    // 1 · die Beobachtungen führen (situativ leer: die Sektion BLEIBT und sagt,
+    //     wie man sie füllt).
+    expect(await within(sektion).findByRole('heading', { name: 'Beobachtete Register' })).toBeTruthy();
+    expect(await within(sektion).findByText(/Noch kein Register beobachtet/)).toBeTruthy();
+    // 2 · der Katalog DIESES Geräts.
+    expect(within(sektion).getByRole('button', { name: /Register beobachten/ })).toBeTruthy();
+    // 3 · lesen und schreiben - am selben Ort.
+    expect(within(sektion).getByTestId('geraet-regread')).toBeTruthy();
+    expect(within(sektion).getByLabelText('Adresse des Registers, das jetzt gelesen wird')).toBeTruthy();
+  });
+
+  it('die Wallbox trägt nur die zwei Beobachtungs-Teile - kein Lesen, kein Schreiben', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-goe" devices={[box]} />);
+    const sektion = await screen.findByTestId('sektion-register');
+
+    // D3a: dieselbe Liste, das andere Wort - die Fähigkeit ist dieselbe.
+    expect(await within(sektion).findByRole('heading', { name: 'Beobachtete Messwerte' })).toBeTruthy();
+    expect(within(sektion).getByRole('button', { name: /Messwert beobachten/ })).toBeTruthy();
+    // Ein HTTP-Gerät hat keine Register: der Teil entfällt, statt leer dazustehen.
+    expect(within(sektion).queryByTestId('geraet-regread')).toBeNull();
+    expect(within(sektion).queryByText('Register jetzt lesen')).toBeNull();
+  });
+
+  it('die BRÜCKE: aus einer Lesung wird eine Beobachtung - vorbefüllt, nicht gespeichert', async () => {
+    stub();
+    vi.spyOn(api, 'registerWritePreview').mockResolvedValue({
+      requestId: 'r-1', mode: 'lesen', ok: true, outcome: 'gelesen',
+      beforeRaw: 3000, afterRaw: null, beforeScaled: 30, afterScaled: null,
+      adopted: null, errorCode: null, message: null, targetLabel: null,
+      address: 231, addressHex: '0x00E7', registerLabel: 'Einspeisegrenze',
+      registerClass: 'netz_compliance', scaleNote: null, scaleUnit: 'kW',
+      noteRequired: true, confirm: null,
+    } as never);
+    vi.spyOn(api, 'customMeasurementEstimate').mockResolvedValue({
+      enabledPointCount: 1, samplesPerMinute: 2, requestsPerMinute: 2, dutyCyclePercent: 1,
+      softWarning: false, hardRejected: false, reasons: [], rawGbPerYear: 0.1,
+      longTermGbPerYear: 0, totalGbPerYear: 0.1, retentionSummary: '90 Tage roh',
+    });
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    await screen.findByTestId('sektion-register');
+
+    fireEvent.change(screen.getByLabelText('Adresse des Registers, das jetzt gelesen wird'), {
+      target: { value: '0x00E7' },
+    });
+    fireEvent.click(screen.getByTestId('geraet-regread'));
+    // Die gelesene Zeile bietet die Brücke an ...
+    const bruecke = await screen.findByTestId('beob-bruecke-abruf:0x00e7');
+    fireEvent.click(bruecke);
+
+    // ... und das Formular steht VORBEFÜLLT offen.
+    const dialog = await screen.findByRole('dialog', { name: 'Eigenen Messwert hinzufügen' });
+    expect(within(dialog).getByLabelText('Bezeichnung')).toHaveValue('Einspeisegrenze');
+    expect(within(dialog).getByLabelText('Registeradresse (dezimal)')).toHaveValue(231);
+    expect(within(dialog).getByLabelText('Einheit')).toHaveValue('kW');
+    // Bis hierher ist NICHTS angelegt - erst der Klick im Formular schreibt.
+    expect(api.customMeasurementEstimate).not.toHaveBeenCalled();
+  });
+
+  it('trägt die KOMPONENTE dieser Seite in jeden Auswahl-Aufruf', async () => {
+    stub();
+    // Erst eine Komponente MIT Vorlage ist die bearbeitbare Zeile dieser Seite -
+    // und nur sie schneidet die Auswahl (`editRow`).
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{
+        id: 'fr1',
+        communication: 'fronius_sunspec',
+        connection: { ip: '192.168.254.30', port: 502, unit_id: 1, interval_s: 5 },
+        definitionVersion: 3,
+        edgeSourceId: 'src-7c1e9a2b',
+        templateRef: 'builtin:fronius:eco-27',
+      }],
+    } as never);
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />);
+    await screen.findByRole('heading', { name: 'Beobachtete Register' });
+    await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
+
+    // Der TRANSPORT bleibt die Box, die AUSWAHL gehört der Komponente (Stufe 3b).
+    expect(api.measurementSelection).toHaveBeenCalledWith('gw', 'fr1');
+    expect(vi.mocked(api.measurementCatalog).mock.calls[0][1].get('entityId')).toBe('fr1');
   });
 });

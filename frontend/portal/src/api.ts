@@ -915,6 +915,14 @@ export interface MeasurementBudgetEstimate {
 export interface MeasurementSelectionState {
   deviceId: string;
   siteId: string;
+  /**
+   * Die Komponente, auf die diese Sicht geschnitten ist (Stufe 3b) - `null`
+   * bzw. fehlend heisst „das ganze Geraet", die Box-Semantik von vorher.
+   * Revision und Volumen bleiben in beiden Faellen GERAETE-weit: die Revision
+   * ist das Token des EINEN veroeffentlichten Plans, das Budget die Last des
+   * EINEN Busses.
+   */
+  entityId?: string | null;
   desiredRevision: number;
   catalogVersion: string;
   status: 'idle' | 'pending_edge' | 'applied' | 'first_sample' | 'partially_rejected';
@@ -3074,33 +3082,45 @@ export const api = {
    * Eine leere Liste heißt „kein Gerät hat je gemeldet", nicht „alle aktuell".
    */
   edgeVersions: () => request<EdgeVersion[]>('/api/v1/edge-versions'),
-  measurementSelection: (deviceId: string) =>
-    request<MeasurementSelectionState>(`/api/v1/devices/${deviceId}/measurement-selection`),
+  /**
+   * ⚠ `entityId` schneidet Auswahl und Papier-Spur auf EINE Komponente dieses
+   * Geraets (Stufe 3b). Es ist ueberall OPTIONAL: ohne es antwortet der Server
+   * wie vorher ueber das ganze Geraet, also bleibt jeder Bestands-Aufrufer
+   * Zeichen fuer Zeichen unveraendert.
+   */
+  measurementSelection: (deviceId: string, entityId?: string) =>
+    request<MeasurementSelectionState>(
+      `/api/v1/devices/${deviceId}/measurement-selection${entityId ? `?entityId=${encodeURIComponent(entityId)}` : ''}`,
+    ),
   measurementCatalog: (deviceId: string, params: URLSearchParams) =>
     request<MeasurementCatalogResult>(
       `/api/v1/devices/${deviceId}/measurement-selection/catalog?${params.toString()}`,
     ),
-  measurementEstimate: (deviceId: string, pointKey: string, cadenceS: number, enabled: boolean) =>
-    request<MeasurementBudgetEstimate>(
-      `/api/v1/devices/${deviceId}/measurement-selection/estimate?pointKey=${encodeURIComponent(pointKey)}&enabled=${enabled}&cadenceS=${cadenceS}`,
-    ),
+  measurementEstimate: (
+    deviceId: string, pointKey: string, cadenceS: number, enabled: boolean, entityId?: string,
+  ) => request<MeasurementBudgetEstimate>(
+    `/api/v1/devices/${deviceId}/measurement-selection/estimate?pointKey=${encodeURIComponent(pointKey)}&enabled=${enabled}&cadenceS=${cadenceS}${entityId ? `&entityId=${encodeURIComponent(entityId)}` : ''}`,
+  ),
   changeMeasurementSelection: (
     deviceId: string,
     pointKey: string,
     body: { expectedRevision: number; idempotencyKey: string; enabled: boolean; cadenceS?: number },
+    entityId?: string,
   ) => request<MeasurementSelectionState>(
-    `/api/v1/devices/${deviceId}/measurement-selection/${encodeURIComponent(pointKey)}`,
+    `/api/v1/devices/${deviceId}/measurement-selection/${encodeURIComponent(pointKey)}${entityId ? `?entityId=${encodeURIComponent(entityId)}` : ''}`,
     { method: 'PUT', body: JSON.stringify(body) },
   ),
-  addCustomMeasurement: (deviceId: string, body: Record<string, unknown>) =>
-    request<MeasurementSelectionState>(`/api/v1/devices/${deviceId}/measurement-selection/custom`, {
-      method: 'POST', body: JSON.stringify(body),
-    }),
-  customMeasurementEstimate: (deviceId: string, definition: Record<string, unknown>) =>
-    request<MeasurementBudgetEstimate>(
-      `/api/v1/devices/${deviceId}/measurement-selection/custom/estimate`,
-      { method: 'POST', body: JSON.stringify(definition) },
+  addCustomMeasurement: (deviceId: string, body: Record<string, unknown>, entityId?: string) =>
+    request<MeasurementSelectionState>(
+      `/api/v1/devices/${deviceId}/measurement-selection/custom${entityId ? `?entityId=${encodeURIComponent(entityId)}` : ''}`,
+      { method: 'POST', body: JSON.stringify(body) },
     ),
+  customMeasurementEstimate: (
+    deviceId: string, definition: Record<string, unknown>, entityId?: string,
+  ) => request<MeasurementBudgetEstimate>(
+    `/api/v1/devices/${deviceId}/measurement-selection/custom/estimate${entityId ? `?entityId=${encodeURIComponent(entityId)}` : ''}`,
+    { method: 'POST', body: JSON.stringify(definition) },
+  ),
   measurementHistory: (
     deviceId: string, pointKey: string, range: MeasurementRange,
     representation: 'raw' | 'decoded', from?: string, to?: string, siteId?: string,
