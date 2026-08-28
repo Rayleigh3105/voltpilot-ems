@@ -158,6 +158,7 @@
 }
 
 .vp-at-details {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -170,6 +171,12 @@
   background: transparent;
   color: inherit;
   cursor: pointer;
+}
+
+.vp-at-details::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
 }
 
 .vp-at-details:hover {
