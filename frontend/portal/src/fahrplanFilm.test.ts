@@ -96,6 +96,19 @@ describe('filmRows · Jetzt führt, heute voll, morgen eingeklappt', () => {
     expect(view.tomorrowSummary).toBe('Morgen · 2 weitere Phasen');
   });
 
+  it('sagt „Morgen und danach", wenn ein 48-h-Plan über zwei Tage reicht', () => {
+    // 48-h-Horizont (28.08.2026): der Rest des Films läuft über MORGEN und
+    // ÜBERMORGEN. Ein blosses „Morgen" behauptete dann einen Tag zu viel.
+    const { slots, phases: ph } = build([
+      ...run('eigenverbrauch', 0, 4),
+      ...run('guenstig_laden', 6, 4, { batteryKw: 5 }),
+      ...run('pv_speichern', 14, 4, { batteryKw: 6 }),
+      ...run('verkaufen', 38, 4, { batteryKw: -8 }),
+    ]);
+    const view = filmRows(ph, slots, 'eigenverbrauch', NOW);
+    expect(view.tomorrowSummary).toBe('Morgen und danach · 3 weitere Phasen');
+  });
+
   it('sagt „1 weitere Phase" im Singular', () => {
     const { slots, phases: ph } = build([
       ...run('eigenverbrauch', 0, 4),

@@ -2,27 +2,36 @@ import { describe, expect, it } from 'vitest';
 import {
   bankedValueLine,
   chargeKind,
+  CURTAIL_BAND_CAUSE,
+  CURTAIL_BAND_WORD,
+  CURTAIL_DEADBAND_KW,
+  CURTAIL_LEGEND_LABEL,
   curtailArea,
+  curtailBandLabel,
   curtailmentPlannedLine,
   curtailmentToday,
   curtailSpans,
   curtailTickData,
   curtailTooltip,
-  curtailBandLabel,
-  CURTAIL_BAND_CAUSE,
-  CURTAIL_BAND_WORD,
-  CURTAIL_LEGEND_LABEL,
-  priceSpread,
+  dayBoundaries,
+  daypart,
   DUTY_HINT,
   dutyLabel,
   dutyTooltip,
   forecastLines,
-  daypart,
-  CURTAIL_DEADBAND_KW,
   hasCurtailment,
   hasGridCharge,
   HORIZON_HINT,
   horizonHint,
+  planCoversNow,
+  planHourBars,
+  planInsightParts,
+  planKernaussage,
+  plannedDayCosts,
+  planSentence,
+  planStaleNote,
+  planStreifenSkala,
+  planStreifenTicks,
   LOAD_FORECAST_LABEL,
   MEASURED_LOAD_LABEL,
   MEASURED_PV_LABEL,
@@ -30,29 +39,21 @@ import {
   measuredNote,
   measuredPvLine,
   needsPointMarkers,
-  planCoversNow,
-  planHourBars,
-  planStreifenSkala,
-  planStreifenTicks,
-  planInsightParts,
-  plannedDayCosts,
-  planKernaussage,
-  planSentence,
-  planStaleNote,
+  todaySlots,
+  toggleSeries,
   powerAxisMax,
-  PV_FORECAST_LABEL,
   PLAN_STALE_AFTER_MS,
+  PV_FORECAST_LABEL,
   PV_SOURCE_DEADBAND_KW,
+  priceSpread,
   savingsTodayEur,
   SLOT_DEADBAND_KW,
+  slotAktionSatz,
   slotBarColor,
   slotBarMark,
   slotDuty,
   socRange,
   socRangeLine,
-  todaySlots,
-  toggleSeries,
-  slotAktionSatz,
 } from './schedule';
 import { chartTheme, type ChartTheme } from './chartTheme';
 import { eurAmount, NBSP } from './format';
@@ -1495,5 +1496,112 @@ describe('K7 · was der Plan in dieser Viertelstunde vorhat, als SATZ', () => {
   it('besteht aus Konstanten und formatierten Zahlen (XSS-Regel der Formatter)', () => {
     const satz = slotAktionSatz({ batteryKw: 4, gridKw: 1, pvKw: 6 })!;
     expect(satz).not.toMatch(/[<>]/);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * 48-h-Horizont (Captain-Entscheid 28.08.2026)
+ *
+ * Der Optimierer plant seit dem 28.08.2026 bis zu 48 h weit, damit eine
+ * Mittags-Entscheidung den ABEND DES FOLGETAGS schon sieht. Für die Fläche
+ * heißt das: der Plan überquert Mitternacht zweimal, und die Ableitungen, die
+ * „heute" meinen, müssen weiterhin heute meinen.
+ * ------------------------------------------------------------------------- */
+describe('dayBoundaries · die Tageswechsel eines langen Plans', () => {
+  const NOW_48 = new Date('2026-08-28T18:30:00');
+
+  /** `n` Viertelstunden ab lokal 18:30 des 28.08. */
+  function langeSlots(n: number) {
+    return Array.from({ length: n }, (_, i) => ({
+      start: new Date(NOW_48.getTime() + i * 15 * 60_000).toISOString(),
+    }));
+  }
+
+  it('findet BEIDE Grenzen eines 48-h-Plans und benennt sie relativ zu jetzt', () => {
+    const grenzen = dayBoundaries(langeSlots(192), NOW_48);
+    expect(grenzen.map((g) => g.label)).toEqual(['Morgen', 'Übermorgen']);
+    // 18:30 + 5,5 h = Mitternacht -> Index 22, dann volle 96 Slots später
+    expect(grenzen[0].index).toBe(22);
+    expect(grenzen[1].index).toBe(22 + 96);
+  });
+
+  it('findet genau eine Grenze im 24-h-Plan - das bisherige Bild', () => {
+    const grenzen = dayBoundaries(langeSlots(96), NOW_48);
+    expect(grenzen).toHaveLength(1);
+    expect(grenzen[0].label).toBe('Morgen');
+  });
+
+  it('behauptet ohne Tageswechsel gar nichts', () => {
+    expect(dayBoundaries(langeSlots(4), NOW_48)).toEqual([]);
+    expect(dayBoundaries([], NOW_48)).toEqual([]);
+  });
+
+  it('beschriftet RELATIV zu jetzt, nicht durchgezählt', () => {
+    // Ein Plan, dessen erster Slot schon MORGEN liegt (ein Lauf kurz vor
+    // Mitternacht, dessen frühe Slots abgelaufen sind): sein erster Wechsel
+    // ist „Übermorgen", nicht „Morgen".
+    const start = new Date('2026-08-29T22:00:00');
+    const slots = Array.from({ length: 40 }, (_, i) => ({
+      start: new Date(start.getTime() + i * 15 * 60_000).toISOString(),
+    }));
+    expect(dayBoundaries(slots, NOW_48)[0].label).toBe('Übermorgen');
+  });
+
+  it('nennt jenseits von übermorgen das DATUM statt eines erfundenen Wortes', () => {
+    const grenzen = dayBoundaries(langeSlots(192 + 96), NOW_48);
+    expect(grenzen.map((g) => g.label)).toEqual(['Morgen', 'Übermorgen', '31.08.']);
+  });
+});
+
+describe('die Tages-Ableitungen bleiben bei HEUTE, auch über 48 h', () => {
+  const NOW_48 = new Date('2026-08-28T18:30:00');
+
+  function planSlot(i: number) {
+    return {
+      start: new Date(NOW_48.getTime() + i * 15 * 60_000).toISOString(),
+      batteryKw: 3,
+      gridKw: -1,
+      pvKw: 10,
+      curtailKw: null,
+    };
+  }
+
+  it('todaySlots zählt nur den heutigen Kalendertag eines 192-Slot-Plans', () => {
+    const slots = Array.from({ length: 192 }, (_, i) => planSlot(i));
+    // 18:30 bis Mitternacht = 22 Viertelstunden
+    expect(todaySlots(slots, NOW_48)).toHaveLength(22);
+  });
+
+  it('planHourBars bleibt eine 24-Stunden-Zeile', () => {
+    const slots = Array.from({ length: 192 }, (_, i) => planSlot(i));
+    const bars = planHourBars(slots, NOW_48);
+    expect(bars).toHaveLength(24);
+    // die Stunden VOR 18:30 tragen heute keinen Plan mehr
+    expect(bars[10].kw).toBeNull();
+    expect(bars[19].kind).toBe('solarladen');
+  });
+});
+
+describe('socRangeLine benennt den Zeitraum, den es wirklich beschreibt', () => {
+  function socSlot(i: number, pct: number) {
+    return {
+      socPct: pct,
+      start: new Date(new Date('2026-08-28T18:30:00').getTime() + i * 15 * 60_000).toISOString(),
+    };
+  }
+
+  it('sagt „im Tagesverlauf", solange der Plan höchstens zwei Tage berührt', () => {
+    const slots = Array.from({ length: 96 }, (_, i) => socSlot(i, 10 + (i % 80)));
+    expect(socRangeLine(slots)).toContain('im Tagesverlauf');
+  });
+
+  it('sagt „im Planungszeitraum", sobald ein 48-h-Plan drei Tage berührt', () => {
+    const slots = Array.from({ length: 192 }, (_, i) => socSlot(i, 10 + (i % 80)));
+    expect(socRangeLine(slots)).toContain('im Planungszeitraum');
+    expect(socRangeLine(slots)).not.toContain('Tagesverlauf');
+  });
+
+  it('bleibt ohne Zeitstempel byte-identisch zum bisherigen Satz', () => {
+    expect(socRangeLine([{ socPct: 12.4 }, { socPct: 88.2 }])).toContain('im Tagesverlauf');
   });
 });

@@ -202,7 +202,11 @@ def test_baselines_always_persist_model_tagged_series():
     pv = forecasts.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL)
     assert load is not None and load.model == "load-persistence"
     assert pv is not None and pv.model == "pv-physical"
-    assert len(load) == 96 and len(pv) == 96
+    # 48 h since the optimizer plans a 48 h window (Captain-Entscheid
+    # 28.08.2026) and may only extend it over REAL forecasts. This fixture
+    # serves no weather, so the PV model runs on clear-sky physics, which is a
+    # real model at any timestamp - the horizon is therefore unclipped.
+    assert len(load) == 192 and len(pv) == 192
     assert load.tenant_id == SITE.tenant_id  # tenant stamped for RLS
 
     # Baseline states are 'ready' - always live, nothing to collect.
@@ -370,3 +374,127 @@ def test_sql_column_guards_raise_instead_of_asserting():
         _telemetry_history(None, "site", "load_kw; DROP TABLE t", NOW)
     with pytest.raises(ValueError, match="soc_pct"):
         _actuals(None, "site", "soc_pct", NOW, NOW)
+
+
+# ---------------------------------------------------------------------------
+# The 48h horizon: PV stops where real weather stops (Captain-Entscheid
+# 28.08.2026). The optimizer may extend its window past 24 h only over REAL
+# forecasts; ``OpenMeteoWeatherProvider`` answers a timestamp outside its
+# samples with 0 W/m2, which is indistinguishable from night. At the old 24 h
+# horizon that branch was unreachable (the weather feed reaches ~3 days), but a
+# 48 h horizon can outrun a weather feed that has been down for a day - and a
+# fabricated PV zero for tomorrow evening is exactly the synthetic value the
+# extension must never rest on.
+# ---------------------------------------------------------------------------
+
+from voltpilot_forecast.domain import Horizon  # noqa: E402
+from voltpilot_forecast.forecast_collect import pv_horizon  # noqa: E402
+from voltpilot_forecast.openmeteo import WeatherPoint  # noqa: E402
+
+
+def _weather(hours: int, *, start: datetime = NOW, ghi: float | None = 300.0):
+    """Hourly samples covering ``hours`` from the hour of ``start``."""
+    first = start.replace(minute=0, second=0, microsecond=0)
+    return [
+        WeatherPoint(
+            timestamp=first + timedelta(hours=h),
+            temperature_c=18.0,
+            cloud_cover_pct=10.0,
+            ghi_w_m2=ghi,
+            dni_w_m2=None,
+            dhi_w_m2=None,
+        )
+        for h in range(hours)
+    ]
+
+
+def test_pv_horizon_keeps_the_full_window_when_weather_covers_it():
+    horizon = Horizon.hours(48)
+    assert pv_horizon(horizon, _weather(72), NOW).slots == horizon.slots
+
+
+def _covered_slots(hours: int) -> int:
+    """Slots of a 48 h horizon whose HOUR a ``_weather(hours)`` feed answers.
+
+    Derived, not hardcoded: ``Horizon.slot_starts`` begins strictly AFTER
+    ``run_at`` (the collector's own convention), so a feed covering ``hours``
+    full hours from 12:00 answers up to and including the 45-min slot of its
+    last hour - one slot short of ``hours * 4``.
+    """
+    last = _weather(hours)[-1].timestamp
+    return sum(
+        1
+        for ts in Horizon.hours(48).slot_starts(NOW)
+        if ts.replace(minute=0, second=0, microsecond=0) <= last
+    )
+
+
+def test_pv_horizon_stops_where_the_weather_samples_stop():
+    """A weather feed reaching only 30 h yields a 30 h PV series - the
+    optimizer's own truncation then ends its window there."""
+    clipped = pv_horizon(Horizon.hours(48), _weather(30), NOW)
+    assert clipped.slots == _covered_slots(30) == 119
+    assert clipped.slot_minutes == 15
+
+
+def test_pv_horizon_is_a_no_op_at_the_legacy_24h_request():
+    """The rollback property: with the pre-48h horizon the clip cannot fire,
+    because the weather feed always reaches further than one day."""
+    horizon = Horizon.hours(24)
+    assert pv_horizon(horizon, _weather(72), NOW).slots == horizon.slots
+
+
+def test_a_sample_without_irradiance_does_not_count_as_coverage():
+    """A row that exists but carries no GHI answers nothing - the provider
+    would return the same fabricated 0 as for a missing hour."""
+    points = _weather(48)
+    points[30] = WeatherPoint(
+        timestamp=points[30].timestamp,
+        temperature_c=18.0,
+        cloud_cover_pct=10.0,
+        ghi_w_m2=None,
+        dni_w_m2=None,
+        dhi_w_m2=None,
+    )
+    assert pv_horizon(Horizon.hours(48), points, NOW).slots == _covered_slots(30)
+
+
+def test_without_any_weather_the_horizon_is_untouched():
+    """No samples at all means the caller uses the CLEAR-SKY provider, which is
+    a real physical model at any timestamp - clipping there would drop a
+    forecast we can honestly make."""
+    horizon = Horizon.hours(48)
+    assert pv_horizon(horizon, [], NOW).slots == horizon.slots
+
+
+def test_weather_that_starts_after_the_window_leaves_the_horizon_whole():
+    """Zero coverage is not "forecast nothing": fall back to the full horizon on
+    clear-sky physics rather than writing no PV forecast at all."""
+    horizon = Horizon.hours(48)
+    late = _weather(24, start=NOW + timedelta(days=5))
+    assert pv_horizon(horizon, late, NOW).slots == horizon.slots
+
+
+def test_the_collector_clips_pv_but_never_load():
+    """End to end through ``collect_site``: LOAD keeps the full 48 h (its
+    baseline needs telemetry, not weather), PV stops at the weather's edge."""
+    forecasts = InMemoryForecastRepository()
+    quality = InMemoryQualityRepository()
+    rows = [
+        (p.timestamp, p.temperature_c, p.cloud_cover_pct, p.ghi_w_m2, p.dni_w_m2, p.dhi_w_m2)
+        for p in _weather(30)
+    ]
+    collect_site(
+        _FakeConnection(_telemetry_days(3), weather=rows),
+        forecasts,
+        quality,
+        SITE,
+        NOW,
+        CollectorConfig(),
+        ChallengerCache(),
+        ml_available=False,
+    )
+    load = forecasts.latest(SITE.site_id, ForecastKind.LOAD, registry.LOAD_PERSISTENCE)
+    pv = forecasts.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL)
+    assert len(load) == 192
+    assert len(pv) == _covered_slots(30)

@@ -82,6 +82,44 @@ logger = logging.getLogger("voltpilot.optimization.inputs")
 # shorter price coverage skips the site until the next collector run.
 MIN_HORIZON_SLOTS = 16
 
+def real_forecast_horizon(
+    slot_starts: list[datetime],
+    *stored: dict,
+    legacy_slots: int = SLOTS_24H,
+) -> int:
+    """How many slots the window may span given the REAL stored forecasts.
+
+    Pure (no DB, no clock) so the rule is directly testable.
+
+    The rule, and why it is asymmetric (Captain-Entscheid 28.08.2026, brief
+    item 2 - "wo echte Prognosen enden, endet das Fenster"):
+
+    * The **first ``legacy_slots`` slots are untouched**. There the shipped
+      behaviour is and stays "stored forecast when it covers the window, else
+      the persistence baseline over recent telemetry" - a site whose collector
+      has not run yet still gets a plan, exactly as before. Truncating there
+      would turn a documented degradation into a skipped site.
+    * **Beyond** them the window is extended ONLY over the contiguous prefix
+      that EVERY passed series really covers. The extension exists to see the
+      day-after-tomorrow evening; extending it on synthetic values would plan a
+      real battery against an invented day, which is strictly worse than not
+      seeing that day at all.
+
+    So the return value is ``max(legacy_slots, contiguous real coverage)``,
+    capped at ``len(slot_starts)``. With ``legacy_slots >= len(slot_starts)``
+    (i.e. the pre-48h request) it is ``len(slot_starts)`` - a provable no-op.
+    """
+    n = len(slot_starts)
+    if n <= legacy_slots:
+        return n
+    covered = 0
+    for start in slot_starts:
+        if not all(start in s for s in stored):
+            break
+        covered += 1
+    return max(legacy_slots, min(covered, n))
+
+
 # Telemetry history window feeding the persistence fallback (>= 2 full days so
 # "same slot yesterday" always has a candidate).
 FALLBACK_HISTORY = timedelta(days=3)
@@ -523,8 +561,29 @@ def gather_inputs(
         )
     slot_starts = slot_starts[:covered]
 
+    # SECOND truncation (48h window, Captain-Entscheid 28.08.2026): prices are
+    # the first binding input, REAL forecasts are the second. The stored series
+    # are read here (once) so the extension beyond the legacy 24h can be capped
+    # at what they actually cover - see :func:`real_forecast_horizon` for the
+    # rule and why the first 96 slots are deliberately exempt from it.
+    stored_load = _stored_forecast(dsn, site, "load", slot_starts, site_choices)
+    stored_pv = _stored_forecast(dsn, site, "pv", slot_starts, site_choices)
+    real_slots = real_forecast_horizon(slot_starts, stored_load, stored_pv)
+    if real_slots < len(slot_starts):
+        logger.info(
+            "horizon.truncated_to_forecast",
+            extra={
+                "context": {
+                    "site_id": str(site.site_id),
+                    "priced_slots": len(slot_starts),
+                    "planned_slots": real_slots,
+                }
+            },
+        )
+        slot_starts = slot_starts[:real_slots]
+
     load_kw, _ = _forecast_or_fallback(
-        dsn, site, "load", "load_kw", slot_starts, now, site_choices
+        dsn, site, "load", "load_kw", slot_starts, now, stored_load
     )
     # P1/P2: fresh actual-minus-plan evidence corrects only the near horizon;
     # then a small bounded upper-load scenario protects against residual error.
@@ -538,7 +597,7 @@ def gather_inputs(
     if residual is not None:
         load_kw = apply_uncertainty_reserve(load_kw)
     pv_kw, pv_used_fallback = _forecast_or_fallback(
-        dsn, site, "pv", "pv_power_kw", slot_starts, now, site_choices
+        dsn, site, "pv", "pv_power_kw", slot_starts, now, stored_pv
     )
     # The run's OWN recent error, carried into the near horizon (Morgenprognose
     # 2026-08-24 - see :mod:`voltpilot_optimization.nowcast`). Runs BEFORE the
@@ -771,6 +830,24 @@ def _load_market_values(dsn: str, months: list) -> dict:
         return {month: float(value) for month, value in cur.fetchall()}
 
 
+def _stored_forecast(
+    dsn: str,
+    site: BatterySite,
+    kind: str,
+    slot_starts: list[datetime],
+    site_choices: dict | None = None,
+) -> dict:
+    """The ACTIVE model's freshest per-slot predictions from the window start on.
+
+    Split out of :func:`_forecast_or_fallback` so ``gather_inputs`` can read it
+    ONCE and use it for two things: deciding how far real forecasts reach (the
+    48h window truncation, :func:`real_forecast_horizon`) and then building the
+    series. Same query count as before the split - not a second read."""
+    return _load_forecast(
+        dsn, site.site_id, kind, active_model(kind, choices=site_choices), slot_starts[0]
+    )
+
+
 def _forecast_or_fallback(
     dsn: str,
     site: BatterySite,
@@ -778,7 +855,7 @@ def _forecast_or_fallback(
     telemetry_column: str,
     slot_starts: list[datetime],
     now: datetime,
-    site_choices: dict | None = None,
+    stored: dict,
 ) -> tuple[list[float], bool]:
     """The ACTIVE model's latest stored forecast run when it covers the
     horizon, else the persistence baseline over recent telemetry (never fails:
@@ -787,10 +864,10 @@ def _forecast_or_fallback(
 
     Returns ``(series, used_fallback)`` so the PV caller can flag a fallback-fed
     night-floor distinctly (the collector<->optimizer 15-min race, §4a of the
-    scout report - visible in monitoring before it silently degrades plans)."""
-    stored = _load_forecast(
-        dsn, site.site_id, kind, active_model(kind, choices=site_choices), slot_starts[0]
-    )
+    scout report - visible in monitoring before it silently degrades plans).
+
+    ``stored`` is this model's per-slot predictions, read once by the caller
+    (:func:`_stored_forecast`)."""
     if all(s in stored for s in slot_starts):
         return [stored[s] for s in slot_starts], False
 

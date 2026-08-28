@@ -275,6 +275,19 @@ export function filmRows(
 
   const first = tomorrow[0];
   const naechsterTag = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  // ⚠ Der Kopf sagt, WIE WEIT der Rest reicht - seit dem 48-h-Horizont
+  // (28.08.2026) kann er über zwei Kalendertage laufen, und ein blosses
+  // „Morgen" behauptete dann einen Tag zu viel. Zählt der Rest genau einen
+  // Tag, bleibt der Satz Zeichen für Zeichen der bisherige.
+  const restTage = new Set(tomorrow.map((r) => new Date(r.from).toDateString()));
+  const kopf =
+    first == null
+      ? null
+      : !sameDay(new Date(first.from), naechsterTag)
+        ? 'Danach'
+        : restTage.size > 1
+          ? 'Morgen und danach'
+          : 'Morgen';
   return {
     past,
     today,
@@ -282,7 +295,7 @@ export function filmRows(
     tomorrowSummary:
       first == null
         ? null
-        : `${sameDay(new Date(first.from), naechsterTag) ? 'Morgen' : 'Danach'} · ` +
+        : `${kopf} · ` +
           `${tomorrow.length} weitere ${tomorrow.length === 1 ? 'Phase' : 'Phasen'}`,
     empty:
       today.length > 0

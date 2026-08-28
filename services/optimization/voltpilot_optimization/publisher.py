@@ -23,15 +23,36 @@ logger = logging.getLogger("voltpilot.optimization.publisher")
 
 SCHEMA_VERSION = "1.0"
 
+#: The edge receives at most 24 h of the plan (Captain-Entscheid 28.08.2026).
+#:
+#: The CLOUD plans up to 48 h so a midday decision already sees the following
+#: evening; the CONTRACT toward the box is deliberately unchanged. The edge
+#: caches the plan on disk, replays it after a reboot and treats it as stale
+#: after 20 min (``mqtt-schedule.schema.json`` ``x-failsafe``), and it re-plans
+#: every 15 min anyway - so a second day of slots would only enlarge every
+#: retained message and every device's cache for slots the next twenty runs
+#: replace. The far half of the horizon is a PLANNING input, not an execution
+#: instruction: its whole job is to price the stored kWh the near half acts on.
+#:
+#: Persistence keeps the FULL horizon (the portal shows it); only this payload
+#: is capped, and a plan that is already <= 96 slots is byte-identical to
+#: before.
+EDGE_PLAN_SLOTS = 96
+
 
 def schedule_topic(plan: SchedulePlan) -> str:
     return f"ems/{plan.tenant_id}/{plan.site_id}/{plan.device_id}/schedule"
 
 
 def build_schedule_payload(plan: SchedulePlan) -> dict:
-    """The contract payload for a plan (``mqtt-schedule.schema.json``)."""
+    """The contract payload for a plan (``mqtt-schedule.schema.json``).
+
+    Carries at most :data:`EDGE_PLAN_SLOTS` slots - see that constant for why
+    the 48 h cloud horizon does not widen the edge contract.
+    """
     if plan.device_id is None:
         raise ValueError("cannot build a schedule payload without a device")
+    slots = plan.slots[:EDGE_PLAN_SLOTS]
     payload = {
         "schema_version": SCHEMA_VERSION,
         "tenant_id": str(plan.tenant_id),
@@ -39,9 +60,9 @@ def build_schedule_payload(plan: SchedulePlan) -> dict:
         "device_id": str(plan.device_id),
         "plan_id": str(plan.plan_id),
         "generated_at": _rfc3339(plan.generated_at),
-        "horizon_slots": len(plan.slots),
+        "horizon_slots": len(slots),
         "slot_minutes": plan.slot_minutes,
-        "slots": [_slot_payload(slot) for slot in plan.slots],
+        "slots": [_slot_payload(slot) for slot in slots],
         # Additive safety fact for any edge-side discharge that may start from
         # an idle slot.  Old edges ignore it; new edges refuse the authorization
         # when it is absent, so a mixed-version fleet fails closed.

@@ -173,14 +173,33 @@ export function socRange(
   return { min: Math.min(...values), max: Math.max(...values) };
 }
 
-/** "Geplanter Ladestand: 12 % bis 88 %." - null when the plan has no SoC. */
-export function socRangeLine(slots: { socPct: number | null }[]): string | null {
+/**
+ * „Geplanter Ladestand: 12 % bis 88 %." - null when the plan has no SoC.
+ *
+ * ⚠ Der Zeitraum wird BENANNT, nicht angenommen. Bis zum 48-h-Horizont
+ * (28.08.2026) reichte ein Plan über höchstens zwei Kalendertage, und
+ * „im Tagesverlauf" war dafür die richtige Beschreibung. Ein 48-h-Plan berührt
+ * DREI Kalendertage - dieselbe Spanne dann weiter „Tagesverlauf" zu nennen
+ * wäre eine Aussage über einen Tag, die über zwei gerechnet ist. Mit weniger
+ * als drei Tagen ist der Satz Zeichen für Zeichen der bisherige.
+ */
+export function socRangeLine(
+  slots: { socPct: number | null; start?: string }[],
+): string | null {
   const range = socRange(slots);
   if (!range) return null;
   const pct = (v: number) => `${Math.round(v).toLocaleString('de-DE')}${NBSP}%`;
-  return range.max - range.min < 1
-    ? `Geplanter Ladestand: durchgehend rund ${pct(range.min)}.`
-    : `Geplanter Ladestand: ${pct(range.min)} bis ${pct(range.max)} im Tagesverlauf.`;
+  if (range.max - range.min < 1) {
+    return `Geplanter Ladestand: durchgehend rund ${pct(range.min)}.`;
+  }
+  const tage = new Set(
+    slots
+      .map((s) => s.start)
+      .filter((s): s is string => typeof s === 'string')
+      .map((s) => new Date(s).toDateString()),
+  );
+  const zeitraum = tage.size > 2 ? 'im Planungszeitraum' : 'im Tagesverlauf';
+  return `Geplanter Ladestand: ${pct(range.min)} bis ${pct(range.max)} ${zeitraum}.`;
 }
 
 // ---- Forecast lines: PV + Verbrauch over the plan (captain 2026-07-29) ------
@@ -768,6 +787,58 @@ export interface PlanSlotLike {
   slotRole?: string | null;
   slotFlags?: string[] | null;
   storedValueCtKwh?: number | null;
+}
+
+/** Ein Tageswechsel im Fahrplan: der erste Slot des Tages und sein Wort. */
+export interface DayBoundary {
+  /** Index des ERSTEN Slots des neuen Tages. */
+  index: number;
+  /** „Morgen" · „Übermorgen" · sonst das Datum („30.08."). */
+  label: string;
+}
+
+/**
+ * Die Tagesgrenzen des Fahrplans - seit dem 48-h-Horizont können es ZWEI sein.
+ *
+ * Bis zum 28.08.2026 plante der Optimierer 24 h, also gab es höchstens einen
+ * Wechsel und das Diagramm zog genau eine Linie mit dem Wort „Morgen". Ein
+ * 48-h-Plan überquert Mitternacht zweimal; ohne die zweite Marke läse sich der
+ * dritte Kalendertag als Fortsetzung des zweiten.
+ *
+ * ⚠ Beschriftet wird RELATIV zu `now`, nicht durchgezählt: ein Plan, der
+ * mitten in der Nacht gerechnet wurde, hat seinen ersten Wechsel nicht
+ * zwangsläufig „morgen". Was weiter als übermorgen liegt, bekommt sein DATUM -
+ * ein erfundenes drittes Wort („Überübermorgen") sagt niemand.
+ */
+export function dayBoundaries<T extends { start: string }>(
+  slots: T[],
+  now: Date,
+): DayBoundary[] {
+  const out: DayBoundary[] = [];
+  if (slots.length === 0) return out;
+  const dayOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const DAY_MS = 86_400_000;
+  const today = dayOf(now);
+  let previous = dayOf(new Date(slots[0].start));
+  for (let i = 1; i < slots.length; i++) {
+    const day = dayOf(new Date(slots[i].start));
+    if (day === previous) continue;
+    const offset = Math.round((day - today) / DAY_MS);
+    out.push({
+      index: i,
+      label:
+        offset === 1
+          ? 'Morgen'
+          : offset === 2
+            ? 'Übermorgen'
+            : new Date(slots[i].start).toLocaleDateString('de-DE', {
+                day: '2-digit',
+                month: '2-digit',
+              }),
+    });
+    previous = day;
+  }
+  return out;
 }
 
 /** The plan's slots that fall on the local calendar day of `now`. */

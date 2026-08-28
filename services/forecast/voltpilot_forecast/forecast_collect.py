@@ -128,14 +128,20 @@ class SiteRow:
 class CollectorConfig:
     min_training_days: int = 21
     history_days: int = DEFAULT_HISTORY_DAYS
-    horizon_hours: float = 24.0
+    #: 48 h since the optimizer plans a 48 h window (Captain-Entscheid
+    #: 28.08.2026): a plan made at midday must see the FOLLOWING evening,
+    #: and it may only do so on REAL forecasts. The weather feed already
+    #: reaches ~3 days (``openmeteo`` ``forecast_days=3``), so this asks
+    #: for nothing that is not there; ``pv_horizon`` below still clips the
+    #: PV models to what weather actually covers.
+    horizon_hours: float = 48.0
 
     @classmethod
     def from_env(cls, env: dict[str, str]) -> "CollectorConfig":
         return cls(
             min_training_days=int(env.get("VOLTPILOT_ML_MIN_DAYS", "21")),
             history_days=int(env.get("FORECAST_HISTORY_DAYS", str(DEFAULT_HISTORY_DAYS))),
-            horizon_hours=float(env.get("FORECAST_HORIZON_HOURS", "24")),
+            horizon_hours=float(env.get("FORECAST_HORIZON_HOURS", "48")),
         )
 
 
@@ -231,6 +237,50 @@ def _weather_history(conn, site_id: str, since: datetime) -> list[WeatherPoint]:
         )
         for ts, t, c, g, dn, dh in rows
     ]
+
+
+def pv_horizon(
+    horizon: Horizon, weather_points: list[WeatherPoint], run_at: datetime
+) -> Horizon:
+    """The sub-horizon REAL weather covers, for the PV models only.
+
+    Pure (no DB, no clock beyond ``run_at``) so the rule is directly testable.
+
+    :class:`~voltpilot_forecast.openmeteo.OpenMeteoWeatherProvider` answers a
+    timestamp outside its samples with ``0 W/m2`` - indistinguishable from
+    night. At the old 24 h horizon that branch was unreachable (the weather feed
+    reaches ~3 days), but a 48 h horizon can outrun a weather feed that has been
+    down for a day, and a fabricated PV zero for tomorrow evening is exactly the
+    synthetic value the 48 h window must never be extended on. So the PV models
+    forecast only the contiguous prefix whose HOUR carries a usable sample; the
+    optimizer's own truncation (``inputs.real_forecast_horizon``) then ends its
+    window where this series ends.
+
+    LOAD keeps the full horizon on purpose - the seasonal-persistence baseline
+    needs telemetry, not weather.
+
+    Without weather points at all the caller uses the clear-sky provider, which
+    is a real physical model at any timestamp; the horizon is then unclipped.
+    """
+    if not weather_points:
+        return horizon
+    hours = {
+        p.timestamp.replace(minute=0, second=0, microsecond=0)
+        for p in weather_points
+        if p.ghi_w_m2 is not None
+    }
+    covered = 0
+    for ts in horizon.slot_starts(run_at):
+        if ensure_utc(ts).replace(minute=0, second=0, microsecond=0) not in hours:
+            break
+        covered += 1
+    if covered >= horizon.slots:
+        return horizon
+    if covered == 0:
+        # Every slot is beyond the samples - fall back to the full horizon on
+        # the clear-sky physics rather than writing no PV forecast at all.
+        return horizon
+    return Horizon(slots=covered, slot_minutes=horizon.slot_minutes)
 
 
 # ---- one site, one cycle ---------------------------------------------------------
@@ -336,7 +386,9 @@ def collect_site(
     summary.saved_models.append(registry.LOAD_PERSISTENCE)
 
     physical = PhysicalPvForecaster(provider) if provider else PhysicalPvForecaster()
-    forecasts.save(physical.forecast(config, horizon, now))
+    # PV stops where real weather stops (see :func:`pv_horizon`); LOAD does not.
+    pv_hor = pv_horizon(horizon, weather_points, now) if provider else horizon
+    forecasts.save(physical.forecast(config, pv_hor, now))
     quality.upsert_model_state(
         _baseline_state(site, registry.PV_PHYSICAL, ForecastKind.PV, now)
     )
@@ -411,7 +463,7 @@ def collect_site(
         train=lambda f: (f.update_weather(weather, physical), f.train(config, pv_history, now)),
         predict=lambda f: (
             f.update_weather(weather, physical),
-            f.forecast(config, horizon, now),
+            f.forecast(config, pv_hor, now),
         )[1],
     )
     return summary

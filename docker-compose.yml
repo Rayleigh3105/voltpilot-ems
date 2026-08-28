@@ -574,7 +574,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voltpilot_dev_pw}
       FORECAST_INTERVAL_SECONDS: ${FORECAST_INTERVAL_SECONDS:-900}
-      FORECAST_HORIZON_HOURS: ${FORECAST_HORIZON_HOURS:-24}
+      # 48 h so the optimizer's 48 h window rests on REAL forecasts
+      # (Captain-Entscheid 28.08.2026). The weather feed already reaches
+      # ~3 days; the PV models still stop where real weather stops.
+      FORECAST_HORIZON_HOURS: ${FORECAST_HORIZON_HOURS:-48}
       # Challenger self-gate: full telemetry days required before training.
       VOLTPILOT_ML_MIN_DAYS: ${VOLTPILOT_ML_MIN_DAYS:-21}
       # Which model the OPTIMIZER consumes by DEFAULT (a portal promotion in
@@ -622,7 +625,12 @@ services:
       MQTT_HOST: emqx
       MQTT_PORT: "1883"
       OPTIMIZER_INTERVAL_SECONDS: ${OPTIMIZER_INTERVAL_SECONDS:-900}
-      OPTIMIZER_HORIZON_HOURS: ${OPTIMIZER_HORIZON_HOURS:-24}
+      # Planning horizon in 15-min slots (Captain-Entscheid 28.08.2026):
+      # 192 = 48 h, so a midday plan already sees the following evening.
+      # It is a REQUEST - the window is truncated to what day-ahead prices
+      # and REAL forecasts cover. `96` = the pre-28.08. behaviour verbatim
+      # (the instant rollback lever); OPTIMIZER_HORIZON_HOURS is retired.
+      OPTIMIZER_HORIZON_SLOTS: ${OPTIMIZER_HORIZON_SLOTS:-192}
       # Shadow-mode forecasting: the optimizer reads ONLY the ACTIVE model's
       # rows from the forecast hypertable. These are the DEFAULT - a portal
       # promotion wins - per PLANT (site_forecast_model_choice) over the
@@ -700,6 +708,12 @@ services:
       # MQTT_HOST wires the retained plan publish - without it a replan
       # persists and honestly reports published: false.
       REPLAN_MAX_CONCURRENT: ${REPLAN_MAX_CONCURRENT:-1}
+      # The on-demand replan REUSES engine.plan_site, so it must ask for the
+      # SAME window as the 15-min tick loop - otherwise a rollback on the
+      # optimizer would leave this container planning 48 h and the two
+      # containers would publish plans of different lengths for one site.
+      # Keep in lockstep with the optimizer service.
+      OPTIMIZER_HORIZON_SLOTS: ${OPTIMIZER_HORIZON_SLOTS:-192}
       MQTT_HOST: emqx
       MQTT_PORT: "1883"
       VOLTPILOT_V2_PLAN_SITES: ${VOLTPILOT_V2_PLAN_SITES:-}

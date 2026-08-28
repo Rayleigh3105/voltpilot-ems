@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { ScheduleChart } from './ScheduleChart';
 import {
@@ -818,5 +818,63 @@ describe('K7 · der Fahrplan-Tooltip ist ein Satz, keine Zahlenkolonne', () => {
     const html = String(lastOption.tooltip.formatter([{ dataIndex: 0 }]));
     expect(html).toContain('&lt;img');
     expect(html).not.toContain('<img src=x');
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * 48-h-Horizont (Captain-Entscheid 28.08.2026): der Plan überquert Mitternacht
+ * ZWEIMAL.
+ *
+ * Bis dahin plante der Optimierer 24 h, also gab es höchstens einen
+ * Tageswechsel und genau eine Linie mit dem Wort „Morgen". Ohne die zweite
+ * Marke läse sich der dritte Kalendertag als Fortsetzung des zweiten.
+ * ------------------------------------------------------------------------- */
+describe('ScheduleChart · Tagesgrenzen eines 48-h-Plans', () => {
+  /** Ein Plan über `n` Viertelstunden ab lokal 18:30 des `heute`-Tages. */
+  function langerPlan(n: number, heute: Date) {
+    const start = new Date(heute);
+    start.setHours(18, 30, 0, 0);
+    return plan(
+      Array.from({ length: n }, (_, i) =>
+        slot({
+          start: new Date(start.getTime() + i * 15 * 60_000).toISOString(),
+          priceEurMwh: 80 + (i % 7),
+        }),
+      ),
+    );
+  }
+
+  afterEach(() => vi.useRealTimers());
+
+  it('zieht ZWEI beschriftete Linien - „Morgen" und „Übermorgen"', () => {
+    const heute = new Date('2026-08-28T12:00:00');
+    vi.useFakeTimers();
+    vi.setSystemTime(heute);
+    render(<ScheduleChart plan={langerPlan(192, heute)} />);
+
+    const worte = labelledMarks(priceHost()).map((m: any) => m.label.formatter);
+    expect(worte).toContain('Morgen');
+    expect(worte).toContain('Übermorgen');
+  });
+
+  it('bleibt bei EINER Linie, solange der Plan nur einen Tageswechsel hat', () => {
+    const heute = new Date('2026-08-28T12:00:00');
+    vi.useFakeTimers();
+    vi.setSystemTime(heute);
+    render(<ScheduleChart plan={langerPlan(96, heute)} />);
+
+    const worte = labelledMarks(priceHost()).map((m: any) => m.label.formatter);
+    expect(worte).toContain('Morgen');
+    expect(worte).not.toContain('Übermorgen');
+  });
+
+  it('rendert jeden Slot des langen Plans - nichts wird bei 96 gekappt', () => {
+    const heute = new Date('2026-08-28T12:00:00');
+    vi.useFakeTimers();
+    vi.setSystemTime(heute);
+    render(<ScheduleChart plan={langerPlan(192, heute)} />);
+
+    expect(lastOption.xAxis[0].data).toHaveLength(192);
+    expect(series(BOERSENPREIS).data).toHaveLength(192);
   });
 });

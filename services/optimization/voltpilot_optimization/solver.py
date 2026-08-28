@@ -1,6 +1,6 @@
 """The battery-dispatch MILP (architecture section 11).
 
-Deterministic market-revenue maximization over a rolling 24h horizon in 15-min
+Deterministic market-revenue maximization over a rolling 24-48h horizon in 15-min
 slots - the *optimize* half of predict-then-optimize. Inputs (prices, load/PV
 forecasts, SoC, battery params) arrive as a plain :class:`OptimizationInput`;
 the solver never knows where a forecast came from, so the forecasting layer can

@@ -30,6 +30,11 @@ from voltpilot_optimization.config import (
 )
 
 SLOT_MINUTES = 15
+#: One day of slots. Since 28.08.2026 this is NOT the planning horizon (that is
+#: ``config.horizon_slots()``, 192 = 48 h by default) - it is the day-length
+#: unit two rules are written in: the slice the edge receives
+#: (``publisher.EDGE_PLAN_SLOTS``) and the prefix ``inputs.real_forecast_horizon``
+#: exempts from the real-forecast truncation.
 SLOTS_24H = 96
 
 # Usable SoC window as fractions of nameplate capacity. The asset master data

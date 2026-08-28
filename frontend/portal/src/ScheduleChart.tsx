@@ -26,6 +26,7 @@ import {
   curtailSpans,
   curtailTickData,
   curtailTooltip,
+  dayBoundaries,
   defaultHiddenGroups,
   dutyTooltip,
   forecastLines,
@@ -264,12 +265,9 @@ export function ScheduleChart({
         longestBand = i;
     });
 
-    // today/tomorrow divider: first slot on the local "tomorrow".
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const boundaryIdx = slots.findIndex(
-      (s) => new Date(s.start).toDateString() === tomorrow.toDateString(),
-    );
+    // Tageswechsel: seit dem 48-h-Horizont (28.08.2026) können es ZWEI sein -
+    // die Regel und ihre Beschriftung liegen rein in `dayBoundaries`.
+    const boundaries = dayBoundaries(slots, new Date());
 
     // "Jetzt": the last slot whose start is at/before now (past is shaded).
     const nowMs = Date.now();
@@ -348,17 +346,17 @@ export function ScheduleChart({
      * Flächen, damit das Fadenkreuz einen sichtbaren Anker hat. */
     const priceMarks: any[] = [];
     const powerMarks: any[] = [];
-    if (boundaryIdx > 0) {
+    for (const boundary of boundaries) {
       // F6 (korrigiert): die Tagesgrenze ist eine REFERENZ, keine Prognose -
       // der Börsenpreis für morgen steht fest und bleibt durchgezogen.
       const dayLine = {
-        xAxis: boundaryIdx,
+        xAxis: boundary.index,
         lineStyle: dayBoundaryStyle(t),
       };
       priceMarks.push({
         ...dayLine,
         label: {
-          formatter: 'Morgen',
+          formatter: boundary.label,
           color: t.axis,
           fontSize: AXIS.fontSize,
           position: 'insideEndTop',

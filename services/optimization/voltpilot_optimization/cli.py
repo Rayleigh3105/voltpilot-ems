@@ -24,7 +24,10 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import quote
 
-from voltpilot_optimization.config import v2_plan_site_ids
+from voltpilot_optimization.config import (
+    horizon_slots as configured_horizon_slots,
+    v2_plan_site_ids,
+)
 from voltpilot_optimization.cadence import aligned_delay_seconds
 from voltpilot_optimization.engine import run_cycle
 from voltpilot_optimization.persistence import TimescaleScheduleRepository
@@ -56,12 +59,32 @@ def _dsn_from_env(env: dict[str, str]) -> str:
     )
 
 
+def _resolve_horizon_slots(args, env) -> int:
+    """The cycle's requested horizon in slots: the flag, else the platform default.
+
+    ``--horizon-hours`` stays the operator's explicit per-invocation override;
+    without it :func:`~voltpilot_optimization.config.horizon_slots` rules, and
+    IT owns the deprecated ``OPTIMIZER_HORIZON_HOURS`` alias (accepted + WARN,
+    refused only when it contradicts an explicit slots value). The resolution
+    lives there and not here on purpose: the on-demand replan container reaches
+    the horizon through ``engine.plan_site``, never through this CLI, and the
+    two must not be able to disagree.
+    """
+    if args.horizon_hours is None:
+        return configured_horizon_slots(env)
+    return round(args.horizon_hours * 4)
+
+
 def _add_common_args(sub: argparse.ArgumentParser) -> None:
     sub.add_argument(
         "--horizon-hours",
         type=float,
-        default=float(os.environ.get("OPTIMIZER_HORIZON_HOURS", "24")),
-        help="planning horizon in hours (default OPTIMIZER_HORIZON_HOURS, else 24)",
+        default=None,
+        help=(
+            "planning horizon in hours; default OPTIMIZER_HORIZON_SLOTS "
+            "(192 slots = 48 h). The value is a REQUEST - the actual window is "
+            "truncated to what day-ahead prices and real forecasts cover."
+        ),
     )
     sub.add_argument(
         "--no-persist",
@@ -196,7 +219,7 @@ def _run_one(args, env: dict[str, str]) -> None:
         v2_publisher = MqttPlanV2Publisher.from_env(env)
         if not args.no_persist:
             v2_repository = TimescaleSitePlanRepository(dsn)
-    horizon_slots = round(args.horizon_hours * 4)
+    horizon_slots = _resolve_horizon_slots(args, env)
     summary = run_cycle(
         dsn,
         repository,

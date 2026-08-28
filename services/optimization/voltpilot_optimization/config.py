@@ -91,6 +91,27 @@ platform value (ct per stored kWh); ``0`` disables the terminal value
 entirely (stored energy at the horizon end is worth nothing - the plan then
 realizes any stored energy at any positive value, useful only for analysis).
 
+Planning horizon (Captain-Entscheid 28.08.2026 "Option A")
+----------------------------------------------------------
+
+``OPTIMIZER_HORIZON_SLOTS`` is how many 15-min slots the productive cycle ASKS
+for (default **192 = 48 h**, allowed 16..192). It is a REQUEST, never a
+promise: :func:`voltpilot_optimization.inputs.gather_inputs` truncates it to
+the contiguous prefix that day-ahead prices cover AND (beyond the legacy 24 h)
+to the prefix real stored forecasts cover, so the planned window is always
+``min(request, known prices, real forecasts)`` - no slot is ever planned on an
+invented price or a synthetic forecast.
+
+Why 48 h. The window used to be a hard 96 slots, so a plan made at 18:30
+ended at 18:15 the next day and the FOLLOWING evening did not exist for it.
+Stored energy was then worth something only in the last 90 minutes of the
+window, the plan charged ~16 kWh, and it curtailed a negative-price midday
+surplus it could have banked for an evening it could not see (Pilsting,
+28.08.2026). Day-ahead prices for tomorrow publish around 12:45 and are in the
+table long before the horizon needs them - the data was there, the window was
+not. Setting this to ``96`` restores the exact previous behaviour without a
+code change (the instant rollback lever).
+
 Feste EEG-Einspeisevergütung schedule (P1 export pricing, Stage 2)
 ------------------------------------------------------------------
 
@@ -168,12 +189,15 @@ similar top buckets and always survives; only an isolated outlier is dropped.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 from dataclasses import dataclass
 from datetime import date, timedelta
 
 from voltpilot_optimization import nowcast
+
+logger = logging.getLogger("voltpilot.optimization.config")
 
 #: Platform default battery wear cost in ct per kWh cycled (see module docstring).
 DEFAULT_WEAR_COST_CT_PER_KWH = 4.0
@@ -186,6 +210,23 @@ GRID_LIMIT_MAX_AGE_ENV = "OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES"
 #: A soc_pct telemetry reading older than this falls back to the 50% default.
 DEFAULT_SOC_MAX_AGE_MINUTES = 120.0
 SOC_MAX_AGE_ENV = "OPTIMIZER_SOC_MAX_AGE_MINUTES"
+
+#: Planning horizon the productive cycle REQUESTS, in 15-min slots (see the
+#: module docstring). 192 = 48 h; 96 = the pre-28.08.2026 behaviour verbatim.
+DEFAULT_HORIZON_SLOTS = 192
+#: Below this a horizon is not a plan (it is also the floor gather_inputs
+#: demands from price coverage, ``inputs.MIN_HORIZON_SLOTS``).
+MIN_HORIZON_SLOTS = 16
+#: Two days. Past that the day-ahead price coverage runs out anyway, so a
+#: larger request could only ever be truncated - asking for it is noise.
+MAX_HORIZON_SLOTS = 192
+HORIZON_SLOTS_ENV = "OPTIMIZER_HORIZON_SLOTS"
+#: DEPRECATED alias, kept because the k8s manifests still carry it. It is
+#: MAPPED (hours * 4), never ignored and never a boot-refusal on its own: the
+#: cluster's optimization.env sets it today, and refusing it would have stopped
+#: the whole fleet's planning at the next deploy. It only aborts when it
+#: CONTRADICTS an explicit OPTIMIZER_HORIZON_SLOTS - see :func:`horizon_slots`.
+LEGACY_HORIZON_HOURS_ENV = "OPTIMIZER_HORIZON_HOURS"
 
 #: Quantile of the horizon's REPLACEMENT (refill) prices anchoring the derived
 #: terminal energy value (see the P3 section of the module docstring).
@@ -604,6 +645,99 @@ def terminal_value_override_eur_per_kwh(env=None) -> float | None:
         return None
     ct = _float_env(env, TERMINAL_VALUE_OVERRIDE_ENV, 0.0, 0.0, allow_equal=True)
     return ct / 100.0
+
+
+def _checked_slots(name: str, value: float) -> int:
+    """A slot count that is whole and inside the documented band, or a loud raise."""
+    if value != int(value):
+        raise ValueError(f"{name} must be a whole number of slots, got {value!r}")
+    if value > MAX_HORIZON_SLOTS:
+        raise ValueError(
+            f"{name} must be within "
+            f"[{MIN_HORIZON_SLOTS}, {MAX_HORIZON_SLOTS}], got {int(value)!r}"
+        )
+    return int(value)
+
+
+def _legacy_horizon_slots(env) -> int | None:
+    """The DEPRECATED ``OPTIMIZER_HORIZON_HOURS``, mapped to slots, or ``None``.
+
+    Garbage/out-of-band still raises loudly - being deprecated does not make a
+    value we cannot honour acceptable; it only means the NAME is on its way out.
+    """
+    raw = env.get(LEGACY_HORIZON_HOURS_ENV)
+    if raw is None or raw.strip() == "":
+        return None
+    hours = _float_env(
+        env, LEGACY_HORIZON_HOURS_ENV, 0.0, MIN_HORIZON_SLOTS / 4.0, allow_equal=True
+    )
+    return _checked_slots(LEGACY_HORIZON_HOURS_ENV, hours * 4.0)
+
+
+def horizon_slots(env=None) -> int:
+    """The planning horizon the productive cycle requests, in 15-min slots.
+
+    The value is a REQUEST: ``gather_inputs`` truncates it to what prices and
+    real forecasts actually cover, so a too-large value can never plan on
+    invented inputs. ``96`` reproduces the pre-48h behaviour exactly.
+
+    **The deprecated ``OPTIMIZER_HORIZON_HOURS`` is ACCEPTED, not refused**, and
+    that is a deliberate reversal (28.08.2026). Refusing it looked like the
+    "fail loudly" discipline, but the k8s manifests carry it TODAY
+    (``apps/voltpilot/base/optimization/optimization.env``): a refusal would
+    have crash-looped the optimization container at the next deploy and left
+    the WHOLE fleet without a Fahrplan - the exact class of outage the
+    documented OTA-listener-flag and Flyway-checksum incidents are about. A
+    config name is not worth a fleet-wide planning outage.
+
+    So the resolution is:
+
+    * neither set -> the platform default (192 = 48 h);
+    * only the alias -> ``hours * 4``, with a loud WARN naming the new name;
+    * both, AGREEING -> the slots value, same WARN (the alias is redundant);
+    * both, CONTRADICTING -> a loud raise naming both values. Here refusing IS
+      right: two operators' intents disagree, and silently picking one would
+      plan a real fleet on a window nobody chose;
+    * garbage in either -> a loud raise, deprecated or not.
+    """
+    env = os.environ if env is None else env
+    legacy = _legacy_horizon_slots(env)
+    raw = env.get(HORIZON_SLOTS_ENV)
+    explicit = raw is not None and raw.strip() != ""
+    slots = _checked_slots(
+        HORIZON_SLOTS_ENV,
+        _float_env(
+            env,
+            HORIZON_SLOTS_ENV,
+            float(DEFAULT_HORIZON_SLOTS),
+            float(MIN_HORIZON_SLOTS),
+            allow_equal=True,
+        ),
+    )
+    if legacy is None:
+        return slots
+    if explicit and legacy != slots:
+        raise ValueError(
+            f"{LEGACY_HORIZON_HOURS_ENV} ({legacy} slots) contradicts "
+            f"{HORIZON_SLOTS_ENV} ({slots} slots) - remove "
+            f"{LEGACY_HORIZON_HOURS_ENV}, it was retired on 28.08.2026"
+        )
+    logger.warning(
+        "config.horizon_hours_deprecated",
+        extra={
+            "context": {
+                "retired": LEGACY_HORIZON_HOURS_ENV,
+                "use": HORIZON_SLOTS_ENV,
+                "effective_slots": slots if explicit else legacy,
+                "hint": (
+                    f"{LEGACY_HORIZON_HOURS_ENV} is deprecated - set "
+                    f"{HORIZON_SLOTS_ENV} (15-min slots, 192 = 48 h) instead "
+                    "and remove it"
+                ),
+            }
+        },
+    )
+    return slots if explicit else legacy
 
 
 def grid_limit_max_age(env=None) -> timedelta:

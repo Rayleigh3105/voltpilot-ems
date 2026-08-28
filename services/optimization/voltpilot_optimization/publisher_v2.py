@@ -43,9 +43,16 @@ from voltpilot_optimization.entities import (
     StorageDispatch,
 )
 
+from voltpilot_optimization.publisher import EDGE_PLAN_SLOTS as _EDGE_PLAN_SLOTS
+
 logger = logging.getLogger("voltpilot.optimization.publisher_v2")
 
 SCHEMA_VERSION_V2 = "2.0"
+
+#: Same edge cap as the 1.0 publisher and for the same reason - see
+#: :data:`voltpilot_optimization.publisher.EDGE_PLAN_SLOTS`. Imported rather
+#: than re-declared so the two contracts can never drift apart.
+EDGE_PLAN_SLOTS = _EDGE_PLAN_SLOTS
 
 
 def plan_v2_topic(plan: SitePlan) -> str:
@@ -57,13 +64,17 @@ def build_plan_v2_payload(plan: SitePlan) -> dict:
     (``docs/contracts/v2/mqtt-schedule-2.0.schema.json``)."""
     if plan.device_id is None:
         raise ValueError("cannot build a v2 plan payload without a device")
+    site_slots = plan.site_slots[:EDGE_PLAN_SLOTS]
     entities: list[dict] = []
     for storage in plan.storages:
         entities.append(_storage_entity_payload(storage))
     for producer in plan.producers:
         # Release semantics: a producer with no curtailment anywhere is
         # omitted - the edge withdraws its market desire and clears limits.
-        if producer.curtails:
+        # Evaluated over the PUBLISHED window (EDGE_PLAN_SLOTS), never the
+        # planned one: a curtailment that only happens on the second day would
+        # otherwise publish an all-no-op entity today.
+        if any(s.limit_kw is not None for s in producer.slots[:EDGE_PLAN_SLOTS]):
             entities.append(_producer_entity_payload(producer))
     for load in plan.loads:
         # Consumers carry the FULL slot grid (contract contiguity), always -
@@ -83,7 +94,7 @@ def build_plan_v2_payload(plan: SitePlan) -> dict:
         "device_id": str(plan.device_id),
         "plan_id": str(plan.plan_id),
         "generated_at": _rfc3339(plan.generated_at),
-        "horizon_slots": len(plan.site_slots),
+        "horizon_slots": len(site_slots),
         "slot_minutes": plan.slot_minutes,
         "entities": entities,
     }
@@ -106,7 +117,7 @@ def _storage_entity_payload(storage: StorageDispatch) -> dict:
                 "start": _rfc3339(slot.start),
                 "commands": {"setpoint_kw": round(slot.setpoint_kw, 3)},
             }
-            for slot in storage.slots
+            for slot in storage.slots[:EDGE_PLAN_SLOTS]
         ],
     }
     # PS-2 per entity (multi-battery ready): the 1.0 top-level
@@ -118,7 +129,7 @@ def _storage_entity_payload(storage: StorageDispatch) -> dict:
 
 def _producer_entity_payload(producer: ProducerDispatch) -> dict:
     slots = []
-    for slot in producer.slots:
+    for slot in producer.slots[:EDGE_PLAN_SLOTS]:
         limit = slot.limit_kw
         if limit is not None:
             commands = {"limit_kw": round(limit, 3)}
@@ -142,7 +153,7 @@ def _load_entity_payload(load: LoadDispatch) -> dict:
     continuous ones. ``kind`` stays informative (the registry is the
     authority)."""
     slots = []
-    for slot in load.slots:
+    for slot in load.slots[:EDGE_PLAN_SLOTS]:
         if load.control_kind == "on_off":
             commands: dict = {"on_off": bool(slot.on)}
         else:

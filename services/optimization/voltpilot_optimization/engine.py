@@ -19,9 +19,13 @@ from voltpilot_optimization.co_solver import (
     co_optimize,
     co_optimize_ignoring_grid_limit,
 )
-from voltpilot_optimization.config import controllable_loads_enabled, v2_plan_site_ids
+from voltpilot_optimization.config import (
+    controllable_loads_enabled,
+    horizon_slots as configured_horizon_slots,
+    v2_plan_site_ids,
+)
 from voltpilot_optimization.consumer_inputs import load_consumer_entities
-from voltpilot_optimization.domain import SchedulePlan, SLOTS_24H
+from voltpilot_optimization.domain import SchedulePlan
 from voltpilot_optimization.entities import from_v1_input
 from voltpilot_optimization.persistence_v2 import SitePlanRepository
 from voltpilot_optimization.inputs import (
@@ -68,7 +72,7 @@ def plan_site(
     repository: ScheduleRepository | None,
     publisher: SchedulePublisher | None,
     now: datetime,
-    horizon_slots: int = SLOTS_24H,
+    horizon_slots: int | None = None,
     v2_publisher: PlanV2Publisher | None = None,
     v2_sites: frozenset | None = None,
     v2_repository: SitePlanRepository | None = None,
@@ -90,7 +94,14 @@ def plan_site(
 
     ``battery_claims`` is the same convention for the customer-rule claims
     (:func:`voltpilot_optimization.inputs.load_battery_claims`, Stufe 3 §3.7 A4).
+
+    ``horizon_slots`` is a REQUEST (``None`` = the platform default,
+    ``OPTIMIZER_HORIZON_SLOTS``, 192 = 48 h). ``gather_inputs`` truncates it to
+    what day-ahead prices and real forecasts cover, so the planned window is
+    always ``min(request, known prices, real forecasts)``.
     """
+    if horizon_slots is None:
+        horizon_slots = configured_horizon_slots()
     inp = gather_inputs(dsn, site, now, horizon_slots, model_choices=model_choices,
                         battery_claims=battery_claims)
     plan_id = uuid4()
@@ -193,12 +204,19 @@ def run_cycle(
     repository: ScheduleRepository | None,
     publisher: SchedulePublisher | None,
     now: datetime | None = None,
-    horizon_slots: int = SLOTS_24H,
+    horizon_slots: int | None = None,
     v2_publisher: PlanV2Publisher | None = None,
     v2_repository: SitePlanRepository | None = None,
 ) -> CycleSummary:
-    """One full optimization pass over every battery site."""
+    """One full optimization pass over every battery site.
+
+    ``horizon_slots`` ``None`` = the platform default (``OPTIMIZER_HORIZON_SLOTS``,
+    192 = 48 h); resolved ONCE here so every site of a cycle asks for the same
+    window and a mid-cycle env edit cannot split it.
+    """
     now = now if now is not None else datetime.now(timezone.utc)
+    if horizon_slots is None:
+        horizon_slots = configured_horizon_slots()
     summary = CycleSummary()
     sites = load_battery_sites(dsn)
     if not sites:

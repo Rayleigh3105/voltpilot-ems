@@ -10,7 +10,8 @@ facts the model honestly provides (design scout vp-fahrplan-why-design):
   MILP-optimal value AND its domain is relaxed to ``Reals`` - BOTH steps are
   required (``.fix()`` alone leaves APPSI/HiGHS treating the model as a MIP
   and refusing duals; verified empirically on this exact model). A fresh
-  APPSI ``Highs()`` then re-solves the resulting LP (~30 ms for 96 slots,
+  APPSI ``Highs()`` then re-solves the resulting LP (~30 ms for 96 slots and
+  ~70 ms for the 192-slot default horizon,
   objective drift <= 1e-13 EUR - the identical optimum) and its duals ARE the
   marginal economics the optimizer itself decided with:
 
