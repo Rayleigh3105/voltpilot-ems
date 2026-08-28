@@ -195,7 +195,7 @@ import os
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from voltpilot_optimization import nowcast
+from voltpilot_optimization import nowcast, pv_nowcast
 
 logger = logging.getLogger("voltpilot.optimization.config")
 
@@ -853,6 +853,66 @@ def pv_anchor_max_ratio(env=None) -> float:
         1.0,
         allow_equal=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# PV measurement nowcast for the slot in progress (dusk case, 2026-08-28).
+#
+# The load half of this has existed since P1/P2; PV had only the ratio anchor
+# above, which reads COMPLETED slots. See :mod:`voltpilot_optimization.pv_nowcast`.
+
+PV_NOWCAST_ENABLED_ENV = "OPTIMIZER_PV_NOWCAST_ENABLED"
+PV_NOWCAST_DECAY_SLOTS_ENV = "OPTIMIZER_PV_NOWCAST_DECAY_SLOTS"
+PV_NOWCAST_MAX_AGE_ENV = "OPTIMIZER_PV_NOWCAST_MAX_AGE_SECONDS"
+
+#: How stale a PV reading may be and still speak for the running slot. The
+#: same 30 s the load nowcast already uses: telemetry arrives every ~5-10 s, so
+#: anything older means the link is down and the forecast must own the slot.
+DEFAULT_PV_NOWCAST_MAX_AGE_SECONDS = 30.0
+
+
+def pv_nowcast_enabled(env=None) -> bool:
+    """Whether the running slot is anchored on telemetry. Default ON.
+
+    Default-TRUE for the reason :func:`pv_anchor_enabled` gives: a default-OFF
+    flag has to be pulled through the gitops repo to have any effect.
+    """
+    env = os.environ if env is None else env
+    raw = env.get(PV_NOWCAST_ENABLED_ENV)
+    if raw is None or raw.strip() == "":
+        return True
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{PV_NOWCAST_ENABLED_ENV} must be a boolean, got {raw!r}")
+
+
+def pv_nowcast_decay_slots(env=None) -> int:
+    """Slots over which the measurement fades back to the forecast."""
+    env = os.environ if env is None else env
+    value = _float_env(
+        env,
+        PV_NOWCAST_DECAY_SLOTS_ENV,
+        float(pv_nowcast.DEFAULT_DECAY_SLOTS),
+        1.0,
+        allow_equal=True,
+    )
+    return int(value)
+
+
+def pv_nowcast_max_age(env=None) -> timedelta:
+    """Freshness window for the PV reading that speaks for the running slot."""
+    env = os.environ if env is None else env
+    seconds = _float_env(
+        env,
+        PV_NOWCAST_MAX_AGE_ENV,
+        DEFAULT_PV_NOWCAST_MAX_AGE_SECONDS,
+        0.0,
+        allow_equal=False,
+    )
+    return timedelta(seconds=seconds)
 
 
 # ---------------------------------------------------------------------------

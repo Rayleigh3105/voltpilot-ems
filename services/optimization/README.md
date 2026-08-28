@@ -106,6 +106,44 @@ Everything else (prices, forecasts, §14a, efficiency, curtailment, tie-breaks, 
 The portal derives the visible proof from the persisted plan: a slot that charges while net-importing is a grid-charge slot (own color in the Fahrplan chart); on an EEG site that color can never appear.
 Since Stage 4 (P5) the constraint is no longer forecast-only: the published payload carries the OPTIONAL `grid_charge_allowed` field (= `netzladen_erlaubt`; contract-additive, `schema_version` stays 1.0) and the customer edge clamps commanded charge to the MEASURED PV surplus (`edge-app/core` `guards.Limits.SolarOnlyCharge`) - so a PV forecast overshoot can no longer turn a planned "solar" charge into real grid import at execution time (critique F5).
 
+### The near horizon: the slot in progress is MEASURED, not forecast
+
+The horizon's first slot is already running, so the plant can be asked what it
+is doing rather than what a model expected. Three corrections sit between the
+stored forecast and the solver, in this order, each with its own kill switch and
+each fail-soft (a bad value or an unreachable read logs and returns the series
+unchanged - a missing correction is a worse plan, a raised exception is no plan):
+
+| Step | Reads | Applies to | Since |
+|---|---|---|---|
+| Load nowcast (`load_nowcast.py`) | fresh `load_kw` samples, EWMA of actual-minus-plan | slot 0 IS the measurement, fading over 8 slots | P1/P2 |
+| PV ratio anchor (`nowcast.py`) | COMPLETED slots: what the active model predicted vs what was measured | a bounded ratio, fading over 8 slots | Morgenprognose 24.08.2026 |
+| **PV nowcast (`pv_nowcast.py`)** | the newest `pv_power_kw` reading, if fresher than 30 s | **slot 0 IS the measurement**, fading over 2 slots | dusk case 28.08.2026 |
+
+The PV nowcast is the mirror of the load one and closes the gap the ratio anchor
+cannot: the anchor reads completed slots by design, so it cannot see the cloud
+that arrived a minute ago. At Pilsting on 28.08.2026 the running slot was planned
+from a forecast claiming a 3 kW surplus while the plant made 1.3 kW against a
+2.7 kW house - 1.4 kW bought at 25 ct with the battery at 92 %.
+
+Its shape is deliberately identical to the load one (an additive residual fading
+linearly to zero), because at slot 0 that residual is exactly
+`measured − forecast`: substitution and correction are one rule, not two. The
+fade is short on purpose - PV persistence is worth something for the next few
+minutes and nothing for the next few hours. The **night floor keeps the last
+word**: a measurement cannot outrank physics, so a reading after sunset still
+reaches the plan as 0.
+
+| Env | Default | Meaning |
+|---|---|---|
+| `OPTIMIZER_PV_NOWCAST_ENABLED` | `true` | kill switch |
+| `OPTIMIZER_PV_NOWCAST_DECAY_SLOTS` | `2` | slots over which the measurement fades back to the forecast |
+| `OPTIMIZER_PV_NOWCAST_MAX_AGE_SECONDS` | `30` | how stale a reading may be and still speak for the running slot |
+
+The upstream half of the same incident - why the forecast claimed 5.9 kW from a
+100 kWp plant at 1.9° of sun - is fixed in `services/forecast` (hour alignment,
+solar-shaped quarters, clear-sky ceiling; see its README).
+
 ## What one cycle does (per site with a battery asset)
 
 1. **Gather** (`inputs.py`): battery params from `asset` (+ `site.bidding_zone`; the per-asset `wear_cost_ct_per_kwh` override, NULL → platform default), the pricing master data (`site.plant_kind`/`tarif_art`/`tarif_param_ct_kwh`/`anzulegender_wert_ct_kwh`, the PV asset's `commissioned_on`/`pv_capacity_kwp`, plus `monthly_market_value` rows for DV sites), day-ahead prices from `day_ahead_prices` (written by `services/market-data`), load/PV forecasts from the `forecast` hypertable - reading ONLY the ACTIVE model's rows (`VOLTPILOT_ACTIVE_LOAD_MODEL`/`VOLTPILOT_ACTIVE_PV_MODEL`, defaults = the baselines; shadow challengers never reach a plan - see `docs/forecasting.md`) and falling back to the persistence baseline over recent telemetry when no stored run covers the horizon (REUSING `voltpilot_forecast`, see `fallback.py`), current SoC + observed `grid_limit_kw` from latest telemetry - each behind a FRESHNESS window (stale = ignored + logged, see the behavior table), the site's `netzladen_erlaubt` grid-charging switch and its `backup_reserve_soc_pct` reserve floor (P11). The spot series is turned into per-slot import/export price series by `pricing.py` (see the P1 section above).

@@ -56,6 +56,7 @@ from voltpilot_forecast.openmeteo import (
     OpenMeteoWeatherProvider,
     WeatherForecast,
     WeatherPoint,
+    hour_label_for,
 )
 from voltpilot_forecast.pv import PhysicalPvForecaster
 from voltpilot_forecast.quality_repository import (
@@ -256,6 +257,14 @@ def pv_horizon(
     optimizer's own truncation (``inputs.real_forecast_horizon``) then ends its
     window where this series ends.
 
+    ⚠ "Whose hour" is asked through
+    :func:`~voltpilot_forecast.openmeteo.hour_label_for`, the SAME helper the
+    provider looks up with - an hourly value labels the PRECEDING hour, so a
+    slot needs the label one hour ABOVE its own floor. Deciding coverage with
+    ``floor(t)`` while the provider reads ``floor(t) + 1h`` hands back exactly
+    the fabricated zeros this function exists to prevent, for the feed's last
+    hour. Pinned by ``test_pv_horizon_agrees_with_what_the_provider_can_answer``.
+
     LOAD keeps the full horizon on purpose - the seasonal-persistence baseline
     needs telemetry, not weather.
 
@@ -265,13 +274,13 @@ def pv_horizon(
     if not weather_points:
         return horizon
     hours = {
-        p.timestamp.replace(minute=0, second=0, microsecond=0)
+        ensure_utc(p.timestamp).replace(minute=0, second=0, microsecond=0)
         for p in weather_points
         if p.ghi_w_m2 is not None
     }
     covered = 0
     for ts in horizon.slot_starts(run_at):
-        if ensure_utc(ts).replace(minute=0, second=0, microsecond=0) not in hours:
+        if hour_label_for(ensure_utc(ts)) not in hours:
             break
         covered += 1
     if covered >= horizon.slots:

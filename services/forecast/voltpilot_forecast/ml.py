@@ -63,6 +63,7 @@ from voltpilot_forecast.features import (
 )
 from voltpilot_forecast.load import LoadForecaster
 from voltpilot_forecast.pv import PhysicalPvForecaster, PvForecaster
+from voltpilot_forecast.pvceiling import apply_clear_sky_ceiling
 
 #: Minimum FULL telemetry days before a challenger may train (self-gate).
 MIN_TRAINING_DAYS = 21
@@ -332,12 +333,19 @@ class PvResidualXgbForecaster(PvForecaster):
         ]
         residual = _predict(self._booster, rows, PV_RESIDUAL_FEATURES)
         capacity = config.plant.capacity_kwp if config.plant is not None else None
-        points: list[ForecastPoint] = []
-        for ts, phys, res in zip(timestamps, physical, residual):
+        raw: list[float] = []
+        for phys, res in zip(physical, residual):
             kw = max(0.0, phys + float(res))
             if capacity is not None:
                 kw = min(kw, capacity)
-            points.append(ForecastPoint(ts, round(kw, 4)))
+            raw.append(kw)
+        # Nameplate alone is no physical bound: a learned residual is free to
+        # add generation to a slot whose sun has set. The clear-sky ceiling is
+        # the only thing that stops it (:mod:`voltpilot_forecast.pvceiling`),
+        # and it binds AFTER the residual - clipping the base would just move
+        # the same claim into the residual's lap.
+        capped = apply_clear_sky_ceiling(config, list(timestamps), raw)
+        points = [ForecastPoint(ts, round(kw, 4)) for ts, kw in zip(timestamps, capped)]
         return ForecastSeries(
             kind=ForecastKind.PV,
             site_id=config.site_id,

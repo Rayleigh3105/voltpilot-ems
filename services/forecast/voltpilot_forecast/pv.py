@@ -20,6 +20,7 @@ from voltpilot_forecast.domain import (
     Horizon,
     SiteForecastConfig,
 )
+from voltpilot_forecast.pvceiling import apply_clear_sky_ceiling
 from voltpilot_forecast.solar import poa_irradiance, solar_position
 from voltpilot_forecast.weather import ClearSkyWeatherProvider, WeatherProvider
 
@@ -129,4 +130,9 @@ class PhysicalPvForecaster(PvForecaster):
             dc_kw = plant.capacity_kwp * (poa / STC_IRRADIANCE_W_M2)
             ac_kw = dc_kw * (1.0 - plant.system_loss_fraction)
             values.append(max(0.0, min(ac_kw, plant.capacity_kwp)))
-        return values
+        # The clear-sky backstop (:mod:`voltpilot_forecast.pvceiling`). On a
+        # correctly aligned weather series this is a no-op by construction -
+        # real irradiance never exceeds clear-sky irradiance through the same
+        # geometry - so it only ever catches a slot whose irradiance does not
+        # belong to that slot's sun.
+        return apply_clear_sky_ceiling(config, list(timestamps), values)

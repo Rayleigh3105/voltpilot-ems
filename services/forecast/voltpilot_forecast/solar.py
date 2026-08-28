@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from voltpilot_forecast.domain import GeoLocation, ensure_utc
 
@@ -172,3 +172,59 @@ def poa_irradiance(
     poa_diffuse = dhi * (1.0 + math.cos(tilt)) / 2.0
     poa_reflected = ghi_w_m2 * albedo * (1.0 - math.cos(tilt)) / 2.0
     return max(0.0, poa_beam + poa_diffuse + poa_reflected)
+
+
+def clear_sky_dni(position: SolarPosition) -> float:
+    """Clear-sky DIRECT-NORMAL irradiance (W/m²) via air mass (Meinel & Meinel).
+
+    ``1361 · 0.7^(AM^0.678)`` with the Kasten-Young air mass. Needed as its own
+    model because the isotropic fallback in :func:`poa_irradiance` reconstructs
+    DNI as ``beam_horizontal / cos(zenith)``, which EXPLODES at low sun: at 1.9°
+    elevation a 6 W/m² clear-sky GHI turns into a 156 W/m² "beam", and a tilted
+    plane pointed at it appears to make several kW at dusk. Every clear-sky
+    ENVELOPE (:mod:`voltpilot_forecast.pvceiling`) therefore bounds the beam
+    with this model instead. Returns 0 at/below the horizon.
+    """
+    cos_z = position.cos_zenith
+    if cos_z <= 0.0:
+        return 0.0
+    zenith = min(position.zenith_deg, 90.0)
+    # Kasten-Young (1989): finite at the horizon, unlike 1/cos(z).
+    air_mass = 1.0 / (cos_z + 0.50572 * (96.07995 - zenith) ** -1.6364)
+    return SOLAR_CONSTANT_W_M2 * 0.7 ** (air_mass**0.678)
+
+
+def clear_sky_means(
+    location: GeoLocation,
+    start: datetime,
+    end: datetime,
+    samples: int = 5,
+) -> tuple[float, float]:
+    """Mean clear-sky ``(GHI, DNI)`` in W/m² over ``[start, end)``, sub-sampled.
+
+    The shape function that turns an HOURLY irradiance mean into per-quarter
+    values (:class:`~voltpilot_forecast.openmeteo.OpenMeteoWeatherProvider`).
+    Sampling at sub-interval MIDPOINTS keeps it a proper Riemann mean, so the
+    quarter means of an hour average back to the hour mean and the split
+    conserves energy exactly whenever the slot divides the hour.
+
+    Both components are returned because they need DIFFERENT shapes: GHI
+    collapses as the sun sets while DNI, being per-normal-area, decays far more
+    slowly, so shaping the beam with the GHI curve would understate it.
+
+    Returns ``(0.0, 0.0)`` for an empty or reversed interval and whenever the
+    sun stays below the horizon throughout - which is what makes a post-sunset
+    quarter hour exactly 0 rather than a share of the hour it sits in.
+    """
+    if samples < 1:
+        raise ValueError("samples must be positive")
+    span = (end - start).total_seconds()
+    if span <= 0.0:
+        return 0.0, 0.0
+    step = span / samples
+    ghi = dni = 0.0
+    for i in range(samples):
+        position = solar_position(location, start + timedelta(seconds=step * (i + 0.5)))
+        ghi += clear_sky_ghi(position)
+        dni += clear_sky_dni(position)
+    return ghi / samples, dni / samples

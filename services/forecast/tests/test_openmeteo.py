@@ -131,19 +131,58 @@ def test_source_non_200_raises():
 # ---- PV provider adaptation ---------------------------------------------
 
 
-def test_weather_provider_yields_measured_irradiance_for_pv():
+def test_weather_provider_reads_the_hour_whose_window_contains_the_slot():
+    """12:30 belongs to the bucket [12:00, 13:00) - which Open-Meteo LABELS 13:00.
+
+    The old adapter read the label ``floor(t)`` = 12:00, i.e. the mean over
+    11:00-12:00. This pins the corrected alignment: the 13:00 row's values
+    (680/500/180), shaped down slightly because 12:30 sits after Berlin's
+    July solar noon and the clear-sky curve is already falling.
+    """
     fc = parse_forecast_response(_fixture(), TENANT, SITE, RUN_AT)
     provider = OpenMeteoWeatherProvider(forecast=fc)
     samples = provider.irradiance(
         BERLIN,
         [
-            datetime(2026, 7, 1, 12, 30, tzinfo=timezone.utc),  # -> 12:00 hour
+            datetime(2026, 7, 1, 12, 30, tzinfo=timezone.utc),
             datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc),
         ],
     )
-    assert samples[0].ghi_w_m2 == 720.0
-    assert samples[0].dni_w_m2 == 540.0
+    # Shaped, so not exactly the row value - but unmistakably the 13:00 row
+    # (680/500/180) and not the 12:00 one (720/540/180).
+    assert 660.0 < samples[0].ghi_w_m2 < 680.0
+    assert 480.0 < samples[0].dni_w_m2 < 500.0
+    assert 170.0 < samples[0].dhi_w_m2 < 180.0
+    # 00:00 belongs to bucket [00:00, 01:00) = label 01:00, a night row.
     assert samples[1].ghi_w_m2 == 0.0
+
+
+def test_weather_provider_conserves_each_hours_energy_across_its_quarters():
+    """The shape MOVES energy inside an hour; it never creates or destroys any."""
+    fc = parse_forecast_response(_fixture(), TENANT, SITE, RUN_AT)
+    provider = OpenMeteoWeatherProvider(forecast=fc)
+    quarters = [
+        datetime(2026, 7, 1, 12, m, tzinfo=timezone.utc) for m in (0, 15, 30, 45)
+    ]
+    samples = provider.irradiance(BERLIN, quarters)
+    # Bucket [12:00, 13:00) is labelled 13:00 -> 680/500/180.
+    assert sum(s.ghi_w_m2 for s in samples) / 4 == pytest.approx(680.0, abs=1e-9)
+    assert sum(s.dni_w_m2 for s in samples) / 4 == pytest.approx(500.0, abs=1e-9)
+    assert sum(s.dhi_w_m2 for s in samples) / 4 == pytest.approx(180.0, abs=1e-9)
+
+
+def test_weather_provider_leaves_an_hour_sized_request_unshaped():
+    """A caller asking hourly gets the hour mean back untouched - no ratio."""
+    fc = parse_forecast_response(_fixture(), TENANT, SITE, RUN_AT)
+    provider = OpenMeteoWeatherProvider(forecast=fc)
+    samples = provider.irradiance(
+        BERLIN,
+        [
+            datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc),
+            datetime(2026, 7, 1, 13, 0, tzinfo=timezone.utc),
+        ],
+    )
+    assert samples[0].ghi_w_m2 == 680.0  # bucket [12:00,13:00) -> label 13:00
 
 
 def test_weather_provider_zero_outside_horizon():

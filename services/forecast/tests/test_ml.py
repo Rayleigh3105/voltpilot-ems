@@ -34,6 +34,7 @@ from voltpilot_forecast.ml import (
     XgbLoadForecaster,
 )
 from voltpilot_forecast.pv import PhysicalPvForecaster
+from voltpilot_forecast.solar import solar_position
 
 # Monday 2026-06-01: day-of-week arithmetic below is explicit.
 T0 = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
@@ -195,3 +196,45 @@ def test_pv_residual_corrects_a_systematic_physical_bias():
     assert challenger_mae < 0.5 * physical_mae  # and mostly corrected
     assert all(p.value_kw >= 0 for p in series.points)
     assert all(p.value_kw <= config.plant.capacity_kwp for p in series.points)
+
+
+def test_pv_residual_can_never_invent_generation_after_sunset():
+    """Nameplate is no physical bound; the clear-sky ceiling is.
+
+    Trained on a plant that ALWAYS makes 1.5 kW - including all night - the
+    residual learner happily predicts night generation, because
+    ``physical + residual`` is only clipped to capacity. The ceiling
+    (:mod:`voltpilot_forecast.pvceiling`) is what makes a set sun mean zero,
+    and it binds after the residual rather than before it.
+    """
+    config = _pv_config()
+    physical = PhysicalPvForecaster()
+    days = 21
+    slots = [
+        T0 + timedelta(days=d, minutes=15 * q) for d in range(days) for q in range(96)
+    ]
+    history = [Observation(ts, 1.5) for ts in slots]
+    run_at = T0 + timedelta(days=days)
+
+    challenger = PvResidualXgbForecaster(physical=physical, seed=7)
+    challenger.train(config, history, run_at)
+    series = challenger.forecast(config, HORIZON_DAY, run_at)
+
+    night = [
+        p
+        for p in series.points
+        if not solar_position(config.location, p.timestamp).is_daytime
+    ]
+    assert night, "the horizon must contain night slots for this to mean anything"
+    assert all(p.value_kw == 0.0 for p in night), (
+        "residual generation survived sunset: "
+        f"{max(p.value_kw for p in night)} kW"
+    )
+    # Non-vacuous: the learner really did want to claim it.
+    raw = [
+        max(0.0, phys + 1.5)
+        for phys in physical.power_series(
+            config, [p.timestamp for p in night]
+        )
+    ]
+    assert max(raw) > 1.0

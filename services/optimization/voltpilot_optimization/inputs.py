@@ -46,6 +46,9 @@ from voltpilot_optimization.config import (
     pv_anchor_lookback,
     pv_anchor_max_ratio,
     pv_anchor_min_slots,
+    pv_nowcast_decay_slots,
+    pv_nowcast_enabled,
+    pv_nowcast_max_age,
     soc_max_age,
     terminal_value_override_eur_per_kwh,
 )
@@ -67,6 +70,7 @@ from voltpilot_optimization.load_nowcast import (
     apply_uncertainty_reserve,
     ewma_residual,
 )
+from voltpilot_optimization.pv_nowcast import apply_pv_nowcast
 from voltpilot_optimization.pricing import (
     SiteTariff,
     SupplyPriceComponents,
@@ -605,6 +609,12 @@ def gather_inputs(
     pv_kw, pv_anchor = _anchor_pv_input(
         dsn, site, slot_starts, pv_kw, now, site_choices
     )
+    # The slot in progress is answered from telemetry, not from a forecast -
+    # the mirror of the load correction above (dusk case 2026-08-28; see
+    # :mod:`voltpilot_optimization.pv_nowcast`). Runs AFTER the ratio anchor,
+    # because a direct measurement of this slot beats a ratio learned from
+    # earlier ones, and BEFORE the night floor, which stays the last gate.
+    pv_kw = _nowcast_pv_input(dsn, site, pv_kw, now)
     pv_kw = _night_floor_pv_input(site, slot_starts, pv_kw, pv_used_fallback)
 
     # Both live readings sit behind a freshness window (F4/P4): a stale
@@ -988,6 +998,55 @@ def _anchor_pv_input(
     return anchored, evidence
 
 
+def _nowcast_pv_input(
+    dsn: str, site: BatterySite, pv_kw: list[float], now: datetime
+) -> list[float]:
+    """Answer the running slot with the plant's own measured PV.
+
+    Fail-soft like the anchor it follows (the explain-layer discipline): a bad
+    env value or an unreachable read logs and returns the UNCHANGED forecast,
+    because a missing correction is a worse plan while a raised exception is no
+    plan at all. No fresh reading likewise returns the series byte-for-byte -
+    the freshness window is the whole gate.
+    """
+    try:
+        if not pv_nowcast_enabled() or not pv_kw:
+            return pv_kw
+        measured = _fresh_measurement(
+            dsn, site.site_id, "pv_power_kw", now, pv_nowcast_max_age()
+        )
+        if measured is None:
+            return pv_kw
+        anchored = apply_pv_nowcast(
+            pv_kw,
+            measured,
+            decay_slots=pv_nowcast_decay_slots(),
+            capacity_kwp=site.tariff.pv_capacity_kwp,
+        )
+    except Exception:  # noqa: BLE001 - never sink a plan over a correction
+        logger.warning(
+            "forecast.pv_nowcast.failed",
+            exc_info=True,
+            extra={"context": {"site_id": str(site.site_id), "kind": "pv"}},
+        )
+        return pv_kw
+
+    logger.info(
+        "forecast.pv_nowcast.applied",
+        extra={
+            "context": {
+                "site_id": str(site.site_id),
+                "kind": "pv",
+                "measured_kw": round(measured, 3),
+                "first_slot_kw_before": round(pv_kw[0], 3),
+                "first_slot_kw_after": round(anchored[0], 3),
+                "decay_slots": pv_nowcast_decay_slots(),
+            }
+        },
+    )
+    return anchored
+
+
 def _lookback_slot_starts(
     slot_starts: list[datetime], lookback: timedelta
 ) -> list[datetime]:
@@ -1227,7 +1286,7 @@ def _fresh_measurement(
     """
     # Fixed set, never user input - a hard raise (not assert, which is
     # stripped under python -O) keeps the f-string interpolation safe (S15).
-    if column not in ("soc_pct", "grid_limit_kw"):
+    if column not in ("soc_pct", "grid_limit_kw", "pv_power_kw"):
         raise ValueError(f"unsupported telemetry column: {column}")
     import psycopg  # lazy: optional [db] extra
 

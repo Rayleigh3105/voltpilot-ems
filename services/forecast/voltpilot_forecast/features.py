@@ -38,7 +38,7 @@ from voltpilot_forecast.domain import (
     slot_means,
 )
 from voltpilot_forecast.holidays import is_german_holiday
-from voltpilot_forecast.openmeteo import WeatherPoint
+from voltpilot_forecast.openmeteo import WeatherPoint, hour_label_for
 
 SLOT_MINUTES = 15
 SLOTS_PER_DAY = 24 * 60 // SLOT_MINUTES
@@ -123,17 +123,25 @@ class WeatherHistory:
     (latest run per past hour, i.e. "the weather that was forecast for that
     hour" - the same information a live prediction has). Missing hours yield
     NaN features rather than errors.
+
+    Keyed through :func:`~voltpilot_forecast.openmeteo.hour_label_for`, so a
+    slot gets the bucket that CONTAINS it - the same convention the irradiance
+    provider reads, in one place rather than two. Nothing is SHAPED here: a
+    feature only has to be the right hour, and these rows feed a learned
+    residual that never reaches a plan (shadow models are consumed by nobody
+    but the daily evaluation), so the challenger simply relearns against a
+    better-aligned feature on its next nightly retrain.
     """
 
     def __init__(self, points: Iterable[WeatherPoint]) -> None:
+        # Stored points carry their own label; index them by it verbatim.
         self._by_hour: dict[datetime, WeatherPoint] = {
             ensure_utc(p.timestamp).replace(minute=0, second=0, microsecond=0): p
             for p in points
         }
 
     def at(self, ts: datetime) -> WeatherPoint | None:
-        hour = ensure_utc(ts).replace(minute=0, second=0, microsecond=0)
-        return self._by_hour.get(hour)
+        return self._by_hour.get(hour_label_for(ensure_utc(ts)))
 
     def temperature_at(self, ts: datetime) -> float:
         point = self.at(ts)

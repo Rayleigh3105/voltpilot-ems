@@ -232,10 +232,15 @@ def test_challengers_below_the_gate_record_honest_status_and_no_predictions():
 def test_challengers_above_the_gate_predict_in_shadow_with_a_training_trail():
     forecasts, quality, summary = _collect(_telemetry_days(22))
 
+    # The full 48 h horizon for BOTH: load is never clipped, and this fixture
+    # supplies no weather at all, so PV runs on clear-sky physics - a real
+    # physical model at any timestamp, which `pv_horizon` deliberately leaves
+    # unclipped. (`test_the_collector_clips_pv_but_never_load` is the case
+    # where a real weather feed DOES end.)
     for model in ("load-xgb", "pv-residual-xgb"):
         series = forecasts.latest(SITE.site_id, registry.kind_of(model), model)
         assert series is not None and series.model == model
-        assert len(series) == 96
+        assert len(series) == 192
         state = quality.model_states[(SITE.site_id, model)]
         assert state.status == STATUS_READY
         assert state.trained_at is not None
@@ -389,7 +394,12 @@ def test_sql_column_guards_raise_instead_of_asserting():
 
 from voltpilot_forecast.domain import Horizon  # noqa: E402
 from voltpilot_forecast.forecast_collect import pv_horizon  # noqa: E402
-from voltpilot_forecast.openmeteo import WeatherPoint  # noqa: E402
+from voltpilot_forecast.openmeteo import (  # noqa: E402
+    OpenMeteoWeatherProvider,
+    WeatherForecast,
+    WeatherPoint,
+    hour_label_for,
+)
 
 
 def _weather(hours: int, *, start: datetime = NOW, ghi: float | None = 300.0):
@@ -416,16 +426,19 @@ def test_pv_horizon_keeps_the_full_window_when_weather_covers_it():
 def _covered_slots(hours: int) -> int:
     """Slots of a 48 h horizon whose HOUR a ``_weather(hours)`` feed answers.
 
-    Derived, not hardcoded: ``Horizon.slot_starts`` begins strictly AFTER
-    ``run_at`` (the collector's own convention), so a feed covering ``hours``
-    full hours from 12:00 answers up to and including the 45-min slot of its
-    last hour - one slot short of ``hours * 4``.
+    Derived, not hardcoded, and asked through the SAME helper the provider
+    looks up with: an hourly value labels the PRECEDING hour, so the last slot
+    a feed can answer is the one whose ``hour_label_for`` is its last label -
+    the 45-min slot of the hour BELOW it. Deciding this with ``floor(t)`` while
+    the provider reads ``floor(t) + 1h`` would credit the feed with one hour it
+    cannot actually answer, and the collector would store that hour as
+    fabricated zeros.
     """
     last = _weather(hours)[-1].timestamp
     return sum(
         1
         for ts in Horizon.hours(48).slot_starts(NOW)
-        if ts.replace(minute=0, second=0, microsecond=0) <= last
+        if hour_label_for(ts) <= last
     )
 
 
@@ -433,8 +446,42 @@ def test_pv_horizon_stops_where_the_weather_samples_stop():
     """A weather feed reaching only 30 h yields a 30 h PV series - the
     optimizer's own truncation then ends its window there."""
     clipped = pv_horizon(Horizon.hours(48), _weather(30), NOW)
-    assert clipped.slots == _covered_slots(30) == 119
+    assert clipped.slots == _covered_slots(30) == 115
     assert clipped.slot_minutes == 15
+
+
+def test_pv_horizon_agrees_with_what_the_provider_can_answer():
+    """The two halves of "where does real weather end" must use ONE convention.
+
+    ``pv_horizon`` decides coverage and ``OpenMeteoWeatherProvider`` serves the
+    values; both go through ``hour_label_for``. Deciding with ``floor(t)`` while
+    the provider reads ``floor(t) + 1h`` credits the feed with an hour it cannot
+    answer, and the collector stores that hour as fabricated zeros - precisely
+    what this clip exists to prevent.
+    """
+    points = _weather(6)
+    horizon = Horizon.hours(48)
+    clipped = pv_horizon(horizon, points, NOW)
+
+    provider = OpenMeteoWeatherProvider(
+        forecast=WeatherForecast(
+            tenant_id=SITE.tenant_id,
+            site_id=SITE.site_id,
+            latitude=SITE.location.latitude,
+            longitude=SITE.location.longitude,
+            run_at=NOW,
+            points=tuple(points),
+        )
+    )
+    served = provider.irradiance(SITE.location, clipped.slot_starts(NOW))
+    assert clipped.slots < horizon.slots  # the clip really fired
+    assert all(s.ghi_w_m2 > 0.0 for s in served), (
+        "the clipped window still contains slots the provider answers with 0"
+    )
+
+    # And it is not merely conservative: the very next slot IS beyond the feed.
+    beyond = clipped.slot_starts(NOW)[-1] + timedelta(minutes=15)
+    assert provider.irradiance(SITE.location, [beyond])[0].ghi_w_m2 == 0.0
 
 
 def test_pv_horizon_is_a_no_op_at_the_legacy_24h_request():

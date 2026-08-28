@@ -25,15 +25,35 @@ import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Sequence
+from typing import ClassVar, Sequence
 
 from voltpilot_forecast.domain import GeoLocation, ensure_utc
 from voltpilot_forecast.http import HttpClient, HttpResponse, RequestsHttpClient
+from voltpilot_forecast.solar import clear_sky_means
 from voltpilot_forecast.weather import IrradianceSample, WeatherProvider
 
 logger = logging.getLogger("voltpilot.forecast.openmeteo")
 
 DEFAULT_BASE_URL = "https://api.open-meteo.com"
+
+#: Platform slot width, used when a caller asks for a single timestamp.
+DEFAULT_SLOT_MINUTES = 15
+
+#: An hourly value at label ``T`` is the mean over ``[T - HOURLY_MEAN_COVERS, T)``.
+#: Open-Meteo documents its radiation as "average of the preceding hour", and the
+#: API confirms it - see :func:`hour_label_for` and the fixture README. THE one
+#: place this convention lives; every reader of an hourly series goes through it.
+HOURLY_MEAN_COVERS = timedelta(hours=1)
+
+
+def hour_label_for(ts: datetime) -> datetime:
+    """The hourly label whose ``[T - 1h, T)`` window CONTAINS ``ts``.
+
+    Reading ``floor(ts)`` instead - the obvious-looking choice - serves a window
+    whose midpoint sits 30 to 105 minutes in the PAST: too low every morning,
+    too high every evening. That was the Pilsting dusk defect of 28.08.2026.
+    """
+    return ts.replace(minute=0, second=0, microsecond=0) + HOURLY_MEAN_COVERS
 
 # The hourly variables we request. shortwave_radiation is GHI (W/m2); the
 # direct/diffuse split lets the POA transposition avoid a modelled diffuse guess.
@@ -216,39 +236,131 @@ class OpenMeteoWeatherProvider(WeatherProvider):
     """Adapts a fetched :class:`WeatherForecast` into the PV model's irradiance.
 
     Constructed from an already-fetched forecast (the collector fetches once, then
-    hands the samples to both the store and the PV forecaster). For each requested
-    timestamp it returns the nearest hourly sample's GHI/DNI/DHI, so the physical
-    PV forecaster gets measured-cloud irradiance instead of the clear-sky envelope.
-    A timestamp outside the forecast horizon falls back to 0 W/m2 (night/no data).
+    hands the samples to both the store and the PV forecaster), it answers every
+    requested timestamp from the hourly series. Two rules make that answer a
+    quarter-hour truth instead of an hour-shaped one:
+
+    **1. An hourly value labels the PRECEDING hour** (``HOURLY_MEAN_COVERS``).
+    Open-Meteo documents its radiation as "average of the preceding hour", and
+    the API confirms it: fetching the same day at ``minutely_15`` and averaging
+    the four quarters of ``[T-1h, T)`` reproduces the hourly value at ``T`` to
+    the digit at every hour of the day, while the following hour never matches.
+    Reading the label ``floor(t)`` - what this adapter used to do - therefore
+    served a window whose MIDPOINT sits 30 to 105 minutes in the PAST: too low
+    every morning, too HIGH every evening. Measured at Pilsting on 28.08.2026,
+    19:45 local: 87 W/m² served where the quarter's own mean was 16 W/m² and
+    the clear-sky ceiling at that sun elevation (1.9°) was 6.1 W/m².
+
+    **2. Within the hour, the mean is redistributed by SOLAR POSITION.** A flat
+    hour mean cannot fall, so the last quarter before sunset inherits the first
+    quarter's sunshine. Each sub-interval instead gets the hour's mean scaled by
+    its share of the hour's CLEAR-SKY energy (:func:`~voltpilot_forecast.solar.clear_sky_means`). The
+    share is a ratio of means, so the four quarters average back to the hour
+    mean exactly - the split moves energy inside the hour, it never creates or
+    destroys any - and a sub-interval with the sun below the horizon gets
+    exactly 0.
+
+    The beam component carries its own shape (same helper): DNI is
+    per-normal-area and decays far more slowly than GHI as the sun sets, so
+    shaping it with the GHI curve would understate it. A timestamp outside the
+    forecast horizon still falls back to 0 W/m² (night/no data).
     """
 
     name = "open_meteo"
 
+    #: Sub-samples per interval for the clear-sky shape integrals (midpoint
+    #: rule). Five over a quarter hour is 3-minute resolution - far finer than
+    #: the sun moves - and the whole horizon costs a few milliseconds.
+    SHAPE_SAMPLES: ClassVar[int] = 5
+
     forecast: WeatherForecast
+    #: Sub-hour resolution the values are shaped for. ``None`` = infer it from
+    #: the requested timestamps (the horizon is uniform), falling back to 15.
+    slot_minutes: int | None = None
 
     _index: dict[datetime, WeatherPoint] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
+        # Normalised here as well as at lookup: stored points come back from a
+        # timestamptz column, and a key that is not UTC would silently match
+        # nothing at all.
         self._index = {
-            p.timestamp.replace(minute=0, second=0, microsecond=0): p
+            ensure_utc(p.timestamp).replace(minute=0, second=0, microsecond=0): p
             for p in self.forecast.points
         }
 
     def irradiance(
         self, location: GeoLocation, timestamps: Sequence[datetime]
     ) -> list[IrradianceSample]:
+        minutes = self.slot_minutes or _infer_slot_minutes(timestamps)
+        slot = timedelta(minutes=minutes)
+        hour_shape: dict[datetime, tuple[float, float]] = {}
         samples: list[IrradianceSample] = []
-        for ts in timestamps:
-            hour = ensure_utc(ts).replace(minute=0, second=0, microsecond=0)
-            point = self._index.get(hour)
+        for raw in timestamps:
+            ts = ensure_utc(raw)
+            point = self._index.get(hour_label_for(ts))
             if point is None or point.ghi_w_m2 is None:
                 samples.append(IrradianceSample(ghi_w_m2=0.0))
                 continue
+
+            ghi_share, dni_share = self._shape(location, ts, slot, hour_shape)
             samples.append(
                 IrradianceSample(
-                    ghi_w_m2=point.ghi_w_m2,
-                    dni_w_m2=point.dni_w_m2,
-                    dhi_w_m2=point.dhi_w_m2,
+                    ghi_w_m2=point.ghi_w_m2 * ghi_share,
+                    dni_w_m2=(
+                        None if point.dni_w_m2 is None else point.dni_w_m2 * dni_share
+                    ),
+                    dhi_w_m2=(
+                        None if point.dhi_w_m2 is None else point.dhi_w_m2 * ghi_share
+                    ),
                 )
             )
         return samples
+
+    def _shape(
+        self,
+        location: GeoLocation,
+        ts: datetime,
+        slot: timedelta,
+        cache: dict[datetime, tuple[float, float]],
+    ) -> tuple[float, float]:
+        """This slot's share of its hour's clear-sky energy: (GHI, DNI).
+
+        ``1.0`` whenever the hour carries no clear-sky energy to distribute, so
+        an unshapeable hour degrades to the flat hour mean rather than to zero.
+        """
+        if slot >= HOURLY_MEAN_COVERS:
+            return 1.0, 1.0
+        label = hour_label_for(ts)
+        denominators = cache.get(label)
+        if denominators is None:
+            start = label - HOURLY_MEAN_COVERS
+            steps = max(1, round(HOURLY_MEAN_COVERS / slot))
+            denominators = clear_sky_means(
+                location, start, label, self.SHAPE_SAMPLES * steps
+            )
+            cache[label] = denominators
+        ghi_hour, dni_hour = denominators
+        ghi_slot, dni_slot = clear_sky_means(
+            location, ts, ts + slot, self.SHAPE_SAMPLES
+        )
+        return (
+            ghi_slot / ghi_hour if ghi_hour > 0.0 else 1.0,
+            dni_slot / dni_hour if dni_hour > 0.0 else 1.0,
+        )
+
+
+def _infer_slot_minutes(timestamps: Sequence[datetime]) -> int:
+    """Slot width from the requested horizon; 15 when a single point is asked.
+
+    The horizon is uniform, so the first gap is the whole story. A single
+    timestamp carries no spacing - the residual challenger asks that way - and
+    15 minutes is the platform's slot everywhere else.
+    """
+    if len(timestamps) >= 2:
+        minutes = round(
+            (ensure_utc(timestamps[1]) - ensure_utc(timestamps[0])).total_seconds() / 60
+        )
+        if minutes > 0:
+            return minutes
+    return DEFAULT_SLOT_MINUTES

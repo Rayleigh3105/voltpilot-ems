@@ -96,8 +96,12 @@ def test_weather_history_lookup_and_temperature():
         for h in range(3)
     ]
     weather = WeatherHistory(points)
-    # 15-min timestamps resolve to their hour's point.
-    assert weather.temperature_at(T0 + timedelta(hours=1, minutes=30)) == 21.0
+    # A slot resolves to the bucket that CONTAINS it: 01:30 lies in
+    # [01:00, 02:00), which an hourly product labels 02:00 (22.0 here).
+    assert weather.temperature_at(T0 + timedelta(hours=1, minutes=30)) == 22.0
+    # The whole hour reads the same bucket, boundaries included.
+    assert weather.temperature_at(T0 + timedelta(hours=1)) == 22.0
+    assert weather.temperature_at(T0 + timedelta(hours=1, minutes=45)) == 22.0
     assert math.isnan(weather.temperature_at(T0 + timedelta(days=2)))
 
 
@@ -105,7 +109,8 @@ def test_pv_residual_feature_row_shape_and_weather():
     weather = WeatherHistory(
         [WeatherPoint(timestamp=T0, temperature_c=18.0, cloud_cover_pct=25.0, ghi_w_m2=400.0)]
     )
-    row = pv_residual_feature_row(T0 + timedelta(minutes=15), 3.2, weather)
+    # T0 labels [T0 - 1h, T0), so the slot that reads it starts an hour earlier.
+    row = pv_residual_feature_row(T0 - timedelta(minutes=45), 3.2, weather)
     feat = dict(zip(PV_RESIDUAL_FEATURES, row))
     assert feat["physical_kw"] == 3.2
     assert feat["ghi_w_m2"] == 400.0
