@@ -1005,6 +1005,20 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     expect(name).toHaveValue('Wechselrichter Garage');
   });
 
+  it('behält technische Eingaben beim erneuten Wählen des aktiven Modells', async () => {
+    renderInline();
+
+    await screen.findByLabelText('Anzeigename');
+    fireEvent.click(knopf('Technische Daten ändern'));
+    const ip = screen.getByLabelText(/IP-Adresse des Datenloggers/);
+    fireEvent.change(ip, { target: { value: '192.168.0.29' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Hersteller und Modell' }));
+    fireEvent.click(screen.getByRole('option', { name: new RegExp(template.modelLabel) }));
+
+    expect(ip).toHaveValue('192.168.0.29');
+    expect(knopf('Verbindung prüfen')).toBeVisible();
+  });
+
   it('weist null kWp vor dem Speichern als ungültig zurück', async () => {
     renderInline();
     const rollen = await screen.findByRole('radiogroup', { name: 'Aufgabe in der Anlage' });
@@ -1102,15 +1116,19 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     expect(screen.getByLabelText('Nennleistung (kWp)')).toHaveValue(28);
   });
 
-  it('zeigt für Verbraucher vor dem Vorlagenabruf keine Wechselrichter-Rollen', async () => {
+  it('behält für Verbraucher auch nach dem Vorlagenabruf die gespeicherte Rolle', async () => {
     const consumerEdit = {
       ...edit,
       role: 'consumer' as const,
       entityType: 'consumer',
       label: 'Wallbox Garage',
-      templateRef: 'builtin:go-e:charger',
+      templateRef: template.templateRef,
     };
-    componentTemplates.mockReturnValue(new Promise(() => {}));
+    let resolveTemplates!: (value: (typeof template)[]) => void;
+    const templates = new Promise<(typeof template)[]>((resolve) => {
+      resolveTemplates = resolve;
+    });
+    componentTemplates.mockReturnValue(templates);
     siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [consumerEdit] });
     render(
       <AnlegenFlow
@@ -1123,6 +1141,15 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     );
 
     expect(await screen.findByLabelText('Anzeigename')).toHaveValue('Wallbox Garage');
+    expect(screen.queryByRole('radiogroup', { name: 'Aufgabe in der Anlage' })).toBeNull();
+    expect(screen.queryByLabelText('Nennleistung (kWp)')).toBeNull();
+
+    await act(async () => {
+      resolveTemplates([template]);
+      await templates;
+    });
+
+    await waitFor(() => expect(screen.getByText('Verbraucher')).toBeVisible());
     expect(screen.queryByRole('radiogroup', { name: 'Aufgabe in der Anlage' })).toBeNull();
     expect(screen.queryByLabelText('Nennleistung (kWp)')).toBeNull();
   });

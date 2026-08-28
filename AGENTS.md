@@ -5595,9 +5595,12 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   UPDATE mit `disabled_at`; weder Auswahlzeile noch Events werden gelöscht.
 - **Der Standort eines Geräts ist nach dem Claim stabil.** Der frühere
   Kunden-Standortwechsel samt Preview/Apply/Status und Retry-Job ist entfernt;
-  das Portal und die API bieten keinen Umzug mehr an. Die bereits angewendeten
+  das Portal und die API bieten keinen Umzug mehr an. Ein reiner
+  Kompatibilitäts-Worker verarbeitet nur noch vor dem Entfernen bereits
+  angenommene `pending`-Vorgänge bis zu einem Endzustand; ein neuer Vorgang kann
+  nirgends mehr erzeugt werden. Die bereits angewendeten
   Flyway-Strukturen (`device_site_assignment`, `move_provisioning_operation`)
-  bleiben ausschließlich für Schema- und Audit-Kompatibilität bestehen - eine
+  bleiben für Schema-, Audit- und Rollout-Kompatibilität bestehen - eine
   angewendete Migration wird niemals nachträglich geändert oder gelöscht.
 - **API:** `/api/v1/devices/{deviceId}/measurement-selection/**` liefert
   Katalogsuche/Facetten, Status/Audit, Budget-Preview, optimistic/idempotente

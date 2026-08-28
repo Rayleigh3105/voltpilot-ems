@@ -57,7 +57,6 @@ import {
   schritte as schritteFuer,
   typKarten,
   vorschlagRolle,
-  typFuerTemplate,
   type TypId,
 } from '../anlegenFlow';
 import {
@@ -248,7 +247,6 @@ export function AnlegenFlow({
       return;
     }
     setTemplate(found);
-    setTyp(typFuerTemplate(found));
   }, [edit, template, templates]);
 
   const alle = useMemo(() => templates ?? [], [templates]);
@@ -361,6 +359,7 @@ export function AnlegenFlow({
   function waehleTemplate(ref: string) {
     const t = auswahl.templates.find((x) => x.templateRef === ref);
     if (!t) return;
+    if (template?.templateRef === t.templateRef) return;
     setTemplate(t);
     const istBisherige = edit?.templateRef === t.templateRef;
     setVerbindung(istBisherige ? { ...(edit.connection ?? {}) } : initialeVerbindung(t));
