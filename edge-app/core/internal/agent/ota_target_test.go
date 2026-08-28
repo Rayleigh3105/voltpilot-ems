@@ -277,6 +277,9 @@ func TestAssignedReleaseThatIsAlreadyRunningReportsSucceeded(t *testing.T) {
 	old := Version
 	Version = m.Release
 	defer func() { Version = old }()
+	if err := b.a.otaWriteCurrent(b.dir, otaCurrent{Release: m.Release, ReleaseSeq: m.ReleaseSeq}); err != nil {
+		t.Fatal(err)
+	}
 
 	b.a.onUpdateTarget(b.envelope(t, m, nil))
 	u := b.a.updateSummary()

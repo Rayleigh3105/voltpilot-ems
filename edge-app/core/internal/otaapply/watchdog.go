@@ -144,15 +144,16 @@ func Resume(in ResumeInput) (ResumeAction, string) {
 
 // PendingSpec sind die Fakten, die eine Brotkrume festhaelt.
 type PendingSpec struct {
-	Token       string
-	Release     string
-	ReleaseSeq  int64
-	Target      map[string]string
-	Previous    LKG
-	Deadline    time.Duration
-	Urgent      bool
-	ControlWas  bool
-	StateSchema int
+	Token           string
+	Release         string
+	ReleaseSeq      int64
+	Target          map[string]string
+	Previous        LKG
+	Deadline        time.Duration
+	Urgent          bool
+	ControlWas      bool
+	StateSchema     int
+	RestartBaseline map[string]ContainerBaseline
 }
 
 // NewPending baut die Brotkrume EINES Vorgangs.
@@ -169,6 +170,7 @@ func NewPending(spec PendingSpec, now time.Time) PendingConfirm {
 		Urgent:              spec.Urgent,
 		ControlActiveBefore: spec.ControlWas,
 		StateSchema:         spec.StateSchema,
+		RestartBaseline:     spec.RestartBaseline,
 	}
 }
 

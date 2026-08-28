@@ -1354,6 +1354,25 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „Edge-Updates: EIN Schritt" und
   `GridLimitKw: 0` heisst „§14a-Grenze 0 kW", nicht „unbekannt"** (unbekannt ist
   `guards.Unknown()`); eine mit `{}` gebaute Messung laesst den Envelope-Guard
   gegen eine Null-Grenze rechnen - im Trockenlauf genau so aufgefallen.
+  **Die Selbsttest-Beobachtung ist DAUERHAFT, nicht nur ein Blick beim Boot:**
+  der neue Core startet beim sequenziellen Tausch noch in `swap_core`, und bei
+  einem reinen Node-RED-Update startet er gar nicht neu. `otaSelfTestLoop`
+  wartet deshalb auf `self_test`, bindet sein Urteil an den weiterhin
+  laufenden Token und prueft jeden Token hoechstens einmal.
+- **Docker-Neustarts zaehlen nur SEIT diesem Vorgang.** `pending-confirm.json`
+  traegt je Komponente `container_id` + absoluten Startwert. Solange die ID
+  gleich ist, sieht der Wachhund die Differenz; ein neu angelegter Container
+  beginnt mit seinem eigenen absoluten Zaehler. Ohne diese Baseline konnte ein
+  alter `RestartCount >= 3` einen frischen Tausch vor dem ersten Swap
+  zuruecknehmen. Alte Brotkrumen ohne das additive Feld behalten Frist,
+  Running- und Healthcheck-Pruefung, loesen aber keinen historischen
+  Crashloop-Fehlalarm aus.
+- **Ist == Soll gewinnt vor den Apply-Toren.** Ein gueltig signiertes Release,
+  das laut Build-Stempel bereits laeuft, bleibt `succeeded`, auch nachdem sein
+  eigener `current.json`-Boden auf dieselbe Sequenz angehoben wurde. Backend,
+  `min_from_seq` und Rueckschritt sind Tore fuer einen noch ausstehenden
+  Tausch, nicht Gruende, einen bereits bewiesenen Stand im naechsten Takt als
+  `politik` zu melden.
 - **Was einmal zurueckgerollt wurde, laeuft nicht von selbst wieder an**
   (`failed.json`). Ohne das begann der naechste Takt denselben Tausch von vorn -
   die Zuweisung liegt ja noch. In der Fehlerinjektions-Matrix aufgefallen.

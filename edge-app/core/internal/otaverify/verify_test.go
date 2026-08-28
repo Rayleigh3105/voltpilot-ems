@@ -382,6 +382,20 @@ func TestVerifyDefersADowngradeUnlessExplicitlyAllowed(t *testing.T) {
 	}
 }
 
+func TestVerifyAcceptsTheExactRunningReleaseAfterItsFloorWasRecorded(t *testing.T) {
+	w := newWorld(t)
+	w.in.RunningVersion = "edge-2026.08.0-3bf8c038a1b2"
+	w.in.CurrentSeq = seq(12)
+
+	v := Verify(w.in)
+	if !v.OK() || !v.AlreadyRunning {
+		t.Fatalf("der nachweislich laufende Zielstand ist abgeschlossen, nicht blockiert: %s / %s", v.Outcome, v.Reason)
+	}
+	if !hasNote(v, "laeuft hier bereits") {
+		t.Fatalf("der Beleg muss sichtbar bleiben: %v", v.Notes)
+	}
+}
+
 func TestVerifyDefersAReleaseForAnotherBackend(t *testing.T) {
 	w := newWorld(t)
 	m := validManifest()

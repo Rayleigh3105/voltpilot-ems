@@ -49,6 +49,17 @@ Die vier Eigenschaften, auf die es ankommt:
    `applying`-Bericht ist die letzte Handlung vor dem Stoppen (nur dadurch ist
    „im Update verstummt" ein eigener Zustand statt „die Box ist weg") — kommt
    er nicht durch, wird nach einer begrenzten Frist trotzdem getauscht.
+5. **„Bestätigt" ist ein Beleg, kein Zeitstempel.** Der neue Core beobachtet
+   die Brotkrume dauerhaft, wartet bis *beide* Komponenten getauscht sind und
+   vergleicht dann den eigenen Build-Stempel mit dem zugewiesenen Release.
+   Erst nach bestandenem Web-/Steuerpfad-Selbsttest zeichnet er den Stand auf.
+   Dieselbe retained Zuweisung bleibt danach `bestätigt`; der angehobene
+   Anti-Rollback-Boden darf den bereits laufenden Stand nicht wieder sperren.
+
+Der Crashloop-Wächter zählt ebenfalls nur Befunde dieses Vorgangs: Beim Start
+wird je Container ID und Neustart-Zähler gespeichert. Historische Neustarts
+des alten Stands lösen deshalb keine Rücknahme des neuen Releases aus; drei
+Neustarts eines tatsächlich neu angelegten Containers weiterhin sofort.
 
 **Fehlschlag ist Information, keine Sperre.** Fällt ein Gerät durch, wird seine
 Zeile rot und nennt den Grund; die übrigen Geräte laufen weiter, und die

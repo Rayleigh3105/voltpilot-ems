@@ -43,6 +43,7 @@ func digest(repo string, c byte) string {
 // ---------------------------------------------------------------------------
 
 type fakeContainer struct {
+	id       string
 	imageRef string
 	running  bool
 	restarts int
@@ -50,16 +51,17 @@ type fakeContainer struct {
 }
 
 type fakeDocker struct {
-	t          *testing.T
-	log        []string
-	images     map[string]bool   // vorhandene Referenzen/Tags
-	digests    map[string]string // Referenz -> Repo-Digest (das, was inspect meldet)
-	ids        map[string]string // Referenz -> lokale Abbild-Kennung
-	created    map[string]int    // Referenz -> Bau-Reihenfolge (groesser = neuer)
-	holders    map[string]string // gestoppter Halter-Container -> Referenz
-	clock      int
-	containers map[string]*fakeContainer
-	tars       map[string]bool
+	t              *testing.T
+	log            []string
+	images         map[string]bool   // vorhandene Referenzen/Tags
+	digests        map[string]string // Referenz -> Repo-Digest (das, was inspect meldet)
+	ids            map[string]string // Referenz -> lokale Abbild-Kennung
+	created        map[string]int    // Referenz -> Bau-Reihenfolge (groesser = neuer)
+	holders        map[string]string // gestoppter Halter-Container -> Referenz
+	clock          int
+	containerClock int
+	containers     map[string]*fakeContainer
+	tars           map[string]bool
 	// envPath ist die .env, die der Motor pinnt (der Stellvertreter liest sie,
 	// damit ein `up -d` dasselbe Image nimmt, das compose naehme).
 	envPath string
@@ -79,9 +81,25 @@ func newFakeDocker(t *testing.T) *fakeDocker {
 	// Der laufende Stand vor dem Update.
 	f.present(digest(coreRepo, 'a'))
 	f.present(digest(nrRepo, 'b'))
-	f.containers["core"] = &fakeContainer{imageRef: digest(coreRepo, 'a'), running: true}
-	f.containers["nodered"] = &fakeContainer{imageRef: digest(nrRepo, 'b'), running: true}
+	f.replaceContainer("core", digest(coreRepo, 'a'))
+	f.replaceContainer("nodered", digest(nrRepo, 'b'))
 	return f
+}
+
+func (f *fakeDocker) replaceContainer(service, imageRef string) {
+	f.containerClock++
+	f.containers[service] = &fakeContainer{
+		id: fmt.Sprintf("cid-%s-%d", service, f.containerClock), imageRef: imageRef, running: true,
+	}
+}
+
+func (f *fakeDocker) containerByID(id string) (*fakeContainer, bool) {
+	for _, c := range f.containers {
+		if c.id == id {
+			return c, true
+		}
+	}
+	return nil, false
 }
 
 func (f *fakeDocker) present(ref string) {
@@ -160,7 +178,7 @@ func (f *fakeDocker) Run(_ context.Context, name string, args ...string) (string
 		// Rueckfall-Halter.
 		var out strings.Builder
 		for _, svc := range sortedKeys(f.containers) {
-			out.WriteString("cid-" + svc + "\n")
+			out.WriteString(f.containers[svc].id + "\n")
 		}
 		for _, name := range sortedKeys(f.holders) {
 			out.WriteString("held-" + name + "\n")
@@ -199,7 +217,7 @@ func (f *fakeDocker) Run(_ context.Context, name string, args ...string) (string
 		for _, cid := range args[3:] {
 			switch {
 			case strings.HasPrefix(cid, "cid-"):
-				c, ok := f.containers[strings.TrimPrefix(cid, "cid-")]
+				c, ok := f.containerByID(cid)
 				if !ok {
 					return out.String(), fmt.Errorf("No such object: %s", cid)
 				}
@@ -218,8 +236,7 @@ func (f *fakeDocker) Run(_ context.Context, name string, args ...string) (string
 
 	case args[0] == "inspect":
 		cid := args[len(args)-1]
-		svc := strings.TrimPrefix(cid, "cid-")
-		c, ok := f.containers[svc]
+		c, ok := f.containerByID(cid)
 		if !ok {
 			return "", fmt.Errorf("No such object: %s", cid)
 		}
@@ -327,16 +344,17 @@ func (f *fakeDocker) compose(args []string) (string, error) {
 	switch rest[0] {
 	case "ps":
 		svc := rest[len(rest)-1]
-		if _, ok := f.containers[svc]; !ok {
+		c, ok := f.containers[svc]
+		if !ok {
 			return "", nil
 		}
-		return "cid-" + svc + "\n", nil
+		return c.id + "\n", nil
 	case "up":
 		svc := rest[len(rest)-1]
 		// `up -d` ist Stoppen-dann-Starten: der Container wird NEU angelegt,
 		// sein Neustart-Zaehler beginnt bei 0 (deshalb ist der absolute Wert
 		// des neuen Containers die Zahl der Neustarts SEIT dem Tausch).
-		f.containers[svc] = &fakeContainer{imageRef: f.envRef(svc), running: true}
+		f.replaceContainer(svc, f.envRef(svc))
 		return "", nil
 	}
 	f.t.Fatalf("unerwartetes compose-Kommando: %v", rest)
@@ -829,6 +847,66 @@ func TestACrashLoopRevertsWithoutWaitingForTheDeadline(t *testing.T) {
 	st := r.state()
 	if st.State != otaapply.StateRolledBack || !strings.Contains(st.Reason, "neu gestartet") {
 		t.Fatalf("erwartet sofortige Ruecknahme wegen Flatterns, ist %+v", st)
+	}
+}
+
+func TestHistoricalContainerRestartsDoNotCondemnANewRelease(t *testing.T) {
+	r := newRig(t)
+	// Diese Zaehler gehoeren zum ALTEN Stand. Docker setzt sie nicht beim
+	// Beginn eines OTA-Vorgangs zurueck.
+	r.fd.containers["core"].restarts = otaapply.CrashLoopRestarts + 4
+	r.fd.containers["nodered"].restarts = otaapply.CrashLoopRestarts + 2
+	r.assign(nil)
+
+	r.runToSelfTest()
+
+	p := r.pending()
+	if p == nil || p.Phase != otaapply.PhaseSelfTest {
+		t.Fatalf("historische Neustarts duerfen den Tausch nicht zuruecknehmen: %+v / %+v", p, r.state())
+	}
+	if got := p.RestartBaseline["core"].Restarts; got != otaapply.CrashLoopRestarts+4 {
+		t.Fatalf("der Startwert des alten Kerns fehlt: %d", got)
+	}
+	if st := r.state(); st.State == otaapply.StateRolledBack {
+		t.Fatalf("der neue Stand wurde wegen alter Neustarts zurueckgenommen: %+v", st)
+	}
+}
+
+func TestAConfirmedRunningReleaseStaysSucceededAfterItsFloorWasRecorded(t *testing.T) {
+	r := newRig(t)
+	r.assign(nil)
+	r.runToSelfTest()
+	r.selfTest(true, "")
+	r.now = r.now.Add(5 * time.Second)
+	r.signalCore(func(s *otaapply.CoreSignal) {
+		s.Version = "edge-2026.08.0-3bf8c038a1b2"
+	})
+	if err := otaapply.WriteJSON(r.dataDir, otaapply.FileCurrent, otaapply.Current{
+		Release: "edge-2026.08.0", ReleaseSeq: 12, StateSchema: 3,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r.tick() // Selbsttest bestaetigen.
+	if st := r.state(); st.State != otaapply.StateSucceeded {
+		t.Fatalf("Vorbedingung: der Tausch muss bestaetigt sein: %+v", st)
+	}
+
+	// Die retained Zuweisung bleibt liegen. Der naechste Takt muss den
+	// belegten Endzustand wiedererkennen, ohne Politik-Blocker und ohne einen
+	// weiteren Docker-Eingriff.
+	r.fd.log = nil
+	r.now = r.now.Add(5 * time.Second)
+	r.signalCore(func(s *otaapply.CoreSignal) {
+		s.Version = "edge-2026.08.0-3bf8c038a1b2"
+	})
+	r.tick()
+
+	st := r.state()
+	if st.State != otaapply.StateSucceeded || st.Blocker != "" {
+		t.Fatalf("bestaetigt muss bestaetigt bleiben: %+v", st)
+	}
+	if len(r.fd.log) != 0 {
+		t.Fatalf("ein bereits laufendes Release braucht keinen Docker-Eingriff: %v", r.fd.log)
 	}
 }
 

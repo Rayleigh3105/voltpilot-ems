@@ -157,49 +157,87 @@ func (a *Agent) otaControlActive(snap state.Snapshot) bool {
 // Der Selbsttest des NEUEN Standes
 // ---------------------------------------------------------------------------
 
-// otaSelfTestOnBoot laeuft EINMAL beim Start, wenn eine Brotkrume vorliegt.
+// otaSelfTestOnBoot beobachtet die Brotkrume waehrend der gesamten Laufzeit.
 //
 // **Das ist die Selbst-Sperre des Kerns** (Vorentwurf §3, Befund B5): auch
 // wenn der Docker-Daemon den Container aus eigener Kraft neu startet, landet
 // der Kern hier und nicht in einem stillschweigend gesegneten Zustand. Wer
-// eine Brotkrume vorfindet, hat sich zu beweisen.
+// eine Brotkrume in der Selbsttest-Phase vorfindet, hat sich zu beweisen.
+//
+// Das Beobachten ist bewusst dauerhaft: beim sequenziellen Tausch startet der
+// neue Kern, waehrend die Brotkrume noch `swap_core` sagt; ausserdem kann ein
+// Release nur Node-RED aendern, sodass der Kern ueberhaupt nicht neu startet.
+// In beiden Faellen muss derselbe laufende Kern die spaetere `self_test`-Phase
+// noch sehen.
 func (a *Agent) otaSelfTestOnBoot(ctx context.Context) {
 	defer a.done.Done()
-	p, err := otaapply.ReadJSON[otaapply.PendingConfirm](a.Cfg.DataDir, otaapply.FilePendingConfirm)
-	if err != nil || p == nil {
-		return
+	a.otaSelfTestLoop(ctx, otaSignalInterval, otaSelfTestSettle)
+}
+
+// otaSelfTestLoop ist die testbare Schleife hinter [Agent.otaSelfTestOnBoot].
+// Ein Token wird hoechstens einmal beurteilt; ein neuer Token ist ein neuer
+// Vorgang und wird wieder geprueft.
+func (a *Agent) otaSelfTestLoop(ctx context.Context, pollEvery, settle time.Duration) {
+	if pollEvery <= 0 {
+		pollEvery = otaSignalInterval
 	}
-	if p.Phase != otaapply.PhaseSelfTest {
-		// Der Tausch laeuft noch (der Sidecar ist an der Reihe). Der Selbsttest
-		// gehoert an das ENDE - vorher wuerde er ueber einen halb getauschten
-		// Stand urteilen.
-		return
+	lastToken := ""
+	for {
+		p, err := otaapply.ReadJSON[otaapply.PendingConfirm](a.Cfg.DataDir, otaapply.FilePendingConfirm)
+		if err == nil && p != nil && p.Token != "" && p.Token != lastToken &&
+			p.Phase == otaapply.PhaseSelfTest {
+			slog.Info("OTA: neuer Stand gefunden - Selbsttest laeuft", "release", p.Release)
+			if !otaWait(ctx, settle) {
+				return
+			}
+
+			// Der Sidecar kann den Vorgang waehrend der Beruhigungszeit bereits
+			// beendet oder ersetzt haben. Ein Urteil darf ausschliesslich SEINEN
+			// noch laufenden Token beantworten.
+			current, readErr := otaapply.ReadJSON[otaapply.PendingConfirm](
+				a.Cfg.DataDir, otaapply.FilePendingConfirm)
+			if readErr == nil && current != nil && current.Token == p.Token &&
+				current.Phase == otaapply.PhaseSelfTest {
+				res := a.otaRunSelfTest(current, time.Now())
+				if writeErr := otaapply.WriteJSON(a.Cfg.DataDir, otaapply.FileSelfTest, res); writeErr != nil {
+					slog.Error("OTA: Selbsttest-Urteil konnte nicht abgelegt werden", "err", writeErr)
+				} else {
+					lastToken = current.Token
+					if !res.Passed {
+						slog.Error("OTA: Selbsttest NICHT bestanden - der Stand wird zurueckgenommen",
+							"grund", res.Reason)
+					} else {
+						// Der Boden wird NUR hier angehoben, und nur gegen die
+						// eigene Build-Stempelung: aufgezeichnet wird
+						// ausschliesslich, was nachweislich laeuft.
+						if _, recordErr := a.OtaRecordApplied(current.Release, current.ReleaseSeq); recordErr != nil {
+							slog.Warn("OTA: der angewandte Stand konnte nicht aufgezeichnet werden", "err", recordErr)
+						} else if current.StateSchema > 0 {
+							a.otaRecordStateSchema(current.StateSchema)
+						}
+						slog.Info("OTA: Selbsttest bestanden", "release", current.Release)
+					}
+				}
+			}
+		}
+		if !otaWait(ctx, pollEvery) {
+			return
+		}
 	}
-	slog.Info("OTA: neuer Stand gefunden - Selbsttest laeuft", "release", p.Release)
+}
+
+func otaWait(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
 	select {
 	case <-ctx.Done():
-		return
-	case <-time.After(otaSelfTestSettle):
+		return false
+	case <-t.C:
+		return true
 	}
-	res := a.otaRunSelfTest(p, time.Now())
-	if err := otaapply.WriteJSON(a.Cfg.DataDir, otaapply.FileSelfTest, res); err != nil {
-		slog.Error("OTA: Selbsttest-Urteil konnte nicht abgelegt werden", "err", err)
-		return
-	}
-	if !res.Passed {
-		slog.Error("OTA: Selbsttest NICHT bestanden - der Stand wird zurueckgenommen",
-			"grund", res.Reason)
-		return
-	}
-	// Der Boden wird NUR hier angehoben, und nur gegen die eigene
-	// Build-Stempelung: aufgezeichnet wird ausschliesslich, was nachweislich
-	// laeuft.
-	if _, err := a.OtaRecordApplied(p.Release, p.ReleaseSeq); err != nil {
-		slog.Warn("OTA: der angewandte Stand konnte nicht aufgezeichnet werden", "err", err)
-	} else if p.StateSchema > 0 {
-		a.otaRecordStateSchema(p.StateSchema)
-	}
-	slog.Info("OTA: Selbsttest bestanden", "release", p.Release)
 }
 
 // otaRunSelfTest ist die eigentliche Pruefung - „nie vakuum" (Befund B2).
