@@ -484,6 +484,8 @@ function attentionScore(
 /** Der Kopf-Puls über allen Zeilen. */
 export interface FleetPulse {
   sites: number;
+  /** Anlagen mit mindestens einem offenen Signal, nicht die Summe der Signale. */
+  attention: number;
   gestoert: number;
   planAlt: number;
   wartet: number;
@@ -493,11 +495,43 @@ export interface FleetPulse {
 export function fleetPulse(rows: FleetRow[]): FleetPulse {
   return {
     sites: rows.length,
+    attention: rows.filter((r) => r.attention > 0).length,
     gestoert: rows.filter((r) => r.deviceTone === 'warn' || r.liveTone === 'warn').length,
     planAlt: rows.filter((r) => r.planTone === 'warn').length,
     wartet: rows.filter((r) => r.signals.some((s) => s.id === 'wartet' || s.id === 'kein-geraet'))
       .length,
     pflegeOffen: rows.reduce((n, r) => n + r.pflege.length, 0),
+  };
+}
+
+/**
+ * Die EINE Kopfaussage des Flotten-Pulses. Die Seite rendert sie nur - sie
+ * zaehlt weder Signale noch erfindet sie aus einzelnen Kacheln einen Zustand.
+ */
+export interface FleetPulseView {
+  tone: 'ok' | 'warn';
+  headline: string;
+  detail: string;
+}
+
+export function fleetPulseView(pulse: FleetPulse): FleetPulseView {
+  if (pulse.attention === 0) {
+    return {
+      tone: 'ok',
+      headline:
+        pulse.sites === 1
+          ? 'Die Anlage ist im Normalbetrieb'
+          : `Alle ${pulse.sites} Anlagen sind im Normalbetrieb`,
+      detail: 'Aktuell sind keine Störungen oder offenen Aufgaben bekannt.',
+    };
+  }
+  return {
+    tone: 'warn',
+    headline:
+      pulse.attention === 1
+        ? '1 Anlage braucht Aufmerksamkeit'
+        : `${pulse.attention} Anlagen brauchen Aufmerksamkeit`,
+    detail: 'Störungen, Datenlücken und offene Aufgaben stehen in der Anlagenliste zuerst.',
   };
 }
 

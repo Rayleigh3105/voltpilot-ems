@@ -6,6 +6,7 @@ import {
   controlMatrixRows,
   edgeStand,
   fleetPulse,
+  fleetPulseView,
   fleetRows,
   releaseIsRunning,
   sollRelease,
@@ -197,10 +198,33 @@ describe('fleetPulse', () => {
     );
     const p = fleetPulse(rows);
     expect(p.sites).toBe(4);
+    expect(p.attention).toBe(4);
     expect(p.gestoert).toBe(1);
     expect(p.planAlt).toBe(1);
     expect(p.wartet).toBe(1);
     expect(p.pflegeOffen).toBe(1);
+  });
+
+  it('summarises plants needing attention without counting their individual signals twice', () => {
+    const rows = fleetRows(
+      [
+        site({ siteId: 'a', worstStatus: 'stale', onlineCount: 0, lastSeenAt: ago(3 * 3600_000) }),
+        site({ siteId: 'b' }),
+      ],
+      NOW,
+    );
+    const view = fleetPulseView(fleetPulse(rows));
+    expect(view).toEqual({
+      tone: 'warn',
+      headline: '1 Anlage braucht Aufmerksamkeit',
+      detail: 'Störungen, Datenlücken und offene Aufgaben stehen in der Anlagenliste zuerst.',
+    });
+  });
+
+  it('uses a calm, singular status sentence for one healthy plant', () => {
+    const view = fleetPulseView(fleetPulse(fleetRows([site()], NOW)));
+    expect(view.headline).toBe('Die Anlage ist im Normalbetrieb');
+    expect(view.tone).toBe('ok');
   });
 });
 

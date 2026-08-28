@@ -3353,6 +3353,387 @@ button.vp-tech-card-h.toggle {
 .vp-admin-pulse {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
 }
+
+/* Plattform-Übersicht: ein dichter Operator-Puls statt sechs gleich lauter
+   Kacheln. Die Information liest sich in drei Ebenen: Flottenurteil,
+   Kennzahlen, priorisierte Anlagen. Alles ist auf die Seite begrenzt; die
+   übrigen Admin-Flächen behalten ihre bestehende Dichte. */
+.vp-platform-dashboard {
+  min-width: 0;
+}
+.vp-platform-dashboard .vp-admin-head {
+  margin-bottom: var(--vp-space-5);
+}
+.vp-platform-dashboard .vp-admin-head-main {
+  flex: 1 1 auto;
+}
+.vp-platform-dashboard .vp-admin-head .actions {
+  flex: 0 0 auto;
+}
+.vp-platform-overview {
+  margin-bottom: var(--vp-space-5);
+  min-width: 0;
+}
+.vp-platform-statusbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 410px);
+  min-width: 0;
+  overflow: hidden;
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  box-shadow: var(--vp-shadow-sm);
+}
+.vp-platform-statusbar:not(:has(.vp-platform-update)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.vp-platform-status-main {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-4);
+  min-width: 0;
+  padding: var(--vp-space-5);
+  background: color-mix(in srgb, var(--vp-primary) 7%, var(--vp-surface));
+}
+.vp-platform-status-icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--vp-radius-btn);
+  color: var(--vp-action);
+  background: var(--vp-tint);
+}
+.vp-platform-statusbar[data-tone='warn'] .vp-platform-status-main {
+  background: color-mix(in srgb, var(--vp-warn-ink) 7%, var(--vp-surface));
+}
+.vp-platform-statusbar[data-tone='warn'] .vp-platform-status-icon {
+  color: var(--vp-warn-ink);
+  background: color-mix(in srgb, var(--vp-warn-ink) 12%, var(--vp-surface));
+}
+.vp-platform-statusbar[data-tone='ok'] .vp-platform-status-icon {
+  color: var(--vp-ok-ink);
+  background: color-mix(in srgb, var(--vp-ok-ink) 11%, var(--vp-surface));
+}
+.vp-platform-status-copy {
+  min-width: 0;
+}
+.vp-platform-eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--vp-text-muted);
+  font-size: var(--vp-text-badge);
+  font-weight: 700;
+  letter-spacing: var(--vp-tracking-wide);
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.vp-platform-status-copy h2 {
+  font-size: clamp(1.15rem, 2vw, 1.35rem);
+  line-height: 1.25;
+}
+.vp-platform-status-copy p {
+  margin: var(--vp-space-1) 0 0;
+  color: var(--vp-text-muted);
+  font-size: var(--vp-text-sm);
+}
+.vp-platform-update {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: var(--vp-space-3);
+  min-width: 0;
+  padding: var(--vp-space-4) var(--vp-space-5);
+  border: 0;
+  border-left: 1px solid var(--vp-border);
+  background: var(--vp-surface);
+  color: var(--vp-text-dark);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--vp-transition-fast);
+}
+.vp-platform-update:hover {
+  background: var(--vp-bg-light);
+}
+.vp-platform-update:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: -3px;
+}
+.vp-platform-update > svg {
+  color: var(--vp-text-muted);
+}
+.vp-platform-update-icon {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--vp-radius-sm);
+  color: var(--vp-action);
+  background: var(--vp-tint);
+}
+.vp-platform-update[data-tone='warn'] .vp-platform-update-icon {
+  color: var(--vp-industry-end);
+  background: color-mix(in srgb, var(--vp-industry) 10%, var(--vp-surface));
+}
+.vp-platform-update[data-tone='busy'] .vp-platform-update-icon {
+  color: var(--vp-action);
+  background: color-mix(in srgb, var(--vp-primary) 18%, var(--vp-surface));
+}
+.vp-platform-update-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-platform-update-label {
+  color: var(--vp-text-muted);
+  font-size: var(--vp-text-badge);
+  font-weight: 700;
+  letter-spacing: var(--vp-tracking-wide);
+  text-transform: uppercase;
+}
+.vp-platform-update-copy strong {
+  font-size: 0.9rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.vp-platform-update-copy small {
+  color: var(--vp-text-muted);
+  font-size: var(--vp-text-badge);
+  line-height: 1.35;
+}
+.vp-platform-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  min-width: 0;
+  margin-top: var(--vp-space-3);
+  overflow: hidden;
+  background: var(--vp-border);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  box-shadow: var(--vp-shadow-sm);
+}
+.vp-platform-metric {
+  flex: 1 1 180px;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  min-width: 0;
+  min-height: 82px;
+  padding: var(--vp-space-3) var(--vp-space-4);
+  background: var(--vp-surface);
+}
+.vp-platform-metric-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--vp-radius-sm);
+  color: var(--vp-action);
+  background: var(--vp-tint);
+}
+.vp-platform-metric-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vp-platform-metric-copy strong {
+  color: var(--vp-navy);
+  font-family: var(--vp-font-heading);
+  font-size: 1.45rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--vp-tracking-tight);
+  line-height: 1.05;
+}
+.vp-platform-metric-copy span {
+  margin-top: 3px;
+  color: var(--vp-text-muted);
+  font-size: var(--vp-text-badge);
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.vp-platform-metric[data-tone='critical'] .vp-platform-metric-icon {
+  color: var(--vp-industry-end);
+  background: color-mix(in srgb, var(--vp-industry) 10%, var(--vp-surface));
+}
+.vp-platform-metric[data-tone='critical'] .vp-platform-metric-copy strong {
+  color: var(--vp-industry-end);
+}
+.vp-platform-metric[data-tone='warning'] .vp-platform-metric-icon {
+  color: var(--vp-warn-ink);
+  background: color-mix(in srgb, var(--vp-warn-ink) 11%, var(--vp-surface));
+}
+.vp-platform-metric[data-tone='warning'] .vp-platform-metric-copy strong {
+  color: var(--vp-warn-ink);
+}
+.vp-platform-metric[data-tone='neutral'] .vp-platform-metric-icon {
+  color: var(--vp-grid);
+  background: var(--vp-neutral-soft);
+}
+.vp-platform-metric[data-tone='ok'] .vp-platform-metric-icon {
+  color: var(--vp-ok-ink);
+  background: color-mix(in srgb, var(--vp-ok-ink) 10%, var(--vp-surface));
+}
+.vp-platform-metric[data-tone='ok'] .vp-platform-metric-copy strong {
+  color: var(--vp-ok-ink);
+}
+.vp-platform-dashboard > .vp-alert {
+  margin-top: 0;
+  margin-bottom: var(--vp-space-4);
+}
+.vp-platform-fleet-card {
+  min-width: 0;
+}
+.vp-platform-table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-4);
+  min-width: 0;
+  padding: var(--vp-space-4) var(--vp-space-5);
+  border-bottom: 1px solid var(--vp-border);
+  background: color-mix(in srgb, var(--vp-bg-light) 72%, var(--vp-surface));
+}
+.vp-platform-table-head > div {
+  min-width: 0;
+}
+.vp-platform-table-head h2 {
+  font-size: 1.08rem;
+}
+.vp-platform-table-head p {
+  margin: var(--vp-space-1) 0 0;
+  color: var(--vp-text-muted);
+  font-size: var(--vp-text-meta);
+}
+.vp-platform-table-head > span {
+  flex: 0 0 auto;
+}
+.vp-platform-dashboard .vp-fleetpuls {
+  table-layout: fixed;
+}
+.vp-platform-dashboard .vp-fleetpuls th {
+  padding: var(--vp-space-3) var(--vp-space-4);
+  background: var(--vp-surface);
+}
+.vp-platform-dashboard .vp-fleetpuls td {
+  padding: var(--vp-space-4);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.vp-platform-dashboard .vp-fleetpuls tbody tr {
+  transition: background-color 140ms var(--vp-ease);
+}
+.vp-platform-dashboard .vp-fleetpuls tbody tr[data-attention='true'] td:first-child {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--vp-warn-ink) 70%, transparent);
+}
+.vp-platform-dashboard .vp-fleetpuls tbody tr[data-attention='false'] td:first-child {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--vp-ok-ink) 65%, transparent);
+}
+.vp-platform-dashboard .vp-fleetpuls .vp-linklike {
+  color: var(--vp-action);
+  font-weight: 700;
+  text-align: left;
+  text-decoration: none;
+}
+.vp-platform-dashboard .vp-fleetpuls .vp-linklike:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.vp-platform-dashboard .vp-fleetpuls .vp-mono {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 820px) {
+  .vp-platform-statusbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vp-platform-update {
+    border-top: 1px solid var(--vp-border);
+    border-left: 0;
+  }
+}
+@media (max-width: 720px) {
+  .vp-platform-dashboard .vp-admin-head {
+    align-items: flex-start;
+  }
+  .vp-platform-dashboard .vp-admin-head-main {
+    align-items: flex-start;
+    flex-basis: 100%;
+    width: 100%;
+  }
+  .vp-platform-status-main {
+    align-items: flex-start;
+    padding: var(--vp-space-4);
+  }
+  .vp-platform-status-icon {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
+  .vp-platform-update {
+    padding: var(--vp-space-4);
+  }
+  .vp-platform-metric {
+    flex-basis: calc(50% - 1px);
+    min-height: 88px;
+    padding: var(--vp-space-3);
+  }
+  .vp-platform-metric-icon {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+  .vp-platform-table-head {
+    align-items: flex-start;
+    padding: var(--vp-space-4);
+  }
+  .vp-platform-table-head p {
+    max-width: 34rem;
+  }
+  .vp-platform-fleet-card .vp-table-scroll {
+    overflow: visible;
+  }
+  .vp-platform-dashboard .vp-fleetpuls {
+    table-layout: auto;
+    padding: var(--vp-space-3);
+  }
+  .vp-platform-dashboard .vp-fleetpuls colgroup {
+    display: none;
+  }
+  .vp-platform-dashboard .vp-fleetpuls tr {
+    background: var(--vp-surface);
+  }
+  .vp-platform-dashboard .vp-fleetpuls td {
+    padding: var(--vp-space-2) 0;
+  }
+  .vp-platform-dashboard .vp-fleetpuls td::before {
+    flex: 0 0 108px;
+  }
+  .vp-platform-dashboard .vp-fleetpuls td > * {
+    min-width: 0;
+  }
+  .vp-platform-dashboard .vp-fleetpuls td[data-label='Signale'] {
+    align-items: flex-start;
+  }
+}
+@media (max-width: 430px) {
+  .vp-platform-metric {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--vp-space-2);
+  }
+  .vp-platform-table-head {
+    flex-direction: column;
+  }
+}
 /* Primary table cell that stacks a value over a quiet secondary line (the
    Mandant name over its short id) - one column on desktop AND inside the
    phone label/value row. */

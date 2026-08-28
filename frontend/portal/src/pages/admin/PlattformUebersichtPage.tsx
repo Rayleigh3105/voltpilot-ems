@@ -3,7 +3,7 @@ import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
-import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
+import type { IconName } from '../../../designsystem/components/core/Icon';
 import { adminApi } from '../../admin/adminApi';
 import { fleetApi, type AdminFleetRelease, type AdminFleetSite } from '../../admin/fleetApi';
 import {
@@ -17,6 +17,7 @@ import {
   controlMatrixInputs,
   controlMatrixRows,
   fleetPulse,
+  fleetPulseView,
   fleetRows,
   type FleetRow,
 } from '../../adminFleet';
@@ -102,15 +103,16 @@ export function PlattformUebersichtPage({
   );
 
   const pulse = rows ? fleetPulse(rows) : null;
+  const pulseView = pulse ? fleetPulseView(pulse) : null;
   const updateBanner = updates ? loudBanner(updates.fleet) : null;
 
   return (
-    <>
+    <div className="vp-platform-dashboard">
       <AdminPageHead
         icon="dashboard"
         category="primary"
         title="Plattform-Übersicht"
-        description="Alle Anlagen aller Mandanten - Störungen zuerst. Eine Zeile öffnet die Anlage im Kontext ihres Mandanten."
+        description="Technischer Zustand aller Anlagen - mandantenübergreifend und nach Handlungsbedarf sortiert."
         actions={
           <Button
             variant="ghost"
@@ -124,57 +126,72 @@ export function PlattformUebersichtPage({
 
       {loadError && rows != null && <div className="vp-alert vp-alert-warn">{loadError}</div>}
 
-      {pulse && (
-        <div className="vp-kpis vp-admin-pulse" style={{ marginBottom: 'var(--vp-space-6)' }}>
-          <KpiCard
-            icon={<Icon name="sun" size={20} />}
-            category="primary"
-            value={String(pulse.sites)}
-            label="Anlagen gesamt"
-          />
-          <KpiCard
-            icon={<Icon name="alert-triangle" size={20} />}
-            category={pulse.gestoert > 0 ? 'industry' : 'primary'}
-            value={String(pulse.gestoert)}
-            label="Gestört / meldet sich nicht"
-          />
-          <KpiCard
-            icon={<Icon name="history" size={20} />}
-            category={pulse.planAlt > 0 ? 'dynamic' : 'primary'}
-            value={String(pulse.planAlt)}
-            label="Plan älter als 2 Std."
-          />
-          <KpiCard
-            icon={<Icon name="wifi" size={20} />}
-            category="primary"
-            value={String(pulse.wartet)}
-            label="Wartet auf erste Daten"
-          />
-          <KpiCard
-            icon={<Icon name="settings" size={20} />}
-            category={pulse.pflegeOffen > 0 ? 'dynamic' : 'primary'}
-            value={String(pulse.pflegeOffen)}
-            label="Offene Pflege-Punkte"
-          />
-          {/* OTA Stufe 2: der Update-Puls. Der Zähler läuft über die
-              ERREICHBARE Menge - ein Gerät ohne Meldung steht weder im Zähler
-              noch im Nenner, und die Zusatzzeile sagt das. */}
-          {updates && (
-            <button
-              type="button"
-              className="vp-kpi-link"
-              onClick={() => onNavigate?.(pageRoute('edge-updates'))}
-              title={kpiUnknownNote(updates.kpi) ?? 'Zur Seite Edge-Updates'}
-            >
-              <KpiCard
-                icon={<Icon name="refresh-cw" size={20} />}
-                category={kpiTone(updates.kpi) === 'warn' ? 'industry' : 'primary'}
-                value={kpiText(updates.kpi)}
-                label="Edge-Updates"
-              />
-            </button>
-          )}
-        </div>
+      {pulse && pulseView && (
+        <section className="vp-platform-overview" aria-label="Flottenstatus">
+          <div className="vp-platform-statusbar" data-tone={pulseView.tone} aria-live="polite">
+            <div className="vp-platform-status-main">
+              <span className="vp-platform-status-icon" aria-hidden="true">
+                <Icon name={pulseView.tone === 'warn' ? 'alert-triangle' : 'check'} size={22} />
+              </span>
+              <div className="vp-platform-status-copy">
+                <span className="vp-platform-eyebrow">Flottenstatus</span>
+                <h2>{pulseView.headline}</h2>
+                <p>{pulseView.detail}</p>
+              </div>
+            </div>
+
+            {/* OTA Stufe 2: ein langer, zusammengesetzter Betriebszustand ist
+                eine eigene Statuszeile und keine sechste schmale KPI-Karte. */}
+            {updates && (
+              <button
+                type="button"
+                className="vp-platform-update"
+                data-tone={kpiTone(updates.kpi)}
+                onClick={() => onNavigate?.(pageRoute('edge-updates'))}
+                title={kpiUnknownNote(updates.kpi) ?? 'Zur Seite Edge-Updates'}
+                aria-label={`Edge-Updates öffnen: ${kpiText(updates.kpi)}`}
+              >
+                <span className="vp-platform-update-icon" aria-hidden="true">
+                  <Icon name="refresh-cw" size={19} />
+                </span>
+                <span className="vp-platform-update-copy">
+                  <span className="vp-platform-update-label">Edge-Updates</span>
+                  <strong>{kpiText(updates.kpi)}</strong>
+                  {kpiUnknownNote(updates.kpi) && <small>{kpiUnknownNote(updates.kpi)}</small>}
+                </span>
+                <Icon name="chevron-right" size={18} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+
+          <div className="vp-platform-metrics" role="list" aria-label="Kennzahlen">
+            <PulseMetric icon="sun" value={pulse.sites} label="Anlagen gesamt" tone="primary" />
+            <PulseMetric
+              icon="alert-triangle"
+              value={pulse.gestoert}
+              label="Gestört oder ohne Meldung"
+              tone={pulse.gestoert > 0 ? 'critical' : 'ok'}
+            />
+            <PulseMetric
+              icon="history"
+              value={pulse.planAlt}
+              label="Plan älter als 2 Std."
+              tone={pulse.planAlt > 0 ? 'warning' : 'ok'}
+            />
+            <PulseMetric
+              icon="wifi"
+              value={pulse.wartet}
+              label="Warten auf erste Daten"
+              tone={pulse.wartet > 0 ? 'neutral' : 'ok'}
+            />
+            <PulseMetric
+              icon="settings"
+              value={pulse.pflegeOffen}
+              label="Offene Pflegepunkte"
+              tone={pulse.pflegeOffen > 0 ? 'warning' : 'ok'}
+            />
+          </div>
+        </section>
       )}
 
       {/* Warn-first wie überall im Puls: eine rote Zeile trägt ihren Grund und
@@ -198,28 +215,52 @@ export function PlattformUebersichtPage({
         </Card>
       ) : (
         <>
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <table className="vp-table responsive vp-fleetpuls">
-              <thead>
-                <tr>
-                  <th>Anlage</th>
-                  <th>Geräte</th>
-                  <th>Letzte Daten</th>
-                  <th>Quellen</th>
-                  <th>Plan</th>
-                  <th>Edge-Stand</th>
-                  <th>Signale</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  // Mandant + Anlage als Schlüssel: Anlagen-Ids sind global
-                  // eindeutig, aber der Schlüssel soll auch dann tragen, wenn
-                  // dieselbe Anlage je unter zwei Mandanten stünde.
-                  <FleetTableRow key={`${r.tenantId}:${r.siteId}`} row={r} onOpen={onJumpToTenant} />
-                ))}
-              </tbody>
-            </table>
+          <Card className="vp-platform-fleet-card" style={{ padding: 0 }}>
+            <div className="vp-platform-table-head">
+              <div>
+                <span className="vp-platform-eyebrow">Anlagenmonitor</span>
+                <h2 id="vp-platform-fleet-title">Anlagen nach Handlungsbedarf</h2>
+                <p>Störungen und offene Aufgaben stehen oben. Ein Klick öffnet den Mandantenkontext.</p>
+              </div>
+              <Badge variant={pulse?.attention ? 'warn' : 'ok'} dot>
+                {rows.length} {rows.length === 1 ? 'Anlage' : 'Anlagen'}
+              </Badge>
+            </div>
+            <div className="vp-table-scroll">
+              <table
+                className="vp-table responsive vp-fleetpuls"
+                aria-labelledby="vp-platform-fleet-title"
+              >
+                <colgroup>
+                  <col style={{ width: '19%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '22%' }} />
+                  <col style={{ width: '16%' }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Anlage</th>
+                    <th>Geräte</th>
+                    <th>Letzte Daten</th>
+                    <th>Quellen</th>
+                    <th>Plan</th>
+                    <th>Edge-Stand</th>
+                    <th>Signale</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    // Mandant + Anlage als Schlüssel: Anlagen-Ids sind global
+                    // eindeutig, aber der Schlüssel soll auch dann tragen, wenn
+                    // dieselbe Anlage je unter zwei Mandanten stünde.
+                    <FleetTableRow key={`${r.tenantId}:${r.siteId}`} row={r} onOpen={onJumpToTenant} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
 
           <ControlMatrixSection
@@ -229,7 +270,31 @@ export function PlattformUebersichtPage({
           />
         </>
       )}
-    </>
+    </div>
+  );
+}
+
+function PulseMetric({
+  icon,
+  value,
+  label,
+  tone,
+}: {
+  icon: IconName;
+  value: number;
+  label: string;
+  tone: 'primary' | 'critical' | 'warning' | 'neutral' | 'ok';
+}) {
+  return (
+    <div className="vp-platform-metric" data-tone={tone} role="listitem">
+      <span className="vp-platform-metric-icon" aria-hidden="true">
+        <Icon name={icon} size={18} />
+      </span>
+      <span className="vp-platform-metric-copy">
+        <strong>{value}</strong>
+        <span>{label}</span>
+      </span>
+    </div>
   );
 }
 
@@ -242,7 +307,7 @@ function FleetTableRow({
 }) {
   const open = () => onOpen(row.tenantId, anlageRoute(row.siteId));
   return (
-    <tr className="clickable" onClick={open}>
+    <tr className="clickable" data-attention={row.attention > 0 ? 'true' : 'false'} onClick={open}>
       <td data-label="Anlage">
         <div className="vp-cell-main">
           <button
