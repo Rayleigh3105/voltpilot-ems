@@ -1040,6 +1040,24 @@ je Ebene einen Test).
 - **⚠ Der Grund wird weggelassen, wenn er dasselbe sagt wie das Zustands-Wort.**
   Der Verteiler nennt einen ladenden Stecker selbst „lädt"; zweimal dasselbe in
   einer Zeile ist Rauschen, kein Beleg (im Browser aufgefallen, nicht im Test).
+- **⚠ DER OCPP-STATUS ENTSCHEIDET DAS ZUSTANDSWORT, das `charging`-Flag der Box
+  NUR den Budget-Anspruch** (`ladeZustand(con, point)` — die EINE Wortquelle,
+  seit dem Fix aus `vp-verbraucher-cockpit-k1` §1.5/§4.2; `rowFor` ruft sie auf,
+  das Cockpit wird sie wiederverwenden). Die Box hält `charging` ausdrücklich
+  auch für `SuspendedEVSE` (unser EIGENES Lastmanagement hält die Säule auf
+  0 kW) und `SuspendedEV` (das Auto nimmt nichts) auf TRUE, weil die Sitzung
+  lebt und ihre Zuteilung nicht hin- und herwandern darf (`csms/model.go`
+  `ChargingStatus` — eine flatternde Zuteilung ist schlimmer als eine
+  gehaltene). Wer das Flag als Wort las, schrieb den Widerspruch
+  „lädt · wartet - Budget vergeben" in EINE Zeile. Das Vokabular ist
+  geschlossen (`LadeZustandKind` + `ZUSTAND_WORT`/`ZUSTAND_TON`), und jede
+  Fläche schlüsselt auf `kind`, nie auf den deutschen Satz (`boostbar`).
+  **Zwei Regeln daran hängen:** ohne gemeldeten Status gibt es kein OCPP-Wort,
+  dann — und nur dann — fällt es auf das Flag zurück (einen Zustand zu
+  behaupten, den niemand gemeldet hat, wäre schlimmer; der gefährliche Fall
+  trägt seinen Status per Konstruktion); und `Unavailable` ist KEINE Störung,
+  sondern „Nicht verfügbar" (grau) — die frühere Zusammenlegung mit `Faulted`
+  machte aus einer abgemeldeten Säule einen Defekt.
 - **Der Modus heißt `lastmanagement`** (`surface.ts`): er hat als EINZIGER
   keinen Strategie-Knoten und keinen Geld-Strom — ein Ladepark rechnet nichts
   ab (Scope-Zaun E4: „Erlöse" fehlt dort auch in der Navigation). Sein Signal
