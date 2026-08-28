@@ -45,6 +45,13 @@ const ranges: Array<[MeasurementRange, string]> = [
   ['year', 'Jahr'], ['free', 'Frei'],
 ];
 
+/**
+ * A newly enabled point normally receives its first sample within its cadence.
+ * The page must keep asking for that first value; an immediate one-off refresh
+ * races the edge and leaves a permanent dash until the next page load.
+ */
+const OBSERVATION_REFRESH_MS = 15_000;
+
 function uuid() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-0000-4000-8000-${Math.random()}`;
 }
@@ -340,17 +347,23 @@ export function BeobachteteRegister({
   };
   const loadQuiet = () => {
     if (!deviceId || stumm) return;
-    // Auf einer Geräteseite fragt `availableOnly` die Box („was kann DIESE Box
-    // lesen") - der Familien-Schnitt fragt das Gerät. Nie beides.
-    const params = geraeteSicht
-      ? familienParams(new URLSearchParams({ limit: '250' }))
-      : new URLSearchParams({ availableOnly: 'true', limit: '250' });
+    // Die ruhige Liste beantwortet NUR „was ist ausgewählt?". Eine beliebige
+    // erste Seite des (bei Deye > 600 Punkte großen) Katalogs verlor z. B.
+    // „PV2 Spannung" hinter dem 250er-Limit, obwohl der erste Wert gespeichert
+    // war. Die Bibliothek im Drawer bleibt separat paginiert und gefiltert.
+    const params = new URLSearchParams({ selectedOnly: 'true', limit: '250' });
+    if (entityId) params.set('entityId', entityId);
     api.measurementCatalog(deviceId, params).then(setQuiet, () => setUnsupported(true));
   };
   useEffect(() => {
     setUnsupported(false);
     loadState();
     loadQuiet();
+    const timer = window.setInterval(() => {
+      loadState();
+      loadQuiet();
+    }, OBSERVATION_REFRESH_MS);
+    return () => window.clearInterval(timer);
   }, [deviceId, entityId, familienListe?.join(',')]);
 
   useEffect(() => {
@@ -546,8 +559,11 @@ export function BeobachteteRegister({
   }
 
   return (
-    <section className="vp-beob" aria-labelledby="vp-beob-title">
+    <section className="vp-beob vp-rahmen-block" aria-labelledby="vp-beob-title">
       <h3 id="vp-beob-title" className="vp-beob-title">{TITEL[wahl]}</h3>
+      <p className="vp-beob-intro">
+        VoltPilot liest diese Werte automatisch und speichert ihren Verlauf.
+      </p>
       {/* Die ehrliche Grenze der Stufe 3a - sie steht ÜBER der Liste, weil sie
           für jede Zeile gilt (§7.4 3a). */}
       {!lesbar && (
@@ -580,8 +596,8 @@ export function BeobachteteRegister({
         </ul>
       )}
       <div className="vp-beob-hinzu">
-        <Button variant="outline" onClick={() => setOpen(true)} iconLeft={<Icon name="search" size={16} />}>
-          {`＋ ${HINZU[wahl]}`}
+        <Button variant="outline" onClick={() => setOpen(true)} iconLeft={<Icon name="plus" size={16} />}>
+          {HINZU[wahl]}
         </Button>
         {/* „Eigenes Register" gibt es nur, wo die Box eines lesen KANN. */}
         {eigeneErlaubt && registerFaehig && (

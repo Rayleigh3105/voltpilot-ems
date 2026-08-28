@@ -134,10 +134,12 @@ public class DeviceMeasurementSelectionController {
             @RequestParam(required = false) String semanticStatus,
             @RequestParam(required = false) Boolean recorded,
             @RequestParam(defaultValue = "false") boolean availableOnly,
+            @RequestParam(defaultValue = "false") boolean selectedOnly,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "100") int limit) {
         try {
             return catalog.search(q, family, group, semanticStatus, recorded, availableOnly,
+                    selectedOnly,
                     selections.availableFamilies(deviceId, entityId),
                     selections.selectedCadences(deviceId, entityId),
                     selections.recordedPointKeys(deviceId),

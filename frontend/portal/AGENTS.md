@@ -1396,8 +1396,9 @@ Die Wallbox zeigte damit `hybrid_3p`-Register.
 Konzept `data/vp-geraeteseite-rahmen-r2` §7.2/§7.4 (Captain-Entscheide **D3a** die Liste gibt
 es auch für HTTP/OCPP-Geräte · **D5a**). Sie führt die Stufe-0-Auskunft („welchen Katalog zeigt
 diese Seite?") zu Ende: die Sektion beginnt jetzt mit dem, was DIESES Gerät WIRKLICH aufzeichnet.
-**Reine Portal-Arbeit — kein Endpunkt, keine Migration**; sie baut auf der Komponenten-Selektion
-des Servers auf (PR 536, Root-`AGENTS.md` „Mess-Selektion JE KOMPONENTE").
+Die ursprüngliche Stufe war reine Portal-Arbeit ohne neuen Endpunkt oder Migration; sie baut auf
+der Komponenten-Selektion des Servers auf (PR 536, Root-`AGENTS.md` „Mess-Selektion JE
+KOMPONENTE"). Der spätere Statusabruf `selectedOnly` ist unten als Produktions-Härtung benannt.
 
 - **⚠ `MeasurementLibrary` ist darin AUFGELÖST, nicht dupliziert** (Datei + Test gelöscht, das
   Stylesheet heißt seither `components/Messwerte.css` und wird von `SiteMeasurementComparison`
@@ -1412,6 +1413,16 @@ des Servers auf (PR 536, Root-`AGENTS.md` „Mess-Selektion JE KOMPONENTE").
   schreiben). Für ein HTTP-/OCPP-Gerät (`registerFaehig === false`) gibt es nur 1+2, und alles
   heißt „Messwert" statt „Register" (`wortwahl`/`TITEL`/`HINZU`/`LEER` — D3: die Fähigkeit ist
   dieselbe, „Register" wäre dort das falsche Wort).
+- **⚠ Die ruhige Liste ist KEINE erste Katalogseite** (Produktionsbefund
+  28.08.2026): `hybrid_3p` trägt mehr als 600 lesbare Punkte, der Server deckelt
+  eine Seite auf 250 und „PV2 Spannung“ liegt hinter Position 500. Deshalb
+  fragt `loadQuiet` ausschließlich `selectedOnly=true` (plus `entityId`) und
+  nie `family`/`availableOnly`; der paginierte Familien-Schnitt gehört nur in
+  den geöffneten Bibliotheks-Drawer. Ein 15-s-Takt lädt Auswahl + letzte Werte
+  nach — der einmalige Sofortabruf direkt nach dem Einschalten lief dem ersten
+  Edge-Sample davon und ließ sonst bis zum Neuladen dauerhaft einen Strich
+  stehen. Gepinnt in `MeasurementCatalogTest` und
+  `BeobachteteRegister.test.tsx`.
 - **⚠ DIE BRÜCKE ist der Grund, warum Teil 3 in derselben Sektion bleibt:** jede über „Jetzt
   lesen" abgerufene Zeile bekommt „Beobachten" (`brueckeAusLesung` → `BrueckeVorschlag` →
   `bruecke`-Prop → das Formular öffnet VORBEFÜLLT). Der Vorschlag entsteht **zur LESEZEIT**

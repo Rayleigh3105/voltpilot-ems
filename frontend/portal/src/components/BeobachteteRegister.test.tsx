@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { api, type MeasurementCatalogPoint, type MeasurementSelectionState } from '../api';
 import { BeobachteteRegister } from './BeobachteteRegister';
 
@@ -284,15 +284,25 @@ describe('BeobachteteRegister · der Geraete- und Komponenten-Schnitt', () => {
     vi.spyOn(api, 'measurementSelection').mockResolvedValue(state);
     vi.spyOn(api, 'measurementCatalog').mockResolvedValue(katalog([point]));
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it('sendet die Familien und fragt die Box nicht mehr nach ihrer Vereinigung', async () => {
     render(<BeobachteteRegister deviceId="d" familien={['goe.api_v2']} />);
     await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
-    const params = vi.mocked(api.measurementCatalog).mock.calls[0][1];
-    expect(params.getAll('family')).toEqual(['goe.api_v2']);
-    expect(params.get('availableOnly')).toBeNull();
+    const statusParams = vi.mocked(api.measurementCatalog).mock.calls[0][1];
+    expect(statusParams.get('selectedOnly')).toBe('true');
+    expect(statusParams.getAll('family')).toEqual([]);
     fireEvent.click(await screen.findByRole('button', { name: /beobachten/ }));
+    await waitFor(() => expect(vi.mocked(api.measurementCatalog).mock.calls.length)
+      .toBeGreaterThan(1));
+    const bibliothekParams = vi.mocked(api.measurementCatalog).mock.calls
+      .map((call) => call[1])
+      .find((params) => params.get('selectedOnly') == null)!;
+    expect(bibliothekParams.getAll('family')).toEqual(['goe.api_v2']);
+    expect(bibliothekParams.get('availableOnly')).toBeNull();
     expect(screen.queryByText('Verfügbarkeit')).toBeNull();
   });
 
@@ -323,14 +333,36 @@ describe('BeobachteteRegister · der Geraete- und Komponenten-Schnitt', () => {
     ));
   });
 
-  it('bleibt OHNE Komponente die Box-Semantik - Zeichen fuer Zeichen', async () => {
+  it('fragt ohne Komponente kompakt nach den ausgewaehlten Punkten der Box', async () => {
     render(<BeobachteteRegister deviceId="d" />);
     await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
     expect(api.measurementSelection).toHaveBeenCalledWith('d', undefined);
     const params = vi.mocked(api.measurementCatalog).mock.calls[0][1];
     expect(params.getAll('family')).toEqual([]);
     expect(params.get('entityId')).toBeNull();
-    expect(params.get('availableOnly')).toBe('true');
+    expect(params.get('selectedOnly')).toBe('true');
+  });
+
+  it('holt den ersten Wert nach, ohne dass die Seite neu geladen werden muss', async () => {
+    vi.useFakeTimers();
+    const gelesen = { ...point, decodedValue: '4,2', lastReadAt: new Date().toISOString(), recorded: true };
+    vi.mocked(api.measurementSelection).mockResolvedValue({ ...state, selections: [beobachtet] } as never);
+    vi.mocked(api.measurementCatalog)
+      .mockResolvedValueOnce(katalog([point]))
+      .mockResolvedValue(katalog([gelesen]));
+
+    const { unmount } = render(
+      <BeobachteteRegister deviceId="d" familien={['hybrid_3p']} />,
+    );
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByTestId(`beob-${point.pointKey}`)).toHaveTextContent('—');
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(screen.getByTestId(`beob-${point.pointKey}`)).toHaveTextContent('4,2 A');
+    expect(api.measurementSelection).toHaveBeenCalledTimes(2);
+    expect(api.measurementCatalog).toHaveBeenCalledTimes(2);
+    unmount();
+    vi.useRealTimers();
   });
 
   it('entsteht ohne Katalog-Familie gar nicht und fragt dann auch nichts ab', async () => {

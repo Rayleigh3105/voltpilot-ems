@@ -35,6 +35,7 @@ import type {
   DeviceExportLimit,
   RegisterKnowledgeFamily,
   RegisterWriteEvent,
+  RegisterWriteOutcome,
   SiteSource,
 } from './api';
 import { fmtNum, fmtRelative } from './format';
@@ -88,8 +89,8 @@ export const KEINE_REGISTER: Record<string, string> = {
  * ein Rohwort trägt - sonst wäre er eine Behauptung über Werte, die dastehen.
  */
 export const ROH_HINWEIS =
-  'Rohwörter zeigt VoltPilot heute nur zu einem Schreibvorgang an - die '
-  + 'laufenden Messungen kommen bereits umgerechnet an.';
+  'Technische Rohwerte zeigt VoltPilot nur, wenn sie tatsächlich vom Gerät '
+  + 'übertragen wurden. Laufende Messungen kommen bereits umgerechnet an.';
 
 /**
  * Der Satz zur auf ABRUF gelesenen Zeile (Geräteseiten Stufe 2, Konzept §7).
@@ -106,6 +107,21 @@ export const ABRUF_HINWEIS =
 /** Der Satz, wenn der Abruf selbst nicht durchkam (nie ein roher Status). */
 export const LESE_FEHLGESCHLAGEN =
   'Der Wert konnte nicht gelesen werden. Bitte später erneut versuchen.';
+
+/**
+ * A preview is a read-only request. Older edge releases reused their write
+ * timeout prose here and told the customer it was uncertain whether something
+ * had been written. The portal knows the mode and can state the stronger fact:
+ * a failed preview did not send a write command.
+ */
+export function abrufFehler(out: Pick<RegisterWriteOutcome, 'errorCode' | 'message'>): string {
+  if (out.errorCode === 'timeout') {
+    return 'Der Wechselrichter hat innerhalb von 30 Sekunden nicht auf die '
+      + 'Leseanfrage geantwortet. Es wurde nichts geschrieben. Bitte einen '
+      + 'Moment warten und erneut lesen.';
+  }
+  return out.message?.trim() || LESE_FEHLGESCHLAGEN;
+}
 
 /**
  * Eine auf ABRUF gelesene Zeile aus dem Ergebnis der Vorschau-Route.

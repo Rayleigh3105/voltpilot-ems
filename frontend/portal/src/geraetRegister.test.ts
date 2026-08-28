@@ -7,7 +7,7 @@ import type {
 } from './api';
 import { NBSP } from './format';
 import { NO_DATA } from './nodata';
-import { KEINE_REGISTER, registerSicht, ROH_HINWEIS } from './geraetRegister';
+import { abrufFehler, KEINE_REGISTER, registerSicht, ROH_HINWEIS } from './geraetRegister';
 
 const NOW = Date.parse('2026-08-21T10:00:00Z');
 
@@ -160,5 +160,22 @@ describe('registerSicht - die gelesenen Register EINES Geräts', () => {
     const leer = registerSicht({ art: 'quelle', now: NOW });
     expect(leer.leer).toMatch(/noch keine gelesenen Register/);
     expect(leer.hinweis).toBeNull();
+  });
+});
+
+describe('Fehler beim reinen Register-Lesen', () => {
+  it('behauptet bei einem Timeout nie, dass vielleicht geschrieben wurde', () => {
+    const text = abrufFehler({
+      errorCode: 'timeout',
+      message: 'Es ist nicht sicher, ob geschrieben wurde.',
+    });
+    expect(text).toContain('Es wurde nichts geschrieben');
+    expect(text).toContain('erneut lesen');
+    expect(text).not.toContain('nicht sicher');
+  });
+
+  it('erhält einen genaueren Gerätefehler', () => {
+    expect(abrufFehler({ errorCode: 'modbus_exception', message: 'Illegale Adresse.' }))
+      .toBe('Illegale Adresse.');
   });
 });

@@ -2884,6 +2884,14 @@ Slot HOECHSTENS EINE laufende Socket-Runde.
 - **Eine verspaetete Antwort wird BENANNT** (`onInstallerWriteResult` warnt bei
   einer Antwort ohne Wartenden), sonst ist aus dem Geraeteprotokoll allein „zu
   spaet" nicht von „nie geantwortet" zu unterscheiden.
+- **⚠ Der Timeout-Satz folgt dem MODUS.** `Agent.WriteOnce` weiß über
+  `AdmittedWrite.Apply()`, ob der Auftrag nur las oder wirklich schrieb: beim
+  Probelauf ist „Es wurde nichts geschrieben“ belegbar, beim Schreibauftrag
+  bleibt der Zustand unbekannt. Den alten, mode-blinden Satz („nicht sicher, ob
+  geschrieben wurde“) auch bei einer Lesung zu zeigen, war eine falsche
+  Gerätewirkung und wird von
+  `TestASilentDeviceGetsModeSpecificHonestFailureAndOnlyWritesAreAudited`
+  verhindert.
 - Beweise: `bus-arbitration.test.js` (die reinen Regeln) · `flows-sync.test.js`
   (die drei Knoten sprechen EINE Warteschlangen-Sprache, die Kette, der
   gebundene Rueckzug) · `deye-control.e2e.test.js` („EINMAL-LESUNG UNTER

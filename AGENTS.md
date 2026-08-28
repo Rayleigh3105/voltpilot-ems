@@ -2773,6 +2773,13 @@ mit der der OTA-Pfad nur EINEN Apply-Kern hat).
   beim Start, wenn ein konfiguriertes Budget darunter liegt. Ein zu kleines Budget ist nicht „etwas ungeduldig", sondern
   ein Feature, das auf einer belegten Anlage NIE funktioniert — und weil eine schnelle Test-Attrappe
   immer in Millisekunden antwortet, fällt es in keinem Testlauf auf.
+- **⚠ Ein Timeout beim LESEN ist keine unbekannte Schreibwirkung.** Ein
+  Probelauf (`Apply=false`) sendet per Konstruktion keinen Schreibrahmen und
+  darf deshalb sagen „Es wurde nichts geschrieben“; nur nach einem echten
+  Schreibauftrag bleibt der Zustand bei Schweigen unbekannt. Die Edge bildet
+  beide Sätze in `Agent.WriteOnce` getrennt, und das Portal normalisiert alte
+  Edge-Antworten in `geraetRegister.abrufFehler`, damit ein reiner Leseversuch
+  nie wieder „nicht sicher, ob geschrieben wurde“ anzeigt.
 - **⚠ SCHWEIGEN HAT DREI URSACHEN, UND SIE DÜRFEN NIE DENSELBEN SATZ TRAGEN** (derselbe Vorfall,
   Auftrag 3). Vorher trug jeder Ausgang „Die Anlage hat den Ist-Wert nicht rechtzeitig gemeldet" —
   in zwei von drei Fällen eine Falschaussage. Die reine, Docker-frei geprüfte
@@ -5499,6 +5506,11 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
   `modbus_holding|modbus_input`, `readOnly=true`, vollständig typ-/adress-/
   skalen-/einheiten-/kadenzvalidiert; dieser Pfad hat keine Schreibfunktion und
   setzt Request-Kosten ausschließlich serverseitig konservativ (2000 ms) an.
+  **⚠ Die ruhige Beobachtungsliste fragt den Katalog mit `selectedOnly=true`:**
+  der Gesamtkatalog ist auf 250 Punkte je Seite gedeckelt, Deye `hybrid_3p`
+  trägt aber mehr als 600 lesbare Punkte (PV2 Spannung liegt hinter Position
+  500). Eine erste Katalogseite ist deshalb niemals ein Statusabruf. Der Filter
+  materialisiert zusätzlich konkrete dynamische `[*]`-Auswahlen.
 - **Kein zweiter Katalog im API-Service.** Maven paketiert die in
   `measurement.catalog.version` festgelegte kanonische Datei aus
   `catalog/measurement-points/dist/` bytegleich

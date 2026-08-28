@@ -14,7 +14,7 @@ class MeasurementCatalogTest {
     @Test
     void canonicalArtifactSupportsSearchFacetsAndSemanticHonesty() {
         var result = catalog.search("Batteriestrom", Set.of("hybrid_1p"), null, null,
-                null, false, Set.of(), Map.of(), Set.of(), Map.of(), 0, 20);
+                null, false, false, Set.of(), Map.of(), Set.of(), Map.of(), 0, 20);
 
         assertThat(result.catalogVersion()).isEqualTo("2026.08.26.3");
         assertThat(result.customPointActionLabel()).isEqualTo("Eigenen Messwert hinzufügen");
@@ -34,15 +34,34 @@ class MeasurementCatalogTest {
     void selectorsAndUnitsAreSearchableAndRecordedFilterUsesCurrentSelection() {
         String key = "deye.hybrid_1p.battery.battery-current";
         var bySelector = catalog.search("holding:0x00bf", Set.of(), null, null, null,
-                false, Set.of(), Map.of(key, 30), Set.of(key), Map.of(), 0, 10);
+                false, false, Set.of(), Map.of(key, 30), Set.of(key), Map.of(), 0, 10);
         assertThat(bySelector.points()).extracting(MeasurementCatalog.Point::pointKey)
                 .contains(key);
 
         var recorded = catalog.search("", Set.of(), null, null, true,
-                false, Set.of(), Map.of(key, 30), Set.of(key), Map.of(), 0, 10);
+                false, false, Set.of(), Map.of(key, 30), Set.of(key), Map.of(), 0, 10);
         assertThat(recorded.total()).isEqualTo(1);
         assertThat(recorded.points().get(0).selected()).isTrue();
         assertThat(recorded.points().get(0).selectedCadenceS()).isEqualTo(30);
+    }
+
+    @Test
+    void selectedOnlyReturnsASelectedPointBeyondTheFirstCatalogPage() {
+        String key = "deye.hybrid_3p.pv.pv2-voltage";
+        var firstPage = catalog.search("", Set.of("hybrid_3p"), null, null, null,
+                false, false, Set.of("hybrid_3p"), Map.of(key, 30), Set.of(key),
+                Map.of(), 0, 250);
+        assertThat(firstPage.total()).isGreaterThan(250);
+        assertThat(firstPage.points()).extracting(MeasurementCatalog.Point::pointKey)
+                .doesNotContain(key);
+
+        var selected = catalog.search("", Set.of(), null, null, null,
+                false, true, Set.of("hybrid_3p"), Map.of(key, 30), Set.of(key),
+                Map.of(), 0, 250);
+        assertThat(selected.total()).isEqualTo(1);
+        assertThat(selected.points()).extracting(MeasurementCatalog.Point::pointKey)
+                .containsExactly(key);
+        assertThat(selected.points().get(0).selected()).isTrue();
     }
 
     @Test

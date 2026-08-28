@@ -131,6 +131,16 @@ class MeasurementSelectionApiTest {
                 .containsEntry("appliedAt", null);
         assertThat(first(enabled, "events").get("enabledAt")).isNotNull();
 
+        // The compact portal status call returns the active selection itself,
+        // independent of its position in the paginated full catalog.
+        ResponseEntity<Map<String, Object>> selectedCatalog = get(demo,
+                path(DEVICE_A) + "/catalog?selectedOnly=true&limit=250");
+        assertThat(selectedCatalog.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(selectedCatalog.getBody()).containsEntry("total", 1);
+        assertThat(first(selectedCatalog, "points")).containsEntry("pointKey", POINT)
+                .containsEntry("selected", true)
+                .containsEntry("selectedCadenceS", 60);
+
         // Same key + same payload is a true replay even though expectedRevision
         // is now stale: no new revision/event is created.
         ResponseEntity<Map<String, Object>> replay = put(demo, DEVICE_A, POINT, enable);

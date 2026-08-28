@@ -198,14 +198,27 @@ func TestANotAdoptedValueIsAMismatchAndIsAudited(t *testing.T) {
 	}
 }
 
-// Nothing came back: honest failure, audited, and it never claims success.
-func TestASilentDeviceIsAnHonestFailureAndIsAudited(t *testing.T) {
+// Nothing came back: a READ can state that nothing was written, while an
+// APPLY must keep the device state unknown. Only the latter is audited.
+func TestASilentDeviceGetsModeSpecificHonestFailureAndOnlyWritesAreAudited(t *testing.T) {
 	prev := installerWriteTimeout
 	installerWriteTimeout = 300 * time.Millisecond
 	t.Cleanup(func() { installerWriteTimeout = prev })
 
 	box := startInstallerBox(t)
 	installerStub(t, box.addr, nil, nil) // sees it, answers nothing
+	read, err := box.a.InstallerWrite(installerwrite.Request{Value: 7000}, "test")
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !containsSub(read.Message, "Es wurde nichts geschrieben") ||
+		containsSub(read.Message, "nicht sicher") {
+		t.Fatalf("a dry-run timeout must state that it wrote nothing: %#v", read)
+	}
+	if got := box.a.installerLog.List(); len(got) != 0 {
+		t.Fatalf("a dry run must not be audited as a write: %#v", got)
+	}
+
 	out, err := box.a.InstallerWrite(installerwrite.Request{
 		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(installerwrite.RegisterAddr, 7000),
 	}, "test")
@@ -214,6 +227,9 @@ func TestASilentDeviceIsAnHonestFailureAndIsAudited(t *testing.T) {
 	}
 	if out.Accepted || out.Result != installerwrite.ResultFailed {
 		t.Fatalf("a silent device must fail honestly: %#v", out)
+	}
+	if !containsSub(out.Message, "nicht sicher") {
+		t.Fatalf("an unanswered write must keep the state unknown: %#v", out)
 	}
 	if got := box.a.installerLog.List(); len(got) != 1 || got[0].Result != installerwrite.ResultFailed {
 		t.Fatalf("a failed attempt must be audited: %#v", got)

@@ -165,9 +165,15 @@ func (a *Agent) WriteOnce(target installerwrite.Target, w installerwrite.Admitte
 
 	res := a.installerExchange(topic, target, w)
 	if res == nil {
+		message := "Der Wechselrichter hat nicht rechtzeitig auf die Leseanfrage geantwortet. " +
+			"Es wurde nichts geschrieben. Bitte einen Moment warten und erneut lesen."
+		if w.Apply() {
+			message = "Der Wechselrichter hat nicht rechtzeitig geantwortet. Es ist nicht sicher, " +
+				"ob geschrieben wurde - bitte den Ist-Wert mit einem Probelauf erneut lesen."
+		}
 		return installerwrite.WriteOnceResult{
 			ErrorCode: installerwrite.ErrCodeTimeout,
-			Message:   "Der Wechselrichter hat nicht rechtzeitig geantwortet. Es ist nicht sicher, ob geschrieben wurde - bitte den Ist-Wert mit einem Probelauf erneut lesen.",
+			Message:   message,
 		}, nil
 	}
 	out := installerwrite.WriteOnceResult{Before: res.Before, After: res.After, Wrote: res.Wrote}

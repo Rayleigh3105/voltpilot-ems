@@ -173,7 +173,7 @@ public class MeasurementCatalog {
     }
 
     public SearchResult search(String query, Set<String> families, String group,
-            String semanticStatus, Boolean recorded, boolean availableOnly,
+            String semanticStatus, Boolean recorded, boolean availableOnly, boolean selectedOnly,
             Set<String> availableFamilies, Map<String, Integer> selected,
             Set<String> recordedPointKeys,
             Map<String, MeasurementSelectionRepository.Observation> observations,
@@ -185,8 +185,22 @@ public class MeasurementCatalog {
         int safeLimit = Math.max(1, Math.min(limit, 250));
         String q = lower(query);
         Set<String> requestedFamilies = families == null ? Set.of() : families;
-        List<Point> filtered = points.stream()
+        // Dynamic points live in the canonical catalog as `[*]`, while an
+        // enabled selection carries its concrete module index. The compact
+        // selected-only view must therefore materialize those concrete keys;
+        // otherwise it would fix ordinary points but still hide module values.
+        List<Point> candidates = new ArrayList<>(points);
+        for (String selectedKey : selected.keySet()) {
+            if (!byKey.containsKey(selectedKey)) {
+                Point instantiated = resolve(selectedKey);
+                if (instantiated != null) {
+                    candidates.add(instantiated);
+                }
+            }
+        }
+        List<Point> filtered = candidates.stream()
                 .filter(Point::readable)
+                .filter(p -> !selectedOnly || selected.containsKey(p.pointKey()))
                 .filter(p -> requestedFamilies.isEmpty() || requestedFamilies.contains(p.family()))
                 .filter(p -> !availableOnly || availableFamilies.contains(p.family()))
                 .filter(p -> group == null || group.equals(p.group()))

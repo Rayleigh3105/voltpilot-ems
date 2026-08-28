@@ -65,7 +65,8 @@
  * WORT - die Tönung ist der Zusatz, nie der Träger.
  * ------------------------------------------------------------------------- */
 .vp-beob { min-width: 0; }
-.vp-beob-title { margin: 0 0 var(--vp-space-3); font-size: var(--vp-text-lg); }
+.vp-beob-title { margin: 0 0 .25rem; font-size: var(--vp-text-lg); }
+.vp-beob-intro { color: var(--vp-text-gray); font-size: var(--vp-text-sm); margin: 0 0 var(--vp-space-3); }
 .vp-beob-list { display: grid; gap: var(--vp-space-2); list-style: none; margin: 0; padding: 0; }
 .vp-beob-row { border: 1px solid var(--vp-border); border-radius: var(--vp-radius-md); background: var(--vp-surface); padding: var(--vp-space-3); min-width: 0; }
 .vp-beob-kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; min-width: 0; }

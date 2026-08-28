@@ -511,6 +511,57 @@
   font-variant-numeric: tabular-nums;
 }
 
+.vp-register-block-intro {
+  margin: -4px 0 var(--vp-space-3, 12px);
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.86rem;
+}
+
+.vp-register-name,
+.vp-register-address,
+.vp-register-value,
+.vp-register-raw {
+  display: block;
+}
+
+.vp-register-name,
+.vp-register-value {
+  color: var(--vp-text, #1a202c);
+}
+
+.vp-register-address,
+.vp-register-raw {
+  margin-top: 3px;
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.78rem;
+}
+
+.vp-register-write-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-4, 16px);
+  margin-top: var(--vp-space-4, 16px);
+  padding-top: var(--vp-space-3, 12px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-register-write-action > div {
+  min-width: 0;
+}
+
+.vp-register-write-action p {
+  margin: 3px 0 0;
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.82rem;
+}
+
+.vp-register-write-action .vp-geraet-btn {
+  flex: none;
+  margin-top: 0;
+}
+
 /* Die Warnklasse steht als WORT neben der Bedeutung - die Farbe verstärkt sie
    nur (die Haus-Regel: nie Farbe allein). */
 .vp-regklasse {
@@ -548,6 +599,16 @@
 
   .vp-geraet-register .vp-regklasse {
     margin-left: 0;
+  }
+
+  .vp-register-write-action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .vp-register-write-action .vp-geraet-btn {
+    justify-content: center;
+    width: 100%;
   }
 }
 

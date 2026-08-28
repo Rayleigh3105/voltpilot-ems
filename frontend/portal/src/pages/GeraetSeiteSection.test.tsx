@@ -775,7 +775,7 @@ describe('GeraetSeiteSection', () => {
     // Seit Stufe 2 sind Lesen und Schreiben EINE Sektion „Register" (§4.2).
     expect(await screen.findByTestId('sektion-register')).toBeInTheDocument();
     // Das Rohwort des Schreibvorgangs - das einzige, das es heute gibt.
-    await waitFor(() => expect(screen.getByText('7000')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Rohwert 7000')).toBeInTheDocument());
     // Die Warnklasse trägt ihr WORT, nie nur eine Farbe.
     expect(screen.getByText('Netz-Anmeldung')).toBeInTheDocument();
   });
@@ -879,9 +879,10 @@ describe('GeraetSeiteSection · Plattform-Sicht', () => {
  * auf das Geraet, dessen Seite die Bibliothek traegt.
  */
 describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () => {
-  /** Die `?family=`-Werte des ruhigen (ersten) Katalog-Abrufs. */
+  /** Die `?family=`-Werte des paginierten Bibliotheks-Abrufs. */
   function gefragteFamilien(): string[] {
-    const call = vi.mocked(api.measurementCatalog).mock.calls[0];
+    const call = vi.mocked(api.measurementCatalog).mock.calls
+      .find((candidate) => candidate[1].get('selectedOnly') == null);
     return call ? call[1].getAll('family') : [];
   }
 
@@ -889,7 +890,8 @@ describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () =>
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-goe" devices={[box]} />);
     await screen.findByRole('heading', { name: 'Beobachtete Messwerte' });
-    await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /Messwert beobachten/ }));
+    await waitFor(() => expect(gefragteFamilien().length).toBeGreaterThan(0));
     expect(gefragteFamilien()).toEqual(['goe.api_v2']);
     // Genau der gemeldete Fehler: die Familie des Deye taucht nicht mehr auf,
     // und die Box-Frage wird gar nicht mehr gestellt.
@@ -903,7 +905,8 @@ describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () =>
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />);
     await screen.findByRole('heading', { name: 'Beobachtete Register' });
-    await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /Register beobachten/ }));
+    await waitFor(() => expect(gefragteFamilien().length).toBeGreaterThan(0));
     const familien = gefragteFamilien();
     expect(familien).not.toContain('hybrid_3p');
     expect(familien.length).toBeGreaterThan(0);
@@ -921,7 +924,8 @@ describe('Stufe 0 · die Messbibliothek zeigt den Katalog DIESES Geraets', () =>
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
     await screen.findByRole('heading', { name: 'Beobachtete Register' });
-    await waitFor(() => expect(api.measurementCatalog).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /Register beobachten/ }));
+    await waitFor(() => expect(gefragteFamilien().length).toBeGreaterThan(0));
     expect(gefragteFamilien()).toEqual(['hybrid_3p']);
     expect(screen.queryByTestId('measure-beobachten-hinweis')).toBeNull();
   });
@@ -1051,7 +1055,9 @@ describe('Stufe 3a · die Messbibliothek, richtig herum', () => {
     expect(await within(sektion).findByText(/Noch kein Register beobachtet/)).toBeTruthy();
     // 2 · der Katalog DIESES Geräts.
     expect(within(sektion).getByRole('button', { name: /Register beobachten/ })).toBeTruthy();
-    // 3 · lesen und schreiben - am selben Ort.
+    // 3 · bekannte Werte und Fachwerkzeuge sind klar getrennt, aber am selben Ort.
+    expect(within(sektion).getByRole('heading', { name: 'Zuletzt bekannte Werte' })).toBeTruthy();
+    expect(within(sektion).getByRole('heading', { name: 'Register direkt prüfen' })).toBeTruthy();
     expect(within(sektion).getByTestId('geraet-regread')).toBeTruthy();
     expect(within(sektion).getByLabelText('Adresse des Registers, das jetzt gelesen wird')).toBeTruthy();
   });
@@ -1102,6 +1108,30 @@ describe('Stufe 3a · die Messbibliothek, richtig herum', () => {
     expect(within(dialog).getByLabelText('Einheit')).toHaveValue('kW');
     // Bis hierher ist NICHTS angelegt - erst der Klick im Formular schreibt.
     expect(api.customMeasurementEstimate).not.toHaveBeenCalled();
+  });
+
+  it('ein Lese-Timeout behauptet nie, dass vielleicht geschrieben wurde', async () => {
+    stub();
+    vi.spyOn(api, 'registerWritePreview').mockResolvedValue({
+      requestId: 'r-timeout', mode: 'lesen', ok: false, outcome: 'fehler',
+      beforeRaw: null, afterRaw: null, beforeScaled: null, afterScaled: null,
+      adopted: null, errorCode: 'timeout',
+      message: 'Es ist nicht sicher, ob geschrieben wurde.', targetLabel: null,
+      address: 231, addressHex: '0x00E7', registerLabel: null,
+      registerClass: null, scaleNote: null, scaleUnit: null,
+      noteRequired: false, confirm: null,
+    } as never);
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    await screen.findByTestId('sektion-register');
+
+    fireEvent.change(screen.getByLabelText('Adresse des Registers, das jetzt gelesen wird'), {
+      target: { value: '0x00E7' },
+    });
+    fireEvent.click(screen.getByTestId('geraet-regread'));
+
+    const fehler = await screen.findByRole('alert');
+    expect(fehler).toHaveTextContent('Es wurde nichts geschrieben');
+    expect(fehler).not.toHaveTextContent('nicht sicher');
   });
 
   it('trägt die KOMPONENTE dieser Seite in jeden Auswahl-Aufruf', async () => {

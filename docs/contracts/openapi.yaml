@@ -712,6 +712,14 @@ paths:
           in: query
           required: false
           schema: { type: boolean, default: false }
+        - name: selectedOnly
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+          description: >
+            Nur aktuell ausgewählte Punkte der angefragten Geräte- bzw.
+            Komponenten-Sicht. Dieser kompakte Statusabruf ist unabhängig von
+            der Position eines Punkts im paginierten Gesamtkatalog.
         - name: offset
           in: query
           required: false

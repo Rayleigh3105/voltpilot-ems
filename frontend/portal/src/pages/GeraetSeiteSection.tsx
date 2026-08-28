@@ -52,6 +52,7 @@ import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { anlageRoute, befehleGeraetHash, boxSeiteHash, hashForRoute, pageRoute } from '../nav';
 import {
   ABRUF_HINWEIS,
+  abrufFehler,
   abrufZeile,
   LESE_FEHLGESCHLAGEN,
   QUELLE_WORT,
@@ -1581,31 +1582,35 @@ function GeleseneRegisterTabelle({
         <table className="vp-table responsive vp-geraet-register">
           <thead>
             <tr>
-              <th>Register</th>
               <th>Bedeutung</th>
-              <th>Roh</th>
-              <th>Dekodiert</th>
-              <th>Gelesen</th>
-              <th>Quelle</th>
+              <th>Wert</th>
+              <th>Zuletzt gelesen</th>
+              <th>Herkunft</th>
             </tr>
           </thead>
           <tbody>
             {zeilen.map((z) => (
               <tr key={z.key}>
-                <td data-label="Register">{z.register ?? NO_DATA}</td>
                 <td data-label="Bedeutung">
-                  {z.bedeutung}
+                  <span className="vp-register-name">{z.bedeutung}</span>
                   {/* Die Warnklasse trägt ihr WORT, nie nur eine Farbe. */}
                   {klasseWort(z.klasse) && (
                     <span className={`vp-regklasse is-${klasseTon(z.klasse)}`}>
                       {klasseWort(z.klasse)}
                     </span>
                   )}
+                  <span className="vp-register-address vp-mono">
+                    {z.register ? `Register ${z.register}` : 'Adresse nicht bekannt'}
+                  </span>
                 </td>
-                <td data-label="Roh">{z.roh}</td>
-                <td data-label="Dekodiert">{z.dekodiert}</td>
-                <td data-label="Gelesen">{z.gelesen}</td>
-                <td data-label="Quelle">
+                <td data-label="Wert">
+                  <strong className="vp-register-value">{z.dekodiert}</strong>
+                  {z.roh !== NO_DATA && (
+                    <span className="vp-register-raw">Rohwert {z.roh}</span>
+                  )}
+                </td>
+                <td data-label="Zuletzt gelesen">{z.gelesen}</td>
+                <td data-label="Herkunft">
                   {QUELLE_WORT[z.quelle]}
                   {/* Die Brücke: lesen, gut finden, behalten (§7.2 Teil 3). */}
                   {bruecken && z.key in bruecken && (
@@ -1689,7 +1694,7 @@ function RegisterSektion({
   now: number;
 }) {
   const [leseAdresse, setLeseAdresse] = useState('');
-  const [leseArt, setLeseArt] = useState<'holding' | 'input' | 'coil'>('holding');
+  const [leseArt, setLeseArt] = useState<'holding' | 'coil'>('holding');
   const [liest, setLiest] = useState(false);
   const [leseFehler, setLeseFehler] = useState<string | null>(null);
   const [abruf, setAbruf] = useState<RegisterZeile[]>([]);
@@ -1728,7 +1733,7 @@ function RegisterSektion({
       });
       const sicht = vorschau(out);
       if (!sicht.gelesen) {
-        setLeseFehler(sicht.satz);
+        setLeseFehler(abrufFehler(out));
         return;
       }
       const zeile = abrufZeile(adresse, out, new Date());
@@ -1759,80 +1764,97 @@ function RegisterSektion({
 
   return (
     <>
-      <GeleseneRegisterTabelle
-        art={art}
-        exportLimit={exportLimit}
-        writes={writes}
-        source={source}
-        familie={familie}
-        knowledge={knowledge}
-        entityIds={entityIds}
-        abruf={abruf}
-        bruecken={bruecken}
-        onBeobachten={onBeobachten}
-        now={now}
-      />
-      {zugang.moeglich && (
-        <div className="vp-geraet-lesen">
-          <label>
-            <span>Register jetzt lesen</span>
-            <input
-              value={leseAdresse}
-              onChange={(e) => setLeseAdresse(e.target.value)}
-              placeholder="z. B. 0x00E7"
-              inputMode="text"
-              aria-label="Adresse des Registers, das jetzt gelesen wird"
-            />
-          </label>
-          <VpPicker
-            className="vp-geraet-lesen-art"
-            label="Art"
-            ariaLabel="Registerart"
-            options={[
-              { value: 'holding', label: 'Holding-Register' },
-              { value: 'input', label: 'Input-Register' },
-              { value: 'coil', label: 'Spule' },
-            ]}
-            value={leseArt}
-            onChange={(v) => setLeseArt(v as 'holding' | 'input' | 'coil')}
-          />
-          <button
-            type="button"
-            className="vp-geraet-btn"
-            onClick={() => void jetztLesen()}
-            disabled={liest || !leseAdresse.trim()}
-            data-testid="geraet-regread"
-          >
-            <Icon name="search" size={13} /> {liest ? LESE_LAEUFT : 'Jetzt lesen'}
-          </button>
-          {liest && <p className="vp-note">{LESE_DAUER_HINWEIS}</p>}
-          {leseFehler && <p className="vp-alert vp-alert-warn">{leseFehler}</p>}
-          {abruf.length > 0 && <p className="vp-note">{ABRUF_HINWEIS}</p>}
-        </div>
-      )}
-      <p className="vp-text-sm">{EXPERTE_INTRO}</p>
-      {zugang.moeglich ? (
-        <button
-          type="button"
-          className="vp-geraet-btn"
-          onClick={() => setOffen(true)}
-          data-testid="geraet-regwrite"
-        >
-          <Icon name="pencil" size={13} /> Register schreiben
-        </button>
-      ) : (
-        <p className="vp-muted vp-text-sm" data-testid="geraet-regwrite-grund">
-          {zugang.grund ?? 'Die Ziele dieses Geräts werden geladen …'}
-          {/* Ein Grund, der einen WEG nennt, führt auch hin - ein benannter
-              Weg ohne Klick wäre eine Aufgabe ohne Ort (§7). */}
-          {zugang.weg === 'anlagen-modell' && (
-            <>
-              {' '}
-              <a href={hashForRoute(anlageRoute(siteId, 'modell'))}>Zu den Komponenten →</a>
-            </>
-          )}
+      <section className="vp-rahmen-block vp-register-values" aria-labelledby="vp-register-values-title">
+        <h3 id="vp-register-values-title"><Icon name="activity" size={14} />Zuletzt bekannte Werte</h3>
+        <p className="vp-register-block-intro">
+          Der letzte Wert, den VoltPilot von diesem Gerät erhalten hat.
         </p>
-      )}
+        <GeleseneRegisterTabelle
+          art={art}
+          exportLimit={exportLimit}
+          writes={writes}
+          source={source}
+          familie={familie}
+          knowledge={knowledge}
+          entityIds={entityIds}
+          abruf={abruf}
+          bruecken={bruecken}
+          onBeobachten={onBeobachten}
+          now={now}
+        />
+      </section>
+
+      <section className="vp-rahmen-block vp-register-tools" aria-labelledby="vp-register-tools-title">
+        <h3 id="vp-register-tools-title"><Icon name="settings" size={14} />Register direkt prüfen</h3>
+        <p className="vp-register-block-intro">{EXPERTE_INTRO}</p>
+        {zugang.moeglich && (
+          <form className="vp-geraet-lesen" onSubmit={(event) => {
+            event.preventDefault();
+            void jetztLesen();
+          }}>
+            <label>
+              <span>Registeradresse</span>
+              <input
+                value={leseAdresse}
+                onChange={(e) => setLeseAdresse(e.target.value)}
+                placeholder="z. B. 0x00E7"
+                inputMode="text"
+                aria-label="Adresse des Registers, das jetzt gelesen wird"
+              />
+            </label>
+            <VpPicker
+              className="vp-geraet-lesen-art"
+              label="Registertyp"
+              ariaLabel="Registerart"
+              options={[
+                { value: 'holding', label: 'Holding-Register' },
+                { value: 'coil', label: 'Spule' },
+              ]}
+              value={leseArt}
+              onChange={(v) => setLeseArt(v as 'holding' | 'coil')}
+            />
+            <button
+              type="submit"
+              className="vp-geraet-btn"
+              disabled={liest || !leseAdresse.trim()}
+              data-testid="geraet-regread"
+            >
+              <Icon name="search" size={13} /> {liest ? LESE_LAEUFT : 'Register lesen'}
+            </button>
+            {liest && <p className="vp-note">{LESE_DAUER_HINWEIS}</p>}
+            {leseFehler && <p className="vp-alert vp-alert-warn" role="alert">{leseFehler}</p>}
+            {abruf.length > 0 && <p className="vp-note">{ABRUF_HINWEIS}</p>}
+          </form>
+        )}
+        <div className="vp-register-write-action">
+          <div>
+            <strong>Register schreiben</strong>
+            <p>Mit Vorschau, einmaliger Ausführung und dauerhaftem Protokoll.</p>
+          </div>
+          {zugang.moeglich ? (
+            <button
+              type="button"
+              className="vp-geraet-btn"
+              onClick={() => setOffen(true)}
+              data-testid="geraet-regwrite"
+            >
+              <Icon name="pencil" size={13} /> Schreiben vorbereiten
+            </button>
+          ) : (
+            <p className="vp-muted vp-text-sm" data-testid="geraet-regwrite-grund">
+              {zugang.grund ?? 'Die Ziele dieses Geräts werden geladen …'}
+              {/* Ein Grund, der einen WEG nennt, führt auch hin - ein benannter
+                  Weg ohne Klick wäre eine Aufgabe ohne Ort (§7). */}
+              {zugang.weg === 'anlagen-modell' && (
+                <>
+                  {' '}
+                  <a href={hashForRoute(anlageRoute(siteId, 'modell'))}>Zu den Komponenten →</a>
+                </>
+              )}
+            </p>
+          )}
+        </div>
+      </section>
       {offen && boxDeviceId && (
         <RegisterWriteDrawer
           open
