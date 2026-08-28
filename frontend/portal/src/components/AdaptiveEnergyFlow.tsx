@@ -7,7 +7,7 @@ import {
   type ChargingNodeOpts,
   type FlowVertex,
 } from '../adaptiveFlow';
-import { pvComposition, type PvContribution } from '../pvComposition';
+import { pvComposition } from '../pvComposition';
 import type { EntityPin } from '../pvReconcile';
 import { PvCompositionDetails } from './PvBreakdown';
 import type { EnergyFlowSize } from './EnergyFlow';
