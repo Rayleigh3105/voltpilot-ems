@@ -126,14 +126,16 @@
             <stop offset="0" stop-color="#B8D4FF"/><stop offset=".5" stop-color="#7BA3F7"/><stop offset="1" stop-color="#5A8DE8"/>
           </linearGradient>
         </defs>
-        <path class="spoke" d="M210 96 V146" stroke="var(--vpl-flow-pv)"/>
+        <path class="spoke" d="M210 104 V146" stroke="var(--vpl-flow-pv)"/>
         <path class="spoke rev" d="M176 186 H112" stroke="var(--vpl-flow-batt)"/>
         <path class="spoke" d="M244 186 H308" stroke="var(--vpl-flow-load)"/>
         <path class="spoke" d="M210 226 V276" stroke="var(--vpl-flow-grid)"/>
         <rect x="176" y="152" width="68" height="68" rx="16" fill="url(#vplHub)"/>
         <path d="M215 160 L197 189 h11 l-2 21 l18 -29 h-11 z" fill="#fff"/>
-        <circle cx="210" cy="62" r="30" fill="var(--vpl-flow-pv-soft)" stroke="var(--vpl-flow-pv)" stroke-width="2"/>
-        <g stroke="var(--vpl-flow-pv)" stroke-width="2.2" stroke-linecap="round" fill="none"><circle cx="210" cy="62" r="6"/><path d="M210 48v4M210 72v4M196 62h4M220 62h4M200 52l2.8 2.8M217.2 69.2 220 72M220 52l-2.8 2.8M202.8 69.2 200 72"/></g>
+        <#-- 7 SVG-Pixel Luft zwischen „erzeugt" und dem Sonnenkreis. Bei cy=62
+             beruehrte die Unterzeile den Kreis optisch. -->
+        <circle cx="210" cy="70" r="30" fill="var(--vpl-flow-pv-soft)" stroke="var(--vpl-flow-pv)" stroke-width="2"/>
+        <g stroke="var(--vpl-flow-pv)" stroke-width="2.2" stroke-linecap="round" fill="none"><circle cx="210" cy="70" r="6"/><path d="M210 56v4M210 80v4M196 70h4M220 70h4M200 60l2.8 2.8M217.2 77.2 220 80M220 60l-2.8 2.8M202.8 77.2 200 80"/></g>
         <text class="node-label" x="210" y="18" text-anchor="middle">${msg("vpNodeSolar")}</text>
         <text class="node-sub" x="210" y="33" text-anchor="middle">${msg("vpNodeSolarSub")}</text>
         <circle cx="78" cy="186" r="30" fill="var(--vpl-flow-batt-soft)" stroke="var(--vpl-flow-batt)" stroke-width="2"/>

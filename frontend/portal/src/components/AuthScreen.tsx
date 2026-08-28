@@ -81,17 +81,19 @@ function FlowMotif() {
           <stop offset="1" stopColor="#5A8DE8" />
         </linearGradient>
       </defs>
-      <path className="spoke" d="M210 96 V146" stroke="var(--vp-flow-pv)" />
+      <path className="spoke" d="M210 104 V146" stroke="var(--vp-flow-pv)" />
       <path className="spoke rev" d="M176 186 H112" stroke="var(--vp-flow-batt)" />
       <path className="spoke" d="M244 186 H308" stroke="var(--vp-flow-load)" />
       <path className="spoke" d="M210 226 V276" stroke="var(--vp-flow-grid)" />
       <rect x="176" y="152" width="68" height="68" rx="16" fill="url(#vpAuthHub)" />
       <path d="M215 160 L197 189 h11 l-2 21 l18 -29 h-11 z" fill="#fff" />
 
-      <circle cx="210" cy="62" r="30" fill="var(--vp-flow-pv-soft)" stroke="var(--vp-flow-pv)" strokeWidth="2" />
+      {/* Die Sonne sitzt bewusst 7 SVG-Pixel unter der Text-Baseline. Bei cy=62
+          beruehrte „erzeugt" den Kreis optisch auf der Anmeldeseite. */}
+      <circle cx="210" cy="70" r="30" fill="var(--vp-flow-pv-soft)" stroke="var(--vp-flow-pv)" strokeWidth="2" />
       <g stroke="var(--vp-flow-pv)" strokeWidth="2.2" strokeLinecap="round" fill="none">
-        <circle cx="210" cy="62" r="6" />
-        <path d="M210 48v4M210 72v4M196 62h4M220 62h4M200 52l2.8 2.8M217.2 69.2 220 72M220 52l-2.8 2.8M202.8 69.2 200 72" />
+        <circle cx="210" cy="70" r="6" />
+        <path d="M210 56v4M210 80v4M196 70h4M220 70h4M200 60l2.8 2.8M217.2 77.2 220 80M220 60l-2.8 2.8M202.8 77.2 200 80" />
       </g>
       <text className="node-label" x="210" y="18" textAnchor="middle">Solar</text>
       <text className="node-sub" x="210" y="33" textAnchor="middle">erzeugt</text>

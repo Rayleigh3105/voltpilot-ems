@@ -27,6 +27,17 @@ describe('BrandStage (Wortmarke auf Weiss + Energiefluss-Motiv)', () => {
     ]);
   });
 
+  it('laesst zwischen „Solar erzeugt" und dem Sonnenkreis sichtbar Luft', () => {
+    const { container } = render(<BrandStage />);
+    const flow = container.querySelector('.vp-auth-flow')!;
+    const solarSub = [...flow.querySelectorAll('text')].find((node) => node.textContent === 'erzeugt')!;
+    const solarCircle = flow.querySelector('circle')!;
+
+    const textBaseline = Number(solarSub.getAttribute('y'));
+    const circleTop = Number(solarCircle.getAttribute('cy')) - Number(solarCircle.getAttribute('r'));
+    expect(circleTop - textBaseline).toBeGreaterThanOrEqual(7);
+  });
+
   it('haelt das Motiv dekorativ - die Aussage tragen die Texte daneben', () => {
     const { container } = render(<BrandStage />);
     expect(container.querySelector('.vp-auth-stage')?.getAttribute('aria-hidden')).toBe('true');
