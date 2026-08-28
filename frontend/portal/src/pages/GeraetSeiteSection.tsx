@@ -266,6 +266,7 @@ export function GeraetSeiteSection({
     setRenameTarget(null);
     setEditOpen(false);
     setEditNotice(null);
+    setEditError(null);
   }, [site.id, geraetId]);
 
   useEffect(() => {
@@ -484,6 +485,7 @@ export function GeraetSeiteSection({
     const renameEdit = requestedTarget ?? (!requestedComponentId ? chargerRenameTarget : null);
     if (!componentEdit && !renameEdit && !requestedComponentId) return;
     setEditNotice(null);
+    setEditError(null);
     if (componentEdit) setEditOpen(true);
     else if (renameEdit) setRenameTarget(renameEdit);
     else setEditError('Diese Komponente ist an diesem Gerät nicht mehr verfügbar.');
@@ -1049,6 +1051,10 @@ export function GeraetSeiteSection({
         <div className="vp-alert vp-alert-ok" role="status">
           <Icon name="check" size={16} /> {editNotice}
         </div>
+      )}
+
+      {editError && !editOpen && !renameTarget && (
+        <div className="vp-alert vp-alert-err" role="alert">{editError}</div>
       )}
 
       {view && !view.gefunden && (

@@ -172,6 +172,25 @@ describe('AdaptiveEnergyFlow · click on PV-Erzeugung opens the composition', ()
     expect(screen.queryByRole('dialog', { name: 'Komponente umbenennen' })).toBeNull();
   });
 
+  it('keeps pinned component pencils on the device page without live source readings', () => {
+    render(
+      <AdaptiveEnergyFlow
+        topology={MULTI}
+        sources={null}
+        pins={MULTI_PINS}
+        rename={{ siteId: 's1', boxRef: 'VP-BOX-1', onRenamed: () => {} }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /PV-Erzeugung/ }));
+
+    expect(screen.getAllByRole('link', { name: /umbenennen/ }).map((link) =>
+      link.getAttribute('href'))).toEqual([
+      '#/anlage/s1/geraet/VP-BOX-1/a?bearbeiten=1&komponente=f1',
+      '#/anlage/s1/geraet/VP-BOX-1/b?bearbeiten=1&komponente=f2',
+    ]);
+    expect(screen.getAllByRole('button', { name: /umbenennen/ })).toHaveLength(1);
+  });
+
   it('opens on Enter and Space, so it is reachable without a mouse', () => {
     const { container } = render(<AdaptiveEnergyFlow topology={MULTI} sources={MULTI_SOURCES} pins={MULTI_PINS} />);
     const node = screen.getByRole('button', { name: /PV-Erzeugung/ });

@@ -71,6 +71,12 @@ import {
 } from '../geraeteEdit';
 import { registerNavigationBlocker } from '../navigationBlocker';
 
+function typFuerRolle(rolle: KomponentenRolle): TypId {
+  if (rolle === 'consumer') return 'verbraucher';
+  if (rolle === 'grid-meter') return 'zaehler';
+  return 'wechselrichter';
+}
+
 /**
  * Der NEUE ANLEGE-FLUSS (Anlegen-Rework Stufe 2, Konzept
  * `data/vp-anlegen-rework/konzept.md`).
@@ -144,7 +150,7 @@ export function AnlegenFlow({
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
   const edit = bearbeiten ?? null;
   const [typ, setTyp] = useState<TypId | null>(
-    vorlage ? 'eigenbau' : (edit ? 'wechselrichter' : (initialTyp ?? null)),
+    vorlage ? 'eigenbau' : (edit ? typFuerRolle(kundenRolle(edit)) : (initialTyp ?? null)),
   );
   const [schritt, setSchritt] = useState(vorlage || initialTyp || edit ? 2 : 1);
   const [rolle, setRolle] = useState<KomponentenRolle | null>(() =>
@@ -243,8 +249,6 @@ export function AnlegenFlow({
     }
     setTemplate(found);
     setTyp(typFuerTemplate(found));
-    setRolle(kundenRolle(edit));
-    setVerbindung({ ...(edit.connection ?? {}) });
   }, [edit, template, templates]);
 
   const alle = useMemo(() => templates ?? [], [templates]);

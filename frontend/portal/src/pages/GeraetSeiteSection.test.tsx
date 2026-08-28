@@ -597,6 +597,30 @@ describe('GeraetSeiteSection', () => {
     window.history.replaceState(null, '', '#/');
   });
 
+  it('meldet einen veralteten Komponenten-Link sichtbar auf der Geräteseite', async () => {
+    stub();
+    window.history.replaceState(
+      null,
+      '',
+      '#/anlage/s-1/geraet/edge-45gz7da/inverter?bearbeiten=1&komponente=entfernt',
+    );
+
+    render(
+      <GeraetSeiteSection
+        site={site}
+        boxRef="edge-45gz7da"
+        geraetId="inverter"
+        devices={[box]}
+      />,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Diese Komponente ist an diesem Gerät nicht mehr verfügbar.',
+    );
+    expect(window.location.hash).toBe('#/anlage/s-1/geraet/edge-45gz7da/inverter');
+    expect(screen.getByTestId('geraet-rahmen')).toBeVisible();
+  });
+
   it('ändert auch an einer real komponierten OCPP-Wallbox den gemeinsamen Anzeigenamen', async () => {
     let alias = 'Garage';
     let resolveChargers!: (value: Awaited<ReturnType<typeof api.siteChargers>>) => void;
@@ -681,11 +705,11 @@ describe('GeraetSeiteSection', () => {
     const editorHref = window.location.href;
     let blocked = false;
     act(() => {
-      window.history.replaceState(null, '', '#/anlage/s-1/modell');
+      window.history.pushState(null, '', '#/anlage/s-1/modell');
       blocked = requestNavigation(window.location.href, true);
     });
     expect(blocked).toBe(true);
-    expect(window.location.href).toBe(editorHref);
+    await waitFor(() => expect(window.location.href).toBe(editorHref));
     const discard = await screen.findByRole('dialog', { name: 'Änderung verwerfen?' });
     fireEvent.click(within(discard).getByRole('button', { name: 'Abbrechen' }));
     expect(screen.getByLabelText('Anzeigename')).toHaveValue('Carport');

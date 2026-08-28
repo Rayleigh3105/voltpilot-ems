@@ -43,7 +43,11 @@ import { activeAreaKey, anlageSidebar, resolveAnlage } from './anlageNav';
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
 import { deviceHealthForSite, LIVENESS_POLL_MS } from './liveness';
 import { anlagenOptionen } from './anlagenWahl';
-import { requestNavigation } from './navigationBlocker';
+import {
+  recordCurrentNavigation,
+  recordNewNavigation,
+  requestNavigation,
+} from './navigationBlocker';
 import { useFreshnessPoll } from './useFreshnessPoll';
 import { useDeployWatch } from './deployWatch';
 import { aufmerksamkeitTitel } from './steuerungAufmerksamkeit';
@@ -502,6 +506,7 @@ function UnifiedPortal() {
       const nextHash = hashForRoute(r);
       if (requestNavigation(new URL(nextHash, window.location.href).href)) return;
       window.location.hash = nextHash;
+      recordNewNavigation();
       setRoute(r);
       // A page switch is a navigation, not a scroll continuation.
       window.scrollTo({ top: 0 });
@@ -511,8 +516,10 @@ function UnifiedPortal() {
 
   // Hash routing: back/forward + direct edits.
   useEffect(() => {
+    recordCurrentNavigation();
     const onHash = () => {
       if (requestNavigation(window.location.href, true)) return;
+      recordNewNavigation();
       const r = routeFromHash();
       setRoute(!isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page) ? pageRoute('uebersicht') : r);
     };
@@ -545,7 +552,10 @@ function UnifiedPortal() {
     const canonical =
       canonicalAnlageHash(window.location.hash)
       ?? canonicalPlatformHash(window.location.hash);
-    if (canonical) window.history.replaceState(null, '', canonical);
+    if (canonical) {
+      window.history.replaceState(window.history.state, '', canonical);
+      recordCurrentNavigation();
+    }
   }, [route]);
 
   const reloadTenants = useCallback(
@@ -667,7 +677,12 @@ function UnifiedPortal() {
     const shell = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length };
     const target = canonicalShellRoute({ shell, route, siteIds: sites.map((site) => site.id) });
     if (!target) return;
-    window.history.replaceState(null, '', canonicalShellHash(target, window.location.hash));
+    window.history.replaceState(
+      window.history.state,
+      '',
+      canonicalShellHash(target, window.location.hash),
+    );
+    recordCurrentNavigation();
     setRoute(target);
   }, [
     isAdmin,

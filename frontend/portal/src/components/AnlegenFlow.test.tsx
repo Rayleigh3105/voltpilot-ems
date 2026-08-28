@@ -2,7 +2,11 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api';
 import { AnlegenFlow } from './AnlegenFlow';
-import { requestNavigation } from '../navigationBlocker';
+import {
+  recordCurrentNavigation,
+  recordNewNavigation,
+  requestNavigation,
+} from '../navigationBlocker';
 
 const template = {
   templateRef: 'builtin:deye:sun-30k-sg01hp3',
@@ -908,6 +912,8 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
   });
 
   it('blockiert auch imperative Hash-Navigation und stellt die Editor-Adresse wieder her', async () => {
+    window.history.replaceState(null, '', '#/anlage/s1/geraet/VP-BOX-1/inverter');
+    recordCurrentNavigation();
     renderInline();
     fireEvent.change(await screen.findByLabelText('Anzeigename'), {
       target: { value: 'Noch nicht gespeichert' },
@@ -915,16 +921,91 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     const editorHref = window.location.href;
     let blocked = false;
     act(() => {
-      window.history.replaceState(null, '', '#/anlage/s1/modell');
+      window.history.pushState(null, '', '#/anlage/s1/modell');
       blocked = requestNavigation(window.location.href, true);
     });
 
     expect(blocked).toBe(true);
-    expect(window.location.href).toBe(editorHref);
+    await waitFor(() => expect(window.location.href).toBe(editorHref));
     const dialog = await screen.findByRole('dialog', { name: 'Änderungen verwerfen?' });
     expect(dialog).toBeVisible();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
     expect(screen.getByLabelText('Anzeigename')).toHaveValue('Noch nicht gespeichert');
+  });
+
+  it('erhält das vorige Verlaufsziel, wenn Zurück abgebrochen wird', async () => {
+    window.history.replaceState(null, '', '#/anlage/s1');
+    recordCurrentNavigation();
+    window.history.pushState(null, '', '#/anlage/s1/modell');
+    recordNewNavigation();
+    const previousHref = window.location.href;
+    window.history.pushState(null, '', '#/anlage/s1/geraet/VP-BOX-1/inverter');
+    recordNewNavigation();
+    const editorHref = window.location.href;
+    renderInline();
+    fireEvent.change(await screen.findByLabelText('Anzeigename'), {
+      target: { value: 'Noch nicht gespeichert' },
+    });
+
+    act(() => window.history.back());
+    await waitFor(() => expect(window.location.href).toBe(previousHref));
+    let blocked = false;
+    act(() => {
+      blocked = requestNavigation(window.location.href, true);
+    });
+    expect(blocked).toBe(true);
+    await waitFor(() => expect(window.location.href).toBe(editorHref));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Änderungen verwerfen?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
+    act(() => window.history.back());
+    await waitFor(() => expect(window.location.href).toBe(previousHref));
+  });
+
+  it('überschreibt frühe Eingaben nicht, wenn die Vorlage später geladen wird', async () => {
+    let resolveTemplates!: (value: (typeof template)[]) => void;
+    const templates = new Promise<(typeof template)[]>((resolve) => {
+      resolveTemplates = resolve;
+    });
+    componentTemplates.mockReturnValue(templates);
+    renderInline();
+
+    const rollen = await screen.findByRole('radiogroup', { name: 'Aufgabe in der Anlage' });
+    fireEvent.click(within(rollen).getByRole('radio', { name: /Weiterer Erzeuger/ }));
+    fireEvent.change(screen.getByLabelText('Nennleistung (kWp)'), { target: { value: '28' } });
+    await act(async () => {
+      resolveTemplates([template]);
+      await templates;
+    });
+
+    expect(within(rollen).getByRole('radio', { name: /Weiterer Erzeuger/ }))
+      .toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByLabelText('Nennleistung (kWp)')).toHaveValue(28);
+  });
+
+  it('zeigt für Verbraucher vor dem Vorlagenabruf keine Wechselrichter-Rollen', async () => {
+    const consumerEdit = {
+      ...edit,
+      role: 'consumer' as const,
+      entityType: 'consumer',
+      label: 'Wallbox Garage',
+      templateRef: 'builtin:go-e:charger',
+    };
+    componentTemplates.mockReturnValue(new Promise(() => {}));
+    siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [consumerEdit] });
+    render(
+      <AnlegenFlow
+        siteId="s1"
+        bearbeiten={consumerEdit}
+        inlineBearbeitung
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+
+    expect(await screen.findByLabelText('Anzeigename')).toHaveValue('Wallbox Garage');
+    expect(screen.queryByRole('radiogroup', { name: 'Aufgabe in der Anlage' })).toBeNull();
+    expect(screen.queryByLabelText('Nennleistung (kWp)')).toBeNull();
   });
 
   it('bestätigt eine geänderte elektrische Aufgabe mit ihren Folgen', async () => {

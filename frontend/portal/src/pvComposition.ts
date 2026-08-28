@@ -198,10 +198,11 @@ export function pvComposition(
   node.members.forEach((m, i) => {
     const entity = entityById.get(m.entity_id);
     const orphaned = orphans.has(m.entity_id);
+    const pinnedSourceId = pinBySource.get(m.entity_id) ?? null;
     // The device's name comes from ONE derivation over the edge's own naming:
     // the PINNED `/sources` entry, else - for the hybrid - the primary inverter
     // entry, else the stored entity label. NEVER a name/order lookup.
-    const matched = sourceById.get(pinBySource.get(m.entity_id) ?? '') ?? (isHybrid(entity) ? primary : null);
+    const matched = sourceById.get(pinnedSourceId ?? '') ?? (isHybrid(entity) ? primary : null);
     // ⚠ The alias is read from the ENTITY and from the UNRECONCILED member -
     // never from `m.label`. The interim reconstruction rewrites a filled
     // member's label to the SOURCE's edge name (`pvReconcile`:
@@ -230,7 +231,7 @@ export function pvComposition(
       note: m.value_kw == null ? emptyNote(health, hybridCarriesTheRest && !orphaned, orphaned) : null,
       title,
       entityId: m.entity_id,
-      deviceId: matched?.sourceId ?? null,
+      deviceId: pinnedSourceId ?? matched?.sourceId ?? null,
       alias: (nameInput.storedLabel ?? '').trim() || null,
     };
     if (row.kw == null) unmeasured.push(row);
