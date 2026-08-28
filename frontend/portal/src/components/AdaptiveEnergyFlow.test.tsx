@@ -157,16 +157,19 @@ describe('AdaptiveEnergyFlow · click on PV-Erzeugung opens the composition', ()
         topology={MULTI}
         sources={MULTI_SOURCES}
         pins={MULTI_PINS}
-        rename={{ siteId: 's1', onRenamed: () => {} }}
+        rename={{ siteId: 's1', boxRef: 'VP-BOX-1', onRenamed: () => {} }}
       />,
     );
     expect(container.querySelectorAll('.vp-pvcomp-pencil')).toHaveLength(3);
-    // …and it opens the SAME mask the Anlagen-Modell uses, never a second one.
-    fireEvent.click(screen.getAllByRole('button', { name: /umbenennen/ })[0]);
-    expect(screen.getByText('Komponente umbenennen')).toBeInTheDocument();
-    expect(
-      screen.getByText('Der Name ist reine Darstellung — er ändert nie die Steuerung.'),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /„Deye SUN-30K“ umbenennen/ })).toHaveAttribute(
+      'href',
+      '#/anlage/s1/geraet/VP-BOX-1/inv?bearbeiten=1&komponente=deye',
+    );
+    expect(screen.getByRole('link', { name: /„Fronius Anlage“ umbenennen/ })).toHaveAttribute(
+      'href',
+      '#/anlage/s1/geraet/VP-BOX-1/a?bearbeiten=1&komponente=f1',
+    );
+    expect(screen.queryByRole('dialog', { name: 'Komponente umbenennen' })).toBeNull();
   });
 
   it('opens on Enter and Space, so it is reachable without a mouse', () => {

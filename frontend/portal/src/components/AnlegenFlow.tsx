@@ -69,6 +69,7 @@ import {
   kundenRolle,
   verbindungFuerSpeichern,
 } from '../geraeteEdit';
+import { registerNavigationBlocker } from '../navigationBlocker';
 
 /**
  * Der NEUE ANLEGE-FLUSS (Anlegen-Rework Stufe 2, Konzept
@@ -316,23 +317,14 @@ export function AnlegenFlow({
       event.preventDefault();
       event.returnValue = '';
     };
-    const linkKlick = (event: MouseEvent) => {
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey
-        || event.shiftKey || event.altKey) return;
-      const target = event.target;
-      const link = target instanceof Element ? target.closest('a[href]') : null;
-      if (!(link instanceof HTMLAnchorElement) || link.target === '_blank' || link.download) return;
-      if (link.href === window.location.href) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setPendingHref(link.href);
+    const unregister = registerNavigationBlocker((targetHref) => {
+      setPendingHref(targetHref);
       setFragVerwerfen(true);
-    };
+    });
     window.addEventListener('beforeunload', vorVerlassen);
-    document.addEventListener('click', linkKlick, true);
     return () => {
+      unregister();
       window.removeEventListener('beforeunload', vorVerlassen);
-      document.removeEventListener('click', linkKlick, true);
     };
   }, [hatAenderungen, inlineBearbeitung]);
 

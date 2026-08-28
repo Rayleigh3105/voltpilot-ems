@@ -12,6 +12,7 @@ import type { EntityPin } from '../pvReconcile';
 import { PvCompositionDetails } from './PvBreakdown';
 import { UmbenennenDialog } from './UmbenennenDialog';
 import type { EnergyFlowSize } from './EnergyFlow';
+import { geraetKomponenteBearbeitenHash } from '../nav';
 
 /**
  * AE2 adaptive energy-flow diagram: the real VoltPilot EnergyFlow (lightning
@@ -88,11 +89,10 @@ export function AdaptiveEnergyFlow({
   /**
    * Enables the rename pencils on the PV-composition rows (concept
    * `vp-entity-alias-k1` §5, the „Abkürzung"): the wish is born looking at this
-   * very list, so the pencil is here too — opening the SAME dialog as the
-   * Anlagen-Modell, never a second mask. Absent = no pencils, byte-for-byte the
+   * very list, so the pencil is here too. Absent = no pencils, byte-for-byte the
    * previous panel.
    */
-  rename?: { siteId: string; onRenamed: () => void } | null;
+  rename?: { siteId: string; boxRef: string | null; onRenamed: () => void } | null;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -221,6 +221,11 @@ export function AdaptiveEnergyFlow({
         <PvCompositionDetails
           composition={composition}
           onRename={rename ? setRenaming : undefined}
+          renameHref={rename ? (row) => row.entityId && row.deviceId && rename.boxRef
+            ? geraetKomponenteBearbeitenHash(
+                rename.siteId, rename.boxRef, row.deviceId, row.entityId,
+              )
+            : null : undefined}
         />
       )}
       {rename && renaming?.entityId && (

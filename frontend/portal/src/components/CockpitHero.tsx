@@ -115,9 +115,9 @@ export function CockpitHero({
   /**
    * Aktiviert die Umbenennen-Stifte in der PV-Zusammensetzung (Konzept
    * `vp-entity-alias-k1` §5): der Wunsch entsteht beim Blick auf DIESE Liste.
-   * Es öffnet denselben Dialog wie das Anlagen-Modell, nie eine zweite Maske.
+   * Es führt in denselben Bearbeitungsort wie das Anlagen-Modell.
    */
-  rename?: { siteId: string; onRenamed: () => void } | null;
+  rename?: { siteId: string; boxRef: string | null; onRenamed: () => void } | null;
   /**
    * Der Cockpit-Verbraucherstreifen (§14.10): eine Zeile je steuerbarem
    * Verbraucher unter dem Energiefluss. null (keine Verbraucher / älteres

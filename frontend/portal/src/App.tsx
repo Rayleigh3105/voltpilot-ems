@@ -43,6 +43,7 @@ import { activeAreaKey, anlageSidebar, resolveAnlage } from './anlageNav';
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
 import { deviceHealthForSite, LIVENESS_POLL_MS } from './liveness';
 import { anlagenOptionen } from './anlagenWahl';
+import { requestNavigation } from './navigationBlocker';
 import { useFreshnessPoll } from './useFreshnessPoll';
 import { useDeployWatch } from './deployWatch';
 import { aufmerksamkeitTitel } from './steuerungAufmerksamkeit';
@@ -498,7 +499,9 @@ function UnifiedPortal() {
     (target: Route | PageId) => {
       let r: Route = typeof target === 'string' ? pageRoute(target) : target;
       if (!isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page)) r = pageRoute('uebersicht');
-      window.location.hash = hashForRoute(r);
+      const nextHash = hashForRoute(r);
+      if (requestNavigation(new URL(nextHash, window.location.href).href)) return;
+      window.location.hash = nextHash;
       setRoute(r);
       // A page switch is a navigation, not a scroll continuation.
       window.scrollTo({ top: 0 });
@@ -509,12 +512,28 @@ function UnifiedPortal() {
   // Hash routing: back/forward + direct edits.
   useEffect(() => {
     const onHash = () => {
+      if (requestNavigation(window.location.href, true)) return;
       const r = routeFromHash();
       setRoute(!isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page) ? pageRoute('uebersicht') : r);
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, [isAdmin]);
+
+  useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey
+        || event.shiftKey || event.altKey) return;
+      const source = event.target;
+      const link = source instanceof Element ? source.closest('a[href]') : null;
+      if (!(link instanceof HTMLAnchorElement) || link.target === '_blank' || link.download) return;
+      if (!requestNavigation(link.href)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, []);
 
   // Eine stillgelegte Unterseite (`…/historie` → `…/messwerte`, `…/entitaeten`
   // → `…/modell`, …) wird in der ADRESSE auf die kanonische Route umgeschrieben

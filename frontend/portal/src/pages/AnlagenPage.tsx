@@ -34,7 +34,7 @@ import {
   type GeraetTarget,
   type Route,
 } from '../nav';
-import { chargerGeraetId } from '../geraetSeite';
+import { boxRefOf, chargerGeraetId } from '../geraetSeite';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { useIsPhone } from '../useIsPhone';
 import { useScrolledPast } from '../useScrolledPast';
@@ -1575,7 +1575,11 @@ export function AnlageSeite({
              Umbenennen dort, wo der Wunsch entsteht. Nach dem Speichern
              dieselbe Auffrischung wie jeder „Erneut versuchen"-Klick, damit
              der neue Name sofort überall steht. */
-          rename={{ siteId: site.id, onRenamed: () => setReloadKey((k) => k + 1) }}
+          rename={{
+            siteId: site.id,
+            boxRef: boxRefOf(devices, site.id),
+            onRenamed: () => setReloadKey((k) => k + 1),
+          }}
           /* Die Bestätigung ist AM Diagramm ablesbar (Speicher-Knoten),
              der Bühnenfuß liefert Satz und Grund. Ein Flusskonflikt
              (register-bestätigt, aber nicht fließend) entzieht den Haken -

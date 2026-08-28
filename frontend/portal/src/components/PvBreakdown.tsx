@@ -82,6 +82,7 @@ function Part({ part }: { part: PvPart }) {
 export function PvCompositionDetails({
   composition,
   onRename,
+  renameHref,
   now = new Date(),
 }: {
   composition: PvComposition;
@@ -95,6 +96,7 @@ export function PvCompositionDetails({
    * component first.
    */
   onRename?: (row: PvContribution) => void;
+  renameHref?: (row: PvContribution) => string | null;
 }) {
   const { parts, unmeasured, totalKw } = composition;
   const stand = standLabel(composition.asOf, now);
@@ -130,10 +132,10 @@ export function PvCompositionDetails({
 
       <ul className="vp-pvcomp-rows">
         {parts.map((p) => (
-          <Row key={p.key} row={p} onRename={onRename} />
+          <Row key={p.key} row={p} onRename={onRename} renameHref={renameHref} />
         ))}
         {unmeasured.map((p) => (
-          <Row key={p.key} row={p} onRename={onRename} />
+          <Row key={p.key} row={p} onRename={onRename} renameHref={renameHref} />
         ))}
       </ul>
       {/* Der Daten-Alter-Ausweis: statisch der Messzeitpunkt, und nur, wenn die
@@ -146,14 +148,17 @@ export function PvCompositionDetails({
 function Row({
   row,
   onRename,
+  renameHref,
 }: {
   row: PvContribution;
   onRename?: (row: PvContribution) => void;
+  renameHref?: (row: PvContribution) => string | null;
 }) {
   // R2: the technical name stays reachable as the row's tooltip even once the
   // customer's own name is what the row SAYS.
   const title = row.kw == null ? row.title : healthTitle(row.health, row.label);
-  const renameable = onRename != null && row.entityId != null;
+  const href = row.entityId == null ? null : (renameHref?.(row) ?? null);
+  const renameable = row.entityId != null && (href != null || onRename != null);
   return (
     <li className={`vp-pvcomp-row${row.kw == null ? ' quiet' : ''}`}>
       <span
@@ -168,7 +173,15 @@ function Row({
             kW onto a neighbour (`vp-pin-werte-f8`). */}
         {row.kw != null && row.note && <span className="vp-pvcomp-hint"> · {row.note}</span>}
       </span>
-      {renameable && (
+      {renameable && href ? (
+        <a
+          className="vp-pvcomp-pencil"
+          aria-label={`„${row.label}“ umbenennen`}
+          href={href}
+        >
+          <Icon name="pencil" size={14} />
+        </a>
+      ) : renameable ? (
         <button
           type="button"
           className="vp-pvcomp-pencil"
@@ -177,7 +190,7 @@ function Row({
         >
           <Icon name="pencil" size={14} />
         </button>
-      )}
+      ) : null}
       {row.kw == null ? (
         <span className="vp-pvcomp-note">{row.note}</span>
       ) : (

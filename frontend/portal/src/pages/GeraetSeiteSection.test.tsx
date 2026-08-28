@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { GeraetSeiteSection } from './GeraetSeiteSection';
 import * as auth from '../auth';
 import { SEKTIONS_ORDNUNG, sektionKey, type RahmenSektionId } from '../geraetRahmen';
@@ -9,6 +9,7 @@ import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';
 import { fleetApi } from '../admin/fleetApi';
 import { entitiesApi } from '../entitiesApi';
+import { requestNavigation } from '../navigationBlocker';
 import {
   api,
   type CommandHistory,
@@ -598,6 +599,10 @@ describe('GeraetSeiteSection', () => {
 
   it('ändert auch an einer real komponierten OCPP-Wallbox den gemeinsamen Anzeigenamen', async () => {
     let alias = 'Garage';
+    let resolveChargers!: (value: Awaited<ReturnType<typeof api.siteChargers>>) => void;
+    const chargers = new Promise<Awaited<ReturnType<typeof api.siteChargers>>>((resolve) => {
+      resolveChargers = resolve;
+    });
     stub({
       entities: () => Promise.resolve({
         ...entities,
@@ -612,7 +617,7 @@ describe('GeraetSeiteSection', () => {
         ],
       }),
     });
-    vi.mocked(api.siteChargers).mockImplementation(() => Promise.resolve({
+    const charging: Awaited<ReturnType<typeof api.siteChargers>> = {
       budget: null,
       chargers: [{
         deviceId: 'gw', chargePointId: 'CP-1', label: alias, priority: false,
@@ -620,7 +625,13 @@ describe('GeraetSeiteSection', () => {
           connectorId: 1, status: 'Available', charging: false, powerKw: 0,
         }], entityId: 'wallbox-1',
       }],
-    }));
+    };
+    vi.mocked(api.siteChargers)
+      .mockImplementationOnce(() => chargers)
+      .mockImplementation(async () => ({
+        ...charging,
+        chargers: charging.chargers.map((charger) => ({ ...charger, label: alias })),
+      }));
     // Reale OCPP-Komponenten haben bewusst KEINE Portal-Treiberdefinition:
     // kein templateRef, keine connection_json, trotzdem einen Alias.
     vi.mocked(api.siteComponents).mockResolvedValue({
@@ -654,12 +665,30 @@ describe('GeraetSeiteSection', () => {
       '#/anlage/s-1/geraet/edge-45gz7da/cp-CP-1?bearbeiten=1&komponente=wallbox-1',
     );
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="cp-CP-1" devices={[box]} />);
+    await waitFor(() => expect(api.siteEntities).toHaveBeenCalledWith('s-1'));
+    expect(window.location.hash).toContain('bearbeiten=1');
+    expect(screen.queryByTestId('geraet-bearbeiten')).toBeNull();
+    await act(async () => {
+      resolveChargers(charging);
+      await chargers;
+    });
     expect(await screen.findByTestId('geraet-bearbeiten')).toBeVisible();
     expect(window.location.hash).toBe('#/anlage/s-1/geraet/edge-45gz7da/cp-CP-1');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.querySelector('.vp-drawer')).toBeNull();
     expect(screen.queryByTestId('ocpp-rahmen')).toBeNull();
     fireEvent.change(screen.getByLabelText('Anzeigename'), { target: { value: 'Carport' } });
+    const editorHref = window.location.href;
+    let blocked = false;
+    act(() => {
+      window.history.replaceState(null, '', '#/anlage/s-1/modell');
+      blocked = requestNavigation(window.location.href, true);
+    });
+    expect(blocked).toBe(true);
+    expect(window.location.href).toBe(editorHref);
+    const discard = await screen.findByRole('dialog', { name: 'Änderung verwerfen?' });
+    fireEvent.click(within(discard).getByRole('button', { name: 'Abbrechen' }));
+    expect(screen.getByLabelText('Anzeigename')).toHaveValue('Carport');
     fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
 
     await waitFor(() => expect(entitiesApi.rename).toHaveBeenCalledWith(

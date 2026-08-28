@@ -84,6 +84,7 @@ export interface PvContribution {
    * comes first (concept `vp-entity-alias-k1` §5).
    */
   entityId: string | null;
+  deviceId: string | null;
   /** The customer's OWN name for this row, or null when they gave none. */
   alias: string | null;
 }
@@ -229,6 +230,7 @@ export function pvComposition(
       note: m.value_kw == null ? emptyNote(health, hybridCarriesTheRest && !orphaned, orphaned) : null,
       title,
       entityId: m.entity_id,
+      deviceId: matched?.sourceId ?? null,
       alias: (nameInput.storedLabel ?? '').trim() || null,
     };
     if (row.kw == null) unmeasured.push(row);
@@ -262,6 +264,7 @@ export function pvComposition(
         title: sourceLabel(u),
         // No component yet ⇒ nothing to name. Assign it first.
         entityId: null,
+        deviceId: null,
         alias: null,
       });
     }

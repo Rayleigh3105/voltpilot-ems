@@ -19,6 +19,7 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { ApiError } from '../api';
 import { entitiesApi } from '../entitiesApi';
 import { CenteredConfirmDialog } from './CenteredConfirmDialog';
+import { registerNavigationBlocker } from '../navigationBlocker';
 import './AnlegenFlow.css';
 import './UmbenennenDialog.css';
 
@@ -70,23 +71,14 @@ export function UmbenennenDialog({
       event.preventDefault();
       event.returnValue = '';
     };
-    const linkClick = (event: MouseEvent) => {
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey
-        || event.shiftKey || event.altKey) return;
-      const source = event.target;
-      const link = source instanceof Element ? source.closest('a[href]') : null;
-      if (!(link instanceof HTMLAnchorElement) || link.target === '_blank' || link.download) return;
-      if (link.href === window.location.href) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setPendingHref(link.href);
+    const unregister = registerNavigationBlocker((targetHref) => {
+      setPendingHref(targetHref);
       setDiscardOpen(true);
-    };
+    });
     window.addEventListener('beforeunload', beforeUnload);
-    document.addEventListener('click', linkClick, true);
     return () => {
+      unregister();
       window.removeEventListener('beforeunload', beforeUnload);
-      document.removeEventListener('click', linkClick, true);
     };
   }, [changed, inline]);
 

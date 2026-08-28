@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api';
 import { AnlegenFlow } from './AnlegenFlow';
+import { requestNavigation } from '../navigationBlocker';
 
 const template = {
   templateRef: 'builtin:deye:sun-30k-sg01hp3',
@@ -904,6 +905,26 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     const event = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('blockiert auch imperative Hash-Navigation und stellt die Editor-Adresse wieder her', async () => {
+    renderInline();
+    fireEvent.change(await screen.findByLabelText('Anzeigename'), {
+      target: { value: 'Noch nicht gespeichert' },
+    });
+    const editorHref = window.location.href;
+    let blocked = false;
+    act(() => {
+      window.history.replaceState(null, '', '#/anlage/s1/modell');
+      blocked = requestNavigation(window.location.href, true);
+    });
+
+    expect(blocked).toBe(true);
+    expect(window.location.href).toBe(editorHref);
+    const dialog = await screen.findByRole('dialog', { name: 'Änderungen verwerfen?' });
+    expect(dialog).toBeVisible();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
+    expect(screen.getByLabelText('Anzeigename')).toHaveValue('Noch nicht gespeichert');
   });
 
   it('bestätigt eine geänderte elektrische Aufgabe mit ihren Folgen', async () => {

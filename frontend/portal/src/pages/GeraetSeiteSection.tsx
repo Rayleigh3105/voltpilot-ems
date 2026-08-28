@@ -220,6 +220,7 @@ export function GeraetSeiteSection({
   const [curtailment, setCurtailment] = useState<CurtailmentStatus | null>(null);
   const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
+  const [chargingLoadedRequest, setChargingLoadedRequest] = useState<string | null>(null);
   const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]> | null>(null);
   // Geräteseiten Stufe 2: der VERLAUF lädt sich selbst (Fenster, Cursor,
   // stiller Takt) - dieselbe Mechanik wie auf der Befehle-Seite.
@@ -257,6 +258,7 @@ export function GeraetSeiteSection({
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const chargingRequest = `${site.id}:${geraeteRef}:${geraetId ?? ''}:${reloadKey}`;
 
   // Ein offener Namensdialog gehört zur adressierten Säule. Bei einem
   // Gerätewechsel darf er nie mit dem Ziel der neuen Route wieder auftauchen.
@@ -295,7 +297,18 @@ export function GeraetSeiteSection({
     soft(api.controlStatus(site.id), setControl);
     soft(api.curtailmentStatus(site.id), setCurtailment);
     soft(api.edgeVersions(), setEdgeVersions);
-    soft(api.siteChargers(site.id), setCharging);
+    void api.siteChargers(site.id).then(
+      (value) => {
+        if (!active) return;
+        setCharging(value ?? null);
+        setChargingLoadedRequest(chargingRequest);
+      },
+      () => {
+        if (!active) return;
+        setCharging(null);
+        setChargingLoadedRequest(chargingRequest);
+      },
+    );
     soft(api.entityStrategies(site.id), setStrategies);
     // Sektion E: die Ziele des Register-Werkzeugs. Ohne sie gibt es keinen
     // Knopf - nie einen, der ins Leere führt.
@@ -348,7 +361,7 @@ export function GeraetSeiteSection({
     return () => {
       active = false;
     };
-  }, [site.id, geraeteRef, geraetId, boxDevice?.id, reloadKey]);
+  }, [site.id, geraeteRef, geraetId, boxDevice?.id, reloadKey, chargingRequest]);
 
   /**
    * Eine Admin-Handlung: ausführen, dann die Seite neu laden. Ein Fehlschlag
@@ -453,7 +466,9 @@ export function GeraetSeiteSection({
     const requestedComponentId = geraetBearbeitenKomponente(window.location.hash);
     // Der Deep-Link ist schneller als die Entitätsantwort. Erst verbrauchen,
     // wenn die Geräteseite die adressierte Komponente tatsächlich prüfen kann.
-    if (requestedComponentId && !view) return;
+    const chargerDataSettled = !chargePointIdOf(geraetId)
+      || chargingLoadedRequest === chargingRequest;
+    if (requestedComponentId && (!view || !chargerDataSettled)) return;
     const requestedComponent = requestedComponentId
       ? view?.komponenten.find((row) => row.entityId === requestedComponentId && row.renameable)
       : null;
@@ -477,7 +492,10 @@ export function GeraetSeiteSection({
       '',
       ohneGeraetBearbeiten(window.location.hash),
     );
-  }, [chargerRenameTarget, components?.componentAuthority, editRow?.id, view]);
+  }, [
+    chargerRenameTarget, chargingLoadedRequest, chargingRequest,
+    components?.componentAuthority, editRow?.id, geraetId, view,
+  ]);
 
   useEffect(() => {
     if (!editRow) { setVersions([]); return; }

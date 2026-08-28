@@ -5690,12 +5690,12 @@ Liste, und die Wallbox-Seite konnte gar keine eigene führen. Migration
   UNIQUE-Bedingung statt einer PK: eine PK-Spalte müsste NOT NULL sein, und NULL ist hier eine
   Aussage.
 - **⚠ Der Fremdschlüssel bindet `(entity_id, tenant_id)`, BEWUSST OHNE `site_id`** — obwohl der
-  Geräte-FK daneben das volle Tripel bindet. Grund ist der Geräte-Umzug (`DeviceRepository.move`):
-  dort wandert `device.site_id` und nimmt diese Zeilen über `ON UPDATE CASCADE` mit, während eine
-  Komponente OHNE `device_id` am alten Standort zurückbleibt. Ein site-gebundener FK wäre mitten im
-  Umzug verletzt. Der Mandant IST der Zaun (RLS); die Standort-Gleichheit ist eine ANLEGE-Regel des
-  Dienstes, keine Invariante über einen Umzug hinweg. Bewiesen von
-  `ComponentApiTest.movingADeviceKeepsItsIdentityAndHistoricalTelemetry`.
+  Geräte-FK daneben das volle Tripel bindet. Das ist historische Schema-Rationale: als die
+  unveränderliche Migration angewendet wurde, konnten Geräte noch den Standort wechseln, während
+  eine Komponente ohne `device_id` am alten Standort blieb. Der Umzugs-Endpunkt ist heute entfernt
+  und der Standort nach dem Claim stabil; die FK-Form bleibt ausschließlich erhalten, weil bereits
+  angewendete Flyway-Migrationen und ihre Datenstruktur nicht nachträglich umgeschrieben werden.
+  Der Mandant bleibt der RLS-Zaun, die Standort-Gleichheit die Anlege-Regel des Dienstes.
 - **⚠ Die Papier-Spur bekommt AUSDRÜCKLICH KEINEN Fremdschlüssel** (das `rule_event`-/
   `rollout_device`-Muster): sie ist append-only und muss die Komponente überleben, über die sie
   berichtet. `entity_id` ist dort eine Zuordnungsnotiz.
@@ -5744,7 +5744,7 @@ Liste, und die Wallbox-Seite konnte gar keine eigene führen. Migration
   (echte DB + Keycloak: derselbe Punkt auf zwei Komponenten, getrennte Listen, geräteweite Revision
   und geräteweites Budget, Katalog-Familie je Komponente, fremde Anlage 404 auf jeder Route) ·
   `MeasurementContractsTest.publisherBindsAnUnambiguousComponentAndCollapsesTheSameRegisterOfTwo` ·
-  `ComponentApiTest` (Umzug) · Go `internal/measurements`.
+  Go `internal/measurements`.
 - **NICHT in dieser Stufe:** die Portal-Fläche (Stufe 3a). Die Bindung auf der BOX ist seither
   gebaut — siehe den nächsten Abschnitt.
 
