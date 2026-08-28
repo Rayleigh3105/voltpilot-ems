@@ -215,3 +215,50 @@
     align-items: flex-start;
   }
 }
+
+/* -----------------------------------------------------------------------------
+   Die AUFKLAPPBARE Zeile (Konzept `vp-verbraucher-cockpit-k1`): der Zeilen-Klick
+   bleibt der Verlauf, das Aufklappen ist ein EIGENER Knopf daneben. Zwei Ziele
+   in einer Schaltfläche wären die Doppeldeutigkeit, die dieses Haus verbietet -
+   und ein `<button>` im `<button>` ist ohnehin kein gültiges HTML.
+----------------------------------------------------------------------------- */
+.vp-puls-rowwrap {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+.vp-puls-rowwrap > .vp-puls-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Sichtbar 28 px, TREFFERFLÄCHE 44 px über `::before` (das `.vp-am-pencil`-
+   Muster) - ein 44-px-KASTEN würde die Zeilenhöhe auseinanderziehen. */
+.vp-puls-fold {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 999px;
+  background: var(--vp-surface, #fff);
+  color: var(--vp-text-gray);
+  cursor: pointer;
+}
+.vp-puls-fold::before { content: ''; position: absolute; inset: -8px; }
+.vp-puls-fold:hover { background: var(--vp-surface-2, #f1f5f9); color: var(--vp-action); }
+.vp-puls-fold:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: 2px;
+}
+.vp-puls-fold svg { transition: transform .15s ease; }
+.vp-puls-fold.open svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .vp-puls-fold svg { transition: none; }
+}

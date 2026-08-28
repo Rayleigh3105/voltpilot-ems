@@ -48,6 +48,7 @@ import { resolveAnlage } from '../anlageNav';
 import { fetchGate, readFace, rememberFace } from '../anlageFace';
 import { consumersApi } from '../consumers/consumersApi';
 import { consumerStrip, type ConsumerStripView } from '../consumers/fulfillment';
+import type { ConsumerRuntimeStatus } from '../consumers/status';
 import { ControlStrip } from '../components/ControlStrip';
 import { useAdaptiveLive } from '../useAdaptiveLive';
 import { liveState, type LiveState } from '../adaptiveLive';
@@ -619,6 +620,7 @@ function AnlagenSubPage({
 export function AnlageSeite({
   site,
   sites,
+  devices,
   onOpenSub,
   onReload,
   onHealthFacts,
@@ -684,6 +686,10 @@ export function AnlageSeite({
   // Live-Zustand, fail-soft geladen. Ohne Verbraucher / auf einem älteren
   // Backend bleibt es null und das Cockpit ist byte-identisch zu vorher.
   const [consumersView, setConsumersView] = useState<ConsumerStripView | null>(null);
+  // Der ROHE Zustand steuerbarer Verbraucher: der Streifen verdichtet ihn zu
+  // seiner eigenen Sicht, die Verbrauchs-Aufschlüsselung braucht ihn je Gerät
+  // (ein Gerät ohne Messung hat NUR diesen Zustand).
+  const [consumerStatus, setConsumerStatus] = useState<ConsumerRuntimeStatus[] | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   // Aufwach-Signal: die drei BEDINGTEN Lade-Effekte unten holen beim Betreten
@@ -797,6 +803,7 @@ export function AnlageSeite({
       consumersApi.status(site.id).catch(() => []),
     ]).then(([list, statuses]) => {
       if (!active) return;
+      setConsumerStatus(statuses ?? null);
       setConsumersView(
         consumerStrip(
           (list ?? []).map((c) => ({
@@ -1470,6 +1477,13 @@ export function AnlageSeite({
     return isPhone ? mobileWidgets(neu, { hasRings: heroView.rings.length > 0 }) : neu;
   })();
   const zeigt = (id: BausteinId) => layout.resolved.order.includes(id);
+
+  // Die Referenz der Box dieser Anlage - dieselbe ehrliche Regel wie auf der
+  // Box-Seite: eine Anlage hat GENAU EINE Box, und mehr als ein eigenes Gerät
+  // lässt sie nicht eindeutig bestimmen. Dann führt keine Ladepunkt-Zeile
+  // irgendwohin, statt auf ein geratenes Gerät zu zeigen.
+  const eigeneGeraete = (devices ?? []).filter((d) => d.siteId === site.id);
+  const boxRef = eigeneGeraete.length === 1 ? eigeneGeraete[0].externalRef : null;
   /**
    * Der Knoten EINER eigenen Auswertung. Ohne Wert vom Server rendert sie
    * trotzdem — mit dem ehrlichen Satz statt einer erfundenen Zahl.
@@ -1592,6 +1606,9 @@ export function AnlageSeite({
         range={range}
         at={at}
         dayTotals={dayTotalsEffective}
+        charging={charging}
+        consumerStatus={consumerStatus}
+        boxRef={boxRef}
       />
     ),
     /* Zustand (vp-cockpit-unten-ux-n3 PR 3): leise, wenn gesund — EINE

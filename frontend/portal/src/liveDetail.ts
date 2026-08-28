@@ -14,6 +14,7 @@ import type { LiveSnapshot } from './live';
 import { energyLabel } from './anlage';
 import { standLabel } from './datenAlter';
 import { fmtRelative } from './format';
+import { istHausZeile } from './livePuls';
 import type { LivePulsRow, TodayLine } from './livePuls';
 import { isReportedTotal } from './nodata';
 
@@ -131,8 +132,9 @@ export function withDayTotals(
     if (row.role === 'pv' && pvKwh != null) {
       return { ...row, today: [{ text: energyLabel(pvKwh) }] };
     }
-    const isHouse = row.key === 'v1-haus' || row.title === 'Hausverbrauch';
-    if (row.role === 'consumer' && isHouse && loadKwh != null) {
+    // Welche Zeile das Haus IST, entscheidet EINE Stelle - sonst erbt eine
+    // Wallbox die Tagessumme des Hauses (`livePuls.istHausZeile`).
+    if (istHausZeile(row) && loadKwh != null) {
       return { ...row, today: [{ text: energyLabel(loadKwh) }] };
     }
     if (row.role === 'grid') {

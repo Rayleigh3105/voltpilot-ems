@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { SiteTopology, TelemetryPoint, TopologyEntity } from './api';
 import type { FlowNode } from './topology';
-import { BOARD_HINT, componentRows, v1FallbackRows } from './livePuls';
+import {
+  BOARD_HINT,
+  componentRows,
+  istHausZeile,
+  v1FallbackRows,
+  withVerbrauch,
+  type LivePulsRow,
+} from './livePuls';
 import { NO_DATA } from './nodata';
 
 /**
@@ -297,5 +304,62 @@ describe('BOARD_HINT — beide Zeitbezüge benannt, kein bedingtes Versprechen',
     expect(BOARD_HINT).toBe('Jetzt und heute · eine Zeile öffnet den Verlauf');
     // Das alte „letzte 60 Min"-Versprechen ist mit den Sparklines entfallen.
     expect(BOARD_HINT).not.toContain('60');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Die HAUS-Zeile und ihre Aufschlüsselung (`vp-verbraucher-cockpit-k1`)
+// ---------------------------------------------------------------------------
+
+describe('withVerbrauch · die Signale der Haus-Zeile ohne Klick', () => {
+  const zeilen = (): LivePulsRow[] => [
+    {
+      key: 'pv', role: 'pv', icon: 'sun', title: 'PV-Erzeugung', value: '14,1 kW',
+      stateLabel: 'liefert', stateTone: 'accent', health: 'ok', target: null, today: null,
+    },
+    {
+      key: 'consumer-haus-0', role: 'consumer', icon: 'home', title: 'Hausverbrauch',
+      value: '14,1 kW', stateLabel: 'verbraucht', stateTone: 'accent', health: 'ok',
+      target: null, today: null,
+    },
+    {
+      key: 'consumer-wb-1', role: 'consumer', icon: 'zap', title: 'Wallbox',
+      value: '11,0 kW', stateLabel: 'lädt', stateTone: 'accent', health: 'ok',
+      target: null, today: null,
+    },
+  ];
+
+  it('setzt Bestands-Notiz und Halbsatz - und NUR an der Haus-Zeile', () => {
+    const out = withVerbrauch(zeilen(), { verbraucherCount: 4, subLine: 'davon Laden 11,0 kW' });
+    const haus = out.find((r) => r.title === 'Hausverbrauch')!;
+    expect(haus.titleNote).toBe('4 Verbraucher');
+    expect(haus.subLine).toBe('davon Laden 11,0 kW');
+    // ⚠ Eine Wallbox darf die Zusammensetzung des Hauses NICHT erben.
+    expect(out.find((r) => r.title === 'Wallbox')!.titleNote).toBeUndefined();
+    expect(out.find((r) => r.role === 'pv')!.titleNote).toBeUndefined();
+  });
+
+  it('behauptet ohne ladenden Stecker keinen Halbsatz', () => {
+    const out = withVerbrauch(zeilen(), { verbraucherCount: 2, subLine: null });
+    const haus = out.find((r) => r.title === 'Hausverbrauch')!;
+    expect(haus.titleNote).toBe('2 Verbraucher');
+    expect(haus.subLine).toBeUndefined();
+  });
+
+  it('ohne Aufschlüsselung ist die Liste Zeichen für Zeichen dieselbe', () => {
+    const vorher = zeilen();
+    expect(withVerbrauch(vorher, null)).toEqual(vorher);
+    expect(withVerbrauch(vorher, { verbraucherCount: 0, subLine: null })).toEqual(vorher);
+  });
+
+  it('istHausZeile meint auf BEIDEN Pfaden dieselbe Zeile', () => {
+    // Ein Leser (die Heute-Spalte) und der andere (die Aufschlüsselung) dürfen
+    // nie zwei verschiedene Zeilen für „das Haus" halten.
+    expect(istHausZeile(zeilen()[1])).toBe(true);
+    expect(istHausZeile(zeilen()[2])).toBe(false);
+    expect(istHausZeile(zeilen()[0])).toBe(false);
+    expect(
+      istHausZeile({ ...zeilen()[1], key: 'v1-haus', title: 'Haus' }),
+    ).toBe(true);
   });
 });
