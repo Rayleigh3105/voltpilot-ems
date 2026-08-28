@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { anlageSidebar } from './anlageNav';
 import { healthBadge } from './health';
+import { ladenKachel } from './ladenKachel';
 import { anlageDecision, cockpitStack, projectionActive } from './cockpit';
 import { cockpitWidgets } from './cockpitWidgets';
 import { hasTopology } from './adaptiveLive';
@@ -667,6 +668,8 @@ describe('Anwendungs-Programm Stufe 3 — das Cockpit-Layout einer Bestandsanlag
       'energiefluss',
       'geld',
       'steuerung',
+      // Die Kachel „Laden" - am Rechner nach der Steuerungs-Zeile (E2).
+      'laden',
       'kacheln',
       'strompreis',
       'fahrplan',
@@ -678,6 +681,9 @@ describe('Anwendungs-Programm Stufe 3 — das Cockpit-Layout einer Bestandsanlag
       'status',
       'energiefluss',
       'geld',
+      // Am Telefon direkt unter der Bühne (E2) - dort ist „lädt mein Auto?"
+      // die erste Frage nach dem Fluss.
+      'laden',
       'fahrplan',
       'steuerung',
       'strompreis',
@@ -734,6 +740,22 @@ describe('Anwendungs-Programm Stufe 3 — das Cockpit-Layout einer Bestandsanlag
       layoutResolve({ canonical, verfuegbar: [...ALLE, 'eigen:k1'] }).order,
     ).toContain('eigen:k1');
     expect(layoutResolve({ canonical, verfuegbar: ALLE }).order).not.toContain('eigen:k1');
+  });
+
+  it('Kachel „Laden": eine Anlage OHNE Ladepunkt sieht sie nie', () => {
+    // Der Baustein steht in beiden kanonischen Listen, aber `verfuegbar` ist
+    // der harte Filter davor: ohne Ladepunkt fällt er heraus, und das Cockpit
+    // einer Bestandsanlage ist Zeichen für Zeichen das von vorher.
+    const ohneLaden = ALLE.filter((id) => id !== 'laden');
+    for (const canonical of [CANONICAL_DESKTOP, CANONICAL_PHONE]) {
+      const r = layoutResolve({ canonical, verfuegbar: ohneLaden });
+      expect(r.order).toEqual(canonical.filter((id) => id !== 'laden'));
+      expect(r.order).not.toContain('laden');
+      expect(r.quelle).toBe('katalog');
+    }
+    // Und die reine Ableitung sagt dasselbe: ohne Ladepunkt keine Kachel.
+    expect(ladenKachel({ charging: { budget: null, chargers: [] } })).toBeNull();
+    expect(ladenKachel({ charging: null })).toBeNull();
   });
 
   it('das Layout ist server-seitig — im Portal gibt es dafür KEIN localStorage', () => {

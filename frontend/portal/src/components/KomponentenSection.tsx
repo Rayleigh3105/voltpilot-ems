@@ -13,7 +13,18 @@ import { ChartSubtitle } from './ChartExplain';
 import { ChartLoading, LazyBoundary } from './Lazy';
 import { ErrorState, Skeleton } from './States';
 import { LivePuls } from './LivePuls';
-import { componentRows, v1FallbackRows, type LivePulsRow } from '../livePuls';
+import {
+  componentRows,
+  istHausZeile,
+  v1FallbackRows,
+  withVerbrauch,
+  type LivePulsRow,
+} from '../livePuls';
+import { chargerGeraetId } from '../geraetSeite';
+import type { ConsumerRuntimeStatus } from '../consumers/status';
+import type { SiteCharging } from '../ladepunkte';
+import { verbrauchKomposition } from '../verbrauchKomposition';
+import { VerbrauchDetails } from './VerbrauchDetails';
 import {
   initialVerlaufOpen,
   LIVE_WINDOWS,
@@ -31,7 +42,7 @@ const TelemetryChart = lazy(() =>
 );
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { verlaufHash } from '../verlauf';
-import { anlageRoute, hashForRoute } from '../nav';
+import { anlageRoute, geraetSeiteHash, hashForRoute, komponenteHash } from '../nav';
 import { verlaufRangeForCockpit } from '../verlaufTarget';
 import './KomponentenSection.css';
 
@@ -67,6 +78,10 @@ export function KomponentenSection({
   range,
   at = null,
   dayTotals = null,
+  charging = null,
+  consumerStatus = null,
+  ladenKachelSichtbar = false,
+  boxRef = null,
 }: {
   site: Site;
   /** The AE1 topology read-model; null = un-migrated site (v1 fallback rows). */
@@ -81,6 +96,14 @@ export function KomponentenSection({
   at?: string | null;
   /** Today's Historie totals for the optional kWh sub-lines (R2). */
   dayTotals?: HistoryTotals | null;
+  /** Die Ladesäulen - die Verbrauchs-Aufschlüsselung der Haus-Zeile. */
+  charging?: SiteCharging | null;
+  /** Der gemeldete Zustand steuerbarer Verbraucher (die ohne Messung). */
+  consumerStatus?: ConsumerRuntimeStatus[] | null;
+  /** E4: ist die Kachel „Laden" sichtbar, kollabiert die Laden-Gruppe. */
+  ladenKachelSichtbar?: boolean;
+  /** Die Referenz der Box - ohne sie führt keine Ladepunkt-Zeile irgendwohin. */
+  boxRef?: string | null;
 }) {
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,14 +191,40 @@ export function KomponentenSection({
   // The board rows: one per component (migrated) or the site-level fallback
   // (v1) — both pure derivations (livePuls.ts), plus the optional kWh
   // sub-lines the retired flow tiles used to carry (liveDetail.ts).
+  // Woraus sich der Hausverbrauch zusammensetzt - die EINE Ableitung hinter
+  // der Zeile „Hausverbrauch" (Konzept `vp-verbraucher-cockpit-k1`). Ohne
+  // Verbraucher ist sie null, und dann rendert das Board Zeichen für Zeichen
+  // wie vorher: keine Notiz, kein Halbsatz, kein Chevron.
+  const komposition = useMemo(
+    () =>
+      verbrauchKomposition({
+        topology: adaptive ? topology : null,
+        chargers: charging?.chargers ?? null,
+        consumerStatus,
+        hausTodayKwh: dayTotals?.consumptionKwh ?? null,
+        ladenKachelSichtbar,
+        links: {
+          charger: (id) => (boxRef ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(id)) : null),
+          komponente: (entityId) => komponenteHash(site.id, entityId),
+        },
+      }),
+    [adaptive, topology, charging, consumerStatus, dayTotals, ladenKachelSichtbar, boxRef, site.id],
+  );
+
   const rows: LivePulsRow[] = useMemo(
     () =>
-      withDayTotals(
-        adaptive && topology ? componentRows(topology) : v1FallbackRows(telemetry),
-        dayTotals,
+      withVerbrauch(
+        withDayTotals(
+          adaptive && topology ? componentRows(topology) : v1FallbackRows(telemetry),
+          dayTotals,
+        ),
+        komposition,
       ),
-    [adaptive, topology, telemetry, dayTotals],
+    [adaptive, topology, telemetry, dayTotals, komposition],
   );
+
+  const hausZeile = rows.find((r) => istHausZeile(r)) ?? null;
+  const [verbrauchOffen, setVerbrauchOffen] = useState(false);
 
   // A board-row jump navigates into the Verlauf-Explorer, carrying the Bilanz
   // period (the hash carries `?m&z&at`, so it is set directly).
@@ -228,7 +277,21 @@ export function KomponentenSection({
         ) : !hasBoard && loading && telemetry.length === 0 ? (
           <Skeleton height={180} radius="var(--vp-radius-md)" />
         ) : (
-          <LivePuls rows={rows} onOpenVerlauf={openVerlauf} />
+          <LivePuls
+        rows={rows}
+        onOpenVerlauf={openVerlauf}
+        fold={
+          komposition && hausZeile
+            ? {
+                key: hausZeile.key,
+                open: verbrauchOffen,
+                onToggle: () => setVerbrauchOffen((o) => !o),
+                label: 'Zusammensetzung des Verbrauchs',
+                panel: <VerbrauchDetails komposition={komposition} />,
+              }
+            : null
+        }
+      />
         )}
       </div>
 

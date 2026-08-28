@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { Icon } from '../../designsystem/components/core/Icon';
 import { BOARD_HINT } from '../livePuls';
 import type { LivePulsRow, TodayLine } from '../livePuls';
@@ -48,9 +50,11 @@ function Today({ line }: { line: TodayLine }) {
 function Row({
   row,
   onOpen,
+  fold,
 }: {
   row: LivePulsRow;
   onOpen: (t: { entityId: string; channel: string }) => void;
+  fold?: FoldProps;
 }) {
   const dot = HEALTH[row.health] ?? HEALTH.unknown;
   return (
@@ -94,19 +98,70 @@ function Row({
           row.today.map((l, i) => <Today key={i} line={l} />)
         )}
       </span>
-      <span className="vp-puls-go" aria-hidden="true">
-        <Icon name="chevron-right" size={16} />
-      </span>
+      {!fold && (
+        <span className="vp-puls-go" aria-hidden="true">
+          <Icon name="chevron-right" size={16} />
+        </span>
+      )}
     </button>
+  );
+}
+
+/** Die Aufklapp-Steuerung einer Zeile (heute: die Zusammensetzung des Hauses). */
+export interface FoldProps {
+  open: boolean;
+  onToggle: () => void;
+  /** Der Name der Sache, die sich öffnet - für das `aria-label`. */
+  label: string;
+  /** Was hinter dem Chevron steht. */
+  panel: ReactNode;
+}
+
+/**
+ * Eine aufklappbare Zeile: der ZEILEN-Klick bleibt der Verlauf, das Aufklappen
+ * ist ein EIGENER Knopf daneben. Zwei Ziele in EINER Schaltfläche wären die
+ * Doppeldeutigkeit, die dieses Haus verbietet - und ein `<button>` im
+ * `<button>` ist ohnehin kein gültiges HTML.
+ */
+function FoldableRow({
+  row,
+  onOpen,
+  fold,
+}: {
+  row: LivePulsRow;
+  onOpen: (t: { entityId: string; channel: string }) => void;
+  fold: FoldProps;
+}) {
+  return (
+    <>
+      <div className="vp-puls-rowwrap">
+        <Row row={row} onOpen={onOpen} fold={fold} />
+        <button
+          type="button"
+          className={`vp-puls-fold${fold.open ? ' open' : ''}`}
+          aria-expanded={fold.open}
+          aria-label={fold.open ? `${fold.label} schließen` : `${fold.label} anzeigen`}
+          onClick={fold.onToggle}
+        >
+          {/* Der Satz kennt nur `chevron-down`; die Richtung dreht die CSS -
+              den ZUSTAND trägt ohnehin `aria-expanded`, nicht die Grafik. */}
+          <Icon name="chevron-down" size={16} />
+        </button>
+      </div>
+      {fold.open && fold.panel}
+    </>
   );
 }
 
 export function LivePuls({
   rows,
   onOpenVerlauf,
+  fold,
 }: {
   rows: LivePulsRow[];
   onOpenVerlauf: (target: { entityId: string; channel: string }) => void;
+  /** Die EINE Zeile, die sich aufklappen lässt, mit ihrem Panel. */
+  fold?: (FoldProps & { key: string }) | null;
 }) {
   return (
     <div className="vp-puls" aria-label="Komponenten im Detail">
@@ -115,9 +170,13 @@ export function LivePuls({
         <span className="vp-puls-hint">{BOARD_HINT}</span>
       </div>
       <div className="vp-puls-rows">
-        {rows.map((row) => (
-          <Row key={row.key} row={row} onOpen={onOpenVerlauf} />
-        ))}
+        {rows.map((row) =>
+          fold && fold.key === row.key ? (
+            <FoldableRow key={row.key} row={row} onOpen={onOpenVerlauf} fold={fold} />
+          ) : (
+            <Row key={row.key} row={row} onOpen={onOpenVerlauf} />
+          ),
+        )}
       </div>
     </div>
   );

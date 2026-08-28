@@ -65,6 +65,7 @@ export type BausteinId =
   | 'steuerung'
   | 'fahrplan'
   | 'strompreis'
+  | 'laden'
   | 'kacheln'
   | 'komponenten'
   | 'zustand';
@@ -180,6 +181,7 @@ export const CANONICAL_DESKTOP: BausteinId[] = [
   'energiefluss',
   'geld',
   'steuerung',
+  'laden',
   'kacheln',
   'strompreis',
   'fahrplan',
@@ -197,6 +199,7 @@ export const CANONICAL_PHONE: BausteinId[] = [
   'status',
   'energiefluss',
   'geld',
+  'laden',
   'fahrplan',
   'steuerung',
   'strompreis',

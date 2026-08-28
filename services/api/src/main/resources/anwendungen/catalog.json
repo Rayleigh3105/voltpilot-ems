@@ -1,5 +1,5 @@
 {
-  "catalog_version": "1.3.0",
+  "catalog_version": "1.4.0",
   "_comment": [
     "Der EINE Anwendungs-Katalog (Zielbild 'Portal fuer viele Kunden, viele",
     "Anwendungen', Scout vp-portal-zielbild-anwendungen §3.2/§4.1, Stufe 1).",
@@ -304,6 +304,15 @@
       "bloecke": []
     },
     {
+      "id": "laden",
+      "label": "Laden",
+      "flaeche": "cockpit",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": ["lade-budget"]
+    },
+    {
       "id": "kacheln",
       "label": "Kennzahlen",
       "flaeche": "cockpit",
@@ -311,7 +320,6 @@
       "beweglich": true,
       "lead_block": null,
       "bloecke": [
-        "lade-budget",
         "peak-band",
         "handel",
         "eigenverbrauch",

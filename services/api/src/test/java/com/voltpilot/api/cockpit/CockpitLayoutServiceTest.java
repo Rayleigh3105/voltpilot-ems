@@ -98,7 +98,14 @@ class CockpitLayoutServiceTest {
                 .containsExactly("status", "energiefluss", "geld", "steuerung");
         // „Beigesteuert von" ist ABGELEITET aus den Anwendungen, nie eine Liste.
         assertThat(katalog.beigesteuertVon("kacheln"))
-                .contains("marktvermarktung", "lastspitzenkappung", "lastmanagement");
+                .contains("marktvermarktung", "lastspitzenkappung");
+        // ⚠ EIN Block hat EINEN Wohnort: `lade-budget` ist mit der Kachel
+        // „Laden" aus den Kennzahlen dorthin gezogen (Konzept
+        // `vp-verbraucher-cockpit-k1` §5.1). Stünde er in beiden `bloecke`,
+        // renderte er zweimal - und `lastmanagement" erschiene unter zwei
+        // Bausteinen.
+        assertThat(katalog.beigesteuertVon("laden")).containsExactly("lastmanagement");
+        assertThat(katalog.beigesteuertVon("kacheln")).doesNotContain("lastmanagement");
         assertThat(katalog.beigesteuertVon("komponenten")).isEmpty();
         // Das Preset „privat" hebt den Fluss hervor, „gewerbe" sagt nichts.
         assertThat(katalog.presetLayout("privat", "cockpit").lead()).isEqualTo("energiefluss");

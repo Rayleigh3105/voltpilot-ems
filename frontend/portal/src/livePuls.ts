@@ -337,3 +337,40 @@ function netzRow(snap: LiveSnapshot): LivePulsRow {
     measured: snap.gridKw != null,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Die HAUS-Zeile und ihre Aufschlüsselung (Konzept `vp-verbraucher-cockpit-k1`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ist DAS die Zeile des Hauses? Zwei Leser hängen daran - die Heute-Spalte
+ * (`liveDetail.withDayTotals`) und die Verbrauchs-Aufschlüsselung -, und beide
+ * müssen dieselbe Zeile meinen: eine Wallbox darf weder die Tagessumme des
+ * Hauses erben noch seine Zusammensetzung tragen.
+ */
+export function istHausZeile(row: LivePulsRow): boolean {
+  return row.role === 'consumer' && (row.key === 'v1-haus' || row.title === 'Hausverbrauch');
+}
+
+/**
+ * Die Haus-Zeile bekommt ihre zwei Signale OHNE Klick (Konzept §4.4): die
+ * Bestands-Notiz „4 Verbraucher" und - nur, WÄHREND wirklich geladen wird -
+ * den Halbsatz „davon Laden 11,0 kW".
+ *
+ * Ohne Aufschlüsselung ist das Ergebnis die unveränderte Zeilenliste: eine
+ * Anlage ohne Verbraucher rendert Zeichen für Zeichen wie vorher.
+ */
+export function withVerbrauch(
+  rows: LivePulsRow[],
+  k: { verbraucherCount: number; subLine: string | null } | null | undefined,
+): LivePulsRow[] {
+  if (!k || k.verbraucherCount <= 0) return rows;
+  // „Verbraucher" ist im Deutschen im Singular wie im Plural dasselbe Wort -
+  // die Zahl davor trägt die Aussage.
+  const note = `${k.verbraucherCount} Verbraucher`;
+  return rows.map((row) =>
+    istHausZeile(row)
+      ? { ...row, titleNote: note, subLine: k.subLine ?? row.subLine }
+      : row,
+  );
+}

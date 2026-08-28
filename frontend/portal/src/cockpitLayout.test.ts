@@ -195,6 +195,7 @@ describe('layoutResolve — Reihenfolge', () => {
           'steuerung',
           'fahrplan',
           'komponenten',
+          'laden',
           'kacheln',
           'strompreis',
           'zustand',
@@ -208,6 +209,7 @@ describe('layoutResolve — Reihenfolge', () => {
       'steuerung',
       'fahrplan',
       'komponenten',
+      'laden',
       'kacheln',
       'strompreis',
       'zustand',
@@ -231,12 +233,12 @@ describe('layoutResolve — Reihenfolge', () => {
       canonical: CANONICAL_DESKTOP,
       verfuegbar: ALLE,
       eigen: doc({
-        order: ['zustand', 'komponenten', 'geld', 'energiefluss', 'status', 'steuerung', 'kacheln', 'strompreis', 'fahrplan'],
+        order: ['zustand', 'komponenten', 'geld', 'energiefluss', 'status', 'steuerung', 'laden', 'kacheln', 'strompreis', 'fahrplan'],
       }),
     });
     expect(r.order.slice(0, 4)).toEqual(['status', 'energiefluss', 'geld', 'steuerung']);
     // Die BEWEGLICHEN folgen dem Wunsch.
-    expect(r.order.slice(4)).toEqual(['zustand', 'komponenten', 'kacheln', 'strompreis', 'fahrplan']);
+    expect(r.order.slice(4)).toEqual(['zustand', 'komponenten', 'laden', 'kacheln', 'strompreis', 'fahrplan']);
   });
 
   it('ignoriert einen Baustein, den es hier nicht gibt — die Präferenz bleibt gespeichert', () => {
@@ -299,7 +301,9 @@ describe('Anpassen-Modus', () => {
     expect(kopf.beweglich).toBe(false);
     expect(kopf.kannHoch).toBe(false);
     expect(kopf.kannRunter).toBe(false);
-    const erste = zeilen.find((z) => z.id === 'kacheln')!;
+    // Der ERSTE bewegliche kann nicht weiter nach oben - über ihm steht nur
+    // die unbewegliche Bühne.
+    const erste = zeilen.find((z) => z.id === 'laden')!;
     expect(erste.kannHoch).toBe(false);
     expect(erste.kannRunter).toBe(true);
     const letzte = zeilen.find((z) => z.id === 'zustand')!;
@@ -315,12 +319,12 @@ describe('Anpassen-Modus', () => {
   it('verschiebt nur unter den beweglichen — die Bühne bleibt stehen', () => {
     const nachOben = verschiebe(CANONICAL_DESKTOP, 'strompreis', 'hoch');
     expect(nachOben.slice(0, 4)).toEqual(['status', 'energiefluss', 'geld', 'steuerung']);
-    expect(nachOben.slice(4)).toEqual(['strompreis', 'kacheln', 'fahrplan', 'komponenten', 'zustand']);
+    expect(nachOben.slice(4)).toEqual(['laden', 'strompreis', 'kacheln', 'fahrplan', 'komponenten', 'zustand']);
   });
 
   it('verschiebt einen unbeweglichen Baustein gar nicht', () => {
     expect(verschiebe(CANONICAL_DESKTOP, 'energiefluss', 'runter')).toEqual(CANONICAL_DESKTOP);
-    expect(verschiebe(CANONICAL_DESKTOP, 'kacheln', 'hoch')).toEqual(CANONICAL_DESKTOP);
+    expect(verschiebe(CANONICAL_DESKTOP, 'laden', 'hoch')).toEqual(CANONICAL_DESKTOP);
     expect(verschiebe(CANONICAL_DESKTOP, 'zustand', 'runter')).toEqual(CANONICAL_DESKTOP);
   });
 

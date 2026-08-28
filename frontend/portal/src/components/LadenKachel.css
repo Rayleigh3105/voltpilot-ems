@@ -1,0 +1,187 @@
+/* -----------------------------------------------------------------------------
+   Die Kachel „Laden" (Konzept `vp-verbraucher-cockpit-k1` §5).
+
+   Sie ist ein BAUSTEIN (eine Karte über die volle Stapelbreite), kein Widget im
+   3er-Raster: eine Kachel mit einer Zeile je Ladepunkt ist grösser als eine
+   Kennzahl, und das Raster bliebe sonst nicht ganzzahlig (`cockpitWidgets.ts`).
+----------------------------------------------------------------------------- */
+
+.vp-laden {
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-left: 4px solid var(--vp-flow-load, #8b5cf6);
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-surface, #fff);
+  padding: var(--vp-space-4) var(--vp-space-4) var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-laden-kopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+.vp-laden-kopfblock { display: flex; flex-direction: column; min-width: 0; }
+.vp-laden-label {
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: var(--vp-text-gray);
+}
+/* Das Kaliber der Widget-Zahl: die Kachel steht neben Kennzahlen und darf
+   nicht kleiner sprechen als sie. */
+.vp-laden-wert {
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--vp-stat-ink, #2c5282);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.vp-laden-sub {
+  font-size: .78rem;
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+.vp-laden-mehr {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: .78rem;
+  color: var(--vp-action);
+  text-decoration: none;
+  white-space: nowrap;
+  /* 44-px-Trefferfläche ohne 44 px Kasten - das `.vp-am-pencil`-Muster. */
+  position: relative;
+  padding: 4px 2px;
+}
+.vp-laden-mehr::before { content: ''; position: absolute; inset: -12px -8px; }
+.vp-laden-mehr:hover { text-decoration: underline; }
+.vp-laden-mehr:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-sm);
+}
+
+/* Eine Zeile je Ladepunkt: Punkt · Name(+Grund) · Zustand(+kW) [· Chevron]. */
+.vp-laden-zeilen {
+  list-style: none;
+  margin: var(--vp-space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vp-laden-zeile,
+.vp-laden-link {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--vp-space-2);
+  row-gap: 2px;
+  min-width: 0;
+  padding: 7px 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  font-size: .82rem;
+}
+.vp-laden-zeile.is-link { display: block; padding: 0; border-top: none; }
+.vp-laden-link {
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  color: inherit;
+  text-decoration: none;
+  min-height: 44px;
+  padding: 4px 4px;
+  margin: 0 -4px;
+}
+.vp-laden-zeile.is-link + .vp-laden-zeile.is-link .vp-laden-link { border-top-width: 1px; }
+.vp-laden-link:hover { background: var(--vp-surface-2, #f1f5f9); }
+.vp-laden-link:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: -2px;
+  border-radius: var(--vp-radius-sm);
+}
+
+.vp-laden-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  align-self: center;
+  background: var(--vp-text-gray);
+  opacity: .5;
+}
+/* Grün = lädt · Grau = wartet/ruhig · Bernstein = die Säule hat ein Problem.
+   Es gibt bewusst keinen Alarm-Ton: Warten ist kein Fehler. */
+.vp-laden-dot.tone-laedt { background: var(--vp-flow-load, #8b5cf6); opacity: 1; }
+.vp-laden-dot.tone-stoerung { background: var(--vp-warn, #b45309); opacity: 1; }
+
+.vp-laden-name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.vp-laden-note {
+  font-weight: 400;
+  font-size: .72rem;
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+.vp-laden-wort {
+  justify-self: end;
+  text-align: right;
+  font-weight: 600;
+  color: var(--vp-flow-ink, #1a1a1a);
+  overflow-wrap: anywhere;
+}
+.vp-laden-wort.tone-ruhig { color: var(--vp-text-gray); font-weight: 500; }
+.vp-laden-wort.tone-stoerung { color: var(--vp-warn, #b45309); }
+.vp-laden-kw { margin-left: 6px; color: var(--vp-stat-ink, #2c5282); }
+.vp-laden-go { align-self: center; color: var(--vp-text-gray); display: inline-flex; }
+
+.vp-laden-ruhend {
+  margin: var(--vp-space-2) 0 0;
+  padding-top: var(--vp-space-2);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  font-size: .78rem;
+  color: var(--vp-text-gray);
+}
+
+/* Die Fusszeile IST das Netzanschluss-Band (der Block `lade-budget`). */
+.vp-laden-fuss {
+  margin-top: var(--vp-space-3);
+  padding-top: var(--vp-space-2);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: .75rem;
+  color: var(--vp-text-gray);
+  min-width: 0;
+}
+.vp-laden-fuss-kopf { display: flex; gap: var(--vp-space-2); align-items: baseline; }
+.vp-laden-blind {
+  font-size: .68rem;
+  border: 1px solid var(--vp-border);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+.vp-laden-fuss-satz { overflow-wrap: anywhere; }
+.vp-laden-band { height: 6px; border-radius: 3px; background: var(--vp-border); gap: 0; }
+.vp-laden-seg { background: var(--vp-border); }
+.vp-laden-seg.is-gebaeude { background: var(--vp-text-gray); opacity: .45; }
+.vp-laden-seg.is-laden { background: var(--vp-flow-load, #8b5cf6); }
+.vp-laden-seg.is-abstand { background: var(--vp-border); }
+.vp-laden-seg.is-frei { background: transparent; }
+
+/* Am Telefon fällt der Zustand unter den Namen - eine 375-px-Zeile trägt
+   „Eingesteckt · wartet" nicht neben einem Gerätenamen. */
+@media (max-width: 520px) {
+  .vp-laden-zeile { grid-template-columns: 8px minmax(0, 1fr); }
+  .vp-laden-link { grid-template-columns: 8px minmax(0, 1fr) 16px; }
+  .vp-laden-wort { grid-column: 2 / 3; justify-self: start; text-align: left; }
+  .vp-laden-link .vp-laden-go { grid-column: 3; grid-row: 1; }
+}
