@@ -263,6 +263,25 @@ describe('AnlagenModellSection — Variante A', () => {
     expect(within(neu).getByRole('button', { name: /Übernehmen/ })).toBeInTheDocument();
   });
 
+  it('führt Bearbeiten an den einen Inline-Ort auf der Geräteseite', async () => {
+    stub();
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{
+        id: 'batt', role: 'inverter', entityType: 'battery-hybrid',
+        templateRef: 'builtin:deye:sun-30k', definitionVersion: 3,
+      }],
+    });
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    const deye = await screen.findByRole('region', { name: 'Deye SUN-30K' });
+    expect(await within(deye).findByRole('link', { name: /Bearbeiten/ })).toHaveAttribute(
+      'href',
+      '#/anlage/s-1/geraet/VP-ABC123/inv?bearbeiten=1',
+    );
+    expect(within(deye).queryByRole('button', { name: /Bearbeiten/ })).toBeNull();
+  });
+
   it('hat KEINE Rollen-Gruppen und KEINE Summen mehr (R8)', async () => {
     stub();
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
@@ -491,7 +510,7 @@ describe('AnlagenModellSection — Variante A', () => {
     // Naming your own plant is not a technical act (concept
     // `vp-entity-alias-k1`): the pencil is open to every customer since the
     // customer label route exists.
-    expect(screen.getAllByRole('button', { name: /umbenennen/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: /umbenennen/ }).length).toBeGreaterThan(0);
   });
 
   // Captain, 09.08.2026: renaming covers EVERY component of the plant - the
@@ -502,7 +521,7 @@ describe('AnlagenModellSection — Variante A', () => {
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
     await screen.findByRole('region', { name: 'Ihre Geräte' });
     const named = screen
-      .getAllByRole('button', { name: /umbenennen/ })
+      .getAllByRole('link', { name: /umbenennen/ })
       .map((b) => b.getAttribute('aria-label'));
     // The platform-COMPOSED rows are explicitly included - only their type and
     // role stay ours, never their name.
@@ -515,35 +534,18 @@ describe('AnlagenModellSection — Variante A', () => {
     expect(named.some((n) => n?.includes('Solarmodule'))).toBe(false);
   });
 
-  it('renames through the CUSTOMER route and can reset back to the derivation', async () => {
+  it('führt den Namens-Stift ohne Drawer auf den Inline-Ort der Geräteseite', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
     stub();
-    const rename = vi.spyOn(entitiesApi, 'rename').mockResolvedValue({
-      id: 'grid',
-      entityType: 'grid-meter',
-      role: 'grid',
-      label: 'Hausanschluss',
-      deviceId: null,
-    });
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
     await screen.findByRole('region', { name: 'Ihre Geräte' });
 
-    fireEvent.click(screen.getByRole('button', { name: /„Netzanschluss“ umbenennen/ }));
-    const field = await screen.findByLabelText('Eigener Name');
-    // The field carries the ALIAS, so an un-named component starts EMPTY and
-    // the placeholder shows what VoltPilot would call it instead.
-    expect(field).toHaveValue('');
-    expect(field).toHaveAttribute('placeholder', 'Netzanschluss');
-    // The honesty line is the promise the route keeps by construction.
-    expect(
-      screen.getByText('Der Name ist reine Darstellung — er ändert nie die Steuerung.'),
-    ).toBeInTheDocument();
-    // Nothing to undo yet, so no reset offer.
-    expect(screen.queryByRole('button', { name: 'Zurücksetzen' })).toBeNull();
-
-    fireEvent.change(field, { target: { value: '  Hausanschluss  ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
-    await waitFor(() => expect(rename).toHaveBeenCalledWith('s-1', 'grid', 'Hausanschluss'));
+    const link = screen.getByRole('link', { name: /„Netzanschluss“ umbenennen/ });
+    expect(link).toHaveAttribute(
+      'href',
+      '#/anlage/s-1/geraet/VP-ABC123/inv?bearbeiten=1&komponente=grid',
+    );
+    expect(screen.queryByRole('dialog', { name: 'Komponente umbenennen' })).toBeNull();
   });
 
   it('shows the installer layer for a platform-admin', async () => {

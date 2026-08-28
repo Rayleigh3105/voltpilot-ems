@@ -1161,22 +1161,6 @@ export interface DevicePurgeResult {
   deviceNotified: boolean;
 }
 
-export interface DeviceMovePreview {
-  deviceId: string;
-  currentSiteId: string;
-  revision: number;
-  targets: { siteId: string; name: string; allowed: boolean; reason?: string | null }[];
-}
-export interface MoveProvisioningStatus {
-  deviceId: string;
-  revision: number;
-  status: 'pending' | 'applied' | 'refused';
-  attempts: number;
-  lastError?: string | null;
-  updatedAt: string;
-  appliedAt?: string | null;
-}
-
 /** What deleting a site would remove - drives the confirm dialog. */
 export interface SiteDeletionPreview {
   deviceCount: number;
@@ -3592,19 +3576,6 @@ export const api = {
       `/api/v1/sites/${siteId}/components/${entityId}/versions/${version}/rollback`,
       { method: 'POST', body: JSON.stringify({ expectedRevision }) },
     ),
-  /** Getrennter Standortwechsel: erst Vorprüfung, dann revisionsgeschütztes Apply. */
-  deviceMovePreview: (deviceId: string) =>
-    request<DeviceMovePreview>(`/api/v1/devices/${deviceId}/move-preview`),
-  moveDevice: (deviceId: string, body: {
-    targetSiteId: string;
-    expectedRevision: number;
-    effectiveAt: string;
-  }) => request<Device>(`/api/v1/devices/${deviceId}/move`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  }),
-  deviceMoveStatus: (deviceId: string) =>
-    request<MoveProvisioningStatus | null>(`/api/v1/devices/${deviceId}/move-status`),
   /**
    * „Jetzt lesen" (Einheitsmodell Stufe 3): die BOX liest EINEN Messwert des
    * noch nicht gespeicherten Geräts einmal und antwortet mit Roh- UND

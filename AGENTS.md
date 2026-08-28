@@ -5593,11 +5593,12 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
 - **Aktivierung beginnt serverseitig jetzt.** `enabled_at` kommt ausschließlich
   aus DB-`now()` und ist die spätere Writer-No-Backfill-Grenze. Abwahl ist ein
   UPDATE mit `disabled_at`; weder Auswahlzeile noch Events werden gelöscht.
-- **Beim Standortwechsel gilt Current-vs-History.** Der aktuelle Pollplan folgt
-  der stabilen Geräte-ID atomisch per zusammengesetztem `ON UPDATE CASCADE`;
-  Auswahl- und OCPP-Ereignisse behalten den damaligen Standort. Historienzeilen
-  sind deshalb getrennt über `(device_id, tenant_id)` und `(site_id, tenant_id)`
-  gebunden: alte Attribution bleibt unverändert, ohne den Tenantzaun zu lockern.
+- **Der Standort eines Geräts ist nach dem Claim stabil.** Der frühere
+  Kunden-Standortwechsel samt Preview/Apply/Status und Retry-Job ist entfernt;
+  das Portal und die API bieten keinen Umzug mehr an. Die bereits angewendeten
+  Flyway-Strukturen (`device_site_assignment`, `move_provisioning_operation`)
+  bleiben ausschließlich für Schema- und Audit-Kompatibilität bestehen - eine
+  angewendete Migration wird niemals nachträglich geändert oder gelöscht.
 - **API:** `/api/v1/devices/{deviceId}/measurement-selection/**` liefert
   Katalogsuche/Facetten, Status/Audit, Budget-Preview, optimistic/idempotente
   Auswahl und „Eigenen Messwert hinzufügen“. Freie Register sind ausschließlich

@@ -596,35 +596,6 @@ paths:
               schema: { $ref: "#/components/schemas/DevicePurgeResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Device not found for this tenant. }
-  /api/v1/devices/{deviceId}/move-preview:
-    get:
-      tags: [devices]
-      summary: Validate same-tenant target sites before moving the stable device id.
-      parameters:
-        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
-      responses:
-        "200": { description: Revision and topology verdicts., content: { application/json: { schema: { $ref: "#/components/schemas/DeviceMovePreview" } } } }
-        "404": { description: Device not found for this tenant. }
-  /api/v1/devices/{deviceId}/move:
-    post:
-      tags: [devices]
-      summary: Atomically move a device without changing device.id or tenant.
-      parameters:
-        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
-      requestBody:
-        required: true
-        content:
-          application/json: { schema: { $ref: "#/components/schemas/MoveDeviceRequest" } }
-      responses:
-        "200": { description: Same device at the new site., content: { application/json: { schema: { $ref: "#/components/schemas/Device" } } } }
-        "409": { description: Stale revision or target topology no longer permits the move. }
-  /api/v1/devices/{deviceId}/move-status:
-    get:
-      tags: [devices]
-      summary: Durable provisioning status of the latest move.
-      responses:
-        "200": { description: Pending, applied, or refused move provisioning., content: { application/json: { schema: { $ref: "#/components/schemas/MoveProvisioningStatus" } } } }
-        "404": { description: Device not found for this tenant. }
   /api/v1/devices/{deviceId}/measurement-selection:
     get:
       tags: [measurements]
@@ -7466,41 +7437,6 @@ components:
                     description: What the DEVICE reports. Absent = unknown, NEVER "not certified".
                   platformCertVerdict: { type: string }
                   platformCertModel: { type: string }
-    DeviceMovePreview:
-      type: object
-      required: [deviceId, currentSiteId, revision, targets]
-      properties:
-        deviceId: { type: string, format: uuid }
-        currentSiteId: { type: string, format: uuid }
-        revision: { type: integer, minimum: 1 }
-        targets:
-          type: array
-          items:
-            type: object
-            required: [siteId, name, allowed]
-            properties:
-              siteId: { type: string, format: uuid }
-              name: { type: string }
-              allowed: { type: boolean }
-              reason: { type: string, nullable: true }
-    MoveDeviceRequest:
-      type: object
-      required: [targetSiteId, expectedRevision, effectiveAt]
-      properties:
-        targetSiteId: { type: string, format: uuid }
-        expectedRevision: { type: integer, minimum: 1 }
-        effectiveAt: { type: string, format: date-time }
-    MoveProvisioningStatus:
-      type: object
-      required: [deviceId, revision, status, attempts, updatedAt]
-      properties:
-        deviceId: { type: string, format: uuid }
-        revision: { type: integer }
-        status: { type: string, enum: [pending, applied, refused] }
-        attempts: { type: integer }
-        lastError: { type: string, nullable: true }
-        updatedAt: { type: string, format: date-time }
-        appliedAt: { type: string, format: date-time, nullable: true }
     SiteComponents:
       type: object
       description: >

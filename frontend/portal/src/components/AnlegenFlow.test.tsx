@@ -53,6 +53,7 @@ const componentTemplates = vi.fn();
 const siteComponents = vi.fn();
 const testComponentConnection = vi.fn();
 const createComponent = vi.fn();
+const updateComponent = vi.fn();
 const readCustomComponent = vi.fn();
 const createCustomComponent = vi.fn();
 const matchComponent = vi.fn();
@@ -74,6 +75,7 @@ vi.mock('../api', async () => {
       siteChargers: (...a: unknown[]) => siteChargers(...a),
       admitChargePoint: (...a: unknown[]) => admitChargePoint(...a),
       createComponent: (...a: unknown[]) => createComponent(...a),
+      updateComponent: (...a: unknown[]) => updateComponent(...a),
       readCustomComponent: (...a: unknown[]) => readCustomComponent(...a),
       createCustomComponent: (...a: unknown[]) => createCustomComponent(...a),
       matchComponent: (...a: unknown[]) => matchComponent(...a),
@@ -130,6 +132,10 @@ function standardMocks() {
   createComponent.mockResolvedValue({
     componentAuthority: 'portal',
     components: [{ id: 'neu-1', definitionVersion: 2 }],
+  });
+  updateComponent.mockResolvedValue({
+    componentAuthority: 'portal',
+    components: [{ id: 'wr-1', definitionVersion: 4, syncStatus: 'pending' }],
   });
   matchComponent.mockResolvedValue(undefined);
 }
@@ -789,5 +795,131 @@ describe('die Hebel des Verbindungstests', () => {
     await bisZumTest();
     await screen.findByText(/Das Gerät antwortet/);
     expect(screen.queryByTestId('test-hebel')).toBeNull();
+  });
+});
+
+describe('Gerät direkt auf seiner Seite bearbeiten', () => {
+  const edit = {
+    id: 'wr-1',
+    role: 'inverter',
+    entityType: 'battery-hybrid',
+    label: 'Wechselrichter Scheune',
+    brand: 'deye',
+    model: 'sun-30k-sg01hp3',
+    family: 'hybrid_3p',
+    communication: 'solarman_v5',
+    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064' },
+    templateRef: template.templateRef,
+    definitionVersion: 3,
+    edgeSourceId: 'inverter',
+    syncStatus: 'in_sync',
+  };
+
+  beforeEach(() => {
+    standardMocks();
+    siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [edit] });
+  });
+
+  function renderInline(over: { onClose?: () => void; onSaved?: () => void } = {}) {
+    render(
+      <AnlegenFlow
+        siteId="s1"
+        siteName="Pilsting"
+        geraetKennung="inverter"
+        bearbeiten={edit}
+        inlineBearbeitung
+        onClose={over.onClose ?? (() => {})}
+        onSaved={over.onSaved ?? (() => {})}
+      />,
+    );
+  }
+
+  it('zeigt Name und Aufgabe sofort auf der Seite und speichert eine Umbenennung ohne Test', async () => {
+    const onSaved = vi.fn();
+    renderInline({ onSaved });
+
+    expect(await screen.findByTestId('geraet-bearbeiten')).toBeVisible();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const name = screen.getByLabelText('Anzeigename');
+    expect(name).toHaveValue('Wechselrichter Scheune');
+    expect(screen.getByText('Pilsting')).toBeVisible();
+
+    fireEvent.change(name, { target: { value: 'Wechselrichter Garage' } });
+    fireEvent.click(knopf('Änderungen speichern'));
+
+    await waitFor(() => expect(updateComponent).toHaveBeenCalledWith(
+      's1', 'wr-1', expect.objectContaining({ label: 'Wechselrichter Garage', role: 'inverter' }),
+    ));
+    expect(testComponentConnection).not.toHaveBeenCalled();
+    expect(onSaved).toHaveBeenCalled();
+  });
+
+  it('fordert den Verbindungstest nur nach einer technischen Änderung an', async () => {
+    renderInline();
+    await screen.findByDisplayValue('Wechselrichter Scheune');
+    fireEvent.click(knopf('Technische Daten ändern'));
+    fireEvent.change(screen.getByLabelText(/IP-Adresse des Datenloggers/), {
+      target: { value: '192.168.0.29' },
+    });
+
+    fireEvent.click(knopf('Änderungen speichern'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Prüfen Sie die geänderte Verbindung/);
+    expect(updateComponent).not.toHaveBeenCalled();
+
+    fireEvent.click(knopf('Verbindung prüfen'));
+    expect(await screen.findByText(/Das Gerät antwortet/)).toBeVisible();
+    fireEvent.click(knopf('Änderungen speichern'));
+
+    await waitFor(() => expect(updateComponent).toHaveBeenCalledWith(
+      's1', 'wr-1', expect.objectContaining({
+        connection: expect.objectContaining({ ip: '192.168.0.29' }),
+      }),
+    ));
+  });
+
+  it('verwirft geänderte Eingaben erst nach einer zentrierten Rückfrage', async () => {
+    const onClose = vi.fn();
+    renderInline({ onClose });
+    fireEvent.change(await screen.findByLabelText('Anzeigename'), {
+      target: { value: 'Nicht gespeichert' },
+    });
+    fireEvent.click(knopf('Abbrechen'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Änderungen verwerfen?' });
+    expect(dialog).toBeVisible();
+    expect(dialog.closest('.vp-center-confirm-backdrop')).not.toBeNull();
+    expect(document.querySelector('.vp-drawer')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Änderungen verwerfen' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('schützt geänderte Eingaben auch vor einem Browser-Neuladen', async () => {
+    renderInline();
+    fireEvent.change(await screen.findByLabelText('Anzeigename'), {
+      target: { value: 'Noch nicht gespeichert' },
+    });
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('bestätigt eine geänderte elektrische Aufgabe mit ihren Folgen', async () => {
+    renderInline();
+    const rollen = await screen.findByRole('radiogroup', { name: 'Aufgabe in der Anlage' });
+    fireEvent.click(within(rollen).getByRole('radio', { name: /Weiterer Erzeuger/ }));
+    fireEvent.change(screen.getByLabelText('Nennleistung (kWp)'), { target: { value: '28' } });
+    fireEvent.click(knopf('Änderungen speichern'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Aufgabe des Geräts ändern?' });
+    expect(within(dialog).getByText(/Bilanz/)).toBeVisible();
+    expect(updateComponent).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Aufgabe ändern und speichern' }));
+
+    await waitFor(() => expect(updateComponent).toHaveBeenCalledWith(
+      's1', 'wr-1', expect.objectContaining({ role: 'pv-generation', capacityKwp: 28 }),
+    ));
   });
 });

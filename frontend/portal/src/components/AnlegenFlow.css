@@ -126,6 +126,200 @@
   }
 }
 
+/* --- Bestehendes Gerät: Bearbeitungsmodus AUF der Geräteseite ------------ */
+
+.vp-geraet-edit {
+  display: grid;
+  gap: var(--vp-space-4, 1rem);
+  min-width: 0;
+}
+
+.vp-geraet-edit-head,
+.vp-geraet-edit-card,
+.vp-geraet-edit-actions {
+  min-width: 0;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 14px);
+  background: var(--vp-surface, #fff);
+}
+
+.vp-geraet-edit-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vp-space-4, 1rem);
+  padding: var(--vp-space-6, 1.5rem);
+}
+
+.vp-geraet-edit-head > div { min-width: 0; }
+
+.vp-geraet-edit-eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--vp-action, #2c5282);
+  font-size: 0.74rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vp-geraet-edit-head h1 {
+  margin: 0;
+  color: var(--vp-text, #1a202c);
+  font-size: clamp(1.35rem, 3vw, 1.85rem);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.vp-geraet-edit-head p:last-child {
+  margin: 0.45rem 0 0;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-geraet-edit-head > .vp-pill { flex: 0 0 auto; }
+
+.vp-geraet-edit-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(15rem, 0.65fr);
+  gap: var(--vp-space-4, 1rem);
+  min-width: 0;
+}
+
+.vp-geraet-edit-card { padding: var(--vp-space-6, 1.5rem); }
+
+.vp-geraet-edit-cardhead,
+.vp-geraet-edit-techhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vp-space-4, 1rem);
+  min-width: 0;
+}
+
+.vp-geraet-edit-cardhead > div,
+.vp-geraet-edit-techhead > div { min-width: 0; }
+
+.vp-geraet-edit-card h2,
+.vp-geraet-edit-test h3 {
+  margin: 0;
+  color: var(--vp-text, #1a202c);
+}
+
+.vp-geraet-edit-card h2 { font-size: 1.05rem; }
+.vp-geraet-edit-test h3 { font-size: 0.98rem; }
+
+.vp-geraet-edit-cardhead p,
+.vp-geraet-edit-techhead p,
+.vp-geraet-edit-test > div:first-child p {
+  margin: 0.3rem 0 0;
+  color: var(--vp-text-muted, #64748b);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-geraet-edit-role { margin-top: var(--vp-space-4, 1rem); }
+.vp-geraet-edit-role > span {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: var(--vp-text, #1e293b);
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+.vp-geraet-edit-role .vp-assist-roles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.vp-geraet-edit-static {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: var(--vp-space-4, 1rem);
+  padding: 0.75rem;
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-alt, #f8fafc);
+}
+.vp-geraet-edit-static > span,
+.vp-geraet-edit-static > small { color: var(--vp-text-muted, #64748b); }
+.vp-geraet-edit-static > span { font-size: 0.78rem; }
+
+.vp-geraet-edit-identity dl { display: grid; gap: 0; margin: 1rem 0 0; }
+.vp-geraet-edit-identity dl > div {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+.vp-geraet-edit-identity dt { color: var(--vp-text-muted, #64748b); font-size: 0.78rem; }
+.vp-geraet-edit-identity dd { display: grid; gap: 0.15rem; margin: 0; overflow-wrap: anywhere; }
+.vp-geraet-edit-identity dd small { color: var(--vp-text-muted, #64748b); }
+
+.vp-geraet-edit-techhead > button { flex: 0 0 auto; }
+.vp-geraet-edit-techbody {
+  display: grid;
+  gap: var(--vp-space-4, 1rem);
+  margin-top: var(--vp-space-5, 1.25rem);
+  padding-top: var(--vp-space-5, 1.25rem);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+.vp-geraet-edit-techbody > .vp-assist-field,
+.vp-geraet-edit-techbody > .vp-anlegen-erweitert { margin-top: 0; }
+
+.vp-geraet-edit-test {
+  display: grid;
+  justify-items: start;
+  gap: var(--vp-space-3, 0.75rem);
+  min-width: 0;
+  padding: var(--vp-space-4, 1rem);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-alt, #f8fafc);
+}
+.vp-geraet-edit-test > * { min-width: 0; max-width: 100%; }
+.vp-geraet-edit-test .vp-assist-ok,
+.vp-geraet-edit-test .vp-assist-error { width: 100%; }
+
+.vp-geraet-edit-review { display: grid; gap: var(--vp-space-4, 1rem); }
+.vp-geraet-edit-review .vp-edit-effects { margin: 0; }
+.vp-geraet-edit-error { margin: 0; }
+
+.vp-geraet-edit-actions {
+  position: sticky;
+  z-index: 5;
+  bottom: var(--vp-space-3, 0.75rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-4, 1rem);
+  padding: var(--vp-space-4, 1rem) var(--vp-space-5, 1.25rem);
+  box-shadow: 0 10px 30px rgba(30, 58, 95, 0.13);
+}
+.vp-geraet-edit-actions > p {
+  margin: 0;
+  color: var(--vp-text-muted, #64748b);
+  font-size: 0.84rem;
+}
+.vp-geraet-edit-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--vp-space-2, 0.5rem);
+}
+
+@media (max-width: 820px) {
+  .vp-geraet-edit-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .vp-geraet-edit-head,
+  .vp-geraet-edit-card { padding: var(--vp-space-4, 1rem); }
+  .vp-geraet-edit-head,
+  .vp-geraet-edit-techhead,
+  .vp-geraet-edit-actions { align-items: stretch; flex-direction: column; }
+  .vp-geraet-edit-head > .vp-pill { align-self: flex-start; }
+  .vp-geraet-edit-techhead > button { width: 100%; }
+  .vp-geraet-edit-role .vp-assist-roles { grid-template-columns: 1fr; }
+  .vp-geraet-edit-actions { bottom: 0.5rem; }
+  .vp-geraet-edit-actions > div { width: 100%; }
+  .vp-geraet-edit-actions button { flex: 1 1 8rem; }
+}
+
 /* --- Schritt 5: fertig ---------------------------------------------------- */
 
 .vp-anlegen-fertig {
@@ -185,17 +379,6 @@
   .vp-edit-locked dl > div,
   .vp-edit-delta > div { grid-template-columns: 1fr; gap: 0.2rem; }
 }
-
-.vp-move-targets { display: grid; gap: var(--vp-space-2, 0.5rem); margin-top: 1rem; }
-.vp-move-target {
-  display: flex; align-items: flex-start; gap: 0.75rem; min-height: 48px;
-  padding: 0.75rem; border: 1px solid var(--vp-border, #e2e8f0);
-  border-radius: var(--vp-radius-md, 10px); cursor: pointer;
-}
-.vp-move-target:has(input:checked) { border-color: var(--vp-action, #2c5282); background: var(--vp-surface-alt, #f8fafc); }
-.vp-move-target.is-blocked { cursor: not-allowed; opacity: 0.72; }
-.vp-move-target span { display: grid; gap: 0.2rem; min-width: 0; }
-.vp-move-target small { color: var(--vp-text-muted, #64748b); overflow-wrap: anywhere; }
 
 /* --- Schritt 4: der zweite Anlauf ---------------------------------------- */
 

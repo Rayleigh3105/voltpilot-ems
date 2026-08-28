@@ -9,7 +9,6 @@ import {
   type Site,
   type SiteComponents,
   type SiteComponentTemplate,
-  type SiteComponentRow,
   type SiteEntities,
   type SiteEntity,
   type SiteSource,
@@ -64,6 +63,8 @@ import { abschnittHash } from '../geraetRahmen';
 import {
   anlageRoute,
   befehleHash,
+  geraetBearbeitenHash,
+  geraetKomponenteBearbeitenHash,
   hashForRoute,
   parseKomponente,
   parseZentraleAnsicht,
@@ -173,7 +174,6 @@ export function AnlagenModellSection({
   const [addOpen, setAddOpen] = useState(false);
   const [addTyp, setAddTyp] = useState<TypId | null>(null);
   const [addRolle, setAddRolle] = useState<KomponentenRolle | null>(null);
-  const [editComponent, setEditComponent] = useState<SiteComponentRow | null>(null);
   /**
    * Geräte-Erlebnis Slice 1: Anlagenbild ist die Vorgabe auf jeder Breite;
    * die Liste bleibt dieselbe synchronisierte Zweitsicht. Die Wahl lebt im
@@ -398,16 +398,6 @@ export function AnlagenModellSection({
    * Ablehnung läuft, ist schlechter als kein Knopf.
    */
   const portalManaged = components?.componentAuthority === 'portal';
-  const editForKarte = (karteId: string) => {
-    const karte = karten.find((item) => item.id === karteId);
-    const entityIds = new Set(
-      karte?.komponenten.map((component) => component.entityId).filter(Boolean) ?? [],
-    );
-    const row = components?.components.find(
-      (component) => entityIds.has(component.id) && Boolean(component.templateRef),
-    );
-    if (row) setEditComponent(row);
-  };
   const komponentenStand = components
     ? {
         text: sollIstText(
@@ -591,46 +581,68 @@ export function AnlagenModellSection({
                 </p>
               )}
 
-              {karten.map((k) => (
-                <GeraeteKarteView
-                  key={k.id}
-                  karte={k}
-                  siteId={site.id}
-                  onAssign={setAssign}
-                  onRename={setRename}
-                  onFreigabe={setFreigabe}
-                  onRegelBruecke={(c) => {
-                    window.location.hash = regelBrueckeHash(site.id, c.entityId);
-                  }}
-                  actionsFor={(c) =>
-                    componentActions(
-                      c,
-                      data?.entities.find((e) => e.id === c.entityId),
-                    )
-                  }
-                  ohneMesswertFor={(c) => ohneMesswertById.get(c.entityId ?? '') ?? null}
-                  onEdit={portalManaged ? (karte) => editForKarte(karte.id) : undefined}
-                  onRepin={setRepin}
-                  onRemove={setRemove}
-                  sofortFor={(c) =>
-                    consumers.find((x) => x.id === c.entityId && x.connection === 'connected') ??
-                    null
-                  }
-                  onSofort={(consumer, action) => setSofort({ consumer, action })}
-                  technik={
-                    showTechnical
-                      ? {
-                          entityFor: (id) => data?.entities.find((e) => e.id === id) ?? null,
-                          strategiesFor: (id) => strategies[id] ?? [],
-                          topology,
-                          onEdit: (entity) => setTechnikDrawer({ mode: 'edit', entity }),
-                          onAdopt: setTechnikAdopt,
-                          onChanged: reload,
-                        }
-                      : null
-                  }
-                />
-              ))}
+              {karten.map((k) => {
+                const definition = k.art === 'geraet'
+                  ? components?.components.find((row) => Boolean(row.templateRef)
+                    && (row.edgeSourceId === k.id
+                      || k.komponenten.some((component) => component.entityId === row.id)))
+                  : null;
+                const chargerComponent = k.art === 'ladepunkt'
+                  ? k.komponenten.find((component) => component.renameable && component.entityId)
+                  : null;
+                const editHref = portalManaged && boxRef && definition
+                  ? geraetBearbeitenHash(site.id, boxRef, k.id)
+                  : boxRef && chargerComponent
+                    ? geraetKomponenteBearbeitenHash(
+                        site.id, boxRef, k.id, chargerComponent.entityId,
+                      )
+                    : undefined;
+                return (
+                  <GeraeteKarteView
+                    key={k.id}
+                    karte={k}
+                    siteId={site.id}
+                    onAssign={setAssign}
+                    onRename={setRename}
+                    componentEditHref={boxRef && k.href
+                      ? (component) => geraetKomponenteBearbeitenHash(
+                          site.id, boxRef, k.id, component.entityId,
+                        )
+                      : undefined}
+                    onFreigabe={setFreigabe}
+                    onRegelBruecke={(c) => {
+                      window.location.hash = regelBrueckeHash(site.id, c.entityId);
+                    }}
+                    actionsFor={(c) =>
+                      componentActions(
+                        c,
+                        data?.entities.find((e) => e.id === c.entityId),
+                      )
+                    }
+                    ohneMesswertFor={(c) => ohneMesswertById.get(c.entityId ?? '') ?? null}
+                    editHref={editHref}
+                    onRepin={setRepin}
+                    onRemove={setRemove}
+                    sofortFor={(c) =>
+                      consumers.find((x) => x.id === c.entityId && x.connection === 'connected') ??
+                      null
+                    }
+                    onSofort={(consumer, action) => setSofort({ consumer, action })}
+                    technik={
+                      showTechnical
+                        ? {
+                            entityFor: (id) => data?.entities.find((e) => e.id === id) ?? null,
+                            strategiesFor: (id) => strategies[id] ?? [],
+                            topology,
+                            onEdit: (entity) => setTechnikDrawer({ mode: 'edit', entity }),
+                            onAdopt: setTechnikAdopt,
+                            onChanged: reload,
+                          }
+                        : null
+                    }
+                  />
+                );
+              })}
 
                 {portalManaged && <EigeneVorlagenPanel siteId={site.id} onAnlegen={setVorlage} />}
               </section>
@@ -683,20 +695,18 @@ export function AnlagenModellSection({
         />
       )}
 
-      {(addOpen || vorlage || editComponent) && (
+      {(addOpen || vorlage) && (
         <AnlegenFlow
           siteId={site.id}
           box={boxOf(devices, site.id) ?? undefined}
           vorlage={vorlage}
           initialTyp={vorlage ? null : addTyp}
           initialRolle={vorlage ? null : addRolle}
-          bearbeiten={editComponent}
           onClose={() => {
             setAddOpen(false);
             setAddTyp(null);
             setAddRolle(null);
             setVorlage(null);
-            setEditComponent(null);
           }}
           onSaved={(result) => {
             setComponents(result);
@@ -830,6 +840,7 @@ function GeraeteKarteView({
   siteId,
   onAssign,
   onRename,
+  componentEditHref,
   onFreigabe,
   onRegelBruecke,
   actionsFor,
@@ -839,12 +850,14 @@ function GeraeteKarteView({
   onSofort,
   technik,
   ohneMesswertFor,
-  onEdit,
+  editHref,
 }: {
   karte: GeraeteKarte;
   siteId: string;
   onAssign: (s: AdoptableSource) => void;
   onRename?: (c: PlantComponent) => void;
+  /** Adressierbare Namens-Stifte öffnen denselben Inline-Ort statt eines Drawers. */
+  componentEditHref?: (c: PlantComponent) => string;
   onFreigabe?: (c: PlantComponent) => void;
   onRegelBruecke?: (c: PlantComponent) => void;
   actionsFor: (c: PlantComponent) => ComponentActions;
@@ -855,7 +868,8 @@ function GeraeteKarteView({
   technik: TechnikSicht | null;
   /** Die dauerhafte Ausnahme je Komponente (siehe {@link ComponentRow}). */
   ohneMesswertFor: (c: PlantComponent) => { badge: string; satz: string } | null;
-  onEdit?: (karte: GeraeteKarte) => void;
+  /** Einziger Bearbeiten-Ort: der Inline-Modus auf der Geräteseite. */
+  editHref?: string;
 }) {
   const k = karte;
   return (
@@ -882,10 +896,10 @@ function GeraeteKarteView({
             Geräteseite <Icon name="chevron-right" size={14} />
           </a>
         )}
-        {onEdit && k.art === 'geraet' && k.komponenten.some((c) => c.entityId) && (
-          <button type="button" className="vp-am-karte-go" onClick={() => onEdit(k)}>
+        {editHref && (
+          <a className="vp-am-karte-go" href={editHref}>
             Bearbeiten <Icon name="pencil" size={14} />
-          </button>
+          </a>
         )}
         {k.art === 'neu' && k.quelle && (
           <button
@@ -919,6 +933,7 @@ function GeraeteKarteView({
               component={c}
               siteId={siteId}
               onRename={onRename}
+              renameHref={c.renameable ? componentEditHref?.(c) : undefined}
               onFreigabe={onFreigabe}
               onRegelBruecke={onRegelBruecke}
               actions={actionsFor(c)}
@@ -947,6 +962,7 @@ function ComponentRow({
   component,
   siteId,
   onRename,
+  renameHref,
   onFreigabe,
   onRegelBruecke,
   actions,
@@ -962,6 +978,8 @@ function ComponentRow({
   /** Für den Absprung in den Befehls-Verlauf DIESER Komponente. */
   siteId: string;
   onRename?: (c: PlantComponent) => void;
+  /** Derselbe Namenswunsch, aber auf der vorhandenen Geräteseite. */
+  renameHref?: string;
   onFreigabe?: (c: PlantComponent) => void;
   /** Die Brücke (Stufe 4, Anforderung 9): Regel mit dieser Komponente erstellen. */
   onRegelBruecke?: (c: PlantComponent) => void;
@@ -1079,7 +1097,15 @@ function ComponentRow({
       {/* Every real component may be named - including the platform-composed
           battery / grid / house rows. The PV ASPECT row is the one exception
           (`renameable: false`): it belongs to its carrier and follows its name. */}
-      {onRename && c.renameable && (
+      {renameHref && c.renameable ? (
+        <a
+          className="vp-am-pencil"
+          aria-label={`„${c.label}“ umbenennen`}
+          href={renameHref}
+        >
+          <Icon name="pencil" size={15} />
+        </a>
+      ) : onRename && c.renameable ? (
         <button
           type="button"
           className="vp-am-pencil"
@@ -1088,7 +1114,7 @@ function ComponentRow({
         >
           <Icon name="pencil" size={15} />
         </button>
-      )}
+      ) : null}
 
       <span className={`vp-am-comp-val${c.reading ? '' : ' none'}`}>
         {c.reading ? fmtNum(c.reading.value, c.reading.unit) : NO_DATA}

@@ -912,6 +912,20 @@ class PortalApiTest {
         assertThat(updated.getBody()).containsEntry("name", "Speicher Keller");
         assertThat(updated.getBody()).containsEntry("externalRef", "edge-unclaim-01");
 
+        // Ein Standortwechsel ist kein Geräte-Feature mehr: weder Vorprüfung,
+        // Mutation noch ein Hintergrundstatus bleiben als Route erreichbar.
+        for (String removedPath : List.of("move-preview", "move-status")) {
+            assertThat(rest.exchange(url("/api/v1/devices/" + deviceId + "/" + removedPath),
+                    HttpMethod.GET, new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+        }
+        assertThat(rest.exchange(url("/api/v1/devices/" + deviceId + "/move"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("targetSiteId", BERLIN_SITE,
+                        "expectedRevision", 1, "effectiveAt", Instant.now().toString()),
+                        bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
         // A bad kind mirrors the enum validation (400).
         assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.PUT,
                 new HttpEntity<>(Map.of("kind", "toaster"), bearer(demo)), String.class)

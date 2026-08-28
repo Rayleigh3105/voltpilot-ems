@@ -1,0 +1,74 @@
+.vp-center-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: var(--vp-space-4, 1rem);
+  background: rgba(30, 58, 95, 0.42);
+}
+
+.vp-center-confirm {
+  width: min(34rem, 100%);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  outline: none;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 14px);
+  background: var(--vp-surface, #fff);
+  color: var(--vp-text, #1e293b);
+  box-shadow: var(--vp-shadow-lg, 0 24px 60px rgba(15, 23, 42, 0.24));
+}
+
+.vp-center-confirm.is-danger { border-top: 4px solid var(--vp-error, #c53030); }
+
+.vp-center-confirm > header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3, 0.75rem);
+  padding: var(--vp-space-5, 1.25rem);
+  border-bottom: 1px solid var(--vp-border, #e2e8f0);
+}
+
+.vp-center-confirm-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-alt, #f1f5f9);
+  color: var(--vp-action, #2c5282);
+}
+
+.vp-center-confirm.is-danger .vp-center-confirm-icon {
+  background: var(--vp-error-soft, #fff5f5);
+  color: var(--vp-error, #c53030);
+}
+
+.vp-center-confirm header > div { min-width: 0; }
+.vp-center-confirm h2 { margin: 0; font-size: 1.18rem; overflow-wrap: anywhere; }
+.vp-center-confirm header p { margin: 0.35rem 0 0; color: var(--vp-text-muted, #64748b); }
+
+.vp-center-confirm > ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: var(--vp-space-5, 1.25rem) var(--vp-space-5, 1.25rem) var(--vp-space-5, 1.25rem) 2.5rem;
+}
+
+.vp-center-confirm > footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--vp-space-2, 0.5rem);
+  padding: var(--vp-space-4, 1rem) var(--vp-space-5, 1.25rem);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+
+@media (max-width: 520px) {
+  .vp-center-confirm-backdrop { padding: 0.75rem; }
+  .vp-center-confirm > footer { display: grid; grid-template-columns: 1fr; }
+  .vp-center-confirm > footer button { width: 100%; min-height: 48px; }
+}

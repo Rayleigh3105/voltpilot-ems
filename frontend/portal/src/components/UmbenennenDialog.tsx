@@ -11,13 +11,15 @@
  * dialog to one of them would either fork it (two truths about one name) or
  * chain it to that aggregate — the `DrawerDevice` precedent from M6.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { ApiError } from '../api';
 import { entitiesApi } from '../entitiesApi';
+import { CenteredConfirmDialog } from './CenteredConfirmDialog';
+import './AnlegenFlow.css';
 import './UmbenennenDialog.css';
 
 /** What the dialog needs to know about the thing being named. */
@@ -36,11 +38,18 @@ export const RENAME_HONESTY = 'Der Name ist reine Darstellung — er ändert nie
 export function UmbenennenDialog({
   siteId,
   target,
+  inline = false,
+  siteName,
+  geraetKennung,
   onClose,
   onSaved,
 }: {
   siteId: string;
   target: RenameTarget;
+  /** Auf einer Geräteseite bleibt die Eingabe im Seitenkontext statt im Drawer. */
+  inline?: boolean;
+  siteName?: string;
+  geraetKennung?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -50,6 +59,36 @@ export function UmbenennenDialog({
   const [label, setLabel] = useState(target.alias ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const changed = label.trim() !== (target.alias ?? '').trim();
+
+  /* Auch die schmale OCPP-Variante verliert Eingaben nie lautlos. */
+  useEffect(() => {
+    if (!inline || !changed) return undefined;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    const linkClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey
+        || event.shiftKey || event.altKey) return;
+      const source = event.target;
+      const link = source instanceof Element ? source.closest('a[href]') : null;
+      if (!(link instanceof HTMLAnchorElement) || link.target === '_blank' || link.download) return;
+      if (link.href === window.location.href) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPendingHref(link.href);
+      setDiscardOpen(true);
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    document.addEventListener('click', linkClick, true);
+    return () => {
+      window.removeEventListener('beforeunload', beforeUnload);
+      document.removeEventListener('click', linkClick, true);
+    };
+  }, [changed, inline]);
 
   async function save(next: string | null) {
     setBusy(true);
@@ -65,6 +104,104 @@ export function UmbenennenDialog({
       );
       setBusy(false);
     }
+  }
+
+  function closeInline() {
+    if (busy) return;
+    setPendingHref(null);
+    if (changed) setDiscardOpen(true);
+    else onClose();
+  }
+
+  function discard() {
+    const href = pendingHref;
+    setDiscardOpen(false);
+    setPendingHref(null);
+    onClose();
+    if (href) window.setTimeout(() => window.location.assign(href), 0);
+  }
+
+  if (inline) {
+    const shownName = target.alias?.trim() || target.derivedLabel;
+    return (
+      <section className="vp-geraet-edit" data-testid="geraet-bearbeiten" aria-busy={busy}>
+        <header className="vp-geraet-edit-head">
+          <div>
+            <p className="vp-geraet-edit-eyebrow">Bearbeitungsmodus</p>
+            <h1>{shownName} bearbeiten</h1>
+            <p>In dieser kompakten Bearbeitung ändern Sie nur den Anzeigenamen dieser Komponente.</p>
+          </div>
+        </header>
+
+        <div className="vp-geraet-edit-grid">
+          <section className="vp-geraet-edit-card" aria-labelledby="geraet-rename-allgemein">
+            <div className="vp-geraet-edit-cardhead">
+              <div>
+                <h2 id="geraet-rename-allgemein">Allgemeine Angaben</h2>
+                <p>Der Name ist reine Darstellung – Verbindung und Steuerung bleiben unverändert.</p>
+              </div>
+            </div>
+            <div className="vp-rename-inline-field">
+              <Input
+                label="Anzeigename"
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                placeholder={target.derivedLabel}
+                maxLength={200}
+                autoFocus
+                hint="Leer lassen, um wieder die technische Bezeichnung anzuzeigen."
+              />
+            </div>
+            {target.alias && label !== '' && (
+              <div className="vp-rename-reset">
+                <Button variant="ghost" onClick={() => setLabel('')} disabled={busy}>
+                  Eigenen Namen zurücksetzen
+                </Button>
+                <span className="vp-note">
+                  Nach dem Speichern zeigt VoltPilot wieder „{target.derivedLabel}“.
+                </span>
+              </div>
+            )}
+          </section>
+
+          <aside className="vp-geraet-edit-card vp-geraet-edit-identity" aria-labelledby="geraet-rename-identitaet">
+            <div className="vp-geraet-edit-cardhead">
+              <div>
+                <h2 id="geraet-rename-identitaet">Geräteidentität</h2>
+                <p>Technische Daten und Gerätezuordnung bleiben unverändert.</p>
+              </div>
+            </div>
+            <dl>
+              <div><dt>Geräte-ID</dt><dd className="vp-mono">{geraetKennung || target.derivedLabel}</dd></div>
+              <div><dt>Standort</dt><dd>{siteName || 'Dieser Standort'}<small>Feste Zuordnung</small></dd></div>
+            </dl>
+          </aside>
+        </div>
+
+        {error && <div className="vp-alert vp-alert-err" role="alert">{error}</div>}
+
+        <div className="vp-geraet-edit-actions">
+          <p aria-live="polite">{changed ? '1 Änderung bereit' : 'Noch keine Änderung'}</p>
+          <div>
+            <Button variant="ghost" onClick={closeInline} disabled={busy}>Abbrechen</Button>
+            <Button onClick={() => void save(label.trim() || null)} disabled={busy || !changed}>
+              {busy ? 'Speichere …' : 'Änderungen speichern'}
+            </Button>
+          </div>
+        </div>
+
+        <CenteredConfirmDialog
+          open={discardOpen}
+          title="Änderung verwerfen?"
+          intro="Der neue Anzeigename wurde noch nicht gespeichert."
+          consequences={['Die Eingabe geht verloren.', 'Der bisherige Anzeigename bleibt unverändert.']}
+          confirmLabel="Änderung verwerfen"
+          tone="danger"
+          onCancel={() => { setDiscardOpen(false); setPendingHref(null); }}
+          onConfirm={discard}
+        />
+      </section>
+    );
   }
 
   return (

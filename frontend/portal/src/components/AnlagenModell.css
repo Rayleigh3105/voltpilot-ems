@@ -383,6 +383,7 @@
   background: transparent;
   color: #b4bcc6;
   cursor: pointer;
+  text-decoration: none;
 }
 
 /* The pencil is open to every customer since the alias concept, so its touch

@@ -15,6 +15,7 @@ import {
 } from '../api';
 import { AnlegenDialog } from './AnlegenDialog';
 import { ConfirmDialog } from './ConfirmDialog';
+import { CenteredConfirmDialog } from './CenteredConfirmDialog';
 import { SelbstbauAssistent } from './SelbstbauAssistent';
 import { LadesaeuleAnbinden } from './LadesaeuleAnbinden';
 import { HEBEL_HINWEIS, HEBEL_INTRO, SKALIERUNG_X10, hebel } from '../testHebel';
@@ -93,6 +94,9 @@ export function AnlegenFlow({
   initialTyp,
   initialRolle,
   bearbeiten,
+  inlineBearbeitung = false,
+  siteName,
+  geraetKennung,
   onClose,
   onSaved,
 }: {
@@ -123,6 +127,15 @@ export function AnlegenFlow({
   initialRolle?: KomponentenRolle | null;
   /** Bestehende stabile Komponente: derselbe Assistent, mit ihren Sollwerten. */
   bearbeiten?: SiteComponentRow | null;
+  /**
+   * Auf der Geräteseite wird eine bestehende Komponente direkt IM SEITENKONTEXT
+   * bearbeitet. Der Anlege-Dialog bleibt ausschließlich dem Anlegen und den
+   * älteren Einstiegen vorbehalten.
+   */
+  inlineBearbeitung?: boolean;
+  /** Lesbarer Standort und stabile Gerätekennung für die Inline-Identität. */
+  siteName?: string;
+  geraetKennung?: string | null;
   onClose: () => void;
   onSaved: (result: SiteComponents) => void;
 }) {
@@ -141,6 +154,7 @@ export function AnlegenFlow({
     () => ({ ...(edit?.connection ?? {}) }),
   );
   const [erweitertOffen, setErweitertOffen] = useState(false);
+  const [technikOffen, setTechnikOffen] = useState(false);
   const [testZustand, setTestZustand] = useState<TestZustand>('ungeprueft');
   const [testText, setTestText] = useState<TestErgebnis | null>(null);
   /**
@@ -181,6 +195,9 @@ export function AnlegenFlow({
    * hier abgeleitet (Alias-Kontinuität). `null` = es entsteht eine neue.
    */
   const [uebernahme, setUebernahme] = useState<ComponentMatch | null>(null);
+  const [fragVerwerfen, setFragVerwerfen] = useState(false);
+  const [fragRollenwechsel, setFragRollenwechsel] = useState(false);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
   /** Der Fuß-Platz, in den der Selbstbau-Assistent seine Bedienzeile rendert. */
   const [fussEl, setFussEl] = useState<HTMLElement | null>(null);
 
@@ -272,10 +289,52 @@ export function AnlegenFlow({
   const aenderungen = edit && template && rolle
     ? delta(edit, template, rolle, name, verbindung, kwp)
     : [];
+  const einfachGeaendert = Boolean(edit && (
+    (edit.label?.trim() || '') !== name.trim()
+    || kundenRolle(edit) !== rolle
+    || (edit.capacityKwp ?? null) !== (kwp.trim() === '' ? null : Number(kwp))
+  ));
+  const hatAenderungen = Boolean(edit && (aenderungen.length > 0 || einfachGeaendert));
+  const rollenwechsel = aenderungen.some((row) => row.feld === 'Elektrische Rolle');
+  const technischeAenderung = aenderungen.some((row) => ![
+    'Anzeigename', 'Nennleistung', 'Elektrische Rolle',
+  ].includes(row.feld));
   // ⚠ Die HEBEL entstehen aus BELEGEN (Server-Fehlerklasse + Befund) und aus
   // dem, was die Vorlage strukturell hergibt - nie aus einer eigenen Diagnose
   // der gelesenen Zahlen. Die ganze Regel liegt rein in `testHebel.ts`.
   const hebelListe = hebel({ ergebnis: testText, template, templates, verbindung });
+
+  /*
+   * Inline heißt: dieselbe ROUTE bleibt sichtbar. Normale Link-Navigation und
+   * ein echtes Neuladen dürfen geänderte Eingaben trotzdem nicht lautlos
+   * verlieren. Der Link wird erst nach der bewussten Verwerfen-Bestätigung
+   * ausgeführt; Browser-Schließen nutzt den nativen Schutzdialog.
+   */
+  useEffect(() => {
+    if (!inlineBearbeitung || !hatAenderungen) return undefined;
+    const vorVerlassen = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    const linkKlick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey
+        || event.shiftKey || event.altKey) return;
+      const target = event.target;
+      const link = target instanceof Element ? target.closest('a[href]') : null;
+      if (!(link instanceof HTMLAnchorElement) || link.target === '_blank' || link.download) return;
+      if (link.href === window.location.href) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPendingHref(link.href);
+      setFragVerwerfen(true);
+    };
+    window.addEventListener('beforeunload', vorVerlassen);
+    document.addEventListener('click', linkKlick, true);
+    return () => {
+      window.removeEventListener('beforeunload', vorVerlassen);
+      document.removeEventListener('click', linkKlick, true);
+    };
+  }, [hatAenderungen, inlineBearbeitung]);
 
   /**
    * Der Test läuft beim BETRETEN des Schritts „Testen" von selbst an - der
@@ -354,6 +413,11 @@ export function AnlegenFlow({
    */
   function hebelKlick(h: { id: string; feld: string | null }) {
     if (h.id === 'modell') {
+      if (inlineBearbeitung) {
+        setTechnikOffen(true);
+        window.setTimeout(() => document.getElementById('anlegen-modell')?.focus(), 0);
+        return;
+      }
       // Zurück zur Modellwahl. Der Picker öffnet auf dem GEWÄHLTEN Modell,
       // seine Marken-Gruppe steht damit im Bild.
       setSchritt(2);
@@ -366,7 +430,8 @@ export function AnlegenFlow({
     }
     // ⚠ Das Feld liegt eine Ebene zurück - und womöglich unter „Erweitert".
     // Ein Sprung ins Eingeklappte wäre ein Klick ins Unsichtbare.
-    setSchritt(3);
+    if (inlineBearbeitung) setTechnikOffen(true);
+    else setSchritt(3);
     if (gruppen.erweitert.some((f) => f.key === h.feld)) setErweitertOffen(true);
     window.setTimeout(() => {
       const el = document.getElementById(`anlegen-${h.feld}`);
@@ -463,6 +528,60 @@ export function AnlegenFlow({
     } finally {
       setSpeichern(false);
     }
+  }
+
+  function fokussiere(id: string) {
+    window.setTimeout(() => {
+      const ziel = document.getElementById(id);
+      ziel?.scrollIntoView({ block: 'center' });
+      ziel?.focus();
+    }, 0);
+  }
+
+  /** Der Inline-Speicherweg erklärt jede Sperre an der betroffenen Stelle. */
+  function inlineSpeichern() {
+    setFehler(null);
+    if (!template || !rolle) {
+      setFehler('Die Gerätevorlage wird noch geladen oder ist nicht mehr verfügbar. Ihre Eingaben bleiben erhalten.');
+      return;
+    }
+    if (kwp.trim() !== '' && (!Number.isFinite(Number(kwp)) || Number(kwp) < 0)) {
+      setFehler('Geben Sie eine gültige Leistung ab 0 kWp ein.');
+      fokussiere('anlegen-kwp');
+      return;
+    }
+    if (fehlend.length > 0) {
+      setTechnikOffen(true);
+      setFehler(`Für die Verbindung fehlt noch: ${fehlend.map((field) => field.label).join(', ')}.`);
+      fokussiere(`anlegen-${fehlend[0].key}`);
+      return;
+    }
+    if (testNoetig && testZustand !== 'bestanden' && !ohneKanal) {
+      setTechnikOffen(true);
+      setFehler('Prüfen Sie die geänderte Verbindung, bevor Sie speichern.');
+      fokussiere('geraet-edit-test');
+      return;
+    }
+    if (rollenwechsel) {
+      setFragRollenwechsel(true);
+      return;
+    }
+    void anlegen();
+  }
+
+  function inlineSchliessen() {
+    if (speichern) return;
+    setPendingHref(null);
+    if (hatAenderungen) setFragVerwerfen(true);
+    else onClose();
+  }
+
+  function verwerfen() {
+    const href = pendingHref;
+    setFragVerwerfen(false);
+    setPendingHref(null);
+    onClose();
+    if (href) window.setTimeout(() => window.location.assign(href), 0);
   }
 
   /** Ein zweiter Durchlauf, ohne den Dialog zu schließen. */
@@ -579,6 +698,323 @@ export function AnlegenFlow({
       );
     }
     return null;
+  }
+
+  /*
+   * BESTEHENDES Gerät auf seiner EIGENEN Seite: kein Portal, kein Scrim, keine
+   * künstliche Schrittzahl. Die seltene Technik bleibt vollständig erhalten,
+   * wird aber erst auf Wunsch sichtbar. Alle Zustands- und Speicherregeln oben
+   * sind dieselben wie im bisherigen Assistenten.
+   */
+  if (edit && inlineBearbeitung) {
+    const modell = template
+      ? `${template.brandLabel} ${template.modelLabel}`.trim()
+      : [edit.brand, edit.model].filter(Boolean).join(' ') || 'Technische Angaben werden geladen';
+    const technikText = [modell, template?.communicationLabel ?? edit.communication]
+      .filter(Boolean).join(' · ');
+    const nurName = aenderungen.length === 1 && aenderungen[0].feld === 'Anzeigename';
+
+    return (
+      <section className="vp-geraet-edit" data-testid="geraet-bearbeiten" aria-busy={speichern}>
+        <header className="vp-geraet-edit-head">
+          <div>
+            <p className="vp-geraet-edit-eyebrow">Bearbeitungsmodus</p>
+            <h1>{edit.label?.trim() || modell || 'Gerät'} bearbeiten</h1>
+            <p>Allgemeine Angaben können Sie direkt speichern. Technische Änderungen werden vorher geprüft.</p>
+          </div>
+          <span className="vp-pill vp-pill-info">Fassung {edit.definitionVersion}</span>
+        </header>
+
+        {ladeFehler && <p className="vp-assist-error" role="alert">{ladeFehler}</p>}
+
+        <div className="vp-geraet-edit-grid">
+          <section className="vp-geraet-edit-card" aria-labelledby="geraet-edit-allgemein">
+            <div className="vp-geraet-edit-cardhead">
+              <div>
+                <h2 id="geraet-edit-allgemein">Allgemeine Angaben</h2>
+                <p>Diese Angaben benötigen keinen Verbindungstest.</p>
+              </div>
+            </div>
+            <div className="vp-assist-field">
+              <label htmlFor="anlegen-name">Anzeigename</label>
+              <Input
+                id="anlegen-name"
+                value={name}
+                placeholder={template?.modelLabel ?? edit.model ?? 'Gerät'}
+                onChange={(event) => setName(event.target.value)}
+                autoFocus
+              />
+              <p className="vp-assist-help">So erscheint das Gerät in Ihrer Anlage.</p>
+            </div>
+
+            {rollen.length > 1 ? (
+              <div className="vp-geraet-edit-role">
+                <span id="geraet-edit-rolle">Aufgabe in der Anlage</span>
+                <div className="vp-assist-roles" role="radiogroup" aria-labelledby="geraet-edit-rolle">
+                  {rollen.map((wahl) => (
+                    <button
+                      key={wahl.rolle}
+                      type="button"
+                      role="radio"
+                      aria-checked={rolle === wahl.rolle}
+                      className={`vp-assist-role${rolle === wahl.rolle ? ' is-on' : ''}${wahl.verfuegbar ? '' : ' is-soon'}`}
+                      disabled={!wahl.verfuegbar}
+                      onClick={() => setRolle(wahl.rolle)}
+                    >
+                      <strong>{wahl.label}</strong>
+                      <span>{wahl.hint}</span>
+                      {!wahl.verfuegbar && wahl.grund && <em className="vp-assist-soon">{wahl.grund}</em>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : rollen.length === 1 ? (
+              <div className="vp-geraet-edit-static">
+                <span>Aufgabe in der Anlage</span>
+                <strong>{rollen[0].label}</strong>
+                <small>{rollen[0].hint}</small>
+              </div>
+            ) : null}
+
+            {rolle === 'pv-generation' && (
+              <div className="vp-assist-field">
+                <label htmlFor="anlegen-kwp">Nennleistung (kWp)</label>
+                <Input
+                  id="anlegen-kwp"
+                  type="number"
+                  min="0"
+                  inputMode="decimal"
+                  value={kwp}
+                  onChange={(event) => setKwp(event.target.value)}
+                />
+                <p className="vp-assist-help">Optional – sie zählt zur Gesamtleistung Ihrer Anlage.</p>
+              </div>
+            )}
+          </section>
+
+          <aside className="vp-geraet-edit-card vp-geraet-edit-identity" aria-labelledby="geraet-edit-identitaet">
+            <div className="vp-geraet-edit-cardhead">
+              <div>
+                <h2 id="geraet-edit-identitaet">Geräteidentität</h2>
+                <p>Beim Verbinden festgelegt und hier bewusst nur lesbar.</p>
+              </div>
+            </div>
+            <dl>
+              <div><dt>Geräte-ID</dt><dd className="vp-mono">{geraetKennung || edit.edgeSourceId || edit.id}</dd></div>
+              <div><dt>Standort</dt><dd>{siteName || 'Dieser Standort'}<small>Feste Zuordnung</small></dd></div>
+            </dl>
+          </aside>
+        </div>
+
+        <section className={`vp-geraet-edit-card vp-geraet-edit-technik${technikOffen ? ' is-open' : ''}`} aria-labelledby="geraet-edit-technik">
+          <div className="vp-geraet-edit-techhead">
+            <div>
+              <h2 id="geraet-edit-technik">Verbindung &amp; Modell</h2>
+              <p>{technikText}</p>
+            </div>
+            <Button
+              variant="outline"
+              aria-expanded={technikOffen}
+              aria-controls="geraet-edit-technik-inhalt"
+              onClick={() => setTechnikOffen((offen) => !offen)}
+            >
+              {technikOffen ? 'Technische Daten schließen' : 'Technische Daten ändern'}
+            </Button>
+          </div>
+
+          {technikOffen && (
+            <div id="geraet-edit-technik-inhalt" className="vp-geraet-edit-techbody">
+              <div className="vp-assist-pick">
+                <VpPicker
+                  id="anlegen-modell"
+                  label="Hersteller und Modell"
+                  options={modellOptionen}
+                  groups={modellGruppen}
+                  value={template?.templateRef ?? null}
+                  onChange={waehleTemplate}
+                  placeholder="Marke und Modell wählen …"
+                  searchPlaceholder="Marke oder Modell suchen"
+                  search="immer"
+                  emptyText={(query) => `Keine Vorlage passt zu „${query}“.`}
+                  hint="Eine Modelländerung kann Decoder, Register und Bilanz beeinflussen."
+                />
+              </div>
+
+              {template && (
+                <>
+                  {gruppen.pflicht.map((field) => (
+                    <Feld key={field.key} feld={field} wert={verbindung[field.key]} onChange={setzeFeld} />
+                  ))}
+                  {gruppen.erweitert.length > 0 && (
+                    <details
+                      className="vp-anlegen-erweitert"
+                      open={erweitertOffen}
+                      onToggle={(event) => setErweitertOffen(event.currentTarget.open)}
+                    >
+                      <summary>Erweiterte Verbindungsdaten</summary>
+                      <p className="vp-assist-help">Ändern Sie diese Vorgaben nur, wenn Ihr Gerät es verlangt.</p>
+                      {gruppen.erweitert.map((field) => (
+                        <Feld key={field.key} feld={field} wert={verbindung[field.key]} onChange={setzeFeld} />
+                      ))}
+                    </details>
+                  )}
+                </>
+              )}
+
+              {fehlend.length > 0 && (
+                <p className="vp-assist-warn">Noch erforderlich: {fehlend.map((field) => field.label).join(', ')}</p>
+              )}
+
+              <div className="vp-geraet-edit-test" aria-labelledby="geraet-edit-test-titel">
+                <div>
+                  <h3 id="geraet-edit-test-titel">Verbindung prüfen</h3>
+                  <p>
+                    {testNoetig
+                      ? 'Technische Änderungen werden erst nach einem erfolgreichen Test gespeichert.'
+                      : 'Verbindung und Modell sind unverändert – kein neuer Test nötig.'}
+                  </p>
+                </div>
+
+                {!testNoetig && (
+                  <p className="vp-assist-ok" role="status"><Icon name="check" size={16} /> Kein Verbindungstest erforderlich.</p>
+                )}
+                {testNoetig && testZustand === 'laeuft' && <p role="status">Prüfe Verbindung …</p>}
+                {testText && (
+                  <div className={testText.zustand === 'bestanden' ? 'vp-assist-ok' : 'vp-assist-error'} role="status">
+                    <p>{testText.text}</p>
+                    {testText.regelText && <p className="vp-assist-regel">{testText.regelText}</p>}
+                    {testText.messwerte.length > 0 && (
+                      <ul className="vp-assist-readings">
+                        {testText.messwerte.map((messwert) => (
+                          <li key={messwert.label}><span>{messwert.label}</span><strong>{messwert.wert}</strong></li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                {testNoetig && testZustand !== 'laeuft' && (
+                  <Button id="geraet-edit-test" variant="outline" onClick={testen} disabled={fehlend.length > 0 || !template}>
+                    {testZustand === 'ungeprueft' ? 'Verbindung prüfen' : 'Erneut prüfen'}
+                  </Button>
+                )}
+
+                {hebelListe.length > 0 && (
+                  <div className="vp-assist-hebel" data-testid="test-hebel">
+                    <p className="vp-assist-hebel-intro">{HEBEL_INTRO}</p>
+                    <ul>
+                      {hebelListe.map((item) => (
+                        <li key={item.id}>
+                          <div><strong>{item.titel}</strong><span>{item.satz}</span></div>
+                          <Button variant="outline" size="sm" onClick={() => hebelKlick(item)}>{item.aktion}</Button>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="vp-assist-hebel-note">{HEBEL_HINWEIS}</p>
+                  </div>
+                )}
+
+                {socAngeboten && (
+                  <div className="vp-assist-socvolt" data-testid="soc-schaetzung">
+                    <strong>{socSchaetzung.SOC_VOLTAGE_TITEL}</strong>
+                    <p className="vp-assist-help">{socSchaetzung.SOC_VOLTAGE_INTRO}</p>
+                    {socSchaetzung.SOC_VOLTAGE_FELDER.map((field) => (
+                      <div className="vp-assist-field" key={field.id}>
+                        <label htmlFor={field.id}>{field.label}</label>
+                        <Input
+                          id={field.id}
+                          inputMode="decimal"
+                          value={socVolt[field.key]}
+                          placeholder={field.platzhalter}
+                          onChange={(event) => setzeSocVolt({ ...socVolt, [field.key]: event.target.value })}
+                        />
+                        <p className="vp-assist-help">{field.hilfe}</p>
+                      </div>
+                    ))}
+                    {socSchaetzung.fehler(socVolt) && <p className="vp-assist-warn">{socSchaetzung.fehler(socVolt)}</p>}
+                    {socSchaetzung.schaetzungSatz(testText?.befund) && (
+                      <p className="vp-assist-uebernahme">{socSchaetzung.schaetzungSatz(testText?.befund)}</p>
+                    )}
+                    <ul className="vp-assist-folgen">{socSchaetzung.SOC_VOLTAGE_FOLGEN.map((line) => <li key={line}>{line}</li>)}</ul>
+                  </div>
+                )}
+
+                {testZustand === 'fehlgeschlagen' && testText?.override && !ohneKanal && (
+                  <Button variant="outline" onClick={() => setFragOhneKanal(true)}>{testText.override.label}</Button>
+                )}
+                {ohneKanal && (
+                  <p className="vp-assist-uebernahme" data-testid="override-aktiv">
+                    Sie fahren ohne diesen Messkanal fort. Alle anderen Messwerte laufen normal; die davon abhängige Steuerung bleibt aus.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {aenderungen.length > 0 && !nurName && (
+          <section className="vp-geraet-edit-card vp-geraet-edit-review" aria-labelledby="geraet-edit-pruefen">
+            <div className="vp-geraet-edit-cardhead">
+              <div><h2 id="geraet-edit-pruefen">Änderungen und Auswirkungen</h2><p>Es wird eine neue Fassung angelegt; die Geräteidentität und Historie bleiben erhalten.</p></div>
+            </div>
+            <dl className="vp-edit-delta" aria-label="Änderungen">
+              {aenderungen.map((row) => (
+                <div key={row.feld}><dt>{row.feld}</dt><dd><del>{row.vorher}</del><span aria-hidden="true">→</span><ins>{row.nachher}</ins></dd></div>
+              ))}
+            </dl>
+            <div className="vp-edit-effects"><strong>Auswirkungen</strong><ul>{auswirkungen(aenderungen).map((line) => <li key={line}>{line}</li>)}</ul></div>
+          </section>
+        )}
+
+        {fehler && <p className="vp-assist-error vp-geraet-edit-error" role="alert">{fehler}</p>}
+
+        <div className="vp-geraet-edit-actions">
+          <p aria-live="polite">
+            {hatAenderungen
+              ? `${aenderungen.length || 1} ${aenderungen.length === 1 ? 'Änderung' : 'Änderungen'} bereit`
+              : 'Noch keine Änderung'}
+            {technischeAenderung && testNoetig ? ' · Verbindungstest erforderlich' : ''}
+          </p>
+          <div>
+            <Button variant="ghost" onClick={inlineSchliessen} disabled={speichern}>Abbrechen</Button>
+            <Button onClick={inlineSpeichern} disabled={speichern || !hatAenderungen}>
+              {speichern ? 'Speichere …' : 'Änderungen speichern'}
+            </Button>
+          </div>
+        </div>
+
+        <CenteredConfirmDialog
+          open={fragVerwerfen}
+          title="Änderungen verwerfen?"
+          intro="Ihre Eingaben wurden noch nicht gespeichert."
+          consequences={['Alle Änderungen in diesem Bearbeitungsmodus gehen verloren.', 'Die aktuell aktive Gerätefassung bleibt unverändert.']}
+          confirmLabel="Änderungen verwerfen"
+          tone="danger"
+          onCancel={() => { setFragVerwerfen(false); setPendingHref(null); }}
+          onConfirm={verwerfen}
+        />
+        <CenteredConfirmDialog
+          open={fragRollenwechsel}
+          title="Aufgabe des Geräts ändern?"
+          intro="Die Aufgabe bestimmt, wie VoltPilot dieses Gerät bilanziert und steuert."
+          consequences={auswirkungen(aenderungen)}
+          confirmLabel="Aufgabe ändern und speichern"
+          onCancel={() => setFragRollenwechsel(false)}
+          onConfirm={() => { setFragRollenwechsel(false); void anlegen(); }}
+        />
+        <CenteredConfirmDialog
+          open={fragOhneKanal && !!testText?.override}
+          title="Ohne Messkanal fortfahren?"
+          intro="Ihr Gerät antwortet, meldet aber den benötigten Messkanal nicht."
+          consequences={testText?.override?.folgen ?? []}
+          confirmLabel="Trotzdem fortfahren"
+          onCancel={() => setFragOhneKanal(false)}
+          onConfirm={() => {
+            setOhneKanal(testText?.override ?? null);
+            setFragOhneKanal(false);
+          }}
+        />
+      </section>
+    );
   }
 
   return (

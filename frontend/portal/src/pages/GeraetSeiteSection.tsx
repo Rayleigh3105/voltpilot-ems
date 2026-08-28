@@ -49,7 +49,15 @@ import { deviceLimitLine, exportGuardView, WAECHTER_LABEL } from '../curtailment
 import { COMPONENT_ROLE_ICONS } from '../komponenten';
 import type { IconName } from '../../designsystem/components/core/Icon';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import { anlageRoute, befehleGeraetHash, boxSeiteHash, hashForRoute, pageRoute } from '../nav';
+import {
+  anlageRoute,
+  befehleGeraetHash,
+  geraetBearbeitenKomponente,
+  hashForRoute,
+  istGeraetBearbeitenHash,
+  ohneGeraetBearbeiten,
+  pageRoute,
+} from '../nav';
 import {
   ABRUF_HINWEIS,
   abrufFehler,
@@ -116,7 +124,6 @@ import { useFreshnessPoll } from '../useFreshnessPoll';
 import { showTechnicalLayer } from '../rollen';
 import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
 import { AnlegenFlow } from '../components/AnlegenFlow';
-import { GeraetVerschiebenDialog } from '../components/GeraetVerschiebenDialog';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UmbenennenDialog, type RenameTarget } from '../components/UmbenennenDialog';
 import { geraetView, type GeraetView } from '../adminGeraet';
@@ -203,8 +210,8 @@ export function GeraetSeiteSection({
   const [sources, setSources] = useState<SiteSource[] | null>(null);
   const [components, setComponents] = useState<SiteComponents | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [renameOpen, setRenameOpen] = useState(false);
-  const [moveOpen, setMoveOpen] = useState(false);
+  const [editNotice, setEditNotice] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
   const [versions, setVersions] = useState<ComponentDefinition[]>([]);
   const [rollbackTarget, setRollbackTarget] = useState<ComponentDefinition | null>(null);
   const [rollbackBusy, setRollbackBusy] = useState(false);
@@ -253,7 +260,11 @@ export function GeraetSeiteSection({
 
   // Ein offener Namensdialog gehört zur adressierten Säule. Bei einem
   // Gerätewechsel darf er nie mit dem Ziel der neuen Route wieder auftauchen.
-  useEffect(() => setRenameOpen(false), [site.id, geraetId]);
+  useEffect(() => {
+    setRenameTarget(null);
+    setEditOpen(false);
+    setEditNotice(null);
+  }, [site.id, geraetId]);
 
   useEffect(() => {
     let active = true;
@@ -431,6 +442,42 @@ export function GeraetSeiteSection({
       derivedLabel: chargePointId,
     };
   }, [geraetId, view]);
+
+  /*
+   * Der Bearbeiten-Link aus dem Anlagen-Modell führt an DIESEN einen Ort. Der
+   * Parameter ist ein einmaliger Eintritt und wird sofort verbraucht, damit
+   * Abbrechen/Speichern den Modus nicht durch einen alten Hash erneut öffnen.
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined' || !istGeraetBearbeitenHash(window.location.hash)) return;
+    const requestedComponentId = geraetBearbeitenKomponente(window.location.hash);
+    // Der Deep-Link ist schneller als die Entitätsantwort. Erst verbrauchen,
+    // wenn die Geräteseite die adressierte Komponente tatsächlich prüfen kann.
+    if (requestedComponentId && !view) return;
+    const requestedComponent = requestedComponentId
+      ? view?.komponenten.find((row) => row.entityId === requestedComponentId && row.renameable)
+      : null;
+    const requestedTarget: RenameTarget | null = requestedComponent
+      ? {
+          entityId: requestedComponent.entityId,
+          alias: requestedComponent.alias,
+          derivedLabel: requestedComponent.derivedLabel,
+        }
+      : null;
+    const componentEdit = !requestedComponentId
+      && Boolean(editRow && components?.componentAuthority === 'portal');
+    const renameEdit = requestedTarget ?? (!requestedComponentId ? chargerRenameTarget : null);
+    if (!componentEdit && !renameEdit && !requestedComponentId) return;
+    setEditNotice(null);
+    if (componentEdit) setEditOpen(true);
+    else if (renameEdit) setRenameTarget(renameEdit);
+    else setEditError('Diese Komponente ist an diesem Gerät nicht mehr verfügbar.');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      ohneGeraetBearbeiten(window.location.hash),
+    );
+  }, [chargerRenameTarget, components?.componentAuthority, editRow?.id, view]);
 
   useEffect(() => {
     if (!editRow) { setVersions([]); return; }
@@ -980,6 +1027,12 @@ export function GeraetSeiteSection({
         </Card>
       )}
 
+      {editNotice && !editOpen && !renameTarget && (
+        <div className="vp-alert vp-alert-ok" role="status">
+          <Icon name="check" size={16} /> {editNotice}
+        </div>
+      )}
+
       {view && !view.gefunden && (
         <Card padding="lg" radius="lg">
           <EmptyState
@@ -991,7 +1044,7 @@ export function GeraetSeiteSection({
         </Card>
       )}
 
-      {view && view.gefunden && gesichtView?.gattung === 'ladepunkt' && chargePointIdOf(geraetId) && (
+      {view && view.gefunden && gesichtView?.gattung === 'ladepunkt' && chargePointIdOf(geraetId) && !renameTarget && (
         <OcppWallboxPage
           siteId={site.id}
           chargePointId={chargePointIdOf(geraetId) as string}
@@ -1002,12 +1055,65 @@ export function GeraetSeiteSection({
           charger={(charging?.chargers ?? []).find(
             (item) => item.chargePointId === chargePointIdOf(geraetId),
           ) ?? null}
-          onRename={chargerRenameTarget ? () => setRenameOpen(true) : undefined}
+          onRename={chargerRenameTarget ? () => {
+            setEditNotice(null);
+            setRenameTarget(chargerRenameTarget);
+          } : undefined}
           messwerte={beobachtung}
         />
       )}
 
-      {view && view.gefunden && gesichtView?.gattung !== 'ladepunkt' && (
+      {view && view.gefunden && renameTarget && (
+        <>
+          <GeraetBrotkrume
+            anlageHref={hashForRoute(anlageRoute(site.id))}
+            komponentenHref={hashForRoute(anlageRoute(site.id, 'modell'))}
+            titel={`${view.kopf.titel} bearbeiten`}
+          />
+          <UmbenennenDialog
+            inline
+            siteId={site.id}
+            siteName={site.name}
+            geraetKennung={view.kopf.kennung || geraetId || undefined}
+            target={renameTarget}
+            onClose={() => setRenameTarget(null)}
+            onSaved={() => {
+              setRenameTarget(null);
+              setEditNotice('Anzeigename gespeichert. Verbindung und Steuerung bleiben unverändert.');
+              setReloadKey((key) => key + 1);
+            }}
+          />
+        </>
+      )}
+
+      {view && view.gefunden && gesichtView?.gattung !== 'ladepunkt' && editOpen && !renameTarget && editRow && (
+        <>
+          <GeraetBrotkrume
+            anlageHref={hashForRoute(anlageRoute(site.id))}
+            komponentenHref={hashForRoute(anlageRoute(site.id, 'modell'))}
+            titel={`${view.kopf.titel} bearbeiten`}
+          />
+          <AnlegenFlow
+            siteId={site.id}
+            box={boxDevice}
+            bearbeiten={editRow}
+            inlineBearbeitung
+            siteName={site.name}
+            geraetKennung={view.kopf.kennung || geraetId}
+            onClose={() => setEditOpen(false)}
+            onSaved={(result) => {
+              const gespeichert = result.components.find((row) => row.id === editRow.id);
+              setComponents(result);
+              setEditOpen(false);
+              setEditNotice(gespeichert?.syncStatus === 'in_sync'
+                ? 'Änderungen gespeichert und auf der Box aktiv.'
+                : 'Änderungen als neue Fassung gespeichert. Die bisherige Fassung läuft bis zur Bestätigung weiter.');
+            }}
+          />
+        </>
+      )}
+
+      {view && view.gefunden && gesichtView?.gattung !== 'ladepunkt' && !editOpen && !renameTarget && (
         <GeraetRahmen
           testId="geraet-rahmen"
           geraetKey={`${site.id}:${geraetId ?? geraeteRef}`}
@@ -1038,13 +1144,11 @@ export function GeraetSeiteSection({
           aktionen={(
             <>
               {components?.componentAuthority === 'portal' && editRow && (
-                <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={() => setEditOpen(true)}>
+                <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={() => {
+                  setEditNotice(null);
+                  setEditOpen(true);
+                }}>
                   <Icon name="pencil" size={15} /> Bearbeiten
-                </button>
-              )}
-              {components?.componentAuthority === 'portal' && boxDevice && (
-                <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={() => setMoveOpen(true)}>
-                  <Icon name="map-pin" size={15} /> Gerät verschieben
                 </button>
               )}
             </>
@@ -1231,15 +1335,6 @@ export function GeraetSeiteSection({
         </GeraetRahmen>
       )}
 
-      {moveOpen && boxDevice && (
-        <GeraetVerschiebenDialog
-          device={boxDevice}
-          onClose={() => setMoveOpen(false)}
-          onMoved={(moved) => {
-            window.location.hash = boxSeiteHash(moved.siteId, moved.externalRef);
-          }}
-        />
-      )}
       <ConfirmDialog
         open={Boolean(rollbackTarget)}
         title={`Auf Fassung ${rollbackTarget?.version ?? ''} zurückrollen?`}
@@ -1272,26 +1367,6 @@ export function GeraetSeiteSection({
         onConfirm={(m) => void eingriffBestaetigen(m)}
         onCancel={() => !aktionBusy && setEingriff(null)}
       />
-      {editOpen && editRow && (
-        <AnlegenFlow
-          siteId={site.id}
-          box={boxDevice}
-          bearbeiten={editRow}
-          onClose={() => setEditOpen(false)}
-          onSaved={(result) => setComponents(result)}
-        />
-      )}
-      {renameOpen && chargerRenameTarget && (
-        <UmbenennenDialog
-          siteId={site.id}
-          target={chargerRenameTarget}
-          onClose={() => setRenameOpen(false)}
-          onSaved={() => {
-            setRenameOpen(false);
-            setReloadKey((key) => key + 1);
-          }}
-        />
-      )}
     </div>
   );
 }

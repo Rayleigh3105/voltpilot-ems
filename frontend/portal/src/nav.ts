@@ -792,3 +792,44 @@ export function geraetSeiteHash(
     ? `${base}/${encodeURIComponent(geraetId.trim())}`
     : base;
 }
+
+/**
+ * Derselbe Geräte-Ort im Bearbeitungsmodus. Der Query-Parameter ist nur ein
+ * EINMALIGER Eintritt: die Geräteseite entfernt ihn nach dem Öffnen, damit ein
+ * Abbrechen oder Speichern beim nächsten Render nicht erneut hinein springt.
+ */
+export function geraetBearbeitenHash(siteId: string, ref: string, geraetId: string): string {
+  return `${geraetSeiteHash(siteId, ref, geraetId)}?bearbeiten=1`;
+}
+
+/** Ein Namens-Stift einer konkreten Komponente führt in denselben Seitenmodus. */
+export function geraetKomponenteBearbeitenHash(
+  siteId: string,
+  ref: string,
+  geraetId: string,
+  componentId: string,
+): string {
+  const params = new URLSearchParams({ bearbeiten: '1', komponente: componentId });
+  return `${geraetSeiteHash(siteId, ref, geraetId)}?${params.toString()}`;
+}
+
+export function istGeraetBearbeitenHash(hash: string): boolean {
+  return befehleParam(hash, 'bearbeiten') === '1';
+}
+
+/** Welche Komponente der einmalige Namens-Einstieg meint, falls er eine nennt. */
+export function geraetBearbeitenKomponente(hash: string): string | null {
+  const value = befehleParam(hash, 'komponente');
+  return value?.trim() || null;
+}
+
+/** Entfernt den verbrauchten Eintritt samt Ziel; alle anderen Parameter reisen mit. */
+export function ohneGeraetBearbeiten(hash: string): string {
+  const [path, ...rest] = hash.split('?');
+  if (rest.length === 0) return hash;
+  const params = new URLSearchParams(rest.join('?'));
+  params.delete('bearbeiten');
+  params.delete('komponente');
+  const query = params.toString();
+  return `${path}${query ? `?${query}` : ''}`;
+}

@@ -371,7 +371,10 @@ function stub(over: {
 }
 
 describe('GeraetSeiteSection', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.history.replaceState(null, '', '#/');
+  });
 
   it('führt ein GERÄT unter seinem technischen Namen samt Live-Werten', async () => {
     stub();
@@ -523,6 +526,75 @@ describe('GeraetSeiteSection', () => {
       .toHaveLength(1);
   });
 
+  it('bietet keinen Standortwechsel fuer Geraete mehr an', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    await screen.findByTestId('geraet-rahmen');
+    expect(screen.queryByRole('button', { name: 'Gerät verschieben' })).toBeNull();
+  });
+
+  it('bearbeitet ein Portal-Gerät auf derselben Geräteseite statt in einem Dialog', async () => {
+    stub();
+    window.history.replaceState(
+      null,
+      '',
+      '#/anlage/s-1/geraet/edge-45gz7da/src-7c1e9a2b?bearbeiten=1',
+    );
+    const row = {
+      id: 'fr1', role: 'pv-generation', entityType: 'producer', label: 'Dach Süd',
+      brand: 'fronius', model: 'eco-27', family: 'sunspec_live',
+      communication: 'fronius_sunspec',
+      connection: { ip: '192.168.254.30', port: 502, unit_id: 1 },
+      templateRef: 'builtin:fronius:eco-27', templateVersion: 1,
+      definitionVersion: 3, edgeSourceId: 'src-7c1e9a2b', syncStatus: 'in_sync',
+      capacityKwp: 27,
+    };
+    vi.mocked(api.siteComponents).mockResolvedValue({
+      componentAuthority: 'portal', components: [row],
+    });
+    vi.spyOn(api, 'componentVersions').mockResolvedValue([]);
+    vi.spyOn(api, 'componentTemplates').mockResolvedValue([{
+      templateRef: row.templateRef, kind: 'builtin', version: 1,
+      brand: 'fronius', brandLabel: 'Fronius', model: 'eco-27', modelLabel: 'Eco 27.0-3-S',
+      communication: 'fronius_sunspec', communicationLabel: 'SunSpec Modbus TCP',
+      transportSchema: [
+        { key: 'ip', label: 'IP-Adresse', required: true },
+        { key: 'port', label: 'Port', type: 'number', default: 502 },
+        { key: 'unit_id', label: 'Modbus-Adresse', type: 'number', default: 1 },
+      ],
+    }]);
+    const connectionTest = vi.spyOn(api, 'testComponentConnection').mockResolvedValue({
+      results: [{ id: 'verbindung', ok: true }],
+    });
+    vi.spyOn(api, 'updateComponent').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{ ...row, label: 'Garage Süd', definitionVersion: 4, syncStatus: 'pending' }],
+    });
+
+    render(
+      <GeraetSeiteSection
+        site={site}
+        boxRef="edge-45gz7da"
+        geraetId="src-7c1e9a2b"
+        devices={[box]}
+      />,
+    );
+
+    expect(await screen.findByTestId('geraet-bearbeiten')).toBeVisible();
+    expect(window.location.hash).toBe('#/anlage/s-1/geraet/edge-45gz7da/src-7c1e9a2b');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByTestId('geraet-rahmen')).toBeNull();
+    expect(screen.getByLabelText('Anzeigename')).toHaveValue('Dach Süd');
+    expect(screen.getByText('Pilsting')).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText('Anzeigename'), { target: { value: 'Garage Süd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+
+    expect(await screen.findByText(/Änderungen als neue Fassung gespeichert/)).toBeVisible();
+    expect(screen.getByTestId('geraet-rahmen')).toBeVisible();
+    expect(connectionTest).not.toHaveBeenCalled();
+    window.history.replaceState(null, '', '#/');
+  });
 
   it('ändert auch an einer real komponierten OCPP-Wallbox den gemeinsamen Anzeigenamen', async () => {
     let alias = 'Garage';
@@ -576,16 +648,24 @@ describe('GeraetSeiteSection', () => {
     vi.spyOn(api, 'ocppActionPermissions').mockResolvedValue({ actions: {} });
     vi.spyOn(api, 'ocppActions').mockResolvedValue([]);
 
+    window.history.replaceState(
+      null,
+      '',
+      '#/anlage/s-1/geraet/edge-45gz7da/cp-CP-1?bearbeiten=1&komponente=wallbox-1',
+    );
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="cp-CP-1" devices={[box]} />);
-    expect(await screen.findByRole('heading', { name: 'Garage' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Anzeigename ändern' }));
-    expect(await screen.findByRole('heading', { name: 'Komponente umbenennen' })).toBeVisible();
-    fireEvent.change(screen.getByLabelText('Eigener Name'), { target: { value: 'Carport' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(await screen.findByTestId('geraet-bearbeiten')).toBeVisible();
+    expect(window.location.hash).toBe('#/anlage/s-1/geraet/edge-45gz7da/cp-CP-1');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.querySelector('.vp-drawer')).toBeNull();
+    expect(screen.queryByTestId('ocpp-rahmen')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Anzeigename'), { target: { value: 'Carport' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
 
     await waitFor(() => expect(entitiesApi.rename).toHaveBeenCalledWith(
       's-1', 'wallbox-1', 'Carport',
     ));
+    expect(await screen.findByText(/Anzeigename gespeichert/)).toBeVisible();
     expect(await screen.findByRole('heading', { name: 'Carport' })).toBeVisible();
   });
 

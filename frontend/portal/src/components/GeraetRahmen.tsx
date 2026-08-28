@@ -84,7 +84,7 @@ export function GeraetRahmen({
 }: {
   brotkrume: { anlageHref: string; komponentenHref: string };
   kopf: RahmenKopf;
-  /** „Bearbeiten", „Gerät verschieben" - rechts im Kopf. */
+  /** Kontextuelle Aktionen wie „Bearbeiten" - rechts im Kopf. */
   aktionen?: React.ReactNode;
   /** Was unmittelbar unter dem Kopf steht (Fassungs-Aufklapper, Warnungen). */
   unterKopf?: React.ReactNode;

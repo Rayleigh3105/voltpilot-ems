@@ -8,12 +8,17 @@ import {
   parseBefehleKomponente,
   canonicalAnlageHash,
   hashForRoute,
+  geraetBearbeitenHash,
+  geraetBearbeitenKomponente,
+  geraetKomponenteBearbeitenHash,
   geraetSeiteHash,
+  istGeraetBearbeitenHash,
   isBootHash,
   pageLabel,
   pageRoute,
   parseGeraetRef,
   parseRoute,
+  ohneGeraetBearbeiten,
   parseZentraleAnsicht,
   zentraleAnsichtHash,
   PLATFORM_GROUPS,
@@ -283,6 +288,26 @@ describe('M1: no route breaks when the tab bar is retired', () => {
     const boxAlt = geraetSeiteHash('s-1', 'edge-45gz7da', null);
     expect(parseRoute(boxAlt).geraet).toEqual({ ref: 'edge-45gz7da', geraetId: null });
     expect(hashForRoute(parseRoute(boxAlt))).toBe('#/anlage/s-1/box/edge-45gz7da');
+  });
+
+  it('öffnet Bearbeiten auf derselben Geräteseite und verbraucht nur diesen Eintritt', () => {
+    const hash = geraetBearbeitenHash('s-1', 'edge-45gz7da', 'src-fronius');
+    expect(hash).toBe('#/anlage/s-1/geraet/edge-45gz7da/src-fronius?bearbeiten=1');
+    expect(parseRoute(hash).geraet).toEqual({ ref: 'edge-45gz7da', geraetId: 'src-fronius' });
+    expect(istGeraetBearbeitenHash(hash)).toBe(true);
+    expect(ohneGeraetBearbeiten(`${hash}&kachel=leistung`))
+      .toBe('#/anlage/s-1/geraet/edge-45gz7da/src-fronius?kachel=leistung');
+
+    const componentHash = geraetKomponenteBearbeitenHash(
+      's-1', 'edge-45gz7da', 'inverter', 'grid/main',
+    );
+    expect(componentHash).toBe(
+      '#/anlage/s-1/geraet/edge-45gz7da/inverter?bearbeiten=1&komponente=grid%2Fmain',
+    );
+    expect(geraetBearbeitenKomponente(componentHash)).toBe('grid/main');
+    expect(ohneGeraetBearbeiten(`${componentHash}&abschnitt=komponenten`)).toBe(
+      '#/anlage/s-1/geraet/edge-45gz7da/inverter?abschnitt=komponenten',
+    );
   });
 
   it('trägt das Geräte-Feld NUR auf der Geräteseite', () => {
