@@ -257,10 +257,191 @@ function bandLine(budget: ChargingBudget, house: number | null, laden: number): 
 /** Grün = lädt · Grau = wartet/ruhig · Bernstein = die Säule hat ein Problem. */
 export type LadeTone = 'laedt' | 'ruhig' | 'stoerung';
 
+/**
+ * Das MASCHINEN-Wort eines Ladepunkt-Zustands - die geschlossene Menge aus dem
+ * abgenommenen Konzept (`vp-verbraucher-cockpit-k1` §4.2).
+ *
+ * Es steht NEBEN dem deutschen Wort, damit keine Fläche einen deutschen Satz
+ * nach Stichworten durchsuchen muss (die Haus-Regel des `target_verdict`).
+ */
+export type LadeZustandKind =
+  | 'getrennt'
+  | 'frei'
+  | 'startet'
+  | 'laedt'
+  | 'laedt_ohne_messung'
+  | 'nimmt_nichts'
+  | 'wartet'
+  | 'saeule_pausiert'
+  | 'auto_pausiert'
+  | 'beendet'
+  | 'stoerung'
+  | 'nicht_verfuegbar'
+  | 'reserviert';
+
+export interface LadeZustand {
+  /** Das MASCHINEN-Wort des Zustands - worauf eine Fläche schlüsseln darf. */
+  kind: LadeZustandKind;
+  /** Das ZUSTANDS-WORT - nie nur eine Farbe (K5/K10). */
+  word: string;
+  tone: LadeTone;
+  /** Der Grund, wo es einen gibt - der Satz der BOX, unverändert. */
+  reason: string | null;
+  /** Das Maschinen-Wort desselben Grundes (`kein_ueberschuss`, `budget`, …). */
+  reasonCode: string | null;
+  /**
+   * Unser EIGENER Zusatz zum Zustand, wo der Zustand allein zu wenig sagt
+   * („zuletzt 09:12", „voll oder Auto-Timer") - getrennt vom Satz der Box
+   * gehalten, damit die zwei Herkünfte nie zu einer verschmelzen.
+   */
+  detail: string | null;
+}
+
+const ZUSTAND_WORT: Record<LadeZustandKind, string> = {
+  getrennt: 'Säule getrennt',
+  frei: 'Kein Auto eingesteckt',
+  startet: 'Auto eingesteckt · startet',
+  laedt: 'Lädt',
+  laedt_ohne_messung: 'Lädt — Leistung nicht messbar',
+  nimmt_nichts: 'Eingesteckt · nimmt gerade keinen Strom',
+  wartet: 'Eingesteckt · wartet',
+  saeule_pausiert: 'Eingesteckt · Säule pausiert',
+  auto_pausiert: 'Auto pausiert',
+  beendet: 'Ladung beendet · Auto noch eingesteckt',
+  stoerung: 'Störung an der Säule',
+  nicht_verfuegbar: 'Nicht verfügbar',
+  reserviert: 'Reserviert',
+};
+
+/**
+ * Grün = lädt, Bernstein = die Säule selbst hat ein Problem, sonst grau.
+ *
+ * ⚠ `beendet` ist GRAU, obwohl das Konzept „grün-grau ✓" notiert: dieses Haus
+ * kennt drei Töne, und Grün heißt in jeder anderen Zeile „es fließt gerade".
+ * Ein beendeter Ladevorgang fließt nicht mehr - ihn grün zu färben wäre genau
+ * die Verwechslung, gegen die dieser Fix gebaut ist.
+ */
+const ZUSTAND_TON: Record<LadeZustandKind, LadeTone> = {
+  getrennt: 'stoerung',
+  frei: 'ruhig',
+  startet: 'ruhig',
+  laedt: 'laedt',
+  laedt_ohne_messung: 'laedt',
+  nimmt_nichts: 'ruhig',
+  wartet: 'ruhig',
+  saeule_pausiert: 'ruhig',
+  auto_pausiert: 'ruhig',
+  beendet: 'ruhig',
+  stoerung: 'stoerung',
+  nicht_verfuegbar: 'ruhig',
+  reserviert: 'ruhig',
+};
+
+/** Unsere eigenen Zusätze - nur dort, wo der Zustand allein zu wenig sagt. */
+const ZUSTAND_DETAIL: Partial<Record<LadeZustandKind, string>> = {
+  // Beides ist möglich, und die Säule sagt nicht, welches - also wird nichts
+  // geraten, sondern die Unschärfe benannt.
+  auto_pausiert: 'voll oder Auto-Timer',
+};
+
+/**
+ * DER ZUSTAND EINES LADEPUNKTS - die EINE Stelle, an der aus einem Herzschlag
+ * ein Wort wird. Ladevorgänge-Seite und Cockpit lesen sie beide.
+ *
+ * ⚠ DIE TRAGENDE REGEL (Konzept `vp-verbraucher-cockpit-k1` §1.5/§4.2): DER
+ * OCPP-STATUS ENTSCHEIDET DAS WORT, das `charging`-Flag der Box entscheidet
+ * NUR den Budget-Anspruch. Die Box hält `charging` ausdrücklich auch für
+ * `SuspendedEVSE` (unser eigenes Lastmanagement hält die Säule auf 0 kW) und
+ * `SuspendedEV` (das Auto nimmt nichts) auf TRUE, weil die Sitzung lebt und
+ * ihre Zuteilung nicht hin- und herwandern darf (`csms/model.go`
+ * `ChargingStatus`). Wer das Flag als Wort liest, sagt „lädt" über ein Auto,
+ * das GERADE VON UNS ausgebremst wird - und schreibt den Widerspruch
+ * „lädt · wartet - Budget vergeben" in eine einzige Zeile.
+ *
+ * ⚠ OHNE gemeldeten Status gibt es kein OCPP-Wort. Dann - und NUR dann - fällt
+ * diese Funktion auf das Flag zurück: einen Zustand zu behaupten, den niemand
+ * gemeldet hat, wäre schlimmer. Der gefährliche Fall oben trägt seinen Status
+ * per Konstruktion, das Loch geht dadurch also nicht wieder auf. Ein Wort
+ * ausserhalb des OCPP-Vokabulars kann hier ohnehin nicht ankommen - der Ingest
+ * verwirft es, statt es zu speichern (`ChargerStatusListener`).
+ */
+export function ladeZustand(
+  con: ChargeConnector,
+  point?: Pick<ChargePoint, 'connected' | 'lastSeen'> | null,
+): LadeZustand {
+  const kind = zustandKind(con, point);
+  const boost = con.boost === true && (kind === 'laedt' || kind === 'laedt_ohne_messung');
+  // ⚠ Eine übersteuerte Ladung SAGT es: eine volle Ladung, die niemand
+  // angefordert hat, wäre ein stiller Bruch der eigenen Priorität des Kunden.
+  // Sie sagt es aber NUR, wo wirklich geladen wird - „Lädt voll auf Ihren
+  // Wunsch" über einem wartenden Stecker wäre dieselbe Lüge in Grün.
+  const word = boost ? 'Lädt voll auf Ihren Wunsch' : ZUSTAND_WORT[kind];
+  let detail = ZUSTAND_DETAIL[kind] ?? null;
+  if (kind === 'getrennt') {
+    const seen = point?.lastSeen ? clock(point.lastSeen) : '';
+    detail = seen === '' ? null : `zuletzt ${seen}`;
+  }
+  return {
+    kind,
+    word,
+    tone: ZUSTAND_TON[kind],
+    // ⚠ Der Grund wird nur genannt, wenn er MEHR sagt als das Wort: der
+    // Verteiler nennt einen ladenden Stecker selbst „lädt", und die Zeile
+    // zweimal dasselbe sagen zu lassen ist Rauschen, kein Beleg. Verglichen
+    // wird auch gegen das BASIS-Wort - eine übersteuerte Ladung trägt sonst
+    // „lädt" unter „Lädt voll auf Ihren Wunsch".
+    reason:
+      sameWord(con.reasonText, word) || sameWord(con.reasonText, ZUSTAND_WORT[kind])
+        ? null
+        : text(con.reasonText),
+    reasonCode: text(con.reason),
+    detail,
+  };
+}
+
+function zustandKind(
+  con: ChargeConnector,
+  point?: Pick<ChargePoint, 'connected' | 'lastSeen'> | null,
+): LadeZustandKind {
+  // Was eine getrennte Säule tut, wissen wir gerade nicht - jedes Wort über
+  // ihren Stecker wäre eine Behauptung.
+  if (point && point.connected === false) return 'getrennt';
+  const power = num(con.powerKw);
+  switch (text(con.status)) {
+    case 'Faulted':
+      return 'stoerung';
+    case 'Unavailable':
+      return 'nicht_verfuegbar';
+    case 'Reserved':
+      return 'reserviert';
+    case 'Available':
+      return 'frei';
+    case 'Preparing':
+      return 'startet';
+    case 'Finishing':
+      return 'beendet';
+    case 'SuspendedEV':
+      return 'auto_pausiert';
+    case 'SuspendedEVSE':
+      // Die Zuteilung trennt die zwei Ursachen: bei 0 kW halten WIR die Säule
+      // an (mit einem Grund, den die Box mitliefert), sonst hält sie selbst.
+      return (num(con.allocatedKw) ?? 0) > 0.05 ? 'saeule_pausiert' : 'wartet';
+    case 'Charging':
+      if (power == null) return 'laedt_ohne_messung';
+      return power > 0.05 ? 'laedt' : 'nimmt_nichts';
+    default:
+      // Kein gemeldeter Status - siehe die Rückfall-Regel im Kopf.
+      if (con.charging) return power == null ? 'laedt_ohne_messung' : power > 0.05 ? 'laedt' : 'nimmt_nichts';
+      return con.sessionSince ? 'wartet' : 'frei';
+  }
+}
+
 export interface LadevorgangRow {
   key: string;
   /** „Säule Hof Nord · Stecker A" */
   title: string;
+  /** Das MASCHINEN-Wort des Zustands - worauf eine Fläche schlüsseln darf. */
+  kind: LadeZustandKind;
   /** Das ZUSTANDS-WORT - nie nur eine Farbe (K5/K10). */
   word: string;
   tone: LadeTone;
@@ -319,44 +500,20 @@ export function ladevorgangRows(chargers: ChargePoint[], nowMs?: number): Ladevo
 }
 
 function rowFor(c: ChargePoint, con: ChargeConnector, nowMs?: number): LadevorgangRow {
-  const power = num(con.powerKw);
-  const allocated = num(con.allocatedKw);
-  const charging = con.charging && (power == null || power > 0.05);
-  const faulted = con.status === 'Faulted' || con.status === 'Unavailable';
-  let word = 'frei';
-  // Das Wort OHNE den Übersteuerungs-Zusatz: der Verteiler kennt „Jetzt voll
-  // laden" nicht und meldet für dieselbe Sekunde weiter „lädt".
-  let baseWord = 'frei';
-  let tone: LadeTone = 'ruhig';
-  if (faulted) {
-    word = 'Störung an der Säule';
-    tone = 'stoerung';
-  } else if (charging) {
-    // ⚠ Eine übersteuerte Ladung SAGT es: eine volle Ladung, die niemand
-    // angefordert hat, wäre ein stiller Bruch der eigenen Priorität des Kunden.
-    word = con.boost ? 'lädt voll auf Ihren Wunsch' : 'lädt';
-    baseWord = 'lädt';
-    tone = 'laedt';
-  } else if (con.sessionSince) {
-    word = 'wartet';
-  }
+  // ⚠ EINE Wortquelle: Wort, Ton und Grund kommen aus `ladeZustand`, damit
+  // Ladevorgänge-Seite und Cockpit über dieselbe Sekunde nie Verschiedenes
+  // behaupten können.
+  const z = ladeZustand(con, c);
   return {
     key: `${c.chargePointId}#${con.connectorId}`,
     title: `${chargerName(c)} · ${connectorName(con.connectorId)}`,
-    word,
-    tone,
-    // ⚠ Der Grund wird nur genannt, wenn er MEHR sagt als das Wort: der
-    // Verteiler nennt einen ladenden Stecker selbst „lädt", und die Zeile
-    // zweimal dasselbe sagen zu lassen ist Rauschen, kein Beleg. Verglichen
-    // wird auch gegen das BASIS-Wort - eine übersteuerte Ladung trägt sonst
-    // „lädt" unter „lädt voll auf Ihren Wunsch".
-    reason:
-      sameWord(con.reasonText, word) || sameWord(con.reasonText, baseWord)
-        ? null
-        : text(con.reasonText),
-    reasonCode: text(con.reason),
-    powerKw: power,
-    allocatedKw: allocated,
+    kind: z.kind,
+    word: z.word,
+    tone: z.tone,
+    reason: z.reason,
+    reasonCode: z.reasonCode,
+    powerKw: num(con.powerKw),
+    allocatedKw: num(con.allocatedKw),
     socPct: num(con.socPct),
     since: con.sessionSince ? `seit ${clock(con.sessionSince)}` : null,
     nextTurn: turnIn(con.nextTurn, nowMs),
@@ -564,7 +721,7 @@ export function boostbar(budget: ChargingBudget | null, row: LadevorgangRow): bo
   if (row.boost) return false;
   // ⚠ Geprüft wird das MASCHINEN-Wort, nie der deutsche Satz: der trägt bei
   // „kein Überschuss" zusätzlich die Priorität und passte auf keinen Vergleich.
-  return row.tone === 'laedt' || row.reasonCode === 'kein_ueberschuss' || row.word === 'wartet';
+  return row.tone === 'laedt' || row.reasonCode === 'kein_ueberschuss' || row.kind === 'wartet';
 }
 
 /**

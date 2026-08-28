@@ -100,7 +100,7 @@ describe('LadevorgaengeSection', () => {
 
     // Der Ladevorgang trägt sein WORT, nicht nur eine Farbe.
     expect(screen.getByText('Hof Nord · Stecker A')).toBeTruthy();
-    expect(screen.getAllByText('lädt').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Lädt').length).toBeGreaterThan(0);
     // Warten ist kein Fehler - aber es nennt seinen Grund.
     expect(screen.getByText(/wartet - Budget vergeben/)).toBeTruthy();
 
@@ -111,6 +111,42 @@ describe('LadevorgaengeSection', () => {
 
     // Die getrennte Säule nennt die FOLGE, nicht nur die Tatsache.
     expect(screen.getByText(/begrenzt sich dabei aber selbst/)).toBeTruthy();
+  });
+
+  /*
+    Der Nebenbefund aus `vp-verbraucher-cockpit-k1` §1.5: die Box hält
+    `charging` auch für eine Säule auf TRUE, die UNSER Lastmanagement gerade
+    auf 0 kW hält. Vor diesem Fix stand in EINER Zeile „lädt · wartet - Budget
+    vergeben" - Zustandswort und Grund widersprachen sich.
+  */
+  it('sagt über eine ausgebremste Säule NICHT „lädt" - Wort und Grund passen zusammen', async () => {
+    vi.spyOn(api, 'siteChargers').mockResolvedValue({
+      budget: charging.budget,
+      chargers: [
+        {
+          ...charging.chargers[0],
+          connectors: [
+            {
+              connectorId: 1,
+              status: 'SuspendedEVSE',
+              charging: true, // die Box: die Sitzung lebt, die Zuteilung bleibt
+              allocatedKw: 0,
+              powerKw: null, // diese Säule meldet keine MeterValues
+              reason: 'budget',
+              reasonText: 'wartet - Budget vergeben',
+              sessionSince: '2026-08-20T08:41:00Z',
+            },
+          ],
+        },
+      ],
+    });
+    render(<LadevorgaengeSection site={site} />);
+
+    expect(await screen.findByText('Eingesteckt · wartet')).toBeTruthy();
+    expect(screen.getByText(/wartet - Budget vergeben/)).toBeTruthy();
+    // Das eigentliche Versprechen: nirgends auf dieser Seite steht „lädt".
+    expect(screen.queryByText('Lädt')).toBeNull();
+    expect(screen.queryByText('lädt')).toBeNull();
   });
 
   it('sagt den Leerlauf ehrlich statt Nullzeilen zu erfinden', async () => {

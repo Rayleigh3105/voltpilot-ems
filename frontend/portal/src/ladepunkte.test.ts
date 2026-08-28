@@ -11,6 +11,7 @@ import {
   grenzeFehler,
   idleLine,
   ladevorgangRows,
+  ladeZustand,
   asPolicy,
   asStorage,
   BOOST_INTRO,
@@ -130,14 +131,15 @@ describe('ladevorgangRows', () => {
     const rows = ladevorgangRows([laden], Date.parse('2026-08-20T11:24:00Z'));
     expect(rows).toHaveLength(2);
     expect(rows[0].title).toBe('Hof Nord · Stecker A');
-    expect(rows[0].word).toBe('lädt');
+    expect(rows[0].word).toBe('Lädt');
     expect(rows[0].tone).toBe('laedt');
     // Der Grund wiederholt das Wort NICHT - zweimal „lädt" ist Rauschen.
     expect(rows[0].reason).toBeNull();
     expect(rows[0].powerKw).toBe(40);
     expect(rows[0].socPct).toBe(62);
     // Warten ist kein Fehler: grau, aber IMMER mit Grund und Termin.
-    expect(rows[1].word).toBe('wartet');
+    // Das Wort kommt aus dem OCPP-Status (`Preparing`), nicht aus `charging`.
+    expect(rows[1].word).toBe('Auto eingesteckt · startet');
     expect(rows[1].tone).toBe('ruhig');
     expect(rows[1].reason).toBe('wartet - Budget vergeben');
     expect(rows[1].nextTurn).toBe('dran in ca. 2 Min.');
@@ -164,6 +166,173 @@ describe('ladevorgangRows', () => {
     expect(line).toBe('Gerade lädt niemand - alle 6 Stecker sind frei.');
     // Sobald einer lädt, gibt es keinen Leerlauf-Satz mehr.
     expect(idleLine({ budget, chargers: [laden] })).toBeNull();
+  });
+});
+
+describe('ladeZustand - der OCPP-Status entscheidet das Wort', () => {
+  const con = (over: Partial<Parameters<typeof ladeZustand>[0]> = {}) => ({
+    connectorId: 1,
+    charging: false,
+    ...over,
+  });
+  const saeuleAn = { connected: true, lastSeen: '2026-08-20T09:12:00Z' };
+
+  // ⚠ DER BEFUND, der diesen Fix ausgelöst hat: die Box hält `charging` auch
+  // für eine Säule auf TRUE, die UNSER Lastmanagement gerade auf 0 kW hält.
+  it('sagt NICHT „lädt" über ein Auto, das wir gerade ausbremsen', () => {
+    const z = ladeZustand(
+      con({
+        status: 'SuspendedEVSE',
+        charging: true, // die Box: die Sitzung lebt, die Zuteilung bleibt
+        allocatedKw: 0,
+        powerKw: null, // diese Säule meldet gar keine MeterValues
+        reason: 'budget',
+        reasonText: 'wartet - Budget vergeben',
+      }),
+      saeuleAn,
+    );
+    expect(z.kind).toBe('wartet');
+    expect(z.word).toBe('Eingesteckt · wartet');
+    expect(z.word).not.toMatch(/[Ll]ädt/);
+    expect(z.tone).toBe('ruhig');
+    // Der Grund der Box steht daneben - Wort und Grund widersprechen sich nicht mehr.
+    expect(z.reason).toBe('wartet - Budget vergeben');
+    expect(z.reasonCode).toBe('budget');
+  });
+
+  it('trennt „wir halten sie an" von „sie hält selbst an"', () => {
+    const eigen = ladeZustand(
+      con({ status: 'SuspendedEVSE', charging: true, allocatedKw: 11 }),
+      saeuleAn,
+    );
+    expect(eigen.kind).toBe('saeule_pausiert');
+    expect(eigen.word).toBe('Eingesteckt · Säule pausiert');
+    expect(eigen.tone).toBe('ruhig');
+  });
+
+  it('lädt nur bei `Charging` mit gemessener Leistung', () => {
+    const z = ladeZustand(con({ status: 'Charging', charging: true, powerKw: 11 }), saeuleAn);
+    expect(z.kind).toBe('laedt');
+    expect(z.word).toBe('Lädt');
+    expect(z.tone).toBe('laedt');
+  });
+
+  it('nennt die fehlende Messung, statt eine Vorgabe als Ersatz zu zeigen', () => {
+    const z = ladeZustand(
+      con({ status: 'Charging', charging: true, powerKw: null, allocatedKw: 11 }),
+      saeuleAn,
+    );
+    expect(z.kind).toBe('laedt_ohne_messung');
+    expect(z.word).toBe('Lädt — Leistung nicht messbar');
+    expect(z.tone).toBe('laedt');
+  });
+
+  it('sagt bei `Charging` mit 0 kW ehrlich, dass nichts fließt', () => {
+    const z = ladeZustand(con({ status: 'Charging', charging: true, powerKw: 0 }), saeuleAn);
+    expect(z.kind).toBe('nimmt_nichts');
+    expect(z.word).toBe('Eingesteckt · nimmt gerade keinen Strom');
+    expect(z.tone).toBe('ruhig');
+  });
+
+  it('rät bei `SuspendedEV` nicht, WARUM das Auto pausiert', () => {
+    const z = ladeZustand(con({ status: 'SuspendedEV', charging: true }), saeuleAn);
+    expect(z.kind).toBe('auto_pausiert');
+    expect(z.word).toBe('Auto pausiert');
+    expect(z.detail).toBe('voll oder Auto-Timer');
+    expect(z.tone).toBe('ruhig');
+  });
+
+  it('kennt Available, Preparing, Finishing, Reserved', () => {
+    expect(ladeZustand(con({ status: 'Available' }), saeuleAn)).toMatchObject({
+      kind: 'frei',
+      word: 'Kein Auto eingesteckt',
+      tone: 'ruhig',
+    });
+    expect(ladeZustand(con({ status: 'Preparing' }), saeuleAn)).toMatchObject({
+      kind: 'startet',
+      word: 'Auto eingesteckt · startet',
+      tone: 'ruhig',
+    });
+    // Fertig ist nicht ladend - deshalb GRAU, nicht grün.
+    expect(ladeZustand(con({ status: 'Finishing' }), saeuleAn)).toMatchObject({
+      kind: 'beendet',
+      word: 'Ladung beendet · Auto noch eingesteckt',
+      tone: 'ruhig',
+    });
+    expect(ladeZustand(con({ status: 'Reserved' }), saeuleAn)).toMatchObject({
+      kind: 'reserviert',
+      word: 'Reserviert',
+      tone: 'ruhig',
+    });
+  });
+
+  it('trennt eine Störung von „nicht verfügbar"', () => {
+    const kaputt = ladeZustand(con({ status: 'Faulted' }), saeuleAn);
+    expect(kaputt.kind).toBe('stoerung');
+    expect(kaputt.word).toBe('Störung an der Säule');
+    expect(kaputt.tone).toBe('stoerung');
+    // ⚠ `Unavailable` ist KEINE Störung - die Säule ist bloß abgemeldet.
+    const aus = ladeZustand(con({ status: 'Unavailable' }), saeuleAn);
+    expect(aus.kind).toBe('nicht_verfuegbar');
+    expect(aus.word).toBe('Nicht verfügbar');
+    expect(aus.tone).toBe('ruhig');
+  });
+
+  it('behauptet über eine getrennte Säule nichts als ihren letzten Kontakt', () => {
+    const z = ladeZustand(con({ status: 'Charging', charging: true, powerKw: 11 }), {
+      connected: false,
+      lastSeen: '2026-08-20T09:12:00Z',
+    });
+    expect(z.kind).toBe('getrennt');
+    expect(z.word).toBe('Säule getrennt');
+    expect(z.tone).toBe('stoerung');
+    expect(z.detail).toMatch(/^zuletzt \d{2}:\d{2}$/);
+    // Ohne letzten Kontakt wird keine Uhrzeit erfunden.
+    expect(ladeZustand(con({}), { connected: false, lastSeen: null }).detail).toBeNull();
+  });
+
+  it('fällt OHNE gemeldeten Status auf das Flag zurück, statt zu raten', () => {
+    // Der gefährliche Fall oben trägt seinen Status per Konstruktion - dieser
+    // Rückfall macht das Loch also nicht wieder auf.
+    expect(ladeZustand(con({ charging: true, powerKw: 11 }), saeuleAn).kind).toBe('laedt');
+    expect(ladeZustand(con({ charging: false }), saeuleAn).kind).toBe('frei');
+    expect(
+      ladeZustand(con({ charging: false, sessionSince: '2026-08-20T09:00:00Z' }), saeuleAn).kind,
+    ).toBe('wartet');
+  });
+
+  it('sagt „voll auf Ihren Wunsch" NUR über eine Ladung, die wirklich läuft', () => {
+    expect(
+      ladeZustand(con({ status: 'Charging', charging: true, powerKw: 22, boost: true }), saeuleAn)
+        .word,
+    ).toBe('Lädt voll auf Ihren Wunsch');
+    // Ein ausgebremster Stecker trägt den Zusatz NICHT - das wäre dieselbe
+    // Lüge in Grün.
+    const gehalten = ladeZustand(
+      con({ status: 'SuspendedEVSE', charging: true, allocatedKw: 0, boost: true }),
+      saeuleAn,
+    );
+    expect(gehalten.word).toBe('Eingesteckt · wartet');
+    expect(gehalten.tone).toBe('ruhig');
+  });
+
+  it('ist die EINE Wortquelle - die Zeile leitet nichts eigenes ab', () => {
+    const c = {
+      deviceId: 'd',
+      chargePointId: 'saeule-1',
+      priority: false,
+      connected: true,
+      ready: true,
+      connectors: [
+        con({ status: 'SuspendedEVSE', charging: true, allocatedKw: 0, reasonText: 'wartet - Budget vergeben' }),
+      ],
+    };
+    const row = ladevorgangRows([c])[0];
+    const z = ladeZustand(c.connectors[0], c);
+    expect(row.kind).toBe(z.kind);
+    expect(row.word).toBe(z.word);
+    expect(row.tone).toBe(z.tone);
+    expect(row.reason).toBe(z.reason);
   });
 });
 
@@ -403,14 +572,14 @@ describe('„Jetzt voll laden"', () => {
     ]);
     // Eine volle Ladung, die niemand angefordert hat, wäre ein stiller Bruch
     // der eigenen Priorität des Kunden.
-    expect(boosted[0].word).toBe('lädt voll auf Ihren Wunsch');
+    expect(boosted[0].word).toBe('Lädt voll auf Ihren Wunsch');
     expect(boosted[0].boost).toBe(true);
     // Und die Zeile weiß, WELCHEN Ladevorgang sie meint.
     expect(boosted[0].chargePointId).toBe('saeule-1');
     expect(boosted[0].connectorId).toBe(1);
   });
 
-  it('sagt „lädt" nicht noch einmal unter „lädt voll auf Ihren Wunsch"', () => {
+  it('sagt „lädt" nicht noch einmal unter „Lädt voll auf Ihren Wunsch"', () => {
     // Der Verteiler kennt die Übersteuerung nicht und meldet für dieselbe
     // Sekunde weiter seinen eigenen Grund - im echten Browser aufgefallen.
     const boosted = ladevorgangRows([
@@ -427,7 +596,7 @@ describe('„Jetzt voll laden"', () => {
         ],
       }),
     ]);
-    expect(boosted[0].word).toBe('lädt voll auf Ihren Wunsch');
+    expect(boosted[0].word).toBe('Lädt voll auf Ihren Wunsch');
     expect(boosted[0].reason).toBeNull();
     // Ein Grund, der MEHR sagt, bleibt selbstverständlich stehen.
     const anders = ladevorgangRows([
