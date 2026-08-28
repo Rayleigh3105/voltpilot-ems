@@ -9,6 +9,7 @@ import {
   type OcppActionIntent,
   type OcppActionPermissions,
   type OcppConfiguration,
+  type OcppConnectorState,
   type OcppMeterSample,
   type OcppProtocolEvent,
   type OcppStation,
@@ -20,7 +21,6 @@ import type { ChargePoint } from '../ladepunkte';
 import {
   ACTION_GROUP_LABEL,
   OCPP_ACTIONS,
-  ROLE_LABEL,
   actionNeedsIntent,
   actionNeedsPolling,
   actionFingerprint,
@@ -173,29 +173,45 @@ export function OcppWallboxPage({
   }
   const station = data.stations.find((item) => item.chargePointId === chargePointId) ?? null;
   const events = data.events.filter((item) => item.chargePointId === chargePointId);
-  const gaps = data.gaps.filter((item) => item.deviceId === station?.deviceId);
+  const gaps = data.gaps.filter((item) => item.deviceId === (station?.deviceId ?? charger?.deviceId));
   const transactions = data.transactions.filter((item) => item.chargePointId === chargePointId);
   const meter = data.meter.filter((item) => item.chargePointId === chargePointId);
   const configuration = data.configuration.find((item) => item.chargePointId === chargePointId) ?? null;
   const hero = wallboxHero(transactions, meter, data.actions, now);
-  const connection = stationConnection(station, now);
+  const connection = stationConnection(station, now, charger);
   const connectorSnapshot = wallboxConnectorSnapshot(station, hero.transaction, now);
   const connectorCurrent = connection.sendable && connectorSnapshot.fresh;
-  const state = wallboxState(station, hero, now);
-  const connector = connectorSnapshot.connector;
-  const chargerConnector = connectorCurrent
-    ? charger?.connectors?.find((item) => item.connectorId === connectorSnapshot.connectorId) ?? null
+  const state = wallboxState(station, hero, now, charger);
+  const connectorEvidenceCurrent = connectorCurrent || (connection.source === 'edge' && connection.online);
+  const chargerConnector = connectorEvidenceCurrent
+    ? charger?.connectors?.find((item) => item.connectorId === state.connectorId) ?? null
     : null;
+  const edgeConnectors: OcppConnectorState[] = (charger?.connectors ?? []).map((item) => ({
+    connectorId: item.connectorId,
+    status: item.status ?? (item.charging ? 'Charging' : 'Unknown'),
+    errorCode: null,
+    info: null,
+    vendorId: null,
+    vendorErrorCode: null,
+    stationTimestamp: null,
+    reportedAt: charger?.reportedAt ?? charger?.lastSeen ?? '',
+  }));
+  const displayConnectors = connection.source === 'edge' && edgeConnectors.length
+    ? edgeConnectors
+    : station?.connectors.length ? station.connectors : edgeConnectors;
   const completedTransactions = transactions
     .filter((transaction) => transaction.stoppedAt != null)
     .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
     .slice(0, 3);
-  const technicalName = [station?.chargePointVendor, station?.chargePointModel]
+  const technicalName = [station?.chargePointVendor ?? charger?.vendor, station?.chargePointModel ?? charger?.model]
     .filter(Boolean).join(' · ');
   const remoteAction = state.action === 'RemoteStartTransaction' || state.action === 'RemoteStopTransaction'
+    || state.action === 'UnlockConnector'
     ? state.action
     : null;
   const actionAllowed = remoteAction ? data.permissions.actions[remoteAction] === true : true;
+  const allowedActions = OCPP_ACTIONS.filter((definition) => data.permissions.actions[definition.action] === true);
+  const showCommandCenter = allowedActions.some((definition) => definition.role !== 'operator');
 
   const searchedMeter = meter.filter((row) => contains(row, meterSearch));
   const searchedConfig = (configuration?.keys ?? []).filter((row) => contains(row, configSearch));
@@ -205,13 +221,13 @@ export function OcppWallboxPage({
   /** Der Rahmen dieser Säule (§4.4) - dieselbe Ordnung wie an jedem Gerät. */
   const rahmenView = rahmen([
     { id: 'jetzt', ton: state.tone === 'error' ? 'warn' : state.tone },
-    {
+    showCommandCenter ? {
       id: 'befehle',
       kurzfassung: kurz(
-        `${OCPP_ACTIONS.length} Aktionen`,
+        `${allowedActions.length} Aktionen`,
         data.actions.length > 0 ? `${data.actions.length} im Journal` : null,
       ),
-    },
+    } : null,
     charger
       ? {
         id: 'steuerung',
@@ -221,18 +237,18 @@ export function OcppWallboxPage({
     {
       id: 'komponenten',
       titel: 'Anschlüsse',
-      kurzfassung: station
-        ? `${station.connectors.length} Stecker`
+      kurzfassung: displayConnectors.length
+        ? `${displayConnectors.length} ${displayConnectors.length === 1 ? 'Anschluss' : 'Anschlüsse'}`
         : 'noch keine gemeldet',
     },
     // D3: eine Säule hat keine Modbus-„Register", ihre Messwerte sehr wohl.
-    { id: 'register', titel: 'Messwerte', kurzfassung: `${meter.length} MeterValues` },
+    { id: 'register', titel: 'Messwerte', kurzfassung: `${meter.length} Messwerte` },
     {
       id: 'verbindung',
-      ton: connection.sendable ? 'ok' : 'warn',
-      kurzfassung: kurz(connection.label, station?.lastSeen ? shortTime(station.lastSeen) : null),
+      ton: connection.online ? 'ok' : 'warn',
+      kurzfassung: kurz(connection.label, connection.lastSeen ? shortTime(connection.lastSeen) : null),
     },
-    { id: 'software', kurzfassung: station?.firmwareVersion || 'nicht gemeldet' },
+    { id: 'software', kurzfassung: station?.firmwareVersion ?? charger?.firmware ?? 'nicht gemeldet' },
     {
       id: 'diagnose',
       kurzfassung: kurz(
@@ -255,15 +271,15 @@ export function OcppWallboxPage({
           kennung: redactSensitiveText(chargePointId),
           zustand: {
             wort: connection.label,
-            ton: connection.sendable ? 'ok' : state.tone === 'error' ? 'warn' : state.tone,
-            detail: station?.lastSeen ? `zuletzt gesehen ${shortTime(station.lastSeen)}` : 'noch nicht gesehen',
+            ton: connection.online ? 'ok' : state.tone === 'error' ? 'warn' : state.tone,
+            detail: connection.lastSeen ? `zuletzt gesehen ${shortTime(connection.lastSeen)}` : 'noch nicht gesehen',
           },
           abzeichen: (
-            <span className="vp-ocpp-connector-note">{connector
-              ? `Anschluss ${connector.connectorId}${connectorCurrent ? '' : ' zuletzt'}: ${connectorStatus(connector.status)}`
-              : connectorSnapshot.connectorId == null
+            <span className="vp-ocpp-connector-note">{state.connectorId != null && state.connectorStatus
+              ? `Anschluss ${state.connectorId}${connectorCurrent || connection.source === 'edge' ? '' : ' zuletzt'}: ${connectorStatus(state.connectorStatus)}`
+              : state.connectorId == null
                 ? 'Anschlusszustand nicht gemeldet'
-                : `Anschluss ${connectorSnapshot.connectorId}: kein aktueller Zustand`}</span>
+                : `Anschluss ${state.connectorId}: kein aktueller Zustand`}</span>
           ),
         }}
         aktionen={canEdit && onEdit ? (
@@ -288,7 +304,7 @@ export function OcppWallboxPage({
             <div className="vp-ocpp-now-main">
               <span className={`vp-ocpp-state-mark is-${state.tone}`}><i /> {state.badge}</span>
               <h2 id="ocpp-jetzt-title">{state.sentence}</h2>
-              <p>{connectorCurrent ? chargerConnector?.reasonText?.trim() || state.detail : state.detail}</p>
+              <p>{connectorEvidenceCurrent ? chargerConnector?.reasonText?.trim() || state.detail : state.detail}</p>
               {state.kind === 'charging' && (
                 <div className="vp-ocpp-power">
                   <strong>{hero.power ?? 'Nicht verfügbar'}</strong>
@@ -305,7 +321,7 @@ export function OcppWallboxPage({
                     aria-describedby={remoteAction && !actionAllowed ? 'ocpp-primary-action-help' : undefined}
                     onClick={() => {
                       if (remoteAction) setActionOpen(findAction(remoteAction));
-                      else springeZuAbschnitt('befehle');
+                      else springeZuAbschnitt('diagnose');
                     }}
                   >
                     {state.actionLabel}
@@ -324,9 +340,9 @@ export function OcppWallboxPage({
                 </>
               )}
               <Fact label="Verfügbarkeit" value={state.badge} />
-              <Fact label="Connector" value={state.connectorId == null
+              <Fact label="Anschluss" value={state.connectorId == null
                 ? 'nicht gemeldet'
-                : `${state.connectorId} · ${state.connectorStatus ? connectorStatus(state.connectorStatus) : 'Zustand nicht gemeldet'}${connectorCurrent ? '' : ' · letzter Stand'}`} />
+                : `${state.connectorId} · ${state.connectorStatus ? connectorStatus(state.connectorStatus) : 'Zustand nicht gemeldet'}${connectorEvidenceCurrent ? '' : ' · letzter Stand'}`} />
             </dl>
           </section>
           <Card padding="lg" radius="lg" className="vp-ocpp-summary-card">
@@ -344,10 +360,10 @@ export function OcppWallboxPage({
           </Card>
         </RahmenSektion>
 
-        {/* 2 · Befehle - der Aktions-Katalog samt Journal. */}
+        {/* 2 · Befehle - nur für Support/Admin; Kunden handeln im Jetzt-Kontext. */}
         <RahmenSektion id="befehle">
-          <OcppSection id="aktionen" label="Aktionen" title="Alltag zuerst, Protokoll bei Bedarf">
-            <p className="vp-ocpp-intro">Alle OCPP-1.6-Aktionen bleiben sichtbar. Ein Schloss erklärt fehlende Rollen; die API prüft dieselbe Berechtigung erneut.</p>
+          <OcppSection id="aktionen" label="Support & Administration" title="Für dieses Konto freigegebene OCPP-Aktionen">
+            <p className="vp-ocpp-intro">Hier erscheinen ausschließlich Aktionen, die serverseitig für dieses Support- oder Administrationskonto freigegeben sind.</p>
             {hero.transaction && (
               <div className="vp-ocpp-current-control">
                 <h3>Aktiver OCPP-Ladestand</h3>
@@ -359,20 +375,21 @@ export function OcppWallboxPage({
               </div>
             )}
             <div className="vp-ocpp-action-groups">
-              {(['alltag', 'betrieb', 'protokoll'] as OcppActionGroup[]).map((group) => (
+              {(['alltag', 'betrieb', 'protokoll'] as OcppActionGroup[]).filter((group) => (
+                allowedActions.some((item) => item.group === group)
+              )).map((group) => (
                 <details key={group} className="vp-ocpp-action-group" open={group === 'alltag'}>
-                  <summary><span>{ACTION_GROUP_LABEL[group]}</span><small>{OCPP_ACTIONS.filter((item) => item.group === group).length} Aktionen</small></summary>
+                  <summary><span>{ACTION_GROUP_LABEL[group]}</span><small>{allowedActions.filter((item) => item.group === group).length} Aktionen</small></summary>
                   <div className="vp-ocpp-action-list">
-                    {OCPP_ACTIONS.filter((item) => item.group === group).map((definition) => {
-                      const allowed = data.permissions.actions[definition.action] === true;
+                    {allowedActions.filter((item) => item.group === group).map((definition) => {
                       const capabilityUnknown = definition.capability && !station?.supportedFeatureProfiles?.includes(definition.capability);
                       return (
-                        <button key={definition.action} type="button" className={`vp-ocpp-action${allowed ? '' : ' is-locked'}`}
-                          onClick={() => allowed && setActionOpen(definition)} disabled={!allowed}
+                        <button key={definition.action} type="button" className="vp-ocpp-action"
+                          onClick={() => setActionOpen(definition)}
                           aria-describedby={`action-help-${definition.action}`}>
-                          <span className="vp-ocpp-action-name">{!allowed && <Icon name="lock" size={14} />} {definition.label}</span>
+                          <span className="vp-ocpp-action-name">{definition.label}</span>
                           <span id={`action-help-${definition.action}`} className="vp-ocpp-action-help">
-                            {allowed ? definition.impact : `Gesperrt: erfordert ${ROLE_LABEL[definition.role]}.`}
+                            {definition.impact}
                           </span>
                           {capabilityUnknown && <span className="vp-ocpp-capability">Fähigkeit nicht gemeldet · NotSupported möglich</span>}
                         </button>
@@ -408,9 +425,9 @@ export function OcppWallboxPage({
         {/* 4 · Komponenten - die Anschlüsse dieser Säule. */}
         <RahmenSektion id="komponenten">
           <OcppSection id="stecker" label="Stecker" title="Jeder Anschluss für sich">
-            {(station?.connectors ?? []).length ? (
+            {displayConnectors.length ? (
               <div className="vp-ocpp-connectors">
-                {station!.connectors.map((connector) => (
+                {displayConnectors.map((connector) => (
                   <article key={connector.connectorId} className="vp-ocpp-connector">
                     <div><span>Stecker {connector.connectorId}</span><strong>{connectorStatus(connector.status)}</strong></div>
                     <StatusPill ok={connector.status === 'Available' || connector.status === 'Charging'}>{redactSensitiveText(connector.status)}</StatusPill>
@@ -425,15 +442,15 @@ export function OcppWallboxPage({
                   </article>
                 ))}
               </div>
-            ) : <Empty text="Die Station hat noch keine Connector-Zustände gemeldet." />}
+            ) : <Empty text="Die Station hat noch keine Anschlusszustände gemeldet." />}
           </OcppSection>
         </RahmenSektion>
 
         {/* 5 · Messwerte - D3: die Fähigkeit ist da, das Wort „Register" nicht. */}
         <RahmenSektion id="register">
-          <OcppSection id="messwerte" label="Messwerte" title="Vollständige MeterValues">
+          <OcppSection id="messwerte" label="Messwerte" title="Gemeldete Messwerte">
             <Search value={meterSearch} onChange={setMeterSearch} label="Messwerte durchsuchen" placeholder="Measurand, Phase, Einheit oder Rohwert" />
-            {searchedMeter.length ? <MeterTable rows={searchedMeter} /> : <Empty text={meter.length ? 'Kein Messwert passt zur Suche.' : 'Diese Station hat noch keine MeterValues geliefert.'} />}
+            {searchedMeter.length ? <MeterTable rows={searchedMeter} /> : <Empty text={meter.length ? 'Kein Messwert passt zur Suche.' : 'Diese Station hat noch keine Messwerte geliefert.'} />}
           </OcppSection>
           {messwerte}
         </RahmenSektion>
@@ -443,8 +460,8 @@ export function OcppWallboxPage({
           <dl className="vp-ocpp-device-facts">
             <Fact label="OCPP-Kennung" value={chargePointId} mono />
             <Fact label="Zustand" value={connection.label} detail={connection.detail} />
-            <Fact label="Letzter Kontakt" value={station?.lastSeen ? shortTime(station.lastSeen) : null} />
-            <Fact label="Anschlüsse" value={station ? String(station.connectors.length) : null} />
+            <Fact label="Letzter Kontakt" value={connection.lastSeen ? shortTime(connection.lastSeen) : null} />
+            <Fact label="Anschlüsse" value={displayConnectors.length ? String(displayConnectors.length) : null} />
           </dl>
         </RahmenSektion>
 
@@ -509,6 +526,7 @@ export function OcppWallboxPage({
       {actionOpen && (
         <ActionDialog definition={actionOpen} siteId={siteId} chargePointId={chargePointId}
           connected={connection.sendable} connectionDetail={connection.detail} transaction={hero.transaction}
+          connectorId={state.connectorId}
           onClose={() => setActionOpen(null)} onCreated={(action) => {
             setData((old) => old ? { ...old, actions: [action, ...old.actions.filter((row) => row.id !== action.id)] } : old);
           }} />
@@ -636,11 +654,13 @@ function ActionJournalItem({ siteId, action, onChanged }: { siteId: string; acti
   </li>;
 }
 
-function ActionDialog({ definition, siteId, chargePointId, connected, connectionDetail, transaction, onClose, onCreated }: {
+function ActionDialog({ definition, siteId, chargePointId, connected, connectionDetail, transaction, connectorId, onClose, onCreated }: {
   definition: OcppActionDefinition; siteId: string; chargePointId: string; connected: boolean;
-  connectionDetail: string; transaction: OcppTransaction | null; onClose: () => void; onCreated: (action: OcppAction) => void;
+  connectionDetail: string; transaction: OcppTransaction | null; connectorId: number | null;
+  onClose: () => void; onCreated: (action: OcppAction) => void;
 }) {
   const initial = Object.fromEntries(definition.fields.map((field) => [field.key, field.defaultValue ?? ''])) as Record<string, string>;
+  if (connectorId != null) initial.connectorId = String(connectorId);
   if (transaction) { initial.transactionId ||= String(transaction.transactionId); initial.connectorId ||= String(transaction.connectorId); }
   const [values, setValues] = useState(initial);
   const [intent, setIntent] = useState<OcppActionIntent | null>(null);

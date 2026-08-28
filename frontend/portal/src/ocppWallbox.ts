@@ -55,16 +55,16 @@ export const OCPP_ACTIONS: OcppActionDefinition[] = [
   { action: 'UnlockConnector', label: 'Stecker entriegeln', group: 'alltag', role: 'operator',
     impact: 'Fordert die mechanische Entriegelung an. Eine OCPP-Antwort beweist noch keinen offenen Stecker.',
     confirmation: 'Einen laufenden Ladevorgang möglichst zuerst beenden.', fields: [connector] },
-  { action: 'ReserveNow', label: 'Reservieren', group: 'alltag', role: 'operator', capability: 'Reservation',
+  { action: 'ReserveNow', label: 'Reservieren', group: 'alltag', role: 'site-admin', capability: 'Reservation',
     impact: 'Reserviert den Stecker bis zum Ablaufzeitpunkt für die angegebene Autorisierung.',
     confirmation: 'Stecker, Ablauf und Autorisierung prüfen.', fields: [connector, idTag,
       { key: 'expiryDate', label: 'Ablauf', kind: 'datetime-local', required: true },
       { key: 'reservationId', label: 'Reservierungs-ID', kind: 'number', required: true, defaultValue: '1' },
       { key: 'parentIdTag', label: 'Optionaler parentIdTag', kind: 'text' }] },
-  { action: 'CancelReservation', label: 'Reservierung aufheben', group: 'alltag', role: 'operator', capability: 'Reservation',
+  { action: 'CancelReservation', label: 'Reservierung aufheben', group: 'alltag', role: 'site-admin', capability: 'Reservation',
     impact: 'Hebt eine aktive Reservierung auf.', confirmation: 'Reservierungs-ID und zugehörigen Stecker prüfen.', fields: [connector,
       { key: 'reservationId', label: 'Reservierungs-ID', kind: 'number', required: true }] },
-  { action: 'SetChargingProfile', label: 'Ladeprofil setzen', group: 'alltag', role: 'operator', capability: 'SmartCharging',
+  { action: 'SetChargingProfile', label: 'Ladeprofil setzen', group: 'alltag', role: 'site-admin', capability: 'SmartCharging',
     impact: 'Setzt ein OCPP-TxProfile; die aktuell geltende Freigabe bleibt bis zum Readback ehrlich getrennt.',
     confirmation: 'Leistung, Einheit, Zweck und Stack-Level prüfen.', fields: [connector,
       { key: 'profileId', label: 'Profil-ID', kind: 'number', required: true, defaultValue: '1' },
@@ -74,12 +74,12 @@ export const OCPP_ACTIONS: OcppActionDefinition[] = [
       { key: 'rateUnit', label: 'Einheit', kind: 'select', required: true, defaultValue: 'W', options: [{ value: 'W', label: 'Watt' }, { value: 'A', label: 'Ampere' }] },
       { key: 'limit', label: 'Limit', kind: 'number', required: true, placeholder: '11000' },
       { key: 'duration', label: 'Dauer in Sekunden', kind: 'number', placeholder: '3600' }] },
-  { action: 'ClearChargingProfile', label: 'Ladeprofil löschen', group: 'alltag', role: 'operator', capability: 'SmartCharging',
+  { action: 'ClearChargingProfile', label: 'Ladeprofil löschen', group: 'alltag', role: 'site-admin', capability: 'SmartCharging',
     impact: 'Löscht nur Profile, die den angegebenen Filtern entsprechen.', confirmation: 'Filter und betroffene Profile prüfen.', fields: [
       { key: 'profileId', label: 'Profil-ID', kind: 'number' }, connector,
       { key: 'purpose', label: 'Zweck', kind: 'select', options: [{ value: '', label: 'alle Zwecke' }, { value: 'TxProfile', label: 'TxProfile' }, { value: 'TxDefaultProfile', label: 'TxDefaultProfile' }, { value: 'ChargePointMaxProfile', label: 'ChargePointMaxProfile' }] },
       { key: 'stackLevel', label: 'Stack-Level', kind: 'number' }] },
-  { action: 'GetCompositeSchedule', label: 'Angewandten Ladeplan lesen', group: 'alltag', role: 'operator', capability: 'SmartCharging',
+  { action: 'GetCompositeSchedule', label: 'Angewandten Ladeplan lesen', group: 'alltag', role: 'site-admin', capability: 'SmartCharging',
     impact: 'Liest den von der Station zusammengesetzten, tatsächlich angewandten Plan.', confirmation: 'Stecker, Zeitraum und Einheit prüfen.', fields: [connector,
       { key: 'duration', label: 'Dauer in Sekunden', kind: 'number', required: true, defaultValue: '3600' },
       { key: 'rateUnit', label: 'Einheit', kind: 'select', defaultValue: 'W', options: [{ value: 'W', label: 'Watt' }, { value: 'A', label: 'Ampere' }] }] },
@@ -371,17 +371,91 @@ export function wallboxHero(transactions: OcppTransaction[], samples: OcppMeterS
   };
 }
 
-export function stationConnection(station: OcppStation | null, now = Date.now()): {
-  sendable: boolean; label: string; detail: string;
-} {
-  if (!station?.connected) return { sendable: false, label: 'Offline', detail: 'Keine aktive OCPP-Verbindung.' };
-  const seen = station.lastSeen ? Date.parse(station.lastSeen) : NaN;
-  if (!Number.isFinite(seen) || now - seen > OCPP_FRESH_MS) {
-    return { sendable: false, label: 'Keine aktuellen Daten', detail: station.lastSeen
-      ? `Zuletzt gesehen ${new Date(station.lastSeen).toLocaleString('de-DE')}.`
-      : 'Es liegt noch kein aktueller Verbindungsstatus vor.' };
-  }
-  return { sendable: true, label: 'Online', detail: `Zuletzt gesehen ${new Date(seen).toLocaleString('de-DE')}.` };
+export interface OcppConnectionFallback {
+  connected: boolean;
+  lastSeen?: string | null;
+  reportedAt?: string | null;
+  connectors?: Array<{
+    connectorId: number;
+    status?: string | null;
+    charging?: boolean;
+  }> | null;
+}
+
+export interface StationConnection {
+  online: boolean;
+  sendable: boolean;
+  label: string;
+  detail: string;
+  lastSeen: string | null;
+  source: 'station' | 'edge' | 'none';
+}
+
+function evidenceTime(value: string | null | undefined): number {
+  if (!value) return NaN;
+  return Date.parse(value);
+}
+
+function freshEvidence(at: number, now: number): boolean {
+  const age = now - at;
+  return Number.isFinite(at) && age >= -60_000 && age <= OCPP_FRESH_MS;
+}
+
+/**
+ * Display truth uses the newest fresh connection evidence. The local Edge
+ * heartbeat can therefore correct a lagging OCPP journal, while command
+ * sendability remains tied to the fresh CSMS station read model.
+ */
+export function stationConnection(
+  station: OcppStation | null,
+  now = Date.now(),
+  fallback: OcppConnectionFallback | null = null,
+): StationConnection {
+  const stationSeen = evidenceTime(station?.connected
+    ? station.lastSeen
+    : station?.disconnectedAt ?? station?.lastSeen);
+  const edgeSeen = evidenceTime(fallback?.reportedAt ?? fallback?.lastSeen);
+  const stationFresh = freshEvidence(stationSeen, now);
+  const edgeFresh = freshEvidence(edgeSeen, now);
+  const source = edgeFresh && (!stationFresh || edgeSeen > stationSeen) ? 'edge'
+    : stationFresh ? 'station' : 'none';
+  const online = source === 'edge' ? fallback!.connected
+    : source === 'station' ? Boolean(station?.connected) : false;
+  const lastSeen = source === 'edge'
+    ? fallback?.reportedAt ?? fallback?.lastSeen ?? null
+    : source === 'station'
+      ? station?.connected ? station.lastSeen : station?.disconnectedAt ?? station?.lastSeen ?? null
+      : station?.lastSeen ?? fallback?.reportedAt ?? fallback?.lastSeen ?? null;
+  const sendable = online && Boolean(station?.connected) && stationFresh;
+
+  if (source === 'edge' && online) return {
+    online, sendable, label: 'Online', lastSeen, source,
+    detail: sendable
+      ? `Zuletzt gesehen ${new Date(edgeSeen).toLocaleString('de-DE')}.`
+      : 'Die VoltPilot-Box meldet die Wallbox als verbunden. OCPP-Detaildaten werden noch synchronisiert.',
+  };
+  if (source !== 'none' && online) return {
+    online, sendable, label: 'Online', lastSeen, source,
+    detail: `Zuletzt gesehen ${new Date(stationSeen).toLocaleString('de-DE')}.`,
+  };
+  if (source === 'edge') return {
+    online: false, sendable: false, label: 'Offline', lastSeen, source,
+    detail: 'Die VoltPilot-Box meldet keine aktive OCPP-Verbindung.',
+  };
+  if (source === 'station') return {
+    online: false, sendable: false, label: 'Offline', lastSeen, source,
+    detail: 'Keine aktive OCPP-Verbindung.',
+  };
+  if (station?.connected || fallback?.connected) return {
+    online: false, sendable: false, label: 'Keine aktuellen Daten', lastSeen, source,
+    detail: lastSeen
+      ? `Zuletzt gesehen ${new Date(lastSeen).toLocaleString('de-DE')}.`
+      : 'Es liegt noch kein aktueller Verbindungsstatus vor.',
+  };
+  return {
+    online: false, sendable: false, label: 'Offline', lastSeen, source,
+    detail: 'Keine aktive OCPP-Verbindung.',
+  };
 }
 
 export type WallboxStateKind =
@@ -402,7 +476,7 @@ export interface WallboxState {
   detail: string;
   connectorId: number | null;
   connectorStatus: string | null;
-  action: 'RemoteStartTransaction' | 'RemoteStopTransaction' | 'service' | null;
+  action: 'RemoteStartTransaction' | 'RemoteStopTransaction' | 'UnlockConnector' | 'service' | null;
   actionLabel: string | null;
 }
 
@@ -456,50 +530,72 @@ export function wallboxState(
   station: OcppStation | null,
   hero: OcppHero,
   now = Date.now(),
+  fallback: OcppConnectionFallback | null = null,
 ): WallboxState {
-  const connection = stationConnection(station, now);
-  const snapshot = wallboxConnectorSnapshot(station, hero.transaction, now);
-  const connector = snapshot.connector;
-  const connectorId = snapshot.connectorId;
-  const rawStatus = connector?.status ?? null;
+  const connection = stationConnection(station, now, fallback);
+  const stationSnapshot = wallboxConnectorSnapshot(station, hero.transaction, now);
+  const edgeReportedAt = evidenceTime(fallback?.reportedAt ?? fallback?.lastSeen);
+  const edgeFresh = freshEvidence(edgeReportedAt, now);
+  const edgeConnector = edgeFresh
+    ? hero.transaction
+      ? fallback?.connectors?.find((item) => item.connectorId === hero.transaction!.connectorId) ?? null
+      : fallback?.connectors?.[0] ?? null
+    : null;
+  const useEdgeConnector = edgeConnector != null
+    && (connection.source === 'edge' || !stationSnapshot.fresh);
+  const connector = useEdgeConnector ? edgeConnector : stationSnapshot.connector;
+  const connectorId = hero.transaction?.connectorId ?? connector?.connectorId ?? stationSnapshot.connectorId;
+  const rawStatus = useEdgeConnector
+    ? edgeConnector.status ?? (edgeConnector.charging ? 'Charging' : null)
+    : stationSnapshot.connector?.status ?? null;
+  const connectorFresh = stationSnapshot.fresh || useEdgeConnector;
+  const connectorError = useEdgeConnector ? null : stationSnapshot.connector?.errorCode;
   const connectorName = connectorId == null ? 'Der Anschluss' : `Anschluss ${connectorId}`;
 
-  if (!station) return {
+  if (!station && connection.source === 'none') return {
     kind: 'unknown', tone: 'off', badge: 'Keine Gerätedaten',
     sentence: 'Die Wallbox hat noch keinen aktuellen Gerätestatus gemeldet.',
     detail: 'Sobald die erste OCPP-Nachricht eintrifft, erscheint hier ihr Zustand.',
     connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Verbindung prüfen',
   };
-  if (!station.connected) return {
-    kind: 'offline', tone: 'off', badge: 'Offline',
-    sentence: station.lastSeen
-      ? `Wallbox seit ${new Date(station.lastSeen).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr nicht erreichbar.`
-      : 'Wallbox noch nicht erreichbar.',
-    detail: 'Ein lokaler Ladevorgang kann an der Wallbox weiterlaufen.',
-    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Verbindung prüfen',
-  };
-  if (!connection.sendable) return {
+  if (connection.source === 'none' && (station?.connected || fallback?.connected)) return {
     kind: 'stale', tone: 'warn', badge: 'Daten veraltet',
     sentence: 'Die Wallbox liefert gerade keine aktuellen Daten.',
     detail: connection.detail,
     connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Verbindung prüfen',
   };
-  if (!snapshot.fresh) return {
+  if (!connection.online) return {
+    kind: 'offline', tone: 'off', badge: 'Offline',
+    sentence: connection.lastSeen
+      ? `Wallbox seit ${new Date(connection.lastSeen).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr nicht erreichbar.`
+      : 'Wallbox noch nicht erreichbar.',
+    detail: 'Ein lokaler Ladevorgang kann an der Wallbox weiterlaufen.',
+    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Verbindung prüfen',
+  };
+  if (!connectorFresh) return {
     kind: connector ? 'stale' : 'unknown', tone: 'warn',
     badge: connector ? 'Anschlussdaten veraltet' : 'Anschlussstatus fehlt',
     sentence: connectorId == null
       ? 'Wallbox online · der Anschlusszustand ist noch nicht gemeldet.'
       : `Wallbox online · der Zustand von Anschluss ${connectorId} ist nicht aktuell.`,
-    detail: snapshot.detail,
+    detail: connection.source === 'edge' ? connection.detail : stationSnapshot.detail,
     connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Status prüfen',
   };
-  if (rawStatus === 'Faulted' || Boolean(connector?.errorCode && connector.errorCode !== 'NoError')) return {
+  if (rawStatus === 'Faulted' || Boolean(connectorError && connectorError !== 'NoError')) return {
     kind: 'faulted', tone: 'error', badge: 'Störung',
     sentence: `Wallbox online · ${connectorName} meldet eine Störung.`,
     detail: 'Stecker trennen, 10 Sekunden warten und erneut verbinden. Technische Angaben stehen unter Service & Diagnose.',
     connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Störung prüfen',
   };
-  if (rawStatus === 'Preparing' || rawStatus === 'SuspendedEV' || rawStatus === 'SuspendedEVSE' || rawStatus === 'Finishing') return {
+  if (rawStatus === 'Finishing') return {
+    kind: 'waiting', tone: 'warn', badge: 'Wartet auf Abstecken',
+    sentence: `Wallbox online · ${connectorName} beendet den Ladevorgang.`,
+    detail: 'Wenn das Kabel nach Ladeende feststeckt, kann die Wallbox den Anschluss entriegeln.',
+    connectorId, connectorStatus: rawStatus,
+    action: !hero.transaction && connection.sendable ? 'UnlockConnector' : 'service',
+    actionLabel: !hero.transaction && connection.sendable ? 'Stecker entriegeln' : 'Ladevorgang prüfen',
+  };
+  if (rawStatus === 'Preparing' || rawStatus === 'SuspendedEV' || rawStatus === 'SuspendedEVSE') return {
     kind: 'waiting', tone: 'warn', badge: 'Wartet',
     sentence: `Wallbox online · ${connectorName} ist angesteckt und wartet.`,
     detail: rawStatus === 'SuspendedEVSE'
@@ -508,8 +604,8 @@ export function wallboxState(
         ? 'Das angeschlossene Fahrzeug ruft gerade keine Leistung ab.'
         : 'Der Anschluss bereitet den nächsten Ladevorgang vor.',
     connectorId, connectorStatus: rawStatus,
-    action: hero.transaction ? 'service' : 'RemoteStartTransaction',
-    actionLabel: hero.transaction ? 'Ladevorgang prüfen' : 'Jetzt laden',
+    action: hero.transaction ? 'service' : connection.sendable ? 'RemoteStartTransaction' : null,
+    actionLabel: hero.transaction ? 'Ladevorgang prüfen' : connection.sendable ? 'Jetzt laden' : null,
   };
   if (rawStatus === 'Unavailable' || rawStatus === 'Reserved') return {
     kind: 'unavailable', tone: 'warn', badge: 'Nicht verfügbar',
@@ -524,16 +620,16 @@ export function wallboxState(
       ? `Ladevorgang seit ${new Date(hero.transaction.startedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr.`
       : 'Die Wallbox meldet einen Ladevorgang; die zugehörigen Sitzungsdaten fehlen noch.',
     connectorId, connectorStatus: rawStatus,
-    action: hero.transaction ? 'RemoteStopTransaction' : 'service',
-    actionLabel: hero.transaction ? 'Laden stoppen' : 'Ladevorgang prüfen',
+    action: hero.transaction && connection.sendable ? 'RemoteStopTransaction' : 'service',
+    actionLabel: hero.transaction && connection.sendable ? 'Laden stoppen' : 'Ladevorgang prüfen',
   };
   if (rawStatus === 'Available') return {
     kind: 'available', tone: 'ok', badge: 'Verfügbar',
     sentence: `Wallbox online · ${connectorName} ist verfügbar.`,
     detail: 'Sobald ein Fahrzeug angeschlossen ist, kann der Ladevorgang beginnen.',
     connectorId, connectorStatus: rawStatus,
-    action: hero.transaction ? 'service' : 'RemoteStartTransaction',
-    actionLabel: hero.transaction ? 'Ladevorgang prüfen' : 'Laden starten',
+    action: hero.transaction ? 'service' : connection.sendable ? 'RemoteStartTransaction' : null,
+    actionLabel: hero.transaction ? 'Ladevorgang prüfen' : connection.sendable ? 'Laden starten' : null,
   };
   return {
     kind: 'unknown', tone: 'warn', badge: 'Status fehlt',

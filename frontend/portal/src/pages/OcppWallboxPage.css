@@ -40,6 +40,20 @@
 .vp-ocpp-section-title h2 { margin: 0; font-size: clamp(1.15rem, 2.4vw, 1.55rem); line-height: 1.25; overflow-wrap: anywhere; }
 .vp-ocpp-intro { max-width: 72ch; margin: -8px 0 var(--vp-space-5, 20px); color: var(--ocpp-muted); }
 
+/* Der Geräterahmen ist bereits die Karte. Direkte OCPP-Bausteine brauchen
+   darin keine zweite Rand-/Padding-Schale. */
+.vp-ocpp .vp-rahmen-sek-body > .vp-ocpp-section {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.vp-ocpp .vp-rahmen-sek-body > .vp-ocpp-section + .vp-ocpp-section {
+  margin-top: 30px;
+  padding-top: 30px;
+  border-top: 1px solid var(--ocpp-border);
+}
+
 .vp-ocpp-now {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(250px, .7fr);
@@ -237,6 +251,18 @@
 .vp-ocpp-created { padding: clamp(24px, 6vw, 46px); }
 .vp-ocpp-created h3 { margin: 18px 0 6px; }
 .vp-ocpp-created p { color: var(--ocpp-muted); }
+
+@media (max-width: 900px) {
+  .vp-ocpp-now { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Bei mittleren Notebook-Breiten nimmt die 214-px-Schiene der eigentlichen
+   Geräteseite zu viel Raum. Bis 1280 px bleibt die kompakte Chip-Navigation. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .vp-ocpp .vp-rahmen-body { grid-template-columns: minmax(0, 1fr); }
+  .vp-ocpp .vp-rahmen-nav { display: none; }
+  .vp-ocpp .vp-rahmen-chips { display: block; }
+}
 
 @media (max-width: 720px) {
   .vp-ocpp { gap: 12px; }

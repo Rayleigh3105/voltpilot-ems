@@ -33,6 +33,8 @@ describe('OCPP wallbox view model', () => {
     expect(OCPP_ACTIONS).toHaveLength(20);
     expect(new Set(OCPP_ACTIONS.map((item) => item.action)).size).toBe(20);
     expect(new Set(OCPP_ACTIONS.map((item) => item.group))).toEqual(new Set(['alltag', 'betrieb', 'protokoll']));
+    expect(OCPP_ACTIONS.filter((item) => item.role === 'operator').map((item) => item.action))
+      .toEqual(['RemoteStartTransaction', 'RemoteStopTransaction', 'UnlockConnector']);
     expect(OCPP_ACTIONS.filter((item) => item.role === 'platform-admin').map((item) => item.action))
       .toEqual(expect.arrayContaining(['HardReset', 'GetDiagnostics', 'UpdateFirmware', 'DataTransfer']));
   });
@@ -120,6 +122,8 @@ describe('OCPP wallbox view model', () => {
       .toMatchObject({ kind: 'available', badge: 'Verfügbar', action: 'RemoteStartTransaction' });
     expect(wallboxState({ ...base, connectors: [connector('SuspendedEVSE')] } as OcppStation, emptyHero, now))
       .toMatchObject({ kind: 'waiting', badge: 'Wartet', actionLabel: 'Jetzt laden' });
+    expect(wallboxState({ ...base, connectors: [connector('Finishing')] } as OcppStation, emptyHero, now))
+      .toMatchObject({ kind: 'waiting', badge: 'Wartet auf Abstecken', action: 'UnlockConnector', actionLabel: 'Stecker entriegeln' });
     const activeTransaction = {
       deviceId: 'd', chargePointId: 'CP-1', transactionId: 42, connectorId: 1,
       startedAt: '2026-08-25T08:00:00Z', stoppedAt: null, meterStart: 0, meterStop: null,
@@ -268,5 +272,26 @@ describe('OCPP wallbox view model', () => {
     const station = { connected: true, lastSeen: '2026-08-25T08:00:00Z' } as OcppStation;
     expect(stationConnection(station, Date.parse('2026-08-25T08:04:59Z'))).toMatchObject({ sendable: true, label: 'Online' });
     expect(stationConnection(station, Date.parse('2026-08-25T08:05:01Z'))).toMatchObject({ sendable: false, label: 'Keine aktuellen Daten' });
+  });
+
+  it('uses newer Edge evidence for display without making a stale CSMS station sendable', () => {
+    const now = Date.parse('2026-08-25T09:00:00Z');
+    const staleStation = {
+      connected: false,
+      disconnectedAt: '2026-08-25T08:59:30Z',
+      lastSeen: '2026-08-25T08:59:30Z',
+      connectors: [{ connectorId: 1, status: 'Faulted', errorCode: 'GroundFailure', reportedAt: '2026-08-25T08:59:30Z' }],
+    } as OcppStation;
+    const edge = {
+      connected: true,
+      reportedAt: '2026-08-25T09:00:00Z',
+      connectors: [{ connectorId: 1, status: 'Available', charging: false }],
+    };
+    expect(stationConnection(staleStation, now, edge)).toMatchObject({
+      online: true, sendable: false, label: 'Online', source: 'edge',
+    });
+    expect(wallboxState(staleStation, wallboxHero([], [], [], now), now, edge)).toMatchObject({
+      kind: 'available', connectorId: 1, action: null, actionLabel: null,
+    });
   });
 });

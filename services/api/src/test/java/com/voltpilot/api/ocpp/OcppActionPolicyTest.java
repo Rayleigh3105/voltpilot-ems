@@ -17,10 +17,18 @@ class OcppActionPolicyTest {
         var platform = auth("ROLE_platform-admin");
 
         assertThat(policy.allowed(operator, "RemoteStartTransaction")).isTrue();
+        assertThat(policy.allowed(operator, "RemoteStopTransaction")).isTrue();
+        assertThat(policy.allowed(operator, "UnlockConnector")).isTrue();
+        assertThat(policy.allowed(operator, "ReserveNow")).isFalse();
+        assertThat(policy.allowed(operator, "SetChargingProfile")).isFalse();
+        assertThat(policy.allowed(operator, "GetCompositeSchedule")).isFalse();
         assertThat(policy.allowed(operator, "ChangeConfiguration")).isFalse();
         assertThat(policy.allowed(operator, "UpdateFirmware")).isFalse();
 
         assertThat(policy.allowed(siteAdmin, "RemoteStopTransaction")).isTrue();
+        assertThat(policy.allowed(siteAdmin, "ReserveNow")).isTrue();
+        assertThat(policy.allowed(siteAdmin, "SetChargingProfile")).isTrue();
+        assertThat(policy.allowed(siteAdmin, "GetCompositeSchedule")).isTrue();
         assertThat(policy.allowed(siteAdmin, "SoftReset")).isTrue();
         assertThat(policy.allowed(siteAdmin, "HardReset")).isFalse();
         assertThat(policy.allowed(auth("ROLE_admin"), "ChangeConfiguration"))

@@ -13,11 +13,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class OcppActionPolicy {
     private static final String[] CUSTOMER = {"RemoteStartTransaction", "RemoteStopTransaction",
-            "UnlockConnector", "ReserveNow", "CancelReservation", "SetChargingProfile",
-            "ClearChargingProfile", "GetCompositeSchedule"};
-    private static final String[] SITE_ADMIN = {"ChangeAvailability", "SoftReset", "GetConfiguration",
-            "ChangeConfiguration", "ClearCache", "GetLocalListVersion", "SendLocalList",
-            "TriggerMessage"};
+            "UnlockConnector"};
+    private static final String[] SITE_ADMIN = {"ReserveNow", "CancelReservation",
+            "SetChargingProfile", "ClearChargingProfile", "GetCompositeSchedule",
+            "ChangeAvailability", "SoftReset", "GetConfiguration", "ChangeConfiguration",
+            "ClearCache", "GetLocalListVersion", "SendLocalList", "TriggerMessage"};
     private static final String[] PLATFORM = {"HardReset", "GetDiagnostics", "UpdateFirmware",
             "DataTransfer"};
 

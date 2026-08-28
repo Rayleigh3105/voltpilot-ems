@@ -42,7 +42,7 @@ describe('OcppWallboxPage integration', () => {
     ]);
     vi.spyOn(api, 'ocppConfiguration').mockResolvedValue([{ deviceId: 'd', chargePointId: 'CP-1', keys: [{ key: 'AuthorizationKey', value: null, readonly: false, secret: true, redacted: true, standardKey: false, meaningKnown: false, reportedAt: new Date().toISOString() }], unknownKeys: ['VendorMystery'], supportedFeatureProfiles: ['SmartCharging'] }]);
     vi.spyOn(api, 'ocppActionPermissions').mockResolvedValue({ actions: Object.fromEntries([
-      'RemoteStartTransaction','RemoteStopTransaction','UnlockConnector','ReserveNow','CancelReservation','SetChargingProfile','ClearChargingProfile','GetCompositeSchedule',
+      'RemoteStartTransaction','RemoteStopTransaction','UnlockConnector',
     ].map((action) => [action, true])) });
     vi.spyOn(api, 'ocppActions').mockResolvedValue([]);
     vi.spyOn(api, 'createOcppAction').mockResolvedValue(created);
@@ -52,7 +52,7 @@ describe('OcppWallboxPage integration', () => {
   });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
-  it('renders the device hierarchy, one customer action and closed role-gated service detail', async () => {
+  it('renders the device hierarchy and keeps the technical command catalog out of the customer view', async () => {
     const view = render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#devices" siteHref="#site" />);
     expect(await screen.findByRole('heading', { name: /Wallbox online · Anschluss 1 lädt/ })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Garage', level: 1 })).toBeVisible();
@@ -69,24 +69,19 @@ describe('OcppWallboxPage integration', () => {
     expect(view.container).not.toHaveTextContent('Erwartetes Ende');
     expect(view.container).not.toHaveTextContent('Kosten bisher');
     expect(view.container).not.toHaveTextContent('Solaranteil');
-    // Seit Geräteseiten Stufe 1 fährt auch die Säule durch den EINEN Rahmen:
-    // der frühere Sammel-Aufklapper „Service & Diagnose" ist in die kanonische
-    // Sektions-Folge aufgegangen. Standard offen sind nur Jetzt + Befehle (D2a).
+    // Diagnose bleibt auffindbar, der OCPP-Befehlskatalog ist für Kunden aber
+    // vollständig ausgeblendet; ihre drei möglichen Aktionen erscheinen nur
+    // passend zum aktuellen Zustand im Jetzt-Bereich.
     expect(screen.queryByTestId('ocpp-service')).toBeNull();
+    expect(screen.queryByTestId('sektion-befehle')).toBeNull();
     const diagnose = screen.getByTestId('sektion-diagnose');
     expect(diagnose).not.toHaveAttribute('open');
     fireEvent.click(within(diagnose).getByText('Diagnose (technisch)'));
-    expect(screen.getByText('Aktiver OCPP-Ladestand')).toBeVisible();
-    expect(screen.getByText('keine bestätigte Freigabe gemeldet')).toBeVisible();
-    expect(screen.getByText('noch nicht erfolgreich zurückgelesen')).toBeVisible();
-    expect(screen.getByText('42 min')).toBeVisible();
     expect(screen.getByText('••••••••')).toBeVisible();
     fireEvent.click(screen.getByText(/unknownKey/));
     expect(screen.getByText(/VendorMystery/)).toBeVisible();
-    const hardReset = screen.getByRole('button', { name: /Hart neu starten/ });
-    expect(hardReset).toBeDisabled();
-    expect(within(hardReset).getByText(/Plattformoperator/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Firmware aktualisieren/ })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Hart neu starten/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Firmware aktualisieren/ })).toBeNull();
   });
 
   it('runs through the same frame as every other device page', async () => {
@@ -99,8 +94,8 @@ describe('OcppWallboxPage integration', () => {
     expect(ids).toEqual([...ids].sort(
       (a, b) => SEKTIONS_ORDNUNG.indexOf(a as never) - SEKTIONS_ORDNUNG.indexOf(b as never),
     ));
-    // D2a: Standard offen = Jetzt + Befehle, alles Übrige zugeklappt.
-    expect(screen.getByTestId('sektion-befehle')).toHaveAttribute('open');
+    // Der Kundenrahmen enthält keinen technischen Befehlsabschnitt.
+    expect(screen.queryByTestId('sektion-befehle')).toBeNull();
     expect(screen.getByTestId('sektion-diagnose')).not.toHaveAttribute('open');
     // D3: „Register" wäre an einer Säule das falsche Wort, die Fähigkeit nicht.
     expect(within(screen.getByTestId('sektion-register')).getByText('Messwerte', { selector: '.nm' })).toBeVisible();
@@ -144,6 +139,20 @@ describe('OcppWallboxPage integration', () => {
     expect(view.container.querySelectorAll('.vp-ocpp-primary-action .vp-btn')).toHaveLength(1);
   });
 
+  it('offers connector unlock only after finishing and binds it to the affected connector', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([{
+      ...station,
+      lastSeen: new Date().toISOString(),
+      connectors: [{ ...station.connectors[0], connectorId: 2, status: 'Finishing', reportedAt: new Date().toISOString() }],
+    }]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
+    const unlock = await screen.findByRole('button', { name: 'Stecker entriegeln' });
+    fireEvent.click(unlock);
+    expect(within(screen.getByRole('dialog')).getByRole('spinbutton')).toHaveValue(2);
+  });
+
   it('distinguishes stale and missing device data from offline', async () => {
     vi.mocked(api.ocppStations).mockResolvedValueOnce([{
       ...station,
@@ -160,6 +169,29 @@ describe('OcppWallboxPage integration', () => {
     const missing = render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
     expect(await screen.findByRole('heading', { name: /noch keinen aktuellen Gerätestatus/ })).toBeVisible();
     expect(missing.container.querySelector('[data-state="unknown"]')).toBeInTheDocument();
+  });
+
+  it('uses a newer connected Edge heartbeat when the OCPP journal still says offline', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([{
+      ...station,
+      connected: false,
+      disconnectedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+      lastSeen: new Date(Date.now() - 10 * 60_000).toISOString(),
+      connectors: [],
+    }]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    const view = render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" charger={{
+      deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: true,
+      lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
+      connectors: [{ connectorId: 1, status: 'Available', charging: false }],
+    }} />);
+    expect(await screen.findByRole('heading', { name: 'Wallbox online · Anschluss 1 ist verfügbar.' })).toBeVisible();
+    expect(screen.getByTestId('geraet-zustand')).toHaveTextContent('Online');
+    const connectionSection = screen.getByTestId('sektion-verbindung');
+    fireEvent.click(within(connectionSection).getByText('Verbindung'));
+    expect(screen.getByText(/VoltPilot-Box meldet die Wallbox als verbunden/)).toBeVisible();
+    expect(view.container.querySelectorAll('.vp-ocpp-primary-action .vp-btn')).toHaveLength(0);
   });
 
   it('keeps a stale connector out of status, reason and connector settings despite a fresh heartbeat', async () => {
@@ -235,8 +267,9 @@ describe('OcppWallboxPage integration', () => {
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
     expect(await screen.findByRole('button', { name: 'Laden starten' })).toBeDisabled();
     expect(screen.getByText(/Fernaktion ist für Ihr Konto nicht freigegeben/)).toBeVisible();
-    expect(screen.getByRole('button', { name: /Firmware aktualisieren/ })).toBeDisabled();
-    expect(screen.getAllByText(/NotSupported möglich/).length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('sektion-befehle')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Firmware aktualisieren/ })).toBeNull();
+    expect(screen.queryByText(/NotSupported möglich/)).toBeNull();
   });
 
   it('shows inputs and impact before sending, then keeps response and effect separate', async () => {
@@ -293,6 +326,10 @@ describe('OcppWallboxPage integration', () => {
     vi.mocked(api.ocppActionAudit).mockResolvedValue([{ id: 1, actor: 'idTag=AUDIT-ACTOR', state: 'completed',
       reason: 'endpoint=ssh://audit.internal/private', deviceId: 'd', chargePointId: 'CP-1', connectorId: 1,
       transactionId: 42, occurredAt: new Date().toISOString() }]);
+    vi.mocked(api.ocppActionPermissions).mockResolvedValue({ actions: {
+      RemoteStartTransaction: true, RemoteStopTransaction: true, UnlockConnector: true,
+      SoftReset: true,
+    } });
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
     await screen.findByRole('heading', { name: /Wallbox online · Anschluss 1 lädt/ });
     fireEvent.click(screen.getByRole('button', { name: 'Unveränderliche Auditspur laden' }));
@@ -337,6 +374,10 @@ describe('OcppWallboxPage integration', () => {
     vi.mocked(api.ocppActionAudit).mockResolvedValue([{ id: 1, actor: 'operator@example.test', state: 'prepared', reason: null,
       deviceId: 'd', chargePointId: 'CP-1', connectorId: 1, transactionId: 42, occurredAt: new Date().toISOString() }]);
     vi.mocked(api.ocppAction).mockResolvedValue({ ...prepared, state: 'cancelled' });
+    vi.mocked(api.ocppActionPermissions).mockResolvedValue({ actions: {
+      RemoteStartTransaction: true, RemoteStopTransaction: true, UnlockConnector: true,
+      SoftReset: true,
+    } });
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
     // ⚠ Eine belegte Lücke bleibt entdeckbar, obwohl „Diagnose" zugeklappt
     // startet: die geschlossene Zeile SAGT sie (§4.5 - eine Klappe, die nicht
