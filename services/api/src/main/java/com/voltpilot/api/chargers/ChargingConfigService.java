@@ -181,9 +181,16 @@ public class ChargingConfigService {
      * wieder - sie verschwindet aus der Grabstein-Liste und steht wieder in
      * {@code charge_points}.
      */
+    /**
+     * Das Anschluss-Vokabular des Kontrakts, hier ein zweites Mal festgenagelt
+     * (die Box führt dieselben zwei Wörter): ein Wort, das wir nicht verstehen,
+     * darf kein gespeicherter Zustand werden.
+     */
+    private static final java.util.Set<String> CONNECTIONS = java.util.Set.of("haus", "eigen");
+
     @Transactional
     public ChargingConfigDto admit(UUID siteId, String chargePointId, String label,
-            Double ratedKw, Integer connectors, String actor) {
+            Double ratedKw, Integer connectors, String connection, String actor) {
         requireSite(siteId);
         UUID tenantId = TenantContext.get();
         String id = chargePointId == null ? "" : chargePointId.trim();
@@ -216,8 +223,20 @@ public class ChargingConfigService {
                     "Diese Anlage führt bereits " + MAX_CHARGE_POINTS + " Ladesäulen - mehr "
                             + "trägt das Konfigurations-Dokument nicht.");
         }
+        // ⚠ Ein Wort ausserhalb des Vokabulars ist eine BENANNTE Ablehnung, nie
+        // ein stiller Rückfall auf "haus": "haus" heisst "ihre Leistung wird in
+        // der Bilanz der Box zurückaddiert", und ist die Wahrheit "eigen",
+        // fiele das Budget zu gross aus - der Hausanschluss könnte um genau
+        // ihre Leistung überschritten werden. null bleibt zulässig ("dazu wird
+        // nichts gesagt", die PATCH-Semantik des Dokuments).
+        String conn = connection == null || connection.isBlank() ? null : connection.trim();
+        if (conn != null && !CONNECTIONS.contains(conn)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unbekannter Anschluss \"" + conn + "\" - erlaubt sind \"haus\" (hinter dem "
+                            + "Hausanschluss) und \"eigen\" (eigener Netzanschluss).");
+        }
         String name = label == null || label.isBlank() ? null : label.trim();
-        configs.admitChargePoint(tenantId, siteId, id, name, ratedKw, connectors, actor);
+        configs.admitChargePoint(tenantId, siteId, id, name, ratedKw, connectors, conn, actor);
         ChargingConfigDto saved = configs.forSite(siteId);
         push(tenantId, siteId, saved);
         return saved;

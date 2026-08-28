@@ -61,12 +61,12 @@ public class ChargingConfigRepository {
     /** Die eingetragenen Kennungen dieser Anlage (aelteste zuerst). */
     public List<AllowedChargePointDto> allowlist(UUID siteId) {
         return List.copyOf(jdbc.query(
-                "SELECT charge_point_id, label, rated_kw, connectors, added_at, added_by "
-                        + "FROM site_charge_point_allowlist WHERE site_id = ? "
+                "SELECT charge_point_id, label, rated_kw, connectors, connection, added_at, "
+                        + "added_by FROM site_charge_point_allowlist WHERE site_id = ? "
                         + "AND removed_at IS NULL ORDER BY added_at, charge_point_id",
                 (rs, n) -> new AllowedChargePointDto(rs.getString("charge_point_id"),
                         rs.getString("label"), (Double) rs.getObject("rated_kw"),
-                        (Integer) rs.getObject("connectors"),
+                        (Integer) rs.getObject("connectors"), rs.getString("connection"),
                         rs.getTimestamp("added_at") == null ? null
                                 : rs.getTimestamp("added_at").toInstant(),
                         rs.getString("added_by")),
@@ -100,16 +100,24 @@ public class ChargingConfigRepository {
      */
     @Transactional
     public void admitChargePoint(UUID tenantId, UUID siteId, String chargePointId, String label,
-            Double ratedKw, Integer connectors, String actor) {
+            Double ratedKw, Integer connectors, String connection, String actor) {
         jdbc.update("INSERT INTO site_charge_point_allowlist (site_id, charge_point_id, tenant_id, "
-                + "label, rated_kw, connectors, added_at, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                + "label, rated_kw, connectors, connection, added_at, added_by) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 + "ON CONFLICT (site_id, charge_point_id) DO UPDATE SET "
                 + "label = COALESCE(EXCLUDED.label, site_charge_point_allowlist.label), "
                 + "rated_kw = COALESCE(EXCLUDED.rated_kw, site_charge_point_allowlist.rated_kw), "
                 + "connectors = COALESCE(EXCLUDED.connectors, "
                 + "site_charge_point_allowlist.connectors), "
+                // ⚠ Der Anschluss folgt derselben COALESCE-Regel wie die
+                // anderen Angaben (nicht gesagt = behalten), ist aber die EINE,
+                // die auch auf der BOX ueberschreibt: dort hat er gar keine
+                // Oberflaeche, es gibt also nichts zu schuetzen, und ein Kunde,
+                // der ihn spaeter aendert, erreichte die Box sonst nie.
+                + "connection = COALESCE(EXCLUDED.connection, "
+                + "site_charge_point_allowlist.connection), "
                 + "removed_at = NULL, removed_by = NULL",
-                siteId, chargePointId, tenantId, label, ratedKw, connectors,
+                siteId, chargePointId, tenantId, label, ratedKw, connectors, connection,
                 Timestamp.from(Instant.now()), actor);
     }
 

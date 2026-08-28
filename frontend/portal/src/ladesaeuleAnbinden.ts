@@ -28,7 +28,12 @@
  */
 
 import type { Device } from './api';
-import type { AllowedChargePoint, ChargePoint, SiteCharging } from './ladepunkte';
+import type {
+  AllowedChargePoint,
+  ChargePoint,
+  ChargerConnection,
+  SiteCharging,
+} from './ladepunkte';
 import { privateLanAddress } from './geraetSeite';
 
 // ---------------------------------------------------------------------------
@@ -241,6 +246,137 @@ function meldungsSatz(cp: ChargePoint): string {
 }
 
 // ---------------------------------------------------------------------------
+// Schritt 1b: WO die Saeule haengt (Cockpit Phase 1 / C1, Captain-Entscheid E5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Die Frage ueber dem Auswahl-Paar. Sie fragt nach einer TATSACHE der Anlage,
+ * nicht nach einer Vorliebe — deshalb ist sie eine Ortsfrage und keine
+ * Einstellung mit „empfohlen".
+ */
+export const ANSCHLUSS_FRAGE = 'Wo hängt diese Säule?';
+
+/**
+ * Warum das ueberhaupt gefragt wird — in der Waehrung des Kunden.
+ *
+ * ⚠ Er sagt die FOLGE, nicht die Formel: das Budget-Gesetz der Box
+ * (`budget = planbar − (Netzbezug − Ladeleistung)`) gehoert in den Vertrag und
+ * in den Code, nicht in einen Dialog.
+ */
+export const ANSCHLUSS_HILFE =
+  'Davon hängt ab, ob VoltPilot die Ladeleistung dieser Säule aus dem Netzbezug Ihrer Anlage herausrechnet. Im Zweifel gilt der Normalfall: hinter dem Hausanschluss.';
+
+export interface AnschlussOption {
+  value: ChargerConnection;
+  label: string;
+  satz: string;
+  /** Die Vorgabe — genau EINE trägt sie. */
+  vorgabe: boolean;
+}
+
+/**
+ * Die zwei Orte, an denen eine Ladesäule hängen kann.
+ *
+ * ⚠ `haus` ist die Vorgabe, und das ist die SICHERE Richtung: sie heißt „ihre
+ * Leistung steckt in unserer Netzmessung und wird zurückaddiert". Waere die
+ * Wahrheit `eigen`, fiele das Budget zu GROSS aus — der Hausanschluss koennte
+ * um genau ihre Leistung ueberschritten werden. Umgekehrt kostet ein
+ * faelschlich als `eigen` gefuehrter Ladepunkt nur Budget, nie Sicherheit.
+ */
+export const ANSCHLUSS_OPTIONEN: AnschlussOption[] = [
+  {
+    value: 'haus',
+    label: 'Hinter dem Hausanschluss',
+    satz: 'Der Normalfall: die Säule hängt an derselben Zuleitung wie Ihr Haus. VoltPilot teilt die verfügbare Leistung zwischen Haus und Ladesäulen auf.',
+    vorgabe: true,
+  },
+  {
+    value: 'eigen',
+    label: 'Eigener Netzanschluss',
+    satz: 'Die Säule hat einen eigenen Anschluss mit eigenem Zähler. Ihre Leistung zählt dann nicht gegen den Hausanschluss — und erscheint im Cockpit als eigene Gruppe.',
+    vorgabe: false,
+  },
+];
+
+/** Die Vorgabe des Dialogs, an EINER Stelle. */
+export const ANSCHLUSS_VORGABE: ChargerConnection =
+  ANSCHLUSS_OPTIONEN.find((o) => o.vorgabe)?.value ?? 'haus';
+
+/**
+ * Der gespeicherte SOLL-Anschluss einer Kennung.
+ *
+ * ⚠ `null` heisst „der Kunde hat dazu nichts gesagt" — NICHT `haus`. Die zwei
+ * sind verschieden: aus „nichts gesagt" schickt die api kein Feld, die Box
+ * behaelt also, was sie hat.
+ */
+export function anschlussSoll(
+  eingetragen: AllowedChargePoint[] | null | undefined,
+  kennung: string,
+): ChargerConnection | null {
+  const id = String(kennung ?? '').trim();
+  if (!id) return null;
+  const cp = (eingetragen ?? []).find((c) => c.chargePointId === id);
+  return cp?.connection ?? null;
+}
+
+/** Was das Auswahl-Paar zeigt: das Gespeicherte, sonst die Vorgabe. */
+export function anschlussWahl(soll: ChargerConnection | null | undefined): ChargerConnection {
+  return soll ?? ANSCHLUSS_VORGABE;
+}
+
+/**
+ * Was beim Eintragen wirklich gesendet wird.
+ *
+ * ⚠ Eine unveraenderte Wahl auf einer schon eingetragenen Saeule sendet
+ * `undefined` — das Dokument bleibt dann byte-gleich, und eine Zustellung, die
+ * nichts aendert, wird gar nicht erst ausgeloest. Beim ERSTEN Eintragen reist
+ * die Wahl dagegen immer mit, auch wenn sie die Vorgabe ist: der Kunde hat sie
+ * dann gesehen und stehen lassen, und genau das ist eine Aussage.
+ */
+export function anschlussZumSenden(
+  wahl: ChargerConnection,
+  soll: ChargerConnection | null | undefined,
+): ChargerConnection | undefined {
+  return wahl === soll ? undefined : wahl;
+}
+
+export interface AnschlussSicht {
+  /** Das Wort fuer die Zeile — immer das SOLL, denn es ist die Wahl des Kunden. */
+  wort: string;
+  /**
+   * Der Nachsatz, wenn Soll und Ist auseinanderliegen; sonst `null`.
+   *
+   * ⚠ Er wird NUR gesagt, wenn die Box wirklich etwas ANDERES meldet. Eine Box,
+   * die gar nichts meldet (`ist == null`), ist ein aelterer Stand — daraus eine
+   * Abweichung zu machen waere eine Behauptung ueber eine Anlage, die dazu
+   * nichts gesagt hat.
+   */
+  hinweis: string | null;
+}
+
+/**
+ * Soll und Ist eines Anschlusses, als Zeile.
+ *
+ * `soll` = was der Kunde gewaehlt hat (Allowlist), `ist` = was die BOX meldet.
+ * Ohne Wahl steht die Vorgabe da — sie IST das, wonach gerechnet wird.
+ */
+export function anschlussSicht(
+  soll: ChargerConnection | null | undefined,
+  ist: ChargerConnection | null | undefined,
+): AnschlussSicht {
+  const gewaehlt = anschlussWahl(soll);
+  const wort = gewaehlt === 'eigen' ? 'Eigener Netzanschluss' : 'Hinter dem Hausanschluss';
+  if (!ist || ist === gewaehlt) return { wort, hinweis: null };
+  return {
+    wort,
+    hinweis:
+      gewaehlt === 'eigen'
+        ? 'Ihre Box rechnet sie noch hinter dem Hausanschluss — sobald sie das Dokument übernommen hat, gilt Ihre Wahl.'
+        : 'Ihre Box führt sie noch auf einem eigenen Anschluss — sobald sie das Dokument übernommen hat, gilt Ihre Wahl.',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Der Ablauf
 // ---------------------------------------------------------------------------
 
@@ -279,6 +415,11 @@ export interface EingetrageneZeile {
   name: string;
   zustand: string;
   ton: 'ok' | 'warten';
+  /**
+   * WO sie hängt — Soll (die Wahl des Kunden) und, wenn die Box etwas ANDERES
+   * meldet, der Nachsatz dazu (Cockpit Phase 1 / C1).
+   */
+  anschluss: AnschlussSicht;
 }
 
 /**
@@ -294,11 +435,18 @@ export function eingetrageneZeilen(
 ): EingetrageneZeile[] {
   return (eingetragen ?? []).map((cp) => {
     const m = meldung(charging, cp.chargePointId);
+    // ⚠ Das IST kommt aus der Meldung der BOX, nicht aus der Allowlist: die
+    // Allowlist ist unsere eigene Zeile und kann nichts darüber sagen, wonach
+    // die Box wirklich rechnet.
+    const ist = (charging?.chargers ?? []).find(
+      (c) => c.chargePointId === cp.chargePointId,
+    )?.connection;
     return {
       kennung: cp.chargePointId,
       name: (cp.label ?? '').trim() || cp.chargePointId,
       zustand: m.wort,
       ton: m.ton,
+      anschluss: anschlussSicht(cp.connection, ist),
     };
   });
 }

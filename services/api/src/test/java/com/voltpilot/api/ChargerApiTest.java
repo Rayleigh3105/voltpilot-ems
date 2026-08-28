@@ -472,6 +472,89 @@ class ChargerApiTest {
     }
 
     /**
+     * Cockpit Phase 1 / C1: WO eine Ladesäule hängt - vom Anbinde-Dialog bis in
+     * die Antwort, und getrennt vom IST, das die Box meldet.
+     *
+     * <p><b>⚠ SOLL und IST sind zwei Aussagen.</b> Was der Kunde gewählt hat
+     * steht in der Allowlist (er kann es setzen, bevor die Säule je verbunden
+     * war); was die BOX meldet, belegt, dass die Unterscheidung dort auch
+     * angekommen ist - eine Portal-Angabe allein sagt nichts darüber, wonach
+     * die Box rechnet. Deshalb zwei Felder in zwei Tabellen, nie eines.
+     */
+    @Test
+    void theOwnConnectionIsChosenInThePortalAndTheBoxReportsItsOwnTruth() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Ladepark-Anschluss");
+        try {
+            UUID device = claim(customer, site, "edge-ladepark-6");
+
+            // 1 · Der Kunde trägt eine Säule auf EIGENEM Anschluss ein.
+            JsonNode saved = postJson("/api/v1/sites/" + site + "/charging-config/charge-points",
+                    customer, Map.of("chargePointId", "saeule-strasse", "label", "Strasse",
+                            "connection", "eigen"));
+            assertThat(saved.get("chargePoints").get(0).get("connection").asText())
+                    .isEqualTo("eigen");
+
+            // 2 · Und eine, zu der er nichts sagt - das bleibt null, NIE "haus".
+            //     Ein eingesetztes "haus" wäre eine Aussage über die Bilanz der
+            //     Anlage, die niemand getroffen hat.
+            JsonNode two = postJson("/api/v1/sites/" + site + "/charging-config/charge-points",
+                    customer, Map.of("chargePointId", "saeule-halle"));
+            assertThat(two.get("chargePoints").get(1).get("connection").isNull()).isTrue();
+
+            // 3 · Ein späterer Wechsel gilt - der Anschluss ist die eine Angabe,
+            //     die auch eine schon eingetragene Säule erreicht.
+            JsonNode moved = postJson("/api/v1/sites/" + site + "/charging-config/charge-points",
+                    customer, Map.of("chargePointId", "saeule-strasse", "connection", "haus"));
+            assertThat(moved.get("chargePoints").get(0).get("connection").asText())
+                    .isEqualTo("haus");
+            assertThat(moved.get("chargePoints").get(0).get("label").asText())
+                    .as("und sonst wird nichts zurückgesetzt").isEqualTo("Strasse");
+
+            // 4 · Ein unbekanntes Wort ist eine BENANNTE Ablehnung, nie ein
+            //     stiller Rückfall - und sie verändert NICHTS.
+            ResponseEntity<String> bad = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config/charge-points"),
+                    HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "saeule-strasse",
+                            "connection", "garage"), bearer(customer)),
+                    String.class);
+            assertThat(bad.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(bad.getBody()).contains("eigen");
+            JsonNode after = getJson("/api/v1/sites/" + site + "/charging-config", customer);
+            assertThat(after.get("chargePoints")).hasSize(2);
+            assertThat(after.get("chargePoints").get(0).get("connection").asText())
+                    .isEqualTo("haus");
+
+            // 5 · Das IST kommt aus dem Herzschlag - und eine Säule, deren Box
+            //     nichts meldet, bleibt ehrlich null (weder haus noch eigen).
+            heartbeat(site, device, connectionStations());
+            JsonNode chargers = getJson("/api/v1/sites/" + site + "/chargers", customer);
+            assertThat(chargers.get("chargers")).hasSize(2);
+            // Nach Kennung nachschlagen, nie nach Position: der Lesepfad
+            // sortiert, und ein Test auf einer Reihenfolge prüfte einen Zufall.
+            Map<String, JsonNode> byId = new java.util.HashMap<>();
+            chargers.get("chargers").forEach(c -> byId.put(c.get("chargePointId").asText(), c));
+            assertThat(byId.get("saeule-strasse").get("connection").asText()).isEqualTo("eigen");
+            assertThat(byId.get("saeule-halle").get("connection").isNull()).isTrue();
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /** Eine Box, die den Anschluss meldet - und eine ältere Zeile daneben. */
+    private static String connectionStations() {
+        return """
+                {"reported_at":"2026-08-28T09:15:00Z","enabled":true,"control_enabled":true,
+                 "grid_limit_kw":277,"budget_kw":197,"connector_count":2,
+                 "chargers":[
+                   {"id":"saeule-strasse","connected":true,"ready":true,"connection":"eigen",
+                    "connectors":[{"id":1,"status":"Available","charging":false}]},
+                   {"id":"saeule-halle","connected":true,"ready":true,
+                    "connectors":[{"id":1,"status":"Available","charging":false}]}]}""";
+    }
+
+    /**
      * Das ZURÜCKNEHMEN einer eingetragenen Kennung (Captain-Order 24.08.2026:
      * „Ebenso will ich die möglichkeit haben eingebene kennungen zu löschen").
      *

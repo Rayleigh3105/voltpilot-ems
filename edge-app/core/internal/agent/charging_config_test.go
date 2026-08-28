@@ -354,3 +354,95 @@ func TestARefusedOrForeignDocumentRemovesNothing(t *testing.T) {
 	  "device_id":"d","removed_charge_point_ids":["saeule-1"],
 	  "published_at":"2026-08-24T10:05:00Z"}`))
 }
+
+// Cockpit Phase 1 / C1: der Anschluss reist mit - beim Anlegen UND danach.
+//
+// ⚠ Er ist die EINE Ausnahme von „ein bestehender Eintrag wird nicht
+// überschrieben". Der Grund jener Regel ist, was ein Betreiber AN DER BOX
+// gepflegt haben kann; für den Anschluss gibt es dort gar keine Oberfläche, es
+// gibt also nichts zu schützen - und ein Kunde, der den Haken später setzt,
+// erreichte die Box sonst nie.
+func TestTheConnectionIsAdmittedAndAlsoUpdatedOnAKnownStation(t *testing.T) {
+	a := chargingCfgAgent(t)
+	ocppSite(t, a, 0)
+	if _, err := a.OcppAddCharger(csms.AddRequest{
+		ID: "saeule-1", Label: "Am Geraet gepflegt", Priority: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","charge_points":[
+	    {"id":"saeule-1","label":"Aus dem Portal","connection":"eigen"},
+	    {"id":"saeule-2","connection":"eigen"},
+	    {"id":"saeule-3"}],
+	  "published_at":"2026-08-28T09:15:00Z"}`))
+
+	alt, ok := chargerOf(a, "saeule-1")
+	if !ok {
+		t.Fatal("der bestehende Eintrag darf nicht verschwinden")
+	}
+	if !alt.OwnConnection() {
+		t.Fatalf("der Anschluss MUSS auch eine bekannte Saeule erreichen: %+v", alt)
+	}
+	// ... und sonst wird weiterhin NICHTS überschrieben.
+	if alt.Label != "Am Geraet gepflegt" || !alt.Priority {
+		t.Fatalf("nur der Anschluss ist die Ausnahme: %+v", alt)
+	}
+
+	neu, ok := chargerOf(a, "saeule-2")
+	if !ok || !neu.OwnConnection() {
+		t.Fatalf("eine neue Saeule bekommt ihn beim Anlegen: %+v", neu)
+	}
+	still, ok := chargerOf(a, "saeule-3")
+	if !ok || still.OwnConnection() || still.ConnectionOrHaus() != csms.ConnectionHaus {
+		t.Fatalf("ohne Angabe hinter dem Haus: %+v", still)
+	}
+}
+
+// Bestand byte-gleich: ein Dokument OHNE das Feld - also jedes einer älteren
+// Cloud - lässt den Anschluss einer bekannten Säule unangetastet.
+func TestADocumentWithoutTheFieldLeavesTheConnectionAlone(t *testing.T) {
+	a := chargingCfgAgent(t)
+	ocppSite(t, a, 0)
+	if _, err := a.OcppAddCharger(csms.AddRequest{
+		ID: "saeule-1", Connection: csms.ConnectionEigen,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","charge_points":[{"id":"saeule-1","label":"x"}],
+	  "published_at":"2026-08-28T09:20:00Z"}`))
+	c, ok := chargerOf(a, "saeule-1")
+	if !ok || !c.OwnConnection() {
+		t.Fatalf("abwesend heisst 'nichts sagen', nicht 'haus': %+v", c)
+	}
+}
+
+// Und der Herzschlag NENNT ihn - an der SÄULE, nicht je Stecker (eine
+// Ladesäule hat EINEN Netzanschluss).
+func TestTheHeartbeatNamesTheConnectionOfEachStation(t *testing.T) {
+	a := chargingCfgAgent(t)
+	ocppSite(t, a, 0)
+	if _, err := a.OcppAddCharger(csms.AddRequest{ID: "haus-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.OcppAddCharger(csms.AddRequest{
+		ID: "eigen-1", Connection: csms.ConnectionEigen,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sum := a.chargersSummary()
+	if sum == nil || len(sum.Chargers) != 2 {
+		t.Fatalf("summary = %+v", sum)
+	}
+	byID := map[string]string{}
+	for _, c := range sum.Chargers {
+		byID[c.ID] = c.Connection
+	}
+	// ⚠ Der AUFGELÖSTE Wert: die Karte und der Herzschlag sollen nicht beide
+	// dieselbe Vorgabe-Regel führen.
+	if byID["haus-1"] != csms.ConnectionHaus || byID["eigen-1"] != csms.ConnectionEigen {
+		t.Fatalf("connections = %v", byID)
+	}
+}

@@ -386,6 +386,8 @@ type UpdateRequest struct {
 	RatedKw    *float64 `json:"rated_kw,omitempty"`
 	MinKw      *float64 `json:"min_kw,omitempty"`
 	Connectors *int     `json:"connectors,omitempty"`
+	// Connection: "haus"/"eigen" - see Charger.Connection. nil = leave as is.
+	Connection *string `json:"connection,omitempty"`
 }
 
 // Update changes the operator-editable fields. Identity (the ChargePointId)
@@ -418,11 +420,15 @@ func (s *Server) Update(id string, req UpdateRequest) (Charger, error) {
 	if req.Connectors != nil {
 		next.Connectors = *req.Connectors
 	}
+	if req.Connection != nil {
+		next.Connection = strings.TrimSpace(*req.Connection)
+	}
 	// Reuse the ONE validation path: the same rules must hold whether a
 	// charger is created or edited.
 	checked, err := NormalizeAdd(AddRequest{
 		ID: id, Label: next.Label, Priority: next.Priority,
 		RatedKw: next.RatedKw, MinKw: next.MinKw, Connectors: next.Connectors,
+		Connection: next.Connection,
 	}, nil, next.AddedAt)
 	if err != nil {
 		s.mu.Unlock()

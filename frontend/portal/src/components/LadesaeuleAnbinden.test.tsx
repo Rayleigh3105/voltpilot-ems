@@ -66,6 +66,9 @@ describe('LadesaeuleAnbinden', () => {
       expect(admitChargePoint).toHaveBeenCalledWith('s1', {
         chargePointId: 'hof-nord',
         label: 'Hof Nord',
+        // Cockpit Phase 1 / C1: beim ERSTEN Eintragen reist die Wahl mit -
+        // der Kunde hat sie gesehen und stehen lassen.
+        connection: 'haus',
       }),
     );
     expect(await screen.findByText(/lässt diese Kennung ab jetzt herein/)).toBeTruthy();
@@ -182,5 +185,108 @@ describe('LadesaeuleAnbinden', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
     expect(removeChargePoint).not.toHaveBeenCalled();
     expect(screen.getByText('Halle')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cockpit Phase 1 / C1: WO die Säule hängt (Captain-Entscheid E5)
+// ---------------------------------------------------------------------------
+
+describe('LadesaeuleAnbinden · Anschluss', () => {
+  it('fragt nach dem ORT und wählt den Normalfall vor', () => {
+    mount();
+    expect(screen.getByText('Wo hängt diese Säule?')).toBeTruthy();
+    const haus = screen.getByLabelText(/Hinter dem Hausanschluss/) as HTMLInputElement;
+    const eigen = screen.getByLabelText(/Eigener Netzanschluss/) as HTMLInputElement;
+    expect(haus.checked).toBe(true);
+    expect(eigen.checked).toBe(false);
+  });
+
+  it('trägt einen eigenen Netzanschluss als solchen ein', async () => {
+    admitChargePoint.mockResolvedValue({
+      ...LEER,
+      chargePoints: [{ chargePointId: 'strasse', label: 'Straße', connection: 'eigen' }],
+    });
+    mount();
+    fireEvent.change(screen.getByLabelText(/Name der Säule/), { target: { value: 'Straße' } });
+    fireEvent.click(screen.getByLabelText(/Eigener Netzanschluss/));
+    fireEvent.click(screen.getByRole('button', { name: 'Kennung eintragen' }));
+    await waitFor(() =>
+      expect(admitChargePoint).toHaveBeenCalledWith('s1', {
+        chargePointId: 'strasse',
+        label: 'Straße',
+        connection: 'eigen',
+      }),
+    );
+  });
+
+  it('⚠ bietet auf einer unveränderten Wahl KEINEN Knopf - es gäbe nichts zu senden', async () => {
+    chargingConfig.mockResolvedValue({
+      ...LEER,
+      chargePoints: [{ chargePointId: 'strasse', label: 'Straße', connection: 'eigen' }],
+    });
+    mount();
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'strasse' } });
+    // Die gespeicherte Wahl führt die Anzeige, ohne dass jemand klickt.
+    await waitFor(() =>
+      expect((screen.getByLabelText(/Eigener Netzanschluss/) as HTMLInputElement).checked).toBe(
+        true,
+      ),
+    );
+    expect(screen.queryByRole('button', { name: /Anschluss speichern/ })).toBeNull();
+    expect(admitChargePoint).not.toHaveBeenCalled();
+  });
+
+  it('speichert eine GEÄNDERTE Wahl auch auf einer schon eingetragenen Kennung', async () => {
+    chargingConfig.mockResolvedValue({
+      ...LEER,
+      chargePoints: [{ chargePointId: 'strasse', label: 'Straße', connection: 'haus' }],
+    });
+    mount();
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'strasse' } });
+    await waitFor(() => expect(screen.getByLabelText(/Eigener Netzanschluss/)).toBeTruthy());
+    fireEvent.click(screen.getByLabelText(/Eigener Netzanschluss/));
+    fireEvent.click(await screen.findByRole('button', { name: 'Anschluss speichern' }));
+    await waitFor(() =>
+      expect(admitChargePoint).toHaveBeenCalledWith('s1', {
+        chargePointId: 'strasse',
+        label: undefined,
+        connection: 'eigen',
+      }),
+    );
+  });
+
+  it('zeigt in der Liste das SOLL und nennt eine echte Abweichung der Box', async () => {
+    chargingConfig.mockResolvedValue({
+      ...LEER,
+      chargePoints: [{ chargePointId: 'strasse', label: 'Straße', connection: 'eigen' }],
+    });
+    siteChargers.mockResolvedValue(
+      charging({
+        chargers: [
+          {
+            deviceId: 'd1',
+            chargePointId: 'strasse',
+            connected: true,
+            ready: true,
+            priority: false,
+            connection: 'haus',
+          } as unknown as SiteCharging['chargers'][number],
+        ],
+      }),
+    );
+    mount();
+    expect(await screen.findByText('Eigener Netzanschluss')).toBeTruthy();
+    expect(screen.getByText(/noch hinter dem Hausanschluss/)).toBeTruthy();
+  });
+
+  it('⚠ Bestand: eine Box ohne das Feld erzeugt KEINEN Abweichungs-Satz', async () => {
+    chargingConfig.mockResolvedValue({
+      ...LEER,
+      chargePoints: [{ chargePointId: 'hof-nord', label: 'Hof Nord' }],
+    });
+    mount();
+    expect(await screen.findByText('Hinter dem Hausanschluss')).toBeTruthy();
+    expect(screen.queryByText(/Ihre Box (rechnet|führt) sie noch/)).toBeNull();
   });
 });

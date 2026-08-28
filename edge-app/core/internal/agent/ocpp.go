@@ -837,6 +837,9 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 			ID: c.ID, Label: c.Label, Priority: c.Priority, Connected: c.Connected,
 			Vendor: c.Vendor, Model: c.Model, Firmware: c.Firmware,
 			Ready: !c.CommissionedAt.IsZero(), Note: c.CommissionError,
+			// Der AUFGELÖSTE Wert (abwesend = hinter dem Haus): die Karte und
+			// der Herzschlag sollen nicht beide dieselbe Vorgabe-Regel führen.
+			Connection: c.ConnectionOrHaus(),
 		}
 		if !c.LastSeen.IsZero() {
 			oc.LastSeenMs = c.LastSeen.UnixMilli()

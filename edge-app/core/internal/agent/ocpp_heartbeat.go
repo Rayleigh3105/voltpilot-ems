@@ -76,7 +76,8 @@ func chargerEntry(c state.OcppCharger) cloud.ChargerEntry {
 		ID: c.ID, Label: c.Label, Priority: c.Priority, Connected: c.Connected,
 		Vendor: c.Vendor, Model: c.Model, Firmware: c.Firmware,
 		Ready: c.Ready, Note: c.Note,
-		LastSeen: msTime(c.LastSeenMs),
+		LastSeen:   msTime(c.LastSeenMs),
+		Connection: c.Connection,
 	}
 	for _, con := range c.Connectors {
 		if len(e.Connectors) >= cloudMaxConnectors {

@@ -746,6 +746,10 @@ type OcppCharger struct {
 	Ready      bool            `json:"ready"`
 	Note       string          `json:"note,omitempty"`
 	LastSeenMs int64           `json:"last_seen_ms,omitempty"`
+	// Connection is WHERE this station hangs: "haus" (behind the house
+	// connection) or "eigen" (its own grid connection). Always one of the two -
+	// the resolved value, never the raw absence.
+	Connection string          `json:"connection,omitempty"`
 	Connectors []OcppConnector `json:"connectors,omitempty"`
 }
 

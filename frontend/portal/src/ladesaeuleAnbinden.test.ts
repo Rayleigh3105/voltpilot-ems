@@ -14,6 +14,14 @@ import {
   meldung,
   schritte,
   cockpitHinweis,
+  ANSCHLUSS_FRAGE,
+  ANSCHLUSS_HILFE,
+  ANSCHLUSS_OPTIONEN,
+  ANSCHLUSS_VORGABE,
+  anschlussSicht,
+  anschlussSoll,
+  anschlussWahl,
+  anschlussZumSenden,
 } from './ladesaeuleAnbinden';
 
 const BOX: Device = {
@@ -289,5 +297,119 @@ describe('cockpitHinweis · wohin der Kunde nach dem Anbinden schaut (Konzept §
   it('spricht Kundensprache: kein „Anwendung", kein Baustein, kein Kanalname', () => {
     const satz = cockpitHinweis(true)!;
     expect(satz).not.toMatch(/Anwendung|Baustein|OCPP|power_kw|Entität/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cockpit Phase 1 / C1: WO die Säule hängt (Captain-Entscheid E5)
+// ---------------------------------------------------------------------------
+
+describe('Anschluss · haus|eigen', () => {
+  it('bietet GENAU ZWEI Orte an, und genau EINER ist die Vorgabe', () => {
+    expect(ANSCHLUSS_OPTIONEN.map((o) => o.value)).toEqual(['haus', 'eigen']);
+    expect(ANSCHLUSS_OPTIONEN.filter((o) => o.vorgabe)).toHaveLength(1);
+  });
+
+  it('⚠ die Vorgabe ist die SICHERE Richtung: hinter dem Hausanschluss', () => {
+    // „haus" heißt „ihre Leistung wird in der Bilanz der Box zurückaddiert".
+    // Wäre die Wahrheit „eigen", fiele das Budget nur zu KLEIN aus - der
+    // Hausanschluss bleibt geschützt. Umgekehrt wäre er es nicht.
+    expect(ANSCHLUSS_VORGABE).toBe('haus');
+  });
+
+  it('fragt nach einer TATSACHE der Anlage, nicht nach einer Vorliebe', () => {
+    expect(ANSCHLUSS_FRAGE).toMatch(/Wo hängt/);
+    expect(ANSCHLUSS_FRAGE).not.toMatch(/empfohlen|möchten|bevorzug/i);
+  });
+
+  it('sagt die FOLGE in Kundensprache - nie die Formel der Box', () => {
+    expect(ANSCHLUSS_HILFE).toContain('Netzbezug');
+    expect(ANSCHLUSS_HILFE).not.toMatch(/budget\s*=|planbar|OCPP|power_kw/);
+    for (const o of ANSCHLUSS_OPTIONEN) {
+      expect(o.satz).not.toMatch(/OCPP|Entität|power_kw|Baustein|Anwendung/);
+    }
+  });
+
+  it('liest das SOLL aus der Allowlist - eine unbekannte Kennung sagt nichts', () => {
+    const liste = [
+      { chargePointId: 'saeule-strasse', connection: 'eigen' as const },
+      { chargePointId: 'saeule-hof-nord' },
+    ];
+    expect(anschlussSoll(liste, 'saeule-strasse')).toBe('eigen');
+    // ⚠ Eine eingetragene Zeile OHNE Angabe ist „nichts gesagt", nicht „haus".
+    expect(anschlussSoll(liste, 'saeule-hof-nord')).toBeNull();
+    expect(anschlussSoll(liste, 'gibt-es-nicht')).toBeNull();
+    expect(anschlussSoll(null, 'saeule-strasse')).toBeNull();
+    expect(anschlussSoll(liste, '  ')).toBeNull();
+  });
+
+  it('zeigt ohne Wahl die Vorgabe - denn danach wird gerechnet', () => {
+    expect(anschlussWahl(null)).toBe('haus');
+    expect(anschlussWahl(undefined)).toBe('haus');
+    expect(anschlussWahl('eigen')).toBe('eigen');
+  });
+
+  it('⚠ sendet eine UNVERÄNDERTE Wahl gar nicht - das Dokument bleibt byte-gleich', () => {
+    expect(anschlussZumSenden('haus', 'haus')).toBeUndefined();
+    expect(anschlussZumSenden('eigen', 'eigen')).toBeUndefined();
+  });
+
+  it('sendet die Wahl beim ERSTEN Eintragen mit - auch wenn sie die Vorgabe ist', () => {
+    // Der Kunde hat sie gesehen und stehen lassen; genau das ist eine Aussage,
+    // und erst sie macht das SOLL in der Allowlist ausdrücklich.
+    expect(anschlussZumSenden('haus', null)).toBe('haus');
+    expect(anschlussZumSenden('eigen', null)).toBe('eigen');
+    expect(anschlussZumSenden('eigen', 'haus')).toBe('eigen');
+  });
+
+  it('stellt das SOLL dar und schweigt, solange die Box nichts anderes meldet', () => {
+    expect(anschlussSicht('eigen', 'eigen')).toEqual({
+      wort: 'Eigener Netzanschluss',
+      hinweis: null,
+    });
+    // ⚠ Eine Box, die gar nichts meldet, ist ein ÄLTERER Stand - daraus eine
+    // Abweichung zu machen wäre eine Behauptung über eine stumme Anlage.
+    expect(anschlussSicht('eigen', null).hinweis).toBeNull();
+    expect(anschlussSicht(null, undefined)).toEqual({
+      wort: 'Hinter dem Hausanschluss',
+      hinweis: null,
+    });
+  });
+
+  it('nennt die Abweichung, wenn die Box wirklich etwas ANDERES meldet', () => {
+    expect(anschlussSicht('eigen', 'haus').hinweis).toMatch(/noch hinter dem Hausanschluss/);
+    expect(anschlussSicht('haus', 'eigen').hinweis).toMatch(/noch auf einem eigenen Anschluss/);
+  });
+});
+
+describe('Liste der Eingetragenen · Anschluss', () => {
+  it('trägt das SOLL je Zeile und den Nachsatz nur bei echter Abweichung', () => {
+    const zeilen = eingetrageneZeilen(
+      [
+        { chargePointId: 'saeule-strasse', label: 'Straße', connection: 'eigen' },
+        { chargePointId: 'saeule-hof-nord', label: 'Hof Nord' },
+      ],
+      {
+        ...laden(),
+        chargers: [
+          // Die Box führt sie NOCH hinter dem Haus - das Dokument ist unterwegs.
+          saeule({ chargePointId: 'saeule-strasse', connection: 'haus' }),
+          saeule({ chargePointId: 'saeule-hof-nord', connection: 'haus' }),
+        ],
+      },
+    );
+    expect(zeilen[0].anschluss.wort).toBe('Eigener Netzanschluss');
+    expect(zeilen[0].anschluss.hinweis).toMatch(/noch hinter dem Hausanschluss/);
+    // Ohne Wahl steht die Vorgabe da, und die Box meldet dasselbe ⇒ kein Nachsatz.
+    expect(zeilen[1].anschluss).toEqual({ wort: 'Hinter dem Hausanschluss', hinweis: null });
+  });
+
+  it('⚠ Bestand byte-gleich: eine Box ohne das Feld erzeugt keinen Nachsatz', () => {
+    const zeilen = eingetrageneZeilen(
+      [{ chargePointId: 'saeule-hof-nord', label: 'Hof Nord' }],
+      { ...laden(), chargers: [saeule()] },
+    );
+    expect(zeilen[0]).toMatchObject({ name: 'Hof Nord', zustand: 'Verbunden', ton: 'ok' });
+    expect(zeilen[0].anschluss).toEqual({ wort: 'Hinter dem Hausanschluss', hinweis: null });
   });
 });

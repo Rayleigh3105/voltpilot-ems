@@ -169,6 +169,31 @@ class ChargerStatusListenerTest {
         assertThat(con.powerKw()).isEqualTo(11.04);
     }
 
+    /**
+     * Cockpit Phase 1 / C1: WO eine Säule laut BOX hängt wird aufgenommen - und
+     * ein Wort ausserhalb des Vokabulars VERWORFEN statt gespeichert.
+     *
+     * <p>⚠ Verworfen heisst hier {@code null} = „nicht gemeldet", NIE „haus":
+     * „haus" ist eine Aussage über die Bilanz der Anlage, und sie aus einem
+     * Wort abzuleiten, das wir nicht verstehen, wäre genau die Erfindung, gegen
+     * die das geschlossene Vokabular gebaut ist.
+     */
+    @Test
+    void theReportedConnectionIsIngestedAndAnUnknownWordIsDropped() {
+        Captured c = ingest("\"chargers\":{\"chargers\":[{\"id\":\"haus-1\",\"connection\":\"haus\"},"
+                + "{\"id\":\"eigen-1\",\"connection\":\"eigen\"},"
+                + "{\"id\":\"kaputt-1\",\"connection\":\"garage\"},"
+                + "{\"id\":\"alt-1\"}]}");
+        assertThat(c.chargers()).hasSize(4);
+        assertThat(c.chargers().get(0).connection()).isEqualTo("haus");
+        assertThat(c.chargers().get(1).connection()).isEqualTo("eigen");
+        assertThat(c.chargers().get(2).connection()).isNull();
+        // Eine ÄLTERE Box meldet es gar nicht - das ist weder „haus" noch
+        // „eigen": erst eine Meldung belegt, dass die Unterscheidung dort
+        // angekommen ist.
+        assertThat(c.chargers().get(3).connection()).isNull();
+    }
+
     @Test
     void aMissingMeasurementStaysNullAndIsNeverZero() {
         Captured c = ingest("\"chargers\":{\"chargers\":[{\"id\":\"saeule-still\","

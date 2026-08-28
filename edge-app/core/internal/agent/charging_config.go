@@ -109,13 +109,36 @@ func (a *Agent) onChargingConfig(payload []byte) {
 // sie hier hineinzulesen hieße, ein Weglassen als Löschung zu deuten. Ein
 // BESTEHENDER Eintrag wird nicht angefasst, weil `label`/`priority` dort auf
 // :8484 gepflegt sein können (dieselbe PATCH-Regel wie für jedes andere Feld).
+//
+// ⚠ GENAU EINE AUSNAHME: `connection` (Cockpit Phase 1 / C1). Der Grund der
+// Nie-überschreiben-Regel ist, was ein Betreiber AN DER BOX gepflegt haben
+// kann - und für den Anschluss gibt es dort gar keine Oberfläche, also nichts
+// zu schützen. Behielte sie ihn ein, erreichte ein Kunde, der den Haken später
+// setzt, die Box NIE, und ihr Budget-Gesetz rechnete für immer mit einer
+// Ladeleistung, die auf einem anderen Zähler liegt.
 func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
-	known := map[string]bool{}
+	known := map[string]string{}
 	for _, c := range a.OcppChargers() {
-		known[c.ID] = true
+		known[c.ID] = c.ConnectionOrHaus()
 	}
 	for _, cp := range wanted {
-		if known[cp.ID] {
+		if prev, ok := known[cp.ID]; ok {
+			// Das Portal äußert sich nicht ("") ⇒ nichts tun; sagt es dasselbe
+			// wie bisher ⇒ ebenfalls nichts (kein Schreibvorgang, kein Log je
+			// Zustellung des retained Dokuments).
+			if cp.Connection == "" || cp.Connection == prev {
+				continue
+			}
+			conn := cp.Connection
+			if _, err := a.OcppUpdateCharger(cp.ID, csms.UpdateRequest{
+				Connection: &conn,
+			}); err != nil {
+				slog.Warn("charging config: charge point connection not applied",
+					"charge_point", cp.ID, "connection", conn, "err", err)
+				continue
+			}
+			slog.Info("charging config: charge point connection applied",
+				"charge_point", cp.ID, "connection", conn, "was", prev)
 			continue
 		}
 		if _, err := a.OcppAddCharger(csms.AddRequest{
@@ -124,12 +147,14 @@ func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
 			Priority:   cp.Priority,
 			RatedKw:    cp.RatedKw,
 			Connectors: cp.Connectors,
+			Connection: cp.Connection,
 		}); err != nil {
 			slog.Warn("charging config: charge point not admitted",
 				"charge_point", cp.ID, "err", err)
 			continue
 		}
-		slog.Info("charging config: charge point admitted", "charge_point", cp.ID)
+		slog.Info("charging config: charge point admitted",
+			"charge_point", cp.ID, "connection", cp.Connection)
 	}
 }
 

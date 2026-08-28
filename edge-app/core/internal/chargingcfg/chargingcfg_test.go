@@ -328,3 +328,66 @@ func TestTooManyRemovalsAreRefused(t *testing.T) {
 		t.Fatalf("mehr als %d Loeschungen muessen abgelehnt werden", MaxChargePoints)
 	}
 }
+
+// Cockpit Phase 1 / C1: WO eine Saeule haengt reist im BESTEHENDEN Dokument
+// mit - additiv, mit PATCH-Semantik und einer bewusst vorsichtigen Ablehnung.
+func TestTheConnectionOfAChargePointIsParsedAndNeverGuessed(t *testing.T) {
+	cfg, err := Parse(doc(`,"charge_points":[
+		{"id":"haus-1","connection":"haus"},
+		{"id":"eigen-1","connection":"eigen"},
+		{"id":"stumm-1"}]`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(cfg.ChargePoints) != 3 {
+		t.Fatalf("charge points = %+v", cfg.ChargePoints)
+	}
+	if cfg.ChargePoints[0].Connection != "haus" || cfg.ChargePoints[1].Connection != "eigen" {
+		t.Fatalf("die zwei Woerter reisen verbatim: %+v", cfg.ChargePoints)
+	}
+	// ⚠ ABWESEND bleibt LEER - „das Portal sagt dazu nichts". Es hier auf
+	// „haus" aufzuloesen waere eine Aussage, die niemand getroffen hat, und
+	// naehme einer schon als „eigen" gefuehrten Saeule ihren Anschluss.
+	if cfg.ChargePoints[2].Connection != "" {
+		t.Fatalf("absent muss leer bleiben: %+v", cfg.ChargePoints[2])
+	}
+}
+
+// ⚠ Ein unbekanntes Wort ueberspringt den EINTRAG - es wird NICHT auf „haus"
+// aufgeloest. „haus" heisst „ihre Leistung wird zurueckaddiert"; ist die
+// Wahrheit „eigen", faellt das Budget zu gross aus und der Hausanschluss
+// koennte ueberschritten werden. Die Anschlussgrenze des Dokuments ueberlebt
+// (dieselbe Nachsicht wie bei einer unbrauchbaren Kennung).
+func TestAnUnknownConnectionWordSkipsTheEntryAndKeepsTheGridLimit(t *testing.T) {
+	cfg, err := Parse(doc(`,"grid_limit_kw":277,"charge_points":[
+		{"id":"gut","connection":"eigen"},
+		{"id":"kaputt","connection":"garage"}]`))
+	if err != nil {
+		t.Fatalf("das Dokument darf daran nicht scheitern: %v", err)
+	}
+	if cfg.GridLimitKw == nil || *cfg.GridLimitKw != 277 {
+		t.Fatalf("die Anschlussgrenze muss ueberleben: %+v", cfg.GridLimitKw)
+	}
+	if len(cfg.ChargePoints) != 1 || cfg.ChargePoints[0].ID != "gut" {
+		t.Fatalf("nur die brauchbare Zeile: %+v", cfg.ChargePoints)
+	}
+}
+
+// Die Kontrakt-Fixture PER PFAD - wer sie verschiebt, bricht diesen Test.
+func TestTheOwnConnectionFixtureParsesExactlyAsSpecified(t *testing.T) {
+	raw := mustRead(t, filepath.Join("..", "..", "..", "..", "docs", "contracts", "examples",
+		"mqtt-charging-config.valid.eigener-anschluss.json"))
+	cfg, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("die Fixture muss parsen: %v", err)
+	}
+	if len(cfg.ChargePoints) != 3 {
+		t.Fatalf("charge points = %+v", cfg.ChargePoints)
+	}
+	want := []string{"haus", "eigen", ""}
+	for i, w := range want {
+		if cfg.ChargePoints[i].Connection != w {
+			t.Fatalf("Saeule %d: connection = %q, want %q", i, cfg.ChargePoints[i].Connection, w)
+		}
+	}
+}

@@ -59,7 +59,20 @@ public record SiteChargingDto(ChargingBudgetDto budget, List<ChargePointDto> cha
      */
     public record ChargePointDto(UUID deviceId, String chargePointId, String label,
             boolean priority, boolean connected, String vendor, String model, String firmware,
-            boolean ready, String note, Instant lastSeen, UUID entityId, Instant reportedAt,
+            boolean ready, String note, Instant lastSeen,
+            /*
+             * connection = WO die Saeule laut BOX haengt (Cockpit Phase 1 / C1):
+             * "haus" (hinter dem Hausanschluss - ihre Leistung steckt in der
+             * Netzmessung der Anlage) oder "eigen" (eigener Netzanschluss).
+             *
+             * ⚠ null heisst "eine aeltere Box meldet es nicht" - NIE "eigen"
+             * und auch nicht "haus": erst eine Meldung belegt, dass die
+             * Unterscheidung dort wirklich angekommen ist. Was der KUNDE
+             * gewaehlt hat, steht in der Allowlist (charging-config), nicht
+             * hier - Soll und Ist sind zwei Aussagen.
+             */
+            String connection,
+            UUID entityId, Instant reportedAt,
             List<ChargeConnectorDto> connectors) {}
 
     /** Ein Stecker: ein Fahrzeug, ein Anspruch auf das Budget. */

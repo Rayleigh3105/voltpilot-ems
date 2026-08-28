@@ -3338,6 +3338,11 @@ export const api = {
       label?: string;
       ratedKw?: number;
       connectors?: number;
+      /**
+       * WO die Säule hängt (Cockpit Phase 1 / C1). Weggelassen heisst „dazu
+       * wird nichts gesagt" - die Box behält dann, was sie hat.
+       */
+      connection?: 'haus' | 'eigen';
     },
   ) =>
     request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-config/charge-points`, {

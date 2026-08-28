@@ -43,6 +43,14 @@ const MaxPriorities = 64
 // MaxChargePoints mirrors the contract's cap on the allowlist.
 const MaxChargePoints = 64
 
+// The connection vocabulary of the contract. Repeated here (not imported from
+// csms) because this package is the PARSER and must stay free of the runtime -
+// the two are pinned against each other in chargingcfg's tests.
+const (
+	connectionHaus  = "haus"
+	connectionEigen = "eigen"
+)
+
 // ErrEmpty is the withdrawal: an empty retained payload takes the document
 // back, and afterwards only what is maintained on the box applies.
 var ErrEmpty = errors.New("das Konfigurations-Dokument wurde zurückgenommen")
@@ -104,6 +112,10 @@ type ChargePoint struct {
 	Priority   bool
 	RatedKw    float64
 	Connectors int
+	// Connection is WHERE this station hangs (Cockpit Phase 1 / C1):
+	// csms.ConnectionHaus / csms.ConnectionEigen, "" = the portal said nothing
+	// and the box keeps what it has (absent = haus for a new station).
+	Connection string
 }
 
 // wire is the on-the-wire shape. Pointers where absence differs from a value.
@@ -127,6 +139,7 @@ type wireCP struct {
 	Priority   bool    `json:"priority"`
 	RatedKw    float64 `json:"rated_kw"`
 	Connectors int     `json:"connectors"`
+	Connection string  `json:"connection"`
 }
 
 // Parse reads one retained payload. An EMPTY payload returns ErrEmpty (the
@@ -205,9 +218,19 @@ func Parse(payload []byte) (Config, error) {
 		if id == "" || alreadyListed(cfg.ChargePoints, id) {
 			continue
 		}
+		// ⚠ Ein unbekanntes Anschluss-Wort überspringt den EINTRAG - es wird
+		// NICHT auf „haus" aufgelöst. „haus" heißt „ihre Leistung steckt in
+		// unserer Netzmessung und wird zurückaddiert"; ist die Wahrheit
+		// „eigen", fiele das Budget zu groß aus und der Hausanschluss könnte
+		// überschritten werden. Die Vorsicht liegt also beim Überspringen: eine
+		// neue Säule wird nicht zugelassen, eine bekannte behält, was sie hat.
+		conn := strings.TrimSpace(cp.Connection)
+		if conn != "" && conn != connectionHaus && conn != connectionEigen {
+			continue
+		}
 		cfg.ChargePoints = append(cfg.ChargePoints, ChargePoint{
 			ID: id, Label: strings.TrimSpace(cp.Label), Priority: cp.Priority,
-			RatedKw: cp.RatedKw, Connectors: cp.Connectors,
+			RatedKw: cp.RatedKw, Connectors: cp.Connectors, Connection: conn,
 		})
 	}
 	if len(w.Removed) > MaxChargePoints {

@@ -122,6 +122,8 @@ type AddRequest struct {
 	RatedKw    float64 `json:"rated_kw,omitempty"`
 	MinKw      float64 `json:"min_kw,omitempty"`
 	Connectors int     `json:"connectors,omitempty"`
+	// Connection: "haus" (default) or "eigen" - see Charger.Connection.
+	Connection string `json:"connection,omitempty"`
 }
 
 // maxRatedKw bounds an operator-declared station rating. 1000 kW per connector
@@ -168,10 +170,19 @@ func NormalizeAdd(req AddRequest, existing []Charger, now time.Time) (Charger, e
 	if req.Connectors < 0 || req.Connectors > maxConnectors {
 		return Charger{}, invalid("Die Zahl der Stecker muss zwischen 0 und %d liegen (0 = von der Ladesäule übernehmen).", maxConnectors)
 	}
+	// ⚠ A word we do not understand must not become a stored state (the house
+	// rule). Empty is legitimate and means "behind the house"; anything else is
+	// refused rather than silently resolved - reading an unknown word as
+	// "eigen" would take a real charging load out of the box's own balance.
+	conn := strings.TrimSpace(req.Connection)
+	if conn != "" && !KnownConnection(conn) {
+		return Charger{}, invalid("Unbekannter Anschluss %q - erlaubt sind %q (hinter dem Hausanschluss) und %q (eigener Netzanschluss).", conn, ConnectionHaus, ConnectionEigen)
+	}
 	return Charger{
 		ID: id, Label: label, Priority: req.Priority,
 		RatedKw: req.RatedKw, MinKw: req.MinKw, Connectors: req.Connectors,
-		AddedAt: now.UTC(),
+		Connection: conn,
+		AddedAt:    now.UTC(),
 	}, nil
 }
 

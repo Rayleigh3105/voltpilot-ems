@@ -80,6 +80,15 @@ export interface ChargePoint {
   ready: boolean;
   note?: string | null;
   lastSeen?: string | null;
+  /**
+   * WO die Säule laut BOX hängt (Cockpit Phase 1 / C1) - das IST.
+   *
+   * ⚠ `null` heisst „eine ältere Box meldet es nicht" - weder `haus` noch
+   * `eigen`: erst eine Meldung belegt, dass die Unterscheidung dort angekommen
+   * ist. Was der KUNDE gewählt hat, steht in der Allowlist - Soll und Ist sind
+   * zwei Aussagen.
+   */
+  connection?: ChargerConnection | null;
   entityId?: string | null;
   reportedAt?: string | null;
   connectors?: ChargeConnector[] | null;
@@ -183,11 +192,26 @@ export interface ChargingConfig {
  * Eine im Portal eingetragene Ladesäule. Alles außer der Kennung ist das, was
  * der Betreiber zufällig schon weiß - `null` heißt „unbekannt", nie 0.
  */
+/**
+ * WO eine Ladesäule hängt (Cockpit Phase 1 / C1, Captain-Entscheid E5).
+ *
+ * `haus` = hinter dem Hausanschluss - der Normalfall: ihre Leistung steckt in
+ * der Netzmessung der Anlage, das Budget-Gesetz der Box gilt für sie.
+ * `eigen` = ein EIGENER Netzanschluss/Zähler: ihre Leistung steckt NICHT in
+ * dieser Messung, sie darf dort also nicht zurückaddiert werden.
+ */
+export type ChargerConnection = 'haus' | 'eigen';
+
+/**
+ * Der SOLL-Anschluss einer eingetragenen Säule: `null` heisst „der Kunde hat
+ * nichts gesagt" und die Box behält, was sie hat - NIE `eigen`.
+ */
 export interface AllowedChargePoint {
   chargePointId: string;
   label?: string | null;
   ratedKw?: number | null;
   connectors?: number | null;
+  connection?: ChargerConnection | null;
   addedAt?: string | null;
   addedBy?: string | null;
 }

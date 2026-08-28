@@ -92,3 +92,62 @@ func TestChargingTotalCountsOnlyWhatItCanProve(t *testing.T) {
 		}
 	})
 }
+
+// Cockpit Phase 1 / C1: eine Säule auf EIGENEM Netzanschluss steckt nicht in
+// der Netzmessung dieser Anlage - sie darf also nicht zurückaddiert werden.
+//
+// Das Budget-Gesetz des Aufrufers lautet `rest = Netzbezug − Ladeleistung`:
+// zählte sie hier mit, fiele der Rest zu KLEIN und das Budget zu GROSS aus, und
+// der HAUSANSCHLUSS könnte um genau ihre Leistung überschritten werden.
+func TestAStationOnItsOwnConnectionIsNeverAddedBack(t *testing.T) {
+	now := time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC)
+	fresh := now.Add(-5 * time.Second)
+	session := &Session{TransactionID: 1, StartedAt: now.Add(-time.Hour)}
+	mk := func(id int, kw *float64, at time.Time) Connector {
+		return Connector{ID: id, Status: StatusCharging, Session: session, PowerKw: kw, MeteredAt: at}
+	}
+	haus := ChargerState{
+		Charger:    Charger{ID: "haus-1", Connection: ConnectionHaus},
+		Connected:  true,
+		Connectors: []Connector{mk(1, f(20), fresh)},
+	}
+	eigen := ChargerState{
+		Charger:    Charger{ID: "eigen-1", Connection: ConnectionEigen},
+		Connected:  true,
+		Connectors: []Connector{mk(1, f(150), fresh)},
+	}
+
+	kw, complete := Snapshot{Chargers: []ChargerState{haus, eigen}}.ChargingTotal(now, time.Minute)
+	if kw != 20 || !complete {
+		t.Fatalf("kw=%v complete=%v, want 20/true - nur die Haus-Säule zählt", kw, complete)
+	}
+
+	// ⚠ Und sie kann die Zahl auch nicht UNVOLLSTÄNDIG machen: von ihr fehlt
+	// nichts, was in dieser Messung stecken müsste.
+	blind := eigen
+	blind.Connectors = []Connector{mk(1, nil, time.Time{})}
+	kw2, complete2 := Snapshot{Chargers: []ChargerState{haus, blind}}.ChargingTotal(now, time.Minute)
+	if kw2 != 20 || !complete2 {
+		t.Fatalf("kw=%v complete=%v, want 20/true", kw2, complete2)
+	}
+}
+
+// Bestand byte-gleich: ohne gesetztes Feld - also auf JEDER Anlage vor C1 -
+// zählt eine Säule genau wie vorher.
+func TestAnUnsetConnectionCountsExactlyAsBefore(t *testing.T) {
+	now := time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC)
+	fresh := now.Add(-5 * time.Second)
+	session := &Session{TransactionID: 1, StartedAt: now.Add(-time.Hour)}
+	con := Connector{ID: 1, Status: StatusCharging, Session: session, PowerKw: f(20), MeteredAt: fresh}
+
+	for _, c := range []string{"", ConnectionHaus} {
+		snap := Snapshot{Chargers: []ChargerState{{
+			Charger: Charger{ID: "A", Connection: c}, Connected: true,
+			Connectors: []Connector{con},
+		}}}
+		kw, complete := snap.ChargingTotal(now, time.Minute)
+		if kw != 20 || !complete {
+			t.Fatalf("connection=%q: kw=%v complete=%v, want 20/true", c, kw, complete)
+		}
+	}
+}

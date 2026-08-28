@@ -223,6 +223,13 @@ public class ChargingConfigPublisher {
         if (cp.connectors() != null) {
             sb.append(",\"connectors\":").append(cp.connectors().intValue());
         }
+        // ⚠ Auch der Anschluss reist NUR mit, wenn der Kunde ihn wirklich
+        // gesagt hat. Ein hier eingesetztes "haus" waere eine Aussage ueber die
+        // Bilanz einer Anlage, die niemand getroffen hat - und wuerde auf der
+        // Box eine schon als "eigen" gefuehrte Saeule zurueckdrehen.
+        if (cp.connection() != null && !cp.connection().isBlank()) {
+            sb.append(",\"connection\":\"").append(esc(cp.connection())).append('"');
+        }
         sb.append('}');
     }
 

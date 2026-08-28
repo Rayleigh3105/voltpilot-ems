@@ -52,7 +52,15 @@ public class DeviceChargerStatusRepository {
     /** Eine gemeldete Ladesäule. */
     public record ChargePointRow(String chargePointId, String label, boolean priority,
             boolean connected, String vendor, String model, String firmware, boolean ready,
-            String note, Instant lastSeen, List<ConnectorRow> connectors) {}
+            String note, Instant lastSeen,
+            /*
+             * connection = WO die Saeule laut BOX haengt ("haus"/"eigen",
+             * Cockpit Phase 1 / C1). null = eine aeltere Box meldet es nicht -
+             * NIE "eigen", und auch nicht "haus": erst eine Meldung belegt,
+             * dass die Unterscheidung dort angekommen ist.
+             */
+            String connection,
+            List<ConnectorRow> connectors) {}
 
     /** Ein gemeldeter Stecker. */
     public record ConnectorRow(int connectorId, String status, boolean charging, Double allocatedKw,
@@ -107,11 +115,12 @@ public class DeviceChargerStatusRepository {
             jdbc.update(
                     "INSERT INTO device_charge_point (device_id, charge_point_id, tenant_id, "
                             + "site_id, label, priority, connected, vendor, model, firmware, "
-                            + "ready, note, last_seen, entity_id, reported_at) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            + "ready, note, last_seen, connection, entity_id, reported_at) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     deviceId, c.chargePointId(), tenantId, siteId, c.label(), c.priority(),
                     c.connected(), c.vendor(), c.model(), c.firmware(), c.ready(), c.note(),
-                    ts(c.lastSeen()), entityIds.get(c.chargePointId()), Timestamp.from(reportedAt));
+                    ts(c.lastSeen()), c.connection(), entityIds.get(c.chargePointId()),
+                    Timestamp.from(reportedAt));
             for (ConnectorRow con : c.connectors()) {
                 jdbc.update(
                         "INSERT INTO device_charge_connector (device_id, charge_point_id, "
@@ -183,7 +192,7 @@ public class DeviceChargerStatusRepository {
         jdbc.query("SELECT cp.device_id, cp.charge_point_id, "
                 + "CASE WHEN cp.entity_id IS NULL THEN cp.label ELSE mp.label END AS display_label, "
                 + "cp.priority, cp.connected, cp.vendor, cp.model, cp.firmware, cp.ready, cp.note, "
-                + "cp.last_seen, cp.entity_id, cp.reported_at "
+                + "cp.last_seen, cp.connection, cp.entity_id, cp.reported_at "
                 + "FROM device_charge_point cp "
                 + "LEFT JOIN measurement_point mp ON mp.id = cp.entity_id "
                 + "WHERE cp.site_id = ? ORDER BY cp.device_id, cp.charge_point_id", rs -> {
@@ -194,6 +203,7 @@ public class DeviceChargerStatusRepository {
                             rs.getString("vendor"), rs.getString("model"), rs.getString("firmware"),
                             rs.getBoolean("ready"), rs.getString("note"),
                             instant(rs.getTimestamp("last_seen")),
+                            rs.getString("connection"),
                             rs.getObject("entity_id", UUID.class),
                             instant(rs.getTimestamp("reported_at")),
                             byPoint.getOrDefault(key(deviceId, id), List.of())));

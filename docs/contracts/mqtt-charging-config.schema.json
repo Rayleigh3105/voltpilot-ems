@@ -97,6 +97,11 @@
             "maximum": 1000,
             "description": "Nennleistung je Stecker, sofern der Betreiber sie kennt. 0/absent = die Box entscheidet aus dem, was die Saeule meldet."
           },
+          "connection": {
+            "type": "string",
+            "enum": ["haus", "eigen"],
+            "description": "WO diese Saeule haengt (Cockpit Phase 1 / C1, Captain-Entscheid E5). `haus` = hinter dem Hausanschluss - der Normalfall und die Vorgabe: ihre Leistung steckt in der Netzmessung der Anlage, das Budget-Gesetz `budget = planbar - (Netzbezug - Ladeleistung)` gilt fuer sie. `eigen` = ein EIGENER Netzanschluss/Zaehler: ihre Leistung steckt NICHT in dieser Messung, sie darf also nicht zurueckaddiert werden - sonst faellt der Rest zu klein aus, das Budget zu gross, und der Hausanschluss koennte ueberschritten werden.\n\nABSENT heisst `haus`. Das ist die PATCH-Semantik des Dokuments UND die sichere Lesart: eine aeltere Cloud sendet das Feld nicht, und eine Box, die daraus `eigen` machte, naehme eine reale Ladeleistung aus ihrer eigenen Bilanz.\n\n⚠ Anders als `label`/`priority` wird es AUCH auf einer schon bekannten Saeule uebernommen: es hat auf der Box gar keine Oberflaeche, es gibt dort also nichts zu schuetzen - und ein Kunde, der den Haken spaeter setzt, erreichte die Box sonst nie."
+          },
           "connectors": {
             "type": "integer",
             "minimum": 0,

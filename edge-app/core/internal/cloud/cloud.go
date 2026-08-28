@@ -755,7 +755,20 @@ type ChargerEntry struct {
 	Note  string `json:"note,omitempty"`
 	// LastSeen is the newest message of ANY kind from this station (RFC 3339);
 	// empty = it has never spoken to this box.
-	LastSeen   string                  `json:"last_seen,omitempty"`
+	LastSeen string `json:"last_seen,omitempty"`
+	// Connection is WHERE this station hangs - "haus" (behind the house
+	// connection) or "eigen" (its own grid connection / meter). Cockpit Phase 1
+	// / C1, additive.
+	//
+	// ⚠ It sits on the STATION, not on each plug - a deliberate deviation from
+	// the concept's wording ("Felder je Stecker"): a charge point has ONE grid
+	// connection, so repeating it per plug would be the same fact stored N
+	// times, and two plugs of one station could then contradict each other.
+	//
+	// ⚠ EMPTY means "an older box said nothing", NOT "haus": only a box that
+	// knows the field reports it, and a cloud that resolved silence to "haus"
+	// would claim a plant is house-side that nobody ever asked about.
+	Connection string                  `json:"connection,omitempty"`
 	Connectors []ChargerConnectorEntry `json:"connectors,omitempty"`
 }
 

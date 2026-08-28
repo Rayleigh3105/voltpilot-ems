@@ -51,5 +51,14 @@ public record ChargingConfigDto(Double gridLimitKw, List<String> priorityChargeP
      * nie 0: die Box entscheidet dann aus dem, was die Säule selbst meldet.
      */
     public record AllowedChargePointDto(String chargePointId, String label, Double ratedKw,
-            Integer connectors, Instant addedAt, String addedBy) {}
+            Integer connectors,
+            /*
+             * connection = WO diese Saeule haengt (Cockpit Phase 1 / C1):
+             * "haus" (hinter dem Hausanschluss) oder "eigen" (eigener
+             * Netzanschluss/Zaehler). null = der Kunde hat nichts gesagt, und
+             * die Box behaelt, was sie hat - NIE "eigen", denn das naehme eine
+             * reale Ladeleistung aus ihrer eigenen Bilanz.
+             */
+            String connection,
+            Instant addedAt, String addedBy) {}
 }

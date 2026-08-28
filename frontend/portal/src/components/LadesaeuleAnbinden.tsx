@@ -8,10 +8,14 @@ import { api, ApiError, type Device } from '../api';
 import {
   ANBINDEN_ALLOWLIST,
   ANBINDEN_EINSTIEG,
+  type ChargerConnection,
   type ChargingConfig,
   type SiteCharging,
 } from '../ladepunkte';
 import {
+  ANSCHLUSS_FRAGE,
+  ANSCHLUSS_HILFE,
+  ANSCHLUSS_OPTIONEN,
   ENDPUNKT_ZWEI_FORMEN,
   ENTFERNEN_HINWEIS,
   KEINE_EINGETRAGEN,
@@ -26,6 +30,9 @@ import {
   meldung,
   schritte,
   cockpitHinweis,
+  anschlussSoll,
+  anschlussWahl,
+  anschlussZumSenden,
 } from '../ladesaeuleAnbinden';
 import { ConfirmDialog } from './ConfirmDialog';
 import './LadesaeuleAnbinden.css';
@@ -58,6 +65,12 @@ export function LadesaeuleAnbinden({
   // ⚠ Die Kennung folgt dem Namen nur, solange NIEMAND sie angefasst hat - ab
   // dem ersten Tastendruck gewinnt der Mensch, immer.
   const [selbstGetippt, setSelbstGetippt] = useState(false);
+  /**
+   * WO die Säule hängt (Cockpit Phase 1 / C1). `null` = der Kunde hat das Paar
+   * noch nicht angefasst; angezeigt wird dann das Gespeicherte, sonst die
+   * Vorgabe (`anschlussWahl`). Erst ein Klick macht daraus eine eigene Wahl.
+   */
+  const [anschluss, setAnschluss] = useState<ChargerConnection | null>(null);
   const [config, setConfig] = useState<ChargingConfig | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [busy, setBusy] = useState(false);
@@ -109,6 +122,10 @@ export function LadesaeuleAnbinden({
   const ziel = endpunkt(device, charging, kennung);
   const steps = schritte(istEingetragen, m.gemeldet);
   const zeilen = eingetrageneZeilen(config?.chargePoints, charging);
+  // Das SOLL dieser Kennung, falls sie schon eingetragen ist - es führt die
+  // Anzeige, solange der Kunde nichts angeklickt hat.
+  const soll = anschlussSoll(config?.chargePoints, kennung);
+  const wahl = anschluss ?? anschlussWahl(soll);
 
   function setzeName(v: string) {
     setName(v);
@@ -122,6 +139,11 @@ export function LadesaeuleAnbinden({
       const c = await api.admitChargePoint(siteId, {
         chargePointId: kennung.trim(),
         label: name.trim() || undefined,
+        // ⚠ Eine unveränderte Wahl sendet NICHTS: das Dokument bliebe
+        // byte-gleich, und ein "haus", das niemand gesagt hat, wäre eine
+        // Aussage über die Bilanz einer Anlage. Beim ERSTEN Eintragen reist
+        // die Wahl dagegen immer mit - der Kunde hat sie gesehen.
+        connection: anschlussZumSenden(wahl, soll),
       });
       setConfig(c);
       onChanged?.();
@@ -200,10 +222,44 @@ export function LadesaeuleAnbinden({
             setKennung(e.target.value);
           }}
         />
+        {/* ⚠ Die Ortsfrage steht VOR dem Eintragen und bleibt danach sichtbar:
+            sie ist eine Tatsache der Anlage, die ein Kunde später korrigieren
+            können muss - anders als `label`/`priority` überschreibt genau
+            dieses Feld auch auf einer schon bekannten Säule (es hat auf der
+            Box gar keine Oberfläche, dort ist also nichts zu schützen). */}
+        <fieldset className="vp-anbinden-choice">
+          <legend>{ANSCHLUSS_FRAGE}</legend>
+          {ANSCHLUSS_OPTIONEN.map((o) => (
+            <label key={o.value} className="vp-anbinden-radio">
+              <input
+                type="radio"
+                name="vp-anbinden-anschluss"
+                value={o.value}
+                checked={wahl === o.value}
+                disabled={busy}
+                onChange={() => setAnschluss(o.value)}
+              />
+              <span>
+                <strong>{o.label}</strong> - {o.satz}
+              </span>
+            </label>
+          ))}
+          <p className="vp-anbinden-hint">{ANSCHLUSS_HILFE}</p>
+        </fieldset>
         {istEingetragen ? (
-          <p className="vp-anbinden-ok">
-            <Icon name="check" /> Eingetragen — VoltPilot lässt diese Kennung ab jetzt herein.
-          </p>
+          <div className="vp-anbinden-actions">
+            <p className="vp-anbinden-ok">
+              <Icon name="check" /> Eingetragen — VoltPilot lässt diese Kennung ab jetzt herein.
+            </p>
+            {/* Ein geänderter Anschluss ist eine echte Änderung an einer schon
+                eingetragenen Kennung - dafür braucht es einen Knopf, sonst
+                verschluckt die Fläche die Wahl, die der Kunde gerade traf. */}
+            {anschlussZumSenden(wahl, soll) !== undefined && (
+              <Button size="sm" disabled={busy} onClick={() => void eintragen()}>
+                {busy ? 'Wird gespeichert …' : 'Anschluss speichern'}
+              </Button>
+            )}
+          </div>
         ) : (
           <div className="vp-anbinden-actions">
             <Button size="sm" disabled={!!mangel || busy} onClick={() => void eintragen()}>
@@ -276,6 +332,15 @@ export function LadesaeuleAnbinden({
                 <span className="vp-anbinden-name">{z.name}</span>
                 <code>{z.kennung}</code>
                 <span className={`vp-anbinden-zustand is-${z.ton}`}>{z.zustand}</span>
+                {/* Der Anschluss steht am SOLL - der Wahl des Kunden. Der
+                    Nachsatz erscheint nur, wenn die Box wirklich etwas
+                    ANDERES meldet; Schweigen ist keine Abweichung. */}
+                <span className="vp-anbinden-anschluss">
+                  {z.anschluss.wort}
+                  {z.anschluss.hinweis && (
+                    <em className="vp-anbinden-anschluss-hint">{z.anschluss.hinweis}</em>
+                  )}
+                </span>
                 {/* Die Rücknahme ist eine ausdrückliche Handlung mit Folgen -
                     deshalb der Haus-Dialog, nie ein Klick, der sofort wirkt. */}
                 <button

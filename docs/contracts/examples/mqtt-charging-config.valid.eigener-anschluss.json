@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "grid_limit_kw": 277,
+  "charge_points": [
+    {
+      "id": "saeule-hof-nord",
+      "label": "Hof Nord",
+      "rated_kw": 22,
+      "connectors": 2,
+      "connection": "haus"
+    },
+    {
+      "id": "saeule-strasse",
+      "label": "Ladepark Strasse",
+      "connection": "eigen"
+    },
+    {
+      "id": "saeule-halle"
+    }
+  ],
+  "published_at": "2026-08-28T09:15:00Z"
+}

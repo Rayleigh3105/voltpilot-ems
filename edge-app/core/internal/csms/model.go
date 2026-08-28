@@ -97,8 +97,43 @@ type Charger struct {
 	// arrives, because the emergency default is divided by the plug count of
 	// the WHOLE site — and a count that is too low makes that default too big.
 	Connectors int       `json:"connectors,omitempty"`
+	// Connection is WHERE this station hangs (Cockpit Phase 1 / C1, Captain
+	// decision E5): ConnectionHaus (behind the house connection - the normal
+	// case) or ConnectionEigen (its own grid connection / meter).
+	//
+	// ⚠ EMPTY means Haus. It is the PATCH semantics of the retained document
+	// and the SAFE reading in one: an older cloud sends no such field, and
+	// reading that as "eigen" would take a real charging load out of the box's
+	// own balance. Ask through ConnectionOrHaus()/OwnConnection(), never
+	// compare the raw string.
+	Connection string    `json:"connection,omitempty"`
 	AddedAt    time.Time `json:"added_at"`
 }
+
+// The two places a charge point can hang (contract mqtt-charging-config).
+const (
+	ConnectionHaus  = "haus"
+	ConnectionEigen = "eigen"
+)
+
+// KnownConnection reports whether s is part of the connection vocabulary.
+// Empty is NOT a member - it is the ABSENCE of a statement, which the readers
+// resolve to Haus.
+func KnownConnection(s string) bool {
+	return s == ConnectionHaus || s == ConnectionEigen
+}
+
+// ConnectionOrHaus resolves the stored value: absent = behind the house.
+func (c Charger) ConnectionOrHaus() string {
+	if c.Connection == ConnectionEigen {
+		return ConnectionEigen
+	}
+	return ConnectionHaus
+}
+
+// OwnConnection reports whether this station hangs on its OWN grid connection,
+// so its power is NOT inside the site's grid measurement.
+func (c Charger) OwnConnection() bool { return c.Connection == ConnectionEigen }
 
 // Session is one running transaction on one connector.
 type Session struct {
@@ -284,6 +319,10 @@ func (c ChargerState) ActiveConnectors() []Connector {
 //     whole number INCOMPLETE. Guessing its draw (or calling it zero) is what
 //     turns the budget loop into an oscillator; the caller's staged fallback is
 //     stable and honest instead.
+//   - A station on its OWN grid connection is SKIPPED entirely (C1): its power
+//     never entered the site's grid measurement, so adding it back would
+//     inflate the budget. Absent/"haus" - i.e. every plant before C1 - counts
+//     exactly as before.
 //
 // A negative measured power is clamped to 0 — a charge point does not export,
 // and letting a bogus negative INFLATE the add-back would loosen the budget.
@@ -291,6 +330,15 @@ func (s Snapshot) ChargingTotal(now time.Time, maxAge time.Duration) (kw float64
 	complete = true
 	for _, c := range s.Chargers {
 		if !c.Connected {
+			continue
+		}
+		// ⚠ Cockpit Phase 1 / C1: a station on its OWN grid connection is NOT
+		// inside this site's grid measurement, so it must not be added back.
+		// The caller's law is `rest = grid - charging`; counting it here would
+		// make the remainder too SMALL, the budget too LARGE, and the HOUSE
+		// connection could be exceeded by exactly this station's power. It also
+		// cannot make the number incomplete - there is nothing of it to miss.
+		if c.OwnConnection() {
 			continue
 		}
 		for _, con := range c.ActiveConnectors() {

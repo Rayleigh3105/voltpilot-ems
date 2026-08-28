@@ -138,6 +138,72 @@
   color: var(--vp-text-muted, #64748b);
 }
 
+/* WO die Säule hängt (Cockpit Phase 1 / C1).
+ *
+ * ⚠ Eine EIGENE Zeile (`flex-basis: 100%`), nicht ein weiterer Chip in der
+ * Kopfzeile: die Zeile ist `flex-wrap` mit `margin-left:auto` am Zustand, ein
+ * vierter Baustein dort schöbe die Kennung auf dem Telefon aus dem Blick.
+ */
+.vp-anbinden-anschluss {
+  flex-basis: 100%;
+  min-width: 0;
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-anbinden-anschluss-hint {
+  font-style: normal;
+  color: var(--vp-warn-ink, #92400e);
+  overflow-wrap: anywhere;
+}
+
+/* Die Ortsfrage in Schritt 1 - dasselbe Muster wie die Ladepark-Kapsel. */
+.vp-anbinden-choice {
+  margin: 0.75rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 12px);
+  min-width: 0;
+}
+
+.vp-anbinden-choice legend {
+  padding: 0 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.vp-anbinden-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  font-size: 0.85rem;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.vp-anbinden-radio input {
+  /* >=20 px sichtbar; die Trefferfläche ist das ganze Label, das über zwei
+     Zeilen läuft und damit weit über 44 px hoch ist. */
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.1rem;
+  flex: 0 0 auto;
+}
+
+.vp-anbinden-radio span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-anbinden-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #64748b);
+}
+
 /* Die Rücknahme einer Kennung.
  *
  * ⚠ 26 px SICHTBAR mit einer >=44-px-Trefferfläche über `::before` (das

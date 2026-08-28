@@ -86,6 +86,14 @@ public class ChargerStatusListener {
 
     private static final Set<String> SURPLUS_MODES = Set.of("aus", "gemessen", "nicht_belegbar");
 
+    /**
+     * WO eine Säule hängt (Cockpit Phase 1 / C1). Wie jedes andere Vokabular
+     * hier GESCHLOSSEN: ein Wort, das wir nicht verstehen, wird verworfen statt
+     * gespeichert - die Säule bleibt dann bei „nicht gemeldet", was ehrlich
+     * ist, statt eine Bilanz-Aussage zu bekommen, die niemand getroffen hat.
+     */
+    private static final Set<String> CONNECTIONS = Set.of("haus", "eigen");
+
     private final String brokerUrl;
     private final String username;
     private final String password;
@@ -230,7 +238,8 @@ public class ChargerStatusListener {
                     c.path("priority").asBoolean(false), c.path("connected").asBoolean(false),
                     textOrNull(c, "vendor"), textOrNull(c, "model"), textOrNull(c, "firmware"),
                     c.path("ready").asBoolean(false), textOrNull(c, "note"),
-                    optInstant(c, "last_seen"), connectors(c.get("connectors"))));
+                    optInstant(c, "last_seen"), vocabulary(c, "connection", CONNECTIONS),
+                    connectors(c.get("connectors"))));
         }
         TenantContext.set(tenantId);
         try {

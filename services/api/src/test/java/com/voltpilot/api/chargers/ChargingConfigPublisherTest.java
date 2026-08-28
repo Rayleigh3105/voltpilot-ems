@@ -58,7 +58,13 @@ class ChargingConfigPublisherTest {
     /** Eine eingetragene Saeule, so wie die Repository sie liefert. */
     private static AllowedChargePointDto cp(String id, String label, Double ratedKw,
             Integer connectors) {
-        return new AllowedChargePointDto(id, label, ratedKw, connectors, AT, "wer-auch-immer");
+        return cp(id, label, ratedKw, connectors, null);
+    }
+
+    private static AllowedChargePointDto cp(String id, String label, Double ratedKw,
+            Integer connectors, String connection) {
+        return new AllowedChargePointDto(id, label, ratedKw, connectors, connection, AT,
+                "wer-auch-immer");
     }
 
     @Test
@@ -245,6 +251,42 @@ class ChargingConfigPublisherTest {
                 DEVICE, 277.0, null, null, null,
                 List.of(cp("saeule-hof-nord", "Hof Nord", null, null)), List.of("saeule-halle"),
                 Instant.parse("2026-08-24T10:05:00Z")), StandardCharsets.UTF_8));
+        assertThat(actual).isEqualTo(expected);
+    }
+
+    /**
+     * Cockpit Phase 1 / C1: WO eine Säule hängt reist im BESTEHENDEN Dokument
+     * mit - und NUR, wenn der Kunde es wirklich gesagt hat.
+     *
+     * <p>⚠ Ein hier eingesetztes {@code "haus"} wäre eine Aussage über die
+     * Bilanz einer Anlage, die niemand getroffen hat - und würde auf der Box
+     * eine schon als {@code "eigen"} geführte Säule zurückdrehen.
+     */
+    @Test
+    void theConnectionTravelsOnlyWhenTheCustomerSaidIt() throws Exception {
+        JsonNode d = doc(null, null, null, null, List.of(
+                cp("haus-1", null, null, null, "haus"),
+                cp("eigen-1", null, null, null, "eigen"),
+                cp("stumm-1", null, null, null, null)));
+        JsonNode list = d.get("charge_points");
+        assertThat(list.get(0).get("connection").asText()).isEqualTo("haus");
+        assertThat(list.get(1).get("connection").asText()).isEqualTo("eigen");
+        assertThat(list.get(2).has("connection")).isFalse();
+        assertThat(list.get(2).fieldNames()).toIterable().containsExactly("id");
+    }
+
+    /** Die Fixture des eigenen Anschlusses, Feld für Feld - per PFAD gelesen. */
+    @Test
+    void theOwnConnectionDocumentMatchesTheContractFixture() throws Exception {
+        Path fixture = Path.of("..", "..", "docs", "contracts", "examples",
+                "mqtt-charging-config.valid.eigener-anschluss.json");
+        JsonNode expected = json.readTree(Files.readString(fixture));
+        JsonNode actual = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
+                DEVICE, 277.0, null, null, null,
+                List.of(cp("saeule-hof-nord", "Hof Nord", 22.0, 2, "haus"),
+                        cp("saeule-strasse", "Ladepark Strasse", null, null, "eigen"),
+                        cp("saeule-halle", null, null, null, null)),
+                null, Instant.parse("2026-08-28T09:15:00Z")), StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
     }
 }

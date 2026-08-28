@@ -10495,6 +10495,7 @@ components:
         label: { type: string, nullable: true, description: "Der Name, unter dem der Kunde sie wiedererkennt; null = die Box nimmt die Kennung." }
         ratedKw: { type: number, nullable: true, description: "Nennleistung je Stecker; null = unbekannt." }
         connectors: { type: integer, nullable: true, description: "Erklärte Steckerzahl; null = unbekannt." }
+        connection: { type: string, nullable: true, enum: [haus, eigen], description: "WO die Säule hängt (Cockpit Phase 1 / C1) - das SOLL des Kunden: \"haus\" = hinter dem Hausanschluss (ihre Leistung steckt in der Netzmessung der Anlage, das Budget-Gesetz der Box gilt für sie), \"eigen\" = eigener Netzanschluss/Zähler. null = der Kunde hat nichts gesagt und die Box behält, was sie hat - NIE \"eigen\", denn das nähme eine reale Ladeleistung aus ihrer Bilanz." }
         addedAt: { type: string, format: date-time, nullable: true }
         addedBy: { type: string, nullable: true, description: "Wer sie eingetragen hat (JWT-Subject)." }
     SiteCharging:
@@ -10564,6 +10565,7 @@ components:
         ready: { type: boolean, description: "Die zwei dauerhaften Schutzprofile sind hinterlegt." }
         note: { type: string, nullable: true, description: "Warum nicht bereit - nie ein unerklärtes Nein." }
         lastSeen: { type: string, format: date-time, nullable: true }
+        connection: { type: string, nullable: true, enum: [haus, eigen], description: "WO die Säule laut BOX hängt (Cockpit Phase 1 / C1) - das IST. null = eine ältere Box meldet es nicht; das ist weder \"haus\" noch \"eigen\", denn erst eine Meldung belegt, dass die Unterscheidung dort angekommen ist. Was der KUNDE gewählt hat, steht in der Allowlist (charging-config) - Soll und Ist sind zwei Aussagen." }
         entityId: { type: string, format: uuid, nullable: true, description: "Die Komponente, die die Plattform für diese Säule komponiert hat." }
         reportedAt: { type: string, format: date-time }
         connectors:

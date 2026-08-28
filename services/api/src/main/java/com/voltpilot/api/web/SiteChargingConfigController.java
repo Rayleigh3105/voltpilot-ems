@@ -61,7 +61,15 @@ public class SiteChargingConfigController {
      * Weitere ist das, was der Betreiber zufällig schon weiß.
      */
     public record AdmitChargePointRequest(@NotBlank @Size(max = 64) String chargePointId,
-            @Size(max = 120) String label, Double ratedKw, Integer connectors) {}
+            @Size(max = 120) String label, Double ratedKw, Integer connectors,
+            /*
+             * connection = WO die Saeule haengt (Cockpit Phase 1 / C1):
+             * "haus" (hinter dem Hausanschluss, die Vorgabe des Dialogs) oder
+             * "eigen" (eigener Netzanschluss/Zaehler). null = dazu wird nichts
+             * gesagt; ein unbekanntes Wort ist eine BENANNTE Ablehnung, nie ein
+             * stiller Rueckfall - siehe ChargingConfigService.admit.
+             */
+            @Size(max = 16) String connection) {}
 
     private final ChargingConfigService service;
 
@@ -96,7 +104,8 @@ public class SiteChargingConfigController {
             @Valid @RequestBody AdmitChargePointRequest req,
             @AuthenticationPrincipal Jwt caller) {
         return service.admit(siteId, req.chargePointId(), req.label(), req.ratedKw(),
-                req.connectors(), caller == null ? "unbekannt" : caller.getSubject());
+                req.connectors(), req.connection(),
+                caller == null ? "unbekannt" : caller.getSubject());
     }
 
     /**
