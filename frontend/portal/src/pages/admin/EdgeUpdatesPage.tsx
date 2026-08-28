@@ -18,6 +18,7 @@ import {
   blockerLever,
   candidates,
   crossoverHint,
+  currentRolloutViews,
   eventLabel,
   freshnessLabel,
   loudBanner,
@@ -156,12 +157,20 @@ export function EdgeUpdatesPage({
 
   const banner = useMemo(() => loudBanner(data?.fleet ?? []), [data]);
   const journal = useMemo(() => visibleJournal(data?.journal ?? []), [data]);
-  const resting = restingLine(data);
   // Der ruhige TOFU-Hinweis über der Flotte. Er zählt nur BELEGT offene
   // Crossover; ein Gerät, das nichts meldet, wird getrennt genannt - aus
   // „unbekannt" lässt sich keine Aufgabe ableiten.
   const crossover = useMemo(() => crossoverHint(data?.fleet ?? []), [data]);
-  const rollouts = data?.rollouts ?? [];
+  // `data.rollouts` enthält bewusst auch jüngere Historie. Live-Zustände
+  // gehören aber nur zu der Zuweisung, die das Gerät HEUTE besitzt; sonst
+  // würde ein `.26`-Download auch in der alten `.25`-Karte als „lädt" stehen.
+  const rollouts = useMemo(
+    () => currentRolloutViews(data?.rollouts ?? [], data?.fleet ?? []),
+    [data],
+  );
+  // Der Ruhezustand richtet sich ebenfalls nach den AKTUELLEN Karten, nicht
+  // nach der im Aggregat mitreisenden Rollout-Historie.
+  const resting = restingLine(data ? { ...data, rollouts } : null);
 
   return (
     <>
@@ -286,9 +295,10 @@ export function EdgeUpdatesPage({
           </Card>
 
           {/* ── 2. Laufende Aktualisierungen ────────────────────────────── */}
-          {/* Ohne Aktualisierung gibt es die Karte GAR NICHT: die ruhige Zeile
-              oben sagt dasselbe in einem Satz. Mehrere dürfen nebeneinander
-              stehen - die Zuweisung JE GERÄT ist die Wahrheit. */}
+          {/* Ohne aktuelle Zuweisung gibt es die Karte GAR NICHT: ältere
+              Aufträge bleiben im Verlauf, übernehmen aber nie den Live-Status
+              eines neueren Releases. Parallele aktuelle Zuweisungen dürfen
+              weiter nebeneinander stehen. */}
           {rollouts.map((r) => (
             <RolloutCard
               key={r.id}
@@ -467,7 +477,6 @@ function RolloutCard({
               key={d.deviceId}
               device={d}
               row={live.get(d.deviceId) ?? null}
-              rolloutRelease={rollout.releaseVersion}
               onOpen={onOpenDevice}
             />
           ))}
@@ -487,23 +496,16 @@ function RolloutCard({
 function RolloutDeviceRow({
   device,
   row,
-  rolloutRelease,
   onOpen,
 }: {
   device: RolloutDevice;
   row: FleetRow | null;
-  /** Das Release DIESER Aktualisierung - der Kopf der Karte nennt es einmal. */
-  rolloutRelease: string;
   onOpen: (deviceId: string) => void;
 }) {
   const name = rolloutDeviceName(device);
   const state = row?.state ?? device.state;
   const reason = row?.reason ?? device.reason;
   const lever = blockerLever(row?.blocker);
-  // Das Soll steht nur dort, wo es vom Kopf der Karte ABWEICHT: dieses Gerät
-  // hat inzwischen eine NEUERE Zuweisung bekommen, und dann wäre der Kopf für
-  // genau diese Zeile eine Falschaussage.
-  const otherSoll = row?.soll && row.soll !== rolloutRelease ? row.soll : null;
   return (
     <tr>
       <td data-label="Anlage">
@@ -520,11 +522,6 @@ function RolloutDeviceRow({
       </td>
       <td data-label="Ist">
         {row?.ist ?? '–'}
-        {otherSoll && (
-          <div className="vp-muted vp-text-sm" data-testid="other-soll">
-            inzwischen zugewiesen: {otherSoll}
-          </div>
-        )}
       </td>
       <td data-label="Zustand"><StateChip state={state} /></td>
       {/* Jede nicht-grüne Zeile trägt ihren Grund. Der HEBEL kommt aus dem

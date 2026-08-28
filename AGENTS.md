@@ -354,10 +354,13 @@ EINE Fläche (`pages/admin/EdgeUpdatesPage.tsx` über der reinen
 `src/adminEdgeUpdates.ts`): Releases-Tabelle → je signiertem Release
 „Aktualisieren ▸" → Drawer mit „Alle Geräte" + Checkbox je Gerät (jedes trägt
 seinen ZUSTAND und ggf. einen **Einwand als HINWEIS, nie als Sperre**) →
-Zusammenfassung „Das passiert jetzt" → **Aktualisieren**. Darunter je laufender
-Aktualisierung eine Karte mit Fortschritts-Rückgrat (über die ERREICHBARE Menge;
+Zusammenfassung „Das passiert jetzt" → **Aktualisieren**. Darunter je AKTUELLER
+Zuweisung eine Karte mit Fortschritts-Rückgrat (über die ERREICHBARE Menge;
 offline/unbekannt stehen DANEBEN, nie im Nenner) und einer Zeile je Gerät
-(Ist · Zustand · Grund · Hebel). Der geteilte `GeraeteDrawer` weist ein
+(Ist · Zustand · Grund · Hebel). `currentRolloutViews` verbindet dafür
+`FleetRow.rolloutId` + `sollSeq` mit der Karte: der Live-Zustand einer neueren
+Zuweisung erscheint NIE unter dem Release-Kopf eines älteren Rollouts; dessen
+Mitgliedschaft bleibt ausschließlich im Journal. Der geteilte `GeraeteDrawer` weist ein
 Einzelgerät zu (`onAssign(releaseSeq)` — kein Kanal, kein Pin). Es gibt
 **nirgends** einen zweiten Knopf; die Vier-Klassen-Grammatik ist auf `busy`
 (läuft von selbst, pulsiert) · `blocked` · `incident` · `calm` geschrumpft, die

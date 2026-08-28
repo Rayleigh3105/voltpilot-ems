@@ -58,10 +58,10 @@ const data = (over: Partial<EdgeUpdates> = {}): EdgeUpdates => ({
     {
       deviceId: 'd2', label: 'edge-b2', externalRef: 'edge-b2', siteId: 's2',
       siteName: 'Auernheim', tenantId: 't1',
-      tenantName: 'Kunde A', ist: null, soll: null, sollSeq: null,
+      tenantName: 'Kunde A', ist: null, soll: 'edge-2026.08.0', sollSeq: 12,
       state: 'unbekannt',
       reason: 'Dieses Gerät hat noch keinen Software-Stand gemeldet.',
-      since: null, reportedAt: null, rolloutId: null,
+      since: null, reportedAt: null, rolloutId: 'r1',
     },
   ],
   journal: [
@@ -143,20 +143,25 @@ describe('EdgeUpdatesPage', () => {
     expect(row).not.toHaveTextContent('veraltet');
   });
 
-  it('nennt eine INZWISCHEN abweichende Zuweisung an der Zeile', async () => {
-    // Der Kopf der Karte nennt das Release DIESER Aktualisierung. Hat ein Gerät
-    // danach ein anderes bekommen, wäre der Kopf für genau diese Zeile eine
-    // Falschaussage - also steht das echte Soll daneben.
+  it('zeigt einen Live-Status nur unter dem aktuell zugewiesenen Release', async () => {
+    // Regression 28.08.2026: der `.26`-Live-Status darf NICHT auch in der
+    // historischen `.25`-Karte als „lädt" auftauchen. Nur die Karte der
+    // aktuellen Zuweisung bleibt; der alte Auftrag lebt im Verlauf weiter.
     const d = data();
-    d.fleet[1].soll = 'edge-2026.08.1';
+    d.rollouts.push({
+      ...d.rollouts[0],
+      id: 'r-old',
+      releaseVersion: 'edge-2026.07.2',
+      releaseSeq: 11,
+      createdAt: '2026-07-20T08:00:00Z',
+      devices: d.rollouts[0].devices.map((device) => ({ ...device, state: 'laedt' })),
+    });
     edgeUpdates.mockResolvedValue(d);
     render(<EdgeUpdatesPage />);
-    const devices = await screen.findByTestId('rollout-devices');
-    const row = within(devices).getByText('Auernheim').closest('tr')! as HTMLElement;
-    expect(within(row).getByTestId('other-soll')).toHaveTextContent('edge-2026.08.1');
-    // Das Gerät auf demselben Stand trägt die Zeile NICHT.
-    const same = within(devices).getByText('Pilsting').closest('tr')! as HTMLElement;
-    expect(within(same).queryByTestId('other-soll')).toBeNull();
+    const cards = await screen.findAllByTestId('rollout-card');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toHaveTextContent('edge-2026.08.0');
+    expect(cards[0]).not.toHaveTextContent('edge-2026.07.2');
   });
 
   it('nennt den HEBEL einer stehenden Sperre, statt nur ihren Satz', async () => {
@@ -171,7 +176,7 @@ describe('EdgeUpdatesPage', () => {
     expect(row).toHaveTextContent('Hebel:');
   });
 
-  it('rendert in der Geräte-Liste NIE eine UUID', async () => {
+  it('rendert eine historische Mitgliedschaft nicht als heutigen Geräte-Status', async () => {
     const d = data();
     d.rollouts[0].devices[1] = {
       deviceId: '7a1f0c2e-1111-2222-3333-444455556666', label: null, siteName: null,
@@ -182,7 +187,7 @@ describe('EdgeUpdatesPage', () => {
     render(<EdgeUpdatesPage />);
     const devices = await screen.findByTestId('rollout-devices');
     expect(devices).not.toHaveTextContent('7a1f0c2e-1111');
-    expect(devices).toHaveTextContent('Entferntes Gerät');
+    expect(devices).not.toHaveTextContent('Entferntes Gerät');
   });
 
   it('blendet das Zustands-Protokoll aus dem Verlauf aus', async () => {
@@ -274,6 +279,23 @@ describe('EdgeUpdatesPage', () => {
     const line = await screen.findByTestId('resting-line');
     expect(line).toHaveTextContent('1/1 Geräte auf edge-2026.08.0');
     expect(line).toHaveTextContent('unbekannt, nicht veraltet');
+    expect(screen.queryByTestId('rollout-card')).toBeNull();
+  });
+
+  it('behandelt reine Rollout-Historie als Ruhezustand', async () => {
+    const d = data();
+    d.fleet = d.fleet.map((device) => ({
+      ...device,
+      soll: null,
+      sollSeq: null,
+      rolloutId: null,
+    }));
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+
+    expect(await screen.findByTestId('resting-line')).toHaveTextContent(
+      'Gerade wird nichts aktualisiert',
+    );
     expect(screen.queryByTestId('rollout-card')).toBeNull();
   });
 

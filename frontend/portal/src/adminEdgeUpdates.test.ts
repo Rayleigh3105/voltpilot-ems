@@ -6,6 +6,7 @@ import {
   candidates,
   crossoverHint,
   crossoverState,
+  currentRolloutViews,
   eventLabel,
   freshnessLabel,
   isLoud,
@@ -435,6 +436,49 @@ describe('Fortschritts-Rückgrat', () => {
 
   it('gibt es ohne Aktualisierung gar nicht', () => {
     expect(progressBackbone(null, [])).toBeNull();
+  });
+});
+
+describe('Aktuelle Aktualisierungs-Karten', () => {
+  it('zeigt den Live-Status nur beim aktuell zugewiesenen Release', () => {
+    const current = rolloutOf({
+      id: 'r26',
+      releaseVersion: 'edge-2026.08.26',
+      releaseSeq: 26,
+      devices: [rolloutDev({ deviceId: 'd1', state: 'laedt' })],
+    });
+    const previous = rolloutOf({
+      id: 'r25',
+      releaseVersion: 'edge-2026.08.25',
+      releaseSeq: 25,
+      devices: [rolloutDev({ deviceId: 'd1', state: 'laedt' })],
+    });
+
+    const views = currentRolloutViews([current, previous], [row({
+      deviceId: 'd1',
+      soll: 'edge-2026.08.26',
+      sollSeq: 26,
+      rolloutId: 'r26',
+      state: 'laedt',
+    })]);
+
+    expect(views.map((view) => view.releaseVersion)).toEqual(['edge-2026.08.26']);
+  });
+
+  it('behält parallele aktuelle Releases für verschiedene Geräte sichtbar', () => {
+    const first = rolloutOf({
+      id: 'r1', releaseSeq: 26,
+      devices: [rolloutDev({ deviceId: 'd1' })],
+    });
+    const second = rolloutOf({
+      id: 'r2', releaseSeq: 25,
+      devices: [rolloutDev({ deviceId: 'd2' })],
+    });
+
+    expect(currentRolloutViews([first, second], [
+      row({ deviceId: 'd1', sollSeq: 26, rolloutId: 'r1' }),
+      row({ deviceId: 'd2', sollSeq: 25, rolloutId: 'r2' }),
+    ])).toHaveLength(2);
   });
 });
 

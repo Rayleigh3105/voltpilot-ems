@@ -572,6 +572,29 @@ export interface ProgressView {
   asideNote: string | null;
 }
 
+/**
+ * Die Aktualisierungen, die HEUTE noch eine Zuweisung besitzen.
+ *
+ * `rollouts` ist absichtlich ein Verlauf der jüngsten Aufträge. Der
+ * Flotten-Zustand dagegen beantwortet ausschließlich die aktuelle Zuweisung
+ * eines Geräts. Ohne diesen Join würde ein Gerät, das inzwischen `.26` lädt,
+ * denselben Live-Zustand auch in seiner alten `.25`-Karte zeigen.
+ *
+ * Mehrere parallele Aktualisierungen bleiben sichtbar, solange jede davon
+ * noch mindestens ein eigenes Gerät besitzt. Historische Mitgliedschaften
+ * verschwinden nur aus den LIVE-Karten; das Audit-Journal bleibt unberührt.
+ */
+export function currentRolloutViews(rollouts: Rollout[], fleet: FleetRow[]): Rollout[] {
+  const current = new Map(fleet.map((row) => [row.deviceId, row]));
+  return rollouts.flatMap((rollout) => {
+    const devices = rollout.devices.filter((device) => {
+      const row = current.get(device.deviceId);
+      return row?.rolloutId === rollout.id && row.sollSeq === rollout.releaseSeq;
+    });
+    return devices.length > 0 ? [{ ...rollout, devices, total: devices.length }] : [];
+  });
+}
+
 const PROGRESS_ORDER: { cls: StateClass; label: string }[] = [
   { cls: 'calm', label: 'bestätigt' },
   { cls: 'busy', label: 'im Gang' },
