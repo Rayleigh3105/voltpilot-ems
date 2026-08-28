@@ -330,4 +330,64 @@ describe('AdaptiveEnergyFlow · der Knoten „Laden" (Konzept vp-verbraucher-coc
     );
     expect(screen.queryByRole('button', { name: /Laden/ })).toBeNull();
   });
+
+  // -------------------------------------------------------------------------
+  // Cockpit Phase 1 / C2 · der Kreis „Laden (eigener Anschluss)"
+  // -------------------------------------------------------------------------
+
+  const EIGEN = { kw: 4, wort: 'lädt', aktiv: true, count: 1 };
+  const flow = (extra: Record<string, unknown>) =>
+    render(
+      <AdaptiveEnergyFlow
+        topology={MIT_HAUS}
+        sources={MULTI_SOURCES}
+        pins={MULTI_PINS}
+        {...extra}
+      />,
+    ).container.querySelector('svg')!.outerHTML;
+
+  // ⚠ Der Wächter über den Bestand: das GANZE svg, Zeichen für Zeichen.
+  it('⚠ ohne eigenen Anschluss ist das svg ZEICHENGLEICH zu vorher', () => {
+    const ohne = flow({ charging: LADEND });
+    expect(flow({ charging: LADEND, chargingOwn: null })).toBe(ohne);
+    expect(flow({ charging: LADEND, chargingOwn: undefined })).toBe(ohne);
+    // ... und der Vergleich ist nicht vakuum: MIT Knoten schlägt er an.
+    expect(flow({ charging: LADEND, chargingOwn: EIGEN })).not.toBe(ohne);
+  });
+
+  it('zeichnet ihn als eigenen Kreis mit seinem Namen', () => {
+    render(
+      <AdaptiveEnergyFlow
+        topology={MIT_HAUS}
+        sources={MULTI_SOURCES}
+        pins={MULTI_PINS}
+        charging={LADEND}
+        chargingOwn={EIGEN}
+      />,
+    );
+    expect(screen.getByText('Laden (eigener')).toBeInTheDocument();
+    expect(screen.getByText(/4,0/)).toBeInTheDocument();
+  });
+
+  // ⚠ Der Abzweig endet am HAUS, der eigene Anschluss am HUB - genau daran
+  // hängt die Aussage „die Haus-Summe enthält ihn nicht".
+  it('hängt am Hub, während der Abzweig am Haus endet', () => {
+    const { container } = render(
+      <AdaptiveEnergyFlow
+        topology={MIT_HAUS}
+        sources={MULTI_SOURCES}
+        pins={MULTI_PINS}
+        charging={LADEND}
+        chargingOwn={EIGEN}
+      />,
+    );
+    const svg = container.querySelector('svg')!;
+    const hubY = svg.querySelector('circle')!.getAttribute('cy');
+    // ⚠ Nur die GRUNDspeichen zählen: die Icons zeichnen ihrerseits `<line>`.
+    const grund = Array.from(svg.querySelectorAll('line')).filter(
+      (l) => l.getAttribute('stroke') === 'var(--vp-flow-base)',
+    );
+    // Genau EINE Speiche endet abseits des Hubs: die des Abzweigs.
+    expect(grund.filter((l) => l.getAttribute('y2') !== hubY)).toHaveLength(1);
+  });
 });

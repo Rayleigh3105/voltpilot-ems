@@ -251,6 +251,42 @@ export function flussKnoten(view: LadenKachel | null | undefined): ChargingNodeO
  * Aktive zuerst nach Leistung, danach die eingesteckten, dann die freien und
  * zuletzt die getrennten - die Reihenfolge der Aufmerksamkeit.
  */
+/**
+ * Die BEIDEN Lade-Kreise des Flussbildes (Cockpit Phase 1 / C2), getrennt nach
+ * Anschlusspunkt:
+ *
+ *  * `haus` = die Säulen HINTER dem Hausanschluss - ihre Kilowatt stecken schon
+ *    in der gemessenen Hauslast, ihr Kreis ist ein Abzweig VOM Haus.
+ *  * `eigen` = die Säulen an einem EIGENEN Netzanschluss - sie stecken NICHT in
+ *    dieser Messung, ihr Kreis hängt am Hub neben dem Haus.
+ *
+ * ⚠ Geschlüsselt wird auf `ChargePoint.connection`, den IST der BOX - dieselbe
+ * Quelle, aus der der Server die Topologie-Rolle auflöst. `null` heisst „eine
+ * ältere Box meldet es nicht" und wird als `haus` gelesen: die sichere
+ * Richtung, denn genau so rechnet auch das Budget-Gesetz der Box.
+ *
+ * ⚠ Beide Hälften laufen durch DIESELBE {@link ladenKachel}-Ableitung, die auch
+ * die Kachel rendert - ein zweiter Rechenweg für dieselben Kreise wäre die
+ * Stelle, an der Kachel und Diagramm sich widersprechen könnten. Ohne einen
+ * einzigen Ladepunkt sind beide `null` und das Diagramm ist zeichengleich zu
+ * vorher.
+ */
+export function ladeFlussKnoten(charging: SiteCharging | null | undefined): {
+  haus: ChargingNodeOpts | null;
+  eigen: ChargingNodeOpts | null;
+} {
+  const chargers = charging?.chargers ?? [];
+  if (chargers.length === 0) return { haus: null, eigen: null };
+  const teil = (list: ChargePoint[]): ChargingNodeOpts | null =>
+    list.length === 0
+      ? null
+      : flussKnoten(ladenKachel({ charging: { budget: charging?.budget ?? null, chargers: list } }));
+  return {
+    haus: teil(chargers.filter((c) => c.connection !== 'eigen')),
+    eigen: teil(chargers.filter((c) => c.connection === 'eigen')),
+  };
+}
+
 function sortiere(zeilen: LadenZeile[]): LadenZeile[] {
   const rang = (z: LadenZeile) =>
     LAEDT.has(z.kind) ? 0 : z.kind === 'getrennt' ? 3 : STECKT.has(z.kind) ? 1 : 2;

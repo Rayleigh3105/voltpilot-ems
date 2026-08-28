@@ -7,7 +7,12 @@
     "(the jcs-vectors.json precedent). Each case: input.entities carry already-",
     "RESOLVED capability roles + live values; expected is the derived topology.",
     "The Go and TS outputs are byte-identical; the Java output is the same",
-    "structure. See topology-read-model.md."
+    "structure. See topology-read-model.md.",
+    "",
+    "default_role_cases pin the MAPPING itself (entity type + category + channel",
+    "+ charge-point connection -> role), which the derive cases cannot: they",
+    "carry roles that are ALREADY resolved. That mapping is where the three",
+    "twins drift most easily, so it gets its own vectors (Cockpit Phase 1 / C2)."
   ],
   "schema_version": "1.0",
   "cases": [
@@ -203,6 +208,183 @@
           }
         ]
       }
+    },
+    {
+      "name": "charging-behind-house",
+      "note": "C2: a charge point behind the house connection is its OWN node. Its kW are already inside the measured house load, so the house node must not sum them a second time - the house value stays 'everything behind the connection point' and the branch says how much of it goes into the car.",
+      "input": {
+        "entities": [
+          {
+            "id": "H", "type": "house-load", "label": "Hausverbrauch", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": true, "value": 4.2 }
+            ]
+          },
+          {
+            "id": "W", "type": "wallbox", "label": "Wallbox Garage", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "charging", "primary": true, "value": 11 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "consumer", "value_kw": 4.2, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "H", "label": "Hausverbrauch", "primary": true, "value_kw": 4.2 }
+            ]
+          },
+          {
+            "role": "charging", "value_kw": 11, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "W", "label": "Wallbox Garage", "primary": true, "value_kw": 11 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "charging-own-connection",
+      "note": "C2: a station on its OWN grid connection is not inside the house measurement - its node hangs at the hub NEXT TO the house, and the house never contains it.",
+      "input": {
+        "entities": [
+          {
+            "id": "H", "type": "house-load", "label": "Hausverbrauch", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": true, "value": 4.2 }
+            ]
+          },
+          {
+            "id": "C", "type": "ev-charger", "label": "Ladepark Hof", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "charging-own", "primary": true, "value": 22 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "consumer", "value_kw": 4.2, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "H", "label": "Hausverbrauch", "primary": true, "value_kw": 4.2 }
+            ]
+          },
+          {
+            "role": "charging-own", "value_kw": 22, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "C", "label": "Ladepark Hof", "primary": true, "value_kw": 22 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "charging-mixed-two-connection-points",
+      "note": "Both kinds on one site: TWO nodes, never one sum. The two totals are measured at two DIFFERENT connection points, so adding them would be one number with two meanings.",
+      "input": {
+        "entities": [
+          {
+            "id": "H", "type": "house-load", "label": "Hausverbrauch", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": true, "value": 4.2 }
+            ]
+          },
+          {
+            "id": "W", "type": "wallbox", "label": "Wallbox Garage", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "charging", "primary": true, "value": 11 }
+            ]
+          },
+          {
+            "id": "C", "type": "ev-charger", "label": "Ladepark Hof", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "charging-own", "primary": true, "value": 22 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "consumer", "value_kw": 4.2, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "H", "label": "Hausverbrauch", "primary": true, "value_kw": 4.2 }
+            ]
+          },
+          {
+            "role": "charging", "value_kw": 11, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "W", "label": "Wallbox Garage", "primary": true, "value_kw": 11 }
+            ]
+          },
+          {
+            "role": "charging-own", "value_kw": 22, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "C", "label": "Ladepark Hof", "primary": true, "value_kw": 22 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "charging-idle-and-unmeasured",
+      "note": "A plugged-in car taking nothing is a MEASURED 0 (below the deadband, so no flow); a station that never metered contributes no value at all - it stays a member, but the sum is the measured one, never a fabricated 0.",
+      "input": {
+        "entities": [
+          {
+            "id": "W0", "type": "wallbox", "label": "Wallbox Garage", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "charging", "primary": true, "value": 0 }
+            ]
+          },
+          {
+            "id": "W2", "type": "wallbox", "label": "Wallbox Hof", "category": "consumer", "health": "never",
+            "capabilities": [
+              { "channel": "power_kw", "role": "charging", "primary": false, "value": null }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "charging", "value_kw": 0, "flow_active": false,
+            "members": [
+              { "entity_id": "W0", "label": "Wallbox Garage", "primary": true, "value_kw": 0 },
+              { "entity_id": "W2", "label": "Wallbox Hof", "primary": false }
+            ]
+          }
+        ]
+      }
     }
+  ],
+  "default_role_cases": [
+    { "name": "hybrid-battery-power", "type": "battery-hybrid", "category": "storage", "channel": "battery_power_kw", "connection": "", "expected": "storage" },
+    { "name": "hybrid-soc", "type": "battery-hybrid", "category": "storage", "channel": "soc_pct", "connection": "", "expected": "storage" },
+    { "name": "hybrid-pv", "type": "battery-hybrid", "category": "storage", "channel": "pv_power_kw", "connection": "", "expected": "pv" },
+    { "name": "producer-power", "type": "producer", "category": "producer", "channel": "power_kw", "connection": "", "expected": "pv" },
+    { "name": "grid-meter-power", "type": "grid-meter", "category": "meter", "channel": "power_kw", "connection": "", "expected": "grid" },
+    { "name": "edge-measure-only-alias", "type": "grid-meter", "category": "measure-only", "channel": "power_kw", "connection": "", "expected": "grid" },
+    { "name": "house-load-power", "type": "house-load", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "consumer" },
+    { "name": "heating-rod-power", "type": "heating-rod", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "consumer" },
+    { "name": "wallbox-power-default", "type": "wallbox", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "charging",
+      "note": "C2: the TYPE decides, not the category - a wallbox is category consumer exactly like a heating rod. An unstated connection reads as haus, the safe direction." },
+    { "name": "wallbox-power-haus", "type": "wallbox", "category": "consumer", "channel": "power_kw", "connection": "haus", "expected": "charging" },
+    { "name": "wallbox-power-eigen", "type": "wallbox", "category": "consumer", "channel": "power_kw", "connection": "eigen", "expected": "charging-own" },
+    { "name": "ev-charger-power-eigen", "type": "ev-charger", "category": "consumer", "channel": "power_kw", "connection": "eigen", "expected": "charging-own" },
+    { "name": "ev-charger-soc-is-the-cars", "type": "ev-charger", "category": "consumer", "channel": "soc_pct", "connection": "", "expected": "",
+      "note": "C2: the ev-charger catalog type declares soc_pct, but it is the CAR's - mapping it to storage would fill in the HOUSE battery's state of charge." },
+    { "name": "charge-point-energy-register", "type": "ev-charger", "category": "consumer", "channel": "energy_kwh", "connection": "", "expected": "" },
+    { "name": "unknown-channel", "type": "house-load", "category": "consumer", "channel": "irgendwas", "connection": "", "expected": "" },
+    { "name": "unknown-category", "type": "some-type", "category": "", "channel": "power_kw", "connection": "", "expected": "" },
+    { "name": "connection-ignored-off-charge-points", "type": "house-load", "category": "consumer", "channel": "power_kw", "connection": "eigen", "expected": "consumer",
+      "note": "connection is consulted ONLY for charge points - it can never move the house node." }
   ]
 }

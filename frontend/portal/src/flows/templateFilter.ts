@@ -71,7 +71,9 @@ export function plantRoles(plant: PlantModel): Set<TemplateRole> {
   for (const e of plant.entities ?? []) {
     const category = categories.get(e.id) || inferCategory(e);
     for (const channel of e.measure ?? []) {
-      const role = defaultRole(category, channel);
+      // Der Typ entscheidet mit: ein Ladepunkt ist Kategorie `consumer`, sein
+      // `soc_pct` gehört aber dem AUTO und darf hier nie „storage" belegen.
+      const role = defaultRole(e.entityType ?? '', category, channel, '');
       if (role === 'pv' || role === 'storage' || role === 'grid') roles.add(role);
     }
     if (category === 'consumer' && (e.actuate ?? []).includes('on_off')) roles.add('consumer');

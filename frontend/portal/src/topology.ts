@@ -14,13 +14,58 @@ export const DEADBAND_KW = 0.05;
 
 export const SCHEMA_VERSION = '1.0';
 
-export type Role = 'pv' | 'storage' | 'consumer' | 'grid';
+/**
+ * Die Rollen. `charging` sind Ladepunkte HINTER dem Hausanschluss - ihre
+ * Kilowatt stecken schon in der gemessenen Hauslast, der Knoten ist deshalb ein
+ * ABZWEIG vom Haus und die Haus-Summe bleibt „alles hinter dem Anschluss"
+ * (Konzept `vp-verbraucher-cockpit-k1` §6, E3). `charging-own` sind Säulen an
+ * einem EIGENEN Netzanschluss: sie stecken NICHT in dieser Messung, hängen also
+ * am Hub NEBEN dem Haus, und das Haus enthält sie nie.
+ *
+ * ⚠ Zwei Rollen, nicht EIN Knoten mit zwei Aufhängungen: die beiden Summen
+ * werden an ZWEI VERSCHIEDENEN Anschlusspunkten gemessen, sie zu addieren wäre
+ * eine Zahl mit zwei Bedeutungen.
+ */
+export type Role = 'pv' | 'storage' | 'consumer' | 'grid' | 'charging' | 'charging-own';
 
-/** Canonical node emission order. */
-const CANONICAL_ROLE_ORDER: Role[] = ['pv', 'storage', 'consumer', 'grid'];
+/**
+ * Canonical node emission order. Die Lade-Rollen sind bewusst ANGEHÄNGT: jeder
+ * vor ihnen geschriebene Vektor bleibt damit byte-gleich, weil eine Anlage ohne
+ * Ladepunkt keinen der beiden Knoten ausgibt.
+ */
+const CANONICAL_ROLE_ORDER: Role[] = [
+  'pv',
+  'storage',
+  'consumer',
+  'grid',
+  'charging',
+  'charging-own',
+];
 
 /** The one channel treated as a SoC input (never a flow member). */
 const SOC_CHANNEL = 'soc_pct';
+
+/** Die Entitäts-TYPEN, die Ladepunkte sind. */
+export const EV_CHARGER_TYPE = 'ev-charger';
+export const WALLBOX_TYPE = 'wallbox';
+
+/**
+ * WO eine Säule hängt (Cockpit Phase 1 / C1): hinter dem Hausanschluss oder an
+ * einem eigenen. `''` = nicht gesagt - gelesen als `haus`, die sichere
+ * Richtung: die Hausmessung enthält sie dann, genau was das Budget-Gesetz der
+ * Box ohnehin annimmt.
+ */
+export const CONNECTION_HAUS = 'haus';
+export const CONNECTION_EIGEN = 'eigen';
+
+/**
+ * Ist dieser Entitäts-TYP ein Ladepunkt? An der Kategorie ist es nicht zu
+ * erkennen: `ev-charger` und `wallbox` sind im Typkatalog beide `consumer` -
+ * genau wie ein Heizstab.
+ */
+export function isChargingType(entityType: string): boolean {
+  return entityType === EV_CHARGER_TYPE || entityType === WALLBOX_TYPE;
+}
 
 export interface CapabilityInput {
   channel: string;
@@ -66,11 +111,36 @@ export interface Topology {
 }
 
 /**
- * Default role for a measure channel + entity category (overridable in the
- * cloud; the edge/pilot run on defaults). category is
- * storage|producer|meter|consumer; the edge's "measure-only" aliases "meter".
+ * Default role for an entity TYPE + category + measure channel + charge-point
+ * connection (overridable in the cloud; the edge/pilot run on defaults).
+ * category is storage|producer|meter|consumer; the edge's "measure-only"
+ * aliases "meter". connection is only consulted for charge points ('' = haus).
+ *
+ * ⚠ DER TYP WIRD ZUERST GEPRÜFT, und genau dafür gibt es den Parameter: ein
+ * Ladepunkt ist Kategorie `consumer`, seine Leistung summierte sich ohne ihn
+ * also in den Haus-Knoten, in dem sie schon gemessen ist - und sein `soc_pct`
+ * fiele in die Speicher-Regel darunter und begänne, den Ladestand der
+ * HAUSBATTERIE zu füllen (der Grund, aus dem die Box ihn nie publiziert). Beides
+ * wäre eine falsche Aussage über eine Kundenanlage.
  */
-export function defaultRole(category: string, channel: string): string {
+export function defaultRole(
+  entityType: string,
+  category: string,
+  channel: string,
+  connection: string,
+): string {
+  if (isChargingType(entityType)) {
+    switch (channel) {
+      case 'power_kw':
+        return connection === CONNECTION_EIGEN ? 'charging-own' : 'charging';
+      case SOC_CHANNEL:
+        // Der Ladestand des AUTOS - nie der der Säule und nie der der
+        // Hausbatterie. Weder Fluss-Mitglied noch SoC eines anderen Knotens.
+        return '';
+      default:
+        return '';
+    }
+  }
   switch (channel) {
     case 'pv_power_kw':
       return 'pv';
@@ -91,6 +161,11 @@ export function defaultRole(category: string, channel: string): string {
       }
   }
   return '';
+}
+
+/** Zieht diese summierte Rolle VOM Hub (Richtung „out")? Haus und beide Lade-Rollen. */
+function isConsuming(role: Role): boolean {
+  return role === 'consumer' || role === 'charging' || role === 'charging-own';
 }
 
 function round3(v: number): number {
@@ -148,7 +223,7 @@ function sumNode(role: Role, caps: RoleCap[]): FlowNode {
   if (!hasValue) return makeNode(role, undefined, undefined, false, undefined, members);
   const mag = round3(Math.abs(sum));
   const active = mag > DEADBAND_KW;
-  const dir = active ? (role === 'consumer' ? 'out' : 'in') : undefined;
+  const dir = active ? (isConsuming(role) ? 'out' : 'in') : undefined;
   return makeNode(role, mag, undefined, active, dir, members);
 }
 

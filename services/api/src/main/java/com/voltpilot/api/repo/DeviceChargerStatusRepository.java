@@ -151,6 +151,29 @@ public class DeviceChargerStatusRepository {
         return out;
     }
 
+    /**
+     * WO die Ladepunkte einer Anlage hängen, je KOMPONENTE (entity_id ->
+     * {@code haus}|{@code eigen}) - die Eingabe, die die Topologie-Rolle
+     * {@code charging} von {@code charging-own} trennt (Cockpit Phase 1 / C2).
+     *
+     * <p><b>⚠ Das ist der IST der BOX, nicht der SOLL des Kunden.</b> Die
+     * Topologie beschreibt, was GEMESSEN wird; die Wahl des Kunden steht in
+     * {@code site_charge_point_allowlist} und erreicht die Anlage erst über das
+     * retained Dokument. Eine Säule, deren Box (noch) nichts meldet, fehlt hier
+     * schlicht - und eine fehlende Angabe liest sich als {@code haus}, die
+     * sichere Richtung. Damit sagen Ladepunkt-Liste und Flussbild dasselbe: die
+     * Kundenfläche liest denselben IST.
+     */
+    public Map<UUID, String> connectionsByEntity(UUID siteId) {
+        Map<UUID, String> out = new LinkedHashMap<>();
+        jdbc.query("SELECT entity_id, connection FROM device_charge_point "
+                + "WHERE site_id = ? AND entity_id IS NOT NULL AND connection IS NOT NULL",
+                rs -> {
+                    out.put(rs.getObject("entity_id", UUID.class), rs.getString("connection"));
+                }, siteId);
+        return out;
+    }
+
     /** Bindet eine Säule an die Komponente, die die Plattform für sie komponiert hat. */
     public void bindEntity(UUID deviceId, String chargePointId, UUID entityId) {
         jdbc.update("UPDATE device_charge_point SET entity_id = ? "

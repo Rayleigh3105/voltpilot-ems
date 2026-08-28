@@ -463,7 +463,13 @@ function hasStorage(site: AnlageSurfaceInput): boolean {
   return (site.entities ?? []).some(
     (e) =>
       e?.entityType === 'battery-hybrid' ||
-      (e?.capabilities?.measure ?? []).some((m) => defaultRole('', m?.channel ?? '') === 'storage'),
+      // ⚠ Der TYP muss mit: der Katalogtyp `ev-charger` deklariert `soc_pct`,
+      // und ohne ihn zählte der Ladestand des AUTOS als Speicher-Nachweis -
+      // eine Anlage mit einer Wallbox und ohne Batterie bekäme die
+      // Speicher-Flächen (Cockpit Phase 1 / C2).
+      (e?.capabilities?.measure ?? []).some(
+        (m) => defaultRole(e?.entityType ?? '', '', m?.channel ?? '', '') === 'storage',
+      ),
   );
 }
 
@@ -485,7 +491,9 @@ function isLadeparkOnly(input: AnlageSurfaceInput): boolean {
 function hasPvEntity(site: AnlageSurfaceInput): boolean {
   if (site.signals?.hasPv === true) return true;
   return (site.entities ?? []).some((e) =>
-    (e?.capabilities?.measure ?? []).some((m) => defaultRole('', m?.channel ?? '') === 'pv'),
+    (e?.capabilities?.measure ?? []).some(
+      (m) => defaultRole(e?.entityType ?? '', '', m?.channel ?? '', '') === 'pv',
+    ),
   );
 }
 

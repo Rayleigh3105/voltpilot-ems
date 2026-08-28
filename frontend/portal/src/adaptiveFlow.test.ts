@@ -464,3 +464,59 @@ describe('wrapLabel', () => {
     expect(wrapLabel('   ')).toEqual([]);
   });
 });
+
+describe('der Kreis „Laden (eigener Anschluss)" (Cockpit Phase 1 / C2)', () => {
+  const LADEND = { kw: 11, wort: 'lädt', aktiv: true, count: 1 };
+  const EIGEN = { kw: 4, wort: 'lädt', aktiv: true, count: 1 };
+
+  it('⚠ ohne eigenen Anschluss ist das Diagramm ZEICHENGLEICH zu vorher', () => {
+    const ohne = layoutFlow(TOPO, ENTITIES, { charging: LADEND });
+    for (const chargingOwn of [undefined, null]) {
+      const l = layoutFlow(TOPO, ENTITIES, { charging: LADEND, chargingOwn });
+      expect(l.W).toBe(ohne.W);
+      expect(l.H).toBe(ohne.H);
+      expect(l.vertices.map((v) => [v.key, v.x, v.y])).toEqual(
+        ohne.vertices.map((v) => [v.key, v.x, v.y]),
+      );
+    }
+  });
+
+  // ⚠ Der Platz IST die Aussage: der Abzweig hängt am HAUS, der eigene
+  // Anschluss am HUB - deshalb hat nur der erste ein Speichen-Ziel.
+  it('hängt am HUB, nicht am Haus - anders als der Abzweig', () => {
+    const l = layoutFlow(TOPO, ENTITIES, { charging: LADEND, chargingOwn: EIGEN });
+    const abzweig = l.vertices.find((v) => v.role === 'charging')!;
+    const eigen = l.vertices.find((v) => v.role === 'charging-own')!;
+    expect(abzweig.toX).toBeDefined();
+    expect(abzweig.toY).toBeDefined();
+    expect([eigen.toX, eigen.toY]).toEqual([undefined, undefined]);
+    expect(eigen.label).toBe('Laden (eigener Anschluss)');
+    expect(eigen.value).toContain('4,0');
+  });
+
+  // Zwei Arten = zwei Kreise, nie zwei übereinander.
+  it('steht auf einem ANDEREN Platz als der Abzweig', () => {
+    const l = layoutFlow(TOPO, ENTITIES, { charging: LADEND, chargingOwn: EIGEN });
+    const a = l.vertices.find((v) => v.role === 'charging')!;
+    const e = l.vertices.find((v) => v.role === 'charging-own')!;
+    expect([e.x, e.y]).not.toEqual([a.x, a.y]);
+  });
+
+  it('braucht kein Haus - eine reine Ladepark-Anlage bekommt ihn trotzdem', () => {
+    const l = layoutFlow(TOPO, ENTITIES, { chargingOwn: EIGEN });
+    const e = l.vertices.find((v) => v.role === 'charging-own')!;
+    expect(e).toBeDefined();
+    expect(l.vertices.some((v) => v.role === 'charging')).toBe(false);
+  });
+
+  it('bleibt samt Beschriftung INNERHALB der viewBox - auch schmal', () => {
+    for (const narrow of [false, true]) {
+      const l = layoutFlow(TOPO, ENTITIES, { narrow, charging: LADEND, chargingOwn: EIGEN });
+      for (const v of l.vertices) {
+        expect(v.y + l.nodeR).toBeLessThanOrEqual(l.H);
+        expect(v.x - l.nodeR).toBeGreaterThanOrEqual(0);
+        expect(v.x + l.nodeR).toBeLessThanOrEqual(l.W);
+      }
+    }
+  });
+});

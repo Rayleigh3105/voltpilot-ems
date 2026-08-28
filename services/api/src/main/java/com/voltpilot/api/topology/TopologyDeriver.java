@@ -29,11 +29,44 @@ public final class TopologyDeriver {
     public static final String ROLE_STORAGE = "storage";
     public static final String ROLE_CONSUMER = "consumer";
     public static final String ROLE_GRID = "grid";
+    /**
+     * Charge points BEHIND the house connection: their kilowatts are already
+     * inside the house-load measurement, so the node is a BRANCH off the
+     * consumer node and the house sum stays "everything behind the connection
+     * point" (concept vp-verbraucher-cockpit-k1 §6, E3).
+     */
+    public static final String ROLE_CHARGING = "charging";
+    /**
+     * Charge points on their OWN grid connection / meter: NOT inside the house
+     * measurement, so the node hangs at the hub NEXT TO the house and the house
+     * never contains them. Two roles, not one node with two attachments - the
+     * two sums are measured at two DIFFERENT connection points, and adding them
+     * would be one number with two meanings.
+     */
+    public static final String ROLE_CHARGING_OWN = "charging-own";
 
-    private static final List<String> CANONICAL_ROLE_ORDER =
-            List.of(ROLE_PV, ROLE_STORAGE, ROLE_CONSUMER, ROLE_GRID);
+    /**
+     * The deterministic node emission order. The charging roles are APPENDED on
+     * purpose: every vector authored before them stays byte-identical, because
+     * a site without a charge point emits neither node.
+     */
+    private static final List<String> CANONICAL_ROLE_ORDER = List.of(ROLE_PV, ROLE_STORAGE,
+            ROLE_CONSUMER, ROLE_GRID, ROLE_CHARGING, ROLE_CHARGING_OWN);
 
     private static final String SOC_CHANNEL = "soc_pct";
+
+    /** The entity TYPES that are charge points. */
+    public static final String TYPE_EV_CHARGER = "ev-charger";
+    public static final String TYPE_WALLBOX = "wallbox";
+
+    /**
+     * WHERE a charge point hangs (Cockpit Phase 1 / C1). {@code null}/blank =
+     * the portal never said - read as haus, the safe direction: the house
+     * measurement is assumed to contain it, exactly what the box's budget law
+     * already assumes.
+     */
+    public static final String CONNECTION_HAUS = "haus";
+    public static final String CONNECTION_EIGEN = "eigen";
 
     private TopologyDeriver() {}
 
@@ -64,12 +97,46 @@ public final class TopologyDeriver {
     // ---- default role mapping (shared) --------------------------------------
 
     /**
-     * Default role for a measure channel + entity category (overridable). See
-     * topology-read-model.md; "measure-only" aliases "meter".
+     * Is this entity TYPE a charge point? The distinction cannot be made on the
+     * category: ev-charger and wallbox are both category "consumer" in the type
+     * catalog, exactly like a heating rod.
      */
-    public static String defaultRole(String category, String channel) {
+    public static boolean isChargingType(String entityType) {
+        return TYPE_EV_CHARGER.equals(entityType) || TYPE_WALLBOX.equals(entityType);
+    }
+
+    /**
+     * Default role for an entity TYPE + category + measure channel +
+     * charge-point connection (overridable). See topology-read-model.md;
+     * "measure-only" aliases "meter"; connection is only consulted for charge
+     * points (blank = haus).
+     *
+     * <p><b>⚠ The TYPE is checked FIRST, and that is the whole point of the
+     * parameter:</b> a charge point is category "consumer", so without it its
+     * power would sum into the house node it is already measured inside, and
+     * its soc_pct would fall through to the storage rule below and start
+     * filling in the HOUSE battery's state of charge (the reason the edge
+     * deliberately never publishes it). Both are wrong about a customer's
+     * plant, so they are answered here rather than left to the restraint of
+     * every producer.
+     */
+    public static String defaultRole(String entityType, String category, String channel,
+            String connection) {
         if (channel == null) {
             return "";
+        }
+        if (isChargingType(entityType)) {
+            switch (channel) {
+                case "power_kw":
+                    return CONNECTION_EIGEN.equals(connection) ? ROLE_CHARGING_OWN : ROLE_CHARGING;
+                case SOC_CHANNEL:
+                    // The CAR's state of charge, not the station's and not the
+                    // house battery's. Never a flow member, never another
+                    // node's SoC.
+                    return "";
+                default:
+                    return "";
+            }
         }
         switch (channel) {
             case "pv_power_kw":
@@ -151,7 +218,7 @@ public final class TopologyDeriver {
         }
         double mag = round3(Math.abs(sum));
         boolean active = mag > DEADBAND_KW;
-        String dir = active ? (ROLE_CONSUMER.equals(role) ? "out" : "in") : null;
+        String dir = active ? (isConsuming(role) ? "out" : "in") : null;
         return new FlowNode(role, mag, null, active, dir, members);
     }
 
@@ -217,6 +284,15 @@ public final class TopologyDeriver {
     private static FlowMember member(RoleCap rc) {
         Double v = rc.cap().value() == null ? null : round3(rc.cap().value());
         return new FlowMember(rc.entity().id(), rc.entity().label(), rc.cap().primary(), v);
+    }
+
+    /**
+     * Does this summed role draw FROM the hub (direction "out")? The house and
+     * both charging roles.
+     */
+    private static boolean isConsuming(String role) {
+        return ROLE_CONSUMER.equals(role) || ROLE_CHARGING.equals(role)
+                || ROLE_CHARGING_OWN.equals(role);
     }
 
     private static double round3(double v) {

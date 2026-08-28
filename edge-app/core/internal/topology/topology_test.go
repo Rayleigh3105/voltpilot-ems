@@ -18,6 +18,14 @@ type vectorFile struct {
 		Input    Input    `json:"input"`
 		Expected Topology `json:"expected"`
 	} `json:"cases"`
+	DefaultRoleCases []struct {
+		Name       string `json:"name"`
+		Type       string `json:"type"`
+		Category   string `json:"category"`
+		Channel    string `json:"channel"`
+		Connection string `json:"connection"`
+		Expected   string `json:"expected"`
+	} `json:"default_role_cases"`
 }
 
 func loadVectors(t *testing.T) vectorFile {
@@ -60,26 +68,85 @@ func TestDeriveMatchesSharedVectors(t *testing.T) {
 	}
 }
 
-func TestDefaultRole(t *testing.T) {
-	cases := []struct {
-		category, channel, want string
-	}{
-		{"storage", "pv_power_kw", RolePV},
-		{"producer", "pv_power_kw", RolePV},
-		{"storage", "battery_power_kw", RoleStorage},
-		{"storage", "soc_pct", RoleStorage},
-		{"storage", "power_kw", RoleStorage},
-		{"producer", "power_kw", RolePV},
-		{"consumer", "power_kw", RoleConsumer},
-		{"meter", "power_kw", RoleGrid},
-		{"measure-only", "power_kw", RoleGrid},
-		{"consumer", "energy_kwh", ""},
-		{"meter", "frequency_hz", ""},
+// TestDefaultRoleMatchesSharedVectors pins the MAPPING across the three twins.
+// The derive vectors cannot cover it - they carry roles that are already
+// resolved - and it is exactly where the copies drift (a charge point is
+// category "consumer", so only the TYPE keeps it out of the house node).
+func TestDefaultRoleMatchesSharedVectors(t *testing.T) {
+	vf := loadVectors(t)
+	if len(vf.DefaultRoleCases) == 0 {
+		t.Fatal("topology vectors carry no default_role_cases")
 	}
-	for _, c := range cases {
-		if got := DefaultRole(c.category, c.channel); got != c.want {
-			t.Errorf("DefaultRole(%q,%q)=%q want %q", c.category, c.channel, got, c.want)
+	for _, c := range vf.DefaultRoleCases {
+		t.Run(c.Name, func(t *testing.T) {
+			got := DefaultRole(c.Type, c.Category, c.Channel, c.Connection)
+			if got != c.Expected {
+				t.Fatalf("DefaultRole(%q,%q,%q,%q)=%q want %q",
+					c.Type, c.Category, c.Channel, c.Connection, got, c.Expected)
+			}
+		})
+	}
+}
+
+// TestChargingRolesAreAppendedSoOlderVectorsStayByteIdentical: the two charging
+// roles sit at the END of the canonical order, so every case authored before
+// them emits exactly the nodes it always did.
+func TestChargingRolesAreAppendedSoOlderVectorsStayByteIdentical(t *testing.T) {
+	want := []string{RolePV, RoleStorage, RoleConsumer, RoleGrid, RoleCharging, RoleChargingOwn}
+	if !reflect.DeepEqual(canonicalRoleOrder, want) {
+		t.Fatalf("canonical role order = %v, want %v", canonicalRoleOrder, want)
+	}
+}
+
+// TestResolveKeepsAChargePointOutOfTheHouseAndTheBattery is the edge path of
+// C2: the box resolves roles itself, so the type + connection must reach
+// DefaultRole from RawEntity - a wallbox on its own connection may never sum
+// into the house node, and its soc_pct may never reach the storage node.
+func TestResolveKeepsAChargePointOutOfTheHouseAndTheBattery(t *testing.T) {
+	f := func(v float64) *float64 { return &v }
+	in := Resolve([]RawEntity{
+		{ID: "H", Type: "house-load", Category: "consumer", Channels: []RawChannel{
+			{Channel: "power_kw", Value: f(4.2)},
+		}},
+		{ID: "W", Type: TypeWallbox, Category: "consumer", Channels: []RawChannel{
+			{Channel: "power_kw", Value: f(11)},
+			{Channel: socChannel, Value: f(80)},
+		}},
+		{ID: "C", Type: TypeEvCharger, Category: "consumer", Connection: ConnectionEigen,
+			Channels: []RawChannel{{Channel: "power_kw", Value: f(22)}}},
+	})
+	roles := map[string]string{}
+	for _, e := range in.Entities {
+		for _, c := range e.Capabilities {
+			roles[e.ID+"/"+c.Channel] = c.Role
 		}
+	}
+	for k, want := range map[string]string{
+		"H/power_kw": RoleConsumer,
+		"W/power_kw": RoleCharging,
+		"W/soc_pct":  "",
+		"C/power_kw": RoleChargingOwn,
+	} {
+		if roles[k] != want {
+			t.Errorf("role of %s = %q, want %q", k, roles[k], want)
+		}
+	}
+	top := Derive(in)
+	byRole := map[string]FlowNode{}
+	for _, n := range top.Nodes {
+		byRole[n.Role] = n
+	}
+	if _, has := byRole[RoleStorage]; has {
+		t.Error("a wallbox's soc_pct minted a storage node - that is the CAR's charge, not the house battery's")
+	}
+	if got := byRole[RoleConsumer]; len(got.Members) != 1 || got.Members[0].EntityID != "H" {
+		t.Errorf("house node members = %+v, want only the house-load", got.Members)
+	}
+	if got := byRole[RoleCharging]; got.ValueKw == nil || *got.ValueKw != 11 || got.Direction != "out" {
+		t.Errorf("charging node = %+v, want 11 kW out", got)
+	}
+	if got := byRole[RoleChargingOwn]; got.ValueKw == nil || *got.ValueKw != 22 {
+		t.Errorf("charging-own node = %+v, want 22 kW", got)
 	}
 }
 

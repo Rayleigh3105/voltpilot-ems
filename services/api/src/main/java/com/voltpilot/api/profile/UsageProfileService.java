@@ -125,7 +125,8 @@ public class UsageProfileService {
             if (capabilities(row.capabilitiesJson()).path("measure").size() > 0) {
                 hasMeasurement = true;
             }
-            for (String role : measuredRoles(category, row.capabilitiesJson())) {
+            for (String role : measuredRoles(row.entityType(), category,
+                    row.capabilitiesJson())) {
                 if (TopologyDeriver.ROLE_PV.equals(role)) {
                     hasPv = true;
                 } else if (TopologyDeriver.ROLE_STORAGE.equals(role)) {
@@ -144,10 +145,16 @@ public class UsageProfileService {
     }
 
     /** The topology roles this entity's measure channels resolve to. */
-    private Set<String> measuredRoles(String category, String capabilitiesJson) {
+    private Set<String> measuredRoles(String entityType, String category,
+            String capabilitiesJson) {
         Set<String> roles = new LinkedHashSet<>();
         for (JsonNode m : capabilities(capabilitiesJson).path("measure")) {
-            String role = TopologyDeriver.defaultRole(category, m.path("channel").asText(null));
+            // ⚠ Der Entitäts-TYP muss mit (Cockpit Phase 1 / C2): der Katalogtyp
+            // ev-charger deklariert soc_pct, und ohne ihn zählte der Ladestand
+            // des AUTOS hier als Speicher-Nachweis - eine Anlage mit einer
+            // Wallbox und ohne Batterie bekäme das Speicher-Profil.
+            String role = TopologyDeriver.defaultRole(entityType, category,
+                    m.path("channel").asText(null), "");
             if (role != null && !role.isEmpty()) {
                 roles.add(role);
             }

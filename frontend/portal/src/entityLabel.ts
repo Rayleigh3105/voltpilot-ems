@@ -138,6 +138,10 @@ const ROLE_SHORT: Record<Role, string> = {
   storage: 'Batteriespeicher',
   grid: 'Netz',
   consumer: 'Verbraucher',
+  charging: 'Ladepunkt',
+  // Derselbe Kurzname: es IST ein Ladepunkt - wo er hängt, sagt der Knoten,
+  // nicht der Gerätename.
+  'charging-own': 'Ladepunkt',
 };
 
 /**

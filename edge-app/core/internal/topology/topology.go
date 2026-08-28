@@ -24,10 +24,42 @@ const (
 	RoleStorage  = "storage"
 	RoleConsumer = "consumer"
 	RoleGrid     = "grid"
+	// RoleCharging: charge points BEHIND the house connection. Their kilowatts
+	// are already inside the house-load measurement, so the node is a BRANCH
+	// off the consumer node and the house sum stays "everything behind the
+	// connection point" (concept vp-verbraucher-cockpit-k1 §6, E3).
+	RoleCharging = "charging"
+	// RoleChargingOwn: charge points on their OWN grid connection / meter.
+	// Their kilowatts are NOT in the house-load measurement, so the node hangs
+	// at the hub NEXT TO the house and the house never contains them. Two
+	// roles, not one node with two attachments: the two sums are measured at
+	// two DIFFERENT connection points, and adding them would be one number
+	// with two meanings.
+	RoleChargingOwn = "charging-own"
 )
 
-// canonicalRoleOrder is the deterministic node emission order.
-var canonicalRoleOrder = []string{RolePV, RoleStorage, RoleConsumer, RoleGrid}
+// canonicalRoleOrder is the deterministic node emission order. The charging
+// roles are APPENDED on purpose: every vector authored before them stays
+// byte-identical, because a site without a charge point emits neither node.
+var canonicalRoleOrder = []string{
+	RolePV, RoleStorage, RoleConsumer, RoleGrid, RoleCharging, RoleChargingOwn,
+}
+
+// The entity TYPES that are charge points. Their power is charging, never
+// ordinary house load - and their soc_pct belongs to the CAR (see DefaultRole).
+const (
+	TypeEvCharger = "ev-charger"
+	TypeWallbox   = "wallbox"
+)
+
+// The connection of a charge point (Cockpit Phase 1 / C1): behind the house
+// connection, or on its own. "" = the portal never said - read as haus, the
+// safe direction: the house measurement is assumed to contain it, exactly what
+// the box's budget law already assumes.
+const (
+	ConnectionHaus  = "haus"
+	ConnectionEigen = "eigen"
+)
 
 // socChannel is the one measure channel treated as a SoC input (feeds the
 // storage node's soc_pct, never a flow member) regardless of assigned role.
@@ -83,11 +115,41 @@ type Topology struct {
 	Nodes         []FlowNode `json:"nodes"`
 }
 
-// DefaultRole maps a measure channel + entity category to its default role
-// (the mapping is overridable in the cloud; the edge and the pilot run on
-// defaults). category is storage|producer|meter|consumer (the cloud type
-// catalog); the edge's "measure-only" is accepted as "meter".
-func DefaultRole(category, channel string) string {
+// IsChargingType reports whether an entity TYPE is a charge point. The
+// distinction cannot be made on the category: ev-charger and wallbox are both
+// category "consumer" in the type catalog, exactly like a heating rod.
+func IsChargingType(entityType string) bool {
+	return entityType == TypeEvCharger || entityType == TypeWallbox
+}
+
+// DefaultRole maps an entity TYPE + category + measure channel + charge-point
+// connection to the default role (the mapping is overridable in the cloud; the
+// edge and the pilot run on defaults). category is storage|producer|meter|
+// consumer (the cloud type catalog); the edge's "measure-only" is accepted as
+// "meter". connection is only consulted for charge points ("" = haus).
+//
+// ⚠ THE TYPE IS CHECKED FIRST, and that is the whole point of the parameter:
+// a charge point is category "consumer", so without it its power would sum
+// into the house node it is already measured inside, and its soc_pct would
+// fall through to the storage rule below and start filling in the HOUSE
+// battery's state of charge (the reason agent/ocpp_entities.go deliberately
+// never publishes it). Both are wrong about a customer's plant, so they are
+// answered here rather than left to the restraint of every producer.
+func DefaultRole(entityType, category, channel, connection string) string {
+	if IsChargingType(entityType) {
+		switch channel {
+		case "power_kw":
+			if connection == ConnectionEigen {
+				return RoleChargingOwn
+			}
+			return RoleCharging
+		case socChannel:
+			// The CAR's state of charge, not the station's and not the house
+			// battery's. Never a flow member, never another node's SoC.
+			return ""
+		}
+		return ""
+	}
 	switch channel {
 	case "pv_power_kw":
 		return RolePV
@@ -106,6 +168,12 @@ func DefaultRole(category, channel string) string {
 		}
 	}
 	return ""
+}
+
+// isConsuming reports whether a summed role draws FROM the hub (direction
+// "out"): the house and both charging roles.
+func isConsuming(role string) bool {
+	return role == RoleConsumer || role == RoleCharging || role == RoleChargingOwn
 }
 
 // roleCap pairs a resolved capability with its owning entity, preserving input
@@ -174,7 +242,7 @@ func sumNode(role string, caps []roleCap) FlowNode {
 	node.ValueKw = &mag
 	if mag > DeadbandKw {
 		node.FlowActive = true
-		if role == RoleConsumer {
+		if isConsuming(role) {
 			node.Direction = "out"
 		} else {
 			node.Direction = "in"
@@ -288,7 +356,10 @@ type RawChannel struct {
 // from its applied registry + latest readings.
 type RawEntity struct {
 	ID, Type, Label, Category, Health string
-	Channels                          []RawChannel
+	// Connection is only meaningful for a charge point: haus|eigen, "" = not
+	// stated (read as haus). See DefaultRole.
+	Connection string
+	Channels   []RawChannel
 }
 
 // Resolve assigns each channel its DefaultRole and the default maßgeblich flag
@@ -302,7 +373,7 @@ func Resolve(raw []RawEntity) Input {
 	for _, e := range raw {
 		caps := make([]CapabilityInput, 0, len(e.Channels))
 		for _, ch := range e.Channels {
-			role := DefaultRole(e.Category, ch.Channel)
+			role := DefaultRole(e.Type, e.Category, ch.Channel, e.Connection)
 			primary := false
 			if role != "" && !firstOfRole[role] {
 				primary = true

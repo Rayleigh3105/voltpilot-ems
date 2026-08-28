@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChargePoint, ChargingBudget, SiteCharging } from './ladepunkte';
-import { flussKnoten, ladenKachel, VOLLE_ZEILEN } from './ladenKachel';
+import { flussKnoten, ladeFlussKnoten, ladenKachel, VOLLE_ZEILEN } from './ladenKachel';
 
 function saeule(over: Partial<ChargePoint> & { chargePointId: string }): ChargePoint {
   return {
@@ -13,6 +13,7 @@ function saeule(over: Partial<ChargePoint> & { chargePointId: string }): ChargeP
     lastSeen: over.lastSeen ?? '2026-08-28T09:41:00Z',
     entityId: null,
     reportedAt: '2026-08-28T09:41:00Z',
+    connection: over.connection ?? null,
     connectors: over.connectors ?? [],
   };
 }
@@ -256,5 +257,49 @@ describe('flussKnoten · der Knoten „Laden" des Energieflusses (Konzept §6)',
     expect(flussKnoten(null)).toBeNull();
     expect(flussKnoten(undefined)).toBeNull();
     expect(ladenKachel({ charging: { budget: null, chargers: [] } as SiteCharging })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cockpit Phase 1 / C2 · die BEIDEN Lade-Kreise, getrennt nach Anschlusspunkt
+// ---------------------------------------------------------------------------
+
+describe('ladeFlussKnoten · Abzweig vom Haus und eigener Anschluss (Konzept §6, E3)', () => {
+  const eigen = (id: string, kw: number | null) =>
+    ({ ...laedt(id, kw), connection: 'eigen' }) as ChargePoint;
+  const j = (chargers: ChargePoint[]) =>
+    ladeFlussKnoten({ budget: null, chargers } as SiteCharging);
+
+  it('ohne Ladepunkt gibt es KEINEN der beiden Kreise', () => {
+    expect(j([])).toEqual({ haus: null, eigen: null });
+    expect(ladeFlussKnoten(null)).toEqual({ haus: null, eigen: null });
+  });
+
+  // ⚠ Ohne gemeldete Angabe wird als `haus` gelesen - die sichere Richtung.
+  it('liest eine fehlende Angabe als „hinter dem Haus"', () => {
+    const n = j([laedt('CP1', 11)]);
+    expect(n.haus?.kw).toBe(11);
+    expect(n.eigen).toBeNull();
+  });
+
+  it('trennt die beiden Anschlusspunkte, jeder Kreis zählt nur SEINE Säulen', () => {
+    const n = j([laedt('CP1', 11), eigen('CP2', 4)]);
+    expect(n.haus?.kw).toBe(11);
+    expect(n.haus?.count).toBe(1);
+    expect(n.eigen?.kw).toBe(4);
+    expect(n.eigen?.count).toBe(1);
+  });
+
+  it('eine Anlage NUR mit eigenem Anschluss hat keinen Abzweig vom Haus', () => {
+    const n = j([eigen('CP1', 11)]);
+    expect(n.haus).toBeNull();
+    expect(n.eigen?.wort).toBe('lädt');
+  });
+
+  // ⚠ Beide Hälften laufen durch DIESELBE Kachel-Ableitung - Diagramm und
+  // Kachel können über dieselbe Säule nichts Verschiedenes behaupten.
+  it('leitet jede Hälfte aus DERSELBEN Kachel-Sicht ab', () => {
+    const nur = k([eigen('CP2', 4)]);
+    expect(j([laedt('CP1', 11), eigen('CP2', 4)]).eigen).toEqual(flussKnoten(nur));
   });
 });

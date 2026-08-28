@@ -52,6 +52,7 @@ function charger(over: Partial<ChargePoint> & { chargePointId: string }): Charge
     lastSeen: over.lastSeen ?? '2026-08-28T08:50:00Z',
     entityId: over.entityId ?? null,
     reportedAt: over.reportedAt ?? '2026-08-28T09:41:00Z',
+    connection: over.connection ?? null,
     connectors: over.connectors ?? [],
   };
 }
@@ -609,5 +610,129 @@ describe('Cockpit Phase 1 · die Heute-kWh eines Ladepunkts dürfen aus der Enti
     for (const t of c.gruppen.flatMap((g) => g.teile).filter((x) => x.key.startsWith('cp:'))) {
       expect(t.todayKwh).toBeNull();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cockpit Phase 1 / C2 · der eigene Anschluss ist eine eigene Gruppe
+// ---------------------------------------------------------------------------
+
+/** Dieselbe Wallbox, nur an einem EIGENEN Netzanschluss (Phase 1 / C1). */
+const WALLBOX_EIGEN: ChargePoint = { ...WALLBOX, connection: 'eigen' };
+
+describe('verbrauchKomposition · ein eigener Anschluss steht NEBEN dem Haus', () => {
+  it('bildet die Gruppe „Laden (eigener Anschluss)" statt einer Haus-Zeile', () => {
+    const c = k({ chargers: [WALLBOX_EIGEN] });
+    expect(c.gruppen.map((g) => g.id)).toEqual(['waerme', 'laden_eigen']);
+    const eigen = c.gruppen.find((g) => g.id === 'laden_eigen')!;
+    expect(eigen.label).toBe('Laden (eigener Anschluss)');
+    expect(eigen.kw).toBe(11);
+    expect(eigen.teile.map((t) => t.label)).toEqual(['Wallbox Garage']);
+  });
+
+  // ⚠ DIE tragende Regel: die 11,0 kW stecken NICHT in der Hausmessung, also
+  // dürfen sie auch nicht von ihr abgezogen werden.
+  it('zieht seine Leistung NICHT vom Haus ab', () => {
+    const haus = k({ chargers: [WALLBOX] });
+    const eigen = k({ chargers: [WALLBOX_EIGEN] });
+    expect(haus.rest.kw).toBe(1.2); // 14,1 − 11,0 − 1,9
+    expect(eigen.rest.kw).toBe(12.2); // 14,1 − 1,9
+    expect(eigen.hausKw).toBe(14.1);
+  });
+
+  // „davon Laden" beschreibt einen TEIL DES HAUSES.
+  it('zählt nicht in „davon Laden" und nicht in ladenKw', () => {
+    const c = k({ chargers: [WALLBOX_EIGEN] });
+    expect(c.ladenKw).toBeNull();
+    expect(c.subLine).toBeNull();
+    // Der Ladepunkt selbst bleibt gezählt - es ist einer.
+    expect(c.ladepunktCount).toBe(1);
+  });
+
+  // Eine Lücke NEBEN dem Haus ist keine Lücke IM Haus.
+  it('macht den Rest NICHT unbestimmbar, wenn er sich der Zählung entzieht', () => {
+    const ohneMessung: ChargePoint = {
+      ...WALLBOX_EIGEN,
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true } as never],
+    };
+    const c = k({ chargers: [ohneMessung] });
+    expect(c.rest.kw).toBe(12.2);
+    expect(c.rest.note).toBeNull();
+    // Er verschwindet dabei nicht - er steht mit seinem Zustand in seiner Gruppe.
+    const eigen = c.gruppen.find((g) => g.id === 'laden_eigen')!;
+    expect(eigen.teile[0].kw).toBeNull();
+    expect(eigen.teile[0].aktiv).toBe(true);
+  });
+
+  it('zieht seine kWh nicht von der Haus-Tagessumme ab', () => {
+    const c = k({
+      chargers: [WALLBOX_EIGEN],
+      hausTodayKwh: 40,
+      todayKwh: { 'cp:GARAGE-1#1': 25, 'e:rod': 5 },
+    });
+    expect(c.rest.todayKwh).toBe(35); // 40 − 5, die 25 kWh liefen woanders
+  });
+
+  // Beide Arten nebeneinander: zwei Gruppen, jede mit IHREN Zeilen.
+  it('trennt haus und eigen auf derselben Anlage', () => {
+    const zweite = charger({
+      chargePointId: 'HOF-1',
+      label: 'Wallbox Hof',
+      connection: 'eigen',
+      connectors: [
+        { connectorId: 1, status: 'Charging', charging: true, powerKw: 4 } as never,
+      ],
+    });
+    const c = k({ chargers: [WALLBOX, zweite] });
+    const laden = c.gruppen.find((g) => g.id === 'laden')!;
+    const eigen = c.gruppen.find((g) => g.id === 'laden_eigen')!;
+    expect(laden.teile.map((t) => t.label)).toEqual(['Wallbox Garage']);
+    expect(eigen.teile.map((t) => t.label)).toEqual(['Wallbox Hof']);
+    expect(c.ladenKw).toBe(11);
+    expect(c.rest.kw).toBe(1.2);
+  });
+
+  // ⚠ Ein Kopf, der Stecker mitzählt, die in seiner Gruppe gar nicht stehen,
+  // wäre eine Aussage über fremde Zeilen.
+  it('zählt im Gruppen-Kopf nur die eigenen Stecker', () => {
+    const zweite = charger({
+      chargePointId: 'HOF-1',
+      connection: 'eigen',
+      connectors: [{ connectorId: 1, status: 'Available', charging: false } as never],
+    });
+    const c = k({ chargers: [WALLBOX, zweite] });
+    expect(c.gruppen.find((g) => g.id === 'laden')!.headline)
+      .toBe(`1 von 1 l\u00e4dt \u00b7 11,0\u00a0kW`);
+    expect(c.gruppen.find((g) => g.id === 'laden_eigen')!.headline).toBe('lädt gerade nicht');
+  });
+
+  it('kollabiert beide Lade-Gruppen mit der Kachel und zählt je Gruppe', () => {
+    const zweite = charger({
+      chargePointId: 'HOF-1',
+      connection: 'eigen',
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 4 } as never],
+    });
+    const c = k({ chargers: [WALLBOX, zweite], ladenKachelSichtbar: true });
+    for (const id of ['laden', 'laden_eigen'] as const) {
+      const g = c.gruppen.find((x) => x.id === id)!;
+      expect(g.collapsed).toBe(true);
+      expect(g.teile).toEqual([]);
+      expect(g.collapsedText).toBe('1 Ladepunkt');
+    }
+  });
+
+  // Eine Säule, die noch keinen Stecker gemeldet hat, gehört trotzdem dorthin.
+  it('ordnet auch eine Säule OHNE gemeldeten Stecker der eigenen Gruppe zu', () => {
+    const c = k({ chargers: [{ ...WALLBOX_EIGEN, connectors: [] }] });
+    const eigen = c.gruppen.find((g) => g.id === 'laden_eigen')!;
+    expect(eigen.teile.map((t) => t.key)).toEqual(['cp:GARAGE-1']);
+    expect(c.gruppen.some((g) => g.id === 'laden')).toBe(false);
+  });
+
+  // ⚠ `null` heisst „eine ältere Box meldet es nicht" und wird als `haus`
+  // gelesen - die sichere Richtung.
+  it('liest eine fehlende Angabe als „hinter dem Haus"', () => {
+    const ohne: ChargePoint = { ...WALLBOX, connection: null };
+    expect(k({ chargers: [ohne] })).toEqual(k({ chargers: [WALLBOX] }));
   });
 });

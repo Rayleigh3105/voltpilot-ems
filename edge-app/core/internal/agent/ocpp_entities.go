@@ -134,6 +134,28 @@ func ocppEntityReadings(snap csms.Snapshot, entityByChargePoint map[string]strin
 // chargePointEntities reads the applied registry's charge-point bindings.
 // Empty when the cloud never sent one (an older cloud, or a site without a
 // charge-point component yet).
+// chargePointConnections is WHERE each charge point hangs, keyed by its OCPP
+// ChargePointId: csms.ConnectionHaus / ConnectionEigen, absent = the portal
+// never said. It feeds the topology's role resolution (Cockpit Phase 1 / C2):
+// a station on its OWN grid connection is not inside the house measurement, so
+// it must not become a branch of the house node.
+//
+// Read from the CSMS snapshot, the same place the budget law reads it, so the
+// picture and the arithmetic can never disagree about a station's connection.
+func (a *Agent) chargePointConnections() map[string]string {
+	rt := a.ocpp
+	if rt == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, c := range rt.srv.Snapshot().Chargers {
+		if c.Connection != "" {
+			out[c.ID] = c.Connection
+		}
+	}
+	return out
+}
+
 func (a *Agent) chargePointEntities() map[string]string {
 	a.entMu.Lock()
 	defer a.entMu.Unlock()

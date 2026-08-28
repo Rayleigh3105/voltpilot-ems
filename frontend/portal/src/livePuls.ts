@@ -100,6 +100,8 @@ const ROLE_CHANNEL: Record<Role, string> = {
   storage: 'soc_pct',
   grid: 'power_kw',
   consumer: 'power_kw',
+  charging: 'power_kw',
+  'charging-own': 'power_kw',
 };
 
 /**

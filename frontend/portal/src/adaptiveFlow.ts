@@ -65,11 +65,11 @@ const N_MIN_H = 384;
  * davon 15 px sichtbare Speiche - zu wenig, um als Abzweig gelesen zu werden.
  */
 const CHARGING_DY = 118;
-const CHARGING_LABEL = 'Laden';
-/** Die Verbraucher-Hue - Laden IST Verbrauch, nur ein benannter Teil davon. */
-const CHARGING_COLOR = 'var(--vp-flow-load)';
-const CHARGING_SOFT = 'var(--vp-flow-load-soft)';
-/** Der Abzweig ist DÜNNER als eine Hub-Speiche - er ist ein Teil, kein Anschluss. */
+/**
+ * Der Abzweig hinter dem Haus ist DÜNNER als eine Hub-Speiche - er ist ein
+ * Teil, kein Anschluss. Ein EIGENER Anschluss ist dagegen eine volle Speiche:
+ * er hängt am Hub wie das Haus selbst.
+ */
 const CHARGING_BASE_W = 4;
 
 /** The label block below a circle: first baseline offset + line height. */
@@ -92,6 +92,8 @@ export const ROLE_NODE_LABEL: Record<Role, string> = {
   storage: 'Batteriespeicher',
   consumer: 'Hausverbrauch',
   grid: 'Netz',
+  charging: 'Laden',
+  'charging-own': 'Laden (eigener Anschluss)',
 };
 
 /**
@@ -132,17 +134,17 @@ export function wrapLabel(
 
 /** One rendered circle = one ROLE of the plant (never one device). */
 /**
- * Die Rolle eines KREISES. Bis auf `charging` ist das die Topologie-Rolle.
+ * Die Rolle eines KREISES - seit Cockpit Phase 1 / C2 IST das die
+ * Topologie-Rolle, auch für die beiden Lade-Kreise: `charging` und
+ * `charging-own` stehen in `topology.ts` `Role`, in den geteilten Vektoren
+ * (`topology-vectors.json`) und damit in allen drei Zwillingen.
  *
- * ⚠ `charging` ist BEWUSST keine Topologie-Rolle: `topology.ts` `Role` ist ein
- * VERTRAG mit Go- und Java-Zwillingen und geteilten Vektoren
- * (`topology-vectors.json`) - ihn für eine reine Anzeige-Scheibe zu weiten
- * hiesse, drei Sprachen und eine Kontrakt-Datei für etwas zu ändern, das der
- * Server (noch) gar nicht ableitet. Die echte Rolle `charging` kommt in
- * Phase 1 (Konzept §8, C2); bis dahin ist der Knoten hier ein Aufsatz aus
- * `/chargers`, und dieser Typ ist die eine Stelle, an der beides zusammenläuft.
+ * ⚠ Die ZAHL des Lade-Kreises kommt trotzdem weiter aus `/chargers`: sein Wort
+ * („lädt" / „Auto eingesteckt") ist ein OCPP-ZUSTAND, den das Read-Model nicht
+ * trägt, und zwei Quellen für denselben Kreis wären zwei Zahlen, die sich
+ * widersprechen können.
  */
-export type FlowVertexRole = Role | 'charging';
+export type FlowVertexRole = Role;
 
 export interface FlowVertex {
   key: string;
@@ -166,10 +168,11 @@ export interface FlowVertex {
   icon: IconName;
   /**
    * Die Farbe des Kreises und seiner Speiche. Sie steht AM Knoten, statt beim
-   * Rendern über `ROLE_META[v.role]` nachgeschlagen zu werden - `charging` ist
-   * bewusst keine Topologie-Rolle, also gibt es dort keinen Eintrag, und ein
-   * Nachschlagen wäre die eine Stelle, an der der fünfte Knoten strukturell
-   * nicht hineinpasst.
+   * Rendern über `ROLE_META[v.role]` nachgeschlagen zu werden - eine Fläche
+   * rendert damit jeden Kreis gleich, ohne die Rolle zu kennen. (Seit Cockpit
+   * Phase 1 / C2 SIND die Lade-Rollen echte Topologie-Rollen und haben ihren
+   * Katalog-Eintrag; die Farbe wird hier aus ihm gefüllt, nicht mehr aus einer
+   * eigenen Konstante.)
    */
   color: string;
   /** Die weiche Füllung des Kreises (das `--vp-flow-*-soft`-Token). */
@@ -242,14 +245,31 @@ export interface FlowLayout {
   vertices: FlowVertex[];
 }
 
-/** The four sides, in the order the four roles occupy them. */
-type Side = 'top' | 'left' | 'right' | 'bottom';
+/**
+ * Die Plätze. Die vier Hub-Rollen belegen die vier Seiten; die beiden
+ * Lade-Rollen sitzen in der ZUSÄTZLICHEN Zeile darunter (Konzept §6) und sagen
+ * über ihren Platz zugleich, WORAN sie hängen:
+ *
+ * - `right-below` = unter dem Haus, Speiche ZUM HAUS: der Abzweig hinter dem
+ *   Hausanschluss. Die Haus-Summe bleibt „alles hinter dem Anschluss".
+ * - `left-below` = unten links, Speiche ZUM HUB: ein EIGENER Anschluss neben
+ *   dem Haus. Das Haus enthält ihn nie.
+ *
+ * Beide Plätze sind verschieden, damit eine Anlage mit BEIDEN Arten zwei
+ * Kreise bekommt statt zweier Kreise übereinander.
+ */
+type Side = 'top' | 'left' | 'right' | 'bottom' | 'right-below' | 'left-below';
 const ROLE_SIDE: Record<Role, Side> = {
   pv: 'top',
   storage: 'left',
   consumer: 'right',
   grid: 'bottom',
+  charging: 'right-below',
+  'charging-own': 'left-below',
 };
+
+/** Die beiden Lade-Rollen - sie werden NICHT in der Hub-Schleife platziert. */
+const CHARGING_ROLES: ReadonlySet<Role> = new Set<Role>(['charging', 'charging-own']);
 
 function strokeWidth(magnitude: number): number {
   return Math.max(2.5, Math.min(7, 2.5 + Math.abs(magnitude) * 0.7));
@@ -325,11 +345,18 @@ export interface LayoutOpts {
    */
   controlConfirmed?: boolean;
   /**
-   * Der fünfte Kreis „Laden". Fehlt er, ist das Diagramm ZEICHENGLEICH zu
-   * vorher - eine Anlage ohne Ladepunkt bekommt keinen Knoten und keine
-   * grössere viewBox.
+   * Der fünfte Kreis „Laden": die Ladepunkte HINTER dem Hausanschluss. Fehlt
+   * er, ist das Diagramm ZEICHENGLEICH zu vorher - eine Anlage ohne Ladepunkt
+   * bekommt keinen Knoten und keine grössere viewBox.
    */
   charging?: ChargingNodeOpts | null;
+  /**
+   * Der Kreis „Laden (eigener Anschluss)" (Cockpit Phase 1 / C2): Säulen an
+   * einem EIGENEN Netzanschluss. Er hängt am HUB neben dem Haus, weil seine
+   * Kilowatt nicht in der Hausmessung stecken - und er braucht kein Haus, um
+   * gezeichnet zu werden.
+   */
+  chargingOwn?: ChargingNodeOpts | null;
 }
 
 /**
@@ -370,6 +397,12 @@ export function layoutFlow(
   const vertices: FlowVertex[] = [];
 
   for (const node of nodes) {
+    // Die Lade-Rollen werden UNTEN platziert, nicht hier: sie sitzen in der
+    // zusätzlichen Zeile und einer von ihnen hängt am HAUS statt am Hub - eine
+    // Geometrie, die diese Schleife nicht kennt. Ihre Zahlen kommen aus
+    // `opts.charging`/`opts.chargingOwn`, weil das WORT unter dem Kreis ein
+    // OCPP-Zustand ist, den die Topologie nicht trägt.
+    if (CHARGING_ROLES.has(node.role)) continue;
     const side = ROLE_SIDE[node.role];
     const memberCount = node.members.length;
     if (memberCount === 0) continue;
@@ -460,56 +493,82 @@ export function layoutFlow(
     });
   }
 
-  // --- Der fünfte Kreis „Laden" (Konzept §6, E3) -----------------------------
-  // Er hängt am HAUS, nicht am Hub: die Haus-Summe bleibt „alles hinter dem
-  // Anschluss", und der Abzweig sagt, wie viel davon ins Auto geht. Ein
-  // eigener Anschluss wäre ein Knoten AM HUB - dafür fehlt in Phase 0 das
-  // Flag (Konzept §8, C1), und ein geratener zweiter Anschluss wäre eine
-  // Behauptung über den Zählerschrank des Kunden.
-  const laden = opts?.charging;
+  // --- Die Lade-Kreise (Konzept §6, E3) --------------------------------------
+  // ZWEI Plätze, weil es zwei Anschlusspunkte gibt (Cockpit Phase 1 / C2):
+  //
+  //  * `charging` hängt am HAUS, nicht am Hub - seine Kilowatt stecken schon in
+  //    der gemessenen Hauslast. Die Haus-Summe bleibt „alles hinter dem
+  //    Anschluss", und der Abzweig sagt, wie viel davon ins Auto geht.
+  //  * `charging-own` hängt am HUB neben dem Haus - eine Säule an einem EIGENEN
+  //    Netzanschluss steckt NICHT in dieser Messung, das Haus enthält sie nie.
+  //
+  // Die ZAHL kommt aus `/chargers`, nicht aus der Topologie: das Wort unter dem
+  // Kreis („lädt" / „Auto eingesteckt" / „kein Auto") ist ein OCPP-ZUSTAND, den
+  // das Read-Model nicht trägt - und zwei Quellen für denselben Kreis wären
+  // zwei Zahlen, die sich widersprechen können.
   const haus = vertices.find((v) => v.role === 'consumer');
-  if (laden && haus) {
-    // Unter dem Haus-Knoten, auf seiner Seite. Die viewBox wächst dafür genau
-    // um diese eine Zeile - ohne Ladepunkt ist sie zeichengleich zu vorher.
-    const y = Math.min(haus.y + CHARGING_DY, chargingH - NODE_R - labelBlock - 6);
-    const label = CHARGING_LABEL;
+  const ladeKreise: { role: Role; node: ChargingNodeOpts }[] = [];
+  if (opts?.charging) ladeKreise.push({ role: 'charging', node: opts.charging });
+  if (opts?.chargingOwn) ladeKreise.push({ role: 'charging-own', node: opts.chargingOwn });
+  // Der Abzweig braucht sein Haus; ein eigener Anschluss nicht.
+  const gezeichnet = ladeKreise.filter((k) => k.role !== 'charging' || haus != null);
+  const ladenZeile = gezeichnet.length > 0;
+
+  for (const { role, node: laden } of gezeichnet) {
+    const amHaus = ROLE_SIDE[role] === 'right-below';
+    // Beide sitzen in der ZUSÄTZLICHEN Zeile; die viewBox wächst dafür genau um
+    // sie - ohne Ladepunkt ist das Diagramm zeichengleich zu vorher.
+    const y = Math.min(
+      (amHaus && haus ? haus.y : hubY) + CHARGING_DY,
+      chargingH - NODE_R - labelBlock - 6,
+    );
+    const x = amHaus && haus ? haus.x : leftX;
+    const label = ROLE_NODE_LABEL[role];
     const labelLines = wrapLabel(label);
     const widest = Math.max(...labelLines.map((l) => l.length), laden.wort?.length ?? 0, 1);
     const half = Math.min((widest * LBL_F * 0.55) / 2, W / 2);
-    // ⚠ V15 noch einmal, hier senkrecht: der Beschriftungs-Block des HAUSES
-    // liegt zwischen den beiden Kreisen, also endet der Abzweig UNTER ihm -
-    // sonst liefen die Laufpunkte mitten durch das Wort „Hausverbrauch".
-    // Gerechnet wird mit den WIRKLICH gezeichneten Zeilen; ein späterer
-    // Haus-Zusatz verkürzt den Abzweig damit von selbst, statt ihn zu queren.
-    const hausLines = haus.labelLines.length + (haus.subLabel ? 1 : 0);
-    const toY = Math.min(haus.y + NODE_R + LBL_DY + hausLines * LBL_LH, y - NODE_R - 2);
+    // ⚠ V15 noch einmal, hier senkrecht: der Beschriftungs-Block des Knotens
+    // DARÜBER liegt zwischen den beiden Kreisen, also endet die Speiche UNTER
+    // ihm - sonst liefen die Laufpunkte mitten durch das Wort. Gerechnet wird
+    // mit den WIRKLICH gezeichneten Zeilen; ein späterer Zusatz verkürzt die
+    // Speiche damit von selbst, statt sie zu queren.
+    // ⚠ NUR der Abzweig trägt ein Speichen-Ziel. Ein eigener Anschluss hängt am
+    // Hub wie jede andere Rolle und lässt `toX`/`toY` deshalb WEG - der
+    // Renderer fällt dort ohnehin auf den Hub zurück, und ein gesetztes Ziel
+    // wäre eine zweite Wahrheit über denselben Anhängepunkt.
+    const anker = amHaus && haus
+      ? { x: haus.x, y: haus.y, lines: haus.labelLines.length + (haus.subLabel ? 1 : 0) }
+      : null;
+    const toX = anker ? anker.x : undefined;
+    const toY = anker
+      ? Math.min(anker.y + NODE_R + LBL_DY + anker.lines * LBL_LH, y - NODE_R - 2)
+      : undefined;
     vertices.push({
-      key: 'charging',
-      role: 'charging',
-      x: haus.x,
+      key: role,
+      role,
+      x,
       y,
       label,
       labelLines,
-      labelX: Math.max(half, Math.min(W - half, haus.x)),
+      labelX: Math.max(half, Math.min(W - half, x)),
       subLabel: laden.wort,
       title: `${label} · ${laden.count} ${laden.count === 1 ? 'Ladepunkt' : 'Ladepunkte'}`,
       value: laden.kw == null ? '–' : fmtNum(Math.abs(laden.kw), 'kW', 1),
-      icon: 'battery-charging',
-      color: CHARGING_COLOR,
-      soft: CHARGING_SOFT,
-      baseWidth: CHARGING_BASE_W,
+      icon: ROLE_META[role].icon,
+      color: ROLE_META[role].color,
+      soft: ROLE_META[role].soft,
+      // Der Abzweig ist dünner als eine Hub-Speiche; ein eigener Anschluss
+      // bekommt die volle Breite - er IST ein Anschluss.
+      baseWidth: amHaus ? CHARGING_BASE_W : 6,
       spokeActive: laden.aktiv,
-      // Verbrauch: die Bewegung läuft VOM Haus zum Auto.
+      // Verbrauch: die Bewegung läuft VOM Anker zum Auto.
       reverse: true,
-      strokeWidth: Math.max(2, strokeWidth(laden.kw ?? 0) - 1),
-      spokeX: haus.x,
+      strokeWidth: amHaus
+        ? Math.max(2, strokeWidth(laden.kw ?? 0) - 1)
+        : strokeWidth(laden.kw ?? 0),
+      spokeX: x,
       spokeY: y,
-      // ⚠ Der Abzweig endet am HAUS, nicht am Hub (E3): die Haus-Summe bleibt
-      // „alles hinter dem Anschluss", und der Abzweig sagt, wie viel davon ins
-      // Auto geht. Ein eigener Anschluss wäre ein Knoten AM HUB - dafür fehlt
-      // in Phase 0 das Flag (Konzept §8, C1), und ein geratener zweiter
-      // Anschluss wäre eine Behauptung über den Zählerschrank des Kunden.
-      toX: haus.x,
+      toX,
       toY,
       memberCount: laden.count,
       confirmed: false,
@@ -522,7 +581,7 @@ export function layoutFlow(
 
   return {
     W,
-    H: laden && haus ? chargingH : H,
+    H: ladenZeile ? chargingH : H,
     hubX,
     hubY,
     hubR: HUB_R,

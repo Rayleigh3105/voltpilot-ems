@@ -483,6 +483,9 @@ func (a *Agent) Topology() topology.Topology {
 	srcReadings := a.SourceLastReadings()
 	srcStatuses := a.SourceStatuses()
 	primary := a.State.Get().LastReading
+	// WHERE each charge point hangs (Cockpit Phase 1 / C2). Read BEFORE entMu
+	// like the source state above - the CSMS snapshot takes its own lock.
+	cpConn := a.chargePointConnections()
 
 	a.entMu.Lock()
 	reg := a.entRegistry
@@ -494,6 +497,7 @@ func (a *Agent) Topology() topology.Topology {
 		re := topology.RawEntity{
 			ID: e.ID, Type: e.Type, Label: e.Label,
 			Category: e.Category(), Health: entityHealth(er, now, ok),
+			Connection: cpConn[e.ChargePointID],
 		}
 		var src *sources.LastReading
 		srcHealth := ""

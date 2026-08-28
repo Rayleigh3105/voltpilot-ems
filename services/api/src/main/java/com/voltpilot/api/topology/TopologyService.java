@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityTypeCatalog;
+import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.topology.TopologyRepository.LatestValue;
 import com.voltpilot.api.topology.TopologyRepository.RoleOverride;
 import com.voltpilot.api.tenant.TenantContext;
@@ -40,9 +41,15 @@ public class TopologyService {
     public record CapabilityDto(String channel, String unit, String role, boolean primary,
             Double value) {}
 
-    /** One entity as the read-model exposes it (camelCase, the EntityController style). */
+    /**
+     * One entity as the read-model exposes it (camelCase, the EntityController
+     * style). {@code connection} is only set for a charge point ({@code haus} |
+     * {@code eigen}, Cockpit Phase 1 / C1) and is the ONE extra input the
+     * portal needs to reproduce this server's role resolution
+     * ({@code rollen.isAutoAssigned}) instead of guessing it.
+     */
     public record EntityTopologyDto(UUID id, String entityType, String typeLabel, String label,
-            String category, String health, List<CapabilityDto> capabilities) {}
+            String category, String health, String connection, List<CapabilityDto> capabilities) {}
 
     /** The whole read-model: the entity graph + the derived hub topology. */
     public record TopologyResponse(String schemaVersion, List<EntityTopologyDto> entities,
@@ -52,19 +59,23 @@ public class TopologyService {
     public record Assignment(UUID entityId, String channel, String role, boolean primary) {}
 
     /** The role vocabulary a stored override may name (topology.DefaultRole set). */
-    private static final Set<String> ROLE_VOCAB = Set.of("pv", "storage", "grid", "consumer");
+    private static final Set<String> ROLE_VOCAB = Set.of("pv", "storage", "grid", "consumer",
+            TopologyDeriver.ROLE_CHARGING, TopologyDeriver.ROLE_CHARGING_OWN);
 
     private final EntityRegistryRepository registry;
     private final TopologyRepository repo;
     private final EntityTypeCatalog catalog;
     private final ObjectMapper mapper;
+    private final DeviceChargerStatusRepository chargers;
 
     public TopologyService(EntityRegistryRepository registry, TopologyRepository repo,
-            EntityTypeCatalog catalog, ObjectMapper mapper) {
+            EntityTypeCatalog catalog, ObjectMapper mapper,
+            DeviceChargerStatusRepository chargers) {
         this.registry = registry;
         this.repo = repo;
         this.catalog = catalog;
         this.mapper = mapper;
+        this.chargers = chargers;
     }
 
     /**
@@ -97,7 +108,9 @@ public class TopologyService {
             }
             if (!ROLE_VOCAB.contains(role)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Unbekannte Rolle \"" + role + "\" (erlaubt: pv, storage, grid, consumer).");
+                        "Unbekannte Rolle \"" + role
+                                + "\" (erlaubt: pv, storage, grid, consumer, charging, "
+                                + "charging-own).");
             }
             repo.upsertOverride(tenantId, siteId, a.entityId(), a.channel(), role, a.primary());
         }
@@ -114,6 +127,10 @@ public class TopologyService {
                 rolesWithExplicitPrimary.add(ov.role());
             }
         }
+        // WHERE each charge point hangs - the ONE extra input the charging roles
+        // need (C2). One small indexed read; a site without a charge point gets
+        // an empty map and resolves byte-identically to before.
+        Map<UUID, String> connections = chargers.connectionsByEntity(siteId);
         Instant now = Instant.now();
         Set<String> firstSeen = new HashSet<>();
 
@@ -121,6 +138,7 @@ public class TopologyService {
         List<TopologyDeriver.EntityInput> derivIn = new ArrayList<>();
         for (EntityRow row : rows) {
             String category = categoryOf(row.entityType());
+            String connection = connections.get(row.id());
             List<CapabilityDto> caps = new ArrayList<>();
             List<TopologyDeriver.CapabilityInput> derivCaps = new ArrayList<>();
             Instant newest = null;
@@ -137,7 +155,8 @@ public class TopologyService {
                     role = ov.role();
                     primary = ov.primary();
                 } else {
-                    role = TopologyDeriver.defaultRole(category, channel);
+                    role = TopologyDeriver.defaultRole(row.entityType(), category, channel,
+                            connection);
                     primary = !role.isEmpty() && !rolesWithExplicitPrimary.contains(role)
                             && !firstSeen.contains(role);
                 }
@@ -155,7 +174,8 @@ public class TopologyService {
             }
             String health = health(newest, now);
             entities.add(new EntityTopologyDto(row.id(), row.entityType(),
-                    catalog.labelFor(row.entityType()), row.label(), category, health, caps));
+                    catalog.labelFor(row.entityType()), row.label(), category, health, connection,
+                    caps));
             derivIn.add(new TopologyDeriver.EntityInput(row.id().toString(), row.entityType(),
                     label(row), category, health, derivCaps));
         }

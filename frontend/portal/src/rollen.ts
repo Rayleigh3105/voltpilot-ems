@@ -217,7 +217,7 @@ export function isAutoAssigned(topology: SiteTopology): boolean {
   for (const e of topology.entities) {
     for (const cap of e.capabilities) {
       const resolved = cap.role ?? '';
-      if (resolved !== defaultRole(e.category, cap.channel)) {
+      if (resolved !== defaultRole(e.entityType, e.category, cap.channel, e.connection ?? '')) {
         return false;
       }
     }

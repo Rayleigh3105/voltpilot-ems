@@ -407,7 +407,8 @@ public class EntityRegistryService {
 
     /**
      * The default topology roles a would-be entity's measure channels resolve
-     * to, in canonical order (pv, storage, consumer, grid) - exactly what the
+     * to, in canonical order (pv, storage, consumer, grid, charging,
+     * charging-own) - exactly what the
      * AE1 read-model {@link com.voltpilot.api.topology.TopologyDeriver} derives,
      * so the preview and the live topology never disagree.
      */
@@ -417,7 +418,11 @@ public class EntityRegistryService {
         java.util.LinkedHashSet<String> found = new java.util.LinkedHashSet<>();
         for (JsonNode m : capabilities.path("measure")) {
             String channel = m.path("channel").asText(null);
-            String role = com.voltpilot.api.topology.TopologyDeriver.defaultRole(category, channel);
+            // Der Entitäts-TYP entscheidet mit (Cockpit Phase 1 / C2). Hier ist
+            // kein Anschluss bekannt und keiner nötig: gefragt wird nur, OB der
+            // Kanal einer Rolle zufällt, nicht welcher der beiden Lade-Rollen.
+            String role = com.voltpilot.api.topology.TopologyDeriver.defaultRole(entityType,
+                    category, channel, "");
             if (role != null && !role.isEmpty()) {
                 found.add(role);
             }
@@ -426,7 +431,9 @@ public class EntityRegistryService {
                 com.voltpilot.api.topology.TopologyDeriver.ROLE_PV,
                 com.voltpilot.api.topology.TopologyDeriver.ROLE_STORAGE,
                 com.voltpilot.api.topology.TopologyDeriver.ROLE_CONSUMER,
-                com.voltpilot.api.topology.TopologyDeriver.ROLE_GRID);
+                com.voltpilot.api.topology.TopologyDeriver.ROLE_GRID,
+                com.voltpilot.api.topology.TopologyDeriver.ROLE_CHARGING,
+                com.voltpilot.api.topology.TopologyDeriver.ROLE_CHARGING_OWN);
         return canonical.stream().filter(found::contains).toList();
     }
 

@@ -44,6 +44,7 @@ export function AdaptiveEnergyFlow({
   pins = null,
   controlConfirmed = false,
   charging = null,
+  chargingOwn = null,
   rename = null,
 }: {
   topology: SiteTopology;
@@ -80,11 +81,17 @@ export function AdaptiveEnergyFlow({
   controlConfirmed?: boolean;
   /**
    * Der fünfte Kreis „Laden" (Konzept `vp-verbraucher-cockpit-k1` §6, E3) -
-   * ein Abzweig VOM Haus, abgeleitet von `ladenKachel.flussKnoten`. Fehlt er
-   * (keine Ladepunkte, älteres Backend), ist das Diagramm ZEICHENGLEICH zu
+   * ein Abzweig VOM Haus, abgeleitet von `ladenKachel.ladeFlussKnoten`. Fehlt
+   * er (keine Ladepunkte, älteres Backend), ist das Diagramm ZEICHENGLEICH zu
    * vorher: kein Knoten, keine grössere viewBox.
    */
   charging?: ChargingNodeOpts | null;
+  /**
+   * Der Kreis „Laden (eigener Anschluss)" (Phase 1 / C2) - Säulen an einem
+   * EIGENEN Netzanschluss. Er hängt am HUB neben dem Haus, weil seine Kilowatt
+   * nicht in der Hausmessung stecken, und braucht kein Haus, um zu erscheinen.
+   */
+  chargingOwn?: ChargingNodeOpts | null;
   /**
    * Enables the rename pencils on the PV-composition rows (concept
    * `vp-entity-alias-k1` §5, the „Abkürzung"): the wish is born looking at this
@@ -117,6 +124,7 @@ export function AdaptiveEnergyFlow({
     pvDeviceCount: composition?.deviceCount,
     controlConfirmed,
     charging,
+    chargingOwn,
   });
   const maxWidth = size === 'hero' ? '100%' : `${L.W}px`;
   const expandable = composition != null && L.vertices.some((v) => v.expandable);

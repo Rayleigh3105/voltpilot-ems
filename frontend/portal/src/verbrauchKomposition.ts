@@ -298,12 +298,34 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
   // entfällt ersatzlos, sobald die Box `power_kw` je Ladepunkt publiziert
   // (Phase 1 E1).
   const chargers = input.chargers ?? [];
+  /**
+   * Die Schlüssel der Teile, die an einem EIGENEN Netzanschluss hängen
+   * (Cockpit Phase 1 / C2).
+   *
+   * ⚠ Sie sind der GEGENSATZ zu allen anderen Teilen dieser Aufschlüsselung:
+   * die stecken per Konstruktion IN der gemessenen Hauslast, diese nicht. Aus
+   * genau einer Tatsache folgen drei Regeln, und alle drei stehen unten:
+   * sie werden nicht vom Haus abgezogen (sie waren nie darin), sie zählen
+   * nicht in „davon Laden" (das beschreibt einen Teil DES Hauses), und sie
+   * bilden ihre eigene Gruppe NEBEN dem Haus statt einer Zeile darin.
+   *
+   * Geschlüsselt wird auf `ChargePoint.connection`, den IST der BOX - dieselbe
+   * Quelle, aus der der Server die Topologie-Rolle `charging-own` auflöst.
+   * `null` heisst „eine ältere Box meldet es nicht" und wird als `haus`
+   * gelesen: die sichere Richtung, denn so rechnet auch das Budget-Gesetz der
+   * Box. Eine Anlage ohne eine einzige `eigen`-Säule bekommt eine leere Menge
+   * und ist damit zeichengleich zu vorher.
+   */
+  const eigeneKeys = new Set<string>();
   let ladenKw: number | null = null;
   let ladendeStecker = 0;
   let steckerGesamt = 0;
   for (const c of chargers) {
     stamps.push(c.reportedAt ?? c.lastSeen ?? null);
     const cons = c.connectors ?? [];
+    // Der Anschlusspunkt gilt der SÄULE, nicht dem einzelnen Stecker - beide
+    // Zweige unten schreiben deshalb denselben Schlüssel in `eigeneKeys`.
+    const eigen = c.connection === 'eigen';
     // Eine Säule ohne gemeldeten Stecker ist trotzdem ein Ladepunkt - sie
     // bekommt eine Zeile mit ihrem eigenen Zustand, statt zu verschwinden.
     if (cons.length === 0) {
@@ -330,6 +352,7 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
         entityId: c.entityId ?? null,
         title: c.chargePointId,
       });
+      if (eigen) eigeneKeys.add(`cp:${c.chargePointId}`);
       continue;
     }
     for (const con of cons) {
@@ -346,7 +369,9 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
       // die veraltete Zahl geht in keine Summe ein.
       const kw = z.kind === 'laedt' ? aktuelleLeistung(con, input.nowMs) : null;
       if (laedt) ladendeStecker += 1;
-      if (kw != null) ladenKw = round3((ladenKw ?? 0) + kw);
+      // ⚠ `ladenKw` und der Halbsatz „davon Laden" beschreiben einen TEIL DES
+      // HAUSES - eine Säule am eigenen Anschluss steckt nicht darin.
+      if (kw != null && !eigen) ladenKw = round3((ladenKw ?? 0) + kw);
       const mehrere = cons.length > 1;
       const note = [z.reason, z.detail, con.sessionSince ? seit(con.sessionSince) : null]
         .filter((s): s is string => s != null && s !== '')
@@ -375,6 +400,7 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
         entityId: c.entityId ?? null,
         title: `${c.chargePointId} · ${connectorName(con.connectorId)}`,
       });
+      if (eigen) eigeneKeys.add(`cp:${c.chargePointId}#${con.connectorId}`);
     }
   }
 
@@ -425,13 +451,20 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
   if (teile.length === 0) return null;
 
   // --- 3. Der Rest ----------------------------------------------------------
-  const gemessen = teile.filter((t) => t.kw != null);
+  // ⚠ Gerechnet wird NUR mit den Teilen, die im Haus-Wert wirklich stecken. Ein
+  // eigener Anschluss wird weder abgezogen (er war nie darin) noch macht er den
+  // Rest unbestimmbar, wenn er sich der Zählung entzieht - seine Lücke ist eine
+  // Lücke NEBEN dem Haus, nicht darin.
+  const hausTeile = eigeneKeys.size === 0
+    ? teile
+    : teile.filter((t) => !eigeneKeys.has(t.key));
+  const gemessen = hausTeile.filter((t) => t.kw != null);
   const summeTeile = gemessen.reduce((s, t) => s + (t.kw as number), 0);
-  const rest = restZeile(hausKw, summeTeile, teile, input.hausTodayKwh ?? null, today);
+  const rest = restZeile(hausKw, summeTeile, hausTeile, input.hausTodayKwh ?? null, today);
 
   // --- 4. Gruppen -----------------------------------------------------------
   const kachel = input.ladenKachelSichtbar === true;
-  const gruppen = gruppieren(teile, byId, chargers, kachel, ladendeStecker, steckerGesamt);
+  const gruppen = gruppieren(teile, byId, kachel, eigeneKeys);
 
   return {
     hausKw,
@@ -520,16 +553,16 @@ function restToday(
 function gruppieren(
   teile: VerbrauchTeil[],
   byId: Map<string, TopologyEntity>,
-  chargers: ChargePoint[],
   ladenKachelSichtbar: boolean,
-  ladendeStecker: number,
-  steckerGesamt: number,
+  eigeneKeys: ReadonlySet<string>,
 ): VerbrauchGruppe[] {
   const buckets = new Map<VerbrauchGruppeId, VerbrauchTeil[]>();
   for (const t of teile) {
-    const id: VerbrauchGruppeId = t.key.startsWith('cp:')
-      ? 'laden'
-      : gruppeFuerTyp(byId.get(t.entityId ?? '')?.entityType);
+    const id: VerbrauchGruppeId = eigeneKeys.has(t.key)
+      ? 'laden_eigen'
+      : t.key.startsWith('cp:')
+        ? 'laden'
+        : gruppeFuerTyp(byId.get(t.entityId ?? '')?.entityType);
     const list = buckets.get(id) ?? [];
     list.push(t);
     buckets.set(id, list);
@@ -544,17 +577,25 @@ function gruppieren(
     const kw = gemessen.length === 0
       ? null
       : round3(gemessen.reduce((s, t) => s + (t.kw as number), 0));
-    const collapsed = id === 'laden' && ladenKachelSichtbar;
+    // Beide Lade-Gruppen wohnen in der Kachel „Laden" - sie kollabieren also
+    // gemeinsam (E4: eine Zahl hat einen Wohnort).
+    const istLaden = id === 'laden' || id === 'laden_eigen';
+    const collapsed = istLaden && ladenKachelSichtbar;
+    // ⚠ Kopf und Kollaps-Satz zählen die Zeilen DIESER Gruppe, nie die der
+    // ganzen Anlage: „1 von 2 lädt" über einer Gruppe mit einer Zeile wäre eine
+    // Aussage über Stecker, die hier gar nicht stehen.
+    const stecker = sorted.filter((t) => t.key.includes('#'));
+    const punkte = new Set(sorted.map((t) => t.key.split('#')[0])).size;
     out.push({
       id,
       label: GRUPPE_LABEL[id],
       kw,
-      headline: id === 'laden'
-        ? ladenKopf(ladendeStecker, steckerGesamt, kw)
+      headline: istLaden
+        ? ladenKopf(stecker.filter((t) => t.aktiv).length, stecker.length, kw)
         : (kw == null ? 'ohne Leistungsmessung' : kwText(kw)),
       teile: collapsed ? [] : sorted,
       collapsed,
-      collapsedText: collapsed ? ladepunktText(chargers.length) : null,
+      collapsedText: collapsed ? ladepunktText(punkte) : null,
     });
   }
   return out;

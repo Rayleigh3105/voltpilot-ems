@@ -62,6 +62,7 @@ export function CockpitHero({
   periodSeg = null,
   controlConfirmed = false,
   charging = null,
+  chargingOwn = null,
   showRail = true,
   rename = null,
   consumers = null,
@@ -100,11 +101,17 @@ export function CockpitHero({
   /**
    * Der fünfte Kreis „Laden" (Konzept `vp-verbraucher-cockpit-k1` §6, E3) —
    * ein Abzweig VOM Haus. Er wird durchgereicht, nie hier abgeleitet: die
-   * eine Ableitung ist `ladenKachel.flussKnoten`, damit Diagramm und Kachel
+   * eine Ableitung ist `ladenKachel.ladeFlussKnoten`, damit Diagramm und Kachel
    * über dieselbe Säule nichts Verschiedenes behaupten können. null (keine
    * Ladepunkte) rendert das Diagramm ZEICHENGLEICH zu vorher.
    */
   charging?: ChargingNodeOpts | null;
+  /**
+   * Der Kreis „Laden (eigener Anschluss)" (Cockpit Phase 1 / C2) - Säulen an
+   * einem EIGENEN Netzanschluss hängen am HUB neben dem Haus, nicht als Abzweig
+   * darunter: ihre Kilowatt stecken nicht in der Hausmessung.
+   */
+  chargingOwn?: ChargingNodeOpts | null;
   /**
    * Ob die **Bilanz-Leiste** gerendert wird. Default `true` = die Bühne, wie
    * sie war. Die Telefon-Fassung (Mobil-Umbau Stufe 2, `<= 720px`) setzt sie
@@ -166,6 +173,7 @@ export function CockpitHero({
               pins={pins}
               controlConfirmed={controlConfirmed}
               charging={charging}
+              chargingOwn={chargingOwn}
               rename={rename}
             />
           ) : (

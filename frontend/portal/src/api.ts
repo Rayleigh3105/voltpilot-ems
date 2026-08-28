@@ -1620,6 +1620,14 @@ export interface TopologyEntity {
   category: string;
   /** ok | stale | never (5-min liveness window). */
   health: string;
+  /**
+   * WO eine Säule hängt (`haus` | `eigen`, Cockpit Phase 1 / C1) - nur bei
+   * einem Ladepunkt gesetzt. `null` heisst „nicht gesagt" und wird als `haus`
+   * gelesen; es ist die EINE zusätzliche Eingabe, die `topology.defaultRole`
+   * braucht, damit die Fläche die Rollen-Auflösung des Servers nachvollziehen
+   * kann (`rollen.isAutoAssigned`), statt sie zu raten.
+   */
+  connection?: string | null;
   capabilities: TopologyCapability[];
 }
 

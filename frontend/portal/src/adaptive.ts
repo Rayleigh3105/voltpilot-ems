@@ -57,6 +57,22 @@ export const ROLE_META: Record<Role, RoleMeta> = {
     tileClass: 'grid',
     icon: 'zap',
   },
+  // Laden IST Verbrauch, nur ein benannter Teil davon - deshalb die
+  // Verbraucher-Hue, nicht eine sechste Farbe (Konzept §6).
+  charging: {
+    label: 'Laden',
+    color: 'var(--vp-flow-load)',
+    soft: 'var(--vp-flow-load-soft)',
+    tileClass: 'load',
+    icon: 'battery-charging',
+  },
+  'charging-own': {
+    label: 'Laden (eigener Anschluss)',
+    color: 'var(--vp-flow-load)',
+    soft: 'var(--vp-flow-load-soft)',
+    tileClass: 'load',
+    icon: 'battery-charging',
+  },
 };
 
 /**

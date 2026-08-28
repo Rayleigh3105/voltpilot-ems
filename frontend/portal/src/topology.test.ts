@@ -12,6 +12,20 @@ const vectorsPath = resolve(process.cwd(), '../../docs/contracts/v2/topology-vec
 
 interface VectorFile {
   cases: { name: string; input: Input; expected: Topology }[];
+  /**
+   * Die MAPPING-Vektoren (Cockpit Phase 1 / C2). Die derive-Fälle können sie
+   * nicht abdecken - sie tragen bereits aufgelöste Rollen -, und genau dort
+   * driften die drei Zwillinge am leichtesten auseinander: ein Ladepunkt ist
+   * Kategorie `consumer`, nur der TYP hält ihn aus dem Haus-Knoten heraus.
+   */
+  default_role_cases: {
+    name: string;
+    type: string;
+    category: string;
+    channel: string;
+    connection: string;
+    expected: string;
+  }[];
 }
 
 const vectors: VectorFile = JSON.parse(readFileSync(vectorsPath, 'utf8'));
@@ -38,20 +52,80 @@ describe('topology.derive (shared vectors)', () => {
   });
 });
 
-describe('topology.defaultRole', () => {
-  it.each([
-    ['storage', 'pv_power_kw', 'pv'],
-    ['producer', 'pv_power_kw', 'pv'],
-    ['storage', 'battery_power_kw', 'storage'],
-    ['storage', 'soc_pct', 'storage'],
-    ['storage', 'power_kw', 'storage'],
-    ['producer', 'power_kw', 'pv'],
-    ['consumer', 'power_kw', 'consumer'],
-    ['meter', 'power_kw', 'grid'],
-    ['measure-only', 'power_kw', 'grid'],
-    ['consumer', 'energy_kwh', ''],
-    ['meter', 'frequency_hz', ''],
-  ])('defaultRole(%s, %s) = %s', (category, channel, want) => {
-    expect(defaultRole(category, channel)).toBe(want);
+describe('topology.defaultRole (shared vectors)', () => {
+  it('has cases', () => {
+    expect(vectors.default_role_cases.length).toBeGreaterThan(0);
+  });
+
+  for (const c of vectors.default_role_cases) {
+    it(c.name, () => {
+      expect(defaultRole(c.type, c.category, c.channel, c.connection)).toBe(c.expected);
+    });
+  }
+});
+
+describe('topology - die Lade-Rollen (C2)', () => {
+  it('gibt die Lade-Rollen ZULETZT aus (angehängt, damit alte Vektoren byte-gleich bleiben)', () => {
+    const cap = (channel: string, role: string) => ({
+      channel,
+      role,
+      primary: true,
+      value: 1,
+    });
+    const ent = (id: string, role: string) => ({
+      id,
+      type: id,
+      label: id,
+      category: 'consumer',
+      health: 'ok',
+      capabilities: [cap('power_kw', role)],
+    });
+    // Bewusst in VERDREHTER Eingabe-Reihenfolge: die Ausgabe folgt der
+    // kanonischen Ordnung, nicht der Eingabe.
+    const got = derive({
+      entities: [
+        ent('C', 'charging-own'),
+        ent('G', 'grid'),
+        ent('W', 'charging'),
+        ent('H', 'consumer'),
+        ent('S', 'storage'),
+        ent('P', 'pv'),
+      ],
+    });
+    expect(got.nodes.map((n) => n.role)).toEqual([
+      'pv',
+      'storage',
+      'consumer',
+      'grid',
+      'charging',
+      'charging-own',
+    ]);
+  });
+
+  it('lässt einen Ladepunkt aus dem Haus-Knoten heraus und fliesst nach aussen', () => {
+    const got = derive({
+      entities: [
+        {
+          id: 'H',
+          type: 'house-load',
+          label: 'Hausverbrauch',
+          category: 'consumer',
+          health: 'ok',
+          capabilities: [{ channel: 'power_kw', role: 'consumer', primary: true, value: 4.2 }],
+        },
+        {
+          id: 'W',
+          type: 'wallbox',
+          label: 'Wallbox',
+          category: 'consumer',
+          health: 'ok',
+          capabilities: [{ channel: 'power_kw', role: 'charging', primary: true, value: 11 }],
+        },
+      ],
+    });
+    expect(got.nodes.map((n) => n.role)).toEqual(['consumer', 'charging']);
+    // Beide Richtungen „out": Laden IST Verbrauch.
+    expect(got.nodes[1].direction).toBe('out');
+    expect(got.nodes[0].members).toHaveLength(1);
   });
 });
