@@ -542,7 +542,7 @@ describe('GeraetSeiteSection', () => {
       '',
       '#/anlage/s-1/geraet/edge-45gz7da/src-7c1e9a2b?bearbeiten=1',
     );
-    const row = {
+    const row: SiteComponents['components'][number] = {
       id: 'fr1', role: 'pv-generation', entityType: 'producer', label: 'Dach Süd',
       brand: 'fronius', model: 'eco-27', family: 'sunspec_live',
       communication: 'fronius_sunspec',
@@ -551,9 +551,21 @@ describe('GeraetSeiteSection', () => {
       definitionVersion: 3, edgeSourceId: 'src-7c1e9a2b', syncStatus: 'in_sync',
       capacityKwp: 27,
     };
-    vi.mocked(api.siteComponents).mockResolvedValue({
-      componentAuthority: 'portal', components: [row],
-    });
+    const updatedRow: SiteComponents['components'][number] = {
+      ...row, label: 'Garage Süd', definitionVersion: 4, syncStatus: 'pending',
+    };
+    const refreshedEntities: SiteEntities = {
+      ...entities,
+      entities: entities.entities.map((entity) => entity.id === row.id
+        ? { ...entity, label: updatedRow.label }
+        : entity),
+    };
+    let saved = false;
+    vi.mocked(api.siteEntities).mockImplementation(async () =>
+      saved ? refreshedEntities : entities);
+    vi.mocked(api.siteComponents).mockImplementation(async () => ({
+      componentAuthority: 'portal', components: [saved ? updatedRow : row],
+    }));
     vi.spyOn(api, 'componentVersions').mockResolvedValue([]);
     vi.spyOn(api, 'componentTemplates').mockResolvedValue([{
       templateRef: row.templateRef, kind: 'builtin', version: 1,
@@ -568,9 +580,12 @@ describe('GeraetSeiteSection', () => {
     const connectionTest = vi.spyOn(api, 'testComponentConnection').mockResolvedValue({
       results: [{ id: 'verbindung', ok: true }],
     });
-    vi.spyOn(api, 'updateComponent').mockResolvedValue({
-      componentAuthority: 'portal',
-      components: [{ ...row, label: 'Garage Süd', definitionVersion: 4, syncStatus: 'pending' }],
+    vi.spyOn(api, 'updateComponent').mockImplementation(async () => {
+      saved = true;
+      return {
+        componentAuthority: 'portal',
+        components: [updatedRow],
+      };
     });
 
     render(
@@ -593,7 +608,11 @@ describe('GeraetSeiteSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
 
     expect(await screen.findByText(/Änderungen als neue Fassung gespeichert/)).toBeVisible();
-    expect(screen.getByTestId('geraet-rahmen')).toBeVisible();
+    const componentSection = await screen.findByTestId('sektion-komponenten');
+    expect(componentSection).toHaveTextContent('Garage Süd');
+    expect(componentSection).not.toHaveTextContent('Dach Süd');
+    expect(await screen.findByRole('heading', { name: 'Garage Süd' })).toBeVisible();
+    expect(api.siteEntities).toHaveBeenCalledTimes(2);
     expect(connectionTest).not.toHaveBeenCalled();
     window.history.replaceState(null, '', '#/');
   });
@@ -736,11 +755,59 @@ describe('GeraetSeiteSection', () => {
       />,
     );
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Diese Komponente ist an diesem Gerät nicht mehr verfügbar.',
-    );
+    await waitFor(() => expect(screen.getAllByRole('alert').some((alert) =>
+      alert.textContent?.includes('Diese Komponente ist an diesem Gerät nicht mehr verfügbar.'),
+    )).toBe(true));
     expect(window.location.hash).toBe('#/anlage/s-1/geraet/edge-45gz7da/inverter');
     expect(screen.getByTestId('geraet-rahmen')).toBeVisible();
+  });
+
+  it('räumt einen alten Deep-Link-Fehler beim gültigen Bearbeiten-Einstieg ab', async () => {
+    stub();
+    const row: SiteComponents['components'][number] = {
+      id: 'fr1', role: 'pv-generation', entityType: 'producer', label: 'Dach Süd',
+      brand: 'fronius', model: 'eco-27', family: 'sunspec_live',
+      communication: 'fronius_sunspec',
+      connection: { ip: '192.168.254.30', port: 502, unit_id: 1 },
+      templateRef: 'builtin:fronius:eco-27', templateVersion: 1,
+      definitionVersion: 3, edgeSourceId: 'src-7c1e9a2b', syncStatus: 'in_sync',
+      capacityKwp: 27,
+    };
+    vi.mocked(api.siteComponents).mockResolvedValue({
+      componentAuthority: 'portal', components: [row],
+    });
+    vi.spyOn(api, 'componentVersions').mockResolvedValue([]);
+    vi.spyOn(api, 'componentTemplates').mockResolvedValue([{
+      templateRef: row.templateRef, kind: 'builtin', version: 1,
+      brand: 'fronius', brandLabel: 'Fronius', model: 'eco-27', modelLabel: 'Eco 27.0-3-S',
+      communication: 'fronius_sunspec', communicationLabel: 'SunSpec Modbus TCP',
+      transportSchema: [
+        { key: 'ip', label: 'IP-Adresse', required: true },
+        { key: 'port', label: 'Port', type: 'number', default: 502 },
+        { key: 'unit_id', label: 'Modbus-Adresse', type: 'number', default: 1 },
+      ],
+    }]);
+    window.history.replaceState(
+      null,
+      '',
+      '#/anlage/s-1/geraet/edge-45gz7da/src-7c1e9a2b?bearbeiten=1&komponente=entfernt',
+    );
+
+    render(
+      <GeraetSeiteSection
+        site={site}
+        boxRef="edge-45gz7da"
+        geraetId="src-7c1e9a2b"
+        devices={[box]}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getAllByRole('alert').some((alert) =>
+      alert.textContent?.includes('Diese Komponente ist an diesem Gerät nicht mehr verfügbar.'),
+    )).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }));
+    expect(await screen.findByTestId('geraet-bearbeiten')).toBeVisible();
+    expect(screen.queryByText('Diese Komponente ist an diesem Gerät nicht mehr verfügbar.')).toBeNull();
   });
 
   it('ändert auch an einer real komponierten OCPP-Wallbox den gemeinsamen Anzeigenamen', async () => {

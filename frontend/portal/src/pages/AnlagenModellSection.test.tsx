@@ -282,6 +282,49 @@ describe('AnlagenModellSection — Variante A', () => {
     expect(within(deye).queryByRole('button', { name: /Bearbeiten/ })).toBeNull();
   });
 
+  it('bietet für synthetische Geräte keinen Bearbeiten-Link ins Leere an', async () => {
+    stub();
+    const syntheticId = 'synthetic-pv';
+    vi.mocked(api.siteEntities).mockResolvedValue({
+      ...entities,
+      entities: [
+        ...entities.entities,
+        {
+          id: syntheticId,
+          entityType: 'producer',
+          typeLabel: 'Erzeuger',
+          role: 'pv',
+          label: 'Freistehende PV',
+          control: false,
+          deviceId: 'missing-device',
+          capabilities: { measure: [{ channel: 'pv_power_kw', unit: 'kW' }] },
+          guards: null,
+          syncStatus: 'in_sync',
+          observed: null,
+          edgeSourceId: 'missing-source',
+        },
+      ],
+    });
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{
+        id: syntheticId,
+        role: 'pv-generation',
+        entityType: 'producer',
+        label: 'Freistehende PV',
+        templateRef: 'builtin:missing:pv',
+        definitionVersion: 1,
+        edgeSourceId: 'missing-source',
+      }],
+    });
+
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    const synthetic = await screen.findByRole('region', { name: 'Freistehende PV' });
+    expect(within(synthetic).queryByRole('link', { name: /Bearbeiten/ })).toBeNull();
+    expect(within(synthetic).queryByRole('link', { name: /Geräteseite/ })).toBeNull();
+  });
+
   it('hat KEINE Rollen-Gruppen und KEINE Summen mehr (R8)', async () => {
     stub();
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);

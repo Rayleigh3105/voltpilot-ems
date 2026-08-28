@@ -1,4 +1,9 @@
-export type NavigationBlocker = (targetHref: string) => void;
+export interface BlockedNavigation {
+  targetHref: string;
+  resume: () => void;
+}
+
+export type NavigationBlocker = (navigation: BlockedNavigation) => void;
 
 interface ActiveBlocker {
   block: NavigationBlocker;
@@ -70,13 +75,17 @@ export function registerNavigationBlocker(block: NavigationBlocker): () => void 
 export function requestNavigation(targetHref: string, restoreCurrentLocation = false): boolean {
   const registration = activeBlocker;
   if (!registration || targetHref === registration.currentHref) return false;
+  let resume = () => window.location.assign(targetHref);
   if (restoreCurrentLocation && window.location.href !== registration.currentHref) {
     const target = navigationState();
     const offset = target?.href === window.location.href
       ? registration.historyIndex - target.index
       : -1;
-    if (offset !== 0) window.history.go(offset);
+    if (offset !== 0) {
+      window.history.go(offset);
+      resume = () => window.history.go(-offset);
+    }
   }
-  registration.block(targetHref);
+  registration.block({ targetHref, resume });
   return true;
 }

@@ -1109,6 +1109,7 @@ export function GeraetSeiteSection({
           ) ?? null}
           onRename={chargerRenameTarget ? () => {
             setEditNotice(null);
+            setEditError(null);
             setRenameTarget(chargerRenameTarget);
           } : undefined}
           messwerte={beobachtung}
@@ -1132,6 +1133,7 @@ export function GeraetSeiteSection({
             onClose={() => setRenameTarget(null)}
             onSaved={() => {
               setRenameTarget(null);
+              setEditError(null);
               setEditNotice('Anzeigename gespeichert. Verbindung und Steuerung bleiben unverändert.');
               setReloadKey((key) => key + 1);
             }}
@@ -1158,10 +1160,13 @@ export function GeraetSeiteSection({
             onSaved={(result) => {
               const gespeichert = result.components.find((row) => row.id === editRow.id);
               setComponents(result);
+              setData(null);
               setEditOpen(false);
+              setEditError(null);
               setEditNotice(gespeichert?.syncStatus === 'in_sync'
                 ? 'Änderungen gespeichert und auf der Box aktiv.'
                 : 'Änderungen als neue Fassung gespeichert. Die bisherige Fassung läuft bis zur Bestätigung weiter.');
+              setReloadKey((key) => key + 1);
             }}
           />
         </>
@@ -1200,6 +1205,7 @@ export function GeraetSeiteSection({
               {components?.componentAuthority === 'portal' && editRow && (
                 <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={() => {
                   setEditNotice(null);
+                  setEditError(null);
                   setEditOpen(true);
                 }}>
                   <Icon name="pencil" size={15} /> Bearbeiten

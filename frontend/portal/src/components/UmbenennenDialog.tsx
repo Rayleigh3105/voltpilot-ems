@@ -19,7 +19,7 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { ApiError } from '../api';
 import { entitiesApi } from '../entitiesApi';
 import { CenteredConfirmDialog } from './CenteredConfirmDialog';
-import { registerNavigationBlocker } from '../navigationBlocker';
+import { registerNavigationBlocker, type BlockedNavigation } from '../navigationBlocker';
 import './AnlegenFlow.css';
 import './UmbenennenDialog.css';
 
@@ -61,7 +61,7 @@ export function UmbenennenDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [discardOpen, setDiscardOpen] = useState(false);
-  const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<BlockedNavigation | null>(null);
   const changed = label.trim() !== (target.alias ?? '').trim();
 
   /* Auch die schmale OCPP-Variante verliert Eingaben nie lautlos. */
@@ -71,9 +71,9 @@ export function UmbenennenDialog({
       event.preventDefault();
       event.returnValue = '';
     };
-    const unregister = registerNavigationBlocker((targetHref) => {
+    const unregister = registerNavigationBlocker((navigation) => {
       if (busy) return;
-      setPendingHref(targetHref);
+      setPendingNavigation(navigation);
       setDiscardOpen(true);
     });
     window.addEventListener('beforeunload', beforeUnload);
@@ -102,18 +102,18 @@ export function UmbenennenDialog({
 
   function closeInline() {
     if (busy) return;
-    setPendingHref(null);
+    setPendingNavigation(null);
     if (changed) setDiscardOpen(true);
     else onClose();
   }
 
   function discard() {
     if (busy) return;
-    const href = pendingHref;
+    const navigation = pendingNavigation;
     setDiscardOpen(false);
-    setPendingHref(null);
+    setPendingNavigation(null);
     onClose();
-    if (href) window.setTimeout(() => window.location.assign(href), 0);
+    if (navigation) window.setTimeout(navigation.resume, 0);
   }
 
   if (inline) {
@@ -194,7 +194,7 @@ export function UmbenennenDialog({
           confirmLabel="Änderung verwerfen"
           tone="danger"
           busy={busy}
-          onCancel={() => { setDiscardOpen(false); setPendingHref(null); }}
+          onCancel={() => { setDiscardOpen(false); setPendingNavigation(null); }}
           onConfirm={discard}
         />
       </section>

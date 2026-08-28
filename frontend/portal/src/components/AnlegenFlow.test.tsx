@@ -827,7 +827,7 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
   });
 
   function renderInline(over: { onClose?: () => void; onSaved?: () => void } = {}) {
-    render(
+    return render(
       <AnlegenFlow
         siteId="s1"
         siteName="Pilsting"
@@ -964,6 +964,34 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     await waitFor(() => expect(window.location.href).toBe(previousHref));
   });
 
+  it('setzt bestätigtes Zurück im bestehenden Verlauf fort', async () => {
+    window.history.replaceState(null, '', '#/anlage/s1');
+    recordCurrentNavigation();
+    const firstHref = window.location.href;
+    window.history.pushState(null, '', '#/anlage/s1/modell');
+    recordNewNavigation();
+    const previousHref = window.location.href;
+    window.history.pushState(null, '', '#/anlage/s1/geraet/VP-BOX-1/inverter');
+    recordNewNavigation();
+    renderInline();
+    fireEvent.change(await screen.findByLabelText('Anzeigename'), {
+      target: { value: 'Noch nicht gespeichert' },
+    });
+
+    act(() => window.history.back());
+    await waitFor(() => expect(window.location.href).toBe(previousHref));
+    act(() => {
+      requestNavigation(window.location.href, true);
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'Änderungen verwerfen?' });
+    await waitFor(() => expect(window.location.hash).toContain('/geraet/'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Änderungen verwerfen' }));
+
+    await waitFor(() => expect(window.location.href).toBe(previousHref));
+    act(() => window.history.back());
+    await waitFor(() => expect(window.location.href).toBe(firstHref));
+  });
+
   it('behält einen eingegebenen Anzeigenamen beim Modellwechsel', async () => {
     componentTemplates.mockResolvedValue([template, geschwisterTemplate]);
     renderInline();
@@ -975,6 +1003,18 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     fireEvent.click(screen.getByRole('option', { name: new RegExp(geschwisterTemplate.modelLabel) }));
 
     expect(name).toHaveValue('Wechselrichter Garage');
+  });
+
+  it('weist null kWp vor dem Speichern als ungültig zurück', async () => {
+    renderInline();
+    const rollen = await screen.findByRole('radiogroup', { name: 'Aufgabe in der Anlage' });
+    fireEvent.click(within(rollen).getByRole('radio', { name: /Weiterer Erzeuger/ }));
+    fireEvent.change(screen.getByLabelText('Nennleistung (kWp)'), { target: { value: '0' } });
+    fireEvent.click(knopf('Änderungen speichern'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/größer als 0 kWp/);
+    expect(updateComponent).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Aufgabe des Geräts ändern?' })).toBeNull();
   });
 
   it('friert die Bearbeitung ein und unterdrückt Verwerfen während des Speicherns', async () => {

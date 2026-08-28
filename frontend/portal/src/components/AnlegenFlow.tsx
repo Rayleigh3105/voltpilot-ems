@@ -69,7 +69,7 @@ import {
   kundenRolle,
   verbindungFuerSpeichern,
 } from '../geraeteEdit';
-import { registerNavigationBlocker } from '../navigationBlocker';
+import { registerNavigationBlocker, type BlockedNavigation } from '../navigationBlocker';
 
 function typFuerRolle(rolle: KomponentenRolle): TypId {
   if (rolle === 'consumer') return 'verbraucher';
@@ -204,7 +204,7 @@ export function AnlegenFlow({
   const [uebernahme, setUebernahme] = useState<ComponentMatch | null>(null);
   const [fragVerwerfen, setFragVerwerfen] = useState(false);
   const [fragRollenwechsel, setFragRollenwechsel] = useState(false);
-  const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<BlockedNavigation | null>(null);
   /** Der Fuß-Platz, in den der Selbstbau-Assistent seine Bedienzeile rendert. */
   const [fussEl, setFussEl] = useState<HTMLElement | null>(null);
 
@@ -290,6 +290,10 @@ export function AnlegenFlow({
   const fields = felder(template);
   const gruppen = feldGruppen<TemplateField>(fields);
   const fehlend = fehlendeFelder(template, verbindung);
+  const kwpWert = kwp.trim() === '' ? null : Number(kwp);
+  const kwpUngueltig = rolle === 'pv-generation'
+    && kwpWert !== null
+    && (!Number.isFinite(kwpWert) || kwpWert <= 0);
   const testNoetig = edit ? brauchtVerbindungstest(edit, template, verbindung) : true;
   const aenderungen = edit && template && rolle
     ? delta(edit, template, rolle, name, verbindung, kwp)
@@ -297,7 +301,7 @@ export function AnlegenFlow({
   const einfachGeaendert = Boolean(edit && (
     (edit.label?.trim() || '') !== name.trim()
     || kundenRolle(edit) !== rolle
-    || (edit.capacityKwp ?? null) !== (kwp.trim() === '' ? null : Number(kwp))
+    || (edit.capacityKwp ?? null) !== kwpWert
   ));
   const hatAenderungen = Boolean(edit && (aenderungen.length > 0 || einfachGeaendert));
   const rollenwechsel = aenderungen.some((row) => row.feld === 'Elektrische Rolle');
@@ -322,9 +326,9 @@ export function AnlegenFlow({
       event.preventDefault();
       event.returnValue = '';
     };
-    const unregister = registerNavigationBlocker((targetHref) => {
+    const unregister = registerNavigationBlocker((navigation) => {
       if (speichern) return;
-      setPendingHref(targetHref);
+      setPendingNavigation(navigation);
       setFragVerwerfen(true);
     });
     window.addEventListener('beforeunload', vorVerlassen);
@@ -494,6 +498,11 @@ export function AnlegenFlow({
 
   async function anlegen() {
     if (!template || !rolle || speichern) return;
+    if (kwpUngueltig) {
+      setFehler('Geben Sie eine gültige Leistung größer als 0 kWp ein.');
+      if (inlineBearbeitung) fokussiere('anlegen-kwp');
+      return;
+    }
     setSpeichern(true);
     setFehler(null);
     try {
@@ -502,7 +511,7 @@ export function AnlegenFlow({
         label: edit ? name.trim() : (name.trim() || undefined),
         role: rolle,
         connection: verbindungFuerSpeichern(template, verbindung),
-        capacityKwp: rolle === 'pv-generation' && kwp.trim() !== '' ? Number(kwp) : undefined,
+        capacityKwp: rolle === 'pv-generation' && kwpWert !== null ? kwpWert : undefined,
         acceptMissingChannel: ohneKanal?.channel,
         expectedRevision: edit?.definitionVersion,
         effectiveAt: edit ? new Date().toISOString() : undefined,
@@ -544,8 +553,8 @@ export function AnlegenFlow({
       setFehler('Die Gerätevorlage wird noch geladen oder ist nicht mehr verfügbar. Ihre Eingaben bleiben erhalten.');
       return;
     }
-    if (kwp.trim() !== '' && (!Number.isFinite(Number(kwp)) || Number(kwp) < 0)) {
-      setFehler('Geben Sie eine gültige Leistung ab 0 kWp ein.');
+    if (kwpUngueltig) {
+      setFehler('Geben Sie eine gültige Leistung größer als 0 kWp ein.');
       fokussiere('anlegen-kwp');
       return;
     }
@@ -570,18 +579,18 @@ export function AnlegenFlow({
 
   function inlineSchliessen() {
     if (speichern) return;
-    setPendingHref(null);
+    setPendingNavigation(null);
     if (hatAenderungen) setFragVerwerfen(true);
     else onClose();
   }
 
   function verwerfen() {
     if (speichern) return;
-    const href = pendingHref;
+    const navigation = pendingNavigation;
     setFragVerwerfen(false);
-    setPendingHref(null);
+    setPendingNavigation(null);
     onClose();
-    if (href) window.setTimeout(() => window.location.assign(href), 0);
+    if (navigation) window.setTimeout(navigation.resume, 0);
   }
 
   /** Ein zweiter Durchlauf, ohne den Dialog zu schließen. */
@@ -783,7 +792,6 @@ export function AnlegenFlow({
                 <Input
                   id="anlegen-kwp"
                   type="number"
-                  min="0"
                   inputMode="decimal"
                   value={kwp}
                   onChange={(event) => setKwp(event.target.value)}
@@ -995,7 +1003,7 @@ export function AnlegenFlow({
           confirmLabel="Änderungen verwerfen"
           tone="danger"
           busy={speichern}
-          onCancel={() => { setFragVerwerfen(false); setPendingHref(null); }}
+          onCancel={() => { setFragVerwerfen(false); setPendingNavigation(null); }}
           onConfirm={verwerfen}
         />
         <CenteredConfirmDialog

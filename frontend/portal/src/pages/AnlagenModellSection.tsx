@@ -591,7 +591,7 @@ export function AnlagenModellSection({
                 const chargerComponent = k.art === 'ladepunkt'
                   ? k.komponenten.find((component) => component.renameable && component.entityId)
                   : null;
-                const editHref = portalManaged && boxRef && definition
+                const editHref = portalManaged && boxRef && k.href && definition
                   ? geraetBearbeitenHash(site.id, boxRef, k.id)
                   : boxRef && chargerComponent
                     ? geraetKomponenteBearbeitenHash(
