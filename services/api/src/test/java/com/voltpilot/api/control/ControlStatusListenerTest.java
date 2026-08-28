@@ -125,6 +125,29 @@ class ControlStatusListenerTest {
         assertThat(ex.measurementsFresh()).isTrue();
     }
 
+    /**
+     * The general deficit coverage (2026-08-28) is its own word: without it the
+     * listener would DROP the whole execution block of a current box - the
+     * unknown-word rule - and the portal would fall back to a generic sentence
+     * about a correction it can no longer name.
+     */
+    @Test
+    void deficitCoverIsUnderstoodAndCarriesTheFloorItReallyApplied() {
+        var ex = ingest("{" + BASE + ",\"execution\":{\"mode\":\"deficit_cover\"," +
+                "\"direction\":\"deepen\",\"planned_kw\":0,\"deficit_kw\":1.4," +
+                "\"effective_floor_soc_pct\":35,\"measurements_fresh\":true}}", "schedule");
+
+        assertThat(ex.mode()).isEqualTo("deficit_cover");
+        // The direction stays reserved for mode "follow", where BOTH are
+        // possible. Deficit coverage is deepen-only, so a direction would add
+        // nothing - and the listener drops it exactly like it does for
+        // idle_follow. The edge may keep sending it; the cloud does not store it.
+        assertThat(ex.direction()).isNull();
+        assertThat(ex.targetKw()).isEqualTo(1.4);
+        assertThat(ex.effectiveFloorSocPct()).isEqualTo(35);
+        assertThat(ex.measurementsFresh()).isTrue();
+    }
+
     /** The full-battery override is distinct and carries its tighter top-band floor. */
     @Test
     void highSocFollowerCarriesItsBoundedFloorWithoutInventingADirection() {

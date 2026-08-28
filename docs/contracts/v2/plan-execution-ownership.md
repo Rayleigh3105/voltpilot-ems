@@ -149,11 +149,35 @@ The ownership split INSIDE the edge is the part that needs stating:
 | Concern | Owner |
 |---|---|
 | Is this slot worth covering at all (the price decision) | **cloud** (`slot_trim.py`) |
+| Is a MEASURED deficit covered at all in a non-charging slot | **core** (`guards.CoverDeficit`, see below) |
 | May this device regulate itself (exact model/firmware certificate) | **Layer 1** (`unplanned-load-native.js`) - only it knows the registers |
 | The register sequence into and out of the mode | **Layer 1 adapter** (`nativeSelfConsumption`) |
 | Whether the mode is entered at all right now (supervision) | **core** (`guards.NativeMode`) |
 | Taking the battery back | **core** - and it can, on every tick |
 | Proving the device really is regulating itself | **Layer 1 readback** (`mode: "native"`), consumed by the core |
+
+### The local deficit-coverage floor (2026-08-28)
+
+A second, non-economic authorization sits UNDER the two cloud duties:
+`guards.CoverDeficit` covers a MEASURED house deficit from the battery in every
+Fahrplan slot the plan does not charge, as long as no hold reason stands (plant
+pause, a non-plan holder such as a "Speicher halten" hand intervention, an
+owner-claimed battery, the self-consumption fallback, a stale plan, the reserve
+floor, a stale measurement, or the write gates). It is DEEPEN-ONLY - limiting a
+discharge stays a price decision and therefore stays with
+`cover_load_from_battery`.
+
+It is a customer-trust rule, not a second optimizer: it never decides WHETHER
+cycling pays, it only refuses to BUY energy the plant is standing on while the
+plan asks for nothing. The reason it must live on the edge is that the cloud's
+own verdict rests on the FORECAST grid power of the slot, and that is exactly
+the input that failed at Pilsting/Herzogau on 2026-08-28 19:37 (forecast dusk
+surplus, real 1,4 kW purchase at 92 % SoC).
+
+**It deliberately does NOT authorize the native mode below.** Handing the
+setpoint to the inverter is a bench-gated device capability tied to the cloud's
+economic duty; the local rule uses the proven exact-setpoint follower and
+reports its own execution mode `deficit_cover`.
 
 Two rules follow from that split, and they are what make the mode safe:
 

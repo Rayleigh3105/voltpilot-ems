@@ -31,8 +31,11 @@ public class ControlStatusRepository {
      *                  {@code default}, so it may never be read as "the
      *                  built-in safety rule is running".
      * @param mode      the precise execution path, including {@code idle_follow},
-     *                  the bounded {@code high_soc_follow}/{@code high_soc_charge},
-     *                  and the separately certified {@code autonomous_discharge}.
+     *                  the general {@code deficit_cover}, the bounded
+     *                  {@code high_soc_charge} (and its retired discharge
+     *                  sibling {@code high_soc_follow}, which only a box on an
+     *                  older image still reports), and the separately certified
+     *                  {@code autonomous_discharge}.
      * @param direction {@code deepen|reduce}, only for {@code follow}.
      * @param plannedKw the setpoint BEFORE the correction.
      * @param targetKw  the MEASURED value the correction tracks (house deficit

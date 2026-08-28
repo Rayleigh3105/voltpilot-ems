@@ -156,12 +156,13 @@ type FollowResult struct {
 	// follows; NaN when unknown (then the correction is inactive - never
 	// regulate blind).
 	DeficitKw float64
-	// Path distinguishes adjustment of an already-planned discharge from the
-	// additive 0-kW idle fallback.
+	// Path distinguishes adjustment of an already-planned discharge ("follow")
+	// from the additive 0-kW idle fallback ("idle_follow") and the local
+	// customer-trust deficit coverage ("deficit_cover").
 	Path string
-	// FloorSocPct is the actual floor applied while an idle authorization starts
-	// a discharge. The full-battery rule may tighten the cloud reserve to the
-	// bottom of its deliberately small top band.
+	// FloorSocPct is the actual floor applied while one of the two local
+	// authorizations starts or widens a discharge: the FULL cloud-computed
+	// reserve stack, which neither of them ever spends.
 	FloorSocPct *float64
 }
 
@@ -201,19 +202,27 @@ func (f *LoadFollower) Apply(
 	reserveSocPct *float64,
 	r Reading,
 ) FollowResult {
-	return f.ApplyAuthorized(now, kw, coverLoad, false, reserveSocPct, true, l, r)
+	return f.ApplyAuthorized(now, kw, coverLoad, false, false, reserveSocPct, true, l, r)
 }
 
-// ApplyAuthorized composes the established follow duty with the additive
-// idle-slot authorization. The latter is strictly fail-closed: it only starts
-// from a real zero command, with fresh load/PV/SoC and an explicit effective
-// floor. Existing cover_load_from_battery semantics stay unchanged through the
-// Apply wrapper above.
+// ApplyAuthorized composes the established follow duty with the two additive
+// local authorizations. Both are strictly fail-closed - fresh load/PV/SoC and an
+// explicit effective floor - and they differ only in reach:
+//
+//   - unplannedLoad is the cloud's ECONOMIC idle-slot duty
+//     (unplanned_load_discharge): it starts from a real zero command only;
+//   - deficitCover is the local CUSTOMER-TRUST rule (guards.CoverDeficit): it
+//     may also widen a partial planned discharge, and it is DEEPEN-ONLY, so a
+//     planned sale can never be cut back by it.
+//
+// Existing cover_load_from_battery semantics stay unchanged through the Apply
+// wrapper above.
 func (f *LoadFollower) ApplyAuthorized(
 	now time.Time,
 	kw float64,
 	coverLoad bool,
 	unplannedLoad bool,
+	deficitCover bool,
 	effectiveFloorSocPct *float64,
 	measurementsFresh bool,
 	l Limits,
@@ -222,7 +231,7 @@ func (f *LoadFollower) ApplyAuthorized(
 	res := FollowResult{Kw: kw, CommandedKw: kw, DeficitKw: math.NaN()}
 
 	// Nothing to enforce: not worth covering / no duty / no plan.
-	if !coverLoad && !unplannedLoad {
+	if !coverLoad && !unplannedLoad && !deficitCover {
 		f.release()
 		return res
 	}
@@ -234,18 +243,38 @@ func (f *LoadFollower) ApplyAuthorized(
 		return res
 	}
 	path := "follow"
-	if unplannedLoad && !coverLoad {
-		// Starting a discharge is a larger authority than adjusting one. Refuse
-		// on every ambiguity, including a non-zero command (planned charge/sale),
+	deepenOnly := false
+	// The cloud's own duty is the more capable one (it may also LIMIT), so it
+	// keeps the tick whenever it is granted; the two local authorizations only
+	// ever act where no cloud duty does.
+	if !coverLoad {
+		// Starting - or widening - a discharge is a larger authority than
+		// adjusting one the plan already asked for. Refuse on every ambiguity:
 		// stale measurements, unknown SoC or a missing reserve stack.
-		if math.Abs(kw) > 0.05 || !measurementsFresh || effectiveFloorSocPct == nil ||
+		if !measurementsFresh || effectiveFloorSocPct == nil ||
 			!known(r.SocPct) || r.SocPct <= *effectiveFloorSocPct {
 			f.release()
 			return res
 		}
-		path = "idle_follow"
 		floor := *effectiveFloorSocPct
 		res.FloorSocPct = &floor
+		if unplannedLoad {
+			// The economic idle duty is granted for a slot the cloud read as
+			// idle; a non-zero command means the payload and the plan disagree,
+			// and that is not a disagreement to resolve in favour of acting.
+			if math.Abs(kw) > 0.05 {
+				f.release()
+				return res
+			}
+			path = "idle_follow"
+		} else {
+			// The local trust rule. It may widen a partial planned discharge,
+			// but it must never SHRINK one: limiting a discharge is a price
+			// decision (is the surplus worth more stored than sold?) and that
+			// decision stays entirely with the cloud's cover_load_from_battery.
+			deepenOnly = true
+			path = "deficit_cover"
+		}
 	}
 	// Never regulate blind (the economic-guard convention, cf. PeakShave).
 	if !known(r.PvKw) || !known(r.LoadKw) || math.IsNaN(kw) || math.IsInf(kw, 0) {
@@ -310,6 +339,13 @@ func (f *LoadFollower) ApplyAuthorized(
 		}
 		res.Kw = math.Round(target*1000) / 1000
 		res.Active, res.Direction, res.Path = true, FollowDeepen, path
+		return res
+	}
+
+	if deepenOnly {
+		// Local trust rule: nothing to deepen (the command already covers the
+		// house or discharges past it). Never reduce - see the path selection
+		// above.
 		return res
 	}
 

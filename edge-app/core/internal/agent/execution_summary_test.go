@@ -109,19 +109,19 @@ func TestIdleFollowerReportsOnlyWhileItActuallyCorrects(t *testing.T) {
 	}
 }
 
-func TestFullBatteryFollowerReportsItsOwnModeAndTighterFloor(t *testing.T) {
-	runFloor, topBandFloor, deficit := 35.0, 90.0, 4.1
+func TestDeficitCoverReportsItsOwnModeAndTheFloorItReallyApplied(t *testing.T) {
+	runFloor, appliedFloor, deficit := 20.0, 35.0, 1.4
 	active := state.Snapshot{
 		Mode: state.ModeSchedule, Control: confirmedControl(), EffectiveFloorSocPct: &runFloor,
 		Follow: &state.FollowInfo{
-			Active: true, Path: execModeHighSocFollow, Direction: guards.FollowDeepen,
-			PlannedKw: 0, DeficitKw: &deficit, FloorSocPct: &topBandFloor,
+			Active: true, Path: execModeDeficitCover, Direction: guards.FollowDeepen,
+			PlannedKw: 0, DeficitKw: &deficit, FloorSocPct: &appliedFloor,
 		},
 	}
 	ex := controlSummary(active).Execution
-	if ex == nil || ex.Mode != execModeHighSocFollow || ex.EffectiveFloorSocPct == nil ||
-		*ex.EffectiveFloorSocPct != topBandFloor {
-		t.Fatalf("full-battery execution must carry its real bounded floor: %+v", ex)
+	if ex == nil || ex.Mode != execModeDeficitCover || ex.EffectiveFloorSocPct == nil ||
+		*ex.EffectiveFloorSocPct != appliedFloor {
+		t.Fatalf("deficit coverage must carry the floor it really applied: %+v", ex)
 	}
 }
 

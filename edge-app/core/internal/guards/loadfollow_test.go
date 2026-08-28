@@ -75,7 +75,7 @@ func TestAuthorizedIdleFollowerReplaysTheUnforeseenLoadScreenshots(t *testing.T)
 	floor := 30.0
 	f := NewLoadFollower()
 	a := Reading{SocPct: 95, PvKw: 22.1, LoadKw: 36.8, GridLimitKw: Unknown()}
-	got := f.ApplyAuthorized(followBase(), 0, false, true, &floor, true, followLimits(), a)
+	got := f.ApplyAuthorized(followBase(), 0, false, true, false, &floor, true, followLimits(), a)
 	if !got.Active || got.Path != "idle_follow" || math.Abs(got.Kw+14.7) > 1e-9 {
 		t.Fatalf("screenshot A: %+v, want idle_follow at -14.7 kW", got)
 	}
@@ -86,7 +86,7 @@ func TestAuthorizedIdleFollowerReplaysTheUnforeseenLoadScreenshots(t *testing.T)
 	// Keep the SAME engaged follower instance: this is the real A -> B
 	// transition, not a reset-assisted test.
 	b := Reading{SocPct: 95, PvKw: 22.6, LoadKw: 16.6, GridLimitKw: Unknown()}
-	got = f.ApplyAuthorized(followBase().Add(10*time.Second), 0, false, true, &floor, true, followLimits(), b)
+	got = f.ApplyAuthorized(followBase().Add(10*time.Second), 0, false, true, false, &floor, true, followLimits(), b)
 	if got.Kw != 0 || got.Active || got.Path != "" {
 		t.Fatalf("screenshot B: %+v, want neutral 0 kW with no active correction path", got)
 	}
@@ -113,19 +113,19 @@ func TestAuthorizedIdleFollowerFailsClosedOnEveryMissingSafetyFact(t *testing.T)
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := NewLoadFollower().ApplyAuthorized(followBase(), 0, false, true, tc.floor, tc.fresh, followLimits(), tc.read)
+			got := NewLoadFollower().ApplyAuthorized(followBase(), 0, false, true, false, tc.floor, tc.fresh, followLimits(), tc.read)
 			if got.Active || got.Kw != 0 {
 				t.Fatalf("unsafe correction: %+v", got)
 			}
 		})
 	}
-	if got := NewLoadFollower().ApplyAuthorized(followBase(), 2, false, true, &floor, true, followLimits(), valid); got.Active || got.Kw != 2 {
+	if got := NewLoadFollower().ApplyAuthorized(followBase(), 2, false, true, false, &floor, true, followLimits(), valid); got.Active || got.Kw != 2 {
 		t.Fatalf("planned charge must not be reinterpreted: %+v", got)
 	}
-	if got := NewLoadFollower().ApplyAuthorized(followBase(), -2, false, true, &floor, true, followLimits(), valid); got.Active || got.Kw != -2 {
+	if got := NewLoadFollower().ApplyAuthorized(followBase(), -2, false, true, false, &floor, true, followLimits(), valid); got.Active || got.Kw != -2 {
 		t.Fatalf("planned sale/discharge must not be reinterpreted: %+v", got)
 	}
-	if got := NewLoadFollower().ApplyAuthorized(followBase(), 0, true, true, &floor, true, followLimits(), valid); got.Active || got.Kw != 0 {
+	if got := NewLoadFollower().ApplyAuthorized(followBase(), 0, true, true, false, &floor, true, followLimits(), valid); got.Active || got.Kw != 0 {
 		t.Fatalf("conflicting old/new duties must fail closed: %+v", got)
 	}
 }
@@ -512,5 +512,103 @@ func TestANonFiniteCommandIsLeftAlone(t *testing.T) {
 	got := f.Apply(followBase(), math.NaN(), true, followLimits(), nil, pilstingNight())
 	if got.Active || !math.IsNaN(got.Kw) {
 		t.Fatalf("NaN command: %+v, want it passed through untouched", got)
+	}
+}
+
+// ---- the local deficit-cover authorization (2026-08-28) ---------------------
+//
+// It differs from the cloud's two duties in exactly two ways: it may widen a
+// PARTIAL planned discharge (not only start from idle), and it is DEEPEN-ONLY,
+// so a discharge deeper than the house is never cut back - limiting one is a
+// price decision that stays with cover_load_from_battery.
+
+func deficitCoverFloor() *float64 { f := 35.0; return &f }
+
+func TestDeficitCoverStartsTheDischargeFromAnIdleCommand(t *testing.T) {
+	// 92 % storage, PV 1.3 kW, house 2.7 kW, plan 0 - the reported case.
+	r := Reading{SocPct: 92, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: Unknown()}
+	got := NewLoadFollower().ApplyAuthorized(
+		followBase(), 0, false, false, true, deficitCoverFloor(), true, followLimits(), r)
+	if !got.Active || got.Direction != FollowDeepen || got.Path != "deficit_cover" {
+		t.Fatalf("idle command: %+v, want a named deepen", got)
+	}
+	if math.Abs(got.Kw+1.4) > 1e-9 {
+		t.Fatalf("setpoint = %v, want the measured deficit -1.4", got.Kw)
+	}
+	if got.FloorSocPct == nil || *got.FloorSocPct != 35 {
+		t.Fatalf("floor = %+v, want the full reserve stack", got.FloorSocPct)
+	}
+}
+
+func TestDeficitCoverWidensAPartialPlannedDischargeToTheMeasuredHouse(t *testing.T) {
+	got := NewLoadFollower().ApplyAuthorized(
+		followBase(), -4.332, false, false, true, deficitCoverFloor(), true,
+		followLimits(), pilstingNight())
+	if !got.Active || got.Direction != FollowDeepen || got.Path != "deficit_cover" {
+		t.Fatalf("partial discharge: %+v, want a named deepen", got)
+	}
+	if math.Abs(got.Kw+7.087) > 1e-9 {
+		t.Fatalf("setpoint = %v, want the measured deficit -7.087", got.Kw)
+	}
+}
+
+func TestDeficitCoverNeverLimitsADischargeThatOvershootsTheHouse(t *testing.T) {
+	// The evening sale: 27 kW out against a 2.7 kW house. cover_load_from_battery
+	// would reduce this to -1.4; the local rule must not.
+	r := Reading{SocPct: 92, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: Unknown()}
+	got := NewLoadFollower().ApplyAuthorized(
+		followBase(), -27, false, false, true, deficitCoverFloor(), true, followLimits(), r)
+	if got.Active || got.Kw != -27 {
+		t.Fatalf("planned sale: %+v, want it untouched", got)
+	}
+	// The cloud duty on the SAME numbers is the contrast that makes this
+	// non-vacuous: it exists precisely to limit such an overshoot.
+	cloud := NewLoadFollower().ApplyAuthorized(
+		followBase(), -27, true, false, false, deficitCoverFloor(), true, followLimits(), r)
+	if !cloud.Active || cloud.Direction != FollowReduce {
+		t.Fatalf("the cloud duty must still limit the same command: %+v", cloud)
+	}
+}
+
+func TestDeficitCoverRefusesWithoutTheFullFactSet(t *testing.T) {
+	r := Reading{SocPct: 92, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: Unknown()}
+	atFloor := Reading{SocPct: 35, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: Unknown()}
+	cases := []struct {
+		name  string
+		fresh bool
+		floor *float64
+		read  Reading
+	}{
+		{"stale measurements", false, deficitCoverFloor(), r},
+		{"no reserve stack", true, nil, r},
+		{"unknown SoC", true, deficitCoverFloor(), Reading{SocPct: Unknown(), PvKw: 1.3, LoadKw: 2.7, GridLimitKw: Unknown()}},
+		{"at the reserve floor", true, deficitCoverFloor(), atFloor},
+	}
+	for _, tc := range cases {
+		got := NewLoadFollower().ApplyAuthorized(
+			followBase(), 0, false, false, true, tc.floor, tc.fresh, followLimits(), tc.read)
+		if got.Active || got.Kw != 0 {
+			t.Fatalf("%s: %+v, want the plan value untouched", tc.name, got)
+		}
+	}
+}
+
+func TestDeficitCoverNeverFlipsAPlannedChargeIntoADischarge(t *testing.T) {
+	r := Reading{SocPct: 60, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: Unknown()}
+	got := NewLoadFollower().ApplyAuthorized(
+		followBase(), 5, false, false, true, deficitCoverFloor(), true, followLimits(), r)
+	if got.Active || got.Kw != 5 {
+		t.Fatalf("planned charge: %+v, want it untouched", got)
+	}
+}
+
+func TestDeficitCoverStopsAtTheRatedDischargeAndTheSocFloor(t *testing.T) {
+	l := followLimits()
+	l.MaxDischargeKw = 3
+	r := Reading{SocPct: 92, PvKw: 0, LoadKw: 20, GridLimitKw: Unknown()}
+	got := NewLoadFollower().ApplyAuthorized(
+		followBase(), 0, false, false, true, deficitCoverFloor(), true, l, r)
+	if !got.Active || got.Kw != -3 {
+		t.Fatalf("rated band: %+v, want -3 kW", got)
 	}
 }

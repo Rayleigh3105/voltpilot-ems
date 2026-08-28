@@ -1956,6 +1956,7 @@ export type ExecutionMode =
   | 'absorb'
   | 'fallback'
   | 'idle_follow'
+  | 'deficit_cover'
   | 'high_soc_follow'
   | 'high_soc_charge'
   | 'autonomous_discharge';

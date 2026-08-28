@@ -56,7 +56,7 @@ public class ControlStatusListener {
     /** The additive execution modes the edge may report - anything else is ignored. */
     private static final Set<String> EXECUTION_MODES = Set.of(
             "plan", "follow", "trim", "absorb", "fallback", "idle_follow",
-            "high_soc_follow", "high_soc_charge", "autonomous_discharge");
+            "deficit_cover", "high_soc_follow", "high_soc_charge", "autonomous_discharge");
     /** The two follow directions - only meaningful for mode {@code follow}. */
     private static final Set<String> FOLLOW_DIRECTIONS = Set.of("deepen", "reduce");
     /** The three certification sources the core may report - anything else is ignored. */

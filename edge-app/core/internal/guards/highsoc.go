@@ -1,66 +1,42 @@
-// High-SoC buffering is the narrow customer-trust override at the top of the
-// battery: visible grid exchange next to an almost-full storage should move
-// toward zero before marginal price differences are optimized.
+// Upper PV buffer - the CHARGE half of the full-battery trust rule: in a slot
+// the cloud explicitly marked cover_load_from_battery, a measured PV surplus is
+// stored back into the top band of the battery instead of being exported. A
+// visible 91 % storage must not feed 8,5 kW into the grid while the cockpit
+// still calls the slot "Verbrauch decken".
 //
-// This is deliberately NOT a second optimizer. It only opens a small, bounded
-// headroom window at the top of the battery in two tightly scoped directions:
+// It is deliberately narrow, and narrower than its former discharge sibling:
 //
-//   - enter only within one percentage point of the configured SoC ceiling;
-//   - follow only a measured import from a genuinely idle command;
-//   - stop five percentage points below the ceiling, or at the full
-//     cloud-computed reserve stack when that is higher;
-//   - release immediately on stale/missing facts or a different holder/plan.
-//   - in an explicit cover-load slot, absorb measured PV surplus from that
-//     five-point floor back up to the configured ceiling. A sell slot never
-//     carries that duty and is therefore never reinterpreted here.
+//   - only inside the top band (HighSocReliefBandPct below the configured
+//     ceiling), so ordinary charging decisions stay entirely with the plan;
+//   - only from a genuinely idle command - a planned charge or sale is never
+//     reinterpreted;
+//   - only on a material measured surplus, and only up to it, so it can never
+//     create or raise an import;
+//   - a sell slot never carries cover_load_from_battery and is therefore never
+//     entered here.
 //
-// The state provides hysteresis between the one-point entry threshold and the
-// five-point release threshold. Without it a 94.0 % reading on a 95 % ceiling
-// would engage for one tick, fall to 93.9 %, and stop before creating useful
-// headroom.
+// THE DISCHARGE HALF WAS RETIRED on 2026-08-28: covering a measured house
+// deficit is no longer a top-band exception but the general Fahrplan rule -
+// see guards/deficitcover.go, which engages at every SoC above the full
+// reserve stack instead of within one point of the ceiling. Keeping both would
+// have meant two hystereses and two execution names for one behaviour.
 package guards
 
 import (
 	"math"
-	"sync"
 )
 
 const (
-	// HighSocEngageHeadroomPct is how close the measured SoC must be to the
-	// configured upper limit before customer expectation outranks later value.
-	HighSocEngageHeadroomPct = 1.0
 	// HighSocReliefBandPct is the maximum top band this rule may make available.
 	// It is intentionally small: the optimizer keeps all energy below it.
 	HighSocReliefBandPct = 5.0
-	// HighSocImportDeadbandKw keeps meter noise from arming a battery cycle.
-	HighSocImportDeadbandKw = 0.2
-	// HighSocSurplusDeadbandKw is the charge-side twin: a rounding-sized PV
-	// surplus is not worth a write or a battery cycle.
+	// HighSocSurplusDeadbandKw: a rounding-sized PV surplus is not worth a
+	// write or a battery cycle.
 	HighSocSurplusDeadbandKw = 0.2
 	// HighSocIdleDeadbandKw is the same real-idle boundary as the additive
 	// unplanned-load schedule duty. A charge or sale is never reinterpreted.
 	HighSocIdleDeadbandKw = 0.05
 )
-
-// HighSocInput is every fact needed by the bounded rule. Nil/invalid facts are
-// refusals; no default is invented for a control decision.
-type HighSocInput struct {
-	Eligible          bool
-	MeasurementsFresh bool
-	CommandKw         float64
-	SocPct            float64
-	SocMaxPct         float64
-	EffectiveFloorPct *float64
-	PvKw              float64
-	LoadKw            float64
-}
-
-// HighSocDecision authorizes the existing idle load follower and gives it the
-// tighter floor it must apply. FloorPct is non-nil exactly while Active.
-type HighSocDecision struct {
-	Active   bool
-	FloorPct *float64
-}
 
 // HighSocChargeInput contains the facts for the charge-side half of the upper
 // buffer. Eligible is intentionally supplied by the caller: it is true only
@@ -81,67 +57,6 @@ type HighSocChargeInput struct {
 type HighSocChargeDecision struct {
 	Active     bool
 	CeilingPct *float64
-}
-
-// HighSocRelief carries the top-band hysteresis across setpoint ticks.
-type HighSocRelief struct {
-	mu    sync.Mutex
-	armed bool
-}
-
-func NewHighSocRelief() *HighSocRelief { return &HighSocRelief{} }
-
-// Decide returns whether the idle follower may cover the measured house load
-// for this tick. Every structural ambiguity releases the latch immediately.
-func (h *HighSocRelief) Decide(in HighSocInput) HighSocDecision {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	refuse := func() HighSocDecision {
-		h.armed = false
-		return HighSocDecision{}
-	}
-	if !in.Eligible || !in.MeasurementsFresh ||
-		!finite(in.CommandKw) || math.Abs(in.CommandKw) > HighSocIdleDeadbandKw ||
-		!finite(in.SocPct) || !finite(in.SocMaxPct) ||
-		in.SocMaxPct <= 0 || in.SocMaxPct > 100 || in.EffectiveFloorPct == nil ||
-		!finite(*in.EffectiveFloorPct) || *in.EffectiveFloorPct < 0 || *in.EffectiveFloorPct > 100 ||
-		!finite(in.PvKw) || !finite(in.LoadKw) {
-		return refuse()
-	}
-
-	// The command as it stands would import this much. The rule never creates
-	// export and never cycles for a rounding-sized exchange.
-	if in.LoadKw+in.CommandKw-in.PvKw <= HighSocImportDeadbandKw {
-		return refuse()
-	}
-
-	releaseFloor := math.Max(in.SocMaxPct-HighSocReliefBandPct, *in.EffectiveFloorPct)
-	engageAt := in.SocMaxPct - HighSocEngageHeadroomPct
-	// No usable top band remains above the customer's/cloud's reserve stack.
-	if releaseFloor >= engageAt {
-		return refuse()
-	}
-
-	if h.armed {
-		if in.SocPct <= releaseFloor {
-			return refuse()
-		}
-	} else {
-		if in.SocPct < engageAt || in.SocPct <= releaseFloor {
-			return HighSocDecision{}
-		}
-		h.armed = true
-	}
-
-	floor := releaseFloor
-	return HighSocDecision{Active: true, FloorPct: &floor}
-}
-
-func (h *HighSocRelief) Release() {
-	h.mu.Lock()
-	h.armed = false
-	h.mu.Unlock()
 }
 
 // HighSocCharge authorizes the symmetric charge-side half of the top buffer.

@@ -416,8 +416,6 @@ def unplanned_load_discharge(
 
     * the battery command must be inside the idle deadband (never reinterpret a
       planned charge or discharge);
-    * planned export beyond rounding noise is a deliberate sale and stays
-      untouched;
     * a simultaneous surplus-absorption duty would grant the opposite
       direction and is refused;
     * the identical marginal price test retains future prices, efficiency,
@@ -427,14 +425,39 @@ def unplanned_load_discharge(
     are edge responsibilities because only the edge sees the instantaneous
     plant.  Missing/non-finite economics fail closed through
     :func:`cover_load_economic`.
+
+    THE PLANNED-EXPORT REFUSAL IS GONE (2026-08-28, Pilsting/Herzogau 19:37).
+    It copied P1b's protection of a deliberate SALE, but in an IDLE slot there
+    is no battery sale to protect: the battery is commanded 0, so a planned
+    export is PV leaving the site, not stored energy. What the refusal really
+    keyed on was therefore the PV FORECAST - and that is precisely the input
+    that fails at dusk. Measured on the live box: plan slot 19:30-19:45
+    ``battery_setpoint_kw = 0`` against a forecast surplus, while the real
+    plant sat at PV 1,3 kW / house 2,7 kW and bought 1,4 kW at ~25 ct with the
+    storage at 92 %. The refusal made the ONE slot that needed the duty the one
+    slot that could not have it.
+
+    Dropping it is structurally safe because the edge caps the correction at the
+    MEASURED deficit ``max(load - pv, 0)``: where the forecast export is real
+    the deficit is 0 and the duty does not bite at all, and where it bites there
+    is by construction no export to cut. A planned IMPORT stays admitted for the
+    reason it always was - a genuinely cheap hour makes ``lambda`` large enough
+    that :func:`cover_load_economic` refuses on economics, which is the gate
+    that actually protects the arbitrage.
+
+    The sibling :func:`cover_load_from_battery` KEEPS both-sided exclusion: its
+    edge enforcement is BIDIRECTIONAL (it also limits an overshooting
+    discharge), so marking a sale slot there would cut the sale back to zero
+    grid. This duty only ever raises a discharge out of idle.
     """
     if not isinstance(battery_kw, (int, float)) or not math.isfinite(battery_kw):
         return False
     if abs(battery_kw) > PLANNED_IDLE_DEADBAND_KW:
         return False
+    # grid_kw is no longer a REFUSAL criterion (see the docstring), but a slot
+    # whose own numbers are broken is still not a slot to authorize anything
+    # from - the fail-closed discipline this module applies everywhere.
     if not isinstance(grid_kw, (int, float)) or not math.isfinite(grid_kw):
-        return False
-    if grid_kw < -PLANNED_GRID_EXCHANGE_DEADBAND_KW:
         return False
     if charge_surplus_to_battery:
         return False

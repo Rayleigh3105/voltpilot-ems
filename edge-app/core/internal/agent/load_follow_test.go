@@ -122,15 +122,17 @@ func TestAuthorizedIdleSlotCoversScreenshotAThenReportsScreenshotBNeutral(t *tes
 	}
 }
 
-// The customer-trust regression from 28.08.2026: the economic plan deliberately
-// held the battery for later, but the cockpit showed 94 % SoC next to 4.1 kW
-// grid import (PV 0.9 / house 5.0). Near the configured 95 % ceiling the small
-// top band must cover that load even when the economic unplanned flag is false;
-// it must stop again at 90 %, preserving the rest for the optimizer.
-func TestNearlyFullBatteryCoversIdleImportOnlyInsideItsSmallTopBand(t *testing.T) {
+// The customer-trust regression from 28.08.2026, 19:37 at Anlage
+// Pilsting/Herzogau: storage 92 %, PV 1.3 kW, house 2.7 kW, so 1.4 kW bought at
+// ~25 ct while the plan slot commanded 0.0 kW (its dusk PV forecast still saw a
+// surplus, so the cloud never marked the slot). The general rule covers that
+// measured deficit at EVERY state of charge above the full reserve stack - 92 %
+// is neither "almost full" nor economically marked, which is exactly why the
+// one-day-old five-point top band could not answer it.
+func TestIdleFahrplanSlotCoversTheMeasuredDeficitAtAnySocAboveTheReserve(t *testing.T) {
 	a, addr := followAgentAddr(t)
 	sub := subscribeSetpoint(t, addr)
-	now := time.Date(2026, 8, 28, 14, 51, 0, 0, time.UTC)
+	now := time.Date(2026, 8, 28, 17, 37, 0, 0, time.UTC)
 	yes, floor := true, 35.0
 	a.mu.Lock()
 	a.currentPlan = &plan.Plan{
@@ -138,13 +140,12 @@ func TestNearlyFullBatteryCoversIdleImportOnlyInsideItsSmallTopBand(t *testing.T
 		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
 		Slots: []plan.Slot{{
 			Start: now, BatterySetpointKw: 0,
-			// The optimizer explicitly valued later use more highly. This is
-			// the exact path the high-SoC rule exists to bound.
+			// The cloud said nothing: its forecast saw the slot exporting.
 			UnplannedLoadDischarge: false,
 		}},
 	}
 	a.lastReading = guards.Reading{
-		SocPct: 94, PvKw: .9, LoadKw: 5.0, GridLimitKw: guards.Unknown(),
+		SocPct: 92, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: guards.Unknown(),
 	}
 	a.lastReadingAt = now
 	a.mu.Unlock()
@@ -153,40 +154,110 @@ func TestNearlyFullBatteryCoversIdleImportOnlyInsideItsSmallTopBand(t *testing.T
 	})
 
 	a.applySetpoint(now)
-	waitFor(t, 5*time.Second, "the 94%-battery correction", func() bool {
+	waitFor(t, 5*time.Second, "the reported 1.4 kW purchase", func() bool {
 		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == -4.1
+		return ok && m["battery_setpoint_kw"] == -1.4
 	})
 	snap := a.State.Get()
-	if snap.Follow == nil || snap.Follow.Path != execModeHighSocFollow || !snap.Follow.Active {
-		t.Fatalf("full-battery execution evidence = %+v", snap.Follow)
+	if snap.Follow == nil || snap.Follow.Path != execModeDeficitCover || !snap.Follow.Active ||
+		snap.Follow.Direction != guards.FollowDeepen {
+		t.Fatalf("deficit-cover execution evidence = %+v", snap.Follow)
 	}
-	if snap.Follow.FloorSocPct == nil || *snap.Follow.FloorSocPct != 90 {
-		t.Fatalf("top-band floor = %+v, want 90%%", snap.Follow.FloorSocPct)
+	if snap.Follow.FloorSocPct == nil || *snap.Follow.FloorSocPct != 35 {
+		t.Fatalf("floor = %+v, want the FULL reserve stack (35%%)", snap.Follow.FloorSocPct)
 	}
-	if ex := controlSummary(snap).Execution; ex == nil || ex.Mode != execModeHighSocFollow ||
-		ex.EffectiveFloorSocPct == nil || *ex.EffectiveFloorSocPct != 90 {
-		t.Fatalf("heartbeat must name the bounded correction and its real floor: %+v", ex)
+	if ex := controlSummary(snap).Execution; ex == nil || ex.Mode != execModeDeficitCover ||
+		ex.EffectiveFloorSocPct == nil || *ex.EffectiveFloorSocPct != 35 ||
+		ex.DeficitKw == nil || math.Abs(*ex.DeficitKw-1.4) > .001 {
+		t.Fatalf("heartbeat must name the correction, its floor and the measured deficit: %+v", ex)
 	}
-	if grid := 5.0 + snap.SetpointKw - .9; math.Abs(grid) > .001 {
+	if grid := 2.7 + snap.SetpointKw - 1.3; math.Abs(grid) > .001 {
 		t.Fatalf("grid = %.3f kW, want zero", grid)
 	}
 
-	// Same idle slot, but the five-point top band is spent. No economic grant
-	// exists, so the optimizer gets the remaining energy back immediately.
+	// Same idle slot at the reserve floor: the reserve stack is the one number
+	// the rule never spends, so the optimizer gets the battery back.
 	atFloor := now.Add(10 * time.Second)
 	a.mu.Lock()
-	a.lastReading.SocPct = 90
+	a.lastReading.SocPct = 35
 	a.lastReadingAt = atFloor
 	a.mu.Unlock()
 	a.State.Update(func(s *state.Snapshot) { s.Control.CheckedAt = atFloor })
 	a.applySetpoint(atFloor)
-	waitFor(t, 5*time.Second, "top-band release", func() bool {
+	waitFor(t, 5*time.Second, "reserve-floor release", func() bool {
 		m, ok := sub.latest()
 		return ok && m["battery_setpoint_kw"] == 0.0
 	})
 	if snap := a.State.Get(); snap.Follow != nil || snap.SetpointKw != 0 {
-		t.Fatalf("top band must release back to the optimizer: setpoint=%v follow=%+v",
+		t.Fatalf("the reserve floor must release the battery: setpoint=%v follow=%+v",
+			snap.SetpointKw, snap.Follow)
+	}
+}
+
+// A planned SALE is a price decision the local trust rule never touches. The
+// evening peak sells 27 kW while the house draws 2.7 kW: there is no residual
+// purchase at all, so nothing is corrected and the sale runs at its full depth.
+func TestTheLocalDeficitRuleNeverCutsBackAPlannedSale(t *testing.T) {
+	a, addr := followAgentAddr(t)
+	sub := subscribeSetpoint(t, addr)
+	now := time.Date(2026, 8, 28, 17, 52, 0, 0, time.UTC)
+	yes, floor := true, 35.0
+	a.mu.Lock()
+	a.currentPlan = &plan.Plan{
+		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
+		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		Slots: []plan.Slot{{Start: now, BatterySetpointKw: -27}},
+	}
+	a.lastReading = guards.Reading{
+		SocPct: 92, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: guards.Unknown(),
+	}
+	a.lastReadingAt = now
+	a.mu.Unlock()
+	a.State.Update(func(s *state.Snapshot) {
+		s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
+	})
+
+	a.applySetpoint(now)
+	waitFor(t, 5*time.Second, "the untouched sale", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == -27.0
+	})
+	if snap := a.State.Get(); snap.Follow != nil || snap.SetpointKw != -27 {
+		t.Fatalf("a planned sale must run unchanged: setpoint=%v follow=%+v",
+			snap.SetpointKw, snap.Follow)
+	}
+}
+
+// A planned CHARGE is a different intent, never a deficit to cover: reversing it
+// would be a direction flip, which no economic or trust guard may perform.
+func TestTheLocalDeficitRuleNeverReinterpretsAPlannedCharge(t *testing.T) {
+	a, addr := followAgentAddr(t)
+	sub := subscribeSetpoint(t, addr)
+	now := time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC)
+	yes, floor := true, 35.0
+	a.mu.Lock()
+	a.currentPlan = &plan.Plan{
+		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
+		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		Slots: []plan.Slot{{Start: now, BatterySetpointKw: 5}},
+	}
+	// The plan buys for the battery on purpose: house 2.7, PV 1.3, charge 5.
+	a.lastReading = guards.Reading{
+		SocPct: 60, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: guards.Unknown(),
+	}
+	a.lastReadingAt = now
+	a.mu.Unlock()
+	a.State.Update(func(s *state.Snapshot) {
+		s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
+	})
+
+	a.applySetpoint(now)
+	waitFor(t, 5*time.Second, "the untouched charge", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == 5.0
+	})
+	if snap := a.State.Get(); snap.Follow != nil || snap.SetpointKw != 5 {
+		t.Fatalf("a planned charge must run unchanged: setpoint=%v follow=%+v",
 			snap.SetpointKw, snap.Follow)
 	}
 }

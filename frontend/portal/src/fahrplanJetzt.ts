@@ -482,8 +482,8 @@ function unplannedLoadStatus(
 ): UnplannedStatus | null {
   const mode = control?.executionMode ?? null;
   const checkedAge = control ? input.now.getTime() - new Date(control.checkedAt).getTime() : Infinity;
-  const active = (mode === 'idle_follow' || mode === 'high_soc_follow' ||
-    mode === 'autonomous_discharge') &&
+  const active = (mode === 'idle_follow' || mode === 'deficit_cover' ||
+    mode === 'high_soc_follow' || mode === 'autonomous_discharge') &&
     control?.executionMeasurementsFresh === true && control.allMatch &&
     control.controlEnabled && control.certified && checkedAge >= 0 && checkedAge <= 30_000;
   const gridKw = num(input.snapshot?.gridKw);
@@ -528,7 +528,9 @@ function unplannedLoadStatus(
       ? 'Wechselrichter-Automatik'
       : mode === 'idle_follow'
         ? '10-Sekunden-Nachführung'
-        : mode === 'high_soc_follow' ? 'Vollakku-Entlastung' : 'noch nicht aktiv',
+        : mode === 'deficit_cover'
+          ? 'Live-Lastdeckung'
+          : mode === 'high_soc_follow' ? 'Vollakku-Entlastung' : 'noch nicht aktiv',
   });
   chips.push({ label: 'Messung', value: input.snapshotFresh ? 'frisch' : 'veraltet' });
   chips.push({ label: 'Rücklesen', value: control?.allMatch ? 'bestätigt' : 'nicht bestätigt' });
@@ -566,8 +568,8 @@ function resolveState(
   const mode = input.control?.executionMode ?? null;
   if (mode === 'fallback') return 'sicherung';
   if (mode === 'follow' || mode === 'trim' || mode === 'absorb' ||
-      mode === 'idle_follow' || mode === 'high_soc_follow' || mode === 'high_soc_charge' ||
-      mode === 'autonomous_discharge') return 'angepasst';
+      mode === 'idle_follow' || mode === 'deficit_cover' || mode === 'high_soc_follow' ||
+      mode === 'high_soc_charge' || mode === 'autonomous_discharge') return 'angepasst';
   // Ohne den präzisen Modus (ältere Edge-Version) bleibt die GROBE Wahrheit:
   // das Gerät sagt, dass kein Fahrplan es steuert. Das reicht, um „läuft wie
   // vorgesehen" NICHT zu behaupten — aber NICHT, um die Ursache zu benennen

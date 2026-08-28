@@ -473,6 +473,24 @@ describe('executionNote', () => {
     expect(note).toContain('kein aktueller Fahrplan');
   });
 
+  it('names the general deficit coverage without claiming a price verdict', () => {
+    const note = executionNote(
+      status({
+        executionMode: 'deficit_cover',
+        executionPlannedKw: 0,
+        executionTargetKw: 1.4,
+        executionFloorSocPct: 35,
+      }),
+    )!;
+    expect(note).toContain('aus dem Speicher gedeckt');
+    expect(note).toContain('1,4');
+    expect(note).toContain('keine Ladung');
+    // Kein Preis-Urteil: die Ökonomie bleibt beim Fahrplan, das ist eine
+    // Vertrauensregel gegen sichtbaren Netzbezug.
+    expect(note).not.toMatch(/teurer|billiger|lohnt|Preis/i);
+    expect(EXECUTION_MODE_LABEL.deficit_cover).toBe('Live-Lastdeckung');
+  });
+
   it('names the bounded full-battery correction instead of pretending it was an economic grant', () => {
     const note = executionNote(
       status({

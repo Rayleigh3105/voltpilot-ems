@@ -217,6 +217,9 @@ export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
   absorb: 'Überschuss-Aufnahme',
   fallback: 'Eingebaute Sicherung',
   idle_follow: 'Live-Lastnachführung',
+  deficit_cover: 'Live-Lastdeckung',
+  // Der abgelöste enge Vollakku-Fall (bis edge-2026.08.29). Nur noch eine
+  // ältere Box meldet ihn; das Wort bleibt, damit ihre Meldung lesbar ist.
   high_soc_follow: 'Vollakku-Entlastung',
   high_soc_charge: 'PV-Puffer-Nachladung',
   autonomous_discharge: 'Wechselrichter-Automatik',
@@ -265,6 +268,12 @@ export function executionNote(status: ControlStatus | null): string | null {
   if (mode === 'idle_follow' || mode === 'autonomous_discharge') {
     const path = mode === 'idle_follow' ? 'der 10-Sekunden-Nachführung' : 'der Wechselrichter-Automatik';
     return `${plannedPart}Unerwarteter Verbrauch wird live mit ${path}${measured} gedeckt.`;
+  }
+  if (mode === 'deficit_cover') {
+    return (
+      `${plannedPart}Ihr Verbrauch${measured} wird gerade aus dem Speicher gedeckt, statt ` +
+      'ihn einzukaufen. Der Fahrplan sieht in dieser Viertelstunde keine Ladung vor.'
+    );
   }
   if (mode === 'high_soc_follow') {
     return (

@@ -50,16 +50,42 @@ def test_idle_authority_is_distinct_economic_and_never_reinterprets_a_trade():
         )
     assert not unplanned_load_discharge(
         battery_kw=0.0,
-        grid_kw=-2.0,  # planned sale
-        charge_surplus_to_battery=False,
-        **COMMON,
-    )
-    assert not unplanned_load_discharge(
-        battery_kw=0.0,
         grid_kw=3.0,
         charge_surplus_to_battery=True,  # opposite local authority
         **COMMON,
     )
+    assert not unplanned_load_discharge(
+        battery_kw=0.0,
+        grid_kw=float("nan"),  # the slot's own numbers are broken
+        charge_surplus_to_battery=False,
+        **COMMON,
+    )
+
+
+def test_a_forecast_export_no_longer_blocks_the_idle_authorization():
+    """Pilsting/Herzogau, 2026-08-28 19:37 - the regression this widening fixes.
+
+    The dusk PV forecast still saw a surplus, so the plan slot 19:30-19:45
+    planned an EXPORT while commanding 0,0 kW. The old refusal read that
+    FORECAST as "a deliberate sale" and withheld the duty from the one slot that
+    needed it: the real plant sat at PV 1,3 / house 2,7 and bought 1,4 kW at
+    ~25 ct with 92 % in the battery.
+
+    In an IDLE slot there is no battery sale to protect - the export is PV - and
+    the edge caps the correction at the MEASURED deficit, so it bites only where
+    reality is importing.
+    """
+    assert unplanned_load_discharge(
+        battery_kw=0.0,
+        grid_kw=-1.6,  # the forecast surplus that never materialised
+        charge_surplus_to_battery=False,
+        **COMMON,
+    )
+    # The sibling on the DISCHARGE side keeps both-sided exclusion, because its
+    # edge enforcement also LIMITS - marking a sale there would cut it back.
+    from voltpilot_optimization.slot_trim import cover_load_from_battery
+
+    assert not cover_load_from_battery(battery_kw=-27.0, grid_kw=-26.0, **COMMON)
 
 
 def test_future_value_or_reserve_can_honestly_hold_the_battery():
