@@ -29,6 +29,12 @@
 .vp-btn--md { padding: 0.85rem 1.75rem; font-size: 1rem; }
 .vp-btn--lg { padding: 1rem 2.25rem; font-size: 1.05rem; }
 
+/* Die kompakte Desktop-Dichte bleibt erhalten; auf Touch-Geräten braucht auch
+   der kleine Button eine verlässliche Finger-Trefferfläche. */
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-btn--sm { min-height: 44px; }
+}
+
 .vp-btn:focus-visible {
   outline: 2px solid var(--vp-focus-ring-color);
   outline-offset: 2px;

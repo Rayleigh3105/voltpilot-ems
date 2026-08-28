@@ -42,31 +42,19 @@ import './Historie.css';
 import './PortfolioWelt.css';
 import { MiniLineSpark } from './MiniChart';
 
-/** Eine Karte des Welt-Wechslers auf Portfolio-Ebene. */
-export interface PortfolioSwitchCard {
-  welt: PortfolioWelt;
-  active: boolean;
-}
-
 /**
- * Welt-Kopf: Icon · Titel · Ehrlichkeits-Abzeichen · Einleitungssatz, darunter
- * das Kartenpaar für den Ein-Klick-Wechsel. Genau wie auf der Anlage — nur
- * nennt die Unterzeile die Ebene („4 Anlagen · Juli 2026"), damit nie unklar
- * ist, worüber die Zahlen sprechen.
+ * Welt-Kopf: Icon · Titel · Ehrlichkeits-Abzeichen · Einleitungssatz. Die
+ * Seitennavigation übernimmt genau EINMAL `PortfolioTabs` darüber; der Kopf
+ * nennt nur die Ebene („4 Anlagen · Juli 2026"), damit nie unklar ist, worüber
+ * die Zahlen sprechen.
  */
 export function PortfolioWeltKopf({
   welt,
-  cards,
   kontext,
-  hrefFor,
-  onOpen,
 }: {
   welt: PortfolioWelt;
-  cards: PortfolioSwitchCard[];
   /** „4 Anlagen · Juli 2026" — die Ebene und der Zeitraum in einem Satz. */
   kontext: string;
-  hrefFor: (card: PortfolioSwitchCard) => string;
-  onOpen: (card: PortfolioSwitchCard) => void;
 }) {
   return (
     <Card
@@ -80,7 +68,7 @@ export function PortfolioWeltKopf({
           <Icon name={welt.icon} size={22} />
         </IconTile>
         <div className="vp-welt-titles">
-          <h1>
+          <h1 aria-label={`${welt.label}, Portfolio, ${PROVENIENZ[welt.badge].label}`}>
             {welt.label}
             <span className="vp-pf-ebene">Portfolio</span>
             <ProvBadge art={welt.badge} />
@@ -90,32 +78,6 @@ export function PortfolioWeltKopf({
           </p>
         </div>
       </div>
-      {cards.length > 1 && (
-        <div className="vp-welt-switch" role="group" aria-label="Ansicht wechseln">
-          {cards.map((card) => (
-            <a
-              key={card.welt.id}
-              className={`vp-wsw vp-welt-${card.welt.id}${card.active ? ' on' : ''}`}
-              href={hrefFor(card)}
-              aria-current={card.active ? 'page' : undefined}
-              onClick={(e) => {
-                // Modifier-Klicks (neuer Tab) dem Browser überlassen.
-                if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-                e.preventDefault();
-                onOpen(card);
-              }}
-            >
-              <span className="vp-wsw-ico" aria-hidden="true">
-                <Icon name={card.welt.icon} size={17} />
-              </span>
-              <span className="vp-wsw-text">
-                <span className="vp-wsw-label">{card.welt.label}</span>
-                <span className="vp-wsw-sub">{card.welt.switchLead}</span>
-              </span>
-            </a>
-          ))}
-        </div>
-      )}
     </Card>
   );
 }

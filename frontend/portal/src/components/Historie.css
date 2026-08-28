@@ -867,8 +867,8 @@
 
   .vp-zeitleiste-mobil .vp-zl-row-2 > .vp-period-nav > .step {
     flex: 0 0 auto;
-    min-width: 36px;
-    min-height: 40px;
+    min-width: 44px;
+    min-height: 44px;
     padding: 0 0.45rem;
   }
 
@@ -877,7 +877,7 @@
   .vp-zl-chip {
     flex: 1 1 100%;
     min-width: 0;
-    min-height: 32px;
+    min-height: 44px;
     padding: 4px 10px;
     border: 1px solid var(--vp-welt, var(--vp-action));
     border-radius: 999px;
@@ -891,6 +891,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Die spezifische Kompakt-Regel weiter oben setzte 36 px und gewann sonst
+     gegen die globale Touch-Regel. Im mobilen Blatt bleibt sie 44 px. */
+  .vp-zl-vgl .vp-seg.vp-seg-compact button {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   /* --- Das ⋯-Blatt ------------------------------------------------------ */

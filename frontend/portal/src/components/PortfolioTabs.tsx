@@ -1,6 +1,27 @@
 import { isPortfolioPage, PORTFOLIO_WELT_PAGES, type PageId } from '../nav';
 import './BereichTabs.css';
 
+const PORTFOLIO_TAB_HASH: Partial<Record<PageId, string>> = {
+  'portfolio-messwerte': '#/portfolio/messwerte',
+  'portfolio-erloese': '#/portfolio/erloese',
+};
+
+/**
+ * Beim Wechsel zwischen den beiden Historie-Welten bleibt der gewählte
+ * Zeitraum erhalten. Von der Übersicht startet eine Welt bewusst mit ihrem
+ * Standardzeitraum; zurück zur Übersicht gibt es keine Historie-Parameter.
+ */
+export function portfolioTabHash(
+  target: PageId,
+  currentPage: PageId,
+  currentHash: string,
+): string | null {
+  const base = PORTFOLIO_TAB_HASH[target];
+  if (!base || !PORTFOLIO_TAB_HASH[currentPage]) return null;
+  const queryAt = currentHash.indexOf('?');
+  return queryAt < 0 ? base : `${base}${currentHash.slice(queryAt)}`;
+}
+
 /**
  * Die REITER der FLOTTEN-EBENE: Übersicht · Messwerte · Erlöse
  * (Navigations-Runde „zwei Ebenen", Konzept `data/vp-portfolio-konzept-r2`
@@ -39,6 +60,15 @@ export function PortfolioTabs({
   const welten = PORTFOLIO_WELT_PAGES.filter(
     (p) => p.id !== 'portfolio-erloese' || showErloese || page === p.id,
   );
+  const open = (target: PageId) => {
+    const hash = portfolioTabHash(target, page, window.location.hash);
+    if (hash) {
+      window.location.hash = hash;
+      window.scrollTo({ top: 0 });
+      return;
+    }
+    onNavigate(target);
+  };
   return (
     <div className="vp-bereich-tabs" role="tablist" aria-label={`Reiter der Ebene ${fleetLabel}`}>
       <button
@@ -46,7 +76,7 @@ export function PortfolioTabs({
         role="tab"
         aria-selected={page === 'portfolio'}
         className={`vp-bereich-tab${page === 'portfolio' ? ' active' : ''}`}
-        onClick={() => onNavigate('portfolio')}
+        onClick={() => open('portfolio')}
       >
         Übersicht
       </button>
@@ -57,7 +87,7 @@ export function PortfolioTabs({
           role="tab"
           aria-selected={page === p.id}
           className={`vp-bereich-tab${page === p.id ? ' active' : ''}`}
-          onClick={() => onNavigate(p.id)}
+          onClick={() => open(p.id)}
         >
           {p.label}
         </button>

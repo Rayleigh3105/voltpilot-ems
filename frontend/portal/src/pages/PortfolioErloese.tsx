@@ -16,9 +16,7 @@ import { historieHash } from '../historieWelten';
 import { DASH, signedEuro, steeringAttributionNote } from '../erloesKomposition';
 import {
   erloeseAggregat,
-  hatGeldWelt,
   PORTFOLIO_WELTEN,
-  portfolioHash,
   portfolioRange,
   type ErloeseZeile,
 } from '../portfolioHistorie';
@@ -37,7 +35,7 @@ import {
   PortfolioWeltKopf,
   PortfolioZeitLeiste,
 } from '../components/PortfolioWelt';
-import { portfolioSwitchCards, oeffnePortfolioWelt, oeffneAnlagenWelt } from './portfolioWeltNav';
+import { oeffneAnlagenWelt } from './portfolioWeltNav';
 
 /**
  * **Portfolio · Welt B „Erlöse"** (`#/portfolio/erloese`) — das gemessene Geld
@@ -148,13 +146,7 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
 
   return (
     <>
-      <PortfolioWeltKopf
-        welt={welt}
-        cards={portfolioSwitchCards('erloese', hatGeldWelt(sites))}
-        kontext={kontext}
-        hrefFor={(c) => portfolioHash(c.welt.id, range, at)}
-        onOpen={(c) => oeffnePortfolioWelt(c.welt.id, range, at)}
-      />
+      <PortfolioWeltKopf welt={welt} kontext={kontext} />
       <PortfolioZeitLeiste
         welt={welt}
         range={range}
@@ -181,7 +173,7 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
             {err && stale && <PeriodeFehlgeschlagen periode={label} onRetry={retry} />}
 
             <section className="vp-section">
-              <Card padding="lg" radius="lg">
+              <Card padding="lg" radius="lg" className="vp-pf-summenkarte">
                 <KartenKopf
                   icon="euro"
                   category="primary"

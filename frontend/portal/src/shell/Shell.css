@@ -698,6 +698,12 @@
   cursor: pointer;
   font-size: var(--vp-text-sm);
 }
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-avatar-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
 .vp-avatarmenu {
   position: absolute;
   top: calc(100% + 8px);

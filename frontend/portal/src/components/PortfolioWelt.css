@@ -4,7 +4,7 @@
  *
  * Komponenten-lokal (das `Erloese.css`/`Steuerung.css`-Muster): `index.css`
  * bleibt unangetastet. Alles, was schon existiert — Welt-Kopf, Zeit-Leiste,
- * Kartenpaar, Fußkarte, `.vp-table.responsive` — kommt aus `Historie.css` bzw.
+ * Fußkarte und `.vp-table.responsive` — kommt aus `Historie.css` bzw.
  * `index.css`; hier steht NUR, was die Portfolio-Ebene zusätzlich braucht.
  * ========================================================================== */
 
@@ -14,7 +14,7 @@
   border-radius: 999px;
   background: var(--vp-welt-soft, #eef2f7);
   color: var(--vp-welt-ink, #1e3a5f);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -127,8 +127,36 @@
    schob die Zeile dann 26 px über den Bildschirmrand. Der Wert behält seine
    eigene nowrap-Regel, bricht also trotzdem nie mitten im Betrag. */
 @media (max-width: 720px) {
+  /* Die globale Telefon-Regel hält Diagramm-Köpfe absichtlich einzeilig. Die
+     Portfolio-Summe ist kein Diagramm und hat einen längeren Titel: hier darf
+     der Titel vollständig umbrechen, Abzeichen + Vergleich stehen darunter. */
+  .vp-welt-body .vp-pf-summenkarte .vp-section-head {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .vp-welt-body .vp-pf-summenkarte .vp-section-head > h2 {
+    flex: 1 1 calc(100% - 36px);
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .vp-welt-body .vp-pf-summenkarte .vp-prov {
+    margin-left: 36px;
+  }
+
+  .vp-welt-body .vp-pf-summenkarte .vp-karten-vergleich {
+    width: auto;
+    margin-left: 0;
+  }
+
   .vp-pf-table td.num {
     white-space: normal;
+  }
+
+  .vp-pf-table td::before {
+    font-size: 0.75rem;
   }
 }
 

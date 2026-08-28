@@ -96,17 +96,44 @@ export function EigeneAuswertungDialog({
     };
   }, [open, siteId]);
 
+  /* Im v1-Rückfall gehören PV, Haus, Netz und Speicher technisch alle zur
+     synthetischen Entity `anlage`. Der Picker braucht trotzdem vier eindeutige
+     Werte — sonst markiert React vier Zeilen mit demselben Schlüssel und jede
+     Wahl landet wieder bei der ersten (PV). Nur der Picker-Wert wird deshalb
+     bei Dubletten ergänzt; gespeichert wird weiter die echte Entity-ID. */
+  const gruppenAuswahl = useMemo(() => {
+    const alle = gruppen ?? [];
+    const anzahl = new Map<string, number>();
+    for (const g of alle) anzahl.set(g.entityId, (anzahl.get(g.entityId) ?? 0) + 1);
+    return alle.map((gruppe, index) => ({
+      gruppe,
+      value: (anzahl.get(gruppe.entityId) ?? 0) > 1
+        ? `${gruppe.entityId}::${index}`
+        : gruppe.entityId,
+    }));
+  }, [gruppen]);
+
   const komponenten: VpOption[] = useMemo(
     () =>
-      (gruppen ?? []).map((g) => ({
-        value: g.entityId,
-        label: g.label,
-        sub: g.deviceLine,
+      gruppenAuswahl.map(({ gruppe, value }) => ({
+        value,
+        label: gruppe.label,
+        sub: gruppe.deviceLine,
       })),
-    [gruppen],
+    [gruppenAuswahl],
   );
 
-  const gruppe = (gruppen ?? []).find((g) => g.entityId === entwurf.entityId) ?? null;
+  const gruppenWahl =
+    gruppenAuswahl.find((g) => g.value === entwurf.entityId)
+    ?? gruppenAuswahl.find(
+      (g) =>
+        g.gruppe.entityId === entwurf.entityId
+        && g.gruppe.items.some((i) => i.channel === entwurf.channel),
+    )
+    ?? gruppenAuswahl.find((g) => g.gruppe.entityId === entwurf.entityId)
+    ?? null;
+  const gruppe = gruppenWahl?.gruppe ?? null;
+
   const messwerte: VpOption[] = useMemo(
     () =>
       (gruppe?.items ?? []).map((i) => ({
@@ -150,7 +177,10 @@ export function EigeneAuswertungDialog({
             onClick={() => {
               if (fehler) return;
               onSpeichern({
-                ...ausEntwurf(entwurf, bearbeiten?.id ?? ''),
+                ...ausEntwurf(
+                  { ...entwurf, entityId: gruppe?.entityId ?? entwurf.entityId },
+                  bearbeiten?.id ?? '',
+                ),
                 id: bearbeiten?.id ?? null,
               });
             }}
@@ -179,7 +209,7 @@ export function EigeneAuswertungDialog({
             <VpPicker
               label="1 · Komponente"
               options={komponenten}
-              value={entwurf.entityId || null}
+              value={gruppenWahl?.value ?? null}
               onChange={(v) =>
                 setEntwurf((e) => ({ ...e, entityId: v, channel: '' }))
               }

@@ -490,7 +490,7 @@ function AnlageStep({
         Ein Name, unter dem Sie sie wiederfinden - und wo sie steht. Leistung,
         Speicher &amp; Co. holen wir gleich aus dem Register.
       </p>
-      <div style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16 }}>
         <Input
           ref={nameRef}
           label="Name der Anlage"
@@ -814,7 +814,7 @@ function RegisterStep({
         Geben Sie die MaStR-Nummer Ihrer PV-Anlage ein - wir holen Leistung, Modulzahl und
         Ausrichtung automatisch. Den verknüpften Speicher erkennen wir mit.
       </p>
-      <div style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16 }}>
         <Input
           label="MaStR-Nummer der PV-Anlage"
           placeholder="z. B. SEE966831669444"
@@ -1000,7 +1000,7 @@ function ManualBatteryStep({
         die Speicherdaten aus dem Datenblatt ein - Sie können sie jederzeit unter „Technik &amp;
         Einstellungen" ändern.
       </p>
-      <div style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16 }}>
         <Input
           label="Kapazität (kWh)"
           placeholder="z. B. 10"
@@ -1688,7 +1688,7 @@ function GeraetStep({
         Wechselrichter, Erzeuger und Verbraucher richten Sie direkt am Gerät ein – auf der
         Geräteseite „Meine Anlage". Hier im Portal verbinden Sie das Gerät nur mit Ihrem Konto.
       </p>
-      <div style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16 }}>
         {multiSite && (
           <VpPicker
             id="flow-site"

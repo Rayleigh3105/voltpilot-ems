@@ -15,11 +15,9 @@ import {
 } from '../historieVergleich';
 import { historieHash } from '../historieWelten';
 import {
-  hatGeldWelt,
   messwerteAggregat,
   PORTFOLIO_TABELLE_KEYS,
   PORTFOLIO_WELTEN,
-  portfolioHash,
   portfolioRange,
   type MesswerteZeile,
   type PortfolioSumme,
@@ -36,7 +34,7 @@ import {
   PortfolioWeltKopf,
   PortfolioZeitLeiste,
 } from '../components/PortfolioWelt';
-import { portfolioSwitchCards, oeffnePortfolioWelt, oeffneAnlagenWelt } from './portfolioWeltNav';
+import { oeffneAnlagenWelt } from './portfolioWeltNav';
 
 /**
  * **Portfolio · Welt A „Messwerte"** (`#/portfolio/messwerte`) — die Basis-Welt
@@ -177,13 +175,7 @@ export function PortfolioMesswerte({ sites }: { sites: Site[] }) {
 
   return (
     <>
-      <PortfolioWeltKopf
-        welt={welt}
-        cards={portfolioSwitchCards('messwerte', hatGeldWelt(sites))}
-        kontext={kontext}
-        hrefFor={(c) => portfolioHash(c.welt.id, range, at)}
-        onOpen={(c) => oeffnePortfolioWelt(c.welt.id, range, at)}
-      />
+      <PortfolioWeltKopf welt={welt} kontext={kontext} />
       <PortfolioZeitLeiste
         welt={welt}
         range={range}
@@ -210,7 +202,7 @@ export function PortfolioMesswerte({ sites }: { sites: Site[] }) {
             {err && stale && <PeriodeFehlgeschlagen periode={label} onRetry={retry} />}
 
             <section className="vp-section">
-              <Card padding="lg" radius="lg">
+              <Card padding="lg" radius="lg" className="vp-pf-summenkarte">
                 <KartenKopf
                   icon="zap"
                   titel={`Energie aller Anlagen · ${label}`}

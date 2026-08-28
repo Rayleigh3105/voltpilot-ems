@@ -159,6 +159,36 @@ describe('EigeneAuswertungDialog', () => {
     expect(await screen.findByRole('listbox')).toBeTruthy();
   });
 
+  it('lässt im v1-Rückfall PV, Haus, Netz und Speicher wirklich getrennt wählen', async () => {
+    vi.spyOn(api, 'siteEntities').mockResolvedValue({
+      registry: null,
+      entities: [],
+      localSetup: [],
+      staleOnDevice: [],
+    } as never);
+    vi.spyOn(api, 'topology').mockResolvedValue(null);
+    const onSpeichern = vi.fn();
+    mount({ onSpeichern });
+    await screen.findByText('1 · Komponente');
+
+    fireEvent.click(screen.getByRole('combobox', { name: /Komponente/ }));
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual([
+      'PV-Erzeugung',
+      'Haus',
+      'Netzanschluss',
+      'Speicher',
+    ]);
+    fireEvent.click(screen.getByRole('option', { name: 'Haus' }));
+    fireEvent.click(screen.getByRole('combobox', { name: /Messwert/ }));
+    fireEvent.click(await screen.findByRole('option', { name: /Hausverbrauch/ }));
+
+    await waitFor(() => expect(screen.getByText('Anlegen')).not.toBeDisabled());
+    fireEvent.click(screen.getByText('Anlegen'));
+    expect(onSpeichern).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: 'anlage', channel: 'haus' }),
+    );
+  });
+
   it('beim Ändern gibt es „Entfernen", beim Anlegen nicht', async () => {
     stub();
     const onEntfernen = vi.fn();

@@ -21,7 +21,8 @@
 
   /* --- Neutrals --- */
   --vp-text-dark:      #1A1A1A;  /* headings & body */
-  --vp-text-gray:      #6C757D;  /* muted text, captions */
+  /* AA auch auf `--vp-surface-alt` (#F4F6F9); #6C757D lag dort bei 4,33:1. */
+  --vp-text-gray:      #66717C;  /* muted text, captions */
   --vp-bg-light:       #F8F9FA;  /* section backgrounds */
   --vp-bg-offwhite:    #F6F5F4;  /* alt surface */
   --vp-surface:        #FFFFFF;  /* cards, nav, buttons */

@@ -388,9 +388,19 @@
   margin-top: 10px;
 }
 
+/* Ein einzelner Wert soll seine Karte nutzen statt wie die erste Spalte einer
+   scheinbar leeren Dreier-Tabelle zu wirken. Zwei Werte teilen sich die Zeile. */
+.vp-at-karte-nums[data-count="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.vp-at-karte-nums[data-count="2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .vp-at-karte-nums .l {
   display: block;
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: var(--vp-text-muted, #6c757d);
 }
 

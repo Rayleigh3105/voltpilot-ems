@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { AppShell } from './AppShell';
-import { PortfolioTabs } from '../components/PortfolioTabs';
+import { PortfolioTabs, portfolioTabHash } from '../components/PortfolioTabs';
 import { showPortfolioNav } from '../betriebsart';
 
 // Avoid pulling in keycloak-js: the shell only needs a name for the avatar.
@@ -156,6 +156,17 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
     expect(screen.getByRole('tab', { name: 'Übersicht' }).getAttribute('aria-selected')).toBe(
       'false',
     );
+  });
+
+  it('nimmt den gewählten Zeitraum beim Wechsel zwischen den Welten mit', () => {
+    expect(
+      portfolioTabHash(
+        'portfolio-erloese',
+        'portfolio-messwerte',
+        '#/portfolio/messwerte?z=monat&at=2026-07-15',
+      ),
+    ).toBe('#/portfolio/erloese?z=monat&at=2026-07-15');
+    expect(portfolioTabHash('portfolio-messwerte', 'portfolio', '#/portfolio')).toBeNull();
   });
 
   it('lässt die Erlöse-Welt weg, solange keine Anlage einen Geld-Modus hat', () => {

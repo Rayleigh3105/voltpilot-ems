@@ -482,7 +482,7 @@ export function AppShell({
               type="button"
               className="vp-avatar vp-avatar-btn"
               title={user.name}
-              aria-label="Konto-Menü"
+              aria-label={`${initials} – Konto-Menü`}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((v) => !v)}

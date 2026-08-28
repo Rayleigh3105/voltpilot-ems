@@ -282,7 +282,7 @@ function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau }: Anlag
               <button
                 type="button"
                 className="vp-at-karte-open"
-                aria-label={`Anlage ${z.name} öffnen`}
+                aria-label={`${z.name} ${z.zustand.wort}${z.zustand.alter ? ` · ${z.zustand.alter}` : ''} – Anlage öffnen`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onOeffnen(z.id);
@@ -316,7 +316,7 @@ function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau }: Anlag
             </div>
             <Warnzeile z={z} />
             {nums.length > 0 && (
-              <div className="vp-at-karte-nums">
+              <div className="vp-at-karte-nums" data-count={nums.length}>
                 {nums.map((n) => (
                   <div key={n.id}>
                     <span className="l">{n.label}</span>

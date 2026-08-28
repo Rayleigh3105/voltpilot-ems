@@ -1740,6 +1740,8 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-reuse-loc {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  min-width: 0;
   gap: var(--vp-space-2);
 }
 .vp-reuse-loc-lbl {
@@ -1750,6 +1752,8 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-reuse-loc-chips {
   display: flex;
   flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
   gap: var(--vp-space-2);
 }
 .vp-chip {
@@ -4933,6 +4937,24 @@ button.vp-tech-card-h.toggle {
   }
   .vp-tech-disc {
     min-height: 44px;
+  }
+  /* Zeilenmenüs sind im Desktop bewusst kompakt, werden am Telefon aber als
+     eigenständige Aktion getroffen. */
+  .vp-rowmenu-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* Auswahl-Chips im Anlagen-Dialog und die Karten-Zoomtasten waren optisch
+     nur 30–34 px hoch. */
+  .vp-chip {
+    min-height: 44px;
+  }
+  /* Leaflet lädt seine `.leaflet-touch .leaflet-bar a`-Regel unabhängig von
+     unserer Datei. Die höhere Spezifität hält die 44 px deshalb stabil. */
+  .vp-app .leaflet-touch .leaflet-bar.leaflet-control-zoom a {
+    width: 44px;
+    height: 44px;
+    line-height: 44px;
   }
 }
 

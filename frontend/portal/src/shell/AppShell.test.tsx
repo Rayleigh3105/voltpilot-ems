@@ -421,7 +421,7 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     renderShell();
     // Zu ist zu: kein Menü im DOM, bevor jemand es öffnet.
     expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Konto-Menü' }));
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
     const menu = screen.getByRole('menu', { name: 'Konto-Menü' });
     expect(menu.textContent).toContain('Hilfe & Kontakt');
     expect(menu.textContent).toContain('Abmelden');
@@ -439,7 +439,7 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
         <div>content</div>
       </AppShell>,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Konto-Menü' }));
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
     const menu = screen.getByRole('menu', { name: 'Konto-Menü' });
     expect(menu.textContent).toContain('Plattform');
     // Seit Stufe 3 ist „Edge-Updates" ein TAB von „Geräte" - im Menü steht der
@@ -449,13 +449,13 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     // Und ein Kunde bekommt die Gruppe gar nicht erst.
     cleanup();
     renderShell();
-    fireEvent.click(screen.getByRole('button', { name: 'Konto-Menü' }));
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
     expect(screen.getByRole('menu', { name: 'Konto-Menü' }).textContent).not.toContain('Plattform');
   });
 
   it('das Avatar-Menü schließt mit Escape', () => {
     renderShell();
-    fireEvent.click(screen.getByRole('button', { name: 'Konto-Menü' }));
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
   });
@@ -543,7 +543,7 @@ describe('AppShell: die Flotten-Ebene navigiert ohne Leiste', () => {
 
   it('trägt Hilfe und Abmelden auch hier im Avatar-Menü', () => {
     renderFleet();
-    fireEvent.click(screen.getByRole('button', { name: 'Konto-Menü' }));
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
     const menu = screen.getByRole('menu', { name: 'Konto-Menü' });
     expect(menu.textContent).toContain('Hilfe & Kontakt');
     expect(menu.textContent).toContain('Abmelden');

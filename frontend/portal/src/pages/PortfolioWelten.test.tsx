@@ -201,20 +201,10 @@ describe('Portfolio · Welt A „Messwerte"', () => {
     );
   });
 
-  it('wechselt in EINEM Klick in die Erlöse-Welt - mit dem Zeitraum', async () => {
+  it('rendert im Welt-Kopf keine zweite Messwerte/Erlöse-Navigation', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(history(16));
     render(<PortfolioMesswerte sites={[DACHAU, LINDENBERG]} />);
 
-    const wechsel = screen.getByRole('group', { name: 'Ansicht wechseln' });
-    const erloese = within(wechsel).getByRole('link', { name: /Erlöse/ });
-    expect(erloese).toHaveAttribute('href', '#/portfolio/erloese?z=monat&at=2026-07-15');
-    await screen.findByLabelText('Energiemengen aller Anlagen');
-  });
-
-  it('zeigt KEIN Kartenpaar, wenn es nur die eine Welt gibt (kein toter Schalter)', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(history(16));
-    // Eine reine Privat-Flotte hat keinen Geld-Modus.
-    render(<PortfolioMesswerte sites={[LINDENBERG]} />);
     expect(screen.queryByRole('group', { name: 'Ansicht wechseln' })).toBeNull();
     await screen.findByLabelText('Energiemengen aller Anlagen');
   });
