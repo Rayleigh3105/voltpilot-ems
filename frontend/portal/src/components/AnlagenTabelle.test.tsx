@@ -115,13 +115,24 @@ describe('AnlagenTabelle — die Zeile ist die Komponenten-Zeile eine Ebene höh
     expect(screen.getByText('Speicher ohne Gerät')).toBeTruthy();
   });
 
-  it('der NAME ist der Schalter - und er sagt, ob er offen ist', () => {
+  it('öffnet über ZEILE und NAME die Anlage; nur der getrennte Chevron klappt Details auf', () => {
     const onToggle = vi.fn();
-    tabelle({ onToggle });
-    const knopf = screen.getByRole('button', { name: /Filiale Nord/ });
-    expect(knopf.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(knopf);
+    const onOeffnen = vi.fn();
+    tabelle({ onToggle, onOeffnen });
+
+    const name = screen.getByRole('button', { name: 'Anlage Filiale Nord öffnen' });
+    fireEvent.click(name);
+    expect(onOeffnen).toHaveBeenCalledWith('a');
+    expect(onToggle).not.toHaveBeenCalled();
+
+    fireEvent.click(name.closest('tr')!);
+    expect(onOeffnen).toHaveBeenCalledTimes(2);
+
+    const details = screen.getByRole('button', { name: 'Details zu Filiale Nord anzeigen' });
+    expect(details.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(details);
     expect(onToggle).toHaveBeenCalledWith('a');
+    expect(onOeffnen).toHaveBeenCalledTimes(2);
   });
 
   it('unterscheidet „lädt noch" von „nichts da"', () => {
@@ -146,7 +157,7 @@ describe('AnlagenTabelle — die Zeile ist die Komponenten-Zeile eine Ebene höh
     expect(screen.getByText('Geplant')).toBeTruthy();
   });
 
-  it('der Absprung steht IN der Vorschau, nicht als blinder Zeilen-Klick', () => {
+  it('behält den zusätzlichen Absprung IN der Vorschau', () => {
     const onOeffnen = vi.fn();
     tabelle({
       offen: 'a',
@@ -220,5 +231,19 @@ describe('am Telefon: EINE Karte je Zeile, dieselben Daten', () => {
     });
     expect(container.querySelector('.vp-at-karte-vor')).toBeTruthy();
     expect(screen.getByText('Mittags laden.')).toBeTruthy();
+  });
+
+  it('öffnet die Anlage über die Karte und klappt Details nur über den Chevron auf', () => {
+    stubPhone(true);
+    const onOeffnen = vi.fn();
+    const onToggle = vi.fn();
+    const { container } = tabelle({ onOeffnen, onToggle });
+
+    fireEvent.click(container.querySelector('.vp-at-karte-nums')!);
+    expect(onOeffnen).toHaveBeenCalledWith('a');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Details zu Filiale Nord anzeigen' }));
+    expect(onToggle).toHaveBeenCalledWith('a');
+    expect(onOeffnen).toHaveBeenCalledTimes(1);
   });
 });

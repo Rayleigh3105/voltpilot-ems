@@ -1903,9 +1903,10 @@ zwei Dichten mit aufklappbarer Vorschau je Zeile.
   jedem Seitenaufruf wären der Preis für eine Fläche, die der Kunde meistens gar nicht aufklappt.
   Beide Abrufe sind fail-soft, und `null` heisst „lädt noch" — Laden und „nichts da" sind zwei
   verschiedene Auskünfte, und die Fläche sagt beide.
-- **Der ABSPRUNG steht IN der Vorschau, nicht als blinder Zeilen-Klick:** ein Klick auf den Namen
-  klappt auf, „Cockpit öffnen ›" navigiert. So kann ein Klick nie versehentlich die Fläche
-  verlassen.
+- **Die ZEILE ist der direkte Absprung in die Anlage** (Captain-Entscheid 28.08.2026): ein Klick
+  auf Zeile oder Name navigiert sofort. Nur der räumlich getrennte Chevron klappt die Vorschau
+  lazy auf/zu; er stoppt die Zeilen-Navigation und nennt Vorlesesoftware „Details anzeigen" bzw.
+  „ausblenden". „Cockpit öffnen ›" bleibt als zusätzlicher Absprung in der offenen Vorschau.
 - **Anpassen ordnet ZELLEN und SPALTEN** — auf BEIDEN Breiten die kompakte `AnpassenListe`, nie
   eine `AnpassenHuelle` (eine Hülle um eine Tabellenspalte gibt es nicht). `AnpassenListe` hat
   dafür das additive `note` bekommen und zeigt den `ortsHinweis` eines unbeweglichen Bausteins
@@ -1930,7 +1931,7 @@ zwei Dichten mit aufklappbarer Vorschau je Zeile.
   mit den DREI Jetzt-Werten; die Tages-Summen stehen in der Vorschau. Der horizontale Überlauf
   der acht Spalten bleibt im EIGENEN Rahmen (`.vp-at-wrap`), nie auf der Seite.
 - **Beweise:** `src/portfolioCockpit.test.ts` (56, rein) · `src/portfolioVorschau.test.ts` (11) ·
-  `components/KennzahlLeiste.test.tsx` (7) · `components/AnlagenTabelle.test.tsx` (15, inkl. der
+  `components/KennzahlLeiste.test.tsx` (7) · `components/AnlagenTabelle.test.tsx` (16, inkl. der
   Telefon-Fassung mit `matchMedia`-Attrappe) · `components/PortfolioCockpit.test.tsx` (21) ·
   `pages/PortfolioPage.test.tsx` (4) · `src/betriebsart.test.ts` (24) ·
   `src/shell/PortfolioNav.test.tsx` (4) · `src/migration.test.ts` (41, mit vier neuen

@@ -163,16 +163,17 @@ describe('§4.3 C: der Nur-Monitoring-Kunde sieht ECHTE Zahlen statt „—, —
   it('nennt jede Filiale und springt in genau ihre Anlage', async () => {
     const onNavigate = vi.fn();
     renderCockpit({}, onNavigate);
-    // Der NAME klappt die Vorschau auf; der Absprung steht darin.
-    fireEvent.click(await screen.findByRole('button', { name: /Filiale Süd/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Cockpit öffnen/ }));
+    // Der Name ist wie die ganze Zeile der direkte Absprung in die Anlage.
+    fireEvent.click(await screen.findByRole('button', { name: 'Anlage Filiale Süd öffnen' }));
     await waitFor(() => expect(onNavigate).toHaveBeenCalled());
     expect(JSON.stringify(onNavigate.mock.calls[0][0])).toContain('f2');
   });
 
   it('klappt die Vorschau der Zeile auf - und sagt beim Laden, dass sie lädt', async () => {
     renderCockpit();
-    fireEvent.click(await screen.findByRole('button', { name: /Filiale Nord/ }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Details zu Filiale Nord anzeigen' }),
+    );
     // Laden und „nichts da" sind zwei verschiedene Auskünfte.
     expect(screen.getByText('Wird geladen …')).toBeTruthy();
     expect(await screen.findByText('Heute geplant')).toBeTruthy();

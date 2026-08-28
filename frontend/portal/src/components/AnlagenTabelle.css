@@ -98,12 +98,24 @@
   background: var(--vp-bg, #f8f9fa);
 }
 
+.vp-at tbody tr.vp-at-zeile {
+  cursor: pointer;
+}
+
 .vp-at tbody tr.is-offen:hover td {
   background: var(--vp-tint, #eef3ff);
 }
 
-/* Der Name IST der Schalter (Tastatur + Vorlesesoftware); die Zeile daneben
-   reagiert zusätzlich auf die Maus. */
+/* Die Zeile und der Name öffnen die Anlage. Nur der getrennte Chevron-Schalter
+   klappt die Vorschau auf — Primär- und Sekundärhandlung teilen nie dieselbe
+   Trefferfläche. */
+.vp-at-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
 .vp-at-name {
   display: flex;
   align-items: center;
@@ -117,7 +129,7 @@
   text-align: left;
   cursor: pointer;
   min-width: 0;
-  width: 100%;
+  flex: 1 1 auto;
 }
 
 .vp-at-name-text {
@@ -139,14 +151,39 @@
 }
 
 .vp-at-chev {
-  margin-left: auto;
   display: inline-flex;
   color: var(--vp-text-muted, #6c757d);
   transition: transform 0.15s ease;
   flex: 0 0 auto;
 }
 
-.vp-at-name[aria-expanded='true'] .vp-at-chev {
+.vp-at-details {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--vp-radius-sm, 8px);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.vp-at-details:hover {
+  background: var(--vp-border, #e9ecef);
+}
+
+.vp-at-details:focus-visible,
+.vp-at-name:focus-visible,
+.vp-at-karte-open:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+
+.vp-at-details[aria-expanded='true'] .vp-at-chev {
   transform: rotate(90deg);
 }
 
@@ -303,9 +340,17 @@
   background: var(--vp-surface, #fff);
   padding: 12px 14px;
   min-width: 0;
+  cursor: pointer;
 }
 
 .vp-at-karte-kopf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vp-at-karte-open {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -319,6 +364,8 @@
   width: 100%;
   cursor: pointer;
   min-height: 44px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .vp-at-karte-name {
@@ -376,4 +423,5 @@
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--vp-border, #e9ecef);
+  cursor: default;
 }

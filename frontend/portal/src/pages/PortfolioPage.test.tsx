@@ -129,10 +129,8 @@ describe('Portfolio: die Anwendungen der Anlage (M6, Revision 2)', () => {
     const routes: Route[] = [];
     const { container } = renderPage((r) => routes.push(r));
     await zeile(container, 'Werk Nord');
-    // Der Name klappt die Vorschau auf, der Absprung steht darin - ein Klick
-    // auf die Zeile navigiert nicht mehr blind weg.
-    fireEvent.click(screen.getByRole('button', { name: /Werk Nord/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Cockpit öffnen/ }));
+    // Der Name ist wie die ganze Zeile der direkte Absprung in die Anlage.
+    fireEvent.click(screen.getByRole('button', { name: 'Anlage Werk Nord öffnen' }));
     expect(routes).toEqual([{ page: 'anlagen', siteId: 'werk', sub: null }]);
   });
 });
