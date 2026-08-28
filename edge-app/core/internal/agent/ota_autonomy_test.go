@@ -6,6 +6,9 @@ package agent
 // Der Kern tauscht nichts - jeder Test hier prueft eine AUSSAGE, keine Aktion.
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -283,17 +286,70 @@ func TestAStaleSidecarStateIsIgnored(t *testing.T) {
 }
 
 // Der Selbsttest laeuft erst am ENDE eines Tausches - ueber einen halb
-// getauschten Stand darf niemand urteilen.
-func TestTheSelfTestWaitsUntilBothComponentsAreSwapped(t *testing.T) {
+// getauschten Stand darf niemand urteilen. Die Schleife muss die spaetere
+// Phase auch dann sehen, wenn beim Start noch gar keine Brotkrume lag; das ist
+// der Node-RED-only-Fall ohne Core-Neustart.
+func TestTheSelfTestObservesTheWholeSwapAndThenRecordsTheRunningRelease(t *testing.T) {
 	a := autonomyAgent(t)
+	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer web.Close()
+	a.Cfg.HTTPAddr = strings.TrimPrefix(web.URL, "http://")
+
+	oldVersion := Version
+	Version = "edge-2026.08.0-4bace5c84aec"
+	defer func() { Version = oldVersion }()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		a.otaSelfTestLoop(ctx, 2*time.Millisecond, 0)
+		close(done)
+	}()
+
+	// Der Vorgang entsteht erst, nachdem der Kern bereits laeuft.
 	if err := otaapply.WriteJSON(a.Cfg.DataDir, otaapply.FilePendingConfirm,
-		otaapply.PendingConfirm{Token: "tok", Release: "edge-2026.08.0",
+		otaapply.PendingConfirm{Token: "tok", Release: "edge-2026.08.0", ReleaseSeq: 12,
 			Phase: otaapply.PhaseSwapCore}); err != nil {
 		t.Fatal(err)
 	}
-	a.done.Add(1)
-	a.otaSelfTestOnBoot(t.Context())
+	time.Sleep(15 * time.Millisecond)
 	if _, err := otaapply.ReadJSON[otaapply.SelfTest](a.Cfg.DataDir, otaapply.FileSelfTest); err == nil {
 		t.Fatal("waehrend des Tausches darf kein Urteil entstehen")
+	}
+
+	p, err := otaapply.ReadJSON[otaapply.PendingConfirm](a.Cfg.DataDir, otaapply.FilePendingConfirm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Phase = otaapply.PhaseSelfTest
+	if err := otaapply.WriteJSON(a.Cfg.DataDir, otaapply.FilePendingConfirm, p); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		res, readErr := otaapply.ReadJSON[otaapply.SelfTest](a.Cfg.DataDir, otaapply.FileSelfTest)
+		if readErr == nil && res != nil {
+			if !res.Passed || res.Token != p.Token {
+				t.Fatalf("der neue Stand muss SEINEN Selbsttest bestehen: %+v", res)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("die spaetere Selbsttest-Phase wurde nicht beobachtet")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if cur := otaapply.ReadCurrent(a.Cfg.DataDir); cur == nil || cur.ReleaseSeq != 12 {
+		t.Fatalf("der bewiesene Stand muss aufgezeichnet sein: %+v", cur)
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("die Selbsttest-Schleife beendet sich nicht mit ihrem Kontext")
 	}
 }

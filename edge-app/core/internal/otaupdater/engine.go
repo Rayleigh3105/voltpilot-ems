@@ -188,7 +188,7 @@ func (e *Engine) Tick(ctx context.Context) error {
 	// eine Box, die er einmal wegen Platzmangels verweigert hatte, kam damit
 	// nie wieder frei (die dokumentierte Grenze des Pilsting-Falls). Es ist
 	// nicht-fatal und niemals ratend: bei unvollstaendiger Sicht bricht es ab.
-	if hasTarget && verdict.Outcome == otaverify.OutcomeOK {
+	if hasTarget && verdict.Outcome == otaverify.OutcomeOK && !verdict.AlreadyRunning {
 		e.pruneBeforeSwap(ctx)
 	}
 
@@ -313,10 +313,12 @@ func (e *Engine) apply(ctx context.Context, m *otaverify.Manifest, dec otaapply.
 	if sig := e.coreSignal(); sig != nil {
 		controlWas = sig.ControlActive
 	}
+	restartBaseline := e.restartBaseline(ctx, target)
 	pending := otaapply.NewPending(otaapply.PendingSpec{
 		Token: e.o.Token(), Release: m.Release, ReleaseSeq: m.ReleaseSeq,
 		Target: target, Previous: previous, Deadline: dec.Deadline,
 		Urgent: m.Urgent, ControlWas: controlWas, StateSchema: m.StateSchema,
+		RestartBaseline: restartBaseline,
 	}, now)
 	if err := otaapply.WriteJSON(e.o.DataDir, otaapply.FilePendingConfirm, pending); err != nil {
 		return e.fail(st, "Die Brotkrume konnte nicht geschrieben werden: "+err.Error())
@@ -742,7 +744,24 @@ func (e *Engine) health(ctx context.Context, p *otaapply.PendingConfirm) []otaap
 		if err != nil {
 			continue
 		}
-		h := otaapply.ComponentHealth{Component: name, Running: st.Running, Restarts: st.Restarts}
+		// Docker zaehlt Neustarts ueber die ganze Lebensdauer eines Containers.
+		// Fuer den Wachhund zaehlt nur dieser Vorgang: beim alten/ungeaenderten
+		// Container die Differenz zum gespeicherten Startwert, beim neu
+		// angelegten Container dessen frischer absoluter Zaehler. Alte
+		// Brotkrumen ohne Baseline bleiben bei 0; Frist und Healthcheck sichern
+		// ihren Vorgang weiterhin ab, ohne einen historischen Fehlalarm.
+		restarts := 0
+		if baseline, ok := p.RestartBaseline[name]; ok {
+			if cid == baseline.ContainerID {
+				restarts = st.Restarts - baseline.Restarts
+				if restarts < 0 {
+					restarts = 0
+				}
+			} else {
+				restarts = st.Restarts
+			}
+		}
+		h := otaapply.ComponentHealth{Component: name, Running: st.Running, Restarts: restarts}
 		switch st.Health {
 		case "healthy":
 			ok := true
@@ -752,6 +771,26 @@ func (e *Engine) health(ctx context.Context, p *otaapply.PendingConfirm) []otaap
 			h.Healthy = &no
 		}
 		out = append(out, h)
+	}
+	return out
+}
+
+// restartBaseline friert unmittelbar vor der Brotkrume die historischen
+// Docker-Zaehler ein. Ein einzelner nicht beobachtbarer Container verhindert
+// den Tausch nicht; fuer ihn bleibt der schnelle Crashloop-Befund aus, waehrend
+// Deadline, Running-Status und Healthcheck unveraendert greifen.
+func (e *Engine) restartBaseline(ctx context.Context, target map[string]string) map[string]otaapply.ContainerBaseline {
+	out := map[string]otaapply.ContainerBaseline{}
+	for name := range target {
+		cid, err := e.d.containerID(ctx, name)
+		if err != nil || cid == "" {
+			continue
+		}
+		st, err := e.d.inspect(ctx, cid)
+		if err != nil {
+			continue
+		}
+		out[name] = otaapply.ContainerBaseline{ContainerID: cid, Restarts: st.Restarts}
 	}
 	return out
 }

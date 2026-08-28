@@ -161,32 +161,41 @@ func Verify(in Input) Verdict {
 	}
 
 	// --- 5. Politik ----------------------------------------------------------
-	// compat.backends: nie ein Rateversuch.
-	if !m.SupportsBackend(in.Backend) {
-		return defer_(v, fmt.Sprintf("Release %s ist nicht fuer das Apply-Backend '%s' bestimmt (gilt fuer: %s).",
-			m.Release, in.Backend, strings.Join(m.Compat.Backends, ", ")))
-	}
-
-	// Anti-Rollback-Boden + Rueckschritt: beide brauchen den eigenen Stand.
-	if in.CurrentSeq == nil {
-		v.Notes = append(v.Notes,
-			"Der eigene Release-Stand ist unbekannt (dieses Geraet hat noch nie ein Release angewendet) - "+
-				"der Anti-Rollback-Boden konnte nicht geprueft werden.")
+	// Backend, Mindeststand und Rueckschritt sind Tore fuer das ANWENDEN. Wenn
+	// der signierte Zielstand laut eigener Build-Stempelung bereits laeuft,
+	// gibt es nichts mehr anzuwenden. Ihn wegen seines inzwischen angehobenen
+	// Bodens abzulehnen, machte aus einem bestaetigten Update im naechsten Takt
+	// faelschlich wieder einen Politik-Blocker.
+	if v.AlreadyRunning {
+		v.Notes = append(v.Notes, "Dieses Release laeuft hier bereits.")
 	} else {
-		cur := *in.CurrentSeq
-		if cur < m.MinFromSeq {
-			return defer_(v, fmt.Sprintf(
-				"Release %s setzt mindestens Stand %d voraus, hier laeuft %d - es fehlt eine Zwischenstufe.",
-				m.Release, m.MinFromSeq, cur))
+		// compat.backends: nie ein Rateversuch.
+		if !m.SupportsBackend(in.Backend) {
+			return defer_(v, fmt.Sprintf("Release %s ist nicht fuer das Apply-Backend '%s' bestimmt (gilt fuer: %s).",
+				m.Release, in.Backend, strings.Join(m.Compat.Backends, ", ")))
 		}
-		if m.ReleaseSeq <= cur && !m.AllowDowngrade {
-			return defer_(v, fmt.Sprintf(
-				"Release %s (Stand %d) ist nicht neuer als der laufende Stand %d und ist nicht als Rueckschritt freigegeben.",
-				m.Release, m.ReleaseSeq, cur))
-		}
-		if m.ReleaseSeq <= cur && m.AllowDowngrade {
-			v.Notes = append(v.Notes, fmt.Sprintf(
-				"Ausdruecklich freigegebener Rueckschritt von Stand %d auf %d.", cur, m.ReleaseSeq))
+
+		// Anti-Rollback-Boden + Rueckschritt: beide brauchen den eigenen Stand.
+		if in.CurrentSeq == nil {
+			v.Notes = append(v.Notes,
+				"Der eigene Release-Stand ist unbekannt (dieses Geraet hat noch nie ein Release angewendet) - "+
+					"der Anti-Rollback-Boden konnte nicht geprueft werden.")
+		} else {
+			cur := *in.CurrentSeq
+			if cur < m.MinFromSeq {
+				return defer_(v, fmt.Sprintf(
+					"Release %s setzt mindestens Stand %d voraus, hier laeuft %d - es fehlt eine Zwischenstufe.",
+					m.Release, m.MinFromSeq, cur))
+			}
+			if m.ReleaseSeq <= cur && !m.AllowDowngrade {
+				return defer_(v, fmt.Sprintf(
+					"Release %s (Stand %d) ist nicht neuer als der laufende Stand %d und ist nicht als Rueckschritt freigegeben.",
+					m.Release, m.ReleaseSeq, cur))
+			}
+			if m.ReleaseSeq <= cur && m.AllowDowngrade {
+				v.Notes = append(v.Notes, fmt.Sprintf(
+					"Ausdruecklich freigegebener Rueckschritt von Stand %d auf %d.", cur, m.ReleaseSeq))
+			}
 		}
 	}
 
@@ -198,10 +207,6 @@ func Verify(in Input) Verdict {
 			v.Notes = append(v.Notes, fmt.Sprintf(
 				"Hinweis: das Manifest war nur bis %s vorgesehen (nur ein Hinweis, kein Ablehnungsgrund).", m.ValidUntil))
 		}
-	}
-
-	if v.AlreadyRunning {
-		v.Notes = append(v.Notes, "Dieses Release laeuft hier bereits.")
 	}
 
 	v.Reason = fmt.Sprintf("Release %s (Stand %d) verifiziert, signiert mit '%s'.", m.Release, m.ReleaseSeq, mSig.KeyID)

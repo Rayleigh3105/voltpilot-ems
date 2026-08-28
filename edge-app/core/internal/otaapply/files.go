@@ -177,6 +177,16 @@ type PendingConfirm struct {
 	// StateSchema ist die /data-Zustandsversion, die das Ziel-Release traegt -
 	// nach bestandenem Selbsttest zeichnet der Kern sie als neuen Boden auf.
 	StateSchema int `json:"state_schema,omitempty"`
+	// RestartBaseline trennt historische Docker-Neustarts von Neustarts SEIT
+	// diesem Tausch. Bleibt die Container-ID gleich, gilt die Differenz; nach
+	// dem Ersetzen ist der absolute Zaehler bereits tauschbezogen.
+	RestartBaseline map[string]ContainerBaseline `json:"restart_baseline,omitempty"`
+}
+
+// ContainerBaseline ist der Docker-Zaehlerstand unmittelbar vor dem Tausch.
+type ContainerBaseline struct {
+	ContainerID string `json:"container_id"`
+	Restarts    int    `json:"restarts"`
 }
 
 // Die Phasen eines Vorgangs. Sie sind eine ORDNUNG: eine hoehere Phase

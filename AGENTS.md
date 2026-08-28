@@ -403,6 +403,18 @@ frühere fünfte Klasse `action` („SIE sind dran") ist entfallen.
   Steuer-Trockenlauf (`agent.otaSyntheticControlDryRun`), der IMMER läuft und die
   echte Guard-Kette dieses NEUEN Binärs gegen ihre tragenden Zusagen prüft
   (Nennband, SoC-Decke/-Boden, EEG-Solar-Klemme, §14a-Hülle).
+- **Der Core beobachtet die Selbsttest-Phase dauerhaft.** Beim sequenziellen
+  Tausch startet er noch in `swap_core`; bei einem unveränderten Core startet
+  er gar nicht neu. `otaSelfTestLoop` wartet deshalb auf `self_test`, prüft den
+  weiterhin laufenden Token und zeichnet den Stand erst gegen den eigenen
+  Build-Stempel auf. Ein danach exakt laufendes Release bleibt trotz des auf
+  dieselbe Sequenz angehobenen Anti-Rollback-Bodens `succeeded`: die
+  Apply-Politik darf einen bereits bewiesenen Ist==Soll-Stand nicht sperren.
+- **Der Crashloop-Wächter zählt nur Neustarts dieses Vorgangs.** Die Brotkrume
+  friert je Komponente Container-ID und absoluten Docker-Zähler ein; beim alten
+  Container gilt die Differenz, beim neu angelegten dessen frischer Zähler.
+  Historische Neustarts des abgelösten Stands lösen damit keine Rücknahme des
+  neuen Releases aus.
 - **⚠ Der Plattenwächter rechnet mit `f_frsize`, NICHT mit `f_bsize`**
   (`otaupdater/disk_linux.go`). POSIX: `f_bsize` ist die BEVORZUGTE
   E/A-Blockgröße, `f_frsize` die fundamentale — und `f_bavail` zählt in
