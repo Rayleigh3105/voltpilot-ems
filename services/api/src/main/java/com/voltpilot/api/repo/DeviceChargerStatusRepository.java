@@ -177,13 +177,16 @@ public class DeviceChargerStatusRepository {
                             rs.getString("charge_point_id")), k -> new ArrayList<>())
                             .add(mapConnector(rs));
                 }, siteId);
-        jdbc.query("SELECT device_id, charge_point_id, label, priority, connected, vendor, model, "
-                + "firmware, ready, note, last_seen, entity_id, reported_at "
-                + "FROM device_charge_point WHERE site_id = ? "
-                + "ORDER BY device_id, charge_point_id", rs -> {
+        jdbc.query("SELECT cp.device_id, cp.charge_point_id, "
+                + "CASE WHEN cp.entity_id IS NULL THEN cp.label ELSE mp.label END AS display_label, "
+                + "cp.priority, cp.connected, cp.vendor, cp.model, cp.firmware, cp.ready, cp.note, "
+                + "cp.last_seen, cp.entity_id, cp.reported_at "
+                + "FROM device_charge_point cp "
+                + "LEFT JOIN measurement_point mp ON mp.id = cp.entity_id "
+                + "WHERE cp.site_id = ? ORDER BY cp.device_id, cp.charge_point_id", rs -> {
                     UUID deviceId = rs.getObject("device_id", UUID.class);
                     String id = rs.getString("charge_point_id");
-                    points.add(new ChargePointDto(deviceId, id, rs.getString("label"),
+                    points.add(new ChargePointDto(deviceId, id, rs.getString("display_label"),
                             rs.getBoolean("priority"), rs.getBoolean("connected"),
                             rs.getString("vendor"), rs.getString("model"), rs.getString("firmware"),
                             rs.getBoolean("ready"), rs.getString("note"),

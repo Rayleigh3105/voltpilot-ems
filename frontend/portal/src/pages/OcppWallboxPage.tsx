@@ -72,8 +72,7 @@ export function OcppWallboxPage({
   siteHref = backHref,
   settingsHref,
   charger = null,
-  canEdit = false,
-  onEdit,
+  onRename,
   messwerte = null,
 }: {
   siteId: string;
@@ -83,8 +82,8 @@ export function OcppWallboxPage({
   siteHref?: string;
   settingsHref?: string;
   charger?: ChargePoint | null;
-  canEdit?: boolean;
-  onEdit?: () => void;
+  /** A charge point has no portal driver config; its one editable field is its alias. */
+  onRename?: () => void;
   /**
    * Die Messbibliothek DIESER Säule - sie hängt am Transport der Box, gehört
    * aber in die Messwert-Sektion des Geräts (Rahmen §4.4 Zeile 5). Der Wirt
@@ -282,9 +281,9 @@ export function OcppWallboxPage({
                 : `Anschluss ${state.connectorId}: kein aktueller Zustand`}</span>
           ),
         }}
-        aktionen={canEdit && onEdit ? (
-          <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={onEdit}>
-            <Icon name="pencil" size={15} /> Bearbeiten
+        aktionen={onRename ? (
+          <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={onRename}>
+            <Icon name="pencil" size={15} /> Anzeigename ändern
           </button>
         ) : null}
         unterKopf={(

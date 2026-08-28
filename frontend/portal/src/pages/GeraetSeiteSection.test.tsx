@@ -8,6 +8,7 @@ import { adminApi } from '../admin/adminApi';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';
 import { fleetApi } from '../admin/fleetApi';
+import { entitiesApi } from '../entitiesApi';
 import {
   api,
   type CommandHistory,
@@ -522,26 +523,42 @@ describe('GeraetSeiteSection', () => {
       .toHaveLength(1);
   });
 
-  it('öffnet auch an der OCPP-Wallbox den vollständigen bestehenden Bearbeiten-Flow', async () => {
-    stub();
-    vi.mocked(api.siteChargers).mockResolvedValue({
+
+  it('ändert auch an einer real komponierten OCPP-Wallbox den gemeinsamen Anzeigenamen', async () => {
+    let alias = 'Garage';
+    stub({
+      entities: () => Promise.resolve({
+        ...entities,
+        entities: [
+          ...entities.entities,
+          {
+            id: 'wallbox-1', entityType: 'ev-charger', typeLabel: 'Ladepunkt',
+            role: 'consumer', label: alias, control: true, deviceId: null,
+            capabilities: { measure: [{ channel: 'power_kw' }] }, guards: null,
+            syncStatus: 'in_sync', observed: null, edgeSourceId: null,
+          },
+        ],
+      }),
+    });
+    vi.mocked(api.siteChargers).mockImplementation(() => Promise.resolve({
       budget: null,
       chargers: [{
-        deviceId: 'gw', chargePointId: 'CP-1', label: 'Garage', priority: false,
+        deviceId: 'gw', chargePointId: 'CP-1', label: alias, priority: false,
         connected: true, ready: true, lastSeen: FRISCH, connectors: [{
           connectorId: 1, status: 'Available', charging: false, powerKw: 0,
-        }],
+        }], entityId: 'wallbox-1',
       }],
-    });
+    }));
+    // Reale OCPP-Komponenten haben bewusst KEINE Portal-Treiberdefinition:
+    // kein templateRef, keine connection_json, trotzdem einen Alias.
     vi.mocked(api.siteComponents).mockResolvedValue({
       componentAuthority: 'portal',
-      components: [{
-        id: 'wallbox-1', label: 'Garage', role: 'consumer', entityType: 'ev-charger',
-        communication: 'ocpp', templateRef: 'ocpp-wallbox', definitionVersion: 3,
-        edgeSourceId: 'cp-CP-1', syncStatus: 'in_sync',
-      }],
+      components: [],
     });
-    vi.spyOn(api, 'componentTemplates').mockResolvedValue([]);
+    vi.spyOn(entitiesApi, 'rename').mockImplementation(async (_siteId, _entityId, next) => {
+      alias = next ?? '';
+      return {} as never;
+    });
     vi.spyOn(api, 'ocppStations').mockResolvedValue([{ deviceId: 'gw', chargePointId: 'CP-1', connected: true,
       connectedAt: FRISCH, disconnectedAt: null, lastSeen: FRISCH, bootedAt: FRISCH,
       chargeBoxSerialNumber: null, chargePointModel: 'P30', chargePointSerialNumber: 'serial-1',
@@ -560,8 +577,16 @@ describe('GeraetSeiteSection', () => {
     vi.spyOn(api, 'ocppActions').mockResolvedValue([]);
 
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="cp-CP-1" devices={[box]} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Bearbeiten' }));
-    expect(await screen.findByRole('heading', { name: 'Gerät bearbeiten' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Garage' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Anzeigename ändern' }));
+    expect(await screen.findByRole('heading', { name: 'Komponente umbenennen' })).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Eigener Name'), { target: { value: 'Carport' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    await waitFor(() => expect(entitiesApi.rename).toHaveBeenCalledWith(
+      's-1', 'wallbox-1', 'Carport',
+    ));
+    expect(await screen.findByRole('heading', { name: 'Carport' })).toBeVisible();
   });
 
   it('zeigt die Befehle DIESES Geräts und führt auf die volle Liste', async () => {

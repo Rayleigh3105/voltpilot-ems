@@ -77,7 +77,7 @@ public class ChargerComponentComposer {
                 if (!deviceId.equals(c.deviceId())) {
                     continue;
                 }
-                EntityRow row = registry.createEntity(siteId, TYPE_EV_CHARGER, label(c), null,
+                EntityRow row = registry.createEntity(siteId, TYPE_EV_CHARGER, initialAlias(c), null,
                         null, null);
                 chargerStatus.bindEntity(c.deviceId(), c.chargePointId(), row.id());
                 log.info("Ladepunkt {} der Anlage {} ist jetzt eine Komponente ({})",
@@ -91,12 +91,16 @@ public class ChargerComponentComposer {
     }
 
     /**
-     * Der Anzeigename: der vom Betreiber vergebene, sonst die ChargePointId.
-     * Die Id ist ein technischer Fakt und ein zumutbarer Platzhalter - sie zu
-     * verschönern erfände einen Namen, den niemand vergeben hat. Der Kunde
-     * benennt die Komponente danach mit dem üblichen Stift um.
+     * Der erste Alias: ausschließlich ein vom Betreiber vergebener Name.
+     *
+     * <p>Ohne Namen bleibt {@code measurement_point.label} NULL. Die
+     * ChargePointId ist der technische Rückfall der Anzeige, aber kein von
+     * einem Menschen vergebener Name - sie hier zu speichern würde die globale
+     * Alias-Invariante ({@code label != NULL => human-given}) brechen und den
+     * Umbenennen-Dialog fälschlich mit einem eigenen Namen vorbelegen.
      */
-    private static String label(UnboundCharger c) {
-        return c.label() == null || c.label().isBlank() ? c.chargePointId() : c.label();
+    private static String initialAlias(UnboundCharger c) {
+        String label = c.label() == null ? "" : c.label().trim();
+        return label.isEmpty() || label.equals(c.chargePointId()) ? null : label;
     }
 }

@@ -160,6 +160,16 @@ class ChargerApiTest {
             JsonNode entities = getJson("/api/v1/sites/" + site + "/entities", customer);
             assertThat(chargerEntities(entities)).as("je Säule eine Komponente").isEqualTo(2);
             assertThat(view.get("chargers").get(0).hasNonNull("entityId")).isTrue();
+            String firstEntityId = view.get("chargers").get(0).get("entityId").asText();
+
+            // Der Anzeigename ist nach der Komposition der universelle
+            // Komponenten-Alias. Der Edge-Name bleibt ein technischer
+            // Eingangsbeleg, darf einen späteren Kundennamen aber nie schlagen.
+            putJson("/api/v1/sites/" + site + "/v2-entities/" + firstEntityId + "/label",
+                    customer, Map.of("label", "Schnelllader Carport"));
+            JsonNode renamed = getJson("/api/v1/sites/" + site + "/chargers", customer);
+            assertThat(renamed.get("chargers").get(0).get("label").asText())
+                    .isEqualTo("Schnelllader Carport");
 
             // 3 · Der zweite Herzschlag legt KEINE zweite an.
             heartbeat(site, device, twoStations());
@@ -169,6 +179,16 @@ class ChargerApiTest {
             JsonNode again = getJson("/api/v1/sites/" + site + "/chargers", customer);
             assertThat(again.get("chargers").get(0).get("entityId").asText())
                     .isEqualTo(view.get("chargers").get(0).get("entityId").asText());
+            assertThat(again.get("chargers").get(0).get("label").asText())
+                    .as("ein neuer Edge-Status überschreibt den Kunden-Alias nie")
+                    .isEqualTo("Schnelllader Carport");
+
+            // Zurücksetzen löscht den Alias. Die API liefert dann null, und
+            // jede Portalfläche fällt auf die eindeutige ChargePointId zurück.
+            putJson("/api/v1/sites/" + site + "/v2-entities/" + firstEntityId + "/label",
+                    customer, Map.of("label", "   "));
+            assertThat(getJson("/api/v1/sites/" + site + "/chargers", customer)
+                    .get("chargers").get(0).get("label").isNull()).isTrue();
 
             // 4 · Der Satz wird GANZ ersetzt: die zweite Säule ist entfernt.
             heartbeat(site, device, oneStation());

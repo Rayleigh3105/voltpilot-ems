@@ -7080,7 +7080,14 @@ components:
       properties:
         family: { type: string }
         brand: { type: string, nullable: true }
-        label: { type: string, nullable: true }
+        label:
+          type: string
+          nullable: true
+          description: >
+            Der gemeinsame Komponenten-Anzeigename (`measurement_point.label`),
+            sobald `entityId` gebunden ist; null = Portal fällt auf die
+            ChargePointId zurück. Vor der Bindung darf vorübergehend das von
+            der Box gemeldete Label stehen.
         registers:
           type: array
           items:

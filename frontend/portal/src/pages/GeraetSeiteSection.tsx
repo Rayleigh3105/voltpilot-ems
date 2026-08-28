@@ -118,6 +118,7 @@ import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
 import { AnlegenFlow } from '../components/AnlegenFlow';
 import { GeraetVerschiebenDialog } from '../components/GeraetVerschiebenDialog';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { UmbenennenDialog, type RenameTarget } from '../components/UmbenennenDialog';
 import { geraetView, type GeraetView } from '../adminGeraet';
 import { adminApi } from '../admin/adminApi';
 import { fleetApi } from '../admin/fleetApi';
@@ -202,6 +203,7 @@ export function GeraetSeiteSection({
   const [sources, setSources] = useState<SiteSource[] | null>(null);
   const [components, setComponents] = useState<SiteComponents | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [versions, setVersions] = useState<ComponentDefinition[]>([]);
   const [rollbackTarget, setRollbackTarget] = useState<ComponentDefinition | null>(null);
@@ -248,6 +250,10 @@ export function GeraetSeiteSection({
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+
+  // Ein offener Namensdialog gehört zur adressierten Säule. Bei einem
+  // Gerätewechsel darf er nie mit dem Ziel der neuen Route wieder auftauchen.
+  useEffect(() => setRenameOpen(false), [site.id, geraetId]);
 
   useEffect(() => {
     let active = true;
@@ -406,6 +412,25 @@ export function GeraetSeiteSection({
         || view.komponenten.some((component) => component.entityId === row.id)),
     ) ?? null;
   }, [components, geraetId, view]);
+
+  /**
+   * Eine OCPP-Säule hat keine Portal-Verbindungsdefinition und deshalb keinen
+   * ehrlichen vollständigen Geräte-Editor. Ihr Komponenten-Alias ist trotzdem
+   * derselbe universelle Anzeigename wie bei jedem anderen Gerätetyp.
+   */
+  const chargerRenameTarget: RenameTarget | null = useMemo(() => {
+    const chargePointId = chargePointIdOf(geraetId);
+    if (!view || view.art !== 'ladepunkt' || !chargePointId) return null;
+    const component = view.komponenten.find((row) => row.renameable && row.entityId);
+    if (!component) return null;
+    return {
+      entityId: component.entityId,
+      alias: component.alias,
+      // Die technische Kennung ist der eindeutige, nie erfundene Rückfall der
+      // Säulen-Anzeige. Sie wird gezeigt, aber nicht als Alias gespeichert.
+      derivedLabel: chargePointId,
+    };
+  }, [geraetId, view]);
 
   useEffect(() => {
     if (!editRow) { setVersions([]); return; }
@@ -977,8 +1002,7 @@ export function GeraetSeiteSection({
           charger={(charging?.chargers ?? []).find(
             (item) => item.chargePointId === chargePointIdOf(geraetId),
           ) ?? null}
-          canEdit={components?.componentAuthority === 'portal' && Boolean(editRow)}
-          onEdit={() => setEditOpen(true)}
+          onRename={chargerRenameTarget ? () => setRenameOpen(true) : undefined}
           messwerte={beobachtung}
         />
       )}
@@ -1255,6 +1279,17 @@ export function GeraetSeiteSection({
           bearbeiten={editRow}
           onClose={() => setEditOpen(false)}
           onSaved={(result) => setComponents(result)}
+        />
+      )}
+      {renameOpen && chargerRenameTarget && (
+        <UmbenennenDialog
+          siteId={site.id}
+          target={chargerRenameTarget}
+          onClose={() => setRenameOpen(false)}
+          onSaved={() => {
+            setRenameOpen(false);
+            setReloadKey((key) => key + 1);
+          }}
         />
       )}
     </div>
