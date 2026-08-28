@@ -94,6 +94,8 @@ func chargerEntry(c state.OcppCharger) cloud.ChargerEntry {
 			Readback:      con.Readback,
 			ReadbackNote:  con.ReadbackNote,
 			SessionSince:  msTime(con.SessionSince),
+			SessionKwh:    con.SessionKwh,
+			MeteredAt:     msTime(con.MeteredAtMs),
 			Boost:         con.Boost,
 		})
 	}

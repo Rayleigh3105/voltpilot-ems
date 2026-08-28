@@ -133,6 +133,42 @@ class ChargerStatusListenerTest {
         verify(composer).ensureComposed(SITE, DEVICE);
     }
 
+    /**
+     * Cockpit Phase 1 / E2: die Sitzungsbilanz und das ALTER der Leistung
+     * werden aufgenommen - beides Tatsachen, die nur die Box bilden kann.
+     */
+    @Test
+    void theSessionBalanceAndTheAgeOfTheMeasurementAreIngested() {
+        Captured c = ingest("\"chargers\":{\"chargers\":[{\"id\":\"saeule-1\","
+                + "\"connectors\":[{\"id\":1,\"status\":\"Charging\",\"charging\":true,"
+                + "\"power_kw\":11.04,\"energy_kwh\":1234.5,\"session_kwh\":8.25,"
+                + "\"metered_at\":\"2026-08-28T11:59:55Z\","
+                + "\"session_since\":\"2026-08-28T11:00:00Z\"}]}]}");
+        var con = c.chargers().get(0).connectors().get(0);
+        assertThat(con.sessionKwh()).isEqualTo(8.25);
+        assertThat(con.meteredAt()).isEqualTo(Instant.parse("2026-08-28T11:59:55Z"));
+        // Das kumulative Register bleibt daneben stehen - zwei verschiedene
+        // Groessen, nie eine, die die andere ersetzt.
+        assertThat(con.energyKwh()).isEqualTo(1234.5);
+    }
+
+    /**
+     * Ein AELTERER Edge-Stand sendet die zwei Felder nicht - dann bleiben sie
+     * null ("nicht gemeldet"), nie 0 bzw. "gerade eben". Genau davon haengt ab,
+     * dass eine Flaeche ein stehengebliebenes Kilowatt nicht als aktuell
+     * ausgibt.
+     */
+    @Test
+    void anOlderEdgeSendsNeitherAndBothStayNull() {
+        Captured c = ingest("\"chargers\":{\"chargers\":[{\"id\":\"saeule-1\","
+                + "\"connectors\":[{\"id\":1,\"status\":\"Charging\",\"charging\":true,"
+                + "\"power_kw\":11.04,\"energy_kwh\":1234.5}]}]}");
+        var con = c.chargers().get(0).connectors().get(0);
+        assertThat(con.sessionKwh()).isNull();
+        assertThat(con.meteredAt()).isNull();
+        assertThat(con.powerKw()).isEqualTo(11.04);
+    }
+
     @Test
     void aMissingMeasurementStaysNullAndIsNeverZero() {
         Captured c = ingest("\"chargers\":{\"chargers\":[{\"id\":\"saeule-still\","

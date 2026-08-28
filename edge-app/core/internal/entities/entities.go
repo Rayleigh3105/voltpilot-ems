@@ -145,6 +145,14 @@ type Entity struct {
 	// FlexRequirements are the consumer's active deadline duties for the
 	// edge-local fallback (Inkrement 6, D-20). Empty = no fallback.
 	FlexRequirements []FlexRequirement `json:"flex_requirements,omitempty"`
+	// ChargePointID is the OCPP ChargePointId this entity IS, echoed from the
+	// cloud binding device_charge_point.entity_id (Cockpit Phase 1 / E1).
+	// OPTIONAL + ADDITIVE: it is the twin of EdgeSourceID one transport over -
+	// a charge point is not a source in sources.json (it dials US), so its
+	// readings could not be mapped onto the entity by any other key. Empty =
+	// not a charge point / an older cloud, and then the box publishes no
+	// per-entity charge-point telemetry at all.
+	ChargePointID string `json:"charge_point_id,omitempty"`
 	// OwnerClaimed says an ACTIVE customer rule claims this component
 	// (Steuerung Stufe 3, vp-steuerung-konzept-b3 §3.7 A3). The plan
 	// executors then inject NO market desire for it, so the rule's flow-class

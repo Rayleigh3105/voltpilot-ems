@@ -34,6 +34,18 @@ export const REGISTER_POINT_KEY = 'Energy.Active.Import.Register';
 /** Der Kanal, aus dem die Tagesenergie einer gemessenen Komponente entsteht. */
 const LEISTUNGS_KANAL = 'power_kw';
 
+/**
+ * Der ZÄHLERSTAND-Kanal einer Komponente (Cockpit Phase 1 / E1).
+ *
+ * Seit die Box je Ladepunkt-Entität `energy_kwh` publiziert, trägt die
+ * Entitäts-Historie denselben kumulativen Zähler, den bis dahin nur der
+ * OCPP-Lesepfad kannte. Er ist die GENAUERE Quelle als eine integrierte
+ * Leistung (ein Zähler misst, eine Integration schätzt), also gewinnt er - und
+ * dieselbe Monotonie-Regel gilt: eine Reihe, die irgendwo FÄLLT, ergibt gar
+ * keine Zahl.
+ */
+const ZAEHLER_KANAL = 'energy_kwh';
+
 /** Auf drei Nachkommastellen — dieselbe Rundung wie `verbrauchKomposition`. */
 function round3(v: number): number {
   return Math.round(v * 1000) / 1000;
@@ -65,6 +77,12 @@ export function tagesBeginn(now: Date = new Date()): string {
  */
 export function heuteAusEntitaet(history: EntityHistory | null | undefined): number | null {
   if (!history) return null;
+  // ⚠ Der ZÄHLER gewinnt, wo es einen gibt (Phase 1 / E1): sein Zuwachs IST die
+  // Tagesenergie, während die Leistungs-Integration sie nur schätzt. Trägt er
+  // nichts Belegbares (eine fallende Reihe, zu wenige Eimer), fällt es auf die
+  // Integration zurück - eine Komponente ohne Zähler hat sie seit je.
+  const zaehler = zaehlerZuwachs(history);
+  if (zaehler != null) return zaehler;
   const buckets = history.channels?.[LEISTUNGS_KANAL];
   if (!Array.isArray(buckets) || buckets.length === 0) return null;
   const stunden = history.bucketMinutes / 60;
@@ -79,6 +97,43 @@ export function heuteAusEntitaet(history: EntityHistory | null | undefined): num
     sum += Math.max(b.avg, 0) * stunden;
   }
   return gesehen ? round3(sum) : null;
+}
+
+/**
+ * Der Zuwachs des Zählerstand-Kanals einer Entität über den Tag.
+ *
+ * Es ist wörtlich die Regel des OCPP-Registers, nur auf der Entitäts-Reihe:
+ * `max − min`, und **NUR, wenn die Reihe nirgends fällt**. Ein Zähler, der
+ * mittags von 950 auf 5 springt (Tausch, Reset, Überlauf), lieferte sonst
+ * 945 kWh statt der wirklichen ~57 - und ein Vorzeichen-Test wäre wirkungslos,
+ * weil `max − min` per Konstruktion nie negativ ist.
+ */
+function zaehlerZuwachs(history: EntityHistory): number | null {
+  const buckets = history.channels?.[ZAEHLER_KANAL];
+  if (!Array.isArray(buckets) || buckets.length === 0) return null;
+  const reihe = buckets
+    .map((b) => ({
+      t: Date.parse(b.start),
+      // Der Eimer eines Zählers trägt seinen Bereich; `last` ist der Stand am
+      // Ende, `min`/`max` die Spanne darin.
+      lo: b.min ?? b.avg ?? b.last,
+      hi: b.max ?? b.last ?? b.avg,
+    }))
+    .filter(
+      (b): b is { t: number; lo: number; hi: number } =>
+        Number.isFinite(b.t) &&
+        typeof b.lo === 'number' &&
+        Number.isFinite(b.lo) &&
+        typeof b.hi === 'number' &&
+        Number.isFinite(b.hi),
+    )
+    .sort((a, b) => a.t - b.t);
+  if (reihe.length < 2) return null;
+  for (let i = 1; i < reihe.length; i += 1) {
+    if (reihe[i].lo < reihe[i - 1].hi) return null;
+  }
+  const zuwachs = reihe[reihe.length - 1].hi - reihe[0].lo;
+  return Number.isFinite(zuwachs) && zuwachs >= 0 ? round3(zuwachs) : null;
 }
 
 /**
@@ -169,9 +224,16 @@ function registerZuwachs(roh: { t: number; kwh: number }[]): number | null {
  * Welche KOMPONENTEN (Entitäts-Ids) die Aufschlüsselung gerade zeigt und
  * deshalb eine Tagessumme brauchen.
  *
- * ⚠ Ausschliesslich Teile mit `entityId`, die KEIN Ladepunkt sind: die
- * Ladepunkt-Zeilen bekommen ihre Zahl aus dem Register (ein Abruf für alle),
- * eine Entitäts-Historie je Säule wäre ein zweiter Lesepfad auf dieselbe Frage.
+ * ⚠ Seit Cockpit Phase 1 / E1 gehören die LADEPUNKTE dazu: die Box publiziert
+ * je Ladepunkt-Entität `power_kw` und den `energy_kwh`-Zähler als gewöhnliche
+ * Entitäts-Telemetrie, ein Ladepunkt ist also eine messende Komponente wie
+ * jede andere - und `heuteAusEntitaet` liest dort denselben Zähler, den bis
+ * dahin nur der OCPP-Lesepfad kannte. Genau EIN Eintrag je Entität (das `Set`),
+ * also wird eine Säule mit zwei Steckern nicht zweimal abgerufen.
+ *
+ * Der Register-Abruf bleibt daneben, weil nur er die Zahl JE STECKER kennt -
+ * die Entität ist die SÄULE. Eine Säule, deren Register nichts hergibt, fällt
+ * dadurch auf ihren Entitäts-Zähler zurück statt auf ein „—".
  */
 export function gemesseneEntitaeten(
   komposition: VerbrauchKomposition | null | undefined,
@@ -181,7 +243,6 @@ export function gemesseneEntitaeten(
   for (const g of komposition.gruppen) {
     for (const t of g.teile) {
       if (!t.entityId) continue;
-      if (t.key.startsWith('cp:')) continue;
       ids.add(t.entityId);
     }
   }

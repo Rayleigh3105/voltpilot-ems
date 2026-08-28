@@ -769,6 +769,14 @@ type OcppConnector struct {
 	Readback      string `json:"readback,omitempty"`
 	ReadbackNote  string `json:"readback_note,omitempty"`
 	SessionSince  int64  `json:"session_since_ms,omitempty"`
+	// SessionKwh is the RUNNING session's own delivered energy (the cumulative
+	// register minus its reading at StartTransaction). nil = no session, no
+	// register, or a register that moved backwards - never a fabricated 0.
+	SessionKwh *float64 `json:"session_kwh,omitempty"`
+	// MeteredAtMs is when the station last reported MeterValues for this plug.
+	// It is the AGE of PowerKw/EnergyKwh/SocPct: a value without it could be
+	// minutes old and still read as current. 0 = never metered.
+	MeteredAtMs int64 `json:"metered_at_ms,omitempty"`
 	// Boost is true while this plug's „Jetzt voll laden" is running: the value
 	// was formed WITHOUT the source cap and may contain grid power. The
 	// surface SAYS so - a full charge nobody asked for would be a silent

@@ -1011,6 +1011,11 @@ public class EntityRegistryService {
         // bleiben unangetastet. Additiv wie edge_source_id (D-17) und
         // flex_requirements (D-20): ohne Beanspruchung ist die Nutzlast byte-gleich.
         java.util.Map<UUID, String> claimed = claims.claimedEntities(siteId);
+        // Cockpit Phase 1 / E1: WELCHE OCPP-Ladesaeule eine Komponente IST.
+        // Additiv wie edge_source_id (D-17): ohne Ladepunkt ist die Nutzlast
+        // byte-gleich, und ohne dieses Feld veroeffentlicht die Box gar keine
+        // Ladepunkt-Telemetrie je Entitaet.
+        java.util.Map<UUID, String> chargePoints = repo.chargePointIdsByEntity(siteId);
         ArrayNode entities = push.putArray("entities");
         for (EntityRow row : rows) {
             ObjectNode d = descriptor(row);
@@ -1020,6 +1025,10 @@ public class EntityRegistryService {
             }
             if (claimed.containsKey(row.id())) {
                 d.put("owner_claimed", true);
+            }
+            String chargePointId = chargePoints.get(row.id());
+            if (chargePointId != null && !chargePointId.isBlank()) {
+                d.put("charge_point_id", chargePointId);
             }
             EntityRegistryRepository.ConsumerFlexSource fs = flex.get(row.id());
             if (fs != null) {

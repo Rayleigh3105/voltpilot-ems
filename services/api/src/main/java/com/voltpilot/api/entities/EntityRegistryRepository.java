@@ -88,6 +88,34 @@ public class EntityRegistryRepository {
         return out;
     }
 
+    /**
+     * Die OCPP-ChargePointId je Ladepunkt-Komponente der Anlage - die Bindung,
+     * die {@code ChargerComponentComposer} in {@code device_charge_point}
+     * gelegt hat (Cockpit Phase 1 / E1).
+     *
+     * <p>Sie reist additiv im Registry-Push, damit die BOX ihre eigenen
+     * OCPP-Messwerte auf die Entitaet abbilden kann - genau das, was
+     * {@code edge_source_id} fuer eine gemeldete Quelle tut. Eine Ladesaeule
+     * ist keine Quelle in {@code sources.json} (sie waehlt die Box an), es gibt
+     * also keinen anderen Schluessel, ueber den ihre Kilowatt je Komponente
+     * zuzuordnen waeren.
+     *
+     * <p>Nur BEIDES gebunden zaehlt: eine Zeile ohne {@code entity_id} ist eine
+     * noch nicht komponierte Saeule, und ohne Kennung gaebe es nichts zu
+     * binden.
+     */
+    public java.util.Map<UUID, String> chargePointIdsByEntity(UUID siteId) {
+        java.util.Map<UUID, String> out = new java.util.HashMap<>();
+        jdbc.query(
+                "SELECT entity_id, charge_point_id FROM device_charge_point "
+                        + "WHERE site_id = ? AND entity_id IS NOT NULL",
+                rs -> {
+                    out.put(rs.getObject("entity_id", UUID.class),
+                            rs.getString("charge_point_id"));
+                }, siteId);
+        return out;
+    }
+
     /** One consumer's ACTIVE policy document + rated power (Inkrement 6). */
     public record ConsumerFlexSource(String documentJson, BigDecimal ratedPowerKw) {}
 

@@ -10645,6 +10645,8 @@ components:
         readback: { type: string, nullable: true, enum: [ok, abweichend, unbekannt], description: "Ein angenommener Befehl ist kein Befehl in Kraft." }
         readbackNote: { type: string, nullable: true }
         sessionSince: { type: string, format: date-time, nullable: true }
+        sessionKwh: { type: number, nullable: true, description: "Die Bilanz DIESES Ladevorgangs (Cockpit Phase 1 / E2). energyKwh daneben ist ein KUMULATIVES Register - was in der laufenden Sitzung geflossen ist, weiss nur die Box (nur sie kennt den Registerstand bei StartTransaction). null = kein Ladevorgang / kein Register / ein rueckwaerts gesprungenes Register, nie eine erfundene 0." }
+        meteredAt: { type: string, format: date-time, nullable: true, description: "Wann die Saeule zuletzt MeterValues gemeldet hat - das ALTER von powerKw/energyKwh/socPct. null = nie gemessen bzw. ein aelterer Edge-Stand; die Flaeche darf die Werte dann NICHT als aktuell ausgeben." }
     SupplyPrice:
       type: object
       description: >

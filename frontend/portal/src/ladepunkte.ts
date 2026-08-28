@@ -19,6 +19,17 @@
 /** Der Katalog-Typ einer Ladesäule (seit Stufe 0 im Typkatalog). */
 export const EV_CHARGER = 'ev-charger';
 
+/**
+ * Das Live-Fenster, in dem ein Messwert als AKTUELL gilt (Cockpit Phase 1 / E2).
+ *
+ * ⚠ Es ist ein bewusster ZWILLING von `api.ts` `ONLINE_WINDOW_MS`: dieses Modul
+ * ist import-frei (jede Zahl und jeder Satz über Ladesäulen kommt aus GENAU
+ * hier), und `api.ts` hereinzuziehen hinge die reine Schicht an den ganzen
+ * HTTP-Baum. Beide Zahlen zusammen ändern - `messwertAlterFensterStimmtMitApiUeberein`
+ * in `ladepunkte.test.ts` liest sie beidseitig und fällt sonst um.
+ */
+const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // Die Form, in der die api liefert (`GET /sites/{id}/chargers`)
 // ---------------------------------------------------------------------------
@@ -38,6 +49,21 @@ export interface ChargeConnector {
   readback?: string | null;
   readbackNote?: string | null;
   sessionSince?: string | null;
+  /**
+   * Die Bilanz DIESES Ladevorgangs (Cockpit Phase 1 / E2). `energyKwh` daneben
+   * ist ein KUMULATIVES Register - was in der laufenden Sitzung geflossen ist,
+   * weiss nur die Box. null = kein Ladevorgang / kein Register.
+   */
+  sessionKwh?: number | null;
+  /**
+   * Wann die Säule zuletzt MeterValues gemeldet hat - das ALTER von
+   * `powerKw`/`energyKwh`/`socPct` (Cockpit Phase 1 / E2).
+   *
+   * ⚠ `null` heisst „nicht gemeldet" (ein älterer Box-Stand), NIE „gerade
+   * eben": ohne den Stempel bleibt jede Fläche bei ihrem Vor-Phase-1-Verhalten,
+   * statt eine Frische zu behaupten, die niemand gemessen hat.
+   */
+  meteredAt?: string | null;
   /** An diesem Stecker läuft „Jetzt voll laden" (Stufe 4). */
   boost?: boolean;
 }
@@ -368,8 +394,9 @@ const ZUSTAND_DETAIL: Partial<Record<LadeZustandKind, string>> = {
 export function ladeZustand(
   con: ChargeConnector,
   point?: Pick<ChargePoint, 'connected' | 'lastSeen'> | null,
+  nowMs?: number,
 ): LadeZustand {
-  const kind = zustandKind(con, point);
+  const kind = zustandKind(con, point, nowMs);
   const boost = con.boost === true && (kind === 'laedt' || kind === 'laedt_ohne_messung');
   // ⚠ Eine übersteuerte Ladung SAGT es: eine volle Ladung, die niemand
   // angefordert hat, wäre ein stiller Bruch der eigenen Priorität des Kunden.
@@ -380,6 +407,11 @@ export function ladeZustand(
   if (kind === 'getrennt') {
     const seen = point?.lastSeen ? clock(point.lastSeen) : '';
     detail = seen === '' ? null : `zuletzt ${seen}`;
+  } else if (messwertAlter(con, nowMs) === 'veraltet') {
+    // ⚠ Die Lücke wird BENANNT, nicht verschwiegen: ohne diesen Satz sähe eine
+    // Säule, die zu messen aufgehört hat, aus wie eine ohne Messung ab Werk.
+    const seen = con.meteredAt ? clock(con.meteredAt) : '';
+    detail = seen === '' ? 'Leistung veraltet' : `Leistung veraltet · zuletzt ${seen}`;
   }
   return {
     kind,
@@ -399,14 +431,57 @@ export function ladeZustand(
   };
 }
 
+/**
+ * Darf `powerKw` als AKTUELL gelesen werden? (Cockpit Phase 1 / E2)
+ *
+ * Die Box misst je Stecker über MeterValues; hört eine Säule damit auf (Funk
+ * weg, Firmware hängt, das Auto ist abgesteckt und sie schweigt), bleibt die
+ * zuletzt gemeldete Zahl im Herzschlag stehen. Bis Phase 1 konnte das keine
+ * Fläche sehen - „lädt mit 11 kW" war dann eine Aussage über eine halbe Stunde
+ * alte Zahl.
+ *
+ * Drei Antworten, und die dritte ist die tragende:
+ * - `frisch` - innerhalb des Fensters, das dieses Haus überall „online" nennt.
+ * - `veraltet` - älter, also KEIN aktueller Messwert mehr.
+ * - `unbekannt` - die Box meldet den Stempel gar nicht (ein älterer Stand).
+ *   Dann bleibt alles byte-identisch zum Vor-Phase-1-Verhalten: eine Frische zu
+ *   BEHAUPTEN, die niemand gemessen hat, wäre die gefährlichere der beiden
+ *   Auskünfte.
+ */
+export function messwertAlter(
+  con: Pick<ChargeConnector, 'meteredAt'>,
+  nowMs?: number,
+): 'frisch' | 'veraltet' | 'unbekannt' {
+  const stamp = text(con.meteredAt);
+  if (stamp == null) return 'unbekannt';
+  const t = Date.parse(stamp);
+  if (!Number.isFinite(t)) return 'unbekannt';
+  const now = nowMs ?? Date.now();
+  return now - t <= ONLINE_WINDOW_MS ? 'frisch' : 'veraltet';
+}
+
+/**
+ * Die Leistung, die eine Fläche als AKTUELL ausgeben darf - `null`, sobald der
+ * Messwert nachweislich veraltet ist. Ohne Stempel unverändert der gemeldete
+ * Wert (siehe `messwertAlter`).
+ */
+export function aktuelleLeistung(con: ChargeConnector, nowMs?: number): number | null {
+  return messwertAlter(con, nowMs) === 'veraltet' ? null : num(con.powerKw);
+}
+
 function zustandKind(
   con: ChargeConnector,
   point?: Pick<ChargePoint, 'connected' | 'lastSeen'> | null,
+  nowMs?: number,
 ): LadeZustandKind {
   // Was eine getrennte Säule tut, wissen wir gerade nicht - jedes Wort über
   // ihren Stecker wäre eine Behauptung.
   if (point && point.connected === false) return 'getrennt';
-  const power = num(con.powerKw);
+  // ⚠ Ein VERALTETER Messwert zählt wie gar keiner: sonst hiesse ein
+  // stehengebliebenes Kilowatt weiterhin „lädt mit 11 kW". Die Zeile fällt
+  // damit auf den Zustand zurück, den es dafür längst gibt
+  // (`laedt_ohne_messung`) - kein neues Wort, keine neue Farbe.
+  const power = aktuelleLeistung(con, nowMs);
   switch (text(con.status)) {
     case 'Faulted':
       return 'stoerung';

@@ -88,6 +88,10 @@ type ocppRuntime struct {
 	// session that ended gets its profile CLEARED instead of leaving a limit
 	// the next vehicle would inherit.
 	active map[string]int
+	// entityPublished remembers the last per-charge-point entity reading we
+	// put on the local bus, so an unchanged MeterValues sample is not appended
+	// to the store-and-forward buffer once per pass (Cockpit Phase 1 / E1).
+	entityPublished map[string]ocppEntityReading
 }
 
 // startOcpp brings up the charge-point server and its executor. With the flag
@@ -339,6 +343,11 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	}
 	a.ocppReadback(ctx, snap, now)
 	a.publishOcppState()
+	// Cockpit Phase 1 / E1: the same snapshot the card renders also becomes
+	// per-charge-point entity telemetry, so a wallbox's kilowatts reach
+	// telemetry_v2 / the rollups / the topology like every other measuring
+	// component. No-op without the cloud's charge_point_id binding.
+	a.publishOcppEntityTelemetry(snap, now)
 }
 
 // ocppBudget is THE budget derivation, and it is deliberately shared by the
@@ -846,8 +855,26 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 				Readback:      con.Readback,
 				ReadbackNote:  con.ReadbackNote,
 			}
+			if !con.MeteredAt.IsZero() {
+				ocn.MeteredAtMs = con.MeteredAt.UnixMilli()
+			}
 			if con.Session != nil {
 				ocn.SessionSince = con.Session.StartedAt.UnixMilli()
+				// Cockpit Phase 1 / E2: the session's OWN delivered energy.
+				// The station reports a CUMULATIVE register, so the balance is
+				// register minus the reading at StartTransaction - derivable
+				// here and nowhere else without a second data source (the
+				// cloud had to join the Slice-10 journal for it). Absent
+				// register = absent balance, never a fabricated 0.
+				if con.EnergyKwh != nil {
+					kwh := *con.EnergyKwh - float64(con.Session.MeterStartWh)/1000
+					// A negative balance is a register that moved backwards
+					// (a reset, a swapped meter): we do not know what was
+					// delivered, so we say nothing instead of a wrong number.
+					if kwh >= 0 {
+						ocn.SessionKwh = &kwh
+					}
+				}
 			}
 			if con.PowerKw != nil {
 				measured += *con.PowerKw

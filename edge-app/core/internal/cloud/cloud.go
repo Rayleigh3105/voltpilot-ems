@@ -789,6 +789,18 @@ type ChargerConnectorEntry struct {
 	// SessionSince is when the running transaction started (RFC 3339); empty =
 	// no session on this plug.
 	SessionSince string `json:"session_since,omitempty"`
+	// SessionKwh is the RUNNING session's own delivered energy (Cockpit
+	// Phase 1 / E2, additive): EnergyKwh is a CUMULATIVE register, so the
+	// balance of THIS charge is only derivable on the box, which is the one
+	// place that also knows the register reading at StartTransaction. Absent =
+	// no session / no register / a register that moved backwards.
+	SessionKwh *float64 `json:"session_kwh,omitempty"`
+	// MeteredAt is when the station last reported MeterValues for this plug
+	// (RFC 3339, additive). It is the AGE of PowerKw/EnergyKwh/SocPct: without
+	// it the cloud cannot tell a live kilowatt from one that stopped moving
+	// half an hour ago, and a surface that shows the latter as current is
+	// lying. Empty = never metered.
+	MeteredAt string `json:"metered_at,omitempty"`
 	// Boost is true while this plug's „Jetzt voll laden" is running: the value
 	// was formed WITHOUT the source cap and may contain grid power. The cloud
 	// SAYS so - a full charge nobody asked for would be a silent break of the

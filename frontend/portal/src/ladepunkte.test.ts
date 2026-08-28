@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  aktuelleLeistung,
+  messwertAlter,
   ANBINDEN_EINSTIEG,
   aktivierenFolgen,
   ausfallSchutz,
@@ -716,5 +718,75 @@ describe('ladeZustand · Sim-Abgleich gegen die geteilten Vektoren (E7)', () => 
       expect(p.boost ?? null).toEqual(e.boost ?? null);
       expect(p.connectorId).toEqual(e.id);
     }
+  });
+});
+
+describe('Cockpit Phase 1 / E2 - ein stehengebliebenes Kilowatt liest nie als aktuell', () => {
+  const JETZT = Date.parse('2026-08-28T12:00:00Z');
+  const con = (over: Record<string, unknown> = {}) =>
+    ({ connectorId: 1, charging: true, status: 'Charging', powerKw: 11, ...over }) as never;
+  const saeuleAn = { connected: true, lastSeen: '2026-08-28T11:59:00Z' };
+
+  it('nennt einen Messwert innerhalb des Live-Fensters frisch', () => {
+    expect(messwertAlter({ meteredAt: '2026-08-28T11:58:00Z' }, JETZT)).toBe('frisch');
+  });
+
+  it('nennt einen älteren Messwert veraltet', () => {
+    expect(messwertAlter({ meteredAt: '2026-08-28T11:40:00Z' }, JETZT)).toBe('veraltet');
+  });
+
+  // ⚠ OHNE Stempel bleibt alles byte-identisch zum Vor-Phase-1-Verhalten: eine
+  // Frische zu BEHAUPTEN, die niemand gemessen hat, wäre die gefährlichere der
+  // beiden Auskünfte. Dasselbe für einen kaputten Stempel.
+  it.each([
+    ['fehlend', undefined],
+    ['null', null],
+    ['unlesbar', 'irgendwann'],
+  ])('sagt bei einem %s Stempel „unbekannt" statt zu raten', (_n, v) => {
+    expect(messwertAlter({ meteredAt: v as never }, JETZT)).toBe('unbekannt');
+  });
+
+  it('gibt eine veraltete Leistung nicht als aktuell heraus - und eine frische schon', () => {
+    expect(aktuelleLeistung(con({ meteredAt: '2026-08-28T11:40:00Z' }), JETZT)).toBeNull();
+    expect(aktuelleLeistung(con({ meteredAt: '2026-08-28T11:58:00Z' }), JETZT)).toBe(11);
+    // Ohne Stempel unverändert der gemeldete Wert.
+    expect(aktuelleLeistung(con(), JETZT)).toBe(11);
+  });
+
+  // Das eigentliche Symptom: „lädt mit 11 kW" über einer Zahl, die seit einer
+  // halben Stunde steht. Die Zeile fällt auf den Zustand zurück, den es dafür
+  // längst gibt - kein neues Wort, keine neue Farbe.
+  it('fällt bei einem veralteten Messwert auf „lädt - Leistung nicht messbar" zurück', () => {
+    const z = ladeZustand(con({ meteredAt: '2026-08-28T11:40:00Z' }), saeuleAn, JETZT);
+    expect(z.kind).toBe('laedt_ohne_messung');
+    expect(z.detail).toContain('Leistung veraltet');
+  });
+
+  it('lässt einen frischen Messwert unverändert „lädt" heissen', () => {
+    const z = ladeZustand(con({ meteredAt: '2026-08-28T11:58:00Z' }), saeuleAn, JETZT);
+    expect(z.kind).toBe('laedt');
+    expect(z.detail ?? '').not.toContain('veraltet');
+  });
+
+  it('ist ohne Stempel byte-identisch zum Vor-Phase-1-Verhalten', () => {
+    const z = ladeZustand(con(), saeuleAn, JETZT);
+    expect(z.kind).toBe('laedt');
+    expect(z.detail ?? '').not.toContain('veraltet');
+  });
+
+  // ⚠ Der ZWILLING: `ladepunkte.ts` ist import-frei und führt das Live-Fenster
+  // deshalb selbst. Beide Zahlen zusammen ändern.
+  it('das Live-Fenster stimmt mit dem von api.ts überein', () => {
+    const src = readFileSync(resolve(__dirname, 'api.ts'), 'utf8');
+    const m = /ONLINE_WINDOW_MS = ([^;]+);/.exec(src);
+    expect(m).not.toBeNull();
+    // eslint-disable-next-line no-eval
+    const apiWindow = eval(m![1]) as number;
+    expect(messwertAlter(
+      { meteredAt: new Date(JETZT - apiWindow + 1000).toISOString() }, JETZT,
+    )).toBe('frisch');
+    expect(messwertAlter(
+      { meteredAt: new Date(JETZT - apiWindow - 1000).toISOString() }, JETZT,
+    )).toBe('veraltet');
   });
 });

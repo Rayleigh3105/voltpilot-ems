@@ -163,3 +163,80 @@ func TestTheChargePointGateRuleIsOneRuleOnTheSnapshot(t *testing.T) {
 		t.Fatal("a flapping socket must not re-lock a step that was passed")
 	}
 }
+
+// Cockpit Phase 1 / E2: the heartbeat carries the RUNNING session's own
+// balance and the AGE of the measurement - both facts only the box could form.
+//
+// `energy_kwh` next to them is a CUMULATIVE register; what flowed in THIS
+// charge is derivable only where the register reading at StartTransaction is
+// known, and the cloud had to join the Slice-10 journal for it. `metered_at`
+// is the other half: without it no surface can tell a live kilowatt from one
+// that stopped moving half an hour ago.
+func TestTheHeartbeatCarriesTheSessionBalanceAndTheAgeOfTheMeasurement(t *testing.T) {
+	a := ocppAgent(t, nil)
+	ocppSite(t, a, 0)
+	st := ocppStation(t, a, "saeule-1", 1, 22)
+	if err := st.Plug(1, ocppsim.Vehicle{DemandKw: 11, MinKw: 5}); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, "the CSMS booked the session", func() bool {
+		c, ok := a.ocpp.srv.Snapshot().ChargerByID("saeule-1")
+		return ok && len(c.ActiveConnectors()) == 1
+	})
+	a.ocppStep(context.Background())
+	if err := st.PublishMeterValues(); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, "the meter values arrived", func() bool {
+		c, _ := a.ocpp.srv.Snapshot().ChargerByID("saeule-1")
+		return len(c.Connectors) > 0 && !c.Connectors[0].MeteredAt.IsZero()
+	})
+
+	sum := a.chargersSummary()
+	if sum == nil || len(sum.Chargers) != 1 || len(sum.Chargers[0].Connectors) == 0 {
+		t.Fatalf("summary = %+v", sum)
+	}
+	con := sum.Chargers[0].Connectors[0]
+	if con.MeteredAt == "" {
+		t.Fatal("a measured connector must carry the age of its measurement")
+	}
+	if _, err := time.Parse(time.RFC3339, con.MeteredAt); err != nil {
+		t.Fatalf("metered_at = %q: %v", con.MeteredAt, err)
+	}
+	if con.SessionKwh == nil {
+		t.Fatal("a running session with a register must carry its own balance")
+	}
+	if *con.SessionKwh < 0 {
+		t.Fatalf("session_kwh = %v, a balance is never negative", *con.SessionKwh)
+	}
+	if con.EnergyKwh != nil && *con.SessionKwh > *con.EnergyKwh {
+		t.Fatalf("the session balance (%v) cannot exceed the register (%v)",
+			*con.SessionKwh, *con.EnergyKwh)
+	}
+}
+
+// A station that never metered carries NEITHER field - absent stays absent,
+// never a fabricated 0 or an epoch stamp (the rule the neighbouring
+// measurements already follow).
+func TestAnUnmeteredConnectorCarriesNoBalanceAndNoAge(t *testing.T) {
+	a := ocppAgent(t, nil)
+	ocppSite(t, a, 0)
+	st := ocppStation(t, a, "saeule-1", 1, 22)
+	if err := st.Plug(1, ocppsim.Vehicle{DemandKw: 11, MinKw: 5}); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, "the CSMS booked the session", func() bool {
+		c, ok := a.ocpp.srv.Snapshot().ChargerByID("saeule-1")
+		return ok && len(c.ActiveConnectors()) == 1
+	})
+	sum := a.chargersSummary()
+	raw, err := json.Marshal(sum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"\"session_kwh\"", "\"metered_at\""} {
+		if strings.Contains(string(raw), forbidden) {
+			t.Fatalf("%s must be omitted while unknown: %s", forbidden, raw)
+		}
+	}
+}

@@ -514,3 +514,100 @@ describe('Sim-Abgleich: die Zustandswörter UND der Rest-Wert an den Rig-Formen'
     expect(k.rest.kw).toBeCloseTo(14.1 - 11, 6);
   });
 });
+
+describe('Cockpit Phase 1 · eine veraltete Ladeleistung geht in keine Summe ein', () => {
+  const JETZT = Date.parse('2026-08-28T12:30:00Z');
+
+  const mitStempel = (meteredAt: string | null) =>
+    k({
+      chargers: [
+        charger({
+          chargePointId: 'GARAGE-1',
+          label: 'Wallbox Garage',
+          connectors: [
+            {
+              connectorId: 1,
+              status: 'Charging',
+              charging: true,
+              powerKw: 11.0,
+              meteredAt,
+              sessionSince: '2026-08-28T12:10:00Z',
+            } as never,
+          ],
+        }),
+      ],
+      nowMs: JETZT,
+    });
+
+  it('zieht eine FRISCHE Ladeleistung wie bisher in die Aufschlüsselung', () => {
+    const c = mitStempel('2026-08-28T12:29:00Z');
+    const teil = c.gruppen.flatMap((g) => g.teile).find((t) => t.key.startsWith('cp:'))!;
+    expect(teil.kw).toBe(11);
+    expect(teil.aktiv).toBe(true);
+  });
+
+  // ⚠ Der Kern der Regel: die Zeile bleibt AKTIV (der Rest wird dadurch
+  // ehrlich unbestimmbar), aber die stehengebliebene Zahl geht NICHT in die
+  // Summe - sonst zöge sie den „übrigen Haushalt" um Kilowatt herunter, die
+  // seit einer halben Stunde nicht mehr fliessen.
+  it('lässt eine VERALTETE Ladeleistung aus der Summe und benennt die Lücke', () => {
+    const c = mitStempel('2026-08-28T11:40:00Z');
+    const teil = c.gruppen.flatMap((g) => g.teile).find((t) => t.key.startsWith('cp:'))!;
+    expect(teil.kw).toBeNull();
+    expect(teil.aktiv).toBe(true);
+    expect(teil.note ?? '').toContain('Leistung veraltet');
+  });
+
+  it('ist OHNE Stempel byte-identisch zum Vor-Phase-1-Verhalten', () => {
+    const ohne = mitStempel(null);
+    const teil = ohne.gruppen.flatMap((g) => g.teile).find((t) => t.key.startsWith('cp:'))!;
+    expect(teil.kw).toBe(11);
+    expect(teil.note ?? '').not.toContain('veraltet');
+  });
+});
+
+describe('Cockpit Phase 1 · die Heute-kWh eines Ladepunkts dürfen aus der Entität kommen', () => {
+  const MIT_ENTITAET = charger({
+    chargePointId: 'GARAGE-1',
+    label: 'Wallbox Garage',
+    entityId: 'cp-ent',
+    connectors: [
+      { connectorId: 1, status: 'Charging', charging: true, powerKw: 11.0 } as never,
+    ],
+  });
+
+  it('nimmt den Register-Zuwachs JE STECKER, wo es einen gibt', () => {
+    const c = k({
+      chargers: [MIT_ENTITAET],
+      todayKwh: { 'cp:GARAGE-1#1': 12.5, 'e:cp-ent': 99 },
+    });
+    const teil = c.gruppen.flatMap((g) => g.teile).find((t) => t.key === 'cp:GARAGE-1#1')!;
+    expect(teil.todayKwh).toBe(12.5);
+  });
+
+  it('fällt bei EINEM Stecker auf den Entitäts-Zähler der Säule zurück', () => {
+    const c = k({ chargers: [MIT_ENTITAET], todayKwh: { 'e:cp-ent': 12.5 } });
+    const teil = c.gruppen.flatMap((g) => g.teile).find((t) => t.key === 'cp:GARAGE-1#1')!;
+    expect(teil.todayKwh).toBe(12.5);
+  });
+
+  // ⚠ Bei MEHREREN Steckern ist der Entitätswert die SUMME der Säule - ihn auf
+  // einen Stecker zu schreiben wäre eine erfundene Aufteilung.
+  it('schreibt die Säulen-Summe NIE auf einen von zwei Steckern', () => {
+    const c = k({
+      chargers: [
+        {
+          ...MIT_ENTITAET,
+          connectors: [
+            { connectorId: 1, status: 'Charging', charging: true, powerKw: 7 } as never,
+            { connectorId: 2, status: 'Charging', charging: true, powerKw: 4 } as never,
+          ],
+        },
+      ],
+      todayKwh: { 'e:cp-ent': 12.5 },
+    });
+    for (const t of c.gruppen.flatMap((g) => g.teile).filter((x) => x.key.startsWith('cp:'))) {
+      expect(t.todayKwh).toBeNull();
+    }
+  });
+});
