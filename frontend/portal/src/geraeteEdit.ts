@@ -56,16 +56,29 @@ export function verbindungsFingerprint(value: Record<string, unknown> | null | u
 export function brauchtVerbindungstest(
   row: SiteComponentRow,
   template: ComponentTemplate | null,
+  templateVersion: number | null,
   connection: Record<string, unknown>,
 ): boolean {
-  if (!template || row.templateRef !== template.templateRef) return true;
+  if (!template || row.templateRef !== template.templateRef
+    || row.templateVersion !== templateVersion) return true;
   return JSON.stringify(verbindungsFingerprint(row.connection))
     !== JSON.stringify(verbindungsFingerprint(connection));
+}
+
+export function normalisiereSecretEingabe(
+  field: { key: string; type?: string; secret?: boolean },
+  value: unknown,
+  original: unknown,
+): unknown {
+  return secret(field) && original === SECRET_MASK && (value === '' || value == null)
+    ? SECRET_MASK
+    : value;
 }
 
 export function delta(
   row: SiteComponentRow,
   template: ComponentTemplate,
+  templateVersion: number | null,
   role: KomponentenRolle,
   name: string,
   connection: Record<string, unknown>,
@@ -85,6 +98,7 @@ export function delta(
       nachher: `${template.brandLabel} ${template.modelLabel}`.trim(),
     });
   }
+  add('Vorlagenfassung', row.templateVersion, templateVersion);
   add('Gerätefamilie', row.family, template.family);
   add('Elektrische Rolle', kundenRolle(row), role);
   add('Nennleistung', row.capacityKwp, capacityKwp.trim() ? Number(capacityKwp) : null);

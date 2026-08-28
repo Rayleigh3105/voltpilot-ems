@@ -56,6 +56,7 @@ const geschwisterTemplate = {
 };
 
 const componentTemplates = vi.fn();
+const componentTemplate = vi.fn();
 const siteComponents = vi.fn();
 const testComponentConnection = vi.fn();
 const createComponent = vi.fn();
@@ -75,6 +76,7 @@ vi.mock('../api', async () => {
     ...actual,
     api: {
       componentTemplates: () => componentTemplates(),
+      componentTemplate: (...a: unknown[]) => componentTemplate(...a),
       siteComponents: () => siteComponents(),
       testComponentConnection: (...a: unknown[]) => testComponentConnection(...a),
       chargingConfig: (...a: unknown[]) => chargingConfig(...a),
@@ -125,6 +127,7 @@ async function bisZumTest(modell = template.modelLabel) {
 function standardMocks() {
   vi.clearAllMocks();
   componentTemplates.mockResolvedValue([template]);
+  componentTemplate.mockResolvedValue(template);
   chargingConfig.mockResolvedValue({
     gridLimitKw: null,
     priorityChargePointIds: [],
@@ -816,6 +819,7 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     communication: 'solarman_v5',
     connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064' },
     templateRef: template.templateRef,
+    templateVersion: 1,
     definitionVersion: 3,
     edgeSourceId: 'inverter',
     syncStatus: 'in_sync',
@@ -854,7 +858,11 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     fireEvent.click(knopf('Änderungen speichern'));
 
     await waitFor(() => expect(updateComponent).toHaveBeenCalledWith(
-      's1', 'wr-1', expect.objectContaining({ label: 'Wechselrichter Garage', role: 'inverter' }),
+      's1', 'wr-1', expect.objectContaining({
+        label: 'Wechselrichter Garage',
+        role: 'inverter',
+        templateVersion: 1,
+      }),
     ));
     expect(testComponentConnection).not.toHaveBeenCalled();
     expect(onSaved).toHaveBeenCalled();
@@ -874,6 +882,9 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
 
     fireEvent.click(knopf('Verbindung prüfen'));
     expect(await screen.findByText(/Das Gerät antwortet/)).toBeVisible();
+    expect(testComponentConnection).toHaveBeenCalledWith('s1', expect.objectContaining({
+      templateVersion: 1,
+    }));
     fireEvent.click(knopf('Änderungen speichern'));
 
     await waitFor(() => expect(updateComponent).toHaveBeenCalledWith(
@@ -1017,6 +1028,75 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
 
     expect(ip).toHaveValue('192.168.0.29');
     expect(knopf('Verbindung prüfen')).toBeVisible();
+  });
+
+  it('bewahrt die gespeicherte Vorlagenfassung bei einer neueren Katalogfassung', async () => {
+    componentTemplates.mockResolvedValue([{ ...template, version: 2 }]);
+    renderInline();
+
+    const name = await screen.findByLabelText('Anzeigename');
+    fireEvent.change(name, { target: { value: 'Wechselrichter Garage' } });
+    fireEvent.click(knopf('Änderungen speichern'));
+
+    await waitFor(() => expect(updateComponent).toHaveBeenCalledWith(
+      's1',
+      'wr-1',
+      expect.objectContaining({ templateRef: template.templateRef, templateVersion: 1 }),
+    ));
+    expect(testComponentConnection).not.toHaveBeenCalled();
+  });
+
+  it('lädt eine abgelöste Bestandsvorlage einzeln für den Editor nach', async () => {
+    componentTemplates.mockResolvedValue([geschwisterTemplate]);
+    componentTemplate.mockResolvedValue({ ...template, supersededBy: geschwisterTemplate.templateRef });
+    renderInline();
+
+    await waitFor(() => expect(componentTemplate).toHaveBeenCalledWith(template.templateRef));
+    const name = screen.getByLabelText('Anzeigename');
+    fireEvent.change(name, { target: { value: 'Wechselrichter Garage' } });
+    fireEvent.click(knopf('Änderungen speichern'));
+
+    await waitFor(() => expect(updateComponent).toHaveBeenCalledWith(
+      's1',
+      'wr-1',
+      expect.objectContaining({ templateRef: template.templateRef, templateVersion: 1 }),
+    ));
+  });
+
+  it('behandelt ein geleertes bestehendes Secret wieder als unverändert', async () => {
+    const secretTemplate = {
+      ...template,
+      transportSchema: [
+        ...template.transportSchema,
+        { key: 'password', label: 'Kennwort', type: 'password', secret: true, required: true },
+      ],
+    };
+    const secretEdit = {
+      ...edit,
+      connection: { ...edit.connection, password: '••••••••' },
+    };
+    componentTemplates.mockResolvedValue([secretTemplate]);
+    render(
+      <AnlegenFlow
+        siteId="s1"
+        bearbeiten={secretEdit}
+        inlineBearbeitung
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+
+    const name = await screen.findByLabelText('Anzeigename');
+    fireEvent.click(knopf('Technische Daten ändern'));
+    const password = await screen.findByLabelText(/Kennwort/);
+    fireEvent.change(password, { target: { value: 'neu-geheim' } });
+    fireEvent.change(password, { target: { value: '' } });
+    fireEvent.change(name, { target: { value: 'Wechselrichter Garage' } });
+    fireEvent.click(knopf('Änderungen speichern'));
+
+    await waitFor(() => expect(updateComponent).toHaveBeenCalled());
+    expect(updateComponent.mock.calls[0][2].connection).not.toHaveProperty('password');
+    expect(testComponentConnection).not.toHaveBeenCalled();
   });
 
   it('weist null kWp vor dem Speichern als ungültig zurück', async () => {

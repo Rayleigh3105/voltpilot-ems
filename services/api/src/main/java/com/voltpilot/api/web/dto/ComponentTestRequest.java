@@ -18,6 +18,7 @@ import java.util.UUID;
  */
 public record ComponentTestRequest(
         @NotBlank @Size(max = 200) String templateRef,
+        @jakarta.validation.constraints.Positive Integer templateVersion,
         @Size(max = 40) String role,
         Map<String, Object> connection,
         UUID deviceId,
@@ -26,6 +27,6 @@ public record ComponentTestRequest(
 
     public ComponentTestRequest(String templateRef, String role,
             Map<String, Object> connection, UUID deviceId) {
-        this(templateRef, role, connection, deviceId, null);
+        this(templateRef, null, role, connection, deviceId, null);
     }
 }

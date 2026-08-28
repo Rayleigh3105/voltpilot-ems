@@ -723,6 +723,26 @@ export function komponenteHash(siteId: string, entityId: string): string {
   return `#/anlage/${siteId}/modell?komponente=${encodeURIComponent(entityId)}`;
 }
 
+export function komponenteBearbeitenHash(siteId: string, entityId: string): string {
+  const params = new URLSearchParams({ bearbeiten: '1', komponente: entityId });
+  return `#/anlage/${siteId}/modell?${params.toString()}`;
+}
+
+export function modellBearbeitenKomponente(hash: string): string | null {
+  if (befehleParam(hash, 'bearbeiten') !== '1') return null;
+  return parseKomponente(hash);
+}
+
+export function ohneModellBearbeiten(hash: string): string {
+  const [path, ...rest] = hash.split('?');
+  if (rest.length === 0) return hash;
+  const params = new URLSearchParams(rest.join('?'));
+  params.delete('bearbeiten');
+  params.delete('komponente');
+  const query = params.toString();
+  return `${path}${query ? `?${query}` : ''}`;
+}
+
 /** Die gemeinte Komponente aus einem `?komponente=`-Hash, oder null. */
 export function parseKomponente(hash: string): string | null {
   return befehleParam(hash, 'komponente');

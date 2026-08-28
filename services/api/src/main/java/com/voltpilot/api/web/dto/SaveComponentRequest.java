@@ -35,6 +35,7 @@ import java.util.Map;
  */
 public record SaveComponentRequest(
         @NotBlank @Size(max = 200) String templateRef,
+        @Positive Integer templateVersion,
         @Size(max = 200) String label,
         @NotBlank @Size(max = 40) String role,
         Map<String, Object> connection,
@@ -49,6 +50,7 @@ public record SaveComponentRequest(
     public SaveComponentRequest(String templateRef, String label, String role,
             Map<String, Object> connection, BigDecimal capacityKwp, Integer intervalS,
             String note) {
-        this(templateRef, label, role, connection, capacityKwp, intervalS, note, null, null, null);
+        this(templateRef, null, label, role, connection, capacityKwp, intervalS, note,
+                null, null, null);
     }
 }

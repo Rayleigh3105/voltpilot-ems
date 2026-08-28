@@ -10,9 +10,8 @@ import {
 import { pvComposition, type PvContribution } from '../pvComposition';
 import type { EntityPin } from '../pvReconcile';
 import { PvCompositionDetails } from './PvBreakdown';
-import { UmbenennenDialog } from './UmbenennenDialog';
 import type { EnergyFlowSize } from './EnergyFlow';
-import { geraetKomponenteBearbeitenHash } from '../nav';
+import { geraetKomponenteBearbeitenHash, komponenteBearbeitenHash } from '../nav';
 
 /**
  * AE2 adaptive energy-flow diagram: the real VoltPilot EnergyFlow (lightning
@@ -97,7 +96,6 @@ export function AdaptiveEnergyFlow({
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [open, setOpen] = useState(false);
-  const [renaming, setRenaming] = useState<PvContribution | null>(null);
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return undefined;
@@ -220,29 +218,13 @@ export function AdaptiveEnergyFlow({
       {showDetails && composition && (
         <PvCompositionDetails
           composition={composition}
-          onRename={rename ? setRenaming : undefined}
-          renameHref={rename ? (row) => row.entityId && row.deviceId && rename.boxRef
-            ? geraetKomponenteBearbeitenHash(
-                rename.siteId, rename.boxRef, row.deviceId, row.entityId,
-              )
+          renameHref={rename ? (row) => row.entityId
+            ? row.deviceId && rename.boxRef
+              ? geraetKomponenteBearbeitenHash(
+                  rename.siteId, rename.boxRef, row.deviceId, row.entityId,
+                )
+              : komponenteBearbeitenHash(rename.siteId, row.entityId)
             : null : undefined}
-        />
-      )}
-      {rename && renaming?.entityId && (
-        <UmbenennenDialog
-          siteId={rename.siteId}
-          target={{
-            entityId: renaming.entityId,
-            alias: renaming.alias,
-            // R2 again: `title` IS the pre-alias derivation, so the dialog's
-            // placeholder and its reset hint name exactly what returns.
-            derivedLabel: renaming.title,
-          }}
-          onClose={() => setRenaming(null)}
-          onSaved={() => {
-            setRenaming(null);
-            rename.onRenamed();
-          }}
         />
       )}
     </div>

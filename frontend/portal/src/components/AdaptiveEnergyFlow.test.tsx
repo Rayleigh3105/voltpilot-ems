@@ -185,10 +185,11 @@ describe('AdaptiveEnergyFlow · click on PV-Erzeugung opens the composition', ()
 
     expect(screen.getAllByRole('link', { name: /umbenennen/ }).map((link) =>
       link.getAttribute('href'))).toEqual([
+      '#/anlage/s1/modell?bearbeiten=1&komponente=deye',
       '#/anlage/s1/geraet/VP-BOX-1/a?bearbeiten=1&komponente=f1',
       '#/anlage/s1/geraet/VP-BOX-1/b?bearbeiten=1&komponente=f2',
     ]);
-    expect(screen.getAllByRole('button', { name: /umbenennen/ })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /umbenennen/ })).toBeNull();
   });
 
   it('opens on Enter and Space, so it is reachable without a mouse', () => {

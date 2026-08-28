@@ -66,6 +66,9 @@ import {
   geraetBearbeitenHash,
   geraetKomponenteBearbeitenHash,
   hashForRoute,
+  komponenteBearbeitenHash,
+  modellBearbeitenKomponente,
+  ohneModellBearbeiten,
   parseKomponente,
   parseZentraleAnsicht,
   zentraleAnsichtHash,
@@ -135,6 +138,7 @@ export function AnlagenModellSection({
   // panel added to the same page; a customer never does.
   const showTechnical = showTechnicalLayer();
   const [data, setData] = useState<SiteEntities | null>(null);
+  const [dataSiteId, setDataSiteId] = useState<string | null>(null);
   const [topology, setTopology] = useState<SiteTopology | null>(null);
   const [sources, setSources] = useState<SiteSource[] | null>(null);
   /**
@@ -153,6 +157,10 @@ export function AnlagenModellSection({
   const [reloadKey, setReloadKey] = useState(0);
   const [assign, setAssign] = useState<AdoptableSource | null>(null);
   const [rename, setRename] = useState<PlantComponent | null>(null);
+  const [renameEntry, setRenameEntry] = useState<string | null>(() =>
+    modellBearbeitenKomponente(typeof window === 'undefined' ? '' : window.location.hash),
+  );
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [freigabe, setFreigabe] = useState<PlantComponent | null>(null);
   // Die zwei Bereinigungs-Hebel AN der Komponente (vp-bereinigung-ui-k3).
   const [repin, setRepin] = useState<PlantComponent | null>(null);
@@ -201,9 +209,14 @@ export function AnlagenModellSection({
   useEffect(() => {
     let active = true;
     setData(null);
+    setDataSiteId(null);
     setError(false);
     api.siteEntities(site.id).then(
-      (d) => active && setData(d),
+      (d) => {
+        if (!active) return;
+        setData(d);
+        setDataSiteId(site.id);
+      },
       () => active && setError(true),
     );
     // Topology fail-soft (a v1/un-migrated site simply lacks it — the model
@@ -301,9 +314,32 @@ export function AnlagenModellSection({
   const reload = () => setReloadKey((k) => k + 1);
 
   const model = useMemo(
-    () => (data ? plantModel(data.entities, topology, data.localSetup, sources) : null),
-    [data, topology, sources],
+    () => (data && dataSiteId === site.id
+      ? plantModel(data.entities, topology, data.localSetup, sources)
+      : null),
+    [data, dataSiteId, site.id, topology, sources],
   );
+
+  useEffect(() => {
+    const onHash = () => setRenameEntry(modellBearbeitenKomponente(window.location.hash));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  useEffect(() => {
+    if (!renameEntry || !model) return;
+    const target = model.components.find(
+      (component) => component.entityId === renameEntry && component.renameable,
+    ) ?? null;
+    setRenameEntry(null);
+    replaceCurrentNavigation(ohneModellBearbeiten(window.location.hash));
+    if (!target) {
+      setRenameError('Diese Komponente ist nicht mehr verfügbar.');
+      return;
+    }
+    setRenameError(null);
+    setRename(target);
+  }, [model, renameEntry]);
 
   /**
    * Die Referenz der EINEN Box - der Schlüssel jeder Geräteseite. Ohne sie
@@ -431,8 +467,34 @@ export function AnlagenModellSection({
     ? verwaltungsHinweis(components.componentAuthority, components.adoptedAt)
     : null;
 
+  if (rename) {
+    return (
+      <div className="vp-modell">
+        <UmbenennenDialog
+          key={`rename:${site.id}:${rename.entityId}`}
+          inline
+          siteId={site.id}
+          siteName={site.name}
+          geraetKennung={rename.derivedLabel}
+          target={{
+            entityId: rename.entityId,
+            alias: rename.alias,
+            derivedLabel: rename.derivedLabel,
+          }}
+          onClose={() => setRename(null)}
+          onSaved={() => {
+            setRename(null);
+            setRenameError(null);
+            reload();
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="vp-modell">
+      {renameError && <div className="vp-alert vp-alert-err" role="alert">{renameError}</div>}
       <Card className="vp-modell-card">
         {!data && !error && <TextSkeleton lines={5} />}
         {error && (
@@ -604,12 +666,11 @@ export function AnlagenModellSection({
                     karte={k}
                     siteId={site.id}
                     onAssign={setAssign}
-                    onRename={setRename}
-                    componentEditHref={boxRef && k.href
-                      ? (component) => geraetKomponenteBearbeitenHash(
+                    componentEditHref={(component) => boxRef && k.href
+                      ? geraetKomponenteBearbeitenHash(
                           site.id, boxRef, k.id, component.entityId,
                         )
-                      : undefined}
+                      : komponenteBearbeitenHash(site.id, component.entityId)}
                     onFreigabe={setFreigabe}
                     onRegelBruecke={(c) => {
                       window.location.hash = regelBrueckeHash(site.id, c.entityId);
@@ -731,22 +792,6 @@ export function AnlagenModellSection({
         />
       )}
 
-      {rename && (
-        <UmbenennenDialog
-          siteId={site.id}
-          target={{
-            entityId: rename.entityId,
-            alias: rename.alias,
-            derivedLabel: rename.derivedLabel,
-          }}
-          onClose={() => setRename(null)}
-          onSaved={() => {
-            setRename(null);
-            reload();
-          }}
-        />
-      )}
-
       {repin && data && (
         <ZuordnungAendernDialog
           siteId={site.id}
@@ -840,7 +885,6 @@ function GeraeteKarteView({
   karte,
   siteId,
   onAssign,
-  onRename,
   componentEditHref,
   onFreigabe,
   onRegelBruecke,
@@ -856,7 +900,6 @@ function GeraeteKarteView({
   karte: GeraeteKarte;
   siteId: string;
   onAssign: (s: AdoptableSource) => void;
-  onRename?: (c: PlantComponent) => void;
   /** Adressierbare Namens-Stifte öffnen denselben Inline-Ort statt eines Drawers. */
   componentEditHref?: (c: PlantComponent) => string;
   onFreigabe?: (c: PlantComponent) => void;
@@ -933,7 +976,6 @@ function GeraeteKarteView({
               key={c.id}
               component={c}
               siteId={siteId}
-              onRename={onRename}
               renameHref={c.renameable ? componentEditHref?.(c) : undefined}
               onFreigabe={onFreigabe}
               onRegelBruecke={onRegelBruecke}
@@ -962,7 +1004,6 @@ const PARAGRAF_14A =
 function ComponentRow({
   component,
   siteId,
-  onRename,
   renameHref,
   onFreigabe,
   onRegelBruecke,
@@ -978,7 +1019,6 @@ function ComponentRow({
   component: PlantComponent;
   /** Für den Absprung in den Befehls-Verlauf DIESER Komponente. */
   siteId: string;
-  onRename?: (c: PlantComponent) => void;
   /** Derselbe Namenswunsch, aber auf der vorhandenen Geräteseite. */
   renameHref?: string;
   onFreigabe?: (c: PlantComponent) => void;
@@ -1106,15 +1146,6 @@ function ComponentRow({
         >
           <Icon name="pencil" size={15} />
         </a>
-      ) : onRename && c.renameable ? (
-        <button
-          type="button"
-          className="vp-am-pencil"
-          aria-label={`„${c.label}“ umbenennen`}
-          onClick={() => onRename(c)}
-        >
-          <Icon name="pencil" size={15} />
-        </button>
       ) : null}
 
       <span className={`vp-am-comp-val${c.reading ? '' : ' none'}`}>

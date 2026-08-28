@@ -177,11 +177,21 @@ public class ComponentService {
             ComponentTemplateDto template, Map<String, Object> incoming) {
         EntityRow existing = requireComponent(siteId, entityId);
         Set<String> keys = new java.util.LinkedHashSet<>(ComponentSecrets.keys(template));
-        if (existing.templateRef() != null) {
-            templates.findNewestByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
-                    existing.templateRef()).ifPresent(t -> keys.addAll(ComponentSecrets.keys(t)));
+        if (existing.templateRef() != null && existing.templateVersion() != null) {
+            templates.findStoredExactByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
+                    existing.templateRef(), existing.templateVersion())
+                    .ifPresent(t -> keys.addAll(ComponentSecrets.keys(t)));
         }
         return ComponentSecrets.merge(incoming, existing.connectionJson(), keys);
+    }
+
+    public ComponentTemplateDto templateForTest(UUID siteId, UUID entityId, String templateRef,
+            Integer templateVersion) {
+        requireSite(siteId);
+        if (entityId == null) {
+            return requireTemplate(templateRef, templateVersion);
+        }
+        return requireTemplate(requireComponent(siteId, entityId), templateRef, templateVersion);
     }
 
     // ---- Schreiben --------------------------------------------------------
@@ -198,7 +208,7 @@ public class ComponentService {
         requireSite(siteId);
         requirePortalManaged(siteId);
         String role = requireRole(req.role());
-        ComponentTemplateDto template = requireTemplate(req.templateRef());
+        ComponentTemplateDto template = requireTemplate(req.templateRef(), req.templateVersion());
         TestedConnection tested = requireTestedConnection(siteId, req, template);
 
         UUID tenantId = TenantContext.get();
@@ -231,11 +241,13 @@ public class ComponentService {
         }
         String role = requireRole(req.role());
         requireCompatibleRoleChange(siteId, entityId, role, existing);
-        ComponentTemplateDto template = requireTemplate(req.templateRef());
+        ComponentTemplateDto template = requireTemplate(existing, req.templateRef(),
+                req.templateVersion());
         Set<String> secretKeys = new java.util.LinkedHashSet<>(ComponentSecrets.keys(template));
-        if (existing.templateRef() != null) {
-            templates.findNewestByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
-                    existing.templateRef()).ifPresent(t -> secretKeys.addAll(ComponentSecrets.keys(t)));
+        if (existing.templateRef() != null && existing.templateVersion() != null) {
+            templates.findStoredExactByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
+                    existing.templateRef(), existing.templateVersion())
+                    .ifPresent(t -> secretKeys.addAll(ComponentSecrets.keys(t)));
         }
         Map<String, Object> merged = ComponentSecrets.merge(req.connection(),
                 existing.connectionJson(), secretKeys);
@@ -252,15 +264,19 @@ public class ComponentService {
         Map<String, Object> newFingerprint = connectionFingerprint(desired);
         boolean clearReadingOverride = old.containsKey("reading_override")
                 && req.acceptMissingChannel() == null
-                && receipts.has(siteId, template.templateRef(), newFingerprint)
-                && receipts.overrideChannel(siteId, template.templateRef(), newFingerprint) == null;
+                && receipts.has(siteId, template.templateRef(), template.version(), newFingerprint)
+                && receipts.overrideChannel(siteId, template.templateRef(), template.version(),
+                        newFingerprint) == null;
         boolean connectionChanged = !java.util.Objects.equals(existing.templateRef(),
-                template.templateRef()) || !oldFingerprint.equals(newFingerprint)
+                template.templateRef())
+                || !java.util.Objects.equals(existing.templateVersion(), template.version())
+                || !oldFingerprint.equals(newFingerprint)
                 || clearReadingOverride;
         String connJson;
         if (connectionChanged) {
             SaveComponentRequest effective = new SaveComponentRequest(template.templateRef(),
-                    req.label(), role, merged, req.capacityKwp(), interval, req.note(),
+                    template.version(), req.label(), role, merged, req.capacityKwp(), interval,
+                    req.note(),
                     req.acceptMissingChannel(), req.expectedRevision(), req.effectiveAt());
             TestedConnection tested = requireTestedConnection(siteId, effective, template);
             connJson = writeJson(driverConnection(tested, effective, subject));
@@ -391,10 +407,32 @@ public class ComponentService {
     }
 
     private ComponentTemplateDto requireTemplate(String ref) {
-        return templates.findNewestByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
-                        ref == null ? "" : ref.trim())
+        return requireTemplate(ref, null);
+    }
+
+    private ComponentTemplateDto requireTemplate(String ref, Integer version) {
+        String normalized = ref == null ? "" : ref.trim();
+        return (version == null
+                ? templates.findNewestByRef(BuiltinComponentTemplates.PUBLIC_KINDS, normalized)
+                : templates.findExactByRef(BuiltinComponentTemplates.PUBLIC_KINDS, normalized,
+                        version))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Dieses Gerät kennen wir nicht."));
+    }
+
+    private ComponentTemplateDto requireTemplate(EntityRow existing, String ref,
+            Integer version) {
+        String normalized = ref == null ? "" : ref.trim();
+        boolean sameRef = java.util.Objects.equals(existing.templateRef(), normalized);
+        Integer storedVersion = existing.templateVersion();
+        if (sameRef && storedVersion != null
+                && (version == null || java.util.Objects.equals(version, storedVersion))) {
+            return templates.findStoredExactByRef(BuiltinComponentTemplates.PUBLIC_KINDS,
+                            normalized, storedVersion)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Die gespeicherte Gerätevorlage ist nicht mehr verfügbar."));
+        }
+        return requireTemplate(normalized, version);
     }
 
     /**
@@ -442,12 +480,13 @@ public class ComponentService {
         // Grund nennen („Die Spannungen müssen zwischen …"), nicht das
         // Folgeproblem („Bitte prüfen Sie zuerst die Verbindung").
         requireUsableVoltageBounds(connection);
-        if (!receipts.has(siteId, template.templateRef(), connection)) {
+        if (!receipts.has(siteId, template.templateRef(), template.version(), connection)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Bitte prüfen Sie zuerst die Verbindung zu diesem Gerät - erst danach lässt "
                             + "sie sich speichern.");
         }
-        String missing = receipts.overrideChannel(siteId, template.templateRef(), connection);
+        String missing = receipts.overrideChannel(siteId, template.templateRef(),
+                template.version(), connection);
         if (missing == null) {
             return new TestedConnection(connection, null);
         }

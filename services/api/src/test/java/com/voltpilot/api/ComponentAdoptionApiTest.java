@@ -619,7 +619,7 @@ class ComponentAdoptionApiTest {
 
             // Und das Speichern tut genau das - OHNE Namensfeld, wie der
             // Assistent es seit dem Fix schickt.
-            receipts.record(site, FRONIUS_TEMPLATE, conn);
+            receipts.record(site, FRONIUS_TEMPLATE, 1, conn);
             ResponseEntity<String> created = post("/api/v1/sites/" + site + "/components",
                     customer, saveBody(FRONIUS_TEMPLATE, "pv-generation", conn, null));
             assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -633,7 +633,7 @@ class ComponentAdoptionApiTest {
             assertThat(plantKwp(site)).isEqualByComparingTo(kwpVorher);
 
             // Ein AUSDRÜCKLICH getippter Name gewinnt weiterhin.
-            receipts.record(site, FRONIUS_TEMPLATE, conn);
+            receipts.record(site, FRONIUS_TEMPLATE, 1, conn);
             assertThat(post("/api/v1/sites/" + site + "/components", customer,
                     saveBody(FRONIUS_TEMPLATE, "pv-generation", conn, "Dach Süd-West"))
                     .getStatusCode()).isEqualTo(HttpStatus.OK);

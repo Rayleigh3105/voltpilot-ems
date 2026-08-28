@@ -99,7 +99,7 @@ public class ComponentConnectionReceipts {
 
     /** Hinterlegt den Beleg eines bestandenen Tests. */
     public void record(UUID siteId, String templateRef, Map<String, Object> connection) {
-        record(siteId, templateRef, connection, null);
+        record(siteId, templateRef, null, connection, null);
     }
 
     /**
@@ -109,8 +109,18 @@ public class ComponentConnectionReceipts {
      */
     public void record(UUID siteId, String templateRef, Map<String, Object> connection,
             String evidence) {
+        record(siteId, templateRef, null, connection, evidence);
+    }
+
+    public void record(UUID siteId, String templateRef, Integer templateVersion,
+            Map<String, Object> connection) {
+        record(siteId, templateRef, templateVersion, connection, null);
+    }
+
+    public void record(UUID siteId, String templateRef, Integer templateVersion,
+            Map<String, Object> connection, String evidence) {
         prune();
-        issued.put(key(siteId, templateRef, connection),
+        issued.put(key(siteId, templateRef, templateVersion, connection),
                 new Receipt(clock.instant(), evidence, null));
     }
 
@@ -133,8 +143,13 @@ public class ComponentConnectionReceipts {
      */
     public void recordOverridable(UUID siteId, String templateRef,
             Map<String, Object> connection, String channel) {
+        recordOverridable(siteId, templateRef, null, connection, channel);
+    }
+
+    public void recordOverridable(UUID siteId, String templateRef, Integer templateVersion,
+            Map<String, Object> connection, String channel) {
         prune();
-        issued.put(key(siteId, templateRef, connection),
+        issued.put(key(siteId, templateRef, templateVersion, connection),
                 new Receipt(clock.instant(), null, channel));
     }
 
@@ -145,10 +160,15 @@ public class ComponentConnectionReceipts {
      */
     public String overrideChannel(UUID siteId, String templateRef,
             Map<String, Object> connection) {
-        if (!has(siteId, templateRef, connection)) {
+        return overrideChannel(siteId, templateRef, null, connection);
+    }
+
+    public String overrideChannel(UUID siteId, String templateRef, Integer templateVersion,
+            Map<String, Object> connection) {
+        if (!has(siteId, templateRef, templateVersion, connection)) {
             return null;
         }
-        Receipt r = issued.get(key(siteId, templateRef, connection));
+        Receipt r = issued.get(key(siteId, templateRef, templateVersion, connection));
         return r == null ? null : r.overrideChannel();
     }
 
@@ -158,10 +178,15 @@ public class ComponentConnectionReceipts {
      * es nicht.
      */
     public String evidence(UUID siteId, String templateRef, Map<String, Object> connection) {
-        if (!has(siteId, templateRef, connection)) {
+        return evidence(siteId, templateRef, null, connection);
+    }
+
+    public String evidence(UUID siteId, String templateRef, Integer templateVersion,
+            Map<String, Object> connection) {
+        if (!has(siteId, templateRef, templateVersion, connection)) {
             return null;
         }
-        Receipt r = issued.get(key(siteId, templateRef, connection));
+        Receipt r = issued.get(key(siteId, templateRef, templateVersion, connection));
         return r == null ? null : r.evidence();
     }
 
@@ -170,7 +195,12 @@ public class ComponentConnectionReceipts {
      * vorliegt. Ein abgelaufener Beleg gilt NICHT und wird gleich entfernt.
      */
     public boolean has(UUID siteId, String templateRef, Map<String, Object> connection) {
-        String k = key(siteId, templateRef, connection);
+        return has(siteId, templateRef, null, connection);
+    }
+
+    public boolean has(UUID siteId, String templateRef, Integer templateVersion,
+            Map<String, Object> connection) {
+        String k = key(siteId, templateRef, templateVersion, connection);
         Receipt r = issued.get(k);
         if (r == null) {
             return false;
@@ -189,9 +219,11 @@ public class ComponentConnectionReceipts {
      * denselben Schlüssel ergeben, egal in welcher Reihenfolge das Portal sie
      * geschickt hat - sonst hinge die Pflicht an einer Serialisierungs-Laune.
      */
-    private static String key(UUID siteId, String templateRef, Map<String, Object> connection) {
+    private static String key(UUID siteId, String templateRef, Integer templateVersion,
+            Map<String, Object> connection) {
         StringBuilder sb = new StringBuilder();
-        sb.append(siteId).append('\n').append(templateRef == null ? "" : templateRef).append('\n');
+        sb.append(siteId).append('\n').append(templateRef == null ? "" : templateRef).append('\n')
+                .append(templateVersion == null ? "" : templateVersion).append('\n');
         Map<String, Object> sorted = new TreeMap<>(connection == null ? Map.of() : connection);
         sorted.forEach((k, v) -> sb.append(k).append('=').append(v).append('\n'));
         try {

@@ -323,6 +323,25 @@ describe('AnlagenModellSection — Variante A', () => {
     const synthetic = await screen.findByRole('region', { name: 'Freistehende PV' });
     expect(within(synthetic).queryByRole('link', { name: /Bearbeiten/ })).toBeNull();
     expect(within(synthetic).queryByRole('link', { name: /Geräteseite/ })).toBeNull();
+    expect(within(synthetic).getByRole('link', { name: /umbenennen/ })).toHaveAttribute(
+      'href',
+      '#/anlage/s-1/modell?bearbeiten=1&komponente=synthetic-pv',
+    );
+  });
+
+  it('öffnet eine nicht adressierbare Komponente inline im Anlagen-Modell', async () => {
+    stub();
+    window.history.replaceState(
+      null,
+      '',
+      `#/anlage/${site.id}/modell?bearbeiten=1&komponente=grid`,
+    );
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    expect(await screen.findByTestId('geraet-bearbeiten')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Netzanschluss bearbeiten' })).toBeVisible();
+    expect(screen.queryByRole('dialog', { name: 'Komponente umbenennen' })).toBeNull();
+    expect(window.location.hash).toBe(`#/anlage/${site.id}/modell`);
   });
 
   it('hat KEINE Rollen-Gruppen und KEINE Summen mehr (R8)', async () => {

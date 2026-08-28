@@ -18,6 +18,9 @@ import {
   pageRoute,
   parseGeraetRef,
   parseRoute,
+  komponenteBearbeitenHash,
+  modellBearbeitenKomponente,
+  ohneModellBearbeiten,
   ohneGeraetBearbeiten,
   parseZentraleAnsicht,
   zentraleAnsichtHash,
@@ -666,5 +669,15 @@ describe('komponenteHash / parseKomponente', () => {
     expect(parseKomponente('#/anlage/s-1/modell')).toBeNull();
     expect(parseKomponente('#/anlage/s-1/modell?ansicht=schaltbild')).toBeNull();
     expect(parseKomponente('')).toBeNull();
+  });
+});
+
+describe('komponenteBearbeitenHash', () => {
+  it('round-trips and consumes the inline model entry', () => {
+    const hash = komponenteBearbeitenHash('s-1', 'pv/garage');
+    expect(hash).toBe('#/anlage/s-1/modell?bearbeiten=1&komponente=pv%2Fgarage');
+    expect(modellBearbeitenKomponente(hash)).toBe('pv/garage');
+    expect(ohneModellBearbeiten(hash)).toBe('#/anlage/s-1/modell');
+    expect(modellBearbeitenKomponente(komponenteHash('s-1', 'pv/garage'))).toBeNull();
   });
 });

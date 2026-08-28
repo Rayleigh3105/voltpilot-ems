@@ -6,8 +6,6 @@ import com.voltpilot.api.components.SelfBuildComponentService;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
 import com.voltpilot.api.repo.SiteRepository;
-import com.voltpilot.api.templates.BuiltinComponentTemplates;
-import com.voltpilot.api.templates.ComponentTemplateRepository;
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
 import com.voltpilot.api.web.dto.ComponentMatchDto;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
@@ -70,18 +68,16 @@ public class SiteComponentController {
 
     private final SiteRepository sites;
     private final ComponentService components;
-    private final ComponentTemplateRepository templates;
     private final ComponentConnectionReceipts receipts;
     private final ProbeService probes;
     private final SelfBuildComponentService selfBuild;
 
     public SiteComponentController(SiteRepository sites, ComponentService components,
-            ComponentTemplateRepository templates, ComponentConnectionReceipts receipts,
+            ComponentConnectionReceipts receipts,
             ProbeService probes, SelfBuildComponentService selfBuild) {
         this.selfBuild = selfBuild;
         this.sites = sites;
         this.components = components;
-        this.templates = templates;
         this.receipts = receipts;
         this.probes = probes;
     }
@@ -274,10 +270,8 @@ public class SiteComponentController {
     public ProbeResult test(@PathVariable UUID siteId,
             @Valid @RequestBody ComponentTestRequest request, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
-        ComponentTemplateDto template = templates
-                .findNewestByRef(BuiltinComponentTemplates.PUBLIC_KINDS, request.templateRef())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Dieses Gerät kennen wir nicht."));
+        ComponentTemplateDto template = components.templateForTest(siteId, request.entityId(),
+                request.templateRef(), request.templateVersion());
         Map<String, Object> connection =
                 request.connection() == null ? Map.of() : new LinkedHashMap<>(request.connection());
         if (request.entityId() != null) {
@@ -293,7 +287,7 @@ public class SiteComponentController {
                 template.brand(), template.model(), template.family(), request.role(), connection,
                 subject(jwt));
         if (passed(result)) {
-            receipts.record(siteId, template.templateRef(), connection);
+            receipts.record(siteId, template.templateRef(), template.version(), connection);
         } else {
             // Der HALBE Beleg (Live-Fall Mühlfeldweg 2, 21.08.2026): das Gerät hat
             // geantwortet, die übrigen Kanäle sind angekommen, und GENAU EINER
@@ -309,7 +303,8 @@ public class SiteComponentController {
             // Client kann sich damit keinen Ausnahmeweg herbeireden.
             String channel = overridableChannel(result);
             if (channel != null) {
-                receipts.recordOverridable(siteId, template.templateRef(), connection, channel);
+                receipts.recordOverridable(siteId, template.templateRef(),
+                        template.version(), connection, channel);
             }
         }
         return result;

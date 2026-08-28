@@ -66,6 +66,7 @@ import {
   delta,
   istSecret,
   kundenRolle,
+  normalisiereSecretEingabe,
   verbindungFuerSpeichern,
 } from '../geraeteEdit';
 import { registerNavigationBlocker, type BlockedNavigation } from '../navigationBlocker';
@@ -156,6 +157,9 @@ export function AnlegenFlow({
     edit ? kundenRolle(edit) : initialTyp ? vorschlagRolle(initialTyp, [], initialRolle) : null,
   );
   const [template, setTemplate] = useState<ComponentTemplate | null>(null);
+  const [templateVersion, setTemplateVersion] = useState<number | null>(
+    edit?.templateVersion ?? null,
+  );
   const [verbindung, setVerbindung] = useState<Record<string, unknown>>(
     () => ({ ...(edit?.connection ?? {}) }),
   );
@@ -209,10 +213,22 @@ export function AnlegenFlow({
 
   useEffect(() => {
     let alive = true;
-    api
-      .componentTemplates()
-      .then((t) => alive && setTemplates(t))
-      .catch(() => alive && setLadeFehler('Die Geräte-Auswahl konnte nicht geladen werden.'));
+    api.componentTemplates().then(async (list) => {
+      if (!alive) return;
+      if (!edit?.templateRef || list.some((item) => item.templateRef === edit.templateRef)) {
+        setTemplates(list);
+        return;
+      }
+      try {
+        const current = await api.componentTemplate(edit.templateRef);
+        if (alive) setTemplates([...list, current]);
+      } catch {
+        if (alive) {
+          setTemplates(list);
+          setLadeFehler('Die bisherige Gerätevorlage konnte nicht geladen werden. Die gespeicherte Fassung bleibt aktiv.');
+        }
+      }
+    }).catch(() => alive && setLadeFehler('Die Geräte-Auswahl konnte nicht geladen werden.'));
     api
       .siteComponents(siteId)
       .then((c) => {
@@ -247,6 +263,7 @@ export function AnlegenFlow({
       return;
     }
     setTemplate(found);
+    setTemplateVersion(edit.templateVersion ?? found.version);
   }, [edit, template, templates]);
 
   const alle = useMemo(() => templates ?? [], [templates]);
@@ -271,6 +288,10 @@ export function AnlegenFlow({
         label: t.modelLabel,
         sub: modellZusatz(t) || null,
         group: t.brand,
+        disabled: Boolean(edit && t.templateRef === edit.templateRef && t.supersededBy),
+        disabledHint: edit && t.templateRef === edit.templateRef && t.supersededBy
+          ? 'Bisherige Vorlage – bleibt für dieses Gerät aktiv.'
+          : null,
         keywords: [t.model, t.family ?? '', t.familyLabel ?? '', t.communicationLabel ?? ''].join(
           ' ',
         ),
@@ -287,14 +308,16 @@ export function AnlegenFlow({
 
   const fields = felder(template);
   const gruppen = feldGruppen<TemplateField>(fields);
-  const fehlend = fehlendeFelder(template, verbindung);
   const kwpWert = kwp.trim() === '' ? null : Number(kwp);
   const kwpUngueltig = rolle === 'pv-generation'
     && kwpWert !== null
     && (!Number.isFinite(kwpWert) || kwpWert <= 0);
-  const testNoetig = edit ? brauchtVerbindungstest(edit, template, verbindung) : true;
+  const testNoetig = edit
+    ? brauchtVerbindungstest(edit, template, templateVersion, verbindung)
+    : true;
+  const fehlend = edit && !testNoetig ? [] : fehlendeFelder(template, verbindung);
   const aenderungen = edit && template && rolle
-    ? delta(edit, template, rolle, name, verbindung, kwp)
+    ? delta(edit, template, templateVersion, rolle, name, verbindung, kwp)
     : [];
   const einfachGeaendert = Boolean(edit && (
     (edit.label?.trim() || '') !== name.trim()
@@ -353,6 +376,7 @@ export function AnlegenFlow({
     setTyp(id);
     setRolle(vorschlagRolle(id, vorhandene));
     setTemplate(null);
+    setTemplateVersion(null);
     setSchritt(2);
   }
 
@@ -361,6 +385,7 @@ export function AnlegenFlow({
     if (!t) return;
     if (template?.templateRef === t.templateRef) return;
     setTemplate(t);
+    setTemplateVersion(t.version);
     const istBisherige = edit?.templateRef === t.templateRef;
     setVerbindung(istBisherige ? { ...(edit.connection ?? {}) } : initialeVerbindung(t));
     setSocVolt(socSchaetzung.leereEingabe());
@@ -396,7 +421,12 @@ export function AnlegenFlow({
   }
 
   function setzeFeld(field: TemplateField, value: unknown) {
-    setVerbindung((v) => ({ ...v, [field.key]: value }));
+    const normalized = normalisiereSecretEingabe(
+      field,
+      value,
+      edit?.connection?.[field.key],
+    );
+    setVerbindung((v) => ({ ...v, [field.key]: normalized }));
     // Jede Änderung entwertet den Beleg - genau das ist der Sinn der Pflicht.
     setTestZustand('ungeprueft');
     setTestText(null);
@@ -454,6 +484,7 @@ export function AnlegenFlow({
     try {
       const antwort = await api.testComponentConnection(siteId, {
         templateRef: template.templateRef,
+        templateVersion: templateVersion ?? undefined,
         role: rolle ?? undefined,
         connection: verbindungFuerSpeichern(template, verbindung),
         entityId: edit?.id,
@@ -507,6 +538,7 @@ export function AnlegenFlow({
     try {
       const body = {
         templateRef: template.templateRef,
+        templateVersion: templateVersion ?? undefined,
         label: edit ? name.trim() : (name.trim() || undefined),
         role: rolle,
         connection: verbindungFuerSpeichern(template, verbindung),
@@ -598,6 +630,7 @@ export function AnlegenFlow({
     setSchritt(1);
     setRolle(null);
     setTemplate(null);
+    setTemplateVersion(null);
     setVerbindung({});
     setSocVolt(socSchaetzung.leereEingabe());
     setSocAngeboten(false);

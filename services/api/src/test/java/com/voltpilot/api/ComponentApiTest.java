@@ -179,7 +179,7 @@ class ComponentApiTest {
 
         // Und der Schreibweg lehnt dort mit dem ehrlichen Grund ab, statt ein
         // Soll zu speichern, das die Box nie anwenden würde.
-        receipts.record(berlin, DEYE, deyeConnection());
+        receipts.record(berlin, DEYE, 1, deyeConnection());
         ResponseEntity<String> refused = post("/api/v1/sites/" + BERLIN_SITE + "/components",
                 customer, saveBody(DEYE, "inverter", deyeConnection()));
         assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
@@ -222,14 +222,14 @@ class ComponentApiTest {
             // Ein Beleg für eine ANDERE Verbindung zählt nicht.
             Map<String, Object> andere = new LinkedHashMap<>(conn);
             andere.put("ip", "192.168.0.99");
-            receipts.record(site, FRONIUS, andere);
+            receipts.record(site, FRONIUS, 1, andere);
             assertThat(post("/api/v1/sites/" + site + "/components", customer,
                     saveBody(FRONIUS, "pv-generation", conn)).getStatusCode())
                     .as("der Beleg hängt an GENAU dieser Verbindung")
                     .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
 
             // --- Anlegen --------------------------------------------------
-            receipts.record(site, FRONIUS, conn);
+            receipts.record(site, FRONIUS, 1, conn);
             ResponseEntity<String> created = post("/api/v1/sites/" + site + "/components",
                     customer, saveBody(FRONIUS, "pv-generation", conn));
             assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -262,7 +262,7 @@ class ComponentApiTest {
             // --- Ändern = eine neue Fassung, die alte bleibt ----------------
             Map<String, Object> neu = new LinkedHashMap<>(conn);
             neu.put("ip", "192.168.0.55");
-            receipts.record(site, FRONIUS, neu);
+            receipts.record(site, FRONIUS, 1, neu);
             Map<String, Object> edit = saveBody(FRONIUS, "pv-generation", neu);
             edit.put("expectedRevision", erzeuger.get("definitionVersion").asInt());
             ResponseEntity<String> updated = put(
@@ -324,13 +324,13 @@ class ComponentApiTest {
         UUID site = createSite(customer, "Netz-Regel-Anlage");
         try {
             Map<String, Object> c1 = Map.of("ip", "192.168.0.60", "port", 502, "unit_id", 3);
-            receipts.record(site, GENERIC, c1);
+            receipts.record(site, GENERIC, 1, c1);
             assertThat(post("/api/v1/sites/" + site + "/components", customer,
                     saveBody(GENERIC, "grid-meter", c1)).getStatusCode())
                     .isEqualTo(HttpStatus.OK);
 
             Map<String, Object> c2 = Map.of("ip", "192.168.0.61", "port", 502, "unit_id", 4);
-            receipts.record(site, GENERIC, c2);
+            receipts.record(site, GENERIC, 1, c2);
             ResponseEntity<String> second = post("/api/v1/sites/" + site + "/components",
                     customer, saveBody(GENERIC, "grid-meter", c2));
             assertThat(second.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
@@ -357,12 +357,12 @@ class ComponentApiTest {
         UUID site = createSite(customer, "Ablehnungs-Anlage");
         try {
             Map<String, Object> conn = Map.of("ip", "192.168.0.70");
-            receipts.record(site, "builtin:gibt:esnicht", conn);
+            receipts.record(site, "builtin:gibt:esnicht", 1, conn);
             assertThat(post("/api/v1/sites/" + site + "/components", customer,
                     saveBody("builtin:gibt:esnicht", "pv-generation", conn)).getStatusCode())
                     .isEqualTo(HttpStatus.BAD_REQUEST);
 
-            receipts.record(site, GENERIC, conn);
+            receipts.record(site, GENERIC, 1, conn);
             assertThat(post("/api/v1/sites/" + site + "/components", customer,
                     saveBody(GENERIC, "wallbox", conn)).getStatusCode())
                     .isEqualTo(HttpStatus.BAD_REQUEST);
@@ -385,7 +385,7 @@ class ComponentApiTest {
         try {
             claim(customer, site, "edge-template-mask-01");
             Map<String, Object> conn = deyeConnection();
-            receipts.record(site, FRONIUS, conn);
+            receipts.record(site, FRONIUS, 1, conn);
             ResponseEntity<String> created = post("/api/v1/sites/" + site + "/components",
                     customer, saveBody(FRONIUS, "pv-generation", conn));
             assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -472,7 +472,7 @@ class ComponentApiTest {
                 new HttpEntity<>(bearer(other)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
         // Auch MIT gültigem Beleg des fremden Mandanten - der Zaun ist die DB.
-        receipts.record(UUID.fromString(BERLIN_SITE), DEYE, conn);
+        receipts.record(UUID.fromString(BERLIN_SITE), DEYE, 1, conn);
         assertThat(post(base + "/components", other, saveBody(DEYE, "inverter", conn))
                 .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(post(base + "/component-test", other,
@@ -615,7 +615,7 @@ class ComponentApiTest {
 
             // 5 · Der WEG ZURUECK: ein vollstaendiger Test loescht die Ausnahme -
             // niemand muss ein Flag zuruecksetzen.
-            receipts.record(site, DEYE, conn);
+            receipts.record(site, DEYE, 1, conn);
             Map<String, Object> edit = saveBody(DEYE, "inverter", conn);
             edit.put("expectedRevision", row.get("definitionVersion").asInt());
             assertThat(put("/api/v1/sites/" + site + "/components/" + row.get("id").asText(),

@@ -1373,6 +1373,8 @@ export interface ComponentTemplate {
   brandLabel: string;
   model: string;
   modelLabel: string;
+  deviceType?: string | null;
+  supersededBy?: string | null;
   family?: string | null;
   familyLabel?: string | null;
   communication: string;
@@ -1421,6 +1423,7 @@ export interface ComponentDefinition {
 /** Was der Anlege-Assistent speichert. */
 export interface SaveComponentBody {
   templateRef: string;
+  templateVersion?: number;
   label?: string;
   role: string;
   connection: Record<string, unknown>;
@@ -3515,6 +3518,8 @@ export const api = {
    * Vorlage ist eine Aussage über ein PRODUKT.
    */
   componentTemplates: () => request<ComponentTemplate[]>('/api/v1/component-templates'),
+  componentTemplate: (templateRef: string) =>
+    request<ComponentTemplate>(`/api/v1/component-templates/${encodeURIComponent(templateRef)}`),
   /** Die Komponenten einer Anlage samt Autoritäts- und Soll/Ist-Stand (Stufe 1). */
   siteComponents: (siteId: string) =>
     request<SiteComponents>(`/api/v1/sites/${siteId}/components`),
@@ -3527,6 +3532,7 @@ export const api = {
     siteId: string,
     body: {
       templateRef: string;
+      templateVersion?: number;
       role?: string;
       connection: Record<string, unknown>;
       deviceId?: string;

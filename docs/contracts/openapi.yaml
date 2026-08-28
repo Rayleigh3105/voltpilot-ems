@@ -4741,6 +4741,10 @@ paths:
               required: [templateRef, connection]
               properties:
                 templateRef: { type: string }
+                templateVersion:
+                  type: integer
+                  minimum: 1
+                  description: Exact template definition tested; omitted only by legacy clients.
                 role: { type: string, enum: [inverter, pv-generation, grid-meter, consumer] }
                 connection:
                   type: object
@@ -7523,6 +7527,11 @@ components:
             The OPAQUE template key. Brand, model, family and the communication
             method are taken FROM the template, never from the body - a client
             cannot save an inconsistent connection.
+        templateVersion:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: Exact template definition to preserve or apply; omitted only by legacy clients.
         role: { type: string, enum: [inverter, pv-generation, grid-meter, consumer] }
         label: { type: string, nullable: true, maxLength: 200 }
         connection:

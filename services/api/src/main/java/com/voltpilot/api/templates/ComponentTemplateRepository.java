@@ -181,6 +181,18 @@ public class ComponentTemplateRepository {
                 }, ComponentTemplateRepository::map).stream().findFirst();
     }
 
+    public Optional<ComponentTemplateDto> findStoredExactByRef(Collection<String> kinds, String ref,
+            int version) {
+        return read.query("SELECT " + READ_COLUMNS + " FROM component_template "
+                        + "WHERE kind = ANY (?) AND template_ref = ? AND version = ?",
+                ps -> {
+                    ps.setArray(1, ps.getConnection()
+                            .createArrayOf("text", kinds.toArray(String[]::new)));
+                    ps.setString(2, ref);
+                    ps.setInt(3, version);
+                }, ComponentTemplateRepository::map).stream().findFirst();
+    }
+
     /**
      * Spiegelt eine eingebaute Vorlage in die Tabelle: anlegen oder AN ORT UND
      * STELLE auffrischen.

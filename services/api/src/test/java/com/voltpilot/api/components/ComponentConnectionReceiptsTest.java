@@ -80,6 +80,16 @@ class ComponentConnectionReceiptsTest {
         assertThat(receipts.evidence(SITE, REF, other)).isNull();
     }
 
+    @Test
+    void aReceiptIsBoundToTheExactTemplateVersion() {
+        ComponentConnectionReceipts receipts = new ComponentConnectionReceipts(new Tick());
+        receipts.record(SITE, REF, 1, FIELDS);
+
+        assertThat(receipts.has(SITE, REF, 1, FIELDS)).isTrue();
+        assertThat(receipts.has(SITE, REF, 2, FIELDS)).isFalse();
+        assertThat(receipts.has(SITE, REF, FIELDS)).isFalse();
+    }
+
     /**
      * Der HALBE Beleg (Live-Fall Muehlfeldweg 2, 21.08.2026): das Geraet hat
      * geantwortet, aber EIN Kanal fehlt nachweislich. Er nennt den Kanal - das
