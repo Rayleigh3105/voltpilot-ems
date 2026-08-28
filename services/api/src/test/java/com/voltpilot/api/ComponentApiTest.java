@@ -537,7 +537,7 @@ class ComponentApiTest {
             // Der HALBE Beleg entsteht serverseitig aus dem Testergebnis der Box
             // (hier direkt hinterlegt - der Probe-Kanal selbst hat seine eigenen
             // Tests); der Client kann ihn nicht behaupten.
-            receipts.recordOverridable(site, DEYE, conn, "soc_pct");
+            receipts.recordOverridable(site, DEYE, 1, conn, "soc_pct");
 
             // 1 · Ohne ausdrueckliche Zustimmung wird NICHTS gespeichert.
             ResponseEntity<String> ohne = post("/api/v1/sites/" + site + "/components",
@@ -678,7 +678,7 @@ class ComponentApiTest {
             //     Schaetzung ersetzt die Ausnahme nicht, sie ergaenzt sie.
             Map<String, Object> conn = deyeConnection();
             conn.put("soc_from_voltage", Map.of("v_empty", 600, "v_full", 700));
-            receipts.recordOverridable(site, DEYE, conn, "soc_pct");
+            receipts.recordOverridable(site, DEYE, 1, conn, "soc_pct");
             assertThat(post("/api/v1/sites/" + site + "/components", customer,
                     saveBody(DEYE, "inverter", conn)).getStatusCode())
                     .as("ohne Zustimmung wird auch mit Schaetzung nichts gespeichert")
