@@ -367,6 +367,26 @@ describe('slotWhy (per-slot customer sentence)', () => {
     );
   });
 
+  it('erklärt einen bewusst zugelassenen Netzbezug mit den zwei getrennten Preiswahrheiten', () => {
+    const sentence = slotWhy(
+      {
+        ...base,
+        slotRole: 'warten',
+        unplannedLoadDischarge: false,
+        priceEurMwh: 106,
+        importPriceCtKwh: 29.4,
+        importPriceSource: 'preisblatt',
+        storedValueCtKwh: 31.2,
+      },
+      'direktvermarktung',
+    );
+    expect(sentence).toContain('späteren, wertvolleren Einsatz');
+    expect(sentence).toContain('Netzbezug wird dabei mit 29,4 ct/kWh');
+    expect(sentence).toContain('Börsenpreis 10,6 + Netzentgelte/Abgaben 18,8');
+    expect(sentence).toContain('gespeicherte Energie für ihren späteren Einsatz mit ≈ 31,2 ct/kWh');
+    expect(sentence).toContain('Netzbezug in dieser Viertelstunde deshalb bewusst zugelassen');
+  });
+
   it('reserve_halten names the reserve owner from the flags', () => {
     expect(
       slotWhy({ ...base, slotRole: 'reserve_halten', slotFlags: ['reserve_backup'] }, 'eigenverbrauch'),

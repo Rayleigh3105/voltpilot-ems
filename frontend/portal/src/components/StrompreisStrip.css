@@ -71,8 +71,42 @@
 }
 
 .vp-sp-bezug {
-  margin: 0 0 6px;
-  font-size: 0.86rem;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  min-width: 0;
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  border-left: 3px solid var(--vp-action, #2c5282);
+  border-radius: var(--vp-radius-sm, 6px);
+  background: var(--vp-bg-subtle, #f1f3f5);
+  font-size: 0.82rem;
+}
+.vp-sp-bezug.is-warning {
+  border-left-color: var(--vp-warn-ink, #b45309);
+  background: var(--vp-warning-soft, #fff7ed);
+}
+.vp-sp-bezug-main {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 6px;
+  min-width: 0;
+}
+.vp-sp-bezug-main b {
+  font-size: 0.94rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-sp-bezug-detail {
+  color: var(--vp-text-muted, #667);
+  overflow-wrap: anywhere;
+}
+.vp-sp-bezug-warning {
+  color: var(--vp-warn-ink, #b45309);
+  font-weight: 650;
+  overflow-wrap: anywhere;
 }
 
 /* Kurve: die viewBox IST die gemessene Pixelbreite (K11), es wird also nichts

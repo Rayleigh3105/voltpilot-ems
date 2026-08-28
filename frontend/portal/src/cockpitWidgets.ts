@@ -55,7 +55,13 @@ import {
   type EigenverbrauchBlockView,
   type HandelBlockView,
 } from './cockpit';
-import { DASH, erloesKomposition, steeringAttributionNote } from './erloesKomposition';
+import {
+  DASH,
+  bestandZeile,
+  erloesKomposition,
+  steeringAttributionNote,
+  type BestandZeile,
+} from './erloesKomposition';
 import { eurAmount, fmtNum } from './format';
 import type { PeakBandView } from './peakBand';
 import { planSentence, type PlanWordingKind } from './schedule';
@@ -233,7 +239,12 @@ function handelWidget(input: CockpitWidgetsInput): WidgetBase | null {
     periodLabel: periodLabel(input.range, input.at ?? input.now, input.now),
   });
   if (view.isEmpty) return null;
-  const first = view.tiles[0];
+  // `savedEur` already lives as attribution directly below the hero total.
+  // Repeating the same interim amount as a large "Handel" KPI made a running
+  // day's negative cash-flow look like a second, final loss. The widget keeps
+  // its useful plan shortcut, but now leads with the next actual trade window.
+  const first = view.tiles.find((tile) => !tile.label.startsWith('Durch Steuerung ·'));
+  if (!first) return null;
   return {
     id: 'handel',
     label: 'Handel',
@@ -309,6 +320,10 @@ export interface HeroMoney {
   value: string;
   /** „davon X € durch VoltPilots Steuerung"; null = keine Zurechnung. */
   attribution: string | null;
+  /** true = the selected earnings window is still running. */
+  attributionInterim?: boolean;
+  /** Measured battery inventory, valued by the plan and NEVER added to cash. */
+  bestand?: BestandZeile | null;
 }
 
 export interface CockpitHeroView {
@@ -404,13 +419,24 @@ export function cockpitHero(input: {
   }
 
   const total = num(input.money?.gesamtertragEur) ?? num(input.money?.einspeiseErloesEur);
+  const periodEnd = input.money?.to ? new Date(input.money.to).getTime() : NaN;
+  const running = Number.isFinite(periodEnd) && periodEnd > input.now.getTime();
+  const saved = num(input.money?.savedEur);
+  const attribution =
+    saved == null || Math.abs(saved) < 0.005
+      ? null
+      : running
+        ? `Zwischenstand Steuerung: ${saved > 0 ? '+' : '−'}${eurAmount(Math.abs(saved))} bisher`
+        : steeringAttributionNote(saved);
   const money: HeroMoney | null =
     total == null
       ? null
       : {
           label: `Verdient · ${label}`,
           value: eurAmount(total),
-          attribution: steeringAttributionNote(input.money?.savedEur),
+          attribution,
+          attributionInterim: running && attribution != null,
+          bestand: bestandZeile(input.money, input.now),
         };
 
   return {
@@ -559,6 +585,10 @@ export function preisZeile(input: {
   urteilLabel: string | null;
   /** „Ihr Bezugspreis jetzt: 32,5 ct/kWh" — der Wert; null = kein Tarif. */
   bezug?: string | null;
+  /** Server-backed breakdown of the import price. */
+  bezugDetail?: string | null;
+  /** Visible warning when imports are only valued at bare spot. */
+  tarifWarnung?: string | null;
   /** „Tageshoch 13,6 ct (19:45)"; null = flacher Tag. */
   hoch?: string | null;
 }): MobileRow | null {
@@ -567,9 +597,19 @@ export function preisZeile(input: {
     ? `Börsenpreis ${input.jetztWert} · ${input.urteilLabel}`
     : `Börsenpreis ${input.jetztWert}`;
   const parts: string[] = [];
-  if (input.bezug) parts.push(`Ihr Bezugspreis jetzt ${input.bezug}`);
+  if (input.bezug) {
+    const detail = input.bezugDetail ? ` ${input.bezugDetail}` : '';
+    parts.push(`Ihr Bezugspreis jetzt ${input.bezug}${detail}`);
+  }
+  if (input.tarifWarnung) parts.push(input.tarifWarnung);
   if (input.hoch) parts.push(input.hoch);
-  return { head, sub: parts.length > 0 ? parts.join(' · ') : null };
+  // These are complete facts, not a tag cloud. Sentence punctuation keeps a
+  // wrapped mobile line from beginning with a stranded middle dot.
+  const sub =
+    parts.length > 0
+      ? `${parts.map((part) => part.replace(/[.\s]+$/, '')).join('. ')}.`
+      : null;
+  return { head, sub };
 }
 
 /** Die geschrumpfte Kopfzeile beim Scrollen (Konzept: die zwei Anker). */

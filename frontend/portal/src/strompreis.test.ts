@@ -3,6 +3,7 @@ import type { PricePoint } from './api';
 import type { WhySlot } from './fahrplanWhy';
 import type { ActiveMode } from './surface';
 import {
+  bezugspreisKontext,
   bezugspreisJetzt,
   FLACH_SPANNE_CT,
   gateStrompreis,
@@ -10,6 +11,7 @@ import {
   LEER_TEXT,
   MORGEN_NOTE,
   PRAEMIE_RUHT,
+  TARIF_FEHLT_NOTE,
   planKopplung,
   praemieRuhtNote,
   preisUrteil,
@@ -228,6 +230,20 @@ describe('planKopplung (die Fahrplan-Zeile des Streifens)', () => {
     expect(k?.post).toBeNull();
   });
 
+  it('vereinigt bei DV Verbrauchsdeckung und anschließenden Überschussverkauf', () => {
+    const slots = planOf(DAY(12), [
+      'warten',
+      'warten',
+      'warten',
+      'eigenverbrauch',
+      'eigenverbrauch',
+      'verkaufen',
+      'verkaufen',
+    ]);
+    const k = planKopplung(slots, now, 15, 'direktvermarktung', false);
+    expect(k?.action).toBe('Speicher nutzen: Verbrauch decken und Überschuss verkaufen');
+  });
+
   it('Ruhe ohne spätere Aktion: „Jetzt Ruhe — noch bis HH:MM"', () => {
     const slots = planOf(DAY(12), ['warten', 'warten', 'warten']);
     const k = planKopplung(slots, now, 15, 'direktvermarktung', false);
@@ -267,13 +283,36 @@ describe('bezugspreisJetzt (D3: die eine Preis-Wahrheit, nie nachgerechnet)', ()
   it('dynamischer Tarif + Slot-Wert → „32,5 ct/kWh"', () => {
     expect(bezugspreisJetzt('dynamisch', { importPriceCtKwh: 32.5 })).toBe('32,5 ct/kWh');
   });
-  it('fest/ohne Tarif → keine Zeile (ein flacher Wert wäre Rauschen)', () => {
-    expect(bezugspreisJetzt('fest', { importPriceCtKwh: 32.5 })).toBeNull();
-    expect(bezugspreisJetzt('ohne', { importPriceCtKwh: 32.5 })).toBeNull();
+  it('zeigt auch Festpreis und Spot-Fallback — eine bezogene kWh hat immer einen Preis', () => {
+    expect(bezugspreisJetzt('fest', { importPriceCtKwh: 32.5, importPriceSource: 'fest' })).toBe('32,5 ct/kWh');
+    expect(bezugspreisJetzt('ohne', { importPriceCtKwh: 10.6, importPriceSource: 'spot' })).toBe('10,6 ct/kWh');
   });
   it('älterer Lauf ohne Wert → wortlos keine Zeile', () => {
     expect(bezugspreisJetzt('dynamisch', { importPriceCtKwh: null })).toBeNull();
     expect(bezugspreisJetzt('dynamisch', null)).toBeNull();
+  });
+
+  it('trennt Bezugspreis, Aufschlüsselung und fehlenden Tarif sichtbar', () => {
+    expect(
+      bezugspreisKontext('dynamisch', {
+        start: DAY(12).toISOString(),
+        priceEurMwh: 106,
+        importPriceCtKwh: 29.4,
+        importPriceSource: 'preisblatt',
+      }),
+    ).toEqual({
+      wert: '29,4 ct/kWh',
+      detail: '(Börsenpreis 10,6 + Netzentgelte/Abgaben 18,8)',
+      warning: null,
+    });
+    expect(
+      bezugspreisKontext('ohne', {
+        start: DAY(12).toISOString(),
+        priceEurMwh: 106,
+        importPriceCtKwh: 10.6,
+        importPriceSource: 'spot',
+      }),
+    ).toEqual({ wert: '10,6 ct/kWh', detail: null, warning: TARIF_FEHLT_NOTE });
   });
 });
 

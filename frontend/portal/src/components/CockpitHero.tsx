@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { SiteEntity, SiteSource, SiteTopology } from '../api';
@@ -196,7 +197,21 @@ export function CockpitHero({
               <span className="vp-hero-money-value">{view.money.value}</span>
               {/* Zurechnung IMMER als Unterzeile, nie als eigener Summand. */}
               {view.money.attribution && (
-                <span className="vp-hero-money-attr">{view.money.attribution}</span>
+                <span
+                  className={`vp-hero-money-attr${view.money.attributionInterim ? ' is-interim' : ''}`}
+                >
+                  {view.money.attribution}
+                </span>
+              )}
+              {view.money.bestand && (
+                <span className="vp-hero-money-bestand" title={view.money.bestand.titel ?? undefined}>
+                  <span>{view.money.bestand.text}</span>
+                  {view.money.bestand.badge && (
+                    <Badge variant="tint" className="vp-hero-money-bestand-badge">
+                      {view.money.bestand.badge}
+                    </Badge>
+                  )}
+                </span>
               )}
             </div>
           )}

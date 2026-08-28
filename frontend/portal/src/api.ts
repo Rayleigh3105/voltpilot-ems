@@ -2567,6 +2567,18 @@ export interface CockpitMoney {
   anzulegenderWertCtKwh: number | null;
   firstCoveredDate: string | null;
   peakShaving?: PeakShaving | null;
+  /**
+   * Optional period facts of the site-scoped earnings endpoint. They let the
+   * cockpit distinguish a RUNNING cash-flow interim result from a completed
+   * result and show the separately valued battery inventory next to it.
+   * Fleet rows legitimately omit them.
+   */
+  range?: string | null;
+  to?: string | null;
+  speicherDeltaKwh?: number | null;
+  speicherWertCtKwh?: number | null;
+  speicherWertEur?: number | null;
+  speicherWertBasis?: string | null;
 }
 
 export interface EarningsSite extends CockpitMoney {

@@ -1023,6 +1023,21 @@ export function slotWhy(
         return 'Der Speicher hält Ladung als Reserve für die Lastspitzenkappung zurück.';
       return 'Der Speicher hält Ladung als Reserve zurück.';
     case 'warten':
+      if (slot.unplannedLoadDischarge === false) {
+        const imp = importCt(slot);
+        const importSentence =
+          imp == null
+            ? ''
+            : ` Ihr Netzbezug wird dabei mit ${importPricePhrase(slot, imp)} bewertet.`;
+        const valueSentence =
+          lam == null
+            ? ''
+            : ` Der Fahrplan bewertet die gespeicherte Energie für ihren späteren Einsatz mit ≈ ${ctFmt(lam)}.`;
+        return (
+          `Der Speicher hält Energie für einen späteren, wertvolleren Einsatz zurück.${importSentence}` +
+          `${valueSentence} Falls Ihre PV nicht reicht, ist Netzbezug in dieser Viertelstunde deshalb bewusst zugelassen.`
+        );
+      }
       if (flags.includes('soc_max'))
         return 'Der Speicher ist voll. Er entlädt wieder, sobald es sich lohnt – meist am Abend, wenn der Strompreis steigt.';
       if (flags.includes('soc_floor'))

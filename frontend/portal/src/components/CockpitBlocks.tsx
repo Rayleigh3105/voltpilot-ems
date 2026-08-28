@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { AnlagenSub } from '../nav';
@@ -203,7 +204,21 @@ export function MobileMoneyCard({
         {periodSeg && <span className="vp-mob-money-seg">{periodSeg}</span>}
       </div>
       {view.money?.attribution && (
-        <span className="vp-mob-money-attr">{view.money.attribution}</span>
+        <span
+          className={`vp-mob-money-attr${view.money.attributionInterim ? ' is-interim' : ''}`}
+        >
+          {view.money.attribution}
+        </span>
+      )}
+      {view.money?.bestand && (
+        <span className="vp-mob-money-bestand" title={view.money.bestand.titel ?? undefined}>
+          <span>{view.money.bestand.text}</span>
+          {view.money.bestand.badge && (
+            <Badge variant="tint" className="vp-mob-money-bestand-badge">
+              {view.money.bestand.badge}
+            </Badge>
+          )}
+        </span>
       )}
       {chips.length > 0 ? (
         <div className="vp-mob-chips">

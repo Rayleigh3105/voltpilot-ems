@@ -48,6 +48,7 @@ import { phases, type SlotRole, type WhySlot } from './fahrplanWhy';
 import { ctPerKwh } from './format';
 import { preisFenster, type FensterArt } from './preisFenster';
 import type { PlanWordingKind } from './schedule';
+import { bezugspreisVorschau, type PreisSlot } from './settingsSurface';
 import { hasMode, type ActiveMode } from './surface';
 
 // ---------------------------------------------------------------------------
@@ -349,9 +350,15 @@ export function planKopplung(
     const nextIdx = ph.findIndex((p, i) => i > activeIdx && p.kind !== 'idle');
     if (nextIdx >= 0) {
       const next = ph[nextIdx];
+      const usesThenSells =
+        kind === 'direktvermarktung' &&
+        next.role === 'eigenverbrauch' &&
+        ph.some((p, i) => i > nextIdx && p.role === 'verkaufen');
       return {
         pre: `Ruhe — ab ${hm(next.from)} `,
-        action: filmLabel(next.role as SlotRole, kind, flagsOf(nextIdx)),
+        action: usesThenSells
+          ? 'Speicher nutzen: Verbrauch decken und Überschuss verkaufen'
+          : filmLabel(next.role as SlotRole, kind, flagsOf(nextIdx)),
         post: null,
       };
     }
@@ -373,19 +380,49 @@ export function planKopplung(
 // Zweitzeile + Notizen
 // ---------------------------------------------------------------------------
 
+/** Visible warning when a plan has to value imports without a customer tariff. */
+export const TARIF_FEHLT_NOTE =
+  'Stromtarif fehlt – Netzbezug wird im Fahrplan derzeit nur mit dem Börsenpreis bewertet.';
+
+/** The two explicitly labelled price truths shown together in the cockpit. */
+export interface BezugspreisKontext {
+  /** Full import price used by the optimizer, already formatted. */
+  wert: string | null;
+  /** Server-backed breakdown, e.g. spot + charges; null when unknown. */
+  detail: string | null;
+  /** A visible fallback warning; null when the tariff is properly priced. */
+  warning: string | null;
+}
+
 /**
- * D3: der Bezugspreis des laufenden Slots für dynamische Tarife — die eine
- * serverseitige Preis-Wahrheit (`importPriceCtKwh`), nie client-seitig
- * nachgerechnet. Null (kein dynamischer Tarif / älterer Lauf) = keine Zeile.
+ * Full import-price context of the running slot. There is deliberately no
+ * client-side price calculation: `bezugspreisVorschau` only reads the
+ * optimizer's persisted `importPriceCtKwh` and its source.
+ */
+export function bezugspreisKontext(
+  tarifArt: TarifArt | null | undefined,
+  activeSlot: PreisSlot | null | undefined,
+): BezugspreisKontext | null {
+  const view = bezugspreisVorschau(activeSlot ?? null);
+  const fallback = tarifArt == null || tarifArt === 'ohne' || activeSlot?.importPriceSource === 'spot';
+  if (!view && !fallback) return null;
+  return {
+    wert: view == null ? null : `${ct1(view.wert)} ct/kWh`,
+    detail: fallback ? null : view?.aufschluesselung ?? null,
+    warning: fallback ? TARIF_FEHLT_NOTE : null,
+  };
+}
+
+/**
+ * Backward-compatible value-only helper. Unlike the former dynamic-only
+ * version it also surfaces a fixed/fallback price on market-mode sites: a
+ * grid kWh has a cost regardless of tariff kind.
  */
 export function bezugspreisJetzt(
   tarifArt: TarifArt | null | undefined,
-  activeSlot: { importPriceCtKwh?: number | null } | null | undefined,
+  activeSlot: PreisSlot | null | undefined,
 ): string | null {
-  if (tarifArt !== 'dynamisch') return null;
-  const v = activeSlot?.importPriceCtKwh;
-  if (v == null) return null;
-  return `${ct1(Number(v))} ct/kWh`;
+  return bezugspreisKontext(tarifArt, activeSlot)?.wert ?? null;
 }
 
 /**

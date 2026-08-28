@@ -1447,6 +1447,9 @@ interface PlanRun {
    * VERKAUFT — siehe {@link netExports}.
    */
   gridNetEnergy: number;
+  /** At least one discharge slot really exports / does not export. */
+  hasExportSlot: boolean;
+  hasNonExportSlot: boolean;
 }
 
 /**
@@ -1504,9 +1507,11 @@ export function planSentence(
   // nichts. Eigenverbrauch sagt unverändert „nutzen".
   const verb =
     kind === 'direktvermarktung'
-      ? discharge && netExports(discharge)
-        ? 'verkaufen'
-        : 'den Verbrauch decken'
+      ? discharge?.hasExportSlot && discharge.hasNonExportSlot
+        ? 'den Verbrauch decken und Überschuss verkaufen'
+        : discharge && netExports(discharge)
+          ? 'verkaufen'
+          : 'den Verbrauch decken'
       : 'nutzen';
 
   if (charge && discharge) {
@@ -1559,10 +1564,15 @@ function planRuns(sorted: PlanSlotLike[], slotMinutes: number): PlanRun[] {
     // geplanten Netzwert zählt 0 - er behauptet weder Bezug noch Einspeisung.
     const gridKw = s.gridKw == null || !Number.isFinite(s.gridKw) ? 0 : Number(s.gridKw);
     const gridNet = (gridKw * slotMinutes) / 60;
+    const gridKnown = s.gridKw != null && Number.isFinite(s.gridKw);
+    const exports = dir === 'entladen' && gridKnown && gridKw < -0.05;
+    const doesNotExport = dir === 'entladen' && gridKnown && gridKw >= -0.05;
     if (current && current.dir === dir && start.getTime() - current.to.getTime() <= maxGapMs) {
       current.to = end;
       current.energy += energy;
       current.gridNetEnergy += gridNet;
+      current.hasExportSlot ||= exports;
+      current.hasNonExportSlot ||= doesNotExport;
       if (k === 'netzladen') current.gridEnergy += energy;
     } else {
       current = {
@@ -1572,6 +1582,8 @@ function planRuns(sorted: PlanSlotLike[], slotMinutes: number): PlanRun[] {
         energy,
         gridEnergy: k === 'netzladen' ? energy : 0,
         gridNetEnergy: gridNet,
+        hasExportSlot: exports,
+        hasNonExportSlot: doesNotExport,
       };
       runs.push(current);
     }

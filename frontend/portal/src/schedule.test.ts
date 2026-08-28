@@ -436,6 +436,13 @@ describe('planSentence', () => {
     );
   });
 
+  it('DV: nennt Lastdeckung und Verkauf gemeinsam, wenn ein Entladefenster beides tut', () => {
+    const slots = [...hours(19, 20, -5, 1), ...hours(20, 21, -5, -4)];
+    expect(planSentence(slots, 'direktvermarktung', NOW)).toBe(
+      'Abends den Verbrauch decken und Überschuss verkaufen (19–21 Uhr).',
+    );
+  });
+
   it('picks the DOMINANT window by energy, not the first one', () => {
     const slots = [
       ...hours(7, 8, -1, 0), // small morning discharge

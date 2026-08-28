@@ -108,6 +108,29 @@ describe('Die Bilanz-Leiste', () => {
     expect(container.querySelector('.vp-cockpit-hero.vp-stage-norail')).toBeNull();
   });
 
+  it('rendert laufenden Geldfluss und geplanten Speicherbestand als zwei getrennte Zeilen', () => {
+    const { container } = renderStage(
+      pilstingView({
+        money: {
+          label: 'Verdient · Heute',
+          value: '39,26 €',
+          attribution: 'Zwischenstand Steuerung: −2,84 € bisher',
+          attributionInterim: true,
+          bestand: {
+            text: 'dazu 44,2 kWh im Speicher für später — nach dem Plan ≈ +8,35 €',
+            badge: 'Geplant',
+            titel: 'Die Kilowattstunden sind gemessen, der Betrag ist geplant.',
+            deltaKwh: 44.2,
+            wertEur: 8.35,
+          },
+        },
+      }),
+    );
+    expect(container.querySelector('.vp-hero-money-attr.is-interim')?.textContent).toContain('−2,84');
+    expect(container.querySelector('.vp-hero-money-bestand')?.textContent).toContain('44,2 kWh');
+    expect(container.querySelector('.vp-hero-money-bestand-badge')?.textContent).toBe('Geplant');
+  });
+
   it('Haushalt: ohne Zeitraum-Segment bleibt die Leiste voll (Ringe führen)', () => {
     // Ein Eigenverbrauchs-Haushalt hat keinen zeitraum-bezogenen Geld-Modus →
     // kein Segment. Es entsteht KEIN leerer Rahmen, die Leiste trägt den Rest.

@@ -6,7 +6,7 @@ import { chartTheme } from '../chartTheme';
 import { PROVENIENZ } from '../historieWelten';
 import type { PlanWordingKind } from '../schedule';
 import {
-  bezugspreisJetzt,
+  bezugspreisKontext,
   KOPPLUNG_PREFIX,
   kurveBeschreibung,
   LEER_TEXT,
@@ -121,7 +121,7 @@ export function StrompreisStrip({
 
   if (view == null) return null;
 
-  const bezug = bezugspreisJetzt(tarifArt, activeSlot);
+  const bezug = bezugspreisKontext(tarifArt, activeSlot);
   const praemie = praemieRuhtNote(view.urteil, isDv);
   const fenster = streifenFenster(view);
 
@@ -130,7 +130,9 @@ export function StrompreisStrip({
     const row = preisZeile({
       jetztWert: view.jetztWert,
       urteilLabel: view.urteilLabel,
-      bezug,
+      bezug: bezug?.wert ?? null,
+      bezugDetail: bezug?.detail ?? null,
+      tarifWarnung: bezug?.warning ?? null,
       hoch: view.anker?.hoch ?? null,
     });
     if (!row) return null;
@@ -162,9 +164,16 @@ export function StrompreisStrip({
             </div>
           )}
           {bezug != null && (
-            <p className="vp-sp-bezug">
-              Ihr Bezugspreis jetzt: <b>{bezug}</b>
-            </p>
+            <div className={`vp-sp-bezug${bezug.warning ? ' is-warning' : ''}`}>
+              {bezug.wert != null && (
+                <span className="vp-sp-bezug-main">
+                  <span>Ihr Bezugspreis jetzt:</span>
+                  <b>{bezug.wert}</b>
+                  {bezug.detail && <span className="vp-sp-bezug-detail">{bezug.detail}</span>}
+                </span>
+              )}
+              {bezug.warning && <span className="vp-sp-bezug-warning">{bezug.warning}</span>}
+            </div>
           )}
           <Kurve view={view} />
           {/* K10: eine Hinterlegung ohne Wort ist ein Rätsel - die zwei

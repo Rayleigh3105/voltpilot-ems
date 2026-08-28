@@ -214,7 +214,16 @@ describe('Das Widget-Raster folgt der Projektion', () => {
   it('Multi: alle Modus-Kacheln, Automatik inklusive', () => {
     const set = ids(MULTI);
     expect(set).toContain('automatik');
-    expect(set).toContain('handel');
+    // Ohne ein echtes Handelsfenster wäre die Kachel nur die zweite Kopie der
+    // `savedEur`-Unterzeile im Hero. Sie entfällt deshalb.
+    expect(set).not.toContain('handel');
+    expect(
+      ids(MULTI, {
+        slots: [
+          { start: '2026-07-22T19:00:00+02:00', batteryKw: -4, gridKw: -4, pvKw: 0, priceEurMwh: 220 },
+        ],
+      }),
+    ).toContain('handel');
   });
 
   it('Leer (nie migriert): das Raster ist leer — keine einzige Platzhalter-Kachel', () => {
@@ -242,7 +251,13 @@ describe('Ehrlichkeit: weglassen statt 0', () => {
   });
 
   it('jede Kachel trägt ihr Absprung-Ziel — auf ihre Seite (kein Modal)', () => {
-    const w = cockpitWidgets(build(MULTI));
+    const w = cockpitWidgets(
+      build(MULTI, {
+        slots: [
+          { start: '2026-07-22T19:00:00+02:00', batteryKw: -4, gridKw: -4, pvKw: 0, priceEurMwh: 220 },
+        ],
+      }),
+    );
     const target = (id: WidgetId) => w.find((x) => x.id === id)?.target;
     expect(target('erloes')).toEqual({ kind: 'sub', sub: 'erloese' });
     expect(target('handel')).toEqual({ kind: 'sub', sub: 'fahrplan' });
@@ -288,6 +303,29 @@ describe('Der Hero', () => {
     expect(hero.money?.attribution).toContain('durch VoltPilots Steuerung');
     // Die Zurechnung wird NICHT zur Summe addiert.
     expect(hero.money?.value).not.toContain('20');
+  });
+
+  it('zeigt am laufenden Tag den negativen Geldfluss als Zwischenstand plus geplanten Bestand', () => {
+    const hero = cockpitHero({
+      totals: TOTALS,
+      money: money({
+        savedEur: -2.84,
+        range: 'day',
+        to: '2026-07-23T00:00:00+02:00',
+        speicherDeltaKwh: 44.2,
+        speicherWertCtKwh: 18.9,
+        speicherWertEur: 8.3538,
+        speicherWertBasis: 'plan',
+      }),
+      range: 'day',
+      now: NOW,
+    });
+    expect(hero.money?.attribution).toBe(`Zwischenstand Steuerung: −2,84${NBSP}€ bisher`);
+    expect(hero.money?.attributionInterim).toBe(true);
+    expect(hero.money?.bestand?.text).toContain('im Speicher für später');
+    expect(hero.money?.bestand?.badge).toBe('Geplant');
+    // Der geplante Bestand bleibt daneben und verändert die gemessene Summe nie.
+    expect(hero.money?.value).toBe(`17,00${NBSP}€`);
   });
 
   it('nennt keine Fahrplan-Zeile ohne Plan', () => {
@@ -449,11 +487,12 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung des Cockpits', () => {
         jetztWert: '−2,0 ct/kWh',
         urteilLabel: 'Negativpreis',
         bezug: '18,4 ct/kWh',
+        bezugDetail: '(Börsenpreis −2,0 + Netzentgelte/Abgaben 20,4)',
         hoch: 'Tageshoch 15,0 ct (19:15)',
       });
       expect(row).toEqual({
         head: 'Börsenpreis −2,0 ct/kWh · Negativpreis',
-        sub: 'Ihr Bezugspreis jetzt 18,4 ct/kWh · Tageshoch 15,0 ct (19:15)',
+        sub: 'Ihr Bezugspreis jetzt 18,4 ct/kWh (Börsenpreis −2,0 + Netzentgelte/Abgaben 20,4). Tageshoch 15,0 ct (19:15).',
       });
     });
 

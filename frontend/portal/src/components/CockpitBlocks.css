@@ -516,6 +516,33 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.vp-hero-money-attr.is-interim,
+.vp-mob-money-attr.is-interim {
+  color: var(--vp-text, #0f172a);
+  font-weight: 700;
+}
+.vp-hero-money-bestand,
+.vp-mob-money-bestand {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 5px 7px;
+  min-width: 0;
+  margin-top: 5px;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--vp-text-gray, #718096);
+}
+.vp-hero-money-bestand > span:first-child,
+.vp-mob-money-bestand > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-hero-money-bestand-badge,
+.vp-mob-money-bestand-badge {
+  flex: 0 0 auto;
+  padding: 0.22rem 0.5rem !important;
+}
 
 .vp-hero-plan {
   display: flex;
@@ -736,6 +763,9 @@
   margin: 2px 0 0;
   font-size: 0.82rem;
   color: var(--vp-text-muted, #64748b);
+}
+.vp-mob-money-bestand {
+  font-size: 0.8rem;
 }
 
 .vp-mob-chips {
