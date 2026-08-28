@@ -61,9 +61,11 @@ grid; in EEG mode (only PV may charge) the slot entry is ``export_value_t``
 where the slot has PV surplus (a refill is on offer, its cost the forgone
 feed-in) and ``import_price_t`` where it has none (nothing to refill from -
 the stored kWh serves the house, worth the avoided import; S2, scout
-``vp-nacht-bezug-e7``) - then scaled down by any free PV refill the horizon
-already offers, and finally held strictly below the best in-horizon use value
-by ``TERMINAL_VALUE_MARGIN_EUR_PER_KWH``.
+``vp-nacht-bezug-e7``), and finally held strictly below the best in-horizon use
+value by ``TERMINAL_VALUE_MARGIN_EUR_PER_KWH``. Free PV refill POTENTIAL is
+still derived for explanation, but since the Pilsting 28.08.2026 fix it never
+discounts ``V_end``: assuming forecast surplus was already stored made it
+worthless and caused the optimizer to curtail that same surplus.
 
 Anchoring on the best USE (``max(import_t, export_t)``) was the original
 formulation and it was wrong: a flat retail tariff makes ``import_t`` constant

@@ -6,11 +6,13 @@ because no PV surplus meant nothing could charge, hence nothing was allowed to
 discharge) and forced merchant plans into uneconomic end-of-horizon buy-backs.
 P3 replaces it with an objective credit ``V_end * (soc_T - soc_0)``.
 
-These tests pin the three behavioral results the redesign demands:
+These tests pin the four behavioral results the redesign demands:
 1. the F3 scenario now DISCHARGES into the evening peak,
 2. a horizon-end dump for a trivial gain is still avoided (V_end holds it -
    proven by the contrast with an explicit V_end = 0, which dumps),
 3. a merchant end-state is no longer forced into a buy-back,
+4. forecast free-refill POTENTIAL never erases the value that makes the plan
+   actually store it across a 24-hour horizon edge,
 plus the V_end derivation itself (quantile anchor, wear/eta discount, zero
 floor, env override/validation). Solver tests need the HiGHS wheel.
 """
@@ -410,15 +412,18 @@ def test_symmetric_spot_pricing_is_unchanged_by_the_replacement_anchor(monkeypat
         )
 
 
-def test_free_pv_refill_scales_the_value_to_zero(monkeypatch):
-    """A plant whose horizon offers enough zero/negative-priced PV surplus to
-    refill the whole usable band carries NO scarcity value in stored energy -
-    it will be full again for free. This is the "tomorrow's PV refills it"
-    truth that must stop a full battery sitting through an evening peak."""
+def test_free_pv_refill_is_reported_without_erasing_terminal_value(monkeypatch):
+    """Forecast refill potential is an EXPLANATION, not stored energy.
+
+    The former proportional discount made this statement circular: enough
+    forecast free PV zeroed ``V_end``, after which the optimizer preferred to
+    curtail that very PV and ended empty. The replacement-cost anchor must stay
+    intact; only actual charge in the SoC path can realize the refill.
+    """
     monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
     # Ten zero-priced slots, then a dear rest. The 30th percentile lands on
     # 150 (only ten zeros), and the 300 peak keeps the dispersion guard clear
-    # of the anchor, so the free-PV cap is the only thing under test.
+    # of the anchor, so the refill diagnostic is the only varying fact.
     prices = [0.0] * 10 + [150.0] * 76 + [300.0] * 10
     band = BATTERY.soc_max_kwh - BATTERY.soc_min_kwh  # 9.0 kWh
     uncapped = ETA * (150.0 - WEAR_EUR_MWH) / 1000.0
@@ -428,26 +433,88 @@ def test_free_pv_refill_scales_the_value_to_zero(monkeypatch):
     assert dry.effective_terminal_value_eur_per_kwh() == pytest.approx(uncapped)
 
     # A surplus that covers the whole band (charge-power-limited to 5 kW over
-    # 10 slots = 12.5 kWh > 9.0 kWh) zeroes it.
+    # 10 slots = 12.5 kWh > 9.0 kWh) is reported as 100 %, but it does not
+    # alter the value before the solver has actually stored it.
     covered = make_input(
         prices, load=2.0, pv=[20.0] * 10 + [0.0] * 86, netzladen_erlaubt=True
     )
-    assert covered.effective_terminal_value_eur_per_kwh() == 0.0
+    covered_facts = covered.effective_terminal_value()
+    assert covered_facts.refill_free_pct == 100.0
+    assert covered_facts.v_end == pytest.approx(uncapped)
 
-    # Partial coverage scales proportionally: 2 kW surplus over 10 slots =
-    # 5.0 kWh of the 9.0 kWh band.
+    # Partial coverage remains equally diagnostic: 2 kW surplus over 10 slots
+    # = 5.0 kWh of the 9.0 kWh band, with the same terminal value.
     partial = make_input(
         prices, load=2.0, pv=[4.0] * 10 + [0.0] * 86, netzladen_erlaubt=True
     )
-    assert partial.effective_terminal_value_eur_per_kwh() == pytest.approx(
-        uncapped * (1.0 - 5.0 / band), rel=1e-9
-    )
+    partial_facts = partial.effective_terminal_value()
+    assert partial_facts.refill_free_pct == pytest.approx(100.0 * 5.0 / band)
+    assert partial_facts.v_end == pytest.approx(uncapped)
 
-    # Surplus in slots that still EARN something is not free and does not cap.
+    # Surplus in slots that still EARN something is not reported as free.
     earning = make_input(
         [150.0] * 96, load=2.0, pv=[20.0] * 96, netzladen_erlaubt=True
     )
     assert earning.effective_terminal_value_eur_per_kwh() > 0.0
+
+
+@needs_highs
+def test_17_to_17_plan_fills_before_curtailing_instead_of_ending_empty():
+    """Regression for the 28.08.2026 customer plan.
+
+    A 24-hour run starts at 17:00, spends the initially full battery on the
+    house overnight, sees a large zero/negative-value PV window the next day,
+    and ends just before the next evening. There is only 0.5 kWh of in-horizon
+    load after the PV window. The old free-refill discount therefore charged
+    just 1.1 kWh, curtailed the rest with 85 % headroom, served that tiny tail,
+    and ended at 5 % SoC. The plan must instead realize its own premise: charge
+    to the usable ceiling before curtailing unavoidable excess and bank that
+    energy past the artificial 17:00 horizon edge.
+    """
+    n = 96
+    load = [2.0] * 68 + [0.0] * 20 + [2.0] * 2 + [0.0] * 6
+    pv = [0.0] * 68 + [20.0] * 20 + [0.0] * 8
+    spot = [100.0] * 68 + [-10.0] * 20 + [0.0] * 8
+    # 15:00 UTC = 17:00 Europe/Berlin on this date.
+    run_start = datetime(2026, 8, 28, 15, 0, tzinfo=timezone.utc)
+    inp = OptimizationInput(
+        tenant_id=uuid4(),
+        site_id=uuid4(),
+        device_id=uuid4(),
+        battery=BATTERY,
+        slot_starts=horizon_slot_starts(run_start, n),
+        prices_eur_mwh=spot,
+        load_kw=load,
+        pv_kw=pv,
+        initial_soc_kwh=BATTERY.soc_max_kwh,
+        netzladen_erlaubt=False,
+        import_price_eur_mwh=[252.0] * n,
+        export_value_eur_mwh=spot,
+    )
+
+    facts = inp.effective_terminal_value()
+    assert facts.anchor_kind == "bezugspreis"
+    assert facts.refill_free_pct == 100.0
+    assert facts.v_end > 0.0, "forecast refill must not erase terminal value"
+
+    plan = solve(inp)
+    pv_window = plan.slots[68:88]
+    assert plan.slots[67].soc_kwh == pytest.approx(BATTERY.soc_min_kwh, abs=1e-3)
+    assert max(s.soc_kwh for s in pv_window) == pytest.approx(
+        BATTERY.soc_max_kwh, abs=1e-3
+    )
+    # The two remaining load slots consume 0.5 kWh AC after the fill, so the
+    # plan ends a little below 85 % but still banks the overwhelming majority
+    # of the battery for the evening outside the horizon.
+    assert plan.slots[-1].soc_kwh > BATTERY.capacity_kwh * 0.80
+    assert any(s.curtail_kw > 0.01 for s in pv_window), (
+        "surplus beyond charge power/capacity may still be curtailed"
+    )
+    assert all(
+        s.battery_kw >= BATTERY.max_charge_kw - 1e-3
+        for s in pv_window
+        if s.curtail_kw > 0.01 and s.soc_kwh < BATTERY.soc_max_kwh - 1e-3
+    ), "while headroom remains, charging must be maxed before excess is curtailed"
 
 
 def test_derived_value_never_goes_negative(monkeypatch):
@@ -472,15 +539,14 @@ def replace_max_feed_in(inp: OptimizationInput, cap: float) -> OptimizationInput
     return dataclasses.replace(inp, max_feed_in_kw=cap)
 
 
-def test_pilsting_beyond_cap_surplus_lowers_v_end_vs_cap_blind(monkeypatch):
+def test_pilsting_beyond_cap_surplus_lowers_the_anchor_vs_cap_blind(monkeypatch):
     """The Pilsting 10.08. shape: an EEG plant whose midday surplus (pv 48 -
     load 7 = 41 kW) exceeds the 30-kW connection-point cap at a positive spot.
     Cap-blind, every surplus slot priced the refill at the full feed-in value
-    87 although the marginal kWh cannot be exported at all; cap-aware both
-    corrections bite - the surplus entries drop to 0 (anchor) and the 11 kW
-    beyond the cap count as free refill (charge-limited to 5 kW x 8 slots =
-    10 kWh > the 9 kWh band), so V_end honestly reads 0: refilling after the
-    horizon costs this plant nothing."""
+    87 although the marginal kWh cannot be exported at all. Cap-aware, those
+    entries drop to 0 and the low quantile therefore makes V_end 0. The 11 kW
+    beyond the cap are also reported as 100 % free-refill potential, but that
+    diagnostic is not a second value discount."""
     monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
     n = 16
     pv = [48.0] * 8 + [0.0] * 8
@@ -505,11 +571,11 @@ def test_pilsting_beyond_cap_surplus_lowers_v_end_vs_cap_blind(monkeypatch):
     assert capped.anchor_kind == "einspeisewert"
 
 
-def test_free_kwh_counts_only_the_beyond_cap_portion_at_positive_prices(
+def test_free_kwh_reports_only_the_beyond_cap_portion_at_positive_prices(
     monkeypatch,
 ):
-    """Step 2 in isolation: the anchor comes from the deficit night (identical
-    with and without the cap), so the ONLY difference is the free-refill count.
+    """Step 2 is diagnostic: the anchor comes from the deficit night (identical
+    with and without the cap), so the only difference is the reported refill.
     8 surplus slots at pv 39 / load 7 (surplus 32, beyond-cap portion 2 kW)
     against a 30-kW cap contribute 8 x 2 kW x 0.25 h = 4 kWh of the 9 kWh
     usable band - the below-cap 30 kW still earn their feed-in and stay
@@ -533,7 +599,7 @@ def test_free_kwh_counts_only_the_beyond_cap_portion_at_positive_prices(
     assert capped.anchor_kind == "bezugspreis"
     assert blind.refill_free_pct == 0.0
     assert capped.refill_free_pct == pytest.approx(100.0 * 4.0 / 9.0)
-    assert capped.v_end == pytest.approx(blind.v_end * (1.0 - 4.0 / 9.0), rel=1e-9)
+    assert capped.v_end == pytest.approx(blind.v_end, rel=1e-9)
 
 
 def test_cap_above_every_surplus_is_byte_identical(monkeypatch):

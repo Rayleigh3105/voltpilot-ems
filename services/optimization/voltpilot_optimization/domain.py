@@ -189,11 +189,14 @@ class TerminalValue:
     and the surfaces filled the hole with plausibility.
 
     ``anchor_kind`` is one of the ``ANCHOR_*`` constants. ``refill_free_pct``
-    is step 2's free-refill share of the usable band in percent (0-100), or
-    ``None`` when the band is not evaluable (a zero/negative usable band) -
-    never a fabricated 0. ``guard_capped`` records whether step 3 bound; it is
-    a solver-internal fact and deliberately NOT persisted (the anchor carries
-    the customer-relevant statement, cf. §4.2 "Nicht exportiert").
+    is the horizon's free-refill POTENTIAL as a share of the usable band in
+    percent (0-100), or ``None`` when the band is not evaluable (a
+    zero/negative usable band) - never a fabricated 0. It is an explanatory
+    fact, not a discount on ``v_end``: only the model's actual charge and SoC
+    path may turn forecast surplus into stored energy. ``guard_capped`` records
+    whether step 3 bound; it is a solver-internal fact and deliberately NOT
+    persisted (the anchor carries the customer-relevant statement, cf. §4.2
+    "Nicht exportiert").
     """
 
     v_end: float
@@ -250,7 +253,8 @@ def derive_terminal_value(
       never entered the decision. Every ``fest`` plant planned a fully idle
       battery on essentially every day of the year.
 
-    Three steps, each of which only ever LOWERS the value:
+    Three steps; the first derives the value, the second exports a diagnostic,
+    and the third can only LOWER the value:
 
     1. **Charge-side anchor.** The marginal cost of refilling one AC kWh is
        ``min(import_t, export_t)`` when the battery may charge from the grid
@@ -288,19 +292,24 @@ def derive_terminal_value(
        makes the terminal anchor tell the same story instead of pricing a
        refill against feed-in the connection point cannot carry. Without a cap
        (``max_feed_in_kw is None``) every branch is byte-identical to before.
-    2. **Free-PV refill cap.** Surplus generation in slots whose export value
-       is <= 0 costs the plant NOTHING to store (feeding it in earns nothing or
-       less). Energy the battery could actually absorb from such slots is
-       compared with its usable band: once the horizon offers enough free
-       surplus to refill the band outright, stored energy carries no scarcity
-       value at all and ``V_end`` scales to 0. This is the "tomorrow's PV
-       refills it for free" truth a 70 kWp plant in July needs, and it is why a
-       full battery must not sit on its charge through an evening peak.
+    2. **Free-PV refill evidence (diagnostic only).** Surplus generation in
+       slots whose export value is <= 0 costs the plant NOTHING to store
+       (feeding it in earns nothing or less). Energy the battery could absorb
+       from such slots is compared with its usable band and exported as
+       ``refill_free_pct``. With a maintained feed-in cap the beyond-cap share
+       is equally free at POSITIVE prices because it cannot be exported; only
+       that portion counts, while the below-cap share still earns its feed-in.
 
-       With a maintained feed-in cap the beyond-cap share of a surplus slot is
-       equally free to store at POSITIVE prices (it cannot be fed in, so
-       storing it forgoes nothing) and counts toward ``free_kwh`` too - only
-       the beyond-cap PORTION, the below-cap share still earns its feed-in.
+       Crucially this potential MUST NOT scale ``V_end``. The former rule did
+       so and created a circular 24-hour-horizon defect (Pilsting, 28.08.2026):
+       the derivation assumed tomorrow's surplus would refill the battery,
+       declared terminal energy worthless, and the objective then curtailed
+       that very surplus instead of storing it. The battery charged only the
+       few kWh consumed before the horizon ended and entered the next evening
+       empty. Keeping the diagnostic separate makes the SoC dynamics settle
+       the sequence honestly: discharge before a later free refill remains
+       profitable, and actual free charging earns the unchanged terminal value
+       only while that energy is really still present at the horizon end.
     3. **Strict-dispersion guard.** ``V_end`` is finally held strictly below
        ``eta * (best in-horizon use value - wear - margin)``, so the plan can
        ALWAYS realize stored energy in at least its single best slot: the
@@ -381,10 +390,15 @@ def derive_terminal_value(
     anchor, anchor_kind = ordered[int(quantile * (n - 1))]
     v_end = max(0.0, eta * (anchor / 1000.0 - wear))
 
-    # 2. Free-PV refill cap: surplus the battery could absorb in slots where
-    #    feeding in earns nothing (or costs money), so storing it is free. With
-    #    a maintained feed-in cap, the beyond-cap PORTION of a surplus slot is
-    #    free at positive prices too - it cannot be exported either way.
+    # 2. Free-PV refill EVIDENCE: surplus the battery could absorb in slots
+    #    where feeding in earns nothing (or costs money), so storing it is free.
+    #    With a maintained feed-in cap, the beyond-cap PORTION of a surplus
+    #    slot is free at positive prices too - it cannot be exported either way.
+    #
+    #    Diagnostic only. Never discount v_end with this forecast potential:
+    #    doing so assumes the refill has happened and then makes the objective
+    #    curtail it (Pilsting 28.08.2026). Actual charge + SoC dynamics are the
+    #    only proof that free PV became terminal stored energy.
     refill_free_pct: float | None = None
     if usable_band_kwh > 0.0:
         free_kwh = 0.0
@@ -399,7 +413,6 @@ def derive_terminal_value(
             free_kwh += min(free_surplus_kw, max_charge_kw) * slot_hours
         free_share = min(1.0, free_kwh / usable_band_kwh)
         refill_free_pct = 100.0 * free_share
-        v_end *= 1.0 - free_share
 
     # 3. Strict-dispersion guard: never at or above the best in-horizon use.
     best_use = max(max(imp, exp) for imp, exp in zip(import_prices, export_values))

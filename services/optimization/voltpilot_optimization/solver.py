@@ -80,9 +80,11 @@ Design decisions, deliberately:
   delegates to the shared
   :func:`~voltpilot_optimization.domain.derive_terminal_value_eur_per_kwh`: a
   conservative low quantile of the horizon's REPLACEMENT (refill) prices,
-  times the one-way efficiency, minus the pending discharge wear, scaled down
-  by any free PV refill the horizon offers and held strictly below the best
-  in-horizon use value (derivation + config knobs there and in
+  times the one-way efficiency, minus the pending discharge wear, and held
+  strictly below the best in-horizon use value. Forecast free-refill potential
+  is exported as explanation but never discounts terminal energy before the
+  SoC path has actually stored it (Pilsting 28.08.2026; derivation + config
+  knobs there and in
   :mod:`voltpilot_optimization.config`). Because the same eta/wear terms price
   the in-horizon discharge, "discharge at exactly the anchor price" is an
   EXACT tie broken toward holding by the epsilon tie-breaks below: a curve
