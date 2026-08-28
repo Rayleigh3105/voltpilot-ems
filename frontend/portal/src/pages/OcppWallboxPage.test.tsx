@@ -54,7 +54,7 @@ describe('OcppWallboxPage integration', () => {
 
   it('renders the device hierarchy and keeps the technical command catalog out of the customer view', async () => {
     const view = render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#devices" siteHref="#site" />);
-    expect(await screen.findByRole('heading', { name: /Wallbox online · Anschluss 1 lädt/ })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Anschluss 1 lädt.' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Garage', level: 1 })).toBeVisible();
     expect(screen.getByText(/OCPP-Wallbox · KEBA · P30/)).toBeVisible();
     const breadcrumb = screen.getByRole('navigation', { name: 'Pfad zur Geräteseite' });
@@ -105,7 +105,7 @@ describe('OcppWallboxPage integration', () => {
     Element.prototype.scrollIntoView = vi.fn();
     window.history.replaceState(null, '', '#/anlage/s/geraet/edge-1/cp-CP-1');
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#devices" />);
-    await screen.findByRole('heading', { name: /Wallbox online/ });
+    await screen.findByRole('heading', { name: 'Anschluss 1 lädt.' });
     const before = window.location.hash;
     // ⚠ Gesprungen wird über `id` + Fokus, NIE über einen `#anker` - die App
     // ist hash-geroutet (§4.3). Die Sprungnavigation des Rahmens ist die eine
@@ -118,10 +118,10 @@ describe('OcppWallboxPage integration', () => {
   });
 
   it.each([
-    ['waiting', 'SuspendedEVSE', true, 'Wallbox online · Anschluss 1 ist angesteckt und wartet.', 'Jetzt laden'],
-    ['available', 'Available', true, 'Wallbox online · Anschluss 1 ist verfügbar.', 'Laden starten'],
-    ['offline', 'Available', false, 'nicht erreichbar', 'Verbindung prüfen'],
-    ['faulted', 'Faulted', true, 'Wallbox online · Anschluss 1 meldet eine Störung.', 'Störung prüfen'],
+    ['waiting', 'SuspendedEVSE', true, 'Fahrzeug angeschlossen.', 'Jetzt laden'],
+    ['available', 'Available', true, 'Bereit zum Laden.', 'Laden starten'],
+    ['offline', 'Available', false, 'Wallbox nicht erreichbar.', null],
+    ['faulted', 'Faulted', true, 'Störung an Anschluss 1.', null],
   ])('renders the %s core state with one contextual action', async (kind, connectorStatus, connected, sentence, actionLabel) => {
     vi.mocked(api.ocppStations).mockResolvedValue([{
       ...station,
@@ -134,9 +134,9 @@ describe('OcppWallboxPage integration', () => {
     vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
     const view = render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
     expect(await screen.findByRole('heading', { name: new RegExp(sentence) })).toBeVisible();
-    expect(screen.getByRole('button', { name: actionLabel })).toBeVisible();
+    if (actionLabel) expect(screen.getByRole('button', { name: actionLabel })).toBeVisible();
     if (kind === 'offline') expect(screen.getByText('Anschluss 1 zuletzt: Frei')).toBeVisible();
-    expect(view.container.querySelectorAll('.vp-ocpp-primary-action .vp-btn')).toHaveLength(1);
+    expect(view.container.querySelectorAll('.vp-ocpp-primary-action .vp-btn')).toHaveLength(actionLabel ? 1 : 0);
   });
 
   it('offers connector unlock only after finishing and binds it to the affected connector', async () => {
@@ -159,7 +159,7 @@ describe('OcppWallboxPage integration', () => {
       lastSeen: new Date(Date.now() - 10 * 60_000).toISOString(),
     }]);
     const stale = render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
-    expect(await screen.findByRole('heading', { name: /keine aktuellen Daten/ })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Gerätestatus nicht aktuell.' })).toBeVisible();
     expect(stale.container.querySelector('[data-state="stale"]')).toBeInTheDocument();
     stale.unmount();
 
@@ -167,7 +167,7 @@ describe('OcppWallboxPage integration', () => {
     vi.mocked(api.ocppTransactions).mockResolvedValueOnce([]);
     vi.mocked(api.ocppMeterValues).mockResolvedValueOnce([]);
     const missing = render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
-    expect(await screen.findByRole('heading', { name: /noch keinen aktuellen Gerätestatus/ })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Noch keine aktuellen Gerätedaten.' })).toBeVisible();
     expect(missing.container.querySelector('[data-state="unknown"]')).toBeInTheDocument();
   });
 
@@ -186,12 +186,30 @@ describe('OcppWallboxPage integration', () => {
       lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
       connectors: [{ connectorId: 1, status: 'Available', charging: false }],
     }} />);
-    expect(await screen.findByRole('heading', { name: 'Wallbox online · Anschluss 1 ist verfügbar.' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Bereit zum Laden.' })).toBeVisible();
     expect(screen.getByTestId('geraet-zustand')).toHaveTextContent('Online');
     const connectionSection = screen.getByTestId('sektion-verbindung');
     fireEvent.click(within(connectionSection).getByText('Verbindung'));
     expect(screen.getByText(/VoltPilot-Box meldet die Wallbox als verbunden/)).toBeVisible();
     expect(view.container.querySelectorAll('.vp-ocpp-primary-action .vp-btn')).toHaveLength(0);
+  });
+
+  it('keeps an Edge-only charging state compact instead of advertising missing data', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    const view = render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" charger={{
+      deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: true,
+      lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true }],
+    }} />);
+
+    expect(await screen.findByRole('heading', { name: 'Anschluss 1 lädt.' })).toBeVisible();
+    const nowCard = view.container.querySelector<HTMLElement>('[data-state="charging"]')!;
+    expect(within(nowCard).getByText('Ladeleistung und Sitzungsdaten werden noch nicht übertragen.')).toBeVisible();
+    expect(within(nowCard).queryByText('Nicht verfügbar')).toBeNull();
+    expect(nowCard.querySelector('.vp-ocpp-now-facts')).toBeNull();
+    expect(nowCard.querySelector('.vp-ocpp-primary-action')).toBeNull();
   });
 
   it('keeps a stale connector out of status, reason and connector settings despite a fresh heartbeat', async () => {
@@ -204,9 +222,9 @@ describe('OcppWallboxPage integration', () => {
       deviceId: 'd', chargePointId: 'CP-1', priority: true, connected: true, ready: true,
       connectors: [{ connectorId: 1, charging: true, allocatedKw: 11, boost: true, reasonText: 'lädt mit Netzfreigabe' }],
     }} />);
-    expect(await screen.findByRole('heading', { name: /Zustand von Anschluss 1 ist nicht aktuell/ })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Status von Anschluss 1 nicht aktuell.' })).toBeVisible();
     expect(screen.getByText('Anschluss 1 zuletzt: Lädt')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Status prüfen' })).toBeVisible();
+    expect(document.querySelector('.vp-ocpp-primary-action')).toBeNull();
     expect(document.body).not.toHaveTextContent('lädt mit Netzfreigabe');
     expect(document.body).not.toHaveTextContent('11 kW');
     expect(screen.getByText('Aktuelle Freigabe').nextElementSibling).toHaveTextContent('nicht gemeldet');
@@ -231,12 +249,12 @@ describe('OcppWallboxPage integration', () => {
       deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: true,
       connectors: [{ connectorId: 1, charging: true, allocatedKw: 22, boost: true, reasonText: 'Connector 1 lädt' }],
     }} />);
-    expect(await screen.findByRole('heading', { name: /Zustand von Anschluss 2 ist nicht aktuell/ })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Status von Anschluss 2 nicht aktuell.' })).toBeVisible();
     expect(screen.getByText('Anschluss 2: kein aktueller Zustand')).toBeVisible();
     expect(document.body).not.toHaveTextContent('Connector 1 lädt');
     expect(document.body).not.toHaveTextContent('22 kW');
     expect(screen.getByText('Sofort laden').nextElementSibling).toHaveTextContent('nicht verfügbar');
-    expect(screen.getByRole('button', { name: 'Status prüfen' })).toBeVisible();
+    expect(document.querySelector('.vp-ocpp-primary-action')).toBeNull();
   });
 
   it('keeps loading and full API failure explicit and recoverable', async () => {
@@ -274,7 +292,7 @@ describe('OcppWallboxPage integration', () => {
 
   it('shows inputs and impact before sending, then keeps response and effect separate', async () => {
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
-    await screen.findByRole('heading', { name: /Wallbox online · Anschluss 1 lädt/ });
+    await screen.findByRole('heading', { name: 'Anschluss 1 lädt.' });
     fireEvent.click(screen.getByRole('button', { name: 'Laden stoppen' }));
     expect(screen.getByText('Auswirkung')).toBeVisible();
     expect(screen.getByText('Bestätigung')).toBeVisible();
@@ -290,7 +308,7 @@ describe('OcppWallboxPage integration', () => {
       .mockRejectedValueOnce(new ApiError(503, 'java.net.SocketTimeoutException: broker token=abc'))
       .mockResolvedValueOnce(created);
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
-    await screen.findByRole('heading', { name: /Wallbox online · Anschluss 1 lädt/ });
+    await screen.findByRole('heading', { name: 'Anschluss 1 lädt.' });
     fireEvent.click(screen.getByRole('button', { name: 'Laden stoppen' }));
     const send = screen.getByRole('button', { name: 'Prüfen und senden' });
     fireEvent.click(send);
@@ -331,7 +349,7 @@ describe('OcppWallboxPage integration', () => {
       SoftReset: true,
     } });
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
-    await screen.findByRole('heading', { name: /Wallbox online · Anschluss 1 lädt/ });
+    await screen.findByRole('heading', { name: 'Anschluss 1 lädt.' });
     fireEvent.click(screen.getByRole('button', { name: 'Unveränderliche Auditspur laden' }));
     await screen.findByRole('list', { name: 'Unveränderliche Auditspur' });
     for (const leak of ['CONNECTOR-LEAK', 'connector.internal', 'METER-LEAK', 'meter.internal', 'EVENT-CORRELATION',
@@ -345,7 +363,7 @@ describe('OcppWallboxPage integration', () => {
     let resolveAction!: (value: OcppAction) => void;
     vi.mocked(api.createOcppAction).mockReturnValue(new Promise((resolve) => { resolveAction = resolve; }));
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
-    await screen.findByRole('heading', { name: /Wallbox online · Anschluss 1 lädt/ });
+    await screen.findByRole('heading', { name: 'Anschluss 1 lädt.' });
     const trigger = screen.getByRole('button', { name: 'Laden stoppen' });
     trigger.focus(); fireEvent.click(trigger);
     const dialog = screen.getByRole('dialog');
@@ -403,7 +421,7 @@ describe('OcppWallboxPage integration', () => {
     }]);
     vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
-    await screen.findByRole('heading', { name: /Wallbox online/ });
+    await screen.findByRole('heading', { name: 'Anschluss 1 lädt.' });
     expect(screen.getAllByText('Energie nicht verfügbar')).toHaveLength(2);
     expect(document.body).not.toHaveTextContent('-1 kWh');
   });
@@ -413,7 +431,7 @@ describe('OcppWallboxPage integration', () => {
     vi.spyOn(api, 'createOcppActionIntent').mockResolvedValue({ id: 'intent-foreign', action: 'UpdateFirmware',
       phrase: 'UpdateFirmware CP-1 SAFE1234', fourEyes: true, expiresAt: '2099-01-01T00:00:00Z' });
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
-    await screen.findByRole('heading', { name: /Wallbox online · Anschluss 1 lädt/ });
+    await screen.findByRole('heading', { name: 'Anschluss 1 lädt.' });
     fireEvent.click(screen.getByText('Betrieb').closest('summary')!);
     fireEvent.click(screen.getByRole('button', { name: /Firmware aktualisieren/ }));
     fireEvent.change(screen.getByLabelText('Allowlisted Firmware-URL *'), { target: { value: 'https://firmware.example/presigned' } });

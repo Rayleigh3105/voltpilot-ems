@@ -29,7 +29,7 @@ const late = { id: 'late-1', deviceId: 'device-1', chargePointId: 'CP-CARPORT', 
 
 const timedOut = { ...late, effect: null, effectAt: null, reason: null, updatedAt: ago(60_000) };
 
-async function mock(page: Page, options: { failFirstAction?: boolean; slowAction?: boolean; lateAfterPoll?: boolean; fourEyes?: boolean } = {}) {
+async function mock(page: Page, options: { failFirstAction?: boolean; slowAction?: boolean; lateAfterPoll?: boolean; fourEyes?: boolean; edgeOnly?: boolean } = {}) {
   let actions = [late];
   let actionPosts = 0;
   let actionGets = 0;
@@ -56,11 +56,11 @@ async function mock(page: Page, options: { failFirstAction?: boolean; slowAction
     }
     if (route.request().method() === 'DELETE' && /\/actions\/[^/]+$/.test(path)) return route.fulfill({ status: 204 });
     if (path.endsWith('/audit')) return route.fulfill({ json: [{ id: 1, actor: 'idTag=AUDIT-ACTOR', state: 'prepared', reason: 'endpoint=ssh://audit.internal/private', deviceId: 'device-1', chargePointId: 'CP-CARPORT', connectorId: 1, transactionId: 1842, occurredAt: now }] });
-    if (path.endsWith('/stations')) return route.fulfill({ json: [station] });
+    if (path.endsWith('/stations')) return route.fulfill({ json: options.edgeOnly ? [] : [station] });
     if (path.endsWith('/events')) return route.fulfill({ json: [{ eventId: 'event-1', occurredAt: now, deviceId: 'device-1', chargePointId: 'CP-CARPORT', direction: 'station_to_csms', messageType: 'CallError', correlationId: 'idTag=EVENT-CORRELATION', action: 'DataTransfer', errorCode: 'NotSupported', errorDescription: 'idTag=EVENT-LEAK callback=coap://event.internal/diag', errorDetails: { uploadUrl: 'ftp://event-pre.internal/diag' }, payload: { password: 'must-hide', neutral: 'uri=s3://pre.internal/token/abc', unknownVendorField: 7 } }] });
     if (path.endsWith('/gaps')) return route.fulfill({ json: [{ eventId: 'gap-1', reportedAt: now, deviceId: 'device-1', droppedCount: 2, totalDropped: 2, firstOccurredAt: ago(90_000), lastOccurredAt: ago(60_000), firstEventId: 'lost-a', lastEventId: 'lost-b', reasons: { buffer_full: 2 } }] });
-    if (path.endsWith('/transactions')) return route.fulfill({ json: [transaction] });
-    if (path.endsWith('/meter-values')) return route.fulfill({ json: [sample('power', 'Power.Active.Import', 11000, 'W'), sample('energy', 'Energy.Active.Import.Register', 7400, 'Wh'), sample('soc', 'SoC', 62, 'Percent'), sample('vendor', 'Vendor.Custom.Measure', 'idTag=METER-LEAK endpoint=modbus://meter.internal/unit', '')] });
+    if (path.endsWith('/transactions')) return route.fulfill({ json: options.edgeOnly ? [] : [transaction] });
+    if (path.endsWith('/meter-values')) return route.fulfill({ json: options.edgeOnly ? [] : [sample('power', 'Power.Active.Import', 11000, 'W'), sample('energy', 'Energy.Active.Import.Register', 7400, 'Wh'), sample('soc', 'SoC', 62, 'Percent'), sample('vendor', 'Vendor.Custom.Measure', 'idTag=METER-LEAK endpoint=modbus://meter.internal/unit', '')] });
     if (path.endsWith('/configuration')) return route.fulfill({ json: [{ deviceId: 'device-1', chargePointId: 'CP-CARPORT', keys: [{ key: 'AuthorizationKey', value: null, readonly: false, secret: true, redacted: true, standardKey: false, meaningKnown: false, reportedAt: now }, { key: 'HeartbeatInterval', value: '60', readonly: false, secret: false, redacted: false, standardKey: true, meaningKnown: true, reportedAt: now }], unknownKeys: ['KEBA.Custom.Mode'], supportedFeatureProfiles: station.supportedFeatureProfiles }] });
     if (path.endsWith('/action-permissions')) return route.fulfill({ json: { actions: Object.fromEntries(['RemoteStartTransaction','RemoteStopTransaction','UnlockConnector','ReserveNow','CancelReservation','SetChargingProfile','ClearChargingProfile','GetCompositeSchedule','ChangeAvailability','SoftReset','HardReset','GetConfiguration','ChangeConfiguration','ClearCache','GetLocalListVersion','SendLocalList','TriggerMessage','GetDiagnostics','UpdateFirmware','DataTransfer'].map((key) => [key, true])) } });
     if (path.endsWith('/actions')) {
@@ -79,20 +79,20 @@ test('complete wallbox home stays responsive and exposes response/effect choreog
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
   page.on('pageerror', (error) => consoleErrors.push(error.message));
   await mock(page); await page.goto('/e2e/ocpp-wallbox.html');
-  await expect(page.getByRole('heading', { name: /Wallbox online · Anschluss 1 lädt/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Anschluss 1 lädt.' })).toBeVisible();
   await expect(page.getByText('11 kW', { exact: true })).toBeVisible();
   await expect(page.getByText('6,4 kWh')).toBeVisible();
-  const service = page.getByTestId('ocpp-service');
-  await expect(service).not.toHaveAttribute('open', '');
-  await service.locator('summary').first().click();
+  const diagnose = page.getByTestId('sektion-diagnose');
+  await expect(diagnose).not.toHaveAttribute('open', '');
+  await diagnose.locator('summary').first().click();
   await expect(page.getByText(/1 belegte Datenlücke/)).toBeVisible();
   await page.getByRole('button', { name: 'Unveränderliche Auditspur laden' }).click();
   await expect(page.getByRole('list', { name: 'Unveränderliche Auditspur' })).toBeVisible();
-  for (const name of ['Connectoren', 'MeterValues', 'Aktionen', 'Konfiguration', 'Ereignisse', 'Transaktionen', 'Software & Firmware']) await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   const hashBeforeServiceNavigation = await page.evaluate(() => window.location.hash);
-  await page.getByRole('button', { name: 'MeterValues', exact: true }).focus();
+  const frameNavigation = page.locator('.vp-rahmen-nav:visible, .vp-rahmen-chips:visible');
+  await frameNavigation.getByRole('button', { name: /^Messwerte/ }).focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('#messwerte')).toBeFocused();
+  await expect(page.locator('#geraet-abschnitt-register')).toBeFocused();
   expect(await page.evaluate(() => window.location.hash)).toBe(hashBeforeServiceNavigation);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 
@@ -146,9 +146,25 @@ test('complete wallbox home stays responsive and exposes response/effect choreog
   expect(consoleErrors).toEqual([]);
 });
 
+test('edge-only charging stays compact when no power or transaction has arrived', async ({ page }) => {
+  await mock(page, { edgeOnly: true });
+  await page.goto('/e2e/ocpp-wallbox.html?edge-only');
+
+  const hero = page.locator('[data-state="charging"]');
+  await expect(page.getByRole('heading', { name: 'Anschluss 1 lädt.' })).toBeVisible();
+  await expect(hero).toContainText('Ladeleistung und Sitzungsdaten werden noch nicht übertragen.');
+  await expect(hero.getByText('Nicht verfügbar')).toHaveCount(0);
+  await expect(hero.locator('.vp-ocpp-now-facts')).toHaveCount(0);
+  await expect(hero.locator('.vp-ocpp-primary-action')).toHaveCount(0);
+
+  const height = await hero.evaluate((element) => element.getBoundingClientRect().height);
+  expect(height).toBeLessThan(230);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+});
+
 test('hard action requires the server phrase and never overflows its sheet', async ({ page }) => {
   await mock(page); await page.goto('/e2e/ocpp-wallbox.html');
-  await page.getByTestId('ocpp-service').locator('summary').first().click();
+  await expect(page.getByTestId('sektion-befehle')).toHaveAttribute('open', '');
   await page.locator('.vp-ocpp-action-group').filter({ hasText: 'Betrieb' }).locator('summary').click();
   await page.getByRole('button', { name: /Hart neu starten/ }).click();
   await page.getByRole('button', { name: 'Starke Bestätigung vorbereiten' }).click();
@@ -190,7 +206,7 @@ test('transport retry is idempotent and the modal traps focus while every close 
 test('timed-out actions keep polling until late effect evidence arrives', async ({ page }) => {
   await mock(page, { lateAfterPoll: true });
   await page.goto('/e2e/ocpp-wallbox.html');
-  await page.getByTestId('ocpp-service').locator('summary').first().click();
+  await expect(page.getByTestId('sektion-befehle')).toHaveAttribute('open', '');
   await expect(page.getByText('Wirkung nicht innerhalb der Frist beobachtet')).toBeVisible();
   await expect(page.getByText('Wirkung verspätet beobachtet')).toBeVisible({ timeout: 7_000 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
@@ -199,7 +215,7 @@ test('timed-out actions keep polling until late effect evidence arrives', async 
 test('foreign firmware has an executable bound handoff to a second operator', async ({ page }) => {
   await mock(page, { fourEyes: true });
   await page.goto('/e2e/ocpp-wallbox.html');
-  await page.getByTestId('ocpp-service').locator('summary').first().click();
+  await expect(page.getByTestId('sektion-befehle')).toHaveAttribute('open', '');
   await page.locator('.vp-ocpp-action-group').filter({ hasText: 'Betrieb' }).locator('summary').click();
   const firmware = page.getByRole('button', { name: /Firmware aktualisieren/ });
   await firmware.click();

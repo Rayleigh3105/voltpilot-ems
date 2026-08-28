@@ -42,7 +42,7 @@ import {
 } from '../ocppWallbox';
 import './GeraetSeite.css';
 import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
-import { GeraetRahmen, RahmenSektion, springeZuAbschnitt } from '../components/GeraetRahmen';
+import { GeraetRahmen, RahmenSektion } from '../components/GeraetRahmen';
 import { kurz, rahmen, type SektionAngebot } from '../geraetRahmen';
 import './OcppWallboxPage.css';
 
@@ -305,45 +305,37 @@ export function OcppWallboxPage({
               <span className={`vp-ocpp-state-mark is-${state.tone}`}><i /> {state.badge}</span>
               <h2 id="ocpp-jetzt-title">{state.sentence}</h2>
               <p>{connectorEvidenceCurrent ? chargerConnector?.reasonText?.trim() || state.detail : state.detail}</p>
-              {state.kind === 'charging' && (
-                <div className="vp-ocpp-power">
-                  <strong>{hero.power ?? 'Nicht verfügbar'}</strong>
-                  <span>aktuelle Ladeleistung</span>
-                  {!hero.power && <small>Kein frischer Messwert derselben Transaktion.</small>}
-                </div>
+              {state.kind === 'charging' && !hero.power && (
+                <p className="vp-ocpp-data-note">
+                  {hero.transaction
+                    ? 'Die Wallbox liefert aktuell keinen Leistungswert.'
+                    : 'Ladeleistung und Sitzungsdaten werden noch nicht übertragen.'}
+                </p>
               )}
-              {state.actionLabel && (
+              {remoteAction && state.actionLabel && (
                 <div className="vp-ocpp-primary-action">
                   <button
                     type="button"
                     className="vp-btn vp-btn--primary vp-btn--md"
-                    disabled={Boolean(remoteAction && (!connection.sendable || !actionAllowed))}
-                    aria-describedby={remoteAction && !actionAllowed ? 'ocpp-primary-action-help' : undefined}
-                    onClick={() => {
-                      if (remoteAction) setActionOpen(findAction(remoteAction));
-                      else springeZuAbschnitt('diagnose');
-                    }}
+                    disabled={!connection.sendable || !actionAllowed}
+                    aria-describedby={!actionAllowed ? 'ocpp-primary-action-help' : undefined}
+                    onClick={() => setActionOpen(findAction(remoteAction))}
                   >
                     {state.actionLabel}
                   </button>
-                  {remoteAction && !actionAllowed && (
+                  {!actionAllowed && (
                     <small id="ocpp-primary-action-help">Diese Fernaktion ist für Ihr Konto nicht freigegeben.</small>
                   )}
                 </div>
               )}
             </div>
-            <dl className="vp-ocpp-now-facts">
-              {hero.transaction && (
-                <>
-                  <Fact label="Sitzungsenergie" value={hero.energy ?? 'Nicht verfügbar'} detail={hero.energy ? 'gemessene Differenz seit Start' : 'kein frischer Zählerstand derselben Transaktion'} />
-                  <Fact label="Start" value={shortTime(hero.transaction.startedAt)} />
-                </>
-              )}
-              <Fact label="Verfügbarkeit" value={state.badge} />
-              <Fact label="Anschluss" value={state.connectorId == null
-                ? 'nicht gemeldet'
-                : `${state.connectorId} · ${state.connectorStatus ? connectorStatus(state.connectorStatus) : 'Zustand nicht gemeldet'}${connectorEvidenceCurrent ? '' : ' · letzter Stand'}`} />
-            </dl>
+            {state.kind === 'charging' && (hero.power || hero.energy || hero.transaction) && (
+              <dl className="vp-ocpp-now-facts">
+                {hero.power && <Fact label="Ladeleistung" value={hero.power} />}
+                {hero.energy && <Fact label="Geladen" value={hero.energy} detail="gemessene Differenz seit Start" />}
+                {hero.transaction && <Fact label="Beginn" value={shortTime(hero.transaction.startedAt)} />}
+              </dl>
+            )}
           </section>
           <Card padding="lg" radius="lg" className="vp-ocpp-summary-card">
             <h2>Letzte Sitzungen</h2>

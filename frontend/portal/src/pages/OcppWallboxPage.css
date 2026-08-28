@@ -19,6 +19,8 @@
 .vp-ocpp-head .vp-geraet-titleline > div { min-width: 0; }
 .vp-ocpp-head .vp-geraet-meta { color: var(--ocpp-muted); }
 .vp-ocpp .vp-mono { color: var(--ocpp-muted); }
+.vp-ocpp .vp-pill small,
+.vp-ocpp .vp-rahmen-nav button { color: var(--ocpp-muted); }
 .vp-ocpp-device-type { margin: 0 0 10px; color: var(--ocpp-muted); overflow-wrap: anywhere; }
 .vp-ocpp-loading { min-height: 150px; }
 .vp-ocpp-loading p { margin: 0; color: var(--ocpp-muted); }
@@ -55,11 +57,11 @@
 }
 
 .vp-ocpp-now {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(250px, .7fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--vp-space-4, 16px);
   min-width: 0;
-  padding: clamp(20px, 4vw, 40px);
+  padding: clamp(20px, 3vw, 30px);
   border: 1px solid color-mix(in srgb, var(--vp-action, #2c5282) 45%, var(--ocpp-border));
   border-radius: var(--vp-radius-lg, 14px);
   background: color-mix(in srgb, var(--vp-brand-soft, #edf4ff) 38%, var(--ocpp-surface));
@@ -74,17 +76,14 @@
 .vp-ocpp-state-mark.is-warn,
 .vp-ocpp-state-mark.is-off { color: var(--vp-warn-ink, #92400e); }
 .vp-ocpp-state-mark.is-error { color: var(--vp-error-ink, #9b2c2c); }
-.vp-ocpp-now h2 { max-width: 25ch; margin: 8px 0 7px; font-size: clamp(1.35rem, 3.2vw, 2rem); line-height: 1.2; overflow-wrap: anywhere; }
+.vp-ocpp-now h2 { max-width: 32ch; margin: 6px 0 6px; font-size: clamp(1.4rem, 2.4vw, 1.8rem); line-height: 1.2; overflow-wrap: anywhere; }
 .vp-ocpp-now-main > p { max-width: 62ch; margin: 0; color: var(--ocpp-muted); line-height: 1.45; }
-.vp-ocpp-power { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; margin-top: clamp(20px, 4vw, 32px); }
-.vp-ocpp-power strong { font-size: clamp(2.5rem, 7vw, 4.8rem); font-weight: 720; letter-spacing: -.05em; line-height: 1; overflow-wrap: anywhere; }
-.vp-ocpp-power span,
-.vp-ocpp-power small { margin-top: 4px; color: var(--ocpp-muted); font-size: .8rem; }
+.vp-ocpp-now-main > .vp-ocpp-data-note { margin-top: 10px; font-size: .82rem; }
 .vp-ocpp-primary-action { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: var(--vp-space-5, 20px); }
 .vp-ocpp-primary-action button { min-width: min(240px, 100%); min-height: 48px; }
 .vp-ocpp-primary-action small { max-width: 48ch; color: var(--ocpp-muted); }
-.vp-ocpp-now-facts { align-self: stretch; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; min-width: 0; margin: 0; border: 1px solid var(--ocpp-border); border-radius: var(--vp-radius-md, 10px); overflow: hidden; background: var(--ocpp-border); }
-.vp-ocpp-now-facts > div { display: flex; flex-direction: column; min-width: 0; padding: 15px; background: var(--ocpp-surface); }
+.vp-ocpp-now-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--vp-space-4, 16px); min-width: 0; margin: 0; padding-top: var(--vp-space-4, 16px); border-top: 1px solid var(--ocpp-border); }
+.vp-ocpp-now-facts > div { display: flex; flex-direction: column; min-width: 0; padding: 0; }
 .vp-ocpp-now-facts dt,
 .vp-ocpp-compact-kv dt,
 .vp-ocpp-device-facts dt { color: var(--ocpp-muted); font-size: .76rem; }
@@ -95,7 +94,7 @@
 .vp-ocpp-device-facts dd small { margin-top: 3px; color: var(--ocpp-muted); font-size: .75rem; font-weight: 400; }
 
 .vp-ocpp-secondary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--vp-space-4, 16px); min-width: 0; }
-.vp-ocpp-summary-card { min-width: 0; }
+.vp-ocpp-summary-card { min-width: 0; margin-top: var(--vp-space-4, 16px); }
 .vp-ocpp-summary-card h2 { margin: 0 0 var(--vp-space-4, 16px); font-size: 1rem; }
 .vp-ocpp-compact-kv,
 .vp-ocpp-device-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; min-width: 0; margin: 0; border: 1px solid var(--ocpp-border); border-radius: var(--vp-radius-md, 10px); overflow: hidden; background: var(--ocpp-border); }
@@ -252,10 +251,6 @@
 .vp-ocpp-created h3 { margin: 18px 0 6px; }
 .vp-ocpp-created p { color: var(--ocpp-muted); }
 
-@media (max-width: 900px) {
-  .vp-ocpp-now { grid-template-columns: minmax(0, 1fr); }
-}
-
 /* Bei mittleren Notebook-Breiten nimmt die 214-px-Schiene der eigentlichen
    Geräteseite zu viel Raum. Bis 1280 px bleibt die kompakte Chip-Navigation. */
 @media (min-width: 1024px) and (max-width: 1279px) {
@@ -266,8 +261,7 @@
 
 @media (max-width: 720px) {
   .vp-ocpp { gap: 12px; }
-  .vp-ocpp-now { grid-template-columns: minmax(0, 1fr); padding: 20px 16px; }
-  .vp-ocpp-now-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vp-ocpp-now { padding: 20px 16px; }
   .vp-ocpp-secondary-grid { grid-template-columns: minmax(0, 1fr); }
   .vp-ocpp-primary-action,
   .vp-ocpp-primary-action button { width: 100%; }

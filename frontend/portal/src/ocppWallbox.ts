@@ -476,7 +476,7 @@ export interface WallboxState {
   detail: string;
   connectorId: number | null;
   connectorStatus: string | null;
-  action: 'RemoteStartTransaction' | 'RemoteStopTransaction' | 'UnlockConnector' | 'service' | null;
+  action: 'RemoteStartTransaction' | 'RemoteStopTransaction' | 'UnlockConnector' | null;
   actionLabel: string | null;
 }
 
@@ -554,88 +554,86 @@ export function wallboxState(
 
   if (!station && connection.source === 'none') return {
     kind: 'unknown', tone: 'off', badge: 'Keine Gerätedaten',
-    sentence: 'Die Wallbox hat noch keinen aktuellen Gerätestatus gemeldet.',
+    sentence: 'Noch keine aktuellen Gerätedaten.',
     detail: 'Sobald die erste OCPP-Nachricht eintrifft, erscheint hier ihr Zustand.',
-    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Verbindung prüfen',
+    connectorId, connectorStatus: rawStatus, action: null, actionLabel: null,
   };
   if (connection.source === 'none' && (station?.connected || fallback?.connected)) return {
     kind: 'stale', tone: 'warn', badge: 'Daten veraltet',
-    sentence: 'Die Wallbox liefert gerade keine aktuellen Daten.',
+    sentence: 'Gerätestatus nicht aktuell.',
     detail: connection.detail,
-    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Verbindung prüfen',
+    connectorId, connectorStatus: rawStatus, action: null, actionLabel: null,
   };
   if (!connection.online) return {
     kind: 'offline', tone: 'off', badge: 'Offline',
-    sentence: connection.lastSeen
-      ? `Wallbox seit ${new Date(connection.lastSeen).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr nicht erreichbar.`
-      : 'Wallbox noch nicht erreichbar.',
-    detail: 'Ein lokaler Ladevorgang kann an der Wallbox weiterlaufen.',
-    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Verbindung prüfen',
+    sentence: 'Wallbox nicht erreichbar.',
+    detail: connection.lastSeen
+      ? `Letzter Kontakt um ${new Date(connection.lastSeen).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr. Ein lokaler Ladevorgang kann an der Wallbox weiterlaufen.`
+      : 'Ein lokaler Ladevorgang kann an der Wallbox weiterlaufen.',
+    connectorId, connectorStatus: rawStatus, action: null, actionLabel: null,
   };
   if (!connectorFresh) return {
     kind: connector ? 'stale' : 'unknown', tone: 'warn',
     badge: connector ? 'Anschlussdaten veraltet' : 'Anschlussstatus fehlt',
-    sentence: connectorId == null
-      ? 'Wallbox online · der Anschlusszustand ist noch nicht gemeldet.'
-      : `Wallbox online · der Zustand von Anschluss ${connectorId} ist nicht aktuell.`,
+    sentence: connectorId == null ? 'Anschlussstatus fehlt.' : `Status von Anschluss ${connectorId} nicht aktuell.`,
     detail: connection.source === 'edge' ? connection.detail : stationSnapshot.detail,
-    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Status prüfen',
+    connectorId, connectorStatus: rawStatus, action: null, actionLabel: null,
   };
   if (rawStatus === 'Faulted' || Boolean(connectorError && connectorError !== 'NoError')) return {
     kind: 'faulted', tone: 'error', badge: 'Störung',
-    sentence: `Wallbox online · ${connectorName} meldet eine Störung.`,
-    detail: 'Stecker trennen, 10 Sekunden warten und erneut verbinden. Technische Angaben stehen unter Service & Diagnose.',
-    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Störung prüfen',
+    sentence: connectorId == null ? 'Störung an der Wallbox.' : `Störung an Anschluss ${connectorId}.`,
+    detail: 'Stecker trennen, 10 Sekunden warten und erneut verbinden. Technische Angaben stehen unter Diagnose.',
+    connectorId, connectorStatus: rawStatus, action: null, actionLabel: null,
   };
   if (rawStatus === 'Finishing') return {
     kind: 'waiting', tone: 'warn', badge: 'Wartet auf Abstecken',
-    sentence: `Wallbox online · ${connectorName} beendet den Ladevorgang.`,
+    sentence: 'Ladevorgang wird beendet.',
     detail: 'Wenn das Kabel nach Ladeende feststeckt, kann die Wallbox den Anschluss entriegeln.',
     connectorId, connectorStatus: rawStatus,
-    action: !hero.transaction && connection.sendable ? 'UnlockConnector' : 'service',
-    actionLabel: !hero.transaction && connection.sendable ? 'Stecker entriegeln' : 'Ladevorgang prüfen',
+    action: !hero.transaction && connection.sendable ? 'UnlockConnector' : null,
+    actionLabel: !hero.transaction && connection.sendable ? 'Stecker entriegeln' : null,
   };
   if (rawStatus === 'Preparing' || rawStatus === 'SuspendedEV' || rawStatus === 'SuspendedEVSE') return {
     kind: 'waiting', tone: 'warn', badge: 'Wartet',
-    sentence: `Wallbox online · ${connectorName} ist angesteckt und wartet.`,
+    sentence: 'Fahrzeug angeschlossen.',
     detail: rawStatus === 'SuspendedEVSE'
       ? 'Die Wallbox pausiert das Laden nach der aktuell geltenden Steuerung.'
       : rawStatus === 'SuspendedEV'
         ? 'Das angeschlossene Fahrzeug ruft gerade keine Leistung ab.'
         : 'Der Anschluss bereitet den nächsten Ladevorgang vor.',
     connectorId, connectorStatus: rawStatus,
-    action: hero.transaction ? 'service' : connection.sendable ? 'RemoteStartTransaction' : null,
-    actionLabel: hero.transaction ? 'Ladevorgang prüfen' : connection.sendable ? 'Jetzt laden' : null,
+    action: hero.transaction ? null : connection.sendable ? 'RemoteStartTransaction' : null,
+    actionLabel: hero.transaction ? null : connection.sendable ? 'Jetzt laden' : null,
   };
   if (rawStatus === 'Unavailable' || rawStatus === 'Reserved') return {
     kind: 'unavailable', tone: 'warn', badge: 'Nicht verfügbar',
-    sentence: `Wallbox online · ${connectorName} ist derzeit nicht verfügbar.`,
+    sentence: connectorId == null ? 'Wallbox nicht verfügbar.' : `Anschluss ${connectorId} nicht verfügbar.`,
     detail: rawStatus === 'Reserved' ? 'Der Anschluss ist reserviert.' : 'Die Wallbox hat den Anschluss außer Betrieb gemeldet.',
-    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Status prüfen',
+    connectorId, connectorStatus: rawStatus, action: null, actionLabel: null,
   };
   if (rawStatus === 'Charging') return {
     kind: 'charging', tone: 'ok', badge: 'Lädt',
-    sentence: `Wallbox online · ${connectorName} lädt${hero.power ? ` mit ${hero.power}` : ''}.`,
+    sentence: `${connectorName} lädt.`,
     detail: hero.transaction
       ? `Ladevorgang seit ${new Date(hero.transaction.startedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr.`
-      : 'Die Wallbox meldet einen Ladevorgang; die zugehörigen Sitzungsdaten fehlen noch.',
+      : 'Die Wallbox meldet einen laufenden Ladevorgang.',
     connectorId, connectorStatus: rawStatus,
-    action: hero.transaction && connection.sendable ? 'RemoteStopTransaction' : 'service',
-    actionLabel: hero.transaction && connection.sendable ? 'Laden stoppen' : 'Ladevorgang prüfen',
+    action: hero.transaction && connection.sendable ? 'RemoteStopTransaction' : null,
+    actionLabel: hero.transaction && connection.sendable ? 'Laden stoppen' : null,
   };
   if (rawStatus === 'Available') return {
     kind: 'available', tone: 'ok', badge: 'Verfügbar',
-    sentence: `Wallbox online · ${connectorName} ist verfügbar.`,
+    sentence: 'Bereit zum Laden.',
     detail: 'Sobald ein Fahrzeug angeschlossen ist, kann der Ladevorgang beginnen.',
     connectorId, connectorStatus: rawStatus,
-    action: hero.transaction ? 'service' : connection.sendable ? 'RemoteStartTransaction' : null,
-    actionLabel: hero.transaction ? 'Ladevorgang prüfen' : connection.sendable ? 'Laden starten' : null,
+    action: hero.transaction ? null : connection.sendable ? 'RemoteStartTransaction' : null,
+    actionLabel: hero.transaction ? null : connection.sendable ? 'Laden starten' : null,
   };
   return {
     kind: 'unknown', tone: 'warn', badge: 'Status fehlt',
-    sentence: 'Wallbox online · der Anschlusszustand ist noch nicht gemeldet.',
+    sentence: 'Anschlussstatus fehlt.',
     detail: 'VoltPilot wartet auf die nächste Statusmeldung der Wallbox.',
-    connectorId, connectorStatus: rawStatus, action: 'service', actionLabel: 'Status prüfen',
+    connectorId, connectorStatus: rawStatus, action: null, actionLabel: null,
   };
 }
 

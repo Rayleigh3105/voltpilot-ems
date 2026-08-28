@@ -135,11 +135,11 @@ describe('OCPP wallbox view model', () => {
       { ...base, connectors: [connector('SuspendedEVSE')] } as OcppStation,
       { ...emptyHero, transaction: activeTransaction },
       now,
-    )).toMatchObject({ kind: 'waiting', action: 'service', actionLabel: 'Ladevorgang prüfen' });
+    )).toMatchObject({ kind: 'waiting', action: null, actionLabel: null });
     expect(wallboxState({ ...base, connectors: [connector('Faulted', 'GroundFailure')] } as OcppStation, emptyHero, now))
-      .toMatchObject({ kind: 'faulted', badge: 'Störung', action: 'service' });
+      .toMatchObject({ kind: 'faulted', badge: 'Störung', action: null });
     expect(wallboxState({ ...base, connected: false } as OcppStation, emptyHero, now))
-      .toMatchObject({ kind: 'offline', badge: 'Offline', actionLabel: 'Verbindung prüfen' });
+      .toMatchObject({ kind: 'offline', badge: 'Offline', actionLabel: null });
   });
 
   it('does not let a fresh station heartbeat freshen an old connector status', () => {
@@ -154,8 +154,8 @@ describe('OCPP wallbox view model', () => {
     expect(wallboxConnectorSnapshot(stationWithOldConnector, null, now)).toMatchObject({ connectorId: 1, fresh: false });
     expect(wallboxState(stationWithOldConnector, hero, now)).toMatchObject({
       kind: 'stale',
-      action: 'service',
-      actionLabel: 'Status prüfen',
+      action: null,
+      actionLabel: null,
     });
   });
 
@@ -184,8 +184,8 @@ describe('OCPP wallbox view model', () => {
       kind: 'unknown',
       connectorId: 2,
       connectorStatus: null,
-      action: 'service',
-      actionLabel: 'Status prüfen',
+      action: null,
+      actionLabel: null,
     });
     expect(wallboxState(stationWithOnlyConnectorOne, hero, now).sentence).not.toContain('Anschluss 1');
   });
