@@ -318,7 +318,13 @@
           "maxLength": 128,
           "description": "The edge-local source id this entity was adopted from (:8484 sources selection; the cloud pin measurement_point.edge_source_id). OPTIONAL + ADDITIVE (2026-07-29, vp-vier-erzeuger-p9 PR 4a): lets the device map its OWN source readings onto the entity for its LOCAL display - deterministic instead of order-guessing. An old edge ignores it."
         },
-        "owner_claimed": {
+        "charge_point_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "description": "Die OCPP-ChargePointId, die diese Entitaet IST - der Cloud-Bindung device_charge_point.entity_id entnommen (Cockpit Phase 1 / E1). OPTIONAL + ADDITIV: es ist der Zwilling von edge_source_id einen Transport weiter - eine Ladesaeule ist keine Quelle in sources.json (sie waehlt UNS an), ihre Messwerte liessen sich also ueber keinen anderen Schluessel auf die Entitaet abbilden. Abwesend = keine Ladesaeule / eine aeltere Cloud, und dann veroeffentlicht die Box gar keine Ladepunkt-Telemetrie je Entitaet. Eine aeltere Edge ignoriert es."
+      },
+      "owner_claimed": {
           "type": "boolean",
           "description": "TRUE = an ACTIVE customer rule claims this component, so the plan executors inject NO market desire for it and the rule wins because no competitor exists (Steuerung Stufe 3, vp-steuerung-konzept-b3 \u00a73.7 A3). OPTIONAL + ADDITIVE: ABSENT means false, which is what an older cloud sends and what every unclaimed component sends - the arbiter, the priority classes and D-4/D-5/D-6 are unchanged. An older edge ignores it and behaves exactly as before."
         },

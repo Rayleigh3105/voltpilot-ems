@@ -366,6 +366,7 @@ public class ChargerStatusListener {
                     optDouble(con, "energy_kwh"), optDouble(con, "soc_pct"),
                     textOrNull(con, "command_status"), vocabulary(con, "readback", READBACK),
                     textOrNull(con, "readback_note"), optInstant(con, "session_since"),
+                    optDouble(con, "session_kwh"), optInstant(con, "metered_at"),
                     con.path("boost").asBoolean(false)));
         }
         return out;

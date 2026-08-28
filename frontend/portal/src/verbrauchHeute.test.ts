@@ -260,7 +260,7 @@ describe('gemesseneEntitaeten · wen die Aufschlüsselung lazy nachfragt', () =>
     } as never],
   };
 
-  it('nennt die gemessenen Komponenten, NIE einen Ladepunkt', () => {
+  it('nennt jede gemessene Komponente - seit Phase 1 auch den Ladepunkt', () => {
     const k = verbrauchKomposition({
       topology: TOPO,
       chargers: [CHARGER],
@@ -271,14 +271,99 @@ describe('gemesseneEntitaeten · wen die Aufschlüsselung lazy nachfragt', () =>
     });
     const ids = gemesseneEntitaeten(k);
     expect(ids).toContain('rod');
-    // ⚠ Der Ladepunkt hat eine `entityId` - und wird trotzdem nicht gefragt:
-    // seine Zahl kommt aus dem Register, ein zweiter Lesepfad wäre eine
-    // zweite Antwort auf dieselbe Frage.
-    expect(ids).not.toContain('cp-ent');
+    // ⚠ Cockpit Phase 1 / E1: die Box publiziert je Ladepunkt-Entität
+    // `power_kw` + den `energy_kwh`-Zähler als gewöhnliche Entitäts-Telemetrie,
+    // ein Ladepunkt IST also eine messende Komponente. Der Register-Abruf
+    // bleibt daneben - nur er kennt die Zahl je STECKER.
+    expect(ids).toContain('cp-ent');
+    // Nie die ChargePointId: gefragt wird die ENTITÄT.
     expect(ids).not.toContain('CP1');
+  });
+
+  it('fragt eine Säule mit zwei Steckern trotzdem nur EINMAL', () => {
+    const k = verbrauchKomposition({
+      topology: TOPO,
+      chargers: [{
+        ...CHARGER,
+        connectors: [
+          CHARGER.connectors![0],
+          { ...CHARGER.connectors![0], connectorId: 2 },
+        ],
+      }],
+      consumerStatus: null,
+      hausTodayKwh: 40,
+      ladenKachelSichtbar: false,
+      links: {},
+    });
+    const ids = gemesseneEntitaeten(k);
+    expect(ids.filter((id) => id === 'cp-ent')).toHaveLength(1);
   });
 
   it('fragt ohne Aufschlüsselung nichts nach', () => {
     expect(gemesseneEntitaeten(null)).toEqual([]);
+  });
+});
+
+describe('Cockpit Phase 1 / E1 - der Ladepunkt-Zähler kommt über die Entität', () => {
+  const eimer = (start: string, v: number) => ({
+    start, avg: v, min: v, max: v, last: v, n: 1,
+  });
+
+  it('rechnet den ZUWACHS des energy_kwh-Zählers, nicht die Summe der Stände', () => {
+    const kwh = heuteAusEntitaet({
+      range: 'day', from: 'x', to: 'y', bucketMinutes: 15,
+      channels: {
+        energy_kwh: [
+          eimer('2026-08-28T00:00:00Z', 1200),
+          eimer('2026-08-28T00:15:00Z', 1211.5),
+          eimer('2026-08-28T00:30:00Z', 1240.5),
+        ],
+      },
+    });
+    // 1240,5 − 1200 = 40,5 — die Summe der Stände wären 3652.
+    expect(kwh).toBe(40.5);
+  });
+
+  it('gewinnt gegen die Leistungs-Integration, wo es einen Zähler gibt', () => {
+    const kwh = heuteAusEntitaet({
+      range: 'day', from: 'x', to: 'y', bucketMinutes: 60,
+      channels: {
+        energy_kwh: [eimer('2026-08-28T00:00:00Z', 10), eimer('2026-08-28T01:00:00Z', 14)],
+        // Die Integration ergäbe 11 kWh - der Zähler ist die MESSUNG.
+        power_kw: [eimer('2026-08-28T00:00:00Z', 11), eimer('2026-08-28T01:00:00Z', 0)],
+      },
+    });
+    expect(kwh).toBe(4);
+  });
+
+  // ⚠ Die Monotonie-Regel des Registers gilt auf der Entitäts-Reihe wörtlich:
+  // ein Zähler, der zurückspringt, ergibt GAR KEINE Zahl - und fällt hier auf
+  // die Leistungs-Integration zurück, statt 945 statt 57 kWh zu behaupten.
+  it('behauptet bei einem zurückgesetzten Zähler nichts und nimmt die Leistung', () => {
+    const kwh = heuteAusEntitaet({
+      range: 'day', from: 'x', to: 'y', bucketMinutes: 60,
+      channels: {
+        energy_kwh: [eimer('2026-08-28T00:00:00Z', 950), eimer('2026-08-28T01:00:00Z', 5)],
+        power_kw: [eimer('2026-08-28T00:00:00Z', 8), eimer('2026-08-28T01:00:00Z', 4)],
+      },
+    });
+    expect(kwh).toBe(12);
+  });
+
+  it('braucht mindestens zwei Zähler-Eimer, sonst gibt es keinen Zuwachs', () => {
+    expect(
+      heuteAusEntitaet({
+        range: 'day', from: 'x', to: 'y', bucketMinutes: 60,
+        channels: { energy_kwh: [eimer('2026-08-28T00:00:00Z', 10)] },
+      }),
+    ).toBeNull();
+  });
+
+  it('ist ohne Zähler-Kanal byte-identisch zur Leistungs-Integration', () => {
+    const nur = {
+      range: 'day' as const, from: 'x', to: 'y', bucketMinutes: 60,
+      channels: { power_kw: [eimer('2026-08-28T00:00:00Z', 3), eimer('2026-08-28T01:00:00Z', 5)] },
+    };
+    expect(heuteAusEntitaet(nur)).toBe(8);
   });
 });

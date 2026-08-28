@@ -68,6 +68,21 @@ public record SiteChargingDto(ChargingBudgetDto budget, List<ChargePointDto> cha
             Double energyKwh, Double socPct, String commandStatus, String readback,
             String readbackNote, Instant sessionSince,
             /*
+             * sessionKwh = die Bilanz DIESES Ladevorgangs (Cockpit Phase 1 /
+             * E2). energyKwh daneben ist ein KUMULATIVES Register - was in der
+             * laufenden Sitzung geflossen ist, weiss nur die Box, weil nur sie
+             * den Registerstand bei StartTransaction kennt. null = kein
+             * Ladevorgang / kein Register / ein rueckwaerts gesprungenes
+             * Register, nie eine erfundene 0.
+             *
+             * meteredAt = wann die Saeule zuletzt MeterValues gemeldet hat, also
+             * das ALTER von powerKw/energyKwh/socPct. Ohne es kann keine Flaeche
+             * ein stehengebliebenes Kilowatt von einem lebenden unterscheiden;
+             * null = nie gemessen bzw. ein aelterer Edge-Stand, und dann darf
+             * eine Flaeche die Werte NICHT als aktuell ausgeben.
+             */
+            Double sessionKwh, Instant meteredAt,
+            /*
              * boost = an diesem Stecker läuft „Jetzt voll laden". Der Wert kam
              * damit OHNE die Quellen-Bahn zustande und darf Netzstrom
              * enthalten; die Fläche SAGT das - eine volle Ladung, die niemand

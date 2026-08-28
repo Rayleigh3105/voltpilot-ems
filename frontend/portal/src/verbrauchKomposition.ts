@@ -50,6 +50,7 @@ import { fmtNum } from './format';
 import {
   chargerName,
   connectorName,
+  aktuelleLeistung,
   ladeZustand,
   type ChargePoint,
   type LadeZustandKind,
@@ -217,11 +218,12 @@ export interface VerbrauchInput {
     charger?: (chargePointId: string) => string | null;
     komponente?: (entityId: string) => string | null;
   } | null;
-}
-
-/** Eine endliche Zahl, sonst null - nie eine erfundene 0. */
-function num(v: number | null | undefined): number | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  /**
+   * Der Jetzt-Zeitpunkt für die Frische-Prüfung der Ladepunkt-Messwerte
+   * (Cockpit Phase 1 / E2). Fehlt er, gilt die Uhr des Browsers - der
+   * Normalfall; Tests reichen ihn, damit ein Fall nicht an der Uhr hängt.
+   */
+  nowMs?: number;
 }
 
 function round3(v: number): number {
@@ -318,7 +320,12 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
         note: seen,
         health: c.connected ? 'ok' : c.lastSeen ? 'stale' : 'never',
         aktiv: false,
-        todayKwh: today[`cp:${c.chargePointId}`] ?? null,
+        // Ohne gemeldeten Stecker kann der Register-Lesepfad gar nichts
+        // liefern (seine Proben tragen eine Stecker-Nummer) - der
+        // Entitäts-Zähler der Säule ist hier die einzige Quelle (Phase 1 / E1).
+        todayKwh:
+          today[`cp:${c.chargePointId}`] ??
+          (c.entityId ? (today[`e:${c.entityId}`] ?? null) : null),
         href: links.charger?.(c.chargePointId) ?? null,
         entityId: c.entityId ?? null,
         title: c.chargePointId,
@@ -327,12 +334,17 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
     }
     for (const con of cons) {
       steckerGesamt += 1;
-      const z = ladeZustand(con, c);
+      const z = ladeZustand(con, c, input.nowMs);
       const laedt = LAEDT.has(z.kind);
       // ⚠ Der Messwert gehört NUR einem wirklich ladenden Stecker: eine
       // stehengebliebene Zahl an einer wartenden Säule wäre eine Behauptung
       // über Energie, die gerade nicht fliesst.
-      const kw = z.kind === 'laedt' ? num(con.powerKw) : null;
+      //
+      // ⚠ Und seit Phase 1 / E2 auch nur einem FRISCHEN: hat die Säule zu
+      // messen aufgehört, ist `z.kind` ohnehin `laedt_ohne_messung` - die
+      // Zeile bleibt AKTIV (der Rest wird dadurch ehrlich unbestimmbar), aber
+      // die veraltete Zahl geht in keine Summe ein.
+      const kw = z.kind === 'laedt' ? aktuelleLeistung(con, input.nowMs) : null;
       if (laedt) ladendeStecker += 1;
       if (kw != null) ladenKw = round3((ladenKw ?? 0) + kw);
       const mehrere = cons.length > 1;
@@ -351,7 +363,14 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
         // ⚠ Ein ladender Stecker OHNE Messwert ist AKTIV - genau das macht den
         // Rest unbestimmbar, statt seine Leistung stillschweigend hineinzuziehen.
         aktiv: laedt,
-        todayKwh: today[`cp:${c.chargePointId}#${con.connectorId}`] ?? null,
+        // ⚠ Der Register-Zuwachs JE STECKER gewinnt - nur er kennt den
+        // einzelnen Stecker. Seit Phase 1 / E1 fällt eine Säule, deren Register
+        // nichts hergibt, auf ihren Entitäts-Zähler zurück - aber NUR bei EINEM
+        // Stecker: bei mehreren ist der Entitätswert die SUMME der Säule, und
+        // ihn auf einen Stecker zu schreiben wäre eine erfundene Aufteilung.
+        todayKwh:
+          today[`cp:${c.chargePointId}#${con.connectorId}`] ??
+          (mehrere || !c.entityId ? null : (today[`e:${c.entityId}`] ?? null)),
         href: links.charger?.(c.chargePointId) ?? null,
         entityId: c.entityId ?? null,
         title: `${c.chargePointId} · ${connectorName(con.connectorId)}`,
