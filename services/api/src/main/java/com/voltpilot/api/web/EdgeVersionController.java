@@ -21,8 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
  * damit den Stand seiner EIGENEN Geräte - das ist keine Interna-Preisgabe,
  * sondern die Version, die auf seinem Gerät läuft.
  *
- * <p>Eine leere Liste heißt „kein Gerät hat je eine Version gemeldet", nicht
- * „alle aktuell" - die Oberfläche muss das als „unbekannt" zeigen.
+ * <p>Der Core-Stand kommt bevorzugt aus dem top-level Update-Herzschlag, der
+ * unabhängig von einem Flow-Deployment gesendet wird. Der historische
+ * {@code flows.core_version}-Beleg bleibt Fallback; die Palette-Version kommt
+ * weiterhin aus dem Flow-Block. Eine leere Liste heißt daher wirklich „kein
+ * Gerät hat je einen verwertbaren Stand gemeldet", nicht „alle aktuell".
  *
  * <p><b>Seit Geräteseiten Stufe 1 (R2a) trägt jede Zeile zusätzlich das
  * URTEIL</b> gegen das Release-Register ({@code newestRelease}/{@code upToDate},

@@ -320,7 +320,7 @@ describe('BoxSeiteSection', () => {
     expect(screen.queryByText('Misst & steuert')).toBeNull();
   });
 
-  /** D5: die eigene Adresse - und der Weg dorthin NUR, wenn er belegt ist. */
+  /** D5: die eigene Adresse - und der Weg dorthin nur im Kundennetz. */
   it('sagt ehrlich, dass die Box ihre eigene Adresse noch nicht meldet', async () => {
     stub();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
@@ -329,18 +329,23 @@ describe('BoxSeiteSection', () => {
     expect(screen.queryByRole('link', { name: /Lokale Oberfläche/ })).toBeNull();
   });
 
-  it('bietet die lokale Oberfläche an, sobald die Adresse BEWIESEN ist', async () => {
+  it('bietet die lokale Oberfläche am gemeldeten Kundennetz-Endpunkt an', async () => {
     stub();
     render(
       <BoxSeiteSection
         site={site}
         boxRef="edge-45gz7da"
-        devices={[{ ...box, lanHost: '192.168.20.14', lanSource: 'erreicht', lanSeenAt: FRISCH }]}
+        devices={[{
+          ...box,
+          lanHost: '192.168.20.14:8484',
+          lanSource: 'schnittstelle',
+          lanSeenAt: FRISCH,
+        }]}
       />,
     );
     await screen.findByRole('heading', { level: 1 });
     const link = screen.getByRole('link', { name: /Lokale Oberfläche/ });
-    expect(link.getAttribute('href')).toBe('http://192.168.20.14');
+    expect(link.getAttribute('href')).toBe('http://192.168.20.14:8484');
   });
 
   /**

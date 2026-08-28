@@ -174,16 +174,19 @@ Eine Zeile je Anlage über ALLE Mandanten, server-seitig — er ersetzt die Clie
   - **B4b Prognose-Ausreißer:** der mittlere NORMIERTE Fehler (`forecast_accuracy.nmae_pct`, nur die AKTIVEN Modelle, 14 Tage) je Anlage UND Prognoseart, gegen den **Median der Flotte** für dieselbe Art — normiert, weil nur er über verschieden große Anlagen vergleichbar ist, und je Art, weil Last- und PV-Fehler verschiedene Größen sind. Ausreißer ist, wer `1,5 ×` über dem Median UND über dem Boden von 25 % liegt (ohne Boden markierte eine durchweg gute Flotte gesunde Anlagen — Alarm-Müdigkeit). **Unter 3 bewerteten Anlagen gibt es keinen Maßstab und wird nichts behauptet** — dieselbe Disziplin wie beim Edge-Stand („ohne Release-Register ist die neueste gemeldete Version der Maßstab").
 - **Bewusst NICHT im Endpunkt: Geld** (Captain-Entscheid Q2, reiner Technik-Blick) und jede Schreiboperation.
 
-## Edge-Stand: `core_version`/`palette_version` werden endlich gelesen
+## Edge-Stand: installierter Core + Palette werden endlich gelesen
 
-Die Edge sendet ihre Versionen SEIT DEM BAU mit (`edge-app/core/internal/cloud/cloud.go` `FlowsSummary`) — die Cloud persistierte sie nicht, „welche Edges sind veraltet?" war unbeantwortbar. **NULL Edge-Änderung**, nur ein Speicher + ein Lesepfad:
+Die Edge sendet ihren installierten Core-Stand in JEDEM Status-Herzschlag als
+Top-Level-`version`; der `flows`-Block traegt zusaetzlich die Palette, existiert
+aber erst nach einem Flow-Deployment. Beide Speicher werden im Kunden-Lesepfad
+zusammengefuehrt:
 
 - **Tabelle `device_edge_version`** (api-Migration `V20260803000000`): eine Zeile je Gerät, bei jedem Herzschlag ersetzt, RLS + FORCE wie `device_control_status`/`flow_device_ack`. `EdgeVersionRepository` schreibt (`tenant_id` aus der RLS-Sitzung, nie aus dem Aufruf) und liest ohne Mandanten-Prädikat.
 - **Der Ingest hängt am `FlowNodeStatusListener`, NICHT an einem fünften Geschwister.** Die Curtailment-Regel („zwei unabhängige Blöcke, zwei Listener") greift hier gerade nicht: die Versionen sind FELDER des `flows`-Blocks, den dieser Listener ohnehin parst — ein eigener Listener wäre eine zweite Broker-Verbindung und eine zweite Identitätsprüfung für dieselben Bytes. Folge: der Ingest hängt am Flag `voltpilot.flows.mqtt-listener-enabled` (in beiden Composes an).
-- **Zwei Grenzen, die JEDE Oberfläche kennen muss:** (1) die Edge baut den `flows`-Block erst, nachdem sie einen Deployment-Satz gesehen hat (`Deployer.Summary()` liefert vorher nil) — ein Gerät ohne ausgerollte Automation meldet also GAR KEINE Version, und „kein Eintrag" heißt **unbekannt**, nie „veraltet"; (2) trägt der Block keines der beiden Felder, wird gar nichts geschrieben — eine Zeile mit zwei NULLs behauptete „gemeldet, aber unbekannt".
-- **Lesepfad `GET /api/v1/edge-versions`** (`EdgeVersionController`, in `openapi.yaml`): bewusst eine KUNDEN-förmige, RLS-gefencte Route wie `/overview`. Ein Kunde sieht damit den Stand seiner eigenen Geräte — keine Interna. (Der Plattform-Puls liest den Stand seit Stufe 2 aus dem Fleet-Endpunkt; diese Route bleibt der Kunden-Lesepfad.)
-- **Der Maßstab für „veraltet" ist SEIT OTA STUFE 0 das Release-Register** (`edge_release`, siehe den nächsten Abschnitt) — der frühere Flotten-Maximum-Proxy `adminFleet.newestCoreVersion` und der Zahlenblock-Vergleich sind ENTFALLEN. Diese Tabelle bleibt der `flows`-getragene Stand; die top-level gemeldete Version wohnt in `device_update_status`.
-- Beweise: `FlowNodeStatusListenerTest` (Persistenz aus dem `flows`-Block, einzeln fehlendes Feld bleibt leer, ohne beide Felder KEINE Zeile) + `PortalApiTest.edgeVersionIsIngestedFromTheFlowsHeartbeatAndTenantScoped` (echte DB: verlustfreier Durchlauf, Ersetzen der einen Zeile, RLS-Isolation, „kein Feld → keine Zeile").
+- **Zwei Grenzen, die JEDE Oberfläche kennen muss:** (1) die Edge baut den `flows`-Block erst, nachdem sie einen Deployment-Satz gesehen hat (`Deployer.Summary()` liefert vorher nil), deshalb darf der installierte CORE-STAND nie von diesem optionalen Block abhaengen; (2) traegt der Block keines seiner Versionsfelder, wird keine leere `device_edge_version`-Zeile geschrieben.
+- **Lesepfad `GET /api/v1/edge-versions`** (`EdgeVersionController`, in `openapi.yaml`): bewusst eine KUNDEN-förmige, RLS-gefencte Route wie `/overview`. `EdgeVersionRepository.findAll` beginnt bei `device`, nimmt fuer `coreVersion` zuerst `device_update_status.version` (danach dessen Legacy-`current_version`, zuletzt den alten `device_edge_version.core_version`) und ergaenzt die Palette aus `device_edge_version`. So zeigt auch eine Box OHNE Flow-Deployment ihren tatsaechlich installierten Stand. Ein Kunde sieht nur die eigenen Geräte; der Plattform-Puls liest weiterhin den Fleet-Endpunkt.
+- **Der Maßstab für „veraltet" ist SEIT OTA STUFE 0 das Release-Register** (`edge_release`, siehe den nächsten Abschnitt) — der frühere Flotten-Maximum-Proxy `adminFleet.newestCoreVersion` und der Zahlenblock-Vergleich sind ENTFALLEN.
+- Beweise: `FlowNodeStatusListenerTest` (Palette/Legacy-Core aus dem `flows`-Block) + `PortalApiTest.edgeVersionIsIngestedFromTheFlowsHeartbeatAndTenantScoped` (echte DB: RLS, Ersetzen und vor allem Top-Level-`version` OHNE `flows`).
 
 ## OTA Stufe 0 „Sehen": der Edge-Stand wird flottenweit WOHLDEFINIERT
 
@@ -4679,7 +4682,7 @@ ausschließlich Lesepfade, die es längst gibt (`/devices` · `/entities` ·
 - Fläche, Regeln und Fallstricke: `frontend/portal/AGENTS.md` „Die
   GERÄTE-DETAILSEITE".
 
-## D5: die Box meldet ihre EIGENE Adresse — und nur, was sie beweisen kann
+## D5: die Box meldet ihre Adresse im KUNDEN-LAN, getrennt vom Zugriffsweg
 
 Anlagen-Zentrale Stufe 2 PR 2c (Konzept `data/vp-anlagen-zentrale-konzept-h6`
 §8.3 + Captain-Entscheid **D5: ja, additives Feld, NUR Anzeige**). Additiv auf
@@ -4690,21 +4693,20 @@ zeichengleich wie vorher.
   zeigt JEDE Geräte-Adresse (die Box speichert sie), aber nicht die eigene — und
   für den Kunden ist sie der Weg zur lokalen Oberfläche, für den Support die
   erste Frage am Telefon. Es gab dafür kein Feld und keinen Uplink.
-- **⚠ DIE INTERFACE-ADRESSE IST NICHT DIE ANTWORT.** Der Core läuft in einem
-  bridge-vernetzten Container mit veröffentlichten Ports, `net.Interfaces()`
-  meldet also die DOCKER-Bridge-Adresse (172.x). Sie ist eine wahre Aussage über
-  den Container und eine NUTZLOSE für den Kunden — wer sie eintippt, erreicht
-  nichts. Sie als „die Adresse Ihrer Box" auszugeben wäre genau die erfundene
-  Antwort, gegen die dieses Feature gebaut ist.
-- **Beweisbar ist der HTTP-`Host`-Kopf.** Dockers DNAT schreibt die Ziel-IP des
-  Pakets um, aber NIE diesen Kopf — der Browser schreibt ihn, wie der Kunde ihn
-  GETIPPT hat. Eine Anfrage an `:8484` trägt damit exakt die Adresse, die
-  funktioniert hat, samt Port. Stärker geht es nicht, und es ist zugleich genau
-  die URL, die ein Mensch wieder braucht. `internal/netinfo` ist die Regel
-  (rein, nimmt sein `now`), `agent.WebObserver` die Verdrahtung — ein WRAPPER um
-  den Handler, kein fünfzehnter Parameter von `web.Handler`: die Tatsache gehört
-  dem HTTP-Transport, nicht einer Fläche.
-- **Die Interface-Adresse reist NUR ohne Container** (`/.dockerenv` bzw.
+- **⚠ DIE CONTAINER-INTERFACE-ADRESSE IST NICHT DIE ANTWORT.** Der Core läuft in
+  einem bridge-vernetzten Container; `net.Interfaces()` sieht dort nur die
+  Docker-Adresse. Darum erkennt `install.sh` die Default-Route des HOSTS,
+  verwirft VPN-/Tunnel-/Docker-Interfaces und schreibt den erreichbaren
+  Endpunkt inklusive Port als `VP_LAN_HOST`. Eine statische Installation darf
+  ihn explizit setzen; Core UND Updater bekommen denselben Wert, damit er auch
+  autonome Updates ueberlebt.
+- **Der HTTP-`Host`-Kopf bleibt nur der Fallback, nie mehr die staerkere
+  Wahrheit.** Er beweist zwar, unter welcher Adresse eine Anfrage funktioniert
+  hat, kann aber von einem Support-Aufruf ueber WireGuard/Tailscale stammen und
+  damit fuer den Kunden unerreichbar sein. `network.lan_host` und
+  `network.host` reisen deshalb GETRENNT; ein VPN-Aufruf darf die konfigurierte
+  Kunden-LAN-Adresse nicht ueberschreiben.
+- **Die automatisch gelesene Prozess-Interface-Adresse reist NUR ohne Container** (`/.dockerenv` bzw.
   cgroup), damit sie nie mit einer erreichbaren verwechselt werden kann; bei
   mehreren Kandidaten wird GAR KEINE gemeldet statt einer geratenen. Eine
   Adresse älter als 14 Tage gilt nicht mehr — eine falsche Adresse ist schlimmer
@@ -4723,9 +4725,9 @@ zeichengleich wie vorher.
   nachgezogen werden müsste (die dokumentierte Falle). Er schreibt dafür in ein
   ANDERES Repository — ein Zuhörer ist ein Transportweg, keine Tabelle.
 - **Speicher: drei additive Spalten auf `device`** (Migration
-  `V20260832000000`), nicht eine — `lan_source` unterscheidet den BEWIESENEN Weg
-  (`erreicht`) von der schwächeren Schnittstellen-Aussage (`schnittstelle`), und
-  die zwei dürfen nie unter einem Wort verschwinden; `lan_seen_at` ist ihr
+  `V20260832000000`), nicht eine — `lan_source` unterscheidet den vom Installer
+  konfigurierten Kunden-LAN-Endpunkt (`schnittstelle`, HOECHSTE Prioritaet) vom
+  beobachteten HTTP-Zugriff (`erreicht`, Legacy-Fallback); `lan_seen_at` ist ihr
   eigener Frische-Anker. Beides-oder-keines als CHECK. Sie reisen auf
   `DeviceDto` → `GET /devices`, also **ohne neuen Endpunkt und ohne zusätzlichen
   Abruf** — Zentrale, Geräteseite und Schaltbild laden die Geräteliste ohnehin.
@@ -4738,13 +4740,13 @@ zeichengleich wie vorher.
   OCPP-Anbinden-Dialog, dessen `ws://<box>:8887/…` bis heute die Adresse NICHT
   nennen kann („Das Portal behauptet KEINE Box-Adresse") — mit einer bewiesenen
   Adresse könnte er es.
-- **Beweise:** Go `internal/netinfo` (Host-Whitelist, Neustart, Verfall,
-  Loopback, Container-Regel) · `agent/network_test.go` (der Beobachter ändert
-  keine Antwort, der Installer-Healthcheck wird nie zur Box-Adresse, ohne Wissen
-  KEIN Block, Neustart) · `cloud/status_test.go` (die Draht-Form gegen einen
+- **Beweise:** Go `internal/netinfo` (private LAN-Whitelist, Host-Whitelist,
+  Neustart, Verfall, Loopback, Container-Regel) · `agent/network_test.go` (eine
+  konfigurierte LAN-Adresse ueberlebt einen VPN-Serviceaufruf; Beobachter aendert
+  keine Antwort; ohne Wissen KEIN Block) · `cloud/status_test.go` (die Draht-Form gegen einen
   echten In-Process-Broker, und der weggelassene Block) · api
-  `UpdateStatusListenerTest` (+6: bewiesen schlägt Schnittstelle, das schwächere
-  Wort, ohne Block kein Schreiben, leerer Block, gefälschte Identität, nur-Adresse)
+  `UpdateStatusListenerTest` (konfiguriertes LAN schlaegt VPN-Host, Legacy-Fallback,
+  ohne Block kein Schreiben, leerer Block, gefälschte Identität, nur-Adresse)
   · `PortalApiTest.theBoxOwnReachabilityIsIngestedAndTenantScoped` (echte DB,
   echter Zuhörer, RLS) · Portal `geraetSeite.test.ts`/`schaltbild.test.ts`.
 

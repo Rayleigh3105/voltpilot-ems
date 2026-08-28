@@ -13,11 +13,10 @@ import java.util.UUID;
  * Palette-Version fehlt z. B., solange die Node-RED-Admin-API nicht
  * konfiguriert ist).
  *
- * <p><b>Kein Eintrag heißt „unbekannt", nicht „alt".</b> Die Edge baut den
- * {@code flows}-Herzschlag-Block erst, nachdem sie einen Deployment-Satz
- * gesehen hat, ein Gerät ohne ausgerollte Automation meldet also gar keine
- * Version. Die Oberfläche muss das aussprechen und darf daraus nie eine
- * Veraltet-Aussage machen.
+ * <p>{@code coreVersion} wird bevorzugt aus der unabhängig vom Flow-Deployment
+ * gesendeten Top-Level-Version gebildet. Der {@code flows}-Block bleibt
+ * Fallback und Quelle für {@code paletteVersion}. Kein Eintrag heißt weiterhin
+ * „unbekannt", nie „alt".
  */
 public record EdgeVersionDto(UUID deviceId, UUID siteId, String coreVersion,
         String paletteVersion, Instant reportedAt,

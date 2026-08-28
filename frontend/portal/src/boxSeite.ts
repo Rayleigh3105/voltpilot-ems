@@ -40,6 +40,8 @@ import {
   boxZustand,
   chargerGeraetId,
   lanZeile,
+  lokaleBoxUrl,
+  privateLanAddress,
   quellenZustand,
 } from './geraetSeite';
 import { technicalDeviceName } from './entityLabel';
@@ -206,9 +208,11 @@ export function boxKacheln(
   zustand: { wort: string; ton: GeraetTon; detail: string | null },
   now: number,
 ): BoxKachel[] {
-  const lan = lanZeile(device, now);
-  const erreicht = device?.lanSource === 'erreicht';
-  const host = (device?.lanHost ?? '').trim();
+  const host = privateLanAddress(device?.lanHost);
+  const safeDevice = device
+    ? { ...device, lanHost: host, lanSeenAt: host ? device.lanSeenAt : null }
+    : undefined;
+  const lan = lanZeile(safeDevice, now);
   return [
     {
       key: 'verbindung',
@@ -227,9 +231,10 @@ export function boxKacheln(
       satz: lan.detail ?? '',
       zeilen: [],
       mono: !!host,
-      // ⚠ Ein Weg wird nur angeboten, wo er BELEGT ist: nur eine wirklich
-      // erreichte Adresse hat nachweislich geantwortet (die D5-Regel).
-      url: host && erreicht ? `http://${host}` : null,
+      // Der Kundennetz-Endpunkt ist der eigentliche Weg; für alte reine
+      // IP-Belege ergänzt der Helfer den festen :8484-Port. WAN/Loopback
+      // gelangen weder in den Text noch in den Link.
+      url: lokaleBoxUrl(host),
     },
   ];
 }

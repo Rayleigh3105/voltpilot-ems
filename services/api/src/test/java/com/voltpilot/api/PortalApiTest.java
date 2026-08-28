@@ -2685,10 +2685,13 @@ class PortalApiTest {
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         assertThat(device.apply(deviceId)).containsEntry("lanHost", "192.168.254.51:8484");
 
-        // Die schwächere Aussage trägt ihr eigenes Wort.
+        // Der explizite Kundennetz-Endpunkt schlägt einen beobachteten
+        // Service-VPN-Aufruf. Genau dieser Fall hatte 10.10.1.23 im Portal
+        // sichtbar und den Link für den Kunden unbrauchbar gemacht.
         heartbeat.accept("{\"reported_at\":\"2026-08-21T10:00:00Z\","
-                + "\"ip\":\"192.168.0.31\",\"iface\":\"eth0\"}");
-        assertThat(device.apply(deviceId)).containsEntry("lanHost", "192.168.0.31")
+                + "\"lan_host\":\"192.168.0.31:8484\","
+                + "\"host\":\"10.10.1.23:8484\",\"iface\":\"eth0\"}");
+        assertThat(device.apply(deviceId)).containsEntry("lanHost", "192.168.0.31:8484")
                 .containsEntry("lanSource", "schnittstelle");
 
         // Ein fremder Mandant sieht das Gerät gar nicht (RLS).
@@ -5909,9 +5912,8 @@ class PortalApiTest {
     }
 
     /**
-     * Admin-Umbau Stufe 1: der Edge-Stand kommt im {@code flows}-Block an, den
-     * der Flow-Status-Listener ohnehin liest, und wird RLS-gefenced festgehalten
-     * ({@code GET /api/v1/edge-versions}).
+     * Der Kunden-Lesepfad verbindet den alten {@code flows}-Beleg mit dem
+     * immer gesendeten Top-Level-Build ({@code GET /api/v1/edge-versions}).
      *
      * <p>Was halten muss: eine gemeldete Version reist verlustfrei durch, ein
      * einzeln fehlendes Feld bleibt LEER (nie eine geratene Version), ein
@@ -5921,6 +5923,9 @@ class PortalApiTest {
      */
     @Test
     void edgeVersionIsIngestedFromTheFlowsHeartbeatAndTenantScoped() {
+        String deviceId = "00000000-0000-0000-0000-000000000003";
+        exec("DELETE FROM device_update_status WHERE device_id = '" + deviceId + "'");
+        exec("DELETE FROM device_edge_version WHERE device_id = '" + deviceId + "'");
         var listener = new com.voltpilot.api.flows.FlowNodeStatusListener(
                 "tcp://localhost:1883", "", "", deviceRepo, flowStatusRepo, edgeVersionRepo,
                 ruleEventWriter);
@@ -5939,14 +5944,14 @@ class PortalApiTest {
                 + "\"flows\":{\"applied\":[]}}").getBytes(StandardCharsets.UTF_8));
         ResponseEntity<List> none = rest.exchange(versionsUrl, HttpMethod.GET, demo, List.class);
         assertThat(none.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(none.getBody()).isEmpty();
+        assertThat(edgeVersionFor(none.getBody(), deviceId)).isNull();
 
         listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:15:00Z\","
                 + "\"flows\":{\"core_version\":\"1.4.2\",\"palette_version\":\"0.3.0\","
                 + "\"applied\":[]}}").getBytes(StandardCharsets.UTF_8));
         ResponseEntity<List> reported = rest.exchange(versionsUrl, HttpMethod.GET, demo, List.class);
-        assertThat(reported.getBody()).hasSize(1);
-        Map<String, Object> row = (Map<String, Object>) reported.getBody().get(0);
+        Map<String, Object> row = edgeVersionFor(reported.getBody(), deviceId);
+        assertThat(row).isNotNull();
         assertThat(row.get("deviceId")).isEqualTo("00000000-0000-0000-0000-000000000003");
         assertThat(row.get("siteId")).isEqualTo("00000000-0000-0000-0000-000000000002");
         assertThat(row.get("coreVersion")).isEqualTo("1.4.2");
@@ -5963,8 +5968,8 @@ class PortalApiTest {
                 + "\"flows\":{\"core_version\":\"1.5.0\",\"applied\":[]}}")
                 .getBytes(StandardCharsets.UTF_8));
         ResponseEntity<List> updated = rest.exchange(versionsUrl, HttpMethod.GET, demo, List.class);
-        assertThat(updated.getBody()).hasSize(1);
-        Map<String, Object> after = (Map<String, Object>) updated.getBody().get(0);
+        Map<String, Object> after = edgeVersionFor(updated.getBody(), deviceId);
+        assertThat(after).isNotNull();
         assertThat(after.get("coreVersion")).isEqualTo("1.5.0");
         assertThat(after.get("paletteVersion")).isNull();
 
@@ -5979,8 +5984,9 @@ class PortalApiTest {
         exec("INSERT INTO edge_release (release_seq, version, target_commit, created_by) "
                 + "VALUES (4200, 'edge-2099.01.1', 'deadbeef', 'test')");
         try {
-            Map<String, Object> judged = (Map<String, Object>) rest
-                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody().get(0);
+            Map<String, Object> judged = edgeVersionFor(rest
+                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
+            assertThat(judged).isNotNull();
             assertThat(judged.get("newestRelease")).isEqualTo("edge-2099.01.1");
             assertThat(judged.get("upToDate")).as("nicht registriert ist NIE veraltet").isNull();
 
@@ -5989,11 +5995,31 @@ class PortalApiTest {
             listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:45:00Z\","
                     + "\"flows\":{\"core_version\":\"edge-2099.01.1-9b37439a02c1\","
                     + "\"applied\":[]}}").getBytes(StandardCharsets.UTF_8));
-            Map<String, Object> current = (Map<String, Object>) rest
-                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody().get(0);
+            Map<String, Object> current = edgeVersionFor(rest
+                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
+            assertThat(current).isNotNull();
             assertThat(current.get("upToDate")).isEqualTo(Boolean.TRUE);
+
+            // Regression der Box-Seite: der installierte Build reist top-level
+            // auch dann, wenn GAR KEIN flows-Block vorhanden ist. Er ist die
+            // primäre Quelle und bleibt sichtbar, statt „meldet keinen Stand".
+            var updateListener = new com.voltpilot.api.ota.UpdateStatusListener(
+                    "tcp://localhost:1883", "", "", deviceRepo, updateStatusRepo);
+            updateListener.handle(topic, (head
+                    + "\"ts\":\"2026-08-28T07:10:00Z\","
+                    + "\"version\":\"edge-2099.01.1-cafebabefeed\","
+                    + "\"update\":{\"backend\":\"compose\",\"state\":\"idle\"}}")
+                    .getBytes(StandardCharsets.UTF_8));
+            Map<String, Object> installed = edgeVersionFor(rest
+                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
+            assertThat(installed).isNotNull();
+            assertThat(installed.get("coreVersion"))
+                    .isEqualTo("edge-2099.01.1-cafebabefeed");
+            assertThat(installed.get("upToDate")).isEqualTo(Boolean.TRUE);
         } finally {
             exec("DELETE FROM edge_release WHERE release_seq = 4200");
+            exec("DELETE FROM device_update_status WHERE device_id = '" + deviceId + "'");
+            exec("DELETE FROM device_edge_version WHERE device_id = '" + deviceId + "'");
         }
     }
 
@@ -6539,6 +6565,19 @@ class PortalApiTest {
         exec("DELETE FROM telemetry_rollup_15m WHERE site_id = '" + site + "'");
         exec("DELETE FROM telemetry WHERE site_id = '" + site + "'");
         exec("DELETE FROM schedule WHERE site_id = '" + site + "'");
+    }
+
+    /** Eine Edge-Version aus der mandantenweiten Liste, ohne andere Testgeräte vorauszusetzen. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> edgeVersionFor(List<?> rows, String deviceId) {
+        if (rows == null) {
+            return null;
+        }
+        return rows.stream()
+                .map(row -> (Map<String, Object>) row)
+                .filter(row -> deviceId.equals(row.get("deviceId")))
+                .findFirst()
+                .orElse(null);
     }
 
     /** Ein Instant als SQL-Literal (UTC) - die Seed-Schreibweise dieser Suite. */

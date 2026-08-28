@@ -527,6 +527,20 @@ detect_deployment() {
   ACTIVE_WEB_PORT="$(env_get VP_WEB_PORT "$ENV_FILE")"
   ACTIVE_WEB_PORT="${ACTIVE_WEB_PORT:-$DEF_VP_WEB_PORT}"
 
+  # Existing installations predate VP_LAN_HOST. Detect it in the HOST
+  # namespace for this compose run and export it without touching .env. The
+  # updater service receives the same value, so later autonomous compose runs
+  # preserve it. An explicit shell/.env value always wins.
+  local active_lan="${VP_LAN_HOST:-}"
+  [ -n "$active_lan" ] || active_lan="$(env_get VP_LAN_HOST "$ENV_FILE")"
+  [ -n "$active_lan" ] || active_lan="$(detect_lan_endpoint "$ACTIVE_WEB_PORT")"
+  if [ -n "$active_lan" ]; then
+    export VP_LAN_HOST="$active_lan"
+    ok "Kundennetz-Endpunkt für das Portal: ${active_lan}"
+  else
+    warn "Kundennetz-Endpunkt nicht automatisch erkennbar - VP_LAN_HOST kann explizit gesetzt werden."
+  fi
+
   detect_hostnet
 
   COMPOSE_ARGS=(-f "$COMPOSE_FILE")

@@ -324,6 +324,7 @@ func TestHeartbeatCarriesTheBoxNetworkBlockOnlyWhenItKnowsSomething(t *testing.T
 	link := connectedLinkWith(t, sink, "edge-2026.08.10", func() *NetworkSummary {
 		return &NetworkSummary{
 			ReportedAt: "2026-08-21T09:12:00Z",
+			LANHost:    "192.168.178.42:8484",
 			Host:       "192.168.254.51:8484",
 			SeenAt:     "2026-08-21T09:11:44Z",
 		}
@@ -336,8 +337,9 @@ func TestHeartbeatCarriesTheBoxNetworkBlockOnlyWhenItKnowsSomething(t *testing.T
 	if !ok {
 		t.Fatalf("network block missing: %v", sink.last(t)["network"])
 	}
-	if net["host"] != "192.168.254.51:8484" || net["seen_at"] != "2026-08-21T09:11:44Z" {
-		t.Fatalf("network block = %v, want the PROVEN address with its stamp", net)
+	if net["lan_host"] != "192.168.178.42:8484" || net["host"] != "192.168.254.51:8484" ||
+		net["seen_at"] != "2026-08-21T09:11:44Z" {
+		t.Fatalf("network block = %v, want customer LAN + observed address", net)
 	}
 	// Was die Box nicht weiss, steht nicht drin - in einem Container ist die
 	// Schnittstellen-Adresse die Bridge-Adresse und damit keine Antwort.

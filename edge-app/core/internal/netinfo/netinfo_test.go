@@ -31,6 +31,23 @@ func TestAcceptHostTakesOnlyAnAddressSomeoneElseCanType(t *testing.T) {
 	}
 }
 
+func TestConfiguredLANHostMustBeAProvablyLocalEndpoint(t *testing.T) {
+	for _, c := range []string{
+		"192.168.178.42:8484", "10.0.7.19:8484", "[fd00::5]:8484", "box.home.arpa:8484",
+	} {
+		if got, ok := AcceptLANHost(c); !ok || got != c {
+			t.Fatalf("AcceptLANHost(%q) = %q,%v", c, got, ok)
+		}
+	}
+	for _, bad := range []string{
+		"8.8.8.8:8484", "portal.voltpilot.de:8484", "127.0.0.1:8484", "voltpilot:8484",
+	} {
+		if got, ok := AcceptLANHost(bad); ok {
+			t.Fatalf("AcceptLANHost(%q) accepted as %q", bad, got)
+		}
+	}
+}
+
 func TestObservedAddressSurvivesARestartAndIsForgottenWhenStale(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, 8, 21, 9, 12, 0, 0, time.UTC)

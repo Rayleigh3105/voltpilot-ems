@@ -22,9 +22,8 @@ import type { AdoptableSource } from './rollen';
 import type { GeraeteKarte } from './zentraleListe';
 import type { Device, EdgeVersion } from './api';
 import { fmtNum } from './format';
-import { lanZeile, LAN_UNBEKANNT } from './geraetSeite';
+import { lanZeile, LAN_UNBEKANNT, privateLanAddress } from './geraetSeite';
 import { versionLabel } from './edgeVersionLabel';
-import { isPrivateHost } from './selbstbau';
 import type { IconName } from '../designsystem/components/core/Icon';
 
 export type AnlagenZone = 'pv' | 'storage' | 'house' | 'grid' | 'consumer';
@@ -268,53 +267,6 @@ export interface AnlagenBildOptions {
  * belegbar private/lokale Adresse. Port und Klammern bleiben für die Anzeige
  * unverändert; Pfade, Userinfo und ungültige Ports sind keine Host-Adresse.
  */
-function privateLanAddress(raw: string | null | undefined): string | null {
-  const address = (raw ?? '').trim();
-  if (!address || address.length > 255 || /[\s/@?#]/.test(address)) return null;
-
-  let host = address;
-  const bracketed = /^\[([^\]]+)](?::(\d{1,5}))?$/.exec(address);
-  if (bracketed) {
-    host = bracketed[1];
-    if (bracketed[2] && !gueltigerPort(bracketed[2])) return null;
-  } else {
-    const colonCount = (address.match(/:/g) ?? []).length;
-    if (colonCount === 1) {
-      const withPort = /^(.+):(\d{1,5})$/.exec(address);
-      if (!withPort || !gueltigerPort(withPort[2])) return null;
-      host = withPort[1];
-    }
-    // Mehrere Doppelpunkte ohne Klammern sind ein reines IPv6-Literal. Ein
-    // Port daran wäre nicht eindeutig und wird vom privaten Prüfer abgelehnt.
-  }
-  // Der geteilte Selbstbau-Prüfer erlaubt Loopback mit Absicht für lokale
-  // Modbus-Ziele. Auf der Box-Karte wäre das jedoch keine Adresse IM
-  // KUNDENNETZ, sondern nur die Box selbst — deshalb gilt hier die engere
-  // Anzeige-Regel.
-  if (istLoopbackHost(host)) return null;
-  return isPrivateHost(host) ? address : null;
-}
-
-/** Port 0 ist kein erreichbarer Kunden-Endpunkt; erlaubt ist exakt 1..65535. */
-function gueltigerPort(raw: string): boolean {
-  const port = Number(raw);
-  return Number.isInteger(port) && port >= 1 && port <= 65_535;
-}
-
-/**
- * Loopback nach Host-FAMILIE statt nur nach Schreibweise erkennen. Der
- * geteilte Selbstbau-Prüfer akzeptiert `127/8` absichtlich für lokale Modbus-
- * Ziele und faltet `::ffff:127.x.y.z` auf IPv4 zurück; auf der Kundenkarte
- * müssen BEIDE Darstellungen draußen bleiben.
- */
-function istLoopbackHost(raw: string): boolean {
-  const normalized = raw.trim().toLowerCase();
-  if (normalized === '::1') return true;
-  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(normalized);
-  const ipv4 = mapped?.[1] ?? normalized;
-  return ipv4.startsWith('127.');
-}
-
 function boxLan(device: Device | null, now: number): DatenServiceLan {
   const privateAddress = privateLanAddress(device?.lanHost);
   const safeDevice = device

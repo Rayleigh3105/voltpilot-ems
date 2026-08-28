@@ -19,8 +19,9 @@ import java.util.UUID;
  * network - display only, and the only fact here the box reports about ITSELF
  * rather than about a measurement. {@code lanSource} says how strong the
  * evidence is: {@code erreicht} = a browser demonstrably opened the local
- * surface on that address (the strongest possible proof), {@code schnittstelle}
- * = the box's own interface address on a non-containerized install.
+ * surface on that address (which may also be a service VPN),
+ * {@code schnittstelle} = the box host's configured/detected customer-LAN
+ * endpoint (or the own interface address on a non-containerized install).
  * <b>All three null = the box does not report it (yet) - NEVER "not
  * reachable".</b>
  */

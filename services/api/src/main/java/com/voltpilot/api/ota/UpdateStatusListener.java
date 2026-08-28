@@ -311,15 +311,16 @@ public class UpdateStatusListener {
     }
 
     /**
-     * Speichert die eigene Erreichbarkeit der Box - und NUR die stärkere der
-     * zwei möglichen Aussagen.
+     * Speichert die eigene Erreichbarkeit der Box - mit der ausdrücklich vom
+     * Host ermittelten Kundennetz-Adresse als erster Wahl.
      *
-     * <p><b>{@code host} schlägt {@code ip}, und das ist der ganze Punkt:</b>
-     * {@code host} ist eine Adresse, unter der ein Browser die lokale
-     * Oberfläche NACHWEISLICH erreicht hat, {@code ip} nur die eigene
-     * Netzwerk-Adresse (die die Box laut Vertrag ohnehin nur ohne Container
-     * meldet). Meldet sie beides, ist die bewiesene die Antwort auf „wie
-     * erreiche ich meine Box".
+     * <p><b>{@code lan_host} schlägt {@code host} und {@code ip}.</b> Der
+     * Installer ermittelt diesen Endpunkt außerhalb des Bridge-Containers aus
+     * der Nicht-VPN-Route des Docker-Hosts. Ein beobachteter HTTP-Host beweist
+     * dagegen nur, dass IRGENDEIN Browser die Box erreicht hat: ein
+     * VoltPilot-Servicezugriff über WireGuard würde sonst seine {@code 10.10.*}
+     * Adresse als Kundenlink speichern. Für ältere/manuelle Installationen
+     * bleiben {@code host} und danach {@code ip} die kompatiblen Fallbacks.
      *
      * <p>Ohne verwertbares Feld wird NICHTS geschrieben - eine gespeicherte
      * Adresse überlebt damit einen Herzschlag, der sie nicht trägt, statt zu
@@ -327,9 +328,14 @@ public class UpdateStatusListener {
      * nie „nicht erreichbar".
      */
     private void storeLanAddress(UUID deviceId, JsonNode network) {
-        String host = text(network.get("host"));
-        String source = "erreicht";
-        Instant seenAt = optInstant(network, "seen_at");
+        String host = text(network.get("lan_host"));
+        String source = "schnittstelle";
+        Instant seenAt = optInstant(network, "reported_at");
+        if (host == null) {
+            host = text(network.get("host"));
+            source = "erreicht";
+            seenAt = optInstant(network, "seen_at");
+        }
         if (host == null) {
             host = text(network.get("ip"));
             source = "schnittstelle";

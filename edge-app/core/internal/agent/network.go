@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/netinfo"
 )
 
 // WebObserver wraps the local web app so every request that reaches it teaches
@@ -16,10 +17,10 @@ import (
 // not learn about it. It changes NOTHING about the response - it only reads
 // the Host header the browser already wrote, and forwards.
 //
-// ⚠ The Host header is the ONLY provable source here. The container's own
-// interface address is the Docker bridge address; Docker's DNAT rewrites the
-// packet's destination IP but never this header, so it carries the address the
-// customer TYPED - the exact one they need again.
+// ⚠ This observation is deliberately only a fallback. The container's own
+// interface address is the Docker bridge address, while the Host header may be
+// a support VPN address. The separately configured VP_LAN_HOST is the
+// customer-facing truth and always wins in the heartbeat/API.
 func (a *Agent) WebObserver(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if a.net != nil && a.net.Observe(r.Host, time.Now()) {
@@ -37,17 +38,24 @@ func (a *Agent) WebObserver(next http.Handler) http.Handler {
 // nothing, in which case NO block is sent at all and the portal keeps its
 // honest "your box does not report this yet" (a fabricated address would send
 // a human to a page that does not answer).
+//
+// The installer-provided LAN endpoint and an observed Host header are kept as
+// TWO facts. The former is detected in the host namespace from the non-VPN
+// route and is what a customer can open. The latter merely proves that some
+// caller reached the box; that caller may be VoltPilot support over WireGuard.
 func (a *Agent) networkSummary() *cloud.NetworkSummary {
 	if a.net == nil {
 		return nil
 	}
 	now := time.Now()
 	obs := a.net.Snapshot(now)
-	if obs.Empty() {
+	lanHost, hasLANHost := netinfo.AcceptLANHost(a.Cfg.LANHost)
+	if obs.Empty() && !hasLANHost {
 		return nil
 	}
 	out := &cloud.NetworkSummary{
 		ReportedAt: now.UTC().Format(time.RFC3339),
+		LANHost:    lanHost,
 		Host:       obs.Host,
 		IP:         obs.IP,
 		Iface:      obs.Iface,

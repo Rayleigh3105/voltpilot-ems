@@ -8,9 +8,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Der von der Edge gemeldete Software-Stand je Gerät (Tabelle
- * {@code device_edge_version}, Migration V20260803000000), RLS-gefenced wie
- * {@code device_control_status}.
+ * Der von der Edge gemeldete Software-Stand je Gerät. Der aktuelle Core-Build
+ * kommt bevorzugt aus {@code device_update_status}: dieses Top-Level-Feld reist
+ * in jedem modernen Herzschlag, auch wenn auf der Box noch nie ein Flow
+ * ausgerollt wurde. {@code device_edge_version} bleibt die Quelle der separat
+ * gemeldeten Palette-Version und der Fallback für ältere Boxen.
  *
  * <p>Genau EINE Zeile je Gerät: der Herzschlag trägt den vollständigen Ist, ein
  * Upsert ist deshalb richtig (kein Merge, keine Historie - „welche Version läuft
@@ -84,11 +86,30 @@ public class EdgeVersionRepository {
                 (rs, n) -> new RegisterEntry(rs.getString("version"), rs.getLong("release_seq")));
     }
 
-    /** Jeder gemeldete Gerätestand des aufrufenden Mandanten (RLS-gefenced). */
+    /**
+     * Jeder gemeldete Gerätestand des aufrufenden Mandanten (RLS-gefenced).
+     *
+     * <p><b>Die Top-Level-Version gewinnt.</b> Der historische
+     * {@code flows.core_version}-Pfad ist an ein Flow-Deployment gekoppelt und
+     * kann deshalb fehlen oder älter sein. {@code update.version} ist der
+     * laufende Build, den jede aktuelle Box unabhängig davon meldet. Ein
+     * vorhandenes {@code update.current_version} ist der kompatible zweite
+     * Fallback, bevor der alte Flow-Beleg herangezogen wird.
+     */
     public List<EdgeVersion> findAll() {
         return jdbc.query(
-                "SELECT device_id, site_id, core_version, palette_version, reported_at "
-                        + "FROM device_edge_version ORDER BY reported_at DESC",
+                "SELECT d.id AS device_id, d.site_id, "
+                        + "COALESCE(NULLIF(u.version, ''), NULLIF(u.current_version, ''), "
+                        + "e.core_version) AS core_version, e.palette_version, "
+                        + "CASE WHEN COALESCE(NULLIF(u.version, ''), "
+                        + "NULLIF(u.current_version, '')) IS NOT NULL "
+                        + "THEN u.reported_at ELSE e.reported_at END AS reported_at "
+                        + "FROM device d "
+                        + "LEFT JOIN device_update_status u ON u.device_id = d.id "
+                        + "LEFT JOIN device_edge_version e ON e.device_id = d.id "
+                        + "WHERE COALESCE(NULLIF(u.version, ''), NULLIF(u.current_version, ''), "
+                        + "e.core_version, e.palette_version) IS NOT NULL "
+                        + "ORDER BY reported_at DESC",
                 (rs, i) -> new EdgeVersion(
                         rs.getObject("device_id", UUID.class),
                         rs.getObject("site_id", UUID.class),

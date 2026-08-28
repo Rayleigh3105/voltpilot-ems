@@ -837,10 +837,9 @@ export interface Device {
   /** Der Frische-Anker DIESER Aussage; er reist immer MIT `lanHost`. */
   lanSeenAt?: string | null;
   /**
-   * Wie stark der Beleg ist: `erreicht` = ein Browser hat die lokale Oberfläche
-   * unter dieser Adresse NACHWEISLICH geöffnet, `schnittstelle` = die eigene
-   * Netzwerk-Adresse der Box (nur ohne Container gemeldet). Die zwei dürfen nie
-   * unter einem Wort verschwinden.
+   * Herkunft des Belegs: `schnittstelle` = der vom Box-Host erkannte/
+   * konfigurierte Endpunkt im Kundennetz; `erreicht` = kompatibler Fallback
+   * aus einem Browser-Aufruf (der auch über ein Service-VPN erfolgt sein kann).
    */
   lanSource?: 'erreicht' | 'schnittstelle' | null;
 }
@@ -1917,15 +1916,12 @@ export interface Overview {
 // ---- Edge-Stand je Gerät (GET /api/v1/edge-versions) ------------------------
 
 /**
- * Der von einem Gerät gemeldete Software-Stand (Spalte „Edge-Stand" der
- * Plattform-Übersicht). Beide Versionsfelder sind einzeln nullable — die Edge
- * lässt ein leeres weg (die Palette-Version fehlt z. B., solange Node-REDs
- * Admin-API nicht konfiguriert ist).
+ * Der von einem Gerät gemeldete Software-Stand. `coreVersion` kommt bevorzugt
+ * aus dem top-level Update-Herzschlag, der auch ohne Flow-Deployment reist;
+ * der Flow-Beleg bleibt Fallback und Quelle von `paletteVersion`.
  *
- * **Ein FEHLENDER Eintrag heißt „unbekannt", nie „veraltet".** Die Edge baut
- * den Herzschlag-Block, in dem die Versionen reisen, erst nach dem ersten
- * Flow-Deployment — ein Gerät ohne ausgerollte Automation meldet also gar
- * nichts.
+ * **Ein FEHLENDER Eintrag heißt „unbekannt", nie „veraltet".** Er bedeutet,
+ * dass weder der moderne Top-Level-Stand noch der ältere Flow-Beleg vorliegt.
  */
 export interface EdgeVersion {
   deviceId: string;

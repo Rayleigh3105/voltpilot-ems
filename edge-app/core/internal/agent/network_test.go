@@ -37,6 +37,26 @@ func TestTheBoxLearnsItsOwnAddressFromTheRequestThatReachedIt(t *testing.T) {
 	}
 }
 
+func TestConfiguredCustomerLANEndpointSurvivesAVPNServiceVisit(t *testing.T) {
+	a := withNetStore(t)
+	a.Cfg.LANHost = "192.168.178.42:8484"
+
+	// Support reaches the same web app via WireGuard. That Host header remains
+	// useful fallback evidence, but it must never become the customer link.
+	req := httptest.NewRequest(http.MethodGet, "http://10.10.1.23:8484/health", nil)
+	req.Host = "10.10.1.23:8484"
+	a.WebObserver(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).
+		ServeHTTP(httptest.NewRecorder(), req)
+
+	n := a.networkSummary()
+	if n == nil || n.LANHost != "192.168.178.42:8484" {
+		t.Fatalf("customer LAN endpoint missing: %+v", n)
+	}
+	if n.Host != "10.10.1.23:8484" {
+		t.Fatalf("observed VPN evidence should stay separate: %+v", n)
+	}
+}
+
 func TestAHealthCheckOnLoopbackNeverBecomesTheBoxAddress(t *testing.T) {
 	a := withNetStore(t)
 	// Genau das schickt install.sh bei jedem Start gegen /health.

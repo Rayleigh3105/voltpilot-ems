@@ -12,7 +12,7 @@ func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
 		"VP_CONFIG", "VP_PORTAL_BASE_URL", "VP_MQTT_HOST", "VP_MQTT_PORT", "VP_REF",
-		"VP_DATA_DIR", "VP_LOCAL_MQTT_ADDR", "VP_HTTP_ADDR", "VP_MAX_CHARGE_KW",
+		"VP_DATA_DIR", "VP_LOCAL_MQTT_ADDR", "VP_HTTP_ADDR", "VP_LAN_HOST", "VP_MAX_CHARGE_KW",
 		"VP_MAX_DISCHARGE_KW", "VP_SOC_MIN_PCT", "VP_SOC_MAX_PCT", "VP_BUFFER_HOURS",
 		"VP_SETPOINT_INTERVAL_SECONDS", "VP_DEV_TENANT_ID", "VP_DEV_SITE_ID",
 		"VP_DEV_DEVICE_ID", "VP_DEV_CLOUD_URL", "VP_DEV_INSECURE",
@@ -69,6 +69,7 @@ func TestConfigFileThenEnvPrecedence(t *testing.T) {
 	}
 	t.Setenv("VP_CONFIG", path)
 	t.Setenv("VP_MAX_CHARGE_KW", "7.5") // env beats file
+	t.Setenv("VP_LAN_HOST", "192.168.178.42:8484")
 
 	cfg, err := Load()
 	if err != nil {
@@ -79,6 +80,9 @@ func TestConfigFileThenEnvPrecedence(t *testing.T) {
 	}
 	if cfg.MaxChargeKw != 7.5 {
 		t.Errorf("env must beat file: %v", cfg.MaxChargeKw)
+	}
+	if cfg.LANHost != "192.168.178.42:8484" {
+		t.Errorf("customer LAN host env: %q", cfg.LANHost)
 	}
 	if cfg.MQTTHost != "mqtt.voltpilot.de" {
 		t.Errorf("untouched defaults must survive: %v", cfg.MQTTHost)

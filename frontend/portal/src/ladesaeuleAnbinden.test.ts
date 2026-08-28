@@ -97,19 +97,26 @@ describe('Endpunkt', () => {
     expect(endpunkt(v6, laden(), 'x').url).toBe('ws://[fd00::1]:8887/ocpp/x');
   });
 
+  it('behält auch ein nacktes IPv6-Literal vollständig und klammert es für die URL', () => {
+    const v6 = { ...BOX, lanHost: 'fd00::42', lanSource: 'schnittstelle' } as Device;
+    expect(endpunkt(v6, laden(), 'x').url).toBe('ws://[fd00::42]:8887/ocpp/x');
+  });
+
   it('erfindet nie eine Adresse - jede fehlende Angabe wird BENANNT', () => {
     const ohneAdresse = endpunkt({ ...BOX, lanHost: null } as Device, laden(), 'x');
     expect(ohneAdresse.url).toBeNull();
     expect(ohneAdresse.grund).toBe('keine-adresse');
     expect(ohneAdresse.satz).toContain('Geräteseite');
 
-    // ⚠ Eine bloße SCHNITTSTELLEN-Adresse ist kein Beweis, dass dort etwas
-    // antwortet - ein Kopierfeld verspräche genau das. Sie wird trotzdem
-    // GENANNT, nur eben als Hinweis.
+    // Der vom Host erkannte SCHNITTSTELLEN-Endpunkt ist seit der VPN-Härtung
+    // gerade die maßgebliche Kundennetz-Adresse.
     const nurGemeldet = endpunkt({ ...BOX, lanSource: 'schnittstelle' } as Device, laden(), 'x');
-    expect(nurGemeldet.url).toBeNull();
-    expect(nurGemeldet.grund).toBe('nicht-bewiesen');
-    expect(nurGemeldet.satz).toContain('192.168.1.5:8484');
+    expect(nurGemeldet.url).toBe('ws://192.168.1.5:8887/ocpp/x');
+    expect(nurGemeldet.grund).toBeNull();
+
+    const publicHost = endpunkt({ ...BOX, lanHost: '8.8.8.8:8484' } as Device, laden(), 'x');
+    expect(publicHost.url).toBeNull();
+    expect(publicHost.grund).toBe('keine-adresse');
 
     const lauschtNicht = endpunkt(BOX, laden({ ocppPort: null }), 'x');
     expect(lauschtNicht.url).toBeNull();

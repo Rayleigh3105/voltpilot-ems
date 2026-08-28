@@ -143,7 +143,7 @@ ${C_BOLD}Optionen:${C_RESET}
 ${C_BOLD}Umgebungsvariablen${C_RESET} (für --non-interactive; überschreiben die Standardwerte):
   VP_PORTAL_BASE_URL VP_MQTT_HOST VP_MQTT_PORT VP_REF
   VP_MAX_CHARGE_KW VP_MAX_DISCHARGE_KW VP_SOC_MIN_PCT VP_SOC_MAX_PCT
-  VP_BUFFER_HOURS VP_WEB_PORT VP_NODERED_PORT VP_BUS_PORT
+  VP_BUFFER_HOURS VP_WEB_PORT VP_LAN_HOST VP_NODERED_PORT VP_BUS_PORT
   VP_NODERED_USER VP_NODERED_PASSWORD
 
 ${C_BOLD}Image-Version${C_RESET} (Rollback-Hebel, optional; ungesetzt = 'latest' wie bisher):
@@ -214,21 +214,45 @@ prompt_secret() {
 }
 
 # --------------------------------------------------------------------------
-# Detect a usable LAN IP for the web-app URL. Degrades to a placeholder.
+# Detect the host's customer-LAN IPv4 address. The default-route source wins;
+# VPN/container interfaces are deliberately skipped so a WireGuard service IP
+# cannot become the customer-facing portal link. Degrades to a placeholder for
+# human instructions; detect_lan_endpoint turns that placeholder into "unset".
 # --------------------------------------------------------------------------
 detect_lan_ip() {
-  local ip=""
-  if command -v hostname >/dev/null 2>&1; then
-    ip="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.' | grep -vE '^127\.' | head -n1 || true)"
-  fi
-  if [ -z "$ip" ] && command -v ip >/dev/null 2>&1; then
-    ip="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.*src \([0-9.]*\).*/\1/p' | head -n1 || true)"
+  local ip="" route="" iface=""
+  if command -v ip >/dev/null 2>&1; then
+    route="$(ip -4 route get 1.1.1.1 2>/dev/null | head -n1 || true)"
+    iface="$(printf '%s\n' "$route" | sed -n 's/.* dev \([^ ]*\).*/\1/p')"
+    case "$iface" in
+      wg*|tun*|tap*|tailscale*|zt*|docker*|br-*|veth*) : ;;
+      *) ip="$(printf '%s\n' "$route" | sed -n 's/.* src \([0-9.]*\).*/\1/p')" ;;
+    esac
+    if [ -z "$ip" ]; then
+      ip="$(ip -o -4 addr show scope global 2>/dev/null \
+        | awk '$2 !~ /^(docker|br-|veth|wg|tun|tap|tailscale|zt)/ { split($4,a,"/"); print a[1]; exit }' \
+        || true)"
+    fi
   fi
   if [ -z "$ip" ] && command -v ipconfig >/dev/null 2>&1; then
     # macOS fallback (dev machine).
     ip="$(ipconfig getifaddr en0 2>/dev/null || true)"
+    [ -n "$ip" ] || ip="$(ipconfig getifaddr en1 2>/dev/null || true)"
+  fi
+  if [ -z "$ip" ] && command -v hostname >/dev/null 2>&1; then
+    ip="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.' \
+      | grep -vE '^127\.' | head -n1 || true)"
   fi
   printf '%s' "${ip:-<geraet-ip>}"
+}
+
+detect_lan_endpoint() {
+  local port="${1:-$DEF_VP_WEB_PORT}" ip
+  ip="$(detect_lan_ip)"
+  case "$ip" in
+    ""|"<geraet-ip>") return 0 ;;
+    *) printf '%s:%s' "$ip" "$port" ;;
+  esac
 }
 
 # --------------------------------------------------------------------------
@@ -375,6 +399,9 @@ services:
       VP_MQTT_HOST: \${VP_MQTT_HOST:-mqtt.voltpilot.de}
       VP_MQTT_PORT: \${VP_MQTT_PORT:-8883}
       VP_REF: \${VP_REF:-}
+      # Customer-facing endpoint of THIS Docker host. The installer/updater
+      # detects it from the host's non-VPN route; an explicit value wins.
+      VP_LAN_HOST: \${VP_LAN_HOST:-}
       VP_MAX_CHARGE_KW: \${VP_MAX_CHARGE_KW:-50}
       VP_MAX_DISCHARGE_KW: \${VP_MAX_DISCHARGE_KW:-50}
       VP_SOC_MIN_PCT: \${VP_SOC_MIN_PCT:-5}
@@ -469,6 +496,8 @@ services:
     restart: unless-stopped
     network_mode: none
     environment:
+      # Preserve the detected endpoint across later autonomous compose runs.
+      VP_LAN_HOST: \${VP_LAN_HOST:-}
       VP_OTA_WATCHDOG_SECONDS: \${VP_OTA_WATCHDOG_SECONDS:-600}
       VP_OTA_DISK_GUARD_MB: \${VP_OTA_DISK_GUARD_MB:-2048}
       VP_OTA_PRUNE: \${VP_OTA_PRUNE:-true}
@@ -605,7 +634,7 @@ configure_env() {
   local IN_PORTAL="${VP_PORTAL_BASE_URL:-}" IN_MHOST="${VP_MQTT_HOST:-}" IN_MPORT="${VP_MQTT_PORT:-}"
   local IN_REF="${VP_REF:-}" IN_MAXC="${VP_MAX_CHARGE_KW:-}" IN_MAXD="${VP_MAX_DISCHARGE_KW:-}"
   local IN_SMIN="${VP_SOC_MIN_PCT:-}" IN_SMAX="${VP_SOC_MAX_PCT:-}" IN_BUF="${VP_BUFFER_HOURS:-}"
-  local IN_WEB="${VP_WEB_PORT:-}" IN_NRP="${VP_NODERED_PORT:-}" IN_BUS="${VP_BUS_PORT:-}"
+  local IN_WEB="${VP_WEB_PORT:-}" IN_LAN="${VP_LAN_HOST:-}" IN_NRP="${VP_NODERED_PORT:-}" IN_BUS="${VP_BUS_PORT:-}"
   local IN_NRU="${VP_NODERED_USER:-}"
   local IN_ITAG="${VP_EDGE_IMAGE_TAG:-}" IN_CIMG="${VP_EDGE_CORE_IMAGE:-}" IN_NIMG="${VP_EDGE_NODERED_IMAGE:-}"
 
@@ -629,6 +658,7 @@ configure_env() {
   seed VP_SOC_MAX_PCT      "$IN_SMAX"   "$DEF_VP_SOC_MAX_PCT"
   seed VP_BUFFER_HOURS     "$IN_BUF"    "$DEF_VP_BUFFER_HOURS"
   seed VP_WEB_PORT         "$IN_WEB"    "$DEF_VP_WEB_PORT"
+  seed VP_LAN_HOST         "$IN_LAN"    "$(detect_lan_endpoint "$VP_WEB_PORT")"
   seed VP_NODERED_PORT     "$IN_NRP"    "$DEF_VP_NODERED_PORT"
   seed VP_BUS_PORT         "$IN_BUS"    "$DEF_VP_BUS_PORT"
   seed VP_NODERED_USER     "$IN_NRU"    "$DEF_VP_NODERED_USER"
@@ -658,6 +688,7 @@ configure_env() {
     info "${C_BOLD}Puffer & lokale Ports${C_RESET}:"
     prompt_default VP_BUFFER_HOURS   "Telemetrie-Puffer (Stunden)"      "$VP_BUFFER_HOURS"
     prompt_default VP_WEB_PORT       "Webansicht-Port"                  "$VP_WEB_PORT"
+    prompt_default VP_LAN_HOST       "Adresse im Kundennetz (mit Port)"  "$VP_LAN_HOST"
     prompt_default VP_NODERED_PORT   "Node-RED-Editor-Port"             "$VP_NODERED_PORT"
     prompt_default VP_BUS_PORT       "Lokaler MQTT-Bus-Port (Loopback)" "$VP_BUS_PORT"
     echo
@@ -718,6 +749,7 @@ configure_env() {
     echo "# Telemetrie-Puffer + lokale Ports."
     echo "VP_BUFFER_HOURS=${VP_BUFFER_HOURS}"
     echo "VP_WEB_PORT=${VP_WEB_PORT}"
+    echo "VP_LAN_HOST=${VP_LAN_HOST}"
     echo "VP_NODERED_PORT=${VP_NODERED_PORT}"
     echo "VP_BUS_PORT=${VP_BUS_PORT}"
     echo

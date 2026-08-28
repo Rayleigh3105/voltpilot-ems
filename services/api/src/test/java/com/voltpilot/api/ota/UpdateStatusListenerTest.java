@@ -361,6 +361,24 @@ class UpdateStatusListenerTest {
                 eq(Instant.parse("2026-08-21T09:11:44Z")), eq("erreicht"));
     }
 
+    /**
+     * Regression: a support visit over WireGuard must not replace the endpoint
+     * a customer can open. The host-side LAN endpoint is detected/configured
+     * outside Docker and therefore outranks the observed VPN Host header.
+     */
+    @Test
+    void theConfiguredCustomerLanEndpointWinsOverAnObservedVpnAddress() {
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\",\"version\":\"edge-2026.08.10\","
+                + "\"network\":{\"reported_at\":\"2026-08-28T07:10:00Z\","
+                + "\"lan_host\":\"192.168.178.42:8484\","
+                + "\"host\":\"10.10.1.23:8484\",\"seen_at\":\"2026-08-28T07:09:53Z\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices).setLanAddress(eq(DEVICE), eq("192.168.178.42:8484"),
+                eq(Instant.parse("2026-08-28T07:10:00Z")), eq("schnittstelle"));
+    }
+
     /** Ohne bewiesene Adresse ist die eigene Schnittstelle die schwächere, aber
      *  ehrliche Aussage - und sie wird als solche BENANNT. */
     @Test

@@ -9223,9 +9223,11 @@ components:
     EdgeVersion:
       type: object
       description: >
-        One device's reported software version. Both version fields are
-        individually nullable - the edge omits an empty one (the palette version
-        is absent while Node-RED's admin API is not configured).
+        One device's reported software version. The core version prefers the
+        top-level status-heartbeat build (available without any flow deployment)
+        and falls back to the historical flows acknowledgement. The palette
+        version still comes from that flows acknowledgement and can be absent
+        while Node-RED's admin API is not configured.
       properties:
         deviceId: { type: string, format: uuid }
         siteId: { type: string, format: uuid }
@@ -9970,11 +9972,11 @@ components:
           nullable: true
           enum: [erreicht, schnittstelle]
           description: >
-            Wie stark der Beleg ist - `erreicht` = ein Browser hat die lokale
-            Oberfläche unter dieser Adresse NACHWEISLICH geöffnet (der stärkste
-            mögliche Nachweis), `schnittstelle` = die eigene Netzwerk-Adresse
-            der Box auf einer Installation ohne Container. Die zwei dürfen nie
-            unter einem Wort verschwinden.
+            Herkunft des Belegs - `schnittstelle` = der vom Docker-Host
+            erkannte/konfigurierte Kundennetz-Endpunkt (oder die eigene
+            Schnittstelle ohne Container); `erreicht` = kompatibler Fallback
+            aus einem Browser-Aufruf, der auch über ein Service-VPN erfolgt
+            sein kann.
     DevicePurgeResult:
       type: object
       properties:
@@ -11982,4 +11984,3 @@ components:
           type: integer
           readOnly: true
           description: Serverseitige, konservative Kostenannahme; im Request nicht erlaubt.
-

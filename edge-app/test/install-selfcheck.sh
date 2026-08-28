@@ -97,6 +97,41 @@ if ! grep -qE 'dc up -d\b' "$INSTALL"; then
 fi
 pass "fresh installs pull + start core, nodered AND the updater sidecar - no flag, no profile"
 
+# --- 1c. The portal endpoint comes from the CUSTOMER route, never a VPN. ---
+# Stub Linux's `ip` so the rule is deterministic and Docker-free. The normal
+# default-route source wins; if that route itself is WireGuard, the first
+# physical global interface is used. 172.16/12 remains a legitimate customer
+# LAN and must not be thrown away merely because Docker also uses that range.
+lanstub="$(mktemp -d)"
+cat > "$lanstub/ip" <<'EOF'
+#!/bin/sh
+case "$*" in
+  "-4 route get 1.1.1.1") printf '%s\n' "1.1.1.1 via 192.168.178.1 dev eth0 src 192.168.178.42" ;;
+  "-o -4 addr show scope global") printf '%s\n' "2: eth0 inet 192.168.178.42/24 scope global eth0" ;;
+esac
+EOF
+chmod +x "$lanstub/ip"
+detected="$(PATH="$lanstub:/usr/bin:/bin" bash -c '. ./install.sh; detect_lan_endpoint 8484')"
+[ "$detected" = "192.168.178.42:8484" ] \
+  || fail "LAN detector must use the physical default-route source, got: $detected"
+
+cat > "$lanstub/ip" <<'EOF'
+#!/bin/sh
+case "$*" in
+  "-4 route get 1.1.1.1") printf '%s\n' "1.1.1.1 dev wg0 src 10.10.1.23" ;;
+  "-o -4 addr show scope global") {
+    printf '%s\n' "2: wg0 inet 10.10.1.23/24 scope global wg0"
+    printf '%s\n' "3: eth0 inet 172.20.5.42/24 scope global eth0"
+  } ;;
+esac
+EOF
+chmod +x "$lanstub/ip"
+detected="$(PATH="$lanstub:/usr/bin:/bin" bash -c '. ./install.sh; detect_lan_endpoint 8484')"
+rm -rf "$lanstub"
+[ "$detected" = "172.20.5.42:8484" ] \
+  || fail "LAN detector must skip VPN and retain a legitimate 172.16/12 customer LAN, got: $detected"
+pass "customer-LAN detector: physical route wins; VPN skipped; 172.16/12 retained"
+
 # --- 2. docker compose validity + equivalence to the repo real-mode config.
 if docker compose version >/dev/null 2>&1; then
   if ! printf '%s\n' "$COMPOSE" | docker compose -f - config >/dev/null 2>&1; then

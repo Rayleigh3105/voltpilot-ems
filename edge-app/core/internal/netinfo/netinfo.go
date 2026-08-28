@@ -15,13 +15,14 @@
 // it opens nothing. Reporting it as "the address of your box" would be exactly
 // the fabricated answer this package exists to avoid.
 //
-// # What IS provable
+// # What IS useful to the customer
 //
-// The address a browser DEMONSTRABLY reached the local web app on. Docker's
-// DNAT rewrites the packet's destination IP but never the HTTP `Host` header,
-// which the browser writes as the customer TYPED it - so a request to
-// :8484 carries the exact address that worked, port included. That is the
-// strongest possible evidence and it is also the exact URL a human needs.
+// The installer determines the Docker HOST's source address on its non-VPN
+// default route and passes that endpoint as VP_LAN_HOST. AcceptLANHost checks
+// that this explicit endpoint really belongs to a private/link-local customer
+// network. The HTTP `Host` observation remains a separate legacy fallback: it
+// proves that some caller reached the web app, but that caller might be support
+// over WireGuard and the address might therefore be useless to the customer.
 //
 // The interface address is reported ONLY when the process is not
 // containerized (a future host-network or bare-metal install), so it can never
@@ -38,6 +39,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
 )
 
 // Observation is what the box can prove about its own reachability.
@@ -102,6 +105,29 @@ func AcceptHost(raw string) (string, bool) {
 		return "", false
 	}
 	return h, true
+}
+
+// AcceptLANHost validates the explicitly configured customer-LAN endpoint.
+// Unlike AcceptHost it requires a provably private/link-local address (or a
+// LAN-only DNS suffix) because this value is rendered as a customer link. The
+// endpoint may include the published port and is preserved verbatim.
+//
+// The privacy rule is the existing contract-shared probe.IsPrivateHost rule;
+// reimplementing its address ranges here would create a fourth truth.
+func AcceptLANHost(raw string) (string, bool) {
+	endpoint, ok := AcceptHost(raw)
+	if !ok {
+		return "", false
+	}
+	host := endpoint
+	if split, _, err := net.SplitHostPort(endpoint); err == nil {
+		host = split
+	}
+	host = strings.Trim(host, "[]")
+	if !probe.IsPrivateHost(host) {
+		return "", false
+	}
+	return endpoint, true
 }
 
 // Store keeps the newest proven address and persists it, so a restart does not

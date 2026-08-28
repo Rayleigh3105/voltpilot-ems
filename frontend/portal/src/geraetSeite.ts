@@ -52,6 +52,7 @@ import { chargerName, type SiteCharging } from './ladepunkte';
 import { NO_DATA } from './nodata';
 import type { ComponentHealth, PlantComponent, PlantModel } from './komponenten';
 import { deviceState } from './komponenten';
+import { isPrivateHost } from './selbstbau';
 
 /** Welche ART von Gerät die Seite zeigt. */
 /**
@@ -174,20 +175,78 @@ export interface GeraetSeiteInput {
 export const LAN_UNBEKANNT = 'meldet Ihre Box noch nicht';
 
 /**
+ * Nur ein syntaktisch vollständiger, belegbar privater Kundennetz-Endpunkt
+ * darf in Text oder Link der Box-Seite gelangen. Der Heartbeat-Listener ist
+ * absichtlich additiv/kompatibel und speichert auch alte Host-Belege; diese
+ * letzte Kundengrenze verhindert WAN, Loopback, Pfade und kaputte Ports.
+ */
+export function privateLanAddress(raw: string | null | undefined): string | null {
+  const address = (raw ?? '').trim();
+  if (!address || address.length > 255 || /[\s/@?#]/.test(address)) return null;
+
+  let host = address;
+  const bracketed = /^\[([^\]]+)](?::(\d{1,5}))?$/.exec(address);
+  if (bracketed) {
+    host = bracketed[1];
+    if (bracketed[2] && !gueltigerPort(bracketed[2])) return null;
+  } else {
+    const colonCount = (address.match(/:/g) ?? []).length;
+    if (colonCount === 1) {
+      const withPort = /^(.+):(\d{1,5})$/.exec(address);
+      if (!withPort || !gueltigerPort(withPort[2])) return null;
+      host = withPort[1];
+    }
+  }
+  if (istLoopbackHost(host)) return null;
+  return isPrivateHost(host) ? address : null;
+}
+
+/**
+ * Der tatsächliche Link zur lokalen Box-Oberfläche. Neue Boxen melden den
+ * veröffentlichten Port bereits mit; für alte reine IP-Belege ergänzen wir den
+ * festen Box-Webport 8484. Ein nacktes IPv6-Literal braucht URL-Klammern.
+ */
+export function lokaleBoxUrl(raw: string | null | undefined): string | null {
+  const address = privateLanAddress(raw);
+  if (!address) return null;
+  if (/^\[[^\]]+]:\d{1,5}$/.test(address) || /^[^:]+:\d{1,5}$/.test(address)) {
+    return `http://${address}`;
+  }
+  if (address.startsWith('[') && address.endsWith(']')) {
+    return `http://${address}:8484`;
+  }
+  if ((address.match(/:/g) ?? []).length > 1) {
+    return `http://[${address}]:8484`;
+  }
+  return `http://${address}:8484`;
+}
+
+function gueltigerPort(raw: string): boolean {
+  const port = Number(raw);
+  return Number.isInteger(port) && port >= 1 && port <= 65_535;
+}
+
+function istLoopbackHost(raw: string): boolean {
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === '::1') return true;
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(normalized);
+  const ipv4 = mapped?.[1] ?? normalized;
+  return ipv4.startsWith('127.');
+}
+
+/**
  * Die eigene Erreichbarkeit der Box als ZEILE (Anlagen-Zentrale Stufe 2, D5).
  *
- * **⚠ Die zwei Belege dürfen nie unter einem Wort verschwinden:** `erreicht`
- * heißt, dass ein Browser die lokale Oberfläche unter dieser Adresse
- * NACHWEISLICH geöffnet hat - das ist der stärkste mögliche Nachweis und
- * zugleich genau die Adresse, die ein Mensch wieder eintippt. `schnittstelle`
- * ist nur die eigene Netzwerk-Adresse der Box; sie sagt, wo sie steckt, nicht
- * dass dort etwas antwortet.
+ * **⚠ Die zwei Belege dürfen nie unter einem Wort verschwinden:**
+ * `schnittstelle` ist der vom Box-Host erkannte/konfigurierte Endpunkt im
+ * Kundennetz. `erreicht` ist der Bestands-Fallback aus einem Browser-Aufruf;
+ * dieser kann auch über das VoltPilot-Service-VPN erfolgt sein.
  *
  * Ohne gemeldete Adresse bleibt es beim ehrlichen {@link LAN_UNBEKANNT} - eine
  * erfundene Adresse schickte einen Menschen auf eine Seite, die nicht antwortet.
  */
 export function lanZeile(device: Device | undefined, now: number): Zeile {
-  const host = (device?.lanHost ?? '').trim();
+  const host = privateLanAddress(device?.lanHost);
   if (!host) {
     return {
       label: 'Eigene Adresse im Netzwerk',
@@ -204,7 +263,7 @@ export function lanZeile(device: Device | undefined, now: number): Zeile {
     mono: true,
     detail: erreicht
       ? `So wurde Ihre Box zuletzt erreicht${rel ? ` (${rel})` : ''} — dort erreichen Sie ihre Oberfläche.`
-      : `So meldet sich Ihre Box im Netzwerk${rel ? ` (${rel})` : ''}. Ob sie darunter antwortet, sagt erst ein Aufruf.`,
+      : `Das ist die Adresse Ihrer Box im Kundennetz${rel ? ` (${rel})` : ''}. Der Aufruf funktioniert, wenn Sie mit diesem Netz verbunden sind.`,
     ton: erreicht ? 'ok' : null,
   };
 }

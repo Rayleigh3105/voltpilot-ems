@@ -29,6 +29,7 @@
 
 import type { Device } from './api';
 import type { AllowedChargePoint, ChargePoint, SiteCharging } from './ladepunkte';
+import { privateLanAddress } from './geraetSeite';
 
 // ---------------------------------------------------------------------------
 // Schritt 1: die Kennung
@@ -123,11 +124,10 @@ export const ENDPUNKT_ZWEI_FORMEN =
  *
  * 1. Die Box muss eine LAN-Adresse gemeldet haben (D5) — ohne sie gibt es
  *    nichts zu kopieren.
- * 2. Sie muss BEWIESEN sein (`lanSource === 'erreicht'`, also ein Browser hat
- *    die lokale Oberfläche darunter wirklich geöffnet). Eine bloße
- *    Schnittstellen-Adresse sagt, wo die Box steckt, nicht dass dort etwas
- *    antwortet — und ein Kopierfeld verspricht genau das. Die Adresse wird
- *    trotzdem GENANNT, nur eben als Hinweis statt als Zusage.
+ * 2. Sie muss als privater Kundennetz-Endpunkt validierbar sein. Moderne Boxen
+ *    melden dafür den vom Host erkannten/konfigurierten Endpunkt; `erreicht`
+ *    bleibt der kompatible Alt-Beleg. WAN, Loopback und kaputte Ports werden
+ *    vor dem Kopierfeld verworfen.
  * 3. Die Box muss ihren Anschluss GEMELDET haben. Hier gibt es ZWEI Fälle, und
  *    sie zu verwechseln wäre eine Falschaussage über eine gesunde Anlage: hat
  *    sie zu ihren Ladepunkten noch gar nichts gemeldet (`budget == null`, der
@@ -143,21 +143,13 @@ export function endpunkt(
   charging: SiteCharging | null,
   kennung: string,
 ): EndpunktSicht {
-  const roh = (device?.lanHost ?? '').trim();
+  const roh = privateLanAddress(device?.lanHost);
   if (!roh) {
     return {
       url: null,
       basis: null,
       satz: `VoltPilot kennt die Adresse Ihrer Box im Heimnetz noch nicht. ${ENDPUNKT_WEG}`,
       grund: 'keine-adresse',
-    };
-  }
-  if (device?.lanSource !== 'erreicht') {
-    return {
-      url: null,
-      basis: null,
-      satz: `Ihre Box meldet sich im Netzwerk als ${roh} — ob sie darunter antwortet, sagt erst ein Aufruf. ${ENDPUNKT_WEG}`,
-      grund: 'nicht-bewiesen',
     };
   }
   const port = anschluss(charging?.budget?.ocppPort);
@@ -377,6 +369,10 @@ function hostOhnePort(raw: string): string {
     const zu = raw.indexOf(']');
     return zu > 0 ? raw.slice(0, zu + 1) : raw;
   }
+  // Ein nacktes IPv6-Literal hat keinen eindeutig abtrennbaren Port. Die
+  // vollständige Adresse bleibt erhalten und bekommt URL-Klammern, bevor der
+  // eigene OCPP-Port angehängt wird.
+  if ((raw.match(/:/g) ?? []).length > 1) return `[${raw}]`;
   const doppel = raw.lastIndexOf(':');
   return doppel > 0 && /^\d+$/.test(raw.slice(doppel + 1)) ? raw.slice(0, doppel) : raw;
 }

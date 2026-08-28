@@ -542,8 +542,14 @@ type LocalSetupEntry struct {
 type NetworkSummary struct {
 	// ReportedAt is when the edge assembled this view (RFC 3339).
 	ReportedAt string `json:"reported_at"`
+	// LANHost is the endpoint of the Docker host on the CUSTOMER LAN, including
+	// its published web port. The installer detects/configures it outside the
+	// bridge container, so a later service visit over a VPN cannot replace it.
+	LANHost string `json:"lan_host,omitempty"`
 	// Host is the proven address VERBATIM, port included (the port is part of
-	// what a human types). Empty = never observed.
+	// what a human types). It is retained as fallback evidence for older/manual
+	// deployments; it may name a service VPN and therefore never outranks
+	// LANHost in the cloud.
 	Host string `json:"host,omitempty"`
 	// SeenAt is when that address last worked (RFC 3339); it travels WITH Host.
 	SeenAt string `json:"seen_at,omitempty"`

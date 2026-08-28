@@ -287,7 +287,7 @@ describe('boxSeite · die drei Kacheln', () => {
     expect(k.url).toBeNull();
   });
 
-  it('bietet die lokale Oberfläche NUR bei einer BEWIESENEN Adresse an (D5)', () => {
+  it('bietet die lokale Oberfläche am Kundennetz-Endpunkt an', () => {
     const erreicht = kachel(
       boxSeite(input({
         devices: [{
@@ -300,22 +300,35 @@ describe('boxSeite · die drei Kacheln', () => {
       'netzwerk',
     );
     expect(erreicht.wert).toBe('192.168.254.51');
-    expect(erreicht.url).toBe('http://192.168.254.51');
+    // Alte reine IP-Belege bekommen den festen Web-Port, sonst führte der
+    // Link fälschlich auf Port 80.
+    expect(erreicht.url).toBe('http://192.168.254.51:8484');
     expect(erreicht.satz).toMatch(/zuletzt erreicht/);
 
-    // Die SCHWÄCHERE Schnittstellen-Adresse sagt, WO die Box steckt - nicht,
-    // dass dort etwas antwortet. Also kein Weg dorthin.
+    // Der vom Host erkannte Endpunkt ist genau die kundenfähige Adresse und
+    // bleibt auch dann maßgeblich, wenn Support die Box über VPN erreicht.
     const gemeldet = kachel(
       boxSeite(input({
         devices: [{
-          ...BOX, lanHost: '192.168.0.31', lanSeenAt: FRISCH, lanSource: 'schnittstelle',
+          ...BOX, lanHost: '192.168.0.31:8484', lanSeenAt: FRISCH, lanSource: 'schnittstelle',
         }],
       })),
       'netzwerk',
     );
-    expect(gemeldet.wert).toBe('192.168.0.31');
-    expect(gemeldet.url).toBeNull();
-    expect(gemeldet.satz).toMatch(/sagt erst ein Aufruf/);
+    expect(gemeldet.wert).toBe('192.168.0.31:8484');
+    expect(gemeldet.url).toBe('http://192.168.0.31:8484');
+    expect(gemeldet.satz).toMatch(/Kundennetz/);
+  });
+
+  it('verwirft WAN und Loopback vor Text und Link', () => {
+    for (const lanHost of ['8.8.8.8:8484', '127.0.0.1:8484', '[::ffff:127.0.0.1]:8484']) {
+      const k = kachel(boxSeite(input({
+        devices: [{ ...BOX, lanHost, lanSeenAt: FRISCH, lanSource: 'erreicht' }],
+      })), 'netzwerk');
+      expect(k.wert).toBe(LAN_UNBEKANNT);
+      expect(k.url).toBeNull();
+      expect(JSON.stringify(k)).not.toContain(lanHost);
+    }
   });
 });
 
