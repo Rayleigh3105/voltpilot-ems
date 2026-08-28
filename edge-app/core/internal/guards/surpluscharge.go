@@ -13,13 +13,15 @@
 // price, hour after hour. Roughly 2-10 EUR given away in one morning, against
 // ~0,1-0,7 EUR for the curtailment that was displayed but not executed.
 //
-// THE SPLIT IS THE POINT, identical to its two siblings: the CLOUD decides
-// whether storing beats selling in this slot (ONE price truth -
+// THE SPLIT IS THE POINT, identical to its two siblings: normally the CLOUD
+// decides whether storing beats selling in this slot (ONE price truth -
 // services/optimization slot_trim.py, published as the additive per-slot
 // contract flag charge_surplus_to_battery), the EDGE only enforces it against
-// MEASURED values. Nothing here knows a price, ever. The naive alternative -
-// always charge the surplus - is the price-blind self-consumption logic, which
-// is precisely what the price-aware plan replaced.
+// MEASURED values. The same safe mechanism is also reused by the narrow local
+// high-SoC buffer: only inside a cloud-marked cover-load slot and only between
+// soc_max-5 and soc_max. Nothing here knows a price or invents a slot role,
+// ever. Outside that explicit top-band exception, always charging the surplus
+// would still be the price-blind self-consumption logic this plan replaced.
 //
 // Safety posture. This is the ONLY guard in the chain that RAISES a setpoint,
 // so its argument is stated in full:
@@ -96,6 +98,10 @@ type AbsorbResult struct {
 	// Active is true only while the correction is actually RAISING the commanded
 	// charge.
 	Active bool
+	// Path lets the caller distinguish the cloud-economic absorption from a
+	// stricter local authorization that deliberately reuses this same safe
+	// measured-surplus controller. Empty means the established economic path.
+	Path string
 	// CommandedKw is the pre-correction command - what the plan/holder asked
 	// for, so the local card can name the deliberate correction instead of
 	// hiding it.
@@ -123,9 +129,9 @@ func NewSurplusCharger() *SurplusCharger { return &SurplusCharger{} }
 // Apply RAISES an already guard-clamped, non-negative command to the measured
 // PV surplus.
 //
-// absorb is the active slot's cloud-published duty (false = storing does not
-// beat selling here, no active slot, stale plan, or a pre-feature cloud -> the
-// command is returned untouched). l/r are the SAME limits and reading the
+// absorb is the caller's explicit authorization: normally the active slot's
+// cloud-published economic duty, or the separately proven upper-buffer grant.
+// False returns the command untouched. l/r are the SAME limits and reading the
 // authoritative chain used: because this guard RAISES, its target is re-run
 // through Clamp, so rated band, SoC ceiling, EEG solar-only charge and the §14a
 // envelope all still bind - it can never write past them.

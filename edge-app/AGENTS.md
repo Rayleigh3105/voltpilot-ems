@@ -4166,21 +4166,31 @@ Wechselrichters. **Kein Vertragsfeld** — die Wolke sagt längst, OB Decken
   der Nachführung, und der Rücklese-`mode` behauptet NIE einen Zustand, in dem
   das Gerät nicht ist).
 
-## Vollakku-Entlastung: die obersten 5 Prozentpunkte sind kein Schauakku
+## Oberer PV-Puffer: die obersten 5 Prozentpunkte sind kein Schauakku
 
-Der Pilsting-Fall 28.08.2026 ist in `core/internal/guards/highsoc.go` als enge,
-zustandsbehaftete Freigabe vor dem bestehenden `LoadFollower` umgesetzt. Bei
-einem wirklich ruhenden, frischen Plan und gemessenem Netzbezug greift sie erst
-ab `soc_max - 1`, hält dann hysteretisch bis `max(soc_max - 5,
-effective_floor)` und startet ausschließlich über den zertifizierten,
-bestätigten Exakt-Sollwertpfad. Sie darf nie einen Lade-/Verkaufsbefehl drehen,
-nie eine Anlagenpause/einen fremden Holder überstimmen, nie mit alten oder
-unvollständigen Messwerten regeln und nie den vollständigen Reserve-Stack
-unterschreiten. Der native Modus bleibt absichtlich aus: dessen ökonomischer
-Boden wäre für diese kleine Vertrauenszone zu tief. Heartbeat/API/Portal nennen
-die Wahrheit als `high_soc_follow` / „Vollakku-Entlastung“ und tragen den
-tatsächlich angewendeten engeren Boden. Der gemeinsame Regressionsvektor ist
-94 % SoC, 0,9 kW PV, 5,0 kW Last -> -4,1 kW Batterie / 0 Netz bis 90 %.
+Die Pilsting-Fälle 28.08.2026 sind in `core/internal/guards/highsoc.go` als
+symmetrischer oberer 5-%-Puffer umgesetzt. Defizitseite: Bei einem wirklich
+ruhenden, frischen Plan und gemessenem Netzbezug greift die zustandsbehaftete
+Freigabe vor dem bestehenden `LoadFollower` ab `soc_max - 1` und hält
+hysteretisch bis `max(soc_max - 5, effective_floor)`. Überschussseite: Hat die
+Wolke den laufenden Slot ausdrücklich als `cover_load_from_battery` (also
+Eigenverbrauch statt Verkauf) markiert, darf die Edge den nach dem Follower
+neutralen Sollwert zwischen `soc_max - 5` und `soc_max` über den bestehenden
+`SurplusCharger` auf den gemessenen PV-Überschuss anheben. Diese zweite Hälfte
+ist zustandslos, weil Laden den SoC von ihrer unteren Grenze wegbewegt; die
+vollständige `Clamp`-Kette bindet erneut (Nennleistung, SoC-Obergrenze,
+EEG-Solarladen, Netzgrenzen).
+
+Beide Hälften starten ausschließlich über den zertifizierten, frisch
+bestätigten Exakt-Sollwertpfad, überstimmen nie Pause/fremde Holder und regeln
+nie mit alten oder unvollständigen Messwerten. Ein unmarkierter/Verkaufs-Slot
+bleibt byte-identisch; unterhalb des Puffers entscheidet weiter ausschließlich
+`charge_surplus_to_battery`. Die native Automatik wird während der lokalen
+Nachladung zurückgenommen, weil ihr bisheriger Beleg nur autonome Entladung
+zertifiziert. Heartbeat/API/Portal nennen die Richtungen als
+`high_soc_follow` / „Vollakku-Entlastung“ und `high_soc_charge` /
+„PV-Puffer-Nachladung“. Regressionsvektoren: 94 % / 0,9 / 5,0 -> -4,1 kW bis
+90 % sowie 91 % / 11,4 / 2,9 -> +8,5 kW bis 95 %, jeweils 0 Netz.
 
 ## Ein Messpunkt wird ueber SEINE Komponente gelesen (Geraeteseite Stufe 3c)
 

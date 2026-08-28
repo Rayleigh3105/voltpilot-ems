@@ -139,6 +139,20 @@ class ControlStatusListenerTest {
         assertThat(ex.measurementsFresh()).isTrue();
     }
 
+    /** The charge-side upper buffer follows surplus, not the discharge deficit field. */
+    @Test
+    void highSocChargeCarriesTheMeasuredSurplusAndOriginalPlanValue() {
+        var ex = ingest("{" + BASE + ",\"execution\":{\"mode\":\"high_soc_charge\"," +
+                "\"planned_kw\":-4.3,\"surplus_kw\":8.5," +
+                "\"measurements_fresh\":true}}", "schedule");
+
+        assertThat(ex.mode()).isEqualTo("high_soc_charge");
+        assertThat(ex.direction()).isNull();
+        assertThat(ex.plannedKw()).isEqualTo(-4.3);
+        assertThat(ex.targetKw()).isEqualTo(8.5);
+        assertThat(ex.measurementsFresh()).isTrue();
+    }
+
     /** An uncorrected slot and the built-in rule are two different statements. */
     @Test
     void planAndFallbackAreStoredWithoutCorrectionDetail() {

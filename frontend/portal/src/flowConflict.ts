@@ -32,7 +32,7 @@
  *     erst {@link FLOW_CONFLICT_MIN_STREAK} aufeinanderfolgende Beobachtungen
  *     lösen ihn aus (die `applyControlConfirm`-Lektion).
  *   - **Eine gemeldete Nachführung ist die REGEL, kein Widerspruch:** in den
- *     Ausführungs-Modi follow/trim/absorb/high_soc_follow folgt das Gerät bewusst dem
+ *     Ausführungs-Modi follow/trim/absorb/high_soc_follow/high_soc_charge folgt das Gerät bewusst dem
  *     gemessenen Wert — dort wird nichts behauptet.
  *
  * **Der PAUSEN-Fall** (Live-Vorfall Pilsting/Herzogau 24.08.2026): commanded
@@ -94,7 +94,7 @@ export const FEED_IN_FULL_MARGIN_KW = 1;
 
 /** Die Ausführungs-Modi, in denen das Gerät bewusst dem MESSWERT folgt. */
 const FOLLOWING_MODES: ReadonlySet<string> = new Set([
-  'follow', 'trim', 'absorb', 'idle_follow', 'high_soc_follow', 'autonomous_discharge',
+  'follow', 'trim', 'absorb', 'idle_follow', 'high_soc_follow', 'high_soc_charge', 'autonomous_discharge',
 ]);
 
 /** Der Trailing-Satz jeder Konflikt-Aussage: ein Hinweis, kein Alarm. */

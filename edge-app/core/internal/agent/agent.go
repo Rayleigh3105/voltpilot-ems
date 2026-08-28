@@ -1813,6 +1813,7 @@ const (
 	execModeFollow              = "follow"
 	execModeIdleFollow          = "idle_follow"
 	execModeHighSocFollow       = "high_soc_follow"
+	execModeHighSocCharge       = "high_soc_charge"
 	execModeAutonomousDischarge = "autonomous_discharge"
 	execModeTrim                = "trim"
 	execModeAbsorb              = "absorb"
@@ -1848,10 +1849,15 @@ func executionSummary(snap state.Snapshot) *cloud.ExecutionSummary {
 		}
 	}
 	if a := snap.Absorb; a != nil && a.Active {
+		mode := execModeAbsorb
+		if a.Path == execModeHighSocCharge {
+			mode = execModeHighSocCharge
+		}
 		return &cloud.ExecutionSummary{
-			Mode:      execModeAbsorb,
-			PlannedKw: copyFloat(&a.PlannedKw),
-			SurplusKw: copyFloat(a.SurplusKw),
+			Mode:              mode,
+			PlannedKw:         copyFloat(&a.PlannedKw),
+			SurplusKw:         copyFloat(a.SurplusKw),
+			MeasurementsFresh: mode == execModeHighSocCharge,
 		}
 	}
 	if f := snap.Follow; f != nil && f.Active {
@@ -2501,8 +2507,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// slot. The shared marketCorrectionsAllowed boundary above protects both it
 	// and the established cover_load_from_battery follower from every non-plan
 	// holder and from the owner-claim transition race.
-	if economicUnplannedRequested ||
-		(marketCorrectionsAllowed && p.Fresh(now) && !coverLoad) {
+	if economicUnplannedRequested || (marketCorrectionsAllowed && p.Fresh(now)) {
 		// The new authority starts a discharge, so unlike the established
 		// magnitude-only follower it also requires a recent independently held
 		// Layer-1 readback. Lost/mismatching/unconfirmed inverter communication
@@ -2545,6 +2550,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	if highSoc.Active {
 		floor = highSoc.FloorPct
 	}
+	preFollowKw := kw
 	followed := a.follow.ApplyAuthorized(now, kw,
 		coverLoad,
 		unplanned, floor, measurementFresh, limits, r)
@@ -2574,9 +2580,38 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// ever moves an export TOWARD zero. See guards/surpluscharge.go for the full
 	// argument. NOTE the setpoint published below is the RAISED value: the
 	// register readback therefore matches it and the confirmation logic never
-	// reads a deliberate correction as "setpoint not adopted".
-	absorbed := a.absorb.Apply(now, kw,
-		marketCorrectionsAllowed && p.ActiveChargeSurplusToBattery(now), limits, r)
+	// reads a deliberate correction as "setpoint not adopted". Since 2026-08-28
+	// the same safe measured-surplus controller also executes the bounded upper
+	// PV buffer below; that local authorization is intentionally narrower than
+	// the cloud-economic flag and gets its own execution path/name.
+	// UPPER PV BUFFER: the cover-load duty means this is an own-consumption
+	// slot, not a deliberate sale. If its measured deficit has flipped into a
+	// surplus, refill the same narrow five-point band the full-battery relief may
+	// spend (90-95 % with the default ceiling). This is the symmetric customer-
+	// trust rule: a visible 91 % battery must not export 8.5 kW while the cockpit
+	// still calls the slot "Verbrauch decken". It needs the same fresh held
+	// readback as every locally STARTED direction, and it can act only after the
+	// follower has reduced the obsolete planned discharge to real idle. Explicit
+	// sell slots never carry cover_load_from_battery, so price arbitrage outside
+	// this top band remains exactly the cloud's decision.
+	highSocCharge := guards.HighSocCharge(guards.HighSocChargeInput{
+		Eligible:          marketCorrectionsAllowed && p.Fresh(now) && coverLoad && portableReady,
+		MeasurementsFresh: measurementFresh,
+		CommandKw:         kw,
+		SocPct:            r.SocPct,
+		SocMaxPct:         limits.SocMaxPct,
+		PvKw:              r.PvKw,
+		LoadKw:            r.LoadKw,
+	})
+	absorbAuthorized := marketCorrectionsAllowed && p.ActiveChargeSurplusToBattery(now)
+	absorbed := a.absorb.Apply(now, kw, absorbAuthorized || highSocCharge.Active, limits, r)
+	highSocChargeApplied := highSocCharge.Active && absorbed.Active
+	if highSocChargeApplied {
+		absorbed.Path = execModeHighSocCharge
+		// The portal compares execution with the Fahrplan, not with the follower's
+		// intermediate 0 kW. Preserve the original -4.3 kW from the reported case.
+		absorbed.CommandedKw = preFollowKw
+	}
 	kw = absorbed.Kw
 
 	// „AUTO VOR SPEICHER" (OCPP-Lastmanagement Stufe 4, internal/lastmgmt/
@@ -2695,7 +2730,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// way - unchanged for the executor to write in setpoint mode, and as the
 	// display/take-back reference in native mode.
 	nativeDec, nativeInfo := a.nativeDecide(now, p, r, kw,
-		marketCorrectionsAllowed, controlEnabled, measurementFresh, freshWindow,
+		marketCorrectionsAllowed && !highSocChargeApplied, controlEnabled, measurementFresh, freshWindow,
 		effectiveFloor, peakTarget, solarOnly)
 
 	msg := map[string]any{
@@ -2888,6 +2923,7 @@ func absorbSnapshot(a guards.AbsorbResult) *state.AbsorbInfo {
 	}
 	info := &state.AbsorbInfo{
 		Active:    true,
+		Path:      a.Path,
 		PlannedKw: math.Round(a.CommandedKw*1000) / 1000,
 	}
 	if !math.IsNaN(a.SurplusKw) {

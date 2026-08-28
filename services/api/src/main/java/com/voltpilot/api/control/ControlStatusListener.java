@@ -56,7 +56,7 @@ public class ControlStatusListener {
     /** The additive execution modes the edge may report - anything else is ignored. */
     private static final Set<String> EXECUTION_MODES = Set.of(
             "plan", "follow", "trim", "absorb", "fallback", "idle_follow",
-            "high_soc_follow", "autonomous_discharge");
+            "high_soc_follow", "high_soc_charge", "autonomous_discharge");
     /** The two follow directions - only meaningful for mode {@code follow}. */
     private static final Set<String> FOLLOW_DIRECTIONS = Set.of("deepen", "reduce");
     /** The three certification sources the core may report - anything else is ignored. */
@@ -256,7 +256,7 @@ public class ControlStatusListener {
         // worse than none.
         Double target = mode == null
                 ? null
-                : Set.of("trim", "absorb").contains(mode)
+                : Set.of("trim", "absorb", "high_soc_charge").contains(mode)
                         ? optDouble(ex, "surplus_kw") : optDouble(ex, "deficit_kw");
         return new ControlStatusRepository.Execution(
                 source, mode, direction, optDouble(ex, "planned_kw"), target,

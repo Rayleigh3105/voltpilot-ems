@@ -4111,8 +4111,10 @@ Test festgenagelt.
   den Modus nicht bestätigt. Der SICHERE Zustand bleibt unverändert der
   guard-geklemmte Sollwert-Pfad (Entscheid 6).
 - **Die Fähigkeit ist „Laden sperren + autonome Entladung"** (Entscheid 3), nicht
-  volle Eigenverbrauchsregelung: die Aufnahme eines Tag-Überschusses bleibt eine
-  Wolken-Entscheidung (`charge_surplus_to_battery`).
+  volle Eigenverbrauchsregelung: die Aufnahme eines Tag-Überschusses bleibt
+  grundsätzlich eine Wolken-Entscheidung (`charge_surplus_to_battery`). Die enge
+  Ausnahme ist der lokale obere 5-%-PV-Puffer eines bereits von der Wolke als
+  `cover_load_from_battery` markierten Eigenverbrauchs-Slots; siehe unten.
 - **Deye ohne Fernsteuer-Firmware bleibt beim Follower** (Entscheid 4) — dort ist
   jeder Moduswechsel EEPROM mit ~20 s Latenz.
 - **Generisch für JEDEN fähigen Wechselrichter** (Entscheid 8): Deye Remote,
@@ -4157,22 +4159,29 @@ Test festgenagelt.
   `VP_NATIVE_SELF_REGULATION_ENABLED` (Vorgabe AN, Opt-out) ist der Not-Aus je
   Box. Die Edge-Hälfte reist mit dem nächsten Edge-Release.
 
-## Vollakku-Entlastung: Kundenvertrauen vor marginaler Verschiebung
+## Oberer PV-Puffer: Kundenvertrauen vor marginaler Verschiebung
 
-Der Live-Fall Pilsting/Herzogau vom 28.08.2026 (94 % Speicher, 0,9 kW PV,
-5,0 kW Hauslast, 4,1 kW Netzbezug) ist als eigene Edge-Regel geschlossen. Ein
-frischer, wirklich ruhender Fahrplan darf bei gleichzeitigem Netzbezug die
-oberste kleine SoC-Zone zur Eigenverbrauchsdeckung öffnen: Einstieg innerhalb
-1 Prozentpunkt der konfigurierten SoC-Obergrenze, Ausstieg 5 Prozentpunkte
-darunter, jedoch niemals unter dem vollständigen Wolken-/Kunden-Reserveboden.
-Die Regel ist hysteretisch, verlangt frische PV/Last/SoC-Messungen, aktive und
-zertifizierte Steuerung plus gehaltenes Rücklesen und greift weder in geplantes
-Laden/Entladen noch in fremde Holder ein. Sie nutzt bewusst den exakten
-10-s-Sollwertpfad (nicht die tiefere Wechselrichter-Automatik) und meldet sich
-Ende-zu-Ende als `execution.mode=high_soc_follow` / „Vollakku-Entlastung“.
-Fehlende oder widersprüchliche Fakten schalten sie sofort ab. Kern:
-`edge-app/core/internal/guards/highsoc.go`; Regressionen reproduzieren exakt
-94 % / 0,9 / 5,0 -> -4,1 kW bis zum 90-%-Boden.
+Die zwei Live-Fälle Pilsting/Herzogau vom 28.08.2026 sind als symmetrische,
+kleine Edge-Regel geschlossen: (A) 94 % Speicher, 0,9 kW PV, 5,0 kW Hauslast,
+4,1 kW Netzbezug; (B) 91 % Speicher, 11,4 kW PV, 2,9 kW Hauslast, 8,5 kW
+Einspeisung in einem „Verbrauch decken"-Slot. Die oberen 5 Prozentpunkte sind
+der lokale PV-Puffer: Bei Defizit darf ein frischer, wirklich ruhender Fahrplan
+ab `soc_max - 1` hysteretisch bis `max(soc_max - 5, effective_floor)` entladen.
+Bei Überschuss darf ein ausdrücklich als `cover_load_from_battery` markierter
+Slot von `soc_max - 5` bis zur Obergrenze nachladen. Ein ausdrücklicher Verkauf
+trägt diese Pflicht nicht und bleibt unangetastet; unterhalb des Puffers bleibt
+die Aufnahme des Überschusses die Wolkenentscheidung
+`charge_surplus_to_battery`.
+
+Beide Richtungen verlangen frische PV/Last/SoC-Messungen, aktive und
+zertifizierte Steuerung plus gehaltenes Rücklesen und greifen nie in fremde
+Holder/Pause ein. Die Nachladung läuft durch den bestehenden
+`SurplusCharger` und damit erneut durch die vollständige Guard-Kette (Leistung,
+SoC-Obergrenze, EEG-Solarladen, §14a). Der exakte 10-s-Sollwertpfad meldet die
+Richtungen Ende-zu-Ende als `high_soc_follow` / „Vollakku-Entlastung“ und
+`high_soc_charge` / „PV-Puffer-Nachladung“. Kern:
+`edge-app/core/internal/guards/highsoc.go`; Regressionen reproduzieren beide
+Vektoren exakt bis 0 kW Netz.
 
 ## Known future work (not yet built)
 

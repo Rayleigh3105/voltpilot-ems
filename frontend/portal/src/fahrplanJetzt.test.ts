@@ -220,6 +220,25 @@ describe('jetztHeld · unerwarteter Verbrauch in geplanter Ruhe', () => {
     ]));
   });
 
+  it('zeigt beim 91%-Überschussfall die obere PV-Puffer-Nachladung als Ausführung', () => {
+    const v = jetztHeld(input({
+      slot: idle({ batteryKw: -4.3, slotRole: 'eigenverbrauch', coverLoadFromBattery: true }),
+      snapshot: snap({ pvKw: 11.4, loadKw: 2.9, gridKw: 0, battKw: 8.5, socPct: 91 }),
+      control: status({
+        commandedKw: 8.5,
+        confirmedKw: 8.5,
+        executionMode: 'high_soc_charge',
+        executionPlannedKw: -4.3,
+        executionTargetKw: 8.5,
+        executionMeasurementsFresh: true,
+      }),
+    }));
+    expect(v.state).toBe('angepasst');
+    expect(v.lead).toContain('lädt gerade');
+    expect(v.adjust).toContain('oberen PV-Puffer');
+    expect(v.adjust).toContain('statt in diesem Verbrauchs-Slot einzuspeisen');
+  });
+
   it('nennt Reserve oder Gerätezustand bei bindender Grenze und bei verlorener Frische', () => {
     const reserve = jetztHeld(input({
       slot: idle({ slotFlags: ['reserve_backup'] }),

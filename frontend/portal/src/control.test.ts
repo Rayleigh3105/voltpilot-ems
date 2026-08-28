@@ -488,6 +488,22 @@ describe('executionNote', () => {
     expect(EXECUTION_MODE_LABEL.high_soc_follow).toBe('Vollakku-Entlastung');
   });
 
+  it('explains the symmetric PV refill in a cover-load slot without inventing a price verdict', () => {
+    const note = executionNote(
+      status({
+        executionMode: 'high_soc_charge',
+        executionPlannedKw: -4.3,
+        executionTargetKw: 8.5,
+      }),
+    )!;
+    expect(note).toContain('Solar-Überschuss');
+    expect(note).toContain('8,5');
+    expect(note).toContain('oberen PV-Puffer');
+    expect(note).toContain('Verbrauchs-Slot');
+    expect(note).not.toContain('mehr wert');
+    expect(EXECUTION_MODE_LABEL.high_soc_charge).toBe('PV-Puffer-Nachladung');
+  });
+
   it('claims nothing for an uncorrected slot or an older edge', () => {
     expect(executionNote(status({ executionMode: 'plan' }))).toBeNull();
     expect(executionNote(status({}))).toBeNull();

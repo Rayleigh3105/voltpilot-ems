@@ -1,16 +1,18 @@
-// High-SoC load coverage is the narrow customer-trust override for an idle
-// optimizer slot: a battery sitting at its configured upper bound must not buy
-// ordinary house load from the grid merely because the marginal model values
-// the same energy a little higher later.
+// High-SoC buffering is the narrow customer-trust override at the top of the
+// battery: visible grid exchange next to an almost-full storage should move
+// toward zero before marginal price differences are optimized.
 //
 // This is deliberately NOT a second optimizer. It only opens a small, bounded
-// headroom window at the top of the battery:
+// headroom window at the top of the battery in two tightly scoped directions:
 //
 //   - enter only within one percentage point of the configured SoC ceiling;
 //   - follow only a measured import from a genuinely idle command;
 //   - stop five percentage points below the ceiling, or at the full
 //     cloud-computed reserve stack when that is higher;
 //   - release immediately on stale/missing facts or a different holder/plan.
+//   - in an explicit cover-load slot, absorb measured PV surplus from that
+//     five-point floor back up to the configured ceiling. A sell slot never
+//     carries that duty and is therefore never reinterpreted here.
 //
 // The state provides hysteresis between the one-point entry threshold and the
 // five-point release threshold. Without it a 94.0 % reading on a 95 % ceiling
@@ -32,6 +34,9 @@ const (
 	HighSocReliefBandPct = 5.0
 	// HighSocImportDeadbandKw keeps meter noise from arming a battery cycle.
 	HighSocImportDeadbandKw = 0.2
+	// HighSocSurplusDeadbandKw is the charge-side twin: a rounding-sized PV
+	// surplus is not worth a write or a battery cycle.
+	HighSocSurplusDeadbandKw = 0.2
 	// HighSocIdleDeadbandKw is the same real-idle boundary as the additive
 	// unplanned-load schedule duty. A charge or sale is never reinterpreted.
 	HighSocIdleDeadbandKw = 0.05
@@ -55,6 +60,27 @@ type HighSocInput struct {
 type HighSocDecision struct {
 	Active   bool
 	FloorPct *float64
+}
+
+// HighSocChargeInput contains the facts for the charge-side half of the upper
+// buffer. Eligible is intentionally supplied by the caller: it is true only
+// for a fresh, explicitly marked cover_load_from_battery slot behind the full
+// plan-holder and certified-write boundary.
+type HighSocChargeInput struct {
+	Eligible          bool
+	MeasurementsFresh bool
+	CommandKw         float64
+	SocPct            float64
+	SocMaxPct         float64
+	PvKw              float64
+	LoadKw            float64
+}
+
+// HighSocChargeDecision authorizes measured-surplus absorption inside the
+// configured top band. CeilingPct is non-nil exactly while Active.
+type HighSocChargeDecision struct {
+	Active     bool
+	CeilingPct *float64
 }
 
 // HighSocRelief carries the top-band hysteresis across setpoint ticks.
@@ -116,4 +142,28 @@ func (h *HighSocRelief) Release() {
 	h.mu.Lock()
 	h.armed = false
 	h.mu.Unlock()
+}
+
+// HighSocCharge authorizes the symmetric charge-side half of the top buffer.
+// It is stateless because charging moves SoC away from the lower boundary and
+// naturally stops at the configured ceiling through the authoritative Clamp.
+// Every ambiguity refuses; a non-idle command or a non-material surplus is
+// never reinterpreted.
+func HighSocCharge(in HighSocChargeInput) HighSocChargeDecision {
+	if !in.Eligible || !in.MeasurementsFresh ||
+		!finite(in.CommandKw) || math.Abs(in.CommandKw) > HighSocIdleDeadbandKw ||
+		!finite(in.SocPct) || !finite(in.SocMaxPct) ||
+		in.SocMaxPct <= 0 || in.SocMaxPct > 100 ||
+		!finite(in.PvKw) || !finite(in.LoadKw) {
+		return HighSocChargeDecision{}
+	}
+
+	floor := in.SocMaxPct - HighSocReliefBandPct
+	if in.SocPct < floor || in.SocPct >= in.SocMaxPct ||
+		in.PvKw-in.LoadKw <= HighSocSurplusDeadbandKw {
+		return HighSocChargeDecision{}
+	}
+
+	ceiling := in.SocMaxPct
+	return HighSocChargeDecision{Active: true, CeilingPct: &ceiling}
 }

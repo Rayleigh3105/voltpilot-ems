@@ -263,15 +263,19 @@ type FollowInfo struct {
 	FloorSocPct *float64 `json:"floor_soc_pct,omitempty"`
 }
 
-// AbsorbInfo is the UI-facing state of the in-slot surplus absorption: the cloud
-// marked this slot's stored kWh worth more than the feed-in it would fetch, so
-// the commanded CHARGE is being RAISED to the MEASURED PV surplus instead of
-// leaving a surplus the forecast never saw to be exported. The charge-side
-// counterpart of TrimInfo (which only ever lowers), and read-only display of a
-// decision already taken - the correction itself lives in guards.SurplusCharger.
+// AbsorbInfo is the UI-facing state of the in-slot surplus absorption: the
+// commanded CHARGE is being RAISED to the MEASURED PV surplus instead of
+// leaving a surplus the forecast never saw to be exported. Path says whether
+// the authorization was the cloud-economic duty or the bounded upper PV
+// buffer. The charge-side counterpart of TrimInfo (which only ever lowers), and
+// read-only display of a decision already taken - the correction itself lives
+// in guards.SurplusCharger.
 type AbsorbInfo struct {
 	// Active is always true when the block exists (it is omitted otherwise).
 	Active bool `json:"active"`
+	// Path distinguishes the established economic absorption from the bounded
+	// upper-buffer refill. Empty is the established path for compatibility.
+	Path string `json:"path,omitempty"`
 	// PlannedKw is the setpoint BEFORE the correction - what the Fahrplan/holder
 	// asked for, so the card can say "der Fahrplan wollte X kW".
 	PlannedKw float64 `json:"planned_kw"`

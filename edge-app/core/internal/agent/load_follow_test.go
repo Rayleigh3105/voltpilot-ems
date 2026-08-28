@@ -191,6 +191,104 @@ func TestNearlyFullBatteryCoversIdleImportOnlyInsideItsSmallTopBand(t *testing.T
 	}
 }
 
+// The symmetric customer-trust regression from the same plant, 17:50 on
+// 28.08.2026: PV 11.4 kW, house 2.9 kW, battery 91 %, and 8.5 kW exported while
+// the active slot still said "Verbrauch decken". Inside the 90-95 % top band
+// that measured surplus must refill the headroom the load-covering rule may
+// spend. The plan's obsolete -4.3 kW forecast first follows to 0, then the safe
+// surplus controller raises the published command to +8.5 kW.
+func TestCoverLoadSlotRefillsUpperBufferFromTheReportedSolarSurplus(t *testing.T) {
+	a, addr := followAgentAddr(t)
+	sub := subscribeSetpoint(t, addr)
+	now := time.Date(2026, 8, 28, 15, 50, 0, 0, time.UTC)
+	no, floor := false, 35.0
+	a.mu.Lock()
+	a.currentPlan = &plan.Plan{
+		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
+		GridChargeAllowed: &no, EffectiveFloorSocPct: &floor,
+		Slots: []plan.Slot{{
+			Start: now, BatterySetpointKw: -4.3, CoverLoadFromBattery: true,
+			// The marginal cloud rule declined ordinary surplus absorption.
+			ChargeSurplusToBattery: false,
+		}},
+	}
+	a.lastReading = guards.Reading{
+		SocPct: 91, PvKw: 11.4, LoadKw: 2.9, GridLimitKw: guards.Unknown(),
+	}
+	a.lastReadingAt = now
+	a.mu.Unlock()
+	a.State.Update(func(s *state.Snapshot) {
+		s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
+	})
+
+	a.applySetpoint(now)
+	waitFor(t, 5*time.Second, "the 91%-battery PV refill", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == 8.5
+	})
+	snap := a.State.Get()
+	if snap.Absorb == nil || !snap.Absorb.Active || snap.Absorb.Path != execModeHighSocCharge {
+		t.Fatalf("upper-buffer execution evidence = %+v", snap.Absorb)
+	}
+	if snap.Absorb.PlannedKw != -4.3 {
+		t.Fatalf("planned comparison = %.3f kW, want original Fahrplan -4.3 kW", snap.Absorb.PlannedKw)
+	}
+	if snap.Absorb.SurplusKw == nil || *snap.Absorb.SurplusKw != 8.5 {
+		t.Fatalf("measured surplus = %+v, want 8.5 kW", snap.Absorb.SurplusKw)
+	}
+	if grid := 2.9 + snap.SetpointKw - 11.4; math.Abs(grid) > .001 {
+		t.Fatalf("grid = %.3f kW, want zero", grid)
+	}
+	if ex := controlSummary(snap).Execution; ex == nil || ex.Mode != execModeHighSocCharge ||
+		ex.PlannedKw == nil || *ex.PlannedKw != -4.3 ||
+		ex.SurplusKw == nil || *ex.SurplusKw != 8.5 || !ex.MeasurementsFresh {
+		t.Fatalf("heartbeat must name the upper-buffer refill: %+v", ex)
+	}
+
+	// The configured ceiling still wins through guards.Clamp. Once it is
+	// reached, the exact same cover slot rests at 0 kW and exports normally.
+	atCeiling := now.Add(10 * time.Second)
+	a.mu.Lock()
+	a.lastReading.SocPct = 95
+	a.lastReadingAt = atCeiling
+	a.mu.Unlock()
+	a.State.Update(func(s *state.Snapshot) { s.Control.CheckedAt = atCeiling })
+	a.applySetpoint(atCeiling)
+	waitFor(t, 5*time.Second, "upper-buffer ceiling release", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == 0.0
+	})
+	if snap := a.State.Get(); snap.SetpointKw != 0 || snap.Absorb != nil {
+		t.Fatalf("ceiling must release back to neutral: setpoint=%v absorb=%+v",
+			snap.SetpointKw, snap.Absorb)
+	}
+}
+
+func TestUpperBufferNeverReinterpretsAnUnmarkedSellSlot(t *testing.T) {
+	a := followAgent(t)
+	now := time.Date(2026, 8, 28, 15, 50, 0, 0, time.UTC)
+	no := false
+	a.mu.Lock()
+	a.currentPlan = &plan.Plan{
+		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now, GridChargeAllowed: &no,
+		Slots: []plan.Slot{{Start: now, BatterySetpointKw: 0}},
+	}
+	a.lastReading = guards.Reading{
+		SocPct: 91, PvKw: 11.4, LoadKw: 2.9, GridLimitKw: guards.Unknown(),
+	}
+	a.lastReadingAt = now
+	a.mu.Unlock()
+	a.State.Update(func(s *state.Snapshot) {
+		s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
+	})
+
+	a.applySetpoint(now)
+	if snap := a.State.Get(); snap.SetpointKw != 0 || snap.Absorb != nil {
+		t.Fatalf("an unmarked deliberate sale must remain untouched: setpoint=%v absorb=%+v",
+			snap.SetpointKw, snap.Absorb)
+	}
+}
+
 func TestMarkedSlotCoversTheMeasuredHouseAndSaysWhy(t *testing.T) {
 	a := followAgent(t)
 	now := time.Date(2026, 7, 30, 21, 22, 48, 0, time.UTC)

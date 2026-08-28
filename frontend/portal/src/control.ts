@@ -218,6 +218,7 @@ export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
   fallback: 'Eingebaute Sicherung',
   idle_follow: 'Live-Lastnachführung',
   high_soc_follow: 'Vollakku-Entlastung',
+  high_soc_charge: 'PV-Puffer-Nachladung',
   autonomous_discharge: 'Wechselrichter-Automatik',
 };
 
@@ -269,6 +270,14 @@ export function executionNote(status: ControlStatus | null): string | null {
     return (
       `${plannedPart}Der Speicher ist nahezu voll. VoltPilot deckt den nach Solar verbleibenden ` +
       `Verbrauch${measured} jetzt aus dem Speicher und schafft nur ein kleines oberes Pufferfenster.`
+    );
+  }
+  if (mode === 'high_soc_charge') {
+    const surplus = target == null ? '' : ` (${absKw(target)})`;
+    return (
+      `${plannedPart}Der gemessene Solar-Überschuss${surplus} lädt den fast vollen Speicher ` +
+      'jetzt bis zur Ladegrenze nach. VoltPilot nutzt damit den oberen PV-Puffer, statt in ' +
+      'diesem Verbrauchs-Slot einzuspeisen.'
     );
   }
   // follow

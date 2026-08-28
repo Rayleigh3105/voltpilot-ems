@@ -436,6 +436,18 @@ test("control: an active absorption names the deliberate correction with both nu
     "a correction must never read as a failed write: " + d.text);
 });
 
+test("control: the upper PV buffer explains the product rule instead of a price verdict", () => {
+  const d = absorbFor({
+    absorb: { active: true, path: "high_soc_charge", planned_kw: -4.3, surplus_kw: 8.5 }
+  });
+  assert.ok(d, "an active upper-buffer refill must produce a reason line");
+  assert.match(d.text, /8,5 kW/, "it names the measured surplus: " + d.text);
+  assert.match(d.text, /oberen PV-Puffer/, "it names the bounded buffer: " + d.text);
+  assert.match(d.text, /Verbrauchs-Slot/, "it explains why this slot qualifies: " + d.text);
+  assert.match(d.text, /Ladegrenze/, "it names where the refill stops: " + d.text);
+  assert.ok(!/mehr wert/.test(d.text), "the local trust rule must not invent an economic verdict: " + d.text);
+});
+
 test("control: no absorption -> no reason line (the card reads exactly as before)", () => {
   assert.strictEqual(absorbFor({}), null);
   assert.strictEqual(absorbFor({ absorb: null }), null);

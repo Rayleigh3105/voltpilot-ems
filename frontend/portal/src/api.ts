@@ -1957,6 +1957,7 @@ export type ExecutionMode =
   | 'fallback'
   | 'idle_follow'
   | 'high_soc_follow'
+  | 'high_soc_charge'
   | 'autonomous_discharge';
 
 /** `deepen` = Entladung angehoben, `reduce` = Entladung begrenzt. */

@@ -324,6 +324,13 @@
     var planned = a.planned_kw != null
       ? " – der Fahrplan hatte " + nf1.format(a.planned_kw) + " kW vorgesehen"
       : "";
+    if (a.path === "high_soc_charge") {
+      return {
+        text: "Lädt den gemessenen Solarüberschuss" + stored + " in den oberen " +
+          "PV-Puffer – statt ihn in diesem Verbrauchs-Slot einzuspeisen" + planned +
+          ". Die Ladung endet an der eingestellten Ladegrenze."
+      };
+    }
     var text =
       "Lädt den gemessenen Solarüberschuss" + stored + " – Ladung angehoben: " +
       "die gespeicherte Energie ist mehr wert als die Einspeisung in dieser " +
