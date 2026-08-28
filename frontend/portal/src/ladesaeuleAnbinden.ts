@@ -319,6 +319,26 @@ export function abschluss(gemeldet: boolean): string {
     : 'Die Kennung ist eingetragen. Sobald Ihre Box das nächste Mal verbunden ist, übernimmt sie sie — danach lässt sie die Säule herein.';
 }
 
+/**
+ * Wohin der Kunde nach dem Anbinden schaut (Konzept `vp-verbraucher-cockpit-k1`
+ * §8, Phase 0 Schritt 6).
+ *
+ * ⚠ Er verspricht die Kachel erst, wenn die Säule sich WIRKLICH gemeldet hat.
+ * Eine eingetragene, aber stumme Kennung ist noch kein Ladepunkt — das Cockpit
+ * bietet den Baustein dann gar nicht erst an (`verfuegbar`), und ein Satz, der
+ * ihn trotzdem ankündigt, schickte den Kunden auf die Suche nach einer Kachel,
+ * die es nicht gibt.
+ *
+ * ⚠ Und er sagt „automatisch": der Baustein ist ab dem ersten Ladepunkt
+ * verfügbar UND vorgewählt — der Kunde muss nichts anschalten, kann die Kachel
+ * unter „Anpassen" aber abwählen.
+ */
+export function cockpitHinweis(gemeldet: boolean): string | null {
+  return gemeldet
+    ? 'Im Cockpit finden Sie Ihre Ladepunkte ab jetzt automatisch: die Kachel „Laden" sagt, ob ein Auto steckt und wie viel gerade fliesst, und der Energiefluss zeigt „Laden" als Abzweig vom Hausverbrauch. Beides lässt sich unter „Anpassen" ausblenden.'
+    : null;
+}
+
 // ---------------------------------------------------------------------------
 // Eine Kennung wieder entfernen
 // ---------------------------------------------------------------------------

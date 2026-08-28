@@ -28,6 +28,8 @@ import (
 	"syscall"
 	"time"
 
+	ocppcore "github.com/lorenzodonini/ocpp-go/ocpp1.6/core"
+
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppsim"
 )
 
@@ -119,6 +121,26 @@ func main() {
 	// POST /unplug?connector=1 - it leaves.
 	mux.HandleFunc("POST /unplug", func(w http.ResponseWriter, r *http.Request) {
 		if err := st.Unplug(intParam(r, "connector", 1)); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	// POST /status?connector=1&status=SuspendedEVSE&error=NoError - der Rig-Haken
+	// für die Zustandswörter, die ein Ein-/Ausstecken nicht erzeugt
+	// (`SuspendedEVSE`, `SuspendedEV`, `Finishing`, `Faulted`, `Reserved`, …).
+	// Er MELDET nur; der Wagen zieht weiter, was die Profile erlauben.
+	mux.HandleFunc("POST /status", func(w http.ResponseWriter, r *http.Request) {
+		want := r.URL.Query().Get("status")
+		if want == "" {
+			http.Error(w, "status fehlt", http.StatusBadRequest)
+			return
+		}
+		err := st.ReportStatus(intParam(r, "connector", 1),
+			ocppcore.ChargePointStatus(want),
+			ocppcore.ChargePointErrorCode(r.URL.Query().Get("error")))
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

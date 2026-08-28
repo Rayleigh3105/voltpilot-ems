@@ -3,7 +3,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { anlageSidebar } from './anlageNav';
 import { healthBadge } from './health';
-import { ladenKachel } from './ladenKachel';
+import { flussKnoten, ladenKachel } from './ladenKachel';
+import { layoutFlow } from './adaptiveFlow';
+import type { Topology } from './topology';
 import { anlageDecision, cockpitStack, projectionActive } from './cockpit';
 import { cockpitWidgets } from './cockpitWidgets';
 import { hasTopology } from './adaptiveLive';
@@ -758,6 +760,29 @@ describe('Anwendungs-Programm Stufe 3 — das Cockpit-Layout einer Bestandsanlag
     expect(ladenKachel({ charging: null })).toBeNull();
   });
 
+  it('Knoten „Laden": ohne Ladepunkt ist der Energiefluss ZEICHENGLEICH zu vorher', () => {
+    // Der fünfte Kreis (Konzept `vp-verbraucher-cockpit-k1` §6, E3) hängt an
+    // GENAU einer Eingabe. Fehlt sie - und ohne Ladepunkt fehlt sie immer,
+    // weil `flussKnoten` dann null liefert -, sind viewBox, Knotenmenge und
+    // jede Koordinate dieselben wie vor dieser Runde.
+    expect(flussKnoten(ladenKachel({ charging: null }))).toBeNull();
+    expect(flussKnoten(ladenKachel({ charging: { budget: null, chargers: [] } }))).toBeNull();
+    const ohne = layoutFlow(FLUSS_TOPO, []);
+    for (const charging of [undefined, null]) {
+      const l = layoutFlow(FLUSS_TOPO, [], { charging });
+      expect([l.W, l.H, l.hubX, l.hubY]).toEqual([ohne.W, ohne.H, ohne.hubX, ohne.hubY]);
+      expect(l.vertices.map((v) => [v.key, v.role, v.x, v.y, v.toX, v.toY])).toEqual(
+        ohne.vertices.map((v) => [v.key, v.role, v.x, v.y, v.toX, v.toY]),
+      );
+    }
+    // Nicht vakuum: MIT Knoten wächst die viewBox und es gibt einen Kreis mehr.
+    const mit = layoutFlow(FLUSS_TOPO, [], {
+      charging: { kw: 11, wort: 'lädt', aktiv: true, count: 1 },
+    });
+    expect(mit.H).toBeGreaterThan(ohne.H);
+    expect(mit.vertices).toHaveLength(ohne.vertices.length + 1);
+  });
+
   it('das Layout ist server-seitig — im Portal gibt es dafür KEIN localStorage', () => {
     // Hausregel (§2.4): Layout-Präferenzen liegen nie im Browser; der Admin
     // gestaltet für den Kunden, also muss der Speicher RLS-gefenced sein.
@@ -769,6 +794,20 @@ describe('Anwendungs-Programm Stufe 3 — das Cockpit-Layout einer Bestandsanlag
     }
   });
 });
+
+/**
+ * Die Bestands-Anlage des Energiefluss-Wächters: vier Rollen, ein Haus - genau
+ * die Form, an der ein fünfter Knoten sich zeigen WÜRDE.
+ */
+const FLUSS_TOPO: Topology = {
+  schema_version: '1.0',
+  nodes: [
+    { role: 'pv', value_kw: 69.8, flow_active: true, direction: 'in', members: [{ entity_id: 'deye', label: null, primary: true, value_kw: 69.8 }] },
+    { role: 'storage', value_kw: 8.2, soc_pct: 69, flow_active: true, direction: 'out', members: [{ entity_id: 'deye', label: 'B', primary: true, value_kw: 8.2 }] },
+    { role: 'consumer', value_kw: 14.1, flow_active: true, direction: 'out', members: [{ entity_id: 'haus', label: 'H', primary: true, value_kw: 14.1 }] },
+    { role: 'grid', value_kw: 33.3, flow_active: true, direction: 'out', members: [{ entity_id: 'deye', label: 'N', primary: true, value_kw: -33.3 }] },
+  ],
+};
 
 describe('Anwendungs-Programm Stufe 4 — das Portfolio-Cockpit über Bestandsdaten', () => {
   /**

@@ -203,6 +203,26 @@ func (s *Station) Unplug(connector int) error {
 	return err
 }
 
+// ReportStatus makes the station announce an arbitrary OCPP 1.6 connector
+// status - the rig hook for the state words a plug-and-unplug cannot produce
+// (`SuspendedEVSE`, `SuspendedEV`, `Finishing`, `Faulted`, `Reserved`, …).
+//
+// ⚠ It reports, it does not SIMULATE: the vehicle behind the plug keeps
+// drawing whatever the profiles allow. That is deliberate - the rig proves the
+// SHAPE of the heartbeat the cloud sees for each status, and a status that
+// silently changed the meter would make the two assertions depend on each
+// other. Dev/rig tool only.
+func (s *Station) ReportStatus(connector int, status core.ChargePointStatus, errorCode core.ChargePointErrorCode) error {
+	if connector < 1 || connector > s.cfg.Connectors {
+		return fmt.Errorf("connector %d out of range", connector)
+	}
+	if errorCode == "" {
+		errorCode = core.NoError
+	}
+	_, err := s.cp.StatusNotification(connector, errorCode, status)
+	return err
+}
+
 // DrawKw is what a connector is drawing right now, per the profiles it holds.
 // This is THE measurement the rig asserts on: it obeys the charging profiles,
 // so "the budget is held" is provable at the meter and not merely at the ack.

@@ -25,6 +25,12 @@
 #   L10 (Slice 10) der vollständige privacy-sichere OCPP-J-Datenstrom liegt
 #       absturzfest am Edge: Protokolltypen, Konfiguration/Fähigkeiten,
 #       dimensionsgetreue MeterValues, Auth-Referenzen und TransactionData
+#   L13 (Cockpit Phase 0, Entscheid E7) die Box meldet für JEDES Zustandswort
+#       des Konzepts §4.2 die Form, die die geteilten Vektoren
+#       `docs/contracts/ocpp-ladezustand-vectors.json` behaupten - dieselbe
+#       Datei, aus der `frontend/portal/src/ladepunkte.test.ts` die deutschen
+#       Wörter ableitet. Ein gerissenes Glied fällt damit auf EINER der beiden
+#       Seiten auf, statt still zu bleiben.
 #   L11/L12 der Command-Gateway fährt die vollständige Aktionsfläche mit
 #       persistentem Replay-/Deadline-Schutz, crashfester wire-id-Korrelation
 #       und echtem mutieren→Antwort→Readback über lokale Websockets
@@ -125,6 +131,24 @@ policy() {
   [ -n "${2:-}" ] && body="${body},\"storage_priority\":\"$2\""
   curl -sf -X POST "${BOX}/api/ocpp/settings" -H 'Content-Type: application/json' \
     -d "${body}}" >/dev/null || fail "Quellen-Wahl '$1' abgelehnt"
+}
+
+# connector_json <saeule> <stecker> - der Herzschlag-Block GENAU dieses Steckers.
+#
+# ⚠ Aus `/api/ocpp` und nicht aus dem Simulator: geprueft wird, was die BOX
+# meldet - der Simulator ist die Quelle, nicht der Zeuge.
+connector_json() {
+  ocpp_json \
+    | sed -e "s/.*\"id\":\"$1\"//" -e 's/},{"id":"SAEULE.*//' \
+    | sed -e "s/.*{\"id\":$2,//" -e 's/}.*//'
+}
+
+# sim_status <status-addr> <stecker> <status> [fehlercode] - der Rig-Haken.
+sim_status() {
+  local q="connector=$2&status=$3"
+  [ -n "${4:-}" ] && q="${q}&error=$4"
+  curl -sf -X POST "http://$1/status?${q}" >/dev/null \
+    || fail "Simulator lehnt Zustand '$3' ab"
 }
 
 # surplus_state - die Quellen-Bahn in einer Zeile (fuer Fehlermeldungen).
@@ -492,6 +516,84 @@ done
 journal_has 'tagref_' || fail "L10: maskierter idTag-/LocalAuth-Bezug fehlt"
 pass "L10: Vollinventur best-effort, gezielte Sicherheitsabfrage erfolgreich; Events vollständig und Secrets vor Disk redigiert"
 
+# ---------------------------------------------------------------- L13
+echo "--- L13: die Zustandswörter (Cockpit Phase 0, Entscheid E7)"
+# Die Abnahme der Phase 0 läuft am SIMULATOR: das Rig fährt jeden Zustand, den
+# eine echte Säule melden kann, und prüft, dass die BOX genau die Form
+# weiterreicht, aus der das Portal sein deutsches Wort bildet. Die Vektoren
+# stehen in `docs/contracts/ocpp-ladezustand-vectors.json`; die andere Hälfte
+# (Form -> Wort) prüft `frontend/portal/src/ladepunkte.test.ts` an derselben
+# Datei. Reisst ein Glied, fällt genau EINE der beiden Seiten - nie beide still.
+VEKTOREN="../docs/contracts/ocpp-ladezustand-vectors.json"
+[ -f "$VEKTOREN" ] || fail "L13: die geteilten Zustands-Vektoren fehlen"
+
+# ⚠ Der Schritt ist UMKEHRBAR gebaut: er fasst keine Säule an, die L4 danach
+# noch braucht, und gibt Stecker 1 am Ende über einen SAUBEREN Ein-/Aussteck-
+# Zyklus an das Lastmanagement zurück - erst wenn er wieder wirklich zieht, ist
+# der Schritt fertig. Ein Abnahme-Schritt, der seine Nachbarn beschädigt, prüft
+# am Ende sie statt sich.
+l13_plug() {
+  curl -sf -X POST "http://${S1_STATUS}/unplug?connector=1" >/dev/null || true
+  sleep 1
+  curl -sf -X POST "http://${S1_STATUS}/plug?connector=1&demand=240&min=5" >/dev/null \
+    || fail "L13: der Wagen liess sich nicht einstecken"
+}
+l13_charging() { connector_json SAEULE-1 1 | grep -q '"status":"Charging"'; }
+l13_zieht()    { awk -v d="$(drawn $S1_STATUS 1)" 'BEGIN{exit (d>30)?0:1}'; }
+
+l13_plug
+waitfor 30 "Stecker 1 lädt" l13_charging
+connector_json SAEULE-1 1 | grep -q '"charging":true' \
+  || fail "L13: ein ladender Stecker meldet charging=false"
+# ⚠ Die Leistung kommt mit dem NÄCHSTEN MeterValues-Takt der Säule (10 s), nicht
+# mit der StatusNotification - sofort danach zu prüfen hiesse, das Fehlen einer
+# noch nicht gesendeten Messung als Fehler zu lesen.
+l13_misst() { connector_json SAEULE-1 1 | grep -q '"power_kw":'; }
+waitfor 40 "die Säule meldet ihre gemessene Leistung" l13_misst
+pass "L13: Charging - Status, charging-Flag und gemessene Leistung liegen an"
+
+# Jeder Zustand, den ein Ein-/Ausstecken NICHT erzeugt, über den Rig-Haken des
+# Simulators. Die Namen sind die des OCPP-1.6-Vertrags UND die Schlüssel der
+# Vektoren - läuft eines von beiden weg, fällt dieser Schritt.
+for zustand in SuspendedEVSE SuspendedEV Finishing Preparing Unavailable Reserved; do
+  grep -q "\"sim_status\": \"${zustand}\"" "$VEKTOREN" \
+    || fail "L13: '${zustand}' fehlt in den geteilten Vektoren"
+  sim_status "$S1_STATUS" 1 "$zustand"
+  l13_is() { connector_json SAEULE-1 1 | grep -q "\"status\":\"${zustand}\""; }
+  waitfor 15 "die Box meldet ${zustand}" l13_is
+done
+pass "L13: SuspendedEVSE · SuspendedEV · Finishing · Preparing · Unavailable · Reserved gemeldet"
+
+# Störung: der Fehlercode reist mit, das WORT bleibt „Störung an der Säule" -
+# der Code gehört auf die Geräteseite, nie in die Cockpit-Zeile.
+sim_status "$S1_STATUS" 1 Faulted OtherError
+l13_faulted() { connector_json SAEULE-1 1 | grep -q '"status":"Faulted"'; }
+waitfor 15 "die Box meldet Faulted" l13_faulted
+pass "L13: Faulted (mit Fehlercode) gemeldet"
+
+# ⚠ Und die Regel, die VOR jedem Stecker-Status gilt: eine Säule, die nicht
+# spricht, meldet `connected:false` - über ihren Stecker wissen wir dann nichts,
+# und jedes Wort darüber wäre eine Behauptung. Der Beweis läuft an einer eigenen,
+# nie verbundenen Säule OHNE Stecker: eine echte Trennung würde das Budget
+# umverteilen und L4 an einer Ursache scheitern lassen, die nichts mit L4 zu tun
+# hat.
+curl -sf -X POST "${BOX}/api/ocpp/chargers" -H 'Content-Type: application/json' \
+  -d '{"id":"SAEULE-STUMM","label":"Nie verbunden","connectors":0}' >/dev/null \
+  || fail "L13: die stumme Säule liess sich nicht eintragen"
+ocpp_json | sed -e 's/.*"id":"SAEULE-STUMM"//' -e 's/}.*//' | grep -q '"connected":false' \
+  || fail "L13: eine nie verbundene Säule meldet nicht connected=false"
+curl -sf -X DELETE "${BOX}/api/ocpp/chargers/SAEULE-STUMM" >/dev/null \
+  || fail "L13: die stumme Säule liess sich nicht wieder entfernen"
+pass "L13: Säule getrennt - connected=false, unabhängig vom letzten Stecker-Status"
+
+# Zurück in den Betrieb - und zwar BEWIESEN: nicht bis der Status wieder
+# „Charging" sagt, sondern bis der Wagen wieder wirklich zieht. Ein
+# `Unavailable` nimmt den Stecker aus der Zuteilung; käme er nur formal zurück,
+# fiele L4 an einer Ursache, die nichts mit L4 zu tun hat.
+l13_plug
+waitfor 60 "Stecker 1 zieht wieder seinen Anteil" l13_zieht
+pass "L13: Ausgangslage wiederhergestellt ($(drawn $S1_STATUS 1) kW)"
+
 # ---------------------------------------------------------------- L11/L12
 echo "--- L11/L12: OCPP-Command-Gateway (lokal, ohne Live-Station)"
 # The real websocket rig above proves the station half. These focused checks
@@ -528,4 +630,4 @@ awk -v d="$S1_AFTER" 'BEGIN{exit (d>1)?0:1}' || fail "L4: die Säule hat aufgeh�
 pass "L4: die Box ist tot, die Säule begrenzt sich SELBST auf 24,25 kW - und lädt weiter"
 
 echo
-echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L7 · L8 · L9 · L10 · L11/L12 · L4 =="
+echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L7 · L8 · L9 · L10 · L13 · L11/L12 · L4 =="

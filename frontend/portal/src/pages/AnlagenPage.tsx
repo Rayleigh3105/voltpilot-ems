@@ -51,7 +51,7 @@ import { resolveAnlage } from '../anlageNav';
 import { fetchGate, readFace, rememberFace } from '../anlageFace';
 import { consumersApi } from '../consumers/consumersApi';
 import { consumerStrip, type ConsumerStripView } from '../consumers/fulfillment';
-import { ladenKachel } from '../ladenKachel';
+import { flussKnoten, ladenKachel } from '../ladenKachel';
 import { LadenKachel } from '../components/LadenKachel';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
 import { ControlStrip } from '../components/ControlStrip';
@@ -1583,6 +1583,13 @@ export function AnlageSeite({
           controlConfirmed={
             controlView?.state === 'healthy' && cockpitFlow?.severity !== 'warn'
           }
+          /* Der fünfte Kreis „Laden" (Konzept §6, E3) - ein Abzweig VOM Haus,
+             abgeleitet aus DERSELBEN Kachel-Sicht, die die Kachel rendert.
+             Er hängt bewusst NICHT an `zeigt('laden')`: die Kachel ist
+             abwählbar, der Fluss zeigt trotzdem, wohin der Strom geht (E4
+             blendet nur die ZEILEN der Aufschlüsselung aus). Ohne Ladepunkt
+             ist er null und das Diagramm zeichengleich zu vorher. */
+          charging={flussKnoten(ladenView)}
           /* Am Telefon steht die Geld-Karte „direkt unterm Fluss"
              (Konzept) — der Bühnenfuß wandert deshalb unter die
              Fahrplan-Zeile, deren Aussage er fortsetzt (was ist geplant →

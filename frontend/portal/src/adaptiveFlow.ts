@@ -54,6 +54,24 @@ const N_TOP_INSET = 44;
 const N_MIN_W = 300;
 const N_MIN_H = 384;
 
+/**
+ * Der Laden-Knoten: sein Abstand UNTER dem Haus-Knoten, und wie viel die
+ * viewBox dafür wächst. Beides dieselbe Zahl - der Kreis samt Beschriftung
+ * muss unten hineinpassen.
+ *
+ * ⚠ Die Zahl ist am Bild GEMESSEN, nicht geschätzt: der Abzweig beginnt erst
+ * UNTER dem Beschriftungsblock des Hauses (`NODE_R + LBL_DY + LBL_LH` = 59)
+ * und endet am oberen Rand des Laden-Kreises (`− NODE_R`). Bei 104 blieben
+ * davon 15 px sichtbare Speiche - zu wenig, um als Abzweig gelesen zu werden.
+ */
+const CHARGING_DY = 118;
+const CHARGING_LABEL = 'Laden';
+/** Die Verbraucher-Hue - Laden IST Verbrauch, nur ein benannter Teil davon. */
+const CHARGING_COLOR = 'var(--vp-flow-load)';
+const CHARGING_SOFT = 'var(--vp-flow-load-soft)';
+/** Der Abzweig ist DÜNNER als eine Hub-Speiche - er ist ein Teil, kein Anschluss. */
+const CHARGING_BASE_W = 4;
+
 /** The label block below a circle: first baseline offset + line height. */
 const LBL_DY = 16;
 const LBL_LH = 13;
@@ -113,9 +131,22 @@ export function wrapLabel(
 }
 
 /** One rendered circle = one ROLE of the plant (never one device). */
+/**
+ * Die Rolle eines KREISES. Bis auf `charging` ist das die Topologie-Rolle.
+ *
+ * ⚠ `charging` ist BEWUSST keine Topologie-Rolle: `topology.ts` `Role` ist ein
+ * VERTRAG mit Go- und Java-Zwillingen und geteilten Vektoren
+ * (`topology-vectors.json`) - ihn für eine reine Anzeige-Scheibe zu weiten
+ * hiesse, drei Sprachen und eine Kontrakt-Datei für etwas zu ändern, das der
+ * Server (noch) gar nicht ableitet. Die echte Rolle `charging` kommt in
+ * Phase 1 (Konzept §8, C2); bis dahin ist der Knoten hier ein Aufsatz aus
+ * `/chargers`, und dieser Typ ist die eine Stelle, an der beides zusammenläuft.
+ */
+export type FlowVertexRole = Role | 'charging';
+
 export interface FlowVertex {
   key: string;
-  role: Role;
+  role: FlowVertexRole;
   x: number;
   y: number;
   /** The role's node name ("PV-Erzeugung", "Batteriespeicher", …). */
@@ -133,6 +164,18 @@ export interface FlowVertex {
   title: string;
   value: string;
   icon: IconName;
+  /**
+   * Die Farbe des Kreises und seiner Speiche. Sie steht AM Knoten, statt beim
+   * Rendern über `ROLE_META[v.role]` nachgeschlagen zu werden - `charging` ist
+   * bewusst keine Topologie-Rolle, also gibt es dort keinen Eintrag, und ein
+   * Nachschlagen wäre die eine Stelle, an der der fünfte Knoten strukturell
+   * nicht hineinpasst.
+   */
+  color: string;
+  /** Die weiche Füllung des Kreises (das `--vp-flow-*-soft`-Token). */
+  soft: string;
+  /** Die Breite der grauen Grund-Speiche (der Abzweig ist dünner). */
+  baseWidth: number;
   /** The spoke animates when the role's aggregate flow is active. */
   spokeActive: boolean;
   /** true = hub -> node (consumption / export / charge); false = node -> hub. */
@@ -153,6 +196,14 @@ export interface FlowVertex {
    */
   spokeX: number;
   spokeY: number;
+  /**
+   * Wohin die Speiche LÄUFT. Vorgabe ist der Hub; der Laden-Knoten hängt
+   * stattdessen am HAUS (E3: ein Abzweig, kein zweiter Anschluss), damit die
+   * Haus-Summe „alles hinter dem Anschluss" bleibt und Flussbild, Board-Zeile
+   * und Captain-Regel dieselbe Zahl sagen.
+   */
+  toX?: number;
+  toY?: number;
   /** How many devices contribute to this role (>= 1). */
   memberCount: number;
   /**
@@ -240,6 +291,23 @@ function subLabelFor(role: Role, node: FlowNode, memberCount: number): string | 
   return null;
 }
 
+/**
+ * Der Laden-Knoten (Konzept `vp-verbraucher-cockpit-k1` §6): Σ kW der ladenden
+ * Stecker und ein Wort darunter. Phase-0-Quelle ist `/chargers` - derselbe
+ * Zwischenweg wie der `sources`-Rückfall der PV, und er entfällt ersatzlos,
+ * sobald die Box die Ladepunkt-Leistung als Entitäts-Telemetrie publiziert.
+ */
+export interface ChargingNodeOpts {
+  /** Σ kW der wirklich ladenden Stecker; `null` = nicht gemessen (nie eine 0). */
+  kw: number | null;
+  /** Das Wort unter dem Namen („lädt" / „Auto eingesteckt" / „kein Auto"). */
+  wort: string | null;
+  /** true = es fliesst gerade wirklich (die Speiche animiert dann). */
+  aktiv: boolean;
+  /** Zahl der Ladepunkte - für den `title`. */
+  count: number;
+}
+
 export interface LayoutOpts {
   narrow?: boolean;
   /**
@@ -256,6 +324,12 @@ export interface LayoutOpts {
    * zeichengleich zu vorher.
    */
   controlConfirmed?: boolean;
+  /**
+   * Der fünfte Kreis „Laden". Fehlt er, ist das Diagramm ZEICHENGLEICH zu
+   * vorher - eine Anlage ohne Ladepunkt bekommt keinen Knoten und keine
+   * grössere viewBox.
+   */
+  charging?: ChargingNodeOpts | null;
 }
 
 /**
@@ -281,6 +355,10 @@ export function layoutFlow(
   const labelBlock = LBL_DY + LBL_TOTAL_LINES * LBL_LH;
   const W = Math.max(narrow ? N_MIN_W : MIN_W, 2 * (leftInset + NODE_R + (narrow ? 26 : 44)));
   const H = Math.max(narrow ? N_MIN_H : MIN_H, 2 * (topInset + NODE_R + labelBlock));
+  // Mit Laden-Knoten wächst die viewBox um genau eine Zeile - die Geometrie
+  // der vier Rollen-Kreise bleibt dabei unverändert (der Hub sitzt weiter in
+  // der Mitte der URSPRÜNGLICHEN Höhe).
+  const chargingH = H + CHARGING_DY;
   const hubX = W / 2;
   const hubY = H / 2;
   const leftX = leftInset;
@@ -368,6 +446,9 @@ export function layoutFlow(
         memberCount === 1
           ? iconFor(byId.get(node.members[0].entity_id)?.entityType ?? '', node.role)
           : ROLE_META[node.role].icon,
+      color: ROLE_META[node.role].color,
+      soft: ROLE_META[node.role].soft,
+      baseWidth: 6,
       spokeActive: node.flow_active,
       reverse,
       strokeWidth: strokeWidth(mag),
@@ -379,9 +460,69 @@ export function layoutFlow(
     });
   }
 
+  // --- Der fünfte Kreis „Laden" (Konzept §6, E3) -----------------------------
+  // Er hängt am HAUS, nicht am Hub: die Haus-Summe bleibt „alles hinter dem
+  // Anschluss", und der Abzweig sagt, wie viel davon ins Auto geht. Ein
+  // eigener Anschluss wäre ein Knoten AM HUB - dafür fehlt in Phase 0 das
+  // Flag (Konzept §8, C1), und ein geratener zweiter Anschluss wäre eine
+  // Behauptung über den Zählerschrank des Kunden.
+  const laden = opts?.charging;
+  const haus = vertices.find((v) => v.role === 'consumer');
+  if (laden && haus) {
+    // Unter dem Haus-Knoten, auf seiner Seite. Die viewBox wächst dafür genau
+    // um diese eine Zeile - ohne Ladepunkt ist sie zeichengleich zu vorher.
+    const y = Math.min(haus.y + CHARGING_DY, chargingH - NODE_R - labelBlock - 6);
+    const label = CHARGING_LABEL;
+    const labelLines = wrapLabel(label);
+    const widest = Math.max(...labelLines.map((l) => l.length), laden.wort?.length ?? 0, 1);
+    const half = Math.min((widest * LBL_F * 0.55) / 2, W / 2);
+    // ⚠ V15 noch einmal, hier senkrecht: der Beschriftungs-Block des HAUSES
+    // liegt zwischen den beiden Kreisen, also endet der Abzweig UNTER ihm -
+    // sonst liefen die Laufpunkte mitten durch das Wort „Hausverbrauch".
+    // Gerechnet wird mit den WIRKLICH gezeichneten Zeilen; ein späterer
+    // Haus-Zusatz verkürzt den Abzweig damit von selbst, statt ihn zu queren.
+    const hausLines = haus.labelLines.length + (haus.subLabel ? 1 : 0);
+    const toY = Math.min(haus.y + NODE_R + LBL_DY + hausLines * LBL_LH, y - NODE_R - 2);
+    vertices.push({
+      key: 'charging',
+      role: 'charging',
+      x: haus.x,
+      y,
+      label,
+      labelLines,
+      labelX: Math.max(half, Math.min(W - half, haus.x)),
+      subLabel: laden.wort,
+      title: `${label} · ${laden.count} ${laden.count === 1 ? 'Ladepunkt' : 'Ladepunkte'}`,
+      value: laden.kw == null ? '–' : fmtNum(Math.abs(laden.kw), 'kW', 1),
+      icon: 'battery-charging',
+      color: CHARGING_COLOR,
+      soft: CHARGING_SOFT,
+      baseWidth: CHARGING_BASE_W,
+      spokeActive: laden.aktiv,
+      // Verbrauch: die Bewegung läuft VOM Haus zum Auto.
+      reverse: true,
+      strokeWidth: Math.max(2, strokeWidth(laden.kw ?? 0) - 1),
+      spokeX: haus.x,
+      spokeY: y,
+      // ⚠ Der Abzweig endet am HAUS, nicht am Hub (E3): die Haus-Summe bleibt
+      // „alles hinter dem Anschluss", und der Abzweig sagt, wie viel davon ins
+      // Auto geht. Ein eigener Anschluss wäre ein Knoten AM HUB - dafür fehlt
+      // in Phase 0 das Flag (Konzept §8, C1), und ein geratener zweiter
+      // Anschluss wäre eine Behauptung über den Zählerschrank des Kunden.
+      toX: haus.x,
+      toY,
+      memberCount: laden.count,
+      confirmed: false,
+      // Kein Klick am Laden-Knoten: die Zusammensetzung wohnt in der Kachel
+      // bzw. der Board-Zeile - ein zweites Klickziel im Fluss wäre die
+      // Doppelung, die A1 gerade beseitigt hat (Konzept §6).
+      expandable: false,
+    });
+  }
+
   return {
     W,
-    H,
+    H: laden && haus ? chargingH : H,
     hubX,
     hubY,
     hubR: HUB_R,

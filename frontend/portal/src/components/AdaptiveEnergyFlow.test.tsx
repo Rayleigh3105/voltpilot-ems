@@ -214,3 +214,97 @@ describe('AdaptiveEnergyFlow · click on PV-Erzeugung opens the composition', ()
     expect(names).toContain('6 Geräte');
   });
 });
+
+describe('AdaptiveEnergyFlow · der Knoten „Laden" (Konzept vp-verbraucher-cockpit-k1 §6, E3)', () => {
+  const LADEND = { kw: 11, wort: 'lädt', aktiv: true, count: 1 };
+  /** ⚠ MIT Haus-Knoten - ohne ihn gäbe es gar keinen Abzweig, und die Tests
+      darunter wären allesamt vakuum. */
+  const MIT_HAUS: SiteTopology = {
+    ...MULTI,
+    entities: [...MULTI.entities, entity({ id: 'haus' })],
+    topology: {
+      ...MULTI.topology,
+      nodes: [
+        ...MULTI.topology.nodes,
+        {
+          role: 'consumer',
+          value_kw: 14.1,
+          flow_active: true,
+          direction: 'out',
+          members: [{ entity_id: 'haus', label: 'Hausverbrauch', primary: true, value_kw: 14.1 }],
+        },
+      ],
+    },
+  };
+
+  it('⚠ ohne Ladepunkt rendert das Diagramm ZEICHENGLEICH zu vorher', () => {
+    const ohne = render(<AdaptiveEnergyFlow topology={MIT_HAUS} sources={MULTI_SOURCES} pins={MULTI_PINS} />);
+    const vorher = ohne.container.querySelector('svg')!.outerHTML;
+    ohne.unmount();
+    // Der Wächter beweist sich selbst: MIT Knoten ist es NICHT zeichengleich.
+    const mitKnoten = render(
+      <AdaptiveEnergyFlow topology={MIT_HAUS} sources={MULTI_SOURCES} pins={MULTI_PINS} charging={LADEND} />,
+    );
+    expect(mitKnoten.container.querySelector('svg')!.outerHTML).not.toBe(vorher);
+    mitKnoten.unmount();
+    for (const charging of [undefined, null]) {
+      const mit = render(
+        <AdaptiveEnergyFlow topology={MIT_HAUS} sources={MULTI_SOURCES} pins={MULTI_PINS} charging={charging} />,
+      );
+      expect(mit.container.querySelector('svg')!.outerHTML).toBe(vorher);
+      mit.unmount();
+    }
+  });
+
+  it('zeichnet den fünften Kreis samt Wort und Leistung', () => {
+    const { container } = render(
+      <AdaptiveEnergyFlow topology={MIT_HAUS} sources={MULTI_SOURCES} pins={MULTI_PINS} charging={LADEND} />,
+    );
+    const texte = Array.from(container.querySelectorAll('svg text')).map((t) => t.textContent);
+    expect(texte).toContain('Laden');
+    expect(texte).toContain('lädt');
+    expect(texte.join(' ')).toContain('11,0');
+    // Ein Kreis mehr als ohne den Knoten - die vier Rollen bleiben.
+    const ohne = render(<AdaptiveEnergyFlow topology={MIT_HAUS} sources={MULTI_SOURCES} pins={MULTI_PINS} />);
+    expect(container.querySelectorAll('svg circle').length).toBe(
+      ohne.container.querySelectorAll('svg circle').length + 1,
+    );
+  });
+
+  it('⚠ seine Speiche endet am HAUS, nicht im Hub - ein Abzweig (E3)', () => {
+    // ⚠ Nur die GRUNDspeichen zählen: die Icons zeichnen ihrerseits `<line>`.
+    const speichen = (el: Element) =>
+      Array.from(el.querySelectorAll('line')).filter(
+        (l) => l.getAttribute('stroke') === 'var(--vp-flow-base)',
+      );
+    const { container } = render(
+      <AdaptiveEnergyFlow topology={MIT_HAUS} sources={MULTI_SOURCES} pins={MULTI_PINS} charging={LADEND} />,
+    );
+    const svg = container.querySelector('svg')!;
+    const hub = svg.querySelector('circle')!; // der Hub ist der erste Kreis
+    const hubY = hub.getAttribute('cy');
+    const abseits = speichen(svg).filter((l) => l.getAttribute('y2') !== hubY);
+    expect(abseits).toHaveLength(1);
+    // Sie läuft vom Laden-Kreis NACH OBEN und endet UNTERHALB des Hubs -
+    // also am Haus, nicht in der Mitte.
+    const y1 = Number(abseits[0].getAttribute('y1'));
+    const y2 = Number(abseits[0].getAttribute('y2'));
+    expect(y2).toBeLessThan(y1);
+    expect(y2).toBeGreaterThan(Number(hubY));
+    // und senkrecht: sie bleibt auf der Spalte des Hauses.
+    expect(abseits[0].getAttribute('x1')).toBe(abseits[0].getAttribute('x2'));
+
+    // Ohne den Knoten zielt JEDE Speiche auf den Hub - der Wächter ist nicht vakuum.
+    const ohneR = render(<AdaptiveEnergyFlow topology={MIT_HAUS} sources={MULTI_SOURCES} pins={MULTI_PINS} />);
+    const ohneSvg = ohneR.container.querySelector('svg')!;
+    const ohneHubY = ohneSvg.querySelector('circle')!.getAttribute('cy');
+    expect(speichen(ohneSvg).filter((l) => l.getAttribute('y2') !== ohneHubY)).toHaveLength(0);
+  });
+
+  it('bietet KEINEN Klick am Laden-Knoten an', () => {
+    render(
+      <AdaptiveEnergyFlow topology={MIT_HAUS} sources={MULTI_SOURCES} pins={MULTI_PINS} charging={LADEND} />,
+    );
+    expect(screen.queryByRole('button', { name: /Laden/ })).toBeNull();
+  });
+});

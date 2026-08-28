@@ -3177,8 +3177,23 @@ export const api = {
     request<OcppDataGap[]>(`/api/v1/sites/${siteId}/ocpp/gaps?limit=${limit}`, { signal }),
   ocppTransactions: (siteId: string, limit = 200, signal?: AbortSignal) =>
     request<OcppTransaction[]>(`/api/v1/sites/${siteId}/ocpp/transactions?limit=${limit}`, { signal }),
-  ocppMeterValues: (siteId: string, limit = 1000, signal?: AbortSignal) =>
-    request<OcppMeterSample[]>(`/api/v1/sites/${siteId}/ocpp/meter-values?limit=${limit}`, { signal }),
+  /**
+   * Die Zählerstands-Proben der Anlage. `from`/`pointKey` engen sie serverseitig
+   * ein (`SiteOcppController.meterValues` kennt beide seit Slice 9) - die
+   * Tages-Aufschlüsselung fragt damit GENAU den Register-Kanal ab dem
+   * Tagesbeginn ab, statt 1000 gemischte Proben zu holen und zu filtern.
+   */
+  ocppMeterValues: (
+    siteId: string,
+    limit = 1000,
+    signal?: AbortSignal,
+    opts?: { from?: string; pointKey?: string },
+  ) => {
+    const q = new URLSearchParams({ limit: String(limit) });
+    if (opts?.from) q.set('from', opts.from);
+    if (opts?.pointKey) q.set('pointKey', opts.pointKey);
+    return request<OcppMeterSample[]>(`/api/v1/sites/${siteId}/ocpp/meter-values?${q}`, { signal });
+  },
   ocppConfiguration: (siteId: string, chargePointId: string, signal?: AbortSignal) =>
     request<OcppConfiguration[]>(
       `/api/v1/sites/${siteId}/ocpp/configuration?chargePointId=${encodeURIComponent(chargePointId)}`,

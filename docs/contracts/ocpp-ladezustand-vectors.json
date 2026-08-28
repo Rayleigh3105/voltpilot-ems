@@ -1,0 +1,185 @@
+{
+  "schema_version": "1.0",
+  "_comment": [
+    "Die Zustandswoerter eines Ladepunkts (Konzept `vp-verbraucher-cockpit-k1` §4.2), als",
+    "geteilte Vektoren zwischen dem SIMULATOR-Rig und dem Portal.",
+    "",
+    "Warum es diese Datei gibt (Captain-Entscheid E7: der Simulator genuegt, live erst",
+    "nach Phase 0): das Wort entsteht im Portal, die FORM entsteht auf der Box - und",
+    "keiner der beiden kann den anderen pruefen. Also pinnt diese Datei beide Enden:",
+    "",
+    "  * `edge` ist die Form des Herzschlag-Blocks `chargers[].connectors[]`",
+    "    (`cloud.ChargerConnectorEntry`, snake_case). `edge-app/test/e2e-ocpp.sh` L13",
+    "    faehrt jeden Fall am ECHTEN Simulator und prueft, dass die Box genau das meldet.",
+    "  * `portal` ist dieselbe Zeile nach der Cloud-Abbildung (camelCase,",
+    "    `ladepunkte.ChargeConnector`). `frontend/portal/src/ladepunkte.test.ts` liest",
+    "    diese Datei PER PFAD und prueft, dass `ladeZustand()` das erwartete Wort sagt.",
+    "",
+    "⚠ Wer ein Wort, einen Ton oder eine Regel aendert, aendert diese Datei MIT - sonst",
+    "faellt genau eine der beiden Seiten, und das ist die Absicht.",
+    "",
+    "`sim` sagt, wie das Rig den Fall erzeugt: `plug` = Auto einstecken, `unplug` =",
+    "abstecken, `status` = der Rig-Haken `POST /status` des Simulators, `station_down` =",
+    "die Saeule selbst beenden. `null` = am Simulator nicht erzeugbar (dann traegt nur",
+    "das Portal-Ende diesen Fall)."
+  ],
+  "faelle": [
+    {
+      "name": "laedt",
+      "beschreibung": "Charging mit gemessener Leistung - der Normalfall.",
+      "sim": "plug",
+      "edge": { "id": 1, "status": "Charging", "charging": true, "allocated_kw": 11.0, "power_kw": 11.0 },
+      "portal": { "connectorId": 1, "status": "Charging", "charging": true, "allocatedKw": 11.0, "powerKw": 11.0 },
+      "kind": "laedt",
+      "wort": "Lädt",
+      "ton": "laedt"
+    },
+    {
+      "name": "laedt_ohne_messung",
+      "beschreibung": "Charging, aber die Saeule meldet keine Leistung - es fliesst nachweislich etwas, wir wissen nur nicht wie viel. NIE eine Vorgabe als Ersatz.",
+      "sim": null,
+      "edge": { "id": 1, "status": "Charging", "charging": true, "allocated_kw": 11.0 },
+      "portal": { "connectorId": 1, "status": "Charging", "charging": true, "allocatedKw": 11.0, "powerKw": null },
+      "kind": "laedt_ohne_messung",
+      "wort": "Lädt — Leistung nicht messbar",
+      "ton": "laedt"
+    },
+    {
+      "name": "nimmt_nichts",
+      "beschreibung": "Charging, aber unter dem Totband - eingesteckt und trotzdem still.",
+      "sim": null,
+      "edge": { "id": 1, "status": "Charging", "charging": true, "allocated_kw": 11.0, "power_kw": 0.01 },
+      "portal": { "connectorId": 1, "status": "Charging", "charging": true, "allocatedKw": 11.0, "powerKw": 0.01 },
+      "kind": "nimmt_nichts",
+      "wort": "Eingesteckt · nimmt gerade keinen Strom",
+      "ton": "ruhig"
+    },
+    {
+      "name": "wartet",
+      "beschreibung": "SuspendedEVSE mit Zuteilung 0 - WIR halten die Saeule an, und der Grund der Box reist mit. Das Rig erzeugt ihn in L5 (Rotation).",
+      "sim": "status",
+      "sim_status": "SuspendedEVSE",
+      "edge": {
+        "id": 1, "status": "SuspendedEVSE", "charging": false, "allocated_kw": 0.0,
+        "reason": "budget", "reason_text": "Budget vergeben - wartet auf einen freien Anteil."
+      },
+      "portal": {
+        "connectorId": 1, "status": "SuspendedEVSE", "charging": false, "allocatedKw": 0.0,
+        "reason": "budget", "reasonText": "Budget vergeben - wartet auf einen freien Anteil."
+      },
+      "kind": "wartet",
+      "wort": "Eingesteckt · wartet",
+      "ton": "ruhig",
+      "grund": "Budget vergeben - wartet auf einen freien Anteil."
+    },
+    {
+      "name": "saeule_pausiert",
+      "beschreibung": "SuspendedEVSE MIT Zuteilung - dann haelt die Saeule selbst an, nicht wir.",
+      "sim": "status",
+      "sim_status": "SuspendedEVSE",
+      "edge": { "id": 1, "status": "SuspendedEVSE", "charging": false, "allocated_kw": 11.0 },
+      "portal": { "connectorId": 1, "status": "SuspendedEVSE", "charging": false, "allocatedKw": 11.0 },
+      "kind": "saeule_pausiert",
+      "wort": "Eingesteckt · Säule pausiert",
+      "ton": "ruhig"
+    },
+    {
+      "name": "auto_pausiert",
+      "beschreibung": "SuspendedEV - voll ODER Auto-Timer. Beides moeglich, nichts wird geraten.",
+      "sim": "status",
+      "sim_status": "SuspendedEV",
+      "edge": { "id": 1, "status": "SuspendedEV", "charging": false, "allocated_kw": 11.0 },
+      "portal": { "connectorId": 1, "status": "SuspendedEV", "charging": false, "allocatedKw": 11.0 },
+      "kind": "auto_pausiert",
+      "wort": "Auto pausiert",
+      "ton": "ruhig"
+    },
+    {
+      "name": "beendet",
+      "beschreibung": "Finishing - die Ladung ist durch, das Auto haengt noch dran.",
+      "sim": "status",
+      "sim_status": "Finishing",
+      "edge": { "id": 1, "status": "Finishing", "charging": false },
+      "portal": { "connectorId": 1, "status": "Finishing", "charging": false },
+      "kind": "beendet",
+      "wort": "Ladung beendet · Auto noch eingesteckt",
+      "ton": "ruhig"
+    },
+    {
+      "name": "startet",
+      "beschreibung": "Preparing - eingesteckt, die Sitzung laeuft noch nicht.",
+      "sim": "status",
+      "sim_status": "Preparing",
+      "edge": { "id": 1, "status": "Preparing", "charging": false },
+      "portal": { "connectorId": 1, "status": "Preparing", "charging": false },
+      "kind": "startet",
+      "wort": "Auto eingesteckt · startet",
+      "ton": "ruhig"
+    },
+    {
+      "name": "stoerung",
+      "beschreibung": "Faulted - die Saeule hat ein Problem. Der Fehlercode bleibt auf der Geraeteseite.",
+      "sim": "status",
+      "sim_status": "Faulted",
+      "sim_error": "OtherError",
+      "edge": { "id": 1, "status": "Faulted", "charging": false },
+      "portal": { "connectorId": 1, "status": "Faulted", "charging": false },
+      "kind": "stoerung",
+      "wort": "Störung an der Säule",
+      "ton": "stoerung"
+    },
+    {
+      "name": "frei",
+      "beschreibung": "Available - kein Auto.",
+      "sim": "unplug",
+      "edge": { "id": 1, "status": "Available", "charging": false },
+      "portal": { "connectorId": 1, "status": "Available", "charging": false },
+      "kind": "frei",
+      "wort": "Kein Auto eingesteckt",
+      "ton": "ruhig"
+    },
+    {
+      "name": "nicht_verfuegbar",
+      "beschreibung": "Unavailable - die Saeule ist ausser Betrieb genommen.",
+      "sim": "status",
+      "sim_status": "Unavailable",
+      "edge": { "id": 1, "status": "Unavailable", "charging": false },
+      "portal": { "connectorId": 1, "status": "Unavailable", "charging": false },
+      "kind": "nicht_verfuegbar",
+      "wort": "Nicht verfügbar",
+      "ton": "ruhig"
+    },
+    {
+      "name": "reserviert",
+      "beschreibung": "Reserved.",
+      "sim": "status",
+      "sim_status": "Reserved",
+      "edge": { "id": 1, "status": "Reserved", "charging": false },
+      "portal": { "connectorId": 1, "status": "Reserved", "charging": false },
+      "kind": "reserviert",
+      "wort": "Reserviert",
+      "ton": "ruhig"
+    },
+    {
+      "name": "getrennt",
+      "beschreibung": "Die SAEULE schweigt. Was ihr Stecker tut, wissen wir gerade nicht - jedes Wort darueber waere eine Behauptung, also gewinnt `connected=false` vor jedem Status.",
+      "sim": "station_down",
+      "edge": { "id": 1, "status": "Charging", "charging": true, "power_kw": 11.0 },
+      "portal": { "connectorId": 1, "status": "Charging", "charging": true, "powerKw": 11.0 },
+      "punkt": { "connected": false, "lastSeen": "2026-08-28T09:41:00Z" },
+      "kind": "getrennt",
+      "wort": "Säule getrennt",
+      "ton": "stoerung"
+    },
+    {
+      "name": "boost",
+      "beschreibung": "Jetzt voll laden - eine volle Ladung, die die Quellen-Politik uebergeht, SAGT es.",
+      "sim": null,
+      "edge": { "id": 1, "status": "Charging", "charging": true, "allocated_kw": 22.0, "power_kw": 22.0, "boost": true },
+      "portal": { "connectorId": 1, "status": "Charging", "charging": true, "allocatedKw": 22.0, "powerKw": 22.0, "boost": true },
+      "kind": "laedt",
+      "wort": "Lädt voll auf Ihren Wunsch",
+      "ton": "laedt"
+    }
+  ]
+}

@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { SiteSource, SiteTopology } from '../api';
-import { ROLE_META } from '../adaptive';
-import { layoutFlow, NARROW_MAX_PX, type FlowVertex } from '../adaptiveFlow';
+import {
+  layoutFlow,
+  NARROW_MAX_PX,
+  type ChargingNodeOpts,
+  type FlowVertex,
+} from '../adaptiveFlow';
 import { pvComposition, type PvContribution } from '../pvComposition';
 import type { EntityPin } from '../pvReconcile';
 import { PvCompositionDetails } from './PvBreakdown';
@@ -39,6 +43,7 @@ export function AdaptiveEnergyFlow({
   sources = null,
   pins = null,
   controlConfirmed = false,
+  charging = null,
   rename = null,
 }: {
   topology: SiteTopology;
@@ -74,6 +79,13 @@ export function AdaptiveEnergyFlow({
    */
   controlConfirmed?: boolean;
   /**
+   * Der fünfte Kreis „Laden" (Konzept `vp-verbraucher-cockpit-k1` §6, E3) -
+   * ein Abzweig VOM Haus, abgeleitet von `ladenKachel.flussKnoten`. Fehlt er
+   * (keine Ladepunkte, älteres Backend), ist das Diagramm ZEICHENGLEICH zu
+   * vorher: kein Knoten, keine grössere viewBox.
+   */
+  charging?: ChargingNodeOpts | null;
+  /**
    * Enables the rename pencils on the PV-composition rows (concept
    * `vp-entity-alias-k1` §5, the „Abkürzung"): the wish is born looking at this
    * very list, so the pencil is here too — opening the SAME dialog as the
@@ -106,6 +118,7 @@ export function AdaptiveEnergyFlow({
     pvTotalKw: composition?.totalKw,
     pvDeviceCount: composition?.deviceCount,
     controlConfirmed,
+    charging,
   });
   const maxWidth = size === 'hero' ? '100%' : `${L.W}px`;
   const expandable = composition != null && L.vertices.some((v) => v.expandable);
@@ -140,31 +153,37 @@ export function AdaptiveEnergyFlow({
             margin: '0 auto',
           }}
         >
-          {/* Base spokes (grey) + animated coloured overlay per active vertex. */}
-          {L.vertices.map((v) => (
-            <g key={`spoke-${v.key}`}>
-              <line
-                x1={v.spokeX}
-                y1={v.spokeY}
-                x2={L.hubX}
-                y2={L.hubY}
-                stroke="var(--vp-flow-base)"
-                strokeWidth={6}
-                strokeLinecap="round"
-              />
-              {v.spokeActive && (
+          {/* Base spokes (grey) + animated coloured overlay per active vertex.
+              Ziel ist normalerweise der Hub; der Laden-Knoten endet am HAUS
+              (`toX`/`toY`) - ein ABZWEIG, kein zweiter Anschluss (E3). */}
+          {L.vertices.map((v) => {
+            const toX = v.toX ?? L.hubX;
+            const toY = v.toY ?? L.hubY;
+            return (
+              <g key={`spoke-${v.key}`}>
                 <line
-                  className={`vp-flow-line ${v.reverse ? 'vp-flow-rev' : 'vp-flow-on'}`}
                   x1={v.spokeX}
                   y1={v.spokeY}
-                  x2={L.hubX}
-                  y2={L.hubY}
-                  stroke={ROLE_META[v.role].color}
-                  strokeWidth={v.strokeWidth.toFixed(1)}
+                  x2={toX}
+                  y2={toY}
+                  stroke="var(--vp-flow-base)"
+                  strokeWidth={v.baseWidth}
+                  strokeLinecap="round"
                 />
-              )}
-            </g>
-          ))}
+                {v.spokeActive && (
+                  <line
+                    className={`vp-flow-line ${v.reverse ? 'vp-flow-rev' : 'vp-flow-on'}`}
+                    x1={v.spokeX}
+                    y1={v.spokeY}
+                    x2={toX}
+                    y2={toY}
+                    stroke={v.color}
+                    strokeWidth={v.strokeWidth.toFixed(1)}
+                  />
+                )}
+              </g>
+            );
+          })}
 
           {/* Hub (lightning). */}
           <circle
@@ -237,7 +256,6 @@ function Node({
   /** non-null = this node opens the composition details. */
   onToggle: (() => void) | null;
 }) {
-  const meta = ROLE_META[v.role];
   const subY = v.y + L.nodeR + L.lblDy + v.labelLines.length * L.lblLh;
   const interactive = onToggle != null;
   return (
@@ -276,13 +294,13 @@ function Node({
           fill="transparent"
         />
       )}
-      <circle cx={v.x} cy={v.y} r={L.nodeR} fill={meta.soft} stroke={meta.color} strokeWidth={2} />
+      <circle cx={v.x} cy={v.y} r={L.nodeR} fill={v.soft} stroke={v.color} strokeWidth={2} />
       <Icon
         name={v.icon}
         size={16}
         x={v.x - 8}
         y={v.y - L.nodeR * 0.62}
-        style={{ color: meta.color }}
+        style={{ color: v.color }}
       />
       {/* Only the VALUE stays inside the circle - it always fits. The name sits
           below, wrapped, so it is never clipped (G2). */}
@@ -292,7 +310,7 @@ function Node({
         textAnchor="middle"
         fontWeight={700}
         fontSize={L.valF}
-        fill={meta.color}
+        fill={v.color}
         fontFamily="Inter, sans-serif"
       >
         {v.value}
@@ -320,7 +338,7 @@ function Node({
           textAnchor="middle"
           fontWeight={700}
           fontSize={L.lblF - 1}
-          fill={meta.color}
+          fill={v.color}
           fontFamily="Inter, sans-serif"
         >
           {v.subLabel}
@@ -335,7 +353,7 @@ function Node({
           className="vp-flow-confirm"
           d={`M${v.labelX + captionOffset(v)} ${subY - 4} l3 3.2 l5.5 -7`}
           fill="none"
-          stroke={meta.color}
+          stroke={v.color}
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -350,7 +368,7 @@ function Node({
               : `M${v.labelX + captionOffset(v)} ${subY - 5} l4 4 l4 -4`
           }
           fill="none"
-          stroke={meta.color}
+          stroke={v.color}
           strokeWidth={1.8}
           strokeLinecap="round"
           strokeLinejoin="round"
