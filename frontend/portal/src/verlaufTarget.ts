@@ -25,7 +25,6 @@ export type WidgetTarget = { kind: 'sub'; sub: AnlagenSub };
 
 /** Die Geld-/Modus-Kacheln bilden fest auf ihre bestehende Zielseite ab. */
 const SUB_TARGETS: Record<WidgetId, AnlagenSub> = {
-  ladebudget: 'ladevorgaenge',
   eigenverbrauch: 'messwerte',
   erloes: 'erloese',
   handel: 'fahrplan',

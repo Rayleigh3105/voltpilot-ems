@@ -26,12 +26,15 @@ import { plantKindLabel } from '../format';
 import { DEFAULT_EARNINGS_RANGE } from '../anlage';
 import {
   anlageRoute,
+  geraetSeiteHash,
+  hashForRoute,
   parseBefehleGeraet,
   parseBefehleKomponente,
   type AnlagenSub,
   type GeraetTarget,
   type Route,
 } from '../nav';
+import { chargerGeraetId } from '../geraetSeite';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { useIsPhone } from '../useIsPhone';
 import { useScrolledPast } from '../useScrolledPast';
@@ -48,6 +51,8 @@ import { resolveAnlage } from '../anlageNav';
 import { fetchGate, readFace, rememberFace } from '../anlageFace';
 import { consumersApi } from '../consumers/consumersApi';
 import { consumerStrip, type ConsumerStripView } from '../consumers/fulfillment';
+import { ladenKachel } from '../ladenKachel';
+import { LadenKachel } from '../components/LadenKachel';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
 import { ControlStrip } from '../components/ControlStrip';
 import { useAdaptiveLive } from '../useAdaptiveLive';
@@ -1366,6 +1371,30 @@ export function AnlageSeite({
     ? stickyHead({ money: heroView.money, status: showSetup ? null : (sentence ?? null) })
     : null;
 
+  // Die Referenz der Box dieser Anlage - dieselbe ehrliche Regel wie auf der
+  // Box-Seite: eine Anlage hat GENAU EINE Box, und mehr als ein eigenes Gerät
+  // lässt sie nicht eindeutig bestimmen. Dann führt keine Ladepunkt-Zeile
+  // irgendwohin, statt auf ein geratenes Gerät zu zeigen.
+  const eigeneGeraete = (devices ?? []).filter((d) => d.siteId === site.id);
+  const boxRef = eigeneGeraete.length === 1 ? eigeneGeraete[0].externalRef : null;
+
+  // Die Kachel „Laden" (Konzept `vp-verbraucher-cockpit-k1` §5): sie
+  // beantwortet ohne Klick, was die Aufschlüsselung nicht kann - „steckt ein
+  // Auto?". Ohne einen einzigen Ladepunkt ist sie null und der Baustein gar
+  // nicht erst verfügbar.
+  const ladenView = useMemo(
+    () =>
+      ladenKachel({
+        charging,
+        links: {
+          uebersicht: () => hashForRoute(anlageRoute(site.id, 'ladevorgaenge')),
+          charger: (id) =>
+            boxRef ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(id)) : null,
+        },
+      }),
+    [charging, site.id, boxRef],
+  );
+
   // --- Anwendungs-Programm Stufe 3 · das anpassbare Cockpit ------------------
   // Welche BAUSTEINE diese Anlage GERADE hat: dieselbe Ehrlichkeit wie bisher -
   // was keine Quelle hat, ist gar nicht erst verfügbar (und lässt sich damit
@@ -1379,11 +1408,15 @@ export function AnlageSeite({
     if (controlView || guardView) out.push('steuerung');
     if (fahrplanRow) out.push('fahrplan');
     if (strompreisRow) out.push('strompreis');
+    // Die Kachel „Laden" erscheint, sobald ein Ladepunkt EXISTIERT - nicht
+    // erst mit einem Budget, sonst fehlte sie genau während der Einrichtung
+    // (Konzept `vp-verbraucher-cockpit-k1` §5.1). Abwählbar über „Anpassen".
+    if (ladenView) out.push('laden');
     if (shownWidgets.length > 0) out.push('kacheln');
     out.push('komponenten');
     if (ovSite != null && health.length > 0) out.push('zustand');
     return out;
-  }, [blocks, controlView, guardView, fahrplanRow, strompreisRow, shownWidgets, ovSite, health]);
+  }, [blocks, controlView, guardView, fahrplanRow, strompreisRow, shownWidgets, ovSite, health, ladenView]);
   // ⚠ Steuerung Stufe 8: es gibt hier KEIN Tor mehr. „Eigene Auswertung" ist
   // die Katalog-Klasse `cockpit` und hat keinen Schalter — der Weg zu einer
   // eigenen Kachel ist der Anpassen-Modus, und wer dort eine anlegt, hat seine
@@ -1478,12 +1511,6 @@ export function AnlageSeite({
   })();
   const zeigt = (id: BausteinId) => layout.resolved.order.includes(id);
 
-  // Die Referenz der Box dieser Anlage - dieselbe ehrliche Regel wie auf der
-  // Box-Seite: eine Anlage hat GENAU EINE Box, und mehr als ein eigenes Gerät
-  // lässt sie nicht eindeutig bestimmen. Dann führt keine Ladepunkt-Zeile
-  // irgendwohin, statt auf ein geratenes Gerät zu zeigen.
-  const eigeneGeraete = (devices ?? []).filter((d) => d.siteId === site.id);
-  const boxRef = eigeneGeraete.length === 1 ? eigeneGeraete[0].externalRef : null;
   /**
    * Der Knoten EINER eigenen Auswertung. Ohne Wert vom Server rendert sie
    * trotzdem — mit dem ehrlichen Satz statt einer erfundenen Zahl.
@@ -1591,6 +1618,10 @@ export function AnlageSeite({
         <ControlStrip view={controlView} variant="card" guard={guardView} />
       ) : null,
     strompreis: strompreisRow,
+    /* Die Kachel „Laden": reine Anzeige, der Kopf springt auf „Ladevorgänge",
+       jede Zeile auf ihre Geräteseite. Ihre Fusszeile IST das Netzanschluss-
+       Band, das dafür aus den Kennzahlen hierher gezogen ist. */
+    laden: ladenView ? <LadenKachel view={ladenView} /> : null,
     /* Eine Kachel ist ein Absprung (V2): der Tipp navigiert direkt zum
        Ziel der Kachel - kein Modal mehr. */
     kacheln: <WidgetGrid widgets={widgetsMitLead} onSelect={jumpToWidget} />,
@@ -1608,6 +1639,7 @@ export function AnlageSeite({
         dayTotals={dayTotalsEffective}
         charging={charging}
         consumerStatus={consumerStatus}
+        ladenKachelSichtbar={zeigt('laden')}
         boxRef={boxRef}
       />
     ),
