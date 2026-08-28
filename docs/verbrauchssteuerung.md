@@ -1470,6 +1470,13 @@ Ein ausgeschalteter Aktivierungsflag darf bereits ausgerollte Artefakte nicht al
   (§14.7); der Heartbeat-Grund `flex_deadline_fallback` steht im §15-Vokabular, Ingest und
   Portal-Map kennen ihn.
 
+### Inkrement 7: Verbraucher im Kunden-Cockpit (Phase 0, gebaut)
+
+- Reine Portal-Anzeige aus vorhandenen Endpunkten (Konzept `vp-verbraucher-cockpit-k1`, Captain-Entscheide E1-E7): die Aufschlüsselung hinter der Zeile „Hausverbrauch", die abwählbare Kachel „Laden" und der Knoten „Laden" als Abzweig vom Haus im Energiefluss - kein Backend, kein Edge-Release, und ohne Ladepunkt ist das Cockpit zeichengleich zu vorher.
+- Die Zustandswörter eines Ladepunkts entstehen an EINER Stelle (`ladepunkte.ts` `ladeZustand()`, OCPP-Status VOR dem `charging`-Flag) und werden von Zeile, Kachel und Flussknoten geteilt - Zustand und eine spätere Handlung dürfen nie zwei Wörter für dieselbe Lage haben (§8.4 des Konzepts).
+- Heute-kWh kommen aus zwei Quellen, weil es zwei Dinge sind: eine gemessene Komponente aus ihrer Tages-Historie, ein Ladepunkt als ZUWACHS des OCPP-Registers `Energy.Active.Import.Register` (`verbrauchHeute.ts`); eine gefallene Registerreihe ergibt ehrlich „—" statt einer Zahl.
+- **Ausblick, NICHT entworfen: eine Benachrichtigung „Ladung fertig".** Sie braucht Geräte-Abos und einen Zustellweg (Push/E-Mail) und ist damit ein eigenes Vorhaben; das Cockpit zeigt den Zustand, es meldet ihn nicht. Der Andockpunkt wäre der Übergang nach `Finishing` im geteilten Wort-Vokabular - dieselbe Quelle, aus der die Zeile heute ihr „Ladung beendet · Auto noch eingesteckt" nimmt.
+
 ## 20. Betroffene Komponenten
 
 | Bereich | Hauptänderungen |

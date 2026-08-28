@@ -7,6 +7,7 @@ import type { LiveSnapshot } from '../live';
 import type { AnlagenSub } from '../nav';
 import { flowHasValues } from '../liveDetail';
 import type { ConsumerStripView } from '../consumers/fulfillment';
+import type { ChargingNodeOpts } from '../adaptiveFlow';
 import { AdaptiveEnergyFlow } from './AdaptiveEnergyFlow';
 import { EnergyFlow } from './EnergyFlow';
 import { PvBreakdownLine } from './PvBreakdown';
@@ -59,6 +60,7 @@ export function CockpitHero({
   footer,
   periodSeg = null,
   controlConfirmed = false,
+  charging = null,
   showRail = true,
   rename = null,
   consumers = null,
@@ -94,6 +96,14 @@ export function CockpitHero({
   periodSeg?: ReactNode;
   /** Der Wechselrichter bestätigt den Sollwert → Haken am Speicher-Knoten. */
   controlConfirmed?: boolean;
+  /**
+   * Der fünfte Kreis „Laden" (Konzept `vp-verbraucher-cockpit-k1` §6, E3) —
+   * ein Abzweig VOM Haus. Er wird durchgereicht, nie hier abgeleitet: die
+   * eine Ableitung ist `ladenKachel.flussKnoten`, damit Diagramm und Kachel
+   * über dieselbe Säule nichts Verschiedenes behaupten können. null (keine
+   * Ladepunkte) rendert das Diagramm ZEICHENGLEICH zu vorher.
+   */
+  charging?: ChargingNodeOpts | null;
   /**
    * Ob die **Bilanz-Leiste** gerendert wird. Default `true` = die Bühne, wie
    * sie war. Die Telefon-Fassung (Mobil-Umbau Stufe 2, `<= 720px`) setzt sie
@@ -154,6 +164,7 @@ export function CockpitHero({
               sources={sources}
               pins={pins}
               controlConfirmed={controlConfirmed}
+              charging={charging}
               rename={rename}
             />
           ) : (

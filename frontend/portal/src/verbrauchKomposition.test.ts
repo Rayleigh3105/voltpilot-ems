@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { SiteTopology, TopologyEntity } from './api';
 import type { ConsumerRuntimeStatus } from './consumers/status';
@@ -409,5 +411,106 @@ describe('verbrauchKomposition · keine Zeile zweimal', () => {
     })!;
     expect(c.verbraucherCount).toBe(1);
     expect(c.rest.kw).toBeCloseTo(1.2, 9);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sim-Abgleich (Konzept `vp-verbraucher-cockpit-k1` §8 Schritt 8, Entscheid E7)
+// ---------------------------------------------------------------------------
+
+describe('Sim-Abgleich: die Zustandswörter UND der Rest-Wert an den Rig-Formen', () => {
+  /**
+   * Dieselben geteilten Vektoren, die `ladepunkte.test.ts` fährt und die das
+   * Rig (`edge-app/test/e2e-ocpp.sh` L13) am ECHTEN Simulator erzeugt. Hier
+   * geht es um die ZWEITE Hälfte der Abnahme: was die Aufschlüsselung aus
+   * genau diesen Steckern macht - Wort je Zeile UND der Rest.
+   */
+  const V: {
+    faelle: {
+      name: string; portal: Record<string, unknown>;
+      punkt?: { connected: boolean; lastSeen?: string }; wort: string;
+    }[];
+  } = JSON.parse(
+    readFileSync(
+      resolve(process.cwd(), '../../docs/contracts/ocpp-ladezustand-vectors.json'),
+      'utf8',
+    ),
+  );
+  const fall = (name: string) => V.faelle.find((f) => f.name === name)!;
+
+  it('jede Ladepunkt-Zeile trägt das Wort der Vektoren', () => {
+    // Eine Säule je Fall - so steht jedes Wort einmal in einer echten Zeile.
+    const chargers = V.faelle.map((f, i) =>
+      charger({
+        chargePointId: `CP${i}`,
+        connected: f.punkt?.connected ?? true,
+        lastSeen: f.punkt?.lastSeen ?? '2026-08-28T09:41:00Z',
+        connectors: [f.portal as never],
+      }),
+    );
+    const k = verbrauchKomposition({
+      topology: topo([HAUS], ENTITIES),
+      chargers,
+      consumerStatus: null,
+      hausTodayKwh: null,
+      links: {},
+    })!;
+    const woerter = k.gruppen.flatMap((g) => g.teile).map((t) => t.word);
+    for (const f of V.faelle) expect(woerter).toContain(f.wort);
+  });
+
+  it('der REST ist Haus − Σ gemessene Teile', () => {
+    // Haus 14,1 kW, gemessene Ladung 11,0 kW → übriger Haushalt 3,1 kW.
+    const k = verbrauchKomposition({
+      topology: topo([HAUS], ENTITIES),
+      chargers: [charger({ chargePointId: 'CP-A', connectors: [fall('laedt').portal as never] })],
+      consumerStatus: null,
+      hausTodayKwh: null,
+      links: {},
+    })!;
+    expect(k.rest.kw).toBeCloseTo(14.1 - 11, 6);
+    expect(k.rest.konflikt).toBe(false);
+    expect(k.rest.note).toBeNull();
+  });
+
+  it('⚠ ein LADENDER Stecker ohne Leistungsmessung macht den Rest unbestimmbar - und SAGT warum', () => {
+    // Er gehört in die Summe und entzieht sich ihr: eine Rest-Zahl, die seine
+    // Lücke enthielte, wäre schlimmer als keine. Genau die Rig-Form
+    // `laedt_ohne_messung` prüft das an einer echten Simulator-Zeile.
+    const k = verbrauchKomposition({
+      topology: topo([HAUS], ENTITIES),
+      chargers: [
+        charger({ chargePointId: 'CP-A', connectors: [fall('laedt').portal as never] }),
+        charger({ chargePointId: 'CP-B', connectors: [fall('laedt_ohne_messung').portal as never] }),
+      ],
+      consumerStatus: null,
+      hausTodayKwh: null,
+      links: {},
+    })!;
+    expect(k.rest.kw).toBeNull();
+    expect(k.rest.note).toContain('ohne Leistungsmessung');
+    expect(k.rest.konflikt).toBe(false);
+  });
+
+  it('⚠ eine GETRENNTE Säule zieht nichts vom Rest ab - über sie wissen wir nichts', () => {
+    const getrennt = fall('getrennt');
+    const k = verbrauchKomposition({
+      topology: topo([HAUS], ENTITIES),
+      chargers: [
+        charger({ chargePointId: 'CP-A', connectors: [fall('laedt').portal as never] }),
+        charger({
+          chargePointId: 'CP-X',
+          connected: false,
+          lastSeen: getrennt.punkt!.lastSeen!,
+          // ⚠ Ihr letzter gemeldeter Stecker sagte „Charging 11,0 kW" - und
+          // trotzdem darf diese Leistung nicht mehr vom Haus abgezogen werden.
+          connectors: [getrennt.portal as never],
+        }),
+      ],
+      consumerStatus: null,
+      hausTodayKwh: null,
+      links: {},
+    })!;
+    expect(k.rest.kw).toBeCloseTo(14.1 - 11, 6);
   });
 });

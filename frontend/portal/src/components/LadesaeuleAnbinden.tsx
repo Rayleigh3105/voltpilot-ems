@@ -25,6 +25,7 @@ import {
   kennungVorschlag,
   meldung,
   schritte,
+  cockpitHinweis,
 } from '../ladesaeuleAnbinden';
 import { ConfirmDialog } from './ConfirmDialog';
 import './LadesaeuleAnbinden.css';
@@ -257,6 +258,11 @@ export function LadesaeuleAnbinden({
         </p>
         <p className="vp-anbinden-sub">{m.satz}</p>
         {istEingetragen && <p className="vp-anbinden-note">{abschluss(m.gemeldet)}</p>}
+        {/* Wohin der Kunde jetzt schaut - erst, wenn es dort wirklich etwas
+            zu sehen gibt (Konzept §8, Schritt 6). */}
+        {cockpitHinweis(m.gemeldet) && (
+          <p className="vp-anbinden-note">{cockpitHinweis(m.gemeldet)}</p>
+        )}
       </div>
 
       <div className="vp-anbinden-step">

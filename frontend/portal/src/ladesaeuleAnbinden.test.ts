@@ -13,6 +13,7 @@ import {
   kennungVorschlag,
   meldung,
   schritte,
+  cockpitHinweis,
 } from './ladesaeuleAnbinden';
 
 const BOX: Device = {
@@ -268,5 +269,25 @@ describe('Liste der Eingetragenen', () => {
   it('kommt ohne Allowlist zurecht', () => {
     expect(eingetrageneZeilen(null, null)).toEqual([]);
     expect(eingetrageneZeilen(undefined, laden())).toEqual([]);
+  });
+});
+
+describe('cockpitHinweis · wohin der Kunde nach dem Anbinden schaut (Konzept §8, Schritt 6)', () => {
+  it('nennt Kachel und Energiefluss - erst, wenn die Säule sich gemeldet hat', () => {
+    const satz = cockpitHinweis(true)!;
+    expect(satz).toContain('Laden');
+    expect(satz).toContain('Cockpit');
+    expect(satz).toContain('Anpassen');
+  });
+
+  it('⚠ verspricht NICHTS, solange die Säule stumm ist', () => {
+    // Eine eingetragene, aber stumme Kennung ist noch kein Ladepunkt - das
+    // Cockpit bietet den Baustein dann gar nicht an.
+    expect(cockpitHinweis(false)).toBeNull();
+  });
+
+  it('spricht Kundensprache: kein „Anwendung", kein Baustein, kein Kanalname', () => {
+    const satz = cockpitHinweis(true)!;
+    expect(satz).not.toMatch(/Anwendung|Baustein|OCPP|power_kw|Entität/);
   });
 });

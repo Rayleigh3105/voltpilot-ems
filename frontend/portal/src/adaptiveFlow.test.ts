@@ -335,6 +335,114 @@ describe('the geometry never grows with the device count', () => {
   });
 });
 
+describe('der fünfte Kreis „Laden" (Konzept vp-verbraucher-cockpit-k1 §6, E3)', () => {
+  const LADEND = { kw: 11, wort: 'lädt', aktiv: true, count: 1 };
+
+  it('⚠ ohne Ladepunkt ist das Diagramm ZEICHENGLEICH zu vorher', () => {
+    const ohne = layoutFlow(TOPO, ENTITIES);
+    for (const charging of [undefined, null]) {
+      const l = layoutFlow(TOPO, ENTITIES, { charging });
+      expect(l.W).toBe(ohne.W);
+      expect(l.H).toBe(ohne.H);
+      expect(l.vertices.map((v) => v.key)).toEqual(ohne.vertices.map((v) => v.key));
+      expect(l.vertices.map((v) => [v.x, v.y])).toEqual(ohne.vertices.map((v) => [v.x, v.y]));
+    }
+  });
+
+  it('hängt am HAUS, nicht am Hub - die Speiche ist ein ABZWEIG (E3)', () => {
+    const l = layoutFlow(TOPO, ENTITIES, { charging: LADEND });
+    const haus = l.vertices.find((v) => v.role === 'consumer')!;
+    const laden = l.vertices.find((v) => v.role === 'charging')!;
+    // Er steht UNTER dem Haus, auf dessen Spalte.
+    expect(laden.x).toBe(haus.x);
+    expect(laden.y).toBeGreaterThan(haus.y);
+    // Und seine Speiche endet am Haus - nicht in der Mitte.
+    expect(laden.toX).toBe(haus.x);
+    expect(laden.toY).toBeLessThan(laden.y);
+    expect(laden.toY).not.toBe(l.hubY);
+    // Jede ANDERE Speiche läuft weiterhin zum Hub (kein `toX`/`toY`).
+    for (const v of l.vertices) {
+      if (v.role !== 'charging') expect([v.toX, v.toY]).toEqual([undefined, undefined]);
+    }
+  });
+
+  it('⚠ V15 senkrecht: der Abzweig endet UNTER dem Beschriftungsblock des Hauses', () => {
+    // Sonst liefen die Laufpunkte mitten durch das Wort „Hausverbrauch".
+    const l = layoutFlow(TOPO, ENTITIES, { charging: LADEND });
+    const haus = l.vertices.find((v) => v.role === 'consumer')!;
+    const laden = l.vertices.find((v) => v.role === 'charging')!;
+    const hausLines = haus.labelLines.length + (haus.subLabel ? 1 : 0);
+    expect(laden.toY).toBeGreaterThanOrEqual(haus.y + l.nodeR + l.lblDy + (hausLines - 1) * l.lblLh);
+    expect(laden.toY).toBeLessThanOrEqual(laden.y - l.nodeR);
+  });
+
+  it('lässt die viewBox um GENAU eine Zeile wachsen und die vier Rollen an ihrem Platz', () => {
+    const ohne = layoutFlow(TOPO, ENTITIES);
+    const mit = layoutFlow(TOPO, ENTITIES, { charging: LADEND });
+    expect(mit.W).toBe(ohne.W);
+    expect(mit.H).toBeGreaterThan(ohne.H);
+    expect(mit.hubX).toBe(ohne.hubX);
+    expect(mit.hubY).toBe(ohne.hubY);
+    const rollen = (l: ReturnType<typeof layoutFlow>) =>
+      l.vertices.filter((v) => v.role !== 'charging').map((v) => [v.key, v.x, v.y]);
+    expect(rollen(mit)).toEqual(rollen(ohne));
+  });
+
+  it('bleibt samt Beschriftung INNERHALB der viewBox - auch schmal', () => {
+    for (const narrow of [false, true]) {
+      const l = layoutFlow(TOPO, ENTITIES, { narrow, charging: LADEND });
+      const labelBlock = l.lblDy + 3 * l.lblLh;
+      const laden = l.vertices.find((v) => v.role === 'charging')!;
+      expect(laden.y - l.nodeR).toBeGreaterThanOrEqual(0);
+      expect(laden.y + l.nodeR + labelBlock).toBeLessThanOrEqual(l.H);
+      const widest = Math.max(...laden.labelLines.map((x) => x.length), laden.subLabel?.length ?? 0, 1);
+      const half = (widest * l.lblF * 0.55) / 2;
+      expect(laden.labelX - half).toBeGreaterThanOrEqual(-0.01);
+      expect(laden.labelX + half).toBeLessThanOrEqual(l.W + 0.01);
+    }
+  });
+
+  it('trägt seine Farbe AM Knoten (er ist keine Topologie-Rolle)', () => {
+    const l = layoutFlow(TOPO, ENTITIES, { charging: LADEND });
+    for (const v of l.vertices) {
+      expect(v.color).toMatch(/^var\(--vp-flow-/);
+      expect(v.soft).toMatch(/^var\(--vp-flow-/);
+    }
+    const laden = l.vertices.find((v) => v.role === 'charging')!;
+    expect(laden.color).toBe('var(--vp-flow-load)');
+    // ⚠ Der Abzweig ist DÜNNER als eine Hub-Speiche - er ist ein Teil, kein Anschluss.
+    const haus = l.vertices.find((v) => v.role === 'consumer')!;
+    expect(laden.baseWidth).toBeLessThan(haus.baseWidth);
+  });
+
+  it('sagt „–" statt einer 0, solange niemand misst', () => {
+    const l = layoutFlow(TOPO, ENTITIES, {
+      charging: { kw: null, wort: 'Auto eingesteckt', aktiv: false, count: 2 },
+    });
+    const laden = l.vertices.find((v) => v.role === 'charging')!;
+    expect(laden.value).toBe('–');
+    expect(laden.subLabel).toBe('Auto eingesteckt');
+    expect(laden.spokeActive).toBe(false);
+    expect(laden.title).toContain('2 Ladepunkte');
+  });
+
+  it('ist NICHT anklickbar - die Zusammensetzung wohnt in Kachel und Zeile', () => {
+    const l = layoutFlow(TOPO, ENTITIES, { charging: LADEND, pvDeviceCount: 3 });
+    const laden = l.vertices.find((v) => v.role === 'charging')!;
+    expect(laden.expandable).toBe(false);
+  });
+
+  it('braucht den Haus-Knoten - ohne ihn gibt es keinen Abzweig', () => {
+    const ohneHaus: Topology = {
+      schema_version: '1.0',
+      nodes: PILOT_NODES.filter((n) => n.role !== 'consumer'),
+    };
+    const l = layoutFlow(ohneHaus, ENTITIES, { charging: LADEND });
+    expect(l.vertices.some((v) => v.role === 'charging')).toBe(false);
+    expect(l.H).toBe(layoutFlow(ohneHaus, ENTITIES).H);
+  });
+});
+
 describe('wrapLabel', () => {
   it('keeps a short name on one line', () => {
     expect(wrapLabel('Netz')).toEqual(['Netz']);

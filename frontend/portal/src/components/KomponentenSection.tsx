@@ -24,6 +24,7 @@ import { chargerGeraetId } from '../geraetSeite';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
 import type { SiteCharging } from '../ladepunkte';
 import { verbrauchKomposition } from '../verbrauchKomposition';
+import { useVerbrauchHeute } from '../useVerbrauchHeute';
 import { VerbrauchDetails } from './VerbrauchDetails';
 import {
   initialVerlaufOpen,
@@ -195,7 +196,15 @@ export function KomponentenSection({
   // der Zeile „Hausverbrauch" (Konzept `vp-verbraucher-cockpit-k1`). Ohne
   // Verbraucher ist sie null, und dann rendert das Board Zeichen für Zeichen
   // wie vorher: keine Notiz, kein Halbsatz, kein Chevron.
-  const komposition = useMemo(
+  // Aufgeklappt? Das entscheidet auch, ob die Tagessummen überhaupt geholt
+  // werden - sie sind die einzigen Abrufe dieser Fläche, die ein geschlossenes
+  // Panel nicht braucht.
+  const [verbrauchOffen, setVerbrauchOffen] = useState(false);
+  // ⚠ Zwei Durchläufe, und das ist Absicht: der ERSTE (ohne Tagessummen) sagt,
+  // WELCHE Komponenten überhaupt eine brauchen; der ZWEITE trägt sie. Die
+  // Teile-Menge hängt nicht an den Summen, also ist das keine Schleife - und
+  // ein Hook, der seine eigene Eingabe erzeugt, wäre eine.
+  const kompositionRoh = useMemo(
     () =>
       verbrauchKomposition({
         topology: adaptive ? topology : null,
@@ -209,6 +218,34 @@ export function KomponentenSection({
         },
       }),
     [adaptive, topology, charging, consumerStatus, dayTotals, ladenKachelSichtbar, boxRef, site.id],
+  );
+  const todayKwh = useVerbrauchHeute(
+    site.id,
+    kompositionRoh,
+    charging?.chargers ?? null,
+    verbrauchOffen,
+  );
+  const komposition = useMemo(
+    () =>
+      todayKwh == null
+        ? kompositionRoh
+        : verbrauchKomposition({
+            topology: adaptive ? topology : null,
+            chargers: charging?.chargers ?? null,
+            consumerStatus,
+            hausTodayKwh: dayTotals?.consumptionKwh ?? null,
+            todayKwh,
+            ladenKachelSichtbar,
+            links: {
+              charger: (id) =>
+                boxRef ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(id)) : null,
+              komponente: (entityId) => komponenteHash(site.id, entityId),
+            },
+          }),
+    [
+      kompositionRoh, todayKwh, adaptive, topology, charging, consumerStatus, dayTotals,
+      ladenKachelSichtbar, boxRef, site.id,
+    ],
   );
 
   const rows: LivePulsRow[] = useMemo(
@@ -224,7 +261,6 @@ export function KomponentenSection({
   );
 
   const hausZeile = rows.find((r) => istHausZeile(r)) ?? null;
-  const [verbrauchOffen, setVerbrauchOffen] = useState(false);
 
   // A board-row jump navigates into the Verlauf-Explorer, carrying the Bilanz
   // period (the hash carries `?m&z&at`, so it is set directly).

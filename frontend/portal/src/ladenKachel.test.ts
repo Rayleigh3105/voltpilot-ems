@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChargePoint, ChargingBudget, SiteCharging } from './ladepunkte';
-import { ladenKachel, VOLLE_ZEILEN } from './ladenKachel';
+import { flussKnoten, ladenKachel, VOLLE_ZEILEN } from './ladenKachel';
 
 function saeule(over: Partial<ChargePoint> & { chargePointId: string }): ChargePoint {
   return {
@@ -198,5 +198,63 @@ describe('ladenKachel · Sprünge und Namen', () => {
     const v = k([saeule({ chargePointId: 'NEU', label: 'Neue Säule', connectors: [] })]);
     expect(v.zeilen[0].word).toBe('Noch kein Stecker gemeldet');
     expect(v.kopf).toBe('Kein Auto eingesteckt');
+  });
+});
+
+describe('flussKnoten · der Knoten „Laden" des Energieflusses (Konzept §6)', () => {
+  const frei = (id: string) =>
+    saeule({
+      chargePointId: id,
+      connectors: [{ connectorId: 1, status: 'Available', charging: false, powerKw: null }],
+    });
+  const steckt = (id: string) =>
+    saeule({
+      chargePointId: id,
+      connectors: [{ connectorId: 1, status: 'SuspendedEV', charging: false, powerKw: null }],
+    });
+  const getrennt = (id: string) =>
+    saeule({
+      chargePointId: id, connected: false,
+      connectors: [{ connectorId: 1, status: 'Available', charging: false, powerKw: null }],
+    });
+
+  it('⚠ leitet aus DERSELBEN Kachel-Sicht ab - Diagramm und Kachel behaupten nie Verschiedenes', () => {
+    const view = k([laedt('CP1', 11)]);
+    const n = flussKnoten(view)!;
+    expect(n.kw).toBe(view.ladenKw);
+    expect(n.count).toBe(view.stecker);
+    expect(n.aktiv).toBe(true);
+    expect(n.wort).toBe('lädt');
+  });
+
+  it('sagt „Auto eingesteckt", wenn eines steckt aber nichts fliesst', () => {
+    expect(flussKnoten(k([steckt('CP1')]))!.wort).toBe('Auto eingesteckt');
+  });
+
+  it('sagt „kein Auto" an einer freien, verbundenen Säule', () => {
+    const n = flussKnoten(k([frei('CP1')]))!;
+    expect(n.wort).toBe('kein Auto');
+    expect(n.aktiv).toBe(false);
+    expect(n.kw).toBeNull();
+  });
+
+  it('⚠ sind ALLE Säulen getrennt, sagt er das - über ein Auto daran wissen wir nichts', () => {
+    expect(flussKnoten(k([getrennt('CP1')]))!.wort).toBe('Säule getrennt');
+    expect(flussKnoten(k([getrennt('CP1'), getrennt('CP2')]))!.wort).toBe('Säulen getrennt');
+    // Eine verbundene daneben genügt, damit die Aussage wieder über Autos geht.
+    expect(flussKnoten(k([getrennt('CP1'), frei('CP2')]))!.wort).toBe('kein Auto');
+  });
+
+  it('lässt die Speiche laufen, auch wenn die Leistung nicht messbar ist', () => {
+    const n = flussKnoten(k([laedt('CP1', null)]))!;
+    expect(n.aktiv).toBe(true);
+    // ⚠ Es fliesst nachweislich etwas - wir wissen nur nicht, wie viel.
+    expect(n.kw).toBeNull();
+  });
+
+  it('gibt es ohne Ladepunkt gar nicht', () => {
+    expect(flussKnoten(null)).toBeNull();
+    expect(flussKnoten(undefined)).toBeNull();
+    expect(ladenKachel({ charging: { budget: null, chargers: [] } as SiteCharging })).toBeNull();
   });
 });

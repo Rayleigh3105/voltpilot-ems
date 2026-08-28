@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   ANBINDEN_EINSTIEG,
@@ -635,5 +637,84 @@ describe('„Jetzt voll laden"', () => {
     expect(boostbar(surplusBudget, wartend[0])).toBe(true);
     // Ein Wort, das dieser Stand nicht kennt, begründet nichts.
     expect(boostbar(surplusBudget, { ...wartend[0], reasonCode: 'neues_wort' })).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sim-Abgleich (Konzept `vp-verbraucher-cockpit-k1` §8 Schritt 8, Entscheid E7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Die geteilten Vektoren `docs/contracts/ocpp-ladezustand-vectors.json`.
+ *
+ * ⚠ Sie sind das EINE Bindeglied zwischen Simulator und Portal: das Rig
+ * (`edge-app/test/e2e-ocpp.sh` L13) fährt jeden Fall am ECHTEN Simulator und
+ * prüft, dass die Box genau die `edge`-Form meldet; hier wird geprüft, dass die
+ * `portal`-Form daraus GENAU das erwartete Wort ergibt. Fällt eine der beiden
+ * Hälften, ist die Kette gerissen - und genau dafür gibt es sie.
+ */
+interface ZustandVektor {
+  name: string;
+  beschreibung: string;
+  sim: string | null;
+  edge: Record<string, unknown>;
+  portal: Record<string, unknown>;
+  punkt?: { connected: boolean; lastSeen?: string };
+  kind: string;
+  wort: string;
+  ton: string;
+  grund?: string;
+}
+
+const ZUSTAND_VEKTOREN: { faelle: ZustandVektor[] } = JSON.parse(
+  readFileSync(
+    resolve(process.cwd(), '../../docs/contracts/ocpp-ladezustand-vectors.json'),
+    'utf8',
+  ),
+);
+
+describe('ladeZustand · Sim-Abgleich gegen die geteilten Vektoren (E7)', () => {
+  it('deckt jedes Zustandswort des Konzepts §4.2 ab', () => {
+    // Kein Wort darf ungeprüft bleiben - sonst wäre die Abnahme löchrig genau
+    // dort, wo eine Fläche später eine Farbe statt eines Wortes zeigt.
+    const abgedeckt = new Set(ZUSTAND_VEKTOREN.faelle.map((f) => f.kind));
+    for (const kind of [
+      'getrennt', 'frei', 'startet', 'laedt', 'laedt_ohne_messung', 'nimmt_nichts',
+      'wartet', 'saeule_pausiert', 'auto_pausiert', 'beendet', 'stoerung',
+      'nicht_verfuegbar', 'reserviert',
+    ]) {
+      expect(abgedeckt.has(kind)).toBe(true);
+    }
+  });
+
+  it.each(ZUSTAND_VEKTOREN.faelle.map((f) => [f.name, f] as const))(
+    '%s',
+    (_name, f) => {
+      const z = ladeZustand(
+        f.portal as never,
+        (f.punkt ?? { connected: true, lastSeen: null }) as never,
+      );
+      expect(z.kind).toBe(f.kind);
+      expect(z.word).toBe(f.wort);
+      expect(z.tone).toBe(f.ton);
+      if (f.grund !== undefined) expect(z.reason).toBe(f.grund);
+    },
+  );
+
+  it('⚠ die edge-Form trägt dieselbe Aussage wie die portal-Form', () => {
+    // Die Cloud bildet snake_case auf camelCase ab. Läuft ein Feldname
+    // auseinander, sagt der Simulator etwas anderes als das Portal liest -
+    // deshalb ist die Paarung Teil der Vektoren und wird hier geprüft.
+    for (const f of ZUSTAND_VEKTOREN.faelle) {
+      const e = f.edge as Record<string, unknown>;
+      const p = f.portal as Record<string, unknown>;
+      expect(p.status ?? null).toEqual(e.status ?? null);
+      expect(p.charging ?? null).toEqual(e.charging ?? null);
+      expect(p.allocatedKw ?? null).toEqual(e.allocated_kw ?? null);
+      expect(p.powerKw ?? null).toEqual(e.power_kw ?? null);
+      expect(p.reasonText ?? null).toEqual(e.reason_text ?? null);
+      expect(p.boost ?? null).toEqual(e.boost ?? null);
+      expect(p.connectorId).toEqual(e.id);
+    }
   });
 });

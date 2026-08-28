@@ -13,6 +13,7 @@
  *
  * Rein + rahmenfrei (getestet in `ladenKachel.test.ts`).
  */
+import type { ChargingNodeOpts } from './adaptiveFlow';
 import { fmtNum } from './format';
 import {
   budgetBand,
@@ -80,6 +81,10 @@ export interface LadenKachel {
   /** Σ kW der ladenden Stecker; `null`, wenn keiner misst. */
   ladenKw: number | null;
   ladend: number;
+  /** Stecker, an denen ein Auto steckt, aber gerade nicht geladen wird. */
+  steckt: number;
+  /** Stecker/Säulen, über die wir gerade GAR NICHTS wissen. */
+  getrennt: number;
   stecker: number;
 }
 
@@ -199,7 +204,46 @@ export function ladenKachel(input: LadenKachelInput): LadenKachel | null {
     href: links.uebersicht?.() ?? null,
     ladenKw,
     ladend,
+    steckt,
+    getrennt,
     stecker,
+  };
+}
+
+/**
+ * Der Knoten „Laden" des Energieflusses (Konzept `vp-verbraucher-cockpit-k1`
+ * §6, Captain-Entscheid E3): Σ kW und EIN Wort darunter.
+ *
+ * ⚠ Er wird aus der SCHON gerechneten Kachel-Sicht abgeleitet, nie aus einem
+ * zweiten Durchlauf über die Stecker: Diagramm und Kachel dürfen über dieselbe
+ * Säule nichts Verschiedenes behaupten (und die Kachel darf ausgeblendet sein,
+ * ohne dass der Knoten seine Zahl verliert — E4 blendet nur die ZEILEN aus).
+ *
+ * Ehrlichkeit wie überall: `kw` ist `null`, solange keine Ladung gemessen wird
+ * (nie eine 0), und sind ALLE Säulen getrennt, sagt der Knoten „Säule
+ * getrennt" statt „kein Auto" — über ein Auto an einer stummen Säule wissen wir
+ * nichts (die `kopfSatz`-Regel, hier in kurz).
+ */
+export function flussKnoten(view: LadenKachel | null | undefined): ChargingNodeOpts | null {
+  if (!view) return null;
+  const alleGetrennt = view.stecker > 0 && view.getrennt === view.stecker;
+  const wort = view.ladend > 0
+    ? 'lädt'
+    : alleGetrennt
+      ? view.stecker === 1
+        ? 'Säule getrennt'
+        : 'Säulen getrennt'
+      : view.steckt > 0
+        ? 'Auto eingesteckt'
+        : 'kein Auto';
+  return {
+    // Ein ladender Stecker OHNE Messwert lässt die Speiche laufen, aber die
+    // Zahl bleibt ein Strich - es fliesst nachweislich etwas, wir wissen nur
+    // nicht wie viel.
+    kw: view.ladenKw,
+    wort,
+    aktiv: view.ladend > 0,
+    count: view.stecker,
   };
 }
 
