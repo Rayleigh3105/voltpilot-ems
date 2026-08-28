@@ -150,8 +150,7 @@ describe('FahrplanBand — die kurze Speicher-Fahrplan-Karte', () => {
     const scale = container.querySelector('.vp-plan-scale')?.textContent ?? '';
     expect(scale).toContain('Höchstens');
     expect(scale).toContain('laden');
-    // Der Formschlüssel - sonst waere „Umriss" eine Kodierung ohne Wort.
-    expect(scale).toContain('gefüllt = lädt, Umriss = gibt ab');
+    expect(scale).not.toContain('Umriss');
   });
 
   it('D7: der volle Chart hat die Karte verlassen — kein Chart-Container mehr', () => {

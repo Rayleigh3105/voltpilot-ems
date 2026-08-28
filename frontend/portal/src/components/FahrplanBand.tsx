@@ -231,8 +231,7 @@ function MiniBars({ slots, now }: { slots: SchedulePlan['slots']; now: Date }) {
           </span>
         ))}
       </div>
-      {/* Die Zahl, die ein 40-px-Balken nicht zeigen kann - plus der
-          Formschlüssel, ohne den „Umriss" eine Kodierung ohne Wort wäre. */}
+      {/* Die Zahl, die ein 40-px-Balken nicht zeigen kann. */}
       {planStreifenSkala(bars) && (
         <p className="vp-plan-scale">{planStreifenSkala(bars)}</p>
       )}

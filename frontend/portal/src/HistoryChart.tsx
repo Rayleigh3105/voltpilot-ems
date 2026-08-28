@@ -117,9 +117,8 @@ function timeLabel(iso: string, range: History['range'], narrow = false): string
  * Grund ihre `-line`-Stufen; als BALKEN (Woche+) behalten alle drei den hellen
  * Grundton, den auch der Energiefluss trägt.
  *
- * ⚠ `battDischarge` ist KEIN eigener Ton mehr: der Speicher ist EINE Farbe
- * (K5), die Richtung tragen Vorzeichen/Position und das Wort - siehe
- * `chartStyle.ts` `storageMark`.
+ * Entlade-Summen tragen den eigenen Beerenton (K5); die kombinierte signierte
+ * Batterie-Zeitreihe bleibt eine logische Reihe mit Vorzeichen/Position.
  */
 function farbe(t: ChartTheme, key: EnergieFarbe, linie = false): string {
   switch (key) {
@@ -134,8 +133,9 @@ function farbe(t: ChartTheme, key: EnergieFarbe, linie = false): string {
     case 'gridExport':
       return t.charge;
     case 'charge':
-    case 'battDischarge':
       return t.charge;
+    case 'battDischarge':
+      return t.battDischarge;
     case 'soc':
     default:
       return t.soc;

@@ -64,7 +64,7 @@ export const PANEL_TITEL = {
   preis: { text: 'Was Strom heute kostet', einheit: '– Cent je Kilowattstunde' },
   leistung: {
     text: 'Was Ihre Anlage macht',
-    einheit: '– Kilowatt · gefüllt = lädt ↑  Umriss = gibt ab ↓',
+    einheit: '– Kilowatt · Laden ↑  Abgeben ↓',
   },
   ertrag: { text: 'Was dabei herauskommt', einheit: '– Euro, über den Tag aufsummiert' },
 } as const satisfies Record<'preis' | 'leistung' | 'ertrag', PanelTitel>;

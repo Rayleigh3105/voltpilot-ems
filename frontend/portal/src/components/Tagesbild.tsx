@@ -59,8 +59,8 @@ import './Historie.css';
  *  1. **Was Strom heute kostet** — der Börsenpreis als ruhige Stufenlinie, mit
  *     höchstens zwei BENANNTEN Marken (K6: Wort UND Zahl, aus derselben
  *     `preisMarken`-Regel wie die Marktpreis-Seite).
- *  2. **Was Ihre Anlage macht** — der Speicher in EINER Farbe (K5: gefüllt =
- *     lädt, Umriss = gibt ab, dazu Position und Wort); Ladestand und Netz
+ *  2. **Was Ihre Anlage macht** — Laden grün gefüllt und Abgeben beere gefüllt
+ *     (K5, dazu Position und Wort); Ladestand und Netz
  *     liegen eine Stufe tiefer hinter „Mehr anzeigen ▾" (K3).
  *  3. **Was dabei herauskommt** — das gemessene Geld des Tages, aufsummiert.
  *
@@ -300,8 +300,8 @@ export function Tagesbild({
         type: 'bar',
         xAxisIndex: 1,
         yAxisIndex: 1,
-        // K5: der Speicher ist EINE Farbe - Laden gefüllt, Abgeben als UMRISS,
-        // dazu Position (über/unter Null) und das Wort in der Legende.
+        // K5: Laden grün gefüllt, Abgeben beere gefüllt; dazu Position
+        // (über/unter Null) und das Wort in der Legende.
         data: speicher.map((v) =>
           storageBar(v, storageMark(v != null && v < 0 ? 'entladen' : 'laden', t), t.surface),
         ),
@@ -539,8 +539,7 @@ export function Tagesbild({
       ? [{ color: t.price, label: REIHE.preis, unit: 'ct/kWh', shape: 'line' as const }]
       : []),
     { color: t.charge, label: REIHE.laden, unit: 'kW', shape: 'bar' },
-    // K5: dieselbe Farbe, andere FORM - „gefüllt = lädt, Umriss = gibt ab".
-    { color: t.charge, label: REIHE.abgeben, unit: 'kW', shape: 'outline' },
+    { color: t.battDischarge, label: REIHE.abgeben, unit: 'kW', shape: 'bar' },
     // Die Legende bewirbt NUR, was gezeichnet werden kann: was hinter dem
     // zugeklappten Umschalter liegt, gehört nicht hinein.
     ...(zeigeDetail && hatNetz

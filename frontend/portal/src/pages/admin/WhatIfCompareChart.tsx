@@ -145,8 +145,8 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
               name: 'Ihre Regler',
               type: 'bar',
               yAxisIndex: 0,
-              // Dieselbe Speicher-Sprache wie im Kunden-Fahrplan: EINE Farbe,
-              // Umriss = abgeben. Bis Stufe 1 malte dieser Chart das Entladen
+              // Dieselbe Speicher-Sprache wie im Kunden-Fahrplan: Grün lädt,
+              // Beere entlädt. Bis Stufe 1 malte dieser Chart das Entladen
               // im Kosten-ROT und widersprach damit jeder anderen Flaeche. Der
               // Stil haengt am DATENELEMENT (siehe `storageItemStyle`).
               data: variantBattery.map((v, i) =>
@@ -192,7 +192,7 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
   const legend: LegendItem[] = [
     { label: 'Ihre Regler · Solarladen', color: t.charge, shape: 'bar', toggleable: false },
     { label: 'Ihre Regler · Netzladen', color: t.gridCharge, shape: 'bar', toggleable: false },
-    { label: 'Ihre Regler · Entladen', color: t.charge, shape: 'outline', toggleable: false },
+    { label: 'Ihre Regler · Entladen', color: t.battDischarge, shape: 'bar', toggleable: false },
     { label: BASELINE_NAME, color: t.axis, shape: 'outline', toggleable: false },
     { label: `${LADESTAND} · Ihre Regler`, color: t.soc, unit: '%', shape: 'line', toggleable: false },
     { label: `${LADESTAND} · ${BASELINE_NAME}`, color: t.soc, unit: '%', shape: 'dashed', toggleable: false },

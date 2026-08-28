@@ -92,12 +92,12 @@ describe('BAR (F9 · Säulenstäbe statt Farb-Block)', () => {
   });
 });
 
-describe('storageMark (K5 · der Speicher ist EINE Farbe)', () => {
-  const t = { charge: '#2E9E5B', gridCharge: '#00ACC1' };
+describe('storageMark (K5 · gefüllte Speicher-Zustände)', () => {
+  const t = { charge: '#2E9E5B', gridCharge: '#00ACC1', battDischarge: '#8B1E3F' };
 
-  it('gibt Laden und Abgeben DIESELBE Farbe und trennt über die FORM', () => {
+  it('gibt Laden und Abgeben getrennte Farben und dieselbe gefüllte Form', () => {
     expect(storageMark('laden', t)).toEqual({ color: t.charge, form: 'filled' });
-    expect(storageMark('entladen', t)).toEqual({ color: t.charge, form: 'outline' });
+    expect(storageMark('entladen', t)).toEqual({ color: t.battDischarge, form: 'filled' });
   });
 
   it('behält Netzladen als EIGENEN Ton - die EEG-Unterscheidung ist compliance-tragend', () => {
@@ -105,13 +105,19 @@ describe('storageMark (K5 · der Speicher ist EINE Farbe)', () => {
     expect(storageMark('netzladen', t).form).toBe('filled');
   });
 
-  it('malt einen Umriss als RAND in der Serienfarbe, nicht als zweite Farbe', () => {
-    const gefuellt = storageItemStyle(storageMark('laden', t), '#FFFFFF');
-    const umriss = storageItemStyle(storageMark('entladen', t), '#FFFFFF');
-    expect(gefuellt.color).toBe(t.charge);
-    expect(gefuellt.borderColor).toBeUndefined();
+  it('malt beide Speicher-Richtungen als gefüllte Balken', () => {
+    const laden = storageItemStyle(storageMark('laden', t), '#FFFFFF');
+    const entladen = storageItemStyle(storageMark('entladen', t), '#FFFFFF');
+    expect(laden.color).toBe(t.charge);
+    expect(laden.borderColor).toBeUndefined();
+    expect(entladen.color).toBe(t.battDischarge);
+    expect(entladen.borderColor).toBeUndefined();
+  });
+
+  it('behält die generische Umriss-Marke für neutrale Vergleiche', () => {
+    const umriss = storageItemStyle({ color: '#607D8B', form: 'outline' }, '#FFFFFF');
     expect(umriss.color).toBe('#FFFFFF');
-    expect(umriss.borderColor).toBe(t.charge);
+    expect(umriss.borderColor).toBe('#607D8B');
     expect(umriss.borderWidth).toBeGreaterThan(0);
   });
 });

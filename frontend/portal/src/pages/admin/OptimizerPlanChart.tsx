@@ -35,9 +35,9 @@ import type { OptimizerDiagnostics } from '../../optimizerApi';
  *     Solvers als gestrichelte Kontext-Stufe DERSELBEN Preisfarbe), und Grün
  *     bleibt im unteren Panel ausschließlich der Speicher.
  *
- * Der Speicher folgt derselben K5-Regel wie überall: EINE Farbe, gefüllt =
- * lädt, Umriss = gibt ab, Türkis nur beim Netzladen (`slotBarMark`) — das
- * frühere Rot fürs Entladen ist damit weg, denn eine Batterie, die in eine
+ * Der Speicher folgt derselben K5-Regel wie überall: Grün lädt, Beere gibt ab,
+ * Türkis markiert Netzladen (`slotBarMark`) — jeweils gefüllt. Das frühere Rot
+ * fürs Entladen ist damit weg, denn eine Batterie, die in eine
  * teure Stunde entlädt, verdient Geld und darf nie wie ein Fehler aussehen.
  *
  * Ein Klick wählt weiterhin einen Slot für die €-Aufschlüsselung darunter —
@@ -359,8 +359,8 @@ export function OptimizerPlanChart({
               type: 'bar',
               xAxisIndex: 1,
               yAxisIndex: 1,
-              // K5: der Speicher ist EINE Farbe - gefüllt = lädt, Umriss = gibt
-              // ab, Türkis nur beim Netzladen. Dieselbe `slotBarMark`, durch die
+              // K5: Laden grün gefüllt, Abgeben beere gefüllt, Türkis nur beim
+              // Netzladen. Dieselbe `slotBarMark`, durch die
               // auch der Kunden-Fahrplan geht.
               data: battery.map((v, i) => {
                 const s = slots[i];
@@ -400,7 +400,7 @@ export function OptimizerPlanChart({
     { color: t.price, label: SPOT, unit: 'ct/kWh', shape: 'dashed' },
     { color: t.charge, label: 'Speicher lädt Solarstrom', unit: 'kW', shape: 'bar' },
     { color: t.gridCharge, label: 'Speicher lädt aus dem Netz', unit: 'kW', shape: 'bar' },
-    { color: t.charge, label: 'Speicher gibt ab', unit: 'kW', shape: 'outline' },
+    { color: t.battDischarge, label: 'Speicher gibt ab', unit: 'kW', shape: 'bar' },
     { color: t.neutral, label: NETZ, unit: 'kW', shape: 'area' },
     { color: t.soc, label: LADESTAND, unit: '%', shape: 'dotted' },
   ];

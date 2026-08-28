@@ -77,9 +77,9 @@ import './components/Fahrplan.css';
  * nackte Börsenpreis; fehlt auch der, entfällt das Panel ganz statt eine leere
  * Fläche zu behaupten.
  *
- * UNTEN das LEISTUNGS-Panel: der Speicher als Säulenstäbe in EINER Farbe (K5 -
- * gefüllt = lädt, Umriss = gibt ab, Wort in der Legende; türkis nur, wenn der
- * Plan wirklich aus dem Netz lädt, sodass „kein Türkis" der sichtbare
+ * UNTEN das LEISTUNGS-Panel: der Speicher als gefüllte Säulenstäbe (K5 - grün
+ * lädt, beere gibt ab, Wort in der Legende; türkis nur, wenn der Plan wirklich
+ * aus dem Netz lädt, sodass „kein Türkis" der sichtbare
  * EEG-Beweis bleibt), die Sonne als Kontextkurve, der Verbraucher-Stapel, der
  * Ladestand als beschriftete Miniskala rechts (die eine geduldete
  * F8-Ausnahme) und das orange Abregel-Band MIT seinem Wort (K5: Farbe nie
@@ -769,8 +769,8 @@ export function ScheduleChart({
             type: 'bar',
             xAxisIndex: 1,
             yAxisIndex: 1,
-            // K5: der Speicher ist EINE Farbe - Laden gefüllt, Abgeben als
-            // UMRISS (dazu unter der Nulllinie und mit Wort in der Legende).
+            // K5: Laden grün gefüllt, Abgeben beere gefüllt - zusätzlich über
+            // bzw. unter der Nulllinie und mit Wort in der Legende.
             // Der Stil hängt am DATENELEMENT, nicht als Callback an der Serie
             // (siehe `storageItemStyle` - eine Funktion auf `borderWidth` lässt
             // ECharts den ganzen Balken-Satz weglassen).
@@ -1120,13 +1120,13 @@ export function ScheduleChart({
           } as LegendItem,
         ]
       : []),
-    // K5: dieselbe Farbe wie Laden, andere FORM - „gefüllt = lädt, Umriss =
-    // gibt ab"; das Wort steht daneben und die Position unter der Nulllinie.
+    // K5: eigener gefüllter Entlade-Ton; Wort und Position unter der Nulllinie
+    // bleiben als zweite Träger erhalten.
     {
-      color: t.charge,
+      color: t.battDischarge,
       label: 'Entladen (teurer Strom)',
       unit: 'kW',
-      shape: 'outline',
+      shape: 'bar',
       toggleable: false,
     },
     // Orange steht am Canvas als BAND + Sockel-Tick (und in der

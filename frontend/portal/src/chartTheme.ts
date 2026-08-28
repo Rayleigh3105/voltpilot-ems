@@ -52,14 +52,10 @@ export interface ChartTheme {
   charge: string;
   /** Battery charge FROM THE GRID (Netzladen slots in the Fahrplan). */
   gridCharge: string;
+  /** Battery discharge / energy leaving storage (filled berry). */
+  battDischarge: string;
   /** Grid draw / cost (Netzbezug, warning-coloured red). */
   discharge: string;
-  /* ⚠ `battDischarge` gibt es hier ABSICHTLICH nicht mehr. Der Speicher ist EINE
-     Farbe ({@link charge}); Laden und Abgeben sind derselbe Gegenstand in zwei
-     Zustaenden, und die Richtung tragen Position, Form und Wort - siehe
-     `src/chartStyle.ts` `storageMark` fuer Messung und Begruendung. Das alte
-     `#2C5282` lebt nur noch als CSS-Flaechen-Akzent weiter, damit es auf keiner
-     Leinwand neben das Haus-Blau zurueckkehren kann. */
   /** Plan overlay. */
   plan: string;
   /** Cloud cover. */
@@ -137,6 +133,7 @@ export function chartTheme(): ChartTheme {
     soc: read('--vp-chart-soc', '#9C27B0'),
     charge: read('--vp-chart-charge', '#2E9E5B'),
     gridCharge: read('--vp-chart-gridcharge', '#00ACC1'),
+    battDischarge: read('--vp-chart-battdischarge', '#8B1E3F'),
     discharge: read('--vp-chart-discharge', '#E53935'),
     plan: read('--vp-chart-plan', '#1E3A5F'),
     cloud: read('--vp-chart-cloud', '#90A4AE'),

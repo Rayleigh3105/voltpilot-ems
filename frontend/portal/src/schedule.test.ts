@@ -498,14 +498,14 @@ describe('planSentence', () => {
 });
 
 describe('planStreifenSkala (K1 · die Maßstabs-Zeile des Ministreifens)', () => {
-  it('nennt beide Spitzen und den Formschlüssel', () => {
+  it('nennt beide Spitzen ohne eine überholte Form-Legende', () => {
     const bars = planHourBars([...hours(11, 12, 10.9, -3), ...hours(18, 19, -7, 2)], NOW);
     const satz = planStreifenSkala(bars)!;
     expect(satz).toContain('Höchstens 10,9');
     expect(satz).toContain('laden');
     expect(satz).toContain('7,0');
     expect(satz).toContain('abgeben');
-    expect(satz).toContain('gefüllt = lädt, Umriss = gibt ab');
+    expect(satz).not.toContain('Umriss');
   });
 
   it('nennt nur, was der Plan wirklich vorsieht', () => {
@@ -927,23 +927,23 @@ describe('socRange / socRangeLine', () => {
 });
 
 /**
- * K5: der Speicher ist EINE Farbe. Laden und Abgeben sind derselbe Gegenstand
- * in zwei Zuständen; die Richtung tragen Position, FORM und Wort - nicht ein
- * zweiter Ton, der gegen das Haus-Blau unter der Normalsicht-Grenze lag.
+ * K5: Laden, Netzladen und Abgeben sind gefüllte Zustände mit eigenen Tönen;
+ * Position und Wort tragen die Richtung zusätzlich.
  * F5 gilt unverändert weiter: Entladen verdient Geld und wird nie rot.
  */
 describe('slotBarMark / slotBarColor', () => {
   const t = {
     charge: '#2E9E5B',
     gridCharge: '#00ACC1',
+    battDischarge: '#8B1E3F',
     discharge: '#E53935',
     surface: '#FFFFFF',
   } as ChartTheme;
 
-  it('gibt Laden und Abgeben DIESELBE Farbe und unterscheidet über die Form', () => {
-    expect(slotBarMark('entladen', t)).toEqual({ color: t.charge, form: 'outline' });
+  it('zeichnet Laden und Abgeben gefüllt in getrennten Farben', () => {
+    expect(slotBarMark('entladen', t)).toEqual({ color: t.battDischarge, form: 'filled' });
     expect(slotBarMark('solarladen', t)).toEqual({ color: t.charge, form: 'filled' });
-    expect(slotBarColor('entladen', t)).toBe(slotBarColor('solarladen', t));
+    expect(slotBarColor('entladen', t)).not.toBe(slotBarColor('solarladen', t));
   });
 
   it('malt Entladen nie im Kosten-Rot (F5, unverändert)', () => {
@@ -955,11 +955,11 @@ describe('slotBarMark / slotBarColor', () => {
     expect(slotBarColor('netzladen', t)).not.toBe(t.charge);
   });
 
-  it('führt in der echten Palette keinen Entladen-Ton mehr - er kann nicht zurückkehren', () => {
-    const real = chartTheme() as unknown as Record<string, unknown>;
-    expect(real.battDischarge).toBeUndefined();
-    // Und die Farbe, die statt seiner gilt, ist weiterhin nicht das Kosten-Rot.
-    expect(slotBarColor('entladen', chartTheme())).not.toBe(chartTheme().discharge);
+  it('führt in der echten Palette genau den eigenen Entladen-Ton', () => {
+    const real = chartTheme();
+    expect(slotBarColor('entladen', real)).toBe(real.battDischarge);
+    expect(real.battDischarge).not.toBe(real.charge);
+    expect(real.battDischarge).not.toBe(real.discharge);
   });
 });
 

@@ -282,25 +282,17 @@ export function ghostBar(farbe: string) {
 }
 
 /* ---------------------------------------------------------------------------
- * K5 · Der SPEICHER ist EINE Farbe — die Richtung trägt Position + Form + Wort
+ * K5 · Laden und Entladen sind zwei gefüllte Speicher-Zustände
  *
- * Messung (r2 §5): das frühere Entladen-Blau `#2C5282` liegt gegen das
- * Haus-Blau `#1D6FD8` bei ΔE 14,8 — unter der Normalsicht-Untergrenze 15 und
- * damit ein harter FAIL, den auch eine Zweitkodierung nicht entschuldigt.
- * Beide werden im Messwerte-Tag UND im Fahrplan gemeinsam gezeichnet.
+ * Das frühere Entladen-Blau `#2C5282` lag gegen das Haus-Blau `#1D6FD8` bei
+ * ΔE 14,8 und wurde deshalb durch einen grünen Umriss ersetzt. Der Umriss war
+ * auf schmalen Balken jedoch sichtbar schwächer als die gefüllte Ladung.
+ * Entladen trägt nun den gefüllten Beerenton `battDischarge` (#8B1E3F), der
+ * sich von der gemeinsam gezeichneten Palette mit mindestens ΔE 23,5 trennt.
  *
- * Die Antwort ist nicht ein dritter Blau-Ton, sondern der Verzicht auf einen
- * eigenen Kategorie-Platz: Laden und Abgeben sind DERSELBE Gegenstand in zwei
- * Zuständen. Die Richtung trägt seither
- *   · die POSITION (über / unter der betonten Nulllinie),
- *   · die FORM (gefüllt = lädt, Umriss = gibt ab) und
- *   · das WORT (Legende, Tooltip, Filmzeile).
- * Ergebnis ΔE 26,2 gegen das Haus-Blau, und der Graustich des alten Tons
- * (Chroma 0,091, unter dem Zierboden) verschwindet mit.
- *
- * ⚠ Netzladen (`gridCharge`, türkis) bleibt ein EIGENER Ton: die Unterscheidung
- * Solarladen ↔ Netzladen ist compliance-tragend (EEG) und behält zusätzlich
- * ihre Haus-Auflage „Wort + Icon tragen die Identität".
+ * Die Richtung bleibt zusätzlich über POSITION (über/unter Null) und WORT
+ * (Legende, Tooltip, Filmzeile) codiert. Netzladen (`gridCharge`, türkis) bleibt
+ * ebenfalls eigenständig, weil Solar- ↔ Netzladen compliance-tragend ist.
  * ------------------------------------------------------------------------- */
 export type StorageForm = 'filled' | 'outline';
 
@@ -321,10 +313,10 @@ export interface StorageMark {
  */
 export function storageMark(
   state: StorageState,
-  t: { charge: string; gridCharge: string },
+  t: { charge: string; gridCharge: string; battDischarge: string },
 ): StorageMark {
   if (state === 'netzladen') return { color: t.gridCharge, form: 'filled' };
-  if (state === 'entladen') return { color: t.charge, form: 'outline' };
+  if (state === 'entladen') return { color: t.battDischarge, form: 'filled' };
   return { color: t.charge, form: 'filled' };
 }
 

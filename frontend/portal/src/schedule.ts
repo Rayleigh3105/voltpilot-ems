@@ -75,10 +75,9 @@ export function hasGridCharge(
 
 /**
  * Die MARKE eines Plan-Slots (Farbe + Form) aus der geteilten Chart-Sprache:
- * grün gefüllt = Solarladen, türkis gefüllt = Netzladen, grün als UMRISS =
- * Entladen. Der Speicher ist EINE Farbe (K5) - Laden und Abgeben sind derselbe
- * Gegenstand in zwei Zuständen, die Richtung trägt Position (über/unter Null),
- * Form und Wort. Begründung + Messung in `chartStyle.ts` `storageMark`.
+ * grün gefüllt = Solarladen, türkis gefüllt = Netzladen, beere gefüllt =
+ * Entladen. Die Richtung tragen zusätzlich Position (über/unter Null) und Wort.
+ * Begründung + Messung in `chartStyle.ts` `storageMark`.
  *
  * Entladen nimmt weiterhin ausdrücklich NICHT das rote `discharge` (Audit F5):
  * die Batterie in eine teure Stunde zu entleeren ist die Art, wie die Anlage
@@ -1389,16 +1388,13 @@ export function planHourBars(slots: PlanSlotLike[], now: Date): PlanHourBar[] {
  *
  * Ein 40-px-Streifen kann seine Leistungen nicht beschriften — genau dort
  * steckt aber die Zahl, nach der ein Betreiber fragt („wie viel denn?").
- * Der Satz nennt die Spitzen BEIDER Richtungen und den Formschlüssel, also
- * das, was die Farbe allein nicht trägt (K5: Farbe nie ohne Wort).
+ * Der Satz nennt die Spitzen BEIDER Richtungen. Die Farbzuteilung selbst steht
+ * direkt am Streifen als „lädt ↑" / „gibt ab ↓" (K5: Farbe nie ohne Wort).
  * ------------------------------------------------------------------------- */
 
-/** Der Formschlüssel des Streifens — er benennt, was die Form bedeutet. */
-export const STREIFEN_FORM_KEY = 'gefüllt = lädt, Umriss = gibt ab';
-
 /**
- * „Höchstens 10,9 kW laden · höchstens 7,0 kW abgeben · gefüllt = lädt,
- * Umriss = gibt ab" — die Maßstabs-Zeile unter dem Ministreifen.
+ * „Höchstens 10,9 kW laden · höchstens 7,0 kW abgeben" — die Maßstabs-Zeile
+ * unter dem Ministreifen.
  *
  * Genannt wird nur, was der Plan wirklich vorsieht: ein Tag ohne Entladung
  * bekommt keinen Abgabe-Halbsatz, und ein Tag ohne jede Bewegung `null`
@@ -1418,7 +1414,7 @@ export function planStreifenSkala(bars: PlanHourBar[]): string | null {
   if (abgeben > 0) teile.push(`höchstens ${fmtNum(abgeben, 'kW')} abgeben`);
   if (teile.length === 0) return null;
   teile[0] = teile[0].charAt(0).toUpperCase() + teile[0].slice(1);
-  return `${teile.join(' · ')} · ${STREIFEN_FORM_KEY}`;
+  return teile.join(' · ');
 }
 
 /**

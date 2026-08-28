@@ -314,9 +314,9 @@ function ExampleDayChart({ tag, label }: { tag: BeispielTag; label: string }) {
             {
               name: 'VoltPilot Speicher',
               type: 'bar',
-              // Dieselbe Speicher-Sprache wie ueberall: EINE Farbe, Umriss =
-              // abgeben. Das Kosten-ROT ist hier raus (F5/F10); der Stil haengt
-              // am DATENELEMENT (siehe `storageItemStyle`).
+              // Dieselbe Speicher-Sprache wie ueberall: Laden gruen gefuellt,
+              // Entladen beere gefuellt. Das Kosten-ROT ist hier raus (F5/F10);
+              // der Stil haengt am DATENELEMENT (siehe `storageItemStyle`).
               data: tag.slots.map((s) =>
                 storageBar(
                   s.batterieVoltpilotKw,
@@ -356,7 +356,7 @@ function ExampleDayChart({ tag, label }: { tag: BeispielTag; label: string }) {
       <ChartLegend
         items={[
           { color: t.charge, label: 'VoltPilot lädt', unit: 'kW' },
-          { color: t.charge, label: 'VoltPilot entlädt', unit: 'kW', shape: 'outline' },
+          { color: t.battDischarge, label: 'VoltPilot entlädt', unit: 'kW', shape: 'bar' },
           { color: t.cloud, label: 'Standard-Speicher', unit: 'kW', shape: 'line' },
           { color: t.price, label: 'Börsenpreis', unit: 'ct/kWh', shape: 'line' },
         ]}

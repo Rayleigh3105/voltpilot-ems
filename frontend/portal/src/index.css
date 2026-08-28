@@ -1246,8 +1246,7 @@ button.vp-cl-item.is-off .vp-cl-label {
   border-top-style: dotted;
   border-top-width: 3px;
 }
-/* K5: die Umriss-Form des Speichers - dieselbe Farbe wie `bar`, nur hohl.
-   „gefüllt = lädt, Umriss = gibt ab"; das WORT daneben trägt es mit. */
+/* Hohle Vergleichs-/Baseline-Marke; Speicherzustände sind gefüllte Balken. */
 .vp-swatch-outline {
   width: 15px;
   height: 11px;
@@ -2444,12 +2443,8 @@ button.vp-cl-item.is-off .vp-cl-label {
    Nulllinie, Sichtbarkeits-Striche und die Vergangenheits-Dämpfung kommen seit
    Stufe 5 aus dem Mini-Baustein; hier steht nur die FARBSPRACHE DES SPEICHERS.
 
-   ⚠ Der Speicher ist EINE Farbe (K5): Laden ist die GEFÜLLTE Form, Abgeben der
-   UMRISS derselben Farbe - die Richtung tragen zusätzlich die Position (über /
-   unter der Null) und das Wort daneben. Der frühere eigene Entladen-Ton
-   (`--vp-chart-battdischarge`) ist damit hier abgelöst: er war die letzte
-   Fläche, die die Richtung allein über die Farbe trug, und genau deshalb war
-   die Haus-Auflage „Wort + Icon tragen die Identität" hier verletzt.
+   K5: Laden ist grün gefüllt, Abgeben beere gefüllt. Die Richtung tragen
+   zusätzlich die Position (über/unter der Null) und das Wort daneben.
    Netzladen behält seinen eigenen Ton - die Unterscheidung Solar↔Netz ist
    compliance-tragend (EEG). */
 .vp-plan-mini {
@@ -2460,8 +2455,8 @@ button.vp-cl-item.is-off .vp-cl-label {
   background: var(--vp-chart-gridcharge, #00acc1);
 }
 .vp-plan-mini .vp-mini-bar.is-entladen {
-  background: transparent;
-  border: 1.2px solid var(--vp-chart-charge, #2e9e5b);
+  background: var(--vp-chart-battdischarge, #8b1e3f);
+  border: 0;
   opacity: 0.92;
 }
 /* Eine Stunde ohne Batteriebewegung ist eine gemessene Null, kein Wert -
@@ -2470,11 +2465,10 @@ button.vp-cl-item.is-off .vp-cl-label {
   background: var(--vp-chart-axisline, #e9ecef);
   opacity: 1;
 }
-/* Vergangene Stunden bleiben LESBAR gedämpft (der Baustein dämpft auf einen
-   neutralen Ton); ein Umriss würde dabei unsichtbar, also bekommt er Fläche. */
+/* Vergangene Entlade-Stunden bleiben beerig erkennbar, nur leiser. */
 .vp-plan-mini .vp-mini-bar.is-entladen.is-past {
-  background: var(--vp-chart-axisline, #e9ecef);
-  border-color: transparent;
+  background: var(--vp-chart-battdischarge, #8b1e3f);
+  opacity: 0.45;
 }
 
 /* K5: die Richtungs-WÖRTER - ohne sie trüge die Richtung nur Farbe + Lage.
@@ -2493,7 +2487,7 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-plan-dir.is-down {
   margin-top: 2px;
   margin-bottom: 4px;
-  color: var(--vp-text-muted, #6c757d);
+  color: var(--vp-chart-battdischarge, #8b1e3f);
 }
 
 /* Eine schon vergangene Stunde bleibt LESBAR (der Plan des Vormittags ist
@@ -2503,7 +2497,7 @@ button.vp-cl-item.is-off .vp-cl-label {
   opacity: 0.75;
 }
 
-/* K1: die Zahl, die ein 40-px-Balken nicht zeigen kann, plus der Formschlüssel. */
+/* K1: die Zahl, die ein 40-px-Balken nicht zeigen kann. */
 .vp-plan-scale {
   margin: 6px 0 0;
   font-size: 0.7rem;

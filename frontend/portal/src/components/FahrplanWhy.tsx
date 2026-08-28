@@ -58,10 +58,9 @@ import './FahrplanWhy.css';
  * Die MARKE einer Rolle (Farbe + Form) aus der geteilten Chart-Sprache — EINE
  * Farbsprache an jedem Fahrplan-Bauteil (Balken, Filmzeile, Phasen-Karte).
  *
- * Der Speicher ist EINE Farbe (K5): Laden ist gefüllt, Abgeben ein UMRISS,
- * und das Wort steht in derselben Zeile. Vorher trug „abgeben" ein eigenes
- * Blau, das gegen das Haus-Blau der Linien-Stufe unter der Normalsicht-Grenze
- * lag — Messung und Begründung in `chartStyle.ts` `storageMark`.
+ * K5: Laden ist grün gefüllt, Abgeben beere gefüllt, und das Wort steht in
+ * derselben Zeile. Das frühere Entladen-Blau kollidierte mit dem Haus-Blau;
+ * Messung und Begründung stehen in `chartStyle.ts` `storageMark`.
  */
 export function roleMark(role: SlotRole, t: ChartTheme): StorageMark {
   switch (role) {
@@ -87,11 +86,7 @@ export function roleColor(role: SlotRole, t: ChartTheme): string {
   return roleMark(role, t).color;
 }
 
-/**
- * Der CSS-Stil des Rollen-Punkts. Ein UMRISS ist ein hohler Punkt in derselben
- * Farbe — die Form trägt die Richtung, sobald die Position es nicht kann (eine
- * Listenzeile hat kein Über/Unter-Null).
- */
+/** Der CSS-Stil des Rollen-Punkts aus der zentralen Speicher-Marke. */
 export function roleDotStyle(mark: StorageMark): React.CSSProperties {
   if (mark.form === 'filled') return { background: mark.color };
   return { background: 'transparent', boxShadow: `inset 0 0 0 2px ${mark.color}` };

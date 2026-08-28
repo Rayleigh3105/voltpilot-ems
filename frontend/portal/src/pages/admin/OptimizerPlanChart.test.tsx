@@ -156,13 +156,13 @@ describe('Admin-PlanChart · die Farb-Doppelbelegung ist aufgelöst', () => {
     expect(preisFarben).not.toContain(t.discharge);
   });
 
-  it('zeichnet den Speicher nach K5: eine Farbe, Laden gefüllt, Abgeben als Umriss', () => {
+  it('zeichnet Laden grün und Abgeben beere - beide gefüllt', () => {
     renderChart();
     const t = chartTheme();
     const bars = serie('Batterie').data;
     expect(bars[0].itemStyle.color).toBe(t.charge);
-    expect(bars[1].itemStyle.borderColor).toBe(t.charge);
-    expect(bars[1].itemStyle.color).toBe(t.surface);
+    expect(bars[1].itemStyle.color).toBe(t.battDischarge);
+    expect(bars[1].itemStyle.borderWidth).toBe(0);
     // Rot ist Kosten/Warnung - eine entladende Batterie verdient Geld.
     expect(JSON.stringify(bars)).not.toContain(t.discharge);
   });

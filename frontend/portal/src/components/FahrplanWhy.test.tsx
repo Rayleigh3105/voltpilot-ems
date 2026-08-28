@@ -41,22 +41,21 @@ function mkSlots(): WhySlot[] {
 describe('roleMark (the ONE colour language, Konzept §6.6 + K5)', () => {
   const t = chartTheme();
 
-  it('gibt jeder Abgabe-Rolle die SPEICHER-Farbe als Umriss, nie Rot', () => {
+  it('gibt jeder Abgabe-Rolle den gefüllten Beerenton, nie Rot', () => {
     for (const role of ['eigenverbrauch', 'verkaufen', 'spitze_kappen'] as const) {
-      // K5: EINE Farbe für den Speicher - die Richtung trägt die FORM.
-      expect(roleMark(role, t)).toEqual({ color: t.charge, form: 'outline' });
+      expect(roleMark(role, t)).toEqual({ color: t.battDischarge, form: 'filled' });
       // Red is reserved for costs/warnings - a discharge must never wear it.
       expect(roleColor(role, t)).not.toBe(t.discharge);
     }
   });
 
-  it('macht aus der Umriss-Form einen HOHLEN Punkt, aus gefüllt einen vollen', () => {
+  it('malt Laden und Abgeben als volle Punkte in getrennten Farben', () => {
     const laden = roleDotStyle(roleMark('pv_speichern', t));
     const abgeben = roleDotStyle(roleMark('eigenverbrauch', t));
     expect(laden.background).toBe(t.charge);
     expect(laden.boxShadow).toBeUndefined();
-    expect(abgeben.background).toBe('transparent');
-    expect(abgeben.boxShadow).toContain(t.charge);
+    expect(abgeben.background).toBe(t.battDischarge);
+    expect(abgeben.boxShadow).toBeUndefined();
   });
 
   it('keeps the remaining roles on their shipped hues', () => {

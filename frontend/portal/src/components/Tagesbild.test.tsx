@@ -212,16 +212,15 @@ describe('Tagesbild · die Panel-Struktur (F8 verschärft)', () => {
   });
 });
 
-describe('Tagesbild · K5, der Speicher ist EINE Farbe', () => {
-  it('zeichnet Laden gefüllt und Abgeben als UMRISS — in derselben Farbe', () => {
+describe('Tagesbild · K5, gefüllte Speicher-Zustände', () => {
+  it('zeichnet Laden grün und Abgeben beere — beide gefüllt', () => {
     renderBild();
     const t = chartTheme();
     const bars = serie(REIHE.laden).data;
     expect(bars[0].itemStyle.color).toBe(t.charge);
     expect(bars[0].itemStyle.borderWidth).toBe(0);
-    // Der Entlade-Slot: Umriss in DERSELBEN Serienfarbe, Füllung leer.
-    expect(bars[2].itemStyle.borderColor).toBe(t.charge);
-    expect(bars[2].itemStyle.color).toBe(t.surface);
+    expect(bars[2].itemStyle.color).toBe(t.battDischarge);
+    expect(bars[2].itemStyle.borderWidth).toBe(0);
   });
 
   it('nennt beide Richtungen mit ihrem WORT in der Legende', () => {

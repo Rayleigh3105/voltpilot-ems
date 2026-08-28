@@ -92,8 +92,8 @@ export interface MiniPoint {
   /**
    * Ein freier Zustands-Name, den die FLÄCHE vergibt und als CSS-Modifier
    * wiederfindet (`is-<tone>`). Der Baustein weiß nichts über Batterien —
-   * so kann der Cockpit-Streifen trotzdem die Haus-Regel „der Speicher ist
-   * EINE Farbe, die Richtung trägt Form + Wort" (K5) anwenden, ohne dass
+   * so kann der Cockpit-Streifen trotzdem die Haus-Regel „Laden und Entladen
+   * tragen eigene Farben plus Position und Wort" (K5) anwenden, ohne dass
    * sie hier hineinwandert.
    */
   tone?: string;

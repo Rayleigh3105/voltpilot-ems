@@ -119,21 +119,20 @@ describe('useChartDetail (die Tiefe wird pro Fläche gemerkt)', () => {
   });
 });
 
-describe('ChartLegend · die Umriss-Form (K5)', () => {
-  it('malt eine Umriss-Reihe mit derselben Farbe, nur hohl', () => {
+describe('ChartLegend · die generische Umriss-Form', () => {
+  it('malt eine neutrale Baseline hohl', () => {
     const { container } = render(
       <ChartLegend
         items={[
           { color: '#2E9E5B', label: 'Batterie lädt', unit: 'kW', shape: 'bar' },
-          { color: '#2E9E5B', label: 'Batterie entlädt', unit: 'kW', shape: 'outline' },
+          { color: '#607D8B', label: 'Vergleich', unit: 'kW', shape: 'outline' },
         ]}
       />,
     );
     const swatches = container.querySelectorAll('.vp-swatch');
     expect(swatches[0]).toHaveClass('vp-swatch-bar');
     expect(swatches[1]).toHaveClass('vp-swatch-outline');
-    // Dieselbe Farbe - die FORM trägt die Richtung, plus das Wort daneben.
     expect(screen.getByText('Batterie lädt')).toBeInTheDocument();
-    expect(screen.getByText('Batterie entlädt')).toBeInTheDocument();
+    expect(screen.getByText('Vergleich')).toBeInTheDocument();
   });
 });

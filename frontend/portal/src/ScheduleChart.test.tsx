@@ -677,7 +677,7 @@ describe('ScheduleChart · die Geometrie der Chart-Sprache', () => {
     expect(now.label.rotate).toBe(0);
   });
 
-  it('malt den Speicher in EINER Farbe und trennt Laden/Abgeben über die Form (K5)', () => {
+  it('malt Laden grün und Abgeben beere - beide gefüllt (K5)', () => {
     render(<ScheduleChart plan={plan(tag)} />);
     const t = chartTheme();
     const daten = series('Batterie').data;
@@ -685,17 +685,15 @@ describe('ScheduleChart · die Geometrie der Chart-Sprache', () => {
     // ECharts wertet auf `series.itemStyle` nur einen Teil der Felder als
     // Funktion aus (`borderWidth` NICHT), und die Serie zeichnet dann GAR
     // NICHTS - im Browser aufgefallen, nicht hier. Der Test prüft deshalb
-    // ausdrücklich die Per-Item-Form.
+    // ausdrücklich den Per-Item-Stil.
     const laden = daten[0];
     const abgeben = daten[4];
     expect(laden.value).toBeGreaterThan(0);
     expect(abgeben.value).toBeLessThan(0);
-    // Laden: gefüllt. Abgeben: derselbe Ton als RAND, Füllung = Kartengrund.
     expect(laden.itemStyle.color).toBe(t.charge);
     expect(laden.itemStyle.borderWidth).toBe(0);
-    expect(abgeben.itemStyle.color).toBe(t.surface);
-    expect(abgeben.itemStyle.borderColor).toBe(t.charge);
-    expect(abgeben.itemStyle.borderWidth).toBeGreaterThan(0);
+    expect(abgeben.itemStyle.color).toBe(t.battDischarge);
+    expect(abgeben.itemStyle.borderWidth).toBe(0);
     // Und die Serie trägt KEINEN Callback mehr, der sie unsichtbar machen würde.
     expect(typeof series('Batterie').itemStyle?.borderWidth).not.toBe('function');
   });

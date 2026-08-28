@@ -18,8 +18,8 @@ import { kopfView, type Kernaussage } from '../chartKopf';
 
 /**
  * How a series is drawn on the canvas, mirrored by the legend swatch.
- * `outline` ist die Umriss-Form des Speichers (K5): dieselbe Farbe wie
- * `bar`, nur hohl - „gefüllt = lädt, Umriss = gibt ab".
+ * `outline` bleibt für neutrale Vergleichs-/Baseline-Marken verfügbar; die
+ * Speicherzustände selbst verwenden gefüllte, getrennte Farben.
  */
 export type SwatchShape = 'bar' | 'line' | 'dashed' | 'dotted' | 'area' | 'outline';
 

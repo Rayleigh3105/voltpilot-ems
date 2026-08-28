@@ -99,17 +99,15 @@
   --vp-chart-charge:    #2E9E5B;  /* charge / feed-in green */
   --vp-chart-gridcharge:#00ACC1;  /* battery charge FROM THE GRID (Netzladen) cyan */
   --vp-chart-discharge: #E53935;  /* grid draw / cost red (Netzbezug, warnings) */
-  /* ⚠ KEIN Serienton mehr. Als Entladen-Ton lag er gegen das Haus-Blau der
-     Linien-Stufe unten bei ΔE 14,8 (harter FAIL, Untergrenze 15) - und beide
-     werden im Messwerte-Tag UND im Fahrplan gemeinsam gezeichnet. Der Speicher
-     ist seither EINE Farbe (`--vp-chart-charge`), die Richtung tragen Position,
-     Form und Wort (K5, Begruendung in `src/chartStyle.ts` `storageMark`).
-     Seit Stufe 5 hat der Cockpit-Ministreifen seine zweiten Traeger (echte
-     Nulllinie + Richtungs-Woerter) und ist mit umgestellt; uebrig bleibt der
-     Wert nur noch als FLAECHEN-Akzent der Nachfuehrungs-Notiz des
-     Jetzt-Helden. `chartTheme()` fuehrt ihn bewusst NICHT mehr - so kann er
-     auf keiner Leinwand zurueckkehren. */
-  --vp-chart-battdischarge:#2C5282;/* Flaechen-Akzent, siehe oben */
+  /* Entladen ist ein eigener, GEFUELLTER Beerenton. Das fruehere Entladen-Blau
+     #2C5282 kollidierte mit dem Haus-Blau (#1D6FD8, ΔE 14,8); deshalb war
+     Entladen zwischenzeitlich nur ein gruener Umriss. Der Umriss verlor auf
+     schmalen Balken jedoch sichtbar Gewicht. #8B1E3F trennt sich in der
+     gemeinsam gezeichneten Palette mit mindestens ΔE 23,5 (Normalsicht),
+     bleibt klar weg vom Kosten-/Warnrot und wird weiter durch Position und
+     Wort zweitkodiert. Jede Speicherflaeche liest diesen Ton ueber
+     `chartTheme().battDischarge` bzw. dieses Token. */
+  --vp-chart-battdischarge:#8B1E3F;/* battery discharge / energy leaving storage */
 
   /* --- LINIEN-Stufen (F2: „dünn heisst dunkler") ---------------------------
      Eine 1,4-2,2-px-Linie braucht mehr Kontrast als ein 14-px-Balken: das helle

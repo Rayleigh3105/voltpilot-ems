@@ -97,9 +97,7 @@ function dotColor(key: EnergieFarbe): string {
     gridImport: t.discharge,
     gridExport: t.charge,
     charge: t.charge,
-    // K5: der Speicher ist EINE Farbe - die Richtung trägt hier das WORT der
-    // Kachel („Geladen"/„Entladen"), nicht ein zweiter Ton.
-    battDischarge: t.charge,
+    battDischarge: t.battDischarge,
     soc: t.soc,
   };
   return map[key];
