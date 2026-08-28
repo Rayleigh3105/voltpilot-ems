@@ -55,7 +55,8 @@ public class ControlStatusListener {
     private static final String STATUS_FILTER = "ems/+/+/+/status";
     /** The additive execution modes the edge may report - anything else is ignored. */
     private static final Set<String> EXECUTION_MODES = Set.of(
-            "plan", "follow", "trim", "absorb", "fallback", "idle_follow", "autonomous_discharge");
+            "plan", "follow", "trim", "absorb", "fallback", "idle_follow",
+            "high_soc_follow", "autonomous_discharge");
     /** The two follow directions - only meaningful for mode {@code follow}. */
     private static final Set<String> FOLLOW_DIRECTIONS = Set.of("deepen", "reduce");
     /** The three certification sources the core may report - anything else is ignored. */

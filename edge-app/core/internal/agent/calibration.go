@@ -252,6 +252,7 @@ func (a *Agent) calibrationOverride(now time.Time, r guards.Reading, limits guar
 	})
 	a.trim.Release()
 	a.follow.Release()
+	a.highSoc.Release()
 	return true
 }
 

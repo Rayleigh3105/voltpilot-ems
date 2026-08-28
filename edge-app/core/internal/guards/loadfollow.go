@@ -159,6 +159,10 @@ type FollowResult struct {
 	// Path distinguishes adjustment of an already-planned discharge from the
 	// additive 0-kW idle fallback.
 	Path string
+	// FloorSocPct is the actual floor applied while an idle authorization starts
+	// a discharge. The full-battery rule may tighten the cloud reserve to the
+	// bottom of its deliberately small top band.
+	FloorSocPct *float64
 }
 
 // LoadFollower holds the correction's hysteresis state across setpoint ticks.
@@ -240,6 +244,8 @@ func (f *LoadFollower) ApplyAuthorized(
 			return res
 		}
 		path = "idle_follow"
+		floor := *effectiveFloorSocPct
+		res.FloorSocPct = &floor
 	}
 	// Never regulate blind (the economic-guard convention, cf. PeakShave).
 	if !known(r.PvKw) || !known(r.LoadKw) || math.IsNaN(kw) || math.IsInf(kw, 0) {

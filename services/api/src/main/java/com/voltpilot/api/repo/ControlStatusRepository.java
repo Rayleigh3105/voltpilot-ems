@@ -30,12 +30,13 @@ public class ControlStatusRepository {
      *                  - it collapses every non-schedule mode into
      *                  {@code default}, so it may never be read as "the
      *                  built-in safety rule is running".
-     * @param mode      the precise execution path, including {@code idle_follow}
-     *                  and the separately certified {@code autonomous_discharge}.
+     * @param mode      the precise execution path, including {@code idle_follow},
+     *                  the bounded {@code high_soc_follow}, and the separately
+     *                  certified {@code autonomous_discharge}.
      * @param direction {@code deepen|reduce}, only for {@code follow}.
      * @param plannedKw the setpoint BEFORE the correction.
      * @param targetKw  the MEASURED value the correction tracks (house deficit
-     *                  for {@code follow}, PV surplus for {@code trim}).
+     *                  for follower modes, PV surplus for {@code trim}/{@code absorb}).
      */
     public record Execution(String source, String mode, String direction,
             Double plannedKw, Double targetKw, Double effectiveFloorSocPct,

@@ -28,15 +28,15 @@ import java.util.UUID;
  *       (self-consumption fallback, a v2 desired holding the battery,
  *       calibration) into {@code default}, so it must never be rendered as
  *       "the built-in safety rule is running".
- *   <li>{@code executionMode} - the PRECISE reason
- *       ({@code plan|follow|trim|fallback}).
+ *   <li>{@code executionMode} - the PRECISE reason, including the portable
+ *       idle follower, bounded full-battery relief and certified native mode.
  *   <li>{@code executionDirection} - {@code deepen|reduce}, only for
  *       {@code follow}: the discharge was RAISED to cover the house, or
  *       LIMITED to what it needs. Both are deliberate; an unnamed correction
  *       reads as a defect.
  *   <li>{@code executionPlannedKw} - the setpoint BEFORE the correction.
  *   <li>{@code executionTargetKw} - the MEASURED value it tracks (house
- *       deficit for {@code follow}, PV surplus for {@code trim}).
+ *       deficit for follower modes, PV surplus for trim/absorb).
  * </ul>
  *
  * <p>All five are null for an older edge (and the target also when the device

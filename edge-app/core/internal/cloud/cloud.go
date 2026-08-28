@@ -1189,6 +1189,8 @@ type ExecutionSummary struct {
 	//	"trim"     - price-aware in-slot trim (guards.PriceTrimmer)
 	//	"absorb"   - in-slot surplus absorption (guards.SurplusCharger): the
 	//	             commanded CHARGE was RAISED to the measured PV surplus
+	//	"high_soc_follow" - bounded full-battery relief: an otherwise idle
+	//	             battery covers the house only inside its small top band
 	//	"autonomous_discharge" - NATIVE SELF-REGULATION: in a covering slot the
 	//	             setpoint was handed back to the inverter, which now decides
 	//	             its own watts. Reported ONLY once the device has CONFIRMED
@@ -1202,7 +1204,9 @@ type ExecutionSummary struct {
 	Mode string `json:"mode"`
 	// Direction is guards.FollowDeepen ("deepen", the discharge was RAISED to
 	// cover the house) or guards.FollowReduce ("reduce", it was LIMITED to what
-	// the house needs). Only set for mode "follow".
+	// the house needs). Set by follower modes; older APIs may retain it only for
+	// the established "follow" mode, so customer wording never depends on it for
+	// the two idle-start modes.
 	Direction string `json:"direction,omitempty"`
 	// PlannedKw is the setpoint BEFORE the correction - what the plan/holder
 	// asked for, so the portal can show plan and execution side by side instead

@@ -1956,6 +1956,7 @@ export type ExecutionMode =
   | 'absorb'
   | 'fallback'
   | 'idle_follow'
+  | 'high_soc_follow'
   | 'autonomous_discharge';
 
 /** `deepen` = Entladung angehoben, `reduce` = Entladung begrenzt. */
@@ -1988,11 +1989,11 @@ export interface ControlStatus {
   executionMode?: ExecutionMode | null;
   /** Nur bei `follow`: angehoben (`deepen`) oder begrenzt (`reduce`). */
   executionDirection?: ExecutionDirection | null;
-  /** Der Sollwert VOR der Korrektur (nur follow/trim). */
+  /** Der Sollwert VOR einer In-Slot-Korrektur. */
   executionPlannedKw?: number | null;
   /**
-   * Der GEMESSENE Wert, dem die Korrektur folgt — Hausbedarf bei `follow`,
-   * PV-Überschuss bei `trim`. Null, wenn das Gerät ihn nicht messen konnte
+   * Der GEMESSENE Wert, dem die Korrektur folgt — verbleibender Hausbedarf bei
+   * den Follower-Modi, PV-Überschuss bei `trim`/`absorb`. Null, wenn das Gerät ihn nicht messen konnte
    * (es regelt nie blind und meldet nie blind) — nie eine erfundene 0.
    */
   executionTargetKw?: number | null;

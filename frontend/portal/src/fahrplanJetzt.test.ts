@@ -197,6 +197,29 @@ describe('jetztHeld · unerwarteter Verbrauch in geplanter Ruhe', () => {
     expect(v.tone).toBe('warn');
   });
 
+  it('zeigt beim 94%-Fall die Vollakku-Entlastung samt enger 90%-Grenze', () => {
+    const v = jetztHeld(input({
+      slot: idle({ unplannedLoadDischarge: false }),
+      snapshot: snap({ pvKw: .9, loadKw: 5, gridKw: 0, battKw: -4.1, socPct: 94 }),
+      control: status({
+        commandedKw: -4.1,
+        confirmedKw: -4.1,
+        executionMode: 'high_soc_follow',
+        executionPlannedKw: 0,
+        executionTargetKw: 4.1,
+        executionFloorSocPct: 90,
+        executionMeasurementsFresh: true,
+      }),
+    }));
+    expect(v.state).toBe('angepasst');
+    expect(v.status).toBe('Fast voller Speicher · deckt Verbrauch live bis 90 %');
+    expect(v.adjust).toContain('nahezu voll');
+    expect(v.chips).toEqual(expect.arrayContaining([
+      { label: 'Reserveboden', value: `90${NBSP}%` },
+      { label: 'Ausführung', value: 'Vollakku-Entlastung' },
+    ]));
+  });
+
   it('nennt Reserve oder Gerätezustand bei bindender Grenze und bei verlorener Frische', () => {
     const reserve = jetztHeld(input({
       slot: idle({ slotFlags: ['reserve_backup'] }),

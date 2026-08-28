@@ -258,6 +258,9 @@ type FollowInfo struct {
 	// follows; nil when unknown (then the correction would be inactive anyway -
 	// never regulate blind).
 	DeficitKw *float64 `json:"deficit_kw,omitempty"`
+	// FloorSocPct is the floor this correction actually applied. It differs
+	// from the run-level reserve only for the full-battery top-band rule.
+	FloorSocPct *float64 `json:"floor_soc_pct,omitempty"`
 }
 
 // AbsorbInfo is the UI-facing state of the in-slot surplus absorption: the cloud

@@ -482,7 +482,8 @@ function unplannedLoadStatus(
 ): UnplannedStatus | null {
   const mode = control?.executionMode ?? null;
   const checkedAge = control ? input.now.getTime() - new Date(control.checkedAt).getTime() : Infinity;
-  const active = (mode === 'idle_follow' || mode === 'autonomous_discharge') &&
+  const active = (mode === 'idle_follow' || mode === 'high_soc_follow' ||
+    mode === 'autonomous_discharge') &&
     control?.executionMeasurementsFresh === true && control.allMatch &&
     control.controlEnabled && control.certified && checkedAge >= 0 && checkedAge <= 30_000;
   const gridKw = num(input.snapshot?.gridKw);
@@ -501,7 +502,11 @@ function unplannedLoadStatus(
     control?.executionMeasurementsFresh === false;
 
   let status: string;
-  if (active && floor != null) {
+  if (active && mode === 'high_soc_follow' && floor != null) {
+    status = `Fast voller Speicher · deckt Verbrauch live bis ${fmtNum(floor, '', 0)} %`;
+  } else if (active && mode === 'high_soc_follow') {
+    status = 'Fast voller Speicher · deckt Verbrauch live aus dem oberen Puffer';
+  } else if (active && floor != null) {
     status = `Unerwarteter Verbrauch · Speicher deckt live bis ${fmtNum(floor, '', 0)} % Reserve`;
   } else if (active) {
     status = 'Unerwarteter Verbrauch · Speicher deckt live bis zur Reserve';
@@ -521,7 +526,9 @@ function unplannedLoadStatus(
     label: 'Ausführung',
     value: mode === 'autonomous_discharge'
       ? 'Wechselrichter-Automatik'
-      : mode === 'idle_follow' ? '10-Sekunden-Nachführung' : 'noch nicht aktiv',
+      : mode === 'idle_follow'
+        ? '10-Sekunden-Nachführung'
+        : mode === 'high_soc_follow' ? 'Vollakku-Entlastung' : 'noch nicht aktiv',
   });
   chips.push({ label: 'Messung', value: input.snapshotFresh ? 'frisch' : 'veraltet' });
   chips.push({ label: 'Rücklesen', value: control?.allMatch ? 'bestätigt' : 'nicht bestätigt' });
@@ -559,7 +566,8 @@ function resolveState(
   const mode = input.control?.executionMode ?? null;
   if (mode === 'fallback') return 'sicherung';
   if (mode === 'follow' || mode === 'trim' || mode === 'absorb' ||
-      mode === 'idle_follow' || mode === 'autonomous_discharge') return 'angepasst';
+      mode === 'idle_follow' || mode === 'high_soc_follow' ||
+      mode === 'autonomous_discharge') return 'angepasst';
   // Ohne den präzisen Modus (ältere Edge-Version) bleibt die GROBE Wahrheit:
   // das Gerät sagt, dass kein Fahrplan es steuert. Das reicht, um „läuft wie
   // vorgesehen" NICHT zu behaupten — aber NICHT, um die Ursache zu benennen

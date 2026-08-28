@@ -121,9 +121,11 @@ describe('flowConflictCandidate · Vorzeichen und die zwei Auslöser', () => {
     expect(c).toBeNull();
   });
 
-  it('schweigt in einem NACHFÜHRUNGS-Modus (follow/trim/absorb ist die Regel)', () => {
-    for (const mode of ['follow', 'trim', 'absorb'] as const) {
-      expect(flowConflictCandidate(pilsting({ executionMode: mode as never }))).toBeNull();
+  it('schweigt in einem NACHFÜHRUNGS-Modus (inkl. Vollakku-Entlastung)', () => {
+    for (const mode of [
+      'follow', 'trim', 'absorb', 'idle_follow', 'high_soc_follow', 'autonomous_discharge',
+    ] as const) {
+      expect(flowConflictCandidate(pilsting({ executionMode: mode }))).toBeNull();
     }
     // 'plan'/'fallback' schließen den Abgleich NICHT aus.
     expect(flowConflictCandidate(pilsting({ executionMode: 'plan' }))).not.toBeNull();
@@ -172,8 +174,10 @@ describe('flowConflictCandidate · der PAUSEN-Fall (commanded ≈ 0, fließt abe
   });
 
   it('schweigt in einem NACHFÜHRUNGS-Modus auch bei Pause', () => {
-    for (const mode of ['follow', 'trim', 'absorb'] as const) {
-      expect(flowConflictCandidate(pause({ executionMode: mode as never }))).toBeNull();
+    for (const mode of [
+      'follow', 'trim', 'absorb', 'idle_follow', 'high_soc_follow', 'autonomous_discharge',
+    ] as const) {
+      expect(flowConflictCandidate(pause({ executionMode: mode }))).toBeNull();
     }
   });
 

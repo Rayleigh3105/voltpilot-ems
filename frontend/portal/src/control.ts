@@ -217,6 +217,7 @@ export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
   absorb: 'Überschuss-Aufnahme',
   fallback: 'Eingebaute Sicherung',
   idle_follow: 'Live-Lastnachführung',
+  high_soc_follow: 'Vollakku-Entlastung',
   autonomous_discharge: 'Wechselrichter-Automatik',
 };
 
@@ -242,6 +243,7 @@ export function executionNote(status: ControlStatus | null): string | null {
   const planned = num(status.executionPlannedKw);
   const target = num(status.executionTargetKw);
   const plannedPart = planned == null ? '' : `Der Fahrplan sah ${absKw(planned)} vor — `;
+  const measured = target == null ? '' : ` (${absKw(target)})`;
 
   if (mode === 'fallback') {
     return (
@@ -260,12 +262,16 @@ export function executionNote(status: ControlStatus | null): string | null {
     return `${plannedPart}Ihr Gerät nimmt gerade den gemessenen Solar-Überschuss auf.`;
   }
   if (mode === 'idle_follow' || mode === 'autonomous_discharge') {
-    const measured = target == null ? '' : ` (${absKw(target)})`;
     const path = mode === 'idle_follow' ? 'der 10-Sekunden-Nachführung' : 'der Wechselrichter-Automatik';
     return `${plannedPart}Unerwarteter Verbrauch wird live mit ${path}${measured} gedeckt.`;
   }
+  if (mode === 'high_soc_follow') {
+    return (
+      `${plannedPart}Der Speicher ist nahezu voll. VoltPilot deckt den nach Solar verbleibenden ` +
+      `Verbrauch${measured} jetzt aus dem Speicher und schafft nur ein kleines oberes Pufferfenster.`
+    );
+  }
   // follow
-  const measured = target == null ? '' : ` (${absKw(target)})`;
   if (status.executionDirection === 'reduce') {
     return (
       `${plannedPart}Ihr Haus braucht gerade weniger. Die Entladung wurde auf den ` +

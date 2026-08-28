@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ControlStatus } from './api';
 import {
+  EXECUTION_MODE_LABEL,
   OHNE_LADESTAND_SATZ,
   PV_CLARIFICATION,
   batteryDirection,
@@ -470,6 +471,21 @@ describe('executionNote', () => {
     const note = executionNote(status({ executionMode: 'fallback' }))!;
     expect(note).toContain('Sicherung');
     expect(note).toContain('kein aktueller Fahrplan');
+  });
+
+  it('names the bounded full-battery correction instead of pretending it was an economic grant', () => {
+    const note = executionNote(
+      status({
+        executionMode: 'high_soc_follow',
+        executionPlannedKw: 0,
+        executionTargetKw: 4.1,
+        executionFloorSocPct: 90,
+      }),
+    )!;
+    expect(note).toContain('nahezu voll');
+    expect(note).toContain('4,1');
+    expect(note).toContain('kleines oberes Pufferfenster');
+    expect(EXECUTION_MODE_LABEL.high_soc_follow).toBe('Vollakku-Entlastung');
   });
 
   it('claims nothing for an uncorrected slot or an older edge', () => {

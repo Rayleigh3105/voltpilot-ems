@@ -109,6 +109,22 @@ func TestIdleFollowerReportsOnlyWhileItActuallyCorrects(t *testing.T) {
 	}
 }
 
+func TestFullBatteryFollowerReportsItsOwnModeAndTighterFloor(t *testing.T) {
+	runFloor, topBandFloor, deficit := 35.0, 90.0, 4.1
+	active := state.Snapshot{
+		Mode: state.ModeSchedule, Control: confirmedControl(), EffectiveFloorSocPct: &runFloor,
+		Follow: &state.FollowInfo{
+			Active: true, Path: execModeHighSocFollow, Direction: guards.FollowDeepen,
+			PlannedKw: 0, DeficitKw: &deficit, FloorSocPct: &topBandFloor,
+		},
+	}
+	ex := controlSummary(active).Execution
+	if ex == nil || ex.Mode != execModeHighSocFollow || ex.EffectiveFloorSocPct == nil ||
+		*ex.EffectiveFloorSocPct != topBandFloor {
+		t.Fatalf("full-battery execution must carry its real bounded floor: %+v", ex)
+	}
+}
+
 func TestIdleFollowerRequiresFreshHeldReadback(t *testing.T) {
 	now := time.Date(2026, 8, 25, 10, 0, 30, 0, time.UTC)
 	held := &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now.Add(-10 * time.Second)}

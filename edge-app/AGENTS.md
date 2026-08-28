@@ -4166,6 +4166,22 @@ Wechselrichters. **Kein Vertragsfeld** — die Wolke sagt längst, OB Decken
   der Nachführung, und der Rücklese-`mode` behauptet NIE einen Zustand, in dem
   das Gerät nicht ist).
 
+## Vollakku-Entlastung: die obersten 5 Prozentpunkte sind kein Schauakku
+
+Der Pilsting-Fall 28.08.2026 ist in `core/internal/guards/highsoc.go` als enge,
+zustandsbehaftete Freigabe vor dem bestehenden `LoadFollower` umgesetzt. Bei
+einem wirklich ruhenden, frischen Plan und gemessenem Netzbezug greift sie erst
+ab `soc_max - 1`, hält dann hysteretisch bis `max(soc_max - 5,
+effective_floor)` und startet ausschließlich über den zertifizierten,
+bestätigten Exakt-Sollwertpfad. Sie darf nie einen Lade-/Verkaufsbefehl drehen,
+nie eine Anlagenpause/einen fremden Holder überstimmen, nie mit alten oder
+unvollständigen Messwerten regeln und nie den vollständigen Reserve-Stack
+unterschreiten. Der native Modus bleibt absichtlich aus: dessen ökonomischer
+Boden wäre für diese kleine Vertrauenszone zu tief. Heartbeat/API/Portal nennen
+die Wahrheit als `high_soc_follow` / „Vollakku-Entlastung“ und tragen den
+tatsächlich angewendeten engeren Boden. Der gemeinsame Regressionsvektor ist
+94 % SoC, 0,9 kW PV, 5,0 kW Last -> -4,1 kW Batterie / 0 Netz bis 90 %.
+
 ## Ein Messpunkt wird ueber SEINE Komponente gelesen (Geraeteseite Stufe 3c)
 
 Cloud-Seite, Kontrakt und die Server-Haelfte: root `CLAUDE.md` „Mess-Selektion

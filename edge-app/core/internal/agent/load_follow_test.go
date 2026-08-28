@@ -122,6 +122,75 @@ func TestAuthorizedIdleSlotCoversScreenshotAThenReportsScreenshotBNeutral(t *tes
 	}
 }
 
+// The customer-trust regression from 28.08.2026: the economic plan deliberately
+// held the battery for later, but the cockpit showed 94 % SoC next to 4.1 kW
+// grid import (PV 0.9 / house 5.0). Near the configured 95 % ceiling the small
+// top band must cover that load even when the economic unplanned flag is false;
+// it must stop again at 90 %, preserving the rest for the optimizer.
+func TestNearlyFullBatteryCoversIdleImportOnlyInsideItsSmallTopBand(t *testing.T) {
+	a, addr := followAgentAddr(t)
+	sub := subscribeSetpoint(t, addr)
+	now := time.Date(2026, 8, 28, 14, 51, 0, 0, time.UTC)
+	yes, floor := true, 35.0
+	a.mu.Lock()
+	a.currentPlan = &plan.Plan{
+		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
+		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		Slots: []plan.Slot{{
+			Start: now, BatterySetpointKw: 0,
+			// The optimizer explicitly valued later use more highly. This is
+			// the exact path the high-SoC rule exists to bound.
+			UnplannedLoadDischarge: false,
+		}},
+	}
+	a.lastReading = guards.Reading{
+		SocPct: 94, PvKw: .9, LoadKw: 5.0, GridLimitKw: guards.Unknown(),
+	}
+	a.lastReadingAt = now
+	a.mu.Unlock()
+	a.State.Update(func(s *state.Snapshot) {
+		s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
+	})
+
+	a.applySetpoint(now)
+	waitFor(t, 5*time.Second, "the 94%-battery correction", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == -4.1
+	})
+	snap := a.State.Get()
+	if snap.Follow == nil || snap.Follow.Path != execModeHighSocFollow || !snap.Follow.Active {
+		t.Fatalf("full-battery execution evidence = %+v", snap.Follow)
+	}
+	if snap.Follow.FloorSocPct == nil || *snap.Follow.FloorSocPct != 90 {
+		t.Fatalf("top-band floor = %+v, want 90%%", snap.Follow.FloorSocPct)
+	}
+	if ex := controlSummary(snap).Execution; ex == nil || ex.Mode != execModeHighSocFollow ||
+		ex.EffectiveFloorSocPct == nil || *ex.EffectiveFloorSocPct != 90 {
+		t.Fatalf("heartbeat must name the bounded correction and its real floor: %+v", ex)
+	}
+	if grid := 5.0 + snap.SetpointKw - .9; math.Abs(grid) > .001 {
+		t.Fatalf("grid = %.3f kW, want zero", grid)
+	}
+
+	// Same idle slot, but the five-point top band is spent. No economic grant
+	// exists, so the optimizer gets the remaining energy back immediately.
+	atFloor := now.Add(10 * time.Second)
+	a.mu.Lock()
+	a.lastReading.SocPct = 90
+	a.lastReadingAt = atFloor
+	a.mu.Unlock()
+	a.State.Update(func(s *state.Snapshot) { s.Control.CheckedAt = atFloor })
+	a.applySetpoint(atFloor)
+	waitFor(t, 5*time.Second, "top-band release", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == 0.0
+	})
+	if snap := a.State.Get(); snap.Follow != nil || snap.SetpointKw != 0 {
+		t.Fatalf("top band must release back to the optimizer: setpoint=%v follow=%+v",
+			snap.SetpointKw, snap.Follow)
+	}
+}
+
 func TestMarkedSlotCoversTheMeasuredHouseAndSaysWhy(t *testing.T) {
 	a := followAgent(t)
 	now := time.Date(2026, 7, 30, 21, 22, 48, 0, time.UTC)

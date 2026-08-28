@@ -106,6 +106,10 @@ type Agent struct {
 	// covered from the grid (guards.LoadFollower - the discharge-side mirror of
 	// trim; the edge enforces, the cloud priced).
 	follow *guards.LoadFollower
+	// highSoc carries the hysteresis of the narrow full-battery trust rule. It
+	// opens only a small top band for load coverage when an otherwise idle,
+	// nearly-full battery would visibly buy from the grid.
+	highSoc *guards.HighSocRelief
 	// absorb holds the hysteresis of the in-slot surplus absorption: in a slot the
 	// cloud marked charge_surplus_to_battery the commanded CHARGE is RAISED to the
 	// MEASURED PV surplus, so a surplus the 15-min forecast never saw is stored
@@ -194,7 +198,6 @@ type Agent struct {
 	// exportLogKey deduplicates the feed-in watchdog's log line: it is written on
 	// a state CHANGE, never per tick (the OTA-blocker lesson).
 	exportLogKey string
-
 
 	// OCPP charge points (agent/ocpp.go). nil while VP_OCPP_ENABLED is off,
 	// which is the default - the box then behaves byte-for-byte as it did
@@ -571,6 +574,7 @@ func New(cfg config.Config) (*Agent, error) {
 		peak:         guards.NewPeakTracker(),
 		trim:         guards.NewPriceTrimmer(),
 		follow:       guards.NewLoadFollower(),
+		highSoc:      guards.NewHighSocRelief(),
 		absorb:       guards.NewSurplusCharger(),
 		export:       guards.NewExportLimiter(),
 		despikeStore: ds,
@@ -1506,7 +1510,6 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	}
 	a.mu.Unlock()
 
-
 	// Feed the PS-3 peak tracker with the gated composite site grid (a despiked
 	// channel already carries its last accepted value, so a spike can never
 	// poison the quarter mean). A sample without power_kw feeds nothing - the
@@ -1809,6 +1812,7 @@ const (
 	execModePlan                = "plan"
 	execModeFollow              = "follow"
 	execModeIdleFollow          = "idle_follow"
+	execModeHighSocFollow       = "high_soc_follow"
 	execModeAutonomousDischarge = "autonomous_discharge"
 	execModeTrim                = "trim"
 	execModeAbsorb              = "absorb"
@@ -1854,13 +1858,19 @@ func executionSummary(snap state.Snapshot) *cloud.ExecutionSummary {
 		mode := execModeFollow
 		if f.Path == execModeIdleFollow {
 			mode = execModeIdleFollow
+		} else if f.Path == execModeHighSocFollow {
+			mode = execModeHighSocFollow
+		}
+		floor := snap.EffectiveFloorSocPct
+		if f.FloorSocPct != nil {
+			floor = f.FloorSocPct
 		}
 		return &cloud.ExecutionSummary{
 			Mode:                 mode,
 			Direction:            f.Direction,
 			PlannedKw:            copyFloat(&f.PlannedKw),
 			DeficitKw:            copyFloat(f.DeficitKw),
-			EffectiveFloorSocPct: copyFloat(snap.EffectiveFloorSocPct),
+			EffectiveFloorSocPct: copyFloat(floor),
 			MeasurementsFresh:    true,
 		}
 	}
@@ -2292,10 +2302,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 	if a.calibrationOverride(now, r, limits) {
 		// A bounded First-Light write owns the inverter for its TTL, so no
 		// economic execution mode may carry an armed state across it.
+		a.highSoc.Release()
 		a.native.Release()
 		return
 	}
-
 
 	var (
 		kw            float64
@@ -2380,6 +2390,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		})
 		a.trim.Release()
 		a.follow.Release()
+		a.highSoc.Release()
 		a.absorb.Release()
 		a.native.Release()
 		return
@@ -2483,12 +2494,15 @@ func (a *Agent) applySetpoint(now time.Time) {
 		freshWindow = 30 * time.Second
 	}
 	measurementFresh := !readingAt.IsZero() && !now.Before(readingAt) && now.Sub(readingAt) <= freshWindow
-	unplanned := marketCorrectionsAllowed && p.ActiveUnplannedLoadDischarge(now)
+	coverLoad := marketCorrectionsAllowed && p.ActiveCoverLoadFromBattery(now)
+	economicUnplannedRequested := marketCorrectionsAllowed && p.ActiveUnplannedLoadDischarge(now)
+	portableReady := false
 	// This additive economic permission belongs exclusively to an idle MARKET
 	// slot. The shared marketCorrectionsAllowed boundary above protects both it
 	// and the established cover_load_from_battery follower from every non-plan
 	// holder and from the owner-claim transition race.
-	if unplanned {
+	if economicUnplannedRequested ||
+		(marketCorrectionsAllowed && p.Fresh(now) && !coverLoad) {
 		// The new authority starts a discharge, so unlike the established
 		// magnitude-only follower it also requires a recent independently held
 		// Layer-1 readback. Lost/mismatching/unconfirmed inverter communication
@@ -2500,15 +2514,43 @@ func (a *Agent) applySetpoint(now time.Time) {
 			familyForIdle = a.inv.Family
 		}
 		a.invMu.Unlock()
-		unplanned = a.Cfg.ControlEnabled && a.controlCertified(familyForIdle) && readbackHealthy
+		portableReady = a.Cfg.ControlEnabled && a.controlCertified(familyForIdle) && readbackHealthy
 	}
+	economicUnplanned := economicUnplannedRequested && portableReady
+
+	// FULL-BATTERY TRUST RULE: optimization may deliberately hold an idle
+	// battery for a more valuable later slot. That is reasonable in the middle
+	// of the usable band, but at the configured ceiling it produces the customer-
+	// visible contradiction "94 % battery + 4.1 kW import". Open only a small
+	// top band there; the stateful rule engages within one point of the ceiling,
+	// composes with the FULL cloud reserve and releases on every missing fact.
+	// It never reinterprets a planned charge/discharge and never enters the
+	// native device mode, whose lower economic reserve would be too permissive.
+	highSoc := a.highSoc.Decide(guards.HighSocInput{
+		Eligible: marketCorrectionsAllowed && p.Fresh(now) && !coverLoad &&
+			!economicUnplannedRequested && portableReady,
+		MeasurementsFresh: measurementFresh,
+		CommandKw:         kw,
+		SocPct:            r.SocPct,
+		SocMaxPct:         limits.SocMaxPct,
+		EffectiveFloorPct: effectiveFloor,
+		PvKw:              r.PvKw,
+		LoadKw:            r.LoadKw,
+	})
+	unplanned := economicUnplanned || highSoc.Active
 	floor := peakReserve
 	if effectiveFloor != nil {
 		floor = effectiveFloor
 	}
+	if highSoc.Active {
+		floor = highSoc.FloorPct
+	}
 	followed := a.follow.ApplyAuthorized(now, kw,
-		marketCorrectionsAllowed && p.ActiveCoverLoadFromBattery(now),
+		coverLoad,
 		unplanned, floor, measurementFresh, limits, r)
+	if highSoc.Active && followed.Active {
+		followed.Path = execModeHighSocFollow
+	}
 	kw = followed.Kw
 
 	// In-slot SURPLUS ABSORPTION (2026-08-02, the charge-side counterpart that
@@ -2827,6 +2869,10 @@ func followSnapshot(f guards.FollowResult) *state.FollowInfo {
 	if !math.IsNaN(f.DeficitKw) {
 		v := math.Round(f.DeficitKw*1000) / 1000
 		info.DeficitKw = &v
+	}
+	if f.FloorSocPct != nil {
+		v := math.Round(*f.FloorSocPct*1000) / 1000
+		info.FloorSocPct = &v
 	}
 	return info
 }

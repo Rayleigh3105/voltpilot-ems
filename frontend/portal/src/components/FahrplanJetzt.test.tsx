@@ -106,7 +106,7 @@ describe('JetztHeld', () => {
     const status = screen.getByRole('status');
     expect(status).toHaveAttribute('aria-live', 'polite');
     expect(screen.getByText('Wechselrichter-Automatik')).toBeInTheDocument();
-    expect(screen.queryByText(/autonomous_discharge|idle_follow|exception|stack|SQLSTATE/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/autonomous_discharge|idle_follow|high_soc_follow|exception|stack|SQLSTATE/i)).not.toBeInTheDocument();
     // Die reine Statusfläche führt weder am Desktop noch mobil einen neuen
     // Tastaturstopp ein; ihre Änderung erreicht Screenreader über aria-live.
     expect(container.querySelectorAll('button, a, input, select, textarea, [tabindex]')).toHaveLength(0);

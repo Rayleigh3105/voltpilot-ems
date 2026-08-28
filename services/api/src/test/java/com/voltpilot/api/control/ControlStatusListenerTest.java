@@ -125,6 +125,20 @@ class ControlStatusListenerTest {
         assertThat(ex.measurementsFresh()).isTrue();
     }
 
+    /** The full-battery override is distinct and carries its tighter top-band floor. */
+    @Test
+    void highSocFollowerCarriesItsBoundedFloorWithoutInventingADirection() {
+        var ex = ingest("{" + BASE + ",\"execution\":{\"mode\":\"high_soc_follow\"," +
+                "\"planned_kw\":0,\"deficit_kw\":4.1,\"effective_floor_soc_pct\":90," +
+                "\"measurements_fresh\":true}}", "schedule");
+
+        assertThat(ex.mode()).isEqualTo("high_soc_follow");
+        assertThat(ex.direction()).isNull();
+        assertThat(ex.targetKw()).isEqualTo(4.1);
+        assertThat(ex.effectiveFloorSocPct()).isEqualTo(90);
+        assertThat(ex.measurementsFresh()).isTrue();
+    }
+
     /** An uncorrected slot and the built-in rule are two different statements. */
     @Test
     void planAndFallbackAreStoredWithoutCorrectionDetail() {
