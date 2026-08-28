@@ -626,7 +626,7 @@ describe('GeraetSeiteSection', () => {
       brand: 'fronius', model: 'eco-27', family: 'sunspec_live',
       communication: 'fronius_sunspec',
       connection: { ip: '192.168.254.30', port: 502, unit_id: 1 },
-      templateRef: 'builtin:fronius:eco-27', definitionVersion: 3,
+      templateRef: 'builtin:fronius:eco-27', templateVersion: 1, definitionVersion: 3,
       edgeSourceId: 'src-7c1e9a2b', syncStatus: 'in_sync', capacityKwp: 27,
     };
     const rowB = {
