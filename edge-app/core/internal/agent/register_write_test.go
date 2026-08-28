@@ -123,7 +123,7 @@ func TestThePortalTriggerPreviewsThenWritesOnceThroughTheSharedCore(t *testing.T
 	if preview.AfterRaw != nil || preview.Adopted != nil {
 		t.Fatalf("eine Vorschau hat kein Nachher und kein Urteil: %+v", preview)
 	}
-	if got := <-seen; got.Mode != "dry_run" || got.Addr != 0x00e7 {
+	if got := <-seen; got.Mode != "dry_run" || got.Addr != 0x00e7 || got.Value != 0 {
 		t.Fatalf("der Bus-Auftrag war kein Probelauf auf 0x00e7: %+v", got)
 	}
 

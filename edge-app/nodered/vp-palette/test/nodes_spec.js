@@ -452,20 +452,38 @@ describe('shaping (pure)', function () {
     assert.strictEqual(vpTestRequest.parse(Buffer.from(JSON.stringify({ request_id: 'x', connection: {} }))), null); // no ip
   });
 
-  it('vp-installer-write-request admits ONLY 0x00E7 and only 1..7000', function () {
-    const ok = vpInstallerWriteRequest.parse(Buffer.from(JSON.stringify({
-      request_id: 'iw-1', mode: 'apply', register: '0x00e7', addr: 0x00e7, value: 7000,
+  it('vp-installer-write-request admits the portal expert form and a valueless dry read', function () {
+    // EXACT production regression: `lesen` has no value in the cloud contract;
+    // the Core's local-bus adapter emits value=0. The old 1..7000 check dropped
+    // this silently and every portal read ended in the Core's 30-s timeout.
+    const dry = vpInstallerWriteRequest.parse(Buffer.from(JSON.stringify({
+      request_id: 'iw-read', mode: 'dry_run', register: '0x00e7',
+      kind: 'holding', addr: 0x00e7, value: 0,
     })));
-    assert.strictEqual(ok.value, 7000);
-    assert.strictEqual(vpInstallerWriteRequest.ALLOWED_ADDR, 0x00e7);
-    assert.strictEqual(vpInstallerWriteRequest.MAX_VALUE, 7000);
-    // ⚠ The node refuses on its OWN, without trusting the core: a generic
-    // register write must be impossible here even if the caller asks for one.
+    assert.strictEqual(dry.value, 0);
+    const valueless = vpInstallerWriteRequest.parse(Buffer.from(JSON.stringify({
+      request_id: 'iw-read-free', mode: 'dry_run', kind: 'holding', addr: 0x1234,
+    })));
+    assert.strictEqual(valueless.addr, 0x1234);
+
+    // The portal expert scope deliberately admits every holding-register word;
+    // the narrow 0x00E7/7000 policy still lives at the local :8484 adapter.
+    const apply = vpInstallerWriteRequest.parse(Buffer.from(JSON.stringify({
+      request_id: 'iw-apply', mode: 'apply', kind: 'holding', addr: 0x1234, value: 0,
+    })));
+    assert.strictEqual(apply.value, 0);
+    assert.strictEqual(vpInstallerWriteRequest.MAX_REGISTER_WORD, 0xffff);
+
     const bad = [
-      { request_id: 'x', mode: 'apply', addr: 0x0028, value: 100 },   // another register
-      { request_id: 'x', mode: 'apply', addr: 0x00e7, value: 7001 },  // above the ceiling
-      { request_id: 'x', mode: 'apply', addr: 0x00e7, value: 0 },     // "0 is not a raise"
-      { request_id: 'x', mode: 'apply', addr: 0x00e7, value: 1.5 },   // not a register word
+      { request_id: 'x', mode: 'apply', addr: -1, value: 100 },       // address below word
+      { request_id: 'x', mode: 'apply', addr: 0x10000, value: 100 },  // address above word
+      { request_id: 'x', mode: 'apply', addr: 1.5, value: 100 },      // fractional address
+      { request_id: 'x', mode: 'apply', addr: 0x00e7 },               // apply needs a value
+      { request_id: 'x', mode: 'apply', addr: 0x00e7, value: -1 },    // value below word
+      { request_id: 'x', mode: 'apply', addr: 0x00e7, value: 65536 }, // value above word
+      { request_id: 'x', mode: 'apply', addr: 0x00e7, value: 1.5 },   // fractional value
+      { request_id: 'x', mode: 'dry_run', addr: 0x00e7, value: '0' },// malformed preview
+      { request_id: 'x', mode: 'dry_run', kind: 'coil', addr: 1 },    // Solarman is holding-only
       { request_id: 'x', mode: 'schreib', addr: 0x00e7, value: 100 }, // unknown stage
       { mode: 'apply', addr: 0x00e7, value: 100 },                    // uncorrelatable
     ];
@@ -905,7 +923,7 @@ describe('nodes against a local-bus stand-in', function () {
     });
   });
 
-  it('vp-installer-write-request emits the one-shot write order (and drops an inadmissible one)', function (done) {
+  it('vp-installer-write-request emits a valueless dry read (and drops a malformed order)', function (done) {
     const flow = coreFlow([
       { id: 'iwr1', type: 'vp-installer-write-request', core: 'core1', wires: [['h1']] },
       { id: 'h1', type: 'helper' },
@@ -917,13 +935,14 @@ describe('nodes against a local-bus stand-in', function () {
       const pub = mqtt.connect('mqtt://127.0.0.1:' + port);
       pub.on('connect', function () {
         setTimeout(function () {
-          // A foreign register must never reach the flow...
+          // A structurally impossible register word must never reach the flow...
           pub.publish('edge/installer-write/request', JSON.stringify({
-            request_id: 'iw-bad', mode: 'apply', addr: 0x0028, value: 50,
+            request_id: 'iw-bad', mode: 'apply', addr: 0x0028, value: 65536,
           }), { qos: 1, retain: false });
-          // ...while the allowlisted one does.
+          // ...while the exact Core form of a portal preview does.
           pub.publish('edge/installer-write/request', JSON.stringify({
-            request_id: 'iw-ok', mode: 'apply', register: '0x00e7', addr: 0x00e7, value: 7000,
+            request_id: 'iw-ok', mode: 'dry_run', register: '0x00e7',
+            kind: 'holding', addr: 0x00e7, value: 0,
           }), { qos: 1, retain: false }, function () { pub.end(); });
         }, 300);
       });
@@ -931,7 +950,8 @@ describe('nodes against a local-bus stand-in', function () {
         try {
           assert.strictEqual(seen.length, 1, 'exactly the admissible order is emitted');
           assert.strictEqual(seen[0].request_id, 'iw-ok');
-          assert.strictEqual(seen[0].payload.value, 7000);
+          assert.strictEqual(seen[0].payload.mode, 'dry_run');
+          assert.strictEqual(seen[0].payload.value, 0);
           done();
         } catch (e) {
           done(e);

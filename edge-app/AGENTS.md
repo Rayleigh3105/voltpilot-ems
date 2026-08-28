@@ -2739,15 +2739,13 @@ Anheben kostete einen Vor-Ort-Termin. Betreiber-Ablauf + curl-Beispiele:
   Portal-Downlink ist ein ZWEITER ADAPTER neben `InstallerWrite`, kein Umbau:
   er ruft dieselbe Politik und denselben Mechanismus. `WriteOnce` kennt weder
   Allowlist noch HTTP noch das Protokoll.
-- **⚠ Es bleibt KEIN allgemeines Register-Schreib-API - strukturell, nicht per
-  Zusage.** `installerwrite.AdmittedWrite` hat AUSSCHLIESSLICH unexportierte
-  Felder, `Admit` ist der einzige Konstruktor: kein Adapter kann den Mechanismus
-  auf ein Register seiner Wahl richten. Ein weiteres Register ist eine
-  Code-Änderung mit eigenem Review, nie ein Parameter. Der Node-RED-Knoten prüft
-  Adresse und Obergrenze NOCH EINMAL selbst (`vp-installer-write-request.parse`
-  + die eingebettete Kopie von `installerWriteRoute`) - „hier gibt es keinen
-  generischen Schreibweg" ist damit eine Eigenschaft des CODES, keine Aussage
-  über den Aufrufer.
+- **Der enge Umfang bleibt am LOKALEN Trigger.** `installerwrite.AdmittedWrite`
+  hat ausschließlich unexportierte Felder; `Admit` baut für die `:8484`-Taste
+  weiterhin nur `0x00E7` mit dem 7000er-Deckel. Der gemeinsame
+  Node-RED-Transport `vp-installer-write-request` darf diese enge Regel aber
+  NICHT noch einmal anwenden: seit Stufe 2 fährt auch der bereits über
+  `AdmitExpert` geprüfte freie PORTAL-Umfang über denselben Solarman-Socket.
+  Dort wird deshalb nur die gemeinsame 16-Bit-Holding-FORM nachgeprüft.
 - **⚠ Die Familien-Allowlist ist die READ-seitige Ehrlichkeitstabelle**
   (`inverter.ExportLimitRegisterFor`), bewusst KEINE neue: dort ist schon
   kodiert, dass `0x00E7` nur auf `hybrid_3p` eine EIGENSTÄNDIGE Grenze ist,
@@ -3037,6 +3035,16 @@ Geraete-Picker, Warnklassen): root `AGENTS.md`. Was HIER gelten muss:
   Feldern und teilen Bestaetigungs-Token, `expected_before`-Schranke und
   Einmaligkeit WOERTLICH - es gibt weiterhin genau zwei Konstruktoren und keinen
   Weg an ihnen vorbei.
+- **⚠ Ein Probelauf hat KEINEN Schreibwert** (Produktionsbefund 28.08.2026,
+  Palette **0.9.1**): der Cloud-Vertrag verbietet `value` bei `mode=lesen`, der
+  Core serialisiert die Abwesenheit auf dem lokalen Bus als harmlose `0`. Der
+  alte Palette-Eingang prüfte dort noch die enge `:8484`-Regel `1..7000` und
+  verwarf deshalb JEDE Portal-Lesung still; der Core lief nach 30 s in den
+  Timeout, während Beobachtungen über den Poll normal funktionierten.
+  `vp-installer-write-request.parse` akzeptiert jetzt Dry-Runs ohne Wert bzw.
+  mit `0` und den freien Holding-Umfang 0..65535. Gepinnt in `nodes_spec.js`
+  plus `TestThePortalTriggerPreviewsThenWritesOnceThroughTheSharedCore` (der
+  Bus-Auftrag trägt bei der Vorschau ausdrücklich `Value=0`).
 - **DREI LANES, UND DIE ASYMMETRIE IST DIE SICHERHEIT** (`agent.resolveRegisterTarget`):
   `primary` - die Cloud nennt NICHTS, die Box nimmt ihren eigenen konfigurierten
   Wechselrichter; `entity` - die Cloud nennt nur eine Kennung, den Endpunkt loest

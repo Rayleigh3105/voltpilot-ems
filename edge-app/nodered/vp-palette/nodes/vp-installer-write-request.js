@@ -4,12 +4,12 @@
  * the Deye tab can perform it on the SAME socket the poll and the control
  * executor already share.
  *
- * The one register this path exists for is 0x00E7 „Grid Max Export power" - the
- * inverter's own feed-in cap, otherwise reachable only through the installer
- * menu on site. The core has already checked the feature flag, the family
- * allowlist, the value ceiling and the operator's confirm token; this node
- * re-checks address + bound anyway, so „no generic register write exists here"
- * stays a property of the code rather than of the caller.
+ * The core has already admitted the request through one of two policy scopes:
+ * the narrow local :8484 action (0x00E7, 1..7000) or the portal's expert scope
+ * (one free holding register, 0..65535). This transport node therefore checks
+ * the shared STRUCTURE, not the obsolete narrow allowlist a second time. In
+ * particular a dry run carries no write value in the cloud contract; the core
+ * serialises that harmless absence as value=0 on the local bus.
  *
  * ⚠ NON-RETAINED is load-bearing: a write order that reappeared on the next
  * reconnect would be the opposite of a one-shot installer write, and 0x00E7
@@ -23,12 +23,9 @@
 
 const TOPIC = 'edge/installer-write/request';
 
-// The ONE allowlisted register + the value ceiling, duplicated here on purpose:
-// this node must be able to refuse on its own, without trusting its caller.
-// Keep in lockstep with inverter-control-routing.js INSTALLER_WRITE_ADDR/
-// INSTALLER_WRITE_MAX_RAW and Go internal/installerwrite.
-const ALLOWED_ADDR = 0x00e7;
-const MAX_VALUE = 7000;
+// The common expert transport carries one 16-bit holding-register word. The
+// narrower :8484 bounds are policy and have already run before this bus hop.
+const MAX_REGISTER_WORD = 0xffff;
 
 // parse() is exported for unit tests: turn the local-bus JSON into the output
 // message, or null when it is not an admissible installer write.
@@ -42,8 +39,14 @@ function parse(buf) {
   if (obj == null || typeof obj !== 'object' || Array.isArray(obj)) return null;
   if (typeof obj.request_id !== 'string' || obj.request_id === '') return null;
   if (obj.mode !== 'dry_run' && obj.mode !== 'apply') return null;
-  if (obj.addr !== ALLOWED_ADDR) return null;
-  if (!Number.isInteger(obj.value) || obj.value <= 0 || obj.value > MAX_VALUE) return null;
+  if (!Number.isInteger(obj.addr) || obj.addr < 0 || obj.addr > MAX_REGISTER_WORD) return null;
+  if (obj.kind !== undefined && obj.kind !== '' && obj.kind !== 'holding') return null;
+  // A preview writes nothing, so its value is absent by contract (and 0 on the
+  // current Core -> local-bus adapter). Only APPLY requires a register word.
+  if (obj.mode === 'apply' &&
+      (!Number.isInteger(obj.value) || obj.value < 0 || obj.value > MAX_REGISTER_WORD)) return null;
+  if (obj.mode === 'dry_run' && obj.value !== undefined &&
+      (!Number.isInteger(obj.value) || obj.value < 0 || obj.value > MAX_REGISTER_WORD)) return null;
   // The OPTIONAL precondition ("write only while the register still reads X").
   // Absent/null = no expectation; anything that is not a register word is not a
   // precondition and the order is dropped rather than written unguarded.
@@ -97,5 +100,4 @@ module.exports = function (RED) {
 
 module.exports.parse = parse;
 module.exports.TOPIC = TOPIC;
-module.exports.ALLOWED_ADDR = ALLOWED_ADDR;
-module.exports.MAX_VALUE = MAX_VALUE;
+module.exports.MAX_REGISTER_WORD = MAX_REGISTER_WORD;

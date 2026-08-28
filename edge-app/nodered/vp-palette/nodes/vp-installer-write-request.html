@@ -28,10 +28,12 @@
 <script type="text/html" data-help-name="vp-installer-write-request">
   <p>Empfängt vom VoltPilot Core-Agenten den EINMALIGEN Installateur-Schreibauftrag
   auf <code>edge/installer-write/request</code> (nicht retained) und gibt ihn aus.</p>
-  <p>Freigegeben ist AUSSCHLIESSLICH das Deye-Register <code>0x00E7</code>
-  („Grid Max Export power", die Einspeisegrenze des Geräts), Werte 1 bis 7000
-  (= 70,0 kW). Alles andere wird hier verworfen – der Knoten ist bewusst KEIN
-  allgemeiner Registerschreiber.</p>
+  <p>Der Core hat den Auftrag bereits geprüft: lokal gilt weiterhin nur
+  <code>0x00E7</code> mit 1 bis 7000, der Portal-Fachzugang darf genau ein frei
+  gewähltes Holding-Register lesen bzw. nach Vorschau einmal beschreiben. Dieser
+  Knoten prüft die gemeinsame 16-Bit-Form und führt sie über den geteilten
+  Solarman-Socket aus.</p>
   <p><code>msg.payload</code>: <code>{ request_id, mode, register, addr, value }</code>,
-  <code>mode</code> ist <code>dry_run</code> (nur lesen) oder <code>apply</code>.</p>
+  <code>mode</code> ist <code>dry_run</code> (nur lesen, kein Schreibwert nötig)
+  oder <code>apply</code>.</p>
 </script>

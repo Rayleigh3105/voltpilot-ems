@@ -2962,6 +2962,16 @@ bei GENAU EINEM Einmal-Schreib-Kern mit zwei Triggern.
   bauen dieselbe `AdmittedWrite` mit unexportierten Feldern und teilen
   Bestätigungs-Token, `expected_before`-Schranke und Einmaligkeit WÖRTLICH — es
   gibt weiterhin genau zwei Konstruktoren und keinen Weg an ihnen vorbei.
+- **⚠ Produktionsfix 28.08.2026 — die Vorschau trägt keinen Schreibwert.** Der
+  Cloud-Vertrag verbietet `value` bei `mode=lesen`; der Core bildet dessen
+  Abwesenheit auf dem lokalen Bus als `Value=0` ab. Der Solarman-Palette-Knoten
+  hatte nach Einführung der freien Portal-Register noch die alte enge
+  `:8484`-Prüfung `0x00E7 && 1..7000` und ließ deshalb JEDE Portal-Vorschau
+  still fallen — sichtbar als exakt 30-s-Timeout, obwohl Beobachtungen liefen.
+  Seit Palette **0.9.1** prüft `vp-installer-write-request.parse` die gemeinsame
+  Holding-Form 0..65535, akzeptiert Dry-Runs ohne Wert bzw. mit `0` und lässt
+  die zwei unterschiedlichen Umfänge dort, wo sie hingehören: `Admit` (lokal,
+  eng) und `AdmitExpert` (Portal, frei).
 - **DREI LANES, und die ASYMMETRIE ist die Sicherheit:** `primary` — die Cloud
   nennt NICHTS, die Box nimmt ihren eigenen Wechselrichter; `entity` — die Cloud
   nennt nur die Kennung, den Endpunkt löst die Box aus IHRER angewandten
