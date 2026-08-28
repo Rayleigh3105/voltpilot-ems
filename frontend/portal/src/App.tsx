@@ -46,6 +46,7 @@ import { anlagenOptionen } from './anlagenWahl';
 import {
   recordCurrentNavigation,
   recordNewNavigation,
+  replaceCurrentNavigation,
   requestNavigation,
 } from './navigationBlocker';
 import { useFreshnessPoll } from './useFreshnessPoll';
@@ -553,8 +554,7 @@ function UnifiedPortal() {
       canonicalAnlageHash(window.location.hash)
       ?? canonicalPlatformHash(window.location.hash);
     if (canonical) {
-      window.history.replaceState(window.history.state, '', canonical);
-      recordCurrentNavigation();
+      replaceCurrentNavigation(canonical);
     }
   }, [route]);
 
@@ -677,12 +677,7 @@ function UnifiedPortal() {
     const shell = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length };
     const target = canonicalShellRoute({ shell, route, siteIds: sites.map((site) => site.id) });
     if (!target) return;
-    window.history.replaceState(
-      window.history.state,
-      '',
-      canonicalShellHash(target, window.location.hash),
-    );
-    recordCurrentNavigation();
+    replaceCurrentNavigation(canonicalShellHash(target, window.location.hash));
     setRoute(target);
   }, [
     isAdmin,

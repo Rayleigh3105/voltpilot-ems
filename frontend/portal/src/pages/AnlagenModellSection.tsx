@@ -86,6 +86,7 @@ import {
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import { EigeneVorlagenPanel } from '../components/EigeneVorlagenPanel';
 import { AnlegenFlow } from '../components/AnlegenFlow';
+import { replaceCurrentNavigation } from '../navigationBlocker';
 import {
   ablehnungText,
   ohneMesswertHinweis,
@@ -276,7 +277,7 @@ export function AnlagenModellSection({
     setAnsicht(naechste);
     const ziel = zentraleAnsichtHash(site.id, naechste);
     if (typeof window !== 'undefined' && window.location.hash !== ziel) {
-      window.history.replaceState(null, '', ziel);
+      replaceCurrentNavigation(ziel);
     }
   };
 

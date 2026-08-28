@@ -36,6 +36,7 @@ import {
 import { ChartCardSkeleton, EmptyState, ErrorState } from './States';
 import { ChartSubtitle } from './ChartExplain';
 import { VerlaufChart, seriesColor, type VerlaufSelection } from './VerlaufChart';
+import { replaceCurrentNavigation } from '../navigationBlocker';
 
 import './Verlauf.css';
 
@@ -244,7 +245,7 @@ export function VerlaufExplorer({
   const at = isoDate(anchor);
   useEffect(() => {
     if (targets.length === 0) return;
-    window.history.replaceState(null, '', verlaufHash(site.id, targets, range, at));
+    replaceCurrentNavigation(verlaufHash(site.id, targets, range, at));
   }, [site.id, targets, range, at]);
 
   // A V2 cockpit jump changes the hash while this section stays mounted; re-read

@@ -130,6 +130,7 @@ import { geraetView, type GeraetView } from '../adminGeraet';
 import { adminApi } from '../admin/adminApi';
 import { fleetApi } from '../admin/fleetApi';
 import { NO_DATA } from '../nodata';
+import { replaceCurrentNavigation } from '../navigationBlocker';
 import { OcppWallboxPage } from './OcppWallboxPage';
 import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
 import { GeraetRahmen, RahmenSektion } from '../components/GeraetRahmen';
@@ -206,9 +207,11 @@ export function GeraetSeiteSection({
     (d) => d.siteId === site.id && d.externalRef === geraeteRef,
   );
   const [data, setData] = useState<SiteEntities | null>(null);
+  const [entitiesLoadedRequest, setEntitiesLoadedRequest] = useState<string | null>(null);
   const [topology, setTopology] = useState<SiteTopology | null>(null);
   const [sources, setSources] = useState<SiteSource[] | null>(null);
   const [components, setComponents] = useState<SiteComponents | null>(null);
+  const [componentsLoadedRequest, setComponentsLoadedRequest] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editNotice, setEditNotice] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
@@ -258,7 +261,7 @@ export function GeraetSeiteSection({
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
-  const chargingRequest = `${site.id}:${geraeteRef}:${geraetId ?? ''}:${reloadKey}`;
+  const pageRequest = `${site.id}:${geraeteRef}:${geraetId ?? ''}:${reloadKey}`;
 
   // Ein offener Namensdialog gehört zur adressierten Säule. Bei einem
   // Gerätewechsel darf er nie mit dem Ziel der neuen Route wieder auftauchen.
@@ -267,16 +270,28 @@ export function GeraetSeiteSection({
     setEditOpen(false);
     setEditNotice(null);
     setEditError(null);
-  }, [site.id, geraetId]);
+  }, [site.id, geraeteRef, geraetId]);
 
   useEffect(() => {
     let active = true;
     setData(null);
+    setEntitiesLoadedRequest(null);
+    setComponents(null);
+    setComponentsLoadedRequest(null);
+    setChargingLoadedRequest(null);
     setError(false);
     // Der EINE tragende Abruf - ohne ihn gibt es kein Gerät zu zeigen.
     api.siteEntities(site.id).then(
-      (d) => active && setData(d),
-      () => active && setError(true),
+      (d) => {
+        if (!active) return;
+        setData(d);
+        setEntitiesLoadedRequest(pageRequest);
+      },
+      () => {
+        if (!active) return;
+        setError(true);
+        setEntitiesLoadedRequest(pageRequest);
+      },
     );
     // Alles Übrige fail-soft: ein Ausfall macht seine Sektion ehrlich leer.
     const soft = <T,>(p: Promise<T | null>, set: (v: T | null) => void) => {
@@ -294,7 +309,18 @@ export function GeraetSeiteSection({
     };
     soft(api.topology(site.id), setTopology);
     soft(api.siteSources(site.id), setSources);
-    soft(api.siteComponents(site.id), setComponents);
+    void api.siteComponents(site.id).then(
+      (value) => {
+        if (!active) return;
+        setComponents(value);
+        setComponentsLoadedRequest(pageRequest);
+      },
+      () => {
+        if (!active) return;
+        setComponents(null);
+        setComponentsLoadedRequest(pageRequest);
+      },
+    );
     soft(api.controlStatus(site.id), setControl);
     soft(api.curtailmentStatus(site.id), setCurtailment);
     soft(api.edgeVersions(), setEdgeVersions);
@@ -302,12 +328,12 @@ export function GeraetSeiteSection({
       (value) => {
         if (!active) return;
         setCharging(value ?? null);
-        setChargingLoadedRequest(chargingRequest);
+        setChargingLoadedRequest(pageRequest);
       },
       () => {
         if (!active) return;
         setCharging(null);
-        setChargingLoadedRequest(chargingRequest);
+        setChargingLoadedRequest(pageRequest);
       },
     );
     soft(api.entityStrategies(site.id), setStrategies);
@@ -362,7 +388,7 @@ export function GeraetSeiteSection({
     return () => {
       active = false;
     };
-  }, [site.id, geraeteRef, geraetId, boxDevice?.id, reloadKey, chargingRequest]);
+  }, [site.id, geraeteRef, geraetId, boxDevice?.id, reloadKey, pageRequest]);
 
   /**
    * Eine Admin-Handlung: ausführen, dann die Seite neu laden. Ein Fehlschlag
@@ -465,11 +491,12 @@ export function GeraetSeiteSection({
   useEffect(() => {
     if (typeof window === 'undefined' || !istGeraetBearbeitenHash(window.location.hash)) return;
     const requestedComponentId = geraetBearbeitenKomponente(window.location.hash);
-    // Der Deep-Link ist schneller als die Entitätsantwort. Erst verbrauchen,
-    // wenn die Geräteseite die adressierte Komponente tatsächlich prüfen kann.
+    if (entitiesLoadedRequest !== pageRequest) return;
     const chargerDataSettled = !chargePointIdOf(geraetId)
-      || chargingLoadedRequest === chargingRequest;
-    if (requestedComponentId && (!view || !chargerDataSettled)) return;
+      || chargingLoadedRequest === pageRequest;
+    const componentDataSettled = componentsLoadedRequest === pageRequest;
+    if (!chargerDataSettled) return;
+    if (!requestedComponentId && !chargePointIdOf(geraetId) && !componentDataSettled) return;
     const requestedComponent = requestedComponentId
       ? view?.komponenten.find((row) => row.entityId === requestedComponentId && row.renameable)
       : null;
@@ -483,20 +510,21 @@ export function GeraetSeiteSection({
     const componentEdit = !requestedComponentId
       && Boolean(editRow && components?.componentAuthority === 'portal');
     const renameEdit = requestedTarget ?? (!requestedComponentId ? chargerRenameTarget : null);
-    if (!componentEdit && !renameEdit && !requestedComponentId) return;
     setEditNotice(null);
     setEditError(null);
     if (componentEdit) setEditOpen(true);
     else if (renameEdit) setRenameTarget(renameEdit);
-    else setEditError('Diese Komponente ist an diesem Gerät nicht mehr verfügbar.');
-    window.history.replaceState(
-      window.history.state,
-      '',
-      ohneGeraetBearbeiten(window.location.hash),
-    );
+    else if (requestedComponentId) {
+      setEditError('Diese Komponente ist an diesem Gerät nicht mehr verfügbar.');
+    } else if (components === null && !chargePointIdOf(geraetId)) {
+      setEditError('Die Bearbeitungsdaten dieses Geräts konnten nicht geladen werden. Versuchen Sie es erneut.');
+    } else {
+      setEditError('Dieses Gerät kann derzeit nicht im Portal bearbeitet werden.');
+    }
+    replaceCurrentNavigation(ohneGeraetBearbeiten(window.location.hash));
   }, [
-    chargerRenameTarget, chargingLoadedRequest, chargingRequest,
-    components?.componentAuthority, editRow?.id, geraetId, view,
+    chargerRenameTarget, chargingLoadedRequest, components, componentsLoadedRequest,
+    editRow?.id, entitiesLoadedRequest, geraetId, pageRequest, view,
   ]);
 
   useEffect(() => {
@@ -1095,6 +1123,7 @@ export function GeraetSeiteSection({
             titel={`${view.kopf.titel} bearbeiten`}
           />
           <UmbenennenDialog
+            key={`rename:${site.id}:${renameTarget.entityId}`}
             inline
             siteId={site.id}
             siteName={site.name}
@@ -1118,6 +1147,7 @@ export function GeraetSeiteSection({
             titel={`${view.kopf.titel} bearbeiten`}
           />
           <AnlegenFlow
+            key={`edit:${site.id}:${editRow.id}`}
             siteId={site.id}
             box={boxDevice}
             bearbeiten={editRow}

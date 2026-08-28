@@ -40,6 +40,7 @@ import { useHistoryPeriod } from '../useHistoryPeriod';
 import { useIsPhone } from '../useIsPhone';
 import { useSiteEarnings, useVergleichsErloese } from '../useSiteEarnings';
 import type { AnlageSurface } from '../surface';
+import { replaceCurrentNavigation } from '../navigationBlocker';
 
 import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
@@ -286,11 +287,7 @@ export function ErloeseSection({
   const setModus = useCallback(
     (m: VergleichsModus) => {
       setModusWahl(m);
-      window.history.replaceState(
-        null,
-        '',
-        mitVergleich(historieHash(site.id, 'erloese', range, at), m),
-      );
+      replaceCurrentNavigation(mitVergleich(historieHash(site.id, 'erloese', range, at), m));
     },
     [site.id, range, at],
   );

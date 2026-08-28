@@ -50,6 +50,11 @@ export function recordNewNavigation(): number {
   return writeNavigationState(lastKnownHistoryIndex + 1);
 }
 
+export function replaceCurrentNavigation(targetHref: string): number {
+  window.history.replaceState(window.history.state, '', targetHref);
+  return recordCurrentNavigation();
+}
+
 export function registerNavigationBlocker(block: NavigationBlocker): () => void {
   const registration = {
     block,

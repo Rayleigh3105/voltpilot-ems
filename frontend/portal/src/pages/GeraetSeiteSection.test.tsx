@@ -16,6 +16,7 @@ import {
   type Device,
   type RegisterWriteTarget,
   type Site,
+  type SiteComponents,
   type SiteEntities,
   type SiteInterventions,
   type SiteSource,
@@ -597,6 +598,127 @@ describe('GeraetSeiteSection', () => {
     window.history.replaceState(null, '', '#/');
   });
 
+  it('wartet beim Routenwechsel auf die Bearbeitungsdaten des neuen Standorts', async () => {
+    stub();
+    const siteB: Site = { ...site, id: 's-2', name: 'Landshut' };
+    const boxB: Device = { ...box, id: 'gw-b', siteId: siteB.id, name: siteB.name };
+    const rowA: SiteComponents['components'][number] = {
+      id: 'fr1', role: 'pv-generation', entityType: 'producer', label: 'Dach Süd',
+      brand: 'fronius', model: 'eco-27', family: 'sunspec_live',
+      communication: 'fronius_sunspec',
+      connection: { ip: '192.168.254.30', port: 502, unit_id: 1 },
+      templateRef: 'builtin:fronius:eco-27', definitionVersion: 3,
+      edgeSourceId: 'src-7c1e9a2b', syncStatus: 'in_sync', capacityKwp: 27,
+    };
+    const rowB = {
+      ...rowA,
+      id: 'fr-b',
+      label: 'Dach Nord',
+      connection: { ip: '10.0.0.44', port: 502, unit_id: 2 },
+    };
+    const entitiesB: SiteEntities = {
+      ...entities,
+      entities: entities.entities.map((entity) => entity.id === 'fr1'
+        ? { ...entity, id: 'fr-b', label: 'Dach Nord', deviceId: 'gw-b' }
+        : { ...entity, deviceId: 'gw-b' }),
+      localSetup: entities.localSetup.map((entry) => entry.id === 'src-7c1e9a2b'
+        ? { ...entry, adoptedEntityId: 'fr-b' }
+        : entry),
+    };
+    const componentsA: SiteComponents = { componentAuthority: 'portal', components: [rowA] };
+    const componentsB: SiteComponents = { componentAuthority: 'portal', components: [rowB] };
+    let resolveEntitiesB!: (value: SiteEntities) => void;
+    let resolveComponentsB!: (value: SiteComponents) => void;
+    const pendingEntitiesB = new Promise<SiteEntities>((resolve) => {
+      resolveEntitiesB = resolve;
+    });
+    const pendingComponentsB = new Promise<SiteComponents>((resolve) => {
+      resolveComponentsB = resolve;
+    });
+    vi.mocked(api.siteEntities).mockImplementation((siteId) =>
+      siteId === siteB.id ? pendingEntitiesB : Promise.resolve(entities));
+    vi.mocked(api.siteComponents).mockImplementation((siteId) =>
+      siteId === siteB.id ? pendingComponentsB : Promise.resolve(componentsA));
+    vi.spyOn(api, 'componentVersions').mockResolvedValue([]);
+    vi.spyOn(api, 'componentTemplates').mockResolvedValue([{
+      templateRef: rowA.templateRef, kind: 'builtin', version: 1,
+      brand: 'fronius', brandLabel: 'Fronius', model: 'eco-27', modelLabel: 'Eco 27.0-3-S',
+      communication: 'fronius_sunspec', communicationLabel: 'SunSpec Modbus TCP',
+      transportSchema: [
+        { key: 'ip', label: 'IP-Adresse', required: true },
+        { key: 'port', label: 'Port', type: 'number', default: 502 },
+        { key: 'unit_id', label: 'Modbus-Adresse', type: 'number', default: 1 },
+      ],
+    }]);
+    const update = vi.spyOn(api, 'updateComponent').mockResolvedValue({
+      componentAuthority: 'portal', components: [{ ...rowB, label: 'Carport Nord' }],
+    });
+
+    window.history.replaceState(
+      null,
+      '',
+      '#/anlage/s-1/geraet/edge-45gz7da/src-7c1e9a2b?bearbeiten=1',
+    );
+    const view = render(
+      <GeraetSeiteSection site={site} boxRef={box.externalRef} geraetId="src-7c1e9a2b" devices={[box]} />,
+    );
+    expect(await screen.findByLabelText('Anzeigename')).toHaveValue('Dach Süd');
+
+    window.history.replaceState(
+      null,
+      '',
+      '#/anlage/s-2/geraet/edge-45gz7da/src-7c1e9a2b?bearbeiten=1',
+    );
+    view.rerender(
+      <GeraetSeiteSection site={siteB} boxRef={boxB.externalRef} geraetId="src-7c1e9a2b" devices={[boxB]} />,
+    );
+    await waitFor(() => expect(screen.queryByTestId('geraet-bearbeiten')).toBeNull());
+    expect(window.location.hash).toContain('bearbeiten=1');
+
+    await act(async () => {
+      resolveEntitiesB(entitiesB);
+      await pendingEntitiesB;
+    });
+    expect(window.location.hash).toContain('bearbeiten=1');
+    expect(screen.queryByTestId('geraet-bearbeiten')).toBeNull();
+
+    await act(async () => {
+      resolveComponentsB(componentsB);
+      await pendingComponentsB;
+    });
+    const name = await screen.findByLabelText('Anzeigename');
+    expect(name).toHaveValue('Dach Nord');
+    expect(window.location.hash).not.toContain('bearbeiten=1');
+    fireEvent.change(name, { target: { value: 'Carport Nord' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledWith(
+      's-2', 'fr-b', expect.objectContaining({
+        label: 'Carport Nord',
+        connection: expect.objectContaining({ ip: '10.0.0.44', unit_id: 2 }),
+      }),
+    ));
+  });
+
+  it('beendet einen Bearbeitungs-Deep-Link sichtbar, wenn Komponentendaten ausfallen', async () => {
+    stub();
+    vi.mocked(api.siteComponents).mockRejectedValue(new Error('down'));
+    window.history.replaceState(
+      null,
+      '',
+      '#/anlage/s-1/geraet/edge-45gz7da/inverter?bearbeiten=1',
+    );
+
+    render(
+      <GeraetSeiteSection site={site} boxRef={box.externalRef} geraetId="inverter" devices={[box]} />,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Die Bearbeitungsdaten dieses Geräts konnten nicht geladen werden.',
+    );
+    expect(window.location.hash).not.toContain('bearbeiten=1');
+  });
+
   it('meldet einen veralteten Komponenten-Link sichtbar auf der Geräteseite', async () => {
     stub();
     window.history.replaceState(
@@ -623,6 +745,10 @@ describe('GeraetSeiteSection', () => {
 
   it('ändert auch an einer real komponierten OCPP-Wallbox den gemeinsamen Anzeigenamen', async () => {
     let alias = 'Garage';
+    let resolveRename!: () => void;
+    const renamePending = new Promise<void>((resolve) => {
+      resolveRename = resolve;
+    });
     let resolveChargers!: (value: Awaited<ReturnType<typeof api.siteChargers>>) => void;
     const chargers = new Promise<Awaited<ReturnType<typeof api.siteChargers>>>((resolve) => {
       resolveChargers = resolve;
@@ -663,6 +789,7 @@ describe('GeraetSeiteSection', () => {
       components: [],
     });
     vi.spyOn(entitiesApi, 'rename').mockImplementation(async (_siteId, _entityId, next) => {
+      await renamePending;
       alias = next ?? '';
       return {} as never;
     });
@@ -718,6 +845,19 @@ describe('GeraetSeiteSection', () => {
     await waitFor(() => expect(entitiesApi.rename).toHaveBeenCalledWith(
       's-1', 'wallbox-1', 'Carport',
     ));
+    expect(screen.getByLabelText('Anzeigename')).toBeDisabled();
+    const savingHref = window.location.href;
+    act(() => {
+      window.history.pushState(null, '', '#/anlage/s-1/modell');
+      blocked = requestNavigation(window.location.href, true);
+    });
+    expect(blocked).toBe(true);
+    await waitFor(() => expect(window.location.href).toBe(savingHref));
+    expect(screen.queryByRole('dialog', { name: 'Änderung verwerfen?' })).toBeNull();
+    await act(async () => {
+      resolveRename();
+      await renamePending;
+    });
     expect(await screen.findByText(/Anzeigename gespeichert/)).toBeVisible();
     expect(await screen.findByRole('heading', { name: 'Carport' })).toBeVisible();
   });

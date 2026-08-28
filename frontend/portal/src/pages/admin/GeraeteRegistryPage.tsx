@@ -28,6 +28,7 @@ import {
 } from '../../adminEdgeUpdates';
 import { geraetLinkAusgang } from '../../adminGeraet';
 import { parseGeraetRef, type Route } from '../../nav';
+import { replaceCurrentNavigation } from '../../navigationBlocker';
 
 /**
  * Plattform → **Geräte**: das INVENTAR über den ganzen Lebenszyklus (UX-Konzept
@@ -162,7 +163,7 @@ export function GeraeteRegistryPage({
     if (ref == null) {
       // Nur den Parameter abräumen - ein Verlaufseintrag je Klick wäre die
       // Zurück-Taste voller Zwischenschritte (die `?m=`-Disziplin).
-      window.history.replaceState(null, '', '#/geraete-registry');
+      replaceCurrentNavigation('#/geraete-registry');
     }
   }
 

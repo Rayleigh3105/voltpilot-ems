@@ -40,6 +40,7 @@ import { ankerAusWert, mitVergleich, parseVergleichModus } from '../historieZeit
 import { useHistoryPeriod, useVergleichsPeriode } from '../useHistoryPeriod';
 import { useIsPhone } from '../useIsPhone';
 import type { AnlageSurface } from '../surface';
+import { replaceCurrentNavigation } from '../navigationBlocker';
 
 import { InfoTip } from '../components/InfoTip';
 import { ChartHeadline, ChartSubtitle } from '../components/ChartExplain';
@@ -456,11 +457,7 @@ export function MesswerteSection({
   const setModus = useCallback(
     (m: VergleichsModus) => {
       setModusWahl(m);
-      window.history.replaceState(
-        null,
-        '',
-        mitVergleich(historieHash(site.id, 'messwerte', range, at), m),
-      );
+      replaceCurrentNavigation(mitVergleich(historieHash(site.id, 'messwerte', range, at), m));
     },
     [site.id, range, at],
   );
@@ -505,9 +502,7 @@ export function MesswerteSection({
             if (!ziel) return;
             setRange('day');
             setAnchor(ziel);
-            window.history.replaceState(
-              null,
-              '',
+            replaceCurrentNavigation(
               mitVergleich(historieHash(site.id, 'messwerte', 'day', at), modus),
             );
           },
@@ -519,9 +514,7 @@ export function MesswerteSection({
       // Beim Zuklappen die Messwert-Parameter aus der Adresse nehmen, damit ein
       // Neuladen die Welt so zeigt, wie sie gerade aussieht.
       if (open) {
-        window.history.replaceState(
-          null,
-          '',
+        replaceCurrentNavigation(
           mitVergleich(historieHash(site.id, 'messwerte', range, at), modus),
         );
       }

@@ -304,6 +304,7 @@ export function AnlegenFlow({
   const technischeAenderung = aenderungen.some((row) => ![
     'Anzeigename', 'Nennleistung', 'Elektrische Rolle',
   ].includes(row.feld));
+  const editorBusy = speichern || testZustand === 'laeuft';
   // ⚠ Die HEBEL entstehen aus BELEGEN (Server-Fehlerklasse + Befund) und aus
   // dem, was die Vorlage strukturell hergibt - nie aus einer eigenen Diagnose
   // der gelesenen Zahlen. Die ganze Regel liegt rein in `testHebel.ts`.
@@ -322,6 +323,7 @@ export function AnlegenFlow({
       event.returnValue = '';
     };
     const unregister = registerNavigationBlocker((targetHref) => {
+      if (speichern) return;
       setPendingHref(targetHref);
       setFragVerwerfen(true);
     });
@@ -330,7 +332,7 @@ export function AnlegenFlow({
       unregister();
       window.removeEventListener('beforeunload', vorVerlassen);
     };
-  }, [hatAenderungen, inlineBearbeitung]);
+  }, [hatAenderungen, inlineBearbeitung, speichern]);
 
   /**
    * Der Test läuft beim BETRETEN des Schritts „Testen" von selbst an - der
@@ -363,7 +365,7 @@ export function AnlegenFlow({
     // ⚠ NICHT mit dem Modellnamen vorbefüllen (Alias-Kontinuität, Live-Fall
     // Herzogau 20.08.2026): ein vorbefülltes Feld wird mitgeschickt und
     // überschreibt beim Übernehmen den Namen, den der Kunde vergeben hat.
-    setName(edit?.label ?? '');
+    if (!edit) setName('');
     setUebernahme(null);
     setTestZustand('ungeprueft');
     setTestText(null);
@@ -491,7 +493,7 @@ export function AnlegenFlow({
   }
 
   async function anlegen() {
-    if (!template || !rolle) return;
+    if (!template || !rolle || speichern) return;
     setSpeichern(true);
     setFehler(null);
     try {
@@ -536,6 +538,7 @@ export function AnlegenFlow({
 
   /** Der Inline-Speicherweg erklärt jede Sperre an der betroffenen Stelle. */
   function inlineSpeichern() {
+    if (speichern) return;
     setFehler(null);
     if (!template || !rolle) {
       setFehler('Die Gerätevorlage wird noch geladen oder ist nicht mehr verfügbar. Ihre Eingaben bleiben erhalten.');
@@ -573,6 +576,7 @@ export function AnlegenFlow({
   }
 
   function verwerfen() {
+    if (speichern) return;
     const href = pendingHref;
     setFragVerwerfen(false);
     setPendingHref(null);
@@ -738,6 +742,7 @@ export function AnlegenFlow({
                 value={name}
                 placeholder={template?.modelLabel ?? edit.model ?? 'Gerät'}
                 onChange={(event) => setName(event.target.value)}
+                disabled={editorBusy}
                 autoFocus
               />
               <p className="vp-assist-help">So erscheint das Gerät in Ihrer Anlage.</p>
@@ -754,7 +759,7 @@ export function AnlegenFlow({
                       role="radio"
                       aria-checked={rolle === wahl.rolle}
                       className={`vp-assist-role${rolle === wahl.rolle ? ' is-on' : ''}${wahl.verfuegbar ? '' : ' is-soon'}`}
-                      disabled={!wahl.verfuegbar}
+                      disabled={editorBusy || !wahl.verfuegbar}
                       onClick={() => setRolle(wahl.rolle)}
                     >
                       <strong>{wahl.label}</strong>
@@ -782,6 +787,7 @@ export function AnlegenFlow({
                   inputMode="decimal"
                   value={kwp}
                   onChange={(event) => setKwp(event.target.value)}
+                  disabled={editorBusy}
                 />
                 <p className="vp-assist-help">Optional – sie zählt zur Gesamtleistung Ihrer Anlage.</p>
               </div>
@@ -813,6 +819,7 @@ export function AnlegenFlow({
               aria-expanded={technikOffen}
               aria-controls="geraet-edit-technik-inhalt"
               onClick={() => setTechnikOffen((offen) => !offen)}
+              disabled={editorBusy}
             >
               {technikOffen ? 'Technische Daten schließen' : 'Technische Daten ändern'}
             </Button>
@@ -828,6 +835,7 @@ export function AnlegenFlow({
                   groups={modellGruppen}
                   value={template?.templateRef ?? null}
                   onChange={waehleTemplate}
+                  disabled={editorBusy}
                   placeholder="Marke und Modell wählen …"
                   searchPlaceholder="Marke oder Modell suchen"
                   search="immer"
@@ -839,7 +847,7 @@ export function AnlegenFlow({
               {template && (
                 <>
                   {gruppen.pflicht.map((field) => (
-                    <Feld key={field.key} feld={field} wert={verbindung[field.key]} onChange={setzeFeld} />
+                    <Feld key={field.key} feld={field} wert={verbindung[field.key]} onChange={setzeFeld} disabled={editorBusy} />
                   ))}
                   {gruppen.erweitert.length > 0 && (
                     <details
@@ -850,7 +858,7 @@ export function AnlegenFlow({
                       <summary>Erweiterte Verbindungsdaten</summary>
                       <p className="vp-assist-help">Ändern Sie diese Vorgaben nur, wenn Ihr Gerät es verlangt.</p>
                       {gruppen.erweitert.map((field) => (
-                        <Feld key={field.key} feld={field} wert={verbindung[field.key]} onChange={setzeFeld} />
+                        <Feld key={field.key} feld={field} wert={verbindung[field.key]} onChange={setzeFeld} disabled={editorBusy} />
                       ))}
                     </details>
                   )}
@@ -889,7 +897,7 @@ export function AnlegenFlow({
                   </div>
                 )}
                 {testNoetig && testZustand !== 'laeuft' && (
-                  <Button id="geraet-edit-test" variant="outline" onClick={testen} disabled={fehlend.length > 0 || !template}>
+                  <Button id="geraet-edit-test" variant="outline" onClick={testen} disabled={editorBusy || fehlend.length > 0 || !template}>
                     {testZustand === 'ungeprueft' ? 'Verbindung prüfen' : 'Erneut prüfen'}
                   </Button>
                 )}
@@ -901,7 +909,7 @@ export function AnlegenFlow({
                       {hebelListe.map((item) => (
                         <li key={item.id}>
                           <div><strong>{item.titel}</strong><span>{item.satz}</span></div>
-                          <Button variant="outline" size="sm" onClick={() => hebelKlick(item)}>{item.aktion}</Button>
+                          <Button variant="outline" size="sm" onClick={() => hebelKlick(item)} disabled={editorBusy}>{item.aktion}</Button>
                         </li>
                       ))}
                     </ul>
@@ -922,6 +930,7 @@ export function AnlegenFlow({
                           value={socVolt[field.key]}
                           placeholder={field.platzhalter}
                           onChange={(event) => setzeSocVolt({ ...socVolt, [field.key]: event.target.value })}
+                          disabled={editorBusy}
                         />
                         <p className="vp-assist-help">{field.hilfe}</p>
                       </div>
@@ -935,7 +944,7 @@ export function AnlegenFlow({
                 )}
 
                 {testZustand === 'fehlgeschlagen' && testText?.override && !ohneKanal && (
-                  <Button variant="outline" onClick={() => setFragOhneKanal(true)}>{testText.override.label}</Button>
+                  <Button variant="outline" onClick={() => setFragOhneKanal(true)} disabled={editorBusy}>{testText.override.label}</Button>
                 )}
                 {ohneKanal && (
                   <p className="vp-assist-uebernahme" data-testid="override-aktiv">
@@ -985,6 +994,7 @@ export function AnlegenFlow({
           consequences={['Alle Änderungen in diesem Bearbeitungsmodus gehen verloren.', 'Die aktuell aktive Gerätefassung bleibt unverändert.']}
           confirmLabel="Änderungen verwerfen"
           tone="danger"
+          busy={speichern}
           onCancel={() => { setFragVerwerfen(false); setPendingHref(null); }}
           onConfirm={verwerfen}
         />
@@ -994,6 +1004,7 @@ export function AnlegenFlow({
           intro="Die Aufgabe bestimmt, wie VoltPilot dieses Gerät bilanziert und steuert."
           consequences={auswirkungen(aenderungen)}
           confirmLabel="Aufgabe ändern und speichern"
+          busy={speichern}
           onCancel={() => setFragRollenwechsel(false)}
           onConfirm={() => { setFragRollenwechsel(false); void anlegen(); }}
         />
@@ -1003,6 +1014,7 @@ export function AnlegenFlow({
           intro="Ihr Gerät antwortet, meldet aber den benötigten Messkanal nicht."
           consequences={testText?.override?.folgen ?? []}
           confirmLabel="Trotzdem fortfahren"
+          busy={editorBusy}
           onCancel={() => setFragOhneKanal(false)}
           onConfirm={() => {
             setOhneKanal(testText?.override ?? null);
@@ -1442,10 +1454,12 @@ function Feld({
   feld,
   wert,
   onChange,
+  disabled = false,
 }: {
   feld: TemplateField;
   wert: unknown;
   onChange: (feld: TemplateField, value: unknown) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="vp-assist-field">
@@ -1459,6 +1473,7 @@ function Feld({
           type="checkbox"
           checked={Boolean(wert)}
           onChange={(e) => onChange(feld, e.target.checked)}
+          disabled={disabled}
         />
       ) : feld.options ? (
         <VpPicker
@@ -1467,6 +1482,7 @@ function Feld({
           options={feld.options.map((o) => ({ value: String(o.value), label: o.label }))}
           value={String(wert ?? '')}
           onChange={(v) => onChange(feld, v)}
+          disabled={disabled}
         />
       ) : (
         <Input
@@ -1476,6 +1492,7 @@ function Feld({
           placeholder={istSecret(feld) && wert ? '•••••••• (unverändert)' : undefined}
           autoComplete={istSecret(feld) ? 'new-password' : undefined}
           onChange={(e) => onChange(feld, e.target.value)}
+          disabled={disabled}
         />
       )}
       {istSecret(feld) && Boolean(wert) && (

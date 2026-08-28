@@ -72,6 +72,7 @@ export function UmbenennenDialog({
       event.returnValue = '';
     };
     const unregister = registerNavigationBlocker((targetHref) => {
+      if (busy) return;
       setPendingHref(targetHref);
       setDiscardOpen(true);
     });
@@ -80,9 +81,10 @@ export function UmbenennenDialog({
       unregister();
       window.removeEventListener('beforeunload', beforeUnload);
     };
-  }, [changed, inline]);
+  }, [busy, changed, inline]);
 
   async function save(next: string | null) {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -106,6 +108,7 @@ export function UmbenennenDialog({
   }
 
   function discard() {
+    if (busy) return;
     const href = pendingHref;
     setDiscardOpen(false);
     setPendingHref(null);
@@ -140,6 +143,7 @@ export function UmbenennenDialog({
                 onChange={(event) => setLabel(event.target.value)}
                 placeholder={target.derivedLabel}
                 maxLength={200}
+                disabled={busy}
                 autoFocus
                 hint="Leer lassen, um wieder die technische Bezeichnung anzuzeigen."
               />
@@ -189,6 +193,7 @@ export function UmbenennenDialog({
           consequences={['Die Eingabe geht verloren.', 'Der bisherige Anzeigename bleibt unverändert.']}
           confirmLabel="Änderung verwerfen"
           tone="danger"
+          busy={busy}
           onCancel={() => { setDiscardOpen(false); setPendingHref(null); }}
           onConfirm={discard}
         />

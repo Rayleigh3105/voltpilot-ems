@@ -84,6 +84,7 @@ import {
   REGEL_CAPSULE_INTRO,
   REGEL_CAPSULE_TITLE,
 } from '../steuerungArea';
+import { replaceCurrentNavigation } from '../navigationBlocker';
 import {
   LEER_MIT_VORSCHLAEGEN,
   PLATTFORM_ZONE,
@@ -325,7 +326,7 @@ export function RegelnKapsel({
       return;
     }
     deepLinkDone.current = true;
-    window.history.replaceState(null, '', window.location.hash.split('?')[0]);
+    replaceCurrentNavigation(window.location.hash.split('?')[0]);
     if (params.verbraucher) {
       const c = consumers.find((x) => x.id === params.verbraucher);
       if (c) setRuleFor(c);
@@ -356,7 +357,7 @@ export function RegelnKapsel({
       return;
     }
     brueckeDone.current = true;
-    window.history.replaceState(null, '', window.location.hash.split('?')[0]);
+    replaceCurrentNavigation(window.location.hash.split('?')[0]);
     const e = entities.find((x) => x.id === entityId);
     if (!e) return;
     const k = brueckenKomponente(e);

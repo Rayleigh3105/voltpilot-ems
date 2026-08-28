@@ -73,6 +73,7 @@ import { MastrDrawer } from '../components/MastrDrawer';
 import { SettingRow } from '../components/SettingEditors';
 import { SettingsSearch } from '../components/SettingsSearch';
 import { ErrorState, TextSkeleton } from '../components/States';
+import { replaceCurrentNavigation } from '../navigationBlocker';
 import './Einstellungen.css';
 
 /**
@@ -372,7 +373,7 @@ export function TechnikSection({
     setJumped(group);
     setJumpTick((t) => t + 1);
     if (typeof window !== 'undefined') {
-      window.history.replaceState(null, '', einstellungenHash(site.id, group));
+      replaceCurrentNavigation(einstellungenHash(site.id, group));
     }
   }
 

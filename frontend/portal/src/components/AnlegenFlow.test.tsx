@@ -5,6 +5,7 @@ import { AnlegenFlow } from './AnlegenFlow';
 import {
   recordCurrentNavigation,
   recordNewNavigation,
+  replaceCurrentNavigation,
   requestNavigation,
 } from '../navigationBlocker';
 
@@ -938,6 +939,7 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     recordCurrentNavigation();
     window.history.pushState(null, '', '#/anlage/s1/modell');
     recordNewNavigation();
+    replaceCurrentNavigation('#/anlage/s1/modell?ansicht=liste');
     const previousHref = window.location.href;
     window.history.pushState(null, '', '#/anlage/s1/geraet/VP-BOX-1/inverter');
     recordNewNavigation();
@@ -960,6 +962,83 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
     act(() => window.history.back());
     await waitFor(() => expect(window.location.href).toBe(previousHref));
+  });
+
+  it('behält einen eingegebenen Anzeigenamen beim Modellwechsel', async () => {
+    componentTemplates.mockResolvedValue([template, geschwisterTemplate]);
+    renderInline();
+
+    const name = await screen.findByLabelText('Anzeigename');
+    fireEvent.change(name, { target: { value: 'Wechselrichter Garage' } });
+    fireEvent.click(knopf('Technische Daten ändern'));
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Hersteller und Modell' }));
+    fireEvent.click(screen.getByRole('option', { name: new RegExp(geschwisterTemplate.modelLabel) }));
+
+    expect(name).toHaveValue('Wechselrichter Garage');
+  });
+
+  it('friert die Bearbeitung ein und unterdrückt Verwerfen während des Speicherns', async () => {
+    const result = {
+      componentAuthority: 'portal' as const,
+      components: [{ ...edit, label: 'Wechselrichter Garage', definitionVersion: 4 }],
+    };
+    let resolveUpdate!: (value: typeof result) => void;
+    updateComponent.mockReturnValue(new Promise<typeof result>((resolve) => {
+      resolveUpdate = resolve;
+    }));
+    const onSaved = vi.fn();
+    renderInline({ onSaved });
+
+    const name = await screen.findByLabelText('Anzeigename');
+    fireEvent.change(name, { target: { value: 'Wechselrichter Garage' } });
+    fireEvent.click(knopf('Änderungen speichern'));
+    await waitFor(() => expect(updateComponent).toHaveBeenCalledTimes(1));
+    expect(name).toBeDisabled();
+
+    const editorHref = window.location.href;
+    let blocked = false;
+    act(() => {
+      window.history.pushState(null, '', '#/anlage/s1/modell');
+      blocked = requestNavigation(window.location.href, true);
+    });
+    expect(blocked).toBe(true);
+    await waitFor(() => expect(window.location.href).toBe(editorHref));
+    expect(screen.queryByRole('dialog', { name: 'Änderungen verwerfen?' })).toBeNull();
+
+    await act(async () => {
+      resolveUpdate(result);
+      await Promise.resolve();
+    });
+    expect(onSaved).toHaveBeenCalledWith(result);
+  });
+
+  it('sperrt technische Eingaben während der laufenden Verbindungsprüfung', async () => {
+    const result = {
+      results: [{ id: 'verbindung', ok: true, reading: { pvKw: 12.4 } }],
+    };
+    let resolveTest!: (value: typeof result) => void;
+    testComponentConnection.mockReturnValue(new Promise<typeof result>((resolve) => {
+      resolveTest = resolve;
+    }));
+    renderInline();
+
+    await screen.findByLabelText('Anzeigename');
+    fireEvent.click(knopf('Technische Daten ändern'));
+    const ip = await screen.findByLabelText(/IP-Adresse/);
+    fireEvent.change(ip, { target: { value: '192.168.0.29' } });
+    fireEvent.click(knopf('Verbindung prüfen'));
+
+    await waitFor(() => expect(testComponentConnection).toHaveBeenCalledTimes(1));
+    expect(ip).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Hersteller und Modell' })).toBeDisabled();
+
+    await act(async () => {
+      resolveTest(result);
+      await Promise.resolve();
+    });
+    await screen.findByText(/Das Gerät antwortet/);
+    expect(ip).toBeEnabled();
+    expect(ip).toHaveValue('192.168.0.29');
   });
 
   it('überschreibt frühe Eingaben nicht, wenn die Vorlage später geladen wird', async () => {
