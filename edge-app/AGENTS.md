@@ -4209,6 +4209,46 @@ Fahrplan-Modus". Was HIER gelten muss:
   „Live-Lastdeckung"**. Regressionsvektoren: 92 % / 1,3 / 2,7 -> −1,4 kW bis zum
   Reserve-Boden (0 Netz), 91 % / 11,4 / 2,9 -> +8,5 kW bis 95 %.
 
+## Überschuss-Einlagerung: verschenkt wird nichts, was die Anlage erzeugt
+
+Der SPIEGEL der Defizit-Deckung eine Sektion darüber, und der Ladeboden unter
+den Wolken-Pflichten. Cloud-Seite und Begründung: root `AGENTS.md`
+„Überschuss-Einlagerung im Fahrplan-Modus". Was HIER gelten muss:
+
+- **`core/internal/guards/surplusstore.go` ist eine reine Entscheidung je Tick**
+  (zustandslos - die einzige Hysterese, auf die es ankommt, ist das
+  Engage/Release-Dwell des `SurplusCharger` auf dem Überschuss). Sie läuft am
+  GLEICHEN Ort wie die drei anderen In-Slot-Pflichten: nach jeder
+  Compliance-Klemme, nach der Holder-Übersteuerung, nach dem Follower und VOR
+  dem Peak-Guard.
+- **⚠ SIE BRAUCHT KEINEN PREIS-DISKRIMINATOR, und das ist ihr ganzes
+  Sicherheits-Argument: der Plan LÄDT BEREITS.** Die Speicher-gegen-Verkauf-
+  Entscheidung dieses Slots hat die Wolke getroffen; korrigiert wird nur die
+  MENGE. Es gibt hier keinen Verkauf, den sie umdrehen könnte - genau das
+  trennt sie vom RUHENDEN Befehl, der die Marke `cover_load_from_battery`
+  braucht, um einen Eigenverbrauchs- von einem Verkaufsslot zu unterscheiden.
+- **Sie autorisiert den BESTEHENDEN `SurplusCharger`**, statt einen zweiten
+  Anhebe-Pfad zu bauen: der angehobene Zielwert läuft damit erneut durch die
+  autoritative `guards.Clamp` (Nennband, SoC-Decke, EEG-Solarladen, §14a) und
+  kann an keinem Wächter vorbeischreiben.
+- **⚠ MAGNITUDEN-ONLY, also KEIN gehaltenes Rücklesen verlangt** - anders als
+  die zwei Regeln, die eine Richtung aus der Ruhe STARTEN
+  (`unplannedLoad`/`deficitCover`/`HighSocCharge`, die `portableReady` fordern).
+  Die Box schreibt diese Richtung ohnehin schon; eine strengere Bedingung als
+  die der größeren Wolken-Absorption daneben wäre nicht zu begründen.
+- **Ladung ≤ gemessener Überschuss ⇒ vorhergesagtes Netz ≤ 0:** sie kann keinen
+  Import erzeugen oder erhöhen (§14a-Import und das Peak-Ziel bleiben unberührt)
+  und bewegt einen Export nur in Richtung null - Einspeisegrenze und
+  §14a-Export halten a fortiori.
+- **Nie ein Richtungswechsel:** ein Verkauf und ein bloß ruhender Befehl liegen
+  beide ausserhalb ihrer Eintrittsbedingung.
+- **Wo die WOLKE autorisiert hat, behält sie ihren Namen** (`absorb`): die
+  lokale Regel etikettiert nie eine Entscheidung um, die der Plan getroffen hat.
+- Heartbeat/API/Portal nennen die Richtung als **`surplus_store` /
+  „Live-Überschussladung"**. Regressionsvektor (Herzogau 29.08.2026 10:53, aus
+  `box/state-final.json`): Plan +9,82 / PV 56,907 / Haus 29,013 / SoC 38 →
+  +27,894 kW, Netz 0,000 (gemessen waren ~18 kW Export bei NEGATIVEM Preis).
+
 ## Ein Messpunkt wird ueber SEINE Komponente gelesen (Geraeteseite Stufe 3c)
 
 Cloud-Seite, Kontrakt und die Server-Haelfte: root `CLAUDE.md` „Mess-Selektion

@@ -522,6 +522,26 @@ describe('executionNote', () => {
     expect(EXECUTION_MODE_LABEL.high_soc_charge).toBe('PV-Puffer-Nachladung');
   });
 
+  it('names the plan under-estimate for the charge-side trust floor, not a price verdict', () => {
+    // Die Live-Konstellation (Herzogau 29.08.2026 10:53): Fahrplan +9,82 kW,
+    // gemessener Überschuss 27,894 kW, ~18 kW ins Netz bei negativem Preis.
+    const note = executionNote(
+      status({
+        executionMode: 'surplus_store',
+        executionPlannedKw: 9.82,
+        executionTargetKw: 27.894,
+      }),
+    )!;
+    expect(note).toContain('9,8');
+    expect(note).toContain('27,9');
+    expect(note).toContain('zu niedrig geschätzt');
+    expect(note).toContain('Netzstrom wird dabei nie');
+    // Weder die Wolken-Wertung noch der enge Vollakku-Fall dürfen hier stehen.
+    expect(note).not.toContain('mehr wert');
+    expect(note).not.toContain('PV-Puffer');
+    expect(EXECUTION_MODE_LABEL.surplus_store).toBe('Live-Überschussladung');
+  });
+
   it('claims nothing for an uncorrected slot or an older edge', () => {
     expect(executionNote(status({ executionMode: 'plan' }))).toBeNull();
     expect(executionNote(status({}))).toBeNull();

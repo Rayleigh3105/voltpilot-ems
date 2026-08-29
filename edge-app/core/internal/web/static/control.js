@@ -324,6 +324,14 @@
     var planned = a.planned_kw != null
       ? " – der Fahrplan hatte " + nf1.format(a.planned_kw) + " kW vorgesehen"
       : "";
+    if (a.path === "surplus_store") {
+      return {
+        text: "Lädt den gemessenen Solarüberschuss" + stored +
+          " – Ladung angehoben" + planned +
+          ". Der Fahrplan hatte den Überschuss zu niedrig geschätzt; " +
+          "gespeichert wird nur, was gemessen übrig ist – Netzstrom nie."
+      };
+    }
     if (a.path === "high_soc_charge") {
       return {
         text: "Lädt den gemessenen Solarüberschuss" + stored + " in den oberen " +
