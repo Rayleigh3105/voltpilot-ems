@@ -1603,6 +1603,81 @@ class PortalApiTest {
         }
     }
 
+    /**
+     * Herzogau 29.08.2026: a run is stamped MICROSECONDS after the boundary it
+     * plans for, and a strict {@code generated_at <= time} therefore excluded
+     * EVERY run from its OWN first slot - so the Film des Tages showed the
+     * PREVIOUS run for the slot in progress. On that day it read "JETZT · Sonne
+     * speichern · läuft" over a slot the same plant had been commanded to
+     * DISCHARGE in. It hit every slot of every plant and only became visible
+     * when two consecutive runs disagreed sharply.
+     *
+     * <p>The two halves are asserted together, because the tolerance is only
+     * correct if it stays narrow: the microsecond-late run must WIN its own
+     * slot, and a run a MINUTE late must still LOSE it - a re-plan landing
+     * inside a quarter hour does not rewrite how that quarter hour was planned.
+     *
+     * <p>Own site + cleanup, like its sibling above: a stray site with a plan
+     * would move the hand-computed fleet/earnings numbers of the other tests.
+     */
+    @Test
+    void scheduleDayModeGivesARunItsOwnSlotDespiteTheMicrosecondItIsStampedLate() {
+        final String site = "0000000a-0000-0000-0000-0000000000f8";
+        final String device = "0000000a-0000-0000-0000-0000000000e8";
+        final String tenant = "00000000-0000-0000-0000-000000000001";
+        final String planOld = "aaaaaaaa-0000-0000-0000-0000000000f8";
+        final String planNow = "aaaaaaaa-0000-0000-0000-0000000000f9";
+        final String planLate = "aaaaaaaa-0000-0000-0000-0000000000fa";
+        ZoneId berlin = ZoneId.of("Europe/Berlin");
+        ZonedDateTime day0 = LocalDate.now(berlin).atStartOfDay(berlin);
+        ZonedDateTime slot = day0.plusHours(4);
+        // The incident's own stamp: 867 microseconds after the slot boundary.
+        String genNow = slot.toInstant().plusNanos(867_000).toString();
+        exec("INSERT INTO site (id, tenant_id, name, bidding_zone) VALUES ('" + site + "', '"
+                + tenant + "', 'Fix C Stempel-Toleranz', 'DE-LU') ON CONFLICT DO NOTHING");
+        try {
+            exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
+                    + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, "
+                    + "baseline_cost_eur, peak_target_kw, terminal_value_eur_per_kwh, fallback_14a) VALUES "
+                    // The PREVIOUS run, comfortably before the boundary.
+                    + spliceRow(iso(slot), iso(slot.minusMinutes(15)), planOld, site, tenant,
+                            device, -7.17, 0.01, 0.03) + ", "
+                    // The run OF this slot - stamped 867 us late.
+                    + spliceRow(iso(slot), genNow, planNow, site, tenant, device,
+                            17.07, 0.01, 0.03)
+                    + " ON CONFLICT DO NOTHING");
+
+            List<?> slots = (List<?>) rest.exchange(
+                    url("/api/v1/sites/" + site + "/schedule?mode=day"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(token("demo", "demo"))),
+                    new ParameterizedTypeReference<Map<String, Object>>() {})
+                    .getBody().get("slots");
+            assertThat(slots).hasSize(1);
+            // Its OWN run, not the one before it.
+            assertThat(((Number) ((Map<?, ?>) slots.get(0)).get("batteryKw")).doubleValue())
+                    .isEqualTo(17.07);
+
+            // ...and the tolerance stays narrow: a run a MINUTE into the slot is
+            // a mid-slot re-plan and must not become "how it was planned".
+            exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
+                    + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, "
+                    + "baseline_cost_eur, peak_target_kw, terminal_value_eur_per_kwh, fallback_14a) VALUES "
+                    + spliceRow(iso(slot), iso(slot.plusMinutes(1)), planLate, site, tenant,
+                            device, 99.0, 0.01, 0.03)
+                    + " ON CONFLICT DO NOTHING");
+            List<?> after = (List<?>) rest.exchange(
+                    url("/api/v1/sites/" + site + "/schedule?mode=day"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(token("demo", "demo"))),
+                    new ParameterizedTypeReference<Map<String, Object>>() {})
+                    .getBody().get("slots");
+            assertThat(((Number) ((Map<?, ?>) after.get(0)).get("batteryKw")).doubleValue())
+                    .isEqualTo(17.07);
+        } finally {
+            exec("DELETE FROM schedule WHERE site_id = '" + site + "'");
+            exec("DELETE FROM site WHERE id = '" + site + "'");
+        }
+    }
+
     /** One schedule row of the Tages-Splice fixture. */
     private static String spliceRow(String time, String generatedAt, String planId, String site,
             String tenant, String device, double batteryKw, double costEur, double baselineEur) {

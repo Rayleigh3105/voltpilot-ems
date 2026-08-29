@@ -3433,6 +3433,19 @@ weshalb diese Stufe dessen Muster wörtlich übernimmt.
   Sekunde nie Verschiedenes behaupten können. Mit `entity` kommen IHRE Zeilen PLUS die
   gerätebezogenen (`entity_id IS NULL`) — die betreffen den Schreibweg, über den sie gesteuert wird.
   Nur Tag und Woche: ein Monat wäre ein Fenster, das der Deckel ohnehin kappt.
+- **⚠ EIN LAUF WIRD MIKROSEKUNDEN NACH SEINER EIGENEN SLOTGRENZE GESTEMPELT — der Ex-ante-Filter
+  trägt deshalb EINE SEKUNDE Toleranz** (Herzogau 29.08.2026, `ScheduleRepository.RUN_STAMP_TOLERANCE`).
+  Der Optimierer wird AUF der Viertelstundengrenze ausgelöst und stempelt `generated_at`, wenn er
+  losläuft — der 10:00-Lauf trug `08:00:00.000867Z` gegen einen ersten Slot von `08:00:00Z`. Das
+  strikte `generated_at <= time` schloss damit JEDEN Lauf aus SEINEM EIGENEN ersten Slot aus, und der
+  Tages-Film zeigte für den LAUFENDEN Slot immer den VORIGEN Lauf: „JETZT · Sonne speichern · läuft"
+  stand über einem Slot, der als ENTLADUNG befohlen war. **Das traf jeden Slot jeder Anlage** und
+  fiel nur auf, weil an diesem Tag zwei aufeinanderfolgende Läufe maximal auseinanderlagen. Die
+  Toleranz muss ENG bleiben: eine Sekunde liegt zwei Größenordnungen unter dem 15-Minuten-Takt, ein
+  Re-Plan MITTEN im Slot verliert ihn also weiterhin — genau die Ex-ante-Eigenschaft, für die es
+  diese Lesart gibt. Beweis: `PortalApiTest.scheduleDayModeGivesARunItsOwnSlotDespiteTheMicrosecondItIsStampedLate`
+  (beide Hälften zusammen). **Der Zwilling in `EarningsRepository` ist NICHT betroffen** — dort steht
+  rechts ein gebundener Anker-Zeitpunkt, keine Slotgrenze, an der ein Lauf gestempelt wird.
 - **⚠ DIE FENSTER-KONVENTION: eine Zeile gehört zum Tag ihres STARTS** (`CommandLog.carryInAfter`,
   Captain-Meldung 19.08.2026). Der „Heute"-Tab begann um 17:26 mit dem Slot „23:45-00:00" — der
   letzten Viertelstunde des VORTAGS. Sie geriet auf ZWEI Wegen hinein, und beide sind mit derselben
