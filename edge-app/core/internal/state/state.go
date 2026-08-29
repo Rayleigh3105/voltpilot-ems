@@ -101,6 +101,9 @@ type Snapshot struct {
 	// verbatim here and in the cloud heartbeat) plus the honest statement of
 	// whether it can actually reach a device.
 	ExportGuard *ExportGuardInfo `json:"export_guard,omitempty"`
+	// CurtailTrack is the live curtailment tracker (Fix D, 2026-08-29): present
+	// only while the plan actually curtails the active slot.
+	CurtailTrack *CurtailTrackInfo `json:"curtail_track,omitempty"`
 
 	// DeviceExportLimit is the feed-in limit the INVERTER ITSELF holds - a
 	// foreign truth inside the customer's device that we READ (never write) from
@@ -354,6 +357,38 @@ type ExportGuardInfo struct {
 	// PARTIAL case, where the watchdog works but cannot pull back every inverter.
 	Effective bool   `json:"effective"`
 	Reach     string `json:"reach,omitempty"`
+}
+
+// CurtailTrackInfo is the UI-facing state of the LIVE curtailment: the plan
+// curtails this slot, and the device follows the MEASUREMENT instead of standing
+// on a quarter-hour-old watt value. Read-only display of a decision already
+// taken - the law itself lives in guards.CurtailTracker.
+//
+// It exists for the same honesty rule as its compliance sibling: a cap that
+// differs from the Fahrplan value with no reason next to it reads as a defect,
+// in BOTH directions - a cap raised above the plan value just as much as one
+// pulled below it.
+type CurtailTrackInfo struct {
+	// State is the machine-readable verdict (guards.CurtailState): aus | folgt |
+	// haelt | planwert.
+	State string `json:"state"`
+	// Reason is the German sentence for exactly that state.
+	Reason string `json:"reason"`
+	// CapKw is the plant-level PV cap actually commanded, PlanCapKw the plan's
+	// own static value - both, so a surface can show the correction instead of
+	// two contradicting numbers.
+	CapKw     float64 `json:"cap_kw"`
+	PlanCapKw float64 `json:"plan_cap_kw"`
+	// LoadKw / ChargeKw are the two terms the law was formed from; nil while the
+	// tracker is blind - never a fabricated zero.
+	LoadKw   *float64 `json:"load_kw,omitempty"`
+	ChargeKw *float64 `json:"charge_kw,omitempty"`
+	// Blind is true whenever the verdict was NOT formed from a fresh
+	// measurement (hold / plan value).
+	Blind bool `json:"blind"`
+	// MeasurementAgeSeconds is how old the newest usable evaluation point is;
+	// nil when there has never been one.
+	MeasurementAgeSeconds *int `json:"measurement_age_seconds,omitempty"`
 }
 
 // DeviceExportLimitInfo is the feed-in limit the INVERTER ITSELF holds, read
@@ -743,9 +778,9 @@ type OcppCharger struct {
 	Firmware string `json:"firmware,omitempty"`
 	// Ready is true once the two permanent profiles are installed. Note names
 	// the reason when it is not - never an unexplained "not ready".
-	Ready      bool            `json:"ready"`
-	Note       string          `json:"note,omitempty"`
-	LastSeenMs int64           `json:"last_seen_ms,omitempty"`
+	Ready      bool   `json:"ready"`
+	Note       string `json:"note,omitempty"`
+	LastSeenMs int64  `json:"last_seen_ms,omitempty"`
 	// Connection is WHERE this station hangs: "haus" (behind the house
 	// connection) or "eigen" (its own grid connection). Always one of the two -
 	// the resolved value, never the raw absence.
