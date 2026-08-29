@@ -134,11 +134,22 @@ minutes and nothing for the next few hours. The **night floor keeps the last
 word**: a measurement cannot outrank physics, so a reading after sunset still
 reaches the plan as 0.
 
+**The measurement is a WINDOW MEAN, and on a curtailed slot it may only
+lift** (Herzogau 29.08.2026). A single instantaneous reading of a quantity that
+swings 8 → 44 → 22 kW inside a minute is a coin toss: on that day it landed in
+a six-minute cloud and the plan commanded a **discharge** while 23 kW went to
+the grid. The same 24 readings averaged say *charge*. And where the plant is
+being **curtailed**, the reading is the output of our own cap - a floor of the
+potential, never the potential - so it may raise the forecast but never lower
+it, which is what closed the feedback loop *cap → measure less → plan less →
+cap falls away → export*.
+
 | Env | Default | Meaning |
 |---|---|---|
 | `OPTIMIZER_PV_NOWCAST_ENABLED` | `true` | kill switch |
 | `OPTIMIZER_PV_NOWCAST_DECAY_SLOTS` | `2` | slots over which the measurement fades back to the forecast |
-| `OPTIMIZER_PV_NOWCAST_MAX_AGE_SECONDS` | `30` | how stale a reading may be and still speak for the running slot |
+| `OPTIMIZER_PV_NOWCAST_MAX_AGE_SECONDS` | `30` | how stale the NEWEST sample may be and still speak for the running slot |
+| `OPTIMIZER_PV_NOWCAST_LOOKBACK_SECONDS` | `120` | the window the running slot is averaged over - longer is more cloud-robust, shorter reacts faster at dusk |
 
 The upstream half of the same incident - why the forecast claimed 5.9 kW from a
 100 kWp plant at 1.9° of sun - is fixed in `services/forecast` (hour alignment,
