@@ -1967,6 +1967,7 @@ export type ExecutionMode =
   | 'deficit_cover'
   | 'high_soc_follow'
   | 'high_soc_charge'
+  | 'surplus_store'
   | 'autonomous_discharge';
 
 /** `deepen` = Entladung angehoben, `reduce` = Entladung begrenzt. */

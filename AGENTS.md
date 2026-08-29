@@ -4461,6 +4461,64 @@ Test festgenagelt.
   `VP_NATIVE_SELF_REGULATION_ENABLED` (Vorgabe AN, Opt-out) ist der Not-Aus je
   Box. Die Edge-Hälfte reist mit dem nächsten Edge-Release.
 
+## Überschuss-Einlagerung im Fahrplan-Modus: der Ladeboden unter der Ökonomie
+
+Der SPIEGEL der Defizit-Deckung darunter (Scout `data/vp-herzogau-einspeisung-statt-laden-h3`
+§4/§8 B1, Captain-Auftrag 29.08.2026). Live-Fall Pilsting/Herzogau 10:53:
+Speicher 38 %, PV 56,9 kW, Haus 29,0 kW - und der Fahrplan-Slot befahl **+9,82 kW
+Ladung**, also gingen **~18 kW ins Netz bei NEGATIVEM Preis**. Die Prognose des
+Slots war zu klein, weil der PV-Nowcast der Wolke die von UNSERER EIGENEN
+Abregel-Kappe geklemmte Erzeugung gemessen hatte. **Regel seither: ein
+GEMESSENER Solar-Überschuss, den der Plan nicht ausschöpft, wird in jedem
+Fahrplan-Slot eingelagert, in dem der Plan bereits LÄDT - bis maximal zur
+Überschusshöhe, nie mehr.**
+
+- **⚠ SIE BRAUCHT KEINEN PREIS-DISKRIMINATOR, und das ist ihr ganzes
+  Sicherheits-Argument: der Plan LÄDT BEREITS.** Die Speicher-gegen-Verkauf-
+  Entscheidung dieses Slots hat die Wolke getroffen; korrigiert wird nur die
+  MENGE, und es gibt hier keinen Verkauf, den sie umdrehen könnte. Genau das
+  trennt sie vom RUHENDEN Befehl, der die Marke `cover_load_from_battery`
+  braucht, um einen Eigenverbrauchs- von einem Verkaufsslot zu unterscheiden.
+- **⚠ Warum die Wolken-Pflicht die Lücke nicht schliesst:**
+  `charge_surplus_to_battery` prüft `η·λ − Verschleiß > Exportwert + Marge`, und
+  **λ kollabiert auf ≈ Verschleiß/2, sobald die Plan-Trajektorie den Speicher im
+  Horizont ohnehin voll macht** - also genau an den Überschuss-Tagen, für die die
+  Pflicht gebaut wurde. Sie schwieg im Vorfall belegbar (`absorb: null` in allen
+  Snapshots). Derselbe Befund stand schon in `vp-negativpreis-herzogau-g3` §4(f).
+- **Die Edge-Regel ist eine VERTRAUENS-, keine Wirtschaftlichkeitsregel**
+  (`edge-app/core/internal/guards/surplusstore.go`). Sie entscheidet nie, OB
+  Zyklen sich lohnen; sie weigert sich nur, Energie zu VERSCHENKEN, die die
+  Anlage gerade erzeugt, während der Plan sie schon speichern wollte.
+- **Sie autorisiert den BESTEHENDEN `SurplusCharger`** statt eines zweiten
+  Anhebe-Pfads: der angehobene Zielwert läuft erneut durch die autoritative
+  `guards.Clamp` (Nennband, SoC-Decke, EEG-Solarladen, §14a-Hülle) und kann an
+  keinem Wächter vorbeischreiben. Ladung ≤ Überschuss ⇒ vorhergesagtes Netz ≤ 0,
+  also nie ein Import und ein Export nur in Richtung null.
+- **⚠ MAGNITUDEN-ONLY, deshalb KEIN gehaltenes Rücklesen verlangt** - anders als
+  die Regeln, die eine Richtung aus der Ruhe STARTEN (`deficitCover`,
+  `HighSocCharge`, `unplannedLoad`, die alle `portableReady` fordern). Die Box
+  schreibt diese Richtung ohnehin schon, und eine strengere Bedingung als die
+  der grösseren Wolken-Absorption daneben wäre nicht zu begründen.
+- **Wo die WOLKE autorisiert hat, behält sie ihren Namen** (`absorb`): die
+  lokale Regel etikettiert nie eine Entscheidung um, die der Plan getroffen hat -
+  ein unverdienter Ökonomie-Anspruch wäre dieselbe Klasse Unehrlichkeit wie eine
+  unbenannte Korrektur.
+- **Heartbeat/API/Portal nennen sie `surplus_store` / „Live-Überschussladung"**
+  (eigenes Wort, kein `absorb`). Der api-`ControlStatusListener` und die drei
+  Portal-Register (`api.ts`, `control.ts`, `fahrplanJetzt.ts`, `flowConflict.ts`)
+  kennen es; eine ältere Cloud VERWIRFT ein unbekanntes Wort und degradiert auf
+  ihren generischen Satz - der dokumentierte gnädige Pfad.
+- **Beweise:** rein `guards/surplusstore_test.go` (der Live-Vektor, „Netz landet
+  exakt auf 0", jeder SoC unter der Decke, alle Verweigerungen) ·
+  `agent/surplus_store_test.go` (der Vorfall Ende-zu-Ende: +9,82 → +27,894 kW,
+  Netz 0,000; Nennband-Deckel; Verkauf/Ruhe/blind/Decke unangetastet; die Wolke
+  behält ihren Namen; die Pause meldet keine Korrektur) · api
+  `ControlStatusListenerTest` · portal `control.test.ts` · edge
+  `web/jstest/ui.test.js`.
+- **Ops:** keine neue Pflicht-Variable, keine Migration, kein Vertragsfeld. Die
+  Edge-Hälfte reist mit dem nächsten Edge-Release; api und Portal sind sofort
+  lieferbar und degradieren bis dahin auf „kein Modus gemeldet".
+
 ## Defizit-Deckung im Fahrplan-Modus: die Kundenvertrauens-Regel unter der Ökonomie
 
 Captain-Entscheid 28.08.2026 („beides bauen"), Live-Fall Pilsting/Herzogau

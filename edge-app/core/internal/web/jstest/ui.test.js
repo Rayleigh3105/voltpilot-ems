@@ -448,6 +448,24 @@ test("control: the upper PV buffer explains the product rule instead of a price 
   assert.ok(!/mehr wert/.test(d.text), "the local trust rule must not invent an economic verdict: " + d.text);
 });
 
+test("control: the charge-side trust floor names the plan's under-estimate, not a price verdict", () => {
+  // The live incident (Herzogau 2026-08-29 10:53): plan +9,82 kW against a
+  // measured 27,9 kW surplus, ~18 kW exported at a NEGATIVE price.
+  const d = absorbFor({
+    absorb: { active: true, path: "surplus_store", planned_kw: 9.82, surplus_kw: 27.9 }
+  });
+  assert.ok(d, "an active surplus storage must produce a reason line");
+  assert.match(d.text, /27,9 kW/, "it names the measured surplus: " + d.text);
+  assert.match(d.text, /9,8 kW/, "and what the Fahrplan had planned: " + d.text);
+  assert.match(d.text, /Ladung angehoben/, "and WHICH WAY it corrected: " + d.text);
+  assert.match(d.text, /zu niedrig gesch\u00e4tzt/, "and WHY: " + d.text);
+  assert.match(d.text, /Netzstrom nie/, "and that it never buys: " + d.text);
+  assert.ok(!/mehr wert/.test(d.text),
+    "the local trust rule must not claim the cloud's economic verdict: " + d.text);
+  assert.ok(!/PV-Puffer|Ladegrenze/.test(d.text),
+    "and it is not the narrow top-band buffer: " + d.text);
+});
+
 test("control: no absorption -> no reason line (the card reads exactly as before)", () => {
   assert.strictEqual(absorbFor({}), null);
   assert.strictEqual(absorbFor({ absorb: null }), null);

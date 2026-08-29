@@ -222,6 +222,7 @@ export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
   // ältere Box meldet ihn; das Wort bleibt, damit ihre Meldung lesbar ist.
   high_soc_follow: 'Vollakku-Entlastung',
   high_soc_charge: 'PV-Puffer-Nachladung',
+  surplus_store: 'Live-Überschussladung',
   autonomous_discharge: 'Wechselrichter-Automatik',
 };
 
@@ -279,6 +280,14 @@ export function executionNote(status: ControlStatus | null): string | null {
     return (
       `${plannedPart}Der Speicher ist nahezu voll. VoltPilot deckt den nach Solar verbleibenden ` +
       `Verbrauch${measured} jetzt aus dem Speicher und schafft nur ein kleines oberes Pufferfenster.`
+    );
+  }
+  if (mode === 'surplus_store') {
+    const surplus = target == null ? '' : ` (${absKw(target)})`;
+    return (
+      `${plannedPart}Ihr Gerät lädt den gemessenen Solar-Überschuss${surplus} ein, statt ihn ` +
+      'einzuspeisen: der Fahrplan hatte ihn zu niedrig geschätzt. Netzstrom wird dabei nie ' +
+      'gekauft — geladen wird nur, was gemessen übrig ist.'
     );
   }
   if (mode === 'high_soc_charge') {

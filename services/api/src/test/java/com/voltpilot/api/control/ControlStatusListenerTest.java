@@ -148,6 +148,26 @@ class ControlStatusListenerTest {
         assertThat(ex.measurementsFresh()).isTrue();
     }
 
+    /**
+     * The charge-side trust floor (2026-08-29, Herzogau) is its own word too,
+     * and its target is the measured SURPLUS - not a deficit. Without the word
+     * the listener would DROP the whole execution block of a current box and
+     * the portal could no longer name why the device charges more than the
+     * Fahrplan asked for.
+     */
+    @Test
+    void surplusStoreIsUnderstoodAndItsTargetIsTheMeasuredSurplus() {
+        var ex = ingest("{" + BASE + ",\"execution\":{\"mode\":\"surplus_store\"," +
+                "\"planned_kw\":9.82,\"surplus_kw\":27.894," +
+                "\"measurements_fresh\":true}}", "schedule");
+
+        assertThat(ex.mode()).isEqualTo("surplus_store");
+        assertThat(ex.plannedKw()).isEqualTo(9.82);
+        assertThat(ex.targetKw()).isEqualTo(27.894);
+        assertThat(ex.direction()).isNull();
+        assertThat(ex.measurementsFresh()).isTrue();
+    }
+
     /** The full-battery override is distinct and carries its tighter top-band floor. */
     @Test
     void highSocFollowerCarriesItsBoundedFloorWithoutInventingADirection() {
