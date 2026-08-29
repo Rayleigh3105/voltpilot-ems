@@ -332,13 +332,6 @@
           "gespeichert wird nur, was gemessen übrig ist – Netzstrom nie."
       };
     }
-    if (a.path === "high_soc_charge") {
-      return {
-        text: "Lädt den gemessenen Solarüberschuss" + stored + " in den oberen " +
-          "PV-Puffer – statt ihn in diesem Verbrauchs-Slot einzuspeisen" + planned +
-          ". Die Ladung endet an der eingestellten Ladegrenze."
-      };
-    }
     var text =
       "Lädt den gemessenen Solarüberschuss" + stored + " – Ladung angehoben: " +
       "die gespeicherte Energie ist mehr wert als die Einspeisung in dieser " +

@@ -53,7 +53,15 @@ public class ControlStatusListener {
 
     private static final Logger log = LoggerFactory.getLogger(ControlStatusListener.class);
     private static final String STATUS_FILTER = "ems/+/+/+/status";
-    /** The additive execution modes the edge may report - anything else is ignored. */
+    /**
+     * The additive execution modes the edge may report - anything else is ignored.
+     *
+     * <p>{@code high_soc_follow} and {@code high_soc_charge} are RETIRED words:
+     * no current build emits them (they were superseded by {@code deficit_cover}
+     * and {@code surplus_store}, which drop the narrow SoC band). They stay in
+     * the set because a box on an older image still reports them and the cloud
+     * must keep understanding it.
+     */
     private static final Set<String> EXECUTION_MODES = Set.of(
             "plan", "follow", "trim", "absorb", "fallback", "idle_follow",
             "deficit_cover", "high_soc_follow", "high_soc_charge", "surplus_store",

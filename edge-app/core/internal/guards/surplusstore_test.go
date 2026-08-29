@@ -52,6 +52,62 @@ func TestStoreSurplusTargetsExactlyZeroGridExchange(t *testing.T) {
 	}
 }
 
+// The IDLE entry, and the constellation that outgrew the retired top-band
+// buffer (scout report §4/§8 B2): Anlage Pilsting/Herzogau 10:14:29, storage
+// 19 %, PV 39,354 kW, house 16,383 kW - and 22,8 kW leaving the site while the
+// slot's obsolete forecast discharge had already been followed down to 0,0 kW.
+func herzogau1014() SurplusStoreInput {
+	return SurplusStoreInput{
+		Eligible: true, IdleAuthorized: true, MeasurementsFresh: true, CommandKw: 0,
+		SocPct: 19, SocMaxPct: 95, PvKw: 39.354, LoadKw: 16.383,
+	}
+}
+
+func TestStoreSurplusStoresTheSurplusOfAnIdleCoverLoadSlot(t *testing.T) {
+	d := StoreSurplus(herzogau1014())
+	if !d.Active || !d.Idle {
+		t.Fatalf("19%% storage exporting 22,8 kW in a cover-load slot must store it: %+v", d)
+	}
+	// The retired buffer engaged only between soc_max-5 and soc_max, which is
+	// exactly why it refused this case. The general rule reaches every SoC below
+	// the ceiling - the same step its DISCHARGE twin took one day earlier.
+	for _, soc := range []float64{0, 5, 19, 37, 50, 89.9, 91, 94.99} {
+		in := herzogau1014()
+		in.SocPct = soc
+		if d := StoreSurplus(in); !d.Active || !d.Idle {
+			t.Fatalf("SoC %.2f%% below the ceiling must be stored: %+v", soc, d)
+		}
+	}
+}
+
+// The case the retired top-band buffer was built for must keep working
+// unchanged: 91 % storage, PV 11,4 kW, house 2,9 kW, 8,5 kW exported while the
+// cockpit still called the slot "Verbrauch decken" (28.08.2026, 17:50).
+func TestStoreSurplusStillCoversTheRetiredUpperBufferCase(t *testing.T) {
+	in := herzogau1014()
+	in.SocPct, in.PvKw, in.LoadKw = 91, 11.4, 2.9
+	if d := StoreSurplus(in); !d.Active || !d.Idle {
+		t.Fatalf("the former upper-buffer vector must still be stored: %+v", d)
+	}
+}
+
+// THE discriminator of the idle entry. A resting command with a large surplus
+// can also mean "sell at the peak price" - only the cloud knows, and it says so
+// with cover_load_from_battery. Without that marker nothing is reinterpreted.
+func TestStoreSurplusNeverStoresAnIdleCommandWithoutTheCloudsOwnConsumptionMarker(t *testing.T) {
+	in := herzogau1014()
+	in.IdleAuthorized = false
+	if d := StoreSurplus(in); d.Active {
+		t.Fatalf("an unmarked resting slot may be a deliberate sale: %+v", d)
+	}
+	// ... while the CHARGE entry is unaffected by the marker: there the plan
+	// itself already decided to store.
+	in.CommandKw = 9.82
+	if d := StoreSurplus(in); !d.Active || d.Idle {
+		t.Fatalf("a planned charge needs no marker: %+v", d)
+	}
+}
+
 func TestStoreSurplusRefusesOutsideTheExplicitSafeShape(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -62,8 +118,27 @@ func TestStoreSurplusRefusesOutsideTheExplicitSafeShape(t *testing.T) {
 		// The two commands this rule must never touch: an idle one needs the
 		// cloud's own-consumption marker to rule out a sell slot, and a
 		// discharge is a direction rather than a magnitude.
-		{"idle command", func(i *SurplusStoreInput) { i.CommandKw = 0 }},
-		{"idle command inside the deadband", func(i *SurplusStoreInput) { i.CommandKw = 0.05 }},
+		{"idle command without the marker", func(i *SurplusStoreInput) { i.CommandKw = 0 }},
+		{"idle command inside the deadband, no marker", func(i *SurplusStoreInput) { i.CommandKw = 0.05 }},
+		{"a sale is never idle, marker or not", func(i *SurplusStoreInput) {
+			i.IdleAuthorized = true
+			i.CommandKw = -0.06
+		}},
+		{"authorized idle but at the ceiling", func(i *SurplusStoreInput) {
+			i.IdleAuthorized = true
+			i.CommandKw = 0
+			i.SocPct = 95
+		}},
+		{"authorized idle but no material surplus", func(i *SurplusStoreInput) {
+			i.IdleAuthorized = true
+			i.CommandKw = 0
+			i.PvKw = 29.1
+		}},
+		{"authorized idle but stale measurements", func(i *SurplusStoreInput) {
+			i.IdleAuthorized = true
+			i.CommandKw = 0
+			i.MeasurementsFresh = false
+		}},
 		{"planned sale", func(i *SurplusStoreInput) { i.CommandKw = -30 }},
 		{"at the ceiling", func(i *SurplusStoreInput) { i.SocPct = 95 }},
 		{"above the ceiling", func(i *SurplusStoreInput) { i.SocPct = 96 }},

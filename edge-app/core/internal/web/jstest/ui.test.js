@@ -436,18 +436,6 @@ test("control: an active absorption names the deliberate correction with both nu
     "a correction must never read as a failed write: " + d.text);
 });
 
-test("control: the upper PV buffer explains the product rule instead of a price verdict", () => {
-  const d = absorbFor({
-    absorb: { active: true, path: "high_soc_charge", planned_kw: -4.3, surplus_kw: 8.5 }
-  });
-  assert.ok(d, "an active upper-buffer refill must produce a reason line");
-  assert.match(d.text, /8,5 kW/, "it names the measured surplus: " + d.text);
-  assert.match(d.text, /oberen PV-Puffer/, "it names the bounded buffer: " + d.text);
-  assert.match(d.text, /Verbrauchs-Slot/, "it explains why this slot qualifies: " + d.text);
-  assert.match(d.text, /Ladegrenze/, "it names where the refill stops: " + d.text);
-  assert.ok(!/mehr wert/.test(d.text), "the local trust rule must not invent an economic verdict: " + d.text);
-});
-
 test("control: the charge-side trust floor names the plan's under-estimate, not a price verdict", () => {
   // The live incident (Herzogau 2026-08-29 10:53): plan +9,82 kW against a
   // measured 27,9 kW surplus, ~18 kW exported at a NEGATIVE price.
@@ -464,6 +452,14 @@ test("control: the charge-side trust floor names the plan's under-estimate, not 
     "the local trust rule must not claim the cloud's economic verdict: " + d.text);
   assert.ok(!/PV-Puffer|Ladegrenze/.test(d.text),
     "and it is not the narrow top-band buffer: " + d.text);
+
+  // The IDLE entry of the same rule (Herzogau 10:14, storage 19 %): the plan's
+  // obsolete -7,17 kW forecast discharge is what the card must compare against.
+  const idle = absorbFor({
+    absorb: { active: true, path: "surplus_store", planned_kw: -7.17, surplus_kw: 22.97 }
+  });
+  assert.match(idle.text, /22,97 kW|23,0 kW/, "it names the measured surplus: " + idle.text);
+  assert.match(idle.text, /-7,2 kW|7,2 kW/, "and the Fahrplan it deviates from: " + idle.text);
 });
 
 test("control: no absorption -> no reason line (the card reads exactly as before)", () => {

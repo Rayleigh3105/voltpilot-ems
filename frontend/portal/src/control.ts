@@ -221,6 +221,8 @@ export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
   // Der abgelöste enge Vollakku-Fall (bis edge-2026.08.29). Nur noch eine
   // ältere Box meldet ihn; das Wort bleibt, damit ihre Meldung lesbar ist.
   high_soc_follow: 'Vollakku-Entlastung',
+  // Die abgeloeste enge Ladeseite (bis edge-2026.08.29). Nur noch eine aeltere
+  // Box meldet sie; das Wort bleibt, damit ihre Meldung lesbar ist.
   high_soc_charge: 'PV-Puffer-Nachladung',
   surplus_store: 'Live-Überschussladung',
   autonomous_discharge: 'Wechselrichter-Automatik',

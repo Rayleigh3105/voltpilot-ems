@@ -264,10 +264,16 @@ func TestTheLocalDeficitRuleNeverReinterpretsAPlannedCharge(t *testing.T) {
 
 // The symmetric customer-trust regression from the same plant, 17:50 on
 // 28.08.2026: PV 11.4 kW, house 2.9 kW, battery 91 %, and 8.5 kW exported while
-// the active slot still said "Verbrauch decken". Inside the 90-95 % top band
-// that measured surplus must refill the headroom the load-covering rule may
-// spend. The plan's obsolete -4.3 kW forecast first follows to 0, then the safe
-// surplus controller raises the published command to +8.5 kW.
+// the active slot still said "Verbrauch decken". That measured surplus must be
+// stored instead of exported. The plan's obsolete -4.3 kW forecast first follows
+// to 0, then the safe surplus controller raises the published command to
+// +8.5 kW.
+//
+// Since 2026-08-29 this runs through the GENERAL charge-side trust floor
+// (guards.StoreSurplus, execution name "surplus_store"), which dropped the
+// 90-95 % band the original upper-buffer rule carried - see
+// agent/surplus_store_test.go for the 19 % case that outgrew it. This vector
+// must keep behaving exactly as before.
 func TestCoverLoadSlotRefillsUpperBufferFromTheReportedSolarSurplus(t *testing.T) {
 	a, addr := followAgentAddr(t)
 	sub := subscribeSetpoint(t, addr)
@@ -298,8 +304,8 @@ func TestCoverLoadSlotRefillsUpperBufferFromTheReportedSolarSurplus(t *testing.T
 		return ok && m["battery_setpoint_kw"] == 8.5
 	})
 	snap := a.State.Get()
-	if snap.Absorb == nil || !snap.Absorb.Active || snap.Absorb.Path != execModeHighSocCharge {
-		t.Fatalf("upper-buffer execution evidence = %+v", snap.Absorb)
+	if snap.Absorb == nil || !snap.Absorb.Active || snap.Absorb.Path != execModeSurplusStore {
+		t.Fatalf("surplus-storage execution evidence = %+v", snap.Absorb)
 	}
 	if snap.Absorb.PlannedKw != -4.3 {
 		t.Fatalf("planned comparison = %.3f kW, want original Fahrplan -4.3 kW", snap.Absorb.PlannedKw)
@@ -310,10 +316,10 @@ func TestCoverLoadSlotRefillsUpperBufferFromTheReportedSolarSurplus(t *testing.T
 	if grid := 2.9 + snap.SetpointKw - 11.4; math.Abs(grid) > .001 {
 		t.Fatalf("grid = %.3f kW, want zero", grid)
 	}
-	if ex := controlSummary(snap).Execution; ex == nil || ex.Mode != execModeHighSocCharge ||
+	if ex := controlSummary(snap).Execution; ex == nil || ex.Mode != execModeSurplusStore ||
 		ex.PlannedKw == nil || *ex.PlannedKw != -4.3 ||
 		ex.SurplusKw == nil || *ex.SurplusKw != 8.5 || !ex.MeasurementsFresh {
-		t.Fatalf("heartbeat must name the upper-buffer refill: %+v", ex)
+		t.Fatalf("heartbeat must name the surplus storage: %+v", ex)
 	}
 
 	// The configured ceiling still wins through guards.Clamp. Once it is

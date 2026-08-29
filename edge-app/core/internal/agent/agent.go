@@ -1814,6 +1814,11 @@ const (
 	// emits it any more; the word stays documented because a box on an older
 	// image still reports it and the cloud must keep understanding it.
 	execModeHighSocFollow = "high_soc_follow"
+	// execModeHighSocCharge is the RETIRED narrow upper PV buffer (2026-08-29,
+	// superseded by execModeSurplusStore, which stores a measured surplus at
+	// every SoC below the ceiling instead of inside a five-point top band). No
+	// build emits it any more; the word stays documented because a box on an
+	// older image still reports it and the cloud must keep understanding it.
 	execModeHighSocCharge = "high_soc_charge"
 	// execModeSurplusStore is the CHARGE-side trust floor (2026-08-29, scout
 	// report vp-herzogau-einspeisung-statt-laden-h3 §8 B1): the plan's OWN
@@ -1859,20 +1864,17 @@ func executionSummary(snap state.Snapshot) *cloud.ExecutionSummary {
 	}
 	if a := snap.Absorb; a != nil && a.Active {
 		mode := execModeAbsorb
-		switch a.Path {
-		case execModeHighSocCharge:
-			mode = execModeHighSocCharge
-		case execModeSurplusStore:
+		if a.Path == execModeSurplusStore {
 			mode = execModeSurplusStore
 		}
 		return &cloud.ExecutionSummary{
 			Mode:      mode,
 			PlannedKw: copyFloat(&a.PlannedKw),
 			SurplusKw: copyFloat(a.SurplusKw),
-			// Only the LOCALLY authorized paths carry the recent-measurement
+			// Only the LOCALLY authorized path carries the recent-measurement
 			// evidence as an explicit fact; the cloud-economic absorption is
 			// authorized by the plan, not by a freshness window of ours.
-			MeasurementsFresh: mode == execModeHighSocCharge || mode == execModeSurplusStore,
+			MeasurementsFresh: mode == execModeSurplusStore,
 		}
 	}
 	if f := snap.Follow; f != nil && f.Active {
@@ -2597,45 +2599,33 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// ever moves an export TOWARD zero. See guards/surpluscharge.go for the full
 	// argument. NOTE the setpoint published below is the RAISED value: the
 	// register readback therefore matches it and the confirmation logic never
-	// reads a deliberate correction as "setpoint not adopted". Since 2026-08-28
-	// the same safe measured-surplus controller also executes the bounded upper
-	// PV buffer below; that local authorization is intentionally narrower than
-	// the cloud-economic flag and gets its own execution path/name.
-	// UPPER PV BUFFER: the cover-load duty means this is an own-consumption
-	// slot, not a deliberate sale. If its measured deficit has flipped into a
-	// surplus, refill the same narrow five-point band the full-battery relief may
-	// spend (90-95 % with the default ceiling). This is the symmetric customer-
-	// trust rule: a visible 91 % battery must not export 8.5 kW while the cockpit
-	// still calls the slot "Verbrauch decken". It needs the same fresh held
-	// readback as every locally STARTED direction, and it can act only after the
-	// follower has reduced the obsolete planned discharge to real idle. Explicit
-	// sell slots never carry cover_load_from_battery, so price arbitrage outside
-	// this top band remains exactly the cloud's decision.
-	highSocCharge := guards.HighSocCharge(guards.HighSocChargeInput{
-		Eligible:          marketCorrectionsAllowed && p.Fresh(now) && coverLoad && portableReady,
-		MeasurementsFresh: measurementFresh,
-		CommandKw:         kw,
-		SocPct:            r.SocPct,
-		SocMaxPct:         limits.SocMaxPct,
-		PvKw:              r.PvKw,
-		LoadKw:            r.LoadKw,
-	})
+	// reads a deliberate correction as "setpoint not adopted". Since 2026-08-29
+	// the same safe controller also executes the LOCAL charge-side trust floor
+	// below; that authorization is not the cloud's economic verdict and gets its
+	// own execution path/name.
 	absorbAuthorized := marketCorrectionsAllowed && p.ActiveChargeSurplusToBattery(now)
 	// SURPLUS STORAGE (2026-08-29, scout report
-	// vp-herzogau-einspeisung-statt-laden-h3 §8 B1): the same measured-surplus
-	// controller, authorized by the plan's OWN charge instead of a cloud flag.
-	// The live gap it closes: the plan commanded +9,82 kW against a measured
-	// 27,9 kW surplus, so ~18 kW left the site at a NEGATIVE price with the
-	// storage at 38 % - the trim only lowers, the follower only acts on a
-	// discharge, the top-band buffer needs an idle command AND a nearly full
-	// battery, and the cloud-economic duty is structurally silent on exactly the
-	// surplus days it was built for (lambda collapses to ~wear/2 once the plan's
-	// own trajectory fills the battery inside the horizon).
+	// vp-herzogau-einspeisung-statt-laden-h3 §8 B1/B2): the same measured-surplus
+	// controller, authorized LOCALLY instead of by a cloud flag - because the
+	// cloud-economic duty is structurally silent on exactly the surplus days it
+	// was built for (lambda collapses to ~wear/2 once the plan's own trajectory
+	// fills the battery inside the horizon). Two live gaps from the same morning:
 	//
-	// It needs NO price discriminator, and that is the whole safety argument:
-	// the plan is ALREADY CHARGING, so the store-versus-sell decision of this
-	// slot has been made by the cloud and only the AMOUNT is corrected. There is
-	// no sale here that could be flipped. See guards/surplusstore.go.
+	//   B1 - the plan commanded +9,82 kW against a measured 27,9 kW surplus, so
+	//        ~18 kW left the site at a NEGATIVE price with the storage at 38 %;
+	//   B2 - the plan RESTED (its obsolete -7,17 kW forecast discharge had been
+	//        followed down to 0,0 kW) while 22,8 kW left the site, storage 19 %.
+	//
+	// The two entries differ in exactly one thing, and it is the safety
+	// argument: with a CHARGE the store-versus-sell decision has been made by
+	// the cloud and only the AMOUNT is corrected - there is no sale that could
+	// be flipped. A RESTING command could also mean "sell at the peak", so it
+	// needs the cloud's own discriminator: cover_load_from_battery marks a
+	// "grid ~ 0" own-consumption slot and is never set on a sell slot. That
+	// entry additionally demands the gates every locally STARTED direction
+	// demands (kill switch, family certification, a held Layer-1 readback), and
+	// it can only act after the follower has reduced an obsolete planned
+	// discharge to real idle. See guards/surplusstore.go.
 	//
 	// Eligible folds the hold reasons the decision cannot see: the plant pause /
 	// non-plan holder / owner claim boundary, the Fahrplan mode itself (the
@@ -2645,6 +2635,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	surplusStore := guards.StoreSurplus(guards.SurplusStoreInput{
 		Eligible: marketCorrectionsAllowed && mode == state.ModeSchedule &&
 			p.Fresh(now) && !absorbAuthorized,
+		IdleAuthorized:    coverLoad && portableReady,
 		MeasurementsFresh: measurementFresh,
 		CommandKw:         kw,
 		SocPct:            r.SocPct,
@@ -2653,19 +2644,18 @@ func (a *Agent) applySetpoint(now time.Time) {
 		LoadKw:            r.LoadKw,
 	})
 	absorbed := a.absorb.Apply(now, kw,
-		absorbAuthorized || highSocCharge.Active || surplusStore.Active, limits, r)
-	highSocChargeApplied := highSocCharge.Active && absorbed.Active
-	if highSocChargeApplied {
-		absorbed.Path = execModeHighSocCharge
-		// The portal compares execution with the Fahrplan, not with the follower's
-		// intermediate 0 kW. Preserve the original -4.3 kW from the reported case.
-		absorbed.CommandedKw = preFollowKw
-	} else if surplusStore.Active && absorbed.Active {
-		// Disjoint from the top band by construction: that one needs an IDLE
-		// command, this one a genuine charge. The commanded value stays the
-		// pre-absorption one - the follower never touches a positive command,
-		// so it is already the plan's own charge.
+		absorbAuthorized || surplusStore.Active, limits, r)
+	surplusStored := surplusStore.Active && absorbed.Active
+	if surplusStored {
 		absorbed.Path = execModeSurplusStore
+		if surplusStore.Idle {
+			// The portal compares execution with the Fahrplan, not with the
+			// follower's intermediate 0 kW. Preserve the original forecast
+			// discharge from the reported case. On the charge entry the
+			// follower never touched the command, so the pre-absorption value
+			// already IS the plan's own charge.
+			absorbed.CommandedKw = preFollowKw
+		}
 	}
 	kw = absorbed.Kw
 
@@ -2785,7 +2775,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// way - unchanged for the executor to write in setpoint mode, and as the
 	// display/take-back reference in native mode.
 	nativeDec, nativeInfo := a.nativeDecide(now, p, r, kw,
-		marketCorrectionsAllowed && !highSocChargeApplied, controlEnabled, measurementFresh, freshWindow,
+		marketCorrectionsAllowed && !surplusStored, controlEnabled, measurementFresh, freshWindow,
 		effectiveFloor, peakTarget, solarOnly)
 
 	msg := map[string]any{

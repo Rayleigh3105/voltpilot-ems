@@ -203,6 +203,117 @@ func TestSurplusStorageLeavesEveryOtherIntentUntouched(t *testing.T) {
 	}
 }
 
+// THE SECOND HALF OF THE SAME MORNING (scout report §1.3/§8 B2): 10:14:29,
+// storage 19 %, PV 39,354 kW, house 16,383 kW - and 22,8 kW leaving the site.
+// The slot's plan value was an obsolete -7,17 kW forecast discharge, which the
+// load follower had correctly reduced to 0,0 kW (no measured deficit). Nothing
+// then raised it: the retired top-band buffer needed SoC >= 90.
+//
+// The cover_load_from_battery marker is what makes this safe - the cloud sets it
+// only on a "grid ~ 0" own-consumption slot, never on a sale.
+func TestAnIdleCoverLoadSlotStoresTheMeasuredSurplusAtEveryStateOfCharge(t *testing.T) {
+	a, addr := followAgentAddr(t)
+	sub := subscribeSetpoint(t, addr)
+	now := time.Date(2026, 8, 29, 8, 14, 29, 0, time.UTC)
+
+	no, floor := false, 5.0
+	a.mu.Lock()
+	a.currentPlan = &plan.Plan{
+		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
+		GridChargeAllowed: &no, EffectiveFloorSocPct: &floor,
+		Slots: []plan.Slot{{
+			Start: now, BatterySetpointKw: -7.17, CoverLoadFromBattery: true,
+		}},
+	}
+	a.lastReading = guards.Reading{
+		SocPct: 19, PvKw: 39.354, LoadKw: 16.383, GridLimitKw: guards.Unknown(),
+	}
+	a.lastReadingAt = now
+	a.mu.Unlock()
+	a.State.Update(func(s *state.Snapshot) {
+		s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
+	})
+
+	a.applySetpoint(now)
+	waitFor(t, 5*time.Second, "the stored surplus", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == 22.971
+	})
+
+	snap := a.State.Get()
+	if snap.Absorb == nil || !snap.Absorb.Active || snap.Absorb.Path != execModeSurplusStore {
+		t.Fatalf("surplus-storage execution evidence = %+v", snap.Absorb)
+	}
+	// The portal compares the execution with the FAHRPLAN, not with the
+	// follower's intermediate 0 kW - otherwise the card would show a correction
+	// against a value nobody planned.
+	if snap.Absorb.PlannedKw != -7.17 {
+		t.Fatalf("planned comparison = %.3f kW, want the original -7.17 kW", snap.Absorb.PlannedKw)
+	}
+	if grid := 16.383 + snap.SetpointKw - 39.354; math.Abs(grid) > .001 {
+		t.Fatalf("grid = %.3f kW, want zero (the incident exported 22,8 kW)", grid)
+	}
+	if ex := controlSummary(snap).Execution; ex == nil || ex.Mode != execModeSurplusStore ||
+		ex.PlannedKw == nil || *ex.PlannedKw != -7.17 || !ex.MeasurementsFresh {
+		t.Fatalf("heartbeat must name the surplus storage: %+v", ex)
+	}
+}
+
+// The idle entry is the one that could flip a decision, so it stops at the two
+// boundaries the cloud and the write path own.
+func TestTheIdleEntryRefusesWithoutTheMarkerAndWithoutAHeldReadback(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		coverLoad bool
+		readback  bool
+	}{
+		// An unmarked resting slot may be a deliberate sale at the peak price.
+		{"no cover-load marker", false, true},
+		// Every locally STARTED direction needs the independently held Layer-1
+		// evidence - unlike the magnitude-only charge entry.
+		{"no held readback", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, addr := followAgentAddr(t)
+			sub := subscribeSetpoint(t, addr)
+			now := time.Date(2026, 8, 29, 8, 14, 29, 0, time.UTC)
+			no, floor := false, 5.0
+			a.mu.Lock()
+			a.currentPlan = &plan.Plan{
+				SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
+				GridChargeAllowed: &no, EffectiveFloorSocPct: &floor,
+				Slots: []plan.Slot{{
+					Start: now, BatterySetpointKw: -7.17,
+					CoverLoadFromBattery: tc.coverLoad,
+				}},
+			}
+			a.lastReading = guards.Reading{
+				SocPct: 19, PvKw: 39.354, LoadKw: 16.383, GridLimitKw: guards.Unknown(),
+			}
+			a.lastReadingAt = now
+			a.mu.Unlock()
+			if tc.readback {
+				a.State.Update(func(s *state.Snapshot) {
+					s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
+				})
+			}
+
+			a.applySetpoint(now)
+			// Without the marker the follower leaves the planned discharge; with
+			// it but without evidence it reduces it to 0. Either way NOTHING is
+			// raised - which is the assertion that matters.
+			waitFor(t, 5*time.Second, "no raise", func() bool {
+				m, ok := sub.latest()
+				kw, isNum := m["battery_setpoint_kw"].(float64)
+				return ok && isNum && kw <= 0
+			})
+			if snap := a.State.Get(); snap.Absorb != nil && snap.Absorb.Active {
+				t.Fatalf("nothing may be raised here: %+v", snap.Absorb)
+			}
+		})
+	}
+}
+
 // Where the CLOUD authorized the absorption it keeps its own name: the local
 // trust floor must never re-label a decision the plan itself made, or the
 // portal would credit the box with an economic verdict nobody computed there.
