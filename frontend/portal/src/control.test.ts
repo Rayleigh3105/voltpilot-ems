@@ -506,7 +506,10 @@ describe('executionNote', () => {
     expect(EXECUTION_MODE_LABEL.high_soc_follow).toBe('Vollakku-Entlastung');
   });
 
-  it('explains the symmetric PV refill in a cover-load slot without inventing a price verdict', () => {
+  // Das Wort ist seit edge-2026.08.29 ABGELOEST (surplus_store hat die
+  // SoC-Bandgrenze fallen lassen). Es bleibt lesbar, weil eine aeltere Box es
+  // weiterhin meldet - genau wie high_soc_follow seit dem 28.08.
+  it('keeps the retired upper-buffer word readable for an older box', () => {
     const note = executionNote(
       status({
         executionMode: 'high_soc_charge',
@@ -534,6 +537,17 @@ describe('executionNote', () => {
     )!;
     expect(note).toContain('9,8');
     expect(note).toContain('27,9');
+    // Und derselbe Satz traegt den RUHENDEN Eintritt derselben Regel (10:14,
+    // Speicher 19 %): verglichen wird mit dem urspruenglichen Fahrplan-Wert.
+    const idle = executionNote(
+      status({
+        executionMode: 'surplus_store',
+        executionPlannedKw: -7.17,
+        executionTargetKw: 22.971,
+      }),
+    )!;
+    expect(idle).toContain('7,2');
+    expect(idle).toContain('23,0');
     expect(note).toContain('zu niedrig geschätzt');
     expect(note).toContain('Netzstrom wird dabei nie');
     // Weder die Wolken-Wertung noch der enge Vollakku-Fall dürfen hier stehen.

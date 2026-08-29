@@ -4193,14 +4193,11 @@ Fahrplan-Modus". Was HIER gelten muss:
 - **⚠ Die enge Vollakku-Entlastung ist ENTFALLEN** (`HighSocRelief` samt
   `high_soc_follow`): ihr Eintritt ab `soc_max − 1` und ihr Fünf-Punkte-Boden
   sind in der allgemeinen Regel enthalten, deren Boden der volle Reserve-Stapel
-  ist. Die LADE-Hälfte `guards.HighSocCharge` (`high_soc_charge`,
-  „PV-Puffer-Nachladung") ist unverändert: Hat die Wolke den laufenden Slot
-  ausdrücklich als `cover_load_from_battery` markiert, hebt die Edge den nach
-  dem Follower neutralen Sollwert zwischen `soc_max − 5` und `soc_max` über den
-  bestehenden `SurplusCharger` auf den gemessenen PV-Überschuss an - zustandslos,
-  weil Laden den SoC von der unteren Grenze wegbewegt, und erneut durch die
-  vollständige `Clamp`-Kette. Die native Automatik wird während dieser
-  Nachladung zurückgenommen, weil ihr Beleg nur autonome ENTLADUNG zertifiziert.
+  ist. **Die LADE-Hälfte `guards.HighSocCharge` (`high_soc_charge`) ist am
+  29.08.2026 denselben Weg gegangen** und in `guards.StoreSurplus`
+  (`surplus_store`) aufgegangen - siehe „Überschuss-Einlagerung" weiter unten.
+  Die native Automatik wird während einer solchen Nachladung weiterhin
+  zurückgenommen, weil ihr Beleg nur autonome ENTLADUNG zertifiziert.
 - **⚠ Die lokale Regel autorisiert die native Automatik NICHT.**
   `nativeDutyFor` liest weiterhin ausschließlich die zwei Wolken-Pflichten: der
   native Modus ist eine prüfstand-gegatete Gerätefähigkeit, keine Folge einer
@@ -4221,21 +4218,38 @@ den Wolken-Pflichten. Cloud-Seite und Begründung: root `AGENTS.md`
   GLEICHEN Ort wie die drei anderen In-Slot-Pflichten: nach jeder
   Compliance-Klemme, nach der Holder-Übersteuerung, nach dem Follower und VOR
   dem Peak-Guard.
-- **⚠ SIE BRAUCHT KEINEN PREIS-DISKRIMINATOR, und das ist ihr ganzes
-  Sicherheits-Argument: der Plan LÄDT BEREITS.** Die Speicher-gegen-Verkauf-
-  Entscheidung dieses Slots hat die Wolke getroffen; korrigiert wird nur die
-  MENGE. Es gibt hier keinen Verkauf, den sie umdrehen könnte - genau das
-  trennt sie vom RUHENDEN Befehl, der die Marke `cover_load_from_battery`
-  braucht, um einen Eigenverbrauchs- von einem Verkaufsslot zu unterscheiden.
+- **⚠ ZWEI EINTRITTE, und ihr Unterschied IST das Sicherheits-Argument.**
+  **(B1) Der Plan LÄDT BEREITS** - die Speicher-gegen-Verkauf-Entscheidung hat
+  die Wolke getroffen, korrigiert wird nur die MENGE; **kein Diskriminator
+  nötig**, es gibt keinen Verkauf, den sie umdrehen könnte. **(B2) Der Plan
+  RUHT** - das könnte auch „bewusst zum Spitzenpreis einspeisen" heissen, also
+  gilt der EINE richtige Diskriminator der Wolke: `cover_load_from_battery`
+  (Netz ≈ 0, nie ein Verkaufsslot), plus die Tore jeder lokal GESTARTETEN
+  Richtung (`portableReady`).
+- **⚠ Die SoC-Bandgrenze der engen Ladeseite ist ENTFALLEN** (`HighSocCharge`
+  samt `high_soc_charge`): sie griff nur zwischen `soc_max − 5` und `soc_max`
+  und verweigerte deshalb den Live-Fall 10:14 (Speicher **19 %**, PV 39,354,
+  Haus 16,383, 22,8 kW ins Netz, Plan-Slot −7,17 kW vom Follower auf 0,0
+  begrenzt). Der ENTLADE-Zwilling hatte diese Grenze am 28.08. bereits fallen
+  lassen - die Ladeseite hat den Schritt jetzt nachgeholt. `highsoc.go` ist
+  ersatzlos in `surplusstore.go` aufgegangen; das Wort bleibt in api/Portal
+  lesbar, kein aktueller Build erzeugt es.
+- **⚠ Ehrlicher Rest-Einwand (B2):** ein UNERWARTETER Überschuss in einem
+  Abend-Deckungsslot wird eingelagert statt verkauft. Auszuschliessen wäre das
+  nur mit dem Exportwert je Slot im Fahrplan-Kontrakt - Captain-Entscheid
+  29.08.2026: die EINFACHE Variante, kein Vertragsfeld.
 - **Sie autorisiert den BESTEHENDEN `SurplusCharger`**, statt einen zweiten
   Anhebe-Pfad zu bauen: der angehobene Zielwert läuft damit erneut durch die
   autoritative `guards.Clamp` (Nennband, SoC-Decke, EEG-Solarladen, §14a) und
   kann an keinem Wächter vorbeischreiben.
-- **⚠ MAGNITUDEN-ONLY, also KEIN gehaltenes Rücklesen verlangt** - anders als
-  die zwei Regeln, die eine Richtung aus der Ruhe STARTEN
-  (`unplannedLoad`/`deficitCover`/`HighSocCharge`, die `portableReady` fordern).
-  Die Box schreibt diese Richtung ohnehin schon; eine strengere Bedingung als
-  die der größeren Wolken-Absorption daneben wäre nicht zu begründen.
+- **⚠ B1 ist MAGNITUDEN-ONLY, also OHNE gehaltenes Rücklesen** - anders als B2
+  und die anderen Regeln, die eine Richtung aus der Ruhe STARTEN
+  (`unplannedLoad`/`deficitCover`, die `portableReady` fordern). Die Box
+  schreibt diese Richtung ohnehin schon; eine strengere Bedingung als die der
+  größeren Wolken-Absorption daneben wäre nicht zu begründen.
+- **Die native Automatik wird während einer Einlagerung zurückgenommen**
+  (ihr Beleg zertifiziert nur autonome ENTLADUNG) - unverändert die Regel der
+  abgelösten engen Ladeseite.
 - **Ladung ≤ gemessener Überschuss ⇒ vorhergesagtes Netz ≤ 0:** sie kann keinen
   Import erzeugen oder erhöhen (§14a-Import und das Peak-Ziel bleiben unberührt)
   und bewegt einen Export nur in Richtung null - Einspeisegrenze und
@@ -4245,9 +4259,12 @@ den Wolken-Pflichten. Cloud-Seite und Begründung: root `AGENTS.md`
 - **Wo die WOLKE autorisiert hat, behält sie ihren Namen** (`absorb`): die
   lokale Regel etikettiert nie eine Entscheidung um, die der Plan getroffen hat.
 - Heartbeat/API/Portal nennen die Richtung als **`surplus_store` /
-  „Live-Überschussladung"**. Regressionsvektor (Herzogau 29.08.2026 10:53, aus
-  `box/state-final.json`): Plan +9,82 / PV 56,907 / Haus 29,013 / SoC 38 →
-  +27,894 kW, Netz 0,000 (gemessen waren ~18 kW Export bei NEGATIVEM Preis).
+  „Live-Überschussladung"**. Regressionsvektoren (Herzogau 29.08.2026, aus den
+  Box-Snapshots): **10:53** Plan +9,82 / PV 56,907 / Haus 29,013 / SoC 38 →
+  **+27,894 kW**, Netz 0,000 (gemessen ~18 kW Export bei NEGATIVEM Preis);
+  **10:14** Plan −7,17 (Follower → 0,0) / PV 39,354 / Haus 16,383 / SoC 19 →
+  **+22,971 kW**, Netz 0,000 (gemessen 22,8 kW Export). Der abgelöste
+  91-%-Vektor (11,4 / 2,9 → +8,5 kW) läuft unverändert durch dieselbe Regel.
 
 ## Ein Messpunkt wird ueber SEINE Komponente gelesen (Geraeteseite Stufe 3c)
 

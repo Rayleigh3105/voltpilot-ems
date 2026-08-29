@@ -1204,13 +1204,17 @@ type ExecutionSummary struct {
 	//	             commanded CHARGE was RAISED to the measured PV surplus
 	//	"high_soc_follow" - bounded full-battery relief: an otherwise idle
 	//	             battery covers the house only inside its small top band
-	//	"high_soc_charge" - symmetric upper-buffer refill: in a cover-load slot
-	//	             measured PV surplus charges only up to the SoC ceiling
-	//	"surplus_store" - CHARGE-side trust floor: the plan's OWN charge was
-	//	             raised to the measured PV surplus, because the plan had
-	//	             under-estimated it. Distinct from "absorb": there the CLOUD
-	//	             weighed storing against selling for this slot, here only the
-	//	             AMOUNT of a decision the plan already made was corrected
+	//	"high_soc_charge" - RETIRED (2026-08-29, superseded by "surplus_store"):
+	//	             the bounded upper-buffer refill that engaged only inside the
+	//	             top five SoC points. No build emits it; the word stays
+	//	             documented because an older image still reports it
+	//	"surplus_store" - CHARGE-side trust floor: the command was raised to the
+	//	             measured PV surplus, either because the plan's OWN charge
+	//	             under-estimated it or because a cloud-marked own-consumption
+	//	             slot rested while a surplus was leaving the site. Distinct
+	//	             from "absorb": there the CLOUD weighed storing against
+	//	             selling for this slot, here the amount of a decision the plan
+	//	             already made was corrected against the measurement
 	//	"autonomous_discharge" - NATIVE SELF-REGULATION: in a covering slot the
 	//	             setpoint was handed back to the inverter, which now decides
 	//	             its own watts. Reported ONLY once the device has CONFIRMED
@@ -1230,8 +1234,8 @@ type ExecutionSummary struct {
 	Direction string `json:"direction,omitempty"`
 	// PlannedKw is the setpoint BEFORE the correction - what the plan/holder
 	// asked for, so the portal can show plan and execution side by side instead
-	// of two contradicting numbers under one word. Set for follow/trim/absorb,
-	// high_soc_charge and surplus_store;
+	// of two contradicting numbers under one word. Set for follow/trim/absorb
+	// and surplus_store;
 	// for autonomous_discharge it is the REFERENCE the edge would command if it
 	// took the battery back on the next tick (nothing is written in that mode).
 	PlannedKw *float64 `json:"planned_kw,omitempty"`
@@ -1240,8 +1244,8 @@ type ExecutionSummary struct {
 	// never regulate blind).
 	DeficitKw *float64 `json:"deficit_kw,omitempty"`
 	// SurplusKw is the measured PV surplus a charge is held at ("trim") or
-	// raised to ("absorb"/"high_soc_charge"/"surplus_store"); absent when
-	// unknown, same rule as DeficitKw.
+	// raised to ("absorb"/"surplus_store", and "high_soc_charge" from an older
+	// image); absent when unknown, same rule as DeficitKw.
 	SurplusKw *float64 `json:"surplus_kw,omitempty"`
 	// EffectiveFloorSocPct is the full technical/backup/peak floor applied by
 	// an idle correction. MeasurementsFresh is explicit system-status evidence,
