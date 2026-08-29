@@ -1288,6 +1288,14 @@ type CurtailmentSummary struct {
 	// JsonNode), so this is safe to add without any cloud change.
 	ExportGuard *ExportGuardSummary `json:"export_guard,omitempty"`
 
+	// CurtailTrack is the ADDITIVE live curtailment tracker (Fix D, 2026-08-29):
+	// the plan curtails this slot and the device follows the MEASUREMENT instead
+	// of standing on the quarter-hour-old watt value. Present only while the plan
+	// actually curtails. It rides here next to ExportGuard for the same reason
+	// that one does - same actors, same gates, one freshness anchor - and an
+	// older cloud ignores it (the api reads the heartbeat as a JsonNode).
+	CurtailTrack *CurtailTrackSummary `json:"curtail_track,omitempty"`
+
 	// DeviceExportLimitKw is the feed-in limit the INVERTER ITSELF holds, read
 	// from its own register at most once a day („Grenzen & Wächter" Stufe 0,
 	// Vierer #4). At Anlage Herzogau the Deye held an installer cap of 33,0 kW
@@ -1353,6 +1361,20 @@ type CurtailmentUnit struct {
 	// readback where nothing was commanded - "nothing applied" must not read as
 	// "the readback disagreed".
 	Match *bool `json:"match,omitempty"`
+}
+
+// CurtailTrackSummary is the heartbeat half of the live curtailment tracker.
+// CapKw is what the device really commands, PlanCapKw what the Fahrplan said -
+// both, because a correction nobody can compare against its plan reads as a
+// defect in either direction.
+type CurtailTrackSummary struct {
+	State     string   `json:"state"`
+	Reason    string   `json:"reason,omitempty"`
+	CapKw     float64  `json:"cap_kw"`
+	PlanCapKw float64  `json:"plan_cap_kw"`
+	LoadKw    *float64 `json:"load_kw,omitempty"`
+	ChargeKw  *float64 `json:"charge_kw,omitempty"`
+	Blind     bool     `json:"blind,omitempty"`
 }
 
 // ExportGuardSummary is the heartbeat half of the dynamic feed-in limitation.

@@ -2701,6 +2701,60 @@ The third and last member of the in-slot duty family, and the one the other two 
 - **Cloud-side ingest of `mode: "absorb"` is deliberately NOT in this increment** (the api `ControlStatusListener`'s strict mode filter DROPS an unknown mode, so an un-updated portal degrades to its generic wording - the documented graceful path), and neither is persisting the flag into the `schedule` table like the Fahrplan-concept PR 4 did for the two older duties. Both are the natural follow-ups.
 - **Tests:** `tests/test_surplus_charge.py` (rule properties with the live numbers as the anchor, the unclamped-vs-clamped divergence, the import-side deviation, curtail disjunct, SoC headroom; through the REAL solver: the under-forecast morning is flagged, a full battery is not, **a deliberate export stays unmarked NON-VACUOUSLY** - those slots' economics WOULD have flagged them - and **the honest hold of H2 never fires**, also non-vacuously on the economics; all three switches independent; setpoints byte-identical with the flag off), `test_contract.py` (fixture-vs-publisher + omit-unless-true + both fixtures), Go `guards/surpluscharge_test.go` + `agent/surplus_charge_test.go` + `plan/plan_test.go`, edge JS `web/jstest/ui.test.js`. The GOLDEN suite is untouched and green. Verified end to end on real bytes: the real solver's payload for the under-forecast morning → `plan.Parse` → `applySetpoint` turns the plan's **6,000 kW** into **19,600 kW**, predicted grid **0,000 kW** (was −14,7 kW of export at a negative price), heartbeat `mode: "absorb"`; the COMMITTED fixture (`mqtt-schedule.valid.absorb-surplus.json`, read by path) does the same from its 0,0 kW slot.
 
+## Die ABREGELUNG folgt der Messung statt dem 15-Minuten-Planwert (2026-08-29)
+
+Der dritte Fix aus dem Herzogau-Vorfall (Scout `vp-herzogau-einspeisung-statt-laden-h3`
+§2 Glied 1b / §8 Fix D). **Reine Edge-Arbeit — die Wolke, der Kontrakt und der
+Optimierer sind unberührt;** eine Anlage ohne geplante Abregelung verhält sich
+byte-identisch wie vorher.
+
+- **Der behobene Befund ist ein REGELKREIS.** Der 10:30-Lauf plante
+  `pv_limit_kw = 36,869` = 6,5 kW Haus + 30 kW Speicher (also „nichts ins Netz").
+  Richtig um 10:30 — und falsch für die zehn Minuten danach, in denen das Haus
+  auf 27–29 kW stieg, während die Kappe stillstand und die Anlage ~20 kW unter
+  ihrem Können festnagelte. **Und die gekappte Ausgangsleistung war genau das,
+  was der PV-Nowcast des nächsten Laufs maß** — der unterschätzte den Überschuss
+  und ließ die Kappe zusammenfallen. Kappen → weniger messen → weniger planen →
+  Kappe fällt → PV springt → exportieren.
+- **Die Regel ist FEED-FORWARD** (`edge-app/core/internal/guards/curtailtrack.go`):
+  `Kappe = Haus_gemessen + max(Batterie-Befehl, 0)`. Wallboxen und alles Übrige
+  stecken in der Hausmessung; der Batterie-Term ist der BEFOHLENE Sollwert nach
+  der ganzen Guard-Kette, nicht seine momentane Leistung — die ist selbst eine
+  FOLGE der Kappe.
+- **⚠ Ein geschlossener Regelkreis auf der Netzmessung KANN das nicht**, und das
+  ist der Grund für eine eigene Datei neben `exportlimit.go`: dessen Gesetz
+  `cap = pv + (limit − export)` hat bei `limit = 0` jeden Punkt mit Export 0 als
+  Fixpunkt — es kann anziehen, aber nie freigeben.
+- **⚠ Er ERSETZT den Planwert in BEIDE Richtungen, sicher per Konstruktion:** er
+  zielt auf NULL Netzaustausch, und das ist mindestens so eng wie jede
+  Einspeise- oder §14a-Grenze — der Planwert kann also nur ein gleich enges oder
+  engeres Export-Ziel gewesen sein. Der Compliance-Wächter
+  (`guards.ExportLimiter`, 30 kW) bleibt übergeordnet und komponiert danach
+  most-restrictive-wins.
+- **⚠ Der Frische-Anker ist die LASTMESSUNG, nicht der Takt** (`lastReadingAt`);
+  mit `now` zu stempeln frischte eine veraltete Messung bei jedem Tick auf und
+  die Ausfall-Kette könnte nie greifen. Die Kette ist der PLAN, nie eine
+  Freigabe: frisch → das Gesetz · Lücke ≤ 90 s → letzte Kappe einfrieren ·
+  länger / nie gemessen → der Planwert.
+- **⚠ Ehrliche Grenze, unverändert:** die eigene PV des primären Hybriden ist
+  nicht abregelbar (`pvLimitSupported:false` — ihr Register ist eine
+  Installateur-EEPROM-Einstellung, die dieser Pfad nie anfasst). „Export 0" ist
+  damit nur erreichbar, solange Haus + Speicher ≥ der Deye-eigenen Erzeugung.
+- **Sichtbar statt still:** additiver `curtail_track`-Block im
+  `curtailment`-Herzschlag (Zustand, deutscher Grund, `cap_kw` UND `plan_cap_kw`)
+  plus eine `:8484`-Zeile, die NUR bei echter Abweichung erscheint. Eine ältere
+  Cloud ignoriert den Block (die api liest den Herzschlag als `JsonNode`), es
+  gibt also **keine api- und keine Portal-Änderung**.
+- **Beweise:** rein `guards/curtailtrack_test.go` (die Ring-Minuten 10:30–10:50
+  in beide Richtungen, „Netz landet auf 0", eine Entladung ist kein Spielraum,
+  ohne geplante Abregelung inaktiv, die ganze Ausfall-Kette, „nie gemessen folgt
+  jedem neuen Planwert", nur der Anstieg ist ratenbegrenzt) ·
+  `agent/curtail_track_test.go` (dieselben Vektoren durch den ECHTEN
+  Setpoint-Pfad und den echten Bus, plus „der Einspeisewächter zieht die
+  verfolgte Kappe weiter an") · `web/jstest/ui.test.js`.
+- **Ops:** keine neue Pflicht-Variable, keine Migration, kein Vertragsfeld. Die
+  Edge-Hälfte reist mit dem nächsten Edge-Release.
+
 ## Dynamische Einspeisebegrenzung: der Netzpunkt wird GEREGELT, nicht nur geplant (2026-08-06)
 
 Der Echtzeit-Wächter, der die Einspeisegrenze am Netzverknüpfungspunkt hält - die Funktion, die in Pilsting bis dahin eine **kundeneigene Loxone** übernahm (sie gibt dem Wechselrichter die Wirkleistung vor und verrechnet dabei die Wallboxen: lädt ein Auto, darf mehr erzeugt werden; wird es abgesteckt, muss die Erzeugung SOFORT runter - „sonst schiesst der drüber wenn ein Auto abgesteckt wird"). VoltPilot **plante** die Grenze längst (`site.max_feed_in_kw` ist seit FK1 eine harte Export-Kappe im Solver), **regelte** sie aber nicht: die Anlagen-Kappe, die die Box auf die Fronius-Einheiten aufteilt, kam aus dem 15-Minuten-PLAN, ein abgestecktes Auto blieb also bis zum nächsten Re-Plan unbemerkt. Für den Netz-BEZUG existierte der Regelkreis seit PS-3 (`guards/peakguard.go`); dies ist sein Gegenstück auf der Einspeise-Seite, nach demselben Muster gebaut. Edge-Details + Betreiber-Ablauf: `edge-app/AGENTS.md` „Dynamische Einspeisebegrenzung", `edge-app/nodered/FRONIUS.md` §6d, Umstellungs-Choreografie in `edge-app/nodered/CONTROL-BENCH.md`.

@@ -596,6 +596,32 @@
     };
   }
 
+  /* ------------------------------------------------------------------
+     Die LIVE-Abregelung (Fix D): der Fahrplan regelt diesen Slot ab, und das
+     Gerät folgt dabei der MESSUNG statt 15 Minuten auf dem Planwert zu stehen.
+
+     Der deutsche Satz wird auch hier NICHT geschrieben - guards.CurtailTracker
+     schreibt ihn einmal (state + reason reisen zusammen), damit diese Seite und
+     die Cloud dieselbe Entscheidung nie verschieden benennen.
+
+     Die Zeile erscheint nur, wenn der befohlene Wert wirklich vom Planwert
+     abweicht: eine Korrektur ohne Grund daneben liest sich als Defekt, in
+     BEIDE Richtungen - eine über den Planwert angehobene Kappe genauso wie eine
+     darunter gezogene.
+     ------------------------------------------------------------------ */
+  function deriveCurtailTrack(s) {
+    var c = s && s.curtail_track;
+    if (!c || typeof c.cap_kw !== "number" || typeof c.plan_cap_kw !== "number") return null;
+    if (Math.abs(c.cap_kw - c.plan_cap_kw) < 0.05) return null;
+    return {
+      text: c.reason || "",
+      capKw: c.cap_kw,
+      planCapKw: c.plan_cap_kw,
+      blind: !!c.blind,
+      raised: c.cap_kw > c.plan_cap_kw
+    };
+  }
+
   function deriveCurtail(s) {
     var eg = deriveExportGuard(s);
     var dl = deriveDeviceExportLimit(s);
@@ -613,6 +639,7 @@
         text: eg ? eg.text : dl.text,
         showTable: false,
         exportGuard: eg,
+        curtailTrack: deriveCurtailTrack(s),
         // With no watchdog the device limit IS the card's sentence; repeating it
         // below would be noise.
         deviceLimit: eg ? dl : null
@@ -620,6 +647,7 @@
     }
     d.exportGuard = eg;
     d.deviceLimit = dl;
+    d.curtailTrack = deriveCurtailTrack(s);
     if (eg && !eg.effective) d.tone = "warn";
     return d;
   }
@@ -769,6 +797,13 @@
       show(exp, showExp);
       if (showExp) exp.textContent = d.exportGuard.text;
     }
+    // Die LIVE-Abregelung steht daneben: sie erklärt, warum der befohlene Wert
+    // vom Fahrplan abweicht. Ohne Abweichung sagt sie nichts (kein Rauschen).
+    var trk = $("curtailTrack");
+    if (trk) {
+      show(trk, !!d.curtailTrack);
+      if (d.curtailTrack) trk.textContent = d.curtailTrack.text;
+    }
     // Die Grenze IM Gerät steht daneben - dieselbe Größe am selben Netzpunkt,
     // nur von jemand anderem gesetzt. Das REGISTER ist der Beleg und bleibt
     // Technikmodus; die Aussage steht immer.
@@ -860,6 +895,7 @@
     deriveCarsFirst: deriveCarsFirst,
     deriveCurtail: deriveCurtail,
     deriveExportGuard: deriveExportGuard,
+    deriveCurtailTrack: deriveCurtailTrack,
     deriveDeviceExportLimit: deriveDeviceExportLimit,
     trackStateSince: trackStateSince,
     ROLE_LABEL: ROLE_LABEL,

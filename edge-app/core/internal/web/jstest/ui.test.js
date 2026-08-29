@@ -462,6 +462,36 @@ test("control: the charge-side trust floor names the plan's under-estimate, not 
   assert.match(idle.text, /-7,2 kW|7,2 kW/, "and the Fahrplan it deviates from: " + idle.text);
 });
 
+// Die LIVE-Abregelung (Fix D): sie erklaert, warum der befohlene Cap vom
+// Fahrplan abweicht - und schweigt, wo er es nicht tut.
+test("control: the live curtailment names the deviation from the Fahrplan cap", () => {
+  const C = load(["control.js"]).VPControl;
+  // Der Live-Fall 10:44: Plan 36,869 kW, gemessenes Haus 29 + Speicher 30.
+  const raised = C.deriveCurtailTrack({
+    curtail_track: {
+      state: "folgt", cap_kw: 59, plan_cap_kw: 36.869,
+      reason: "Die Abregelung folgt der Messung: Haus 29,0 kW + Speicher 30,0 kW = 59,0 kW, " +
+        "damit nichts ins Netz geht (Planwert war 36,9 kW)."
+    }
+  });
+  assert.ok(raised, "a live cap above the plan must produce a reason line");
+  assert.strictEqual(raised.raised, true, "and say which way it went");
+  assert.match(raised.text, /folgt der Messung/, "the core owns the sentence: " + raised.text);
+
+  const lowered = C.deriveCurtailTrack({
+    curtail_track: { state: "folgt", cap_kw: 36.5, plan_cap_kw: 57, reason: "x" }
+  });
+  assert.strictEqual(lowered.raised, false, "a tightening is reported too");
+
+  // Kein Unterschied -> keine Zeile. Eine Korrektur, die keine ist, ist Rauschen.
+  assert.strictEqual(
+    C.deriveCurtailTrack({ curtail_track: { cap_kw: 36.9, plan_cap_kw: 36.869, reason: "x" } }),
+    null);
+  // Und ohne Abregelung im Fahrplan gibt es den Block gar nicht.
+  assert.strictEqual(C.deriveCurtailTrack({}), null);
+  assert.strictEqual(C.deriveCurtailTrack({ curtail_track: null }), null);
+});
+
 test("control: no absorption -> no reason line (the card reads exactly as before)", () => {
   assert.strictEqual(absorbFor({}), null);
   assert.strictEqual(absorbFor({ absorb: null }), null);

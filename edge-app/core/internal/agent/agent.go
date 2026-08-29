@@ -129,6 +129,7 @@ type Agent struct {
 	// curtailment. Unlike every economic guard it does NOT go inactive when
 	// blind (guards/exportlimit.go: hold, then contract to a safe static cap).
 	export         *guards.ExportLimiter
+	curtailTrack   *guards.CurtailTracker
 	despikeStore   *guards.SettingsStore
 	lastDespikeLog time.Time
 	lastBalanceLog time.Time // rate-limits the house-balance fallback warning
@@ -572,6 +573,7 @@ func New(cfg config.Config) (*Agent, error) {
 		follow:       guards.NewLoadFollower(),
 		absorb:       guards.NewSurplusCharger(),
 		export:       guards.NewExportLimiter(),
+		curtailTrack: guards.NewCurtailTracker(),
 		despikeStore: ds,
 		cal:          calibration.NewSession(calibration.Config{MaxKw: cfg.CalibrationMaxKw, TTL: cfg.CalibrationTTL}),
 		calCert:      map[string]bool{},
@@ -2409,6 +2411,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.Native = nil
 			s.CarsFirstCapKw = nil
 			s.ExportGuard = exportGuard
+			// Without a reading the tracker has no evaluation point at all, so a
+			// previous claim is cleared rather than left standing - the same rule
+			// the economic corrections above follow.
+			s.CurtailTrack = nil
 		})
 		a.trim.Release()
 		a.follow.Release()
@@ -2729,6 +2735,42 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// guards are untouched - this only ever REDUCES generation, and never
 	// commands the battery (absorbing a surplus is an optimizer decision, see
 	// guards/surpluscharge.go).
+	// LIVE CURTAILMENT (Fix D, 2026-08-29, scout report
+	// vp-herzogau-einspeisung-statt-laden-h3 §2 Glied 1b / §8): where the plan
+	// curtails this slot, follow the MEASUREMENT instead of standing on the
+	// quarter-hour-old watt value. The plan's own 10:30 cap (36,869 kW = 6,5 kW
+	// house + 30 kW battery, i.e. "export nothing") was right at 10:30 and
+	// pinned the plant ~20 kW below its capability for the ten minutes in which
+	// the house climbed to 29 kW - and that frozen cap fed the next run's PV
+	// nowcast, which then under-estimated the surplus (the loop of §2 Glied 1b).
+	//
+	// The law is feed-forward from what the plant can absorb right now:
+	// cap = house_measured + max(battery_command, 0). `kw` is final here - after
+	// every clamp, every in-slot correction, the cars-first cap and the peak
+	// guard - so the term is what the battery will REALLY take, not the power it
+	// happens to draw under the old cap. See guards/curtailtrack.go for the full
+	// argument, including why a closed loop on the grid measurement cannot
+	// release (its fixed point is every operating point with export 0).
+	//
+	// It REPLACES the plan's static value, in BOTH directions, and that is safe
+	// by construction: it targets ZERO grid exchange, which is at least as tight
+	// as any feed-in or §14a bound, so the plan's own value can only ever have
+	// been a tighter-or-equal export target. Without a planned curtailment the
+	// tracker is inactive and this whole block is a no-op.
+	// ⚠ The freshness anchor is the LOAD MEASUREMENT, not the tick: observing
+	// with `now` would keep re-stamping a stale reading and the staged fallback
+	// below could never fire. Without a reading at all nothing is observed - a
+	// zero-valued Reading is not a measured house.
+	if !readingAt.IsZero() {
+		a.curtailTrack.Observe(readingAt, r.LoadKw, kw)
+	}
+	curtailCap := a.curtailTrack.Cap(now, pvLimit)
+	if curtailCap.Active {
+		v := curtailCap.CapKw
+		pvLimit = &v
+	}
+	curtailTrack := a.curtailTrackInfo(curtailCap)
+
 	exportCap := a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, kw))
 	if exportCap.Active {
 		if pvLimit == nil || exportCap.CapKw < *pvLimit {
@@ -2878,6 +2920,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.Absorb = absorbInfo
 		s.CarsFirstCapKw = carsFirstCap
 		s.ExportGuard = exportGuard
+		s.CurtailTrack = curtailTrack
 		s.Native = nativeInfo
 	})
 }

@@ -232,6 +232,29 @@ func (a *Agent) exportGuardInfo(c guards.ExportCap) *state.ExportGuardInfo {
 	return info
 }
 
+// curtailTrackInfo turns one tracker verdict into the UI/heartbeat block.
+// Absent (nil) whenever the plan does not curtail the active slot - the block
+// must never claim a live correction where there is nothing to correct.
+func (a *Agent) curtailTrackInfo(c guards.CurtailCap) *state.CurtailTrackInfo {
+	if !c.Active {
+		return nil
+	}
+	info := &state.CurtailTrackInfo{
+		State:     string(c.State),
+		Reason:    c.Reason,
+		CapKw:     c.CapKw,
+		PlanCapKw: c.PlanCapKw,
+		LoadKw:    c.LoadKw,
+		ChargeKw:  c.ChargeKw,
+		Blind:     c.Blind,
+	}
+	if c.MeasurementAge > 0 || !c.Blind {
+		secs := int(c.MeasurementAge / time.Second)
+		info.MeasurementAgeSeconds = &secs
+	}
+	return info
+}
+
 // logExportGuard names the watchdog's state on CHANGE, never per tick (the
 // OTA-blocker lesson: a refusal nobody logs is a riddle, a refusal logged every
 // tick is noise the real hint drowns in). An ineffective watchdog is a WARNING -
@@ -862,6 +885,17 @@ func (a *Agent) curtailmentSummary() *cloud.CurtailmentSummary {
 			Blind:     g.Blind,
 			Effective: g.Effective,
 			Reach:     g.Reach,
+		}
+	}
+	if c := snap.CurtailTrack; c != nil {
+		sum.CurtailTrack = &cloud.CurtailTrackSummary{
+			State:     c.State,
+			Reason:    c.Reason,
+			CapKw:     c.CapKw,
+			PlanCapKw: c.PlanCapKw,
+			LoadKw:    c.LoadKw,
+			ChargeKw:  c.ChargeKw,
+			Blind:     c.Blind,
 		}
 	}
 	return sum
