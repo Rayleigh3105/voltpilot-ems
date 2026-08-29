@@ -48,6 +48,7 @@ from voltpilot_optimization.config import (
     pv_anchor_min_slots,
     pv_nowcast_decay_slots,
     pv_nowcast_enabled,
+    pv_nowcast_lookback,
     pv_nowcast_max_age,
     soc_max_age,
     terminal_value_override_eur_per_kwh,
@@ -70,7 +71,7 @@ from voltpilot_optimization.load_nowcast import (
     apply_uncertainty_reserve,
     ewma_residual,
 )
-from voltpilot_optimization.pv_nowcast import apply_pv_nowcast
+from voltpilot_optimization.pv_nowcast import apply_pv_nowcast, window_mean
 from voltpilot_optimization.pricing import (
     SiteTariff,
     SupplyPriceComponents,
@@ -614,7 +615,7 @@ def gather_inputs(
     # :mod:`voltpilot_optimization.pv_nowcast`). Runs AFTER the ratio anchor,
     # because a direct measurement of this slot beats a ratio learned from
     # earlier ones, and BEFORE the night floor, which stays the last gate.
-    pv_kw = _nowcast_pv_input(dsn, site, pv_kw, now)
+    pv_kw = _nowcast_pv_input(dsn, site, slot_starts, pv_kw, now)
     pv_kw = _night_floor_pv_input(site, slot_starts, pv_kw, pv_used_fallback)
 
     # Both live readings sit behind a freshness window (F4/P4): a stale
@@ -999,29 +1000,47 @@ def _anchor_pv_input(
 
 
 def _nowcast_pv_input(
-    dsn: str, site: BatterySite, pv_kw: list[float], now: datetime
+    dsn: str,
+    site: BatterySite,
+    slot_starts: list[datetime],
+    pv_kw: list[float],
+    now: datetime,
 ) -> list[float]:
     """Answer the running slot with the plant's own measured PV.
+
+    The measurement is the MEAN of the recent samples, never the newest one
+    (Herzogau 29.08.2026 - :func:`~voltpilot_optimization.pv_nowcast.window_mean`
+    carries the numbers). And when the running slot is one the plant is being
+    CURTAILED in, the correction may only lift: the reading is then the output
+    of our own cap and thus a floor of the potential, not the potential.
 
     Fail-soft like the anchor it follows (the explain-layer discipline): a bad
     env value or an unreachable read logs and returns the UNCHANGED forecast,
     because a missing correction is a worse plan while a raised exception is no
-    plan at all. No fresh reading likewise returns the series byte-for-byte -
+    plan at all. No fresh samples likewise return the series byte-for-byte -
     the freshness window is the whole gate.
     """
     try:
         if not pv_nowcast_enabled() or not pv_kw:
             return pv_kw
-        measured = _fresh_measurement(
-            dsn, site.site_id, "pv_power_kw", now, pv_nowcast_max_age()
+        samples = _recent_pv_samples(
+            dsn,
+            site.tenant_id,
+            site.site_id,
+            now,
+            lookback=pv_nowcast_lookback(),
+            max_age=pv_nowcast_max_age(),
         )
+        measured = window_mean(samples)
         if measured is None:
             return pv_kw
+        curtailed = _running_slot_curtailed(dsn, site.site_id, slot_starts, now)
         anchored = apply_pv_nowcast(
             pv_kw,
             measured,
             decay_slots=pv_nowcast_decay_slots(),
             capacity_kwp=site.tariff.pv_capacity_kwp,
+            raise_only=curtailed,
         )
     except Exception:  # noqa: BLE001 - never sink a plan over a correction
         logger.warning(
@@ -1038,6 +1057,9 @@ def _nowcast_pv_input(
                 "site_id": str(site.site_id),
                 "kind": "pv",
                 "measured_kw": round(measured, 3),
+                "samples": len(samples),
+                "newest_sample_kw": round(samples[-1], 3),
+                "curtailed_raise_only": curtailed,
                 "first_slot_kw_before": round(pv_kw[0], 3),
                 "first_slot_kw_after": round(anchored[0], 3),
                 "decay_slots": pv_nowcast_decay_slots(),
@@ -1045,6 +1067,45 @@ def _nowcast_pv_input(
         },
     )
     return anchored
+
+
+def _running_slot_curtailed(
+    dsn: str, site_id: UUID, slot_starts: list[datetime], now: datetime
+) -> bool:
+    """Whether the plan in force is holding the plant BELOW its potential now.
+
+    The source is our OWN record: the newest run generated at or before ``now``
+    carries, for the slot covering ``now``, the ``curtail_kw`` it derived the
+    cap from (the edge receives ``pv_limit_kw = pv_kw - curtail_kw``). It is
+    the CAUSE of any cap the plant is under, so it is available a round trip
+    earlier than the device's own report and it survives a stale heartbeat.
+
+    The device-reported cap was the alternative and is deliberately NOT read.
+    ``device_curtailment_status.applied_cap_kw`` is the SUM of the CURTAILABLE
+    units' caps (at Herzogau: two Fronius at 11.97 kW), while the measurement is
+    the whole plant including the un-curtailable Deye share - comparing the two
+    is apples to oranges, and the arithmetic that made them look comparable is
+    exactly what nobody should reconstruct here.
+
+    Anything unanswerable is ``False`` = "not curtailed" = the ordinary
+    two-sided nowcast. That is the pre-incident behaviour, so a missing row can
+    only ever cost the raise-only refinement, never a plan.
+    """
+    if not slot_starts:
+        return False
+    import psycopg  # lazy: optional [db] extra
+
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT curtail_kw FROM schedule
+            WHERE site_id = %s AND time = %s AND generated_at <= %s
+            ORDER BY generated_at DESC LIMIT 1
+            """,
+            (site_id, slot_starts[0], now),
+        )
+        row = cur.fetchone()
+    return bool(row and row[0] is not None and float(row[0]) > 0.0)
 
 
 def _lookback_slot_starts(
@@ -1270,6 +1331,40 @@ def _recent_load_samples(
     return [float(value) for _ts, value in rows if value is not None]
 
 
+def _recent_pv_samples(
+    dsn: str, tenant_id: UUID, site_id: UUID, now: datetime,
+    *, lookback: timedelta, max_age: timedelta,
+) -> list[float]:
+    """Fresh PV samples for the window mean, oldest first; stale means none.
+
+    The mirror of :func:`_recent_load_samples`, column for column - the two
+    halves of the running-slot correction must read the same stretch of the
+    same table the same way, or the surplus they hand the solver is a
+    difference of two different moments.
+
+    The freshness rule is theirs too: if the NEWEST sample in the window is
+    older than ``max_age`` the link is down, and a window of stale readings is
+    no more evidence than one stale reading. The caller then leaves the
+    forecast untouched.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT time, pv_power_kw FROM telemetry
+            WHERE tenant_id = %s AND site_id = %s
+              AND pv_power_kw IS NOT NULL AND time >= %s AND time <= %s
+            ORDER BY time
+            """,
+            (tenant_id, site_id, now - lookback, now),
+        )
+        rows = cur.fetchall()
+    if not rows or now - ensure_utc(rows[-1][0]) > max_age:
+        return []
+    return [float(value) for _ts, value in rows if value is not None]
+
+
 def _fresh_measurement(
     dsn: str,
     site_id: UUID,
@@ -1286,7 +1381,10 @@ def _fresh_measurement(
     """
     # Fixed set, never user input - a hard raise (not assert, which is
     # stripped under python -O) keeps the f-string interpolation safe (S15).
-    if column not in ("soc_pct", "grid_limit_kw", "pv_power_kw"):
+    # PV is deliberately ABSENT here since Herzogau (29.08.2026): the running
+    # slot's PV is a window MEAN (_recent_pv_samples), and a single reading of
+    # it was the coin toss that commanded a discharge into a 23 kW export.
+    if column not in ("soc_pct", "grid_limit_kw"):
         raise ValueError(f"unsupported telemetry column: {column}")
     import psycopg  # lazy: optional [db] extra
 

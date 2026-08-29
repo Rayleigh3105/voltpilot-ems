@@ -864,6 +864,7 @@ def pv_anchor_max_ratio(env=None) -> float:
 PV_NOWCAST_ENABLED_ENV = "OPTIMIZER_PV_NOWCAST_ENABLED"
 PV_NOWCAST_DECAY_SLOTS_ENV = "OPTIMIZER_PV_NOWCAST_DECAY_SLOTS"
 PV_NOWCAST_MAX_AGE_ENV = "OPTIMIZER_PV_NOWCAST_MAX_AGE_SECONDS"
+PV_NOWCAST_LOOKBACK_ENV = "OPTIMIZER_PV_NOWCAST_LOOKBACK_SECONDS"
 
 #: How stale a PV reading may be and still speak for the running slot. The
 #: same 30 s the load nowcast already uses: telemetry arrives every ~5-10 s, so
@@ -909,6 +910,26 @@ def pv_nowcast_max_age(env=None) -> timedelta:
         env,
         PV_NOWCAST_MAX_AGE_ENV,
         DEFAULT_PV_NOWCAST_MAX_AGE_SECONDS,
+        0.0,
+        allow_equal=False,
+    )
+    return timedelta(seconds=seconds)
+
+
+def pv_nowcast_lookback(env=None) -> timedelta:
+    """How far back the samples that speak for the running slot are collected.
+
+    The window the running slot is AVERAGED over (Herzogau 29.08.2026): a
+    single instantaneous reading of a quantity that swings 8 -> 44 kW inside a
+    minute is a coin toss, and on that day it lost. Default 2 minutes = the
+    stretch :func:`~voltpilot_optimization.inputs._recent_load_samples` already
+    reads, so both halves of the same correction look at the same time.
+    """
+    env = os.environ if env is None else env
+    seconds = _float_env(
+        env,
+        PV_NOWCAST_LOOKBACK_ENV,
+        pv_nowcast.DEFAULT_LOOKBACK_SECONDS,
         0.0,
         allow_equal=False,
     )

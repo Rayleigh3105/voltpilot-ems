@@ -50,6 +50,17 @@ public class ScheduleRepository {
      */
     private static final double DEFAULT_ROUNDTRIP_EFFICIENCY = 0.92;
 
+    /**
+     * How long after a slot's boundary a run still counts as planning it
+     * ex ante. A run is triggered ON the boundary and stamped when it starts,
+     * so it is always a few hundred microseconds late for its own first slot;
+     * one second covers that and stays two orders of magnitude below the
+     * 15-minute re-plan cadence, so it can never let a genuine mid-slot re-plan
+     * rewrite how the slot "was planned". Inlined into the SQL as a literal -
+     * it is a compile-time constant of this class, never client input.
+     */
+    private static final String RUN_STAMP_TOLERANCE = "1 second";
+
     private final JdbcTemplate jdbc;
 
     public ScheduleRepository(JdbcTemplate jdbc) {
@@ -127,18 +138,33 @@ public class ScheduleRepository {
      * ticked off, not only the rest of the day).
      *
      * <p>Per 15-min slot it returns the value from the NEWEST run that planned
-     * the slot BEFORE it began ({@code generated_at <= time}) - i.e. the plan
-     * that was in force when the quarter hour started, which is what the device
-     * executed. The per-slot winner is picked with EXACTLY the splice the
-     * savings math has used all along ({@code HistoryRepository.savings}:
+     * the slot BEFORE it began - i.e. the plan that was in force when the
+     * quarter hour started, which is what the device executed. The per-slot
+     * winner is picked with EXACTLY the splice the savings math has used all
+     * along ({@code HistoryRepository.savings}:
      * {@code DISTINCT ON (time) ... ORDER BY time, generated_at DESC}), so the
      * two can never tell different stories about the same day; the added
-     * {@code generated_at <= time} predicate is what makes it EX-ANTE. For a
+     * upper bound on {@code generated_at} is what makes it EX-ANTE. For a
      * slot that has not started yet every stored run is older than it, so the
      * newest run wins - the future half of the splice IS the current plan. Only
      * the RUNNING slot can differ from {@link #latestForSite}: a re-plan landing
      * inside the quarter hour does not retroactively become "how it was
      * planned".
+     *
+     * <p><b>The bound carries one second of tolerance, and that second is the
+     * whole point</b> (Herzogau 29.08.2026). A run is TRIGGERED on the slot
+     * boundary and stamped when it starts, so its {@code generated_at} lands
+     * microseconds AFTER the boundary it is planning for - the 10:00 run of
+     * that day carried {@code 08:00:00.000867Z} against a first slot of
+     * {@code 08:00:00Z}. A strict {@code generated_at <= time} therefore
+     * excluded EVERY run from its OWN first slot, and the film showed the
+     * PREVIOUS run for the slot in progress: "JETZT - Sonne speichern - läuft"
+     * stood over a slot that had been commanded as a discharge. That hit every
+     * slot of every plant; it only became visible on a day when two
+     * consecutive runs disagreed sharply. One second is far below any real
+     * re-plan (they are a quarter hour apart), so a run that genuinely lands
+     * INSIDE its slot still loses it - which is the ex-ante property this mode
+     * exists for.</p>
      *
      * <p>The window deliberately has NO upper bound: rows only exist up to the
      * newest run's horizon, so {@code time >= dayStart} is self-bounding and
@@ -164,14 +190,16 @@ public class ScheduleRepository {
         Instant[] newestRun = {null};
         UUID[] runDevice = {null};
         // The table is ALIASED so the ex-ante predicate can qualify its right
-        // side (`s.generated_at <= s.time`): `time` is a col_name_keyword, and
-        // a BARE `time` to the right of a comparison flirts with the
+        // side (`s.generated_at <= s.time + ...`): `time` is a col_name_keyword,
+        // and a BARE `time` to the right of a comparison flirts with the
         // typed-literal grammar. Everywhere else in this repo it only ever
         // appears on the left, where that question does not arise.
         List<ScheduleSlotDto> slots = jdbc.query(
                 "SELECT DISTINCT ON (s.time) s.generated_at, s.device_id, " + SLOT_COLUMNS
                         + " FROM schedule s "
-                        + "WHERE s.site_id = ? AND s.time >= ? AND s.generated_at <= s.time "
+                        + "WHERE s.site_id = ? AND s.time >= ? "
+                        + "  AND s.generated_at <= s.time + interval '"
+                        + RUN_STAMP_TOLERANCE + "' "
                         + "ORDER BY s.time, s.generated_at DESC",
                 (rs, i) -> {
                     Instant generatedAt = rs.getTimestamp("generated_at").toInstant();

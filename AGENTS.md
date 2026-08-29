@@ -2496,11 +2496,47 @@ Prognose ändert sich um kein Wh (in `test_solar`/`test_openmeteo` festgenagelt)
   nicht schließen kann (er liest ABGESCHLOSSENE Slots und sieht die Wolke von vor einer Minute nicht).
   Reihenfolge im `gather_inputs`: Prognose → Verhältnis-Anker → **Messwert-Nowcast** → Nachtboden,
   und **der Nachtboden behält das letzte Wort** (ein Messwert schlägt keine Physik). Fail-soft und
-  Vorgabe AN wie der Anker; Knöpfe `OPTIMIZER_PV_NOWCAST_{ENABLED,DECAY_SLOTS,MAX_AGE_SECONDS}`
-  (an, 2 Slots, 30 s — dieselbe Frische, der die Last-Korrektur längst traut).
-- **⚠ `_fresh_measurement` nimmt seit dieser Runde auch `pv_power_kw`** (die Spalten-Whitelist ist ein
-  hartes `raise`, kein `assert` — S15). Ein Aufrufer, der `gather_inputs` fälscht, braucht in seiner
-  Attrappe jetzt eine Antwort auf drei statt zwei Einzelwert-Abfragen.
+  Vorgabe AN wie der Anker; Knöpfe
+  `OPTIMIZER_PV_NOWCAST_{ENABLED,DECAY_SLOTS,MAX_AGE_SECONDS,LOOKBACK_SECONDS}`
+  (an, 2 Slots, 30 s, 120 s).
+- **⚠ DER MESSWERT IST EIN FENSTER-MITTEL, NIE EIN EINZELNES SAMPLE** (Herzogau 29.08.2026, Scout
+  `vp-herzogau-einspeisung-statt-laden-h3`). Die erste Fassung zog über `_fresh_measurement` das
+  NEUESTE Sample — bei ~180 Samples je Viertelstunde entschied damit der Zeitpunkt des Neuplans
+  allein, welcher Wert für den ganzen Slot spricht. Am 29.08. fiel er in eine sechsminütige Wolke
+  (PV 8,88 gegen 15,33 kW Haus), der Lauf befahl eine **ENTLADUNG von −7,17 kW**, während 23 kW ins
+  Netz gingen. Dieselben 24 Messungen GEMITTELT sagen 17,04 kW = Überschuss = laden. Gelesen wird
+  jetzt über `_recent_pv_samples` (der Zwilling von `_recent_load_samples`, gleiche Spaltenform,
+  gleiche Frische-Regel auf dem NEUESTEN Sample) plus `pv_nowcast.window_mean`.
+  **⚠ Ausdrücklich das ARITHMETISCHE Mittel, NICHT die EWMA des Last-Pfads:** mit α = 0,35
+  konvergiert die auf die letzten Sekunden und erbt denselben Münzwurf (an denselben Daten gemessen:
+  Einzel 8,88 · EWMA 9,30 · Mittel 17,04). Bei ruhiger Sonne liegen alle drei innerhalb von 0,4 kW —
+  das Mittel kostet also nichts, wo das Einzel-Sample schon richtig lag. Es ist dieselbe Hausregel,
+  die für den Verhältnis-Anker längst aufgeschrieben ist („ein Einzel-Sample wäre ein Zufallsgriff
+  aus der Viertelstunde").
+- **⚠ AUF EINEM ABGEREGELTEN SLOT DARF DER MESSWERT NUR HEBEN, NIE SENKEN** (`raise_only`, Glied 1b
+  desselben Vorfalls). Dort ist die Messung die AUSGANGSLEISTUNG unter UNSERER EIGENEN Kappe, also
+  ein BODEN des Potenzials und nicht das Potenzial: sie als Potenzial zu lesen schließt einen
+  Regelkreis — kappen → weniger messen → weniger planen → Kappe fällt weg → exportieren (am 29.08.
+  um 10:47 real: 16 kW ins Netz bei negativem Preis). Eine Messung ÜBER der Prognose bleibt ein
+  Beweis und wird angewandt; eine darunter beweist nichts. **„Messung + Kappen-Spielraum" wurde
+  verworfen** — niemand kennt den Spielraum, und eine erfundene Zahl ist schlechter als die
+  Prognose. Die Asymmetrie ist in der offen gelassenen Richtung sicher: eine zu OPTIMISTISCHE
+  PV-Eingabe endet in einem Ladebefehl, den die BOX längst auf den gemessenen Überschuss klemmt
+  (`charge_from_surplus_only`, Lastfolger) — für die zu pessimistische gibt es keinen Fänger.
+- **⚠ Die Abregel-Frage wird aus dem EIGENEN Plan beantwortet** (`_running_slot_curtailed`: der
+  jüngste Lauf mit `generated_at <= now`, dessen Slot über `now`, `curtail_kw > 0`) — nicht aus
+  `device_curtailment_status`. Dessen `applied_cap_kw` ist die SUMME der Kappen der ABREGELBAREN
+  Einheiten (Herzogau: zwei Fronius zu je 11,97 kW), die Messung dagegen die ganze Anlage samt des
+  nicht abregelbaren Deye-Anteils — die beiden zu vergleichen ist ein Kategorienfehler. Der Plan ist
+  außerdem die URSACHE jeder Kappe, also eine Runde FRÜHER verfügbar und von einem veralteten
+  Herzschlag unabhängig. Unbeantwortbar heißt `False` = nicht abgeregelt = das zweiseitige Verhalten
+  von vorher, kostet also nie einen Plan.
+- **⚠ `_fresh_measurement` nimmt AUSDRÜCKLICH KEIN `pv_power_kw` mehr** (die Spalten-Whitelist ist
+  ein hartes `raise`, kein `assert` — S15): der Einzelwert-Griff auf die PV IST der Fehler oben, und
+  ein Eintrag in der Whitelist wäre die Einladung, ihn wieder einzuführen. Ein Aufrufer, der
+  `gather_inputs` fälscht, braucht für die PV eine Antwort auf die FENSTER-Abfrage
+  (`SELECT time, pv_power_kw … time >= … time <= …`) und für den Abregel-Zweig eine auf
+  `FROM schedule` — siehe die Attrappe in `tests/test_pv_nowcast.py`.
 - **Beweise:** rein `services/forecast/tests/test_solar.py` (Luftmassen-Strahl, Energie-Erhaltung der
   Form, monotoner Abfall, Rand-Fälle) · `test_pvceiling.py` (9) · `test_dusk_forecast.py` (10, gegen
   die VERBATIM aufgezeichnete Antwort `fixtures/open_meteo_pilsting_2026-08-28.json`: der Deckel, der
@@ -3397,6 +3433,19 @@ weshalb diese Stufe dessen Muster wörtlich übernimmt.
   Sekunde nie Verschiedenes behaupten können. Mit `entity` kommen IHRE Zeilen PLUS die
   gerätebezogenen (`entity_id IS NULL`) — die betreffen den Schreibweg, über den sie gesteuert wird.
   Nur Tag und Woche: ein Monat wäre ein Fenster, das der Deckel ohnehin kappt.
+- **⚠ EIN LAUF WIRD MIKROSEKUNDEN NACH SEINER EIGENEN SLOTGRENZE GESTEMPELT — der Ex-ante-Filter
+  trägt deshalb EINE SEKUNDE Toleranz** (Herzogau 29.08.2026, `ScheduleRepository.RUN_STAMP_TOLERANCE`).
+  Der Optimierer wird AUF der Viertelstundengrenze ausgelöst und stempelt `generated_at`, wenn er
+  losläuft — der 10:00-Lauf trug `08:00:00.000867Z` gegen einen ersten Slot von `08:00:00Z`. Das
+  strikte `generated_at <= time` schloss damit JEDEN Lauf aus SEINEM EIGENEN ersten Slot aus, und der
+  Tages-Film zeigte für den LAUFENDEN Slot immer den VORIGEN Lauf: „JETZT · Sonne speichern · läuft"
+  stand über einem Slot, der als ENTLADUNG befohlen war. **Das traf jeden Slot jeder Anlage** und
+  fiel nur auf, weil an diesem Tag zwei aufeinanderfolgende Läufe maximal auseinanderlagen. Die
+  Toleranz muss ENG bleiben: eine Sekunde liegt zwei Größenordnungen unter dem 15-Minuten-Takt, ein
+  Re-Plan MITTEN im Slot verliert ihn also weiterhin — genau die Ex-ante-Eigenschaft, für die es
+  diese Lesart gibt. Beweis: `PortalApiTest.scheduleDayModeGivesARunItsOwnSlotDespiteTheMicrosecondItIsStampedLate`
+  (beide Hälften zusammen). **Der Zwilling in `EarningsRepository` ist NICHT betroffen** — dort steht
+  rechts ein gebundener Anker-Zeitpunkt, keine Slotgrenze, an der ein Lauf gestempelt wird.
 - **⚠ DIE FENSTER-KONVENTION: eine Zeile gehört zum Tag ihres STARTS** (`CommandLog.carryInAfter`,
   Captain-Meldung 19.08.2026). Der „Heute"-Tab begann um 17:26 mit dem Slot „23:45-00:00" — der
   letzten Viertelstunde des VORTAGS. Sie geriet auf ZWEI Wegen hinein, und beide sind mit derselben
