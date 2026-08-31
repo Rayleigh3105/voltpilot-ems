@@ -335,13 +335,15 @@
 
   initAccordion();
   applySummary("erweitert", window.VPGroups.erweitertSummary());
-  applySummary("datenfreigabe", window.VPGroups.datenfreigabeSummary(null, location.hostname));
-
-  // mirror.js polls /api/mirror and broadcasts each result; the Datenfreigabe
-  // row derives its "Aus" / "An · ip:port · nur Lesen" line from it.
-  window.addEventListener("vp:mirror-state", function (ev) {
-    applySummary("datenfreigabe", window.VPGroups.datenfreigabeSummary(ev.detail, location.hostname));
-  });
+  // mirror.js is the ONE source of the mirror state (it owns the /api/mirror
+  // poll): the head seeds from its last answer - null until the first poll,
+  // which renders as "…", never as a claimed "Aus" - and follows every later
+  // one through the event. Head and card therefore read the same object.
+  function renderDatenfreigabe(m) {
+    applySummary("datenfreigabe", window.VPGroups.datenfreigabeSummary(m, location.hostname));
+  }
+  renderDatenfreigabe(window.VPMirror ? window.VPMirror.state() : null);
+  window.addEventListener("vp:mirror-state", function (ev) { renderDatenfreigabe(ev.detail); });
 
   window.addEventListener("hashchange", revealHash);
 

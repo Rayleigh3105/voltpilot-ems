@@ -168,7 +168,11 @@
      same address the browser reached).
      ------------------------------------------------------------------ */
   function datenfreigabeSummary(m, host) {
-    if (!m) return { tone: "off", text: "Aus", problemKey: null };
+    // NOT YET KNOWN is not "Aus" (Backlog vp-mirror-blocks-anzeige, Befund 2):
+    // the head used to claim the mirror was off until mirror.js's first poll
+    // answered, so a running mirror read "Aus + grauer Punkt" over a card
+    // showing "Bereit". Unknown says so; the state arrives within one poll.
+    if (!m) return { tone: "off", text: "…", problemKey: null };
     if (!m.enabled) return { tone: "off", text: "Aus", problemKey: null };
     if (m.error) {
       return { tone: "warn", text: "An · Fehler", problemKey: "mirror:" + m.error };
