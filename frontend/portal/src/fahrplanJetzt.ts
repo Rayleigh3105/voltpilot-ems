@@ -36,7 +36,7 @@
  */
 
 import type { ControlStatus } from './api';
-import { controlStrip, executionNote } from './control';
+import { controlStrip, executionNote, nextChargeStart } from './control';
 import {
   CURTAIL_PLAN,
   curtailActionPhrase,
@@ -398,6 +398,13 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
 
   const chips = input.snapshotFresh ? measurementChips(input.snapshot) : [];
   const unplanned = unplannedLoadStatus(input, slot, status);
+  // Der LADE-Spiegel dazu: geplante Ruhe, während die Anlage einspeist - warum
+  // wird der Überschuss nicht gespeichert? Nur im Ruhe-Zustand, denn nur dort
+  // ruht der Speicher wirklich; und nie neben dem Entlade-Spiegel, der über
+  // dieselbe Zeile spräche (die beiden schließen sich ohnehin aus - Bezug
+  // gegen Einspeisung -, das Tor macht es nur unabhängig davon wahr).
+  const einspeise =
+    state === 'ruhe' && unplanned == null ? einspeiseRuhe(input) : null;
   const measured = showValue || chips.length > 0;
 
   // Der Flussabgleich (Scout `vp-verkauf-praemisse-s8` §3): register-bestätigt,
@@ -430,6 +437,7 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
     status: flowWarn
       ? 'Der angewiesene Wert fließt gerade nicht wie erwartet. Bitte im Blick behalten.'
       : unplanned?.status ??
+        einspeise?.status ??
         statusLine(state, strip?.sentence ?? null, executedKw, confirmedKw),
     lead: leadLine(
       state,
@@ -465,7 +473,7 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
         : null,
     // Ein toter Plan erklärt nichts über das Jetzt - sein Grund bleibt weg.
     why: SHOWS_WHY.has(state) ? reason : null,
-    chips: [...chips, ...(unplanned?.chips ?? [])],
+    chips: [...chips, ...(unplanned?.chips ?? []), ...(einspeise ? [einspeise.chip] : [])],
     next:
       unplanned?.next ??
       (state === 'ruhe' && input.nextPhase
@@ -542,6 +550,135 @@ function unplannedLoadStatus(
     status,
     chips,
     next: `Neuplanung bei anhaltender Abweichung automatisch, sonst spätestens ${hm(quarter.toISOString())}`,
+  };
+}
+
+/**
+ * Ab dieser gemessenen Einspeisung ist der Überschuss ein FAKT und nicht das
+ * Rauschen zwischen drei Zählern. Bewusst dieselbe Materialitäts-Schwelle wie
+ * der `materialImport` des Entlade-Spiegels in {@link unplannedLoadStatus}:
+ * die zwei Fälle sind Spiegelbilder derselben Frage („fließt hier wirklich
+ * etwas?"), und zwei verschiedene Schwellen dafür wären zwei Wahrheiten.
+ */
+export const EINSPEISE_RUHE_MIN_KW = 3;
+
+/**
+ * Ab diesem Rückgang ist „Einspeisen bringt später weniger" eine AUSSAGE und
+ * keine Rundungsdifferenz. Bewusst deutlich über dem Gleichstands-Band
+ * `NEXT_BEST_TIE_CT` (0,05 ct): ein Zehntel Cent ist zwar technisch weniger,
+ * erklärt einem Kunden aber nichts - ein Satz, der so wenig behauptet, ist
+ * Rauschen mit Grammatik.
+ */
+export const EINSPEISE_RUHE_DROP_CT = 1;
+
+/**
+ * Die Flags, die eine ANDERE Ursache der Ruhe BELEGEN - dann ist „wartet auf
+ * das billigere Fenster" nicht die Wahrheit und darf nicht behauptet werden.
+ * Ein voller Speicher (`soc_max`) und einer, der schon mit maximaler Leistung
+ * lädt (`charge_cap`), KÖNNEN den Überschuss gar nicht aufnehmen (die a/b-Fälle
+ * von `fahrplanWhy.surplusWhy`); die drei Reserve-Böden sind der Grund, den der
+ * Entlade-Spiegel auf seiner Seite ebenso vorzieht.
+ */
+const EINSPEISE_RUHE_BLOCKERS: readonly string[] = [
+  'soc_max',
+  'charge_cap',
+  'soc_floor',
+  'reserve_backup',
+  'reserve_peak',
+];
+
+/** Die Zustandszeile + der Zahl-Chip des Einspeise-Ruhe-Falls. */
+export interface EinspeiseRuheView {
+  /** Die Zustandszeile, die den scheinbaren Widerspruch auflöst. */
+  status: string;
+  /** Der Einspeisewert als Chip - die Zahl, die der Satz nennt. */
+  chip: JetztChip;
+}
+
+/**
+ * Der LADE-SPIEGEL des Entlade-Satzes aus {@link unplannedLoadStatus}: warum
+ * lädt der Speicher NICHT, obwohl die Anlage gerade einspeist und der
+ * Börsenpreis bei ~0 ct steht?
+ *
+ * Der belegte Fall (Anlage Herzogau/Pilsting, 31.08.2026, 11:00): Spot
+ * +0,08 EUR/MWh - das Portal zeigt „0,0 ct" -, Speicher 6 %, Plan-Sollwert
+ * 0 kW, ~30 kW Einspeisung. Ab 12:00 wird der Preis negativ und der Plan lädt
+ * 21 -> 30 kW. Für den Kunden sah das aus wie ein Fehler; ökonomisch ist es
+ * richtig, weil die EXPORTIERTE kWh jetzt noch mehrere Cent bringt und ab
+ * 12:00 nichts mehr (bzw. Geld kostet). Genau diese eine Zahl - der
+ * Einspeisewert des Slots, nicht der nackte Börsenpreis - fehlte auf der
+ * Fläche, und ohne sie kann der Satz nicht gesagt werden.
+ *
+ * **Die Regel ist eine ERKENNUNG, keine Rechnung:** jede Zahl kommt aus dem
+ * schon gelieferten `exportValueCtKwh` (die serverseitige
+ * `SlotEconomics`-Komposition); fehlt eine, entsteht KEIN Satz und die Karte
+ * bleibt zeichengleich zu heute (Null-Degradation bleibt Gesetz).
+ *
+ * Die Tore, jedes gegen eine mögliche Falschaussage:
+ *   1. Direktvermarktung - nur dort ist der Einspeisewert eine
+ *      Markt-Zusammensetzung, die bei negativem Preis wirklich wegfällt. Für
+ *      eine Anlage mit fester Vergütung ist die Geschichte eine andere und
+ *      wird hier bewusst NICHT erzählt.
+ *   2. der Plan RUHT wirklich in dieser Viertelstunde (kein Sollwert),
+ *   3. keine andere belegte Ursache (`EINSPEISE_RUHE_BLOCKERS`) und keine
+ *      Abregelung - dort erklären die Abregel-Zeilen den Fall schon,
+ *   4. die Anlage speist MESSBAR ein (frischer Schnappschuss),
+ *   5. der Einspeisewert JETZT ist positiv - „wird noch vergütet" ist sonst
+ *      keine wahre Aussage,
+ *   6. der nächste geplante LADE-Slot bringt beim Einspeisen weniger
+ *      (negativ, oder um {@link EINSPEISE_RUHE_DROP_CT} niedriger).
+ *
+ * Der nächste Lade-Zeitpunkt kommt aus `control.nextChargeStart` - derselben
+ * Regel, die schon der Überschuss-Grund des Cockpits benutzt; es gibt hier
+ * keine zweite „welcher Slot lädt als nächstes"-Ableitung.
+ */
+export function einspeiseRuhe(input: JetztInput): EinspeiseRuheView | null {
+  // 1. Nur Direktvermarktung: dort IST der Einspeisewert Spot + Aufschlag, und
+  //    nur dort fällt der Aufschlag bei negativem Preis wirklich weg.
+  if (input.plantKind !== 'direktvermarktung') return null;
+
+  const slot = input.slot;
+  if (slot == null) return null;
+
+  // 2. Der Plan ruht wirklich - ohne Plan-Wert wird nichts behauptet
+  //    (`?? Infinity` ist die Regel des Entlade-Spiegels, wörtlich).
+  if (Math.abs(num(slot.batteryKw) ?? Infinity) > ADJUST_DEADBAND_KW) return null;
+
+  // 3. Keine andere BELEGTE Ursache - und keine Abregelung: dort trägt die
+  //    Abregel-Wahrheit den Fall (dieselbe Ausnahme wie `surplusWhy`).
+  if (slot.slotRole === 'abregeln') return null;
+  const flags = slot.slotFlags ?? [];
+  if (flags.some((f) => EINSPEISE_RUHE_BLOCKERS.includes(f))) return null;
+
+  // 4. Die Anlage speist MESSBAR ein. Ohne frischen Schnappschuss gibt es
+  //    keinen Widerspruch zu erklären - dann sieht der Kunde ihn auch nicht.
+  if (!input.snapshotFresh) return null;
+  const grid = num(input.snapshot?.gridKw);
+  if (grid == null || -grid <= EINSPEISE_RUHE_MIN_KW) return null;
+
+  // 5. Einspeisen bringt JETZT wirklich etwas.
+  const expNow = num(slot.exportValueCtKwh);
+  if (expNow == null || expNow <= 0) return null;
+
+  // 6. ... und im nächsten geplanten Ladefenster weniger.
+  const slots = input.slots ?? [];
+  const at = nextChargeStart(slots, input.now);
+  if (at == null) return null;
+  const expLater = num(slots.find((s) => s.start === at)?.exportValueCtKwh);
+  if (expLater == null) return null;
+  // Ein NEGATIVER Einspeisewert heißt bei Direktvermarktung, dass der
+  // Börsenpreis unter null liegt: der Aufschlag ist der einzige weitere
+  // Summand und nie negativ, also folgt aus Wert < 0 zwingend Preis < 0.
+  // Nur deshalb darf der Satz das Wort „Preis" benutzen.
+  const negativ = expLater < 0;
+  const weniger = expLater <= expNow - EINSPEISE_RUHE_DROP_CT;
+  if (!negativ && !weniger) return null;
+
+  const tail = negativ ? 'wenn der Preis negativ wird' : 'wenn Einspeisen weniger bringt';
+  const wert = fmtNum(expNow, 'ct/kWh');
+  return {
+    status: `Einspeisung wird gerade noch vergütet (${wert}) · Speichern ab ${hm(at)} Uhr, ${tail}`,
+    chip: { label: 'Einspeisewert', value: wert },
   };
 }
 

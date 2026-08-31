@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { actionPhrase, jetztHeld, measurementChips, type JetztInput } from './fahrplanJetzt';
+import {
+  actionPhrase,
+  einspeiseRuhe,
+  jetztHeld,
+  measurementChips,
+  type JetztInput,
+} from './fahrplanJetzt';
 import type { ControlStatus, CurtailmentStatus } from './api';
 import { curtailTruth } from './curtailment';
 import { FLOW_CONFLICT_MIN_STREAK } from './flowConflict';
@@ -783,5 +789,153 @@ describe('jetztHeld · Flussabgleich (bestätigt, aber fließt nicht)', () => {
     expect(v.flowConflictSeverity).toBeNull();
     expect(v.tone).toBe('ok');
     expect(v.confirm).toContain('bestätigt');
+  });
+});
+
+
+/**
+ * Der LADE-SPIEGEL des Entlade-Satzes (Captain-Entscheid 31.08.2026).
+ *
+ * Der belegte Fall - Anlage Herzogau/Pilsting, 31.08.2026, 11:00: der
+ * Börsenpreis steht bei +0,08 EUR/MWh, das Portal zeigt „0,0 ct", der Speicher
+ * ist auf 6 % und trotzdem gehen ~30 kW ins Netz statt in die Batterie. Das
+ * SIEHT falsch aus und ist richtig: die exportierte kWh bringt in dieser
+ * Viertelstunde noch 3,1 ct, ab 12:00 wird der Preis negativ, und genau dorthin
+ * hat der Fahrplan das Speichern gelegt.
+ *
+ * Die zwei Regeln, die hier am meisten wert sind:
+ *  - der Satz erscheint NUR mit allen Belegen (Einspeisewert jetzt, ein
+ *    späteres Ladefenster, das weniger bringt, und eine gemessene Einspeisung),
+ *  - und wo einer fehlt, bleibt die Karte ZEICHENGLEICH zu heute.
+ */
+describe('jetztHeld · Ruhe bei Einspeisung (der Lade-Spiegel)', () => {
+  const T = (iso: string) =>
+    new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+  const HERZOGAU_NOW = new Date('2026-08-31T09:05:00Z');
+  const LADEN_AB = '2026-08-31T10:00:00Z';
+
+  /** Der Plan des Vormittags: vier ruhende Viertelstunden, dann das Laden. */
+  const herzogauSlots = (over: Partial<WhySlot> = {}): WhySlot[] => [
+    slot({ start: '2026-08-31T09:00:00Z', batteryKw: 0, socPct: 6, slotRole: 'warten', exportValueCtKwh: 3.1, ...over }),
+    slot({ start: '2026-08-31T09:15:00Z', batteryKw: 0, socPct: 6, slotRole: 'warten', exportValueCtKwh: 2.9 }),
+    slot({ start: '2026-08-31T09:30:00Z', batteryKw: 0, socPct: 6, slotRole: 'warten', exportValueCtKwh: 2.6 }),
+    slot({ start: '2026-08-31T09:45:00Z', batteryKw: 0, socPct: 6, slotRole: 'warten', exportValueCtKwh: 2.2 }),
+    slot({ start: LADEN_AB, batteryKw: 21, socPct: 14, slotRole: 'pv_speichern', exportValueCtKwh: -0.4 }),
+  ];
+
+  const herzogau = (over: Partial<JetztInput> = {}): JetztInput => {
+    const slots = over.slots ?? herzogauSlots();
+    return input({
+      slot: slots[0],
+      slots,
+      control: status({
+        commandedKw: 0,
+        confirmedKw: 0,
+        allMatch: true,
+        checkedAt: new Date(HERZOGAU_NOW.getTime() - 8000).toISOString(),
+      }),
+      // PV 44 kW, Haus 12 kW, ~30 kW an der Einspeisegrenze ins Netz.
+      snapshot: snap({ pvKw: 44, loadKw: 12, gridKw: -30, battKw: 0, socPct: 6 }),
+      snapshotFresh: true,
+      maxFeedInKw: 30,
+      plantKind: 'direktvermarktung',
+      now: HERZOGAU_NOW,
+      ...over,
+    });
+  };
+
+  it('löst den Widerspruch auf: „wird gerade noch vergütet" + wann gespeichert wird', () => {
+    const v = jetztHeld(herzogau());
+    // Es IST geplante Ruhe - der Zustand wird nicht umgedeutet.
+    expect(v.state).toBe('ruhe');
+    // ... und sie bleibt GRÜN: das ist kein Fehler, sondern der Plan.
+    expect(v.tone).toBe('ok');
+    expect(v.status).toBe(
+      `Einspeisung wird gerade noch vergütet (3,1${NBSP}ct/kWh) · ` +
+        `Speichern ab ${T(LADEN_AB)} Uhr, wenn der Preis negativ wird`,
+    );
+    // Die Zahl steht auch als Chip neben der GEMESSENEN Einspeisung - genau
+    // die Paarung, die den Widerspruch auflöst.
+    expect(v.chips).toContainEqual({ label: 'Einspeisung', value: `30,0${NBSP}kW` });
+    expect(v.chips).toContainEqual({ label: 'Einspeisewert', value: `3,1${NBSP}ct/kWh` });
+    // Kein internes Vokabular im Kundensatz.
+    expect(v.status).not.toMatch(/Marktprämie|§\s*51|Slot|λ/);
+  });
+
+  it('nennt bei nur NIEDRIGEREM Einspeisewert die ehrliche Variante', () => {
+    const slots = herzogauSlots();
+    // Das Ladefenster bringt weiter Geld, nur deutlich weniger als jetzt.
+    slots[4] = slot({ start: LADEN_AB, batteryKw: 21, slotRole: 'pv_speichern', exportValueCtKwh: 1.2 });
+    const v = jetztHeld(herzogau({ slots }));
+    expect(v.status).toBe(
+      `Einspeisung wird gerade noch vergütet (3,1${NBSP}ct/kWh) · ` +
+        `Speichern ab ${T(LADEN_AB)} Uhr, wenn Einspeisen weniger bringt`,
+    );
+  });
+
+  it('OHNE Direktvermarktung bleibt der heutige Text unverändert', () => {
+    const v = jetztHeld(herzogau({ plantKind: 'eigenverbrauch' }));
+    expect(v.status).toBe('Ruhe — so geplant, nichts zu tun');
+    expect(v.chips.map((c) => c.label)).not.toContain('Einspeisewert');
+  });
+
+  it('OHNE positiven Einspeisewert JETZT wird nichts behauptet', () => {
+    // Kein Wert geliefert (älterer Lauf) - und die zwei Fälle, in denen
+    // „wird gerade noch vergütet" schlicht unwahr wäre.
+    for (const exportValueCtKwh of [null, 0, -0.4]) {
+      const v = jetztHeld(herzogau({ slots: herzogauSlots({ exportValueCtKwh }) }));
+      expect(v.status, String(exportValueCtKwh)).toBe('Ruhe — so geplant, nichts zu tun');
+    }
+  });
+
+  it('OHNE späteren Lade-Slot wird nichts behauptet', () => {
+    const v = jetztHeld(herzogau({ slots: herzogauSlots().slice(0, 4) }));
+    expect(v.status).toBe('Ruhe — so geplant, nichts zu tun');
+  });
+
+  it('ein Ladefenster, das kaum weniger bringt, ist KEINE Auskunft', () => {
+    const slots = herzogauSlots();
+    slots[4] = slot({ start: LADEN_AB, batteryKw: 21, slotRole: 'pv_speichern', exportValueCtKwh: 2.9 });
+    expect(jetztHeld(herzogau({ slots })).status).toBe('Ruhe — so geplant, nichts zu tun');
+  });
+
+  it('eine BELEGTE andere Ursache gewinnt: Reserve-Boden und voller Speicher', () => {
+    for (const flag of ['soc_floor', 'reserve_backup', 'reserve_peak', 'soc_max', 'charge_cap']) {
+      const v = jetztHeld(herzogau({ slots: herzogauSlots({ slotFlags: [flag] }) }));
+      expect(v.status, flag).toBe('Ruhe — so geplant, nichts zu tun');
+    }
+  });
+
+  it('eine geplante Abregelung erklärt sich selbst - kein zweiter Satz', () => {
+    const v = jetztHeld(herzogau({ slots: herzogauSlots({ slotRole: 'abregeln', curtailKw: 12 }) }));
+    expect(v.status).toBe('Ruhe — so geplant, nichts zu tun');
+  });
+
+  it('ohne messbare Einspeisung (oder ohne frische Messung) wird nichts behauptet', () => {
+    expect(jetztHeld(herzogau({ snapshot: snap({ pvKw: 12, loadKw: 12, gridKw: 0, battKw: 0, socPct: 6 }) })).status)
+      .toBe('Ruhe — so geplant, nichts zu tun');
+    expect(jetztHeld(herzogau({ snapshotFresh: false })).status).toBe('Ruhe — so geplant, nichts zu tun');
+  });
+
+  it('ein Speicher, der laut Plan gar nicht ruht, bekommt den Satz nie', () => {
+    const slots = herzogauSlots();
+    slots[0] = slot({ start: '2026-08-31T09:00:00Z', batteryKw: 8, slotRole: 'pv_speichern', exportValueCtKwh: 3.1 });
+    // Die reine Regel urteilt hier direkt - der Held wäre in diesem Fall gar
+    // nicht mehr im Ruhe-Zustand, die Erkennung muss es trotzdem selbst wissen.
+    expect(einspeiseRuhe(herzogau({ slots }))).toBeNull();
+  });
+
+  it('der ENTLADE-Spiegel bleibt byte-gleich - Bezug schlägt Einspeisung', () => {
+    const slots = herzogauSlots({ unplannedLoadDischarge: false });
+    const v = jetztHeld(
+      herzogau({
+        slots,
+        // Dieselbe Anlage, nur zieht sie gerade 8 kW aus dem Netz.
+        snapshot: snap({ pvKw: 2, loadKw: 10, gridKw: 8, battKw: 0, socPct: 6 }),
+      }),
+    );
+    expect(v.status).toBe('Speicher hält zurück, weil Energie später mehr wert ist');
+    expect(v.chips.map((c) => c.label)).not.toContain('Einspeisewert');
   });
 });
