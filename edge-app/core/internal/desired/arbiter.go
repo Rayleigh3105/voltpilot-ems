@@ -352,7 +352,24 @@ func (a *Arbiter) admit(st *entState, d *Desired, now time.Time, quiet bool) {
 	// challenger from ANOTHER source is rejected outright - deliberately no
 	// last-writer-wins, no queueing (re-emission after the holder's TTL lapse
 	// wins then). Override never helps here: the rule binds on the CLASS.
-	if holder != nil && holder.Source.Key() != key && holder.Priority == d.Priority {
+	//
+	// D-6a is the ONE exemption: a MANUAL INTERVENTION (local-ui + override) is
+	// the only wish with a person behind it, so a holding rule must not lock it
+	// out. The exemption covers BOTH directions of the pairing, each for its own
+	// reason:
+	//   - manual CHALLENGER: it must be able to preempt a holding rule at all
+	//     (that is K1 - before it, "Jetzt stoppen" was rejected outright while
+	//     the rule kept renewing its wish every 15 s).
+	//   - manual HOLDER: the rule then falls through to the normal priority
+	//     path, so it is STORED and rejected with the honest arbitration:priority
+	//     reason - and its 15-s re-emission keeps that stored copy alive, so the
+	//     rule resumes SEAMLESSLY (contract §5 next-highest) when the
+	//     intervention expires instead of leaving a failsafe gap.
+	// Two manual interventions never reach here: source local-ui holds ONE slot
+	// per entity, so the later one REPLACES the earlier (Source.Key) - exactly
+	// the human expectation.
+	manualPair := d.manualIntervention() || holder.manualIntervention()
+	if holder != nil && !manualPair && holder.Source.Key() != key && holder.Priority == d.Priority {
 		if !quiet {
 			a.emitEvent(st, now, "rejected", d.Ref(), requestedOf(d), nil,
 				[]Reason{{Stage: "arbitration:conflict",
@@ -392,7 +409,11 @@ func (a *Arbiter) admit(st *entState, d *Desired, now time.Time, quiet bool) {
 					Detail: fmt.Sprintf("preempted by class %s", d.Priority)}}, d.Ref())
 		}
 	}
-	if d.Priority == ClassFlow && d.Override {
+	if d.manualIntervention() {
+		arbitrationReasons = append(arbitrationReasons,
+			Reason{Stage: "arbitration:override",
+				Detail: "manual intervention elevated above plan and rules for its TTL"})
+	} else if d.Priority == ClassFlow && d.Override {
 		arbitrationReasons = append(arbitrationReasons,
 			Reason{Stage: "arbitration:override", Detail: "flow desired elevated above market for its TTL"})
 	}
@@ -498,8 +519,10 @@ func (a *Arbiter) selectHolder(st *entState, now time.Time) *Desired {
 
 // suspended keys on the desired's CLASS, not its effective arbitration rank:
 // a bounded local-ui override is still a flow-class manual wish even though
-// D-5 elevates it above market during normal operation. Plant rest suspends
-// both ordinary and override wishes while preserving contract/grid/safety.
+// D-5/D-6a elevate it above market and above a rule (rank 75) during normal
+// operation. Plant rest suspends ordinary, override AND manual wishes while
+// preserving contract/grid/safety - „Automatik pausieren" stays a GATE, and
+// K1 deliberately did not touch it.
 func (a *Arbiter) suspended(d *Desired) bool {
 	return d != nil && a.deps.Suspended != nil && a.deps.Suspended() &&
 		d.Priority.rank() <= ClassMarket.rank()

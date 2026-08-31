@@ -6671,6 +6671,25 @@ GANZES ruhen kann.
 **Ohne Handeingriff ist alles byte-identisch:** keine Zeile in `device_override` ⇒ kein Feld im
 Push, kein anderer Wunsch, kein anderer Text.
 
+- **⚠ SEIT K1 SCHLÄGT DER HANDEINGRIFF DIE REGEL — Vertragsentscheid D-6a** (Verbrauchsmanagement
+  v1, 31.08.2026; Konzept `vp-verbrauchsmgmt-konzept-v1` §1.2 S9 / §2.2 K1). Bis dahin reisten
+  Sofortaktion UND Speicher-Eingriff als `local-ui` + `override` = Klasse `flow`, **Rang 70** —
+  genau der Rang einer kompilierten `must_run`-Regel —, und die Gleichklassen-Regel D-6 wies den
+  Menschen ab, solange die Regel ihren Wunsch alle 15 s erneuerte („Jetzt stoppen" kam nicht
+  durch). `desired.manualIntervention()` (local-ui UND override) hebt ihn auf **Rang 75**
+  (`desired.ManualRank`) und nimmt das Paar von der Gleichklassen-Abweisung aus — **in BEIDE
+  Richtungen, jede aus eigenem Grund**: der Handeingriff verdrängt die haltende Regel (das ist K1),
+  und die Regel wird als Herausforderer GESPEICHERT und mit `arbitration:priority` statt
+  `conflict` abgewiesen, sodass ihre 15-s-Erneuerung sie beim Ablauf des Eingriffs **NAHTLOS**
+  zurückholt (§5 next-highest) statt eine Failsafe-Lücke zu lassen. **Zwei Handeingriffe erreichen
+  die Regel nie:** `local-ui` hält EINEN Slot je Entität (`Source.Key`), der spätere ERSETZT also
+  den früheren — genau die menschliche Erwartung. **Unberührt:** Regel gegen Regel (die D-6-Prüfung
+  bleibt auf der KLASSE, zwei Regeln können sich weiterhin nicht per `override` verdrängen), alles
+  über 75 (contract 80 · grid 90 · safety 100) weist ihn weiter mit `arbitration:priority` ab, die
+  Guard-Kette klemmt ihn unverändert (`clamped` samt Guard-Stufe), die 4-h-Kappe gilt, und die
+  Anlagen-Pause bleibt ein **TOR** (`suspended` keyt auf die KLASSE, nicht auf den Rang). Beweise:
+  `internal/desired/manual_intervention_test.go` (die vier Fälle, dreifach mutationsgeprüft).
+  **Wirkt erst mit dem nächsten Edge-Release.**
 - **⚠ S1 = A ist eine KONSTRUKTIONS-Aussage: es gibt kein neues Kommando.** „Ladestand halten" ist
   `setpoint_kw = 0`, „Speicher jetzt laden" ein positiver `setpoint_kw` — beides seit E1a im
   Vokabular. **Und die EEG-Regel bleibt strukturell, nicht als Zusage:** ob dabei aus dem NETZ

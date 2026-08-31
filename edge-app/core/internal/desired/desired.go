@@ -136,12 +136,34 @@ type Desired struct {
 	receivedAt time.Time
 }
 
+// ManualRank is the effective rank of a MANUAL INTERVENTION (D-6a): a
+// local-ui desired carrying override - "Jetzt voll laden", "Ladestand halten",
+// "Jetzt stoppen". It sits ABOVE the rule override (70) and below
+// contract (80): a person who just pressed a button outranks a rule that is
+// merely holding, and nothing a person presses ever outranks compliance.
+const ManualRank = 75
+
+// manualIntervention reports whether this desired is a human's bounded manual
+// intervention (D-6a). Source local-ui may only ever claim class flow
+// (classAllowed), so the class check is a belt-and-braces guard for the
+// SubmitInternal path, which bypasses Parse.
+func (d *Desired) manualIntervention() bool {
+	return d != nil && d.Source.Kind == SourceLocalUI && d.Override && d.Priority == ClassFlow
+}
+
 // effectiveRank ranks a desired for holder selection: the class rank, with
 // override elevating a class-'flow' desired ABOVE market but below contract
-// (D-5). Override never changes ranking within class 'flow' itself - the D-6
-// same-class rule (holder keeps) is checked on the CLASS, so two flows can
-// never preempt each other via override.
+// (D-5), and a MANUAL INTERVENTION one step above that (D-6a, rank 75).
+//
+// Override never changes ranking BETWEEN TWO RULES within class 'flow' - the
+// D-6 same-class rule (holder keeps) is checked on the CLASS, so two flows can
+// never preempt each other via override. The manual intervention is the single
+// exemption from that rule (see Arbiter.admit): it is the only wish with a
+// person behind it.
 func (d *Desired) effectiveRank() int {
+	if d.manualIntervention() {
+		return ManualRank
+	}
 	if d.Priority == ClassFlow && d.Override {
 		return 70
 	}

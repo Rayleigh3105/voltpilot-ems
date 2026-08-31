@@ -90,6 +90,22 @@ outrank the due deadline duty. Deliberate deviation from verbrauchssteuerung.md 
 Aufgabe > normaler Fahrplan): at the edge a fresh plan already CONTAINS the flexible task's
 dispatch, so the plan wins whenever fresh.
 
+**Effective ranks (what arbitration actually compares).** The class rank is the baseline; two
+elevations sit on top of it, both inside class `flow`, both TTL-bounded:
+
+| Effective rank | What | Where |
+|---|---|---|
+| 100 / 90 / 80 / 60 / 50 / 40 | the class ranks above | `Class.rank` |
+| **70** | a **rule** — a flow desired with `override: true` (D-5) | `Desired.effectiveRank` |
+| **75** | a **manual intervention** — source `local-ui` with `override: true` (D-6a) | `Desired.effectiveRank` |
+
+A manual intervention is the only wish with a **person** behind it (the owner pressed *Jetzt voll
+laden* / *Ladestand halten* / *Jetzt stoppen*), so it outranks a rule that is merely holding —
+and it stays strictly below `contract` (80): explicit owner intent may cost money, never
+compliance. Everything else about it is an ordinary class-`flow` desired: the 4-h override cap,
+the full guard chain and the plant pause (`Automatik pausieren`) bind unchanged — the pause is a
+GATE keyed on the CLASS, so it suspends a rank-75 wish exactly like a rank-40 one.
+
 Two load-bearing rules:
 
 1. **Compliance never competes.** On the current edge, `safety`/`grid` (and later `contract`
@@ -131,6 +147,29 @@ its TTL, which the arbiter additionally caps at **14 400 s (4 h)**. This is the 
 hatch (owner presses *charge my car now*): explicit owner intent may cost money, never
 compliance, and must not require editing the strategy graph. Arbitration events carry
 `arbitration:override` so the elevation is loud, and the plan re-takes the entity on expiry.
+
+**D-6a · The manual intervention is the ONE exemption from the same-class rule.** A desired from
+source `local-ui` carrying `override: true` is ranked **75** (above a rule's 70) **and is exempt
+from rule 2 above** — a holding rule must not be able to lock the owner out. Before this,
+*Jetzt stoppen* against a holding `must_run` rule was `rejected` with `arbitration:conflict` for
+as long as the rule kept renewing its wish (every 15 s), which inverted the intended ordering
+*Schutz > Handeingriff > Regel*. The exemption is scoped to a pairing in which **one of the two
+sides is the manual intervention**, and each direction has its own consequence:
+
+- **manual challenger, rule holder** — the intervention preempts: the rule is `superseded`, stays
+  stored, and resumes on the intervention's expiry (rule 1 + the §5 next-highest rule).
+- **rule challenger, manual holder** — the rule falls through to the normal priority path, so it
+  is **stored** and `rejected` with `arbitration:priority` (naming the holder) instead of
+  `arbitration:conflict`. Its 15-s re-emission therefore keeps the stored copy alive and the rule
+  resumes **seamlessly** when the intervention lapses, with no failsafe gap.
+- **two manual interventions** — never reach the rule at all: source `local-ui` holds ONE slot per
+  entity (`Source.Key`), so the later one **replaces** the earlier. That is the human
+  expectation; a second press is a correction, not a competitor.
+
+Nothing else changes: two RULES still cannot preempt each other via `override` (the same-class
+rule is still checked on the CLASS), a rank-75 wish is still refused by `contract`/`grid`/`safety`
+with `arbitration:priority`, the guard chain still clamps it (`clamped`, with the guard stage), and
+the plant pause still suspends it.
 
 ## 5. TTL and expiry
 
