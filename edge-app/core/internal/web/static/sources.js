@@ -66,6 +66,7 @@
   var hasNetz = false;     // whether a Netz-Zähler already exists (role-lock)
   var currentRole = ROLE_ERZEUGER;
   var currentList = [];    // the sources as last loaded (for the unit-id offer)
+  var customList = [];     // the customer's OWN devices (read-only mirror)
 
   // Die zwei Picker des Drawers (VpPicker der Box, vppicker.js). Sie ERSETZEN
   // die früheren nativen Auswahlfelder: gleiche Werte in `collect()`, gleicher
@@ -284,6 +285,49 @@
     var li = buildRow(s);
     ul.appendChild(li);
     if (li.vpVerifyPanel) ul.appendChild(li.vpVerifyPanel);
+  }
+
+  /* ---- Eigene Geräte (Einheitsmodell Stufe 3/4) ----
+     Die Geräte, die der KUNDE im Portal selbst angelegt hat. Sie sind KEINE
+     Quellen: der Applier überspringt sie bewusst (ihr Leseplan reist als
+     generierter Flow über v2/flows), sie stehen also nie in sources.json - und
+     tauchten auf dieser Seite bis dahin NIRGENDS auf (Scout
+     vp-portal-box-spiegel-s2, L5).
+
+     Die Zeile trägt KEINE Bedienung: kein Umbenennen, kein Entfernen, kein
+     „＋ hinzufügen". Ein Selbstbau-Gerät wird im Portal gepflegt, und ein Knopf,
+     der hier ins Leere liefe, wäre eine Zusage, die diese Seite nicht halten
+     kann. Alle Texte kommen aus der reinen VPGroups-Schicht, damit sie ohne
+     Browser prüfbar sind. */
+
+  function buildCustomRow(d) {
+    var row = window.VPGroups.eigenesGeraetRow(d);
+    var li = el("li", { class: "row" });
+    li.appendChild(el("span", { class: "row-dot " + row.pill.dot, "aria-hidden": "true" }));
+    var main = el("div", { class: "row-main" });
+    main.appendChild(el("span", { class: "row-name" }, row.name));
+    main.appendChild(el("span", { class: "row-meta" }, row.meta));
+    li.appendChild(main);
+    var badge = el("span", { class: "row-badge" });
+    var pill = el("span", { class: "pill " + row.pill.pill });
+    pill.appendChild(el("span", { class: "dot" }));
+    pill.appendChild(document.createTextNode(row.pill.label));
+    badge.appendChild(pill);
+    li.appendChild(badge);
+    return li;
+  }
+
+  function renderCustom(list) {
+    var group = $("eigenGroup");
+    if (!group) return;
+    customList = list || [];
+    // Keine eigenen Geräte -> die Gruppe verschwindet ganz. Eine leere Gruppe
+    // wäre eine Gruppe, die etwas behauptet.
+    group.hidden = customList.length === 0;
+    var ul = $("eigenList");
+    ul.innerHTML = "";
+    customList.forEach(function (d) { ul.appendChild(buildCustomRow(d)); });
+    $("eigenNote").textContent = window.VPGroups.eigenNote(customList);
   }
 
   function renderGroups(list) {
@@ -781,6 +825,9 @@
       serverNowMs = data.server_now_ms || 0;
       if (data.balance) balance = data.balance;
       renderGroups(data.sources || []);
+      // ADDITIV: eine ältere Box liefert das Feld nicht - dann bleibt die
+      // Gruppe versteckt und die Seite verhält sich zeichengleich wie vorher.
+      renderCustom(data.custom_devices || []);
       // ⚠ Die zwei Picker des Drawers entstehen SCHON HIER, nicht erst beim
       // Öffnen. Erst das Montieren verknüpft die Beschriftung mit dem Auslöser
       // (vppicker.js setzt `label.htmlFor`) - bis dahin steht über dem Feld eine

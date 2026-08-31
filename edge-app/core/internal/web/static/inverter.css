@@ -22,6 +22,10 @@
 .grp-ico.pv { background: var(--pv); }
 .grp-ico.grid { background: var(--grid-c); }
 .grp-ico.load { background: var(--load); }
+/* Eigene Geräte (Einheitsmodell Stufe 3/4): bewusst NEUTRAL - die vier Farben
+   darüber gehören den vier Rollen der Energiebilanz, und genau dort geht ein
+   Selbstbau-Gerät nicht ein. */
+.grp-ico.self { background: var(--vp-text-gray); }
 .grp-title { font-size: 14.5px; font-weight: 750; color: var(--ink); }
 .grp-note { font-size: 12px; color: var(--muted); }
 

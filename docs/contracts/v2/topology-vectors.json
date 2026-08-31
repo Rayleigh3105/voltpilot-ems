@@ -385,6 +385,14 @@
     { "name": "unknown-channel", "type": "house-load", "category": "consumer", "channel": "irgendwas", "connection": "", "expected": "" },
     { "name": "unknown-category", "type": "some-type", "category": "", "channel": "power_kw", "connection": "", "expected": "" },
     { "name": "connection-ignored-off-charge-points", "type": "house-load", "category": "consumer", "channel": "power_kw", "connection": "eigen", "expected": "consumer",
-      "note": "connection is consulted ONLY for charge points - it can never move the house node." }
+      "note": "connection is consulted ONLY for charge points - it can never move the house node." },
+    { "name": "self-built-power-is-never-the-grid", "type": "modbus-generic", "category": "meter", "channel": "power_kw", "connection": "", "expected": "",
+      "note": "L5 (vp-portal-box-spiegel-s2): a customer-defined sensor is category meter, so before the self-built branch a channel merely NAMED power_kw rendered as the grid connection point. The grid node may only be built from a real grid meter, and the Stufe-3 promise is that a self-built sensor never enters the energy balance." },
+    { "name": "self-built-measure-only-alias", "type": "modbus-generic", "category": "measure-only", "channel": "power_kw", "connection": "", "expected": "" },
+    { "name": "self-built-free-channel", "type": "modbus-generic", "category": "meter", "channel": "fuellstand_pct", "connection": "", "expected": "" },
+    { "name": "self-built-pv-channel-is-still-not-a-role", "type": "modbus-generic", "category": "meter", "channel": "pv_power_kw", "connection": "", "expected": "",
+      "note": "The TYPE is checked FIRST: a customer-named channel can never buy its way into a role by matching one of the pilot channel names." },
+    { "name": "self-built-switch-never-double-counts-the-house", "type": "modbus-load", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "",
+      "note": "A released self-built switching device sits BEHIND the house connection, so its power is already inside the measured house load - the identical double-count argument that moved charge points out of the consumer role." }
   ]
 }

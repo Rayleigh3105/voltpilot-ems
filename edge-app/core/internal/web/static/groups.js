@@ -37,10 +37,11 @@
      tone: "ok" | "warn" | "off"; problemKey: non-null ONLY for a state that
      should open the group by itself (something stopped delivering).
      ------------------------------------------------------------------ */
-  function anlageSummary(s, sources, statuses, nowMs) {
+  function anlageSummary(s, sources, statuses, nowMs, custom) {
     s = s || {};
     sources = sources || [];
     statuses = statuses || {};
+    custom = custom || [];
     if (nowMs == null) nowMs = s.server_now_ms || Date.now();
 
     var inv = s.inverter;
@@ -62,6 +63,15 @@
     if (netz > 0) parts.push("Netz-Zähler");
     if (verb > 0) parts.push(verb + " Verbraucher");
     if (kwp > 0) parts.push(fmtKwp(kwp) + " kWp");
+    // Die selbst angelegten Geräte werden GEZÄHLT, aber sie gehen NICHT in das
+    // Liefer-Urteil unten ein: die Box liest sie nicht selbst (ihr Leseplan ist
+    // ein generierter Flow), also wäre „wartet auf Daten" eine Aussage über ein
+    // Warten, das hier niemand tut - und sie würde die Gruppe grundlos grau
+    // färben. Sichtbar sind sie in ihrer eigenen Gruppe, mit ihrer eigenen
+    // Pille.
+    if (custom.length > 0) {
+      parts.push(custom.length + (custom.length === 1 ? " eigenes Gerät" : " eigene Geräte"));
+    }
 
     // Delivery verdict: the primary inverter via the composite telemetry age,
     // every additional source via its own status ("ok"|"warn"|"pending").
@@ -196,6 +206,66 @@
   // shouldAutoOpen: a group opens ITSELF exactly when a NEW problem appears
   // (null -> key, or key A -> key B). The same standing problem re-derived on
   // every poll tick never re-opens a group the operator closed - and nothing
+  /* ------------------------------------------------------------------
+     EIGENE GERÄTE (Einheitsmodell Stufe 3/4) - die Geräte, die der KUNDE
+     im Portal selbst angelegt hat.
+
+     Sie sind die eine Komponentenklasse, die der Applier bewusst überspringt:
+     ihr Leseplan reist als generierter Flow über `v2/flows`, sie landen also
+     nie in `sources.json` - und tauchten damit auf dieser Seite NIRGENDS auf
+     (Scout `vp-portal-box-spiegel-s2`, L5: „der Kunde sieht sein eigenes Gerät
+     nur im Portal"). Die Gruppe ist reine ANZEIGE und ohne jede Bedienung:
+     angelegt, geändert und gelöscht wird ein Selbstbau-Gerät im Portal.
+
+     ⚠ Die Pille sagt, WAS die Box wirklich gesehen hat - nie „wartet auf erste
+     Daten" wie bei einer Quelle. Die Box POLLT dieses Gerät gar nicht selbst;
+     ohne Messwert ist die ehrliche Aussage der MECHANISMUS, nicht ein Warten,
+     das niemand tut.
+     ------------------------------------------------------------------ */
+
+  var EIGEN_GELESEN_VON_REGEL = "Wird über eine Regel gelesen";
+
+  function eigenPill(health) {
+    if (health === "ok") return { dot: "ok", pill: "ok", label: "Liefert Daten" };
+    if (health === "stale") return { dot: "warn", pill: "warn", label: "Keine aktuellen Daten" };
+    return { dot: "off", pill: "off", label: EIGEN_GELESEN_VON_REGEL };
+  }
+
+  // eigenAdresse renders host[:port] and the Modbus unit - and NOTHING when the
+  // push carries no address: a device we cannot address is still a real device,
+  // but its address must never be invented.
+  function eigenAdresse(d) {
+    d = d || {};
+    if (!d.host) return "";
+    var a = d.port ? d.host + ":" + d.port : d.host;
+    return d.unit_id ? a + " · Unit " + d.unit_id : a;
+  }
+
+  // eigenesGeraetRow is everything ONE row of the group shows. Pure: same input,
+  // same row - unit-testable without a browser.
+  function eigenesGeraetRow(d) {
+    d = d || {};
+    var meta = ["Selbstbau (Modbus)"];
+    var addr = eigenAdresse(d);
+    if (addr) meta.push(addr);
+    var chans = (d.channels || []).map(function (c) {
+      return (c.label || c.channel) + (c.unit ? " (" + c.unit + ")" : "");
+    });
+    if (chans.length) meta.push(chans.join(", "));
+    if (d.switchable) meta.push("schaltbar (im Portal freigegeben)");
+    return {
+      name: d.label || d.id || "Eigenes Gerät",
+      meta: meta.join(" · "),
+      pill: eigenPill(d.health)
+    };
+  }
+
+  // eigenNote is the group's head count ("· 2 eigene Geräte").
+  function eigenNote(list) {
+    var n = (list || []).length;
+    return "· " + n + (n === 1 ? " eigenes Gerät" : " eigene Geräte");
+  }
+
   // ever auto-CLOSES.
   function shouldAutoOpen(prevKey, key) {
     return !!key && key !== prevKey;
@@ -220,6 +290,10 @@
   global.VPGroups = {
     FRESH_SECONDS: FRESH_SECONDS,
     anlageSummary: anlageSummary,
+    EIGEN_GELESEN_VON_REGEL: EIGEN_GELESEN_VON_REGEL,
+    eigenesGeraetRow: eigenesGeraetRow,
+    eigenAdresse: eigenAdresse,
+    eigenNote: eigenNote,
     steuerungSummary: steuerungSummary,
     datenfreigabeSummary: datenfreigabeSummary,
     erweitertSummary: erweitertSummary,

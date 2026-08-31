@@ -581,6 +581,36 @@ func roleAssignments(e entities.Entity) map[string]*topology.RoleAssignment {
 	return out
 }
 
+// CustomDevices lists the devices the CUSTOMER defined themselves in the portal
+// (Einheitsmodell Stufe 3/4) for the :8484 setup page. They are the one
+// component class the applier deliberately skips - their read plan travels as a
+// generated flow over v2/flows, so they never reach sources.json and until this
+// method they appeared NOWHERE on the box (scout vp-portal-box-spiegel-s2, L5).
+//
+// Read-only and derivation-only: the rules live in the pure
+// componentapply.CustomDevices, this method only supplies the per-entity
+// freshness from the SAME reading map and the SAME window the heartbeat's
+// observed health uses - so the page's pill and the cloud's Ist can never
+// disagree about one device. A plant without a self-built device returns nil.
+func (a *Agent) CustomDevices() []componentapply.CustomDevice {
+	now := time.Now()
+	a.entMu.Lock()
+	reg := a.entRegistry
+	health := make(map[string]string, len(reg.Entities))
+	for _, e := range reg.Entities {
+		if !componentapply.IsSelfBuilt(e) {
+			continue
+		}
+		if er, ok := a.entityReading(e.ID); ok {
+			health[e.ID] = entityHealth(er, now, true)
+		} else {
+			health[e.ID] = entityHealth(entReading{}, now, false)
+		}
+	}
+	a.entMu.Unlock()
+	return componentapply.CustomDevices(reg, health)
+}
+
 // sourceChannelValue maps one source reading onto an entity measure channel:
 // pv_power_kw <- the source's pv, power_kw <- its signed grid power (a Netz
 // meter) else its consumer load (a wallbox reports load_kw, its entity

@@ -19,6 +19,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
@@ -94,6 +95,16 @@ type SourcesController interface {
 	// applied live by the agent.
 	GetBalance() sources.BalanceSettings
 	SetBalance(sources.BalanceSettings) (sources.BalanceSettings, error)
+	// CustomDevices lists the devices the CUSTOMER defined themselves in the
+	// portal (Einheitsmodell Stufe 3/4). They are NOT sources - their read plan
+	// travels as a generated flow, so the applier deliberately skips them and
+	// they never reach sources.json. They belong on this controller anyway
+	// because they belong on the SAME card: the "Anlage" group of the setup
+	// page renders them next to the sources from ONE payload, the way
+	// PortalManagedComponents lives on the inverter controller for the same
+	// surface reason. Read-only by construction - a self-built device is
+	// created, changed and deleted in the portal.
+	CustomDevices() []componentapply.CustomDevice
 }
 
 // PurgeController backs the "Datenaufzeichnungen löschen" action: wipe the
@@ -573,6 +584,11 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			"catalog":        inv.InverterCatalog(),
 			"balance":        src.GetBalance(),
 			"portal_managed": inv.PortalManagedComponents(),
+			// The customer's OWN devices (Einheitsmodell Stufe 3/4). ADDITIVE:
+			// an older page ignores the field and behaves byte-for-byte as
+			// before, and a plant without one gets an empty list - never a
+			// group that claims something.
+			"custom_devices": customDevices(src),
 		})
 	})
 
@@ -1142,6 +1158,17 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	})
 
 	return mux
+}
+
+// customDevices returns the self-built devices as a LIST, never nil: the page
+// renders the group off its length, and `null` would make every consumer of
+// this payload write the same defensive line.
+func customDevices(src SourcesController) []componentapply.CustomDevice {
+	list := src.CustomDevices()
+	if list == nil {
+		return []componentapply.CustomDevice{}
+	}
+	return list
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

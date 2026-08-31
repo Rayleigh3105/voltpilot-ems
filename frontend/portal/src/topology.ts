@@ -67,6 +67,26 @@ export function isChargingType(entityType: string): boolean {
   return entityType === EV_CHARGER_TYPE || entityType === WALLBOX_TYPE;
 }
 
+/**
+ * Die Entitäts-TYPEN, die der Kunde SELBST angelegt hat (Einheitsmodell
+ * Stufe 3/4, `vp-modbus-baukasten-k6`): ein freier Modbus-Sensor und - nach
+ * bestandenem Schalt-Test - ein freies Modbus-Schaltgerät. Ihre Messkanäle
+ * benennt der KUNDE, nicht ein Treiber, den wir geschrieben haben.
+ */
+export const MODBUS_GENERIC_TYPE = 'modbus-generic';
+export const MODBUS_LOAD_TYPE = 'modbus-load';
+
+/**
+ * Ist dieser Entitäts-TYP selbst gebaut? An der Kategorie ist es - wie beim
+ * Ladepunkt - nicht zu erkennen: ein `modbus-generic` ist `meter` (er
+ * deklariert keine Schreib-Fähigkeit) und ein `modbus-load` ist `consumer`,
+ * also genau wie ein Netz-Zähler bzw. ein Heizstab. Deshalb muss der TYP
+ * antworten.
+ */
+export function isSelfBuiltType(entityType: string): boolean {
+  return entityType === MODBUS_GENERIC_TYPE || entityType === MODBUS_LOAD_TYPE;
+}
+
 export interface CapabilityInput {
   channel: string;
   /** Resolved role; '' = unassigned/informational (skipped). */
@@ -129,6 +149,33 @@ export function defaultRole(
   channel: string,
   connection: string,
 ): string {
+  // ⚠ Ein SELBST GEBAUTES Gerät bekommt NIE eine Energiefluss-Rolle - auch
+  // nicht für einen Kanal, den es zufällig `power_kw` genannt hat. Zwei
+  // unabhängige Gründe, und der erste ist eine Zusage, die die Plattform dem
+  // Kunden schon gedruckt hat:
+  //
+  //  1. Bilanz-Ehrlichkeit (Einheitsmodell Stufe 3): „ein Selbstbau-Sensor ist
+  //     ein Topologie-Knoten mit eigenen Messwerten und geht NICHT in die
+  //     Energiebilanz ein" - genau das sagt der Assistent beim Anlegen.
+  //  2. Ohne diesen Zweig entschied die KATEGORIE, und ein `modbus-generic`
+  //     ist `meter` - ein Kanal namens `power_kw` fiel also in die
+  //     Zähler-Regel und der Zisternen-/Wärmepumpen-Sensor des Kunden wurde
+  //     ALS NETZANSCHLUSSPUNKT gerendert (Scout `vp-portal-box-spiegel-s2`,
+  //     L5). Der Netz-Knoten darf ausschließlich aus einem echten Netz-Zähler
+  //     entstehen. Ein `modbus-load` ist `consumer` und würde in den
+  //     Haus-Knoten doppelt zählen, in dem er schon gemessen ist - dasselbe
+  //     Argument, das die Ladepunkte aus der Verbraucher-Rolle geholt hat.
+  //
+  // Die Kanäle gehen dabei nicht verloren: sie behalten ihre eigenen
+  // Messwerte/Verläufe. Nur die BILANZ bleibt unberührt.
+  //
+  // ⚠ Das ist die VORGABE; eine ausdrücklich gespeicherte Zuordnung schlägt sie
+  // weiterhin (Befund L4) - bewusst: die Überschreibung gibt es für genau den
+  // Fall „die Vorgabe der Plattform passt für MEINE Anlage nicht", und wer das
+  // sagt, rät nicht. L5 handelte davon, dass die VORGABE eine Falschaussage war.
+  if (isSelfBuiltType(entityType)) {
+    return '';
+  }
   if (isChargingType(entityType)) {
     switch (channel) {
       case 'power_kw':

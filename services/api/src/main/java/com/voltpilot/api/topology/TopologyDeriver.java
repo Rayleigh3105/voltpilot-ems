@@ -60,6 +60,15 @@ public final class TopologyDeriver {
     public static final String TYPE_WALLBOX = "wallbox";
 
     /**
+     * The entity TYPES a customer DEFINED THEMSELVES in the portal
+     * (Einheitsmodell Stufe 3/4): a free Modbus sensor and - once the guided
+     * switch test passed - a free Modbus switching device. Their measure
+     * channels are named by the CUSTOMER, not by a driver we wrote.
+     */
+    public static final String TYPE_MODBUS_GENERIC = "modbus-generic";
+    public static final String TYPE_MODBUS_LOAD = "modbus-load";
+
+    /**
      * WHERE a charge point hangs (Cockpit Phase 1 / C1). {@code null}/blank =
      * the portal never said - read as haus, the safe direction: the house
      * measurement is assumed to contain it, exactly what the box's budget law
@@ -106,6 +115,16 @@ public final class TopologyDeriver {
     }
 
     /**
+     * Is this entity TYPE self-built by the customer? Like the charge point
+     * above, the category cannot answer it: a modbus-generic is category
+     * "meter" (it declares no actuate capability) and a modbus-load is
+     * "consumer" - exactly like a grid meter and a heating rod.
+     */
+    public static boolean isSelfBuiltType(String entityType) {
+        return TYPE_MODBUS_GENERIC.equals(entityType) || TYPE_MODBUS_LOAD.equals(entityType);
+    }
+
+    /**
      * Default role for an entity TYPE + category + measure channel +
      * charge-point connection (overridable). See topology-read-model.md;
      * "measure-only" aliases "meter"; connection is only consulted for charge
@@ -123,6 +142,33 @@ public final class TopologyDeriver {
     public static String defaultRole(String entityType, String category, String channel,
             String connection) {
         if (channel == null) {
+            return "";
+        }
+        // ⚠ A SELF-BUILT device NEVER gets an energy-flow role - not even for a
+        // channel it happens to have named "power_kw". Two independent reasons,
+        // and the first one is a promise the platform already printed:
+        //
+        //  1. Bilanz-Ehrlichkeit (Einheitsmodell Stufe 3): "ein Selbstbau-Sensor
+        //     ist ein Topologie-Knoten mit eigenen Messwerten und geht NICHT in
+        //     die Energiebilanz ein" - the assistant says exactly that while the
+        //     customer defines the device.
+        //  2. Without this branch the CATEGORY decided, and a modbus-generic is
+        //     "meter" - so a channel merely NAMED power_kw fell into the meter
+        //     rule and the customer's cistern/heat-pump sensor was rendered AS
+        //     THE GRID CONNECTION POINT (scout vp-portal-box-spiegel-s2, L5).
+        //     The grid node may only ever be built from a real grid meter. A
+        //     modbus-load is "consumer" and would double-count into the house
+        //     node it is already measured inside - the identical argument that
+        //     moved charge points out of the consumer role.
+        //
+        // The channels are not lost: they keep their own per-entity
+        // measurements. Only the energy BALANCE stays untouched.
+        //
+        // ⚠ This is the DEFAULT; an explicit stored assignment still wins over
+        // it (Befund L4) - deliberately: the override exists for exactly "the
+        // platform's default is wrong for MY plant". L5 was about the default
+        // being a falsehood on its own.
+        if (isSelfBuiltType(entityType)) {
             return "";
         }
         if (isChargingType(entityType)) {
