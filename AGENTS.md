@@ -3672,6 +3672,20 @@ geändertes Ergebnis.**
   prüft deshalb JEDEN der drei Umbauten gegen die WÖRTLICH einkopierte alte Anweisung als
   Orakel, auf EINER Verbindung als RLS-gefencte App-Rolle mit gesetztem `app.tenant_id`
   (das `PriceSlotEqualityTest`-Muster; mutationsgeprüft in beide Richtungen).
+- **Nachzug 31.08.2026 · die zwei vergessenen Zwillinge von T2** (Scout
+  `vp-scale-readiness-p4` §3.2): `FleetMetricsRepository.lastPlanPerSite` (alle 60 s im
+  Metrik-Sammler) und `AdminFleetRepository.lastPlanPerSite` (je Admin-Puls) trugen bis
+  hierher NOCH die fleet-weite `GROUP BY site_id`-Form auf dem Nicht-Partitionsschlüssel
+  `generated_at` - der T2-Fix war nur in `OverviewRepository` gelandet, und ihr Doc-Kommentar
+  behauptete sogar „die Form von `OverviewRepository.lastPlanPerSite`" (die dort seit Welle II
+  eine LATERAL ist). Beide sind jetzt dieselbe per-Anlage-LATERAL (**296 ms → 5 ms**, 59×,
+  gemessen an 10,3 Mio Zeilen). **⚠ Anders als bei T2 wandert hier KEINE RLS-Fence:** beide
+  Sammler laufen als BYPASSRLS-Rolle `voltpilot_admin` (kein `TenantContext`, cross-tenant per
+  Konstruktion), es gibt also keinen Tenant-Qual, der die Planwahl kippen könnte - der Gewinn
+  ist rein der SkipScan über `idx_schedule_site_generated`. Gleiches Orakel-Muster wie T2:
+  `FleetLastPlanRewriteEqualityTest` fährt die WÖRTLICH einkopierte alte Anweisung als Orakel
+  gegen ein echtes TimescaleDB, als `voltpilot_admin`, und beweist dabei die Cross-Tenant-Sicht
+  (beide Mandanten in EINER Antwort).
 - **Gemessen am prod-förmigen Klon** (3,3 Mio `telemetry`, 5,1 Mio `telemetry_v2`, 1,7 Mio
   `schedule`, 2,3 Mio `forecast`, je 28 Chunks), Endpunkt-Median von 5 warmen Läufen:
   `/topology` **12,64 s → 0,012 s (≈1000×)**, `/overview` 0,147 → 0,095 s, Anlagen-`/earnings`

@@ -68,17 +68,40 @@ public class FleetMetricsRepository {
     }
 
     /**
-     * Jüngster Optimierer-Lauf je Anlage INNERHALB des Fensters - die Form von
-     * {@code OverviewRepository.lastPlanPerSite}, samt ihrer Begründung: ohne die
-     * Untergrenze wäre es ein Scan über die ganze Plan-Historie. Eine Anlage ohne
-     * Lauf im Fenster ist ABWESEND (nie ein erfundenes Alter); ob sie je einen
-     * hatte, beantwortet {@link #sitesThatEverPlanned()}.
+     * Jüngster Optimierer-Lauf je Anlage INNERHALB des Fensters - die
+     * per-Anlage-LATERAL-Form von {@link OverviewRepository#lastPlanPerSite}.
+     *
+     * <p><b>⚠ Der frühere Kommentar hier war doppelt falsch (Welle-II-Nachzug,
+     * Scout {@code vp-scale-readiness-p4} §3.2):</b> er behauptete „die Form von
+     * {@code OverviewRepository.lastPlanPerSite}" - die dort seit Welle II eine
+     * LATERAL ist - und berief sich auf das Fenster {@code generated_at >= from}
+     * als Schutz vor einem Scan über die ganze Plan-Historie. Das Fenster begrenzt
+     * aber nur das ERGEBNIS, nicht die gelesenen Chunks: {@code schedule} ist auf
+     * {@code time} partitioniert, nicht auf {@code generated_at}, und einen Index
+     * auf {@code generated_at} allein gibt es nicht ({@code
+     * idx_schedule_site_generated} führt mit {@code site_id}). Die fleet-weite
+     * {@code GROUP BY site_id}-Form ohne {@code site_id}-Bindung las deshalb die
+     * GANZE Historie - <b>296 ms</b> gemessen (10,3 Mio Zeilen), und das
+     * <b>alle 60 s</b> im Metrik-Sammler.
+     *
+     * <p>Die per-Anlage-LATERAL gibt jeder Anlage ihre {@code site_id}-Gleichheit,
+     * damit {@code idx_schedule_site_generated (site_id, generated_at DESC)}
+     * greift (B4-Muster, AGENTS.md „Portal-Performance-Welle"): <b>5 ms</b> (59×),
+     * PRÄDIKAT UNVERÄNDERT, Ergebnis bewiesen gleich
+     * ({@code FleetLastPlanRewriteEqualityTest}). Anders als beim
+     * {@link OverviewRepository}-Zwilling wandert hier KEINE RLS-Fence: der
+     * Sammler läuft als BYPASSRLS-Rolle {@code voltpilot_admin} und sieht die
+     * ganze Flotte über alle Mandanten - der Gewinn ist rein der SkipScan.
+     *
+     * <p>Eine Anlage ohne Lauf im Fenster ist ABWESEND (nie ein erfundenes Alter);
+     * ob sie je einen hatte, beantwortet {@link #sitesThatEverPlanned()}.
      */
     public Map<UUID, Instant> lastPlanPerSite(Instant from) {
         Map<UUID, Instant> runs = new HashMap<>();
         admin.query(
-                "SELECT site_id, max(generated_at) AS last_run FROM schedule "
-                        + "WHERE generated_at >= ? GROUP BY site_id",
+                "SELECT s.id AS site_id, x.last_run FROM site s "
+                        + "JOIN LATERAL (SELECT max(sc.generated_at) AS last_run FROM schedule sc "
+                        + "  WHERE sc.site_id = s.id AND sc.generated_at >= ?) x ON true",
                 rs -> {
                     Timestamp last = rs.getTimestamp("last_run");
                     if (last != null) {

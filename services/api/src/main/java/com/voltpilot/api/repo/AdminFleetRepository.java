@@ -151,17 +151,34 @@ public class AdminFleetRepository {
     }
 
     /**
-     * Wann der Optimierer je Anlage zuletzt gerechnet hat. Das Fenster ist
-     * BEWUSST begrenzt (die Aufrufer geben wenige Tage): ohne Untergrenze wäre
-     * es ein Scan über die ganze Plan-Historie des Hypertables. Eine Anlage ohne
-     * Lauf im Fenster ist abwesend - „kein aktueller Plan", nie ein erfundenes
-     * Alter.
+     * Wann der Optimierer je Anlage zuletzt gerechnet hat - die
+     * per-Anlage-LATERAL-Form von {@link OverviewRepository#lastPlanPerSite}, je
+     * Admin-Puls-Aufruf ({@code GET /api/v1/admin/fleet}).
+     *
+     * <p><b>⚠ Der frühere Kommentar begründete das Fenster
+     * {@code generated_at >= from} als Schutz vor einem Scan über die ganze
+     * Plan-Historie (Welle-II-Nachzug, Scout {@code vp-scale-readiness-p4}
+     * §3.2):</b> das ist falsch - {@code schedule} ist auf {@code time}
+     * partitioniert, nicht auf {@code generated_at}, das Fenster begrenzt also nur
+     * das ERGEBNIS, nicht die gelesenen Chunks. Die fleet-weite
+     * {@code GROUP BY site_id}-Form ohne {@code site_id}-Bindung las deshalb die
+     * GANZE Historie (<b>296 ms</b>, 10,3 Mio Zeilen). Die per-Anlage-LATERAL gibt
+     * jeder Anlage ihre {@code site_id}-Gleichheit, damit
+     * {@code idx_schedule_site_generated (site_id, generated_at DESC)} greift
+     * (B4-Muster): <b>5 ms</b> (59×), PRÄDIKAT UNVERÄNDERT, Ergebnis bewiesen
+     * gleich ({@code FleetLastPlanRewriteEqualityTest}). Wie überall hier läuft
+     * die Abfrage als BYPASSRLS-Rolle {@code voltpilot_admin}, es wandert also
+     * keine RLS-Fence; der Gewinn ist rein der SkipScan.
+     *
+     * <p>Eine Anlage ohne Lauf im Fenster ist abwesend - „kein aktueller Plan",
+     * nie ein erfundenes Alter.
      */
     public Map<UUID, Instant> lastPlanPerSite(Instant from) {
         Map<UUID, Instant> runs = new HashMap<>();
         jdbc.query(
-                "SELECT site_id, max(generated_at) AS last_run FROM schedule "
-                        + "WHERE generated_at >= ? GROUP BY site_id",
+                "SELECT s.id AS site_id, x.last_run FROM site s "
+                        + "JOIN LATERAL (SELECT max(sc.generated_at) AS last_run FROM schedule sc "
+                        + "  WHERE sc.site_id = s.id AND sc.generated_at >= ?) x ON true",
                 rs -> {
                     Timestamp last = rs.getTimestamp("last_run");
                     if (last != null) {
