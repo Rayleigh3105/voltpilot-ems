@@ -134,6 +134,17 @@ const EREIGNIS: Record<string, { satz: string; ton: BefehlTon }> = {
     satz: 'Keine Rückmeldung von Ihrem Gerät - für diese Zeit liegt uns nichts vor.',
     ton: 'info',
   },
+  // P3a: „Jetzt voll laden" schreibt seinen Beleg seit je in den
+  // Ladepunkt-Strom (`ChargingBoostService.record`) - gerendert hat ihn bis
+  // hierher niemand, ein unbekanntes Wort erzeugt gar keine Zeile.
+  voll_laden_erteilt: {
+    satz: 'Jetzt voll laden: dieser Ladevorgang bekommt volle Leistung - auch aus dem Netz.',
+    ton: 'info',
+  },
+  voll_laden_zurueckgenommen: {
+    satz: 'Jetzt voll laden beendet - für diesen Ladevorgang gilt wieder Ihre Priorität.',
+    ton: 'ok',
+  },
   verlauf_gedeckelt: {
     satz: 'Ab hier wurde für heute nicht weiter protokolliert (ungewöhnlich viele Wechsel).',
     ton: 'info',

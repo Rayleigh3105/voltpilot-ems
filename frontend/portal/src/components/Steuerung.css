@@ -763,7 +763,10 @@
   z-index: 5;
   display: flex;
   flex-direction: column;
-  min-width: 12rem;
+  /* Breit genug für den zweizeiligen Eintrag „Jetzt voll laden (nur diese
+     Ladung)" samt seinem Folgen-Satz - schmaler zerfiele er in vier Zeilen. */
+  min-width: 17rem;
+  max-width: min(22rem, calc(100vw - 32px));
   padding: 4px;
   border: 1px solid var(--vp-border, #e2e8f0);
   border-radius: var(--vp-radius-md, 8px);
@@ -787,6 +790,23 @@
 .vp-jetzt-menuitem:hover,
 .vp-jetzt-menuitem:focus-visible {
   background: var(--vp-surface-muted, #f1f5f9);
+}
+
+/* Die zweite Zeile eines Eintrags sagt die FOLGE („Endet spätestens beim
+   Abstecken") - sie ist Erklärung, nie ein zweites Klickziel. */
+.vp-jetzt-menuhint {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--vp-text-xs, 12px);
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--vp-text-muted, #64748b);
+}
+
+/* Der Zeilen-Zusammenhang des Bottom-Sheets. Am Rechner steht das Menü an
+   seiner Zeile und braucht ihn nicht - dort bleibt er ausgeblendet. */
+.vp-jetzt-menuhead {
+  display: none;
 }
 
 /* Der Banner: ein laufender Handeingriff ist bernstein, nie rot — er ist
@@ -842,9 +862,59 @@
     justify-content: center;
   }
 
+  /*
+   * Am Telefon ist das Menü ein BOTTOM-SHEET (Konzept `vp-verbrauchsmgmt-
+   * konzept-v1` §6.4, Frame „Eingreifen-Bottom-Sheet"): ein Popover, das am
+   * unteren Bildschirmrand aufklappt, schöbe sich unter die Tastatur-Zone und
+   * wäre je nach Zeile halb im Bild. Es bleibt DASSELBE Menü - nur seine
+   * Position wechselt, damit es keine zweite Menü-Mechanik gibt.
+   */
+  .vp-jetztrow-act {
+    position: static;
+  }
+
   .vp-jetzt-menulist {
+    position: fixed;
     left: 0;
     right: 0;
+    top: auto;
+    bottom: 0;
+    z-index: 60;
+    min-width: 0;
+    /* ⚠ Die Desktop-Breite gilt hier NICHT: das Sheet spannt über den ganzen
+       Bildschirmrand, sonst klebte es als schmale Karte in einer Ecke. */
+    max-width: none;
+    padding: 8px 0 max(10px, env(safe-area-inset-bottom));
+    border: 1px solid var(--vp-border, #e2e8f0);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.18);
+  }
+
+  /* Der Griff - er sagt „von unten", bevor jemand liest. */
+  .vp-jetzt-menulist::before {
+    content: '';
+    width: 36px;
+    height: 4px;
+    margin: 2px auto 10px;
+    border-radius: 2px;
+    background: var(--vp-border, #e2e8f0);
+  }
+
+  .vp-jetzt-menuhead {
+    display: block;
+    padding: 0 16px 8px;
+    font-size: var(--vp-text-xs, 12px);
+    color: var(--vp-text-muted, #64748b);
+  }
+
+  .vp-jetzt-menuitem {
+    border-radius: 0;
+    padding: 11px 16px;
+    border-top: 1px solid var(--vp-border, #e2e8f0);
+  }
+
+  .vp-jetzt-menuhead + .vp-jetzt-menuitem {
+    border-top: 0;
   }
 }
 

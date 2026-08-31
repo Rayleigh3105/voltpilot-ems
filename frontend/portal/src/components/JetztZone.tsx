@@ -36,13 +36,24 @@ import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
 import { SOFORT_LABEL, type ManualOverride, type SofortAktion } from '../consumers/fulfillment';
-import type { SiteCharging } from '../ladepunkte';
+import {
+  boostEndeKarte,
+  boostFolgenKarte,
+  LADEPUNKT_DAUER_VORGABE,
+  LADEPUNKT_DAUERN,
+  LADEPUNKT_HINWEIS,
+  LADEPUNKT_LABEL,
+  type LadepunktAktion,
+  type SiteCharging,
+} from '../ladepunkte';
 import {
   JETZT_INTRO,
   JETZT_TITEL,
   jetztZone,
+  LADEPUNKT_BANNER_ID,
   PAUSE_BANNER_ID,
   type JetztZeile,
+  type LadepunktAdresse,
 } from '../steuerungJetzt';
 import {
   DAUERN,
@@ -117,6 +128,14 @@ export function JetztZone({
    * an ihr. Mit dialog-interner Auswahl stünde dort dauerhaft die Vorauswahl.
    */
   const [handDauer, setHandDauer] = useState(HAND_DEFAULT_DAUER);
+  /**
+   * Der LADEPUNKT-Eingriff (P3a). Er ist bewusst ein eigener Zustand neben dem
+   * Speicher-Eingriff: er adressiert einen STECKER statt einer Komponente, und
+   * seine Dauern sind die des Boosts („bis Abstecken" statt „bis morgen früh").
+   */
+  const [lade, setLade] = useState<
+    { adresse: LadepunktAdresse; aktion: LadepunktAktion } | null>(null);
+  const [ladeDauer, setLadeDauer] = useState(LADEPUNKT_DAUER_VORGABE);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), LIVE_POLL_MS);
@@ -245,6 +264,38 @@ export function JetztZone({
     }
   }, [hand, handDauer, site.id, reload]);
 
+  /** Die Folgen-Karte des Ladepunkt-Eingriffs — vier Blöcke, wie am Speicher. */
+  const ladeFolgen = useMemo(() => {
+    if (!lade) return null;
+    if (lade.aktion === 'resume') return boostEndeKarte();
+    const d = LADEPUNKT_DAUERN.find((x) => x.key === ladeDauer) ?? LADEPUNKT_DAUERN[2];
+    return boostFolgenKarte(charging?.budget ?? null, d);
+  }, [lade, ladeDauer, charging]);
+
+  const ladeBestaetigen = useCallback(async () => {
+    if (!lade) return;
+    setBusy(true);
+    try {
+      const d = LADEPUNKT_DAUERN.find((x) => x.key === ladeDauer) ?? LADEPUNKT_DAUERN[2];
+      await api.chargingBoost(site.id, {
+        chargePointId: lade.adresse.chargePointId,
+        connectorId: lade.adresse.connectorId,
+        // ⚠ „bis Abstecken" reist als FEHLENDE Dauer: dann gilt der
+        // Vertrags-Deckel der Box, und die Bindung an die Transaktion beendet
+        // den Eingriff ohnehin beim Abstecken.
+        ...(lade.aktion === 'voll_laden' && d.minutes != null ? { minutes: d.minutes } : {}),
+        cancel: lade.aktion === 'resume',
+      });
+    } catch {
+      // Ein abgelehnter Eingriff lässt die Zone stehen, wie sie war - nie ein
+      // Schein-Erfolg. Den Grund zeigt die Seite über ihren Fehler-Streifen.
+    } finally {
+      setLade(null);
+      setBusy(false);
+      reload();
+    }
+  }, [lade, ladeDauer, site.id, reload]);
+
   const bannerGeraet = view.banner
     ? consumers.find((c) => c.id === view.banner!.entityId) ?? null
     : null;
@@ -257,7 +308,18 @@ export function JetztZone({
           <p className="vp-jetzt-banner" role="status">
             <Icon name="alert-triangle" size={16} />
             <span>{view.banner.text}</span>
-            {view.banner.entityId !== PAUSE_BANNER_ID && bannerGeraet ? (
+            {view.banner.entityId === LADEPUNKT_BANNER_ID && view.banner.ladepunkt ? (
+              <button
+                type="button"
+                className="vp-jetzt-banner-act"
+                disabled={busy}
+                onClick={() => setLade({
+                  adresse: view.banner!.ladepunkt!, aktion: 'resume',
+                })}
+              >
+                {view.banner.aktion}
+              </button>
+            ) : view.banner.entityId !== PAUSE_BANNER_ID && bannerGeraet ? (
               <button
                 type="button"
                 className="vp-jetzt-banner-act"
@@ -295,8 +357,13 @@ export function JetztZone({
                 offen={offen === z.key}
                 busy={busy}
                 onToggle={() => setOffen((o) => (o === z.key ? null : z.key))}
-                onAktion={(a) => {
+                onAktion={(a: SofortAktion | HandeingriffAktion | LadepunktAktion) => {
                   setOffen(null);
+                  if (z.art === 'ladepunkt' && z.ladepunkt) {
+                    setLadeDauer(LADEPUNKT_DAUER_VORGABE);
+                    setLade({ adresse: z.ladepunkt, aktion: a as LadepunktAktion });
+                    return;
+                  }
                   if (z.art === 'speicher') {
                     setHandDauer(HAND_DEFAULT_DAUER);
                     setHand({ aktion: a as HandeingriffAktion, umfang: 'speicher' });
@@ -338,6 +405,19 @@ export function JetztZone({
         onCancel={() => setHand(null)}
       />
 
+      {/* P3a: derselbe Folgen-Karten-Dialog wie am Speicher - eine Grammatik
+          für jeden Handeingriff der Zone, nur mit den Dauern des Boosts. */}
+      <HandeingriffDialog
+        folgen={ladeFolgen}
+        busy={busy}
+        withDuration={lade?.aktion === 'voll_laden'}
+        dauern={LADEPUNKT_DAUERN}
+        dauerKey={ladeDauer}
+        onDauer={setLadeDauer}
+        onConfirm={() => void ladeBestaetigen()}
+        onCancel={() => setLade(null)}
+      />
+
       <ConsumerOverrideDialog
         action={eingriff?.aktion ?? null}
         consumerName={eingriff?.consumer.name ?? ''}
@@ -366,7 +446,7 @@ function JetztZeileView({
   offen: boolean;
   busy: boolean;
   onToggle: () => void;
-  onAktion: (a: SofortAktion | HandeingriffAktion) => void;
+  onAktion: (a: SofortAktion | HandeingriffAktion | LadepunktAktion) => void;
 }): JSX.Element {
   return (
     <li className="vp-jetztrow">
@@ -395,6 +475,11 @@ function JetztZeileView({
           </button>
           {offen && (
             <span className="vp-jetzt-menulist" role="menu">
+              {/* Am Telefon ist die Liste ein Bottom-Sheet - dort fehlt der
+                  Zeilen-Zusammenhang, den man am Rechner noch sieht. */}
+              <span className="vp-jetzt-menuhead" aria-hidden="true">
+                Eingreifen · {zeile.name}
+              </span>
               {zeile.aktionen.map((a) => (
                 <button
                   key={a}
@@ -403,9 +488,10 @@ function JetztZeileView({
                   className="vp-jetzt-menuitem"
                   onClick={() => onAktion(a)}
                 >
-                  {a in SOFORT_LABEL
-                    ? SOFORT_LABEL[a as SofortAktion]
-                    : HANDEINGRIFF_LABEL[a as HandeingriffAktion]}
+                  {menuLabel(zeile, a)}
+                  {menuHinweis(zeile, a) && (
+                    <small className="vp-jetzt-menuhint">{menuHinweis(zeile, a)}</small>
+                  )}
                 </button>
               ))}
             </span>
@@ -416,4 +502,22 @@ function JetztZeileView({
       )}
     </li>
   );
+}
+
+/**
+ * Die Beschriftung eines Menü-Eintrags - JE ZEILENART aus ihrer eigenen
+ * Wortquelle. Ein Ladepunkt spricht das Ladepunkt-Vokabular („Jetzt voll laden
+ * (nur diese Ladung)"), ein Gerät das der Sofortaktionen, der Speicher das der
+ * Handeingriffe; keine Fläche erfindet hier ein Wort.
+ */
+function menuLabel(zeile: JetztZeile, a: string): string {
+  if (zeile.art === 'ladepunkt') return LADEPUNKT_LABEL[a as LadepunktAktion] ?? a;
+  if (a in SOFORT_LABEL) return SOFORT_LABEL[a as SofortAktion];
+  return HANDEINGRIFF_LABEL[a as HandeingriffAktion] ?? a;
+}
+
+/** Die zweite Zeile eines Eintrags - nur, wo es eine belegte FOLGE zu sagen gibt. */
+function menuHinweis(zeile: JetztZeile, a: string): string | null {
+  if (zeile.art !== 'ladepunkt') return null;
+  return LADEPUNKT_HINWEIS[a as LadepunktAktion] ?? null;
 }

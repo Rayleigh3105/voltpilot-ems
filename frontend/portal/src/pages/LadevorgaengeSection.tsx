@@ -12,8 +12,8 @@ import {
   ANBINDEN_EINSTIEG,
   ausfallSchutz,
   BOOST_INTRO,
-  boostbar,
   boostFolgen,
+  ladepunktAktionen,
   budgetBand,
   chargerName,
   chargerView,
@@ -173,7 +173,11 @@ export function LadevorgaengeSection({
                 )}
                 {/* ⚠ Der Knopf wird nur angeboten, wo er etwas ändern KANN. Ein
                     Knopf, der strukturell nichts bewirkt, ist Lärm. */}
-                {boostbar(charging.budget, r) && (
+                {/* ⚠ EINE Regel für beide Flächen: welche Handlung ein
+                    Ladepunkt anbietet, entscheidet seit P3a
+                    `ladepunktAktionen` - hier und in der Jetzt-Zone. Es gibt
+                    keine Kopie, die auseinanderlaufen könnte. */}
+                {ladepunktAktionen(charging.budget, r).includes('voll_laden') && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -183,7 +187,7 @@ export function LadevorgaengeSection({
                     Jetzt voll laden
                   </Button>
                 )}
-                {r.boost && (
+                {ladepunktAktionen(charging.budget, r).includes('resume') && (
                   <Button
                     variant="ghost"
                     size="sm"

@@ -230,3 +230,93 @@ describe('Zone ① „Jetzt" — die Handeingriffe (Steuerung Stufe 4)', () => {
       .toBeInTheDocument();
   });
 });
+
+/**
+ * P3a — „Jetzt voll laden (nur diese Ladung)" steht in der Jetzt-Zone: EIN
+ * Klick auf die Ladepunkt-Zeile statt vier Klicks auf einer anderen Seite
+ * (Befund S6 des Konzepts).
+ */
+describe('Zone ① „Jetzt" — Handeingriff je Ladepunkt (P3a)', () => {
+  const charging = (con: Record<string, unknown> = {}) => ({
+    budget: {
+      deviceId: 'd-1', enabled: true, controlEnabled: true, connectorCount: 1,
+      surplusActive: true, gridLimitKw: 32,
+    },
+    chargers: [{
+      deviceId: 'd-1', chargePointId: 'CP1', label: 'Wallbox Garage', priority: false,
+      connected: true, ready: true,
+      connectors: [{
+        connectorId: 1, charging: true, status: 'Charging', powerKw: 7.4, ...con,
+      }],
+    }],
+  } as never);
+
+  it('führt von der Zeile über die Folgen-Karte zum Boost', async () => {
+    const boost = vi.spyOn(api, 'chargingBoost').mockResolvedValue({} as never);
+    vi.spyOn(api, 'siteChargers').mockResolvedValue(charging());
+    render(<JetztZone site={site} charging={charging()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Wallbox Garage: eingreifen/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Jetzt voll laden \(nur diese Ladung\)/ }));
+
+    // Die Folgen-Karte VOR dem Klick - vier Blöcke, die gemessene Grenze.
+    expect(await screen.findByText('Das passiert')).toBeInTheDocument();
+    expect(screen.getByText('Das bleibt gleich')).toBeInTheDocument();
+    expect(screen.getByText('Ende / Rücknahme')).toBeInTheDocument();
+    expect(screen.getByText(/Ihr Netzanschluss \(32/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Jetzt voll laden - 2 h/ }));
+    await waitFor(() => expect(boost).toHaveBeenCalledWith('s-1', {
+      chargePointId: 'CP1', connectorId: 1, minutes: 120, cancel: false,
+    }));
+  });
+
+  it('schickt „bis Abstecken" OHNE Dauer - der Deckel der Box gilt dann', async () => {
+    const boost = vi.spyOn(api, 'chargingBoost').mockResolvedValue({} as never);
+    vi.spyOn(api, 'siteChargers').mockResolvedValue(charging());
+    render(<JetztZone site={site} charging={charging()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Wallbox Garage: eingreifen/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Jetzt voll laden/ }));
+    await screen.findByText('Das passiert');
+
+    // Die Dauer-Wahl ist der Haus-Picker (kein natives Auswahlfeld).
+    fireEvent.click(screen.getByRole('combobox', { name: /Dauer des Eingriffs/ }));
+    fireEvent.click(await screen.findByRole('option', { name: 'bis Abstecken' }));
+    // Die Karte beschreibt, was der Knopf tun WIRD.
+    expect(await screen.findByText(/längstens nach 4 Stunden/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Jetzt voll laden - bis Abstecken/ }));
+    await waitFor(() => expect(boost).toHaveBeenCalledWith('s-1', {
+      chargePointId: 'CP1', connectorId: 1, cancel: false,
+    }));
+  });
+
+  it('bietet ohne Auto kein Menü an, sondern den Grund', async () => {
+    render(<JetztZone site={site} charging={charging({
+      charging: false, status: 'Available', powerKw: null,
+    })} />);
+    expect(await screen.findByText('kein Auto eingesteckt')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Wallbox Garage: eingreifen/ })).toBeNull();
+  });
+
+  it('zeigt bei laufendem Boost Banner und Rückweg - und nimmt ihn zurück', async () => {
+    const boost = vi.spyOn(api, 'chargingBoost').mockResolvedValue({} as never);
+    vi.spyOn(api, 'siteChargers').mockResolvedValue(charging({ boost: true }));
+    render(<JetztZone site={site} charging={charging({ boost: true })} />);
+
+    expect(await screen.findByText(/lädt voll \(nur diese Ladung\)/)).toBeInTheDocument();
+    // ⚠ Kein erfundener Countdown - der Herzschlag meldet kein Ende.
+    expect(screen.getByText(/endet spätestens beim Abstecken/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Automatik fortsetzen' })[0]);
+    // Die Rücknahme-Karte trägt KEINE Dauer - sie wirkt sofort.
+    expect(await screen.findByText('Ende / Rücknahme')).toBeInTheDocument();
+    expect(document.querySelector('.vp-vb-duration')).toBeNull();
+    fireEvent.click(document.querySelector(
+      '.vp-vb-dialog-actions button:last-of-type') as HTMLElement);
+    await waitFor(() => expect(boost).toHaveBeenCalledWith('s-1', {
+      chargePointId: 'CP1', connectorId: 1, cancel: true,
+    }));
+  });
+});

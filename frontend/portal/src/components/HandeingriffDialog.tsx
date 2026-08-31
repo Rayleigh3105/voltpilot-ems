@@ -11,12 +11,13 @@
 import { Button } from '../../designsystem/components/core/Button';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { VpPicker } from './VpPicker';
-import { DAUERN, type HandeingriffFolgen } from '../handeingriff';
+import { DAUERN, type DauerOption, type HandeingriffFolgen } from '../handeingriff';
 
 export function HandeingriffDialog({
   folgen,
   busy,
   withDuration,
+  dauern = DAUERN,
   dauerKey,
   onDauer,
   onConfirm,
@@ -26,6 +27,13 @@ export function HandeingriffDialog({
   busy?: boolean;
   /** Eine Rücknahme braucht keine Dauer - sie wirkt sofort. */
   withDuration?: boolean;
+  /**
+   * Die anzubietenden Dauern. Vorgabe sind die des Speicher-/Anlagen-Eingriffs;
+   * der Ladepunkt-Boost (P3a) reicht seine eigenen herein („bis Abstecken"
+   * statt „bis morgen früh") - EIN Dialog, zwei Dauer-Listen, statt zweier
+   * Dialoge, die auseinanderlaufen können.
+   */
+  dauern?: DauerOption[];
   /**
    * ⚠ Die Dauer ist KONTROLLIERT, nicht dialog-intern: die Folgen-Karte
    * beschreibt, was der Knopf tun WIRD - Endzeit und Fahrplan-Verzicht hängen
@@ -39,7 +47,7 @@ export function HandeingriffDialog({
   onCancel: () => void;
 }): JSX.Element | null {
   if (!folgen) return null;
-  const gewaehlt = DAUERN.find((d) => d.key === dauerKey) ?? DAUERN[2];
+  const gewaehlt = dauern.find((d) => d.key === dauerKey) ?? dauern[2] ?? dauern[0];
 
   return (
     <Drawer open onClose={onCancel} title={folgen.titel}>
@@ -57,7 +65,7 @@ export function HandeingriffDialog({
             className="vp-vb-duration"
             label="Wie lange?"
             ariaLabel="Dauer des Eingriffs"
-            options={DAUERN.map((d) => ({ value: d.key, label: d.label }))}
+            options={dauern.map((d) => ({ value: d.key, label: d.label }))}
             value={dauerKey}
             onChange={onDauer}
           />

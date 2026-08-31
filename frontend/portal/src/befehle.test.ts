@@ -463,3 +463,23 @@ describe('die GERÄTE-Sicht (Anlagen-Zentrale Stufe 1)', () => {
     expect(GERAETE_BEFEHLE).not.toContain('Box');
   });
 });
+
+describe('Ladepunkt-Strom: „Jetzt voll laden" im Verlauf (P3a)', () => {
+  // ⚠ Den Beleg schreibt `ChargingBoostService.record` seit je - gerendert hat
+  // ihn niemand, weil ein unbekanntes Ereignis-Wort gar keine Zeile erzeugt.
+  const ereignis = (eventKind: string) => film(
+    history({ entries: [periode({ stream: 'ladepunkt', kind: 'ereignis', eventKind })] }),
+    Date.parse(T1),
+  );
+
+  it('macht aus der Freigabe eine lesbare Zeile', () => {
+    const t = JSON.stringify(ereignis('voll_laden_erteilt'));
+    expect(t).toContain('Jetzt voll laden');
+    expect(t).toContain('auch aus dem Netz');
+  });
+
+  it('macht aus der Rücknahme eine lesbare Zeile', () => {
+    expect(JSON.stringify(ereignis('voll_laden_zurueckgenommen')))
+      .toContain('wieder Ihre Priorität');
+  });
+});

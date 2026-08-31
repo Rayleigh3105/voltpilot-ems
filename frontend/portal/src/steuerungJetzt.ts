@@ -59,12 +59,24 @@ import {
   type HandeingriffAktion,
 } from './handeingriff';
 import type { Consumer } from './consumers/types';
-import { budgetBand, chargerName, type SiteCharging } from './ladepunkte';
+import {
+  boostBanner,
+  budgetBand,
+  chargerName,
+  connectorName,
+  ladepunktAktionen,
+  ladepunktKeinEingriff,
+  ladevorgangRows,
+  type ChargePoint,
+  type LadepunktAktion,
+  type LadevorgangRow,
+  type SiteCharging,
+} from './ladepunkte';
 import { fmtNum } from './format';
 import type { PlanWordingKind } from './schedule';
 
 /** Was in einer Zeile steht — die drei steuerbaren Arten dieser Stufe. */
-export type JetztArt = 'speicher' | 'geraet' | 'ladepark';
+export type JetztArt = 'speicher' | 'geraet' | 'ladepark' | 'ladepunkt';
 
 /** Woher der Befehl kommt, der gerade wirkt. */
 export type JetztQuelle = 'handeingriff' | 'regel' | 'fahrplan' | 'unbekannt';
@@ -96,9 +108,23 @@ export interface JetztZeile {
    * Verbraucher sprechen das `SofortAktion`-Vokabular, der Speicher das der
    * Stufe 4 (`speicher_laden`/`speicher_halten`) — `resume` teilen sich beide.
    */
-  aktionen: (SofortAktion | HandeingriffAktion)[];
+  aktionen: (SofortAktion | HandeingriffAktion | LadepunktAktion)[];
   /** Warum es keinen Handeingriff gibt — nur gesetzt, wenn `aktionen` leer ist. */
   keinEingriff: string | null;
+  /**
+   * Die Adresse eines Ladepunkt-Eingriffs (P3a). Ein Ladevorgang hängt an
+   * einem STECKER, nicht an einer Komponente — `entityId` kann ihn deshalb
+   * nicht tragen. `null` bei jeder anderen Zeilenart.
+   */
+  ladepunkt?: LadepunktAdresse | null;
+}
+
+/** Wohin ein Ladepunkt-Handeingriff geht (`POST /charging-boost`). */
+export interface LadepunktAdresse {
+  chargePointId: string;
+  connectorId: number;
+  /** Der Name, wie die Zeile ihn zeigt — für Banner und Folgen-Karte. */
+  name: string;
 }
 
 export interface JetztBanner {
@@ -107,6 +133,8 @@ export interface JetztBanner {
   /** Der Weg zurück, wörtlich der Knopf-Titel. */
   aktion: string;
   entityId: string;
+  /** Gesetzt, wenn der laufende Eingriff einem LADEPUNKT gilt (P3a). */
+  ladepunkt?: LadepunktAdresse | null;
 }
 
 export interface JetztView {
@@ -406,6 +434,93 @@ export function ladeparkZeile(charging: SiteCharging | null | undefined): JetztZ
   };
 }
 
+/**
+ * Die `entityId` des LADEPUNKT-Banners. Ein Ladevorgang hat keine Komponente,
+ * die man adressieren könnte — der Sentinel sagt der Fläche, dass der Rückweg
+ * über `chargingBoost(cancel)` läuft und nicht über einen Geräte-Override.
+ */
+export const LADEPUNKT_BANNER_ID = '__ladepunkt__';
+
+/**
+ * Der Name eines Ladepunkts in der Jetzt-Zone (Konzept §6.2, Mockup 375):
+ * „Wallbox Garage" bei genau einem Stecker, sonst „Säule Hof Nord · Stecker A".
+ *
+ * ⚠ Der Stecker wird nur genannt, wo er UNTERSCHEIDET. „Wallbox Garage ·
+ * Stecker A" über der einzigen Buchse einer Wallbox ist Technik, die der Kunde
+ * vor seiner Garage nicht braucht.
+ */
+export function ladepunktName(c: ChargePoint, connectorId: number): string {
+  const count = (c.connectors ?? []).length;
+  return count <= 1
+    ? chargerName(c)
+    : `${chargerName(c)} · ${connectorName(connectorId)}`;
+}
+
+/**
+ * Eine Zeile JE LADEPUNKT (Verbrauchsmanagement v1, P3a / Konzept §6.1+§6.2) —
+ * die Zeile, an der „Jetzt voll laden" endlich dort steht, wo eingegriffen wird
+ * (Befund S6: heute vier Klicks auf einer anderen Seite).
+ *
+ * ⚠ Zustand, Ton und Grund kommen unverändert aus `ladevorgangRows` — es gibt
+ * keine zweite Wortquelle über Ladesäulen, und die Ladevorgänge-Seite liest
+ * dieselbe. Neu ist allein, dass die Zeile ihre HANDLUNG mitbringt.
+ *
+ * ⚠ Ein laufender Eingriff bekommt KEINEN Countdown: der Herzschlag meldet je
+ * Stecker nur `boost: true|false`, kein Ende. „noch 1:12 h" wäre erfunden —
+ * stattdessen steht dort, was wirklich gilt („endet beim Abstecken").
+ *
+ * Eine GETRENNTE Säule liefert wie bisher keine Zeilen (`ladevorgangRows`):
+ * was sie tut, wissen wir gerade nicht.
+ */
+export function ladepunktZeilen(charging: SiteCharging | null | undefined): JetztZeile[] {
+  const chargers = charging?.chargers ?? [];
+  if (chargers.length === 0) return [];
+  const budget = charging?.budget ?? null;
+  const byPoint = new Map<string, ChargePoint>();
+  for (const c of chargers) byPoint.set(c.chargePointId, c);
+
+  const zeilen: JetztZeile[] = [];
+  for (const row of ladevorgangRows(chargers)) {
+    const c = byPoint.get(row.chargePointId);
+    if (!c) continue;
+    const name = ladepunktName(c, row.connectorId);
+    const aktionen = ladepunktAktionen(budget, row);
+    zeilen.push({
+      key: `ladepunkt:${row.key}`,
+      art: 'ladepunkt',
+      entityId: null,
+      name,
+      // Das Zustands-Wort der EINEN Wortquelle, klein geschrieben wie jede
+      // andere Zeile dieser Zone („lädt 7,4 kW").
+      zustand: ladepunktZustand(row),
+      grund: row.reason ?? row.nextTurn,
+      // Ein laufender Boost IST der Urheber — sonst regelt die Anlage selbst,
+      // und einen Urheber zu behaupten, den niemand belegt hat, wäre falsch.
+      quelle: row.boost ? 'handeingriff' : 'unbekannt',
+      quelleText: row.boost ? 'Jetzt voll laden' : null,
+      bis: null,
+      ton: row.tone === 'stoerung' ? 'warn' : row.tone === 'laedt' ? 'ok' : 'off',
+      aktionen,
+      keinEingriff: aktionen.length > 0 ? null : ladepunktKeinEingriff(budget, row),
+      ladepunkt: { chargePointId: row.chargePointId, connectorId: row.connectorId, name },
+    });
+  }
+  return zeilen;
+}
+
+/**
+ * „lädt 7,4 kW" — die Zahl nur, wo die Säule sie gemeldet hat (nie eine 0).
+ *
+ * ⚠ Bei laufendem Eingriff steht hier das BASIS-Wort: den Urheber nennt die
+ * Zeile daneben als Quelle („Jetzt voll laden"), und zweimal wäre er Rauschen
+ * (der Mockup-Wortlaut ist „Lädt 22 kW · Jetzt voll laden").
+ */
+function ladepunktZustand(row: LadevorgangRow): string {
+  const basis = row.boost ? row.basisWort : row.word;
+  const wort = basis.charAt(0).toLowerCase() + basis.slice(1);
+  return row.powerKw == null ? wort : `${wort} ${fmtNum(row.powerKw, 'kW')}`;
+}
+
 // ---------------------------------------------------------------------------
 // Banner
 // ---------------------------------------------------------------------------
@@ -420,6 +535,7 @@ export function jetztBanner(
   namen: Record<string, string>,
   now: Date = new Date(),
   interventions?: SiteInterventions | null,
+  charging?: SiteCharging | null,
 ): JetztBanner | null {
   // ⚠ Die ANLAGEN-Pause geht vor: sie beschreibt den Zustand der ganzen
   // Anlage, ein Geräte-Eingriff nur den einer Zeile. Zwei Banner gäbe es nie -
@@ -459,6 +575,19 @@ export function jetztBanner(
       entityId: o.entityId,
     };
   }
+  // ⚠ Der Ladepunkt-Boost steht ZULETZT: er ist der engste der Eingriffe (eine
+  // einzelne Ladung), und über einer Anlagen-Pause oder einem Speicher-Eingriff
+  // wäre er das kleinere über dem größeren. Ohne laufenden Boost ist dieser
+  // Zweig ein No-op — die Zone bleibt dann Zeichen für Zeichen die von vorher.
+  for (const z of ladepunktZeilen(charging)) {
+    if (!z.ladepunkt || z.quelle !== 'handeingriff') continue;
+    return {
+      text: boostBanner(z.name),
+      aktion: BANNER_AKTION,
+      entityId: LADEPUNKT_BANNER_ID,
+      ladepunkt: z.ladepunkt,
+    };
+  }
   return null;
 }
 
@@ -487,13 +616,22 @@ export function jetztZone(input: JetztInput): JetztView {
   for (const g of input.geraete ?? []) zeilen.push(geraetZeile(g, input.now));
   const lp = ladeparkZeile(input.charging);
   if (lp) zeilen.push(lp);
+  // P3a: unter der Park-Zusammenfassung steht jede Ladung als eigene Zeile —
+  // dort, und nur dort, greift der Kunde ein.
+  //
+  // ⚠ ANDOCKSTELLE für Paket P1 („Zone lesend"): das Konzept (§6.1) lässt die
+  // Sammelzeile `ladeparkZeile` ENTFALLEN und trägt ihre Kopfzahl in den
+  // Ladepark-Rahmen der Verbraucher-Zone. Bis dahin bleibt sie stehen, weil
+  // sonst das Budget aus der Jetzt-Zone verschwände; P1 streicht genau die zwei
+  // Zeilen darüber und lässt diese hier unangetastet.
+  for (const z of ladepunktZeilen(input.charging)) zeilen.push(z);
 
   const namen: Record<string, string> = {};
   for (const g of input.geraete ?? []) namen[g.consumer.id] = g.consumer.name;
 
   return {
     zeilen,
-    banner: jetztBanner(input.overrides, namen, input.now, input.interventions),
+    banner: jetztBanner(input.overrides, namen, input.now, input.interventions, input.charging),
     leer: zeilen.length === 0 ? JETZT_LEER : null,
   };
 }

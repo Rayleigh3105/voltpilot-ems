@@ -12,6 +12,10 @@ import {
   geraetZeile,
   jetztBanner,
   jetztZone,
+  LADEPUNKT_BANNER_ID,
+  PAUSE_BANNER_ID,
+  ladepunktName,
+  ladepunktZeilen,
   ladeparkZeile,
   restZeit,
   speicherZeile,
@@ -404,7 +408,109 @@ describe('Zone ① Jetzt — Banner und Leer-Zustand', () => {
       } as unknown as SiteCharging,
       now: NOW,
     });
-    expect(v.zeilen.map((z) => z.art)).toEqual(['speicher', 'geraet', 'ladepark']);
+    // P3a: unter der Park-Zusammenfassung steht jede Ladung als eigene Zeile.
+    expect(v.zeilen.map((z) => z.art)).toEqual(['speicher', 'geraet', 'ladepark', 'ladepunkt']);
     expect(v.leer).toBeNull();
+  });
+});
+
+/**
+ * Zone ① — die ZEILE JE LADEPUNKT (Verbrauchsmanagement v1, P3a). Sie ist der
+ * Ort, an dem „Jetzt voll laden" endlich steht, wo eingegriffen wird.
+ */
+describe('Zone ① Jetzt — Ladepunkt-Zeilen (P3a)', () => {
+  const charging = (over: Record<string, unknown> = {}, con: Record<string, unknown> = {}) => ({
+    budget: {
+      deviceId: 'd-1', enabled: true, controlEnabled: true, connectorCount: 1,
+      surplusActive: true, gridLimitKw: 32, ...over,
+    },
+    chargers: [{
+      deviceId: 'd-1', chargePointId: 'CP1', label: 'Wallbox Garage', priority: false,
+      connected: true, ready: true,
+      connectors: [{
+        connectorId: 1, charging: true, status: 'Charging', powerKw: 7.4, ...con,
+      }],
+    }],
+  } as unknown as SiteCharging);
+
+  it('macht aus einer laufenden Ladung eine eigene Zeile mit „Eingreifen"', () => {
+    const [z] = ladepunktZeilen(charging());
+    expect(z.art).toBe('ladepunkt');
+    expect(z.name).toBe('Wallbox Garage');
+    // ⚠ `fmtNum` setzt ein geschütztes Leerzeichen vor die Einheit.
+    expect(z.zustand.replace(/\u00a0/g, ' ')).toBe('lädt 7,4 kW');
+    expect(z.aktionen).toEqual(['voll_laden']);
+    expect(z.keinEingriff).toBeNull();
+    // Die Adresse ist der STECKER - eine Komponenten-Id kann sie nicht tragen.
+    expect(z.ladepunkt).toEqual({
+      chargePointId: 'CP1', connectorId: 1, name: 'Wallbox Garage',
+    });
+    expect(z.entityId).toBeNull();
+  });
+
+  it('nennt den Stecker nur, wo er UNTERSCHEIDET', () => {
+    const eine = charging().chargers[0];
+    expect(ladepunktName(eine, 1)).toBe('Wallbox Garage');
+    const zwei = {
+      ...eine,
+      connectors: [{ connectorId: 1, charging: true }, { connectorId: 2, charging: false }],
+    } as typeof eine;
+    expect(ladepunktName(zwei, 2)).toBe('Wallbox Garage · Stecker B');
+  });
+
+  it('erfindet keine Leistung, wenn die Säule keine meldet', () => {
+    const [z] = ladepunktZeilen(charging({}, { powerKw: null }));
+    expect(z.zustand).not.toMatch(/\d/);
+  });
+
+  it('gibt einer Ladung OHNE Auto kein Menü, sondern den Grund', () => {
+    const [z] = ladepunktZeilen(
+      charging({}, { charging: false, status: 'Available', powerKw: null }),
+    );
+    expect(z.aktionen).toEqual([]);
+    // Der Zustand der Zeile sagt es schon - er wird nicht wiederholt.
+    expect(z.zustand).toBe('kein Auto eingesteckt');
+    expect(z.keinEingriff).toBeNull();
+  });
+
+  it('nennt bei laufendem Eingriff den Urheber und bietet den Rückweg', () => {
+    const [z] = ladepunktZeilen(charging({}, { boost: true }));
+    // Der Urheber steht als QUELLE - im Zustand steht er nicht ein zweites Mal.
+    expect(z.zustand.replace(/\u00a0/g, ' ')).toBe('lädt 7,4 kW');
+    expect(z.quelle).toBe('handeingriff');
+    expect(z.quelleText).toBe('Jetzt voll laden');
+    expect(z.aktionen).toEqual(['resume']);
+    // ⚠ KEIN Countdown: der Herzschlag meldet kein Ende.
+    expect(z.bis).toBeNull();
+  });
+
+  it('gibt einer GETRENNTEN Säule keine Zeile - was sie tut, wissen wir nicht', () => {
+    const c = charging();
+    (c.chargers[0] as { connected: boolean }).connected = false;
+    expect(ladepunktZeilen(c)).toEqual([]);
+    expect(ladepunktZeilen(null)).toEqual([]);
+  });
+
+  it('setzt bei laufendem Boost den Banner mit dem Rückweg', () => {
+    const b = jetztBanner(null, {}, NOW, null, charging({}, { boost: true }));
+    expect(b?.text).toContain('Wallbox Garage lädt voll (nur diese Ladung)');
+    expect(b?.aktion).toBe('Automatik fortsetzen');
+    expect(b?.entityId).toBe(LADEPUNKT_BANNER_ID);
+    expect(b?.ladepunkt?.connectorId).toBe(1);
+  });
+
+  it('lässt die Zone ohne Boost Zeichen für Zeichen wie vorher', () => {
+    // ⚠ Der Ladepunkt-Zweig ist ein No-op, solange niemand eingegriffen hat -
+    // der Banner gehört dann weiter dem, dem er vorher gehörte.
+    expect(jetztBanner(null, {}, NOW, null, charging())).toBeNull();
+  });
+
+  it('lässt Anlagen-Pause und Speicher-Eingriff vorgehen', () => {
+    const pausiert = {
+      automationPaused: true, pausedUntil: '2026-08-28T14:30:00Z', interventions: [],
+    } as unknown as Parameters<typeof jetztBanner>[3];
+    const b = jetztBanner(null, {}, NOW, pausiert, charging({}, { boost: true }));
+    // Die Pause beschreibt die ganze Anlage - der engste Eingriff steht zuletzt.
+    expect(b?.entityId).toBe(PAUSE_BANNER_ID);
   });
 });

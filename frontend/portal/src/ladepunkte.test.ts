@@ -20,7 +20,16 @@ import {
   asStorage,
   BOOST_INTRO,
   boostbar,
+  boostBanner,
+  boostEndeKarte,
   boostFolgen,
+  boostFolgenKarte,
+  LADEPUNKT_DAUERN,
+  LADEPUNKT_DAUER_VORGABE,
+  LADEPUNKT_HINWEIS,
+  LADEPUNKT_LABEL,
+  ladepunktAktionen,
+  ladepunktKeinEingriff,
   kombinationsStreifen,
   POLICY_DEFAULT,
   POLICY_LABEL,
@@ -788,5 +797,142 @@ describe('Cockpit Phase 1 / E2 - ein stehengebliebenes Kilowatt liest nie als ak
     expect(messwertAlter(
       { meteredAt: new Date(JETZT - apiWindow - 1000).toISOString() }, JETZT,
     )).toBe('veraltet');
+  });
+});
+
+/**
+ * Der HANDEINGRIFF je Ladepunkt (Verbrauchsmanagement v1, P3a) — die geteilte
+ * Schicht, aus der BEIDE Flächen (Jetzt-Zone und Ladevorgänge-Seite) ihre
+ * Menü-Einträge und ihre Folgen-Karte holen.
+ */
+describe('Ladepunkt-Handeingriff (P3a)', () => {
+  const budget = (over: Record<string, unknown> = {}) => ({
+    deviceId: 'd-1', enabled: true, controlEnabled: true, connectorCount: 2,
+    surplusActive: true, ...over,
+  } as unknown as Parameters<typeof ladepunktAktionen>[0]);
+
+  const row = (over: Record<string, unknown> = {}) => ({
+    key: 'CP1#1', title: 'Wallbox Garage · Stecker A', kind: 'laedt', word: 'Lädt',
+    tone: 'laedt', reason: null, reasonCode: null, powerKw: 7.4, allocatedKw: 7.4,
+    socPct: null, since: null, nextTurn: null, priority: false,
+    chargePointId: 'CP1', connectorId: 1, boost: false, ...over,
+  } as unknown as Parameters<typeof ladepunktAktionen>[1]);
+
+  it('bietet an einer laufenden Ladung „Jetzt voll laden" an', () => {
+    expect(ladepunktAktionen(budget(), row())).toEqual(['voll_laden']);
+    expect(ladepunktKeinEingriff(budget(), row())).toBeNull();
+  });
+
+  it('trägt das Wort AUCH ohne die Übersteuerung', () => {
+    // ⚠ `basisWort` ist der Ausweg aus der Doppelung: wer den Handeingriff
+    // daneben nennt, nennt ihn nicht auch noch im Zustand.
+    const z = ladeZustand(
+      { connectorId: 1, charging: true, status: 'Charging', powerKw: 22, boost: true },
+      { connected: true, lastSeen: null },
+    );
+    expect(z.word).toBe('Lädt voll auf Ihren Wunsch');
+    expect(z.basisWort).toBe('Lädt');
+    const ohne = ladeZustand(
+      { connectorId: 1, charging: true, status: 'Charging', powerKw: 22 },
+      { connected: true, lastSeen: null },
+    );
+    expect(ohne.basisWort).toBe(ohne.word);
+  });
+
+  it('bietet bei LAUFENDEM Eingriff NUR den Rückweg an', () => {
+    // ⚠ Wer eingegriffen hat, muss zurücknehmen können - und ein zweites
+    // „voll laden" auf einer schon vollen Ladung wäre ein Knopf ohne Wirkung.
+    expect(ladepunktAktionen(budget(), row({ boost: true }))).toEqual(['resume']);
+    expect(ladepunktKeinEingriff(budget(), row({ boost: true }))).toBeNull();
+  });
+
+  it('bietet OHNE Auto gar kein Menü an und nennt den Grund', () => {
+    const frei = row({ kind: 'frei', word: 'Kein Auto eingesteckt', tone: 'ruhig', powerKw: null });
+    expect(ladepunktAktionen(budget(), frei)).toEqual([]);
+    // ⚠ Der Zustand SAGT es bereits - ein zweites Mal wäre Rauschen.
+    expect(ladepunktKeinEingriff(budget(), frei)).toBeNull();
+    // Sagt der Zustand etwas anderes, steht der Grund sehr wohl da.
+    expect(ladepunktKeinEingriff(budget(), row({
+      kind: 'beendet', word: 'Ladung beendet · Auto noch eingesteckt', tone: 'ruhig',
+    }))).toBe('Kein Auto eingesteckt.');
+  });
+
+  it('nennt bei einer stummen Säule, dass ein Eingriff nicht ankäme', () => {
+    const weg = row({ kind: 'stoerung', tone: 'stoerung', powerKw: null });
+    expect(ladepunktAktionen(budget(), weg)).toEqual([]);
+    expect(ladepunktKeinEingriff(budget(), weg))
+      .toContain('meldet sich gerade nicht');
+  });
+
+  it('bietet ohne Überschuss-Priorität nichts an - es gäbe nichts zu übersteuern', () => {
+    const b = budget({ surplusActive: false });
+    expect(ladepunktAktionen(b, row())).toEqual([]);
+    expect(ladepunktKeinEingriff(b, row())).toContain('nichts zu übersteuern');
+  });
+
+  it('ist mit `boostbar` EINE Regel, nicht zwei', () => {
+    for (const kind of ['laedt', 'wartet', 'frei', 'beendet']) {
+      const r = row({ kind, tone: kind === 'laedt' ? 'laedt' : 'ruhig' });
+      expect(ladepunktAktionen(budget(), r).includes('voll_laden'))
+        .toBe(boostbar(budget(), r));
+    }
+  });
+
+  it('führt genau die Dauern des Mockups, Vorauswahl 2 h', () => {
+    expect(LADEPUNKT_DAUERN.map((d) => d.label))
+      .toEqual(['30 min', '1 h', '2 h', '4 h', 'bis Abstecken']);
+    // ⚠ „bis Abstecken" hat KEINE Minutenzahl: sie wäre eine Zusage über eine
+    // Abfahrt, die niemand kennt.
+    expect(LADEPUNKT_DAUERN[4].minutes).toBeNull();
+    expect(LADEPUNKT_DAUERN.find((d) => d.key === LADEPUNKT_DAUER_VORGABE)?.label).toBe('2 h');
+  });
+
+  it('beschriftet die Einträge wörtlich wie das abgenommene Mockup', () => {
+    expect(LADEPUNKT_LABEL.voll_laden).toBe('Jetzt voll laden (nur diese Ladung)');
+    expect(LADEPUNKT_LABEL.resume).toBe('Automatik fortsetzen');
+    expect(LADEPUNKT_HINWEIS.voll_laden)
+      .toBe('Netzstrom erlaubt. Endet spätestens beim Abstecken.');
+  });
+
+  it('trägt in der Folgen-Karte die vier Blöcke des Haus-Musters', () => {
+    const k = boostFolgenKarte(budget({ gridLimitKw: 32 }), LADEPUNKT_DAUERN[2]);
+    expect(k.bloecke.map((b) => b.key)).toEqual(['passiert', 'risiko', 'gleich', 'ende']);
+    expect(k.bloecke[0].zeilen[0]).toContain('volle Leistung');
+    expect(k.bloecke[1].zeilen[0]).toContain('teilen sich den Rest');
+    expect(k.bestaetigen).toBe('Jetzt voll laden - 2 h');
+    expect(k.bloecke[3].zeilen[0]).toContain('Endet beim Abstecken, längstens nach 2 h');
+    // ⚠ „bis Abstecken" trägt KEINE Minutenzahl - dort gilt nur der Deckel.
+    const bis = boostFolgenKarte(budget({ gridLimitKw: 32 }), LADEPUNKT_DAUERN[4]);
+    expect(bis.bloecke[3].zeilen[0])
+      .toBe('Endet beim Abstecken, längstens nach 4 Stunden - danach gilt wieder Ihre Priorität.');
+  });
+
+  it('nennt die Anschlussgrenze nur, wenn die Box sie meldet', () => {
+    const mit = boostFolgenKarte(budget({ gridLimitKw: 32 }), LADEPUNKT_DAUERN[2]);
+    expect(mit.bloecke[2].zeilen[0]).toBe('Ihr Netzanschluss (32 kW) bleibt geschützt.');
+    // ⚠ Ohne gepflegte Grenze steht der Satz OHNE Zahl da - nie mit einer
+    // geratenen (die Haus-Regel „nie eine erfundene Zahl").
+    const ohne = boostFolgenKarte(budget({ gridLimitKw: null }), LADEPUNKT_DAUERN[2]);
+    expect(ohne.bloecke[2].zeilen[0]).toBe('Ihr Netzanschluss bleibt geschützt.');
+    expect(ohne.bloecke[2].zeilen.join(' ')).not.toMatch(/\d/);
+  });
+
+  it('gibt der Rücknahme eine eigene Karte OHNE Dauer', () => {
+    const k = boostEndeKarte();
+    expect(k.titel).toBe('Automatik fortsetzen');
+    expect(k.bestaetigen).toBe('Automatik fortsetzen');
+    expect(k.bloecke.map((b) => b.key)).toEqual(['passiert', 'gleich', 'ende']);
+    expect(JSON.stringify(k)).not.toContain('Dauer');
+  });
+
+  it('nennt im Banner den Ladepunkt und sein Ende - ohne erfundenen Countdown', () => {
+    const t = boostBanner('Chef-Parkplatz');
+    expect(t).toBe(
+      'Handeingriff läuft: Chef-Parkplatz lädt voll (nur diese Ladung) · '
+      + 'endet spätestens beim Abstecken',
+    );
+    // ⚠ Der Herzschlag meldet je Stecker nur `boost: true|false`, kein Ende -
+    // „noch 1:12 h" wäre erfunden.
+    expect(t).not.toMatch(/noch\s/);
   });
 });

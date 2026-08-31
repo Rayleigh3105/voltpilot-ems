@@ -334,6 +334,12 @@ export interface LadeZustand {
   kind: LadeZustandKind;
   /** Das ZUSTANDS-WORT - nie nur eine Farbe (K5/K10). */
   word: string;
+  /**
+   * Dasselbe Wort OHNE die Übersteuerung („Lädt" statt „Lädt voll auf Ihren
+   * Wunsch"). Für Flächen, die den Handeingriff daneben als eigene Angabe
+   * nennen - sonst stünde er zweimal in einer Zeile.
+   */
+  basisWort: string;
   tone: LadeTone;
   /** Der Grund, wo es einen gibt - der Satz der BOX, unverändert. */
   reason: string | null;
@@ -440,6 +446,11 @@ export function ladeZustand(
   return {
     kind,
     word,
+    // ⚠ Das Wort OHNE die Übersteuerung. Eine Fläche, die den Urheber schon
+    // NEBEN dem Zustand nennt (die Jetzt-Zeile: „lädt 22,0 kW · Jetzt voll
+    // laden"), sagte ihn sonst zweimal - dieselbe Regel, aus der `reason`
+    // gegen das Basis-Wort verglichen wird.
+    basisWort: ZUSTAND_WORT[kind],
     tone: ZUSTAND_TON[kind],
     // ⚠ Der Grund wird nur genannt, wenn er MEHR sagt als das Wort: der
     // Verteiler nennt einen ladenden Stecker selbst „lädt", und die Zeile
@@ -543,6 +554,8 @@ export interface LadevorgangRow {
   kind: LadeZustandKind;
   /** Das ZUSTANDS-WORT - nie nur eine Farbe (K5/K10). */
   word: string;
+  /** Dasselbe Wort ohne die Übersteuerung (siehe `LadeZustand.basisWort`). */
+  basisWort: string;
   tone: LadeTone;
   /** Der Grund, wo es einen gibt - der Satz der Box, unverändert. */
   reason: string | null;
@@ -608,6 +621,7 @@ function rowFor(c: ChargePoint, con: ChargeConnector, nowMs?: number): Ladevorga
     title: `${chargerName(c)} · ${connectorName(con.connectorId)}`,
     kind: z.kind,
     word: z.word,
+    basisWort: z.basisWort,
     tone: z.tone,
     reason: z.reason,
     reasonCode: z.reasonCode,
@@ -837,6 +851,230 @@ export function boostFolgen(): string[] {
 }
 
 export const BOOST_INTRO = 'Sie übersteuern Ihre Überschuss-Priorität für diesen einen Ladevorgang.';
+
+// --- Der HANDEINGRIFF je Ladepunkt (Verbrauchsmanagement v1, P3a) ----------
+//
+// Der Boost bekommt hier seine ZWEITE Fläche: bis Paket P3a lag er allein auf
+// *Fahrplan › Ladevorgänge* (vier Klicks, andere Seite - Befund S6 des
+// Konzepts `vp-verbrauchsmgmt-konzept-v1`), jetzt steht er zusätzlich im
+// Menü „Eingreifen ▾" der Jetzt-Zeile.
+//
+// ⚠ Es entsteht KEIN zweiter Mechanismus und KEINE zweite Wortquelle: beide
+// Flächen lesen diese Funktionen, und beide rufen denselben
+// `POST /charging-boost`. Was ein Ladepunkt-Eingriff heisst, was er tut und wie
+// er endet, steht damit genau einmal im Haus.
+
+/**
+ * Was das Zeilen-Menü eines Ladepunkts anbieten kann.
+ *
+ * ⚠ `laden_pausieren` (der Session-Deckel 0, Konzept §4.6 / Entscheid E5) ist
+ * das dritte Wort dieses Vokabulars und braucht ein Edge-Release - es ist
+ * Paket **P3b** und wird deshalb hier noch NICHT angeboten. Der Platz ist
+ * bewusst frei gelassen: P3b ergänzt eine Zeile in `LADEPUNKT_LABEL`, eine in
+ * `LADEPUNKT_HINWEIS` und einen Zweig in `ladepunktAktionen` - nirgends sonst.
+ */
+export type LadepunktAktion = 'voll_laden' | 'resume';
+
+/** Die Beschriftungen des Menüs (Mockups §4, Frame „Eingreifen-Bottom-Sheet"). */
+export const LADEPUNKT_LABEL: Record<LadepunktAktion, string> = {
+  voll_laden: 'Jetzt voll laden (nur diese Ladung)',
+  resume: 'Automatik fortsetzen',
+};
+
+/** Die zweite Zeile je Menü-Eintrag - sie sagt die FOLGE, nicht die Tatsache. */
+export const LADEPUNKT_HINWEIS: Record<LadepunktAktion, string> = {
+  voll_laden: 'Netzstrom erlaubt. Endet spätestens beim Abstecken.',
+  resume: 'Für diese Ladung gilt danach wieder Ihre Priorität.',
+};
+
+/**
+ * Die angebotenen Dauern (Konzept §4.6, Mockup-Chips WÖRTLICH).
+ *
+ * ⚠ `minutes: null` heisst „bis Abstecken" und wird als FEHLENDE Dauer
+ * gesendet: der Vertrags-Deckel der Box (4 h) gilt dann, und die Bindung an die
+ * Transaktion beendet den Eingriff ohnehin beim Abstecken. Eine ausgerechnete
+ * Minutenzahl wäre an dieser Stelle eine erfundene Zusage über ein Fahrzeug,
+ * dessen Abfahrt niemand kennt.
+ */
+export interface LadepunktDauer {
+  key: string;
+  label: string;
+  minutes: number | null;
+}
+
+export const LADEPUNKT_DAUERN: LadepunktDauer[] = [
+  { key: '30m', label: '30 min', minutes: 30 },
+  { key: '1h', label: '1 h', minutes: 60 },
+  { key: '2h', label: '2 h', minutes: 120 },
+  { key: '4h', label: '4 h', minutes: 240 },
+  { key: 'abstecken', label: 'bis Abstecken', minutes: null },
+];
+
+/** Die Vorauswahl - der `on`-Chip des abgenommenen Mockups. */
+export const LADEPUNKT_DAUER_VORGABE = '2h';
+
+/**
+ * WELCHE Handeingriffe eine Ladepunkt-Zeile wirklich anbietet.
+ *
+ * ⚠ Die Reihenfolge ist eine AUSSAGE (dieselbe wie bei `speicherAktionen`):
+ * läuft ein Eingriff, steht ZUERST sein Rückweg - wer eingegriffen hat, muss
+ * ihn zurücknehmen können. Ohne laufenden Eingriff entscheidet `boostbar`,
+ * also genau die Regel, die die Ladevorgänge-Seite seit je fährt: ein Knopf,
+ * der strukturell nichts bewirken kann, wird nicht angeboten.
+ */
+export function ladepunktAktionen(
+  budget: ChargingBudget | null,
+  row: LadevorgangRow,
+): LadepunktAktion[] {
+  if (row.boost) return ['resume'];
+  return boostbar(budget, row) ? ['voll_laden'] : [];
+}
+
+/** Warum an diesem Ladepunkt gerade nichts zu greifen ist (nur ohne Aktion). */
+export function ladepunktKeinEingriff(
+  budget: ChargingBudget | null,
+  row: LadevorgangRow,
+): string | null {
+  if (ladepunktAktionen(budget, row).length > 0) return null;
+  // ⚠ Der Grund wird nur genannt, wenn er MEHR sagt als das Zustands-Wort -
+  // dieselbe Regel, unter der schon `ladeZustand.reason` steht. Über einem
+  // Stecker, der „Kein Auto eingesteckt" ALS ZUSTAND trägt, wäre derselbe Satz
+  // ein zweites Mal Rauschen, kein Beleg (im Browser-Beweis aufgefallen).
+  if (row.kind === 'frei' || row.kind === 'beendet') {
+    return row.word.trim().toLowerCase().startsWith('kein auto')
+      ? null
+      : 'Kein Auto eingesteckt.';
+  }
+  if (row.kind === 'getrennt' || row.kind === 'stoerung' || row.kind === 'nicht_verfuegbar') {
+    return 'Dieser Ladepunkt meldet sich gerade nicht - ein Eingriff käme nicht an.';
+  }
+  if (!budget || budget.surplusActive !== true) {
+    return 'Diese Ladung folgt keiner Überschuss-Priorität - es gibt nichts zu übersteuern.';
+  }
+  return null;
+}
+
+/**
+ * Der Banner-Satz eines laufenden „Jetzt voll laden" (Mockup 1440, Marker 19).
+ *
+ * ⚠ Er trägt KEINEN Countdown, und das ist Absicht: der Herzschlag meldet je
+ * Stecker nur `boost: true|false`, kein Ende. Eine Restzeit wäre hier erfunden
+ * - der Eingriff endet beim Abstecken, und genau das steht stattdessen da.
+ */
+export function boostBanner(name: string): string {
+  return `Handeingriff läuft: ${name} lädt voll (nur diese Ladung) · endet spätestens beim Abstecken`;
+}
+
+// --- Die Folgen-Karte ------------------------------------------------------
+
+/**
+ * Ein Block der Folgen-Karte. Die Schlüssel sind bewusst die des Haus-Musters
+ * (`handeingriff.ts` `FolgenBlock`), damit der BESTEHENDE Dialog sie rendert -
+ * es gibt in der Jetzt-Zone genau eine Folgen-Karte, nicht zwei.
+ */
+export interface LadepunktFolgenBlock {
+  key: 'passiert' | 'risiko' | 'gleich' | 'ende';
+  titel: string;
+  zeilen: string[];
+}
+
+export interface LadepunktFolgen {
+  titel: string;
+  intro: string;
+  bloecke: LadepunktFolgenBlock[];
+  bestaetigen: string;
+}
+
+/**
+ * Die Folgen-Karte VOR dem Klick - vier feste Blöcke (das b3-Haus-Muster) mit
+ * den Sätzen des abgenommenen Mockups.
+ *
+ * ⚠ DIE EINZIGE ZAHL IST DIE GEMESSENE: die Anschlussgrenze wird nur genannt,
+ * wenn die Box sie meldet (`gridLimitKw`); ohne sie steht der Satz ohne Zahl da
+ * statt mit einer geratenen. Wie viel Leistung dieser Ladung dadurch wirklich
+ * zufällt, weiss niemand vorher - deshalb behauptet die Karte es auch nicht.
+ */
+export function boostFolgenKarte(
+  budget: ChargingBudget | null,
+  dauer: LadepunktDauer,
+): LadepunktFolgen {
+  const limit = num(budget?.gridLimitKw);
+  const netz = limit == null
+    ? 'Ihr Netzanschluss bleibt geschützt.'
+    : `Ihr Netzanschluss (${KW(limit)}) bleibt geschützt.`;
+  return {
+    titel: 'Jetzt voll laden',
+    intro: BOOST_INTRO,
+    bloecke: [
+      {
+        key: 'passiert',
+        titel: 'Das passiert',
+        zeilen: ['Diese Ladung bekommt volle Leistung - auch aus dem Netz, auch ohne Sonne.'],
+      },
+      {
+        key: 'risiko',
+        titel: 'Risiko',
+        zeilen: [
+          'Die anderen Ladepunkte teilen sich den Rest und können dadurch langsamer laden.',
+        ],
+      },
+      {
+        key: 'gleich',
+        titel: 'Das bleibt gleich',
+        zeilen: [
+          netz,
+          'Ihre Überschuss-Priorität bleibt für alle anderen Ladevorgänge unverändert.',
+          'Anschlussgrenze, Sicherheitsabstand und Ausfall-Schutz gelten weiter - daran ändert dieser Knopf nichts.',
+        ],
+      },
+      {
+        key: 'ende',
+        titel: 'Ende / Rücknahme',
+        zeilen: [
+          // ⚠ „bis Abstecken" bekommt KEINE Minutenzahl in den Satz - dort
+          // gilt allein der Vertrags-Deckel der Box (4 Stunden), und eine
+          // Zahl daneben wäre eine zweite, erfundene Frist.
+          dauer.minutes == null
+            ? 'Endet beim Abstecken, längstens nach 4 Stunden - danach gilt wieder Ihre Priorität.'
+            : `Endet beim Abstecken, längstens nach ${dauer.label} - danach gilt wieder Ihre Priorität.`,
+          'Sie können jederzeit früher „Automatik fortsetzen" wählen.',
+        ],
+      },
+    ],
+    bestaetigen: `Jetzt voll laden - ${dauer.label}`,
+  };
+}
+
+/** Die Folgen-Karte der RÜCKNAHME - sie wirkt sofort und braucht keine Dauer. */
+export function boostEndeKarte(): LadepunktFolgen {
+  return {
+    titel: 'Automatik fortsetzen',
+    intro: 'Sie beenden die volle Ladung für diesen einen Ladevorgang.',
+    bloecke: [
+      {
+        key: 'passiert',
+        titel: 'Das passiert',
+        zeilen: [
+          'Der Eingriff endet sofort. Für diese Ladung gilt wieder Ihre Überschuss-Priorität.',
+        ],
+      },
+      {
+        key: 'gleich',
+        titel: 'Das bleibt gleich',
+        zeilen: [
+          'Anschlussgrenze, Sicherheitsabstand und Ausfall-Schutz gelten weiter - daran ändert dieser Knopf nichts.',
+        ],
+      },
+      {
+        key: 'ende',
+        titel: 'Ende / Rücknahme',
+        zeilen: ['Sie können jederzeit wieder eingreifen.'],
+      },
+    ],
+    bestaetigen: 'Automatik fortsetzen',
+  };
+}
+
 
 /**
  * Der Ausfall-Schutz in drei Schritten - und der dritte trägt die RECHNUNG,
