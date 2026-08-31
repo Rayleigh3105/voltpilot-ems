@@ -409,3 +409,60 @@ func TestAPlantWithOnlySelfBuiltDevicesDerivesNoConfigurationAtAll(t *testing.T)
 		t.Fatalf("err = %v, will ErrNoConfiguration", err)
 	}
 }
+
+// TestARoleAssignmentNeverTouchesTheDerivedPlan ist die Abgrenzung von Befund
+// L4: die Rollen-Zuordnung des Portals ist ANZEIGE. Sie darf die abgeleitete
+// Geraete-Konfiguration (inverter.json / sources.json) um kein Byte veraendern
+// - sonst wuerde ein Klick auf „Rollen & Zuordnung" die Leseplaene einer
+// laufenden Anlage umschreiben, und SameAs meldete faelschlich eine Aenderung.
+//
+// Die Rolle einer QUELLE leitet Derive weiterhin aus dem Entitaetstyp ab
+// (roleFor); das Vokabular der Topologie (pv/storage/grid/consumer) kennt es
+// gar nicht.
+func TestARoleAssignmentNeverTouchesTheDerivedPlan(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docs", "contracts", "v2",
+		"examples", "edge-entity.valid.registry-push-portal-managed.json"))
+	if err != nil {
+		t.Fatalf("Fixture: %v", err)
+	}
+	id := entities.Identity{
+		TenantID: "00000000-0000-0000-0000-000000000001",
+		SiteID:   "00000000-0000-0000-0000-000000000002",
+		DeviceID: "00000000-0000-0000-0000-000000000003",
+	}
+	reg, _, err := entities.ParseRegistryPush(raw, id)
+	if err != nil {
+		t.Fatalf("ParseRegistryPush: %v", err)
+	}
+	before, err := Derive(reg, cat(), nil, now)
+	if err != nil {
+		t.Fatalf("Derive: %v", err)
+	}
+
+	// Derselbe Push, jede Entitaet mit einer umgewidmeten Rolle.
+	for i := range reg.Entities {
+		reg.Entities[i].RoleAssignment = []entities.RoleAssignment{
+			{Channel: "power_kw", Role: "pv", Primary: true},
+		}
+	}
+	after, err := Derive(reg, cat(), nil, now)
+	if err != nil {
+		t.Fatalf("Derive mit Rollen: %v", err)
+	}
+
+	if !after.SameAs(before.Inverter, before.Sources) {
+		t.Fatalf("die Rollen-Zuordnung hat den Geraeteplan veraendert:\nvorher %+v\nnachher %+v",
+			before, after)
+	}
+	wantJSON, err := json.Marshal(before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotJSON, err := json.Marshal(after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotJSON) != string(wantJSON) {
+		t.Fatalf("Plan-Bytes abgewichen:\n got %s\nwant %s", gotJSON, wantJSON)
+	}
+}

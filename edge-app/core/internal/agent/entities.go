@@ -514,8 +514,9 @@ func (a *Agent) Topology() topology.Topology {
 				}
 			}
 		}
+		assigned := roleAssignments(e)
 		for _, m := range e.Capabilities.Measure {
-			ch := topology.RawChannel{Channel: m.Channel}
+			ch := topology.RawChannel{Channel: m.Channel, Assigned: assigned[m.Channel]}
 			if ok {
 				if v, has := er.channels[m.Channel]; has {
 					val := v
@@ -557,6 +558,27 @@ func (a *Agent) Topology() topology.Topology {
 		}
 	}
 	return topology.Derive(topology.Resolve(raw))
+}
+
+// roleAssignments indexes the portal's stored capability->role assignment of
+// ONE entity by channel (registry push descriptor.role_assignment, Befund L4).
+// An entity without the block yields an empty map, so every channel keeps its
+// topology.DefaultRole exactly as before. Whether a role word is understood is
+// decided ONE layer down (topology.Resolve), so this stays a plain index.
+func roleAssignments(e entities.Entity) map[string]*topology.RoleAssignment {
+	if len(e.RoleAssignment) == 0 {
+		return nil
+	}
+	out := make(map[string]*topology.RoleAssignment, len(e.RoleAssignment))
+	for _, ra := range e.RoleAssignment {
+		if ra.Channel == "" || ra.Role == "" {
+			// Neither is an assignment - the portal clears one by REMOVING
+			// the row, never by sending an empty role.
+			continue
+		}
+		out[ra.Channel] = &topology.RoleAssignment{Role: ra.Role, Primary: ra.Primary}
+	}
+	return out
 }
 
 // sourceChannelValue maps one source reading onto an entity measure channel:

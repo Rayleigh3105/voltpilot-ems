@@ -116,6 +116,46 @@ public class EntityRegistryRepository {
         return out;
     }
 
+    /** One stored capability→role assignment of an entity (AE1). */
+    public record RoleAssignment(String channel, String role, boolean primary) {}
+
+    /**
+     * Die im Portal GESPEICHERTE Rollen-Zuordnung je Komponente der Anlage
+     * (AE1 {@code entity_role_assignment}) - die Quelle des additiven
+     * {@code role_assignment}-Blocks im Registry-Push (Befund L4).
+     *
+     * <p>Bis dahin schrieb {@code PUT …/topology-roles} die Tabelle, und
+     * NIEMAND las sie für den Push: ein im Portal umgewidmeter Messpunkt oder
+     * ein als maßgeblich markierter Zähler blieb auf {@code :8484} beim
+     * Default, also zwei Energieflüsse, die sich widersprechen können.
+     *
+     * <p>Die Zuordnung wird per KANAL getroffen (nicht je Entität), deshalb
+     * liefert die Karte je Entität eine LISTE. Sortiert nach Kanal, damit der
+     * Push deterministisch ist. Eine Anlage ohne eine einzige gespeicherte
+     * Zuordnung liefert eine leere Karte - und dann fehlt der Block überall,
+     * die Nutzlast ist byte-gleich zu vorher.
+     *
+     * <p>Bewusst hier und nicht über {@code TopologyRepository}: jeder additive
+     * Push-Block ({@code consumerCycleLimits}, {@code chargePointIdsByEntity},
+     * {@code activeConsumerPolicies}) hat seinen Lesepfad an DIESER Repository,
+     * und die Gegenrichtung wäre eine Paket-Abhängigkeit entities→topology, wo
+     * topology→entities schon besteht.
+     */
+    public java.util.Map<UUID, java.util.List<RoleAssignment>> roleAssignments(UUID siteId) {
+        java.util.Map<UUID, java.util.List<RoleAssignment>> out = new java.util.HashMap<>();
+        jdbc.query(
+                "SELECT entity_id, capability, role, is_primary FROM entity_role_assignment "
+                        + "WHERE site_id = ? AND role IS NOT NULL AND role <> '' "
+                        + "ORDER BY entity_id, capability",
+                rs -> {
+                    out.computeIfAbsent(rs.getObject("entity_id", UUID.class),
+                            k -> new java.util.ArrayList<>())
+                            .add(new RoleAssignment(rs.getString("capability"),
+                                    rs.getString("role"), rs.getBoolean("is_primary")));
+                }, siteId);
+        return out;
+    }
+
     /** One consumer's ACTIVE policy document + rated power (Inkrement 6). */
     public record ConsumerFlexSource(String documentJson, BigDecimal ratedPowerKw) {}
 

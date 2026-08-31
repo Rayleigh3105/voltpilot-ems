@@ -1041,6 +1041,15 @@ public class EntityRegistryService {
         // byte-gleich, und ohne dieses Feld veroeffentlicht die Box gar keine
         // Ladepunkt-Telemetrie je Entitaet.
         java.util.Map<UUID, String> chargePoints = repo.chargePointIdsByEntity(siteId);
+        // Befund L4: die im Portal GESPEICHERTE Rollen-Zuordnung (AE1
+        // entity_role_assignment). Bis dahin schrieb PUT …/topology-roles nur
+        // die Tabelle und der Push trug sie nicht - die Box loeste IMMER ueber
+        // topology.DefaultRole auf, also zeigten Portal und :8484 zwei
+        // Energiefluesse, die sich widersprechen konnten. Additiv wie
+        // edge_source_id (D-17) und charge_point_id (E1): ohne eine einzige
+        // gespeicherte Zuordnung ist die Nutzlast byte-gleich zu vorher.
+        java.util.Map<UUID, java.util.List<EntityRegistryRepository.RoleAssignment>> roles =
+                repo.roleAssignments(siteId);
         ArrayNode entities = push.putArray("entities");
         for (EntityRow row : rows) {
             ObjectNode d = descriptor(row);
@@ -1054,6 +1063,32 @@ public class EntityRegistryService {
             String chargePointId = chargePoints.get(row.id());
             if (chargePointId != null && !chargePointId.isBlank()) {
                 d.put("charge_point_id", chargePointId);
+            }
+            java.util.List<EntityRegistryRepository.RoleAssignment> assigned = roles.get(row.id());
+            if (assigned != null && !assigned.isEmpty()) {
+                ArrayNode block = mapper.createArrayNode();
+                for (EntityRegistryRepository.RoleAssignment ra : assigned) {
+                    if (ra.channel() == null || ra.channel().isBlank()
+                            || ra.role() == null || ra.role().isBlank()) {
+                        // Eine Zuordnung ohne Kanal oder ohne Rolle ist keine
+                        // Aussage - der Loeschweg der Zuordnung ist das ENTFERNEN
+                        // der Zeile, nie eine leere Rolle.
+                        continue;
+                    }
+                    ObjectNode one = mapper.createObjectNode();
+                    one.put("channel", ra.channel());
+                    one.put("role", ra.role());
+                    if (ra.primary()) {
+                        // ABSENT = false (Vertrag): nur eine ausdrueckliche
+                        // massgebliche Messung reist, damit ein Push ohne sie
+                        // die Vorgabe-Regel der Box unangetastet laesst.
+                        one.put("primary", true);
+                    }
+                    block.add(one);
+                }
+                if (!block.isEmpty()) {
+                    d.set("role_assignment", block);
+                }
             }
             EntityRegistryRepository.ConsumerFlexSource fs = flex.get(row.id());
             if (fs != null) {

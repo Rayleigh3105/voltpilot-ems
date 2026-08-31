@@ -328,6 +328,34 @@
           "type": "boolean",
           "description": "TRUE = an ACTIVE customer rule claims this component, so the plan executors inject NO market desire for it and the rule wins because no competitor exists (Steuerung Stufe 3, vp-steuerung-konzept-b3 \u00a73.7 A3). OPTIONAL + ADDITIVE: ABSENT means false, which is what an older cloud sends and what every unclaimed component sends - the arbiter, the priority classes and D-4/D-5/D-6 are unchanged. An older edge ignores it and behaves exactly as before."
         },
+        "role_assignment": {
+          "type": "array",
+          "maxItems": 32,
+          "description": "Die im Portal GESPEICHERTE Rollen-Zuordnung dieser Komponente (AE1 entity_role_assignment, Befund L4). Je Eintrag EIN Messkanal: welcher Rolle er zugeordnet ist und ob er die massgebliche (primaere) Messung dieser Rolle ist - dieselbe Grammatik wie das Portal, weil die Zuordnung dort per KANAL getroffen wird und nicht je Entitaet. OPTIONAL + ADDITIV: fehlt der Block oder ein Kanal darin, gilt auf der Box unveraendert topology.DefaultRole, und eine Anlage ohne eine einzige gespeicherte Zuordnung sendet exakt die Bytes von vorher. WICHTIG: eine Rolle, die der Box-Build nicht kennt, faellt STILL auf den Default zurueck - der ganze Push wird deswegen nie abgelehnt (eine Rolle ist Anzeige, kein Steuerweg). Sie beschreibt AUSSCHLIESSLICH Anzeige/Topologie und wird von componentapply.Derive nie gelesen: inverter.json/sources.json leiten ihre Rolle weiterhin aus dem Entitaetstyp ab.",
+          "items": {
+            "type": "object",
+            "required": ["channel", "role"],
+            "additionalProperties": false,
+            "properties": {
+              "channel": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "description": "Der Messkanal aus capabilities.measure[], dem die Rolle zugeordnet ist."
+              },
+              "role": {
+                "type": "string",
+                "enum": ["pv", "storage", "consumer", "grid", "charging", "charging-own"],
+                "description": "Die zugeordnete Rolle (das Vokabular von topology.DefaultRole). Das Enum ist die HEUTIGE Menge; eine spaetere Rolle, die eine aeltere Box nicht kennt, faellt dort auf den Default zurueck statt den Push zu zerreissen."
+              },
+              "primary": {
+                "type": "boolean",
+                "description": "TRUE = die massgebliche Messung dieser Rolle. ABSENT = false; die Vorgabe-Regel (die ERSTE Kapazitaet einer Rolle ist massgeblich) gilt dann nur noch fuer Rollen, fuer die NIEMAND ausdruecklich massgeblich gesetzt wurde - genau die Regel der Cloud (TopologyService.topology).",
+                "default": false
+              }
+            }
+          }
+        },
         "capabilities": {
           "$ref": "#/$defs/capabilities"
         },
