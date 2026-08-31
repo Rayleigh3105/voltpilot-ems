@@ -139,6 +139,30 @@ describe('BeobachteteRegister · der Katalog-Einschub (Teil 2)', () => {
     expect(document.body).not.toHaveTextContent('Expertenmodus');
   });
 
+  it('behält beim Tippen den Fokus und gibt den Seiten-Scroll nach einer Rückfrage frei', async () => {
+    render(<BeobachteteRegister deviceId="d" familien={['hybrid_3p']} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Register beobachten/ }));
+
+    const suche = await screen.findByLabelText('Messwert suchen');
+    act(() => suche.focus());
+    fireEvent.change(suche, { target: { value: 'P' } });
+    expect(suche).toHaveFocus();
+    fireEvent.change(suche, { target: { value: 'PV' } });
+    expect(suche).toHaveFocus();
+    expect(suche).toHaveValue('PV');
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'PV2 Strom aufzeichnen' }));
+    const confirm = await screen.findByRole('dialog', { name: 'Messwert aufzeichnen' });
+    await within(confirm).findByText(/2 Samples\/min/);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(confirm).not.toBeInTheDocument();
+
+    const library = screen.getByRole('dialog', { name: 'Register beobachten' });
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.click(within(library).getByRole('button', { name: 'Schließen' }));
+    expect(document.body.style.overflow).not.toBe('hidden');
+  });
+
   it('uses plural result copy for every count except one', async () => {
     vi.mocked(api.measurementCatalog).mockResolvedValue(
       katalog([point, { ...point, pointKey: 'point.two', labelDe: 'PV3 Strom' }], 2),

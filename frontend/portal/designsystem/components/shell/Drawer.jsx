@@ -1,6 +1,31 @@
 import React from 'react';
 import { Icon } from '../core/Icon';
 
+/*
+ * Drawers may be stacked (for example the measurement library plus its
+ * confirmation). A saved `body.style.overflow` per instance is not enough:
+ * if two drawers unmount in one commit, the later cleanup can restore the
+ * other drawer's `hidden` value permanently. Keep one shared lock count and
+ * restore the page value only after the last drawer has gone.
+ */
+let scrollLocks = 0;
+let pageOverflow = '';
+const drawerStack = [];
+
+function lockBodyScroll() {
+  if (scrollLocks === 0) pageOverflow = document.body.style.overflow;
+  scrollLocks += 1;
+  document.body.style.overflow = 'hidden';
+
+  return () => {
+    scrollLocks = Math.max(0, scrollLocks - 1);
+    if (scrollLocks === 0) {
+      document.body.style.overflow = pageOverflow;
+      pageOverflow = '';
+    }
+  };
+}
+
 /**
  * VoltPilot Drawer — right-side panel used for BOTH "anlegen" forms and row
  * detail views (the repeatable entity pattern). Scrim click, ✕ and Escape all
@@ -17,23 +42,42 @@ export function Drawer({
   ...props
 }) {
   const panelRef = React.useRef(null);
+  const closeRef = React.useRef(onClose);
+  const tokenRef = React.useRef(null);
+  closeRef.current = onClose;
+  if (tokenRef.current === null) tokenRef.current = { panelRef };
 
   React.useEffect(() => {
     if (!open) return undefined;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const token = tokenRef.current;
+    const unlockBodyScroll = lockBodyScroll();
     const prevFocus = document.activeElement;
+    drawerStack.push(token);
     panelRef.current?.focus();
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape' || drawerStack.at(-1) !== token) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeRef.current();
     };
     document.addEventListener('keydown', onKey);
     return () => {
-      document.body.style.overflow = prevOverflow;
       document.removeEventListener('keydown', onKey);
-      if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus();
+      const wasTopmost = drawerStack.at(-1) === token;
+      const index = drawerStack.lastIndexOf(token);
+      if (index >= 0) drawerStack.splice(index, 1);
+      unlockBodyScroll();
+      if (wasTopmost && prevFocus?.isConnected && typeof prevFocus.focus === 'function') {
+        prevFocus.focus();
+      } else if (wasTopmost) {
+        drawerStack.at(-1)?.panelRef.current?.focus();
+      }
     };
-  }, [open, onClose]);
+    // `onClose` deliberately lives in `closeRef`: controlled fields inside a
+    // drawer commonly rerender their owner on every key. An inline callback
+    // must not tear down the modal effect, steal focus, and re-lock scrolling
+    // after each character.
+  }, [open]);
 
   if (!open) return null;
 
