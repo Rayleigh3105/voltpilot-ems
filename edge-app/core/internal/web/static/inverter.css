@@ -305,7 +305,7 @@
 /* Ein Zeilen-Beleg sitzt DIREKT unter seiner Zeile: die Spalte bringt ihren
    eigenen Abstand mit (.rows gap), ein zusätzlicher Rand rissse ihn von der
    Quelle los, zu der er gehört. */
-.rows > .verify-panel.row-verify { margin: 0; }
+.rows > .verify-panel { margin: 0; }
 .verify-panel .verify-ico { flex: none; margin-top: 1px; }
 .verify-panel .verify-ico svg { width: 18px; height: 18px; display: block; }
 .verify-panel.loading { background: var(--bg-2); border: 1px solid var(--line); color: var(--ink-2); }

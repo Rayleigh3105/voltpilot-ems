@@ -267,7 +267,11 @@
 
   function panelFor(id) {
     if (!verifyPanels[id]) {
-      var p = el("li", { class: "verify-panel row-verify" });
+      // ⚠ NUR "verify-panel": verify.js SETZT die Klasse bei jedem Ergebnis neu
+      // (panel.className = "verify-panel " + cls), eine eigene Zusatzklasse
+      // überlebte den ersten Klick also nicht. Der Zeilen-Kasten wird deshalb
+      // an seiner STELLE erkannt (.rows > .verify-panel), nicht an einer Klasse.
+      var p = el("li", { class: "verify-panel" });
       p.hidden = true;
       verifyPanels[id] = p;
     }
