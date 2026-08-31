@@ -66,7 +66,12 @@ public class DeviceChargerStatusRepository {
     public record ConnectorRow(int connectorId, String status, boolean charging, Double allocatedKw,
             String reason, String reasonText, Instant nextTurn, Double powerKw, Double energyKwh,
             Double socPct, String commandStatus, String readback, String readbackNote,
-            Instant sessionSince, Double sessionKwh, Instant meteredAt, boolean boost) {}
+            Instant sessionSince, Double sessionKwh, Instant meteredAt, boolean boost,
+            /*
+             * tagRef = das PSEUDONYM der Ladekarte dieses Ladevorgangs (P7).
+             * null = kein Ladevorgang, keine Karte, oder ein aelterer Box-Stand.
+             */
+            String tagRef) {}
 
     private final JdbcTemplate jdbc;
 
@@ -127,16 +132,16 @@ public class DeviceChargerStatusRepository {
                                 + "connector_id, tenant_id, site_id, status, charging, "
                                 + "allocated_kw, reason, reason_text, next_turn, power_kw, "
                                 + "energy_kwh, soc_pct, command_status, readback, readback_note, "
-                                + "session_since, session_kwh, metered_at, boost, "
+                                + "session_since, session_kwh, metered_at, boost, tag_ref, "
                                 + "reported_at) "
                                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                                + "?, ?, ?, ?, ?, ?, ?, ?)",
+                                + "?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         deviceId, c.chargePointId(), con.connectorId(), tenantId, siteId,
                         con.status(), con.charging(), con.allocatedKw(), con.reason(),
                         con.reasonText(), ts(con.nextTurn()), con.powerKw(), con.energyKwh(),
                         con.socPct(), con.commandStatus(), con.readback(), con.readbackNote(),
                         ts(con.sessionSince()), con.sessionKwh(), ts(con.meteredAt()),
-                        con.boost(), Timestamp.from(reportedAt));
+                        con.boost(), con.tagRef(), Timestamp.from(reportedAt));
             }
         }
     }
@@ -205,7 +210,7 @@ public class DeviceChargerStatusRepository {
         jdbc.query("SELECT device_id, charge_point_id, connector_id, status, charging, "
                 + "allocated_kw, reason, reason_text, next_turn, power_kw, energy_kwh, soc_pct, "
                 + "command_status, readback, readback_note, session_since, session_kwh, "
-                + "metered_at, boost "
+                + "metered_at, boost, tag_ref "
                 + "FROM device_charge_connector WHERE site_id = ? "
                 + "ORDER BY device_id, charge_point_id, connector_id", rs -> {
                     byPoint.computeIfAbsent(key(rs.getObject("device_id", UUID.class),
@@ -250,7 +255,7 @@ public class DeviceChargerStatusRepository {
                 rs.getString("command_status"), rs.getString("readback"),
                 rs.getString("readback_note"), instant(rs.getTimestamp("session_since")),
                 (Double) rs.getObject("session_kwh"), instant(rs.getTimestamp("metered_at")),
-                rs.getBoolean("boost"));
+                rs.getBoolean("boost"), rs.getString("tag_ref"));
     }
 
     private static ChargingBudgetDto mapBudget(ResultSet rs, int rowNum) throws SQLException {

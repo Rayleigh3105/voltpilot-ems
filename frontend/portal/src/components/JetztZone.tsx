@@ -102,6 +102,7 @@ export function JetztZone({
    * Quelle der Ladepunkt-Zeile leer — „unbekannt" ist ein vollwertiges Urteil.
    */
   steuerart,
+  fahrzeug,
   onReload,
 }: {
   site: Site;
@@ -109,6 +110,11 @@ export function JetztZone({
   speicherRegelAktiv?: boolean;
   speicherName?: string | null;
   steuerart?: (entityId: string | null | undefined) => string | null;
+  /**
+   * Der NAME zu einem Karten-Pseudonym (P7). Ohne ihn - oder ohne benanntes
+   * Fahrzeug - bleibt jede Ladepunkt-Zeile Zeichen für Zeichen die von vorher.
+   */
+  fahrzeug?: (tagRef: string | null | undefined) => string | null;
   onReload?: () => void;
 }): JSX.Element {
   const [plan, setPlan] = useState<SchedulePlan | null>(null);
@@ -198,13 +204,14 @@ export function JetztZone({
         anyStatusReported,
       })),
       charging,
+      fahrzeug,
       steuerart,
       overrides,
       interventions,
       now,
     });
   }, [plan, control, curtail, consumers, status, overrides, interventions, charging,
-    site.plantKind, speicherRegelAktiv, speicherName, steuerart, now]);
+    site.plantKind, speicherRegelAktiv, speicherName, steuerart, fahrzeug, now]);
 
   const bestaetigen = useCallback(async (minutes?: number) => {
     if (!eingriff) return;
@@ -486,6 +493,10 @@ function JetztZeileView({
         <span className="vp-jetztrow-state">{zeile.zustand}</span>
         {zeile.grund && <span className="vp-jetztrow-why">{zeile.grund}</span>}
         <span className="vp-jetztrow-meta">
+          {/* ⚠ Das FAHRZEUG steht VOR der Quelle: „Lädt 11 kW · Dienstwagen ·
+              Sofort laden" — erst WER dort lädt, dann WIE. Es steht nur, wo der
+              Kunde die Karte benannt hat (P7). */}
+          {zeile.fahrzeug && <span className="vp-jetztrow-car">{zeile.fahrzeug}</span>}
           {zeile.quelleText && <span className="vp-jetztrow-src">{zeile.quelleText}</span>}
           {zeile.bis && <span className="vp-jetztrow-until">{zeile.bis}</span>}
         </span>

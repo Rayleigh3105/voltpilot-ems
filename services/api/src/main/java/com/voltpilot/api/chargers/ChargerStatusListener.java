@@ -3,6 +3,7 @@ package com.voltpilot.api.chargers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.command.CommandLogWriter;
+import com.voltpilot.api.fahrzeuge.SiteVehicleRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.BudgetRow;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.ChargePointRow;
@@ -67,6 +68,15 @@ public class ChargerStatusListener {
     private static final String STATUS_FILTER = "ems/+/+/+/status";
     /** Dieselben Grenzen wie am Rand - ein Herzschlag kann den Satz nie aufblähen. */
     private static final int MAX_CHARGERS = 16;
+
+    /**
+     * Die Form eines Karten-Pseudonyms, so wie die BOX es bildet (P7). Sie ist
+     * hier wiederholt (nicht aus {@code FahrzeugSteuerart} importiert), weil
+     * dieser Zuhörer der PARSER ist und vom Fachdienst frei bleiben soll - die
+     * beiden sind über die DB-Bedingung und den Kontrakt aneinander gepinnt.
+     */
+    private static final java.util.regex.Pattern TAG_REF =
+            java.util.regex.Pattern.compile("^tagref_[0-9a-f]{8,64}$");
     private static final int MAX_CONNECTORS = 8;
 
     /** Das OCPP-1.6-Status-Vokabular, wörtlich. Alles andere wird verworfen. */
@@ -101,6 +111,12 @@ public class ChargerStatusListener {
     private final DeviceChargerStatusRepository chargerStatus;
     private final ObjectProvider<ChargerComponentComposer> composer;
     private final ObjectProvider<CommandLogWriter> commandLog;
+    /**
+     * Die Ladekarten-Sichtungen (P7). Als {@link ObjectProvider}, damit ein
+     * Deployment ohne diese Bohne sich zeichengleich wie vorher verhält - nie
+     * ein Pflicht-Glied für ein additives Feature.
+     */
+    private final ObjectProvider<SiteVehicleRepository> vehicles;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
@@ -111,7 +127,8 @@ public class ChargerStatusListener {
             @Value("${voltpilot.provisioning.password:}") String password,
             DeviceRepository devices, DeviceChargerStatusRepository chargerStatus,
             ObjectProvider<ChargerComponentComposer> composer,
-            ObjectProvider<CommandLogWriter> commandLog) {
+            ObjectProvider<CommandLogWriter> commandLog,
+            ObjectProvider<SiteVehicleRepository> vehicles) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
@@ -119,6 +136,7 @@ public class ChargerStatusListener {
         this.chargerStatus = chargerStatus;
         this.composer = composer;
         this.commandLog = commandLog;
+        this.vehicles = vehicles;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -251,6 +269,14 @@ public class ChargerStatusListener {
             }
             chargerStatus.replaceForDevice(deviceId, tenantId, siteId, reportedAt, budget,
                     chargers);
+            // P7: die SICHTUNGEN der Ladekarten. Sie sind das, woraus im Portal
+            // überhaupt erst eine benennbare Zeile wird - ohne sie gäbe es
+            // nichts, dem der Kunde einen Namen geben könnte.
+            //
+            // ⚠ Sie ist eine BEOBACHTUNG, keine Entscheidung: Name und
+            // Steuerart werden dabei nie angefasst, und ein Herzschlag ohne
+            // Karte schreibt gar nichts.
+            merkeKarten(tenantId, siteId, chargers, reportedAt);
             // Der Kommando-Verlauf: je Säule eine laufende Periode über die
             // Grenze, die die Box ihr hinterlegt hat. Nie werfend - der
             // Verlauf ist die Kür, der Ist-Zustand die Pflicht.
@@ -268,6 +294,33 @@ public class ChargerStatusListener {
             }
         } finally {
             TenantContext.clear();
+        }
+    }
+
+    /**
+     * Hält fest, welche Ladekarte gerade an welcher Säule lädt (P7).
+     *
+     * <p>⚠ Nie werfend: eine Sichtung ist die Kür, der Ist-Zustand die Pflicht
+     * (die {@code CommandLogWriter}-Disziplin). Und sie läuft über den
+     * {@link ObjectProvider}, damit ein Deployment ohne die P7-Bohne sich
+     * zeichengleich wie vorher verhält.
+     */
+    private void merkeKarten(UUID tenantId, UUID siteId, List<ChargePointRow> chargers,
+            Instant reportedAt) {
+        SiteVehicleRepository repo = vehicles.getIfAvailable();
+        if (repo == null) {
+            return;
+        }
+        try {
+            for (ChargePointRow c : chargers) {
+                for (ConnectorRow con : c.connectors()) {
+                    if (con.tagRef() != null) {
+                        repo.touch(tenantId, siteId, con.tagRef(), c.chargePointId(), reportedAt);
+                    }
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("vehicle sighting for site {} not stored: {}", siteId, e.toString());
         }
     }
 
@@ -376,9 +429,25 @@ public class ChargerStatusListener {
                     textOrNull(con, "command_status"), vocabulary(con, "readback", READBACK),
                     textOrNull(con, "readback_note"), optInstant(con, "session_since"),
                     optDouble(con, "session_kwh"), optInstant(con, "metered_at"),
-                    con.path("boost").asBoolean(false)));
+                    con.path("boost").asBoolean(false), tagRef(con)));
         }
         return out;
+    }
+
+    /**
+     * Der PSEUDONYM der Ladekarte dieses Ladevorgangs (P7).
+     *
+     * <p>⚠ Angenommen wird NUR, was diese Box gebildet haben kann - dieselbe
+     * Form, die der Kontrakt und die DB-Bedingung fordern. Ein Klartext-IdTag
+     * oder ein doppelt gehashter Journal-Bezug wird VERWORFEN statt gespeichert
+     * (die Regel dieses Zuhörers, hier auf die Karte angewandt): eine Kennung,
+     * die kein Fahrzeug-Profil je treffen kann, ist keine Auskunft, sondern ein
+     * Rätsel - und ein Klartext-Tag wäre obendrein genau der Wert, der diese
+     * Box nie verlassen darf.
+     */
+    private static String tagRef(JsonNode node) {
+        String v = node.path("tag_ref").asText("");
+        return TAG_REF.matcher(v).matches() ? v : null;
     }
 
     /**

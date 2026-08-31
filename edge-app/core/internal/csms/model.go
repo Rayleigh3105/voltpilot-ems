@@ -96,7 +96,7 @@ type Charger struct {
 	// station's own StatusNotifications. It matters BEFORE the first one
 	// arrives, because the emergency default is divided by the plug count of
 	// the WHOLE site — and a count that is too low makes that default too big.
-	Connectors int       `json:"connectors,omitempty"`
+	Connectors int `json:"connectors,omitempty"`
 	// Connection is WHERE this station hangs (Cockpit Phase 1 / C1, Captain
 	// decision E5): ConnectionHaus (behind the house connection - the normal
 	// case) or ConnectionEigen (its own grid connection / meter).
@@ -179,6 +179,21 @@ type Session struct {
 	// MeterStartWh is the connector's energy register at StartTransaction, so
 	// the session's own delivered energy is derivable without a second reading.
 	MeterStartWh int `json:"meter_start_wh"`
+	// TagRef is the PSEUDONYM of IDTag - `tagref_` + HMAC-SHA256 with this
+	// box's own privacy key, exactly the value the journal writes to disk
+	// (Verbrauchsmanagement v1 / P7, Fahrzeug-Profile).
+	//
+	// ⚠ It is computed ONCE, here, by the one component that holds the key,
+	// and everything downstream reads it instead of the plaintext: the
+	// heartbeat reports it, and the per-session source lane is looked up with
+	// it. A second place that hashed an idTag would be a second answer to the
+	// same question, and the first time the two drifted a customer's vehicle
+	// profile would silently stop matching.
+	//
+	// ⚠ It is NOT the reference the cloud stores for OCPP transactions: the
+	// cloud re-HMACs everything it ingests with its own pepper, so the two
+	// pseudonym spaces are deliberately different values for the same card.
+	TagRef string `json:"tag_ref,omitempty"`
 }
 
 // Connector is one plug ("Stecker") of a charge point. One connector = one

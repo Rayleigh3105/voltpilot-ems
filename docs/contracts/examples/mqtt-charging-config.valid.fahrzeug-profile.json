@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "grid_limit_kw": 32,
+  "surplus_policy": "nur_sonne",
+  "charge_points": [
+    {
+      "id": "stellplatz-01",
+      "source": "nur_sonne"
+    }
+  ],
+  "vehicle_profiles": [
+    {
+      "tag_ref": "tagref_1f2e3d4c5b6a798877665544",
+      "name": "Dienstwagen",
+      "source": "schnell"
+    },
+    {
+      "tag_ref": "tagref_00112233445566778899aabb",
+      "name": "Privatwagen",
+      "source": "sonne_zuerst",
+      "min_kw": 4.2
+    }
+  ],
+  "published_at": "2026-08-31T09:15:00Z"
+}

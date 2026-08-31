@@ -154,6 +154,13 @@ func (s *Server) onStartTransaction(id string, connectorID int, idTag string, me
 		IDTag:         idTag,
 		StartedAt:     now,
 		MeterStartWh:  meterStartWh,
+		// The pseudonym is minted HERE, where the privacy key lives, so no
+		// caller ever needs the plaintext to recognise a returning card (P7).
+		// A station that authorised without a tag gets NO pseudonym - hashing
+		// the empty string would mint one stable "card" that every tagless
+		// session on this box shares, and a profile on it would steer charges
+		// that have nothing in common (the journal's own rule, `redactValue`).
+		TagRef: s.tagRefOf(idTag),
 	}
 	c.LastSeen = now
 	c.Connected = true
@@ -239,4 +246,15 @@ func (c *ChargerState) connector(id int) *Connector {
 		}
 	}
 	return &c.Connectors[len(c.Connectors)-1]
+}
+
+// tagRefOf is the box's pseudonym for one idTag, or "" when there is no tag.
+// It delegates to the journal so the value a vehicle profile is matched
+// against is byte-for-byte the value written to disk and uploaded - one
+// pseudonym per card, not two.
+func (s *Server) tagRefOf(idTag string) string {
+	if idTag == "" {
+		return ""
+	}
+	return s.journal.tagRef(idTag)
 }

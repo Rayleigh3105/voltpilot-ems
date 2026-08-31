@@ -509,3 +509,37 @@ func TestProtocolJournalSurvivesRestartUntilAcknowledged(t *testing.T) {
 }
 
 func firstTime() time.Time { return time.Unix(1, 0).UTC() }
+
+// Fahrzeug-Profile (P7): das Pseudonym einer Sitzung entsteht an GENAU EINER
+// Stelle - hier -, damit der Wert, gegen den ein Profil geprueft wird, byte-
+// gleich der ist, den das Journal auf die Platte schreibt. Zwei Rechenwege
+// waeren zwei Antworten auf dieselbe Frage, und beim ersten Auseinanderlaufen
+// traefe ein Kunden-Profil sein Fahrzeug still nicht mehr.
+func TestTagRefOfIsTheJournalsOwnPseudonymAndEmptyForNoTag(t *testing.T) {
+	dir := t.TempDir()
+	j, err := newJournal(dir, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("journal: %v", err)
+	}
+	defer j.Close()
+	s := &Server{journal: j}
+
+	// ⚠ Kein Tag, kein Pseudonym. Den leeren String zu hashen ergaebe EINE
+	// stabile „Karte", die sich alle tag-losen Ladungen dieser Box teilen -
+	// ein Profil darauf steuerte Ladevorgaenge, die nichts miteinander zu tun
+	// haben. (Ueber die Leitung ist der Fall ausgeschlossen: OCPP macht IdTag
+	// zur Pflicht. Das hier ist der Guertel dazu.)
+	if got := s.tagRefOf(""); got != "" {
+		t.Fatalf("ohne Karte darf es keinen Bezug geben: %q", got)
+	}
+	ref := s.tagRefOf("GEHEIME-KARTE-4711")
+	if ref != j.tagRef("GEHEIME-KARTE-4711") {
+		t.Fatal("die Sitzung muss denselben Bezug bilden wie das Journal")
+	}
+	if !strings.HasPrefix(ref, "tagref_") || len(ref) != len("tagref_")+24 {
+		t.Fatalf("bezug = %q", ref)
+	}
+	if strings.Contains(ref, "GEHEIME-KARTE-4711") {
+		t.Fatal("der Klartext darf nie Teil des Pseudonyms sein")
+	}
+}

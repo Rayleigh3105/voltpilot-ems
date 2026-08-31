@@ -133,6 +133,15 @@ export interface JetztZeile {
    * nicht tragen. `null` bei jeder anderen Zeilenart.
    */
   ladepunkt?: LadepunktAdresse | null;
+  /**
+   * Der NAME des Fahrzeugs, das hier gerade lädt (P7) - „Dienstwagen".
+   *
+   * ⚠ Nur ein BENANNTES Profil steht hier: eine unbenannte Karte („Karte
+   * 1f2e…") sagt dem Kunden in der Jetzt-Zone nichts, was er nicht schon
+   * sieht, und ein Pseudonym in einer Zustandszeile wäre Lärm. Ohne Karte oder
+   * ohne Namen bleibt es `null` - nie eine erfundene Zuordnung.
+   */
+  fahrzeug?: string | null;
 }
 
 /** Wohin ein Ladepunkt-Handeingriff geht (`POST /charging-boost`). */
@@ -492,6 +501,11 @@ export function ladepunktZeilen(
   charging: SiteCharging | null | undefined,
   steuerart?: (entityId: string | null | undefined) => string | null,
   nowMs?: number,
+  /**
+   * Der NAME zu einem Karten-Pseudonym (P7). Ohne die Funktion - oder ohne
+   * gepflegtes Profil - bleibt die Zeile Zeichen für Zeichen die von vorher.
+   */
+  fahrzeug?: (tagRef: string | null | undefined) => string | null,
 ): { zeilen: JetztZeile[]; weitere: string | null } {
   const chargers = charging?.chargers ?? [];
   if (chargers.length === 0) return { zeilen: [], weitere: null };
@@ -545,6 +559,9 @@ export function ladepunktZeilen(
         ton: row.tone === 'stoerung' ? 'warn' : row.tone === 'laedt' ? 'ok' : 'off',
         aktionen,
         keinEingriff: aktionen.length > 0 ? null : ladepunktKeinEingriff(budget, row),
+        // ⚠ Nur an einer LAUFENDEN Ladung: „Dienstwagen" über einem freien
+        // Stecker wäre eine Aussage über ein Auto, das nicht da ist.
+        fahrzeug: leer ? null : fahrzeug?.(row.tagRef) ?? null,
         ladepunkt: {
           chargePointId: row.chargePointId,
           connectorId: row.connectorId,
@@ -664,6 +681,13 @@ export interface JetztInput {
    * sie, bleibt die Quelle der Zeile ehrlich leer.
    */
   steuerart?: (entityId: string | null | undefined) => string | null;
+  /**
+   * Der NAME zu einem Karten-Pseudonym (P7) — die Jetzt-Zeile sagt dann, WER
+   * dort lädt („Lädt 11 kW · Dienstwagen · Sofort laden"). Ohne die Funktion
+   * oder ohne benanntes Fahrzeug bleibt die Zeile Zeichen für Zeichen die von
+   * vorher.
+   */
+  fahrzeug?: (tagRef: string | null | undefined) => string | null;
   overrides?: ManualOverride[] | null;
   /** Die laufenden Handeingriffe + die Pause (Stufe 4); null = keine geladen. */
   interventions?: SiteInterventions | null;
@@ -682,7 +706,8 @@ export function jetztZone(input: JetztInput): JetztView {
   // ihre Kopfzahl trägt jetzt der Ladepark-Rahmen der Verbraucher-Zone, und
   // jede Ladung steht als eigene Zeile — dort, und nur dort, greift der Kunde
   // ein (P3a).
-  const lp = ladepunktZeilen(input.charging, input.steuerart, input.now.getTime());
+  const lp = ladepunktZeilen(input.charging, input.steuerart, input.now.getTime(),
+    input.fahrzeug);
   // ⚠ Ein Ladepunkt steht GENAU EINMAL. Traegt dieselbe Entitaet zusaetzlich ein
   // Verbraucher-Profil, saehe der Kunde sie zweimal — einmal aus dem gemeldeten
   // Verbraucher-Zustand, einmal aus dem Ladevorgang; zwei Wahrheiten ueber

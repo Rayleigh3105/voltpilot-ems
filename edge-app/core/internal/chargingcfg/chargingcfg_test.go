@@ -472,3 +472,178 @@ func TestAnUnknownSourceWordSkipsTheEntryInsteadOfGuessing(t *testing.T) {
 		t.Fatalf("nur der verstandene Eintrag überlebt: %+v", cfg.ChargePoints)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Fahrzeug-Profile (Verbrauchsmanagement v1 / P7)
+// ---------------------------------------------------------------------------
+
+const tagA = "tagref_1f2e3d4c5b6a798877665544"
+const tagB = "tagref_00112233445566778899aabb"
+
+// Die MENGE ist die Aussage - und das ist die UMGEKEHRTE Regel der Allowlist.
+// Wer die beiden verwechselt, macht entweder ein Loeschen unmoeglich oder
+// nimmt einer gerade offline gewesenen Box still alle Profile.
+func TestVehicleProfilesAreASetAndAnEmptyListWithdrawsThemAll(t *testing.T) {
+	absent, err := Parse(doc(`,"grid_limit_kw":32`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if absent.VehicleProfiles != nil {
+		t.Fatal("ein abwesendes Feld darf keine leere Menge werden - die Box behaelt ihre Profile")
+	}
+
+	cleared, err := Parse(doc(`,"vehicle_profiles":[]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.VehicleProfiles == nil {
+		t.Fatal("eine leere Liste ist die Ruecknahme - sie muss von 'abwesend' unterscheidbar sein")
+	}
+	if len(cleared.VehicleProfiles) != 0 {
+		t.Fatalf("profiles = %+v", cleared.VehicleProfiles)
+	}
+}
+
+func TestAVehicleProfileCarriesItsCardsOwnLane(t *testing.T) {
+	cfg, err := Parse(doc(`,"vehicle_profiles":[` +
+		`{"tag_ref":"` + tagA + `","name":"Dienstwagen","source":"schnell"},` +
+		`{"tag_ref":"` + tagB + `","name":"Privatwagen","source":"sonne_zuerst","min_kw":4.2}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.VehicleProfiles) != 2 {
+		t.Fatalf("profiles = %+v", cfg.VehicleProfiles)
+	}
+	if cfg.VehicleProfiles[0].TagRef != tagA || cfg.VehicleProfiles[0].Name != "Dienstwagen" ||
+		cfg.VehicleProfiles[0].Source != "schnell" || cfg.VehicleProfiles[0].MinKw != 0 {
+		t.Fatalf("erstes Profil = %+v", cfg.VehicleProfiles[0])
+	}
+	if cfg.VehicleProfiles[1].Source != "sonne_zuerst" || cfg.VehicleProfiles[1].MinKw != 4.2 {
+		t.Fatalf("zweites Profil = %+v", cfg.VehicleProfiles[1])
+	}
+}
+
+// Ein Eintrag, den wir nicht verstehen, wird UEBERSPRUNGEN - das Dokument
+// traegt die Anschlussgrenze mit, und die ist die Groesse, ohne die nichts
+// laedt. Vor allem aber wird eine unbekannte Quelle NIE auf "schnell"
+// aufgeloest: das waere eine Netzstrom-Freigabe, die niemand erteilt hat.
+func TestABrokenVehicleEntryIsSkippedAndNeverResolvedToFast(t *testing.T) {
+	cfg, err := Parse(doc(`,"grid_limit_kw":32,"vehicle_profiles":[` +
+		`{"tag_ref":"` + tagA + `","source":"phantasie"},` +
+		`{"tag_ref":"` + tagB + `","source":"nur_sonne"}]`))
+	if err != nil {
+		t.Fatalf("ein kaputter Eintrag darf das Dokument nicht zu Fall bringen: %v", err)
+	}
+	if cfg.GridLimitKw == nil || *cfg.GridLimitKw != 32 {
+		t.Fatal("die Anschlussgrenze muss den kaputten Eintrag ueberleben")
+	}
+	if len(cfg.VehicleProfiles) != 1 || cfg.VehicleProfiles[0].TagRef != tagB {
+		t.Fatalf("profiles = %+v", cfg.VehicleProfiles)
+	}
+}
+
+// Der Schluessel ist der Pseudonym DIESER Box. Ein Klartext-IdTag und der
+// doppelt gehashte Bezug aus dem OCPP-Journal der Cloud sind beides Werte, die
+// hier nie ein Fahrzeug treffen wuerden - sie werden am Muster verworfen,
+// damit ein solches Profil gar nicht erst entsteht.
+func TestOnlyThisBoxesOwnPseudonymIsAcceptedAsAKey(t *testing.T) {
+	for _, bad := range []string{
+		"RIG-TAG",                       // ein Klartext-IdTag
+		"tagref_",                       // Praefix ohne Wert
+		"tagref_ABCDEF0123456789abcdef", // Grossbuchstaben - unser Hex ist klein
+		"tagref_1f2e",                   // zu kurz
+		"tagref_zzzzzzzzzzzz",           // kein Hex
+	} {
+		cfg, err := Parse(doc(`,"vehicle_profiles":[{"tag_ref":"` + bad + `","source":"schnell"}]`))
+		if err != nil {
+			t.Fatalf("%q: %v", bad, err)
+		}
+		if len(cfg.VehicleProfiles) != 0 {
+			t.Fatalf("%q wurde als Schluessel akzeptiert: %+v", bad, cfg.VehicleProfiles)
+		}
+	}
+}
+
+func TestADuplicateCardIsListedOnce(t *testing.T) {
+	cfg, err := Parse(doc(`,"vehicle_profiles":[` +
+		`{"tag_ref":"` + tagA + `","source":"schnell"},` +
+		`{"tag_ref":"` + tagA + `","source":"nur_sonne"}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.VehicleProfiles) != 1 || cfg.VehicleProfiles[0].Source != "schnell" {
+		t.Fatalf("profiles = %+v", cfg.VehicleProfiles)
+	}
+}
+
+func TestTooManyVehicleProfilesAreRefused(t *testing.T) {
+	entries := ""
+	for i := 0; i <= MaxVehicleProfiles; i++ {
+		if i > 0 {
+			entries += ","
+		}
+		entries += `{"tag_ref":"tagref_` + hex12(i) + `","source":"schnell"}`
+	}
+	if _, err := Parse(doc(`,"vehicle_profiles":[` + entries + `]`)); err == nil {
+		t.Fatalf("mehr als %d Profile muessen abgelehnt werden", MaxVehicleProfiles)
+	}
+}
+
+func hex12(i int) string {
+	const digits = "0123456789abcdef"
+	out := make([]byte, 12)
+	for p := 11; p >= 0; p-- {
+		out[p] = digits[i&0xf]
+		i >>= 4
+	}
+	return string(out)
+}
+
+// Die eingecheckten P7-Fixturen werden PER PFAD gelesen.
+func TestTheVehicleProfileFixturesParseExactlyAsSpecified(t *testing.T) {
+	dir := filepath.Join("..", "..", "..", "..", "docs", "contracts", "examples")
+
+	cfg, err := Parse(mustRead(t, filepath.Join(dir, "mqtt-charging-config.valid.fahrzeug-profile.json")))
+	if err != nil {
+		t.Fatalf("die gueltige Fixture muss parsen: %v", err)
+	}
+	if len(cfg.VehicleProfiles) != 2 {
+		t.Fatalf("profiles = %+v", cfg.VehicleProfiles)
+	}
+	if cfg.VehicleProfiles[0].Name != "Dienstwagen" || cfg.VehicleProfiles[0].Source != "schnell" {
+		t.Fatalf("erstes Profil = %+v", cfg.VehicleProfiles[0])
+	}
+	if cfg.VehicleProfiles[1].Source != "sonne_zuerst" || cfg.VehicleProfiles[1].MinKw != 4.2 {
+		t.Fatalf("zweites Profil = %+v", cfg.VehicleProfiles[1])
+	}
+	// Die Saeule bleibt auf ihrer eigenen Bahn: das Profil ersetzt sie NUR
+	// fuer die Sitzung dieser Karte.
+	if len(cfg.ChargePoints) != 1 || cfg.ChargePoints[0].Source != "nur_sonne" {
+		t.Fatalf("charge points = %+v", cfg.ChargePoints)
+	}
+
+	back, err := Parse(mustRead(t,
+		filepath.Join(dir, "mqtt-charging-config.valid.fahrzeug-profile-zurueckgenommen.json")))
+	if err != nil {
+		t.Fatalf("die Ruecknahme-Fixture muss parsen: %v", err)
+	}
+	if back.VehicleProfiles == nil || len(back.VehicleProfiles) != 0 {
+		t.Fatalf("sie nimmt alle Profile zurueck: %+v", back.VehicleProfiles)
+	}
+
+	// Die ungueltige Fixture ist der Fehlgriff in Reinform: ein Bezug, der
+	// kein Pseudonym dieser Box ist. Sie ist syntaktisch einwandfrei - der
+	// Test prueft die REGEL, nicht einen Tippfehler in der Datei.
+	raw := mustRead(t, filepath.Join(dir, "mqtt-charging-config.invalid.fahrzeug-profil-journal-bezug.json"))
+	wrong, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("sie darf das Dokument nicht zu Fall bringen: %v", err)
+	}
+	if len(wrong.VehicleProfiles) != 0 {
+		t.Fatalf("ein Journal-/Klartext-Bezug darf nie ein Profil werden: %+v", wrong.VehicleProfiles)
+	}
+	var any map[string]any
+	if err := json.Unmarshal(raw, &any); err != nil {
+		t.Fatalf("die ungueltige Fixture muss gueltiges JSON sein: %v", err)
+	}
+}

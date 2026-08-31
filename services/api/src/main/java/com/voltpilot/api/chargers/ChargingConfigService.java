@@ -3,7 +3,9 @@ package com.voltpilot.api.chargers;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.fahrzeuge.SiteVehicleRepository;
 import com.voltpilot.api.web.dto.ChargingConfigDto;
+import com.voltpilot.api.web.dto.FahrzeugDto.VehicleProfileDto;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -80,14 +82,22 @@ public class ChargingConfigService {
     private final ChargingConfigRepository configs;
     private final DeviceChargerStatusRepository chargers;
     private final ObjectProvider<ChargingConfigPublisher> publisher;
+    /**
+     * Die Fahrzeug-Profile (P7). Als {@link ObjectProvider}, damit ein
+     * Deployment ohne diese Bohne (ein Test-Kontext etwa) hier nichts anderes
+     * tut als vorher - nie ein Pflicht-Glied fuer ein additives Feature.
+     */
+    private final ObjectProvider<SiteVehicleRepository> vehicles;
 
     public ChargingConfigService(SiteRepository sites, ChargingConfigRepository configs,
             DeviceChargerStatusRepository chargers,
-            ObjectProvider<ChargingConfigPublisher> publisher) {
+            ObjectProvider<ChargingConfigPublisher> publisher,
+            ObjectProvider<SiteVehicleRepository> vehicles) {
         this.sites = sites;
         this.configs = configs;
         this.chargers = chargers;
         this.publisher = publisher;
+        this.vehicles = vehicles;
     }
 
     /** Die gepflegte Konfiguration (leer = noch nichts gepflegt). */
@@ -187,6 +197,16 @@ public class ChargingConfigService {
      * eine Anschlussgrenze folgenlos (ihr Budget verteilt sie an niemanden).
      * Raten wäre die schlechtere Hälfte.
      */
+    /**
+     * Schickt die AKTUELL gespeicherte Konfiguration erneut hinaus - der Weg,
+     * den ein Nachbar-Feature nimmt, das im selben Dokument mitreist (P7: die
+     * Fahrzeug-Profile). Es gibt bewusst nur EINEN Kanal zur Box, also auch nur
+     * einen Weg, ihn zu benutzen.
+     */
+    public void pushFor(UUID tenantId, UUID siteId) {
+        push(tenantId, siteId, configs.forSite(siteId));
+    }
+
     void push(UUID tenantId, UUID siteId, ChargingConfigDto config) {
         ChargingConfigPublisher pub = publisher.getIfAvailable();
         if (pub == null) {
@@ -195,13 +215,40 @@ public class ChargingConfigService {
             return;
         }
         Instant now = Instant.now();
+        // ⚠ Die FAHRZEUG-PROFILE (P7) werden hier GELESEN, nicht durchgereicht:
+        // sie leben in ihrer eigenen Tabelle, weil eine Ladekarte ein anderer
+        // Gegenstand ist als eine Anschlussgrenze - aber sie reisen im SELBEN
+        // retained Dokument, weil die Box nur eines hat. Die Liste ist die
+        // GANZE Aussage und geht deshalb auch LEER hinaus: nur so kommt eine
+        // Rücknahme bei einer Box an, die gerade offline war.
+        List<VehicleProfileDto> vehicles = vehicleProfiles(siteId);
         for (UUID deviceId : configs.deviceIds(siteId)) {
             pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(),
                     config.priorityChargePointIds(), config.surplusPolicy(),
                     config.storagePriority(), config.chargePoints(),
                     config.removedChargePointIds(), config.frame(), config.storageRank(),
-                    config.wallboxes(), now);
+                    config.wallboxes(), vehicles, now);
         }
+    }
+
+    /**
+     * Die Fahrzeug-Profile dieser Anlage in Draht-Form (P7).
+     *
+     * <p>⚠ Sie ist NIE {@code null}: das Portal besitzt die Menge allein, also
+     * ist „keine Profile" eine Aussage und muss die Box erreichen. Nur ein
+     * Deployment ohne die P7-Bohne (ein älterer Stand) sagt gar nichts.
+     */
+    private List<VehicleProfileDto> vehicleProfiles(UUID siteId) {
+        SiteVehicleRepository repo = vehicles.getIfAvailable();
+        if (repo == null) {
+            return null;
+        }
+        List<VehicleProfileDto> out = new ArrayList<>();
+        for (SiteVehicleRepository.Row r : repo.profilesForSite(siteId)) {
+            out.add(new VehicleProfileDto(r.tagRef(), r.name(), r.source(),
+                    r.minKw() == null ? null : r.minKw().doubleValue()));
+        }
+        return out;
     }
 
     /**

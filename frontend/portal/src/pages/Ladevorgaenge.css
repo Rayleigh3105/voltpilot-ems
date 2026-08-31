@@ -45,6 +45,20 @@
   font-size: 0.85rem;
   color: var(--vp-muted, #64748b);
 }
+/* Das FAHRZEUG dieser Ladung (P7) - der Weg auf sein Profil. */
+.vp-lade-row-fahrzeug {
+  grid-column: 2 / span 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+.vp-lade-row-fahrzeug-text {
+  color: var(--vp-muted, #64748b);
+  overflow-wrap: anywhere;
+}
 
 /* Zustands-Farben tragen IMMER auch ihr Wort - die Farbe allein sagt nichts. */
 .vp-lade-dot {
@@ -85,4 +99,5 @@
   .vp-lade-row { grid-template-columns: 12px 1fr; }
   .vp-lade-row-values { grid-column: 1 / span 2; grid-row: auto; justify-items: start; }
   .vp-lade-row-reason { grid-column: 1 / span 2; }
+  .vp-lade-row-fahrzeug { grid-column: 1 / span 2; }
 }

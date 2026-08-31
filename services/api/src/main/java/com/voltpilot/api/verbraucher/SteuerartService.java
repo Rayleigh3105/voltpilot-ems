@@ -234,19 +234,13 @@ public class SteuerartService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, OCPP_OHNE_KENNUNG);
         }
         String quelle = wunsch == null ? null : wunsch.quelle();
-        String bahn;
-        BigDecimal minKw = null;
-        if (SteuerartProjektion.QUELLE_UEBERSCHUSS.equals(quelle)) {
-            // ⚠ Die Vorgabe ist „pausieren" = nur Sonnenstrom: sie ist die
-            // engere der beiden und damit die, die niemanden überrascht.
-            boolean mindest = SteuerartProjektion.MODUS_MINDESTLEISTUNG
-                    .equals(wunsch.ueberschussModus());
-            bahn = mindest ? SteuerartProjektion.POLICY_SONNE_ZUERST
-                    : SteuerartProjektion.POLICY_NUR_SONNE;
-            minKw = mindest ? wunsch.mindestleistungKw() : null;
-        } else {
-            bahn = SteuerartProjektion.POLICY_SCHNELL;
-        }
+        String modus = wunsch == null ? null : wunsch.ueberschussModus();
+        // ⚠ Die Abbildung Quelle ⟷ Bahn liegt in SteuerartProjektion, damit sie
+        // EINE ist: seit P7 fährt ein FAHRZEUG-Profil dieselbe Umrechnung, und
+        // zwei Kopien wären eine Karte, die anders lädt als ihre Säule.
+        String bahn = SteuerartProjektion.bahnAus(quelle, modus);
+        BigDecimal minKw = SteuerartProjektion.POLICY_SONNE_ZUERST.equals(bahn)
+                ? wunsch.mindestleistungKw() : null;
         charging.setChargePointSource(siteId, chargePointId, bahn,
                 minKw == null ? null : minKw.doubleValue());
         return !SteuerartProjektion.QUELLE_GUENSTIG.equals(quelle);

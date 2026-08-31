@@ -834,6 +834,20 @@ type ChargerConnectorEntry struct {
 	// half an hour ago, and a surface that shows the latter as current is
 	// lying. Empty = never metered.
 	MeteredAt string `json:"metered_at,omitempty"`
+	// TagRef is the PSEUDONYM of the card that started the running session
+	// (Verbrauchsmanagement v1 / P7): `tagref_` + HMAC-SHA256 with this box's
+	// own privacy key. It is what makes a vehicle profile addressable at all -
+	// the cloud cannot compute it (it has no box key) and must be told.
+	//
+	// ⚠ It is NOT the reference the cloud stores for OCPP transactions. That
+	// one is re-HMACed with a cloud-wide pepper on ingest, so the same card
+	// carries two different pseudonyms in two different tables. They are
+	// deliberately never joined; a profile keyed on the journal's value would
+	// never match a session.
+	//
+	// Empty = no session, or a station that authorised without a tag - never a
+	// fabricated one.
+	TagRef string `json:"tag_ref,omitempty"`
 	// Boost is true while this plug's „Jetzt voll laden" is running: the value
 	// was formed WITHOUT the source cap and may contain grid power. The cloud
 	// SAYS so - a full charge nobody asked for would be a silent break of the

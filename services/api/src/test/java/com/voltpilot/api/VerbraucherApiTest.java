@@ -652,8 +652,13 @@ class VerbraucherApiTest {
         ObjectProvider<com.voltpilot.api.command.CommandLogWriter> logProvider =
                 org.mockito.Mockito.mock(ObjectProvider.class);
         org.mockito.Mockito.when(logProvider.getIfAvailable()).thenReturn(commandLog);
+        // P7 ist hier nicht Gegenstand: ohne die Bohne verhaelt sich der
+        // Zuhoerer zeichengleich wie vor dem Paket.
+        @SuppressWarnings("unchecked")
+        ObjectProvider<com.voltpilot.api.fahrzeuge.SiteVehicleRepository> vehicleProvider =
+                org.mockito.Mockito.mock(ObjectProvider.class);
         ChargerStatusListener listener = new ChargerStatusListener("tcp://unused", "", "", devices,
-                chargerStatus, provider, logProvider);
+                chargerStatus, provider, logProvider, vehicleProvider);
         String payload = """
                 {"schema_version":"1.0","tenant_id":"%s","site_id":"%s","device_id":"%s",
                  "online":true,"chargers":%s}"""

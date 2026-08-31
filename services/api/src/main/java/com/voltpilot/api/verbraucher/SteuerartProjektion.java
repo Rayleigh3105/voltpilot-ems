@@ -119,6 +119,32 @@ public final class SteuerartProjektion {
         return laneSteuerart(p, minPowerKw, HERKUNFT_SAEULE);
     }
 
+    /**
+     * Die UMKEHRUNG von {@link #saeulenSteuerart}: aus Quelle + Überschuss-Modus
+     * wird das Bahn-Wort der Box ({@code nur_sonne|sonne_zuerst|schnell}).
+     *
+     * <p>⚠ Sie steht HIER, weil die Abbildung Quelle ⟷ Bahn EINE ist und dieses
+     * Vokabular hier wohnt. Zwei Aufrufer teilen sie: der Schreibweg der Säule
+     * ({@code SteuerartService.schreibeBahn}, P5) und der eines FAHRZEUG-Profils
+     * (P7). Zwei Kopien wären zwei Antworten auf dieselbe Frage - und die erste
+     * Abweichung wäre eine Karte, die anders lädt, als ihre Säule es täte.
+     *
+     * <p>⚠ Die Vorgabe eines Überschuss-Wunsches ist {@code pausieren} = „nur
+     * Sonnenstrom": sie ist die ENGERE der beiden und damit die, die niemanden
+     * überrascht. Alles, was nicht „Überschuss" ist, fährt die Bahn
+     * {@code schnell} - sie ist keine Quellen-Politik, sondern ihre Abwesenheit.
+     *
+     * @param quelle einer der {@code QUELLE_*}-Werte
+     * @param ueberschussModus {@link #MODUS_MINDESTLEISTUNG} oder sonst irgendwas
+     */
+    public static String bahnAus(String quelle, String ueberschussModus) {
+        if (!QUELLE_UEBERSCHUSS.equals(quelle)) {
+            return POLICY_SCHNELL;
+        }
+        return MODUS_MINDESTLEISTUNG.equals(ueberschussModus) ? POLICY_SONNE_ZUERST
+                : POLICY_NUR_SONNE;
+    }
+
     private static Steuerart laneSteuerart(String surplusPolicy, BigDecimal minPowerKw,
             String herkunft) {
         String p = surplusPolicy == null ? "" : surplusPolicy.trim();

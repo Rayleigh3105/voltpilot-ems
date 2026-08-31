@@ -240,3 +240,65 @@ func TestAnUnmeteredConnectorCarriesNoBalanceAndNoAge(t *testing.T) {
 		}
 	}
 }
+
+// THE PRIVACY PROMISE OF P7, on the ONE path that leaves the box: the heartbeat
+// carries the card's PSEUDONYM and never its plaintext.
+//
+// ⚠ It asserts on the SERIALIZED bytes, not on a field: a future field that
+// happened to carry the idTag would pass a field check and still ship the
+// plaintext to the cloud.
+//
+// ⚠ And the plaintext does not even reach the box's own LAN surface: `/api/ocpp`
+// serializes `state.OcppInfo`, which carries only the pseudonym, and the idTag
+// never leaves the `csms` package. The rig pins that half (L15a).
+func TestTheHeartbeatCarriesThePseudonymAndNeverThePlaintextCard(t *testing.T) {
+	const karte = "GEHEIME-KARTE-4711"
+	a := ocppAgent(t, nil)
+	ocppSite(t, a, 167)
+	st := ocppStation(t, a, "saeule-1", 1, 22)
+	if err := st.Plug(1, ocppsim.Vehicle{DemandKw: 22, MinKw: 5, IdTag: karte}); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, "the CSMS booked the session", func() bool {
+		c, ok := a.ocpp.srv.Snapshot().ChargerByID("saeule-1")
+		return ok && len(c.ActiveConnectors()) == 1
+	})
+	a.ocppStep(context.Background())
+
+	sum := a.chargersSummary()
+	if sum == nil || len(sum.Chargers) != 1 || len(sum.Chargers[0].Connectors) != 1 {
+		t.Fatalf("the rig station must report its one connector: %+v", sum)
+	}
+	ref := sum.Chargers[0].Connectors[0].TagRef
+	if !strings.HasPrefix(ref, "tagref_") {
+		t.Fatalf("the heartbeat must carry the box's pseudonym, got %q", ref)
+	}
+	raw, err := json.Marshal(sum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), karte) {
+		t.Fatalf("the plaintext card must NEVER leave the box: %s", raw)
+	}
+	// And it is stable: the same card at the same box is the same pseudonym, or
+	// a customer's profile would stop matching between two charges.
+	if err := st.Unplug(1); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, "the session closed", func() bool {
+		c, ok := a.ocpp.srv.Snapshot().ChargerByID("saeule-1")
+		return ok && len(c.ActiveConnectors()) == 0
+	})
+	if err := st.Plug(1, ocppsim.Vehicle{DemandKw: 22, MinKw: 5, IdTag: karte}); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, "the CSMS booked the second session", func() bool {
+		c, ok := a.ocpp.srv.Snapshot().ChargerByID("saeule-1")
+		return ok && len(c.ActiveConnectors()) == 1
+	})
+	a.ocppStep(context.Background())
+	again := a.chargersSummary()
+	if got := again.Chargers[0].Connectors[0].TagRef; got != ref {
+		t.Fatalf("the same card must keep its pseudonym: %q vs %q", got, ref)
+	}
+}

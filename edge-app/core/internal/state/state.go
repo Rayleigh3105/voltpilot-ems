@@ -823,6 +823,11 @@ type OcppConnector struct {
 	// It is the AGE of PowerKw/EnergyKwh/SocPct: a value without it could be
 	// minutes old and still read as current. 0 = never metered.
 	MeteredAtMs int64 `json:"metered_at_ms,omitempty"`
+	// TagRef is the PSEUDONYM of the card that started the running session
+	// (Verbrauchsmanagement v1 / P7). Empty = no session, or a station that
+	// authorised without a tag. It is the box's OWN pseudonym - the plaintext
+	// idTag stays inside the process, here as everywhere.
+	TagRef string `json:"tag_ref,omitempty"`
 	// Boost is true while this plug's „Jetzt voll laden" is running: the value
 	// was formed WITHOUT the source cap and may contain grid power. The
 	// surface SAYS so - a full charge nobody asked for would be a silent

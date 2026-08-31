@@ -104,12 +104,14 @@ func main() {
 		_ = json.NewEncoder(w).Encode(out)
 	})
 
-	// POST /plug?connector=1&demand=240&min=5 - a vehicle arrives.
+	// POST /plug?connector=1&demand=240&min=5[&tag=KARTE-A] - a vehicle arrives.
+	// `tag` is the CARD it presents (P7); omitted keeps the rig's one card.
 	mux.HandleFunc("POST /plug", func(w http.ResponseWriter, r *http.Request) {
 		c := intParam(r, "connector", 1)
 		v := ocppsim.Vehicle{
 			DemandKw: floatParam(r, "demand", 240),
 			MinKw:    floatParam(r, "min", 0),
+			IdTag:    r.URL.Query().Get("tag"),
 		}
 		if err := st.Plug(c, v); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -50,6 +50,11 @@ const (
 	MaxRank      = 4096
 )
 
+// MaxVehicleProfiles mirrors the contract's cap on the vehicle profiles (P7).
+// Generous on purpose: a company yard with one card per driver is a real site,
+// and a bound that refuses a real one is worse than none.
+const MaxVehicleProfiles = 128
+
 // The connection vocabulary of the contract. Repeated here (not imported from
 // csms) because this package is the PARSER and must stay free of the runtime -
 // the two are pinned against each other in chargingcfg's tests.
@@ -109,6 +114,21 @@ type Config struct {
 	// BOTH lists is a contradiction the document should never carry; if it does,
 	// the REMOVAL wins - the direction that admits less.
 	RemovedChargePoints []string
+
+	// VehicleProfiles are the per-CARD source lanes (Verbrauchsmanagement v1 /
+	// P7): at the same charge point the company car may charge straight away
+	// while the private car waits for the sun.
+	//
+	// ⚠ Here nil and EMPTY are DIFFERENT, and the opposite way round from
+	// ChargePoints: the portal owns this set alone (there is no :8484 surface
+	// for it), so a sent list REPLACES the stored one wholesale and an empty
+	// list means "no profiles". That is what makes deleting a profile work
+	// without a tombstone list - the set IS the statement, exactly like
+	// Priorities.
+	//
+	// ⚠ The key is the box's OWN pseudonym (`csms.Session.TagRef`). The cloud
+	// cannot compute it; it can only repeat what the heartbeat told it.
+	VehicleProfiles []VehicleProfile
 
 	// Frame is the LADEPARK-RAHMEN (Verbrauchsmanagement v1 / E10): the five
 	// physical numbers that used to live only on :8484. nil = the portal says
@@ -195,6 +215,27 @@ type ChargePoint struct {
 	Rank int
 }
 
+// VehicleProfile is one card's own source lane. It carries a QUELLE and never
+// a ZIEL: a deadline is planned hours ahead for a CHARGE POINT, and which car
+// will be plugged in by then is not knowable at planning time - the source, in
+// contrast, is a decision of the moment and that is exactly what a session
+// carries.
+type VehicleProfile struct {
+	// TagRef is the pseudonym the BOX minted for this card
+	// (`tagref_` + 24 hex). It is matched against `csms.Session.TagRef`.
+	TagRef string
+	// Name is display only - the box decides nothing by it and never passes it
+	// to a station. It travels so the local :8484 surface can say the same
+	// name the portal says.
+	Name string
+	// Source is one of the three lane words; a profile without one says
+	// nothing and is skipped.
+	Source string
+	// MinKw is this card's own minimum useful power; 0 = say nothing and the
+	// station's (or the site's) number applies.
+	MinKw float64
+}
+
 // wire is the on-the-wire shape. Pointers where absence differs from a value.
 type wire struct {
 	SchemaVersion   string     `json:"schema_version"`
@@ -210,7 +251,10 @@ type wire struct {
 	Frame           *wireFrame `json:"frame"`
 	StorageRank     *int       `json:"storage_rank"`
 	Wallboxes       *[]wireWB  `json:"wallboxes"`
-	PublishedAt     string     `json:"published_at"`
+	// A POINTER because empty and absent differ: `[]` withdraws every profile,
+	// absent keeps what the box has.
+	VehicleProfiles *[]wireVehicle `json:"vehicle_profiles"`
+	PublishedAt     string         `json:"published_at"`
 }
 
 type wireWB struct {
@@ -229,6 +273,13 @@ type wireFrame struct {
 	RotationMinutes *int     `json:"rotation_minutes"`
 	MaxHouseLoadKw  *float64 `json:"max_house_load_kw"`
 	StaticBudget    *bool    `json:"static_budget"`
+}
+
+type wireVehicle struct {
+	TagRef string  `json:"tag_ref"`
+	Name   string  `json:"name"`
+	Source string  `json:"source"`
+	MinKw  float64 `json:"min_kw"`
 }
 
 type wireCP struct {
@@ -386,6 +437,46 @@ func Parse(payload []byte) (Config, error) {
 		}
 		cfg.ChargePoints = kept
 	}
+	// ⚠ Die Fahrzeug-Profile sind eine MENGE: eine gesendete Liste ersetzt die
+	// gespeicherte vollständig, eine LEERE nimmt alle zurück. Deshalb wird hier
+	// auch bei null Einträgen eine nicht-nil Liste gesetzt, sobald das Feld
+	// überhaupt da war - genau daran erkennt der Anwender die Rücknahme.
+	if w.VehicleProfiles != nil {
+		list := *w.VehicleProfiles
+		if len(list) > MaxVehicleProfiles {
+			return Config{}, fmt.Errorf("das Dokument nennt %d Fahrzeug-Profile - höchstens %d sind erlaubt",
+				len(list), MaxVehicleProfiles)
+		}
+		profiles := make([]VehicleProfile, 0, len(list))
+		for _, v := range list {
+			ref := strings.TrimSpace(v.TagRef)
+			// ⚠ Ein Eintrag, den wir nicht eindeutig verstehen, wird
+			// ÜBERSPRUNGEN statt das Dokument zu Fall zu bringen - dieselbe
+			// Nachsicht wie bei den Säulen, und aus demselben Grund: das
+			// Dokument trägt die Anschlussgrenze mit.
+			//
+			// Verworfen wird ein Bezug, der kein Pseudonym DIESER Box sein
+			// kann (ein Klartext-IdTag etwa, oder der doppelt gehashte Bezug
+			// aus dem OCPP-Journal der Cloud), ein Duplikat - und vor allem
+			// eine unbekannte Quelle: sie auf „schnell" aufzulösen wäre eine
+			// Netzstrom-Freigabe, die niemand erteilt hat.
+			if !validTagRef(ref) || vehicleListed(profiles, ref) {
+				continue
+			}
+			src := strings.TrimSpace(v.Source)
+			if !validPolicy(src) {
+				continue
+			}
+			minKw := v.MinKw
+			if math.IsNaN(minKw) || math.IsInf(minKw, 0) || minKw < 0 || minKw > MaxGridLimitKw {
+				minKw = 0
+			}
+			profiles = append(profiles, VehicleProfile{
+				TagRef: ref, Name: strings.TrimSpace(v.Name), Source: src, MinKw: minKw,
+			})
+		}
+		cfg.VehicleProfiles = profiles
+	}
 	// ⚠ Der Rahmen wird NICHT hier auf Plausibilität geprüft: die Regeln
 	// dafür wohnen an EINER Stelle, in lastmgmt.Settings.Apply (dieselbe, die
 	// die :8484-Oberfläche fährt). Ein zweiter Satz Grenzen wäre eine zweite
@@ -458,6 +549,37 @@ func Parse(payload []byte) (Config, error) {
 func wallboxListed(list []Wallbox, id string) bool {
 	for _, w := range list {
 		if w.EntityID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// validTagRef accepts only what this box could itself have minted: the literal
+// prefix plus lower-case hex. It is a FORM check, not a proof - a well-formed
+// pseudonym of ANOTHER box simply never matches a session here, which is the
+// honest outcome and needs no rule of its own.
+func validTagRef(ref string) bool {
+	const prefix = "tagref_"
+	if !strings.HasPrefix(ref, prefix) {
+		return false
+	}
+	hex := ref[len(prefix):]
+	if len(hex) < 8 || len(hex) > 64 {
+		return false
+	}
+	for i := 0; i < len(hex); i++ {
+		c := hex[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func vehicleListed(list []VehicleProfile, ref string) bool {
+	for _, v := range list {
+		if v.TagRef == ref {
 			return true
 		}
 	}

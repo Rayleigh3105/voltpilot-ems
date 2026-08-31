@@ -27,6 +27,8 @@ import type { SiteVerbraucher } from './verbraucherZone';
 export type { SiteVerbraucher } from './verbraucherZone';
 import type { SteuerartErgebnis, SteuerartWunsch } from './steuerartDialog';
 export type { SteuerartErgebnis, SteuerartWunsch } from './steuerartDialog';
+import type { FahrzeugWunsch, SiteFahrzeuge } from './fahrzeugProfile';
+export type { Fahrzeug, FahrzeugWunsch, SiteFahrzeuge } from './fahrzeugProfile';
 import type { Topology } from './topology';
 import type { ModellWahlZustand } from './prognose';
 import type { ComponentMatch } from './komponentenAssistent';
@@ -3228,6 +3230,24 @@ export const api = {
       `/api/v1/sites/${siteId}/verbraucher/${entityId}/steuerart`,
       { method: 'PUT', body: JSON.stringify(wunsch) },
     ),
+  /**
+   * Die FAHRZEUGE einer Anlage (Verbrauchsmanagement v1 P7): je Ladekarte, die
+   * hier geladen hat, eine Zeile - mit Namen und Steuerart, sobald der Kunde
+   * sie vergeben hat.
+   *
+   * ⚠ Der Schlüssel ist der PSEUDONYM der Box, nie ein Klartext-IdTag - das
+   * Portal bekommt ihn gar nicht zu sehen. Er ist auch NICHT der Bezug aus dem
+   * OCPP-Journal (`OcppTransaction.startIdTagRef`): den pfeffert die Cloud ein
+   * zweites Mal, dieselbe Karte trägt dort einen anderen Wert.
+   */
+  siteFahrzeuge: (siteId: string) =>
+    request<SiteFahrzeuge>(`/api/v1/sites/${siteId}/fahrzeuge`),
+  setzeFahrzeug: (siteId: string, tagRef: string, wunsch: FahrzeugWunsch) =>
+    request<SiteFahrzeuge>(`/api/v1/sites/${siteId}/fahrzeuge/${encodeURIComponent(tagRef)}`,
+      { method: 'PUT', body: JSON.stringify(wunsch) }),
+  entferneFahrzeugProfil: (siteId: string, tagRef: string) =>
+    request<SiteFahrzeuge>(`/api/v1/sites/${siteId}/fahrzeuge/${encodeURIComponent(tagRef)}`,
+      { method: 'DELETE' }),
   /** Complete, tenant-scoped OCPP 1.6 station inventory for the device home. */
   ocppStations: (siteId: string, signal?: AbortSignal) =>
     request<OcppStation[]>(`/api/v1/sites/${siteId}/ocpp/stations`, { signal }),

@@ -37,6 +37,8 @@ const (
 	maxRank = 4096
 	// maxWallboxes mirrors the contract's cap on `wallboxes[]`.
 	maxWallboxes = 64
+	// maxVehicleProfiles mirrors the contract's cap (chargingcfg).
+	maxVehicleProfiles = 128
 )
 
 // SettingsRequest is what the setup surface posts. Every field is a POINTER so
@@ -67,6 +69,12 @@ type SettingsRequest struct {
 	// make a removal impossible - the `priority_charge_point_ids` rule.
 	StorageRank *int       `json:"storage_rank,omitempty"`
 	Wallboxes   *[]Wallbox `json:"wallboxes,omitempty"`
+	// VehicleProfiles is the P7 set. A POINTER for the same reason as every
+	// other field, but with the opposite emptiness rule: `nil` says nothing and
+	// keeps the stored profiles, while a non-nil EMPTY slice is the customer
+	// saying "no profiles any more". The set is the whole statement, so there
+	// is no per-entry removal and no tombstone.
+	VehicleProfiles *[]VehicleProfile `json:"vehicle_profiles,omitempty"`
 }
 
 // storedSettings is the on-disk shape. RotationPeriod is persisted in minutes
@@ -91,6 +99,16 @@ type storedSettings struct {
 	// a fresh box read identically.
 	StorageRank int       `json:"storage_rank,omitempty"`
 	Wallboxes   []Wallbox `json:"wallboxes,omitempty"`
+	// Omitted while empty so an older file and a fresh box read identically.
+	VehicleProfiles []storedVehicle `json:"vehicle_profiles,omitempty"`
+}
+
+// storedVehicle is the on-disk shape of one P7 profile.
+type storedVehicle struct {
+	TagRef string  `json:"tag_ref"`
+	Name   string  `json:"name,omitempty"`
+	Source string  `json:"source"`
+	MinKw  float64 `json:"min_kw,omitempty"`
 }
 
 // SchemaVersion of lastmgmt.json.
@@ -110,7 +128,20 @@ func (s Settings) stored() storedSettings {
 		StoragePriority: string(s.StoragePriority),
 		StorageRank:     s.StorageRank,
 		Wallboxes:       s.Wallboxes,
+		VehicleProfiles: storedVehicles(s.VehicleProfiles),
 	}
+}
+
+func storedVehicles(list []VehicleProfile) []storedVehicle {
+	if len(list) == 0 {
+		return nil
+	}
+	out := make([]storedVehicle, 0, len(list))
+	for _, v := range list {
+		out = append(out, storedVehicle{TagRef: v.TagRef, Name: v.Name,
+			Source: string(v.Source), MinKw: v.MinKw})
+	}
+	return out
 }
 
 func (st storedSettings) settings() Settings {
@@ -126,7 +157,30 @@ func (st storedSettings) settings() Settings {
 		StoragePriority: StoragePriority(st.StoragePriority),
 		StorageRank:     st.StorageRank,
 		Wallboxes:       st.Wallboxes,
+		VehicleProfiles: loadedVehicles(st.VehicleProfiles),
 	}.WithDefaults()
+}
+
+// loadedVehicles is the READ path and therefore forgiving: a corrupt entry is
+// dropped, never a reason to refuse the whole file. A profile that vanishes
+// costs a card its own lane (it falls back to the station's) - a file the box
+// refuses to read costs the site its connection limit.
+func loadedVehicles(list []storedVehicle) []VehicleProfile {
+	if len(list) == 0 {
+		return nil
+	}
+	out := make([]VehicleProfile, 0, len(list))
+	for _, v := range list {
+		src := SurplusPolicy(v.Source)
+		if v.TagRef == "" || NormalizePolicy(src) != src {
+			continue
+		}
+		out = append(out, VehicleProfile{TagRef: v.TagRef, Name: v.Name, Source: src, MinKw: v.MinKw})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // Apply folds a request onto the current settings and validates the result.
@@ -215,6 +269,41 @@ func (s Settings) Apply(req SettingsRequest) (Settings, error) {
 			return s, err
 		}
 		out.Wallboxes = list
+	}
+	// ⚠ The SET is replaced wholesale, never merged: the portal owns it alone,
+	// so a merge would make a deleted profile immortal. An unknown source word
+	// is REFUSED here (the operator/portal is typing), byte-for-byte the rule
+	// above - a silent fallback to „schnell" would hand out grid power nobody
+	// released.
+	if req.VehicleProfiles != nil {
+		list := *req.VehicleProfiles
+		if len(list) > maxVehicleProfiles {
+			return s, invalid("Höchstens %d Fahrzeug-Profile sind möglich.", maxVehicleProfiles)
+		}
+		profiles := make([]VehicleProfile, 0, len(list))
+		seen := make(map[string]bool, len(list))
+		for _, v := range list {
+			if v.TagRef == "" {
+				return s, invalid("Ein Fahrzeug-Profil braucht die Kennung der Ladekarte.")
+			}
+			if seen[v.TagRef] {
+				return s, invalid("Die Ladekarte %q ist zweimal genannt.", v.TagRef)
+			}
+			seen[v.TagRef] = true
+			if NormalizePolicy(v.Source) != v.Source {
+				return s, invalid("Unbekannte Quelle %q für die Ladekarte %q. Erlaubt sind %q, %q und %q.",
+					v.Source, v.TagRef, PolicySolarOnly, PolicySolarFirst, PolicyFast)
+			}
+			if v.MinKw < 0 || v.MinKw > maxGridLimitKw || isBad(v.MinKw) {
+				return s, invalid("Die Mindestleistung der Ladekarte %q muss zwischen 0 und %g kW liegen.",
+					v.TagRef, float64(maxGridLimitKw))
+			}
+			profiles = append(profiles, v)
+		}
+		if len(profiles) == 0 {
+			profiles = nil
+		}
+		out.VehicleProfiles = profiles
 	}
 	out = out.WithDefaults()
 	if out.HouseReserveKw > out.GridLimitKw && out.GridLimitKw > 0 {

@@ -70,9 +70,14 @@ func (a *Agent) onChargingConfig(payload []byte) {
 	// PATCH, also fällt ein nicht genanntes Rahmen-Feld auf den Wert der Box
 	// zurück, und die Plausibilitäts-Regeln bleiben die EINE Stelle
 	// (Settings.Apply), die auch die :8484-Oberfläche fährt.
+	// ⚠ Die FAHRZEUG-PROFILE (P7) reisen im SELBEN Apply, und sie sind der
+	// eine Eintrag, dessen LEERE Liste eine Aussage ist: der Parser setzt sie
+	// genau dann auf nicht-nil, wenn das Feld im Dokument stand, also heißt
+	// „da, aber leer" hier „alle Profile zurücknehmen".
 	frame := cfg.Frame
 	if cfg.GridLimitKw != nil || cfg.SurplusPolicy != nil || cfg.StoragePriority != nil ||
-		cfg.StorageRank != nil || cfg.Wallboxes != nil || frame != nil {
+		cfg.StorageRank != nil || cfg.Wallboxes != nil || frame != nil ||
+		cfg.VehicleProfiles != nil {
 		req := lastmgmt.SettingsRequest{
 			GridLimitKw:     cfg.GridLimitKw,
 			SurplusPolicy:   cfg.SurplusPolicy,
@@ -83,6 +88,16 @@ func (a *Agent) onChargingConfig(payload []byte) {
 			// SettingsRequest).
 			StorageRank: cfg.StorageRank,
 			Wallboxes:   wallboxRequest(cfg.Wallboxes),
+		}
+		if cfg.VehicleProfiles != nil {
+			profiles := make([]lastmgmt.VehicleProfile, 0, len(cfg.VehicleProfiles))
+			for _, v := range cfg.VehicleProfiles {
+				profiles = append(profiles, lastmgmt.VehicleProfile{
+					TagRef: v.TagRef, Name: v.Name,
+					Source: lastmgmt.SurplusPolicy(v.Source), MinKw: v.MinKw,
+				})
+			}
+			req.VehicleProfiles = &profiles
 		}
 		if frame != nil {
 			req.HouseReserveKw = frame.HouseReserveKw
@@ -99,7 +114,10 @@ func (a *Agent) onChargingConfig(payload []byte) {
 				"grid_limit_kw", cfg.GridLimitKw,
 				"surplus_policy", cfg.SurplusPolicy,
 				"storage_priority", cfg.StoragePriority,
-				"storage_rank", intOrNil(cfg.StorageRank))
+				"storage_rank", intOrNil(cfg.StorageRank),
+				// ⚠ Nur die ZAHL, nie ein Pseudonym: ein Protokoll ist der
+				// falsche Ort für eine Kennung, an der ein Fahrzeug hängt.
+				"vehicle_profiles", len(cfg.VehicleProfiles))
 		}
 	}
 	// ⚠ Die Allowlist ZUERST: eine gerade eingetragene Säule soll den Vorrang

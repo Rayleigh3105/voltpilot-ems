@@ -97,6 +97,7 @@ func chargerEntry(c state.OcppCharger) cloud.ChargerEntry {
 			SessionSince:  msTime(con.SessionSince),
 			SessionKwh:    con.SessionKwh,
 			MeteredAt:     msTime(con.MeteredAtMs),
+			TagRef:        con.TagRef,
 			Boost:         con.Boost,
 		})
 	}

@@ -42,6 +42,7 @@ import { SteuerartIntro } from '../components/SteuerartIntro';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { VerbraucherZone } from '../components/VerbraucherZone';
 import { quelleLang, type SiteVerbraucher } from '../verbraucherZone';
+import type { SiteFahrzeuge } from '../fahrzeugProfile';
 import { Betriebsmodelle } from '../components/Betriebsmodelle';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ModusContainer } from '../components/ModusContainer';
@@ -137,6 +138,9 @@ export function SteuerungSection({
    * Steuerungsseite bleibt vollständig bedienbar.
    */
   const [verbraucher, setVerbraucher] = useState<SiteVerbraucher | null>(null);
+  // P7: die Ladekarten. null = nicht geladen bzw. ein älteres Backend - der
+  // Abschnitt erscheint dann gar nicht, statt eine leere Liste zu behaupten.
+  const [fahrzeuge, setFahrzeuge] = useState<SiteFahrzeuge | null>(null);
   /**
    * Die Komponente, deren Steuerart gerade bearbeitet wird (P2) - ein interner
    * Sub-View-State wie `editing`, kein neuer Routen-Parameter.
@@ -212,9 +216,13 @@ export function SteuerungSection({
       // Anlagen-Standard und die Rangliste - EIN Aggregat, zwei Abnehmer
       // (die Verbraucher-Zone und die Quelle der Ladepunkt-Zeilen in „Jetzt").
       api.siteVerbraucher(site.id).catch(() => null),
+      // Verbrauchsmanagement v1 / P7: die Ladekarten dieser Anlage. Fail-soft
+      // wie der Rest - ein älteres Backend kennt die Route nicht, und dann
+      // erscheint der Abschnitt gar nicht statt leer.
+      api.siteFahrzeuge(site.id).catch(() => null),
     ])
       .then(([list, entityList, gov, profile, money, shelf, siteAssets, chargePoints,
-        verbraucherZone]) => {
+        verbraucherZone, fahrzeugListe]) => {
         setFlows(list);
         setEntities(entityList);
         setGovernance(gov);
@@ -224,6 +232,7 @@ export function SteuerungSection({
         setAssets(siteAssets);
         setCharging(chargePoints);
         setVerbraucher(verbraucherZone);
+        setFahrzeuge(fahrzeugListe);
         setZoneNow(new Date());
         setListState('idle');
       })
@@ -531,6 +540,24 @@ export function SteuerungSection({
   );
 
   /**
+   * Der NAME zum Karten-Pseudonym einer laufenden Ladung (P7).
+   *
+   * ⚠ NUR ein BENANNTES Fahrzeug wird genannt. „Karte 1f2e…" in der Jetzt-Zeile
+   * beantwortete keine Frage - der Kunde erkennt daran nichts wieder, und die
+   * Zeile trüge ein Wort mehr ohne eine Aussage mehr. Wer benennen will, tut es
+   * in der Fahrzeuge-Karte oder aus dem Ladevorgangs-Verlauf heraus.
+   */
+  const fahrzeugVon = useCallback(
+    (tagRef: string | null | undefined): string | null => {
+      if (!tagRef || !fahrzeuge) return null;
+      const f = fahrzeuge.fahrzeuge.find((x) => x.tagRef === tagRef);
+      const name = (f?.name ?? '').trim();
+      return name || null;
+    },
+    [fahrzeuge],
+  );
+
+  /**
    * Der Sprung „N Regeln →" in die Regel-Kapsel.
    *
    * ⚠ Er SCROLLT, er filtert (noch) nicht. Das gefilterte Bild „Regeln ·
@@ -641,6 +668,7 @@ export function SteuerungSection({
             speicherRegelAktiv={speicherRegelAktiv}
             speicherName={speicherName}
             steuerart={steuerartVon}
+            fahrzeug={fahrzeugVon}
           />
 
           {/* --- Zone ② · Verbraucher (Verbrauchsmanagement v1 §6.1) -------
@@ -670,6 +698,16 @@ export function SteuerungSection({
                gespeichert hat. */
             onRangliste={async (rumpf) => {
               setVerbraucher(await api.saveRangliste(site.id, rumpf));
+            }}
+            /* Paket P7: die Fahrzeug-Profile. Die Antwort ersetzt die Liste -
+               dieselbe Disziplin wie bei der Rangliste, damit die Fläche nie
+               einen Zustand zeigt, den niemand gespeichert hat. */
+            fahrzeuge={fahrzeuge}
+            onFahrzeug={async (tagRef, wunsch) => {
+              setFahrzeuge(await api.setzeFahrzeug(site.id, tagRef, wunsch));
+            }}
+            onFahrzeugEntfernen={async (tagRef) => {
+              setFahrzeuge(await api.entferneFahrzeugProfil(site.id, tagRef));
             }}
           />
 

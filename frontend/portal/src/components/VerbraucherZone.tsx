@@ -41,6 +41,8 @@ import {
 } from '../verbraucherZone';
 import { PartHead } from './SteuerungParts';
 import { RanglisteKarte } from './RanglisteKarte';
+import { FahrzeugeKarte } from './FahrzeugeKarte';
+import type { FahrzeugWunsch, SiteFahrzeuge } from '../fahrzeugProfile';
 import './VerbraucherZone.css';
 
 export interface VerbraucherZoneProps {
@@ -57,10 +59,19 @@ export interface VerbraucherZoneProps {
   onRangliste?: (rumpf: { art: string; entityId?: string }[]) => Promise<void>;
   /** Klick auf eine SCHREIBBARE Zeile: der Steuerart-Dialog (P2). */
   onSteuerart?: (entityId: string) => void;
+  /**
+   * Die FAHRZEUGE dieses Ladeparks (P7). `null` = noch nicht geladen oder ein
+   * älteres Backend - dann erscheint der Abschnitt gar nicht, statt eine leere
+   * Liste zu behaupten.
+   */
+  fahrzeuge?: SiteFahrzeuge | null;
+  onFahrzeug?: (tagRef: string, wunsch: FahrzeugWunsch) => Promise<void>;
+  onFahrzeugEntfernen?: (tagRef: string) => Promise<void>;
 }
 
 export function VerbraucherZone({
   daten, onRegeln, onEinstellungen, onRangliste, onSteuerart,
+  fahrzeuge, onFahrzeug, onFahrzeugEntfernen,
 }: VerbraucherZoneProps) {
   const v: ZoneView = zoneView(daten);
   const [suche, setSuche] = useState('');
@@ -179,6 +190,19 @@ export function VerbraucherZone({
                 braucht. */}
             {v.ladepunkte.some((z) => !z.schreibbar)
               && <p className="vp-vz-quiet">{WEG_LADEPUNKT}</p>}
+
+            {/* ⚠ Die FAHRZEUGE stehen IM Ladepunkt-Abschnitt (P7): ein Profil
+                ist eine Abweichung von der Steuerart des Ladepunkts, und zwei
+                entfernte Orte für dieselbe Frage wären eine Doppeldeutigkeit.
+                Ohne geladene Daten erscheint der Abschnitt gar nicht. */}
+            {fahrzeuge && (
+              <FahrzeugeKarte
+                daten={fahrzeuge}
+                ladepunktName={(id) => ladepunktNameAus(daten, id)}
+                onSpeichern={onFahrzeug}
+                onEntfernen={onFahrzeugEntfernen}
+              />
+            )}
           </>
         )}
 
@@ -217,6 +241,17 @@ export function VerbraucherZone({
       </Card>
     </section>
   );
+}
+
+/**
+ * Der NAME einer Säule zu ihrer Kennung - aus demselben Lese-Aggregat, das die
+ * Zeilen darüber trägt. Ohne Treffer `null`; die Fläche nennt dann die Kennung,
+ * statt einen Namen zu erfinden.
+ */
+function ladepunktNameAus(daten: SiteVerbraucher | null, chargePointId: string): string | null {
+  const treffer = (daten?.verbraucher ?? [])
+    .find((e) => e.ladepunkt && e.chargePointId === chargePointId);
+  return treffer?.name ?? null;
 }
 
 function Zeile({ z, onRegeln, onSteuerart }: {

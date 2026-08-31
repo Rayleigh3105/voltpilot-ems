@@ -102,5 +102,22 @@ public record SiteChargingDto(ChargingBudgetDto budget, List<ChargePointDto> cha
              * angefordert hat, wäre ein stiller Bruch der eigenen Priorität
              * des Kunden.
              */
-            boolean boost) {}
+            boolean boost,
+            /*
+             * tagRef = das PSEUDONYM der Ladekarte, die diesen Ladevorgang
+             * gestartet hat (Verbrauchsmanagement v1 / P7). Es ist der Wert,
+             * den die BOX aus dem IdTag rechnet - der Klartext-IdTag verlaesst
+             * sie nie.
+             *
+             * ⚠ Es ist NICHT der Bezug aus dem OCPP-Journal
+             * (`ocpp_transaction.start_id_tag_ref`): den pfeffert die Cloud
+             * beim Ingest ein zweites Mal, dieselbe Karte traegt dort also
+             * einen anderen Wert. Die zwei Pseudonym-Raeume werden bewusst
+             * nicht verbunden - nur DIESER hier ist der, den die Box selbst
+             * wiedererkennt und gegen ein Fahrzeug-Profil pruefen kann.
+             *
+             * null = kein Ladevorgang, eine Saeule ohne Karte, oder ein
+             * aelterer Box-Stand - nie eine erfundene Karte.
+             */
+            String tagRef) {}
 }

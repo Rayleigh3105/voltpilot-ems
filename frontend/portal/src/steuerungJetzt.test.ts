@@ -341,6 +341,52 @@ describe('Zone ① Jetzt — eine Zeile je LADEPUNKT (Verbrauchsmanagement v1 §
     });
   });
 
+  // ⚠ P7: WER dort lädt, steht VOR dem WIE - und nur, wenn der Kunde die Karte
+  // benannt hat. Ohne Auflöser bleibt die Zeile Zeichen für Zeichen die alte.
+  it('nennt das benannte Fahrzeug der laufenden Ladung', () => {
+    const mitKarte = saeule({
+      connectors: [{
+        connectorId: 1, status: 'Charging', charging: true, powerKw: 11,
+        tagRef: 'tagref_1f2e3d4c5b6a798877665544',
+      }],
+    });
+    const { zeilen } = ladepunktZeilen(
+      charging([mitKarte]), () => 'Sofort laden', undefined,
+      (ref) => (ref === 'tagref_1f2e3d4c5b6a798877665544' ? 'Dienstwagen' : null),
+    );
+    expect(zeilen[0].zustand).toBe('lädt 11,0\u00a0kW');
+    expect(zeilen[0].fahrzeug).toBe('Dienstwagen');
+    expect(zeilen[0].quelleText).toBe('Sofort laden');
+  });
+
+  it('behauptet ohne Auflöser und ohne Karte kein Fahrzeug', () => {
+    const { zeilen } = ladepunktZeilen(charging([saeule()]), () => 'Sofort laden');
+    expect(zeilen[0].fahrzeug ?? null).toBeNull();
+    const mitKarte = saeule({
+      connectors: [{
+        connectorId: 1, status: 'Charging', charging: true, powerKw: 11, tagRef: 'tagref_aabbccdd',
+      }],
+    });
+    // Eine UNBENANNTE Karte nennt niemand - „Karte aabb…" beantwortet hier
+    // keine Frage, und die Zeile trüge ein Wort mehr ohne eine Aussage mehr.
+    const ohneNamen = ladepunktZeilen(charging([mitKarte]), () => 'Sofort laden', undefined,
+      () => null);
+    expect(ohneNamen.zeilen[0].fahrzeug ?? null).toBeNull();
+  });
+
+  // ⚠ Über einem FREIEN Stecker steht nie ein Auto - das wäre eine Aussage
+  // über ein Fahrzeug, das nicht da ist.
+  it('nennt über einem freien Stecker kein Fahrzeug', () => {
+    const frei = saeule({
+      connectors: [{
+        connectorId: 1, status: 'Available', charging: false, tagRef: 'tagref_1f2e3d4c5b6a79',
+      }],
+    });
+    const { zeilen } = ladepunktZeilen(charging([frei]), () => 'Sofort laden', undefined,
+      () => 'Dienstwagen');
+    expect(zeilen[0].fahrzeug ?? null).toBeNull();
+  });
+
   it('sagt ohne Auto den GRUND und behauptet keine Quelle', () => {
     const frei = saeule({ connectors: [{ connectorId: 1, status: 'Available', charging: false }] });
     const { zeilen } = ladepunktZeilen(charging([frei]), () => 'Überschuss');

@@ -5,10 +5,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.voltpilot.api.command.CommandLogWriter;
+import com.voltpilot.api.fahrzeuge.SiteVehicleRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.BudgetRow;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.ChargePointRow;
@@ -47,6 +51,7 @@ class ChargerStatusListenerTest {
     private DeviceChargerStatusRepository store;
     private ChargerComponentComposer composer;
     private CommandLogWriter commandLog;
+    private SiteVehicleRepository vehicles;
     private ChargerStatusListener listener;
 
     @BeforeEach
@@ -62,8 +67,11 @@ class ChargerStatusListenerTest {
         commandLog = mock(CommandLogWriter.class);
         ObjectProvider<CommandLogWriter> logProvider = mock(ObjectProvider.class);
         when(logProvider.getIfAvailable()).thenReturn(commandLog);
+        vehicles = mock(SiteVehicleRepository.class);
+        ObjectProvider<SiteVehicleRepository> vehicleProvider = mock(ObjectProvider.class);
+        when(vehicleProvider.getIfAvailable()).thenReturn(vehicles);
         listener = new ChargerStatusListener("tcp://localhost:1883", "", "", devices, store,
-                provider, logProvider);
+                provider, logProvider, vehicleProvider);
     }
 
     /** Ein Herzschlag hinein, die geschriebenen Zeilen heraus. */
@@ -409,5 +417,104 @@ class ChargerStatusListenerTest {
         assertThat(c.budget().surplusActive()).isFalse();
         assertThat(c.budget().surplusKw()).as("kein Messwert ist NIE eine 0").isNull();
         assertThat(c.chargers().get(0).connectors().get(0).boost()).isFalse();
+    }
+
+    // -----------------------------------------------------------------------
+    // P7: das Pseudonym der Ladekarte
+    // -----------------------------------------------------------------------
+
+    /**
+     * Der Bezug der Karte wird uebernommen - er ist der EINZIGE Weg, auf dem
+     * die Cloud ueberhaupt erfaehrt, welches Fahrzeug gerade laedt.
+     */
+    @Test
+    void theCardsPseudonymIsIngestedFromTheHeartbeat() {
+        Captured c = ingest("\"chargers\":{\"reported_at\":\"2026-08-31T09:00:00Z\","
+                + "\"enabled\":true,\"connector_count\":1,"
+                + "\"chargers\":[{\"id\":\"saeule-1\",\"connected\":true,\"connectors\":["
+                + "{\"id\":1,\"charging\":true,"
+                + "\"tag_ref\":\"tagref_1f2e3d4c5b6a798877665544\"}]}]}");
+        assertThat(c.chargers().get(0).connectors().get(0).tagRef())
+                .isEqualTo("tagref_1f2e3d4c5b6a798877665544");
+    }
+
+    /**
+     * ⚠ Und was KEIN Pseudonym dieser Box sein kann, wird VERWORFEN statt
+     * gespeichert - die Regel dieses Zuhoerers, hier auf die Karte angewandt.
+     *
+     * <p>Der Klartext-IdTag ist dabei der Fall, auf den es ankommt: er darf die
+     * Box nie verlassen, und wenn ein aelterer oder manipulierter Stand ihn
+     * doch schickt, ist die richtige Antwort, ihn nicht in die Datenbank zu
+     * schreiben. Ein Journal-Bezug faellt aus demselben Grund durch: er ist in
+     * der Cloud zweimal gehasht und traefe nie ein Fahrzeug.
+     */
+    @Test
+    void aPlaintextTagOrAForeignReferenceIsDiscardedInsteadOfStored() {
+        for (String bad : new String[] {"RIG-TAG", "tagref_", "tagref_ABCDEF0123456789abcdef",
+                "tagref_1f2e", "irgendwas"}) {
+            Captured c = ingest("\"chargers\":{\"reported_at\":\"2026-08-31T09:00:00Z\","
+                    + "\"enabled\":true,\"connector_count\":1,"
+                    + "\"chargers\":[{\"id\":\"saeule-1\",\"connected\":true,"
+                    + "\"connectors\":[{\"id\":1,\"charging\":true,\"tag_ref\":\"" + bad
+                    + "\"}]}]}");
+            assertThat(c.chargers().get(0).connectors().get(0).tagRef())
+                    .as("%s darf nicht gespeichert werden", bad).isNull();
+            reset(store);
+        }
+    }
+
+    /** Ein aelterer Box-Stand meldet das Feld nicht - und das ist kein Fehler. */
+    @Test
+    void anOlderBoxReportsNoCardAndThatIsNull() {
+        Captured c = ingest("\"chargers\":{\"reported_at\":\"2026-08-31T09:00:00Z\","
+                + "\"enabled\":true,\"connector_count\":1,"
+                + "\"chargers\":[{\"id\":\"saeule-1\",\"connected\":true,\"connectors\":["
+                + "{\"id\":1,\"charging\":true}]}]}");
+        assertThat(c.chargers().get(0).connectors().get(0).tagRef()).isNull();
+    }
+
+    /**
+     * ⚠ Die SICHTUNG wird festgehalten - ohne sie gaebe es im Portal keine
+     * Zeile, der ein Kunde einen Namen geben koennte. Und sie ist eine
+     * BEOBACHTUNG: ein Herzschlag OHNE Karte schreibt gar nichts, statt eine
+     * leere Zeile anzulegen.
+     */
+    @Test
+    void aSightingIsRecordedForEveryCardAndNothingWithoutOne() {
+        ingest("\"chargers\":{\"reported_at\":\"2026-08-31T09:00:00Z\","
+                + "\"enabled\":true,\"connector_count\":2,"
+                + "\"chargers\":[{\"id\":\"saeule-1\",\"connected\":true,\"connectors\":["
+                + "{\"id\":1,\"charging\":true,"
+                + "\"tag_ref\":\"tagref_1f2e3d4c5b6a798877665544\"},"
+                + "{\"id\":2,\"charging\":false}]}]}");
+        verify(vehicles).touch(TENANT, SITE, "tagref_1f2e3d4c5b6a798877665544", "saeule-1",
+                java.time.Instant.parse("2026-08-31T09:00:00Z"));
+        verifyNoMoreInteractions(vehicles);
+    }
+
+    /** Ein verworfener Bezug wird auch NICHT als Sichtung gemerkt. */
+    @Test
+    void aDiscardedReferenceIsNotRememberedEither() {
+        ingest("\"chargers\":{\"reported_at\":\"2026-08-31T09:00:00Z\","
+                + "\"enabled\":true,\"connector_count\":1,"
+                + "\"chargers\":[{\"id\":\"saeule-1\",\"connected\":true,\"connectors\":["
+                + "{\"id\":1,\"charging\":true,\"tag_ref\":\"RIG-TAG\"}]}]}");
+        verifyNoInteractions(vehicles);
+    }
+
+    /**
+     * Eine Sichtung ist die Kuer, der Ist-Zustand die Pflicht: scheitert sie,
+     * darf der Herzschlag trotzdem ankommen.
+     */
+    @Test
+    void aFailingSightingNeverLosesTheHeartbeat() {
+        org.mockito.Mockito.doThrow(new IllegalStateException("db weg"))
+                .when(vehicles).touch(any(), any(), any(), any(), any());
+        Captured c = ingest("\"chargers\":{\"reported_at\":\"2026-08-31T09:00:00Z\","
+                + "\"enabled\":true,\"connector_count\":1,"
+                + "\"chargers\":[{\"id\":\"saeule-1\",\"connected\":true,\"connectors\":["
+                + "{\"id\":1,\"charging\":true,"
+                + "\"tag_ref\":\"tagref_1f2e3d4c5b6a798877665544\"}]}]}");
+        assertThat(c.chargers()).hasSize(1);
     }
 }

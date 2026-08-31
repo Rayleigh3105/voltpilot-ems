@@ -159,6 +159,20 @@ Gebaeudelast, statisch/gemessen); auch hier gilt die PATCH-Regel — ein
 abwesendes Feld behaelt den Wert der Box, und die Plausibilitaet prueft
 weiterhin die Box (`lastmgmt.Settings.Apply`), nie das Dokument.
 
+Seit Verbrauchsmanagement v1 (P7) traegt dasselbe Dokument die FAHRZEUG-PROFILE
+(`mqtt-charging-config.valid.fahrzeug-profile.json`): je Ladekarte eine eigene
+Quellen-Bahn, damit am selben Ladepunkt der Dienstwagen sofort laedt und der
+Privatwagen auf die Sonne wartet. Der Schluessel `tag_ref` ist der Pseudonym,
+den die BOX selbst aus dem IdTag rechnet und im Herzschlag meldet — der
+Klartext-IdTag verlaesst die Box nie, und der Bezug aus dem OCPP-Journal
+(`ocpp_transaction.start_id_tag_ref`) ist ausdruecklich ein ANDERER Wert, weil
+die Cloud ihn ein zweites Mal peppert. `mqtt-charging-config.invalid.fahrzeug-profil-journal-bezug.json`
+ist genau dieser Fehlgriff in Reinform: eine Kennung, die kein `tagref_`-Pseudonym
+ist, faellt schon am Muster durch. Anders als `charge_points` ist die Liste die
+GANZE Aussage — `mqtt-charging-config.valid.fahrzeug-profile-zurueckgenommen.json`
+nimmt mit einer leeren Liste alle Profile zurueck, ohne dass es dafuer eine
+Grabstein-Liste braucht.
+
 ## `mqtt-charging-boost` (Lastmanagement Stufe 4)
 
 Die Einmal-Übersteuerung „Jetzt voll laden" für GENAU EINEN laufenden

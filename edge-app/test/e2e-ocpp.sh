@@ -43,6 +43,11 @@
 #       Komponente. Ohne Halter gilt die Steuerart-Quelle unverändert; mit
 #       Halter wird gedeckelt bzw. aus der Quellen-Bahn befreit - und die
 #       PHYSIK bindet weiter.
+#   L16 (Verbrauchsmanagement v1 / P7) die FAHRZEUG-PROFILE: zwei Karten am
+#       selben Ladepark fahren zwei verschiedene Steuerarten, und das Profil
+#       folgt der KARTE - tauschen die Wagen die Plaetze, wandert die Ladung
+#       mit. Der Schluessel ist der Pseudonym, den die BOX bildet; das Rig
+#       liest ihn genauso, wie das Portal ihn liest.
 #
 # Bewusst OHNE Docker: alles hier läuft als Prozess, also ist das Rig auf jedem
 # Rechner mit Go reproduzierbar und braucht kein gebautes Image.
@@ -753,6 +758,105 @@ l14_both_paused() { awk -v a="$(b1_kw)" -v b="$(b2_kw)" 'BEGIN{exit (a<1 && b<1)
 waitfor 60 "ohne Halter gilt die Quelle" l14_both_paused
 pass "L14a: kein Halter - beide Säulen folgen der Quellen-Wahl und pausieren"
 
+# ---------------------------------------------------------------- L16
+echo "--- L16: (P7) Fahrzeug-Profile - zwei Karten, zwei Steuerarten am selben Ladepark"
+# ⚠ Er laeuft INNERHALB des L14-Aufbaus (zwischen L14a und L14b), weil er
+# dessen zweiten Kern samt Entitaets-Registry braucht - und er muss VOR den
+# Haltern von L14b-d laufen, damit ein Profil ohne fremden Wunsch sichtbar ist.
+# Die Nummer ist deshalb hoeher als seine Stelle im Ablauf; L15 gehoert P6.
+# ⚠ DER SCHLUESSEL IST DER PSEUDONYM DER BOX, und niemand sonst kann ihn
+# bilden. Das Rig macht deshalb genau das, was das Portal macht: es LIEST die
+# `tag_ref`, die die Box selbst gemeldet hat, und schreibt seine Profile darauf.
+# Ein von aussen gerechneter Bezug traefe nie ein Fahrzeug.
+# ⚠ HOECHSTENS 20 Zeichen: OCPP 1.6 begrenzt `IdToken` darauf, und die
+# Client-Bibliothek weist einen laengeren Tag ab, BEVOR er die Box erreicht.
+KARTE_A="RIG-KARTE-DIENST"
+KARTE_B="RIG-KARTE-PRIVAT"
+
+# tagref <sim-status> - der Pseudonym, den die Box fuer die Karte an DIESER
+# Saeule gebildet hat (sie steht im lokalen `/api/ocpp`, nie in der Cloud).
+tagref_of() { box2_json | sed -e "s/.*\"id\":\"$1\"//" -e 's/}]}.*//' \
+  | sed -n 's/.*"tag_ref":"\([a-z0-9_]*\)".*/\1/p' | head -1; }
+
+# Beide Wagen neu einstecken, jetzt mit IHRER Karte.
+for st in "$B1_STATUS" "$B2_STATUS"; do
+  curl -sf -X POST "http://${st}/unplug?connector=1" >/dev/null || fail "L16: Ausstecken"
+done
+curl -sf -X POST "http://${B1_STATUS}/plug?connector=1&demand=22&min=5&tag=${KARTE_A}" \
+  >/dev/null || fail "L16: Karte A liess sich nicht einstecken"
+curl -sf -X POST "http://${B2_STATUS}/plug?connector=1&demand=22&min=5&tag=${KARTE_B}" \
+  >/dev/null || fail "L16: Karte B liess sich nicht einstecken"
+
+l15_two_refs() { [ -n "$(tagref_of SAEULE-B1)" ] && [ -n "$(tagref_of SAEULE-B2)" ]; }
+waitfor 30 "die Box hat beide Karten pseudonymisiert" l15_two_refs
+REF_A=$(tagref_of SAEULE-B1)
+REF_B=$(tagref_of SAEULE-B2)
+[ "$REF_A" != "$REF_B" ] || fail "L16: zwei Karten, EIN Pseudonym ($REF_A)"
+case "$REF_A" in tagref_*) ;; *) fail "L16: kein Pseudonym, sondern „$REF_A\"";; esac
+# ⚠ Der KLARTEXT der Karte steht NIRGENDS - nicht in der Cloud-Form und nicht
+# einmal auf der eigenen LAN-Flaeche der Box. `state.OcppInfo` traegt nur den
+# Bezug; der IdTag verlaesst das `csms`-Paket gar nicht erst.
+for flaeche in "${BOX2}/api/ocpp" "${BOX2}/api/state"; do
+  curl -sf "$flaeche" | grep -q "$KARTE_A" \
+    && fail "L16: der Klartext der Karte steht in $flaeche"
+done
+pass "L16a: die Box bildet je Karte ein eigenes Pseudonym ($REF_A / $REF_B)"
+
+# profile <ref-schnell> - EIN Profil „Sofort laden", alle anderen ohne.
+profile() {
+  cat >"$WORK/vehicles.json" <<JSON
+{"schema_version":"1.0","tenant_id":"${T_TEN}","site_id":"${T_SITE}","device_id":"${T_DEV}",
+ "published_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+ "vehicle_profiles":[{"tag_ref":"$1","name":"Dienstwagen","source":"schnell"}]}
+JSON
+  "$WORK/vp-mqtt-pub" -broker "tcp://127.0.0.1:${BUS_PORT2}" \
+    -topic "${T_BASE}/v2/charging-config" -retain -file "$WORK/vehicles.json" \
+    || fail "L16: Profile liessen sich nicht veroeffentlichen"
+}
+
+# --- Die Karte faehrt ihre EIGENE Bahn -----------------------------------
+# Die Anlage steht seit L14a auf „nur Sonnenstrom" OHNE Messung, also pausiert
+# jede Saeule. Genau darin ist ein Profil sichtbar: der Dienstwagen laedt, der
+# Privatwagen wartet weiter - am selben Ladepark, unter derselben Grenze.
+profile "$REF_A"
+l16_a_charges() { nearly "$(b1_kw)" 22 1.0 && awk -v d="$(b2_kw)" 'BEGIN{exit (d<1)?0:1}'; }
+waitfor 60 "der Dienstwagen laedt, der Privatwagen wartet" l16_a_charges
+pass "L16b: zwei Karten, zwei Steuerarten - A laedt $(b1_kw) kW, B pausiert ($(b2_kw) kW)"
+
+# --- Das Profil folgt der KARTE, nicht der Saeule ------------------------
+# ⚠ Der Beweis, den keine Saeulen-Einstellung liefern koennte: die Wagen
+# TAUSCHEN die Plaetze, an den Saeulen aendert sich nichts - und die Ladung
+# wandert mit der Karte.
+for st in "$B1_STATUS" "$B2_STATUS"; do
+  curl -sf -X POST "http://${st}/unplug?connector=1" >/dev/null || fail "L16: Ausstecken"
+done
+curl -sf -X POST "http://${B1_STATUS}/plug?connector=1&demand=22&min=5&tag=${KARTE_B}" \
+  >/dev/null || fail "L16: Karte B liess sich nicht einstecken"
+curl -sf -X POST "http://${B2_STATUS}/plug?connector=1&demand=22&min=5&tag=${KARTE_A}" \
+  >/dev/null || fail "L16: Karte A liess sich nicht einstecken"
+l16_swapped() { nearly "$(b2_kw)" 22 1.0 && awk -v d="$(b1_kw)" 'BEGIN{exit (d<1)?0:1}'; }
+waitfor 60 "die Ladung wandert mit der Karte" l16_swapped
+pass "L16c: die Wagen tauschen die Plaetze - jetzt laedt B2 ($(b2_kw) kW), B1 pausiert"
+
+# --- Die RUECKNAHME: eine leere Liste nimmt alle Profile zurueck ----------
+cat >"$WORK/vehicles.json" <<JSON
+{"schema_version":"1.0","tenant_id":"${T_TEN}","site_id":"${T_SITE}","device_id":"${T_DEV}",
+ "published_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","vehicle_profiles":[]}
+JSON
+"$WORK/vp-mqtt-pub" -broker "tcp://127.0.0.1:${BUS_PORT2}" \
+  -topic "${T_BASE}/v2/charging-config" -retain -file "$WORK/vehicles.json" \
+  || fail "L16: Ruecknahme liess sich nicht veroeffentlichen"
+waitfor 60 "ohne Profil gilt wieder die Anlage" l14_both_paused
+pass "L16d: leere Liste = keine Profile - beide Karten folgen wieder dem Ladepark"
+
+# Ausgangslage fuer L14b wiederherstellen: die eine Rig-Karte, kein Profil.
+for st in "$B1_STATUS" "$B2_STATUS"; do
+  curl -sf -X POST "http://${st}/unplug?connector=1" >/dev/null || fail "L16: Ausstecken"
+  curl -sf -X POST "http://${st}/plug?connector=1&demand=22&min=5" >/dev/null \
+    || fail "L16: Wagen liess sich nicht einstecken"
+done
+waitfor 60 "die Ausgangslage steht wieder" l14_both_paused
+
 # --- die Registry bindet Säule B1 an eine Komponente ---------------------
 cat >"$WORK/registry.json" <<JSON
 {"schema_version":"1.0","tenant_id":"${T_TEN}","site_id":"${T_SITE}","device_id":"${T_DEV}",
@@ -986,4 +1090,4 @@ awk -v d="$S1_AFTER" 'BEGIN{exit (d>1)?0:1}' || fail "L4: die Säule hat aufgeh�
 pass "L4: die Box ist tot, die Säule begrenzt sich SELBST auf 24,25 kW - und lädt weiter"
 
 echo
-echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L7 · L8 · L9 · L10 · L13 · L11/L12 · L14 · L15 · L4 =="
+echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L7 · L8 · L9 · L10 · L13 · L11/L12 · L14 · L16 · L15 · L4 =="

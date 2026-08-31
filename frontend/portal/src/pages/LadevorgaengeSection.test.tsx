@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { LadevorgaengeSection } from './LadevorgaengeSection';
 import { api, type Device, type Site } from '../api';
 import type { SiteCharging } from '../ladepunkte';
@@ -199,6 +199,74 @@ describe('LadevorgaengeSection', () => {
     render(<LadevorgaengeSection site={site} />);
     const link = await screen.findByRole('link', { name: /Alle Geräte dieser Anlage/ });
     expect(link.getAttribute('href')).toBe('#/anlage/s-lade/modell');
+  });
+
+  /*
+    P7 (Konzept §4.5): der Weg vom Ladevorgang zum Fahrzeug-Profil. Er ist der
+    Ort, an dem ein Kunde eine Karte BENENNT - „dieser Ladevorgang war …".
+  */
+  describe('Fahrzeug benennen (P7)', () => {
+    const CARD = 'tagref_1f2e3d4c5b6a798877665544';
+    const mitKarte = {
+      budget: charging.budget,
+      chargers: [
+        {
+          ...charging.chargers[0],
+          connectors: [{ ...charging.chargers[0].connectors[0], tagRef: CARD }],
+        },
+      ],
+    };
+
+    it('nennt die unbenannte Karte bei ihrer Kurzform und bietet das Benennen an', async () => {
+      vi.spyOn(api, 'siteChargers').mockResolvedValue(mitKarte);
+      vi.spyOn(api, 'siteFahrzeuge').mockResolvedValue({ fahrzeuge: [{ tagRef: CARD }] });
+      render(<LadevorgaengeSection site={site} />);
+      expect(await screen.findByText(/Karte 1f2e… · Lädt wie der Ladepunkt/)).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Fahrzeug benennen' })).toBeTruthy();
+    });
+
+    it('nennt die benannte Karte samt Steuerart und bietet das Ändern an', async () => {
+      vi.spyOn(api, 'siteChargers').mockResolvedValue(mitKarte);
+      vi.spyOn(api, 'siteFahrzeuge').mockResolvedValue({
+        fahrzeuge: [{ tagRef: CARD, name: 'Dienstwagen', steuerart: { quelle: 'sofort' } }],
+      });
+      render(<LadevorgaengeSection site={site} />);
+      expect(await screen.findByText('Dienstwagen · Sofort laden')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Fahrzeug' })).toBeTruthy();
+    });
+
+    // ⚠ Der Klartext der Karte steht NIRGENDS - das Portal bekommt ihn nie.
+    it('öffnet den Dialog und zeigt nie mehr als die Kurzform des Pseudonyms', async () => {
+      vi.spyOn(api, 'siteChargers').mockResolvedValue(mitKarte);
+      vi.spyOn(api, 'siteFahrzeuge').mockResolvedValue({ fahrzeuge: [{ tagRef: CARD }] });
+      render(<LadevorgaengeSection site={site} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Fahrzeug benennen' }));
+      expect(await screen.findByRole('button', { name: 'Speichern' })).toBeTruthy();
+      expect(document.body.textContent).not.toContain(CARD);
+      expect(document.body.textContent).not.toContain('3d4c5b6a');
+    });
+
+    // ⚠ Ohne gemeldetes Pseudonym gibt es keinen Knopf - eine Säule, die keine
+    // Karte nennt, sagt nichts über ein Auto.
+    it('bietet ohne gemeldete Karte GAR KEINEN Fahrzeug-Weg an', async () => {
+      vi.spyOn(api, 'siteChargers').mockResolvedValue(charging);
+      vi.spyOn(api, 'siteFahrzeuge').mockResolvedValue({ fahrzeuge: [] });
+      render(<LadevorgaengeSection site={site} />);
+      await screen.findByText('Hof Nord · Stecker A');
+      expect(screen.queryByRole('button', { name: /Fahrzeug/ })).toBeNull();
+    });
+
+    // ⚠ Fail-soft: ein älteres Backend kennt die Route nicht - dann rendert die
+    // Seite zeichengleich wie vor P7.
+    it('rendert unverändert, wenn die Fahrzeug-Route fehlt', async () => {
+      vi.spyOn(api, 'siteChargers').mockResolvedValue(mitKarte);
+      vi.spyOn(api, 'siteFahrzeuge').mockRejectedValue(new Error('404'));
+      render(<LadevorgaengeSection site={site} />);
+      await screen.findByText('Hof Nord · Stecker A');
+      // Die Karte lädt nachweislich - der Weg bleibt trotzdem offen (die
+      // Sichtung hat derselbe Herzschlag serverseitig geschrieben).
+      expect(screen.getByRole('button', { name: 'Fahrzeug benennen' })).toBeTruthy();
+    });
   });
 
   it('nennt ohne Ladesäule den WEG, nie eine erfundene Adresse', async () => {

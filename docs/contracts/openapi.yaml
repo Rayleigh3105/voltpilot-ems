@@ -1959,6 +1959,110 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/fahrzeuge:
+    get:
+      tags: [consumer]
+      summary: Die Ladekarten dieser Anlage samt ihren Profilen.
+      description: >
+        Die FAHRZEUGE (Konzept vp-verbrauchsmgmt-konzept-v1 §4.5, Paket P7,
+        Captain-Entscheid E4). Eine Zeile ist eine LADEKARTE, die hier schon
+        einmal geladen hat - und, sobald der Kunde sie benannt hat, ihr Profil.
+
+
+        DER SCHLÜSSEL IST EIN PSEUDONYM DER BOX: `tagref_` + HMAC-SHA256 mit
+        ihrem eigenen Schlüssel, gemeldet im Herzschlag. Der Klartext-IdTag
+        verlässt die Box nie und steht in keiner Cloud-Tabelle. Es ist
+        AUSDRÜCKLICH NICHT der Bezug aus `ocpp_transaction` - den pfeffert die
+        Cloud beim Ingest ein zweites Mal, die zwei Pseudonym-Räume sind
+        verschiedene Werte für dieselbe Karte.
+
+
+        `steuerart: null` heißt „kein Profil - die Karte lädt wie ihr
+        Ladepunkt". `laedt` kommt aus dem Herzschlag, nie aus der Sichtungszeit
+        geraten. RLS-gefenced wie jede /sites/**-Route (fremde Anlage 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die Karten, zuletzt gesehene zuerst.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Fahrzeuge" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/fahrzeuge/{tagRef}:
+    put:
+      tags: [consumer]
+      summary: Eine Ladekarte benennen und/oder ihr eine Steuerart geben.
+      description: >
+        PATCH je Feld: ein Feld, das der Wunsch NICHT nennt, wird nicht
+        angefasst - „benannt" und „gesteuert" sind zwei Schritte.
+
+
+        DIE QUELLE HAT DREI ZUSTÄNDE: der Schlüssel FEHLT = nichts ändern; ein
+        Wort SETZT sie; die LEERE Zeichenkette NIMMT DAS PROFIL ZURÜCK (die
+        Karte lädt wieder wie ihr Ladepunkt) - ohne den dritten Zustand gäbe es
+        keinen Weg zurück, ohne zugleich den Namen zu verlieren.
+
+
+        EIN PROFIL TRÄGT EINE QUELLE UND NIE EIN ZIEL: ein Ziel („bis 06:00
+        fertig") wird Stunden im Voraus für einen LADEPUNKT geplant, und welches
+        Auto dann dort steckt, weiß niemand - `guenstig`/`feste_zeiten` werden
+        deshalb BEIM NAMEN mit 400 abgelehnt.
+
+
+        Eine Karte, die diese Anlage nie gesehen hat, ist 404 (ein Profil darauf
+        träfe nie ein Auto); was gar kein Pseudonym dieser Box sein kann, ist
+        400 - ein Klartext-IdTag darf hier nicht einmal ankommen.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: tagRef, in: path, required: true, schema: { type: string, pattern: "^tagref_[0-9a-f]{8,64}$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 200
+                  description: Leer LÖSCHT den Namen; abwesend lässt ihn stehen.
+                quelle:
+                  type: string
+                  enum: ["", sofort, ueberschuss]
+                  description: >
+                    Abwesend = nichts ändern, "" = Profil zurücknehmen.
+                ueberschussModus: { type: string, enum: [pausieren, mindestleistung] }
+                mindestleistungKw: { type: number, minimum: 0, maximum: 1000 }
+      responses:
+        "200":
+          description: Die Karten nach dem Speichern.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Fahrzeuge" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [consumer]
+      summary: Das Profil einer Ladekarte zurücknehmen.
+      description: >
+        Nullt Name UND Steuerart. Die SICHTUNG bleibt stehen - eine Rücknahme
+        ist keine Beweisvernichtung, und die Karte erscheint danach wieder als
+        unbenannte Bekannte statt beim nächsten Herzschlag als „neu".
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: tagRef, in: path, required: true, schema: { type: string, pattern: "^tagref_[0-9a-f]{8,64}$" } }
+      responses:
+        "200":
+          description: Die Karten nach der Rücknahme.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Fahrzeuge" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/sites/{siteId}/verbraucher/{entityId}/steuerart:
     put:
       tags: [consumer]
@@ -10912,6 +11016,42 @@ components:
           type: boolean
           description: Ob das Artefakt an das Gerät verteilt werden konnte.
         policyVersion: { type: integer, nullable: true }
+    Fahrzeuge:
+      type: object
+      description: >
+        Die Ladekarten einer Anlage (Paket P7). Der Schlüssel ist ein Pseudonym
+        der BOX - der Klartext-IdTag kommt hier nie vor.
+      properties:
+        fahrzeuge:
+          type: array
+          items:
+            type: object
+            required: [tagRef]
+            properties:
+              tagRef:
+                type: string
+                pattern: "^tagref_[0-9a-f]{8,64}$"
+                description: Der Pseudonym der Box, NIE der Bezug des OCPP-Journals.
+              name:
+                type: string
+                nullable: true
+                description: null = gesehen, aber noch nicht benannt.
+              steuerart:
+                nullable: true
+                description: null = kein Profil - die Karte lädt wie ihr Ladepunkt.
+                allOf: [{ $ref: "#/components/schemas/Steuerart" }]
+              mindestleistungKw: { type: number, nullable: true }
+              ersteSichtungAm: { type: string, format: date-time, nullable: true }
+              letzteSichtungAm: { type: string, format: date-time, nullable: true }
+              letzterLadepunkt:
+                type: string
+                nullable: true
+                description: Die Kennung der Säule, an der sie zuletzt geladen hat.
+              laedt:
+                type: boolean
+                description: >
+                  Aus dem Herzschlag, nie aus der Sichtungszeit geraten -
+                  "vor zwei Minuten gesehen" ist keine laufende Ladung.
     Verbraucher:
       type: object
       description: Die Zone "Verbraucher" einer Anlage (lesend).

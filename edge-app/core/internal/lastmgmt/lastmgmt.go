@@ -301,6 +301,19 @@ type Settings struct {
 	//
 	// ⚠ nil and an EMPTY list are the same thing here: no wallbox takes part.
 	Wallboxes []Wallbox
+	// VehicleProfiles are the per-CARD source lanes (Verbrauchsmanagement v1 /
+	// P7). They live in Settings because a profile IS a source choice - the
+	// same kind of statement as SurplusPolicy, one level finer - and because
+	// that puts them on the one path that is already PATCH-applied, validated
+	// and persisted (`Apply` + lastmgmt.json).
+	//
+	// ⚠ THE ALLOCATOR NEVER READS THIS FIELD. It is resolved one layer up, in
+	// the agent, where a session's pseudonym is known: `Decide` is handed
+	// sessions that ALREADY carry their effective Source/MinKw, so every rule
+	// below (sessionPolicy, splitExempt, allowsMinimum, effectiveMin) keeps
+	// asking the SESSION and nothing here changes shape. That is the whole
+	// reason P7 needs no new rule in this package.
+	VehicleProfiles []VehicleProfile
 }
 
 // Wallbox is ONE go-e/Modbus wallbox that takes part in the Ladepark-Rahmen
@@ -341,6 +354,16 @@ func WallboxEntityID(key string) (string, bool) {
 		return "", false
 	}
 	return key[len(WallboxKeyPrefix):], true
+}
+
+// VehicleProfile is one card's own source lane (P7). The key is the box's own
+// pseudonym of the OCPP idTag (`csms.Session.TagRef`); the plaintext tag never
+// reaches this package - or any other outside csms.
+type VehicleProfile struct {
+	TagRef string
+	Name   string
+	Source SurplusPolicy
+	MinKw  float64
 }
 
 // Defaults. Every one of them is a starting point the operator may move; none

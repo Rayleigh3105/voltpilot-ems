@@ -115,6 +115,10 @@ type Vehicle struct {
 	// This is the physics behind "pausing beats starving" — an allocation
 	// under the floor buys nothing.
 	MinKw float64
+	// IdTag is the card this vehicle presents (Verbrauchsmanagement v1 / P7).
+	// Empty falls back to the rig's one card, so every pre-P7 caller keeps
+	// behaving byte-for-byte: two cards are the NEW case, not the default.
+	IdTag string
 }
 
 // DrawKw is what a connector ACTUALLY draws: the vehicle's demand, capped by

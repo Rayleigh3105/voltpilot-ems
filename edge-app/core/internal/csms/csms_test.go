@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -439,5 +440,69 @@ func TestChangedCoalescesABurst(t *testing.T) {
 	case <-s.Changed():
 		t.Fatal("the change channel queued more than one wake-up for a burst")
 	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+// Fahrzeug-Profile (Verbrauchsmanagement v1 / P7): die Sitzung traegt den
+// PSEUDONYM ihrer Karte, und zwar den, den auch das Journal schreibt.
+//
+// ⚠ Die eine Zusage, an der das ganze Feature haengt: der KLARTEXT-IdTag
+// verlaesst diese Box nie. Er steht im Speicher der Sitzung, weil die
+// OCPP-Nachricht ihn traegt - aber alles, was nach draussen geht (Herzschlag,
+// Journal, Konfiguration), sieht ausschliesslich das Pseudonym.
+func TestASessionCarriesItsCardsPseudonymAndNeverThePlainTag(t *testing.T) {
+	s, endpoint := startServer(t, "SAEULE-P7")
+	cp, _ := connectCP(t, endpoint, "SAEULE-P7")
+
+	if _, err := cp.BootNotification("DC-240", "AnyVendor"); err != nil {
+		t.Fatalf("boot: %v", err)
+	}
+	waitFor(t, "boot recorded", func() bool {
+		c, ok := s.Snapshot().ChargerByID("SAEULE-P7")
+		return ok && c.Connected
+	})
+	if _, err := cp.StartTransaction(1, "GEHEIME-KARTE-4711", 0, types.NewDateTime(time.Now())); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	waitFor(t, "session", func() bool {
+		c, _ := s.Snapshot().ChargerByID("SAEULE-P7")
+		con := c.ConnectorByID(1)
+		return con != nil && con.Session != nil
+	})
+
+	c, _ := s.Snapshot().ChargerByID("SAEULE-P7")
+	sess := c.ConnectorByID(1).Session
+	if !strings.HasPrefix(sess.TagRef, "tagref_") || len(sess.TagRef) != len("tagref_")+24 {
+		t.Fatalf("die Sitzung muss den Pseudonym der Box tragen: %q", sess.TagRef)
+	}
+	if strings.Contains(sess.TagRef, "GEHEIME-KARTE-4711") {
+		t.Fatal("der Klartext-IdTag darf nie Teil des Pseudonyms sein")
+	}
+	// Er ist STABIL: dieselbe Karte an derselben Box ist derselbe Bezug -
+	// sonst koennte ein Profil sie nie wiedererkennen.
+	if _, err := cp.StartTransaction(2, "GEHEIME-KARTE-4711", 0, types.NewDateTime(time.Now())); err != nil {
+		t.Fatalf("start 2: %v", err)
+	}
+	waitFor(t, "second session", func() bool {
+		c, _ := s.Snapshot().ChargerByID("SAEULE-P7")
+		con := c.ConnectorByID(2)
+		return con != nil && con.Session != nil
+	})
+	c, _ = s.Snapshot().ChargerByID("SAEULE-P7")
+	if got := c.ConnectorByID(2).Session.TagRef; got != sess.TagRef {
+		t.Fatalf("dieselbe Karte muss denselben Bezug ergeben: %q vs %q", got, sess.TagRef)
+	}
+	// Und eine ANDERE Karte einen anderen.
+	if _, err := cp.StartTransaction(3, "ANDERE-KARTE", 0, types.NewDateTime(time.Now())); err != nil {
+		t.Fatalf("start 3: %v", err)
+	}
+	waitFor(t, "third session", func() bool {
+		c, _ := s.Snapshot().ChargerByID("SAEULE-P7")
+		con := c.ConnectorByID(3)
+		return con != nil && con.Session != nil
+	})
+	c, _ = s.Snapshot().ChargerByID("SAEULE-P7")
+	if got := c.ConnectorByID(3).Session.TagRef; got == sess.TagRef {
+		t.Fatalf("zwei Karten duerfen nie denselben Bezug bekommen: %q", got)
 	}
 }

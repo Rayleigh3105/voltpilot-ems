@@ -718,6 +718,11 @@
   content: '';
 }
 
+/* Das FAHRZEUG dieser Ladung (P7) - der Name, den der Kunde vergeben hat. */
+.vp-jetztrow-car {
+  overflow-wrap: anywhere;
+}
+
 .vp-jetztrow-until {
   font-variant-numeric: tabular-nums;
 }

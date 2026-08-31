@@ -28,6 +28,8 @@ import {
   type SiteCharging,
 } from '../ladepunkte';
 import { LadesaeuleAnbindenDrawer } from '../components/LadesaeuleAnbinden';
+import { FahrzeugDialog } from '../components/FahrzeugDialog';
+import { verlaufFahrzeug, type FahrzeugWunsch, type SiteFahrzeuge } from '../fahrzeugProfile';
 import { boxOf, boxRefOf, chargerGeraetId } from '../geraetSeite';
 import { anlageRoute, geraetSeiteHash, hashForRoute } from '../nav';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -71,6 +73,11 @@ export function LadevorgaengeSection({
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [anbinden, setAnbinden] = useState(false);
+  // Die Fahrzeuge dieser Anlage (P7) - fail-soft: ein älteres Backend kennt die
+  // Route nicht, dann bleibt die Zeile ohne Fahrzeug-Weg und alles Übrige
+  // rendert zeichengleich wie vorher.
+  const [fahrzeuge, setFahrzeuge] = useState<SiteFahrzeuge | null>(null);
+  const [benennen, setBenennen] = useState<string | null>(null);
 
   // Eine späte Antwort der ZUVOR gewählten Anlage darf die neue nie
   // überschreiben - der Ersatz für den `active`-Wächter des alten Intervalls.
@@ -83,10 +90,15 @@ export function LadevorgaengeSection({
       (c) => id === siteIdRef.current && setCharging(c),
       (e) => id === siteIdRef.current && setError(e instanceof ApiError ? e.message : 'Fehler'),
     );
+    api.siteFahrzeuge(id).then(
+      (v) => id === siteIdRef.current && setFahrzeuge(v),
+      () => {},
+    );
   };
   useEffect(() => {
     setCharging(null);
     setError(null);
+    setFahrzeuge(null);
     loadRef.current();
   }, [site.id]);
   // `useFreshnessPoll` statt eines nackten Intervalls: ein verdeckter Tab wird
@@ -114,6 +126,14 @@ export function LadevorgaengeSection({
       setBusy(false);
       setDialog(null);
     }
+  }
+
+  async function speichereFahrzeug(tagRef: string, wunsch: FahrzeugWunsch) {
+    setFahrzeuge(await api.setzeFahrzeug(site.id, tagRef, wunsch));
+  }
+
+  async function entferneFahrzeug(tagRef: string) {
+    setFahrzeuge(await api.entferneFahrzeugProfil(site.id, tagRef));
   }
 
   if (error) return <ErrorState message={error} />;
@@ -176,6 +196,26 @@ export function LadevorgaengeSection({
                     {[r.reason, r.nextTurn].filter(Boolean).join(' · ')}
                   </span>
                 )}
+                {/* ⚠ Der Weg vom Ladevorgang zum Fahrzeug-Profil (P7). Er
+                    erscheint NUR, wo die Box ein Karten-Pseudonym gemeldet hat -
+                    eine Säule, die keines nennt, sagt nichts über ein Auto, und
+                    ein Knopf, der nichts benennen kann, ist Lärm. */}
+                {(() => {
+                  const v = verlaufFahrzeug(r.tagRef, fahrzeuge);
+                  if (!v) return null;
+                  return (
+                    <span className="vp-lade-row-fahrzeug">
+                      <span className="vp-lade-row-fahrzeug-text">{v.text}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setBenennen(v.zeile.tagRef)}
+                      >
+                        {v.aktion}
+                      </Button>
+                    </span>
+                  );
+                })()}
                 {/* ⚠ Der Knopf wird nur angeboten, wo er etwas ändern KANN. Ein
                     Knopf, der strukturell nichts bewirkt, ist Lärm. */}
                 {/* ⚠ EINE Regel für beide Flächen: welche Handlung ein
@@ -268,6 +308,22 @@ export function LadevorgaengeSection({
         device={box ?? undefined}
         onClose={() => setAnbinden(false)}
       />
+
+      {/* Benennen aus dem Verlauf heraus (P7, Konzept §4.5): derselbe Dialog wie
+          in der Fahrzeuge-Karte - zwei Dialoge über dieselbe Sache wären zwei
+          Wahrheiten. */}
+      {benennen && (() => {
+        const v = verlaufFahrzeug(benennen, fahrzeuge);
+        return v ? (
+          <FahrzeugDialog
+            zeile={v.zeile}
+            fahrzeug={v.fahrzeug}
+            onClose={() => setBenennen(null)}
+            onSpeichern={speichereFahrzeug}
+            onEntfernen={v.fahrzeug ? entferneFahrzeug : undefined}
+          />
+        ) : null;
+      })()}
 
       {/* Der Haus-Dialog mit der Folgenliste - sie sagt auch, was GLEICH bleibt. */}
       <ConfirmDialog

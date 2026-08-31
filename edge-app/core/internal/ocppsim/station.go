@@ -159,10 +159,14 @@ func (s *Station) Plug(connector int, v Vehicle) error {
 	start := int(s.energyWh[connector])
 	s.vehicles[connector] = v
 	s.mu.Unlock()
-	if _, err := s.cp.Authorize("RIG-TAG"); err != nil {
+	tag := v.IdTag
+	if tag == "" {
+		tag = defaultIdTag
+	}
+	if _, err := s.cp.Authorize(tag); err != nil {
 		return err
 	}
-	conf, err := s.cp.StartTransaction(connector, "RIG-TAG", start, types.NewDateTime(s.cfg.Now()))
+	conf, err := s.cp.StartTransaction(connector, tag, start, types.NewDateTime(s.cfg.Now()))
 	if err != nil {
 		return err
 	}
@@ -173,10 +177,17 @@ func (s *Station) Plug(connector int, v Vehicle) error {
 	return err
 }
 
+// defaultIdTag is the ONE card of every pre-P7 rig case.
+const defaultIdTag = "RIG-TAG"
+
 // Unplug closes the transaction.
 func (s *Station) Unplug(connector int) error {
 	s.mu.Lock()
 	tx := s.tx[connector]
+	tag := defaultIdTag
+	if v, ok := s.vehicles[connector]; ok && v.IdTag != "" {
+		tag = v.IdTag
+	}
 	meter := int(s.energyWh[connector])
 	delete(s.tx, connector)
 	delete(s.vehicles, connector)
@@ -186,7 +197,7 @@ func (s *Station) Unplug(connector int) error {
 	}
 	if _, err := s.cp.StopTransaction(meter, types.NewDateTime(s.cfg.Now()), tx,
 		func(r *core.StopTransactionRequest) {
-			r.IdTag = "RIG-TAG"
+			r.IdTag = tag
 			r.Reason = core.ReasonEVDisconnected
 			r.TransactionData = []types.MeterValue{{
 				Timestamp: types.NewDateTime(s.cfg.Now()),

@@ -341,6 +341,12 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	// Rangliste. A site with no `wallboxes[]` gets an empty list and every
 	// line below is byte-for-byte pre-P6.
 	sessions = append(sessions, a.wallboxSessions(set, allocKw, now)...)
+	// P7: a FAHRZEUG-PROFIL overrides the station's lane for THIS session.
+	// ⚠ It runs FIRST, before boost and bridge, and that order IS the
+	// precedence „Handeingriff > Profil > Säule": both of the steps below
+	// lift a session out of the source lane entirely, so whatever the profile
+	// chose can never outrank a human or the plan.
+	ocppApplyVehicleProfiles(sessions, byKey, set.VehicleProfiles)
 	ocppApplyBoosts(rt, sessions, byKey, now)
 	// K3: the arbitration bridge - the plan, a rule, a Handeingriff or a due
 	// deadline reaches the charge point through the SAME machine every other
@@ -672,6 +678,11 @@ type ocppClaim struct {
 	chargerID     string
 	connectorID   int
 	transactionID int
+	// tagRef is the PSEUDONYM of the card driving this session, "" when there
+	// is none (no session, or a station that authorised without a tag). It
+	// rides here because a claim is exactly "who holds this allocator slot",
+	// and since P7 the answer has a second half: which CARD (Fahrzeug-Profile).
+	tagRef string
 }
 
 // ocppSessions turns the CSMS snapshot into allocator input. budgetKw is the
@@ -712,9 +723,9 @@ func ocppSessions(snap csms.Snapshot, budgetKw float64, set lastmgmt.Settings) (
 			}
 			if con.Session != nil {
 				s.Since = con.Session.StartedAt
-				byKey[key] = ocppClaim{c.ID, con.ID, con.Session.TransactionID}
+				byKey[key] = ocppClaim{c.ID, con.ID, con.Session.TransactionID, con.Session.TagRef}
 			} else {
-				byKey[key] = ocppClaim{c.ID, con.ID, 0}
+				byKey[key] = ocppClaim{c.ID, con.ID, 0, ""}
 			}
 			out = append(out, s)
 		}
@@ -919,6 +930,10 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 			}
 			if con.Session != nil {
 				ocn.SessionSince = con.Session.StartedAt.UnixMilli()
+				// P7: WHICH card is charging. The pseudonym is carried, never
+				// the plaintext - the session minted it once at
+				// StartTransaction (`csms.Server.tagRefOf`).
+				ocn.TagRef = con.Session.TagRef
 				// Cockpit Phase 1 / E2: the session's OWN delivered energy.
 				// The station reports a CUMULATIVE register, so the balance is
 				// register minus the reading at StartTransaction - derivable

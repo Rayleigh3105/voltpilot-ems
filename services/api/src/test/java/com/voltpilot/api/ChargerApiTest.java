@@ -14,6 +14,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -112,6 +113,9 @@ class ChargerApiTest {
 
     @Autowired
     com.voltpilot.api.command.CommandLogWriter commandLog;
+
+    @Autowired
+    com.voltpilot.api.fahrzeuge.SiteVehicleRepository vehicles;
 
     private final ObjectMapper json = new ObjectMapper();
 
@@ -645,6 +649,155 @@ class ChargerApiTest {
         }
     }
 
+    /**
+     * P7 — die FAHRZEUG-PROFILE: dieselbe Säule, zwei Karten, zwei Steuerarten.
+     *
+     * <p>⚠ Der Schlüssel ist der Pseudonym, den die BOX meldet - der Test fährt
+     * ihn deshalb durch den ECHTEN Herzschlag-Zuhörer, statt eine Zeile zu
+     * erfinden. Eine Karte, die diese Anlage nie gesehen hat, lässt sich nicht
+     * benennen; genau das ist die Regel, die verhindert, dass ein Profil auf
+     * einen Bezug entsteht, den kein Fahrzeug je trägt.
+     */
+    @Test
+    void twoCardsAtOneStationCarryTheirOwnSteuerartAndAnUnseenCardCannotBeNamed()
+            throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Ladepark-Fahrzeuge");
+        try {
+            UUID device = claim(customer, site, "edge-ladepark-p7");
+            heartbeat(site, device, twoCards());
+
+            // 1 · Beide Karten sind da - GESEHEN, aber noch nicht benannt.
+            JsonNode gesehen = getJson("/api/v1/sites/" + site + "/fahrzeuge", customer);
+            assertThat(gesehen.get("fahrzeuge")).hasSize(2);
+            for (JsonNode f : gesehen.get("fahrzeuge")) {
+                assertThat(f.get("name").isNull())
+                        .as("eine Sichtung ist noch kein Profil").isTrue();
+                assertThat(f.get("steuerart").isNull()).isTrue();
+                assertThat(f.get("laedt").asBoolean())
+                        .as("beide laden gerade - das sagt der Herzschlag, nicht die Uhr")
+                        .isTrue();
+                assertThat(f.get("letzterLadepunkt").asText()).isEqualTo("saeule-1");
+                assertThat(f.get("ersteSichtungAm").asText()).isNotBlank();
+            }
+
+            // 2 · Benennen ALLEIN gibt noch keine Steuerart - „benannt" und
+            //     „gesteuert" sind zwei Schritte.
+            JsonNode benannt = putJson("/api/v1/sites/" + site + "/fahrzeuge/" + CARD_A, customer,
+                    Map.of("name", "  Dienstwagen "));
+            JsonNode a = fahrzeug(benannt, CARD_A);
+            assertThat(a.get("name").asText()).isEqualTo("Dienstwagen");
+            assertThat(a.get("steuerart").isNull()).isTrue();
+
+            // 3 · Die Steuerart: eine Karte sofort, die andere auf Sonne.
+            putJson("/api/v1/sites/" + site + "/fahrzeuge/" + CARD_A, customer,
+                    Map.of("quelle", "sofort"));
+            JsonNode nachB = putJson("/api/v1/sites/" + site + "/fahrzeuge/" + CARD_B, customer,
+                    Map.of("name", "Privatwagen", "quelle", "ueberschuss",
+                            "ueberschussModus", "mindestleistung", "mindestleistungKw", 4.2));
+            assertThat(fahrzeug(nachB, CARD_A).get("steuerart").get("quelle").asText())
+                    .isEqualTo("sofort");
+            JsonNode b = fahrzeug(nachB, CARD_B);
+            assertThat(b.get("name").asText()).isEqualTo("Privatwagen");
+            assertThat(b.get("steuerart").get("quelle").asText()).isEqualTo("ueberschuss");
+            assertThat(b.get("steuerart").get("ueberschussModus").asText())
+                    .isEqualTo("mindestleistung");
+            assertThat(b.get("steuerart").get("mindestleistungKw").asDouble()).isEqualTo(4.2);
+            // Der NAME des ersten Fahrzeugs hat den zweiten Schreibvorgang
+            // überlebt: ein Feld, das der Wunsch nicht nennt, wird nicht
+            // angefasst (die PATCH-Regel dieses Pfads).
+            assertThat(fahrzeug(nachB, CARD_A).get("name").asText()).isEqualTo("Dienstwagen");
+
+            // 3b · Der WEG ZURÜCK ohne den Namen zu verlieren: „Lädt wie der
+            //      Ladepunkt" ist eine ausdrückliche Wahl (leere Quelle), und
+            //      sie muss die gespeicherte Bahn wirklich räumen - sonst
+            //      verspräche der Dialog etwas, das der Server nicht tut.
+            JsonNode zurueckZurSaeule = putJson(
+                    "/api/v1/sites/" + site + "/fahrzeuge/" + CARD_A, customer,
+                    Collections.singletonMap("quelle", ""));
+            JsonNode aOhne = fahrzeug(zurueckZurSaeule, CARD_A);
+            assertThat(aOhne.get("steuerart").isNull()).isTrue();
+            assertThat(aOhne.get("name").asText())
+                    .as("der Weg zurück kostet nie den Namen").isEqualTo("Dienstwagen");
+            // Und wieder hin - der Rückweg ist keine Sackgasse.
+            putJson("/api/v1/sites/" + site + "/fahrzeuge/" + CARD_A, customer,
+                    Map.of("quelle", "sofort"));
+
+            // 4 · Die Rücknahme nimmt das PROFIL, nicht die Sichtung.
+            JsonNode zurueck = deleteJson("/api/v1/sites/" + site + "/fahrzeuge/" + CARD_A,
+                    customer);
+            JsonNode aZurueck = fahrzeug(zurueck, CARD_A);
+            assertThat(aZurueck.get("steuerart").isNull()).isTrue();
+            assertThat(aZurueck.get("name").isNull()).isTrue();
+            assertThat(aZurueck.get("letzteSichtungAm").asText())
+                    .as("eine Rücknahme ist keine Beweisvernichtung").isNotBlank();
+            assertThat(zurueck.get("fahrzeuge")).hasSize(2);
+
+            // 5 · Eine Karte, die diese Anlage nie gesehen hat, lässt sich nicht
+            //     benennen - ein Profil darauf träfe nie ein Auto.
+            ResponseEntity<String> fremd = rest.exchange(
+                    url("/api/v1/sites/" + site + "/fahrzeuge/tagref_999999999999999999999999"),
+                    HttpMethod.PUT, new HttpEntity<>(Map.of("name", "Geist"), bearer(customer)),
+                    String.class);
+            assertThat(fremd.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+            // 6 · Und was kein Pseudonym DIESER Box sein kann, ist ein 400 mit
+            //     Grund - ein Klartext-IdTag darf hier gar nicht erst ankommen.
+            ResponseEntity<String> klartext = rest.exchange(
+                    url("/api/v1/sites/" + site + "/fahrzeuge/RIG-TAG"), HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("name", "Geist"), bearer(customer)), String.class);
+            assertThat(klartext.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(klartext.getBody()).contains("Kennung");
+
+            // 7 · „Günstige Stunden" wird BEIM NAMEN abgelehnt: ein Preisfenster
+            //     gehört zum Ladepunkt, nicht zur Karte.
+            ResponseEntity<String> ziel = rest.exchange(
+                    url("/api/v1/sites/" + site + "/fahrzeuge/" + CARD_B), HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("quelle", "guenstig"), bearer(customer)), String.class);
+            assertThat(ziel.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(ziel.getBody()).contains("Ladepunkt");
+            // Und der Wunsch hat NICHTS geändert.
+            assertThat(fahrzeug(getJson("/api/v1/sites/" + site + "/fahrzeuge", customer), CARD_B)
+                    .get("steuerart").get("quelle").asText()).isEqualTo("ueberschuss");
+
+            // 8 · Der Mandanten-Zaun: eine fremde Anlage ist 404, nie 403.
+            ResponseEntity<String> foreign = rest.exchange(
+                    url("/api/v1/sites/" + site + "/fahrzeuge"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+            assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    private static final String CARD_A = "tagref_1f2e3d4c5b6a798877665544";
+    private static final String CARD_B = "tagref_00112233445566778899aabb";
+
+    private static JsonNode fahrzeug(JsonNode doc, String tagRef) {
+        for (JsonNode f : doc.get("fahrzeuge")) {
+            if (tagRef.equals(f.get("tagRef").asText())) {
+                return f;
+            }
+        }
+        throw new AssertionError("kein Fahrzeug " + tagRef + " in " + doc);
+    }
+
+    /** Eine Saeule, an der zwei verschiedene Karten laden. */
+    private static String twoCards() {
+        return """
+                {"reported_at":"2026-08-31T09:00:00Z","enabled":true,"control_enabled":true,
+                 "grid_limit_kw":32,"budget_kw":28,"connector_count":2,
+                 "chargers":[
+                   {"id":"saeule-1","label":"Hof Nord","connected":true,"ready":true,
+                    "connectors":[
+                      {"id":1,"status":"Charging","charging":true,"power_kw":11,
+                       "session_since":"2026-08-31T08:41:00Z",
+                       "tag_ref":"tagref_1f2e3d4c5b6a798877665544"},
+                      {"id":2,"status":"Charging","charging":true,"power_kw":4.2,
+                       "session_since":"2026-08-31T08:50:00Z",
+                       "tag_ref":"tagref_00112233445566778899aabb"}]}]}""";
+    }
+
     private static java.util.List<String> ids(JsonNode array) {
         java.util.List<String> out = new java.util.ArrayList<>();
         array.forEach(n -> out.add(n.asText()));
@@ -756,8 +909,15 @@ class ChargerApiTest {
         ObjectProvider<com.voltpilot.api.command.CommandLogWriter> logProvider =
                 org.mockito.Mockito.mock(ObjectProvider.class);
         org.mockito.Mockito.when(logProvider.getIfAvailable()).thenReturn(commandLog);
+        // ⚠ Die Ladekarten-Sichtungen (P7) laufen ueber die ECHTE Repository:
+        // ohne sie gaebe es im Portal keine Zeile, der ein Name gegeben werden
+        // koennte - der Test soll genau diesen Weg fahren, nicht eine Attrappe.
+        @SuppressWarnings("unchecked")
+        ObjectProvider<com.voltpilot.api.fahrzeuge.SiteVehicleRepository> vehicleProvider =
+                org.mockito.Mockito.mock(ObjectProvider.class);
+        org.mockito.Mockito.when(vehicleProvider.getIfAvailable()).thenReturn(vehicles);
         ChargerStatusListener listener = new ChargerStatusListener("tcp://unused", "", "", devices,
-                chargerStatus, provider, logProvider);
+                chargerStatus, provider, logProvider, vehicleProvider);
         String payload = """
                 {"schema_version":"1.0","tenant_id":"%s","site_id":"%s","device_id":"%s",
                  "online":true,"chargers":%s}"""

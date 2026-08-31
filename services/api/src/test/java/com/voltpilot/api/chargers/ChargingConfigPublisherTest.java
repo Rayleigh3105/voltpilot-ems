@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.web.dto.ChargingConfigDto;
 import com.voltpilot.api.web.dto.ChargingConfigDto.AllowedChargePointDto;
+import com.voltpilot.api.web.dto.FahrzeugDto.VehicleProfileDto;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,9 +52,15 @@ class ChargingConfigPublisherTest {
     private JsonNode doc(Double gridLimitKw, List<String> priorities, String policy,
             String storage, List<AllowedChargePointDto> chargePoints, List<String> removed)
             throws Exception {
+        return doc(gridLimitKw, priorities, policy, storage, chargePoints, removed, null);
+    }
+
+    private JsonNode doc(Double gridLimitKw, List<String> priorities, String policy,
+            String storage, List<AllowedChargePointDto> chargePoints, List<String> removed,
+            List<VehicleProfileDto> vehicles) throws Exception {
         return json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE,
-                gridLimitKw, priorities, policy, storage, chargePoints, removed, null, null, null, AT),
-                StandardCharsets.UTF_8));
+                gridLimitKw, priorities, policy, storage, chargePoints, removed, null, null,
+                null, vehicles, AT), StandardCharsets.UTF_8));
     }
 
     /** Eine eingetragene Saeule, so wie die Repository sie liefert. */
@@ -117,7 +124,7 @@ class ChargingConfigPublisherTest {
         // Ganze Zahlen bleiben ganz: 277, nicht 277.0 - das Dokument wird auch
         // von Menschen gelesen.
         assertThat(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE, 277.0, null,
-                null, null, null, null, null, null, null, AT), StandardCharsets.UTF_8))
+                null, null, null, null, null, null, null, null, AT), StandardCharsets.UTF_8))
                 .contains("\"grid_limit_kw\":277,");
     }
 
@@ -214,7 +221,8 @@ class ChargingConfigPublisherTest {
                 DEVICE, 277.0, null, null, null,
                 List.of(cp("saeule-hof-nord", "Hof Nord", 22.0, 2), cp("saeule-halle", null, null,
                         null)),
-                null, null, null, null, Instant.parse("2026-08-21T09:15:00Z")), StandardCharsets.UTF_8));
+                null, null, null, null, null, Instant.parse("2026-08-21T09:15:00Z")),
+                StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
         // ⚠ Das Dokument nennt KEIN `priority` - der Vorrang wird allein ueber
         // `priority_charge_point_ids` gestellt (das ist eine MENGE und damit die
@@ -263,7 +271,8 @@ class ChargingConfigPublisherTest {
         JsonNode actual = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
                 DEVICE, 277.0, null, null, null,
                 List.of(cp("saeule-hof-nord", "Hof Nord", null, null)), List.of("saeule-halle"),
-                null, null, null, Instant.parse("2026-08-24T10:05:00Z")), StandardCharsets.UTF_8));
+                null, null, null, null, Instant.parse("2026-08-24T10:05:00Z")),
+                StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
     }
 
@@ -299,7 +308,8 @@ class ChargingConfigPublisherTest {
                 List.of(cp("saeule-hof-nord", "Hof Nord", 22.0, 2, "haus"),
                         cp("saeule-strasse", "Ladepark Strasse", null, null, "eigen"),
                         cp("saeule-halle", null, null, null, null)),
-                null, null, null, null, Instant.parse("2026-08-28T09:15:00Z")), StandardCharsets.UTF_8));
+                null, null, null, null, null, Instant.parse("2026-08-28T09:15:00Z")),
+                StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
     }
 
@@ -330,8 +340,8 @@ class ChargingConfigPublisherTest {
     void theFrameTravelsFieldByFieldAndNeverAsAnEmptyObject() throws Exception {
         JsonNode d = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
                 DEVICE, null, null, null, null, null, null,
-                new ChargingConfigDto.LadeparkRahmenDto(167.0, null, 30.0, null, null, false), null, null,
-                AT), StandardCharsets.UTF_8));
+                new ChargingConfigDto.LadeparkRahmenDto(167.0, null, 30.0, null, null, false),
+                null, null, null, AT), StandardCharsets.UTF_8));
         JsonNode frame = d.get("frame");
         assertThat(frame.get("house_reserve_kw").asInt()).isEqualTo(167);
         assertThat(frame.get("min_power_kw").asInt()).isEqualTo(30);
@@ -343,8 +353,8 @@ class ChargingConfigPublisherTest {
         // Objekt taeuschte eine Aussage vor.
         JsonNode leer = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
                 DEVICE, null, null, null, null, null, null,
-                new ChargingConfigDto.LadeparkRahmenDto(null, null, null, null, null, null), null, null, AT),
-                StandardCharsets.UTF_8));
+                new ChargingConfigDto.LadeparkRahmenDto(null, null, null, null, null, null),
+                null, null, null, AT), StandardCharsets.UTF_8));
         assertThat(leer.has("frame")).isFalse();
     }
 
@@ -361,7 +371,8 @@ class ChargingConfigPublisherTest {
                         cp("saeule-halle", null, null, null, null, "sonne_zuerst", 4.2)),
                 null,
                 new ChargingConfigDto.LadeparkRahmenDto(167.0, 10.0, 30.0, 15, 180.0, false),
-                null, null, Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
+                null, null, null, Instant.parse("2026-08-31T09:15:00Z")),
+                StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
     }
 
@@ -377,7 +388,8 @@ class ChargingConfigPublisherTest {
                 List.of(cp("saeule-chef", null, null, null, null, null, null, 1),
                         cp("saeule-hof-nord", null, null, null, null, null, null, 3),
                         cp("saeule-halle", null, null, null, null, null, null, 3)),
-                null, null, 2, null, Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
+                null, null, 2, null, null, Instant.parse("2026-08-31T09:15:00Z")),
+                StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
     }
 
@@ -402,7 +414,8 @@ class ChargingConfigPublisherTest {
             d = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE,
                     null, null, null, null,
                     List.of(cp("saeule-halle", null, null, null, null, null, null, 0)), null, null,
-                    0, null, Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
+                    0, null, null, Instant.parse("2026-08-31T09:15:00Z")),
+                    StandardCharsets.UTF_8));
         } catch (Exception e) {
             throw new AssertionError(e);
         }
@@ -417,7 +430,7 @@ class ChargingConfigPublisherTest {
                 List.of(new ChargingConfigDto.WallboxDto(
                         UUID.fromString("00000000-0000-0000-0000-0000000000aa"), "Wallbox Garage",
                         11.0, 4.2, 1)),
-                Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
+                null, Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
         JsonNode wb = d.get("wallboxes").get(0);
         assertThat(wb.get("entity_id").asText())
                 .isEqualTo("00000000-0000-0000-0000-0000000000aa");
@@ -433,11 +446,84 @@ class ChargingConfigPublisherTest {
         // ⚠ Und die LEERE Liste ist hier - anders als bei der Allowlist - eine
         // AUSSAGE: nur so faellt eine entfernte Wallbox wieder aus dem Rahmen.
         JsonNode leer = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
-                DEVICE, 22.0, null, null, null, null, null, null, null, List.of(),
+                DEVICE, 22.0, null, null, null, null, null, null, null, List.of(), null,
                 Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
         assertThat(leer.get("wallboxes")).isEmpty();
 
         // Ohne jede Aussage reist das Feld GAR NICHT mit.
         assertThat(doc(277.0, null, null, null).has("wallboxes")).isFalse();
+    }
+
+    // -----------------------------------------------------------------------
+    // P7: die Fahrzeug-Profile
+    // -----------------------------------------------------------------------
+
+    /**
+     * Die MENGE ist die Aussage - und das ist die UMGEKEHRTE Regel der
+     * Allowlist. Eine LEERE Liste reist MIT (sie nimmt alle Profile zurueck),
+     * nur `null` schweigt.
+     */
+    @Test
+    void vehicleProfilesTravelAsASetAndAnEmptyListWithdrawsThemAll() throws Exception {
+        assertThat(doc(null, null, null, null, null, null, null).has("vehicle_profiles"))
+                .as("ohne Aussage darf das Feld nicht entstehen").isFalse();
+
+        JsonNode leer = doc(null, null, null, null, null, null, List.of());
+        assertThat(leer.get("vehicle_profiles").isArray()).isTrue();
+        assertThat(leer.get("vehicle_profiles")).isEmpty();
+    }
+
+    /** Nur was gemeint ist, reist mit: kein Name, kein Boden, keine 0. */
+    @Test
+    void aVehicleProfileCarriesOnlyWhatItReallySays() throws Exception {
+        JsonNode d = doc(null, null, null, null, null, null,
+                List.of(new VehicleProfileDto("tagref_1f2e3d4c5b6a798877665544", null,
+                                "schnell", null),
+                        new VehicleProfileDto("tagref_00112233445566778899aabb", "Privatwagen",
+                                "sonne_zuerst", 4.2)));
+        JsonNode ohne = d.get("vehicle_profiles").get(0);
+        assertThat(ohne.get("tag_ref").asText()).isEqualTo("tagref_1f2e3d4c5b6a798877665544");
+        assertThat(ohne.get("source").asText()).isEqualTo("schnell");
+        assertThat(ohne.has("name")).isFalse();
+        assertThat(ohne.has("min_kw")).isFalse();
+        JsonNode mit = d.get("vehicle_profiles").get(1);
+        assertThat(mit.get("name").asText()).isEqualTo("Privatwagen");
+        assertThat(mit.get("min_kw").asDouble()).isEqualTo(4.2);
+    }
+
+    /** Ein Kundenname ist Fremdtext - er darf den JSON-Rahmen nie sprengen. */
+    @Test
+    void aVehicleNameCannotBreakOutOfTheDocument() throws Exception {
+        JsonNode d = doc(null, null, null, null, null, null,
+                List.of(new VehicleProfileDto("tagref_1f2e3d4c5b6a798877665544",
+                        "Dienst\"wagen\n", "schnell", null)));
+        assertThat(d.get("vehicle_profiles").get(0).get("name").asText())
+                .isEqualTo("Dienst\"wagen\n");
+    }
+
+    /** Die eingecheckte P7-Fixture, Feld fuer Feld - per PFAD gelesen. */
+    @Test
+    void theVehicleProfileFixtureIsExactlyWhatThePublisherWrites() throws Exception {
+        Path fixture = Path.of("..", "..", "docs", "contracts", "examples",
+                "mqtt-charging-config.valid.fahrzeug-profile.json");
+        JsonNode expected = json.readTree(Files.readString(fixture));
+        JsonNode actual = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
+                DEVICE, 32.0, null, "nur_sonne", null,
+                List.of(cp("stellplatz-01", null, null, null, null, "nur_sonne", null)),
+                null, null, null, null,
+                List.of(new VehicleProfileDto("tagref_1f2e3d4c5b6a798877665544", "Dienstwagen",
+                                "schnell", null),
+                        new VehicleProfileDto("tagref_00112233445566778899aabb", "Privatwagen",
+                                "sonne_zuerst", 4.2)),
+                Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
+        assertThat(actual).isEqualTo(expected);
+
+        Path zurueck = Path.of("..", "..", "docs", "contracts", "examples",
+                "mqtt-charging-config.valid.fahrzeug-profile-zurueckgenommen.json");
+        JsonNode expectedBack = json.readTree(Files.readString(zurueck));
+        JsonNode actualBack = json.readTree(new String(ChargingConfigPublisher.document(TENANT,
+                SITE, DEVICE, null, null, null, null, null, null, null, null, null, List.of(),
+                Instant.parse("2026-08-31T10:00:00Z")), StandardCharsets.UTF_8));
+        assertThat(actualBack).isEqualTo(expectedBack);
     }
 }

@@ -68,6 +68,19 @@ export interface ChargeConnector {
   meteredAt?: string | null;
   /** An diesem Stecker läuft „Jetzt voll laden" (Stufe 4). */
   boost?: boolean;
+  /**
+   * Das PSEUDONYM der Ladekarte dieses Ladevorgangs (P7) - der Wert, den die
+   * BOX aus dem IdTag rechnet. Der Klartext verlässt sie nie.
+   *
+   * ⚠ Es ist NICHT der Bezug aus dem OCPP-Journal
+   * (`OcppTransaction.startIdTagRef`): den pfeffert die Cloud ein zweites Mal,
+   * dieselbe Karte trägt dort einen anderen Wert. Nur DIESER hier ist der, den
+   * die Box wiedererkennt.
+   *
+   * `null`/abwesend = kein Ladevorgang, eine Säule ohne Karte, oder ein
+   * älterer Box-Stand - nie eine erfundene Karte.
+   */
+  tagRef?: string | null;
 }
 
 export interface ChargePoint {
@@ -635,6 +648,8 @@ export interface LadevorgangRow {
   boost: boolean;
   /** Läuft an dieser Ladung ein „Laden pausieren" des Kunden? (P3b) */
   handeingriff: boolean;
+  /** Das Pseudonym der Karte, die hier lädt (P7); null = keine gemeldet. */
+  tagRef: string | null;
 }
 
 /** Der Name einer Säule: der vergebene, sonst ihre Kennung (nie erfunden). */
@@ -688,6 +703,7 @@ function rowFor(c: ChargePoint, con: ChargeConnector, nowMs?: number): Ladevorga
     connectorId: con.connectorId,
     boost: con.boost === true,
     handeingriff: z.handeingriff,
+    tagRef: con.tagRef ?? null,
   };
 }
 

@@ -1,0 +1,92 @@
+/* ==========================================================================
+   Fahrzeug-Profile (Verbrauchsmanagement v1 / P7)
+   ==========================================================================
+   Komponenten-lokal wie `VerbraucherZone.css`. Die Zeilen benutzen bewusst die
+   Klassen der Verbraucher-Zone (`vp-vz-row`, `vp-vz-chip`, …): ein Fahrzeug ist
+   dieselbe Art Zeile wie ein Ladepunkt, und ein zweiter Zeilen-Stil daneben
+   wäre eine optische Behauptung, dass es etwas anderes ist.
+   ========================================================================== */
+
+.vp-fz {
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  margin-top: var(--vp-space-3, 12px);
+}
+
+.vp-fz-body {
+  padding-bottom: var(--vp-space-2, 8px);
+}
+
+.vp-fz-intro,
+.vp-fz-note {
+  margin: 0 0 var(--vp-space-2, 8px);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-fz-note {
+  padding: var(--vp-space-2, 8px) var(--vp-space-3, 12px);
+  background: var(--vp-surface-subtle, #f8fafc);
+  border-radius: var(--vp-radius-md, 8px);
+}
+
+/* Der Dialog: Felder untereinander, am Telefon volle Breite. */
+.vp-fz-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+}
+
+.vp-fz-karten {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+}
+
+.vp-fz-karte {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--vp-space-3, 12px);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 8px);
+  background: var(--vp-surface, #fff);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.vp-fz-karte.is-gewaehlt {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: inset 0 0 0 1px var(--vp-action, #2c5282);
+}
+
+.vp-fz-karte b {
+  display: block;
+}
+
+.vp-fz-karte small {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-fz-folgen {
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-fz-folgen li + li {
+  margin-top: 4px;
+}
+
+.vp-fz-fehler {
+  margin: 0;
+  font-size: 13px;
+  color: var(--vp-danger, #b91c1c);
+}

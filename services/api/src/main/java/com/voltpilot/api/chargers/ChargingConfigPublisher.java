@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.io.JsonStringEncoder;
 import com.voltpilot.api.web.dto.ChargingConfigDto.AllowedChargePointDto;
 import com.voltpilot.api.web.dto.ChargingConfigDto.LadeparkRahmenDto;
 import com.voltpilot.api.web.dto.ChargingConfigDto.WallboxDto;
+import com.voltpilot.api.web.dto.FahrzeugDto.VehicleProfileDto;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -103,11 +104,12 @@ public class ChargingConfigPublisher {
             Double gridLimitKw, List<String> priorities, String surplusPolicy,
             String storagePriority, List<AllowedChargePointDto> chargePoints,
             List<String> removedChargePointIds, LadeparkRahmenDto frame, Integer storageRank,
-            List<WallboxDto> wallboxes, Instant publishedAt) {
+            List<WallboxDto> wallboxes, List<VehicleProfileDto> vehicleProfiles,
+            Instant publishedAt) {
         String topic = configTopic(tenantId, siteId, deviceId);
         byte[] payload = document(tenantId, siteId, deviceId, gridLimitKw, priorities,
                 surplusPolicy, storagePriority, chargePoints, removedChargePointIds, frame,
-                storageRank, wallboxes, publishedAt);
+                storageRank, wallboxes, vehicleProfiles, publishedAt);
         try {
             MqttMessage message = new MqttMessage(payload);
             message.setQos(1);
@@ -157,6 +159,7 @@ public class ChargingConfigPublisher {
             List<String> priorities, String surplusPolicy, String storagePriority,
             List<AllowedChargePointDto> chargePoints, List<String> removedChargePointIds,
             LadeparkRahmenDto frame, Integer storageRank, List<WallboxDto> wallboxes,
+            List<VehicleProfileDto> vehicleProfiles,
             Instant publishedAt) {
         StringBuilder sb = new StringBuilder(256);
         sb.append("{\"schema_version\":\"1.0\"")
@@ -264,8 +267,41 @@ public class ChargingConfigPublisher {
             }
             sb.append(']');
         }
+        // ⚠ Die FAHRZEUG-PROFILE (P7) sind eine MENGE - und damit die
+        // UMGEKEHRTE Regel der Allowlist: eine LEERE Liste reist MIT und nimmt
+        // alle Profile zurueck, weil das Portal sie allein besitzt (es gibt
+        // dafuer keine :8484-Oberflaeche). Deshalb braucht es hier auch keine
+        // Grabstein-Liste. Nur `null` heisst „das Portal aeussert sich nicht".
+        if (vehicleProfiles != null) {
+            sb.append(",\"vehicle_profiles\":[");
+            for (int i = 0; i < vehicleProfiles.size(); i++) {
+                if (i > 0) {
+                    sb.append(',');
+                }
+                appendVehicle(sb, vehicleProfiles.get(i));
+            }
+            sb.append(']');
+        }
         sb.append(",\"published_at\":\"").append(publishedAt).append("\"}");
         return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Ein Fahrzeug-Profil (P7). Kennung und Quelle sind Pflicht - ein Profil
+     * ohne Quelle sagt nichts. Der NAME reist mit, damit die lokale Oberflaeche
+     * der Box denselben Namen nennen kann wie das Portal; die Box entscheidet
+     * nichts danach und gibt ihn an keine Saeule weiter.
+     */
+    private static void appendVehicle(StringBuilder sb, VehicleProfileDto v) {
+        sb.append("{\"tag_ref\":\"").append(esc(v.tagRef())).append('"');
+        if (v.name() != null && !v.name().isBlank()) {
+            sb.append(",\"name\":\"").append(esc(v.name())).append('"');
+        }
+        sb.append(",\"source\":\"").append(esc(v.source())).append('"');
+        if (v.minKw() != null) {
+            sb.append(",\"min_kw\":").append(trim(v.minKw()));
+        }
+        sb.append('}');
     }
 
     /**
