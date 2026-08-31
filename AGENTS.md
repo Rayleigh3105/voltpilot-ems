@@ -883,10 +883,24 @@ Anlage ändert dadurch ihr Verhalten NICHT** (siehe die Autoritäts-Regel; der B
   `edge/sources/config`, Self-Wiring, Telemetrie) ist BYTE-IDENTISCH; nur der SCHREIBER der lokalen Dateien
   wechselt. Deterministische Quellen-IDs (`sources.DeterministicID`) bleiben, damit die Übernahme in Stufe 2
   ein No-op ist. Details: `edge-app/AGENTS.md`.
-- **Soll/Ist ist DREIWERTIG und wird nie geraten:** `in_sync` · `pending` · `unreported`. **`unreported` heißt
+- **Soll/Ist wird nie geraten:** `in_sync` · `pending` · `unreported` · `no_gateway_device`. **`unreported` heißt
   „die Box hat sich noch nicht geäußert" — NIE „die Änderung ist verloren"**; eine Ablehnung reist NEBEN der
   angewandten Revision (`refusedRevision`/`refusedReason`), nie an ihrer Stelle — was läuft, ist weiterhin die
   zuletzt wirklich angewandte Fassung.
+  - **⚠ `no_gateway_device` ist der EINE Fall, in dem der Grund BEKANNT ist** (Scout `vp-portal-box-spiegel-s2` L10):
+    mehrere beanspruchte Geräte und keins als steuerndes Gerät des Speichers hinterlegt ⇒ `gatewayDevice` ist
+    `null`, es wird GAR NICHT gepusht (die Outbox notiert `refused`). Er ersetzt genau die zwei Urteile, die
+    dadurch unehrlich würden — `unreported` („unbekannt", obwohl bekannt) und `pending` („unterwegs", obwohl nichts
+    unterwegs sein kann —, **nie `in_sync`**. Die zwei-Argument-`syncStatus` bleibt für den Flotten-Blick der
+    Stufe 6 (`AdminComponentFleetController`), der das Empfänger-Wissen nicht hat und deshalb bewusst nichts
+    behauptet; der Kundensatz wohnt EINMAL im Portal (`komponentenAssistent.KEIN_EMPFAENGER_SATZ`).
+- **⚠ ALLE DREI Schreibwege gehen über die Aktivierungs-Outbox** (`component_activation_outbox`, Operationen
+  `component_create` · `component_edit` · `component_rollback`): Push NACH dem Commit, mit Wiederholung bis
+  `applied`. `create` pushte bis zum 31.08.2026 INNERHALB seiner `@Transactional`-Methode — beide Fehlerformen
+  davon sind still (ein Broker-Ausfall genau dort wird nie wiederholt, und ein Rollback nach erfolgreichem
+  Publish ließe die Box mit einem Soll zurück, das die Datenbank nicht hat). **Wer ein viertes Wort einführt,
+  weitet den CHECK, indem er den AKTUELLEN Stand abschreibt** (die `consumer_audit_event`-Regel); Wächter dafür
+  ist das reine `ComponentActivationOperationsTest`.
 - **Beweise:** Go `internal/componentapply` (19, inkl. der Kontrakt-Fixture per PFAD) + `agent/component_apply_test.go`
   (8, u. a. `TestABoxManagedPlantIsByteIdenticalUnderEveryPush` — die Captain-Auflage —, Ablehnung behält alles,
   leeres Soll löscht nichts, Neustart, lokale Bearbeitung auf einer portal-verwalteten Anlage abgelehnt) ·
