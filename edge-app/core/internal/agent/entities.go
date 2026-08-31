@@ -312,6 +312,8 @@ func (a *Agent) componentApplySummary() *cloud.ComponentApplySummary {
 		Revision:        rec.Revision,
 		RefusedRevision: rec.Refused,
 		RefusedReason:   rec.RefusedReason,
+		HeldRevision:    rec.Held,
+		HeldReason:      rec.HeldReason,
 	}
 	if !rec.AppliedAt.IsZero() {
 		out.AppliedAt = rec.AppliedAt.UTC().Format(time.RFC3339)

@@ -70,7 +70,8 @@ public class AdminComponentFleetController {
                     privateTemplates.getOrDefault(s.siteId(), 0),
                     // Wörtlich dieselbe Ableitung wie die Kunden-Fläche.
                     ComponentService.syncStatus(soll.get(s.siteId()),
-                            a == null ? null : a.appliedRevision()),
+                            a == null ? null : a.appliedRevision(),
+                            a == null ? null : a.heldRevision()),
                     a == null ? null : a.refusedRevision(),
                     a == null ? null : a.refusedReason(),
                     a == null ? null : a.reportedAt(),

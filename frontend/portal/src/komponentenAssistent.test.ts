@@ -15,6 +15,7 @@ import {
   pruefen,
   rolleVerfuegbar,
   KEIN_EMPFAENGER_SATZ,
+  haltGrund,
   sollIstText,
   sollIstTon,
   templatesFuerTuer,
@@ -281,6 +282,29 @@ describe('Soll/Ist', () => {
 
   it('gibt dem fehlenden Empfänger den ruhigen Ton - nichts ist unterwegs', () => {
     expect(sollIstTon('no_gateway_device')).toBe('unbekannt');
+  });
+
+  /*
+    Befund L1: bis hierher gab es nur „unterwegs" - also sagte das Portal einer
+    Anlage, deren letzte Anbindung geloescht wurde, DAUERHAFT eine Reise an, die
+    laengst beantwortet war.
+  */
+  it('sagt bei einem bewussten Halt, was WIRKLICH laeuft - nie „unterwegs"', () => {
+    expect(sollIstText('held', 2)).toBe('Die Box behält den letzten Gerätestand');
+    expect(sollIstText('held', 2)).not.toContain('unterwegs');
+    // Ein Halt ist keine Reise (`busy`) und kein Gleichstand (`ok`).
+    expect(sollIstTon('held')).toBe('unbekannt');
+  });
+
+  it('reicht den Grund der Box WOERTLICH durch und erfindet ohne Halt keinen', () => {
+    expect(haltGrund('held', 'Im Portal ist kein verbundenes Geraet hinterlegt.'))
+      .toBe('Im Portal ist kein verbundenes Geraet hinterlegt.');
+    // Ohne gemeldeten Grund bleibt der Hausatz - aber nur BEI einem Halt.
+    expect(haltGrund('held', null)).toContain('keine Anbindung mehr hinterlegt');
+    expect(haltGrund('held', '   ')).toContain('keine Anbindung mehr hinterlegt');
+    expect(haltGrund('pending', 'egal')).toBeNull();
+    expect(haltGrund('in_sync', 'egal')).toBeNull();
+    expect(haltGrund(undefined, undefined)).toBeNull();
   });
 
   it('nennt bei einer Ablehnung BEIDES: dass der alte Stand läuft UND warum', () => {

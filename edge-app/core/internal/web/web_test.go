@@ -73,6 +73,8 @@ type fakeInverter struct {
 	// portalManaged mirrors the Stufe-2 authority: true = the plant's devices
 	// are maintained in the portal and :8484 is a read-only mirror.
 	portalManaged bool
+	// setErr is the refusal SetInverter hands back (the authority gate).
+	setErr error
 }
 
 func (f *fakeInverter) InverterCatalog() inverter.Catalog { return f.cat }
@@ -99,6 +101,9 @@ func (f *fakeInverter) GetInverter() (inverter.Selection, bool) {
 }
 
 func (f *fakeInverter) SetInverter(req inverter.SelectionRequest) (inverter.Selection, error) {
+	if f.setErr != nil {
+		return inverter.Selection{}, f.setErr
+	}
 	sel, err := f.cat.Normalize(req, time.Unix(0, 0))
 	if err != nil {
 		return inverter.Selection{}, err
@@ -300,14 +305,15 @@ func (f *fakeOta) IsOtaRejection(err error) bool { return err != nil }
 
 // fakeSources is an in-memory SourcesController for the HTTP-layer test.
 type fakeSources struct {
-	list     []sources.Source
-	statuses map[string]string
-	readings map[string]sources.LastReading
-	addErr   error
-	delErr   error
-	bal      sources.BalanceSettings
-	balErr   error
-	custom   []componentapply.CustomDevice
+	list      []sources.Source
+	statuses  map[string]string
+	readings  map[string]sources.LastReading
+	addErr    error
+	delErr    error
+	renameErr error
+	bal       sources.BalanceSettings
+	balErr    error
+	custom    []componentapply.CustomDevice
 }
 
 func (f *fakeSources) ListSources() []sources.Source { return f.list }
@@ -355,6 +361,9 @@ func (f *fakeSources) DeleteSource(id string) error {
 }
 
 func (f *fakeSources) RenameSource(id, label string) (sources.Source, error) {
+	if f.renameErr != nil {
+		return sources.Source{}, f.renameErr
+	}
 	label = strings.TrimSpace(label)
 	if label == "" || len([]rune(label)) > 64 {
 		return sources.Source{}, &sources.ValidationError{
@@ -2971,11 +2980,16 @@ func TestAdaptiveEnergyPictureServed(t *testing.T) {
 	}
 
 	page := get("/index.html")
-	// The adaptive-tiles mount alongside the fixed v1 KPI section.
-	for _, want := range []string{`id="kpisAdaptive"`, `id="kpis"`, `id="flowWrap"`} {
+	// The adaptive-tiles mount alongside the fixed v1 KPI section, and the pure
+	// role rules load BEFORE the page that consumes them - without the tag the
+	// whole Betrieb page would be silently dead.
+	for _, want := range []string{`id="kpisAdaptive"`, `id="kpis"`, `id="flowWrap"`, `src="flowrollen.js"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("index.html: missing %s", want)
 		}
+	}
+	if i, j := strings.Index(page, `src="flowrollen.js"`), strings.Index(page, `src="dashboard.js"`); i < 0 || j < 0 || i > j {
+		t.Error("index.html: flowrollen.js must load before dashboard.js")
 	}
 
 	dash := get("/dashboard.js")
@@ -2986,12 +3000,34 @@ func TestAdaptiveEnergyPictureServed(t *testing.T) {
 		"createFlow", ".topology",
 		// The role vocabulary the adaptive picture groups on.
 		"storage", "consumer",
-		// A1 parity (PR 4b): ONE circle per role + the composition affordance.
-		"ROLE_NODE_LABEL", "subLabelFor", "Geräte", "flow-comp",
-		"über den Wechselrichter mitgemessen",
+		// A1 parity (PR 4b): the composition affordance.
+		"flow-comp", "über den Wechselrichter mitgemessen",
+		// The pure rules live in their own module; this page only draws them.
+		"VPFlowRollen",
 	} {
 		if !strings.Contains(dash, want) {
 			t.Errorf("dashboard.js: missing %s", want)
+		}
+	}
+	// ⚠ Die Rollen-Liste ist der Zwilling von internal/topology: seit PR 550
+	// liefert DefaultRole für eine Wallbox `charging`/`charging-own`. Fehlt das
+	// Wort hier, verschwindet der Knoten samt Kachel STILL (Befund L3).
+	roles := get("/flowrollen.js")
+	for _, want := range []string{
+		"ROLE_NODE_LABEL", "subLabelFor", "Geräte", "flowLayout", "deriveTiles",
+		topology.RoleCharging, topology.RoleChargingOwn,
+		"Laden", "Ladepunkt", "eigener Anschluss",
+	} {
+		if !strings.Contains(roles, want) {
+			t.Errorf("flowrollen.js: missing %s", want)
+		}
+	}
+	for _, role := range []string{
+		topology.RolePV, topology.RoleStorage, topology.RoleConsumer,
+		topology.RoleGrid, topology.RoleCharging, topology.RoleChargingOwn,
+	} {
+		if !strings.Contains(roles, `"`+role+`"`) {
+			t.Errorf("flowrollen.js: role %q has no place - its node and tile would vanish", role)
 		}
 	}
 }
@@ -4089,5 +4125,95 @@ func TestFaviconShipsAndBothPagesLinkIt(t *testing.T) {
 	ico := getBytes("/favicon.ico")
 	if len(ico) < 4 || ico[0] != 0x00 || ico[1] != 0x00 || ico[2] != 0x01 || ico[3] != 0x00 {
 		t.Errorf("favicon.ico is not a real ICO (got %d bytes, magic %x)", len(ico), ico[:min(4, len(ico))])
+	}
+}
+
+// TestPortalManagedRefusalIsAHintNotAServerError pins Befund L2 (Scout
+// vp-portal-box-spiegel-s2): auf einer portal-verwalteten Anlage meldet die
+// Autoritaets-Sperre (agent.refuseIfPortalManaged) einen
+// *inverter.ValidationError - auch auf den QUELLEN-Routen. Vor dieser Runde
+// fragten die drei Schreib-Handler nur den *sources.ValidationError ab und
+// antworteten deshalb mit HTTP 500 "Energiequelle konnte nicht gespeichert
+// werden", waehrend POST /api/inverter sauber 400 mit dem deutschen Hinweis
+// gab. Die Oberflaeche versteckt die Knoepfe zwar, aber ein Deep-Link, eine
+// aeltere Seite oder ein Skript bekam den falschen Grund.
+//
+// Der Typ ist die Naht zum Agenten: dass die Sperre ihn auf allen vier Wegen
+// meldet, haelt component_apply_test.go fest.
+func TestPortalManagedRefusalIsAHintNotAServerError(t *testing.T) {
+	// Der Satz gehoert dem Agenten; hier zaehlt, dass er VERBATIM ankommt.
+	gate := &inverter.ValidationError{
+		Msg: "Die Geraete dieser Anlage werden im VoltPilot-Portal verwaltet."}
+	fs := &fakeSources{addErr: gate, delErr: gate, renameErr: gate}
+	fi := &fakeInverter{cat: inverter.DefaultCatalog(), portalManaged: true}
+	srv := httptest.NewServer(Handler(state.New("edge-pm", "test"), fi, &fakePurge{},
+		&fakeDespike{}, history.New(10), &fakePlan{}, fs, &fakeTopology{},
+		&fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{},
+		&fakeInstallerWrite{}, &fakeOcpp{}))
+	defer srv.Close()
+
+	body := `{"role":"pv-generation","brand":"generic_modbus","model":"sunspec",` +
+		`"connection":{"ip":"10.0.0.2","unit_id":1}}`
+	for _, tc := range []struct {
+		name, method, path, body string
+	}{
+		{"quelle anlegen", http.MethodPost, "/api/sources", body},
+		{"quelle umbenennen", http.MethodPut, "/api/sources/src-fixed", `{"label":"Neu"}`},
+		{"quelle entfernen", http.MethodDelete, "/api/sources/src-fixed", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, srv.URL+tc.path, strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("status = %d, want 400 (ein Hinweis, kein Serverfehler)", resp.StatusCode)
+			}
+			var out struct {
+				Error string `json:"error"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+				t.Fatal(err)
+			}
+			if out.Error != gate.Msg {
+				t.Errorf("Grund = %q, want den Satz der Sperre verbatim", out.Error)
+			}
+		})
+	}
+
+	// Und die vierte Route - der Wechselrichter - antwortet unveraendert
+	// GENAUSO: dieselbe Sperre darf nicht zwei Antworten haben. Hier meldet der
+	// echte Katalog die Ablehnung, nicht die eingespeiste.
+	fiRefuse := &fakeInverter{cat: inverter.DefaultCatalog()}
+	fiRefuse.setErr = gate
+	srv2 := httptest.NewServer(Handler(state.New("edge-pm2", "test"), fiRefuse, &fakePurge{},
+		&fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{},
+		&fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{},
+		&fakeInstallerWrite{}, &fakeOcpp{}))
+	defer srv2.Close()
+	resp, err := http.Post(srv2.URL+"/api/inverter", "application/json",
+		strings.NewReader(`{"brand":"generic_modbus","model":"sunspec","connection":{"ip":"10.0.0.1","unit_id":1}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("inverter status = %d, want 400", resp.StatusCode)
+	}
+
+	// Gegenprobe (nicht vakuum): ein ECHTER Fehler bleibt ein Serverfehler.
+	fs.addErr = errors.New("Platte voll")
+	resp2, err := http.Post(srv.URL+"/api/sources", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusInternalServerError {
+		t.Errorf("unbekannter Fehler: status = %d, want 500", resp2.StatusCode)
 	}
 }

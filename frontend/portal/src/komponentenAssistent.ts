@@ -679,16 +679,22 @@ export const ABSCHLUSS_HINWEIS =
 
 /**
  * Die Soll/Ist-Zeile je Komponente („Läuft auf dem Gerät · Fassung 3" /
- * „Änderung unterwegs" / ehrlich unbekannt).
+ * „Änderung unterwegs" / der bewusste Halt / ehrlich unbekannt).
  *
  * `unreported` heißt UNBEKANNT, nie „nicht angekommen": eine ältere Box meldet
  * ihren Anwende-Stand gar nicht, und daraus einen Fehler zu machen wäre eine
  * Behauptung über ein Gerät, das nichts gesagt hat.
  *
- * `no_gateway_device` ist der EINE Fall, in dem der Grund bekannt IST: die
- * Anlage hat mehrere Geräte und keins davon ist als steuerndes Gerät des
- * Speichers hinterlegt, also gibt es keinen Empfänger. Das zu verschweigen war
- * der Befund - „Stand auf dem Gerät unbekannt" schickte den Kunden suchen,
+ * `held` ist die dritte Antwort der Box (Befund L1): sie hat GENAU diese
+ * Fassung gesehen und bewusst nichts angewandt, weil im Portal keine Anbindung
+ * mehr hinterlegt ist. Das ist kein Fehler und keine Reise - der Satz sagt
+ * deshalb, was WIRKLICH läuft, statt „unterwegs" zu behaupten (der Zustand,
+ * in dem eine solche Anlage vorher für immer hing).
+ *
+ * `no_gateway_device` ist der EINE Fall, in dem der Grund bekannt IST (Befund
+ * L10): die Anlage hat mehrere Geräte und keins davon ist als steuerndes Gerät
+ * des Speichers hinterlegt, also gibt es keinen Empfänger. Das zu verschweigen
+ * war der Befund - „Stand auf dem Gerät unbekannt" schickte den Kunden suchen,
  * obwohl der Server weiß, was fehlt, und was zu tun ist.
  */
 export const KEIN_EMPFAENGER_SATZ =
@@ -705,6 +711,8 @@ export function sollIstText(
       return `Läuft auf dem Gerät · Fassung ${definitionVersion}`;
     case 'pending':
       return 'Änderung unterwegs zur Box';
+    case 'held':
+      return 'Die Box behält den letzten Gerätestand';
     case 'no_gateway_device':
       return KEIN_EMPFAENGER_SATZ;
     default:
@@ -713,11 +721,32 @@ export function sollIstText(
 }
 
 /**
+ * Der EINE Satz unter der Halt-Zeile: WARUM die Box nichts angewandt hat.
+ *
+ * Der Grund kommt WÖRTLICH von der Box (`heldReason`) - eine zweite
+ * Formulierung derselben Lage wäre eine zweite Wahrheit. Ohne gemeldeten Grund
+ * steht der Hausatz, ohne Halt gar nichts.
+ */
+export function haltGrund(
+  syncStatus: string | null | undefined,
+  heldReason?: string | null,
+): string | null {
+  if (syncStatus !== 'held') return null;
+  const gemeldet = heldReason?.trim();
+  return gemeldet
+    ? gemeldet
+    : 'Im Portal ist für diese Anlage keine Anbindung mehr hinterlegt; '
+        + 'die Box behält deshalb den zuletzt angewandten Stand.';
+}
+
+/**
  * Der Ton der Soll/Ist-Zeile: ok · unterwegs · unbekannt.
  *
- * ⚠ Der fehlende Empfänger ist bewusst `unbekannt` und nicht `busy`: nichts ist
- * unterwegs. Ein eigener Warnton wäre die dritte Farbe für einen Zustand, der
- * die Anlage nicht stört - sie läuft weiter, nur die nächste Änderung wartet.
+ * ⚠ Ein Halt und ein fehlender Empfänger sind bewusst `unbekannt` und nicht
+ * `busy`: in beiden Fällen ist nichts unterwegs. Ein eigener Warnton wäre die
+ * dritte Farbe für Zustände, die die Anlage nicht stören - sie läuft weiter,
+ * nur die nächste Änderung wartet. Ein `ok` sind sie auch nicht: Soll und Ist
+ * gehen wirklich auseinander.
  */
 export function sollIstTon(syncStatus: string | null | undefined): 'ok' | 'busy' | 'unbekannt' {
   if (syncStatus === 'in_sync') return 'ok';
