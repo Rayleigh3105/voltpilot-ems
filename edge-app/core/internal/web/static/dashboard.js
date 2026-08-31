@@ -13,8 +13,6 @@
   var nf1 = new Intl.NumberFormat("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   var nf0 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
 
-  // Below this magnitude a power reading counts as idle (the topology deadband).
-  var DEADBAND_KW = 0.05;
 
   // ---------- adaptive read-model shared metadata (AE6) ----------
   // The AE1 topology read-model groups entities into four roles; each role has
@@ -26,7 +24,12 @@
     pv:       { label: "PV",          color: cssVar("--pv"),     soft: cssVar("--pv-soft"),   tile: "pv",   icon: "sun" },
     storage:  { label: "Batterie",    color: cssVar("--batt"),   soft: cssVar("--batt-soft"), tile: "batt", icon: "battery" },
     consumer: { label: "Verbraucher", color: cssVar("--load"),   soft: cssVar("--load-soft"), tile: "load", icon: "home" },
-    grid:     { label: "Netz",        color: cssVar("--grid-c"), soft: cssVar("--grid-soft"), tile: "grid", icon: "zap" }
+    grid:     { label: "Netz",        color: cssVar("--grid-c"), soft: cssVar("--grid-soft"), tile: "grid", icon: "zap" },
+    // Laden IST Verbrauch, nur ein benannter Teil davon - deshalb die
+    // Verbraucher-Hue, keine sechste Farbe (Konzept vp-verbraucher-cockpit-k1
+    // §6, Portal-Parität adaptive.ts ROLE_META).
+    charging: { label: "Laden",       color: cssVar("--load"),   soft: cssVar("--load-soft"), tile: "load", icon: "battery-charging" },
+    "charging-own": { label: "Laden (eigener Anschluss)", color: cssVar("--load"), soft: cssVar("--load-soft"), tile: "load", icon: "battery-charging" }
   };
 
   // Inner markup for a 24x24 stroke icon, embedded as a nested <svg> at a node
@@ -35,7 +38,10 @@
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
     battery: '<rect x="2" y="7" width="16" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/>',
     home: '<path d="M3 9.5 12 3l9 6.5"/><path d="M5 8.5V21h14V8.5"/><path d="M9 21v-6h6v6"/>',
-    zap: '<path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/>'
+    zap: '<path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/>',
+    "battery-charging": '<path d="M15 7h1a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-2"/>' +
+      '<path d="M6 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h1"/>' +
+      '<path d="m11 7-3 5h4l-3 5"/><line x1="22" y1="11" x2="22" y2="13"/>'
   };
 
   // Whether an /api/state topology block carries any renderable role node (else
@@ -720,13 +726,14 @@
   // ==================================================================
   function buildAdaptiveFlow(container) {
     var NS = "http://www.w3.org/2000/svg";
-    var ROLE_SIDE = { pv: "top", storage: "left", consumer: "right", grid: "bottom" };
-    // Layout constants (portal adaptiveFlow proportions).
-    var NODE_R = 30, HUB_R = 24, LEFT_INSET = 62, TOP_INSET = 48,
-        LBL_F = 11.5, VAL_F = 11;
-    // The role name sits BELOW the circle (name + sub line). LBL_BLOCK is the
-    // room reserved for it under the lowest row of nodes.
-    var LBL_GAP = 15, LBL_LH = 13, LBL_BLOCK = 32;
+    // ⚠ Rollen-Plätze, Beschriftung und Layout leben in flowrollen.js
+    // (window.VPFlowRollen) - der EINEN, Docker-frei prüfbaren Regel; hier
+    // bleibt nur das Zeichnen. Auch die Geometrie kommt von dort, damit
+    // Rechnen und Rendern nicht mit zwei Zahlensätzen arbeiten.
+    var G = window.VPFlowRollen.GEOM;
+    var NODE_R = G.NODE_R, HUB_R = G.HUB_R;
+    var LBL_F = G.LBL_F, VAL_F = G.VAL_F;
+    var LBL_GAP = G.LBL_GAP, LBL_LH = G.LBL_LH;
 
     ensureFlowKeyframes();
 
@@ -738,78 +745,17 @@
     var sig = null;     // node-set signature: rebuild DOM only when it changes
     var vtxEls = {};    // vertex key -> { flow, val }
 
-    function strokeWidth(mag) { return Math.max(2.5, Math.min(7, 2.5 + Math.abs(mag) * 0.7)); }
-
-    // vertexValue: SoC for a storage node, |kW| otherwise (portal parity).
-    function vertexValue(role, node, memberKw) {
-      if (role === "storage" && node.soc_pct != null) return nf0.format(node.soc_pct) + " %";
-      if (memberKw == null) return "–";
-      return nf1.format(Math.abs(memberKw)) + " kW";
-    }
-
-    // The customer names of the role circles (portal A1 ROLE_NODE_LABEL - keep
-    // in sync with frontend/portal/src/adaptiveFlow.ts).
-    var ROLE_NODE_LABEL = { pv: "PV-Erzeugung", storage: "Batteriespeicher", consumer: "Hausverbrauch", grid: "Netz" };
-
-    // The second line under a role circle (portal A1 subLabelFor, verbatim
-    // rules): "N Geräte" on a multi-device PV = the click affordance; else the
-    // state in words - never a device name (names live in the composition).
-    function subLabelFor(role, node, memberCount) {
-      if (role === "pv") return memberCount > 1 ? memberCount + " Geräte" : null;
-      if (!node.flow_active || node.value_kw == null) return null;
-      var kw = nf1.format(Math.abs(node.value_kw)) + " kW";
-      if (role === "storage") return node.direction === "out" ? "lädt " + kw : "entlädt " + kw;
-      if (role === "grid") return node.direction === "in" ? "Bezug" : "Einspeisung";
-      return null;
-    }
-
-    // layout turns the topology into positioned circle vertices - ONE circle
-    // per ROLE (portal A1 parity, vp-vier-erzeuger-p9 PR 4b): the viewBox is
-    // CONSTANT (1 or 6 inverters draw the same picture), the per-device
-    // breakdown lives behind a click on the PV circle. Before this, every
-    // member drew its own circle and a producer without an own value rendered
-    // a bare "–" ring (the Pilsting "vier Erzeuger, drei davon –" picture).
+    // layout = die reine Regel aus flowrollen.js plus die Farb-/Icon-Zuordnung
+    // dieser Seite (ROLE_META hängt an cssVar und ist deshalb nicht rein).
     function layout(topo) {
-      var nodes = (topo && topo.nodes) || [];
-      var W = 520, H = 300 + LBL_BLOCK;
-      var hubX = W / 2, hubY = (H - LBL_BLOCK) / 2;
-      var POS = {
-        top: { x: hubX, y: TOP_INSET },
-        bottom: { x: hubX, y: H - TOP_INSET - LBL_BLOCK },
-        left: { x: LEFT_INSET, y: hubY },
-        right: { x: W - LEFT_INSET, y: hubY }
-      };
-      var vertices = [];
-      nodes.forEach(function (node) {
-        var side = ROLE_SIDE[node.role];
-        if (!side) return; // unknown role - skip (never guessed)
-        var members = node.members || [];
-        if (members.length === 0) return;
-        var meta = ROLE_META[node.role] || ROLE_META.consumer;
-        var p = POS[side];
-        var names = [];
-        members.forEach(function (m) {
-          var n = (m.label || "").trim();
-          if (n) names.push(n);
-        });
-        vertices.push({
-          key: node.role + ":" + members.length,
-          role: node.role,
-          x: p.x, y: p.y,
-          label: ROLE_NODE_LABEL[node.role] || meta.label,
-          fullLabel: names.join(", ") || meta.label,
-          subLine: subLabelFor(node.role, node, members.length),
-          value: vertexValue(node.role, node, node.value_kw),
-          spokeActive: !!node.flow_active,
-          reverse: node.direction === "out",
-          strokeWidth: strokeWidth(node.value_kw != null ? node.value_kw : 0),
-          icon: meta.icon, color: meta.color, soft: meta.soft,
-          expandable: node.role === "pv" && members.length > 1,
-          members: members
-        });
+      var L = window.VPFlowRollen.flowLayout(topo);
+      L.vertices.forEach(function (v) {
+        var meta = ROLE_META[v.role] || ROLE_META.consumer;
+        v.icon = meta.icon; v.color = meta.color; v.soft = meta.soft;
       });
-      return { W: W, H: H, hubX: hubX, hubY: hubY, vertices: vertices };
+      return L;
     }
+
 
     function line(x1, y1, x2, y2, stroke, w) {
       var l = document.createElementNS(NS, "line");
@@ -828,8 +774,11 @@
 
       // Base spokes + animated flow overlays (behind the nodes).
       L.vertices.forEach(function (v) {
-        svg.appendChild(line(v.x, v.y, L.hubX, L.hubY, "#E3E9F1", "6"));
-        var flow = line(v.x, v.y, L.hubX, L.hubY, v.color, "3");
+        // Ein Knoten ohne eigenes Ziel hängt am Hub; nur der Lade-ABZWEIG nennt
+        // eines - er hängt am Haus, nicht am Anschlusspunkt.
+        var tx = v.toX != null ? v.toX : L.hubX, ty = v.toY != null ? v.toY : L.hubY;
+        svg.appendChild(line(v.x, v.y, tx, ty, "#E3E9F1", String(v.baseWidth || 6)));
+        var flow = line(v.x, v.y, tx, ty, v.color, "3");
         flow.setAttribute("stroke-dasharray", "2 10");
         flow.style.opacity = "0";
         svg.appendChild(flow);
@@ -1010,77 +959,9 @@
   // consumer entity (a Wallbox/Heizstab appears on its own). Read-only.
   // Ports the portal's adaptiveLive.deriveTiles so both views agree.
   // ==================================================================
-  function signedBattery(n) {
-    if (n.value_kw == null || !n.flow_active) return 0;
-    return n.direction === "out" ? n.value_kw : (n.direction === "in" ? -n.value_kw : 0);
-  }
-
-  function findNode(topo, role) {
-    var nodes = (topo && topo.nodes) || [];
-    for (var i = 0; i < nodes.length; i++) if (nodes[i].role === role) return nodes[i];
-    return null;
-  }
-
-  function deriveTiles(topo) {
-    var tiles = [];
-    var pv = findNode(topo, "pv");
-    if (pv) {
-      var pvActive = pv.flow_active && pv.value_kw != null && pv.value_kw > DEADBAND_KW;
-      var pvCount = pv.members.length;
-      tiles.push({
-        key: "role-pv", tile: "pv", icon: "sun",
-        title: pvCount === 1 ? ((pv.members[0].label || "").trim() || "PV-Anlage") : "PV-Erzeugung",
-        valueText: pv.value_kw == null ? "–" : nf1.format(pv.value_kw), unit: pv.value_kw == null ? "" : "kW",
-        stateLabel: pv.value_kw == null ? "wartet auf Daten" : (pvActive ? "erzeugt" : "keine Erzeugung"),
-        subLine: pvCount > 1 ? pvCount + " Erzeuger" : ""
-      });
-    }
-    var st = findNode(topo, "storage");
-    if (st) {
-      var soc = st.soc_pct != null ? st.soc_pct : null;
-      var batt = signedBattery(st);
-      var sState = "Bereit", sArrow = null, sSub = "";
-      if (soc == null) { sState = "keine Batterie"; }
-      else if (batt > DEADBAND_KW) { sState = "Lädt"; sArrow = "up"; sSub = "Ladeleistung " + nf1.format(batt) + " kW"; }
-      else if (batt < -DEADBAND_KW) { sState = "Entlädt"; sArrow = "down"; sSub = "Abgabe " + nf1.format(Math.abs(batt)) + " kW"; }
-      else if (soc >= 99) { sState = "Voll geladen"; }
-      tiles.push({
-        key: "role-storage", tile: "batt", icon: "battery",
-        title: st.members.length === 1 ? ((st.members[0].label || "").trim() || "Speicher") : "Speicher",
-        valueText: soc == null ? "–" : nf0.format(soc), unit: soc == null ? "" : "%",
-        stateLabel: sState, arrow: sArrow, subLine: sSub,
-        socPct: soc == null ? null : Math.max(0, Math.min(100, soc))
-      });
-    }
-    var cons = findNode(topo, "consumer");
-    if (cons) {
-      cons.members.forEach(function (m, i) {
-        var active = m.value_kw != null && Math.abs(m.value_kw) > DEADBAND_KW;
-        tiles.push({
-          key: "consumer-" + m.entity_id + "-" + i, tile: "load", icon: "home",
-          title: (m.label || "").trim() || "Verbraucher",
-          valueText: m.value_kw == null ? "–" : nf1.format(Math.abs(m.value_kw)), unit: m.value_kw == null ? "" : "kW",
-          stateLabel: m.value_kw == null ? "wartet auf Daten" : (active ? "aktiv" : "aus")
-        });
-      });
-    }
-    var grid = findNode(topo, "grid");
-    if (grid) {
-      var gActive = grid.flow_active && grid.value_kw != null && grid.value_kw > DEADBAND_KW;
-      var gState = "wartet auf Daten", gArrow = null, gSub = "";
-      if (grid.value_kw != null) {
-        if (gActive && grid.direction === "in") { gState = "Netzbezug"; gArrow = "up"; gSub = "aus dem Netz"; }
-        else if (gActive && grid.direction === "out") { gState = "Einspeisung"; gArrow = "down"; gSub = "ins Netz"; }
-        else { gState = "ausgeglichen"; }
-      }
-      tiles.push({
-        key: "role-grid", tile: "grid", icon: "zap", title: "Netz",
-        valueText: grid.value_kw == null ? "–" : nf1.format(grid.value_kw), unit: grid.value_kw == null ? "" : "kW",
-        stateLabel: gState, arrow: gArrow, subLine: gSub
-      });
-    }
-    return tiles;
-  }
+  // Die Kachel-Regel wohnt in flowrollen.js (window.VPFlowRollen) - sie ist
+  // rein und Docker-frei geprüft; hier bleibt nur das Rendern.
+  function deriveTiles(topo) { return window.VPFlowRollen.deriveTiles(topo); }
 
   // Cache the adaptive-tile DOM keyed by the tile-set signature, so a per-second
   // state refresh only updates text (never rebuilds - the SoC bar keeps its

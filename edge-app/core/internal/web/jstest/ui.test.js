@@ -2912,3 +2912,203 @@ test("the Datenfreigabe head says '…' while unknown and never claims 'Aus'", (
   // Unknown must never auto-open the group (it is not a problem).
   assert.strictEqual(G.shouldAutoOpen(null, unknown.problemKey), false);
 });
+
+/* ===================== flowrollen.js: die ROLLEN der Betrieb-Seite ===================== */
+//
+// Befund L3 (Scout vp-portal-box-spiegel-s2): seit PR 550 liefert die
+// Go-Topologie für eine Wallbox/einen Ladepunkt `charging` bzw. `charging-own`
+// statt `consumer`. Kannte das Box-JavaScript das Wort nicht, verschwand die
+// Wallbox mit dem Edge-Release .31 STILL aus Kachel-Leiste UND Energiefluss.
+
+function rollen() {
+  return load(["flowrollen.js"]).VPFlowRollen;
+}
+
+/** Ein Rollen-Knoten des Read-Models mit N Mitgliedern. */
+function knoten(role, opts) {
+  opts = opts || {};
+  const members = (opts.members || ["Gerät"]).map((label, i) => ({
+    entity_id: role + "-" + i, label, primary: false,
+    value_kw: opts.memberKw === undefined ? opts.kw : opts.memberKw
+  }));
+  return {
+    role,
+    value_kw: opts.kw === undefined ? null : opts.kw,
+    soc_pct: opts.soc === undefined ? null : opts.soc,
+    flow_active: !!opts.active,
+    direction: opts.direction || "",
+    members
+  };
+}
+
+const HAUS = knoten("consumer", { members: ["Hausverbrauch"], kw: 1.2, active: true, direction: "out" });
+
+test("Rollen: eine Wallbox bekommt ihre Kachel UND ihren Knoten zurück", () => {
+  const R = rollen();
+  const topo = { nodes: [HAUS, knoten("charging", { members: ["Wallbox Garage"], kw: 7.4, active: true, direction: "out" })] };
+
+  // (a) Kachel: der PORTAL-Name, Leistung und Zustand wie bei einem Verbraucher.
+  const kacheln = R.deriveTiles(topo);
+  const laden = kacheln.filter((t) => t.icon === "battery-charging");
+  assert.strictEqual(laden.length, 1, "genau eine Lade-Kachel je Ladepunkt");
+  assert.strictEqual(laden[0].title, "Wallbox Garage");
+  assert.strictEqual(laden[0].valueText, "7,4");
+  assert.strictEqual(laden[0].unit, "kW");
+  assert.strictEqual(laden[0].stateLabel, "lädt");
+  assert.strictEqual(laden[0].subLine, "");
+
+  // (b) Knoten: vorhanden, mit dem Kunden-Wort "Laden".
+  const L = R.flowLayout(topo);
+  const v = L.vertices.filter((x) => x.role === "charging");
+  assert.strictEqual(v.length, 1, "der Lade-Knoten fehlt");
+  assert.strictEqual(v[0].label, "Laden");
+  assert.strictEqual(v[0].value, "7,4 kW");
+});
+
+test("Rollen: der Abzweig hängt am HAUS, ein eigener Anschluss am Hub", () => {
+  const R = rollen();
+  const topo = {
+    nodes: [
+      HAUS,
+      knoten("charging", { members: ["Wallbox"], kw: 5, active: true, direction: "out" }),
+      knoten("charging-own", { members: ["Ladepark"], kw: 11, active: true, direction: "out" })
+    ]
+  };
+  const L = R.flowLayout(topo);
+  const haus = L.vertices.find((v) => v.role === "consumer");
+  const abzweig = L.vertices.find((v) => v.role === "charging");
+  const eigen = L.vertices.find((v) => v.role === "charging-own");
+
+  // Der Abzweig nennt das HAUS als Speichen-Ziel und sitzt unter ihm.
+  assert.strictEqual(abzweig.toX, haus.x, "der Abzweig hängt nicht am Haus");
+  assert.ok(abzweig.toY > haus.y, "das Ziel liegt unter dem Haus-Kreis");
+  assert.ok(abzweig.toY < abzweig.y, "die Speiche läuft nach oben zum Haus");
+  assert.ok(abzweig.y > haus.y, "der Abzweig sitzt unter dem Haus");
+  assert.ok(abzweig.baseWidth < 6, "der Abzweig ist dünner als eine Hub-Speiche");
+
+  // Der eigene Anschluss nennt KEIN Ziel - er hängt am Hub wie jede Rolle.
+  assert.strictEqual(eigen.toX, undefined);
+  assert.strictEqual(eigen.toY, undefined);
+  assert.notStrictEqual(eigen.x, abzweig.x, "zwei Anschlusspunkte, zwei Plätze");
+
+  // Und der eigene Anschluss sagt es auch in seiner Kachel.
+  const eigenKachel = R.deriveTiles(topo).find((t) => t.title === "Ladepark");
+  assert.strictEqual(eigenKachel.subLine, "eigener Anschluss");
+});
+
+test("Rollen: ein Abzweig ohne Haus wird NICHT an den Hub gehängt", () => {
+  // Seine Kilowatt stecken per Definition in der Hauslast; ihn an den Hub zu
+  // hängen behauptete einen EIGENEN Anschluss - also etwas anderes.
+  const R = rollen();
+  const topo = { nodes: [knoten("charging", { members: ["Wallbox"], kw: 5, active: true })] };
+  const L = R.flowLayout(topo);
+  assert.strictEqual(L.vertices.length, 0, "kein Knoten ohne sein Haus");
+  // Die Kachel nennt ihn trotzdem - die Information geht nicht verloren.
+  assert.strictEqual(R.deriveTiles(topo).length, 1);
+});
+
+test("Rollen: mehrere Ladepunkte werden gezählt, nicht erfunden", () => {
+  const R = rollen();
+  const topo = { nodes: [HAUS, knoten("charging", { members: ["Links", "Rechts"], kw: 8, active: true })] };
+  const v = R.flowLayout(topo).vertices.find((x) => x.role === "charging");
+  assert.strictEqual(v.subLine, "2 Ladepunkte");
+  assert.strictEqual(v.fullLabel, "Links, Rechts");
+  const kacheln = R.deriveTiles(topo).filter((t) => t.icon === "battery-charging");
+  assert.strictEqual(kacheln.map((t) => t.title).join(" | "), "Links | Rechts");
+});
+
+test("Rollen: ohne Messwert wird nie eine 0 behauptet", () => {
+  const R = rollen();
+  const topo = { nodes: [HAUS, knoten("charging", { members: ["Wallbox"], memberKw: null })] };
+  const kachel = R.deriveTiles(topo).find((t) => t.icon === "battery-charging");
+  assert.strictEqual(kachel.valueText, "–");
+  assert.strictEqual(kachel.unit, "");
+  assert.strictEqual(kachel.stateLabel, "wartet auf Daten");
+  const v = R.flowLayout(topo).vertices.find((x) => x.role === "charging");
+  assert.strictEqual(v.value, "–");
+  assert.strictEqual(v.subLine, null, "ohne Fluss keine Zustandszeile");
+});
+
+test("Rollen: eine Anlage OHNE Ladepunkt zeichnet exakt das Bild von vorher", () => {
+  // Die Grundfigur ist konstant: die viewBox, die vier Plätze und die
+  // Beschriftung dürfen sich durch die neuen Rollen um kein Pixel ändern.
+  const R = rollen();
+  const topo = {
+    nodes: [
+      knoten("pv", { members: ["Dach"], kw: 4, active: true, direction: "in" }),
+      knoten("storage", { members: ["Speicher"], soc: 72, kw: 2, active: true, direction: "out" }),
+      HAUS,
+      knoten("grid", { members: ["Netz"], kw: 0.8, active: true, direction: "in" })
+    ]
+  };
+  const L = R.flowLayout(topo);
+  assert.strictEqual(L.W, 520);
+  assert.strictEqual(L.H, 332);
+  assert.strictEqual(L.hubX, 260);
+  assert.strictEqual(L.hubY, 150);
+  // (vm-Realm: joinen statt deepStrictEqual - siehe Kopf dieser Datei)
+  assert.strictEqual(
+    L.vertices.map((v) => v.role + "@" + v.x + "," + v.y).join(" | "),
+    "pv@260,48 | storage@62,150 | consumer@458,150 | grid@260,252"
+  );
+  // Kein Knoten nennt ein eigenes Speichen-Ziel; alle hängen am Hub.
+  assert.ok(L.vertices.every((v) => v.toX === undefined && v.baseWidth === 6));
+  // Und die Kachel-Reihenfolge ist unverändert PV · Speicher · Verbraucher · Netz.
+  assert.strictEqual(R.deriveTiles(topo).map((t) => t.key).join(" | "),
+    "role-pv | role-storage | consumer-consumer-0-0 | role-grid");
+});
+
+test("Rollen: eine Lade-Zeile macht das Bild höher, nicht die Grundfigur anders", () => {
+  const R = rollen();
+  const ohne = R.flowLayout({ nodes: [HAUS] });
+  const mit = R.flowLayout({ nodes: [HAUS, knoten("charging", { members: ["Wallbox"], kw: 5 })] });
+  assert.ok(mit.H > ohne.H, "die viewBox wächst um die Lade-Zeile");
+  assert.strictEqual(mit.W, ohne.W);
+  const hausOhne = ohne.vertices.find((v) => v.role === "consumer");
+  const hausMit = mit.vertices.find((v) => v.role === "consumer");
+  assert.strictEqual(hausMit.x, hausOhne.x, "das Haus verrutscht nicht");
+  assert.strictEqual(hausMit.y, hausOhne.y);
+  // Der Lade-Kreis samt Beschriftung passt in die viewBox.
+  const lade = mit.vertices.find((v) => v.role === "charging");
+  const G = R.GEOM;
+  assert.ok(lade.y + G.NODE_R + G.LBL_GAP + 2 * G.LBL_LH <= mit.H, "die Beschriftung läuft über den Rand");
+});
+
+test("Rollen: die Kachel-Leiste stellt Laden zwischen Verbraucher und Netz", () => {
+  const R = rollen();
+  const topo = {
+    nodes: [
+      HAUS,
+      knoten("grid", { members: ["Netz"], kw: 1, active: true, direction: "in" }),
+      knoten("charging", { members: ["Wallbox"], kw: 5, active: true })
+    ]
+  };
+  assert.strictEqual(R.deriveTiles(topo).map((t) => t.tile).join(" | "), "load | load | grid");
+  const keys = R.deriveTiles(topo).map((t) => t.key);
+  assert.ok(keys.indexOf("charging-charging-0") < keys.indexOf("role-grid"));
+});
+
+test("Rollen: ein unbekanntes Rollen-Wort wird übersprungen, nie geraten", () => {
+  const R = rollen();
+  const topo = { nodes: [HAUS, knoten("waermepumpe-neu", { members: ["X"], kw: 3 })] };
+  assert.strictEqual(R.flowLayout(topo).vertices.map((v) => v.role).join(" | "), "consumer");
+});
+
+test("Rollen: die Rollen-Liste deckt das Vokabular der Go-Topologie ab", () => {
+  // Der Zwilling: internal/topology/topology.go canonicalRoleOrder. Ein dort
+  // ergänztes Wort ohne Platz hier lässt Knoten UND Kachel still verschwinden.
+  const go = fs.readFileSync(
+    path.join(__dirname, "..", "..", "topology", "topology.go"), "utf8");
+  const block = go.slice(go.indexOf("var canonicalRoleOrder"));
+  const namen = block.slice(block.indexOf("{") + 1, block.indexOf("}")).match(/Role[A-Za-z]+/g) || [];
+  const konstanten = {};
+  for (const m of go.matchAll(/\n\t(Role[A-Za-z]+)\s*=\s*"([a-z-]+)"/g)) konstanten[m[1]] = m[2];
+  const R = rollen();
+  assert.ok(namen.length >= 6, "die Go-Rollenordnung wurde nicht gefunden");
+  for (const n of namen) {
+    const wort = konstanten[n];
+    assert.ok(wort, "keine Konstante für " + n);
+    assert.ok(R.ROLE_SIDE[wort], "Rolle " + wort + " hat keinen Platz im Diagramm");
+    assert.ok(R.ROLE_NODE_LABEL[wort], "Rolle " + wort + " hat kein Kunden-Wort");
+  }
+});

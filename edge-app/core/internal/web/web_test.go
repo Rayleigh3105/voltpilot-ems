@@ -2971,11 +2971,16 @@ func TestAdaptiveEnergyPictureServed(t *testing.T) {
 	}
 
 	page := get("/index.html")
-	// The adaptive-tiles mount alongside the fixed v1 KPI section.
-	for _, want := range []string{`id="kpisAdaptive"`, `id="kpis"`, `id="flowWrap"`} {
+	// The adaptive-tiles mount alongside the fixed v1 KPI section, and the pure
+	// role rules load BEFORE the page that consumes them - without the tag the
+	// whole Betrieb page would be silently dead.
+	for _, want := range []string{`id="kpisAdaptive"`, `id="kpis"`, `id="flowWrap"`, `src="flowrollen.js"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("index.html: missing %s", want)
 		}
+	}
+	if i, j := strings.Index(page, `src="flowrollen.js"`), strings.Index(page, `src="dashboard.js"`); i < 0 || j < 0 || i > j {
+		t.Error("index.html: flowrollen.js must load before dashboard.js")
 	}
 
 	dash := get("/dashboard.js")
@@ -2986,12 +2991,34 @@ func TestAdaptiveEnergyPictureServed(t *testing.T) {
 		"createFlow", ".topology",
 		// The role vocabulary the adaptive picture groups on.
 		"storage", "consumer",
-		// A1 parity (PR 4b): ONE circle per role + the composition affordance.
-		"ROLE_NODE_LABEL", "subLabelFor", "Geräte", "flow-comp",
-		"über den Wechselrichter mitgemessen",
+		// A1 parity (PR 4b): the composition affordance.
+		"flow-comp", "über den Wechselrichter mitgemessen",
+		// The pure rules live in their own module; this page only draws them.
+		"VPFlowRollen",
 	} {
 		if !strings.Contains(dash, want) {
 			t.Errorf("dashboard.js: missing %s", want)
+		}
+	}
+	// ⚠ Die Rollen-Liste ist der Zwilling von internal/topology: seit PR 550
+	// liefert DefaultRole für eine Wallbox `charging`/`charging-own`. Fehlt das
+	// Wort hier, verschwindet der Knoten samt Kachel STILL (Befund L3).
+	roles := get("/flowrollen.js")
+	for _, want := range []string{
+		"ROLE_NODE_LABEL", "subLabelFor", "Geräte", "flowLayout", "deriveTiles",
+		topology.RoleCharging, topology.RoleChargingOwn,
+		"Laden", "Ladepunkt", "eigener Anschluss",
+	} {
+		if !strings.Contains(roles, want) {
+			t.Errorf("flowrollen.js: missing %s", want)
+		}
+	}
+	for _, role := range []string{
+		topology.RolePV, topology.RoleStorage, topology.RoleConsumer,
+		topology.RoleGrid, topology.RoleCharging, topology.RoleChargingOwn,
+	} {
+		if !strings.Contains(roles, `"`+role+`"`) {
+			t.Errorf("flowrollen.js: role %q has no place - its node and tile would vanish", role)
 		}
 	}
 }
