@@ -189,7 +189,6 @@ type CalibrationController interface {
 	CurtailAbort() curtailcal.View
 	CurtailCertify(sourceID string) (curtailcal.View, error)
 	CurtailDecertify(sourceID string) (curtailcal.View, error)
-
 }
 
 // OtaController is the supervised half of OTA Stufe 2 „Verteilen": the box
@@ -516,12 +515,8 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		}
 		sel, err := inv.SetInverter(req)
 		if err != nil {
-			var ve *inverter.ValidationError
-			if errors.As(err, &ve) {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg})
-				return
-			}
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Auswahl konnte nicht gespeichert werden."})
+			code, msg := deviceConfigError(err, "Auswahl konnte nicht gespeichert werden.")
+			writeJSON(w, code, map[string]any{"error": msg})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"selection": sel})
@@ -623,12 +618,8 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		}
 		s, err := src.AddSource(req)
 		if err != nil {
-			var ve *sources.ValidationError
-			if errors.As(err, &ve) {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg})
-				return
-			}
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Energiequelle konnte nicht gespeichert werden."})
+			code, msg := deviceConfigError(err, "Energiequelle konnte nicht gespeichert werden.")
+			writeJSON(w, code, map[string]any{"error": msg})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"source": s})
@@ -649,15 +640,8 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		}
 		s, err := src.RenameSource(id, req.Label)
 		if err != nil {
-			var ve *sources.ValidationError
-			switch {
-			case errors.As(err, &ve):
-				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg})
-			case errors.Is(err, sources.ErrNotFound):
-				writeJSON(w, http.StatusNotFound, map[string]any{"error": "Energiequelle nicht gefunden."})
-			default:
-				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Energiequelle konnte nicht umbenannt werden."})
-			}
+			code, msg := deviceConfigError(err, "Energiequelle konnte nicht umbenannt werden.")
+			writeJSON(w, code, map[string]any{"error": msg})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"source": s})
@@ -667,11 +651,8 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	mux.HandleFunc("DELETE /api/sources/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		if err := src.DeleteSource(id); err != nil {
-			if errors.Is(err, sources.ErrNotFound) {
-				writeJSON(w, http.StatusNotFound, map[string]any{"error": "Energiequelle nicht gefunden."})
-				return
-			}
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Energiequelle konnte nicht entfernt werden."})
+			code, msg := deviceConfigError(err, "Energiequelle konnte nicht entfernt werden.")
+			writeJSON(w, code, map[string]any{"error": msg})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -989,7 +970,6 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		writeJSON(w, http.StatusOK, view)
 	})
 
-
 	// --- the narrow installer write: ONE Deye register, 0x00E7 -----------------
 	//
 	// „Grid Max Export power" is the inverter's OWN feed-in cap, normally only
@@ -1221,4 +1201,32 @@ func ocppSettingsView(set lastmgmt.Settings) map[string]any {
 		"surplus_policy":    string(set.SurplusPolicy),
 		"storage_priority":  string(set.StoragePriority),
 	}
+}
+
+// deviceConfigError classifies an error from a device-CONFIGURATION mutation
+// (the inverter selection or an additional source) into its HTTP status and the
+// German sentence the customer reads.
+//
+// ⚠ ES GIBT DAFÜR GENAU EINE STELLE, und der Grund ist ein belegter Fehler
+// (Befund L2, Scout vp-portal-box-spiegel-s2): die Autoritäts-Sperre einer
+// portal-verwalteten Anlage (agent.refuseIfPortalManaged) meldet einen
+// *inverter.ValidationError - AUCH auf den Quellen-Routen, denn sie ist EIN
+// Gatter für alle vier Schreibwege. Wer dort nur den *sources.ValidationError
+// abfragt, beantwortet die Sperre mit HTTP 500 "konnte nicht gespeichert
+// werden" statt mit ihrem deutschen Hinweis; die Oberfläche versteckt die
+// Knöpfe zwar, aber ein Deep-Link, eine ältere Seite oder ein Skript bekommt
+// den falschen Grund. Der Status ist bewusst derselbe 400 wie am
+// Wechselrichter - dieselbe Sperre darf nicht zwei Antworten haben.
+func deviceConfigError(err error, fallback string) (int, string) {
+	var sve *sources.ValidationError
+	var ive *inverter.ValidationError
+	switch {
+	case errors.As(err, &sve):
+		return http.StatusBadRequest, sve.Msg
+	case errors.As(err, &ive):
+		return http.StatusBadRequest, ive.Msg
+	case errors.Is(err, sources.ErrNotFound):
+		return http.StatusNotFound, "Energiequelle nicht gefunden."
+	}
+	return http.StatusInternalServerError, fallback
 }

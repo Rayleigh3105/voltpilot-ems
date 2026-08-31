@@ -14,6 +14,7 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -283,6 +284,16 @@ func TestLocalEditsAreRefusedOnlyOnceThePortalHasReallyTakenOver(t *testing.T) {
 		// Der Satz nennt den ORT, nicht nur die Ablehnung.
 		if !strings.Contains(err.Error(), "VoltPilot-Portal") {
 			t.Fatalf("%s: Grund = %q", name, err.Error())
+		}
+		// ⚠ Und die Sperre meldet auf ALLEN VIER Wegen denselben TYP - auch auf
+		// den Quellen-Routen, die sonst nur *sources.ValidationError kennen.
+		// Genau daran haengt die Antwort der Web-Schicht: ein anderer Typ hier
+		// macht aus dem deutschen Hinweis wieder ein HTTP 500 (Befund L2,
+		// Scout vp-portal-box-spiegel-s2). Der Zwilling ist
+		// internal/web.deviceConfigError.
+		var ve *inverter.ValidationError
+		if !errors.As(err, &ve) {
+			t.Fatalf("%s: Sperre meldet %T statt *inverter.ValidationError", name, err)
 		}
 	}
 	// Die Wechselrichter-Auswahl steht danach unveraendert.
