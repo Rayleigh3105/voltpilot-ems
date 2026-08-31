@@ -295,11 +295,14 @@ describe('Katalog-Regeln', () => {
   });
 
   it('das Regal führt seit Stufe 0 GENAU die Betriebsmodelle, kanonisch sortiert', () => {
+    // ⚠ Verbrauchsmanagement v1: das Ladepark-Lastmanagement ist KEIN
+    // Betriebsmodell mehr, sondern SCHUTZ - Klasse `basis`, kein Schalter,
+    // nicht im Regal. Seinen Platz nimmt der Ladepark-Rahmen als Kopf des
+    // Ladepunkt-Abschnitts in der Verbraucher-Zone ein.
     expect(REGAL.map((a) => a.id)).toEqual([
       'marktvermarktung',
       'lastspitzenkappung',
       'atypische-netznutzung',
-      'lastmanagement',
     ]);
     const raenge = ANWENDUNGEN.map((a) => a.rang);
     expect(new Set(raenge).size).toBe(raenge.length);
@@ -320,6 +323,7 @@ describe('Katalog-Regeln', () => {
       'speicher-fahrplan',
       'ueberschuss',
       'verbraucher',
+      'lastmanagement',
       'eigene-auswertung',
     ]);
     expect([...REGAL, ...AUSSERHALB_REGAL].map((a) => a.id).sort()).toEqual(

@@ -37,6 +37,8 @@ import { JetztZone } from '../components/JetztZone';
 import { SteuerungIntro } from '../components/SteuerungIntro';
 import { LadeparkKapsel } from '../components/LadeparkKapsel';
 import { RegelnKapsel } from '../components/RegelnKapsel';
+import { VerbraucherZone } from '../components/VerbraucherZone';
+import { quelleLang, type SiteVerbraucher } from '../verbraucherZone';
 import { Betriebsmodelle } from '../components/Betriebsmodelle';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ModusContainer } from '../components/ModusContainer';
@@ -125,6 +127,13 @@ export function SteuerungSection({
   // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft: ein älteres Backend
   // kennt die Route nicht, dann gibt es die Ladepark-Kapsel schlicht nicht.
   const [charging, setCharging] = useState<SiteCharging | null>(null);
+  /**
+   * Das Lese-Aggregat der Verbraucher-Zone. Fail-soft wie jede zusätzliche
+   * Quelle dieser Seite: ein älteres Backend (Route unbekannt) oder ein
+   * Netzfehler lässt die Zone ihren ehrlichen Leer-Zustand rendern - die
+   * Steuerungsseite bleibt vollständig bedienbar.
+   */
+  const [verbraucher, setVerbraucher] = useState<SiteVerbraucher | null>(null);
   /** Bezugszeit der Betriebsmodell-Zone; wird beim Nachladen neu gesetzt. */
   const [zoneNow, setZoneNow] = useState(() => new Date());
   /** Die offene Folgen-Karte (Wechsel/Ausschalten) samt ihrer Handlung. */
@@ -187,8 +196,13 @@ export function SteuerungSection({
       // Lastmanagement Stufe 3: ohne Ladesäulen kommt eine leere Antwort und
       // die Ladepark-Kapsel entfällt - kein Sonderfall, nur nichts zu zeigen.
       api.siteChargers(site.id).catch(() => null),
+      // Verbrauchsmanagement v1: die Steuerart je Komponente, der
+      // Anlagen-Standard und die Rangliste - EIN Aggregat, zwei Abnehmer
+      // (die Verbraucher-Zone und die Quelle der Ladepunkt-Zeilen in „Jetzt").
+      api.siteVerbraucher(site.id).catch(() => null),
     ])
-      .then(([list, entityList, gov, profile, money, shelf, siteAssets, chargePoints]) => {
+      .then(([list, entityList, gov, profile, money, shelf, siteAssets, chargePoints,
+        verbraucherZone]) => {
         setFlows(list);
         setEntities(entityList);
         setGovernance(gov);
@@ -197,6 +211,7 @@ export function SteuerungSection({
         setProfiles(shelf);
         setAssets(siteAssets);
         setCharging(chargePoints);
+        setVerbraucher(verbraucherZone);
         setZoneNow(new Date());
         setListState('idle');
       })
@@ -273,10 +288,16 @@ export function SteuerungSection({
     ),
     [flows, entities],
   );
-  const speicherName = useMemo(
-    () => entities.find((e) => e.entityType === 'battery-hybrid')?.label ?? null,
-    [entities],
-  );
+  // ⚠ `flowApi.entities()` faellt fuer ein LABEL-loses Messobjekt auf seine Id
+  // zurueck (der Flow-Editor braucht dort einen adressierbaren Schluessel) - eine
+  // KOMPONIERTE Batterie traegt seit der Label-Hygiene aber genau kein Label.
+  // Ungefiltert stand deshalb eine nackte UUID als Name der Speicher-Zeile.
+  // Gleich der Id heisst hier: kein Kundenname -> `speicherZeile` sagt "Speicher".
+  const speicherName = useMemo(() => {
+    const b = entities.find((e) => e.entityType === 'battery-hybrid');
+    if (!b) return null;
+    return b.label && b.label !== b.id ? b.label : null;
+  }, [entities]);
   const battery = useMemo(
     () => (assets ?? []).find((a) => a.type === 'battery') ?? null,
     [assets],
@@ -480,6 +501,36 @@ export function SteuerungSection({
   );
 
   /** „Flow öffnen" aus dem Container: den echten Flow des Modus öffnen. */
+  /**
+   * Die STEUERART eines Ladepunkts als Wort - für die Jetzt-Zeile.
+   *
+   * ⚠ Sie wird ÜBERGEBEN, nie in der Jetzt-Zone geraten: sie kommt aus dem
+   * Lese-Aggregat, das der Server projiziert hat. Kennt es die Komponente
+   * nicht (älteres Backend, noch nicht geladen), bleibt die Quelle der Zeile
+   * ehrlich leer.
+   */
+  const steuerartVon = useCallback(
+    (entityId: string | null | undefined): string | null => {
+      if (!entityId || !verbraucher) return null;
+      const e = verbraucher.verbraucher.find((x) => x.entityId === entityId);
+      return e ? quelleLang(e.steuerart) : null;
+    },
+    [verbraucher],
+  );
+
+  /**
+   * Der Sprung „N Regeln →" in die Regel-Kapsel.
+   *
+   * ⚠ Er SCROLLT, er filtert (noch) nicht. Das gefilterte Bild „Regeln ·
+   * Wallbox Garage (2)" gehört zu P2; der bestehende `?komponente=`-Parameter
+   * dieser Seite führt in den Baukasten (die Selbstbau-Brücke) und wäre hier
+   * das falsche Ziel. Ein Scroll ist wenig - aber er führt nirgends hin, wo
+   * der Kunde nicht hinwollte.
+   */
+  const setRegelSprung = useCallback((_entityId: string) => {
+    document.getElementById('vp-regeln')?.scrollIntoView({ block: 'start' });
+  }, []);
+
   const openContainerFlow = useCallback(
     (flowRef: { flowId: string; name: string }) => {
       const flow = (flows ?? []).find((f) => f.flowId === flowRef.flowId);
@@ -577,36 +628,24 @@ export function SteuerungSection({
             charging={charging}
             speicherRegelAktiv={speicherRegelAktiv}
             speicherName={speicherName}
+            steuerart={steuerartVon}
           />
 
-          {/* --- Zone ③ · Betriebsmodelle (Konzept b3 §3.4, Stufe 5) --------
-              Radio statt unabhängiger Schalter: es fährt immer genau EINES,
-              oder der Grundmodus. Die Exklusivität erzwingt der SERVER — hier
-              steht nur, wie sie aussieht und was der Kunde vorher liest. */}
-          <Betriebsmodelle
-            zone={zone}
-            title={PROFILE_CAPSULE_TITLE}
-            intro={PROFILE_CAPSULE_INTRO}
-            emptyText={PROFILE_CAPSULE_EMPTY}
-            busyId={toggling}
-            onWaehlen={waehleModell}
-            onSchalten={schalteModell}
-            onOpen={setOpenContainer}
-            onWeg={geheWeg}
+          {/* --- Zone ② · Verbraucher (Verbrauchsmanagement v1 §6.1) -------
+              Sie steht ZWISCHEN „Jetzt" und „Regeln", weil sie die Frage
+              danach beantwortet: was passiert gerade — und wie ist es
+              GRUNDSÄTZLICH eingestellt? In diesem Paket ist sie LESEND; der
+              Steuerart-Dialog kommt mit P2. */}
+          <VerbraucherZone
+            daten={verbraucher}
+            onRegeln={(entityId) => setRegelSprung(entityId)}
+            onEinstellungen={charging && charging.chargers.length > 0
+              ? () => document.getElementById('vp-ladepark')?.scrollIntoView({ block: 'start' })
+              : undefined}
           />
 
-          {/* --- Ladepark (nur mit Ladesäulen) ----------------------------- */}
-          {charging && charging.chargers.length > 0 && (
-            <div id="vp-ladepark">
-              <LadeparkKapsel
-                site={siteState}
-                charging={charging}
-                hasPv={signals?.hasPv === true}
-              />
-            </div>
-          )}
-
-          {/* --- Kapsel 2 · Regeln (Naming Set A) -------------------------- */}
+          {/* --- Kapsel ③ · Regeln (Naming Set A) -------------------------- */}
+          <div id="vp-regeln">
           <RegelnKapsel
             site={site}
             flows={flows}
@@ -624,6 +663,42 @@ export function SteuerungSection({
               void saveEdited(flowId, version, name, doc)}
             onOpenEditor={() => void openSaved('Neue Regel', null, 'automation')}
           />
+          </div>
+
+          {/* --- Zone ④ · Betriebsmodelle (Konzept b3 §3.4, Stufe 5) --------
+              Radio statt unabhängiger Schalter: es fährt immer genau EINES,
+              oder der Grundmodus. Die Exklusivität erzwingt der SERVER — hier
+              steht nur, wie sie aussieht und was der Kunde vorher liest.
+
+              ⚠ Das Ladepark-Lastmanagement steht hier NICHT mehr (es ist
+              Schutz, kein Betriebsmodell) — sein Platz ist der Ladepark-Rahmen
+              im Kopf des Ladepunkt-Abschnitts von Zone ②. */}
+          <Betriebsmodelle
+            zone={zone}
+            title={PROFILE_CAPSULE_TITLE}
+            intro={PROFILE_CAPSULE_INTRO}
+            emptyText={PROFILE_CAPSULE_EMPTY}
+            busyId={toggling}
+            onWaehlen={waehleModell}
+            onSchalten={schalteModell}
+            onOpen={setOpenContainer}
+            onWeg={geheWeg}
+          />
+
+          {/* --- Ladepark-Einstellungen (nur mit Ladesäulen) ---------------
+              ⚠ Sie stehen bewusst UNTER den vier Zonen: der Rahmen-Kopf von
+              Zone ② verlinkt hierher („Einstellungen"), aber die Zonen selbst
+              sollen ununterbrochen aufeinander folgen. Paket P5 ersetzt diese
+              Kapsel durch die Rahmen-Einstellungen. */}
+          {charging && charging.chargers.length > 0 && (
+            <div id="vp-ladepark">
+              <LadeparkKapsel
+                site={siteState}
+                charging={charging}
+                hasPv={signals?.hasPv === true}
+              />
+            </div>
+          )}
 
           {/* --- Der BEFEHLS-VERLAUF (Kommando-Transparenz V1, F2) ---------
               Der zweite Einstieg neben der Komponenten-Karte: „was schickt

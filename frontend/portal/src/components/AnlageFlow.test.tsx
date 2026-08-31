@@ -517,10 +517,11 @@ describe('Schritt Betrieb - Preset + EIN Betriebsmodell (Steuerung Stufe 0)', ()
 
   it('schaltet eine schon LAUFENDE Anwendung nie ab und zeigt sie immer', async () => {
     vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
-    // Ein Ladepark auf einer Privat-Anlage: abgeleitet aktiv, vom Privat-Preset
-    // „verborgen" - er darf weder eingeklappt noch abgeschaltet werden.
+    // Ein laufendes Betriebsmodell auf einer Privat-Anlage: abgeleitet aktiv,
+    // vom Privat-Preset nicht vorgeschlagen - es darf weder eingeklappt noch
+    // abgeschaltet werden.
     mockAdaptiveReads([
-      karte('lastmanagement', { derivedActive: true, active: true }),
+      karte('marktvermarktung', { derivedActive: true, active: true }),
       karte('ueberschuss', { requirements: [{ label: 'PV-Erzeugung', met: false }] }),
     ]);
     vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
@@ -530,8 +531,8 @@ describe('Schritt Betrieb - Preset + EIN Betriebsmodell (Steuerung Stufe 0)', ()
 
     fireEvent.click(await screen.findByRole('radio', { name: /Privat/ }));
     expect(
-      screen.getByRole('switch', { name: /Ladepark-Lastmanagement ausschalten/ }),
-    ).toBeInTheDocument();
+      await screen.findByRole('radio', { name: 'Marktoptimierung' }),
+    ).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(screen.getByText(/„Zuhause“ ist da/)).toBeInTheDocument());
     // Kein `aus` auf etwas, das läuft - und kein `an` auf etwas, das schon an ist.
@@ -643,9 +644,11 @@ describe('Schritt Betrieb - Preset + EIN Betriebsmodell (Steuerung Stufe 0)', ()
     expect(toggle).not.toHaveBeenCalled();
   });
 
-  it('ein Modell OHNE Gruppe bleibt ein eigener SCHALTER neben der Radiogruppe', async () => {
-    // Das Ladepark-Lastmanagement ist SCHUTZ - es konkurriert mit keinem
-    // Betriebsmodell und darf neben jedem laufen.
+  it('das Ladepark-Lastmanagement steht gar nicht mehr im Schritt', async () => {
+    // ⚠ Verbrauchsmanagement v1: es ist SCHUTZ und läuft immer - es ist kein
+    // Betriebsmodell mehr und hat deshalb weder Schalter noch Radio. Der
+    // Assistent fragt nach der BETRIEBSWEISE des Speichers; der Ladepark
+    // gehört in den Ladepark-Rahmen der Verbraucher-Zone.
     vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
     mockAdaptiveReads([
       karte('lastspitzenkappung', {
@@ -660,12 +663,8 @@ describe('Schritt Betrieb - Preset + EIN Betriebsmodell (Steuerung Stufe 0)', ()
 
     const gruppe = await screen.findByRole('radiogroup', { name: 'Ihr Betriebsmodell' });
     expect(within(gruppe).getByRole('radio', { name: 'Lastspitzenkappung' })).toBeInTheDocument();
-    const schalter = within(gruppe).getByRole('switch', { name: /Ladepark-Lastmanagement/ });
-    expect(schalter).toHaveAttribute('aria-checked', 'true');
-    // Und die Modell-Wahl hakt ihn NICHT ab - er gehört keiner Gruppe an.
-    fireEvent.click(within(gruppe).getByRole('radio', { name: 'Kein Betriebsmodell' }));
-    expect(within(gruppe).getByRole('switch', { name: /Ladepark-Lastmanagement/ }))
-      .toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('switch', { name: /Ladepark-Lastmanagement/ })).toBeNull();
+    expect(screen.queryByRole('radio', { name: /Ladepark-Lastmanagement/ })).toBeNull();
   });
 
   it('saves a changed Speicherschonung preset carrying the battery master data through', async () => {

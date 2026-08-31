@@ -176,21 +176,23 @@ class SiteProfileApiTest {
         JsonNode shelf = customer(profilesPath(), HttpMethod.GET, demo, null).getBody();
         // Eigenverbrauch is no longer a shelf profile (report vp-nacht-bezug-e7
         // §3.3) - it is base behaviour, not a selectable card.
-        // "lastmanagement" ist seit Lastmanagement Stufe 3 ein Regal-Profil
-        // (Konzept §5.2). Es hat KEINEN Strategie-Knoten - Lastmanagement ist
-        // Schutz, keine Marktteilnahme - und schaltet deshalb nichts frei.
-        //
-        // Seit Steuerung Stufe 0 "Entwirrung" fuehrt das REGAL genau die vier
+        // Seit Steuerung Stufe 0 "Entwirrung" fuehrt das REGAL genau die
         // BETRIEBSMODELLE. Die Basis- und Regel-Anwendungen sind ausgeblendet,
         // aber NICHT geloescht: ihre Zustaende reisen in "weitere" weiter, weil
         // das Cockpit-Tor "Eigene Auswertung" und das Willens-Overlay der
         // M0-Projektion sie lesen. Der RESERVIERTE Eintrag ("berichte") steht
         // in keiner der beiden Listen: ein Schalter, der nichts bewirken kann,
         // waere eine Zusage, die niemand einloest.
+        //
+        // ⚠ "lastmanagement" ist seit dem Verbrauchsmanagement v1 KEIN
+        // Betriebsmodell mehr, sondern SCHUTZ (Captain: "Das Lastmanagement ist
+        // Schutz, nicht Betriebsweise, und immer an."). Es steht deshalb in
+        // "weitere" statt im Regal - seinen Platz nimmt der Ladepark-Rahmen als
+        // Kopf des Ladepunkt-Abschnitts ein.
         assertThat(ids(shelf)).containsExactly("marktvermarktung", "lastspitzenkappung",
-                "atypische-netznutzung", "lastmanagement");
+                "atypische-netznutzung");
         assertThat(weitereIds(shelf)).containsExactly("monitoring", "speicher-fahrplan",
-                "ueberschuss", "verbraucher", "eigene-auswertung");
+                "ueberschuss", "verbraucher", "lastmanagement", "eigene-auswertung");
         assertThat(shelf.toString()).doesNotContain("berichte");
         // Und der Phantom-Verweis auf eine Seite, die es nicht gibt, ist weg.
         assertThat(shelf.toString()).doesNotContain("Komponenten & Regeln");
@@ -416,8 +418,9 @@ class SiteProfileApiTest {
                 .isEqualTo("speicher");
         assertThat(card(shelf, "lastspitzenkappung").path("exklusivGruppe").asText())
                 .isEqualTo("speicher");
-        // ⚠ Das Ladepark-Lastmanagement ist SCHUTZ - es konkurriert mit keinem
-        // Betriebsmodell und trägt deshalb KEINE Gruppe.
+        // ⚠ Das Ladepark-Lastmanagement ist SCHUTZ - es steht seit dem
+        // Verbrauchsmanagement v1 gar nicht mehr im Regal und trägt keine Gruppe.
+        assertThat(ids(shelf)).doesNotContain("lastmanagement");
         assertThat(card(shelf, "lastmanagement").path("exklusivGruppe").isNull()).isTrue();
         // Ohne gespeicherten Willen gibt es kein „seit" - nie ein erfundenes Datum.
         assertThat(card(shelf, "marktvermarktung").path("seit").isNull()).isTrue();
@@ -455,14 +458,15 @@ class SiteProfileApiTest {
         // Und das neue Modell trägt seinen EIGENEN Startzeitpunkt.
         assertThat(card(gewechselt, "lastspitzenkappung").path("seit").isNull()).isFalse();
 
-        // -- 4. Ein gruppenloses Modell wird davon NICHT berührt ----------------
-        JsonNode mitLadepark = toggle(demo, "lastmanagement", "an");
-        assertThat(card(mitLadepark, "lastmanagement").path("state").asText()).isEqualTo("an");
-        assertThat(card(mitLadepark, "lastspitzenkappung").path("state").asText())
-                .as("Schutz konkurriert mit keinem Betriebsmodell").isEqualTo("an");
+        // -- 4. Der Ladepark hat gar keinen Schalter mehr ----------------------
+        // ⚠ Er ist SCHUTZ und laeuft immer (Captain, Verbrauchsmanagement v1);
+        // ein Schaltversuch ist deshalb ein benannter 400, kein stiller Erfolg.
+        ResponseEntity<JsonNode> verweigert = customer(profilesPath(), HttpMethod.PUT, demo,
+                Map.of("profile", "lastmanagement", "state", "aus"));
+        assertThat(verweigert.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         JsonNode zurueck = toggle(demo, "marktvermarktung", "an");
-        assertThat(card(zurueck, "lastmanagement").path("state").asText())
-                .as("ein Modell-Wechsel schaltet den Ladepark nie ab").isEqualTo("an");
+        assertThat(card(zurueck, "lastmanagement").path("state").isNull())
+                .as("ein Modell-Wechsel legt dem Ladepark keine Absicht an").isTrue();
         assertThat(card(zurueck, "lastspitzenkappung").path("state").asText()).isEqualTo("aus");
 
         // -- 5. `seit` springt NUR bei einem echten Wechsel ---------------------
@@ -481,12 +485,10 @@ class SiteProfileApiTest {
         assertThat(card(aus, "marktvermarktung").path("seit").isNull())
                 .as("was nicht laeuft, traegt keinen Startzeitpunkt").isTrue();
         for (JsonNode c : aus.path("profiles")) {
-            if ("lastmanagement".equals(c.path("id").asText())) continue;
             assertThat(c.path("active").asBoolean())
                     .as("Grundmodus: kein Betriebsmodell läuft (%s)", c.path("id").asText())
                     .isFalse();
         }
-        toggle(demo, "lastmanagement", "aus");
     }
 
     /**

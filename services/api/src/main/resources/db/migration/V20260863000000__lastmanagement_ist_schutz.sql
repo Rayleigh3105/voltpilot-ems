@@ -1,0 +1,49 @@
+-- =============================================================================
+-- V20260863000000 - Verbrauchsmanagement v1 (Paket P1): das
+-- LADEPARK-LASTMANAGEMENT ist kein Betriebsmodell mehr, sondern SCHUTZ - und
+-- damit verschwindet auch seine gespeicherte ABSICHT. DATEN-ONLY, prod-safe,
+-- idempotent, kein Schema, kein Index, kein Recht.
+-- -----------------------------------------------------------------------------
+-- WARUM DIESE ZEILEN WEG MUESSEN, UND ZWAR GENAU JETZT:
+--
+--   Der Captain hat entschieden (captain-scoping.md, 31.08.2026): „Die
+--   Betriebsmodell-Karte 'Ladepark-Lastmanagement' ENTFAELLT. Das
+--   Lastmanagement ist Schutz, nicht Betriebsweise, und immer an." Der Katalog
+--   fuehrt es seither als Klasse `basis` mit `regal: false` und
+--   `abschaltbar: false` - es hat also KEINEN Schalter mehr.
+--
+--   Sein Schalter war fuer die MASCHINE immer schon folgenlos: kein
+--   Strategie-Knoten (nichts freizuschalten), kein Starter (nichts zu saeen),
+--   und `switchOff` ist ein dokumentierter No-op - der Verteiler bewacht den
+--   Anschluss auf der Box weiter, ganz gleich was hier steht.
+--
+--   Eine gespeicherte Absicht `aus` war aber NICHT folgenlos fuer die FLAECHE:
+--   `SiteProfileService` liest `state = 'aus'` als „nicht aktiv", und das
+--   unterdrueckt die abgeleitete Aktivierung samt der Bausteine, die daran
+--   haengen (Lade-Budget im Cockpit, Ladevorgaenge, Ladepunkte im Portfolio).
+--   Ohne Schalter gaebe es keinen Weg mehr zurueck - ein Kunde bliebe fuer
+--   immer mit ausgeblendeten Ladepunkt-Flaechen zurueck. Genau diese Sackgasse
+--   raeumt diese Migration weg, und nichts sonst.
+--
+-- WAS SIE AUSDRUECKLICH NICHT ANFASST:
+--
+--   Die BOX-Einstellung. Anschlussgrenze, Vorrang, Quellen-Wahl und Allowlist
+--   wohnen in `site_charging_config` / `site_charge_point_priority` /
+--   `site_charge_point_allowlist` und bleiben Zeichen fuer Zeichen, wie sie
+--   sind - der Ladepark verteilt danach weiter wie zuvor.
+--
+--   Die drei uebrigen Betriebsmodelle (marktvermarktung, lastspitzenkappung,
+--   atypische-netznutzung). Ihr Zustand IST der gespeicherte Kundenwille, an
+--   dem die Exklusivitaet haengt; er bleibt.
+--
+-- Die Id steht hier AUSGESCHRIEBEN und nicht als Abfrage ueber den Katalog:
+-- eine angewandte Migration ist unveraenderlich und darf ihre Wirkung nicht von
+-- einer Ressource abhaengig machen, die sich morgen aendert (dieselbe
+-- Begruendung wie V20260847000000, dessen Muster diese Migration fortsetzt).
+--
+-- Sie referenziert keinen Mandanten und keine Anlage, ist also auf jeder DB
+-- ohne diese Zeilen ein harmloses No-op. Datums-Version nach der
+-- AGENTS.md-Koordination (ueber dem hoechsten schon ausgelieferten Stand).
+-- =============================================================================
+
+DELETE FROM site_profile_state WHERE profile = 'lastmanagement';

@@ -117,6 +117,31 @@ public class ConsumerRequirementStateRepository {
                 (rs, i) -> map(rs), siteId);
     }
 
+    /**
+     * Die Instanzen der Anlage, JE KOMPONENTE (Verbraucher-Zone P1).
+     *
+     * <p>{@link #listForSite} verliert die Zuordnung: seine {@link Row} traegt
+     * die Entitaet gar nicht. Die Zone braucht je Zeile ihren eigenen
+     * Ziel-Fortschritt, und eine Abfrage je Verbraucher waere ein N+1 auf einem
+     * Listen-Lesepfad - deshalb dieser eine gruppierte Lauf. Reihenfolge wie
+     * {@link #listForEntity}: neueste Frist zuerst.
+     */
+    public java.util.Map<UUID, List<Row>> listForSiteByEntity(UUID siteId) {
+        List<java.util.Map.Entry<UUID, Row>> rows = jdbc.query(
+                "SELECT entity_id, requirement_instance_id, requirement_id, period_start, "
+                        + "deadline, required_energy_kwh, required_runtime_seconds, "
+                        + "actual_energy_kwh, actual_runtime_seconds, energy_confirmation, state, "
+                        + "reason_code FROM consumer_requirement_state WHERE site_id = ? "
+                        + "ORDER BY entity_id, deadline DESC",
+                (rs, i) -> java.util.Map.entry(rs.getObject("entity_id", UUID.class), map(rs)),
+                siteId);
+        java.util.Map<UUID, List<Row>> out = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<UUID, Row> e : rows) {
+            out.computeIfAbsent(e.getKey(), k -> new java.util.ArrayList<>()).add(e.getValue());
+        }
+        return out;
+    }
+
     private static String select() {
         return "SELECT requirement_instance_id, requirement_id, period_start, deadline, "
                 + "required_energy_kwh, required_runtime_seconds, actual_energy_kwh, "

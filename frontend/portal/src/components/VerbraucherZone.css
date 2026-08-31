@@ -1,0 +1,303 @@
+/* ==========================================================================
+   Zone ② · Verbraucher (Verbrauchsmanagement v1, Paket P1)
+   ==========================================================================
+   Komponenten-lokal wie `Betriebsmodelle.css`/`Regeln.css` — `index.css`
+   bleibt unangetastet.
+
+   TELEFON ZUERST: die Zeile ist zweizeilig (Name · Chip / Quelle · Ziel ·
+   Regeln), die Chips umbrechen, und nichts hat eine feste Breite — ein
+   Ladepunkt-Name kann beliebig lang sein, und ein waagerechter Überlauf ist
+   auf dieser Seite ein Fehler.
+   ========================================================================== */
+
+.vp-verbraucherzone .vp-vz-sec {
+  margin: var(--vp-space-4, 16px) 0 var(--vp-space-2, 8px);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-verbraucherzone .vp-vz-sec:first-child {
+  margin-top: 0;
+}
+
+/* --- Der Ladepark-Rahmen (Kopf des Abschnitts) --------------------------- */
+
+.vp-vz-rahmen {
+  padding: var(--vp-space-3, 12px);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-subtle, #f8fafc);
+  min-width: 0;
+}
+
+.vp-vz-rahmen-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-vz-rahmen-zahlen {
+  margin: var(--vp-space-1, 4px) 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 13px;
+  color: var(--vp-text-muted, #64748b);
+  min-width: 0;
+}
+
+/* Der Trenner zwischen den Zahlen entsteht in CSS, nicht im Text — so bleibt
+   jede Zahl für sich prüfbar und der Umbruch am Telefon sauber. */
+.vp-vz-rahmen-zahlen > span + span::before {
+  content: '· ';
+}
+
+.vp-vz-bar {
+  display: block;
+  margin-top: var(--vp-space-2, 8px);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vp-border, #e2e8f0);
+  overflow: hidden;
+}
+
+.vp-vz-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--vp-brand, #95b9ff);
+}
+
+/* --- Die Anlagen-Standard-Zeile ----------------------------------------- */
+
+.vp-vz-standard {
+  margin-top: var(--vp-space-3, 12px);
+  padding: var(--vp-space-3, 12px) 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+/* --- Zeilen -------------------------------------------------------------- */
+
+.vp-vz-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.vp-vz-row {
+  padding: var(--vp-space-3, 12px) 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-vz-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-1, 4px);
+  min-width: 0;
+}
+
+.vp-vz-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-vz-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vp-vz-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  background: var(--vp-surface, #fff);
+  color: var(--vp-text, #1e293b);
+  overflow-wrap: anywhere;
+}
+
+.vp-vz-chip.src {
+  border-color: #b7d3ff;
+  background: #eef5ff;
+}
+
+.vp-vz-chip.due {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+
+.vp-vz-chip.std {
+  font-weight: 600;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-vz-chip.abw {
+  font-weight: 600;
+  border-color: #f0c98a;
+  background: #fdf3e3;
+  color: #8a5b12;
+}
+
+.vp-vz-chip.own {
+  border-style: dashed;
+}
+
+/* „N Regeln →" ist ein echter Sprung — also ein Knopf, kein Chip-Imitat. */
+button.vp-vz-chip.rule {
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  color: var(--vp-action, #2c5282);
+  border-color: #b7d3ff;
+  background: #eef5ff;
+}
+
+button.vp-vz-chip.rule:hover {
+  background: #dfeaff;
+}
+
+.vp-vz-sub {
+  font-size: 12px;
+  color: var(--vp-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}
+
+.vp-vz-quiet {
+  margin: var(--vp-space-2, 8px) 0 0;
+  font-size: 12px;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-vz-warn {
+  margin: var(--vp-space-2, 8px) 0 0;
+  font-size: 13px;
+  color: #8a5b12;
+}
+
+.vp-vz-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-action, #2c5282);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* --- Klapp-Zeilen (Standard-Folger, Rangliste) --------------------------- */
+
+.vp-vz-fold {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--vp-space-2, 8px);
+  padding: var(--vp-space-3, 12px) 0;
+  border: 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  color: var(--vp-text, #1e293b);
+  min-width: 0;
+}
+
+.vp-vz-fold > small {
+  font-weight: 400;
+}
+
+.vp-vz-suche {
+  display: block;
+  margin-top: var(--vp-space-3, 12px);
+}
+
+.vp-vz-suche input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  font: inherit;
+  min-width: 0;
+}
+
+/* --- Die Rangliste (nur Anzeige in P1) ---------------------------------- */
+
+.vp-vz-rank {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-vz-rank > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  padding: 8px 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-vz-pos {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--vp-surface-subtle, #f1f5f9);
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-vz-rankname {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Ab Tablet stehen Name und Chips nebeneinander — dieselbe Zeile, mehr Platz. */
+@media (min-width: 768px) {
+  .vp-vz-text {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--vp-space-3, 12px);
+  }
+
+  .vp-vz-name {
+    flex: 0 1 auto;
+  }
+
+  .vp-vz-chips {
+    flex: 1 1 auto;
+  }
+}

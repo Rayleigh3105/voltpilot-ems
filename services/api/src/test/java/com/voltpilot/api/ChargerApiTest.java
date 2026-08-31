@@ -669,15 +669,25 @@ class ChargerApiTest {
                       {"id":2,"status":"Available","charging":false}]}]}""";
     }
 
-    /** Die „lastmanagement"-Karte des Regals. */
+    /**
+     * Die „lastmanagement"-Karte.
+     *
+     * <p>⚠ Sie wohnt seit dem Verbrauchsmanagement v1 in {@code weitere}, nicht
+     * mehr im Regal: der Ladepark ist SCHUTZ und laeuft immer, seinen Platz in
+     * der Betriebsmodell-Zone nimmt der Ladepark-Rahmen der Verbraucher-Zone
+     * ein. Ihr ZUSTAND wird weiter beantwortet - ausgeblendet ist nicht
+     * geloescht.
+     */
     private JsonNode profileCard(String token, UUID site) throws Exception {
         JsonNode shelf = getJson("/api/v1/sites/" + site + "/profiles", token);
-        for (JsonNode p : shelf.get("profiles")) {
-            if ("lastmanagement".equals(p.get("id").asText())) {
-                return p;
+        for (String feld : List.of("profiles", "weitere")) {
+            for (JsonNode p : shelf.get(feld)) {
+                if ("lastmanagement".equals(p.get("id").asText())) {
+                    return p;
+                }
             }
         }
-        throw new AssertionError("das Regal kennt kein Lastmanagement-Profil: " + shelf);
+        throw new AssertionError("keine Lastmanagement-Karte: " + shelf);
     }
 
     private JsonNode postJson(String path, String token, Map<String, Object> body)

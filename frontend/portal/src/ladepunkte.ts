@@ -251,8 +251,19 @@ export interface BudgetBand {
   blind: boolean;
 }
 
-const KW = (v: number): string =>
+/**
+ * Die kW-Schreibweise der Ladepunkt-Flächen: HÖCHSTENS eine Nachkommastelle,
+ * also „32 kW" und „22,5 kW".
+ *
+ * ⚠ Sie weicht bewusst von `format.fmtNum` ab (das rundet auf eine FESTE
+ * Stelle, „32,0 kW") - eine Anschlussgrenze ist eine glatte Vertragszahl, und
+ * die Ladepunkt-Flächen einer Seite müssen sie gleich schreiben. Wer eine neue
+ * Ladepunkt-Zahl rendert, nimmt DIESE Funktion, keine eigene.
+ */
+export const kwText = (v: number): string =>
   `${new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(v)} kW`;
+
+const KW = kwText;
 
 /**
  * Das Band der Bühne. Es zeigt AUSSCHLIESSLICH, was gemessen bzw. gepflegt ist:

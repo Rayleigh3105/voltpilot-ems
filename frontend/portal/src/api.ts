@@ -23,6 +23,8 @@ export type {
   StoragePriority,
   SurplusPolicy,
 } from './ladepunkte';
+import type { SiteVerbraucher } from './verbraucherZone';
+export type { SiteVerbraucher } from './verbraucherZone';
 import type { Topology } from './topology';
 import type { ModellWahlZustand } from './prognose';
 import type { ComponentMatch } from './komponentenAssistent';
@@ -3187,6 +3189,16 @@ export const api = {
    */
   siteChargers: (siteId: string) =>
     request<SiteCharging>(`/api/v1/sites/${siteId}/chargers`),
+  /**
+   * Die Zone „Verbraucher" der Steuerungsseite (Konzept
+   * `vp-verbrauchsmgmt-konzept-v1` §6, Paket P1) — EIN Lese-Aggregat: je
+   * steuerbarer Komponente ihre STEUERART, der Anlagen-Standard der Ladepunkte
+   * samt Ladepark-Rahmen, und die initiale Rangliste. Alles ist eine
+   * PROJEKTION auf den Bestand (Policy, Quellen-Wahl der Box, Herzschlag,
+   * aktive Flows) — es gibt hier bewusst KEINEN Schreibpfad.
+   */
+  siteVerbraucher: (siteId: string) =>
+    request<SiteVerbraucher>(`/api/v1/sites/${siteId}/verbraucher`),
   /** Complete, tenant-scoped OCPP 1.6 station inventory for the device home. */
   ocppStations: (siteId: string, signal?: AbortSignal) =>
     request<OcppStation[]>(`/api/v1/sites/${siteId}/ocpp/stations`, { signal }),

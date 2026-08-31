@@ -189,6 +189,29 @@ public class ConsumerRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /**
+     * ALLE aktiven Policies der Anlage in EINER Abfrage (Verbraucher-Zone P1).
+     *
+     * <p>Der Zwilling von {@link #activePolicy} fuer den Listen-Lesepfad: die
+     * Zone projiziert die Steuerart JEDER Komponente, und eine Abfrage je
+     * Komponente waere genau das N+1, das dieses Haus verbietet. Anders als
+     * {@code EntityRegistryRepository.activeConsumerPolicies} filtert sie
+     * bewusst NICHT auf {@code consumer_profile.enabled}: ein pausierter
+     * Verbraucher hat trotzdem eine Steuerart, und sie zu verschweigen liesse
+     * die Zeile faelschlich „Sofort" sagen.
+     */
+    public java.util.Map<UUID, PolicyRow> activePoliciesForSite(UUID siteId) {
+        java.util.Map<UUID, PolicyRow> out = new java.util.LinkedHashMap<>();
+        for (PolicyRow row : jdbc.query(
+                "SELECT policy_id, entity_id, version, lifecycle, document::text AS document, "
+                        + "content_hash, created_by, created_at FROM consumer_policy "
+                        + "WHERE site_id = ? AND lifecycle = 'active' ORDER BY entity_id",
+                POLICY_MAPPER, siteId)) {
+            out.put(row.entityId(), row);
+        }
+        return out;
+    }
+
     /** Retire whatever is active for this consumer (0 or 1 row). */
     public int retireActivePolicy(UUID siteId, UUID entityId) {
         return jdbc.update(

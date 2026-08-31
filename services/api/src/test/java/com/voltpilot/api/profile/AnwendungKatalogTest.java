@@ -26,11 +26,18 @@ class AnwendungKatalogTest {
     @Test
     void theShelfIsTheBetriebsmodelleInTheirCanonicalOrder() {
         // Steuerung Stufe 0 „Entwirrung": das Regal ist nicht mehr die Menge
-        // der SICHTBAREN Anwendungen, sondern das Katalog-Feld `regal` - und
-        // das steht genau auf den vier Betriebsmodellen.
+        // der SICHTBAREN Anwendungen, sondern das Katalog-Feld `regal`.
+        //
+        // ⚠ Verbrauchsmanagement v1: das Ladepark-Lastmanagement ist KEIN
+        // Betriebsmodell mehr, sondern SCHUTZ - Klasse `basis`, kein Schalter,
+        // nicht im Regal. Seinen Platz nimmt der Ladepark-Rahmen als Kopf des
+        // Ladepunkt-Abschnitts in der Verbraucher-Zone ein.
         assertThat(katalog.regal().stream().map(Anwendung::id)).containsExactly(
-                "marktvermarktung", "lastspitzenkappung", "atypische-netznutzung",
-                "lastmanagement");
+                "marktvermarktung", "lastspitzenkappung", "atypische-netznutzung");
+        assertThat(katalog.find("lastmanagement").klasse())
+                .isEqualTo(AnwendungKatalog.KLASSE_BASIS);
+        assertThat(katalog.find("lastmanagement").abschaltbar()).isFalse();
+        assertThat(katalog.find("lastmanagement").regal()).isFalse();
         // Steuerung Stufe 8: „Eigene Auswertung" hat gar keinen Schalter mehr -
         // ein Preset kann sie deshalb nicht wählen.
         assertThat(katalog.find("eigene-auswertung").klasse())
@@ -270,7 +277,7 @@ class AnwendungKatalogTest {
         // legt sie in `SiteProfilesDto.weitere`), weil das Cockpit-Tor „Eigene
         // Auswertung" und das Willens-Overlay sie lesen.
         assertThat(katalog.ausserhalbRegal().stream().map(Anwendung::id)).containsExactly(
-                "monitoring", "speicher-fahrplan", "ueberschuss", "verbraucher",
+                "monitoring", "speicher-fahrplan", "ueberschuss", "verbraucher", "lastmanagement",
                 "eigene-auswertung");
         assertThat(katalog.sichtbare()).containsExactlyInAnyOrderElementsOf(
                 java.util.stream.Stream

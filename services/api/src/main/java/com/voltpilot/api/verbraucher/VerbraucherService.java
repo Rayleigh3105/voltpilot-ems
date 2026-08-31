@@ -1,0 +1,238 @@
+package com.voltpilot.api.verbraucher;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.chargers.ChargerComponentComposer;
+import com.voltpilot.api.chargers.ChargingConfigRepository;
+import com.voltpilot.api.consumers.ConsumerFulfillmentReader;
+import com.voltpilot.api.consumers.ConsumerRepository;
+import com.voltpilot.api.consumers.ConsumerRepository.ConsumerRow;
+import com.voltpilot.api.consumers.ConsumerRepository.PolicyRow;
+import com.voltpilot.api.consumers.ConsumerRequirementLedger;
+import com.voltpilot.api.entities.EntityRegistryRepository;
+import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
+import com.voltpilot.api.entities.EntityTypeCatalog;
+import com.voltpilot.api.entities.EntityTypeCatalog.EntityType;
+import com.voltpilot.api.flows.FlowService;
+import com.voltpilot.api.repo.ConsumerRequirementStateRepository;
+import com.voltpilot.api.repo.DeviceChargerStatusRepository;
+import com.voltpilot.api.web.dto.ChargingConfigDto;
+import com.voltpilot.api.web.dto.ConsumerFulfillmentDto;
+import com.voltpilot.api.web.dto.SiteChargingDto;
+import com.voltpilot.api.web.dto.VerbraucherDto;
+import com.voltpilot.api.web.dto.VerbraucherDto.Eintrag;
+import com.voltpilot.api.web.dto.VerbraucherDto.Ladepunkte;
+import com.voltpilot.api.web.dto.VerbraucherDto.RanglisteEintrag;
+import com.voltpilot.api.web.dto.VerbraucherDto.Rahmen;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+
+/**
+ * Die Zone „Verbraucher" der Steuerungsseite (Konzept
+ * {@code vp-verbrauchsmgmt-konzept-v1} §6, Paket P1) - EIN Lese-Aggregat.
+ *
+ * <p><b>Es entsteht kein Schreibpfad und kein neues Format.</b> Der Dienst
+ * komponiert ausschliesslich aus dem Bestand: die aktive {@code consumer_policy}
+ * (→ {@link SteuerartProjektion}), die Quellen-Wahl der Box in
+ * {@code site_charging_config} (§7.2), der {@code chargers}-Herzschlag
+ * (Ladepark-Rahmen, §4.2) und die Ansprueche der AKTIVEN Flows (die „N Regeln"
+ * einer Zeile). Alle Lesepfade laufen ueber die RLS-gefencten
+ * {@code @Primary}-Repositories; die Mandanten-Fence sitzt wie ueberall im
+ * Controller.
+ *
+ * <p><b>⚠ Kein N+1.</b> Jede Grundlage wird EINMAL je Anlage geholt
+ * ({@code activePoliciesForSite}, {@code listForSiteByEntity},
+ * {@code chargePointIdsByEntity}, {@code entityStrategies}); danach ist es nur
+ * noch {@code Map.get} - das Muster von {@code AdminFleetController.fleet()}.
+ *
+ * <p><b>⚠ Ein Ladepunkt ist EIN Ding fuer den Kunden</b> (Captain-Entscheid):
+ * die OCPP-Saeule ({@code ev-charger}, von der Plattform komponiert, ohne
+ * {@code consumer_profile}) UND die go-e/Modbus-Wallbox ({@code wallbox}, mit
+ * Profil) stehen im selben Abschnitt und tragen dieselben Steuerart-Woerter.
+ * Nur die OCPP-Saeule folgt dem ANLAGEN-STANDARD - ihre Quelle faehrt die
+ * Quellen-Bahn der Box; eine go-e kennt den Ladepark heute nicht (Paket P6).
+ */
+@Service
+public class VerbraucherService {
+
+    private static final Logger log = LoggerFactory.getLogger(VerbraucherService.class);
+
+    /** Der Katalog-Typ einer go-e/Modbus-Wallbox - ein Ladepunkt ohne OCPP. */
+    public static final String TYPE_WALLBOX = "wallbox";
+
+    private final ConsumerRepository consumers;
+    private final EntityRegistryRepository entities;
+    private final EntityTypeCatalog catalog;
+    private final DeviceChargerStatusRepository chargers;
+    private final ChargingConfigRepository chargingConfig;
+    private final ConsumerRequirementStateRepository ledger;
+    private final FlowService flows;
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper mapper;
+
+    public VerbraucherService(ConsumerRepository consumers, EntityRegistryRepository entities,
+            EntityTypeCatalog catalog, DeviceChargerStatusRepository chargers,
+            ChargingConfigRepository chargingConfig, ConsumerRequirementStateRepository ledger,
+            FlowService flows, JdbcTemplate jdbc, ObjectMapper mapper) {
+        this.consumers = consumers;
+        this.entities = entities;
+        this.catalog = catalog;
+        this.chargers = chargers;
+        this.chargingConfig = chargingConfig;
+        this.ledger = ledger;
+        this.flows = flows;
+        this.jdbc = jdbc;
+        this.mapper = mapper;
+    }
+
+    /** true = dieser Katalog-Typ ist fuer den Kunden ein „Ladepunkt". */
+    public static boolean istLadepunkt(String entityType) {
+        return ChargerComponentComposer.TYPE_EV_CHARGER.equals(entityType)
+                || TYPE_WALLBOX.equals(entityType);
+    }
+
+    public VerbraucherDto forSite(UUID siteId) {
+        Instant now = Instant.now();
+        SiteChargingDto charging = chargers.forSite(siteId);
+        ChargingConfigDto config = chargingConfig.forSite(siteId);
+        Rahmen rahmen = LadeparkRahmen.aus(charging.budget(), config.gridLimitKw());
+
+        // Der Anlagen-Standard: die Quellen-Wahl der Box, mit ihrer eigenen
+        // Mindestleistung (§7.2). Ist NICHT gepflegt, gilt „Schnell laden" -
+        // der neutrale Wert, mit dem eine nie gefragte Anlage arbeitet.
+        BigDecimal minPowerKw = charging.budget() == null || charging.budget().minPowerKw() == null
+                ? null : BigDecimal.valueOf(charging.budget().minPowerKw());
+        Steuerart standard = SteuerartProjektion.anlagenStandard(config.surplusPolicy(), minPowerKw);
+
+        Map<UUID, PolicyRow> policies = consumers.activePoliciesForSite(siteId);
+        Map<UUID, ConsumerRow> profile = new HashMap<>();
+        for (ConsumerRow row : consumers.listForSite(siteId)) {
+            profile.put(row.entityId(), row);
+        }
+        Map<UUID, String> chargePointIds = entities.chargePointIdsByEntity(siteId);
+        Map<UUID, List<ConsumerRequirementLedger.Row>> aufgaben = ledger.listForSiteByEntity(siteId);
+        Map<String, List<FlowService.EntityStrategyDto>> ansprueche = strategien(siteId);
+
+        List<Eintrag> out = new ArrayList<>();
+        List<RanglisteProjektion.Kandidat> kandidaten = new ArrayList<>();
+        Map<UUID, String> namen = new LinkedHashMap<>();
+        int ladepunkte = 0;
+        int standardFolger = 0;
+
+        for (EntityRow row : entities.entitiesForSite(siteId)) {
+            EntityType type = catalog.find(row.entityType());
+            if (type == null || !"consumer".equals(type.category()) || !type.controllable()) {
+                continue;
+            }
+            boolean ladepunkt = istLadepunkt(row.entityType());
+            boolean ocpp = ChargerComponentComposer.TYPE_EV_CHARGER.equals(row.entityType());
+            String chargePointId = chargePointIds.get(row.id());
+            PolicyRow policy = policies.get(row.id());
+            Steuerart steuerart = SteuerartProjektion.projiziere(dokument(policy), ocpp, standard);
+            if (ladepunkt) {
+                ladepunkte++;
+                if (SteuerartProjektion.HERKUNFT_STANDARD.equals(steuerart.herkunft())) {
+                    standardFolger++;
+                }
+            }
+            ConsumerRow p = profile.get(row.id());
+            String name = anzeigeName(row.label(), chargePointId);
+            namen.put(row.id(), name == null ? "" : name);
+            out.add(new Eintrag(row.id(), name, row.entityType(),
+                    catalog.labelFor(row.entityType()), ladepunkt, chargePointId, steuerart,
+                    ansprueche.getOrDefault(row.id().toString(), List.of()).size(),
+                    fortschritt(aufgaben.get(row.id()), now),
+                    p == null ? null : p.enabled()));
+            kandidaten.add(new RanglisteProjektion.Kandidat(
+                    ladepunkt ? RanglisteProjektion.ART_LADEPUNKT
+                            : RanglisteProjektion.ART_VERBRAUCHER,
+                    row.id(), chargePointId, p == null ? null : p.storageRelation()));
+        }
+
+        List<RanglisteEintrag> rangliste = new ArrayList<>();
+        for (RanglisteProjektion.Eintrag e : RanglisteProjektion.initial(kandidaten,
+                hatSpeicher(siteId), config.storagePriority(), config.priorityChargePointIds())) {
+            rangliste.add(new RanglisteEintrag(e.position(), e.art(), e.entityId(),
+                    e.entityId() == null ? SPEICHER_NAME : namen.getOrDefault(e.entityId(), "")));
+        }
+
+        return new VerbraucherDto(List.copyOf(out),
+                new Ladepunkte(ladepunkte > 0 ? standard : null, standardFolger, ladepunkte, rahmen),
+                List.copyOf(rangliste));
+    }
+
+    /** Der Speicher heisst in der Rangliste beim Namen, den er ueberall traegt. */
+    static final String SPEICHER_NAME = "Speicher";
+
+    /**
+     * Der Anzeigename: der vergebene Name, sonst die OCPP-Kennung, sonst nichts.
+     *
+     * <p>Die Kennung ist bewusst NICHT als {@code label} gespeichert (die
+     * Alias-Invariante des Hauses: {@code label != NULL} heisst „von einem
+     * Menschen vergeben"), also faellt die ANZEIGE darauf zurueck - genau wie
+     * {@code ladepunkte.chargerName} im Portal und der Lesepfad der Ladepunkte.
+     */
+    static String anzeigeName(String label, String chargePointId) {
+        String l = label == null ? "" : label.trim();
+        if (!l.isEmpty()) {
+            return l;
+        }
+        return chargePointId == null || chargePointId.isBlank() ? null : chargePointId;
+    }
+
+    private ConsumerFulfillmentDto.Task fortschritt(List<ConsumerRequirementLedger.Row> rows,
+            Instant now) {
+        return ConsumerFulfillmentReader.aktuelle(rows, now);
+    }
+
+    private JsonNode dokument(PolicyRow policy) {
+        if (policy == null || policy.documentJson() == null) {
+            return null;
+        }
+        try {
+            return mapper.readTree(policy.documentJson());
+        } catch (Exception e) {
+            // Ein unlesbares Dokument ist keine Steuerart - und kein Grund, die
+            // ganze Zone zu verlieren. Die Projektion faellt dann auf „ohne
+            // Policy" zurueck, was die Zeile ehrlich als „Sofort" liest.
+            log.warn("Policy der Komponente {} ist unlesbar: {}", policy.entityId(), e.toString());
+            return null;
+        }
+    }
+
+    /**
+     * Die Ansprueche der AKTIVEN Flows je Komponente. Fail-soft: eine Anlage,
+     * deren Flow-Dokumente gerade nicht lesbar sind, verliert die ZAHL ihrer
+     * Regeln - nicht ihre Zone.
+     */
+    private Map<String, List<FlowService.EntityStrategyDto>> strategien(UUID siteId) {
+        try {
+            return flows.entityStrategies(siteId);
+        } catch (RuntimeException e) {
+            log.warn("Regel-Ansprueche der Anlage {} nicht lesbar: {}", siteId, e.toString());
+            return Map.of();
+        }
+    }
+
+    /**
+     * Hat die Anlage einen Speicher? Genau die Abfrage, mit der
+     * {@code ConsumerService.siteHasStorage} dieselbe Frage beantwortet - eine
+     * zweite Ableitung waere eine zweite Wahrheit.
+     */
+    private boolean hatSpeicher(UUID siteId) {
+        Integer n = jdbc.queryForObject(
+                "SELECT count(*) FROM asset WHERE site_id = ? AND type = 'battery'", Integer.class,
+                siteId);
+        return n != null && n > 0;
+    }
+}

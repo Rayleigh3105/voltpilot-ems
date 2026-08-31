@@ -60,14 +60,15 @@ import {
 } from './handeingriff';
 import type { Consumer } from './consumers/types';
 import {
+  aktuelleLeistung,
   boostBanner,
-  budgetBand,
   chargerName,
   connectorName,
   ladepunktAktionen,
   ladepunktKeinEingriff,
   ladevorgangRows,
   type ChargePoint,
+  type LadeZustandKind,
   type LadepunktAktion,
   type LadevorgangRow,
   type SiteCharging,
@@ -75,11 +76,25 @@ import {
 import { fmtNum } from './format';
 import type { PlanWordingKind } from './schedule';
 
-/** Was in einer Zeile steht — die drei steuerbaren Arten dieser Stufe. */
-export type JetztArt = 'speicher' | 'geraet' | 'ladepark' | 'ladepunkt';
+/**
+ * Was in einer Zeile steht.
+ *
+ * **⚠ `ladepark` ist ENTFALLEN** (Verbrauchsmanagement v1 §6.1: „Der Ladepark
+ * ist keine Sammelzeile mehr"): die Kopfzahl „22 kW von 32 kW verteilt" steht
+ * im Ladepark-Rahmen der Verbraucher-Zone, und JEDER Ladepunkt bekommt hier
+ * seine eigene Zeile — sonst gäbe es keinen Ort, an dem man in EINEN
+ * Ladevorgang eingreifen kann.
+ */
+export type JetztArt = 'speicher' | 'geraet' | 'ladepunkt';
 
 /** Woher der Befehl kommt, der gerade wirkt. */
-export type JetztQuelle = 'handeingriff' | 'regel' | 'fahrplan' | 'unbekannt';
+export type JetztQuelle =
+  | 'handeingriff'
+  | 'regel'
+  | 'fahrplan'
+  /** Das Grundverhalten der Komponente (Verbrauchsmanagement v1). */
+  | 'steuerart'
+  | 'unbekannt';
 
 export type JetztTon = 'ok' | 'warn' | 'off';
 
@@ -146,6 +161,12 @@ export interface JetztView {
    * (§3.9). Gibt es Zeilen, ist er null.
    */
   leer: string | null;
+  /**
+   * „9 weitere Ladepunkte ohne Auto" — die Zeilen, die ab einem grossen
+   * Ladepark bewusst NICHT einzeln stehen (§6.4: die Jetzt-Zone zeigt nur
+   * Ladepunkte mit Auto). Sie werden GEZÄHLT, nie verschwiegen.
+   */
+  weitereLadepunkte: string | null;
 }
 
 export const JETZT_TITEL = 'Jetzt';
@@ -165,11 +186,6 @@ export const GERAET_NICHT_VERBUNDEN =
 /** Warum ein Gerät ohne freigegebene Steuerung keinen Handeingriff hat. */
 export const GERAET_NICHT_FREIGEGEBEN =
   'Für dieses Gerät ist das Schalten noch nicht freigegeben.';
-
-/** Der Ladepark wird hier nur GEZEIGT — geregelt wird er von der Anlage selbst. */
-export const LADEPARK_KEIN_EINGRIFF =
-  'Die Ladeleistung verteilt Ihre Anlage selbst — sie hält dabei Ihre '
-  + 'Anschlussgrenze ein.';
 
 export const BANNER_AKTION = 'Automatik fortsetzen';
 
@@ -396,42 +412,25 @@ export function geraetZeile(input: GeraetInput, now: Date = new Date()): JetztZe
 }
 
 // ---------------------------------------------------------------------------
-// Ladepark-Zeile
+// Ladepunkt-Zeilen
 // ---------------------------------------------------------------------------
 
 /**
- * Die Ladepark-Zeile — rein lesend (§3.2: „2 Fahrzeuge laden · Budget 22 kW von
- * 30 kW"). Ohne gemeldetes Budget wird KEINE Zahl behauptet.
+ * Ab wie vielen Ladepunkten nur noch die mit Auto einzeln stehen (§6.4).
+ * Darunter steht jeder Ladepunkt — auch ein freier, denn auf einer kleinen
+ * Anlage IST „Kein Auto eingesteckt" die Antwort auf „was passiert jetzt?".
  */
-export function ladeparkZeile(charging: SiteCharging | null | undefined): JetztZeile | null {
-  const chargers = charging?.chargers ?? [];
-  if (chargers.length === 0) return null;
-  const band = budgetBand(charging?.budget ?? null);
-  // Gezählt werden die ladenden STECKER, nicht die Säulen: an einer Säule
-  // hängen zwei Fahrzeuge, und der Kunde fragt nach den Fahrzeugen.
-  const ladend = chargers.reduce(
-    (n, c) => n + (c.connectors ?? []).filter((k) => k.charging).length, 0);
-  const zustand = ladend === 0
-    ? 'keine Fahrzeuge laden'
-    : `${ladend} ${ladend === 1 ? 'Fahrzeug lädt' : 'Fahrzeuge laden'}`;
-  // Die Budget-Zahl wird DURCHGEREICHT (`budgetBand.headline` — „22,0 kW von
-  // 30,0 kW"), nie hier neu gerechnet: ohne hinterlegte Grenze ist sie null,
-  // und dann steht keine Zahl da statt einer erfundenen.
-  const grund = band?.headline ? `Budget ${band.headline}` : null;
-  return {
-    key: 'ladepark',
-    art: 'ladepark',
-    entityId: null,
-    name: chargers.length === 1 ? chargerName(chargers[0]) : 'Ladepunkte',
-    zustand,
-    grund,
-    quelle: 'unbekannt',
-    quelleText: null,
-    bis: null,
-    ton: ladend > 0 ? 'ok' : 'off',
-    aktionen: [],
-    keinEingriff: LADEPARK_KEIN_EINGRIFF,
-  };
+export const LADEPUNKTE_ALLE_BIS = 8;
+
+/** „9 weitere Ladepunkte ohne Auto" — gezählt, nie verschwiegen. */
+export function weitereLadepunkteSatz(n: number): string | null {
+  if (n <= 0) return null;
+  return `${n} ${n === 1 ? 'weiterer Ladepunkt' : 'weitere Ladepunkte'} ohne Auto`;
+}
+
+/** Ein Zustand, bei dem kein Fahrzeug am Stecker hängt. */
+function ohneAuto(kind: LadeZustandKind): boolean {
+  return kind === 'frei' || kind === 'getrennt';
 }
 
 /**
@@ -457,68 +456,97 @@ export function ladepunktName(c: ChargePoint, connectorId: number): string {
 }
 
 /**
- * Eine Zeile JE LADEPUNKT (Verbrauchsmanagement v1, P3a / Konzept §6.1+§6.2) —
- * die Zeile, an der „Jetzt voll laden" endlich dort steht, wo eingegriffen wird
- * (Befund S6: heute vier Klicks auf einer anderen Seite).
+ * Eine Zeile JE LADEPUNKT (Verbrauchsmanagement v1, P1/P3a · Konzept §6.1+§6.2):
+ * „Wallbox Garage · lädt 7,4 kW · Überschuss (Sonne zuerst)" — mit „Eingreifen ▸"
+ * dort, wo eingegriffen wird (Befund S6: vorher vier Klicks auf einer anderen
+ * Seite).
  *
- * ⚠ Zustand, Ton und Grund kommen unverändert aus `ladevorgangRows` — es gibt
- * keine zweite Wortquelle über Ladesäulen, und die Ladevorgänge-Seite liest
- * dieselbe. Neu ist allein, dass die Zeile ihre HANDLUNG mitbringt.
+ * ⚠ Es entsteht KEINE zweite Wahrheit über den Ladevorgang. Zustand, Ton und
+ * Grund kommen aus `ladevorgangRows` (also aus `ladepunkte.ladeZustand`), die
+ * Leistung aus `aktuelleLeistung` (ein veralteter Messwert liest NIE als
+ * aktuell), die Handlung aus `ladepunktAktionen` — dieselben Ableitungen, die
+ * die Ladevorgänge-Seite rendert. Diese Datei setzt sie nur zusammen.
+ *
+ * ⚠ Die QUELLE wird ÜBERGEBEN, nie geraten: ein laufender Boost IST der
+ * Urheber, sonst die Steuerart, die der Server projiziert hat
+ * (`GET /sites/{id}/verbraucher`). Ohne beides bleibt sie `unbekannt` — ein
+ * vollwertiges Urteil.
  *
  * ⚠ Ein laufender Eingriff bekommt KEINEN Countdown: der Herzschlag meldet je
  * Stecker nur `boost: true|false`, kein Ende. „noch 1:12 h" wäre erfunden —
  * stattdessen steht dort, was wirklich gilt („endet beim Abstecken").
  *
- * Eine GETRENNTE Säule liefert wie bisher keine Zeilen (`ladevorgangRows`):
- * was sie tut, wissen wir gerade nicht.
+ * Eine GETRENNTE Säule liefert keine Zeilen (`ladevorgangRows` überspringt
+ * sie): was sie tut, wissen wir gerade nicht, und ihr Zustand steht auf ihrer
+ * Komponenten-Karte.
  */
-export function ladepunktZeilen(charging: SiteCharging | null | undefined): JetztZeile[] {
+export function ladepunktZeilen(
+  charging: SiteCharging | null | undefined,
+  steuerart?: (entityId: string | null | undefined) => string | null,
+  nowMs?: number,
+): { zeilen: JetztZeile[]; weitere: string | null } {
   const chargers = charging?.chargers ?? [];
-  if (chargers.length === 0) return [];
+  if (chargers.length === 0) return { zeilen: [], weitere: null };
   const budget = charging?.budget ?? null;
-  const byPoint = new Map<string, ChargePoint>();
-  for (const c of chargers) byPoint.set(c.chargePointId, c);
+  // ⚠ Gezählt wird, was WIRKLICH Zeilen ergibt: eine getrennte Säule steht
+  // ohnehin nicht da, sie darf die Liste also auch nicht einklappen.
+  const verbunden = chargers.filter((c) => c.connected);
+  const alleZeigen = verbunden.length <= LADEPUNKTE_ALLE_BIS;
 
   const zeilen: JetztZeile[] = [];
-  for (const row of ladevorgangRows(chargers)) {
-    const c = byPoint.get(row.chargePointId);
-    if (!c) continue;
-    const name = ladepunktName(c, row.connectorId);
-    const aktionen = ladepunktAktionen(budget, row);
-    zeilen.push({
-      key: `ladepunkt:${row.key}`,
-      art: 'ladepunkt',
-      entityId: null,
-      name,
-      // Das Zustands-Wort der EINEN Wortquelle, klein geschrieben wie jede
-      // andere Zeile dieser Zone („lädt 7,4 kW").
-      zustand: ladepunktZustand(row),
-      grund: row.reason ?? row.nextTurn,
-      // Ein laufender Boost IST der Urheber — sonst regelt die Anlage selbst,
-      // und einen Urheber zu behaupten, den niemand belegt hat, wäre falsch.
-      quelle: row.boost ? 'handeingriff' : 'unbekannt',
-      quelleText: row.boost ? 'Jetzt voll laden' : null,
-      bis: null,
-      ton: row.tone === 'stoerung' ? 'warn' : row.tone === 'laedt' ? 'ok' : 'off',
-      aktionen,
-      keinEingriff: aktionen.length > 0 ? null : ladepunktKeinEingriff(budget, row),
-      ladepunkt: { chargePointId: row.chargePointId, connectorId: row.connectorId, name },
-    });
+  let ohne = 0;
+  for (const c of verbunden) {
+    const rows = ladevorgangRows([c], nowMs);
+    if (!alleZeigen && !rows.some((r) => !ohneAuto(r.kind))) {
+      ohne += 1;
+      continue;
+    }
+    const quelleText = steuerart?.(c.entityId) ?? null;
+    for (const row of rows) {
+      const name = ladepunktName(c, row.connectorId);
+      const aktionen = ladepunktAktionen(budget, row);
+      const con = (c.connectors ?? []).find((k) => k.connectorId === row.connectorId);
+      const kw = con ? aktuelleLeistung(con, nowMs) : null;
+      const leer = ohneAuto(row.kind);
+      zeilen.push({
+        key: `ladepunkt:${row.key}`,
+        art: 'ladepunkt',
+        entityId: c.entityId ?? null,
+        name,
+        // Das Zustands-Wort der EINEN Wortquelle, klein geschrieben wie jede
+        // andere Zeile dieser Zone („lädt 7,4 kW").
+        zustand: ladepunktZustand(row, kw),
+        grund: row.reason ?? row.nextTurn,
+        // Ein laufender Boost IST der Urheber; sonst steuert die Steuerart —
+        // und ohne Auto steuert gerade nichts, dann wäre jede Quelle eine
+        // Aussage über einen Ladevorgang, den es nicht gibt.
+        quelle: row.boost ? 'handeingriff' : leer || !quelleText ? 'unbekannt' : 'steuerart',
+        quelleText: row.boost ? 'Jetzt voll laden' : leer ? null : quelleText,
+        bis: null,
+        ton: row.tone === 'stoerung' ? 'warn' : row.tone === 'laedt' ? 'ok' : 'off',
+        aktionen,
+        keinEingriff: aktionen.length > 0 ? null : ladepunktKeinEingriff(budget, row),
+        ladepunkt: { chargePointId: row.chargePointId, connectorId: row.connectorId, name },
+      });
+    }
   }
-  return zeilen;
+  return { zeilen, weitere: weitereLadepunkteSatz(ohne) };
 }
 
 /**
- * „lädt 7,4 kW" — die Zahl nur, wo die Säule sie gemeldet hat (nie eine 0).
+ * „lädt 7,4 kW" — die Zahl nur, wo die Säule sie FRISCH gemeldet hat.
+ *
+ * ⚠ Der Wert kommt aus `aktuelleLeistung`, nie aus `row.powerKw`: das Feld
+ * trägt den ROHEN Messwert, und ein veralteter darf nie als aktuell lesen.
  *
  * ⚠ Bei laufendem Eingriff steht hier das BASIS-Wort: den Urheber nennt die
  * Zeile daneben als Quelle („Jetzt voll laden"), und zweimal wäre er Rauschen
  * (der Mockup-Wortlaut ist „Lädt 22 kW · Jetzt voll laden").
  */
-function ladepunktZustand(row: LadevorgangRow): string {
+function ladepunktZustand(row: LadevorgangRow, kw: number | null): string {
   const basis = row.boost ? row.basisWort : row.word;
   const wort = basis.charAt(0).toLowerCase() + basis.slice(1);
-  return row.powerKw == null ? wort : `${wort} ${fmtNum(row.powerKw, 'kW')}`;
+  return kw == null || row.tone !== 'laedt' ? wort : `${wort} ${fmtNum(kw, 'kW')}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -579,7 +607,7 @@ export function jetztBanner(
   // einzelne Ladung), und über einer Anlagen-Pause oder einem Speicher-Eingriff
   // wäre er das kleinere über dem größeren. Ohne laufenden Boost ist dieser
   // Zweig ein No-op — die Zone bleibt dann Zeichen für Zeichen die von vorher.
-  for (const z of ladepunktZeilen(charging)) {
+  for (const z of ladepunktZeilen(charging).zeilen) {
     if (!z.ladepunkt || z.quelle !== 'handeingriff') continue;
     return {
       text: boostBanner(z.name),
@@ -599,6 +627,12 @@ export interface JetztInput {
   speicher?: SpeicherInput | null;
   geraete?: GeraetInput[];
   charging?: SiteCharging | null;
+  /**
+   * Die STEUERART je Ladepunkt-Komponente, als Wort — sie kommt aus dem
+   * Lese-Aggregat der Verbraucher-Zone und wird hier nur eingesetzt. Fehlt
+   * sie, bleibt die Quelle der Zeile ehrlich leer.
+   */
+  steuerart?: (entityId: string | null | undefined) => string | null;
   overrides?: ManualOverride[] | null;
   /** Die laufenden Handeingriffe + die Pause (Stufe 4); null = keine geladen. */
   interventions?: SiteInterventions | null;
@@ -613,18 +647,24 @@ export function jetztZone(input: JetztInput): JetztView {
   const zeilen: JetztZeile[] = [];
   const sp = input.speicher ? speicherZeile(input.speicher) : null;
   if (sp) zeilen.push(sp);
-  for (const g of input.geraete ?? []) zeilen.push(geraetZeile(g, input.now));
-  const lp = ladeparkZeile(input.charging);
-  if (lp) zeilen.push(lp);
-  // P3a: unter der Park-Zusammenfassung steht jede Ladung als eigene Zeile —
-  // dort, und nur dort, greift der Kunde ein.
-  //
-  // ⚠ ANDOCKSTELLE für Paket P1 („Zone lesend"): das Konzept (§6.1) lässt die
-  // Sammelzeile `ladeparkZeile` ENTFALLEN und trägt ihre Kopfzahl in den
-  // Ladepark-Rahmen der Verbraucher-Zone. Bis dahin bleibt sie stehen, weil
-  // sonst das Budget aus der Jetzt-Zone verschwände; P1 streicht genau die zwei
-  // Zeilen darüber und lässt diese hier unangetastet.
-  for (const z of ladepunktZeilen(input.charging)) zeilen.push(z);
+  // P1 hat die Sammelzeile `ladeparkZeile` ERSATZLOS gestrichen (Konzept §6.1):
+  // ihre Kopfzahl trägt jetzt der Ladepark-Rahmen der Verbraucher-Zone, und
+  // jede Ladung steht als eigene Zeile — dort, und nur dort, greift der Kunde
+  // ein (P3a).
+  const lp = ladepunktZeilen(input.charging, input.steuerart, input.now.getTime());
+  // ⚠ Ein Ladepunkt steht GENAU EINMAL. Traegt dieselbe Entitaet zusaetzlich ein
+  // Verbraucher-Profil, saehe der Kunde sie zweimal — einmal aus dem gemeldeten
+  // Verbraucher-Zustand, einmal aus dem Ladevorgang; zwei Wahrheiten ueber
+  // dieselbe Saeule. Die Ladepunkt-Zeile gewinnt: sie ist die genauere (je
+  // Stecker, mit dem echten OCPP-Zustand).
+  const ladepunktEntitaeten = new Set(
+    lp.zeilen.map((z) => z.entityId).filter((id): id is string => id != null),
+  );
+  for (const g of input.geraete ?? []) {
+    if (ladepunktEntitaeten.has(g.consumer.id)) continue;
+    zeilen.push(geraetZeile(g, input.now));
+  }
+  for (const z of lp.zeilen) zeilen.push(z);
 
   const namen: Record<string, string> = {};
   for (const g of input.geraete ?? []) namen[g.consumer.id] = g.consumer.name;
@@ -632,6 +672,9 @@ export function jetztZone(input: JetztInput): JetztView {
   return {
     zeilen,
     banner: jetztBanner(input.overrides, namen, input.now, input.interventions, input.charging),
-    leer: zeilen.length === 0 ? JETZT_LEER : null,
+    // ⚠ Die Sammel-Zeile der grossen Ladeparks zählt als Inhalt: eine Anlage,
+    // die nur solche hat, ist nicht „leer".
+    leer: zeilen.length === 0 && !lp.weitere ? JETZT_LEER : null,
+    weitereLadepunkte: lp.weitere,
   };
 }

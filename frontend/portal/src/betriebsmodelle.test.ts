@@ -198,15 +198,18 @@ describe('betriebsmodellZone', () => {
     expect(zone.altbestand).toEqual([]);
   });
 
-  it('⚠ ein Modell OHNE Gruppe ist ein EIGENER Schalter - es konkurriert mit niemandem', () => {
-    // Das Ladepark-Lastmanagement ist SCHUTZ: es läuft auf der Box weiter, was
-    // auch immer eine Karte sagt, und darf neben jedem Betriebsmodell laufen.
+  it('⚠ das Ladepark-Lastmanagement ist KEIN Betriebsmodell mehr - die Karte entfällt', () => {
+    // Verbrauchsmanagement v1 (Captain 31.08.2026): „Das Lastmanagement ist
+    // Schutz, nicht Betriebsweise, und immer an." Es steht seither nicht mehr
+    // im Regal, und die Zone filtert am eigenen KATALOG - ein älterer Server,
+    // der die Karte noch schickt, bringt sie nicht zurück.
     const zone = betriebsmodellZone([
       gruppe('lastspitzenkappung', true),
       gruppe('lastmanagement', true),
     ], MODES, null, NOW);
     expect(zone.radio.map((k) => k.id)).toEqual(['lastspitzenkappung']);
-    expect(zone.eigene.map((k) => k.id)).toEqual(['lastmanagement']);
+    expect(zone.eigene).toEqual([]);
+    expect(zone.nichtMoeglich).toEqual([]);
     // Und es macht die Anlage NICHT zum Altbestand.
     expect(zone.altbestand).toEqual([]);
   });

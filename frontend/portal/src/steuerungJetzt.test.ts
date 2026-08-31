@@ -8,15 +8,14 @@ import {
   GERAET_NICHT_FREIGEGEBEN,
   GERAET_NICHT_VERBUNDEN,
   JETZT_LEER,
-  LADEPARK_KEIN_EINGRIFF,
+  LADEPUNKTE_ALLE_BIS,
+  LADEPUNKT_BANNER_ID,
+  PAUSE_BANNER_ID,
   geraetZeile,
   jetztBanner,
   jetztZone,
-  LADEPUNKT_BANNER_ID,
-  PAUSE_BANNER_ID,
   ladepunktName,
   ladepunktZeilen,
-  ladeparkZeile,
   restZeit,
   speicherZeile,
   speicherZustand,
@@ -314,51 +313,115 @@ describe('Zone ① Jetzt — die Geräte-Zeile', () => {
   });
 });
 
-describe('Zone ① Jetzt — die Ladepark-Zeile', () => {
-  function charging(over: Partial<SiteCharging> = {}): SiteCharging {
+describe('Zone ① Jetzt — eine Zeile je LADEPUNKT (Verbrauchsmanagement v1 §6.2)', () => {
+  function saeule(over: Record<string, unknown> = {}): Record<string, unknown> {
     return {
-      budget: {
-        deviceId: 'd-1', enabled: true, controlEnabled: true,
-        gridLimitKw: 30, effLimitKw: 30, measuredKw: 22, siteLoadKw: 0,
-        connectorCount: 2,
-      },
-      chargers: [
-        {
-          deviceId: 'd-1', chargePointId: 'CP1', label: 'Säule Hof', priority: false,
-          connected: true, ready: true,
-          connectors: [
-            { connectorId: 1, charging: true },
-            { connectorId: 2, charging: true },
-          ],
-        },
-      ],
+      deviceId: 'd-1', chargePointId: 'CP1', label: 'Wallbox Garage', priority: false,
+      connected: true, ready: true, entityId: 'e-1',
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 7.4 }],
       ...over,
-    } as SiteCharging;
+    };
   }
 
-  it('zählt die ladenden Fahrzeuge und reicht die Budget-Zahl durch', () => {
-    const z = ladeparkZeile(charging());
-    expect(z!.zustand).toBe('2 Fahrzeuge laden');
-    expect(z!.grund).toContain('Budget');
-    // Die Zahl kommt WÖRTLICH aus `budgetBand.headline` — hier wird nichts
-    // zweitgerechnet, also auch nicht anders gerundet.
-    expect(z!.grund).toContain('30');
+  function charging(chargers: Record<string, unknown>[]): SiteCharging {
+    return { budget: null, chargers } as unknown as SiteCharging;
+  }
+
+  it('nennt Name, Zustand mit Leistung und die übergebene Steuerart', () => {
+    const { zeilen } = ladepunktZeilen(charging([saeule()]), () => 'Überschuss (Sonne zuerst)');
+    expect(zeilen).toHaveLength(1);
+    expect(zeilen[0].art).toBe('ladepunkt');
+    expect(zeilen[0].name).toBe('Wallbox Garage');
+    expect(zeilen[0].zustand).toBe('lädt 7,4\u00a0kW');
+    expect(zeilen[0].quelleText).toBe('Überschuss (Sonne zuerst)');
+    expect(zeilen[0].quelle).toBe('steuerart');
+    // Der Schlüssel des Boost-Auftrags (P3a) reist an der Zeile mit.
+    expect(zeilen[0].ladepunkt).toEqual({
+      chargePointId: 'CP1', connectorId: 1, name: 'Wallbox Garage',
+    });
   });
 
-  it('behauptet ohne hinterlegte Grenze KEINE Budget-Zahl', () => {
-    const z = ladeparkZeile(charging({ budget: null }));
-    expect(z!.grund).toBeNull();
+  it('sagt ohne Auto den GRUND und behauptet keine Quelle', () => {
+    const frei = saeule({ connectors: [{ connectorId: 1, status: 'Available', charging: false }] });
+    const { zeilen } = ladepunktZeilen(charging([frei]), () => 'Überschuss');
+    expect(zeilen[0].zustand).toBe('kein Auto eingesteckt');
+    // Wo nichts lädt, steuert auch nichts - eine Quelle wäre eine Aussage
+    // über einen Ladevorgang, den es nicht gibt.
+    expect(zeilen[0].quelleText).toBeNull();
+    expect(zeilen[0].quelle).toBe('unbekannt');
   });
 
-  it('ist rein lesend und sagt das', () => {
-    const z = ladeparkZeile(charging());
-    expect(z!.aktionen).toEqual([]);
-    expect(z!.keinEingriff).toBe(LADEPARK_KEIN_EINGRIFF);
+  it('behauptet für eine GETRENNTE Säule GAR NICHTS', () => {
+    // ⚠ Sie bekommt keine Zeile: was sie tut, wissen wir gerade nicht, und ihr
+    // Zustand steht auf ihrer Komponenten-Karte (P3a).
+    const { zeilen, weitere } = ladepunktZeilen(
+      charging([saeule({ connected: false })]), () => 'Sofort',
+    );
+    expect(zeilen).toEqual([]);
+    // Sie zählt auch nicht als „ohne Auto" - das wäre eine Aussage über sie.
+    expect(weitere).toBeNull();
+  });
+
+  it('nennt bei MEHREREN Steckern den Stecker, bei einem nur die Säule', () => {
+    const zwei = saeule({
+      connectors: [
+        { connectorId: 1, status: 'Charging', charging: true, powerKw: 7.4 },
+        { connectorId: 2, status: 'Available', charging: false },
+      ],
+    });
+    const { zeilen } = ladepunktZeilen(charging([zwei]));
+    expect(zeilen).toHaveLength(2);
+    expect(zeilen[0].name).toBe('Wallbox Garage · Stecker A');
+    expect(zeilen[1].name).toBe('Wallbox Garage · Stecker B');
+  });
+
+  it('ohne Steuerart bleibt die Quelle ehrlich leer', () => {
+    const { zeilen } = ladepunktZeilen(charging([saeule()]));
+    expect(zeilen[0].quelleText).toBeNull();
+    expect(zeilen[0].quelle).toBe('unbekannt');
+  });
+
+  it('ein VERALTETER Messwert liest nie als aktuelle Leistung', () => {
+    // ⚠ Die Regel wohnt in `ladepunkte.ladeZustand`/`aktuelleLeistung` und
+    // wird hier nur konsumiert: ein stehengebliebenes Kilowatt wird ein
+    // eigener ZUSTAND, nie eine Zahl, die aktuell aussieht.
+    const alt = saeule({
+      connectors: [{
+        connectorId: 1, status: 'Charging', charging: true, powerKw: 7.4,
+        meteredAt: '2026-08-25T11:00:00Z',
+      }],
+    });
+    const { zeilen } = ladepunktZeilen(charging([alt]), undefined, NOW.getTime());
+    expect(zeilen[0].zustand).toBe('lädt — Leistung nicht messbar');
+    expect(zeilen[0].zustand).not.toContain('7,4');
+  });
+
+  it('zeigt bei einem grossen Ladepark nur die mit Auto — und ZÄHLT den Rest', () => {
+    const mitAuto = saeule({ chargePointId: 'CP0', entityId: 'e-0' });
+    const ohne = Array.from({ length: LADEPUNKTE_ALLE_BIS }, (_, i) => saeule({
+      chargePointId: `CPx${i}`, entityId: `e-x${i}`,
+      connectors: [{ connectorId: 1, status: 'Available', charging: false }],
+    }));
+    const { zeilen, weitere } = ladepunktZeilen(charging([mitAuto, ...ohne]));
+    expect(zeilen).toHaveLength(1);
+    expect(zeilen[0].ladepunkt?.chargePointId).toBe('CP0');
+    expect(weitere).toBe(`${LADEPUNKTE_ALLE_BIS} weitere Ladepunkte ohne Auto`);
+  });
+
+  it('bis zur Grenze steht JEDER Ladepunkt einzeln — auch ein freier', () => {
+    const frei = Array.from({ length: LADEPUNKTE_ALLE_BIS }, (_, i) => saeule({
+      chargePointId: `CP${i}`, entityId: `e-${i}`,
+      connectors: [{ connectorId: 1, status: 'Available', charging: false }],
+    }));
+    const { zeilen, weitere } = ladepunktZeilen(charging(frei));
+    expect(zeilen).toHaveLength(LADEPUNKTE_ALLE_BIS);
+    expect(weitere).toBeNull();
   });
 
   it('entsteht ohne Ladepunkt gar nicht', () => {
-    expect(ladeparkZeile(null)).toBeNull();
-    expect(ladeparkZeile({ budget: null, chargers: [] } as unknown as SiteCharging)).toBeNull();
+    expect(ladepunktZeilen(null).zeilen).toEqual([]);
+    expect(ladepunktZeilen(charging([])).zeilen).toEqual([]);
+    expect(ladepunktZeilen(null).weitere).toBeNull();
   });
 });
 
@@ -408,9 +471,33 @@ describe('Zone ① Jetzt — Banner und Leer-Zustand', () => {
       } as unknown as SiteCharging,
       now: NOW,
     });
-    // P3a: unter der Park-Zusammenfassung steht jede Ladung als eigene Zeile.
-    expect(v.zeilen.map((z) => z.art)).toEqual(['speicher', 'geraet', 'ladepark', 'ladepunkt']);
+    // P1: die Sammelzeile ist entfallen, jede Ladung steht als eigene Zeile.
+    expect(v.zeilen.map((z) => z.art)).toEqual(['speicher', 'geraet', 'ladepunkt']);
     expect(v.leer).toBeNull();
+  });
+
+  it('zeigt einen Ladepunkt GENAU EINMAL, auch wenn er ein Verbraucher-Profil traegt', () => {
+    // Eine Entitaet, die BEIDES ist: gemeldeter Ladepunkt UND Verbraucher-Profil.
+    // Zwei Zeilen waeren zwei Wahrheiten ueber dieselbe Saeule.
+    const v = jetztZone({
+      geraete: [
+        { consumer: consumer({ id: 'e-cp', name: 'Carport' }), status: status(), anyStatusReported: true },
+        { consumer: consumer(), status: status(), anyStatusReported: true },
+      ],
+      charging: {
+        budget: null,
+        chargers: [{
+          deviceId: 'd-1', chargePointId: 'CP1', label: 'Carport', priority: false,
+          connected: true, ready: true, entityId: 'e-cp',
+          connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 7.4 }],
+        }],
+      } as unknown as SiteCharging,
+      now: NOW,
+    });
+    expect(v.zeilen.filter((z) => z.entityId === 'e-cp')).toHaveLength(1);
+    expect(v.zeilen.find((z) => z.entityId === 'e-cp')!.art).toBe('ladepunkt');
+    // Der andere Verbraucher bleibt unangetastet.
+    expect(v.zeilen.some((z) => z.art === 'geraet' && z.entityId === 'c-rod')).toBe(true);
   });
 });
 
@@ -434,7 +521,7 @@ describe('Zone ① Jetzt — Ladepunkt-Zeilen (P3a)', () => {
   } as unknown as SiteCharging);
 
   it('macht aus einer laufenden Ladung eine eigene Zeile mit „Eingreifen"', () => {
-    const [z] = ladepunktZeilen(charging());
+    const [z] = ladepunktZeilen(charging()).zeilen;
     expect(z.art).toBe('ladepunkt');
     expect(z.name).toBe('Wallbox Garage');
     // ⚠ `fmtNum` setzt ein geschütztes Leerzeichen vor die Einheit.
@@ -459,14 +546,14 @@ describe('Zone ① Jetzt — Ladepunkt-Zeilen (P3a)', () => {
   });
 
   it('erfindet keine Leistung, wenn die Säule keine meldet', () => {
-    const [z] = ladepunktZeilen(charging({}, { powerKw: null }));
+    const [z] = ladepunktZeilen(charging({}, { powerKw: null })).zeilen;
     expect(z.zustand).not.toMatch(/\d/);
   });
 
   it('gibt einer Ladung OHNE Auto kein Menü, sondern den Grund', () => {
     const [z] = ladepunktZeilen(
       charging({}, { charging: false, status: 'Available', powerKw: null }),
-    );
+    ).zeilen;
     expect(z.aktionen).toEqual([]);
     // Der Zustand der Zeile sagt es schon - er wird nicht wiederholt.
     expect(z.zustand).toBe('kein Auto eingesteckt');
@@ -474,7 +561,7 @@ describe('Zone ① Jetzt — Ladepunkt-Zeilen (P3a)', () => {
   });
 
   it('nennt bei laufendem Eingriff den Urheber und bietet den Rückweg', () => {
-    const [z] = ladepunktZeilen(charging({}, { boost: true }));
+    const [z] = ladepunktZeilen(charging({}, { boost: true })).zeilen;
     // Der Urheber steht als QUELLE - im Zustand steht er nicht ein zweites Mal.
     expect(z.zustand.replace(/\u00a0/g, ' ')).toBe('lädt 7,4 kW');
     expect(z.quelle).toBe('handeingriff');
@@ -487,8 +574,8 @@ describe('Zone ① Jetzt — Ladepunkt-Zeilen (P3a)', () => {
   it('gibt einer GETRENNTEN Säule keine Zeile - was sie tut, wissen wir nicht', () => {
     const c = charging();
     (c.chargers[0] as { connected: boolean }).connected = false;
-    expect(ladepunktZeilen(c)).toEqual([]);
-    expect(ladepunktZeilen(null)).toEqual([]);
+    expect(ladepunktZeilen(c).zeilen).toEqual([]);
+    expect(ladepunktZeilen(null).zeilen).toEqual([]);
   });
 
   it('setzt bei laufendem Boost den Banner mit dem Rückweg', () => {

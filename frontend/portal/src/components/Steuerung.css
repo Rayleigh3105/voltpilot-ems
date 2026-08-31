@@ -918,6 +918,19 @@
   }
 }
 
+/*
+ * Verbrauchsmanagement v1 §6.4: bei einem grossen Ladepark stehen in „Jetzt"
+ * nur die Ladepunkte MIT Auto einzeln - der Rest wird zu EINER ruhigen Zeile
+ * („9 weitere Ladepunkte ohne Auto"). Gezählt, nie verschwiegen.
+ */
+.vp-jetzt-weitere {
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  font-size: var(--vp-text-xs, 12px);
+  color: var(--vp-text-muted, #64748b);
+}
+
 /* --- Steuerung Stufe 4: Handeingriffe ------------------------------------ */
 
 /*

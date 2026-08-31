@@ -217,6 +217,14 @@ beforeEach(() => {
     ],
   } as never);
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
+  // Verbrauchsmanagement v1: das Lese-Aggregat der Verbraucher-Zone. Die
+  // Vorgabe ist eine Anlage OHNE steuerbares Gerät - die Zone rendert dann
+  // ihren ehrlichen Leer-Zustand und stört keinen bestehenden Fall.
+  vi.spyOn(api, 'siteVerbraucher').mockResolvedValue({
+    verbraucher: [],
+    ladepunkte: { standard: null, standardFolger: 0, gesamt: 0, rahmen: null },
+    rangliste: [],
+  } as never);
   // Das Regel-Protokoll (Stufe 5b) - die Vorgabe ist der Tag der Auslieferung:
   // aufgezeichnet wird, aber noch kein Wechsel liegt vor.
   vi.spyOn(api, 'siteRuleEvents').mockResolvedValue({
@@ -333,34 +341,38 @@ function nurEinsAktiv() {
 }
 
 describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
-  it('rendert DREI Zonen plus die Schutz-Zeile — Jetzt · Betriebsmodelle · Regeln', async () => {
-    setup();
-    const { container } = render(<SteuerungSection site={site} />);
+  it('rendert VIER Zonen in der Reihenfolge Jetzt · Verbraucher · Regeln · Betriebsmodelle',
+    async () => {
+      setup();
+      const { container } = render(<SteuerungSection site={site} />);
 
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Betriebsmodelle' })).toBeInTheDocument());
-    // Steuerung Stufe 0: „Anwendungen" ist kein Kundenwort mehr.
-    expect(screen.queryByRole('heading', { name: 'Anwendungen' })).toBeNull();
-    // Naming Set A: die Kapsel heißt „Regeln", nicht mehr „Automationen".
-    expect(screen.getByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Automationen' })).toBeNull();
-    // Steuerung Stufe 1: Zone ① „Jetzt" steht ZUERST (Konzept b3 §3.1) - die
-    // Seite hat seither drei Zonen auf EINEM Scroll, keine Reiter.
-    expect(screen.getByRole('heading', { name: 'Jetzt' })).toBeInTheDocument();
-    const zonen = container.querySelectorAll('section.vp-capsule');
-    expect(zonen).toHaveLength(3);
-    expect(zonen[0].getAttribute('aria-label')).toBe('Jetzt');
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { name: 'Betriebsmodelle' })).toBeInTheDocument());
+      // Steuerung Stufe 0: „Anwendungen" ist kein Kundenwort mehr.
+      expect(screen.queryByRole('heading', { name: 'Anwendungen' })).toBeNull();
+      // Naming Set A: die Kapsel heißt „Regeln", nicht mehr „Automationen".
+      expect(screen.getByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Automationen' })).toBeNull();
+      // ⚠ Verbrauchsmanagement v1 §6.1: die REIHENFOLGE ist die Aussage -
+      // was passiert jetzt · wie ist es eingestellt · welche Ausnahmen gibt
+      // es · wie arbeitet der Speicher am Markt. Eine Scroll-Seite, keine
+      // Reiter.
+      expect(screen.getByRole('heading', { name: 'Jetzt' })).toBeInTheDocument();
+      const zonen = container.querySelectorAll('section.vp-capsule');
+      expect([...zonen].map((z) => z.getAttribute('aria-label'))).toEqual([
+        'Jetzt', 'Verbraucher', 'Regeln', 'Betriebsmodelle',
+      ]);
 
-    // The retired four-part surface is gone - no toolbox, no active/offer mix.
-    expect(screen.queryByRole('heading', { name: 'Aktive Modi' })).toBeNull();
-    expect(screen.queryByRole('heading', { name: '＋ Anwendung hinzufügen' })).toBeNull();
+      // The retired four-part surface is gone - no toolbox, no active/offer mix.
+      expect(screen.queryByRole('heading', { name: 'Aktive Modi' })).toBeNull();
+      expect(screen.queryByRole('heading', { name: '＋ Anwendung hinzufügen' })).toBeNull();
 
-    // The narrow always-on protection line.
-    expect(screen.getByText(/Läuft immer mit/)).toBeInTheDocument();
-    expect(screen.getByText('§ 14a-Schutz')).toBeInTheDocument();
-    expect(screen.getByText('Negativpreis-Abregelung')).toBeInTheDocument();
-    expect(screen.getByText('EEG: nur Solarladen')).toBeInTheDocument();
-  });
+      // The narrow always-on protection line.
+      expect(screen.getByText(/Läuft immer mit/)).toBeInTheDocument();
+      expect(screen.getByText('§ 14a-Schutz')).toBeInTheDocument();
+      expect(screen.getByText('Negativpreis-Abregelung')).toBeInTheDocument();
+      expect(screen.getByText('EEG: nur Solarladen')).toBeInTheDocument();
+    });
 
   it('Stufe 5: die Betriebsmodelle sind RADIOS - genau eines läuft, und es sagt seit wann', async () => {
     setup();
@@ -523,19 +535,78 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     expect(screen.queryByText(/3\.600/)).toBeNull();
   });
 
-  it('ein ÄLTERER Server ohne Exklusivitäts-Gruppe fällt auf eigene Schalter zurück', async () => {
-    // Die Gruppe kommt vom Server; kennt er sie nicht, ist jede Karte wieder
-    // ein eigener Schalter - genau das Verhalten vor dieser Stufe. Der Katalog
-    // trägt sie hier trotzdem, also ist der Rückfall der KATALOG-Wert.
+  it('ein ÄLTERER Server bringt die Ladepark-Karte NICHT zurück', async () => {
+    // ⚠ Verbrauchsmanagement v1: das Ladepark-Lastmanagement ist SCHUTZ, kein
+    // Betriebsmodell - die Karte entfällt. Der Server filtert sie seit dieser
+    // Runde aus dem Regal; schickt ein ÄLTERER sie trotzdem, filtert der
+    // byte-gleiche Katalog des Portals sie ein zweites Mal. Der Ladepark
+    // bleibt über den Rahmen-Kopf der Verbraucher-Zone erreichbar.
     setup();
     vi.spyOn(api, 'siteProfiles').mockResolvedValue({
       profiles: [profile({ id: 'lastmanagement', label: 'Ladepark-Lastmanagement', active: false })],
     });
     render(<SteuerungSection site={site} />);
     await waitFor(() =>
-      expect(screen.getByRole('switch', { name: /Ladepark-Lastmanagement/ })).toBeInTheDocument());
-    // Es gehört keiner Gruppe an - es konkurriert mit niemandem.
+      expect(screen.getByRole('heading', { name: 'Betriebsmodelle' })).toBeInTheDocument());
+    expect(screen.queryByRole('switch', { name: /Ladepark-Lastmanagement/ })).toBeNull();
     expect(screen.queryByRole('radio', { name: /Ladepark-Lastmanagement/ })).toBeNull();
+  });
+
+  it('Verbrauchsmanagement v1: die Zone rendert das Lese-Aggregat des Servers', async () => {
+    setup();
+    // ⚠ Nichts davon wird im Portal abgeleitet: Steuerart, Anlagen-Standard und
+    // Rahmen kommen ALS PROJEKTION vom Server - die Zone rendert nur.
+    vi.spyOn(api, 'siteVerbraucher').mockResolvedValue({
+      verbraucher: [{
+        entityId: 'e-wb',
+        name: 'Wallbox Garage',
+        typ: 'ev-charger',
+        typLabel: 'Ladepunkt',
+        ladepunkt: true,
+        chargePointId: 'CP1',
+        steuerart: {
+          quelle: 'ueberschuss', herkunft: 'standard', ueberschussModus: 'mindestleistung',
+        },
+        regeln: 0,
+      }],
+      ladepunkte: {
+        standard: { quelle: 'ueberschuss', herkunft: 'standard', ueberschussModus: 'mindestleistung' },
+        standardFolger: 1,
+        gesamt: 1,
+        rahmen: { netzanschlussKw: 32, verteiltKw: 22, steckerAnzahl: 1 },
+      },
+      rangliste: [{ position: 1, art: 'speicher', entityId: null, name: 'Speicher' }],
+    } as never);
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Verbraucher' })).toBeInTheDocument());
+    expect(screen.getByText('Ladepark-Rahmen')).toBeInTheDocument();
+    expect(screen.getByText('Netzanschluss 32 kW')).toBeInTheDocument();
+    expect(screen.getByText('Anlagen-Standard für Ladepunkte')).toBeInTheDocument();
+    expect(screen.getByText('Gilt für 1 von 1 Ladepunkt')).toBeInTheDocument();
+  });
+
+  it('nennt den Speicher „Speicher“, nie seine UUID', async () => {
+    // ⚠ `flowApi.entities()` faellt fuer ein LABEL-loses Messobjekt auf seine Id
+    // zurueck (der Flow-Editor braucht dort einen adressierbaren Schluessel) -
+    // und eine KOMPONIERTE Batterie traegt seit der Label-Hygiene genau kein
+    // Label. Ungefiltert stand deshalb eine nackte UUID in der Jetzt-Zone.
+    setup();
+    BOUND.entities.mockResolvedValue([
+      { id: 'e-batt', entityType: 'battery-hybrid', label: 'e-batt', measure: ['soc_pct'], actuate: ['setpoint_kw'] },
+    ]);
+    vi.spyOn(api, 'controlStatus').mockResolvedValue({
+      deviceId: 'd-1', commandedKw: 0, allMatch: true, controlEnabled: false,
+      checkedAt: new Date().toISOString(),
+    } as never);
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Jetzt' })).toBeInTheDocument());
+    // Nicht vakuum: die Speicher-Zeile muss wirklich rendern.
+    await waitFor(() => expect(document.querySelector('.vp-jetztrow')).not.toBeNull());
+    const zeile = document.querySelector('.vp-jetztrow')!;
+    expect(zeile.querySelector('strong')!.textContent).toBe('Speicher');
+    expect(zeile.textContent).not.toContain('e-batt');
   });
 
   it('renders a calm empty profile capsule when the backend has no profiles', async () => {

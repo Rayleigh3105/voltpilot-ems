@@ -1774,6 +1774,33 @@ paths:
         "200": { description: Die Haltung ist gemerkt; `mutedUntil` sagt bis wann. }
         "400": { description: Unbekannte Auswahl oder ungültiger Schlüssel. }
         "404": { description: Anlage nicht gefunden. }
+  /api/v1/sites/{siteId}/verbraucher:
+    get:
+      tags: [consumer]
+      summary: Die Zone "Verbraucher" der Steuerungsseite (lesend).
+      description: >
+        EIN Lese-Aggregat je Anlage (Konzept vp-verbrauchsmgmt-konzept-v1 §6,
+        Paket P1): je steuerbarer Komponente ihre STEUERART (genau eine Quelle,
+        höchstens ein Ziel), der Anlagen-Standard der Ladepunkte samt
+        Ladepark-Rahmen, und die initiale Rangliste bei knapper Leistung.
+        Alles ist eine PROJEKTION auf den Bestand - die aktive consumer_policy
+        (§7.1), die Quellen-Wahl der Box in site_charging_config (§7.2), der
+        chargers-Herzschlag und die Ansprüche der aktiven Flows; es entsteht
+        kein zweites Datenformat. READ-ONLY: dieses Paket zeigt nur, was gilt;
+        geschrieben wird weiterhin über Policy bzw. charging-config, der EINE
+        Schreibweg der Steuerart entsteht in P2/P4. RLS-gefenced (fremde Anlage
+        404, Admins über den `X-Tenant-Id`-Umschalter); eine Anlage ohne
+        steuerbares Gerät bekommt eine wohlgeformte LEERE Antwort.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Verbraucher, Ladepunkt-Abschnitt und Rangliste.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Verbraucher" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/sites/{siteId}/chargers:
     get:
       tags: [sites]
@@ -10511,6 +10538,128 @@ components:
         connection: { type: string, nullable: true, enum: [haus, eigen], description: "WO die Säule hängt (Cockpit Phase 1 / C1) - das SOLL des Kunden: \"haus\" = hinter dem Hausanschluss (ihre Leistung steckt in der Netzmessung der Anlage, das Budget-Gesetz der Box gilt für sie), \"eigen\" = eigener Netzanschluss/Zähler. null = der Kunde hat nichts gesagt und die Box behält, was sie hat - NIE \"eigen\", denn das nähme eine reale Ladeleistung aus ihrer Bilanz." }
         addedAt: { type: string, format: date-time, nullable: true }
         addedBy: { type: string, nullable: true, description: "Wer sie eingetragen hat (JWT-Subject)." }
+    Steuerart:
+      type: object
+      description: >
+        Genau EINE Quelle, höchstens EIN Ziel. Jedes Feld ist nullable und
+        `null` heißt "diese Steuerart kennt diesen Wert nicht" - nie 0.
+      properties:
+        quelle:
+          type: string
+          enum: [sofort, ueberschuss, guenstig, feste_zeiten, eigene_regel]
+          description: >
+            `eigene_regel` = die Policy ist nicht eindeutig auf eine Steuerart
+            abbildbar (§7.1 Regel 9); sie bleibt unverändert stehen und die
+            Fläche verlinkt den Baukasten.
+        herkunft:
+          type: string
+          enum: [policy, standard, ohne]
+          description: >
+            `standard` = dieser Ladepunkt folgt dem Anlagen-Standard;
+            `policy` = er hat eine eigene Steuerart (die Zeile liest
+            "abweichend"); `ohne` = es gibt keine Policy.
+        schwelleKw: { type: number, nullable: true }
+        preisgrenzeCtKwh: { type: number, nullable: true }
+        ueberschussModus:
+          type: string
+          nullable: true
+          enum: [pausieren, mindestleistung, null]
+        mindestleistungKw: { type: number, nullable: true }
+        fenster: { $ref: "#/components/schemas/SteuerartFenster" }
+        ziel:
+          type: string
+          nullable: true
+          enum: [bis_uhrzeit, laufzeit_bis, null]
+        zielFenster: { $ref: "#/components/schemas/SteuerartFenster" }
+        zielEnergieKwh: { type: number, nullable: true }
+        zielLaufzeitMinuten: { type: integer, nullable: true }
+        zielAmStueck: { type: boolean, nullable: true }
+    SteuerartFenster:
+      type: object
+      nullable: true
+      properties:
+        tage: { type: string, enum: [daily, weekdays, weekend] }
+        von: { type: string, example: "13:00" }
+        bis: { type: string, example: "15:00" }
+    Verbraucher:
+      type: object
+      description: Die Zone "Verbraucher" einer Anlage (lesend).
+      properties:
+        verbraucher:
+          type: array
+          items:
+            type: object
+            properties:
+              entityId: { type: string, format: uuid }
+              name:
+                type: string
+                nullable: true
+                description: >
+                  Der Anzeigename: der vergebene Name, sonst die OCPP-Kennung,
+                  sonst null.
+              typ: { type: string, example: ev-charger }
+              typLabel: { type: string, example: Ladepunkt }
+              ladepunkt:
+                type: boolean
+                description: >
+                  true = für den Kunden ein "Ladepunkt" (OCPP-Säule ODER
+                  go-e/Modbus-Wallbox - ein Modell, dieselben Steuerart-Wörter).
+              chargePointId: { type: string, nullable: true }
+              steuerart: { $ref: "#/components/schemas/Steuerart" }
+              regeln:
+                type: integer
+                description: >
+                  Wie viele AKTIVE Wenn/Dann-Flows diese Komponente
+                  beanspruchen - die Regeln, die NICHT die Steuerart bilden.
+              fortschritt:
+                nullable: true
+                description: >
+                  Der Ziel-Fortschritt aus dem Erfüllungs-Ledger (dieselbe Form
+                  wie `/consumers/{id}/fulfillment`), null ohne Beleg.
+              aktiv: { type: boolean, nullable: true }
+        ladepunkte:
+          type: object
+          properties:
+            standard:
+              allOf: [{ $ref: "#/components/schemas/Steuerart" }]
+              nullable: true
+              description: null nur, wenn die Anlage gar keinen Ladepunkt hat.
+            standardFolger: { type: integer }
+            gesamt: { type: integer }
+            rahmen:
+              type: object
+              nullable: true
+              description: >
+                Der Ladepark-Rahmen (§4.2) - eine AUSWAHL aus dem Budget-Block
+                der Box plus die im Portal gepflegte Anschlussgrenze. Jede Zahl
+                nullable; `hinweis` ist der Satz der Box, wörtlich.
+              properties:
+                netzanschlussKw: { type: number, nullable: true }
+                gepflegteGrenzeKw: { type: number, nullable: true }
+                effektivGrenzeKw: { type: number, nullable: true }
+                hausLastKw: { type: number, nullable: true }
+                hoechsteHausLastKw: { type: number, nullable: true }
+                verteiltKw: { type: number, nullable: true }
+                budgetKw: { type: number, nullable: true }
+                sicherheitsabstandPct: { type: number, nullable: true }
+                mindestleistungKw: { type: number, nullable: true }
+                modus: { type: string, nullable: true }
+                blind: { type: boolean }
+                hinweis: { type: string, nullable: true }
+                steckerAnzahl: { type: integer }
+                gemeldetAm: { type: string, format: date-time, nullable: true }
+        rangliste:
+          type: array
+          description: >
+            Die initiale Reihenfolge bei knapper Leistung (§7.3), Speicher als
+            Eintrag. In P1 reine ANZEIGE - sortiert wird in P4.
+          items:
+            type: object
+            properties:
+              position: { type: integer }
+              art: { type: string, enum: [speicher, ladepunkt, verbraucher] }
+              entityId: { type: string, format: uuid, nullable: true }
+              name: { type: string }
     SiteCharging:
       type: object
       description: >

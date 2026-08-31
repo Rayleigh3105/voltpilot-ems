@@ -36,7 +36,28 @@ public class ConsumerFulfillmentReader {
         return new ConsumerFulfillmentDto(tasks);
     }
 
-    private static Task toTask(Row row, Instant now) {
+    /**
+     * Die AKTUELLE Instanz einer Liste (neueste Frist zuerst): die naechste noch
+     * offene Frist, sonst die zuletzt abgelaufene.
+     *
+     * <p>Die Verbraucher-Zone zeigt je Komponente GENAU EINE Aufgabe. Sie hier
+     * zu waehlen haelt die Regel bei EINER Stelle - die Flaeche darf nicht
+     * selbst entscheiden, welche Frist „die" ist.
+     */
+    public static Task aktuelle(List<Row> rows, Instant now) {
+        if (rows == null || rows.isEmpty()) {
+            return null;
+        }
+        Row beste = null;
+        for (Row row : rows) {
+            if (!row.deadline().isBefore(now) && (beste == null || row.deadline().isBefore(beste.deadline()))) {
+                beste = row;
+            }
+        }
+        return toTask(beste != null ? beste : rows.get(0), now);
+    }
+
+    static Task toTask(Row row, Instant now) {
         State effective = ConsumerRequirementLedger.effectiveState(row.state(), row.deadline(), now);
         boolean atRisk = ConsumerRequirementLedger.atRisk(effective, row.deadline(),
                 row.requiredRuntimeSeconds(), row.actualRuntimeSeconds(), now);

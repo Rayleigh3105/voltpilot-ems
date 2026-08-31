@@ -452,18 +452,22 @@ describe('Abbau-Invarianten (M6)', () => {
   });
 
   it('Anwendungs-Katalog Stufe 1: `site_profile_state` behält Schlüssel und Semantik', () => {
-    // Die gespeicherten Zeilen einer Bestandsanlage tragen die VIER alten
-    // Schlüssel - der Katalog hat keinen davon umbenannt (eine angewandte
-    // Migration ist unveränderlich, und das Regal ist der An/Aus-Ort derselben
-    // Ids).
+    // Die gespeicherten Zeilen einer Bestandsanlage tragen die alten Schlüssel
+    // - der Katalog hat keinen davon umbenannt (eine angewandte Migration ist
+    // unveränderlich, und das Regal ist der An/Aus-Ort derselben Ids).
     for (const id of [
       'marktvermarktung',
       'lastspitzenkappung',
       'atypische-netznutzung',
-      'lastmanagement',
     ]) {
       expect(REGAL.map((a) => a.id)).toContain(id);
     }
+    // ⚠ `lastmanagement` behält seinen SCHLÜSSEL, hat aber seit dem
+    // Verbrauchsmanagement v1 keinen Schalter mehr (Klasse `basis`); seine
+    // Zeilen räumt die Migration V20260862000000 weg, damit ein gespeichertes
+    // `aus` die Ladepunkt-Flächen nicht ohne Rückweg unterdrückt.
+    expect(ANWENDUNGEN.find((a) => a.id === 'lastmanagement')?.klasse).toBe('basis');
+    expect(REGAL.map((a) => a.id)).not.toContain('lastmanagement');
     // `aus` unterdrückt weiterhin einen abgeleiteten Modus, `an` erfindet keinen.
     const dv: AnlageSurfaceInput = {
       ...NIE_MIGRIERT,
@@ -558,12 +562,11 @@ describe('Abbau-Invarianten (M6)', () => {
 
   it('Steuerung Stufe 0: eine Bestandsanlage verliert NICHTS - nur das Regal wird kurz', () => {
     // Die Stufe blendet aus, sie löscht nicht. Der Beweis in vier Teilen:
-    //  1. das Regal führt genau die vier Betriebsmodelle,
+    //  1. das Regal führt genau die Betriebsmodelle,
     expect(REGAL.map((a) => a.id)).toEqual([
       'marktvermarktung',
       'lastspitzenkappung',
       'atypische-netznutzung',
-      'lastmanagement',
     ]);
     //  2. die anderen sind ausgeblendet, nicht weg,
     expect(AUSSERHALB_REGAL.map((a) => a.id)).toEqual([
@@ -571,6 +574,7 @@ describe('Abbau-Invarianten (M6)', () => {
       'speicher-fahrplan',
       'ueberschuss',
       'verbraucher',
+      'lastmanagement',
       'eigene-auswertung',
     ]);
     //  3. das WILLENS-Overlay liest weiterhin JEDE Karte - ein gespeichertes
@@ -1084,14 +1088,17 @@ describe('Steuerung Stufe 5: eine Anlage OHNE aktives Betriebsmodell ist unberü
 
   it('⚠ ein ÄLTERER Server ohne `exklusivGruppe` fällt auf den KATALOG zurück', () => {
     // Die Gruppe ist eine Server-Angabe; kennt der Server sie nicht, entscheidet
-    // die byte-gleiche Katalog-Kopie - und die kennt sie. Ein Modell OHNE
-    // Gruppe (auch im Katalog) bleibt ein eigener Schalter.
-    const [markt, lade] = betriebsmodellKarten(
+    // die byte-gleiche Katalog-Kopie - und die kennt sie.
+    const karten = betriebsmodellKarten(
       [profil({ id: 'marktvermarktung' }), profil({ id: 'lastmanagement' })],
       [], null, NOW,
     );
-    expect(markt.gruppe).toBe('speicher');
-    expect(lade.gruppe).toBeNull();
+    expect(karten.map((k) => k.id)).toEqual(['marktvermarktung']);
+    expect(karten[0].gruppe).toBe('speicher');
+    // ⚠ Und der Katalog filtert die Karte, die kein Betriebsmodell mehr ist:
+    // ein ÄLTERER Server, der `lastmanagement` noch im Regal schickt, bringt
+    // sie NICHT zurück (Verbrauchsmanagement v1).
+    expect(karten.map((k) => k.id)).not.toContain('lastmanagement');
   });
 
   it('die Zone speichert nichts im Browser', () => {
@@ -1213,12 +1220,18 @@ describe('Steuerung Stufen 8+9: Umzüge und Datenbereinigung', () => {
     // abhängig machen, die sich morgen ändert). Dieser Wächter hält fest,
     // WELCHE Ids das heute sind: wer eine Anwendung in eine dieser Klassen
     // schiebt, muss die Migrations-Liste bewusst mitziehen.
+    //
+    // ⚠ `lastmanagement` ist mit dem Verbrauchsmanagement v1 in die Klasse
+    // `basis` gewechselt (es ist SCHUTZ, kein Betriebsmodell) - und genau
+    // deshalb trägt es eine EIGENE Migration (V20260862000000), die seine
+    // Zeilen wegräumt. Wer eine weitere Anwendung hierher schiebt, zieht seine
+    // Migrations-Liste bewusst mit.
     const geloescht = ANWENDUNGEN
       .filter((a) => a.klasse === 'basis' || a.klasse === 'regel')
       .map((a) => a.id)
       .sort();
     expect(geloescht).toEqual(
-      ['monitoring', 'speicher-fahrplan', 'ueberschuss', 'verbraucher'].sort(),
+      ['monitoring', 'speicher-fahrplan', 'ueberschuss', 'verbraucher', 'lastmanagement'].sort(),
     );
     // Was BLEIBT: die vier Betriebsmodelle und die cockpit-Anwendung. Ihre
     // Zeilen tragen eine Entscheidung, die der Kunde wirklich getroffen hat.
@@ -1231,7 +1244,6 @@ describe('Steuerung Stufen 8+9: Umzüge und Datenbereinigung', () => {
         'marktvermarktung',
         'lastspitzenkappung',
         'atypische-netznutzung',
-        'lastmanagement',
         'eigene-auswertung',
       ].sort(),
     );

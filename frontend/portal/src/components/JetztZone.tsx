@@ -93,12 +93,21 @@ export function JetztZone({
   speicherRegelAktiv = false,
   /** Der Anzeigename der Speicher-Komponente; ohne einen heißt sie „Speicher". */
   speicherName = null,
+  /**
+   * Die STEUERART eines Ladepunkts als Wort („Überschuss (Sonne zuerst)").
+   *
+   * ⚠ Sie wird ÜBERGEBEN, nie hier geraten: sie kommt aus dem Lese-Aggregat
+   * der Verbraucher-Zone, das der SERVER projiziert hat. Ohne sie bleibt die
+   * Quelle der Ladepunkt-Zeile leer — „unbekannt" ist ein vollwertiges Urteil.
+   */
+  steuerart,
   onReload,
 }: {
   site: Site;
   charging?: SiteCharging | null;
   speicherRegelAktiv?: boolean;
   speicherName?: string | null;
+  steuerart?: (entityId: string | null | undefined) => string | null;
   onReload?: () => void;
 }): JSX.Element {
   const [plan, setPlan] = useState<SchedulePlan | null>(null);
@@ -188,12 +197,13 @@ export function JetztZone({
         anyStatusReported,
       })),
       charging,
+      steuerart,
       overrides,
       interventions,
       now,
     });
   }, [plan, control, curtail, consumers, status, overrides, interventions, charging,
-    site.plantKind, speicherRegelAktiv, speicherName, now]);
+    site.plantKind, speicherRegelAktiv, speicherName, steuerart, now]);
 
   const bestaetigen = useCallback(async (minutes?: number) => {
     if (!eingriff) return;
@@ -375,6 +385,13 @@ export function JetztZone({
               />
             ))}
           </ul>
+        )}
+
+        {/* ⚠ Die zusammengefassten Ladepunkte werden GEZÄHLT, nie
+            verschwiegen (§6.4: die Jetzt-Zone zeigt bei einem grossen
+            Ladepark nur die mit Auto). */}
+        {view.weitereLadepunkte && (
+          <p className="vp-jetzt-weitere">{view.weitereLadepunkte}</p>
         )}
       </Card>
 
