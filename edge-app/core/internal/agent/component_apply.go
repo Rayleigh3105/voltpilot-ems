@@ -122,9 +122,16 @@ func (a *Agent) applyComponentsFromRegistry(reg entities.Registry) {
 	plan, err := componentapply.Derive(reg, a.invCat, running, time.Now())
 	if err != nil {
 		if errors.Is(err, componentapply.ErrNoConfiguration) {
-			// The plant is portal-managed but the portal has not described a
-			// device yet. That is a normal state during onboarding - and it is
-			// emphatically NOT an instruction to clear anything.
+			// The plant is portal-managed but the portal describes no connected
+			// device (any more). That is a normal state during onboarding - and
+			// it is emphatically NOT an instruction to clear anything.
+			//
+			// ⚠ Es wird trotzdem QUITTIERT (Befund L1): vorher wurde der Halt
+			// nur geloggt, die Revision blieb unbestätigt und ein ÄLTERER
+			// Ablehnungsgrund stehen - im Portal las sich das als „Änderung
+			// unterwegs zur Box", dauerhaft und ohne Begründung. Lokal bleibt
+			// weiterhin alles unverändert; nur der Bericht wird ehrlich.
+			a.recordComponentHold(reg.Revision, noConfigurationHint)
 			slog.Info("Portal-verwaltete Anlage ohne Geräte-Konfiguration; lokal bleibt alles unverändert",
 				"revision", reg.Revision)
 			return
@@ -221,6 +228,27 @@ func hasSourceID(list []sources.Source, id string) bool {
 func (a *Agent) markComponentsApplied(revision string) {
 	a.compMu.Lock()
 	rec := componentapply.NewRecord(componentapply.AuthorityPortal, revision, time.Now()).Cleared()
+	a.compRecord = rec
+	a.compMu.Unlock()
+	a.persistComponentRecord(rec)
+}
+
+// noConfigurationHint is the ONE sentence a deliberate hold carries. It says
+// what the box DID (it kept what runs) and why (the portal names no connected
+// device), because "nothing happened" without a reason is exactly what left the
+// portal saying "unterwegs" forever.
+const noConfigurationHint = "Im Portal ist für diese Anlage kein verbundenes Gerät hinterlegt; " +
+	"die Box behält deshalb den zuletzt angewandten Stand."
+
+// recordComponentHold records that the box SAW a revision and deliberately
+// applied nothing, keeping the last applied revision (that is still what runs).
+// It also clears a stale refusal - an older revision's reason must not outlive
+// the answer to a newer one.
+func (a *Agent) recordComponentHold(revision, reason string) {
+	a.compMu.Lock()
+	rec := a.compRecord
+	rec.Authority = componentapply.AuthorityPortal
+	rec = rec.WithHold(revision, reason)
 	a.compRecord = rec
 	a.compMu.Unlock()
 	a.persistComponentRecord(rec)

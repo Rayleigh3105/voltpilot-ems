@@ -226,6 +226,12 @@ public class EntityStatusListener {
      * „box-verwaltet" zu behaupten. Ein Wort außerhalb des Vokabulars wird
      * VERWORFEN statt gespeichert (die Regel des unbekannten Zustands, die
      * jeder Status-Zuhörer hier trägt).
+     *
+     * <p>Seit Befund L1 trägt der Block eine DRITTE Antwort: {@code held_*} =
+     * die Box hat die Revision GESEHEN und bewusst nichts angewandt (heute:
+     * das Portal nennt kein verbundenes Gerät mehr). Sie ist additiv - eine
+     * ältere Box lässt die zwei Felder weg, und daraus wird {@code null},
+     * also „kein Halt gemeldet", nie sein Gegenteil.
      */
     private void ingestComponentApply(JsonNode block, UUID deviceId, UUID tenantId, UUID siteId,
             Instant reportedAt) {
@@ -240,6 +246,7 @@ public class EntityStatusListener {
         componentApply.upsert(deviceId, tenantId, siteId, authority,
                 textOrNull(block, "revision"), optInstant(block, "applied_at"),
                 textOrNull(block, "refused_revision"), textOrNull(block, "refused_reason"),
+                textOrNull(block, "held_revision"), textOrNull(block, "held_reason"),
                 reportedAt);
     }
 

@@ -1561,6 +1561,14 @@ export interface SiteComponents {
   refusedRevision?: string | null;
   refusedReason?: string | null;
   /**
+   * Der letzte bewusste HALT der Box (Befund L1): sie hat diese Revision
+   * GESEHEN und nichts angewandt - heute, weil im Portal kein verbundenes
+   * Gerät mehr hinterlegt ist. `null`/absent = kein Halt gemeldet (eine
+   * ältere Box meldet ihn nie), ausdrücklich NICHT „kein Halt".
+   */
+  heldRevision?: string | null;
+  heldReason?: string | null;
+  /**
    * Wann diese Anlage AUTOMATISCH vom Gerät übernommen wurde (Einheitsmodell
    * Stufe 2). `null`/absent = nie übernommen - ausdrücklich NICHT dasselbe wie
    * box-verwaltet (eine neu angelegte Anlage ist portal-verwaltet, ohne je

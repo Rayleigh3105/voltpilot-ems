@@ -469,6 +469,19 @@ type ComponentApplySummary struct {
 	// Absent = nothing was refused.
 	RefusedRevision string `json:"refused_revision,omitempty"`
 	RefusedReason   string `json:"refused_reason,omitempty"`
+	// HeldRevision/HeldReason carry the last revision the box SAW and
+	// deliberately did NOT apply (today: the portal names no connected device),
+	// keeping its local files. ADDITIVE - a cloud that does not know the fields
+	// reads exactly what it read before.
+	//
+	// ⚠ Ein DRITTES Feldpaar, kein umgedeutetes `revision`: der Halt hat nichts
+	// angewandt, `revision` bliebe also eine Behauptung über einen Stand, den
+	// niemand fährt - und ein Halt ist auch keine Ablehnung, denn nichts ist
+	// schiefgegangen. Ohne dieses Paar rechnet das Portal Soll != Ist und sagt
+	// dauerhaft „Änderung unterwegs zur Box" (Befund L1, Scout
+	// vp-portal-box-spiegel-s2).
+	HeldRevision string `json:"held_revision,omitempty"`
+	HeldReason   string `json:"held_reason,omitempty"`
 }
 
 // EntityObserved is one entity's edge-side Ist in the heartbeat (E1b).

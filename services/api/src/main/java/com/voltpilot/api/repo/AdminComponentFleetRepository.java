@@ -47,9 +47,16 @@ public class AdminComponentFleetRepository {
     public record ComponentCounts(int total, int builtin, int certified, int custom, int composed,
             int unknown, int control) {}
 
-    /** Soll gegen Ist der Geräte-Konfiguration (die Stufe-1-Felder). */
+    /**
+     * Soll gegen Ist der Geräte-Konfiguration (die Stufe-1-Felder).
+     *
+     * <p>{@code heldRevision} ist die dritte Antwort (Befund L1): gesehen und
+     * bewusst nichts angewandt. Sie reist mit, weil die Flotten-Sicht dieselbe
+     * {@code syncStatus}-Ableitung fährt wie die Kunden-Fläche - ohne sie
+     * behaupteten die zwei über dieselbe Anlage Verschiedenes.
+     */
     public record ApplyRow(String appliedRevision, String refusedRevision, String refusedReason,
-            Instant reportedAt) {}
+            String heldRevision, Instant reportedAt) {}
 
     /** Was das Gerät über seine Steuer-Freigabe meldet. */
     public record ControlRow(String certSource, String platformCertVerdict,
@@ -118,9 +125,10 @@ public class AdminComponentFleetRepository {
         Map<UUID, ApplyRow> out = new HashMap<>();
         each(rs -> out.put(rs.getObject("site_id", UUID.class),
                 new ApplyRow(rs.getString("applied_revision"), rs.getString("refused_revision"),
-                        rs.getString("refused_reason"), instant(rs, "reported_at"))),
+                        rs.getString("refused_reason"), rs.getString("held_revision"),
+                        instant(rs, "reported_at"))),
                 "SELECT DISTINCT ON (site_id) site_id, applied_revision, refused_revision, "
-                        + "refused_reason, reported_at FROM device_component_apply "
+                        + "refused_reason, held_revision, reported_at FROM device_component_apply "
                         + "ORDER BY site_id, reported_at DESC");
         return out;
     }

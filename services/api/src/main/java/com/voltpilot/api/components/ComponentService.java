@@ -137,20 +137,25 @@ public class ComponentService {
         ComponentApplyRepository.ApplyState ist = applyState.forSite(siteId);
 
         String applied = ist == null ? null : ist.appliedRevision();
+        String held = ist == null ? null : ist.heldRevision();
         // L10: eine Anlage mit mehreren Geraeten und ohne hinterlegtes steuerndes
         // Geraet bekommt GAR KEINEN Push - die Frage „ist das angekommen?" hat
         // dort eine andere Antwort als „die Box hat sich noch nicht geaeussert".
-        // Gefragt wird nur, wenn ein solcher Zustand ueberhaupt sichtbar waere.
+        // Gefragt wird nur, wenn ein solcher Zustand ueberhaupt sichtbar waere -
+        // und ein gemeldeter HALT (L1) beantwortet sie schon: die Box HAT diese
+        // Fassung bekommen, es gibt also nachweislich einen Empfaenger.
         boolean gatewayAmbiguous = !ComponentService.settled(soll, applied)
+                && !ComponentService.holds(soll, held)
                 && entityRegistry.gatewayAmbiguous(siteId);
         List<SiteComponentsDto.ComponentRowDto> rows = new ArrayList<>();
         for (EntityRow row : entityRepo.entitiesForSite(siteId)) {
-            rows.add(toRow(row, soll, applied, gatewayAmbiguous));
+            rows.add(toRow(row, soll, applied, held, gatewayAmbiguous));
         }
         return new SiteComponentsDto(authority, soll, applied,
                 ist == null ? null : ist.appliedAt(),
                 ist == null ? null : ist.refusedRevision(),
                 ist == null ? null : ist.refusedReason(),
+                held, ist == null ? null : ist.heldReason(),
                 definitions.componentsAdoptedAt(siteId), rows);
     }
 
@@ -885,7 +890,7 @@ public class ComponentService {
     }
 
     private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied,
-            boolean gatewayAmbiguous) {
+            String held, boolean gatewayAmbiguous) {
         ComponentTemplateDto template = exactTemplate(row.templateRef(), row.templateVersion());
         return new SiteComponentsDto.ComponentRowDto(row.id(), row.role(), row.entityType(),
                 row.label(), row.brand(), row.model(), row.family(), row.communication(),
@@ -893,7 +898,7 @@ public class ComponentService {
                         : ComponentSecrets.maskedJson(row.connectionJson(), ComponentSecrets.keys(template), template == null),
                 row.sourceKind(), row.templateRef(), row.templateVersion(),
                 row.definitionVersion(), row.capacityKwp(), row.edgeSourceId(),
-                syncStatus(soll, applied, gatewayAmbiguous));
+                syncStatus(soll, applied, held, gatewayAmbiguous));
     }
 
     private ComponentTemplateDto exactTemplate(String templateRef, Integer templateVersion) {
@@ -912,9 +917,20 @@ public class ComponentService {
      *   <li>{@code in_sync} - die angewandte Revision IST die komponierte.</li>
      *   <li>{@code pending} - es liegt eine neuere Fassung an, die die Box noch
      *       nicht angewandt hat.</li>
-     *   <li>{@code no_gateway_device} - es gibt gar keinen Empfaenger (siehe die
-     *       drei-Argument-Form darunter).</li>
+     *   <li>{@code held} - die Box hat GENAU diese Fassung gesehen und bewusst
+     *       nichts angewandt (Befund L1): das Portal nennt kein verbundenes
+     *       Gerät mehr, und das ist ausdrücklich keine Anweisung, eine laufende
+     *       Anlage leerzuräumen. Ohne diesen Zustand las sich der Halt für immer
+     *       als „unterwegs" - eine Behauptung über einen Push, der längst
+     *       beantwortet ist.</li>
+     *   <li>{@code no_gateway_device} - es gibt gar keinen Empfaenger (L10,
+     *       siehe die vier-Argument-Form darunter).</li>
      * </ul>
+     *
+     * <p><b>⚠ {@code held} gilt nur für GENAU die anliegende Fassung.</b> Ist
+     * der Halt einer ÄLTEREN Revision gemeldet und liegt inzwischen eine neuere
+     * an, ist die Antwort wieder {@code pending} - die neue hat die Box noch
+     * nicht gesehen.
      *
      * <p><b>⚠ Öffentlich, weil die Flotten-Sicht der Stufe 6 sie MITBENUTZT</b>
      * ({@code AdminComponentFleetController}). Dieselbe Frage darf nicht zwei
@@ -924,7 +940,17 @@ public class ComponentService {
      * wortgleicher Kopien).
      */
     public static String syncStatus(String soll, String applied) {
-        return syncStatus(soll, applied, false);
+        return syncStatus(soll, applied, null, false);
+    }
+
+    /**
+     * Dasselbe Urteil MIT dem gemeldeten Halt, aber ohne das
+     * Empfaenger-Wissen - die Form der Flotten-Sicht der Stufe 6. Den Halt
+     * kennt sie (er steht als Spalte auf {@code device_component_apply}), den
+     * fehlenden Empfaenger nicht; sie behauptet ihn deshalb auch nicht.
+     */
+    public static String syncStatus(String soll, String applied, String held) {
+        return syncStatus(soll, applied, held, false);
     }
 
     /**
@@ -939,24 +965,48 @@ public class ComponentService {
      * {@code in_sync} bleibt {@code in_sync} - was laeuft, laeuft, auch wenn
      * die naechste Aenderung erst ein Geraet braucht.
      *
-     * <p>Die zwei-Argument-Form beantwortet die Frage weiterhin OHNE dieses
-     * Wissen (der Flotten-Blick der Stufe 6 kennt es nicht) und behauptet dann
-     * bewusst nichts: sie faellt auf {@code unreported} zurueck, statt einen
-     * Grund zu erfinden.
+     * <p>⚠ Und ein gemeldeter HALT schlaegt ihn: die Box hat GENAU diese
+     * Fassung bekommen, also gab es einen Empfaenger. Was das Geraet SAGT
+     * gewinnt gegen das, was wir aus den Stammdaten ableiten - beides zugleich
+     * kann ohnehin nicht wahr sein (ohne Empfaenger geht kein Push hinaus, den
+     * die Box halten koennte).
+     *
+     * <p>Die schmaleren Formen darueber beantworten die Frage ohne das jeweils
+     * fehlende Wissen und behaupten dann bewusst nichts, statt einen Grund zu
+     * erfinden.
      */
-    public static String syncStatus(String soll, String applied, boolean gatewayAmbiguous) {
+    public static String syncStatus(String soll, String applied, String held,
+            boolean gatewayAmbiguous) {
+        if (soll == null || soll.isBlank()) {
+            // Ohne Soll gibt es nichts zu vergleichen - auch ein gemeldeter
+            // Halt macht daraus keine bewertbare Lage.
+            return "unreported";
+        }
         if (settled(soll, applied)) {
             return "in_sync";
         }
-        return gatewayAmbiguous ? "no_gateway_device"
-                : (applied == null || applied.isBlank() || soll == null || soll.isBlank()
-                        ? "unreported" : "pending");
+        if (holds(soll, held)) {
+            return "held";
+        }
+        if (gatewayAmbiguous) {
+            return "no_gateway_device";
+        }
+        return applied == null || applied.isBlank() ? "unreported" : "pending";
     }
 
     /** Ob Soll und Ist nachweislich dasselbe sagen. */
     private static boolean settled(String soll, String applied) {
         return applied != null && !applied.isBlank() && soll != null && !soll.isBlank()
                 && soll.equals(applied);
+    }
+
+    /**
+     * Ob die Box GENAU die anliegende Fassung gesehen und bewusst nichts
+     * angewandt hat. Ein Halt einer AELTEREN Fassung beruhigt die neuere nicht -
+     * die hat die Box noch gar nicht gesehen.
+     */
+    private static boolean holds(String soll, String held) {
+        return held != null && !held.isBlank() && soll != null && soll.equals(held);
     }
 
     private String writeJson(Object value) {

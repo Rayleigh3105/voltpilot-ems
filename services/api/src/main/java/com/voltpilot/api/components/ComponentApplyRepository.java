@@ -18,9 +18,18 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class ComponentApplyRepository {
 
-    /** Was die Box zuletzt gemeldet hat. */
+    /**
+     * Was die Box zuletzt gemeldet hat.
+     *
+     * <p>Die DREI Antworten auf „was ist mit der neuesten Revision passiert?"
+     * stehen NEBENEINANDER, nie übereinander: {@code appliedRevision} ist, was
+     * wirklich läuft, {@code refusedRevision} was die Box nicht KONNTE, und
+     * {@code heldRevision} was sie gesehen und bewusst nicht angewandt hat
+     * (Befund L1). {@code null} heißt überall „nicht gemeldet".
+     */
     public record ApplyState(String authority, String appliedRevision, Instant appliedAt,
-            String refusedRevision, String refusedReason, Instant reportedAt) {}
+            String refusedRevision, String refusedReason, String heldRevision,
+            String heldReason, Instant reportedAt) {}
 
     private final JdbcTemplate jdbc;
 
@@ -31,20 +40,23 @@ public class ComponentApplyRepository {
     /** Ersetzt die Zeile dieses Geräts (der Herzschlag trägt den vollen Stand). */
     public void upsert(UUID deviceId, UUID tenantId, UUID siteId, String authority,
             String appliedRevision, Instant appliedAt, String refusedRevision,
-            String refusedReason, Instant reportedAt) {
+            String refusedReason, String heldRevision, String heldReason, Instant reportedAt) {
         jdbc.update(
                 "INSERT INTO device_component_apply (device_id, tenant_id, site_id, authority, "
-                        + "applied_revision, applied_at, refused_revision, refused_reason, reported_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                        + "applied_revision, applied_at, refused_revision, refused_reason, "
+                        + "held_revision, held_reason, reported_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                         + "ON CONFLICT (device_id) DO UPDATE SET authority = EXCLUDED.authority, "
                         + "applied_revision = EXCLUDED.applied_revision, "
                         + "applied_at = EXCLUDED.applied_at, "
                         + "refused_revision = EXCLUDED.refused_revision, "
                         + "refused_reason = EXCLUDED.refused_reason, "
+                        + "held_revision = EXCLUDED.held_revision, "
+                        + "held_reason = EXCLUDED.held_reason, "
                         + "reported_at = EXCLUDED.reported_at",
                 deviceId, tenantId, siteId, authority, appliedRevision,
                 appliedAt == null ? null : OffsetDateTime.ofInstant(appliedAt, java.time.ZoneOffset.UTC),
-                refusedRevision, refusedReason,
+                refusedRevision, refusedReason, heldRevision, heldReason,
                 OffsetDateTime.ofInstant(reportedAt, java.time.ZoneOffset.UTC));
     }
 
@@ -59,12 +71,14 @@ public class ComponentApplyRepository {
     public ApplyState forSite(UUID siteId) {
         List<ApplyState> rows = jdbc.query(
                 "SELECT authority, applied_revision, applied_at, refused_revision, refused_reason, "
-                        + "reported_at FROM device_component_apply WHERE site_id = ? "
+                        + "held_revision, held_reason, reported_at FROM device_component_apply "
+                        + "WHERE site_id = ? "
                         + "ORDER BY reported_at DESC LIMIT 1",
                 (rs, n) -> new ApplyState(rs.getString("authority"),
                         rs.getString("applied_revision"), instant(rs.getObject("applied_at",
                                 OffsetDateTime.class)),
                         rs.getString("refused_revision"), rs.getString("refused_reason"),
+                        rs.getString("held_revision"), rs.getString("held_reason"),
                         instant(rs.getObject("reported_at", OffsetDateTime.class))),
                 siteId);
         return rows.isEmpty() ? null : rows.get(0);

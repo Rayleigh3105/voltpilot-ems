@@ -92,6 +92,7 @@ import { AnlegenFlow } from '../components/AnlegenFlow';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import {
   ablehnungText,
+  haltGrund,
   ohneMesswertHinweis,
   sollIstText,
   sollIstTon,
@@ -446,6 +447,12 @@ export function AnlagenModellSection({
     : null;
   const ablehnung = ablehnungText(components?.refusedRevision, components?.refusedReason);
   /*
+    Der bewusste HALT (Befund L1) steht NEBEN der Ablehnung, nie an ihrer
+    Stelle: die Box konnte etwas nicht (rot) vs. sie hat bewusst nichts getan
+    (ruhig). Der Grund kommt wörtlich von ihr.
+  */
+  const halt = haltGrund(components?.components[0]?.syncStatus, components?.heldReason);
+  /*
     Die DAUERHAFTE Ausnahme je Komponente (Live-Fall Muehlfeldweg 2): sie steht
     in der gespeicherten Anbindung, die der Server zurückgibt - hier wird nichts
     abgeleitet, nur gelesen. Ohne Beleg ist die Karte byte-identisch wie vorher.
@@ -636,6 +643,7 @@ export function AnlagenModellSection({
                 <p className={`vp-am-stand is-${komponentenStand.ton}`}>{komponentenStand.text}</p>
               )}
               {ablehnung && <p className="vp-am-stand is-warn">{ablehnung}</p>}
+              {halt && <p className="vp-am-stand is-unbekannt">{halt}</p>}
               {showTechnical && data && <RegistryDrift data={data} />}
 
               {karten.length === 0 && (

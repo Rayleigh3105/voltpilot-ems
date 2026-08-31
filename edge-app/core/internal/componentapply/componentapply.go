@@ -94,13 +94,13 @@ type Driver struct {
 	// Role is the plant role this device plays. Absent = derived from the
 	// entity type (see roleFor) - never guessed beyond the types whose role is
 	// unambiguous.
-	Role          string          `json:"role,omitempty"`
-	Brand         string          `json:"brand"`
-	Model         string          `json:"model,omitempty"`
-	Family        string          `json:"family,omitempty"`
-	Communication string          `json:"communication,omitempty"`
-	CapacityKwp   float64         `json:"capacity_kwp,omitempty"`
-	IntervalS     int             `json:"interval_s,omitempty"`
+	Role          string  `json:"role,omitempty"`
+	Brand         string  `json:"brand"`
+	Model         string  `json:"model,omitempty"`
+	Family        string  `json:"family,omitempty"`
+	Communication string  `json:"communication,omitempty"`
+	CapacityKwp   float64 `json:"capacity_kwp,omitempty"`
+	IntervalS     int     `json:"interval_s,omitempty"`
 	// RegistryUnitID is the operator's MaStR reference for this device. It is
 	// pure master data (never part of the transport identity), but it IS part of
 	// sources.Source - so without it here a Stufe-2 takeover would silently drop
@@ -456,6 +456,20 @@ type Record struct {
 	Refused         string `json:"refused_revision,omitempty"`
 	RefusedReason   string `json:"refused_reason,omitempty"`
 	RefusedSourceID string `json:"-"`
+	// Held/HeldReason carry the last revision the box saw and DELIBERATELY did
+	// not apply, keeping its local files. Today that is the empty Soll: the
+	// portal describes no connected device (any more), which is expressly NOT
+	// an instruction to clear a running plant.
+	//
+	// ⚠ Ein DRITTES Feldpaar, kein umgedeutetes: `revision` bleibt „was diese
+	// Box wirklich fährt" (ein Halt hat nichts angewandt) und `refused_*`
+	// bleibt „was sie NICHT KONNTE". Ein Halt ist weder das eine noch das
+	// andere - er ist eine bewusste, richtige Entscheidung, und ihn in einen
+	// der beiden Kanäle zu pressen hieße, entweder einen Stand zu behaupten,
+	// den niemand fährt, oder einen Fehler zu melden, den es nicht gibt
+	// (Befund L1, Scout vp-portal-box-spiegel-s2).
+	Held       string `json:"held_revision,omitempty"`
+	HeldReason string `json:"held_reason,omitempty"`
 }
 
 // NewRecord builds the record of a successful apply.
@@ -471,15 +485,33 @@ func NewRecord(authority, revision string, now time.Time) Record {
 // WithRefusal returns the record with a refusal recorded, KEEPING the last
 // applied revision: what runs on the box is still what was applied last, and
 // claiming otherwise would be the fabrication this codebase does not do.
+//
+// A refusal also clears any HOLD: the two answer the same question ("what
+// happened to the newest revision?") and only the newest answer is true.
 func (r Record) WithRefusal(revision, reason string) Record {
 	r.Version = StateVersion
 	r.Refused = revision
 	r.RefusedReason = reason
+	r.Held, r.HeldReason = "", ""
 	return r
 }
 
-// Cleared returns the record with any refusal cleared (a later push applied).
+// WithHold returns the record with a deliberate hold recorded: the box SAW this
+// revision, applied nothing and keeps its local files. Like a refusal it keeps
+// the last applied revision (that is still what runs) - and it clears a stale
+// refusal, because an older revision's reason must not outlive its answer.
+func (r Record) WithHold(revision, reason string) Record {
+	r.Version = StateVersion
+	r.Held = revision
+	r.HeldReason = reason
+	r.Refused, r.RefusedReason = "", ""
+	return r
+}
+
+// Cleared returns the record with any refusal OR hold cleared (a later push
+// applied - that is the answer to every earlier one).
 func (r Record) Cleared() Record {
 	r.Refused, r.RefusedReason = "", ""
+	r.Held, r.HeldReason = "", ""
 	return r
 }

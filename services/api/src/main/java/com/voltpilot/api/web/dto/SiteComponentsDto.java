@@ -26,6 +26,11 @@ import java.util.UUID;
  *     Sie steht NEBEN {@code appliedRevision}, nie an seiner Stelle: was läuft,
  *     ist weiterhin die zuletzt angewandte Fassung, und das Gegenteil zu
  *     behaupten wäre die Erfindung, die dieses Haus nicht macht.
+ * @param heldRevision/heldReason der letzte bewusste HALT der Box (Befund L1):
+ *     sie hat diese Revision gesehen und NICHTS angewandt - heute, weil im
+ *     Portal kein verbundenes Gerät mehr hinterlegt ist. Ein dritter Kanal
+ *     neben den beiden darüber, weil ein Halt weder „läuft" noch „ging schief"
+ *     ist. {@code null} = kein Halt gemeldet (eine ältere Box meldet ihn nie).
  * @param adoptedAt wann diese Anlage AUTOMATISCH vom Gerät übernommen wurde
  *     (Einheitsmodell Stufe 2). {@code null} heißt „nie automatisch übernommen"
  *     und ist ausdrücklich NICHT dasselbe wie box-verwaltet: eine seit Stufe 1
@@ -41,6 +46,8 @@ public record SiteComponentsDto(
         Instant appliedAt,
         String refusedRevision,
         String refusedReason,
+        String heldRevision,
+        String heldReason,
         Instant adoptedAt,
         List<ComponentRowDto> components) {
 
@@ -48,8 +55,9 @@ public record SiteComponentsDto(
      * EINE Komponente mit ihrer geltenden Anbindung.
      *
      * @param connection roh durchgereicht (siehe {@link ComponentDefinitionDto})
-     * @param syncStatus {@code in_sync} | {@code pending} | {@code unreported} -
-     *     abgeleitet aus Soll- und Ist-Revision, nie geraten
+     * @param syncStatus {@code in_sync} | {@code pending} | {@code held} |
+     *     {@code unreported} - abgeleitet aus Soll- und Ist-Revision, nie
+     *     geraten ({@link com.voltpilot.api.components.ComponentService#syncStatus})
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ComponentRowDto(

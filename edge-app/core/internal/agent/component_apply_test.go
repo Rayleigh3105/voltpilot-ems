@@ -243,6 +243,65 @@ func TestAPortalManagedPushWithoutDevicesClearsNothing(t *testing.T) {
 	if rec := a.componentRecord(); rec.Revision != "r1" || rec.Refused != "" {
 		t.Fatalf("weder angewandt noch abgelehnt: %+v", rec)
 	}
+	// ...aber es wird QUITTIERT (Befund L1): die Box hat r2 GESEHEN und
+	// bewusst nichts angewandt. Ohne diesen Halt rechnet das Portal Soll r2 !=
+	// Ist r1 und sagt dauerhaft „Aenderung unterwegs zur Box".
+	rec := a.componentRecord()
+	if rec.Held != "r2" || rec.HeldReason == "" {
+		t.Fatalf("der Halt muss mit Grund quittiert sein: %+v", rec)
+	}
+	sum := a.componentApplySummary()
+	if sum == nil || sum.Revision != "r1" || sum.HeldRevision != "r2" || sum.HeldReason == "" {
+		t.Fatalf("der Herzschlag traegt den Halt NEBEN dem laufenden Stand: %+v", sum)
+	}
+	if sum.RefusedRevision != "" {
+		t.Fatalf("ein Halt ist keine Ablehnung: %+v", sum)
+	}
+}
+
+// TestAHeldRevisionClearsAStaleRefusalAndYieldsToARealOne: die drei Antworten
+// auf „was ist mit der neuesten Revision passiert?" - angewandt, abgelehnt,
+// bewusst gehalten - schliessen einander aus. Nur die JUENGSTE ist wahr; eine
+// aeltere stehen zu lassen war die zweite Haelfte von Befund L1 (das Portal zeigte
+// den Ablehnungsgrund der Revision davor).
+func TestAHeldRevisionClearsAStaleRefusalAndYieldsToARealOne(t *testing.T) {
+	a := newGateTestAgent(t)
+	a.applyEntityRegistry(portalPush("r1", applyEntity("5f0d2c9e-0000-0000-0000-000000000001",
+		entities.TypeBatteryHybrid, applyDeyeDriver)))
+
+	// (a) Eine echte Ablehnung: zwei Wechselrichter.
+	a.applyEntityRegistry(portalPush("r2",
+		applyEntity("5f0d2c9e-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, applyDeyeDriver),
+		applyEntity("5f0d2c9e-0000-0000-0000-000000000002", entities.TypeBatteryHybrid, applyDeyeDriver)))
+	if rec := a.componentRecord(); rec.Refused != "r2" {
+		t.Fatalf("die Ablehnung fehlt: %+v", rec)
+	}
+
+	// (b) Danach ein leeres Soll: der Halt raeumt den ALTEN Grund weg.
+	a.applyEntityRegistry(portalPush("r3",
+		applyEntity("cccc0000-0000-0000-0000-000000000003", entities.TypeGridMeter, "")))
+	rec := a.componentRecord()
+	if rec.Held != "r3" || rec.Refused != "" || rec.RefusedReason != "" {
+		t.Fatalf("der Halt haelt einen veralteten Ablehnungsgrund fest: %+v", rec)
+	}
+	if rec.Revision != "r1" {
+		t.Fatalf("es laeuft weiter r1: %+v", rec)
+	}
+
+	// (c) Und eine echte Ablehnung raeumt umgekehrt den Halt weg.
+	a.applyEntityRegistry(portalPush("r4",
+		applyEntity("5f0d2c9e-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, applyDeyeDriver),
+		applyEntity("5f0d2c9e-0000-0000-0000-000000000002", entities.TypeBatteryHybrid, applyDeyeDriver)))
+	if rec := a.componentRecord(); rec.Refused != "r4" || rec.Held != "" {
+		t.Fatalf("Halt und Ablehnung stehen nebeneinander: %+v", rec)
+	}
+
+	// (d) Ein Push, der wirklich anwendet, beantwortet beide.
+	a.applyEntityRegistry(portalPush("r5", applyEntity("5f0d2c9e-0000-0000-0000-000000000001",
+		entities.TypeBatteryHybrid, applyDeyeDriver)))
+	if rec := a.componentRecord(); rec.Revision != "r5" || rec.Refused != "" || rec.Held != "" {
+		t.Fatalf("ein angewandter Push muss beides raeumen: %+v", rec)
+	}
 }
 
 // --- Autoritaet: Uebernahme, Rueckgabe, Neustart ---------------------------

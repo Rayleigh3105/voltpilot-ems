@@ -122,6 +122,12 @@ class ComponentApiTest {
     ComponentApplyRepository applyRepo;
 
     @Autowired
+    com.voltpilot.api.repo.DeviceRepository deviceRepo;
+
+    @Autowired
+    com.voltpilot.api.entities.EntityObservedRepository entityObservedRepo;
+
+    @Autowired
     EntityRegistryService entityRegistry;
 
     @Autowired
@@ -498,7 +504,7 @@ class ComponentApiTest {
         try {
             applyRepo.upsert(device, UUID.fromString(TENANT_A), berlin,
                     ComponentAuthority.PORTAL, "r5", Instant.parse("2026-08-16T10:00:00Z"),
-                    "r6", "Wechselrichter \"x\": Unbekannte Marke.",
+                    "r6", "Wechselrichter \"x\": Unbekannte Marke.", null, null,
                     Instant.parse("2026-08-16T10:05:00Z"));
         } finally {
             TenantContext.clear();
@@ -508,6 +514,67 @@ class ComponentApiTest {
         assertThat(list.get("appliedRevision").asText()).isEqualTo("r5");
         assertThat(list.get("refusedRevision").asText()).isEqualTo("r6");
         assertThat(list.get("refusedReason").asText()).contains("Unbekannte Marke");
+    }
+
+    /**
+     * Befund L1 (Scout {@code vp-portal-box-spiegel-s2}): löscht ein Kunde
+     * seine letzte verbundene Komponente, hält die Box ihren laufenden Stand -
+     * richtig, aber bis hierher UNQUITTIERT. Das Portal rechnete Soll != Ist
+     * und sagte dauerhaft „Änderung unterwegs zur Box", über einen Push, der
+     * längst beantwortet war.
+     *
+     * <p>Der Test fährt die GANZE Kette durch den echten Zuhörer: der
+     * Herzschlag trägt {@code held_*}, die Route meldet {@code held} statt
+     * {@code pending} - und ein ÄLTERER Box-Stand (ohne die zwei Felder) ist
+     * Zeichen für Zeichen wie vorher.
+     */
+    @Test
+    void aDeliberateHoldIsAcknowledgedAndReadsAsHeldInsteadOfPendingForever() throws Exception {
+        String customer = token("demo", "demo");
+        UUID berlin = UUID.fromString(BERLIN_SITE);
+        UUID device = anyDeviceOf(berlin);
+
+        // Das SOLL dieser Anlage - genau die Revision, die die Box gleich hält.
+        JsonNode before = getJson("/api/v1/sites/" + BERLIN_SITE + "/components", customer);
+        String soll = before.path("sollRevision").asText(null);
+        assertThat(soll).as("die Anlage hat ein komponiertes Soll").isNotBlank();
+
+        var listener = new com.voltpilot.api.entities.EntityStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo, applyRepo);
+        String topic = "ems/" + TENANT_A + "/" + BERLIN_SITE + "/" + device + "/status";
+        String grund = "Im Portal ist für diese Anlage kein verbundenes Gerät hinterlegt; "
+                + "die Box behält deshalb den zuletzt angewandten Stand.";
+        String beat = "{\"schema_version\":\"1.0\",\"tenant_id\":\"" + TENANT_A + "\","
+                + "\"site_id\":\"" + BERLIN_SITE + "\",\"device_id\":\"" + device + "\","
+                + "\"online\":true,\"entities\":{\"revision\":\"" + soll + "\","
+                + "\"component_apply\":{\"authority\":\"portal\",\"revision\":\"r-alt\","
+                + "\"held_revision\":\"" + soll + "\",\"held_reason\":\"" + grund + "\"}}}";
+        listener.handle(topic, beat.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        JsonNode list = getJson("/api/v1/sites/" + BERLIN_SITE + "/components", customer);
+        // Was LÄUFT, ist weiterhin der alte Stand - ein Halt hat nichts angewandt.
+        assertThat(list.get("appliedRevision").asText()).isEqualTo("r-alt");
+        assertThat(list.get("heldRevision").asText()).isEqualTo(soll);
+        assertThat(list.get("heldReason").asText()).contains("kein verbundenes Gerät");
+        assertThat(list.has("refusedRevision")).as("ein Halt ist keine Ablehnung").isFalse();
+        assertThat(list.get("components")).isNotEmpty();
+        for (JsonNode row : list.get("components")) {
+            assertThat(row.get("syncStatus").asText())
+                    .as("die anliegende Fassung ist GEHALTEN, nicht unterwegs")
+                    .isEqualTo("held");
+        }
+
+        // Ein ÄLTERER Box-Stand meldet die zwei Felder nicht: dann gibt es
+        // keinen Halt - und die Antwort ist byte-identisch die von vorher.
+        String alterStand = beat.replace(
+                ",\"held_revision\":\"" + soll + "\",\"held_reason\":\"" + grund + "\"", "");
+        listener.handle(topic, alterStand.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        JsonNode alt = getJson("/api/v1/sites/" + BERLIN_SITE + "/components", customer);
+        assertThat(alt.has("heldRevision")).isFalse();
+        assertThat(alt.has("heldReason")).isFalse();
+        for (JsonNode row : alt.get("components")) {
+            assertThat(row.get("syncStatus").asText()).isEqualTo("pending");
+        }
     }
 
     /**
