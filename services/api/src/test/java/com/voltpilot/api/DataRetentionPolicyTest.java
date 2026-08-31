@@ -26,10 +26,13 @@ import org.testcontainers.utility.DockerImageName;
  *   <li>{@code weather_forecast} and {@code schedule} (RLS) each carry a
  *       retention job (compression is blocked on RLS tables and is never
  *       attempted).</li>
+ *   <li>{@code telemetry_v2} (the MIG-B1 fan-out mirror, RLS) carries a 90-day
+ *       retention job and nothing else - captain decision 2026-08-31,
+ *       migration {@code V20260831020000}, revising the stale p12-k6 exclusion.</li>
  *   <li>Regression guard: {@code telemetry} (the raw ML corpus, captain
  *       decision 2026-08-09) and the reporting-backbone rollups
- *       {@code telemetry_rollup_15m/1h/1d} carry NO retention or compression
- *       policy at all.</li>
+ *       {@code telemetry_rollup_15m/1h/1d} AND {@code telemetry_v2_rollup_*}
+ *       carry NO retention or compression policy at all.</li>
  *   <li>OCPP protocol/status/auth/meter hypertables carry 90-day retention
  *       jobs, while the daily sensitive-data job purges transactionData and
  *       masked local-auth references from stopped transactions.</li>
@@ -97,10 +100,14 @@ class DataRetentionPolicyTest {
 
     @Test
     void rawTelemetryAndTheRollupsAreNeverTouched() throws Exception {
-        // The regression heart of this migration: the raw ML corpus and the
-        // permanent reporting backbone must keep growing untouched.
+        // The regression heart: the raw v1 ML corpus and the permanent reporting
+        // backbones (v1 AND v2 rollups) must keep growing untouched. The v2
+        // rollups are deliberately kept FOREVER even though telemetry_v2 itself
+        // now carries a 90-day retention (captain decision 2026-08-31) - see
+        // telemetryV2GetsA90DayRetentionWhileItsRollupsStayForever.
         for (String table : new String[] {
-                "telemetry", "telemetry_rollup_15m", "telemetry_rollup_1h", "telemetry_rollup_1d"}) {
+                "telemetry", "telemetry_rollup_15m", "telemetry_rollup_1h", "telemetry_rollup_1d",
+                "telemetry_v2_rollup_15m", "telemetry_v2_rollup_1h", "telemetry_v2_rollup_1d"}) {
             assertThat(hasJob("policy_retention", table))
                     .as(table + " must have NO retention policy").isFalse();
             assertThat(hasJob("policy_compression", table))
@@ -108,6 +115,27 @@ class DataRetentionPolicyTest {
             assertThat(compressionEnabled(table))
                     .as(table + " must NOT be compression-enabled").isFalse();
         }
+    }
+
+    @Test
+    void telemetryV2GetsA90DayRetentionWhileItsRollupsStayForever() throws Exception {
+        // Captain decision 2026-08-31 (scout vp-scale-readiness-p4 §2.1/§7.6):
+        // the MIG-B1 fan-out made telemetry_v2 the single largest unbounded
+        // storage driver (~3,9 GB/year/plant), so migration V20260831020000
+        // caps it at exactly ONE 90-day retention. It is RLS/FORCE, so
+        // compression stays blocked and is never attempted.
+        assertThat(hasJob("policy_retention", "telemetry_v2"))
+                .as("telemetry_v2 retention policy").isTrue();
+        assertThat(hasRetentionOf("telemetry_v2", 90))
+                .as("telemetry_v2 retention is exactly 90 days").isTrue();
+        assertThat(hasJob("policy_compression", "telemetry_v2"))
+                .as("telemetry_v2 must have NO compression policy").isFalse();
+        assertThat(compressionEnabled("telemetry_v2"))
+                .as("telemetry_v2 must NOT be compression-enabled").isFalse();
+        // The v2 reporting backbone stays forever (guarded in full by
+        // rawTelemetryAndTheRollupsAreNeverTouched).
+        assertThat(hasJob("policy_retention", "telemetry_v2_rollup_15m"))
+                .as("telemetry_v2_rollup_15m must have NO retention policy").isFalse();
     }
 
     @Test
@@ -227,6 +255,22 @@ class DataRetentionPolicyTest {
                                 + "WHERE proc_name = ? AND hypertable_name = ?")) {
             ps.setString(1, procName);
             ps.setString(2, hypertable);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getLong(1) > 0;
+            }
+        }
+    }
+
+    /** True iff the hypertable carries a retention job dropping chunks after exactly {@code days}. */
+    private boolean hasRetentionOf(String hypertable, int days) throws Exception {
+        try (Connection c = admin();
+                PreparedStatement ps = c.prepareStatement(
+                        "SELECT count(*) FROM timescaledb_information.jobs "
+                                + "WHERE proc_name = 'policy_retention' AND hypertable_name = ? "
+                                + "AND (config->>'drop_after')::interval = make_interval(days => ?)")) {
+            ps.setString(1, hypertable);
+            ps.setInt(2, days);
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rs.getLong(1) > 0;
