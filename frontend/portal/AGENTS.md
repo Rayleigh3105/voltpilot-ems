@@ -1517,10 +1517,15 @@ erklären, standen an drei Orten. **Rein Portal — kein Endpunkt, keine Migrati
   verboten. Ein Klick in der Sprungnavigation und ein Deep-Link (`?abschnitt=register`,
   ein PARAMETER im Hash — das `historieHash`/`settingsNav`-Muster) KLAPPEN AUF und
   springen dann: ein Sprung in eine geschlossene Klappe landete auf ihrem Deckel.
-- **Zwei Sprungnavigationen, EINE Ableitung:** ab 1024 px die klebende Anker-Spalte
-  links (Name · Zustandspunkt · Klapp-Zustand, Scroll-Spy nach dem
-  `AnlageTechnik`-Muster), darunter die waagerecht scrollende Chip-Leiste unter dem
-  Kopf (`.vp-seg`-Kleid, klebend bei `top: 68px` wie die Zeit-Leiste der Historie).
+- **Zwei Sprungnavigationen, EINE Ableitung:** ab **1280 px tatsächlicher
+  RAHMENBREITE** die klebende Anker-Spalte links (Name · Zustandspunkt ·
+  Klapp-Zustand, Scroll-Spy nach dem `AnlageTechnik`-Muster), darunter die
+  waagerecht scrollende Chip-Leiste unter dem Kopf (`.vp-seg`-Kleid, klebend bei
+  `top: 68px` wie die Zeit-Leiste der Historie). **⚠ Das ist absichtlich eine
+  Container Query auf `.vp-rahmen`, KEINE Viewport-Media-Query:** die globale
+  Portal-Navigation nimmt schon Breite weg; bei einem großen Viewport kann die
+  eigentliche Geräteseite trotzdem nur rund 1100 px haben. Der Viewport-Schalter
+  erzeugte dort genau die versetzten Kopf-/Navigations-/Karten-Achsen.
   **⚠ Die Leiste scrollt in IHREM eigenen Container** (`overflow-x: auto`,
   `width: max-content`) — die Seite selbst darf nie waagerecht scrollen; ihre Chips
   sind 44 px hoch (die Leiste ist am Telefon der einzige Sprungweg).

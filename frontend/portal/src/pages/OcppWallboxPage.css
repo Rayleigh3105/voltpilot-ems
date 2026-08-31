@@ -251,14 +251,6 @@
 .vp-ocpp-created h3 { margin: 18px 0 6px; }
 .vp-ocpp-created p { color: var(--ocpp-muted); }
 
-/* Bei mittleren Notebook-Breiten nimmt die 214-px-Schiene der eigentlichen
-   Geräteseite zu viel Raum. Bis 1280 px bleibt die kompakte Chip-Navigation. */
-@media (min-width: 1024px) and (max-width: 1279px) {
-  .vp-ocpp .vp-rahmen-body { grid-template-columns: minmax(0, 1fr); }
-  .vp-ocpp .vp-rahmen-nav { display: none; }
-  .vp-ocpp .vp-rahmen-chips { display: block; }
-}
-
 @media (max-width: 720px) {
   .vp-ocpp { gap: 12px; }
   .vp-ocpp-now { padding: 20px 16px; }

@@ -8,6 +8,8 @@
    =========================================================================== */
 
 .vp-rahmen {
+  container-name: geraet-rahmen;
+  container-type: inline-size;
   min-width: 0;
 }
 
@@ -70,9 +72,10 @@
   margin-top: var(--vp-space-4, 16px);
 }
 
-/* Die Anker-Spalte lebt erst ab 1024 px (§4.3) - darunter trägt die
-   Chip-Leiste dieselben Sektionen. */
-@media (min-width: 1024px) {
+/* Die Anker-Spalte lebt erst, wenn DER RAHMEN selbst breit genug ist (§4.3).
+   Die Browserbreite ist hier die falsche Messgröße: die Portal-Seitenleiste
+   kann bereits viel Platz belegen, obwohl der Viewport groß ist. */
+@container geraet-rahmen (min-width: 1280px) {
   .vp-rahmen-body {
     grid-template-columns: 214px minmax(0, 1fr);
   }
@@ -91,7 +94,7 @@
   display: none;
 }
 
-@media (min-width: 1024px) {
+@container geraet-rahmen (min-width: 1280px) {
   .vp-rahmen-nav {
     position: sticky;
     /* Die Schalen-Kopfzeile ist 68 px hoch und klebt selbst. */
@@ -173,7 +176,7 @@
   outline-offset: -2px;
 }
 
-/* --- Sprungnavigation am Telefon ----------------------------------------- */
+/* --- Sprungnavigation bei kompakter Rahmenbreite ------------------------- */
 
 .vp-rahmen-chips {
   position: sticky;
@@ -194,7 +197,7 @@
   display: none;
 }
 
-@media (min-width: 1024px) {
+@container geraet-rahmen (min-width: 1280px) {
   .vp-rahmen-chips {
     display: none;
   }

@@ -82,6 +82,14 @@ test('complete wallbox home stays responsive and exposes response/effect choreog
   await expect(page.getByRole('heading', { name: 'Anschluss 1 lädt.' })).toBeVisible();
   await expect(page.getByText('11 kW', { exact: true })).toBeVisible();
   await expect(page.getByText('6,4 kWh')).toBeVisible();
+  // Der Harness bildet die echte, durch die Portal-Navigation verengte
+  // Inhaltsspalte ab. In ihr muss der Rahmen auf die kompakte Navigation
+  // wechseln und Kopf/Status auf derselben Achse halten.
+  await expect(page.locator('.vp-rahmen-nav')).toBeHidden();
+  await expect(page.locator('.vp-rahmen-chips')).toBeVisible();
+  const leftEdges = await page.locator('.vp-geraet-kopf, [data-state="charging"]')
+    .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().left));
+  expect(Math.abs(leftEdges[0] - leftEdges[1])).toBeLessThanOrEqual(1);
   const diagnose = page.getByTestId('sektion-diagnose');
   await expect(diagnose).not.toHaveAttribute('open', '');
   await diagnose.locator('summary').first().click();
