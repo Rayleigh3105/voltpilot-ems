@@ -2034,6 +2034,100 @@ test("eine Klemme aus „Auto vor Speicher“ nennt die Wahl, die sie verursacht
   assert.strictEqual(C.deriveCarsFirst(null), null);
 });
 
+/* ====== commissioning.js: der Flow kennt die portal-verwaltete Anlage ====== */
+
+// stepsPortal fährt dieselbe Ableitung mit dem VIERTEN, additiven Eingang.
+function stepsPortal(state, sourceCount) {
+  return load(["commissioning.js"]).VPCommissioning.derive(state, sourceCount || 0, NOW, true);
+}
+
+test("commissioning: eine portal-verwaltete Anlage legt Geräte im PORTAL an", () => {
+  // Befund L6: der Flow versprach hier "Erzeuger & Zähler erfassen ... werden
+  // hier nachgetragen" - auf einer Anlage, deren Anlege-Knöpfe alle ausgeblendet
+  // sind. Konzept vp-komponenten-einheit-h2 §4.3: "2 · Geräte im PORTAL anlegen".
+  const res = stepsPortal({
+    pairing_state: "verbunden", cloud_connected: true,
+    inverter: { configured: true, label: "Deye SUN-30K" }, inverter_link: "up",
+    last_telemetry: iso(4), claim_unlocked: true
+  }, 0);
+  const two = res.steps[1];
+  assert.strictEqual(two.title, "Geräte im Portal anlegen");
+  assert.match(two.cause, /im VoltPilot-Portal angelegt/);
+  assert.doesNotMatch(two.cause, /hier nachgetragen/,
+    "eine Anlage ohne Anlege-Knopf darf nicht behaupten, hier werde etwas nachgetragen");
+  assert.strictEqual(two.action.label, "Geräte ansehen");
+  // Sehen bleibt lokal - der Anker zeigt weiter auf die Quellen-Gruppe.
+  assert.strictEqual(two.action.href, "#quellen");
+});
+
+test("commissioning: portal-verwaltet zählt den GEMELDETEN Bestand", () => {
+  // Der Erledigt-Stand kommt aus dem, was der Registry-Push wirklich angelegt
+  // hat (/api/sources) - es gibt hier keine lokale Eingabe, die zählen könnte.
+  const res = stepsPortal({
+    pairing_state: "verbunden", cloud_connected: true,
+    inverter: { configured: true, label: "Deye" }, inverter_link: "up",
+    last_telemetry: iso(4), claim_unlocked: true
+  }, 2);
+  const two = res.steps[1];
+  assert.strictEqual(two.state, "done");
+  assert.match(two.detail, /2 weitere Geräte aus dem Portal/);
+  assert.strictEqual(two.cause, "", "ein erledigter Schritt nörgelt nicht");
+});
+
+test("commissioning: portal-verwaltet verspricht kein Auswählen und kein Ändern", () => {
+  // Ohne Wechselrichter gibt es hier NICHTS zu tun: "Wechselrichter auswählen"
+  // führte auf einen Knopf, den setPortalManaged ausblendet.
+  const leer = stepsPortal({
+    pairing_state: "warte_auf_beanspruchung", cloud_connected: false,
+    inverter: null, claim_unlocked: false
+  }, 0);
+  const one = leer.steps[0];
+  assert.strictEqual(one.state, "todo");
+  assert.strictEqual(one.action, null, "kein Knopf für eine Handlung, die gesperrt ist");
+  assert.match(one.cause, /im VoltPilot-Portal angelegt/);
+
+  // Und ein laufender Wechselrichter wird ANGESEHEN, nicht geändert.
+  const laeuft = stepsPortal({
+    pairing_state: "verbunden", cloud_connected: true,
+    inverter: { configured: true, label: "Deye" }, inverter_link: "up",
+    last_telemetry: iso(4), claim_unlocked: true
+  }, 1);
+  assert.strictEqual(laeuft.steps[0].action.label, "Gerät ansehen");
+});
+
+test("commissioning: portal-verwaltet bietet den Verbindungstest weiter an", () => {
+  // Der Test ist LOKAL und ändert nichts - er bleibt deshalb der eine Weg, den
+  // Schritt 1 auf einer stummen portal-verwalteten Anlage anbietet. Möglich ist
+  // das erst, seit die Taste an der ZEILE sitzt (inverter.js invRowTestBtn) und
+  // nicht mehr im ausgeblendeten Bearbeiten-Formular.
+  const stumm = stepsPortal({
+    pairing_state: "verbunden", cloud_connected: true,
+    inverter: { configured: true, label: "Deye" }, inverter_link: "down",
+    claim_unlocked: true
+  }, 0);
+  const one = stumm.steps[0];
+  assert.strictEqual(one.state, "active");
+  assert.strictEqual(one.action.label, "Verbindung prüfen");
+  assert.strictEqual(one.action.href, "#wechselrichter");
+});
+
+test("commissioning: ohne portal_managed ändert sich KEIN Wort", () => {
+  // Der Wächter gegen eine schleichende Verschlechterung jeder box-verwalteten
+  // Bestandsbox: derselbe Zustand, einmal mit dem alten Drei-Argument-Aufruf und
+  // einmal mit dem neuen vierten Argument auf false.
+  const base = {
+    pairing_state: "warte_auf_beanspruchung", cloud_connected: false,
+    inverter: { configured: true, label: "Deye" }, inverter_link: "up",
+    last_telemetry: iso(6), claim_unlocked: true
+  };
+  const alt = JSON.parse(JSON.stringify(stepsFor(base, 2).steps));
+  const neu = JSON.parse(JSON.stringify(
+    load(["commissioning.js"]).VPCommissioning.derive(base, 2, NOW, false).steps));
+  assert.deepStrictEqual(neu, alt);
+  assert.strictEqual(alt[1].title, "Erzeuger & Zähler erfassen");
+  assert.match(alt[1].action.label, /Quellen ansehen/);
+});
+
 /* ====== commissioning.js: der Ladepark hat keinen Wechselrichter ====== */
 
 test("commissioning: eine Anlage NUR aus Ladepunkten wird trotzdem geführt", () => {
