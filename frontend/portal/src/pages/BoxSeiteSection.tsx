@@ -29,6 +29,8 @@ import {
 import { neuesteZeile } from '../befehleVerlauf';
 import { BefehleVerlauf, useBefehleVerlauf } from '../components/BefehleVerlauf';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+// LIVE: die Box-Seite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
+import { LIVE_POLL_MS } from '../pollCadence';
 import { showTechnicalLayer } from '../rollen';
 import { kurz, rahmen, type SektionAngebot } from '../geraetRahmen';
 import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
@@ -173,7 +175,7 @@ export function BoxSeiteSection({
       if (ch !== null) setCharging(ch);
       setNow(Date.now());
     });
-  }, 30_000);
+  }, LIVE_POLL_MS);
 
   const view: BoxSeiteView | null = useMemo(() => {
     if (!data) return null;

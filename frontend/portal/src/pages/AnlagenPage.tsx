@@ -36,6 +36,9 @@ import {
 } from '../nav';
 import { boxRefOf, chargerGeraetId } from '../geraetSeite';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+// LIVE für alles Gemessene (Cockpit, Steuerung, Viertelstunden-Band), LIST für
+// die Zeitraum-Aggregate der Historie.
+import { LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
 import { useIsPhone } from '../useIsPhone';
 import { useScrolledPast } from '../useScrolledPast';
 import { useWake } from '../useWake';
@@ -162,8 +165,6 @@ const PrognosePage = lazy(() =>
   import('./PrognosePage').then((m) => ({ default: m.PrognosePage })),
 );
 
-/** Background refresh cadence of the live widgets (30 s poll pattern). */
-const POLL_MS = 30_000;
 /** Re-render cadence of the "Stand vor X" freshness note. */
 const TICK_MS = 5_000;
 /**
@@ -350,7 +351,7 @@ function AnlagenListe({
       (o) => setOverview(o),
       () => {},
     );
-  }, POLL_MS);
+  }, LIVE_POLL_MS);
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), TICK_MS);
     return () => clearInterval(timer);
@@ -897,7 +898,7 @@ export function AnlageSeite({
       (p) => setPlan(p),
       () => {},
     );
-  }, POLL_MS);
+  }, LIVE_POLL_MS);
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), TICK_MS);
     return () => clearInterval(timer);
@@ -1012,26 +1013,29 @@ export function AnlageSeite({
   // Recent telemetry for the Peak-Band's live ¼-h mean - fetched ONLY when the
   // cockpit leads with the Peak-Band, so non-peak faces never pay for it. A
   // 20-min window always covers the running quarter; polled on the 30 s cadence.
+  // Eine späte Antwort der ZUVOR gewählten Anlage darf die neue nie
+  // überschreiben - der Ersatz für den `active`-Wächter des alten Intervalls.
+  const siteIdRef = useRef(site.id);
+  siteIdRef.current = site.id;
+  const peakLoadRef = useRef<() => void>(() => {});
+  peakLoadRef.current = () => {
+    if (!fetchPeak) return;
+    const from = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const id = site.id;
+    api.telemetry(id, from).then(
+      (pts) => id === siteIdRef.current && setPeakSamples(pts),
+      () => {},
+    );
+  };
   useEffect(() => {
     if (!fetchPeak) {
       setPeakSamples([]);
       return;
     }
-    let active = true;
-    const load = () => {
-      const from = new Date(Date.now() - 20 * 60 * 1000).toISOString();
-      api.telemetry(site.id, from).then(
-        (pts) => active && setPeakSamples(pts),
-        () => {},
-      );
-    };
-    load();
-    const timer = setInterval(load, POLL_MS);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
+    peakLoadRef.current();
   }, [site.id, fetchPeak, reloadKey, wake]);
+  // LIVE: das Viertelstunden-Band liest gemessene Telemetrie.
+  useFreshnessPoll(() => peakLoadRef.current(), LIVE_POLL_MS, fetchPeak);
 
   // M3: the Eigenverbrauchs-Block's Autarkie / PV-Nutzung come from the EXISTING
   // Historie totals of today (server-computed) - fetched ONLY while the stack
@@ -1047,26 +1051,30 @@ export function AnlageSeite({
   /** Die Tages-Summen: eigener Abruf - oder die des Zeitraums, wenn er GENAU
    *  derselbe ist. Nie ein anderer Wert, nur eine Anfrage weniger. */
   const dayTotalsEffective: HistoryTotals | null = dayIsRange ? rangeTotals : dayTotals;
+  const dayTotalsLoadRef = useRef<() => void>(() => {});
+  dayTotalsLoadRef.current = () => {
+    if (!fetchStack || dayIsRange) return;
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+    const id = site.id;
+    api.history(id, 'day', today).then(
+      (h) => id === siteIdRef.current && setDayTotals(h.totals),
+      () => {},
+    );
+  };
   useEffect(() => {
     if (!fetchStack || dayIsRange) {
       setDayTotals(null);
-      return undefined;
+      return;
     }
-    let active = true;
-    const load = () => {
-      const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
-      api.history(site.id, 'day', today).then(
-        (h) => active && setDayTotals(h.totals),
-        () => {},
-      );
-    };
-    load();
-    const timer = setInterval(load, POLL_MS);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
+    dayTotalsLoadRef.current();
   }, [site.id, fetchStack, dayIsRange, reloadKey, wake]);
+  // LIST: eine Tages-SUMME aus den Viertelstunden-Rollups - sie bewegt sich
+  // nicht sekündlich, ein Live-Takt fragte dreimal nach derselben Zahl.
+  useFreshnessPoll(
+    () => dayTotalsLoadRef.current(),
+    LIST_POLL_MS,
+    fetchStack && !dayIsRange,
+  );
 
   // v3.2 M1: the hero rings follow the SELECTED period tab. They read
   // range-scoped Historie totals (Tag/Monat/Jahr) so "Autarkie · Monat" is
@@ -1074,28 +1082,31 @@ export function AnlageSeite({
   // (MonthStrip) exactly like the earnings fetch. "Gesamt" (`all`) has no
   // all-time Historie endpoint -> no fetch -> the rings are honestly absent
   // (never a wrong-range value). Fail-soft; the energy flow is untouched.
-  useEffect(() => {
+  const rangeHistoryLoadRef = useRef<() => void>(() => {});
+  rangeHistoryLoadRef.current = () => {
     const hRange = historyRangeForCockpit(range);
-    if (!fetchStack || hRange == null) {
+    if (!fetchStack || hRange == null) return;
+    const atForHistory =
+      at ?? new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+    const id = site.id;
+    api.history(id, hRange, atForHistory).then(
+      (h) => id === siteIdRef.current && setRangeHistory(h),
+      () => {},
+    );
+  };
+  useEffect(() => {
+    if (!fetchStack || historyRangeForCockpit(range) == null) {
       setRangeHistory(null);
-      return undefined;
+      return;
     }
-    let active = true;
-    const load = () => {
-      const atForHistory =
-        at ?? new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
-      api.history(site.id, hRange, atForHistory).then(
-        (h) => active && setRangeHistory(h),
-        () => {},
-      );
-    };
-    load();
-    const timer = setInterval(load, POLL_MS);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
+    rangeHistoryLoadRef.current();
   }, [site.id, fetchStack, range, at, reloadKey, wake]);
+  // LIST: dasselbe Zeitraum-Aggregat wie darüber, nur für den gewählten Tab.
+  useFreshnessPoll(
+    () => rangeHistoryLoadRef.current(),
+    LIST_POLL_MS,
+    fetchStack && historyRangeForCockpit(range) != null,
+  );
 
   // The Peak-Band view: live ¼-h mean (import-only, from the window above) vs.
   // the plan's Ziel + the PS-4 numbers. Null when not the peak lead.

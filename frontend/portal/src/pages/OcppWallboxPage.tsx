@@ -45,6 +45,8 @@ import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
 import { GeraetRahmen, RahmenSektion } from '../components/GeraetRahmen';
 import { kurz, rahmen, type SektionAngebot } from '../geraetRahmen';
 import './OcppWallboxPage.css';
+// Uhr: nie seltener als der Live-Takt (sonst behauptet sie ein altes Alter).
+import { LIVE_POLL_MS } from '../pollCadence';
 
 const DATA_AREAS = [
   'Verbindung', 'Ereignisse', 'Datenlücken', 'Ladevorgänge', 'Messwerte',
@@ -102,7 +104,7 @@ export function OcppWallboxPage({
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    const id = window.setInterval(() => setNow(Date.now()), LIVE_POLL_MS);
     return () => window.clearInterval(id);
   }, []);
 

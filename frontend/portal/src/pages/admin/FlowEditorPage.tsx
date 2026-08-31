@@ -76,6 +76,8 @@ import {
 } from '../../flows/model';
 import { isValid, validateFlow, type FlowFinding } from '../../flows/validate';
 import { showTechnicalLayer } from '../../rollen';
+import { useFreshnessPoll } from '../../useFreshnessPoll';
+import { LIST_POLL_MS } from '../../pollCadence';
 
 const GROUP_ORDER: Array<{ key: string; label: string }> = [
   { key: 'strategie', label: 'Strategie' },
@@ -235,6 +237,7 @@ export function FlowEditorPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flowApi, site.id, flowId]);
 
+  const pollRef = useRef<() => void>(() => {});
   // M5 Part C: live values. Channel values come from the shipped topology
   // read-model (its capabilities carry the latest per-channel value); per-node
   // states come ONLY from the device's feature-flagged heartbeat block. Both
@@ -268,13 +271,15 @@ export function FlowEditorPage({
         })
         .catch(() => undefined);
     };
+    pollRef.current = poll;
     poll();
-    const timer = window.setInterval(poll, 30_000);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
     };
   }, [flowApi, site.id, flowId]);
+  // `useFreshnessPoll` statt eines nackten Intervalls (die Haus-Disziplin);
+  // LIST: der Editor zeigt Zustände, keine sekündlich bewegten Messwerte.
+  useFreshnessPoll(() => pollRef.current(), LIST_POLL_MS);
 
   // Phones render the read-only step list, never a mini canvas.
   useEffect(() => {

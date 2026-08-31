@@ -46,6 +46,8 @@ import { verlaufHash } from '../verlauf';
 import { anlageRoute, geraetSeiteHash, hashForRoute, komponenteHash } from '../nav';
 import { verlaufRangeForCockpit } from '../verlaufTarget';
 import './KomponentenSection.css';
+// LIVE: die Komponenten-Zeilen tragen gemessene Ist-Werte je Komponente.
+import { LIVE_POLL_MS } from '../pollCadence';
 
 /**
  * Cockpit + Live-Daten merge (Option A): the merged home's stratum
@@ -67,9 +69,6 @@ import './KomponentenSection.css';
  * (`verlaufRangeForCockpit`: Heute→Tag, Monat→Monat, Jahr/Gesamt→Jahr) —
  * consistent with how the cockpit tiles jumped before the merge.
  */
-
-/** Background refresh cadence of the live data (30 s poll pattern). */
-const POLL_MS = 30_000;
 
 export function KomponentenSection({
   site,
@@ -187,7 +186,7 @@ export function KomponentenSection({
   };
   // `useFreshnessPoll` statt eines nackten Intervalls: ein verdeckter Tab wird
   // gedrosselt/eingefroren, sonst stünde beim Zurückkommen erst der alte Stand.
-  useFreshnessPoll(() => pollRef.current(), POLL_MS, armed);
+  useFreshnessPoll(() => pollRef.current(), LIVE_POLL_MS, armed);
 
   // The board rows: one per component (migrated) or the site-level fallback
   // (v1) — both pure derivations (livePuls.ts), plus the optional kWh

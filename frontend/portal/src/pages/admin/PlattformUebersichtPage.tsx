@@ -24,6 +24,8 @@ import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { anlageRoute, pageRoute, type Route } from '../../nav';
 import { AdminPageHead } from './AdminPageHead';
+// LIST: eine Verwaltungs-Übersicht bewegt sich nicht sekündlich.
+import { LIST_POLL_MS } from '../../pollCadence';
 
 /**
  * Plattform → Übersicht: der FLOTTEN-PULS (Bausteine B1 + B2 + B4).
@@ -94,7 +96,7 @@ export function PlattformUebersichtPage({
 
   // Stiller 30-s-Takt: eine erfolgreiche Antwort setzt Zustand UND Bezugszeit,
   // ein Fehlschlag lässt beides unberührt (er kann den Zustand nicht kippen).
-  useFreshnessPoll(() => void load(), 30_000, true);
+  useFreshnessPoll(() => void load(), LIST_POLL_MS, true);
 
   const rows = useMemo(
     () => (sites ? fleetRows(sites, new Date(fetchedAt), releases) : null),

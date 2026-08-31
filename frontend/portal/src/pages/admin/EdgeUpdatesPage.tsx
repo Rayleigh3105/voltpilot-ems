@@ -37,6 +37,8 @@ import {
   type RolloutDevice,
   type UpdateTone,
 } from '../../adminEdgeUpdates';
+// LIST: eine Verwaltungs-Übersicht bewegt sich nicht sekündlich.
+import { LIST_POLL_MS } from '../../pollCadence';
 
 const toneVariant = (tone: UpdateTone): 'ok' | 'warn' | 'off' =>
   tone === 'ok' ? 'ok' : tone === 'warn' ? 'warn' : 'off';
@@ -125,7 +127,7 @@ export function EdgeUpdatesPage({
   // Ein Beobachtungs-Werkzeug, das man von Hand aktualisieren muss, erzeugt
   // genau das „hängt es?"-Gefühl. 30 s still, beim Zurückkehren in den Tab
   // sofort (der Hook pausiert im Hintergrund).
-  useFreshnessPoll(() => void load(), 30_000, true);
+  useFreshnessPoll(() => void load(), LIST_POLL_MS, true);
   // Der zweite, billige Takt lässt NUR die Bezugszeit-Zeile weiterzählen.
   useEffect(() => {
     const t = window.setInterval(() => setTick(Date.now()), 5_000);

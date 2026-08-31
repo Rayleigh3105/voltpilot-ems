@@ -41,13 +41,16 @@
  * Zustand bleibt dabei ebenso stehen (die Warnung verschwindet nicht heimlich).
  */
 import { deviceLiveStatus, type Device } from './api';
+import { LIST_POLL_MS } from './pollCadence';
 
 /**
  * Takt der stillen Geräte-Auffrischung. Deutlich kürzer als
  * `ONLINE_WINDOW_MS` (5 Min), damit ein echt verstummtes Gerät spätestens
- * einen Poll nach Ablauf des Fensters als solches erkannt wird.
+ * einen Poll nach Ablauf des Fensters als solches erkannt wird — schneller
+ * zu fragen könnte das Urteil gar nicht ändern, deshalb der LIST-Takt
+ * (`pollCadence.ts`). Der Name bleibt, weil die Regel hier zuhause ist.
  */
-export const LIVENESS_POLL_MS = 30_000;
+export const LIVENESS_POLL_MS = LIST_POLL_MS;
 
 /** Zustand UND Bezugszeit — immer zusammen, nie einzeln fortgeschrieben. */
 export interface DevicesSnapshot {

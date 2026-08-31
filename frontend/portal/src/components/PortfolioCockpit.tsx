@@ -40,9 +40,9 @@ import { KennzahlLeiste } from './KennzahlLeiste';
 import { RowMenu } from './RowMenu';
 import { ErrorState, Skeleton } from './States';
 import './PortfolioCockpit.css';
+// LIVE: die Kennzahlen-Leiste zeigt gemessene Ist-Werte (PV jetzt, Netz).
+import { LIVE_POLL_MS } from '../pollCadence';
 
-/** Background refresh cadence (30 s poll pattern, like every fleet surface). */
-const POLL_MS = 30_000;
 /** Re-render cadence of the freshness/liveness derivations. */
 const TICK_MS = 5_000;
 
@@ -166,7 +166,7 @@ export function PortfolioCockpit({
       (e) => setEarnings(e),
       () => {},
     );
-  }, POLL_MS);
+  }, LIVE_POLL_MS);
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), TICK_MS);
     return () => clearInterval(timer);

@@ -55,9 +55,9 @@ import {
 } from '../handeingriff';
 import { HandeingriffDialog } from './HandeingriffDialog';
 import './Steuerung.css';
-
-/** Der Takt, in dem der Countdown neu gerechnet wird (eine Minute genügt). */
-const TICK_MS = 30_000;
+// Eine Uhr, die „läuft noch X" zeigt, darf nicht seltener ticken, als neue
+// Daten ankommen - deshalb der LIVE-Takt.
+import { LIVE_POLL_MS } from '../pollCadence';
 
 /**
  * Die VORAUSGEWÄHLTE Dauer des Speicher-/Anlagen-Eingriffs. Sie ist bewusst
@@ -119,7 +119,7 @@ export function JetztZone({
   const [handDauer, setHandDauer] = useState(HAND_DEFAULT_DAUER);
 
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), TICK_MS);
+    const t = setInterval(() => setNow(new Date()), LIVE_POLL_MS);
     return () => clearInterval(t);
   }, []);
 

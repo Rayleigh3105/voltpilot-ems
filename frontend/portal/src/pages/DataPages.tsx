@@ -46,6 +46,8 @@ import { controlReasonSlot } from '../control';
 import { curtailTruth } from '../curtailment';
 import { buildSnapshot } from '../live';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+// LIVE: die Live-Daten-Seite zeigt gemessene Ist-Werte.
+import { LIVE_POLL_MS } from '../pollCadence';
 import { useIsPhone } from '../useIsPhone';
 import { ProvBadge } from '../components/HistorieWelt';
 import {
@@ -660,8 +662,6 @@ export function WetterSection({ site }: { site: Site }) {
 
 /** Wie weit zurück die Live-Messwerte des Helden geholt werden. */
 const LIVE_WINDOW_MS = 15 * 60 * 1000;
-/** Der stille Auffrischungs-Takt der beiden Live-Wahrheiten (30-s-Muster). */
-const LIVE_POLL_MS = 30_000;
 
 /**
  * D3: am Telefon startet das Detail-Diagramm EINGEKLAPPT (der Film trägt die

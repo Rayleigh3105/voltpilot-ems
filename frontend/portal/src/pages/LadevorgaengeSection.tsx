@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -32,6 +32,9 @@ import { boxOf, boxRefOf, chargerGeraetId } from '../geraetSeite';
 import { anlageRoute, geraetSeiteHash, hashForRoute } from '../nav';
 import { Icon } from '../../designsystem/components/core/Icon';
 import './Ladevorgaenge.css';
+import { useFreshnessPoll } from '../useFreshnessPoll';
+// LIVE: ein Ladevorgang bewegt sich im Sekundentakt.
+import { LIVE_POLL_MS } from '../pollCadence';
 
 /**
  * Die Ladevorgänge einer Anlage (`#/anlage/{id}/ladevorgaenge`) - die Fläche 1
@@ -69,23 +72,26 @@ export function LadevorgaengeSection({
   const [actionError, setActionError] = useState<string | null>(null);
   const [anbinden, setAnbinden] = useState(false);
 
+  // Eine späte Antwort der ZUVOR gewählten Anlage darf die neue nie
+  // überschreiben - der Ersatz für den `active`-Wächter des alten Intervalls.
+  const siteIdRef = useRef(site.id);
+  siteIdRef.current = site.id;
+  const loadRef = useRef<() => void>(() => {});
+  loadRef.current = () => {
+    const id = site.id;
+    api.siteChargers(id).then(
+      (c) => id === siteIdRef.current && setCharging(c),
+      (e) => id === siteIdRef.current && setError(e instanceof ApiError ? e.message : 'Fehler'),
+    );
+  };
   useEffect(() => {
-    let active = true;
     setCharging(null);
     setError(null);
-    const load = () =>
-      api.siteChargers(site.id).then(
-        (c) => active && setCharging(c),
-        (e) => active && setError(e instanceof ApiError ? e.message : 'Fehler'),
-      );
-    load();
-    // Ladevorgänge ändern sich im Sekundentakt; 30 s ist die Kadenz des Hauses.
-    const timer = window.setInterval(load, 30000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
+    loadRef.current();
   }, [site.id]);
+  // `useFreshnessPoll` statt eines nackten Intervalls: ein verdeckter Tab wird
+  // gedrosselt, sonst stünde beim Zurückkommen erst der Stand von vorhin.
+  useFreshnessPoll(() => loadRef.current(), LIVE_POLL_MS);
 
   async function boost(row: LadevorgangRow, cancel: boolean) {
     setBusy(true);

@@ -17,6 +17,8 @@ import { ControlStrip } from '../components/ControlStrip';
 import { controlStrip } from '../control';
 import { exportGuardView } from '../curtailment';
 import './Befehle.css';
+// LIVE: der Befehls-Verlauf zeigt die laufenden Perioden der Steuerung.
+import { LIVE_POLL_MS } from '../pollCadence';
 
 /**
  * Die BEFEHLE-Seite (`#/anlage/{id}/befehle?komponente=…`, Kommando-Transparenz
@@ -67,7 +69,7 @@ export function BefehleSection({
   // lehnt beides zusammen ab, also gewinnt hier die engere.
   const geraet = entityId ? null : geraetRef;
   const state = useBefehleVerlauf({
-    siteId: site.id, entityId, geraetRef: geraet, pollMs: 30_000,
+    siteId: site.id, entityId, geraetRef: geraet, pollMs: LIVE_POLL_MS,
   });
   const { history, now } = state;
 

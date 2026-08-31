@@ -121,6 +121,8 @@ import {
 import { consumerHasMeasurement } from '../consumers/questions';
 import { controlStrip } from '../control';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+// LIVE: die Geräteseite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
+import { LIVE_POLL_MS } from '../pollCadence';
 import { showTechnicalLayer } from '../rollen';
 import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
 import { AnlegenFlow } from '../components/AnlegenFlow';
@@ -423,7 +425,7 @@ export function GeraetSeiteSection({
       if (ch !== null) setCharging(ch);
       setNow(Date.now());
     });
-  }, 30_000);
+  }, LIVE_POLL_MS);
 
   const model = useMemo(
     () => (data ? plantModel(data.entities, topology, data.localSetup, sources) : null),

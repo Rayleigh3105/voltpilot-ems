@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { api, type SiteTopology, type SiteUsageProfile } from './api';
 import { hasTopology } from './adaptiveLive';
 import { useFreshnessPoll } from './useFreshnessPoll';
+// LIVE: die Topologie trägt die gemessenen Ist-Werte des Energieflusses.
+import { LIVE_POLL_MS } from './pollCadence';
 
 /**
  * Fetches the AE1 topology read-model + the AE7 usage profile of a site for the
@@ -25,8 +27,6 @@ export interface AdaptiveLive {
   /** true = the decision-critical `/topology` fetch failed. */
   failed: boolean;
 }
-
-const POLL_MS = 30_000;
 
 /**
  * `retryKey` (default 0): bump it (e.g. on an "Erneut versuchen" click) to
@@ -80,7 +80,7 @@ export function useAdaptiveLive(siteId: string, retryKey: number | string = 0): 
       (t) => setTopology((prev) => (t && t.entities.length ? t : prev)),
       () => {},
     );
-  }, POLL_MS);
+  }, LIVE_POLL_MS);
 
   return { topology, profile, adaptive: !loading && hasTopology(topology), loading, failed };
 }
