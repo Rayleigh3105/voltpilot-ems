@@ -67,6 +67,24 @@ const (
 	TypeWallbox   = "wallbox"
 )
 
+// The entity TYPES a customer DEFINED THEMSELVES in the portal (Einheitsmodell
+// Stufe 3/4, vp-modbus-baukasten-k6): a free Modbus sensor and - once the
+// customer passed the guided switch test - a free Modbus switching device.
+// Their measure channels are named by the CUSTOMER, not by a driver we wrote.
+const (
+	TypeModbusGeneric = "modbus-generic"
+	TypeModbusLoad    = "modbus-load"
+)
+
+// IsSelfBuiltType reports whether an entity TYPE was defined by the customer
+// themselves. Like IsChargingType this cannot be answered on the category: a
+// modbus-generic is category "meter" (it declares no actuate capability) and a
+// modbus-load is category "consumer", exactly like a grid meter and a heating
+// rod - which is precisely why the TYPE has to answer it.
+func IsSelfBuiltType(entityType string) bool {
+	return entityType == TypeModbusGeneric || entityType == TypeModbusLoad
+}
+
 // The connection of a charge point (Cockpit Phase 1 / C1): behind the house
 // connection, or on its own. "" = the portal never said - read as haus, the
 // safe direction: the house measurement is assumed to contain it, exactly what
@@ -151,6 +169,36 @@ func IsChargingType(entityType string) bool {
 // never publishes it). Both are wrong about a customer's plant, so they are
 // answered here rather than left to the restraint of every producer.
 func DefaultRole(entityType, category, channel, connection string) string {
+	// ⚠ A SELF-BUILT device NEVER gets an energy-flow role - not even for a
+	// channel it happens to have named `power_kw`. Two independent reasons,
+	// and the first one is a promise the platform already printed:
+	//
+	//  1. Bilanz-Ehrlichkeit (Einheitsmodell Stufe 3): "ein Selbstbau-Sensor
+	//     ist ein Topologie-Knoten mit eigenen Messwerten und geht NICHT in die
+	//     Energiebilanz ein" - the assistant says exactly that to the customer
+	//     while they define the device.
+	//  2. Without this branch the category decided, and a modbus-generic is
+	//     category "meter" (it declares no actuate capability) - so a channel
+	//     called `power_kw` fell into the meter rule and the customer's
+	//     cistern/heat-pump sensor was rendered AS THE GRID CONNECTION POINT
+	//     (scout vp-portal-box-spiegel-s2, L5). The grid node may only ever be
+	//     built from a real grid meter. A modbus-load is category "consumer"
+	//     and would double-count into the house node it is already measured
+	//     inside - the identical argument that moved charge points out of the
+	//     consumer role above.
+	//
+	// The channels themselves are NOT lost: they keep their own per-entity
+	// measurements (Messwerte/Verlauf), and the box lists the device in its own
+	// "Eigene Geräte" group on :8484. Only the energy BALANCE stays untouched.
+	//
+	// ⚠ This is the DEFAULT, and an explicit stored assignment still wins over
+	// it in Resolve (Befund L4) - deliberately: the override exists for exactly
+	// "the platform's default is wrong for MY plant", and an operator who says
+	// so is not guessing. What L5 was about is the default being a falsehood on
+	// its own.
+	if IsSelfBuiltType(entityType) {
+		return ""
+	}
 	if IsChargingType(entityType) {
 		switch channel {
 		case "power_kw":

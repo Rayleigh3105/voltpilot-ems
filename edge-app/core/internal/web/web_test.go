@@ -15,6 +15,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
@@ -306,9 +307,12 @@ type fakeSources struct {
 	delErr   error
 	bal      sources.BalanceSettings
 	balErr   error
+	custom   []componentapply.CustomDevice
 }
 
 func (f *fakeSources) ListSources() []sources.Source { return f.list }
+
+func (f *fakeSources) CustomDevices() []componentapply.CustomDevice { return f.custom }
 
 func (f *fakeSources) GetBalance() sources.BalanceSettings { return f.bal }
 
@@ -1212,9 +1216,27 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		`id="verbList"`, `id="verbAdd"`, `id="verbNote"`,
 		// The "Primär misst den gesamten Netzübergang" toggle (Netz group).
 		`id="primGridBlock"`, `id="primGridToggle"`, `id="primGridHelp"`,
+		// Eigene Geräte (Einheitsmodell Stufe 3/4, Befund L5): the customer's
+		// OWN devices. Without this markup the group is silently gone and the
+		// devices are invisible on the box again.
+		`id="eigenGroup"`, `id="eigenList"`, `id="eigenNote"`, `id="eigenHint"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("einrichten.html: missing Energiequellen element %s", want)
+		}
+	}
+	// ⚠ The Eigene-Geräte group carries NO editing at all: a self-built device
+	// is created, changed and deleted in the PORTAL. A data-vp-edit button in
+	// here would be a promise this page cannot keep (setPortalManaged only
+	// hides such buttons on a portal-MANAGED plant - this group must be
+	// read-only on every plant).
+	if at := strings.Index(page, `id="eigenGroup"`); at >= 0 {
+		grp := page[at:]
+		if end := strings.Index(grp, "</section>"); end > 0 {
+			grp = grp[:end]
+		}
+		if strings.Contains(grp, "data-vp-edit") || strings.Contains(grp, "add-row") {
+			t.Error("einrichten.html: the Eigene-Geräte group must offer no editing - it is a mirror")
 		}
 	}
 	srcJs := get("/sources.js")
@@ -1224,6 +1246,18 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	}
 	if !strings.Contains(srcJs, "/api/balance") || !strings.Contains(srcJs, "primary_grid_not_site_total") {
 		t.Error("sources.js: does not drive the /api/balance toggle")
+	}
+	if !strings.Contains(srcJs, "custom_devices") || !strings.Contains(srcJs, "eigenesGeraetRow") {
+		t.Error("sources.js: does not render the customer's own devices from custom_devices")
+	}
+	// The row texts are the PURE VPGroups derivation, so they are provable
+	// without a browser (jstest/ui.test.js) - not hand-built strings in here.
+	gJs := get("/groups.js")
+	for _, want := range []string{"eigenesGeraetRow", "eigenNote", "eigenAdresse",
+		"EIGEN_GELESEN_VON_REGEL"} {
+		if !strings.Contains(gJs, want) {
+			t.Errorf("groups.js: missing the pure Eigene-Geräte derivation %s", want)
+		}
 	}
 }
 
@@ -2252,6 +2286,63 @@ func TestSourcesListReturnsSourcesAndCatalog(t *testing.T) {
 	}
 	if len(body.Catalog.Brands) == 0 {
 		t.Fatalf("catalog should be embedded so the add form is data-driven")
+	}
+}
+
+// Einheitsmodell Stufe 3/4 (Befund L5): the devices the CUSTOMER defined
+// themselves ride along on the SAME payload the "Anlage" card already fetches.
+// They are NOT sources - the applier deliberately skips them, their read plan
+// travels as a generated flow - so before this they appeared NOWHERE on :8484.
+//
+// The field is ADDITIVE and always a LIST: a plant without one gets `[]`, never
+// `null` and never an invented group.
+func TestSourcesCarriesTheCustomersOwnDevices(t *testing.T) {
+	type payload struct {
+		Sources []sources.Source              `json:"sources"`
+		Custom  []componentapply.CustomDevice `json:"custom_devices"`
+	}
+	get := func(fs *fakeSources) payload {
+		t.Helper()
+		resp, err := http.Get(sourcesServer(t, fs).URL + "/api/sources")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var body payload
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+
+	// A plant without a self-built device: an empty LIST, so the page renders
+	// the group off its length instead of every consumer writing the same
+	// defensive null check.
+	empty := get(&fakeSources{})
+	if empty.Custom == nil || len(empty.Custom) != 0 {
+		t.Fatalf("custom_devices must be an empty array, got %#v", empty.Custom)
+	}
+
+	body := get(&fakeSources{custom: []componentapply.CustomDevice{{
+		ID: "zisterne", Label: "Zisterne", Communication: componentapply.CommunicationSelfBuild,
+		Host: "192.168.210.77", Port: 502, UnitID: 3, Health: "ok",
+		Channels: []componentapply.CustomChannel{{Channel: "fuellstand_pct",
+			Label: "Füllstand Zisterne", Unit: "%"}},
+	}}})
+	if len(body.Custom) != 1 {
+		t.Fatalf("want the one self-built device, got %#v", body.Custom)
+	}
+	d := body.Custom[0]
+	if d.Label != "Zisterne" || d.Host != "192.168.210.77" || d.Port != 502 || d.UnitID != 3 {
+		t.Errorf("the row's facts must survive the wire: %#v", d)
+	}
+	if d.Health != "ok" || len(d.Channels) != 1 || d.Channels[0].Label != "Füllstand Zisterne" {
+		t.Errorf("health + the customer's OWN channel names must survive: %#v", d)
+	}
+	// It is NOT a source: the two lists stay separate, so nothing on the box
+	// starts reading a device whose read plan lives in a flow.
+	if len(body.Sources) != 0 {
+		t.Errorf("a self-built device must never appear as a source: %#v", body.Sources)
 	}
 }
 

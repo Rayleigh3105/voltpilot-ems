@@ -307,6 +307,25 @@
               <span>Verbraucher hinzufügen</span>
             </button>
           </div>
+
+          <!-- Group 5: Eigene Geräte (sources.js, Einheitsmodell Stufe 3/4)
+               Die Geräte, die der KUNDE im Portal selbst angelegt hat. Sie
+               tragen KEINE Bedienung (kein data-vp-edit, kein "＋ hinzufügen"):
+               anlegen, ändern und löschen passiert im Portal, hier wird nur
+               gezeigt, was auf diesem Gerät läuft. Ohne ein solches Gerät bleibt
+               die ganze Gruppe versteckt - eine leere Gruppe wäre eine Gruppe,
+               die etwas behauptet. -->
+          <div class="grp" id="eigenGroup" hidden>
+            <div class="grp-head">
+              <span class="grp-ico self" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 1-5 5L4 17v3h3l5.7-5.7a4 4 0 0 1 5-5l-2.6 2.6"/><path d="m15 4 5 5"/></svg>
+              </span>
+              <span class="grp-title">Eigene Geräte</span>
+              <span class="grp-note" id="eigenNote">· 0 eigene Geräte</span>
+            </div>
+            <p class="grp-note" id="eigenHint">Im Portal angelegt und dort gepflegt. Diese Geräte werden über eine eigene Regel gelesen und gehen nicht in die Energiebilanz ein.</p>
+            <ul class="rows" id="eigenList"></ul>
+          </div>
         </section>
       </div>
     </div>

@@ -33,7 +33,7 @@
   var lastState = null;
   // portalManaged spiegelt /api/sources portal_managed: ein älterer Kern sendet
   // das Feld nicht -> false -> der geführte Flow spricht wie bisher.
-  var sourcesData = { sources: [], statuses: {}, portalManaged: false };
+  var sourcesData = { sources: [], statuses: {}, portalManaged: false, custom: [] };
   var clockOffset = 0;
 
   function deviceNow() { return Date.now() + clockOffset; }
@@ -308,7 +308,8 @@
     renderSetup(s);
     renderPairing(s);
     renderPurge(s);
-    applySummary("anlage", window.VPGroups.anlageSummary(s, sourcesData.sources, sourcesData.statuses, deviceNow()));
+    applySummary("anlage", window.VPGroups.anlageSummary(s, sourcesData.sources,
+      sourcesData.statuses, deviceNow(), sourcesData.custom));
     applySummary("steuerung", window.VPGroups.steuerungSummary(s));
     // The control state (control.js owns the verdict; its register evidence
     // lives on Betrieb under Technikmodus, not on this page).
@@ -322,9 +323,12 @@
     return fetch("/api/sources", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
+        // custom_devices ist ADDITIV: eine ältere Box liefert es nicht, dann
+        // zählt die Kopfzeile keine eigenen Geräte - wie vorher.
         sourcesData = {
           sources: d.sources || [], statuses: d.statuses || {},
-          portalManaged: !!d.portal_managed
+          portalManaged: !!d.portal_managed,
+          custom: d.custom_devices || []
         };
       })
       .catch(function () { /* the step falls back to "keine weitere Quelle" */ });

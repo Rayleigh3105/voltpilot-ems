@@ -878,6 +878,84 @@ test("groups: a healthy plant is four quiet rows - nothing auto-opens", () => {
   }
 });
 
+/* ---- Eigene Geräte (Einheitsmodell Stufe 3/4, Befund L5) ----
+   Die Geräte, die der KUNDE im Portal selbst angelegt hat. Der Applier
+   überspringt sie bewusst (ihr Leseplan reist als generierter Flow), sie
+   standen deshalb bis hierher NIRGENDS auf :8484. */
+
+const G_CUSTOM = {
+  id: "9d4b6032",
+  label: "Zisterne",
+  communication: "modbus_baukasten",
+  host: "192.168.210.77",
+  port: 502,
+  unit_id: 3,
+  channels: [{ channel: "fuellstand_pct", label: "Füllstand Zisterne", unit: "%" }]
+};
+
+test("groups: ein eigenes Gerät nennt Weg, Adresse und seine eigenen Kanäle", () => {
+  const G = groupsApi();
+  const row = G.eigenesGeraetRow(G_CUSTOM);
+  assert.strictEqual(row.name, "Zisterne");
+  assert.match(row.meta, /^Selbstbau \(Modbus\)/);
+  assert.match(row.meta, /192\.168\.210\.77:502 · Unit 3/);
+  // Der Kunde hat den Kanal selbst benannt - die Zeile zeigt SEINEN Namen.
+  assert.match(row.meta, /Füllstand Zisterne \(%\)/);
+  assert.ok(!/schaltbar/.test(row.meta), "ein Nur-Messen-Gerät ist nicht schaltbar");
+
+  // Ein freigegebenes Schaltgerät sagt es - und bietet trotzdem keinen Schalter.
+  const sw = G.eigenesGeraetRow({ ...G_CUSTOM, switchable: true });
+  assert.match(sw.meta, /schaltbar \(im Portal freigegeben\)/);
+
+  assert.strictEqual(G.eigenNote([G_CUSTOM]), "· 1 eigenes Gerät");
+  assert.strictEqual(G.eigenNote([G_CUSTOM, G_CUSTOM]), "· 2 eigene Geräte");
+  assert.strictEqual(G.eigenNote([]), "· 0 eigene Geräte");
+});
+
+test("groups: ohne Messwert sagt die Pille den MECHANISMUS, nie ein Warten, das niemand tut", () => {
+  const G = groupsApi();
+  // Die Box POLLT ein Selbstbau-Gerät nicht selbst - "Wartet auf erste Daten"
+  // (der Satz jeder Quelle) wäre eine Aussage über ein Warten, das hier
+  // niemand tut.
+  for (const health of ["never", "", undefined]) {
+    const row = G.eigenesGeraetRow({ ...G_CUSTOM, health });
+    assert.strictEqual(row.pill.label, G.EIGEN_GELESEN_VON_REGEL);
+    assert.strictEqual(row.pill.pill, "off");
+  }
+  assert.strictEqual(G.eigenesGeraetRow({ ...G_CUSTOM, health: "ok" }).pill.label, "Liefert Daten");
+  assert.strictEqual(G.eigenesGeraetRow({ ...G_CUSTOM, health: "stale" }).pill.label, "Keine aktuellen Daten");
+  assert.strictEqual(G.eigenesGeraetRow({ ...G_CUSTOM, health: "stale" }).pill.pill, "warn");
+});
+
+test("groups: eine Adresse wird NIE erfunden - und ein namenloses Gerät bleibt sichtbar", () => {
+  const G = groupsApi();
+  assert.strictEqual(G.eigenAdresse({}), "");
+  assert.strictEqual(G.eigenAdresse({ host: "10.0.0.9" }), "10.0.0.9");
+  assert.strictEqual(G.eigenAdresse({ host: "10.0.0.9", port: 1502 }), "10.0.0.9:1502");
+
+  const ohne = G.eigenesGeraetRow({ id: "abc", channels: [] });
+  assert.strictEqual(ohne.meta, "Selbstbau (Modbus)", "keine Adresse, keine Behauptung");
+  assert.strictEqual(ohne.name, "abc", "ohne Namen führt die Kennung - nie eine leere Zeile");
+});
+
+test("groups: die Kopfzeile ZÄHLT eigene Geräte, lässt sie aber aus dem Liefer-Urteil", () => {
+  const G = groupsApi();
+  // Sie stehen im Kopf …
+  const sum = G.anlageSummary(G_STATE, G_SOURCES, G_OK, NOW, [G_CUSTOM]);
+  assert.match(sum.text, /1 eigenes Gerät/);
+  // … und sie färben die Gruppe NICHT: die Box liest sie nicht selbst, ein
+  // fehlender Messwert ist hier kein Wartezustand der Anlage.
+  assert.strictEqual(sum.tone, "ok");
+  assert.match(sum.text, /alle liefern/);
+  assert.strictEqual(sum.problemKey, null);
+
+  // Ohne eigene Geräte (und für eine ÄLTERE Box, die das Feld gar nicht
+  // liefert) ist die Kopfzeile zeichengleich wie vorher.
+  const vorher = G.anlageSummary(G_STATE, G_SOURCES, G_OK, NOW);
+  assert.strictEqual(G.anlageSummary(G_STATE, G_SOURCES, G_OK, NOW, []).text, vorher.text);
+  assert.ok(!/eigene?s? Gerät/.test(vorher.text), vorher.text);
+});
+
 test("groups: a source that stops delivering turns Anlage amber and opens it ONCE", () => {
   const G = groupsApi();
   const warn = G.anlageSummary(G_STATE, G_SOURCES, { s1: "ok", s2: "warn" }, NOW);
