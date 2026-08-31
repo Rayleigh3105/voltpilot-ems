@@ -66,11 +66,25 @@ func (a *Agent) onChargingConfig(payload []byte) {
 	// ⚠ ONE Apply for every field the document carries: Settings.Apply is
 	// PATCH, so a second call would be pointless churn - and splitting them
 	// could leave the box half-configured if one refused.
-	if cfg.GridLimitKw != nil || cfg.SurplusPolicy != nil || cfg.StoragePriority != nil {
+	// ⚠ Der RAHMEN (E10) reist im SELBEN Apply: `SettingsRequest` ist längst
+	// PATCH, also fällt ein nicht genanntes Rahmen-Feld auf den Wert der Box
+	// zurück, und die Plausibilitäts-Regeln bleiben die EINE Stelle
+	// (Settings.Apply), die auch die :8484-Oberfläche fährt.
+	frame := cfg.Frame
+	if cfg.GridLimitKw != nil || cfg.SurplusPolicy != nil || cfg.StoragePriority != nil ||
+		frame != nil {
 		req := lastmgmt.SettingsRequest{
 			GridLimitKw:     cfg.GridLimitKw,
 			SurplusPolicy:   cfg.SurplusPolicy,
 			StoragePriority: cfg.StoragePriority,
+		}
+		if frame != nil {
+			req.HouseReserveKw = frame.HouseReserveKw
+			req.MarginPct = frame.MarginPct
+			req.MinPowerKw = frame.MinPowerKw
+			req.RotationMinutes = frame.RotationMinutes
+			req.MaxHouseLoadKw = frame.MaxHouseLoadKw
+			req.StaticBudget = frame.StaticBudget
 		}
 		if _, err := a.OcppSaveSettings(req); err != nil {
 			slog.Warn("charging config: settings not applied", "err", err)
@@ -117,28 +131,54 @@ func (a *Agent) onChargingConfig(payload []byte) {
 // setzt, die Box NIE, und ihr Budget-Gesetz rechnete für immer mit einer
 // Ladeleistung, die auf einem anderen Zähler liegt.
 func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
-	known := map[string]string{}
+	type stationState struct {
+		connection string
+		source     string
+		minKw      float64
+	}
+	known := map[string]stationState{}
 	for _, c := range a.OcppChargers() {
-		known[c.ID] = c.ConnectionOrHaus()
+		known[c.ID] = stationState{c.ConnectionOrHaus(), c.Source, c.MinKw}
 	}
 	for _, cp := range wanted {
 		if prev, ok := known[cp.ID]; ok {
 			// Das Portal äußert sich nicht ("") ⇒ nichts tun; sagt es dasselbe
 			// wie bisher ⇒ ebenfalls nichts (kein Schreibvorgang, kein Log je
 			// Zustellung des retained Dokuments).
-			if cp.Connection == "" || cp.Connection == prev {
+			var req csms.UpdateRequest
+			touched := false
+			if cp.Connection != "" && cp.Connection != prev.connection {
+				conn := cp.Connection
+				req.Connection = &conn
+				touched = true
+			}
+			// ⚠ Die QUELLE folgt derselben Ausnahme wie der Anschluss (P5):
+			// sie hat auf der Box keine Oberfläche, es gibt dort also nichts zu
+			// schützen - und ein Kunde, der die Steuerart EINER Säule später
+			// ändert, erreichte sie sonst nie. Die Mindestleistung gehört zu
+			// derselben Wahl („Sonne zuerst … 4,2 kW halten") und reist mit ihr.
+			if cp.Source != "" && cp.Source != prev.source {
+				src := cp.Source
+				req.Source = &src
+				touched = true
+			}
+			if cp.MinKw > 0 && cp.MinKw != prev.minKw {
+				min := cp.MinKw
+				req.MinKw = &min
+				touched = true
+			}
+			if !touched {
 				continue
 			}
-			conn := cp.Connection
-			if _, err := a.OcppUpdateCharger(cp.ID, csms.UpdateRequest{
-				Connection: &conn,
-			}); err != nil {
-				slog.Warn("charging config: charge point connection not applied",
-					"charge_point", cp.ID, "connection", conn, "err", err)
+			if _, err := a.OcppUpdateCharger(cp.ID, req); err != nil {
+				slog.Warn("charging config: charge point not updated",
+					"charge_point", cp.ID, "connection", cp.Connection,
+					"source", cp.Source, "min_kw", cp.MinKw, "err", err)
 				continue
 			}
-			slog.Info("charging config: charge point connection applied",
-				"charge_point", cp.ID, "connection", conn, "was", prev)
+			slog.Info("charging config: charge point updated",
+				"charge_point", cp.ID, "connection", cp.Connection,
+				"source", cp.Source, "min_kw", cp.MinKw)
 			continue
 		}
 		if _, err := a.OcppAddCharger(csms.AddRequest{
@@ -146,8 +186,10 @@ func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
 			Label:      cp.Label,
 			Priority:   cp.Priority,
 			RatedKw:    cp.RatedKw,
+			MinKw:      cp.MinKw,
 			Connectors: cp.Connectors,
 			Connection: cp.Connection,
+			Source:     cp.Source,
 		}); err != nil {
 			slog.Warn("charging config: charge point not admitted",
 				"charge_point", cp.ID, "err", err)

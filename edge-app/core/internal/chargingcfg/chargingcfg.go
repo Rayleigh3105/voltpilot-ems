@@ -102,6 +102,27 @@ type Config struct {
 	// BOTH lists is a contradiction the document should never carry; if it does,
 	// the REMOVAL wins - the direction that admits less.
 	RemovedChargePoints []string
+
+	// Frame is the LADEPARK-RAHMEN (Verbrauchsmanagement v1 / E10): the five
+	// physical numbers that used to live only on :8484. nil = the portal says
+	// nothing and the box keeps every one of them.
+	//
+	// ⚠ It is the same PATCH rule one level down: a `frame` block that carries
+	// only the house reserve leaves margin, minimum power, rotation, the
+	// highest building load and the static-budget switch exactly as they are.
+	Frame *Frame
+}
+
+// Frame is the Ladepark-Rahmen the portal may maintain (E10: read-only for the
+// customer, writable by a platform admin). Every field is a POINTER for the
+// same reason the document itself is a PATCH: absent is not zero.
+type Frame struct {
+	HouseReserveKw  *float64
+	MarginPct       *float64
+	MinPowerKw      *float64
+	RotationMinutes *int
+	MaxHouseLoadKw  *float64
+	StaticBudget    *bool
 }
 
 // ChargePoint is one entry of the allowlist. Only `ID` is required; the rest is
@@ -116,21 +137,44 @@ type ChargePoint struct {
 	// csms.ConnectionHaus / csms.ConnectionEigen, "" = the portal said nothing
 	// and the box keeps what it has (absent = haus for a new station).
 	Connection string
+	// Source is THIS station's own source lane (Verbrauchsmanagement v1 / P5):
+	// "nur_sonne" | "sonne_zuerst" | "schnell", "" = the portal said nothing
+	// and the SITE-wide surplus policy applies to it.
+	//
+	// ⚠ Unlike `label`/`priority` it is applied to a station the box ALREADY
+	// knows: there is no :8484 surface for it, so there is nothing to protect -
+	// and a customer who changes the Steuerart of one station later would
+	// otherwise never reach the box. Exactly the `connection` argument.
+	Source string
+	// MinKw is THIS station's own minimum useful charging power (the „Sonne
+	// zuerst"-Mindestleistung of §3.2). 0 = the portal said nothing and the
+	// site-wide Mindestleistung applies.
+	MinKw float64
 }
 
 // wire is the on-the-wire shape. Pointers where absence differs from a value.
 type wire struct {
-	SchemaVersion   string    `json:"schema_version"`
-	TenantID        string    `json:"tenant_id"`
-	SiteID          string    `json:"site_id"`
-	DeviceID        string    `json:"device_id"`
-	GridLimitKw     *float64  `json:"grid_limit_kw"`
-	Priorities      *[]string `json:"priority_charge_point_ids"`
-	SurplusPolicy   *string   `json:"surplus_policy"`
-	StoragePriority *string   `json:"storage_priority"`
-	ChargePoints    []wireCP  `json:"charge_points"`
-	Removed         []string  `json:"removed_charge_point_ids"`
-	PublishedAt     string    `json:"published_at"`
+	SchemaVersion   string     `json:"schema_version"`
+	TenantID        string     `json:"tenant_id"`
+	SiteID          string     `json:"site_id"`
+	DeviceID        string     `json:"device_id"`
+	GridLimitKw     *float64   `json:"grid_limit_kw"`
+	Priorities      *[]string  `json:"priority_charge_point_ids"`
+	SurplusPolicy   *string    `json:"surplus_policy"`
+	StoragePriority *string    `json:"storage_priority"`
+	ChargePoints    []wireCP   `json:"charge_points"`
+	Removed         []string   `json:"removed_charge_point_ids"`
+	Frame           *wireFrame `json:"frame"`
+	PublishedAt     string     `json:"published_at"`
+}
+
+type wireFrame struct {
+	HouseReserveKw  *float64 `json:"house_reserve_kw"`
+	MarginPct       *float64 `json:"margin_pct"`
+	MinPowerKw      *float64 `json:"min_power_kw"`
+	RotationMinutes *int     `json:"rotation_minutes"`
+	MaxHouseLoadKw  *float64 `json:"max_house_load_kw"`
+	StaticBudget    *bool    `json:"static_budget"`
 }
 
 type wireCP struct {
@@ -140,6 +184,8 @@ type wireCP struct {
 	RatedKw    float64 `json:"rated_kw"`
 	Connectors int     `json:"connectors"`
 	Connection string  `json:"connection"`
+	Source     string  `json:"source"`
+	MinKw      float64 `json:"min_kw"`
 }
 
 // Parse reads one retained payload. An EMPTY payload returns ErrEmpty (the
@@ -228,9 +274,24 @@ func Parse(payload []byte) (Config, error) {
 		if conn != "" && conn != connectionHaus && conn != connectionEigen {
 			continue
 		}
+		// ⚠ Dieselbe Vorsicht für die Quellen-Bahn: ein unbekanntes Wort
+		// überspringt den EINTRAG, es wird NICHT auf „schnell" aufgelöst -
+		// aus einem „Nur Sonnenstrom" würde sonst still eine Freigabe für
+		// Netzstrom, die niemand erteilt hat.
+		src := strings.TrimSpace(cp.Source)
+		if src != "" && !validPolicy(src) {
+			continue
+		}
+		// Eine unplausible Mindestleistung ist keine Aussage: sie wird
+		// WEGGELASSEN (dann gilt die der Anlage), nie geraten.
+		minKw := cp.MinKw
+		if math.IsNaN(minKw) || math.IsInf(minKw, 0) || minKw < 0 || minKw > MaxGridLimitKw {
+			minKw = 0
+		}
 		cfg.ChargePoints = append(cfg.ChargePoints, ChargePoint{
 			ID: id, Label: strings.TrimSpace(cp.Label), Priority: cp.Priority,
 			RatedKw: cp.RatedKw, Connectors: cp.Connectors, Connection: conn,
+			Source: src, MinKw: minKw,
 		})
 	}
 	if len(w.Removed) > MaxChargePoints {
@@ -261,6 +322,22 @@ func Parse(payload []byte) (Config, error) {
 			kept = append(kept, cp)
 		}
 		cfg.ChargePoints = kept
+	}
+	// ⚠ Der Rahmen wird NICHT hier auf Plausibilität geprüft: die Regeln
+	// dafür wohnen an EINER Stelle, in lastmgmt.Settings.Apply (dieselbe, die
+	// die :8484-Oberfläche fährt). Ein zweiter Satz Grenzen wäre eine zweite
+	// Wahrheit, und sie könnten auseinanderlaufen. Übernommen wird nur, was
+	// als ZAHL lesbar war; ein Feld, das der Anwender ablehnt, lässt den Wert
+	// der Box stehen, und die Ablehnung wird protokolliert.
+	if w.Frame != nil {
+		cfg.Frame = &Frame{
+			HouseReserveKw:  w.Frame.HouseReserveKw,
+			MarginPct:       w.Frame.MarginPct,
+			MinPowerKw:      w.Frame.MinPowerKw,
+			RotationMinutes: w.Frame.RotationMinutes,
+			MaxHouseLoadKw:  w.Frame.MaxHouseLoadKw,
+			StaticBudget:    w.Frame.StaticBudget,
+		}
 	}
 	return cfg, nil
 }

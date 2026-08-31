@@ -106,7 +106,43 @@ func (b *boostStore) until(key string, txID int, now time.Time) time.Time {
 // surface exactly like ocppBudget — the page must never show a lane the
 // stations were not given.
 func (a *Agent) ocppSurplus(now time.Time, set lastmgmt.Settings) lastmgmt.SurplusVerdict {
-	return a.ocpp.budget.Surplus(now, set.SurplusPolicy, set.StoragePriority)
+	return a.ocppSurplusFor(now, set, set.SurplusPolicy)
+}
+
+// ocppSurplusFor is the same derivation under an EXPLICIT lane policy (P5): the
+// site default, or the most restrictive source any station declared for itself.
+func (a *Agent) ocppSurplusFor(now time.Time, set lastmgmt.Settings,
+	lane lastmgmt.SurplusPolicy) lastmgmt.SurplusVerdict {
+	return a.ocpp.budget.Surplus(now, lane, set.StoragePriority)
+}
+
+// ocppLanePolicy is the policy the SITE lane is derived under (P5).
+//
+// The lane budget is one physical quantity - one sun, one measurement, one
+// pool - so it cannot be per station. What CAN differ per station is how each
+// one relates to it, and that needs the lane to EXIST whenever anybody wants
+// sun. So: the most restrictive source present wins the derivation
+// (nur_sonne > sonne_zuerst > schnell), and lastmgmt.splitExempt then gives
+// every session back its own reading (a „Schnell laden" station is exempt, a
+// blind „Sonne zuerst" one fails open exactly as it does today).
+//
+// ⚠ A site where NO station declared a source returns the site default
+// unchanged - the compatibility promise of the whole Paket.
+func ocppLanePolicy(set lastmgmt.Settings, snap csms.Snapshot) lastmgmt.SurplusPolicy {
+	lane := lastmgmt.NormalizePolicy(set.SurplusPolicy)
+	for _, c := range snap.Chargers {
+		if c.Source == "" {
+			continue
+		}
+		own := lastmgmt.NormalizePolicy(lastmgmt.SurplusPolicy(c.Source))
+		if own == lastmgmt.PolicySolarOnly {
+			return lastmgmt.PolicySolarOnly
+		}
+		if own == lastmgmt.PolicySolarFirst && lane == lastmgmt.PolicyFast {
+			lane = lastmgmt.PolicySolarFirst
+		}
+	}
+	return lane
 }
 
 // ocppSourceBudget turns the verdict into the allocator's input. nil = no

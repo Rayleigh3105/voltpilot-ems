@@ -59,6 +59,16 @@ const (
 	// minimum useful power. Not a queue problem — the site is too small for
 	// this charge point, and saying "wait" would be a promise nobody can keep.
 	ReasonBelowMinimum = "unter_mindestleistung"
+	// ReasonPlan: the CLOUD PLAN holds this charge point at 0 for this slot
+	// (Verbrauchsmanagement v1 / K3 - the arbitration bridge, Session.CapKw).
+	// Named separately from every budget word because the lever is a different
+	// one again: it is the customer's own Steuerart, not a full connection.
+	ReasonPlan = "plan"
+	// ReasonRule: a RULE or a HANDEINGRIFF holds this charge point at 0 (K3,
+	// the same bridge from a flow/override holder). Two words rather than one,
+	// because "der Fahrplan" and "Ihre Regel" send a customer to two different
+	// places.
+	ReasonRule = "regel"
 )
 
 // Text renders the customer-facing German sentence for a reason. Unknown
@@ -75,6 +85,10 @@ func Text(reason string) string {
 		return "wartet — kein Überschuss"
 	case ReasonBelowMinimum:
 		return "wartet — die verfügbare Leistung reicht für diesen Ladepunkt nicht aus"
+	case ReasonPlan:
+		return "pausiert — der Fahrplan lädt diese Säule gerade nicht"
+	case ReasonRule:
+		return "pausiert — eine Regel oder ein Handeingriff hält diese Säule"
 	}
 	return ""
 }
@@ -118,11 +132,65 @@ type Session struct {
 	// like every other one - which is what the dialog's fourth consequence
 	// promises. The zero value = no override.
 	BoostUntil time.Time
+
+	// --- Verbrauchsmanagement v1 / P5 -----------------------------------
+	//
+	// Source is THIS station's own source lane (`charge_points[].source`).
+	// "" = follow Input.Policy, which is byte-for-byte the behaviour before
+	// P5 - a site whose customer never chose per station allocates exactly as
+	// it did. The lane BUDGET stays a site-wide quantity (one sun, one
+	// measurement, one pool); this field only decides how THIS session
+	// relates to it.
+	Source SurplusPolicy
+	// SourceExempt frees this session from the SOURCE lane, never from the
+	// physics - the K3 arbitration bridge sets it for a holder from class
+	// deadline-fallback upwards (a due deadline, the plan, a rule, a
+	// Handeingriff). It is exactly the mechanism the boost already uses; the
+	// connection limit, the engineering margin, §14a and the failsafe bind an
+	// exempt session like every other one.
+	SourceExempt bool
+	// CapKw is an EXTERNAL, RESTRICT-ONLY ceiling handed down by the K3
+	// bridge: the arbitration holder's granted limit_kw. nil = no holder, and
+	// then nothing about this session changes. It can only ever LOWER MaxKw.
+	//
+	// ⚠ 0 is a VALUE, not an absence: it means "this session must not charge
+	// now" and pauses it with CapReason. That is why it is a pointer.
+	CapKw *float64
+	// CapReason is the machine word for a cap-induced pause (ReasonPlan /
+	// ReasonRule). Empty falls back to ReasonRule - a pause we cannot name is
+	// still a pause somebody has to be able to explain.
+	CapReason string
 }
 
 // boosted reports whether this session's „Jetzt voll laden" is still running.
 func (s Session) boosted(now time.Time) bool {
 	return !s.BoostUntil.IsZero() && s.BoostUntil.After(now)
+}
+
+// capped is MaxKw after the K3 bridge's restrict-only ceiling. It never
+// raises: a cap above the connector's own ceiling changes nothing.
+func (s Session) capped() float64 {
+	if s.CapKw == nil {
+		return s.MaxKw
+	}
+	c := math.Max(0, *s.CapKw)
+	if s.MaxKw > 0 && s.MaxKw < c {
+		return s.MaxKw
+	}
+	return c
+}
+
+// capPauses reports whether the bridge's cap forbids charging altogether.
+func (s Session) capPauses() bool {
+	return s.CapKw != nil && *s.CapKw <= 1e-9
+}
+
+// capReason names the cap-induced pause; an unnamed one is still a rule.
+func (s Session) capReason() string {
+	if s.CapReason == ReasonPlan || s.CapReason == ReasonRule {
+		return s.CapReason
+	}
+	return ReasonRule
 }
 
 // Settings are the operator-maintained facts of the site. In Stufe 0+1 they
@@ -306,10 +374,17 @@ type Input struct {
 	// minimum, covered from the physical budget. „Nur Sonnenstrom" leaves it
 	// false and the session waits instead.
 	SourceAllowsMinimum bool
-	// Policy is the customer's source choice, carried only so a paused
-	// session's German sentence can NAME it.
+	// Policy is the customer's source choice. It is the SITE-wide lane every
+	// session follows unless it declared one of its own (Session.Source), and
+	// it is carried so a paused session's German sentence can NAME the lever.
 	Policy SurplusPolicy
-	Now    time.Time
+	// SourceBlind reports that the lane above could NOT be proven from a
+	// measurement (Verbrauchsmanagement v1 / P5). It only ever matters while a
+	// lane exists at all, which blind only does for „Nur Sonnenstrom" - and
+	// there it is what lets a `sonne_zuerst` station on the SAME site keep
+	// failing open, exactly as it does today when it is the only policy.
+	SourceBlind bool
+	Now         time.Time
 }
 
 // Decide is THE allocation. Deterministic: the same input yields the same plan,
@@ -383,12 +458,19 @@ func Decide(in Input) Plan {
 	//    With no source lane the two sub-groups draw from one pool and the
 	//    split is a no-op.
 	prioQ, tailQ := queue[:prio], queue[prio:]
-	prioBoost, prioBound := splitBoost(prioQ, in.Now)
-	tailBoost, tailBound := splitBoost(tailQ, in.Now)
+	prioBoost, prioBound := splitExempt(prioQ, in)
+	tailBoost, tailBound := splitExempt(tailQ, in)
 
 	give := map[string]float64{}
 	pausedReason := map[string]string{}
-	boost := map[string]bool{}
+	// ⚠ TWO sets, and keeping them apart is an honesty rule. `exemptOf` is who
+	// drew from the physical pool (what SourceAllocatedKw must not count);
+	// `boostOf` is who is running „Jetzt voll laden" (what the SURFACE says).
+	// Since P5 those differ - a station on „Schnell laden" and a session the
+	// K3 bridge freed are exempt without anybody having pressed a button, and
+	// showing them as a boost would claim a full charge nobody asked for.
+	exemptOf := map[string]bool{}
+	boostOf := map[string]bool{}
 	rest, srcRest := budget, srcBudget
 
 	// admit hands each session in a group its MINIMUM, or names why not.
@@ -400,6 +482,16 @@ func Decide(in Input) Plan {
 			avail := rest
 			if !exempt && srcActive && srcRest < avail {
 				avail = srcRest
+			}
+			// ⚠ The K3 bridge's cap is checked FIRST and it is the only test
+			// that can pause a session the physics would have served: a
+			// holder that says 0 kW is a decision somebody made (the plan,
+			// a rule, a Handeingriff), not a shortage - and naming it
+			// „wartet — Budget vergeben" would send the customer to the wrong
+			// lever entirely.
+			if s.capPauses() {
+				pausedReason[s.Key] = s.capReason()
+				continue
 			}
 			switch {
 			case budget <= 0:
@@ -415,7 +507,7 @@ func Decide(in Input) Plan {
 				// running vehicle to keep its minimum from the grid rather
 				// than stand still. It consumes the whole remaining source
 				// lane and takes the rest from the physical budget.
-				if !exempt && srcActive && in.SourceAllowsMinimum && rest+1e-9 >= minKw {
+				if !exempt && srcActive && allowsMinimum(s, in) && rest+1e-9 >= minKw {
 					srcRest = math.Max(0, srcRest-minKw)
 					rest -= minKw
 					give[s.Key] = minKw
@@ -471,7 +563,8 @@ func Decide(in Input) Plan {
 		fill(admit(g.group, g.exempt), g.exempt)
 		for _, s := range g.group {
 			if g.exempt {
-				boost[s.Key] = true
+				exemptOf[s.Key] = true
+				boostOf[s.Key] = s.boosted(in.Now)
 			}
 		}
 	}
@@ -489,7 +582,7 @@ func Decide(in Input) Plan {
 	total := 0.0
 	sourceTotal := 0.0
 	for _, s := range queue {
-		a := Allocation{Key: s.Key, Boost: boost[s.Key]}
+		a := Allocation{Key: s.Key, Boost: boostOf[s.Key]}
 		if kw, ok := give[s.Key]; ok {
 			a.Kw = round3(kw)
 			a.Reason = ReasonCharging
@@ -506,7 +599,7 @@ func Decide(in Input) Plan {
 		}
 		a = pace(a, in.Previous, pacing, in.Now)
 		total += a.Kw
-		if !a.Boost {
+		if !exemptOf[s.Key] {
 			sourceTotal += a.Kw
 		}
 		plan.Allocations = append(plan.Allocations, a)
@@ -522,17 +615,80 @@ func Decide(in Input) Plan {
 	return plan
 }
 
-// splitBoost separates the sessions whose „Jetzt voll laden" is running from
-// the rest, preserving the group's order in both halves.
-func splitBoost(group []Session, now time.Time) (boosted, bound []Session) {
+// splitExempt separates the sessions that draw from the PHYSICAL pool alone
+// from the source-bound rest, preserving the group's order in both halves.
+//
+// Four things make a session exempt, and they are one idea in four dresses -
+// „diese Ladung folgt der Quellen-Wahl des Kunden gerade nicht":
+//
+//  1. „Jetzt voll laden" is running (the Stufe-4 boost, unchanged).
+//  2. The K3 bridge reports a holder from class deadline-fallback upwards -
+//     a due deadline, the plan, a rule, a Handeingriff. Somebody decided this
+//     vehicle charges NOW; the source lane is an economy, not a permission.
+//  3. This station's OWN source is „Schnell laden" (P5, per-station lane).
+//  4. The lane is BLIND and this station's OWN source is not „Nur
+//     Sonnenstrom": that is literally what Surplus() does for a site-wide
+//     `sonne_zuerst` today (Active=false = fail open), reproduced per session
+//     so a MIXED site keeps both readings instead of forcing one on everybody.
+//
+// ⚠ REASONS 3 AND 4 ASK FOR THE SESSION'S EFFECTIVE SOURCE (sessionPolicy):
+// its own choice, else the SITE default. The site default is what makes a
+// MIXED site honest - one station on „Nur Sonnenstrom" makes the lane EXIST
+// (the agent derives it from the most restrictive source present), and without
+// this its neighbour on the site's „Schnell laden" would be dragged into an
+// economy its customer never chose.
+//
+// ⚠ Exempt is exempt from the ECONOMY, never from the PHYSICS: the connection
+// limit, the engineering margin, §14a and the failsafe bind an exempt session
+// exactly like every other one.
+func splitExempt(group []Session, in Input) (exempt, bound []Session) {
 	for _, s := range group {
-		if s.boosted(now) {
-			boosted = append(boosted, s)
+		free := s.boosted(in.Now) || s.SourceExempt
+		if !free {
+			if own, known := sessionPolicy(s, in); known {
+				free = own == PolicyFast || (in.SourceBlind && own != PolicySolarOnly)
+			}
+		}
+		if free {
+			exempt = append(exempt, s)
 			continue
 		}
 		bound = append(bound, s)
 	}
-	return boosted, bound
+	return exempt, bound
+}
+
+// sessionPolicy is the source lane THIS session follows: its own choice if it
+// made one, else the site's.
+//
+// ⚠ known=false is the LEGACY reading and it is deliberately not the same as
+// „schnell": a caller that opened a lane (`SourceBudgetKw != nil`) without
+// naming a policy said nothing about who follows it, so everybody does -
+// byte-for-byte the pre-P5 rule. `NormalizePolicy("")` resolves to
+// PolicyFast, so collapsing the two would silently exempt every session of
+// every pre-P5 caller. The agent always names the site policy
+// (`Settings.WithDefaults` normalises it), so this branch is the tests' and
+// never the product's.
+func sessionPolicy(s Session, in Input) (SurplusPolicy, bool) {
+	if s.Source != "" {
+		return NormalizePolicy(s.Source), true
+	}
+	if in.Policy != "" {
+		return NormalizePolicy(in.Policy), true
+	}
+	return "", false
+}
+
+// allowsMinimum is the „Sonne zuerst"-concession PER SESSION: a vehicle whose
+// minimum does not fit into the surplus still gets it, from the grid, so it is
+// never left standing. A station that declared its own source answers for
+// itself; one that did not follows the site (Input.SourceAllowsMinimum), which
+// is byte-for-byte the pre-P5 behaviour.
+func allowsMinimum(s Session, in Input) bool {
+	if s.Source == "" {
+		return in.SourceAllowsMinimum
+	}
+	return NormalizePolicy(s.Source) == PolicySolarFirst
 }
 
 // effectiveMin is the session's own minimum, defaulting to the site-wide one
@@ -551,8 +707,11 @@ func effectiveMin(s Session, set Settings) float64 {
 	if m < 0 {
 		m = 0
 	}
-	if s.MaxKw > 0 && m > s.MaxKw {
-		m = s.MaxKw
+	// ⚠ The ceiling is the CAPPED one (P5/K3): a holder that allows 5 kW must
+	// not have this session admitted at a 30 kW site minimum and then filled
+	// down to 5 - the minimum IS the promise that a started charge is useful.
+	if max := s.capped(); max > 0 && m > max {
+		m = max
 	}
 	return m
 }
@@ -651,7 +810,10 @@ func waterFill(adm []Session, give map[string]float64, spare float64) float64 {
 		var next []Session
 		moved := 0.0
 		for _, s := range open {
-			head := s.MaxKw - give[s.Key]
+			// ⚠ The CAPPED ceiling (P5/K3), never the raw one: filling a
+			// session above the holder's limit_kw would turn a restrict-only
+			// bridge into a widening one.
+			head := s.capped() - give[s.Key]
 			if head <= 1e-9 {
 				continue
 			}

@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "grid_limit_kw": 277,
+  "surplus_policy": "sonne_zuerst",
+  "charge_points": [
+    {
+      "id": "saeule-hof-nord",
+      "source": "nur_sonne"
+    },
+    {
+      "id": "saeule-chef",
+      "source": "schnell"
+    },
+    {
+      "id": "saeule-halle",
+      "source": "sonne_zuerst",
+      "min_kw": 4.2
+    }
+  ],
+  "frame": {
+    "house_reserve_kw": 167,
+    "margin_pct": 10,
+    "min_power_kw": 30,
+    "rotation_minutes": 15,
+    "max_house_load_kw": 180,
+    "static_budget": false
+  },
+  "published_at": "2026-08-31T09:15:00Z"
+}

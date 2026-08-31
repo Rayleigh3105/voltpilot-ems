@@ -257,4 +257,57 @@ class SteuerartProjektionTest {
                     .isEqualTo(SteuerartProjektion.QUELLE_SOFORT);
         }
     }
+
+    // -----------------------------------------------------------------------
+    // P5: die Quelle je SAEULE
+    // -----------------------------------------------------------------------
+
+    /**
+     * Die eigene Wahl einer Saeule schlaegt den Anlagen-Standard - und sie
+     * heisst „saeule", nicht „standard": genau daran haengt der Chip
+     * „Standard/abweichend".
+     */
+    @Test
+    void dieEigeneWahlEinerSaeuleSchlaegtDenAnlagenStandard() {
+        Steuerart standard = SteuerartProjektion.anlagenStandard("schnell", null);
+        Steuerart eigen = SteuerartProjektion.saeulenSteuerart("nur_sonne", null, standard);
+        assertThat(eigen.quelle()).isEqualTo(SteuerartProjektion.QUELLE_UEBERSCHUSS);
+        assertThat(eigen.herkunft()).isEqualTo(SteuerartProjektion.HERKUNFT_SAEULE);
+        assertThat(eigen.ueberschussModus()).isEqualTo(SteuerartProjektion.MODUS_PAUSIEREN);
+
+        // Eine Saeule, die SCHWEIGT, folgt dem Standard - Zeichen fuer Zeichen.
+        assertThat(SteuerartProjektion.saeulenSteuerart(null, null, standard)).isEqualTo(standard);
+        assertThat(SteuerartProjektion.saeulenSteuerart("  ", null, standard)).isEqualTo(standard);
+
+        // „Sonne zuerst" traegt ihre eigene Mindestleistung.
+        Steuerart zuerst = SteuerartProjektion.saeulenSteuerart("sonne_zuerst",
+                new BigDecimal("4.2"), standard);
+        assertThat(zuerst.ueberschussModus()).isEqualTo(SteuerartProjektion.MODUS_MINDESTLEISTUNG);
+        assertThat(zuerst.mindestleistungKw()).isEqualByComparingTo("4.2");
+    }
+
+    /**
+     * ⚠ Eine Frist ALLEIN heisst an einem Ladepunkt „diese Bahn plus diese
+     * Frist", nie „Guenstige Stunden": seine Quelle steht per Konstruktion in
+     * keinem Dokument (sie faehrt die Bahn der Box), also waere Regel 7 dort
+     * eine erfundene Quelle.
+     */
+    @Test
+    void eineFristAlleinBehaeltAmLadepunktSeineBahnAlsQuelle() {
+        JsonNode nurFrist = doc("""
+                [{"id":"z","kind":"flexible_task","enforcement":"required_by_deadline",
+                  "recurrence":{"days":"daily","from":"22:00","to":"06:00"},
+                  "demand":{"energy_kwh":20},"target":{"kind":"on_off","value":true}}]""");
+        Steuerart bahn = SteuerartProjektion.saeulenSteuerart("nur_sonne", null,
+                SteuerartProjektion.anlagenStandard("schnell", null));
+
+        Steuerart amLadepunkt = SteuerartProjektion.projiziere(nurFrist, true, bahn);
+        assertThat(amLadepunkt.quelle()).isEqualTo(SteuerartProjektion.QUELLE_UEBERSCHUSS);
+        assertThat(amLadepunkt.herkunft()).isEqualTo(SteuerartProjektion.HERKUNFT_SAEULE);
+        assertThat(amLadepunkt.ziel()).isEqualTo(SteuerartProjektion.ZIEL_BIS_UHRZEIT);
+
+        // An JEDEM anderen Verbraucher gilt Regel 7 unveraendert.
+        Steuerart sonst = SteuerartProjektion.projiziere(nurFrist, false, null);
+        assertThat(sonst.quelle()).isEqualTo(SteuerartProjektion.QUELLE_GUENSTIG);
+    }
 }

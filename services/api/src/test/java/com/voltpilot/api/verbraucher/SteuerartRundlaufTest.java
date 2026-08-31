@@ -80,7 +80,7 @@ class SteuerartRundlaufTest {
     void ueberschussAmLadepunkt() {
         Steuerart out = rundlauf(ladepunkt(), new SteuerartWunsch(
                 SteuerartProjektion.QUELLE_UEBERSCHUSS, new BigDecimal("4.2"), null, null, null,
-                null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null));
         assertThat(out.quelle()).isEqualTo(SteuerartProjektion.QUELLE_UEBERSCHUSS);
         assertThat(out.schwelleKw()).isEqualByComparingTo("4.2");
         assertThat(out.ziel()).isNull();
@@ -100,7 +100,7 @@ class SteuerartRundlaufTest {
     void guenstigeStundenAmSchaltbarenGeraet() {
         Steuerart out = rundlauf(schaltlast(), new SteuerartWunsch(
                 SteuerartProjektion.QUELLE_GUENSTIG, null, new BigDecimal("9.5"), null, null, null,
-                null, null, null, null, null));
+                null, null, null, null, null, null, null));
         assertThat(out.quelle()).isEqualTo(SteuerartProjektion.QUELLE_GUENSTIG);
         assertThat(out.preisgrenzeCtKwh()).isEqualByComparingTo("9.5");
     }
@@ -109,7 +109,7 @@ class SteuerartRundlaufTest {
     void festeZeitenAnDerPumpe() {
         Steuerart out = rundlauf(pumpe(), new SteuerartWunsch(
                 SteuerartProjektion.QUELLE_FESTE_ZEITEN, null, null, null, null,
-                new Steuerart.Fenster("weekdays", "09:00", "11:00"), null, null, null, null, null));
+                new Steuerart.Fenster("weekdays", "09:00", "11:00"), null, null, null, null, null, null, null));
         assertThat(out.quelle()).isEqualTo(SteuerartProjektion.QUELLE_FESTE_ZEITEN);
         assertThat(out.fenster()).isEqualTo(new Steuerart.Fenster("weekdays", "09:00", "11:00"));
     }
@@ -121,7 +121,7 @@ class SteuerartRundlaufTest {
         // Rundlauf schliesst sich damit auf der QUELLE, nicht auf dem Wort; das
         // Kundenwort haengt am TYP und wohnt im Portal.
         Steuerart out = rundlauf(sgReady(), new SteuerartWunsch(SgReady.QUELLE_UEBERSCHUSS,
-                new BigDecimal("2"), null, 30, 20, null, null, null, null, null, null));
+                new BigDecimal("2"), null, 30, 20, null, null, null, null, null, null, null, null));
         assertThat(out.quelle()).isEqualTo(SteuerartProjektion.QUELLE_UEBERSCHUSS);
         assertThat(out.schwelleKw()).isEqualByComparingTo("2");
         assertThat(out.ziel()).as("eine SG-Ready-Pumpe hat nie ein Ziel").isNull();
@@ -130,7 +130,7 @@ class SteuerartRundlaufTest {
     @Test
     void freigabeBeiGuenstigemStromAnDerSgReadyWaermepumpe() {
         Steuerart out = rundlauf(sgReady(), new SteuerartWunsch(SgReady.QUELLE_GUENSTIG, null,
-                new BigDecimal("14"), null, null, null, null, null, null, null, null));
+                new BigDecimal("14"), null, null, null, null, null, null, null, null, null, null));
         assertThat(out.quelle()).isEqualTo(SteuerartProjektion.QUELLE_GUENSTIG);
         assertThat(out.preisgrenzeCtKwh()).isEqualByComparingTo("14");
     }
@@ -142,7 +142,7 @@ class SteuerartRundlaufTest {
         Steuerart out = rundlauf(ladepunkt(), new SteuerartWunsch(
                 SteuerartProjektion.QUELLE_UEBERSCHUSS, new BigDecimal("4.2"), null, null, null,
                 null, SteuerartProjektion.ZIEL_BIS_UHRZEIT,
-                new Steuerart.Fenster("daily", null, "06:00"), new BigDecimal("20"), null, null));
+                new Steuerart.Fenster("daily", null, "06:00"), new BigDecimal("20"), null, null, null, null));
         assertThat(out.quelle()).isEqualTo(SteuerartProjektion.QUELLE_UEBERSCHUSS);
         assertThat(out.schwelleKw()).isEqualByComparingTo("4.2");
         assertThat(out.ziel()).isEqualTo(SteuerartProjektion.ZIEL_BIS_UHRZEIT);
@@ -158,7 +158,7 @@ class SteuerartRundlaufTest {
                 SteuerartProjektion.QUELLE_FESTE_ZEITEN, null, null, null, null,
                 new Steuerart.Fenster("daily", "22:00", "06:00"),
                 SteuerartProjektion.ZIEL_LAUFZEIT_BIS,
-                new Steuerart.Fenster("daily", "20:00", "06:00"), null, 90, true));
+                new Steuerart.Fenster("daily", "20:00", "06:00"), null, 90, true, null, null));
         assertThat(out.quelle()).isEqualTo(SteuerartProjektion.QUELLE_FESTE_ZEITEN);
         assertThat(out.fenster()).isEqualTo(new Steuerart.Fenster("daily", "22:00", "06:00"));
         assertThat(out.ziel()).isEqualTo(SteuerartProjektion.ZIEL_LAUFZEIT_BIS);
@@ -173,7 +173,7 @@ class SteuerartRundlaufTest {
                 SteuerartProjektion.QUELLE_GUENSTIG, null, new BigDecimal("11"), null, null, null,
                 SteuerartProjektion.ZIEL_BIS_UHRZEIT,
                 new Steuerart.Fenster("weekdays", null, "07:30"), new BigDecimal("15"), null,
-                null));
+                null, null, null));
         assertThat(out.quelle()).isEqualTo(SteuerartProjektion.QUELLE_GUENSTIG);
         assertThat(out.preisgrenzeCtKwh()).isEqualByComparingTo("11");
         assertThat(out.zielEnergieKwh()).isEqualByComparingTo("15");
@@ -199,7 +199,7 @@ class SteuerartRundlaufTest {
     void dasLokaleSignalTraegtHystereseUndFrischeDasCloudSignalNie() {
         ObjectNode ueberschuss = SteuerartDokument.dokument(ENTITY, "Europe/Berlin",
                 new SteuerartWunsch(SteuerartProjektion.QUELLE_UEBERSCHUSS, new BigDecimal("4"),
-                        null, null, null, null, null, null, null, null, null),
+                        null, null, null, null, null, null, null, null, null, null, null),
                 heizstab());
         var c = ueberschuss.path("requirements").get(0).path("condition");
         assertThat(c.path("reset_value").decimalValue()).isEqualByComparingTo("3.000");
@@ -207,7 +207,7 @@ class SteuerartRundlaufTest {
 
         ObjectNode guenstig = SteuerartDokument.dokument(ENTITY, "Europe/Berlin",
                 new SteuerartWunsch(SteuerartProjektion.QUELLE_GUENSTIG, null, new BigDecimal("9"),
-                        null, null, null, null, null, null, null, null),
+                        null, null, null, null, null, null, null, null, null, null),
                 heizstab());
         var cc = guenstig.path("requirements").get(0).path("condition");
         assertThat(cc.has("reset_value")).as("ein Cloud-Signal traegt KEINE Hysterese").isFalse();
@@ -236,7 +236,7 @@ class SteuerartRundlaufTest {
         ObjectNode doc = SteuerartDokument.dokument(ENTITY, "Europe/Berlin",
                 new SteuerartWunsch(SteuerartProjektion.QUELLE_FESTE_ZEITEN, null, null, null, null,
                         new Steuerart.Fenster("daily", "13:00", "15:00"), null, null, null, null,
-                        null),
+                        null, null, null),
                 schaltlast());
         var r = doc.path("requirements").get(0);
         assertThat(r.has("grid_energy_policy")).isFalse();

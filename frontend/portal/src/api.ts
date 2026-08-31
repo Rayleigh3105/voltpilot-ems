@@ -3383,6 +3383,30 @@ export const api = {
       body: JSON.stringify(body),
     }),
   /**
+   * Speichert den Ladepark-RAHMEN (P5/E10) — Plattform-Admin only.
+   *
+   * ⚠ PATCH-Semantik in BEIDE Richtungen: ein NICHT übergebenes Feld behält
+   * seinen gespeicherten Wert, ein ausdrückliches `null` LÖSCHT es (und die Box
+   * behält dann wieder ihre eigene Zahl). Deshalb sind die Werte `| null` und
+   * nicht bloß optional — „nichts sagen" und „zurücknehmen" sind zwei
+   * verschiedene Handlungen.
+   */
+  saveChargingFrame: (
+    siteId: string,
+    body: {
+      houseReserveKw?: number | null;
+      marginPct?: number | null;
+      minPowerKw?: number | null;
+      rotationMinutes?: number | null;
+      maxHouseLoadKw?: number | null;
+      staticBudget?: boolean | null;
+    },
+  ) =>
+    request<ChargingConfig>(`/api/v1/admin/sites/${siteId}/charging-frame`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  /**
    * Trägt EINE Ladesäule in die Allowlist ein (Anbinde-Assistent, Schritt 1).
    *
    * ⚠ Es ist ein POST, kein PUT, und das ist die Aussage: die Liste fügt nur

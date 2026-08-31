@@ -79,6 +79,14 @@ type Decision struct {
 	// HolderOverride reports the holder's D-5 override elevation (a must-run
 	// flow desire) - the heartbeat's running_forced vs running_optimized split.
 	HolderOverride bool
+	// HolderRank is the holder's EFFECTIVE rank (desired.go effectiveRank):
+	// safety 100 > grid 90 > contract 80 > manual 75 > flow+override 70 >
+	// market 60 > deadline-fallback 50 > flow 40. 0 = no holder.
+	//
+	// It exists for the K3 charge-point bridge (Verbrauchsmanagement v1),
+	// which has to tell a DUE duty (>= 50) from a plain opportunistic wish
+	// (40) - HolderKind names the SOURCE, never the standing.
+	HolderRank int
 	// Clamped reports that the granted command differs from the holder's wish
 	// (some guard bit).
 	Clamped bool
@@ -279,6 +287,7 @@ func (a *Arbiter) DecisionFor(entityID string) (Decision, bool) {
 		if d := st.desires[st.holderKey]; d != nil {
 			dec.HolderKind = string(d.Source.Kind)
 			dec.HolderOverride = d.Override
+			dec.HolderRank = d.effectiveRank()
 		}
 	}
 	return dec, true

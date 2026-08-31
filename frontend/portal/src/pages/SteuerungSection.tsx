@@ -35,7 +35,7 @@ import { ErrorState, TextSkeleton } from '../components/States';
 import { InfoTip } from '../components/InfoTip';
 import { JetztZone } from '../components/JetztZone';
 import { SteuerungIntro } from '../components/SteuerungIntro';
-import { LadeparkKapsel } from '../components/LadeparkKapsel';
+import { LadeparkRahmenKarte } from '../components/LadeparkRahmenKarte';
 import { RegelnKapsel } from '../components/RegelnKapsel';
 import { SteuerartDialog } from '../components/SteuerartDialog';
 import { SteuerartIntro } from '../components/SteuerartIntro';
@@ -755,17 +755,21 @@ export function SteuerungSection({
             onWeg={geheWeg}
           />
 
-          {/* --- Ladepark-Einstellungen (nur mit Ladesäulen) ---------------
-              ⚠ Sie stehen bewusst UNTER den vier Zonen: der Rahmen-Kopf von
+          {/* --- Der Ladepark-RAHMEN (nur mit Ladesäulen) ------------------
+              ⚠ Er steht bewusst UNTER den vier Zonen: der Rahmen-Kopf von
               Zone ② verlinkt hierher („Einstellungen"), aber die Zonen selbst
-              sollen ununterbrochen aufeinander folgen. Paket P5 ersetzt diese
-              Kapsel durch die Rahmen-Einstellungen. */}
+              sollen ununterbrochen aufeinander folgen.
+
+              P5/E10: die frühere Ladepark-KAPSEL ist hier aufgegangen. Ihre
+              zwei Radio-Gruppen sind ERSATZLOS entfallen — die Quellen-Wahl ist
+              der Anlagen-Standard bzw. die Steuerart je Säule (Zone ②), der
+              Speicher-Vorrang ist die Rangliste (Zone ③). Geblieben ist die
+              Anschlussgrenze; dazugekommen sind die Rahmen-Werte zum LESEN. */}
           {charging && charging.chargers.length > 0 && (
             <div id="vp-ladepark">
-              <LadeparkKapsel
+              <LadeparkRahmenKarte
                 site={siteState}
-                charging={charging}
-                hasPv={signals?.hasPv === true}
+                rahmen={verbraucher?.ladepunkte?.rahmen ?? null}
               />
             </div>
           )}

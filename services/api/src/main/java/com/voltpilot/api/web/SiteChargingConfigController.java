@@ -69,7 +69,19 @@ public class SiteChargingConfigController {
              * gesagt; ein unbekanntes Wort ist eine BENANNTE Ablehnung, nie ein
              * stiller Rueckfall - siehe ChargingConfigService.admit.
              */
-            @Size(max = 16) String connection) {}
+            @Size(max = 16) String connection,
+            /*
+             * source/minKw = die STEUERART dieser Saeule (P5). Beide optional:
+             * null heisst „fuer sie aeussert sich das Portal nicht" und es gilt
+             * der ANLAGEN-STANDARD (surplusPolicy oben).
+             */
+            @Size(max = 32) String source, Double minKw) {}
+
+    /**
+     * Der Rumpf der Steuerart je Säule (P5): beide Felder optional, aber nicht
+     * beide zugleich leer - eine Anfrage, die nichts sagt, ist keine.
+     */
+    public record SaveChargePointSourceRequest(@Size(max = 32) String source, Double minKw) {}
 
     private final ChargingConfigService service;
 
@@ -104,8 +116,24 @@ public class SiteChargingConfigController {
             @Valid @RequestBody AdmitChargePointRequest req,
             @AuthenticationPrincipal Jwt caller) {
         return service.admit(siteId, req.chargePointId(), req.label(), req.ratedKw(),
-                req.connectors(), req.connection(),
+                req.connectors(), req.source(), req.minKw(), req.connection(),
                 caller == null ? "unbekannt" : caller.getSubject());
+    }
+
+    /**
+     * Setzt die STEUERART einer eingetragenen Säule (P5, Steuerart je
+     * Ladepunkt).
+     *
+     * <p>Sie gehört dem KUNDEN - es ist seine Anlage und seine Frage, woher der
+     * Ladestrom kommen soll -, also steht sie hier und nicht hinter
+     * {@code /admin/**}. Sie ändert keine Grenze: die physische Bahn bindet
+     * unverändert, und die zwei komponieren most-restrictive-wins.
+     */
+    @PutMapping("/charging-config/charge-points/{chargePointId}/source")
+    public ChargingConfigDto setChargePointSource(@PathVariable UUID siteId,
+            @PathVariable String chargePointId,
+            @Valid @RequestBody SaveChargePointSourceRequest req) {
+        return service.setChargePointSource(siteId, chargePointId, req.source(), req.minKw());
     }
 
     /**

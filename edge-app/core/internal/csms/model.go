@@ -106,8 +106,34 @@ type Charger struct {
 	// reading that as "eigen" would take a real charging load out of the box's
 	// own balance. Ask through ConnectionOrHaus()/OwnConnection(), never
 	// compare the raw string.
-	Connection string    `json:"connection,omitempty"`
-	AddedAt    time.Time `json:"added_at"`
+	Connection string `json:"connection,omitempty"`
+	// Source is THIS station's own source lane (Verbrauchsmanagement v1 / P5,
+	// `charge_points[].source` of the charging-config contract):
+	// "nur_sonne" | "sonne_zuerst" | "schnell". EMPTY = the customer said
+	// nothing for this station and the SITE-wide surplus policy applies -
+	// byte-for-byte the behaviour before P5.
+	//
+	// ⚠ It is the customer's ECONOMY, never a limit: the connection limit, the
+	// engineering margin, §14a and the failsafe bind a station regardless of
+	// what it says here. Ask through SourceOrSite(), never compare the raw
+	// string against a policy word.
+	Source  string    `json:"source,omitempty"`
+	AddedAt time.Time `json:"added_at"`
+}
+
+// KnownSource reports whether s is part of the source vocabulary. Empty is NOT
+// a member - it is the ABSENCE of a statement, which the readers resolve to
+// the site-wide policy.
+func KnownSource(s string) bool {
+	return s == "nur_sonne" || s == "sonne_zuerst" || s == "schnell"
+}
+
+// SourceOrSite resolves this station's lane: its own choice, or the site's.
+func (c Charger) SourceOrSite(site string) string {
+	if c.Source != "" {
+		return c.Source
+	}
+	return site
 }
 
 // The two places a charge point can hang (contract mqtt-charging-config).

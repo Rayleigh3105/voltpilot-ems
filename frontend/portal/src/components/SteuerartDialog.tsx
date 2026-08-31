@@ -83,7 +83,7 @@ export function SteuerartDialog({
 
   const quellen = useMemo(() => quellenKarten(optionen, ladepunkt), [optionen, ladepunkt]);
   const ziele = useMemo(() => zielKarten(optionen, ladepunkt), [optionen, ladepunkt]);
-  const detailFragen = fragen(entwurf.quelle);
+  const detailFragen = fragen(entwurf.quelle, ladepunkt);
 
   // Die Schritt-Leiste hängt am gewählten Weg: ohne Folgefragen und ohne Ziel
   // sind es zwei Schritte, nicht vier leere.
@@ -122,7 +122,7 @@ export function SteuerartDialog({
           )}
           {marke === SCHRITT_FOLGEN ? (
             <Button
-              onClick={() => onSpeichern(wunschAus(entwurf))}
+              onClick={() => onSpeichern(wunschAus(entwurf, ladepunkt))}
               disabled={busy || einwand != null}
             >
               {SPEICHERN}
@@ -276,6 +276,36 @@ function Frage({ id, entwurf, patch }: {
   patch: (p: Partial<SteuerartEntwurf>) => void;
 }) {
   const t = FRAGE_TEXT[id];
+  // ⚠ Die Modus-Frage ist eine WAHL, kein Zahlenfeld — und das kW-Feld erscheint
+  // NUR bei „Mindestleistung halten": bei „pausieren" wäre es eine Zahl ohne
+  // Wirkung, die der Kunde als Zusage lesen würde.
+  if (id === 'ueberschussModus') {
+    return (
+      <div className="vp-sa-felder">
+        <VpPicker
+          label={t.label}
+          value={entwurf.ueberschussModus || 'pausieren'}
+          onChange={(v) => patch({ ueberschussModus: v })}
+          options={[
+            { value: 'pausieren', label: 'Pausieren (kein Netzstrom)' },
+            { value: 'mindestleistung', label: 'Mindestleistung halten' },
+          ]}
+          hint={t.hinweis}
+        />
+        {entwurf.ueberschussModus === 'mindestleistung' && (
+          <Input
+            label="Mindestleistung (kW)"
+            type="number"
+            min={0}
+            step={0.1}
+            hint="So viel wird gehalten, auch wenn die Sonne nicht reicht."
+            value={entwurf.mindestleistungKw ?? ''}
+            onChange={(e) => patch({ mindestleistungKw: num(e.target.value) })}
+          />
+        )}
+      </div>
+    );
+  }
   if (id === 'fenster') {
     return (
       <div className="vp-sa-felder">

@@ -291,3 +291,52 @@ describe('Die Fenster-Arithmetik ist der Zwilling der Server-Regel', () => {
     expect(minusStunden('kaputt', 12)).toBe('kaputt');
   });
 });
+
+// ---------------------------------------------------------------------------
+// P5: die Quellen-BAHN je Ladepunkt (§3.2)
+// ---------------------------------------------------------------------------
+
+describe('die Modus-Frage am Ladepunkt (P5)', () => {
+  it('gibt es NUR am Ladepunkt', () => {
+    expect(fragen('ueberschuss')).not.toContain('ueberschussModus');
+    expect(fragen('ueberschuss', true)).toContain('ueberschussModus');
+  });
+
+  it('laesst jede andere Quelle Zeichen fuer Zeichen unveraendert', () => {
+    for (const q of ['guenstig', 'feste_zeiten', 'sofort', 'freigabe_guenstig']) {
+      expect(fragen(q, true)).toEqual(fragen(q));
+    }
+  });
+
+  it('reist als Bahn mit - und der Boden NUR, wenn er gemeint ist', () => {
+    const e = {
+      ...entwurfAus(null),
+      quelle: 'ueberschuss',
+      ueberschussModus: 'mindestleistung',
+      mindestleistungKw: 4.2,
+    };
+    const w = wunschAus(e, true);
+    expect(w.ueberschussModus).toBe('mindestleistung');
+    expect(w.mindestleistungKw).toBe(4.2);
+
+    const pause = wunschAus({ ...e, ueberschussModus: 'pausieren' }, true);
+    expect(pause.ueberschussModus).toBe('pausieren');
+    // ⚠ Eine Zahl ohne Wirkung koennte der Server als `sonne_zuerst` lesen.
+    expect(pause.mindestleistungKw).toBeUndefined();
+  });
+
+  it('sendet die Bahn NICHT von einem Nicht-Ladepunkt', () => {
+    const w = wunschAus(
+      { ...entwurfAus(null), quelle: 'ueberschuss', ueberschussModus: 'mindestleistung' },
+      false,
+    );
+    expect(w.ueberschussModus).toBeUndefined();
+  });
+
+  it('startet ohne gespeicherte Angabe auf `pausieren`', () => {
+    // „Nur Sonnenstrom" ist die ehrliche Vorgabe - `mindestleistung` waere eine
+    // Netzstrom-Freigabe, die niemand erteilt hat.
+    expect(entwurfAus(null).ueberschussModus).toBe('pausieren');
+  });
+});
+

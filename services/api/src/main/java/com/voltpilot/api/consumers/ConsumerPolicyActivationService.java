@@ -139,7 +139,17 @@ public class ConsumerPolicyActivationService {
         // E11: a draft may exist unconnected; ACTIVATION needs the physical
         // connection - an activated rule on a connectionless consumer would
         // claim control nobody can execute.
-        if (row.deviceId() == null && row.edgeSourceId() == null) {
+        //
+        // ⚠ EIN OCPP-LADEPUNKT IST ANDERS VERBUNDEN (P5): er hat weder eine
+        // Edge-Quelle noch ein eigenes Geraet - er WAEHLT die Box selbst an,
+        // und seine Verbindung ist die gemeldete Bindung
+        // (`device_charge_point.entity_id`, dieselbe, die die Komponente
+        // ueberhaupt entstehen liess). Ohne diese Ausnahme koennte an einer
+        // Saeule NIE eine Regel aktiviert werden - „Guenstige Stunden" und
+        // „Bis Uhrzeit fertig" waeren fuer sie strukturell unmoeglich, genau
+        // der Zustand, den P5 behebt.
+        if (row.deviceId() == null && row.edgeSourceId() == null
+                && !registry.istGebundenerLadepunkt(siteId, entityId)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Dieser Verbraucher ist noch nicht verbunden - die Regel bleibt gespeichert "
                             + "und kann nach dem Verbinden aktiviert werden.");

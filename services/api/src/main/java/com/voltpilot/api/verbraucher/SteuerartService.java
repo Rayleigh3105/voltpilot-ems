@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.chargers.ChargerComponentComposer;
+import com.voltpilot.api.chargers.ChargingConfigService;
 import com.voltpilot.api.consumers.ConsumerPolicyActivationService;
 import com.voltpilot.api.consumers.ConsumerPolicyActivationService.ActivationOutcome;
 import com.voltpilot.api.consumers.ConsumerRepository;
@@ -44,12 +45,27 @@ import org.springframework.web.server.ResponseStatusException;
  * Artefakt zurueckzieht - die Haus-Regel „Flag aus ≠ gestoppt". Die Projektion
  * liest das danach als {@code sofort} (Regel 2), der Rundlauf schliesst sich.
  *
- * <p><b>⚠ Der OCPP-Ladepunkt ({@code ev-charger}) ist hier NICHT schreibbar,
- * und das wird GESAGT statt verschwiegen.</b> Seine Quelle faehrt die
- * Quellen-Bahn der Box ({@code charging-config}), und der Weg von der Policy
- * zur Saeule (die Arbiter-Bruecke K3) entsteht erst in Paket P5. Ihm hier eine
- * Policy zu schreiben hiesse, eine Steuerart zu speichern, die kein Executor
- * ausfuehrt.
+ * <p><b>⚠ Der OCPP-Ladepunkt ({@code ev-charger}) ist seit P5 schreibbar - ueber
+ * ZWEI Wege, EINEN Schreibpfad.</b> Seine QUELLE faehrt die Quellen-Bahn der
+ * Box ({@code charging-config.charge_points[].source}); sein ZIEL und die
+ * Quelle „Guenstige Stunden" laufen ueber dieselbe Policy-Maschine wie bei
+ * jedem anderen Verbraucher und erreichen die Saeule ueber die Arbiter-Bruecke
+ * K3. Welcher Weg zustaendig ist, entscheidet die QUELLE - sie ist exklusiv:
+ *
+ * <ul>
+ *   <li>{@code sofort} → Bahn {@code schnell}, keine Policy (die aktive wird
+ *       zurueckgenommen).</li>
+ *   <li>{@code ueberschuss} → Bahn {@code nur_sonne} bzw. {@code sonne_zuerst}
+ *       (+ Mindestleistung). Ohne Ziel gibt es KEIN Dokument - die Bahn allein
+ *       IST die Steuerart, und sie zusaetzlich als
+ *       {@code site.pv_surplus_kw}-Regel zu schreiben waere dieselbe Aussage
+ *       zweimal.</li>
+ *   <li>{@code guenstig} → Bahn {@code schnell} (die Quelle sagt ausdruecklich
+ *       „Netzstrom, wenn er billig ist" - eine Sonnen-Bahn daneben liesse sie
+ *       nie greifen) + die Preis-Policy.</li>
+ * </ul>
+ *
+ * <p>Ein ZIEL kommt in jedem Fall aus der Policy - die Bahn kennt keine Frist.
  *
  * <p><b>⚠ Bewusst KEIN {@code @Transactional} um den ganzen Vorgang.</b> Der
  * Entwurf wird gespeichert, DANN aktiviert - genau die Reihenfolge, die die
@@ -61,11 +77,18 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class SteuerartService {
 
-    /** Der Satz, mit dem ein OCPP-Ladepunkt seinen fehlenden Schreibweg nennt. */
-    public static final String OCPP_NOCH_NICHT =
-            "Die Steuerart einer OCPP-Ladesäule stellen Sie zurzeit im Ladepark unter "
-            + "„Einstellungen\" ein — sie gilt dort für alle Säulen. Je Säule kommt sie mit "
-            + "dem nächsten Schritt.";
+    /**
+     * Der Satz, mit dem ein OCPP-Ladepunkt OHNE eingetragene Kennung seinen
+     * fehlenden Schreibweg nennt.
+     *
+     * <p>⚠ Er gilt seit P5 nur noch fuer den einen Fall, in dem die Bahn
+     * wirklich nicht erreichbar ist: eine komponierte Saeule, die in der
+     * Allowlist der Anlage (noch) nicht steht - dann gibt es keine Zeile, auf
+     * die {@code charge_points[].source} geschrieben werden koennte.
+     */
+    public static final String OCPP_OHNE_KENNUNG =
+            "Diese Ladesäule ist im Portal noch nicht eingetragen — tragen Sie sie im "
+            + "Ladepark ein, dann lässt sich ihre Steuerart hier stellen.";
 
     /** Was der Schreibvorgang bewirkt hat - die Antwort des Endpunkts. */
     public record Ergebnis(Steuerart steuerart, boolean aktiv, String grund, String nachricht,
@@ -79,13 +102,14 @@ public class SteuerartService {
     private final ConsumerPolicyActivationService activation;
     private final UsageProfileService profiles;
     private final SteuerartPreisVorgabe preise;
+    private final ChargingConfigService charging;
     private final ObjectMapper mapper;
 
     public SteuerartService(SiteRepository sites, EntityRegistryRepository entities,
             EntityTypeCatalog catalog, ConsumerRepository consumers,
             ConsumerService consumerService, ConsumerPolicyActivationService activation,
             UsageProfileService profiles, SteuerartPreisVorgabe preise,
-            ObjectMapper mapper) {
+            ChargingConfigService charging, ObjectMapper mapper) {
         this.sites = sites;
         this.entities = entities;
         this.catalog = catalog;
@@ -94,6 +118,7 @@ public class SteuerartService {
         this.activation = activation;
         this.profiles = profiles;
         this.preise = preise;
+        this.charging = charging;
         this.mapper = mapper;
     }
 
@@ -148,9 +173,7 @@ public class SteuerartService {
         // stehen in derselben Liste (kein zweiter Scan auf dem Schreibpfad).
         List<EntityRow> rows = entities.entitiesForSite(siteId);
         EntityRow row = entity(rows, entityId);
-        if (ChargerComponentComposer.TYPE_EV_CHARGER.equals(row.entityType())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, OCPP_NOCH_NICHT);
-        }
+        boolean ocpp = ChargerComponentComposer.TYPE_EV_CHARGER.equals(row.entityType());
         EntityType type = catalog.find(row.entityType());
         if (type == null || !"consumer".equals(type.category()) || !type.controllable()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -173,8 +196,14 @@ public class SteuerartService {
         consumerService.updateZyklus(siteId, entityId, sekunden(wunsch.mindestlaufzeitMinuten()),
                 sekunden(wunsch.sperrzeitMinuten()));
 
+        // P5: an einer OCPP-Säule fährt die QUELLE die Bahn der Box - sie wird
+        // dort geschrieben und deshalb NICHT als Policy-Anforderung.
+        boolean quelleFaehrtDieBox = false;
+        if (ocpp) {
+            quelleFaehrtDieBox = schreibeBahn(siteId, entityId, row, wunsch);
+        }
         ObjectNode dokument = SteuerartDokument.dokument(entityId.toString(),
-                HistoryRange.ZONE.getId(), wunsch, k);
+                HistoryRange.ZONE.getId(), wunsch, k, quelleFaehrtDieBox);
         if (dokument == null) {
             return sofort(siteId, entityId, actor);
         }
@@ -183,6 +212,44 @@ public class SteuerartService {
         return new Ergebnis(steuerart(siteId, entityId), outcome.activated(),
                 outcome.reason(), outcome.message(), outcome.published(),
                 outcome.policyVersion() != null ? outcome.policyVersion() : draft.version());
+    }
+
+    /**
+     * Schreibt die QUELLEN-BAHN einer OCPP-Säule (P5) und sagt, ob sie die
+     * Quelle damit trägt.
+     *
+     * <p><b>⚠ Die Bahn wird IMMER geschrieben</b>, auch für „Günstige Stunden"
+     * und „Sofort" - dort auf {@code schnell}. Ohne das behielte eine Säule,
+     * die vorher auf „Nur Sonnenstrom" stand, ihre Sonnen-Bahn, und die neue
+     * Quelle könnte nie greifen: die Bahn deckelt unabhängig von jeder Policy.
+     *
+     * @return true, wenn die Bahn die Quelle trägt (dann schreibt das Dokument
+     *         sie nicht noch einmal) - false bei „Günstige Stunden", deren
+     *         Fenster nur die Policy kennt
+     */
+    private boolean schreibeBahn(UUID siteId, UUID entityId, EntityRow row,
+            SteuerartWunsch wunsch) {
+        String chargePointId = entities.chargePointIdsByEntity(siteId).get(entityId);
+        if (chargePointId == null || chargePointId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, OCPP_OHNE_KENNUNG);
+        }
+        String quelle = wunsch == null ? null : wunsch.quelle();
+        String bahn;
+        BigDecimal minKw = null;
+        if (SteuerartProjektion.QUELLE_UEBERSCHUSS.equals(quelle)) {
+            // ⚠ Die Vorgabe ist „pausieren" = nur Sonnenstrom: sie ist die
+            // engere der beiden und damit die, die niemanden überrascht.
+            boolean mindest = SteuerartProjektion.MODUS_MINDESTLEISTUNG
+                    .equals(wunsch.ueberschussModus());
+            bahn = mindest ? SteuerartProjektion.POLICY_SONNE_ZUERST
+                    : SteuerartProjektion.POLICY_NUR_SONNE;
+            minKw = mindest ? wunsch.mindestleistungKw() : null;
+        } else {
+            bahn = SteuerartProjektion.POLICY_SCHNELL;
+        }
+        charging.setChargePointSource(siteId, chargePointId, bahn,
+                minKw == null ? null : minKw.doubleValue());
+        return !SteuerartProjektion.QUELLE_GUENSTIG.equals(quelle);
     }
 
     /**

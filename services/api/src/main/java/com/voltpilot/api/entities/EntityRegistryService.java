@@ -1437,4 +1437,17 @@ public class EntityRegistryService {
             throw new IllegalStateException("cannot serialize entity config", e);
         }
     }
+
+    /**
+     * Ist diese Komponente eine gemeldete OCPP-Saeule (P5)?
+     *
+     * <p>Das ist IHRE Form von „verbunden": ein Ladepunkt hat weder eine
+     * Edge-Quelle noch ein eigenes Geraet - er WAEHLT die Box selbst an, und
+     * die Bindung {@code device_charge_point.entity_id} ist genau die, die
+     * diese Komponente ueberhaupt hat entstehen lassen. Ohne diese Auskunft
+     * koennte an einer Saeule nie eine Regel aktiviert werden.
+     */
+    public boolean istGebundenerLadepunkt(UUID siteId, UUID entityId) {
+        return repo.chargePointIdsByEntity(siteId).containsKey(entityId);
+    }
 }

@@ -63,6 +63,24 @@ public final class SteuerartDokument {
      */
     public static ObjectNode dokument(String entityId, String timezone, SteuerartWunsch w,
             SteuerartSatz.Kontext kontext) {
+        return dokument(entityId, timezone, w, kontext, false);
+    }
+
+    /**
+     * Dieselbe Projektion, aber die QUELLE darf ausgelassen werden.
+     *
+     * <p><b>⚠ Das ist die P5-Regel fuer einen OCPP-Ladepunkt:</b> seine Quelle
+     * faehrt die Quellen-Bahn der BOX ({@code charge_points[].source}). Sie
+     * ZUSAETZLICH als {@code site.pv_surplus_kw}-Anforderung zu schreiben waere
+     * dieselbe Aussage zweimal - zwei Maschinen, die denselben Ueberschuss
+     * gegeneinander deckeln, und ein Kunde, der eine davon nie zu sehen
+     * bekommt. Bleibt danach nichts uebrig (Quelle von der Box, kein Ziel),
+     * gibt es GAR KEIN Dokument - die Bahn allein IST die Steuerart.
+     *
+     * @param quelleFaehrtDieBox true = die Quelle wird ausgelassen
+     */
+    public static ObjectNode dokument(String entityId, String timezone, SteuerartWunsch w,
+            SteuerartSatz.Kontext kontext, boolean quelleFaehrtDieBox) {
         if (w == null || SteuerartProjektion.QUELLE_SOFORT.equals(w.quelle())) {
             return null;
         }
@@ -81,12 +99,16 @@ public final class SteuerartDokument {
             doc.put("timezone", timezone);
         }
         ArrayNode reqs = doc.putArray("requirements");
-        reqs.add(quelle(w, kontext, v));
+        if (!quelleFaehrtDieBox) {
+            reqs.add(quelle(w, kontext, v));
+        }
         ObjectNode ziel = ziel(w, kontext, v);
         if (ziel != null) {
             reqs.add(ziel);
         }
-        return doc;
+        // ⚠ Ein Dokument ohne eine einzige Anforderung ist keins (das Schema
+        // verlangt minItems: 1) - dann gilt allein die Bahn der Box.
+        return reqs.isEmpty() ? null : doc;
     }
 
     // -----------------------------------------------------------------------

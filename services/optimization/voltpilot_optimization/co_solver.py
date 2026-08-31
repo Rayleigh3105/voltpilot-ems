@@ -1086,6 +1086,9 @@ def _extract_loads(
                 control_kind=load.control_kind,
                 slots=slots,
                 unserved=tuple(unserved),
+                # K2 (P5): reiche das Flag DURCH - der Solver plant unveraendert,
+                # nur der Publisher liest es.
+                has_local_source=load.has_local_source,
             )
         )
     return dispatches

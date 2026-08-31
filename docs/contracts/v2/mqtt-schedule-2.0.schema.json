@@ -83,7 +83,7 @@
           "slots": {
             "type": "array",
             "minItems": 1,
-            "description": "Contiguous slots in ascending start order on the shared slot_minutes grid, covering the plan horizon. The edge executes the slot whose [start, start+slot_minutes) contains 'now'.",
+            "description": "Slots in ascending start order on the shared slot_minutes grid. The edge executes the slot whose [start, start+slot_minutes) contains 'now'. Storage and producer entities are CONTIGUOUS and cover the plan horizon. A CONSUMER whose policy also carries a local source (Verbrauchsmanagement v1 / K2) may leave gaps: the plan carries only the slots it really dispatches, and WHERE THE PLAN IS SILENT THE SOURCE GOVERNS - the edge reads an uncovered time as 'no wish' (plan2.ActiveCommands ok=false), withdraws cleanly (stale=false) and the arbiter selects the next holder, i.e. the reactive rule. A consumer without a local source keeps the full grid, where an off slot IS the statement.",
             "items": {
               "type": "object",
               "required": ["start", "commands"],

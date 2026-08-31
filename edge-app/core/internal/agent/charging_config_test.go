@@ -446,3 +446,94 @@ func TestTheHeartbeatNamesTheConnectionOfEachStation(t *testing.T) {
 		t.Fatalf("connections = %v", byID)
 	}
 }
+
+// TestTheSourceAndTheFrameArriveWithPatchSemantics (P5): dasselbe Dokument
+// trägt seit Verbrauchsmanagement v1 die STEUERART je Säule und den
+// Ladepark-RAHMEN - und beides folgt der PATCH-Regel.
+func TestTheSourceAndTheFrameArriveWithPatchSemantics(t *testing.T) {
+	a := ocppAgent(t, nil)
+	ocppSite(t, a, 167)
+	ocppStation(t, a, "saeule-1", 1, 22)
+	ocppStation(t, a, "saeule-2", 1, 22)
+	a.entMu.Lock()
+	a.entIdentity = entities.Identity{TenantID: "t", SiteID: "s", DeviceID: "d"}
+	a.entMu.Unlock()
+
+	before := a.OcppSettings()
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+		"device_id":"d","charge_points":[{"id":"saeule-1","source":"nur_sonne","min_kw":4.2}],
+		"frame":{"house_reserve_kw":150,"min_power_kw":11},
+		"published_at":"2026-08-31T09:15:00Z"}`))
+
+	c1, _ := a.ocpp.srv.Snapshot().ChargerByID("saeule-1")
+	if c1.Source != string(lastmgmt.PolicySolarOnly) || c1.MinKw != 4.2 {
+		t.Fatalf("die Steuerart der Säule muss ankommen: %+v", c1)
+	}
+	if c2, _ := a.ocpp.srv.Snapshot().ChargerByID("saeule-2"); c2.Source != "" {
+		t.Fatalf("eine nicht genannte Säule bleibt bei der Wahl der Anlage: %+v", c2)
+	}
+	after := a.OcppSettings()
+	if after.HouseReserveKw != 150 || after.MinPowerKw != 11 {
+		t.Fatalf("der Rahmen muss ankommen: %+v", after)
+	}
+	// ⚠ PATCH: was der Rahmen nicht nennt, bleibt wie es war.
+	if after.MarginPct != before.MarginPct || after.MaxHouseLoadKw != before.MaxHouseLoadKw ||
+		after.RotationPeriod != before.RotationPeriod || after.GridLimitKw != before.GridLimitKw {
+		t.Fatalf("ein abwesendes Rahmen-Feld darf nichts zurücksetzen: %+v -> %+v", before, after)
+	}
+
+	// ⚠ Die Quelle einer SCHON BEKANNTEN Säule wird nachgezogen - die eine
+	// Ausnahme von der Nie-überschreiben-Regel: für sie gibt es auf `:8484`
+	// keine Oberfläche, es ist also nichts zu schützen.
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+		"device_id":"d","charge_points":[{"id":"saeule-1","source":"schnell"}],
+		"published_at":"2026-08-31T09:20:00Z"}`))
+	c1, _ = a.ocpp.srv.Snapshot().ChargerByID("saeule-1")
+	if c1.Source != string(lastmgmt.PolicyFast) {
+		t.Fatalf("die geänderte Quelle muss ankommen: %+v", c1)
+	}
+	if c1.MinKw != 4.2 {
+		t.Fatalf("was das Dokument nicht nennt, bleibt: %+v", c1)
+	}
+
+	// Ein unbekanntes Wort überspringt den EINTRAG - nie auf „schnell"
+	// aufgelöst, und die bekannte Säule behält, was sie hat.
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+		"device_id":"d","charge_points":[{"id":"saeule-1","source":"mondschein"}],
+		"published_at":"2026-08-31T09:25:00Z"}`))
+	c1, _ = a.ocpp.srv.Snapshot().ChargerByID("saeule-1")
+	if c1.Source != string(lastmgmt.PolicyFast) {
+		t.Fatalf("ein unbekanntes Wort darf nichts ändern: %+v", c1)
+	}
+}
+
+// TestAFrameWithoutTheNewFieldsIsByteForByteAsBefore ist die
+// Kompatibilitäts-Zusage: ein Dokument einer ÄLTEREN Cloud lässt jede
+// Einstellung und jede Säule genau so, wie sie war.
+func TestAFrameWithoutTheNewFieldsIsByteForByteAsBefore(t *testing.T) {
+	a := ocppAgent(t, nil)
+	ocppSite(t, a, 167)
+	ocppStation(t, a, "saeule-1", 1, 22)
+	a.entMu.Lock()
+	a.entIdentity = entities.Identity{TenantID: "t", SiteID: "s", DeviceID: "d"}
+	a.entMu.Unlock()
+	if _, err := a.ocpp.srv.Update("saeule-1", csms.UpdateRequest{
+		Source: ptrStr(string(lastmgmt.PolicySolarOnly))}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	before := a.OcppSettings()
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+		"device_id":"d","grid_limit_kw":277,"published_at":"2026-08-31T09:15:00Z"}`))
+
+	if got := a.OcppSettings(); got.HouseReserveKw != before.HouseReserveKw ||
+		got.MarginPct != before.MarginPct || got.MinPowerKw != before.MinPowerKw ||
+		got.RotationPeriod != before.RotationPeriod || got.MaxHouseLoadKw != before.MaxHouseLoadKw {
+		t.Fatalf("ohne `frame` darf sich am Rahmen nichts ändern: %+v -> %+v", before, got)
+	}
+	if c, _ := a.ocpp.srv.Snapshot().ChargerByID("saeule-1"); c.Source != string(lastmgmt.PolicySolarOnly) {
+		t.Fatalf("ohne `charge_points` behält die Säule ihre Quelle: %+v", c)
+	}
+}
+
+func ptrStr(s string) *string { return &s }

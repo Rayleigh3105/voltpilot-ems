@@ -148,6 +148,17 @@ und behält die Kennung — der Vorzustand, nie eine falsche Handlung. Die Fixtu
 zeigt beides nebeneinander: `saeule-hof-nord` bleibt zugelassen, `saeule-halle`
 wird entfernt, und keine Kennung steht je in beiden Listen.
 
+Seit Verbrauchsmanagement v1 (P5) traegt dasselbe Dokument die STEUERART je
+Saeule und den Ladepark-RAHMEN (`mqtt-charging-config.valid.steuerart-je-saeule.json`):
+`charge_points[].source` sagt, WOHER der Ladestrom DIESER Saeule kommen soll —
+der site-weite `surplus_policy` bleibt daneben der Anlagen-Standard, und
+abwesend heisst weiterhin „fuer diese Saeule gilt die Wahl der Anlage", nie
+`schnell`. Der `frame`-Block ist der Rahmen, den bis dahin nur `:8484` pflegen
+konnte (Hausreserve, Sicherheitsabstand, Mindestleistung, Rotation, hoechste
+Gebaeudelast, statisch/gemessen); auch hier gilt die PATCH-Regel — ein
+abwesendes Feld behaelt den Wert der Box, und die Plausibilitaet prueft
+weiterhin die Box (`lastmgmt.Settings.Apply`), nie das Dokument.
+
 ## `mqtt-charging-boost` (Lastmanagement Stufe 4)
 
 Die Einmal-Übersteuerung „Jetzt voll laden" für GENAU EINEN laufenden

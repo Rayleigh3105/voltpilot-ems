@@ -51,6 +51,18 @@ public final class SteuerartProjektion {
     // --- Herkunft der Projektion -------------------------------------------
     public static final String HERKUNFT_POLICY = "policy";
     public static final String HERKUNFT_STANDARD = "standard";
+    /**
+     * Die eigene Wahl DIESER Saeule (P5): sie hat eine Quellen-Bahn, die vom
+     * Anlagen-Standard abweicht.
+     *
+     * <p><b>⚠ Es ist bewusst ein VIERTES Wort, nicht {@code policy}.</b> Eine
+     * Saeulen-Quelle steht in KEINEM Policy-Dokument - sie faehrt die
+     * Quellen-Bahn der Box ({@code charge_points[].source}); sie {@code policy}
+     * zu nennen behauptete eine Regel, die es nicht gibt. Und {@code standard}
+     * waere die glatte Umkehrung der Wahrheit: der Kunde hat fuer GENAU diese
+     * Saeule etwas anderes gewaehlt.
+     */
+    public static final String HERKUNFT_SAEULE = "saeule";
     public static final String HERKUNFT_OHNE = "ohne";
 
     // --- Ueberschuss-Modus eines Ladepunkts (§7.2) --------------------------
@@ -82,16 +94,43 @@ public final class SteuerartProjektion {
      *                      keine (nie eine 0)
      */
     public static Steuerart anlagenStandard(String surplusPolicy, BigDecimal minPowerKw) {
+        return laneSteuerart(surplusPolicy, minPowerKw, HERKUNFT_STANDARD);
+    }
+
+    /**
+     * §7.2 je SÄULE (P5): die Quellen-Bahn, die GENAU DIESE Säule fährt.
+     *
+     * <p>Dieselbe Abbildung wie beim Anlagen-Standard - es ist dasselbe
+     * Vokabular und dieselbe Bahn -, nur die HERKUNFT unterscheidet sie:
+     * {@link #HERKUNFT_SAEULE} sagt „für diese Säule hat der Kunde etwas
+     * anderes gewählt", und genau daran hängt der Chip „Standard/abweichend".
+     *
+     * @param source   die Quelle DIESER Säule aus der Allowlist, oder
+     *                 {@code null}/leer = sie hat keine eigene
+     * @param minPowerKw ihre Mindestleistung, sonst die der Anlage
+     * @param standard der Anlagen-Standard - er gilt, solange sie schweigt
+     */
+    public static Steuerart saeulenSteuerart(String source, BigDecimal minPowerKw,
+            Steuerart standard) {
+        String p = source == null ? "" : source.trim();
+        if (p.isEmpty()) {
+            return standard;
+        }
+        return laneSteuerart(p, minPowerKw, HERKUNFT_SAEULE);
+    }
+
+    private static Steuerart laneSteuerart(String surplusPolicy, BigDecimal minPowerKw,
+            String herkunft) {
         String p = surplusPolicy == null ? "" : surplusPolicy.trim();
         if (POLICY_NUR_SONNE.equals(p)) {
-            return new Steuerart(QUELLE_UEBERSCHUSS, HERKUNFT_STANDARD, null, null,
+            return new Steuerart(QUELLE_UEBERSCHUSS, herkunft, null, null,
                     MODUS_PAUSIEREN, null, null, null, null, null, null, null);
         }
         if (POLICY_SONNE_ZUERST.equals(p)) {
-            return new Steuerart(QUELLE_UEBERSCHUSS, HERKUNFT_STANDARD, null, null,
+            return new Steuerart(QUELLE_UEBERSCHUSS, herkunft, null, null,
                     MODUS_MINDESTLEISTUNG, minPowerKw, null, null, null, null, null, null);
         }
-        return Steuerart.quelleOnly(QUELLE_SOFORT, HERKUNFT_STANDARD);
+        return Steuerart.quelleOnly(QUELLE_SOFORT, herkunft);
     }
 
     /**
@@ -133,6 +172,14 @@ public final class SteuerartProjektion {
             return quelle; // Regeln 3-6.
         }
         if (quelle == null && ziel != null) {
+            // ⚠ An einem OCPP-Ladepunkt faehrt die QUELLE die Bahn der Box (P5),
+            // steht also per Konstruktion in keinem Dokument - eine Frist ALLEIN
+            // heisst dort „diese Bahn plus diese Frist", nie „Guenstige
+            // Stunden". Die Regel 7 darunter gilt jedem anderen Verbraucher:
+            // dort waehlt der Planer die billigsten Slots.
+            if (istOcppLadepunkt) {
+                return anlagenStandard.mitZiel(ziel);
+            }
             // Regel 7: eine Frist ALLEIN - der Planer waehlt die billigsten
             // Slots, also ist die Quelle „Guenstige Stunden" (ohne Grenze; sie
             // steht in keinem Dokument und wird deshalb nicht erfunden).

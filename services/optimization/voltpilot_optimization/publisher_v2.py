@@ -77,12 +77,22 @@ def build_plan_v2_payload(plan: SitePlan) -> dict:
         if any(s.limit_kw is not None for s in producer.slots[:EDGE_PLAN_SLOTS]):
             entities.append(_producer_entity_payload(producer))
     for load in plan.loads:
-        # Consumers carry the FULL slot grid (contract contiguity), always -
-        # an all-off grid IS the plan ("do not run"), unlike a producer's
-        # no-limit release. Shadow discipline: the entity only exists in the
-        # payload for sites the engine co-plans (flagged), so an unflagged
-        # site's v2 payload stays byte-identical.
-        entities.append(_load_entity_payload(load))
+        # Consumers WITHOUT a local source carry the FULL slot grid (contract
+        # contiguity), always - an all-off grid IS the plan ("do not run"),
+        # unlike a producer's no-limit release. Shadow discipline: the entity
+        # only exists in the payload for sites the engine co-plans (flagged),
+        # so an unflagged site's v2 payload stays byte-identical.
+        #
+        # K2 (P5): a consumer WITH a local source is silent outside its goal
+        # windows (see _load_entity_payload). Silent for the WHOLE published
+        # window means the plan has nothing to say about it at all - then the
+        # entity is OMITTED entirely (the producer's release discipline), never
+        # published with an empty slot list, which the contract refuses
+        # (`slots` minItems 1) and which would read as a malformed plan rather
+        # than as "the source governs".
+        payload_load = _load_entity_payload(load)
+        if payload_load["slots"]:
+            entities.append(payload_load)
     if not entities:
         raise ValueError(
             "cannot build a v2 plan payload without any commanded entity"
@@ -151,9 +161,30 @@ def _load_entity_payload(load: LoadDispatch) -> dict:
     command vocabulary carries it without any schema change - ``on_off`` for
     on/off consumers, ``setpoint_kw`` (+ = consume, 0 = off) for stepped and
     continuous ones. ``kind`` stays informative (the registry is the
-    authority)."""
+    authority).
+
+    ⚠ K2 - DIE STILLE-REGEL (Verbrauchsmanagement v1 / P5). Ein Verbraucher,
+    dessen Policy AUCH eine lokale Quelle traegt (``has_local_source``), bekommt
+    NUR die Slots, die der Plan wirklich schaltet. Ein voller Raster mit
+    ausdruecklichen Aus-Slots waere hier der Plan, der die Regel des Kunden
+    ueberstimmt - jede Viertelstunde, den ganzen Horizont lang -, obwohl er das
+    lokale Signal per Konstruktion gar nicht sehen kann. Wo der Plan SCHWEIGT,
+    regiert die Quelle.
+
+    Der Edge liest das genau so: ``plan2.Plan.ActiveCommands`` liefert fuer eine
+    nicht abgedeckte Zeit ``ok=false``, und ``runPlanExecutors`` zieht den Wunsch
+    dann SAUBER zurueck (``stale=false``) - der Arbiter waehlt im selben Takt den
+    naechsten Halter, also die reaktive Regel. Kein Failsafe-Blinzeln, keine
+    Edge-Aenderung.
+
+    Ein Verbraucher OHNE lokale Quelle behaelt das volle Raster - dort IST ein
+    Aus-Slot die Aussage („dieses Geraet laeuft jetzt nicht"), und ein Weglassen
+    hiesse „entscheide selbst", was er nicht kann.
+    """
     slots = []
     for slot in load.slots[:EDGE_PLAN_SLOTS]:
+        if load.has_local_source and not slot.on:
+            continue
         if load.control_kind == "on_off":
             commands: dict = {"on_off": bool(slot.on)}
         else:

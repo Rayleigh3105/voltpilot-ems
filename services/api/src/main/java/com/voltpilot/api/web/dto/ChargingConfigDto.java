@@ -43,6 +43,18 @@ public record ChargingConfigDto(Double gridLimitKw, List<String> priorityChargeP
          * erneutes Eintragen belebt sie wieder und nimmt sie hier heraus.
          */
         List<String> removedChargePointIds,
+        /*
+         * Der Ladepark-RAHMEN (P5/E10): Hausreserve, Sicherheitsabstand,
+         * Mindestleistung, Rotation, hoechste bekannte Gebaeudelast und
+         * statisch/gemessen.
+         *
+         * ⚠ Bis P5 konnte ihn NUR `:8484` pflegen - ein Kunde konnte im Portal
+         * nicht einmal LESEN, wonach seine Anlage rechnet. Er wird deshalb hier
+         * gefuehrt und mitgeliefert; SCHREIBEN darf ihn nur ein
+         * Plattform-Admin. null = das Portal aeussert sich nicht und die Box
+         * behaelt ihre eigene Zahl (die PATCH-Regel dieses Pfads).
+         */
+        LadeparkRahmenDto frame,
         Instant updatedAt, String updatedBy) {
 
     /**
@@ -53,6 +65,17 @@ public record ChargingConfigDto(Double gridLimitKw, List<String> priorityChargeP
     public record AllowedChargePointDto(String chargePointId, String label, Double ratedKw,
             Integer connectors,
             /*
+             * source = die QUELLE dieser Saeule (P5, Steuerart je Ladepunkt):
+             * "nur_sonne" | "sonne_zuerst" | "schnell". null = der Kunde hat
+             * fuer SIE nichts gewaehlt und es gilt der ANLAGEN-STANDARD
+             * (ChargingConfigDto.surplusPolicy) - nie "schnell", das waere eine
+             * Netzstrom-Freigabe, die niemand erteilt hat.
+             *
+             * minKw = ab welcher Leistung sie ueberhaupt anfaengt. null =
+             * unbekannt, nie 0.
+             */
+            String source, Double minKw,
+            /*
              * connection = WO diese Saeule haengt (Cockpit Phase 1 / C1):
              * "haus" (hinter dem Hausanschluss) oder "eigen" (eigener
              * Netzanschluss/Zaehler). null = der Kunde hat nichts gesagt, und
@@ -61,4 +84,23 @@ public record ChargingConfigDto(Double gridLimitKw, List<String> priorityChargeP
              */
             String connection,
             Instant addedAt, String addedBy) {}
+
+    /**
+     * Der Ladepark-RAHMEN einer Anlage (P5/E10). Jedes Feld ist einzeln
+     * optional: null heisst „das Portal aeussert sich nicht" und die Box
+     * behaelt ihre eigene Zahl.
+     *
+     * <p>⚠ {@code staticBudget} ist NEGATIV formuliert wie auf der Box („rechne
+     * STATISCH"), damit sein Nullwert die gewollte Vorgabe ist: nimm die
+     * Messung, wenn es eine gibt.
+     */
+    public record LadeparkRahmenDto(Double houseReserveKw, Double marginPct, Double minPowerKw,
+            Integer rotationMinutes, Double maxHouseLoadKw, Boolean staticBudget) {
+
+        /** true, wenn das Portal zu KEINEM Feld etwas sagt. */
+        public boolean leer() {
+            return houseReserveKw == null && marginPct == null && minPowerKw == null
+                    && rotationMinutes == null && maxHouseLoadKw == null && staticBudget == null;
+        }
+    }
 }

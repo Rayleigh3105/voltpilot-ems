@@ -2,6 +2,8 @@ package com.voltpilot.api.chargers;
 
 import com.voltpilot.api.web.dto.ChargingConfigDto;
 import com.voltpilot.api.web.dto.ChargingConfigDto.AllowedChargePointDto;
+import com.voltpilot.api.web.dto.ChargingConfigDto.LadeparkRahmenDto;
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -35,11 +37,18 @@ public class ChargingConfigRepository {
     /** Die gepflegte Konfiguration; leere Felder = noch nichts gepflegt. */
     public ChargingConfigDto forSite(UUID siteId) {
         List<Object[]> head = jdbc.query(
-                "SELECT grid_limit_kw, surplus_policy, storage_priority, updated_at, updated_by "
+                "SELECT grid_limit_kw, surplus_policy, storage_priority, house_reserve_kw, "
+                        + "margin_pct, min_power_kw, rotation_minutes, max_house_load_kw, "
+                        + "static_budget, updated_at, updated_by "
                         + "FROM site_charging_config WHERE site_id = ?",
                 (rs, n) -> new Object[] {rs.getObject("grid_limit_kw"),
                         rs.getTimestamp("updated_at"), rs.getString("updated_by"),
-                        rs.getString("surplus_policy"), rs.getString("storage_priority")},
+                        rs.getString("surplus_policy"), rs.getString("storage_priority"),
+                        new LadeparkRahmenDto(dbl(rs.getObject("house_reserve_kw")),
+                                dbl(rs.getObject("margin_pct")), dbl(rs.getObject("min_power_kw")),
+                                (Integer) rs.getObject("rotation_minutes"),
+                                dbl(rs.getObject("max_house_load_kw")),
+                                (Boolean) rs.getObject("static_budget"))},
                 siteId);
         List<String> priorities = jdbc.query(
                 "SELECT charge_point_id FROM site_charge_point_priority WHERE site_id = ? "
@@ -49,24 +58,32 @@ public class ChargingConfigRepository {
         List<String> removed = removedChargePointIds(siteId);
         if (head.isEmpty()) {
             return new ChargingConfigDto(null, List.copyOf(priorities), null, null, allowed,
-                    removed, null, null);
+                    removed, null, null, null);
         }
         Object[] row = head.get(0);
         Timestamp at = (Timestamp) row[1];
+        LadeparkRahmenDto frame = (LadeparkRahmenDto) row[5];
         return new ChargingConfigDto((Double) row[0], List.copyOf(priorities),
                 (String) row[3], (String) row[4], allowed, removed,
+                // ⚠ Ein Rahmen, zu dem NICHTS gepflegt ist, wird als null
+                // gemeldet - nie als Objekt aus lauter Nullen: „das Portal
+                // sagt dazu nichts" ist eine Aussage, sechs leere Felder sind
+                // eine Behauptung ueber sechs Zahlen.
+                frame.leer() ? null : frame,
                 at == null ? null : at.toInstant(), (String) row[2]);
     }
 
     /** Die eingetragenen Kennungen dieser Anlage (aelteste zuerst). */
     public List<AllowedChargePointDto> allowlist(UUID siteId) {
         return List.copyOf(jdbc.query(
-                "SELECT charge_point_id, label, rated_kw, connectors, connection, added_at, "
-                        + "added_by FROM site_charge_point_allowlist WHERE site_id = ? "
-                        + "AND removed_at IS NULL ORDER BY added_at, charge_point_id",
+                "SELECT charge_point_id, label, rated_kw, connectors, source, min_kw, "
+                        + "connection, added_at, added_by FROM site_charge_point_allowlist "
+                        + "WHERE site_id = ? AND removed_at IS NULL "
+                        + "ORDER BY added_at, charge_point_id",
                 (rs, n) -> new AllowedChargePointDto(rs.getString("charge_point_id"),
-                        rs.getString("label"), (Double) rs.getObject("rated_kw"),
-                        (Integer) rs.getObject("connectors"), rs.getString("connection"),
+                        rs.getString("label"), dbl(rs.getObject("rated_kw")),
+                        (Integer) rs.getObject("connectors"), rs.getString("source"),
+                        dbl(rs.getObject("min_kw")), rs.getString("connection"),
                         rs.getTimestamp("added_at") == null ? null
                                 : rs.getTimestamp("added_at").toInstant(),
                         rs.getString("added_by")),
@@ -100,10 +117,11 @@ public class ChargingConfigRepository {
      */
     @Transactional
     public void admitChargePoint(UUID tenantId, UUID siteId, String chargePointId, String label,
-            Double ratedKw, Integer connectors, String connection, String actor) {
+            Double ratedKw, Integer connectors, String source, Double minKw, String connection,
+            String actor) {
         jdbc.update("INSERT INTO site_charge_point_allowlist (site_id, charge_point_id, tenant_id, "
-                + "label, rated_kw, connectors, connection, added_at, added_by) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                + "label, rated_kw, connectors, source, min_kw, connection, added_at, added_by) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 + "ON CONFLICT (site_id, charge_point_id) DO UPDATE SET "
                 + "label = COALESCE(EXCLUDED.label, site_charge_point_allowlist.label), "
                 + "rated_kw = COALESCE(EXCLUDED.rated_kw, site_charge_point_allowlist.rated_kw), "
@@ -116,9 +134,16 @@ public class ChargingConfigRepository {
                 // der ihn spaeter aendert, erreichte die Box sonst nie.
                 + "connection = COALESCE(EXCLUDED.connection, "
                 + "site_charge_point_allowlist.connection), "
+                // ⚠ Die STEUERART folgt derselben Regel: nicht gesagt =
+                // behalten. Sie ist wie der Anschluss eine, die auch auf der
+                // BOX ueberschreibt - dort gibt es fuer sie keine Oberflaeche,
+                // es ist also nichts zu schuetzen, und ein Kunde, der seine
+                // Quelle spaeter aendert, erreichte die Box sonst nie.
+                + "source = COALESCE(EXCLUDED.source, site_charge_point_allowlist.source), "
+                + "min_kw = COALESCE(EXCLUDED.min_kw, site_charge_point_allowlist.min_kw), "
                 + "removed_at = NULL, removed_by = NULL",
-                siteId, chargePointId, tenantId, label, ratedKw, connectors, connection,
-                Timestamp.from(Instant.now()), actor);
+                siteId, chargePointId, tenantId, label, ratedKw, connectors, source, minKw,
+                connection, Timestamp.from(Instant.now()), actor);
     }
 
     /**
@@ -168,6 +193,64 @@ public class ChargingConfigRepository {
                 + "updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by",
                 siteId, tenantId, surplusPolicy, storagePriority, Timestamp.from(Instant.now()),
                 actor);
+    }
+
+    /**
+     * Setzt die STEUERART einer eingetragenen Säule (P5). Beide Felder sind
+     * einzeln optional - dieselbe PATCH-Regel wie überall auf diesem Pfad.
+     *
+     * @return true, wenn diese Kennung eingetragen IST (eine unbekannte oder
+     *         zurückgenommene Säule wird NICHT still angelegt: das Eintragen ist
+     *         eine eigene, bewusste Handlung)
+     */
+    @Transactional
+    public boolean saveChargePointSource(UUID siteId, String chargePointId, String source,
+            Double minKw) {
+        return jdbc.update("UPDATE site_charge_point_allowlist SET "
+                + "source = COALESCE(?, source), min_kw = COALESCE(?, min_kw) "
+                + "WHERE site_id = ? AND charge_point_id = ? AND removed_at IS NULL",
+                source, minKw, siteId, chargePointId) > 0;
+    }
+
+    /**
+     * Setzt den Ladepark-RAHMEN (P5/E10). Jedes Feld einzeln optional: null =
+     * „dazu sagt das Portal nichts" und der gespeicherte Wert bleibt stehen.
+     */
+    @Transactional
+    public void saveFrame(UUID tenantId, UUID siteId, LadeparkRahmenDto frame, String actor) {
+        jdbc.update("INSERT INTO site_charging_config (site_id, tenant_id, house_reserve_kw, "
+                + "margin_pct, min_power_kw, rotation_minutes, max_house_load_kw, static_budget, "
+                + "updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                + "ON CONFLICT (site_id) DO UPDATE SET "
+                + "house_reserve_kw = COALESCE(EXCLUDED.house_reserve_kw, "
+                + "site_charging_config.house_reserve_kw), "
+                + "margin_pct = COALESCE(EXCLUDED.margin_pct, site_charging_config.margin_pct), "
+                + "min_power_kw = COALESCE(EXCLUDED.min_power_kw, "
+                + "site_charging_config.min_power_kw), "
+                + "rotation_minutes = COALESCE(EXCLUDED.rotation_minutes, "
+                + "site_charging_config.rotation_minutes), "
+                + "max_house_load_kw = COALESCE(EXCLUDED.max_house_load_kw, "
+                + "site_charging_config.max_house_load_kw), "
+                + "static_budget = COALESCE(EXCLUDED.static_budget, "
+                + "site_charging_config.static_budget), "
+                + "updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by",
+                siteId, tenantId, frame.houseReserveKw(), frame.marginPct(), frame.minPowerKw(),
+                frame.rotationMinutes(), frame.maxHouseLoadKw(), frame.staticBudget(),
+                Timestamp.from(Instant.now()), actor);
+    }
+
+    /**
+     * NUMERIC kommt als BigDecimal zurück, nicht als Double - ein blindes
+     * {@code (Double) rs.getObject(...)} wirft dort eine ClassCastException.
+     */
+    private static Double dbl(Object v) {
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof BigDecimal b) {
+            return b.doubleValue();
+        }
+        return ((Number) v).doubleValue();
     }
 
     /** Ersetzt die Vorrang-Menge (leer = ausdrücklich keine Vorrang-Säule). */

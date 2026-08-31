@@ -274,23 +274,82 @@ class SteuerartApiTest {
         }
     }
 
+    /**
+     * P5: die Steuerart einer OCPP-Säule wird geschrieben - über ZWEI Wege,
+     * EINEN Schreibpfad. Die QUELLE landet in der Quellen-Bahn der Box
+     * (`charge_points[].source`), das ZIEL in der Policy.
+     */
     @Test
-    void eineOcppSaeuleSagtEhrlichDassIhrWegNochNichtHierLiegt() throws Exception {
+    void dieSteuerartEinerOcppSaeuleFaehrtDieBahnDerBoxUndIhrZielDiePolicy() throws Exception {
         String customer = token("demo", "demo");
         UUID site = createSite(customer, "Steuerart OCPP");
         try {
+            erzeugerAnlegen(site); // ohne PV waere „Ueberschuss" gesperrt
+            UUID device = claim(customer, site, "edge-steuerart-ocpp");
             UUID saeule = ocppKomponente(site, "Stellplatz 1");
+            bindeSaeule(site, device, saeule, "SAEULE-P5");
+            // Sie muss EINGETRAGEN sein - auf eine Kennung, die die Anlage
+            // nicht führt, lässt sich keine Bahn schreiben.
+            postRaw("/api/v1/sites/" + site + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "SAEULE-P5"));
 
+            // (1) Überschuss -> die Bahn, und KEINE Policy: die Bahn allein IST
+            // die Steuerart, sie zusätzlich als Regel zu schreiben wäre
+            // dieselbe Aussage zweimal.
+            ResponseEntity<String> res = putRaw(pfad(site, saeule), customer, Map.of(
+                    "quelle", "ueberschuss", "ueberschussModus", "mindestleistung",
+                    "mindestleistungKw", 4.2));
+            assertThat(res.getStatusCode()).as("%s", res.getBody()).isEqualTo(HttpStatus.OK);
+            JsonNode cfg = getJson("/api/v1/sites/" + site + "/charging-config", customer);
+            JsonNode cp = cfg.path("chargePoints").get(0);
+            assertThat(cp.path("source").asText()).isEqualTo("sonne_zuerst");
+            assertThat(cp.path("minKw").asDouble()).isEqualTo(4.2);
+            assertThat(policyFassungen(site, saeule))
+                    .as("die Bahn traegt die Quelle - kein Dokument daneben").isZero();
+
+            // Und die Zeile liest genau das zurück - mit der Herkunft „saeule",
+            // also dem Chip „abweichend" (der Anlagen-Standard ist „schnell").
+            JsonNode zeile = eintrag(getJson(zone(site), customer), "Stellplatz 1");
+            assertThat(zeile.path("steuerart").path("quelle").asText()).isEqualTo("ueberschuss");
+            assertThat(zeile.path("steuerart").path("herkunft").asText()).isEqualTo("saeule");
+            assertThat(zeile.path("steuerart").path("ueberschussModus").asText())
+                    .isEqualTo("mindestleistung");
+            assertThat(zeile.path("optionen").path("schreibbar").asBoolean()).isTrue();
+
+            // (2) Günstige Stunden -> die Bahn wird FREIGEGEBEN (schnell) und
+            // die Preisgrenze wandert in die Policy. Ohne das Freigeben könnte
+            // die Regel nie greifen: die Bahn deckelt unabhängig von ihr.
+            tarifDynamisch(customer, site);
+            ResponseEntity<String> guenstig = putRaw(pfad(site, saeule), customer,
+                    Map.of("quelle", "guenstig", "preisgrenzeCtKwh", 12));
+            assertThat(guenstig.getStatusCode()).as("%s", guenstig.getBody())
+                    .isEqualTo(HttpStatus.OK);
+            cfg = getJson("/api/v1/sites/" + site + "/charging-config", customer);
+            assertThat(cfg.path("chargePoints").get(0).path("source").asText())
+                    .isEqualTo("schnell");
+            assertThat(policyFassungen(site, saeule)).isPositive();
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * Eine komponierte Säule OHNE eingetragene Kennung nennt den WEG, statt
+     * eine Bahn zu behaupten, auf die nichts geschrieben werden kann.
+     */
+    @Test
+    void eineNichtEingetrageneSaeuleNenntDenWegStattEineBahnZuBehaupten() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Steuerart OCPP ohne Kennung");
+        try {
+            UUID saeule = ocppKomponente(site, "Stellplatz X");
+            // „Sofort" hat keine Vorbedingung - was hier fehlt, ist wirklich
+            // nur die Kennung, auf die eine Bahn geschrieben wuerde.
             ResponseEntity<String> res = putRaw(pfad(site, saeule), customer,
                     Map.of("quelle", "sofort"));
             assertThat(res.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
-            assertThat(nachricht(res)).isEqualTo(SteuerartService.OCPP_NOCH_NICHT);
-
-            // Und die Zeile bietet ihn gar nicht erst an - mit demselben Satz.
-            JsonNode zeile = eintrag(getJson(zone(site), customer), "Stellplatz 1");
-            assertThat(zeile.path("optionen").path("schreibbar").asBoolean()).isFalse();
-            assertThat(zeile.path("optionen").path("nichtSchreibbarGrund").asText())
-                    .isEqualTo(SteuerartService.OCPP_NOCH_NICHT);
+            assertThat(nachricht(res)).isEqualTo(SteuerartService.OCPP_OHNE_KENNUNG);
+            assertThat(policyFassungen(site, saeule)).isZero();
         } finally {
             deleteSite(site);
         }
@@ -531,6 +590,26 @@ class SteuerartApiTest {
         assertThat(res.getStatusCode()).as("PUT %s -> %s", path, res.getBody())
                 .isEqualTo(HttpStatus.OK);
         return json.readTree(res.getBody());
+    }
+
+    private ResponseEntity<String> postRaw(String path, String token, Map<String, Object> body) {
+        return rest.exchange(url(path), HttpMethod.POST,
+                new HttpEntity<>(body, bearer(token)), String.class);
+    }
+
+    /**
+     * Bindet eine komponierte Saeule an ihre OCPP-Kennung - die Zeile, die
+     * sonst der Herzschlag der Box schreibt.
+     */
+    private void bindeSaeule(UUID site, UUID device, UUID entity, String chargePointId) {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute("INSERT INTO device_charge_point (device_id, charge_point_id, tenant_id, "
+                    + "site_id, entity_id, connected, ready, reported_at) VALUES ('" + device
+                    + "', '" + chargePointId + "', '" + TENANT_A + "', '" + site + "', '" + entity
+                    + "', true, true, now())");
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private ResponseEntity<String> putRaw(String path, String token, Map<String, Object> body) {

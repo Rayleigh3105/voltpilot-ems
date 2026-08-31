@@ -391,3 +391,50 @@ func TestTheOwnConnectionFixtureParsesExactlyAsSpecified(t *testing.T) {
 		}
 	}
 }
+
+// TestTheSteuerartAndFrameFixtureIsReadVerbatim liest die eingecheckte
+// P5-Fixture PER PFAD - der Vertrag ist die Datei, nicht eine Kopie hier.
+func TestTheSteuerartAndFrameFixtureIsReadVerbatim(t *testing.T) {
+	raw := mustRead(t, filepath.Join("..", "..", "..", "..", "docs", "contracts", "examples",
+		"mqtt-charging-config.valid.steuerart-je-saeule.json"))
+	cfg, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(cfg.ChargePoints) != 3 {
+		t.Fatalf("drei Säulen, got %d", len(cfg.ChargePoints))
+	}
+	want := map[string]string{
+		"saeule-hof-nord": "nur_sonne", "saeule-chef": "schnell",
+		"saeule-halle": "sonne_zuerst",
+	}
+	for _, cp := range cfg.ChargePoints {
+		if want[cp.ID] != cp.Source {
+			t.Fatalf("%s: Quelle %q, want %q", cp.ID, cp.Source, want[cp.ID])
+		}
+	}
+	if cfg.Frame == nil {
+		t.Fatal("der Rahmen fehlt")
+	}
+	if cfg.Frame.HouseReserveKw == nil || *cfg.Frame.HouseReserveKw != 167 {
+		t.Fatalf("Hausreserve: %+v", cfg.Frame.HouseReserveKw)
+	}
+	if cfg.Frame.StaticBudget == nil || *cfg.Frame.StaticBudget {
+		t.Fatalf("statisch/gemessen: %+v", cfg.Frame.StaticBudget)
+	}
+}
+
+// TestAnUnknownSourceWordSkipsTheEntryInsteadOfGuessing - die Vorsicht liegt
+// im Überspringen: wäre die Wahrheit „nur_sonne", fiele ein als „schnell"
+// gelesenes Unbekanntes einer Anlage als Netzstrom-Freigabe zur Last.
+func TestAnUnknownSourceWordSkipsTheEntryInsteadOfGuessing(t *testing.T) {
+	cfg, err := Parse([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+		"device_id":"d","charge_points":[{"id":"a","source":"mondschein"},
+		{"id":"b","source":"schnell"}],"published_at":"2026-08-31T09:15:00Z"}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(cfg.ChargePoints) != 1 || cfg.ChargePoints[0].ID != "b" {
+		t.Fatalf("nur der verstandene Eintrag überlebt: %+v", cfg.ChargePoints)
+	}
+}

@@ -124,6 +124,9 @@ type AddRequest struct {
 	Connectors int     `json:"connectors,omitempty"`
 	// Connection: "haus" (default) or "eigen" - see Charger.Connection.
 	Connection string `json:"connection,omitempty"`
+	// Source: this station's own source lane - see Charger.Source. "" = the
+	// site-wide policy applies.
+	Source string `json:"source,omitempty"`
 }
 
 // maxRatedKw bounds an operator-declared station rating. 1000 kW per connector
@@ -178,10 +181,20 @@ func NormalizeAdd(req AddRequest, existing []Charger, now time.Time) (Charger, e
 	if conn != "" && !KnownConnection(conn) {
 		return Charger{}, invalid("Unbekannter Anschluss %q - erlaubt sind %q (hinter dem Hausanschluss) und %q (eigener Netzanschluss).", conn, ConnectionHaus, ConnectionEigen)
 	}
+	// ⚠ Dieselbe Regel für die Quellen-Bahn (P5): ein Wort, das wir nicht
+	// verstehen, wird ABGELEHNT statt still auf eine Vorgabe gedreht - ein als
+	// „schnell" gelesenes Unbekanntes machte aus einem „Nur Sonnenstrom" eine
+	// Freigabe für Netzstrom, die der Kunde nie erteilt hat. Leer ist
+	// legitim und heisst „für diese Säule gilt die Wahl der Anlage".
+	src := strings.TrimSpace(req.Source)
+	if src != "" && !KnownSource(src) {
+		return Charger{}, invalid("Unbekannte Quelle %q - erlaubt sind \"nur_sonne\", \"sonne_zuerst\" und \"schnell\".", src)
+	}
 	return Charger{
 		ID: id, Label: label, Priority: req.Priority,
 		RatedKw: req.RatedKw, MinKw: req.MinKw, Connectors: req.Connectors,
 		Connection: conn,
+		Source:     src,
 		AddedAt:    now.UTC(),
 	}, nil
 }

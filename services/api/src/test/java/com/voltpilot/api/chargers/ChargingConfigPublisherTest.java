@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.web.dto.ChargingConfigDto;
 import com.voltpilot.api.web.dto.ChargingConfigDto.AllowedChargePointDto;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -51,7 +52,7 @@ class ChargingConfigPublisherTest {
             String storage, List<AllowedChargePointDto> chargePoints, List<String> removed)
             throws Exception {
         return json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE,
-                gridLimitKw, priorities, policy, storage, chargePoints, removed, AT),
+                gridLimitKw, priorities, policy, storage, chargePoints, removed, null, AT),
                 StandardCharsets.UTF_8));
     }
 
@@ -63,8 +64,14 @@ class ChargingConfigPublisherTest {
 
     private static AllowedChargePointDto cp(String id, String label, Double ratedKw,
             Integer connectors, String connection) {
-        return new AllowedChargePointDto(id, label, ratedKw, connectors, connection, AT,
-                "wer-auch-immer");
+        return cp(id, label, ratedKw, connectors, connection, null, null);
+    }
+
+    /** Eine Saeule MIT eigener Steuerart (P5). */
+    private static AllowedChargePointDto cp(String id, String label, Double ratedKw,
+            Integer connectors, String connection, String source, Double minKw) {
+        return new AllowedChargePointDto(id, label, ratedKw, connectors, source, minKw,
+                connection, AT, "wer-auch-immer");
     }
 
     @Test
@@ -104,7 +111,7 @@ class ChargingConfigPublisherTest {
         // Ganze Zahlen bleiben ganz: 277, nicht 277.0 - das Dokument wird auch
         // von Menschen gelesen.
         assertThat(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE, 277.0, null,
-                null, null, null, null, AT), StandardCharsets.UTF_8))
+                null, null, null, null, null, AT), StandardCharsets.UTF_8))
                 .contains("\"grid_limit_kw\":277,");
     }
 
@@ -201,7 +208,7 @@ class ChargingConfigPublisherTest {
                 DEVICE, 277.0, null, null, null,
                 List.of(cp("saeule-hof-nord", "Hof Nord", 22.0, 2), cp("saeule-halle", null, null,
                         null)),
-                null, Instant.parse("2026-08-21T09:15:00Z")), StandardCharsets.UTF_8));
+                null, null, Instant.parse("2026-08-21T09:15:00Z")), StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
         // ⚠ Das Dokument nennt KEIN `priority` - der Vorrang wird allein ueber
         // `priority_charge_point_ids` gestellt (das ist eine MENGE und damit die
@@ -250,7 +257,7 @@ class ChargingConfigPublisherTest {
         JsonNode actual = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
                 DEVICE, 277.0, null, null, null,
                 List.of(cp("saeule-hof-nord", "Hof Nord", null, null)), List.of("saeule-halle"),
-                Instant.parse("2026-08-24T10:05:00Z")), StandardCharsets.UTF_8));
+                null, Instant.parse("2026-08-24T10:05:00Z")), StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
     }
 
@@ -286,7 +293,69 @@ class ChargingConfigPublisherTest {
                 List.of(cp("saeule-hof-nord", "Hof Nord", 22.0, 2, "haus"),
                         cp("saeule-strasse", "Ladepark Strasse", null, null, "eigen"),
                         cp("saeule-halle", null, null, null, null)),
-                null, Instant.parse("2026-08-28T09:15:00Z")), StandardCharsets.UTF_8));
+                null, null, Instant.parse("2026-08-28T09:15:00Z")), StandardCharsets.UTF_8));
+        assertThat(actual).isEqualTo(expected);
+    }
+
+    // -----------------------------------------------------------------------
+    // P5: die Steuerart je Saeule und der Ladepark-Rahmen
+    // -----------------------------------------------------------------------
+
+    /** Die STEUERART reist nur auf Ansage - abwesend ist nie „schnell". */
+    @Test
+    void aStationsOwnSourceTravelsOnlyWhenItWasChosen() throws Exception {
+        JsonNode d = doc(null, null, "sonne_zuerst", null,
+                List.of(cp("saeule-hof-nord", null, null, null, null, "nur_sonne", 4.2),
+                        cp("saeule-halle", null, null, null)));
+        JsonNode gewaehlt = d.get("charge_points").get(0);
+        assertThat(gewaehlt.get("source").asText()).isEqualTo("nur_sonne");
+        assertThat(gewaehlt.get("min_kw").asDouble()).isEqualTo(4.2);
+        // ⚠ Die Saeule OHNE eigene Wahl traegt das Feld GAR NICHT - sie folgt
+        // dem Anlagen-Standard, und ein eingesetztes „schnell" waere eine
+        // Netzstrom-Freigabe, die niemand erteilt hat.
+        assertThat(d.get("charge_points").get(1).has("source")).isFalse();
+        assertThat(d.get("charge_points").get(1).has("min_kw")).isFalse();
+        // Und der Anlagen-Standard steht unveraendert daneben.
+        assertThat(d.get("surplus_policy").asText()).isEqualTo("sonne_zuerst");
+    }
+
+    /** Der RAHMEN folgt der PATCH-Regel: nur genannte Felder reisen. */
+    @Test
+    void theFrameTravelsFieldByFieldAndNeverAsAnEmptyObject() throws Exception {
+        JsonNode d = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
+                DEVICE, null, null, null, null, null, null,
+                new ChargingConfigDto.LadeparkRahmenDto(167.0, null, 30.0, null, null, false),
+                AT), StandardCharsets.UTF_8));
+        JsonNode frame = d.get("frame");
+        assertThat(frame.get("house_reserve_kw").asInt()).isEqualTo(167);
+        assertThat(frame.get("min_power_kw").asInt()).isEqualTo(30);
+        assertThat(frame.get("static_budget").asBoolean()).isFalse();
+        assertThat(frame.has("margin_pct")).isFalse();
+        assertThat(frame.has("rotation_minutes")).isFalse();
+
+        // Ein Rahmen ohne einen einzigen Wert reist GAR NICHT - ein leeres
+        // Objekt taeuschte eine Aussage vor.
+        JsonNode leer = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
+                DEVICE, null, null, null, null, null, null,
+                new ChargingConfigDto.LadeparkRahmenDto(null, null, null, null, null, null), AT),
+                StandardCharsets.UTF_8));
+        assertThat(leer.has("frame")).isFalse();
+    }
+
+    /** Die vierte eingecheckte Fixture, Feld fuer Feld - per PFAD gelesen. */
+    @Test
+    void theSteuerartAndFrameDocumentMatchesTheContractFixture() throws Exception {
+        Path fixture = Path.of("..", "..", "docs", "contracts", "examples",
+                "mqtt-charging-config.valid.steuerart-je-saeule.json");
+        JsonNode expected = json.readTree(Files.readString(fixture));
+        JsonNode actual = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
+                DEVICE, 277.0, null, "sonne_zuerst", null,
+                List.of(cp("saeule-hof-nord", null, null, null, null, "nur_sonne", null),
+                        cp("saeule-chef", null, null, null, null, "schnell", null),
+                        cp("saeule-halle", null, null, null, null, "sonne_zuerst", 4.2)),
+                null,
+                new ChargingConfigDto.LadeparkRahmenDto(167.0, 10.0, 30.0, 15, 180.0, false),
+                Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
     }
 }

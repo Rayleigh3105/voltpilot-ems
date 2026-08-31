@@ -160,7 +160,7 @@ public class ChargingConfigService {
             pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(),
                     config.priorityChargePointIds(), config.surplusPolicy(),
                     config.storagePriority(), config.chargePoints(),
-                    config.removedChargePointIds(), now);
+                    config.removedChargePointIds(), config.frame(), now);
         }
     }
 
@@ -190,7 +190,8 @@ public class ChargingConfigService {
 
     @Transactional
     public ChargingConfigDto admit(UUID siteId, String chargePointId, String label,
-            Double ratedKw, Integer connectors, String connection, String actor) {
+            Double ratedKw, Integer connectors, String source, Double minKw, String connection,
+            String actor) {
         requireSite(siteId);
         UUID tenantId = TenantContext.get();
         String id = chargePointId == null ? "" : chargePointId.trim();
@@ -235,8 +236,11 @@ public class ChargingConfigService {
                     "Unbekannter Anschluss \"" + conn + "\" - erlaubt sind \"haus\" (hinter dem "
                             + "Hausanschluss) und \"eigen\" (eigener Netzanschluss).");
         }
+        String src = pruefeQuelle(source);
+        pruefeMindestleistung(minKw);
         String name = label == null || label.isBlank() ? null : label.trim();
-        configs.admitChargePoint(tenantId, siteId, id, name, ratedKw, connectors, conn, actor);
+        configs.admitChargePoint(tenantId, siteId, id, name, ratedKw, connectors, src, minKw, conn,
+                actor);
         ChargingConfigDto saved = configs.forSite(siteId);
         push(tenantId, siteId, saved);
         return saved;
@@ -300,6 +304,115 @@ public class ChargingConfigService {
             out.add(v);
         }
         return out;
+    }
+
+    /**
+     * Setzt die STEUERART einer eingetragenen Säule (P5, Steuerart je
+     * Ladepunkt).
+     *
+     * <p><b>⚠ Sie ändert KEINE Grenze.</b> Die Quelle sagt, WOHER der Ladestrom
+     * dieser Säule kommen soll; die physische Bahn (Anschlussgrenze,
+     * Sicherheitsabstand, §14a) bindet sie unverändert - die zwei komponieren
+     * most-restrictive-wins, und keine kann die andere aufweichen.
+     *
+     * <p><b>⚠ Der ANLAGEN-STANDARD bleibt daneben stehen</b>
+     * ({@code surplus_policy}): eine Säule OHNE eigene Wahl folgt ihm weiter.
+     * Beides zu verschmelzen hiesse, eine Wahl für alle zu treffen.
+     *
+     * <p>Eine Kennung, die diese Anlage nicht (mehr) führt, ist ein 404 - das
+     * Eintragen ist eine eigene, bewusste Handlung ({@link #admit}), keine
+     * Nebenwirkung des Steuerart-Dialogs.
+     */
+    @Transactional
+    public ChargingConfigDto setChargePointSource(UUID siteId, String chargePointId, String source,
+            Double minKw) {
+        requireSite(siteId);
+        UUID tenantId = TenantContext.get();
+        String id = chargePointId == null ? "" : chargePointId.trim();
+        String src = pruefeQuelle(source);
+        pruefeMindestleistung(minKw);
+        if (src == null && minKw == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Es wurde weder eine Quelle noch eine Mindestleistung angegeben.");
+        }
+        if (!configs.saveChargePointSource(siteId, id, src, minKw)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Diese Anlage führt keine eingetragene Ladepunkt-Kennung \"" + id + "\".");
+        }
+        ChargingConfigDto saved = configs.forSite(siteId);
+        push(tenantId, siteId, saved);
+        return saved;
+    }
+
+    /**
+     * Setzt den Ladepark-RAHMEN (P5/E10).
+     *
+     * <p><b>⚠ Der Rahmen ist ADMIN-Ware, und das ist eine Entscheidung mit
+     * Begründung</b> (Konzept E10): Sicherheitsabstand, Mindestleistung und die
+     * höchste bekannte Gebäudelast sind Auslegungs-Zahlen des Anschlusses, die
+     * VoltPilot beim Einrichten misst - der Kunde LIEST sie (bis P5 konnte er
+     * das nicht einmal), geschrieben werden sie von uns. Die EINE Zahl, die ihm
+     * gehört, bleibt die Anschlussgrenze ({@link #save}).
+     *
+     * <p>Die Plausibilität prüft am Ende die BOX ({@code lastmgmt.Settings.Apply}) -
+     * sie kennt ihre Säulen, ihre Stecker und ihre gemessene Gebäudelast. Hier
+     * stehen nur die Grenzen, die einen Tippfehler abfangen.
+     */
+    @Transactional
+    public ChargingConfigDto saveFrame(UUID siteId, ChargingConfigDto.LadeparkRahmenDto frame,
+            String actor) {
+        requireSite(siteId);
+        UUID tenantId = TenantContext.get();
+        if (frame == null || frame.leer()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Es wurde kein einziger Rahmen-Wert angegeben.");
+        }
+        pruefeSpanne("Die Hausreserve", frame.houseReserveKw(), 0, MAX_GRID_LIMIT_KW);
+        pruefeSpanne("Der Sicherheitsabstand", frame.marginPct(), 0, 50);
+        pruefeSpanne("Die Mindestleistung", frame.minPowerKw(), 0, MAX_RATED_KW);
+        pruefeSpanne("Die höchste Gebäudelast", frame.maxHouseLoadKw(), 0, MAX_GRID_LIMIT_KW);
+        if (frame.rotationMinutes() != null
+                && (frame.rotationMinutes() < 1 || frame.rotationMinutes() > 240)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Der Wechsel-Takt muss zwischen 1 und 240 Minuten liegen.");
+        }
+        configs.saveFrame(tenantId, siteId, frame, actor);
+        ChargingConfigDto saved = configs.forSite(siteId);
+        push(tenantId, siteId, saved);
+        return saved;
+    }
+
+    /**
+     * Das Quellen-Wort einer SÄULE. null bleibt null („dazu sagt das Portal
+     * nichts"), ein unbekanntes Wort ist eine BENANNTE Ablehnung - nie ein
+     * stiller Rückfall auf „schnell": das wäre eine Netzstrom-Freigabe, die der
+     * Kunde nie erteilt hat.
+     */
+    private String pruefeQuelle(String source) {
+        if (source == null || source.isBlank()) {
+            return null;
+        }
+        String v = source.trim();
+        if (!POLICIES.contains(v)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unbekannte Quelle \"" + v + "\". Möglich sind „Nur Sonnenstrom\", "
+                            + "„Sonne zuerst\" und „Schnell laden\".");
+        }
+        return v;
+    }
+
+    private void pruefeMindestleistung(Double minKw) {
+        pruefeSpanne("Die Mindestleistung", minKw, 0, MAX_RATED_KW);
+    }
+
+    private void pruefeSpanne(String was, Double v, double min, double max) {
+        if (v == null) {
+            return;
+        }
+        if (v.isNaN() || v < min || v > max) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    was + " muss zwischen " + (long) min + " und " + (long) max + " liegen.");
+        }
     }
 
     private void requireSite(UUID siteId) {

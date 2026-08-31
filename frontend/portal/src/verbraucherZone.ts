@@ -29,8 +29,17 @@ export type SteuerartQuelle =
 
 export type SteuerartZiel = 'bis_uhrzeit' | 'laufzeit_bis';
 
-/** Woher der Server die Steuerart hat — sie entscheidet den Chip der Zeile. */
-export type SteuerartHerkunft = 'policy' | 'standard' | 'ohne';
+/**
+ * Woher der Server die Steuerart hat — sie entscheidet den Chip der Zeile.
+ *
+ * ⚠ `saeule` (P5) ist die VIERTE Herkunft und meint „diese Ladesäule trägt eine
+ * EIGENE Quellen-Bahn" (`charge_points[].source`), also ausdrücklich NICHT den
+ * Anlagen-Standard. Sie ist deshalb ein eigenes Wort und nicht `policy`: dort
+ * entscheidet ein Policy-Dokument, hier die Bahn der Box. Für den Chip zählt
+ * allein `!== 'standard'` ⇒ „abweichend" — jede neue Herkunft rendert damit
+ * automatisch richtig, statt still als „Standard" zu lesen.
+ */
+export type SteuerartHerkunft = 'policy' | 'standard' | 'saeule' | 'ohne';
 
 export type UeberschussModus = 'pausieren' | 'mindestleistung';
 

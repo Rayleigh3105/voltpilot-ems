@@ -34,6 +34,12 @@
 #   L11/L12 der Command-Gateway fährt die vollständige Aktionsfläche mit
 #       persistentem Replay-/Deadline-Schutz, crashfester wire-id-Korrelation
 #       und echtem mutieren→Antwort→Readback über lokale Websockets
+#   L14 (Verbrauchsmanagement v1 / P5, K3) die ARBITRIERUNGS-BRÜCKE: ein
+#       Halter - der Plan, eine Regel, ein Handeingriff, eine fällige Frist -
+#       erreicht den Ladepunkt durch DIESELBE Maschine wie jede andere
+#       Komponente. Ohne Halter gilt die Steuerart-Quelle unverändert; mit
+#       Halter wird gedeckelt bzw. aus der Quellen-Bahn befreit - und die
+#       PHYSIK bindet weiter.
 #
 # Bewusst OHNE Docker: alles hier läuft als Prozess, also ist das Rig auf jedem
 # Rechner mit Go reproduzierbar und braucht kein gebautes Image.
@@ -56,12 +62,26 @@ S1_STATUS=127.0.0.1:28591
 S2_STATUS=127.0.0.1:28592
 S3_STATUS=127.0.0.1:28593
 NETZ_STATUS=127.0.0.1:28594
+# L14 fährt einen ZWEITEN Kern (eigene Verzeichnisse, eigene Ports): die
+# Brücke braucht eine Entitäts-REGISTRY, und die kommt ausschliesslich aus der
+# Cloud - während L1-L13 ihre Cloud bewusst ins Leere zeigen lassen, um die
+# Offline-Fähigkeit des Lastmanagements zu zeigen. Zwei Kerne halten beide
+# Aussagen, statt eine gegen die andere zu tauschen.
+WEB_PORT2=28595
+BUS_PORT2=28596
+OCPP_PORT2=28597
+B1_STATUS=127.0.0.1:28598
+B2_STATUS=127.0.0.1:28599
+BOX2="http://127.0.0.1:${WEB_PORT2}"
+CORE2_PID=""
+declare -a SIM2_PIDS=()
 
 BOX="http://127.0.0.1:${WEB_PORT}"
 
 cleanup() {
   echo "--- cleanup"
-  for pid in "${SIM_PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done
+  for pid in "${SIM_PIDS[@]:-}" "${SIM2_PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done
+  [ -n "$CORE2_PID" ] && kill "$CORE2_PID" 2>/dev/null || true
   [ -n "$NETZ_PID" ] && kill "$NETZ_PID" 2>/dev/null || true
   [ -n "$CORE_PID" ] && kill "$CORE_PID" 2>/dev/null || true
   wait 2>/dev/null || true
@@ -171,6 +191,7 @@ echo "--- bauen"
 ( cd core && go build -o "$WORK/vp-edge-core" ./cmd/vp-edge-core )
 ( cd core && go build -o "$WORK/vp-ocpp-sim" ./cmd/vp-ocpp-sim )
 ( cd core && go build -o "$WORK/vp-netz-sim" ./cmd/vp-netz-sim )
+( cd core && go build -o "$WORK/vp-mqtt-pub" ./cmd/vp-mqtt-pub )
 
 echo "--- Kern starten (Ladepunkte AN, Steuerung freigegeben)"
 mkdir -p "$WORK/data"
@@ -604,6 +625,135 @@ echo "--- L11/L12: OCPP-Command-Gateway (lokal, ohne Live-Station)"
   || fail "L11/L12: Command-Dispatcher oder Korrelationsbrücke fehlgeschlagen"
 pass "L11/L12: vollständige Command-Fläche, Replay/Deadline/Crash, exakte Korrelation und persistierter Readback lokal bewiesen"
 
+# ---------------------------------------------------------------- L14
+echo "--- L14: (P5/K3) die Arbitrierungs-Brücke - Halter deckelt · befreit · kein Halter"
+# ⚠ EIGENER Kern, und zwar aus einem benannten Grund: die Brücke braucht die
+# Entitäts-REGISTRY, und die kommt ausschliesslich über die Cloud
+# (`.../v2/entities`). L1-L13 lassen ihre Cloud bewusst ins Leere zeigen, weil
+# das Lastmanagement offline-fähig sein MUSS. Hier zeigt die Cloud-URL auf den
+# EIGENEN lokalen Bus dieses zweiten Kerns - ein echter MQTT-Broker, also ein
+# echter Downlink, ohne Docker und ohne ein Wort an der Aussage von L1-L13 zu
+# ändern.
+T_TEN=00000000-0000-0000-0000-000000000001
+T_SITE=00000000-0000-0000-0000-000000000002
+T_DEV=00000000-0000-0000-0000-000000000003
+T_BASE="ems/${T_TEN}/${T_SITE}/${T_DEV}"
+ENT_ID=11111111-2222-3333-4444-555555555555
+
+mkdir -p "$WORK/data2"
+VP_DATA_DIR="$WORK/data2" \
+VP_HTTP_ADDR="127.0.0.1:${WEB_PORT2}" \
+VP_LOCAL_MQTT_ADDR="127.0.0.1:${BUS_PORT2}" \
+VP_OCPP_ENABLED=true VP_OCPP_PORT="${OCPP_PORT2}" \
+VP_CONTROL_ENABLED=true VP_CONSUMER_CONTROL_ENABLED=true \
+VP_DEV_TENANT_ID="$T_TEN" VP_DEV_SITE_ID="$T_SITE" VP_DEV_DEVICE_ID="$T_DEV" \
+VP_DEV_CLOUD_URL="tcp://127.0.0.1:${BUS_PORT2}" \
+  "$WORK/vp-edge-core" >"$WORK/core2.log" 2>&1 &
+CORE2_PID=$!
+waitfor 30 "der zweite Kern antwortet" curl -sf "${BOX2}/health"
+
+# Derselbe Standort wie oben, aber mit zwei 22-kW-Säulen: der Deckel des
+# Halters soll die bindende Grösse sein, nicht die Steckdose.
+curl -sf -X POST "${BOX2}/api/ocpp/settings" -H 'Content-Type: application/json' \
+  -d '{"grid_limit_kw":277,"house_reserve_kw":0,"margin_pct":10,"min_power_kw":5,"max_house_load_kw":180}' \
+  >/dev/null || fail "L14: Einstellungen abgelehnt"
+for saeule in SAEULE-B1 SAEULE-B2; do
+  curl -sf -X POST "${BOX2}/api/ocpp/chargers" -H 'Content-Type: application/json' \
+    -d "{\"id\":\"${saeule}\",\"connectors\":1,\"rated_kw\":22}" >/dev/null \
+    || fail "L14: ${saeule} liess sich nicht eintragen"
+done
+"$WORK/vp-ocpp-sim" --csms "ws://127.0.0.1:${OCPP_PORT2}/ocpp" --id SAEULE-B1 \
+  --connectors 1 --status "$B1_STATUS" >"$WORK/b1.log" 2>&1 &
+SIM2_PIDS+=($!)
+"$WORK/vp-ocpp-sim" --csms "ws://127.0.0.1:${OCPP_PORT2}/ocpp" --id SAEULE-B2 \
+  --connectors 1 --status "$B2_STATUS" >"$WORK/b2.log" 2>&1 &
+SIM2_PIDS+=($!)
+waitfor 30 "beide Säulen verbunden" curl -sf "http://${B2_STATUS}/status"
+for st in "$B1_STATUS" "$B2_STATUS"; do
+  curl -sf -X POST "http://${st}/plug?connector=1&demand=22&min=5" >/dev/null \
+    || fail "L14: Wagen liess sich nicht einstecken"
+done
+
+b1_kw() { drawn "$B1_STATUS" 1; }
+b2_kw() { drawn "$B2_STATUS" 1; }
+b1_near() { nearly "$(b1_kw)" "$1" "${2:-1.0}"; }
+box2_json() { curl -sf "${BOX2}/api/ocpp" | sed -e 's/.*"ocpp":{//' -e 's/,"settings":{.*//'; }
+connector2_json() { box2_json | sed -e 's/.*"id":"SAEULE-B1"//' -e 's/},{"id":"SAEULE-B2.*//'; }
+b1_reason() { connector2_json | sed -n 's/.*"reason":"\([a-z_]*\)".*/\1/p' | head -1; }
+
+l14_both_full() { nearly "$(b1_kw)" 22 1.0 && nearly "$(b2_kw)" 22 1.0; }
+waitfor 60 "beide laden voll" l14_both_full
+
+# --- kein Halter = die QUELLE der Säule gilt -----------------------------
+# „Nur Sonnenstrom" OHNE Messung: die Bahn kann keinen Überschuss BELEGEN, also
+# pausiert sie - fail-closed, genau wie L7. Kein Halter mischt sich ein.
+curl -sf -X POST "${BOX2}/api/ocpp/settings" -H 'Content-Type: application/json' \
+  -d '{"surplus_policy":"nur_sonne"}' >/dev/null || fail "L14: Quellen-Wahl abgelehnt"
+l14_both_paused() { awk -v a="$(b1_kw)" -v b="$(b2_kw)" 'BEGIN{exit (a<1 && b<1)?0:1}'; }
+waitfor 60 "ohne Halter gilt die Quelle" l14_both_paused
+pass "L14a: kein Halter - beide Säulen folgen der Quellen-Wahl und pausieren"
+
+# --- die Registry bindet Säule B1 an eine Komponente ---------------------
+cat >"$WORK/registry.json" <<JSON
+{"schema_version":"1.0","tenant_id":"${T_TEN}","site_id":"${T_SITE}","device_id":"${T_DEV}",
+ "revision":"rig-p5","published_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+ "entities":[{"entity_id":"${ENT_ID}","entity_type":"ev-charger","label":"Stellplatz 1",
+   "charge_point_id":"SAEULE-B1",
+   "capabilities":{"measure":[{"channel":"power_kw","unit":"kW"}],
+     "actuate":[{"command":"limit_kw","min":0,"max":22}]},
+   "guards":{"limits":{"max_consumption_kw":22},"failsafe":{"behavior":"release"}}}]}
+JSON
+"$WORK/vp-mqtt-pub" -broker "tcp://127.0.0.1:${BUS_PORT2}" -topic "${T_BASE}/v2/entities" \
+  -retain -file "$WORK/registry.json" || fail "L14: Registry liess sich nicht veroeffentlichen"
+l14_bound() { curl -sf "${BOX2}/api/state" | grep -q "$ENT_ID"; }
+waitfor 30 "die Box hat die Ladepunkt-Komponente" l14_bound
+
+# wunsch <klasse> <quellenart> <limit_kw> [override] - ein Halter auf der Komponente.
+wunsch() {
+  cat >"$WORK/desired.json" <<JSON
+{"schema_version":"1.0","entity_id":"${ENT_ID}","request_id":"rig-$(date +%s%N)",
+ "source":{"kind":"$2"},"priority":"$1","override":${4:-false},"ttl_s":600,
+ "issued_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+ "command":{"type":"limit_kw","value":$3}}
+JSON
+  "$WORK/vp-mqtt-pub" -broker "tcp://127.0.0.1:${BUS_PORT2}" \
+    -topic "edge/entities/${ENT_ID}/desired" -file "$WORK/desired.json" \
+    || fail "L14: Wunsch liess sich nicht veroeffentlichen"
+}
+
+# --- Halter BEFREIT: der PLAN nimmt die Säule aus der Quellen-Bahn -------
+# Genau der Weg, auf dem „Günstige Stunden" und „Bis Uhrzeit fertig" eine
+# OCPP-Säule erreichen: die Wolke entscheidet, DASS jetzt geladen wird, und
+# der Ladepunkt bekommt es durch dieselbe Arbitrierung wie jeder Verbraucher.
+wunsch market cloud-command 22
+waitfor 60 "die befreite Säule lädt" b1_near 22 1.0
+B2_STILL=$(b2_kw)
+awk -v d="${B2_STILL:-0}" 'BEGIN{exit (d<1)?0:1}' \
+  || fail "L14: die UNGEBUNDENE Säule wurde mitbefreit ($B2_STILL kW)"
+pass "L14b: Halter befreit - B1 lädt $(b1_kw) kW auf der Quellen-Bahn, B2 pausiert weiter"
+
+# --- Halter DECKELT ------------------------------------------------------
+wunsch market cloud-command 6
+waitfor 60 "der Deckel des Halters erreicht die Säule" b1_near 6 0.6
+pass "L14c: Halter deckelt - B1 auf $(b1_kw) kW (Steckdose 22 kW)"
+
+# --- Deckel 0 = PAUSE mit eigenem Grund ----------------------------------
+# ⚠ Ein HANDEINGRIFF (local-ui + override, Rang 75) schlägt den Plan (60) - die
+# D-6a-Regel, hier am Ladepunkt. Und der Grund heisst „regel", nicht „wartet":
+# es fehlt keine Leistung, es HÄLT etwas, und der Kunde muss den Hebel
+# erkennen können.
+wunsch flow local-ui 0 true
+l14_paused() { awk -v d="$(b1_kw)" 'BEGIN{exit (d<1)?0:1}'; }
+waitfor 60 "die Säule pausiert" l14_paused
+l14_reason_rule() { [ "$(b1_reason)" = "regel" ]; }
+waitfor 30 "die Box nennt den Grund" l14_reason_rule \
+  || { echo "    Stecker-Block: $(connector2_json)"; exit 1; }
+pass "L14d: Handeingriff mit Deckel 0 - B1 pausiert, Grund „$(b1_reason)\" statt Leistungsmangel"
+
+kill "$CORE2_PID"; wait "$CORE2_PID" 2>/dev/null || true; CORE2_PID=""
+for pid in "${SIM2_PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done
+SIM2_PIDS=()
+
 # Fuer L4 zaehlt die PHYSISCHE Bahn: der Totmann wird ohne Quellen-Deckel
 # geprueft (er ist eine Eigenschaft der Saeule, nicht der Oekonomie).
 policy schnell
@@ -630,4 +780,4 @@ awk -v d="$S1_AFTER" 'BEGIN{exit (d>1)?0:1}' || fail "L4: die Säule hat aufgeh�
 pass "L4: die Box ist tot, die Säule begrenzt sich SELBST auf 24,25 kW - und lädt weiter"
 
 echo
-echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L7 · L8 · L9 · L10 · L13 · L11/L12 · L4 =="
+echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L7 · L8 · L9 · L10 · L13 · L11/L12 · L14 · L4 =="

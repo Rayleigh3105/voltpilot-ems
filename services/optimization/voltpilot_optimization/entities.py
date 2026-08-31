@@ -285,6 +285,15 @@ class ControllableLoadEntity:
     window it is planned OFF. Opportunistic operation (§5.5) is a later,
     explicitly opted-in feature - without it the optimizer must not switch a
     device on just because energy is momentarily cheap.
+
+    ``has_local_source`` is the K2 flag (Verbrauchsmanagement v1 / P5): this
+    consumer's policy ALSO carries a requirement whose condition is a LOCAL
+    signal, which only the edge can evaluate (``compile_condition_slots``
+    returned ``None``). The solver is unaffected - it plans the compiled
+    windows exactly as before -, but the PUBLISHER then omits every slot the
+    plan does not dispatch: where the plan is SILENT, the local rule governs.
+    Publishing an explicit off there would be the plan overruling a rule the
+    customer chose, every quarter hour, for the whole horizon.
     """
 
     entity_id: str
@@ -302,6 +311,7 @@ class ControllableLoadEntity:
     ramp_kw_per_slot: float | None = None
     requirements: tuple[LoadRequirement, ...] = ()
     initially_on: bool = False
+    has_local_source: bool = False
 
     def __post_init__(self) -> None:
         _require_entity_id(self.entity_id)
@@ -722,6 +732,10 @@ class LoadDispatch:
     control_kind: str
     slots: list[LoadSlot] = field(default_factory=list)
     unserved: tuple[UnservedRequirement, ...] = ()
+    # K2 (P5): this consumer's source is evaluated AT THE EDGE, so the
+    # publisher may only carry the slots the plan really dispatches - see
+    # ControllableLoadEntity.has_local_source.
+    has_local_source: bool = False
 
     @property
     def energy_kwh(self) -> float:

@@ -129,6 +129,13 @@ public class VerbraucherService {
             profile.put(row.entityId(), row);
         }
         Map<UUID, String> chargePointIds = entities.chargePointIdsByEntity(siteId);
+        // P5: die STEUERART je Säule. Sie steht in der Allowlist (die Quelle,
+        // die die Box für GENAU diese Säule fährt) und schlägt den
+        // Anlagen-Standard - eine Säule, die schweigt, folgt ihm weiter.
+        Map<String, ChargingConfigDto.AllowedChargePointDto> saeulen = new HashMap<>();
+        for (ChargingConfigDto.AllowedChargePointDto cp : config.chargePoints()) {
+            saeulen.put(cp.chargePointId(), cp);
+        }
         // P2: die Fakten, an denen JEDE Wahl haengt - EINMAL je Anlage geholt
         // (die Preis-Vorgabe ist eine einzige Quantil-Abfrage, die PV-Frage
         // laeuft ueber dieselben Entitaets-Zeilen wie die Schleife darunter).
@@ -158,7 +165,18 @@ public class VerbraucherService {
             boolean ocpp = ChargerComponentComposer.TYPE_EV_CHARGER.equals(row.entityType());
             String chargePointId = chargePointIds.get(row.id());
             PolicyRow policy = policies.get(row.id());
-            Steuerart steuerart = SteuerartProjektion.projiziere(dokument(policy), ocpp, standard);
+            // ⚠ Die Quelle einer OCPP-Säule kommt aus IHRER Zeile, nicht aus
+            // dem Anlagen-Standard: seit P5 kann der Kunde sie je Säule
+            // wählen, und der Standard gilt nur, solange sie schweigt.
+            Steuerart lane = standard;
+            if (ocpp && chargePointId != null) {
+                ChargingConfigDto.AllowedChargePointDto cp = saeulen.get(chargePointId);
+                lane = SteuerartProjektion.saeulenSteuerart(cp == null ? null : cp.source(),
+                        cp != null && cp.minKw() != null ? BigDecimal.valueOf(cp.minKw())
+                                : minPowerKw,
+                        standard);
+            }
+            Steuerart steuerart = SteuerartProjektion.projiziere(dokument(policy), ocpp, lane);
             if (ladepunkt) {
                 ladepunkte++;
                 if (SteuerartProjektion.HERKUNFT_STANDARD.equals(steuerart.herkunft())) {
@@ -192,19 +210,18 @@ public class VerbraucherService {
      * {@link SteuerartSatz}, derselben Klasse, die der Schreibpfad ein zweites
      * Mal fragt.
      *
-     * <p><b>⚠ Ein OCPP-Ladepunkt ist hier NICHT schreibbar</b>, und die Zeile
-     * sagt WARUM: seine Quelle faehrt die Quellen-Bahn der Box, der Weg dorthin
-     * (die Arbiter-Bruecke) entsteht in Paket P5. Ihm eine Auswahl anzubieten,
-     * die der Server danach ablehnt, waere die Sackgasse, gegen die diese
-     * Flaeche gebaut ist.
+     * <p><b>⚠ Seit P5 ist auch ein OCPP-Ladepunkt schreibbar.</b> Seine QUELLE
+     * faehrt weiterhin die Quellen-Bahn der Box (sie wird als
+     * {@code charge_points[].source} verteilt), sein ZIEL laeuft ueber die
+     * Policy-Maschine und erreicht die Saeule ueber die Arbiter-Bruecke K3 -
+     * zwei Wege, EIN Schreibpfad ({@code SteuerartService.setze}).
      */
     private Optionen optionen(EntityRow row, ConsumerRow profil, SiteDto anlage, boolean hatPv,
             BigDecimal preisVorgabe, Steuerart aktuell) {
         SteuerartSatz.Kontext k =
                 steuerarten.kontext(row, profil, anlage, hatPv, preisVorgabe);
-        boolean ocpp = ChargerComponentComposer.TYPE_EV_CHARGER.equals(row.entityType());
         SteuerartSatz.Vorgaben v = SteuerartSatz.vorgaben(k);
-        return new Optionen(!ocpp, ocpp ? SteuerartService.OCPP_NOCH_NICHT : null,
+        return new Optionen(true, null,
                 wahlen(SteuerartSatz.quellen(k)),
                 wahlen(SteuerartSatz.ziele(k, aktuell == null ? null : aktuell.quelle())),
                 new VerbraucherDto.Vorgaben(v.schwelleKw(), v.preisgrenzeCtKwh(),

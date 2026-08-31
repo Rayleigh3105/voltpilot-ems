@@ -236,12 +236,25 @@ def compile_consumer(
     only local-reactive/opportunistic requirements, ...)."""
     timezone = document.get("timezone") or DEFAULT_TIMEZONE
     requirements: list[LoadRequirement] = []
+    # K2 (P5): merken, ob dieses Dokument eine Anforderung traegt, deren
+    # Bedingung ein LOKALES Signal ist - nur der Edge kann sie auswerten, und
+    # der Publisher darf den Plan dort nicht ueber sie legen.
+    has_local_source = False
     for req in document.get("requirements", []):
         if req.get("active") is False:
             continue
         kind = req["kind"]
         enforcement = req.get("enforcement", "must_run")
         if kind == "opportunistic" or enforcement == "opportunistic":
+            # ⚠ K2: eine OPPORTUNISTISCHE Anforderung mit lokaler Bedingung
+            # laeuft ebenfalls am Edge (der Compiler baut ihr ein Artefakt) -
+            # sie zaehlt also genauso als lokale Quelle. Nur die
+            # SOLVER-Relevanz bleibt unveraendert null (§5.5).
+            if kind == "reactive" or req.get("condition") is not None:
+                if compile_condition_slots(
+                    req.get("condition") or {}, spot_ct_kwh, import_ct_kwh
+                ) is None:
+                    has_local_source = True
             continue  # §5.5: a later, explicitly opted-in feature
         target_kw = _resolve_target_kw(req.get("target", {}), profile)
         rank = (
@@ -287,7 +300,9 @@ def compile_consumer(
             window = compile_condition_slots(condition, spot_ct_kwh, import_ct_kwh)
             if window is None:
                 # Local signals: reactive edge work (Inkrement 4), never
-                # half-compiled into the plan.
+                # half-compiled into the plan. K2 REMEMBERS it: the plan must
+                # not publish an off-slot over a rule it cannot see.
+                has_local_source = True
                 continue
             if not window:
                 continue  # the condition is never true in this horizon
@@ -359,6 +374,7 @@ def compile_consumer(
         min_off_slots=_slots_per_minute_ceil(profile.min_off_seconds, slot_minutes),
         max_starts_per_horizon=profile.max_starts_per_day,
         requirements=tuple(requirements),
+        has_local_source=has_local_source,
     )
 
 

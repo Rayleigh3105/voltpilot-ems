@@ -1405,6 +1405,8 @@ paths:
                 label: { type: string, nullable: true, maxLength: 120, description: "Der Name für den Kunden; abwesend = die Box nimmt die Kennung." }
                 ratedKw: { type: number, nullable: true, description: "Nennleistung je Stecker, sofern bekannt. Abwesend = unbekannt, nie 0." }
                 connectors: { type: integer, nullable: true, description: "Steckerzahl, sofern bekannt. Abwesend = die Box lernt sie von der Säule." }
+                source: { type: string, nullable: true, enum: [nur_sonne, sonne_zuerst, schnell], description: "Die STEUERART dieser Säule (P5) - woher IHR Ladestrom kommen soll. Abwesend = für sie äußert sich das Portal nicht und es gilt der ANLAGEN-STANDARD (surplusPolicy); nie \"schnell\", das wäre eine Netzstrom-Freigabe, die niemand erteilt hat." }
+                minKw: { type: number, nullable: true, description: "Ab welcher Leistung diese Säule überhaupt anfängt. Abwesend = unbekannt, nie 0." }
       responses:
         "200":
           description: Die gespeicherte Konfiguration inklusive der Allowlist.
@@ -1450,6 +1452,93 @@ paths:
               schema: { $ref: "#/components/schemas/ChargingConfig" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Anlage unbekannt, oder diese Kennung ist hier nicht eingetragen (deutscher Grund im Körper). }
+  /api/v1/sites/{siteId}/charging-config/charge-points/{chargePointId}/source:
+    put:
+      tags: [sites]
+      summary: Die Steuerart EINER Ladesäule setzen (Verbrauchsmanagement v1 / P5).
+      description: >
+        Setzt QUELLE und Mindestleistung GENAU EINER eingetragenen Säule und
+        schickt sie als retained Dokument an die Box
+        (`charge_points[].source` / `.min_kw` im Kontrakt
+        `mqtt-charging-config.schema.json`).
+
+
+        SIE ÄNDERT KEINE GRENZE. Die Quelle sagt, WOHER der Ladestrom dieser
+        Säule kommen soll; die physische Bahn (Anschlussgrenze,
+        Sicherheitsabstand, §14a, Ausfall-Profil) bindet sie unverändert - die
+        zwei komponieren most-restrictive-wins, und keine kann die andere
+        aufweichen.
+
+
+        DER ANLAGEN-STANDARD BLEIBT DANEBEN STEHEN (`surplusPolicy` auf
+        `PUT /charging-config`): eine Säule OHNE eigene Wahl folgt ihm weiter.
+        Beides zu verschmelzen hiesse, eine Wahl für alle zu treffen.
+
+
+        PATCH-Semantik: ein abwesendes Feld behält den gespeicherten Wert; ein
+        Rumpf, der zu beidem schweigt, ist eine benannte Ablehnung. Eine
+        Kennung, die diese Anlage nicht (mehr) führt, ist 404 - das Eintragen
+        ist eine eigene, bewusste Handlung. RLS-gefenced (fremde Anlage 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: chargePointId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source: { type: string, nullable: true, enum: [nur_sonne, sonne_zuerst, schnell] }
+                minKw: { type: number, nullable: true }
+      responses:
+        "200":
+          description: Die gespeicherte Konfiguration inklusive der Allowlist.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChargingConfig" }
+        "400": { description: Unbekannte Quelle, unplausible Mindestleistung oder ein leerer Rumpf (deutscher Grund im Körper). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage unbekannt, oder diese Kennung ist hier nicht eingetragen. }
+  /api/v1/admin/sites/{siteId}/charging-frame:
+    put:
+      tags: [admin]
+      summary: Den Ladepark-RAHMEN setzen (Verbrauchsmanagement v1 / P5, E10).
+      description: >
+        Setzt Hausreserve, Sicherheitsabstand, Mindestleistung, Wechsel-Takt,
+        höchste bekannte Gebäudelast und statisch/gemessen - den RAHMEN, den
+        bis P5 nur `:8484` pflegen konnte.
+
+
+        ADMIN-ONLY, mit Begründung: das sind Auslegungs-Zahlen des
+        Anschlusses, die VoltPilot beim Einrichten misst (die Mockups nennen
+        sie „Von VoltPilot eingerichtet"). Der Kunde LIEST sie seit P5 über
+        `GET /api/v1/sites/{siteId}/charging-config`; die EINE Zahl, die ihm
+        gehört, bleibt die Anschlussgrenze.
+
+
+        Über den `X-Tenant-Id`-Umschalter auf dem RLS-Pfad - KEIN BYPASSRLS,
+        eine fremde Anlage ist 404. PATCH-Semantik: ein abwesendes Feld behält
+        den gespeicherten Wert, und ein Rumpf ohne einen einzigen Wert ist eine
+        benannte Ablehnung. Die Plausibilität gegen die eigenen Säulen prüft am
+        Ende die BOX (`lastmgmt.Settings.Apply`).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LadeparkRahmen" }
+      responses:
+        "200":
+          description: Die gespeicherte Konfiguration inklusive des Rahmens.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChargingConfig" }
+        "400": { description: Unplausibler oder leerer Rahmen (deutscher Grund im Körper). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Kein Plattform-Admin. }
+        "404": { description: Anlage im gewählten Mandanten nicht gefunden. }
   /api/v1/sites/{siteId}/charging-boost:
     post:
       tags: [sites]
@@ -10642,8 +10731,30 @@ components:
             Eine Kennung steht nie zugleich in `chargePoints` - ein erneutes
             Eintragen belebt sie wieder und nimmt sie hier heraus.
           items: { type: string }
+        frame:
+          allOf:
+            - $ref: "#/components/schemas/LadeparkRahmen"
+          nullable: true
+          description: >
+            Der Ladepark-RAHMEN (P5/E10) - die Auslegungs-Zahlen, die bis dahin
+            nur `:8484` kannte. null = dazu ist nichts gepflegt und die Box
+            rechnet mit ihren eigenen; GESCHRIEBEN wird er ausschliesslich über
+            `PUT /api/v1/admin/sites/{siteId}/charging-frame`.
         updatedAt: { type: string, format: date-time, nullable: true }
         updatedBy: { type: string, nullable: true, description: "Wer sie zuletzt gesetzt hat (JWT-Subject)." }
+    LadeparkRahmen:
+      type: object
+      description: >
+        Der Ladepark-RAHMEN einer Anlage (Verbrauchsmanagement v1 / P5, E10).
+        Jedes Feld einzeln optional: null heisst „das Portal äußert sich dazu
+        nicht" und die Box behält ihre eigene Zahl - nie 0.
+      properties:
+        houseReserveKw: { type: number, nullable: true, description: "Die gepflegte Hausreserve; sie gilt nur, solange der Netzanschluss nicht gemessen wird." }
+        marginPct: { type: number, nullable: true, description: "Der Sicherheitsabstand zur Anschlussgrenze in Prozent - er wird an der GRENZE genommen, nicht am Rest." }
+        minPowerKw: { type: number, nullable: true, description: "Die Mindestleistung, unter der pausiert statt ausgehungert wird. Sie wird auf die Steckdose geklemmt: 30 kW machen eine 11-kW-Wallbox nicht unbedienbar." }
+        rotationMinutes: { type: integer, nullable: true, description: "Der Takt, in dem Wartende wechseln." }
+        maxHouseLoadKw: { type: number, nullable: true, description: "Die höchste bekannte Gebäudelast - die Grundlage des Ausfall-Profils, NICHT dieselbe Zahl wie die Mindestleistung." }
+        staticBudget: { type: boolean, nullable: true, description: "true = rechne STATISCH, auch wenn eine Messung vorliegt. Negativ formuliert wie auf der Box, damit der Nullwert die gewollte Vorgabe ist." }
     AllowedChargePoint:
       type: object
       description: >
@@ -10655,6 +10766,8 @@ components:
         label: { type: string, nullable: true, description: "Der Name, unter dem der Kunde sie wiedererkennt; null = die Box nimmt die Kennung." }
         ratedKw: { type: number, nullable: true, description: "Nennleistung je Stecker; null = unbekannt." }
         connectors: { type: integer, nullable: true, description: "Erklärte Steckerzahl; null = unbekannt." }
+        source: { type: string, nullable: true, enum: [nur_sonne, sonne_zuerst, schnell], description: "Die STEUERART dieser Säule (P5) - woher IHR Ladestrom kommen soll. null = für sie ist nichts gewählt und es gilt der ANLAGEN-STANDARD (surplusPolicy); nie \"schnell\"." }
+        minKw: { type: number, nullable: true, description: "Ab welcher Leistung diese Säule überhaupt anfängt; null = unbekannt, nie 0." }
         connection: { type: string, nullable: true, enum: [haus, eigen], description: "WO die Säule hängt (Cockpit Phase 1 / C1) - das SOLL des Kunden: \"haus\" = hinter dem Hausanschluss (ihre Leistung steckt in der Netzmessung der Anlage, das Budget-Gesetz der Box gilt für sie), \"eigen\" = eigener Netzanschluss/Zähler. null = der Kunde hat nichts gesagt und die Box behält, was sie hat - NIE \"eigen\", denn das nähme eine reale Ladeleistung aus ihrer Bilanz." }
         addedAt: { type: string, format: date-time, nullable: true }
         addedBy: { type: string, nullable: true, description: "Wer sie eingetragen hat (JWT-Subject)." }

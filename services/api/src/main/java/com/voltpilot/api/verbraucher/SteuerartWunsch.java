@@ -18,12 +18,11 @@ import java.math.BigDecimal;
  * nichts" - dann gilt die VORGABE aus {@link SteuerartSatz}, nie eine 0.</b>
  * Der Dialog schickt genau die Antworten, die er wirklich gestellt hat.
  *
- * <p><b>Was hier bewusst FEHLT</b> (und warum): {@code ueberschussModus} und
- * {@code mindestleistungKw} beschreiben die Quellen-Bahn der BOX
- * ({@code charging-config.charge_points[].source/min_kw}) - die schreibt Paket
- * P5, nicht dieses. Sie hier anzunehmen waere eine Zusage ueber einen
- * Schreibweg, den es noch nicht gibt; die Projektion liest sie deshalb weiter
- * nur aus dem Anlagen-Standard.
+ * <p><b>⚠ {@code ueberschussModus}/{@code mindestleistungKw} beschreiben die
+ * Quellen-Bahn der BOX</b> ({@code charging-config.charge_points[].source} /
+ * {@code .min_kw}) und gelten deshalb NUR an einem Ladepunkt. An jedem anderen
+ * Verbraucher gibt es diese Bahn nicht - dort werden sie ignoriert, statt eine
+ * Zusage ueber einen Schreibweg zu machen, den es fuer ihn nicht gibt.
  *
  * @param quelle               eine Quelle aus {@link SteuerartSatz#quellenFuer}
  * @param schwelleKw           Quelle {@code ueberschuss}: ab wie viel Ueberschuss
@@ -42,15 +41,23 @@ import java.math.BigDecimal;
  * @param zielLaufzeitMinuten  Ziel {@code laufzeit_bis}: die Laufzeit
  * @param zielAmStueck         {@code true} = am Stueck, {@code false} =
  *                             aufteilbar, {@code null} = nicht gefragt
+ * @param ueberschussModus     Ladepunkt + Quelle {@code ueberschuss}:
+ *                             {@code pausieren} (nur Sonnenstrom) oder
+ *                             {@code mindestleistung} (Sonne zuerst);
+ *                             {@code null} = die Vorgabe „pausieren"
+ * @param mindestleistungKw    Ladepunkt + {@code mindestleistung}: ab welcher
+ *                             Leistung er ueberhaupt anfaengt; {@code null} =
+ *                             die Box behaelt ihre eigene Zahl, nie eine 0
  */
 public record SteuerartWunsch(String quelle, BigDecimal schwelleKw,
         BigDecimal preisgrenzeCtKwh, Integer mindestlaufzeitMinuten, Integer sperrzeitMinuten,
         Steuerart.Fenster fenster, String ziel, Steuerart.Fenster zielFenster,
-        BigDecimal zielEnergieKwh, Integer zielLaufzeitMinuten, Boolean zielAmStueck) {
+        BigDecimal zielEnergieKwh, Integer zielLaufzeitMinuten, Boolean zielAmStueck,
+        String ueberschussModus, BigDecimal mindestleistungKw) {
 
     /** Die schmale Form „nur diese Quelle, keine Antwort auf eine Folgefrage". */
     public static SteuerartWunsch von(String quelle) {
         return new SteuerartWunsch(quelle, null, null, null, null, null, null, null, null, null,
-                null);
+                null, null, null);
     }
 }

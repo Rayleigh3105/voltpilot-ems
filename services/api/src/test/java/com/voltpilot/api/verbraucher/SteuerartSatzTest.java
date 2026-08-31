@@ -160,7 +160,7 @@ class SteuerartSatzTest {
                 .containsExactly(SteuerartSatz.GRUND_TARIF_FEST);
         assertThat(SteuerartSatz.pruefe(k(SgReady.TYPE, null, "dynamisch", true, "freigabe"),
                 new SteuerartWunsch(SgReady.QUELLE_UEBERSCHUSS, null, null, null, null, null,
-                        SteuerartProjektion.ZIEL_BIS_UHRZEIT, null, null, null, null)))
+                        SteuerartProjektion.ZIEL_BIS_UHRZEIT, null, null, null, null, null, null)))
                 .containsExactly(SteuerartSatz.GRUND_KEIN_ZIEL_SGREADY);
     }
 
@@ -180,11 +180,11 @@ class SteuerartSatzTest {
                 .as("ohne Fenster gibt es keine Zeitregel").isNotEmpty();
         assertThat(SteuerartSatz.pruefe(last, new SteuerartWunsch(
                 SteuerartProjektion.QUELLE_FESTE_ZEITEN, null, null, null, null,
-                new Steuerart.Fenster("daily", "13:00", "13:00"), null, null, null, null, null)))
+                new Steuerart.Fenster("daily", "13:00", "13:00"), null, null, null, null, null, null, null)))
                 .as("Anfang gleich Ende ist kein Fenster").isNotEmpty();
         assertThat(SteuerartSatz.pruefe(last, new SteuerartWunsch(
                 SteuerartProjektion.QUELLE_FESTE_ZEITEN, null, null, null, null,
-                new Steuerart.Fenster("montags", "13:00", "15:00"), null, null, null, null, null)))
+                new Steuerart.Fenster("montags", "13:00", "15:00"), null, null, null, null, null, null, null)))
                 .as("ein unbekannter Tagesbezug wird nicht geraten").isNotEmpty();
     }
 
@@ -193,10 +193,10 @@ class SteuerartSatzTest {
         var last = k("generic-load", "2", "dynamisch", true, "relay_state");
         assertThat(SteuerartSatz.pruefe(last, new SteuerartWunsch(
                 SteuerartProjektion.QUELLE_UEBERSCHUSS, BigDecimal.ZERO, null, null, null, null,
-                null, null, null, null, null))).singleElement().asString().contains("größer als 0");
+                null, null, null, null, null, null, null))).singleElement().asString().contains("größer als 0");
         assertThat(SteuerartSatz.pruefe(last, new SteuerartWunsch(
                 SteuerartProjektion.QUELLE_UEBERSCHUSS, null, null, -1, null, null, null, null,
-                null, null, null))).singleElement().asString().contains("Mindestlaufzeit");
+                null, null, null, null, null))).singleElement().asString().contains("Mindestlaufzeit");
     }
 
     // --- §3.2: die Vorgaben -------------------------------------------------

@@ -16,6 +16,8 @@
 //     die Säule selbst hat ein Problem. Es gibt keinen Alarm-Ton und kein
 //     Pulsieren - die einzige Bewegung dieses Hauses ist `busy` im Admin-Puls.
 
+import type { RahmenSoll } from './ladeparkRahmen';
+
 /** Der Katalog-Typ einer Ladesäule (seit Stufe 0 im Typkatalog). */
 export const EV_CHARGER = 'ev-charger';
 
@@ -164,6 +166,15 @@ export interface ChargingConfig {
    */
   surplusPolicy?: SurplusPolicy | null;
   storagePriority?: StoragePriority | null;
+  /**
+   * Der im Portal hinterlegte Ladepark-RAHMEN (P5/E10) — das SOLL.
+   *
+   * ⚠ `null` (und jedes einzelne `null`-Feld darin) heißt „das Portal äußert
+   * sich dazu nicht und die Box behält ihre eigene Zahl" — die PATCH-Regel des
+   * retained Dokuments —, NIE 0. Was die Box daraufhin wirklich rechnet, sagt
+   * ihr Budget-Block (`LadeparkRahmen`, das IST).
+   */
+  frame?: RahmenSoll | null;
   /**
    * Die ALLOWLIST: die Kennungen, unter denen die Box eine Säule überhaupt
    * annimmt.

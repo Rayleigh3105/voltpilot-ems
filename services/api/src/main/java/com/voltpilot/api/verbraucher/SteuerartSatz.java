@@ -245,7 +245,16 @@ public final class SteuerartSatz {
             // ⚠ Die SG-Ready-Freigabe braucht KEINE Nennleistung: sie schaltet
             // einen Kontakt, keine Leistung (P8). Ihre Schwelle hat eine eigene
             // Vorgabe (2 kW), die nicht aus dem Geraet stammt.
-            if (!SgReady.is(k.entityType()) && k.ratedPowerKw() == null) {
+            //
+            // ⚠ Und ein LADEPUNKT braucht sie seit P5 ebenso wenig: seine
+            // Ueberschuss-Quelle ist die Quellen-Bahn der BOX, die gegen den
+            // GEMESSENEN Ueberschuss deckelt - die Mindestleistung, ab der er
+            // ueberhaupt anfaengt, wohnt dort (`min_kw`) und nicht in einer
+            // gepflegten Nennleistung. Ihn hier zu sperren hiesse, eine Wahl zu
+            // verweigern, die die Box ohne jede Pflege ausfuehren kann.
+            if (!SgReady.is(k.entityType())
+                    && !VerbraucherService.istLadepunkt(k.entityType())
+                    && k.ratedPowerKw() == null) {
                 return GRUND_OHNE_NENNLEISTUNG;
             }
             return null;

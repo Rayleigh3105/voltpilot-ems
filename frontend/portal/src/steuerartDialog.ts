@@ -69,6 +69,16 @@ export interface SteuerartWunsch {
   preisgrenzeCtKwh?: number | null;
   mindestlaufzeitMinuten?: number | null;
   sperrzeitMinuten?: number | null;
+  /**
+   * ⚠ NUR am Ladepunkt (P5): was bei zu wenig Überschuss geschehen soll —
+   * `pausieren` (die Vorgabe: „Nur Sonnenstrom") oder `mindestleistung`
+   * („Sonne zuerst", mit `mindestleistungKw` als Boden). Sie beschreibt die
+   * QUELLEN-BAHN der Box (`charge_points[].source`), nicht ein Policy-Dokument
+   * — deshalb konnte P2 sie noch nicht anbieten: die Policy-Sprache kann ein
+   * „entweder/oder" nicht ausdrücken, ohne mehrdeutig zu werden.
+   */
+  ueberschussModus?: string | null;
+  mindestleistungKw?: number | null;
   fenster?: SteuerartFenster | null;
   ziel?: string | null;
   zielFenster?: SteuerartFenster | null;
@@ -240,6 +250,9 @@ export interface SteuerartEntwurf {
   preisgrenzeCtKwh: number | null;
   mindestlaufzeitMinuten: number | null;
   sperrzeitMinuten: number | null;
+  /** §3.2 am Ladepunkt: `pausieren` | `mindestleistung`. */
+  ueberschussModus: string;
+  mindestleistungKw: number | null;
   fensterTage: string;
   fensterVon: string;
   fensterBis: string;
@@ -269,6 +282,11 @@ export function entwurfAus(e: VerbraucherEintrag | null | undefined): SteuerartE
     preisgrenzeCtKwh: zahl(s?.preisgrenzeCtKwh) ?? zahl(v.preisgrenzeCtKwh),
     mindestlaufzeitMinuten: zahl(v.mindestlaufzeitMinuten),
     sperrzeitMinuten: zahl(v.sperrzeitMinuten),
+    // ⚠ Ohne gespeicherte Angabe ist die Vorgabe `pausieren` — das ist die
+    // ehrliche Lesart von „Nur Sonnenstrom"; `mindestleistung` wäre eine
+    // Netzstrom-Freigabe, die niemand erteilt hat.
+    ueberschussModus: (s?.ueberschussModus as string) || 'pausieren',
+    mindestleistungKw: zahl(s?.mindestleistungKw),
     fensterTage: s?.fenster?.tage || v.fenster?.tage || 'daily',
     fensterVon: s?.fenster?.von || v.fenster?.von || '',
     fensterBis: s?.fenster?.bis || v.fenster?.bis || '',
@@ -312,11 +330,21 @@ export function mitVorbelegung(e: SteuerartEntwurf,
  * zweiten Schritt, wenn hier nichts steht — eine leere Seite ist keine Frage.
  */
 export type FrageId =
-  | 'schwelle' | 'preisgrenze' | 'mindestlaufzeit' | 'sperrzeit' | 'fenster';
+  | 'schwelle' | 'preisgrenze' | 'mindestlaufzeit' | 'sperrzeit' | 'fenster'
+  | 'ueberschussModus';
 
-export function fragen(quelle: string): FrageId[] {
+/**
+ * ⚠ `ladepunkt` ist OPTIONAL und per Vorgabe `false`: jeder bestehende Aufrufer
+ * bekommt Zeichen für Zeichen dieselbe Liste wie vor P5. Die Modus-Frage gibt
+ * es NUR am Ladepunkt, weil nur dort eine Quellen-BAHN existiert, die zwischen
+ * „pausieren" und „Mindestleistung halten" unterscheiden kann.
+ */
+export function fragen(quelle: string, ladepunkt = false): FrageId[] {
   switch (quelle) {
-    case 'ueberschuss': return ['schwelle', 'mindestlaufzeit'];
+    case 'ueberschuss':
+      return ladepunkt
+        ? ['schwelle', 'ueberschussModus', 'mindestlaufzeit']
+        : ['schwelle', 'mindestlaufzeit'];
     case 'freigabe_ueberschuss': return ['schwelle', 'mindestlaufzeit', 'sperrzeit'];
     case 'guenstig': return ['preisgrenze'];
     case 'freigabe_guenstig': return ['preisgrenze', 'mindestlaufzeit', 'sperrzeit'];
@@ -331,6 +359,10 @@ export const FRAGE_TEXT: Record<FrageId, { label: string; einheit?: string; hinw
     label: 'Ab wie viel Überschuss einschalten?',
     einheit: 'kW',
     hinweis: 'Darunter bleibt das Gerät aus.',
+  },
+  ueberschussModus: {
+    label: 'Was, wenn zu wenig Überschuss da ist?',
+    hinweis: 'Pausieren heißt: es wird kein Netzstrom gekauft.',
   },
   preisgrenze: {
     label: 'Bis zu welchem Preis?',
@@ -378,9 +410,18 @@ export const TAGE_WORT: Record<string, string> = {
  * Wert, den der Kunde nie zu sehen bekommt; der Server würde ihn ignorieren,
  * aber die Antwort läse sich, als hätte er ihn gespeichert.
  */
-export function wunschAus(e: SteuerartEntwurf): SteuerartWunsch {
+export function wunschAus(e: SteuerartEntwurf, ladepunkt = false): SteuerartWunsch {
   const w: SteuerartWunsch = { quelle: e.quelle };
-  const f = fragen(e.quelle);
+  const f = fragen(e.quelle, ladepunkt);
+  if (f.includes('ueberschussModus')) {
+    w.ueberschussModus = e.ueberschussModus || 'pausieren';
+    // ⚠ Der Boden reist NUR mit, wenn er auch gemeint ist - bei `pausieren`
+    // wäre er eine Zahl ohne Wirkung, die der Server als Bahn `sonne_zuerst`
+    // missverstehen könnte.
+    if (e.ueberschussModus === 'mindestleistung' && e.mindestleistungKw != null) {
+      w.mindestleistungKw = e.mindestleistungKw;
+    }
+  }
   if (f.includes('schwelle') && e.schwelleKw != null) w.schwelleKw = e.schwelleKw;
   if (f.includes('preisgrenze') && e.preisgrenzeCtKwh != null) {
     w.preisgrenzeCtKwh = e.preisgrenzeCtKwh;

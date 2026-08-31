@@ -96,3 +96,74 @@
   line-height: 1.5;
   color: var(--vp-muted, #64748b);
 }
+
+/* --- Der Ladepark-RAHMEN (P5/E10) -------------------------------------- */
+
+/* Die Leseliste: Beschriftung, Wert, ggf. der Herkunfts-Hinweis darunter. */
+.vp-ladepark-rahmen {
+  list-style: none;
+  margin: var(--vp-space-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--vp-space-2);
+}
+
+.vp-ladepark-rahmen > li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--vp-space-2);
+  padding-bottom: var(--vp-space-2);
+  border-bottom: 1px solid var(--vp-border-subtle, rgba(0, 0, 0, 0.06));
+}
+
+.vp-ladepark-rahmen > li > small {
+  grid-column: 1 / -1;
+}
+
+.vp-ladepark-rahmen-label {
+  color: var(--vp-text-muted);
+}
+
+.vp-ladepark-rahmen-wert {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
+
+/* ⚠ „Nicht gemeldet" ist eine AUSSAGE, keine Zahl - sie bekommt deshalb den
+   ruhigen Ton und nie die Zahlen-Auszeichnung daneben. */
+.vp-ladepark-rahmen-leer {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--vp-text-muted);
+}
+
+/* Der Betreiber-Editor (nur mit technischer Ebene). */
+.vp-ladepark-admin {
+  border-top: 1px solid var(--vp-border-subtle, rgba(0, 0, 0, 0.06));
+  margin-top: var(--vp-space-4);
+  padding-top: var(--vp-space-4);
+}
+
+.vp-ladepark-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--vp-space-3);
+  margin: var(--vp-space-3) 0;
+}
+
+.vp-ladepark-grid label {
+  display: grid;
+  gap: 4px;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted);
+}
+
+.vp-ladepark-grid input {
+  padding: 8px 10px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-sm);
+  font: inherit;
+  min-height: 44px;
+}

@@ -325,15 +325,37 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	// THE SOURCE LANE (Stufe 4). It is the customer's ECONOMIC choice and can
 	// only ever narrow what the physical budget above already allows - the two
 	// compose most-restrictive-wins, and neither widens the other.
-	surplus := a.ocppSurplus(now, set)
+	//
+	// ⚠ Since P5 the lane is derived under the MOST RESTRICTIVE source present
+	// on the site (ocppLanePolicy) rather than the site default alone: a
+	// station may carry its own `source`, and without this a site whose
+	// default is „Schnell laden" would have no lane at all for the one station
+	// the customer put on „Nur Sonnenstrom". A site where NO station chose is
+	// byte-for-byte unchanged - ocppLanePolicy then returns the site default.
+	lanePolicy := ocppLanePolicy(set, snap)
+	surplus := a.ocppSurplusFor(now, set, lanePolicy)
 
 	sessions, byKey := ocppSessions(snap, allocKw)
 	ocppApplyBoosts(rt, sessions, byKey, now)
+	// K3: the arbitration bridge - the plan, a rule, a Handeingriff or a due
+	// deadline reaches the charge point through the SAME machine every other
+	// component uses (see ocpp_bridge.go). Restrict-only by construction, and
+	// a complete no-op without the cloud's charge_point_id binding.
+	if a.arb != nil {
+		ocppApplyBridge(sessions, a.chargePointEntities(), byKey, a.arb.DecisionFor)
+	}
 	plan := lastmgmt.Decide(lastmgmt.Input{
 		Settings: set, Sessions: sessions, BudgetKw: &allocKw,
-		SourceBudgetKw:      ocppSourceBudget(surplus, allocKw),
-		SourceAllowsMinimum: surplus.AllowMinimum,
+		SourceBudgetKw: ocppSourceBudget(surplus, allocKw),
+		// ⚠ Die „Sonne zuerst"-Zugeständnis-Frage gehört dem SITE-Standard,
+		// nicht der Bahn: die Bahn folgt seit P5 der RESTRIKTIVSTEN Quelle des
+		// Standorts, also nähme `surplus.AllowMinimum` einer Säule OHNE eigene
+		// Wahl ihr Mindest-Zugeständnis, sobald eine Nachbarsäule auf „Nur
+		// Sonnenstrom" steht. Eine Säule MIT eigener Wahl antwortet ohnehin
+		// selbst (lastmgmt.allowsMinimum).
+		SourceAllowsMinimum: lastmgmt.NormalizePolicy(set.SurplusPolicy) == lastmgmt.PolicySolarFirst,
 		Policy:              set.SurplusPolicy,
+		SourceBlind:         surplus.Blind,
 		Previous:            rt.previousPlan(), Now: now,
 	})
 	rt.setPlan(&plan)
@@ -658,6 +680,8 @@ func ocppSessions(snap csms.Snapshot, budgetKw float64) ([]lastmgmt.Session, map
 			}
 			s := lastmgmt.Session{
 				Key: key, Priority: c.Priority, MinKw: c.MinKw, MaxKw: maxKw,
+				// P5: the station's OWN source lane. "" = follow the site.
+				Source: lastmgmt.SurplusPolicy(c.Source),
 			}
 			if con.Session != nil {
 				s.Since = con.Session.StartedAt

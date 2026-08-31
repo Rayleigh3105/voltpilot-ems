@@ -2,6 +2,7 @@ package com.voltpilot.api.chargers;
 
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
 import com.voltpilot.api.web.dto.ChargingConfigDto.AllowedChargePointDto;
+import com.voltpilot.api.web.dto.ChargingConfigDto.LadeparkRahmenDto;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -86,15 +87,18 @@ public class ChargingConfigPublisher {
      * @param removedChargePointIds die GRABSTEIN-Liste: die Kennungen, die die
      *                    Box aus ihrer Freigabeliste nehmen soll. Sie reist in
      *                    JEDEM folgenden Dokument mit, nicht einmal
+     * @param frame       der Ladepark-RAHMEN (P5/E10), oder null = keine
+     *                    Aussage; jedes Feld darin einzeln optional
      * @return false, wenn der Broker nicht erreichbar war (best-effort)
      */
     public synchronized boolean publish(UUID tenantId, UUID siteId, UUID deviceId,
             Double gridLimitKw, List<String> priorities, String surplusPolicy,
             String storagePriority, List<AllowedChargePointDto> chargePoints,
-            List<String> removedChargePointIds, Instant publishedAt) {
+            List<String> removedChargePointIds, LadeparkRahmenDto frame, Instant publishedAt) {
         String topic = configTopic(tenantId, siteId, deviceId);
         byte[] payload = document(tenantId, siteId, deviceId, gridLimitKw, priorities,
-                surplusPolicy, storagePriority, chargePoints, removedChargePointIds, publishedAt);
+                surplusPolicy, storagePriority, chargePoints, removedChargePointIds, frame,
+                publishedAt);
         try {
             MqttMessage message = new MqttMessage(payload);
             message.setQos(1);
@@ -143,7 +147,7 @@ public class ChargingConfigPublisher {
     static byte[] document(UUID tenantId, UUID siteId, UUID deviceId, Double gridLimitKw,
             List<String> priorities, String surplusPolicy, String storagePriority,
             List<AllowedChargePointDto> chargePoints, List<String> removedChargePointIds,
-            Instant publishedAt) {
+            LadeparkRahmenDto frame, Instant publishedAt) {
         StringBuilder sb = new StringBuilder(256);
         sb.append("{\"schema_version\":\"1.0\"")
                 .append(",\"tenant_id\":\"").append(tenantId).append('"')
@@ -203,6 +207,31 @@ public class ChargingConfigPublisher {
             }
             sb.append(']');
         }
+        // ⚠ Der RAHMEN (P5/E10) folgt derselben PATCH-Regel wie jedes andere
+        // Feld: ein Wert, den das Portal nicht kennt, wird WEGGELASSEN, damit
+        // die Box ihre eigene Zahl behaelt. Ein Rahmen ohne einen einzigen Wert
+        // reist gar nicht mit - ein leeres Objekt taeuschte eine Aussage vor.
+        if (frame != null && !frame.leer()) {
+            sb.append(",\"frame\":{");
+            int n = 0;
+            n = appendNum(sb, n, "house_reserve_kw", frame.houseReserveKw());
+            n = appendNum(sb, n, "margin_pct", frame.marginPct());
+            n = appendNum(sb, n, "min_power_kw", frame.minPowerKw());
+            if (frame.rotationMinutes() != null) {
+                if (n++ > 0) {
+                    sb.append(',');
+                }
+                sb.append("\"rotation_minutes\":").append(frame.rotationMinutes().intValue());
+            }
+            n = appendNum(sb, n, "max_house_load_kw", frame.maxHouseLoadKw());
+            if (frame.staticBudget() != null) {
+                if (n++ > 0) {
+                    sb.append(',');
+                }
+                sb.append("\"static_budget\":").append(frame.staticBudget().booleanValue());
+            }
+            sb.append('}');
+        }
         sb.append(",\"published_at\":\"").append(publishedAt).append("\"}");
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -230,7 +259,29 @@ public class ChargingConfigPublisher {
         if (cp.connection() != null && !cp.connection().isBlank()) {
             sb.append(",\"connection\":\"").append(esc(cp.connection())).append('"');
         }
+        // ⚠ Die STEUERART (P5) folgt genau derselben Regel: abwesend heisst
+        // „fuer diese Saeule aeussert sich das Portal nicht" und es gilt der
+        // ANLAGEN-STANDARD - nie „schnell", das waere eine Netzstrom-Freigabe,
+        // die niemand erteilt hat.
+        if (cp.source() != null && !cp.source().isBlank()) {
+            sb.append(",\"source\":\"").append(esc(cp.source())).append('"');
+        }
+        if (cp.minKw() != null) {
+            sb.append(",\"min_kw\":").append(trim(cp.minKw()));
+        }
         sb.append('}');
+    }
+
+    /** Ein optionales Zahlenfeld des Rahmens; n = wie viele schon dastehen. */
+    private static int appendNum(StringBuilder sb, int n, String key, Double v) {
+        if (v == null) {
+            return n;
+        }
+        if (n > 0) {
+            sb.append(',');
+        }
+        sb.append('"').append(key).append("\":").append(trim(v));
+        return n + 1;
     }
 
     /** Ganze Zahlen ohne Nachkomma - 277 statt 277.0 im Kunden-Dokument. */
