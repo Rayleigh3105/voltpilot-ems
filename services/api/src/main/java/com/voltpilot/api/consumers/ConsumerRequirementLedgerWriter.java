@@ -145,14 +145,21 @@ public class ConsumerRequirementLedgerWriter {
     /**
      * The D3 confirmation level implied by the consumer's confirmation channel:
      * an energy channel measures, a power channel integrates, a relay/state
-     * channel only confirms runtime (energy "angenommen"), no channel confirms
-     * nothing (never "erfüllt"). Package-visible for the test.
+     * channel only confirms runtime (energy "angenommen"), der SG-Ready-Kanal
+     * `freigabe` bestätigt NUR die Freigabe (nie eine Energie), no channel
+     * confirms nothing (never "erfüllt"). Package-visible for the test.
      */
     static EnergyConfirmation levelFor(String channel) {
         if (channel == null || channel.isBlank()) {
             return EnergyConfirmation.NONE;
         }
         String c = channel.toLowerCase();
+        // ⚠ Der SG-Ready-Kanal ZUERST: er enthält weder "power" noch "energy"
+        // und fiele sonst auf ASSUMED durch - also auf "Nennleistung × Zeit"
+        // über ein Gerät, dessen Verbrauch wir gar nicht kennen (§3.4).
+        if (SgReady.CONFIRMATION_CHANNEL.equals(c)) {
+            return EnergyConfirmation.FREIGABE;
+        }
         if (c.contains("energy") || c.endsWith("kwh") || c.endsWith("_wh")) {
             return EnergyConfirmation.MEASURED;
         }

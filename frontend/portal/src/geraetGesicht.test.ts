@@ -415,6 +415,44 @@ describe('Stufe 4 · je Gattung genau das, was sie braucht', () => {
     expect(g.held.zeilen.some((z) => /gemessen/.test(z))).toBe(true);
   });
 
+  it('⚠ E · die SG-Ready-Wärmepumpe zeigt die FREIGABE, nie eine Leistung (P8)', () => {
+    const basis = {
+      art: 'quelle' as const,
+      rolle: 'consumer',
+      communication: 'shelly_http',
+      komponenten: [komponente({ role: 'consumer', entityId: 'e-wp', label: 'Wärmepumpe' })],
+      nachweis: 'freigabe' as const,
+    };
+    const gesetzt = gesicht(input({
+      ...basis,
+      // ⚠ Das Relais MELDET eine Leistung (sein eigener Verbrauch) - sie darf
+      // nie als „läuft mit X kW" über die Wärmepumpe auftreten.
+      src: src({ loadKw: 0.4 }),
+      topologie: [{ id: 'e-wp', capabilities: [{ channel: 'relay_on', value: 1 }] }] as never,
+    }));
+    const kachel = gesetzt.held.kacheln[0];
+    expect(kachel.key).toBe('freigabe');
+    expect(kachel.label).toBe('Freigabe');
+    expect(kachel.wert).toBe('Gesetzt');
+    expect(gesetzt.held.satz).toContain('entscheidet sie selbst');
+    expect(gesetzt.held.kacheln.some((k) => k.key === 'leistung')).toBe(false);
+    // ⚠ KEIN „Energie: …"-Satz - über den Verbrauch wissen wir nichts.
+    expect(gesetzt.held.zeilen.some((z) => /Energie/.test(z))).toBe(false);
+    expect(gesetzt.held.zeilen.some((z) => /nur die Freigabe/.test(z))).toBe(true);
+
+    const auf = gesicht(input({
+      ...basis,
+      topologie: [{ id: 'e-wp', capabilities: [{ channel: 'relay_on', value: 0 }] }] as never,
+    }));
+    expect(auf.held.kacheln[0].wert).toBe('Aufgehoben');
+    expect(auf.held.satz).toContain('Normalbetrieb');
+
+    // Ohne gemeldeten Zustand wird NICHTS behauptet.
+    const stumm = gesicht(input(basis));
+    expect(stumm.held.kacheln[0].wert).toBe('—');
+    expect(stumm.held.satz).toContain('keine Freigabe');
+  });
+
   it('⚠ E · ohne Messung sagt das Blatt es, statt Erfüllung zu behaupten', () => {
     const g = gesicht(input({
       art: 'quelle',

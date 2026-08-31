@@ -15,7 +15,8 @@ import type {
 export interface CreateConsumerBody {
   type: string;
   name?: string;
-  ratedPowerKw: number;
+  /** Optional seit P8: die SG-Ready-Wärmepumpe kommt ohne Nennleistung aus. */
+  ratedPowerKw?: number;
   controlKind?: string;
   levelsKw?: number[];
   minPowerKw?: number;

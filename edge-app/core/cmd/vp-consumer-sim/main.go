@@ -36,7 +36,7 @@ func main() {
 	var (
 		bus       = flag.String("bus", "tcp://127.0.0.1:1884", "core local bus URL")
 		entity    = flag.String("entity", "", "entity id (required)")
-		preset    = flag.String("preset", "heating-rod", "wallbox|heating-rod|pump|stepped-rod")
+		preset    = flag.String("preset", "heating-rod", "wallbox|heating-rod|heat-pump-sgready|pump|stepped-rod")
 		rated     = flag.Float64("rated-kw", 0, "override rated power")
 		ranges    = flag.String("ranges", "", "override power ranges, e.g. 1.4:3.7,4.2:11")
 		levels    = flag.String("levels", "", "override stepped levels, e.g. 0,1.5,3.0")

@@ -82,9 +82,15 @@ export function VerbraucherAnlegenDrawer({
     setCreated(null);
   };
 
+  // ⚠ Der SERVER sagt, ob die Nennleistung Pflicht ist (P8) - die Fläche kennt
+  // den Typ dafür nicht. Ein älteres Backend ohne das Feld verlangt sie überall.
+  const powerRequired = typeOption?.ratedPowerRequired !== false;
+
   const submit = () => {
-    const power = Number(ratedPowerKw.replace(',', '.'));
-    if (!Number.isFinite(power) || power <= 0) {
+    const roh = ratedPowerKw.trim();
+    const power = Number(roh.replace(',', '.'));
+    const hatLeistung = roh !== '';
+    if ((hatLeistung || powerRequired) && (!Number.isFinite(power) || power <= 0)) {
       setFormError('Bitte geben Sie eine Leistung größer als 0 an.');
       return;
     }
@@ -93,9 +99,9 @@ export function VerbraucherAnlegenDrawer({
     const body: CreateConsumerBody = {
       type,
       name: name.trim() || undefined,
-      ratedPowerKw: power,
       controlKind,
     };
+    if (hatLeistung) body.ratedPowerKw = power;
     if (edgeSourceId) body.edgeSourceId = edgeSourceId;
     consumersApi
       .create(site.id, body)
@@ -167,11 +173,15 @@ export function VerbraucherAnlegenDrawer({
           />
 
           <Input
-            label="Nennleistung (kW)"
+            label={powerRequired ? 'Nennleistung (kW)' : 'Nennleistung (kW, optional)'}
             value={ratedPowerKw}
             onChange={(e) => setRatedPowerKw(e.target.value)}
             inputMode="decimal"
             placeholder="z. B. 11"
+            hint={powerRequired ? undefined
+              : 'VoltPilot gibt hier nur die Freigabe — wie viel die Wärmepumpe '
+                + 'daraufhin zieht, entscheidet sie selbst. Die Angabe bleibt '
+                + 'eine Notiz und wird nicht verrechnet.'}
             error={formError && !created ? formError : undefined}
           />
 

@@ -197,6 +197,23 @@
       ]
     },
     {
+      "type": "heat-pump-sgready",
+      "certification_status": "per_device",
+      "certified_at": null,
+      "certification_notes": "Geschaltet wird ein potentialfreier Relais-Kontakt (Shelly 1 / Plus 1) auf den SG-Ready-Eingang 2 der Waermepumpe - Zustand 3 \"Anlaufempfehlung\". Die Freigabe wird JE GERAET am gefuehrten Schalt-Test nachgewiesen, nicht je Waermepumpen-Modell: die Pumpe entscheidet selbst, ob sie anlaeuft, ein Pruefstandslauf koennte das nicht belegen. Zustand 4 \"Anlaufbefehl\" und Zustand 1 \"Sperre\" werden bewusst NICHT geschaltet (E9).",
+      "label": "Wärmepumpe (SG-Ready)",
+      "category": "consumer",
+      "controllable": true,
+      "composed": false,
+      "default_failsafe": "off",
+      "default_measure": [],
+      "default_actuate": [
+        {
+          "command": "on_off"
+        }
+      ]
+    },
+    {
       "type": "pump",
       "certification_status": "simulator_only",
       "certified_at": null,

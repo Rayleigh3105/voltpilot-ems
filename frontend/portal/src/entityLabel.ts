@@ -127,6 +127,7 @@ const TYPE_SHORT: Record<string, string> = {
   'house-load': 'Hausverbrauch',
   wallbox: 'Wallbox',
   'heating-rod': 'Heizstab',
+  'heat-pump-sgready': 'Wärmepumpe',
   'generic-load': 'Verbraucher',
   // D3 customer dictionary (M7): "Messgerät", never the internal "Messpunkt".
   'modbus-generic': 'Messgerät',

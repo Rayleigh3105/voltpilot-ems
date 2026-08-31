@@ -68,7 +68,18 @@ public final class ConsumerRequirementLedger {
 
     /** The D3 confirmation level of the ENERGY figure (§9.4). */
     public enum EnergyConfirmation {
-        MEASURED, INTEGRATED, ASSUMED, NONE;
+        /**
+         * ⚠ FREIGABE (Verbrauchsmanagement v1 §3.4, Paket P8) ist die Stufe der
+         * SG-Ready-Wärmepumpe: der Relais-Rücklesewert belegt, dass die
+         * FREIGABE gesetzt war - über den Verbrauch sagt er NICHTS. Sie liegt
+         * deshalb bewusst NEBEN {@code ASSUMED} statt darin: {@code
+         * Nennleistung × Zeit} wäre hier eine erfundene Energie, weil die
+         * Pumpe selbst entscheidet, ob und wie stark sie anläuft. Folge:
+         * {@link #actualEnergy} liefert für sie NIE eine Zahl, und weil das
+         * gespeicherte Niveau nur neben einer Energie-Zahl steht, erreicht das
+         * Wort auch nie die {@code energy_confirmation}-Spalte.
+         */
+        MEASURED, INTEGRATED, ASSUMED, FREIGABE, NONE;
 
         public String label() {
             return name().toLowerCase();

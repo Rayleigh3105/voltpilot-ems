@@ -97,8 +97,16 @@ public class ConsumerService {
             String failsafe, Boolean enabled, Long expectedVersion,
             Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay) {}
 
+    /**
+     * {@code ratedPowerRequired} ist die SERVER-Wahrheit darüber, ob die
+     * Nennleistung angegeben werden muss (P8): die SG-Ready-Wärmepumpe darf sie
+     * weglassen, weil sie über sie nichts steuert und nichts nachweist. Das
+     * Portal liest sie statt den Typ ein zweites Mal zu kennen; ein älterer
+     * Client ohne das Feld verlangt sie weiterhin überall.
+     */
     public record TypeOption(String type, String label, List<String> controlKinds,
-            String defaultFailsafe, boolean releaseAllowed, List<String> intents) {}
+            String defaultFailsafe, boolean releaseAllowed, List<String> intents,
+            boolean ratedPowerRequired) {}
 
     public record SignalOption(String name, String label, String signalClass, String valueType) {}
 
@@ -143,7 +151,8 @@ public class ConsumerService {
                 continue;
             }
             types.add(new TypeOption(t.type(), t.label(), allowedControlKinds(t),
-                    t.defaultFailsafe(), "release".equals(t.defaultFailsafe()), intentsFor(t.type())));
+                    t.defaultFailsafe(), "release".equals(t.defaultFailsafe()), intentsFor(t.type()),
+                    !SgReady.ratedPowerOptional(t.type())));
         }
         List<SignalOption> sig = signals.all().stream()
                 .map(s -> new SignalOption(s.name(), s.label(), s.signalClass(), s.valueType()))
@@ -175,8 +184,15 @@ public class ConsumerService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Dieses Gerät kann diese Regelart nicht ausführen.");
         }
+        // ⚠ Die Nennleistung ist für die SG-Ready-Wärmepumpe OPTIONAL (P8): sie
+        // ist eine Angabe ÜBER die Pumpe, kein Steuerwert - geschaltet wird ein
+        // Freigabe-Kontakt, und "Nennleistung × Zeit" wäre dort eine erfundene
+        // Energie. Für jeden anderen Typ bleibt sie Pflicht.
         BigDecimal rated = req.ratedPowerKw();
-        if (rated == null || rated.signum() <= 0) {
+        if (rated != null && rated.signum() <= 0) {
+            throw badRequest("Die Nennleistung muss größer als 0 sein.");
+        }
+        if (rated == null && !SgReady.ratedPowerOptional(req.type())) {
             throw badRequest("Die Nennleistung muss größer als 0 sein.");
         }
         String failsafe = req.failsafe() == null ? type.defaultFailsafe() : req.failsafe();
@@ -196,7 +212,7 @@ public class ConsumerService {
         }
         // Validate the control-profile shape (levels / ranges / D4) via the ONE
         // validator, exactly the rules the TS twin enforces.
-        validateControlProfileOrThrow(controlKind, rated, req.minPowerKw(), req.levelsKw(),
+        validateProfileShape(controlKind, rated, req.minPowerKw(), req.levelsKw(),
                 req.resolutionKw(), req.powerRangesKw());
 
         String name = req.name() == null || req.name().isBlank() ? type.label() : req.name().trim();
@@ -217,7 +233,8 @@ public class ConsumerService {
         String confirmationChannel = null;
         if (req.edgeSourceId() != null && !req.edgeSourceId().isBlank()) {
             repo.bindEdgeSource(siteId, entityId, req.edgeSourceId().trim());
-            confirmationChannel = confirmationChannelFor(siteId, req.edgeSourceId().trim());
+            confirmationChannel =
+                    confirmationChannelFor(siteId, req.type(), req.edgeSourceId().trim());
         }
 
         repo.insertProfile(entityId, TenantContext.get(), siteId, controlKind, rated,
@@ -281,7 +298,10 @@ public class ConsumerService {
                     "Dieses Gerät kann diese Regelart nicht ausführen.");
         }
         BigDecimal rated = req.ratedPowerKw() != null ? req.ratedPowerKw() : cur.ratedPowerKw();
-        if (rated == null || rated.signum() <= 0) {
+        if (rated != null && rated.signum() <= 0) {
+            throw badRequest("Die Nennleistung muss größer als 0 sein.");
+        }
+        if (rated == null && !SgReady.ratedPowerOptional(cur.entityType())) {
             throw badRequest("Die Nennleistung muss größer als 0 sein.");
         }
         String failsafe = orDefault(req.failsafe(), cur.failsafe());
@@ -305,7 +325,7 @@ public class ConsumerService {
                 : parse(cur.powerRangesKwJson());
         BigDecimal minPower = req.minPowerKw() != null ? req.minPowerKw() : cur.minPowerKw();
         BigDecimal resolution = req.resolutionKw() != null ? req.resolutionKw() : cur.resolutionKw();
-        validateControlProfileOrThrow(controlKind, rated, minPower, levels, resolution, ranges);
+        validateProfileShape(controlKind, rated, minPower, levels, resolution, ranges);
 
         boolean enabled = req.enabled() != null ? req.enabled() : cur.enabled();
         boolean allowDischarge = req.allowStorageDischarge() != null
@@ -390,7 +410,13 @@ public class ConsumerService {
         if (!doc.has("schema_version")) {
             doc.put("schema_version", "1.0");
         }
-        List<ConsumerFinding> findings = validator.validate(doc);
+        List<ConsumerFinding> findings = new ArrayList<>(validator.validate(doc));
+        // ⚠ Die TYP-scharfen Regeln stehen NEBEN dem generischen Validator, nie
+        // darin: der ist ein Dokument-Validator mit einem TS-Zwilling und
+        // geteilten Vektoren und kennt den Verbrauchertyp per Konstruktion
+        // nicht (P8). Für jeden anderen Typ ist die Liste leer.
+        ConsumerRow consumer = repo.findForSite(siteId, entityId);
+        findings.addAll(SgReady.findings(consumer == null ? null : consumer.entityType(), doc));
         List<ConsumerFinding> errors = findings.stream().filter(ConsumerFinding::isError).toList();
         if (!errors.isEmpty()) {
             throw badRequest(errors.get(0).message());
@@ -421,7 +447,15 @@ public class ConsumerService {
      * power_kw channel per period when no telemetry covered it - so this can
      * overstate nothing.
      */
-    private String confirmationChannelFor(UUID siteId, String edgeSourceId) {
+    private String confirmationChannelFor(UUID siteId, String entityType, String edgeSourceId) {
+        // ⚠ Der SG-Ready-Typ entscheidet VOR dem Gerät (P8, §3.4): auf einem
+        // potentialfreien Freigabe-Kontakt misst auch ein messender Shelly
+        // nichts - der Strom der Wärmepumpe fließt woanders. Er bekommt deshalb
+        // die eigene Stufe `freigabe`, die nie eine Energie behauptet.
+        String typeChannel = SgReady.confirmationChannel(entityType);
+        if (typeChannel != null) {
+            return typeChannel;
+        }
         for (ConsumerRepository.ReportedSource s : repo.reportedSources(siteId)) {
             if (s.sourceId().equals(edgeSourceId)) {
                 return s.measuresPower() ? "power_kw" : "relay_state";
@@ -477,6 +511,33 @@ public class ConsumerService {
     private String defaultControlKind(EntityType type) {
         List<String> allowed = allowedControlKinds(type);
         return allowed.contains("on_off") ? "on_off" : allowed.get(0);
+    }
+
+    /**
+     * Die Leistungs-FORM eines Verbraucherprofils - mit ODER ohne Nennleistung.
+     *
+     * <p>⚠ Ohne Nennleistung wird der Profil-Validator GAR NICHT gefragt: er
+     * verlangt {@code rated_power_kw} (zu Recht - eine Stufe/ein Bereich ohne
+     * Bezugsgröße bedeutet nichts), und er ist der Zwilling mit den geteilten
+     * Vektoren, der dafür NICHT aufgeweicht wird. Stattdessen gilt hier die
+     * strengere Regel: ohne Nennleistung darf es AUCH KEINE Leistungsform
+     * geben - Stufen, Bereiche, Mindest- und Auflösungsleistung beschreiben
+     * alle eine Leistung, die dieser Verbraucher (SG-Ready-Freigabe, P8) gar
+     * nicht hat. So kann nichts still ungeprüft durchrutschen.
+     */
+    private void validateProfileShape(String controlKind, BigDecimal rated,
+            BigDecimal minPower, JsonNode levels, BigDecimal resolution, JsonNode ranges) {
+        if (rated != null) {
+            validateControlProfileOrThrow(controlKind, rated, minPower, levels, resolution, ranges);
+            return;
+        }
+        boolean form = (levels != null && !levels.isNull() && !levels.isEmpty())
+                || (ranges != null && !ranges.isNull() && !ranges.isEmpty())
+                || minPower != null || resolution != null;
+        if (form) {
+            throw badRequest("Ohne Nennleistung lassen sich keine Leistungsstufen oder "
+                    + "-bereiche angeben.");
+        }
     }
 
     private void validateControlProfileOrThrow(String controlKind, BigDecimal rated,

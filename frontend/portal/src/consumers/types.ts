@@ -124,6 +124,13 @@ export interface ConsumerTypeOption {
   defaultFailsafe: Failsafe;
   releaseAllowed: boolean;
   intents: string[];
+  /**
+   * SERVER-Wahrheit, ob die Nennleistung angegeben werden MUSS (P8). Die
+   * SG-Ready-Wärmepumpe darf sie weglassen: sie ist eine Angabe ÜBER die Pumpe,
+   * kein Steuerwert - geschaltet wird eine Freigabe. `undefined` (älteres
+   * Backend) heißt „wie bisher": Pflicht.
+   */
+  ratedPowerRequired?: boolean;
 }
 
 export interface ConsumerSignalOption {

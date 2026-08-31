@@ -9,6 +9,7 @@ import {
   type Intent,
   type Question,
   type QuestionKind,
+  SG_READY_TYPE, consumerNachweis, NACHWEIS_FREIGABE,
 } from './questions';
 
 function ctx(over: Partial<ConsumerContext> = {}): ConsumerContext {
@@ -209,5 +210,40 @@ describe('consumerHasMeasurement (D3 - die Ink1-Regel folgt dem Gerät)', () => 
     const note = qs.find((q) => q.kind === 'no-measurement-note');
     expect(note?.note).toContain('Ohne Messung');
     expect(qs.some((q) => q.kind === 'energy')).toBe(false);
+  });
+});
+
+describe('SG-Ready-Wärmepumpe: die Freigabe ist der Nachweis (P8)', () => {
+  it('misst NIE - auch nicht an einem messenden Gerät', () => {
+    expect(consumerHasMeasurement({ type: SG_READY_TYPE })).toBe(false);
+    expect(consumerHasMeasurement({ type: SG_READY_TYPE, confirmationChannel: 'freigabe' }))
+      .toBe(false);
+    // ⚠ Der harte Fall: der gebundene Shelly meldet power_kw - über den Strom
+    // der Wärmepumpe sagt sein potentialfreier Kontakt trotzdem nichts.
+    expect(consumerHasMeasurement({ type: SG_READY_TYPE, confirmationChannel: 'power_kw' }))
+      .toBe(false);
+  });
+
+  it('trägt die eigene Nachweisart, und der Kontrast bleibt unverändert', () => {
+    expect(consumerNachweis({ type: SG_READY_TYPE })).toBe('freigabe');
+    expect(consumerNachweis({ type: SG_READY_TYPE, confirmationChannel: 'power_kw' }))
+      .toBe('freigabe');
+    // Ein anderer Typ MIT dem Kanal `freigabe` (ein älterer Datensatz) liest
+    // sich ebenso ehrlich - der Kanal ist die Server-Wahrheit.
+    expect(consumerNachweis({ type: 'generic-load', confirmationChannel: 'freigabe' }))
+      .toBe('freigabe');
+
+    expect(consumerNachweis({ type: 'heating-rod', confirmationChannel: 'power_kw' }))
+      .toBe('gemessen');
+    expect(consumerNachweis({ type: 'heating-rod', confirmationChannel: 'relay_state' }))
+      .toBe('angenommen');
+    // ⚠ Ohne Kanal wird NICHTS behauptet, wo der Typ nichts hergibt.
+    expect(consumerNachweis({ type: 'modbus-load' })).toBeNull();
+    expect(consumerNachweis({ type: 'heating-rod' })).toBe('gemessen');
+  });
+
+  it('sagt, was es nachweisen kann - und was nicht', () => {
+    expect(NACHWEIS_FREIGABE).toContain('nur die Freigabe');
+    expect(NACHWEIS_FREIGABE).toContain('nicht den Verbrauch');
   });
 });

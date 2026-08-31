@@ -102,7 +102,7 @@ func TestOnOffCommandWithoutALevelRunsAtRatedOnContinuous(t *testing.T) {
 }
 
 func TestPresetsExist(t *testing.T) {
-	for _, name := range []string{"wallbox", "heating-rod", "pump", "stepped-rod"} {
+	for _, name := range []string{"wallbox", "heating-rod", "heat-pump-sgready", "pump", "stepped-rod"} {
 		if _, err := Preset(name); err != nil {
 			t.Fatalf("preset %s: %v", name, err)
 		}
@@ -110,4 +110,35 @@ func TestPresetsExist(t *testing.T) {
 	if _, err := Preset("toaster"); err == nil {
 		t.Fatal("unknown preset must refuse")
 	}
+}
+
+// Der SG-Ready-Freigabekontakt (Verbrauchsmanagement v1 P8): er ist GESETZT und
+// verbraucht dabei nichts. Ohne die eigene Regel fiele er auf "applied <= 0 ist
+// aus" durch und meldete eine Freigabe, die er gesetzt hat, als aufgehoben.
+func TestReleaseContactIsOnWhileConsumingNothing(t *testing.T) {
+	d := New(mustPreset(t, "heat-pump-sgready"))
+	on := true
+	got := d.Apply(&on, nil, true)
+	if !got.On || got.AppliedKw != 0 || got.Mismatch {
+		t.Fatalf("Freigabe gesetzt: got %+v, want On=true AppliedKw=0 ohne Mismatch", got)
+	}
+	off := false
+	got = d.Apply(&off, nil, true)
+	if got.On || got.AppliedKw != 0 {
+		t.Fatalf("Freigabe aufgehoben: got %+v", got)
+	}
+	// Der Kontrast: ein Heizstab MIT Nennleistung meldet sie weiterhin.
+	rod := New(mustPreset(t, "heating-rod"))
+	if r := rod.Apply(&on, nil, true); !r.On || r.AppliedKw != 6 {
+		t.Fatalf("heating-rod: got %+v, want 6 kW", r)
+	}
+}
+
+func mustPreset(t *testing.T, name string) Config {
+	t.Helper()
+	cfg, err := Preset(name)
+	if err != nil {
+		t.Fatalf("preset %s: %v", name, err)
+	}
+	return cfg
 }

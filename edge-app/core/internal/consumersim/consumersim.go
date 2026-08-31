@@ -46,6 +46,13 @@ type Config struct {
 	// execution: an unavailable device consumes nothing (a disconnected
 	// vehicle cannot charge), whatever is commanded.
 	AvailabilityChannel string
+	// ReleaseContact marks a potential-free RELEASE contact (SG-Ready state 3
+	// "Anlaufempfehlung", Verbrauchsmanagement v1 P8): the relay closes, but
+	// the device behind it - a heat pump - decides for itself whether and how
+	// hard it runs, and its current does not flow through our contact. So it
+	// is ON while consuming NOTHING; reporting a rated power here would be the
+	// invented energy the whole SG-Ready type exists to avoid.
+	ReleaseContact bool
 }
 
 // Preset returns the §23 example devices as configurations of the ONE model.
@@ -62,13 +69,16 @@ func Preset(name string) (Config, error) {
 		}, nil
 	case "heating-rod":
 		return Config{ControlKind: KindOnOff, RatedKw: 6}, nil
+	case "heat-pump-sgready":
+		// Nur die FREIGABE - kein Verbrauch, keine Nennleistung.
+		return Config{ControlKind: KindOnOff, ReleaseContact: true}, nil
 	case "pump":
 		return Config{ControlKind: KindOnOff, RatedKw: 2.2}, nil
 	case "stepped-rod":
 		return Config{ControlKind: KindStepped, RatedKw: 4.5,
 			LevelsKw: []float64{0, 1.5, 3.0, 4.5}}, nil
 	}
-	return Config{}, fmt.Errorf("unbekanntes Preset %q (wallbox|heating-rod|pump|stepped-rod)", name)
+	return Config{}, fmt.Errorf("unbekanntes Preset %q (wallbox|heating-rod|heat-pump-sgready|pump|stepped-rod)", name)
 }
 
 // Applied is the result of executing one command against the device.
@@ -162,6 +172,10 @@ func (d *Device) Apply(onOff *bool, setpointKw *float64, controlEnabled bool) Ap
 		// Commanded on while unavailable: nothing consumes - an honest
 		// mismatch (the vehicle is not there).
 		res.On, res.AppliedKw, res.Mismatch = false, 0, true
+	case d.cfg.ReleaseContact:
+		// The release IS the executed state; 0 kW is the truth, not a failure -
+		// so this must NOT fall through to the "applied <= 0 means off" rule.
+		res.On, res.AppliedKw = true, 0
 	default:
 		res.On = true
 		res.AppliedKw = d.snap(wishKw)

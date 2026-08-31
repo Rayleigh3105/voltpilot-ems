@@ -32,6 +32,53 @@ export interface ConsumerContext {
 const MEASURING_TYPE_DEFAULT = new Set(['wallbox', 'heating-rod', 'pump', 'generic-load']);
 
 /**
+ * Die SG-Ready-Wärmepumpe (Verbrauchsmanagement v1, Paket P8; Katalogtyp und
+ * Server-Regeln in `services/api .../consumers/SgReady.java`).
+ *
+ * ⚠ Sie ist der EINE Verbrauchertyp, bei dem ein Rücklesewert die FREIGABE
+ * belegt und nicht den Verbrauch: geschaltet wird ein potentialfreier Kontakt
+ * auf dem SG-Ready-Eingang der Pumpe, ob sie daraufhin anläuft, entscheidet
+ * sie selbst. „Nennleistung × Zeit" wäre dort eine erfundene Energie.
+ */
+export const SG_READY_TYPE = 'heat-pump-sgready';
+
+/** Der D3-Nachweiskanal der SG-Ready-Wärmepumpe (Server-Wahrheit `freigabe`). */
+export const SG_READY_CHANNEL = 'freigabe';
+
+/**
+ * Die D3-Nachweisart eines Verbrauchers - was VoltPilot über ihn BELEGEN kann:
+ * `gemessen` = Leistung/Energie werden gemessen · `angenommen` = nur der
+ * Schaltzustand ist belegt, die Energie ist Nennleistung × Zeit · `freigabe` =
+ * nur die FREIGABE ist belegt, über den Verbrauch wird gar nichts behauptet ·
+ * `null` = nicht bekannt (älterer Verbraucher/Backend) - dann behauptet die
+ * Fläche keines von beidem.
+ */
+export type NachweisArt = 'gemessen' | 'angenommen' | 'freigabe';
+
+/** Der Kunden-Satz zur Freigabe-Stufe - der Zwilling von `SgReady.NACHWEIS_SATZ`. */
+export const NACHWEIS_FREIGABE =
+  'Ohne Messung kann VoltPilot nur die Freigabe nachweisen, nicht den Verbrauch.';
+
+/**
+ * Die Nachweisart eines Verbrauchers. Der server-abgeleitete
+ * `confirmationChannel` entscheidet, wo er vorliegt; der Typ ist der Rückfall
+ * (ein Bestandsverbraucher ohne Kanal). `freigabe` gewinnt IMMER, wenn der Typ
+ * die SG-Ready-Wärmepumpe ist - auch an einem messenden Gerät: ein
+ * potentialfreier Kontakt sagt über den Strom der Pumpe nichts.
+ */
+export function consumerNachweis(c: {
+  type: string;
+  confirmationChannel?: string | null;
+}): NachweisArt | null {
+  if (c.type === SG_READY_TYPE || c.confirmationChannel === SG_READY_CHANNEL) return 'freigabe';
+  const ch = c.confirmationChannel;
+  if (ch != null && ch.trim() !== '') {
+    return consumerHasMeasurement(c) ? 'gemessen' : 'angenommen';
+  }
+  return MEASURING_TYPE_DEFAULT.has(c.type) ? 'gemessen' : null;
+}
+
+/**
  * Whether a consumer has an energy/power measurement channel (D3, the Ink1
  * rule "kWh-Ziele nur mit Messung"): the server-derived confirmationChannel
  * decides when present - 'power_kw'/energy channels measure, 'relay_state'
@@ -44,6 +91,9 @@ export function consumerHasMeasurement(c: {
   type: string;
   confirmationChannel?: string | null;
 }): boolean {
+  // ⚠ Die SG-Ready-Wärmepumpe misst per Konstruktion NIE - der Kanal `freigabe`
+  // trägt weder "power" noch "energy" und fiele sonst auf den Typ-Rückfall.
+  if (c.type === SG_READY_TYPE || c.confirmationChannel === SG_READY_CHANNEL) return false;
   const ch = c.confirmationChannel;
   if (ch != null && ch.trim() !== '') {
     const lower = ch.toLowerCase();

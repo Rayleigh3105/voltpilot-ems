@@ -44,6 +44,7 @@ import type {
   ControlStatus, CurtailmentStatus, SiteEntity, SiteSource, TopologyEntity,
 } from './api';
 import { channelLabel } from './channels';
+import { NACHWEIS_FREIGABE, type NachweisArt } from './consumers/questions';
 import { controlStrip, freigabeWort } from './control';
 import { fmtNum } from './format';
 import { KEINE_REGISTER } from './geraetRegister';
@@ -211,6 +212,17 @@ export interface GesichtInput {
    * wäre ein Zwilling, der abdriftet.
    */
   gemessen?: boolean | null;
+  /**
+   * Die D3-NACHWEISART eines Verbrauchers (P8) - sie schlägt `gemessen`, wo sie
+   * vorliegt, und trägt die dritte Möglichkeit, die ein Boolean nicht kennt:
+   * `freigabe`. Eine SG-Ready-Wärmepumpe wird über einen potentialfreien
+   * Kontakt FREIGEGEBEN; ob sie anläuft und mit welcher Leistung, entscheidet
+   * sie selbst. Ohne dieses Feld läse sie sich als „angenommen (Nennleistung ×
+   * Zeit)" - eine erfundene Energie über ein Gerät, das wir nicht messen.
+   *
+   * ⚠ `null`/absent = nicht bekannt; dann gilt `gemessen` wie bisher.
+   */
+  nachweis?: NachweisArt | null;
   now?: number;
 }
 
@@ -692,8 +704,16 @@ function heldZaehler(input: GesichtInput, eigenbau: boolean): Held {
  */
 function heldVerbraucher(input: GesichtInput, eigenbau: boolean): Held {
   const eigen = input.komponenten.find((c) => c.role === 'consumer');
-  const leistung = num(input.src?.loadKw) ?? num(eigen?.reading?.value ?? null);
-  const gemessen = input.gemessen ?? null;
+  // ⚠ Eine FREIGABE misst nichts - eine Leistung, die daneben gemeldet wird,
+  // gehört dem Relais, nicht der Wärmepumpe, und darf hier nie als „läuft mit
+  // X kW" auftreten.
+  const nachweis: NachweisArt | null = input.nachweis
+    ?? (input.gemessen == null ? null : input.gemessen ? 'gemessen' : 'angenommen');
+  const freigabe = nachweis === 'freigabe';
+  const leistung = freigabe
+    ? null
+    : num(input.src?.loadKw) ?? num(eigen?.reading?.value ?? null);
+  const gemessen = freigabe ? false : input.gemessen ?? null;
   // Ohne Leistungsmessung ist der Zustand das RELAIS, nicht eine Leistung:
   // `relay_on` kommt als 0/1 über den Kanal (die Kanäle sind 0/1-Zahlen).
   const relais = eigen ? kanalWert(input.topologie, eigen.entityId, 'relay_on') : null;
@@ -702,10 +722,16 @@ function heldVerbraucher(input: GesichtInput, eigenbau: boolean): Held {
     : relais != null ? relais.wert > 0 : null;
   const regeln = input.regeln ?? [];
   const satz = laeuft == null
-    ? 'Dieses Gerät meldet gerade keinen Wert.'
-    : laeuft
-      ? (leistung != null ? `Läuft gerade mit ${fmtNum(leistung, 'kW')}.` : 'Läuft gerade.')
-      : 'Läuft gerade nicht.';
+    ? (freigabe
+      ? 'Dieses Gerät meldet gerade keine Freigabe.'
+      : 'Dieses Gerät meldet gerade keinen Wert.')
+    : freigabe
+      ? (laeuft
+        ? 'Die Freigabe ist gesetzt — ob die Wärmepumpe anläuft, entscheidet sie selbst.'
+        : 'Die Freigabe ist aufgehoben — die Wärmepumpe läuft im Normalbetrieb.')
+      : laeuft
+        ? (leistung != null ? `Läuft gerade mit ${fmtNum(leistung, 'kW')}.` : 'Läuft gerade.')
+        : 'Läuft gerade nicht.';
   // ⚠ Der GRUND wird nur genannt, wo eine Regel dieses Gerät wirklich anfasst -
   // „warum" ohne Beleg wäre eine Behauptung über eine Automatik, die es
   // vielleicht gar nicht gibt. Der Wohnort der Regel bleibt die Steuerung (D2).
@@ -714,7 +740,17 @@ function heldVerbraucher(input: GesichtInput, eigenbau: boolean): Held {
     : regeln.length === 1
       ? `Geschaltet von der Regel „${regeln[0]}".`
       : `Geschaltet von den Regeln „${regeln.join('", „')}".`;
-  const kachel: HeldKachel = leistung != null || gemessen !== false
+  const kachel: HeldKachel = freigabe
+    ? {
+      // Die Frage lautet hier NICHT „wie viel", sondern „ist freigegeben".
+      key: 'freigabe',
+      label: 'Freigabe',
+      wert: laeuft == null ? NO_DATA : laeuft ? 'Gesetzt' : 'Aufgehoben',
+      wort: 'SG-Ready · Anlaufempfehlung',
+      ton: laeuft == null ? 'off' : laeuft ? 'ok' : null,
+      gross: true,
+    }
+    : leistung != null || gemessen !== false
     ? {
       key: 'leistung',
       label: 'Leistung',
@@ -733,7 +769,11 @@ function heldVerbraucher(input: GesichtInput, eigenbau: boolean): Held {
       gross: true,
     };
   const zeilen: string[] = [];
-  if (gemessen != null) {
+  if (freigabe) {
+    // ⚠ Kein „Energie: …"-Satz: über den Verbrauch der Wärmepumpe wissen wir
+    // NICHTS, und eine Stufe zu nennen hieße, eine Zahl anzudeuten.
+    zeilen.push(NACHWEIS_FREIGABE);
+  } else if (gemessen != null) {
     zeilen.push(gemessen
       ? 'Energie: gemessen'
       : 'Energie: angenommen (Nennleistung × Zeit)');

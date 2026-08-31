@@ -118,7 +118,7 @@ import {
   type ManualOverride,
   type SofortAktion,
 } from '../consumers/fulfillment';
-import { consumerHasMeasurement } from '../consumers/questions';
+import { consumerHasMeasurement, consumerNachweis } from '../consumers/questions';
 import { controlStrip } from '../control';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 // LIVE: die Geräteseite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
@@ -609,6 +609,9 @@ export function GeraetSeiteSection({
       // D3-Regel - ein zweites Urteil hier wäre eine zweite Wahrheit.
       erfuellung: fulfilment ? fulfilmentSummary(fulfilment).headline : null,
       gemessen: eigenerVerbraucher ? consumerHasMeasurement(eigenerVerbraucher) : null,
+      // P8: die dritte Nachweisart, die ein Boolean nicht kennt - eine
+      // SG-Ready-Wärmepumpe wird FREIGEGEBEN, nicht gemessen.
+      nachweis: eigenerVerbraucher ? consumerNachweis(eigenerVerbraucher) : null,
       now,
     });
   }, [view, data, components, sources, charging, control, curtailment, strategies,

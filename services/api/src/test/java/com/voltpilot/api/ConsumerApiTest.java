@@ -1263,6 +1263,118 @@ class ConsumerApiTest {
         }
     }
 
+    /**
+     * Der SG-Ready-Typ (Paket P8, Konzept §3.1/§3.4, Captain-Entscheid E9): er
+     * ist ANLEGBAR OHNE Nennleistung, sein Nachweis ist die eigene D3-Stufe
+     * {@code freigabe} - auch an einem MESSENDEN Gerät, weil ein
+     * potentialfreier Kontakt nichts über den Strom der Wärmepumpe sagt -, und
+     * ein Frist-Ziel wird für ihn abgelehnt, statt eine Zusage zu werden, die
+     * die Anlage nicht halten kann.
+     */
+    @org.junit.jupiter.api.Test
+    void sgReadyLaeuftOhneNennleistungWeistNurDieFreigabeNachUndKenntKeinZiel() {
+        String tok = token("demo", "demo");
+        UUID tenantA = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        String device = "00000000-0000-0000-0000-000000000003"; // BERLIN seed inverter
+        TenantContext.set(tenantA);
+        try {
+            jdbc.update("INSERT INTO device_source_status (device_id, source_id, tenant_id, "
+                    + "site_id, kind, role, label, brand, load_kw, health, reported_at) VALUES "
+                    + "(?::uuid, 'src-wp-relay', ?, ?::uuid, 'source', 'consumer', "
+                    + "'SG-Ready-Relais', 'shelly', 0.4, 'ok', now()) "
+                    + "ON CONFLICT (device_id, source_id) DO UPDATE SET load_kw = EXCLUDED.load_kw",
+                    device, tenantA, BERLIN_SITE);
+        } finally {
+            TenantContext.clear();
+        }
+        String wp = null;
+        try {
+            // Der Typ steht im Katalog und sagt SELBST, dass er ohne Nennleistung
+            // auskommt - das Portal muss den Typ dafür nicht kennen.
+            Map<String, Object> options = getMap(
+                    "/api/v1/sites/" + BERLIN_SITE + "/consumer-options", tok);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> types = (List<Map<String, Object>>) options.get("types");
+            Map<String, Object> sg = types.stream()
+                    .filter(t -> "heat-pump-sgready".equals(t.get("type"))).findFirst()
+                    .orElseThrow();
+            assertThat(sg.get("label")).isEqualTo("Wärmepumpe (SG-Ready)");
+            assertThat(sg.get("ratedPowerRequired")).isEqualTo(Boolean.FALSE);
+            assertThat(sg.get("controlKinds")).isEqualTo(List.of("on_off"));
+            Map<String, Object> rod = types.stream()
+                    .filter(t -> "heating-rod".equals(t.get("type"))).findFirst().orElseThrow();
+            assertThat(rod.get("ratedPowerRequired")).isEqualTo(Boolean.TRUE);
+
+            // OHNE Nennleistung angelegt - und an einem Gerät, das sehr wohl
+            // Leistung meldet: der Nachweis bleibt trotzdem `freigabe`.
+            Map<String, Object> c = create(tok, Map.of("type", "heat-pump-sgready",
+                    "name", "Wärmepumpe", "controlKind", "on_off",
+                    "edgeSourceId", "src-wp-relay"));
+            wp = (String) c.get("id");
+            assertThat(c.get("ratedPowerKw")).isNull();
+            assertThat(c.get("confirmationChannel")).isEqualTo("freigabe");
+
+            // Der Kontrast, damit die Regel nicht vakuum ist: JEDER andere Typ
+            // verlangt die Nennleistung weiterhin.
+            ResponseEntity<Map<String, Object>> ohne = post(tok,
+                    "/api/v1/sites/" + BERLIN_SITE + "/consumers",
+                    Map.of("type", "heating-rod", "name", "Rod", "controlKind", "on_off"));
+            assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+            // ⚠ Ohne Nennleistung gibt es auch keine LEISTUNGSFORM - Stufen und
+            // Bereiche beschreiben eine Leistung, die dieser Verbraucher nicht
+            // hat, und würden sonst still ungeprüft gespeichert.
+            ResponseEntity<Map<String, Object>> form = post(tok,
+                    "/api/v1/sites/" + BERLIN_SITE + "/consumers",
+                    Map.of("type", "heat-pump-sgready", "name", "WP mit Stufen",
+                            "controlKind", "on_off", "minPowerKw", 1.5));
+            assertThat(form.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(String.valueOf(form.getBody().get("message")))
+                    .contains("Ohne Nennleistung");
+
+            // Ein Frist-Ziel wird ABGELEHNT - mit dem Satz, der den Weg nennt.
+            ResponseEntity<Map<String, Object>> frist = put(tok,
+                    "/api/v1/sites/" + BERLIN_SITE + "/consumers/" + wp + "/policy",
+                    Map.of("document", Map.of("schema_version", "1.0", "entity_id", wp,
+                            "requirements", List.of(Map.of(
+                                    "id", "bis-sechs", "kind", "flexible_task",
+                                    "enforcement", "required_by_deadline",
+                                    "recurrence", Map.of("days", "daily", "from", "22:00",
+                                            "to", "06:00"),
+                                    "demand", Map.of("runtime_minutes", 120),
+                                    "target", Map.of("kind", "on_off", "value", true))))));
+            assertThat(frist.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(String.valueOf(frist.getBody().get("message"))).contains("kein Ziel");
+
+            // Die eigene Vorlage geht dagegen durch.
+            ResponseEntity<Map<String, Object>> ok = put(tok,
+                    "/api/v1/sites/" + BERLIN_SITE + "/consumers/" + wp + "/policy",
+                    Map.of("document", Map.of("schema_version", "1.0", "entity_id", wp,
+                            "requirements", List.of(Map.of(
+                                    "id", "freigabe_ueberschuss", "kind", "reactive",
+                                    "enforcement", "opportunistic",
+                                    "condition", Map.of("signal", "site.pv_surplus_kw",
+                                            "operator", "gt", "value", 2,
+                                            "reset_value", 1.5, "max_age_s", 120),
+                                    "target", Map.of("kind", "on_off", "value", true))))));
+            assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.OK);
+        } finally {
+            TenantContext.set(tenantA);
+            try {
+                jdbc.update("UPDATE measurement_point SET edge_source_id = NULL "
+                        + "WHERE site_id = ?::uuid AND edge_source_id = 'src-wp-relay'",
+                        BERLIN_SITE);
+                jdbc.update("DELETE FROM device_source_status WHERE device_id = ?::uuid AND "
+                        + "source_id = 'src-wp-relay'", device);
+            } finally {
+                TenantContext.clear();
+            }
+            if (wp != null) {
+                delete(tok, wp);
+            }
+        }
+    }
+
     private ResponseEntity<Map<String, Object>> put(String token, String path,
             Map<String, Object> body) {
         return rest.exchange(url(path), HttpMethod.PUT, new HttpEntity<>(body, bearer(token)),

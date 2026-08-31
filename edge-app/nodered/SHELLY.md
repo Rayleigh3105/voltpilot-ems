@@ -53,6 +53,13 @@ nicht nachweisen." Ein nicht-messendes Shelly meldet NIE einen Leistungswert
 Die Gen1-`is_valid`-Regel folgt der aioshelly/Home-Assistant-Disziplin und
 bleibt wie jedes Herstellerverhalten **VERIFY-on-device**.
 
+**⚠ Ein SG-Ready-Freigabekontakt ist die Ausnahme von dieser Tabelle.** Liegt
+das Relais auf dem SG-Ready-Eingang einer Wärmepumpe, misst es auch als
+1PM/Plug-S **nichts Relevantes** — der Strom der Pumpe fließt nicht über den
+Steuerkontakt. Dafür gibt es den eigenen Verbrauchertyp
+`heat-pump-sgready` mit der eigenen D3-Stufe `freigabe`:
+[`docs/waermepumpe-sg-ready.md`](../../docs/waermepumpe-sg-ready.md).
+
 ## 4. Einrichten
 
 1. `:8484` → Einrichten → „Weitere Energiequellen" → Rolle **Verbraucher** →

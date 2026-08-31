@@ -99,6 +99,46 @@ describe('VerbraucherAnlegenDrawer', () => {
     expect(screen.getByRole('button', { name: /Später/ })).toBeInTheDocument();
     expect(screen.getAllByText(/Steuerung noch nicht aktiviert/).length).toBeGreaterThan(0);
   });
+
+  it('verlangt die Nennleistung - und lässt GENAU den Typ sie weg, der es darf (P8)', async () => {
+    // ⚠ Die Regel kommt vom SERVER (`ratedPowerRequired`), nicht aus einem
+    // Typ-Vergleich in der Fläche.
+    const options: ConsumerOptions = {
+      ...OPTIONS,
+      types: [
+        { type: 'heat-pump-sgready', label: 'Wärmepumpe (SG-Ready)', controlKinds: ['on_off'],
+          defaultFailsafe: 'off', releaseAllowed: false, intents: [],
+          ratedPowerRequired: false },
+        ...OPTIONS.types,
+      ],
+    };
+    render(
+      <VerbraucherAnlegenDrawer
+        site={SITE} options={options} open onClose={() => {}} onCreated={() => {}}
+      />,
+    );
+    // Das Feld sagt selbst, dass es optional ist, und WARUM.
+    expect(await screen.findByLabelText(/Nennleistung \(kW, optional\)/)).toBeInTheDocument();
+    expect(screen.getByText(/entscheidet sie selbst/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    // Leer gelassen heißt WEGGELASSEN - nie eine erfundene 0.
+    expect(create.mock.calls[0][1]).not.toHaveProperty('ratedPowerKw');
+  });
+
+  it('⚠ ohne das Server-Feld bleibt die Nennleistung Pflicht (älteres Backend)', async () => {
+    render(
+      <VerbraucherAnlegenDrawer
+        site={SITE} options={OPTIONS} open onClose={() => {}} onCreated={() => {}}
+      />,
+    );
+    expect(await screen.findByLabelText(/Nennleistung \(kW\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() =>
+      expect(screen.getByText(/Leistung größer als 0/)).toBeInTheDocument());
+    expect(create).not.toHaveBeenCalled();
+  });
 });
 
 function regelDrawer(over: Partial<Consumer> = {}, options: ConsumerOptions = OPTIONS) {
