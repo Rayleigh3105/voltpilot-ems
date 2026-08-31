@@ -117,7 +117,17 @@ type Charger struct {
 	// engineering margin, §14a and the failsafe bind a station regardless of
 	// what it says here. Ask through SourceOrSite(), never compare the raw
 	// string against a policy word.
-	Source  string    `json:"source,omitempty"`
+	Source string `json:"source,omitempty"`
+	// Rank is THIS station's POSITION in the customer's Rangliste
+	// (Verbrauchsmanagement v1 / P6, `charge_points[].rank`). 0 = the customer
+	// never ordered one, and then `Priority` decides alone - the behaviour
+	// before P6.
+	//
+	// ⚠ EQUAL RANKS ARE EQUALS: the cloud gives stations the customer left side
+	// by side the SAME number, and the allocator keeps rotating between them.
+	// Like `connection`/`source` it is applied to a station the box ALREADY
+	// knows - there is no :8484 surface for it, so there is nothing to protect.
+	Rank    int       `json:"rank,omitempty"`
 	AddedAt time.Time `json:"added_at"`
 }
 

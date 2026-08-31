@@ -424,7 +424,107 @@ class VerbraucherApiTest {
         }
     }
 
+    @Test
+    void dieRaengeErreichenDieMaschineUndGleichrangigeSaeulenTeilenSichEINEZahl() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Rangliste P6");
+        try {
+            UUID device = claim(customer, site, "edge-rangliste-p6");
+            heartbeat(site, device, zweiSaeulen());
+            UUID heizstab = createConsumer(customer, site, "heating-rod", "Heizstab", 3.0);
+            putJson("/api/v1/sites/" + site + "/battery", customer,
+                    Map.of("capacityKwh", 10.0, "maxChargeKw", 5.0, "maxDischargeKw", 5.0));
+
+            JsonNode vorher = getJson(pfad(site), customer);
+            UUID saeule1 = UUID.fromString(eintrag(vorher, "Hof Nord").get("entityId").asText());
+            UUID saeule2 = UUID.fromString(eintrag(vorher, "saeule-2").get("entityId").asText());
+
+            // 0 · Vor der ersten Reihenfolge sagt die Anlage ueber die zwei
+            //     P6-Zahlen GAR NICHTS - und faehrt damit exakt wie vor P6.
+            assertThat(saeulenRang(site)).isEmpty();
+            assertThat(einSpaltenWert("SELECT storage_rank FROM site_charging_config "
+                    + "WHERE site_id = '" + site + "'")).isNull();
+
+            // 1 · Beide Saeulen ueber den Speicher: sie sind GLEICHRANGIG und
+            //     tragen dieselbe Zahl - die Flaeche zeigt sie als EINE Zeile,
+            //     der Kunde hat zwischen ihnen nichts gewaehlt.
+            rangliste(site, customer, lp(saeule1), lp(saeule2), speicher(), vb(heizstab));
+            assertThat(saeulenRang(site)).containsOnly(java.util.Map.entry("saeule-1", 1),
+                    java.util.Map.entry("saeule-2", 1));
+            // Die Gruppe belegt trotzdem ZWEI Plaetze - die Positionen zaehlen
+            // Geraete, nicht Zeilen.
+            assertThat(einSpaltenWert("SELECT storage_rank FROM site_charging_config "
+                    + "WHERE site_id = '" + site + "'")).isEqualTo("3");
+            assertThat(profil(heizstab)).containsExactly("4", "storage_first");
+
+            // 2 · Eine Saeule UEBER, eine UNTER dem Speicher - genau der Fall,
+            //     den die Vorrang-MENGE allein nicht ausdruecken kann.
+            rangliste(site, customer, lp(saeule1), speicher(), lp(saeule2), vb(heizstab));
+            assertThat(saeulenRang(site)).containsOnly(java.util.Map.entry("saeule-1", 1),
+                    java.util.Map.entry("saeule-2", 3));
+            assertThat(einSpaltenWert("SELECT storage_rank FROM site_charging_config "
+                    + "WHERE site_id = '" + site + "'")).isEqualTo("2");
+            // ... und die P4-Aussagen stehen unveraendert daneben.
+            assertThat(vorrang(site)).containsExactly("saeule-1");
+            assertThat(einSpaltenWert("SELECT storage_priority FROM site_charging_config "
+                    + "WHERE site_id = '" + site + "'")).isEqualTo("auto_vor_speicher");
+
+            // 3 · Die Raenge werden GESPEICHERT, obwohl keine Saeule in der
+            //     Allowlist steht: die Reihenfolge gehoert dem Kunden, und ob
+            //     sie eine Saeule ERREICHT, entscheidet erst der Publisher.
+            JsonNode config = getJson("/api/v1/sites/" + site + "/charging-config", customer);
+            assertThat(config.get("chargePoints")).isEmpty();
+            assertThat(config.get("storageRank").asInt()).isEqualTo(2);
+
+            // 4 · Sobald eine Saeule zugelassen ist, traegt IHRE Zeile den Rang -
+            //     das ist genau das, was im retained Dokument zur Box reist.
+            ResponseEntity<String> zugelassen = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config/charge-points"),
+                    HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "saeule-1"), bearer(customer)),
+                    String.class);
+            assertThat(zugelassen.getStatusCode()).isIn(HttpStatus.OK, HttpStatus.CREATED);
+            JsonNode mitAllowlist = getJson("/api/v1/sites/" + site + "/charging-config", customer);
+            assertThat(mitAllowlist.get("chargePoints").get(0).get("chargePointId").asText())
+                    .isEqualTo("saeule-1");
+            assertThat(mitAllowlist.get("chargePoints").get(0).get("rank").asInt()).isEqualTo(1);
+
+            // 5 · Nur die Saeulen-Position aendert sich: der Heizstab rutscht
+            //     ueber sie, alles andere bleibt gleich (der Speicher steht
+            //     weiter auf 4, die Vorrang-Menge und die Speicher-Frage sind
+            //     unveraendert). Ohne den Vergleich gegen die GESPEICHERTEN
+            //     Raenge wuerde hier nichts geschrieben.
+            rangliste(site, customer, lp(saeule1), lp(saeule2), vb(heizstab), speicher());
+            assertThat(saeulenRang(site)).containsOnly(java.util.Map.entry("saeule-1", 1),
+                    java.util.Map.entry("saeule-2", 1));
+            rangliste(site, customer, vb(heizstab), lp(saeule1), lp(saeule2), speicher());
+            assertThat(saeulenRang(site)).as("die Saeulen sind eine Position nach hinten gerutscht")
+                    .containsOnly(java.util.Map.entry("saeule-1", 2),
+                            java.util.Map.entry("saeule-2", 2));
+            assertThat(einSpaltenWert("SELECT storage_rank FROM site_charging_config "
+                    + "WHERE site_id = '" + site + "'")).isEqualTo("4");
+            assertThat(vorrang(site)).containsExactlyInAnyOrder("saeule-1", "saeule-2");
+        } finally {
+            deleteSite(site);
+        }
+    }
+
     // --- Hilfen -------------------------------------------------------------
+
+    /** Die GESPEICHERTEN Raenge der Saeulen dieser Anlage. */
+    private java.util.Map<String, Integer> saeulenRang(UUID site) {
+        java.util.Map<String, Integer> out = new java.util.LinkedHashMap<>();
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            var rs = st.executeQuery("SELECT charge_point_id, rank FROM site_charge_point_rank "
+                    + "WHERE site_id = '" + site + "' ORDER BY charge_point_id");
+            while (rs.next()) {
+                out.put(rs.getString(1), rs.getInt(2));
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+        return out;
+    }
 
     private static String rangPfad(UUID site) {
         return "/api/v1/sites/" + site + "/rangliste";

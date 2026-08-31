@@ -335,7 +335,12 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	lanePolicy := ocppLanePolicy(set, snap)
 	surplus := a.ocppSurplusFor(now, set, lanePolicy)
 
-	sessions, byKey := ocppSessions(snap, allocKw)
+	sessions, byKey := ocppSessions(snap, allocKw, set)
+	// P6: the go-e/Modbus wallboxes the portal put into the Ladepark-Rahmen
+	// take part as VIRTUAL sessions - same budget, same source lane, same
+	// Rangliste. A site with no `wallboxes[]` gets an empty list and every
+	// line below is byte-for-byte pre-P6.
+	sessions = append(sessions, a.wallboxSessions(set, allocKw, now)...)
 	ocppApplyBoosts(rt, sessions, byKey, now)
 	// K3: the arbitration bridge - the plan, a rule, a Handeingriff or a due
 	// deadline reaches the charge point through the SAME machine every other
@@ -347,6 +352,11 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	plan := lastmgmt.Decide(lastmgmt.Input{
 		Settings: set, Sessions: sessions, BudgetKw: &allocKw,
 		SourceBudgetKw: ocppSourceBudget(surplus, allocKw),
+		// ⚠ P6: the SAME lane read ABOVE the battery. It is only ever consulted
+		// by a session the customer put over the storage; every other line
+		// keeps drawing from the site reading, so a site that never ordered a
+		// Rangliste allocates exactly as it did.
+		SourceBudgetAboveStorageKw: ocppSourceBudgetAbove(surplus, allocKw),
 		// ⚠ Die „Sonne zuerst"-Zugeständnis-Frage gehört dem SITE-Standard,
 		// nicht der Bahn: die Bahn folgt seit P5 der RESTRIKTIVSTEN Quelle des
 		// Standorts, also nähme `surplus.AllowMinimum` einer Säule OHNE eigene
@@ -360,6 +370,10 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	})
 	rt.setPlan(&plan)
 
+	// P6: the wallbox allocations are published for the consumer executor
+	// BEFORE the OCPP write, so a cap and its station profile are formed from
+	// the same decision.
+	a.noteWallboxCaps(plan)
 	if allowed, _ := a.ocppControlAllowed(); allowed {
 		a.ocppApply(ctx, plan, byKey, now)
 	}
@@ -621,6 +635,13 @@ func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64, battK
 		return
 	}
 	charging, complete := rt.srv.Snapshot().ChargingTotal(ts, ocppMeterMaxAge)
+	// ⚠ P6: a WALLBOX that takes part in the Ladepark-Rahmen is a charge point
+	// of this law too - its measured power sits inside `grid` exactly like a
+	// station's, so it has to be added back or the budget would shrink by the
+	// very power it just handed out (the oscillation this law exists to
+	// prevent). Only a CLAIMING wallbox is added back: what we cannot cap must
+	// stay building load, see ocpp_wallbox.go.
+	charging += a.wallboxChargingKw(rt.currentSettings(), ts)
 	m := lastmgmt.Measurement{GridKw: grid, ChargingKw: charging, Complete: complete}
 	// ⚠ The battery's MEASURED charge is the third channel of the Stufe-4
 	// surplus split (surplus.go): it is already inside `grid`, so handing it
@@ -656,7 +677,7 @@ type ocppClaim struct {
 // ocppSessions turns the CSMS snapshot into allocator input. budgetKw is the
 // allocatable budget, used only as the honest ceiling for a station that
 // declares no rating of its own.
-func ocppSessions(snap csms.Snapshot, budgetKw float64) ([]lastmgmt.Session, map[string]ocppClaim) {
+func ocppSessions(snap csms.Snapshot, budgetKw float64, set lastmgmt.Settings) ([]lastmgmt.Session, map[string]ocppClaim) {
 	var out []lastmgmt.Session
 	byKey := map[string]ocppClaim{}
 	budget := budgetKw
@@ -682,6 +703,12 @@ func ocppSessions(snap csms.Snapshot, budgetKw float64) ([]lastmgmt.Session, map
 				Key: key, Priority: c.Priority, MinKw: c.MinKw, MaxKw: maxKw,
 				// P5: the station's OWN source lane. "" = follow the site.
 				Source: lastmgmt.SurplusPolicy(c.Source),
+				// P6: the customer's Rangliste. Rank 0 = unranked (and then
+				// `Priority` decides as it always did); BeforeStorage comes
+				// from the ONE derivation, shared with the battery cap.
+				Rank: c.Rank,
+				BeforeStorage: lastmgmt.BeforeStorage(
+					c.Rank, set.StorageRank, set.StoragePriority),
 			}
 			if con.Session != nil {
 				s.Since = con.Session.StartedAt

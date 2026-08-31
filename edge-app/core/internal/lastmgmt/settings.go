@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -30,6 +31,12 @@ func invalid(format string, a ...any) error {
 const (
 	maxGridLimitKw    = 5000
 	maxRotationMinute = 240
+	// maxRank bounds a Rangliste position. Generous: a park with more than a
+	// few hundred claimants does not exist, and a bound that refuses a real
+	// site is worse than none.
+	maxRank = 4096
+	// maxWallboxes mirrors the contract's cap on `wallboxes[]`.
+	maxWallboxes = 64
 )
 
 // SettingsRequest is what the setup surface posts. Every field is a POINTER so
@@ -50,6 +57,16 @@ type SettingsRequest struct {
 	// is stored.
 	SurplusPolicy   *string `json:"surplus_policy,omitempty"`
 	StoragePriority *string `json:"storage_priority,omitempty"`
+	// StorageRank / Wallboxes are the Verbrauchsmanagement-v1-P6 half of the
+	// Rangliste (see Settings). Pointers like every other field: absent KEEPS
+	// what is stored.
+	//
+	// ⚠ For Wallboxes the pointer is what makes "keine Wallbox mehr im Rahmen"
+	// expressible at all: nil = the portal says nothing, a POINTER TO AN EMPTY
+	// LIST is the assertion "no wallbox takes part". Collapsing the two would
+	// make a removal impossible - the `priority_charge_point_ids` rule.
+	StorageRank *int       `json:"storage_rank,omitempty"`
+	Wallboxes   *[]Wallbox `json:"wallboxes,omitempty"`
 }
 
 // storedSettings is the on-disk shape. RotationPeriod is persisted in minutes
@@ -70,6 +87,10 @@ type storedSettings struct {
 	// file and a fresh box read identically.
 	SurplusPolicy   string `json:"surplus_policy,omitempty"`
 	StoragePriority string `json:"storage_priority,omitempty"`
+	// P6. Both are omitted while they hold their default, so an older file and
+	// a fresh box read identically.
+	StorageRank int       `json:"storage_rank,omitempty"`
+	Wallboxes   []Wallbox `json:"wallboxes,omitempty"`
 }
 
 // SchemaVersion of lastmgmt.json.
@@ -87,6 +108,8 @@ func (s Settings) stored() storedSettings {
 		StaticBudget:    s.StaticBudget,
 		SurplusPolicy:   string(s.SurplusPolicy),
 		StoragePriority: string(s.StoragePriority),
+		StorageRank:     s.StorageRank,
+		Wallboxes:       s.Wallboxes,
 	}
 }
 
@@ -101,6 +124,8 @@ func (st storedSettings) settings() Settings {
 		StaticBudget:    st.StaticBudget,
 		SurplusPolicy:   SurplusPolicy(st.SurplusPolicy),
 		StoragePriority: StoragePriority(st.StoragePriority),
+		StorageRank:     st.StorageRank,
+		Wallboxes:       st.Wallboxes,
 	}.WithDefaults()
 }
 
@@ -177,6 +202,20 @@ func (s Settings) Apply(req SettingsRequest) (Settings, error) {
 		}
 		out.StoragePriority = v
 	}
+	if req.StorageRank != nil {
+		v := *req.StorageRank
+		if v < 0 || v > maxRank {
+			return s, invalid("Die Position des Speichers in der Rangliste muss zwischen 0 und %d liegen.", maxRank)
+		}
+		out.StorageRank = v
+	}
+	if req.Wallboxes != nil {
+		list, err := normalizeWallboxes(*req.Wallboxes)
+		if err != nil {
+			return s, err
+		}
+		out.Wallboxes = list
+	}
 	out = out.WithDefaults()
 	if out.HouseReserveKw > out.GridLimitKw && out.GridLimitKw > 0 {
 		return s, invalid("Die für das Gebäude reservierte Leistung (%g kW) ist größer als die Anschlussgrenze (%g kW).",
@@ -186,6 +225,42 @@ func (s Settings) Apply(req SettingsRequest) (Settings, error) {
 }
 
 func isBad(v float64) bool { return v != v || v > 1e12 || v < -1e12 }
+
+// normalizeWallboxes validates and de-duplicates the Ladepark-Rahmen wallbox
+// list. Like every other refusal here it NAMES the field and the limit.
+//
+// ⚠ A wallbox WITHOUT an entity is dropped rather than refused: the list only
+// ever adds claimants, and one entry more or less takes nothing from the box -
+// while failing the whole request would cost the connection limit with it (the
+// chargingcfg discipline).
+func normalizeWallboxes(in []Wallbox) ([]Wallbox, error) {
+	if len(in) > maxWallboxes {
+		return nil, invalid("Es sind höchstens %d Wallboxen im Ladepark-Rahmen möglich.", maxWallboxes)
+	}
+	out := make([]Wallbox, 0, len(in))
+	seen := map[string]bool{}
+	for _, w := range in {
+		id := strings.TrimSpace(w.EntityID)
+		if id == "" || seen[id] {
+			continue
+		}
+		if w.RatedKw < 0 || w.MinKw < 0 || isBad(w.RatedKw) || isBad(w.MinKw) ||
+			w.RatedKw > maxGridLimitKw || w.MinKw > maxGridLimitKw {
+			return nil, invalid("Die Leistungsangaben der Wallbox %q sind nicht plausibel.", id)
+		}
+		if w.Rank < 0 || w.Rank > maxRank {
+			return nil, invalid("Die Position der Wallbox %q in der Rangliste muss zwischen 0 und %d liegen.", id, maxRank)
+		}
+		if w.Source != "" && NormalizePolicy(w.Source) != w.Source {
+			return nil, invalid("Unbekannte Überschuss-Priorität %q für die Wallbox %q.", w.Source, id)
+		}
+		w.EntityID = id
+		w.Label = strings.TrimSpace(w.Label)
+		seen[id] = true
+		out = append(out, w)
+	}
+	return out, nil
+}
 
 // Store persists the settings.
 type Store struct{ path string }

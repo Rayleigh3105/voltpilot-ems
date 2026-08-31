@@ -55,6 +55,25 @@ public record ChargingConfigDto(Double gridLimitKw, List<String> priorityChargeP
          * behaelt ihre eigene Zahl (die PATCH-Regel dieses Pfads).
          */
         LadeparkRahmenDto frame,
+        /*
+         * Die Position des SPEICHERS in der Rangliste des Kunden (P6).
+         *
+         * ⚠ null = der Kunde hat nie eine Reihenfolge gezogen. Dann entscheidet
+         * allein das anlagenweite {@code storagePriority}, wer in den ganzen
+         * Ueberschuss greifen darf - genau das Verhalten vor P6. Es ist NIE 0.
+         */
+        Integer storageRank,
+        /*
+         * Die WALLBOXEN dieser Anlage (P6) - Ladepunkte, die NICHT über OCPP
+         * hängen, sondern als v2-Verbraucher gesteuert werden (go-e & Co.).
+         *
+         * ⚠ Sie treten dem Ladepark-Rahmen als virtuelle Sitzung bei: die Box
+         * zählt ihre GEMESSENE Leistung ins Budget zurück und deckelt sie über
+         * den bestehenden Verbraucher-Sollwert, nie über OCPP. Eine LEERE Liste
+         * ist hier - anders als bei der Allowlist - die Aussage „keine Wallbox
+         * nimmt teil": nur so kann eine entfernte wieder herausfallen.
+         */
+        List<WallboxDto> wallboxes,
         Instant updatedAt, String updatedBy) {
 
     /**
@@ -83,7 +102,33 @@ public record ChargingConfigDto(Double gridLimitKw, List<String> priorityChargeP
              * reale Ladeleistung aus ihrer eigenen Bilanz.
              */
             String connection,
+            /*
+             * rank = die Position dieser Saeule in der Rangliste des Kunden
+             * (P6). null = sie steht in keiner - dann entscheidet allein die
+             * Vorrang-MENGE, also exakt wie vor P6.
+             *
+             * ⚠ GLEICHE ZAHLEN SIND GLEICHRANGIG: alle Saeulen EINER Seite des
+             * Speichers tragen dieselbe, weil die Flaeche sie als EINE Zeile
+             * zeigt und der Kunde zwischen ihnen gar keine Reihenfolge gewaehlt
+             * hat. Die Box wechselt zwischen ihnen weiter im Takt ab.
+             */
+            Integer rank,
             Instant addedAt, String addedBy) {}
+
+    /**
+     * Eine Wallbox, die dem Ladepark-Rahmen beitritt (P6).
+     *
+     * <p><b>⚠ Ohne LEISTUNGSMESSUNG nimmt sie nicht teil</b> - das entscheidet
+     * die BOX, nicht diese Zeile: nur sie weiß, ob gerade ein frischer Messwert
+     * anliegt und ob der Arbiter ihr wirklich einen Sollwert gibt. Eine Zeile
+     * hier ist die ERLAUBNIS teilzunehmen, nie die Behauptung, dass sie es tut.
+     *
+     * <p>{@code null} heißt überall „unbekannt", nie 0: ohne Nennleistung gilt
+     * das Budget, ohne Mindestleistung die anlagenweite, ohne Rang ist sie
+     * ungerankt (dann verteilt die Box wie vor P6).
+     */
+    public record WallboxDto(java.util.UUID entityId, String label, Double ratedKw, Double minKw,
+            Integer rank) {}
 
     /**
      * Der Ladepark-RAHMEN einer Anlage (P5/E10). Jedes Feld ist einzeln

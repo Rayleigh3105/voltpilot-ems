@@ -127,6 +127,8 @@ type AddRequest struct {
 	// Source: this station's own source lane - see Charger.Source. "" = the
 	// site-wide policy applies.
 	Source string `json:"source,omitempty"`
+	// Rank: this station's Rangliste position - see Charger.Rank. 0 = unranked.
+	Rank int `json:"rank,omitempty"`
 }
 
 // maxRatedKw bounds an operator-declared station rating. 1000 kW per connector
@@ -135,6 +137,11 @@ const maxRatedKw = 1000
 
 // maxConnectors bounds the declared plug count of ONE station.
 const maxConnectors = 32
+
+// maxRank mirrors the charging-config contract's ceiling on a Rangliste
+// position. Generous: a park with more than a few hundred claimants does not
+// exist, and a bound that refuses a real site is worse than none.
+const maxRank = 4096
 
 // NormalizeAdd validates + normalises an add request against the existing
 // list. It never mutates; the caller stores the returned Charger.
@@ -190,11 +197,18 @@ func NormalizeAdd(req AddRequest, existing []Charger, now time.Time) (Charger, e
 	if src != "" && !KnownSource(src) {
 		return Charger{}, invalid("Unbekannte Quelle %q - erlaubt sind \"nur_sonne\", \"sonne_zuerst\" und \"schnell\".", src)
 	}
+	// ⚠ Ein unplausibler RANG wird ABGELEHNT, nicht geklemmt (P6): er ordnet,
+	// wer bei knapper Leistung zuerst lädt, und ein geratener Wert setzte eine
+	// Säule still vor eine andere. 0 ist legitim und heisst „nicht eingeordnet".
+	if req.Rank < 0 || req.Rank > maxRank {
+		return Charger{}, invalid("Die Position in der Rangliste muss zwischen 0 und %d liegen (0 = nicht eingeordnet).", maxRank)
+	}
 	return Charger{
 		ID: id, Label: label, Priority: req.Priority,
 		RatedKw: req.RatedKw, MinKw: req.MinKw, Connectors: req.Connectors,
 		Connection: conn,
 		Source:     src,
+		Rank:       req.Rank,
 		AddedAt:    now.UTC(),
 	}, nil
 }

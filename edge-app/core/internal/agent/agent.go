@@ -371,6 +371,11 @@ type Agent struct {
 	goeMu    sync.Mutex
 	goeHolds map[string]string
 
+	// wallbox carries the P6 Ladepark-Rahmen decision for the go-e/Modbus
+	// wallboxes: the distributor's per-entity ceiling and the honest sentence
+	// for one that is not taking part (see ocpp_wallbox.go).
+	wallbox wallboxState
+
 	// shellyDoer executes Shelly HTTP (nil = a default http.Client-backed
 	// doer; injectable for tests). shellyStore persists the once-detected
 	// generation dialect + metering capability per device

@@ -240,8 +240,46 @@ func (a *Agent) goeCommandFor(entityID string) goe.Command {
 		v := *dec.Granted.OnOff
 		cmd.OnOff = &v
 	}
-	// A decision that granted nothing actionable is treated as no-command
-	// (neutral), which goe.PlanFor derives from the empty command.
+	// ⚠ P6: the Ladepark-Rahmen caps this wallbox RESTRICT-ONLY (see
+	// ocpp_wallbox.go). It can only ever LOWER the arbiter's granted value -
+	// the distributor protects the connection, it never widens a command.
+	return a.capWallboxCommand(entityID, cmd)
+}
+
+// capWallboxCommand applies the P6 distributor allocation to a granted consumer
+// command.
+//
+// ⚠ RESTRICT-ONLY, and it only ever touches a CLAIMING wallbox: no allocation
+// (the entity is not in `wallboxes[]`, has no measurement or has no live
+// command) means NOTHING about this command changes - the pre-P6 behaviour.
+//
+// ⚠ A cap of 0 is a VALUE, not an absence: the budget cannot serve this wallbox
+// right now, so it is switched OFF rather than left at a setpoint the site
+// cannot pay for. That is the same „pause instead of starve" the OCPP stations
+// follow, expressed on the consumer path.
+func (a *Agent) capWallboxCommand(entityID string, cmd goe.Command) goe.Command {
+	cap, ok := a.WallboxCapKw(entityID)
+	if !ok {
+		return cmd
+	}
+	if cap <= 1e-9 {
+		off := false
+		zero := 0.0
+		cmd.OnOff = &off
+		cmd.SetpointKw = &zero
+		return cmd
+	}
+	if cmd.SetpointKw != nil && *cmd.SetpointKw > cap {
+		v := cap
+		cmd.SetpointKw = &v
+		return cmd
+	}
+	if cmd.SetpointKw == nil {
+		// An on/off-only command has no value to lower - the cap then bounds it
+		// at the allocation, so the physical draw stays inside the budget.
+		v := cap
+		cmd.SetpointKw = &v
+	}
 	return cmd
 }
 

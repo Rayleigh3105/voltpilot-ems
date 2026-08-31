@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "grid_limit_kw": 22,
+  "storage_rank": 3,
+  "wallboxes": [
+    {
+      "entity_id": "00000000-0000-0000-0000-0000000000aa",
+      "label": "Wallbox Garage",
+      "rated_kw": 11,
+      "min_kw": 4.2,
+      "rank": 1,
+      "source": "sonne_zuerst"
+    }
+  ],
+  "charge_points": [
+    {
+      "id": "saeule-hof-nord",
+      "rank": 2
+    }
+  ],
+  "published_at": "2026-08-31T09:15:00Z"
+}

@@ -8,8 +8,11 @@ import com.voltpilot.api.verbraucher.RanglisteAbleitung.Wunsch;
 import com.voltpilot.api.verbraucher.RanglisteProjektion.Kandidat;
 import com.voltpilot.api.web.dto.ChargingConfigDto;
 import com.voltpilot.api.web.dto.VerbraucherDto;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -87,10 +90,38 @@ public class RanglisteService {
         ChargingConfigDto vorher = configs.forSite(siteId);
         String storagePriority = geaendert(ab.storagePriority(), vorher.storagePriority());
         List<String> vorrang = geaendert(ab.vorrangKennungen(), vorher.priorityChargePointIds());
-        if (storagePriority != null || vorrang != null) {
-            charging.save(siteId, null, vorrang, null, storagePriority, actor);
+
+        // P6: die zwei ZAHLEN, mit denen die BOX dieselbe Reihenfolge faehrt.
+        // `null` = die Raenge sind unveraendert und werden nicht angefasst.
+        Map<String, Integer> raenge = raengeGeaendert(ab, vorher, configs.chargePointRanks(siteId))
+                ? ab.saeulenRang() : null;
+
+        // ⚠ GENAU EIN Push, auch wenn sich alles geaendert hat: das retained
+        // Dokument wird als GANZES ersetzt, zwei Aufrufe waeren zwei Rundlaeufe
+        // zum Broker fuer denselben Zustand.
+        if (storagePriority != null || vorrang != null || raenge != null) {
+            charging.saveRangliste(siteId, vorrang, storagePriority, raenge, ab.speicherRang(),
+                    actor);
         }
         return verbraucher.forSite(siteId);
+    }
+
+    /**
+     * Haben sich die P6-Zahlen geaendert? Verglichen wird gegen das, was die
+     * Box heute wirklich bekommt (die Raenge der ZUGELASSENEN Saeulen plus die
+     * Position des Speichers) - ein unveraenderter Stapel darf keinen Rundlauf
+     * zum Broker ausloesen.
+     */
+    private static boolean raengeGeaendert(Ableitung ab, ChargingConfigDto vorher,
+            Map<String, Integer> gespeichert) {
+        if (!Objects.equals(ab.speicherRang(), vorher.storageRank())) {
+            return true;
+        }
+        // ⚠ Verglichen wird gegen die GESPEICHERTEN Raenge, nicht gegen die der
+        // zugelassenen Saeulen: eine Anlage, deren Saeulen nur an der Box
+        // eingetragen sind, hat gar keine Allowlist - ueber sie gemessen waere
+        // jede Reihenfolge fuer immer „unveraendert" und wuerde nie gespeichert.
+        return !new LinkedHashMap<>(gespeichert).equals(new LinkedHashMap<>(ab.saeulenRang()));
     }
 
     /** {@code null} = unveraendert (oder gar keine Aussage) ⇒ nicht schreiben. */

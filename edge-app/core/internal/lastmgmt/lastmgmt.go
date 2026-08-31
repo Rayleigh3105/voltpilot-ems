@@ -184,6 +184,27 @@ type Session struct {
 	// ReasonRule). Empty falls back to ReasonRule - a pause we cannot name is
 	// still a pause somebody has to be able to explain.
 	CapReason string
+
+	// --- Verbrauchsmanagement v1 / P6 -----------------------------------
+	//
+	// Rank is this session's POSITION in the customer's Rangliste
+	// (`charge_points[].rank`, 1 = served first). 0 = UNRANKED, and that is
+	// the compatibility promise of the whole Paket: with no session carrying
+	// a rank this file allocates byte for byte as it did before P6.
+	//
+	// ⚠ EQUAL RANKS ARE EQUALS, and they ROTATE among themselves - that is
+	// what makes a rank honest. The cloud gives the stations the customer
+	// left side by side in one row the SAME rank, so a rank never claims an
+	// order nobody chose (RanglisteProjektion's Säulen-Gruppe).
+	Rank int
+	// BeforeStorage says this session sits ABOVE the battery in that same
+	// Rangliste: it draws from the WHOLE measured surplus
+	// (Input.SourceBudgetAboveStorageKw), not from what the battery left over.
+	//
+	// ⚠ It is derived in the agent from `rank < storage_rank`, with the
+	// site-wide StoragePriority as the fallback for an unranked site - so a
+	// site that never ordered anything behaves exactly as it did.
+	BeforeStorage bool
 }
 
 // boosted reports whether this session's „Jetzt voll laden" is still running.
@@ -261,6 +282,65 @@ type Settings struct {
 	// overwritten by a defaulting pass — and a site with no measurement is
 	// byte-identical either way (budget.go's BudgetStatic branch).
 	StaticBudget bool
+
+	// --- Verbrauchsmanagement v1 / P6 -----------------------------------
+	//
+	// StorageRank is the BATTERY's own position in the customer's Rangliste
+	// (`storage_rank` of the charging-config document). 0 = the customer never
+	// ordered one, and then StoragePriority decides as it always did.
+	//
+	// ⚠ It lives HERE, next to StoragePriority, because it answers the same
+	// question one notch finer: StoragePriority is the site-wide "cars or
+	// battery first", StorageRank is where the battery sits when the customer
+	// ordered every claimant individually.
+	StorageRank int
+	// Wallboxes are the NON-OCPP charge points (go-e/Modbus) the portal put
+	// into the Ladepark-Rahmen (`wallboxes[]`). They are consumers of the E2
+	// entity path, not OCPP stations - the allocator reaches them through a
+	// VIRTUAL session and the existing consumer setpoint, never through OCPP.
+	//
+	// ⚠ nil and an EMPTY list are the same thing here: no wallbox takes part.
+	Wallboxes []Wallbox
+}
+
+// Wallbox is ONE go-e/Modbus wallbox that takes part in the Ladepark-Rahmen
+// (Verbrauchsmanagement v1 / P6, Konzept §4.3).
+//
+// ⚠ IT IS IDENTIFIED BY ITS ENTITY, never by an OCPP ChargePointId: a go-e is
+// a CONSUMER entity of the v2 registry, and the box drives it through the
+// arbiter's granted command. The whole point of this type is that the customer
+// sees ONE "Ladepunkt" while the two protocols stay what they are.
+type Wallbox struct {
+	// EntityID is the v2 entity of this wallbox. It is the key everywhere:
+	// the measurement, the granted command and the allocation all hang off it.
+	EntityID string
+	// Label is what the customer calls it. Display only.
+	Label string
+	// RatedKw / MinKw mirror the OCPP fields: 0 = unknown, and then the site
+	// budget resp. the site-wide Mindestleistung applies.
+	RatedKw float64
+	MinKw   float64
+	// Rank / Source mirror charge_points[]: 0 = unranked, "" = follow the
+	// site-wide surplus policy.
+	Rank   int
+	Source SurplusPolicy
+}
+
+// WallboxKeyPrefix marks a virtual wallbox session in the allocator, so no
+// allocation key can ever collide with an OCPP "<chargePointId>#<connector>".
+// A ChargePointId may not contain "/" (the box's own form check), which is why
+// this prefix can never be produced by a station.
+const WallboxKeyPrefix = "wallbox/"
+
+// WallboxKey is the allocator key of one wallbox.
+func WallboxKey(entityID string) string { return WallboxKeyPrefix + entityID }
+
+// WallboxEntityID is the inverse of WallboxKey; ok=false for any other key.
+func WallboxEntityID(key string) (string, bool) {
+	if len(key) <= len(WallboxKeyPrefix) || key[:len(WallboxKeyPrefix)] != WallboxKeyPrefix {
+		return "", false
+	}
+	return key[len(WallboxKeyPrefix):], true
 }
 
 // Defaults. Every one of them is a starting point the operator may move; none
@@ -336,6 +416,10 @@ type Plan struct {
 	// the surplus lane). nil = no source cap - either „Schnell laden" or a
 	// site without the measurement to prove one.
 	SourceBudgetKw *float64 `json:"source_budget_kw,omitempty"`
+	// SourceBudgetAboveStorageKw is the same lane read ABOVE the battery (P6).
+	// It equals SourceBudgetKw whenever no station sits above the storage, so
+	// a surface can render it without a special case.
+	SourceBudgetAboveStorageKw *float64 `json:"source_budget_above_storage_kw,omitempty"`
 	// AllocatedKw is the sum of the allocations. It is <= BudgetKw by
 	// construction; the difference is head room, not an error.
 	AllocatedKw float64 `json:"allocated_kw"`
@@ -398,6 +482,19 @@ type Input struct {
 	// other: BudgetKw protects the connection, SourceBudgetKw honours the
 	// customer's priority.
 	SourceBudgetKw *float64
+	// SourceBudgetAboveStorageKw is the SECOND reading of the same lane
+	// (Verbrauchsmanagement v1 / P6, Konzept §5): the WHOLE measured surplus,
+	// before the battery took its share (`Surplus().TotalKw`). Only a session
+	// marked BeforeStorage draws from it; everybody else keeps drawing from
+	// SourceBudgetKw, which is the site's own storage-priority reading.
+	//
+	// ⚠ IT IS ONE PHYSICAL QUANTITY READ TWICE, NOT TWO POOLS. Every
+	// source-bound allocation decrements BOTH counters, so the sum of what the
+	// vehicles take can never exceed the whole surplus - the split only
+	// decides WHO may reach past the battery. nil = no split (and then a
+	// BeforeStorage session simply follows SourceBudgetKw), which is exactly
+	// the pre-P6 behaviour.
+	SourceBudgetAboveStorageKw *float64
 	// SourceAllowsMinimum is the „Sonne zuerst"-concession: a session whose
 	// MINIMUM does not fit into the source lane is still admitted at that
 	// minimum, covered from the physical budget. „Nur Sonnenstrom" leaves it
@@ -428,13 +525,23 @@ func Decide(in Input) Plan {
 
 	// The SOURCE lane (Stufe 4). nil = no economic cap at all, and then every
 	// line below behaves byte-for-byte as it did in Stufe 1-3.
-	var srcBudget float64
+	var srcBudget, aboveBudget float64
 	srcActive := in.SourceBudgetKw != nil
 	plan := Plan{BudgetKw: budget, Allocations: []Allocation{}}
 	if srcActive {
 		srcBudget = round3(math.Max(0, *in.SourceBudgetKw))
 		v := srcBudget
 		plan.SourceBudgetKw = &v
+		// The ABOVE-STORAGE reading of the same lane (P6). It can never be
+		// SMALLER than the site reading - it is the same surplus before the
+		// battery took its share - so a document that says otherwise is
+		// clamped rather than believed.
+		aboveBudget = srcBudget
+		if in.SourceBudgetAboveStorageKw != nil {
+			aboveBudget = round3(math.Max(srcBudget, math.Max(0, *in.SourceBudgetAboveStorageKw)))
+		}
+		a := aboveBudget
+		plan.SourceBudgetAboveStorageKw = &a
 	}
 	if len(in.Sessions) == 0 {
 		return plan
@@ -451,45 +558,46 @@ func Decide(in Input) Plan {
 		return sessions[i].Key < sessions[j].Key
 	})
 
-	// 2) Vorrang is a RANK, not a bypass: priority sessions keep their arrival
-	//    order among themselves and simply sit ahead of everyone else.
-	sort.SliceStable(sessions, func(i, j int) bool {
-		return sessions[i].Priority && !sessions[j].Priority
-	})
-
-	// 3) Rotation turns the NON-priority tail so a waiting vehicle eventually
-	//    gets to the front. It is a no-op whenever everyone fits.
-	prio := 0
-	for _, s := range sessions {
-		if s.Priority {
-			prio++
-		}
-	}
-	tail := sessions[prio:]
+	// 2) THE RANGLISTE (P6). Sessions are partitioned by their RANK and the
+	//    groups are served in that order. Two things make this the honest
+	//    generalisation of Vorrang rather than a replacement:
+	//
+	//    - A session WITHOUT a rank keeps the old two-group reading: the
+	//      Vorrang set first (rankLegacyPriority), everybody else last
+	//      (rankUnranked). With no rank anywhere the partition below is
+	//      byte-for-byte the two groups this file always had.
+	//    - EQUAL RANKS ARE EQUALS. The cloud gives stations the customer left
+	//      side by side in one row the same rank, so rotation - the mechanism
+	//      that keeps a waiting vehicle from standing forever - applies WITHIN
+	//      each rank group.
+	//
+	//    ⚠ The legacy Vorrang group is the ONE group that does NOT rotate, and
+	//    that is deliberate: „Vorrang" is a standing statement of the operator
+	//    („diese Säulen gewinnen immer, in Ankunftsreihenfolge"), never a
+	//    position in a list, and P6 does not change what it means. An explicit
+	//    RANK is a position, and equal positions rotate.
 	epoch := rotationEpoch(in.Now, set.RotationPeriod)
-	queue := append([]Session(nil), sessions[:prio]...)
-	queue = append(queue, rotate(tail, epoch)...)
+	groups := rankGroups(sessions, epoch)
+	queue := make([]Session, 0, len(sessions))
+	for _, g := range groups {
+		queue = append(queue, g.members...)
+	}
 
-	// 4) Vorrang is served FIRST and to its FULL demand, then the rest share
-	//    what is left (Captain decision; Mockups §2b wording: "Vorrang-Säulen
-	//    bekommen zuerst ihre volle Leistung — alle anderen teilen sich fair
-	//    den Rest"). It is a rank above the fairness, never a bypass of a
-	//    limit: the priority group is itself water-filled and itself capped by
-	//    the budget, so a Vorrang station can no more overshoot the connection
-	//    than any other. The consequence — a big Vorrang station makes the
+	// 3) Each rank is served FIRST and to its FULL demand, then the next one
+	//    shares what is left (Captain decision; Mockups §2b wording: "Vorrang-
+	//    Säulen bekommen zuerst ihre volle Leistung — alle anderen teilen sich
+	//    fair den Rest"). It is a rank above the fairness, never a bypass of a
+	//    limit: every group is itself water-filled and itself capped by the
+	//    budget, so a top-ranked station can no more overshoot the connection
+	//    than any other. The consequence — a big top-ranked station makes the
 	//    others wait longer — is real, and the surface is required to say so.
 	//
-	//    ⚠ Stufe 4 splits each rank ONCE MORE, into BOOSTED and BOUND. A
-	//    boosted session ("Jetzt voll laden") is exempt from the SOURCE cap,
-	//    so it does not compete for the same pool at all - and serving it
-	//    first is exactly the "wirkt wie temporärer Vorrang mit Quelle-egal"
-	//    the mockups promise (§2a), WITHOUT touching the Vorrang rank itself.
-	//    With no source lane the two sub-groups draw from one pool and the
-	//    split is a no-op.
-	prioQ, tailQ := queue[:prio], queue[prio:]
-	prioBoost, prioBound := splitExempt(prioQ, in)
-	tailBoost, tailBound := splitExempt(tailQ, in)
-
+	//    ⚠ Stufe 4 splits each rank ONCE MORE, into EXEMPT and BOUND. An
+	//    exempt session (a boost, a K3 holder, „Schnell laden") does not
+	//    compete for the source pool at all - and serving it first is exactly
+	//    the "wirkt wie temporärer Vorrang mit Quelle-egal" the mockups
+	//    promise (§2a), WITHOUT touching the rank itself. With no source lane
+	//    the two sub-groups draw from one pool and the split is a no-op.
 	give := map[string]float64{}
 	pausedReason := map[string]string{}
 	// ⚠ TWO sets, and keeping them apart is an honesty rule. `exemptOf` is who
@@ -500,7 +608,23 @@ func Decide(in Input) Plan {
 	// showing them as a boost would claim a full charge nobody asked for.
 	exemptOf := map[string]bool{}
 	boostOf := map[string]bool{}
-	rest, srcRest := budget, srcBudget
+	rest, srcRest, aboveRest := budget, srcBudget, aboveBudget
+
+	// sourceRest is the lane a session may reach into: the site reading, or -
+	// for a station the customer put ABOVE the battery - the whole surplus.
+	sourceRest := func(s Session) float64 {
+		if s.BeforeStorage {
+			return aboveRest
+		}
+		return srcRest
+	}
+	// takeSource books a source-bound allocation. ⚠ It decrements BOTH
+	// counters: the two are one physical quantity read twice, so the vehicles
+	// together can never take more than the whole surplus.
+	takeSource := func(kw float64) {
+		srcRest = math.Max(0, srcRest-kw)
+		aboveRest = math.Max(0, aboveRest-kw)
+	}
 
 	// admit hands each session in a group its MINIMUM, or names why not.
 	// exempt=true draws from the physical pool alone.
@@ -509,8 +633,8 @@ func Decide(in Input) Plan {
 		for _, s := range group {
 			minKw := effectiveMin(s, set)
 			avail := rest
-			if !exempt && srcActive && srcRest < avail {
-				avail = srcRest
+			if !exempt && srcActive && sourceRest(s) < avail {
+				avail = sourceRest(s)
 			}
 			// ⚠ The K3 bridge's cap is checked FIRST and it is the only test
 			// that can pause a session the physics would have served: a
@@ -545,7 +669,7 @@ func Decide(in Input) Plan {
 				// than stand still. It consumes the whole remaining source
 				// lane and takes the rest from the physical budget.
 				if !exempt && srcActive && allowsMinimum(s, in) && rest+1e-9 >= minKw {
-					srcRest = math.Max(0, srcRest-minKw)
+					takeSource(minKw)
 					rest -= minKw
 					give[s.Key] = minKw
 					adm = append(adm, s)
@@ -562,7 +686,7 @@ func Decide(in Input) Plan {
 			default:
 				rest -= minKw
 				if !exempt && srcActive {
-					srcRest -= minKw
+					takeSource(minKw)
 				}
 				give[s.Key] = minKw
 				adm = append(adm, s)
@@ -577,39 +701,57 @@ func Decide(in Input) Plan {
 			return
 		}
 		spare := rest
-		if !exempt && srcActive && srcRest < spare {
-			spare = srcRest
+		if !exempt && srcActive {
+			// ⚠ One fill pass, one lane: a group is filled under the SMALLEST
+			// lane any of its members may reach into, so a below-storage
+			// session can never be filled out of the battery's share. A rank
+			// the customer split across the storage does not exist - the
+			// storage IS a position - so this is the rare defensive case, and
+			// being conservative there is the correct direction.
+			lane := aboveRest
+			for _, s := range adm {
+				if l := sourceRest(s); l < lane {
+					lane = l
+				}
+			}
+			if lane < spare {
+				spare = lane
+			}
 		}
 		left := waterFill(adm, give, spare)
 		moved := spare - left
 		rest -= moved
 		if !exempt && srcActive {
-			srcRest -= moved
+			takeSource(moved)
 		}
 	}
 
-	// The order is the whole rule: within each rank the exempt group first
-	// (it draws from a different pool), then the source-bound one.
-	for _, g := range []struct {
-		group  []Session
-		exempt bool
-	}{
-		{prioBoost, true}, {prioBound, false},
-		{tailBoost, true}, {tailBound, false},
-	} {
-		fill(admit(g.group, g.exempt), g.exempt)
-		for _, s := range g.group {
-			if g.exempt {
-				exemptOf[s.Key] = true
-				boostOf[s.Key] = s.boosted(in.Now) && !s.pausedByHand(in.Now)
+	// The order is the whole rule: rank by rank, and within each rank the
+	// exempt group first (it draws from a different pool), then the
+	// source-bound one.
+	for gi := range groups {
+		boostG, boundG := splitExempt(groups[gi].members, in)
+		for _, part := range []struct {
+			group  []Session
+			exempt bool
+		}{{boostG, true}, {boundG, false}} {
+			fill(admit(part.group, part.exempt), part.exempt)
+			for _, s := range part.group {
+				if part.exempt {
+					exemptOf[s.Key] = true
+					// ⚠ P3b: ein „Laden pausieren" schlaegt den Boost - wer
+					// einen Stopp erbeten hat, bekommt einen Stopp.
+					boostOf[s.Key] = s.boosted(in.Now) && !s.pausedByHand(in.Now)
+				}
 			}
 		}
-	}
-	admittedTail := 0
-	for _, s := range append(append([]Session(nil), tailBoost...), tailBound...) {
-		if _, ok := give[s.Key]; ok {
-			admittedTail++
+		admitted := 0
+		for _, s := range groups[gi].members {
+			if _, ok := give[s.Key]; ok {
+				admitted++
+			}
 		}
+		groups[gi].admitted = admitted
 	}
 
 	// 5) Pacing: hold a value that only moved a little, unless enough time has
@@ -631,7 +773,15 @@ func Decide(in Input) Plan {
 				a.Reason = ReasonBudget
 			}
 			if a.Reason == ReasonBudget {
-				a.NextTurnAt = nextTurn(s.Key, tailQ, admittedTail, in.Now, set.RotationPeriod)
+				// ⚠ The turn is estimated within the session's OWN rank: the
+				// rotation only ever turns that group, so a queue position
+				// borrowed from another rank would promise a turn that group
+				// never gives. A group that does not rotate (the legacy
+				// Vorrang set) yields the zero time - and the surface then
+				// says nothing rather than a made-up minute.
+				if g, ok := groupOf(groups, s.Key); ok && g.rotates {
+					a.NextTurnAt = nextTurn(s.Key, g.members, g.admitted, in.Now, set.RotationPeriod)
+				}
 			}
 		}
 		a = pace(a, in.Previous, pacing, in.Now)
@@ -650,6 +800,99 @@ func Decide(in Input) Plan {
 		plan.SourceAllocatedKw = round3(math.Min(sourceTotal, srcBudget))
 	}
 	return plan
+}
+
+// --- Die Rangliste (Verbrauchsmanagement v1 / P6) --------------------------
+
+// The two implicit ranks. They exist so a session that carries NO rank keeps
+// exactly the place it always had, without a second code path.
+const (
+	// rankLegacyPriority is the Vorrang set of a site that never ordered a
+	// Rangliste. It sorts ABOVE every explicit rank on purpose: Vorrang is the
+	// operator's standing statement at the box, and a document that ranks only
+	// SOME stations must not silently demote it.
+	rankLegacyPriority = -1
+	// rankUnranked is everybody else - the rotating rest this file always had.
+	rankUnranked = math.MaxInt32
+)
+
+// rankGroup is one rank of the Rangliste: the sessions that share a position,
+// already rotated when the group rotates.
+type rankGroup struct {
+	key      int
+	rotates  bool
+	members  []Session
+	admitted int
+}
+
+// rankKeyOf is the ordering key of one session (see the two constants above).
+func rankKeyOf(s Session) int {
+	if s.Rank > 0 {
+		return s.Rank
+	}
+	if s.Priority {
+		return rankLegacyPriority
+	}
+	return rankUnranked
+}
+
+// rankGroups partitions the (already arrival-ordered) sessions by rank and
+// rotates every group EXCEPT the legacy Vorrang one.
+//
+// ⚠ THE COMPATIBILITY PROMISE LIVES HERE. With no session carrying a rank the
+// result is exactly two groups - the Vorrang set (unrotated, in arrival order)
+// and the rest (rotated) - which is byte for byte what this file did before
+// P6. Every test of the pre-P6 behaviour is therefore also this function's
+// test.
+func rankGroups(sessions []Session, epoch int) []rankGroup {
+	if len(sessions) == 0 {
+		return nil
+	}
+	order := []int{}
+	byKey := map[int][]Session{}
+	for _, s := range sessions {
+		k := rankKeyOf(s)
+		if _, seen := byKey[k]; !seen {
+			order = append(order, k)
+		}
+		byKey[k] = append(byKey[k], s)
+	}
+	sort.Ints(order)
+	out := make([]rankGroup, 0, len(order))
+	for _, k := range order {
+		g := rankGroup{key: k, rotates: k != rankLegacyPriority, members: byKey[k]}
+		if g.rotates {
+			g.members = rotate(g.members, epoch)
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
+// groupOf finds the rank group one session ended up in.
+func groupOf(groups []rankGroup, key string) (rankGroup, bool) {
+	for _, g := range groups {
+		for _, s := range g.members {
+			if s.Key == key {
+				return g, true
+			}
+		}
+	}
+	return rankGroup{}, false
+}
+
+// BeforeStorage answers "does this station sit ABOVE the battery in the
+// customer's Rangliste?" - the ONE derivation, shared by the allocator's
+// session build and by the battery cap, so the two can never disagree.
+//
+// ⚠ The fallback IS the compatibility promise: without both ranks there is no
+// order to read, and the site-wide StoragePriority decides exactly as it did
+// before P6 („auto_vor_speicher" = the vehicles are above the battery).
+func BeforeStorage(rank, storageRank int, site StoragePriority) bool {
+	if rank > 0 && storageRank > 0 {
+		return rank < storageRank
+	}
+	return NormalizeStorage(site) == CarsBeforeStorage
 }
 
 // splitExempt separates the sessions that draw from the PHYSICAL pool alone

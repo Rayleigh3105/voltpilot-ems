@@ -10750,6 +10750,15 @@ components:
             nur `:8484` kannte. null = dazu ist nichts gepflegt und die Box
             rechnet mit ihren eigenen; GESCHRIEBEN wird er ausschliesslich über
             `PUT /api/v1/admin/sites/{siteId}/charging-frame`.
+        storageRank:
+          type: integer
+          nullable: true
+          description: >
+            Die Position des SPEICHERS in der Rangliste des Kunden (P6). Sie
+            steht NEBEN `storagePriority`, nicht an ihrer Stelle: es ist EINE
+            Menge, zweimal gelesen. null = der Kunde hat nie eine Reihenfolge
+            gezogen, und dann entscheidet allein `storagePriority`, wer in den
+            ganzen Überschuss greifen darf - nie 0.
         updatedAt: { type: string, format: date-time, nullable: true }
         updatedBy: { type: string, nullable: true, description: "Wer sie zuletzt gesetzt hat (JWT-Subject)." }
     LadeparkRahmen:
@@ -10779,6 +10788,19 @@ components:
         source: { type: string, nullable: true, enum: [nur_sonne, sonne_zuerst, schnell], description: "Die STEUERART dieser Säule (P5) - woher IHR Ladestrom kommen soll. null = für sie ist nichts gewählt und es gilt der ANLAGEN-STANDARD (surplusPolicy); nie \"schnell\"." }
         minKw: { type: number, nullable: true, description: "Ab welcher Leistung diese Säule überhaupt anfängt; null = unbekannt, nie 0." }
         connection: { type: string, nullable: true, enum: [haus, eigen], description: "WO die Säule hängt (Cockpit Phase 1 / C1) - das SOLL des Kunden: \"haus\" = hinter dem Hausanschluss (ihre Leistung steckt in der Netzmessung der Anlage, das Budget-Gesetz der Box gilt für sie), \"eigen\" = eigener Netzanschluss/Zähler. null = der Kunde hat nichts gesagt und die Box behält, was sie hat - NIE \"eigen\", denn das nähme eine reale Ladeleistung aus ihrer Bilanz." }
+        rank:
+          type: integer
+          nullable: true
+          description: >
+            Die Position dieser Säule in der Rangliste des Kunden (P6). null =
+            sie steht in keiner, und dann entscheidet allein die Vorrang-MENGE
+            (`priorityChargePointIds`) - also exakt wie vor P6.
+
+
+            ⚠ GLEICHE ZAHLEN SIND GLEICHRANGIG: alle Säulen EINER Seite des
+            Speichers tragen dieselbe, weil die Fläche sie als EINE Zeile zeigt
+            und der Kunde zwischen ihnen gar keine Reihenfolge gewählt hat. Die
+            Box wechselt zwischen ihnen weiter im Takt ab (Rotation).
         addedAt: { type: string, format: date-time, nullable: true }
         addedBy: { type: string, nullable: true, description: "Wer sie eingetragen hat (JWT-Subject)." }
     Steuerart:

@@ -3,6 +3,7 @@ package com.voltpilot.api.chargers;
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
 import com.voltpilot.api.web.dto.ChargingConfigDto.AllowedChargePointDto;
 import com.voltpilot.api.web.dto.ChargingConfigDto.LadeparkRahmenDto;
+import com.voltpilot.api.web.dto.ChargingConfigDto.WallboxDto;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -89,16 +90,24 @@ public class ChargingConfigPublisher {
      *                    JEDEM folgenden Dokument mit, nicht einmal
      * @param frame       der Ladepark-RAHMEN (P5/E10), oder null = keine
      *                    Aussage; jedes Feld darin einzeln optional
+     * @param storageRank die Position des SPEICHERS in der Rangliste (P6), oder
+     *                    null = der Kunde hat nie eine gezogen; dann entscheidet
+     *                    allein {@code storagePriority}, wer in den ganzen
+     *                    Ueberschuss greifen darf
+     * @param wallboxes   die WALLBOXEN, die dem Rahmen beitreten (P6); null =
+     *                    keine Aussage und die Box behaelt ihre eigene Liste,
+     *                    LEER = „keine Wallbox nimmt teil"
      * @return false, wenn der Broker nicht erreichbar war (best-effort)
      */
     public synchronized boolean publish(UUID tenantId, UUID siteId, UUID deviceId,
             Double gridLimitKw, List<String> priorities, String surplusPolicy,
             String storagePriority, List<AllowedChargePointDto> chargePoints,
-            List<String> removedChargePointIds, LadeparkRahmenDto frame, Instant publishedAt) {
+            List<String> removedChargePointIds, LadeparkRahmenDto frame, Integer storageRank,
+            List<WallboxDto> wallboxes, Instant publishedAt) {
         String topic = configTopic(tenantId, siteId, deviceId);
         byte[] payload = document(tenantId, siteId, deviceId, gridLimitKw, priorities,
                 surplusPolicy, storagePriority, chargePoints, removedChargePointIds, frame,
-                publishedAt);
+                storageRank, wallboxes, publishedAt);
         try {
             MqttMessage message = new MqttMessage(payload);
             message.setQos(1);
@@ -147,7 +156,8 @@ public class ChargingConfigPublisher {
     static byte[] document(UUID tenantId, UUID siteId, UUID deviceId, Double gridLimitKw,
             List<String> priorities, String surplusPolicy, String storagePriority,
             List<AllowedChargePointDto> chargePoints, List<String> removedChargePointIds,
-            LadeparkRahmenDto frame, Instant publishedAt) {
+            LadeparkRahmenDto frame, Integer storageRank, List<WallboxDto> wallboxes,
+            Instant publishedAt) {
         StringBuilder sb = new StringBuilder(256);
         sb.append("{\"schema_version\":\"1.0\"")
                 .append(",\"tenant_id\":\"").append(tenantId).append('"')
@@ -177,6 +187,13 @@ public class ChargingConfigPublisher {
         }
         if (storagePriority != null && !storagePriority.isBlank()) {
             sb.append(",\"storage_priority\":\"").append(esc(storagePriority)).append('"');
+        }
+        // ⚠ P6: die POSITION des Speichers steht NEBEN der anlagenweiten Wahl,
+        // nicht an ihrer Stelle - es ist EINE Menge, zweimal gelesen. Fehlt sie
+        // (oder fehlt einer Saeule ihr Rang), entscheidet weiter allein
+        // `storage_priority`, also exakt wie vor P6.
+        if (storageRank != null && storageRank > 0) {
+            sb.append(",\"storage_rank\":").append(storageRank.intValue());
         }
         // ⚠ Die Allowlist wird WEGGELASSEN, solange sie leer ist. Abwesend und
         // leer bedeuten der Box hier zwar dasselbe (die Liste fuegt nur hinzu),
@@ -232,6 +249,21 @@ public class ChargingConfigPublisher {
             }
             sb.append('}');
         }
+        // ⚠ Die WALLBOXEN (P6) folgen der Grabstein-Logik, nicht der Allowlist:
+        // eine LEERE Liste IST die Aussage „keine nimmt teil", denn nur so kann
+        // eine entfernte Wallbox wieder aus dem Rahmen fallen. Deshalb wird
+        // hier - anders als bei `charge_points` - auch das leere Array
+        // geschrieben, sobald das Portal ueberhaupt etwas sagt.
+        if (wallboxes != null) {
+            sb.append(",\"wallboxes\":[");
+            for (int i = 0; i < wallboxes.size(); i++) {
+                if (i > 0) {
+                    sb.append(',');
+                }
+                appendWallbox(sb, wallboxes.get(i));
+            }
+            sb.append(']');
+        }
         sb.append(",\"published_at\":\"").append(publishedAt).append("\"}");
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -268,6 +300,35 @@ public class ChargingConfigPublisher {
         }
         if (cp.minKw() != null) {
             sb.append(",\"min_kw\":").append(trim(cp.minKw()));
+        }
+        // ⚠ Der RANG (P6) reist nur mit, wenn diese Saeule wirklich in der
+        // Rangliste des Kunden steht. Abwesend heisst „ungerankt", und die Box
+        // verteilt dann exakt wie vor P6 (die Vorrang-Menge allein). Gleiche
+        // Zahlen sind GLEICHRANGIG - die Box wechselt zwischen ihnen weiter ab.
+        if (cp.rank() != null && cp.rank() > 0) {
+            sb.append(",\"rank\":").append(cp.rank().intValue());
+        }
+        sb.append('}');
+    }
+
+    /**
+     * Eine Wallbox im Rahmen. Nur die Kennung ist Pflicht - jede Zahl reist NUR
+     * mit, wenn sie wirklich gepflegt ist. Eine erfundene 0 waere hier eine
+     * Aussage ueber ein Geraet, das niemand gemessen hat.
+     */
+    private static void appendWallbox(StringBuilder sb, WallboxDto wb) {
+        sb.append("{\"entity_id\":\"").append(esc(wb.entityId().toString())).append('"');
+        if (wb.label() != null && !wb.label().isBlank()) {
+            sb.append(",\"label\":\"").append(esc(wb.label())).append('"');
+        }
+        if (wb.ratedKw() != null) {
+            sb.append(",\"rated_kw\":").append(trim(wb.ratedKw()));
+        }
+        if (wb.minKw() != null) {
+            sb.append(",\"min_kw\":").append(trim(wb.minKw()));
+        }
+        if (wb.rank() != null && wb.rank() > 0) {
+            sb.append(",\"rank\":").append(wb.rank().intValue());
         }
         sb.append('}');
     }

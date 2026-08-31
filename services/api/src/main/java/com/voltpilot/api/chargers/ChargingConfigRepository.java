@@ -3,11 +3,14 @@ package com.voltpilot.api.chargers;
 import com.voltpilot.api.web.dto.ChargingConfigDto;
 import com.voltpilot.api.web.dto.ChargingConfigDto.AllowedChargePointDto;
 import com.voltpilot.api.web.dto.ChargingConfigDto.LadeparkRahmenDto;
+import com.voltpilot.api.web.dto.ChargingConfigDto.WallboxDto;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -39,7 +42,7 @@ public class ChargingConfigRepository {
         List<Object[]> head = jdbc.query(
                 "SELECT grid_limit_kw, surplus_policy, storage_priority, house_reserve_kw, "
                         + "margin_pct, min_power_kw, rotation_minutes, max_house_load_kw, "
-                        + "static_budget, updated_at, updated_by "
+                        + "static_budget, storage_rank, updated_at, updated_by "
                         + "FROM site_charging_config WHERE site_id = ?",
                 (rs, n) -> new Object[] {rs.getObject("grid_limit_kw"),
                         rs.getTimestamp("updated_at"), rs.getString("updated_by"),
@@ -48,7 +51,8 @@ public class ChargingConfigRepository {
                                 dbl(rs.getObject("margin_pct")), dbl(rs.getObject("min_power_kw")),
                                 (Integer) rs.getObject("rotation_minutes"),
                                 dbl(rs.getObject("max_house_load_kw")),
-                                (Boolean) rs.getObject("static_budget"))},
+                                (Boolean) rs.getObject("static_budget")),
+                        (Integer) rs.getObject("storage_rank")},
                 siteId);
         List<String> priorities = jdbc.query(
                 "SELECT charge_point_id FROM site_charge_point_priority WHERE site_id = ? "
@@ -56,9 +60,10 @@ public class ChargingConfigRepository {
                 (rs, n) -> rs.getString("charge_point_id"), siteId);
         List<AllowedChargePointDto> allowed = allowlist(siteId);
         List<String> removed = removedChargePointIds(siteId);
+        List<WallboxDto> wallboxes = wallboxes(siteId);
         if (head.isEmpty()) {
             return new ChargingConfigDto(null, List.copyOf(priorities), null, null, allowed,
-                    removed, null, null, null);
+                    removed, null, null, wallboxes, null, null);
         }
         Object[] row = head.get(0);
         Timestamp at = (Timestamp) row[1];
@@ -69,21 +74,29 @@ public class ChargingConfigRepository {
                 // gemeldet - nie als Objekt aus lauter Nullen: „das Portal
                 // sagt dazu nichts" ist eine Aussage, sechs leere Felder sind
                 // eine Behauptung ueber sechs Zahlen.
-                frame.leer() ? null : frame,
+                frame.leer() ? null : frame, (Integer) row[6], wallboxes,
                 at == null ? null : at.toInstant(), (String) row[2]);
     }
 
     /** Die eingetragenen Kennungen dieser Anlage (aelteste zuerst). */
     public List<AllowedChargePointDto> allowlist(UUID siteId) {
         return List.copyOf(jdbc.query(
-                "SELECT charge_point_id, label, rated_kw, connectors, source, min_kw, "
-                        + "connection, added_at, added_by FROM site_charge_point_allowlist "
-                        + "WHERE site_id = ? AND removed_at IS NULL "
-                        + "ORDER BY added_at, charge_point_id",
+                // ⚠ Der Rang wohnt in einer EIGENEN Tabelle und wird hier nur
+                // MITGELESEN: die Allowlist ist die ZULASSUNG, die Rangliste
+                // die Reihenfolge - eine Zeile hier anzulegen, weil jemand
+                // sortiert hat, waere eine Zulassung als Nebenwirkung.
+                "SELECT a.charge_point_id, a.label, a.rated_kw, a.connectors, a.source, "
+                        + "a.min_kw, a.connection, r.rank, a.added_at, a.added_by "
+                        + "FROM site_charge_point_allowlist a "
+                        + "LEFT JOIN site_charge_point_rank r "
+                        + "ON r.site_id = a.site_id AND r.charge_point_id = a.charge_point_id "
+                        + "WHERE a.site_id = ? AND a.removed_at IS NULL "
+                        + "ORDER BY a.added_at, a.charge_point_id",
                 (rs, n) -> new AllowedChargePointDto(rs.getString("charge_point_id"),
                         rs.getString("label"), dbl(rs.getObject("rated_kw")),
                         (Integer) rs.getObject("connectors"), rs.getString("source"),
                         dbl(rs.getObject("min_kw")), rs.getString("connection"),
+                        (Integer) rs.getObject("rank"),
                         rs.getTimestamp("added_at") == null ? null
                                 : rs.getTimestamp("added_at").toInstant(),
                         rs.getString("added_by")),
@@ -261,6 +274,86 @@ public class ChargingConfigRepository {
             jdbc.update("INSERT INTO site_charge_point_priority (site_id, charge_point_id, "
                     + "tenant_id) VALUES (?, ?, ?)", siteId, id, tenantId);
         }
+    }
+
+    /**
+     * Die WALLBOXEN dieser Anlage (P6) - v2-Verbraucher vom Typ {@code wallbox},
+     * die dem Ladepark-Rahmen als virtuelle Sitzung beitreten.
+     *
+     * <p><b>⚠ Gefiltert wird NUR ueber den Typ, nicht ueber „ist sie gerade
+     * bereit".</b> Ob eine Wallbox wirklich teilnimmt, entscheidet die BOX aus
+     * dem, was sie MISST und was der Arbiter ihr gibt - hier fehlt jede
+     * Grundlage dafuer (eine pausierte oder ungebundene Wallbox kann von der
+     * Box gar nicht beansprucht werden, weil sie kein Kommando bekommt).
+     *
+     * <p>Jede Zahl ist optional: {@code null} = unbekannt, nie 0.
+     */
+    public List<WallboxDto> wallboxes(UUID siteId) {
+        return List.copyOf(jdbc.query(
+                "SELECT mp.id, mp.label, cp.rated_power_kw, cp.min_power_kw, "
+                        + "cp.default_service_rank FROM measurement_point mp "
+                        + "JOIN consumer_profile cp ON cp.entity_id = mp.id "
+                        + "WHERE mp.site_id = ? AND mp.entity_type = 'wallbox' ORDER BY mp.id",
+                (rs, n) -> new WallboxDto(rs.getObject("id", UUID.class), rs.getString("label"),
+                        dbl(rs.getObject("rated_power_kw")), dbl(rs.getObject("min_power_kw")),
+                        (Integer) rs.getObject("default_service_rank")),
+                siteId));
+    }
+
+    /**
+     * Die GESPEICHERTEN Raenge dieser Anlage - ALLE, auch die von Saeulen, die
+     * (noch) nicht zugelassen sind.
+     *
+     * <p><b>⚠ Das ist bewusst eine andere Menge als die der Allowlist.</b> Eine
+     * Reihenfolge gehoert dem Kunden und wird gespeichert, sobald er sie zieht;
+     * ob sie eine bestimmte Saeule ERREICHT, entscheidet erst der Publisher.
+     * Der Aenderungs-Vergleich muss deshalb hier lesen - ueber die Allowlist
+     * gemessen sae he eine Anlage ohne Portal-Zulassung ihre Raenge nie als
+     * „geaendert" und speicherte sie nie.
+     */
+    public Map<String, Integer> chargePointRanks(UUID siteId) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        jdbc.query("SELECT charge_point_id, rank FROM site_charge_point_rank WHERE site_id = ? "
+                + "ORDER BY charge_point_id", rs -> {
+                    out.put(rs.getString("charge_point_id"), (Integer) rs.getObject("rank"));
+                }, siteId);
+        return out;
+    }
+
+    /**
+     * Ersetzt die Raenge der Saeulen (P6). Leer = die Anlage hat keine
+     * Reihenfolge (mehr), und dann entscheidet wieder allein die Vorrang-Menge.
+     *
+     * <p><b>⚠ Es wird NICHT geprueft, ob die Kennung zugelassen ist.</b> Eine
+     * Saeule kann an der Box eingetragen worden sein; ihre Position gehoert dem
+     * Kunden, und sie hier abzulehnen naehme ihm eine Reihenfolge, die er
+     * getroffen hat. Der PUBLISHER entscheidet danach, WEN das Dokument
+     * erreicht - eine Zeile hier laesst niemanden herein.
+     */
+    @Transactional
+    public void replaceChargePointRanks(UUID tenantId, UUID siteId, Map<String, Integer> ranks) {
+        jdbc.update("DELETE FROM site_charge_point_rank WHERE site_id = ?", siteId);
+        for (Map.Entry<String, Integer> e : ranks.entrySet()) {
+            if (e.getValue() == null) {
+                continue;
+            }
+            jdbc.update("INSERT INTO site_charge_point_rank (site_id, charge_point_id, rank, "
+                    + "tenant_id) VALUES (?, ?, ?, ?)", siteId, e.getKey(), e.getValue(), tenantId);
+        }
+    }
+
+    /**
+     * Die Position des Speichers. {@code null} loescht sie (die Anlage hat
+     * keinen Speicher mehr in ihrer Reihenfolge) - anders als jedes andere Feld
+     * dieser Zeile, denn hier IST die Abwesenheit die Aussage „es gibt kein
+     * Oben und Unten".
+     */
+    public void saveStorageRank(UUID tenantId, UUID siteId, Integer rank, String actor) {
+        jdbc.update("INSERT INTO site_charging_config (site_id, tenant_id, storage_rank, "
+                + "updated_at, updated_by) VALUES (?, ?, ?, ?, ?) "
+                + "ON CONFLICT (site_id) DO UPDATE SET storage_rank = EXCLUDED.storage_rank, "
+                + "updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by",
+                siteId, tenantId, rank, Timestamp.from(Instant.now()), actor);
     }
 
     /** Die Geräte dieser Anlage - die Empfänger des retained Dokuments. */

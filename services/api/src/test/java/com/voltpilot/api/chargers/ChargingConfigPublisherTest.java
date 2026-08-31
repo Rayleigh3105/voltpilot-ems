@@ -52,7 +52,7 @@ class ChargingConfigPublisherTest {
             String storage, List<AllowedChargePointDto> chargePoints, List<String> removed)
             throws Exception {
         return json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE,
-                gridLimitKw, priorities, policy, storage, chargePoints, removed, null, AT),
+                gridLimitKw, priorities, policy, storage, chargePoints, removed, null, null, null, AT),
                 StandardCharsets.UTF_8));
     }
 
@@ -70,8 +70,14 @@ class ChargingConfigPublisherTest {
     /** Eine Saeule MIT eigener Steuerart (P5). */
     private static AllowedChargePointDto cp(String id, String label, Double ratedKw,
             Integer connectors, String connection, String source, Double minKw) {
+        return cp(id, label, ratedKw, connectors, connection, source, minKw, null);
+    }
+
+    /** Eine Saeule MIT einer Position in der Rangliste (P6). */
+    private static AllowedChargePointDto cp(String id, String label, Double ratedKw,
+            Integer connectors, String connection, String source, Double minKw, Integer rank) {
         return new AllowedChargePointDto(id, label, ratedKw, connectors, source, minKw,
-                connection, AT, "wer-auch-immer");
+                connection, rank, AT, "wer-auch-immer");
     }
 
     @Test
@@ -111,7 +117,7 @@ class ChargingConfigPublisherTest {
         // Ganze Zahlen bleiben ganz: 277, nicht 277.0 - das Dokument wird auch
         // von Menschen gelesen.
         assertThat(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE, 277.0, null,
-                null, null, null, null, null, AT), StandardCharsets.UTF_8))
+                null, null, null, null, null, null, null, AT), StandardCharsets.UTF_8))
                 .contains("\"grid_limit_kw\":277,");
     }
 
@@ -208,7 +214,7 @@ class ChargingConfigPublisherTest {
                 DEVICE, 277.0, null, null, null,
                 List.of(cp("saeule-hof-nord", "Hof Nord", 22.0, 2), cp("saeule-halle", null, null,
                         null)),
-                null, null, Instant.parse("2026-08-21T09:15:00Z")), StandardCharsets.UTF_8));
+                null, null, null, null, Instant.parse("2026-08-21T09:15:00Z")), StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
         // ⚠ Das Dokument nennt KEIN `priority` - der Vorrang wird allein ueber
         // `priority_charge_point_ids` gestellt (das ist eine MENGE und damit die
@@ -257,7 +263,7 @@ class ChargingConfigPublisherTest {
         JsonNode actual = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
                 DEVICE, 277.0, null, null, null,
                 List.of(cp("saeule-hof-nord", "Hof Nord", null, null)), List.of("saeule-halle"),
-                null, Instant.parse("2026-08-24T10:05:00Z")), StandardCharsets.UTF_8));
+                null, null, null, Instant.parse("2026-08-24T10:05:00Z")), StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
     }
 
@@ -293,7 +299,7 @@ class ChargingConfigPublisherTest {
                 List.of(cp("saeule-hof-nord", "Hof Nord", 22.0, 2, "haus"),
                         cp("saeule-strasse", "Ladepark Strasse", null, null, "eigen"),
                         cp("saeule-halle", null, null, null, null)),
-                null, null, Instant.parse("2026-08-28T09:15:00Z")), StandardCharsets.UTF_8));
+                null, null, null, null, Instant.parse("2026-08-28T09:15:00Z")), StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
     }
 
@@ -324,7 +330,7 @@ class ChargingConfigPublisherTest {
     void theFrameTravelsFieldByFieldAndNeverAsAnEmptyObject() throws Exception {
         JsonNode d = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
                 DEVICE, null, null, null, null, null, null,
-                new ChargingConfigDto.LadeparkRahmenDto(167.0, null, 30.0, null, null, false),
+                new ChargingConfigDto.LadeparkRahmenDto(167.0, null, 30.0, null, null, false), null, null,
                 AT), StandardCharsets.UTF_8));
         JsonNode frame = d.get("frame");
         assertThat(frame.get("house_reserve_kw").asInt()).isEqualTo(167);
@@ -337,7 +343,7 @@ class ChargingConfigPublisherTest {
         // Objekt taeuschte eine Aussage vor.
         JsonNode leer = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
                 DEVICE, null, null, null, null, null, null,
-                new ChargingConfigDto.LadeparkRahmenDto(null, null, null, null, null, null), AT),
+                new ChargingConfigDto.LadeparkRahmenDto(null, null, null, null, null, null), null, null, AT),
                 StandardCharsets.UTF_8));
         assertThat(leer.has("frame")).isFalse();
     }
@@ -355,7 +361,83 @@ class ChargingConfigPublisherTest {
                         cp("saeule-halle", null, null, null, null, "sonne_zuerst", 4.2)),
                 null,
                 new ChargingConfigDto.LadeparkRahmenDto(167.0, 10.0, 30.0, 15, 180.0, false),
-                Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
+                null, null, Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
+    }
+
+    // --- P6: die Rangliste erreicht die Box -----------------------------------
+
+    @Test
+    void dieRaengeReisenJeSaeuleUndDerSpeicherStehtDANEBEN() throws Exception {
+        Path fixture = Path.of("..", "..", "docs", "contracts", "examples",
+                "mqtt-charging-config.valid.rangliste.json");
+        JsonNode expected = json.readTree(Files.readString(fixture));
+        JsonNode actual = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
+                DEVICE, 44.0, null, "sonne_zuerst", "speicher_vor_auto",
+                List.of(cp("saeule-chef", null, null, null, null, null, null, 1),
+                        cp("saeule-hof-nord", null, null, null, null, null, null, 3),
+                        cp("saeule-halle", null, null, null, null, null, null, 3)),
+                null, null, 2, null, Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
+        assertThat(actual).isEqualTo(expected);
+    }
+
+    @Test
+    void ohneRangReistWederEinRangNochEineSpeicherPositionMit() throws Exception {
+        // ⚠ DIE KOMPATIBILITAETS-ZUSAGE des ganzen Pakets: eine Anlage, deren
+        // Kunde nie sortiert hat, bekommt ein Dokument OHNE `rank` und OHNE
+        // `storage_rank` - und die Box verteilt dann exakt wie vor P6.
+        JsonNode d = doc(277.0, null, null, null,
+                List.of(cp("saeule-hof-nord", "Hof Nord", 22.0, 2)));
+        assertThat(d.has("storage_rank")).isFalse();
+        assertThat(d.get("charge_points").get(0).has("rank")).isFalse();
+    }
+
+    @Test
+    void eineNullPositionWaereKeinePositionUndReistNieMit() {
+        // Der DB-CHECK laesst sie gar nicht zu; der Publisher verlaesst sich
+        // trotzdem nicht darauf - eine 0 waere im Kontrakt „ungerankt" und
+        // damit eine Aussage, die niemand getroffen hat.
+        JsonNode d;
+        try {
+            d = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE,
+                    null, null, null, null,
+                    List.of(cp("saeule-halle", null, null, null, null, null, null, 0)), null, null,
+                    0, null, Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
+        assertThat(d.has("storage_rank")).isFalse();
+        assertThat(d.get("charge_points").get(0).has("rank")).isFalse();
+    }
+
+    @Test
+    void eineWallboxTrittDemRahmenBeiUndDieLEEREListeNimmtSieWiederHeraus() throws Exception {
+        JsonNode d = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE,
+                22.0, null, null, null, null, null, null, 3,
+                List.of(new ChargingConfigDto.WallboxDto(
+                        UUID.fromString("00000000-0000-0000-0000-0000000000aa"), "Wallbox Garage",
+                        11.0, 4.2, 1)),
+                Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
+        JsonNode wb = d.get("wallboxes").get(0);
+        assertThat(wb.get("entity_id").asText())
+                .isEqualTo("00000000-0000-0000-0000-0000000000aa");
+        assertThat(wb.get("label").asText()).isEqualTo("Wallbox Garage");
+        assertThat(wb.get("rated_kw").asDouble()).isEqualTo(11.0);
+        assertThat(wb.get("min_kw").asDouble()).isEqualTo(4.2);
+        assertThat(wb.get("rank").asInt()).isEqualTo(1);
+        // ⚠ Die Cloud nennt (noch) KEINE eigene Quelle je Wallbox - dann gilt
+        // der Anlagen-Standard. Der Kontrakt kennt das Feld, das Portal fuellt
+        // es nicht: eine erfundene Quelle waere eine Netzstrom-Freigabe.
+        assertThat(wb.has("source")).isFalse();
+
+        // ⚠ Und die LEERE Liste ist hier - anders als bei der Allowlist - eine
+        // AUSSAGE: nur so faellt eine entfernte Wallbox wieder aus dem Rahmen.
+        JsonNode leer = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
+                DEVICE, 22.0, null, null, null, null, null, null, null, List.of(),
+                Instant.parse("2026-08-31T09:15:00Z")), StandardCharsets.UTF_8));
+        assertThat(leer.get("wallboxes")).isEmpty();
+
+        // Ohne jede Aussage reist das Feld GAR NICHT mit.
+        assertThat(doc(277.0, null, null, null).has("wallboxes")).isFalse();
     }
 }

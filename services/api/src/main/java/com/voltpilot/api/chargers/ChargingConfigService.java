@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -141,6 +142,44 @@ public class ChargingConfigService {
     }
 
     /**
+     * Der Schreibweg der RANGLISTE (P6) - Vorrang, Speicher-Frage und die zwei
+     * P6-Zahlen in EINEM Vorgang, mit GENAU EINEM Push.
+     *
+     * <p>Er ist bewusst von {@link #save} getrennt: dort pflegt ein KUNDE
+     * einzelne Felder seiner Anlage (die Anschlussgrenze, die Quellen-Wahl),
+     * hier schreibt die Rangliste eine zusammenhaengende Reihenfolge zurueck.
+     * Ein gemeinsamer Aufruf braeuchte fuer jedes Feld ein zweites Signal
+     * „nicht anfassen" und waere an beiden Enden schwerer zu lesen.
+     *
+     * <p><b>⚠ PATCH-Semantik wie ueberall auf diesem Pfad:</b> {@code null}
+     * heisst „dazu sagt die Rangliste nichts". Bei {@code chargePointRanks}
+     * heisst eine LEERE Karte dagegen „keine Saeule hat mehr eine Position",
+     * und dann darf auch {@code storageRank} auf {@code null} fallen - dort IST
+     * die Abwesenheit die Aussage „es gibt kein Oben und Unten".
+     */
+    @Transactional
+    public void saveRangliste(UUID siteId, List<String> priorities, String storagePriority,
+            Map<String, Integer> chargePointRanks, Integer storageRank, String actor) {
+        requireSite(siteId);
+        UUID tenantId = TenantContext.get();
+        if (storagePriority != null) {
+            if (!STORAGE.contains(storagePriority)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Unbekannte Speicher-Priorität.");
+            }
+            configs.saveSourceChoice(tenantId, siteId, null, storagePriority, actor);
+        }
+        if (priorities != null) {
+            configs.replacePriorities(tenantId, siteId, clean(siteId, priorities));
+        }
+        if (chargePointRanks != null) {
+            configs.replaceChargePointRanks(tenantId, siteId, chargePointRanks);
+            configs.saveStorageRank(tenantId, siteId, storageRank, actor);
+        }
+        push(tenantId, siteId, configs.forSite(siteId));
+    }
+
+    /**
      * Schickt die gespeicherte Konfiguration an jedes Gerät der Anlage.
      *
      * <p>An JEDES, nicht nur an das mit den Ladesäulen: welches Gerät das CSMS
@@ -160,7 +199,8 @@ public class ChargingConfigService {
             pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(),
                     config.priorityChargePointIds(), config.surplusPolicy(),
                     config.storagePriority(), config.chargePoints(),
-                    config.removedChargePointIds(), config.frame(), now);
+                    config.removedChargePointIds(), config.frame(), config.storageRank(),
+                    config.wallboxes(), now);
         }
     }
 

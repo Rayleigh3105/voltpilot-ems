@@ -72,11 +72,17 @@ func (a *Agent) onChargingConfig(payload []byte) {
 	// (Settings.Apply), die auch die :8484-Oberfläche fährt.
 	frame := cfg.Frame
 	if cfg.GridLimitKw != nil || cfg.SurplusPolicy != nil || cfg.StoragePriority != nil ||
-		frame != nil {
+		cfg.StorageRank != nil || cfg.Wallboxes != nil || frame != nil {
 		req := lastmgmt.SettingsRequest{
 			GridLimitKw:     cfg.GridLimitKw,
 			SurplusPolicy:   cfg.SurplusPolicy,
 			StoragePriority: cfg.StoragePriority,
+			// P6: die Rangliste. Der Speicher-Rang und die Wallbox-Liste sind
+			// ANLAGEN-Aussagen und wohnen deshalb bei den Einstellungen, nicht
+			// an einer Säule; die PATCH-Regel gilt für beide (siehe
+			// SettingsRequest).
+			StorageRank: cfg.StorageRank,
+			Wallboxes:   wallboxRequest(cfg.Wallboxes),
 		}
 		if frame != nil {
 			req.HouseReserveKw = frame.HouseReserveKw
@@ -92,7 +98,8 @@ func (a *Agent) onChargingConfig(payload []byte) {
 			slog.Info("charging config applied",
 				"grid_limit_kw", cfg.GridLimitKw,
 				"surplus_policy", cfg.SurplusPolicy,
-				"storage_priority", cfg.StoragePriority)
+				"storage_priority", cfg.StoragePriority,
+				"storage_rank", intOrNil(cfg.StorageRank))
 		}
 	}
 	// ⚠ Die Allowlist ZUERST: eine gerade eingetragene Säule soll den Vorrang
@@ -135,10 +142,11 @@ func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
 		connection string
 		source     string
 		minKw      float64
+		rank       int
 	}
 	known := map[string]stationState{}
 	for _, c := range a.OcppChargers() {
-		known[c.ID] = stationState{c.ConnectionOrHaus(), c.Source, c.MinKw}
+		known[c.ID] = stationState{c.ConnectionOrHaus(), c.Source, c.MinKw, c.Rank}
 	}
 	for _, cp := range wanted {
 		if prev, ok := known[cp.ID]; ok {
@@ -167,6 +175,15 @@ func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
 				req.MinKw = &min
 				touched = true
 			}
+			// ⚠ Der RANG folgt derselben Ausnahme (P6): er hat auf der Box
+			// keine Oberfläche, es gibt dort also nichts zu schützen - und eine
+			// Reihenfolge, die der Kunde später zieht, erreichte die Säule
+			// sonst nie. 0 heisst „das Portal äußert sich nicht".
+			if cp.Rank > 0 && cp.Rank != prev.rank {
+				rank := cp.Rank
+				req.Rank = &rank
+				touched = true
+			}
 			if !touched {
 				continue
 			}
@@ -178,7 +195,7 @@ func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
 			}
 			slog.Info("charging config: charge point updated",
 				"charge_point", cp.ID, "connection", cp.Connection,
-				"source", cp.Source, "min_kw", cp.MinKw)
+				"source", cp.Source, "min_kw", cp.MinKw, "rank", cp.Rank)
 			continue
 		}
 		if _, err := a.OcppAddCharger(csms.AddRequest{
@@ -190,6 +207,7 @@ func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
 			Connectors: cp.Connectors,
 			Connection: cp.Connection,
 			Source:     cp.Source,
+			Rank:       cp.Rank,
 		}); err != nil {
 			slog.Warn("charging config: charge point not admitted",
 				"charge_point", cp.ID, "err", err)
@@ -256,4 +274,31 @@ func (a *Agent) applyChargingPriorities(wanted []string) {
 		}
 		slog.Info("charging config: priority updated", "charge_point", c.ID, "priority", desired)
 	}
+}
+
+// wallboxRequest maps the parsed document's wallbox list onto the settings
+// request. nil stays nil (the portal says nothing); an EMPTY list stays an
+// empty list, because there it is the assertion "no wallbox takes part" - the
+// `priority_charge_point_ids` rule.
+func wallboxRequest(in *[]chargingcfg.Wallbox) *[]lastmgmt.Wallbox {
+	if in == nil {
+		return nil
+	}
+	out := make([]lastmgmt.Wallbox, 0, len(*in))
+	for _, w := range *in {
+		out = append(out, lastmgmt.Wallbox{
+			EntityID: w.EntityID, Label: w.Label,
+			RatedKw: w.RatedKw, MinKw: w.MinKw, Rank: w.Rank,
+			Source: lastmgmt.SurplusPolicy(w.Source),
+		})
+	}
+	return &out
+}
+
+// intOrNil renders an optional int for the log without printing a pointer.
+func intOrNil(v *int) any {
+	if v == nil {
+		return nil
+	}
+	return *v
 }

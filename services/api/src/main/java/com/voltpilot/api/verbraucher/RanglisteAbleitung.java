@@ -46,12 +46,19 @@ import java.util.UUID;
  *
  * <p><b>⚠ Was NICHT ausdrueckbar ist, wird auch nicht behauptet.</b> Eine
  * OCPP-Saeule hat kein {@code consumer_profile} (Konzept §1.2 S3), ihre
- * Position kann also nur „ueber" oder „unter" dem Speicher sein - der
- * Ganzzahl-Rang je Saeule ist Paket P6. Deshalb stehen gleichrangige Saeulen in
- * der Liste als EINE Zeile (siehe {@link RanglisteProjektion}), und deshalb
- * bleibt die Vorrang-Menge UNANGETASTET, solange keine Saeule oben steht: die
- * Liste macht dann gar keine Aussage ueber sie, und ein Loeschen naehme dem
- * Kunden seine Vorrang-Wahl aus der Ladepark-Kapsel.
+ * Position kann also nur „ueber" oder „unter" dem Speicher sein. Deshalb
+ * stehen gleichrangige Saeulen in der Liste als EINE Zeile (siehe
+ * {@link RanglisteProjektion}), und deshalb bleibt die Vorrang-Menge
+ * UNANGETASTET, solange keine Saeule oben steht: die Liste macht dann gar keine
+ * Aussage ueber sie, und ein Loeschen naehme dem Kunden seine Vorrang-Wahl aus
+ * der Ladepark-Kapsel.
+ *
+ * <p><b>P6 ergaenzt die zwei ZAHLEN, die bis dahin verworfen wurden</b>
+ * ({@code saeulenRang} + {@code speicherRang}). Sie reisen im retained
+ * {@code charging-config}-Dokument zur Box und ordnen dort, wer bei knapper
+ * Leistung zuerst faehrt und wer in den ganzen Ueberschuss greifen darf. Die
+ * drei Felder oben sind davon UNBERUEHRT - der Optimierer und der
+ * Praeferenz-Epsilon lesen weiter genau dieselben Spalten wie vor P6.
  */
 public final class RanglisteAbleitung {
 
@@ -69,9 +76,20 @@ public final class RanglisteAbleitung {
      *                         gibt nichts zu sagen
      * @param vorrangKennungen die Vorrang-Menge; {@code null} = NICHT anfassen
      *                         (siehe Klassen-Doku)
+     * @param saeulenRang      je OCPP-Saeule (ChargePointId) ihre Position.
+     *                         <b>⚠ Alle Saeulen EINER Seite des Speichers tragen
+     *                         DIESELBE Zahl</b> - die Flaeche zeigt sie als EINE
+     *                         Zeile ({@link RanglisteProjektion#gruppe}), der
+     *                         Kunde hat zwischen ihnen also gar keine
+     *                         Reihenfolge gewaehlt; verschiedene Zahlen
+     *                         behaupteten eine, und die Box hoerte auf,
+     *                         zwischen ihnen abzuwechseln.
+     * @param speicherRang     die Position des Speichers; {@code null} = die
+     *                         Anlage hat keinen (dann gibt es kein Oben/Unten)
      */
     public record Ableitung(Map<UUID, Integer> rang, Map<UUID, String> storageRelation,
-            String storagePriority, List<String> vorrangKennungen) {}
+            String storagePriority, List<String> vorrangKennungen,
+            Map<String, Integer> saeulenRang, Integer speicherRang) {}
 
     private RanglisteAbleitung() {}
 
@@ -172,9 +190,18 @@ public final class RanglisteAbleitung {
 
         Map<UUID, Integer> rang = new LinkedHashMap<>();
         Map<UUID, String> relation = new HashMap<>();
+        Map<String, Integer> saeulenRang = new LinkedHashMap<>();
         List<String> obenSaeulen = new ArrayList<>();
+        List<String> untenSaeulen = new ArrayList<>();
+        Integer speicherRang = null;
         boolean hatSaeule = false;
         int pos = 1;
+        // ⚠ Die Saeulen EINER Seite bekommen die Position der ERSTEN von ihnen -
+        // sie stehen in der Flaeche als EINE Zeile, und eine Gruppe belegt ab
+        // ihrer ersten Position so viele Plaetze wie sie Geraete hat (die
+        // P4-Regel „die Positionen zaehlen GERAETE, nicht Zeilen").
+        Integer obenSaeulenRang = null;
+        Integer untenSaeulenRang = null;
         for (UUID id : oben) {
             Kandidat k = nachId.get(id);
             hatSaeule |= saeule(k);
@@ -183,15 +210,25 @@ public final class RanglisteAbleitung {
                 relation.put(id, RanglisteProjektion.RELATION_CONSUMER_FIRST);
             } else if (saeule(k)) {
                 obenSaeulen.add(k.chargePointId());
+                if (obenSaeulenRang == null) {
+                    obenSaeulenRang = pos;
+                }
             }
             pos++;
         }
         if (hatSpeicher) {
+            speicherRang = pos;
             pos++;
         }
         for (UUID id : unten) {
             Kandidat k = nachId.get(id);
             hatSaeule |= saeule(k);
+            if (saeule(k)) {
+                untenSaeulen.add(k.chargePointId());
+                if (untenSaeulenRang == null) {
+                    untenSaeulenRang = pos;
+                }
+            }
             if (k.rankbar()) {
                 rang.put(id, pos);
                 // ⚠ Ohne Speicher gibt es kein „darunter": alles ist
@@ -202,6 +239,13 @@ public final class RanglisteAbleitung {
                         : RanglisteProjektion.RELATION_CONSUMER_FIRST);
             }
             pos++;
+        }
+
+        for (String cp : obenSaeulen) {
+            saeulenRang.put(cp, obenSaeulenRang);
+        }
+        for (String cp : untenSaeulen) {
+            saeulenRang.put(cp, untenSaeulenRang);
         }
 
         String storagePriority = null;
@@ -223,7 +267,8 @@ public final class RanglisteAbleitung {
                 vorrang = List.copyOf(obenSaeulen);
             }
         }
-        return new Ableitung(Map.copyOf(rang), Map.copyOf(relation), storagePriority, vorrang);
+        return new Ableitung(Map.copyOf(rang), Map.copyOf(relation), storagePriority, vorrang,
+                Map.copyOf(saeulenRang), speicherRang);
     }
 
     /** Eine OCPP-Saeule: ein Ladepunkt ohne Profil, der eine Kennung traegt. */

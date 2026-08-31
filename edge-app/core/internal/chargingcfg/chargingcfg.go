@@ -43,6 +43,13 @@ const MaxPriorities = 64
 // MaxChargePoints mirrors the contract's cap on the allowlist.
 const MaxChargePoints = 64
 
+// MaxWallboxes mirrors the contract's cap on `wallboxes[]`, and MaxRank its
+// ceiling on a Rangliste position (Verbrauchsmanagement v1 / P6).
+const (
+	MaxWallboxes = 64
+	MaxRank      = 4096
+)
+
 // The connection vocabulary of the contract. Repeated here (not imported from
 // csms) because this package is the PARSER and must stay free of the runtime -
 // the two are pinned against each other in chargingcfg's tests.
@@ -111,6 +118,33 @@ type Config struct {
 	// only the house reserve leaves margin, minimum power, rotation, the
 	// highest building load and the static-budget switch exactly as they are.
 	Frame *Frame
+
+	// StorageRank is the BATTERY's position in the customer's Rangliste
+	// (Verbrauchsmanagement v1 / P6). nil = the portal says nothing, and then
+	// the site-wide `storage_priority` decides exactly as it did before P6.
+	StorageRank *int
+
+	// Wallboxes are the non-OCPP charge points that take part in the same
+	// Ladepark-Rahmen (P6).
+	//
+	// ⚠ Unlike ChargePoints, nil and an EMPTY list differ here - and that is
+	// what makes "keine Wallbox mehr im Rahmen" expressible at all. The list is
+	// the WHOLE statement (the `priority_charge_point_ids` rule), because a
+	// wallbox is not ADMITTED by it: it is a consumer entity the box already
+	// knows, and this list only says which of them take part in the budget.
+	Wallboxes *[]Wallbox
+}
+
+// Wallbox is one entry of `wallboxes[]` (P6): a go-e/Modbus wallbox that takes
+// part in the Ladepark-Rahmen, named by its v2 ENTITY rather than by an OCPP
+// ChargePointId.
+type Wallbox struct {
+	EntityID string
+	Label    string
+	RatedKw  float64
+	MinKw    float64
+	Rank     int
+	Source   string
 }
 
 // Frame is the Ladepark-Rahmen the portal may maintain (E10: read-only for the
@@ -150,6 +184,15 @@ type ChargePoint struct {
 	// zuerst"-Mindestleistung of §3.2). 0 = the portal said nothing and the
 	// site-wide Mindestleistung applies.
 	MinKw float64
+	// Rank is THIS station's position in the customer's Rangliste (P6). 0 =
+	// the portal said nothing, and then `priority_charge_point_ids` decides
+	// alone - the behaviour before P6.
+	//
+	// ⚠ EQUAL RANKS ARE EQUALS: the cloud gives stations the customer left
+	// side by side the SAME number, and the box keeps rotating between them.
+	// It is applied to a station the box ALREADY knows, for the same reason
+	// `source`/`connection` are: there is no :8484 surface for it.
+	Rank int
 }
 
 // wire is the on-the-wire shape. Pointers where absence differs from a value.
@@ -165,7 +208,18 @@ type wire struct {
 	ChargePoints    []wireCP   `json:"charge_points"`
 	Removed         []string   `json:"removed_charge_point_ids"`
 	Frame           *wireFrame `json:"frame"`
+	StorageRank     *int       `json:"storage_rank"`
+	Wallboxes       *[]wireWB  `json:"wallboxes"`
 	PublishedAt     string     `json:"published_at"`
+}
+
+type wireWB struct {
+	EntityID string  `json:"entity_id"`
+	Label    string  `json:"label"`
+	RatedKw  float64 `json:"rated_kw"`
+	MinKw    float64 `json:"min_kw"`
+	Rank     int     `json:"rank"`
+	Source   string  `json:"source"`
 }
 
 type wireFrame struct {
@@ -186,6 +240,7 @@ type wireCP struct {
 	Connection string  `json:"connection"`
 	Source     string  `json:"source"`
 	MinKw      float64 `json:"min_kw"`
+	Rank       int     `json:"rank"`
 }
 
 // Parse reads one retained payload. An EMPTY payload returns ErrEmpty (the
@@ -288,10 +343,18 @@ func Parse(payload []byte) (Config, error) {
 		if math.IsNaN(minKw) || math.IsInf(minKw, 0) || minKw < 0 || minKw > MaxGridLimitKw {
 			minKw = 0
 		}
+		// ⚠ Eine unplausible POSITION ist keine Aussage: sie wird WEGGELASSEN
+		// (dann gilt weiter die Vorrang-Wahl), nie geraten - dieselbe Regel wie
+		// bei der Mindestleistung. Ein Rang, den wir nicht lesen können, dürfte
+		// eine Säule sonst still vor eine andere setzen.
+		rank := cp.Rank
+		if rank < 0 || rank > MaxRank {
+			rank = 0
+		}
 		cfg.ChargePoints = append(cfg.ChargePoints, ChargePoint{
 			ID: id, Label: strings.TrimSpace(cp.Label), Priority: cp.Priority,
 			RatedKw: cp.RatedKw, Connectors: cp.Connectors, Connection: conn,
-			Source: src, MinKw: minKw,
+			Source: src, MinKw: minKw, Rank: rank,
 		})
 	}
 	if len(w.Removed) > MaxChargePoints {
@@ -329,6 +392,56 @@ func Parse(payload []byte) (Config, error) {
 	// Wahrheit, und sie könnten auseinanderlaufen. Übernommen wird nur, was
 	// als ZAHL lesbar war; ein Feld, das der Anwender ablehnt, lässt den Wert
 	// der Box stehen, und die Ablehnung wird protokolliert.
+	// ⚠ Ein unplausibler Speicher-Rang wird VERWORFEN, nicht geklemmt: er ist
+	// die eine Zahl, an der „über dem Speicher" hängt, und ein geratener Wert
+	// entschiede über den Sonnenüberschuss einer Kundenanlage. Ohne ihn gilt
+	// weiter `storage_priority` - der Zustand vor P6.
+	if w.StorageRank != nil {
+		v := *w.StorageRank
+		if v > 0 && v <= MaxRank {
+			cfg.StorageRank = &v
+		}
+	}
+	if w.Wallboxes != nil {
+		list := *w.Wallboxes
+		if len(list) > MaxWallboxes {
+			return Config{}, fmt.Errorf("das Dokument nennt %d Wallboxen - höchstens %d sind erlaubt",
+				len(list), MaxWallboxes)
+		}
+		out := make([]Wallbox, 0, len(list))
+		for _, wb := range list {
+			// Dieselbe Nachsicht wie bei den Säulen: ein unbrauchbarer Eintrag
+			// wird ÜBERSPRUNGEN, nicht zum Abbruch - das ganze Dokument daran
+			// scheitern zu lassen kostete die Anschlussgrenze mit.
+			id := strings.TrimSpace(wb.EntityID)
+			if id == "" || wallboxListed(out, id) {
+				continue
+			}
+			// ⚠ Ein unbekanntes Quellen-Wort überspringt den EINTRAG, es wird
+			// NICHT auf „schnell" aufgelöst: aus einem „Nur Sonnenstrom" würde
+			// sonst still eine Freigabe für Netzstrom, die niemand erteilt hat.
+			src := strings.TrimSpace(wb.Source)
+			if src != "" && !validPolicy(src) {
+				continue
+			}
+			rated, minKw := wb.RatedKw, wb.MinKw
+			if math.IsNaN(rated) || math.IsInf(rated, 0) || rated < 0 || rated > MaxGridLimitKw {
+				rated = 0
+			}
+			if math.IsNaN(minKw) || math.IsInf(minKw, 0) || minKw < 0 || minKw > MaxGridLimitKw {
+				minKw = 0
+			}
+			rank := wb.Rank
+			if rank < 0 || rank > MaxRank {
+				rank = 0
+			}
+			out = append(out, Wallbox{
+				EntityID: id, Label: strings.TrimSpace(wb.Label),
+				RatedKw: rated, MinKw: minKw, Rank: rank, Source: src,
+			})
+		}
+		cfg.Wallboxes = &out
+	}
 	if w.Frame != nil {
 		cfg.Frame = &Frame{
 			HouseReserveKw:  w.Frame.HouseReserveKw,
@@ -340,6 +453,15 @@ func Parse(payload []byte) (Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func wallboxListed(list []Wallbox, id string) bool {
+	for _, w := range list {
+		if w.EntityID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func alreadyListed(list []ChargePoint, id string) bool {

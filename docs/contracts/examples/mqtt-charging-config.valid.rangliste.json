@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "grid_limit_kw": 44,
+  "surplus_policy": "sonne_zuerst",
+  "storage_priority": "speicher_vor_auto",
+  "storage_rank": 2,
+  "charge_points": [
+    {
+      "id": "saeule-chef",
+      "rank": 1
+    },
+    {
+      "id": "saeule-hof-nord",
+      "rank": 3
+    },
+    {
+      "id": "saeule-halle",
+      "rank": 3
+    }
+  ],
+  "published_at": "2026-08-31T09:15:00Z"
+}

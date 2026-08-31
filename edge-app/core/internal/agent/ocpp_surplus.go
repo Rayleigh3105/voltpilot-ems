@@ -168,6 +168,25 @@ func ocppSourceBudget(v lastmgmt.SurplusVerdict, allocatableKw float64) *float64
 	return &kw
 }
 
+// ocppSourceBudgetAbove is the SAME lane read ABOVE the battery (P6): the whole
+// measured surplus, before the storage took its share. It is only ever consulted
+// by a session the customer put over the storage (lastmgmt.Session.BeforeStorage);
+// nil (no lane at all) behaves exactly as it did before P6.
+//
+// ⚠ It is ONE physical quantity read twice, not a second pool - the allocator
+// decrements BOTH counters on every source-bound allocation, so the vehicles
+// together can never take more than the whole surplus.
+func ocppSourceBudgetAbove(v lastmgmt.SurplusVerdict, allocatableKw float64) *float64 {
+	if !v.Active || v.TotalKw == nil {
+		return nil
+	}
+	kw := math.Min(*v.TotalKw, allocatableKw)
+	if kw < 0 {
+		kw = 0
+	}
+	return &kw
+}
+
 // ocppMeasuredChargingKw is what the charge points are MEASURED drawing right
 // now — the input the battery cap must use, because an allocation a vehicle
 // does not take must never be subtracted from the storage.
@@ -192,10 +211,15 @@ func (a *Agent) OcppBatteryChargeCap(now time.Time) (float64, bool) {
 		return 0, false
 	}
 	set := rt.currentSettings()
-	if set.StoragePriority != lastmgmt.CarsBeforeStorage {
+	// ⚠ P6 GENERALISES THE GATE: the cap is due whenever at least one charge
+	// point sits ABOVE the battery in the customer's Rangliste. Without any
+	// rank that question collapses into the site-wide StoragePriority
+	// (lastmgmt.BeforeStorage), so a site that never ordered one behaves
+	// exactly as it did before P6.
+	cars, complete, any := a.carsBeforeStorageKw(set, now)
+	if !any {
 		return 0, false
 	}
-	cars, complete := rt.measuredChargingKw(now)
 	if !complete {
 		// A connector claiming budget without a measurement makes `cars` an
 		// under-estimate, which would cap the battery too generously. The same
@@ -203,7 +227,55 @@ func (a *Agent) OcppBatteryChargeCap(now time.Time) (float64, bool) {
 		// measurement.
 		return 0, false
 	}
-	return rt.budget.StorageChargeCap(now, set.SurplusPolicy, set.StoragePriority, cars)
+	// ⚠ The storage word handed in is the DERIVED one, not the site setting: on
+	// a ranked site the battery's place comes from the Rangliste, and the
+	// site-wide default is only the fallback the derivation already applied.
+	return rt.budget.StorageChargeCap(now, set.SurplusPolicy, lastmgmt.CarsBeforeStorage, cars)
+}
+
+// carsBeforeStorageKw is the measured charging power of every charge point the
+// customer put ABOVE the battery - OCPP stations and wallboxes alike.
+//
+// `any` reports whether there is such a charge point at all; `complete` mirrors
+// ChargingTotal's discipline (a claimant without a fresh measurement makes the
+// sum an under-estimate, and an under-estimate would cap the battery too
+// generously).
+func (a *Agent) carsBeforeStorageKw(set lastmgmt.Settings, now time.Time) (kw float64, complete, any bool) {
+	rt := a.ocpp
+	if rt == nil {
+		return 0, false, false
+	}
+	complete = true
+	for _, c := range rt.srv.Snapshot().Chargers {
+		if !lastmgmt.BeforeStorage(c.Rank, set.StorageRank, set.StoragePriority) {
+			continue
+		}
+		any = true
+		// ⚠ A station on its OWN grid connection is not inside this site's
+		// measurement, so it is neither added back nor subtracted from the
+		// storage (the C1 rule, verbatim).
+		if !c.Connected || c.OwnConnection() {
+			continue
+		}
+		for _, con := range c.ActiveConnectors() {
+			if con.PowerKw == nil || con.MeteredAt.IsZero() || now.Sub(con.MeteredAt) > ocppMeterMaxAge {
+				complete = false
+				continue
+			}
+			if p := *con.PowerKw; p > 0 {
+				kw += p
+			}
+		}
+	}
+	claims, _ := a.wallboxClaims(set, now)
+	for _, c := range claims {
+		if !lastmgmt.BeforeStorage(c.cfg.Rank, set.StorageRank, set.StoragePriority) {
+			continue
+		}
+		any = true
+		kw += c.measuredKw
+	}
+	return kw, complete, any
 }
 
 // --- the :8484 surface (read + the two customer actions) ---

@@ -75,8 +75,10 @@ BUS_PORT2=28596
 OCPP_PORT2=28597
 B1_STATUS=127.0.0.1:28598
 B2_STATUS=127.0.0.1:28599
+NETZ_STATUS2=127.0.0.1:28600
 BOX2="http://127.0.0.1:${WEB_PORT2}"
 CORE2_PID=""
+NETZ2_PID=""
 declare -a SIM2_PIDS=()
 
 BOX="http://127.0.0.1:${WEB_PORT}"
@@ -86,6 +88,7 @@ cleanup() {
   for pid in "${SIM_PIDS[@]:-}" "${SIM2_PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done
   [ -n "$CORE2_PID" ] && kill "$CORE2_PID" 2>/dev/null || true
   [ -n "$NETZ_PID" ] && kill "$NETZ_PID" 2>/dev/null || true
+  [ -n "$NETZ2_PID" ] && kill "$NETZ2_PID" 2>/dev/null || true
   [ -n "$CORE_PID" ] && kill "$CORE_PID" 2>/dev/null || true
   wait 2>/dev/null || true
   rm -rf "$WORK"
@@ -807,6 +810,152 @@ waitfor 30 "die Box nennt den Grund" l14_reason_rule \
   || { echo "    Stecker-Block: $(connector2_json)"; exit 1; }
 pass "L14d: Handeingriff mit Deckel 0 - B1 pausiert, Grund „$(b1_reason)\" statt Leistungsmangel"
 
+# ---------------------------------------------------------------- L15
+echo "--- L15: (P6) die RANGLISTE erreicht die Box"
+# Sie reist im retained `charging-config`-Dokument - also ueber genau den Weg,
+# den P5 fuer die Steuerart je Saeule schon benutzt. Gemessen wird wie ueberall
+# hier an dem, was die Saeulen ZIEHEN WUERDEN, nie an einer Quittung.
+
+# Der Handeingriff aus L14d haelt B1 noch bei 0 - er wird zurueckgenommen,
+# sonst misst L15 den Halter statt der Rangliste.
+wunsch flow local-ui 0 true   # (derselbe Wunsch, gleich abgeloest)
+"$WORK/vp-mqtt-pub" -broker "tcp://127.0.0.1:${BUS_PORT2}" \
+  -topic "${T_BASE}/v2/entities" -retain -payload '' \
+  || fail "L15: Registry liess sich nicht zuruecknehmen"
+l15_frei() { ! curl -sf "${BOX2}/api/state" | grep -q "$ENT_ID"; }
+waitfor 30 "die Komponente ist wieder weg" l15_frei
+policy2() {
+  curl -sf -X POST "${BOX2}/api/ocpp/settings" -H 'Content-Type: application/json' \
+    -d "{\"surplus_policy\":\"$1\"}" >/dev/null || fail "L15: Quellen-Wahl abgelehnt"
+}
+policy2 schnell
+
+# cfg <json-rumpf> - das retained Konfigurations-Dokument der Anlage.
+cfg2() {
+  cat >"$WORK/cfg.json" <<JSON
+{"schema_version":"1.0","tenant_id":"${T_TEN}","site_id":"${T_SITE}","device_id":"${T_DEV}",
+ "published_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)",$1}
+JSON
+  "$WORK/vp-mqtt-pub" -broker "tcp://127.0.0.1:${BUS_PORT2}" \
+    -topic "${T_BASE}/v2/charging-config" -retain -file "$WORK/cfg.json" \
+    || fail "L15: Konfiguration liess sich nicht veroeffentlichen"
+}
+
+# --- L15a: zwei GERANKTE Saeulen bei knapper Leistung --------------------
+# Budget: (30 - 10 %) - 0 Gebaeudelast = 27 kW fuer zwei 22-kW-Saeulen. Rang 1
+# wird ZUERST voll bedient, der Rest bleibt fuer Rang 2 - und weil 5 kW ueber
+# der Mindestleistung liegen, laedt er langsam weiter statt zu pausieren.
+cfg2 '"grid_limit_kw":30,"charge_points":[{"id":"SAEULE-B1","rank":1},{"id":"SAEULE-B2","rank":2}]'
+l15a() { b1_near 22 1.0 && nearly "$(b2_kw)" 5 1.0; }
+waitfor 60 "Rang 1 wird zuerst bedient" l15a \
+  || { echo "    B1=$(b1_kw) B2=$(b2_kw)"; exit 1; }
+pass "L15a: knappe Leistung - Rang 1 laedt $(b1_kw) kW, Rang 2 bekommt den Rest ($(b2_kw) kW)"
+
+# Und die Gegenprobe: GLEICHE Raenge sind gleichrangig, also teilen sie sich
+# die knappe Leistung wieder (die Rotation bleibt IHR Mechanismus).
+cfg2 '"grid_limit_kw":30,"charge_points":[{"id":"SAEULE-B1","rank":1},{"id":"SAEULE-B2","rank":1}]'
+l15a_gleich() { awk -v a="$(b1_kw)" -v b="$(b2_kw)" 'BEGIN{exit (a<21 && b>1)?0:1}'; }
+waitfor 60 "gleiche Raenge teilen wieder" l15a_gleich \
+  || { echo "    B1=$(b1_kw) B2=$(b2_kw)"; exit 1; }
+pass "L15a: gleiche Raenge sind GLEICHRANGIG - B1=$(b1_kw) B2=$(b2_kw)"
+
+# --- L15b: der SPEICHER steht zwischen den zwei Saeulen ------------------
+# Ein Netz-Zaehler auf dem zweiten Bus meldet Einspeisung und einen ladenden
+# Speicher: 12 kW gehen ins Netz, waehrend der Speicher 10 kW nimmt. Fuer die
+# Fahrzeuge sind das zwei verschiedene Toepfe - und WELCHEN eine Saeule sieht,
+# entscheidet ihre Position zum Speicher:
+#   unter dem Speicher: nur die 12 kW, die wirklich uebrig bleiben
+#   ueber  dem Speicher: die ganzen 22 kW Sonne (10 davon nimmt sonst der Speicher)
+"$WORK/vp-netz-sim" --bus "127.0.0.1:${BUS_PORT2}" --status "$NETZ_STATUS2" \
+  --house -12 --battery 10 --interval 1s \
+  --charger "http://${B1_STATUS}/status" --charger "http://${B2_STATUS}/status" \
+  >"$WORK/netz3.log" 2>&1 &
+NETZ2_PID=$!
+warte_l15() { # warte_l15 <sekunden> <beschreibung> <kommando...>
+  local secs="$1" what="$2"; shift 2
+  local deadline=$(( $(date +%s) + secs ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if "$@" >/dev/null 2>&1; then return 0; fi
+    sleep 0.5
+  done
+  echo "    B1=$(b1_kw) B2=$(b2_kw) netz=$(curl -sf "http://${NETZ_STATUS2}/status" || true)" >&2
+  fail "timeout ($secs s) beim Warten auf: $what"
+}
+
+# UNTEN: B1 steht unter dem Speicher (Rang 2 gegen storage_rank 1) und sieht
+# nur die 12 kW, die der Speicher uebrig laesst.
+cfg2 '"grid_limit_kw":277,"surplus_policy":"nur_sonne","storage_priority":"speicher_vor_auto",
+ "storage_rank":1,"charge_points":[{"id":"SAEULE-B1","rank":2},{"id":"SAEULE-B2","rank":3}]'
+l15b_unten() { b1_near 12 1.5; }
+warte_l15 90 "die Saeule unter dem Speicher sieht nur den Rest" l15b_unten
+pass "L15b: B1 UNTER dem Speicher zieht $(b1_kw) kW - der Speicher geht vor"
+
+# OBEN: dieselbe Sonne, dieselbe Saeule - nur ihre POSITION wechselt. Jetzt
+# greift sie in den ganzen Ueberschuss und nimmt dem Speicher seine 10 kW ab.
+cfg2 '"grid_limit_kw":277,"surplus_policy":"nur_sonne","storage_priority":"speicher_vor_auto",
+ "storage_rank":2,"charge_points":[{"id":"SAEULE-B1","rank":1},{"id":"SAEULE-B2","rank":3}]'
+l15b_oben() { b1_near 22 1.5; }
+warte_l15 90 "die Saeule ueber dem Speicher greift in den ganzen Ueberschuss" l15b_oben
+pass "L15b: B1 UEBER dem Speicher zieht $(b1_kw) kW - dieselbe Sonne, andere Position"
+
+# --- L15c: eine WALLBOX nimmt als virtuelle Sitzung Budget weg -----------
+# Sie haengt nicht an OCPP, sondern als v2-Verbraucher am Arbiter: die Box
+# zaehlt ihre GEMESSENE Leistung ins Budget zurueck und deckelt sie ueber den
+# Verbraucher-Sollwert. Ohne Eintrag in `wallboxes[]` ist sie blosse
+# Gebaeudelast - genau das ist der Vorher-Zustand.
+kill "$NETZ2_PID"; wait "$NETZ2_PID" 2>/dev/null || true; NETZ2_PID=""
+policy2 schnell
+WB_ID=99999999-8888-7777-6666-555555555555
+cat >"$WORK/registry-wb.json" <<JSON
+{"schema_version":"1.0","tenant_id":"${T_TEN}","site_id":"${T_SITE}","device_id":"${T_DEV}",
+ "revision":"rig-p6","published_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+ "entities":[{"entity_id":"${WB_ID}","entity_type":"wallbox","label":"Wallbox Garage",
+   "capabilities":{"measure":[{"channel":"power_kw","unit":"kW"}],
+     "actuate":[{"command":"setpoint_kw","min":0,"max":11}]},
+   "guards":{"limits":{"max_consumption_kw":11},"failsafe":{"behavior":"off"}}}]}
+JSON
+"$WORK/vp-mqtt-pub" -broker "tcp://127.0.0.1:${BUS_PORT2}" -topic "${T_BASE}/v2/entities" \
+  -retain -file "$WORK/registry-wb.json" || fail "L15: Wallbox-Registry abgelehnt"
+l15_wb_da() { curl -sf "${BOX2}/api/state" | grep -q "$WB_ID"; }
+waitfor 30 "die Box hat die Wallbox" l15_wb_da
+
+# Der Arbiter bekommt einen Wunsch (= die Wallbox ist wirklich kommandiert) ...
+cat >"$WORK/wb-desired.json" <<JSON
+{"schema_version":"1.0","entity_id":"${WB_ID}","request_id":"rig-wb-$(date +%s%N)",
+ "source":{"kind":"cloud-command"},"priority":"market","override":false,"ttl_s":600,
+ "issued_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+ "command":{"type":"setpoint_kw","value":11}}
+JSON
+"$WORK/vp-mqtt-pub" -broker "tcp://127.0.0.1:${BUS_PORT2}" \
+  -topic "edge/entities/${WB_ID}/desired" -file "$WORK/wb-desired.json" \
+  || fail "L15: Wallbox-Wunsch abgelehnt"
+# ... und sie MISST 11 kW. Beides zusammen macht sie erst zur Teilnehmerin.
+wb_misst() {
+  cat >"$WORK/wb-telemetry.json" <<JSON
+{"schema_version":"1.0","entity_id":"${WB_ID}","ts":"$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+ "channels":{"power_kw":11}}
+JSON
+  "$WORK/vp-mqtt-pub" -broker "tcp://127.0.0.1:${BUS_PORT2}" \
+    -topic "edge/entities/${WB_ID}/telemetry" -file "$WORK/wb-telemetry.json" >/dev/null
+}
+wb_misst
+
+# Budget 27 kW, eine 22-kW-Saeule allein: sie laedt voll, solange die Wallbox
+# nur Gebaeudelast ist.
+cfg2 '"grid_limit_kw":30,"charge_points":[{"id":"SAEULE-B1","rank":1},{"id":"SAEULE-B2","rank":2}]'
+waitfor 60 "Ausgangslage" l15a || { echo "    B1=$(b1_kw) B2=$(b2_kw)"; exit 1; }
+pass "L15c: OHNE Eintrag ist die Wallbox blosse Gebaeudelast - B1=$(b1_kw) B2=$(b2_kw)"
+
+# Jetzt tritt sie dem Rahmen bei - mit Rang 1, also VOR beiden Saeulen.
+cfg2 '"grid_limit_kw":30,"charge_points":[{"id":"SAEULE-B1","rank":2},{"id":"SAEULE-B2","rank":3}],
+ "wallboxes":[{"entity_id":"'"${WB_ID}"'","label":"Wallbox Garage","rated_kw":11,"rank":1}]'
+# 27 kW Budget, die Wallbox nimmt 11 - fuer B1 bleiben 16, fuer B2 nichts
+# (unter der Mindestleistung von 5 kW wird pausiert, nie ausgehungert).
+l15c() { nearly "$(b1_kw)" 16 1.5 && awk -v d="$(b2_kw)" 'BEGIN{exit (d<1)?0:1}'; }
+for _ in 1 2 3 4 5 6 7 8 9 10; do wb_misst; sleep 2; l15c && break; done
+l15c || { echo "    B1=$(b1_kw) B2=$(b2_kw)"; fail "L15c: die Wallbox nahm kein Budget weg"; }
+pass "L15c: die Wallbox nimmt 11 kW aus dem Budget - B1=$(b1_kw) kW, B2 pausiert"
+
 kill "$CORE2_PID"; wait "$CORE2_PID" 2>/dev/null || true; CORE2_PID=""
 for pid in "${SIM2_PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done
 SIM2_PIDS=()
@@ -837,4 +986,4 @@ awk -v d="$S1_AFTER" 'BEGIN{exit (d>1)?0:1}' || fail "L4: die Säule hat aufgeh�
 pass "L4: die Box ist tot, die Säule begrenzt sich SELBST auf 24,25 kW - und lädt weiter"
 
 echo
-echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L7 · L8 · L9 · L10 · L13 · L11/L12 · L14 · L4 =="
+echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L7 · L8 · L9 · L10 · L13 · L11/L12 · L14 · L15 · L4 =="

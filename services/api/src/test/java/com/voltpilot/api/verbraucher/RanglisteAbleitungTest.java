@@ -264,6 +264,77 @@ class RanglisteAbleitungTest {
         // Pflichten UNTEREINANDER zu ordnen.
         assertThat(Ableitung.class.getRecordComponents()).extracting(java.lang.reflect
                 .RecordComponent::getName)
-                .containsExactly("rang", "storageRelation", "storagePriority", "vorrangKennungen");
+                .containsExactly("rang", "storageRelation", "storagePriority", "vorrangKennungen",
+                        "saeulenRang", "speicherRang");
+    }
+
+    // --- P6: die zwei ZAHLEN, mit denen die Box dieselbe Reihenfolge faehrt ---
+
+    @Test
+    void jedesGeraetBekommtSeinePositionUndDerSpeicherAuch() {
+        // Heizstab (1) · Saeule Garage (2) · SPEICHER (3) · Pumpe (4).
+        List<Kandidat> kandidaten = List.of(vb(HEIZSTAB), saeule(GARAGE, "saeule-garage"),
+                vb(PUMPE));
+        Ableitung ab = RanglisteAbleitung.ableiten(
+                List.of(w(HEIZSTAB), lp(GARAGE), SPEICHER, w(PUMPE)), kandidaten, true);
+
+        assertThat(ab.rang()).containsEntry(HEIZSTAB, 1).containsEntry(PUMPE, 4);
+        assertThat(ab.saeulenRang()).containsExactly(java.util.Map.entry("saeule-garage", 2));
+        assertThat(ab.speicherRang()).isEqualTo(3);
+    }
+
+    @Test
+    void gleichrangigeSaeulenEinerSeiteTragenDIESELBEZahl() {
+        // ⚠ Die Flaeche zeigt sie als EINE Zeile - der Kunde hat zwischen ihnen
+        // gar keine Reihenfolge gewaehlt. Verschiedene Zahlen behaupteten eine,
+        // und die Box hoerte auf, zwischen ihnen abzuwechseln.
+        List<Kandidat> kandidaten = List.of(saeule(GARAGE, "saeule-garage"),
+                saeule(STELLPLATZ, "saeule-stellplatz"), vb(HEIZSTAB));
+        Ableitung ab = RanglisteAbleitung.ableiten(
+                List.of(lp(GARAGE), lp(STELLPLATZ), SPEICHER, w(HEIZSTAB)), kandidaten, true);
+
+        assertThat(ab.saeulenRang()).containsEntry("saeule-garage", 1)
+                .containsEntry("saeule-stellplatz", 1);
+        // Die Gruppe belegt trotzdem ZWEI Plaetze - die Positionen zaehlen
+        // GERAETE, nicht Zeilen (die P4-Regel).
+        assertThat(ab.speicherRang()).isEqualTo(3);
+        assertThat(ab.rang()).containsEntry(HEIZSTAB, 4);
+    }
+
+    @Test
+    void saeulenOBERHALBUndUNTERHALBTragenVerschiedeneZahlen() {
+        // Genau das ist der Fall, den die Vorrang-MENGE allein nicht ausdruecken
+        // kann: die Box liest die zwei Zahlen gegen `storage_rank`.
+        List<Kandidat> kandidaten = List.of(saeule(GARAGE, "saeule-garage"),
+                saeule(STELLPLATZ, "saeule-stellplatz"));
+        Ableitung ab = RanglisteAbleitung.ableiten(
+                List.of(lp(GARAGE), SPEICHER, lp(STELLPLATZ)), kandidaten, true);
+
+        assertThat(ab.saeulenRang()).containsEntry("saeule-garage", 1)
+                .containsEntry("saeule-stellplatz", 3);
+        assertThat(ab.speicherRang()).isEqualTo(2);
+        // ... und die alte Aussage bleibt Wort fuer Wort dieselbe.
+        assertThat(ab.storagePriority()).isEqualTo(RanglisteProjektion.AUTO_VOR_SPEICHER);
+        assertThat(ab.vorrangKennungen()).containsExactly("saeule-garage");
+    }
+
+    @Test
+    void ohneSpeicherGibtEsKeinenSpeicherRang() {
+        // ⚠ null heisst „es gibt kein Oben und Unten", nie 0: die Box faellt
+        // dann auf die anlagenweite Wahl zurueck.
+        Ableitung ab = RanglisteAbleitung.ableiten(List.of(lp(GARAGE)),
+                List.of(saeule(GARAGE, "saeule-garage")), false);
+
+        assertThat(ab.speicherRang()).isNull();
+        assertThat(ab.saeulenRang()).containsEntry("saeule-garage", 1);
+    }
+
+    @Test
+    void eineAnlageOhneSaeulenSagtUeberSaeulenrangGarNICHTS() {
+        Ableitung ab = RanglisteAbleitung.ableiten(List.of(w(HEIZSTAB), SPEICHER, w(PUMPE)),
+                List.of(vb(HEIZSTAB), vb(PUMPE)), true);
+
+        assertThat(ab.saeulenRang()).isEmpty();
+        assertThat(ab.speicherRang()).isEqualTo(2);
     }
 }

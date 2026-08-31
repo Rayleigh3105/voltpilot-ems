@@ -3439,6 +3439,16 @@ OCPP-Ladesaeulen (`cmd/vp-ocpp-sim`) ueber ECHTE Websockets.
   veroeffentlichten Port. Ein docker-freies Rig ist von der ganzen Klasse nicht
   betroffen; das Compose-Rig musste dafuer umgebaut werden (naechster
   Abschnitt).
+- **⚠ EIN LIEGENGEBLIEBENER PROZESS EINES ABGEBROCHENEN LAUFS VERGIFTET DEN
+  NAECHSTEN - und zwar an einer Stelle, die nichts mit ihm zu tun hat.** Bricht
+  ein Lauf mittendrin ab, kann seine `cleanup`-Falle einen `vp-netz-sim` oder
+  einen zweiten Kern ueberleben lassen; der publiziert weiter auf den festen
+  Bus-Port, und der naechste Lauf scheitert dann z. B. beim Einrichten
+  („Budget ist 229.3 kW, erwartet 82,3") oder erst in L13, ohne dass am Code
+  etwas falsch waere. **Vor einer Untersuchung deshalb IMMER zuerst
+  `ps aux | grep -E '[v]p-(edge-core|ocpp-sim|netz-sim)'`** und notfalls
+  `pkill -f 'vp-edge-core|vp-ocpp-sim|vp-netz-sim'`; erst danach ist ein
+  Fehlschlag eine Aussage ueber den Code (real passiert, zwei Laeufe gekostet).
 - **⚠ Das Rig prueft die ZUSAGE, nie die BESETZUNG.** WELCHE zwei Fahrzeuge
   bedient werden, entscheidet die Rotation; ein Rig, das eine bestimmte Saeule
   festnagelt, prueft einen Zufall und wird flakey (genau so beim ersten Lauf
@@ -4673,6 +4683,67 @@ Cloud-Seite, Kontrakt und die Trennung „wirkt sofort / braucht das Release": r
   `test/e2e-ocpp.sh` L14a–d (ein ZWEITER Kern mit eigener Registry — die Brücke deckelt,
   befreit und tritt ohne Halter zurück; die Wünsche reisen über `cmd/vp-mqtt-pub`, ein
   reines Rig-Werkzeug, das in KEIN Kunden-Image gehört).
+
+## Die RANGLISTE auf der Box: EIN Rang je Sitzung, EINE Menge zweimal gelesen (P6)
+
+Cloud-Seite, Migration und die Trennung „wirkt sofort / braucht das Release":
+root `AGENTS.md` „Verbrauchsmanagement v1 - Paket 6". Was HIER gelten muss:
+
+- **⚠ `Session.Rank == 0` IST DIE KOMPATIBILITAETS-ZUSAGE DES GANZEN PAKETS.**
+  Ohne einen einzigen Rang verteilt `lastmgmt.Decide` byte-identisch wie vor P6
+  - festgenagelt von `TestWithoutASingleRankTheAllocationIsByteForBytePreP6`
+  (ueber-abonnierte Vorrang-Menge, vier Rotations-Epochen, plus die Gegenprobe,
+  dass der ungerankte Rest sehr wohl rotiert). Wer die Gruppierung anfasst,
+  faehrt diesen Test.
+- **⚠ GLEICHE RAENGE SIND GLEICHRANGIG, und sie ROTIEREN.** Die Flaeche zeigt
+  die Saeulen EINER Seite des Speichers als EINE Zeile, der Kunde hat zwischen
+  ihnen also gar keine Reihenfolge gewaehlt; verschiedene Zahlen behaupteten
+  eine, und die Box hoerte auf, zwischen ihnen abzuwechseln. `rankGroups`
+  rotiert deshalb JEDE Gruppe - mit GENAU EINER Ausnahme: die alte
+  Vorrang-Menge (`rankLegacyPriority`) rotiert NICHT, denn genau das war ihr
+  Verhalten vor P6.
+- **⚠ ZWEI LANE-ZAEHLER, BEIDE bei jeder Zuteilung dekrementiert.** Die
+  Ueberschuss-Bahn der Saeulen UNTER dem Speicher ist eine TEILMENGE der Bahn
+  darueber (`belowLane ⊆ aboveLane`) - zwei unabhaengige Toepfe waeren dieselbe
+  Sonne zweimal ausgegeben. `takeSource` zieht deshalb von beiden ab, und
+  `sourceRest` liefert je Sitzung die KLEINERE, die sie erreichen darf.
+- **`BeforeStorage(rank, storageRank, site)` ist die EINE Regel** und faellt
+  ohne beide Zahlen auf die anlagenweite `storage_priority` zurueck - also auf
+  exakt das Verhalten vor P6. Sie wird in `ocppSessions` EINMAL je Sitzung
+  ausgewertet; `carsBeforeStorageKw` benutzt dieselbe Regel fuer die
+  Speicher-Klemme, damit Verteilung und Klemme nie auseinanderlaufen.
+- Die Raenge reisen im BESTEHENDEN retained `charging-config`-Dokument
+  (`charge_points[].rank`, top-level `storage_rank`); ein UNPLAUSIBLER Rang
+  wird verworfen (0 = ungerankt), ein unplausibler `storage_rank` laesst den
+  gespeicherten stehen - die PATCH-Disziplin dieses Pfads.
+
+## Eine WALLBOX tritt dem Ladepark-Rahmen bei (P6)
+
+`internal/agent/ocpp_wallbox.go` (Verdrahtung) + `lastmgmt.Wallbox`. Sie haengt
+NICHT an OCPP, sondern als v2-Verbraucher am Arbiter: der Verteiler zaehlt ihre
+GEMESSENE Leistung ins Budget zurueck und deckelt sie ueber den bestehenden
+Verbraucher-Sollwert (`capWallboxCommand` in `goeCommandFor`), nie ueber ein
+Ladeprofil. **Es gibt weiterhin GENAU EINEN Schreiber je Geraet.**
+
+- **⚠ TEILNAHME HAT ZWEI HAELFTEN, und beide muessen anliegen:** ein FRISCHER
+  eigener Messwert (`power_kw`, dasselbe Fenster wie `ocppMeterMaxAge`) UND ein
+  vom Arbiter GEWAEHRTES Kommando. Ohne Messung ist sie blosse Gebaeudelast und
+  wird NICHT gedeckelt - das sagt die Box auch (`WallboxNote`), statt es zu
+  verschweigen; ohne Kommando faehrt sie nach ihrer eigenen Steuerart.
+- **⚠ Die Rueckaddition haengt an der KAPPBARKEIT, nicht an der Messung
+  allein.** Ihre Leistung steckt in der Netzmessung; sie zurueckzuaddieren
+  heisst, sie dem Verteiler zu ueberlassen. Wer sie zurueckaddiert, ohne sie
+  deckeln zu koennen, verschenkt Budget an eine Leistung, die niemand steuert.
+- **⚠ Kein Regelkreis:** der Anspruch keyt auf das Kommando, das der Arbiter
+  VOR unserer Kappung gebildet hat - eine Kappe von 0 loescht also nie den
+  Beleg, der sie verursacht hat.
+- **Ohne Eintrag in `wallboxes[]` aendert sich NICHTS** (die Liste ist
+  ausdruecklich dreiwertig: fehlend = keine Aussage, LEER = „keine nimmt teil",
+  sonst die Menge). Eine Wallbox-Sitzung traegt NIE `Priority` - ihr Vorrang
+  ist ihr Rang.
+- Beweise: `internal/lastmgmt/rangliste_test.go` ·
+  `internal/agent/ocpp_rangliste_test.go` · `internal/agent/ocpp_wallbox_test.go`
+  (alle an den LADEPROFILEN gemessen) · Rig `test/e2e-ocpp.sh` L15a-c.
 
 ## Maintaining this file
 

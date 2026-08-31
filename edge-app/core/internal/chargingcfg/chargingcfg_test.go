@@ -232,6 +232,40 @@ func TestTheContractFixturesParseExactlyAsSpecified(t *testing.T) {
 		t.Fatalf("zweite Saeule = %+v", cfg3.ChargePoints[1])
 	}
 
+	// P6: die Rangliste. Gleiche Zahlen sind GLEICHRANGIG - die Box wechselt
+	// zwischen ihnen weiter im Takt ab.
+	rangliste := mustRead(t, filepath.Join(dir, "mqtt-charging-config.valid.rangliste.json"))
+	cfgR, err := Parse(rangliste)
+	if err != nil {
+		t.Fatalf("die Rangliste-Fixture muss parsen: %v", err)
+	}
+	if cfgR.StorageRank == nil || *cfgR.StorageRank != 2 {
+		t.Fatalf("storage_rank = %v", cfgR.StorageRank)
+	}
+	raenge := map[string]int{}
+	for _, cp := range cfgR.ChargePoints {
+		raenge[cp.ID] = cp.Rank
+	}
+	if raenge["saeule-chef"] != 1 || raenge["saeule-hof-nord"] != 3 ||
+		raenge["saeule-halle"] != 3 {
+		t.Fatalf("raenge = %v", raenge)
+	}
+
+	// P6: eine Wallbox tritt dem Rahmen bei.
+	wb := mustRead(t, filepath.Join(dir, "mqtt-charging-config.valid.wallbox-im-rahmen.json"))
+	cfgW, err := Parse(wb)
+	if err != nil {
+		t.Fatalf("die Wallbox-Fixture muss parsen: %v", err)
+	}
+	if cfgW.Wallboxes == nil || len(*cfgW.Wallboxes) != 1 {
+		t.Fatalf("wallboxes = %v", cfgW.Wallboxes)
+	}
+	w := (*cfgW.Wallboxes)[0]
+	if w.EntityID != "00000000-0000-0000-0000-0000000000aa" || w.Label != "Wallbox Garage" ||
+		w.RatedKw != 11 || w.MinKw != 4.2 || w.Rank != 1 || w.Source != "sonne_zuerst" {
+		t.Fatalf("wallbox = %+v", w)
+	}
+
 	remove := mustRead(t, filepath.Join(dir, "mqtt-charging-config.valid.saeule-entfernen.json"))
 	cfg4, err := Parse(remove)
 	if err != nil {
