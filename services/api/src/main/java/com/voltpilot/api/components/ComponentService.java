@@ -137,9 +137,15 @@ public class ComponentService {
         ComponentApplyRepository.ApplyState ist = applyState.forSite(siteId);
 
         String applied = ist == null ? null : ist.appliedRevision();
+        // L10: eine Anlage mit mehreren Geraeten und ohne hinterlegtes steuerndes
+        // Geraet bekommt GAR KEINEN Push - die Frage „ist das angekommen?" hat
+        // dort eine andere Antwort als „die Box hat sich noch nicht geaeussert".
+        // Gefragt wird nur, wenn ein solcher Zustand ueberhaupt sichtbar waere.
+        boolean gatewayAmbiguous = !ComponentService.settled(soll, applied)
+                && entityRegistry.gatewayAmbiguous(siteId);
         List<SiteComponentsDto.ComponentRowDto> rows = new ArrayList<>();
         for (EntityRow row : entityRepo.entitiesForSite(siteId)) {
-            rows.add(toRow(row, soll, applied));
+            rows.add(toRow(row, soll, applied, gatewayAmbiguous));
         }
         return new SiteComponentsDto(authority, soll, applied,
                 ist == null ? null : ist.appliedAt(),
@@ -213,9 +219,15 @@ public class ComponentService {
 
         UUID tenantId = TenantContext.get();
         UUID entityId = resolveOrCreatePoint(siteId, tenantId, role, req, template);
-        writeDefinition(siteId, tenantId, entityId, role, req, template, tested, subject,
-                "Angelegt");
-        entityRegistry.pushRegistryBestEffort(siteId);
+        int version = writeDefinition(siteId, tenantId, entityId, role, req, template, tested,
+                subject, "Angelegt");
+        // L9: NACH dem Commit und mit Wiederholung, wie Bearbeiten und Rollback.
+        // Ein Push INNERHALB der Transaktion hat zwei Fehlerformen, die beide
+        // still sind: ein Broker-Ausfall genau hier wird nie wiederholt (erst
+        // ein spaeterer, beliebiger Push heilt es), und ein Rollback NACH dem
+        // erfolgreichen Publish liesse die Box mit einem Soll zurueck, das die
+        // Datenbank nicht hat. Die Outbox loest beides an EINER Stelle.
+        activationOutbox.enqueue(tenantId, siteId, entityId, version, "component_create");
         return list(siteId);
     }
 
@@ -706,8 +718,12 @@ public class ComponentService {
         return v == null ? BigDecimal.ZERO : v;
     }
 
-    /** Schreibt die geltende Anbindung + ihre Fassung in die Historie. */
-    private void writeDefinition(UUID siteId, UUID tenantId, UUID entityId, String role,
+    /**
+     * Schreibt die geltende Anbindung + ihre Fassung in die Historie und gibt
+     * die geschriebene Fassungsnummer zurueck - der Schluessel, unter dem die
+     * Aktivierungs-Outbox den Push dieser Aenderung fuehrt.
+     */
+    private int writeDefinition(UUID siteId, UUID tenantId, UUID entityId, String role,
             SaveComponentRequest req, ComponentTemplateDto template,
             TestedConnection tested, String subject, String defaultNote) {
         String connJson = writeJson(driverConnection(tested, req, subject));
@@ -726,6 +742,7 @@ public class ComponentService {
         String note = req.note() == null || req.note().isBlank() ? defaultNote : req.note().trim();
         definitions.recordStoredVersion(tenantId, siteId, entityId, applied.version(),
                 subject, note);
+        return applied.version();
     }
 
     /**
@@ -867,7 +884,8 @@ public class ComponentService {
                 row.createdBy(), row.note());
     }
 
-    private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied) {
+    private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied,
+            boolean gatewayAmbiguous) {
         ComponentTemplateDto template = exactTemplate(row.templateRef(), row.templateVersion());
         return new SiteComponentsDto.ComponentRowDto(row.id(), row.role(), row.entityType(),
                 row.label(), row.brand(), row.model(), row.family(), row.communication(),
@@ -875,7 +893,7 @@ public class ComponentService {
                         : ComponentSecrets.maskedJson(row.connectionJson(), ComponentSecrets.keys(template), template == null),
                 row.sourceKind(), row.templateRef(), row.templateVersion(),
                 row.definitionVersion(), row.capacityKwp(), row.edgeSourceId(),
-                syncStatus(soll, applied));
+                syncStatus(soll, applied, gatewayAmbiguous));
     }
 
     private ComponentTemplateDto exactTemplate(String templateRef, Integer templateVersion) {
@@ -894,6 +912,8 @@ public class ComponentService {
      *   <li>{@code in_sync} - die angewandte Revision IST die komponierte.</li>
      *   <li>{@code pending} - es liegt eine neuere Fassung an, die die Box noch
      *       nicht angewandt hat.</li>
+     *   <li>{@code no_gateway_device} - es gibt gar keinen Empfaenger (siehe die
+     *       drei-Argument-Form darunter).</li>
      * </ul>
      *
      * <p><b>⚠ Öffentlich, weil die Flotten-Sicht der Stufe 6 sie MITBENUTZT</b>
@@ -904,13 +924,39 @@ public class ComponentService {
      * wortgleicher Kopien).
      */
     public static String syncStatus(String soll, String applied) {
-        if (applied == null || applied.isBlank()) {
-            return "unreported";
+        return syncStatus(soll, applied, false);
+    }
+
+    /**
+     * Dasselbe Urteil, plus der EINE Fall, den Revisionen allein nicht
+     * ausdruecken koennen: {@code no_gateway_device} - die Anlage hat mehrere
+     * Geraete und keins davon ist als steuerndes Geraet des Speichers
+     * hinterlegt, es gibt also keinen Empfaenger fuer den Push.
+     *
+     * <p>⚠ Er ersetzt nur die zwei Urteile, die dadurch UNEHRLICH wuerden:
+     * {@code unreported} („unbekannt", obwohl der Grund bekannt ist) und
+     * {@code pending} („unterwegs", obwohl nichts unterwegs sein kann). Ein
+     * {@code in_sync} bleibt {@code in_sync} - was laeuft, laeuft, auch wenn
+     * die naechste Aenderung erst ein Geraet braucht.
+     *
+     * <p>Die zwei-Argument-Form beantwortet die Frage weiterhin OHNE dieses
+     * Wissen (der Flotten-Blick der Stufe 6 kennt es nicht) und behauptet dann
+     * bewusst nichts: sie faellt auf {@code unreported} zurueck, statt einen
+     * Grund zu erfinden.
+     */
+    public static String syncStatus(String soll, String applied, boolean gatewayAmbiguous) {
+        if (settled(soll, applied)) {
+            return "in_sync";
         }
-        if (soll == null || soll.isBlank()) {
-            return "unreported";
-        }
-        return soll.equals(applied) ? "in_sync" : "pending";
+        return gatewayAmbiguous ? "no_gateway_device"
+                : (applied == null || applied.isBlank() || soll == null || soll.isBlank()
+                        ? "unreported" : "pending");
+    }
+
+    /** Ob Soll und Ist nachweislich dasselbe sagen. */
+    private static boolean settled(String soll, String applied) {
+        return applied != null && !applied.isBlank() && soll != null && !soll.isBlank()
+                && soll.equals(applied);
     }
 
     private String writeJson(Object value) {

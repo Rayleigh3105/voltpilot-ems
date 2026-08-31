@@ -684,7 +684,18 @@ export const ABSCHLUSS_HINWEIS =
  * `unreported` heißt UNBEKANNT, nie „nicht angekommen": eine ältere Box meldet
  * ihren Anwende-Stand gar nicht, und daraus einen Fehler zu machen wäre eine
  * Behauptung über ein Gerät, das nichts gesagt hat.
+ *
+ * `no_gateway_device` ist der EINE Fall, in dem der Grund bekannt IST: die
+ * Anlage hat mehrere Geräte und keins davon ist als steuerndes Gerät des
+ * Speichers hinterlegt, also gibt es keinen Empfänger. Das zu verschweigen war
+ * der Befund - „Stand auf dem Gerät unbekannt" schickte den Kunden suchen,
+ * obwohl der Server weiß, was fehlt, und was zu tun ist.
  */
+export const KEIN_EMPFAENGER_SATZ =
+  'Diese Anlage hat mehrere Geräte und keinen zugeordneten Speicher - VoltPilot '
+  + 'weiß nicht, an welches Gerät die Einstellungen gehen. Bitte tragen Sie unter '
+  + '„Technik" das steuernde Gerät des Speichers ein.';
+
 export function sollIstText(
   syncStatus: string | null | undefined,
   definitionVersion: number,
@@ -694,12 +705,20 @@ export function sollIstText(
       return `Läuft auf dem Gerät · Fassung ${definitionVersion}`;
     case 'pending':
       return 'Änderung unterwegs zur Box';
+    case 'no_gateway_device':
+      return KEIN_EMPFAENGER_SATZ;
     default:
       return 'Stand auf dem Gerät unbekannt';
   }
 }
 
-/** Der Ton der Soll/Ist-Zeile: ok · unterwegs · unbekannt. */
+/**
+ * Der Ton der Soll/Ist-Zeile: ok · unterwegs · unbekannt.
+ *
+ * ⚠ Der fehlende Empfänger ist bewusst `unbekannt` und nicht `busy`: nichts ist
+ * unterwegs. Ein eigener Warnton wäre die dritte Farbe für einen Zustand, der
+ * die Anlage nicht stört - sie läuft weiter, nur die nächste Änderung wartet.
+ */
 export function sollIstTon(syncStatus: string | null | undefined): 'ok' | 'busy' | 'unbekannt' {
   if (syncStatus === 'in_sync') return 'ok';
   if (syncStatus === 'pending') return 'busy';

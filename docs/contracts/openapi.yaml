@@ -7511,11 +7511,17 @@ components:
               edgeSourceId: { type: string, nullable: true }
               syncStatus:
                 type: string
-                enum: [in_sync, pending, unreported]
+                enum: [in_sync, pending, unreported, no_gateway_device]
                 description: >
                   Derived from Soll vs. the box's reported Ist, never guessed.
                   `unreported` means the box has not reported - NEVER "the change
-                  was lost".
+                  was lost". `no_gateway_device` is the one case where the reason
+                  IS known: the site has several claimed devices and none of them
+                  is set as the battery's controlling device, so there is no
+                  receiver for the push at all (it replaces `unreported` and
+                  `pending`, never `in_sync`). The cross-tenant fleet view keeps
+                  the three-value vocabulary - it does not know about receivers
+                  and must not invent a reason.
     SaveComponentRequest:
       type: object
       required: [templateRef, role]

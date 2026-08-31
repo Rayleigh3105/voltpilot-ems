@@ -14,6 +14,7 @@ import {
   ohneMesswertHinweis,
   pruefen,
   rolleVerfuegbar,
+  KEIN_EMPFAENGER_SATZ,
   sollIstText,
   sollIstTon,
   templatesFuerTuer,
@@ -265,6 +266,21 @@ describe('Soll/Ist', () => {
     expect(sollIstText('unreported', 1)).toBe('Stand auf dem Gerät unbekannt');
     expect(sollIstText(undefined, 1)).toBe('Stand auf dem Gerät unbekannt');
     expect(sollIstTon(null)).toBe('unbekannt');
+  });
+
+  it('nennt den fehlenden Empfänger statt „unbekannt" - und sagt, was zu tun ist', () => {
+    // L10: die Anlage hat mehrere Geräte und keins ist als steuerndes Gerät des
+    // Speichers hinterlegt. Der Grund ist BEKANNT, ihn zu verschweigen schickte
+    // den Kunden suchen.
+    const satz = sollIstText('no_gateway_device', 1);
+    expect(satz).toBe(KEIN_EMPFAENGER_SATZ);
+    expect(satz).toContain('mehrere Geräte');
+    expect(satz).toContain('steuernde Gerät des Speichers');
+    expect(satz).not.toBe('Stand auf dem Gerät unbekannt');
+  });
+
+  it('gibt dem fehlenden Empfänger den ruhigen Ton - nichts ist unterwegs', () => {
+    expect(sollIstTon('no_gateway_device')).toBe('unbekannt');
   });
 
   it('nennt bei einer Ablehnung BEIDES: dass der alte Stand läuft UND warum', () => {

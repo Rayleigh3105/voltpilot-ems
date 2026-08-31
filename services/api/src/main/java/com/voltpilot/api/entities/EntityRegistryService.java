@@ -960,6 +960,24 @@ public class EntityRegistryService {
         return gatewayDevice(siteId, repo.batteryAsset(siteId));
     }
 
+    /**
+     * Ob diese Anlage GERAETE hat, aber kein eindeutiges Empfaenger-Geraet - der
+     * Fall {@code multiple_devices_no_battery_link} von {@link #gatewayReason}:
+     * mehrere beanspruchte Geraete und keiner davon als steuerndes Geraet des
+     * Speichers hinterlegt.
+     *
+     * <p>⚠ Bewusst NICHT wahr, wenn die Anlage GAR KEIN Geraet hat: dort gibt es
+     * kein Geraet, das einen Stand haben koennte, und ein Satz ueber „mehrere
+     * Geraete" waere dann schlicht falsch. Diese eine Unterscheidung ist der
+     * ganze Grund, warum es die Methode neben {@link #gatewayDeviceFor} gibt.
+     */
+    public boolean gatewayAmbiguous(UUID siteId) {
+        if (gatewayDevice(siteId, repo.batteryAsset(siteId)) != null) {
+            return false;
+        }
+        return !repo.siteDeviceIds(siteId).isEmpty();
+    }
+
     private UUID gatewayDevice(UUID siteId, BatteryAsset battery) {
         if (battery != null && battery.deviceId() != null) {
             return battery.deviceId();
