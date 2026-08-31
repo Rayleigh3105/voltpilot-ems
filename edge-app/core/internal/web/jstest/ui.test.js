@@ -2658,3 +2658,85 @@ test("Die Einrichten-Seite trägt KEIN natives Auswahlfeld mehr (Welle 3)", () =
       datei + " erzeugt ein natives Auswahlfeld zur Laufzeit");
   }
 });
+
+/* =================== Datenfreigabe: the mirror card ===================
+   Backlog vp-mirror-blocks-anzeige - the two Falschanzeigen of 30.07.:
+   (1) "0 gelernte Registerbereiche" while the mirror provably delivers,
+   (2) the accordion head reading "Aus" over a card reading "Bereit".
+   ==================================================================== */
+
+// mirrorApi loads mirror.js in a DOM-less context: the pure part hangs off
+// window BEFORE the `if (!card) return` early exit, so it is testable without
+// a page (the VPGroups/VPControl pattern).
+function mirrorApi() {
+  return load(["mirror.js"]).VPMirror;
+}
+
+test("the mirror detail names the DELIVERY facts and hides a meaningless zero", () => {
+  const M = mirrorApi();
+
+  // The live 30.07. case: both units answer with real values, and nothing had
+  // to be learned because the primary poll already covers the reads.
+  const serving = M.detailLine({
+    native_unit: 1, vp_unit: 100, stale_after_s: 90,
+    learned_blocks: [], raw_age_s: 3, telemetry_age_s: 7
+  });
+  assert.match(serving, /Gerät 1 = Original-Register des Wechselrichters · vor 3 s/);
+  assert.match(serving, /Gerät 100 = VoltPilot-Standardwerte · vor 7 s/);
+  assert.match(serving, /Frische-Schwelle 90 s/);
+  // The misleading headline is GONE: a zero count claims nothing.
+  assert.ok(!/gelernte Registerbereiche/.test(serving), serving);
+  assert.ok(!/\b0 /.test(serving), "a bare zero must not appear: " + serving);
+
+  // Learned blocks are named only when there really are some.
+  const learned = M.detailLine({ learned_blocks: [{ start: 1280, count: 2 }, { start: 1536, count: 4 }] });
+  assert.match(learned, /2 zusätzlich gelernte Registerbereiche/);
+});
+
+test("the mirror detail says 'noch keine Daten' instead of pretending freshness", () => {
+  const M = mirrorApi();
+
+  // Just enabled, nothing polled yet: both ages are absent - and absent is
+  // NOT "vor 0 s". Defaults fill in for the unit numbers only.
+  const fresh = M.detailLine({});
+  assert.match(fresh, /Gerät 1 = Original-Register des Wechselrichters · noch keine Daten/);
+  assert.match(fresh, /Gerät 100 = VoltPilot-Standardwerte · noch keine Daten/);
+  assert.match(fresh, /Frische-Schwelle 90 s/);
+  assert.ok(!/vor \d+ s/.test(fresh), fresh);
+
+  // A measured zero IS a value ("read this very second"), never "no data".
+  assert.match(M.detailLine({ raw_age_s: 0 }), /Original-Register des Wechselrichters · vor 0 s/);
+
+  // Null-safe: an unreachable /api/mirror must not crash the card.
+  assert.strictEqual(typeof M.detailLine(null), "string");
+});
+
+test("the mirror state is published from ONE source, null until the first poll", () => {
+  const M = mirrorApi();
+  // No card in this context -> render() never ran -> honestly nothing known.
+  assert.strictEqual(M.state(), null);
+});
+
+test("the Datenfreigabe head says '…' while unknown and never claims 'Aus'", () => {
+  const G = groupsApi();
+
+  // (a) BEFORE the first /api/mirror answer: unknown, and it SAYS so. This is
+  //     the 30.07. bug - it used to render "Aus" next to a card showing
+  //     "Bereit", i.e. a claim nobody had measured.
+  const unknown = G.datenfreigabeSummary(null, "192.168.0.10");
+  assert.strictEqual(unknown.text, "…");
+  assert.strictEqual(unknown.tone, "off");
+  assert.strictEqual(unknown.problemKey, null);
+
+  // (b) a MEASURED off is still "Aus" - the honest claim keeps its wording.
+  assert.strictEqual(G.datenfreigabeSummary({ enabled: false }, "h").text, "Aus");
+
+  // (c) and the running mirror the card calls "Bereit" reads the same way in
+  //     the head.
+  const running = G.datenfreigabeSummary({ enabled: true, running: true, advertise_port: 502 }, "192.168.0.10");
+  assert.strictEqual(running.text, "An · 192.168.0.10:502 · nur Lesen");
+  assert.strictEqual(running.tone, "ok");
+
+  // Unknown must never auto-open the group (it is not a problem).
+  assert.strictEqual(G.shouldAutoOpen(null, unknown.problemKey), false);
+});

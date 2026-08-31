@@ -1921,6 +1921,26 @@ doc + register tables in `edge-app/MODBUS-SPIEGEL.md`, Loxone sensor list in
   NORMAL-mode customer control (owner decision) - toggle + copy-ready address;
   only the register detail is Technik-gated. `VP_MIRROR_PORT` is display+
   mapping only (compose lockstep incl. `install.sh generate_compose()`).
+- **⚠ `learned_blocks` LEER ist die WAHRHEIT, kein Defekt** (Backlog
+  `vp-mirror-blocks-anzeige`, Live-Beweis 30.07.: Reads OK auf Unit 1 + 100,
+  Zaehler 0). Es zaehlt AUSSCHLIESSLICH die ZUSAETZLICHEN Bloecke, die der
+  Spiegel in den Node-RED-Poll aufnehmen musste, weil der PRIMAERE Poll sie
+  nicht abdeckt - auf einer gesunden Anlage, deren Verbraucher liest, was der
+  Primaer-Poll ohnehin liefert, ist es fuer immer 0, waehrend beide Units echte
+  Werte liefern. Es ist deshalb KEINE Aussage ueber „liefert der Spiegel?"; die
+  belastbaren Fakten dafuer sind `raw_age_s` (Unit = native Durchreiche) und
+  `telemetry_age_s` (Unit 100). `mirror.js detailLine` nennt genau die zwei
+  (inkl. ihres ehrlichen „noch keine Daten") und zeigt die gelernten Bloecke
+  NUR, wenn es wirklich welche gibt - eine dauerhafte „0 gelernte
+  Registerbereiche" las sich wie „hier wird nichts ausgeliefert".
+- **⚠ `mirror.js` ist die EINE Quelle des Spiegel-Zustands auf der Seite**
+  (`window.VPMirror.state()` + das Ereignis `vp:mirror-state`, beides aus
+  `render()` gesetzt): der Datenfreigabe-Akkordeon-Kopf (`einrichten.js`) SEEDET
+  daraus und folgt dann dem Ereignis - Kopf und Karte koennen sich damit nicht
+  widersprechen. **NOCH UNBEKANNT ist NICHT „Aus"**: `datenfreigabeSummary(null)`
+  liefert „…", nie eine Behauptung, die niemand gemessen hat (der Kopf las sonst
+  „Aus + grauer Punkt" ueber einer Karte mit „Bereit"). Die statische
+  Erst-Anzeige in `einrichten.html` traegt aus demselben Grund „…".
 - Proofs: `internal/mirror` units (framing/fuzz/learner/staleness),
   `agent/mirror_integration_test.go` (bus->TCP byte-match, learn->deliver,
   /api/mirror toggle), `nodered/mirror-poll.e2e.test.js` (real poll +

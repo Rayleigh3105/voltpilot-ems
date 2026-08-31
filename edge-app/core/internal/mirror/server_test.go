@@ -747,3 +747,58 @@ func TestStopClosesListenerAndConsumers(t *testing.T) {
 		t.Fatal("listener still accepting after Stop")
 	}
 }
+
+// TestServingMirrorReportsNoLearnedBlocksAndCarriesFreshness pins the
+// diagnosis of the "learned_blocks leer, obwohl der Spiegel ausliefert"
+// report (Live-Beweis 30.07., Backlog vp-mirror-blocks-anzeige):
+//
+// an empty learned set is the TRUTH, not a defect. `learned_blocks` counts
+// only the EXTRA blocks the mirror had to add to the Node-RED poll because
+// the PRIMARY poll does not cover them - on a healthy plant whose consumer
+// reads what the primary poll already delivers it is 0 forever, while both
+// units answer with real values. The belastbare "is it delivering?" facts are
+// raw_age_s (unit = native pass-through) and telemetry_age_s (unit 100), so
+// the operator surface must show THOSE and must not read a zero count as
+// "nothing is being served".
+func TestServingMirrorReportsNoLearnedBlocksAndCarriesFreshness(t *testing.T) {
+	now := time.Now()
+	s := seededServer(now)
+	s.UpdateComposite(now, Composite{PvKw: f(4.2), SocPct: f(61)})
+	addr := startServer(t, s)
+	conn := dial(t, addr)
+
+	// The live case: the consumer reads what the primary poll covers - on the
+	// native unit AND on the VoltPilot unit. Both answer with real values.
+	if regs, exc := exchange(t, conn, 1, 1, 3, 0x024C, 4); exc != 0 || regs[0] != 0x024C {
+		t.Fatalf("native read failed (exc 0x%02x, regs %v)", exc, regs)
+	}
+	if regs, exc := exchange(t, conn, 2, VPUnit, 3, 0, 2); exc != 0 || len(regs) != 2 {
+		t.Fatalf("vp read failed (exc 0x%02x, regs %v)", exc, regs)
+	}
+
+	var st Status
+	s.StatusInto(&st)
+	if len(st.LearnedBlocks) != 0 {
+		t.Fatalf("learned_blocks = %v, want empty (the primary poll covers the reads)", st.LearnedBlocks)
+	}
+	// ... and the two fields that DO prove delivery are populated.
+	if st.RawAgeS == nil {
+		t.Fatal("raw_age_s is nil although the native unit just served real registers")
+	}
+	if st.TelemetryAgeS == nil {
+		t.Fatal("telemetry_age_s is nil although the VoltPilot unit just served real values")
+	}
+	if st.NativeUnit != 1 || st.VPUnit != VPUnit {
+		t.Fatalf("units = %d/%d, want 1/%d", st.NativeUnit, st.VPUnit, VPUnit)
+	}
+
+	// Contrast (non-vacuous): a read the primary poll does NOT cover is what
+	// actually fills learned_blocks.
+	if _, exc := exchange(t, conn, 3, 1, 3, 0x0500, 2); exc != excGatewayTargetFail {
+		t.Fatalf("uncovered read: exc 0x%02x, want 0x0B", exc)
+	}
+	s.StatusInto(&st)
+	if len(st.LearnedBlocks) != 1 || st.LearnedBlocks[0].Start != 0x0500 {
+		t.Fatalf("learned_blocks = %v, want one block at 0x0500", st.LearnedBlocks)
+	}
+}
