@@ -267,7 +267,7 @@ describe('Zone ① „Jetzt" — Handeingriff je Ladepunkt (P3a)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Jetzt voll laden - 2 h/ }));
     await waitFor(() => expect(boost).toHaveBeenCalledWith('s-1', {
-      chargePointId: 'CP1', connectorId: 1, minutes: 120, cancel: false,
+      chargePointId: 'CP1', connectorId: 1, minutes: 120, cancel: false, action: 'voll',
     }));
   });
 
@@ -288,7 +288,7 @@ describe('Zone ① „Jetzt" — Handeingriff je Ladepunkt (P3a)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Jetzt voll laden - bis Abstecken/ }));
     await waitFor(() => expect(boost).toHaveBeenCalledWith('s-1', {
-      chargePointId: 'CP1', connectorId: 1, cancel: false,
+      chargePointId: 'CP1', connectorId: 1, cancel: false, action: 'voll',
     }));
   });
 
@@ -316,7 +316,74 @@ describe('Zone ① „Jetzt" — Handeingriff je Ladepunkt (P3a)', () => {
     fireEvent.click(document.querySelector(
       '.vp-vb-dialog-actions button:last-of-type') as HTMLElement);
     await waitFor(() => expect(boost).toHaveBeenCalledWith('s-1', {
-      chargePointId: 'CP1', connectorId: 1, cancel: true,
+      chargePointId: 'CP1', connectorId: 1, cancel: true, action: 'voll',
+    }));
+  });
+});
+
+/**
+ * P3b — „Laden pausieren" ist das GESCHWISTER des Boosts in derselben Zeile:
+ * derselbe Dialog, dieselbe Route, dieselbe Rücknahme. Nur die Wirkung ist die
+ * gegenteilige (Konzept §4.6, Entscheid E5).
+ */
+describe('Zone ① „Jetzt" — Laden pausieren (P3b)', () => {
+  const charging = (con: Record<string, unknown> = {}) => ({
+    budget: {
+      deviceId: 'd-1', enabled: true, controlEnabled: true, connectorCount: 1,
+      surplusActive: true, gridLimitKw: 32,
+    },
+    chargers: [{
+      deviceId: 'd-1', chargePointId: 'CP1', label: 'Wallbox Garage', priority: false,
+      connected: true, ready: true,
+      connectors: [{
+        connectorId: 1, charging: true, status: 'Charging', powerKw: 7.4, ...con,
+      }],
+    }],
+  } as never);
+
+  /** Die Säule, wie die Box sie nach einer Pause meldet. */
+  const pausiert = () => charging({
+    status: 'SuspendedEVSE', powerKw: 0, allocatedKw: 0,
+    reason: 'handeingriff', reasonText: 'pausiert — Handeingriff',
+  });
+
+  it('führt von der Zeile über die Folgen-Karte zur Pause', async () => {
+    const boost = vi.spyOn(api, 'chargingBoost').mockResolvedValue({} as never);
+    vi.spyOn(api, 'siteChargers').mockResolvedValue(charging());
+    render(<JetztZone site={site} charging={charging()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Wallbox Garage: eingreifen/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Laden pausieren/ }));
+
+    // ⚠ Die Karte sagt VOR dem Klick, was NICHT passiert.
+    expect(await screen.findByText('Alle anderen Ladepunkte laden unverändert weiter.'))
+      .toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Laden pausieren - 2 h/ }));
+    await waitFor(() => expect(boost).toHaveBeenCalledWith('s-1', {
+      chargePointId: 'CP1', connectorId: 1, minutes: 120, cancel: false, action: 'pause',
+    }));
+  });
+
+  it('zeigt die laufende Pause und nimmt sie MIT ihrer Richtung zurück', async () => {
+    const boost = vi.spyOn(api, 'chargingBoost').mockResolvedValue({} as never);
+    vi.spyOn(api, 'siteChargers').mockResolvedValue(pausiert());
+    render(<JetztZone site={site} charging={pausiert()} />);
+
+    expect(await screen.findByText(/pausiert \(nur diese Ladung\)/)).toBeInTheDocument();
+    expect(screen.getByText(/endet spätestens beim Abstecken/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Automatik fortsetzen' })[0]);
+    // Die Rücknahme-Karte beschreibt die PAUSE, nicht die volle Ladung.
+    expect(await screen.findByText(
+      'Der Eingriff endet sofort. Dieser Ladevorgang lädt wieder nach Ihrer Priorität.'))
+      .toBeInTheDocument();
+    fireEvent.click(document.querySelector(
+      '.vp-vb-dialog-actions button:last-of-type') as HTMLElement);
+    // ⚠ Die Richtung reist MIT - sonst schriebe der Kommando-Verlauf
+    // „Jetzt voll laden beendet" über eine Pause.
+    await waitFor(() => expect(boost).toHaveBeenCalledWith('s-1', {
+      chargePointId: 'CP1', connectorId: 1, cancel: true, action: 'pause',
     }));
   });
 });

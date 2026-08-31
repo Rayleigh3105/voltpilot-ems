@@ -76,17 +76,17 @@ public class ChargingBoostPublisher {
      */
     public synchronized boolean publish(UUID tenantId, UUID siteId, UUID deviceId,
             String chargePointId, int connectorId, Integer minutes, boolean cancel,
-            String actor, Instant requestedAt) {
+            boolean pause, String actor, Instant requestedAt) {
         String topic = boostTopic(tenantId, siteId, deviceId);
         byte[] payload = document(tenantId, siteId, deviceId, chargePointId, connectorId, minutes,
-                cancel, actor, requestedAt);
+                cancel, pause, actor, requestedAt);
         try {
             MqttMessage message = new MqttMessage(payload);
             message.setQos(1);
             message.setRetained(false);
             connected().publish(topic, message);
-            log.info("published charging boost ({}#{}, cancel={}) to {}", chargePointId,
-                    connectorId, cancel, topic);
+            log.info("published charging boost ({}#{}, pause={}, cancel={}) to {}", chargePointId,
+                    connectorId, pause, cancel, topic);
             return true;
         } catch (Exception e) {
             log.warn("could not publish charging boost to {}: {}", topic, e.getMessage());
@@ -96,7 +96,8 @@ public class ChargingBoostPublisher {
 
     /** Baut den Umschlag von Hand - dieselbe Klasse Nachricht wie die OTA-Freigabe. */
     static byte[] document(UUID tenantId, UUID siteId, UUID deviceId, String chargePointId,
-            int connectorId, Integer minutes, boolean cancel, String actor, Instant requestedAt) {
+            int connectorId, Integer minutes, boolean cancel, boolean pause, String actor,
+            Instant requestedAt) {
         StringBuilder sb = new StringBuilder(256);
         sb.append("{\"schema_version\":\"1.0\"")
                 .append(",\"tenant_id\":\"").append(tenantId).append('"')
@@ -104,6 +105,13 @@ public class ChargingBoostPublisher {
                 .append(",\"device_id\":\"").append(deviceId).append('"')
                 .append(",\"charge_point_id\":\"").append(esc(chargePointId)).append('"')
                 .append(",\"connector_id\":").append(connectorId);
+        // ⚠ `action` reist NUR für die zweite Richtung mit. ABWESEND heißt „voll",
+        // und genau das ist die Kompatibilitäts-Zusage: eine Box, die das Feld
+        // nicht kennt, überliest es und erteilt exakt den Boost von vorher -
+        // hätten wir es immer gesendet, wäre der Beweis dafür weg.
+        if (pause) {
+            sb.append(",\"action\":\"pause\"");
+        }
         if (minutes != null) {
             sb.append(",\"minutes\":").append(minutes.intValue());
         }

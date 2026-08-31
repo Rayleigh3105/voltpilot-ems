@@ -46,6 +46,20 @@ const Window = 2 * time.Minute
 // box, never refused - the cap is a promise, not a trap.
 const MaxMinutes = 240
 
+// The two DIRECTIONS of the one override (Verbrauchsmanagement v1 / P3b,
+// Entscheid E5). They are siblings, not two mechanisms: same transport, same
+// `requested_at` window, same binding to ONE transaction, same „Automatik
+// fortsetzen" to take either back.
+const (
+	// ActionFull is „Jetzt voll laden": the session is freed from the SOURCE
+	// lane and may draw grid power.
+	ActionFull = "voll"
+	// ActionPause is „Laden pausieren": the session is capped at 0 kW and
+	// pauses with the reason „handeingriff". Every OTHER charge is untouched,
+	// and the cap is RESTRICT-ONLY - it can never widen a limit.
+	ActionPause = "pause"
+)
+
 // Request is one parsed override.
 type Request struct {
 	TenantID      string
@@ -53,6 +67,12 @@ type Request struct {
 	DeviceID      string
 	ChargePointID string
 	Connector     int
+	// Action is which direction was granted (ActionFull / ActionPause).
+	//
+	// ⚠ An ABSENT field parses to ActionFull. That is the compatibility
+	// promise of the whole Paket: a cloud that does not send it grants exactly
+	// the boost of before.
+	Action string
 	// Minutes is the requested duration; 0 = the contract default (the cap).
 	Minutes int
 	// Cancel takes a running override back at once.
@@ -70,6 +90,7 @@ type wire struct {
 	DeviceID      string `json:"device_id"`
 	ChargePointID string `json:"charge_point_id"`
 	Connector     int    `json:"connector_id"`
+	Action        string `json:"action"`
 	Minutes       int    `json:"minutes"`
 	Cancel        bool   `json:"cancel"`
 	RequestedAt   string `json:"requested_at"`
@@ -100,6 +121,21 @@ func Parse(payload []byte) (Request, error) {
 	if w.Connector < 1 || w.Connector > 64 {
 		return Request{}, fmt.Errorf("Stecker %d gibt es nicht - ein Stecker wird ab 1 gezählt", w.Connector)
 	}
+	action := strings.TrimSpace(w.Action)
+	switch action {
+	case "":
+		// ⚠ ABSENT is „voll", never a refusal: the two fixtures written before
+		// P3b carry no `action`, and so does every cloud that has not deployed
+		// it yet.
+		action = ActionFull
+	case ActionFull, ActionPause:
+	default:
+		// A word we do not understand must not become a handling - and the
+		// safe direction here is NOT „pause" either (that would stop a charge
+		// nobody asked to stop), so the whole message is discarded.
+		return Request{}, fmt.Errorf("unbekannte Übersteuerungs-Art %q - die Nachricht wird verworfen",
+			w.Action)
+	}
 	if w.Minutes < 0 || w.Minutes > MaxMinutes {
 		return Request{}, fmt.Errorf("die Dauer %d Minuten liegt außerhalb von 0..%d", w.Minutes, MaxMinutes)
 	}
@@ -111,10 +147,13 @@ func Parse(payload []byte) (Request, error) {
 	}
 	return Request{
 		TenantID: w.TenantID, SiteID: w.SiteID, DeviceID: w.DeviceID,
-		ChargePointID: id, Connector: w.Connector, Minutes: w.Minutes,
+		ChargePointID: id, Connector: w.Connector, Action: action, Minutes: w.Minutes,
 		Cancel: w.Cancel, RequestedAt: ts.UTC(), Actor: strings.TrimSpace(w.Actor),
 	}, nil
 }
+
+// Pause reports whether this request is the „Laden pausieren" direction.
+func (r Request) Pause() bool { return r.Action == ActionPause }
 
 // MatchesIdentity reports whether the request addresses THIS device. The rule
 // of every downlink here: the topic identity must equal the payload identity,

@@ -326,14 +326,23 @@ type BoostRequest struct {
 	// Minutes is the requested duration; 0 = the 4-hour cap. Values above the
 	// cap are clamped, never refused — the cap is a promise, not a trap.
 	Minutes int `json:"minutes,omitempty"`
-	// Cancel ends a running boost instead of starting one.
+	// Cancel ends a running override instead of starting one - either
+	// direction, and that is why „Automatik fortsetzen" is ONE action.
 	Cancel bool `json:"cancel,omitempty"`
+	// Pause switches the direction to „Laden pausieren" (P3b, Entscheid E5):
+	// the SAME session binding, the SAME duration cap, the SAME way back -
+	// only the effect is a 0 kW cap instead of the source exemption. false =
+	// „Jetzt voll laden", so an older caller is byte-for-byte unchanged.
+	Pause bool `json:"pause,omitempty"`
 }
 
 // BoostResult is what the surface renders back.
 type BoostResult struct {
-	Key      string `json:"key"`
-	Active   bool   `json:"active"`
+	Key    string `json:"key"`
+	Active bool   `json:"active"`
+	// Pause says WHICH direction is running - a surface that renders only
+	// „aktiv" would put „lädt voll" over a charge it just stopped.
+	Pause    bool   `json:"pause,omitempty"`
 	UntilMs  int64  `json:"until_ms,omitempty"`
 	Note     string `json:"note"`
 	Duration int    `json:"minutes,omitempty"`

@@ -802,8 +802,13 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 	verdict, reserved := a.ocppBudget(now, set, snap, safe)
 	surplus := a.ocppSurplus(now, set)
 	boosted := map[string]bool{}
-	for _, k := range rt.boostKeys(now) {
+	paused := map[string]bool{}
+	fullKeys, pausedKeys := rt.boostKeys(now)
+	for _, k := range fullKeys {
 		boosted[k] = true
+	}
+	for _, k := range pausedKeys {
+		paused[k] = true
 	}
 
 	info := &state.OcppInfo{
@@ -908,6 +913,11 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 				haveMeasured = true
 			}
 			ocn.Boost = boosted[c.ID+"#"+fmt.Sprint(con.ID)]
+			// ⚠ Der Handeingriff „Laden pausieren" steht NEBEN dem Boost, nie
+			// in ihm: die zwei sagen Gegenteiliges, und eine Fläche, die nur
+			// „ein Eingriff läuft" wüsste, schriebe „lädt voll" über eine
+			// Ladung, die gerade gestoppt wurde (P3b).
+			ocn.HandPaused = paused[c.ID+"#"+fmt.Sprint(con.ID)]
 			if plan != nil {
 				if alloc, ok := plan.Get(c.ID + "#" + fmt.Sprint(con.ID)); ok {
 					kw := alloc.Kw

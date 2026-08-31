@@ -39,6 +39,7 @@ import { SOFORT_LABEL, type ManualOverride, type SofortAktion } from '../consume
 import {
   boostEndeKarte,
   boostFolgenKarte,
+  pauseFolgenKarte,
   LADEPUNKT_DAUER_VORGABE,
   LADEPUNKT_DAUERN,
   LADEPUNKT_HINWEIS,
@@ -277,8 +278,12 @@ export function JetztZone({
   /** Die Folgen-Karte des Ladepunkt-Eingriffs — vier Blöcke, wie am Speicher. */
   const ladeFolgen = useMemo(() => {
     if (!lade) return null;
-    if (lade.aktion === 'resume') return boostEndeKarte();
+    // ⚠ Die RÜCKNAHME beschreibt, was gerade LÄUFT - die zwei Richtungen enden
+    // verschieden, und „Sie beenden die volle Ladung" über einer Pause wäre
+    // eine Falschaussage im Bestätigungs-Dialog.
+    if (lade.aktion === 'resume') return boostEndeKarte(lade.adresse.eingriff ?? 'voll_laden');
     const d = LADEPUNKT_DAUERN.find((x) => x.key === ladeDauer) ?? LADEPUNKT_DAUERN[2];
+    if (lade.aktion === 'laden_pausieren') return pauseFolgenKarte(d);
     return boostFolgenKarte(charging?.budget ?? null, d);
   }, [lade, ladeDauer, charging]);
 
@@ -293,8 +298,16 @@ export function JetztZone({
         // ⚠ „bis Abstecken" reist als FEHLENDE Dauer: dann gilt der
         // Vertrags-Deckel der Box, und die Bindung an die Transaktion beendet
         // den Eingriff ohnehin beim Abstecken.
-        ...(lade.aktion === 'voll_laden' && d.minutes != null ? { minutes: d.minutes } : {}),
+        ...(lade.aktion !== 'resume' && d.minutes != null ? { minutes: d.minutes } : {}),
         cancel: lade.aktion === 'resume',
+        // ⚠ Die RICHTUNG reist auch bei der RÜCKNAHME mit: die Papier-Spur des
+        // Kommando-Verlaufs folgt ihr, und „Jetzt voll laden beendet" über einer
+        // Pause wäre dort eine Falschaussage.
+        action:
+          lade.aktion === 'laden_pausieren'
+            || (lade.aktion === 'resume' && lade.adresse.eingriff === 'pausiert')
+            ? 'pause'
+            : 'voll',
       });
     } catch {
       // Ein abgelehnter Eingriff lässt die Zone stehen, wie sie war - nie ein
@@ -427,7 +440,7 @@ export function JetztZone({
       <HandeingriffDialog
         folgen={ladeFolgen}
         busy={busy}
-        withDuration={lade?.aktion === 'voll_laden'}
+        withDuration={lade?.aktion !== 'resume'}
         dauern={LADEPUNKT_DAUERN}
         dauerKey={ladeDauer}
         onDauer={setLadeDauer}

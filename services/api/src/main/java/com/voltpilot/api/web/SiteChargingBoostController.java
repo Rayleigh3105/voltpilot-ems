@@ -41,10 +41,13 @@ public class SiteChargingBoostController {
 
     /**
      * Der Rumpf. {@code minutes} ist optional (abwesend = der 4-Stunden-Deckel);
-     * ein größerer Wunsch wird geklemmt, nie abgelehnt.
+     * ein größerer Wunsch wird geklemmt, nie abgelehnt. {@code action} wählt die
+     * Richtung ({@code voll} | {@code pause}) - ABWESEND = {@code voll}, also ist
+     * ein älterer Client zeichengleich wie vorher.
      */
     public record BoostRequest(@Size(max = 64) String chargePointId,
-            @Min(1) @Max(64) int connectorId, @Min(1) @Max(240) Integer minutes, boolean cancel) {}
+            @Min(1) @Max(64) int connectorId, @Min(1) @Max(240) Integer minutes, boolean cancel,
+            @Size(max = 16) String action) {}
 
     private final ChargingBoostService service;
 
@@ -56,7 +59,8 @@ public class SiteChargingBoostController {
     public ChargingBoostService.BoostResult boost(@PathVariable UUID siteId,
             @Valid @RequestBody BoostRequest req, @AuthenticationPrincipal Jwt caller) {
         return service.boost(siteId, req.chargePointId(), req.connectorId(), req.minutes(),
-                req.cancel(), caller == null ? "unbekannt" : caller.getSubject());
+                req.cancel(), ChargingBoostService.Action.of(req.action()),
+                caller == null ? "unbekannt" : caller.getSubject());
     }
 
     /** Jede Ablehnung erreicht die Oberfläche als deutscher {@code {message}}-Körper. */

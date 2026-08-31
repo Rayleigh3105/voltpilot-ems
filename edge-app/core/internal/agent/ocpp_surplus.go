@@ -36,6 +36,10 @@ const boostReaperInterval = time.Minute
 // honest direction, and the button is one tap away.
 type boost struct {
 	until time.Time
+	// pause = this is „Laden pausieren" rather than „Jetzt voll laden" (P3b,
+	// Entscheid E5). ONE entry per connector holds ONE direction, so the two
+	// can never run at the same time and there is nothing to arbitrate.
+	pause bool
 	// txID is the transaction the boost was granted for. A NEW session at the
 	// same connector is a NEW vehicle: „bis das Fahrzeug voll ist" ends when
 	// its session does, and inheriting a boost would charge a stranger's car
@@ -53,14 +57,16 @@ type boostStore struct {
 
 func newBoostStore() *boostStore { return &boostStore{items: map[string]boost{}} }
 
-// grant starts (or extends) a boost for one connector.
-func (b *boostStore) grant(key string, txID int, now time.Time, d time.Duration) time.Time {
+// grant starts (or replaces) an override for one connector. `pause` picks the
+// direction; granting one direction REPLACES the other, which is what a
+// customer tapping the other entry of the same menu means.
+func (b *boostStore) grant(key string, txID int, now time.Time, d time.Duration, pause bool) time.Time {
 	if d <= 0 || d > lastmgmt.BoostMaxDuration {
 		d = lastmgmt.BoostMaxDuration
 	}
 	until := now.Add(d)
 	b.mu.Lock()
-	b.items[key] = boost{until: until, txID: txID}
+	b.items[key] = boost{until: until, pause: pause, txID: txID}
 	b.mu.Unlock()
 	return until
 }
@@ -72,9 +78,10 @@ func (b *boostStore) cancel(key string) {
 	b.mu.Unlock()
 }
 
-// until returns the running boost's end for a connector, or the zero time.
-// It expires the boost when the session changed (a new vehicle) or ended.
-func (b *boostStore) until(key string, txID int, now time.Time) time.Time {
+// until returns the running override's end for a connector (and whether it is
+// the PAUSE direction), or the zero time. It expires the override when the
+// session changed (a new vehicle) or ended.
+func (b *boostStore) until(key string, txID int, now time.Time) (time.Time, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if now.Sub(b.swept) >= boostReaperInterval {
@@ -87,19 +94,20 @@ func (b *boostStore) until(key string, txID int, now time.Time) time.Time {
 	}
 	it, ok := b.items[key]
 	if !ok {
-		return time.Time{}
+		return time.Time{}, false
 	}
 	if !it.until.After(now) {
 		delete(b.items, key)
-		return time.Time{}
+		return time.Time{}, false
 	}
-	// A boost belongs to ITS session. txID 0 = the connector reports no
-	// transaction (it stopped charging), which ends the boost too.
+	// An override belongs to ITS session. txID 0 = the connector reports no
+	// transaction (it stopped charging), which ends it too - „endet beim
+	// Abstecken" holds for BOTH directions.
 	if txID != it.txID {
 		delete(b.items, key)
-		return time.Time{}
+		return time.Time{}, false
 	}
-	return it.until
+	return it.until, it.pause
 }
 
 // ocppSurplus is THE source-lane derivation, shared by the executor and the
@@ -200,11 +208,16 @@ func (a *Agent) OcppBatteryChargeCap(now time.Time) (float64, bool) {
 
 // --- the :8484 surface (read + the two customer actions) ---
 
-// OcppBoost grants or cancels the override.
+// OcppBoost grants or cancels the override - in EITHER direction („Jetzt voll
+// laden" and its P3b sibling „Laden pausieren", Entscheid E5).
 //
-// It refuses a connector that is not CHARGING: „Jetzt voll laden" overrides
-// the SOURCE of a running charge, and granting it to an empty plug would be a
-// promise about a vehicle that is not there.
+// It refuses a connector that is not CHARGING: both directions override a
+// RUNNING charge, and granting either to an empty plug would be a promise
+// about a vehicle that is not there.
+//
+// ⚠ ONE method for both, on purpose. Session binding, duration cap, expiry and
+// the way back („Automatik fortsetzen") are the same rules; splitting them
+// would be a second mechanism to secure twice.
 func (a *Agent) OcppBoost(req lastmgmt.BoostRequest) (lastmgmt.BoostResult, error) {
 	rt := a.ocpp
 	if rt == nil {
@@ -213,7 +226,7 @@ func (a *Agent) OcppBoost(req lastmgmt.BoostRequest) (lastmgmt.BoostResult, erro
 	id := strings.TrimSpace(req.ChargePointID)
 	if id == "" || req.Connector <= 0 {
 		return lastmgmt.BoostResult{}, &lastmgmt.ValidationError{
-			Msg: "Es fehlt die Angabe, welcher Ladevorgang voll geladen werden soll.",
+			Msg: "Es fehlt die Angabe, welcher Ladevorgang gemeint ist.",
 		}
 	}
 	key := id + "#" + fmt.Sprint(req.Connector)
@@ -233,14 +246,21 @@ func (a *Agent) OcppBoost(req lastmgmt.BoostRequest) (lastmgmt.BoostResult, erro
 		}
 	}
 	d := time.Duration(req.Minutes) * time.Minute
-	until := rt.boosts.grant(key, txID, now, d)
+	until := rt.boosts.grant(key, txID, now, d, req.Pause)
 	a.publishOcppState()
 	a.ocppNudge()
+	note := "Dieser Ladevorgang lädt jetzt mit voller verfügbarer Leistung — auch mit Netzstrom. " +
+		"Anschlussgrenze, Sicherheitsabstand und Ausfall-Schutz gelten unverändert weiter."
+	if req.Pause {
+		// ⚠ Der Satz nennt AUCH, was NICHT passiert: die Pause gilt diesem
+		// einen Ladevorgang, jeder andere lädt unverändert weiter.
+		note = "Dieser Ladevorgang pausiert. Alle anderen Ladepunkte laden unverändert weiter; " +
+			"Anschlussgrenze, Sicherheitsabstand und Ausfall-Schutz gelten wie bisher."
+	}
 	return lastmgmt.BoostResult{
-		Key: key, Active: true, UntilMs: until.UnixMilli(),
+		Key: key, Active: true, Pause: req.Pause, UntilMs: until.UnixMilli(),
 		Duration: int(until.Sub(now) / time.Minute),
-		Note: "Dieser Ladevorgang lädt jetzt mit voller verfügbarer Leistung — auch mit Netzstrom. " +
-			"Anschlussgrenze, Sicherheitsabstand und Ausfall-Schutz gelten unverändert weiter.",
+		Note:     note,
 	}, nil
 }
 
@@ -269,18 +289,25 @@ func ocppTransactionOf(snap csms.Snapshot, chargerID string, connector int) (int
 	return 0, false
 }
 
-// ocppBoostKeys lists the connectors with a running boost (for the surface).
-func (rt *ocppRuntime) boostKeys(now time.Time) []string {
+// boostKeys lists the connectors with a running override, split by direction
+// (for the surface). A key appears in exactly one of the two.
+func (rt *ocppRuntime) boostKeys(now time.Time) (full, paused []string) {
 	rt.boosts.mu.Lock()
 	defer rt.boosts.mu.Unlock()
-	out := []string{}
+	full, paused = []string{}, []string{}
 	for k, v := range rt.boosts.items {
-		if v.until.After(now) {
-			out = append(out, k)
+		if !v.until.After(now) {
+			continue
 		}
+		if v.pause {
+			paused = append(paused, k)
+			continue
+		}
+		full = append(full, k)
 	}
-	sort.Strings(out)
-	return out
+	sort.Strings(full)
+	sort.Strings(paused)
+	return full, paused
 }
 
 // ocppApplyBoosts stamps the running overrides onto the allocator input. A
@@ -292,6 +319,11 @@ func ocppApplyBoosts(rt *ocppRuntime, sessions []lastmgmt.Session, byKey map[str
 		if !ok {
 			continue
 		}
-		sessions[i].BoostUntil = rt.boosts.until(sessions[i].Key, claim.transactionID, now)
+		until, pause := rt.boosts.until(sessions[i].Key, claim.transactionID, now)
+		if pause {
+			sessions[i].PauseUntil = until
+			continue
+		}
+		sessions[i].BoostUntil = until
 	}
 }

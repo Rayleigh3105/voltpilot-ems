@@ -29,7 +29,10 @@ import {
   LADEPUNKT_HINWEIS,
   LADEPUNKT_LABEL,
   ladepunktAktionen,
+  ladepunktBanner,
   ladepunktKeinEingriff,
+  pauseFolgenKarte,
+  pausierbar,
   kombinationsStreifen,
   POLICY_DEFAULT,
   POLICY_LABEL,
@@ -818,8 +821,10 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
     chargePointId: 'CP1', connectorId: 1, boost: false, ...over,
   } as unknown as Parameters<typeof ladepunktAktionen>[1]);
 
-  it('bietet an einer laufenden Ladung „Jetzt voll laden" an', () => {
-    expect(ladepunktAktionen(budget(), row())).toEqual(['voll_laden']);
+  it('bietet an einer laufenden Ladung BEIDE Richtungen an', () => {
+    // ⚠ Seit P3b ist „Laden pausieren" das Geschwister des Boosts - und es
+    // steht DAHINTER: die Reihenfolge des abgenommenen Mockups.
+    expect(ladepunktAktionen(budget(), row())).toEqual(['voll_laden', 'laden_pausieren']);
     expect(ladepunktKeinEingriff(budget(), row())).toBeNull();
   });
 
@@ -864,10 +869,14 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
       .toContain('meldet sich gerade nicht');
   });
 
-  it('bietet ohne Überschuss-Priorität nichts an - es gäbe nichts zu übersteuern', () => {
+  it('bietet ohne Überschuss-Priorität nur die PAUSE an - übersteuern gäbe es nichts', () => {
+    // ⚠ P3b: pausieren kann man auch eine Ladung, die mit voller Leistung aus
+    // dem Netz läuft - dort gibt es nichts zu übersteuern, aber sehr wohl
+    // etwas zu stoppen. Nur der BOOST hängt an der Bahn.
     const b = budget({ surplusActive: false });
-    expect(ladepunktAktionen(b, row())).toEqual([]);
-    expect(ladepunktKeinEingriff(b, row())).toContain('nichts zu übersteuern');
+    expect(ladepunktAktionen(b, row())).toEqual(['laden_pausieren']);
+    // Und weil eine Handlung übrig bleibt, wird kein Grund mehr genannt.
+    expect(ladepunktKeinEingriff(b, row())).toBeNull();
   });
 
   it('ist mit `boostbar` EINE Regel, nicht zwei', () => {
@@ -934,5 +943,119 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
     // ⚠ Der Herzschlag meldet je Stecker nur `boost: true|false`, kein Ende -
     // „noch 1:12 h" wäre erfunden.
     expect(t).not.toMatch(/noch\s/);
+  });
+});
+
+/**
+ * „Laden pausieren" (Verbrauchsmanagement v1 / P3b, Entscheid E5) — das
+ * GESCHWISTER des Boosts: dieselbe geteilte Schicht, dieselbe Bindung an EINEN
+ * Ladevorgang, derselbe Rückweg. Nur die Wirkung ist die gegenteilige.
+ */
+describe('Ladepunkt pausieren (P3b)', () => {
+  const budget = (over: Record<string, unknown> = {}) => ({
+    deviceId: 'd-1', enabled: true, controlEnabled: true, connectorCount: 2,
+    surplusActive: true, ...over,
+  } as unknown as Parameters<typeof ladepunktAktionen>[0]);
+
+  const row = (over: Record<string, unknown> = {}) => ({
+    key: 'CP1#1', title: 'Wallbox Garage · Stecker A', kind: 'laedt', word: 'Lädt',
+    basisWort: 'Lädt', tone: 'laedt', reason: null, reasonCode: null, powerKw: 7.4,
+    allocatedKw: 7.4, socPct: null, since: null, nextTurn: null, priority: false,
+    chargePointId: 'CP1', connectorId: 1, boost: false, handeingriff: false, ...over,
+  } as unknown as Parameters<typeof ladepunktAktionen>[1]);
+
+  it('erkennt die Pause am MASCHINEN-Wort und sagt sie im ZUSTAND', () => {
+    // ⚠ Nie am deutschen Satz - die Haus-Regel des `target_verdict`.
+    const z = ladeZustand(
+      {
+        connectorId: 1, charging: true, status: 'SuspendedEVSE', allocatedKw: 0,
+        reason: 'handeingriff', reasonText: 'pausiert — Handeingriff',
+      },
+      { connected: true, lastSeen: null },
+    );
+    expect(z.handeingriff).toBe(true);
+    expect(z.word).toBe('Laden pausiert auf Ihren Wunsch');
+    // Das OCPP-Wort der Säule bleibt daneben stehen - für Flächen, die den
+    // Urheber getrennt nennen.
+    expect(z.basisWort).toBe('Eingesteckt · wartet');
+    // ⚠ Der Satz der Box wäre neben dem Wort dieselbe Aussage ein zweites Mal.
+    expect(z.reason).toBeNull();
+  });
+
+  it('behauptet OHNE das Wort keine Pause', () => {
+    const z = ladeZustand(
+      {
+        connectorId: 1, charging: true, status: 'SuspendedEVSE', allocatedKw: 0,
+        reason: 'wartet_budget', reasonText: 'wartet — Budget vergeben',
+      },
+      { connected: true, lastSeen: null },
+    );
+    expect(z.handeingriff).toBe(false);
+    expect(z.word).toBe('Eingesteckt · wartet');
+    expect(z.reason).toBe('wartet — Budget vergeben');
+  });
+
+  it('bietet bei laufender PAUSE nur den Rückweg an', () => {
+    const p = row({ handeingriff: true, kind: 'wartet', tone: 'ruhig', powerKw: null });
+    expect(ladepunktAktionen(budget(), p)).toEqual(['resume']);
+    expect(ladepunktKeinEingriff(budget(), p)).toBeNull();
+    // Und ein zweites „pausieren" auf einer schon pausierten Ladung gibt es nicht.
+    expect(pausierbar(p)).toBe(false);
+  });
+
+  it('bietet die Pause NUR an, wo ein Ladevorgang wirklich läuft', () => {
+    // Die Portal-Hälfte der Server-Ablehnung: ein Knopf, der strukturell in
+    // einen 409 läuft, wird nicht angeboten.
+    for (const kind of ['laedt', 'laedt_ohne_messung', 'nimmt_nichts', 'wartet',
+      'saeule_pausiert', 'auto_pausiert']) {
+      expect(pausierbar(row({ kind }))).toBe(true);
+    }
+    for (const kind of ['frei', 'startet', 'beendet', 'getrennt', 'stoerung',
+      'nicht_verfuegbar', 'reserviert']) {
+      expect(pausierbar(row({ kind }))).toBe(false);
+    }
+  });
+
+  it('nennt am nicht-ladenden Stecker den Grund, statt einen Knopf zu zeigen', () => {
+    const wartend = row({ kind: 'startet', word: 'Auto eingesteckt · startet', tone: 'ruhig' });
+    expect(ladepunktAktionen(budget(), wartend)).toEqual([]);
+    expect(ladepunktKeinEingriff(budget(), wartend))
+      .toBe('An diesem Stecker läuft gerade kein Ladevorgang.');
+  });
+
+  it('beschriftet den Eintrag wörtlich wie das abgenommene Mockup', () => {
+    expect(LADEPUNKT_LABEL.laden_pausieren).toBe('Laden pausieren');
+    expect(LADEPUNKT_HINWEIS.laden_pausieren).toBe('Bis Sie fortsetzen oder das Auto absteckt.');
+  });
+
+  it('sagt im Banner, WELCHE Richtung läuft', () => {
+    expect(ladepunktBanner('Wallbox Garage', 'pausiert'))
+      .toBe('Handeingriff läuft: Wallbox Garage pausiert (nur diese Ladung) · '
+        + 'endet spätestens beim Abstecken');
+    // Der Boost-Banner bleibt Zeichen für Zeichen der von vorher.
+    expect(boostBanner('Wallbox Garage')).toBe(ladepunktBanner('Wallbox Garage', 'voll_laden'));
+  });
+
+  it('nennt in der Folgen-Karte, was NICHT passiert', () => {
+    const k = pauseFolgenKarte(LADEPUNKT_DAUERN[2]);
+    expect(k.titel).toBe('Laden pausieren');
+    const gleich = k.bloecke.find((b) => b.key === 'gleich');
+    expect(gleich?.zeilen[0]).toBe('Alle anderen Ladepunkte laden unverändert weiter.');
+    // ⚠ „bis Abstecken" bekommt KEINE Minutenzahl - dort gilt allein der
+    // Vertrags-Deckel der Box.
+    const offen = pauseFolgenKarte(LADEPUNKT_DAUERN[4]);
+    expect(offen.bloecke.find((b) => b.key === 'ende')?.zeilen[0])
+      .toContain('längstens nach 4 Stunden');
+    expect(offen.bestaetigen).toBe('Laden pausieren - bis Abstecken');
+  });
+
+  it('beschreibt die RÜCKNAHME je Richtung verschieden', () => {
+    // „Sie beenden die volle Ladung" über einer Pause wäre eine Falschaussage.
+    expect(boostEndeKarte('pausiert').intro)
+      .toBe('Sie beenden die Pause für diesen einen Ladevorgang.');
+    expect(boostEndeKarte('voll_laden').intro)
+      .toBe('Sie beenden die volle Ladung für diesen einen Ladevorgang.');
+    // Ohne Angabe bleibt es zeichengleich beim Boost - ältere Aufrufer.
+    expect(boostEndeKarte()).toEqual(boostEndeKarte('voll_laden'));
   });
 });

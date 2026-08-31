@@ -51,6 +51,11 @@ public class ChargingBoostService {
     /** Und seine Rücknahme. */
     static final String EVENT_BOOST_ENDE = "voll_laden_zurueckgenommen";
 
+    /** Die ZWEITE Richtung („Laden pausieren", P3b) - und ihre Rücknahme. */
+    static final String EVENT_PAUSE = "laden_pausiert";
+
+    static final String EVENT_PAUSE_ENDE = "laden_pausiert_beendet";
+
     private final SiteRepository sites;
     private final DeviceChargerStatusRepository chargers;
     private final CommandLogRepository commandLog;
@@ -64,6 +69,32 @@ public class ChargingBoostService {
         this.publisher = publisher;
     }
 
+    /**
+     * Die zwei Richtungen desselben Mechanismus (Konzept §4.6, Entscheid E5).
+     *
+     * <p>Sie sind Geschwister, keine zwei Mechanismen: derselbe Transport, dasselbe
+     * {@code requested_at}-Fenster, dieselbe Bindung an EINEN Ladevorgang, dieselbe
+     * Rücknahme („Automatik fortsetzen"). Nur die Wirkung unterscheidet sich.
+     */
+    public enum Action {
+        /** „Jetzt voll laden": von der Quellen-Politik befreit, Netzstrom erlaubt. */
+        VOLL,
+        /** „Laden pausieren": GENAU dieser Ladevorgang wird auf 0 kW gedeckelt. */
+        PAUSE;
+
+        /** ABWESEND = {@link #VOLL} - die Kompatibilitäts-Zusage des ganzen Pakets. */
+        public static Action of(String raw) {
+            if (raw == null || raw.isBlank() || "voll".equals(raw)) {
+                return VOLL;
+            }
+            if ("pause".equals(raw)) {
+                return PAUSE;
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unbekannte Art des Eingriffs \"" + raw + "\". Erlaubt sind \"voll\" und \"pause\".");
+        }
+    }
+
     /** Das Ergebnis, so wie die Fläche es rendert. */
     public record BoostResult(String chargePointId, int connectorId, boolean active,
             Instant requestedAt, String note) {}
@@ -75,7 +106,7 @@ public class ChargingBoostService {
      *                geklemmt - der Deckel ist eine Zusage, keine Falle.
      */
     public BoostResult boost(UUID siteId, String chargePointId, int connectorId, Integer minutes,
-            boolean cancel, String actor) {
+            boolean cancel, Action action, String actor) {
         if (!sites.existsForCurrentTenant(siteId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
@@ -84,6 +115,8 @@ public class ChargingBoostService {
         // ⚠ Nur ein LAUFENDER Ladevorgang lässt sich übersteuern. Eine Zusage
         // über ein Fahrzeug, das nicht da ist, wäre erfunden - und genau
         // dieselbe Ablehnung spricht die Box, wenn der Wagen inzwischen weg ist.
+        // ⚠ Beide Richtungen übersteuern einen LAUFENDEN Ladevorgang - eine Zusage
+        // über ein Fahrzeug, das nicht da ist, wäre in beiden Fällen erfunden.
         if (!cancel && !connector.charging()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "An diesem Stecker läuft gerade kein Ladevorgang.");
@@ -99,17 +132,31 @@ public class ChargingBoostService {
         UUID tenantId = TenantContext.get();
         Instant now = Instant.now();
         if (!pub.publish(tenantId, siteId, point.deviceId(), point.chargePointId(), connectorId,
-                wanted, cancel, actor, now)) {
+                wanted, cancel, action == Action.PAUSE, actor, now)) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "VoltPilot kann Ihre Ladesäule gerade nicht erreichen. Bitte gleich noch "
                             + "einmal versuchen - an Ihrer Anlage ändert sich dadurch nichts.");
         }
-        record(siteId, point, connectorId, cancel, now);
+        record(siteId, point, connectorId, cancel, action, now);
         return new BoostResult(point.chargePointId(), connectorId, !cancel, now,
-                cancel ? "Für diesen Ladevorgang gilt wieder Ihre Überschuss-Priorität."
-                        : "Dieser Ladevorgang lädt jetzt mit voller verfügbarer Leistung - auch "
-                                + "mit Netzstrom. Anschlussgrenze, Sicherheitsabstand und "
-                                + "Ausfall-Schutz gelten unverändert weiter.");
+                note(cancel, action));
+    }
+
+    /** Der Satz, den die Fläche zurückmeldet - je Richtung sein eigener. */
+    private static String note(boolean cancel, Action action) {
+        if (cancel) {
+            return "Für diesen Ladevorgang gilt wieder Ihre Überschuss-Priorität.";
+        }
+        if (action == Action.PAUSE) {
+            // ⚠ Der Satz nennt AUCH, was NICHT passiert: die Pause gilt diesem
+            // einen Ladevorgang, jeder andere lädt unverändert weiter.
+            return "Dieser Ladevorgang pausiert. Alle anderen Ladepunkte laden unverändert "
+                    + "weiter; Anschlussgrenze, Sicherheitsabstand und Ausfall-Schutz gelten "
+                    + "wie bisher.";
+        }
+        return "Dieser Ladevorgang lädt jetzt mit voller verfügbarer Leistung - auch "
+                + "mit Netzstrom. Anschlussgrenze, Sicherheitsabstand und "
+                + "Ausfall-Schutz gelten unverändert weiter.";
     }
 
     /**
@@ -118,14 +165,27 @@ public class ChargingBoostService {
      * diesem Zeitpunkt bereits hinausgegangen.
      */
     private void record(UUID siteId, ChargePointDto point, int connectorId, boolean cancel,
-            Instant at) {
+            Action action, Instant at) {
         try {
             commandLog.appendEvent(siteId, point.deviceId(), point.entityId(),
-                    CommandLog.STREAM_LADEPUNKT, cancel ? EVENT_BOOST_ENDE : EVENT_BOOST, at, at);
+                    CommandLog.STREAM_LADEPUNKT, eventKind(cancel, action), at, at);
         } catch (RuntimeException e) {
             log.warn("charging boost not recorded in the command log (site {} charge point {}): {}",
                     siteId, point.chargePointId(), e.getMessage());
         }
+    }
+
+    /**
+     * Das Wort der Papier-Spur. Es folgt der GESENDETEN Richtung, auch bei einer
+     * Rücknahme: „Jetzt voll laden beendet" über einer Pause wäre eine
+     * Falschaussage im Kommando-Verlauf, und die Box kann uns nicht sagen, was
+     * gerade lief.
+     */
+    static String eventKind(boolean cancel, Action action) {
+        if (action == Action.PAUSE) {
+            return cancel ? EVENT_PAUSE_ENDE : EVENT_PAUSE;
+        }
+        return cancel ? EVENT_BOOST_ENDE : EVENT_BOOST;
     }
 
     private ChargePointDto point(UUID siteId, String chargePointId) {

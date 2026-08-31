@@ -375,6 +375,25 @@ class ChargerApiTest {
             assertThat(noBroker.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
             assertThat(noBroker.getBody()).contains("nicht erreichen");
 
+            // 6b · P3b: die ZWEITE Richtung geht denselben Weg - ohne Broker also
+            //      ebenfalls 503 und OHNE Beleg. Ein unbekanntes Wort ist dagegen
+            //      eine BENANNTE Ablehnung, nie ein stiller Rückfall auf „voll"
+            //      (das schaltete einen Ladevorgang ein, den jemand stoppen wollte).
+            ResponseEntity<String> pause = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-boost"), HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "saeule-1", "connectorId", 1,
+                            "action", "pause"), bearer(customer)),
+                    String.class);
+            assertThat(pause.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+
+            ResponseEntity<String> badAction = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-boost"), HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "saeule-1", "connectorId", 1,
+                            "action", "stop"), bearer(customer)),
+                    String.class);
+            assertThat(badAction.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(badAction.getBody()).contains("Unbekannte Art des Eingriffs");
+
             // 7 · Der Mandanten-Zaun gilt auch hier.
             ResponseEntity<String> foreign = rest.exchange(
                     url("/api/v1/sites/" + site + "/charging-boost"), HttpMethod.POST,

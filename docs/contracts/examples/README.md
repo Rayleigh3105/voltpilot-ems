@@ -172,3 +172,10 @@ OTA-Einmal-Freigabe, wörtlich. `…valid.jetzt-voll-laden.json` ist die Erteilu
 `…invalid.stecker-null.json` ist der Stecker 0: ein Stecker ist ein Fahrzeug und
 wird ab 1 gezählt — eine Übersteuerung ohne Ladevorgang wäre eine Zusage über
 ein Auto, das nicht da ist.
+
+`…valid.laden-pausieren.json` ist die ZWEITE Richtung desselben Mechanismus
+(`action: "pause"`, Verbrauchsmanagement v1 / P3b, Entscheid E5): sie deckelt
+GENAU DIESEN Ladevorgang auf 0 kW und lässt jeden anderen unberührt. ⚠ Das Feld
+ist OPTIONAL und ABWESEND heißt `voll` — genau deshalb tragen die zwei älteren
+Fixtures es nicht: eine Cloud ohne das Feld erteilt weiterhin den Boost von
+vorher, und eine Box, die es nicht kennt, überliest es und tut dasselbe.

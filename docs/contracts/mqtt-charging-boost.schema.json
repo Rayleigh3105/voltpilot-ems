@@ -50,9 +50,13 @@
       "maximum": 240,
       "description": "Wie lange sie gelten soll. ABWESEND = der Deckel von 240 Minuten (4 Stunden). Ein groesserer Wunsch wird GEKLEMMT, nie abgelehnt - der Deckel ist eine Zusage, keine Falle. Sie endet ausserdem, sobald die Sitzung endet („bis das Fahrzeug voll ist“)."
     },
+    "action": {
+      "enum": ["voll", "pause"],
+      "description": "WAS uebersteuert wird - die zwei Richtungen desselben Mechanismus (Konzept `vp-verbrauchsmgmt-konzept-v1` Paragraf 4.6, Entscheid E5).\n\n`voll` (die Vorgabe): „Jetzt voll laden“ - die Sitzung wird von der QUELLEN-Politik befreit und darf auch Netzstrom ziehen.\n\n`pause`: „Laden pausieren“ - die Sitzung wird auf 0 kW gedeckelt und pausiert mit dem Grund „handeingriff“. Andere Ladevorgaenge sind UNBERUEHRT, und der Deckel ist RESTRICT-ONLY: Anschlussgrenze, Sicherheitsabstand, Paragraf-14a-Huelle, Ausfall-Profil und der Totmann der Saeule binden unveraendert weiter - eine Pause kann keine Grenze weiten.\n\nABWESEND = `voll`. Das ist die Kompatibilitaets-Zusage: eine Cloud, die das Feld nicht sendet, erteilt genau den Boost von vorher, und eine Box, die es nicht kennt, ueberliest es und tut dasselbe.\n\nBEIDE Richtungen sind an DIESELBE Transaktion gebunden und enden beim Abstecken; `cancel` nimmt beide zurueck (die eine Ruecknahme heisst auf jeder Flaeche „Automatik fortsetzen“)."
+    },
     "cancel": {
       "type": "boolean",
-      "description": "true nimmt eine laufende Uebersteuerung SOFORT zurueck; danach gilt wieder die Ueberschuss-Prioritaet des Kunden. Eine Ruecknahme wird auch dann angenommen, wenn gerade nichts laeuft (idempotent)."
+      "description": "true nimmt eine laufende Uebersteuerung SOFORT zurueck - gleich welcher Richtung (`voll` wie `pause`); danach gilt wieder die Ueberschuss-Prioritaet des Kunden. Eine Ruecknahme wird auch dann angenommen, wenn gerade nichts laeuft (idempotent)."
     },
     "requested_at": {
       "type": "string",

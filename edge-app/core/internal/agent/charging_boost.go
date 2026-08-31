@@ -8,7 +8,8 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
 )
 
-// onChargingBoost applies ONE non-retained „Jetzt voll laden" from the portal
+// onChargingBoost applies ONE non-retained override from the portal - either
+// direction: „Jetzt voll laden" or its P3b sibling „Laden pausieren"
 // (contract docs/contracts/mqtt-charging-boost.schema.json, OCPP-Lastmanagement
 // Stufe 4). It is pure wiring: the form lives in internal/chargingboost, what
 // the override MAY do lives in internal/lastmgmt, and it ends in the very same
@@ -52,7 +53,7 @@ func (a *Agent) onChargingBoost(payload []byte) {
 	}
 	res, err := a.OcppBoost(lastmgmt.BoostRequest{
 		ChargePointID: req.ChargePointID, Connector: req.Connector,
-		Minutes: req.Minutes, Cancel: req.Cancel,
+		Minutes: req.Minutes, Cancel: req.Cancel, Pause: req.Pause(),
 	})
 	if err != nil {
 		slog.Warn("charging boost not applied", "charge_point", req.ChargePointID,
@@ -60,5 +61,6 @@ func (a *Agent) onChargingBoost(payload []byte) {
 		return
 	}
 	slog.Info("charging boost applied", "charge_point", req.ChargePointID,
-		"connector", req.Connector, "active", res.Active, "actor", req.Actor)
+		"connector", req.Connector, "action", req.Action, "active", res.Active,
+		"pause", res.Pause, "actor", req.Actor)
 }

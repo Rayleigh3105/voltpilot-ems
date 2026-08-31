@@ -363,6 +363,16 @@ export interface LadeZustand {
    */
   basisWort: string;
   tone: LadeTone;
+  /**
+   * Läuft an DIESEM Ladevorgang eine „Laden pausieren"-Übersteuerung des
+   * Kunden? (Verbrauchsmanagement v1 / P3b, Entscheid E5)
+   *
+   * ⚠ Abgeleitet aus dem MASCHINEN-Wort des Grundes (`handeingriff`), nie aus
+   * dem deutschen Satz - die Haus-Regel des `target_verdict`. Es ist das
+   * Geschwister von `boost`, und die zwei schliessen einander aus: die Box
+   * hält je Stecker EINE Übersteuerung.
+   */
+  handeingriff: boolean;
   /** Der Grund, wo es einen gibt - der Satz der BOX, unverändert. */
   reason: string | null;
   /** Das Maschinen-Wort desselben Grundes (`kein_ueberschuss`, `budget`, …). */
@@ -449,12 +459,25 @@ export function ladeZustand(
   nowMs?: number,
 ): LadeZustand {
   const kind = zustandKind(con, point, nowMs);
+  // ⚠ Der Handeingriff wird am MASCHINEN-Wort erkannt, nicht am Satz. Er wird
+  // NICHT an einen Zustand gebunden (anders als der Boost): eine pausierte
+  // Ladung kann als `wartet`, `saeule_pausiert` oder `nimmt_nichts` gemeldet
+  // werden - welches Wort die Säule wählt, ist ihre Sache, dass WIR sie halten,
+  // ist unsere.
+  const handeingriff = text(con.reason) === 'handeingriff';
   const boost = con.boost === true && (kind === 'laedt' || kind === 'laedt_ohne_messung');
   // ⚠ Eine übersteuerte Ladung SAGT es: eine volle Ladung, die niemand
   // angefordert hat, wäre ein stiller Bruch der eigenen Priorität des Kunden.
   // Sie sagt es aber NUR, wo wirklich geladen wird - „Lädt voll auf Ihren
   // Wunsch" über einem wartenden Stecker wäre dieselbe Lüge in Grün.
-  const word = boost ? 'Lädt voll auf Ihren Wunsch' : ZUSTAND_WORT[kind];
+  // ⚠ Eine von HAND pausierte Ladung sagt es genauso - sonst läse sie sich als
+  // „Eingesteckt · wartet", also als Leistungsmangel, und der Kunde suchte den
+  // Fehler bei seiner Anlage statt bei seinem eigenen Knopf.
+  const word = handeingriff
+    ? 'Laden pausiert auf Ihren Wunsch'
+    : boost
+      ? 'Lädt voll auf Ihren Wunsch'
+      : ZUSTAND_WORT[kind];
   let detail = ZUSTAND_DETAIL[kind] ?? null;
   if (kind === 'getrennt') {
     const seen = point?.lastSeen ? clock(point.lastSeen) : '';
@@ -468,6 +491,7 @@ export function ladeZustand(
   return {
     kind,
     word,
+    handeingriff,
     // ⚠ Das Wort OHNE die Übersteuerung. Eine Fläche, die den Urheber schon
     // NEBEN dem Zustand nennt (die Jetzt-Zeile: „lädt 22,0 kW · Jetzt voll
     // laden"), sagte ihn sonst zweimal - dieselbe Regel, aus der `reason`
@@ -479,8 +503,13 @@ export function ladeZustand(
     // zweimal dasselbe sagen zu lassen ist Rauschen, kein Beleg. Verglichen
     // wird auch gegen das BASIS-Wort - eine übersteuerte Ladung trägt sonst
     // „lädt" unter „Lädt voll auf Ihren Wunsch".
+    // ⚠ Bei einem Handeingriff steht der Urheber schon IM Wort - der Satz der
+    // Box („pausiert — Handeingriff") wäre daneben dieselbe Aussage ein zweites
+    // Mal, genau die Doppelung, gegen die `basisWort` gebaut ist.
     reason:
-      sameWord(con.reasonText, word) || sameWord(con.reasonText, ZUSTAND_WORT[kind])
+      handeingriff
+        || sameWord(con.reasonText, word)
+        || sameWord(con.reasonText, ZUSTAND_WORT[kind])
         ? null
         : text(con.reasonText),
     reasonCode: text(con.reason),
@@ -604,6 +633,8 @@ export interface LadevorgangRow {
   connectorId: number;
   /** Diese Ladung läuft auf Wunsch des Kunden, ohne die Quellen-Bahn. */
   boost: boolean;
+  /** Läuft an dieser Ladung ein „Laden pausieren" des Kunden? (P3b) */
+  handeingriff: boolean;
 }
 
 /** Der Name einer Säule: der vergebene, sonst ihre Kennung (nie erfunden). */
@@ -656,6 +687,7 @@ function rowFor(c: ChargePoint, con: ChargeConnector, nowMs?: number): Ladevorga
     chargePointId: c.chargePointId,
     connectorId: con.connectorId,
     boost: con.boost === true,
+    handeingriff: z.handeingriff,
   };
 }
 
@@ -890,22 +922,23 @@ export const BOOST_INTRO = 'Sie übersteuern Ihre Überschuss-Priorität für di
  * Was das Zeilen-Menü eines Ladepunkts anbieten kann.
  *
  * ⚠ `laden_pausieren` (der Session-Deckel 0, Konzept §4.6 / Entscheid E5) ist
- * das dritte Wort dieses Vokabulars und braucht ein Edge-Release - es ist
- * Paket **P3b** und wird deshalb hier noch NICHT angeboten. Der Platz ist
- * bewusst frei gelassen: P3b ergänzt eine Zeile in `LADEPUNKT_LABEL`, eine in
- * `LADEPUNKT_HINWEIS` und einen Zweig in `ladepunktAktionen` - nirgends sonst.
+ * seit Paket **P3b** dabei - das GESCHWISTER des Boosts, nicht ein zweiter
+ * Mechanismus: dieselbe Route, dieselbe Bindung an EINEN Ladevorgang, dasselbe
+ * „Automatik fortsetzen" als Rückweg.
  */
-export type LadepunktAktion = 'voll_laden' | 'resume';
+export type LadepunktAktion = 'voll_laden' | 'laden_pausieren' | 'resume';
 
 /** Die Beschriftungen des Menüs (Mockups §4, Frame „Eingreifen-Bottom-Sheet"). */
 export const LADEPUNKT_LABEL: Record<LadepunktAktion, string> = {
   voll_laden: 'Jetzt voll laden (nur diese Ladung)',
+  laden_pausieren: 'Laden pausieren',
   resume: 'Automatik fortsetzen',
 };
 
 /** Die zweite Zeile je Menü-Eintrag - sie sagt die FOLGE, nicht die Tatsache. */
 export const LADEPUNKT_HINWEIS: Record<LadepunktAktion, string> = {
   voll_laden: 'Netzstrom erlaubt. Endet spätestens beim Abstecken.',
+  laden_pausieren: 'Bis Sie fortsetzen oder das Auto absteckt.',
   resume: 'Für diese Ladung gilt danach wieder Ihre Priorität.',
 };
 
@@ -948,8 +981,40 @@ export function ladepunktAktionen(
   budget: ChargingBudget | null,
   row: LadevorgangRow,
 ): LadepunktAktion[] {
-  if (row.boost) return ['resume'];
-  return boostbar(budget, row) ? ['voll_laden'] : [];
+  if (row.boost || row.handeingriff) return ['resume'];
+  const aktionen: LadepunktAktion[] = [];
+  if (boostbar(budget, row)) aktionen.push('voll_laden');
+  if (pausierbar(row)) aktionen.push('laden_pausieren');
+  return aktionen;
+}
+
+/**
+ * Die Zustände, in denen an diesem Stecker nachweislich eine SITZUNG läuft.
+ *
+ * ⚠ Es ist die Portal-Hälfte der Ablehnung, die der Server ohnehin spricht
+ * („An diesem Stecker läuft gerade kein Ladevorgang."): ein Knopf, der
+ * strukturell in einen 409 läuft, wird nicht angeboten. `startet` (Preparing)
+ * hat noch keine Transaktion, `beendet` (Finishing) verliert sie gerade.
+ */
+const LAUFENDE_LADUNG: ReadonlySet<LadeZustandKind> = new Set<LadeZustandKind>([
+  'laedt',
+  'laedt_ohne_messung',
+  'nimmt_nichts',
+  'wartet',
+  'saeule_pausiert',
+  'auto_pausiert',
+]);
+
+/**
+ * „Laden pausieren" wird überall dort angeboten, wo eine Ladung LÄUFT.
+ *
+ * ⚠ Anders als `boostbar` fragt es NICHT nach der Überschuss-Bahn: pausieren
+ * kann man auch eine Ladung, die gerade mit voller Leistung aus dem Netz läuft
+ * - es gibt dort nichts zu übersteuern, aber sehr wohl etwas zu stoppen.
+ */
+export function pausierbar(row: LadevorgangRow): boolean {
+  if (row.handeingriff) return false;
+  return LAUFENDE_LADUNG.has(row.kind);
 }
 
 /** Warum an diesem Ladepunkt gerade nichts zu greifen ist (nur ohne Aktion). */
@@ -970,6 +1035,12 @@ export function ladepunktKeinEingriff(
   if (row.kind === 'getrennt' || row.kind === 'stoerung' || row.kind === 'nicht_verfuegbar') {
     return 'Dieser Ladepunkt meldet sich gerade nicht - ein Eingriff käme nicht an.';
   }
+  // ⚠ Seit P3b bleibt für eine LAUFENDE Ladung immer mindestens „Laden
+  // pausieren" übrig - dieser Zweig gilt also nur noch dem Stecker, an dem
+  // (noch) kein Ladevorgang läuft, und sagt genau das.
+  if (!LAUFENDE_LADUNG.has(row.kind)) {
+    return 'An diesem Stecker läuft gerade kein Ladevorgang.';
+  }
   if (!budget || budget.surplusActive !== true) {
     return 'Diese Ladung folgt keiner Überschuss-Priorität - es gibt nichts zu übersteuern.';
   }
@@ -984,7 +1055,21 @@ export function ladepunktKeinEingriff(
  * - der Eingriff endet beim Abstecken, und genau das steht stattdessen da.
  */
 export function boostBanner(name: string): string {
-  return `Handeingriff läuft: ${name} lädt voll (nur diese Ladung) · endet spätestens beim Abstecken`;
+  return ladepunktBanner(name, 'voll_laden');
+}
+
+/** Welche der zwei Richtungen an einer Zeile läuft. */
+export type LadepunktEingriff = 'voll_laden' | 'pausiert';
+
+/**
+ * Der Banner-Satz eines laufenden Ladepunkt-Eingriffs - je Richtung sein
+ * eigener. Der Countdown fehlt in BEIDEN aus demselben Grund (siehe oben).
+ */
+export function ladepunktBanner(name: string, eingriff: LadepunktEingriff): string {
+  const was = eingriff === 'pausiert'
+    ? 'pausiert (nur diese Ladung)'
+    : 'lädt voll (nur diese Ladung)';
+  return `Handeingriff läuft: ${name} ${was} · endet spätestens beim Abstecken`;
 }
 
 // --- Die Folgen-Karte ------------------------------------------------------
@@ -1067,8 +1152,90 @@ export function boostFolgenKarte(
   };
 }
 
+/**
+ * Die Folgen-Karte von „Laden pausieren" (Konzept §4.6 / E5) - dasselbe
+ * Vier-Block-Muster, mit den Folgen DIESER Richtung.
+ *
+ * ⚠ „Das bleibt gleich" ist hier die halbe Aussage des Dialogs: die Pause gilt
+ * GENAU DIESEM Ladevorgang, jeder andere Ladepunkt lädt unverändert weiter -
+ * genau das ist es, was ein Kunde vor dem Klick wissen muss.
+ */
+export function pauseFolgenKarte(dauer: LadepunktDauer): LadepunktFolgen {
+  return {
+    titel: 'Laden pausieren',
+    intro: PAUSE_INTRO,
+    bloecke: [
+      {
+        key: 'passiert',
+        titel: 'Das passiert',
+        zeilen: ['Dieser Ladevorgang pausiert - das Auto bleibt eingesteckt und lädt nicht weiter.'],
+      },
+      {
+        key: 'risiko',
+        titel: 'Risiko',
+        zeilen: [
+          'Das Fahrzeug wird in dieser Zeit nicht voller. Denken Sie an eine geplante Abfahrt.',
+        ],
+      },
+      {
+        key: 'gleich',
+        titel: 'Das bleibt gleich',
+        zeilen: [
+          'Alle anderen Ladepunkte laden unverändert weiter.',
+          'Anschlussgrenze, Sicherheitsabstand und Ausfall-Schutz gelten weiter - daran ändert dieser Knopf nichts.',
+        ],
+      },
+      {
+        key: 'ende',
+        titel: 'Ende / Rücknahme',
+        zeilen: [
+          dauer.minutes == null
+            ? 'Endet beim Abstecken, längstens nach 4 Stunden - danach lädt dieser Ladevorgang wieder nach Ihrer Priorität.'
+            : `Endet beim Abstecken, längstens nach ${dauer.label} - danach lädt dieser Ladevorgang wieder nach Ihrer Priorität.`,
+          'Sie können jederzeit früher „Automatik fortsetzen" wählen.',
+        ],
+      },
+    ],
+    bestaetigen: `Laden pausieren - ${dauer.label}`,
+  };
+}
+
+export const PAUSE_INTRO = 'Sie halten diesen einen Ladevorgang an - alle anderen laufen weiter.';
+
 /** Die Folgen-Karte der RÜCKNAHME - sie wirkt sofort und braucht keine Dauer. */
-export function boostEndeKarte(): LadepunktFolgen {
+export function boostEndeKarte(eingriff: LadepunktEingriff = 'voll_laden'): LadepunktFolgen {
+  if (eingriff === 'pausiert') {
+    return {
+      titel: 'Automatik fortsetzen',
+      intro: 'Sie beenden die Pause für diesen einen Ladevorgang.',
+      bloecke: [
+        {
+          key: 'passiert',
+          titel: 'Das passiert',
+          zeilen: [
+            'Der Eingriff endet sofort. Dieser Ladevorgang lädt wieder nach Ihrer Priorität.',
+          ],
+        },
+        {
+          key: 'gleich',
+          titel: 'Das bleibt gleich',
+          zeilen: [
+            'Anschlussgrenze, Sicherheitsabstand und Ausfall-Schutz gelten weiter - daran ändert dieser Knopf nichts.',
+          ],
+        },
+        {
+          key: 'ende',
+          titel: 'Ende / Rücknahme',
+          zeilen: ['Sie können jederzeit wieder eingreifen.'],
+        },
+      ],
+      bestaetigen: 'Automatik fortsetzen',
+    };
+  }
+  return boostEndeKarteVoll();
+}
+
+function boostEndeKarteVoll(): LadepunktFolgen {
   return {
     titel: 'Automatik fortsetzen',
     intro: 'Sie beenden die volle Ladung für diesen einen Ladevorgang.',

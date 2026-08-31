@@ -61,7 +61,7 @@ import {
 import type { Consumer } from './consumers/types';
 import {
   aktuelleLeistung,
-  boostBanner,
+  ladepunktBanner,
   chargerName,
   connectorName,
   ladepunktAktionen,
@@ -70,6 +70,7 @@ import {
   type ChargePoint,
   type LadeZustandKind,
   type LadepunktAktion,
+  type LadepunktEingriff,
   type LadevorgangRow,
   type SiteCharging,
 } from './ladepunkte';
@@ -140,6 +141,13 @@ export interface LadepunktAdresse {
   connectorId: number;
   /** Der Name, wie die Zeile ihn zeigt — für Banner und Folgen-Karte. */
   name: string;
+  /**
+   * WELCHE der zwei Richtungen an dieser Zeile gerade läuft (P3b), `null` =
+   * keine. Sie steht hier und nicht am Zustands-Wort, weil Banner UND
+   * Rücknahme-Karte sie brauchen — und weil „ein Eingriff läuft" allein sie
+   * beide falsch formulieren liesse.
+   */
+  eingriff?: LadepunktEingriff | null;
 }
 
 export interface JetztBanner {
@@ -520,13 +528,32 @@ export function ladepunktZeilen(
         // Ein laufender Boost IST der Urheber; sonst steuert die Steuerart —
         // und ohne Auto steuert gerade nichts, dann wäre jede Quelle eine
         // Aussage über einen Ladevorgang, den es nicht gibt.
-        quelle: row.boost ? 'handeingriff' : leer || !quelleText ? 'unbekannt' : 'steuerart',
-        quelleText: row.boost ? 'Jetzt voll laden' : leer ? null : quelleText,
+        // Ein laufender Eingriff IST der Urheber - in BEIDE Richtungen (P3b).
+        quelle: row.boost || row.handeingriff
+          ? 'handeingriff'
+          : leer || !quelleText
+            ? 'unbekannt'
+            : 'steuerart',
+        quelleText: row.handeingriff
+          ? 'Handeingriff'
+          : row.boost
+            ? 'Jetzt voll laden'
+            : leer
+              ? null
+              : quelleText,
         bis: null,
         ton: row.tone === 'stoerung' ? 'warn' : row.tone === 'laedt' ? 'ok' : 'off',
         aktionen,
         keinEingriff: aktionen.length > 0 ? null : ladepunktKeinEingriff(budget, row),
-        ladepunkt: { chargePointId: row.chargePointId, connectorId: row.connectorId, name },
+        ladepunkt: {
+          chargePointId: row.chargePointId,
+          connectorId: row.connectorId,
+          name,
+          // ⚠ WELCHE Richtung läuft - der Banner und seine Rücknahme-Karte
+          // sagen Gegenteiliges, und ein blosses „ein Eingriff läuft" schriebe
+          // „lädt voll" über eine Ladung, die gerade gestoppt wurde.
+          eingriff: row.handeingriff ? 'pausiert' : row.boost ? 'voll_laden' : null,
+        },
       });
     }
   }
@@ -544,6 +571,10 @@ export function ladepunktZeilen(
  * (der Mockup-Wortlaut ist „Lädt 22 kW · Jetzt voll laden").
  */
 function ladepunktZustand(row: LadevorgangRow, kw: number | null): string {
+  // ⚠ Eine von HAND pausierte Ladung sagt genau das - nicht das OCPP-Wort der
+  // Säule („eingesteckt · wartet"), das wie ein Leistungsmangel läse. Den
+  // Urheber nennt die Zeile daneben als Quelle („pausiert · Handeingriff").
+  if (row.handeingriff) return 'pausiert';
   const basis = row.boost ? row.basisWort : row.word;
   const wort = basis.charAt(0).toLowerCase() + basis.slice(1);
   return kw == null || row.tone !== 'laedt' ? wort : `${wort} ${fmtNum(kw, 'kW')}`;
@@ -608,9 +639,9 @@ export function jetztBanner(
   // wäre er das kleinere über dem größeren. Ohne laufenden Boost ist dieser
   // Zweig ein No-op — die Zone bleibt dann Zeichen für Zeichen die von vorher.
   for (const z of ladepunktZeilen(charging).zeilen) {
-    if (!z.ladepunkt || z.quelle !== 'handeingriff') continue;
+    if (!z.ladepunkt || z.quelle !== 'handeingriff' || !z.ladepunkt.eingriff) continue;
     return {
-      text: boostBanner(z.name),
+      text: ladepunktBanner(z.name, z.ladepunkt.eingriff),
       aktion: BANNER_AKTION,
       entityId: LADEPUNKT_BANNER_ID,
       ladepunkt: z.ladepunkt,

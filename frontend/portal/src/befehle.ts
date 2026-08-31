@@ -145,6 +145,17 @@ const EREIGNIS: Record<string, { satz: string; ton: BefehlTon }> = {
     satz: 'Jetzt voll laden beendet - für diesen Ladevorgang gilt wieder Ihre Priorität.',
     ton: 'ok',
   },
+  // P3b: die zweite Richtung desselben Eingriffs (Entscheid E5). Sie hat eigene
+  // Wörter, weil „Jetzt voll laden beendet" über einer Pause eine Falschaussage
+  // wäre - der Verlauf muss sagen, was wirklich geschah.
+  laden_pausiert: {
+    satz: 'Laden pausiert: dieser Ladevorgang wurde angehalten - alle anderen laden weiter.',
+    ton: 'info',
+  },
+  laden_pausiert_beendet: {
+    satz: 'Pause beendet - dieser Ladevorgang lädt wieder nach Ihrer Priorität.',
+    ton: 'ok',
+  },
   verlauf_gedeckelt: {
     satz: 'Ab hier wurde für heute nicht weiter protokolliert (ungewöhnlich viele Wechsel).',
     ton: 'info',

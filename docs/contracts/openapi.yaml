@@ -1542,7 +1542,7 @@ paths:
   /api/v1/sites/{siteId}/charging-boost:
     post:
       tags: [sites]
-      summary: „Jetzt voll laden" - EINEN Ladevorgang von der Quellen-Politik ausnehmen.
+      summary: Einen EINZELNEN Ladevorgang übersteuern - „Jetzt voll laden" oder „Laden pausieren".
       description: >
         Die Übersteuerung der Überschuss-Priorität für GENAU EINEN laufenden
         Ladevorgang (Lastmanagement Stufe 4). Sie geht als NICHT-retained
@@ -1559,11 +1559,19 @@ paths:
         Stunden, und endet mit der Sitzung.
 
 
-        `cancel: true` nimmt sie sofort zurück. Ein Stecker ohne laufenden
-        Ladevorgang ist 409 - eine Zusage über ein Fahrzeug, das nicht da ist,
-        wäre erfunden. Ein nicht erreichbarer Broker ist 503, und dann entsteht
-        AUCH KEIN Beleg: die Nachricht IST die Freigabe. RLS-gefenced (fremde
-        Anlage 404).
+        `action` wählt die RICHTUNG (Verbrauchsmanagement v1 / P3b, Entscheid
+        E5): `voll` (die Vorgabe, das oben Beschriebene) oder `pause` - „Laden
+        pausieren", das GENAU DIESEN Ladevorgang auf 0 kW deckelt, während jeder
+        andere unverändert weiterlädt. Der Deckel ist restrict-only: er kann
+        keine Grenze weiten. ABWESEND = `voll`, also ist ein älterer Client
+        zeichengleich wie vorher; ein unbekanntes Wort ist 400.
+
+
+        `cancel: true` nimmt BEIDE Richtungen sofort zurück (auf jeder Fläche
+        „Automatik fortsetzen"). Ein Stecker ohne laufenden Ladevorgang ist 409 -
+        eine Zusage über ein Fahrzeug, das nicht da ist, wäre erfunden. Ein nicht
+        erreichbarer Broker ist 503, und dann entsteht AUCH KEIN Beleg: die
+        Nachricht IST die Freigabe. RLS-gefenced (fremde Anlage 404).
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -1577,7 +1585,8 @@ paths:
                 chargePointId: { type: string, description: "Die OCPP-ChargePointId der Säule." }
                 connectorId: { type: integer, minimum: 1, description: "Der Stecker (ab 1)." }
                 minutes: { type: integer, minimum: 1, maximum: 240, nullable: true, description: "Dauer; abwesend = der 4-Stunden-Deckel. Ein größerer Wert wird geklemmt." }
-                cancel: { type: boolean, description: "true nimmt eine laufende Übersteuerung zurück." }
+                cancel: { type: boolean, description: "true nimmt eine laufende Übersteuerung zurück - gleich welcher Richtung." }
+                action: { type: string, enum: [voll, pause], description: "Die Richtung; abwesend = voll." }
       responses:
         "200":
           description: Die erteilte (oder zurückgenommene) Übersteuerung, mit ihrem deutschen Satz.
@@ -1593,6 +1602,7 @@ paths:
                   note: { type: string, description: "Was jetzt gilt - und was unverändert bleibt." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Anlage, Säule oder Stecker unbekannt (deutscher Grund im Körper). }
+        "400": { description: Unbekannte Art des Eingriffs (deutscher Grund im Körper). }
         "409": { description: An diesem Stecker läuft gerade kein Ladevorgang. }
         "503": { description: Die Box war nicht erreichbar - es entstand keine Freigabe. }
   /api/v1/sites/{siteId}/interventions:

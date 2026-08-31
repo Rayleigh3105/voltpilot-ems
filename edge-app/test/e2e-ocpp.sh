@@ -20,8 +20,11 @@
 #       und die niedrigere der beiden Bahnen gewinnt
 #   L8  (Stufe 4) die zwei Prioritäten bewegen WIRKLICH Leistung: „Speicher
 #       vor Auto" gegen „Auto vor Speicher", an den Säulen gemessen
-#   L9  (Stufe 4) „Jetzt voll laden" nimmt GENAU EINEN Ladevorgang aus der
-#       Quellen-Bahn - und der Anschluss hält trotzdem
+#   L9  (Stufe 4 + P3b) die zwei Richtungen des EINEN Handeingriffs:
+#       „Jetzt voll laden" nimmt GENAU EINEN Ladevorgang aus der
+#       Quellen-Bahn (der Anschluss hält trotzdem), „Laden pausieren" deckelt
+#       GENAU EINEN auf 0 (der Nachbar lädt weiter), die EINE Rücknahme gibt
+#       beide zurück, und Abstecken beendet sie - ein neues Fahrzeug erbt nie
 #   L10 (Slice 10) der vollständige privacy-sichere OCPP-J-Datenstrom liegt
 #       absturzfest am Edge: Protokolltypen, Konfiguration/Fähigkeiten,
 #       dimensionsgetreue MeterValues, Auth-Referenzen und TransactionData
@@ -438,7 +441,7 @@ awk -v a="$FIRST" -v b="$SECOND" 'BEGIN{exit (b>a+20)?0:1}' \
 pass "L8b: „Auto vor Speicher\" - dieselbe Sonne, $FIRST -> $SECOND kW an den Saeulen"
 
 # ---------------------------------------------------------------- L9
-echo "--- L9: (Stufe 4) „Jetzt voll laden\" nimmt GENAU EINEN Ladevorgang heraus"
+echo "--- L9: (Stufe 4 + P3b) die zwei Richtungen des EINEN Handeingriffs"
 policy nur_sonne speicher_vor_auto
 waitfor 200 "zurueck auf dem Ueberschuss-Deckel" site_near 80 1.5
 BEFORE_1=$(drawn $S1_STATUS 1)
@@ -484,6 +487,60 @@ waitfor 120 "die Prioritaet gilt wieder" site_near 80 2.0
 AFTER=$(site_kw)
 nearly "$AFTER" 80 2.0 || fail "L9: nach der Ruecknahme zieht der Standort $AFTER kW, erwartet den Ueberschuss 80"
 pass "L9b: zurueckgenommen - der Standort steht wieder bei $AFTER kW auf der Sonne"
+
+# --- L9c (P3b): das GESCHWISTER - „Laden pausieren" deckelt GENAU EINEN
+# Ladevorgang auf 0, waehrend jeder andere unveraendert weiterlaedt. Gemessen
+# an den SAEULEN, nie an einer Quittung.
+BEFORE_2=$(drawn $S2_STATUS 1)
+awk -v d="$BEFORE_2" 'BEGIN{exit (d>1)?0:1}' \
+  || fail "L9c: der Nachbar muss vorher laden (er zieht $BEFORE_2 kW)"
+curl -sf -X POST "${BOX}/api/ocpp/boost" -H 'Content-Type: application/json' \
+  -d '{"charge_point_id":"SAEULE-1","connector_id":1,"pause":true}' \
+  | grep -q '"pause":true' \
+  || fail "L9c: die Pause wurde nicht angenommen"
+
+l9c_paused() { awk -v d="$(drawn $S1_STATUS 1)" 'BEGIN{exit (d<0.5)?0:1}'; }
+waitfor 120 "der pausierte Ladevorgang steht" l9c_paused
+PAUSED=$(drawn $S1_STATUS 1); NEIGHBOUR=$(drawn $S2_STATUS 1)
+awk -v d="$PAUSED" 'BEGIN{exit (d<0.5)?0:1}' \
+  || fail "L9c: der pausierte Ladevorgang zieht $PAUSED kW"
+# ⚠ Der Nachbar ist UNBERUEHRT - das ist die ganze Zusage des Dialogs. Er darf
+# durch die frei gewordene Sonne hoeher, nie niedriger.
+awk -v a="$BEFORE_2" -v b="$NEIGHBOUR" 'BEGIN{exit (b>=a-0.5)?0:1}' \
+  || fail "L9c: der Nachbar verlor Leistung ($BEFORE_2 -> $NEIGHBOUR kW)"
+# Und der Grund NENNT den Hebel: „wartet - kein Ueberschuss" schickte den
+# Kunden zu seiner Quellen-Wahl statt zu seinem eigenen Eingriff.
+curl -sf "${BOX}/api/ocpp" | grep -q '"reason":"handeingriff"' \
+  || fail "L9c: die Pause nennt sich nicht - der Grund fehlt im Zustand"
+pass "L9c: pausiert ($PAUSED kW), der Nachbar laedt weiter ($BEFORE_2 -> $NEIGHBOUR kW), Grund benannt"
+
+# Dieselbe Ruecknahme wie beim Boost - „Automatik fortsetzen" ist EINE Handlung.
+curl -sf -X POST "${BOX}/api/ocpp/boost" -H 'Content-Type: application/json' \
+  -d '{"charge_point_id":"SAEULE-1","connector_id":1,"cancel":true}' >/dev/null \
+  || fail "L9c: die Pause liess sich nicht zuruecknehmen"
+l9c_back() { awk -v d="$(drawn $S1_STATUS 1)" 'BEGIN{exit (d>1)?0:1}'; }
+waitfor 120 "die Quellen-Politik gilt wieder" l9c_back
+BACK=$(drawn $S1_STATUS 1)
+awk -v d="$BACK" 'BEGIN{exit (d>1)?0:1}' \
+  || fail "L9c: nach der Ruecknahme zieht der Ladevorgang $BACK kW"
+pass "L9d: zurueckgenommen - der Ladevorgang laedt wieder ($BACK kW)"
+
+# Und die Bindung an DIE Sitzung: abstecken beendet die Pause, ein NEUES
+# Fahrzeug erbt sie nie.
+curl -sf -X POST "${BOX}/api/ocpp/boost" -H 'Content-Type: application/json' \
+  -d '{"charge_point_id":"SAEULE-1","connector_id":1,"pause":true}' >/dev/null \
+  || fail "L9e: die Pause wurde nicht angenommen"
+waitfor 120 "wieder pausiert" l9c_paused
+curl -sf -X POST "http://${S1_STATUS}/unplug?connector=1" >/dev/null \
+  || fail "L9e: abstecken schlug fehl"
+sleep 2
+curl -sf -X POST "http://${S1_STATUS}/plug?connector=1&demand=240&min=5" >/dev/null \
+  || fail "L9e: einstecken schlug fehl"
+waitfor 150 "das NAECHSTE Fahrzeug laedt" l9c_back
+INHERIT=$(drawn $S1_STATUS 1)
+awk -v d="$INHERIT" 'BEGIN{exit (d>1)?0:1}' \
+  || fail "L9e: das naechste Fahrzeug erbt die Pause ($INHERIT kW)"
+pass "L9e: abgesteckt - das naechste Fahrzeug erbt die Pause nicht ($INHERIT kW)"
 
 # ---------------------------------------------------------------- L10
 echo "--- L10: vollständiges OCPP-Datenjournal (Slice 10)"

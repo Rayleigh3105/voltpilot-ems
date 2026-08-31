@@ -69,6 +69,14 @@ const (
 	// because "der Fahrplan" and "Ihre Regel" send a customer to two different
 	// places.
 	ReasonRule = "regel"
+	// ReasonManual: a HANDEINGRIFF of this customer holds exactly THIS charge
+	// at 0 („Laden pausieren", Verbrauchsmanagement v1 / P3b, Entscheid E5).
+	//
+	// ⚠ It is its OWN word next to ReasonRule, and that is not cosmetics: the
+	// lever is a different one. „Eine Regel hält diese Säule" sends a customer
+	// to the rule editor; this one is their own hand on this one charge, and
+	// the way back is the „Automatik fortsetzen" one tap away in the same row.
+	ReasonManual = "handeingriff"
 )
 
 // Text renders the customer-facing German sentence for a reason. Unknown
@@ -89,6 +97,8 @@ func Text(reason string) string {
 		return "pausiert — der Fahrplan lädt diese Säule gerade nicht"
 	case ReasonRule:
 		return "pausiert — eine Regel oder ein Handeingriff hält diese Säule"
+	case ReasonManual:
+		return "pausiert — Handeingriff"
 	}
 	return ""
 }
@@ -132,6 +142,20 @@ type Session struct {
 	// like every other one - which is what the dialog's fourth consequence
 	// promises. The zero value = no override.
 	BoostUntil time.Time
+	// PauseUntil is the SIBLING of BoostUntil („Laden pausieren", P3b): while
+	// it lies in the future this session is held at 0 kW with ReasonManual.
+	//
+	// ⚠ It is a RESTRICTION, so it composes with everything above it by being
+	// the tightest: it never raises a limit, never frees anything from the
+	// source lane and never touches another session. Every OTHER charge on the
+	// site allocates byte-for-byte as it would without it - which is exactly
+	// what the dialog's consequence list promises.
+	//
+	// ⚠ Boost and pause are MUTUALLY EXCLUSIVE by construction (the box keeps
+	// ONE entry per connector), so there is no "both" case to arbitrate. Were
+	// one ever set anyway, the pause wins: a customer who asked for a stop must
+	// get a stop.
+	PauseUntil time.Time
 
 	// --- Verbrauchsmanagement v1 / P5 -----------------------------------
 	//
@@ -165,6 +189,11 @@ type Session struct {
 // boosted reports whether this session's „Jetzt voll laden" is still running.
 func (s Session) boosted(now time.Time) bool {
 	return !s.BoostUntil.IsZero() && s.BoostUntil.After(now)
+}
+
+// pausedByHand reports whether this session's „Laden pausieren" is running.
+func (s Session) pausedByHand(now time.Time) bool {
+	return !s.PauseUntil.IsZero() && s.PauseUntil.After(now)
 }
 
 // capped is MaxKw after the K3 bridge's restrict-only ceiling. It never
@@ -489,6 +518,14 @@ func Decide(in Input) Plan {
 			// a rule, a Handeingriff), not a shortage - and naming it
 			// „wartet — Budget vergeben" would send the customer to the wrong
 			// lever entirely.
+			// ⚠ The customer's OWN hand is checked before everything else,
+			// including the K3 cap: both only ever pause, so the order decides
+			// nothing but the WORD - and a pause somebody asked for by name
+			// must be named after them, not after a plan they did not touch.
+			if s.pausedByHand(in.Now) {
+				pausedReason[s.Key] = ReasonManual
+				continue
+			}
 			if s.capPauses() {
 				pausedReason[s.Key] = s.capReason()
 				continue
@@ -564,7 +601,7 @@ func Decide(in Input) Plan {
 		for _, s := range g.group {
 			if g.exempt {
 				exemptOf[s.Key] = true
-				boostOf[s.Key] = s.boosted(in.Now)
+				boostOf[s.Key] = s.boosted(in.Now) && !s.pausedByHand(in.Now)
 			}
 		}
 	}

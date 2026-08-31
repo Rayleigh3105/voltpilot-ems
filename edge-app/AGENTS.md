@@ -4067,9 +4067,32 @@ Mechanismus** hinzu: er ruft `Agent.OcppBoost` — genau das, was die
   Sitzung läuft und wie lange die Freigabe höchstens gilt
   (`lastmgmt.BoostMaxDuration`, 4 h), entscheidet `Agent.OcppBoost` — die Cloud
   nennt nur Stecker, Wunsch und Dauer. `cancel: true` nimmt sie zurück.
-- Beweise: `internal/chargingboost` (7, inkl. der Kontrakt-Fixtures per PFAD) ·
-  `agent/charging_boost_test.go` (5: der Durchlauf durch den GETEILTEN Kern,
-  die vier Ablehnungen, die Rücknahme).
+- **⚠ SEIT P3b TRÄGT DERSELBE UMSCHLAG ZWEI RICHTUNGEN** (`action: voll|pause`,
+  Entscheid E5): `pause` = „Laden pausieren", der Session-Deckel 0. Es ist
+  KEIN zweiter Mechanismus - dieselbe `Agent.OcppBoost`, dieselbe
+  Transaktions-Bindung, dieselbe Rücknahme (`cancel` gilt beiden). Im Speicher
+  hält `boostStore` je Stecker EINE Zuweisung MIT ihrer Richtung, die zwei
+  können sich also nie überlagern; `ocppApplyBoosts` stempelt daraus entweder
+  `Session.BoostUntil` oder `Session.PauseUntil`.
+  - **ABWESEND heißt `voll`** (`chargingboost.Parse`) - die
+    Kompatibilitäts-Zusage: eine Cloud vor P3b erteilt exakt den Boost von
+    vorher. Ein UNBEKANNTES Wort verwirft die GANZE Nachricht: die sichere
+    Richtung ist hier weder „voll" (schaltete etwas ein) noch „pause"
+    (stoppte etwas), also gar nichts.
+  - **Der Grund heißt `handeingriff`** (`lastmgmt.ReasonManual`) und wird in
+    `Decide` VOR dem K3-Deckel geprüft - beide pausieren nur, die Reihenfolge
+    entscheidet also allein das WORT, und ein Stopp des Kunden muss nach ihm
+    benannt sein.
+  - **`:8484` ZEIGT die Pause und bietet den RÜCKWEG, nie die Pause selbst**
+    (`state.OcppConnector.HandPaused` → `ocpp.js` `handPaused`; der
+    Zustands-Satz kommt aus dem durchgereichten `reason_text`). Pausieren ist
+    eine Portal-Handlung - eine zweite lokale Tür bräuchte eine zweite
+    Folgen-Karte und einen zweiten Bestätigungs-Text.
+- Beweise: `internal/chargingboost` (die Form + die drei Kontrakt-Fixtures per
+  PFAD) · `agent/charging_boost_test.go` (der Durchlauf durch den GETEILTEN
+  Kern, die vier Ablehnungen, die Rücknahme; P3b: pausiert und gibt zurück,
+  der Nachbar bleibt unberührt, Abstecken beendet und das nächste Fahrzeug
+  erbt nicht, ein Umschlag OHNE `action` ist weiterhin der alte Boost).
 
 ## Die Box meldet ihre Adresse im KUNDEN-LAN — getrennt vom Zugriffsweg
 

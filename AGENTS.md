@@ -1684,6 +1684,65 @@ Bestandsgerät bekommt durch diese Stufe keinen Schreibweg**.
 - **NICHT in dieser Stufe:** mehrere Schreib-Register je Gerät · HTTP/MQTT-Schreiben (folgt der
   jeweiligen Lese-Art, Stufe 3b) · Vorlagen-Verwaltung (Stufe 6) · Bilanz-Rollen.
 
+## Verbrauchsmanagement v1 — Paket 3b: „Laden pausieren" als Geschwister des Boosts
+
+Konzept `data/vp-verbrauchsmgmt-konzept-v1` §4.6 + §8 P3b, **Captain-Entscheid E5** („Geschwister
+des Boosts: `charging-boost.action`, sitzungsgebunden, endet beim Abstecken" — die Alternative
+`consumer_override` über die Bridge wurde ausdrücklich verworfen). **Ohne das Feld verhält sich
+JEDE Anlage byte-identisch**, und das ist auf beiden Seiten festgenagelt.
+
+- **⚠ ES IST EINE ZWEITE RICHTUNG, KEIN ZWEITER MECHANISMUS.** Derselbe Vertrag, dasselbe Topic,
+  dasselbe `requested_at`-Fenster, dieselbe Bindung an EINE Transaktion, dieselbe Rücknahme („Automatik
+  fortsetzen" ist EINE Handlung für beide) — und auf der Box derselbe Kern (`Agent.OcppBoost`, den auch
+  die `:8484`-Taste ruft). Es gibt weiterhin genau EINEN Übersteuerungs-Pfad, der abzusichern wäre.
+- **Vertrag: additives `action` (`voll` | `pause`)** in `docs/contracts/mqtt-charging-boost.schema.json`,
+  `schema_version` bleibt 1.0; Fixture `mqtt-charging-boost.valid.laden-pausieren.json`. **⚠ ABWESEND
+  heißt `voll`, und das ist die Kompatibilitäts-Zusage:** eine Cloud, die das Feld nicht sendet, erteilt
+  genau den Boost von vorher, und eine Box, die es nicht kennt, überliest es und tut dasselbe. Deshalb
+  SENDET der Publisher es auch nur für die zweite Richtung — hätten wir es immer geschrieben, wäre der
+  Beweis dafür weg. Ein UNBEKANNTES Wort wird auf beiden Seiten ABGELEHNT, nie auf `voll` aufgelöst
+  (das schaltete einen Ladevorgang ein, den jemand stoppen wollte) und auch nicht auf `pause`.
+- **⚠ Die Wirkung ist RESTRICT-ONLY und trifft GENAU EINE Sitzung** (`lastmgmt.Session.PauseUntil`, das
+  Geschwister von `BoostUntil`): sie deckelt diesen Ladevorgang auf 0 kW und lässt jede andere Zuteilung
+  byte-gleich. Budget, Sicherheitsabstand, §14a, Rotation, Vorrang, Mindestleistung, TxDefault-Profil
+  und der OCPP-eigene Totmann binden unverändert. Boost und Pause schließen einander per Konstruktion
+  aus (die Box hält EINE Zuweisung je Stecker); käme je beides an, gewinnt die Pause — wer einen Stopp
+  verlangt hat, bekommt einen Stopp.
+- **⚠ Der Grund heißt `handeingriff`, nicht `regel`** (`lastmgmt.ReasonManual`, Text „pausiert —
+  Handeingriff"). Er wird im Verteiler VOR dem K3-Deckel geprüft: beide pausieren nur, die Reihenfolge
+  entscheidet also allein das WORT — und ein Stopp, den der Kunde selbst ausgelöst hat, muss nach ihm
+  benannt sein, nicht nach einem Plan, den er nicht angefasst hat („eine Regel hält diese Säule"
+  schickte ihn in den Regel-Editor statt zu seinem eigenen „Automatik fortsetzen").
+- **Der Rückkanal ist der BESTEHENDE `reason`** (Herzschlag → `device_charge_connector.reason` →
+  `GET /sites/{id}/chargers`) — es gibt KEIN neues Wire-Feld und keine Migration. Auf `:8484` steht
+  zusätzlich `hand_paused` im `/api/state` (die Karte zeigt dort die Pause und bietet den Rückweg an;
+  PAUSIEREN selbst bietet die Box bewusst nicht an — es kommt aus dem Portal).
+- **Papier-Spur:** neue Punkt-Ereignisse `laden_pausiert` / `laden_pausiert_beendet` im Ladepunkt-Strom.
+  **⚠ Das Wort folgt der GESENDETEN Richtung, auch bei der Rücknahme** — die Box kann uns nicht sagen,
+  was gerade lief, und „Jetzt voll laden beendet" über einer Pause wäre eine Falschaussage im
+  Kommando-Verlauf. Deshalb schickt das Portal `action` AUCH beim Abbrechen mit. `device_command_log.event_kind`
+  ist freier Text (kein CHECK), es braucht also keine Migration.
+- **Portal:** die geteilte Schicht `ladepunkte.ts` bekam den dritten Menü-Eintrag (`laden_pausieren`,
+  Beschriftung + Hinweis wörtlich aus dem Mockup), `pausierbar`, `ladepunktBanner(name, richtung)`,
+  `pauseFolgenKarte` und `boostEndeKarte(richtung)`; `LadeZustand`/`LadevorgangRow` tragen
+  `handeingriff` (abgeleitet aus dem MASCHINEN-Wort, nie aus dem Satz). **⚠ `pausierbar` hängt NICHT an
+  der Überschuss-Bahn** — pausieren kann man auch eine Ladung, die mit voller Leistung aus dem Netz
+  läuft; nur der BOOST braucht eine Bahn, die etwas zurückhält. Angeboten wird sie ausschließlich, wo
+  eine Sitzung nachweislich LÄUFT (die Portal-Hälfte der Server-Ablehnung „An diesem Stecker läuft
+  gerade kein Ladevorgang"). Die Zeile liest „pausiert · Handeingriff", der Banner nennt die Richtung,
+  und die Rücknahme-Karte beschreibt, was WIRKLICH läuft.
+- **⚠ Was OHNE Edge-Release nicht wirkt:** die Box-Hälfte (`action` lesen, `PauseUntil`, der Grund
+  `handeingriff`). Bis dahin überliest eine laufende Box das Feld und behandelt eine Pause-Anfrage wie
+  einen VOLL-Boost — deshalb reisen P3b/P5/P6/P7 in DEMSELBEN Release. Cloud, Portal und Papier-Spur
+  sind sofort lieferbar; die Fläche zeigt eine Pause erst, wenn die Box sie meldet.
+- **Beweise:** Go `internal/chargingboost` (Vertrag + die drei Fixtures PER PFAD) ·
+  `agent/charging_boost_test.go` (an den SÄULEN gemessen: pausiert und gibt zurück, der Nachbar bleibt
+  unberührt, Abstecken beendet und das nächste Fahrzeug erbt nicht, ein Umschlag OHNE `action` ist
+  weiterhin der Boost von vorher) · api `ChargingBoostPublisherTest` (die Draht-Form, „voll reist als
+  Abwesenheit", das Audit-Wort je Richtung, die benannte Ablehnung) + `ChargerApiTest` ·
+  Portal `ladepunkte.test.ts` / `steuerungJetzt.test.ts` / `JetztZone.test.tsx` ·
+  **Rig `edge-app/test/e2e-ocpp.sh` L9c–e** (Docker-frei, an den simulierten Zählern gemessen).
+
 ## Entity lifecycle: edit + delete (Standorte/Geräte/Mandanten/Benutzer/Registry)
 
 Every entity the portal can create can now also be edited and deleted - by customers for their own tenant and by Portal-Admins for any tenant.
@@ -2000,7 +2059,7 @@ The edge flows are exercised end-to-end against the simulator (not a unit test):
 - `mqtt-schedule.schema.json` - the Cloud -> Edge battery dispatch plan (retained QoS1, 15-min slots, `+`=charge/`-`=discharge), incl. fail-safe semantics (`x-failsafe`). Frozen by adopting the shape the Node-RED schedule-exec flow already consumed, plus plan metadata (`plan_id`/`generated_at`/`horizon_slots`) the edge ignores. Two ADDITIVE extensions (`schema_version` stays 1.0): the OPTIONAL per-slot `pv_limit_kw` inverter feed-in cap implementing negative-price curtailment (Phase 3) - absent = no limit, and an edge that ignores unknown optional fields keeps working (verified: the Node-RED flow does plain field access, the Go edge `plan.Parse` unmarshals into a fixed struct); and the OPTIONAL top-level `grid_charge_allowed` (optimizer Stage 4/P5, mirrors `site.netzladen_erlaubt`): `false` = the edge MUST clamp commanded battery CHARGE to `max(measured pv, 0)` before a register write (PV-bus Bilanzierung since FK3, captain decision 2026-07-16 - the battery may charge up to the full ACTUAL PV production while the house imports in parallel; measured pv is the inverter's actual output, already post-curtailment, so this is the on-device twin of the solver's `charge <= pv − curtail` constraint on MEASURED values; unknown pv still blocks charge entirely), ABSENT = allowed remains the CONTRACT reading (pre-P5 compat), but the Go edge-app deviates FAIL-SAFE since the 2026-07-12 security-audit fix: `plan.SolarOnlyCharge()` clamps on an absent field (and a nil plan) too - only an explicit `true` releases the clamp. Deliberate tradeoff (captain approved): the optimizer always publishes the field, so a merchant site's real plans are unaffected; only legacy/hand-crafted payloads change behavior, and an EEG site behind such a payload must never grid-charge. The Node-RED dev edge (`edge/node-red`) is untouched. See "Negative-price curtailment + Marktprämie" and the edge-app guards. A THIRD and FOURTH additive extension (2026-07-30, `schema_version` still 1.0), the two halves of the in-slot forecast-vs-meter gap: the OPTIONAL per-slot **`charge_from_surplus_only`** (charge side - see "Price-aware in-slot trim" below) and **`cover_load_from_battery`** (discharge side - see "In-slot load following"). Both are per-slot booleans, both are FAIL-OPEN on absence (an unpriced hint must never reshape dispatch), and both compose most-restrictive-wins with `grid_charge_allowed`. A FIFTH (2026-08-02, `schema_version` still 1.0) completes the family with the only duty that RAISES a charge: the OPTIONAL per-slot **`charge_surplus_to_battery`** (see "In-slot surplus absorption" below), same fail-open rule, same composition. A SIXTH (2026-08-06, `schema_version` still 1.0) is RUN-level and, unlike the five above, a COMPLIANCE datum rather than an economic hint: the OPTIONAL top-level **`grid_export_limit_kw`** (= `site.max_feed_in_kw`/FK1) is the site's feed-in limit at the grid connection point, which the edge REGULATES in real time against the measured connection point (see "Dynamische Einspeisebegrenzung" below). Absent = no limit (a limit is never invented), and its measurement-loss failsafe is deliberately the OPPOSITE of the economic duties' (hold, then contract to a safe static cap - blind must not mean unlimited).
 - `mqtt-provisioning.schema.json` - the zero-touch onboarding handshake (`provision/{ref}/hello` -> retained `provision/{ref}/config`); ADDITIVE, the frozen telemetry/schedule contracts are untouched. See "Zero-touch device onboarding".
 - `mqtt-ota-target.schema.json` - the Cloud -> Edge OTA assignment (retained QoS1 on `ems/{t}/{s}/{d}/v2/update`, OTA Stufe 2): the SIGNED manifest bytes travel base64-encoded so they arrive BYTE FOR BYTE (the signature goes over exactly them); the envelope itself is UNSIGNED and therefore routing/diagnostics only - every decision comes from the verified manifest. ADDITIVE: an older device never subscribes and the message sits unread. See "OTA Stufe 2".
-- `mqtt-charging-boost.schema.json` - die Cloud -> Edge EINMAL-Freigabe „Jetzt voll laden" (NICHT-retained QoS1 auf `ems/{t}/{s}/{d}/v2/charging-boost`, OCPP-Lastmanagement Stufe 4): wortgleich die Übersteuerung, die der Kunde an der `:8484`-Taste gibt, mit einem anderen Transport - sie nimmt GENAU EINEN Ladevorgang von der Quellen-Politik aus und rührt Anschlussgrenze, Sicherheitsabstand, §14a und das Ausfall-Profil NICHT an. **NICHT-retained ist tragend** (eine retained Übersteuerung käme bei jedem Verbindungsaufbau erneut, wäre also keine Einmal-Freigabe), und `requested_at` ist die zweite Hälfte: die Box übernimmt den Stempel als Beginn ihres Fensters statt des Empfangs-Zeitpunkts, eine nachgelieferte QoS1-Nachricht ist bei der Ankunft also abgelaufen. ADDITIV: eine ältere Box abonniert das Topic nie. Siehe „OCPP-Lastmanagement Stufe 4".
+- `mqtt-charging-boost.schema.json` - die Cloud -> Edge EINMAL-Übersteuerung EINES Ladevorgangs («Jetzt voll laden» und, seit P3b, ihr Geschwister «Laden pausieren») (NICHT-retained QoS1 auf `ems/{t}/{s}/{d}/v2/charging-boost`, OCPP-Lastmanagement Stufe 4): wortgleich die Übersteuerung, die der Kunde an der `:8484`-Taste gibt, mit einem anderen Transport - sie nimmt GENAU EINEN Ladevorgang von der Quellen-Politik aus und rührt Anschlussgrenze, Sicherheitsabstand, §14a und das Ausfall-Profil NICHT an. **NICHT-retained ist tragend** (eine retained Übersteuerung käme bei jedem Verbindungsaufbau erneut, wäre also keine Einmal-Freigabe), und `requested_at` ist die zweite Hälfte: die Box übernimmt den Stempel als Beginn ihres Fensters statt des Empfangs-Zeitpunkts, eine nachgelieferte QoS1-Nachricht ist bei der Ankunft also abgelaufen. ADDITIV: eine ältere Box abonniert das Topic nie. Siehe „OCPP-Lastmanagement Stufe 4".
 - `mqtt-data-purge.schema.json` - the device data purge ("Datenaufzeichnungen löschen"): edge -> cloud `purge_request` on the EXISTING status up-topic, cloud -> edge RETAINED `purge_data` command on the EXISTING command down-topic (no ACL change); ADDITIVE. See "Device data purge".
 - **`docs/contracts/examples/`** - the executable v1 fixtures (2 valid + 1 invalid per covered schema, the v2 discipline; `examples/README.md` says WHY each invalid one is invalid, since the schemas are `additionalProperties:false` and a `_why` key would invalidate for the wrong reason). Read BY PATH from real tests - `services/optimization/tests/test_contract.py` (jsonschema, both directions, plus a fixture-vs-publisher check) and `edge-app/core/internal/plan/plan_test.go` (the Go executor parses the same bytes) - so moving a fixture breaks the contract check deliberately.
 - `openapi.yaml` - portal API. The auth/sites/devices/telemetry/prices/weather/schedule/history and claim endpoints are **implemented** in `services/api`; KPIs are still a stub. Keep this file in sync when changing those endpoints.

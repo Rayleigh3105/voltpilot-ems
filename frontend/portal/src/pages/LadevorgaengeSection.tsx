@@ -101,6 +101,11 @@ export function LadevorgaengeSection({
         chargePointId: row.chargePointId,
         connectorId: row.connectorId,
         cancel,
+        // ⚠ Die RICHTUNG folgt dem, was WIRKLICH läuft: die Papier-Spur des
+        // Kommando-Verlaufs hängt daran, und „Jetzt voll laden beendet" über
+        // einer Pause wäre dort eine Falschaussage. Pausieren selbst bietet
+        // diese Seite nicht an - das ist die Jetzt-Zone (P3b).
+        action: cancel && row.handeingriff ? 'pause' : 'voll',
       });
       setCharging(await api.siteChargers(site.id));
     } catch (e) {
@@ -194,7 +199,7 @@ export function LadevorgaengeSection({
                     disabled={busy}
                     onClick={() => void boost(r, true)}
                   >
-                    Wieder Ihre Priorität
+                    {r.handeingriff ? 'Automatik fortsetzen' : 'Wieder Ihre Priorität'}
                   </Button>
                 )}
               </li>

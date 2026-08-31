@@ -3448,16 +3448,28 @@ export const api = {
       { method: 'DELETE' },
     ),
   /**
-   * „Jetzt voll laden": nimmt EINEN laufenden Ladevorgang von der
-   * Überschuss-Priorität aus, damit er auch Netzstrom ziehen darf.
+   * Der Handeingriff an EINEM laufenden Ladevorgang, in zwei Richtungen:
+   * „Jetzt voll laden" (von der Überschuss-Priorität ausgenommen, Netzstrom
+   * erlaubt) und sein Geschwister „Laden pausieren" (P3b, Deckel 0).
    *
-   * ⚠ Es ist KEINE Grenze: Anschlussgrenze, Sicherheitsabstand, §14a und der
-   * Ausfall-Schutz binden ihn unverändert, und die Priorität aller ANDEREN
-   * Ladevorgänge bleibt, wie sie ist.
+   * ⚠ BEIDES ist KEINE Grenze: Anschlussgrenze, Sicherheitsabstand, §14a und
+   * der Ausfall-Schutz binden unverändert, und ALLE ANDEREN Ladevorgänge
+   * bleiben, wie sie sind. `cancel: true` nimmt beide Richtungen zurück.
    */
   chargingBoost: (
     siteId: string,
-    body: { chargePointId: string; connectorId: number; minutes?: number; cancel?: boolean },
+    body: {
+      chargePointId: string;
+      connectorId: number;
+      minutes?: number;
+      cancel?: boolean;
+      /**
+       * Die RICHTUNG (P3b, Entscheid E5): `voll` (Vorgabe) oder `pause`
+       * („Laden pausieren"). Abwesend = `voll`, also ist ein Aufruf ohne das
+       * Feld zeichengleich wie vorher.
+       */
+      action?: 'voll' | 'pause';
+    },
   ) =>
     request<ChargingBoostResult>(`/api/v1/sites/${siteId}/charging-boost`, {
       method: 'POST',

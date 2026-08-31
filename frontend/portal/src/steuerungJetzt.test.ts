@@ -337,7 +337,7 @@ describe('Zone ① Jetzt — eine Zeile je LADEPUNKT (Verbrauchsmanagement v1 §
     expect(zeilen[0].quelle).toBe('steuerart');
     // Der Schlüssel des Boost-Auftrags (P3a) reist an der Zeile mit.
     expect(zeilen[0].ladepunkt).toEqual({
-      chargePointId: 'CP1', connectorId: 1, name: 'Wallbox Garage',
+      chargePointId: 'CP1', connectorId: 1, name: 'Wallbox Garage', eingriff: null,
     });
   });
 
@@ -526,11 +526,11 @@ describe('Zone ① Jetzt — Ladepunkt-Zeilen (P3a)', () => {
     expect(z.name).toBe('Wallbox Garage');
     // ⚠ `fmtNum` setzt ein geschütztes Leerzeichen vor die Einheit.
     expect(z.zustand.replace(/\u00a0/g, ' ')).toBe('lädt 7,4 kW');
-    expect(z.aktionen).toEqual(['voll_laden']);
+    expect(z.aktionen).toEqual(['voll_laden', 'laden_pausieren']);
     expect(z.keinEingriff).toBeNull();
     // Die Adresse ist der STECKER - eine Komponenten-Id kann sie nicht tragen.
     expect(z.ladepunkt).toEqual({
-      chargePointId: 'CP1', connectorId: 1, name: 'Wallbox Garage',
+      chargePointId: 'CP1', connectorId: 1, name: 'Wallbox Garage', eingriff: null,
     });
     expect(z.entityId).toBeNull();
   });
@@ -599,5 +599,53 @@ describe('Zone ① Jetzt — Ladepunkt-Zeilen (P3a)', () => {
     const b = jetztBanner(null, {}, NOW, pausiert, charging({}, { boost: true }));
     // Die Pause beschreibt die ganze Anlage - der engste Eingriff steht zuletzt.
     expect(b?.entityId).toBe(PAUSE_BANNER_ID);
+  });
+});
+
+/**
+ * P3b in der Jetzt-Zone: die Zeile SAGT die Pause, der Banner NENNT die
+ * Richtung, und die Rücknahme weiss, was sie beendet.
+ */
+describe('Zone ① Jetzt — eine pausierte Ladung (P3b)', () => {
+  /** Eine Säule mit GENAU EINER von Hand pausierten Ladung. */
+  function pausiert(): SiteCharging {
+    return {
+      budget: null,
+      chargers: [{
+        chargePointId: 'CP1',
+        label: 'Wallbox Garage',
+        connected: true,
+        connectors: [{
+          connectorId: 1,
+          charging: true,
+          status: 'SuspendedEVSE',
+          allocatedKw: 0,
+          powerKw: 0,
+          // ⚠ Das MASCHINEN-Wort ist das Signal - der Satz daneben ist nur der
+          // Beleg, den die Box mitschickt.
+          reason: 'handeingriff',
+          reasonText: 'pausiert — Handeingriff',
+        }],
+      }],
+    } as unknown as SiteCharging;
+  }
+
+  it('liest „pausiert · Handeingriff" und bietet nur den Rückweg', () => {
+    const { zeilen } = ladepunktZeilen(pausiert(), () => 'Überschuss (Sonne zuerst)');
+    const z = zeilen[0];
+    expect(z.zustand).toBe('pausiert');
+    // ⚠ Die QUELLE ist der Eingriff, nicht die Steuerart: was gerade regiert,
+    // ist der Kunde selbst.
+    expect(z.quelle).toBe('handeingriff');
+    expect(z.quelleText).toBe('Handeingriff');
+    expect(z.aktionen).toEqual(['resume']);
+    expect(z.ladepunkt?.eingriff).toBe('pausiert');
+  });
+
+  it('nennt im Banner die PAUSE, nicht die volle Ladung', () => {
+    const b = jetztBanner(null, {}, new Date(), null, pausiert());
+    expect(b?.text).toContain('pausiert (nur diese Ladung)');
+    expect(b?.text).not.toContain('lädt voll');
+    expect(b?.ladepunkt?.eingriff).toBe('pausiert');
   });
 });

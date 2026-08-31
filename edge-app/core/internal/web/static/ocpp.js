@@ -234,7 +234,19 @@
   // something back. A button that can change nothing is noise.
   function boostable(o, con) {
     if (!o || !o.surplus_active || !con || !con.charging) return false;
-    return !con.boost;
+    // ⚠ Ein von Hand PAUSIERTER Ladevorgang bekommt „Jetzt voll laden" NICHT
+    // angeboten: der Kunde hat ihn gerade gestoppt, und derselbe Knopf würde
+    // seinen Eingriff still durch den gegenteiligen ersetzen. Was diese Zeile
+    // braucht, ist der Rückweg - und den zeigt sie (siehe `handPaused`).
+    return !con.boost && !con.hand_paused;
+  }
+
+  // handPaused reports whether THIS plug is held at 0 kW by the customer's own
+  // „Laden pausieren" (P3b). Die Box selbst bietet die Pause NICHT an - sie
+  // kommt aus dem Portal; diese Karte ZEIGT sie (der Zustands-Satz kommt aus
+  // `reason_text`) und bietet den Rückweg „Automatik fortsetzen".
+  function handPaused(con) {
+    return !!(con && con.hand_paused);
   }
 
   // zeigeGruppe entscheidet, ob die Einrichten-Seite ihre BEDINGTE
@@ -285,6 +297,7 @@
     planCapLine: planCapLine,
     boostConsequences: boostConsequences,
     boostable: boostable,
+    handPaused: handPaused,
     budgetSourceLine: budgetSourceLine,
     budgetSourceTone: budgetSourceTone,
     removalConsequences: removalConsequences,
@@ -496,7 +509,7 @@
         // (a running charge that the source lane is actually holding back).
         if (D.boostable(o, con)) {
           li.appendChild(boostButton(c, con, false));
-        } else if (con.boost) {
+        } else if (con.boost || D.handPaused(con)) {
           li.appendChild(boostButton(c, con, true));
         }
         rows.appendChild(li);

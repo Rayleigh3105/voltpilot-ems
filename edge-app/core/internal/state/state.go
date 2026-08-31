@@ -828,4 +828,10 @@ type OcppConnector struct {
 	// surface SAYS so - a full charge nobody asked for would be a silent
 	// break of the customer's own priority.
 	Boost bool `json:"boost,omitempty"`
+	// HandPaused is true while this plug's „Laden pausieren" is running (P3b):
+	// VoltPilot holds THIS charge at 0 kW because the customer asked it to.
+	// It is a SEPARATE field from Boost on purpose - the two say opposite
+	// things, and one flag for „an override runs" would let a surface put
+	// „lädt voll" over a charge it just stopped.
+	HandPaused bool `json:"hand_paused,omitempty"`
 }
