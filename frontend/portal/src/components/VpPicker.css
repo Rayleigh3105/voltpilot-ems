@@ -31,8 +31,10 @@
 
 /* --- Der Auslöser: Feld-Optik, damit er neben `Input` nicht auffällt. -----
    ⚠ Rand und Fokus-Rand sind DIESELBEN Token wie in `Input` (--vp-field-border
-   / --vp-primary-deep). Genau das ist der Punkt dieses Blocks: laufen die zwei
-   auseinander, faellt der Ausloeser neben einem echten Feld auf. */
+   / --vp-action). Genau das ist der Punkt dieses Blocks: laufen die zwei
+   auseinander, faellt der Ausloeser neben einem echten Feld auf.
+   `src/fieldBorder.test.ts` nagelt die Gleichheit fest - bis 08/2026 stand hier
+   --vp-action und in `Input` --vp-primary-deep, die Zusage galt also nicht. */
 .vp-picker-ausloeser {
   display: flex;
   align-items: center;

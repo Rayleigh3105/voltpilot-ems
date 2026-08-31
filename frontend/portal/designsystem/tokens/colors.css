@@ -36,10 +36,13 @@
      wo das Feld anfaengt und aufhoert.
      Abgeleitet aus --vp-text-gray, kein neuer Farbwert (das Haus nutzt
      color-mix bereits fuer --vp-tech-hair).
-     ACHTUNG, gemessen: der 75-%-Mix aus dem Login-Konzept ist #91989E =
-     2,94:1 und bleibt damit UNTER 3:1 - 80 % ist der kleinste Anteil, der
-     die Grenze wirklich haelt. Beim Nachjustieren nachrechnen, nicht raten. */
-  --vp-field-border:   color-mix(in srgb, var(--vp-text-gray) 80%, var(--vp-surface));  /* ~#899197, 3,21:1 auf Weiss */
+     ACHTUNG, gemessen: der 75-%-Mix aus dem Login-Konzept lag bei 2,94:1 und
+     damit UNTER 3:1. Beim Nachjustieren nachrechnen, nicht raten.
+     ⚠ Der Wert HAENGT AN --vp-text-gray: als das fuer AA auf --vp-surface-alt
+     von #6C757D auf #66717C nachgedunkelt wurde, wanderte der Feldrand von
+     3,21:1 auf 3,35:1 mit. Wer das Neutral erneut anfasst, prueft
+     src/fieldBorder.test.ts - es rechnet beides nach. */
+  --vp-field-border:   color-mix(in srgb, var(--vp-text-gray) 80%, var(--vp-surface));  /* #858D96, 3,35:1 auf Weiss */
 
   /* --- Category accents (gradient start -> end) --- */
   --vp-solar:    #FF9800; --vp-solar-end:    #F57C00; /* Solar / PV */

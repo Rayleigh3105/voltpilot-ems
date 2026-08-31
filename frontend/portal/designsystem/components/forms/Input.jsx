@@ -4,12 +4,18 @@ import React from 'react';
  * VoltPilot Input — white field, --vp-field-border, brand focus ring.
  * Forwards its ref to the native <input> so callers can focus fields.
  *
- * Der RUHENDE Rand ist --vp-field-border (3,2:1), nicht --vp-border (1,19:1):
+ * Der RUHENDE Rand ist --vp-field-border (3,35:1), nicht --vp-border (1,19:1):
  * der Rand ist die einzige Angabe, wo das Feld anfaengt (WCAG 1.4.11). Der
- * FOKUS-Rand ist --vp-primary-deep (3,28:1) statt --vp-primary (1,97:1) —
- * sonst wuerde das Feld beim Fokussieren HELLER umrandet als im Ruhezustand.
+ * FOKUS-Rand ist --vp-action (7,97:1) — das Interaktions-Blau des Hauses, das
+ * auch --vp-focus-ring-color traegt. Er MUSS staerker sein als der Ruhe-Rand,
+ * sonst laese sich Fokussieren als Ruecknahme.
+ * ⚠ Er war bis 08/2026 --vp-primary-deep (3,28:1) und lag damit nur 0,07
+ * ueber dem Ruhe-Rand; als --vp-text-gray fuer AA auf --vp-surface-alt
+ * nachgedunkelt wurde, kippte das Verhaeltnis. Der Fokus-Ton haengt deshalb
+ * nicht mehr an einer Marken-Nuance, die eine Neutral-Korrektur ueberholen
+ * kann.
  * Der VpPicker-Ausloeser (src/components/VpPicker.css) traegt dieselbe
- * Feld-Optik und wandert mit; beide zusammen aendern.
+ * Feld-Optik und DASSELBE Fokus-Token; beide zusammen aendern.
  */
 export const Input = React.forwardRef(function Input({
   label = null,
@@ -47,7 +53,7 @@ export const Input = React.forwardRef(function Input({
           fontSize: '1rem',
           color: 'var(--vp-text-dark)',
           background: 'var(--vp-surface)',
-          border: `1px solid ${error ? 'var(--vp-industry)' : focused ? 'var(--vp-primary-deep)' : 'var(--vp-field-border)'}`,
+          border: `1px solid ${error ? 'var(--vp-industry)' : focused ? 'var(--vp-action)' : 'var(--vp-field-border)'}`,
           borderRadius: 'var(--vp-radius-btn)',
           padding: '0.75rem 1rem',
           outline: 'none',

@@ -17,6 +17,8 @@ import { describe, expect, it } from 'vitest';
  */
 const root = join(__dirname, '..');
 const colors = readFileSync(join(root, 'designsystem', 'tokens', 'colors.css'), 'utf8');
+const input = readFileSync(join(root, 'designsystem', 'components', 'forms', 'Input.jsx'), 'utf8');
+const picker = readFileSync(join(root, 'src', 'components', 'VpPicker.css'), 'utf8');
 
 /** WCAG 2.x relative Luminanz (sRGB). */
 function luminance([r, g, b]: [number, number, number]): number {
@@ -48,6 +50,13 @@ function mix(
   return [0, 1, 2].map((i) => fg[i] * p + bg[i] * (1 - p)) as [number, number, number];
 }
 
+/** Das Fokus-Rand-Token, wie `Input` es wirklich setzt - nie hier geraten. */
+function fokusToken(): string {
+  const m = /focused \? 'var\(--vp-([a-z-]+)\)' : 'var\(--vp-field-border\)'/.exec(input);
+  expect(m, 'Fokus-Rand von Input nicht gefunden').not.toBeNull();
+  return m![1];
+}
+
 describe('--vp-field-border', () => {
   it('ist als color-mix aus --vp-text-gray und --vp-surface definiert (kein neuer Farbwert)', () => {
     expect(colors).toMatch(
@@ -73,10 +82,26 @@ describe('--vp-field-border', () => {
   it('lässt den Fokus-Rand nicht schwächer werden als den Ruhe-Rand', () => {
     // `Input`/`VpPicker` färben den Rand beim Fokussieren um. Wäre der
     // Fokus-Ton blasser als der Ruhe-Ton, läse sich Fokussieren als Rücknahme.
+    //
+    // ⚠ Das Fokus-Token wird aus der KOMPONENTE gelesen, nicht hier
+    // festgeschrieben: bis 08/2026 stand hier --vp-primary-deep (3,28:1) und
+    // lag nur 0,07 über dem Ruhe-Rand - als --vp-text-gray für AA nachgedunkelt
+    // wurde, wanderte der Ruhe-Rand auf 3,35:1 und überholte ihn.
     const m = /--vp-field-border:\s*color-mix\(in srgb, var\(--vp-text-gray\) (\d+)%/.exec(colors);
     const ruhe = mix(hex('text-gray'), hex('surface'), Number(m![1]) / 100);
-    expect(contrast(hex('primary-deep'), hex('surface'))).toBeGreaterThanOrEqual(
+    expect(contrast(hex(fokusToken()), hex('surface'))).toBeGreaterThanOrEqual(
       contrast(ruhe, hex('surface')),
     );
+  });
+
+  it('trägt in Input und VpPicker DASSELBE Fokus-Token', () => {
+    // Der Picker-Auslöser sitzt neben echten Feldern; laufen die zwei Token
+    // auseinander, fällt er auf. Genau das war bis 08/2026 der Fall.
+    const ausPicker =
+      /\.vp-picker-ausloeser:focus-visible\s*\{[^}]*?border-color:\s*var\(--vp-([a-z-]+)\)/.exec(
+        picker,
+      );
+    expect(ausPicker, 'Fokus-Rand des Picker-Auslösers nicht gefunden').not.toBeNull();
+    expect(ausPicker![1]).toBe(fokusToken());
   });
 });
