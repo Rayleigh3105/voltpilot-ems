@@ -34,6 +34,16 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Prometheus scrape format for the actuator: registering this registry
+             turns the `prometheus` actuator endpoint on (remapped to /metrics in
+             application.yml). The writer exposes the Kafka-consumer-lag gauge
+             (com.voltpilot.writer.KafkaLagMetricsCollector) - it IS the consumer,
+             so the lag metric lives with it. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
@@ -101,6 +111,16 @@
                          the same pin in services/api). -->
                     <systemPropertyVariables>
                         <api.version>${docker.api.version}</api.version>
+                        <!-- Der Kafka-Lag-Sammler ist in PRODUKTION an
+                             (application.yml, matchIfMissing) - im Testlauf aus,
+                             dieselbe @Scheduled-Falle wie beim api-Flotten-
+                             Sammler: Spring cachet Testkontexte, waehrend
+                             Testcontainers seine Container nach der Klasse stoppt,
+                             ein getakteter Poll liefe danach gegen einen toten
+                             Broker weiter. Wer ihn prueft, baut ihn direkt.
+                             Dass die Vorgabe AN ist, prueft
+                             KafkaLagMetricsWiringTest an der echten application.yml. -->
+                        <voltpilot.metrics.kafka-lag.enabled>false</voltpilot.metrics.kafka-lag.enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

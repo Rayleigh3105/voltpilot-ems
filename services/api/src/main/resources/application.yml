@@ -165,6 +165,18 @@ voltpilot:
       enabled: ${VOLTPILOT_METRICS_CONSUMER_ENABLED:true}
       interval-ms: ${VOLTPILOT_METRICS_FLEET_INTERVAL_MS:60000}
       initial-delay-ms: ${VOLTPILOT_METRICS_FLEET_INITIAL_DELAY_MS:10000}
+    # Data-plane health (com.voltpilot.api.metrics.DbHealthMetricsCollector,
+    # scout vp-scale-readiness-p4 §6.3): DB size per hypertable (the 0,5-TB
+    # cold-archive trigger), the fail status of the TimescaleDB background jobs
+    # (retention/compression - a silently failing drop_chunks would otherwise
+    # only surface at the disk level), and the last optimizer-cycle duration
+    # (read from optimizer_cycle_stat - the "15-min cadence tipping" curve).
+    # Same TIMER discipline as the fleet metrics; ON by default, kill switch
+    # VOLTPILOT_METRICS_DB_ENABLED=false. Reads via the BYPASSRLS admin role.
+    db:
+      enabled: ${VOLTPILOT_METRICS_DB_ENABLED:true}
+      interval-ms: ${VOLTPILOT_METRICS_DB_INTERVAL_MS:60000}
+      initial-delay-ms: ${VOLTPILOT_METRICS_DB_INITIAL_DELAY_MS:15000}
   security:
     oidc:
       enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:true}

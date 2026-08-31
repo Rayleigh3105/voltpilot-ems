@@ -29,6 +29,7 @@ from voltpilot_optimization.config import (
     v2_plan_site_ids,
 )
 from voltpilot_optimization.cadence import aligned_delay_seconds
+from voltpilot_optimization.cycle_stats import CycleStat, TimescaleCycleStatsRepository
 from voltpilot_optimization.engine import run_cycle
 from voltpilot_optimization.persistence import TimescaleScheduleRepository
 from voltpilot_optimization.persistence_v2 import TimescaleSitePlanRepository
@@ -219,7 +220,12 @@ def _run_one(args, env: dict[str, str]) -> None:
         v2_publisher = MqttPlanV2Publisher.from_env(env)
         if not args.no_persist:
             v2_repository = TimescaleSitePlanRepository(dsn)
+    # Monitoring (§6.3): persist how long the cycle took so the api's /metrics
+    # can expose voltpilot_optimizer_cycle_seconds. Same --no-persist gate as
+    # the plan itself; the write below is best-effort and never sinks the cycle.
+    cycle_stats = None if args.no_persist else TimescaleCycleStatsRepository(dsn)
     horizon_slots = _resolve_horizon_slots(args, env)
+    started = time.monotonic()
     summary = run_cycle(
         dsn,
         repository,
@@ -228,7 +234,21 @@ def _run_one(args, env: dict[str, str]) -> None:
         v2_publisher=v2_publisher,
         v2_repository=v2_repository,
     )
+    duration = time.monotonic() - started
     print(summary.line())
+    if cycle_stats is not None:
+        try:
+            cycle_stats.record(CycleStat(
+                finished_at=datetime.now(timezone.utc),
+                duration_seconds=duration,
+                sites_planned=len(summary.planned),
+                sites_skipped=len(summary.skipped),
+                horizon_slots=horizon_slots,
+            ))
+        except Exception as exc:  # a monitoring write must never stop planning
+            logger.warning(
+                "cycle_stats.persist_failed", extra={"context": {"error": str(exc)}}
+            )
 
 
 def _what_if_handler(dsn: str, max_concurrent: int):

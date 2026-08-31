@@ -199,6 +199,12 @@
                              dieselbe @Scheduled-Falle - im Testlauf aus, in
                              PRODUKTION an (application.yml, matchIfMissing). -->
                         <voltpilot.metrics.consumer.enabled>false</voltpilot.metrics.consumer.enabled>
+                        <!-- Der Datenhaltungs-Metrik-Sammler (DbHealthMetrics,
+                             §6.3) ist dieselbe @Scheduled-Falle - im Testlauf
+                             aus, in PRODUKTION an (application.yml,
+                             matchIfMissing). Dass die Vorgabe AN ist, prueft
+                             DbHealthMetricsWiringTest an der echten application.yml. -->
+                        <voltpilot.metrics.db.enabled>false</voltpilot.metrics.db.enabled>
                         <!-- Der getaktete v2-Komposition-Abgleich ist dieselbe
                              @Scheduled-Falle - im Testlauf aus, in PRODUKTION an
                              (application.yml + matchIfMissing). Der Start-Lauf

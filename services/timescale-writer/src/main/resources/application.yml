@@ -49,13 +49,32 @@ voltpilot:
     # v2 entity telemetry (dual-consume next to v1; docs/contracts/v2).
     telemetry-v2-topic: ${REDPANDA_TELEMETRY_V2_TOPIC:telemetry-v2.raw}
     measurements-topic: ${REDPANDA_MEASUREMENTS_TOPIC:measurements.raw}
+  # Kafka-consumer-lag observability (com.voltpilot.writer.KafkaLagMetricsCollector,
+  # scout vp-scale-readiness-p4 §5.1/§6.3): the backlog of the telemetry consumer
+  # group per topic, so a store-and-forward replay burst is visible BEFORE the
+  # data goes stale. Same TIMER discipline as the api metrics; ON by default, kill
+  # switch VOLTPILOT_METRICS_KAFKA_LAG_ENABLED=false (also removes the scheduler
+  # thread pool and the AdminClient). Read via the AdminClient (committed offset
+  # to log end), robust to a stalled consumer - unlike the client-side records-lag.
+  metrics:
+    kafka-lag:
+      enabled: ${VOLTPILOT_METRICS_KAFKA_LAG_ENABLED:true}
+      interval-ms: ${VOLTPILOT_METRICS_KAFKA_LAG_INTERVAL_MS:60000}
+      initial-delay-ms: ${VOLTPILOT_METRICS_KAFKA_LAG_INITIAL_DELAY_MS:20000}
+      timeout: ${VOLTPILOT_METRICS_KAFKA_LAG_TIMEOUT:PT10S}
 
+# Actuator at the root: /health for the probes, /metrics for the Prometheus
+# scrape (the actuator endpoint id `prometheus`, remapped like the api). The
+# writer has no security starter, so /metrics answers anonymously - Prometheus
+# scrapes each pod on the pod network; the frontend nginx never proxies it.
 management:
   endpoints:
     web:
       base-path: /
       exposure:
-        include: health,info
+        include: health,info,prometheus
+      path-mapping:
+        prometheus: metrics
   endpoint:
     health:
       probes:

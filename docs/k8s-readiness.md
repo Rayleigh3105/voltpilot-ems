@@ -130,10 +130,13 @@ atomare Rename scheitert sonst mit EBUSY).
 
 ---
 
-## Metriken (Prometheus) — nur `api`
+## Metriken (Prometheus) — `api` + `timescale-writer`
 
-**Scrape:** `GET :8090/metrics`, **unauthentifiziert**, kein eigener
-Management-Port.
+**Scrape:** `GET :8090/metrics` (api) und `GET :8092/metrics` (writer),
+**unauthentifiziert**, je Pod, kein eigener Management-Port. Prometheus scrapt
+jeden Pod für sich; der Writer bekam seinen `/metrics`-Endpunkt für den
+Kafka-Consumer-Lag (siehe unten „`timescale-writer`: Kafka-Consumer-Lag").
+Alles Folgende beschreibt den api-Endpunkt, sofern nicht anders vermerkt.
 
 Drei Dinge daran sind bewusst so und nicht anders:
 
@@ -225,9 +228,105 @@ Zahl aus, fröre „Alter des Fahrplans" bei einem gesunden Wert ein, sobald der
 Sammler stirbt — und **jeder** Alarm verstummte still. So wächst es weiter: ein
 toter Sammler sieht aus wie ein toter Optimierer, die sichere Richtung.
 
-**Andere Dienste exponieren nichts.** Die Betriebs-Wahrheit sitzt bewusst im
-`api`: er läuft ohnehin, hat die Daten aggregiert und eine Actuator-Basis,
-während der Optimierer eine Takt-Schleife ist.
+### Datenhaltungs-Gesundheit (`DbHealthMetricsCollector`, Scout `vp-scale-readiness-p4` §6.3)
+
+Ein ZWEITER api-Sammler in derselben Registry (also auf demselben `/metrics`),
+eigener Schalter `VOLTPILOT_METRICS_DB_ENABLED=false`, Vorgabe AN, ebenfalls
+getaktet (60 s, nie pro Scrape). Er macht die Skalierungs-Befunde sichtbar,
+BEVOR sie den Kunden erreichen: die DB-Größe je Tabelle (der Auslöser für die
+Kaltarchiv-Entscheidung bei 0,5 TB), den Fehlstatus der Timescale-Jobs (ein
+still fehlschlagender `drop_chunks` fiele sonst erst am Diskstand auf) und die
+Dauer eines Optimierer-Zyklus (an der man das Kippen des 15-min-Takts sieht,
+bevor die Pläne veralten). Liest über die BYPASSRLS-Rolle `voltpilot_admin`.
+
+| Metrik | Labels | Bedeutung |
+|---|---|---|
+| `voltpilot_db_total_bytes` | `table` | Größe je Hypertable (`hypertable_size`). Die DB-Summe ist `sum(...)` — kein vorgerechnetes Total (verhindert Doppelzählung). |
+| `voltpilot_db_job_last_run_failed` | `job_id`, `proc` | 1 wenn der letzte Lauf eines Timescale-Jobs `Failed` war, sonst 0. **Fehlt, wenn der Job nie lief.** |
+| `voltpilot_db_job_total_failures` | `job_id`, `proc` | Kumulierte Fehlschläge eines Jobs (steigt auch nach Erholung). |
+| `voltpilot_optimizer_cycle_seconds` | – | Dauer des letzten Optimierer-Zyklus über alle Anlagen. **`NaN` bis zum ersten Zyklus.** |
+| `voltpilot_optimizer_cycle_sites_planned` | – | Anlagen, die der letzte Zyklus plante (Kontext für die Dauer). |
+| `voltpilot_optimizer_cycle_sites_skipped` | – | Anlagen, die er übersprang. |
+| `voltpilot_optimizer_cycle_age_seconds` | – | Sekunden seit dem Zyklus-Ende, beim Scrape gerechnet — wächst, wenn der Optimierer stirbt. `NaN` bis zum ersten Zyklus. |
+| `voltpilot_db_metrics_collect_age_seconds` | – | Sekunden seit dem letzten erfolgreichen Sammel-Lauf. |
+| `voltpilot_db_metrics_collect_duration_seconds` | – | Dauer des letzten Sammel-Laufs. |
+
+Drei Dinge, die man kennen muss:
+
+* **Der Optimierer-Zyklus wird PERSISTIERT, nicht gescrapt.** Der Optimierer
+  schreibt die Dauer am Ende jedes Zyklus in die Ein-Zeilen-Tabelle
+  `optimizer_cycle_stat` (api-Migration `V20260859000000`,
+  `voltpilot_optimization.cycle_stats`, best-effort — eine Monitoring-Schreibung
+  bricht nie einen Zyklus ab); der api-Sammler liest sie. So reitet der Wert auf
+  dem vorhandenen Metrik-Sammler, ohne einen zweiten `/metrics`-Endpunkt im
+  Python-Dienst.
+* **Der TimescaleDB-Nutzungs-Reporter (`policy_telemetry`) wird AUSGEBLENDET.**
+  Er ruft bei TimescaleDB zu Hause an und steht ohne Internet — in Produktion der
+  Normalfall — auf `Failed`; ihn zu melden wäre ein Dauerfehlalarm. Jeder ANDERE
+  Job (Retention, Kompression, Rollup-Refresh) wird gemeldet.
+* **Ehrlichkeit wie beim Flotten-Sammler:** ein nie gelaufener Job bekommt keine
+  `last_run_failed`-Zeile (kein erfundenes 0 = „erfolgreich"), und die
+  Optimierer-Zyklus-Metriken sind `NaN`, solange kein Zyklus vorliegt (eine
+  Schwellwert-Regel `> N` feuert auf `NaN` nicht). `hypertable_size` und
+  `job_stats` sind der NOSUPERUSER-Admin-Rolle für ALLE Hypertables/Jobs sichtbar
+  (empirisch belegt), also zählt die 0,5-TB-Summe nichts unter.
+
+Kosten: `DbHealthMetricsDbTest` misst einen Sammel-Lauf **~230 ms** (frische DB;
+wächst mit der Chunk-Zahl wie der Flotten-Sammler, bleibt weit unter dem
+60-s-Takt). Beweise: `DbHealthMetricsScrapeTest` (Vertrag aus dem Scrape-Rumpf,
+Ausblendung, Ehrlichkeit) · `DbHealthMetricsDbTest` (echte TimescaleDB) ·
+`DbHealthMetricsWiringTest` (Spring-Verdrahtung + ausgelieferte Vorgabe AN).
+
+Alarm-Regeln dafür (aggregiert schreiben, wie oben):
+
+```promql
+# DB-Gesamtgröße nähert sich der Kaltarchiv-Schwelle (E3, 0,5 TB)
+sum(voltpilot_db_total_bytes) > 0.5e12
+
+# Ein Timescale-Pflege-Job (Retention/Kompression/Refresh) schlägt fehl
+max by (job_id, proc) (voltpilot_db_job_last_run_failed) == 1
+
+# Der Optimierer-Zyklus nähert sich dem 15-min-Takt (kippt gleich)
+max(voltpilot_optimizer_cycle_seconds) > 600
+
+# Der Optimierer schreibt keinen Zyklus mehr (dead-man)
+max(voltpilot_optimizer_cycle_age_seconds) > 1800
+```
+
+### `timescale-writer`: Kafka-Consumer-Lag (`KafkaLagMetricsCollector`, §5.1/§6.3)
+
+**Scrape:** `GET :8092/metrics` (der Writer hat keine Security-Starter, also
+anonym; nur im Pod-Netz). Der Writer IST der Konsument von `telemetry.raw`, also
+gehört die Lag-Metrik zu ihm. Schalter `VOLTPILOT_METRICS_KAFKA_LAG_ENABLED=false`,
+Vorgabe AN, getaktet (60 s).
+
+| Metrik | Labels | Bedeutung |
+|---|---|---|
+| `voltpilot_kafka_consumer_lag` | `group`, `topic` | Rückstand der Consumer-Gruppe je Topic (committeter Offset bis Log-Ende). Der Gruppen-Gesamt-Lag ist `sum(...)`. |
+| `voltpilot_kafka_consumer_lag_collect_age_seconds` | – | Sekunden seit dem letzten erfolgreichen Lag-Poll; wächst, wenn der Broker nicht erreichbar ist. |
+
+Der Lag kommt aus dem **AdminClient** (committeter Offset der Gruppe gegen das
+Log-Ende), nicht aus der client-seitigen `records-lag` des Konsumenten: die
+verschwindet, sobald der Konsument nicht mehr fetcht — also genau dann, wenn er
+hängt oder tot ist, der Fall, den man am dringendsten sehen will. Der
+AdminClient-Blick zeigt den Rückstau auch dann, weil der committete Offset in der
+Gruppe stehenbleibt. Ehrlichkeit: eine nie konsumierte Gruppe bekommt keine
+Lag-Zeile (kein erfundenes 0), eine gemessene 0 (Writer aufgeholt) ist ein Fakt.
+Beweise: `KafkaConsumerLagScrapeTest` (Regeln + Vertrag) · `KafkaLagProbeTest`
+(echtes Redpanda: committet gegen Log-Ende) · `KafkaLagMetricsWiringTest`.
+
+```promql
+# Writer-Rückstau (Store-and-forward-Replay-Burst, §5.1)
+sum(voltpilot_kafka_consumer_lag{group="timescale-writer"}) > 100000
+
+# Der Lag-Poll steht (Broker unerreichbar) - dead-man
+max(voltpilot_kafka_consumer_lag_collect_age_seconds) > 300
+```
+
+**Sonst exponieren die Dienste nichts.** Die übrige Betriebs-Wahrheit sitzt
+bewusst im `api` (er läuft ohnehin, hat die Daten aggregiert und eine
+Actuator-Basis); der Writer bekam `/metrics` nur, weil der Kafka-Lag zum
+Konsumenten gehört.
 
 ---
 
