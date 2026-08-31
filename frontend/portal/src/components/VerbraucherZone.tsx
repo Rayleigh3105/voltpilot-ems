@@ -9,13 +9,14 @@
  * als Kopf und der Anlagen-Standard-Zeile, **Weitere Verbraucher**, und am Ende
  * die **Rangliste** als ausklappbare Karte.
  *
- * **⚠ Die ZEILE ist weiterhin lesend.** Sie öffnet noch keinen
- * Steuerart-Dialog (das ist P2), und statt eines toten Klicks steht der Weg da,
- * auf dem die Steuerart HEUTE eingestellt wird — die Haus-Regel „eine Handlung,
- * die strukturell nichts bewirken kann, wird nicht angeboten; stattdessen steht
- * ihr Grund da". Der Sprung „N Regeln →" ist dagegen echt: er führt gefiltert
- * in die Regel-Kapsel — und die RANGLISTE ist seit Paket P4 bedienbar
- * (`RanglisteKarte`).
+ * **⚠ Seit P2 ÖFFNET die Zeile den Steuerart-Dialog** — aber nur, wo der
+ * Server sie als schreibbar meldet (`optionen.schreibbar`). Wo nicht (die
+ * OCPP-Säule bis Paket P5, oder ein älteres Backend ohne das Feld), bleibt sie
+ * lesend und nennt den WEG, den es wirklich gibt — die Haus-Regel „eine
+ * Handlung, die strukturell nichts bewirken kann, wird nicht angeboten;
+ * stattdessen steht ihr Grund da". Der Sprung „N Regeln →" ist unverändert
+ * echt: er führt gefiltert in die Regel-Kapsel — und die RANGLISTE ist seit
+ * Paket P4 bedienbar (`RanglisteKarte`).
  */
 import { useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
@@ -54,11 +55,13 @@ export interface VerbraucherZoneProps {
    * nicht angeboten.
    */
   onRangliste?: (rumpf: { art: string; entityId?: string }[]) => Promise<void>;
+  /** Klick auf eine SCHREIBBARE Zeile: der Steuerart-Dialog (P2). */
+  onSteuerart?: (entityId: string) => void;
 }
 
-export function VerbraucherZone(
-  { daten, onRegeln, onEinstellungen, onRangliste }: VerbraucherZoneProps,
-) {
+export function VerbraucherZone({
+  daten, onRegeln, onEinstellungen, onRangliste, onSteuerart,
+}: VerbraucherZoneProps) {
   const v: ZoneView = zoneView(daten);
   const [suche, setSuche] = useState('');
   const [ranglisteOffen, setRanglisteOffen] = useState(false);
@@ -72,8 +75,8 @@ export function VerbraucherZone(
   // Standards werden zusammengeklappt und GEZÄHLT, nie verschwiegen.
   const ladepunkte = gefiltert(v.ladepunkte);
   const klappen = v.ladepunkte.length >= v.klappenAb && !suche.trim();
-  const folger = klappen ? ladepunkte.filter((z) => z.chip === 'Standard') : [];
-  const offen = klappen ? ladepunkte.filter((z) => z.chip !== 'Standard') : ladepunkte;
+  const folger = klappen ? ladepunkte.filter((z) => z.folgtStandard) : [];
+  const offen = klappen ? ladepunkte.filter((z) => !z.folgtStandard) : ladepunkte;
 
   return (
     <section className="vp-capsule vp-verbraucherzone" aria-label={ZONE_TITEL}>
@@ -141,7 +144,7 @@ export function VerbraucherZone(
 
             <ul className="vp-vz-rows">
               {offen.map((z) => (
-                <Zeile key={z.entityId} z={z} onRegeln={onRegeln} />
+                <Zeile key={z.entityId} z={z} onRegeln={onRegeln} onSteuerart={onSteuerart} />
               ))}
             </ul>
 
@@ -159,14 +162,23 @@ export function VerbraucherZone(
                 {standardOffen && (
                   <ul className="vp-vz-rows">
                     {folger.map((z) => (
-                      <Zeile key={z.entityId} z={z} onRegeln={onRegeln} />
+                      <Zeile
+                        key={z.entityId}
+                        z={z}
+                        onRegeln={onRegeln}
+                        onSteuerart={onSteuerart}
+                      />
                     ))}
                   </ul>
                 )}
               </>
             )}
 
-            <p className="vp-vz-quiet">{WEG_LADEPUNKT}</p>
+            {/* ⚠ Der Weg steht nur da, wo die Zeile NICHT schreibbar ist -
+                sonst wäre er ein Hinweis auf einen Umweg, den es nicht mehr
+                braucht. */}
+            {v.ladepunkte.some((z) => !z.schreibbar)
+              && <p className="vp-vz-quiet">{WEG_LADEPUNKT}</p>}
           </>
         )}
 
@@ -175,10 +187,11 @@ export function VerbraucherZone(
             <h4 className="vp-vz-sec">{ABSCHNITT_WEITERE}</h4>
             <ul className="vp-vz-rows">
               {v.weitere.map((z) => (
-                <Zeile key={z.entityId} z={z} onRegeln={onRegeln} />
+                <Zeile key={z.entityId} z={z} onRegeln={onRegeln} onSteuerart={onSteuerart} />
               ))}
             </ul>
-            <p className="vp-vz-quiet">{WEG_VERBRAUCHER}</p>
+            {v.weitere.some((z) => !z.schreibbar)
+              && <p className="vp-vz-quiet">{WEG_VERBRAUCHER}</p>}
           </>
         )}
 
@@ -206,31 +219,57 @@ export function VerbraucherZone(
   );
 }
 
-function Zeile({ z, onRegeln }: { z: ZeilenView; onRegeln: (entityId: string) => void }) {
+function Zeile({ z, onRegeln, onSteuerart }: {
+  z: ZeilenView;
+  onRegeln: (entityId: string) => void;
+  onSteuerart?: (entityId: string) => void;
+}) {
+  const oeffnen = z.schreibbar && onSteuerart ? () => onSteuerart(z.entityId) : null;
+  const inhalt = (
+    <>
+      <span className="vp-vz-name">
+        {z.name}
+        {z.chip && (
+          <span className={`vp-vz-chip ${z.chip === 'Standard' ? 'std' : 'abw'}`}>{z.chip}</span>
+        )}
+      </span>
+      <span className="vp-vz-chips">
+        <span className={`vp-vz-chip ${z.eigeneRegel ? 'own' : 'src'}`}>{z.quelle}</span>
+        {z.ziel && <span className="vp-vz-chip due">{z.ziel}</span>}
+      </span>
+    </>
+  );
   return (
     <li className="vp-vz-row">
-      <span className="vp-vz-text">
-        <span className="vp-vz-name">
-          {z.name}
-          {z.chip && (
-            <span className={`vp-vz-chip ${z.chip === 'Standard' ? 'std' : 'abw'}`}>{z.chip}</span>
+      {/* ⚠ Die Steuerart und der Regel-Sprung sind ZWEI Ziele - deshalb ist
+          die Zeile kein Knopf um alles herum, sondern trägt zwei getrennte
+          Bedienelemente (ein Klickziel in einem anderen ist die
+          Doppeldeutigkeit, die das Haus verbietet). */}
+      {oeffnen ? (
+        <button type="button" className="vp-vz-text is-klick" onClick={oeffnen}>
+          {inhalt}
+          <Icon name="chevron-right" size={16} />
+        </button>
+      ) : (
+        <span className="vp-vz-text">
+          {inhalt}
+          {z.nichtSchreibbarGrund && (
+            <span className="vp-vz-sub">{z.nichtSchreibbarGrund}</span>
           )}
         </span>
-        <span className="vp-vz-chips">
-          <span className={`vp-vz-chip ${z.eigeneRegel ? 'own' : 'src'}`}>{z.quelle}</span>
-          {z.ziel && <span className="vp-vz-chip due">{z.ziel}</span>}
-          {z.regeln ? (
-            <button
-              type="button"
-              className="vp-vz-chip rule"
-              onClick={() => onRegeln(z.entityId)}
-            >
-              {z.regeln}
-            </button>
-          ) : (
-            <span className="vp-vz-sub">{OHNE_REGEL}</span>
-          )}
-        </span>
+      )}
+      <span className="vp-vz-chips">
+        {z.regeln ? (
+          <button
+            type="button"
+            className="vp-vz-chip rule"
+            onClick={() => onRegeln(z.entityId)}
+          >
+            {z.regeln}
+          </button>
+        ) : (
+          <span className="vp-vz-sub">{OHNE_REGEL}</span>
+        )}
       </span>
     </li>
   );

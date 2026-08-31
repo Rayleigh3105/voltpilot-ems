@@ -14,6 +14,7 @@
  * ohne Zahl traegt keine.
  */
 import { POLICY_LABEL, kwText } from './ladepunkte';
+import type { SteuerartOptionen } from './steuerartDialog';
 
 // ---------------------------------------------------------------------------
 // Der Vertrag (die Form der Antwort)
@@ -80,6 +81,12 @@ export interface VerbraucherEintrag {
   regeln: number;
   fortschritt?: VerbraucherFortschritt | null;
   aktiv?: boolean | null;
+  /**
+   * Was hier WÄHLBAR ist (P2) — vom Server, nie abgeleitet. Ein älteres
+   * Backend schickt das Feld nicht; dann bleibt die Zeile lesend, genau wie
+   * in P1.
+   */
+  optionen?: SteuerartOptionen | null;
 }
 
 export interface LadeparkRahmen {
@@ -328,8 +335,23 @@ export interface ZeilenView {
   /** Der Anzeigename — nie leer: ohne Namen steht der Typ da. */
   name: string;
   ladepunkt: boolean;
-  /** „Standard" / „abweichend"; null fuer alles, was kein Ladepunkt ist. */
+  /**
+   * „Standard" / „abweichend" — nur an einer OCPP-SÄULE.
+   *
+   * **⚠ Eine go-e/Modbus-Wallbox bekommt KEINEN Chip.** Sie ist für den Kunden
+   * ein Ladepunkt, folgt dem Anlagen-Standard aber gar nicht: ihre Quelle ist
+   * eine Policy, nicht die Quellen-Bahn der Box (der Standard erreicht sie erst
+   * mit Paket P6). „abweichend" über ihr behauptete eine Abweichung von etwas,
+   * das für sie nie galt — im Browser aufgefallen, nicht im Unit-Test.
+   */
   chip: string | null;
+  /**
+   * Folgt diese Zeile dem Anlagen-Standard? Die Klapp-Regel (§6.4) hängt
+   * daran und NICHT am Chip-Text: eine Fläche, die auf ein Anzeige-Wort
+   * schlüsselt, bricht, sobald das Wort sich ändert (genau so passiert, als
+   * die go-e ihren Chip verlor).
+   */
+  folgtStandard: boolean;
   quelle: string;
   ziel: string | null;
   /** „2 Regeln →"; null = ohne Regel (dann rendert die Flaeche `OHNE_REGEL`). */
@@ -338,6 +360,14 @@ export interface ZeilenView {
   regelZahl: number;
   /** Die Steuerart ist nicht abbildbar: die Zeile fuehrt in den Baukasten. */
   eigeneRegel: boolean;
+  /**
+   * Ob der Steuerart-Dialog hier etwas bewirken kann (P2). Der SERVER sagt es
+   * (`optionen.schreibbar`); ein älteres Backend schickt das Feld nicht, dann
+   * bleibt die Zeile lesend wie in P1 — nie ein Klick ins Leere.
+   */
+  schreibbar: boolean;
+  /** Der Grund, wenn sie es nicht ist — nie eine stumme Sperre. */
+  nichtSchreibbarGrund: string | null;
 }
 
 /** Der Name einer Zeile: der vergebene, sonst der Typ (nie leer, nie „null"). */
@@ -353,13 +383,17 @@ export function zeile(e: VerbraucherEintrag): ZeilenView {
     entityId: e.entityId,
     name: zeilenName(e),
     ladepunkt: e.ladepunkt,
-    chip: e.ladepunkt ? (e.steuerart?.herkunft === 'standard' ? CHIP_STANDARD : CHIP_ABWEICHEND)
+    chip: e.ladepunkt && e.chargePointId
+      ? (e.steuerart?.herkunft === 'standard' ? CHIP_STANDARD : CHIP_ABWEICHEND)
       : null,
+    folgtStandard: e.steuerart?.herkunft === 'standard',
     quelle: quelleChip(e.steuerart),
     ziel: zielChip(e.steuerart, e.fortschritt),
     regeln: regelnChip(e.regeln),
     regelZahl: e.regeln,
     eigeneRegel,
+    schreibbar: e.optionen?.schreibbar === true,
+    nichtSchreibbarGrund: (e.optionen?.nichtSchreibbarGrund ?? '').trim() || null,
   };
 }
 

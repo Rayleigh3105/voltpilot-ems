@@ -623,6 +623,84 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     ).toContain('Heizstab zuerst · 2 Einträge'));
   });
 
+  it('P2: eine SCHREIBBARE Zeile öffnet den Steuerart-Dialog und speichert', async () => {
+    setup();
+    vi.spyOn(api, 'siteVerbraucher').mockResolvedValue({
+      verbraucher: [{
+        entityId: 'e-hz',
+        name: 'Heizstab Keller',
+        typ: 'heating-rod',
+        typLabel: 'Heizstab',
+        ladepunkt: false,
+        steuerart: { quelle: 'eigene_regel', herkunft: 'policy' },
+        regeln: 0,
+        optionen: {
+          schreibbar: true,
+          quellen: [
+            { id: 'ueberschuss', gesperrt: false },
+            { id: 'feste_zeiten', gesperrt: false },
+            { id: 'sofort', gesperrt: false },
+          ],
+          ziele: [],
+          vorgaben: {
+            schwelleKw: 3, mindestlaufzeitMinuten: 10, zielFensterStunden: 12,
+            fenster: { tage: 'daily', von: '13:00', bis: '14:00' },
+          },
+        },
+      }],
+      ladepunkte: { standard: null, standardFolger: 0, gesamt: 0, rahmen: null },
+      rangliste: [],
+    } as never);
+    const setzen = vi.spyOn(api, 'setzeSteuerart').mockResolvedValue({
+      steuerart: { quelle: 'ueberschuss', herkunft: 'policy', schwelleKw: 3 },
+      aktiv: true,
+    } as never);
+    render(<SteuerungSection site={site} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Heizstab Keller/ }));
+    const dialog = await screen.findByRole('dialog', { name: /Steuerart/ });
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Solar-Überschuss/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Weiter' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Weiter' }));
+    // Die Folgen-Karte steht VOR dem Speichern — immer.
+    expect(within(dialog).getByRole('heading', { name: 'Das passiert jetzt' }))
+      .toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }));
+
+    await waitFor(() => expect(setzen).toHaveBeenCalledWith('s-1', 'e-hz', {
+      quelle: 'ueberschuss', schwelleKw: 3, mindestlaufzeitMinuten: 10,
+    }));
+  });
+
+  it('P2: eine NICHT schreibbare Zeile ist kein Knopf und nennt ihren Grund', async () => {
+    setup();
+    vi.spyOn(api, 'siteVerbraucher').mockResolvedValue({
+      verbraucher: [{
+        entityId: 'e-cp',
+        name: 'Stellplatz 1',
+        typ: 'ev-charger',
+        typLabel: 'Ladepunkt',
+        ladepunkt: true,
+        steuerart: { quelle: 'sofort', herkunft: 'standard' },
+        regeln: 0,
+        optionen: {
+          schreibbar: false,
+          nichtSchreibbarGrund: 'Die Steuerart einer OCPP-Ladesäule stellen Sie zurzeit im '
+            + 'Ladepark ein.',
+          quellen: [], ziele: [], vorgaben: {},
+        },
+      }],
+      ladepunkte: { standard: null, standardFolger: 0, gesamt: 1, rahmen: null },
+      rangliste: [],
+    } as never);
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Verbraucher' })).toBeInTheDocument());
+    // Kein Klick ins Leere - stattdessen steht der WEG da.
+    expect(screen.queryByRole('button', { name: /Stellplatz 1/ })).toBeNull();
+    expect(screen.getByText(/im Ladepark ein\./)).toBeInTheDocument();
+  });
+
   it('nennt den Speicher „Speicher“, nie seine UUID', async () => {
     // ⚠ `flowApi.entities()` faellt fuer ein LABEL-loses Messobjekt auf seine Id
     // zurueck (der Flow-Editor braucht dort einen adressierbaren Schluessel) -
@@ -713,7 +791,7 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     expect(dialog.textContent ?? '').not.toContain('Node-RED');
   });
 
-  it('die Rezepte sind STARTPUNKTE im Baukasten - und der vertagte fehlt, gezählt', async () => {
+  it('der Regel-Einstieg ist nur noch der Wenn/Dann-Baukasten (P2)', async () => {
     setup();
     render(<SteuerungSection site={site} />);
     await waitFor(() =>
@@ -722,12 +800,17 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Womit anfangen?');
-    // Die vier Verbraucher-Absichten plus der Speicher-Schutz sind Startpunkte.
-    expect(dialog).toHaveTextContent('PV-Überschuss nutzen');
-    expect(dialog).toHaveTextContent('Feste Zeiten');
-    expect(dialog).toHaveTextContent('Günstige Stunden nutzen');
-    expect(dialog).toHaveTextContent('Bis zu einer Frist erledigen');
+    // ⚠ Verbrauchsmanagement v1 P2: die VIER Verbraucher-Absichten sind hier
+    // ERSATZLOS weg - sie SIND die Steuerart und werden in der
+    // Verbraucher-Zone gewählt (Konzept §6.1). Übrig bleibt der Wenn/Dann-
+    // Baukasten mit seinem einen Startpunkt.
+    expect(dialog.textContent ?? '').not.toContain('PV-Überschuss nutzen');
+    expect(dialog.textContent ?? '').not.toContain('Günstige Stunden nutzen');
+    expect(dialog.textContent ?? '').not.toContain('Bis zu einer Frist erledigen');
     expect(dialog).toHaveTextContent('Speicher schützen');
+    // Sie fehlen nicht, sie sind UMGEZOGEN - und der Weg steht da.
+    expect(dialog).toHaveTextContent(/unter „Verbraucher" ein/);
+    expect(dialog).toHaveTextContent(/Eine Regel ist die Ausnahme davon/);
     // „Sag mir Bescheid" ist KEINE Einladung mehr (der Zustellweg fehlt) -
     // aber es wird gezählt, nie verschwiegen.
     expect(dialog.textContent ?? '').not.toContain('Sag mir Bescheid');
@@ -988,7 +1071,7 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     expect(within(drawer).getByText('v2 aktiv · v1')).toBeInTheDocument();
   });
 
-  it('ein Rezept öffnet den Regelbaukasten, statt einen Flow zu erzeugen (D7)', async () => {
+  it('die vier Verbraucher-Absichten sind als Startpunkt weg - der Weg steht da (P2)', async () => {
     const bound = setup();
     cList.mockResolvedValue([{ ...CONSUMER, hasDraftPolicy: false, controlActivation: 'not_activated' }]);
     render(<SteuerungSection site={site} />);
@@ -997,11 +1080,11 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     fireEvent.click(screen.getByRole('button', { name: /Neue Regel/ }));
 
     const dialog = await screen.findByRole('dialog');
-    // Stufe 2: der Startpunkt ist ein Knopf IM Baukasten, keine Galerie-Karte.
-    fireEvent.click(within(dialog).getByRole('button', { name: /Feste Zeiten/ }));
-
-    expect(await screen.findByText(/Regel für Wallbox Garage/)).toBeInTheDocument();
-    // Auf diesem Weg entsteht KEIN Flow.
+    // ⚠ „Feste Zeiten" als Startpunkt EINER REGEL gibt es nicht mehr - sie ist
+    // eine Steuerart. Statt einer fehlenden Karte steht der Weg dorthin.
+    expect(within(dialog).queryByRole('button', { name: /Feste Zeiten/ })).toBeNull();
+    expect(dialog).toHaveTextContent(/unter „Verbraucher" ein/);
+    // Und es entsteht auf keinem dieser Wege ein Flow.
     expect(bound.create).not.toHaveBeenCalled();
   });
   it('„Speicher schützen" FÜLLT den Baukasten vor, statt eine Regel zu erzeugen', async () => {

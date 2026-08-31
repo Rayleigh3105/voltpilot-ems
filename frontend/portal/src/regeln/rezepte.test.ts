@@ -16,6 +16,7 @@ import {
   speicherEntity,
   speicherSchutzRegel,
   vorbelegungen,
+  STEUERART_STATT_REZEPT,
 } from './rezepte';
 
 const WALLBOX: EditorEntity = {
@@ -116,13 +117,22 @@ describe('Die Rezepte (5b.4) - seit Stufe 2 die Vorbelegungen', () => {
 describe('Die VORBELEGUNGEN sind Einladungen — nie ein toter Knopf (Stufe 2)', () => {
   it('bietet auf einer vollständigen Anlage jeden nutzbaren Startpunkt an', () => {
     const v = vorbelegungen({ entities: [WALLBOX, SPEICHER, ZAEHLER] });
-    expect(v.liste.map((r) => r.id)).toEqual([
-      'pv-surplus-consumer', 'schedule-consumer', 'price-consumer',
-      'deadline-consumer', 'storage-protect',
-    ]);
+    // ⚠ Seit Verbrauchsmanagement v1 P2 sind die VIER Verbraucher-Absichten
+    // keine Startpunkte einer REGEL mehr — sie SIND die Steuerart und werden
+    // in der Verbraucher-Zone gewählt. Übrig bleibt der Wenn/Dann-Baukasten.
+    expect(v.liste.map((r) => r.id)).toEqual(['storage-protect']);
     expect(v.brauchtKomponente).toBe(false);
     // „Sag mir Bescheid" fehlt, wird aber GEZÄHLT — verschwiegen wird nichts.
     expect(v.hinweis).toBe('1 weiterer Startpunkt passt nicht zu Ihrer Anlage.');
+  });
+
+  it('nennt den WEG zur Steuerart, statt die vier Absichten spurlos zu streichen', () => {
+    expect(STEUERART_STATT_REZEPT).toContain('Verbraucher');
+    expect(STEUERART_STATT_REZEPT).toContain('Ausnahme');
+    // Die REZEPTE selbst bleiben — sie befüllen weiterhin den Editor einer
+    // bestehenden „Eigene Regel"-Policy vor.
+    expect(rezept('pv-surplus-consumer')).not.toBeNull();
+    expect(rezeptPrefill('pv-surplus-consumer')).not.toBeNull();
   });
 
   it('lässt einen Startpunkt weg, den diese Anlage nicht bauen kann', () => {
@@ -136,7 +146,7 @@ describe('Die VORBELEGUNGEN sind Einladungen — nie ein toter Knopf (Stufe 2)',
     const v = vorbelegungen({ entities: [SPEICHER, ZAEHLER] });
     expect(v.liste).toHaveLength(0);
     expect(v.brauchtKomponente).toBe(true);
-    expect(v.hinweis).toContain('6 weitere Startpunkte');
+    expect(v.hinweis).toContain('2 weitere Startpunkte');
   });
 
   it('behauptet KEINEN gemeinsamen Grund, wenn die Übersprungenen verschiedene haben', () => {

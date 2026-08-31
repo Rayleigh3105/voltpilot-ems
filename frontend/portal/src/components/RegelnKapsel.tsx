@@ -36,6 +36,7 @@ import { RegelDrawer } from './RegelDrawer';
 import { ConfirmDialog } from './ConfirmDialog';
 import { RegelKarteView } from './RegelKarten';
 import { RegelProtokoll } from './RegelProtokoll';
+import type { SteuerartWunsch } from '../steuerartDialog';
 import { VorschlagsKarten } from './VorschlagsKarten';
 import { VerbraucherAnlegenDrawer, VerbraucherRegelDrawer } from './VerbraucherDrawers';
 import { consumersApi } from '../consumers/consumersApi';
@@ -127,6 +128,7 @@ export function RegelnKapsel({
   onBuiltFlow,
   onEditedFlow,
   onOpenEditor,
+  onSteuerart,
 }: {
   site: Site;
   flows: FlowSummary[];
@@ -145,6 +147,11 @@ export function RegelnKapsel({
   /** Eine BESTEHENDE Regel wurde im Baukasten überarbeitet. */
   onEditedFlow: (flowId: string, version: number, name: string, doc: FlowDocument) => void;
   onOpenEditor: () => void;
+  /**
+   * „Übernehmen" eines Vorschlags öffnet den STEUERART-Dialog vorbefüllt (P2).
+   * Fehlt der Wirt, bleibt der alte Weg (Regel-Baukasten) - nie ein toter Knopf.
+   */
+  onSteuerart?: (entityId: string, wunsch: SteuerartWunsch) => void;
 }) {
   const [options, setOptions] = useState<ConsumerOptions | null>(null);
   const [consumers, setConsumers] = useState<Consumer[]>([]);
@@ -433,16 +440,30 @@ export function RegelnKapsel({
   }), [slots, consumers, strategies, eingriffe, stumm]);
 
   /**
-   * „Übernehmen" öffnet den BESTEHENDEN Regel-Baukasten vorbefüllt - es
-   * entsteht dabei KEINE Regel. Erst im Baukasten, hinter der Folgen-Karte,
-   * wird daraus eine; genau das meint „Vorschlag vor Regel".
+   * „Übernehmen" zielt seit Verbrauchsmanagement v1 P2 auf die STEUERART
+   * (Konzept §6.1) statt auf eine Regel: ein Vorschlag sagt, WIE ein Gerät
+   * grundsätzlich laufen soll — und genau das ist die Steuerart, nicht die
+   * Ausnahme davon.
+   *
+   * ⚠ Er SETZT sie nicht sofort. Der Steuerart-Dialog öffnet vorbefüllt auf
+   * seiner FOLGEN-Karte: die Haus-Regel „die Folgen-Karte steht IMMER vor der
+   * Aktivierung" gilt auch hier, und mit „Zurück" ist jede Antwort noch
+   * änderbar (das ist zugleich das „Anpassen" des Konzepts — ein eigener
+   * vierter Knopf daneben führte auf dieselbe Fläche).
+   *
+   * Ohne den Wirt (ein älterer Aufrufer ohne `onSteuerart`) bleibt der alte
+   * Weg: der Regel-Baukasten vorbefüllt - nie ein toter Knopf.
    */
   const uebernehmen = useCallback((v: Vorschlag) => {
     const c = consumers.find((x) => x.id === v.komponenteId);
     if (!c) return;
+    if (onSteuerart) {
+      onSteuerart(v.komponenteId, v.steuerart);
+      return;
+    }
     setRulePrefill(v.prefill);
     setRuleFor(c);
-  }, [consumers]);
+  }, [consumers, onSteuerart]);
 
   /**
    * „Später"/„Ablehnen". Die Karte verschwindet SOFORT (der Kunde hat

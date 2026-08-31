@@ -258,6 +258,27 @@ public class FlowService {
      * foreign site 404). Keyed by entity id (string).
      */
     public Map<String, List<EntityStrategyDto>> entityStrategies(UUID siteId) {
+        return entityStrategies(siteId, true);
+    }
+
+    /**
+     * Dieselbe Liste, wahlweise OHNE die GENERIERTEN Verbraucher-Flows.
+     *
+     * <p><b>⚠ Ein generierter Verbraucher-Flow IST die Steuerart, nicht eine
+     * Regel daneben</b> (Verbrauchsmanagement v1 P2). Die Zeile der
+     * Verbraucher-Zone zaehlt „N Regeln" als das, was ZUSAETZLICH zur Steuerart
+     * greift; zaehlte sie ihn mit, behauptete jede frisch gesetzte Steuerart
+     * mit lokalem Signal „1 Regel" ueber sich selbst - im Browser aufgefallen.
+     * Der V-5-Konflikt-Hinweis und die Geraete-Chips brauchen dagegen die
+     * VOLLE Menge (dort ist er ein echter Anspruch), also bleibt die
+     * argumentlose Fassung unveraendert.
+     *
+     * <p>Erkannt wird er am gestempelten {@code origin.kind} (D-19) - dem
+     * Marker, den die Save-API keinem Kunden-Dokument durchgehen laesst; eine
+     * Namens- oder Typ-Heuristik waere geraten.
+     */
+    public Map<String, List<EntityStrategyDto>> entityStrategies(UUID siteId,
+            boolean mitGenerierten) {
         requireSite(siteId);
         // Der Zeitpunkt kommt aus der materialisierten Beanspruchung, die
         // Zuordnung weiterhin aus dem Dokument - so bleibt die Liste dieselbe
@@ -277,6 +298,9 @@ public class FlowService {
             }
             JsonNode doc = parse(row.documentJson());
             if (doc == null) {
+                continue;
+            }
+            if (!mitGenerierten && !doc.path("origin").path("kind").asText("").isBlank()) {
                 continue;
             }
             Set<String> entityIds = new LinkedHashSet<>();

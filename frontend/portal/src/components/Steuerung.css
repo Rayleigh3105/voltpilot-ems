@@ -1072,3 +1072,19 @@
   align-items: center;
   justify-content: center;
 }
+
+/*
+ * Der Erstbesuch-Hinweis der Verbraucher-Zone (Verbrauchsmanagement v1 P2,
+ * §7.4). Er teilt sich die Schale mit dem Zonen-Erklärkasten und bringt nur
+ * seine zwei eigenen Flächen mit: die Aufzählungs-Zeilen (mit ihrem ruhigen
+ * Herkunfts-Zusatz) und die zwei Schluss-Sätze darunter.
+ */
+.vp-steuerung-intro-list li > small {
+  color: var(--vp-text-muted, #6b7893);
+}
+
+.vp-steuerung-intro-rang {
+  margin: var(--vp-space-2) 0 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}

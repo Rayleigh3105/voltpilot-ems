@@ -32,6 +32,7 @@ function eintrag(over: Partial<VerbraucherEintrag> = {}): VerbraucherEintrag {
     typ: 'ev-charger',
     typLabel: 'Ladepunkt',
     ladepunkt: true,
+    chargePointId: 'CP1',
     steuerart: steuerart(),
     regeln: 0,
     ...over,
@@ -130,13 +131,22 @@ describe('Der Ziel-Chip', () => {
 });
 
 describe('Die Zeile', () => {
-  it('trägt „Standard" bzw. „abweichend" NUR an einem Ladepunkt', () => {
+  it('trägt „Standard" bzw. „abweichend" NUR an einer OCPP-SÄULE', () => {
     expect(zeile(eintrag({ steuerart: steuerart({ herkunft: 'standard' }) })).chip)
       .toBe(CHIP_STANDARD);
     expect(zeile(eintrag({ steuerart: steuerart({ herkunft: 'policy' }) })).chip)
       .toBe(CHIP_ABWEICHEND);
     expect(zeile(eintrag({ ladepunkt: false, typ: 'heating-rod', typLabel: 'Heizstab' })).chip)
       .toBeNull();
+    // ⚠ Eine go-e/Modbus-Wallbox ist für den Kunden ein Ladepunkt, folgt dem
+    // Anlagen-Standard aber gar nicht (ihre Quelle ist eine Policy, nicht die
+    // Quellen-Bahn der Box - der Standard erreicht sie erst mit P6).
+    // „abweichend" über ihr behauptete eine Abweichung von etwas, das für sie
+    // nie galt - im Browser aufgefallen, nicht im Unit-Test.
+    expect(zeile(eintrag({
+      typ: 'wallbox', typLabel: 'Wallbox', chargePointId: null,
+      steuerart: steuerart({ herkunft: 'ohne' }),
+    })).chip).toBeNull();
   });
 
   it('zählt die Regeln und lässt „Ohne Regel" der Fläche', () => {

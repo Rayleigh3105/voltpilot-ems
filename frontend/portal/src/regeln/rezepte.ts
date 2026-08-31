@@ -216,7 +216,18 @@ export const VORBELEGUNG_FRAGE = 'Womit anfangen?';
  */
 export function vorbelegungen(ctx: RezeptKontext): VorbelegungenView {
   const eingabe = { entities: ctx.entities ?? [], topology: ctx.topology ?? null };
-  const nutzbar = REZEPTE.filter((r) => r.maschine !== 'bald');
+  // ⚠ Seit Verbrauchsmanagement v1 P2 sind die vier VERBRAUCHER-Absichten
+  // (Überschuss · Feste Zeiten · Günstig · Frist) keine Startpunkte einer REGEL
+  // mehr — sie SIND die Steuerart und werden in der Verbraucher-Zone gewählt
+  // (Konzept `vp-verbrauchsmgmt-konzept-v1` §6.1: „＋ Neue Regel" ist nur noch
+  // der Wenn/Dann-Baukasten). Sie hier weiter anzubieten hiesse, dieselbe
+  // Entscheidung an zwei Orten mit zwei Ergebnissen zu treffen.
+  //
+  // ⚠ Die REZEPTE selbst bleiben: `waehleStartpunkt` und die Vorschlags-Karten
+  // bauen aus ihnen weiterhin die Vorbefüllung, mit der eine BESTEHENDE
+  // Verbraucher-Regel („Eigene Regel", Projektions-Nr. 9) bearbeitet wird.
+  const nutzbar = REZEPTE.filter(
+    (r) => r.maschine !== 'bald' && r.maschine !== 'verbraucher');
   const teil = partition(nutzbar, eingabe);
   // ⚠ Der Rollen-Vorfilter ist GRÖBER als die Maschine dahinter: `plantRoles`
   // liest die Rolle aus Typ/Kategorie, `speicherSchutzRegel` braucht wirklich
@@ -229,6 +240,8 @@ export function vorbelegungen(ctx: RezeptKontext): VorbelegungenView {
   const nichtBaubar = teil.fitting.length - baubar.length;
   const bald = REZEPTE.filter((r) => r.maschine === 'bald').length;
   const uebersprungen = teil.notFitting.length + bald + nichtBaubar;
+  // Die vier Verbraucher-Absichten werden NICHT als „passt nicht" gezählt: sie
+  // fehlen nicht, sie sind umgezogen - und genau das sagt `steuerartHinweis`.
   // Der Grund wird NUR genannt, wenn er wirklich für alle Übersprungenen gilt —
   // ein „bald"-Rezept hat seinen eigenen (der Zustellweg fehlt), also schweigt
   // die Zeile dann über die Ursache, statt eine falsche zu behaupten.
@@ -244,6 +257,16 @@ export function vorbelegungen(ctx: RezeptKontext): VorbelegungenView {
     brauchtKomponente: !plantRoles(eingabe).has('consumer'),
   };
 }
+
+/**
+ * Wohin die vier Verbraucher-Absichten gezogen sind (P2). Er steht im
+ * Regel-Einstieg, damit ein Kunde, der „mein Heizstab soll bei Überschuss
+ * laufen" sucht, den Weg findet statt einer fehlenden Karte.
+ */
+export const STEUERART_STATT_REZEPT =
+  'Wann ein Gerät grundsätzlich laufen soll — bei Überschuss, zu festen Zeiten, in '
+  + 'günstigen Stunden oder bis zu einer Frist — stellen Sie oben unter „Verbraucher" ein. '
+  + 'Eine Regel ist die Ausnahme davon.';
 
 export const KOMPONENTE_ANLEGEN =
   'Noch kein schaltbares Gerät? Legen Sie zuerst eine Komponente an — Ihr Regel-Entwurf '

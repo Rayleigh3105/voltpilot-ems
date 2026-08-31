@@ -144,6 +144,25 @@ public class UsageProfileService {
                 site.leistungspreisEurKw() != null, site.usageProfileOverride()), hasMeasurement);
     }
 
+    /**
+     * Die Topologie-Rollen der Messkanaele EINER Entitaet - der oeffentliche
+     * Einstieg fuer Leser, die die Zeilen schon geholt haben
+     * (Verbrauchsmanagement v1 P2: „hat diese Anlage PV?" im Steuerart-Dialog).
+     *
+     * <p><b>⚠ Er existiert, damit es genau EINE Ableitung gibt.</b> Die MIG-§4-
+     * Regel („capability-basiert, nie kategorie-basiert") war schon einmal an
+     * einer zweiten Stelle falsch abgeschrieben und hat jede Hybrid-Anlage
+     * {@code hasPv: false} melden lassen; ein zweiter Aufruf von
+     * {@link TopologyDeriver#defaultRole} in einem anderen Paket waere derselbe
+     * Fehler mit anderem Vorzeichen. Er stellt KEINE Abfrage - der Aufrufer
+     * bringt die Zeile mit.
+     */
+    public Set<String> measuredRoles(EntityRegistryRepository.EntityRow row) {
+        EntityTypeCatalog.EntityType type = catalog.find(row.entityType());
+        return measuredRoles(row.entityType(), type == null ? "" : type.category(),
+                row.capabilitiesJson());
+    }
+
     /** The topology roles this entity's measure channels resolve to. */
     private Set<String> measuredRoles(String entityType, String category,
             String capabilitiesJson) {

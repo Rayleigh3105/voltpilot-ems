@@ -62,6 +62,7 @@ import type {
 } from './api';
 import type { ConsumerDraft } from './consumers/questions';
 import type { Consumer } from './consumers/types';
+import type { SteuerartWunsch } from './steuerartDialog';
 import { fmtNum } from './format';
 import { MIN_SPANNE_CT } from './preisFenster';
 
@@ -91,6 +92,16 @@ export interface Vorschlag {
   regelName: string;
   /** Die Vorbefüllung des BESTEHENDEN Verbraucher-Baukastens. */
   prefill: Partial<ConsumerDraft>;
+  /**
+   * Die STEUERART, auf die dieser Vorschlag zielt (Verbrauchsmanagement v1 P2,
+   * Konzept §6.1: „Ein Vorschlag zielt auf die Steuerart").
+   *
+   * ⚠ Er SETZT sie nicht — „Übernehmen" öffnet den Steuerart-Dialog auf seiner
+   * Folgen-Karte, damit vor dem Speichern dasteht, was passiert. Das ist die
+   * Haus-Regel „die Folgen-Karte steht IMMER vor der Aktivierung"; ein Knopf,
+   * der ohne sie schreibt, wäre die eine Stelle, an der sie fehlte.
+   */
+  steuerart: SteuerartWunsch;
   /**
    * Die Übersetzung DIESES Vorschlags in die drei Knöpfe der Vorschau-Route
    * (Steuerung Stufe 7). Sie entsteht HIER, wo Fenster und Leistung ohnehin
@@ -464,6 +475,7 @@ export function vorschlaege(input: VorschlagInput): Vorschlag[] {
         + `Die Regel schaltet „${c.name}" ein, sobald der gemessene Überschuss über `
         + `${fmtNum(schwelle, 'kW', 1)} liegt — ${wann} also voraussichtlich in diesem Fenster.`,
       regelName: `${c.name} bei Solar-Überschuss`,
+      steuerart: { quelle: 'ueberschuss', schwelleKw: schwelle },
       prefill: {
         intent: 'react',
         conditions: [{
@@ -508,6 +520,7 @@ export function vorschlaege(input: VorschlagInput): Vorschlag[] {
           + `Schnitt gegenüber ${ct(preis.ctHorizont)} ct/kWh sonst. Die Regel schaltet `
           + `„${c.name}" ein, solange Ihr Bezugspreis unter ${ct(schwelle)} ct/kWh liegt.`,
         regelName: `${c.name} in günstigen Stunden`,
+        steuerart: { quelle: 'guenstig', preisgrenzeCtKwh: schwelle },
         prefill: {
           intent: 'cheap',
           conditions: [{

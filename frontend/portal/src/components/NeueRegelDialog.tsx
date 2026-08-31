@@ -28,6 +28,7 @@ import type { GuidedRule } from '../flows/guidedBuilder';
 import { showTechnicalLayer } from '../rollen';
 import {
   KOMPONENTE_ANLEGEN,
+  STEUERART_STATT_REZEPT,
   vorbelegungen as startpunkte,
   type RezeptId,
 } from '../regeln/rezepte';
@@ -114,6 +115,12 @@ export function NeueRegelDialog({
           onCancel={close}
           onBuild={onBuilt}
         />
+
+        {/* ⚠ Wohin die vier Verbraucher-Absichten gezogen sind (P2): sie SIND
+            die Steuerart und werden in der Verbraucher-Zone gewählt. Der Satz
+            steht hier, damit ein Kunde, der „bei Überschuss laufen" sucht, den
+            Weg findet statt einer fehlenden Karte. */}
+        <p className="vp-neuregel-weg">{STEUERART_STATT_REZEPT}</p>
 
         {/* Die Sackgassen-Rettung: ohne schaltbares Gerät gibt es nichts zu
             schalten — dann steht hier der WEG, nicht ein weiterer Knopf, der

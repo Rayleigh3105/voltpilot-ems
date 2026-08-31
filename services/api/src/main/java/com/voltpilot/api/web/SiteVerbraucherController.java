@@ -3,6 +3,8 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.verbraucher.RanglisteAbleitung;
 import com.voltpilot.api.verbraucher.RanglisteService;
+import com.voltpilot.api.verbraucher.SteuerartService;
+import com.voltpilot.api.verbraucher.SteuerartWunsch;
 import com.voltpilot.api.verbraucher.VerbraucherService;
 import com.voltpilot.api.web.dto.VerbraucherDto;
 import jakarta.validation.Valid;
@@ -34,12 +36,20 @@ import org.springframework.web.server.ResponseStatusException;
  * fremde Anlage ist 404 (nie 403), und ein Admin erreicht sie ueber den
  * {@code X-Tenant-Id}-Umschalter auf demselben RLS-Pfad.
  *
- * <p><b>Die STEUERART wird hier weiterhin nicht gesetzt</b> - dieses Paket
- * zeigt sie nur; ihr Schreibweg entsteht in Paket P2. Was seit Paket P4 dazu
- * gekommen ist, ist die REIHENFOLGE bei knapper Leistung ({@code PUT
- * /rangliste}), und auch sie schreibt kein neues Format: sie projiziert auf
- * {@code default_service_rank}, {@code storage_relation} und die Speicher-Frage
- * des Ladeparks ({@link RanglisteService}).
+ * <p><b>Seit Paket P2 gibt es GENAU EINEN Schreibweg der Steuerart</b>
+ * ({@code PUT .../verbraucher/{entityId}/steuerart}). Er schreibt kein neues
+ * Format: er stellt ein {@code consumer_profile} sicher, legt die
+ * Requirement-Projektion (§3.3) als neue Policy-Fassung ab und aktiviert sie
+ * ueber den BESTEHENDEN Pfad - mit dessen Kompilierung, V-5-Pruefung, Flag-Toren
+ * und Audit-Spur. Eine Komponente, die hier nicht schreibbar ist, sagt das in
+ * ihren {@code optionen}, statt eine Auswahl anzubieten, die der Server danach
+ * ablehnt.
+ *
+ * <p>Was seit Paket P4 dazu gekommen ist, ist die REIHENFOLGE bei knapper
+ * Leistung ({@code PUT /rangliste}), und auch sie schreibt kein neues Format:
+ * sie projiziert auf {@code default_service_rank}, {@code storage_relation} und
+ * die Speicher-Frage des Ladeparks ({@link RanglisteService}). Der
+ * ANLAGEN-STANDARD der Ladepunkte bleibt bewusst ungeschrieben (Paket P5).
  *
  * <p>Eine Anlage ohne steuerbares Geraet bekommt eine wohlgeformte LEERE
  * Antwort - der Normalzustand vieler Anlagen, kein Fehler.
@@ -71,18 +81,39 @@ public class SiteVerbraucherController {
     private final SiteRepository sites;
     private final VerbraucherService verbraucher;
     private final RanglisteService rangliste;
+    private final SteuerartService steuerarten;
 
     public SiteVerbraucherController(SiteRepository sites, VerbraucherService verbraucher,
-            RanglisteService rangliste) {
+            RanglisteService rangliste, SteuerartService steuerarten) {
         this.sites = sites;
         this.verbraucher = verbraucher;
         this.rangliste = rangliste;
+        this.steuerarten = steuerarten;
     }
 
     @GetMapping("/verbraucher")
     public VerbraucherDto verbraucher(@PathVariable UUID siteId) {
         requireSite(siteId);
         return verbraucher.forSite(siteId);
+    }
+
+    /**
+     * Setzt die Steuerart EINER Komponente (Paket P2).
+     *
+     * <p>Der Rumpf ist die SPIEGELFORM der gelesenen Steuerart
+     * ({@link SteuerartWunsch}), damit der Rundlauf pruefbar bleibt: was der
+     * Dialog schickt, liest die Projektion danach wieder aus. Die Antwort
+     * traegt die Steuerart, wie sie JETZT gilt, plus das Ergebnis der
+     * Aktivierung - eine abgelehnte Aktivierung ist kein Fehler, sondern ein
+     * benannter Ausgang ({@code aktiv:false} mit Grund und Satz), und der
+     * Entwurf bleibt gespeichert.
+     */
+    @PutMapping("/verbraucher/{entityId}/steuerart")
+    public SteuerartService.Ergebnis setzeSteuerart(@PathVariable UUID siteId,
+            @PathVariable UUID entityId, @RequestBody SteuerartWunsch wunsch,
+            @AuthenticationPrincipal Jwt jwt) {
+        requireSite(siteId);
+        return steuerarten.setze(siteId, entityId, wunsch, jwt == null ? null : jwt.getSubject());
     }
 
     /**

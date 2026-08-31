@@ -25,6 +25,8 @@ export type {
 } from './ladepunkte';
 import type { SiteVerbraucher } from './verbraucherZone';
 export type { SiteVerbraucher } from './verbraucherZone';
+import type { SteuerartErgebnis, SteuerartWunsch } from './steuerartDialog';
+export type { SteuerartErgebnis, SteuerartWunsch } from './steuerartDialog';
 import type { Topology } from './topology';
 import type { ModellWahlZustand } from './prognose';
 import type { ComponentMatch } from './komponentenAssistent';
@@ -3213,6 +3215,19 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ eintraege }),
     }),
+  /**
+   * Die Steuerart EINER Komponente setzen (Verbrauchsmanagement v1 P2).
+   *
+   * Der Rumpf ist die SPIEGELFORM der gelesenen Steuerart, damit der Rundlauf
+   * hält: was hier hingeht, liest die Projektion danach wieder aus. Die
+   * Antwort trägt die Steuerart, wie sie JETZT gilt — die Fläche rechnet sie
+   * nie selbst aus.
+   */
+  setzeSteuerart: (siteId: string, entityId: string, wunsch: SteuerartWunsch) =>
+    request<SteuerartErgebnis>(
+      `/api/v1/sites/${siteId}/verbraucher/${entityId}/steuerart`,
+      { method: 'PUT', body: JSON.stringify(wunsch) },
+    ),
   /** Complete, tenant-scoped OCPP 1.6 station inventory for the device home. */
   ocppStations: (siteId: string, signal?: AbortSignal) =>
     request<OcppStation[]>(`/api/v1/sites/${siteId}/ocpp/stations`, { signal }),

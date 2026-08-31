@@ -1786,12 +1786,13 @@ paths:
         Alles ist eine PROJEKTION auf den Bestand - die aktive consumer_policy
         (§7.1), die Quellen-Wahl der Box in site_charging_config (§7.2), der
         chargers-Herzschlag und die Ansprüche der aktiven Flows; es entsteht
-        kein zweites Datenformat. Die STEUERART wird hier nur gezeigt - ihr
-        Schreibweg entsteht in P2; die REIHENFOLGE ist seit P4 über
-        PUT /rangliste setzbar (auch sie eine Projektion, kein neues Format).
-        RLS-gefenced (fremde Anlage
-        404, Admins über den `X-Tenant-Id`-Umschalter); eine Anlage ohne
-        steuerbares Gerät bekommt eine wohlgeformte LEERE Antwort.
+        kein zweites Datenformat. Seit P2 trägt jede Zeile zusätzlich ihre
+        WÄHLBAREN Steuerarten (`optionen`) - aus derselben reinen Klasse, mit
+        der der Schreibweg unten die Wahl ein zweites Mal prüft; die
+        REIHENFOLGE ist seit P4 über PUT /rangliste setzbar (auch sie eine
+        Projektion, kein neues Format). RLS-gefenced (fremde Anlage 404, Admins
+        über den `X-Tenant-Id`-Umschalter); eine Anlage ohne steuerbares Gerät
+        bekommt eine wohlgeformte LEERE Antwort.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
@@ -1857,6 +1858,59 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Verbraucher" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/verbraucher/{entityId}/steuerart:
+    put:
+      tags: [consumer]
+      summary: Die Steuerart EINER Komponente setzen.
+      description: >
+        Der EINE Schreibweg der Steuerart (Konzept vp-verbrauchsmgmt-konzept-v1
+        §3.3/§4.4, Paket P2). Er schreibt KEIN neues Format: er stellt ein
+        consumer_profile sicher (auch für eine Komponente, die noch keines hat),
+        legt die Requirement-Projektion (§3.3) als NEUE consumer_policy-Fassung
+        ab und aktiviert sie über den BESTEHENDEN Pfad - mit dessen Kompilierung,
+        V-5-Anspruchsprüfung, Flag-Toren und Audit-Spur.
+
+
+        Der Rumpf ist die SPIEGELFORM der gelesenen Steuerart, damit der
+        Rundlauf hält: was hier hingeht, liest die Projektion danach wieder aus.
+        "Sofort" hat per §3.3 GAR KEINE Anforderung und das Schema verlangt
+        `minItems: 1` - diese Quelle NIMMT deshalb die aktive Fassung zurück
+        (der flag-unabhängige Stopppfad), statt eine leere zu schreiben.
+
+
+        Eine OCPP-Ladesäule (`ev-charger`) ist hier 422 mit dem Weg, den es
+        wirklich gibt: ihre Quelle fährt die Quellen-Bahn der Box, die
+        Arbiter-Brücke dorthin entsteht in Paket P5. RLS-gefenced wie jede
+        /sites/**-Route (fremde Anlage bzw. unbekannte Komponente 404, nie 403).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SteuerartWunsch" }
+      responses:
+        "200":
+          description: >
+            Die Steuerart, wie sie JETZT gilt, plus das Ergebnis der
+            Aktivierung. Eine abgelehnte Aktivierung ist KEIN Fehler, sondern
+            ein benannter Ausgang (`aktiv: false` mit Grund und Satz) - der
+            Entwurf bleibt gespeichert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerartErgebnis" }
+        "400":
+          description: >
+            Die Wahl ist für diesen Typ unzulässig oder gesperrt - der Rumpf
+            trägt den deutschen Grund in `message`, und es wurde NICHTS
+            geschrieben.
+        "422":
+          description: >
+            Diese Komponente lässt sich hier (noch) nicht steuern - der Satz
+            nennt den Weg.
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/sites/{siteId}/chargers:
@@ -10647,6 +10701,72 @@ components:
         tage: { type: string, enum: [daily, weekdays, weekend] }
         von: { type: string, example: "13:00" }
         bis: { type: string, example: "15:00" }
+    SteuerartWahl:
+      type: object
+      description: >
+        Eine anbietbare Wahl. Gesperrt heisst SICHTBAR mit Grund, nie versteckt -
+        eine fehlende Karte erklärt nichts.
+      properties:
+        id: { type: string, example: ueberschuss }
+        gesperrt: { type: boolean }
+        grund:
+          type: string
+          nullable: true
+          description: Bei einer gesperrten Wahl IMMER gesetzt.
+    SteuerartWunsch:
+      type: object
+      description: >
+        Die GEWÜNSCHTE Steuerart - die Spiegelform von `Steuerart` ohne
+        `herkunft` (die entscheidet der Server). Jedes Feld ausser `quelle` ist
+        optional; null heisst "dazu sagt der Kunde nichts", dann gilt die
+        Vorgabe aus `optionen.vorgaben`. Was die gewählte Quelle nicht fragt,
+        wird nicht gesendet.
+      required: [quelle]
+      properties:
+        quelle:
+          type: string
+          enum: [sofort, ueberschuss, guenstig, feste_zeiten, freigabe_ueberschuss, freigabe_guenstig]
+        schwelleKw: { type: number, nullable: true }
+        preisgrenzeCtKwh: { type: number, nullable: true }
+        mindestlaufzeitMinuten:
+          type: integer
+          nullable: true
+          description: >
+            Profil-Feld (`min_on_seconds`), kein Dokument-Feld - der
+            Zyklen-Wächter der Box liest es aus dem Registry-Push.
+        sperrzeitMinuten:
+          type: integer
+          nullable: true
+          description: Profil-Feld (`min_off_seconds`); nur die SG-Ready-Freigabe fragt danach.
+        fenster: { $ref: "#/components/schemas/SteuerartFenster" }
+        ziel:
+          type: string
+          nullable: true
+          enum: [bis_uhrzeit, laufzeit_bis, null]
+        zielFenster:
+          allOf: [{ $ref: "#/components/schemas/SteuerartFenster" }]
+          description: >
+            `von` darf FEHLEN - dann setzt der Server ihn auf `bis` minus
+            `optionen.vorgaben.zielFensterStunden`.
+        zielEnergieKwh: { type: number, nullable: true }
+        zielLaufzeitMinuten: { type: integer, nullable: true }
+        zielAmStueck: { type: boolean, nullable: true }
+    SteuerartErgebnis:
+      type: object
+      properties:
+        steuerart: { $ref: "#/components/schemas/Steuerart" }
+        aktiv:
+          type: boolean
+          description: >
+            Ob die Steuerart jetzt WIRKLICH läuft. false = sie ist gespeichert,
+            aber die Aktivierung wurde benannt abgelehnt (Flag aus, Compiler
+            weg, fremder Anspruch) - der Entwurf bleibt stehen.
+        grund: { type: string, nullable: true }
+        nachricht: { type: string, nullable: true }
+        verteilt:
+          type: boolean
+          description: Ob das Artefakt an das Gerät verteilt werden konnte.
+        policyVersion: { type: integer, nullable: true }
     Verbraucher:
       type: object
       description: Die Zone "Verbraucher" einer Anlage (lesend).
@@ -10683,6 +10803,51 @@ components:
                   Der Ziel-Fortschritt aus dem Erfüllungs-Ledger (dieselbe Form
                   wie `/consumers/{id}/fulfillment`), null ohne Beleg.
               aktiv: { type: boolean, nullable: true }
+              optionen:
+                type: object
+                description: >
+                  Was hier WÄHLBAR ist (P2). Aus der reinen SteuerartSatz -
+                  derselben Klasse, mit der der Schreibweg die Wahl ein zweites
+                  Mal prüft; der Dialog rendert damit nur, was der Server auch
+                  annehmen würde. Eine gesperrte Wahl bleibt SICHTBAR und trägt
+                  ihren Grund.
+                properties:
+                  schreibbar:
+                    type: boolean
+                    description: >
+                      false = die Steuerart lässt sich hier (noch) nicht setzen
+                      (heute: die OCPP-Säule bis Paket P5).
+                  nichtSchreibbarGrund: { type: string, nullable: true }
+                  quellen:
+                    type: array
+                    items: { $ref: "#/components/schemas/SteuerartWahl" }
+                  ziele:
+                    type: array
+                    description: Leer = dieser Typ kennt gar kein Ziel.
+                    items: { $ref: "#/components/schemas/SteuerartWahl" }
+                  vorgaben:
+                    type: object
+                    description: >
+                      Die Startwerte der Folgefragen (§3.2). Ein Feld, das nicht
+                      BELEGT ist, bleibt null und das Formular startet leer -
+                      nie eine erfundene Zahl.
+                    properties:
+                      schwelleKw: { type: number, nullable: true }
+                      preisgrenzeCtKwh: { type: number, nullable: true }
+                      mindestlaufzeitMinuten: { type: integer, nullable: true }
+                      sperrzeitMinuten: { type: integer, nullable: true }
+                      fenster: { $ref: "#/components/schemas/SteuerartFenster" }
+                      zielUhrzeit: { type: string, nullable: true, example: "06:00" }
+                      zielTage: { type: string, nullable: true, example: daily }
+                      zielEnergieKwh: { type: number, nullable: true }
+                      zielLaufzeitMinuten: { type: integer, nullable: true }
+                      zielFensterStunden:
+                        type: integer
+                        description: >
+                          Wie lang das Ziel-Fenster VOR der Frist ist (§3.2
+                          fragt nur nach der Frist, den Beginn setzt der
+                          Server) - die Fläche zeigt das entstehende Fenster
+                          wörtlich, statt es zu verschweigen.
         ladepunkte:
           type: object
           properties:

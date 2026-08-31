@@ -17,6 +17,12 @@ import java.util.UUID;
  * diesem Paket bewusst KEINEN Schreibpfad - „Steuerart schreiben" ist P2/P4.
  *
  * <p>Nullbar heisst ueberall „das wissen wir nicht", nie 0.
+ *
+ * <p><b>Seit Paket P2 traegt jede Zeile zusaetzlich ihre WAEHLBAREN Steuerarten
+ * ({@link Eintrag#optionen}).</b> Sie kommen aus der reinen
+ * {@code SteuerartSatz} - derselben Klasse, mit der der Schreibpfad die Wahl
+ * ein zweites Mal prueft; der Dialog rendert damit nur, was der Server auch
+ * annehmen wuerde, und eine gesperrte Wahl nennt IMMER ihren Grund.
  */
 public record VerbraucherDto(List<Eintrag> verbraucher, Ladepunkte ladepunkte,
         List<RanglisteEintrag> rangliste) {
@@ -43,10 +49,38 @@ public record VerbraucherDto(List<Eintrag> verbraucher, Ladepunkte ladepunkte,
      *                    Anforderung oder noch kein Beleg
      * @param aktiv       {@code consumer_profile.enabled} - {@code null} fuer
      *                    eine komponierte Saeule ohne Profil
+     * @param optionen    was hier waehlbar ist (P2) - nie {@code null}
      */
     public record Eintrag(UUID entityId, String name, String typ, String typLabel,
             boolean ladepunkt, String chargePointId, Steuerart steuerart, int regeln,
-            ConsumerFulfillmentDto.Task fortschritt, Boolean aktiv) {}
+            ConsumerFulfillmentDto.Task fortschritt, Boolean aktiv, Optionen optionen) {}
+
+    /**
+     * Die waehlbaren Steuerarten EINER Komponente (§3.1/§3.2, Paket P2).
+     *
+     * @param schreibbar        false = diese Komponente kann ihre Steuerart hier
+     *                          (noch) nicht setzen - dann steht in
+     *                          {@code nichtSchreibbarGrund} der WEG, nie eine
+     *                          leere Auswahl
+     * @param nichtSchreibbarGrund der Satz dazu, sonst {@code null}
+     * @param quellen           die Quellen-Karten in Anzeige-Reihenfolge
+     * @param ziele             die Ziel-Karten; leer = dieser Typ kennt keins
+     * @param vorgaben          die Startwerte der Folgefragen; ein Feld, das
+     *                          nicht belegt ist, bleibt {@code null} und das
+     *                          Formular startet leer
+     */
+    public record Optionen(boolean schreibbar, String nichtSchreibbarGrund,
+            List<Wahl> quellen, List<Wahl> ziele, Vorgaben vorgaben) {}
+
+    /** Eine anbietbare Wahl - gesperrt heisst SICHTBAR mit Grund, nie versteckt. */
+    public record Wahl(String id, boolean gesperrt, String grund) {}
+
+    /** Die Startwerte der Folgefragen (§3.2). */
+    public record Vorgaben(java.math.BigDecimal schwelleKw,
+            java.math.BigDecimal preisgrenzeCtKwh, Integer mindestlaufzeitMinuten,
+            Integer sperrzeitMinuten, Steuerart.Fenster fenster, String zielUhrzeit,
+            String zielTage, java.math.BigDecimal zielEnergieKwh, Integer zielLaufzeitMinuten,
+            int zielFensterStunden) {}
 
     /**
      * Der Ladepunkt-Abschnitt: sein Anlagen-Standard und sein physischer Rahmen.

@@ -395,6 +395,88 @@ public class ConsumerService {
                 row.contentHash(), row.createdBy());
     }
 
+    /**
+     * <b>Verbrauchsmanagement v1 P2:</b> das Profil einer Komponente, die noch
+     * keines hat - der zweite Einstieg neben {@link #create}.
+     *
+     * <p>Er ist noetig, weil {@code create} IMMER eine neue Entitaet mintet
+     * ({@code entities.createEntity}) und {@code repo.insertProfile} genau
+     * diesen einen Aufrufer hatte: eine Komponente, die auf einem anderen Weg
+     * entstanden ist (der Anlege-Assistent des Anlagen-Modells, eine
+     * Bestands-Uebernahme), konnte deshalb nie eine Steuerart bekommen. Er legt
+     * NUR das Profil an - keine Entitaet, keine Policy, kein Push.
+     *
+     * <p><b>⚠ Jeder Wert ist eine VORGABE aus Katalog und Entitaet, nie eine
+     * Angabe des Aufrufers</b> - die Steuerart entscheidet nicht, was ein
+     * Geraet KANN. Die Nennleistung ist die gepflegte {@code capacity_kwp} der
+     * Komponente ({@code null} bleibt {@code null}, nie eine 0); der
+     * D3-Nachweiskanal folgt derselben Ableitung wie beim Anlegen.
+     *
+     * @return die Profilzeile - die vorhandene, wenn es schon eine gab
+     */
+    @Transactional
+    public ConsumerRow ensureProfile(UUID siteId, EntityRow entity) {
+        ConsumerRow vorhanden = repo.findForSite(siteId, entity.id());
+        if (vorhanden != null) {
+            return vorhanden;
+        }
+        EntityType type = catalog.find(entity.entityType());
+        if (type == null || !"consumer".equals(type.category()) || !type.controllable()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Diese Komponente lässt sich nicht steuern.");
+        }
+        String confirmationChannel = null;
+        if (entity.edgeSourceId() != null && !entity.edgeSourceId().isBlank()) {
+            confirmationChannel = confirmationChannelFor(siteId, entity.entityType(),
+                    entity.edgeSourceId());
+        } else {
+            // Ohne gebundene Quelle entscheidet nur der TYP (SG-Ready) - sonst
+            // bleibt der Kanal NULL, und das Erfuellungs-Ledger behauptet
+            // niemals „fertig" (D3 Stufe 4).
+            confirmationChannel = SgReady.confirmationChannel(entity.entityType());
+        }
+        repo.insertProfile(entity.id(), TenantContext.get(), siteId, defaultControlKind(type),
+                entity.capacityKwp(), null, null, null, null, "consumer_first", "allow", false,
+                type.defaultFailsafe(), null, null, null, confirmationChannel);
+        return repo.findForSite(siteId, entity.id());
+    }
+
+    /**
+     * <b>P2:</b> die Profil-Felder, die zu einer Steuerart gehoeren -
+     * Mindestlaufzeit und Sperrzeit ({@code min_on_seconds}/
+     * {@code min_off_seconds}, die Folgefragen aus §3.2). Sie sind KEINE
+     * Dokument-Felder: der Zyklen-Waechter der Box liest sie aus dem
+     * Registry-Push, nicht aus der Policy.
+     *
+     * <p>{@code null} laesst den gespeicherten Wert stehen (die PATCH-Semantik
+     * des Hauses); {@code 0} loescht ihn - „keine erfundene Schonung".
+     */
+    @Transactional
+    public void updateZyklus(UUID siteId, UUID entityId, Integer minOnSeconds,
+            Integer minOffSeconds) {
+        ConsumerRow row = repo.findForSite(siteId, entityId);
+        if (row == null) {
+            throw notFound();
+        }
+        Integer minOn = minOnSeconds == null ? row.minOnSeconds()
+                : validatedCycleSeconds(minOnSeconds, "Mindestlaufzeit");
+        Integer minOff = minOffSeconds == null ? row.minOffSeconds()
+                : validatedCycleSeconds(minOffSeconds, "Mindestpause");
+        if (java.util.Objects.equals(minOn, row.minOnSeconds())
+                && java.util.Objects.equals(minOff, row.minOffSeconds())) {
+            return;
+        }
+        long v = repo.updateProfile(siteId, entityId, row.version(), row.controlKind(),
+                row.ratedPowerKw(), row.minPowerKw(), row.levelsKwJson(), row.resolutionKw(),
+                row.powerRangesKwJson(), row.storageRelation(), row.defaultGridEnergyPolicy(),
+                row.allowStorageDischarge(), row.failsafe(), row.enabled(), minOn, minOff,
+                row.maxStartsPerDay());
+        if (v < 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Dieser Verbraucher wurde gerade an anderer Stelle geändert.");
+        }
+    }
+
     /** Save a NEW draft policy version (§11). Lifecycle stays draft in Increment 1. */
     @Transactional
     public PolicyDto savePolicyDraft(UUID siteId, UUID entityId, JsonNode document, String createdBy) {

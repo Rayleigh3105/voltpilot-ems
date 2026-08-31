@@ -148,6 +148,7 @@ describe('Zone ② Verbraucher (Verbrauchsmanagement v1, P1)', () => {
         typ: 'ev-charger',
         typLabel: 'Ladepunkt',
         ladepunkt: true,
+        chargePointId: `CP${i}`,
         steuerart: { quelle: 'ueberschuss', herkunft: 'standard' },
         regeln: 0,
       })),
@@ -168,6 +169,7 @@ describe('Zone ② Verbraucher (Verbrauchsmanagement v1, P1)', () => {
         typ: 'ev-charger',
         typLabel: 'Ladepunkt',
         ladepunkt: true,
+        chargePointId: `CP${i}`,
         // Genau EINER weicht ab - nur er steht offen (§6.4 „Aktive zuerst").
         steuerart: { quelle: 'ueberschuss', herkunft: i === 0 ? 'policy' : 'standard' },
         regeln: 0,

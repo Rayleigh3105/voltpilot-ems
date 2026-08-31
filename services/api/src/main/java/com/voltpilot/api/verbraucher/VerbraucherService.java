@@ -16,14 +16,18 @@ import com.voltpilot.api.entities.EntityTypeCatalog.EntityType;
 import com.voltpilot.api.flows.FlowService;
 import com.voltpilot.api.repo.ConsumerRequirementStateRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
+import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.web.dto.ChargingConfigDto;
 import com.voltpilot.api.web.dto.ConsumerFulfillmentDto;
 import com.voltpilot.api.web.dto.SiteChargingDto;
+import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.VerbraucherDto;
 import com.voltpilot.api.web.dto.VerbraucherDto.Eintrag;
 import com.voltpilot.api.web.dto.VerbraucherDto.Ladepunkte;
+import com.voltpilot.api.web.dto.VerbraucherDto.Optionen;
 import com.voltpilot.api.web.dto.VerbraucherDto.RanglisteEintrag;
 import com.voltpilot.api.web.dto.VerbraucherDto.Rahmen;
+import com.voltpilot.api.web.dto.VerbraucherDto.Wahl;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -77,13 +81,16 @@ public class VerbraucherService {
     private final ChargingConfigRepository chargingConfig;
     private final ConsumerRequirementStateRepository ledger;
     private final FlowService flows;
+    private final SiteRepository sites;
+    private final SteuerartService steuerarten;
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
 
     public VerbraucherService(ConsumerRepository consumers, EntityRegistryRepository entities,
             EntityTypeCatalog catalog, DeviceChargerStatusRepository chargers,
             ChargingConfigRepository chargingConfig, ConsumerRequirementStateRepository ledger,
-            FlowService flows, JdbcTemplate jdbc, ObjectMapper mapper) {
+            FlowService flows, SiteRepository sites, SteuerartService steuerarten,
+            JdbcTemplate jdbc, ObjectMapper mapper) {
         this.consumers = consumers;
         this.entities = entities;
         this.catalog = catalog;
@@ -91,6 +98,8 @@ public class VerbraucherService {
         this.chargingConfig = chargingConfig;
         this.ledger = ledger;
         this.flows = flows;
+        this.sites = sites;
+        this.steuerarten = steuerarten;
         this.jdbc = jdbc;
         this.mapper = mapper;
     }
@@ -120,6 +129,18 @@ public class VerbraucherService {
             profile.put(row.entityId(), row);
         }
         Map<UUID, String> chargePointIds = entities.chargePointIdsByEntity(siteId);
+        // P2: die Fakten, an denen JEDE Wahl haengt - EINMAL je Anlage geholt
+        // (die Preis-Vorgabe ist eine einzige Quantil-Abfrage, die PV-Frage
+        // laeuft ueber dieselben Entitaets-Zeilen wie die Schleife darunter).
+        List<EntityRow> zeilen = entities.entitiesForSite(siteId);
+        boolean hatVerbraucher = zeilen.stream().anyMatch(this::steuerbar);
+        // ⚠ Beide Zusatz-Abfragen laufen NUR, wenn diese Anlage ueberhaupt einen
+        // steuerbaren Verbraucher hat: die Preis-Vorgabe ist ein Quantil ueber
+        // sieben Tage Preise, und auf einer Anlage ohne Verbraucher gaebe es
+        // keinen Leser dafuer.
+        SiteDto anlage = hatVerbraucher ? sites.findById(siteId) : null;
+        boolean hatPv = hatVerbraucher && steuerarten.hatPv(zeilen);
+        BigDecimal preisVorgabe = hatVerbraucher ? steuerarten.preisVorgabe(siteId) : null;
         Map<UUID, List<ConsumerRequirementLedger.Row>> aufgaben = ledger.listForSiteByEntity(siteId);
         Map<String, List<FlowService.EntityStrategyDto>> ansprueche = strategien(siteId);
 
@@ -129,7 +150,7 @@ public class VerbraucherService {
         int ladepunkte = 0;
         int standardFolger = 0;
 
-        for (EntityRow row : entities.entitiesForSite(siteId)) {
+        for (EntityRow row : zeilen) {
             if (!steuerbar(row)) {
                 continue;
             }
@@ -151,7 +172,8 @@ public class VerbraucherService {
                     catalog.labelFor(row.entityType()), ladepunkt, chargePointId, steuerart,
                     ansprueche.getOrDefault(row.id().toString(), List.of()).size(),
                     fortschritt(aufgaben.get(row.id()), now),
-                    p == null ? null : p.enabled()));
+                    p == null ? null : p.enabled(),
+                    optionen(row, p, anlage, hatPv, preisVorgabe, steuerart)));
             kandidaten.add(kandidat(row.id(), ladepunkt, chargePointId, p));
         }
 
@@ -163,6 +185,40 @@ public class VerbraucherService {
         return new VerbraucherDto(List.copyOf(out),
                 new Ladepunkte(ladepunkte > 0 ? standard : null, standardFolger, ladepunkte, rahmen),
                 List.copyOf(rangliste));
+    }
+
+    /**
+     * Die waehlbaren Steuerarten EINER Zeile (P2) - aus der reinen
+     * {@link SteuerartSatz}, derselben Klasse, die der Schreibpfad ein zweites
+     * Mal fragt.
+     *
+     * <p><b>⚠ Ein OCPP-Ladepunkt ist hier NICHT schreibbar</b>, und die Zeile
+     * sagt WARUM: seine Quelle faehrt die Quellen-Bahn der Box, der Weg dorthin
+     * (die Arbiter-Bruecke) entsteht in Paket P5. Ihm eine Auswahl anzubieten,
+     * die der Server danach ablehnt, waere die Sackgasse, gegen die diese
+     * Flaeche gebaut ist.
+     */
+    private Optionen optionen(EntityRow row, ConsumerRow profil, SiteDto anlage, boolean hatPv,
+            BigDecimal preisVorgabe, Steuerart aktuell) {
+        SteuerartSatz.Kontext k =
+                steuerarten.kontext(row, profil, anlage, hatPv, preisVorgabe);
+        boolean ocpp = ChargerComponentComposer.TYPE_EV_CHARGER.equals(row.entityType());
+        SteuerartSatz.Vorgaben v = SteuerartSatz.vorgaben(k);
+        return new Optionen(!ocpp, ocpp ? SteuerartService.OCPP_NOCH_NICHT : null,
+                wahlen(SteuerartSatz.quellen(k)),
+                wahlen(SteuerartSatz.ziele(k, aktuell == null ? null : aktuell.quelle())),
+                new VerbraucherDto.Vorgaben(v.schwelleKw(), v.preisgrenzeCtKwh(),
+                        v.mindestlaufzeitMinuten(), v.sperrzeitMinuten(), v.fenster(),
+                        v.zielUhrzeit(), v.zielTage(), v.zielEnergieKwh(),
+                        v.zielLaufzeitMinuten(), v.zielFensterStunden()));
+    }
+
+    private static List<Wahl> wahlen(List<SteuerartSatz.Option> optionen) {
+        List<Wahl> out = new ArrayList<>();
+        for (SteuerartSatz.Option o : optionen) {
+            out.add(new Wahl(o.id(), o.gesperrt(), o.grund()));
+        }
+        return List.copyOf(out);
     }
 
     /**
@@ -272,7 +328,10 @@ public class VerbraucherService {
      */
     private Map<String, List<FlowService.EntityStrategyDto>> strategien(UUID siteId) {
         try {
-            return flows.entityStrategies(siteId);
+            // ⚠ OHNE die generierten Verbraucher-Flows: einer davon IST die
+            // Steuerart dieser Zeile, keine Regel daneben (P2). Die Zahl
+            // beantwortet „was greift ZUSAETZLICH?".
+            return flows.entityStrategies(siteId, false);
         } catch (RuntimeException e) {
             log.warn("Regel-Ansprueche der Anlage {} nicht lesbar: {}", siteId, e.toString());
             return Map.of();

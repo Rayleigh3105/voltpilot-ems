@@ -1,0 +1,120 @@
+/*
+ * Der Steuerart-Dialog (Verbrauchsmanagement v1 P2). Er lebt in der Schale
+ * `AnlegenDialog` und bringt nur seine eigenen Flächen mit: die Karten-Auswahl
+ * eines Schritts, die Felder der Folgefragen und die Folgen-Liste.
+ *
+ * Telefon zuerst: eine Karte je Zeile, Ziel-Felder untereinander; ab 640 px
+ * dürfen die Felder nebeneinander stehen.
+ */
+.vp-sa-schritt > h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--vp-text-strong, #12203a);
+}
+
+.vp-sa-karten {
+  display: grid;
+  gap: 8px;
+}
+
+.vp-sa-karte {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--vp-border, #dfe6f2);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  /* ⚠ 44 px Mindesthöhe: die Karte ist das Bedienelement des Schritts. */
+  min-height: 44px;
+}
+
+.vp-sa-karte:hover:not(.is-gesperrt) {
+  border-color: var(--vp-brand, #95b9ff);
+}
+
+.vp-sa-karte.is-gewaehlt {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 1px var(--vp-action, #2c5282) inset;
+}
+
+/*
+ * Eine gesperrte Karte bleibt SICHTBAR und lesbar - sie trägt ihren Grund.
+ * Sie auszublenden nähme dem Kunden die Erklärung, warum die Wahl fehlt.
+ */
+.vp-sa-karte.is-gesperrt {
+  cursor: not-allowed;
+  background: var(--vp-surface-muted, #f6f8fc);
+}
+
+.vp-sa-karte.is-gesperrt .vp-sa-karte-text > b,
+.vp-sa-karte.is-gesperrt .vp-sa-karte-text > small {
+  color: var(--vp-text-muted, #6b7893);
+}
+
+.vp-sa-karte > input {
+  margin-top: 3px;
+  flex: none;
+}
+
+.vp-sa-karte-text {
+  display: grid;
+  gap: 2px;
+}
+
+.vp-sa-karte-text > small {
+  color: var(--vp-text-muted, #6b7893);
+  line-height: 1.45;
+}
+
+.vp-sa-grund {
+  margin-top: 4px;
+  font-style: normal;
+  font-size: 0.82rem;
+  color: var(--vp-warn-ink, #8a5a00);
+}
+
+.vp-sa-felder {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+@media (min-width: 640px) {
+  .vp-sa-felder {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    align-items: end;
+  }
+}
+
+.vp-sa-check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+}
+
+.vp-sa-folgen {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  line-height: 1.5;
+}
+
+.vp-sa-fehler {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--vp-danger-bg, #fdecec);
+  color: var(--vp-danger-ink, #8a1f1f);
+}
+
+.vp-sa-fuss {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}

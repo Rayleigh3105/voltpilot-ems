@@ -37,6 +37,9 @@ import { JetztZone } from '../components/JetztZone';
 import { SteuerungIntro } from '../components/SteuerungIntro';
 import { LadeparkKapsel } from '../components/LadeparkKapsel';
 import { RegelnKapsel } from '../components/RegelnKapsel';
+import { SteuerartDialog } from '../components/SteuerartDialog';
+import { SteuerartIntro } from '../components/SteuerartIntro';
+import type { SteuerartWunsch } from '../steuerartDialog';
 import { VerbraucherZone } from '../components/VerbraucherZone';
 import { quelleLang, type SiteVerbraucher } from '../verbraucherZone';
 import { Betriebsmodelle } from '../components/Betriebsmodelle';
@@ -134,6 +137,15 @@ export function SteuerungSection({
    * Steuerungsseite bleibt vollständig bedienbar.
    */
   const [verbraucher, setVerbraucher] = useState<SiteVerbraucher | null>(null);
+  /**
+   * Die Komponente, deren Steuerart gerade bearbeitet wird (P2) - ein interner
+   * Sub-View-State wie `editing`, kein neuer Routen-Parameter.
+   */
+  const [steuerartFuer, setSteuerartFuer] = useState<string | null>(null);
+  const [steuerartBusy, setSteuerartBusy] = useState(false);
+  const [steuerartFehler, setSteuerartFehler] = useState<string | null>(null);
+  /** Der Wunsch eines Vorschlags, mit dem der Dialog aufmacht (§6.1). */
+  const [steuerartVorbelegung, setSteuerartVorbelegung] = useState<SteuerartWunsch | null>(null);
   /** Bezugszeit der Betriebsmodell-Zone; wird beim Nachladen neu gesetzt. */
   const [zoneNow, setZoneNow] = useState(() => new Date());
   /** Die offene Folgen-Karte (Wechsel/Ausschalten) samt ihrer Handlung. */
@@ -636,9 +648,19 @@ export function SteuerungSection({
               danach beantwortet: was passiert gerade — und wie ist es
               GRUNDSÄTZLICH eingestellt? In diesem Paket ist sie LESEND; der
               Steuerart-Dialog kommt mit P2. */}
+          {/* --- Erstbesuch der Verbraucher-Zone (§7.4) --------------------
+              Was VoltPilot aus dem Bestand übernommen hat — einmal je Anlage,
+              und nur, wenn es wirklich etwas zu übernehmen gab. */}
+          <SteuerartIntro siteId={site.id} daten={verbraucher} />
+
           <VerbraucherZone
             daten={verbraucher}
             onRegeln={(entityId) => setRegelSprung(entityId)}
+            onSteuerart={(entityId) => {
+              setSteuerartFehler(null);
+              setSteuerartVorbelegung(null);
+              setSteuerartFuer(entityId);
+            }}
             onEinstellungen={charging && charging.chargers.length > 0
               ? () => document.getElementById('vp-ladepark')?.scrollIntoView({ block: 'start' })
               : undefined}
@@ -650,6 +672,42 @@ export function SteuerungSection({
               setVerbraucher(await api.saveRangliste(site.id, rumpf));
             }}
           />
+
+          {/* --- Der Steuerart-Dialog (P2) --------------------------------
+              Er hängt an der Zone, nicht an einer Route: eine Steuerart ist
+              eine Einstellung dieser Seite, kein eigener Ort. */}
+          {steuerartFuer && verbraucher && (() => {
+            const eintrag = verbraucher.verbraucher.find(
+              (e) => e.entityId === steuerartFuer);
+            if (!eintrag) return null;
+            return (
+              <SteuerartDialog
+                eintrag={eintrag}
+                standard={verbraucher.ladepunkte?.standard ?? null}
+                busy={steuerartBusy}
+                fehler={steuerartFehler}
+                vorbelegung={steuerartVorbelegung}
+                onClose={() => setSteuerartFuer(null)}
+                onSpeichern={(wunsch) => {
+                  setSteuerartBusy(true);
+                  setSteuerartFehler(null);
+                  api.setzeSteuerart(site.id, eintrag.entityId, wunsch)
+                    .then((res) => {
+                      setSteuerartFuer(null);
+                      // ⚠ Eine ABGELEHNTE Aktivierung ist kein Fehler, sondern
+                      // ein benannter Ausgang: die Steuerart ist gespeichert,
+                      // und der Satz des Servers sagt, was noch fehlt.
+                      if (!res.aktiv && res.nachricht) fail(res.nachricht);
+                      reload();
+                    })
+                    .catch((e) => setSteuerartFehler(
+                      e instanceof ApiError ? e.message
+                        : 'Die Steuerart konnte nicht gespeichert werden.'))
+                    .finally(() => setSteuerartBusy(false));
+                }}
+              />
+            );
+          })()}
 
           {/* --- Kapsel ③ · Regeln (Naming Set A) -------------------------- */}
           <div id="vp-regeln">
@@ -669,6 +727,11 @@ export function SteuerungSection({
             onEditedFlow={(flowId, version, name, doc) =>
               void saveEdited(flowId, version, name, doc)}
             onOpenEditor={() => void openSaved('Neue Regel', null, 'automation')}
+            onSteuerart={(entityId, wunsch) => {
+              setSteuerartFehler(null);
+              setSteuerartVorbelegung(wunsch);
+              setSteuerartFuer(entityId);
+            }}
           />
           </div>
 
