@@ -54,9 +54,15 @@ public class AdminComponentFleetRepository {
      * bewusst nichts angewandt. Sie reist mit, weil die Flotten-Sicht dieselbe
      * {@code syncStatus}-Ableitung fährt wie die Kunden-Fläche - ohne sie
      * behaupteten die zwei über dieselbe Anlage Verschiedenes.
+     *
+     * <p>{@code authority} ist aus demselben Grund dabei (Befund L8): meldet die
+     * Box, dass sie ihre Geräte wieder selbst pflegt, ist jede Revisions-Aussage
+     * hinfällig - und eine Flotten-Zeile, die dann „unterwegs" sagt, während die
+     * Anlagen-Fläche „wird auf der Box gepflegt" sagt, wären zwei Antworten auf
+     * eine Frage.
      */
-    public record ApplyRow(String appliedRevision, String refusedRevision, String refusedReason,
-            String heldRevision, Instant reportedAt) {}
+    public record ApplyRow(String authority, String appliedRevision, String refusedRevision,
+            String refusedReason, String heldRevision, Instant reportedAt) {}
 
     /** Was das Gerät über seine Steuer-Freigabe meldet. */
     public record ControlRow(String certSource, String platformCertVerdict,
@@ -124,12 +130,12 @@ public class AdminComponentFleetRepository {
     public Map<UUID, ApplyRow> applyPerSite() {
         Map<UUID, ApplyRow> out = new HashMap<>();
         each(rs -> out.put(rs.getObject("site_id", UUID.class),
-                new ApplyRow(rs.getString("applied_revision"), rs.getString("refused_revision"),
-                        rs.getString("refused_reason"), rs.getString("held_revision"),
-                        instant(rs, "reported_at"))),
-                "SELECT DISTINCT ON (site_id) site_id, applied_revision, refused_revision, "
-                        + "refused_reason, held_revision, reported_at FROM device_component_apply "
-                        + "ORDER BY site_id, reported_at DESC");
+                new ApplyRow(rs.getString("authority"), rs.getString("applied_revision"),
+                        rs.getString("refused_revision"), rs.getString("refused_reason"),
+                        rs.getString("held_revision"), instant(rs, "reported_at"))),
+                "SELECT DISTINCT ON (site_id) site_id, authority, applied_revision, "
+                        + "refused_revision, refused_reason, held_revision, reported_at "
+                        + "FROM device_component_apply ORDER BY site_id, reported_at DESC");
         return out;
     }
 

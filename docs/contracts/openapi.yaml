@@ -7424,7 +7424,7 @@ components:
                   composed: { type: integer }
                   unknown: { type: integer }
               privateTemplates: { type: integer }
-              syncStatus: { type: string, enum: [in_sync, pending, unreported] }
+              syncStatus: { type: string, enum: [in_sync, pending, held, box_managed, unreported] }
               refusedRevision: { type: string }
               refusedReason: { type: string }
               appliedAt: { type: string, format: date-time }
@@ -7511,17 +7511,24 @@ components:
               edgeSourceId: { type: string, nullable: true }
               syncStatus:
                 type: string
-                enum: [in_sync, pending, unreported, no_gateway_device]
+                enum: [in_sync, pending, held, box_managed, unreported, no_gateway_device]
                 description: >
                   Derived from Soll vs. the box's reported Ist, never guessed.
                   `unreported` means the box has not reported - NEVER "the change
-                  was lost". `no_gateway_device` is the one case where the reason
-                  IS known: the site has several claimed devices and none of them
-                  is set as the battery's controlling device, so there is no
-                  receiver for the push at all (it replaces `unreported` and
-                  `pending`, never `in_sync`). The cross-tenant fleet view keeps
-                  the three-value vocabulary - it does not know about receivers
-                  and must not invent a reason.
+                  was lost". `held` is the box's deliberate hold (it saw the
+                  revision and applied nothing). `box_managed` is its reported
+                  RETURN of authority: it maintains its devices itself again, so
+                  there is no Soll/Ist relation left at all - without it the row
+                  claimed "change on its way to the box" forever after a
+                  revert-to-device, because every push bumps the Soll revision
+                  while the stale Ist row stood still. `no_gateway_device` is the
+                  one case where the reason IS known: the site has several
+                  claimed devices and none of them is set as the battery's
+                  controlling device, so there is no receiver for the push at all
+                  (it replaces `unreported` and `pending`, never `in_sync`). The
+                  cross-tenant fleet view knows every value except
+                  `no_gateway_device` - it does not know about receivers and must
+                  not invent a reason.
     SaveComponentRequest:
       type: object
       required: [templateRef, role]

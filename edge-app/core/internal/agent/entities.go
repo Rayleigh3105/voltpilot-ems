@@ -291,19 +291,42 @@ func (a *Agent) entitiesSummary() *cloud.EntitiesSummary {
 	// The E2 per-entity decision map (holder/granted/all_match) is built
 	// outside entMu - it reads the arbiter and the readback records.
 	sum.Arbitration = a.arbitrationSummary()
-	// Einheitsmodell Stufe 1: the applier's own Ist. Only present once this
-	// plant is portal-managed, so a box-managed plant's heartbeat keeps its
-	// exact pre-Stufe-1 bytes.
+	// Einheitsmodell Stufe 1: the applier's own Ist. Absent on a plant that
+	// was never portal-managed, so its heartbeat keeps the exact pre-Stufe-1
+	// bytes; present from the first takeover on - including AFTER the portal
+	// hands authority back (Befund L8).
 	sum.ComponentApply = a.componentApplySummary()
 	return sum
 }
 
 // componentApplySummary reports WHO owns this plant's device configuration and
-// which push revision the box really derived its local files from. nil on a
-// box-managed plant - a field that is absent can only ever be read as "this box
-// does not do that", which is exactly the truth there.
+// which push revision the box really derived its local files from.
+//
+// ⚠ DIE RÜCKGABE WIRD GEMELDET, NICHT VERSCHWIEGEN (Befund L8, Scout
+// vp-portal-box-spiegel-s2). Bis hierher schwieg der Block, sobald die Anlage
+// wieder box-verwaltet war - und Schweigen ist in der Cloud von „eine ältere
+// Box sagt dazu nichts" nicht zu unterscheiden. Die Zeile in
+// device_component_apply behielt deshalb ihr `authority=portal` samt der
+// zuletzt angewandten Revision, während jeder folgende Push die Soll-Revision
+// weiter hochzählt: das Portal behauptete über eine Anlage, die es gar nicht
+// mehr steuert, dauerhaft „Änderung unterwegs zur Box".
+//
+// nil bleibt der Block AUSSCHLIESSLICH auf einer Anlage, die nie
+// portal-verwaltet war. Dort hat diese Box wirklich nichts zu berichten, und
+// ihr Herzschlag behält damit exakt die Bytes von vor dem Einheitsmodell (die
+// Captain-Auflage, gepinnt in TestABoxManagedPlantIsByteIdenticalUnderEveryPush).
 func (a *Agent) componentApplySummary() *cloud.ComponentApplySummary {
 	rec := a.componentRecord()
+	if rec.Authority == componentapply.AuthorityBox {
+		// Die Rückgabe: NUR die Autorität, ohne Revision und ohne Grund.
+		//
+		// ⚠ Der Block wird hier von Hand gebaut statt aus dem Record gefüllt,
+		// und das ist die Regel, nicht der Stil: eine `revision` wäre eine
+		// Behauptung über ein Soll, dem diese Box nicht mehr folgt, und ein
+		// stehen gebliebener Ablehnungs- oder Halt-Grund gehörte einer Ära, die
+		// vorbei ist. So kann auch kein künftiges Feld versehentlich mitreisen.
+		return &cloud.ComponentApplySummary{Authority: componentapply.AuthorityBox}
+	}
 	if rec.Authority != componentapply.AuthorityPortal {
 		return nil
 	}

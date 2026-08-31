@@ -41,6 +41,22 @@ describe('adminKomponentenFlotte', () => {
     expect(sollIst('quatsch').label).toBe('Unbekannt');
   });
 
+  /*
+    Befund L8: eine wieder box-verwaltete Anlage HAT gesprochen. Sie als
+    „Nicht gemeldet" zu fuehren waere genau die Zweideutigkeit, aus der der
+    Befund entstand - und sie zaehlt deshalb auch nicht in den Still-Zaehler
+    des Kopf-Satzes.
+  */
+  it('unterscheidet „an der Box gepflegt" von „nicht gemeldet"', () => {
+    expect(sollIst('box_managed').label).toBe('An der Box gepflegt');
+    expect(sollIst('box_managed').ton).toBe('off');
+    expect(sollIst('box_managed').label).not.toBe(sollIst('unreported').label);
+    expect(kopfSatz([a({ componentAuthority: 'box', syncStatus: 'box_managed' })]))
+      .not.toContain('ohne Rückmeldung');
+    // Und sie ist keine Aufgabe: nichts ist unterwegs.
+    expect(braucheAufmerksamkeit([a({ syncStatus: 'box_managed' })])).toHaveLength(0);
+  });
+
   it('die Herkunft nennt nur, was da ist', () => {
     expect(quellenText(null)).toBe('Noch keine Komponenten');
     expect(quellenText({ builtin: 0, certified: 0, custom: 0, composed: 0, unknown: 0 }))

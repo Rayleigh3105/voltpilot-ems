@@ -232,6 +232,20 @@ public class EntityStatusListener {
      * das Portal nennt kein verbundenes Gerät mehr). Sie ist additiv - eine
      * ältere Box lässt die zwei Felder weg, und daraus wird {@code null},
      * also „kein Halt gemeldet", nie sein Gegenteil.
+     *
+     * <p><b>⚠ Seit Befund L8 meldet die Box auch die RÜCKGABE der Autorität</b>
+     * ({@code authority: "box"}, ohne Revision und ohne Grund). Der Upsert
+     * schreibt jede Spalte aus dem Block, ein solcher Bericht RÄUMT die Zeile
+     * also von selbst: die zuletzt angewandte Revision, eine Ablehnung und ein
+     * Halt gehören der Portal-Ära und dürfen sie nicht überleben. Vorher schwieg
+     * die Box dort, die alte {@code authority=portal}-Zeile blieb stehen, und
+     * das Portal behauptete über eine wieder box-verwaltete Anlage dauerhaft
+     * einen Stand, den niemand mehr fährt.
+     *
+     * <p><b>Die Zeile wird dabei NICHT gelöscht.</b> Ein {@code authority=box}
+     * ist eine Aussage („diese Box pflegt ihre Geräte selbst"); ein Löschen
+     * machte sie wieder von „hat sich nie geäußert" ununterscheidbar - genau
+     * die Zweideutigkeit, aus der der Befund entstand.
      */
     private void ingestComponentApply(JsonNode block, UUID deviceId, UUID tenantId, UUID siteId,
             Instant reportedAt) {

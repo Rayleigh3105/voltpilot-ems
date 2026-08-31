@@ -138,18 +138,25 @@ public class ComponentService {
 
         String applied = ist == null ? null : ist.appliedRevision();
         String held = ist == null ? null : ist.heldRevision();
+        // L8: was die BOX ueber ihre eigene Autoritaet sagt. `null` heisst „sie
+        // hat sich dazu nicht geaeussert" (eine aeltere Box meldet den Block gar
+        // nicht) - nie ihr Gegenteil.
+        String reportedAuthority = ist == null ? null : ist.authority();
         // L10: eine Anlage mit mehreren Geraeten und ohne hinterlegtes steuerndes
         // Geraet bekommt GAR KEINEN Push - die Frage „ist das angekommen?" hat
         // dort eine andere Antwort als „die Box hat sich noch nicht geaeussert".
         // Gefragt wird nur, wenn ein solcher Zustand ueberhaupt sichtbar waere -
         // und ein gemeldeter HALT (L1) beantwortet sie schon: die Box HAT diese
-        // Fassung bekommen, es gibt also nachweislich einen Empfaenger.
+        // Fassung bekommen, es gibt also nachweislich einen Empfaenger. Ebenso
+        // eine gemeldete RUECKGABE (L8): dann gibt es kein Soll/Ist mehr, das
+        // ein fehlender Empfaenger erklaeren muesste.
         boolean gatewayAmbiguous = !ComponentService.settled(soll, applied)
                 && !ComponentService.holds(soll, held)
+                && !ComponentAuthority.BOX.equals(reportedAuthority)
                 && entityRegistry.gatewayAmbiguous(siteId);
         List<SiteComponentsDto.ComponentRowDto> rows = new ArrayList<>();
         for (EntityRow row : entityRepo.entitiesForSite(siteId)) {
-            rows.add(toRow(row, soll, applied, held, gatewayAmbiguous));
+            rows.add(toRow(row, soll, applied, held, reportedAuthority, gatewayAmbiguous));
         }
         return new SiteComponentsDto(authority, soll, applied,
                 ist == null ? null : ist.appliedAt(),
@@ -890,7 +897,7 @@ public class ComponentService {
     }
 
     private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied,
-            String held, boolean gatewayAmbiguous) {
+            String held, String reportedAuthority, boolean gatewayAmbiguous) {
         ComponentTemplateDto template = exactTemplate(row.templateRef(), row.templateVersion());
         return new SiteComponentsDto.ComponentRowDto(row.id(), row.role(), row.entityType(),
                 row.label(), row.brand(), row.model(), row.family(), row.communication(),
@@ -898,7 +905,7 @@ public class ComponentService {
                         : ComponentSecrets.maskedJson(row.connectionJson(), ComponentSecrets.keys(template), template == null),
                 row.sourceKind(), row.templateRef(), row.templateVersion(),
                 row.definitionVersion(), row.capacityKwp(), row.edgeSourceId(),
-                syncStatus(soll, applied, held, gatewayAmbiguous));
+                syncStatus(soll, applied, held, reportedAuthority, gatewayAmbiguous));
     }
 
     private ComponentTemplateDto exactTemplate(String templateRef, Integer templateVersion) {
@@ -925,6 +932,12 @@ public class ComponentService {
      *       beantwortet ist.</li>
      *   <li>{@code no_gateway_device} - es gibt gar keinen Empfaenger (L10,
      *       siehe die vier-Argument-Form darunter).</li>
+     *   <li>{@code box_managed} - die BOX meldet, dass sie ihre Geraete selbst
+     *       pflegt (Befund L8). Dann gibt es gar kein Soll/Ist-Verhaeltnis
+     *       mehr: sie leitet ihre lokalen Dateien aus keinem Push ab, und die
+     *       zuletzt angewandte Revision ist eine Aussage ueber eine Aera, die
+     *       vorbei ist. Ohne diesen Zustand behauptete das Portal nach einer
+     *       Rueckgabe der Autoritaet dauerhaft „Aenderung unterwegs zur Box".</li>
      * </ul>
      *
      * <p><b>⚠ {@code held} gilt nur für GENAU die anliegende Fassung.</b> Ist
@@ -940,17 +953,22 @@ public class ComponentService {
      * wortgleicher Kopien).
      */
     public static String syncStatus(String soll, String applied) {
-        return syncStatus(soll, applied, null, false);
+        return syncStatus(soll, applied, null, null, false);
     }
 
     /**
-     * Dasselbe Urteil MIT dem gemeldeten Halt, aber ohne das
-     * Empfaenger-Wissen - die Form der Flotten-Sicht der Stufe 6. Den Halt
-     * kennt sie (er steht als Spalte auf {@code device_component_apply}), den
-     * fehlenden Empfaenger nicht; sie behauptet ihn deshalb auch nicht.
+     * Dasselbe Urteil MIT dem gemeldeten Halt, aber ohne die gemeldete
+     * Autoritaet und ohne das Empfaenger-Wissen.
+     *
+     * <p>⚠ Die Flotten-Sicht der Stufe 6 faehrt seit Befund L8 die
+     * FUENF-Argument-Form: sie kennt inzwischen auch die Autoritaet (sie steht
+     * als Spalte auf {@code device_component_apply}), nur den fehlenden
+     * Empfaenger nicht - und was sie nicht weiss, behauptet sie nicht. Diese
+     * Form bleibt als schmale Stufe der Leiter „beantworte die Frage ohne das
+     * jeweils fehlende Wissen".
      */
     public static String syncStatus(String soll, String applied, String held) {
-        return syncStatus(soll, applied, held, false);
+        return syncStatus(soll, applied, held, null, false);
     }
 
     /**
@@ -977,6 +995,36 @@ public class ComponentService {
      */
     public static String syncStatus(String soll, String applied, String held,
             boolean gatewayAmbiguous) {
+        return syncStatus(soll, applied, held, null, gatewayAmbiguous);
+    }
+
+    /**
+     * Dasselbe Urteil, plus die vom GERAET gemeldete Autoritaet (Befund L8).
+     *
+     * <p>{@code reportedAuthority} ist das IST - was die Box ueber sich selbst
+     * sagt -, nie das Soll aus {@code site.component_authority}. Die zwei
+     * koennen legitim auseinandergehen: unmittelbar nach einer Rueckgabe faehrt
+     * eine offline gewesene Box noch den Portal-Stand, und dann ist „Laeuft auf
+     * dem Geraet · Fassung N" die WAHRHEIT. Erst wenn sie den Push wirklich
+     * gesehen und die Autoritaet zurueckgenommen hat, meldet sie {@code box} -
+     * und ab da ist jede Revisions-Aussage sinnlos.
+     *
+     * <p><b>⚠ Verglichen wird WOERTLICH gegen {@code "box"}, nie ueber
+     * {@link ComponentAuthority#of}</b>: dessen sichere Richtung („alles, was
+     * nicht portal ist, ist box") ist hier genau falsch - {@code null} heisst
+     * „die Box hat sich dazu nicht geaeussert" (eine aeltere Box meldet den
+     * Block gar nicht) und darf nie zu einer Aussage werden.
+     *
+     * <p><b>Es steht ZUERST</b>, auch vor der Soll-Pruefung: ohne Soll/Ist-
+     * Verhaeltnis ist {@code unreported} („unbekannt") unehrlich, sobald die
+     * Box den Grund selbst genannt hat - dieselbe Regel, aus der
+     * {@code no_gateway_device} das {@code pending} verdraengt.
+     */
+    public static String syncStatus(String soll, String applied, String held,
+            String reportedAuthority, boolean gatewayAmbiguous) {
+        if (ComponentAuthority.BOX.equals(reportedAuthority)) {
+            return "box_managed";
+        }
         if (soll == null || soll.isBlank()) {
             // Ohne Soll gibt es nichts zu vergleichen - auch ein gemeldeter
             // Halt macht daraus keine bewertbare Lage.
