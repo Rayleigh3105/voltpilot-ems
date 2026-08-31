@@ -555,6 +555,8 @@
     if (!selection) {
       rows.hidden = true;
       empty.hidden = false;
+      // Ohne Zeile gibt es auch keinen Zeilen-Beleg mehr.
+      window.VP.clearVerify($("invRowVerify"));
       return;
     }
     empty.hidden = true;
@@ -617,6 +619,9 @@
   // back to the summary/empty row.
   function openForm() {
     buildForm();
+    // Der Zeilen-Beleg gehört zur ZEILE; sobald das Formular übernimmt, hat er
+    // dort nichts mehr zu suchen (der Formular-Test bringt seinen eigenen).
+    window.VP.clearVerify($("invRowVerify"));
     $("form").hidden = false;
     $("invRows").hidden = true;
     $("invEmpty").hidden = true;
@@ -790,6 +795,30 @@
       // Multi-inverter hint (Fronius Datamanager): a successful SunSpec test
       // also scans the address for further inverter unit ids - the further
       // devices belong on the "Meine Anlage" card as eigene Erzeuger-Quellen.
+      probePayload: b && (b.communication === "fronius_sunspec" || b.communication === "sunspec_tcp") ? payload : null,
+    });
+  });
+
+  // ⚠ Der Zeilen-Test prüft die GESPEICHERTE Verbindung und ÄNDERT NICHTS -
+  // deshalb trägt seine Taste kein data-vp-edit und bleibt auf einer
+  // portal-verwalteten Anlage erreichbar (Befund L6; die Zusage in
+  // edge-app/AGENTS.md, dass „Verbindung testen" lokal bleibt, war bis dahin
+  // für den Wechselrichter nicht wahr - der Test sass nur im ausgeblendeten
+  // Bearbeiten-Formular). Er baut seine Anfrage aus `selection`, nicht aus dem
+  // Formular: dieselbe Route, derselbe Ergebnis-Block, kein neuer Endpunkt.
+  $("invRowTestBtn").addEventListener("click", function () {
+    if (!selection) return;
+    var payload = {
+      brand: selection.brand,
+      model: selection.model || "",
+      family: selection.family || "",
+      connection: selection.connection || {}
+    };
+    var b = brandById(payload.brand);
+    window.VP.testConnection({
+      payload: payload,
+      panel: $("invRowVerify"),
+      button: $("invRowTestBtn"),
       probePayload: b && (b.communication === "fronius_sunspec" || b.communication === "sunspec_tcp") ? payload : null,
     });
   });

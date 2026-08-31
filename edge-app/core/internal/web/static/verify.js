@@ -294,6 +294,9 @@
   //                 hint line is appended to the OK panel (fronius_sunspec only
   //                 - callers pass it only for that brand).
   //   onUnitsFound  (optional) callback receiving the found unit-id array.
+  //   onDone        (optional) fires exactly once when the round-trip finished
+  //                 (success OR failure), so a caller can release whatever it
+  //                 held for the duration (e.g. a paused list refresh).
   function testConnection(opts) {
     var panel = opts.panel;
     var btn = opts.button;
@@ -316,7 +319,10 @@
         }
       })
       .catch(function () { renderResult(panel, { ok: false, error_code: "timeout" }); })
-      .then(function () { if (btn) { btn.disabled = false; btn.classList.remove("is-busy"); } });
+      .then(function () {
+        if (btn) { btn.disabled = false; btn.classList.remove("is-busy"); }
+        if (opts.onDone) opts.onDone();
+      });
   }
 
   function clearVerify(panel) {

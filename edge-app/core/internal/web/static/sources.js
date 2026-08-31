@@ -161,6 +161,19 @@
     li.appendChild(badge);
 
     var actions = el("span", { class: "row-actions" });
+    // ⚠ KEIN data-vp-edit: „Verbindung prüfen" ÄNDERT NICHTS und bleibt deshalb
+    // auch auf einer portal-verwalteten Anlage erreichbar (Befund L6). Er testet
+    // die GESPEICHERTE Verbindung dieser Quelle; der Test im Hinzufügen-Drawer
+    // daneben testet die noch nicht gespeicherte Eingabe. Der Beleg landet in
+    // einer eigenen Panel-Zeile direkt unter DIESER Quelle - nie in einem
+    // gemeinsamen Kasten, in dem man nicht mehr sieht, wem er gehört.
+    var panel = panelFor(s.id);
+    var test = el("button", { type: "button", class: "icon-btn",
+      title: "Verbindung prüfen", "aria-label": "Verbindung dieser Quelle prüfen",
+      html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12a7 7 0 0 1 12-5M19 12a7 7 0 0 1-12 5M15 3v4h-4M9 21v-4h4"/></svg>' });
+    test.addEventListener("click", function () { testSource(s, panel, test); });
+    actions.appendChild(test);
+    li.vpVerifyPanel = panel;
     var ren = el("button", { type: "button", class: "icon-btn", "data-vp-edit": "",
       title: "Umbenennen (Enter speichert, Esc bricht ab)", "aria-label": "Quelle umbenennen",
       html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>' });
@@ -172,6 +185,30 @@
     actions.appendChild(del);
     li.appendChild(actions);
     return li;
+  }
+
+  // testSource prüft die GESPEICHERTE Verbindung einer Quelle. Es ist dieselbe
+  // Route (/api/test-connection) und derselbe Ergebnis-Block wie im Drawer -
+  // nur kommt die Anfrage aus dem, was wirklich gespeichert ist, statt aus einem
+  // Formular. Bewusst OHNE `control_test`: der Zeilen-Knopf ist ein reiner
+  // Lese-Test, ein Schreibversuch gehört an die ausdrückliche Handlung im
+  // Einrichten-Drawer.
+  function testSource(s, panel, btn) {
+    var payload = {
+      role: s.role || "",
+      brand: s.brand,
+      model: s.model || "",
+      family: s.family || "",
+      connection: s.connection || {}
+    };
+    testsInFlight++;
+    window.VP.testConnection({
+      payload: payload,
+      panel: panel,
+      button: btn,
+      probePayload: isSunspecSource(payload) ? payload : null,
+      onDone: function () { testsInFlight = Math.max(0, testsInFlight - 1); },
+    });
   }
 
   // startRename swaps the row's name for an inline input (Enter = speichern,
@@ -219,8 +256,39 @@
     input.addEventListener("blur", function () { finish(false); });
   }
 
+  // ⚠ Die Liste wird alle 10 s NEU GEZEICHNET (innerHTML = ""). Ein Ergebnis-
+  // Kasten, der bei jedem Zeichnen neu entstünde, wäre also spätestens 10 s
+  // nach dem Klick weg - mitten in einem Test, der genau so lange dauern darf.
+  // Deshalb leben die Kästen JE QUELLEN-ID hier und werden beim Zeichnen nur
+  // wieder eingehängt; und solange ein Test läuft, überspringt der Takt das
+  // Neuzeichnen ganz (dieselbe Disziplin wie inverter.js beim offenen Formular).
+  var verifyPanels = {};
+  var testsInFlight = 0;
+
+  function panelFor(id) {
+    if (!verifyPanels[id]) {
+      var p = el("li", { class: "verify-panel row-verify" });
+      p.hidden = true;
+      verifyPanels[id] = p;
+    }
+    return verifyPanels[id];
+  }
+
+  // appendRow hängt die Zeile UND ihren (zunächst verborgenen) Ergebnis-Kasten
+  // an - beide gehören zusammen, damit ein Beleg immer unter seiner Quelle steht.
+  function appendRow(ul, s) {
+    var li = buildRow(s);
+    ul.appendChild(li);
+    if (li.vpVerifyPanel) ul.appendChild(li.vpVerifyPanel);
+  }
+
   function renderGroups(list) {
     currentList = list || [];
+    var alive = {};
+    (list || []).forEach(function (s) { alive[s.id] = true; });
+    Object.keys(verifyPanels).forEach(function (id) {
+      if (!alive[id]) delete verifyPanels[id];
+    });
     var erz = [], netz = [], verb = [];
     (list || []).forEach(function (s) {
       if (s.role === ROLE_NETZ) netz.push(s);
@@ -230,17 +298,17 @@
     hasNetz = netz.length > 0;
 
     var erzUl = $("erzList"); erzUl.innerHTML = "";
-    erz.forEach(function (s) { erzUl.appendChild(buildRow(s)); });
+    erz.forEach(function (s) { appendRow(erzUl, s); });
     $("erzNote").textContent = "· " + erz.length + (erz.length === 1 ? " zusätzliche Quelle" : " zusätzliche Quellen");
 
     var netzUl = $("netzList"); netzUl.innerHTML = "";
-    netz.forEach(function (s) { netzUl.appendChild(buildRow(s)); });
+    netz.forEach(function (s) { appendRow(netzUl, s); });
     // At most one grid meter per plant: the add-row disappears once one exists.
     $("netzAdd").hidden = hasNetz;
     $("netzNote").textContent = hasNetz ? "· 1 von 1" : "· optional, max. 1";
 
     var verbUl = $("verbList"); verbUl.innerHTML = "";
-    verb.forEach(function (s) { verbUl.appendChild(buildRow(s)); });
+    verb.forEach(function (s) { appendRow(verbUl, s); });
     $("verbNote").textContent = "· " + verb.length + (verb.length === 1 ? " Verbraucher" : " Verbraucher");
     renderBalance();
   }
@@ -765,6 +833,6 @@
     // Keep the status pills + "Zuletzt gelesen" lines live while the page is
     // open. Same GET the initial load does; renderBalance skips an in-flight
     // toggle save, and the add drawer is untouched by a list re-render.
-    setInterval(load, 10000);
+    setInterval(function () { if (testsInFlight === 0) load(); }, 10000);
   });
 })();
