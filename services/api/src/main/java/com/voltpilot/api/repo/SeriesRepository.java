@@ -13,9 +13,13 @@ import org.springframework.transaction.annotation.Transactional;
  * foreign keys (hypertables), so deleting a site or device must remove its
  * series rows explicitly - through the SAME RLS-scoped app datasource as every
  * customer query, so the deletes are transparently limited to the caller's
- * tenant. {@code forecast} is the one table without RLS (backend-only
- * consumers); its delete is safe because the controller has already resolved
- * the site through the RLS-scoped {@link SiteRepository}, proving ownership.
+ * tenant. {@code forecast} is the one customer-data table without RLS (it is
+ * compressed since V20260809000000, and RLS and compression are mutually
+ * exclusive), and the app role holds no DELETE on it (V20260831010000): its
+ * rows go through the tenant-bound SECURITY DEFINER function
+ * {@code purge_forecast_for_site} - the {@code purge_ocpp_action_scope}
+ * pattern - which deletes only within {@code app.tenant_id}, so the fence is
+ * DB-enforced instead of code discipline.
  */
 @Repository
 public class SeriesRepository {
@@ -68,10 +72,16 @@ public class SeriesRepository {
         deleteOcpp("site_id", siteId);
         for (String table : new String[] {
                 "telemetry", "telemetry_rollup_15m", "telemetry_rollup_1h", "telemetry_rollup_1d",
-                "weather_forecast", "schedule", "forecast",
+                "weather_forecast", "schedule",
                 "forecast_model_state", "forecast_accuracy", "plan_accuracy"}) {
             jdbc.update("DELETE FROM " + table + " WHERE site_id = ?", siteId);
         }
+        // forecast trägt kein RLS (komprimiert - RLS und Kompression schließen
+        // sich aus) und die App-Rolle hat seit V20260831010000 kein DELETE
+        // darauf. Die tenant-gebundene SECURITY-DEFINER-Funktion löscht nur
+        // Zeilen des Mandanten aus app.tenant_id - der Zaun ist DB-erzwungen,
+        // und die Kaskade bleibt in der EINEN Transaktion des Aufrufers.
+        jdbc.queryForObject("SELECT purge_forecast_for_site(?)", Long.class, siteId);
     }
 
     /**

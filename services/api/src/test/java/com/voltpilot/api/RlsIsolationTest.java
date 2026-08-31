@@ -347,6 +347,68 @@ class RlsIsolationTest {
         }
     }
 
+    /**
+     * Der Zaun-Riss aus dem Skalierungs-Gutachten (vp-scale-readiness-p4 §4.2):
+     * {@code forecast} ist die eine Kundendaten-Tabelle OHNE RLS (komprimiert
+     * seit V20260809000000 - RLS und Kompression schließen sich aus), also
+     * hängt ihre Mandantentrennung an Code-Disziplin. Seit V20260831010000 ist
+     * der App-Rolle wenigstens das DELETE entzogen; der eine legitime Löschweg
+     * (die Site-Löschkaskade) läuft über die tenant-gebundene
+     * SECURITY-DEFINER-Funktion, deren Zaun HIER bewiesen wird.
+     */
+    @Test
+    void forecastDeleteIsRevokedAndThePurgeFunctionIsTenantBound() throws Exception {
+        String siteA = "00000000-0000-0000-0000-000000000002";
+        String siteB = "10000000-0000-0000-0000-000000000002";
+        // Seed one row per tenant as the backend role - the real forecast
+        // writers (services/forecast, optimizer) use backend credentials too.
+        try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(), POSTGRES.getPassword()); Statement s = c.createStatement()) {
+            s.executeUpdate("DELETE FROM forecast WHERE method = 'rls-test'");
+            s.executeUpdate("INSERT INTO forecast (time, tenant_id, site_id, kind, model, "
+                    + "value_kw, run_at, horizon_min, method) VALUES "
+                    + "(now(), '" + TENANT_A + "', '" + siteA + "', 'load', 'load-persistence', "
+                    + "1.0, now(), 60, 'rls-test'), "
+                    + "(now(), '" + TENANT_B + "', '" + siteB + "', 'load', 'load-persistence', "
+                    + "2.0, now(), 60, 'rls-test')");
+        }
+        try {
+            // No RLS: the app role SEES both tenants' rows. Exactly this state
+            // is why every read path must carry the site fence itself
+            // (ForecastTableDisciplineTest) and why DELETE is revoked.
+            assertThat(scalar(TENANT_A, "SELECT count(*) FROM forecast WHERE method = 'rls-test'"))
+                    .isEqualTo(2L);
+
+            // The hardening itself: direct DELETE is gone for the app role.
+            assertThatThrownBy(() -> execute(TENANT_A, "DELETE FROM forecast WHERE method = 'rls-test'"))
+                    .hasMessageContaining("permission denied");
+
+            // The one legitimate delete path is the tenant-bound function:
+            // without tenant context it throws, ...
+            assertThatThrownBy(() -> scalarWithoutTenant(
+                    "SELECT purge_forecast_for_site('" + siteA + "'::uuid)"))
+                    .hasMessageContaining("tenant context required");
+            // ...a FOREIGN site id deletes NOTHING in the caller's tenant, ...
+            assertThat(scalar(TENANT_A, "SELECT purge_forecast_for_site('" + siteB + "'::uuid)"))
+                    .isZero();
+            assertThat(scalar(TENANT_A, "SELECT count(*) FROM forecast WHERE method = 'rls-test'"))
+                    .isEqualTo(2L);
+            // ...and the own site removes exactly the own tenant's row.
+            assertThat(scalar(TENANT_A, "SELECT purge_forecast_for_site('" + siteA + "'::uuid)"))
+                    .isEqualTo(1L);
+            assertThat(scalar(TENANT_A, "SELECT count(*) FROM forecast WHERE method = 'rls-test'"))
+                    .isEqualTo(1L);
+            assertThat(scalar(TENANT_B, "SELECT count(*) FROM forecast "
+                    + "WHERE method = 'rls-test' AND tenant_id = '" + TENANT_B + "'"))
+                    .isEqualTo(1L);
+        } finally {
+            try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(),
+                    POSTGRES.getUsername(), POSTGRES.getPassword()); Statement s = c.createStatement()) {
+                s.executeUpdate("DELETE FROM forecast WHERE method = 'rls-test'");
+            }
+        }
+    }
+
     private List<String> sitesForTenant(String tenantId) throws Exception {
         List<String> names = new ArrayList<>();
         try (Connection c = appDataSource().getConnection()) {
