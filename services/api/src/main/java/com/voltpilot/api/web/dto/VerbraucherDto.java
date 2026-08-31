@@ -80,11 +80,25 @@ public record VerbraucherDto(List<Eintrag> verbraucher, Ladepunkte ladepunkte,
             String hinweis, int steckerAnzahl, Instant gemeldetAm) {}
 
     /**
-     * Ein Platz der Rangliste (§5). {@code entityId} ist beim Speicher
-     * {@code null}; {@code name} ist der Anzeigename, den der Server schon
-     * kennt - die Flaeche muss ihn nicht ein zweites Mal zusammensetzen.
+     * Ein Platz der Rangliste (§5).
+     *
+     * <p>{@code entityId} ist beim Speicher {@code null} - und ebenso bei einer
+     * GRUPPE aus mehreren gleichrangigen Ladepunkten (Mockup 1440, Anmerkung
+     * 22): fuer Saeulen ohne {@code consumer_profile} kann die Cloud heute nur
+     * „Vorrang" und „Rest" ausdruecken, der Ganzzahl-Rang je Saeule ist Paket
+     * P6. {@code mitglieder} traegt dann die Komponenten der Zeile, damit die
+     * Flaeche sie beim Namen nennen kann („Stellplatz 2 · 3 · Carport").
+     *
+     * <p>{@code position} zaehlt GERAETE, nicht Zeilen: eine Gruppe aus drei
+     * Saeulen auf Platz 6 verbraucht 6, 7 und 8, die naechste Zeile steht auf 9.
+     * {@code name} ist der Anzeigename einer EINZELNEN Zeile ({@code null} bei
+     * einer Gruppe) - die Flaeche muss ihn nicht zusammensetzen.
      */
-    public record RanglisteEintrag(int position, String art, UUID entityId, String name) {}
+    public record RanglisteEintrag(int position, String art, UUID entityId, String name,
+            List<Mitglied> mitglieder) {}
+
+    /** Eine Komponente einer Rangliste-Zeile. */
+    public record Mitglied(UUID entityId, String name) {}
 
     /** Der ehrliche Leer-Zustand einer Anlage ohne steuerbares Geraet. */
     public static VerbraucherDto leer() {

@@ -271,21 +271,30 @@ class VerbraucherApiTest {
             // 5 · Die Rangliste: ohne Speicher gibt es keinen Speicher-Eintrag.
             JsonNode ohneSpeicher = getJson(pfad(site), customer);
             assertThat(arten(ohneSpeicher)).doesNotContain("speicher");
-            assertThat(ohneSpeicher.get("rangliste")).hasSize(5);
+            // Drei Komponenten MIT Profil (Heizstab, go-e-Wallbox, Pumpe) plus
+            // die zwei OCPP-Säulen als EINE gleichrangige Zeile.
+            assertThat(ohneSpeicher.get("rangliste")).hasSize(4);
 
-            // ... und mit Speicher steht er oben (Vorgabe „Speicher vor Auto").
+            // ... und mit Speicher steht er über den Säulen (Vorgabe „Speicher
+            // vor Auto"), aber unter allem, was ein Profil hat: dessen
+            // `consumer_first` ist die Aussage, die die Maschine wirklich kennt.
             putJson("/api/v1/sites/" + site + "/battery", customer,
                     Map.of("capacityKwh", 10.0, "maxChargeKw", 5.0, "maxDischargeKw", 5.0));
             JsonNode mitSpeicher = getJson(pfad(site), customer);
             JsonNode ersteZeile = mitSpeicher.get("rangliste").get(0);
-            // Die zwei nicht-Ladepunkte (consumer_first per Vorgabe) stehen über
-            // ihm, der Speicher davor - also: Heizstab, Pumpe, Speicher, Säulen.
-            assertThat(arten(mitSpeicher)).containsExactly("verbraucher", "verbraucher",
-                    "speicher", "ladepunkt", "ladepunkt", "ladepunkt");
+            assertThat(arten(mitSpeicher)).containsExactly("verbraucher", "ladepunkt",
+                    "verbraucher", "speicher", "ladepunkt");
             assertThat(ersteZeile.get("position").asInt()).isEqualTo(1);
-            JsonNode speicherZeile = mitSpeicher.get("rangliste").get(2);
+            JsonNode speicherZeile = mitSpeicher.get("rangliste").get(3);
             assertThat(speicherZeile.get("entityId").isNull()).isTrue();
             assertThat(speicherZeile.get("name").asText()).isEqualTo("Speicher");
+            // Die Gruppe: keine eigene Kennung, aber ihre Mitglieder beim Namen -
+            // und ihre Position zählt GERÄTE (sie belegt 5 und 6).
+            JsonNode gruppe = mitSpeicher.get("rangliste").get(4);
+            assertThat(gruppe.get("entityId").isNull()).isTrue();
+            assertThat(gruppe.get("position").asInt()).isEqualTo(5);
+            assertThat(gruppe.get("mitglieder")).hasSize(2);
+            assertThat(gruppe.get("mitglieder").get(0).get("name").asText()).isEqualTo("Hof Nord");
 
             // 6 · Der Mandanten-Zaun.
             ResponseEntity<String> fremd = rest.exchange(url(pfad(site)), HttpMethod.GET,
@@ -299,7 +308,191 @@ class VerbraucherApiTest {
         }
     }
 
+    /**
+     * Paket P4: die REIHENFOLGE bei knapper Leistung - der Schreibweg und sein
+     * Rundlauf gegen echte Spalten.
+     *
+     * <p>Die REGELN liegen rein in {@code RanglisteAbleitungTest}; hier faehrt
+     * die Reise: gelesen → gezogen → gespeichert → wieder gelesen, und danach
+     * steht in {@code consumer_profile} bzw. {@code site_charging_config}
+     * genau das, was der Optimierer und die Box lesen.
+     */
+    @Test
+    void dieReihenfolgeWirdGespeichertUndKommtGenauSoZurueck() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Rangliste");
+        try {
+            UUID device = claim(customer, site, "edge-rangliste-1");
+            heartbeat(site, device, zweiSaeulen());
+            UUID heizstab = createConsumer(customer, site, "heating-rod", "Heizstab", 3.0);
+            UUID pumpe = createConsumer(customer, site, "pump", "Pumpe Keller", 1.2);
+            putJson("/api/v1/sites/" + site + "/battery", customer,
+                    Map.of("capacityKwh", 10.0, "maxChargeKw", 5.0, "maxDischargeKw", 5.0));
+
+            JsonNode vorher = getJson(pfad(site), customer);
+            assertThat(arten(vorher)).containsExactly("verbraucher", "verbraucher", "speicher",
+                    "ladepunkt");
+            UUID saeule1 = UUID.fromString(eintrag(vorher, "Hof Nord").get("entityId").asText());
+            UUID saeule2 = UUID.fromString(eintrag(vorher, "saeule-2").get("entityId").asText());
+
+            // 1 · Der Kunde zieht die Ladepunkte ganz nach oben und die zwei
+            //     Verbraucher unter den Speicher.
+            JsonNode nachher = rangliste(site, customer, lp(saeule1), lp(saeule2), speicher(),
+                    vb(pumpe), vb(heizstab));
+            assertThat(arten(nachher)).containsExactly("ladepunkt", "speicher", "verbraucher",
+                    "verbraucher");
+            assertThat(namen(nachher)).containsExactly(null, "Speicher", "Pumpe Keller",
+                    "Heizstab");
+            // Die Positionen zaehlen Geraete: die Gruppe belegt 1 und 2.
+            assertThat(nachher.get("rangliste").get(0).get("position").asInt()).isEqualTo(1);
+            assertThat(nachher.get("rangliste").get(1).get("position").asInt()).isEqualTo(3);
+            // Die ANTWORT ist, was der naechste Lesevorgang liefert.
+            assertThat(getJson(pfad(site), customer).get("rangliste"))
+                    .isEqualTo(nachher.get("rangliste"));
+
+            // 2 · Und in der Maschine steht genau das - die Spalten, die der
+            //     Optimierer (`default_service_rank`, `storage_relation`) und
+            //     die Box (`storage_priority`, Vorrang-Menge) wirklich lesen.
+            assertThat(profil(pumpe)).containsExactly("4", "storage_first");
+            assertThat(profil(heizstab)).containsExactly("5", "storage_first");
+            assertThat(einSpaltenWert(
+                    "SELECT storage_priority FROM site_charging_config WHERE site_id = '" + site
+                            + "'")).isEqualTo("auto_vor_speicher");
+            assertThat(vorrang(site)).containsExactlyInAnyOrder("saeule-1", "saeule-2");
+
+            // 3 · Ein zweites Speichern derselben Liste aendert NICHTS.
+            JsonNode zweitesMal = rangliste(site, customer, lp(saeule1), lp(saeule2), speicher(),
+                    vb(pumpe), vb(heizstab));
+            assertThat(zweitesMal.get("rangliste")).isEqualTo(nachher.get("rangliste"));
+            assertThat(profil(pumpe)).containsExactly("4", "storage_first");
+
+            // 4 · Zurueck: kein Ladepunkt mehr ueber dem Speicher.
+            //     ⚠ Die VORRANG-Menge bleibt dabei unangetastet - die Liste sagt
+            //     dann gar nichts ueber sie, und ein Loeschen naehme dem Kunden
+            //     seine Wahl aus der Ladepark-Kapsel.
+            JsonNode zurueck = rangliste(site, customer, vb(heizstab), speicher(), vb(pumpe),
+                    lp(saeule1), lp(saeule2));
+            assertThat(einSpaltenWert(
+                    "SELECT storage_priority FROM site_charging_config WHERE site_id = '" + site
+                            + "'")).isEqualTo("speicher_vor_auto");
+            assertThat(vorrang(site)).containsExactlyInAnyOrder("saeule-1", "saeule-2");
+            assertThat(profil(heizstab)).containsExactly("1", "consumer_first");
+            // Die Normalform: die Saeulen stehen direkt am Speicher, die
+            // rankbaren darunter dahinter - die Antwort zeigt es sofort.
+            assertThat(arten(zurueck)).containsExactly("verbraucher", "speicher", "ladepunkt",
+                    "verbraucher");
+
+            // 5 · Jede Ablehnung ist ein deutscher Satz - und schreibt NICHTS.
+            ResponseEntity<String> leer = putRaw(rangPfad(site), customer,
+                    Map.of("eintraege", java.util.List.of()));
+            assertThat(leer.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            // ⚠ Auch die leere Liste bekommt den deutschen Satz - sie darf nicht
+            // an der Bean-Validation vor dem Dienst hängen bleiben.
+            assertThat(json.readTree(leer.getBody()).get("message").asText())
+                    .contains("darf nicht leer sein");
+            ResponseEntity<String> ohneSpeicher = putRaw(rangPfad(site), customer,
+                    Map.of("eintraege", java.util.List.of(vb(heizstab), vb(pumpe))));
+            assertThat(ohneSpeicher.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(json.readTree(ohneSpeicher.getBody()).get("message").asText())
+                    .contains("muss den Speicher enthalten");
+            ResponseEntity<String> doppelt = putRaw(rangPfad(site), customer, Map.of("eintraege",
+                    java.util.List.of(speicher(), vb(heizstab), vb(heizstab))));
+            assertThat(doppelt.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(json.readTree(doppelt.getBody()).get("message").asText())
+                    .contains("mehrfach");
+            ResponseEntity<String> fremdesGeraet = putRaw(rangPfad(site), customer,
+                    Map.of("eintraege", java.util.List.of(speicher(),
+                            Map.of("art", "verbraucher", "entityId", UUID.randomUUID().toString()))));
+            assertThat(fremdesGeraet.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(json.readTree(fremdesGeraet.getBody()).get("message").asText())
+                    .contains("gehört nicht zu dieser Anlage");
+            assertThat(profil(heizstab)).as("keine Ablehnung hat etwas geschrieben")
+                    .containsExactly("1", "consumer_first");
+
+            // 6 · Der Mandanten-Zaun.
+            ResponseEntity<String> fremd = rest.exchange(url(rangPfad(site)), HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("eintraege", java.util.List.of(speicher())),
+                            bearer(token("demo2", "demo2"))),
+                    String.class);
+            assertThat(fremd.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+            ResponseEntity<String> anonym = rest.exchange(url(rangPfad(site)), HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("eintraege", java.util.List.of(speicher()))),
+                    String.class);
+            assertThat(anonym.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
     // --- Hilfen -------------------------------------------------------------
+
+    private static String rangPfad(UUID site) {
+        return "/api/v1/sites/" + site + "/rangliste";
+    }
+
+    private static Map<String, Object> speicher() {
+        return Map.of("art", "speicher");
+    }
+
+    private static Map<String, Object> vb(UUID id) {
+        return Map.of("art", "verbraucher", "entityId", id.toString());
+    }
+
+    private static Map<String, Object> lp(UUID id) {
+        return Map.of("art", "ladepunkt", "entityId", id.toString());
+    }
+
+    @SafeVarargs
+    private JsonNode rangliste(UUID site, String token, Map<String, Object>... eintraege)
+            throws Exception {
+        return putJson(rangPfad(site), token, Map.of("eintraege", java.util.List.of(eintraege)));
+    }
+
+    /** {@code default_service_rank} + {@code storage_relation} als Text. */
+    private java.util.List<String> profil(UUID entityId) {
+        String rank = einSpaltenWert("SELECT default_service_rank FROM consumer_profile "
+                + "WHERE entity_id = '" + entityId + "'");
+        String relation = einSpaltenWert("SELECT storage_relation FROM consumer_profile "
+                + "WHERE entity_id = '" + entityId + "'");
+        return java.util.List.of(rank, relation);
+    }
+
+    private java.util.List<String> vorrang(UUID site) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            var rs = st.executeQuery("SELECT charge_point_id FROM site_charge_point_priority "
+                    + "WHERE site_id = '" + site + "'");
+            while (rs.next()) {
+                out.add(rs.getString(1));
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+        return out;
+    }
+
+    private String einSpaltenWert(String sql) {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            var rs = st.executeQuery(sql);
+            return rs.next() ? rs.getString(1) : null;
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static java.util.List<String> namen(JsonNode view) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (JsonNode e : view.get("rangliste")) {
+            out.add(e.get("name").isNull() ? null : e.get("name").asText());
+        }
+        return out;
+    }
+
+    private ResponseEntity<String> putRaw(String path, String token, Map<String, Object> body) {
+        return rest.exchange(url(path), HttpMethod.PUT, new HttpEntity<>(body, bearer(token)),
+                String.class);
+    }
+
 
     private static String pfad(UUID site) {
         return "/api/v1/sites/" + site + "/verbraucher";

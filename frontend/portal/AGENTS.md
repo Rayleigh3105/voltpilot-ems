@@ -2620,11 +2620,12 @@ stehen in der Root-`AGENTS.md` („Verbrauchsmanagement v1 — Paket 1").
   Anlagen-Standard-Zeile → eine Zeile je Ladepunkt) · *Weitere Verbraucher* ·
   die *Rangliste* als aufklappbare Karte. Die Zeilen-Grammatik ist
   `[Zustandspunkt] Name · Quelle · Ziel · N Regeln →`.
-- **⚠ Die Zeile ist in diesem Paket LESEND — der Klick öffnet KEINEN Dialog.**
+- **⚠ Die ZEILE ist weiterhin LESEND — der Klick öffnet KEINEN Dialog.**
   Statt eines toten Klickziels steht am Abschnittsende der ruhige Satz, WO die
   Steuerart heute gestellt wird (`WEG_LADEPUNKT`/`WEG_VERBRAUCHER`). Der Dialog
   ist P2; ein Knopf, der nichts bewirkt, wäre eine Zusage, die die Fläche nicht
-  hält (die `registerZugang`-Regel).
+  hält (die `registerZugang`-Regel). Die RANGLISTE ist seit P4 bedienbar — siehe
+  den eigenen Abschnitt darunter.
 - **„N Regeln" springt gefiltert in die Regeln-Kapsel** (`?komponente=`) —
   derselbe Deep-Link, den die Kapsel seit Stufe 5a konsumiert.
 - **⚠ Ein leeres `standardFolger` ist eine ZAHL, kein Etikett:** „Gilt für 2 von
@@ -2640,6 +2641,42 @@ stehen in der Root-`AGENTS.md` („Verbrauchsmanagement v1 — Paket 1").
   kurze Form, und die Ladepunkt-Flächen daneben schreiben sie schon so.
   `kwText` ist dafür aus `ladepunkte.ts` EXPORTIERT (vorher privat), damit es
   bei einer Zahl-Formatierung bleibt statt zweier.
+
+### Die Rangliste ist seit P4 bedienbar (`components/RanglisteKarte.tsx`)
+
+Ziehen am Rechner, ▲ ▼ überall (das Cockpit-Anpassen-Muster) — am Telefon gibt
+es kein HTML5-Drag, die zwei Tasten sind dort also die BEDIENUNG, keine Zugabe.
+Alle Regeln liegen rein in `src/verbraucherZone.ts` (`rangliste.test.ts`).
+Server-Seite: Root-`AGENTS.md` „Verbrauchsmanagement v1 — Paket 4".
+
+- **⚠ Der SERVER ist die Autorität.** `api.saveRangliste` schickt die Liste FLACH
+  (`ranglisteRumpf` löst eine Gruppe in ihre Mitglieder auf) und die ANTWORT —
+  die Normalform — ERSETZT den Zustand. Eine Anordnung, die die Maschine nicht
+  halten kann, springt damit sofort sichtbar an ihren Platz statt beim nächsten
+  Laden. Es gibt bewusst KEINEN Portal-Zwilling der Normalform.
+- **⚠ Gleichrangige Ladepunkte sind EINE Zeile** („Stellplatz 2 · Carport",
+  Zusatz „2 Ladepunkte") und die Karte SAGT warum (`RANGLISTE_GRUPPE_HINWEIS`):
+  für Säulen ohne eigenes Profil kann die Plattform heute nur „vor" oder „nach
+  dem Speicher" speichern, wer zwischen ihnen zuerst darf, bleibt die
+  Vorrang-Wahl der Ladepark-Kapsel (P6).
+- **⚠ Beim Sortieren zählt die Fläche selbst** (`entwurfPositionen`): die
+  gespeicherten Positionen meinen dann eine Reihenfolge, die es gerade nicht
+  mehr gibt, und eine „5" ganz oben wäre eine Zahl, die niemand meint. Gezählt
+  werden GERÄTE — eine Gruppe aus drei Säulen belegt drei Plätze, genau wie
+  `default_service_rank` sie zählt.
+- **⚠ Die Folgen-Karte spricht über die POSITION, nie über einzelne Geräte**
+  (`ranglisteFolgen`): eine Liste kann Ladepunkte auf BEIDEN Seiten des
+  Speichers haben (eine go-e über, die Säulen unter ihm), „Ihre Ladepunkte
+  stehen über dem Speicher" wäre dann falsch. Der Satz des Mockups ist deshalb
+  seiten-agnostisch: „Alles über dem Speicher zieht aus dem ganzen
+  Solar-Überschuss, alles darunter aus dem, was der Speicher übrig lässt."
+- **Ohne `onRangliste` ist die Karte reine ANZEIGE** — kein „Ändern", keine
+  ▲ ▼. Dieselbe Haus-Regel wie bei der lesenden Zeile.
+- **⚠ Die D6-Pflichtfrage „Was hat bei knapper Leistung Vorrang?" ist ERSATZLOS
+  entfallen** (`consumers/questions.ts`, Kind `storage-rank-note` statt
+  `storage-relation`): der Vorrang IST die Position, und die Frage schrieb
+  ohnehin nichts (`buildPolicyDocument` liest `draft.storageRelation` nicht).
+  An ihrer Stelle steht der WEG (`RANGLISTE_NOTIZ`).
 
 ### Die Jetzt-Zone: eine Zeile je LADEPUNKT statt einer Sammel-Zeile
 
@@ -2692,8 +2729,10 @@ sie damit nicht zurück (in `SteuerungSection.test.tsx` festgenagelt). Der
 Ladepark bleibt über die Ladepark-Kapsel und den Rahmen-Kopf der
 Verbraucher-Zone erreichbar — es geht nichts verloren, es zieht um.
 
-**Beweise:** `verbraucherZone.test.ts` (24) · `components/VerbraucherZone.test.tsx`
-(10) · `steuerungJetzt.test.ts` (42, davon die Ladepunkt-Zeilen samt Einklappen
+**Beweise:** `verbraucherZone.test.ts` (24) · `rangliste.test.ts` (19) ·
+`components/VerbraucherZone.test.tsx`
+(10) · `components/RanglisteKarte.test.tsx` (9) ·
+`steuerungJetzt.test.ts` (42, davon die Ladepunkt-Zeilen samt Einklappen
 und die Dedupe) · `pages/SteuerungSection.test.tsx` (38: Zonen-Reihenfolge, das
 Lese-Aggregat, die nicht zurückkehrende Ladepark-Karte, der Speicher-Name). Im
 echten Chrome gegen den Demo-Stack (go-e-Wallbox + Heizstab + 3 OCPP-Säulen)

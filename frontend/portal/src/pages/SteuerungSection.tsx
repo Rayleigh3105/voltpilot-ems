@@ -642,6 +642,13 @@ export function SteuerungSection({
             onEinstellungen={charging && charging.chargers.length > 0
               ? () => document.getElementById('vp-ladepark')?.scrollIntoView({ block: 'start' })
               : undefined}
+            /* Paket P4: die Reihenfolge bei knapper Leistung. Die Antwort IST
+               die Normalform - sie ersetzt den Zustand, statt ihn zu ergänzen,
+               damit die Fläche nie eine Anordnung stehen lässt, die niemand
+               gespeichert hat. */
+            onRangliste={async (rumpf) => {
+              setVerbraucher(await api.saveRangliste(site.id, rumpf));
+            }}
           />
 
           {/* --- Kapsel ③ · Regeln (Naming Set A) -------------------------- */}

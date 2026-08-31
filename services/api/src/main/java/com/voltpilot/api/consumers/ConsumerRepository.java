@@ -237,6 +237,26 @@ public class ConsumerRepository {
                 enabled, siteId, entityId);
     }
 
+    /**
+     * Der Schreibpfad der RANGLISTE (Verbrauchsmanagement v1, Paket P4): die
+     * Position dieses Verbrauchers und seine Seite des Speichers.
+     *
+     * <p><b>⚠ Die {@code version} wird ABSICHTLICH nicht hochgezaehlt.</b> Sie
+     * ist das Optimistic-Concurrency-Token des VERBRAUCHER-Editors; eine
+     * Rangliste, die sie bewegt, liesse einen gleichzeitig offenen Dialog beim
+     * Speichern in einen 409 laufen, obwohl niemand dasselbe geaendert hat. Die
+     * zwei Spalten hier gehoeren keiner Editor-Maske - sie sind die Projektion
+     * der Liste, und {@code updated_at} bleibt die Papier-Spur.
+     *
+     * @param rang 1-basierte Position; {@code null} loescht sie wieder
+     */
+    public void setServiceRank(UUID siteId, UUID entityId, Integer rang, String storageRelation) {
+        jdbc.update(
+                "UPDATE consumer_profile SET default_service_rank = ?, storage_relation = ?, "
+                        + "updated_at = now() WHERE site_id = ? AND entity_id = ?",
+                rang, storageRelation, siteId, entityId);
+    }
+
     public PolicyRow insertPolicyDraft(UUID entityId, UUID tenantId, UUID siteId, int version,
             String documentJson, String contentHash, String createdBy) {
         UUID policyId = jdbc.queryForObject(

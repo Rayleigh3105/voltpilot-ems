@@ -9,12 +9,13 @@
  * als Kopf und der Anlagen-Standard-Zeile, **Weitere Verbraucher**, und am Ende
  * die **Rangliste** als ausklappbare Karte.
  *
- * **⚠ In diesem Paket ist die Zeile LESEND.** Sie öffnet noch keinen
+ * **⚠ Die ZEILE ist weiterhin lesend.** Sie öffnet noch keinen
  * Steuerart-Dialog (das ist P2), und statt eines toten Klicks steht der Weg da,
  * auf dem die Steuerart HEUTE eingestellt wird — die Haus-Regel „eine Handlung,
  * die strukturell nichts bewirken kann, wird nicht angeboten; stattdessen steht
  * ihr Grund da". Der Sprung „N Regeln →" ist dagegen echt: er führt gefiltert
- * in die Regel-Kapsel.
+ * in die Regel-Kapsel — und die RANGLISTE ist seit Paket P4 bedienbar
+ * (`RanglisteKarte`).
  */
 import { useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
@@ -38,6 +39,7 @@ import {
   zone as zoneView,
 } from '../verbraucherZone';
 import { PartHead } from './SteuerungParts';
+import { RanglisteKarte } from './RanglisteKarte';
 import './VerbraucherZone.css';
 
 export interface VerbraucherZoneProps {
@@ -46,9 +48,17 @@ export interface VerbraucherZoneProps {
   onRegeln: (entityId: string) => void;
   /** Der Rahmen-Kopf verweist auf die Ladepark-Einstellungen (bis P5). */
   onEinstellungen?: () => void;
+  /**
+   * Speichert die Reihenfolge bei knapper Leistung (Paket P4). Fehlt sie, ist
+   * die Rangliste reine ANZEIGE - ein Knopf, der nichts bewirken kann, wird
+   * nicht angeboten.
+   */
+  onRangliste?: (rumpf: { art: string; entityId?: string }[]) => Promise<void>;
 }
 
-export function VerbraucherZone({ daten, onRegeln, onEinstellungen }: VerbraucherZoneProps) {
+export function VerbraucherZone(
+  { daten, onRegeln, onEinstellungen, onRangliste }: VerbraucherZoneProps,
+) {
   const v: ZoneView = zoneView(daten);
   const [suche, setSuche] = useState('');
   const [ranglisteOffen, setRanglisteOffen] = useState(false);
@@ -187,19 +197,7 @@ export function VerbraucherZone({ daten, onRegeln, onEinstellungen }: Verbrauche
               <Icon name={ranglisteOffen ? 'chevron-down' : 'chevron-right'} size={14} />
             </button>
             {ranglisteOffen && (
-              <ol className="vp-vz-rank">
-                {v.rangliste.map((e) => (
-                  <li key={`${e.art}:${e.entityId ?? 'speicher'}`}>
-                    <span className="vp-vz-pos">{e.position}</span>
-                    <span className="vp-vz-rankname">{e.name}</span>
-                    {e.art !== 'speicher' && (
-                      <span className="vp-vz-sub">
-                        {e.art === 'ladepunkt' ? 'Ladepunkt' : ''}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ol>
+              <RanglisteKarte liste={v.rangliste} onSpeichern={onRangliste} />
             )}
           </>
         )}

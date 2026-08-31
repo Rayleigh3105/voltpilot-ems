@@ -544,18 +544,10 @@ function QuestionControl({
       return <div className="vp-vb-note">{q.note}</div>;
     case 'no-measurement-note':
       return <div className="vp-vb-note">{q.note}</div>;
-    case 'storage-relation':
-      return (
-        <RadioGroup
-          label={q.label}
-          value={draft.storageRelation}
-          onChange={(v) => onUpdate({ storageRelation: v as 'consumer_first' | 'storage_first' })}
-          choices={[
-            { value: 'consumer_first', label: 'Verbraucher zuerst' },
-            { value: 'storage_first', label: 'Speicher zuerst' },
-          ]}
-        />
-      );
+    case 'storage-rank-note':
+      // ⚠ Kein Radio mehr: der Vorrang IST seit Paket P4 die Position in der
+      // Rangliste (§5). Hier steht nur noch der Weg dorthin.
+      return <div className="vp-vb-note">{q.note}</div>;
     case 'storage-discharge':
       return (
         <label className={`vp-vb-choice ${draft.allowStorageDischarge ? 'selected' : ''}`}>

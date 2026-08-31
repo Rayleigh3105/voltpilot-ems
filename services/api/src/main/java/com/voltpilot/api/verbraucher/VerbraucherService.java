@@ -130,8 +130,7 @@ public class VerbraucherService {
         int standardFolger = 0;
 
         for (EntityRow row : entities.entitiesForSite(siteId)) {
-            EntityType type = catalog.find(row.entityType());
-            if (type == null || !"consumer".equals(type.category()) || !type.controllable()) {
+            if (!steuerbar(row)) {
                 continue;
             }
             boolean ladepunkt = istLadepunkt(row.entityType());
@@ -153,22 +152,78 @@ public class VerbraucherService {
                     ansprueche.getOrDefault(row.id().toString(), List.of()).size(),
                     fortschritt(aufgaben.get(row.id()), now),
                     p == null ? null : p.enabled()));
-            kandidaten.add(new RanglisteProjektion.Kandidat(
-                    ladepunkt ? RanglisteProjektion.ART_LADEPUNKT
-                            : RanglisteProjektion.ART_VERBRAUCHER,
-                    row.id(), chargePointId, p == null ? null : p.storageRelation()));
+            kandidaten.add(kandidat(row.id(), ladepunkt, chargePointId, p));
         }
 
-        List<RanglisteEintrag> rangliste = new ArrayList<>();
-        for (RanglisteProjektion.Eintrag e : RanglisteProjektion.initial(kandidaten,
-                hatSpeicher(siteId), config.storagePriority(), config.priorityChargePointIds())) {
-            rangliste.add(new RanglisteEintrag(e.position(), e.art(), e.entityId(),
-                    e.entityId() == null ? SPEICHER_NAME : namen.getOrDefault(e.entityId(), "")));
-        }
+        List<RanglisteEintrag> rangliste = rangliste(
+                RanglisteProjektion.liste(kandidaten, hatSpeicher(siteId), config.storagePriority(),
+                        config.priorityChargePointIds()),
+                namen);
 
         return new VerbraucherDto(List.copyOf(out),
                 new Ladepunkte(ladepunkte > 0 ? standard : null, standardFolger, ladepunkte, rahmen),
                 List.copyOf(rangliste));
+    }
+
+    /**
+     * Die Kandidaten der Rangliste - GENAU die Menge, die {@link #forSite}
+     * zeigt. Der Schreibweg ({@link RanglisteService}) holt sie hierueber, weil
+     * eine zweite Auswahl den Rundlauf „gelesene Liste → gespeichert → wieder
+     * gelesen" zerreissen wuerde.
+     */
+    List<RanglisteProjektion.Kandidat> kandidatenFuer(UUID siteId) {
+        Map<UUID, ConsumerRow> profile = new HashMap<>();
+        for (ConsumerRow row : consumers.listForSite(siteId)) {
+            profile.put(row.entityId(), row);
+        }
+        Map<UUID, String> chargePointIds = entities.chargePointIdsByEntity(siteId);
+        List<RanglisteProjektion.Kandidat> out = new ArrayList<>();
+        for (EntityRow row : entities.entitiesForSite(siteId)) {
+            if (!steuerbar(row)) {
+                continue;
+            }
+            out.add(kandidat(row.id(), istLadepunkt(row.entityType()),
+                    chargePointIds.get(row.id()), profile.get(row.id())));
+        }
+        return List.copyOf(out);
+    }
+
+    /** Zaehlt diese Entitaet als steuerbarer Verbraucher der Zone? */
+    private boolean steuerbar(EntityRow row) {
+        EntityType type = catalog.find(row.entityType());
+        return type != null && "consumer".equals(type.category()) && type.controllable();
+    }
+
+    /**
+     * <b>⚠ {@code storageRelation} ist der RANKBAR-Marker</b> (siehe
+     * {@link RanglisteProjektion}): die Spalte ist NOT NULL, ein {@code null}
+     * heisst also genau „diese Komponente hat kein {@code consumer_profile}"
+     * und ist damit nicht einzeln rangierbar.
+     */
+    private static RanglisteProjektion.Kandidat kandidat(UUID entityId, boolean ladepunkt,
+            String chargePointId, ConsumerRow profil) {
+        return new RanglisteProjektion.Kandidat(
+                ladepunkt ? RanglisteProjektion.ART_LADEPUNKT
+                        : RanglisteProjektion.ART_VERBRAUCHER,
+                entityId, chargePointId, profil == null ? null : profil.storageRelation(),
+                profil == null ? null : profil.defaultServiceRank());
+    }
+
+    /** Die Zeilen der Rangliste - die Namen kennt der Server schon. */
+    private List<RanglisteEintrag> rangliste(List<RanglisteProjektion.Eintrag> eintraege,
+            Map<UUID, String> namen) {
+        List<RanglisteEintrag> out = new ArrayList<>();
+        for (RanglisteProjektion.Eintrag e : eintraege) {
+            List<VerbraucherDto.Mitglied> mitglieder = new ArrayList<>();
+            for (UUID id : e.mitglieder()) {
+                mitglieder.add(new VerbraucherDto.Mitglied(id, namen.getOrDefault(id, "")));
+            }
+            String name = RanglisteProjektion.ART_SPEICHER.equals(e.art()) ? SPEICHER_NAME
+                    : e.entityId() == null ? null : namen.getOrDefault(e.entityId(), "");
+            out.add(new RanglisteEintrag(e.position(), e.art(), e.entityId(), name,
+                    List.copyOf(mitglieder)));
+        }
+        return List.copyOf(out);
     }
 
     /** Der Speicher heisst in der Rangliste beim Namen, den er ueberall traegt. */
@@ -229,7 +284,7 @@ public class VerbraucherService {
      * {@code ConsumerService.siteHasStorage} dieselbe Frage beantwortet - eine
      * zweite Ableitung waere eine zweite Wahrheit.
      */
-    private boolean hatSpeicher(UUID siteId) {
+    boolean hatSpeicher(UUID siteId) {
         Integer n = jdbc.queryForObject(
                 "SELECT count(*) FROM asset WHERE site_id = ? AND type = 'battery'", Integer.class,
                 siteId);

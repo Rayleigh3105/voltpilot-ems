@@ -17,6 +17,18 @@ import { findSignal } from './signals';
 
 export type Intent = 'react' | 'schedule' | 'deadline' | 'cheap';
 
+/**
+ * Wo der Vorrang bei knapper Leistung seit Paket P4 wohnt.
+ *
+ * **⚠ Es ist ein WEG, keine Frage:** die frühere D6-Pflichtfrage je Gerät ist
+ * die Position in der Rangliste geworden (Verbrauchsmanagement v1 §5) - eine
+ * Liste je Anlage, mit dem Speicher als Eintrag.
+ */
+export const RANGLISTE_NOTIZ =
+  'Wer bei knapper Leistung zuerst bedient wird, stellen Sie in der '
+  + '„Reihenfolge bei knapper Leistung" ein — einer Liste je Anlage, in der '
+  + 'auch der Speicher steht.';
+
 export interface ConsumerContext {
   controlKind: ControlKind;
   hasStorage: boolean;
@@ -141,7 +153,7 @@ export type QuestionKind =
   | 'grid-policy'
   | 'grid-allowed-note'
   | 'no-measurement-note'
-  | 'storage-relation'
+  | 'storage-rank-note'
   | 'storage-discharge'
   | 'hysteresis';
 
@@ -245,10 +257,18 @@ export function consumerQuestions(ctx: ConsumerContext, draft: ConsumerDraft): Q
       label: 'Darf Netzstrom verwendet werden?' });
   }
 
-  // Storage questions ONLY at a site with a storage (D6: required there).
+  // Storage questions ONLY at a site with a storage.
+  //
+  // ⚠ Die frühere D6-PFLICHTFRAGE „Was hat bei knapper Leistung Vorrang?" ist
+  // hier ERSATZLOS entfallen (Verbrauchsmanagement v1 §5, Paket P4): der
+  // Vorrang ist seither die POSITION in der Rangliste, und ein zweiter Editor
+  // für dieselbe Tatsache wäre genau die Doppeldeutigkeit, gegen die das
+  // Konzept gebaut ist. Sie schrieb ohnehin nichts - `buildPolicyDocument`
+  // liest `draft.storageRelation` nicht. Statt der Frage steht der WEG da.
   if (ctx.hasStorage) {
-    q.push({ id: 'storage-relation', kind: 'storage-relation', section: 'standard',
-      label: 'Was hat bei knapper Leistung Vorrang?' });
+    q.push({ id: 'storage-rank-note', kind: 'storage-rank-note', section: 'standard',
+      label: 'Vorrang bei knapper Leistung',
+      note: RANGLISTE_NOTIZ });
     q.push({ id: 'storage-discharge', kind: 'storage-discharge', section: 'standard',
       label: 'Darf der Speicher diesen Verbraucher versorgen?' });
   }

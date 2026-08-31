@@ -102,7 +102,16 @@ export interface LadeparkRahmen {
 export interface RanglisteEintrag {
   position: number;
   art: 'speicher' | 'ladepunkt' | 'verbraucher' | string;
+  /** null beim Speicher UND bei einer Gruppe aus mehreren Ladepunkten. */
   entityId: string | null;
+  /** null bei einer Gruppe — die Fläche nennt dann ihre Mitglieder. */
+  name: string | null;
+  /** Leer beim Speicher, sonst mindestens eine Komponente. */
+  mitglieder?: RanglisteMitglied[];
+}
+
+export interface RanglisteMitglied {
+  entityId: string;
   name: string;
 }
 
@@ -445,10 +454,169 @@ export function rahmenView(r: LadeparkRahmen | null | undefined): RahmenView | n
   };
 }
 
-/** „Speicher zuerst · 8 Einträge" — der Satz der eingeklappten Rangliste. */
+/**
+ * „Speicher zuerst · 8 Einträge" — der Satz der eingeklappten Rangliste.
+ *
+ * **⚠ Gezählt werden GERÄTE, nicht Zeilen** — eine Gruppe aus drei Säulen ist
+ * eine Zeile, aber drei Einträge; die Position der letzten Zeile sagt dasselbe.
+ */
 export function ranglisteZusammenfassung(liste: RanglisteEintrag[]): string | null {
   if (!liste.length) return null;
   const erste = liste[0];
-  const kopf = erste.art === 'speicher' ? 'Speicher zuerst' : `${erste.name} zuerst`;
-  return `${kopf} · ${liste.length} ${liste.length === 1 ? 'Eintrag' : 'Einträge'}`;
+  const kopf = erste.art === 'speicher' ? 'Speicher zuerst' : `${zeilenTitel(erste)} zuerst`;
+  const n = liste.reduce((sum, e) => sum + Math.max(1, e.mitglieder?.length ?? 1), 0);
+  return `${kopf} · ${n} ${n === 1 ? 'Eintrag' : 'Einträge'}`;
+}
+
+// ---------------------------------------------------------------------------
+// Die Rangliste als BEDIENBARE Liste (Paket P4, §5)
+// ---------------------------------------------------------------------------
+
+/** Der Kopf der Karte und ihr Hinweis (§6.3, wörtlich aus dem Mockup). */
+export const RANGLISTE_HINWEIS =
+  'Oben wird zuerst bedient. Pflichten (Frist, feste Zeiten) gehen immer vor. '
+  + 'Ziehen Sie die Einträge — oder ▲ ▼ per Tastatur.';
+export const RANGLISTE_AENDERN = 'Ändern';
+export const RANGLISTE_ABBRECHEN = 'Abbrechen';
+export const RANGLISTE_SPEICHERN = 'Reihenfolge speichern';
+export const RANGLISTE_SPEICHERT = 'Speichert …';
+export const RANGLISTE_FOLGEN_TITEL = 'Das passiert jetzt';
+export const RANGLISTE_FEHLER =
+  'Die Reihenfolge konnte nicht gespeichert werden.';
+export const RANGLISTE_HOCH = 'Nach oben';
+export const RANGLISTE_RUNTER = 'Nach unten';
+
+/**
+ * Der Zusatz einer Zeile: „wird zuerst geladen" am Speicher, sonst die Art —
+ * und bei einer Gruppe, wie viele Ladepunkte sie umfasst.
+ */
+export const RANGLISTE_SPEICHER_TAG = 'wird zuerst geladen';
+
+/**
+ * Warum gleichrangige Ladepunkte EINE Zeile sind.
+ *
+ * **⚠ Es ist eine Ehrlichkeits-Aussage, keine Platzersparnis:** für Säulen ohne
+ * eigenes Profil kann die Plattform heute nur „vor" oder „nach dem Speicher"
+ * speichern; untereinander wechselt die Box zwischen ihnen ab. Sie einzeln
+ * ziehbar zu zeigen hieße, eine Reihenfolge zu versprechen, die niemand hält.
+ */
+export const RANGLISTE_GRUPPE_HINWEIS =
+  'Diese Ladepunkte sind untereinander gleichrangig — die Box wechselt sich '
+  + 'zwischen ihnen ab. Wer zuerst darf, stellen Sie im Ladepark unter '
+  + '„Einstellungen" ein.';
+
+/** Der Titel einer Zeile: ihr Name, sonst die Namen ihrer Mitglieder. */
+export function zeilenTitel(e: RanglisteEintrag): string {
+  if (e.name) return e.name;
+  const namen = (e.mitglieder ?? []).map((m) => m.name).filter((n) => n.trim().length > 0);
+  return namen.length ? namen.join(' · ') : 'Ladepunkte';
+}
+
+/** Der Zusatz rechts: „wird zuerst geladen" / „3 Ladepunkte" / „Ladepunkt". */
+export function zeilenTag(e: RanglisteEintrag): string {
+  if (e.art === 'speicher') return RANGLISTE_SPEICHER_TAG;
+  const n = e.mitglieder?.length ?? 1;
+  if (e.art !== 'ladepunkt') return '';
+  return n > 1 ? `${n} Ladepunkte` : 'Ladepunkt';
+}
+
+/** Eine stabile Kennung je Zeile - Gruppen haben keine eigene entityId. */
+export function zeilenKey(e: RanglisteEintrag): string {
+  if (e.art === 'speicher') return 'speicher';
+  if (e.entityId) return e.entityId;
+  return `gruppe:${(e.mitglieder ?? []).map((m) => m.entityId).join(',')}`;
+}
+
+/**
+ * Die Positionen eines ENTWURFS - dieselbe Zaehlung wie beim Server: sie zaehlt
+ * GERAETE, eine Gruppe verbraucht also so viele Plaetze, wie sie Mitglieder hat.
+ *
+ * **⚠ Sie wird waehrend des Sortierens gebraucht**, weil die gespeicherten
+ * Positionen dann nicht mehr stimmen - eine „5" ganz oben waere eine Zahl, die
+ * niemand mehr meint. Erfunden wird dabei nichts: es ist derselbe laufende
+ * Zaehler, den der Server danach zurueckschickt.
+ */
+export function entwurfPositionen(liste: RanglisteEintrag[]): number[] {
+  const out: number[] = [];
+  let pos = 1;
+  for (const e of liste) {
+    out.push(pos);
+    pos += Math.max(1, e.mitglieder?.length ?? 1);
+  }
+  return out;
+}
+
+/** Verschiebt eine Zeile um einen Platz; gibt die Liste unveraendert zurueck, wo es nicht geht. */
+export function verschiebe(liste: RanglisteEintrag[], index: number,
+  richtung: -1 | 1): RanglisteEintrag[] {
+  const ziel = index + richtung;
+  if (index < 0 || index >= liste.length || ziel < 0 || ziel >= liste.length) return liste;
+  const out = [...liste];
+  const [weg] = out.splice(index, 1);
+  out.splice(ziel, 0, weg);
+  return out;
+}
+
+/** Zieht eine Zeile an eine andere Position (Drag & Drop). */
+export function ziehe(liste: RanglisteEintrag[], von: number, nach: number): RanglisteEintrag[] {
+  if (von === nach || von < 0 || von >= liste.length || nach < 0 || nach >= liste.length) {
+    return liste;
+  }
+  const out = [...liste];
+  const [weg] = out.splice(von, 1);
+  out.splice(nach, 0, weg);
+  return out;
+}
+
+/**
+ * Der Rumpf für `PUT /rangliste`: die Liste FLACH, ein Gerät je Eintrag.
+ *
+ * Eine Gruppe wird dabei in ihre Mitglieder aufgelöst — der Server gruppiert
+ * beim Lesen wieder, und nur so kann er jedem Gerät seine Seite des Speichers
+ * zuordnen.
+ */
+export function ranglisteRumpf(liste: RanglisteEintrag[]): RanglisteWunsch[] {
+  const out: RanglisteWunsch[] = [];
+  for (const e of liste) {
+    if (e.art === 'speicher') {
+      out.push({ art: 'speicher' });
+      continue;
+    }
+    const ids = (e.mitglieder ?? []).map((m) => m.entityId);
+    const alle = ids.length ? ids : e.entityId ? [e.entityId] : [];
+    for (const id of alle) out.push({ art: e.art, entityId: id });
+  }
+  return out;
+}
+
+export interface RanglisteWunsch {
+  art: string;
+  entityId?: string;
+}
+
+/**
+ * Die Folgen-Karte („Das passiert jetzt", §6.3) — wörtlich die Sätze des
+ * Mockups, gefüllt mit den ersten beiden Zeilen.
+ *
+ * **⚠ Der dritte Satz erscheint nur, wenn es wirklich Ladepunkte gibt** und
+ * nennt die Speicher-Seite, die daraus folgt — nie eine erfundene.
+ */
+export function ranglisteFolgen(liste: RanglisteEintrag[]): string[] {
+  if (!liste.length) return [];
+  const namen = liste.slice(0, 3).map(zeilenTitel);
+  const kette = namen.join(', dann ');
+  const out = [
+    `Ist die Leistung knapp, bekommt ${kette}${liste.length > 3 ? ' …' : ''}`,
+    'Ein Ziel (bis 06:00 voll) und feste Zeiten werden trotzdem zuerst erfüllt.',
+  ];
+  const speicher = liste.findIndex((e) => e.art === 'speicher');
+  if (speicher >= 0 && liste.length > 1) {
+    // ⚠ Der Satz spricht über die POSITION, nicht über einzelne Geräte: eine
+    // Liste kann Ladepunkte auf BEIDEN Seiten des Speichers haben, und
+    // „Ihre Ladepunkte stehen über dem Speicher" wäre dann falsch. So steht er
+    // auch im abgenommenen Mockup (§6.3).
+    out.push('Alles über dem Speicher zieht aus dem ganzen Solar-Überschuss, '
+      + 'alles darunter aus dem, was der Speicher übrig lässt.');
+  }
+  return out;
 }

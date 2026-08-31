@@ -3199,6 +3199,20 @@ export const api = {
    */
   siteVerbraucher: (siteId: string) =>
     request<SiteVerbraucher>(`/api/v1/sites/${siteId}/verbraucher`),
+  /**
+   * Die REIHENFOLGE bei knapper Leistung setzen (Paket P4, §5). Die Antwort ist
+   * die Zone, wie sie danach GELESEN wird — also die Normalform; die Fläche
+   * übernimmt sie, statt ihre eigene Anordnung stehen zu lassen.
+   *
+   * Gespeichert wird kein neues Format: der Server projiziert auf
+   * `default_service_rank`, `storage_relation` und die Speicher-Frage des
+   * Ladeparks.
+   */
+  saveRangliste: (siteId: string, eintraege: { art: string; entityId?: string }[]) =>
+    request<SiteVerbraucher>(`/api/v1/sites/${siteId}/rangliste`, {
+      method: 'PUT',
+      body: JSON.stringify({ eintraege }),
+    }),
   /** Complete, tenant-scoped OCPP 1.6 station inventory for the device home. */
   ocppStations: (siteId: string, signal?: AbortSignal) =>
     request<OcppStation[]>(`/api/v1/sites/${siteId}/ocpp/stations`, { signal }),

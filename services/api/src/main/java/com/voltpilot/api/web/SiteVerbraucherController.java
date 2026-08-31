@@ -1,12 +1,25 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.verbraucher.RanglisteAbleitung;
+import com.voltpilot.api.verbraucher.RanglisteService;
 import com.voltpilot.api.verbraucher.VerbraucherService;
 import com.voltpilot.api.web.dto.VerbraucherDto;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -21,11 +34,12 @@ import org.springframework.web.server.ResponseStatusException;
  * fremde Anlage ist 404 (nie 403), und ein Admin erreicht sie ueber den
  * {@code X-Tenant-Id}-Umschalter auf demselben RLS-Pfad.
  *
- * <p><b>READ-ONLY, und das ist eine Konstruktions-Aussage.</b> Es gibt hier
- * bewusst KEINE Route, die eine Steuerart setzt - dieses Paket zeigt nur, was
- * schon gilt; geschrieben wird weiterhin ueber die bestehenden Wege (Policy
- * bzw. {@code charging-config}), und der EINE Schreibweg der Steuerart entsteht
- * in Paket P2/P4. Dieselbe Disziplin wie beim Ladepunkt-Lesepfad.
+ * <p><b>Die STEUERART wird hier weiterhin nicht gesetzt</b> - dieses Paket
+ * zeigt sie nur; ihr Schreibweg entsteht in Paket P2. Was seit Paket P4 dazu
+ * gekommen ist, ist die REIHENFOLGE bei knapper Leistung ({@code PUT
+ * /rangliste}), und auch sie schreibt kein neues Format: sie projiziert auf
+ * {@code default_service_rank}, {@code storage_relation} und die Speicher-Frage
+ * des Ladeparks ({@link RanglisteService}).
  *
  * <p>Eine Anlage ohne steuerbares Geraet bekommt eine wohlgeformte LEERE
  * Antwort - der Normalzustand vieler Anlagen, kein Fehler.
@@ -34,19 +48,79 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}")
 public class SiteVerbraucherController {
 
+    /**
+     * Der Rumpf der Rangliste: die Liste FLACH, ein Geraet je Eintrag, von oben
+     * nach unten. Eine Gruppe gleichrangiger Ladepunkte schickt der Client als
+     * ihre Mitglieder hintereinander - der Server gruppiert beim Lesen wieder.
+     */
+    public record RanglisteRequest(
+            @Size(max = 200) List<@NotNull @Valid RanglisteEintragRequest> eintraege) {}
+
+    /**
+     * Ein Platz. {@code art} ist {@code speicher} (dann ohne {@code entityId}),
+     * {@code ladepunkt} oder {@code verbraucher}.
+     *
+     * <p><b>⚠ Bei einem Geraet wird die Art nicht gegengeprueft</b> - ob eine
+     * Komponente fuer den Kunden ein „Ladepunkt" heisst, ist eine Frage der
+     * Darstellung und darf sich aendern, ohne einen aelteren Client
+     * auszusperren. Entscheidend ist die Kennung; nur der Speicher-Platz braucht
+     * sein Wort, weil er keine Kennung hat.
+     */
+    public record RanglisteEintragRequest(@NotNull @Size(max = 32) String art, UUID entityId) {}
+
     private final SiteRepository sites;
     private final VerbraucherService verbraucher;
+    private final RanglisteService rangliste;
 
-    public SiteVerbraucherController(SiteRepository sites, VerbraucherService verbraucher) {
+    public SiteVerbraucherController(SiteRepository sites, VerbraucherService verbraucher,
+            RanglisteService rangliste) {
         this.sites = sites;
         this.verbraucher = verbraucher;
+        this.rangliste = rangliste;
     }
 
     @GetMapping("/verbraucher")
     public VerbraucherDto verbraucher(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return verbraucher.forSite(siteId);
+    }
+
+    /**
+     * Setzt die Reihenfolge bei knapper Leistung und liefert die Zone zurueck,
+     * wie sie danach GELESEN wird (die Normalform - siehe
+     * {@code RanglisteProjektion}).
+     */
+    @PutMapping("/rangliste")
+    public VerbraucherDto rangliste(@PathVariable UUID siteId,
+            @Valid @RequestBody RanglisteRequest req, @AuthenticationPrincipal Jwt caller) {
+        requireSite(siteId);
+        // ⚠ Die LEERE Liste wird bewusst NICHT per Bean-Validation abgelehnt:
+        // sie feuerte vor dem Dienst und der Kunde bekaeme ein nacktes 400
+        // statt des deutschen Satzes, den `RanglisteAbleitung.pruefe` dafuer
+        // hat. Eine Kunden-Flaeche braucht die Auskunft, nicht die Zahl.
+        List<RanglisteAbleitung.Wunsch> wunsch = new ArrayList<>();
+        for (RanglisteEintragRequest e : req.eintraege() == null ? List.<RanglisteEintragRequest>of()
+                : req.eintraege()) {
+            wunsch.add(new RanglisteAbleitung.Wunsch(e.art(), e.entityId()));
+        }
+        return rangliste.speichere(siteId, wunsch,
+                caller == null ? "unbekannt" : caller.getSubject());
+    }
+
+    private void requireSite(UUID siteId) {
         if (!sites.existsForCurrentTenant(siteId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
-        return verbraucher.forSite(siteId);
+    }
+
+    /**
+     * Jede Ablehnung kommt als deutscher Satz an - die Rangliste ist eine
+     * Kunden-Flaeche, ein nacktes 400 waere dort keine Auskunft (dieselbe
+     * Disziplin wie auf {@code SiteChargingConfigController}).
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<java.util.Map<String, String>> handle(ResponseStatusException e) {
+        return ResponseEntity.status(e.getStatusCode())
+                .body(java.util.Map.of("message", e.getReason() == null ? "" : e.getReason()));
     }
 }

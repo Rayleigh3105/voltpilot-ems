@@ -586,6 +586,43 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     expect(screen.getByText('Gilt für 1 von 1 Ladepunkt')).toBeInTheDocument();
   });
 
+  it('Paket P4: die Rangliste speichert flach und übernimmt die ANTWORT', async () => {
+    setup();
+    const zone = (rangliste: unknown[]) => ({
+      verbraucher: [],
+      ladepunkte: { standard: null, standardFolger: 0, gesamt: 0, rahmen: null },
+      rangliste,
+    }) as never;
+    vi.spyOn(api, 'siteVerbraucher').mockResolvedValue(zone([
+      { position: 1, art: 'speicher', entityId: null, name: 'Speicher', mitglieder: [] },
+      { position: 2, art: 'verbraucher', entityId: 'e-heiz', name: 'Heizstab',
+        mitglieder: [{ entityId: 'e-heiz', name: 'Heizstab' }] },
+    ]));
+    // ⚠ Die ANTWORT ist die Normalform - sie ersetzt den Zustand, statt ihn zu
+    // ergänzen. Der Server sortiert hier bewusst ANDERS als der Klick, damit
+    // der Test beweist, dass die Fläche IHM folgt.
+    const speichern = vi.spyOn(api, 'saveRangliste').mockResolvedValue(zone([
+      { position: 1, art: 'verbraucher', entityId: 'e-heiz', name: 'Heizstab',
+        mitglieder: [{ entityId: 'e-heiz', name: 'Heizstab' }] },
+      { position: 2, art: 'speicher', entityId: null, name: 'Speicher', mitglieder: [] },
+    ]));
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Verbraucher' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Reihenfolge bei knapper Leistung/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ändern' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Nach oben: Heizstab' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reihenfolge speichern' }));
+    await waitFor(() => expect(speichern).toHaveBeenCalledTimes(1));
+    expect(speichern.mock.calls[0][1]).toEqual([
+      { art: 'verbraucher', entityId: 'e-heiz' },
+      { art: 'speicher' },
+    ]);
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: /Reihenfolge bei knapper Leistung/ }).textContent,
+    ).toContain('Heizstab zuerst · 2 Einträge'));
+  });
+
   it('nennt den Speicher „Speicher“, nie seine UUID', async () => {
     // ⚠ `flowApi.entities()` faellt fuer ein LABEL-loses Messobjekt auf seine Id
     // zurueck (der Flow-Editor braucht dort einen adressierbaren Schluessel) -

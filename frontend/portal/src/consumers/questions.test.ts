@@ -9,6 +9,7 @@ import {
   type Intent,
   type Question,
   type QuestionKind,
+  RANGLISTE_NOTIZ,
   SG_READY_TYPE, consumerNachweis, NACHWEIS_FREIGABE,
 } from './questions';
 
@@ -73,15 +74,24 @@ describe('consumerQuestions', () => {
   it('without a storage there is neither storage order nor discharge freigabe', () => {
     const d = draft({ intent: 'react', conditions: [{ signal: 'consumer.available', operator: 'eq', value: true }] });
     const k = kinds(consumerQuestions(ctx({ hasStorage: false }), d));
-    expect(k).not.toContain('storage-relation');
+    expect(k).not.toContain('storage-rank-note');
     expect(k).not.toContain('storage-discharge');
   });
 
-  it('a storage site asks both storage questions (D6 required)', () => {
+  it('a storage site NAMES the rangliste instead of asking the old D6 question', () => {
+    // ⚠ Verbrauchsmanagement v1 §5 (Paket P4): der Vorrang bei knapper Leistung
+    // IST die Position in der Rangliste. Die frühere Pflichtfrage je Gerät ist
+    // ersatzlos entfallen - sie schrieb ohnehin nichts (`buildPolicyDocument`
+    // liest `draft.storageRelation` nicht), und zwei Editoren für dieselbe
+    // Tatsache wären zwei Wahrheiten.
     const d = draft({ intent: 'react', conditions: [{ signal: 'consumer.available', operator: 'eq', value: true }] });
     const k = kinds(consumerQuestions(ctx({ hasStorage: true }), d));
-    expect(k).toContain('storage-relation');
+    expect(k).not.toContain('storage-relation');
+    expect(k).toContain('storage-rank-note');
     expect(k).toContain('storage-discharge');
+    const note = consumerQuestions(ctx({ hasStorage: true }), d)
+      .find((q) => q.kind === 'storage-rank-note');
+    expect(note?.note).toBe(RANGLISTE_NOTIZ);
   });
 
   it('a Pflichtlauf shows Netzstrom as a FACT note, never an editable grid question', () => {
@@ -174,7 +184,7 @@ describe('consumerQuestions', () => {
     const all: QuestionKind[] = [
       'conditions', 'combinator', 'price-basis', 'target', 'recurrence', 'runtime',
       'contiguous', 'energy', 'enforcement', 'grid-policy', 'grid-allowed-note',
-      'no-measurement-note', 'storage-relation', 'storage-discharge', 'hysteresis',
+      'no-measurement-note', 'storage-rank-note', 'storage-discharge', 'hysteresis',
     ];
     for (const k of all) {
       expect(reached, `capability ${k} must be reachable`).toContain(k);
