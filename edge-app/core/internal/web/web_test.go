@@ -1082,6 +1082,11 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		`id="invRead"`,
 		// The "Verbindung testen" buttons + result panels (inverter form + drawer).
 		`id="invTestBtn"`, `id="invVerify"`, `id="srcTestBtn"`, `id="srcVerify"`,
+		// Der ZEILEN-Test (Befund L6): er prüft die GESPEICHERTE Verbindung und
+		// bleibt deshalb auch auf einer portal-verwalteten Anlage erreichbar.
+		// Ohne Knopf oder Kasten wäre der lokale Verbindungstest dort weiterhin
+		// nur über das ausgeblendete Bearbeiten-Formular zu haben.
+		`id="invRowTestBtn"`, `id="invRowVerify"`,
 		`href="dashboard.css"`, `href="inverter.css"`, `src="verify.js"`, `src="inverter.js"`,
 		// Die Modell-SUCHE ist der primäre Weg zum Modell und läuft über ALLE
 		// Marken; ihre reinen Regeln liegen in modellsuche.js. Ohne das Skript
@@ -3323,6 +3328,17 @@ func TestPortalManagedMirrorIsServedAndHonest(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Fatalf("einrichten.html fehlt %q - der Spiegel wäre unvollständig", want)
 		}
+	}
+	// ⚠ Die Gegenrichtung, und sie ist die Aussage dieses Befundes: „Verbindung
+	// prüfen" ÄNDERT NICHTS und darf deshalb NIE die Markierung tragen - sonst
+	// verschwände der lokale Test genau auf den Anlagen wieder, für die er
+	// nachgerüstet wurde.
+	ti := strings.Index(page, `id="invRowTestBtn"`)
+	if ti < 0 {
+		t.Fatal("einrichten.html fehlt der Zeilen-Test des Wechselrichters")
+	}
+	if end := strings.Index(page[ti:], ">"); end < 0 || strings.Contains(page[ti:ti+end], "data-vp-edit") {
+		t.Fatal(`"Verbindung prüfen" darf kein data-vp-edit tragen - er ändert nichts`)
 	}
 	// Der Hinweis steht im NORMAL-Modus: ein Zustand, der die Bearbeitung
 	// wegnimmt, darf nicht hinter dem Technikmodus verschwinden.

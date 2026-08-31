@@ -165,12 +165,21 @@
                 </div>
                 <span class="row-badge" id="invBadge"></span>
                 <span class="row-actions">
+                  <!-- ⚠ KEIN data-vp-edit: „Verbindung prüfen" ändert nichts und
+                       bleibt deshalb auch auf einer portal-verwalteten Anlage
+                       erreichbar (Befund L6). Er testet die GESPEICHERTE
+                       Verbindung - der Test im Bearbeiten-Formular daneben
+                       testet die noch nicht gespeicherte Eingabe. -->
+                  <button type="button" class="icon-btn" id="invRowTestBtn" title="Verbindung prüfen" aria-label="Verbindung des Wechselrichters prüfen">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12a7 7 0 0 1 12-5M19 12a7 7 0 0 1-12 5M15 3v4h-4M9 21v-4h4"/></svg>
+                  </button>
                   <button type="button" class="icon-btn" id="invEditBtn" data-vp-edit title="Bearbeiten" aria-label="Wechselrichter bearbeiten">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                   </button>
                 </span>
               </li>
             </ul>
+            <div class="verify-panel" id="invRowVerify" hidden></div>
 
             <div class="add-rowwrap" id="invEmpty" hidden>
               <button type="button" class="add-row" id="invSetupBtn" data-vp-edit>
