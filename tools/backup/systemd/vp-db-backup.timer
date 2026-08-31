@@ -1,0 +1,13 @@
+# Taeglich 02:40 lokaler VM-Zeit (+ bis 15 min Zufallsversatz): nach dem
+# ENTSO-E-/Collector-Abendgeschaeft, vor dem Morgenverkehr. Persistent=true
+# holt einen wegen ausgeschalteter VM verpassten Lauf beim Boot nach.
+[Unit]
+Description=Daily VoltPilot DB backup
+
+[Timer]
+OnCalendar=*-*-* 02:40:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

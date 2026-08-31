@@ -40,6 +40,7 @@ KEYCLOAK_DB_PASSWORD=x
 POSTGRES_PASSWORD=x
 VP_API_CLIENT_SECRET=x
 VP_PORTAL_ADMIN_PASSWORD=x
+VOLTPILOT_OCPP_PRIVACY_PEPPER=x
 VOLTPILOT_V2_PLAN_SITES=
 EOF
 
@@ -253,6 +254,63 @@ if grep -q 'DATA_PLANE_HOST' .env.prod.example && grep -q 'DATA_PLANE=' .env.pro
   pass ".env.prod.example documents the data-plane switch"
 else
   bad ".env.prod.example missing the DATA_PLANE delta"
+fi
+
+echo "== 6. DB-Backup (DB_BACKUP): aus = byte-identisch, an = WAL-Archiv + Mount =="
+# Same discipline as the data plane: a stack WITHOUT DB_BACKUP must resolve
+# byte-identically to the pre-feature one; WITH it the timescaledb service
+# must carry archive_mode + the backup mount, and a missing DB_BACKUP_DIR must
+# abort loudly. Full operator doc: docs/backup-restore.md; the restore cycle
+# itself is proven by tools/backup/test-backup-restore.sh.
+for f in infra/prod/backup/disabled.yml infra/prod/backup/enabled.yml infra/prod/backup/archive-wal.sh; do
+  if [ -f "$f" ]; then pass "backup overlay present: $f"; else bad "backup overlay MISSING: $f (include would abort every deploy)"; fi
+done
+if [ -n "${DP_OFF:-}" ]; then
+  ts_off="$(sed -n '/^  timescaledb:/,/^  [a-z]/p' <<<"$DP_OFF")"
+  if grep -q 'archive_mode' <<<"$ts_off" || grep -q 'target: /backup' <<<"$ts_off"; then
+    bad "DB_BACKUP unset: timescaledb already carries archive settings/backup mount (default not byte-identical)"
+  else
+    pass "DB_BACKUP unset: timescaledb has no archive settings and no /backup mount"
+  fi
+fi
+BK_ENV="$(mktemp)"; trap 'rm -f "$ENV_FILE" "$DP_ENV" "$BK_ENV"' EXIT
+{ cat "$ENV_FILE"; echo "DB_BACKUP=enabled"; echo "DB_BACKUP_DIR=/srv/backup/voltpilot-db"; } > "$BK_ENV"
+if BK_ON="$(docker compose -f docker-compose.prod.yml --env-file "$BK_ENV" config 2>/dev/null)"; then
+  pass "DB_BACKUP=enabled resolves"
+  ts_on="$(sed -n '/^  timescaledb:/,/^  [a-z]/p' <<<"$BK_ON")"
+  if grep -q 'archive_mode=on' <<<"$ts_on" && grep -q 'vp-archive-wal.sh %p %f' <<<"$ts_on"; then
+    pass "timescaledb command carries archive_mode=on + archive-wal.sh"
+  else
+    bad "timescaledb command missing archive_mode/archive_command with DB_BACKUP=enabled"
+  fi
+  if grep -q 'source: /srv/backup/voltpilot-db' <<<"$ts_on" && grep -q 'target: /backup' <<<"$ts_on"; then
+    pass "DB_BACKUP_DIR is mounted at /backup"
+  else
+    bad "backup dir mount missing with DB_BACKUP=enabled"
+  fi
+  if grep -q 'target: /usr/local/bin/vp-archive-wal.sh' <<<"$ts_on"; then
+    pass "archive-wal.sh is mounted read-only into the container"
+  else
+    bad "archive-wal.sh mount missing with DB_BACKUP=enabled"
+  fi
+  if grep -q 'target: /var/lib/postgresql/data' <<<"$ts_on" && grep -q 'target: /docker-entrypoint-initdb.d' <<<"$ts_on"; then
+    pass "existing data volume + initdb mounts survive the overlay merge"
+  else
+    bad "overlay merge LOST an existing timescaledb mount"
+  fi
+else
+  bad "DB_BACKUP=enabled did NOT resolve"
+fi
+{ cat "$ENV_FILE"; echo "DB_BACKUP=enabled"; } > "$BK_ENV"
+if docker compose -f docker-compose.prod.yml --env-file "$BK_ENV" config -q >/dev/null 2>&1; then
+  bad "DB_BACKUP=enabled without DB_BACKUP_DIR resolved - it must abort instead of mounting nothing"
+else
+  pass "DB_BACKUP=enabled without DB_BACKUP_DIR aborts loudly"
+fi
+if grep -q 'DB_BACKUP=' .env.prod.example && grep -q 'DB_BACKUP_DIR=' .env.prod.example; then
+  pass ".env.prod.example documents the backup switch"
+else
+  bad ".env.prod.example missing the DB_BACKUP delta"
 fi
 
 echo

@@ -71,6 +71,11 @@ name: voltpilot
 # also ADDIERT (die emqx-Eintraege unten bleiben unberuehrt).
 include:
   - path: ./infra/prod/dataplane/${DATA_PLANE:-disabled}.yml
+  # DB-Backup-Overlay (WAL-Archivierung + Backup-Mount fuer timescaledb).
+  # Ohne DB_BACKUP zieht das die No-op-Datei disabled.yml - der aufgeloeste
+  # Stack ist dann byte-identisch zu einem ohne diesen Block. DB_BACKUP=enabled
+  # verlangt DB_BACKUP_DIR und ist in docs/backup-restore.md beschrieben.
+  - path: ./infra/prod/backup/${DB_BACKUP:-disabled}.yml
 
 services:
   # ---------------------------------------------------------------------------

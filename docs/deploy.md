@@ -311,6 +311,13 @@ Der öffentliche mTLS-Geräte-Port `8883` läuft weiterhin direkt auf diese VM u
 
 `DATA_PLANE` in der `.env` leeren und `docker compose -f docker-compose.prod.yml up -d`. Der aufgelöste Stack ist dann wieder byte-identisch zu dem vor Einführung des Features (nachgewiesen per `config`-Diff); die ufw-Regeln kann man mit `sudo ufw status numbered` + `sudo ufw delete <n>` entfernen.
 
+## Backup & Restore der Datenebene
+
+Physisches Backup der TimescaleDB (pg_basebackup + kontinuierliches WAL-Archiv, Point-in-Time-Recovery) plus täglicher keycloak-db-Dump, mit getestetem Restore.
+Aktivierung über `DB_BACKUP=enabled` + `DB_BACKUP_DIR` in der `.env` (Overlay `infra/prod/backup/`, gleiche Mechanik wie `DATA_PLANE` - Standard aus, dann byte-identisch), Skripte + Timer unter `tools/backup/`.
+**Einrichtung, täglicher Betrieb und das Restore-Runbook Schritt für Schritt: [`docs/backup-restore.md`](backup-restore.md).**
+Der Beweis (echter seed -> Backup -> Zerstören -> Restore -> identisch-Zyklus in Wegwerf-Containern): `tools/backup/test-backup-restore.sh`.
+
 ## Topology
 
 ```

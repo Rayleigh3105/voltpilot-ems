@@ -1,0 +1,49 @@
+# =============================================================================
+# DB-Backup AN - WAL-Archivierung + Backup-Mount fuer die TimescaleDB.
+#
+# Aktiviert durch DB_BACKUP=enabled in /srv/docker/voltpilot/.env; ohne das
+# zieht docker-compose.prod.yml die No-op-Datei disabled.yml und nichts aendert
+# sich. Diese Datei wird per `include:` als BASIS gemergt:
+#   - `volumes:`-Listen werden ADDIERT (der bestehende Daten-Mount und die
+#     initdb-Skripte aus docker-compose.prod.yml bleiben unveraendert),
+#   - `command:` gilt, weil docker-compose.prod.yml fuer timescaledb KEINE
+#     Kommandozeile definiert (die Hauptdatei gewinnt nur, wo sie selbst etwas
+#     setzt - dieselbe Merge-Semantik wie beim dataplane-Overlay).
+#
+# Was hier passiert (Betreiber-Handbuch: docs/backup-restore.md):
+#   - archive_mode=on + archive_command: Postgres uebergibt jedes fertige
+#     WAL-Segment an infra/prod/backup/archive-wal.sh, das es gzip-komprimiert
+#     nach /backup/wal legt (= ${DB_BACKUP_DIR}/wal auf dem Host). Das ist die
+#     kontinuierliche Haelfte des Backups - zusammen mit dem naechtlichen
+#     pg_basebackup (tools/backup/vp-db-backup.sh) ergibt sie Point-in-Time-
+#     Recovery. PHYSISCH und damit kompressionstransparent: die komprimierten
+#     forecast-Chunks reisen als Bytes mit, timescaledb_pre_restore/
+#     post_restore (die Werkzeuge des LOGISCHEN Dumps) werden nie gebraucht.
+#   - archive_timeout=300: auch bei wenig Verkehr wird spaetestens alle 5 min
+#     ein Segment abgeschlossen - das ist die RPO-Schranke (max. ~5 min
+#     Datenverlust bei Totalausfall der VM zwischen zwei Archivierungen).
+#
+# ⚠ VOR dem Aktivieren MUESSEN die Zielverzeichnisse existieren und dem
+# Container-Postgres (uid 70) gehoeren - sonst schlaegt archive_command fehl
+# und pg_wal waechst, bis die Platte voll ist:
+#   sudo install -d -o 70 -g 70 ${DB_BACKUP_DIR}/{base,wal,keycloak}
+# Danach `docker compose -f docker-compose.prod.yml up -d` (timescaledb wird
+# einmal neu erstellt - kurzer DB-Neustart). Der Alterscheck
+# tools/backup/vp-db-backup-check.sh alarmiert, wenn die Archivierung danach
+# nicht laeuft.
+# =============================================================================
+services:
+  timescaledb:
+    command:
+      - postgres
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=/usr/local/bin/vp-archive-wal.sh %p %f
+      - -c
+      - archive_timeout=300
+    volumes:
+      - ${DB_BACKUP_DIR:?set DB_BACKUP_DIR in .env (Host-Verzeichnis fuer Basis-Backups + WAL-Archiv) wenn DB_BACKUP=enabled}:/backup
+      # ⚠ Relativ zum ORT DIESER DATEI, nicht zur Hauptdatei: Compose loest
+      # relative Pfade einer include-Datei gegen deren eigenes Verzeichnis auf.
+      - ./archive-wal.sh:/usr/local/bin/vp-archive-wal.sh:ro

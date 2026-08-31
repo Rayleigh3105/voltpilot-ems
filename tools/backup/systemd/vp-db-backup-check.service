@@ -1,0 +1,11 @@
+# Stuendlicher Alterscheck: schlaegt fehl (= Unit failed, sichtbar in
+# `systemctl --failed` und im Journal), sobald Basis-Backup oder WAL-Archiv
+# zu alt sind oder der Archiver im Fehlerzustand ist. docs/backup-restore.md.
+[Unit]
+Description=VoltPilot DB backup freshness check
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/docker/voltpilot/tools/backup/vp-db-backup-check.sh

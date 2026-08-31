@@ -1,0 +1,14 @@
+# =============================================================================
+# DB-Backup AUS - der Standard.
+#
+# docker-compose.prod.yml zieht diese Datei ueber `include:`, solange DB_BACKUP
+# in der .env leer/ungesetzt ist. Sie ist mit Absicht ein No-op: sie definiert
+# keinen Mount, keine Kommandozeile und keine Ueberschreibung, damit ein Stack
+# ohne gesetztes DB_BACKUP sich byte-identisch zu einem Stack ohne dieses
+# Feature verhaelt (nachgewiesen per `docker compose config`-Diff, siehe
+# tools/deploy/verify-migration-deploy.sh Abschnitt 6).
+#
+# Das Gegenstueck ist enabled.yml - dort stehen WAL-Archivierung + Backup-Mount.
+# NICHT loeschen: fehlt diese Datei, bricht jedes Deployment ohne DB_BACKUP ab.
+# =============================================================================
+services: {}

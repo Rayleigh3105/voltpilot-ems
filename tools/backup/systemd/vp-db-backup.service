@@ -1,0 +1,13 @@
+# Taegliches physisches Backup der VoltPilot-Datenebene (TimescaleDB +
+# keycloak-db). Aktivierung auf der VM: docs/backup-restore.md.
+# Pfad-Annahme: das Repo liegt als Deploy-Checkout unter /srv/docker/voltpilot.
+[Unit]
+Description=VoltPilot DB backup (pg_basebackup + keycloak dump + rotation)
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/docker/voltpilot/tools/backup/vp-db-backup.sh
+# Ein Backup darf lange dauern (TB-Skala), aber nicht ewig haengen.
+TimeoutStartSec=6h
