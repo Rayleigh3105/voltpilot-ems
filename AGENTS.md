@@ -883,17 +883,31 @@ Anlage ändert dadurch ihr Verhalten NICHT** (siehe die Autoritäts-Regel; der B
   `edge/sources/config`, Self-Wiring, Telemetrie) ist BYTE-IDENTISCH; nur der SCHREIBER der lokalen Dateien
   wechselt. Deterministische Quellen-IDs (`sources.DeterministicID`) bleiben, damit die Übernahme in Stufe 2
   ein No-op ist. Details: `edge-app/AGENTS.md`.
-- **Soll/Ist wird nie geraten:** `in_sync` · `pending` · `unreported` · `no_gateway_device`. **`unreported` heißt
-  „die Box hat sich noch nicht geäußert" — NIE „die Änderung ist verloren"**; eine Ablehnung reist NEBEN der
-  angewandten Revision (`refusedRevision`/`refusedReason`), nie an ihrer Stelle — was läuft, ist weiterhin die
-  zuletzt wirklich angewandte Fassung.
+- **Soll/Ist wird nie geraten:** `in_sync` · `pending` · `held` · `unreported` · `no_gateway_device`.
+  **`unreported` heißt „die Box hat sich noch nicht geäußert" — NIE „die Änderung ist verloren"**; eine
+  Ablehnung reist NEBEN der angewandten Revision (`refusedRevision`/`refusedReason`), nie an ihrer Stelle —
+  was läuft, ist weiterhin die zuletzt wirklich angewandte Fassung.
+  - **⚠ `held` ist die DRITTE Antwort der Box auf „was ist mit der neuesten Revision passiert?"** (Scout
+    `vp-portal-box-spiegel-s2` L1): sie hat die Fassung GESEHEN und bewusst nichts angewandt — heute, weil das
+    Portal kein verbundenes Gerät mehr nennt (`componentapply.ErrNoConfiguration`), und ein leeres Soll ist
+    ausdrücklich KEINE Anweisung, eine laufende Anlage leerzuräumen. Sie reist als EIGENES Feldpaar
+    `held_revision`/`held_reason` durch die ganze Kette (`componentapply.Record` → `cloud.ComponentApplySummary`
+    im Herzschlag → `device_component_apply` → `SiteComponentsDto`), NIE in `revision` (das wäre ein Stand, den
+    niemand fährt) und nie in `refused_*` (das wäre ein Fehler, den es nicht gibt). Bis dahin wurde der Halt nur
+    GELOGGT, also rechnete das Portal Soll != Ist und sagte dauerhaft „Änderung unterwegs zur Box".
+    **Die drei schließen einander aus** — `WithHold` räumt eine veraltete Ablehnung, `WithRefusal` einen
+    veralteten Halt, ein angewandter Push beide; und **`held` gilt nur für GENAU die anliegende Fassung** (ein
+    Halt einer älteren beruhigt die neuere nicht). Ein GEMELDETER Halt schlägt dabei das abgeleitete
+    `no_gateway_device`: die Box hat den Push nachweislich bekommen. Portal-Satz + Grund (wörtlich von der Box
+    durchgereicht): `komponentenAssistent.sollIstText`/`haltGrund`.
   - **⚠ `no_gateway_device` ist der EINE Fall, in dem der Grund BEKANNT ist** (Scout `vp-portal-box-spiegel-s2` L10):
     mehrere beanspruchte Geräte und keins als steuerndes Gerät des Speichers hinterlegt ⇒ `gatewayDevice` ist
     `null`, es wird GAR NICHT gepusht (die Outbox notiert `refused`). Er ersetzt genau die zwei Urteile, die
     dadurch unehrlich würden — `unreported` („unbekannt", obwohl bekannt) und `pending` („unterwegs", obwohl nichts
-    unterwegs sein kann —, **nie `in_sync`**. Die zwei-Argument-`syncStatus` bleibt für den Flotten-Blick der
-    Stufe 6 (`AdminComponentFleetController`), der das Empfänger-Wissen nicht hat und deshalb bewusst nichts
-    behauptet; der Kundensatz wohnt EINMAL im Portal (`komponentenAssistent.KEIN_EMPFAENGER_SATZ`).
+    unterwegs sein kann —, **nie `in_sync`**. Der Flotten-Blick der Stufe 6 (`AdminComponentFleetController`)
+    fährt die schmalere `syncStatus`-Form OHNE dieses Wissen (den `held` der Zeile kennt er, den fehlenden
+    Empfänger nicht) und behauptet ihn deshalb bewusst nicht; der Kundensatz wohnt EINMAL im Portal
+    (`komponentenAssistent.KEIN_EMPFAENGER_SATZ`).
 - **⚠ ALLE DREI Schreibwege gehen über die Aktivierungs-Outbox** (`component_activation_outbox`, Operationen
   `component_create` · `component_edit` · `component_rollback`): Push NACH dem Commit, mit Wiederholung bis
   `applied`. `create` pushte bis zum 31.08.2026 INNERHALB seiner `@Transactional`-Methode — beide Fehlerformen
