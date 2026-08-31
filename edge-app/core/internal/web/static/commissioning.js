@@ -8,9 +8,18 @@
 //   /api/state    inverter.configured, inverter_link, inverter_connected,
 //                 last_telemetry, pairing_state, cloud_connected,
 //                 onboarding_step, claim_unlocked, ref
-//   /api/sources  the additional Erzeuger / Netz-Zähler / Verbraucher
+//   /api/sources  the additional Erzeuger / Netz-Zähler / Verbraucher, plus
+//                 portal_managed - Einheitsmodell Stufe 2
 // No new endpoint, no new server state, no persisted "wizard progress" - the
 // plant's real condition IS the progress.
+//
+// ⚠ Auf einer PORTAL-verwalteten Anlage ist diese Seite ein SPIEGEL: die Geräte
+// werden im VoltPilot-Portal angelegt, hier ist nichts anzulegen. Der Flow sagt
+// das dann auch, statt Handlungen zu versprechen, die auf dieser Box gesperrt
+// sind (Befund L6). Was BLEIBT: Koppeln, Messwerte prüfen und der lokale
+// Verbindungstest (der sitzt seither als eigene, nicht editierende Taste an der
+// Zeile - siehe inverter.js/sources.js). `portalManaged` ist der VIERTE, additive
+// Eingang: fehlt er (älterer Aufrufer), ist jedes Wort zeichengleich wie vorher.
 //
 // Pure + side-effect free, so it is unit-testable without a browser
 // (internal/web/jstest/ui.test.js).
@@ -34,16 +43,17 @@
       st === "cloud_getrennt" || st === "cloud_fehler";
   }
 
-  // derive(state, sourceCount, nowMs) -> { steps, doneCount, allDone }
+  // derive(state, sourceCount, nowMs, portalManaged) -> { steps, doneCount, allDone }
   //
   // Each step is { key, num, title, state, detail, cause, action }:
   //   state  "done" | "active" | "todo" | "blocked"
   //   cause  plain German reason whenever something is wrong or waiting -
   //          ALWAYS rendered in normal mode (Technikmodus adds detail only).
   //   action { label, href } | null - where the operator goes next.
-  function derive(s, sourceCount, nowMs) {
+  function derive(s, sourceCount, nowMs, portalManaged) {
     s = s || {};
     sourceCount = sourceCount || 0;
+    var portal = !!portalManaged;
     if (nowMs == null) nowMs = s.server_now_ms || Date.now();
 
     var configured = !!(s.inverter && s.inverter.configured);
@@ -93,6 +103,12 @@
           ? label + " antwortet nicht. Bitte prüfen, ob er eingeschaltet und im Netzwerk erreichbar ist."
           : "Es ist noch kein Messwert angekommen. Mit „Verbindung testen“ lässt sich die Verbindung sofort prüfen."
       };
+    } else if (portal) {
+      one = {
+        state: "todo",
+        detail: "Noch kein Wechselrichter im Portal angelegt.",
+        cause: "Die Geräte dieser Anlage werden im VoltPilot-Portal angelegt. Sobald dort ein Wechselrichter eingetragen ist, erscheint er hier."
+      };
     } else {
       one = {
         state: "todo",
@@ -102,9 +118,19 @@
     }
     if (!chargePark) {
       one.key = "inverter"; one.num = 1; one.title = "Wechselrichter verbinden";
-      one.action = one.state === "done"
-        ? { label: "Ändern", href: "#wechselrichter", ghost: true }
-        : { label: configured ? "Verbindung prüfen" : "Wechselrichter auswählen", href: "#wechselrichter" };
+      // ⚠ Auf einer portal-verwalteten Anlage gibt es hier nichts AUSZUWÄHLEN
+      // und nichts zu ÄNDERN - beides ist gesperrt. Was es gibt: ansehen, und
+      // (sobald etwas ausgewählt ist) die Verbindung prüfen. Genau die zwei
+      // Handlungen bietet der Schritt dann an, nie eine dritte.
+      if (portal) {
+        one.action = one.state === "todo"
+          ? null
+          : { label: one.state === "done" ? "Gerät ansehen" : "Verbindung prüfen", href: "#wechselrichter", ghost: one.state === "done" };
+      } else {
+        one.action = one.state === "done"
+          ? { label: "Ändern", href: "#wechselrichter", ghost: true }
+          : { label: configured ? "Verbindung prüfen" : "Wechselrichter auswählen", href: "#wechselrichter" };
+      }
     }
 
     // --- 2 Erzeuger / Zähler erfassen ---
@@ -120,18 +146,30 @@
     } else if (sourceCount > 0) {
       two = {
         state: "done",
-        detail: sourceCount === 1 ? "1 weitere Quelle erfasst." : sourceCount + " weitere Quellen erfasst.",
+        detail: portal
+          ? (sourceCount === 1 ? "1 weiteres Gerät aus dem Portal." : sourceCount + " weitere Geräte aus dem Portal.")
+          : (sourceCount === 1 ? "1 weitere Quelle erfasst." : sourceCount + " weitere Quellen erfasst."),
         cause: ""
       };
     } else {
       two = {
         state: "done",
-        detail: "Keine weitere Quelle erfasst.",
-        cause: "Bei einer Anlage mit nur einem Wechselrichter ist das der Normalfall. Eine zweite PV-Anlage, ein eigener Netz-Zähler oder eine Wallbox werden hier nachgetragen."
+        detail: portal ? "Kein weiteres Gerät im Portal angelegt." : "Keine weitere Quelle erfasst.",
+        cause: portal
+          ? "Bei einer Anlage mit nur einem Wechselrichter ist das der Normalfall. Eine zweite PV-Anlage, ein eigener Netz-Zähler oder eine Wallbox werden im VoltPilot-Portal angelegt und erscheinen dann hier."
+          : "Bei einer Anlage mit nur einem Wechselrichter ist das der Normalfall. Eine zweite PV-Anlage, ein eigener Netz-Zähler oder eine Wallbox werden hier nachgetragen."
       };
     }
-    two.key = "sources"; two.num = 2; two.title = "Erzeuger & Zähler erfassen";
-    two.action = two.state === "todo" ? null : { label: "Quellen ansehen", href: "#quellen", ghost: true };
+    two.key = "sources"; two.num = 2;
+    // Konzept vp-komponenten-einheit-h2 §4.3: „2 · Geräte im PORTAL anlegen" -
+    // der Schritt verweist ins Portal, statt eine lokale Eingabe anzukündigen,
+    // die es hier nicht gibt. Der ERLEDIGT-Stand kommt dabei aus dem GEMELDETEN
+    // Bestand (die Quellen, die der Registry-Push angelegt hat), nie aus einer
+    // lokalen Eingabe - auf einer portal-verwalteten Anlage gibt es keine.
+    two.title = portal ? "Geräte im Portal anlegen" : "Erzeuger & Zähler erfassen";
+    two.action = two.state === "todo"
+      ? null
+      : { label: portal ? "Geräte ansehen" : "Quellen ansehen", href: "#quellen", ghost: true };
 
     // --- 3 Mit dem Portal koppeln ---
     // Mirrors the server-side gate: the reference is withheld until the

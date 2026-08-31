@@ -31,7 +31,9 @@
   var nf0 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
 
   var lastState = null;
-  var sourcesData = { sources: [], statuses: {} };
+  // portalManaged spiegelt /api/sources portal_managed: ein älterer Kern sendet
+  // das Feld nicht -> false -> der geführte Flow spricht wie bisher.
+  var sourcesData = { sources: [], statuses: {}, portalManaged: false };
   var clockOffset = 0;
 
   function deviceNow() { return Date.now() + clockOffset; }
@@ -145,7 +147,8 @@
   // single health voice). It returns, leading again, when a step regresses.
   function renderSetup(s) {
     if (!window.VPCommissioning) return;
-    var res = window.VPCommissioning.derive(s, sourcesData.sources.length, deviceNow());
+    var res = window.VPCommissioning.derive(s, sourcesData.sources.length, deviceNow(),
+      sourcesData.portalManaged);
     var card = $("setupCard");
     if (card) card.hidden = res.allDone;
     if (res.allDone) return;
@@ -319,7 +322,10 @@
     return fetch("/api/sources", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        sourcesData = { sources: d.sources || [], statuses: d.statuses || {} };
+        sourcesData = {
+          sources: d.sources || [], statuses: d.statuses || {},
+          portalManaged: !!d.portal_managed
+        };
       })
       .catch(function () { /* the step falls back to "keine weitere Quelle" */ });
   }
