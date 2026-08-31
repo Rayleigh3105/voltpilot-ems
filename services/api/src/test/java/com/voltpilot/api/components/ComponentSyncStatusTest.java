@@ -103,4 +103,65 @@ class ComponentSyncStatusTest {
     void aReportedHoldBeatsTheInferredMissingReceiver() {
         assertThat(ComponentService.syncStatus("r9", "r1", "r9", true)).isEqualTo("held");
     }
+
+    // --- Befund L8: die RUECKGABE der Autoritaet -----------------------------
+
+    /**
+     * Der behobene Befund: nach {@code revert-to-device} bleibt die alte
+     * {@code device_component_apply}-Zeile stehen, waehrend jeder folgende Push
+     * die Soll-Revision hochzaehlt - das Portal sagte dauerhaft „Aenderung
+     * unterwegs zur Box" ueber eine Anlage, die es gar nicht mehr steuert.
+     * Meldet die Box ihre Rueckgabe, ist jede Revisions-Aussage hinfaellig.
+     */
+    @Test
+    void aReportedReturnOfAuthorityEndsEverySollIstClaim() {
+        // Die Lage nach dem Revert: neues Soll, alte angewandte Revision.
+        assertThat(ComponentService.syncStatus("r9", "r1", null, "box", false))
+                .isEqualTo("box_managed");
+        // Auch wenn die alte Zeile zufaellig gleich aussieht - „laeuft" waere
+        // eine Aussage ueber ein Soll, dem diese Box nicht mehr folgt.
+        assertThat(ComponentService.syncStatus("r9", "r9", null, "box", false))
+                .isEqualTo("box_managed");
+        // Und ohne Soll erst recht: die Box hat den Grund selbst genannt.
+        assertThat(ComponentService.syncStatus(null, null, null, "box", false))
+                .isEqualTo("box_managed");
+        // Sie schlaegt auch den abgeleiteten fehlenden Empfaenger - was das
+        // GERAET sagt gewinnt gegen das, was wir aus Stammdaten ableiten.
+        assertThat(ComponentService.syncStatus("r9", null, null, "box", true))
+                .isEqualTo("box_managed");
+    }
+
+    /**
+     * ⚠ {@code null} heisst „die Box hat sich dazu nicht geaeussert" (eine
+     * aeltere Box meldet den Block gar nicht) und darf NIE als „box" gelesen
+     * werden - genau die sichere Richtung von {@code ComponentAuthority.of},
+     * die hier falsch waere. Ebenso: solange die Box noch {@code portal}
+     * meldet, ist ihre angewandte Revision die Wahrheit.
+     */
+    @Test
+    void withoutAReportedReturnEveryVerdictIsByteForByteAsBefore() {
+        assertThat(ComponentService.syncStatus("r9", "r1", null, null, false))
+                .isEqualTo("pending");
+        assertThat(ComponentService.syncStatus("r9", "r9", null, null, false))
+                .isEqualTo("in_sync");
+        assertThat(ComponentService.syncStatus("r9", null, null, null, true))
+                .isEqualTo("no_gateway_device");
+        // Eine Box, die den Push noch nicht gesehen hat, faehrt weiter den
+        // Portal-Stand - und dass sie das sagt, ist die Wahrheit.
+        assertThat(ComponentService.syncStatus("r9", "r9", null, "portal", false))
+                .isEqualTo("in_sync");
+        assertThat(ComponentService.syncStatus("r9", "r1", null, "portal", false))
+                .isEqualTo("pending");
+        // Ein Wort, das wir nicht kennen, ist keine Aussage.
+        assertThat(ComponentService.syncStatus("r9", "r1", null, "irgendwas", false))
+                .isEqualTo("pending");
+    }
+
+    /** Die schmaleren Formen behaupten die Autoritaet nie. */
+    @Test
+    void theNarrowerFormsNeverClaimAnAuthority() {
+        assertThat(ComponentService.syncStatus("r9", "r1")).isEqualTo("pending");
+        assertThat(ComponentService.syncStatus("r9", "r1", null)).isEqualTo("pending");
+        assertThat(ComponentService.syncStatus("r9", "r1", null, false)).isEqualTo("pending");
+    }
 }

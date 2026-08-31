@@ -461,6 +461,13 @@ type EntitiesSummary struct {
 // visible while the last working configuration keeps running.
 type ComponentApplySummary struct {
 	// Authority: "portal" = derived from the cloud push | "box" = local.
+	//
+	// ⚠ "box" IST eine Aussage, kein Rückfall (Befund L8): sie wird gesendet,
+	// sobald das Portal die Autorität zurückgegeben hat, und trägt dann KEIN
+	// weiteres Feld - es gibt weder eine angewandte Revision noch einen Grund,
+	// weil diese Box keinem Soll mehr folgt. Erst dadurch kann die Cloud die
+	// Rückgabe von „eine ältere Box meldet gar nichts" unterscheiden und ihre
+	// alte Zeile räumen, statt einen Stand zu behaupten, den niemand mehr fährt.
 	Authority string `json:"authority"`
 	// Revision that was successfully APPLIED (empty = none yet).
 	Revision  string `json:"revision,omitempty"`

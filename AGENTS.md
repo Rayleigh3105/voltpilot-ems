@@ -594,6 +594,15 @@ Betreiber-Handbuch: [`docs/ota-signing.md`](docs/ota-signing.md) §6.0.
   `./mvnw clean test`, nie nur `test`** — und bei einer Fehler-Kaskade über
   fremde Klassen zuerst `ls target/classes/db/migration` lesen, bevor man den
   eigenen Code verdächtigt.
+- **⚠ Dieselbe Klasse trifft eine MUTATIONSPROBE: Maven vergleicht Zeitstempel,
+  und ein per `mv`/`cp` zurückgespieltes Original ist ÄLTER als die mutierte
+  `.class`.** Der nächste `./mvnw test` übersetzt es dann gar nicht neu, und die
+  Mutation läuft weiter — sichtbar als eine Testklasse, die auf einem
+  nachweislich sauberen Quelltext rot bleibt (beim Bau von Befund L8 genau so
+  passiert: 10 rote Fälle in `ComponentSyncStatusTest` gegen eine unveränderte
+  Datei). **Nach jedem Zurückspielen `touch` auf die Datei** (oder `clean`), und
+  bei einem unerklärlichen Fehlschlag zuerst prüfen, ob die Quelle wirklich noch
+  die Mutation trägt.
 - **Betreiber-Ablauf:** einmalig je Flotte das Set ins Portal (`PUT`, curl in
   §6.0), danach bekommt es JEDE neue Box automatisch; eine BESTANDSBOX holt es
   mit `./install.sh --refresh-trust` nach (ausdrückliche Handlung des Betreibers
@@ -883,7 +892,8 @@ Anlage ändert dadurch ihr Verhalten NICHT** (siehe die Autoritäts-Regel; der B
   `edge/sources/config`, Self-Wiring, Telemetrie) ist BYTE-IDENTISCH; nur der SCHREIBER der lokalen Dateien
   wechselt. Deterministische Quellen-IDs (`sources.DeterministicID`) bleiben, damit die Übernahme in Stufe 2
   ein No-op ist. Details: `edge-app/AGENTS.md`.
-- **Soll/Ist wird nie geraten:** `in_sync` · `pending` · `held` · `unreported` · `no_gateway_device`.
+- **Soll/Ist wird nie geraten:** `in_sync` · `pending` · `held` · `box_managed` · `unreported` ·
+  `no_gateway_device`.
   **`unreported` heißt „die Box hat sich noch nicht geäußert" — NIE „die Änderung ist verloren"**; eine
   Ablehnung reist NEBEN der angewandten Revision (`refusedRevision`/`refusedReason`), nie an ihrer Stelle —
   was läuft, ist weiterhin die zuletzt wirklich angewandte Fassung.
@@ -908,6 +918,31 @@ Anlage ändert dadurch ihr Verhalten NICHT** (siehe die Autoritäts-Regel; der B
     fährt die schmalere `syncStatus`-Form OHNE dieses Wissen (den `held` der Zeile kennt er, den fehlenden
     Empfänger nicht) und behauptet ihn deshalb bewusst nicht; der Kundensatz wohnt EINMAL im Portal
     (`komponentenAssistent.KEIN_EMPFAENGER_SATZ`).
+  - **⚠ `box_managed` ist die gemeldete RÜCKGABE der Autorität** (Scout `vp-portal-box-spiegel-s2` L8): die Box
+    sagt, dass sie ihre Geräte wieder selbst pflegt — dann gibt es GAR KEIN Soll/Ist mehr, sie leitet ihre
+    lokalen Dateien aus keinem Push ab. **Der behobene Befund war, dass sie dazu SCHWIEG:** `componentApplySummary`
+    war `nil`, sobald die Anlage box-verwaltet war, der Listener rührt eine fehlende Block-Zeile nicht an, und
+    die alte `device_component_apply`-Zeile (`authority=portal, revision=N`) blieb stehen — während JEDER
+    folgende Push die Soll-Revision hochzählt (`revision` ist `now.toString()`). Das Portal behauptete deshalb
+    nach `revert-to-device` dauerhaft „Änderung unterwegs zur Box" über eine Anlage, die es gar nicht mehr
+    steuert. Der Weg ist derselbe wie beim Halt: Box → Herzschlag (`authority: "box"`, **ohne Revision und ohne
+    Grund** — beides gehörte einer Ära, die vorbei ist) → `EntityStatusListener` → der Upsert RÄUMT die Zeile aus
+    `EXCLUDED` → `syncStatus`. **Die Zeile wird NICHT gelöscht** (`authority=box` ist eine Aussage; ein Löschen
+    machte sie wieder von „hat sich nie geäußert" ununterscheidbar — genau die Zweideutigkeit, aus der der Befund
+    entstand), und **verglichen wird WÖRTLICH gegen `"box"`, nie über `ComponentAuthority.of`**: dessen sichere
+    Richtung („alles, was nicht portal ist, ist box") ist hier genau falsch, denn `null` heißt „eine ältere Box
+    meldet den Block gar nicht". Es steht als ERSTES in `syncStatus` und schlägt auch `no_gateway_device` — was
+    das GERÄT sagt gewinnt gegen das, was wir aus Stammdaten ableiten. **Der Flotten-Blick kennt es** (`ApplyRow`
+    trägt seit dieser Runde `authority`), damit Puls und Anlagen-Fläche über dieselbe Anlage nicht Verschiedenes
+    behaupten. Portal-Satz: `komponentenAssistent.sollIstText` („Die Geräte werden auf der Box gepflegt") ·
+    Flotten-Etikett `adminKomponentenFlotte.SOLL_IST.box_managed` („An der Box gepflegt", bewusst NICHT „Nicht
+    gemeldet"). **`nil` bleibt der Block nur auf einer Anlage, die NIE portal-verwaltet war** — dort hat die Box
+    wirklich nichts zu berichten, und ihr Herzschlag behält exakt die Bytes von vor dem Einheitsmodell (die
+    Captain-Auflage, gepinnt in `TestABoxManagedPlantIsByteIdenticalUnderEveryPush`). **Edge-Release nötig**;
+    bis dahin bleibt eine zurückgegebene Anlage bei ihrem alten Urteil. Beweise: Go
+    `component_apply_test.go` (`TestHandingAuthorityBackNeverUndoesWhatRuns` + der Neustart-Fall) · rein
+    `ComponentSyncStatusTest` (mutationsgeprüft) + `EntityStatusListenerTest` · Portal
+    `komponentenAssistent.test.ts` + `adminKomponentenFlotte.test.ts`.
 - **⚠ ALLE DREI Schreibwege gehen über die Aktivierungs-Outbox** (`component_activation_outbox`, Operationen
   `component_create` · `component_edit` · `component_rollback`): Push NACH dem Commit, mit Wiederholung bis
   `applied`. `create` pushte bis zum 31.08.2026 INNERHALB seiner `@Transactional`-Methode — beide Fehlerformen

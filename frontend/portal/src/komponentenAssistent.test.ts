@@ -296,6 +296,24 @@ describe('Soll/Ist', () => {
     expect(sollIstTon('held')).toBe('unbekannt');
   });
 
+  /*
+    Befund L8: nach „am Geraet verwalten" blieb die alte Ist-Zeile stehen,
+    waehrend jeder Push die Soll-Revision hochzaehlte - die Zeile behauptete
+    also DAUERHAFT eine Reise ueber eine Anlage, die das Portal gar nicht mehr
+    steuert. Meldet die Box ihre Rueckgabe, sagt die Zeile die Lage.
+  */
+  it('sagt bei der gemeldeten Rueckgabe, WO gepflegt wird - nie „unterwegs"', () => {
+    expect(sollIstText('box_managed', 7)).toBe('Die Geräte werden auf der Box gepflegt');
+    expect(sollIstText('box_managed', 7)).not.toContain('unterwegs');
+    // Und vor allem nie mehr eine Fassung, der niemand folgt.
+    expect(sollIstText('box_managed', 7)).not.toContain('Fassung');
+    // Nichts ist unterwegs (`busy`), und „stimmt" (`ok`) ist es auch nicht -
+    // es gibt gar kein Soll/Ist mehr.
+    expect(sollIstTon('box_managed')).toBe('unbekannt');
+    // Ein Halt gehoert der Portal-Aera; hier gibt es keinen Grund zu nennen.
+    expect(haltGrund('box_managed', 'egal')).toBeNull();
+  });
+
   it('reicht den Grund der Box WOERTLICH durch und erfindet ohne Halt keinen', () => {
     expect(haltGrund('held', 'Im Portal ist kein verbundenes Geraet hinterlegt.'))
       .toBe('Im Portal ist kein verbundenes Geraet hinterlegt.');

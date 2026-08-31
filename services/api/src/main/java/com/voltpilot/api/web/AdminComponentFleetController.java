@@ -68,10 +68,14 @@ public class AdminComponentFleetController {
                     c == null ? null : new ComponentSourceCounts(c.builtin(), c.certified(),
                             c.custom(), c.composed(), c.unknown()),
                     privateTemplates.getOrDefault(s.siteId(), 0),
-                    // Wörtlich dieselbe Ableitung wie die Kunden-Fläche.
+                    // Wörtlich dieselbe Ableitung wie die Kunden-Fläche - inklusive
+                    // der vom Gerät gemeldeten Autorität (L8). Nur der fehlende
+                    // Empfänger (L10) bleibt draußen: den kennt diese Sicht nicht,
+                    // und was sie nicht weiß, behauptet sie nicht.
                     ComponentService.syncStatus(soll.get(s.siteId()),
                             a == null ? null : a.appliedRevision(),
-                            a == null ? null : a.heldRevision()),
+                            a == null ? null : a.heldRevision(),
+                            a == null ? null : a.authority(), false),
                     a == null ? null : a.refusedRevision(),
                     a == null ? null : a.refusedReason(),
                     a == null ? null : a.reportedAt(),

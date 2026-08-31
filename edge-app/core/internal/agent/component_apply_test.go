@@ -115,8 +115,13 @@ func TestABoxManagedPlantIsByteIdenticalUnderEveryPush(t *testing.T) {
 	}
 	// Und der Herzschlag behauptet nichts ueber einen Applier, den es hier
 	// nicht gibt.
+	//
+	// ⚠ Das gilt WEITERHIN, obwohl die Rueckgabe der Autoritaet seit Befund L8
+	// gemeldet wird: diese Anlage war NIE portal-verwaltet, es gibt also weder
+	// etwas zurueckzugeben noch eine Cloud-Zeile zu raeumen - und ihr
+	// Herzschlag behaelt exakt die Bytes von vor dem Einheitsmodell.
 	if a.componentApplySummary() != nil {
-		t.Fatal("eine box-verwaltete Anlage sendet keinen component_apply-Block")
+		t.Fatal("eine nie portal-verwaltete Anlage sendet keinen component_apply-Block")
 	}
 	// Lokal bearbeiten geht weiter - unveraendert.
 	if err := a.refuseIfPortalManaged(); err != nil {
@@ -380,6 +385,63 @@ func TestHandingAuthorityBackNeverUndoesWhatRuns(t *testing.T) {
 	}
 	if err := a.refuseIfPortalManaged(); err != nil {
 		t.Fatalf("und lokal wieder bedienbar: %v", err)
+	}
+
+	// Befund L8: die Rueckgabe wird GEMELDET. Vorher schwieg der Herzschlag
+	// hier, und die Cloud konnte das nicht von „eine aeltere Box sagt nichts"
+	// unterscheiden - ihre Zeile behielt `authority=portal` samt der zuletzt
+	// angewandten Revision.
+	sum := a.componentApplySummary()
+	if sum == nil {
+		t.Fatal("nach der Rueckgabe muss der Herzschlag sie melden, nicht schweigen")
+	}
+	if sum.Authority != componentapply.AuthorityBox {
+		t.Fatalf("die gemeldete Autoritaet ist %q, erwartet %q", sum.Authority,
+			componentapply.AuthorityBox)
+	}
+	// Und NUR die Autoritaet: eine Revision waere eine Behauptung ueber ein
+	// Soll, dem diese Box nicht mehr folgt.
+	if sum.Revision != "" || sum.AppliedAt != "" || sum.RefusedRevision != "" ||
+		sum.RefusedReason != "" || sum.HeldRevision != "" || sum.HeldReason != "" {
+		t.Fatalf("der Rueckgabe-Block traegt mehr als die Autoritaet: %+v", *sum)
+	}
+	// Auf dem Draht steht damit genau EIN Feld.
+	raw, err := json.Marshal(sum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != `{"authority":"box"}` {
+		t.Fatalf("Drahtform der Rueckgabe: %s", raw)
+	}
+}
+
+// Der Weg zurueck ist NICHT einmalig: eine wieder box-verwaltete Anlage meldet
+// ihre Autoritaet in JEDEM Herzschlag, auch ueber einen Neustart hinweg -
+// sonst haenge das Raeumen der Cloud-Zeile an genau einer Nachricht.
+func TestTheReturnedAuthorityIsReportedAgainAfterARestart(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+
+	first, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.applyEntityRegistry(portalPush("r1", applyEntity(
+		"5f0d2c9e-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, applyDeyeDriver)))
+	first.applyEntityRegistry(entities.Registry{Revision: "r2", Entities: before2Entities()})
+	if sum := first.componentApplySummary(); sum == nil ||
+		sum.Authority != componentapply.AuthorityBox {
+		t.Fatalf("die Rueckgabe wurde nicht gemeldet: %+v", sum)
+	}
+
+	second, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := second.componentApplySummary()
+	if sum == nil || sum.Authority != componentapply.AuthorityBox || sum.Revision != "" {
+		t.Fatalf("nach dem Neustart meldet die Box %+v", sum)
 	}
 }
 

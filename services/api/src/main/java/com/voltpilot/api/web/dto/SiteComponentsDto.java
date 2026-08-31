@@ -56,8 +56,10 @@ public record SiteComponentsDto(
      *
      * @param connection roh durchgereicht (siehe {@link ComponentDefinitionDto})
      * @param syncStatus {@code in_sync} | {@code pending} | {@code held} |
-     *     {@code unreported} - abgeleitet aus Soll- und Ist-Revision, nie
-     *     geraten ({@link com.voltpilot.api.components.ComponentService#syncStatus})
+     *     {@code no_gateway_device} | {@code box_managed} | {@code unreported} -
+     *     abgeleitet aus Soll- und Ist-Revision plus dem, was die Box über sich
+     *     selbst meldet, nie geraten
+     *     ({@link com.voltpilot.api.components.ComponentService#syncStatus})
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ComponentRowDto(

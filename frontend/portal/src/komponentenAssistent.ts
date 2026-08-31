@@ -696,6 +696,13 @@ export const ABSCHLUSS_HINWEIS =
  * des Speichers hinterlegt, also gibt es keinen Empfänger. Das zu verschweigen
  * war der Befund - „Stand auf dem Gerät unbekannt" schickte den Kunden suchen,
  * obwohl der Server weiß, was fehlt, und was zu tun ist.
+ *
+ * `box_managed` ist die Rückgabe (Befund L8): die Box hat GEMELDET, dass sie
+ * ihre Geräte wieder selbst pflegt. Dann gibt es gar kein Soll/Ist mehr - und
+ * ohne diesen Zustand behauptete die Zeile nach einem „am Gerät verwalten"
+ * dauerhaft „Änderung unterwegs zur Box" (jeder Push zählt die Soll-Revision
+ * hoch, während die alte Ist-Zeile stehen blieb) oder, schlimmer, ein
+ * „Läuft auf dem Gerät · Fassung N" über einen Stand, dem niemand mehr folgt.
  */
 export const KEIN_EMPFAENGER_SATZ =
   'Diese Anlage hat mehrere Geräte und keinen zugeordneten Speicher - VoltPilot '
@@ -715,6 +722,8 @@ export function sollIstText(
       return 'Die Box behält den letzten Gerätestand';
     case 'no_gateway_device':
       return KEIN_EMPFAENGER_SATZ;
+    case 'box_managed':
+      return 'Die Geräte werden auf der Box gepflegt';
     default:
       return 'Stand auf dem Gerät unbekannt';
   }
@@ -742,11 +751,12 @@ export function haltGrund(
 /**
  * Der Ton der Soll/Ist-Zeile: ok · unterwegs · unbekannt.
  *
- * ⚠ Ein Halt und ein fehlender Empfänger sind bewusst `unbekannt` und nicht
- * `busy`: in beiden Fällen ist nichts unterwegs. Ein eigener Warnton wäre die
- * dritte Farbe für Zustände, die die Anlage nicht stören - sie läuft weiter,
- * nur die nächste Änderung wartet. Ein `ok` sind sie auch nicht: Soll und Ist
- * gehen wirklich auseinander.
+ * ⚠ Ein Halt, ein fehlender Empfänger und die gemeldete Rückgabe sind bewusst
+ * `unbekannt` und nicht `busy`: in allen drei Fällen ist nichts unterwegs. Ein
+ * eigener Warnton wäre die dritte Farbe für Zustände, die die Anlage nicht
+ * stören - sie läuft weiter, nur die nächste Änderung wartet. Ein `ok` sind sie
+ * auch nicht: bei den ersten beiden gehen Soll und Ist wirklich auseinander,
+ * und bei der Rückgabe gibt es gar kein Soll/Ist mehr, das „stimmt".
  */
 export function sollIstTon(syncStatus: string | null | undefined): 'ok' | 'busy' | 'unbekannt' {
   if (syncStatus === 'in_sync') return 'ok';

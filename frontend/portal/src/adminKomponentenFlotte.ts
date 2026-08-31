@@ -67,10 +67,16 @@ export function pflegeOrt(authority: string | null | undefined): Etikett {
  * <p>⚠ `unreported` ist bewusst NICHT der Warnton: „die Box hat sich noch
  * nicht geäußert" ist keine Störung, und eine Flotte, in der jede stille
  * Anlage rot leuchtet, macht die echte Abweichung unsichtbar.
+ *
+ * <p>⚠ `box_managed` (Befund L8) ist aus demselben Grund `off`, aber NICHT
+ * „Nicht gemeldet": die Box hat sehr wohl gesprochen - sie sagt, dass sie ihre
+ * Geräte selbst pflegt. Die zwei zusammenfallen zu lassen wäre genau die
+ * Zweideutigkeit, aus der der Befund entstand.
  */
 export const SOLL_IST: Record<string, Etikett> = {
   in_sync: { label: 'Angewandt', ton: 'ok' },
   pending: { label: 'Ausstehend', ton: 'warn' },
+  box_managed: { label: 'An der Box gepflegt', ton: 'off' },
   unreported: { label: 'Nicht gemeldet', ton: 'off' },
 };
 
