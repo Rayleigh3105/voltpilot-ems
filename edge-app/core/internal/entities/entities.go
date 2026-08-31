@@ -127,6 +127,22 @@ type FlexRequirement struct {
 	Command        string   `json:"command"`
 }
 
+// RoleAssignment is ONE stored capability->role assignment of an entity, as
+// the portal keeps it (AE1 entity_role_assignment; contract descriptor
+// role_assignment, Befund L4). The assignment is made per CHANNEL, not per
+// entity, so a descriptor carries a LIST.
+//
+// OPTIONAL + ADDITIVE: an absent block (an older cloud, and every plant that
+// never re-assigned anything) leaves topology.DefaultRole in charge, exactly
+// as before. A role this build does not know falls SILENTLY back to the
+// default - a role is display, never a control path, so it must not be able to
+// refuse the whole push.
+type RoleAssignment struct {
+	Channel string `json:"channel"`
+	Role    string `json:"role"`
+	Primary bool   `json:"primary,omitempty"`
+}
+
 // Entity is one registry descriptor.
 type Entity struct {
 	ID           string       `json:"entity_id"`
@@ -160,6 +176,15 @@ type Entity struct {
 	// classes and D-4/D-5/D-6 stay untouched. ABSENT = false: an older cloud
 	// and every unclaimed component behave byte-for-byte as before.
 	OwnerClaimed bool `json:"owner_claimed,omitempty"`
+	// RoleAssignment is the portal's stored capability->role assignment of
+	// this component (Befund L4). Until it travelled, PUT …/topology-roles
+	// only wrote the cloud table and the box always resolved through
+	// topology.DefaultRole - so a re-purposed measurement point or a meter
+	// marked maßgeblich looked DIFFERENT on :8484 than in the portal. Consumed
+	// by Agent.Topology/topology.Resolve for the LOCAL display only; the
+	// component applier (componentapply.Derive) never reads it, so
+	// inverter.json/sources.json keep deriving their role from the entity type.
+	RoleAssignment []RoleAssignment `json:"role_assignment,omitempty"`
 }
 
 // Registry is the applied entity set of this device.

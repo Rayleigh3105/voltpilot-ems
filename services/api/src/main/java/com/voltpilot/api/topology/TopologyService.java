@@ -3,6 +3,7 @@ package com.voltpilot.api.topology;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityRegistryRepository;
+import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
@@ -20,7 +21,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -62,20 +67,24 @@ public class TopologyService {
     private static final Set<String> ROLE_VOCAB = Set.of("pv", "storage", "grid", "consumer",
             TopologyDeriver.ROLE_CHARGING, TopologyDeriver.ROLE_CHARGING_OWN);
 
+    private static final Logger log = LoggerFactory.getLogger(TopologyService.class);
+
     private final EntityRegistryRepository registry;
     private final TopologyRepository repo;
     private final EntityTypeCatalog catalog;
     private final ObjectMapper mapper;
     private final DeviceChargerStatusRepository chargers;
+    private final EntityRegistryService push;
 
     public TopologyService(EntityRegistryRepository registry, TopologyRepository repo,
             EntityTypeCatalog catalog, ObjectMapper mapper,
-            DeviceChargerStatusRepository chargers) {
+            DeviceChargerStatusRepository chargers, EntityRegistryService push) {
         this.registry = registry;
         this.repo = repo;
         this.catalog = catalog;
         this.mapper = mapper;
         this.chargers = chargers;
+        this.push = push;
     }
 
     /**
@@ -88,6 +97,12 @@ public class TopologyService {
      * RLS. Every assignment must target a v2 entity visible under the session
      * tenant (RLS: a foreign entity yields null =&gt; 404); an unknown role is
      * 400; a blank role clears the override (revert to the DefaultRole mapping).
+     *
+     * <p><b>Seit Befund L4 reist die Zuordnung auch zur BOX</b> - ein
+     * nicht-leerer Stapel stösst nach dem Commit einen Registry-Push an
+     * ({@link #pushToDevice}), dessen additiver {@code role_assignment}-Block
+     * die Box denselben Energiefluss zeichnen lässt wie das Portal. Ein leerer
+     * Stapel (nur ein Lesevorgang mit leerem Rumpf) pusht NICHTS.
      */
     public TopologyResponse applyAssignments(UUID siteId, List<Assignment> assignments) {
         List<Assignment> batch = assignments == null ? List.of() : assignments;
@@ -114,7 +129,64 @@ public class TopologyService {
             }
             repo.upsertOverride(tenantId, siteId, a.entityId(), a.channel(), role, a.primary());
         }
+        if (!batch.isEmpty()) {
+            pushToDevice(siteId, tenantId);
+        }
         return topology(siteId);
+    }
+
+    /**
+     * Die geänderte Zuordnung an die Box schicken (Befund L4). Sie reist als
+     * additiver {@code role_assignment}-Block im EINEN Registry-Push, damit
+     * {@code :8484} denselben Energiefluss zeigt wie das Portal statt immer
+     * seiner Defaults.
+     *
+     * <p><b>NACH dem Commit</b>, weil beide Aufrufer {@code @Transactional}
+     * sind und der Push sonst ein Soll verteilte, das die Datenbank nach einem
+     * Rollback nicht hat (die dokumentierte L9-Klasse) - das
+     * {@link com.voltpilot.api.entities.EntityAutoComposer}-Muster, samt
+     * Mitnahme des Mandanten, weil die Synchronisation zwar auf demselben
+     * Thread, aber nach dem Aufräumen des Anfrage-Kontexts laufen kann.
+     *
+     * <p><b>Best effort, und das ist hier vertretbar:</b> eine Rolle ist
+     * PRÄSENTATION - ein verlorener Push ist eine Anzeige-Abweichung, die der
+     * NÄCHSTE Push beliebiger Art heilt, genau wie beim Umbenennen
+     * ({@code EntityRegistryService.updateEntity}). Bewusst NICHT über die
+     * {@code component_activation_outbox}: die ist auf
+     * {@code (entity_id, revision)} einer Komponenten-FASSUNG geschlüsselt, und
+     * eine Rollen-Zeile darin verfälschte den Soll/Ist-Satz, den das Portal aus
+     * derselben Tabelle liest ({@code ORDER BY revision DESC LIMIT 1}).
+     */
+    private void pushToDevice(UUID siteId, UUID tenantId) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            pushQuietly(siteId, tenantId);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                pushQuietly(siteId, tenantId);
+            }
+        });
+    }
+
+    private void pushQuietly(UUID siteId, UUID tenantId) {
+        UUID previous = TenantContext.get();
+        try {
+            if (tenantId != null) {
+                TenantContext.set(tenantId);
+            }
+            push.pushRegistryBestEffort(siteId);
+        } catch (RuntimeException e) {
+            log.warn("Rollen-Zuordnung der Anlage {} nicht an die Box gepusht: {}", siteId,
+                    e.toString());
+        } finally {
+            if (previous == null) {
+                TenantContext.clear();
+            } else {
+                TenantContext.set(previous);
+            }
+        }
     }
 
     public TopologyResponse topology(UUID siteId) {

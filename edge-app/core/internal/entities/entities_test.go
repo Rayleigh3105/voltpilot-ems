@@ -532,3 +532,58 @@ func TestRegistryPushCarriesTheCustomerNameAndDegradesWithoutOne(t *testing.T) {
 		t.Fatalf("label = %q, want empty (the surfaces derive the role word)", got)
 	}
 }
+
+// TestParseRegistryPushReadsTheRoleAssignmentFixture is the contract check of
+// Befund L4: the portal's stored capability→role assignment reaches the box
+// verbatim, read BY PATH from the committed fixture so moving it breaks the
+// check deliberately.
+func TestParseRegistryPushReadsTheRoleAssignmentFixture(t *testing.T) {
+	reg, skipped, err := ParseRegistryPush(
+		fixture(t, "edge-entity.valid.registry-push-roles.json"), pushIdentity)
+	if err != nil {
+		t.Fatalf("fixture rejected: %v", err)
+	}
+	if len(skipped) != 0 {
+		t.Fatalf("fixture entries skipped: %v", skipped)
+	}
+	if len(reg.Entities) != 3 {
+		t.Fatalf("entities = %d, want 3", len(reg.Entities))
+	}
+	// The first meter carries no assignment at all - the default still decides.
+	if got := reg.Entities[0].RoleAssignment; len(got) != 0 {
+		t.Errorf("the un-assigned meter carries %+v, want nothing", got)
+	}
+	// The second one is the operator's maßgebliche measurement.
+	want := RoleAssignment{Channel: "power_kw", Role: "grid", Primary: true}
+	if got := reg.Entities[1].RoleAssignment; len(got) != 1 || got[0] != want {
+		t.Errorf("maßgeblicher Zähler = %+v, want [%+v]", got, want)
+	}
+	// The third is re-purposed, WITHOUT a primary pick (absent = false).
+	wantPv := RoleAssignment{Channel: "power_kw", Role: "pv", Primary: false}
+	if got := reg.Entities[2].RoleAssignment; len(got) != 1 || got[0] != wantPv {
+		t.Errorf("umgewidmeter Messpunkt = %+v, want [%+v]", got, wantPv)
+	}
+}
+
+// TestRegistryWithoutRoleAssignmentsIsUnchanged: an older cloud omits the
+// block entirely, and the parse must be byte-for-byte what it was before -
+// including the JSON round trip the box persists in entities.json.
+func TestRegistryWithoutRoleAssignmentsIsUnchanged(t *testing.T) {
+	reg, _, err := ParseRegistryPush(
+		fixture(t, "edge-entity.valid.registry-push.json"), pushIdentity)
+	if err != nil {
+		t.Fatalf("fixture rejected: %v", err)
+	}
+	for _, e := range reg.Entities {
+		if len(e.RoleAssignment) != 0 {
+			t.Fatalf("entity %s invented an assignment: %+v", e.ID, e.RoleAssignment)
+		}
+	}
+	raw, err := json.Marshal(reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "role_assignment") {
+		t.Fatalf("the persisted registry grew a role_assignment key: %s", raw)
+	}
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "revision": "2026-08-31T09:00:00Z",
+  "published_at": "2026-08-31T09:00:00Z",
+  "entities": [
+    {
+      "entity_id": "7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071",
+      "entity_type": "grid-meter",
+      "label": "Netzanschluss Hof",
+      "capabilities": {
+        "measure": [{ "channel": "power_kw", "unit": "kW" }]
+      },
+      "guards": { "failsafe": { "behavior": "measure-only" } }
+    },
+    {
+      "entity_id": "8c3f5f21-9e4d-4f60-c1b2-3d4e5f607182",
+      "entity_type": "grid-meter",
+      "label": "Netzanschluss Halle (maßgeblich)",
+      "role_assignment": [
+        { "channel": "power_kw", "role": "grid", "primary": true }
+      ],
+      "capabilities": {
+        "measure": [{ "channel": "power_kw", "unit": "kW" }]
+      },
+      "guards": { "failsafe": { "behavior": "measure-only" } }
+    },
+    {
+      "entity_id": "9d4f6032-af5e-4071-d2c3-4e5f60718293",
+      "entity_type": "generic-load",
+      "label": "Umgewidmeter Messpunkt",
+      "role_assignment": [
+        { "channel": "power_kw", "role": "pv" }
+      ],
+      "capabilities": {
+        "measure": [{ "channel": "power_kw", "unit": "kW" }]
+      },
+      "guards": { "failsafe": { "behavior": "off" } }
+    }
+  ]
+}

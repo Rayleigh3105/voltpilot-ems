@@ -190,3 +190,165 @@ func TestResolveMarksFirstOfRolePrimary(t *testing.T) {
 		t.Errorf("storage node SoC not lifted: %+v", topo.Nodes[1])
 	}
 }
+
+// --- Befund L4: die im Portal gespeicherte Rollen-Zuordnung gewinnt ---------
+
+func f64(v float64) *float64 { return &v }
+
+func rolesOf(in Input) map[string]CapabilityInput {
+	out := map[string]CapabilityInput{}
+	for _, e := range in.Entities {
+		for _, c := range e.Capabilities {
+			out[e.ID+"/"+c.Channel] = c
+		}
+	}
+	return out
+}
+
+// TestResolvePrefersThePushedRoleOverTheDefault is the whole point of Befund
+// L4: an operator who re-purposes a measurement point in the portal must see
+// the SAME energy flow on :8484. Before the assignment travelled, this channel
+// resolved to the house node on the box while the portal drew it as PV.
+func TestResolvePrefersThePushedRoleOverTheDefault(t *testing.T) {
+	in := Resolve([]RawEntity{
+		{ID: "L", Type: "generic-load", Category: "consumer", Health: "ok",
+			Channels: []RawChannel{{Channel: "power_kw", Value: f64(3),
+				Assigned: &RoleAssignment{Role: RolePV}}}},
+	})
+	got := rolesOf(in)["L/power_kw"]
+	if got.Role != RolePV {
+		t.Fatalf("role = %q, want the pushed %q (the default would be %q)",
+			got.Role, RolePV, RoleConsumer)
+	}
+	// ⚠ An assignment carries its OWN maßgeblich flag, and an absent one means
+	// false - VERBATIM the cloud rule (TopologyService.topology takes
+	// ov.primary() as it stands). A role can therefore end up with no primary
+	// at all, which both nodes tolerate by falling back to the first member;
+	// inventing one here would make the box disagree with the portal.
+	if got.Primary {
+		t.Error("an assignment without primary must not be handed the default flag")
+	}
+	top := Derive(in)
+	if len(top.Nodes) != 1 || top.Nodes[0].Role != RolePV {
+		t.Fatalf("nodes = %+v, want a single pv node", top.Nodes)
+	}
+}
+
+// TestResolveHonoursTheExplicitPrimaryMeter is the second half of L4: the
+// operator picks the SECOND grid meter as maßgeblich. The first one must give
+// up the flag it only held by position - otherwise the site would carry two
+// primaries and the box would disagree with the portal about which meter
+// counts.
+func TestResolveHonoursTheExplicitPrimaryMeter(t *testing.T) {
+	in := Resolve([]RawEntity{
+		{ID: "M1", Type: "grid-meter", Category: "meter", Health: "ok",
+			Channels: []RawChannel{{Channel: "power_kw", Value: f64(1)}}},
+		{ID: "M2", Type: "grid-meter", Category: "meter", Health: "ok",
+			Channels: []RawChannel{{Channel: "power_kw", Value: f64(2),
+				Assigned: &RoleAssignment{Role: RoleGrid, Primary: true}}}},
+	})
+	got := rolesOf(in)
+	if got["M1/power_kw"].Primary {
+		t.Error("the FIRST meter kept the default maßgeblich flag although the operator picked the second")
+	}
+	if !got["M2/power_kw"].Primary {
+		t.Error("the operator's maßgebliche meter is not marked")
+	}
+	// Both still belong to grid - a primary pick is not a re-assignment.
+	if got["M1/power_kw"].Role != RoleGrid || got["M2/power_kw"].Role != RoleGrid {
+		t.Errorf("roles = %q / %q, want both grid",
+			got["M1/power_kw"].Role, got["M2/power_kw"].Role)
+	}
+}
+
+// TestResolveFallsBackSilentlyOnAnUnknownRole: a newer cloud may name a role
+// this build has never learned. It must lose the assignment, not the diagram -
+// a role is presentation, never a control path.
+func TestResolveFallsBackSilentlyOnAnUnknownRole(t *testing.T) {
+	in := Resolve([]RawEntity{
+		{ID: "G", Type: "grid-meter", Category: "meter", Health: "ok",
+			Channels: []RawChannel{{Channel: "power_kw", Value: f64(-3),
+				Assigned: &RoleAssignment{Role: "waermepumpe-2027", Primary: true}}}},
+	})
+	got := rolesOf(in)["G/power_kw"]
+	if got.Role != RoleGrid {
+		t.Fatalf("role = %q, want the DEFAULT %q after an unknown word", got.Role, RoleGrid)
+	}
+	if !got.Primary {
+		t.Error("with the unknown assignment dropped, the default primary rule must apply again")
+	}
+	if top := Derive(in); len(top.Nodes) != 1 || top.Nodes[0].Role != RoleGrid {
+		t.Fatalf("nodes = %+v, want the grid node to survive an unknown role", top.Nodes)
+	}
+}
+
+// TestResolveWithoutAssignmentsIsByteIdentical: every plant that never
+// re-assigned anything - and every older cloud - must resolve exactly as
+// before. Additive in the literal sense.
+func TestResolveWithoutAssignmentsIsByteIdentical(t *testing.T) {
+	raw := []RawEntity{
+		{ID: "A", Type: "battery-hybrid", Label: "Deye", Category: "storage", Health: "ok",
+			Channels: []RawChannel{
+				{Channel: "soc_pct", Value: f64(62.5)},
+				{Channel: "battery_power_kw", Value: f64(1)},
+				{Channel: "pv_power_kw", Value: f64(2)},
+			}},
+		{ID: "B", Type: "producer", Category: "producer", Health: "ok",
+			Channels: []RawChannel{{Channel: "pv_power_kw", Value: f64(4)}}},
+		{ID: "C", Type: "grid-meter", Category: "meter", Health: "ok",
+			Channels: []RawChannel{{Channel: "power_kw", Value: f64(-3)}}},
+	}
+	want, err := json.Marshal(Derive(Resolve(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The same input with an explicitly EMPTY assignment set must not differ.
+	for i := range raw {
+		for j := range raw[i].Channels {
+			raw[i].Channels[j].Assigned = nil
+		}
+	}
+	got, err := json.Marshal(Derive(Resolve(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("topology drifted without any assignment:\n got %s\nwant %s", got, want)
+	}
+}
+
+// TestResolveExplicitPrimaryWinsEvenWhenItComesLast pins the ORDER-independence
+// the cloud rule has (TopologyService.topology collects the explicit primaries
+// before the loop). Without the two-pass shape the first pv capability would
+// grab the flag on its way past and the site would report two primaries.
+func TestResolveExplicitPrimaryWinsEvenWhenItComesLast(t *testing.T) {
+	in := Resolve([]RawEntity{
+		{ID: "H", Type: "battery-hybrid", Category: "storage", Health: "ok",
+			Channels: []RawChannel{{Channel: "pv_power_kw", Value: f64(2)}}},
+		{ID: "P", Type: "producer", Category: "producer", Health: "ok",
+			Channels: []RawChannel{{Channel: "pv_power_kw", Value: f64(9),
+				Assigned: &RoleAssignment{Role: RolePV, Primary: true}}}},
+	})
+	got := rolesOf(in)
+	if got["H/pv_power_kw"].Primary {
+		t.Error("the hybrid grabbed the maßgeblich flag although the producer was picked explicitly")
+	}
+	if !got["P/pv_power_kw"].Primary {
+		t.Error("the explicitly picked producer is not maßgeblich")
+	}
+}
+
+// TestIsKnownRoleCoversExactlyTheCanonicalSet keeps the gate honest: it must
+// accept every role Derive can emit and nothing else.
+func TestIsKnownRoleCoversExactlyTheCanonicalSet(t *testing.T) {
+	for _, r := range canonicalRoleOrder {
+		if !IsKnownRole(r) {
+			t.Errorf("IsKnownRole(%q) = false, want true", r)
+		}
+	}
+	for _, r := range []string{"", " ", "PV", "battery", "charging_own"} {
+		if IsKnownRole(r) {
+			t.Errorf("IsKnownRole(%q) = true, want false", r)
+		}
+	}
+}

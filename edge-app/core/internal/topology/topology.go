@@ -45,6 +45,21 @@ var canonicalRoleOrder = []string{
 	RolePV, RoleStorage, RoleConsumer, RoleGrid, RoleCharging, RoleChargingOwn,
 }
 
+// IsKnownRole reports whether this build understands a role word. It is the
+// ONE gate on a role that arrives from the cloud (RawChannel.Assigned, Befund
+// L4): an unknown word is DROPPED and the channel falls back to DefaultRole,
+// never refused - a role is presentation, and a future cloud must be able to
+// name a role an older box has not learned yet without tearing its energy flow
+// apart.
+func IsKnownRole(role string) bool {
+	for _, r := range canonicalRoleOrder {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
 // The entity TYPES that are charge points. Their power is charging, never
 // ordinary house load - and their soc_pct belongs to the CAR (see DefaultRole).
 const (
@@ -350,6 +365,20 @@ func round3(v float64) float64 {
 type RawChannel struct {
 	Channel string
 	Value   *float64
+	// Assigned is the CLOUD's stored role assignment for this channel (AE1
+	// entity_role_assignment, delivered in the registry push as
+	// descriptor.role_assignment). nil = none stored -> DefaultRole decides,
+	// which is what every plant without a re-assignment and every older cloud
+	// sends. A role word this build does not know is dropped by Resolve.
+	Assigned *RoleAssignment
+}
+
+// RoleAssignment is the cloud's stored assignment of ONE channel: the role it
+// belongs to and whether it is the maßgebliche (primary) measurement of that
+// role.
+type RoleAssignment struct {
+	Role    string
+	Primary bool
 }
 
 // RawEntity is an entity before role resolution - the shape the edge builds
@@ -362,12 +391,37 @@ type RawEntity struct {
 	Channels   []RawChannel
 }
 
-// Resolve assigns each channel its DefaultRole and the default maßgeblich flag
-// (the FIRST capability of each role, in entity+channel order, is primary),
-// producing the Derive Input. This is the edge/pilot path; the cloud layers
-// stored overrides on top of the same defaults. Channels that resolve to no
-// role are kept (role "") so Derive skips them consistently.
+// Resolve assigns each channel its role and the maßgeblich flag, producing the
+// Derive Input. A channel with a CLOUD assignment (RawChannel.Assigned, the
+// registry push's descriptor.role_assignment - Befund L4) takes it; every other
+// channel keeps its DefaultRole and the default rule "the FIRST capability of
+// each role, in entity+channel order, is primary".
+//
+// ⚠ THE RULE IS THE CLOUD'S, VERBATIM (TopologyService.topology): the default
+// primary is only handed out for roles for which NOBODY was explicitly marked
+// maßgeblich, so an operator who picks the second grid meter does not end up
+// with two primaries - the first one silently keeping the flag it got by
+// position. Both twins must keep this shape, otherwise :8484 and the portal
+// draw two different energy flows over the same plant, which is exactly the
+// defect this consumes the assignment for.
+//
+// ⚠ An assignment naming a role this build does not know is DROPPED (the
+// channel falls back to its default), never an error: a role is presentation,
+// not a control path, and a newer cloud must not be able to break an older
+// box's diagram. Channels that resolve to no role at all are kept (role "") so
+// Derive skips them consistently.
 func Resolve(raw []RawEntity) Input {
+	// Roles somebody was explicitly marked maßgeblich for - computed over the
+	// WHOLE site first, because the default primary below must know about an
+	// explicit pick that appears only later in the input order.
+	explicitPrimary := map[string]bool{}
+	for _, e := range raw {
+		for _, ch := range e.Channels {
+			if r, ok := assignedRole(ch); ok && ch.Assigned.Primary {
+				explicitPrimary[r] = true
+			}
+		}
+	}
 	firstOfRole := map[string]bool{}
 	entities := make([]EntityInput, 0, len(raw))
 	for _, e := range raw {
@@ -375,8 +429,12 @@ func Resolve(raw []RawEntity) Input {
 		for _, ch := range e.Channels {
 			role := DefaultRole(e.Type, e.Category, ch.Channel, e.Connection)
 			primary := false
-			if role != "" && !firstOfRole[role] {
+			if r, ok := assignedRole(ch); ok {
+				role, primary = r, ch.Assigned.Primary
+			} else if role != "" && !explicitPrimary[role] && !firstOfRole[role] {
 				primary = true
+			}
+			if role != "" {
 				firstOfRole[role] = true
 			}
 			caps = append(caps, CapabilityInput{
@@ -389,4 +447,14 @@ func Resolve(raw []RawEntity) Input {
 		})
 	}
 	return Input{Entities: entities}
+}
+
+// assignedRole reports the cloud-assigned role of a channel, if it carries one
+// this build understands. It is the single place the unknown-role fallback
+// lives, so no caller can forget it.
+func assignedRole(ch RawChannel) (string, bool) {
+	if ch.Assigned == nil || !IsKnownRole(ch.Assigned.Role) {
+		return "", false
+	}
+	return ch.Assigned.Role, true
 }
