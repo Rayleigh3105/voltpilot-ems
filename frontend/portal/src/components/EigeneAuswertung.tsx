@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { Suspense, lazy, useMemo } from 'react';
 import type { ComponentRole } from '../komponenten';
 import {
   aggregatLabel,
@@ -7,8 +7,15 @@ import {
   type EigenerWert,
 } from '../eigeneAuswertung';
 import type { VerlaufSeries } from '../verlauf';
-import { VerlaufChart } from './VerlaufChart';
 import './EigeneAuswertung.css';
+
+// Lazy wie `KomponentenSection`: `VerlaufChart` zieht über `useEChart` die
+// gesamte Diagramm-Bibliothek — statisch importiert läge sie im
+// Einstiegs-Bündel jeder Seite, obwohl das Cockpit ohne eigenen Verlauf
+// keinen einzigen Chart zeichnet.
+const VerlaufChart = lazy(() =>
+  import('./VerlaufChart').then((m) => ({ default: m.VerlaufChart })),
+);
 
 /**
  * Ein EIGENER Cockpit-Baustein (Anwendungs-Programm Stufe 5): die Kachel mit
@@ -120,7 +127,9 @@ export function EigenerBaustein({
           <p className="vp-eigen-hinweis">{wert.hinweis}</p>
         ) : (
           <div className="vp-eigen-canvas">
-            <VerlaufChart selections={selections} range="day" />
+            <Suspense fallback={null}>
+              <VerlaufChart selections={selections} range="day" />
+            </Suspense>
           </div>
         )}
       </section>
