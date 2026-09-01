@@ -28,6 +28,11 @@ import { chartTheme } from './chartTheme';
  * Grids liegen, sieht man nur hier.
  */
 let lastOption: any = null;
+// Die Breite, mit der der Mock die Render-Closure aufruft. Die meisten Fälle
+// prüfen die OPTION-Form und sind breiten-unabhängig; das Pixel-Gate der
+// Band-Wortmarken ist es NICHT (Slot-Segmentbreite hängt an der Chartbreite),
+// deshalb ist sie hier setzbar. Ein top-level afterEach setzt sie auf 900 zurück.
+let mockChartWidth = 900;
 vi.mock('./useEChart', () => ({
   useEChart: (render: (chart: any, width: number) => void) => {
     lastOption = null;
@@ -40,11 +45,15 @@ vi.mock('./useEChart', () => ({
           lastOption = opt;
         },
       },
-      900,
+      mockChartWidth,
     );
     return { current: null };
   },
 }));
+
+afterEach(() => {
+  mockChartWidth = 900;
+});
 
 /** Die Serie mit diesem Namen aus der zuletzt gerenderten Canvas-Option. */
 function series(name: string): any {
@@ -876,5 +885,40 @@ describe('ScheduleChart · Tagesgrenzen eines 48-h-Plans', () => {
 
     expect(lastOption.xAxis[0].data).toHaveLength(192);
     expect(series(BOERSENPREIS).data).toHaveLength(192);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * UX-Runde r7 · das Pixel-Gate der Band-Wortmarken (Report §4)
+ *
+ * Der behobene Fehler: das Gate mass in SLOTS statt in PIXELN, also
+ * überschrieben sich die Wörter bei 375 px („Solar ladSolar lacRuhe"). Der
+ * setOption-Mock fängt die markPoint-Daten der Band-Spur ('Phase') ab,
+ * `mockChartWidth` fährt die zwei Breiten - anders ist die Divergenz „ein Lauf
+ * trägt sein Wort nur, wenn sein Segment es fasst" nicht beobachtbar.
+ * ------------------------------------------------------------------------- */
+describe('ScheduleChart · das WORT nur, wo das Band-Segment es fasst (Pixel-Gate)', () => {
+  // Sechs 8-Slot-Solar-Läufe, durch 8-Slot-Ruhe getrennt (96 Slots). Bei 1440 px
+  // fasst jedes Segment „Solar laden" (~110 px > 81), bei 375 px keines (~27 px).
+  const bandSlots = () =>
+    plan(
+      Array.from({ length: 96 }, (_, i) =>
+        Math.floor(i / 8) % 2 === 0
+          ? slot({ batteryKw: 6, gridKw: 0, socPct: 50 })
+          : slot({ batteryKw: 0, gridKw: 0, socPct: 50 }),
+      ),
+    );
+
+  it('trägt bei 1440 px je breitem Solar-Lauf das Wort im Band', () => {
+    mockChartWidth = 1440;
+    render(<ScheduleChart plan={bandSlots()} showPhaseBand />);
+    const worte = (series('Phase').markPoint.data as any[]).map((p) => p.label.formatter);
+    expect(worte.filter((w) => w === 'Solar laden')).toHaveLength(6);
+  });
+
+  it('lässt bei 375 px alle Wörter weg, statt sie zu überschreiben', () => {
+    mockChartWidth = 375;
+    render(<ScheduleChart plan={bandSlots()} showPhaseBand />);
+    expect(series('Phase').markPoint).toBeUndefined();
   });
 });

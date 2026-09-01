@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BAND_LABEL_MIN_SLOTS,
   BAND_WORT,
+  bandLabelWidthPx,
+  bandWordRuns,
   bandLegende,
   bandRole,
   bandRoleColor,
@@ -1734,8 +1735,46 @@ describe('bandLegende bewirbt nur vorkommende Phasen', () => {
   });
 });
 
-describe('BAND_LABEL_MIN_SLOTS', () => {
-  it('trägt das Wort erst ab einem 90-Minuten-Lauf ins Band', () => {
-    expect(BAND_LABEL_MIN_SLOTS).toBe(6);
+describe('bandWordRuns · das WORT nur, wo das Segment es fasst (Pixel-Gate, K10)', () => {
+  const solar = (): BandSlot => ({ batteryKw: 6, gridKw: 0 });
+  const ruhe = (): BandSlot => ({ batteryKw: 0 });
+  const entladen = (): BandSlot => ({ batteryKw: -6 });
+  const bau = (...runs: [() => BandSlot, number][]): BandSlot[] =>
+    runs.flatMap(([f, n]) => Array.from({ length: n }, f));
+
+  it('trägt ein Wort bei breiter Fläche, aber keines bei 375 px (die Regression)', () => {
+    // Zwei 14-Slot-Solar-Läufe, durch Ruhe getrennt - der gemeldete Kollisionsfall.
+    const slots = bau([ruhe, 20], [solar, 14], [ruhe, 14], [solar, 14], [ruhe, 34]);
+    // Breit (Spiegel 1440 ohne Ladestand-Achse: 1440−38−20): jeder 14-Slot-Lauf
+    // ist ~200 px und fasst „Solar laden" (~81 px).
+    expect(bandWordRuns(slots, 1382).filter((r) => r.role === 'solarladen')).toHaveLength(2);
+    // Schmal (Spiegel 375: 375−30−20): 14 Slots sind ~47 px < ~81 px → beide fallen weg.
+    expect(bandWordRuns(slots, 325).some((r) => r.role === 'solarladen')).toBe(false);
+  });
+
+  it('misst je Wort einzeln - kurze „Ruhe" überlebt, wo längeres „Entladen" wegfällt', () => {
+    // entladen(5) · solar(1, Trenner) · ruhe(5) · solar(85, füllt auf) = 96 Slots.
+    const slots = bau([entladen, 5], [solar, 1], [ruhe, 5], [solar, 85]);
+    const runs = bandWordRuns(slots, 768); // 96 Slots → 8 px/Slot
+    // 5 Slots = 40 px: ≥ „Ruhe" (32 px), aber < „Entladen" (60 px).
+    expect(runs.some((r) => r.role === 'ruhe')).toBe(true);
+    expect(runs.some((r) => r.role === 'entladen')).toBe(false);
+  });
+
+  it('trägt an einer unvermessenen Fläche (Breite ≤ 0) gar kein Wort', () => {
+    const slots = bau([solar, 40]);
+    expect(bandWordRuns(slots, 0)).toEqual([]);
+    expect(bandWordRuns(slots, -50)).toEqual([]);
+  });
+
+  it('macht aus einem leeren Plan keine Läufe', () => {
+    expect(bandWordRuns([], 1382)).toEqual([]);
+  });
+});
+
+describe('bandLabelWidthPx schätzt die Wortbreite je Rolle', () => {
+  it('ein längeres Wort ist breiter (Zeichenzahl × Zeichenbreite + Luft)', () => {
+    expect(bandLabelWidthPx('solarladen')).toBeGreaterThan(bandLabelWidthPx('ruhe'));
+    expect(bandLabelWidthPx('solarladen')).toBe('Solar laden'.length * 7 + 4);
   });
 });

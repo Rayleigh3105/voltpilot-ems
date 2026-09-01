@@ -18,7 +18,6 @@ import { AXIS as AXIS_NAME, BEZUGSPREIS, BOERSENPREIS, EINSPEISEWERT, SPANNE } f
 import { chartTheme } from './chartTheme';
 import { escHtml, kopf, notizZeile, tooltip, TOOLTIP_CSS, wertZeile } from './chartTooltip';
 import {
-  BAND_LABEL_MIN_SLOTS,
   BAND_WORT,
   bandLegende,
   bandRoleColor,
@@ -26,7 +25,7 @@ import {
   chargeKind,
   curtailArea,
   CURTAIL_AREA_LABEL,
-  phaseBandRuns,
+  bandWordRuns,
   curtailBandLabel,
   CURTAIL_LEGEND_LABEL,
   curtailSpans,
@@ -298,13 +297,17 @@ export function ScheduleChart({
     const bandData = bandOn
       ? bandRoles(slots).map((role) => ({ value: 1, itemStyle: { color: bandRoleColor(role, t) } }))
       : [];
-    // Ein Lauf trägt sein Wort nur, wenn er breit genug ist - sonst überliefe es
-    // die Nachbarn; die schmalen Läufe tragen es im Tooltip und in der Legende.
-    // Weiß mit dünnem dunklem Rand (paint-order stroke), damit es auf jeder der
-    // fünf Phasenfarben lesbar ist - auch auf dem hellen Ruhe-Grau.
+    // Ein Lauf trägt sein Wort nur, wenn sein Segment bei DIESER Chartbreite
+    // breit genug ist - sonst überschreiben sich die Marken (bei 375 px zu
+    // „Solar ladSolar lacRuhe"). `bandWordRuns` misst PIXEL, nicht Slots; die
+    // Plotbreite ist die Chartbreite minus die geteilten Ränder (Spiegel von
+    // grid[*], darum dieselben `left`/`right`-Ausdrücke wie unten am Grid). Weiß
+    // mit dünnem dunklem Rand (paint-order stroke), damit es auf jeder der fünf
+    // Phasenfarben lesbar ist - auch auf dem hellen Ruhe-Grau.
+    const bandLeftPx = narrow ? PANELS.leftNarrowPx : PANELS.leftPx;
+    const bandRightPx = showSoc && !narrow ? PANELS.rightWithSocPx : PANELS.rightPx;
     const bandWordPoints = bandOn
-      ? phaseBandRuns(slots)
-          .filter((r) => r.to - r.from + 1 >= BAND_LABEL_MIN_SLOTS)
+      ? bandWordRuns(slots, width - bandLeftPx - bandRightPx)
           .map((r) => ({
             coord: [Math.round((r.from + r.to) / 2), 0.5] as [number, number],
             label: {

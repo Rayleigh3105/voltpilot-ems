@@ -1297,12 +1297,45 @@ export function bandLegende(
 }
 
 /**
- * Ab so vielen zusammenhängenden Slots trägt ein Lauf sein WORT direkt im Band
- * (K10 in-place). Kürzere Läufe tragen es im Tooltip und in der Legende.
- * 6 Slots ≈ 90 Minuten - genug Breite, damit das Wort nicht auf die Nachbarn
- * überläuft.
+ * K10-PIXEL-GATE: ein Lauf trägt sein WORT nur, wenn sein Segment im Bild
+ * WIRKLICH breit genug dafür ist. Der frühere Slot-Zähler (`>= 6 Slots`) war
+ * DESKTOP-kalibriert - bei 375 px sind 6 Slots nur ~18 px und tragen
+ * „Solar laden" (~81 px) nicht; die Wortmarken überschrieben sich dort
+ * gegenseitig zu unlesbarem „Solar ladSolar lacRuhe". Gemessen wird deshalb in
+ * PIXELN: die Segmentbreite (`plotWidthPx / Slots × Lauflänge`) gegen die
+ * geschätzte Wortbreite. `plotWidthPx` ist die reine Zeichenfläche der Zeitachse
+ * (Chartbreite minus die geteilten Ränder), die die aufrufende Render-Closure
+ * kennt.
  */
-export const BAND_LABEL_MIN_SLOTS = 6;
+export const BAND_LABEL_CHAR_PX = 7;
+export const BAND_LABEL_SLACK_PX = 4;
+
+/**
+ * Die geschätzte Pixelbreite eines Band-Worts (Zeichenzahl × mittlere
+ * Zeichenbreite bei fontWeight 600, plus etwas Luft). Bewusst GROSSZÜGIG: knapp
+ * daneben ist besser als überlappt, und ein weggelassenes Wort steht ohnehin im
+ * Tooltip und in der Legende.
+ */
+export function bandLabelWidthPx(role: BandRole): number {
+  return BAND_WORT[role].length * BAND_LABEL_CHAR_PX + BAND_LABEL_SLACK_PX;
+}
+
+/**
+ * Die Läufe, die ihr WORT direkt im Band tragen dürfen - nur die, deren Segment
+ * bei DIESER Chartbreite das Wort fasst (siehe {@link bandLabelWidthPx}). Eine
+ * unvermessene Fläche (`plotWidthPx <= 0`, headless/vor dem ersten Layout)
+ * trägt kein Wort.
+ */
+export function bandWordRuns(
+  slots: { batteryKw: number | null; gridKw?: number | null; pvKw?: number | null; curtailKw?: number | null }[],
+  plotWidthPx: number,
+): BandRun[] {
+  if (slots.length === 0 || plotWidthPx <= 0) return [];
+  const perSlotPx = plotWidthPx / slots.length;
+  return phaseBandRuns(slots).filter(
+    (r) => perSlotPx * (r.to - r.from + 1) >= bandLabelWidthPx(r.role),
+  );
+}
 
 /**
  * Die Sockel-Ticks am Nullpunkt: `0` genau in den abregelnden Slots, sonst
