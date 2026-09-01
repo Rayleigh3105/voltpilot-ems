@@ -14,6 +14,7 @@ import {
 } from '../historieVergleich';
 import { historieHash } from '../historieWelten';
 import { DASH, signedEuro, steeringAttributionNote } from '../erloesKomposition';
+import { SteuerungFormel } from '../components/SteuerungFormel';
 import {
   erloeseAggregat,
   PORTFOLIO_WELTEN,
@@ -199,10 +200,16 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
                       <span className="vp-pf-summe-l">Ertrag im Zeitraum</span>
                     </p>
                     {zurechnung && (
-                      <p className="vp-pf-zurechnung">
-                        <Icon name="zap" size={14} aria-hidden="true" />
-                        {zurechnung}
-                      </p>
+                      <>
+                        <p className="vp-pf-zurechnung">
+                          <Icon name="zap" size={14} aria-hidden="true" />
+                          {zurechnung}
+                        </p>
+                        {/* Im Portfolio gibt es keinen EINEN Tarif — die
+                            Erklaerung sagt deshalb „der Stromtarif der
+                            jeweiligen Anlage" statt einer erfundenen Zahl. */}
+                        <SteuerungFormel input={{ tarifneutral: true }} />
+                      </>
                     )}
                     {ertragDelta && (
                       <p className="vp-kpi-delta">

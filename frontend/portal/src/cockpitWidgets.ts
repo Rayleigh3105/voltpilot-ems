@@ -61,6 +61,7 @@ import {
   erloesKomposition,
   steeringAttributionNote,
   type BestandZeile,
+  type SteuerungFormelInput,
 } from './erloesKomposition';
 import { eurAmount, fmtNum } from './format';
 import type { PeakBandView } from './peakBand';
@@ -324,6 +325,13 @@ export interface HeroMoney {
   attributionInterim?: boolean;
   /** Measured battery inventory, valued by the plan and NEVER added to cash. */
   bestand?: BestandZeile | null;
+  /**
+   * Die Eingabe fuer den Aufklapper „Wie wird das berechnet?" unter dem
+   * Zurechnungs-Chip (Captain 01.09.2026). Null = es gibt keine Zurechnung,
+   * also auch nichts zu erklaeren — ein Aufklapper ohne Bezugszahl waere ein
+   * Versprechen ins Leere.
+   */
+  formel?: SteuerungFormelInput | null;
 }
 
 export interface CockpitHeroView {
@@ -387,7 +395,13 @@ export function historyRangeForCockpit(range: EarningsRange): HistoryRange | nul
 export function cockpitHero(input: {
   /** Die Historie-Summen des GEWÄHLTEN Zeitraums (nicht „heute"). */
   totals?: HistoryTotals | null;
-  money?: CockpitMoney | null;
+  /**
+   * Die Anlagen-Antwort. Sie ist als `CockpitMoney` typisiert (die Flotten-Zeile
+   * trägt nicht mehr), die Anlagen-Seite reicht aber die volle `SiteEarnings`
+   * durch — deshalb sind die Tarif-Felder OPTIONAL angehängt: fehlen sie, sagt
+   * die Erklärung die vorsichtigere Fassung („Börsenpreis").
+   */
+  money?: (CockpitMoney & Partial<SteuerungFormelInput>) | null;
   range: EarningsRange;
   at?: Date;
   now: Date;
@@ -437,6 +451,21 @@ export function cockpitHero(input: {
           attribution,
           attributionInterim: running && attribution != null,
           bestand: bestandZeile(input.money, input.now),
+          // Der Aufklapper haengt am CHIP: ohne Zurechnung gibt es ihn nicht.
+          formel:
+            attribution == null
+              ? null
+              : {
+                  tarifArt: input.money?.tarifArt ?? null,
+                  tarifParamCtKwh: input.money?.tarifParamCtKwh ?? null,
+                  tarifPriced: input.money?.tarifPriced ?? null,
+                  bezugspreisCtKwh: input.money?.bezugspreisCtKwh ?? null,
+                  plantKind: input.money?.plantKind ?? null,
+                  marktpraemieEur: input.money?.marktpraemieEur ?? null,
+                  anzulegenderWertCtKwh: input.money?.anzulegenderWertCtKwh ?? null,
+                  marketValueSolarCtKwh: input.money?.marketValueSolarCtKwh ?? null,
+                  bestandSichtbar: bestandZeile(input.money, input.now) != null,
+                },
         };
 
   return {

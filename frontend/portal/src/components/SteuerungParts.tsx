@@ -24,6 +24,7 @@ import {
   peakContributionNote,
 } from '../steuerungArea';
 import type { ActiveMode } from '../surface';
+import { SteuerungFormel } from './SteuerungFormel';
 import './Steuerung.css';
 
 // ---------------------------------------------------------------------------
@@ -89,6 +90,14 @@ export function ModeCard({
               <dd className={`vp-contrib-value${row.value == null ? ' muted' : ''}`}>
                 {row.value ?? '—'}
               </dd>
+              {/* „Wie wird das berechnet?" — nur an der Zeile mit der
+                  Steuerungs-Zurechnung; sie liegt UNTER dem Paar, damit die
+                  zweispaltige Liste nicht auseinanderfaellt. */}
+              {row.formel && (
+                <dd className="vp-contrib-formel">
+                  <SteuerungFormel input={row.formel} />
+                </dd>
+              )}
             </div>
           ))}
         </dl>

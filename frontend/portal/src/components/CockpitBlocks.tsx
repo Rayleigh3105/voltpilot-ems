@@ -18,6 +18,7 @@ import {
   type MobileRow,
   type StickyHead,
 } from '../cockpitWidgets';
+import { SteuerungFormel } from './SteuerungFormel';
 import './CockpitBlocks.css';
 
 /**
@@ -220,6 +221,8 @@ export function MobileMoneyCard({
           )}
         </span>
       )}
+      {/* Dieselbe Erklaerung wie am Rechner - der Chip erklaert sich ueberall. */}
+      {view.money?.formel && <SteuerungFormel input={view.money.formel} />}
       {chips.length > 0 ? (
         <div className="vp-mob-chips">
           {chips.map((c) => (

@@ -37,6 +37,9 @@ build/
 node_modules/
 frontend/portal/dist/
 frontend/portal/.vite/
+# Playwright-Laufartefakte (Traces/Screenshots eines fehlgeschlagenen Laufs).
+frontend/portal/test-results/
+frontend/portal/playwright-report/
 npm-debug.log*
 
 # --- Docker / local data ---

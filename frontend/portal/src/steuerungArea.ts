@@ -28,7 +28,10 @@
 
 import type { EarningsSite, EntityStrategy } from './api';
 import { eurAmount, fmtNum } from './format';
-import { steeringAttributionNote } from './erloesKomposition';
+import {
+  steeringAttributionNote,
+  type SteuerungFormelInput,
+} from './erloesKomposition';
 import { lifecycleLabel, type EditorEntity } from './flows/model';
 import { AUTOMATIC_MODULES } from './moduleSurface';
 import { imRegal } from './anwendungen';
@@ -73,6 +76,12 @@ export interface ContributionRow {
   period: StreamPeriod;
   /** Kurzer Zusatz (Periode/Kleingedrucktes); null = keiner. */
   note: string | null;
+  /**
+   * Die Eingabe fuer den Aufklapper „Wie wird das berechnet?" — nur an der
+   * Zeile, die die Steuerungs-Zurechnung traegt (Captain 01.09.2026). Null an
+   * jeder anderen: dort gibt es keine Zahl, deren Rechnung zu erklaeren waere.
+   */
+  formel: SteuerungFormelInput | null;
 }
 
 /** Periodenlabel — quer über Perioden wird NIE stillschweigend summiert (§1.4). */
@@ -91,20 +100,35 @@ export function contributionRows(
   return mode.manifest.moneyStreams.map((stream) => {
     const read = stream.unattributed ? null : STREAM_FIELD[stream.id];
     const raw = read && earnings ? read(earnings) : null;
+    const zurechnung =
+      stream.attribution === 'steering' && earnings
+        ? steeringAttributionNote(earnings.savedEur)
+        : null;
     return {
       id: stream.id,
       label: stream.label,
       value: raw == null ? null : eurAmount(raw),
       period: stream.period,
+      // Der Aufklapper haengt am CHIP, nicht an der Zeile: ohne Zurechnung
+      // gibt es keine Zahl, deren Rechnung erklaert werden koennte.
+      formel:
+        zurechnung == null || !earnings
+          ? null
+          : {
+              tarifArt: earnings.tarifArt,
+              tarifParamCtKwh: earnings.tarifParamCtKwh,
+              tarifPriced: earnings.tarifPriced ?? null,
+              plantKind: earnings.plantKind,
+              anzulegenderWertCtKwh: earnings.anzulegenderWertCtKwh,
+              marketValueSolarCtKwh: earnings.marketValueSolarCtKwh,
+            },
       note: stream.unattributed
         ? 'Pro Regel noch nicht zugeordnet.'
         : [
             periodLabel(stream.period),
             // MIG §5: dieselbe EINE Zurechnungs-Wahrheit wie im Geld-Stapel —
             // der Steuerungs-Beitrag steht UNTER dem Erlös, nie daneben.
-            stream.attribution === 'steering' && earnings
-              ? steeringAttributionNote(earnings.savedEur)
-              : null,
+            zurechnung,
           ]
             .filter(Boolean)
             .join(' · '),

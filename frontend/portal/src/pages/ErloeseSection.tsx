@@ -57,6 +57,7 @@ import {
 } from '../components/HistorieWelt';
 import { ErloeseVerlaufChart } from '../components/ErloeseVerlaufChart';
 import { SoVerdientCard } from '../components/SoVerdient';
+import { SteuerungFormel } from '../components/SteuerungFormel';
 
 import '../components/Historie.css';
 import '../components/Erloese.css';
@@ -370,10 +371,15 @@ export function ErloeseSection({
   const geplant = geplanteErsparnisNotiz(history?.totals.batterySavingsPlannedEur, label);
 
   const steeringZeile = ergebnis.steering ? (
-    <p className="vp-erg-steering" title={ergebnis.steeringTitel ?? undefined}>
-      <Icon name="zap" size={14} aria-hidden="true" />
-      {ergebnis.steering}
-    </p>
+    <>
+      <p className="vp-erg-steering" title={ergebnis.steeringTitel ?? undefined}>
+        <Icon name="zap" size={14} aria-hidden="true" />
+        {ergebnis.steering}
+      </p>
+      {/* Die Rechnung hinter dem Chip - dieselbe Erklaerung wie im Cockpit
+          (Captain 01.09.2026), zugeklappt genau EINE ruhige Zeile. */}
+      {ergebnis.steeringFormel && <SteuerungFormel input={ergebnis.steeringFormel} />}
+    </>
   ) : null;
   // Das BESTANDSKONTO steht NEBEN der Zurechnung, nie in der grossen Zahl:
   // die gemessene Kasse kennt eingelagerte Energie nur als entgangenen Erlös

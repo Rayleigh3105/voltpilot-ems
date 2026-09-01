@@ -32,8 +32,10 @@ import type {
   CockpitMoney,
   EarningsRange,
   PeakShaving,
+  PlantKind,
   SiteEarnings,
   SiteEarningsBucket,
+  TarifArt,
 } from './api';
 import { coveredSinceLabel, periodLabel } from './anlage';
 import { NBSP, eurAmount, fmtNum } from './format';
@@ -199,6 +201,215 @@ export function steeringAttributionNote(savedEur: number | null | undefined): st
   return eur > 0
     ? `davon ${eurAmount(eur)} durch VoltPilots Steuerung`
     : `VoltPilots Steuerung: ${eurAmount(eur)} in diesem Zeitraum`;
+}
+
+/* ---------------------------------------------------------------------------
+ * „Wie wird das berechnet?" — die Kunden-Erklärung UNTER dem Steuerungs-Chip
+ *
+ * Captain-Wunsch 01.09.2026: der Kunde soll direkt am grünen Chip
+ * („davon 3,73 € durch VoltPilots Steuerung") nachlesen können, WIE die Zahl
+ * zustande kommt. Bis hierher gab es dafür nur einen Tooltip-Einzeiler
+ * (`steeringTitel`) und den Provenienz-Satz `anlage.savedProvenance` — beide
+ * sagen, WOGEGEN verglichen wird, aber nicht, MIT WELCHEN PREISEN.
+ *
+ * ⚠ ES WIRD HIER NICHTS GERECHNET. Die Erklärung beschreibt die Rechnung, die
+ * der SERVER anstellt (`EarningsRepository`, die ONE-truth-Komposition
+ * `SlotEconomics.importPriceCtSql`); jede genannte Zahl ist ein Feld, das die
+ * Antwort ohnehin trägt. Eine zweite Rechnung im Portal wären zwei
+ * Geldwahrheiten über dieselbe Kasse — dieselbe Falle, die das Bestandskonto
+ * eine Sektion weiter oben ausdrücklich vermeidet.
+ *
+ * ⚠ WAS NICHT BELEGT IST, WIRD NICHT BEHAUPTET. Ohne hinterlegten Tarif sagt
+ * die Preis-Zeile „Börsenpreis" statt eines erfundenen Tarifs; eine
+ * Marktprämie von 0 bekommt ihren GRUND nur, wenn beide ct-Größen vorliegen,
+ * sonst bleibt es beim neutralen Satz (die Vierzustands-Disziplin aus
+ * `marktpraemie.ts`).
+ *
+ * ⚠ DAS BESTANDSKONTO WIRD VERWIESEN, NIE DUPLIZIERT. Die Zeile „im Speicher
+ * für später" steht schon unter dem Chip; die Erklärung nennt nur, WARUM die
+ * Kassenzahl mittags sinken kann, und zeigt auf sie — wo sie wirklich
+ * gerendert wird (`bestandSichtbar`).
+ * ------------------------------------------------------------------------- */
+
+/** Eine Zeile der Formel-Box: die Seite der Rechnung und ihr Wortlaut. */
+export interface FormelZeile {
+  /** „Ohne Steuerung" / „Mit Steuerung" / „Beitrag der Steuerung". */
+  label: string;
+  /** Der Satz dahinter — Kundenworte, keine Symbole ausser × und −. */
+  text: string;
+}
+
+/** Eine Preis-Angabe: womit die jeweilige Seite bewertet wird. */
+export interface PreisAngabe {
+  /** „Bezugspreis" / „Einspeisepreis". */
+  label: string;
+  text: string;
+  /** Ruhige Zusatzzeile (Ø des Zeitraums, Marktprämie-Lage); null = keine. */
+  zusatz: string | null;
+}
+
+/** Die render-fertige Erklärung. */
+export interface SteuerungFormel {
+  /** Der Auslöser-Text des Aufklappers. */
+  ausloeser: string;
+  /** Der Kernsatz: was verglichen wird. */
+  kern: string;
+  /** Die drei Zeilen der Rechnung. */
+  zeilen: FormelZeile[];
+  /** Womit die beiden Seiten bewertet werden. */
+  preise: PreisAngabe[];
+  /** Warum die Zahl im Tagesverlauf noch nicht vollständig ist. */
+  hinweis: string;
+}
+
+/**
+ * Was die Erklärung wissen muss. **Jedes Feld ist optional**, weil sie an vier
+ * Flächen mit drei verschiedenen Antwortformen hängt: das Anlagen-`/earnings`
+ * (`SiteEarnings`, alles da), die Flotten-Zeile (`EarningsSite`, ohne
+ * `bezugspreisCtKwh`/`marktpraemieEur`) und das Portfolio-Aggregat (gar kein
+ * einzelner Tarif). Ein fehlendes Feld führt IMMER zur vorsichtigeren Fassung.
+ */
+export interface SteuerungFormelInput {
+  tarifArt?: TarifArt | null;
+  tarifParamCtKwh?: number | null;
+  /** Ob der vermiedene Netzbezug wirklich zum Tarif bewertet ist. */
+  tarifPriced?: boolean | null;
+  /** Der Ø-Bezugspreis des Zeitraums — belegt die Preis-Zeile. */
+  bezugspreisCtKwh?: number | null;
+  plantKind?: PlantKind | null;
+  marktpraemieEur?: number | null;
+  anzulegenderWertCtKwh?: number | null;
+  marketValueSolarCtKwh?: number | null;
+  /**
+   * Portfolio: mehrere Anlagen mit je eigenem Tarif — dann wird kein einzelner
+   * genannt, sondern „der Stromtarif der jeweiligen Anlage".
+   */
+  tarifneutral?: boolean;
+  /**
+   * Ob die Fläche die Bestandszeile („im Speicher für später") wirklich
+   * rendert. Nur dann verweist der Hinweis auf sie; sonst stünde ein Zeiger
+   * auf eine Zeile, die es nicht gibt.
+   */
+  bestandSichtbar?: boolean;
+}
+
+/** Der Auslöser — an allen Flächen wortgleich. */
+export const FORMEL_AUSLOESER = 'Wie wird das berechnet?';
+
+function ct(value: number): string {
+  return `${value.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}${NBSP}ct/kWh`;
+}
+
+/** Der Bezugspreis in Kundenworten — „Börsenpreis", wo kein Tarif hinterlegt ist. */
+function bezugspreisText(input: SteuerungFormelInput): string {
+  if (input.tarifneutral) return 'Der Stromtarif der jeweiligen Anlage.';
+  const param = num(input.tarifParamCtKwh ?? null);
+  if (input.tarifArt === 'fest') {
+    return param != null
+      ? `Ihr fester Stromtarif: ${ct(param)}.`
+      : 'Ihr fester Stromtarif.';
+  }
+  if (input.tarifArt === 'dynamisch') {
+    return param != null && param > 0
+      ? `Ihr dynamischer Stromtarif: Börsenpreis der jeweiligen Viertelstunde + ${ct(param)} Aufschlag.`
+      : 'Ihr dynamischer Stromtarif: der Börsenpreis der jeweiligen Viertelstunde.';
+  }
+  // 'ohne' und alles Unbekannte: es gibt keinen Tarif, den wir nennen könnten.
+  return 'Der Börsenpreis der jeweiligen Viertelstunde — für diese Anlage ist kein Stromtarif hinterlegt.';
+}
+
+/**
+ * Die Marktprämie-Zeile. Sie fällt NUR bei Direktvermarktung an, und eine
+ * berechnete 0 bekommt ihren Grund nur, wenn beide ct-Größen vorliegen (sonst
+ * behauptete der Satz eine Rechnung, die niemand belegen kann).
+ */
+function einspeiseZusatz(input: SteuerungFormelInput): string | null {
+  if (input.tarifneutral) return null;
+  if (input.plantKind !== 'direktvermarktung') return null;
+  const praemie = num(input.marktpraemieEur ?? null);
+  if (praemie != null && Math.abs(praemie) >= 0.005) {
+    return `Dazu kommt die Marktprämie: ${eurAmount(praemie)} in diesem Zeitraum.`;
+  }
+  const aw = num(input.anzulegenderWertCtKwh ?? null);
+  const mw = num(input.marketValueSolarCtKwh ?? null);
+  if (praemie != null && aw != null && mw != null && mw >= aw) {
+    return (
+      `Derzeit keine Marktprämie, weil der Monatsmarktwert (${ct(mw)}) über Ihrem ` +
+      `anzulegenden Wert (${ct(aw)}) liegt — Ihre Vergütung kommt in diesem Zeitraum voll aus dem Markt.`
+    );
+  }
+  if (praemie != null) return 'In diesem Zeitraum fällt keine Marktprämie an.';
+  if (aw != null) return 'Dazu kommt die Marktprämie, wo sie anfällt.';
+  return null;
+}
+
+/**
+ * Die Erklärung zum Steuerungs-Chip. Sie steht IMMER zur Verfügung, sobald der
+ * Chip steht — es gibt keinen Zustand, in dem die Rechnung eine andere wäre;
+ * verschieden ist nur, wie viel wir über die PREISE sagen können.
+ */
+export function steuerungFormel(input: SteuerungFormelInput): SteuerungFormel {
+  const bezugKurz = input.tarifneutral
+    ? 'dem Stromtarif der jeweiligen Anlage'
+    : input.tarifArt === 'ohne' || input.tarifArt == null || input.tarifPriced === false
+      ? 'dem Börsenpreis'
+      : 'Ihrem Stromtarif';
+
+  const kern =
+    'Wir vergleichen jede Viertelstunde Ihre tatsächliche Stromrechnung mit der Rechnung, ' +
+    'die dieselbe Anlage ohne Speicher-Steuerung gehabt hätte — bewertet mit ' +
+    `${bezugKurz} für den Netzbezug und dem Börsenpreis für die Einspeisung. ` +
+    'Die Differenz ist das, was die Steuerung verdient hat.';
+
+  const zeilen: FormelZeile[] = [
+    {
+      label: 'Ohne Steuerung',
+      text:
+        'Speicher aus, Solarstrom sofort eingespeist: Netzbezug, den das Haus ohne Solarstrom ' +
+        'gebraucht hätte × Bezugspreis − Solarüberschuss × Einspeisepreis.',
+    },
+    {
+      label: 'Mit Steuerung',
+      text: 'Gemessen an Ihrem Zähler: Netzbezug × Bezugspreis − Netzeinspeisung × Einspeisepreis.',
+    },
+    {
+      label: 'Beitrag der Steuerung',
+      text: 'Kosten ohne Steuerung − Kosten mit Steuerung, über alle Viertelstunden des Zeitraums summiert.',
+    },
+  ];
+
+  const bezugSchnitt = num(input.bezugspreisCtKwh ?? null);
+  const preise: PreisAngabe[] = [
+    {
+      label: 'Bezugspreis',
+      text: bezugspreisText(input),
+      zusatz:
+        !input.tarifneutral && bezugSchnitt != null
+          ? `Im Zeitraum im Schnitt ${ct(bezugSchnitt)}.`
+          : null,
+    },
+    {
+      label: 'Einspeisepreis',
+      text: 'Der Börsenpreis (Day-Ahead) der jeweiligen Viertelstunde.',
+      zusatz: einspeiseZusatz(input),
+    },
+  ];
+
+  const zeiger = input.bestandSichtbar
+    ? ' Was gerade im Speicher liegt, steht in der Zeile darunter.'
+    : '';
+
+  return {
+    ausloeser: FORMEL_AUSLOESER,
+    kern,
+    zeilen,
+    preise,
+    hinweis:
+      'Diese Zahl ist eine reine Kassenrechnung: Strom, der gerade in den Speicher geladen wurde, ' +
+      'zählt noch nicht — sein Wert erscheint erst, wenn er später den Netzbezug ersetzt. ' +
+      'Deshalb kann die Zahl mittags sinken und ist erst am Tagesende vollständig.' +
+      zeiger,
+  };
 }
 
 /* ---------------------------------------------------------------------------
@@ -545,6 +756,11 @@ export interface ErloesErgebnisView {
   /** Der Titel-Text dazu: wogegen die Zurechnung gemessen ist. */
   steeringTitel: string | null;
   /**
+   * Die Eingabe fuer den Aufklapper „Wie wird das berechnet?" unter dem Chip
+   * (Captain 01.09.2026). `null` = keine Zurechnung, also nichts zu erklaeren.
+   */
+  steeringFormel: SteuerungFormelInput | null;
+  /**
    * Das BESTANDSKONTO daneben („44,2 kWh Speicherenergie seit Tagesbeginn
    * gespeichert · Planwert 8,35 €"). Es steht NEBEN der Zurechnung, nie in der großen Zahl:
    * die gemessene Kasse kennt eingelagerte Energie nur als entgangenen Erlös
@@ -698,6 +914,20 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
     nettoSatz: nettoSatz(netto, rangeLabel),
     steering: steeringAttributionNote(money?.savedEur),
     steeringTitel: steeringTitel(money),
+    steeringFormel:
+      money == null || steeringAttributionNote(money.savedEur) == null
+        ? null
+        : {
+            tarifArt: money.tarifArt,
+            tarifParamCtKwh: money.tarifParamCtKwh,
+            tarifPriced: money.tarifPriced ?? null,
+            bezugspreisCtKwh: money.bezugspreisCtKwh,
+            plantKind: money.plantKind,
+            marktpraemieEur: money.marktpraemieEur,
+            anzulegenderWertCtKwh: money.anzulegenderWertCtKwh,
+            marketValueSolarCtKwh: money.marketValueSolarCtKwh,
+            bestandSichtbar: bestandZeile(money, input.now ?? new Date()) != null,
+          },
     bestand: bestandZeile(money, input.now ?? new Date()),
     rows,
     mehrerePerioden,

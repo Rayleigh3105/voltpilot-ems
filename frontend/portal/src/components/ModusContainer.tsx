@@ -61,6 +61,7 @@ import {
   SETTINGS_MIRROR_NOTE,
 } from '../settingsNav';
 import { canEditSetting, SettingRow } from './SettingEditors';
+import { SteuerungFormel } from './SteuerungFormel';
 import '../components/Profile.css';
 import './ModusContainer.css';
 
@@ -206,6 +207,9 @@ export function ModusContainer({
                   <div className="vp-modus-contribtext">
                     <span className="vp-modus-contriblabel">{row.label}</span>
                     {row.note ? <span className="vp-modus-contribnote">{row.note}</span> : null}
+                    {/* „Wie wird das berechnet?" — nur an der Zeile mit der
+                        Steuerungs-Zurechnung (Captain 01.09.2026). */}
+                    {row.formel ? <SteuerungFormel input={row.formel} /> : null}
                   </div>
                   <span className={`vp-modus-contribval${row.value == null ? ' muted' : ''}`}>
                     {row.value ?? '—'}

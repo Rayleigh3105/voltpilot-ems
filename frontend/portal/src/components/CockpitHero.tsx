@@ -13,6 +13,7 @@ import { AdaptiveEnergyFlow } from './AdaptiveEnergyFlow';
 import { EnergyFlow } from './EnergyFlow';
 import { PvBreakdownLine } from './PvBreakdown';
 import { ConsumerStrip } from './ConsumerStrip';
+import { SteuerungFormel } from './SteuerungFormel';
 import './CockpitBlocks.css';
 
 /**
@@ -221,6 +222,9 @@ export function CockpitHero({
                   )}
                 </span>
               )}
+              {/* „Wie wird das berechnet?" - die Rechnung hinter dem Chip,
+                  zugeklappt genau EINE ruhige Zeile (Captain 01.09.2026). */}
+              {view.money.formel && <SteuerungFormel input={view.money.formel} />}
             </div>
           )}
 
