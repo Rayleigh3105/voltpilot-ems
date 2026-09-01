@@ -39,7 +39,7 @@ import { FahrplanWhyPanel } from '../components/FahrplanWhy';
 import { filmKicker, filmRows, naechsterEinsatz } from '../fahrplanFilm';
 import { jetztHeld } from '../fahrplanJetzt';
 import { lageView } from '../fahrplanLage';
-import { JetztHeld, TagesFilm } from '../components/FahrplanJetzt';
+import { JetztKompakt, TagesFilm } from '../components/FahrplanJetzt';
 import { FahrplanLage } from '../components/FahrplanLage';
 import { flowConflictCandidate, stepFlowConflict } from '../flowConflict';
 import { controlReasonSlot } from '../control';
@@ -664,37 +664,29 @@ export function WetterSection({ site }: { site: Site }) {
 const LIVE_WINDOW_MS = 15 * 60 * 1000;
 
 /**
- * D3: am Telefon startet das Detail-Diagramm EINGEKLAPPT (der Film trägt die
- * Erzählung), am Rechner offen. Nur der Startwert - eine spätere Wahl des
- * Kunden gewinnt, auch wenn er das Fenster dreht.
- */
-function chartOpenByDefault(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
-  return !window.matchMedia('(max-width: 720px)').matches;
-}
-
-/**
- * Die Fahrplan-Seite einer Anlage — VIER BLÖCKE in der Reihenfolge der
- * Kundenfragen (Konzept `vp-fahrplan-kunde-konzept` §6, Entscheide D1–D4):
+ * Die Fahrplan-Seite einer Anlage — das DIAGRAMM ist der Held (Konzept
+ * `vp-fahrplan-ux-r7`, Captain-Feedback „zu viel Text · das Diagramm viel
+ * weiter oben"). Von oben nach unten:
  *
- *   1 JETZT-Held      „Was macht meine Batterie gerade — und läuft das
- *                      richtig?" (+ „muss ich etwas tun?" + das Warum)
- *   2 Film des Tages   „Was passiert als Nächstes?" — die Phasen als erzählte
- *                      Liste mit Jetzt-Anker; der GANZE Tag (die gelaufenen
- *                      Phasen abgehakt), „Morgen" eingeklappt
- *   3 Euro-Zeile       „Was bringt mir das?" — EINE Zeile mit dem Abzeichen
- *                      „Geplant" (die gemessene Ersparnis wohnt in den Erlösen)
- *   4 Diagramm         die Vertiefung: am Telefon eingeklappt, am Rechner
- *                      offen, mit drei Schicht-Schaltern statt neun Pills
+ *   1 Status-Zeile     `JetztKompakt` — Zustands-Punkt + EIN Satz + kompakter
+ *                      Plan/Ist-Chip; das Warum & die Messwerte im eigenen Fold
+ *   2 Warnungen        ein Plan älter als ~2 h steht als Banner (nie kondensiert)
+ *   3 Lage-Zeile       EINE kompakte „Heute und morgen"-Zeile, dauerhaft sichtbar
+ *   4 Diagramm         der HELD: das ScheduleChart, Desktop UND Mobil offen,
+ *                      mit dem Phasen-Band als dritter Chart-Spur (Variante A+C):
+ *                      ein Tipp auf eine Band-/Preis-/Leistungs-Spalte öffnet
+ *                      dasselbe Warum-Panel
+ *   5 Euro-Zeile       EINE kompakte Zeile mit dem Abzeichen „Geplant"
+ *   6 „Mehr erklären"  Aufklapper (Standard ZU): die volle Lage, der Film des
+ *                      Tages und alle Diagramm-Fußnoten
  *
- * Vorher begann die Seite mit drei Planungs-KPIs und führte in ein
- * Sieben-Reihen-Diagramm; bis zur ersten Datenkurve lagen am Telefon 1.763 px.
- * Die Frage, mit der fast jeder Besuch beginnt, hatte keinen Ort.
+ * Vorher begann die Seite mit drei Planungs-KPIs, einem 12-Zeilen-Absatz und
+ * einem unbeschrifteten Farbstreifen; das Diagramm lag hinter einem Fold.
  *
  * Alle Ableitung ist rein und getestet (`fahrplanJetzt.ts`, `fahrplanFilm.ts`,
- * `fahrplanWhy.ts`, `schedule.ts`) — hier steht nur das Gerüst und das Holen
- * der Daten. Ein Plan OHNE die persistierten Warum-Fakten degradiert wie
- * bisher: kein Film, kein Held-Grund, nur Euro-Zeile und Diagramm.
+ * `fahrplanLage.ts`, `fahrplanWhy.ts`, `schedule.ts`) — hier steht nur das
+ * Gerüst und das Holen der Daten. Ein Plan OHNE die persistierten Warum-Fakten
+ * degradiert wie bisher: kein Film, kein Held-Grund, nur Diagramm + Euro-Zeile.
  */
 /**
  * §14.11 slot card: the tapped slot's consumers with Ziel + Grund (the ONE
@@ -741,7 +733,7 @@ export function FahrplanSection({ site }: { site: Site }) {
   const [curtailStatus, setCurtailStatus] = useState<CurtailmentStatus | null>(null);
   const [points, setPoints] = useState<TelemetryPoint[]>([]);
   const [now, setNow] = useState<Date>(() => new Date());
-  const [chartOpen, setChartOpen] = useState<boolean>(chartOpenByDefault);
+  const [mehrOpen, setMehrOpen] = useState<boolean>(false);
   // Der GANZE Tag für den Film (Tages-Splice, „wie der Tag geplant war") -
   // ebenfalls FAIL-SOFT: eine api ohne diese Lesart antwortet mit 400, dann
   // bleibt der Film exakt bei der Rest-des-Tages-Fassung des jüngsten Laufs.
@@ -1044,50 +1036,68 @@ export function FahrplanSection({ site }: { site: Site }) {
 
   return (
     <>
-      {/* ---- Block 1: der JETZT-Held (F1 + F5 + F2) ---- */}
-      <JetztHeld view={held} />
+      {/* ---- Block 1: die Status-Zeile (kompakt) ---- */}
+      <JetztKompakt view={held} />
 
-      {/* Ein Plan älter als ~2 h ist nicht der Plan von heute - das steht
-          direkt unter dem Helden, nicht in einer grauen Fußnote (audit F2). */}
+      {/* ---- Block 2: Warnungen ---- Ein Plan älter als ~2 h ist nicht der Plan
+          von heute; das steht direkt unter dem Status, nie kondensiert. */}
       {staleNote && (
         <div className="vp-alert vp-alert-warn" role="status" style={{ margin: '0 0 var(--vp-space-4)' }}>
           {staleNote}
         </div>
       )}
 
-      {/* ---- Die „Lage"-Zeile: was heute läuft und was morgen erwartet wird ----
-          Zwischen Held und Film, und NUR hier (F4) - das Cockpit behält seine
-          knappe Kurzfassung. Ohne belegte Aussage rendert sie gar nicht. */}
-      {lage && <FahrplanLage view={lage} />}
+      {/* ---- Block 3: die Lage-Zeile (kompakt) ---- EINE „Heute und morgen"-Zeile,
+          dauerhaft sichtbar; die volle Lage wohnt in „Mehr erklären". */}
+      {lage && <FahrplanLage view={lage} variant="kompakt" />}
 
-      {/* ---- Block 2: der Film des Tages (F3) ---- */}
-      {hasFilm && (
-        <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-4)' }}>
-          <div className="vp-jetzt-kick">
-            {/* „Der ganze Tag", sobald der Splice die Vormittags-Phasen trägt -
-                sonst die bisherige Beschriftung. EIN Abzeichen für die ganze
-                Karte: hier stehen nur geplante Zahlen, auch in der Vergangenheit. */}
-            <span className="vp-card-label">{filmKicker(film)}</span>
-            <ProvBadge art="geplant" />
-          </div>
-          <TagesFilm
-            view={film}
-            selected={selPhase}
-            onSelect={(i) => {
-              setSelPhase((cur) => (cur === i ? null : i));
-              setSelSlot(null);
-            }}
-            panel={selPhase != null ? phasePanel : null}
-          />
-          <p className="vp-note" style={{ margin: 'var(--vp-space-3) 0 0' }}>
-            Phase antippen: warum der Speicher das tut, mit den Zahlen dahinter.
-            Was heute wirklich passiert ist, steht unter{' '}
-            <a href={`#/anlage/${site.id}/messwerte`}>Messwerte</a>.
-          </p>
-        </Card>
-      )}
+      {/* ---- Block 4: das Diagramm als HELD (Variante A+C) ---- Desktop UND Mobil
+          offen, mit dem Phasen-Band als dritter Chart-Spur. Ein Tipp auf eine
+          Band-/Preis-/Leistungs-Spalte öffnet dasselbe Warum-Panel (das
+          Klick-Modell mappt jede Spalte auf ihren Slot). */}
+      <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-4)' }}>
+        <div className="vp-jetzt-kick">
+          <span className="vp-card-label">Der Fahrplan Ihres Speichers</span>
+          <InfoTip title="Wie der Fahrplan berechnet wird">
+            Der Fahrplan wird für jede Anlage einzeln alle 15 Minuten neu berechnet -
+            für die nächsten 24 Stunden in 15-Minuten-Schritten. Ein Optimierungsmodell
+            plant den Batteriespeicher so, dass Ihre Stromkosten minimal werden:
+            laden bei günstigem Strom oder PV-Überschuss, entladen wenn Strom teuer ist,
+            Eigenverbrauch maximieren. Eingaben je Anlage sind die Börsen-Day-Ahead-Preise,
+            die Last- und PV-Prognose, der aktuelle Ladestand, die Batteriegrenzen und die
+            §14a-Netzgrenze. Weil jede Anlage eigene Eingaben hat, erhält sie ihren eigenen
+            Fahrplan.
+          </InfoTip>
+        </div>
+        <ChartSubtitle>
+          Oben der Preis, unten Ihr Speicher, darunter das Phasen-Band -
+          tippen Sie eine Spalte fürs Warum.
+        </ChartSubtitle>
+        <ScheduleChart
+          plan={plan!}
+          showPhaseBand
+          onSlotClick={
+            hasWhy
+              ? (i) => {
+                  setSelSlot((cur) => (cur === i ? null : i));
+                  setSelPhase(null);
+                }
+              : undefined
+          }
+          selectedIndex={hasWhy ? selSlot : undefined}
+          consumers={verbraucherAktiv ? verbraucher : undefined}
+          plantKind={site.plantKind}
+        />
+        {selSlot != null && slotPanel}
+        {/* §14.11: die Verbraucher des angetippten Slots - Ziel + Grund aus
+            der EINEN getesteten reason_code-Tabelle, Pflicht als Wort +
+            Schloss-Icon, nie nur Farbe. Ohne Verbraucher rendert nichts. */}
+        {selSlot != null && verbraucherAktiv && (
+          <VerbraucherSlotCard infos={consumerSlotInfos(verbraucher, selSlot)} />
+        )}
+      </Card>
 
-      {/* ---- Block 3: die Euro-Zeile (F4) ---- */}
+      {/* ---- Block 5: die Euro-Zeile (kompakt) ---- */}
       <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-4)' }}>
         <div className="vp-jetzt-kick">
           <span className="vp-card-label">Ihr Vorteil</span>
@@ -1122,61 +1132,58 @@ export function FahrplanSection({ site }: { site: Site }) {
         {banked && <p className="vp-fp-euro-note">{banked}</p>}
       </Card>
 
-      {/* ---- Block 4: das Diagramm als Aufklapp-Ebene (F6 + F7) ---- */}
+      {/* ---- Block 6: „Mehr erklären" (Standard ZU) ---- die volle Lage, der
+          Film des Tages und alle Diagramm-Fußnoten. Nichts gelöscht, nur
+          umsortiert. */}
       <Card padding="lg" radius="lg">
         <div className="vp-fp-fold-head">
           <button
             type="button"
-            className={`vp-fp-fold-toggle${chartOpen ? ' is-open' : ''}`}
-            aria-expanded={chartOpen}
-            onClick={() => setChartOpen((o) => !o)}
+            className={`vp-fp-fold-toggle${mehrOpen ? ' is-open' : ''}`}
+            aria-expanded={mehrOpen}
+            onClick={() => setMehrOpen((o) => !o)}
           >
             <Icon name="chevron-down" size={18} />
-            Diagramm im Detail
+            Mehr erklären
           </button>
-          <InfoTip title="Wie der Fahrplan berechnet wird">
-            Der Fahrplan wird für jede Anlage einzeln alle 15 Minuten neu berechnet -
-            für die nächsten 24 Stunden in 15-Minuten-Schritten. Ein Optimierungsmodell
-            plant den Batteriespeicher so, dass Ihre Stromkosten minimal werden:
-            laden bei günstigem Strom oder PV-Überschuss, entladen wenn Strom teuer ist,
-            Eigenverbrauch maximieren. Eingaben je Anlage sind die Börsen-Day-Ahead-Preise,
-            die Last- und PV-Prognose, der aktuelle Ladestand, die Batteriegrenzen und die
-            §14a-Netzgrenze. Weil jede Anlage eigene Eingaben hat, erhält sie ihren eigenen
-            Fahrplan.
-          </InfoTip>
         </div>
 
-        {chartOpen && (
+        {mehrOpen && (
           <>
-            <ChartSubtitle>
-              Zwei Bilder über einer Zeitachse: oben der Preis, unten was Ihr Speicher tut.
-              Die Fläche im Preis-Bild ist die Spanne zwischen Bezugspreis und Einspeisewert –
-              sie ist der Grund fürs Laden und Entladen. Alles links vom „Jetzt“ ist bereits
-              vergangen; Details je Viertelstunde per Tipp.
-            </ChartSubtitle>
-            <ScheduleChart
-              plan={plan!}
-              onSlotClick={
-                hasWhy
-                  ? (i) => {
-                      setSelSlot((cur) => (cur === i ? null : i));
-                      setSelPhase(null);
-                    }
-                  : undefined
-              }
-              selectedIndex={hasWhy ? selSlot : undefined}
-              consumers={verbraucherAktiv ? verbraucher : undefined}
-              plantKind={site.plantKind}
-            />
-            {selSlot != null && slotPanel}
-            {/* §14.11: die Verbraucher des angetippten Slots - Ziel + Grund aus
-                der EINEN getesteten reason_code-Tabelle, Pflicht als Wort +
-                Schloss-Icon, nie nur Farbe. Ohne Verbraucher rendert nichts. */}
-            {selSlot != null && verbraucherAktiv && (
-              <VerbraucherSlotCard infos={consumerSlotInfos(verbraucher, selSlot)} />
+            {/* Die vollständige Lage heute & morgen (Bedingung + Quelle). */}
+            {lage && <FahrplanLage view={lage} variant="voll" />}
+
+            {/* Der Film des Tages (F3): der GANZE Tag, die gelaufenen Phasen
+                abgehakt. */}
+            {hasFilm && (
+              <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-4)' }}>
+                <div className="vp-jetzt-kick">
+                  {/* „Der ganze Tag", sobald der Splice die Vormittags-Phasen
+                      trägt - sonst die bisherige Beschriftung. EIN Abzeichen für
+                      die ganze Karte: hier stehen nur geplante Zahlen, auch in der
+                      Vergangenheit. */}
+                  <span className="vp-card-label">{filmKicker(film)}</span>
+                  <ProvBadge art="geplant" />
+                </div>
+                <TagesFilm
+                  view={film}
+                  selected={selPhase}
+                  onSelect={(i) => {
+                    setSelPhase((cur) => (cur === i ? null : i));
+                    setSelSlot(null);
+                  }}
+                  panel={selPhase != null ? phasePanel : null}
+                />
+                <p className="vp-note" style={{ margin: 'var(--vp-space-3) 0 0' }}>
+                  Phase antippen: warum der Speicher das tut, mit den Zahlen dahinter.
+                  Was heute wirklich passiert ist, steht unter{' '}
+                  <a href={`#/anlage/${site.id}/messwerte`}>Messwerte</a>.
+                </p>
+              </Card>
             )}
-            {/* Die Energiesummen sind Diagramm-KONTEXT, kein Seiten-Einstieg -
-                deshalb stehen sie hier unten und nicht mehr als KPI-Reihe oben. */}
+
+            {/* Die Diagramm-Fußnoten. */}
+            {/* Die Energiesummen sind Diagramm-KONTEXT, kein Seiten-Einstieg. */}
             <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
               Über den ganzen Planungszeitraum: {fmtNum(chargeKwh, 'kWh')} geplantes Laden,{' '}
               {fmtNum(dischargeKwh, 'kWh')} geplantes Entladen.

@@ -195,6 +195,146 @@
   color: var(--vp-ink, #1a1a1a);
 }
 
+/* ---- Block 0 · die KOMPAKTE Jetzt-Karte (r7) ---------------------------- */
+/*
+ * Der frühere JETZT-Held war eine große Karte mit drei Textblöcken; die
+ * kompakte Fassung trägt im Standard-Scroll nur Zustand · Plan-/Ist-Wert · ggf.
+ * Warnung. Warum und Messwerte wandern in den Aufklapper, damit das Diagramm
+ * die Seite führt. Warnungen bleiben sichtbar (K10) - sie klappen NIE ein.
+ */
+.vp-kompakt {
+  min-width: 0;
+}
+
+.vp-kompakt-head {
+  min-width: 0;
+}
+
+.vp-kompakt-kick {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-kompakt-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 var(--vp-space-2);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.vp-kompakt-status i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--vp-gray, #9aa3ad);
+}
+
+/* Grün/bernstein aus den BESTEHENDEN Tokens - nie ein zweites Status-Grün. */
+.vp-kompakt-status.is-ok {
+  color: var(--vp-flow-batt-ink, #166534);
+}
+.vp-kompakt-status.is-ok i {
+  background: var(--vp-flow-batt, #16a34a);
+  box-shadow: 0 0 0 3px var(--vp-flow-batt-soft, #e7f6ec);
+}
+.vp-kompakt-status.is-warn {
+  color: #8a5200;
+}
+.vp-kompakt-status.is-warn i {
+  background: var(--vp-flow-pv, #f59e0b);
+}
+
+/* Plan-/Ist-Wert in EINER Zeile: die Aussage klein, die Zahl kräftig. */
+.vp-kompakt-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0 0 var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-kompakt-value .k {
+  font-size: 0.92rem;
+  color: var(--vp-text, #212529);
+  min-width: 0;
+}
+
+.vp-kompakt-value b {
+  font-family: var(--vp-font-heading, inherit);
+  font-size: clamp(1.35rem, 5.5vw, 1.7rem);
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--vp-stat-ink, #1e3a5f);
+}
+
+.vp-kompakt-value b.vp-jetzt-dash {
+  color: var(--vp-muted, #6c757d);
+}
+
+.vp-kompakt-note {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--vp-muted, #6c757d);
+}
+
+/* Eine bewusste Nachführung ist NIE ein Fehler: neutraler Kasten, kein Rot. */
+.vp-kompakt-adjust {
+  margin: 0 0 var(--vp-space-2);
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border-left: 3px solid var(--vp-chart-battdischarge, #2c5282);
+  background: var(--vp-bg-subtle, #f1f3f5);
+  border-radius: 0 var(--vp-radius-md) var(--vp-radius-md) 0;
+  font-size: 0.83rem;
+  line-height: 1.5;
+  min-width: 0;
+}
+
+.vp-kompakt-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--vp-action);
+  cursor: pointer;
+}
+.vp-kompakt-fold svg {
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
+}
+.vp-kompakt-fold.is-open svg {
+  transform: rotate(0deg);
+}
+.vp-kompakt-fold:hover {
+  text-decoration: underline;
+}
+
+.vp-kompakt-detail {
+  padding-top: var(--vp-space-2);
+  min-width: 0;
+}
+.vp-kompakt-detail .vp-jetzt-why {
+  padding-top: 0;
+  border-top: none;
+  margin-bottom: var(--vp-space-2);
+}
+
 /* ---- Block 2 · der Film des Tages --------------------------------------- */
 
 .vp-film {
@@ -384,6 +524,166 @@
   transform: rotate(0deg);
 }
 .vp-film-more:hover {
+  text-decoration: underline;
+}
+
+/* ---- Block 2b · der TAGES-ZEITSTRAHL (r7) ------------------------------- */
+/*
+ * Das waagerechte Band ersetzt die Zeilenliste als PRIMÄRE Darstellung: ein
+ * Blick zeigt „was passiert wann". Jedes Segment ist ein Knopf, breite tragen
+ * ihr Wort inline, schmale im `title`. Die Legende darunter nennt jede Phase
+ * mit Wort UND Farbe (K10). Die volle Liste bleibt als Aufklapper.
+ */
+.vp-strahl {
+  min-width: 0;
+}
+
+.vp-strahl-band {
+  position: relative;
+  height: 56px;
+  min-width: 0;
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-bg-subtle, #f1f3f5);
+  overflow: hidden;
+}
+
+.vp-strahl-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border: none;
+  /* Haarlinie zwischen den Segmenten, ohne die Breite zu verfälschen. */
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.65);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.vp-strahl-seg:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: -2px;
+  z-index: 3;
+}
+
+/* Vergangene Phasen ruhig, aber in der Farbsprache (nur gedämpft). */
+.vp-strahl-seg.is-done {
+  opacity: 0.55;
+}
+
+/* Die ausgewählte Phase bekommt einen Rahmen - Auswahl nie nur über Ton. */
+.vp-strahl-seg.is-sel {
+  box-shadow: inset 0 0 0 2px var(--vp-stat-ink, #1e3a5f);
+  z-index: 2;
+}
+
+.vp-strahl-seg-lbl {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  line-height: 1.15;
+}
+.vp-strahl-seg-lbl .w {
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vp-strahl-seg-lbl b {
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Der Jetzt-Marker: eine senkrechte Linie mit Kappe, GENAU EINMAL (K9). */
+.vp-strahl-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-1px);
+  background: var(--vp-stat-ink, #1e3a5f);
+  z-index: 4;
+  pointer-events: none;
+}
+.vp-strahl-now i {
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-stat-ink, #1e3a5f);
+}
+
+.vp-strahl-axis {
+  position: relative;
+  height: 16px;
+  margin-top: 2px;
+  min-width: 0;
+}
+.vp-strahl-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 0.68rem;
+  color: var(--vp-muted, #6c757d);
+  white-space: nowrap;
+}
+
+.vp-strahl-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: var(--vp-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.vp-strahl-legende li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--vp-text, #212529);
+  min-width: 0;
+}
+.vp-strahl-swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.vp-strahl-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: var(--vp-space-1);
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--vp-action);
+  cursor: pointer;
+}
+.vp-strahl-more svg {
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
+}
+.vp-strahl-more.is-open svg {
+  transform: rotate(0deg);
+}
+.vp-strahl-more:hover {
   text-decoration: underline;
 }
 

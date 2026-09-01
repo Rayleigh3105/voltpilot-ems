@@ -1183,6 +1183,160 @@ export function curtailSpans(slots: { curtailKw?: number | null }[]): CurtailSpa
   });
 }
 
+/* ---------------------------------------------------------------------------
+ * Das PHASEN-BAND (UX-Runde r7, Konzept A+C) - die dritte Chart-Spur unter
+ * Preis- und Leistungs-Panel, auf DERSELBEN Zeitachse. Es beantwortet „was
+ * macht meine Batterie wann" auf EINEN Blick (Captain: „zu viel Text"), statt
+ * dass der Kunde den Film als Zeilenliste liest.
+ *
+ * ⚠ Es wird NICHTS neu gerechnet: die Rolle je Slot kommt aus derselben
+ * {@link chargeKind}-Regel, die auch die Balkenfarbe trägt, plus dem
+ * Abregel-Gate von {@link curtails}. Farbe und Wort können deshalb nie
+ * auseinanderlaufen. Gezeichnet wird es als BALKEN (nicht als markArea): ein
+ * Balken füllt seine Kategorie voll aus, also gibt es weder Lücken zwischen den
+ * Phasen noch einen unsichtbaren Ein-Slot-Block (die dokumentierte markArea-
+ * Falle).
+ *
+ * K10 (Farbe nie allein): jede breite Phase trägt ihr WORT direkt im Band, jede
+ * vorkommende Phase steht mit Wort UND Farbe in der Legende darunter, und der
+ * geteilte Tooltip erklärt jede Viertelstunde in einem Satz.
+ * ------------------------------------------------------------------------- */
+
+/** Die fünf Phasen des Tages-Bands. */
+export type BandRole = 'solarladen' | 'netzladen' | 'entladen' | 'abregeln' | 'ruhe';
+
+/**
+ * Die Phase EINES Plan-Slots. Abregeln hat Vorrang vor der Batterie-Richtung -
+ * ein Slot kann drosseln UND ruhen, und die Drosselung ist dann die Aussage.
+ */
+export function bandRole(s: {
+  batteryKw: number | null;
+  gridKw?: number | null;
+  pvKw?: number | null;
+  curtailKw?: number | null;
+}): BandRole {
+  const curtail = s.curtailKw == null ? 0 : Math.max(Number(s.curtailKw), 0);
+  if (curtail > CURTAIL_DEADBAND_KW) return 'abregeln';
+  return chargeKind(s.batteryKw, s.gridKw ?? null, s.pvKw, s.curtailKw);
+}
+
+/** Die Phase je Slot in Plan-Reihenfolge - die Farb-Daten des Band-Balkens. */
+export function bandRoles(
+  slots: { batteryKw: number | null; gridKw?: number | null; pvKw?: number | null; curtailKw?: number | null }[],
+): BandRole[] {
+  return slots.map(bandRole);
+}
+
+/** Ein zusammenhängender Lauf gleicher Phase als Slot-Indexspanne (inklusiv). */
+export interface BandRun {
+  from: number;
+  to: number;
+  role: BandRole;
+}
+
+/** Die zusammenhängenden Phasen-Läufe - für die Wort-Marken der breiten Läufe. */
+export function phaseBandRuns(
+  slots: { batteryKw: number | null; gridKw?: number | null; pvKw?: number | null; curtailKw?: number | null }[],
+): BandRun[] {
+  const runs: BandRun[] = [];
+  const roles = bandRoles(slots);
+  for (let i = 0; i < roles.length; i++) {
+    const prev = runs[runs.length - 1];
+    if (prev && prev.role === roles[i]) prev.to = i;
+    else runs.push({ from: i, to: i, role: roles[i] });
+  }
+  return runs;
+}
+
+/** Das WORT je Phase - K10: die Identität hängt nie an der Farbe allein. */
+export const BAND_WORT: Record<BandRole, string> = {
+  solarladen: 'Solar laden',
+  netzladen: 'Netz laden',
+  entladen: 'Entladen',
+  abregeln: 'Abregeln',
+  ruhe: 'Ruhe',
+};
+
+/**
+ * Die Farbe je Phase aus der geteilten Chart-Sprache (Konzept A+C): Solar laden
+ * grün, Netzladen türkis, Entladen beere, Abregeln orange, Ruhe neutral. Rot
+ * ({@link ChartTheme.discharge}) bleibt Kosten/Warnung vorbehalten.
+ */
+export function bandRoleColor(role: BandRole, t: ChartTheme): string {
+  switch (role) {
+    case 'solarladen':
+      return t.charge;
+    case 'netzladen':
+      return t.gridCharge;
+    case 'entladen':
+      return t.battDischarge;
+    case 'abregeln':
+      return t.pv;
+    default:
+      return t.neutral;
+  }
+}
+
+/** Eine Legenden-Zeile des Bands - eine vorkommende Phase mit Wort + Farbe. */
+export interface BandLegende {
+  role: BandRole;
+  label: string;
+}
+
+/**
+ * Jede im Plan VORKOMMENDE Phase EINMAL, in kanonischer Reihenfolge - die
+ * Legende unter dem Band. Eine Phase, die es nicht gibt, wird nicht beworben
+ * (dieselbe Ehrlichkeit wie das türkis-Gate der Netzladen-Legende).
+ */
+export function bandLegende(
+  slots: { batteryKw: number | null; gridKw?: number | null; pvKw?: number | null; curtailKw?: number | null }[],
+): BandLegende[] {
+  const seen = new Set<BandRole>(bandRoles(slots));
+  const order: BandRole[] = ['solarladen', 'netzladen', 'entladen', 'abregeln', 'ruhe'];
+  return order.filter((r) => seen.has(r)).map((role) => ({ role, label: BAND_WORT[role] }));
+}
+
+/**
+ * K10-PIXEL-GATE: ein Lauf trägt sein WORT nur, wenn sein Segment im Bild
+ * WIRKLICH breit genug dafür ist. Der frühere Slot-Zähler (`>= 6 Slots`) war
+ * DESKTOP-kalibriert - bei 375 px sind 6 Slots nur ~18 px und tragen
+ * „Solar laden" (~81 px) nicht; die Wortmarken überschrieben sich dort
+ * gegenseitig zu unlesbarem „Solar ladSolar lacRuhe". Gemessen wird deshalb in
+ * PIXELN: die Segmentbreite (`plotWidthPx / Slots × Lauflänge`) gegen die
+ * geschätzte Wortbreite. `plotWidthPx` ist die reine Zeichenfläche der Zeitachse
+ * (Chartbreite minus die geteilten Ränder), die die aufrufende Render-Closure
+ * kennt.
+ */
+export const BAND_LABEL_CHAR_PX = 7;
+export const BAND_LABEL_SLACK_PX = 4;
+
+/**
+ * Die geschätzte Pixelbreite eines Band-Worts (Zeichenzahl × mittlere
+ * Zeichenbreite bei fontWeight 600, plus etwas Luft). Bewusst GROSSZÜGIG: knapp
+ * daneben ist besser als überlappt, und ein weggelassenes Wort steht ohnehin im
+ * Tooltip und in der Legende.
+ */
+export function bandLabelWidthPx(role: BandRole): number {
+  return BAND_WORT[role].length * BAND_LABEL_CHAR_PX + BAND_LABEL_SLACK_PX;
+}
+
+/**
+ * Die Läufe, die ihr WORT direkt im Band tragen dürfen - nur die, deren Segment
+ * bei DIESER Chartbreite das Wort fasst (siehe {@link bandLabelWidthPx}). Eine
+ * unvermessene Fläche (`plotWidthPx <= 0`, headless/vor dem ersten Layout)
+ * trägt kein Wort.
+ */
+export function bandWordRuns(
+  slots: { batteryKw: number | null; gridKw?: number | null; pvKw?: number | null; curtailKw?: number | null }[],
+  plotWidthPx: number,
+): BandRun[] {
+  if (slots.length === 0 || plotWidthPx <= 0) return [];
+  const perSlotPx = plotWidthPx / slots.length;
+  return phaseBandRuns(slots).filter(
+    (r) => perSlotPx * (r.to - r.from + 1) >= bandLabelWidthPx(r.role),
+  );
+}
+
 /**
  * Die Sockel-Ticks am Nullpunkt: `0` genau in den abregelnden Slots, sonst
  * `null` (das `:8484`-Ticks-Muster). Der Wert ist bewusst die Null - der Tick

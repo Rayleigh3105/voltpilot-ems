@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BAND_WORT,
+  bandLabelWidthPx,
+  bandWordRuns,
+  bandLegende,
+  bandRole,
+  bandRoleColor,
+  bandRoles,
   bankedValueLine,
   chargeKind,
   CURTAIL_BAND_CAUSE,
@@ -28,6 +35,7 @@ import {
   planInsightParts,
   planKernaussage,
   plannedDayCosts,
+  phaseBandRuns,
   planSentence,
   planStaleNote,
   planStreifenSkala,
@@ -1603,5 +1611,170 @@ describe('socRangeLine benennt den Zeitraum, den es wirklich beschreibt', () => 
 
   it('bleibt ohne Zeitstempel byte-identisch zum bisherigen Satz', () => {
     expect(socRangeLine([{ socPct: 12.4 }, { socPct: 88.2 }])).toContain('im Tagesverlauf');
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * Das Phasen-Band (Fahrplan-UX r7, Variante A+C): die dritte Chart-Spur.
+ * Reine Ableitung - die Fläche zeichnet nur, was hier entsteht.
+ * ------------------------------------------------------------------------- */
+
+type BandSlot = {
+  batteryKw: number | null;
+  gridKw?: number | null;
+  pvKw?: number | null;
+  curtailKw?: number | null;
+};
+
+describe('bandRole ordnet einen Slot seiner Phase zu', () => {
+  it('gibt Abregeln Vorrang vor der Batterie-Richtung (ein Slot drosselt UND ruht)', () => {
+    // Batterie steht still, aber der Slot regelt ab - die Drosselung ist die Aussage.
+    expect(bandRole({ batteryKw: 0, curtailKw: 12 })).toBe('abregeln');
+    // Auch über einer Ladung gewinnt die Drosselung.
+    expect(bandRole({ batteryKw: 6, gridKw: 0, curtailKw: 5 })).toBe('abregeln');
+  });
+
+  it('folgt sonst chargeKind: solarladen · netzladen · entladen · ruhe', () => {
+    expect(bandRole({ batteryKw: 6, gridKw: 0 })).toBe('solarladen');
+    expect(bandRole({ batteryKw: 6, gridKw: 5, pvKw: null })).toBe('netzladen');
+    expect(bandRole({ batteryKw: -6 })).toBe('entladen');
+    expect(bandRole({ batteryKw: 0 })).toBe('ruhe');
+    // Genau dieselbe Antwort wie chargeKind, wo nicht abgeregelt wird.
+    expect(bandRole({ batteryKw: 6, gridKw: 5, pvKw: null })).toBe(
+      chargeKind(6, 5, null, null),
+    );
+  });
+
+  it('bandRoles bildet je Slot in Plan-Reihenfolge ab', () => {
+    const slots: BandSlot[] = [
+      { batteryKw: 6, gridKw: 0 },
+      { batteryKw: -6 },
+      { batteryKw: 0, curtailKw: 8 },
+    ];
+    expect(bandRoles(slots)).toEqual(['solarladen', 'entladen', 'abregeln']);
+  });
+});
+
+describe('phaseBandRuns fasst gleiche Phasen zu Läufen zusammen', () => {
+  it('liefert zusammenhängende Läufe mit inklusiven Indizes', () => {
+    const slots: BandSlot[] = [
+      { batteryKw: 6, gridKw: 0 }, // 0 solarladen
+      { batteryKw: 6, gridKw: 0 }, // 1 solarladen
+      { batteryKw: 0 }, // 2 ruhe
+      { batteryKw: 0 }, // 3 ruhe
+      { batteryKw: 0 }, // 4 ruhe
+      { batteryKw: -6 }, // 5 entladen
+    ];
+    expect(phaseBandRuns(slots)).toEqual([
+      { from: 0, to: 1, role: 'solarladen' },
+      { from: 2, to: 4, role: 'ruhe' },
+      { from: 5, to: 5, role: 'entladen' },
+    ]);
+  });
+
+  it('macht aus einem leeren Plan keine Läufe', () => {
+    expect(phaseBandRuns([])).toEqual([]);
+  });
+
+  it('deckt zusammen den ganzen Plan lückenlos ab', () => {
+    const slots: BandSlot[] = [
+      { batteryKw: 6, gridKw: 0 },
+      { batteryKw: -6 },
+      { batteryKw: -6 },
+    ];
+    const runs = phaseBandRuns(slots);
+    expect(runs[0].from).toBe(0);
+    expect(runs[runs.length - 1].to).toBe(slots.length - 1);
+  });
+});
+
+describe('das Band trägt Wort UND Farbe (K10, nie Farbe allein)', () => {
+  it('BAND_WORT nennt jede Phase beim Namen', () => {
+    expect(BAND_WORT).toEqual({
+      solarladen: 'Solar laden',
+      netzladen: 'Netz laden',
+      entladen: 'Entladen',
+      abregeln: 'Abregeln',
+      ruhe: 'Ruhe',
+    });
+  });
+
+  it('bandRoleColor liest die geteilte Chart-Sprache - Rot bleibt Kosten/Warnung', () => {
+    const t = chartTheme();
+    expect(bandRoleColor('solarladen', t)).toBe(t.charge);
+    expect(bandRoleColor('netzladen', t)).toBe(t.gridCharge);
+    expect(bandRoleColor('entladen', t)).toBe(t.battDischarge);
+    expect(bandRoleColor('abregeln', t)).toBe(t.pv);
+    expect(bandRoleColor('ruhe', t)).toBe(t.neutral);
+    // Rot (`discharge`) ist Kosten/Warnung vorbehalten - keine Phase trägt es.
+    (['solarladen', 'netzladen', 'entladen', 'abregeln', 'ruhe'] as const).forEach((r) =>
+      expect(bandRoleColor(r, t)).not.toBe(t.discharge),
+    );
+  });
+});
+
+describe('bandLegende bewirbt nur vorkommende Phasen', () => {
+  it('nennt jede vorkommende Phase EINMAL in kanonischer Reihenfolge', () => {
+    const slots: BandSlot[] = [
+      { batteryKw: -6 }, // entladen
+      { batteryKw: 6, gridKw: 0 }, // solarladen
+      { batteryKw: 6, gridKw: 0 }, // solarladen (Duplikat)
+      { batteryKw: 0 }, // ruhe
+    ];
+    // Kanonisch: solarladen · netzladen · entladen · abregeln · ruhe -
+    // netzladen/abregeln kommen nicht vor und stehen deshalb NICHT drin.
+    expect(bandLegende(slots)).toEqual([
+      { role: 'solarladen', label: 'Solar laden' },
+      { role: 'entladen', label: 'Entladen' },
+      { role: 'ruhe', label: 'Ruhe' },
+    ]);
+  });
+
+  it('ist leer für einen leeren Plan', () => {
+    expect(bandLegende([])).toEqual([]);
+  });
+});
+
+describe('bandWordRuns · das WORT nur, wo das Segment es fasst (Pixel-Gate, K10)', () => {
+  const solar = (): BandSlot => ({ batteryKw: 6, gridKw: 0 });
+  const ruhe = (): BandSlot => ({ batteryKw: 0 });
+  const entladen = (): BandSlot => ({ batteryKw: -6 });
+  const bau = (...runs: [() => BandSlot, number][]): BandSlot[] =>
+    runs.flatMap(([f, n]) => Array.from({ length: n }, f));
+
+  it('trägt ein Wort bei breiter Fläche, aber keines bei 375 px (die Regression)', () => {
+    // Zwei 14-Slot-Solar-Läufe, durch Ruhe getrennt - der gemeldete Kollisionsfall.
+    const slots = bau([ruhe, 20], [solar, 14], [ruhe, 14], [solar, 14], [ruhe, 34]);
+    // Breit (Spiegel 1440 ohne Ladestand-Achse: 1440−38−20): jeder 14-Slot-Lauf
+    // ist ~200 px und fasst „Solar laden" (~81 px).
+    expect(bandWordRuns(slots, 1382).filter((r) => r.role === 'solarladen')).toHaveLength(2);
+    // Schmal (Spiegel 375: 375−30−20): 14 Slots sind ~47 px < ~81 px → beide fallen weg.
+    expect(bandWordRuns(slots, 325).some((r) => r.role === 'solarladen')).toBe(false);
+  });
+
+  it('misst je Wort einzeln - kurze „Ruhe" überlebt, wo längeres „Entladen" wegfällt', () => {
+    // entladen(5) · solar(1, Trenner) · ruhe(5) · solar(85, füllt auf) = 96 Slots.
+    const slots = bau([entladen, 5], [solar, 1], [ruhe, 5], [solar, 85]);
+    const runs = bandWordRuns(slots, 768); // 96 Slots → 8 px/Slot
+    // 5 Slots = 40 px: ≥ „Ruhe" (32 px), aber < „Entladen" (60 px).
+    expect(runs.some((r) => r.role === 'ruhe')).toBe(true);
+    expect(runs.some((r) => r.role === 'entladen')).toBe(false);
+  });
+
+  it('trägt an einer unvermessenen Fläche (Breite ≤ 0) gar kein Wort', () => {
+    const slots = bau([solar, 40]);
+    expect(bandWordRuns(slots, 0)).toEqual([]);
+    expect(bandWordRuns(slots, -50)).toEqual([]);
+  });
+
+  it('macht aus einem leeren Plan keine Läufe', () => {
+    expect(bandWordRuns([], 1382)).toEqual([]);
+  });
+});
+
+describe('bandLabelWidthPx schätzt die Wortbreite je Rolle', () => {
+  it('ein längeres Wort ist breiter (Zeichenzahl × Zeichenbreite + Luft)', () => {
+    expect(bandLabelWidthPx('solarladen')).toBeGreaterThan(bandLabelWidthPx('ruhe'));
+    expect(bandLabelWidthPx('solarladen')).toBe('Solar laden'.length * 7 + 4);
   });
 });

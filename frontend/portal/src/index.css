@@ -330,6 +330,35 @@ svg [tabindex]:focus-visible {
 .vp-chart.panels3 {
   height: clamp(420px, 66vw, 560px);
 }
+/* Das Phasen-Band (UX-Runde r7) kommt als dritte, schmale Spur DAZU: das Bild
+   wächst um die Bandhöhe, damit die zwei Daten-Panels nicht gestaucht werden -
+   auch am Telefon bleibt es kompakt genug, um im ersten Bildschirm zu beginnen. */
+.vp-chart.panels.band {
+  height: clamp(376px, 58vw, 500px);
+}
+/* K10-Legende unter dem Band: jede vorkommende Phase mit Wort + Farbe. */
+.vp-sched-bandlegend {
+  list-style: none;
+  margin: var(--vp-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-1) var(--vp-space-3);
+  font-size: 0.8125rem;
+  color: var(--vp-text-gray);
+}
+.vp-sched-bandlegend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-sched-bandswatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
 
 /* KPI row (hero of the Übersicht) */
 .vp-kpis {
