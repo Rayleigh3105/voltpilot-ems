@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.optimizer.EegRates;
 import com.voltpilot.api.optimizer.OptimizerProperties;
 import com.voltpilot.api.optimizer.SlotEconomics;
 import java.math.BigDecimal;
@@ -23,9 +24,9 @@ import org.springframework.stereotype.Repository;
  *
  * <pre>
  *   baseline = greatest(load - pv, 0) * import_price   -- unregulated plant, battery idle:
- *            - greatest(pv - load, 0) * price/1000     -- residual imported at the tariff,
- *                                                      -- surplus fed in at spot (+ premium)
- *   actual   = grid_import_kwh * import_price - grid_export_kwh * price/1000
+ *            - greatest(pv - load, 0) * export_value   -- residual imported at the tariff,
+ *                                                      -- surplus fed in at the export value
+ *   actual   = grid_import_kwh * import_price - grid_export_kwh * export_value
  *   saved    = baseline - actual
  * </pre>
  *
@@ -39,12 +40,33 @@ import org.springframework.stereotype.Repository;
  * {@code dynamisch} without a sheet = spot + Aufschlag, and a site without any
  * price data stays at bare spot (byte-identical to the pre-Stufe-3 numbers;
  * the mirrored {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS} flag substitutes
- * the researched default set exactly like the solver). Export stays valued at
- * spot + Marktprämie (below). Because import ≠ export, the counterfactual is
- * no longer a pure aggregate: the baseline splits each 15-min slot into
- * {@code greatest(load - pv, 0)} import and {@code greatest(pv - load, 0)}
- * export - the same intra-slot approximation the premium crediting already
- * used, and the same sub-slot blindness every 15-min figure carries.
+ * the researched default set exactly like the solver). Because import ≠
+ * export, the counterfactual is no longer a pure aggregate: the baseline
+ * splits each 15-min slot into {@code greatest(load - pv, 0)} import and
+ * {@code greatest(pv - load, 0)} export - the same intra-slot approximation
+ * the premium crediting already used, and the same sub-slot blindness every
+ * 15-min figure carries.
+ *
+ * <p><b>Export is valued per the plant's remuneration since the B2 fix
+ * (audit vp-geldzahlen-audit-x7).</b> Every export term (Einspeise-Erlös, the
+ * metered export inside {@code actual}, the residual export inside
+ * {@code baseline}) applies the ONE export composition
+ * ({@link SlotEconomics#exportValueCtSql}, the SQL twin of
+ * {@code SlotEconomics.exportValueCtKwh} = pricing.py's
+ * {@code export_values}): a non-grid-charging {@code eigenverbrauch} plant
+ * with a known, unexpired commissioning date earns its FESTE
+ * EEG-Einspeisevergütung ({@link EegRates}, tranche-blended by kWp; §51a
+ * zeroes it in negative-price slots for plants commissioned on/after
+ * 2025-02-25) - before the fix those customers saw bare spot, incl. negative
+ * "revenue" a fixed remuneration never has. Direktvermarktung stays
+ * byte-identical at spot + Marktprämie (below); a plant whose remuneration
+ * cannot be determined (no commissioned pv asset) honestly stays at bare
+ * spot, never a guessed rate. Because the SAME per-slot rate values the
+ * metered AND the residual export, the identities
+ * {@code saved == baseline - actual} and
+ * {@code stromkosten - einspeise == actual} keep holding exactly.
+ * {@code exportVerguetungPriced} (the {@code tarifPriced} sibling) tells the
+ * portal which valuation engaged.
  *
  * <p><b>Historik-Semantik (documented v1 simplification):</b> every slot in
  * the window - however old - is valued at the CURRENTLY maintained tariff and
@@ -175,28 +197,16 @@ public class EarningsRepository {
     private static final String PREMIUM_RATE_CT =
             "GREATEST(s.anzulegender_wert_ct_kwh - mv.value_ct_kwh, 0)";
 
-    /** Premium EUR earned by the slot's METERED export (the actual side). */
+    /**
+     * Premium EUR earned by the slot's METERED export (the actual side) - the
+     * {@code marktpraemieEur} provenance sum. The premium inside the money
+     * terms themselves now travels IN {@link #exportValueEurKwh} (the same
+     * eligibility + rate, so the two can never disagree); this constant only
+     * reports the contained premium separately.
+     */
     private static final String ACTUAL_PREMIUM_EUR =
             "(CASE WHEN " + PREMIUM_ELIGIBLE
                     + " THEN r.grid_export_kwh * " + PREMIUM_RATE_CT + " / 100 ELSE 0 END)";
-
-    /**
-     * Premium EUR the UNREGULATED plant would earn: it feeds its PV surplus in
-     * immediately, so its export is {@code greatest(pv - load, 0)} per slot.
-     */
-    private static final String BASELINE_PREMIUM_EUR =
-            "(CASE WHEN " + PREMIUM_ELIGIBLE
-                    + " THEN GREATEST(r.pv_kwh - r.load_kwh, 0) * " + PREMIUM_RATE_CT + " / 100"
-                    + " ELSE 0 END)";
-
-    /**
-     * Feed-in revenue of a slot (the Einspeise-Erlös): the metered export valued
-     * at spot PLUS the Marktprämie on that export. Positive = money earned; can
-     * be slightly negative in a negative-price hour (feeding in then costs), which
-     * is honest.
-     */
-    private static final String EINSPEISE_ERLOES_EUR =
-            "(r.grid_export_kwh * p.price_eur_mwh / 1000 + " + ACTUAL_PREMIUM_EUR + ")";
 
     /**
      * Self-consumed energy of a slot: the part of the load NOT drawn from the
@@ -240,6 +250,16 @@ public class EarningsRepository {
     private static final String SUPPLY_PRICE_JOIN =
             "LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id ";
 
+    /**
+     * The PRIMARY pv asset join every export valuation needs (fixed {@code pv}
+     * alias, the exportValueCtSql contract - the MaStR commissioning date +
+     * kWp feed the feste-Vergütung branch). The partial unique index
+     * {@code uq_asset_site_type_primary} guarantees at most one row per site,
+     * so the join can never fan a slot out.
+     */
+    private static final String PV_ASSET_JOIN =
+            "LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv' AND pv.is_primary ";
+
     private final JdbcTemplate jdbc;
 
     /**
@@ -249,6 +269,26 @@ public class EarningsRepository {
      * display and solver read the identical flag semantics.
      */
     private final String importPriceEurKwh;
+
+    /**
+     * The slot's export value in EUR/kWh - the ONE export composition
+     * ({@link SlotEconomics#exportValueCtSql}, B2 fix): spot + Marktprämie for
+     * Direktvermarktung, the feste EEG-Vergütung for an unexpired
+     * {@code eigenverbrauch} plant (§51a-aware per slot), bare spot otherwise.
+     * Built once at construction from the SAME {@code OPTIMIZER_EEG_RATES_JSON}
+     * schedule the solver reads, so a rate correction never makes the card lie.
+     */
+    private final String exportValueEurKwh;
+
+    /**
+     * Feed-in revenue of a slot (the Einspeise-Erlös): the metered export
+     * valued at the export composition (for DV that IS spot + the Marktprämie
+     * on that export). Positive = money earned; can be negative in a
+     * negative-price hour for spot-valued plants (feeding in then costs),
+     * which is honest - a feste-Vergütung plant's §51a slots earn exactly 0
+     * instead, never a negative "revenue" its fixed remuneration does not have.
+     */
+    private final String einspeiseErloesEur;
 
     /** Baseline EUR of one covered slot (see the class Javadoc formula). */
     private final String baselineEur;
@@ -273,23 +313,32 @@ public class EarningsRepository {
     /** The tarifPricedSql boolean for this flag setting (see {@link #tarifPriced}). */
     private final String tarifPricedExpr;
 
+    /** The export-side honesty boolean (see {@link #exportVerguetungPriced}). */
+    private final String exportVerguetungPricedExpr;
+
     public EarningsRepository(JdbcTemplate jdbc, OptimizerProperties optimizer) {
         this.jdbc = jdbc;
         this.importPriceEurKwh = "(" + SlotEconomics.importPriceCtSql(
                 "p.price_eur_mwh", optimizer.defaultSupplyComponents()) + " / 100.0)";
+        this.exportValueEurKwh = "(" + SlotEconomics.exportValueCtSql(
+                "p.price_eur_mwh", "r.bucket", EegRates.fromJson(optimizer.eegRatesJson()))
+                + " / 100.0)";
+        this.einspeiseErloesEur = "(r.grid_export_kwh * " + exportValueEurKwh + ")";
         this.stromkostenEur = "(r.grid_import_kwh * " + importPriceEurKwh + ")";
+        // The SAME per-slot export rate values the metered AND the residual
+        // export, so saved == baseline - actual stays an algebraic identity
+        // (for DV the rate expands to spot + eligible premium, reproducing the
+        // former ACTUAL/BASELINE_PREMIUM_EUR terms byte for byte).
         this.baselineEur = "(GREATEST(r.load_kwh - r.pv_kwh, 0) * " + importPriceEurKwh
-                + " - GREATEST(r.pv_kwh - r.load_kwh, 0) * p.price_eur_mwh / 1000"
-                + " - " + BASELINE_PREMIUM_EUR + ")";
+                + " - GREATEST(r.pv_kwh - r.load_kwh, 0) * " + exportValueEurKwh + ")";
         this.actualEur = "(r.grid_import_kwh * " + importPriceEurKwh
-                + " - r.grid_export_kwh * p.price_eur_mwh / 1000"
-                + " - " + ACTUAL_PREMIUM_EUR + ")";
+                + " - r.grid_export_kwh * " + exportValueEurKwh + ")";
         this.savedEur = "((GREATEST(r.load_kwh - r.pv_kwh, 0) - r.grid_import_kwh) * "
                 + importPriceEurKwh
                 + " - (GREATEST(r.pv_kwh - r.load_kwh, 0) - r.grid_export_kwh)"
-                + "   * p.price_eur_mwh / 1000"
-                + " + " + ACTUAL_PREMIUM_EUR + " - " + BASELINE_PREMIUM_EUR + ")";
+                + "   * " + exportValueEurKwh + ")";
         this.tarifPricedExpr = SlotEconomics.tarifPricedSql(optimizer.defaultSupplyComponents());
+        this.exportVerguetungPricedExpr = SlotEconomics.exportVerguetungPricedSql();
     }
 
     /**
@@ -340,7 +389,8 @@ public class EarningsRepository {
     /**
      * One time bucket of the money-centric Meine-Anlage view: the parts of the
      * Gesamtertrag over the bucket - {@code einspeiseErloesEur} (metered export
-     * valued at spot + Marktprämie) and {@code eigenverbrauchsWertEur} (the
+     * valued at the export composition: spot + Marktprämie for DV, the feste
+     * Vergütung for an EEG plant) and {@code eigenverbrauchsWertEur} (the
      * self-consumed energy valued per the site's tariff, dynamisch slot-by-slot
      * at spot + Aufschlag). Both are summed per slot in SQL, so a dynamic tariff
      * is priced with each slot's own Börsenpreis; {@code eigenverbrauchsWertEur}
@@ -464,7 +514,7 @@ public class EarningsRepository {
                         + " bool_or(mv.provisional)"
                         + "   FILTER (WHERE " + mvFilter + " AND r.grid_export_kwh > 0)"
                         + "   AS market_value_provisional,"
-                        + " sum(" + EINSPEISE_ERLOES_EUR + ")"
+                        + " sum(" + einspeiseErloesEur + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS einspeise_erloes_eur,"
                         + " sum(" + EIGENVERBRAUCHS_WERT_EUR + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS eigenverbrauchs_wert_eur,"
@@ -488,6 +538,7 @@ public class EarningsRepository {
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
                         + SUPPLY_PRICE_JOIN
+                        + PV_ASSET_JOIN
                         + PRICE_JOIN
                         + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site) + " "
@@ -551,6 +602,42 @@ public class EarningsRepository {
                 "SELECT " + tarifPricedExpr + " AS tarif_priced "
                         + "FROM site s " + SUPPLY_PRICE_JOIN + "WHERE s.id = ?",
                 rs -> rs.next() ? rs.getBoolean("tarif_priced") : Boolean.FALSE,
+                site);
+        return Boolean.TRUE.equals(priced);
+    }
+
+    /**
+     * The EXPORT-side honesty switch (the {@link #tarifPriced} sibling, B2
+     * fix): which of the tenant's sites have their feed-in valued at the feste
+     * EEG-Einspeisevergütung instead of bare spot
+     * ({@link SlotEconomics#exportVerguetungPricedSql} - a non-grid-charging
+     * {@code eigenverbrauch} plant with a known, unexpired commissioning
+     * date). {@code false} for Direktvermarktung (its spot + Marktprämie
+     * valuation is already explained by the premium fields) and for every
+     * plant whose remuneration cannot be determined - those honestly stay at
+     * spot, and the copy must not claim otherwise. RLS-fenced like every read
+     * here.
+     */
+    public Map<UUID, Boolean> exportVerguetungPriced() {
+        Map<UUID, Boolean> result = new HashMap<>();
+        jdbc.query(
+                "SELECT s.id, " + exportVerguetungPricedExpr + " AS export_priced "
+                        + "FROM site s " + PV_ASSET_JOIN,
+                rs -> {
+                    result.put(rs.getObject("id", UUID.class), rs.getBoolean("export_priced"));
+                });
+        return result;
+    }
+
+    /**
+     * The export-side honesty switch for ONE site (P3). False for a site the
+     * caller cannot see (RLS) - conservative, like {@link #tarifPricedForSite}.
+     */
+    public boolean exportVerguetungPricedForSite(UUID site) {
+        Boolean priced = jdbc.query(
+                "SELECT " + exportVerguetungPricedExpr + " AS export_priced "
+                        + "FROM site s " + PV_ASSET_JOIN + "WHERE s.id = ?",
+                rs -> rs.next() ? rs.getBoolean("export_priced") : Boolean.FALSE,
                 site);
         return Boolean.TRUE.equals(priced);
     }
@@ -707,11 +794,13 @@ public class EarningsRepository {
                         + "SELECT r.site_id,"
                         + " time_bucket('1 day', r.bucket, 'Europe/Berlin') AS day,"
                         // saved = baseline - actual (import at the tariff,
-                        // export at spot, incl. the premium delta).
+                        // export at the export composition, incl. the premium
+                        // delta resp. the feste Vergütung).
                         + " sum(" + savedEur + ") AS saved_eur "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
                         + SUPPLY_PRICE_JOIN
+                        + PV_ASSET_JOIN
                         + PRICE_JOIN
                         + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ? AND " + COVERED + " "
@@ -851,15 +940,17 @@ public class EarningsRepository {
         jdbc.query(
                 "WITH " + PRICE_SLOT_CTE
                         + "SELECT r.site_id, " + start + " AS bucket_start,"
-                        + " sum(" + EINSPEISE_ERLOES_EUR + ") AS einspeise_erloes_eur,"
+                        + " sum(" + einspeiseErloesEur + ") AS einspeise_erloes_eur,"
                         + " sum(" + EIGENVERBRAUCHS_WERT_EUR + ") AS eigenverbrauchs_wert_eur,"
                         + " sum(" + stromkostenEur + ") AS stromkosten_eur "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
-                        // The import price reads the supply-price sheet, so the
-                        // Stromkosten sum needs the same LEFT JOIN the aggregate
-                        // uses (one row per site - it cannot fan a bucket out).
+                        // The import price reads the supply-price sheet and the
+                        // export value the primary pv asset, so the sums need
+                        // the same LEFT JOINs the aggregate uses (one row per
+                        // site each - they cannot fan a bucket out).
                         + SUPPLY_PRICE_JOIN
+                        + PV_ASSET_JOIN
                         + PRICE_JOIN
                         + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)

@@ -9779,12 +9779,26 @@ components:
             "bewertet zu Ihrem Stromtarif" provenance copy - a bare tarifArt
             echo cannot tell an 'ohne' site with a maintained Preisblatt from
             one without.
+        exportVerguetungPriced:
+          type: boolean
+          nullable: true
+          description: >
+            The EXPORT-side sibling of tarifPriced (audit vp-geldzahlen-audit-x7,
+            B2 fix): whether the feed-in terms are valued at the plant's feste
+            EEG-Einspeisevergütung instead of bare spot (a non-grid-charging
+            eigenverbrauch plant with a known, unexpired commissioning date).
+            False for Direktvermarktung (its spot + Marktprämie valuation is
+            explained by the premium fields) and for plants whose remuneration
+            cannot be determined - those honestly stay at spot.
         einspeiseErloesEur:
           type: number
           nullable: true
           description: >
-            Feed-in revenue over the window (metered export valued at spot +
-            Marktprämie); null when nothing is computable.
+            Feed-in revenue over the window: the metered export valued per the
+            plant's remuneration - spot + Marktprämie for Direktvermarktung, the
+            feste EEG-Vergütung (§51a-aware per slot) for an unexpired
+            eigenverbrauch plant, bare spot otherwise. Null when nothing is
+            computable.
         eigenverbrauchsWertEur:
           type: number
           nullable: true
@@ -9898,6 +9912,14 @@ components:
             parameter, maintained Preisblatt, or the platform default
             components) - the "bewertet zu Ihrem Stromtarif" vs "zu
             Börsenpreisen" switch of the surface copy.
+        exportVerguetungPriced:
+          type: boolean
+          description: >
+            The EXPORT-side sibling of tarifPriced (audit vp-geldzahlen-audit-x7,
+            B2 fix): whether the feed-in is valued at the plant's feste
+            EEG-Einspeisevergütung instead of bare spot. False for
+            Direktvermarktung and for plants whose remuneration cannot be
+            determined (no commissioned pv asset) - those honestly stay at spot.
         anzulegenderWertCtKwh: { type: number, nullable: true }
         coveredSlots: { type: integer, format: int64 }
         firstCoveredDate: { type: string, format: date, nullable: true }
@@ -9909,7 +9931,11 @@ components:
         einspeiseErloesEur:
           type: number
           nullable: true
-          description: Metered feed-in valued at spot PLUS the Marktprämie.
+          description: >
+            Metered feed-in valued per the plant's remuneration: spot PLUS the
+            Marktprämie for Direktvermarktung, the feste EEG-Vergütung
+            (§51a-aware per slot) for an unexpired eigenverbrauch plant, bare
+            spot otherwise.
         eigenverbrauchsWertEur:
           type: number
           nullable: true
