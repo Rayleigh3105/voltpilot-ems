@@ -42,6 +42,14 @@ import java.util.UUID;
  * @param from window start - for {@code all} the first covered Berlin day
  * @param tarifPriced whether the import side is valued beyond bare spot (the
  *     "bewertet zu Ihrem Stromtarif" vs "zu Börsenpreisen" switch)
+ * @param exportVerguetungPriced the EXPORT-side sibling of {@code tarifPriced}
+ *     (B2 fix, audit vp-geldzahlen-audit-x7): whether the feed-in is valued at
+ *     the plant's feste EEG-Einspeisevergütung instead of bare spot (a
+ *     non-grid-charging {@code eigenverbrauch} plant with a known, unexpired
+ *     commissioning date). {@code false} for Direktvermarktung - its spot +
+ *     Marktprämie valuation is already explained by the premium fields - and
+ *     for plants whose remuneration cannot be determined (they honestly stay
+ *     at spot)
  * @param nettoErgebnisEur the period's result: Ertrag minus Stromkosten
  * @param savedEur the ATTRIBUTION of VoltPilot's steering - a delta against an
  *     unregulated plant that already sits INSIDE the result, never a sibling
@@ -88,6 +96,7 @@ public record SiteEarningsDto(
         String tarifArt,
         BigDecimal tarifParamCtKwh,
         boolean tarifPriced,
+        boolean exportVerguetungPriced,
         BigDecimal anzulegenderWertCtKwh,
         long coveredSlots,
         LocalDate firstCoveredDate,

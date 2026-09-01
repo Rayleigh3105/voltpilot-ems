@@ -329,6 +329,91 @@ public final class SlotEconomics {
     }
 
     /**
+     * The SQL twin of {@link #exportValueCtKwh(Double, Instant)}: a ct/kWh
+     * expression over a query that aliases the site row as {@code s}
+     * ({@code plant_kind}, {@code netzladen_erlaubt},
+     * {@code anzulegender_wert_ct_kwh}), the slot's Monatsmarktwert row as
+     * {@code mv} ({@code mv.value_ct_kwh}, joined for the slot's Berlin month)
+     * and the site's PRIMARY pv asset as {@code pv}
+     * ({@code LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv' AND
+     * pv.is_primary} - the MaStR columns {@code commissioned_on}/
+     * {@code pv_capacity_kwp}). {@code spotEurMwhExpr} is the slot's day-ahead
+     * price in EUR/MWh, {@code slotStartExpr} its start instant (a
+     * {@code timestamptz} expression). Fixes audit finding B2
+     * (vp-geldzahlen-audit-x7): before this twin the earnings valued EVERY
+     * export at bare spot, while the optimizer planned an
+     * {@code eigenverbrauch} plant's feed-in at its feste Vergütung.
+     *
+     * <p>Branch-for-branch the Java twin - feste Vergütung (via
+     * {@link EegRates#festeVerguetungCtSql}) only below the 20-year expiry of
+     * the SLOT's Berlin year, §51a zeroing at negative spot for plants
+     * commissioned on/after {@link EegRates#SOLARSPITZENGESETZ_CUTOFF}, the
+     * netzladen guard on the EEG branch, everything else at bare
+     * spot - with ONE deliberate, documented deviation: <b>the
+     * Direktvermarktung premium branch does NOT carry the Java twin's
+     * netzladen-first guard.</b> The earnings have always credited the
+     * Marktprämie to a {@code netzladen_erlaubt} DV site's metered export
+     * (the {@code PREMIUM_ELIGIBLE} rule), and B2's fix contract is that DV
+     * sites stay byte-identical; re-gating them here would silently change
+     * live DV numbers. The lockstep test pins the agreement vector-for-vector
+     * AND this deviation by name
+     * ({@code PortalApiTest.exportValueSqlMatchesTheSlotEconomicsCompositionVectors}).
+     */
+    public static String exportValueCtSql(String spotEurMwhExpr, String slotStartExpr,
+            EegRates eegRates) {
+        String spotCt = "(" + spotEurMwhExpr + " / 10.0)";
+        String rate = eegRates.festeVerguetungCtSql("pv.commissioned_on", "pv.pv_capacity_kwp");
+        // The DV premium exactly as the earnings' PREMIUM_ELIGIBLE /
+        // PREMIUM_RATE_CT pair applies it (incl. the per-slot §51 suspension);
+        // 0 for every other plant kind, NULL-spot propagates to NULL via the
+        // spot term next to it.
+        String premiumCt = "(CASE WHEN s.plant_kind = 'direktvermarktung'"
+                + " AND s.anzulegender_wert_ct_kwh IS NOT NULL"
+                + " AND mv.value_ct_kwh IS NOT NULL AND " + spotEurMwhExpr + " >= 0"
+                + " THEN GREATEST(s.anzulegender_wert_ct_kwh - mv.value_ct_kwh, 0)"
+                + " ELSE 0 END)";
+        // §51a needs the spot SIGN: with a NULL spot both comparisons are
+        // unknown and the CASE yields NULL - the Java twin's "unknowable".
+        String s51aAware = "(CASE WHEN pv.commissioned_on >= DATE '"
+                + EegRates.SOLARSPITZENGESETZ_CUTOFF + "'"
+                + " THEN (CASE WHEN " + spotEurMwhExpr + " >= 0 THEN " + rate
+                + " WHEN " + spotEurMwhExpr + " < 0 THEN 0 END)"
+                + " ELSE " + rate + " END)";
+        return "(CASE WHEN " + eegFixedAppliesSql("EXTRACT(YEAR FROM ("
+                + slotStartExpr + " AT TIME ZONE 'Europe/Berlin'))")
+                + " THEN " + s51aAware
+                + " ELSE " + spotCt + " + " + premiumCt + " END)";
+    }
+
+    /**
+     * SQL boolean: does {@link #exportValueCtSql} value this site's export at
+     * its feste EEG-Einspeisevergütung instead of bare spot - the export-side
+     * sibling of {@link #tarifPricedSql} (same aliases {@code s} and
+     * {@code pv}), so the portal can say WHAT the Einspeise-Erlös was valued
+     * with. Deliberately narrow: {@code false} for Direktvermarktung (its
+     * spot + Marktprämie valuation is already explained by the premium
+     * fields), and evaluated against TODAY's Berlin year (a site-level label
+     * like {@code tarifPriced}; the per-slot expiry precision stays in the
+     * money math itself).
+     */
+    public static String exportVerguetungPricedSql() {
+        return eegFixedAppliesSql("EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Berlin')");
+    }
+
+    /**
+     * When the feste-Vergütung branch applies at the given Berlin-year
+     * expression: an {@code eigenverbrauch} plant that may NOT grid-charge
+     * (the Ausschließlichkeitsprinzip guard, mirroring the Java twin's
+     * netzladen-first rule), with a known commissioning date whose 20-year
+     * remuneration has not expired ({@link EegRates#remunerationExpired}).
+     */
+    private static String eegFixedAppliesSql(String atYearExpr) {
+        return "(s.plant_kind = 'eigenverbrauch' AND NOT s.netzladen_erlaubt"
+                + " AND pv.commissioned_on IS NOT NULL"
+                + " AND " + atYearExpr + " <= EXTRACT(YEAR FROM pv.commissioned_on) + 20)";
+    }
+
+    /**
      * The wear rate this slot's battery move actually spent (ct per kWh of
      * throughput), derived from the PERSISTED {@code schedule.wear_cost_eur} -
      * the real P2 objective term, not an estimate. Null for idle slots (no

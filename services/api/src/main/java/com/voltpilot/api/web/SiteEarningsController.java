@@ -186,6 +186,7 @@ public class SiteEarningsController {
                 site.tarifArt(),
                 site.tarifParamCtKwh(),
                 earnings.tarifPricedForSite(siteId),
+                earnings.exportVerguetungPricedForSite(siteId),
                 site.anzulegenderWertCtKwh(),
                 covered,
                 firstCovered,

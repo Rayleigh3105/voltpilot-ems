@@ -83,7 +83,12 @@ public record EarningsDto(
      * valued beyond bare spot (a tariff parameter, a maintained
      * {@code site_supply_price} Preisblatt, or the mirrored
      * default-components flag - Stufe 3 of the structured Bezugspreis), so
-     * the "bewertet zu Ihrem Stromtarif" copy never over- or under-claims. The
+     * the "bewertet zu Ihrem Stromtarif" copy never over- or under-claims;
+     * {@code exportVerguetungPriced} is its EXPORT-side sibling (B2 fix,
+     * audit vp-geldzahlen-audit-x7): whether the feed-in terms are valued at
+     * the plant's feste EEG-Einspeisevergütung instead of bare spot (false for
+     * Direktvermarktung, whose spot + Marktprämie valuation the premium fields
+     * already explain, and for plants without a determinable remuneration). The
      * Eigenverbrauchs-Wert is computed slot-by-slot in the repository:
      * {@code dynamisch} prices each self-consumed kWh at that slot's Börsenpreis
      * + the Aufschlag, {@code fest} at the fixed price. For an {@code ohne}
@@ -137,6 +142,7 @@ public record EarningsDto(
             String tarifArt,
             BigDecimal tarifParamCtKwh,
             Boolean tarifPriced,
+            Boolean exportVerguetungPriced,
             BigDecimal einspeiseErloesEur,
             BigDecimal eigenverbrauchsWertEur,
             BigDecimal gesamtertragEur,

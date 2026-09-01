@@ -5428,6 +5428,133 @@ class PortalApiTest {
         }
     }
 
+    // ---- B2 fix: the export-value composition on the read side --------------
+
+    /**
+     * THE export-side drift guard (audit vp-geldzahlen-audit-x7, B2): the SQL
+     * fragment the Earnings aggregates value EXPORT with
+     * ({@code SlotEconomics.exportValueCtSql} over the
+     * {@code EegRates.festeVerguetungCtSql} band schedule) is evaluated by
+     * REAL Postgres against the Java composition
+     * ({@code SlotEconomics.exportValueCtKwh}) - the rule the optimizer plans
+     * with (pricing.py {@code export_values}) - vector for vector: feste
+     * Vergütung incl. tranche blending and the pre-schedule band, the 20-year
+     * expiry, §51a zeroing at negative spot (and its NULL-spot "unknowable"),
+     * the netzladen guard on the EEG branch, the honest bare-spot fallback
+     * without a commissioning date, and the DV premium branch.
+     *
+     * <p>The ONE deliberate deviation is pinned BY NAME at the end: a
+     * {@code netzladen_erlaubt} DV site keeps the earnings' historical
+     * spot + Marktprämie valuation (the Java twin's netzladen-first guard
+     * would strip it - re-gating would silently change live DV numbers, out
+     * of B2's byte-identical-for-DV contract).
+     */
+    @Test
+    void exportValueSqlMatchesTheSlotEconomicsCompositionVectors() {
+        Instant slot = Instant.parse("2026-06-15T12:00:00Z");
+        record Vec(String plantKind, boolean netzladen, Double aw, Double mvCt,
+                LocalDate commissioned, Double kwp, Double spot) {
+        }
+        java.util.List<Vec> vectors = java.util.List.of(
+                // feste Vergütung: band lookup + spot-independence
+                new Vec("eigenverbrauch", false, null, null, LocalDate.of(2024, 6, 1), null, 100.0),
+                new Vec("eigenverbrauch", false, null, null, LocalDate.of(2024, 6, 1), null, -40.0),
+                new Vec("eigenverbrauch", false, null, null, LocalDate.of(2024, 6, 1), null, null),
+                // §51a plant (commissioned on/after 2025-02-25)
+                new Vec("eigenverbrauch", false, null, null, LocalDate.of(2025, 6, 1), null, 100.0),
+                new Vec("eigenverbrauch", false, null, null, LocalDate.of(2025, 6, 1), null, -40.0),
+                new Vec("eigenverbrauch", false, null, null, LocalDate.of(2025, 6, 1), null, null),
+                // tranche blending: 20 kWp -> (10*7.94 + 10*6.88)/20 = 7.41;
+                // 55 kWp on the EEG-2023 band -> 382/55
+                new Vec("eigenverbrauch", false, null, null, LocalDate.of(2025, 6, 1), 20.0, 100.0),
+                new Vec("eigenverbrauch", false, null, null, LocalDate.of(2022, 8, 15), 55.0, 100.0),
+                // pre-schedule commissioning uses the first band (24.4)
+                new Vec("eigenverbrauch", false, null, null, LocalDate.of(2010, 1, 1), null, 100.0),
+                // 20-year expiry -> bare spot (and NULL spot stays NULL)
+                new Vec("eigenverbrauch", false, null, null, LocalDate.of(2004, 5, 1), null, 100.0),
+                new Vec("eigenverbrauch", false, null, null, LocalDate.of(2004, 5, 1), null, null),
+                // the netzladen guard and the no-commissioning honesty fallback
+                new Vec("eigenverbrauch", true, null, null, LocalDate.of(2024, 6, 1), null, 100.0),
+                new Vec("eigenverbrauch", false, null, null, null, null, 100.0),
+                // Direktvermarktung: premium, floor, §51 suspension, NULL rules
+                new Vec("direktvermarktung", false, 8.11, 5.0, null, null, 100.0),
+                new Vec("direktvermarktung", false, 8.11, 5.0, null, null, -40.0),
+                new Vec("direktvermarktung", false, 8.11, null, null, null, 100.0),
+                new Vec("direktvermarktung", false, 8.11, 9.5, null, null, 100.0),
+                new Vec("direktvermarktung", false, null, 5.0, null, null, 100.0),
+                new Vec("direktvermarktung", false, 8.11, 5.0, null, null, null));
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+        for (Vec v : vectors) {
+            var site = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
+                    v.plantKind(), v.netzladen(), "ohne", null, v.aw(),
+                    v.commissioned(), v.kwp(), null, null, null);
+            Map<LocalDate, com.voltpilot.api.optimizer.SlotEconomics.MarketValue> mvs =
+                    v.mvCt() == null ? Map.of()
+                            : Map.of(com.voltpilot.api.optimizer.SlotEconomics.berlinMonth(slot),
+                                    new com.voltpilot.api.optimizer.SlotEconomics.MarketValue(
+                                            v.mvCt(), false));
+            Double expected = new com.voltpilot.api.optimizer.SlotEconomics(site,
+                    com.voltpilot.api.optimizer.EegRates.defaults(), mvs)
+                    .exportValueCtKwh(v.spot(), slot);
+            Double actual = evalExportValueSql(v.plantKind(), v.netzladen(), v.aw(), v.mvCt(),
+                    v.commissioned(), v.kwp(), v.spot(), slot);
+            if (expected == null) {
+                assertThat(actual).as(v.toString()).isNull();
+            } else {
+                assertThat(actual).as(v.toString()).isNotNull().isCloseTo(expected, eps);
+            }
+        }
+
+        // The pinned DEVIATION: Java (the optimizer's rule) strips the premium
+        // from a netzladen DV site; the earnings SQL deliberately keeps it -
+        // today's crediting, so DV sites stay byte-identical under the B2 fix.
+        var netzladenDv = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
+                "direktvermarktung", true, "ohne", null, 8.11, null, null, null, null, null);
+        assertThat(new com.voltpilot.api.optimizer.SlotEconomics(netzladenDv,
+                com.voltpilot.api.optimizer.EegRates.defaults(),
+                Map.of(com.voltpilot.api.optimizer.SlotEconomics.berlinMonth(slot),
+                        new com.voltpilot.api.optimizer.SlotEconomics.MarketValue(5.0, false)))
+                .exportValueCtKwh(100.0, slot)).isCloseTo(10.0, eps);
+        assertThat(evalExportValueSql("direktvermarktung", true, 8.11, 5.0, null, null, 100.0, slot))
+                .isCloseTo(13.11, eps);
+    }
+
+    /** Evaluates the generated export-value SQL over one bound vector row. */
+    private static Double evalExportValueSql(String plantKind, boolean netzladen, Double aw,
+            Double mvCt, LocalDate commissioned, Double kwp, Double spot, Instant slot) {
+        String sql = "SELECT "
+                + com.voltpilot.api.optimizer.SlotEconomics.exportValueCtSql(
+                        "p.price_eur_mwh", "r.bucket",
+                        com.voltpilot.api.optimizer.EegRates.defaults())
+                + " AS ct FROM (VALUES (?::text, ?::boolean, ?::numeric))"
+                + " AS s(plant_kind, netzladen_erlaubt, anzulegender_wert_ct_kwh)"
+                + " CROSS JOIN (VALUES (?::numeric)) AS mv(value_ct_kwh)"
+                + " CROSS JOIN (VALUES (?::date, ?::numeric)) AS pv(commissioned_on, pv_capacity_kwp)"
+                + " CROSS JOIN (VALUES (?::numeric)) AS p(price_eur_mwh)"
+                + " CROSS JOIN (VALUES (?::timestamptz)) AS r(bucket)";
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, plantKind);
+            ps.setBoolean(2, netzladen);
+            ps.setObject(3, aw);
+            // A missing monthly_market_value / pv-asset row = the LEFT JOIN's
+            // all-NULL side - bind it exactly like that.
+            ps.setObject(4, mvCt);
+            ps.setObject(5, commissioned == null ? null : java.sql.Date.valueOf(commissioned));
+            ps.setObject(6, kwp);
+            ps.setObject(7, spot);
+            ps.setObject(8, java.sql.Timestamp.from(slot));
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                java.math.BigDecimal ct = rs.getBigDecimal("ct");
+                return ct == null ? null : ct.doubleValue();
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("vector eval failed", e);
+        }
+    }
+
     /**
      * Stufe 3 endpoint proof (report §3.4 + §1.5 S3): {@code savedEur} values
      * AVOIDED IMPORT at the site's structured supply price - the same
@@ -6439,7 +6566,10 @@ class PortalApiTest {
 
         assertThat(body).containsEntry("siteId", site).containsEntry("range", "month")
                 .containsEntry("tarifArt", "fest").containsEntry("tarifPriced", true)
-                .containsEntry("reason", null);
+                .containsEntry("reason", null)
+                // No commissioned pv asset -> the export honestly stays at
+                // spot, and the honesty flag says so (B2 fix).
+                .containsEntry("exportVerguetungPriced", false);
         assertThat(num(body, "einspeiseErloesEur")).isCloseTo(0.10, eps);
         assertThat(num(body, "eigenverbrauchsWertEur")).isCloseTo(0.30, eps);
         assertThat(num(body, "stromkostenEur")).isCloseTo(0.30, eps);
@@ -6508,6 +6638,142 @@ class PortalApiTest {
         assertThat(rest.exchange(url("/api/v1/sites/" + site + "/earnings?range=month"),
                 HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class)
                 .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * B2 fix (audit vp-geldzahlen-audit-x7): an {@code eigenverbrauch} plant
+     * with a commissioned pv asset earns its FESTE EEG-Einspeisevergütung on
+     * the export side of every money term - Einspeise-Erlös, actual (metered
+     * export) AND baseline (residual export) - instead of bare spot, while a
+     * plant without a determinable remuneration honestly stays at spot.
+     *
+     * <p>Hand-computed over two CH slots on 2026-03-03 (a day no other test
+     * owns; identical measurements for all three sites, {@code fest} 30 ct
+     * import so every number is checkable):
+     * <pre>
+     *   10:00Z spot 100: pv 2.0 load 0.5 imp 0.0 exp 1.0 chg 0.5
+     *   18:00Z spot -50: pv 0.5 load 1.0 imp 0.2 exp 0.5 dis 0.3
+     *
+     *   s51a (commissioned 2025-06-01, 20 kWp -> blended (10*7.94+10*6.88)/20
+     *         = 7.41 ct; §51a zeroes the negative-price slot):
+     *     einspeise = 1.0*0.0741 + 0.5*0      = 0.0741
+     *     baseline  = -1.5*0.0741 + 0.5*0.30  = 0.03885
+     *     actual    = -1.0*0.0741 + 0.06      = -0.0141
+     *     saved     = 0.03885 - (-0.0141)     = 0.05295
+     *   alt (commissioned 2024-06-01, kWp unknown -> 8.11 ct, rate HOLDS in
+     *        the negative slot - pre-§51a plants keep their Vergütung):
+     *     einspeise = 1.5*0.0811              = 0.12165
+     *     baseline  = -1.5*0.0811 + 0.15      = 0.02835
+     *     actual    = -1.5*0.0811 + 0.06      = -0.06165
+     *     saved     =                           0.09
+     *   bare (no pv asset -> spot, incl. the negative-price "cost"):
+     *     einspeise = 1.0*0.10 + 0.5*(-0.05)  = 0.075
+     *     baseline  = -1.5*0.10 + 0.15        = 0.0
+     *     actual    = -1.0*0.10 + 0.06 + 0.025 = -0.015
+     *     saved     =                           0.015
+     * </pre>
+     *
+     * <p>Both documented identities are asserted EXACTLY for the EEG plants
+     * (the B2 contract: the fix may not break {@code saved == baseline -
+     * actual} or {@code stromkosten - einspeise == actual}), the
+     * {@code exportVerguetungPriced} honesty flag flips per site, and the
+     * fleet endpoint reports the same valuation.
+     */
+    @Test
+    void eegFixedRemunerationValuesTheExportSideAndKeepsTheIdentitiesExact() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String s51a = createSiteWithTarif(demo, "EEG Verguetung 51a", "CH", "eigenverbrauch",
+                "fest", "30");
+        String alt = createSiteWithTarif(demo, "EEG Verguetung Alt", "CH", "eigenverbrauch",
+                "fest", "30");
+        String bare = createSiteWithTarif(demo, "EEG Verguetung Ohne", "CH", "eigenverbrauch",
+                "fest", "30");
+        exec("INSERT INTO asset (id, tenant_id, site_id, type, commissioned_on, pv_capacity_kwp)"
+                + " VALUES (gen_random_uuid(), '" + tenantA + "', '" + s51a
+                + "', 'pv', '2025-06-01', 20.0)");
+        exec("INSERT INTO asset (id, tenant_id, site_id, type, commissioned_on)"
+                + " VALUES (gen_random_uuid(), '" + tenantA + "', '" + alt
+                + "', 'pv', '2024-06-01')");
+
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
+                + "('2026-03-03T10:00:00Z', 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "('2026-03-03T18:00:00Z', 'CH', 'PT15M', -50.0, 'EUR', 'test') "
+                + "ON CONFLICT DO NOTHING");
+        for (String siteId : new String[] {s51a, alt, bare}) {
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                    + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                    + "('2026-03-03T10:00:00Z', '" + tenantA + "', '" + siteId
+                    + "', 2.0, 0.5, 0.0, 1.0, 0.5, 0.0, 90), "
+                    + "('2026-03-03T18:00:00Z', '" + tenantA + "', '" + siteId
+                    + "', 0.5, 1.0, 0.2, 0.5, 0.0, 0.3, 90) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+        Map<String, Object> s51aBody = siteEarningsDay(demo, s51a, "2026-03-03");
+        assertThat(s51aBody).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("tarifPriced", true)
+                // Not Direktvermarktung -> no premium claim, and no negative
+                // spot "revenue" a fixed remuneration does not have.
+                .containsEntry("marktpraemieEur", null);
+        assertThat(num(s51aBody, "einspeiseErloesEur")).isCloseTo(0.0741, eps);
+        assertThat(num(s51aBody, "eigenverbrauchsWertEur")).isCloseTo(0.39, eps);
+        assertThat(num(s51aBody, "stromkostenEur")).isCloseTo(0.06, eps);
+        assertThat(num(s51aBody, "nettoErgebnisEur")).isCloseTo(0.4041, eps);
+        assertThat(num(s51aBody, "baselineEur")).isCloseTo(0.03885, eps);
+        assertThat(num(s51aBody, "actualEur")).isCloseTo(-0.0141, eps);
+        assertThat(num(s51aBody, "savedEur")).isCloseTo(0.05295, eps);
+
+        Map<String, Object> altBody = siteEarningsDay(demo, alt, "2026-03-03");
+        assertThat(altBody).containsEntry("exportVerguetungPriced", true);
+        assertThat(num(altBody, "einspeiseErloesEur")).isCloseTo(0.12165, eps);
+        assertThat(num(altBody, "baselineEur")).isCloseTo(0.02835, eps);
+        assertThat(num(altBody, "actualEur")).isCloseTo(-0.06165, eps);
+        assertThat(num(altBody, "savedEur")).isCloseTo(0.09, eps);
+        assertThat(num(altBody, "nettoErgebnisEur")).isCloseTo(0.45165, eps);
+
+        Map<String, Object> bareBody = siteEarningsDay(demo, bare, "2026-03-03");
+        assertThat(bareBody).containsEntry("exportVerguetungPriced", false);
+        assertThat(num(bareBody, "einspeiseErloesEur")).isCloseTo(0.075, eps);
+        assertThat(num(bareBody, "baselineEur")).isCloseTo(0.0, eps);
+        assertThat(num(bareBody, "actualEur")).isCloseTo(-0.015, eps);
+        assertThat(num(bareBody, "savedEur")).isCloseTo(0.015, eps);
+
+        // The two documented identities hold EXACTLY on the fixed-rate plants
+        // (extend-not-weaken: the B2 fix must keep the reconciliation).
+        for (Map<String, Object> body : java.util.List.of(s51aBody, altBody, bareBody)) {
+            assertThat(num(body, "nettoErgebnisEur")).isCloseTo(
+                    num(body, "einspeiseErloesEur") + num(body, "eigenverbrauchsWertEur")
+                            - num(body, "stromkostenEur"), eps);
+            assertThat(num(body, "stromkostenEur") - num(body, "einspeiseErloesEur"))
+                    .isCloseTo(num(body, "actualEur"), eps);
+            assertThat(num(body, "baselineEur") - num(body, "actualEur"))
+                    .isCloseTo(num(body, "savedEur"), eps);
+        }
+
+        // The fleet endpoint values with the SAME composition and carries the
+        // same honesty flag (one price truth, two surfaces).
+        Map<String, Object> fleet = rest.exchange(
+                url("/api/v1/earnings?range=day&at=2026-03-03"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        Map<String, Object> s51aRow = siteRow(fleet, s51a);
+        assertThat(s51aRow).containsEntry("exportVerguetungPriced", true);
+        assertThat(num(s51aRow, "einspeiseErloesEur")).isCloseTo(0.0741, eps);
+        assertThat(num(s51aRow, "savedEur")).isCloseTo(0.05295, eps);
+        Map<String, Object> bareRow = siteRow(fleet, bare);
+        assertThat(bareRow).containsEntry("exportVerguetungPriced", false);
+        assertThat(num(bareRow, "einspeiseErloesEur")).isCloseTo(0.075, eps);
+    }
+
+    private Map<String, Object> siteEarningsDay(String token, String siteId, String at) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/earnings?range=day&at=" + at), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
     }
 
     /**

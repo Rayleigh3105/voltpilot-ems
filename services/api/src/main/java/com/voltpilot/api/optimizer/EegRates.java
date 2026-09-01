@@ -153,4 +153,59 @@ public final class EegRates {
     public static boolean remunerationExpired(LocalDate commissionedOn, Instant at) {
         return at.atZone(BERLIN).getYear() > commissionedOn.getYear() + 20;
     }
+
+    // ---- SQL twin (the read-side aggregates' ONE remuneration truth) --------
+    //
+    // The Earnings aggregates value an eigenverbrauch plant's export in SQL
+    // over millions of 15-min slots, so the feste-Vergütung lookup exists once
+    // more as a generated SQL fragment - generated HERE, next to
+    // festeVerguetungCtPerKwh, from the SAME band list (incl. an
+    // OPTIMIZER_EEG_RATES_JSON override), so both renderings of the schedule
+    // change together. The equivalence is pinned vector-for-vector against
+    // real Postgres by
+    // PortalApiTest.exportValueSqlMatchesTheSlotEconomicsCompositionVectors.
+
+    /**
+     * The SQL twin of {@link #festeVerguetungCtPerKwh(LocalDate, Double)}: a
+     * ct/kWh expression over a commissioning-date expression and a nullable
+     * kWp expression. Same tranche blending ({@code le10}/{@code le40}/
+     * {@code le100} bands weighted by capacity), same unknown-capacity rule
+     * (NULL kWp assumes the &le;10 kWp band), same pre-schedule fallback to the
+     * first band. Expiry and §51a are deliberately NOT in here - they depend on
+     * the slot instant and live in
+     * {@link SlotEconomics#exportValueCtSql}, exactly like the Java split
+     * between this class and {@code exportValueCtKwh}.
+     */
+    public String festeVerguetungCtSql(String commissionedExpr, String kwpExpr) {
+        String le10 = bandRateSql(commissionedExpr, Band::le10Ct);
+        String le40 = bandRateSql(commissionedExpr, Band::le40Ct);
+        String le100 = bandRateSql(commissionedExpr, Band::le100Ct);
+        return "(CASE WHEN " + kwpExpr + " IS NULL OR " + kwpExpr + " <= 10.0 THEN " + le10
+                + " ELSE (LEAST(" + kwpExpr + ", 10.0) * " + le10
+                + " + LEAST(GREATEST(" + kwpExpr + " - 10.0, 0), 30.0) * " + le40
+                + " + GREATEST(" + kwpExpr + " - 40.0, 0) * " + le100
+                + ") / " + kwpExpr + " END)";
+    }
+
+    /**
+     * The band lookup of ONE tranche rate as SQL: descending {@code WHEN
+     * commissioned >= validFrom} branches (the newest matching band wins, like
+     * the Java loop), the first band as the pre-schedule {@code ELSE} - so the
+     * two lookups cannot disagree on any date.
+     */
+    private String bandRateSql(String commissionedExpr,
+            java.util.function.ToDoubleFunction<Band> rate) {
+        if (bands.size() == 1) {
+            return String.valueOf(rate.applyAsDouble(bands.get(0)));
+        }
+        StringBuilder sql = new StringBuilder("(CASE");
+        for (int i = bands.size() - 1; i >= 1; i--) {
+            Band band = bands.get(i);
+            sql.append(" WHEN ").append(commissionedExpr).append(" >= DATE '")
+                    .append(band.validFrom()).append("' THEN ")
+                    .append(rate.applyAsDouble(band));
+        }
+        return sql.append(" ELSE ").append(rate.applyAsDouble(bands.get(0)))
+                .append(" END)").toString();
+    }
 }
