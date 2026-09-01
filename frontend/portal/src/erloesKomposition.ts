@@ -281,6 +281,15 @@ export interface SteuerungFormelInput {
   tarifParamCtKwh?: number | null;
   /** Ob der vermiedene Netzbezug wirklich zum Tarif bewertet ist. */
   tarifPriced?: boolean | null;
+  /**
+   * Ob die EINSPEISE-Seite zur festen EEG-Vergütung bewertet ist (Anmerkung
+   * A1 aus `vp-review-eeg-r1`). `=== true` nur bei einer EEG-vergüteten
+   * Eigenverbrauchs-Anlage; Direktvermarktung bleibt Spot + Marktprämie. Dann
+   * sagen Kernsatz UND Einspeisepreis-Zeile „Ihre feste Einspeisevergütung"
+   * statt „Börsenpreis". Fehlt das Flag (ältere Antwort, Flotten-DTO), bleibt
+   * es bei der vorsichtigeren Börsenpreis-Fassung.
+   */
+  exportVerguetungPriced?: boolean | null;
   /** Der Ø-Bezugspreis des Zeitraums — belegt die Preis-Zeile. */
   bezugspreisCtKwh?: number | null;
   plantKind?: PlantKind | null;
@@ -372,6 +381,29 @@ function bezugKurzText(input: SteuerungFormelInput): string {
 }
 
 /**
+ * ⚠ Ob die Einspeisung zur festen EEG-Vergütung bewertet ist (Anmerkung A1).
+ * Eine EEG-vergütete Eigenverbrauchs-Anlage bewertet der Server die Einspeisung
+ * NICHT zum Börsenpreis, sondern zur festen Vergütung — dann widerspräche ein
+ * nacktes „Börsenpreis" der daneben stehenden Karte-Zahl sichtbar. `tarifneutral`
+ * gewinnt (ein Portfolio nennt keine einzelne Vergütung, wie beim Bezugspreis).
+ */
+function istFesteVerguetung(input: SteuerungFormelInput): boolean {
+  return input.exportVerguetungPriced === true && input.tarifneutral !== true;
+}
+
+/** Die Kurzform des Einspeisepreises für den Kernsatz. */
+function einspeisePreisKurz(input: SteuerungFormelInput): string {
+  return istFesteVerguetung(input) ? 'Ihrer festen Einspeisevergütung' : 'dem Börsenpreis';
+}
+
+/** Der Wortlaut der Einspeisepreis-Zeile. */
+function einspeisePreisText(input: SteuerungFormelInput): string {
+  return istFesteVerguetung(input)
+    ? 'Ihre feste Einspeisevergütung nach EEG.'
+    : 'Der Börsenpreis (Day-Ahead) der jeweiligen Viertelstunde.';
+}
+
+/**
  * Der Historik-Satz (B5) — nur, wo die Bewertung an einer heute gepflegten
  * Größe hängt, deren Änderung die Vergangenheit umschreibt: ein Tarif, ein
  * Preisblatt/Standard-Aufschlag (`tarifPriced`) oder der anzulegende Wert der
@@ -427,7 +459,7 @@ export function steuerungFormel(input: SteuerungFormelInput): SteuerungFormel {
   const kern =
     'Wir vergleichen jede Viertelstunde Ihre tatsächliche Stromrechnung mit der Rechnung, ' +
     'die dieselbe Anlage ohne Speicher-Steuerung gehabt hätte — bewertet mit ' +
-    `${bezugKurz} für den Netzbezug und dem Börsenpreis für die Einspeisung. ` +
+    `${bezugKurz} für den Netzbezug und ${einspeisePreisKurz(input)} für die Einspeisung. ` +
     'Die Differenz ist das, was die Steuerung verdient hat.';
 
   const zeilen: FormelZeile[] = [
@@ -464,7 +496,7 @@ export function steuerungFormel(input: SteuerungFormelInput): SteuerungFormel {
     },
     {
       label: 'Einspeisepreis',
-      text: 'Der Börsenpreis (Day-Ahead) der jeweiligen Viertelstunde.',
+      text: einspeisePreisText(input),
       zusatz: einspeiseZusatz(input),
     },
   ];
@@ -996,6 +1028,7 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
             tarifArt: money.tarifArt,
             tarifParamCtKwh: money.tarifParamCtKwh,
             tarifPriced: money.tarifPriced ?? null,
+            exportVerguetungPriced: money.exportVerguetungPriced ?? null,
             bezugspreisCtKwh: money.bezugspreisCtKwh,
             plantKind: money.plantKind,
             marktpraemieEur: money.marktpraemieEur,

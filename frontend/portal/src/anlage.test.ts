@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { coveredSinceLabel, DEFAULT_EARNINGS_RANGE } from './anlage';
 import type { EarningsMonth, EarningsSeriesPoint, EarningsSite, Site } from './api';
+import { NBSP } from './format';
 import {
   bestBucket,
   bestBucketText,
@@ -183,6 +184,53 @@ describe('einspeiseProvenance (decision 3)', () => {
   });
   it('is null when there is no feed-in revenue', () => {
     expect(einspeiseProvenance(makeMoney({ einspeiseErloesEur: null }))).toBeNull();
+  });
+
+  // ⚠ A1 (audit vp-review-eeg-r1): an EEG plant values its feed-in at the feste
+  // Vergütung, not at spot - the report's `alt` plant: 1,5 kWh × 8,11 ct =
+  // 0,12165 €, so the effective rate is 8,11 ct, NOT the spot 5,0 ct.
+  it('A1 · EEG plant: names the feste Einspeisevergütung with its effective ct-rate, never Börsenpreis', () => {
+    const t = einspeiseProvenance(
+      makeMoney({
+        plantKind: 'eigenverbrauch',
+        exportVerguetungPriced: true,
+        einspeiseErloesEur: 0.12165,
+        eingespeistKwh: 1.5,
+        realizedExportCtKwh: 5.0,
+      }),
+    );
+    expect(t).toContain(`Eingespeiste 1,5${NBSP}kWh`);
+    expect(t).toContain('Ø 8,1 ct/kWh');
+    expect(t).toContain('feste Einspeisevergütung');
+    expect(t).not.toContain('Börsenpreis');
+    // NICHT die falsche Spot-Nachrechnung 1,5 kWh × 5,0 ct = 0,075 €.
+    expect(t).not.toContain('5,0 ct/kWh');
+  });
+
+  it('A1 · EEG plant without fed-in kWh: honest sentence at feste Vergütung, no fabricated rate', () => {
+    const t = einspeiseProvenance(
+      makeMoney({
+        plantKind: 'eigenverbrauch',
+        exportVerguetungPriced: true,
+        einspeiseErloesEur: 12.3,
+        eingespeistKwh: null,
+      }),
+    );
+    expect(t).toBe(
+      'Erlös aus dem ins Netz eingespeisten Solarstrom, bewertet zu Ihrer festen Einspeisevergütung.',
+    );
+  });
+
+  it('A1 · without the flag it is byte-identical to before (Börsenpreis), incl. Direktvermarktung', () => {
+    // Flag missing → conservative Börsenpreis wording (unchanged).
+    expect(einspeiseProvenance(makeMoney())).toContain('Börsenpreis Ihrer Einspeise-Zeiten');
+    // Direktvermarktung is never exportVerguetungPriced → stays spot + Marktprämie.
+    const dv = einspeiseProvenance(
+      makeMoney({ plantKind: 'direktvermarktung', anzulegenderWertCtKwh: 8.11 }),
+    );
+    expect(dv).toContain('Börsenpreis Ihrer Einspeise-Zeiten');
+    expect(dv).toContain('Marktprämie');
+    expect(dv).not.toContain('feste Einspeisevergütung');
   });
 });
 

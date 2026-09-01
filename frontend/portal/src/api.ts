@@ -2668,6 +2668,16 @@ export interface EarningsSite extends CockpitMoney {
    * Optional so an older backend never over-claims.
    */
   tarifPriced?: boolean | null;
+  /**
+   * Whether the EXPORT side is valued at the feste EEG-Einspeisevergütung
+   * (audit vp-review-eeg-r1 A1) - true only for an EEG-vergütete
+   * `eigenverbrauch` plant with a commissioned PV asset; DV plants stay
+   * spot + Marktprämie. Gates the "Ihre feste Einspeisevergütung" copy so
+   * the provenance sentence never claims "Börsenpreis" for an EEG feed-in.
+   * Optional so an older/fleet backend never over-claims (undefined =
+   * unchanged, conservative Börsenpreis wording).
+   */
+  exportVerguetungPriced?: boolean | null;
   einspeiseErloesEur: number | null;
   eigenverbrauchsWertEur: number | null;
   gesamtertragEur: number | null;
@@ -2804,6 +2814,13 @@ export interface SiteEarnings extends CockpitMoney {
   tarifArt: TarifArt;
   tarifParamCtKwh: number | null;
   tarifPriced: boolean;
+  /**
+   * Whether the export side is valued at the feste EEG-Einspeisevergütung
+   * (audit vp-review-eeg-r1 A1). Optional so an older backend never
+   * over-claims (undefined = conservative Börsenpreis wording); the
+   * consumers gate on `=== true`.
+   */
+  exportVerguetungPriced?: boolean | null;
   anzulegenderWertCtKwh: number | null;
   coveredSlots: number;
   firstCoveredDate: string | null;

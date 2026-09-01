@@ -264,6 +264,16 @@ function ctAmount(value: number): string {
  * Einspeise-Zeiten" (+ the Marktprämie note for a Direktvermarktung site with an
  * anzulegender Wert). realizedExportCtKwh is the export-weighted spot price the
  * feed-in actually fetched, so the number is real.
+ *
+ * ⚠ A1 (audit vp-review-eeg-r1): an EEG-vergütete Eigenverbrauchs-Anlage
+ * (`exportVerguetungPriced === true`) valued its feed-in at the FESTE
+ * Einspeisevergütung, not at spot - a bare "Börsenpreis" here (and the spot
+ * figure `realizedExportCtKwh`) would visibly contradict the card's revenue
+ * (report example: 1,5 kWh × 5,0 ct = 0,075 € vs. the card's 0,12165 €). Then
+ * the effective rate is `einspeiseErloesEur / eingespeistKwh` (the blended
+ * feste Vergütung, net of §51a), and the copy names it "Ihre feste
+ * Einspeisevergütung". A missing flag (older/fleet backend) keeps the
+ * conservative Börsenpreis wording, byte-identical.
  */
 export function einspeiseProvenance(money: EarningsSite): string | null {
   if (money.einspeiseErloesEur == null) return null;
@@ -271,6 +281,18 @@ export function einspeiseProvenance(money: EarningsSite): string | null {
     money.plantKind === 'direktvermarktung' && money.anzulegenderWertCtKwh != null
       ? ' Enthält Ihre Marktprämie.'
       : '';
+  if (money.exportVerguetungPriced === true) {
+    // Effektiver Vergütungssatz aus den ZWEI gezeigten Zahlen (kein Spot); ohne
+    // eingespeiste kWh gibt es keinen Satz, dann die zahlfreie ehrliche Fassung.
+    if (money.eingespeistKwh != null && money.eingespeistKwh > 0) {
+      return (
+        `Eingespeiste ${energyLabel(money.eingespeistKwh)} × Ø ` +
+        `${ctAmount((money.einspeiseErloesEur / money.eingespeistKwh) * 100)} ct/kWh ` +
+        `Ihre feste Einspeisevergütung.`
+      );
+    }
+    return 'Erlös aus dem ins Netz eingespeisten Solarstrom, bewertet zu Ihrer festen Einspeisevergütung.';
+  }
   if (money.eingespeistKwh == null || money.realizedExportCtKwh == null) {
     return `Erlös aus dem ins Netz eingespeisten Solarstrom, bewertet zum Börsenpreis Ihrer Einspeise-Zeiten.${premium}`;
   }
