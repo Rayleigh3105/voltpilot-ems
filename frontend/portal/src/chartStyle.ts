@@ -490,6 +490,17 @@ export const PANELS = {
    * jede Fläche mit dieser Miniskala.
    */
   rightWithSocPx: 86,
+  /**
+   * UX-Runde r7 (Konzept A+C): das PHASEN-BAND als dritte Spur DIREKT unter dem
+   * Leistungs-Panel. Es ist ein schmaler Balken-Streifen (`bandHeightPx`) mit
+   * einer Fuge (`bandGapPx`) zum Panel darüber. Wenn es gezeichnet wird, sitzt
+   * die Zeitachse (Datums-Beschriftung + „Jetzt"-Fahne) UNTER dem Band statt
+   * unter dem Leistungs-Panel — deshalb wandern beide dorthin, und die
+   * Leistungs-Achse verliert ihre Beschriftung.
+   */
+  bandHeightPx: 26,
+  /** Fuge zwischen Leistungs-Panel und Band — so viel Luft wie zwischen zwei Balken. */
+  bandGapPx: 10,
 } as const;
 
 /* ---------------------------------------------------------------------------

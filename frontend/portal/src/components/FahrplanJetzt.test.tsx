@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { JetztHeld, TagesFilm } from './FahrplanJetzt';
+import { JetztKompakt, TagesFilm } from './FahrplanJetzt';
 import type { JetztHeldView } from '../fahrplanJetzt';
 import type { FilmRow, FilmView } from '../fahrplanFilm';
 
@@ -58,22 +58,26 @@ function view(over: Partial<FilmView> = {}): FilmView {
   return { past: [], today: [], tomorrow: [], tomorrowSummary: null, empty: null, ...over };
 }
 
-describe('JetztHeld', () => {
-  it('zeigt Zustand, Aussage, Ausführungs-Zahl, Nachführung, Warum und Messwerte', () => {
-    render(<JetztHeld view={held()} />);
+describe('JetztKompakt', () => {
+  it('zeigt Zustand, Aussage, Ausführungs-Zahl, Nachführung im Standard-Scroll - Warum und Messwerte hinter dem Aufklapper', () => {
+    render(<JetztKompakt view={held()} />);
     expect(screen.getByText(/nichts zu tun/)).toBeInTheDocument();
     expect(screen.getByText('Ihre Batterie deckt gerade den Verbrauch')).toBeInTheDocument();
     expect(screen.getByText('6,1 kW')).toBeInTheDocument();
     expect(screen.getByText('aus dem Speicher')).toBeInTheDocument();
     expect(screen.getByText(/Fahrplan sah 4,3 kW vor/)).toBeInTheDocument();
-    expect(screen.getByText(/32,5 ct\/kWh/)).toBeInTheDocument();
     expect(screen.getByText('Gemessen')).toBeInTheDocument();
+    // Warum + Messwerte stehen im „Warum & Messwerte"-Fold, nicht im Standard-Scroll.
+    expect(screen.queryByText(/32,5 ct\/kWh/)).not.toBeInTheDocument();
+    expect(screen.queryByText('7,1 kW')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Warum & Messwerte/ }));
+    expect(screen.getByText(/32,5 ct\/kWh/)).toBeInTheDocument();
     expect(screen.getByText('7,1 kW')).toBeInTheDocument();
   });
 
   it('zeigt „—" MIT Grund statt einer erfundenen Zahl', () => {
     render(
-      <JetztHeld
+      <JetztKompakt
         view={held({
           value: null,
           valueNote: null,
@@ -88,14 +92,14 @@ describe('JetztHeld', () => {
   });
 
   it('trägt den Ton als Klasse, damit eine Nachführung grün und ein Bruch bernstein liest', () => {
-    const { container, rerender } = render(<JetztHeld view={held()} />);
-    expect(container.querySelector('.vp-jetzt-status.is-ok')).toBeTruthy();
-    rerender(<JetztHeld view={held({ tone: 'warn', state: 'abweichung' })} />);
-    expect(container.querySelector('.vp-jetzt-status.is-warn')).toBeTruthy();
+    const { container, rerender } = render(<JetztKompakt view={held()} />);
+    expect(container.querySelector('.vp-kompakt-status.is-ok')).toBeTruthy();
+    rerender(<JetztKompakt view={held({ tone: 'warn', state: 'abweichung' })} />);
+    expect(container.querySelector('.vp-kompakt-status.is-warn')).toBeTruthy();
   });
 
   it('meldet Statusänderungen semantisch und zeigt den Ausführungspfad ohne interne Codes', () => {
-    const { container } = render(<JetztHeld view={held({
+    const { container } = render(<JetztKompakt view={held({
       tone: 'warn',
       status: 'Unerwarteter Verbrauch · Speicher deckt live bis 35 % Reserve',
       chips: [
@@ -105,16 +109,19 @@ describe('JetztHeld', () => {
     })} />);
     const status = screen.getByRole('status');
     expect(status).toHaveAttribute('aria-live', 'polite');
-    expect(screen.getByText('Wechselrichter-Automatik')).toBeInTheDocument();
     expect(screen.queryByText(/autonomous_discharge|idle_follow|high_soc_follow|high_soc_charge|exception|stack|SQLSTATE/i)).not.toBeInTheDocument();
-    // Die reine Statusfläche führt weder am Desktop noch mobil einen neuen
-    // Tastaturstopp ein; ihre Änderung erreicht Screenreader über aria-live.
-    expect(container.querySelectorAll('button, a, input, select, textarea, [tabindex]')).toHaveLength(0);
+    // Die einzige interaktive Fläche des Status-Kopfs ist der beschriftete
+    // „Warum & Messwerte"-Aufklapper; der Ausführungspfad wohnt dahinter.
+    const interactives = container.querySelectorAll('button, a, input, select, textarea, [tabindex]');
+    expect(interactives).toHaveLength(1);
+    expect(interactives[0]).toHaveTextContent('Warum & Messwerte');
+    fireEvent.click(interactives[0] as HTMLElement);
+    expect(screen.getByText('Wechselrichter-Automatik')).toBeInTheDocument();
   });
 
-  it('zeigt im WARN-Flusskonflikt den bernstein Satz und lässt die Bestätigungszeile verschwinden', () => {
+  it('zeigt im WARN-Flusskonflikt den bernstein Satz sichtbar und lässt die Bestätigungszeile verschwinden', () => {
     const { container } = render(
-      <JetztHeld
+      <JetztKompakt
         view={held({
           tone: 'warn',
           confirm: null,
@@ -124,6 +131,7 @@ describe('JetztHeld', () => {
         })}
       />,
     );
+    // Warnungen bleiben im Standard-Scroll (K10), nicht im Aufklapper.
     expect(screen.getByText(/der Speicher entlädt aber nicht/)).toBeInTheDocument();
     expect(container.querySelector('.vp-jetzt-conflict')).toBeTruthy();
     expect(container.querySelector('.vp-jetzt-confirm')).toBeFalsy();
@@ -131,9 +139,9 @@ describe('JetztHeld', () => {
     expect(screen.queryByText(/vom Wechselrichter bestätigt/)).not.toBeInTheDocument();
   });
 
-  it('zeigt den INFO-Flussabgleich RUHIG (grün) und behält die Bestätigungszeile', () => {
+  it('zeigt den INFO-Flussabgleich RUHIG (grün) im Aufklapper und behält die Bestätigungszeile', () => {
     const { container } = render(
-      <JetztHeld
+      <JetztKompakt
         view={held({
           tone: 'ok',
           flowConflictSeverity: 'info',
@@ -142,6 +150,9 @@ describe('JetztHeld', () => {
         })}
       />,
     );
+    // Die gutartige Physik steht ruhig im „Warum & Messwerte"-Fold, nicht im
+    // Warn-Slot oben - nach dem Aufklappen sichtbar.
+    fireEvent.click(screen.getByRole('button', { name: /Warum & Messwerte/ }));
     expect(screen.getByText(/nimmt aber gerade 10,0 kW Überschuss auf/)).toBeInTheDocument();
     // Grün (bestätigt-Stil), NICHT der bernstein Konflikt-Stil.
     expect(container.querySelector('.vp-jetzt-conflict')).toBeFalsy();

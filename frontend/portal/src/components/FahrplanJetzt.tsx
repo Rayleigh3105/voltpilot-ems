@@ -1,14 +1,13 @@
 /**
- * Render-only: die KOMPAKTE Jetzt-Karte, der TAGES-ZEITSTRAHL und der FILM DES
- * TAGES der Fahrplan-Seite (Konzept `vp-fahrplan-kunde-konzept` §6, Entscheide
- * D1/D2/D3; UX-Runde r7).
+ * Render-only: die KOMPAKTE Jetzt-Karte und der FILM DES TAGES der Fahrplan-Seite
+ * (Konzept `vp-fahrplan-kunde-konzept` §6 + UX-Runde `vp-fahrplan-ux-r7`).
  *
- * Keins der Bauteile rechnet — die Ableitung liegt rein in `src/fahrplanJetzt.ts`,
- * `src/fahrplanStrahl.ts` bzw. `src/fahrplanFilm.ts`; hier steht nur die Fläche.
- * Die Phasenfarbe kommt aus dem geteilten `roleColor`/`roleMark` (dieselbe
- * Farbsprache wie Diagramm und Erklär-Panel), das Ehrlichkeits-Abzeichen aus dem
- * geteilten `ProvBadge` der Historie — es gibt für beides genau EINE Quelle im
- * Portal.
+ * Keins der Bauteile rechnet — die Ableitung liegt rein in `src/fahrplanJetzt.ts`
+ * bzw. `src/fahrplanFilm.ts`; hier steht nur die Fläche. Das Phasen-Band ist seit
+ * r7 eine dritte Chart-Spur (`ScheduleChart showPhaseBand`), kein eigenes Element
+ * mehr. Die Phasenfarbe kommt aus dem geteilten `roleColor` (dieselbe Farbsprache
+ * wie Diagramm und Erklär-Panel), das Ehrlichkeits-Abzeichen aus dem geteilten
+ * `ProvBadge` der Historie — es gibt für beides genau EINE Quelle im Portal.
  */
 
 import { useState } from 'react';
@@ -16,10 +15,9 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { chartTheme } from '../chartTheme';
 import { filmPastNote, type FilmRow, type FilmView } from '../fahrplanFilm';
-import { strahlView } from '../fahrplanStrahl';
 import type { JetztHeldView } from '../fahrplanJetzt';
 import { ProvBadge } from './HistorieWelt';
-import { roleColor, roleMark } from './FahrplanWhy';
+import { roleColor } from './FahrplanWhy';
 import './Fahrplan.css';
 
 /**
@@ -146,128 +144,6 @@ export function JetztKompakt({ view }: { view: JetztHeldView }) {
         </>
       )}
     </Card>
-  );
-}
-
-/**
- * Der TAGES-ZEITSTRAHL (r7, Captain: „den Fahrplan in einer besseren Art
- * darstellen"): ein waagerechtes Band über der Tagesachse. Jede Phase ist ein
- * farbiges Segment, dessen Breite ihrer Dauer entspricht; die laufende trägt den
- * Jetzt-Marker, die vergangenen sind gedämpft. Ein Tipp auf ein Segment öffnet
- * das BESTEHENDE Erklär-Panel — es gibt genau EINEN Panel-Ort, unter dem Band.
- *
- * K10 (Farbe nie allein): breite Segmente tragen ihr WORT inline, schmale ihr
- * Wort im `title`/Accessible-Name, und die Legende unter dem Band nennt jede
- * vorkommende Phase mit Wort UND Farbe.
- *
- * Die volle Phasenliste bleibt als Aufklapper darunter (`TagesFilm`) — nichts
- * geht verloren. Fehlt das Band (keine Phase), führt die Liste direkt.
- */
-export function TagesStrahl({
-  view,
-  now,
-  selected,
-  onSelect,
-  panel,
-}: {
-  view: FilmView;
-  now: Date;
-  /** Der ausgewählte Phasen-Index; null = keiner. */
-  selected: number | null;
-  onSelect: (phaseIndex: number) => void;
-  /** Das Erklär-Panel der ausgewählten Phase (wird EINMAL unter dem Band gerendert). */
-  panel?: React.ReactNode;
-}) {
-  const [listOpen, setListOpen] = useState(false);
-  const t = chartTheme();
-  const strahl = strahlView(view, now);
-
-  // Ohne Band gibt es nichts zu zeichnen — dann führt die Vollliste direkt (die
-  // Ansicht ist dann zeichengleich zum früheren Film).
-  if (!strahl) {
-    return <TagesFilm view={view} selected={selected} onSelect={onSelect} panel={panel} />;
-  }
-
-  return (
-    <div className="vp-strahl">
-      <div className="vp-strahl-band" role="group" aria-label="Tagesverlauf des Fahrplans">
-        {strahl.segments.map((seg) => (
-          <button
-            key={seg.phaseIndex}
-            type="button"
-            className={
-              `vp-strahl-seg${seg.now ? ' is-now' : ''}${seg.done ? ' is-done' : ''}` +
-              `${selected === seg.phaseIndex ? ' is-sel' : ''}`
-            }
-            style={{
-              left: `${seg.leftPct}%`,
-              width: `${seg.widthPct}%`,
-              background: roleColor(seg.role, t),
-            }}
-            aria-pressed={selected === seg.phaseIndex}
-            title={`${seg.label} · ${seg.time}`}
-            onClick={() => onSelect(seg.phaseIndex)}
-          >
-            {seg.big && (
-              <span className="vp-strahl-seg-lbl">
-                <span className="w">{seg.label}</span>
-                {seg.eur && <b>{seg.eur}</b>}
-              </span>
-            )}
-          </button>
-        ))}
-        {strahl.nowPct != null && (
-          <span className="vp-strahl-now" style={{ left: `${strahl.nowPct}%` }} aria-hidden="true">
-            <i />
-          </span>
-        )}
-      </div>
-
-      {strahl.ticks.length > 0 && (
-        <div className="vp-strahl-axis" aria-hidden="true">
-          {strahl.ticks.map((tk) => (
-            <span key={tk.atPct} className="vp-strahl-tick" style={{ left: `${tk.atPct}%` }}>
-              {tk.label}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* K10: die Legende nennt jede vorkommende Phase mit Wort UND Farbe. */}
-      <ul className="vp-strahl-legende">
-        {strahl.legende.map((l) => {
-          const mark = roleMark(l.role, t);
-          return (
-            <li key={l.role}>
-              <span
-                className="vp-strahl-swatch"
-                style={mark.form === 'filled'
-                  ? { background: mark.color }
-                  : { boxShadow: `inset 0 0 0 2px ${mark.color}` }}
-                aria-hidden="true"
-              />
-              {l.label}
-            </li>
-          );
-        })}
-      </ul>
-
-      {/* Das Erklär-Panel der angetippten Phase — EIN Ort unter dem Band. */}
-      {selected != null && panel}
-
-      {/* Die volle Phasenliste bleibt als Aufklapper erhalten (nichts geht
-          verloren). Sie bekommt KEIN Inline-Panel — das steht schon über ihr. */}
-      <button
-        type="button"
-        className={`vp-strahl-more${listOpen ? ' is-open' : ''}`}
-        aria-expanded={listOpen}
-        onClick={() => setListOpen((o) => !o)}
-      >
-        <Icon name="chevron-down" size={16} />
-        Alle Phasen
-      </button>
-      {listOpen && <TagesFilm view={view} selected={selected} onSelect={onSelect} />}
-    </div>
   );
 }
 

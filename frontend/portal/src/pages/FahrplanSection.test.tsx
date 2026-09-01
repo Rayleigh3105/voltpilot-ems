@@ -4,12 +4,14 @@ import { FahrplanSection } from './DataPages';
 import type { ControlStatus, SchedulePlan, ScheduleSlot, Site, TelemetryPoint } from '../api';
 
 /**
- * Das SEITENGERÜST der Fahrplan-Seite: vier Blöcke in der Reihenfolge der
- * Kundenfragen (Jetzt-Held → Film → Euro-Zeile → Diagramm-Aufklappebene).
+ * Das SEITENGERÜST der Fahrplan-Seite (Variante A+C): sechs Blöcke in der
+ * Reihenfolge der Kundenfragen - Status-Zeile (`JetztKompakt`) → Warnungen →
+ * Lage-Zeile (kompakt) → das Diagramm als HELD → Euro-Zeile → „Mehr erklären".
  * Die Zustands-Vollständigkeit liegt in den reinen Modul-Tests; hier wird
- * geprüft, dass die Blöcke wirklich in dieser Ordnung stehen und dass ein Plan
- * OHNE die persistierten Warum-Fakten sauber degradiert (kein Film, kein
- * erfundener Grund).
+ * geprüft, dass die Blöcke wirklich in dieser Ordnung stehen, dass die Vertiefung
+ * (Warum-Satz, Film, kWh-Summen, volle Lage) hinter ihren Aufklappern wohnt und
+ * dass ein Plan OHNE die persistierten Warum-Fakten sauber degradiert (kein Film,
+ * kein erfundener Grund).
  */
 
 vi.mock('../ScheduleChart', () => ({
@@ -146,36 +148,38 @@ beforeEach(() => {
   weather.mockResolvedValue({ runAt: null, points: [] });
 });
 
-describe('FahrplanSection · die vier Blöcke', () => {
-  it('beantwortet „was macht meine Batterie gerade" ganz oben - mit den drei Wahrheiten', async () => {
+describe('FahrplanSection · das Seitengerüst', () => {
+  it('beantwortet „was macht meine Batterie gerade" ganz oben, der Warum-Satz erst im Aufklapper', async () => {
     const { container } = render(<FahrplanSection site={SITE} />);
-    await waitFor(() => expect(container.querySelector('.vp-jetzt')).toBeTruthy());
-    // Der Held steht VOR allem anderen.
-    const blocks = [...container.querySelectorAll('.vp-jetzt, .vp-film, .vp-fp-euro')];
-    expect(blocks[0]?.classList.contains('vp-jetzt')).toBe(true);
-    // Ausführung (Rücklesen) statt Plan-Watt, und der Plan bleibt sichtbar.
+    await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
+    // Die Status-Zeile steht VOR der Euro-Zeile.
+    const blocks = [...container.querySelectorAll('.vp-kompakt, .vp-fp-euro')];
+    expect(blocks[0]?.classList.contains('vp-kompakt')).toBe(true);
+    // Die zwei Wahrheiten im Standard-Scroll: Ausführung (Rücklesen) statt
+    // Plan-Watt, und der Plan bleibt sichtbar daneben.
     await waitFor(() => expect(screen.getByText(/6,1/)).toBeInTheDocument());
     expect(screen.getByText(/Fahrplan sah/)).toBeInTheDocument();
-    // Der Warum-Satz des laufenden Slots, mit dem echten Bezugspreis.
-    expect(screen.getByText(/32,5 ct\/kWh/)).toBeInTheDocument();
-    // Der Film mit seiner ersten, laufenden Phase.
-    expect(container.querySelector('.vp-film-now')?.textContent).toBe('Jetzt');
-    expect(screen.getAllByText('Verbrauch decken').length).toBeGreaterThan(0);
+    // Der Warum-Satz des laufenden Slots wohnt im „Warum & Messwerte"-Fold des
+    // Helden, nicht im Standard-Scroll.
+    expect(screen.queryByText(/32,5 ct\/kWh/)).toBeNull();
     // Die Euro-Zeile ersetzt die alte KPI-Reihe.
     expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
     expect(container.querySelector('.vp-kpis')).toBeNull();
   });
 
-  it('hält das Diagramm als Aufklapp-Ebene bereit und zeigt die kWh-Summen erst darin', async () => {
+  it('zeigt das Diagramm als HELD dauerhaft und die kWh-Summen erst in „Mehr erklären"', async () => {
     render(<FahrplanSection site={SITE} />);
-    const toggle = await screen.findByRole('button', { name: /Diagramm im Detail/ });
-    // jsdom kennt kein matchMedia -> Startwert „offen" (Desktop).
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('chart')).toBeInTheDocument();
-    expect(screen.getByText(/geplantes Laden/)).toBeInTheDocument();
-    fireEvent.click(toggle);
-    expect(screen.queryByTestId('chart')).toBeNull();
+    // Das Diagramm ist der HELD - immer sichtbar, ohne Umschalter.
+    expect(await screen.findByTestId('chart')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Diagramm im Detail/ })).toBeNull();
+    // Die kWh-Summen wohnen in „Mehr erklären" (Standard ZU).
+    const mehr = screen.getByRole('button', { name: /Mehr erklären/ });
+    expect(mehr).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText(/geplantes Laden/)).toBeNull();
+    fireEvent.click(mehr);
+    expect(screen.getByText(/geplantes Laden/)).toBeInTheDocument();
+    // Das Diagramm bleibt dabei sichtbar.
+    expect(screen.getByTestId('chart')).toBeInTheDocument();
   });
 
   it('degradiert ohne persistierte Warum-Fakten: kein Film, kein erfundener Grund', async () => {
@@ -185,12 +189,14 @@ describe('FahrplanSection · die vier Blöcke', () => {
       }),
     );
     const { container } = render(<FahrplanSection site={SITE} />);
-    await waitFor(() => expect(container.querySelector('.vp-jetzt')).toBeTruthy());
-    expect(container.querySelector('.vp-film')).toBeNull();
+    await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
     expect(screen.queryByText(/32,5 ct\/kWh/)).toBeNull();
     // ...die Euro-Zeile und das Diagramm bleiben.
     expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
     expect(screen.getByTestId('chart')).toBeInTheDocument();
+    // In „Mehr erklären" steht kein Film.
+    fireEvent.click(screen.getByRole('button', { name: /Mehr erklären/ }));
+    expect(container.querySelector('.vp-film')).toBeNull();
   });
 
   it('bleibt ohne Rücklesen ehrlich: „—" mit Grund statt einer erfundenen Zahl', async () => {
@@ -206,15 +212,15 @@ describe('FahrplanSection · die vier Blöcke', () => {
     curtailmentStatus.mockRejectedValue(new Error('down'));
     telemetry.mockRejectedValue(new Error('down'));
     const { container } = render(<FahrplanSection site={SITE} />);
-    await waitFor(() => expect(container.querySelector('.vp-jetzt')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
     expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
   });
 });
 
 /**
- * Der Tages-Splice: der Film erzählt den GANZEN Tag - die gelaufenen Phasen
- * abgehakt und ehrlich als PLAN, nie als Ist. Fällt die neue Lesart aus, steht
- * exakt die Rest-des-Tages-Fassung da.
+ * Die Abregel-Wahrheit erreicht die Fläche (PR 3): der WARN-Konflikt bleibt
+ * sichtbar (Status-Slot), der GRÜNE Ausführungs-Beleg der Stufe 3 wohnt ruhig
+ * im „Warum & Messwerte"-Aufklapper des Helden.
  */
 describe('FahrplanSection · die Abregel-Wahrheit erreicht die Fläche (PR 3)', () => {
   /** Der laufende Slot regelt ab, die Anlage speist messbar 16,6 kW ein. */
@@ -265,7 +271,7 @@ describe('FahrplanSection · die Abregel-Wahrheit erreicht die Fläche (PR 3)', 
     );
   });
 
-  it('bestätigt mit Block die Ausführung (Stufe 3) - und warnt dann nicht mehr', async () => {
+  it('bestätigt mit Block die Ausführung im Aufklapper (Stufe 3) - und warnt dann nicht mehr', async () => {
     curtailmentStatus.mockResolvedValue({
       deviceId: 'dev-1',
       units: 2,
@@ -278,15 +284,24 @@ describe('FahrplanSection · die Abregel-Wahrheit erreicht die Fläche (PR 3)', 
       checkedAt: new Date().toISOString(),
     });
     const { container } = render(<FahrplanSection site={SITE} />);
-    // Bewusst auf die BEGRENZUNG geprüft: „vom Wechselrichter bestätigt" sagt
-    // auch die Rücklese-Zeile des Batterie-Sollwerts - die Zahl unterscheidet.
-    await waitFor(() => expect(container.textContent).toContain('Die Einspeisung ist auf 12,5'));
+    // Die Leitzeile (Status) darf jetzt Gegenwart sagen - sie steht im
+    // Standard-Scroll.
+    await waitFor(() => expect(container.textContent).toContain('pausiert gerade die Einspeisung'));
     expect(container.querySelector('.vp-jetzt-conflict')).toBeNull();
-    // Und die Leitzeile darf jetzt Gegenwart sagen.
-    expect(container.textContent).toContain('pausiert gerade die Einspeisung');
+    // Der grüne Ausführungs-Beleg wohnt ruhig im „Warum & Messwerte"-Aufklapper.
+    // (Bewusst auf die BEGRENZUNG geprüft: „vom Wechselrichter bestätigt" sagt
+    // auch die Rücklese-Zeile des Batterie-Sollwerts - die Zahl unterscheidet.)
+    expect(container.textContent).not.toContain('Die Einspeisung ist auf 12,5');
+    fireEvent.click(screen.getByRole('button', { name: /Warum & Messwerte/ }));
+    expect(container.textContent).toContain('Die Einspeisung ist auf 12,5');
   });
 });
 
+/**
+ * Der Tages-Splice: der Film erzählt den GANZEN Tag - die gelaufenen Phasen
+ * abgehakt und ehrlich als PLAN, nie als Ist. Er wohnt in „Mehr erklären";
+ * fällt die neue Lesart aus, steht dort exakt die Rest-des-Tages-Fassung.
+ */
 describe('FahrplanSection · der Film zeigt den ganzen Tag', () => {
   beforeEach(() => {
     schedule.mockImplementation((_id: unknown, mode?: unknown) =>
@@ -296,6 +311,8 @@ describe('FahrplanSection · der Film zeigt den ganzen Tag', () => {
 
   it('holt den ganzen Tag und hakt die gelaufenen Phasen ab', async () => {
     const { container } = render(<FahrplanSection site={SITE} />);
+    // Der Film wohnt in „Mehr erklären".
+    fireEvent.click(await screen.findByRole('button', { name: /Mehr erklären/ }));
     await waitFor(() => expect(container.querySelectorAll('.vp-film-li.is-done')).toHaveLength(1));
     // Der Film führt weiterhin mit „jetzt", der Vormittag steht abgehakt davor.
     expect(container.querySelector('.vp-film-now')?.textContent).toBe('Jetzt');
@@ -307,6 +324,7 @@ describe('FahrplanSection · der Film zeigt den ganzen Tag', () => {
 
   it('sagt, dass die abgehakten Phasen der PLAN sind - und verweist auf die Messwerte', async () => {
     const { container } = render(<FahrplanSection site={SITE} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Mehr erklären/ }));
     await waitFor(() => expect(container.querySelector('.vp-film-pastnote')).toBeTruthy());
     expect(container.querySelector('.vp-film-pastnote')?.textContent).toContain(
       'so war es geplant',
@@ -321,6 +339,7 @@ describe('FahrplanSection · der Film zeigt den ganzen Tag', () => {
 
   it('öffnet das Erklär-Panel einer VERGANGENEN Phase an ihrer Zeile', async () => {
     const { container } = render(<FahrplanSection site={SITE} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Mehr erklären/ }));
     await waitFor(() => expect(container.querySelectorAll('.vp-film-li.is-done')).toHaveLength(1));
     const done = container.querySelector('.vp-film-li.is-done .vp-film-row') as HTMLElement;
     fireEvent.click(done);
@@ -341,6 +360,7 @@ describe('FahrplanSection · der Film zeigt den ganzen Tag', () => {
       mode === 'day' ? Promise.reject(new Error('400')) : Promise.resolve(plan()),
     );
     const { container } = render(<FahrplanSection site={SITE} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Mehr erklären/ }));
     await waitFor(() => expect(container.querySelector('.vp-film')).toBeTruthy());
     expect(container.querySelectorAll('.vp-film-li.is-done')).toHaveLength(0);
     expect(container.querySelector('.vp-film-pastnote')).toBeNull();
@@ -363,6 +383,7 @@ describe('FahrplanSection · der Film zeigt den ganzen Tag', () => {
       });
     });
     const { container } = render(<FahrplanSection site={SITE} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Mehr erklären/ }));
     await waitFor(() => expect(container.querySelector('.vp-film')).toBeTruthy());
     expect(container.querySelectorAll('.vp-film-li.is-done')).toHaveLength(0);
     expect(screen.getByText('Heute noch')).toBeInTheDocument();
@@ -370,11 +391,12 @@ describe('FahrplanSection · der Film zeigt den ganzen Tag', () => {
 });
 
 /**
- * ERKLÄRBARKEIT STUFE 2 „Die Lage": die Zeile zwischen Held und Film erzählt den
- * Tages-Bogen und den Morgen-Ausblick - und NUR, wenn die Eingaben des Laufs sie
- * tragen. Die Regel-Vollständigkeit liegt in `fahrplanLage.test.ts`; hier wird
- * geprüft, dass sie am richtigen Ort steht, ihre Fakten wirklich aus dem
- * geladenen Plan zieht und ohne sie ersatzlos verschwindet.
+ * ERKLÄRBARKEIT STUFE 2 „Die Lage": die kompakte Zeile zwischen Status und
+ * Diagramm erzählt den Tages-Bogen und den Morgen-Ausblick, permanent sichtbar.
+ * Der Bedingungs-Satz und die Quelle (die volle Lage) wohnen in „Mehr erklären".
+ * Die Regel-Vollständigkeit liegt in `fahrplanLage.test.ts`; hier wird geprüft,
+ * dass sie am richtigen Ort steht, ihre Fakten wirklich aus dem geladenen Plan
+ * zieht und ohne sie ersatzlos verschwindet.
  */
 describe('FahrplanSection · die „Lage"-Zeile', () => {
   const HEUTE = new Date();
@@ -428,21 +450,25 @@ describe('FahrplanSection · die „Lage"-Zeile', () => {
     return { ...base, slots: [...base.slots, ...morgen] };
   }
 
-  it('steht ZWISCHEN dem Helden und dem Film und erzählt den Tages-Bogen', async () => {
+  it('steht ZWISCHEN dem Status und dem Diagramm und erzählt den Tages-Bogen', async () => {
     schedule.mockResolvedValue(talPlan());
     const { container } = render(<FahrplanSection site={SITE} />);
     await waitFor(() => expect(container.querySelector('.vp-lage')).toBeTruthy());
     expect(container.querySelector('.vp-lage')!.textContent).toContain('mittags am günstigsten');
-    // Die Reihenfolge der Blöcke: Held → Lage → Film.
-    const blocks = [...container.querySelectorAll('.vp-jetzt, .vp-lage, .vp-film')];
+    // Die Reihenfolge im Standard-Scroll: Status → Lage → Diagramm.
+    const blocks = [...container.querySelectorAll('.vp-kompakt, .vp-lage, [data-testid="chart"]')];
     expect(
       blocks.map((b) =>
-        ['vp-jetzt', 'vp-lage', 'vp-film'].find((c) => b.classList.contains(c)),
+        b.classList.contains('vp-kompakt')
+          ? 'kompakt'
+          : b.classList.contains('vp-lage')
+            ? 'lage'
+            : 'chart',
       ),
-    ).toEqual(['vp-jetzt', 'vp-lage', 'vp-film']);
+    ).toEqual(['kompakt', 'lage', 'chart']);
   });
 
-  it('nennt den Morgen-Ausblick aus den PLAN-Eingaben und das Wetter-Wort', async () => {
+  it('nennt den Morgen-Ausblick + das Wetter-Wort kompakt, der Bedingungs-Satz erst im Aufklapper', async () => {
     schedule.mockResolvedValue(mitMorgen());
     weather.mockResolvedValue({
       runAt: null,
@@ -464,9 +490,13 @@ describe('FahrplanSection · die „Lage"-Zeile', () => {
     await waitFor(() =>
       expect(container.querySelector('.vp-lage')?.textContent).toContain('Solar-Überschuss'),
     );
-    const text = container.querySelector('.vp-lage')!.textContent!;
-    expect(text).toContain('kaum Sonne');
-    expect(text).toContain('alle 15 Minuten');
+    const kompakt = container.querySelector('.vp-lage')!.textContent!;
+    expect(kompakt).toContain('kaum Sonne');
+    // Der Bedingungs-Satz „alle 15 Minuten" wohnt in „Mehr erklären" (volle Lage).
+    expect(kompakt).not.toContain('alle 15 Minuten');
+    fireEvent.click(screen.getByRole('button', { name: /Mehr erklären/ }));
+    const voll = [...container.querySelectorAll('.vp-lage')].at(-1)!;
+    expect(voll.textContent).toContain('alle 15 Minuten');
   });
 
   it('verschwindet ersatzlos, wenn der Lauf nichts Belegtes trägt', async () => {
@@ -478,7 +508,7 @@ describe('FahrplanSection · die „Lage"-Zeile', () => {
       slots: nackt.slots.map((s) => ({ ...s, priceEurMwh: null, pvKw: null, loadKw: null })),
     });
     const { container } = render(<FahrplanSection site={SITE} />);
-    await waitFor(() => expect(container.querySelector('.vp-jetzt')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
     expect(container.querySelector('.vp-lage')).toBeNull();
   });
 

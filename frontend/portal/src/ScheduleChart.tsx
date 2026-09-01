@@ -18,9 +18,15 @@ import { AXIS as AXIS_NAME, BEZUGSPREIS, BOERSENPREIS, EINSPEISEWERT, SPANNE } f
 import { chartTheme } from './chartTheme';
 import { escHtml, kopf, notizZeile, tooltip, TOOLTIP_CSS, wertZeile } from './chartTooltip';
 import {
+  BAND_LABEL_MIN_SLOTS,
+  BAND_WORT,
+  bandLegende,
+  bandRoleColor,
+  bandRoles,
   chargeKind,
   curtailArea,
   CURTAIL_AREA_LABEL,
+  phaseBandRuns,
   curtailBandLabel,
   CURTAIL_LEGEND_LABEL,
   curtailSpans,
@@ -138,6 +144,7 @@ export function ScheduleChart({
   selectedIndex,
   consumers,
   plantKind,
+  showPhaseBand = false,
 }: {
   plan: SchedulePlan;
   /**
@@ -172,6 +179,14 @@ export function ScheduleChart({
    * ein falsch abgeleiteter Satz, und der ist schlimmer als keiner (r2 §10).
    */
   plantKind?: PlanWordingKind;
+  /**
+   * UX-Runde r7 (Konzept A+C): das 0-24h-Phasen-Band als DRITTE Chart-Spur
+   * DIREKT unter dem Leistungs-Panel, auf DERSELBEN Zeitachse. Es beantwortet
+   * „was macht meine Batterie wann" auf einen Blick, statt dass der Kunde den
+   * Film als Zeilenliste liest. Absent/false = das Bild ist byte-identisch zur
+   * Zwei-Panel-Fassung (jede andere Nutzung von `ScheduleChart` ist unberührt).
+   */
+  showPhaseBand?: boolean;
 }) {
   const t = chartTheme();
   // D4: DREI Gruppen-Schalter statt neun Einzel-Pills, und der Default ist
@@ -269,6 +284,45 @@ export function ScheduleChart({
     // die Regel und ihre Beschriftung liegen rein in `dayBoundaries`.
     const boundaries = dayBoundaries(slots, new Date());
 
+    /* ---- Das PHASEN-BAND (UX-Runde r7, Konzept A+C) --------------------
+     * Die dritte Spur unter dem Leistungs-Panel: je Slot ein farbiger Balken
+     * (`bandRoleColor`), der auf EINEN Blick zeigt, was die Batterie wann macht.
+     * Es wird NICHTS neu gerechnet - die Rolle je Slot kommt aus derselben
+     * `bandRole`-Regel wie die Balkenfarbe. Gezeichnet als BALKEN (nicht als
+     * markArea): ein Balken füllt seine Kategorie voll, also gibt es weder
+     * Lücken zwischen den Phasen noch einen unsichtbaren Ein-Slot-Block (die
+     * dokumentierte markArea-Falle). K10: breite Läufe tragen ihr WORT direkt
+     * im Band (`markPoint`), jede vorkommende Phase steht mit Wort + Farbe in
+     * der Legende darunter. */
+    const bandOn = showPhaseBand && slots.length > 0;
+    const bandData = bandOn
+      ? bandRoles(slots).map((role) => ({ value: 1, itemStyle: { color: bandRoleColor(role, t) } }))
+      : [];
+    // Ein Lauf trägt sein Wort nur, wenn er breit genug ist - sonst überliefe es
+    // die Nachbarn; die schmalen Läufe tragen es im Tooltip und in der Legende.
+    // Weiß mit dünnem dunklem Rand (paint-order stroke), damit es auf jeder der
+    // fünf Phasenfarben lesbar ist - auch auf dem hellen Ruhe-Grau.
+    const bandWordPoints = bandOn
+      ? phaseBandRuns(slots)
+          .filter((r) => r.to - r.from + 1 >= BAND_LABEL_MIN_SLOTS)
+          .map((r) => ({
+            coord: [Math.round((r.from + r.to) / 2), 0.5] as [number, number],
+            label: {
+              show: true,
+              formatter: BAND_WORT[r.role],
+              color: '#fff',
+              fontSize: AXIS.fontSize,
+              fontWeight: 600,
+              textBorderColor: 'rgba(0,0,0,0.45)',
+              textBorderWidth: 2,
+            },
+          }))
+      : [];
+    // Die Marken der Band-Spur: die Tagesgrenzen (durch alle Panels) und - wenn
+    // das Band gezeichnet wird - die „Jetzt"-Fahne, die dann UNTER dem Band
+    // hängt statt unter dem Leistungs-Panel (dort ist jetzt das Band).
+    const bandMarks: any[] = [];
+
     // "Jetzt": the last slot whose start is at/before now (past is shaded).
     const nowMs = Date.now();
     let nowIdx = -1;
@@ -314,6 +368,20 @@ export function ScheduleChart({
         seenDay = day;
       }
     });
+    // Die Zeit-Beschriftung der Zeitachse - genau EINMAL im Bild, an der
+    // untersten Spur (mit Band ist das die Band-Achse, sonst das Leistungs-Panel).
+    const dateAxisLabel = {
+      formatter: (v: string, index: number) => {
+        const d = new Date(v);
+        const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        if (!dayStarts.has(index)) return time;
+        return `${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}\n${time}`;
+      },
+      lineHeight: 15,
+      color: t.axis,
+      fontSize: AXIS.fontSize,
+      hideOverlap: true,
+    };
 
     // The SoC line only gets its mini scale when the plan actually carries SoC
     // AND the customer switched the "Ladestand" layer on (D4).
@@ -329,15 +397,25 @@ export function ScheduleChart({
      * gezeichnet. */
     const left = narrow ? PANELS.leftNarrowPx : PANELS.leftPx;
     const right = socScale ? PANELS.rightWithSocPx : PANELS.rightPx;
-    const grid = twoPanel
+    // Mit Band steht die Zeitachse unter dem Band; das Leistungs-Panel endet
+    // deshalb um Bandhöhe + Fuge früher. Ohne Band ist alles byte-identisch.
+    const powerBottomPx = bandOn
+      ? PANELS.bottomPx + PANELS.bandHeightPx + PANELS.bandGapPx
+      : PANELS.bottomPx;
+    const grid: any[] = twoPanel
       ? [
           { left, right, top: PANELS.topPx, height: `${PANELS.headPct}%` },
-          { left, right, top: `${PANELS.bodyTopPct}%`, bottom: PANELS.bottomPx },
+          { left, right, top: `${PANELS.bodyTopPct}%`, bottom: powerBottomPx },
         ]
       : [
           { left, right, top: 0, height: 0, show: false },
-          { left, right, top: PANELS.topPx, bottom: PANELS.bottomPx },
+          { left, right, top: PANELS.topPx, bottom: powerBottomPx },
         ];
+    // Das Band ist grid[2] - ein schmaler Streifen, dessen Zeitachse (Datum +
+    // Jetzt-Fahne) im Fußraum darunter sitzt. Die Zahl der Grids wächst nur mit
+    // dem Band, also braucht der bandlose Fall keinen zweiten Codepfad.
+    if (bandOn)
+      grid.push({ left, right, bottom: PANELS.bottomPx, height: PANELS.bandHeightPx });
 
     /* ---- Die Marken: Linie in BEIDEN Panels, das WORT genau EINMAL -------
      * Rev 1 hatte je Panel eine eigene Jetzt-Fahne, und die kollidierten mit
@@ -364,17 +442,20 @@ export function ScheduleChart({
         },
       });
       powerMarks.push({ ...dayLine, label: { show: false } });
+      if (bandOn) bandMarks.push({ ...dayLine, label: { show: false } });
     }
     if (nowInPlan) {
       // F5: EINE Jetzt-Linie im ganzen Portal - dünn, gestrichelt, in Ink.
       const nowLine = { xAxis: nowIdx, lineStyle: nowLineStyle(t) };
       priceMarks.push({ ...nowLine, label: { show: false } });
-      powerMarks.push({
+      // K9: der Zeit-Anker ist ein WORT mit seiner Uhrzeit, unten an der Achse
+      // (`start` = das untere Ende einer senkrechten markLine). Der deckende
+      // Grund hält die Fahne über den Balken lesbar; `rotate: 0` ist Pflicht -
+      // sonst rendert ECharts sie GEDREHT entlang der Linie. Mit Band hängt die
+      // Fahne an der UNTERSTEN Spur (dem Band), damit sie unter der Zeitachse
+      // steht statt in der Fuge zwischen Leistung und Band.
+      const flag = {
         ...nowLine,
-        // K9: der Zeit-Anker ist ein WORT mit seiner Uhrzeit, unten an der
-        // Achse (`start` = das untere Ende einer senkrechten markLine). Der
-        // deckende Grund hält die Fahne über den Balken lesbar; `rotate: 0`
-        // ist Pflicht - sonst rendert ECharts sie GEDREHT entlang der Linie.
         label: {
           ...nowLabel(t, 'start'),
           formatter: `Jetzt ${new Date(slots[nowIdx].start).toLocaleTimeString('de-DE', {
@@ -386,7 +467,13 @@ export function ScheduleChart({
           borderRadius: 3,
           distance: PANELS.nowFlagDistancePx,
         },
-      });
+      };
+      if (bandOn) {
+        powerMarks.push({ ...nowLine, label: { show: false } });
+        bandMarks.push(flag);
+      } else {
+        powerMarks.push(flag);
+      }
     }
     // U4: the peak-shaving Ziel as a horizontal red dashed line on the power axis.
     if (target != null)
@@ -688,22 +775,27 @@ export function ScheduleChart({
             type: 'category',
             gridIndex: 1,
             data: times,
-            axisLabel: {
-              formatter: (v: string, index: number) => {
-                const d = new Date(v);
-                const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-                if (!dayStarts.has(index)) return time;
-                return `${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}\n${time}`;
-              },
-              lineHeight: 15,
-              color: t.axis,
-              fontSize: AXIS.fontSize,
-              hideOverlap: true,
-            },
+            // Mit Band wandert die Zeit-Beschriftung auf die Band-Achse (die
+            // unterste Spur), das Leistungs-Panel zeigt sie dann nicht.
+            axisLabel: bandOn ? { show: false } : dateAxisLabel,
             // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
             axisTick: { show: false },
             axisLine: { show: false },
           },
+          // Die Zeitachse des Bands (nur mit Band): sie trägt die Beschriftung
+          // und die „Jetzt"-Fahne, weil das Band die unterste Spur ist.
+          ...(bandOn
+            ? [
+                {
+                  type: 'category' as const,
+                  gridIndex: 2,
+                  data: times,
+                  axisLabel: dateAxisLabel,
+                  axisTick: { show: false },
+                  axisLine: { show: false },
+                },
+              ]
+            : []),
         ],
         yAxis: [
           {
@@ -759,6 +851,23 @@ export function ScheduleChart({
             axisTick: { show: false },
             axisLabel: { color: t.soc, formatter: '{value} %', fontSize: AXIS.fontSize },
           },
+          // Die Skala des Bands: eine unsichtbare [0,1]-Achse, damit der Balken
+          // die volle Streifenhöhe füllt (nur mit Band gezeichnet).
+          ...(bandOn
+            ? [
+                {
+                  type: 'value' as const,
+                  gridIndex: 2,
+                  min: 0,
+                  max: 1,
+                  show: false,
+                  axisLine: { show: false },
+                  axisTick: { show: false },
+                  axisLabel: { show: false },
+                  splitLine: { show: false },
+                },
+              ]
+            : []),
         ],
         series: [
           ...priceSeries,
@@ -1053,13 +1162,37 @@ export function ScheduleChart({
                 },
               ]
             : []),
+          // Die PHASEN-SPUR: je Slot ein Balken auf voller Streifenhöhe, gefärbt
+          // nach der Batterie-Phase. Sie liegt in ihrem eigenen Grid (Index 2),
+          // teilt aber die Zeitachse. Der geteilte Tooltip (trigger:'axis')
+          // greift auch hier, weil sein Formatter allein aus dem Slot-Index baut.
+          ...(bandOn
+            ? [
+                {
+                  name: 'Phase',
+                  type: 'bar' as const,
+                  xAxisIndex: 2,
+                  yAxisIndex: 3,
+                  data: bandData,
+                  barWidth: '100%',
+                  barCategoryGap: '0%',
+                  z: 1,
+                  markLine: bandMarks.length
+                    ? { silent: true, symbol: 'none', data: bandMarks }
+                    : undefined,
+                  markPoint: bandWordPoints.length
+                    ? { silent: true, symbol: 'circle', symbolSize: 0, data: bandWordPoints }
+                    : undefined,
+                },
+              ]
+            : []),
         ],
       },
       true,
     );
     // `forecast`/`ist`/`curtail`/`curtailing`/`spread` are derived from
     // `plan`, so `plan` covers them.
-  }, [plan, t, peakTargetKw, onSlotClick, selectedIndex, hidden, consumers]);
+  }, [plan, t, peakTargetKw, onSlotClick, selectedIndex, hidden, consumers, showPhaseBand]);
 
   // Insight: charge cheap, discharge expensive, and today's saving - composed
   // by the pure builder so the "flat curve" clause can never contradict a
@@ -1068,6 +1201,9 @@ export function ScheduleChart({
   // The planned SoC band in words - the readable fallback wherever the SoC
   // axis has no room (phones) and the touch-friendly answer to "how full?".
   const socLine = socRangeLine(plan.slots);
+  // K10 für das Phasen-Band: jede vorkommende Phase EINMAL mit Wort + Farbe,
+  // gerendert als Legende unter dem Diagramm (nur wenn das Band gezeichnet wird).
+  const bandLegend = showPhaseBand ? bandLegende(plan.slots) : [];
 
   // Die Legende gilt für BEIDE Panels und ist der von K2 vorgesehene RÜCKFALL:
   // eine Direktbeschriftung am Kurvenende trägt bis vier Reihen, der Fahrplan
@@ -1297,8 +1433,28 @@ export function ScheduleChart({
       <ChartLegend items={legend} />
       {/* Zwei Panels brauchen mehr Höhe als eine Fläche - `panels` ist die
           Zwei-Panel-Stufe der `.vp-chart`-Höhenklassen. Am Telefon bleiben sie
-          UNTEREINANDER in derselben Instanz (sie teilen ja die Zeitachse). */}
-      <div ref={ref} className={`vp-chart ${twoPanel ? 'panels' : 'tall'}`} />
+          UNTEREINANDER in derselben Instanz (sie teilen ja die Zeitachse).
+          `band` gibt die Phasen-Spur additiv dazu, ohne die zwei Daten-Panels
+          zu stauchen. */}
+      <div
+        ref={ref}
+        className={`vp-chart ${twoPanel ? 'panels' : 'tall'}${showPhaseBand ? ' band' : ''}`}
+      />
+      {/* K10: Farbe nie allein - jede vorkommende Phase mit Wort UND Farbe. */}
+      {showPhaseBand && bandLegend.length > 0 && (
+        <ul className="vp-sched-bandlegend" aria-label="Phasen des Tages">
+          {bandLegend.map((b) => (
+            <li key={b.role}>
+              <span
+                className="vp-sched-bandswatch"
+                style={{ background: bandRoleColor(b.role, t) }}
+                aria-hidden="true"
+              />
+              {b.label}
+            </li>
+          ))}
+        </ul>
+      )}
       {istNote && (
         <p className="vp-note vp-plan-ist" style={{ margin: 'var(--vp-space-2) 0 0' }}>
           {istNote}
