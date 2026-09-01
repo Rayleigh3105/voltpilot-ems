@@ -3449,6 +3449,22 @@ OCPP-Ladesaeulen (`cmd/vp-ocpp-sim`) ueber ECHTE Websockets.
   `ps aux | grep -E '[v]p-(edge-core|ocpp-sim|netz-sim)'`** und notfalls
   `pkill -f 'vp-edge-core|vp-ocpp-sim|vp-netz-sim'`; erst danach ist ein
   Fehlschlag eine Aussage ueber den Code (real passiert, zwei Laeufe gekostet).
+- **⚠ EIN EINGESCHWUNGENER ZUSTAND WIRD MIT `haelt` GEPRUEFT, NIE MIT DEM
+  ERSTEN TREFFER** (CI-Ausfall L15b, 01.09.2026). Ein Regelkreis kann den
+  richtigen Wert im Vorbeigehen treffen und ihn danach wieder verlieren; genau
+  so hat die vergiftete Messwert-Paarung (siehe „Stufe 2") in CI GEFLACKERT
+  statt jedes Mal zu fallen — die Saeule stand ein, zwei Sekunden auf 22 kW und
+  fiel danach eine ganze Glaettungs-Minute auf 14 zurueck. `haelt <warte-s>
+  <halte-s> …` wartet auf den Zustand UND verlangt, dass er ihn haelt; sie ist
+  bewusst NICHT fatal, damit der Aufrufer vorher die Lage samt Zaehler
+  ausdrucken kann.
+- **⚠ EIN BLOCK LEBT NICHT VON DER ABKLINGZEIT DES VORIGEN.** L15c toetete den
+  Netz-Zaehler und stellte danach die Anschlussgrenze um — das Budget haengt
+  dann an der 30-s-Frische-Grenze, und wer sie verpasst, HAELT das zuletzt
+  berechnete Budget des Vorgaenger-Blocks (249,3 statt 27 kW) und misst 60 s
+  lang einen Zustand, den es nie gab. Der Zaehler bleibt jetzt an und der
+  Standort wird EHRLICH umgestellt (`POST /set?house=…`), und die Zusicherung
+  ueber die Aufteilung wartet zuerst auf den ZUSTANDSUEBERGANG des Budgets.
 - **⚠ Das Rig prueft die ZUSAGE, nie die BESETZUNG.** WELCHE zwei Fahrzeuge
   bedient werden, entscheidet die Rotation; ein Rig, das eine bestimmte Saeule
   festnagelt, prueft einen Zufall und wird flakey (genau so beim ersten Lauf
@@ -3746,6 +3762,40 @@ byte-gleich mit den gepflegten Zahlen (`TestWithoutAMeasurementTheBudgetIsByteFo
   Kette übernimmt — genau der Fall, aus dem sonst die Schwingung würde. Eine
   getrennte Säule macht sie NICHT unvollständig: deren Zug steckt im Netzbezug
   und zählt damit als Gebäudelast (konservativ und stabil).
+- **⚠ EIN MESSWERT AUS DER VORIGEN REGIME-PHASE IST AUCH KEINE MESSUNG**
+  (`csms.Connector.MeterInTransit`, CI-Ausfall der Rig-Fälle L15b, 01.09.2026).
+  Beide Hälften des Gesetzes müssen DENSELBEN Moment beschreiben: der
+  Netz-Zähler folgt einer geänderten Ladeleistung in SEINER Kadenz, die
+  `MeterValues` der Säule kommen in IHRER (10 s ist ein normaler Wert). Für ein
+  Melde-Intervall nach JEDER Änderung ist `grid(neu) − charging(alt)` deshalb um
+  genau den befohlenen Schritt falsch — und weil das Glättungsfenster das
+  MAXIMUM nimmt, regiert dieser EINE Messwert danach eine ganze
+  `BudgetSmoothWindow` lang Budget UND Überschuss. **Jede ERHÖHUNG knickte die
+  Quellen-Bahn also für eine Minute ein, die nächste Entscheidung nahm sie
+  zurück, und die Anlage pendelte sich in einer Treppe weit unter ihrem
+  wirklichen Überschuss ein** (am Rig gemessen: 14 kW von 22, dauerhaft; im
+  reinen Modell 22 → 0 → 22 → 0). Ein solcher Messwert wird deshalb wie ein
+  FEHLENDER behandelt — das PAAR wird verworfen, nie halb geglaubt.
+  - **Die Marke ist `Connector.CommandedChangedAt`, NICHT `CommandedAt`:** der
+    Executor schreibt eine unveränderte Grenze in JEDEM Takt neu (der
+    Schreibvorgang IST der Totmann-Aufzug), also bewegt sich `CommandedAt`
+    ständig, während sich am Regime nichts ändert. Ein Stempel bei jedem
+    Schreibvorgang markierte jeden Stecker für immer „in transit" und hungerte
+    das Budget aus. Die Schwelle ist der 0,05-kW-Totband von `CompareReadback`.
+  - **⚠ Die Regel kann NIE LÄNGER halten als die Frische-Regel ohnehin:** ist
+    `MeteredAt` älter als `CommandedChangedAt` und die Änderung selbst älter als
+    `maxAge`, dann ist `MeteredAt` erst recht älter als `maxAge`. Sie verengt
+    also WELCHE Messwerte zählen, nie für wie lange.
+  - **Sie gilt an BEIDEN Stellen, die die Ladeleistung paaren** —
+    `csms.Snapshot.ChargingTotal` und die eigene Schleife von
+    `agent.carsBeforeStorageKw` (P6): dieselbe Frage darf nicht zwei Antworten
+    haben.
+  - **⚠ Folge für TESTS: ein Prüfstand muss FORTLAUFEND messen.** Eine
+    Attrappe, die ihre `MeterValues` EINMAL veröffentlicht und dann auf
+    „complete" wartet, wartet auf einen Bericht, den niemand sendet, sobald der
+    Executor im Hintergrund eine Grenze ändert. `publishAndSettle` (und damit
+    `measureSite`/`measureSurplus`) veröffentlicht deshalb INNERHALB der
+    Warteschleife — genauso, wie eine echte Säule sich verhält.
 - **⚠ Die Fail-Safe-Regel ist die UMKEHRUNG jedes ökonomischen Guards:** frisch
   → Schleife · kurze Lücke → das letzte Budget HALTEN · längere Lücke → auf das
   SICHERE Budget zusammenziehen · nie gemessen → das hinterlegte (Stufe-1-)

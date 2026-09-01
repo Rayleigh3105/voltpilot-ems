@@ -197,6 +197,42 @@ waitfor() { # waitfor <sekunden> <beschreibung> <kommando...>
   fail "timeout ($secs s) beim Warten auf: $what"
 }
 
+# haelt <warte-s> <halte-s> <beschreibung> <kommando...> - warte auf den Zustand
+# UND verlange, dass er ihn HAELT.
+#
+# ⚠ Sie gehoert ueberall dort hin, wo die Zusicherung ein EINGESCHWUNGENER
+# Zustand ist. Ein Regelkreis kann den richtigen Wert im Vorbeigehen treffen und
+# ihn danach wieder verlieren; eine Zusicherung, die den ERSTEN Treffer nimmt,
+# prueft dann einen Zufall statt einer Zusage - und genau so hat der L15b-Defekt
+# (die vergiftete Messwert-Paarung, 01.09.2026) in CI geflackert statt jedes Mal
+# zu fallen: die Saeule stand fuer ein, zwei Sekunden auf dem richtigen Wert und
+# fiel danach fuer eine ganze Glaettungs-Minute zurueck.
+#
+# ⚠ Sie ist NICHT fatal (0/1), damit der Aufrufer vorher noch die Lage
+# ausdrucken kann - eine Untersuchung, die dafuer einen zweiten Lauf braucht,
+# kostet auf dem geteilten Pruefstand eine halbe Stunde.
+haelt() {
+  local secs="$1" hold="$2" what="$3"; shift 3
+  local deadline=$(( $(date +%s) + secs )) seen=0
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if "$@" >/dev/null 2>&1; then seen=1; break; fi
+    sleep 0.3
+  done
+  if [ "$seen" -ne 1 ]; then
+    echo "  timeout ($secs s) beim Warten auf: $what" >&2
+    return 1
+  fi
+  deadline=$(( $(date +%s) + hold ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if ! "$@" >/dev/null 2>&1; then
+      echo "  der Zustand haelt nicht ($hold s): $what" >&2
+      return 1
+    fi
+    sleep 0.5
+  done
+  return 0
+}
+
 echo "=== OCPP-Lastmanagement-Rig ==="
 echo "--- bauen"
 ( cd core && go build -o "$WORK/vp-edge-core" ./cmd/vp-edge-core )
@@ -951,7 +987,7 @@ JSON
 # der Mindestleistung liegen, laedt er langsam weiter statt zu pausieren.
 cfg2 '"grid_limit_kw":30,"charge_points":[{"id":"SAEULE-B1","rank":1},{"id":"SAEULE-B2","rank":2}]'
 l15a() { b1_near 22 1.0 && nearly "$(b2_kw)" 5 1.0; }
-waitfor 60 "Rang 1 wird zuerst bedient" l15a \
+haelt 60 6 "Rang 1 wird zuerst bedient" l15a \
   || { echo "    B1=$(b1_kw) B2=$(b2_kw)"; exit 1; }
 pass "L15a: knappe Leistung - Rang 1 laedt $(b1_kw) kW, Rang 2 bekommt den Rest ($(b2_kw) kW)"
 
@@ -959,7 +995,7 @@ pass "L15a: knappe Leistung - Rang 1 laedt $(b1_kw) kW, Rang 2 bekommt den Rest 
 # die knappe Leistung wieder (die Rotation bleibt IHR Mechanismus).
 cfg2 '"grid_limit_kw":30,"charge_points":[{"id":"SAEULE-B1","rank":1},{"id":"SAEULE-B2","rank":1}]'
 l15a_gleich() { awk -v a="$(b1_kw)" -v b="$(b2_kw)" 'BEGIN{exit (a<21 && b>1)?0:1}'; }
-waitfor 60 "gleiche Raenge teilen wieder" l15a_gleich \
+haelt 60 6 "gleiche Raenge teilen wieder" l15a_gleich \
   || { echo "    B1=$(b1_kw) B2=$(b2_kw)"; exit 1; }
 pass "L15a: gleiche Raenge sind GLEICHRANGIG - B1=$(b1_kw) B2=$(b2_kw)"
 
@@ -975,15 +1011,15 @@ pass "L15a: gleiche Raenge sind GLEICHRANGIG - B1=$(b1_kw) B2=$(b2_kw)"
   --charger "http://${B1_STATUS}/status" --charger "http://${B2_STATUS}/status" \
   >"$WORK/netz3.log" 2>&1 &
 NETZ2_PID=$!
+# ⚠ Es wird der EINGESCHWUNGENE Zustand geprueft (haelt), nicht der erste
+# Treffer: der Speicher-Split ist eine Zusage ueber die Lage, in der die Anlage
+# zur Ruhe kommt. Bei einem Fehlschlag steht die Lage samt Zaehler im Protokoll,
+# sonst kostet jede Untersuchung einen zweiten Lauf.
 warte_l15() { # warte_l15 <sekunden> <beschreibung> <kommando...>
   local secs="$1" what="$2"; shift 2
-  local deadline=$(( $(date +%s) + secs ))
-  while [ "$(date +%s)" -lt "$deadline" ]; do
-    if "$@" >/dev/null 2>&1; then return 0; fi
-    sleep 0.5
-  done
+  haelt "$secs" 6 "$what" "$@" && return 0
   echo "    B1=$(b1_kw) B2=$(b2_kw) netz=$(curl -sf "http://${NETZ_STATUS2}/status" || true)" >&2
-  fail "timeout ($secs s) beim Warten auf: $what"
+  fail "L15: $what"
 }
 
 # UNTEN: B1 steht unter dem Speicher (Rang 2 gegen storage_rank 1) und sieht
@@ -1007,7 +1043,16 @@ pass "L15b: B1 UEBER dem Speicher zieht $(b1_kw) kW - dieselbe Sonne, andere Pos
 # zaehlt ihre GEMESSENE Leistung ins Budget zurueck und deckelt sie ueber den
 # Verbraucher-Sollwert. Ohne Eintrag in `wallboxes[]` ist sie blosse
 # Gebaeudelast - genau das ist der Vorher-Zustand.
-kill "$NETZ2_PID"; wait "$NETZ2_PID" 2>/dev/null || true; NETZ2_PID=""
+# ⚠ Der Netz-Zaehler BLEIBT an. Ihn hier zu toeten war eine Wettlauf-Quelle:
+# das Budget haengt danach an der 30-s-Frische-Grenze, und wer sie verpasst,
+# HAELT das zuletzt berechnete Budget des vorigen Blocks (249,3 kW statt 27) und
+# misst 60 s lang einen Zustand, den es nie gab. Stattdessen wird der Standort
+# EHRLICH umgestellt: das Gebaeude speist 12 kW ein und die Wallbox zieht 11, der
+# Verknuepfungspunkt sieht also -1 kW plus die Saeulen. Weil `measuredBudget` auf
+# die planbare Leistung deckelt, ist das Budget damit in BEIDEN Phasen exakt
+# 27 kW - ohne Halten, ohne Zusammenziehen, ohne Wettlauf.
+curl -sf -X POST "http://${NETZ_STATUS2}/set?house=-1" >/dev/null \
+  || fail "L15c: die Gebaeudelast liess sich nicht umstellen"
 policy2 schnell
 WB_ID=99999999-8888-7777-6666-555555555555
 cat >"$WORK/registry-wb.json" <<JSON
@@ -1047,7 +1092,16 @@ wb_misst
 # Budget 27 kW, eine 22-kW-Saeule allein: sie laedt voll, solange die Wallbox
 # nur Gebaeudelast ist.
 cfg2 '"grid_limit_kw":30,"charge_points":[{"id":"SAEULE-B1","rank":1},{"id":"SAEULE-B2","rank":2}]'
-waitfor 60 "Ausgangslage" l15a || { echo "    B1=$(b1_kw) B2=$(b2_kw)"; exit 1; }
+# ⚠ Erst auf den ZUSTANDSUEBERGANG warten, dann messen: die neue
+# Anschlussgrenze erreicht den Verteiler ueber den 20-s-Takt, und eine
+# Zusicherung ueber die Aufteilung ist wertlos, solange noch das Budget des
+# vorigen Blocks gilt.
+budget2() { curl -sf "${BOX2}/api/ocpp" | sed -e 's/.*"ocpp":{//' -e 's/,"settings":{.*//' \
+  | sed -n 's/.*"budget_kw":\([0-9.]*\).*/\1/p' | head -1; }
+l15c_budget() { nearly "$(budget2)" 27 0.5; }
+waitfor 60 "das Budget folgt der neuen Anschlussgrenze" l15c_budget \
+  || { echo "    budget=$(budget2)"; exit 1; }
+warte_l15 60 "Ausgangslage" l15a
 pass "L15c: OHNE Eintrag ist die Wallbox blosse Gebaeudelast - B1=$(b1_kw) B2=$(b2_kw)"
 
 # Jetzt tritt sie dem Rahmen bei - mit Rang 1, also VOR beiden Saeulen.
@@ -1060,6 +1114,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do wb_misst; sleep 2; l15c && break; done
 l15c || { echo "    B1=$(b1_kw) B2=$(b2_kw)"; fail "L15c: die Wallbox nahm kein Budget weg"; }
 pass "L15c: die Wallbox nimmt 11 kW aus dem Budget - B1=$(b1_kw) kW, B2 pausiert"
 
+kill "$NETZ2_PID"; wait "$NETZ2_PID" 2>/dev/null || true; NETZ2_PID=""
 kill "$CORE2_PID"; wait "$CORE2_PID" 2>/dev/null || true; CORE2_PID=""
 for pid in "${SIM2_PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done
 SIM2_PIDS=()

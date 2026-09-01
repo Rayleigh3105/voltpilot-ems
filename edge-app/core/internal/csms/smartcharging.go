@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 )
 
@@ -163,11 +164,20 @@ func (s *Server) recordCommand(chargerID string, connectorID int, kw *float64, s
 		return
 	}
 	con := c.connector(connectorID)
+	now := s.opts.Now()
 	if kw != nil {
+		// ⚠ CommandedChangedAt moves only on a REAL change of the value. The
+		// executor re-writes an unchanged limit every tick (that write is what
+		// re-arms the dead man's switch), so stamping it here unconditionally
+		// would mark every connector "in transit" forever and starve the
+		// dynamic budget of measurements (Connector.MeterInTransit).
+		if con.CommandedKw == nil || math.Abs(*con.CommandedKw-*kw) > commandedChangeEpsilonKw {
+			con.CommandedChangedAt = now
+		}
 		con.CommandedKw = kw
 	}
 	con.CommandStatus = status
-	con.CommandedAt = s.opts.Now()
+	con.CommandedAt = now
 }
 
 // ReadBack asks the station what it will ACTUALLY do (GetCompositeSchedule)
@@ -261,6 +271,7 @@ func (s *Server) ClearLimit(ctx context.Context, chargerID string, connectorID i
 	if c, ok := s.chargers[chargerID]; ok {
 		if con := c.ConnectorByID(connectorID); con != nil {
 			con.CommandedKw = nil
+			con.CommandedChangedAt = time.Time{}
 			con.CommandStatus = ""
 			con.Readback = ""
 			con.ReadbackKw = nil

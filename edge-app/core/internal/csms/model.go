@@ -225,6 +225,15 @@ type Connector struct {
 	// state, not an absence (the PR-280 lesson).
 	CommandStatus string    `json:"command_status,omitempty"`
 	CommandedAt   time.Time `json:"commanded_at,omitzero"`
+	// CommandedChangedAt is when the commanded VALUE last CHANGED - which is
+	// NOT CommandedAt: the executor re-writes an unchanged limit on every tick
+	// (it is the write that re-arms the dead man's switch), so CommandedAt
+	// moves constantly while the station's regime does not.
+	//
+	// ⚠ It exists for exactly ONE job: telling a MeterValues sample that still
+	// describes the PREVIOUS limit apart from one that describes the current
+	// one (MeterInTransit). Nothing decides anything from it.
+	CommandedChangedAt time.Time `json:"commanded_changed_at,omitzero"`
 	// Readback / ReadbackKw / ReadbackNote carry the GetCompositeSchedule
 	// verdict: ok | abweichend | unbekannt (see CompareReadback). An accepted
 	// command whose readback says something else is NOT in force, and the
@@ -355,6 +364,41 @@ func (c ChargerState) ActiveConnectors() []Connector {
 	return out
 }
 
+// commandedChangeEpsilonKw is how big a change of the commanded limit has to be
+// before the connector counts as re-commanded. It is the same 0.05 kW deadband
+// CompareReadback uses: a difference smaller than that is inside the noise of
+// every meter on this path, so calling it a new regime would drop measurements
+// for nothing.
+const commandedChangeEpsilonKw = 0.05
+
+// MeterInTransit reports whether this connector's newest MeterValues sample
+// still describes the limit it held BEFORE the last change - the station was
+// re-commanded and has not reported under the new limit yet.
+//
+// ⚠ THIS IS THE PAIRING RULE OF THE WHOLE DYNAMIC BUDGET, and it is why the
+// flag exists. `rest = grid - charging` is only a measurement of ONE moment
+// while both halves describe the same moment. The grid meter sees a changed
+// charging power within its own cadence; the station's MeterValues arrive on
+// ITS cadence (10 s is a normal ask). Subtracting a pre-change charging power
+// from a post-change grid reading yields a `rest` that is wrong by exactly the
+// step we just commanded - and because the smoothing window takes the trailing
+// MAXIMUM (budget.go), that one sample then governs the budget AND the surplus
+// for a whole BudgetSmoothWindow. Every INCREASE would knock the source lane
+// down for a minute, the next decision would take it back, and the site would
+// settle in a staircase well below the surplus it really has (reproduced at
+// the rig: 14 kW of a measured 22 kW, indefinitely).
+//
+// ⚠ It can never hold a connector back LONGER than the plain staleness rule
+// already does: if MeteredAt is older than CommandedChangedAt and the change
+// is itself older than maxAge, then MeteredAt is older than maxAge too. So
+// this narrows WHICH samples count, never for how long.
+func (c Connector) MeterInTransit() bool {
+	if c.CommandedChangedAt.IsZero() || c.MeteredAt.IsZero() {
+		return false
+	}
+	return c.MeteredAt.Before(c.CommandedChangedAt)
+}
+
 // ChargingTotal is the power the site's charge points are MEASURED drawing
 // right now, plus whether that number is COMPLETE.
 //
@@ -393,7 +437,12 @@ func (s Snapshot) ChargingTotal(now time.Time, maxAge time.Duration) (kw float64
 			continue
 		}
 		for _, con := range c.ActiveConnectors() {
-			if con.PowerKw == nil || con.MeteredAt.IsZero() || now.Sub(con.MeteredAt) > maxAge {
+			// ⚠ An IN-TRANSIT sample is treated exactly like a missing one -
+			// it is not a measurement of this moment (MeterInTransit). The
+			// caller then drops the whole pair instead of pairing a
+			// post-change grid reading with a pre-change charging power.
+			if con.PowerKw == nil || con.MeteredAt.IsZero() ||
+				now.Sub(con.MeteredAt) > maxAge || con.MeterInTransit() {
 				complete = false
 				continue
 			}

@@ -21,15 +21,13 @@ import (
 // plus whatever the charge points are drawing. That pairing is the control law.
 func measureSite(t *testing.T, a *Agent, houseKw float64, stations ...*ocppsim.Station) {
 	t.Helper()
-	for _, st := range stations {
-		if err := st.PublishMeterValues(); err != nil {
-			t.Fatalf("meter values: %v", err)
-		}
-	}
-	waitUntil(t, "the CSMS has a measurement for every charging connector", func() bool {
-		_, complete := a.ocpp.srv.Snapshot().ChargingTotal(time.Now().UTC(), ocppMeterMaxAge)
-		return complete
-	})
+	// ⚠ It re-publishes on every poll, because a real station meters
+	// CONTINUOUSLY and the settle condition needs that: the executor's own loop
+	// may change a limit in the background, and a sample taken before that
+	// change describes the previous regime (csms.Connector.MeterInTransit).
+	// Publishing once and then only waiting would wait for a report nobody is
+	// sending.
+	publishAndSettle(t, a, stations...)
 	// The synthetic grid reading is built from the charge points' OWN reported
 	// power, exactly as a real meter would see it - and exactly the number the
 	// tracker adds back, so the pair is self-consistent even while the

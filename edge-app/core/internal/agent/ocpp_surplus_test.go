@@ -32,15 +32,7 @@ func ocppPolicy(t *testing.T, a *Agent, policy lastmgmt.SurplusPolicy, storage l
 // is exactly what a real meter at the connection point would see.
 func measureSurplus(t *testing.T, a *Agent, houseKw, pvKw, battKw float64, stations ...*ocppsim.Station) {
 	t.Helper()
-	for _, st := range stations {
-		if err := st.PublishMeterValues(); err != nil {
-			t.Fatalf("meter values: %v", err)
-		}
-	}
-	waitUntil(t, "the CSMS has a measurement for every charging connector", func() bool {
-		_, complete := a.ocpp.srv.Snapshot().ChargingTotal(time.Now().UTC(), ocppMeterMaxAge)
-		return complete
-	})
+	publishAndSettle(t, a, stations...)
 	now := time.Now().UTC()
 	charging, _ := a.ocpp.srv.Snapshot().ChargingTotal(now, ocppMeterMaxAge)
 	// ⚠ Die Batterie wird als ARGUMENT uebergeben, nicht ueber die Messwert-

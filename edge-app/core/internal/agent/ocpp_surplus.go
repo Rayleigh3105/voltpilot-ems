@@ -258,7 +258,11 @@ func (a *Agent) carsBeforeStorageKw(set lastmgmt.Settings, now time.Time) (kw fl
 			continue
 		}
 		for _, con := range c.ActiveConnectors() {
-			if con.PowerKw == nil || con.MeteredAt.IsZero() || now.Sub(con.MeteredAt) > ocppMeterMaxAge {
+			// ⚠ Same three tests as csms.ChargingTotal, MeterInTransit
+			// included: a sample that still describes the previous limit is
+			// not a measurement of this moment (see its doc).
+			if con.PowerKw == nil || con.MeteredAt.IsZero() ||
+				now.Sub(con.MeteredAt) > ocppMeterMaxAge || con.MeterInTransit() {
 				complete = false
 				continue
 			}
