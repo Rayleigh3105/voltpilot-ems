@@ -36,14 +36,20 @@ func chargePointEntity(entityID, chargePointID string, maxKw float64) entities.R
 	}
 }
 
-// bindStation hängt Registry + Arbiter an den OCPP-Rig-Agenten.
+// bindStation hängt die Registry an den OCPP-Rig-Agenten und gibt seinen
+// Arbiter zurück.
+//
+// ⚠ Das FELD `a.arb` wird hier NICHT zugewiesen: es gehört der Konstruktion
+// (siehe ocppAgent), und eine Zuweisung neben der laufenden OCPP-Schleife wäre
+// ein Daten-Wettlauf. Gefüllt wird der schon installierte Arbiter über das
+// mutex-geschützte `SetEntities` - derselbe Weg, den der echte Agent für einen
+// Registry-Push geht (entities.go).
 func bindStation(a *Agent, reg entities.Registry) *desired.Arbiter {
-	arb := minimalArbiter(reg)
 	a.entMu.Lock()
 	a.entRegistry = reg
 	a.entMu.Unlock()
-	a.arb = arb
-	return arb
+	a.arb.SetEntities(reg)
+	return a.arb
 }
 
 // submitLimit stellt einen Wunsch der gegebenen Klasse auf die Säule.

@@ -9,6 +9,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppsim"
@@ -34,6 +35,19 @@ func ocppAgent(t *testing.T, tune func(*config.Config)) *Agent {
 	// speist seit Stufe 4 die FAHRPLAN-Bahn des Ladebudgets; ohne ihn wäre
 	// diese Attrappe an genau der Stelle unrealistisch.
 	a := &Agent{Cfg: cfg, State: state.New("rig-ref", "test"), peak: guards.NewPeakTracker()}
+	// ⚠ `Agent.arb` ist in Produktion ein KONSTRUKTIONS-Feld: `New` schreibt
+	// es genau einmal (agent.go `a.arb = a.newArbiter()`), bevor die erste
+	// Goroutine existiert, und liest es danach nur noch - deshalb kommt der
+	// Executor ohne Schloss darauf aus. Ein Test, der das Feld NACH dem Start
+	// der OCPP-Schleife zuweist, ist damit ein echter Daten-Wettlauf (im
+	// Tag-Lauf edge-2026.09.0 von `-race` gemeldet). Der Arbiter wird deshalb
+	// VOR der Schleife installiert - LEER, also für jeden Test, der ihn nicht
+	// füllt, wirkungsgleich zu `nil` (`ocppApplyBridge` kehrt ohne Bindung
+	// sofort zurück, `DecisionFor` antwortet ok=false) -, und die Helfer
+	// füllen ihn danach ausschliesslich über die mutex-geschützten
+	// `SetEntities`/`SubmitInternal`/`Tick`, genau wie der Registry-Pfad des
+	// echten Agenten (entities.go).
+	a.arb = minimalArbiter(entities.Registry{})
 	if err := a.startOcpp(context.Background()); err != nil {
 		t.Fatalf("startOcpp: %v", err)
 	}

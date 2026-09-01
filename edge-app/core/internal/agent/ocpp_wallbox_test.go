@@ -65,8 +65,15 @@ func wallboxGranted(t *testing.T, a *Agent, kw float64) {
 			Failsafe: entities.Failsafe{Behavior: "release"},
 		},
 	}}}
-	arb := minimalArbiter(reg)
-	arb.SubmitInternal(&desired.Desired{
+	// ⚠ Wie in bindStation: der Arbiter ist schon installiert (ocppAgent), das
+	// FELD wird neben der laufenden Schleife nie zugewiesen. `SetEntities` muss
+	// dabei VOR dem Wunsch laufen - `SubmitInternal` kehrt für eine unbekannte
+	// Entität wortlos zurück.
+	a.entMu.Lock()
+	a.entRegistry = reg
+	a.entMu.Unlock()
+	a.arb.SetEntities(reg)
+	a.arb.SubmitInternal(&desired.Desired{
 		EntityID: wbEntity, RequestID: "req-wb",
 		Source:        desired.Source{Kind: desired.SourceFlow, FlowID: "f1", NodeID: "n1"},
 		Priority:      desired.ClassFlow,
@@ -75,11 +82,7 @@ func wallboxGranted(t *testing.T, a *Agent, kw float64) {
 		Commands:      entities.Commands{SetpointKw: ptr(kw)},
 		RequestedType: entities.CmdSetpointKw,
 	})
-	arb.Tick()
-	a.entMu.Lock()
-	a.entRegistry = reg
-	a.entMu.Unlock()
-	a.arb = arb
+	a.arb.Tick()
 }
 
 // TestAWallboxWithoutAMeasurementNeverTakesPartAndIsNamed: die ehrliche Hälfte
