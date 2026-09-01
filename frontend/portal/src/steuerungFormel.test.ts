@@ -94,6 +94,30 @@ describe('steuerungFormel — der Bezugspreis wird nie erfunden', () => {
     expect(t).not.toContain('Aufschlag');
   });
 
+  it('A1 · dynamisch ohne Aufschlag, aber tariflich bewertet (Preisblatt/Default-Flag): Börsenpreis + Standard-Komponenten', () => {
+    // Preisblatt-Kunde bzw. Produktions-Default an: der Ø-Bezugspreis daneben zeigt
+    // ~30 ct, ein nacktes „Börsenpreis" wäre der B3-Selbstwiderspruch.
+    for (const param of [null, 0]) {
+      const t = bezug({ tarifArt: 'dynamisch', tarifParamCtKwh: param, tarifPriced: true }).text;
+      expect(t).toContain('Ihr dynamischer Stromtarif');
+      expect(t).toContain('Börsenpreis der jeweiligen Viertelstunde');
+      expect(t).toContain('Standard-Netzentgelte und Abgaben');
+      expect(t).not.toContain('Aufschlag');
+    }
+  });
+
+  it('A1 · dynamisch ohne Aufschlag + tarifPriced=false (Flag aus): reiner Börsenpreis, ohne Standard-Komponenten', () => {
+    const t = bezug({ tarifArt: 'dynamisch', tarifParamCtKwh: 0, tarifPriced: false }).text;
+    expect(t).toBe('Ihr dynamischer Stromtarif: der Börsenpreis der jeweiligen Viertelstunde.');
+    expect(t).not.toContain('Standard-Netzentgelte');
+  });
+
+  it('A1 · dynamisch MIT Aufschlag behält seinen Satz, auch bei tarifPriced=true', () => {
+    expect(bezug({ tarifArt: 'dynamisch', tarifParamCtKwh: 18, tarifPriced: true }).text).toBe(
+      `Ihr dynamischer Stromtarif: Börsenpreis der jeweiligen Viertelstunde + 18,0${NBSP}ct/kWh Aufschlag.`,
+    );
+  });
+
   it('ohne Tarif: sagt Börsenpreis UND warum', () => {
     const t = bezug({ tarifArt: 'ohne' }).text;
     expect(t).toContain('Börsenpreis');
@@ -157,6 +181,14 @@ describe('steuerungFormel — der Kernsatz folgt der Bewertung', () => {
     const kern = steuerungFormel({ tarifArt: 'ohne', tarifPriced: false }).kern;
     expect(kern).toContain('dem Börsenpreis für den Netzbezug');
     expect(kern).not.toContain('Standard-Netzentgelte');
+  });
+
+  it('A1 · dynamisch ohne Aufschlag, aber tarifPriced=true: der Kernsatz sagt „Ihrem Stromtarif" (passt zum ~30-ct-Ø)', () => {
+    // Nur die Preis-ZEILE benennt die Komponenten; der Kernsatz bleibt „Ihrem
+    // Stromtarif" — korrekt gegen einen tariflich bewerteten Ø-Bezugspreis.
+    const kern = steuerungFormel({ tarifArt: 'dynamisch', tarifParamCtKwh: 0, tarifPriced: true }).kern;
+    expect(kern).toContain('Ihrem Stromtarif für den Netzbezug');
+    expect(kern).not.toContain('dem Börsenpreis für den Netzbezug');
   });
 });
 

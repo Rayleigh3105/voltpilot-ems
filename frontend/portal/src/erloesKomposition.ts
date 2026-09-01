@@ -317,9 +317,20 @@ function bezugspreisText(input: SteuerungFormelInput): string {
       : 'Ihr fester Stromtarif.';
   }
   if (input.tarifArt === 'dynamisch') {
-    return param != null && param > 0
-      ? `Ihr dynamischer Stromtarif: Börsenpreis der jeweiligen Viertelstunde + ${ct(param)} Aufschlag.`
-      : 'Ihr dynamischer Stromtarif: der Börsenpreis der jeweiligen Viertelstunde.';
+    if (param != null && param > 0) {
+      return `Ihr dynamischer Stromtarif: Börsenpreis der jeweiligen Viertelstunde + ${ct(param)} Aufschlag.`;
+    }
+    // ⚠ A1: ohne Aufschlag-Param, aber tariflich bewertet — gepflegtes Preisblatt
+    // ODER der Produktions-Default (`OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS`) — bewertet
+    // der Server mit Spot + Standard-Netzentgelten und Abgaben (`tarifPriced === true`),
+    // daneben steht ein Ø-Bezugspreis von ~30 ct, und ein nacktes „Börsenpreis"
+    // widerspräche ihm sichtbar. Dieselbe B3-Klasse wie im `ohne`-Zweig, nur auf
+    // `dynamisch` (Anmerkung A1 aus dem PR-587-Review).
+    if (input.tarifPriced === true) {
+      return 'Ihr dynamischer Stromtarif: Börsenpreis der jeweiligen Viertelstunde plus Standard-Netzentgelte und Abgaben.';
+    }
+    // Flag aus / nacktes dynamisch: die Zahl ist wirklich reiner Börsenpreis.
+    return 'Ihr dynamischer Stromtarif: der Börsenpreis der jeweiligen Viertelstunde.';
   }
   // 'ohne' und alles Unbekannte: es gibt keinen kundenseitigen Tarif.
   // ⚠ Mit dem Produktions-Default (`OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS`)
