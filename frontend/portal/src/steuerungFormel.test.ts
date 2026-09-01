@@ -45,11 +45,21 @@ describe('steuerungFormel — Gerüst', () => {
     expect(diff.text).toContain('über alle Viertelstunden des Zeitraums summiert');
   });
 
+  it('B4 · „Ohne Steuerung" beschreibt die WIRKLICHE Baseline: Solarstrom wird direkt verbraucht', () => {
+    const ohne = steuerungFormel({ tarifArt: 'fest', tarifParamCtKwh: 30 }).zeilen[0];
+    expect(ohne.text).toContain('Solarstrom wird direkt verbraucht');
+    expect(ohne.text).toContain('nach Abzug des direkt verbrauchten Solarstroms');
+    expect(ohne.text).toContain('Solarüberschuss × Einspeisepreis');
+    // NICHT die falsche „ohne Solarstrom gebraucht hätte"-Baseline (load × p − pv × s).
+    expect(ohne.text).not.toContain('ohne Solarstrom');
+  });
+
   it('benutzt keine internen Begriffe', () => {
     const f = steuerungFormel({ tarifArt: 'dynamisch', tarifParamCtKwh: 18 });
     const alles = [
       f.kern,
       f.hinweis,
+      f.historik ?? '',
       ...f.zeilen.map((z) => `${z.label} ${z.text}`),
       ...f.preise.map((p) => `${p.label} ${p.text} ${p.zusatz ?? ''}`),
     ].join(' ');
@@ -90,6 +100,19 @@ describe('steuerungFormel — der Bezugspreis wird nie erfunden', () => {
     expect(t).toContain('kein Stromtarif hinterlegt');
   });
 
+  it('B3 · ohne Tarif + Flag an (tarifPriced): Börsenpreis + Standard-Komponenten, kein Selbstwiderspruch', () => {
+    const t = bezug({ tarifArt: 'ohne', tarifPriced: true }).text;
+    expect(t).toContain('Börsenpreis');
+    expect(t).toContain('Standard-Netzentgelte und Abgaben');
+    expect(t).toContain('kein Stromtarif hinterlegt');
+  });
+
+  it('B3 · ohne Tarif + Flag aus (tarifPriced=false): reiner Börsenpreis, ohne Standard-Komponenten', () => {
+    const t = bezug({ tarifArt: 'ohne', tarifPriced: false }).text;
+    expect(t).toContain('kein Stromtarif hinterlegt');
+    expect(t).not.toContain('Standard-Netzentgelte');
+  });
+
   it('gar keine Tarif-Angabe verhält sich wie „ohne" — nie ein geratener Tarif', () => {
     expect(bezug({}).text).toBe(bezug({ tarifArt: 'ohne' }).text);
   });
@@ -122,6 +145,18 @@ describe('steuerungFormel — der Kernsatz folgt der Bewertung', () => {
       tarifPriced: false,
     }).kern;
     expect(kern).toContain('dem Börsenpreis für den Netzbezug');
+  });
+
+  it('B3 · ohne Tarif, aber tarifPriced=true (Produktions-Default an): NICHT nacktes „Börsenpreis"', () => {
+    const kern = steuerungFormel({ tarifArt: 'ohne', tarifPriced: true }).kern;
+    expect(kern).toContain('dem Börsenpreis plus Standard-Netzentgelte und Abgaben für den Netzbezug');
+    expect(kern).not.toContain('Ihrem Stromtarif');
+  });
+
+  it('B3 · ohne Tarif, tarifPriced=false (Flag aus): weiterhin ehrlich nacktes „Börsenpreis"', () => {
+    const kern = steuerungFormel({ tarifArt: 'ohne', tarifPriced: false }).kern;
+    expect(kern).toContain('dem Börsenpreis für den Netzbezug');
+    expect(kern).not.toContain('Standard-Netzentgelte');
   });
 });
 
@@ -228,5 +263,31 @@ describe('steuerungFormel — das Bestandskonto wird verwiesen, nie dupliziert',
     const h = steuerungFormel({ bestandSichtbar: true }).hinweis;
     expect(h).not.toContain('Planwert');
     expect(h).not.toContain('Speicherenergie');
+  });
+});
+
+describe('steuerungFormel — der Historik-Satz (B5)', () => {
+  const satz = (input: SteuerungFormelInput) => steuerungFormel(input).historik;
+
+  it('mit Tarif/Vergütung: sagt, dass eine Änderung die Vergangenheit umschreibt', () => {
+    const faelle: SteuerungFormelInput[] = [
+      { tarifArt: 'fest', tarifParamCtKwh: 30 },
+      { tarifArt: 'dynamisch', tarifParamCtKwh: 18 },
+      { tarifArt: 'ohne', tarifPriced: true },
+      { tarifArt: 'ohne', plantKind: 'direktvermarktung' },
+      { tarifneutral: true },
+    ];
+    for (const input of faelle) {
+      const s = satz(input);
+      expect(s).not.toBeNull();
+      expect(s).toContain('heute hinterlegten');
+      expect(s).toContain('zurückliegende Auswertungen');
+    }
+  });
+
+  it('reiner Börsenpreis (nacktes ohne): kein Historik-Satz — nichts umzuschreiben', () => {
+    expect(satz({ tarifArt: 'ohne' })).toBeNull();
+    expect(satz({ tarifArt: 'ohne', tarifPriced: false })).toBeNull();
+    expect(satz({})).toBeNull();
   });
 });

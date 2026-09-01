@@ -121,6 +121,15 @@
   color: var(--vp-text-muted, #5b6472);
 }
 
+/* Der Historik-Satz (B5) sitzt bei den Preis-Angaben und ist eine ruhige
+   Fussnote, kein zweiter Hinweis-Kasten. */
+.vp-formel-historik {
+  margin: 8px 0 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--vp-text-muted, #5b6472);
+}
+
 .vp-formel-hinweis {
   margin: 10px 0 0;
   padding-top: 10px;
