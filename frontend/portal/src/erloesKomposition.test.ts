@@ -852,15 +852,35 @@ describe('bestandZeile', () => {
   it('nennt am LAUFENDEN Tag die Menge und ihren Plan-Wert', () => {
     const z = bestandZeile(laufenderTag, JETZT);
     expect(z).not.toBeNull();
-    expect(z?.text).toBe(`dazu 44,2${NBSP}kWh im Speicher für später — nach dem Plan ≈ +8,35${NBSP}€`);
+    expect(z?.text).toBe(
+      `44,2${NBSP}kWh Speicherenergie seit Tagesbeginn gespeichert · Planwert 8,35${NBSP}€`,
+    );
     expect(z?.badge).toBe(BESTAND_BADGE);
     expect(z?.titel).toContain('Speicherwert dieser Viertelstunde');
     expect(z?.titel).toContain(`18,9${NBSP}ct/kWh`);
+    expect(z?.titel).toContain('wird nicht vom Verdienst abgezogen');
     expect(z?.deltaKwh).toBeCloseTo(44.2, 6);
     expect(z?.wertEur).toBeCloseTo(8.3538, 6);
   });
 
-  it('dreht die Anzeige des 21.08. von −4,69 € auf ≈ +3,7 €', () => {
+  it('zeigt die genutzte Speicherenergie nicht als Minus unter dem Verdienst', () => {
+    const z = bestandZeile(
+      {
+        ...laufenderTag,
+        speicherDeltaKwh: -28.6,
+        speicherWertCtKwh: 20.2,
+        speicherWertEur: -5.7772,
+      },
+      JETZT,
+    );
+    expect(z?.text).toBe(
+      `28,6${NBSP}kWh Speicherenergie seit Tagesbeginn genutzt · Planwert 5,78${NBSP}€`,
+    );
+    expect(z?.text).not.toMatch(/[+−-]\s*5,78/);
+    expect(z?.badge).toBe('Kein Abzug');
+  });
+
+  it('behält den intern signierten Planwert für die fachliche Rechnung', () => {
     const z = bestandZeile(laufenderTag, JETZT);
     expect(-4.69 + (z?.wertEur ?? 0)).toBeCloseTo(3.66, 2);
   });
@@ -868,27 +888,27 @@ describe('bestandZeile', () => {
   it('sagt am ABGESCHLOSSENEN Tag den FK2-Wortlaut - in BEIDEN Vorzeichen', () => {
     const vorbei = new Date('2026-08-22T09:00:00Z');
     expect(bestandZeile(laufenderTag, vorbei)?.text).toBe(
-      `davon 44,2${NBSP}kWh in den Folgetag gespeichert — nach dem Plan ≈ +8,35${NBSP}€`,
+      `44,2${NBSP}kWh Speicherenergie für den Folgetag gespeichert · Planwert 8,35${NBSP}€`,
     );
     const entnommen = bestandZeile(
       { ...laufenderTag, speicherDeltaKwh: -16.9, speicherWertEur: -2.6195 },
       vorbei,
     );
     expect(entnommen?.text).toBe(
-      `16,9${NBSP}kWh aus dem Vortag entnommen — nach dem Plan ≈ −2,62${NBSP}€`,
+      `16,9${NBSP}kWh Speicherenergie aus dem Vortag genutzt · Planwert 2,62${NBSP}€`,
     );
   });
 
   it('spricht über einen längeren Zeitraum ZEITRAUM-neutral', () => {
     const monat = { ...laufenderTag, range: 'month', to: '2026-08-01T00:00:00Z' };
     expect(bestandZeile(monat, new Date('2026-08-15T00:00:00Z'))?.text).toContain(
-      'am Ende lagen 44,2',
+      '44,2\u00a0kWh Speicherenergie im Zeitraum gespeichert',
     );
   });
 
-  it('behauptet am laufenden Zeitraum eine ENTNAHME nie als „aus dem Vortag"', () => {
+  it('nennt am laufenden Zeitraum die Nutzung seit Tagesbeginn, nie den Vortag', () => {
     const z = bestandZeile({ ...laufenderTag, speicherDeltaKwh: -12.4, speicherWertEur: -2.34 }, JETZT);
-    expect(z?.text).toContain('weniger im Speicher als zu Beginn');
+    expect(z?.text).toContain('Speicherenergie seit Tagesbeginn genutzt');
     expect(z?.text).not.toContain('Vortag');
   });
 
@@ -897,7 +917,9 @@ describe('bestandZeile', () => {
       { ...laufenderTag, speicherWertEur: null, speicherWertCtKwh: null, speicherWertBasis: null },
       JETZT,
     );
-    expect(z?.text).toBe(`dazu 44,2${NBSP}kWh im Speicher für später — noch nicht abgerechnet`);
+    expect(z?.text).toBe(
+      `44,2${NBSP}kWh Speicherenergie seit Tagesbeginn gespeichert · Planwert noch nicht verfügbar`,
+    );
     expect(z?.badge).toBeNull();
     expect(z?.titel).toBeNull();
     expect(z?.wertEur).toBeNull();
@@ -920,7 +942,7 @@ describe('bestandZeile', () => {
 
   it('rundet einen Euro im Rauschen weg, ohne die Menge zu verlieren', () => {
     const z = bestandZeile({ ...laufenderTag, speicherWertEur: 0.001 }, JETZT);
-    expect(z?.text).toContain('noch nicht abgerechnet');
+    expect(z?.text).toContain('Planwert noch nicht verfügbar');
     expect(z?.deltaKwh).toBeCloseTo(44.2, 6);
   });
 });
@@ -941,7 +963,7 @@ describe('erloesErgebnis · das Bestandskonto', () => {
       periodLabel: 'Fr., 21.08.2026',
       now: new Date('2026-08-21T10:19:00Z'),
     });
-    expect(v.bestand?.text).toContain('im Speicher für später');
+    expect(v.bestand?.text).toContain('Speicherenergie seit Tagesbeginn gespeichert');
     expect(v.steering).toContain('VoltPilots Steuerung');
     // Die grosse Zahl bleibt die gemessene Kasse.
     expect(v.nettoEur).toBeCloseTo(14.98, 6);

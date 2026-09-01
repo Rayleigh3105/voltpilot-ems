@@ -322,8 +322,8 @@ describe('Der Hero', () => {
     });
     expect(hero.money?.attribution).toBe(`Zwischenstand Steuerung: −2,84${NBSP}€ bisher`);
     expect(hero.money?.attributionInterim).toBe(true);
-    expect(hero.money?.bestand?.text).toContain('im Speicher für später');
-    expect(hero.money?.bestand?.badge).toBe('Geplant');
+    expect(hero.money?.bestand?.text).toContain('Speicherenergie seit Tagesbeginn gespeichert');
+    expect(hero.money?.bestand?.badge).toBe('Kein Abzug');
     // Der geplante Bestand bleibt daneben und verändert die gemessene Summe nie.
     expect(hero.money?.value).toBe(`17,00${NBSP}€`);
   });

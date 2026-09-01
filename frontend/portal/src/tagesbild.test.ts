@@ -262,8 +262,8 @@ describe('K1 + K8 · der Kernaussage-Kopf', () => {
     expect(k.satz).toContain('an diesem Tag bisher gebracht');
     // Die zweite Wahrheit steht DANEBEN, nie in der Zahl.
     expect(k.wert).toBe(`-4,69${NBSP}€`);
-    expect(k.bestand?.text).toContain('im Speicher für später');
-    expect(k.bestand?.badge).toBe('Geplant');
+    expect(k.bestand?.text).toContain('Speicherenergie seit Tagesbeginn gespeichert');
+    expect(k.bestand?.badge).toBe('Kein Abzug');
   });
 
   it('sagt am ABGESCHLOSSENEN Tag wieder „an diesem Tag"', () => {

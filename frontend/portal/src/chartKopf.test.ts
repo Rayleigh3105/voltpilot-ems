@@ -36,9 +36,9 @@ describe('kopfView (K1/M11 · der Kernaussage-Kopf)', () => {
 
   it('reicht die Bestandszeile durch — aber nur, wo es auch einen Satz gibt', () => {
     const bestand = {
-      text: 'dazu 44,2 kWh im Speicher für später — nach dem Plan ≈ +8,35 €',
-      badge: 'Geplant',
-      titel: 'Bewertet mit dem Speicherwert dieser Viertelstunde.',
+      text: '44,2 kWh Speicherenergie seit Tagesbeginn gespeichert · Planwert 8,35 €',
+      badge: 'Kein Abzug',
+      titel: 'Der Planwert wird nicht vom Verdienst abgezogen.',
     };
     expect(kopfView({ ...voll, bestand }).bestand).toEqual(bestand);
     // Ohne Kasse daneben wäre ein Bestand eine Aussage ohne ihren Bezug.

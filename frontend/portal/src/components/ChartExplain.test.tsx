@@ -37,18 +37,18 @@ describe('ChartHeadline (K1/M11)', () => {
           grund: null,
           ton: 'calm',
           bestand: {
-            text: 'dazu 44,2 kWh im Speicher für später — nach dem Plan ≈ +8,35 €',
-            badge: 'Geplant',
-            titel: 'Bewertet mit dem Speicherwert dieser Viertelstunde.',
+            text: '44,2 kWh Speicherenergie seit Tagesbeginn gespeichert · Planwert 8,35 €',
+            badge: 'Kein Abzug',
+            titel: 'Der Planwert wird nicht vom Verdienst abgezogen.',
           },
         }}
       />,
     );
-    const satz = screen.getByText(/44,2 kWh im Speicher/);
-    expect(satz.closest('p')).toHaveTextContent('Geplant');
+    const satz = screen.getByText(/44,2 kWh Speicherenergie/);
+    expect(satz.closest('p')).toHaveTextContent('Kein Abzug');
     expect(satz.closest('p')).toHaveAttribute(
       'title',
-      'Bewertet mit dem Speicherwert dieser Viertelstunde.',
+      'Der Planwert wird nicht vom Verdienst abgezogen.',
     );
     // Die Kasse bleibt die Kasse.
     expect(screen.getByText('-4,69 €')).toBeInTheDocument();

@@ -218,8 +218,9 @@ export function steeringAttributionNote(savedEur: number | null | undefined): st
  * (dieselbe Falle, die `tagesbild.ts` bei der Geisterkurve schon einmal
  * ausdrücklich vermieden hat).
  *
- * Beide Vorzeichen werden gezeigt (der FK2-Wortlaut der Fahrplan-Seite): ein
- * Zeitraum, der die Bank des Vortags VERBRAUCHT, überclaimt sonst.
+ * Beide Richtungen werden in Kundenworten gezeigt: „gespeichert" bzw.
+ * „genutzt". Der Eurobetrag bleibt absichtlich ohne Vorzeichen, weil er weder
+ * Zuschlag noch Abzug der danebenstehenden Verdienst-Zahl ist.
  * ------------------------------------------------------------------------- */
 
 /** Unter dieser Menge ist eine Bestandsänderung Messrauschen, keine Aussage. */
@@ -230,9 +231,9 @@ export const BESTAND_EUR_TOTBAND = 0.005;
 
 /** Die render-fertige Bestandszeile. */
 export interface BestandZeile {
-  /** Der ganze Satz („dazu 44,2 kWh im Speicher für später — nach dem Plan ≈ +8,35 €"). */
+  /** Der ganze Satz („44,2 kWh Speicherenergie seit Tagesbeginn gespeichert · Planwert 8,35 €"). */
   text: string;
-  /** Das Etikett, das die Zahl als PLAN kennzeichnet; null ohne Bewertung. */
+  /** Das Etikett, das den Planwert sichtbar von der Verdienst-Zahl trennt; null ohne Bewertung. */
   badge: string | null;
   /** Womit bewertet wurde — der Titel-Text dahinter; null ohne Bewertung. */
   titel: string | null;
@@ -242,8 +243,8 @@ export interface BestandZeile {
   wertEur: number | null;
 }
 
-/** Das Etikett über jeder plan-bewerteten Zahl (K4: die Herkunft steht dran). */
-export const BESTAND_BADGE = 'Geplant';
+/** Der Planwert ist weder Abzug noch Zuschlag zur Verdienst-Zahl. */
+export const BESTAND_BADGE = 'Kein Abzug';
 
 /** Was der Bestand aus der Endpunkt-Antwort braucht (ein ÄLTERER Stand: nichts). */
 export interface BestandEingabe {
@@ -276,33 +277,40 @@ export function bestandZeile(
   const bis = m.to ? new Date(m.to).getTime() : NaN;
   const laeuft = Number.isFinite(bis) && bis > now.getTime();
   const menge = fmtNum(Math.abs(delta), 'kWh');
+  const tag = m.range === 'day';
   const satz = laeuft
-    ? delta > 0
-      ? `dazu ${menge} im Speicher für später`
-      : `${menge} weniger im Speicher als zu Beginn`
-    : m.range === 'day'
+    ? tag
       ? delta > 0
-        ? `davon ${menge} in den Folgetag gespeichert`
-        : `${menge} aus dem Vortag entnommen`
+        ? `${menge} Speicherenergie seit Tagesbeginn gespeichert`
+        : `${menge} Speicherenergie seit Tagesbeginn genutzt`
       : delta > 0
-        ? `am Ende lagen ${menge} mehr im Speicher als zu Beginn`
-        : `am Ende lagen ${menge} weniger im Speicher als zu Beginn`;
+        ? `${menge} Speicherenergie seit Beginn des Zeitraums gespeichert`
+        : `${menge} Speicherenergie seit Beginn des Zeitraums genutzt`
+    : tag
+      ? delta > 0
+        ? `${menge} Speicherenergie für den Folgetag gespeichert`
+        : `${menge} Speicherenergie aus dem Vortag genutzt`
+      : delta > 0
+        ? `${menge} Speicherenergie im Zeitraum gespeichert`
+        : `${menge} Speicherenergie im Zeitraum genutzt`;
 
   const wert = num(m.speicherWertEur ?? null);
   // Die kWh sind GEMESSEN, der Euro ist PLAN: ohne Bewertung bleibt die
-  // gemessene Menge stehen und sagt selbst, dass sie noch nicht zu Geld wurde.
+  // gemessene Menge stehen, ohne eine spätere Abrechnung zu versprechen.
   if (wert == null || Math.abs(wert) < BESTAND_EUR_TOTBAND) {
     return {
-      text: `${satz} — noch nicht abgerechnet`,
+      text: `${satz} · Planwert noch nicht verfügbar`,
       badge: null,
       titel: null,
       deltaKwh: delta,
       wertEur: wert,
     };
   }
-  const betrag = wert > 0 ? `+${eurAmount(wert)}` : `−${eurAmount(-wert)}`;
   return {
-    text: `${satz} — nach dem Plan ≈ ${betrag}`,
+    // Die Richtung steht bereits unmissverständlich im Verb. Ein Vorzeichen
+    // am Eurobetrag sähe unter „Verdient" wie ein Zu- oder Abzug aus, obwohl
+    // der Planwert ausdrücklich NICHT in dieser Zahl verrechnet wird.
+    text: `${satz} · Planwert ${eurAmount(Math.abs(wert))}`,
     badge: BESTAND_BADGE,
     titel: bestandTitel(m.speicherWertBasis ?? null, num(m.speicherWertCtKwh ?? null)),
     deltaKwh: delta,
@@ -324,7 +332,7 @@ function bestandTitel(basis: string | null, ctKwh: number | null): string | null
         : null;
   if (!quelle) return null;
   const preis = ctKwh == null ? '' : ` (${fmtNum(ctKwh, 'ct/kWh')})`;
-  return `Bewertet mit ${quelle}${preis}. Die Kilowattstunden sind gemessen, der Betrag ist geplant.`;
+  return `Der Fahrplan bewertet die Speicherenergie mit ${quelle}${preis}. Dieser Planwert dient nur der Einordnung und wird nicht vom Verdienst abgezogen.`;
 }
 
 function resolve(stream: MoneyStream, money: CockpitMoney | null): Resolved {
@@ -532,8 +540,8 @@ export interface ErloesErgebnisView {
   /** Der Titel-Text dazu: wogegen die Zurechnung gemessen ist. */
   steeringTitel: string | null;
   /**
-   * Das BESTANDSKONTO daneben („dazu 44,2 kWh im Speicher für später — nach dem
-   * Plan ≈ +8,35 €"). Es steht NEBEN der Zurechnung, nie in der großen Zahl:
+   * Das BESTANDSKONTO daneben („44,2 kWh Speicherenergie seit Tagesbeginn
+   * gespeichert · Planwert 8,35 €"). Es steht NEBEN der Zurechnung, nie in der großen Zahl:
    * die gemessene Kasse kennt eingelagerte Energie nur als entgangenen Erlös
    * (Diagnose vp-tagesbild-minus-f3). `null` = nichts zu sagen.
    */

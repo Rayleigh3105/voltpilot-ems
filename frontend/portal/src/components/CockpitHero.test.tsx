@@ -117,9 +117,9 @@ describe('Die Bilanz-Leiste', () => {
           attribution: 'Zwischenstand Steuerung: −2,84 € bisher',
           attributionInterim: true,
           bestand: {
-            text: 'dazu 44,2 kWh im Speicher für später — nach dem Plan ≈ +8,35 €',
-            badge: 'Geplant',
-            titel: 'Die Kilowattstunden sind gemessen, der Betrag ist geplant.',
+            text: '44,2 kWh Speicherenergie seit Tagesbeginn gespeichert · Planwert 8,35 €',
+            badge: 'Kein Abzug',
+            titel: 'Der Planwert wird nicht vom Verdienst abgezogen.',
             deltaKwh: 44.2,
             wertEur: 8.35,
           },
@@ -128,7 +128,7 @@ describe('Die Bilanz-Leiste', () => {
     );
     expect(container.querySelector('.vp-hero-money-attr.is-interim')?.textContent).toContain('−2,84');
     expect(container.querySelector('.vp-hero-money-bestand')?.textContent).toContain('44,2 kWh');
-    expect(container.querySelector('.vp-hero-money-bestand-badge')?.textContent).toBe('Geplant');
+    expect(container.querySelector('.vp-hero-money-bestand-badge')?.textContent).toBe('Kein Abzug');
   });
 
   it('Haushalt: ohne Zeitraum-Segment bleibt die Leiste voll (Ringe führen)', () => {

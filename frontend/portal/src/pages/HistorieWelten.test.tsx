@@ -450,10 +450,10 @@ describe('Welt B · Erlöse', () => {
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
     const satz = await screen.findByText(/44,2 kWh/);
-    expect(satz).toHaveTextContent('in den Folgetag gespeichert');
-    expect(satz).toHaveTextContent('+8,35 €');
-    // Der Betrag ist nach dem PLAN bewertet und sagt das selbst.
-    expect(satz.closest('p')).toHaveTextContent('Geplant');
+    expect(satz).toHaveTextContent('Speicherenergie für den Folgetag gespeichert');
+    expect(satz).toHaveTextContent('Planwert 8,35 €');
+    // Der Betrag bleibt sichtbar von der gemessenen Kasse getrennt.
+    expect(satz.closest('p')).toHaveTextContent('Kein Abzug');
     // Die grosse Zahl bleibt die gemessene Kasse.
     expect(screen.getByText('+ 999,26 €')).toBeInTheDocument();
     const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
