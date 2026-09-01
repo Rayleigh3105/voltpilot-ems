@@ -46,6 +46,15 @@ describe('SteuerungFormel (Fläche)', () => {
     expect(container.textContent).toContain('Im Zeitraum im Schnitt');
     expect(container.textContent).toContain('voll aus dem Markt');
     expect(container.textContent).toContain('steht in der Zeile darunter');
+    // B5: der Historik-Satz sitzt bei den Preis-Angaben (Tarif hinterlegt).
+    expect(container.querySelector('.vp-formel-historik')?.textContent).toContain(
+      'zurückliegende Auswertungen',
+    );
+  });
+
+  it('B5 · nacktes „ohne" (reiner Börsenpreis): kein Historik-Satz', () => {
+    const { container } = render(<SteuerungFormel input={{ tarifArt: 'ohne' }} />);
+    expect(container.querySelector('.vp-formel-historik')).toBeNull();
   });
 
   it('reicht eine zusätzliche Klasse durch, ohne die eigene zu verlieren', () => {

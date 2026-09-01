@@ -50,6 +50,8 @@ export function SteuerungFormel({
           ))}
         </dl>
 
+        {f.historik && <p className="vp-formel-historik">{f.historik}</p>}
+
         <p className="vp-formel-hinweis">{f.hinweis}</p>
       </div>
     </details>

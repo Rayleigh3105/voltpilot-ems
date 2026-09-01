@@ -258,6 +258,13 @@ export interface SteuerungFormel {
   zeilen: FormelZeile[];
   /** Womit die beiden Seiten bewertet werden. */
   preise: PreisAngabe[];
+  /**
+   * Historik-Semantik (B5): jede Periode wird zu den HEUTE gepflegten
+   * Tarif-/Vergütungsangaben bewertet, eine Änderung schreibt also die
+   * Vergangenheit um. `null`, wo die Zahl reiner Börsenpreis ist (nacktes
+   * `ohne`, kein Direktvermarktungs-Wert) — dort gibt es nichts umzuschreiben.
+   */
+  historik: string | null;
   /** Warum die Zahl im Tagesverlauf noch nicht vollständig ist. */
   hinweis: string;
 }
@@ -314,8 +321,63 @@ function bezugspreisText(input: SteuerungFormelInput): string {
       ? `Ihr dynamischer Stromtarif: Börsenpreis der jeweiligen Viertelstunde + ${ct(param)} Aufschlag.`
       : 'Ihr dynamischer Stromtarif: der Börsenpreis der jeweiligen Viertelstunde.';
   }
-  // 'ohne' und alles Unbekannte: es gibt keinen Tarif, den wir nennen könnten.
+  // 'ohne' und alles Unbekannte: es gibt keinen kundenseitigen Tarif.
+  // ⚠ Mit dem Produktions-Default (`OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS`)
+  // bewertet der Server eine solche Anlage aber mit Spot + Standard-Netzentgelten
+  // und Abgaben (`tarifPriced === true`) — dann steht daneben ein Ø-Bezugspreis
+  // von ~30 ct, und ein nacktes „Börsenpreis" widerspräche ihm sichtbar (B3).
+  if (input.tarifPriced === true) {
+    return (
+      'Der Börsenpreis der jeweiligen Viertelstunde plus Standard-Netzentgelte und Abgaben ' +
+      '— für diese Anlage ist kein Stromtarif hinterlegt.'
+    );
+  }
+  // Flag aus / älterer Stand: die Zahl ist wirklich reiner Börsenpreis.
   return 'Der Börsenpreis der jeweiligen Viertelstunde — für diese Anlage ist kein Stromtarif hinterlegt.';
+}
+
+/**
+ * Die Kurzform des Bezugspreises für den Kernsatz.
+ *
+ * ⚠ DIE PRÄZEDENZ IST DER B3-FIX: `tarifPriced === true` gewinnt über
+ * `tarifArt === 'ohne'`. Mit dem Produktions-Default bewertet der Server eine
+ * tariflose Anlage mit Spot + Standard-Netzentgelten (~18,7 ct brutto); ein
+ * nacktes „dem Börsenpreis" widerspräche dem daneben gezeigten Ø-Bezugspreis
+ * (~30 ct) sichtbar. Der Fall `tarifPriced === false` (Flag aus, nacktes
+ * `ohne`) bleibt ehrlich „dem Börsenpreis".
+ */
+function bezugKurzText(input: SteuerungFormelInput): string {
+  if (input.tarifneutral) return 'dem Stromtarif der jeweiligen Anlage';
+  // Die Grundwahrheit: ist die Zahl NICHT zum Tarif bewertet, ist sie Spot —
+  // egal, ob ein Tarif auf Akte liegt.
+  if (input.tarifPriced === false) return 'dem Börsenpreis';
+  const ohneTarif = input.tarifArt === 'ohne' || input.tarifArt == null;
+  if (ohneTarif) {
+    return input.tarifPriced === true
+      ? 'dem Börsenpreis plus Standard-Netzentgelte und Abgaben'
+      : 'dem Börsenpreis';
+  }
+  return 'Ihrem Stromtarif';
+}
+
+/**
+ * Der Historik-Satz (B5) — nur, wo die Bewertung an einer heute gepflegten
+ * Größe hängt, deren Änderung die Vergangenheit umschreibt: ein Tarif, ein
+ * Preisblatt/Standard-Aufschlag (`tarifPriced`) oder der anzulegende Wert der
+ * Direktvermarktung. Bei reinem Börsenpreis gibt es nichts umzuschreiben (die
+ * Day-Ahead-Preise sind feste Fakten) — dann `null`.
+ */
+function historikSatz(input: SteuerungFormelInput): string | null {
+  const relevant =
+    input.tarifneutral === true ||
+    input.tarifArt === 'fest' ||
+    input.tarifArt === 'dynamisch' ||
+    input.tarifPriced === true ||
+    input.plantKind === 'direktvermarktung';
+  return relevant
+    ? 'Bewertet wird immer zu den heute hinterlegten Tarif- und Vergütungsangaben — ' +
+        'ändern sich diese, ändern sich auch zurückliegende Auswertungen.'
+    : null;
 }
 
 /**
@@ -349,11 +411,7 @@ function einspeiseZusatz(input: SteuerungFormelInput): string | null {
  * verschieden ist nur, wie viel wir über die PREISE sagen können.
  */
 export function steuerungFormel(input: SteuerungFormelInput): SteuerungFormel {
-  const bezugKurz = input.tarifneutral
-    ? 'dem Stromtarif der jeweiligen Anlage'
-    : input.tarifArt === 'ohne' || input.tarifArt == null || input.tarifPriced === false
-      ? 'dem Börsenpreis'
-      : 'Ihrem Stromtarif';
+  const bezugKurz = bezugKurzText(input);
 
   const kern =
     'Wir vergleichen jede Viertelstunde Ihre tatsächliche Stromrechnung mit der Rechnung, ' +
@@ -364,9 +422,14 @@ export function steuerungFormel(input: SteuerungFormelInput): SteuerungFormel {
   const zeilen: FormelZeile[] = [
     {
       label: 'Ohne Steuerung',
+      // ⚠ Die Vergleichs-Anlage verbraucht ihren Solarstrom weiterhin DIREKT
+      // (Netting im Slot: `max(load−pv,0) × p − max(pv−load,0) × s`). Der frühere
+      // Satz beschrieb `load × p − pv × s` und wäre für einen nachrechnenden
+      // Kunden eine andere Baseline gewesen (B4).
       text:
-        'Speicher aus, Solarstrom sofort eingespeist: Netzbezug, den das Haus ohne Solarstrom ' +
-        'gebraucht hätte × Bezugspreis − Solarüberschuss × Einspeisepreis.',
+        'Speicher aus, Solarstrom wird direkt verbraucht und der Rest sofort eingespeist: ' +
+        'Netzbezug nach Abzug des direkt verbrauchten Solarstroms × Bezugspreis − ' +
+        'Solarüberschuss × Einspeisepreis.',
     },
     {
       label: 'Mit Steuerung',
@@ -404,6 +467,7 @@ export function steuerungFormel(input: SteuerungFormelInput): SteuerungFormel {
     kern,
     zeilen,
     preise,
+    historik: historikSatz(input),
     hinweis:
       'Diese Zahl ist eine reine Kassenrechnung: Strom, der gerade in den Speicher geladen wurde, ' +
       'zählt noch nicht — sein Wert erscheint erst, wenn er später den Netzbezug ersetzt. ' +
