@@ -36,7 +36,7 @@ import type {
   SiteEarningsBucket,
 } from './api';
 import { coveredSinceLabel, periodLabel } from './anlage';
-import { eurAmount, fmtNum } from './format';
+import { NBSP, eurAmount, fmtNum } from './format';
 import { marktpraemie } from './marktpraemie';
 import type { MoneyStream, MoneyStreamId, StreamPeriod } from './surface';
 
@@ -226,7 +226,7 @@ export function steeringAttributionNote(savedEur: number | null | undefined): st
 /** Unter dieser Menge ist eine Bestandsänderung Messrauschen, keine Aussage. */
 export const BESTAND_KWH_TOTBAND = 0.5;
 
-/** Unter diesem Betrag ist die Bewertung Rundung, keine Aussage. */
+/** Unter diesem Betrag würde die Cent-Anzeige fälschlich auf 0,00 € runden. */
 export const BESTAND_EUR_TOTBAND = 0.005;
 
 /** Die render-fertige Bestandszeile. */
@@ -297,7 +297,7 @@ export function bestandZeile(
   const wert = num(m.speicherWertEur ?? null);
   // Die kWh sind GEMESSEN, der Euro ist PLAN: ohne Bewertung bleibt die
   // gemessene Menge stehen, ohne eine spätere Abrechnung zu versprechen.
-  if (wert == null || Math.abs(wert) < BESTAND_EUR_TOTBAND) {
+  if (wert == null) {
     return {
       text: `${satz} · Planwert noch nicht verfügbar`,
       badge: null,
@@ -306,11 +306,16 @@ export function bestandZeile(
       wertEur: wert,
     };
   }
+  const absolut = Math.abs(wert);
+  const betrag =
+    absolut > 0 && absolut < BESTAND_EUR_TOTBAND
+      ? `< 0,01${NBSP}€`
+      : eurAmount(absolut);
   return {
     // Die Richtung steht bereits unmissverständlich im Verb. Ein Vorzeichen
     // am Eurobetrag sähe unter „Verdient" wie ein Zu- oder Abzug aus, obwohl
     // der Planwert ausdrücklich NICHT in dieser Zahl verrechnet wird.
-    text: `${satz} · Planwert ${eurAmount(Math.abs(wert))}`,
+    text: `${satz} · Planwert ${betrag}`,
     badge: BESTAND_BADGE,
     titel: bestandTitel(m.speicherWertBasis ?? null, num(m.speicherWertCtKwh ?? null)),
     deltaKwh: delta,

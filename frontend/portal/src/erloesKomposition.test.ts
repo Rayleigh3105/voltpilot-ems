@@ -940,9 +940,11 @@ describe('bestandZeile', () => {
     expect(bestandZeile({ ...laufenderTag, speicherDeltaKwh: null }, JETZT)).toBeNull();
   });
 
-  it('rundet einen Euro im Rauschen weg, ohne die Menge zu verlieren', () => {
+  it('zeigt einen belegten Planwert unter einem Cent als solchen', () => {
     const z = bestandZeile({ ...laufenderTag, speicherWertEur: 0.001 }, JETZT);
-    expect(z?.text).toContain('Planwert noch nicht verfügbar');
+    expect(z?.text).toContain(`Planwert < 0,01${NBSP}€`);
+    expect(z?.badge).toBe('Kein Abzug');
+    expect(z?.titel).toContain('wird nicht vom Verdienst abgezogen');
     expect(z?.deltaKwh).toBeCloseTo(44.2, 6);
   });
 });
