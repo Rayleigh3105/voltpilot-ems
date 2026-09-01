@@ -1070,11 +1070,8 @@ export function FahrplanSection({ site }: { site: Site }) {
           </InfoTip>
         </div>
         <ChartSubtitle>
-          Zwei Bilder über einer Zeitachse: oben der Preis, unten was Ihr Speicher tut,
-          darunter das Phasen-Band des ganzen Tages. Die Fläche im Preis-Bild ist die
-          Spanne zwischen Bezugspreis und Einspeisewert – sie ist der Grund fürs Laden
-          und Entladen. Alles links vom „Jetzt“ ist bereits vergangen; eine Viertelstunde
-          antippen zeigt das Warum.
+          Oben der Preis, unten Ihr Speicher, darunter das Phasen-Band -
+          tippen Sie eine Spalte fürs Warum.
         </ChartSubtitle>
         <ScheduleChart
           plan={plan!}
