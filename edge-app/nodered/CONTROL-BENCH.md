@@ -838,6 +838,129 @@ Punkt 2 oder 5 heißt: **dieser Säulen-Typ bleibt draußen**, denn ohne
 Watt-Grenzen oder ohne wirksamen Ablauf gibt es keinen Schutz, auf den man
 sich verlassen könnte.
 
+## Netz-Sollwert-Test (Deye netzseitig, `1104 = 2`) — Live-Protokoll
+
+Der begrenzte, armierte Testpfad auf `:8484` („Netz-Sollwert-Test"). Er klärt,
+ob der Deye seine EIGENE PV über den netzseitigen Fernsteuermodus regeln kann —
+die Größe, die unser Fronius-Abregelweg strukturell nicht erreicht. Konzept:
+Scout `vp-deye-netzseitig-drossel-k2` §3; die Registerlage steht in
+[`DEYE.md`](DEYE.md) → „Fernsteuerung: drei Regelseiten".
+
+**⚠ Das ist ein TEST, kein Produktivpfad.** Es gibt keinen automatischen
+Eintritt aus dem Fahrplan. Der Lauf ist manuell armiert, auf **120 s** begrenzt
+(AC-Probe: 60 s), betreiber-gesperrt (Kennwort) und kehrt von selbst zurück —
+und unabhängig davon fällt der Wechselrichter nach **60 s** über seinen eigenen
+Totmann (`1101`) zurück, falls die Box verstummt.
+
+### Vorbereitung — die Karte verweigert sonst (§3.1)
+
+Jede Bedingung wird EINZELN beurteilt und mit ihrem Grund angezeigt; keine ist
+übergehbar.
+
+| Bedingung | Wert | warum |
+|---|---|---|
+| Fernsteuerpfad | Deye meldet `control_path = remote` | der ToU-Rückfall kennt diesen Modus nicht |
+| Freigabe + Not-Aus | Modell freigegeben, `VP_CONTROL_ENABLED` an | **der Test umgeht KEIN Tor** (anders als die First-Light-Kalibrierung, die bewusst die Zertifizierung umgeht) |
+| Sonne stabil | Anlagen-PV **≥ 25 kW**, Deye-Anteil **≥ 8 kW**, **≥ 60 s** ohne Sprung > 3 kW | eine Drosselung muss sich von einer Wolke unterscheiden lassen (die zwei Fehlpositive der Fronius-Freigabe) |
+| Einspeisung | **≥ 4 kW** | darunter gibt es weder einen Halte-Punkt noch einen unterscheidbaren 2-kW-Schritt |
+| Ladestand | **25–80 %** | nicht voll (sonst sieht man nur PV-Drosselung, nicht die Reihenfolge), nicht am Boden (der Netzmodus **kann entladen**) |
+| Fahrplan | Batterie-Sollwert ≥ 0 im laufenden **und** im nächsten Slot; kein Selbstregel-Slot | ein Entlade-Slot widerspricht dem Modus |
+| Fronius | beide freigegeben, `all_match`, kein `possible_override` | die Fronius-Kappen müssen während des Tests **stehen bleiben** — sie sind zugleich die Umgebungs-Referenz |
+| Messwerte | jünger als **15 s** | blind wird nicht geregelt |
+| Uhrzeit | 11:00–14:00 lokal, klarer Himmel, ruhiges Haus | Solar-Mittag, Deye-Anteil hoch, keine Blocklast erwartet |
+| Aufsicht | Kapitän auf `:8484` (löst aus, bricht ab), Crew am Tunnel mit dem Poller | zwei Augenpaare |
+
+**Vorher notieren** (Sonde, read-only): `1100`, `1101`, `1104`, `1105`, `1109`,
+**`1110`**, **`1115`**, `1121` sowie `0x00E7` und `0x0154`. Der Ausgangswert von
+`1115` ist der wichtigste — beim Piloten stand er auf **1000** (siehe T8).
+
+### Ablauf (§3.2) — alles FC16, je Register EINE Transaktion
+
+Der Testpfad fährt die Schritte selbst; der Totmann wird in **jedem** Takt neu
+gespannt, und `1100` steht in jedem Takt am Ende.
+
+| # | Schritt | geschrieben | erwartet | Dauer |
+|---|---|---|---|---|
+| 0 | — | nichts | Ausgangswerte notiert (E0 Netz, D0 Deye-MPPT, F0 Fronius je Einheit, B0 Batterie, SoC) | 10 s |
+| 1 | **Neutral** | `1109 ← 0` (batterieseitig) | Batterie → 0 kW binnen 10 s; der Export ändert sich um B0 | 20 s |
+| 2 | **Halten** | `1109 ← 0` → `1104 ← 2` → `1109 ← −round(E0/P_nenn × 1000)` | **nichts bewegt sich** (± 2 kW). Wandert der Netzpunkt Richtung BEZUG → **Vorzeichen falsch → Abbruch** | 20 s |
+| 3 | **PV-Kappe** | `1115 ← 999` | Rücklesen 999 (Captain-Entscheid E5: eigener Schritt, nach der Beobachtung mit 1000) | 5 s |
+| 4 | **Kleiner Schritt** | Ziel `−(E0 − 2 kW)` | Export sinkt um ≈ 2 kW binnen ≤ 10 s; Batterie lädt +2 kW **oder** Deye-MPPT −2 kW; **Fronius unverändert** | 30 s |
+| 5 | **Null-Export** | Ziel `0` | Batterie lädt (Rampe messen) bis Limit/voll → **dann** sinkt die Deye-MPPT; Export → 0 ± 0,5 kW. Bleibt Export > 0, weil Fronius − Haus > 0: **erwartet**, protokollieren | 45 s |
+| 6 | **Rückkehr** | `1109 ← 0` → `1104 ← 1` | Deye-PV kommt binnen ≤ 30 s zurück, `1104` liest 1 | 30 s |
+
+Gesamt netzseitig **≤ 120 s**. Die **AC-Probe** (Captain-Entscheid E1) ist ein
+EIGENER, zweiter Durchgang von 60 s mit `1104 ← 0` und Ziel = gemessene
+Deye-PV minus 2 kW — sie verlängert das netzseitige Fenster nie.
+
+### Messgrößen im 3–5-s-Takt (§3.3, alles lesend)
+
+| Größe | Quelle |
+|---|---|
+| Export/Bezug am Netzpunkt | Modbus-Spiegel Unit 100 Reg 8/9 · `/api/state.last_reading.power_kw` |
+| Deye-MPPT | Unit 1 `0x02A0..0x02A3` (×10 W, HV); V/I `0x02A4..` als Kreuzprobe |
+| Batterie / Ladestand | Unit 1 `0x024E` (signed, ×10) / `0x024C` |
+| Fronius je Einheit | `/api/sources` (`pv_kw`) · `/api/curtail` (`live_pv_kw`, Kappe, `all_match`) |
+| Fernsteuer-Register | `/api/curtail/grid-test` (der laufende Schritt + die Rücklesungen) · `/api/state.control.registers` · `remote_status_raw` = `1121` |
+| `1110`, `1115` | Sonde vor und nach dem Test |
+| Zeitstempel je Schreibvorgang | `docker compose logs nodered` (die Roh-Frame-Zeile des Executors) |
+
+### Erfolgskriterien je These (§3.4)
+
+| These | bestanden, wenn |
+|---|---|
+| **T1** Umschalten bei `1100 = 1` | `1104` liest 2 **und** Schritt 4 wirkt |
+| **T2** Vorzeichen | Halten bewegt nichts; Schritt 4 **senkt** den Export |
+| **T3** Skala | ΔExport ≈ ΔZiel ± 0,5 kW beim 2-kW-Schritt |
+| **T4** Reihenfolge | Schritt 5: erst steigt die Batterie-Ladung, die Deye-MPPT bleibt; erst bei Ladelimit/voll sinkt sie. **Fronius ± 1 kW unverändert** |
+| **T5** Dynamik | Export im Band Ziel ± 0,5 kW binnen ≤ 10 s, kein Überschwingen > 3 kW |
+| **T6** Rückkehr | Deye-MPPT ≥ 90 % von D0 (wolkenbereinigt über die Fronius-Referenz) binnen 30 s |
+| **T7** `1121` | Wert notiert — **kein** Kriterium |
+| **T8** `1115` | mit 1000: MPPT fällt beim Umschalten auf ≈ 0 (→ 999 ist Pflicht) **oder** bleibt (These für HV falsch) |
+| **T10** | Export nie > 33 kW über den ganzen Test |
+
+**⚠ Der Nachweis ist ein PLATEAU am Ziel, nie ein einzelner Treffer** — drei
+aufeinanderfolgende, register-gedeckte Messwerte im Band, während die
+Fronius-Referenz klar darüber liegt. Fällt die Referenz um mehr als 30 %, lautet
+das Urteil **„nicht beweisbar"** (eine Aussage über das Wetter, nie über den
+Wechselrichter): wiederholen, nicht werten. Es ist dieselbe Regel, die die
+Fronius-Freigabe nach zwei Fehlpositiven bekommen hat.
+
+### Abbruch (§3.5)
+
+Taste **„Abbrechen"** = `1109 ← 0`, dann `1104 ← 1`; Rückhalt letzter Instanz
+ist der Totmann. Der Testpfad bricht **von selbst** ab bei:
+
+- Export > 33 kW oder Bezug > 5 kW, das nicht binnen 10 s zurückgeht
+- Batterie |P| > 25 kW, Ladestand < 20 % oder > 95 %
+- **zwei** Rücklese-Zyklen `mismatch` auf `1104`/`1109`/`1100`
+- Telemetrie älter als 15 s
+- Fronius meldet `mismatch`/`possible_override` (ein fremder Regler wacht auf)
+
+**⚠ Ein FEHLGESCHLAGENER Schreibvorgang hebt die Rückkehr nicht auf.** Das
+automatische Aus wird armiert, **bevor** geschrieben wird — ein Schreibvorgang
+kann angekommen sein und nur seine Antwort verloren haben.
+
+### Was der Test NICHT tut
+
+- Er ändert **kein** Installateur-Register (`0x00E7`, `0x0154`, `0x008F`, ToU) —
+  es gibt nichts zurückzustellen. Alles liegt in 1100–1121 (RAM).
+- Er kommandiert **nie ein Ziel über 0** (kein Bezugs-Ziel → der Deye kann die
+  Batterie nicht aus dem Netz laden).
+- Er rührt die Fronius-Kappen nicht an: die geplante Abregelung reist
+  unverändert weiter, sonst gäbe der Test genau die Drosselung frei, gegen die
+  er misst.
+- Er weitet **keine** Familien-Allowlist. `hybrid_3p` bleibt aus
+  `CERTIFIED_CONTROL_FAMILIES` heraus; der Testpfad hängt an der First-Light-
+  Freigabe **dieses** Geräts.
+
+### Freigabe
+
+Es gibt hier **keine** Freigabe zu erteilen: der Test beantwortet T1–T8, mehr
+nicht. Ein produktiver Netzmodus (Eintritt aus dem Fahrplan, Zusammenspiel mit
+Einspeisewächter und `curtailtrack`) ist ein eigener, späterer Schritt und
+braucht die Messwerte aus diesem Protokoll als Grundlage.
+
 ## Siehe auch
 
 - [`../test/e2e-ocpp.sh`](../test/e2e-ocpp.sh) — das Lastmanagement-Rig (L1–L5,

@@ -189,6 +189,18 @@ type CalibrationController interface {
 	CurtailAbort() curtailcal.View
 	CurtailCertify(sourceID string) (curtailcal.View, error)
 	CurtailDecertify(sourceID string) (curtailcal.View, error)
+
+	// Netz-Sollwert-Test (Konzept `vp-deye-netzseitig-drossel-k2` P1): die
+	// armierte, TTL-begrenzte, sich selbst zuruecknehmende Probe des
+	// NETZSEITIGEN Deye-Fernsteuermodus (Register 1104 = 2). Dieselbe Bauform
+	// und dasselbe Tor wie die zwei Flaechen darueber - und ausdruecklich KEIN
+	// Produktivpfad: es gibt keinen anderen Eintritt in diesen Modus als
+	// GridTestStart, er laeuft hoechstens curtailcal.GridDefaultTTL, und er
+	// FREI GIBT nichts (es gibt keine Zertifizierung an dieser Stelle).
+	// Ein *curtailcal.ValidationError ist ein 400.
+	GridTestSnapshot() curtailcal.GridView
+	GridTestStart(mode string) (curtailcal.GridView, error)
+	GridTestAbort() curtailcal.GridView
 }
 
 // OtaController is the supervised half of OTA Stufe 2 „Verteilen": the box
@@ -932,6 +944,47 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		}
 		v, err := cal.CurtailDecertify(req.SourceID)
 		curtailResult(w, v, err)
+	}))
+
+	// --- Netz-Sollwert-Test (Deye netzseitig, 1104 = 2) ----------------------
+	// Derselbe Umgang wie bei der Abregel-Freigabe: der Blick ist offen, jede
+	// Mutation liegt hinter dem Betreiber-Kennwort (calGuard). Der Test
+	// schaltet NICHTS frei - er beantwortet nur, ob dieses Geraet den
+	// netzseitigen Modus wirklich faehrt.
+	gridResult := func(w http.ResponseWriter, v curtailcal.GridView, err error) {
+		if err != nil {
+			var ve *curtailcal.ValidationError
+			if errors.As(err, &ve) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg, "grid_test": v})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Die Aktion konnte nicht ausgeführt werden."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"grid_test": v})
+	}
+	// GET /api/curtail/grid-test - Voraussetzungen (einzeln beurteilt), der
+	// laufende Schritt und der Beweis des juengsten Laufs. Die Karte pollt das.
+	mux.HandleFunc("GET /api/curtail/grid-test", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"grid_test": cal.GridTestSnapshot()})
+	})
+	// POST /api/curtail/grid-test {mode?} - den begrenzten Lauf armieren
+	// ("grid" = netzseitig, Vorgabe; "ac" = die AC-seitige 60-s-Probe).
+	mux.HandleFunc("POST /api/curtail/grid-test", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Mode string `json:"mode"`
+		}
+		// Ein leerer Rumpf ist gueltig und bedeutet „netzseitig" - der
+		// Normalfall braucht keine Angabe.
+		_ = readBody(r, &req)
+		v, err := cal.GridTestStart(req.Mode)
+		gridResult(w, v, err)
+	}))
+	// POST /api/curtail/grid-test/abort - sofort zuruecknehmen (1109 ← 0,
+	// dann 1104 ← 1). Der Totmann im Wechselrichter bleibt der Rueckhalt
+	// letzter Instanz.
+	mux.HandleFunc("POST /api/curtail/grid-test/abort", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"grid_test": cal.GridTestAbort()})
 	}))
 
 	// GET /api/ota/target - was hat das Portal dieser Box zugewiesen, und hat

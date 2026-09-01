@@ -193,6 +193,11 @@ type fakeCalibration struct {
 	curtailAborts        int
 	lastCurtailCertify   string
 	lastCurtailDecertify string
+	gridView             curtailcal.GridView
+	gridErr              error
+	lastGridMode         string
+	gridStarts           int
+	gridAborts           int
 }
 
 func (f *fakeCalibration) CalibrationSnapshot() calibration.Snapshot { return f.snap }
@@ -212,6 +217,19 @@ func (f *fakeCalibration) CurtailCertify(sourceID string) (curtailcal.View, erro
 func (f *fakeCalibration) CurtailDecertify(sourceID string) (curtailcal.View, error) {
 	f.lastCurtailDecertify = sourceID
 	return f.curtailView, f.curtailErr
+}
+
+// Der Netz-Sollwert-Test (Deye netzseitig). Der Fake merkt sich die Aufrufe;
+// gridErr treibt die 400-Abbildung.
+func (f *fakeCalibration) GridTestSnapshot() curtailcal.GridView { return f.gridView }
+func (f *fakeCalibration) GridTestStart(mode string) (curtailcal.GridView, error) {
+	f.lastGridMode = mode
+	f.gridStarts++
+	return f.gridView, f.gridErr
+}
+func (f *fakeCalibration) GridTestAbort() curtailcal.GridView {
+	f.gridAborts++
+	return f.gridView
 }
 func (f *fakeCalibration) CalibrationAdminSecret() string { return f.adminSecret }
 func (f *fakeCalibration) CalibrationArm(armed bool) (calibration.Snapshot, error) {
@@ -4215,5 +4233,150 @@ func TestPortalManagedRefusalIsAHintNotAServerError(t *testing.T) {
 	defer resp2.Body.Close()
 	if resp2.StatusCode != http.StatusInternalServerError {
 		t.Errorf("unbekannter Fehler: status = %d, want 500", resp2.StatusCode)
+	}
+}
+
+// --- Netz-Sollwert-Test (Konzept `vp-deye-netzseitig-drossel-k2` P1) ----------
+
+func gridTestServer(t *testing.T, fc *fakeCalibration) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, fc,
+		&fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// ⚠ Die Nur-Lese-Sicht bleibt offen (wie GET /api/calibration), JEDE Handlung
+// haengt am Betreiber-Kennwort - und eine abgewiesene Anfrage erreicht den
+// Controller nie.
+func TestGridTestRoutesAreOpenToReadAndGuardedToAct(t *testing.T) {
+	const secret = "geheim-123"
+	fc := &fakeCalibration{adminSecret: secret, gridView: curtailcal.GridView{Supported: true, Available: true}}
+	srv := gridTestServer(t, fc)
+
+	r, err := http.Get(srv.URL + "/api/curtail/grid-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/curtail/grid-test muss offen bleiben, war %d", r.StatusCode)
+	}
+	var got struct {
+		GridTest curtailcal.GridView `json:"grid_test"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+		t.Fatalf("die Sicht muss JSON sein: %v", err)
+	}
+	if !got.GridTest.Supported {
+		t.Fatal("die Sicht wird durchgereicht, nicht neu gebaut")
+	}
+
+	post := func(path, tok, body string) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if tok != "" {
+			req.Header.Set("X-VP-Calibration-Token", tok)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	for _, path := range []string{"/api/curtail/grid-test", "/api/curtail/grid-test/abort"} {
+		resp := post(path, "", `{"mode":"grid"}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("POST %s ohne Kennwort: %d, erwartet 401", path, resp.StatusCode)
+		}
+		resp = post(path, "falsch", `{"mode":"grid"}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("POST %s mit falschem Kennwort: %d, erwartet 401", path, resp.StatusCode)
+		}
+	}
+	if fc.gridStarts != 0 || fc.gridAborts != 0 {
+		t.Fatal("eine abgewiesene Anfrage darf den Controller nie erreichen")
+	}
+
+	// Mit Kennwort geht beides durch, und der Modus wird DURCHGEREICHT.
+	resp := post("/api/curtail/grid-test", secret, `{"mode":"ac"}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("armieren: %d", resp.StatusCode)
+	}
+	if fc.gridStarts != 1 || fc.lastGridMode != "ac" {
+		t.Fatalf("der Modus muss ankommen: starts=%d mode=%q", fc.gridStarts, fc.lastGridMode)
+	}
+	resp = post("/api/curtail/grid-test/abort", secret, `{}`)
+	resp.Body.Close()
+	if fc.gridAborts != 1 {
+		t.Fatalf("der Abbruch muss ankommen: %d", fc.gridAborts)
+	}
+}
+
+// Eine Ablehnung ist ein GRUND, kein nackter Status - die Karte muss ihn zeigen
+// koennen, und die Sicht reist mit (sonst stuende der Knopf ohne Erklaerung da).
+func TestGridTestRefusalCarriesItsGermanReasonAndTheView(t *testing.T) {
+	fc := &fakeCalibration{
+		gridErr:  &curtailcal.ValidationError{Msg: "Die Erzeugung schwankt gerade."},
+		gridView: curtailcal.GridView{Supported: true},
+	}
+	srv := gridTestServer(t, fc)
+	req, _ := http.NewRequest("POST", srv.URL+"/api/curtail/grid-test", strings.NewReader(`{"mode":"grid"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("eine Ablehnung ist 400, war %d", resp.StatusCode)
+	}
+	var body struct {
+		Error    string              `json:"error"`
+		GridTest curtailcal.GridView `json:"grid_test"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body.Error, "Erzeugung schwankt") {
+		t.Fatalf("der deutsche Grund muss durchgereicht werden: %q", body.Error)
+	}
+	if !body.GridTest.Supported {
+		t.Fatal("die Sicht reist mit der Ablehnung")
+	}
+}
+
+// ⚠ `static/*` ist //go:embed-t: ohne diesen Waechter koennte die Karte im
+// Repo stehen und im ausgelieferten Binaer fehlen.
+func TestGridTestCardIsServedAndWired(t *testing.T) {
+	srv := gridTestServer(t, &fakeCalibration{})
+	for _, tc := range []struct {
+		path    string
+		needles []string
+	}{
+		{"/gridtest.js", []string{"VPGridTest", "/api/curtail/grid-test", "vp.cal.token"}},
+		{"/einrichten.html", []string{`id="gridTestCard"`, `src="gridtest.js"`, `id="gridTestBody"`}},
+	} {
+		r, err := http.Get(srv.URL + tc.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		if r.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s: %d", tc.path, r.StatusCode)
+		}
+		for _, n := range tc.needles {
+			if !strings.Contains(string(b), n) {
+				t.Fatalf("%s traegt %q nicht", tc.path, n)
+			}
+		}
 	}
 }

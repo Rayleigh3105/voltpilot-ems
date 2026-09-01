@@ -82,6 +82,12 @@ const VALUE_RANGE = {
   power_control_mode: [0, 2], // 1104: 0 AC-side, 1 battery-side, 2 grid-side
   battery_strategy: [0, 5], // 1105: 0..5 (2 = Power, 5 = Power+SOC)
   battery_soc_belt: [0, 100], // 1108: percent
+  // 1115 (die maximale eigene PV-Leistung im netz-/AC-seitigen Modus, 0,1 %
+  // der Nennleistung): dieselbe +/-1200er-Skalenfamilie wie 1109, also ist
+  // alles darueber - insbesondere 0xFFFF - ein Fuellwert des Loggers und keine
+  // Antwort. Der Netz-Sollwert-Test schreibt hier nur 999; die Toleranz filtert
+  // ausschliesslich den Fuellwert, verglichen wird weiterhin exakt.
+  pv_max_permille: [0, 1200], // 1115
   // 1101 (watchdog) deliberately has NO range entry: 0xFFFF is its DOCUMENTED
   // "off" sentinel, so it is a real (and alarming) value there, not a filler. The
   // countdown rule + the core's debounce cover a one-off substitution.

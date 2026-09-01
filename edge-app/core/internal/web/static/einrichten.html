@@ -501,7 +501,30 @@
           </div>
         </section>
 
-        
+        <!-- Netz-Sollwert-Test (Konzept `vp-deye-netzseitig-drossel-k2` P1).
+             Der begrenzte, armierte, selbst zurueckfallende Testpfad fuer die
+             NETZSEITIGE Regelseite des Deye (Register 1104 = 2). Er ist ein
+             TEST, kein Produktivpfad: kein Fahrplan betritt den Modus, der Lauf
+             endet nach spaetestens 120 s von selbst, und die Karte erscheint
+             nur, wo ein Deye auf dem Fernsteuerpfad haengt. -->
+        <section class="card" id="gridTestCard" hidden>
+          <div class="chart-head">
+            <h3 class="chart-title"><span class="ico" style="background:var(--grid-soft, var(--bg-2));color:var(--grid-c, #7a8aa0)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M6 8h12M6 8l-2 14M18 8l2 14M9 8v14M15 8v14"/></svg></span>Netz-Sollwert-Test</h3>
+          </div>
+          <p class="cal-hint" id="gridTestIntro">
+            Ein kurzer, beaufsichtigter Test: der Wechselrichter wird fuer hoechstens
+            zwei Minuten auf die <strong>netzseitige</strong> Regelseite umgeschaltet und
+            bekommt einen Sollwert fuer den Netzanschlusspunkt. Der Lauf faellt von
+            selbst auf die Batterieseite zurueck - auch wenn niemand mehr zusieht.
+            Danach ist belegt, ob dieses Geraet netzseitig wirklich regelt.
+          </p>
+          <p class="cal-err" id="gridTestErr" hidden></p>
+          <div id="gridTestBody"></div>
+          <div class="ctrl-summary muted" id="gridTestEmpty" hidden>
+            <p id="gridTestEmptyText"></p>
+          </div>
+        </section>
+
       </div>
     </div>
 
@@ -945,6 +968,7 @@
   <script src="control.js"></script>
   <script src="calibration.js"></script>
   <script src="curtail.js"></script>
+  <script src="gridtest.js"></script>
   <script src="ocpp.js"></script>
   <script src="einrichten.js"></script>
 </body>

@@ -164,7 +164,16 @@ type Agent struct {
 	// power (the verdict's before/after cross-check input), guarded by a.mu
 	// alongside lastReading (read into a local before taking calMu, so the two
 	// locks never nest).
-	lastBattKw  *float64
+	lastBattKw *float64
+	// lastGridKw ist die zuletzt akzeptierte GEMESSENE Netzleistung am
+	// Verknuepfungspunkt (+ Bezug / − Einspeisung) - der VERBUND-Wert nach den
+	// Toren und nach der Mehr-Quellen-Faltung, also derselbe, mit dem der
+	// Einspeisewaechter und der Lastspitzen-Zaehler rechnen. `guards.Reading`
+	// fuehrt ihn nicht (es ist die Guard-Sicht), `state.LastReading` ist die
+	// des PRIMAERgeraets - fuer eine Aussage ueber den Netzpunkt taugt keines
+	// von beiden. nil = nie gemessen, nie eine erfundene 0. Unter a.mu wie
+	// lastReading/lastBattKw.
+	lastGridKw  *float64
 	calMu       sync.Mutex
 	cal         *calibration.Session
 	calWatchdog *time.Timer
@@ -195,6 +204,21 @@ type Agent struct {
 	// exportLogKey deduplicates the feed-in watchdog's log line: it is written on
 	// a state CHANGE, never per tick (the OTA-blocker lesson).
 	exportLogKey string
+
+	// Netz-Sollwert-Test (agent/gridtest.go, Konzept `vp-deye-netzseitig-drossel-k2`
+	// P1): die armierte, TTL-begrenzte Probe des NETZSEITIGEN Deye-Fernsteuermodus
+	// (1104 = 2). gridCal ist der reine Zustandsautomat, gridWatchdog die
+	// Selbst-Ruecknahme, gridPv der PV-Stabilitaets-Beobachter der Voraussetzung
+	// „Sonne stabil" - alle unter gridMu (nie mit calMu oder curtailMu verschachtelt).
+	//
+	// ⚠ Er ist ein TESTPFAD, kein Produktivpfad: er wird von Hand armiert, laeuft
+	// hoechstens curtailcal.GridDefaultTTL und kehrt danach von selbst auf die
+	// batterieseitige Regelung zurueck. Es gibt keinen Weg aus einem Fahrplan-Slot
+	// hierher.
+	gridMu       sync.Mutex
+	gridCal      *curtailcal.GridSession
+	gridWatchdog *time.Timer
+	gridPv       curtailcal.GridPvTracker
 
 	// OCPP charge points (agent/ocpp.go). nil while VP_OCPP_ENABLED is off,
 	// which is the default - the box then behaves byte-for-byte as it did
@@ -585,6 +609,7 @@ func New(cfg config.Config) (*Agent, error) {
 		calPath:      map[string]string{},
 		curtailCal:   curtailcal.New(0),
 		curtailCert:  map[string]bool{},
+		gridCal:      curtailcal.NewGrid(),
 		curtailUnits: map[string]state.CurtailUnit{},
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
@@ -1510,6 +1535,14 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		v := *battKw
 		a.lastBattKw = &v
 	}
+	// Der gemessene Netzpunkt (Verbund, nach den Toren): der Netz-Sollwert-Test
+	// braucht ihn fuer seine Voraussetzung und sein Halte-Ziel, und er ist
+	// dieselbe Groesse, die Einspeisewaechter und Lastspitzen-Zaehler unten
+	// bekommen. Ein Sample ohne power_kw laesst den letzten Wert stehen - die
+	// Frische traegt lastReadingAt.
+	if p := ptr("power_kw"); p != nil {
+		a.lastGridKw = p
+	}
 	a.mu.Unlock()
 
 	// Feed the PS-3 peak tracker with the gated composite site grid (a despiked
@@ -1553,6 +1586,12 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// battKw is passed EXPLICITLY - it is not in `measurements` (see the parse
 	// above: it is an internal channel, never a published one).
 	a.ocppObserve(ts, measurements, battKw)
+
+	// Netz-Sollwert-Test (agent/gridtest.go): der PV-Stabilitaets-Beobachter
+	// laeuft IMMER (die Voraussetzung „Sonne stabil" muss schon VOR dem
+	// Armieren beantwortbar sein), der Zustandsautomat nur waehrend eines
+	// Laufs. Ohne Test kostet das eine Zuweisung.
+	a.gridObserve(ts, measurements, battKw)
 
 	// While the device is removed (unclaimed) in the cloud, the local dashboard
 	// stays fully alive (guard reading, history ring, KPIs below) but the
@@ -2201,6 +2240,16 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		a.cal.SetControlPath(m.ControlPath)
 		a.calMu.Unlock()
 	}
+	// Netz-Sollwert-Test: derselbe Gedanke, dieselben zwei Ausschluesse. Nur
+	// ein Zyklus DIESER Quelle zaehlt (ein fremder Zyklus wuerde einen fremden
+	// Schreibvorgang als Beweis verbuchen), ein BLOCKIERTER hat nichts
+	// geschrieben, und ein UNBESTAETIGTER ist keine Aussage - er darf den Test
+	// weder bestaetigen noch abbrechen (die Regel des ganzen Hauses:
+	// „nicht bestaetigt" ist nicht „abgelehnt").
+	if !m.Blocked && cycle != controlCycleUnconfirmed &&
+		strings.EqualFold(strings.TrimSpace(m.Source), gridTestSource) {
+		a.gridNoteReadback(cycle == controlCycleHeld, checkedAt)
+	}
 	// Sticky-path backfill (2026-07-28): a NORMAL driving readback names the surface
 	// a device-granted family is actually controlled on. For a grant certified before
 	// the path field existed (the live pilot) this records the proven path ONCE, so
@@ -2333,6 +2382,21 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// A bounded First-Light write owns the inverter for its TTL, so no
 		// economic execution mode may carry an armed state across it.
 		a.native.Release()
+		return
+	}
+
+	// Netz-Sollwert-Test (agent/gridtest.go, Konzept `vp-deye-netzseitig-drossel-k2`
+	// P1): waehrend ein armierter Lauf steht - einschliesslich seiner
+	// Rueckkehr -, veroeffentlicht der Testpfad den Sollwert STATT des
+	// Plan-/Arbiter-Wertes. Er kommt NACH der Kalibrierung, weil ein
+	// First-Light-Test das Geraet bereits fuer seine TTL besitzt und die
+	// beiden nie gleichzeitig scharf sein duerfen; er kommt VOR allem
+	// Uebrigen, weil er den Sollwert vollstaendig uebernimmt.
+	//
+	// ⚠ Er umgeht KEIN Tor: Not-Aus, Zertifizierung und Fernsteuerpfad sind
+	// Voraussetzungen des Armierens (curtailcal.GridSession.Start), nicht
+	// Dinge, die er beiseiteschiebt.
+	if a.gridTestOverride(now, p) {
 		return
 	}
 

@@ -1941,3 +1941,70 @@ test('the inline native planner refuses every tier it does not cover', () => {
   assert.notStrictEqual(touOut && touOut.mode, 'native',
     'Deye ToU has no native primitive - the follower carries the slot');
 });
+
+// --- Netz-Sollwert-Test: die INLINE-Kopie == das Modul ------------------------
+//
+// ⚠ Der Plan-Knoten traegt eine HANDGEPFLEGTE Kopie von `controlRoute` (ein
+// Node-RED-Flow kann keine Repo-Datei `require`n). Ein Testpfad, dessen
+// Inline-Kopie driftet, schriebe im Feld eine ANDERE Reihenfolge als die, die
+// hier bewiesen ist - deshalb wird jeder Schritt einzeln verglichen.
+test('flow control planner matches deyeRemoteControl() for EVERY grid-test step', () => {
+  const cap = ownerCap();
+  const capKey = controlRouting.deyeCapabilityKey('192.168.254.210', 8899);
+  const fresh = new Date().toISOString();
+  const steps = [
+    { step: 'neutral', side: 'battery', target_kw: 0, neutralize: false },
+    { step: 'halten', side: 'grid', target_kw: -24.9, neutralize: true },
+    { step: 'pv_kappe', side: 'grid', target_kw: -24.9, pv_cap_permille: 999 },
+    { step: 'schritt', side: 'grid', target_kw: -22.9, pv_cap_permille: 999 },
+    { step: 'null_export', side: 'grid', target_kw: 0, pv_cap_permille: 999 },
+    { step: 'ac_probe', side: 'ac', target_kw: 19, neutralize: true, pv_cap_permille: 999 },
+    { step: 'rueckkehr', side: 'battery', target_kw: 0, neutralize: true },
+  ];
+  for (const gt of steps) {
+    const sp = {
+      battery_setpoint_kw: 0, source: 'grid-test', ts: fresh,
+      control_enabled: true, device_certified: true, grid_charge_allowed: false,
+      soc_min_pct: 20, soc_max_pct: 95, grid_test: { mode: 'grid', ...gt },
+    };
+    const { msg } = runFunctionNode(byId['auto-control-plan'].func, {
+      msg: { setpoint: sp }, flow: { inverter_config: REMOTE_DEYE_SEL, [capKey]: cap }, context: {},
+    });
+    // ⚠ Beide Seiten durch einen JSON-Rundlauf: Objekte, die der vm-Kontext
+    // baut, tragen SEINE Prototypen - `deepStrictEqual` faellt sonst ueber
+    // byte-gleiche Werte (die dokumentierte vm-Realm-Falle).
+    assert.deepStrictEqual(
+      JSON.parse(JSON.stringify(msg.control)),
+      JSON.parse(JSON.stringify(
+        controlRouting.controlRoute(REMOTE_DEYE_SEL, sp, { ratedKw: 30, deye: cap }),
+      )),
+      'inline == module fuer Schritt ' + gt.step,
+    );
+    // Und die tragende Reihenfolge ueberlebt das Einbetten.
+    assert.strictEqual(msg.control.writes[0].role, 'remote_watchdog', 'Totmann zuerst');
+    assert.strictEqual(msg.control.writes[msg.control.writes.length - 1].role, 'remote_mode', 'Enable zuletzt');
+    if (gt.neutralize) {
+      assert.strictEqual(msg.control.writes[1].role, 'grid_neutral',
+        'der Neutralschritt steht VOR der Regelseite');
+    }
+  }
+});
+
+// Ohne den Block bleibt der Plan-Knoten Zeichen fuer Zeichen der gewohnte - die
+// Kompatibilitaets-Zusage des ganzen Testpfads.
+test('ohne grid_test plant der Knoten byte-identisch wie vorher', () => {
+  const cap = ownerCap();
+  const capKey = controlRouting.deyeCapabilityKey('192.168.254.210', 8899);
+  const sp = { battery_setpoint_kw: -20, source: 'schedule', ts: new Date().toISOString(),
+    control_enabled: true, device_certified: true, soc_min_pct: 20, soc_max_pct: 95 };
+  const { msg } = runFunctionNode(byId['auto-control-plan'].func, {
+    msg: { setpoint: sp }, flow: { inverter_config: REMOTE_DEYE_SEL, [capKey]: cap }, context: {},
+  });
+  assert.strictEqual(msg.control.gridTest, undefined);
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(msg.control)),
+    JSON.parse(JSON.stringify(
+      controlRouting.controlRoute(REMOTE_DEYE_SEL, sp, { ratedKw: 30, deye: cap }),
+    )),
+  );
+});

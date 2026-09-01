@@ -1784,6 +1784,13 @@ const DEYE_REMOTE_REG = {
   batteryStrategy: 0x0451, // 1105 R/W 0..5 (2 = Power, 5 = Power+SOC)
   constantSoc: 0x0454, // 1108 R/W 0..100 % - the on-device floor/ceiling for strategy 5
   constantPower: 0x0455, // 1109 R/W [-1200,1200] 0.1 % of rated, - = charge / + = discharge
+  // 1115 R/W - die MAXIMALE EIGENE PV-Leistung in 0,1 % der Nennleistung,
+  // wirksam NUR im netz-/AC-seitigen Modus (im Batterie-Modus ignoriert der
+  // Wechselrichter sie). ⚠ Ein Wert von 1000 (= 100 %) und darueber regelt die
+  // PV laut Feldbericht auf 0 - der Pilot LIEST dort 1000. Deshalb schreibt der
+  // Netz-Sollwert-Test 999, und deshalb ist das ein eigener Testschritt
+  // (Konzept `vp-deye-netzseitig-drossel-k2` §1.7, Captain-Entscheid E5).
+  pvMaxPower: 0x045b,
   status: 0x0461, // 1121 R   bit-coded remote-control execution state (observation)
 };
 // The capability probe block: registers 1100..1121 in ONE FC03 read (22 regs, far
@@ -1803,6 +1810,23 @@ const DEYE_REMOTE_MODE = { OFF: 0, ON: 1 };
 // native-mode certificate.
 const DEYE_REMOTE_LAYOUT_PR978 = 'pr978';
 const DEYE_POWER_CONTROL_MODE = { AC_SIDE: 0, BATTERY_SIDE: 1, GRID_SIDE: 2 };
+// Das Wort-Vokabular des Netz-Sollwert-Tests: der Kern nennt die REGELSEITE,
+// dieser Adapter uebersetzt sie in Register 1104. Die Registerkenntnis bleibt
+// damit dort, wo sie hingehoert (dieselbe Teilung wie beim Selbstregel-Modus).
+const DEYE_GRID_TEST_SIDE = {
+  battery: DEYE_POWER_CONTROL_MODE.BATTERY_SIDE,
+  grid: DEYE_POWER_CONTROL_MODE.GRID_SIDE,
+  ac: DEYE_POWER_CONTROL_MODE.AC_SIDE,
+};
+// Die Schritte, die der Kern kommandieren darf. Ein unbekanntes Wort wird
+// VERWORFEN (der Testpfad plant dann gar nichts), nie geraten - ein Schritt,
+// den dieser Adapter nicht kennt, darf kein Register bewegen.
+const DEYE_GRID_TEST_STEPS = {
+  neutral: true, halten: true, pv_kappe: true, schritt: true,
+  null_export: true, ac_probe: true, rueckkehr: true,
+};
+// 1115 wird nie ueber diesen Wert geschrieben - siehe DEYE_REMOTE_REG.pvMaxPower.
+const DEYE_PV_MAX_PERMILLE_LIMIT = 999;
 const DEYE_BATTERY_STRATEGY = {
   VOLTAGE: 0, CURRENT: 1, POWER: 2, SOC: 3, VOLT_CURRENT: 4, POWER_SOC: 5,
 };
@@ -2137,6 +2161,67 @@ function deyeRemoteSetpointUnits(kw, ratedKw) {
   return { units, raw: units & 0xffff, clamped, ok: true };
 }
 
+/**
+ * deyeGridSetpointUnits - die Umrechnung des NETZ-/AC-seitigen Sollwerts in
+ * Register 1109.
+ *
+ * ⚠ SIE IST NICHT NEGIERT - und das ist der eine Unterschied zur
+ * batterieseitigen `deyeRemoteSetpointUnits` daneben:
+ *
+ *   batterieseitig  unser Kontrakt + = laden,  Register - = laden   -> NEGIEREN
+ *   netzseitig      unser Kontrakt + = Bezug,  Register - = Einspeisung
+ *                   (Feldbericht: "-50 W realisieren" = 50 W einspeisen)
+ *                   -> DIREKT
+ *
+ * Die netzseitige Konvention stammt aus EINEM Feldbericht ueber ein LV-12K-
+ * Geraet (Konzept §1.5, Belegstufe FELDBERICHT). Deshalb ist der erste
+ * Testschritt nach dem Umschalten ein HALTE-Test auf den gerade gemessenen
+ * Export: stimmt das Vorzeichen fuer dieses Geraet nicht, wandert der Netzpunkt
+ * dabei Richtung Bezug und der Zustandsautomat bricht ab, bevor irgendetwas
+ * Groesseres kommandiert wird.
+ */
+function deyeGridSetpointUnits(kw, ratedKw) {
+  if (!isFiniteNum(kw) || !(Number(ratedKw) > 0)) {
+    return { units: 0, raw: 0, clamped: false, ok: false };
+  }
+  const exact = (kw / Number(ratedKw)) * DEYE_REMOTE_SETPOINT_UNITS_PER_RATED;
+  let units = Math.round(exact) || 0;
+  const clamped = units > DEYE_REMOTE_SETPOINT_LIMIT || units < -DEYE_REMOTE_SETPOINT_LIMIT;
+  units = Math.max(-DEYE_REMOTE_SETPOINT_LIMIT, Math.min(DEYE_REMOTE_SETPOINT_LIMIT, units));
+  return { units, raw: units & 0xffff, clamped, ok: true };
+}
+
+/**
+ * parseGridTest - die Anweisung des Netz-Sollwert-Tests aus dem Sollwert lesen.
+ *
+ * Sie ist STRENG: ein unbekannter Schritt, eine unbekannte Regelseite oder ein
+ * unbrauchbares Ziel ergeben null, und der Adapter faellt dann auf den
+ * gewoehnlichen batterieseitigen Plan zurueck. Ein Testpfad, der eine Form
+ * still halb ausfuehrt, waere schlimmer als einer, der gar nicht laeuft.
+ */
+function parseGridTest(v) {
+  if (!v || typeof v !== 'object') return null;
+  const step = typeof v.step === 'string' ? v.step : '';
+  const side = typeof v.side === 'string' ? v.side : '';
+  if (!DEYE_GRID_TEST_STEPS[step]) return null;
+  if (!Object.prototype.hasOwnProperty.call(DEYE_GRID_TEST_SIDE, side)) return null;
+  if (!isFiniteNum(v.target_kw)) return null;
+  const out = {
+    step,
+    side,
+    targetKw: v.target_kw,
+    neutralize: v.neutralize === true,
+    pvCapPermille: null,
+  };
+  const cap = Number(v.pv_cap_permille);
+  // Nur ein Wert IM erlaubten Band wird geschrieben. Insbesondere nie 1000 oder
+  // darueber - genau der Wert, der die PV auf 0 regelt.
+  if (isFiniteNum(cap) && cap >= 1 && cap <= DEYE_PV_MAX_PERMILLE_LIMIT) {
+    out.pvCapPermille = Math.round(cap);
+  }
+  return out;
+}
+
 // s16 - two's-complement read of a raw 16-bit register (the readback twin of the
 // `& 0xffff` encode above).
 function s16(raw) {
@@ -2326,6 +2411,114 @@ function deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibr
   // and a starved/interrupted read is what produced the false "not adopted" alarms.
   const ram = { dwell_s: 0, min_change: 0, always: true, bench_pending: true };
   const ramCfg = { dwell_s: 0, min_change: 0, reassert_s: DEYE_REMOTE_CFG_REASSERT_S, bench_pending: true };
+
+  // NETZ-SOLLWERT-TEST (Konzept `vp-deye-netzseitig-drossel-k2` P1). Steht eine
+  // armierte Anweisung auf dem Sollwert, faehrt DIESER Zweig statt des
+  // gewoehnlichen Batterie-Plans - dieselbe Registerlage, andere Regelseite.
+  //
+  // ⚠ DIE REIHENFOLGE IST DIE SICHERHEIT, und sie ist die des gewoehnlichen
+  // Plans PLUS dem Neutralschritt (Konzept §2.9):
+  //
+  //   1. 1101 Totmann        scharf, BEVOR sich irgendetwas bewegen kann
+  //   2. 1109 <- 0           NUR beim Seitenwechsel: in der ALTEN Semantik ist 0
+  //                          neutral (Batterie ruht bzw. Null-Export), also kann
+  //                          zwischen den beiden Schreibvorgaengen kein alter
+  //                          Sollwert in der NEUEN Semantik gelesen werden. Ohne
+  //                          ihn wuerde ein Entlade-Befehl +1000 beim Wechsel
+  //                          1->2 fuer einen Moment als 30-kW-BEZUGS-Ziel
+  //                          gelesen - der Wechselrichter wuerde den Akku aus
+  //                          dem Netz laden.
+  //   3. 1104 Regelseite     das eigentliche Umschalten
+  //   4. 1115 PV-Kappe       999, ab dem pv_kappe-Schritt (E5)
+  //   5. 1109 Sollwert       die Anweisung
+  //   6. 1100 Fernsteuerung  ZULETZT
+  //
+  // Es gibt hier KEINEN Automatismus: `setpoint.grid_test` entsteht
+  // ausschliesslich im armierten Testpfad des Kerns.
+  const gridTest = parseGridTest(setpoint.grid_test);
+  if (gridTest) {
+    const gSide = DEYE_GRID_TEST_SIDE[gridTest.side];
+    const gBattery = gSide === DEYE_POWER_CONTROL_MODE.BATTERY_SIDE;
+    // Batterieseitig (Neutral-/Rueckkehr-Schritt) gilt die gewohnte, NEGIERTE
+    // Umrechnung und die gewohnte Rolle - der Wert ist dort 0, aber die
+    // :8484-Tabelle soll ihn richtig beschriften.
+    const gSp = gBattery
+      ? deyeRemoteSetpointUnits(gridTest.targetKw, ratedKw)
+      : deyeGridSetpointUnits(gridTest.targetKw, ratedKw);
+    const gRole = gBattery ? 'battery_power'
+      : (gSide === DEYE_POWER_CONTROL_MODE.GRID_SIDE ? 'grid_power' : 'ac_power');
+    const gDecodeKind = gBattery ? 'remote_power_permille'
+      : (gSide === DEYE_POWER_CONTROL_MODE.GRID_SIDE ? 'grid_power_permille' : 'ac_power_permille');
+    const gSideEnum = gBattery ? 'battery_side'
+      : (gSide === DEYE_POWER_CONTROL_MODE.GRID_SIDE ? 'grid_side' : 'ac_side');
+
+    const gPlanned = [];
+    gPlanned.push({
+      role: 'remote_watchdog', fc: writeFc, addr: DEYE_REMOTE_REG.watchdog, value: watchdogS & 0xffff,
+      encode: { kind: 'remote_watchdog_s', seconds: watchdogS }, ...ram,
+    });
+    if (gridTest.neutralize) {
+      gPlanned.push({
+        role: 'grid_neutral', fc: writeFc, addr: DEYE_REMOTE_REG.constantPower, value: 0,
+        encode: { kind: 'remote_neutral' }, ...ram,
+      });
+    }
+    gPlanned.push({
+      role: 'power_control_mode', fc: writeFc, addr: DEYE_REMOTE_REG.powerControlMode,
+      value: gSide, encode: { kind: 'remote_power_control_mode', enum: gSideEnum }, ...ram,
+    });
+    if (gridTest.pvCapPermille != null) {
+      gPlanned.push({
+        role: 'pv_max_permille', fc: writeFc, addr: DEYE_REMOTE_REG.pvMaxPower,
+        value: gridTest.pvCapPermille & 0xffff,
+        encode: { kind: 'pv_max_permille', rated_kw: ratedKw, permille: gridTest.pvCapPermille },
+        ...ramCfg,
+      });
+    }
+    gPlanned.push({
+      role: gRole, fc: writeFc, addr: DEYE_REMOTE_REG.constantPower, value: gSp.raw,
+      encode: {
+        kind: gDecodeKind, rated_kw: ratedKw, kw: gridTest.targetKw,
+        units: gSp.units, limit: DEYE_REMOTE_SETPOINT_LIMIT, clamped: gSp.clamped,
+      }, ...ram,
+    });
+    gPlanned.push({
+      role: 'remote_mode', fc: writeFc, addr: DEYE_REMOTE_REG.mode, value: DEYE_REMOTE_MODE.ON,
+      encode: { kind: 'remote_mode', enum: 'on' }, ...ram,
+    });
+
+    // Der Neutralschritt bekommt KEINE Rueckmeldung: er ist ein Durchgangswert,
+    // den derselbe Takt sofort ueberschreibt - ihn zurueckzulesen ergaebe eine
+    // garantierte Abweichung auf 1109.
+    const gRb = gPlanned
+      .filter((w) => w.role !== 'grid_neutral')
+      .map((w) => {
+        const rb = { role: w.role, fc: 3, addr: w.addr, expect: w.value & 0xffff, tolerance: w.role === gRole ? 1 : 0 };
+        if (w.role === gRole) rb.decode = { kind: gDecodeKind, rated_kw: ratedKw };
+        return rb;
+      });
+    const gExec = gPlanned.map((w) => { const c = { ...w }; delete c.bench_pending; return c; });
+    const gOut = Object.assign({}, base, {
+      writes: writeAllowed ? gExec : [],
+      readbacks: writeAllowed ? gRb : [],
+      planned: gPlanned,
+      observations: [{ role: 'remote_status', fc: 3, addr: DEYE_REMOTE_REG.status }],
+      setpointUnits: gSp.units,
+      setpointClamped: gSp.clamped,
+      gridTest: {
+        step: gridTest.step, side: gridTest.side, target_kw: gridTest.targetKw,
+        neutralize: gridTest.neutralize, pv_cap_permille: gridTest.pvCapPermille,
+      },
+    });
+    if (!writeAllowed) {
+      gOut.reason = certified ? 'Steuerung deaktiviert (Not-Aus)'
+        : 'Netz-Sollwert-Test: Steuerung für dieses Modell noch nicht freigegeben';
+    } else {
+      gOut.reason = 'Netz-Sollwert-Test (' + gridTest.step + ', ' + gridTest.side + ')';
+    }
+    return gOut;
+  }
+
 
   const planned = [];
   // 1) FAILSAFE FIRST.

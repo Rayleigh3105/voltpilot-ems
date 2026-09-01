@@ -50,6 +50,13 @@
     power_control_mode: "Regelseite",
     battery_strategy: "Regelstrategie",
     battery_soc_belt: "SoC-Grenze im Gerät",
+    // Netz-Sollwert-Test (Konzept `vp-deye-netzseitig-drossel-k2` P1). Drei Rollen
+    // auf DERSELBEN Adresse 1109 - die Beschriftung ist das Einzige, woran ein
+    // Mensch in der Register-Tabelle sieht, welche Regelseite gerade gilt.
+    grid_power: "Netz-Sollwert",
+    ac_power: "AC-Sollwert",
+    grid_neutral: "Neutralschritt",
+    pv_max_permille: "PV-Kappe im Gerät",
   };
 
   // The control PATH this inverter is being steered through. Plain German, because

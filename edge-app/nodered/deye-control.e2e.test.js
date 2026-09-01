@@ -2738,3 +2738,195 @@ test('every OTHER Deye stays on the proven follower - the release is bound to th
     server.close();
   }
 });
+
+// =============================================================================
+// NETZ-SOLLWERT-TEST auf dem DRAHT (Konzept `vp-deye-netzseitig-drossel-k2` P1).
+// Derselbe Executor, derselbe Logger - was hier bewiesen wird, ist die REIHEN-
+// FOLGE der Register, die Umschaltung auf die Netzseite UND die vollstaendige
+// Rueckkehr. Der Test schreibt ausschliesslich in 1100-1121; kein einziges
+// Installateur-Register wird angefasst.
+// =============================================================================
+
+function gridTestSetpoint(gt) {
+  return {
+    battery_setpoint_kw: 0, source: 'grid-test', control_enabled: true,
+    device_certified: true, grid_charge_allowed: false,
+    soc_min_pct: 20, soc_max_pct: 95,
+    grid_test: { mode: 'grid', ...gt },
+  };
+}
+
+test('Netz-Sollwert-Test: der Seitenwechsel landet in der RICHTIGEN Reihenfolge auf dem Draht', async () => {
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const cap = ownerCapability();
+    await certifiedRemotePlan(
+      gridTestSetpoint({ step: 'halten', side: 'grid', target_kw: -24.9, neutralize: true }),
+      cap,
+      async (plan) => {
+        assert.strictEqual(plan.controlPath, 'remote');
+        assert.ok(plan.gridTest, 'der Plan traegt den Testschritt');
+        plan.connection.port = port;
+        const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'grid-test' } }, {}, flowStore);
+        assert.ok(out, 'der Executor hat eine Rueckmeldung veroeffentlicht');
+
+        // ⚠ DIE REIHENFOLGE IST DIE SICHERHEIT: Totmann (1101) zuerst, dann der
+        // Neutralschritt auf 1109, DANN die Regelseite 1104, dann das Ziel auf
+        // derselben 1109, und ZULETZT der Schalter 1100. Ohne den Neutralschritt
+        // dazwischen wechselte 1104 die Bedeutung eines stehenden Wertes.
+        assert.deepStrictEqual(writes.map((w) => w.reg),
+          [0x044d, 0x0455, 0x0450, 0x0455, 0x044c],
+          'Totmann, Neutral, Regelseite, Ziel, Enable');
+        assert.ok(writes.every((w) => w.fc === 0x10), 'FC16 - der einzige Code, den diese Firmware beantwortet');
+        assert.strictEqual(writes[1].value, 0, 'der Neutralschritt schreibt wirklich 0');
+
+        // Die Werte, die danach im Geraet stehen.
+        assert.strictEqual(store[0x044d], 60, 'Totmann 60 s');
+        assert.strictEqual(store[0x0450], 2, 'NETZ-seitig (1104 = 2)');
+        assert.strictEqual(store[0x0455], (-830) & 0xffff, '-24,9 kW von 30 kW = -830 Einheiten, NICHT negiert');
+        assert.strictEqual(store[0x044c], 1, 'Fernsteuerung eingeschaltet');
+
+        // Kein Installateur-Register - der Testpfad kann nichts latchen.
+        const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+        for (const inst of [reg.energyPattern, reg.workMode, reg.solarSell, reg.maxSellPower, reg.touEnable, reg.exportLimit]) {
+          assert.strictEqual(store[inst], undefined, 'Installateur-Register 0x' + inst.toString(16) + ' unberuehrt');
+        }
+
+        // Die Rueckmeldung bestaetigt jedes kommandierte Register - und der
+        // Neutralschritt ist bewusst NICHT dabei (er wird im selben Takt
+        // ueberschrieben, ein Rueckelesen ergaebe eine garantierte Abweichung).
+        const rb = out.payload;
+        assert.strictEqual(rb.control_path, 'remote');
+        assert.ok(rb.registers.every((r) => r.match), 'alle Register bestaetigt: ' + JSON.stringify(rb.registers));
+        assert.ok(!rb.registers.some((r) => r.role === 'grid_neutral'));
+        assert.ok(rb.registers.some((r) => r.role === 'grid_power'), 'der Netz-Sollwert traegt seine eigene Rolle');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('Netz-Sollwert-Test: die PV-Kappe 1115 landet - und nur im erlaubten Band', async () => {
+  const { server, port, store } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const cap = ownerCapability();
+    const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+    await certifiedRemotePlan(
+      gridTestSetpoint({ step: 'pv_kappe', side: 'grid', target_kw: -24.9, pv_cap_permille: 999 }),
+      cap,
+      async (plan) => {
+        plan.connection.port = port;
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, {}, flowStore);
+        assert.ok(out);
+        assert.strictEqual(store[0x045b], 999, '1115 = 999 (die letzte Stufe UNTER der Voll-Drosselung)');
+        assert.ok(out.payload.registers.find((r) => r.role === 'pv_max_permille').match);
+      },
+    );
+    // ⚠ 1000 hiesse auf diesem Register „eigene PV auf 0" - der Wert erreicht
+    // das Geraet nie, und der Rest des Schrittes laeuft trotzdem.
+    const before = store[0x045b];
+    await certifiedRemotePlan(
+      gridTestSetpoint({ step: 'pv_kappe', side: 'grid', target_kw: -24.9, pv_cap_permille: 1000 }),
+      cap,
+      async (plan) => {
+        plan.connection.port = port;
+        assert.ok(!plan.writes.some((w) => w.role === 'pv_max_permille'));
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, {}, flowStore);
+        assert.ok(out, 'der Schritt laeuft weiter');
+        assert.strictEqual(store[0x045b], before, '1115 wurde NICHT veraendert');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('Netz-Sollwert-Test: die RUECKKEHR stellt die Batterieseite wirklich wieder her', async () => {
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const cap = ownerCapability();
+    const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+    // Erst netzseitig gehen ...
+    await certifiedRemotePlan(
+      gridTestSetpoint({ step: 'halten', side: 'grid', target_kw: -24.9, neutralize: true }),
+      cap,
+      async (plan) => { plan.connection.port = port; await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, {}, flowStore); },
+    );
+    assert.strictEqual(store[0x0450], 2, 'Vorbedingung: das Geraet steht netzseitig');
+    writes.length = 0;
+
+    // ... und dann zurueck. Auch das ist ein Seitenwechsel, also mit Neutralschritt.
+    await certifiedRemotePlan(
+      gridTestSetpoint({ step: 'rueckkehr', side: 'battery', target_kw: 0, neutralize: true }),
+      cap,
+      async (plan) => {
+        plan.connection.port = port;
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, {}, flowStore);
+        assert.ok(out);
+        assert.deepStrictEqual(writes.map((w) => w.reg),
+          [0x044d, 0x0455, 0x0450, 0x0455, 0x044c], 'dieselbe Reihenfolge zurueck');
+        assert.strictEqual(store[0x0450], 1, 'BATTERIE-seitig - das Geraet regelt wieder wie im Betrieb');
+        assert.strictEqual(store[0x0455], 0, 'und mit Sollwert 0');
+        assert.ok(out.payload.registers.every((r) => r.match));
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('Netz-Sollwert-Test: der Totmann wird in JEDEM Schritt neu gespannt', async () => {
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const cap = ownerCapability();
+    const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+    // ⚠ EIN gemeinsamer Knoten-Kontext ueber alle Takte - so laeuft der Flow
+    // wirklich. Nur damit ist der Test nicht vakuum: mit einem frischen Kontext
+    // je Takt waere der Schreib-Cache immer leer und jeder Wert wuerde ohnehin
+    // geschrieben.
+    const ctx = {};
+    const ticks = [
+      { step: 'halten', side: 'grid', target_kw: -24.9, neutralize: true },
+      { step: 'schritt', side: 'grid', target_kw: -22.9 },
+      { step: 'null_export', side: 'grid', target_kw: 0 },
+    ];
+    for (const gt of ticks) {
+      writes.length = 0;
+      store[0x044d] = 12; // als waere er zwischen den Takten abgelaufen
+      await certifiedRemotePlan(gridTestSetpoint(gt), cap, async (plan) => {
+        plan.connection.port = port;
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flowStore);
+        assert.ok(out, gt.step);
+        // ⚠ Der Totmann ist KEIN „write-on-change": das Neuschreiben IST der
+        // Mechanismus. Ohne ihn liefe der Test in die eigene Frist des Geraets.
+        assert.strictEqual(writes[0].reg, 0x044d, gt.step + ': der Totmann kommt zuerst');
+        assert.strictEqual(store[0x044d], 60, gt.step + ': und er steht wieder auf 60 s');
+      });
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test('Netz-Sollwert-Test: ohne Freigabe erreicht KEIN Byte den Wechselrichter', async () => {
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const cap = ownerCapability();
+    // Kein certifiedRemotePlan -> die ausgelieferte Allowlist gilt, und
+    // hybrid_3p steht nicht darin.
+    const plan = controlRouting.controlRoute(REMOTE_SEL,
+      { ...gridTestSetpoint({ step: 'halten', side: 'grid', target_kw: -24.9 }), device_certified: false },
+      { ratedKw: 30, deye: cap });
+    plan.connection.port = port;
+    assert.deepStrictEqual(plan.writes, []);
+    const out = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, {},
+      { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) });
+    assert.deepStrictEqual(writes, [], 'nichts geschrieben');
+    assert.strictEqual(store[0x044c], undefined, 'die Fernsteuerung wurde nie eingeschaltet');
+    assert.ok(!out || out.payload.wrote !== true);
+  } finally {
+    server.close();
+  }
+});

@@ -2435,3 +2435,150 @@ test('deyeNativePrecondition ist rein und urteilt nur ueber Belegtes', () => {
     C.deyeNativePrecondition({ ...ok, program_charge_enable: null }, { floorPct: 20, solarOnly: true }),
     /EEG/);
 });
+
+// --- Netz-Sollwert-Test (Konzept `vp-deye-netzseitig-drossel-k2` P1) ----------
+//
+// Der Testpfad ist eine EIGENE Regelseite auf DERSELBEN Adresse 1109. Was hier
+// gepinnt ist: die Schreibreihenfolge (Watchdog zuerst, Enable zuletzt, der
+// Neutralschritt DAZWISCHEN), die zwei Vorzeichen-Konventionen, die PV-Kappe und
+// dass der Test ausserhalb von 1100-1121 nichts anfasst.
+
+const gridSp = (over) => enabled({
+  device_certified: true,
+  grid_test: { mode: 'grid', step: 'halten', side: 'grid', target_kw: -24.9, ...over },
+});
+const gridRoute = (over, opts) => C.controlRoute(DEYE_REMOTE_SEL, gridSp(over),
+  { ratedKw: 30, deye: OWNER_CAP, ...opts });
+
+test('Netz-Sollwert-Test: die REIHENFOLGE ist die Sicherheit', () => {
+  // Watchdog ZUERST (der Totmann wird gespannt, bevor sich etwas bewegen kann),
+  // Enable ZULETZT - dazwischen die Regelseite und der Sollwert.
+  const r = gridRoute();
+  assert.deepStrictEqual(r.writes.map((w) => w.role),
+    ['remote_watchdog', 'power_control_mode', 'grid_power', 'remote_mode']);
+  assert.strictEqual(r.writes[0].addr, 0x044d, '1101 = der Totmann');
+  const last = r.writes[r.writes.length - 1];
+  assert.strictEqual(last.addr, 0x044c, '1100 = der Schalter, und er kommt ZULETZT');
+  assert.strictEqual(last.value, 1);
+
+  // ⚠ Der Neutralschritt steht ZWISCHEN Watchdog und Regelseite: 1109 muss auf 0,
+  // BEVOR 1104 die Bedeutung derselben Adresse wechselt.
+  const n = gridRoute({ neutralize: true, step: 'halten' });
+  assert.deepStrictEqual(n.writes.map((w) => w.role),
+    ['remote_watchdog', 'grid_neutral', 'power_control_mode', 'grid_power', 'remote_mode']);
+  const neutral = n.writes[1];
+  assert.strictEqual(neutral.value, 0);
+  assert.strictEqual(neutral.addr, n.writes[3].addr, 'der Neutralschritt schreibt DIESELBE Adresse 1109');
+
+  // Der Neutralschritt wird NICHT zurueckgelesen - derselbe Takt ueberschreibt
+  // ihn, ein Rueckelesen ergaebe eine garantierte Abweichung.
+  assert.ok(!n.readbacks.some((rb) => rb.role === 'grid_neutral'));
+  assert.deepStrictEqual(n.readbacks.map((rb) => rb.role),
+    ['remote_watchdog', 'power_control_mode', 'grid_power', 'remote_mode']);
+});
+
+test('Netz-Sollwert-Test: ZWEI Vorzeichen-Konventionen auf DERSELBEN Adresse', () => {
+  // ⚠ Netzseitig ist die Konvention DIREKT (- = Einspeisung, wie unsere), also
+  // wird NICHT negiert: -24,9 kW von 30 kW = -830 Einheiten.
+  const g = gridRoute({ side: 'grid', target_kw: -24.9 });
+  const gw = g.writes.find((w) => w.role === 'grid_power');
+  assert.strictEqual(gw.encode.kind, 'grid_power_permille');
+  assert.strictEqual(gw.encode.units, -830);
+  assert.strictEqual(gw.value, (-830) & 0xffff);
+
+  // Batterieseitig (Neutral-/Rueckkehr-Schritt) gilt die gewohnte, NEGIERTE
+  // Umrechnung und die gewohnte Rolle.
+  const b = gridRoute({ side: 'battery', step: 'rueckkehr', target_kw: 0 });
+  const bw = b.writes.find((w) => w.role === 'battery_power');
+  assert.ok(bw, 'batterieseitig traegt der Sollwert seine gewohnte Rolle');
+  assert.strictEqual(bw.encode.kind, 'remote_power_permille');
+  assert.strictEqual(b.writes.find((w) => w.role === 'power_control_mode').value, 1);
+
+  // Die AC-Seite ist ihre eigene Rolle - dieselbe DIREKTE Konvention.
+  const ac = gridRoute({ side: 'ac', step: 'ac_probe', target_kw: 19 });
+  const acw = ac.writes.find((w) => w.role === 'ac_power');
+  assert.strictEqual(acw.encode.kind, 'ac_power_permille');
+  assert.strictEqual(acw.encode.units, Math.round((19 / 30) * 1000));
+  assert.strictEqual(ac.writes.find((w) => w.role === 'power_control_mode').value, 0);
+});
+
+test('Netz-Sollwert-Test: 1115 wird nur IM Band geschrieben (§1.7)', () => {
+  const none = gridRoute();
+  assert.ok(!none.writes.some((w) => w.role === 'pv_max_permille'),
+    'ohne Anweisung wird 1115 nicht angefasst');
+
+  const cap = gridRoute({ pv_cap_permille: 999 });
+  const w = cap.writes.find((w) => w.role === 'pv_max_permille');
+  assert.ok(w, 'die PV-Kappe wird geschrieben');
+  assert.strictEqual(w.addr, 0x045b, '1115');
+  assert.strictEqual(w.value, 999);
+  // ⚠ 1000 und darueber bedeutet auf diesem Register „PV auf 0" - genau der
+  // Wert, der die Anlage stillstellt. Er wird nie geschrieben.
+  for (const bad of [1000, 1200, 0, -1, 65535, null, 'x']) {
+    assert.ok(!gridRoute({ pv_cap_permille: bad }).writes.some((w) => w.role === 'pv_max_permille'),
+      'pv_cap_permille=' + bad + ' darf 1115 nie erreichen');
+  }
+});
+
+test('Netz-Sollwert-Test: eine kaputte Form faellt auf den GEWOEHNLICHEN Plan zurueck', () => {
+  // Ein halb ausgefuehrter Testschritt waere schlimmer als gar keiner.
+  for (const bad of [
+    { step: 'quatsch' }, { side: 'quatsch' }, { target_kw: null },
+    { target_kw: 'x' }, { step: undefined }, { side: undefined },
+  ]) {
+    const r = gridRoute(bad);
+    assert.strictEqual(r.gridTest, undefined, JSON.stringify(bad) + ' darf keinen Testschritt erzeugen');
+  }
+  // Und ein fehlender Block laesst den Adapter voellig unveraendert.
+  const plain = C.controlRoute(DEYE_REMOTE_SEL, enabled({ device_certified: true, battery_setpoint_kw: -5 }),
+    { ratedKw: 30, deye: OWNER_CAP });
+  assert.strictEqual(plain.gridTest, undefined);
+  assert.ok(plain.writes.length > 0, 'der gewoehnliche Fernsteuerplan laeuft weiter');
+});
+
+test('Netz-Sollwert-Test: er faesst NUR 1100-1121 an und umgeht KEIN Tor', () => {
+  const r = gridRoute({ neutralize: true, pv_cap_permille: 999 });
+  for (const w of r.writes) {
+    assert.ok(w.addr >= 0x044c && w.addr <= 0x0461,
+      'Adresse ausserhalb des Fernsteuerblocks: ' + w.addr);
+  }
+  // Kein Installateur-Register, kein ToU-Schnappschuss - es gibt nichts
+  // zurueckzustellen.
+  assert.ok(!r.snapshotPlan || r.snapshotPlan.length === 0);
+
+  // Not-Aus: geplant bleibt sichtbar, geschrieben wird NICHTS.
+  const off = C.controlRoute(DEYE_REMOTE_SEL,
+    { ...gridSp(), control_enabled: false }, { ratedKw: 30, deye: OWNER_CAP });
+  assert.deepStrictEqual(off.writes, []);
+  assert.deepStrictEqual(off.readbacks, []);
+  assert.ok(off.planned.length > 0, 'der Plan bleibt lesbar');
+  assert.match(off.reason, /Not-Aus/);
+
+  // Ohne Freigabe dieses Geraets ebenso - der Testpfad umgeht die
+  // Zertifizierung NICHT (anders als die First-Light-Kalibrierung).
+  const un = C.controlRoute(DEYE_REMOTE_SEL,
+    { ...gridSp(), device_certified: false }, { ratedKw: 30, deye: OWNER_CAP });
+  assert.deepStrictEqual(un.writes, []);
+  assert.match(un.reason, /freigegeben/);
+
+  // Und die ausgelieferte Familien-Allowlist wurde durch nichts davon geweitet.
+  assert.ok(!C.CERTIFIED_CONTROL_FAMILIES.has('hybrid_3p'));
+  assert.ok(!C.CERTIFIED_CONTROL_FAMILIES.has('hybrid_1p'));
+});
+
+test('Netz-Sollwert-Test: ohne Nennleistung wird nichts geschrieben', () => {
+  // Die Umrechnung haengt an der Nennleistung; ohne sie waere jeder Wert geraten.
+  const r = C.controlRoute(DEYE_REMOTE_SEL, gridSp(), { deye: OWNER_CAP });
+  assert.deepStrictEqual(r.writes, []);
+  assert.ok(r.reason && r.reason.length > 0);
+});
+
+test('Netz-Sollwert-Test: das Ziel wird auf das Register-Band geklemmt', () => {
+  // ±1200 Einheiten sind die Grenze des Registers - ein groesseres Ziel wird
+  // GEKLEMMT und das laut vermerkt, nie ueberlaufen.
+  const r = gridRoute({ target_kw: -60 });
+  const w = r.writes.find((w) => w.role === 'grid_power');
+  assert.strictEqual(w.encode.units, -1200);
+  assert.strictEqual(w.encode.clamped, true);
+  assert.strictEqual(r.setpointClamped, true);
+});

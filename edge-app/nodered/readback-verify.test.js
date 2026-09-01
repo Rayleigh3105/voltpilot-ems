@@ -247,3 +247,41 @@ test('the ToU register set keeps working unchanged (exact semantics everywhere)'
   assert.strictEqual(c.cycle, 'mismatch');
   assert.deepStrictEqual(c.mismatchRoles, ['max_sell_power']);
 });
+
+// --- Netz-Sollwert-Test: die drei Rollen auf 1109 + die PV-Kappe 1115 ---------
+//
+// Der Testpfad schreibt DIESELBE Adresse 1109 unter drei Rollen (batterie-,
+// netz-, AC-seitig) und zusaetzlich 1115. Was hier gepinnt ist: die zwei neuen
+// Rollen werden wie ein Sollwert beurteilt (Ringabstand, nicht Betrag), und der
+// Fuellwert des Loggers bleibt „keine Antwort" statt eine Abweichung zu sein.
+test('Netz-Sollwert-Test: 1109 wird auf dem RING gemessen, in jeder Rolle', () => {
+  for (const role of ['battery_power', 'grid_power', 'ac_power']) {
+    // -830 Einheiten kommen als 64706 zurueck - kein Abstand von 65536, sondern 0.
+    const exact = V.verifyRegister({ role, expect: (-830) & 0xffff, actual: 64706, tolerance: 1 });
+    assert.strictEqual(exact.verdict, 'held', role + ': der Ringabstand ist 0');
+    // Eine Einheit daneben liegt in der Toleranz (~30 W auf einem 30-kW-Geraet).
+    assert.strictEqual(
+      V.verifyRegister({ role, expect: 0, actual: 65535, tolerance: 1 }).verdict, 'held',
+      role + ': -1 gegen 0 ist EINE Einheit, nicht 65535');
+    // Weit daneben ist eine echte Abweichung.
+    assert.strictEqual(
+      V.verifyRegister({ role, expect: 0, actual: 500, tolerance: 1 }).verdict, 'mismatch', role);
+  }
+});
+
+test('Netz-Sollwert-Test: 1115 filtert NUR den Fuellwert, verglichen wird exakt', () => {
+  // Der geschriebene Wert kommt zurueck -> gehalten.
+  assert.strictEqual(
+    V.verifyRegister({ role: 'pv_max_permille', expect: 999, actual: 999, tolerance: 0 }).verdict, 'held');
+  // ⚠ 0xFFFF liegt ausserhalb der ±1200er-Skalenfamilie dieses Registers: das
+  // ist der Fuellwert des Loggers, also KEINE Antwort - nie eine Abweichung
+  // (die wuerde einen Abbruch ausloesen, wo gar nichts gemessen wurde).
+  const filler = V.verifyRegister({ role: 'pv_max_permille', expect: 999, actual: 0xffff, tolerance: 0 });
+  assert.strictEqual(filler.verdict, 'unread');
+  // Ein Wert IM Band, aber ein anderer, ist eine echte Abweichung - hier wird
+  // nichts weichgespuelt.
+  assert.strictEqual(
+    V.verifyRegister({ role: 'pv_max_permille', expect: 999, actual: 1000, tolerance: 0 }).verdict, 'mismatch');
+  assert.strictEqual(
+    V.verifyRegister({ role: 'pv_max_permille', expect: 999, actual: 998, tolerance: 0 }).verdict, 'mismatch');
+});

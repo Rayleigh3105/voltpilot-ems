@@ -444,6 +444,84 @@ Quelle: Deyes eigenes *MODBUS RTU* V105.1 + [`ha-solarman` PR #978](https://gith
 
 **Kadenz: `dwell_s = 0`, `min_change = 0` überall - `always: true` aber nur dort, wo das Neuschreiben der MECHANISMUS ist.** Das sind RAM-Register, die EEPROM-Disziplin entfällt hier vollständig. In jedem ~10-s-Takt gehen **drei** Ops raus: `1101` (das Neuschreiben IST der Totmann-Tritt), `1109` (die Anweisung selbst) und `1100` (damit ein abgelaufener Totmann sich binnen eines Takts selbst heilt). Die reinen **Konfigurations**-Register `1104`/`1105` (+ der opt-in-Gurt `1108`) werden **alle 300 s** (`reassert_s`) und **sofort dann** neu geschrieben, wenn die Rückmeldung sie als *nicht gehalten* zeigt - der Executor verwirft dazu ihren Write-Cache-Eintrag. Grund ist **nicht** die Lebensdauer (RAM), sondern der **eine Socket des Solarman-Loggers**: 2 Schreibvorgänge weniger pro Takt sind Wire-Zeit, die das Rücklesen und der Lese-Poll zurückbekommen - und eine verzögerte/verdrängte Rücklesung war eine der Ursachen der falschen „nicht übernommen"-Meldungen (siehe unten).
 
+### Fernsteuerung: drei Regelseiten — was `1109` je Modus BEDEUTET
+
+Register `1104` wählt, **worauf** sich der Sollwert auf `1109` bezieht. Es ist
+**dieselbe Adresse** mit drei verschiedenen Bedeutungen — und zwei verschiedenen
+Vorzeichen-Konventionen. Wer das verwechselt, dreht den Sollwert um.
+
+Quelle: Konzept-Scout `vp-deye-netzseitig-drossel-k2` §1.5. Jede Zeile trägt
+ihre **Belegstufe**, denn sie sind verschieden gut belegt:
+
+| Stufe | Bedeutung |
+|---|---|
+| **bewiesen** | am Gerät des Kapitäns gelesen (Sonde 27.07.2026 / Live-Rücklesungen) oder in Deyes eigenem Protokolldokument |
+| **dokumentiert** | PR-#978-Wiki bzw. Deye *MODBUS RTU* V105.1 |
+| **Feldbericht** | Akkudoktor #38182 (SUN-12K-SG04LP3-EU, **LV**), openEMS #2541, photovoltaikforum #247695 |
+| **Vermutung** | von uns gefolgert, nirgends belegt |
+
+| `1104` | `1109` bedeutet | Vorzeichen | Einheit | Belegstufe |
+|---|---|---|---|---|
+| **1 batterieseitig** (Betrieb) | Batterie-Leistung | **− laden / + entladen** (unser Kontrakt ist umgekehrt → **negieren**) | 0,1 % Nennleistung | **bewiesen** (der Pilot fährt so) |
+| **2 netzseitig** | Leistung **am Netzzähler** (Sollwert statt Nullexport-Ziel) | **− Einspeisung / + Bezug** — wie unser Kontrakt, also **NICHT negieren** | 0,1 % Nennleistung (*Vermutung*: dieselbe Skala) | **Feldbericht** (LV 12K) |
+| **0 AC-seitig** | AC-Ausgangsleistung des Deye (PV + Batterie) | vermutlich + Erzeugung | 0,1 % Nennleistung | **Feldbericht / unklar** (`1109` vs. `1111` offen) |
+
+**⚠ ZWEI Konventionen auf EINER Adresse.** `deyeRemoteSetpointUnits()` negiert
+(batterieseitig), `deyeGridSetpointUnits()` **nicht** (netz-/AC-seitig). Auch die
+Rückmeldung dekodiert je Rolle: `battery_power` negiert, `grid_power`/`ac_power`
+nicht. Wer hier pauschal negiert, kommandiert Bezug statt Einspeisung.
+
+Für den 30-kW-Piloten: `1109 = −1000` ⇒ 30 kW Einspeisung als Ziel · `1109 = 0`
+⇒ **Null-Export** · `1109 = +17` ⇒ 0,5 kW Bezug.
+
+**⚠ Ein positiver Netz-Sollwert lädt die Batterie aus dem NETZ** (Vermutung 4 des
+Reports). Deshalb kommandiert der Testpfad **nie ein Ziel über 0** — die Klemme
+sitzt in `targetFor()`, ist also eine Eigenschaft des Codes und keine Zusage.
+
+**⚠ Register `1115` (`0x045B`) — der Schalter, den man kennen muss.** Es ist die
+**maximale eigene PV-Leistung** in 0,1 % der Nennleistung und wirkt
+**ausschließlich im Netz- und AC-Modus** (batterieseitig ignoriert der
+Wechselrichter es). Der Feldbericht ist eindeutig:
+
+> „Register 1115 am besten gleich auf **999** stellen. Sonst drosselt der
+> Wechselrichter im Grid und AC control mode gleich die PV Produktion.
+> **1000 = 100 % sollte man auch nicht eingeben, da er dann — und auch bei allen
+> größeren Werten — auf 0 regelt.**"
+
+Also: **1000 und darüber heißt „PV auf 0"**, nicht „keine Grenze". **Der Pilot
+steht auf 1000** (Sonde 27.07.). Ob die HV-Firmware sich genauso verhält, klärt
+erst der Live-Test (These T8) — deshalb schreibt der Testpfad `1115 ← 999` als
+**eigenen, beobachteten Schritt** (Captain-Entscheid E5) und niemals einen Wert
+außerhalb von 1..999. Die Halte-Prüfung kennt dafür die Skalenfamilie
+(`readback-verify.js` `VALUE_RANGE.pv_max_permille = [0, 1200]`), sodass ein
+`0xFFFF` des Loggers „keine Antwort" bleibt statt eine Abweichung zu werden.
+
+**⚠ Das PR-#978-Wiki ist für 1110–1120 unzuverlässig** (dort stehen
+Blindleistung/Volt-VAR; empirisch ist `1110` das Ziel-SoC der Strategie 5 und
+`1115` die PV-Kappe). Jedes Register dieses Blocks wird am Gerät verifiziert,
+nie aus dem Wiki abgeschrieben.
+
+**Was nur der Live-Test klären kann** (Report §1.8): ob `1104` sich bei
+**laufender** Fernsteuerung (`1100 = 1`) von 1 auf 2 umschalten lässt (T1) · das
+Vorzeichen auf HV (T2) · die Skala netzseitig (T3) · die Reihenfolge
+„erst Akku laden, dann eigene MPPTs drosseln, Fronius unberührt" (T4) ·
+Einschwingzeit (T5) · Rückkehrzeit (T6) · was `1121` netzseitig anzeigt (T7) ·
+das Verhalten von `1115 = 1000` auf HV (T8). Der Ablauf dafür steht in
+[`CONTROL-BENCH.md`](CONTROL-BENCH.md) → „Netz-Sollwert-Test".
+
+**⚠ Der Moduswechsel braucht einen Neutralschritt.** `1104` wechselt die
+BEDEUTUNG eines bereits stehenden Wertes auf `1109`: stünde dort noch der
+Batterie-Sollwert, wäre er im selben Augenblick ein Netz-Sollwert. Die Sequenz
+ist deshalb immer `1109 ← 0` → `1104 ← neu` → `1109 ← Ziel`, drei Transaktionen
+in EINEM Takt (Captain-Entscheid E2). Der Neutralschritt wird bewusst **nicht**
+zurückgelesen — derselbe Takt überschreibt ihn.
+
+**Es gibt bis heute KEINEN Produktivpfad in den Netzmodus.** Der Fahrplan
+schreibt ausschließlich batterieseitig; netzseitig gibt es nur den manuell
+armierten, TTL-begrenzten Testpfad auf `:8484` („Netz-Sollwert-Test",
+Betreiber-Kennwort). Ein automatischer Eintritt aus dem Plan heraus ist bewusst
+nicht gebaut.
+
 ### Die Rückmeldung: was ein Register-Ist-Wert BEDEUTET (Live-Vorfall 2026-07-30)
 
 Der Pilot meldete im ~10-s-Takt „Der Wechselrichter übernimmt den Sollwert nicht" (Register `remote_watchdog`, `power_control_mode`, `battery_strategy`, `remote_mode`) und war Sekunden später wieder „bestätigt" - **während die Batterie den Sollwert nachweislich fuhr**. Read-only-Protokoll der Anlage (`GET :8484/api/state`, 09:34:36Z-09:36:26Z, Sollwert 0 kW):
