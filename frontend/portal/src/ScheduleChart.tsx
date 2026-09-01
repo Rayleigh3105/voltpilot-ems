@@ -590,6 +590,19 @@ export function ScheduleChart({
                       coord: [spread.widestIndex, spread.widestMidCt],
                       label: {
                         show: true,
+                        // K10-Namensschild an der breitesten Spanne. Ein zentriertes
+                        // Label über einem RANDINDEX ragt über die Plotkante und wird
+                        // beschnitten („panne 24,4 ct" bei 375 px). Sitzt die breiteste
+                        // Spanne im linken/rechten Fünftel, wird das Schild deshalb
+                        // GANZ auf die einwärtige Seite gelegt (`right`/`left`) statt
+                        // zentriert - in der Mitte bleibt es zentriert (`inside`).
+                        position:
+                          plan.slots.length > 1 && spread.widestIndex / (plan.slots.length - 1) < 0.2
+                            ? 'right'
+                            : plan.slots.length > 1 &&
+                                spread.widestIndex / (plan.slots.length - 1) > 0.8
+                              ? 'left'
+                              : 'inside',
                         formatter: `${SPANNE} ${ctPlain(spread.widestCt)} ct`,
                         color: t.price,
                         fontSize: AXIS.fontSize,
