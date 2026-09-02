@@ -247,10 +247,56 @@ describe('steuerungFormel — die Marktprämie', () => {
     expect(einspeise(dv).zusatz).toBeNull();
   });
 
-  it('der Einspeisepreis selbst ist immer der Börsenpreis', () => {
+  it('Direktvermarktung: die Einspeisepreis-Zeile bleibt der Börsenpreis', () => {
     expect(einspeise({ ...dv, marktpraemieEur: 12 }).text).toBe(
       'Der Börsenpreis (Day-Ahead) der jeweiligen Viertelstunde.',
     );
+    expect(einspeise({ ...dv, marktpraemieEur: 12 }).text).not.toContain('feste Einspeisevergütung');
+  });
+});
+
+describe('steuerungFormel — A1: die EEG-Einspeisevergütung', () => {
+  // Eine EEG-vergütete Eigenverbrauchs-Anlage: die Einspeisung ist zur festen
+  // Vergütung bewertet, ein „Börsenpreis" widerspräche der Karte-Zahl sichtbar.
+  const eeg: SteuerungFormelInput = {
+    tarifArt: 'ohne',
+    plantKind: 'eigenverbrauch',
+    exportVerguetungPriced: true,
+  };
+
+  it('Kernsatz UND Zeile nennen die feste Einspeisevergütung statt des Börsenpreises', () => {
+    const f = steuerungFormel(eeg);
+    expect(f.kern).toContain('Ihrer festen Einspeisevergütung für die Einspeisung');
+    expect(f.kern).not.toContain('dem Börsenpreis für die Einspeisung');
+    expect(einspeise(eeg).text).toBe('Ihre feste Einspeisevergütung nach EEG.');
+    expect(einspeise(eeg).text).not.toContain('Börsenpreis');
+  });
+
+  it('der Netzbezug bleibt davon unberührt (weiterhin „Börsenpreis" ohne Tarif)', () => {
+    // A1 dreht NUR die Einspeise-Seite; der Bezugspreis folgt weiter dem Tarif.
+    expect(steuerungFormel(eeg).kern).toContain('dem Börsenpreis für den Netzbezug');
+  });
+
+  it('ohne das Flag ist alles byte-identisch zu vorher (Börsenpreis)', () => {
+    const ohneFlag: SteuerungFormelInput = { tarifArt: 'ohne', plantKind: 'eigenverbrauch' };
+    expect(steuerungFormel(ohneFlag).kern).toContain('dem Börsenpreis für die Einspeisung');
+    expect(einspeise(ohneFlag).text).toBe('Der Börsenpreis (Day-Ahead) der jeweiligen Viertelstunde.');
+  });
+
+  it('Flag ausdrücklich false: Börsenpreis (nichts wird behauptet)', () => {
+    const flagAus: SteuerungFormelInput = {
+      tarifArt: 'ohne',
+      plantKind: 'eigenverbrauch',
+      exportVerguetungPriced: false,
+    };
+    expect(steuerungFormel(flagAus).kern).toContain('dem Börsenpreis für die Einspeisung');
+    expect(einspeise(flagAus).text).toBe('Der Börsenpreis (Day-Ahead) der jeweiligen Viertelstunde.');
+  });
+
+  it('tarifneutral gewinnt: ein Portfolio nennt keine einzelne feste Vergütung', () => {
+    const portfolio: SteuerungFormelInput = { tarifneutral: true, exportVerguetungPriced: true };
+    expect(steuerungFormel(portfolio).kern).toContain('dem Börsenpreis für die Einspeisung');
+    expect(einspeise(portfolio).text).toBe('Der Börsenpreis (Day-Ahead) der jeweiligen Viertelstunde.');
   });
 });
 
