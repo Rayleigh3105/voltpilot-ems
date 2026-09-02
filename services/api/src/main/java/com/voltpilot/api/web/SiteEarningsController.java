@@ -114,6 +114,21 @@ public class SiteEarningsController {
         BigDecimal arbitrage = split != null && saved != null ? split.arbitrageEur() : null;
         BigDecimal pvShift = arbitrage != null ? saved.subtract(arbitrage) : null;
 
+        // Die Dreiteilung saved = speicher + steuerung (audit x7 §2.5): the
+        // greedy standard-battery walk runs only when saved itself is
+        // computable; steuerung is the EXACT remainder (BigDecimal subtract),
+        // so the reconciliation holds by construction. A site without
+        // maintained battery master data gets null + the honest reason.
+        BigDecimal savedSpeicher = saved != null
+                ? earnings.savedSpeicherForSite(siteId, from, to)
+                : null;
+        BigDecimal savedSteuerung = savedSpeicher != null
+                ? saved.subtract(savedSpeicher)
+                : null;
+        String steuerungSplitReason = saved != null && savedSpeicher == null
+                ? "no_battery_data"
+                : null;
+
         BigDecimal einspeise = computable ? agg.einspeiseErloesEur() : null;
         BigDecimal eigenverbrauchsWert = computable ? agg.eigenverbrauchsWertEur() : null;
         BigDecimal stromkosten = computable ? agg.stromkostenEur() : null;
@@ -198,6 +213,9 @@ public class SiteEarningsController {
                 saved,
                 arbitrage,
                 pvShift,
+                savedSpeicher,
+                savedSteuerung,
+                steuerungSplitReason,
                 baseline,
                 actual,
                 computable ? agg.marktpraemieEur() : null,

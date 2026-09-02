@@ -54,6 +54,26 @@ import java.util.UUID;
  * @param savedEur the ATTRIBUTION of VoltPilot's steering - a delta against an
  *     unregulated plant that already sits INSIDE the result, never a sibling
  *     summand (the MIG §5 rule the money hero follows too)
+ * @param savedSpeicherEur der Speicher-Anteil der Dreiteilung
+ *     {@code savedEur = savedSpeicherEur + savedSteuerungEur} (Audit
+ *     vp-geldzahlen-audit-x7 §2.5, B1): was ein STUR arbeitender
+ *     Standard-Speicher (das Greedy-Referenzmodell der Ersparnis-Simulation -
+ *     gleiche Physik, lädt jeden Überschuss, deckt jedes Defizit, lädt nie aus
+ *     dem Netz, preisblind) gegenüber der speicherlosen Anlage erwirtschaftet
+ *     hätte, bewertet mit denselben Preis-Kompositionen wie {@code savedEur}
+ *     ({@code EarningsRepository.savedSpeicher}). Null, wenn nichts berechenbar
+ *     ist oder die Batterie-Stammdaten fehlen ({@code steuerungSplitReason})
+ * @param savedSteuerungEur der exakte Rest {@code savedEur −
+ *     savedSpeicherEur}: der Mehrwert der INTELLIGENTEN Steuerung gegenüber dem
+ *     sturen Speicher (Preisfenster, Netzladen-Arbitrage, Abregelung) - die
+ *     Rekonziliation gilt per Konstruktion. Null wann immer
+ *     {@code savedSpeicherEur} null ist
+ * @param steuerungSplitReason warum die Dreiteilung fehlt, obwohl
+ *     {@code savedEur} berechenbar ist: {@code no_battery_data} = kein
+ *     primäres Batterie-Asset mit gepflegter Kapazität und Lade-/
+ *     Entladeleistung - die Referenz wird dann ehrlich nicht simuliert, nie
+ *     geraten. Null, wenn die Dreiteilung vorliegt oder {@code savedEur}
+ *     selbst null ist (dann erklärt {@code reason})
  * @param bezugspreisCtKwh {@code stromkostenEur / bezogenKwh} in ct/kWh - a
  *     division of two shown sums, so the surface can be checked against itself
  * @param marktpraemieEur the premium already CONTAINED in
@@ -108,6 +128,9 @@ public record SiteEarningsDto(
         BigDecimal savedEur,
         BigDecimal arbitrageEur,
         BigDecimal pvShiftEur,
+        BigDecimal savedSpeicherEur,
+        BigDecimal savedSteuerungEur,
+        String steuerungSplitReason,
         BigDecimal baselineEur,
         BigDecimal actualEur,
         BigDecimal marktpraemieEur,
