@@ -59,7 +59,9 @@
 }
 
 .vp-spb-ton-warn .vp-spb-wert {
-  color: var(--vp-warn-ink, #b45309);
+  /* Dieselbe Rechnung wie bei `.vp-spb-still`: #B45309 auf dem gruenen Grund
+     ergab 4,49:1. Nachgedunkelt -> 5,13:1. */
+  color: color-mix(in srgb, var(--vp-warn-ink, #b45309) 90%, var(--vp-text, #1a1a1a));
 }
 
 .vp-spb-ton-neutral .vp-spb-wert {
@@ -71,7 +73,9 @@
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--vp-neutral-soft, #eef1f5);
-  color: #4b5563;
+  /* P7: war ein HARTER Hex (#4b5563) ohne Token. Der Wert wird jetzt AUS den
+     Haus-Tokens gemischt - gemessen 6,49:1 auf `--vp-neutral-soft`. */
+  color: color-mix(in srgb, var(--vp-text-gray, #66717c) 70%, var(--vp-text, #1a1a1a));
   font-size: 0.72rem;
   font-weight: 800;
   white-space: nowrap;
@@ -80,6 +84,15 @@
 .vp-spb-chip-link {
   color: var(--vp-action, #2563eb);
   text-decoration: none;
+  /* P7 (375 px gemessen: 152x21): >=44 px Trefferflaeche ueber `::before`, ohne
+     die Zeile auseinanderzuziehen - das `.vp-am-karte-go`-Muster des Hauses. */
+  position: relative;
+}
+
+.vp-spb-chip-link::before {
+  content: '';
+  position: absolute;
+  inset: -12px -8px;
 }
 
 .vp-spb-chip-link:hover,
@@ -87,9 +100,13 @@
   text-decoration: underline;
 }
 
-/* Zeile 3 + 4: bewertet bzw. geplant — ruhiger als die gemessene Kasse. */
+/* Zeile 3 + 4: bewertet bzw. geplant — ruhiger als die gemessene Kasse.
+   ⚠ P7: `--vp-text-gray` (#66717C) ist fuer die WEISSE Flaeche bemessen; auf
+   dem gruenen Speicher-Grund (#E7F6EC) fiel es auf 4,45:1 (AA-FAIL fuer
+   Normaltext, 13,6 px). Nachgedunkelt AUS den Haus-Tokens - gemessen 5,06:1;
+   der Ton bleibt sichtbar ruhiger als `--vp-text`. */
 .vp-spb-still {
-  color: var(--vp-text-muted, #5b6472);
+  color: color-mix(in srgb, var(--vp-text-gray, #66717c) 90%, var(--vp-text, #1a1a1a));
 }
 
 .vp-spb-satz {
@@ -102,7 +119,7 @@
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--vp-neutral-soft, #eef1f5);
-  color: #4b5563;
+  color: color-mix(in srgb, var(--vp-text-gray, #66717c) 70%, var(--vp-text, #1a1a1a));
   font-size: 0.72rem;
   font-weight: 800;
   white-space: nowrap;

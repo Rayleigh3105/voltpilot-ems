@@ -69,9 +69,12 @@
 }
 
 /* Ein Minus im ABGESCHLOSSENEN Zeitraum: Bernstein. Rot bleibt auf dieser
-   Karte den Stromkosten vorbehalten. */
+   Karte den Stromkosten vorbehalten.
+   ⚠ P7: der Grund war ein HARTER Hex (#fff3e0). Er wird jetzt — wie beim
+   Geschwister `.vp-ez-chip-warn` — AUS dem Warn-Token gemischt; damit tragen
+   die zwei Bernstein-Flächen der Karte denselben Ton (gemessen 4,69:1). */
 .vp-erg-steering-warn {
-  background: #fff3e0;
+  background: color-mix(in srgb, var(--vp-warn-ink, #b45309) 5%, var(--vp-surface, #ffffff));
   color: var(--vp-warn-ink, #b45309);
 }
 
@@ -108,7 +111,9 @@
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--vp-neutral-soft, #eef1f5);
-  color: #4b5563;
+  /* P7: war ein harter Hex (#4b5563) — jetzt aus den Haus-Tokens gemischt
+     (6,49:1 auf `--vp-neutral-soft`), wie `.vp-spb-chip`. */
+  color: color-mix(in srgb, var(--vp-text-gray, #66717c) 70%, var(--vp-text, #1a1a1a));
   font-size: 0.72rem;
   font-weight: 800;
   white-space: nowrap;
@@ -389,7 +394,14 @@
    ist bewusst zurückhaltend: die Farbe der Zeile ist ihre Kennung, nicht ihr
    Urteil. */
 .vp-ez-t-minus {
-  color: var(--vp-chart-discharge, #e53935);
+  /* ⚠ P7 (gemessen): `--vp-chart-discharge` (#E53935) ist die Kosten-/Warnfarbe
+     des Hauses und bleibt es — als BALKEN und in der Hero-Zahl (clamp ab 2rem,
+     also WCAG-„large", 3:1 genügt, 4,23:1 gemessen). Der Zeilen-BETRAG ist
+     dagegen 16 px/700, also Normaltext: dort fiel dieselbe Farbe mit 4,23:1
+     unter AA. Sie wird deshalb NUR HIER aus den Haus-Tokens nachgedunkelt
+     (5,07:1) — dieselbe Rot-Identität, eine Stufe tiefer, kein zweiter Farbwert
+     und keine Änderung am geteilten Token (es steht in sechs weiteren Dateien). */
+  color: color-mix(in srgb, var(--vp-chart-discharge, #e53935) 88%, var(--vp-text, #1f2933));
 }
 
 .vp-ez-t-null {
@@ -461,8 +473,12 @@
    Urteil über eine Zahl. */
 .vp-ez-chip-warn {
   /* Kein eigenes Soft-Token im Designsystem - der Ton wird deshalb AUS dem
-     Warn-Token gemischt statt als Hex danebengeschrieben. */
-  background: color-mix(in srgb, var(--vp-warn-ink, #b45309) 10%, var(--vp-surface, #ffffff));
+     Warn-Token gemischt statt als Hex danebengeschrieben.
+     ⚠ P7 (375 px gemessen): bei 10 % Beimischung lag der Chip-Text auf seinem
+     eigenen Grund bei 4,16:1 - AA-FAIL fuer 11,5-px-Text. Der GRUND wird
+     aufgehellt (5 %) statt die Schrift nachzudunkeln: der Warnton ist ein
+     Haus-Token und wird an sechs weiteren Stellen als Text benutzt. */
+  background: color-mix(in srgb, var(--vp-warn-ink, #b45309) 5%, var(--vp-surface, #ffffff));
   border-color: color-mix(in srgb, var(--vp-warn-ink, #b45309) 35%, var(--vp-surface, #ffffff));
   color: var(--vp-warn-ink, #b45309);
 }

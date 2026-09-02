@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 
 import '../designsystem/tokens/fonts.css';
@@ -59,23 +60,28 @@ function woerter(text: string): number {
   return text.split(/\s+/).filter((w) => /[A-Za-zÄÖÜäöüß0-9]/.test(w)).length;
 }
 
-/** Ebene 0 EINER Fixture — inklusive der Wortzahl, die §3.12 begrenzt. */
-function ebene0Woerter(f: Fixture): number {
-  const view = ergebnisZeilen({
-    money: f.money,
-    periodLabel: f.label,
-    laeuft: f.laeuft,
-    range: f.range,
+/**
+ * **Das Textbudget wird AUS DEM GERENDERTEN HTML gezählt** (§3.12 wörtlich),
+ * nicht aus einer nachgebauten Wortliste — sonst zählt der Beweis etwas
+ * anderes, als der Kunde liest. P7 hat genau das behoben: die frühere
+ * Nachbildung ließ die Zeilen-Werte und den Speicher-Block aus und meldete für
+ * JEDE Fixture 23 Wörter, also ein Budget, das nie greifen konnte.
+ *
+ * Gezählt wird Ebene 0 = die Karte MIT geschlossenen Aufklappern; ein offenes
+ * `<details>` gehört zu Ebene 1/2 und hat sein eigenes Budget.
+ */
+function domWoerter(el: HTMLElement | null): number {
+  if (!el) return 0;
+  const klon = el.cloneNode(true) as HTMLElement;
+  klon.querySelectorAll('details[open]').forEach((d) => d.removeAttribute('open'));
+  // `innerText` einer losgelösten Kopie ist leer — deshalb `textContent` der
+  // sichtbaren Ebene 0: der Inhalt eines geschlossenen `<details>` steht zwar
+  // im DOM, wird aber hier über die `summary`-Grenze abgeschnitten.
+  klon.querySelectorAll('details').forEach((d) => {
+    const sum = d.querySelector('summary');
+    d.replaceChildren(...(sum ? [sum] : []));
   });
-  const teile = [
-    'Ergebnis',
-    'Bewertet',
-    view.hero?.text ?? '',
-    view.satz,
-    ...view.zeilen.flatMap((z) => [z.name, z.text, z.chip?.text ?? '']),
-    'Preise & Vergütung',
-  ];
-  return woerter(teile.join(' '));
+  return woerter(klon.textContent ?? '');
 }
 
 function Karte({ f }: { f: Fixture }) {
@@ -113,14 +119,12 @@ function Karte({ f }: { f: Fixture }) {
           margin: '0 0 6px',
           fontSize: '0.72rem',
           fontWeight: 700,
-          color: '#718096',
+          color: 'var(--vp-text-gray, #66717C)',
           overflowWrap: 'anywhere',
         }}
       >
         {f.titel}
-        <span data-woerter={ebene0Woerter(f)} style={{ marginLeft: 8 }}>
-          · Ebene 0: {ebene0Woerter(f)} Wörter
-        </span>
+        <span data-woerter-slot={f.id} style={{ marginLeft: 8 }} />
       </p>
       <Card padding="lg" radius="lg">
         <KartenKopf icon="euro" category="primary" titel={`Ergebnis · ${f.label}`} art="bewertet" />
@@ -181,6 +185,13 @@ const SEITEN = [
   // JEDEM Eimer null — er zeichnet nichts und darf deshalb auch nicht in der
   // Legende stehen.
   { id: 'eeg-ohne-tarif', titel: 'EEG ohne Stromtarif · der B8-Fall' },
+  // P7: zwei Seiten-Formen, die die drei oben NICHT abdecken — ein
+  // Nicht-Tages-Zeitraum (Karte „Der Tag im Bild" entfällt, „So verdient Ihre
+  // Anlage" trägt den Monatsmarktwert) und eine Anlage ohne Batterie-Stammdaten
+  // (der Speicher-Block schrumpft auf Zeile 1 + Nachtrag-Link — genau der
+  // Chip, dessen Trefferfläche bei 375 zu klein war).
+  { id: 'dv-monat', titel: 'Direktvermarktung · Monat (kein Tagesbild)' },
+  { id: 'dv-kein-split', titel: 'Direktvermarktung · keine Batterie-Stammdaten' },
 ] as const;
 
 function fixtureOf(id: string): Fixture {
@@ -248,7 +259,7 @@ function SeitenBeweis() {
         };
         return (
           <div key={id} data-seite={id} style={{ marginBottom: 32, minWidth: 0 }}>
-            <p style={{ margin: '0 0 6px', fontSize: '0.72rem', fontWeight: 700, color: '#718096' }}>
+            <p style={{ margin: '0 0 6px', fontSize: '0.72rem', fontWeight: 700, color: 'var(--vp-text-gray, #66717C)' }}>
               P6 · GANZE SEITE — {titel}
             </p>
             <ErloeseSection
@@ -272,11 +283,28 @@ function SeitenBeweis() {
   );
 }
 
+/**
+ * Stempelt nach dem Rendern je Fixture die GEMESSENE Wortzahl der Ebene 0 an
+ * ihren Platzhalter — der Browser-Beweis liest sie über `[data-woerter]`.
+ */
+function WortBudget() {
+  useEffect(() => {
+    for (const slot of document.querySelectorAll<HTMLElement>('[data-woerter-slot]')) {
+      const karte = slot.closest('[data-fixture]')?.querySelector<HTMLElement>('.vp-card');
+      const n = domWoerter(karte ?? null);
+      slot.setAttribute('data-woerter', String(n));
+      slot.textContent = ` \u00b7 Ebene 0: ${n} W\u00f6rter`;
+    }
+  });
+  return null;
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <div style={{ padding: 12, maxWidth: 1160, margin: '0 auto', minWidth: 0 }}>
     <SeitenBeweis />
     {FX.map((f) => (
       <Karte key={f.id} f={f} />
     ))}
+    <WortBudget />
   </div>,
 );
