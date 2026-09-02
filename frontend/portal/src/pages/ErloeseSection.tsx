@@ -26,6 +26,9 @@ import {
   type ErgebnisZeile,
   type PreisZeile,
 } from '../erloesKomposition';
+import { ergebnisZeilen } from '../erloesZeilen';
+import { ebene1, ebene2, speicherSchritte } from '../erloesEbenen';
+import { isCurrentPeriod } from '../energieBilanz';
 import { soVerdient } from '../soVerdient';
 import {
   availableWelten,
@@ -53,9 +56,11 @@ import {
   WeltKopf,
   ZeitLeiste,
 } from '../components/HistorieWelt';
+import { ErgebnisZeilen } from '../components/ErgebnisZeilen';
+import { Ebene1Panel, Ebene2Panel } from '../components/ErloesEbenen';
 import { ErloeseVerlaufChart } from '../components/ErloeseVerlaufChart';
 import { SoVerdientCard } from '../components/SoVerdient';
-import { SteuerungFormel } from '../components/SteuerungFormel';
+import { SpeicherSchritte, SteuerungFormel } from '../components/SteuerungFormel';
 import { SpeicherBlock } from '../components/SpeicherBlock';
 import { speicherAussage } from '../speicherAussage';
 
@@ -312,6 +317,15 @@ export function ErloeseSection({
   const isDay = range === 'day';
 
   const ergebnis = erloesErgebnis({ money, periodLabel: label, kurzerTitel: isPhone });
+  // Ebene 0 der neuen Ergebnis-Karte (Konzept `vp-erloese-seite-konzept-e2`
+  // §3.2). Sie ersetzt Hero-Satz und die drei `MiniShareBar`-Zeilen; der Rest
+  // der Karte (Speicher, Einordnung) reist unverändert als Slot mit.
+  const laeuft = isCurrentPeriod(anchor, range, now);
+  const zeilenView = ergebnisZeilen({ money, periodLabel: label, laeuft, range });
+  // Die vermiedenen Leistungskosten sind KEIN Summand des Zeitraum-Ergebnisses
+  // (eigene Abrechnungsperiode) - sie bleiben deshalb ausserhalb des
+  // Wasserfalls und behalten ihr Perioden-Etikett.
+  const lastspitzen = ergebnis.rows.filter((r) => r.period === 'billing-period');
   // Das Kombinations-Bild — `null` auf einer nicht direkt vermarkteten Anlage
   // (S9): dort bleibt die Welt byte-gleich wie bisher.
   const verdient = soVerdient({ money, siteId: site.id });
@@ -374,6 +388,27 @@ export function ErloeseSection({
   });
   const geplant = geplanteErsparnisNotiz(history?.totals.batterySavingsPlannedEur, label);
 
+  // Die Speicher-Erklaerung als SCHRITTE 1-5 mit den eingesetzten Zahlen
+  // (Konzept §3.3, Revision 2). Inhaltlich ist es die vom Captain
+  // freigegebene Erklaerung; nur die FORM wechselt von Prosa zu Schritten.
+  // Ohne die Kassen-Zahlen liefert sie NICHTS, dann bleibt die Prosa-Fassung.
+  //
+  // ⚠ Die AUFTEILUNG (`savedSpeicherEur`/`savedSteuerungEur`, #591) reist mit —
+  //   sonst blieben die Schritte 4 und 5 stumm, und der Aufklapper erklärte
+  //   ausgerechnet die Zeile 2 des Blocks darüber („davon Steuerung") nicht.
+  //   Ein ÄLTERES Backend liefert die Felder nicht; dann entfallen die zwei
+  //   Schritte wortlos (§3.6), der Rest der Rechnung bleibt.
+  const speicherSchritteInput = money
+    ? {
+        money,
+        sturEur: money.savedSpeicherEur ?? null,
+        steuerungEur: money.savedSteuerungEur ?? null,
+        splitReason: money.steuerungSplitReason ?? null,
+        geplantEur: history?.totals.batterySavingsPlannedEur ?? null,
+      }
+    : null;
+  const hatSpeicherSchritte =
+    speicherSchritteInput != null && speicherSchritte(speicherSchritteInput).length > 0;
   // ---------------------------------------------------------------------
   // DER SPEICHER-BLOCK (Erlöse-Konzept §3.5, Captain-Scoping 2)
   //
@@ -399,8 +434,18 @@ export function ErloeseSection({
     speicher && speicher.hatAussage ? (
       <SpeicherBlock aussage={speicher} nachtragHref={`#/anlage/${site.id}/technik`}>
         {/* Die Rechnung hinter der Zahl - dieselbe Erklaerung wie im Cockpit
-            (Captain 01.09.2026), zugeklappt genau EINE ruhige Zeile. */}
-        {ergebnis.steeringFormel && <SteuerungFormel input={ergebnis.steeringFormel} />}
+            (Captain 01.09.2026), zugeklappt genau EINE ruhige Zeile.
+
+            ⚠ EINE Erklaerung, zwei Formen: wo die Server-Summen reichen,
+            stehen die SCHRITTE 1-5 mit den eingesetzten Zahlen (Konzept §3.3,
+            Revision 2); sonst bleibt die Prosa-Fassung, die auch Cockpit und
+            Portfolio benutzen. Nie beide - das waere dieselbe Rechnung
+            zweimal untereinander. */}
+        {hatSpeicherSchritte && speicherSchritteInput ? (
+          <SpeicherSchritte input={speicherSchritteInput} />
+        ) : ergebnis.steeringFormel ? (
+          <SteuerungFormel input={ergebnis.steeringFormel} />
+        ) : null}
       </SpeicherBlock>
     ) : null;
   // Revision 2 (§3.12): auf Ebene 0 steht der Vergleich als CHIP („25 %
@@ -479,35 +524,51 @@ export function ErloeseSection({
                   />
                 ) : (
                   <>
-                    <p
-                      className={`vp-erg-netto vp-erg-${ergebnis.richtung ?? 'ertrag'}`}
-                      title={ergebnis.nettoSatz}
-                    >
-                      {ergebnis.nettoText}
-                    </p>
-                    <p className="vp-erg-satz">{ergebnis.nettoSatz}</p>
-                    {/* **Der Falz ist die Antwort.** Am Telefon stehen die drei
-                        Zeilen, die die Zahl ERGEBEN, direkt unter ihr; die
-                        Einordnung (Zurechnung, Δ, laufende Periode) folgt
-                        danach. Am Schreibtisch bleibt die gewachsene Ordnung —
-                        dort steht ohnehin alles gemeinsam im Bild. */}
-                    {!isPhone && speicherBlock}
-                    {!isPhone && vergleichsZeilen}
-                    {/* Die Herkunft der großen Zahl - nur, wenn es eine gibt;
-                        eine Liste aus lauter „—" erklärt nichts. */}
-                    <ul className="vp-ekomp" aria-label="Woraus sich das Ergebnis zusammensetzt">
-                      {ergebnis.rows.map((row) => (
-                        <KompositionsZeile
-                          key={row.id}
-                          row={row}
-                          zeigePeriode={ergebnis.mehrerePerioden}
-                        />
-                      ))}
-                    </ul>
-                    {isPhone && speicherBlock}
-                    {isPhone && vergleichsZeilen}
+                    {/* Ebene 0 (Konzept §3.2, Revision 2): eine Zahl, ein Satz
+                        von hoechstens acht Woertern und die vier Zeilen, in
+                        denen der Wasserfall WOHNT. Die Reihenfolge ist auf
+                        jeder Breite dieselbe - das frühere `isPhone`-Umsortieren
+                        ist entfallen, weil der Falz ohnehin dem Ergebnis
+                        gehoert.
+
+                        ⚠ Der Speicher-Slot nimmt die ECHTE `SpeicherBlock`-
+                        Komponente (P1+P5) an ihrer dokumentierten Einbaustelle -
+                        die Karte kennt die Ableitung nicht, sie haelt nur den
+                        Platz. Ohne Aussage ist `speicherBlock` null und der
+                        Slot bleibt leer. */}
+                    <ErgebnisZeilen
+                      view={zeilenView}
+                      // Ebene 1 je Zeile (Konzept §3.3): die Rechnung mit den
+                      // EINGESETZTEN Zahlen. Eine Zeile ohne Rechnung bleibt
+                      // ruhig - ein Aufklapper ins Leere waere ein Versprechen.
+                      ebene1={(id) => {
+                        const e1 = ebene1(money, zeilenView, id);
+                        return e1 ? <Ebene1Panel ebene1={e1} /> : null;
+                      }}
+                      ebene2={
+                        money ? (
+                          <Ebene2Panel
+                            ebene2={ebene2({
+                              money,
+                              netzladenErlaubt: site.netzladenErlaubt ?? null,
+                            })}
+                          />
+                        ) : null
+                      }
+                      speicher={speicherBlock}
+                      einordnung={vergleichsZeilen}
+                    />
+                    {/* Die Lastspitzen-Zeile gehoert einer EIGENEN
+                        Abrechnungsperiode und geht nie in die grosse Zahl ein -
+                        sie steht deshalb ausserhalb des Wasserfalls. */}
+                    {lastspitzen.length > 0 && (
+                      <ul className="vp-ekomp" aria-label="Ausserhalb des Zeitraum-Ergebnisses">
+                        {lastspitzen.map((row) => (
+                          <KompositionsZeile key={row.id} row={row} zeigePeriode />
+                        ))}
+                      </ul>
+                    )}
                     {ergebnis.periodNote && <p className="vp-note">{ergebnis.periodNote}</p>}
-                    {ergebnis.footnote && <p className="vp-note">{ergebnis.footnote}</p>}
                   </>
                 )}
               </Card>

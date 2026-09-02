@@ -228,7 +228,7 @@ async function renderErloese() {
   stubHistory();
   vi.spyOn(api, 'siteEarnings').mockResolvedValue(money);
   render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-  await screen.findByText('+ 9,84 €');
+  await screen.findByText('+ 9,84 €', { selector: '.vp-ez-hero' });
 }
 
 describe('Mobil · Messwerte führt mit dem DIAGRAMM (P3)', () => {
@@ -353,15 +353,27 @@ describe('Mobil · der Welt-Kopf ist EINE Zeile, das Abzeichen bleibt', () => {
 describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
   it('zeigt Zahl, Zurechnung und die drei Zeilen, die sie ERGEBEN', async () => {
     await renderErloese();
-    expect(screen.getByText('+ 9,84 €')).toBeInTheDocument();
+    // Die EINE grosse Zahl - und derselbe Betrag ein zweites Mal als letzter
+    // Balken des Wasserfalls (die Zeile „Ergebnis"), der die Addition beweist.
+    expect(screen.getByText('+ 9,84 €', { selector: '.vp-ez-hero' })).toBeInTheDocument();
     const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
-    expect(within(komposition).getByText('Einspeise-Erlös')).toBeInTheDocument();
-    expect(within(komposition).getByText('Wert des Eigenverbrauchs')).toBeInTheDocument();
-    expect(within(komposition).getByText(/Stromkosten/)).toBeInTheDocument();
-    // Der Speicher-Block (Erlöse-Konzept §3.5) steht am Telefon UNTER den drei
-    // Zeilen — der Falz zeigt zuerst, was die Zahl ERGIBT.
+    // Seit Revision 2 tragen die Zeilen 1-3-Wort-Namen (Konzept §3.12).
+    // Die NAMEN der Zeilen - gezielt adressiert, weil dieselben Wörter seit
+    // Ebene 1 auch in den Rechenzeilen darunter vorkommen.
+    expect(
+      [...komposition.querySelectorAll('.vp-ez-name')].map((n) => n.textContent),
+    ).toEqual(['Einspeise-Erlös', 'Eigenverbrauch', 'Netzbezug', 'Ergebnis']);
+    // Der Speicher-Block (Erlöse-Konzept §3.5) haengt im Speicher-Slot der
+    // Karte und steht damit NACH den vier Zeilen: der Falz zeigt zuerst, was
+    // die Zahl ERGIBT.
     expect(screen.getAllByText(/^Speicher (heute|an diesem Tag|bisher|im Zeitraum)$/).length)
       .toBeGreaterThan(0);
+    expect(screen.getByText('+ 2,07 €', { selector: '.vp-spb-wert' })).toBeInTheDocument();
+    // ⚠ Und er nennt diesen Betrag NICHT „Steuerung": `savedEur` misst den
+    //   GANZEN Speicher (Baseline = Anlage ohne Speicher), „Steuerung" ist
+    //   erst `savedSteuerungEur` — ohne die Aufteilung wird sie nicht
+    //   behauptet (§2.2 / §3.6, die zweite Wahrheit, die P1+P5 abgeräumt hat).
+    expect(screen.queryByText(/durch VoltPilots Steuerung/)).not.toBeInTheDocument();
   });
 
   it('faltet Erklärendes in BENANNTE Aufklapper — zugeklappt, aber nie versteckt', async () => {
@@ -406,7 +418,7 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     });
     vi.spyOn(api, 'siteEarnings').mockResolvedValue(money);
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByText('+ 9,84 €');
+    await screen.findByText('+ 9,84 €', { selector: '.vp-ez-hero' });
     const notiz = await waitFor(() => {
       const el = document.querySelector('.vp-geplant-notiz');
       expect(el?.textContent).toMatch(/kein Batterie-Fahrplan/);

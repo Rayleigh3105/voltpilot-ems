@@ -5,6 +5,7 @@ import { ErloeseSection } from './ErloeseSection';
 import { clearHistoryCache } from '../historyCache';
 import { clearEarningsCache } from '../useSiteEarnings';
 import { isoDate } from '../periodNav';
+import { BESTAND_BADGE } from '../erloesKomposition';
 import { anlageSurface, type AnlageSurface } from '../surface';
 import {
   api,
@@ -421,19 +422,26 @@ describe('Welt B · Erlöse', () => {
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
-    // Die eine große Zahl - Vorzeichen als eigenes Zeichen.
-    expect(await screen.findByText('+ 999,26 €')).toBeInTheDocument();
-    // ... und die Zeilen, aus denen sie entsteht.
+    // Die eine große Zahl - Vorzeichen als eigenes Zeichen. Sie steht ein
+    // zweites Mal als letzter Balken des Wasserfalls (die Zeile „Ergebnis"),
+    // der die Addition beweist - deshalb wird der Hero gezielt adressiert.
+    expect(
+      await screen.findByText('+ 999,26 €', { selector: '.vp-ez-hero' }),
+    ).toBeInTheDocument();
+    // ... und die Zeilen, aus denen sie entsteht (seit Revision 2 mit
+    // 1-3-Wort-Namen, Konzept §3.12).
     const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
     expect(komposition).toHaveTextContent('Einspeise-Erlös');
     expect(komposition).toHaveTextContent('1.059,40 €');
-    expect(komposition).toHaveTextContent('Stromkosten (Netzbezug)');
+    expect(komposition).toHaveTextContent('Netzbezug');
     expect(komposition).toHaveTextContent('60,14 €');
     // Der SPEICHER-BLOCK (Erlöse-Konzept §3.5) ist eine UNTERZEILE, kein
     // weiterer Summand: derselbe Wert misst den GANZEN Speicher, „Steuerung"
     // ist erst `savedSteuerungEur`.
     expect(screen.getByText('Speicher an diesem Tag')).toBeInTheDocument();
-    expect(screen.getByText(/\+ 161,44/)).toBeInTheDocument();
+    // Der Betrag steht ein zweites Mal in Schritt 3 der Rechenzeilen darunter
+    // (dieselbe Rechnung, zweite Lesehöhe) - deshalb gezielt die Block-Zeile.
+    expect(screen.getByText(/\+ 161,44/, { selector: '.vp-spb-wert' })).toBeInTheDocument();
     expect(komposition).not.toHaveTextContent('161,44');
   });
 
@@ -452,13 +460,15 @@ describe('Welt B · Erlöse', () => {
     });
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
-    const satz = await screen.findByText(/44,2 kWh/);
+    // Die Bestandszeile selbst - die Zahl steht seit Ebene 1 auch in der
+    // Planwert-Rechnung der Speicher-Schritte, deshalb gezielt adressiert.
+    const satz = await screen.findByText(/44,2 kWh/, { selector: '.vp-spb-satz' });
     expect(satz).toHaveTextContent('Speicherenergie für den Folgetag gespeichert');
     expect(satz).toHaveTextContent('Planwert 8,35 €');
     // Der Betrag bleibt sichtbar von der gemessenen Kasse getrennt.
     expect(satz.closest('p')).toHaveTextContent('Kein Abzug');
     // Die grosse Zahl bleibt die gemessene Kasse.
-    expect(screen.getByText('+ 999,26 €')).toBeInTheDocument();
+    expect(screen.getByText('+ 999,26 €', { selector: '.vp-ez-hero' })).toBeInTheDocument();
     const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
     expect(komposition).not.toHaveTextContent('8,35');
   });
@@ -468,7 +478,12 @@ describe('Welt B · Erlöse', () => {
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
     await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
-    expect(screen.queryByText(/im Speicher/)).not.toBeInTheDocument();
+    // Die BESTANDSZEILE fehlt - der Satz „was jetzt im Speicher liegt" der
+    // Speicher-Schritte (Ebene 1) ist eine andere Aussage und bleibt.
+    // ⚠ Seit P1+P5 wohnt sie als Zeile 3 IM SpeicherBlock; ein Wächter auf dem
+    //   abgelösten Wirt `.vp-erg-bestand` wäre stillschweigend wahr geworden.
+    expect(document.querySelector('.vp-spb-still')).toBeNull();
+    expect(screen.queryByText(BESTAND_BADGE)).not.toBeInTheDocument();
     expect(screen.queryByText(/Folgetag gespeichert/)).not.toBeInTheDocument();
   });
 
