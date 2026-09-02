@@ -40,7 +40,10 @@ import org.springframework.stereotype.Repository;
  * {@code dynamisch} without a sheet = spot + Aufschlag, and a site without any
  * price data stays at bare spot (byte-identical to the pre-Stufe-3 numbers;
  * the mirrored {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS} flag substitutes
- * the researched default set exactly like the solver). Because import ≠
+ * the researched default set exactly like the solver). Since captain decision
+ * E7 (2026-09-02) the {@code eigenverbrauchsWertEur} - the AVOIDED import -
+ * reads the very same expression, so one card carries ONE import price
+ * ({@link #eigenverbrauchsWertEurSql(boolean)}). Because import ≠
  * export, the counterfactual is no longer a pure aggregate: the baseline
  * splits each 15-min slot into {@code greatest(load - pv, 0)} import and
  * {@code greatest(pv - load, 0)} export - the same intra-slot approximation
@@ -216,30 +219,43 @@ public class EarningsRepository {
             "GREATEST(r.load_kwh - r.grid_import_kwh, 0)";
 
     /**
-     * The euro value of a slot's self-consumed energy, per the site's tariff
-     * (captain 2026-07-08, migration V20260708010000):
-     * <ul>
-     * <li><b>dynamisch</b>: self-consumed kWh valued at THIS slot's Börsenpreis
-     * plus the optional fixed Aufschlag - the whole point of the dynamic model,
-     * exact per 15-min slot, never a single fixed price. A null Aufschlag values
-     * at pure spot (honest, conservative). Note the spot part can be negative in
-     * a negative-price slot; that is the correct dynamic-tariff economics (the
-     * §51 suspension is a FEED-IN/Marktprämie rule, not a self-consumption one).</li>
-     * <li><b>fest</b>: self-consumed kWh valued at the fixed retail price (the
-     * old strompreis behaviour); NULL when no price is configured.</li>
-     * <li><b>ohne</b>: NULL - no euro value (self-consumption shown in kWh only).</li>
-     * </ul>
-     * price is EUR/MWh, so {@code price/1000} is EUR/kWh and the Aufschlag
-     * ({@code ct/kWh}) divides by 100. Within {@code COVERED} the price is never
-     * null, so the dynamic branch is always well-defined.
+     * The euro value of a slot's self-consumed energy - the AVOIDED grid
+     * supply cost, and therefore the SAME price truth the metered import is
+     * valued at ({@link SlotEconomics#importPriceCtSql}; captain decision E7
+     * of 2026-09-02, concept vp-erloese-seite-konzept-e2 §2.3 finding B5).
+     *
+     * <p>Until then this expression carried its OWN composition
+     * ({@code dynamisch} = spot + Aufschlag, {@code fest} = the flat price,
+     * everything else NULL) and knew neither the {@code site_supply_price}
+     * sheet, nor USt, nor the researched default set behind
+     * {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS}. On one and the same card
+     * the identical kWh was worth ~30 ct as consumption and ~15 ct as avoided
+     * consumption, and a tariff-less plant on the production default showed no
+     * euro value at all while its supply cost was fully valued - so its
+     * Netto-Ergebnis read systematically too low. There is now ONE import
+     * price per card: {@code selbstverbrauch × importPrice}, and the existing
+     * {@link #tarifPriced} flag says honestly whether that price is the
+     * customer's tariff or bare Börsenpreis.
+     *
+     * <p>Nothing else moved: {@code baseline}/{@code actual}/{@code saved} have
+     * valued avoided import at this composition since Stufe 3, so
+     * {@code saved == baseline - actual} and
+     * {@code stromkosten - einspeise == actual} are untouched, and
+     * {@code netto == einspeise + eigenverbrauch - stromkosten} now reconciles
+     * across ONE price. The visible consequence (release note): plants with a
+     * maintained Preisblatt, plants on the default set and tariff-less plants
+     * see a HIGHER Eigenverbrauchs-Wert - and thus a higher Netto and
+     * Gesamtertrag - than before.
+     *
+     * <p>{@code importPriceCtSql} is ct/kWh, hence the {@code / 100.0}; within
+     * {@code COVERED} the slot price is never null, so every spot-dependent
+     * branch is well-defined.
      */
-    private static final String EIGENVERBRAUCHS_WERT_EUR =
-            "(CASE"
-                    + " WHEN s.tarif_art = 'dynamisch' THEN " + SELBSTVERBRAUCH_KWH
-                    + "   * (p.price_eur_mwh / 1000.0 + COALESCE(s.tarif_param_ct_kwh, 0) / 100.0)"
-                    + " WHEN s.tarif_art = 'fest' AND s.tarif_param_ct_kwh IS NOT NULL THEN "
-                    + SELBSTVERBRAUCH_KWH + " * s.tarif_param_ct_kwh / 100.0"
-                    + " ELSE NULL END)";
+    public static String eigenverbrauchsWertEurSql(boolean defaultSupplyComponents) {
+        return "(" + SELBSTVERBRAUCH_KWH + " * "
+                + SlotEconomics.importPriceCtSql("p.price_eur_mwh", defaultSupplyComponents)
+                + " / 100.0)";
+    }
 
     /** Energy moved through the battery in a slot (charged + discharged). */
     private static final String BATTERIE_BEWEGT_KWH =
@@ -310,6 +326,13 @@ public class EarningsRepository {
      */
     private final String stromkostenEur;
 
+    /**
+     * The euro value of a slot's self-consumed energy - see
+     * {@link #eigenverbrauchsWertEurSql(boolean)} for the composition and why
+     * it is the import price, not a second one.
+     */
+    private final String eigenverbrauchsWertEur;
+
     /** The tarifPricedSql boolean for this flag setting (see {@link #tarifPriced}). */
     private final String tarifPricedExpr;
 
@@ -325,6 +348,8 @@ public class EarningsRepository {
                 + " / 100.0)";
         this.einspeiseErloesEur = "(r.grid_export_kwh * " + exportValueEurKwh + ")";
         this.stromkostenEur = "(r.grid_import_kwh * " + importPriceEurKwh + ")";
+        this.eigenverbrauchsWertEur =
+                eigenverbrauchsWertEurSql(optimizer.defaultSupplyComponents());
         // The SAME per-slot export rate values the metered AND the residual
         // export, so saved == baseline - actual stays an algebraic identity
         // (for DV the rate expands to spot + eligible premium, reproducing the
@@ -391,10 +416,10 @@ public class EarningsRepository {
      * Gesamtertrag over the bucket - {@code einspeiseErloesEur} (metered export
      * valued at the export composition: spot + Marktprämie for DV, the feste
      * Vergütung for an EEG plant) and {@code eigenverbrauchsWertEur} (the
-     * self-consumed energy valued per the site's tariff, dynamisch slot-by-slot
-     * at spot + Aufschlag). Both are summed per slot in SQL, so a dynamic tariff
-     * is priced with each slot's own Börsenpreis; {@code eigenverbrauchsWertEur}
-     * is NULL for an {@code ohne} tariff (never a fabricated euro). The
+     * self-consumed energy valued at the site's IMPORT price - the avoided
+     * supply cost, same composition as {@code stromkostenEur}; see
+     * {@link #eigenverbrauchsWertEurSql(boolean)}). Both are summed per slot in
+     * SQL, so a dynamic tariff is priced with each slot's own Börsenpreis. The
      * Gesamtertrag ({@code einspeise + eigenverbrauchsWert}, null-safe) is
      * assembled in the controller.
      *
@@ -516,7 +541,7 @@ public class EarningsRepository {
                         + "   AS market_value_provisional,"
                         + " sum(" + einspeiseErloesEur + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS einspeise_erloes_eur,"
-                        + " sum(" + EIGENVERBRAUCHS_WERT_EUR + ")"
+                        + " sum(" + eigenverbrauchsWertEur + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS eigenverbrauchs_wert_eur,"
                         + " sum(" + SELBSTVERBRAUCH_KWH + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS selbstverbrauch_kwh,"
@@ -1103,7 +1128,7 @@ public class EarningsRepository {
                 "WITH " + PRICE_SLOT_CTE
                         + "SELECT r.site_id, " + start + " AS bucket_start,"
                         + " sum(" + einspeiseErloesEur + ") AS einspeise_erloes_eur,"
-                        + " sum(" + EIGENVERBRAUCHS_WERT_EUR + ") AS eigenverbrauchs_wert_eur,"
+                        + " sum(" + eigenverbrauchsWertEur + ") AS eigenverbrauchs_wert_eur,"
                         + " sum(" + stromkostenEur + ") AS stromkosten_eur "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "

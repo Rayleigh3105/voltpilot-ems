@@ -549,7 +549,11 @@ describe('erloesErgebnis · Karte 1 der Erlöse-Welt', () => {
     expect(view.rows.some((r) => r.eur === 161.44)).toBe(false);
   });
 
-  it('schreibt „—" statt einer erfundenen Null und nennt den Grund', () => {
+  it('schreibt „—“ statt einer erfundenen Null - und nennt seit E7 nur noch fehlende Daten', () => {
+    // Seit dem Captain-Entscheid E7 (02.09.2026) bewertet der Server den
+    // Eigenverbrauch IMMER mit dem Bezugspreis der Karte. Ein fehlender Wert
+    // heißt damit fehlende Daten - „ohne hinterlegten Stromtarif" wäre seither
+    // eine Falschaussage über eine Anlage, die sehr wohl bewertet würde.
     const view = erloesErgebnis({
       money: siteMoney({ eigenverbrauchsWertEur: null, tarifArt: 'ohne', tarifPriced: false }),
       periodLabel: 'Juli 2026',
@@ -557,8 +561,8 @@ describe('erloesErgebnis · Karte 1 der Erlöse-Welt', () => {
     const zeile = view.rows.find((r) => r.id === 'eigenverbrauchswert');
     expect(zeile?.valueText).toBe(DASH);
     expect(zeile?.eur).toBeNull();
-    expect(zeile?.note).toContain('Ohne hinterlegten Stromtarif');
-    expect(zeile?.note).toContain('97,3');
+    expect(zeile?.note).toBe('Noch keine Daten.');
+    expect(zeile?.note).not.toContain('Stromtarif');
     expect(view.footnote).not.toBeNull();
   });
 

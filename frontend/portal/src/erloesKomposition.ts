@@ -1070,11 +1070,9 @@ function eigenNote(money: SiteEarnings | null, eigen: number | null): string | n
     const kwh = num(money.selbstverbrauchKwh);
     return kwh == null ? null : `${fmtNum(kwh, 'kWh')} selbst genutzt`;
   }
-  if (money.tarifArt === 'ohne' && !money.tarifPriced) {
-    const kwh = num(money.selbstverbrauchKwh);
-    const menge = kwh == null ? '' : ` (${fmtNum(kwh, 'kWh')} selbst genutzt)`;
-    return `Ohne hinterlegten Stromtarif lässt sich der Wert nicht beziffern${menge}.`;
-  }
+  // Seit dem Captain-Entscheid E7 (02.09.2026) bewertet der Server den
+  // Eigenverbrauch IMMER mit dem Bezugspreis der Karte - ein fehlender Wert
+  // heißt also fehlende Daten, nie „kein Stromtarif hinterlegt".
   return 'Noch keine Daten.';
 }
 

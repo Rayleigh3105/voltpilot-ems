@@ -135,8 +135,8 @@ public class SiteEarningsController {
         BigDecimal netto = netto(einspeise, eigenverbrauchsWert, stromkosten);
         // Money-centric Gesamtertrag = Einspeise-Erlös + Eigenverbrauchs-Wert
         // (the fleet twin's field, so the cockpit hero reads ONE number). A NULL
-        // Eigenverbrauchs-Wert ('ohne' tariff) leaves the feed-in revenue alone;
-        // both null => not computable (B2 parity).
+        // Eigenverbrauchs-Wert (nothing computable) leaves the feed-in revenue
+        // alone; both null => not computable (B2 parity).
         BigDecimal gesamtertrag = einspeise == null ? null
                 : eigenverbrauchsWert == null ? einspeise : einspeise.add(eigenverbrauchsWert);
         // Forward expected Marktwert Solar (range-INDEPENDENT, always the coming
@@ -241,11 +241,12 @@ public class SiteEarningsController {
     }
 
     /**
-     * The result of a period resp. bucket: Ertrag minus Stromkosten. A NULL
-     * Eigenverbrauchs-Wert (an {@code ohne} tariff, no euro value for
-     * self-consumed energy) leaves the two metered terms alone rather than
-     * counting a fabricated zero; without a feed-in term there is nothing
-     * computable at all.
+     * The result of a period resp. bucket: Ertrag minus Stromkosten. Since
+     * captain decision E7 (2026-09-02) all three terms share ONE import price
+     * composition, so the identity holds across a single price truth. A NULL
+     * Eigenverbrauchs-Wert (nothing computable in the bucket) leaves the two
+     * metered terms alone rather than counting a fabricated zero; without a
+     * feed-in term there is nothing computable at all.
      */
     private static BigDecimal netto(BigDecimal einspeise, BigDecimal eigenverbrauchsWert,
             BigDecimal stromkosten) {

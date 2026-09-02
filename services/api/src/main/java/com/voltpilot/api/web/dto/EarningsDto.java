@@ -107,12 +107,13 @@ public record EarningsDto(
      * the plant's feste EEG-Einspeisevergütung instead of bare spot (false for
      * Direktvermarktung, whose spot + Marktprämie valuation the premium fields
      * already explain, and for plants without a determinable remuneration). The
-     * Eigenverbrauchs-Wert is computed slot-by-slot in the repository:
-     * {@code dynamisch} prices each self-consumed kWh at that slot's Börsenpreis
-     * + the Aufschlag, {@code fest} at the fixed price. For an {@code ohne}
-     * tariff {@code eigenverbrauchsWertEur} is null (self-consumption shown only
-     * as {@code selbstverbrauchKwh}, never a fabricated euro) and
-     * {@code gesamtertragEur} equals {@code einspeiseErloesEur} alone.
+     * Eigenverbrauchs-Wert is computed slot-by-slot in the repository at the
+     * site's IMPORT price - it IS the avoided supply cost, so {@code tarifPriced}
+     * describes it just as it describes {@code stromkosten}/{@code savedEur}
+     * (captain decision E7 of 2026-09-02; before that it carried its own
+     * composition and stayed null for an {@code ohne} tariff). It is null only
+     * when nothing is computable, and {@code gesamtertragEur} then equals
+     * {@code einspeiseErloesEur} alone.
      * {@code eingespeistKwh}/{@code selbstverbrauchKwh}/{@code batterieBewegtKwh}
      * are the window's energy sums. All are null when nothing is computable
      * (same {@code reason}). {@code series} is the Ertrag chart (Gesamtertrag per

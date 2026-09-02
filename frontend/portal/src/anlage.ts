@@ -303,34 +303,36 @@ export function einspeiseProvenance(money: EarningsSite): string | null {
 }
 
 /**
- * Wert-des-Eigenverbrauchs provenance, tariff-aware (the heart of decision 1+3):
- * dynamisch = "Selbst verbrauchte X MWh × dynamischer Börsenpreis + N ct/kWh
- * Aufschlag (im Schnitt M ct/kWh)"; fest = "× N ct/kWh (Ihr fester Strompreis)";
- * ohne = the honest "why no euro" note. The average ct/kWh is derived from the
- * two real numbers (value / kWh), so the dynamic copy is exact.
+ * Wert-des-Eigenverbrauchs provenance. Seit dem Captain-Entscheid E7
+ * (02.09.2026) wird die selbst genutzte kWh mit GENAU dem Preis bewertet, zu
+ * dem auch der bezogene Netzstrom dieser Karte bewertet wird - der Wert IST
+ * der vermiedene Bezug. Der Satz nennt deshalb keine Preis-FORMEL mehr (ob ein
+ * Preisblatt, ein Aufschlag oder der Standard-Satz komponiert, weiß nur der
+ * Server), sondern die Menge, den Bezugspreis und den EFFEKTIVEN Durchschnitt
+ * aus den zwei gezeigten Zahlen - eine Aussage, die die Fläche selbst belegen
+ * kann. {@code fest} behält seine exakte Zahl (dort IST der Tarif der
+ * Bezugspreis); ohne Tarif-Bewertung ({@code tarifPriced === false}) nennt er
+ * den Börsenpreis beim Namen und den Weg zum Stromtarif.
  */
 export function eigenverbrauchProvenance(money: EarningsSite): string | null {
   const kwh = money.selbstverbrauchKwh;
   if (kwh == null) return null;
   const menge = `Selbst verbrauchte ${energyLabel(kwh)}`;
-  if (money.tarifArt === 'ohne' || money.eigenverbrauchsWertEur == null) {
-    return (
-      `${menge} - direkt im Haus genutzter Solarstrom. Für einen Euro-Wert hinterlegen Sie ` +
-      `Ihren Stromtarif unter „Einstellungen".`
-    );
+  if (money.eigenverbrauchsWertEur == null) {
+    return `${menge} - direkt im Haus genutzter Solarstrom. Für diesen Zeitraum liegt kein Euro-Wert vor.`;
   }
   const gespart = ' So viel teuren Netzstrom haben Sie sich gespart.';
-  if (money.tarifArt === 'fest') {
-    const preis = money.tarifParamCtKwh != null ? `${ctAmount(money.tarifParamCtKwh)} ct/kWh` : 'Ihrem festen Strompreis';
-    return `${menge} × ${preis} (Ihr fester Strompreis).${gespart}`;
+  if (money.tarifArt === 'fest' && money.tarifParamCtKwh != null) {
+    return `${menge} × ${ctAmount(money.tarifParamCtKwh)} ct/kWh (Ihr fester Strompreis).${gespart}`;
   }
-  // dynamisch: spot per slot + optional Aufschlag, with the real average.
-  const aufschlag =
-    money.tarifParamCtKwh != null && money.tarifParamCtKwh > 0
-      ? `dynamischer Börsenpreis + ${ctAmount(money.tarifParamCtKwh)} ct/kWh Aufschlag`
-      : 'dynamischer Börsenpreis (ohne Aufschlag - konservativ gerechnet)';
   const avg = kwh > 0 ? ` (im Schnitt ${ctAmount((money.eigenverbrauchsWertEur / kwh) * 100)} ct/kWh)` : '';
-  return `${menge} × ${aufschlag}${avg}.${gespart}`;
+  if (money.tarifPriced === false) {
+    return (
+      `${menge} × Börsenpreis${avg} - bewertet wie Ihr Netzbezug. Für eine Bewertung zu Ihrem ` +
+      `Stromtarif hinterlegen Sie ihn unter „Einstellungen".`
+    );
+  }
+  return `${menge} × Ihr Bezugspreis${avg} - derselbe Preis, zu dem auch Ihr Netzstrom bewertet wird.${gespart}`;
 }
 
 /**

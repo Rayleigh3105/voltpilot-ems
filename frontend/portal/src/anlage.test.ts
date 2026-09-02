@@ -234,22 +234,40 @@ describe('einspeiseProvenance (decision 3)', () => {
   });
 });
 
-describe('eigenverbrauchProvenance (dynamic tariff, decision 1+3)', () => {
-  it('dynamisch: names the spot price + Aufschlag AND the real effective average', () => {
-    // 91.70 € over 820 kWh -> 11,2 ct/kWh average, computed from the two numbers.
+describe('eigenverbrauchProvenance (E7: ONE Bezugspreis je Karte)', () => {
+  it('tariff-priced: names the Bezugspreis AND the real effective average, no formula', () => {
+    // 91.70 EUR over 820 kWh -> 11,2 ct/kWh average, computed from the two numbers.
     const t = eigenverbrauchProvenance(
-      makeMoney({ tarifArt: 'dynamisch', tarifParamCtKwh: 18, eigenverbrauchsWertEur: 91.7, selbstverbrauchKwh: 820 }),
+      makeMoney({
+        tarifArt: 'dynamisch',
+        tarifParamCtKwh: 18,
+        tarifPriced: true,
+        eigenverbrauchsWertEur: 91.7,
+        selbstverbrauchKwh: 820,
+      }),
     );
     expect(t).toContain('Selbst verbrauchte 820 kWh');
-    expect(t).toContain('dynamischer Börsenpreis + 18,0 ct/kWh Aufschlag');
+    expect(t).toContain('Ihr Bezugspreis');
     expect(t).toContain('im Schnitt 11,2 ct/kWh');
+    // Since E7 a Preisblatt can compose the price, so naming "Boersenpreis +
+    // 18 ct Aufschlag" would be a formula the portal cannot verify.
+    expect(t).not.toContain('Aufschlag');
   });
-  it('dynamisch without an Aufschlag says so (conservative)', () => {
+  it('ohne Tarif-Bewertung: says Boersenpreis and names the way to the tariff', () => {
     const t = eigenverbrauchProvenance(
-      makeMoney({ tarifArt: 'dynamisch', tarifParamCtKwh: null, eigenverbrauchsWertEur: 82, selbstverbrauchKwh: 820 }),
+      makeMoney({
+        tarifArt: 'ohne',
+        tarifParamCtKwh: null,
+        tarifPriced: false,
+        eigenverbrauchsWertEur: 82,
+        selbstverbrauchKwh: 820,
+      }),
     );
-    expect(t).toContain('ohne Aufschlag');
-    expect(t).not.toContain('+ ');
+    expect(t).toContain('Börsenpreis');
+    expect(t).toContain('im Schnitt 10,0 ct/kWh');
+    // D2 (Captain, 31.07.2026): die Seite heißt „Einstellungen“ — und seit E1
+    // steht der Stromtarif dort auch wirklich, der Verweis führt also irgendwohin.
+    expect(t).toContain('Einstellungen');
   });
   it('fest: names the fixed price', () => {
     const t = eigenverbrauchProvenance(
@@ -258,11 +276,9 @@ describe('eigenverbrauchProvenance (dynamic tariff, decision 1+3)', () => {
     expect(t).toContain('32,5 ct/kWh');
     expect(t).toContain('fester Strompreis');
   });
-  it('ohne: the honest "hinterlegen Sie Ihren Tarif" note, no fabricated euro', () => {
+  it('no euro value at all: says so, never promises a tariff would produce one', () => {
     const t = eigenverbrauchProvenance(makeMoney({ tarifArt: 'ohne', eigenverbrauchsWertEur: null }));
-    // D2 (Captain, 31.07.2026): die Seite heißt „Einstellungen" — und seit E1
-    // steht der Stromtarif dort auch wirklich, der Verweis führt also irgendwohin.
-    expect(t).toContain('Einstellungen');
+    expect(t).toContain('kein Euro-Wert');
     expect(t).not.toContain('ct/kWh');
   });
 });

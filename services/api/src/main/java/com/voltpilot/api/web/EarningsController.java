@@ -214,11 +214,10 @@ public class EarningsController {
 
             // The money-centric Gesamtertrag = Einspeise-Erlös + the
             // Eigenverbrauchs-Wert. The latter is computed slot-by-slot in the
-            // repository per the site's tariff (dynamisch: at each slot's spot
-            // price + Aufschlag; fest: at the fixed price; ohne: NULL), so an
-            // 'ohne' tariff keeps the self-consumption in kWh only and never
-            // fabricates a euro - gesamtertrag then falls back to the feed-in
-            // revenue alone.
+            // repository at the site's IMPORT price - the avoided supply cost,
+            // ONE price per card (captain decision E7 of 2026-09-02); it is
+            // null only when nothing is computable, and gesamtertrag then falls
+            // back to the feed-in revenue alone.
             BigDecimal einspeise = covered > 0 ? agg.einspeiseErloesEur() : null;
             BigDecimal selbstverbrauchKwh = covered > 0 ? agg.selbstverbrauchKwh() : null;
             BigDecimal eigenverbrauchsWert = covered > 0 ? agg.eigenverbrauchsWertEur() : null;
@@ -367,7 +366,7 @@ public class EarningsController {
      * One bucket's Gesamtertrag: feed-in revenue + the tariff-priced
      * self-consumption value (both summed per slot in the repository, so a
      * dynamic tariff is valued at each slot's own Börsenpreis). A NULL
-     * Eigenverbrauchs-Wert ({@code ohne} tariff) leaves the feed-in revenue alone.
+     * Eigenverbrauchs-Wert (nothing computable) leaves the feed-in revenue alone.
      */
     private static BigDecimal gesamtertragOf(EarningsRepository.BucketPoint p) {
         BigDecimal einspeise = p.einspeiseErloesEur() == null ? BigDecimal.ZERO : p.einspeiseErloesEur();

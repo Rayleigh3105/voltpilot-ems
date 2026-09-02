@@ -33,9 +33,10 @@ import java.util.UUID;
  * <p><b>Honesty:</b> every money/energy field is {@code null} when it is not
  * computable, never a fabricated 0 - {@code reason} says why
  * ({@code no_data} / {@code missing_channels} / {@code no_prices}, the same
- * vocabulary as the fleet endpoint). {@code eigenverbrauchsWertEur} is null for
- * an {@code ohne} tariff without a maintained Preisblatt (self-consumption is
- * then a kWh quantity only); {@code marktpraemieEur} is null without an
+ * vocabulary as the fleet endpoint). {@code eigenverbrauchsWertEur} is the
+ * self-consumed energy valued at the SAME import price as
+ * {@code stromkostenEur} (captain decision E7 of 2026-09-02 - one card, one
+ * price), so {@code tarifPriced} labels it too; {@code marktpraemieEur} is null without an
  * anzulegender Wert; {@code peakShaving} is null unless the module is active.
  *
  * @param range the echoed period vocabulary ({@code day|week|month|year|all})
@@ -80,9 +81,7 @@ import java.util.UUID;
  *     {@code einspeiseErloesEur} (shown as provenance, never added again)
  * @param gesamtertragEur the money-centric total = {@code einspeiseErloesEur +
  *     eigenverbrauchsWertEur} (the fleet twin's semantics), so the cockpit
- *     money hero reads ONE field; it is the feed-in revenue alone for an
- *     {@code ohne} tariff (no Eigenverbrauchs-Wert) and null when nothing is
- *     computable. Parity with the fleet twin so the cockpit reads the SAME
+ *     money hero reads ONE field; null when nothing is computable. Parity with the fleet twin so the cockpit reads the SAME
  *     number from this cheaper site endpoint (audit vp-portal-perf-a4, B2).
  * @param expectedMarketValueSolarCtKwh the FORWARD expected Marktwert Solar
  *     (day-ahead price weighted with this site's own PV forecast over the

@@ -4109,7 +4109,9 @@ class PortalApiTest {
         // Totals: einspeise 0.10, selbstverbrauch 1.0 kWh, eingespeist 1.0 kWh,
         //   batterie bewegt (charge+discharge) 1.0 kWh.
         //   with tariff 30 ct: eigenverbrauchsWert 1.0*30/100 = 0.30,
-        //   gesamtertrag 0.10 + 0.30 = 0.40. without tariff: gesamtertrag 0.10.
+        //   gesamtertrag 0.10 + 0.30 = 0.40. Without a tariff the E7 rule
+        //   values the same kWh at the import price of the slot - bare spot
+        //   here (flag OFF): 0.15, gesamtertrag 0.25.
         String t1 = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
                 + " + interval '10 days 11 hours') AT TIME ZONE 'Europe/Berlin'";
         String t2 = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
@@ -4165,16 +4167,22 @@ class PortalApiTest {
                 new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
         assertThat(list(siteRow(noStrip.getBody(), withTariff), "monthlyStrip")).isEmpty();
 
-        // No tariff => self-consumption stays kWh-only, NEVER a fabricated euro,
-        // and the Gesamtertrag is the feed-in revenue alone.
+        // No tariff, no Preisblatt, default-components flag OFF (this class
+        // pins the legacy regime): since captain decision E7 (2026-09-02) the
+        // self-consumption is valued at the SAME import price the supply cost
+        // uses - here bare spot, slot by slot: 0.5*0.10 + 0.5*0.20 = 0.15.
+        // Before E7 this field was null and the Gesamtertrag was the feed-in
+        // revenue alone; tarifPriced=false says honestly that this is the
+        // Börsenpreis, not a tariff.
         Map<String, Object> withoutRow = siteRow(body, noTariff);
         assertThat(withoutRow).containsEntry("tarifArt", "ohne")
                 .containsEntry("tarifParamCtKwh", null)
-                .containsEntry("eigenverbrauchsWertEur", null);
+                .containsEntry("tarifPriced", false);
         assertThat(num(withoutRow, "selbstverbrauchKwh")).isCloseTo(1.0, eps);
+        assertThat(num(withoutRow, "eigenverbrauchsWertEur")).isCloseTo(0.15, eps);
         assertThat(num(withoutRow, "einspeiseErloesEur")).isCloseTo(0.10, eps);
-        assertThat(num(withoutRow, "gesamtertragEur")).isCloseTo(0.10, eps);
-        assertThat(num(list(withoutRow, "series").get(0), "gesamtertragEur")).isCloseTo(0.10, eps);
+        assertThat(num(withoutRow, "gesamtertragEur")).isCloseTo(0.25, eps);
+        assertThat(num(list(withoutRow, "series").get(0), "gesamtertragEur")).isCloseTo(0.25, eps);
 
         // RLS: tenant B never sees these sites.
         ResponseEntity<Map<String, Object>> other = rest.exchange(
@@ -5393,6 +5401,110 @@ class PortalApiTest {
         }
     }
 
+    /**
+     * P8 / captain decision E7 (2026-09-02, concept vp-erloese-seite-konzept-e2
+     * §2.3 finding B5): the "Wert des Eigenverbrauchs" is the AVOIDED grid
+     * supply cost and is therefore valued with the SAME composition as the
+     * metered import - one card, ONE import price. The shipped expression
+     * ({@link com.voltpilot.api.repo.EarningsRepository#eigenverbrauchsWertEurSql})
+     * is evaluated by REAL Postgres over bound rollup rows and asserted equal
+     * to {@code selbstverbrauch × importPriceCtKwh / 100} - the Java
+     * composition the solver and the diagnostics read - with the
+     * {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS} flag OFF and ON.
+     *
+     * <p>The flag-ON vectors are the ones the endpoint tests cannot carry
+     * (this class pins the legacy flag-OFF regime, see {@code properties}):
+     * a tariff-less plant on the production default set gets its
+     * self-consumption valued at {@code (spot + 15.686 ct) × 1.19} instead of
+     * the null it read before E7 - the change that lifts those plants' Netto.
+     * Any edit that gives the Eigenverbrauchs-Wert a second price truth back
+     * fails here by name.
+     */
+    @Test
+    void eigenverbrauchsWertIsValuedAtTheSameImportCompositionUnderBothFlags() {
+        var fullSheet = new com.voltpilot.api.optimizer.SlotEconomics.SupplyPrice(
+                8.0, 2.0, 1.5, 3.0, 1.5, 19.0);
+        record Vec(String tarifArt, Double param,
+                com.voltpilot.api.optimizer.SlotEconomics.SupplyPrice sheet, Double spot,
+                double load, double gridImport) {
+        }
+        java.util.List<Vec> vectors = java.util.List.of(
+                new Vec("fest", 30.0, null, 100.0, 2.0, 1.0), // flat retail, sv 1.0
+                new Vec("dynamisch", 18.0, null, 100.0, 2.0, 1.0), // Sammelaufschlag
+                new Vec("dynamisch", 18.0, fullSheet, 100.0, 2.0, 1.0), // sheet beats it
+                new Vec("dynamisch", null, null, 100.0, 2.0, 1.0), // bare / default set
+                new Vec("ohne", null, fullSheet, 100.0, 2.0, 1.0), // Preisblatt
+                new Vec("ohne", null, null, 100.0, 2.0, 1.0), // no price data at all
+                new Vec("ohne", null, null, -40.0, 2.0, 1.0), // negative spot composes too
+                new Vec("ohne", null, fullSheet, 100.0, 1.0, 2.0), // import > load -> sv 0
+                new Vec("fest", 30.0, null, 100.0, 2.0, 0.0)); // no import at all
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+        for (boolean flag : new boolean[] {false, true}) {
+            for (Vec v : vectors) {
+                var site = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
+                        "eigenverbrauch", false, v.tarifArt(), v.param(),
+                        null, null, null, null, null, v.sheet());
+                Double ct = new com.voltpilot.api.optimizer.SlotEconomics(site,
+                        com.voltpilot.api.optimizer.EegRates.defaults(), Map.of(), flag)
+                        .importPriceCtKwh(v.spot());
+                double sv = Math.max(v.load() - v.gridImport(), 0.0);
+                Double expected = ct == null ? null : sv * ct / 100.0;
+                Double actual = evalEigenverbrauchsWertSql(flag, v.tarifArt(), v.param(),
+                        v.sheet(), v.spot(), v.load(), v.gridImport());
+                String label = "flag=" + flag + " " + v;
+                if (expected == null) {
+                    assertThat(actual).as(label).isNull();
+                } else {
+                    assertThat(actual).as(label).isNotNull().isCloseTo(expected, eps);
+                }
+            }
+        }
+
+        // Non-vacuous: the tariff-less plant on the production default set is
+        // really valued (and NOT at bare spot) - the visible P8 consequence.
+        double defaulted = evalEigenverbrauchsWertSql(true, "ohne", null, null, 100.0, 2.0, 1.0);
+        assertThat(defaulted).isCloseTo(1.0 * (10.0 + 15.686) * 1.19 / 100.0,
+                org.assertj.core.data.Offset.offset(1e-9));
+        double bare = evalEigenverbrauchsWertSql(false, "ohne", null, null, 100.0, 2.0, 1.0);
+        assertThat(bare).isCloseTo(0.10, eps);
+    }
+
+    /** Evaluates the shipped Eigenverbrauchs-Wert SQL over one bound vector row. */
+    private static Double evalEigenverbrauchsWertSql(boolean flag, String tarifArt, Double param,
+            com.voltpilot.api.optimizer.SlotEconomics.SupplyPrice sheet, Double spot,
+            double load, double gridImport) {
+        String sql = "SELECT "
+                + com.voltpilot.api.repo.EarningsRepository.eigenverbrauchsWertEurSql(flag)
+                + " AS eur FROM (VALUES (?::text, ?::numeric)) AS s(tarif_art, tarif_param_ct_kwh)"
+                + " CROSS JOIN (VALUES (?::numeric, ?::numeric, ?::numeric, ?::numeric, ?::numeric,"
+                + " ?::numeric)) AS ssp(netzentgelt_arbeitspreis_ct, stromsteuer_ct,"
+                + " konzessionsabgabe_ct, umlagen_ct, vertriebsaufschlag_ct, ust_pct)"
+                + " CROSS JOIN (VALUES (?::numeric)) AS p(price_eur_mwh)"
+                + " CROSS JOIN (VALUES (?::numeric, ?::numeric)) AS r(load_kwh, grid_import_kwh)";
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, tarifArt);
+            ps.setObject(2, param);
+            ps.setObject(3, sheet == null ? null : sheet.netzentgeltArbeitspreisCt());
+            ps.setObject(4, sheet == null ? null : sheet.stromsteuerCt());
+            ps.setObject(5, sheet == null ? null : sheet.konzessionsabgabeCt());
+            ps.setObject(6, sheet == null ? null : sheet.umlagenCt());
+            ps.setObject(7, sheet == null ? null : sheet.vertriebsaufschlagCt());
+            ps.setObject(8, sheet == null ? null : sheet.ustPct());
+            ps.setObject(9, spot);
+            ps.setObject(10, load);
+            ps.setObject(11, gridImport);
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                java.math.BigDecimal eur = rs.getBigDecimal("eur");
+                return eur == null ? null : eur.doubleValue();
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("vector eval failed", e);
+        }
+    }
+
     /** Evaluates the generated import-price SQL over one bound vector row. */
     private static Double evalImportPriceSql(boolean flag, String tarifArt, Double param,
             com.voltpilot.api.optimizer.SlotEconomics.SupplyPrice sheet, Double spot) {
@@ -5565,8 +5677,9 @@ class PortalApiTest {
      * spot share too), and a bare {@code ohne} site whose numbers stay
      * BYTE-IDENTICAL to the legacy symmetric-spot math (the rollout rule,
      * flag off). Also pins: the {@code tarifPriced} honesty flag, the
-     * export-side slot leaving saved tariff-independent, the
-     * Eigenverbrauchs-Wert/Einspeise-Erlös fields UNCHANGED by the sheet, and
+     * export-side slot leaving saved tariff-independent, the Einspeise-Erlös
+     * UNCHANGED by the sheet, the P8/E7 rule that the Eigenverbrauchs-Wert now
+     * follows the very same import composition (Preisblatt vs bare spot), and
      * the tariff-valued daily variant (spark bars).
      */
     @Test
@@ -5638,18 +5751,29 @@ class PortalApiTest {
         assertThat(sheetRow).containsEntry("tarifArt", "ohne")
                 .containsEntry("tarifPriced", true);
         assertThat(num(sheetRow, "savedEur")).isCloseTo(0.5 * 0.3094 - 0.10, eps);
-        // The sheet changes ONLY the import valuation: Einspeise-Erlös stays
-        // the spot-valued export, the Eigenverbrauchs-Wert stays null for an
-        // 'ohne' tariff (Stufe-3 scope: those fields are deliberately
-        // untouched - report §3.4 table).
+        // The sheet still changes ONLY the import valuation: the Einspeise-Erlös
+        // stays the spot-valued export.
         assertThat(num(sheetRow, "einspeiseErloesEur")).isCloseTo(0.20, eps);
-        assertThat(sheetRow).containsEntry("eigenverbrauchsWertEur", null);
+        // P8 vector "Preisblatt => EV-Wert = Bezugspreis" (captain decision E7,
+        // 2026-09-02): the avoided import is valued at the SAME structured
+        // composition as the metered import, slot by slot -
+        //   10:00Z sv = max(2.0 - 1.0, 0) = 1.0 kWh x (10+16)*1.19 = 30.94 ct
+        //   11:00Z sv = max(0.5 - 0.0, 0) = 0.5 kWh x (20+16)*1.19 = 42.84 ct
+        //   => 0.3094 + 0.2142 = 0.5236 EUR
+        // Before E7 this read null (Stufe-3 scope, report §3.4 table) while the
+        // supply cost was fully valued - the Netto of such plants was too low.
+        assertThat(num(sheetRow, "eigenverbrauchsWertEur")).isCloseTo(0.5236, eps);
+        assertThat(num(sheetRow, "selbstverbrauchKwh")).isCloseTo(1.5, eps);
 
         // Bare 'ohne' site, flag off: BYTE-IDENTICAL to the legacy symmetric
         // spot math - hand-computed with the OLD formula
         // sum((load-pv)*spot/1000) / sum((imp-exp)*spot/1000).
         Map<String, Object> bareRow = siteRow(body, bare);
         assertThat(bareRow).containsEntry("tarifPriced", false);
+        // Its Eigenverbrauchs-Wert follows the SAME (bare-spot) import price -
+        // 1.0*0.10 + 0.5*0.20 = 0.20 - so the two sites differ in exactly the
+        // one thing that differs: the maintained Preisblatt.
+        assertThat(num(bareRow, "eigenverbrauchsWertEur")).isCloseTo(0.20, eps);
         assertThat(num(bareRow, "baselineEur")).isCloseTo(
                 (2.0 - 0.5) * 0.1 + (0.5 - 2.0) * 0.2, eps);
         assertThat(num(bareRow, "actualEur")).isCloseTo(1.0 * 0.1 - 1.0 * 0.2, eps);
@@ -6588,6 +6712,11 @@ class PortalApiTest {
         // Identity 2: the exposed import term is the one inside actualEur.
         assertThat(num(body, "stromkostenEur") - num(body, "einspeiseErloesEur"))
                 .isCloseTo(num(body, "actualEur"), eps);
+        // ONE price per card (captain decision E7, 2026-09-02): the avoided kWh
+        // and the bought kWh are worth exactly the same - the Eigenverbrauchs-
+        // Wert per kWh IS the Ø Bezugspreis the card shows next to it.
+        assertThat(num(body, "eigenverbrauchsWertEur") / num(body, "selbstverbrauchKwh") * 100)
+                .isCloseTo(num(body, "bezugspreisCtKwh"), org.assertj.core.data.Offset.offset(1e-6));
 
         // B2 parity with the fleet twin: the cockpit money hero reads
         // gesamtertragEur = einspeise + eigenverbrauch from THIS endpoint.
