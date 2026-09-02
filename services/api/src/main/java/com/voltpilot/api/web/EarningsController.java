@@ -98,6 +98,10 @@ public class EarningsController {
 
         Map<UUID, EarningsRepository.SiteAggregate> aggregates = earnings.aggregate(from, to);
         Map<UUID, EarningsRepository.ArbitrageSplit> splits = earnings.arbitrageSplit(from, to);
+        // Die Dreiteilung saved = speicher + steuerung (audit x7 §2.5): the
+        // greedy standard-battery walk over the same covered slots; absent =
+        // no maintained battery master data (honest null + reason downstream).
+        Map<UUID, BigDecimal> speicherSplits = earnings.savedSpeicher(from, to);
         // Whether each site's import valuation engages a tariff/Preisblatt
         // beyond bare spot - the provenance copy's honesty switch - and its
         // export-side sibling (feste EEG-Vergütung vs bare spot, B2 fix).
@@ -177,6 +181,16 @@ public class EarningsController {
             EarningsRepository.ArbitrageSplit split = splits.get(site.id());
             BigDecimal arbitrage = split != null && saved != null ? split.arbitrageEur() : null;
             BigDecimal pvShift = arbitrage != null ? saved.subtract(arbitrage) : null;
+            // saved = speicher + steuerung; steuerung is the EXACT remainder
+            // (BigDecimal subtract), so the reconciliation holds by
+            // construction. Null + reason when battery master data is missing.
+            BigDecimal savedSpeicher = saved != null ? speicherSplits.get(site.id()) : null;
+            BigDecimal savedSteuerung = savedSpeicher != null
+                    ? saved.subtract(savedSpeicher)
+                    : null;
+            String steuerungSplitReason = saved != null && savedSpeicher == null
+                    ? "no_battery_data"
+                    : null;
             // Forward expected Marktwert Solar (range-independent); absent when
             // the site has no forward PV forecast or price coverage.
             EarningsRepository.ExpectedMarketValue exp = expected.get(site.id());
@@ -235,6 +249,9 @@ public class EarningsController {
                     saved,
                     arbitrage,
                     pvShift,
+                    savedSpeicher,
+                    savedSteuerung,
+                    steuerungSplitReason,
                     covered,
                     siteFirst,
                     covered > 0 ? null : reason(agg),

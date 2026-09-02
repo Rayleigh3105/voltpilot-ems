@@ -6768,6 +6768,205 @@ class PortalApiTest {
         assertThat(num(bareRow, "einspeiseErloesEur")).isCloseTo(0.075, eps);
     }
 
+    /**
+     * Die Dreiteilung {@code savedEur = savedSpeicherEur + savedSteuerungEur}
+     * (Audit vp-geldzahlen-audit-x7 §2.5, B1): der Speicher-Anteil ist der
+     * per-Slot-Zustands-Walk des stur arbeitenden Standard-Speichers (das
+     * Greedy-Referenzmodell der Ersparnis-Simulation), der Steuerungs-Anteil
+     * der exakte Rest.
+     *
+     * <p>Seed lives on 2026-04-07 (Berlin day = [2026-04-06T22:00Z,
+     * 2026-04-07T22:00Z)) in the CH zone - a day no other test owns. Reference
+     * battery for all battery sites: 3,0 kWh, 8 kW laden (2,0 kWh/Slot), 16 kW
+     * entladen (4,0 kWh/Slot), Round-Trip 81% (eta = 0,9 exakt), Band 5-95%
+     * (Boden 0,15 / Decke 2,85). Import fest 30 ct, Export nackter Spot (kein
+     * pv-Asset).
+     *
+     * <p><b>Site A (Start am Boden - kein Eimer vor dem Fenster), der
+     * handgerechnete SoC-Verlauf der sturen Referenz:</b>
+     * <pre>
+     *   Slot   spot   pv   load  stur: Aktion                        SoC     Δspeicher
+     *   10:00  100    3,0  0,5   charge 2,0 (Leistungs-Kappe)        1,95    −2,0×0,10 = −0,20
+     *   10:15  200    2,5  1,0   charge 1,0 ((2,85−1,95)/0,9)        2,85    −1,0×0,20 = −0,20
+     *   10:30  −40    1,0  0,5   voll → charge 0                     2,85    0
+     *   10:45  250    0,0  4,0   discharge (2,85−0,15)×0,9 = 2,43    0,15    +2,43×0,30 = +0,729
+     *                                                     savedSpeicher = 0,329
+     * </pre>
+     * Gemessen hat die INTELLIGENTE Anlage anders gehandelt (Slot 1 gewartet
+     * und exportiert, Slots 2-3 geladen, Slot 4 entladen; Import/Export je
+     * Slot: 0/2,5 · 0/0 · 0/0 · 0/0):
+     * <pre>
+     *   baseline = −2,5×0,10 −1,5×0,20 −0,5×(−0,04) +4,0×0,30
+     *            = −0,25 −0,30 +0,02 +1,20 = 0,67
+     *   actual   = −0,25 + 0 + 0 + 0      = −0,25
+     *   saved    = 0,67 − (−0,25)         = 0,92
+     *   savedSteuerung = 0,92 − 0,329     = 0,591
+     * </pre>
+     *
+     * <p><b>Site N</b> = identische Messwerte, KEIN Batterie-Asset: dieselbe
+     * savedEur (Rollout-Zusage: Bestandsfelder unverändert), aber die
+     * Dreiteilung bleibt ehrlich null mit {@code steuerungSplitReason
+     * no_battery_data} - nie eine geratene Referenz-Batterie.
+     *
+     * <p><b>Site V</b> = ein Eimer VOR dem Fenster mit soc_last_pct 65 (=
+     * 1,95 kWh): der Walk startet am GEMESSENEN Stand, nicht am Boden -
+     * charge = min(2,5, 2,0, (2,85−1,95)/0,9) = 1,0 statt 2,0, also
+     * savedSpeicher = −0,10 (Boden-Start ergäbe −0,20). Die Batterie war
+     * gemessen untätig (Export 2,5) → saved = 0, savedSteuerung = +0,10: die
+     * Steuerung schlug den sturen Speicher, indem sie im 10-ct-Slot NICHT lud.
+     *
+     * <p><b>Site D</b> (Direktvermarktung ohne anzulegenden Wert, netzladen):
+     * beide Slots sind Defizit-Slots, die sture Referenz startet am Boden und
+     * kann nichts entladen → savedSpeicher = 0,0 EXAKT (eine gemessene Null,
+     * kein null). Gemessen lud sie 2,0 kWh aus dem Netz bei 10 ct (Import
+     * 2,5) und entlud 1,8 kWh bei 25 ct (Export 1,3):
+     * <pre>
+     *   baseline = 0,5×0,30 + 0,5×0,30              = 0,30
+     *   actual   = 2,5×0,30 + (0 − 1,3×0,25)        = 0,425
+     *   saved    =                                    −0,125 → savedSteuerung = −0,125
+     *   arbitrage = −2,0×0,10 + 1,8×0,25            = 0,25 → pvShift = −0,375
+     * </pre>
+     * Die Netzladen-Arbitrage ist damit per Konstruktion Steuerungs-, nie
+     * Speicher-Beitrag, und BEIDE Attributions-Familien rekonziliieren
+     * unabhängig auf derselben Anlage.
+     *
+     * <p>⚠ Der Seed-Tag 2026-04-07 liegt VOR dem 2026-04-14-Anker, den
+     * {@code earningsComputesRealizedSavingsPerSiteWithHonestDegradation}
+     * flottenweit als {@code firstCoveredDate} festnagelt - deshalb räumt der
+     * {@code finally}-Block die Anlagen samt Rollups wieder ab (die
+     * Haus-Disziplin der Preis-Slots: eine liegengebliebene Anlage mit
+     * früheren covered Slots verschöbe die handgerechneten Flotten-Zahlen
+     * der Nachbarn, je nach JUnit-Methodenreihenfolge).
+     */
+    @Test
+    void savedSplitsIntoSpeicherAndSteuerungAgainstTheGreedyStandardBattery() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String walkSite = createSiteWithTarif(demo, "Dreiteilung Walk", "CH",
+                "eigenverbrauch", "fest", "30");
+        String nakedSite = createSiteWithTarif(demo, "Dreiteilung Ohne Batterie", "CH",
+                "eigenverbrauch", "fest", "30");
+        String anchorSite = createSiteWithTarif(demo, "Dreiteilung Anker", "CH",
+                "eigenverbrauch", "fest", "30");
+        String dvSite = createSiteWithTarif(demo, "Dreiteilung Netzladen", "CH",
+                "direktvermarktung", "fest", "30");
+        try {
+            exec("UPDATE site SET netzladen_erlaubt = TRUE WHERE id = '" + dvSite + "'");
+            for (String siteId : new String[] {walkSite, anchorSite, dvSite}) {
+                exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                        + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantA + "', '"
+                        + siteId + "', 'battery', 3.0, 8.0, 16.0, 81.0)");
+            }
+
+            exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
+                    + "('2026-04-07T10:00:00Z', 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
+                    + "('2026-04-07T10:15:00Z', 'CH', 'PT15M', 200.0, 'EUR', 'test'), "
+                    + "('2026-04-07T10:30:00Z', 'CH', 'PT15M', -40.0, 'EUR', 'test'), "
+                    + "('2026-04-07T10:45:00Z', 'CH', 'PT15M', 250.0, 'EUR', 'test') "
+                    + "ON CONFLICT DO NOTHING");
+            for (String siteId : new String[] {walkSite, nakedSite}) {
+                exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                        + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                        + "('2026-04-07T10:00:00Z', '" + tenantA + "', '" + siteId
+                        + "', 3.0, 0.5, 0.0, 2.5, 0.0, 0.0, 90), "
+                        + "('2026-04-07T10:15:00Z', '" + tenantA + "', '" + siteId
+                        + "', 2.5, 1.0, 0.0, 0.0, 1.5, 0.0, 90), "
+                        + "('2026-04-07T10:30:00Z', '" + tenantA + "', '" + siteId
+                        + "', 1.0, 0.5, 0.0, 0.0, 0.5, 0.0, 90), "
+                        + "('2026-04-07T10:45:00Z', '" + tenantA + "', '" + siteId
+                        + "', 0.0, 4.0, 0.0, 0.0, 0.0, 4.0, 90) ON CONFLICT DO NOTHING");
+            }
+            // The anchor site: one measured soc_last_pct bucket BEFORE the window
+            // (inside the 7-day lookback) + one idle-battery slot inside it.
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, soc_last_pct, n_samples) "
+                    + "VALUES ('2026-04-06T10:00:00Z', '" + tenantA + "', '" + anchorSite
+                    + "', 65.0, 90) ON CONFLICT DO NOTHING");
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                    + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                    + "('2026-04-07T10:00:00Z', '" + tenantA + "', '" + anchorSite
+                    + "', 3.0, 0.5, 0.0, 2.5, 0.0, 0.0, 90) ON CONFLICT DO NOTHING");
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                    + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                    + "('2026-04-07T10:00:00Z', '" + tenantA + "', '" + dvSite
+                    + "', 0.0, 0.5, 2.5, 0.0, 2.0, 0.0, 90), "
+                    + "('2026-04-07T10:45:00Z', '" + tenantA + "', '" + dvSite
+                    + "', 0.0, 0.5, 0.0, 1.3, 0.0, 1.8, 90) ON CONFLICT DO NOTHING");
+
+            org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+
+            // Site A: the hand-walked split.
+            Map<String, Object> walk = siteEarningsDay(demo, walkSite, "2026-04-07");
+            assertThat(walk).containsEntry("steuerungSplitReason", null);
+            assertThat(num(walk, "savedEur")).isCloseTo(0.92, eps);
+            assertThat(num(walk, "savedSpeicherEur")).isCloseTo(0.329, eps);
+            assertThat(num(walk, "savedSteuerungEur")).isCloseTo(0.591, eps);
+            // The reconciliation is exact per construction (the Rest-Trick).
+            assertThat(num(walk, "savedSpeicherEur") + num(walk, "savedSteuerungEur"))
+                    .isCloseTo(num(walk, "savedEur"), eps);
+
+            // Site N: identical measurements, no battery master data - savedEur
+            // byte-identical, the split honestly absent with its reason.
+            Map<String, Object> naked = siteEarningsDay(demo, nakedSite, "2026-04-07");
+            assertThat(num(naked, "savedEur")).isCloseTo(0.92, eps);
+            assertThat(naked).containsEntry("savedSpeicherEur", null)
+                    .containsEntry("savedSteuerungEur", null)
+                    .containsEntry("steuerungSplitReason", "no_battery_data");
+
+            // Site V: the walk anchors at the MEASURED window-begin SoC (65% =
+            // 1,95 kWh), not the floor - headroom-clamped charge 1,0 instead of
+            // 2,0, so speicher = -0,10 (a floor start would read -0,20).
+            Map<String, Object> anchor = siteEarningsDay(demo, anchorSite, "2026-04-07");
+            assertThat(num(anchor, "savedEur")).isCloseTo(0.0, eps);
+            assertThat(num(anchor, "savedSpeicherEur")).isCloseTo(-0.10, eps);
+            assertThat(num(anchor, "savedSteuerungEur")).isCloseTo(0.10, eps);
+
+            // Site D: the greedy reference never grid-charges - its split is a
+            // MEASURED 0,0 (present, no reason), the whole saved incl. the
+            // arbitrage is steering, and both attribution families reconcile
+            // independently on the same site.
+            Map<String, Object> dv = siteEarningsDay(demo, dvSite, "2026-04-07");
+            assertThat(num(dv, "savedEur")).isCloseTo(-0.125, eps);
+            assertThat(num(dv, "savedSpeicherEur")).isCloseTo(0.0, eps);
+            assertThat(num(dv, "savedSteuerungEur")).isCloseTo(-0.125, eps);
+            assertThat(dv).containsEntry("steuerungSplitReason", null);
+            assertThat(num(dv, "arbitrageEur")).isCloseTo(0.25, eps);
+            assertThat(num(dv, "pvShiftEur")).isCloseTo(-0.375, eps);
+            assertThat(num(dv, "arbitrageEur") + num(dv, "pvShiftEur"))
+                    .isCloseTo(num(dv, "savedEur"), eps);
+            assertThat(num(dv, "savedSpeicherEur") + num(dv, "savedSteuerungEur"))
+                    .isCloseTo(num(dv, "savedEur"), eps);
+
+            // The fleet endpoint carries the SAME split per site (one walk truth,
+            // two surfaces).
+            Map<String, Object> fleet = rest.exchange(
+                    url("/api/v1/earnings?range=day&at=2026-04-07"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+            Map<String, Object> walkRow = siteRow(fleet, walkSite);
+            assertThat(num(walkRow, "savedSpeicherEur")).isCloseTo(0.329, eps);
+            assertThat(num(walkRow, "savedSteuerungEur")).isCloseTo(0.591, eps);
+            assertThat(walkRow).containsEntry("steuerungSplitReason", null);
+            Map<String, Object> nakedRow = siteRow(fleet, nakedSite);
+            assertThat(nakedRow).containsEntry("savedSpeicherEur", null)
+                    .containsEntry("savedSteuerungEur", null)
+                    .containsEntry("steuerungSplitReason", "no_battery_data");
+
+            // A window where nothing is computable keeps ALL split fields null
+            // WITHOUT a split reason - the existing `reason` explains that case.
+            Map<String, Object> empty = siteEarningsDay(demo, walkSite, "2026-04-05");
+            assertThat(empty).containsEntry("savedEur", null)
+                    .containsEntry("savedSpeicherEur", null)
+                    .containsEntry("savedSteuerungEur", null)
+                    .containsEntry("steuerungSplitReason", null);
+        } finally {
+            for (String siteId : List.of(walkSite, nakedSite, anchorSite, dvSite)) {
+                exec("DELETE FROM telemetry_rollup_15m WHERE site_id = '" + siteId + "'");
+                exec("DELETE FROM site WHERE id = '" + siteId + "'");
+            }
+        }
+    }
+
     private Map<String, Object> siteEarningsDay(String token, String siteId, String at) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(
                 url("/api/v1/sites/" + siteId + "/earnings?range=day&at=" + at), HttpMethod.GET,

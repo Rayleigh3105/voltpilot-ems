@@ -9730,6 +9730,43 @@ components:
             any Marktprämie delta - grid-charged energy is never
             premium-eligible), so arbitrageEur + pvShiftEur == savedEur
             exactly. Null whenever arbitrageEur is null.
+        savedSpeicherEur:
+          type: number
+          nullable: true
+          description: >
+            Der Speicher-Anteil der Dreiteilung savedEur = savedSpeicherEur +
+            savedSteuerungEur (Audit vp-geldzahlen-audit-x7 §2.5, B1): was ein
+            STUR arbeitender Standard-Speicher - das Greedy-Referenzmodell der
+            Ersparnis-Simulation (gleiche Physik: Kapazität, Lade-/
+            Entladeleistung, sqrt(eta)-Split, SoC-Band inkl. Reserven; lädt
+            jeden PV-Überschuss, deckt jedes Defizit, lädt nie aus dem Netz,
+            null Preisbewusstsein) - gegenüber der speicherlosen Anlage
+            erwirtschaftet hätte. Per-Slot-Zustands-Walk über dieselben
+            covered Slots, bewertet mit denselben Preis-Kompositionen wie
+            savedEur (je Slot discharge × Bezugspreis − charge × Exportwert).
+            Null when savedEur itself is null OR the plant has no maintained
+            battery master data (steuerungSplitReason says so) - never a
+            guessed reference battery.
+        savedSteuerungEur:
+          type: number
+          nullable: true
+          description: >
+            savedEur - savedSpeicherEur, the EXACT remainder: der Mehrwert
+            der INTELLIGENTEN Steuerung gegenüber dem stur arbeitenden
+            Speicher (Preisfenster, Netzladen-Arbitrage, Abregelung), so
+            savedSpeicherEur + savedSteuerungEur == savedEur per
+            construction. Null whenever savedSpeicherEur is null.
+        steuerungSplitReason:
+          type: string
+          nullable: true
+          enum: [no_battery_data]
+          description: >
+            Why the Speicher/Steuerung split is absent although savedEur is
+            computable: no_battery_data = the site has no primary battery
+            asset with maintained capacity and charge/discharge power, so the
+            greedy reference cannot be simulated (honestly null, never
+            guessed). Null when the split is present, or when savedEur itself
+            is null (reason explains that case).
         coveredSlots: { type: integer }
         firstCoveredDate:
           type: string
@@ -9963,6 +10000,32 @@ components:
             is rendered as an attribution line, never as another summand.
         arbitrageEur: { type: number, nullable: true }
         pvShiftEur: { type: number, nullable: true }
+        savedSpeicherEur:
+          type: number
+          nullable: true
+          description: >
+            Der Speicher-Anteil der Dreiteilung savedEur = savedSpeicherEur +
+            savedSteuerungEur: was der stur arbeitende Standard-Speicher (das
+            Greedy-Referenzmodell der Ersparnis-Simulation) gegenüber der
+            speicherlosen Anlage erwirtschaftet hätte - same semantics as the
+            fleet endpoint's field. Null when savedEur is null or the battery
+            master data is missing (steuerungSplitReason).
+        savedSteuerungEur:
+          type: number
+          nullable: true
+          description: >
+            savedEur - savedSpeicherEur (exact remainder): der Mehrwert der
+            intelligenten Steuerung gegenüber dem sturen Speicher;
+            savedSpeicherEur + savedSteuerungEur == savedEur per construction.
+        steuerungSplitReason:
+          type: string
+          nullable: true
+          enum: [no_battery_data]
+          description: >
+            Why the split is absent although savedEur is computable
+            (no_battery_data = no primary battery asset with maintained
+            capacity + charge/discharge power); null when the split is present
+            or savedEur itself is null.
         baselineEur: { type: number, nullable: true }
         actualEur: { type: number, nullable: true }
         marktpraemieEur:

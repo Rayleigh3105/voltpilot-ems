@@ -783,6 +783,168 @@ public class EarningsRepository {
     }
 
     /**
+     * The battery-asset join of the {@link #savedSpeicher} walk (own alias
+     * {@code b} - {@code pv} belongs to {@link #PV_ASSET_JOIN}): only sites
+     * whose PRIMARY battery asset carries the maintained master data the
+     * greedy reference needs (capacity + both power caps, the exact columns
+     * {@code inputs.load_battery_sites} requires) enter the walk. A site
+     * without them is ABSENT from the result - the split then honestly stays
+     * null with its reason, never a guessed battery (Eckpunkt 4 of the
+     * Umbau-Skizze).
+     */
+    private static final String BATTERY_ASSET_JOIN =
+            "JOIN asset b ON b.site_id = r.site_id AND b.type = 'battery' AND b.is_primary"
+                    + " AND b.capacity_kwh IS NOT NULL AND b.max_charge_kw IS NOT NULL"
+                    + " AND b.max_discharge_kw IS NOT NULL ";
+
+    /**
+     * Der Speicher-Anteil der Dreiteilung {@code saved_gesamt = saved_speicher
+     * + saved_steuerung} (Audit vp-geldzahlen-audit-x7 §2.5, Befund B1): was
+     * ein STUR arbeitender Standard-Speicher - das Greedy-Szenario (b) der
+     * Ersparnis-Simulation, siehe {@link StandardSpeicher} - gegenüber der
+     * speicherlosen Anlage erwirtschaftet hätte, über die covered Slots des
+     * Fensters.
+     *
+     * <p>Ein deterministischer per-Slot-Zustands-Walk nach dem
+     * {@link #arbitrageSplit}-Muster: die Slots kommen zeitlich sortiert, der
+     * SoC des Referenz-Speichers wird im Speicher geführt, und jeder Slot
+     * trägt {@code discharge × importPrice − charge × exportValue} bei
+     * (Herleitung in {@link StandardSpeicher}) - mit EXAKT den Preis-Spalten,
+     * die auch {@code savedEur} bewerten ({@link #importPriceEurKwh}/
+     * {@link #exportValueEurKwh} als SELECT-Ausdrücke, also per Konstruktion
+     * dieselbe Komposition inkl. Preisblatt, feste EEG-Vergütung und
+     * DV-Marktprämie). Es gibt keine zweite Preiswahrheit.
+     *
+     * <p><b>On-the-fly statt persistiert</b> (Skizzen-Option (a), bewusst):
+     * der Walk kostet einen zusätzlichen sortierten Scan über die covered
+     * Slots × Batterie-Anlagen - dieselbe Größenordnung wie der
+     * {@code arbitrageSplit}, der auf jedem Request läuft -, braucht weder
+     * Migration noch nightly Job, und die Start-SoC-Verankerung am gemessenen
+     * Fensterbeginn macht ihn fenster-agnostisch.
+     *
+     * <p><b>Start-SoC</b>: der letzte gemessene {@code soc_last_pct}-Eimer
+     * VOR dem Fenster (7-Tage-Rückschau, {@link #SOC_START_LOOKBACK}), sonst
+     * der SoC-Boden wie in der Simulation - Regel + Begründung in
+     * {@link StandardSpeicher.Walk}.
+     *
+     * <p><b>Der sture Speicher lädt nie aus dem Netz</b> - auch auf einer
+     * {@code netzladen_erlaubt}-Anlage: die Netzladen-Arbitrage ist per
+     * Konstruktion Steuerungs-, nie Speicher-Beitrag (sie landet über den
+     * Rest-Trick des Aufrufers in {@code saved_steuerung}, wo sie hingehört).
+     *
+     * <p>Anlagen ohne gepflegte Batterie-Stammdaten fehlen in der Map (siehe
+     * {@link #BATTERY_ASSET_JOIN}); eine Anlage mit Stammdaten, deren sture
+     * Referenz im Fenster schlicht nichts bewegt hat, steht ehrlich mit 0
+     * darin (eine gemessene 0, keine erfundene).
+     */
+    public Map<UUID, BigDecimal> savedSpeicher(Instant from, Instant to) {
+        return savedSpeicher(from, to, null);
+    }
+
+    /** Der Speicher-Anteil EINER Anlage - null ohne gepflegte Batterie-Stammdaten. */
+    public BigDecimal savedSpeicherForSite(UUID site, Instant from, Instant to) {
+        return savedSpeicher(from, to, site).get(site);
+    }
+
+    private Map<UUID, BigDecimal> savedSpeicher(Instant from, Instant to, UUID site) {
+        Map<UUID, BigDecimal> startSocPct = startSocPct(from, site);
+        Map<UUID, BigDecimal> result = new HashMap<>();
+        // One mutable walk state; rows arrive ordered by (site_id, bucket), so
+        // a site change closes the previous site's walk (the arbitrageSplit
+        // shape). walk == null cannot happen for a joined row unless the
+        // asset's values are non-positive - then the master data is broken and
+        // nothing is claimed (StandardSpeicher.batterie returns null).
+        var state = new Object() {
+            UUID site;
+            StandardSpeicher.Walk walk;
+
+            void finish() {
+                if (site != null && walk != null) {
+                    result.put(site, BigDecimal.valueOf(walk.speicherEur()));
+                }
+            }
+        };
+        jdbc.query(
+                "WITH " + PRICE_SLOT_CTE
+                        + "SELECT r.site_id, r.pv_kwh, r.load_kwh,"
+                        + " " + importPriceEurKwh + " AS import_price_eur_kwh,"
+                        + " " + exportValueEurKwh + " AS export_value_eur_kwh,"
+                        + " b.capacity_kwh, b.max_charge_kw, b.max_discharge_kw,"
+                        + " b.roundtrip_efficiency_pct, b.soc_min_pct, b.soc_max_pct,"
+                        + " s.backup_reserve_soc_pct, s.peak_reserve_soc_pct "
+                        + "FROM telemetry_rollup_15m r "
+                        + "JOIN site s ON s.id = r.site_id "
+                        + BATTERY_ASSET_JOIN
+                        + SUPPLY_PRICE_JOIN
+                        + PV_ASSET_JOIN
+                        + PRICE_JOIN
+                        + MARKET_VALUE_JOIN
+                        + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
+                        + " AND " + COVERED + " "
+                        + "ORDER BY r.site_id, r.bucket",
+                rs -> {
+                    UUID siteId = rs.getObject("site_id", UUID.class);
+                    if (!siteId.equals(state.site)) {
+                        state.finish();
+                        state.site = siteId;
+                        StandardSpeicher.Batterie batterie = StandardSpeicher.batterie(
+                                rs.getBigDecimal("capacity_kwh"),
+                                rs.getBigDecimal("max_charge_kw"),
+                                rs.getBigDecimal("max_discharge_kw"),
+                                rs.getBigDecimal("roundtrip_efficiency_pct"),
+                                rs.getBigDecimal("soc_min_pct"),
+                                rs.getBigDecimal("soc_max_pct"),
+                                rs.getBigDecimal("backup_reserve_soc_pct"),
+                                rs.getBigDecimal("peak_reserve_soc_pct"));
+                        BigDecimal socPct = startSocPct.get(siteId);
+                        state.walk = batterie == null ? null
+                                : new StandardSpeicher.Walk(batterie, socPct == null
+                                        ? null
+                                        : socPct.doubleValue() / 100.0
+                                                * batterie.capacityKwh());
+                    }
+                    if (state.walk != null) {
+                        state.walk.slot(
+                                rs.getDouble("pv_kwh"),
+                                rs.getDouble("load_kwh"),
+                                rs.getDouble("import_price_eur_kwh"),
+                                rs.getDouble("export_value_eur_kwh"));
+                    }
+                },
+                args(from, to, site));
+        state.finish();
+        return result;
+    }
+
+    /**
+     * Der gemessene Ladestand am Fensterbeginn je Anlage: der jüngste
+     * {@code soc_last_pct}-Rollup-Eimer in {@code [from − 7d, from)} (die
+     * {@link #rollupSocLast}-Regel, als EINE gebatchte Abfrage für den
+     * Flotten-Pfad). Das Fenster ist auf der Partitionsspalte begrenzt, der
+     * Scan also chunk-klein; für {@code range=all} (from = EPOCH) ist es leer
+     * und jede Anlage startet am Boden.
+     */
+    private Map<UUID, BigDecimal> startSocPct(Instant from, UUID site) {
+        Map<UUID, BigDecimal> result = new HashMap<>();
+        Timestamp lookback = Timestamp.from(from.minus(SOC_START_LOOKBACK));
+        Timestamp start = Timestamp.from(from);
+        jdbc.query(
+                "SELECT DISTINCT ON (site_id) site_id, soc_last_pct "
+                        + "FROM telemetry_rollup_15m "
+                        + "WHERE bucket >= ? AND bucket < ? AND soc_last_pct IS NOT NULL"
+                        + (site == null ? "" : " AND site_id = ?")
+                        + " ORDER BY site_id, bucket DESC",
+                rs -> {
+                    result.put(rs.getObject("site_id", UUID.class),
+                            rs.getBigDecimal("soc_last_pct"));
+                },
+                site == null
+                        ? new Object[] {lookback, start}
+                        : new Object[] {lookback, start, site});
+        return result;
+    }
+
+    /**
      * Realized savings per site and Europe/Berlin day over {@code [from, to)}
      * (the hero's spark bars + the "Heute" teasers). Only covered slots count;
      * days without one are absent - never a fake zero.

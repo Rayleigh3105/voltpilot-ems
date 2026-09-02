@@ -73,6 +73,24 @@ public record EarningsDto(
      * exactly. Both are null when the site may not grid-charge OR the window
      * contains no grid-charged energy - never a fake zero.
      *
+     * <p><b>Die Dreiteilung der Steuerungs-Zurechnung</b> (Audit
+     * vp-geldzahlen-audit-x7 §2.5, Befund B1): {@code savedEur} misst den Wert
+     * des GESAMTEN Speichersystems (Baseline = Anlage ganz ohne Speicher).
+     * {@code savedSpeicherEur} ist davon der Anteil, den ein STUR arbeitender
+     * Standard-Speicher - das Greedy-Referenzmodell der Ersparnis-Simulation:
+     * gleiche Physik, lädt jeden PV-Überschuss, deckt jedes Defizit, lädt nie
+     * aus dem Netz, null Preisbewusstsein - allein erwirtschaftet hätte
+     * (per-Slot-Zustands-Walk, bewertet mit denselben Preis-Kompositionen wie
+     * {@code savedEur}; siehe {@code EarningsRepository.savedSpeicher}).
+     * {@code savedSteuerungEur} ist der exakte Rest {@code savedEur −
+     * savedSpeicherEur} - der Mehrwert der INTELLIGENTEN Steuerung gegenüber
+     * dem sturen Speicher (Preisfenster, Netzladen-Arbitrage, Abregelung), so
+     * {@code savedSpeicherEur + savedSteuerungEur == savedEur} per
+     * Konstruktion. Beide sind null, wenn {@code savedEur} selbst null ist
+     * (dann erklärt {@code reason}) ODER die Anlage keine gepflegten
+     * Batterie-Stammdaten hat - dann sagt {@code steuerungSplitReason}
+     * ({@code no_battery_data}) warum, statt eine Referenz-Batterie zu raten.
+     *
      * <p><b>Money-centric "Meine Anlage" fields (v2).</b> The Gesamtertrag of
      * the window = {@code einspeiseErloesEur} (metered feed-in valued at spot +
      * Marktprämie) + {@code eigenverbrauchsWertEur} (self-consumed energy valued
@@ -135,6 +153,9 @@ public record EarningsDto(
             BigDecimal savedEur,
             BigDecimal arbitrageEur,
             BigDecimal pvShiftEur,
+            BigDecimal savedSpeicherEur,
+            BigDecimal savedSteuerungEur,
+            String steuerungSplitReason,
             long coveredSlots,
             LocalDate firstCoveredDate,
             String reason,
