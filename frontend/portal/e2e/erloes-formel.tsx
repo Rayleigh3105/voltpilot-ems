@@ -53,7 +53,7 @@ function ErloesKarte({ id, titel, input }: { id: string; titel: string; input: S
       <p className="vp-erg-satz">
         Di., 01.09.2026: So viel hat Ihre Anlage unterm Strich eingebracht.
       </p>
-      <p className="vp-erg-steering">
+      <p className="vp-erg-steering vp-erg-steering-ok">
         <Icon name="zap" size={14} aria-hidden="true" />
         davon 3,73 € durch VoltPilots Steuerung
       </p>

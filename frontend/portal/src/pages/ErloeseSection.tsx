@@ -370,9 +370,15 @@ export function ErloeseSection({
   });
   const geplant = geplanteErsparnisNotiz(history?.totals.batterySavingsPlannedEur, label);
 
+  // Der Ton kommt aus der Ableitung (E8/B2) - der Renderer faerbt, er urteilt
+  // nicht: gruen nur bei einem Plus, Bernstein nur bei einem abgeschlossenen
+  // Minus, sonst neutral. Ein aelterer Stand ohne `steeringTon` bleibt gruen.
   const steeringZeile = ergebnis.steering ? (
     <>
-      <p className="vp-erg-steering" title={ergebnis.steeringTitel ?? undefined}>
+      <p
+        className={`vp-erg-steering vp-erg-steering-${ergebnis.steeringTon ?? 'ok'}`}
+        title={ergebnis.steeringTitel ?? undefined}
+      >
         <Icon name="zap" size={14} aria-hidden="true" />
         {ergebnis.steering}
       </p>

@@ -11,6 +11,7 @@ import {
   erloesAufklapper,
   erloesErgebnis,
   geplanteErsparnisNotiz,
+  steeringChip,
   erloesKomposition,
   geldVerlauf,
   preisTreiber,
@@ -536,7 +537,12 @@ describe('erloesErgebnis · Karte 1 der Erlöse-Welt', () => {
     // Die gezeigten Zeilen ERGEBEN die große Zahl (+ 1.059,40 − 60,14).
     const rechnung = view.rows
       .filter((r) => r.period === 'range' && r.eur != null)
-      .reduce((acc, r) => acc + (r.vorzeichen === 'minus' ? -(r.eur as number) : (r.eur as number)), 0);
+      // Gerechnet wird mit dem GEZEIGTEN Zeichen und dem GEZEIGTEN Betrag —
+      // seit B1 sind das zwei getrennte Dinge.
+      .reduce(
+        (acc, r) => acc + (r.vorzeichen === 'minus' ? -1 : 1) * Math.abs(r.eur as number),
+        0,
+      );
     expect(rechnung).toBeCloseTo(view.nettoEur as number, 6);
   });
 
@@ -978,5 +984,244 @@ describe('erloesErgebnis · das Bestandskonto', () => {
   it('bleibt ohne die Felder zeichengleich zu vorher (älteres Backend)', () => {
     const v = erloesErgebnis({ money: siteMoney(), periodLabel: 'Juli 2026' });
     expect(v.bestand).toBeNull();
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * P0 · die drei Defekte der Live-Karte (Konzept `vp-erloese-seite-konzept-e2`
+ * §2.3 B1/B2/B6, Entscheid E8). Die Vektoren sind die Fixtures des Konzepts
+ * (`derived.json`): `dv-praemie-ruht` (Negativpreis-Tag), `dv-tag-laufend`
+ * (laufender Tag mit negativer Zurechnung) und `eeg-ohne-tarif` (tariflose
+ * Anlage mit dem Produktions-Standardsatz).
+ * ------------------------------------------------------------------------- */
+
+/** `dv-praemie-ruht` — Direktvermarktung, Negativpreis-Tag (Mo., 24.08.2026). */
+function praemieRuht(over: Partial<SiteEarnings> = {}): SiteEarnings {
+  return siteMoney({
+    range: 'day',
+    from: '2026-08-23T22:00:00Z',
+    to: '2026-08-24T22:00:00Z',
+    tarifArt: 'fest',
+    tarifParamCtKwh: 25,
+    tarifPriced: true,
+    einspeiseErloesEur: -1.42,
+    eigenverbrauchsWertEur: 30.1,
+    stromkostenEur: 0.98,
+    nettoErgebnisEur: 27.7,
+    savedEur: 6.8,
+    marktpraemieEur: 0.61,
+    selbstverbrauchKwh: 120.4,
+    ...over,
+  });
+}
+
+/** `dv-tag-laufend` — der Screenshot-Fall: laufender Tag, Zurechnung negativ. */
+function tagLaufend(over: Partial<SiteEarnings> = {}): SiteEarnings {
+  return siteMoney({
+    range: 'day',
+    from: '2026-09-01T22:00:00Z',
+    to: '2026-09-02T22:00:00Z',
+    tarifArt: 'fest',
+    tarifParamCtKwh: 25,
+    tarifPriced: true,
+    einspeiseErloesEur: 26.134,
+    eigenverbrauchsWertEur: 38.684,
+    stromkostenEur: 1.585,
+    nettoErgebnisEur: 63.233,
+    savedEur: -2.67,
+    marktpraemieEur: 4.79,
+    selbstverbrauchKwh: 154.736,
+    ...over,
+  });
+}
+
+/** `eeg-ohne-tarif` — kein Stromtarif hinterlegt, aber tariflich bewertet. */
+function ohneTarif(over: Partial<SiteEarnings> = {}): SiteEarnings {
+  return siteMoney({
+    range: 'day',
+    from: '2026-08-31T22:00:00Z',
+    to: '2026-09-01T22:00:00Z',
+    plantKind: 'eigenverbrauch',
+    tarifArt: 'ohne',
+    tarifParamCtKwh: null,
+    tarifPriced: true,
+    einspeiseErloesEur: 1.995,
+    eigenverbrauchsWertEur: null,
+    stromkostenEur: 1.118,
+    nettoErgebnisEur: 0.877,
+    savedEur: 3.4,
+    marktpraemieEur: null,
+    selbstverbrauchKwh: 18.2,
+    ...over,
+  });
+}
+
+describe('P0/B1 · das Vorzeichen einer Zeile kommt aus dem WERT', () => {
+  it('zeigt einen negativen Einspeise-Erlös als Abzug, nicht als Gutschrift', () => {
+    const v = erloesErgebnis({
+      money: praemieRuht(),
+      periodLabel: 'Mo., 24.08.2026',
+      now: new Date('2026-09-02T10:19:00Z'),
+    });
+    const e = v.rows.find((r) => r.id === 'einspeisung')!;
+    expect(e.eur).toBe(-1.42);
+    // Die ROLLE bleibt eine Einnahme - das gezeigte ZEICHEN folgt dem Wert.
+    expect(e.rolle).toBe('plus');
+    expect(e.vorzeichen).toBe('minus');
+    expect(e.valueText).toBe(`1,42${NBSP}€`);
+    expect(e.gegenlaeufig).toBe(true);
+  });
+
+  it('zeigt eine Bezugs-Gutschrift als Plus statt als Abzug', () => {
+    const v = erloesErgebnis({
+      money: tagLaufend({
+        tarifArt: 'dynamisch',
+        tarifParamCtKwh: null,
+        stromkostenEur: -0.4,
+        nettoErgebnisEur: 26.134 + 38.684 + 0.4,
+      }),
+      periodLabel: 'Mi., 02.09.2026',
+      now: new Date('2026-09-02T10:19:00Z'),
+    });
+    const k = v.rows.find((r) => r.id === 'stromkosten')!;
+    expect(k.rolle).toBe('minus');
+    expect(k.vorzeichen).toBe('plus');
+    expect(k.valueText).toBe(`0,40${NBSP}€`);
+  });
+
+  it('rechnet mit dem gezeigten Zeichen und dem gezeigten Betrag auf das Netto', () => {
+    const v = erloesErgebnis({
+      money: praemieRuht(),
+      periodLabel: 'Mo., 24.08.2026',
+      now: new Date('2026-09-02T10:19:00Z'),
+    });
+    const summe = v.rows
+      .filter((r) => r.period === 'range' && r.eur != null)
+      .reduce(
+        (acc, r) => acc + (r.vorzeichen === 'minus' ? -1 : 1) * Math.abs(r.eur as number),
+        0,
+      );
+    expect(summe).toBeCloseTo(v.nettoEur as number, 6);
+  });
+
+  it('zeichnet für eine gegenläufige Zeile keinen Balken und schrumpft die anderen nicht', () => {
+    const v = erloesErgebnis({
+      money: praemieRuht(),
+      periodLabel: 'Mo., 24.08.2026',
+      now: new Date('2026-09-02T10:19:00Z'),
+    });
+    expect(v.rows.find((r) => r.id === 'einspeisung')!.barFraction).toBe(0);
+    // Der Maßstab ist die größte GEZEICHNETE Zeile (30,10 €), nicht die
+    // gegenläufige - sonst hinge der ganze Stapel an einem Balken, den es
+    // gar nicht gibt.
+    expect(v.rows.find((r) => r.id === 'eigenverbrauchswert')!.barFraction).toBe(1);
+    expect(v.rows.find((r) => r.id === 'stromkosten')!.barFraction).toBeCloseTo(0.98 / 30.1, 6);
+  });
+
+  it('lässt eine Anlage ohne negative Zeile Zeichen für Zeichen wie vorher', () => {
+    const v = erloesErgebnis({ money: siteMoney(), periodLabel: 'Juli 2026' });
+    expect(v.rows.map((r) => r.vorzeichen)).toEqual(['plus', 'plus', 'minus']);
+    expect(v.rows.every((r) => r.vorzeichen === r.rolle)).toBe(true);
+    expect(v.rows.some((r) => r.gegenlaeufig)).toBe(false);
+  });
+});
+
+describe('P0/B2 · der Steuerungs-Chip trägt seinen Ton (E8)', () => {
+  it('ist bei einem Plus grün wie bisher', () => {
+    const v = erloesErgebnis({
+      money: praemieRuht(),
+      periodLabel: 'Mo., 24.08.2026',
+      now: new Date('2026-09-02T10:19:00Z'),
+    });
+    expect(v.steering).toBe(`davon 6,80${NBSP}€ durch VoltPilots Steuerung`);
+    expect(v.steeringTon).toBe('ok');
+  });
+
+  it('nennt ein Minus im LAUFENDEN Zeitraum einen Zwischenstand — neutral, nie grün', () => {
+    const v = erloesErgebnis({
+      money: tagLaufend(),
+      periodLabel: 'Mi., 02.09.2026',
+      // 02.09. 12:19 MESZ — der Tag läuft noch (`to` ist 22:00 UTC).
+      now: new Date('2026-09-02T10:19:00Z'),
+    });
+    expect(v.steeringTon).toBe('neutral');
+    expect(v.steering).toBe(`VoltPilots Steuerung: −2,67${NBSP}€ — Zwischenstand`);
+  });
+
+  it('färbt ein Minus im ABGESCHLOSSENEN Zeitraum bernstein und sagt „weniger als"', () => {
+    const v = erloesErgebnis({
+      money: tagLaufend(),
+      periodLabel: 'Mi., 02.09.2026',
+      // Derselbe Tag, einen Tag später betrachtet: jetzt ist er abgeschlossen.
+      now: new Date('2026-09-03T10:19:00Z'),
+    });
+    expect(v.steeringTon).toBe('warn');
+    expect(v.steering).toBe(`VoltPilots Steuerung: 2,67${NBSP}€ weniger als ohne Steuerung`);
+  });
+
+  it('sagt ohne Zurechnung gar nichts — kein Chip, kein Ton', () => {
+    const v = erloesErgebnis({
+      money: tagLaufend({ savedEur: null }),
+      periodLabel: 'Mi., 02.09.2026',
+      now: new Date('2026-09-02T10:19:00Z'),
+    });
+    expect(v.steering).toBeNull();
+    expect(v.steeringTon).toBeNull();
+    expect(v.steeringFormel).toBeNull();
+  });
+
+  it('ist als reine Ableitung für sich prüfbar', () => {
+    expect(steeringChip(0.004, false)).toBeNull();
+    expect(steeringChip(null, false)).toBeNull();
+    expect(steeringChip(2.67, true)?.ton).toBe('ok');
+    expect(steeringChip(-2.67, true)?.ton).toBe('neutral');
+    expect(steeringChip(-2.67, false)?.ton).toBe('warn');
+  });
+});
+
+describe('P0/B6b · „Ihr Stromtarif" nur, wo es EINEN gibt', () => {
+  // ⚠ B6a („Ohne hinterlegten Stromtarif nicht bewertet") ist mit PR 592 (E7,
+  // 02.09.2026) HINFÄLLIG geworden: der Server bewertet den Eigenverbrauch
+  // seither IMMER zum Bezugspreis der Karte, ein fehlender Wert heißt also
+  // wirklich fehlende Daten. Der Vektor bleibt als Wächter dieser Entscheidung.
+  it('behauptet bei fehlendem Wert keinen fehlenden Tarif mehr (E7)', () => {
+    const v = erloesErgebnis({
+      money: ohneTarif(),
+      periodLabel: 'Di., 01.09.2026',
+      now: new Date('2026-09-02T12:05:00Z'),
+    });
+    const r = v.rows.find((x) => x.id === 'eigenverbrauchswert')!;
+    expect(r.eur).toBeNull();
+    expect(r.note).toBe('Noch keine Daten.');
+    expect(r.note).not.toContain('Stromtarif');
+  });
+
+  it('B6b · nennt den Standard-Satz beim Namen, statt einen Kundentarif zu behaupten', () => {
+    const v = erloesErgebnis({
+      money: ohneTarif(),
+      periodLabel: 'Di., 01.09.2026',
+      now: new Date('2026-09-02T12:05:00Z'),
+    });
+    expect(v.rows.find((x) => x.id === 'stromkosten')!.note).toBe('bewertet zum Standard-Satz');
+  });
+
+  it('bleibt bei einem echten Kundentarif bei „Ihrem Stromtarif"', () => {
+    const v = erloesErgebnis({
+      money: tagLaufend(),
+      periodLabel: 'Mi., 02.09.2026',
+      now: new Date('2026-09-02T10:19:00Z'),
+    });
+    expect(v.rows.find((x) => x.id === 'stromkosten')!.note).toBe('bewertet zu Ihrem Stromtarif');
+  });
+
+  it('bleibt ohne tarifliche Bewertung beim Börsenpreis', () => {
+    const v = erloesErgebnis({
+      money: ohneTarif({ tarifPriced: false }),
+      periodLabel: 'Di., 01.09.2026',
+      now: new Date('2026-09-02T12:05:00Z'),
+    });
+    expect(v.rows.find((x) => x.id === 'stromkosten')!.note).toBe(
+      'bewertet zum Börsenpreis der jeweiligen Viertelstunde',
+    );
   });
 });

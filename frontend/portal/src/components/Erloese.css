@@ -36,6 +36,10 @@
   color: var(--vp-text-muted, #6c757d);
 }
 
+/* Der Steuerungs-Chip. Die FARBE steht in den Ton-Klassen darunter — bis
+   09/2026 hatte er genau eine (grün), und ein „−2,67 €" stand in der
+   Erfolgsfarbe (Befund B2). Den Ton entscheidet die Ableitung
+   (`steeringChip`, Entscheid E8), nie dieses Blatt. */
 .vp-erg-steering {
   display: inline-flex;
   align-items: center;
@@ -43,13 +47,31 @@
   margin: 10px 0 0;
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--vp-flow-batt-soft, rgba(46, 158, 91, 0.12));
-  color: var(--vp-flow-batt-ink, #166534);
   font-size: 0.85rem;
   font-weight: 600;
   /* min-width: 0 gehört zu jedem Flex-Kind mit Text (Telefon-Überlauf). */
   min-width: 0;
   max-width: 100%;
+}
+
+/* Ein Plus: unverändert die Speicher-Farbe. */
+.vp-erg-steering-ok {
+  background: var(--vp-flow-batt-soft, rgba(46, 158, 91, 0.12));
+  color: var(--vp-flow-batt-ink, #166534);
+}
+
+/* Ein Minus im LAUFENDEN Zeitraum: ein Zwischenstand ist kein Verlust —
+   ruhig, nie grün, nie rot. */
+.vp-erg-steering-neutral {
+  background: var(--vp-neutral-soft, #eef1f5);
+  color: var(--vp-text, #1a1a1a);
+}
+
+/* Ein Minus im ABGESCHLOSSENEN Zeitraum: Bernstein. Rot bleibt auf dieser
+   Karte den Stromkosten vorbehalten. */
+.vp-erg-steering-warn {
+  background: #fff3e0;
+  color: var(--vp-warn-ink, #b45309);
 }
 
 .vp-erg-steering svg {

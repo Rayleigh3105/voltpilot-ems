@@ -68,7 +68,16 @@ export interface StreamRow {
   period: StreamPeriod;
   /** Das Perioden-Etikett DIESER Zeile ("Juli" / "Abrechnungsjahr 2026"). */
   periodLabel: string;
-  /** Balkenanteil 0..1 — relativ zur größten Zeile DERSELBEN Periode. */
+  /**
+   * Balkenanteil 0..1 — relativ zur größten Zeile DERSELBEN Periode.
+   *
+   * ⚠ Eine GEGENLÄUFIGE Zeile bekommt 0. Der Balken ist ein Anteil am Stapel
+   * und kann keine Richtung ausdrücken; einen großen Anteil für einen Betrag
+   * zu zeichnen, der in die andere Richtung wirkt, wäre die Lüge, die B1 auf
+   * dem Zahlenweg gerade beseitigt hat. Leer heißt hier „kein Anteil", nicht
+   * „null Euro" — den Betrag nennt die Zeile daneben. Ein Balken MIT Richtung
+   * ist der Wasserfall der neuen Ergebnis-Karte (P3).
+   */
   barFraction: number;
   /** CSS-Farbe (Token-`var()`), damit Punkt und Balken zusammenpassen. */
   hue: string;
@@ -201,6 +210,56 @@ export function steeringAttributionNote(savedEur: number | null | undefined): st
   return eur > 0
     ? `davon ${eurAmount(eur)} durch VoltPilots Steuerung`
     : `VoltPilots Steuerung: ${eurAmount(eur)} in diesem Zeitraum`;
+}
+
+/**
+ * Ob der gezeigte Zeitraum noch LÄUFT. Die eine Regel dafür (`to` liegt in der
+ * Zukunft) — sie entscheidet die Bestandszeile UND den Ton des
+ * Steuerungs-Chips, und zwei Antworten auf dieselbe Frage wären eine zu viel.
+ */
+function zeitraumLaeuft(to: string | null | undefined, now: Date): boolean {
+  const bis = to ? new Date(to).getTime() : NaN;
+  return Number.isFinite(bis) && bis > now.getTime();
+}
+
+/** Der Ton des Steuerungs-Chips — nie Grün für ein Minus, nie Rot. */
+export type SteeringTon = 'ok' | 'neutral' | 'warn';
+
+/** Text UND Ton der Zurechnungs-Zeile; `null` = keine Zurechnung. */
+export interface SteeringChip {
+  text: string;
+  ton: SteeringTon;
+}
+
+/**
+ * Die Zurechnungs-Zeile MIT ihrem Ton (Captain-Entscheid E8, Befund B2).
+ *
+ * ⚠ BIS 09/2026 WAR DER CHIP IMMER GRÜN — auch bei „−2,67 €". Ein Minus in
+ * der Erfolgsfarbe ist ein Vertrauensbruch, und ein Minus in Rot wäre der
+ * zweite: Rot ist auf dieser Karte für die STROMKOSTEN reserviert, und ein
+ * negativer Zwischenstand ist kein Verlust (die eingelagerte kWh zählt erst,
+ * wenn sie später den Netzbezug ersetzt — siehe die Bestandszeile). Also:
+ *
+ * - `savedEur ≥ 0` → `ok` (unverändert grün),
+ * - `< 0` und der Zeitraum LÄUFT → `neutral` + das Wort „Zwischenstand",
+ * - `< 0` und der Zeitraum ist ABGESCHLOSSEN → `warn` (Bernstein) + „weniger als …".
+ *
+ * Der Ton kommt aus DIESER Ableitung, nie aus dem Renderer — sonst könnte die
+ * Fläche ihn erraten.
+ */
+export function steeringChip(
+  savedEur: number | null | undefined,
+  laeuft: boolean,
+): SteeringChip | null {
+  const eur = num(savedEur ?? null);
+  if (eur == null || Math.abs(eur) < 0.005) return null;
+  if (eur > 0) {
+    return { text: `davon ${eurAmount(eur)} durch VoltPilots Steuerung`, ton: 'ok' };
+  }
+  const betrag = eurAmount(Math.abs(eur));
+  return laeuft
+    ? { text: `VoltPilots Steuerung: −${betrag} — Zwischenstand`, ton: 'neutral' }
+    : { text: `VoltPilots Steuerung: ${betrag} weniger als ohne Steuerung`, ton: 'warn' };
 }
 
 /* ---------------------------------------------------------------------------
@@ -592,8 +651,7 @@ export function bestandZeile(
   const delta = num(m.speicherDeltaKwh ?? null);
   if (delta == null || Math.abs(delta) < BESTAND_KWH_TOTBAND) return null;
 
-  const bis = m.to ? new Date(m.to).getTime() : NaN;
-  const laeuft = Number.isFinite(bis) && bis > now.getTime();
+  const laeuft = zeitraumLaeuft(m.to, now);
   const menge = fmtNum(Math.abs(delta), 'kWh');
   const tag = m.range === 'day';
   const satz = laeuft
@@ -832,7 +890,28 @@ export type ErgebnisVorzeichen = 'plus' | 'minus';
 export interface ErgebnisZeile {
   id: ErgebnisZeileId;
   label: string;
+  /**
+   * Der ANGEZEIGTE Operator — er kommt aus dem WERT, nicht aus der Rolle (B1).
+   *
+   * ⚠ Bis 09/2026 war er je Zeile konstant („Einspeise-Erlös" immer `plus`),
+   * und ein negativer Einspeise-Erlös (Negativpreis-Tag, DV/Spot — der Server
+   * liefert ihn ausdrücklich negativ) rendete als „+ 3,20 €", eine
+   * Bezugs-GUTSCHRIFT als „− 0,40 €". Der Hero stimmte, die Zeilen logen.
+   * Seither gilt: `vorzeichen = rolle × Vorzeichen(eur)` — die Zeile zeigt,
+   * WIE ihr Betrag in die große Zahl eingeht, und `rolle` sagt nur noch, als
+   * was sie gemeint ist.
+   */
   vorzeichen: ErgebnisVorzeichen;
+  /**
+   * Wie die Zeile STRUKTURELL gemeint ist (Einnahme vs. Kosten). Sie bestimmt
+   * Farbe und Reihenfolge, nie mehr das angezeigte Zeichen.
+   */
+  rolle: ErgebnisVorzeichen;
+  /**
+   * Ob der Wert seiner Rolle WIDERSPRICHT (negativer Erlös, negative Kosten).
+   * Dann trägt die Zeile keinen Balken — siehe `barFraction`.
+   */
+  gegenlaeufig: boolean;
   /** Der Betrag; null = nicht berechenbar (dann steht „—"). */
   eur: number | null;
   /** Der BETRAG ohne Vorzeichen („1.059,40 €") bzw. der Gedankenstrich. */
@@ -860,6 +939,8 @@ export interface ErloesErgebnisView {
   nettoSatz: string;
   /** „davon 161,44 € durch VoltPilots Steuerung" (Zurechnung, kein Summand). */
   steering: string | null;
+  /** Der Ton dazu (E8) — `null`, wo es keine Zurechnung gibt. */
+  steeringTon: SteeringTon | null;
   /** Der Titel-Text dazu: wogegen die Zurechnung gemessen ist. */
   steeringTitel: string | null;
   /**
@@ -952,15 +1033,27 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
   const push = (
     id: ErgebnisZeileId,
     label: string,
-    vorzeichen: ErgebnisVorzeichen,
+    rolle: ErgebnisVorzeichen,
     eur: number | null,
     period: StreamPeriod,
     note: string | null,
   ) => {
+    // B1: das gezeigte Zeichen ist Rolle × Vorzeichen des Wertes. Eine
+    // Bezugs-Gutschrift (negative Kosten) ERHÖHT das Ergebnis und liest sich
+    // deshalb als „+", ein negativer Einspeise-Erlös senkt es und liest sich
+    // als „−". Eine 0 bleibt bei ihrer Rolle (es gibt nichts umzudrehen).
+    const gegenlaeufig = eur != null && eur < 0;
+    const vorzeichen: ErgebnisVorzeichen = !gegenlaeufig
+      ? rolle
+      : rolle === 'plus'
+        ? 'minus'
+        : 'plus';
     rows.push({
       id,
       label,
       vorzeichen,
+      rolle,
+      gegenlaeufig,
       eur,
       valueText: eur == null ? DASH : euroOhneVorzeichen(eur),
       period,
@@ -998,14 +1091,18 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
   }
 
   // Balken nur INNERHALB einer Periode skalieren (ein Jahresstand darf einen
-  // Monatswert nicht optisch erschlagen).
+  // Monatswert nicht optisch erschlagen). Der Maßstab zählt nur die Zeilen,
+  // die auch einen Balken BEKOMMEN — sonst schrumpfte der ganze Stapel an
+  // einer gegenläufigen Zeile, die gar nicht gezeichnet wird.
   for (const period of ['range', 'billing-period'] as StreamPeriod[]) {
-    const group = rows.filter((r) => r.period === period && r.eur != null);
+    const group = rows.filter((r) => r.period === period && r.eur != null && !r.gegenlaeufig);
     const max = Math.max(0, ...group.map((r) => Math.abs(r.eur as number)));
     if (max <= 0) continue;
     for (const r of group) r.barFraction = Math.abs(r.eur as number) / max;
   }
 
+  const jetzt = input.now ?? new Date();
+  const chip = steeringChip(money?.savedEur, zeitraumLaeuft(money?.to, jetzt));
   const mehrerePerioden = new Set(rows.map((r) => r.period)).size > 1;
   const richtung = netto == null ? null : netto < 0 ? 'kosten' : 'ertrag';
   const leerText =
@@ -1019,10 +1116,11 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
     nettoText: netto == null ? DASH : signedEuro(netto),
     richtung,
     nettoSatz: nettoSatz(netto, rangeLabel),
-    steering: steeringAttributionNote(money?.savedEur),
+    steering: chip?.text ?? null,
+    steeringTon: chip?.ton ?? null,
     steeringTitel: steeringTitel(money),
     steeringFormel:
-      money == null || steeringAttributionNote(money.savedEur) == null
+      money == null || chip == null
         ? null
         : {
             tarifArt: money.tarifArt,
@@ -1034,9 +1132,9 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
             marktpraemieEur: money.marktpraemieEur,
             anzulegenderWertCtKwh: money.anzulegenderWertCtKwh,
             marketValueSolarCtKwh: money.marketValueSolarCtKwh,
-            bestandSichtbar: bestandZeile(money, input.now ?? new Date()) != null,
+            bestandSichtbar: bestandZeile(money, jetzt) != null,
           },
-    bestand: bestandZeile(money, input.now ?? new Date()),
+    bestand: bestandZeile(money, jetzt),
     rows,
     mehrerePerioden,
     periodNote: mehrerePerioden
@@ -1076,12 +1174,20 @@ function eigenNote(money: SiteEarnings | null, eigen: number | null): string | n
   return 'Noch keine Daten.';
 }
 
+/**
+ * ⚠ „Ihr Stromtarif" nur, wo es EINEN gibt (B6b).
+ *
+ * `tarifPriced` heißt „tariflich bewertet", nicht „zum Tarif DES KUNDEN": mit
+ * dem Produktions-Standardsatz (`OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS`) bewertet
+ * der Server auch eine tariflose Anlage. Die Unterscheidung ist WÖRTLICH die
+ * von `bezugKurzText` — dieselbe Frage darf nicht zwei Antworten haben.
+ */
 function kostenNote(money: SiteEarnings | null): string | null {
   if (!money) return null;
   if (money.stromkostenEur == null) return 'Noch keine Daten.';
-  return money.tarifPriced
-    ? 'bewertet zu Ihrem Stromtarif'
-    : 'bewertet zum Börsenpreis der jeweiligen Viertelstunde';
+  if (!money.tarifPriced) return 'bewertet zum Börsenpreis der jeweiligen Viertelstunde';
+  const eigenerTarif = money.tarifArt === 'fest' || money.tarifArt === 'dynamisch';
+  return eigenerTarif ? 'bewertet zu Ihrem Stromtarif' : 'bewertet zum Standard-Satz';
 }
 
 function steeringTitel(money: SiteEarnings | null): string | null {
