@@ -7,18 +7,16 @@ import { eurAmount } from '../format';
 import { isoDate, periodLabel } from '../periodNav';
 import { parseVerlaufParams } from '../verlauf';
 import {
-  delta,
   keineVergleichsDatenText,
-  laufendHinweis,
   normalisiereModus,
   ueberlagerungAktiv,
   ueberlagerungLegende,
   vergleichsKopf,
-  vergleichsName,
   wirksamerModus,
   type VergleichsModus,
 } from '../historieVergleich';
 import { mitVergleich, parseVergleichModus } from '../historieZeit';
+import { erloesVergleich } from '../vergleichLaufend';
 import {
   DASH,
   erloesAufklapper,
@@ -343,23 +341,27 @@ export function ErloeseSection({
         series: money.series,
       }
     : null;
-  const vergleichName = vergleichsName(anchor, range, modus);
   // Am Telefon bleibt der Kartenkopf EINE Zeile (sonst rutscht der Titel auf
-  // „Ergebni…"); welcher Zeitraum verglichen wird, sagt die Δ-Zeile darunter
-  // ohnehin beim Namen („etwa wie am Vortag").
+  // „Ergebni…"); WELCHER Zeitraum verglichen wird, sagen die Zeilen darunter
+  // ohnehin („etwa wie am Vortag" bzw. „· gestern 67,57 €").
   const kopfVergleich =
     vorher && !isPhone ? (
       <span className="vp-karten-vergleich">{vergleichsKopf(anchor, range, modus)}</span>
     ) : undefined;
-  const laufend = vorher ? laufendHinweis(anchor, range, now, modus) : null;
-  // Mehr Ergebnis ist eindeutig besser; die GEPLANTE Ersparnis ist eine
-  // Plan-Aussage und wird deshalb nicht als Erfolg gewertet.
-  const nettoDelta = delta(
-    money?.nettoErgebnisEur,
-    vorher?.nettoErgebnisEur,
-    true,
-    vergleichName,
-  );
+  // P2 (E3): ein LAUFENDER Tag wird gegen die GLEICHE Stunde des Vortags
+  // gerechnet, nicht gegen den vollen Vortag (Befund B3) - die Ableitung liegt
+  // rein in `vergleichLaufend.ts` und liefert Chip, Beträge und den Erklärsatz
+  // fertig; ein abgeschlossener Zeitraum bekommt unverändert sein `delta()`.
+  const vergleich = erloesVergleich({
+    range,
+    anchor,
+    now,
+    modus,
+    jetztEur: money?.nettoErgebnisEur,
+    vorherEur: vorher?.nettoErgebnisEur,
+    jetztSeries: money?.series,
+    vorherSeries: vorher?.series,
+  });
   // Welche Aufklapper es am Telefon gibt - ein Aufklapper ohne Karte dahinter
   // wäre ein Versprechen ins Leere.
   const aufklapper = erloesAufklapper({
@@ -403,14 +405,19 @@ export function ErloeseSection({
       )}
     </p>
   ) : null;
+  // Revision 2 (§3.12): auf Ebene 0 steht der Vergleich als CHIP („25 %
+  // weniger") und nur, wenn er abweicht; die Beträge stehen ruhig darunter, der
+  // Erklärsatz („bis 12 Uhr, der Vortag ebenso") ist der Satz, den die
+  // Ergebnis-Karte (P3/P4) in ihr Akkordeon übernimmt.
   const vergleichsZeilen = (
     <>
-      {nettoDelta && (
+      {vergleich?.chip && (
         <p className="vp-kpi-delta">
-          <DeltaZeile delta={nettoDelta} />
+          <DeltaZeile delta={vergleich.chip} />
         </p>
       )}
-      {laufend && <p className="vp-note vp-note-laufend">{laufend}</p>}
+      {vergleich?.betraege && <p className="vp-erg-vergleich">{vergleich.betraege}</p>}
+      {vergleich?.satz && <p className="vp-note vp-note-laufend">{vergleich.satz}</p>}
     </>
   );
 

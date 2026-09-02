@@ -113,6 +113,17 @@
   white-space: nowrap;
 }
 
+/* Die zwei Beträge des Vergleichs (P2/E3): „Bis 12 Uhr: heute … · gestern …"
+   bzw. „bisher … · ganze Vorwoche …". Bewusst RUHIG und ohne Ton - der Chip
+   darüber trägt die Richtung, diese Zeile trägt nur die Grundlage. */
+.vp-erg-vergleich {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--vp-text-muted, #5b6472);
+  min-width: 0;
+}
+
 /* Die geplante Ersparnis - ruhiger als das Ergebnis, eigenes Abzeichen. */
 .vp-erg-plan {
   margin: 0;
