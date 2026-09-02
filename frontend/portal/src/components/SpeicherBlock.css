@@ -1,0 +1,114 @@
+/* Der SPEICHER-BLOCK der Erlöse-Karte (Konzept `vp-erloese-seite-konzept-e2`
+   §3.5/§3.9). Eine eigene Fläche, EINE Speicher-Farbe (`--vp-flow-batt-*`,
+   die Farbregel der Charts); der TON einer Zahl ist davon getrennt und trägt
+   immer ein Wort. */
+.vp-spb {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--vp-flow-batt-soft, rgba(46, 158, 91, 0.1));
+  /* min-width: 0 an jedem Flex-Kind mit Text — sonst schiebt ein langer Satz
+     die Karte am Telefon über den Rand (bei 375 px gemessen). */
+  min-width: 0;
+}
+
+.vp-spb-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  min-width: 0;
+}
+
+.vp-spb-zeile svg {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.vp-spb-label {
+  font-weight: 600;
+  color: var(--vp-text, #1a1a1a);
+  min-width: 0;
+}
+
+/* Zeile 2 rückt unter Zeile 1 ein — sie ist ein TEIL der Zahl darüber. */
+.vp-spb-sub {
+  padding-left: 20px;
+}
+
+.vp-spb-sub .vp-spb-label {
+  font-weight: 500;
+  color: var(--vp-text-muted, #5b6472);
+}
+
+/* Der Betrag bricht nie um (§3.9). */
+.vp-spb-wert {
+  margin-left: auto;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.vp-spb-ton-ok .vp-spb-wert {
+  color: var(--vp-ok-ink, #2e7d32);
+}
+
+.vp-spb-ton-warn .vp-spb-wert {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-spb-ton-neutral .vp-spb-wert {
+  color: var(--vp-text, #1a1a1a);
+}
+
+.vp-spb-chip {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--vp-neutral-soft, #eef1f5);
+  color: #4b5563;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.vp-spb-chip-link {
+  color: var(--vp-action, #2563eb);
+  text-decoration: none;
+}
+
+.vp-spb-chip-link:hover,
+.vp-spb-chip-link:focus-visible {
+  text-decoration: underline;
+}
+
+/* Zeile 3 + 4: bewertet bzw. geplant — ruhiger als die gemessene Kasse. */
+.vp-spb-still {
+  color: var(--vp-text-muted, #5b6472);
+}
+
+.vp-spb-satz {
+  min-width: 0;
+}
+
+.vp-spb-badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--vp-neutral-soft, #eef1f5);
+  color: #4b5563;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* Der Aufklapper „Wie wird das berechnet?" sitzt bündig im Block. */
+.vp-spb > .vp-formel {
+  margin-top: 4px;
+}

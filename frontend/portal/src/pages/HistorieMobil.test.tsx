@@ -358,7 +358,10 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     expect(within(komposition).getByText('Einspeise-Erlös')).toBeInTheDocument();
     expect(within(komposition).getByText('Wert des Eigenverbrauchs')).toBeInTheDocument();
     expect(within(komposition).getByText(/Stromkosten/)).toBeInTheDocument();
-    expect(screen.getByText(/durch VoltPilots Steuerung/)).toBeInTheDocument();
+    // Der Speicher-Block (Erlöse-Konzept §3.5) steht am Telefon UNTER den drei
+    // Zeilen — der Falz zeigt zuerst, was die Zahl ERGIBT.
+    expect(screen.getAllByText(/^Speicher (heute|an diesem Tag|bisher|im Zeitraum)$/).length)
+      .toBeGreaterThan(0);
   });
 
   it('faltet Erklärendes in BENANNTE Aufklapper — zugeklappt, aber nie versteckt', async () => {

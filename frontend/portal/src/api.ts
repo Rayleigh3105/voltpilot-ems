@@ -2590,6 +2590,26 @@ export interface CockpitMoney {
   eigenverbrauchsWertEur: number | null;
   savedEur: number | null;
   arbitrageEur: number | null;
+  /**
+   * Die DREITEILUNG `savedEur = savedSpeicherEur + savedSteuerungEur`
+   * (Audit `vp-geldzahlen-audit-x7` §2.5 / PR 591, Erlöse-Konzept §3.6):
+   * `savedSpeicherEur` ist, was ein STUR arbeitender Standard-Speicher
+   * (gleiche Physik, null Preisbewusstsein) gegenüber der speicherlosen
+   * Anlage erwirtschaftet hätte; `savedSteuerungEur` ist der EXAKTE Rest —
+   * der Mehrwert von VoltPilots Steuerung. Die Identität gilt serverseitig
+   * per Konstruktion (BigDecimal-Subtraktion), nicht per Rundungsglück.
+   *
+   * ⚠ Beides ist `null`, wo die Anlage keine gepflegten Batterie-Stammdaten
+   * hat — dann sagt `steuerungSplitReason` warum, und die Fläche zeigt
+   * ehrlich NUR die Gesamtzahl statt einer geratenen Referenz-Batterie.
+   *
+   * OPTIONAL, weil ein ÄLTERES Backend sie nicht sendet: `undefined` wird wie
+   * `null` OHNE Grund behandelt (nur Zeile 1, kein Nachtrag-Link) — ein
+   * fehlendes FELD ist kein fehlendes STAMMDATUM (`speicherAussage.ts`).
+   */
+  savedSpeicherEur?: number | null;
+  savedSteuerungEur?: number | null;
+  steuerungSplitReason?: 'no_battery_data' | null;
   anzulegenderWertCtKwh: number | null;
   firstCoveredDate: string | null;
   peakShaving?: PeakShaving | null;

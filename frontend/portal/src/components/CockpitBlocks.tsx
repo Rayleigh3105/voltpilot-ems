@@ -207,6 +207,7 @@ export function MobileMoneyCard({
       {view.money?.attribution && (
         <span
           className={`vp-mob-money-attr${view.money.attributionInterim ? ' is-interim' : ''}`}
+          title={view.money.attributionTitel ?? undefined}
         >
           {view.money.attribution}
         </span>

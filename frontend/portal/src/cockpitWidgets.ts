@@ -59,13 +59,13 @@ import {
   DASH,
   bestandZeile,
   erloesKomposition,
-  steeringAttributionNote,
   type BestandZeile,
   type SteuerungFormelInput,
 } from './erloesKomposition';
 import { eurAmount, fmtNum } from './format';
 import type { PeakBandView } from './peakBand';
 import { planSentence, type PlanWordingKind } from './schedule';
+import { speicherAussage } from './speicherAussage';
 import type { ActiveMode, CockpitBlock, CockpitBlockId, MoneyStream } from './surface';
 import type { SiteCharging } from './ladepunkte';
 import { widgetTarget, type WidgetTarget } from './verlaufTarget';
@@ -319,8 +319,13 @@ export interface HeroRing {
 export interface HeroMoney {
   label: string;
   value: string;
-  /** „davon X € durch VoltPilots Steuerung"; null = keine Zurechnung. */
+  /**
+   * Die Speicher-Aussage in Kurzform: „Speicher + 12,40 € · davon Steuerung
+   * + 3,10 €" (Erlöse-Konzept §3.6). null = es gibt nichts zu sagen.
+   */
   attribution: string | null;
+  /** Der volle Wortlaut als Tooltip der Kurzform; null ohne Aussage. */
+  attributionTitel?: string | null;
   /** true = the selected earnings window is still running. */
   attributionInterim?: boolean;
   /** Measured battery inventory, valued by the plan and NEVER added to cash. */
@@ -435,13 +440,14 @@ export function cockpitHero(input: {
   const total = num(input.money?.gesamtertragEur) ?? num(input.money?.einspeiseErloesEur);
   const periodEnd = input.money?.to ? new Date(input.money.to).getTime() : NaN;
   const running = Number.isFinite(periodEnd) && periodEnd > input.now.getTime();
-  const saved = num(input.money?.savedEur);
-  const attribution =
-    saved == null || Math.abs(saved) < 0.005
-      ? null
-      : running
-        ? `Zwischenstand Steuerung: ${saved > 0 ? '+' : '−'}${eurAmount(Math.abs(saved))} bisher`
-        : steeringAttributionNote(saved);
+  // Die SPEICHER-AUSSAGE in Kurzform (Erlöse-Konzept §3.5/§3.6, P5): dieselbe
+  // Ableitung, die die Erlöse-Karte in der Langform zeigt. Vorher stand hier
+  // `savedEur` unter dem Wort „Steuerung" — derselbe Wert misst aber den
+  // GANZEN Speicher (§2.2), und die Erlöse-Seite nennt ihn seither so. Ohne
+  // die gemeinsame Ableitung sagte das Cockpit „Steuerung −2,67 €" und die
+  // Erlöse-Seite „Steuerung +1,45 €" über dieselbe Stunde.
+  const speicher = speicherAussage(input.money, { now: input.now });
+  const attribution = speicher?.hatAussage ? speicher.kurz : null;
   const money: HeroMoney | null =
     total == null
       ? null
@@ -449,6 +455,7 @@ export function cockpitHero(input: {
           label: `Verdient · ${label}`,
           value: eurAmount(total),
           attribution,
+          attributionTitel: speicher?.kurzTitel ?? null,
           attributionInterim: running && attribution != null,
           bestand: bestandZeile(input.money, input.now),
           // Der Aufklapper haengt am CHIP: ohne Zurechnung gibt es ihn nicht.
@@ -466,6 +473,9 @@ export function cockpitHero(input: {
                   anzulegenderWertCtKwh: input.money?.anzulegenderWertCtKwh ?? null,
                   marketValueSolarCtKwh: input.money?.marketValueSolarCtKwh ?? null,
                   bestandSichtbar: bestandZeile(input.money, input.now) != null,
+                  savedEur: input.money?.savedEur ?? null,
+                  savedSpeicherEur: input.money?.savedSpeicherEur ?? null,
+                  savedSteuerungEur: input.money?.savedSteuerungEur ?? null,
                 },
         };
 

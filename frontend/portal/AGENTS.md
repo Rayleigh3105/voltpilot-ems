@@ -2942,6 +2942,35 @@ die FLÄCHE trägt. **Ohne ein einziges Profil rendert alles Zeichen für Zeiche
   375** gemessen: 0 px horizontaler Überlauf, 0 überstehende Elemente, keine
   Konsolenmeldungen.
 
+## Die SPEICHER-AUSSAGE ist EINE Ableitung fuer drei Flaechen (`speicherAussage.ts`)
+
+Erloese-Konzept `data/vp-erloese-seite-konzept-e2` §3.5/§3.6 (Captain-Entscheide E2=a, E8),
+Paket P1+P5. **Der behobene Befund war eine ZWEITE WAHRHEIT ueber dasselbe Wort:** `savedEur`
+misst den GANZEN Speicher (Baseline = Anlage ohne Speicher, siehe die api-Doku zur Dreiteilung),
+das Cockpit stellte ihn aber unter „Steuerung" — waehrend die Erloese-Seite denselben Zeitraum
+mit dem SPLIT beschrieb. Auf einer Stunde konnte damit „Steuerung −2,67 €" neben „Steuerung
++1,45 €" stehen.
+
+- **⚠ `speicherAussage(money, ctx)` (`src/speicherAussage.ts`, rein) ist die EINE Ableitung** —
+  Langform (`zeilen` 1–4 fuer `components/SpeicherBlock.tsx` auf der Erloese-Karte) UND Kurzform
+  (`kurz`/`kurzTitel` fuer `cockpitWidgets.cockpitHero` und `steuerungArea.contributionRows`).
+  `steeringAttributionNote` ist damit ERSATZLOS entfallen. Wer eine vierte Flaeche baut,
+  konsumiert sie — nie `savedEur` roh unter dem Wort „Steuerung".
+- **⚠ `savedSpeicherEur`/`savedSteuerungEur`/`steuerungSplitReason` sind OPTIONAL auf
+  `SiteEarnings`/`EarningsSite`:** `undefined` heisst „aelteres Backend" ⇒ nur Zeile 1, nie eine
+  erfundene Aufteilung. `steuerungSplitReason: 'no_battery_data'` ist die GEMELDETE Leere und
+  fuehrt auf die Technik-Seite; ohne gemeldeten Grund wird gar nichts behauptet.
+- **⚠ Der IDENTITAETS-WAECHTER ist fail-soft:** ergibt `savedSpeicherEur + savedSteuerungEur`
+  nicht `savedEur` (Toleranz 0,005 €), faellt Zeile 2 WEG und es gibt eine `console.warn` — eine
+  falsche Zahl waere schlimmer als eine fehlende. Serverseitig ist die Rekonziliation exakt
+  (BigDecimal-Subtraktion), der Waechter faengt nur Drift ueber die Draht-Grenze.
+- **Der Aufteilungs-Schritt der Erklaerung** („Wie wird das berechnet?") wohnt als
+  `splitZeile` in `erloesKomposition.steuerungFormel` — mit eingesetzten Zahlen und dem
+  Glossar-Wort „stur arbeitender Speicher" (§3.11), nie „Baseline".
+- **Vektoren:** `src/test/fixtures/speicherAussage.vektoren.json` sind die **15 Konzept-Fixtures**
+  aus `derived.json` (`erwartet` == woertlich `neu.speicher`). Wer die Ableitung aendert, aendert
+  sie gegen diese Datei — nicht gegen den eigenen Kopf.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

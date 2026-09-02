@@ -366,6 +366,16 @@ export interface SteuerungFormelInput {
    * auf eine Zeile, die es nicht gibt.
    */
   bestandSichtbar?: boolean;
+  /**
+   * Die DREITEILUNG (Erlöse-Konzept §3.5, E2/E6): `savedEur` misst den GANZEN
+   * Speicher, `savedSpeicherEur` den STUR arbeitenden Vergleichs-Speicher und
+   * `savedSteuerungEur` den Rest — den Beitrag der Steuerung. Liegen alle drei
+   * vor, bekommt die Erklärung einen vierten Schritt mit den EINGESETZTEN
+   * Zahlen; fehlt eine, gibt es ihn nicht (nie eine geratene Aufteilung).
+   */
+  savedEur?: number | null;
+  savedSpeicherEur?: number | null;
+  savedSteuerungEur?: number | null;
 }
 
 /** Der Auslöser — an allen Flächen wortgleich. */
@@ -512,6 +522,28 @@ function einspeiseZusatz(input: SteuerungFormelInput): string | null {
  * Chip steht — es gibt keinen Zustand, in dem die Rechnung eine andere wäre;
  * verschieden ist nur, wie viel wir über die PREISE sagen können.
  */
+/**
+ * Der Aufteilungs-Schritt mit eingesetzten Zahlen. `null`, sobald eine der drei
+ * Zahlen fehlt (älteres Backend, keine Batterie-Stammdaten) ODER die Summe
+ * nicht aufgeht — dann wird lieber nichts erklärt als etwas Falsches
+ * (derselbe Wächter wie in `speicherAussage`).
+ */
+function splitZeile(input: SteuerungFormelInput): FormelZeile | null {
+  const gesamt = num(input.savedEur ?? null);
+  const stur = num(input.savedSpeicherEur ?? null);
+  const steuerung = num(input.savedSteuerungEur ?? null);
+  if (gesamt == null || stur == null || steuerung == null) return null;
+  if (Math.abs(stur + steuerung - gesamt) > 0.005) return null;
+  return {
+    label: 'Aufteilung',
+    // „Sturer Speicher" ist das Glossar-Wort (Konzept §3.11): ein Speicher, der
+    // jeden Überschuss lädt und jeden Bedarf deckt, aber keine Preise kennt.
+    text:
+      `Ein stur arbeitender Speicher hätte ${signedEuro(stur)} gebracht, ` +
+      `die Steuerung ${signedEuro(steuerung)} mehr — zusammen ${signedEuro(gesamt)}.`,
+  };
+}
+
 export function steuerungFormel(input: SteuerungFormelInput): SteuerungFormel {
   const bezugKurz = bezugKurzText(input);
 
@@ -542,6 +574,13 @@ export function steuerungFormel(input: SteuerungFormelInput): SteuerungFormel {
       text: 'Kosten ohne Steuerung − Kosten mit Steuerung, über alle Viertelstunden des Zeitraums summiert.',
     },
   ];
+
+  // Die AUFTEILUNG (Erlöse-Konzept §3.5, E2): dieselbe Summe, zerlegt in den
+  // sturen Vergleichs-Speicher und den Mehrwert der Steuerung. Sie steht hier
+  // mit EINGESETZTEN Zahlen, weil genau das die Frage hinter dem Chip ist —
+  // und sie erscheint nur, wenn der Server alle drei Zahlen liefert.
+  const aufteilung = splitZeile(input);
+  if (aufteilung) zeilen.push(aufteilung);
 
   const bezugSchnitt = num(input.bezugspreisCtKwh ?? null);
   const preise: PreisAngabe[] = [
@@ -1133,6 +1172,12 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
             anzulegenderWertCtKwh: money.anzulegenderWertCtKwh,
             marketValueSolarCtKwh: money.marketValueSolarCtKwh,
             bestandSichtbar: bestandZeile(money, jetzt) != null,
+            // Die DREITEILUNG (Erlöse-Konzept §3.5): der Aufklapper zerlegt
+            // dieselbe Summe in den sturen Vergleichs-Speicher und den
+            // Mehrwert der Steuerung — mit den EINGESETZTEN Zahlen.
+            savedEur: money.savedEur,
+            savedSpeicherEur: money.savedSpeicherEur ?? null,
+            savedSteuerungEur: money.savedSteuerungEur ?? null,
           },
     bestand: bestandZeile(money, jetzt),
     rows,

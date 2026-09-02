@@ -208,6 +208,7 @@ export function CockpitHero({
               {view.money.attribution && (
                 <span
                   className={`vp-hero-money-attr${view.money.attributionInterim ? ' is-interim' : ''}`}
+                  title={view.money.attributionTitel ?? undefined}
                 >
                   {view.money.attribution}
                 </span>

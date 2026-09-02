@@ -56,6 +56,8 @@ import {
 import { ErloeseVerlaufChart } from '../components/ErloeseVerlaufChart';
 import { SoVerdientCard } from '../components/SoVerdient';
 import { SteuerungFormel } from '../components/SteuerungFormel';
+import { SpeicherBlock } from '../components/SpeicherBlock';
+import { speicherAussage } from '../speicherAussage';
 
 import '../components/Historie.css';
 import '../components/Erloese.css';
@@ -372,39 +374,35 @@ export function ErloeseSection({
   });
   const geplant = geplanteErsparnisNotiz(history?.totals.batterySavingsPlannedEur, label);
 
-  // Der Ton kommt aus der Ableitung (E8/B2) - der Renderer faerbt, er urteilt
-  // nicht: gruen nur bei einem Plus, Bernstein nur bei einem abgeschlossenen
-  // Minus, sonst neutral. Ein aelterer Stand ohne `steeringTon` bleibt gruen.
-  const steeringZeile = ergebnis.steering ? (
-    <>
-      <p
-        className={`vp-erg-steering vp-erg-steering-${ergebnis.steeringTon ?? 'ok'}`}
-        title={ergebnis.steeringTitel ?? undefined}
-      >
-        <Icon name="zap" size={14} aria-hidden="true" />
-        {ergebnis.steering}
-      </p>
-      {/* Die Rechnung hinter dem Chip - dieselbe Erklaerung wie im Cockpit
-          (Captain 01.09.2026), zugeklappt genau EINE ruhige Zeile. */}
-      {ergebnis.steeringFormel && <SteuerungFormel input={ergebnis.steeringFormel} />}
-    </>
-  ) : null;
-  // Das BESTANDSKONTO steht NEBEN der Zurechnung, nie in der grossen Zahl:
-  // die gemessene Kasse kennt eingelagerte Energie nur als entgangenen Erlös
-  // (Diagnose vp-tagesbild-minus-f3). Eigene Zeile, eigenes Etikett.
-  const bestandZeileEl = ergebnis.bestand ? (
-    <p className="vp-erg-bestand" title={ergebnis.bestand.titel ?? undefined}>
-      {/* Icon UND Satz sind EIN Flex-Kind: sonst rutscht das Symbol am Telefon
-          allein in eine eigene Zeile (bei 375 px gemessen). */}
-      <span className="vp-erg-bestand-satz">
-        <Icon name="battery" size={14} aria-hidden="true" />
-        {ergebnis.bestand.text}
-      </span>
-      {ergebnis.bestand.badge && (
-        <span className="vp-erg-bestand-badge">{ergebnis.bestand.badge}</span>
-      )}
-    </p>
-  ) : null;
+  // ---------------------------------------------------------------------
+  // DER SPEICHER-BLOCK (Erlöse-Konzept §3.5, Captain-Scoping 2)
+  //
+  // Er ersetzt die frühere Zurechnungs-Zeile („VoltPilots Steuerung: −2,67 €")
+  // samt Bestandszeile: derselbe Wert heißt jetzt ehrlich „Ihr Speicher hat …
+  // gebracht", und „Steuerung" ist erst `savedSteuerungEur` (§2.2). Die
+  // Ableitung ist `speicherAussage()` — dieselbe, die Cockpit und
+  // Steuerungs-Bereich in der Kurzform speisen, damit die drei Flächen über
+  // dieselbe Stunde nie Verschiedenes behaupten (§3.6).
+  //
+  // ⚠ EINBAUSTELLE: die neue Ergebnis-Karte (P3/P4) hängt diesen Block an
+  //   derselben Stelle ein — die Komponente nimmt nur das Ableitungs-Ergebnis,
+  //   sie kennt die Karte nicht.
+  //
+  // ⚠ ZEILE 4 (der Planwert, E6) bleibt hier BEWUSST leer, obwohl die Ableitung
+  //   sie kann: dieselbe Zahl steht auf dieser Seite heute schon zweimal — als
+  //   Fußnotiz am Telefon und als Karte „Geplante Speicher-Ersparnis" am
+  //   Schreibtisch. Erst wenn die Karte der Zeile weicht (§5 P6), wird
+  //   `geplantEur: history?.totals.batterySavingsPlannedEur` hier eingehängt;
+  //   bis dahin wäre es die dritte Nennung derselben Zahl.
+  const speicher = speicherAussage(money, { now });
+  const speicherBlock =
+    speicher && speicher.hatAussage ? (
+      <SpeicherBlock aussage={speicher} nachtragHref={`#/anlage/${site.id}/technik`}>
+        {/* Die Rechnung hinter der Zahl - dieselbe Erklaerung wie im Cockpit
+            (Captain 01.09.2026), zugeklappt genau EINE ruhige Zeile. */}
+        {ergebnis.steeringFormel && <SteuerungFormel input={ergebnis.steeringFormel} />}
+      </SpeicherBlock>
+    ) : null;
   // Revision 2 (§3.12): auf Ebene 0 steht der Vergleich als CHIP („25 %
   // weniger") und nur, wenn er abweicht; die Beträge stehen ruhig darunter, der
   // Erklärsatz („bis 12 Uhr, der Vortag ebenso") ist der Satz, den die
@@ -493,8 +491,7 @@ export function ErloeseSection({
                         Einordnung (Zurechnung, Δ, laufende Periode) folgt
                         danach. Am Schreibtisch bleibt die gewachsene Ordnung —
                         dort steht ohnehin alles gemeinsam im Bild. */}
-                    {!isPhone && steeringZeile}
-                    {!isPhone && bestandZeileEl}
+                    {!isPhone && speicherBlock}
                     {!isPhone && vergleichsZeilen}
                     {/* Die Herkunft der großen Zahl - nur, wenn es eine gibt;
                         eine Liste aus lauter „—" erklärt nichts. */}
@@ -507,8 +504,7 @@ export function ErloeseSection({
                         />
                       ))}
                     </ul>
-                    {isPhone && steeringZeile}
-                    {isPhone && bestandZeileEl}
+                    {isPhone && speicherBlock}
                     {isPhone && vergleichsZeilen}
                     {ergebnis.periodNote && <p className="vp-note">{ergebnis.periodNote}</p>}
                     {ergebnis.footnote && <p className="vp-note">{ergebnis.footnote}</p>}

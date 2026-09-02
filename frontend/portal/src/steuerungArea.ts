@@ -28,8 +28,8 @@
 
 import type { EarningsSite, EntityStrategy } from './api';
 import { eurAmount, fmtNum } from './format';
+import { speicherAussage } from './speicherAussage';
 import {
-  steeringAttributionNote,
   type SteuerungFormelInput,
 } from './erloesKomposition';
 import { lifecycleLabel, type EditorEntity } from './flows/model';
@@ -96,14 +96,18 @@ export function periodLabel(period: StreamPeriod): string {
 export function contributionRows(
   mode: ActiveMode,
   earnings: EarningsSite | null | undefined,
+  now: Date = new Date(),
 ): ContributionRow[] {
+  // Die SPEICHER-AUSSAGE in Kurzform (Erlöse-Konzept §3.5/§3.6, P5): dieselbe
+  // Ableitung wie auf der Erlöse-Karte und im Cockpit. Vorher stand hier
+  // `savedEur` unter dem Wort „Steuerung"; derselbe Wert misst aber den GANZEN
+  // Speicher (§2.2), und die Steuerung ist erst `savedSteuerungEur`.
+  const speicher = earnings ? speicherAussage(earnings, { now }) : null;
   return mode.manifest.moneyStreams.map((stream) => {
     const read = stream.unattributed ? null : STREAM_FIELD[stream.id];
     const raw = read && earnings ? read(earnings) : null;
     const zurechnung =
-      stream.attribution === 'steering' && earnings
-        ? steeringAttributionNote(earnings.savedEur)
-        : null;
+      stream.attribution === 'steering' && speicher?.hatAussage ? speicher.kurz : null;
     return {
       id: stream.id,
       label: stream.label,
@@ -122,6 +126,9 @@ export function contributionRows(
               plantKind: earnings.plantKind,
               anzulegenderWertCtKwh: earnings.anzulegenderWertCtKwh,
               marketValueSolarCtKwh: earnings.marketValueSolarCtKwh,
+              savedEur: earnings.savedEur,
+              savedSpeicherEur: earnings.savedSpeicherEur ?? null,
+              savedSteuerungEur: earnings.savedSteuerungEur ?? null,
             },
       note: stream.unattributed
         ? 'Pro Regel noch nicht zugeordnet.'

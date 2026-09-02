@@ -429,8 +429,11 @@ describe('Welt B · Erlöse', () => {
     expect(komposition).toHaveTextContent('1.059,40 €');
     expect(komposition).toHaveTextContent('Stromkosten (Netzbezug)');
     expect(komposition).toHaveTextContent('60,14 €');
-    // Die Zurechnung der Steuerung ist eine UNTERZEILE, kein weiterer Summand.
-    expect(screen.getByText(/durch VoltPilots Steuerung/)).toHaveTextContent('161,44');
+    // Der SPEICHER-BLOCK (Erlöse-Konzept §3.5) ist eine UNTERZEILE, kein
+    // weiterer Summand: derselbe Wert misst den GANZEN Speicher, „Steuerung"
+    // ist erst `savedSteuerungEur`.
+    expect(screen.getByText('Speicher an diesem Tag')).toBeInTheDocument();
+    expect(screen.getByText(/\+ 161,44/)).toBeInTheDocument();
     expect(komposition).not.toHaveTextContent('161,44');
   });
 

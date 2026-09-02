@@ -297,12 +297,28 @@ describe('Der Hero', () => {
     expect(gesamt.ringsNote).not.toContain('0 %');
   });
 
-  it('stellt die Steuerungs-Zurechnung als UNTERZEILE, nie als eigenen Summanden', () => {
+  it('stellt die Speicher-Aussage als UNTERZEILE, nie als eigenen Summanden', () => {
     const hero = cockpitHero({ totals: TOTALS, money: money(), range: 'month', now: NOW });
     expect(hero.money?.value).toBe(`17,00${NBSP}€`);
-    expect(hero.money?.attribution).toContain('durch VoltPilots Steuerung');
+    // Erlöse-Konzept §3.5: derselbe Wert misst den GANZEN Speicher — „Steuerung"
+    // ist erst `savedSteuerungEur`. Ohne Aufteilung steht deshalb nur Zeile 1.
+    expect(hero.money?.attribution).toBe(`Speicher + 3,25${NBSP}€`);
     // Die Zurechnung wird NICHT zur Summe addiert.
     expect(hero.money?.value).not.toContain('20');
+  });
+
+  it('nennt die Aufteilung, sobald der Server sie liefert (Erlöse-Konzept §3.6)', () => {
+    const hero = cockpitHero({
+      totals: TOTALS,
+      money: money({ savedSpeicherEur: 2.15, savedSteuerungEur: 1.1 }),
+      range: 'month',
+      now: NOW,
+    });
+    expect(hero.money?.attribution).toBe(
+      `Speicher + 3,25${NBSP}€ · davon Steuerung + 1,10${NBSP}€`,
+    );
+    // Der volle Wortlaut hängt als Tooltip daran — nie zwei Formulierungen.
+    expect(hero.money?.attributionTitel).toContain('stur arbeitenden Speicher');
   });
 
   it('zeigt am laufenden Tag den negativen Geldfluss als Zwischenstand plus geplanten Bestand', () => {
@@ -320,7 +336,7 @@ describe('Der Hero', () => {
       range: 'day',
       now: NOW,
     });
-    expect(hero.money?.attribution).toBe(`Zwischenstand Steuerung: −2,84${NBSP}€ bisher`);
+    expect(hero.money?.attribution).toBe(`Zwischenstand Speicher − 2,84${NBSP}€`);
     expect(hero.money?.attributionInterim).toBe(true);
     expect(hero.money?.bestand?.text).toContain('Speicherenergie seit Tagesbeginn gespeichert');
     expect(hero.money?.bestand?.badge).toBe('Kein Abzug');

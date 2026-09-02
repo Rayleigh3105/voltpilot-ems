@@ -369,3 +369,38 @@ describe('steuerungFormel — der Historik-Satz (B5)', () => {
     expect(satz({})).toBeNull();
   });
 });
+
+/**
+ * Der AUFTEILUNGS-Schritt (Erlöse-Konzept `vp-erloese-seite-konzept-e2` §3.5,
+ * P5): dieselbe Summe, zerlegt in den stur arbeitenden Vergleichs-Speicher und
+ * den Mehrwert der Steuerung — mit den EINGESETZTEN Zahlen, weil genau das die
+ * Frage hinter dem Chip ist.
+ */
+describe('steuerungFormel — der Aufteilungs-Schritt (§3.5)', () => {
+  const zeile = (input: SteuerungFormelInput) =>
+    steuerungFormel(input).zeilen.find((z) => z.label === 'Aufteilung') ?? null;
+
+  it('nennt beide Teile und die Summe mit ihren Vorzeichen', () => {
+    const z = zeile({ savedEur: 12.4, savedSpeicherEur: 9.3, savedSteuerungEur: 3.1 });
+    expect(z).not.toBeNull();
+    expect(z?.text).toContain('stur arbeitender Speicher');
+    expect(z?.text).toMatch(/9,30/);
+    expect(z?.text).toMatch(/3,10/);
+    expect(z?.text).toMatch(/12,40/);
+  });
+
+  it('erklärt auch die Lage, in der die Steuerung hinten liegt', () => {
+    const z = zeile({ savedEur: 9.0, savedSpeicherEur: 9.3, savedSteuerungEur: -0.3 });
+    expect(z?.text).toMatch(/− ?0,30|-0,30/);
+  });
+
+  it('gibt es ohne die drei Zahlen gar nicht — nie eine geratene Aufteilung', () => {
+    expect(zeile({ savedEur: 12.4 })).toBeNull();
+    expect(zeile({ savedEur: 12.4, savedSpeicherEur: 9.3 })).toBeNull();
+    expect(zeile({})).toBeNull();
+  });
+
+  it('schweigt, wenn die Summe nicht aufgeht (Identitäts-Wächter, fail-soft)', () => {
+    expect(zeile({ savedEur: 12.4, savedSpeicherEur: 9.3, savedSteuerungEur: 9.9 })).toBeNull();
+  });
+});
