@@ -38,8 +38,8 @@ import type {
   TarifArt,
 } from './api';
 import { coveredSinceLabel, periodLabel } from './anlage';
+import type { Kernaussage } from './chartKopf';
 import { NBSP, eurAmount, fmtNum } from './format';
-import { marktpraemie } from './marktpraemie';
 import type { MoneyStream, MoneyStreamId, StreamPeriod } from './surface';
 
 // ---------------------------------------------------------------------------
@@ -1003,8 +1003,17 @@ export interface ErloesErgebnisView {
   mehrerePerioden: boolean;
   /** Laut gesagt, sobald Zeilen verschiedener Perioden im Stapel stehen. */
   periodNote: string | null;
-  /** Erklärt das „—" — nur, wenn es eine solche Zeile gibt. */
-  footnote: string | null;
+  /**
+   * ⚠ Diese Sicht trägt BEWUSST keine `footnote` mehr (P6, Befund B7).
+   *
+   * Sie erbte `UNATTRIBUTED_FOOTNOTE` („Wo „—" steht, gibt es noch keine
+   * Zurechnung je Regel") vom Cockpit-Strom-Stapel, wo der Satz stimmt: dort
+   * ist jede Zeile ein BETRIEBSMODELL, und ein „—" heißt wirklich „noch nicht
+   * zugerechnet". Hier sind die Zeilen Einspeisung, Eigenverbrauch, Netzbezug
+   * und Ergebnis — ein „—" heißt dort „kein Tarif hinterlegt" oder „nichts
+   * eingespeist", und der Satz schickte den Kunden auf die falsche Fährte.
+   * Den Grund sagt seit P3/P4 der Chip der Zeile selbst („Tarif fehlt ›").
+   */
   /** Warum es gar nichts zu rechnen gibt (leerer Zeitraum) — sonst null. */
   leerText: string | null;
 }
@@ -1185,7 +1194,6 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
     periodNote: mehrerePerioden
       ? `Verschiedene Zeiträume: ${rangeLabel} und ${billingLabel} werden getrennt ausgewiesen und nicht zu einer Summe addiert.`
       : null,
-    footnote: rows.some((r) => r.eur == null) ? UNATTRIBUTED_FOOTNOTE : null,
     leerText,
   };
 }
@@ -1244,7 +1252,17 @@ function steeringTitel(money: SiteEarnings | null): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Karte 3 · „Was den Preis gemacht hat"
+// Die PREIS-ZEILEN — seit P6 nur noch die Zeilen-Form der t7-Karte
+//
+// ⚠ Die Karte „Was den Preis gemacht hat" ist ENTFALLEN (Konzept
+//   `vp-erloese-seite-konzept-e2` §3.1, E5): ihre Preise wohnen jetzt in
+//   Ebene 2 der Ergebnis-Karte („Preise & Vergütung", `erloesEbenen.ebene2`).
+//   Dieselbe Preiswahrheit stand zweimal auf der Seite.
+//
+//   Der TYP bleibt, weil `soVerdient()` ihn für seine eigene Zeilen-Form (S8)
+//   benutzt — die Rückfall-Darstellung des Kombinations-Bilds, wenn es kein
+//   Bild zu zeichnen gibt. Er ist also nicht der Rest einer toten Karte,
+//   sondern das Zeilen-Format der Karte „So verdient Ihre Anlage".
 // ---------------------------------------------------------------------------
 
 export type PreisZeileId =
@@ -1271,131 +1289,6 @@ export interface PreisZeile {
   hinweise: string[];
   /** Optionaler Weg dorthin, wo der fehlende Wert gepflegt wird. */
   href: string | null;
-}
-
-/** ct/kWh in Kundenschreibweise: deutsches Komma, eine Nachkommastelle. */
-function ctText(v: number): string {
-  return `${v.toLocaleString('de-DE', {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })} ct/kWh`;
-}
-
-export interface PreisTreiberInput {
-  money: SiteEarnings | null;
-  /** Ob die Anlage überhaupt aus dem Netz laden darf (Stammdatum der Anlage). */
-  netzladenErlaubt?: boolean;
-  /** Nur für den Weg in die Einstellungen, wo ein Wert fehlt. */
-  siteId?: string | null;
-  /**
-   * Zeilen, die eine ANDERE Karte derselben Seite schon zeigt — sie entfallen
-   * hier, statt dieselbe Wahrheit zweimal zu behaupten (die Absorption des
-   * Kombinations-Bilds, Konzept `vp-ertrag-kombi-konzept-t7` D2). Wer absorbiert,
-   * sagt es selbst: `soVerdient().absorbiert` ist die eine Liste, damit Karte und
-   * Preis-Karte nie über verschiedene Mengen reden.
-   */
-  ohne?: readonly PreisZeileId[];
-}
-
-/**
- * Karte 3: die Preise HINTER dem Ergebnis. Sie rechnet nichts Neues — sie zeigt
- * die Größen, die der Endpunkt ehrlich hergibt, und schreibt überall dort „—",
- * wo es keine Zurechnung gibt (mit dem Grund daneben, damit ein Strich nicht
- * wie ein Defekt aussieht).
- */
-export function preisTreiber(input: PreisTreiberInput): PreisZeile[] {
-  const m = input.money;
-  const zeilen: PreisZeile[] = [];
-  const add = (id: PreisZeileId, label: string, wert: string | null, note: string | null) => {
-    zeilen.push({
-      id,
-      label,
-      wert: wert ?? DASH,
-      note,
-      vorhanden: wert != null,
-      hinweise: [],
-      href: null,
-    });
-  };
-
-  const bezug = num(m?.bezugspreisCtKwh ?? null);
-  add(
-    'bezugspreis',
-    'Ø Bezugspreis',
-    bezug == null ? null : ctText(bezug),
-    bezug == null
-      ? 'In diesem Zeitraum wurde kein Strom aus dem Netz bezogen.'
-      : m?.tarifPriced
-        ? 'Ihr hinterlegter Stromtarif, Viertelstunde für Viertelstunde'
-        : 'reiner Börsenpreis — ein hinterlegter Stromtarif würde hier einfließen',
-  );
-
-  const erzielt = num(m?.realizedExportCtKwh ?? null);
-  const markt = num(m?.marketValueSolarCtKwh ?? null);
-  add(
-    'marktwert',
-    'Ihr erzielter Marktwert',
-    erzielt == null ? null : ctText(erzielt),
-    erzielt == null
-      ? 'In diesem Zeitraum wurde nichts eingespeist.'
-      : markt == null
-        ? null
-        : marktVergleich(erzielt, markt),
-  );
-  add(
-    'monatsmarktwert',
-    'Monatsmarktwert Solar',
-    markt == null ? null : ctText(markt),
-    markt == null
-      ? 'Für diesen Zeitraum ist noch kein Monatsdurchschnitt veröffentlicht.'
-      : m?.marketValueProvisional
-        ? 'vorläufig — der endgültige Wert wird nachgereicht'
-        : null,
-  );
-
-  // Die Marktprämie erklärt sich selbst (`marktpraemie.ts`) — insbesondere die
-  // BERECHNETE Null, die vorher wie ein Defekt aussah.
-  if (m) {
-    const p = marktpraemie({
-      marktpraemieEur: m.marktpraemieEur,
-      anzulegenderWertCtKwh: m.anzulegenderWertCtKwh,
-      marketValueSolarCtKwh: m.marketValueSolarCtKwh,
-      marketValueProvisional: m.marketValueProvisional,
-      eingespeistKwh: m.eingespeistKwh,
-      plantKind: m.plantKind,
-      range: m.range,
-      from: m.from,
-      to: m.to,
-      siteId: input.siteId ?? null,
-    });
-    zeilen.push({
-      id: 'marktpraemie',
-      // Der Monat IST die Abrechnungseinheit der Prämie — er gehört in die
-      // Überschrift, nicht in eine Fußnote.
-      label: p.label,
-      wert: p.wert,
-      note: p.note,
-      vorhanden: p.vorhanden,
-      hinweise: p.hinweise,
-      href: p.href,
-    });
-  } else {
-    add('marktpraemie', 'Marktprämie', null, null);
-  }
-
-  const arbitrage = num(m?.arbitrageEur ?? null);
-  add(
-    'arbitrage',
-    'davon durch Netzladen',
-    arbitrage == null ? null : signedEuro(arbitrage),
-    arbitrage == null
-      ? input.netzladenErlaubt
-        ? 'In diesem Zeitraum wurde nicht aus dem Netz geladen.'
-        : 'Ihr Speicher lädt ausschließlich Sonnenstrom.'
-      : 'Verkaufserlös der aus dem Netz geladenen Energie abzüglich ihrer Einkaufskosten',
-  );
-
-  return input.ohne?.length ? zeilen.filter((z) => !input.ohne!.includes(z.id)) : zeilen;
 }
 
 /**
@@ -1493,7 +1386,7 @@ export function geldVerlauf(
   }
 
   const wert = (v: number | null | undefined) => (num(v ?? null) ?? 0);
-  const reihen: GeldReihe[] = [
+  const alle: GeldReihe[] = [
     {
       id: 'einspeisung',
       label: VERLAUF_LABEL.einspeisung,
@@ -1511,6 +1404,18 @@ export function geldVerlauf(
       data: buckets.map((b) => -wert(b.stromkostenEur)),
     },
   ];
+  // ⚠ K3 „die Legende bewirbt nur, was gezeichnet wird" (Befund B8, P6): eine
+  //   Reihe, die über den GANZEN Zeitraum bei null liegt, zeichnet keinen
+  //   einzigen Balken — sie stand trotzdem in der Legende. Auf einer Anlage
+  //   ohne hinterlegten Tarif las sich „Wert des Eigenverbrauchs" dort wie ein
+  //   Versprechen, das das Bild nicht einlöst. Der Filter gilt für Legende UND
+  //   Serien, weil beide dieselbe Liste lesen — sie können nicht auseinanderlaufen.
+  //
+  //   Ein durchgehend leerer Stapel behält BEWUSST alle drei Reihen: dann ist
+  //   die Karte ohnehin ihr eigener Leer-Zustand, und ein Diagramm ganz ohne
+  //   Legende wäre die schlechtere Auskunft.
+  const gezeichnet = alle.filter((r) => r.data.some((v) => Math.abs(v) >= BESTAND_EUR_TOTBAND));
+  const reihen: GeldReihe[] = gezeichnet.length > 0 ? gezeichnet : alle;
 
   let lauf = 0;
   const kumuliert = buckets.map((b) => {
@@ -1526,6 +1431,82 @@ export function geldVerlauf(
     kumuliertText: `kumuliert ${signedEuro(lauf)}`,
     untertitel,
   };
+}
+
+/**
+ * **K1 · die Kernaussage des Geld-Verlaufs** (Konzept §3.1 Position 3, P6).
+ *
+ * Die Karte beantwortet „WANN kam das Geld?" — der Kopf muss also den Zeitpunkt
+ * nennen, nicht die Summe: die steht eine Karte darüber, und sie hier zu
+ * wiederholen wäre die vierfache Geld-Aussage, die der Mobil-Umbau abgeschafft
+ * hat. Der Satz nennt deshalb den STÄRKSTEN Eimer und was ihn getragen hat.
+ *
+ * **Ohne belegbare Aussage steht der ehrliche GRUND, ohne Grund gar nichts**
+ * (die Haus-Regel des Kernaussage-Kopfs, `AGENTS.md` K1/M11):
+ *   - kein Eimer  → gar keine Aussage (die Karte rendert ihren eigenen Leer-Satz),
+ *   - alle Eimer unter dem Totband → der Grund („In diesem Zeitraum ist noch
+ *     nichts zusammengekommen."), nie ein erfundener Spitzen-Eimer,
+ *   - ein Eimer ohne benennbaren Träger → nur Zeitpunkt und Betrag.
+ *
+ * Der TRÄGER ist die größte positive Reihe des Spitzen-Eimers; Stromkosten
+ * können ihn nie stellen (sie tragen kein Geld herbei, sie nehmen welches weg).
+ */
+export function verlaufKern(view: GeldVerlaufView, range: SiteEarnings['range']): Kernaussage | null {
+  if (view.leer || view.starts.length === 0) return null;
+  // Der stärkste Eimer nach dem, was NETTO in ihm zusammenkam — dieselbe
+  // Größe, die die kumulierte Linie aufsummiert.
+  const netto = view.starts.map((_, i) =>
+    view.reihen.reduce((acc, r) => acc + (r.data[i] ?? 0), 0),
+  );
+  let best = 0;
+  for (let i = 1; i < netto.length; i += 1) if (netto[i] > netto[best]) best = i;
+  if (!(netto[best] >= BESTAND_EUR_TOTBAND)) {
+    return {
+      wert: null,
+      satz: null,
+      grund: 'In diesem Zeitraum ist noch nichts zusammengekommen.',
+      ton: 'calm',
+    };
+  }
+  const traeger = view.reihen
+    .filter((r) => r.id !== 'stromkosten' && (r.data[best] ?? 0) >= BESTAND_EUR_TOTBAND)
+    .sort((a, b) => (b.data[best] ?? 0) - (a.data[best] ?? 0))[0];
+  const wann = verlaufKernZeit(view.starts[best], range);
+  return {
+    wert: eurAmount(netto[best]),
+    satz: traeger
+      ? `kamen ${wann} zusammen — vor allem aus ${TRAEGER_WORT[traeger.id]}.`
+      : `kamen ${wann} zusammen — der stärkste ${verlaufSchritt(range)} des Zeitraums.`,
+    grund: null,
+    ton: 'ok',
+  };
+}
+
+/** Wie der Träger-Strom im Satz heißt (der Reihen-Name im Genitiv/Dativ). */
+const TRAEGER_WORT: Record<GeldReihe['id'], string> = {
+  einspeisung: 'der Einspeisung',
+  eigenverbrauchswert: 'dem Eigenverbrauch',
+  stromkosten: 'den Stromkosten',
+};
+
+/**
+ * „um 12 Uhr" · „am 14." · „im Juli" — der Zeitpunkt in der Auflösung des
+ * Zeitraums. Berlin ist die Plattform-Zeitzone (`HistoryRange.ZONE`).
+ */
+function verlaufKernZeit(iso: string, range: SiteEarnings['range']): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return 'in diesem Zeitraum';
+  const tz = 'Europe/Berlin';
+  if (range === 'day') {
+    // ⚠ `hour: 'numeric'` hängt im deutschen Gebietsschema das Wort „Uhr"
+    //   SELBST an („11 Uhr") — ein eigenes Suffix ergäbe „11 Uhr Uhr"
+    //   (im Browser-Beweis genau so aufgefallen).
+    return `um ${d.toLocaleString('de-DE', { hour: 'numeric', timeZone: tz })}`;
+  }
+  if (range === 'week' || range === 'month') {
+    return `am ${d.toLocaleString('de-DE', { day: 'numeric', month: 'long', timeZone: tz })}`;
+  }
+  return `im ${d.toLocaleString('de-DE', { month: 'long', year: 'numeric', timeZone: tz })}`;
 }
 
 // --- Mobil: die Erlöse-Welt als Ergebnis + benannte Aufklapper ---------------
@@ -1548,11 +1529,7 @@ export function geldVerlauf(
  * Tagesnachweis außerhalb des Tages), erscheint nicht — ein leerer Aufklapper
  * wäre ein Versprechen ins Leere.
  */
-export type ErloesAufklapperId =
-  | 'so-verdient'
-  | 'preis-treiber'
-  | 'speicher-preis'
-  | 'tagesprotokoll';
+export type ErloesAufklapperId = 'so-verdient' | 'speicher-preis' | 'tagesprotokoll';
 
 export interface ErloesAufklapper {
   id: ErloesAufklapperId;
@@ -1567,11 +1544,6 @@ const AUFKLAPPER: Record<ErloesAufklapperId, ErloesAufklapper> = {
     id: 'so-verdient',
     titel: 'So verdient Ihre Anlage · der Markt-Vergleich',
     sub: 'Ihr Erlös gegen den Monatsdurchschnitt',
-  },
-  'preis-treiber': {
-    id: 'preis-treiber',
-    titel: 'Was den Preis gemacht hat',
-    sub: 'Bezugspreis, Marktwert, Marktprämie',
   },
   'speicher-preis': {
     id: 'speicher-preis',
@@ -1591,8 +1563,6 @@ const AUFKLAPPER: Record<ErloesAufklapperId, ErloesAufklapper> = {
 export interface ErloesAufklapperInput {
   /** Gibt es das Kombinations-Ertragsbild? (nur direkt vermarktete Anlagen) */
   hatSoVerdient: boolean;
-  /** Trägt „Was den Preis gemacht hat" überhaupt eine Zeile? */
-  hatPreisTreiber: boolean;
   /** Der Tagesnachweis + das Protokoll gibt es nur im Tages-Zeitraum. */
   istTag: boolean;
   /** Liegt für diesen Tag überhaupt eine Historie-Antwort vor? */
@@ -1602,7 +1572,6 @@ export interface ErloesAufklapperInput {
 export function erloesAufklapper(input: ErloesAufklapperInput): ErloesAufklapper[] {
   const out: ErloesAufklapper[] = [];
   if (input.hatSoVerdient) out.push(AUFKLAPPER['so-verdient']);
-  if (input.hatPreisTreiber) out.push(AUFKLAPPER['preis-treiber']);
   if (input.istTag && input.hatTagesdaten) {
     out.push(AUFKLAPPER['speicher-preis']);
     out.push(AUFKLAPPER.tagesprotokoll);

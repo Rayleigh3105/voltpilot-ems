@@ -23,6 +23,9 @@ import { Ebene1Panel, Ebene2Panel } from '../src/components/ErloesEbenen';
 import { SpeicherSchritte } from '../src/components/SteuerungFormel';
 import { SpeicherBlock } from '../src/components/SpeicherBlock';
 import { speicherAussage } from '../src/speicherAussage';
+import { api, type History, type Site } from '../src/api';
+import { ErloeseSection } from '../src/pages/ErloeseSection';
+import { anlageSurface } from '../src/surface';
 
 /**
  * **Die Fixture-Harness des Browser-Beweises** (Konzept
@@ -141,8 +144,137 @@ function Karte({ f }: { f: Fixture }) {
   );
 }
 
+/* ---------------------------------------------------------------------------
+ * P6 · die GANZE Seite: vier Karten in der Reihenfolge der Frage-Leiter
+ *
+ * Konzept §3.1 (E1/E5/E6/E11). Die echte `ErloeseSection` rendert hier gegen
+ * die Fixture-Zahlen; `api.siteEarnings`/`api.history` sind auf sie umgebogen,
+ * damit der Beweis ohne Docker, ohne Simulator und ohne Anmeldung läuft.
+ * ------------------------------------------------------------------------ */
+
+const PROOF_HISTORY: History = {
+  range: 'day',
+  from: '',
+  to: '',
+  bucketMinutes: 15,
+  buckets: [],
+  totals: {
+    consumptionKwh: 154.7,
+    pvGenerationKwh: 500,
+    gridImportKwh: 6.3,
+    gridExportKwh: 345.2,
+    gridCostEur: 1.59,
+    tarifArt: 'fest',
+    batterySavingsPlannedEur: 9.4,
+    autarkiePct: 0.96,
+    eigenverbrauchPct: 0.31,
+  },
+  protocol: [],
+  plan: [],
+};
+
+/** Welche Fixture welche Anlage bespielt — eine je Anlagenart (E11). */
+const SEITEN = [
+  { id: 'dv-tag-laufend', titel: 'Direktvermarktung · laufender Tag' },
+  { id: 'eeg-tag-abgeschlossen', titel: 'EEG (feste Vergütung) · abgeschlossener Tag' },
+  // Befund B8: ohne hinterlegten Tarif ist der Wert des Eigenverbrauchs in
+  // JEDEM Eimer null — er zeichnet nichts und darf deshalb auch nicht in der
+  // Legende stehen.
+  { id: 'eeg-ohne-tarif', titel: 'EEG ohne Stromtarif · der B8-Fall' },
+] as const;
+
+function fixtureOf(id: string): Fixture {
+  const f = FX.find((x) => x.id === id);
+  if (!f) throw new Error(`Fixture ${id} fehlt`);
+  return f;
+}
+
+/**
+ * Ein Stunden-Raster für den Geld-Verlauf. Die 15 Konzept-Fixtures tragen
+ * bewusst KEINE `series` (sie beweisen die Ergebnis-Karte, nicht das Bild) —
+ * für den Seiten-Beweis braucht Karte 3 aber Eimer, sonst rendert sie ihren
+ * ehrlichen Leer-Zustand und der K1-Satz hätte nichts zu sagen. Die Summe der
+ * Eimer trifft das Netto der Fixture, damit die kumulierte Linie stimmt.
+ */
+function raster(nettoGesamt: number, tagBeginnUtc: string, mitEigenverbrauch = true) {
+  const anteile = [0.02, 0.06, 0.12, 0.2, 0.24, 0.2, 0.12, 0.04];
+  const t0 = new Date(tagBeginnUtc).getTime();
+  return anteile.map((a, i) => {
+    const netto = nettoGesamt * a;
+    return {
+      start: new Date(t0 + (7 + i) * 3600_000).toISOString(),
+      einspeiseErloesEur: netto * 0.45,
+      eigenverbrauchsWertEur: mitEigenverbrauch ? netto * 0.6 : null,
+      stromkostenEur: netto * 0.05,
+      nettoEur: netto,
+    };
+  });
+}
+
+// ⚠ Nur in der Harness: die zwei Lesepfade der Seite liefern die Fixture-Zahlen.
+//   Die Seite selbst kennt die Harness nicht.
+const ECHT_EARNINGS = api.siteEarnings;
+api.siteEarnings = (async (siteId: string) => {
+  const f = fixtureOf(String(siteId).replace(/^proof-/, ''));
+  const stur = f.savedSpeicherEur;
+  const steuerung = stur == null || f.money.savedEur == null ? null : f.money.savedEur - stur;
+  return {
+    ...f.money,
+    savedSpeicherEur: stur,
+    savedSteuerungEur: steuerung,
+    steuerungSplitReason: stur == null ? 'no_battery_data' : null,
+    series: raster(f.money.nettoErgebnisEur ?? 0, f.money.from, f.money.eigenverbrauchsWertEur != null),
+  };
+}) as typeof ECHT_EARNINGS;
+api.history = (async () => PROOF_HISTORY) as typeof api.history;
+
+function SeitenBeweis() {
+  return (
+    <>
+      {SEITEN.map(({ id, titel }) => {
+        const f = fixtureOf(id);
+        const site: Site = {
+          id: `proof-${id}`,
+          name: titel,
+          biddingZone: 'DE-LU',
+          latitude: null,
+          longitude: null,
+          plantKind: f.money.plantKind,
+          anzulegenderWertCtKwh: f.money.anzulegenderWertCtKwh ?? null,
+          tarifArt: f.money.tarifArt,
+          tarifParamCtKwh: f.money.tarifParamCtKwh ?? null,
+          netzladenErlaubt: false,
+          maxFeedInKw: null,
+        };
+        return (
+          <div key={id} data-seite={id} style={{ marginBottom: 32, minWidth: 0 }}>
+            <p style={{ margin: '0 0 6px', fontSize: '0.72rem', fontWeight: 700, color: '#718096' }}>
+              P6 · GANZE SEITE — {titel}
+            </p>
+            <ErloeseSection
+              site={site}
+              surface={anlageSurface({
+                entities: [
+                  {
+                    id: 'batt',
+                    entityType: 'battery-hybrid',
+                    capabilities: { measure: [{ channel: 'soc_pct' }] },
+                  },
+                ],
+                config: { plantKind: f.money.plantKind, tarifArt: f.money.tarifArt },
+              })}
+              onOpenWelt={() => {}}
+            />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <div style={{ padding: 12, maxWidth: 1160, margin: '0 auto', minWidth: 0 }}>
+    <SeitenBeweis />
     {FX.map((f) => (
       <Karte key={f.id} f={f} />
     ))}

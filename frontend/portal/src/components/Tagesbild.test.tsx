@@ -272,10 +272,14 @@ describe('Tagesbild · Panel 3 und der Vergleichsanker', () => {
     expect(e.data.filter((v: unknown) => v != null).length).toBeGreaterThan(0);
   });
 
-  it('nennt im Kopf, was die Steuerung gebracht hat — mit dem exakten Paar als Anker', () => {
+  // P6 / Befund B10: der Kopf nennt die ZURECHNUNG nicht mehr — sie stand auf
+  // der Tagesansicht dreimal und lebt jetzt genau einmal, im Speicher-Block
+  // der Ergebnis-Karte. Diese Karte ist der PHYSISCHE Nachweis.
+  it('nennt im Kopf die physische Aussage — kein Geld, kein Geld-Anker', () => {
     renderBild();
-    expect(screen.getByText(/hat die Steuerung an diesem Tag gebracht/)).toBeInTheDocument();
-    expect(screen.getByText(/Ohne Speicher wären es/)).toBeInTheDocument();
+    expect(screen.getByText(/kWh geladen/)).toBeInTheDocument();
+    expect(screen.queryByText(/hat die Steuerung an diesem Tag gebracht/)).toBeNull();
+    expect(screen.queryByText(/Ohne Speicher wären es/)).toBeNull();
   });
 
   it('lässt die Fläche ohne gemessenes Geld ehrlich entfallen (Höhe 0, keine Serie)', () => {

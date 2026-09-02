@@ -9,7 +9,8 @@
  * Load-order-Falle (dokumentiert in der Projekt-AGENTS.md): ein
  * komponenten-lokales Blatt kann VOR `index.css` ausgewertet werden. Deshalb
  * setzt hier nichts eine Basisregel außer Kraft — es sind ausschließlich neue
- * `.vp-erg-*`/`.vp-ekomp-*`/`.vp-pt-*`-Klassen.
+ * `.vp-erg-*`/`.vp-ekomp-*`-Klassen (die `.vp-pt-*` der Preis-Karte sind mit
+ * ihr entfallen, P6/E5).
  */
 
 /* --- Karte 1 · Ergebnis --------------------------------------------------- */
@@ -124,14 +125,6 @@
   min-width: 0;
 }
 
-/* Die geplante Ersparnis - ruhiger als das Ergebnis, eigenes Abzeichen. */
-.vp-erg-plan {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--vp-text, #1a1a1a);
-}
-
 /* --- Die Komposition ------------------------------------------------------ */
 
 .vp-ekomp {
@@ -207,68 +200,6 @@
   color: var(--vp-text-muted, #6c757d);
 }
 
-/* --- Karte 3 · Was den Preis gemacht hat ---------------------------------- */
-
-.vp-preistreiber {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 14px;
-}
-
-.vp-preistreiber > li {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  padding: 12px 14px;
-  border: 1px solid var(--vp-border, #e9ecef);
-  border-radius: var(--vp-radius-md, 12px);
-  background: var(--vp-surface-soft, #fafbfc);
-}
-
-.vp-pt-wert {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--vp-text, #1a1a1a);
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-
-.vp-pt-label {
-  font-size: 0.85rem;
-  color: var(--vp-text, #1a1a1a);
-}
-
-.vp-pt-note {
-  font-size: 0.76rem;
-  color: var(--vp-text-muted, #6c757d);
-  overflow-wrap: anywhere;
-}
-
-.vp-preistreiber > li.vp-pt-off .vp-pt-wert {
-  color: var(--vp-text-muted, #6c757d);
-  font-weight: 600;
-}
-
-/* Die ruhigen Zusatzzeilen der Marktprämie (Vorläufigkeit, „bereits enthalten",
-   der Weg zu einem fehlenden Wert). Bewusst noch leiser als die Einordnung und
-   ohne Warnton: eine Prämie von 0 ist kein Defekt, sondern eine gute Nachricht. */
-.vp-pt-hint {
-  font-size: 0.74rem;
-  color: var(--vp-text-muted, #6c757d);
-  font-style: italic;
-  overflow-wrap: anywhere;
-}
-
-.vp-pt-link {
-  font-size: 0.76rem;
-  color: var(--vp-link, #2c5282);
-  align-self: flex-start;
-}
-
 /* Am Telefon stapeln Name und Betrag; der Balken entfällt (er ist Beiwerk,
    und vier Spalten in 343 px sind der dokumentierte Überlauf-Fall). */
 @media (max-width: 560px) {
@@ -319,45 +250,6 @@
     padding: 5px 0;
   }
 
-  /* --- Die GEPLANTE Ersparnis als gestrichelte Fußnotiz ----------------- */
-  /* Sie bleibt sichtbar und behält ihr Abzeichen wörtlich - sie verliert nur
-     ihren Karten-Rang. Als gleichrangige Karte neben dem GEMESSENEN Ergebnis
-     ist sie die dokumentierte Verwechslungs-Falle dieser Seite (die zwei Zahlen
-     dürfen um ein Vielfaches auseinanderliegen, und die geplante ist die
-     größere). Gestrichelt, weil „geplant" auch optisch nicht wie „gemessen"
-     aussehen darf. */
-  .vp-geplant-notiz {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 4px 8px;
-    min-width: 0;
-    margin: 0 0 var(--vp-space-4, 16px);
-    padding: 10px 12px;
-    border: 1px dashed var(--vp-border);
-    border-radius: var(--vp-radius-md);
-    background: var(--vp-bg, #f7f9fc);
-    font-size: 0.78rem;
-    color: var(--vp-text-muted, #6c757d);
-    overflow-wrap: anywhere;
-  }
-
-  .vp-geplant-notiz > b {
-    font-family: 'Inter Tight', Inter, sans-serif;
-    font-size: 0.95rem;
-    color: var(--vp-text, #1f2933);
-    white-space: nowrap;
-  }
-
-  .vp-geplant-notiz > span:last-child {
-    flex: 1 1 100%;
-    min-width: 0;
-  }
-
-  .vp-geplant-notiz.is-leer > b {
-    color: var(--vp-text-muted, #6c757d);
-  }
-
   /* --- Aufklapper-Körper: das Abzeichen führt, dann der volle Inhalt ---- */
   .vp-welt-disclosure-body > .vp-prov {
     margin-bottom: 8px;
@@ -375,11 +267,6 @@
     display: none;
   }
 
-  /* Die Preis-Treiber-Liste wird im Aufklapper einspaltig - vier Kacheln in
-     343 px wären wieder der Überlauf-Fall. */
-  .vp-welt-disclosure-body .vp-preistreiber {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 /* ==========================================================================

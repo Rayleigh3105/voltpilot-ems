@@ -378,9 +378,10 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
 
   it('faltet Erklärendes in BENANNTE Aufklapper — zugeklappt, aber nie versteckt', async () => {
     await renderErloese();
+    // P6/E5: „Was den Preis gemacht hat" ist ENTFALLEN — die Preise wohnen in
+    // Ebene 2 der Ergebnis-Karte, also auch am Telefon.
     for (const titel of [
       'So verdient Ihre Anlage · der Markt-Vergleich',
-      'Was den Preis gemacht hat',
       'Der Tag im Bild · Preis, Speicher, Ertrag',
       'Tagesprotokoll',
     ]) {
@@ -399,18 +400,22 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     expect(within(koerper as HTMLElement).getByText('Gemessen')).toBeInTheDocument();
   });
 
-  it('rahmt die GEPLANTE Ersparnis als Fußnotiz — mit Abzeichen, nie als gleichrangige Karte', async () => {
+  // P6/E6: die geplante Ersparnis ist ZEILE 4 des Speicher-Blocks — direkt
+  // unter der gemessenen Zahl, mit der sie sich vergleicht. Weder Karte noch
+  // gerahmte Fußnotiz; ihr Abzeichen „Geplant" bleibt wörtlich.
+  it('stellt die GEPLANTE Ersparnis als Zeile 4 unter die gemessene Zahl', async () => {
     await renderErloese();
-    const notiz = document.querySelector('.vp-geplant-notiz') as HTMLElement;
-    expect(notiz).toBeTruthy();
-    expect(within(notiz).getByText('Geplant')).toBeInTheDocument();
-    expect(within(notiz).getByText('+ 4,12 €')).toBeInTheDocument();
-    expect(notiz.textContent).toMatch(/nicht gemessen/);
-    // Und sie steht NICHT mehr als eigene Karte da.
+    const zeile = document.querySelector('.vp-spb-plan') as HTMLElement;
+    expect(zeile).toBeTruthy();
+    expect(within(zeile).getByText('Geplant')).toBeInTheDocument();
+    expect(zeile.textContent).toMatch(/Vorab geplant hatte der Fahrplan/);
+    expect(zeile.textContent).toMatch(/4,12/);
+    // Weder Karte noch Fußnotiz — die Zahl steht genau einmal.
     expect(screen.queryByText(/Geplante Speicher-Ersparnis ·/)).toBeNull();
+    expect(document.querySelector('.vp-geplant-notiz')).toBeNull();
   });
 
-  it('sagt ohne Fahrplan „—" MIT Grund statt einer erfundenen Null', async () => {
+  it('lässt die Plan-Zeile ohne Fahrplan WEG statt eine Null zu erfinden', async () => {
     stubHistory();
     vi.spyOn(api, 'history').mockResolvedValue({
       ...history,
@@ -419,13 +424,8 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     vi.spyOn(api, 'siteEarnings').mockResolvedValue(money);
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
     await screen.findByText('+ 9,84 €', { selector: '.vp-ez-hero' });
-    const notiz = await waitFor(() => {
-      const el = document.querySelector('.vp-geplant-notiz');
-      expect(el?.textContent).toMatch(/kein Batterie-Fahrplan/);
-      return el as HTMLElement;
-    });
-    expect(within(notiz).getByText('—')).toBeInTheDocument();
-    expect(within(notiz).getByText('Geplant')).toBeInTheDocument();
+    expect(document.querySelector('.vp-spb-plan')).toBeNull();
+    expect(document.querySelector('.vp-geplant-notiz')).toBeNull();
   });
 });
 
@@ -443,7 +443,9 @@ describe('Der Schreibtisch bleibt, was er war', () => {
   it('behält in der Geld-Welt die vollen Karten statt der Aufklapper', async () => {
     stubPhone(false);
     await renderErloese();
-    expect(screen.getByText(/Geplante Speicher-Ersparnis ·/)).toBeInTheDocument();
+    // Am Schreibtisch steht die Plan-Zeile in DERSELBEN Zeile 4 wie am Telefon
+    // (P6/E6: die Reihenfolge der Ergebnis-Karte ist auf jeder Breite gleich).
+    expect(document.querySelector('.vp-spb-plan')).toBeTruthy();
     expect(document.querySelector('.vp-geplant-notiz')).toBeNull();
     // Der Tagesnachweis steht offen da, nicht hinter einem Aufklapper.
     expect(screen.getByTestId('day-chart')).toBeInTheDocument();

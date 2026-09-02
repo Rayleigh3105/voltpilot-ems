@@ -5,7 +5,7 @@ import { AXIS, BAR, ghostItem, ghostLine, SMOOTH_SERIES, STROKE } from '../chart
 import { vergleichName, vergleichReihe } from '../chartCopy';
 import { chartTheme } from '../chartTheme';
 import { eurAmount } from '../format';
-import { geldVerlauf, type GeldReihe } from '../erloesKomposition';
+import { geldVerlauf, verlaufKern, type GeldReihe } from '../erloesKomposition';
 import { angleichen, type UeberlagerungLegende } from '../historieVergleich';
 import { useEChart } from '../useEChart';
 import { ChartHeadline, ChartInsight, ChartLegend, ChartSubtitle } from './ChartExplain';
@@ -26,6 +26,16 @@ import { UeberlagerungLegendeZeile } from './HistorieWelt';
  * Der Maßstab folgt dem Zeitraum (P6): Stunden am Tag, Tage in Woche und Monat,
  * Monate im Jahr — die Balkenbreite ist die Aussage, nicht ein Zoom.
  */
+/**
+ * Die EINE Farbzuordnung je Geld-Reihe — Balken und Legende lesen sie, damit
+ * eine Reihe im Bild nie eine andere Farbe trägt als in ihrer Beschriftung.
+ */
+const LEGENDEN_FARBE = (t: ReturnType<typeof chartTheme>): Record<GeldReihe['id'], string> => ({
+  einspeisung: t.price,
+  eigenverbrauchswert: t.charge,
+  stromkosten: t.discharge,
+});
+
 export function ErloeseVerlaufChart({
   series,
   range,
@@ -45,12 +55,14 @@ export function ErloeseVerlaufChart({
   vergleich?: SiteEarningsBucket[] | null;
   legende?: UeberlagerungLegende | null;
   /**
-   * K1/M11 · der Kernaussage-Slot. Er ist hier bewusst LEER: die Ergebnis-Karte
-   * direkt darüber trägt die Zahl des Zeitraums samt Satz und Zurechnung
-   * (`erloesErgebnis`) — sie hier zu wiederholen wäre genau die vierfache
-   * Geld-Aussage, die der Mobil-Umbau abgeschafft hat. Der Slot steht bereit,
-   * falls eine spätere Stufe eine EIGENE Aussage für den Verlauf ableitet
-   * (z. B. „der stärkste Tag war der 14. mit 4,20 €").
+   * K1/M11 · der Kernaussage-Slot. **Seit P6 hat der Verlauf seine EIGENE
+   * Aussage** (`verlaufKern`, Konzept §3.1 Position 3): sie beantwortet „WANN
+   * kam das Geld?", nennt also den stärksten Eimer — nicht die Summe des
+   * Zeitraums, die eine Karte darüber steht. Wer hier eine Zahl übergibt, die
+   * das Ergebnis wiederholt, baut die vierfache Geld-Aussage wieder ein, die
+   * der Mobil-Umbau abgeschafft hat.
+   *
+   * Wird nichts übergeben, leitet die Karte ihn selbst ab.
    */
   kern?: Kernaussage | null;
 }) {
@@ -64,11 +76,7 @@ export function ErloeseVerlaufChart({
   const ref = useEChart(
     (chart) => {
       const t = chartTheme();
-      const hue: Record<GeldReihe['id'], string> = {
-        einspeisung: t.price,
-        eigenverbrauchswert: t.charge,
-        stromkosten: t.discharge,
-      };
+      const hue = LEGENDEN_FARBE(t);
       const vglName = legende?.vergleich ?? null;
 
       chart.setOption(
@@ -200,14 +208,21 @@ export function ErloeseVerlaufChart({
   const t = chartTheme();
   return (
     <>
-      <ChartHeadline kern={kern} />
+      <ChartHeadline kern={kern ?? verlaufKern(view, range)} />
       <ChartSubtitle>{view.untertitel}</ChartSubtitle>
+      {/* K3 · die Legende bewirbt NUR, was gezeichnet wird (Befund B8): sie
+          liest dieselbe `view.reihen`, aus der auch die Balken entstehen —
+          eine über den ganzen Zeitraum leere Reihe (z. B. der Wert des
+          Eigenverbrauchs ohne hinterlegten Tarif) steht deshalb weder im Bild
+          noch in der Legende. */}
       <ChartLegend
         items={[
-          { label: 'Einspeise-Erlös', color: t.price, unit: '€' },
-          { label: 'Wert des Eigenverbrauchs', color: t.charge, unit: '€' },
-          { label: 'Stromkosten', color: t.discharge, unit: '€' },
-          { label: 'kumuliert', color: t.plan, unit: '€', shape: 'line' },
+          ...view.reihen.map((r) => ({
+            label: r.label,
+            color: LEGENDEN_FARBE(t)[r.id],
+            unit: '€',
+          })),
+          { label: 'kumuliert', color: t.plan, unit: '€', shape: 'line' as const },
         ]}
       />
       {vglView && !vglView.leer && <UeberlagerungLegendeZeile legende={legende ?? null} />}

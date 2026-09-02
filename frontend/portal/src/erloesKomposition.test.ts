@@ -14,10 +14,11 @@ import {
   steeringChip,
   erloesKomposition,
   geldVerlauf,
-  preisTreiber,
+  verlaufKern,
   verlaufSchritt,
 } from './erloesKomposition';
 import { NBSP } from './format';
+import { ebene2 } from './erloesEbenen';
 import { activeModes, moneyStreams, type MoneyStream } from './surface';
 
 const NOW = new Date('2026-07-21T10:00:00Z');
@@ -636,79 +637,52 @@ describe('erloesErgebnis · Karte 1 der Erlöse-Welt', () => {
   });
 });
 
-describe('preisTreiber · Karte 3 „Was den Preis gemacht hat"', () => {
-  it('stellt den erzielten Marktwert dem Monatsdurchschnitt gegenüber', () => {
-    const zeilen = preisTreiber({ money: siteMoney() });
-    const erzielt = zeilen.find((z) => z.id === 'marktwert');
-    expect(erzielt?.wert).toBe('8,9 ct/kWh');
-    expect(erzielt?.note).toBe('3,0 ct über dem Monatsdurchschnitt');
-    const markt = zeilen.find((z) => z.id === 'monatsmarktwert');
-    expect(markt?.wert).toBe('5,9 ct/kWh');
-    expect(markt?.note).toContain('vorläufig');
+/**
+ * **P6 · die Karte „Was den Preis gemacht hat" ist ENTFALLEN** (Konzept
+ * `vp-erloese-seite-konzept-e2` §3.1, E5): dieselbe Preiswahrheit stand zweimal
+ * auf der Seite. Ihre Zeilen wohnen jetzt in Ebene 2 der Ergebnis-Karte.
+ *
+ * Diese Tests ersetzen die früheren `preisTreiber`-Tests: sie prüfen, dass der
+ * INHALT den Umzug überlebt hat — die Ableitung selbst nagelt
+ * `erloesEbenen.test.ts` fest.
+ */
+describe('E5 · die Preise sind in Ebene 2 umgezogen', () => {
+  const zeile = (money: SiteEarnings, label: string, netzladen: boolean | null = null) =>
+    ebene2({ money, netzladenErlaubt: netzladen }).zeilen.find((z) => z.label === label);
+
+  it('trägt Bezugspreis, Monatsmarktwert und anzulegenden Wert', () => {
+    const money = siteMoney({ anzulegenderWertCtKwh: 8.11 });
+    expect(zeile(money, 'Bezugspreis')?.wert).toContain(`4,9${NBSP}ct`);
+    expect(zeile(money, 'Monatsmarktwert Solar')?.wert).toContain(`5,92${NBSP}ct`);
+    expect(zeile(money, 'Monatsmarktwert Solar')?.wert).toContain('vorläufig');
+    expect(zeile(money, 'Anzulegender Wert')?.wert).toContain(`8,11${NBSP}ct`);
   });
 
-  it('benennt den Ø Bezugspreis samt seiner Bewertungsgrundlage', () => {
-    const spot = preisTreiber({ money: siteMoney() }).find((z) => z.id === 'bezugspreis');
-    expect(spot?.wert).toBe('4,9 ct/kWh');
-    expect(spot?.note).toContain('Börsenpreis');
-
-    const tarif = preisTreiber({ money: siteMoney({ tarifPriced: true, tarifArt: 'dynamisch' }) })
-      .find((z) => z.id === 'bezugspreis');
-    expect(tarif?.note).toContain('Stromtarif');
-  });
-
-  it('sagt bei fehlender Zurechnung „—" MIT Grund - nie eine erfundene Null', () => {
-    const zeilen = preisTreiber({ money: siteMoney(), netzladenErlaubt: false });
-    const praemie = zeilen.find((z) => z.id === 'marktpraemie');
-    expect(praemie?.wert).toBe(DASH);
-    expect(praemie?.vorhanden).toBe(false);
-    expect(praemie?.note).toContain('anzulegender Wert');
-
-    const arbitrage = zeilen.find((z) => z.id === 'arbitrage');
-    expect(arbitrage?.wert).toBe(DASH);
-    expect(arbitrage?.note).toContain('Sonnenstrom');
-
-    const erlaubt = preisTreiber({ money: siteMoney(), netzladenErlaubt: true })
-      .find((z) => z.id === 'arbitrage');
-    expect(erlaubt?.note).toContain('nicht aus dem Netz geladen');
-  });
-
-  it('weist eine vorhandene Marktprämie mit ihrer Rechnung aus - und als BEREITS ENTHALTEN', () => {
-    const praemie = preisTreiber({
-      money: siteMoney({ marktpraemieEur: 212.4, anzulegenderWertCtKwh: 8.11 }),
-    }).find((z) => z.id === 'marktpraemie');
-    expect(praemie?.wert).toBe(`+ 212,40${NBSP}€`);
-    expect(praemie?.note).toContain('8,11 − 5,92 = 2,19');
-    expect(praemie?.hinweise.join(' ')).toContain('bereits im Einspeise-Erlös');
-  });
-
-  // Der reale Kundenfall vom 05.08.2026 - die Null war richtig und sah aus wie
-  // ein Defekt. Details/Zustände: `marktpraemie.test.ts`.
-  it('erklärt eine berechnete Null, statt sie nackt stehen zu lassen', () => {
-    const praemie = preisTreiber({
-      money: siteMoney({
-        marktpraemieEur: 0,
-        anzulegenderWertCtKwh: 6.9,
-        marketValueSolarCtKwh: 7.0,
-        marketValueProvisional: true,
-      }),
-      siteId: 's1',
-    }).find((z) => z.id === 'marktpraemie');
-
-    expect(praemie?.wert).toBe(`0,00${NBSP}€`);
-    expect(praemie?.vorhanden).toBe(true);
-    expect(praemie?.note).toContain('voll aus dem Markt');
-    expect(praemie?.hinweise.join(' ')).toContain('kann sich noch ändern');
-  });
-
-  it('bietet den Weg zum fehlenden anzulegenden Wert an - aber nur mit bekannter Anlage', () => {
-    const mit = preisTreiber({ money: siteMoney(), siteId: 's1' }).find(
-      (z) => z.id === 'marktpraemie',
+  it('trägt die Netzladen-Aussage — samt ihrer Zahl, wo es eine gibt', () => {
+    // Nur Sonnenstrom: der Hinweis steht, eine Handels-Zahl gibt es nicht.
+    expect(zeile(siteMoney(), 'Speicher', false)?.wert).toBe('lädt nur Sonnenstrom');
+    // Darf netzladen UND hat gehandelt: die Zahl der früheren Preis-Zeile
+    // „davon durch Netzladen" reist mit, statt verloren zu gehen.
+    expect(zeile(siteMoney({ arbitrageEur: 12.4 }), 'Speicher', true)?.wert).toBe(
+      `darf aus dem Netz laden · davon durch Netzladen + 12,40${NBSP}€`,
     );
-    expect(mit?.href).toBe('#/anlage/s1/technik?abschnitt=geld');
+    // Darf netzladen, aber der Endpunkt rechnet nichts zu: kein „+ 0,00 €",
+    // das einen Handel behauptet, den es nicht gab.
+    expect(zeile(siteMoney(), 'Speicher', true)?.wert).toBe('darf aus dem Netz laden');
+  });
 
-    const ohne = preisTreiber({ money: siteMoney() }).find((z) => z.id === 'marktpraemie');
-    expect(ohne?.href).toBeNull();
+  it('nennt die Marktwert-Größen NUR bei Direktvermarktung (E11 / Befund B9)', () => {
+    const eeg = siteMoney({
+      plantKind: 'eigenverbrauch',
+      exportVerguetungPriced: true,
+      anzulegenderWertCtKwh: 8.11,
+    });
+    const labels = ebene2({ money: eeg, netzladenErlaubt: null }).zeilen.map((z) => z.label);
+    expect(labels).not.toContain('Monatsmarktwert Solar');
+    expect(labels).not.toContain('Anzulegender Wert');
+    expect(labels).not.toContain('Marktprämie');
+    // Stattdessen steht dort, was die Anlage WIRKLICH bekommt.
+    expect(zeile(eeg, 'Einspeisepreis')?.wert).toContain('feste Vergütung (EEG)');
   });
 });
 
@@ -748,6 +722,74 @@ describe('geldVerlauf · Karte 2 „Geld im Verlauf"', () => {
     expect(view.kumuliertText).toBe(`kumuliert + 41,00${NBSP}€`);
   });
 
+  // --- B8 · die Legende bewirbt nur, was gezeichnet wird ------------------
+  it('lässt eine durchgehend leere Reihe WEG (Befund B8)', () => {
+    // Eine Anlage ohne hinterlegten Tarif: der Wert des Eigenverbrauchs ist in
+    // JEDEM Eimer null — er zeichnet keinen Balken und stand trotzdem in der
+    // Legende.
+    const ohneTarif = buckets.map((b) => ({ ...b, eigenverbrauchsWertEur: null }));
+    expect(geldVerlauf(ohneTarif, 'month').reihen.map((r) => r.id)).toEqual([
+      'einspeisung',
+      'stromkosten',
+    ]);
+    // Eine Reihe, die auch nur EINMAL etwas trägt, bleibt.
+    expect(geldVerlauf(buckets, 'month').reihen.map((r) => r.id)).toContain(
+      'eigenverbrauchswert',
+    );
+  });
+
+  it('behält bei einem durchgehend leeren Stapel alle drei Reihen', () => {
+    // Sonst stünde ein Diagramm ganz ohne Legende da — die schlechtere Auskunft.
+    const leer = buckets.map((b) => ({
+      ...b,
+      einspeiseErloesEur: 0,
+      eigenverbrauchsWertEur: 0,
+      stromkostenEur: 0,
+    }));
+    expect(geldVerlauf(leer, 'month').reihen).toHaveLength(3);
+  });
+
+  // --- K1 · die Kernaussage des Verlaufs ---------------------------------
+  it('nennt den stärksten Eimer und seinen Träger — nicht die Summe (K1)', () => {
+    const k = verlaufKern(geldVerlauf(buckets, 'month'), 'month')!;
+    // Der 1. Juli trägt netto 25 € (30 + 5 − 10), der 2. nur 16 €.
+    expect(k.wert).toBe(`25,00${NBSP}€`);
+    expect(k.satz).toContain('am 1. Juli');
+    expect(k.satz).toContain('der Einspeisung');
+    // Die SUMME des Zeitraums steht eine Karte höher — nie hier.
+    expect(k.satz).not.toContain('41,00');
+  });
+
+  it('sagt den GRUND statt einen Spitzen-Eimer zu erfinden', () => {
+    const leer = buckets.map((b) => ({
+      ...b,
+      einspeiseErloesEur: 0,
+      eigenverbrauchsWertEur: 0,
+      stromkostenEur: 0,
+    }));
+    const k = verlaufKern(geldVerlauf(leer, 'month'), 'month')!;
+    expect(k.wert).toBeNull();
+    expect(k.satz).toBeNull();
+    expect(k.grund).toContain('noch nichts zusammengekommen');
+  });
+
+  it('rendert ohne Eimer GAR NICHTS — die Karte hat ihren eigenen Leer-Satz', () => {
+    expect(verlaufKern(geldVerlauf([], 'month'), 'month')).toBeNull();
+  });
+
+  it('nennt Stunden am Tag und Monate im Jahr', () => {
+    const tag = [
+      { start: '2026-07-01T09:00:00Z', einspeiseErloesEur: 1, eigenverbrauchsWertEur: 0, stromkostenEur: 0, nettoEur: 1 },
+      { start: '2026-07-01T10:00:00Z', einspeiseErloesEur: 8, eigenverbrauchsWertEur: 0, stromkostenEur: 0, nettoEur: 8 },
+    ];
+    // 10:00 UTC = 12 Uhr Berlin. Das Wort „Uhr" kommt aus dem Gebietsschema —
+    // ein eigenes Suffix ergäbe „12 Uhr Uhr" (Browser-Befund).
+    const satz = verlaufKern(geldVerlauf(tag, 'day'), 'day')!.satz!;
+    expect(satz).toContain('um 12 Uhr');
+    expect(satz).not.toContain('Uhr Uhr');
+    expect(verlaufKern(geldVerlauf(tag, 'year'), 'year')!.satz).toContain('im Juli 2026');
+  });
+
   it('bindet den Maßstab an den Zeitraum (P6) - das Jahr zeigt Monate', () => {
     expect(verlaufSchritt('day')).toBe('Stunde');
     expect(verlaufSchritt('week')).toBe('Tag');
@@ -773,15 +815,16 @@ describe('geldVerlauf · Karte 2 „Geld im Verlauf"', () => {
 describe('erloesAufklapper', () => {
   const voll = {
     hatSoVerdient: true,
-    hatPreisTreiber: true,
     istTag: true,
     hatTagesdaten: true,
   };
 
-  it('nennt am Tag alle vier - in der Reihenfolge des Konzepts', () => {
+  // P6/E5: „preis-treiber" ist ENTFALLEN — die Preise wohnen in Ebene 2 der
+  // Ergebnis-Karte, also auch am Telefon (ein Aufklapper im Aufklapper wäre
+  // dieselbe Wahrheit zweimal).
+  it('nennt am Tag alle drei - in der Reihenfolge des Konzepts', () => {
     expect(erloesAufklapper(voll).map((a) => a.id)).toEqual([
       'so-verdient',
-      'preis-treiber',
       'speicher-preis',
       'tagesprotokoll',
     ]);
@@ -796,7 +839,6 @@ describe('erloesAufklapper', () => {
     // Woche/Monat/Jahr: der Tagesnachweis und das Protokoll existieren nicht.
     expect(erloesAufklapper({ ...voll, istTag: false }).map((a) => a.id)).toEqual([
       'so-verdient',
-      'preis-treiber',
     ]);
   });
 
@@ -804,15 +846,9 @@ describe('erloesAufklapper', () => {
     // Ein Tag OHNE Historie-Antwort: die zwei Tages-Aufklapper wären leer.
     expect(erloesAufklapper({ ...voll, hatTagesdaten: false }).map((a) => a.id)).toEqual([
       'so-verdient',
-      'preis-treiber',
     ]);
     expect(
-      erloesAufklapper({
-        hatSoVerdient: false,
-        hatPreisTreiber: false,
-        istTag: false,
-        hatTagesdaten: false,
-      }),
+      erloesAufklapper({ hatSoVerdient: false, istTag: false, hatTagesdaten: false }),
     ).toEqual([]);
   });
 });

@@ -39,7 +39,6 @@
 
 import type { HistoryBucket, PlantKind, SiteEarningsBucket } from './api';
 import { eurAmount, fmtNum } from './format';
-import { proofAnchor } from './fleet';
 import { bestandZeile, type BestandEingabe, type BestandZeile } from './erloesKomposition';
 import { PANELS3 } from './chartStyle';
 import type { Kernaussage } from './chartKopf';
@@ -376,18 +375,6 @@ export function speicherTagSatz(buckets: readonly HistoryBucket[]): string | nul
   return 'der Speicher stand an diesem Tag still.';
 }
 
-/** Der K8-Vergleichsanker: das exakte Paar „mit VoltPilot" gegen „ohne". */
-export function ohneSpeicherAnker(
-  geld: TagesbildGeld | null | undefined,
-  plantKind: PlantKind,
-): string | null {
-  if (!geld) return null;
-  const { baselineEur, actualEur } = geld;
-  if (baselineEur == null || actualEur == null) return null;
-  if (!Number.isFinite(baselineEur) || !Number.isFinite(actualEur)) return null;
-  return proofAnchor(plantKind, baselineEur, actualEur);
-}
-
 /**
  * Die Kernaussage des Tagesbilds.
  *
@@ -398,11 +385,17 @@ export function ohneSpeicherAnker(
 export function tagesbildKern(input: {
   geld: TagesbildGeld | null | undefined;
   buckets: readonly HistoryBucket[];
-  plantKind: PlantKind;
-  /** „Jetzt" — entscheidet über „bisher" und über die Bestandszeile. */
+  /**
+   * Die Veräußerungsform. Seit P6 (B10) liest der Kopf sie NICHT mehr — sein
+   * Vergleichsanker ist mit der Zurechnung gegangen. Sie bleibt im Eingang,
+   * weil die Karte sie ohnehin hält und eine spätere physische Aussage sie
+   * brauchen kann.
+   */
+  plantKind?: PlantKind;
+  /** „Jetzt" — entscheidet über die Bestandszeile. */
   now?: Date;
 }): Kernaussage | null {
-  const { geld, buckets, plantKind } = input;
+  const { geld, buckets } = input;
   if (!geld) return null;
   const now = input.now ?? new Date();
   const satzTeil = speicherTagSatz(buckets);
@@ -410,23 +403,38 @@ export function tagesbildKern(input: {
   if (saved == null || !Number.isFinite(saved)) {
     return { wert: null, satz: null, grund: KEIN_GELD_GRUND, ton: 'calm' };
   }
-  const zaehlt = Math.abs(saved) >= EUR_TOTBAND;
-  // „bisher", solange der Tag läuft: die Zahl ist die Kasse bis JETZT, und ohne
-  // dieses Wort liest sie sich als Tagesergebnis (Diagnose §6.2).
-  const wann = tagLaeuft(geld, now) ? 'an diesem Tag bisher' : 'an diesem Tag';
+  // ⚠ P6 / Befund B10: der Kopf nennt die ZURECHNUNG nicht mehr.
+  //
+  //   `savedEur` stand auf der Tagesansicht dreimal — als Chip der
+  //   Ergebnis-Karte, hier, und als Bezugspunkt der Karte „Geplante
+  //   Speicher-Ersparnis". Seit dem Seiten-Umbau steht das Geld GENAU EINMAL,
+  //   im Speicher-Block der Ergebnis-Karte (§3.1: „Messwerte sind Beleg, nicht
+  //   Antwort"). Diese Karte beantwortet „was ist PHYSISCH passiert?", also
+  //   trägt ihr Kopf die physische Aussage: geladen und abgegeben in kWh.
+  //
+  //   Mit der Zurechnung entfällt auch ihr Vergleichsanker („ohne Speicher
+  //   wären es …") — er ist dieselbe Aussage in anderer Form und lebt
+  //   unverändert im Speicher-Block. Das BESTANDSKONTO bleibt: es ist kein
+  //   `savedEur`, sondern der Speicherstand dieses Tages, und damit genau der
+  //   physische Nachweis, um den es hier geht.
+  if (!satzTeil) {
+    return { wert: null, satz: null, grund: KEIN_SPEICHER_GRUND, ton: 'calm', bestand: tagesbildBestand(geld, now) };
+  }
   return {
-    wert: zaehlt ? eurAmount(saved) : null,
-    satz: satzTeil
-      ? `hat die Steuerung ${wann} gebracht — ${satzTeil}`
-      : `hat die Steuerung ${wann} gebracht.`,
+    wert: null,
+    satz: satzTeil.charAt(0).toUpperCase() + satzTeil.slice(1),
     grund: null,
-    ton: zaehlt && saved > 0 ? 'ok' : 'calm',
-    anker: zaehlt ? ohneSpeicherAnker(geld, plantKind) : null,
-    // Das BESTANDSKONTO neben der Kasse - die eine Ableitung teilt sich diese
-    // Fläche mit der Ergebnis-Karte darüber (Diagnose vp-tagesbild-minus-f3 §6).
+    ton: 'calm',
+    // Das BESTANDSKONTO neben der physischen Aussage - die eine Ableitung teilt
+    // sich diese Fläche mit der Ergebnis-Karte darüber (Diagnose
+    // vp-tagesbild-minus-f3 §6).
     bestand: tagesbildBestand(geld, now),
   };
 }
+
+/** Ohne gemessene Lade-/Entladewerte gibt es keine physische Aussage. */
+const KEIN_SPEICHER_GRUND =
+  'Für diesen Tag liegen noch keine Lade- und Entladewerte des Speichers vor.';
 
 /** Ob der gezeigte Zeitraum noch LÄUFT (sein Ende liegt in der Zukunft). */
 export function tagLaeuft(geld: TagesbildGeld | null | undefined, now: Date): boolean {

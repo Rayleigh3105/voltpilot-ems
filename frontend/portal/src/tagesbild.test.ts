@@ -9,7 +9,6 @@ import {
   jetztIndex,
   KEIN_GELD_GRUND,
   netzReihe,
-  ohneSpeicherAnker,
   PANEL_TITEL,
   panelLayout,
   preisReihe,
@@ -195,39 +194,45 @@ describe('Panel 3 · die Ertragskurve auf der geteilten Zeitachse', () => {
   });
 });
 
-describe('K1 + K8 · der Kernaussage-Kopf', () => {
+/**
+ * **P6 · der Kopf nennt die ZURECHNUNG nicht mehr** (Konzept
+ * `vp-erloese-seite-konzept-e2` §3.1 Position 4, Befund B10).
+ *
+ * `savedEur` stand auf der Tagesansicht dreimal; seit dem Seiten-Umbau steht
+ * das Geld GENAU EINMAL, im Speicher-Block der Ergebnis-Karte. Diese Karte
+ * beantwortet „was ist PHYSISCH passiert?" — ihr Kopf trägt deshalb die
+ * physische Aussage in kWh, und mit der Zurechnung ist auch ihr K8-Anker
+ * (`ohneSpeicherAnker`) gegangen: derselbe Vergleich lebt unverändert im
+ * Speicher-Block (`speicherAussage` → `proofAnchor`).
+ */
+describe('K1 · der Kernaussage-Kopf (physisch, ohne Zurechnung)', () => {
   const tag = [
     bucket({ batteryChargeKwh: 3, batteryDischargeKwh: 0 }),
     bucket({ batteryChargeKwh: 0, batteryDischargeKwh: 2 }),
   ];
 
-  it('nennt das GEMESSENE savedEur und verankert es am exakten Paar', () => {
+  it('nennt die PHYSISCHE Aussage — geladen und abgegeben, kein Geld (B10)', () => {
     const k = tagesbildKern({
       geld: { savedEur: 2.73, baselineEur: 3.1, actualEur: 0.37 },
       buckets: tag,
       plantKind: 'eigenverbrauch',
     })!;
-    expect(k.wert).toBe(`2,73${NBSP}€`);
-    expect(k.satz).toContain('hat die Steuerung an diesem Tag gebracht');
     expect(k.satz).toContain(`3,0${NBSP}kWh geladen`);
     expect(k.satz).toContain(`2,0${NBSP}kWh abgegeben`);
-    expect(k.ton).toBe('ok');
-    // K8: keine Zahl ohne Vergleichsanker - und der Anker ist das Paar, das der
-    // Geld-Held der Anlage seit jeher rechnet.
-    expect(k.anker).toBe(
-      `Stromkosten mit VoltPilot 0,37${NBSP}€ · Ohne Speicher wären es 3,10${NBSP}€.`,
-    );
+    // Die Zurechnung steht EINMAL, in der Ergebnis-Karte — hier nie wieder.
+    expect(k.wert).toBeNull();
+    expect(k.satz).not.toContain('Steuerung');
+    expect(k.anker ?? null).toBeNull();
   });
 
-  it('spricht bei einer Direktvermarktungs-Anlage von „ungeregelt", nicht „ohne Speicher"', () => {
+  it('sagt den GRUND, wenn der Speicher gar keine Werte gemeldet hat', () => {
     const k = tagesbildKern({
-      geld: { savedEur: 6.74, baselineEur: -3.1, actualEur: -9.84 },
-      buckets: tag,
-      plantKind: 'direktvermarktung',
+      geld: { savedEur: 2.73, baselineEur: 3.1, actualEur: 0.37 },
+      buckets: [bucket({ batteryChargeKwh: null, batteryDischargeKwh: null })],
+      plantKind: 'eigenverbrauch',
     })!;
-    expect(k.anker).toBe(
-      `Erlös mit VoltPilot 9,84${NBSP}€ · Ungeregelt wären es 3,10${NBSP}€.`,
-    );
+    expect(k.satz).toBeNull();
+    expect(k.grund).toContain('Lade- und Entladewerte');
   });
 
   it('sagt den ehrlichen GRUND, wenn das Geld nicht berechenbar ist', () => {
@@ -258,23 +263,25 @@ describe('K1 + K8 · der Kernaussage-Kopf', () => {
       plantKind: 'eigenverbrauch',
       now: new Date('2026-08-21T10:19:00Z'),
     })!;
-    // Ohne das Wort läse sich die Kasse bis JETZT als Tagesergebnis.
-    expect(k.satz).toContain('an diesem Tag bisher gebracht');
-    // Die zweite Wahrheit steht DANEBEN, nie in der Zahl.
-    expect(k.wert).toBe(`-4,69${NBSP}€`);
+    // P6/B10: der Kopf trägt keine Kasse mehr — aber das BESTANDSKONTO bleibt.
+    // Es ist kein `savedEur`, sondern der Speicherstand DIESES Tages, also
+    // genau der physische Nachweis, um den es hier geht.
+    expect(k.wert).toBeNull();
+    expect(k.satz).toContain('kWh geladen');
     expect(k.bestand?.text).toContain('Speicherenergie seit Tagesbeginn gespeichert');
     expect(k.bestand?.badge).toBe('Kein Abzug');
   });
 
-  it('sagt am ABGESCHLOSSENEN Tag wieder „an diesem Tag"', () => {
+  it('sagt am ABGESCHLOSSENEN Tag dieselbe physische Aussage', () => {
     const k = tagesbildKern({
       geld: { savedEur: 2.73, baselineEur: 3.1, actualEur: 0.37, to: '2026-08-11T00:00:00Z' },
       buckets: tag,
       plantKind: 'eigenverbrauch',
       now: new Date('2026-08-12T09:00:00Z'),
     })!;
-    expect(k.satz).toContain('hat die Steuerung an diesem Tag gebracht');
-    expect(k.satz).not.toContain('bisher');
+    expect(k.satz).toContain('kWh abgegeben');
+    // „bisher"/„an diesem Tag" gehörte zur Kasse — die ist umgezogen.
+    expect(k.wert).toBeNull();
   });
 
   it('bleibt ohne die Bestandsfelder zeichengleich zu vorher (älteres Backend)', () => {
@@ -293,21 +300,14 @@ describe('K1 + K8 · der Kernaussage-Kopf', () => {
     expect(tagesbildKern({ geld: null, buckets: tag, plantKind: 'eigenverbrauch' })).toBeNull();
   });
 
-  it('macht aus Rundungsrauschen keine Aussage — und dann auch keinen Anker', () => {
+  it('trägt NIE einen Geld-Anker mehr — er lebt im Speicher-Block (B10)', () => {
     const k = tagesbildKern({
-      geld: { savedEur: 0.001, baselineEur: 3.1, actualEur: 3.099 },
+      geld: { savedEur: 2.73, baselineEur: 3.1, actualEur: 0.37 },
       buckets: tag,
       plantKind: 'eigenverbrauch',
     })!;
-    expect(k.wert).toBeNull();
-    expect(k.anker).toBeNull();
+    expect(k.anker ?? null).toBeNull();
     expect(k.satz).not.toBeNull();
-  });
-
-  it('erfindet keinen Anker ohne das exakte Paar', () => {
-    expect(ohneSpeicherAnker({ savedEur: 1, baselineEur: null, actualEur: 1 }, 'eigenverbrauch'))
-      .toBeNull();
-    expect(ohneSpeicherAnker(null, 'eigenverbrauch')).toBeNull();
   });
 });
 

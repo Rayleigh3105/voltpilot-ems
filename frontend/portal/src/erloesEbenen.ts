@@ -466,10 +466,27 @@ export function ebene2(input: Ebene2Input): Ebene2 {
   }
 
   // --- Speicher + Bewertung ---------------------------------------------
+  //
+  // P6/E5: die Preis-Karte „Was den Preis gemacht hat" ist ENTFALLEN, ihre
+  // Zeilen wohnen hier. Ihre Netzladen-Zeile trug neben dem Hinweis auch die
+  // ZAHL („davon durch Netzladen + 12,40 €") — sie steht deshalb im selben
+  // Satz wie der Hinweis, statt eine eigene Zeile zu bekommen: das
+  // Textbudget der Tabelle (§3.4: höchstens acht Zeilen) gehört den Preisen.
+  //
+  // ⚠ Die Zahl wird NUR genannt, wenn der Endpunkt sie liefert UND sie etwas
+  //   bewegt hat — eine „+ 0,00 €"-Zeile behauptete einen Netzlade-Handel, den
+  //   es nicht gab. Fehlt sie auf einer Anlage, die netzladen DARF, bleibt es
+  //   beim Hinweis: „nicht geladen" wäre eine Aussage über einen Zeitraum, für
+  //   den der Endpunkt keine Zurechnung hat.
   if (input.netzladenErlaubt != null) {
+    const arb = num(money.arbitrageEur);
+    const handel =
+      input.netzladenErlaubt && arb != null && Math.abs(arb) >= 0.005
+        ? ` · davon durch Netzladen ${vorzeichen(rundeKaufmaennisch(arb, 2))}`
+        : '';
     zeilen.push({
       label: 'Speicher',
-      wert: input.netzladenErlaubt ? 'darf aus dem Netz laden' : 'lädt nur Sonnenstrom',
+      wert: `${input.netzladenErlaubt ? 'darf aus dem Netz laden' : 'lädt nur Sonnenstrom'}${handel}`,
     });
   }
   zeilen.push({

@@ -84,9 +84,15 @@ export function SpeicherBlock({
       )}
 
       {/* Zeile 4 — der Planwert. Eigenes Abzeichen, damit er nie wie ein
-          gemessener Betrag gelesen wird. */}
+          gemessener Betrag gelesen wird.
+
+          ⚠ EIGENE Klasse `vp-spb-plan` NEBEN `vp-spb-still`: seit P6/E6 ist
+          das die einzige Nennung der geplanten Ersparnis auf dieser Seite
+          (die Karte „Geplante Speicher-Ersparnis" ist entfallen), und Zeile 3
+          (Bestandskonto) darf davon unterscheidbar bleiben — sie beantwortet
+          eine andere Frage. */}
       {aussage.geplant && (
-        <p className="vp-spb-zeile vp-spb-still">
+        <p className="vp-spb-zeile vp-spb-still vp-spb-plan">
           <span className="vp-spb-satz">{aussage.geplant}</span>
           <span className="vp-spb-badge">Geplant</span>
         </p>

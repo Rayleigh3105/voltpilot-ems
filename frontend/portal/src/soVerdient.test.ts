@@ -357,10 +357,13 @@ describe('soVerdient · S7 nichts eingespeist', () => {
     expect(v.kernsatz).toBeNull();
   });
 
-  it('übernimmt nur die Prämien-Zeile — die Preis-Karte behält ihre Zahlen', () => {
-    // Der Ø kann veröffentlicht sein, obwohl diese Anlage nichts eingespeist
-    // hat. Ihn hier zu absorbieren würde eine echte Zahl verschlucken.
-    expect(leer().absorbiert).toEqual(['marktpraemie']);
+  it('zeigt in dieser Lage keine Kacheln — nur den Grund und die Prämie', () => {
+    // P6/E5: die frühere „Absorptions"-Aussage ist mit der Preis-Karte
+    // entfallen (es gibt keine zweite Karte mehr, der etwas zu überlassen
+    // wäre). Was BLEIBT, ist die Ehrlichkeit dieser Lage: ohne Einspeisung
+    // gibt es keine Kacheln, aber sehr wohl die Prämien-Fußzeile.
+    expect(leer().zeilen).toEqual([]);
+    expect(leer().praemie.label).toContain('Marktprämie');
   });
 });
 
@@ -408,11 +411,9 @@ describe('soVerdient · S8 Mehrmonats-Zeitraum', () => {
 
   it('zeigt die Prämie NUR in ihrer Fußzeile — nicht zusätzlich als Kachel', () => {
     // Im Browser aufgefallen: derselbe Betrag samt Rechnung stand zweimal auf
-    // EINER Karte. Absorbiert wird sie trotzdem, sonst stünde sie ein drittes
-    // Mal auf der Preis-Karte.
+    // EINER Karte.
     const v = jahr();
     expect(v.zeilen.map((z) => z.id)).toEqual(['marktwert', 'monatsmarktwert']);
-    expect(v.absorbiert).toEqual(['marktwert', 'monatsmarktwert', 'marktpraemie']);
     expect(v.praemie.wert).toContain('512,40');
   });
 });
@@ -445,12 +446,14 @@ describe('soVerdient · der Rahmen', () => {
     expect(KERNSATZ).toContain('ungeschmälert');
   });
 
-  it('absorbiert im Bild-Fall genau die drei Export-Zeilen', () => {
-    expect(soVerdient({ money: anlage(), siteId: 's1' })!.absorbiert).toEqual([
-      'marktwert',
-      'monatsmarktwert',
-      'marktpraemie',
-    ]);
+  // P6/E5: `absorbiert` ist ERSATZLOS entfallen — sein einziger Abnehmer war
+  // die Karte „Was den Preis gemacht hat", die es nicht mehr gibt (die Preise
+  // wohnen in Ebene 2 der Ergebnis-Karte). Im BILD-Fall stehen die Kacheln
+  // ohnehin nicht als Zeilen, sondern im Diagramm.
+  it('zeichnet im Bild-Fall statt Kacheln zu listen', () => {
+    const v = soVerdient({ money: anlage(), siteId: 's1' })!;
+    expect(v.form).toBe('chart');
+    expect(v.zeilen).toEqual([]);
   });
 
   it('baut ohne bekannte Anlage keinen Link ins Leere', () => {

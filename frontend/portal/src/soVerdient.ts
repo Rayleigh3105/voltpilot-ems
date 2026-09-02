@@ -30,7 +30,7 @@
  */
 
 import type { SiteEarnings, SiteEarningsRange } from './api';
-import { marktVergleich, type PreisZeile, type PreisZeileId, preisTreiber } from './erloesKomposition';
+import { DASH, marktVergleich, type PreisZeile, type PreisZeileId } from './erloesKomposition';
 import { marktpraemie, praemieMonat, type MarktpraemieView } from './marktpraemie';
 import { capTextLength } from './svgText';
 
@@ -128,12 +128,14 @@ export interface SoVerdientView {
   zeilen: PreisZeile[];
   /** Die Prämien-Zeile, wörtlich aus `marktpraemie()`. */
   praemie: MarktpraemieView;
-  /**
-   * Welche Zeilen der Preis-Karte diese Karte übernommen hat. Die Karte SAGT
-   * selbst, was sie absorbiert — so können die zwei Karten nie über
-   * verschiedene Mengen reden (Konzept D2).
+  /*
+   * ⚠ Das frühere `absorbiert` ist mit der Preis-Karte ENTFALLEN (P6/E5).
+   *   Es sagte der Karte „Was den Preis gemacht hat", welche Kacheln sie
+   *   auslassen soll; die Karte gibt es nicht mehr, ihre Preise wohnen in
+   *   Ebene 2 der Ergebnis-Karte. Ein Feld, das nur eine gelöschte Karte
+   *   gelesen hat, ist toter Code — und `ZEILEN_FORM` unten sagt weiterhin,
+   *   was DIESE Karte zeigt.
    */
-  absorbiert: PreisZeileId[];
 }
 
 // ---------------------------------------------------------------------------
@@ -175,9 +177,6 @@ export const OHNE_GARANTIEWERT_NOTE = ['Garantiewert', 'nicht hinterlegt'] as co
 export const OHNE_MONATSWERT_NOTE = ['noch nicht', 'veröffentlicht'] as const;
 
 export const OE_CAPTION = ['Ø Monatsmarktwert', 'Solar (alle Anlagen)'] as const;
-
-/** Die drei Export-Zeilen, die dieses Bild aus der Preis-Karte übernimmt. */
-const EXPORT_ZEILEN: readonly PreisZeileId[] = ['marktwert', 'monatsmarktwert', 'marktpraemie'];
 
 /**
  * Was die Zeilen-Form (S8) als KACHEL zeigt. Die Marktprämie fehlt hier
@@ -370,8 +369,7 @@ export function soVerdient(input: SoVerdientInput): SoVerdientView | null {
       chart: null,
       kernsatz: null,
       hinweis: MEHRERE_MONATE_HINWEIS,
-      zeilen: exportZeilen(m, siteId),
-      absorbiert: [...EXPORT_ZEILEN],
+      zeilen: exportZeilen(m),
     };
   }
 
@@ -391,7 +389,6 @@ export function soVerdient(input: SoVerdientInput): SoVerdientView | null {
       kernsatz: null,
       hinweis: NICHTS_EINGESPEIST_HINWEIS,
       zeilen: [],
-      absorbiert: ['marktpraemie'],
     };
   }
 
@@ -439,20 +436,54 @@ export function soVerdient(input: SoVerdientInput): SoVerdientView | null {
     kernsatz: KERNSATZ,
     hinweis: null,
     zeilen: [],
-    absorbiert: [...EXPORT_ZEILEN],
   };
 }
 
 /**
- * Die drei Export-Zeilen in der Zeilen-Form — WÖRTLICH die der Preis-Karte
- * (`preisTreiber`), damit die absorbierten Kacheln hier zeichengleich
- * weiterleben statt neu formuliert zu werden.
+ * Die zwei Export-Kacheln der Zeilen-Form (S8) — WÖRTLICH die Texte, die bis
+ * P6 die Karte „Was den Preis gemacht hat" trug. Sie werden hier gebaut, seit
+ * jene Karte entfallen ist (E5): dieselben Sätze, nur ohne den Umweg über eine
+ * Karte, die es nicht mehr gibt.
+ *
+ * `ZEILEN_FORM` bleibt die EINE Liste dessen, was diese Form zeigt — die
+ * Reihenfolge der Kacheln folgt ihr, nicht dem Code hier.
  */
-function exportZeilen(money: SiteEarnings, siteId: string | null): PreisZeile[] {
-  const alle = preisTreiber({ money, siteId });
-  return ZEILEN_FORM.map((id) => alle.find((z) => z.id === id)).filter(
-    (z): z is PreisZeile => z != null,
-  );
+function exportZeilen(money: SiteEarnings): PreisZeile[] {
+  const erzielt = num(money.realizedExportCtKwh);
+  const markt = num(money.marketValueSolarCtKwh);
+  const zeile = (id: PreisZeileId): PreisZeile => {
+    if (id === 'marktwert') {
+      return {
+        id,
+        label: 'Ihr erzielter Marktwert',
+        wert: erzielt == null ? DASH : `${ctText(erzielt)} ct/kWh`,
+        note:
+          erzielt == null
+            ? 'In diesem Zeitraum wurde nichts eingespeist.'
+            : markt == null
+              ? null
+              : marktVergleich(erzielt, markt),
+        vorhanden: erzielt != null,
+        hinweise: [],
+        href: null,
+      };
+    }
+    return {
+      id,
+      label: 'Monatsmarktwert Solar',
+      wert: markt == null ? DASH : `${ctText(markt)} ct/kWh`,
+      note:
+        markt == null
+          ? 'Für diesen Zeitraum ist noch kein Monatsdurchschnitt veröffentlicht.'
+          : money.marketValueProvisional
+            ? 'vorläufig — der endgültige Wert wird nachgereicht'
+            : null,
+      vorhanden: markt != null,
+      hinweise: [],
+      href: null,
+    };
+  };
+  return ZEILEN_FORM.map(zeile);
 }
 
 // ---------------------------------------------------------------------------

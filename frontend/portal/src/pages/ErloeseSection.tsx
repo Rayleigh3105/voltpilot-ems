@@ -3,7 +3,6 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import type { History, HistoryRange, PlantKind, ProtocolEvent, Site } from '../api';
-import { eurAmount } from '../format';
 import { isoDate, periodLabel } from '../periodNav';
 import { parseVerlaufParams } from '../verlauf';
 import {
@@ -17,15 +16,7 @@ import {
 } from '../historieVergleich';
 import { mitVergleich, parseVergleichModus } from '../historieZeit';
 import { erloesVergleich } from '../vergleichLaufend';
-import {
-  DASH,
-  erloesAufklapper,
-  erloesErgebnis,
-  geplanteErsparnisNotiz,
-  preisTreiber,
-  type ErgebnisZeile,
-  type PreisZeile,
-} from '../erloesKomposition';
+import { erloesAufklapper, erloesErgebnis, type ErgebnisZeile } from '../erloesKomposition';
 import { ergebnisZeilen } from '../erloesZeilen';
 import { ebene1, ebene2, speicherSchritte } from '../erloesEbenen';
 import { isCurrentPeriod } from '../energieBilanz';
@@ -139,30 +130,6 @@ function KompositionsZeile({ row, zeigePeriode }: { row: ErgebnisZeile; zeigePer
  * eine zweite Wahrheit** — die Zeilen selbst kommen ohnehin aus dem einen
  * `preisTreiber()`.
  */
-function PreisTreiberBody({ zeilen }: { zeilen: PreisZeile[] }) {
-  return (
-    <ul className="vp-preistreiber">
-      {zeilen.map((z) => (
-        <li key={z.id} className={z.vorhanden ? undefined : 'vp-pt-off'}>
-          <span className="vp-pt-wert">{z.wert}</span>
-          <span className="vp-pt-label">{z.label}</span>
-          {z.note && <span className="vp-pt-note">{z.note}</span>}
-          {z.hinweise.map((h) => (
-            <span key={h} className="vp-pt-hint">
-              {h}
-            </span>
-          ))}
-          {z.href && (
-            <a className="vp-pt-link" href={z.href}>
-              Zu den Einstellungen
-            </a>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 /**
  * Der Tagesnachweis — seit Stufe 3 das TAGESBILD: drei Flächen über EINER
  * Zeitachse statt eines Einzelbilds mit drei Y-Achsen (F8 verschärft).
@@ -329,14 +296,6 @@ export function ErloeseSection({
   // Das Kombinations-Bild — `null` auf einer nicht direkt vermarkteten Anlage
   // (S9): dort bleibt die Welt byte-gleich wie bisher.
   const verdient = soVerdient({ money, siteId: site.id });
-  const preise = preisTreiber({
-    money,
-    netzladenErlaubt: site.netzladenErlaubt,
-    siteId: site.id,
-    // Absorbieren statt doppeln: die Karte sagt selbst, welche Zeilen sie
-    // übernommen hat — dieselbe Wahrheit steht nie zweimal auf einer Seite.
-    ohne: verdient?.absorbiert,
-  });
   // Die dritte Fläche des Tagesbilds („was dabei herauskommt") und sein
   // Vergleichsanker im Kopf kommen aus DEMSELBEN `money`, mit dem die
   // Ergebnis-Karte darüber rechnet - es gibt keinen zweiten Geld-Rechner, also
@@ -382,11 +341,9 @@ export function ErloeseSection({
   // wäre ein Versprechen ins Leere.
   const aufklapper = erloesAufklapper({
     hatSoVerdient: verdient != null,
-    hatPreisTreiber: preise.length > 0,
     istTag: isDay,
     hatTagesdaten: history != null,
   });
-  const geplant = geplanteErsparnisNotiz(history?.totals.batterySavingsPlannedEur, label);
 
   // Die Speicher-Erklaerung als SCHRITTE 1-5 mit den eingesetzten Zahlen
   // (Konzept §3.3, Revision 2). Inhaltlich ist es die vom Captain
@@ -423,13 +380,17 @@ export function ErloeseSection({
   //   derselben Stelle ein — die Komponente nimmt nur das Ableitungs-Ergebnis,
   //   sie kennt die Karte nicht.
   //
-  // ⚠ ZEILE 4 (der Planwert, E6) bleibt hier BEWUSST leer, obwohl die Ableitung
-  //   sie kann: dieselbe Zahl steht auf dieser Seite heute schon zweimal — als
-  //   Fußnotiz am Telefon und als Karte „Geplante Speicher-Ersparnis" am
-  //   Schreibtisch. Erst wenn die Karte der Zeile weicht (§5 P6), wird
-  //   `geplantEur: history?.totals.batterySavingsPlannedEur` hier eingehängt;
-  //   bis dahin wäre es die dritte Nennung derselben Zahl.
-  const speicher = speicherAussage(money, { now });
+  // ⚠ ZEILE 4 IST der Planwert (E6, P6): die Karte „Geplante Speicher-Ersparnis"
+  //   und die Telefon-Fußnotiz sind ENTFALLEN — eine ganze Karte für eine Zahl,
+  //   die nur im Vergleich zur gemessenen Zurechnung etwas sagt, stand
+  //   gleichrangig neben dem gemessenen Ergebnis (die dokumentierte
+  //   Verwechslungs-Falle dieser Seite). Sie steht jetzt GENAU EINMAL, direkt
+  //   unter der Zahl, mit der sie sich vergleicht, und behält ihr Abzeichen
+  //   „Geplant". Ohne Fahrplan bleibt die Zeile weg — nie eine erfundene Null.
+  const speicher = speicherAussage(money, {
+    now,
+    geplantEur: history?.totals.batterySavingsPlannedEur ?? null,
+  });
   const speicherBlock =
     speicher && speicher.hatAussage ? (
       <SpeicherBlock aussage={speicher} nachtragHref={`#/anlage/${site.id}/technik`}>
@@ -502,7 +463,13 @@ export function ErloeseSection({
               <PeriodeFehlgeschlagen periode={label} onRetry={retry} />
             )}
 
-            {/* Karte 1 - das Ergebnis des Zeitraums samt seiner Herkunft. */}
+            {/* Karte 1 — „Wie viel?": das Ergebnis des Zeitraums samt seiner
+                Herkunft. Sie ABSORBIERT seit P6 die zwei früheren Karten
+                „Was den Preis gemacht hat" (→ Ebene 2 „Preise & Vergütung",
+                E5) und „Geplante Speicher-Ersparnis" (→ Zeile 4 des
+                Speicher-Blocks, E6) — dieselbe Wahrheit stand zweimal auf der
+                Seite, und eine ganze Karte trug eine Zahl, die nur im
+                Vergleich zur gemessenen Zurechnung etwas sagt. */}
             <section className="vp-section">
               <Card padding="lg" radius="lg">
                 <KartenKopf
@@ -574,13 +541,18 @@ export function ErloeseSection({
               </Card>
             </section>
 
-            {/* „Ist das gut?" — die Antwort gehört direkt hinter die
-                „Wie viel?"-Antwort. Nur direkt vermarktete Anlagen; alle
-                anderen sehen die Welt unverändert. Am Telefon wird sie zum
-                benannten Aufklapper (unten). */}
+            {/* Karte 2 — „Ist das gut?": die Antwort gehört direkt hinter die
+                „Wie viel?"-Antwort. **Nur direkt vermarktete Anlagen** (E11 /
+                Befund B9): eine Anlage mit fester Einspeisevergütung hat keine
+                Markt-Frage, und der Verdikt-Satz „0,9 ct unter dem
+                Monatsdurchschnitt" läse sich dort wie ein Minderertrag, den es
+                nicht gibt. Ihre Vergütung steht in Ebene 2 der Karte 1. Am
+                Telefon wird sie zum benannten Aufklapper (unten). */}
             {!isPhone && verdient && <SoVerdientCard view={verdient} />}
 
-            {/* Karte 2 - dieselben Teile über die Zeit, für JEDEN Zeitraum. */}
+            {/* Karte 3 — „Wann kam das Geld?": dieselben Teile über die Zeit,
+                für JEDEN Zeitraum. Das Bild belegt die Zahl, es erklärt sie
+                nicht — deshalb steht es hinter der Markt-Einordnung. */}
             <section className="vp-section">
               <Card padding="lg" radius="lg">
                 <KartenKopf
@@ -614,12 +586,6 @@ export function ErloeseSection({
                     onToggle={() => toggleAufklapper(a.id)}
                   >
                     {a.id === 'so-verdient' && verdient && <SoVerdientCard view={verdient} />}
-                    {a.id === 'preis-treiber' && (
-                      <>
-                        <ProvBadge art="bewertet" />
-                        <PreisTreiberBody zeilen={preise} />
-                      </>
-                    )}
                     {a.id === 'speicher-preis' && history && (
                       <>
                         <ProvBadge art="gemessen" />
@@ -634,56 +600,12 @@ export function ErloeseSection({
                     )}
                   </WeltDisclosure>
                 ))}
-
-                {/* Die GEPLANTE Ersparnis bleibt sichtbar, verliert aber ihren
-                    Karten-Rang: als gleichrangige Karte neben dem gemessenen
-                    Ergebnis ist sie die dokumentierte Verwechslungs-Falle
-                    dieser Seite. Das Abzeichen „Geplant" bleibt wörtlich. */}
-                <p className={geplant.vorhanden ? 'vp-geplant-notiz' : 'vp-geplant-notiz is-leer'}>
-                  <span className="vp-prov vp-prov-geplant">{geplant.badge}</span>
-                  <b>{geplant.wertText}</b>
-                  <span>{geplant.satz}</span>
-                </p>
               </>
             ) : (
               <>
-                {/* Karte 3 - die Preise hinter dem Ergebnis. */}
-                <section className="vp-section">
-                  <Card padding="lg" radius="lg">
-                    <KartenKopf
-                      icon="euro"
-                      category="industry"
-                      titel="Was den Preis gemacht hat"
-                      art="bewertet"
-                    />
-                    <PreisTreiberBody zeilen={preise} />
-                  </Card>
-                </section>
-
-                {/* Geplant: die Vorher-Rechnung des Optimierers - eigene Karte,
-                    eigenes Abzeichen, damit sie nie als gemessene Ersparnis gilt. */}
-                <section className="vp-section">
-                  <Card padding="lg" radius="lg">
-                    <KartenKopf
-                      icon="battery-charging"
-                      category="battery"
-                      titel={`Geplante Speicher-Ersparnis · ${label}`}
-                      art="geplant"
-                    />
-                    <p className="vp-erg-plan">
-                      {history?.totals.batterySavingsPlannedEur == null
-                        ? DASH
-                        : eurAmount(history.totals.batterySavingsPlannedEur)}
-                    </p>
-                    <p className="vp-note">
-                      {history?.totals.batterySavingsPlannedEur == null
-                        ? 'Für diesen Zeitraum liegt kein Batterie-Fahrplan vor - die geplante Ersparnis erscheint, sobald geplant wird.'
-                        : 'Vorab geplant, nicht gemessen: der gemessene Beitrag der Steuerung steht oben im Ergebnis. Beide dürfen deutlich voneinander abweichen.'}
-                    </p>
-                  </Card>
-                </section>
-
-                {/* Tagesansicht: der Nachweis - was der Speicher wirklich getan hat. */}
+                {/* Karte 4 — „Was ist physisch passiert?": der Nachweis. Ihr
+                    Kopf nennt die Zurechnung seit P6 NICHT mehr (B10) — das
+                    Geld steht einmal, im Speicher-Block der Karte 1. */}
                 {isDay && history && (
                   <section className="vp-section">
                     <Card padding="lg" radius="lg">

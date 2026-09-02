@@ -296,3 +296,63 @@ describe('erloesEbenen · Speicher-Schritte', () => {
     expect(Math.abs(planwert.probe!.ist - planwert.probe!.soll)).toBeLessThanOrEqual(0.011);
   });
 });
+
+/* ---------------------------------------------------------------------------
+ * P6 · was die Preis-Karte hinterlassen hat (Konzept §3.1, E5/E11)
+ *
+ * Die Karte „Was den Preis gemacht hat" ist entfallen; ihre Zeilen wohnen hier.
+ * Diese Tests fahren die 15 Konzept-Fixtures und nageln die zwei Regeln fest,
+ * die dabei nicht verloren gehen durften.
+ * ------------------------------------------------------------------------ */
+
+describe('E5/E11 · die Preise über alle Fixtures', () => {
+  const labels = (f: Fixture) =>
+    ebene2({ money: f.money, netzladenErlaubt: null }).zeilen.map((z) => z.label);
+
+  it('nennt die MARKT-Größen ausschließlich bei Direktvermarktung (Befund B9)', () => {
+    for (const f of FX) {
+      const l = labels(f);
+      const marktzeilen = ['Monatsmarktwert Solar', 'Anzulegender Wert', 'Marktprämie'].filter((x) =>
+        l.includes(x),
+      );
+      if (f.money.plantKind === 'direktvermarktung') {
+        // Sie stehen dort, WO der Endpunkt sie liefert — ohne anzulegenden Wert
+        // wird keine Prämie behauptet.
+        expect(l).toContain('Einspeisepreis');
+      } else {
+        expect({ id: f.id, marktzeilen }).toEqual({ id: f.id, marktzeilen: [] });
+      }
+    }
+  });
+
+  it('gibt JEDER Fixture ihren Bezugspreis und ihre Bewertungs-Zeile', () => {
+    for (const f of FX) {
+      const l = labels(f);
+      expect({ id: f.id, hat: l.includes('Bezugspreis') }).toEqual({ id: f.id, hat: true });
+      expect({ id: f.id, hat: l.includes('Bewertung') }).toEqual({ id: f.id, hat: true });
+    }
+  });
+
+  it('bleibt im Textbudget von acht Zeilen (§3.4)', () => {
+    for (const f of FX) {
+      const n = ebene2({ money: f.money, netzladenErlaubt: true }).zeilen.length;
+      expect({ id: f.id, ok: n <= 8 }).toEqual({ id: f.id, ok: true });
+    }
+  });
+
+  it('trägt die Netzladen-Zahl der früheren Preis-Karte, wo es eine gibt', () => {
+    const f = FX.find((x) => x.id === 'dv-monat')!;
+    const mit = ebene2({
+      money: { ...f.money, arbitrageEur: 12.4 },
+      netzladenErlaubt: true,
+    }).zeilen.find((z) => z.label === 'Speicher');
+    expect(mit?.wert).toContain('davon durch Netzladen');
+    expect(mit?.wert).toContain('12,40');
+    // Ohne Zurechnung wird kein Handel behauptet — auch nicht als „+ 0,00 €".
+    const ohne = ebene2({
+      money: { ...f.money, arbitrageEur: null },
+      netzladenErlaubt: true,
+    }).zeilen.find((z) => z.label === 'Speicher');
+    expect(ohne?.wert).toBe('darf aus dem Netz laden');
+  });
+});

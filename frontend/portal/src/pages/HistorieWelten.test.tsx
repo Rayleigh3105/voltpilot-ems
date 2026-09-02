@@ -482,26 +482,34 @@ describe('Welt B · Erlöse', () => {
     // Speicher-Schritte (Ebene 1) ist eine andere Aussage und bleibt.
     // ⚠ Seit P1+P5 wohnt sie als Zeile 3 IM SpeicherBlock; ein Wächter auf dem
     //   abgelösten Wirt `.vp-erg-bestand` wäre stillschweigend wahr geworden.
-    expect(document.querySelector('.vp-spb-still')).toBeNull();
+    // ⚠ `:not(.vp-spb-plan)`, weil Zeile 4 (der Planwert, P6/E6) dieselbe
+    //   ruhige Klasse trägt und HIER legitim steht — gesucht ist die
+    //   BESTANDSZEILE, und die fehlt ohne ihre Felder.
+    expect(document.querySelector('.vp-spb-still:not(.vp-spb-plan)')).toBeNull();
     expect(screen.queryByText(BESTAND_BADGE)).not.toBeInTheDocument();
     expect(screen.queryByText(/Folgetag gespeichert/)).not.toBeInTheDocument();
   });
 
-  it('zeigt Geld im Verlauf und die Preise dahinter - für JEDEN Zeitraum', async () => {
+  // P6/E5: die Karte „Was den Preis gemacht hat" ist ENTFALLEN — ihre Zeilen
+  // wohnen in Ebene 2 der Ergebnis-Karte („Preise & Vergütung"). Dieselbe
+  // Preiswahrheit stand zweimal auf der Seite.
+  it('zeigt Geld im Verlauf — und die Preise eine Ebene tiefer statt als Karte', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney({ ...moneyWithData, range: 'month' });
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
     await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
 
     expect(screen.getByRole('heading', { level: 2, name: /Geld im Verlauf/ })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: 'Was den Preis gemacht hat' })).toBeInTheDocument();
-    expect(screen.getByText('Ø Bezugspreis')).toBeInTheDocument();
-    expect(screen.getByText('4,9 ct/kWh')).toBeInTheDocument();
-    // Die drei EXPORT-Zeilen leben seit dem Kombinations-Bild eine Karte höher
-    // (Absorption, Konzept D2) - dieselbe Wahrheit steht nie zweimal auf einer
-    // Seite. Die Einordnung trägt dort der Verdikt-Chip.
-    expect(screen.queryByText('8,9 ct/kWh')).not.toBeInTheDocument();
-    expect(screen.queryByText('3,0 ct über dem Monatsdurchschnitt')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Was den Preis gemacht hat' })).toBeNull();
+
+    // Der Bezugspreis steht in der Tabelle hinter „Preise & Vergütung".
+    const ebene2 = document.querySelector('details.vp-e2') as HTMLDetailsElement;
+    expect(ebene2).toBeTruthy();
+    expect(within(ebene2).getByText('Bezugspreis')).toBeInTheDocument();
+    expect(ebene2.textContent).toMatch(/4,9.ct/);
+
+    // Die EXPORT-Zeilen leben unverändert im Kombinations-Bild eine Karte
+    // höher; die Einordnung trägt dort der Verdikt-Chip.
     expect(screen.getByText('+ 3,0 ct über dem Monatsdurchschnitt')).toBeInTheDocument();
   });
 
@@ -540,18 +548,23 @@ describe('Welt B · Erlöse', () => {
     );
   });
 
-  it('trennt die BEWERTETE Zahl von der GEPLANTEN — je Karte ein Abzeichen', async () => {
+  // P6/E6: die Karte „Geplante Speicher-Ersparnis" ist ENTFALLEN — die Zahl
+  // steht als Zeile 4 des Speicher-Blocks, direkt unter der gemessenen Zahl,
+  // mit der sie sich vergleicht. Die TRENNUNG der zwei Abzeichen bleibt.
+  it('trennt die BEWERTETE Zahl von der GEPLANTEN — Karte gegen Zeile', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
     await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
-    expect(screen.getByRole('heading', { level: 2, name: /Geplante Speicher-Ersparnis/ })).toBeInTheDocument();
-    // Beide Abzeichen existieren - und zwar an verschiedenen Karten.
+    expect(screen.queryByRole('heading', { level: 2, name: /Geplante Speicher-Ersparnis/ })).toBeNull();
+    const plan = document.querySelector('.vp-spb-plan') as HTMLElement;
+    expect(plan).toBeTruthy();
+    // Beide Abzeichen existieren - und zwar an verschiedenen Flächen.
     expect(screen.getAllByText('Bewertet').length).toBeGreaterThan(0);
-    expect(screen.getByText('Geplant')).toBeInTheDocument();
+    expect(within(plan).getByText('Geplant')).toBeInTheDocument();
     // Die geplante Zahl kommt weiterhin aus der Historie-Antwort.
-    expect(screen.getByText('0,42 €')).toBeInTheDocument();
+    expect(plan.textContent).toMatch(/0,42/);
     // Der Tages-Nachweis + das Tagesprotokoll bleiben hier.
     expect(screen.getByTestId('day-chart')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: 'Tagesprotokoll' })).toBeInTheDocument();
