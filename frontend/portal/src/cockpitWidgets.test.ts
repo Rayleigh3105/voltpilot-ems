@@ -126,6 +126,10 @@ function money(over: Partial<EarningsSite> = {}): EarningsSite {
     einspeiseErloesEur: 12.5,
     eigenverbrauchsWertEur: 4.5,
     gesamtertragEur: 17,
+    // Stromkosten 1,60 EUR => das Ergebnis unterm Strich sind 15,40 EUR. Der
+    // Cockpit-Held zeigt seit E9/P9 DIESE Zahl, nicht den Gesamtertrag.
+    stromkostenEur: 1.6,
+    nettoErgebnisEur: 15.4,
     savedEur: 3.25,
     arbitrageEur: null,
     anzulegenderWertCtKwh: null,
@@ -299,7 +303,7 @@ describe('Der Hero', () => {
 
   it('stellt die Speicher-Aussage als UNTERZEILE, nie als eigenen Summanden', () => {
     const hero = cockpitHero({ totals: TOTALS, money: money(), range: 'month', now: NOW });
-    expect(hero.money?.value).toBe(`17,00${NBSP}€`);
+    expect(hero.money?.value).toBe(`+ 15,40${NBSP}€`);
     // Erlöse-Konzept §3.5: derselbe Wert misst den GANZEN Speicher — „Steuerung"
     // ist erst `savedSteuerungEur`. Ohne Aufteilung steht deshalb nur Zeile 1.
     expect(hero.money?.attribution).toBe(`Speicher + 3,25${NBSP}€`);
@@ -341,7 +345,7 @@ describe('Der Hero', () => {
     expect(hero.money?.bestand?.text).toContain('Speicherenergie seit Tagesbeginn gespeichert');
     expect(hero.money?.bestand?.badge).toBe('Kein Abzug');
     // Der geplante Bestand bleibt daneben und verändert die gemessene Summe nie.
-    expect(hero.money?.value).toBe(`17,00${NBSP}€`);
+    expect(hero.money?.value).toBe(`+ 15,40${NBSP}€`);
   });
 
   it('nennt keine Fahrplan-Zeile ohne Plan', () => {
@@ -357,7 +361,7 @@ describe('Die Ring-Kennzahlen folgen dem gewählten Zeitraum (v3.2 M1)', () => {
       'Autarkie · Juli',
       'Eigenverbrauch · Juli',
     ]);
-    expect(monat.money?.label).toBe('Verdient · Juli');
+    expect(monat.money?.label).toBe('Unterm Strich · Juli');
 
     // Heute: das Tages-Etikett.
     const heute = cockpitHero({ totals: TOTALS, money: money(), range: 'day', now: NOW });
@@ -383,7 +387,7 @@ describe('Die Ring-Kennzahlen folgen dem gewählten Zeitraum (v3.2 M1)', () => {
       now: NOW,
     });
     expect(mai.rings[0].label).toBe('Autarkie · Mai');
-    expect(mai.money?.label).toBe('Verdient · Mai');
+    expect(mai.money?.label).toBe('Unterm Strich · Mai');
   });
 
   it('bildet den Zeitraum-Tab auf den Historie-Bereich ab; „Gesamt" hat keinen', () => {

@@ -120,6 +120,9 @@ const earnings: Earnings = {
       einspeiseErloesEur: 900,
       eigenverbrauchsWertEur: 99.26,
       gesamtertragEur: 999.26,
+      // Stromkosten 40 EUR => actual = stromkosten - einspeise = -860; das
+      // Ergebnis unterm Strich sind 900 + 99,26 - 40 = 959,26 EUR (E9 / P9).
+      actualEur: -860,
       savedEur: 161.44,
       eingespeistKwh: 9573.8,
       coveredSlots: 2880,
@@ -237,25 +240,34 @@ describe('Portfolio · Welt B „Erlöse"', () => {
       'Monat',
       'Jahr',
     ]);
-    await screen.findByLabelText('Woraus sich der Ertrag zusammensetzt');
+    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
   });
 
   it('führt mit der Summe, ihren Teilen und der Zurechnung der Steuerung', async () => {
     vi.spyOn(api, 'earnings').mockResolvedValue(earnings);
     render(<PortfolioErloese sites={[DACHAU, LINDENBERG]} />);
 
-    // Die große Zahl IST die Summe der gezeigten Teile (900 + 99,26). Sie steht
-    // oben UND in der Zeile ihrer Anlage - deshalb wird sie hier gezielt in der
-    // Summenzeile gesucht.
-    expect(await screen.findByText(/999,26 €/, { selector: '.vp-pf-summe' })).toBeInTheDocument();
-    const teile = screen.getByLabelText('Woraus sich der Ertrag zusammensetzt');
+    // Die große Zahl ist seit E9 / P9 das Ergebnis UNTERM STRICH - dieselbe
+    // Größe, die die Anlagen-Seite zeigt, in die ein Klick auf eine Zeile
+    // führt - und sie IST die Summe der drei gezeigten Teile
+    // (900 + 99,26 - 40). Sie steht oben UND in der Zeile ihrer Anlage,
+    // deshalb wird sie hier gezielt in der Summenzeile gesucht.
+    expect(await screen.findByText(/959,26 €/, { selector: '.vp-pf-summe' })).toBeInTheDocument();
+    expect(screen.getByText('Unterm Strich im Zeitraum')).toBeInTheDocument();
+    const teile = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
     expect(teile).toHaveTextContent('Einspeise-Erlös');
     expect(teile).toHaveTextContent('900,00 €');
     expect(teile).toHaveTextContent('Wert des Eigenverbrauchs');
+    expect(teile).toHaveTextContent('Stromkosten (Netzbezug)');
+    expect(teile).toHaveTextContent('− 40,00 €');
     // Die Steuerung ist eine ZURECHNUNG unter der Zahl, nie ein Summand.
     expect(screen.getByText(/davon 161,44 € durch VoltPilots Steuerung/)).toBeInTheDocument();
-    // Und die Anlage ohne bewertete Viertelstunde nennt ihren Grund.
+    // Und die Anlage ohne bewertete Viertelstunde nennt ihren Grund - UND sie
+    // wird an der Summe genannt, statt still als 0 mitgezählt zu werden.
     expect(screen.getByText('Noch keine Börsenpreise für den Zeitraum.')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Für eine Anlage liegt in diesem Zeitraum noch kein Ergebnis vor/),
+    ).toBeInTheDocument();
     expect(screen.getByText('1 von 2 Anlagen mit Daten in diesem Zeitraum')).toBeInTheDocument();
   });
 
@@ -279,6 +291,6 @@ describe('Portfolio · Welt B „Erlöse"', () => {
     render(<PortfolioErloese sites={[DACHAU]} />);
 
     expect(await screen.findByText('Noch kein Ergebnis für diesen Zeitraum')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Woraus sich der Ertrag zusammensetzt')).toBeNull();
+    expect(screen.queryByLabelText('Woraus sich das Ergebnis zusammensetzt')).toBeNull();
   });
 });

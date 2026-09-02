@@ -2625,6 +2625,17 @@ export interface CockpitMoney {
   speicherWertCtKwh?: number | null;
   speicherWertEur?: number | null;
   speicherWertBasis?: string | null;
+  /**
+   * Die EINE grosse Zahl aller Flaechen: das Ergebnis „unterm Strich"
+   * (Erloese-Konzept E9, Paket P9). Beide Endpunkte tragen genau EINEN der
+   * zwei Wege dorthin, und `erloesNetto.nettoEur()` ist die EINE Ableitung,
+   * die sie liest: der anlagen-scharfe Endpunkt liefert `nettoErgebnisEur`
+   * fertig, der mandantenweite nur `actualEur` (aus dem sich dasselbe Netto
+   * ueber die serverseitig zugesicherte Identitaet ergibt). Optional, damit
+   * ein aelterer Endpunkt und jede Test-Attrappe den Vertrag weiter erfuellt.
+   */
+  nettoErgebnisEur?: number | null;
+  actualEur?: number | null;
 }
 
 export interface EarningsSite extends CockpitMoney {

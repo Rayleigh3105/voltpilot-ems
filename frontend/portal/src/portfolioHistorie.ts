@@ -46,6 +46,7 @@ import {
   type EnergieSumme,
   type EnergieSummeKey,
 } from './energieBilanz';
+import { nettoEur } from './erloesNetto';
 import { WELTEN, type Provenienz, type WeltId } from './historieWelten';
 import type { PageId } from './nav';
 import { activeModes } from './surface';
@@ -383,21 +384,38 @@ export interface ErloeseZeile {
   siteId: string;
   name: string;
   zustand: ZeilenZustand;
-  /** Ertrag der Anlage im Zeitraum (Einspeisung + Wert des Eigenverbrauchs). */
-  ertragEur: number | null;
-  /** Die ZURECHNUNG der Steuerung — steckt bereits im Ertrag. */
+  /**
+   * Das Ergebnis der Anlage im Zeitraum UNTERM STRICH — Einspeisung + Wert des
+   * Eigenverbrauchs − Stromkosten (Erlöse-Konzept E9 / P9). Vorher stand hier
+   * der Gesamtertrag OHNE Stromkosten, also eine andere Zahl als auf der
+   * Anlagen-Seite, die derselbe Klick öffnet (Befund B11/B12).
+   */
+  nettoEur: number | null;
+  /** Die ZURECHNUNG der Steuerung — steckt bereits im Ergebnis. */
   savedEur: number | null;
   eingespeistKwh: number | null;
-  /** Der Ertrag je Abschnitt — die Mini-Trend-Spalte. */
+  /**
+   * Der ERTRAG je Abschnitt — die Mini-Trend-Spalte. Sie bleibt bewusst der
+   * Ertrag: der mandantenweite Endpunkt liefert seine Reihe nur so, und die
+   * Spalte zeigt einen VERLAUF, keine Zahl. Ihre Beschriftung sagt das.
+   */
   spark: (number | null)[];
   hinweis: string | null;
 }
 
 export interface ErloeseAggregat {
-  /** Σ Ertrag — per Konstruktion die Summe der beiden Teile darunter. */
-  ertragEur: number | null;
+  /** Σ unterm Strich — per Konstruktion die Summe der drei Teile darunter. */
+  nettoEur: number | null;
   einspeiseEur: number | null;
   eigenverbrauchEur: number | null;
+  /** Σ Stromkosten (Netzbezug) — der abzuziehende Teil. */
+  stromkostenEur: number | null;
+  /**
+   * Anlagen, für die im Zeitraum kein Ergebnis unterm Strich vorliegt, obwohl
+   * der Endpunkt sie nennt — sie fehlen in der Summe und werden GENANNT statt
+   * als 0 mitgezählt.
+   */
+  ohneErgebnis: number;
   /** Σ der Steuerungs-Zurechnung (nie ein weiterer Summand). */
   savedEur: number | null;
   /** Σ der bewerteten Viertelstunden — die Datenbasis in einer Zahl. */
@@ -433,13 +451,26 @@ export function zeilenHinweis(reason: EarningsReason | null): string {
 /**
  * Die Portfolio-Summe des Geldes plus die Anlagen-Tabelle darunter.
  *
- * **Die große Zahl ist per Konstruktion die Summe der zwei gezeigten Teile**
- * (Einspeise-Erlös + Wert des Eigenverbrauchs) — genau die Regel der
- * Anlagen-Welt, eine Ebene höher. `savedEur` ist die ZURECHNUNG der Steuerung
- * und steckt bereits darin (MIG §5); die vermiedenen Leistungskosten gehören
- * einer anderen Periode und tauchen hier bewusst gar nicht auf.
+ * **Die große Zahl ist das Ergebnis UNTERM STRICH** (Erlöse-Konzept E9 / P9) —
+ * dieselbe Größe und dasselbe Wort, die die Anlagen-Welt zeigt, in die ein
+ * Klick auf eine Zeile führt. Vorher stand hier der Gesamtertrag OHNE
+ * Stromkosten, und die Flotte behauptete für denselben Tag eine andere Zahl
+ * als jede einzelne Anlage darin (Befund B11/B12).
  *
- * Die Reihenfolge der Zeilen folgt dem Ertrag (die größte Anlage zuerst);
+ * **Die drei gezeigten Teile ERGEBEN sie** (Einspeise-Erlös + Wert des
+ * Eigenverbrauchs − Stromkosten) — genau die Regel der Anlagen-Welt, eine
+ * Ebene höher. `savedEur` ist die ZURECHNUNG der Steuerung und steckt bereits
+ * darin (MIG §5); die vermiedenen Leistungskosten gehören einer anderen
+ * Periode und tauchen hier bewusst gar nicht auf.
+ *
+ * ⚠ Die Stromkosten sind der EINE Teil, den der mandantenweite Endpunkt nicht
+ * selbst nennt — er trägt statt ihrer `actualEur`, aus dem sie sich über die
+ * serverseitig zugesicherte Identität `stromkosten − einspeise = actual`
+ * ergeben. Nachgerechnet wird nichts anderes: das Netto selbst kommt aus der
+ * EINEN Ableitung `erloesNetto.nettoEur`, die auch Cockpit und Erlöse-Seite
+ * fahren.
+ *
+ * Die Reihenfolge der Zeilen folgt dem Ergebnis (die größte Anlage zuerst);
  * Anlagen ohne Zahlen stehen am Ende, mit ihrem Grund.
  */
 export function erloeseAggregat(
@@ -455,13 +486,13 @@ export function erloeseAggregat(
 
   const zeilen: ErloeseZeile[] = liste.map((s) => {
     const money = byId.get(s.id) ?? null;
-    const ertragEur = money?.gesamtertragEur ?? null;
-    const zustand: ZeilenZustand = ertragEur == null ? 'leer' : 'daten';
+    const zeilenNetto = nettoEur(money);
+    const zustand: ZeilenZustand = zeilenNetto == null ? 'leer' : 'daten';
     return {
       siteId: s.id,
       name: s.name,
       zustand,
-      ertragEur,
+      nettoEur: zeilenNetto,
       savedEur: money?.savedEur ?? null,
       eingespeistKwh: money?.eingespeistKwh ?? null,
       spark: money ? money.series.map((p) => p.gesamtertragEur) : [],
@@ -471,28 +502,39 @@ export function erloeseAggregat(
 
   zeilen.sort((a, b) => {
     if (a.zustand !== b.zustand) return a.zustand === 'daten' ? -1 : 1;
-    if (a.ertragEur != null && b.ertragEur != null) return b.ertragEur - a.ertragEur;
+    if (a.nettoEur != null && b.nettoEur != null) return b.nettoEur - a.nettoEur;
     return a.name.localeCompare(b.name, 'de');
   });
 
+  // Beitragend ist, wer wirklich ein Ergebnis hat — eine Anlage ohne Netto darf
+  // die Teile nicht mit Zahlen fuellen, die sich nicht zur Summe addieren.
   const beitragende = zeilen
+    .filter((z) => z.zustand === 'daten')
     .map((z) => byId.get(z.siteId))
     .filter((m): m is EarningsSite => m != null);
   const einspeiseEur = summe(beitragende.map((m) => m.einspeiseErloesEur));
   const eigenverbrauchEur = summe(beitragende.map((m) => m.eigenverbrauchsWertEur));
-  const ertragEur =
-    einspeiseEur == null && eigenverbrauchEur == null
-      ? null
-      : (einspeiseEur ?? 0) + (eigenverbrauchEur ?? 0);
+  // Stromkosten je Anlage = actual + Einspeise-Erlös (die serverseitige
+  // Identität; der Flotten-Endpunkt nennt sie nicht selbst).
+  const stromkostenEur = summe(
+    beitragende.map((m) =>
+      typeof m.actualEur === 'number' && Number.isFinite(m.actualEur)
+        ? m.actualEur + (m.einspeiseErloesEur ?? 0)
+        : null,
+    ),
+  );
+  const summeNetto = summe(zeilen.map((z) => z.nettoEur));
 
   return {
-    ertragEur,
+    nettoEur: summeNetto,
     einspeiseEur,
     eigenverbrauchEur,
+    stromkostenEur,
+    ohneErgebnis: zeilen.filter((z) => z.zustand !== 'daten' && byId.has(z.siteId)).length,
     savedEur: summe(beitragende.map((m) => m.savedEur)),
     coveredSlots: beitragende.reduce((n, m) => n + (m.coveredSlots ?? 0), 0),
     zeilen,
     abdeckung: abdeckung(zeilen.map((z) => z.zustand)),
-    leer: ertragEur == null,
+    leer: summeNetto == null,
   };
 }

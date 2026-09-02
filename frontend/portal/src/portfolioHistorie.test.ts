@@ -309,6 +309,9 @@ describe('erloeseAggregat', () => {
     einspeiseErloesEur: 900,
     eigenverbrauchsWertEur: 99.26,
     gesamtertragEur: 999.26,
+    // Stromkosten 40 EUR => actual = stromkosten - einspeise = -860; das Netto
+    // ist 900 + 99,26 - 40 = 959,26 (die Identitaet, die `nettoEur` fuehrt).
+    actualEur: -860,
     savedEur: 161.44,
     eingespeistKwh: 9573.8,
     coveredSlots: 2880,
@@ -322,6 +325,8 @@ describe('erloeseAggregat', () => {
     name: 'Hof Lindenberg',
     einspeiseErloesEur: 62.21,
     gesamtertragEur: 62.21,
+    // Stromkosten 12,21 EUR => actual = -50; Netto = 62,21 - 12,21 = 50,00.
+    actualEur: -50,
     savedEur: 16.79,
     eingespeistKwh: 1028.3,
     coveredSlots: 859,
@@ -332,20 +337,28 @@ describe('erloeseAggregat', () => {
     const a = erloeseAggregat([dachau, lindenberg]);
     expect(a.einspeiseEur).toBeCloseTo(962.21, 6);
     expect(a.eigenverbrauchEur).toBeCloseTo(99.26, 6);
-    expect(a.ertragEur).toBeCloseTo(1061.47, 6);
-    expect((a.einspeiseEur ?? 0) + (a.eigenverbrauchEur ?? 0)).toBeCloseTo(a.ertragEur ?? 0, 6);
-    // Die Steuerung ist eine ZURECHNUNG - sie steckt schon im Ertrag.
+    expect(a.stromkostenEur).toBeCloseTo(52.21, 6);
+    // Die grosse Zahl ist seit E9 das Ergebnis UNTERM STRICH — und die drei
+    // gezeigten Teile ergeben sie exakt.
+    expect(a.nettoEur).toBeCloseTo(1009.26, 6);
+    expect(
+      (a.einspeiseEur ?? 0) + (a.eigenverbrauchEur ?? 0) - (a.stromkostenEur ?? 0),
+    ).toBeCloseTo(a.nettoEur ?? 0, 6);
+    // Die Steuerung ist eine ZURECHNUNG - sie steckt schon darin.
     expect(a.savedEur).toBeCloseTo(178.23, 6);
     expect(a.coveredSlots).toBe(3739);
   });
 
   it('zählt eine Anlage ohne bewertete Viertelstunde nie als 0', () => {
     const a = erloeseAggregat([dachau, ohne]);
-    expect(a.ertragEur).toBeCloseTo(999.26, 6);
+    expect(a.nettoEur).toBeCloseTo(959.26, 6);
     expect(a.abdeckung.satz).toBe('1 von 2 Anlagen mit Daten in diesem Zeitraum');
+    // Sie fehlt in der Summe UND wird gezaehlt, damit die Flaeche sie nennen
+    // kann statt sie stillschweigend als 0 mitzufuehren.
+    expect(a.ohneErgebnis).toBe(1);
     const zeile = a.zeilen.find((z) => z.siteId === 'c');
     expect(zeile?.zustand).toBe('leer');
-    expect(zeile?.ertragEur).toBeNull();
+    expect(zeile?.nettoEur).toBeNull();
     expect(zeile?.hinweis).toBe('Keine Messwerte in diesem Zeitraum.');
   });
 
@@ -355,7 +368,7 @@ describe('erloeseAggregat', () => {
     expect(zeilenHinweis(null)).toBe('Keine Messwerte in diesem Zeitraum.');
   });
 
-  it('führt die ertragreichste Anlage oben, Anlagen ohne Zahlen am Ende', () => {
+  it('führt die ergiebigste Anlage oben, Anlagen ohne Zahlen am Ende', () => {
     const a = erloeseAggregat([lindenberg, ohne, dachau]);
     expect(a.zeilen.map((z) => z.siteId)).toEqual(['a', 'b', 'c']);
     expect(a.zeilen[0].spark).toEqual([400, 599.26]);
@@ -368,13 +381,17 @@ describe('erloeseAggregat', () => {
     ]);
     expect(a.zeilen.map((z) => z.siteId)).toEqual(['a', 'z']);
     expect(a.zeilen[1].zustand).toBe('leer');
-    expect(a.ertragEur).toBeCloseTo(999.26, 6);
+    expect(a.nettoEur).toBeCloseTo(959.26, 6);
+    // Eine Anlage, die der Endpunkt gar nicht nennt, ist keine Anlage OHNE
+    // Ergebnis — sie hat nur (noch) keine Antwort.
+    expect(a.ohneErgebnis).toBe(0);
   });
 
   it('ist LEER, solange keine Anlage etwas Bewertetes trägt', () => {
     const a = erloeseAggregat([ohne]);
     expect(a.leer).toBe(true);
-    expect(a.ertragEur).toBeNull();
+    expect(a.nettoEur).toBeNull();
+    expect(a.stromkostenEur).toBeNull();
     expect(a.savedEur).toBeNull();
   });
 });

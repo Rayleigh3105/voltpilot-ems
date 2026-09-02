@@ -14,6 +14,7 @@ import {
 } from '../historieVergleich';
 import { historieHash } from '../historieWelten';
 import { DASH, signedEuro, steeringAttributionNote } from '../erloesKomposition';
+import { NETTO_WORT } from '../erloesNetto';
 import { SteuerungFormel } from '../components/SteuerungFormel';
 import {
   erloeseAggregat,
@@ -52,10 +53,17 @@ import { oeffneAnlagenWelt } from './portfolioWeltNav';
  *
  * **Zwei Regeln, die von der Anlagen-Welt eins zu eins gelten:** die gezeigten
  * Teile ERGEBEN die große Zahl, und der Beitrag der Steuerung ist eine
- * ZURECHNUNG darunter — nie ein weiterer Summand (er steckt schon im Ertrag).
+ * ZURECHNUNG darunter — nie ein weiterer Summand (er steckt schon darin).
+ *
+ * **Die große Zahl ist seit E9 / P9 das Ergebnis UNTERM STRICH** — dieselbe
+ * Größe und dasselbe Wort wie auf der Anlagen-Seite, die ein Klick auf eine
+ * Zeile öffnet (Erlöse-Konzept §2.3 B11/B12: die Flotte behauptete für
+ * denselben Tag eine andere Zahl als jede einzelne Anlage darin). Der fehlende
+ * Zeitraum „Woche" bleibt, was er war — eine Grenze der Quelle (siehe oben),
+ * keine zweite Rechenart.
  */
 
-const SPALTEN = ['Anlage', 'Ertrag', 'Durch Steuerung', 'Eingespeist', 'Verlauf'] as const;
+const SPALTEN = ['Anlage', NETTO_WORT, 'Durch Steuerung', 'Eingespeist', 'Verlauf'] as const;
 
 function Zeile({
   zeile,
@@ -84,9 +92,9 @@ function Zeile({
           {zeile.hinweis && <span className="vp-pf-row-note">{zeile.hinweis}</span>}
         </div>
       </td>
-      <td className="num" data-label="Ertrag">
+      <td className="num" data-label={NETTO_WORT}>
         <span className="vp-pf-v">
-          {zeile.ertragEur == null ? DASH : signedEuro(zeile.ertragEur)}
+          {zeile.nettoEur == null ? DASH : signedEuro(zeile.nettoEur)}
         </span>
       </td>
       <td className="num" data-label="Durch Steuerung">
@@ -141,8 +149,9 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
   const vergleichName = vergleichsName(anchor, range);
   const laufend = vorher ? laufendHinweis(anchor, range, now) : null;
   const kontext = `${sites.length} ${sites.length === 1 ? 'Anlage' : 'Anlagen'} · ${label}`;
-  // Mehr Ertrag ist eindeutig besser - hier darf gewertet werden.
-  const ertragDelta = delta(aggregat?.ertragEur, vorher?.ertragEur, true, vergleichName);
+  // Mehr unterm Strich ist eindeutig besser - hier darf gewertet werden. Beide
+  // Seiten des Vergleichs sind dieselbe Groesse wie auf der Anlagen-Seite (E9).
+  const nettoDelta = delta(aggregat?.nettoEur, vorher?.nettoEur, true, vergleichName);
   const zurechnung = steeringAttributionNote(aggregat?.savedEur);
 
   return (
@@ -178,7 +187,7 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
                 <KartenKopf
                   icon="euro"
                   category="primary"
-                  titel={`Ertrag aller Anlagen · ${label}`}
+                  titel={`Ergebnis aller Anlagen · ${label}`}
                   art="bewertet"
                   extra={
                     vorher ? (
@@ -186,7 +195,7 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
                     ) : undefined
                   }
                 />
-                {aggregat.ertragEur == null ? (
+                {aggregat.nettoEur == null ? (
                   <EmptyState
                     icon="euro"
                     category="dynamic"
@@ -196,8 +205,8 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
                 ) : (
                   <>
                     <p className="vp-pf-summe">
-                      {signedEuro(aggregat.ertragEur)}
-                      <span className="vp-pf-summe-l">Ertrag im Zeitraum</span>
+                      {signedEuro(aggregat.nettoEur)}
+                      <span className="vp-pf-summe-l">Unterm Strich im Zeitraum</span>
                     </p>
                     {zurechnung && (
                       <>
@@ -211,17 +220,21 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
                         <SteuerungFormel input={{ tarifneutral: true }} />
                       </>
                     )}
-                    {ertragDelta && (
+                    {nettoDelta && (
                       <p className="vp-kpi-delta">
-                        <DeltaZeile delta={ertragDelta} />
+                        <DeltaZeile delta={nettoDelta} />
                       </p>
                     )}
                     {laufend && <p className="vp-note vp-note-laufend">{laufend}</p>}
 
                     {/* Woraus die große Zahl besteht - ein Teil ohne Wert wird
                         gar nicht erst gezeigt (eine Liste aus „—" erklärt
-                        nichts, MIG §5). */}
-                    <ul className="vp-pf-teile" aria-label="Woraus sich der Ertrag zusammensetzt">
+                        nichts, MIG §5). Die drei Teile ERGEBEN die Summe
+                        darüber: Einspeisung + Eigenverbrauch − Stromkosten. */}
+                    <ul
+                      className="vp-pf-teile"
+                      aria-label="Woraus sich das Ergebnis zusammensetzt"
+                    >
                       {aggregat.einspeiseEur != null && (
                         <li>
                           <span className="vp-pf-teil-l">Einspeise-Erlös</span>
@@ -236,7 +249,24 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
                           </span>
                         </li>
                       )}
+                      {aggregat.stromkostenEur != null && (
+                        <li>
+                          <span className="vp-pf-teil-l">Stromkosten (Netzbezug)</span>
+                          <span className="vp-pf-teil-v">
+                            {signedEuro(-aggregat.stromkostenEur)}
+                          </span>
+                        </li>
+                      )}
                     </ul>
+                    {/* Ehrlich statt still: eine Anlage ohne Ergebnis fehlt in
+                        der Summe und wird GENANNT — sie zählt nicht als 0. */}
+                    {aggregat.ohneErgebnis > 0 && (
+                      <p className="vp-note">
+                        {aggregat.ohneErgebnis === 1
+                          ? 'Für eine Anlage liegt in diesem Zeitraum noch kein Ergebnis vor – sie fehlt in der Summe.'
+                          : `Für ${aggregat.ohneErgebnis} Anlagen liegt in diesem Zeitraum noch kein Ergebnis vor – sie fehlen in der Summe.`}
+                      </p>
+                    )}
                     <AbdeckungsSatz abdeckung={aggregat.abdeckung} />
                   </>
                 )}

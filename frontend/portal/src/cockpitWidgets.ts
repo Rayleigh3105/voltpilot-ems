@@ -59,10 +59,12 @@ import {
   DASH,
   bestandZeile,
   erloesKomposition,
+  signedEuro,
   type BestandZeile,
   type SteuerungFormelInput,
 } from './erloesKomposition';
-import { eurAmount, fmtNum } from './format';
+import { NETTO_WORT, nettoEur } from './erloesNetto';
+import { fmtNum } from './format';
 import type { PeakBandView } from './peakBand';
 import { planSentence, type PlanWordingKind } from './schedule';
 import { speicherAussage } from './speicherAussage';
@@ -437,7 +439,14 @@ export function cockpitHero(input: {
     });
   }
 
-  const total = num(input.money?.gesamtertragEur) ?? num(input.money?.einspeiseErloesEur);
+  // EINE Zahl ueber die Flaechen (Erloese-Konzept E9 / P9, Befund B11): der
+  // Held ist das Ergebnis UNTERM STRICH — dieselbe Zahl und dasselbe Wort, die
+  // die Erloese-Welt eine Ebene tiefer zeigt. Vorher stand hier der
+  // GESAMTERTRAG (ohne Stromkosten) unter dem Wort „Verdient", und ein Klick
+  // vom Cockpit in die Erloese-Welt zeigte zwei Zahlen fuer denselben Tag.
+  // Gelesen wird sie NICHT hier, sondern in `erloesNetto.nettoEur` — der EINEN
+  // Ableitung, die auch die Erloese-Seite und das Portfolio fahren.
+  const total = nettoEur(input.money);
   const periodEnd = input.money?.to ? new Date(input.money.to).getTime() : NaN;
   const running = Number.isFinite(periodEnd) && periodEnd > input.now.getTime();
   // Die SPEICHER-AUSSAGE in Kurzform (Erlöse-Konzept §3.5/§3.6, P5): dieselbe
@@ -452,8 +461,11 @@ export function cockpitHero(input: {
     total == null
       ? null
       : {
-          label: `Verdient · ${label}`,
-          value: eurAmount(total),
+          label: `${NETTO_WORT} · ${label}`,
+          // Vorzeichen wie auf der Erloese-Seite: das Netto KANN negativ sein
+          // (mehr Stromkosten als Ertrag), und derselbe Wert darf hier nicht
+          // anders aussehen als eine Ebene tiefer.
+          value: signedEuro(total),
           attribution,
           attributionTitel: speicher?.kurzTitel ?? null,
           attributionInterim: running && attribution != null,
