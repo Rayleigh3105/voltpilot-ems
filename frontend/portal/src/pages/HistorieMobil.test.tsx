@@ -336,6 +336,23 @@ describe('Mobil · die klebende Bedienzeile hat GENAU ZWEI Zeilen (P4)', () => {
   });
 });
 
+/**
+ * ⚠ Die Aufklapper des Verlaufs sind seit P2b ein natives `<details>`/`<summary>`
+ * (der geteilte {@link Aufklapper}, Konzept §3.2 V8) — kein `<button>` mehr.
+ * `getByRole('button')` findet ein `summary` NICHT: `dom-accessibility-api`
+ * bildet es auf keinen Rang ab. Die Zeile wird deshalb über ihren Titel
+ * adressiert; `aria-expanded` steht weiterhin daran und bleibt prüfbar.
+ */
+function aufklapper(name: RegExp): HTMLElement {
+  const treffer = [...document.querySelectorAll('summary.vp-c-aufk-sum')].filter((s) =>
+    name.test(s.textContent ?? ''),
+  );
+  if (treffer.length !== 1) {
+    throw new Error(`${treffer.length} Aufklapper für ${name} — erwartet genau einen`);
+  }
+  return treffer[0] as HTMLElement;
+}
+
 describe('Mobil · der Welt-Kopf ist ganz entfallen, das Abzeichen bleibt', () => {
   it('rendert weder Kartenpaar noch Kopfzeile — und behält „Gemessen" an der Karte', async () => {
     await renderMesswerte();
@@ -351,7 +368,7 @@ describe('Mobil · der Welt-Kopf ist ganz entfallen, das Abzeichen bleibt', () =
 
   it('macht die Fußkarte zum Aufklapper — der Wortlaut bleibt erreichbar', async () => {
     await renderMesswerte();
-    const knopf = screen.getByRole('button', { name: /Was diese Zahlen sind/ });
+    const knopf = aufklapper(/Was diese Zahlen sind/);
     expect(knopf).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(knopf);
     expect(await screen.findByText(/nicht geeignet/)).toBeInTheDocument();
@@ -393,8 +410,10 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
       'Der Tag im Bild · Preis, Speicher, Ertrag',
       'Tagesprotokoll',
     ]) {
-      expect(screen.getByRole('button', { name: new RegExp(titel.replace(/[·&]/g, '.')) }))
-        .toHaveAttribute('aria-expanded', 'false');
+      expect(aufklapper(new RegExp(titel.replace(/[·&]/g, '.')))).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
     }
     // Der Tagesnachweis ist zugeklappt — sein Diagramm wird nicht gerendert.
     expect(screen.queryByTestId('day-chart')).toBeNull();
@@ -402,9 +421,11 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
 
   it('öffnet einen Aufklapper mit VOLLEM Inhalt und seinem eigenen Abzeichen', async () => {
     await renderErloese();
-    fireEvent.click(screen.getByRole('button', { name: /Der Tag im Bild/ }));
+    fireEvent.click(aufklapper(/Der Tag im Bild/));
     expect(await screen.findByTestId('day-chart')).toBeInTheDocument();
-    const koerper = document.querySelector('.vp-welt-disclosure-body');
+    // ⚠ Der Körper existiert seit P2b an JEDEM Aufklapper (natives `details`).
+    //   Gemeint ist der des GEÖFFNETEN — sonst greift man den ersten der Seite.
+    const koerper = document.querySelector('details.vp-c-aufk[open] .vp-c-aufk-body');
     expect(within(koerper as HTMLElement).getByText('Gemessen')).toBeInTheDocument();
   });
 

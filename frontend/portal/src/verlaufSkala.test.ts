@@ -60,8 +60,13 @@ const BLAETTER: ReadonlyArray<{
   { reiter: 'Erlöse', datei: 'components/SteuerungFormel.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Erlöse', datei: 'components/PortfolioWelt.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Reiterleiste', datei: 'components/BereichTabs.css', fs: 0, ff: 0, fw: 0 },
+  // Die geteilten Bausteine des Bereichs (P2b) — von Anfang an streng.
+  { reiter: 'Bausteine', datei: 'components/Aufklapper.css', fs: 0, ff: 0, fw: 0 },
   // --- noch nicht umgestellt — Ratsche auf dem IST-Stand vom 03.09.2026 --
-  { reiter: 'Messwerte', datei: 'components/Historie.css', fs: 39, ff: 4, fw: 0 },
+  // P2b hat die Aufklapp-ZEILE aus diesem Blatt in den geteilten Baustein
+  // gehoben; ihre drei Telefon-Ausnahmen (1,05 rem · 0,875 rem · 0,72 rem)
+  // und die vierte fremde Familie sind damit weg — die Ratsche zieht nach.
+  { reiter: 'Messwerte', datei: 'components/Historie.css', fs: 35, ff: 3, fw: 0 },
   { reiter: 'Messwerte', datei: 'components/Verlauf.css', fs: 10, ff: 0, fw: 0 },
   { reiter: 'Messwerte', datei: 'components/Messwerte.css', fs: 18, ff: 0, fw: 3 },
   { reiter: 'Messwerte', datei: 'components/Ereignisse.css', fs: 3, ff: 0, fw: 0 },
@@ -242,5 +247,6 @@ describe('Verlauf P0 · die Ratsche selbst', () => {
     expect(streng).toContain('components/Erloese.css');
     expect(streng).toContain('components/erloese/ErgebnisKarte.css');
     expect(streng).toContain('components/BereichTabs.css');
+    expect(streng).toContain('components/Aufklapper.css');
   });
 });

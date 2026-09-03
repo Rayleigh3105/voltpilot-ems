@@ -1,0 +1,133 @@
+/*
+ * V8 · DER Aufklapper des Bereichs „Verlauf" — EINE Form für alle sechs Reiter
+ * (Konzept `data/vp-verlauf-sprache-konzept-v5` §3.2 V8, Paket P2b).
+ *
+ * Das Vorbild ist die Ledger-Zeile der Erlöse-Seite (`.vp-c-led-det` in
+ * `erloese/ErgebnisKarte.css`): `<details>`/`<summary>`, Titel 16/600, Chevron
+ * rechts, 48 px Trefferfläche über die volle Breite, Inhalt darunter in
+ * Textgröße. Die Ledger-Zeile bleibt, was sie ist — sie trägt zusätzlich
+ * Betrag, Balken und Sekundärzeile in EINEM Raster und ist damit die
+ * Kontoauszugs-VARIANTE derselben Form; dieses Blatt ist die freie Form für
+ * jeden anderen Abschnitt (Fußkarte, Explorer-Abschnitt, Profi-Detail).
+ *
+ * ⚠ **Es gibt KEINE Höhen-Animation.** Ein aufklappender Abschnitt springt
+ * sonst gegen den klebenden Kopf (S1) und der Scrollweg rutscht unter dem
+ * Daumen weg. Bewegt wird ausschließlich der Chevron, über `--vp-c-motion` —
+ * die Dauer steht in `index.css` und ist dort unter `prefers-reduced-motion`
+ * EINMAL auf 0 gesetzt (P0). Ein eigener Media-Block hier wäre ein Zwilling.
+ *
+ * ⚠ **Keine rohe Schriftgröße, keine fremde Familie** — die Ratsche in
+ * `verlaufSkala.test.ts` führt dieses Blatt streng auf 0.
+ */
+
+.vp-c-aufk {
+  min-width: 0;
+}
+
+/* Der UA-Marker („▶") ist ein zweiter Chevron an der falschen Seite. */
+.vp-c-aufk > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* 375: `Titel | Unterzeile | Chevron`. min-height 48 (§3.2 V8) — das IST die
+   Trefferfläche, und weil `summary` die ganze Breite füllt, ist sie so breit
+   wie die Karte statt so breit wie das Wort. */
+.vp-c-aufk-sum {
+  list-style: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  align-items: center;
+  column-gap: var(--vp-c-space-3);
+  row-gap: var(--vp-c-space-1);
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: var(--vp-c-space-2) 0;
+  cursor: pointer;
+  /* Ausdrücklich auf der Skala: `summary` erbt sonst die 1,6 des Portals. */
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-c-aufk-sum:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-sm);
+}
+
+.vp-c-aufk-titel {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-fg, #1e293b);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-c-aufk-sub {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-400);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+}
+
+/* Der Chevron — dieselbe Geometrie wie `.vp-c-led-chev` der Ledger-Zeile. */
+.vp-c-aufk-chev {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  width: 16px;
+  height: 16px;
+  position: relative;
+}
+
+.vp-c-aufk-chev::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 4px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--vp-c-muted-fg, #475569);
+  border-bottom: 2px solid var(--vp-c-muted-fg, #475569);
+  transform: rotate(-45deg);
+  transition: transform var(--vp-c-motion, 200ms) ease;
+}
+
+.vp-c-aufk[open] > .vp-c-aufk-sum .vp-c-aufk-chev::before {
+  transform: rotate(45deg);
+}
+
+.vp-c-aufk-body {
+  margin-top: var(--vp-c-space-3);
+  min-width: 0;
+  font-size: var(--vp-c-fs-16);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+/* ⚠ **Der dokumentierte `nowrap`-Fall**, aus `Historie.css` übernommen: neben
+   einem langen Titel wurde die Unterzeile auf Null gequetscht und brach WORT
+   FÜR WORT um (bei 375 px im Browser gesehen). Am Telefon steht sie deshalb
+   auf einer EIGENEN Zeile — und darf dort umbrechen. */
+@media (max-width: 720px) {
+  .vp-c-aufk-sum {
+    grid-template-columns: minmax(0, 1fr) 16px;
+  }
+
+  .vp-c-aufk-chev {
+    grid-column: 2;
+  }
+
+  .vp-c-aufk-sub {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+    white-space: normal;
+  }
+}

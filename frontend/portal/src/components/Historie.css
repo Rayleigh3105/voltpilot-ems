@@ -319,53 +319,14 @@
   transition: opacity 120ms ease-in;
 }
 
-/* --- Der aufklappbare Abschnitt (Messwerte-Explorer) ---------------------- */
-
-.vp-welt-disclosure {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.vp-wd-title {
-  font-family: 'Inter Tight', Inter, sans-serif;
-  font-weight: 700;
-  font-size: 1.05rem;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.vp-wd-sub {
-  font-size: 0.75rem;
-  color: var(--vp-text-muted, #6c757d);
-  white-space: nowrap;
-}
-
-.vp-wd-chev {
-  margin-left: auto;
-  display: inline-flex;
-  color: var(--vp-text-muted, #6c757d);
-  transition: transform 120ms ease-in-out;
-}
-
-.vp-welt-disclosure.open .vp-wd-chev {
-  transform: rotate(180deg);
-}
-
-.vp-welt-disclosure-body {
-  margin-top: var(--vp-space-4);
-  min-width: 0;
-}
+/* --- Der aufklappbare Abschnitt (Messwerte-Explorer) ----------------------
+   ⚠ **Die ZEILE wohnt seit P2b nicht mehr hier.** Sie ist der geteilte
+   `Aufklapper` (`components/Aufklapper.css`, Konzept §3.2 V8): ein natives
+   `<details>`/`<summary>` in der EINEN Form des Bereichs — 16/600 + Chevron,
+   48 px, Chevron-Drehung über `--vp-c-motion`. Dieses Blatt trägt nur noch die
+   KARTE darum. Die drei Telefon-Ausnahmen der alten Zeile (1,05 rem Titel,
+   0,875 rem am Telefon, 0,72 rem Unterzeile) sind damit erledigt — sie waren
+   drei der rohen Schriftgrößen, die die Ratsche dieses Blattes zählt. */
 
 /* --- Fußkarte „Was diese Zahlen sind" ------------------------------------- */
 
@@ -1086,44 +1047,6 @@
     padding: 10px 14px !important;
   }
 
-  /* **Der dokumentierte `nowrap`-Fall.** `.vp-wd-sub` ist `white-space: nowrap`
-     und weigert sich damit zu schrumpfen; ein langer Titel („So verdient Ihre
-     Anlage · der Markt-Vergleich") wurde daneben auf Null gequetscht und brach
-     WORT FÜR WORT um (bei 375 px im Browser gesehen). Am Telefon ist der
-     Aufklapper deshalb ZWEIZEILIG: Titel + Chevron oben, Unterzeile darunter. */
-  .vp-welt-disclosure {
-    flex-wrap: wrap;
-    row-gap: 2px;
-  }
-
-  .vp-wd-title {
-    flex: 1 1 auto;
-    min-width: 0;
-    order: 0;
-    /* ⚠ 0,92 rem sind 14,7 px — eine EIGENE Stufe neben den 14 px der Skala,
-       und am Telefon die einzige, die sie sprengt (§3.10: die ganze Seite
-       trägt höchstens sechs). 0,875 rem sind exakt die 14 px, die die Fläche
-       ohnehin führt; 0,7 px kleiner sieht niemand. */
-    font-size: 0.875rem;
-    line-height: 1.3;
-  }
-
-  .vp-wd-chev {
-    order: 1;
-  }
-
-  .vp-wd-sub {
-    flex: 1 1 100%;
-    order: 2;
-    min-width: 0;
-    /* ⚠ 0,72 rem sind 11,5 px — unter dem 12-px-Boden der Fläche (Konzept
-       §3.10, im echten Browser bei 375 nachgemessen). Sie steht hier ohnehin
-       auf einer EIGENEN vollen Zeile und darf umbrechen, die 0,5 px kosten
-       also keine Breite. Am Schreibtisch misst dieselbe Zeile schon 12. */
-    font-size: 0.75rem;
-    /* Sie darf hier umbrechen - sie ist keine Spalte mehr, sondern eine Zeile. */
-    white-space: normal;
-  }
 }
 
 /* ==========================================================================
