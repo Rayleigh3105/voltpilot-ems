@@ -62,6 +62,7 @@ const BLAETTER: ReadonlyArray<{
   { reiter: 'Reiterleiste', datei: 'components/BereichTabs.css', fs: 0, ff: 0, fw: 0 },
   // Die geteilten Bausteine des Bereichs (P2b) — von Anfang an streng.
   { reiter: 'Bausteine', datei: 'components/Aufklapper.css', fs: 0, ff: 0, fw: 0 },
+  { reiter: 'Bausteine', datei: 'components/VerlaufZustaende.css', fs: 0, ff: 0, fw: 0 },
   // --- noch nicht umgestellt — Ratsche auf dem IST-Stand vom 03.09.2026 --
   // P2b hat die Aufklapp-ZEILE aus diesem Blatt in den geteilten Baustein
   // gehoben; ihre drei Telefon-Ausnahmen (1,05 rem · 0,875 rem · 0,72 rem)

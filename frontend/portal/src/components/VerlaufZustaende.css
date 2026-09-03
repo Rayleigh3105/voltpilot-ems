@@ -1,0 +1,133 @@
+/*
+ * V10 · Die drei Zustände einer Verlauf-Karte — Laden, Leer, Fehler
+ * (Konzept `data/vp-verlauf-sprache-konzept-v5` §3.2 V10, Paket P2b;
+ * App-Kriterium A10 „Ladezustände reservieren Platz").
+ *
+ * ⚠ **Alle drei leben IN der Karte, nie als eigene Kachel.** Eine Fehlermeldung
+ * mit eigenem Rahmen ersetzt die Karte durch etwas anderes — die Fläche
+ * springt, und die Überschrift, unter der die Zahl stand, ist weg. Hier bleibt
+ * die Karte stehen und WECHSELT nur ihren Inhalt.
+ *
+ * ⚠ **Der Ladezustand reserviert die Höhe des späteren Inhalts.** Ohne das
+ * springt die Seite beim Zeitraumwechsel um mehrere hundert Pixel — und am
+ * Telefon rutscht der Daumen dabei auf etwas anderes.
+ *
+ * ⚠ Keine rohe Schriftgröße, keine fremde Familie — die Ratsche in
+ * `verlaufSkala.test.ts` führt dieses Blatt streng auf 0.
+ */
+
+/* --- Laden: die Anatomie der Karte, in Grau ------------------------------- */
+
+.vp-c-zst-lade {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+/* Das Label einer Sektion ist 12/700 auf `--vp-c-lh-text` = 18 px. */
+.vp-c-zst-label {
+  height: 18px;
+  width: 40%;
+  max-width: 220px;
+}
+
+/* Der Kernsatz ist 16 auf `--vp-c-lh-text` = 24 px. */
+.vp-c-zst-satz {
+  height: 24px;
+  width: 78%;
+}
+
+/* ⚠ **ZWILLING von `.vp-chart` in `index.css`.** Der Platzhalter reserviert
+   nur dann die Höhe des späteren Inhalts, wenn er GENAU dieselbe Formel
+   trägt — `verlaufZustaende.test.ts` liest beide Blätter und vergleicht sie.
+   Wer die eine Höhe ändert, ändert die andere mit. */
+.vp-c-zst-chart {
+  width: 100%;
+  height: clamp(260px, 40vw, 340px);
+}
+
+/* Die Legende unter dem Bild: eine Zeile Chips, 44 px hoch. */
+.vp-c-zst-legende {
+  height: 44px;
+  width: 100%;
+}
+
+/* --- Leer: ein Label, ein Satz, ein Weg ---------------------------------- */
+
+.vp-c-zst-leer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}
+
+/* ⚠ **Kein 48-px-Symbol und kein 1,25-rem-Titel** (V10). Der Leer-Zustand ist
+   eine Auskunft, keine Werbefläche; das alte `IconTile` + `h3` war die
+   grösste Überschrift der ganzen Karte — für die Nachricht, dass nichts da
+   ist. Das Label trägt dieselbe Stufe wie jedes andere Karten-Label. */
+.vp-c-zst-leer-label {
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  line-height: var(--vp-c-lh-text);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-c-zst-text {
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-400);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-fg, #1e293b);
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Der Weg ist ein TEXTLINK, kein Knopf — er führt weiter, er wiederholt
+   nichts. Seine Trefferfläche weitet ein Pseudo-Element (das Muster der
+   Erlöse-Sekundärzeile), damit die Zeile nicht 48 px hoch werden muss. */
+.vp-c-zst-weg {
+  position: relative;
+  align-self: flex-start;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-fg, #1e293b);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.vp-c-zst-weg::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
+}
+
+.vp-c-zst-weg:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-sm);
+}
+
+/* --- Fehler: derselbe Satz, plus die eine Handlung ------------------------ */
+
+.vp-c-zst-fehler {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  align-items: flex-start;
+  min-width: 0;
+}
+
+/* ⚠ 44 px — der Knopf ist die EINZIGE Handlung dieser Karte; er ist die
+   Trefferfläche, an der ein Fehlversuch hängt. */
+.vp-c-zst-knopf.vp-btn {
+  min-height: 44px;
+}

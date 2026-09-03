@@ -33,7 +33,7 @@ import { replaceCurrentNavigation } from '../navigationBlocker';
 
 import { ChartSubtitle } from '../components/ChartExplain';
 import { InfoTip } from '../components/InfoTip';
-import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
+import { VerlaufFehler, VerlaufKarteSkeleton, VerlaufLeer } from '../components/States';
 import { Tagesbild, type TagesbildGeldReihe } from '../components/Tagesbild';
 import {
   KartenKopf,
@@ -471,15 +471,19 @@ export function ErloeseSection({
       />
 
       <div className={stale ? 'vp-welt-body vp-welt-stale' : 'vp-welt-body'}>
+        {/* V10 (Paket P2b): dieselben drei Zustände wie im Reiter „Messwerte" —
+            in der Karte, in der Höhe des späteren Inhalts. */}
         {err && !money ? (
-          <ErrorState
-            message={`Die Erlöse konnten nicht geladen werden (${err}).`}
-            onRetry={retry}
-          />
+          <Card padding="lg" radius="lg">
+            <VerlaufFehler
+              satz={`Die Erlöse konnten nicht geladen werden (${err}).`}
+              onRetry={retry}
+            />
+          </Card>
         ) : !money ? (
           loading ? (
             <Card padding="lg" radius="lg">
-              <ChartCardSkeleton />
+              <VerlaufKarteSkeleton />
             </Card>
           ) : null
         ) : (
@@ -514,11 +518,9 @@ export function ErloeseSection({
                     art="bewertet"
                     extra={kopfVergleich}
                   />
-                  <EmptyState
-                    icon="euro"
-                    category="dynamic"
-                    title="Noch kein Ergebnis für diesen Zeitraum"
-                    description={
+                  <VerlaufLeer
+                    label="Noch kein Ergebnis für diesen Zeitraum"
+                    satz={
                       ergebnis.leerText ??
                       'Sobald Messwerte und Preise vorliegen, steht hier, was Ihre Anlage eingebracht hat.'
                     }

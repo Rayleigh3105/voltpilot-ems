@@ -69,6 +69,7 @@ const BLAETTER: ReadonlyArray<{
   { reiter: 'Reiterleiste', datei: 'components/BereichTabs.css', offen: 0, bekannt: [] },
   // Die geteilten Bausteine des Bereichs (P2b) — von Anfang an auf 0.
   { reiter: 'Bausteine', datei: 'components/Aufklapper.css', offen: 0, bekannt: [] },
+  { reiter: 'Bausteine', datei: 'components/VerlaufZustaende.css', offen: 0, bekannt: [] },
   // --- noch nicht umgestellt — Ratsche auf dem IST-Stand vom 03.09.2026 --
   {
     reiter: 'Messwerte',

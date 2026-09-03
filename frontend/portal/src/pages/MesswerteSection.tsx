@@ -41,7 +41,7 @@ import { replaceCurrentNavigation } from '../navigationBlocker';
 
 import { InfoTip } from '../components/InfoTip';
 import { ChartHeadline, ChartSubtitle } from '../components/ChartExplain';
-import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
+import { VerlaufFehler, VerlaufKarteSkeleton, VerlaufLeer } from '../components/States';
 import { VerlaufExplorer } from '../components/VerlaufExplorer';
 import { SiteMeasurementComparison } from '../components/SiteMeasurementComparison';
 import { HistoryEnergieChart } from '../HistoryChart';
@@ -363,11 +363,9 @@ function EnergieKarten({
   if (history.buckets.length === 0 || bilanz.empty) {
     return (
       <Card padding="lg" radius="lg">
-        <EmptyState
-          icon="history"
-          category="dynamic"
-          title="Keine Messwerte in diesem Zeitraum"
-          description="Sobald Ihre Anlage misst, entsteht hier die Energiegeschichte: PV-Erzeugung, Hausverbrauch, Netz und Speicher in einem Bild. Wählen Sie einen anderen Zeitraum oder schauen Sie später wieder vorbei."
+        <VerlaufLeer
+          label="Keine Messwerte in diesem Zeitraum"
+          satz="Sobald Ihre Anlage misst, entsteht hier die Energiegeschichte: PV-Erzeugung, Hausverbrauch, Netz und Speicher in einem Bild. Wählen Sie einen anderen Zeitraum oder schauen Sie später wieder vorbei."
         />
       </Card>
     );
@@ -546,12 +544,20 @@ export function MesswerteSection({
       />
 
       <div className={stale ? 'vp-welt-body vp-welt-stale' : 'vp-welt-body'}>
+        {/* V10 (Paket P2b): die drei Zustände leben IN der Karte und
+            reservieren den Platz des späteren Inhalts — beim Zeitraumwechsel
+            springt damit nichts. */}
         {err && !history ? (
-          <ErrorState message={`Die Historie konnte nicht geladen werden (${err}).`} onRetry={retry} />
+          <Card padding="lg" radius="lg">
+            <VerlaufFehler
+              satz={`Die Historie konnte nicht geladen werden (${err}).`}
+              onRetry={retry}
+            />
+          </Card>
         ) : !history ? (
           loading ? (
             <Card padding="lg" radius="lg">
-              <ChartCardSkeleton />
+              <VerlaufKarteSkeleton />
             </Card>
           ) : null
         ) : (
