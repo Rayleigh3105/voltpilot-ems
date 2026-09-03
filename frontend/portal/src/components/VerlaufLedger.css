@@ -107,6 +107,51 @@
   }
 }
 
+/* --- P6 · die Schicht-Schalter des Fahrplans im Verlauf-Rahmen ----------- */
+/* ⚠ Gescoped, NICHT global: `.vp-sched-layer` gehört der Fahrplan-Seite und
+   dem Cockpit — dort bleibt der Chip, was er seit je ist (`Fahrplan.css`).
+   Erst dieser Wrapper macht ihn zur Chip-Form des Bereichs und gibt ihm das
+   44-px-Ziel (E7 = a: alles Tippbare ist ein echtes Ziel). */
+.vp-c-bild-schichten {
+  margin-top: var(--vp-c-space-3, 12px);
+}
+
+.vp-c-bild-schichten .vp-sched-layers {
+  /* ⚠ Derselbe ZEILEN-Abstand wie die Chip-Legende: das Overlay ragt 7 px über
+     den Chip hinaus; bei engerem Abstand überlappten sich die Overlays zweier
+     Zeilen und die untere gewänne. */
+  gap: 14px 6px;
+  margin: 0;
+}
+
+.vp-c-bild-schichten .vp-sched-layer {
+  position: relative;
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-600, 600);
+  line-height: var(--vp-c-lh-text, 1.5);
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+/* 30 + 2 × 7 = 44 — das Overlay-Muster des InfoTips, wie bei der Chip-Legende.
+   ⚠ OHNE `.on`: die Trefferfläche gilt JEDEM Zustand des Schalters. */
+.vp-c-bild-schichten .vp-sched-layer::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
+
+/* Neun Zeilen sind am Rechner zwei Spalten — am Telefon bleibt die flexible
+   Reihe, die schon steht (§4.4 Karte 3: „2-spaltig ab 700"). */
+@media (min-width: 700px) {
+  .vp-c-bild-legende--spalten .vp-chart-legend {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 /* Die Erklärzeilen im Aufklapper — dieselbe Textgrösse wie jeder andere
    Aufklapp-Inhalt, nur mit der Richtungs-Aufteilung. */
 .vp-c-bild-richtung {
