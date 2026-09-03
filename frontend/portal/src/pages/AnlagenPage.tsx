@@ -414,14 +414,32 @@ function AnlagenListe({
  * Kartenpaar), und eine zweite generische Überschrift darüber wäre genau die
  * Kopfzone, die das Konzept abbaut.
  */
+/**
+ * Der SICHTBARE Seitenkopf einer Unterseite — Titel + Lead-Absatz ÜBER den
+ * Bereichs-Reitern.
+ *
+ * ⚠ **Die sechs Reiter des Bereichs „Verlauf" stehen hier bewusst NICHT mehr**
+ * (Paket P1, Konzept `vp-verlauf-sprache-konzept-v5` §3.2 V1, Befund B1). Vier
+ * von ihnen (`marktpreise`, `lastspitzen`, `prognose`, `wetter`) trugen einen
+ * Kopf, die anderen zwei (`messwerte`, `erloese`) nie — die Reiterleiste sprang
+ * dadurch bei JEDEM Reiterwechsel: gemessen 140 px auf Messwerte/Erlöse gegen
+ * 287/316 px auf den vier anderen. Ein Reiter, der seine eigene Leiste
+ * verschiebt, ist keine Bühne; das ist der teuerste Bruch der App-Kriterien
+ * A5/A8.
+ *
+ * Was der Kopf SAGTE, sagen die Reiter darüber schon. Für Dokumentstruktur und
+ * Screenreader trägt jeder der vier eine unsichtbare `h1` (`VerlaufKopf`), sein
+ * Lead-Satz lebt als Fuß-Aufklapper weiter (`VerlaufFuss`) — Nachschlage-Text,
+ * kein Scrollweg-Inhalt.
+ *
+ * Die Bereiche AUSSERHALB des Verlaufs (Fahrplan, Einstellungen, Komponenten,
+ * Steuerung) behalten ihren Kopf: sie sind nicht Teil dieses Pakets, und ein
+ * halb umgestelltes Portal wäre ein zweiter Sprung statt keinem.
+ */
 const SUB_PAGES: Partial<Record<AnlagenSub, { title: string; subtitle: string }>> = {
   fahrplan: {
     title: 'Fahrplan',
     subtitle: 'Kostenoptimaler Batterie-Fahrplan aus Börsenpreisen und Prognosen.',
-  },
-  wetter: {
-    title: 'Wetter',
-    subtitle: 'Die Vorhersage am Standort Ihrer Anlage - Grundlage der PV-Prognose.',
   },
   technik: {
     // D2 (Captain, 31.07.2026): die Seite heisst „Einstellungen". Der Untertitel
@@ -445,19 +463,6 @@ const SUB_PAGES: Partial<Record<AnlagenSub, { title: string; subtitle: string }>
     // die Regel-Dokumente, nicht das des Kunden - und vier Zeilen Untertitel
     // schoben am Telefon die Kapseln unter den Falz (Mobil-Umbau Stufe 4).
     subtitle: 'Was Ihre Anlage automatisch tut - und was es bringt.',
-  },
-  marktpreise: {
-    title: 'Marktpreise',
-    subtitle: 'Was Strom an der Börse kostet - heute, morgen und im Rückblick.',
-  },
-  prognose: {
-    title: 'Prognosequalität',
-    subtitle: 'Welches Prognosemodell Ihre Anlage plant und wie genau es ist.',
-  },
-  lastspitzen: {
-    title: 'Lastspitzen',
-    subtitle:
-      'Lastspitzenkappung: gehaltene Spitze, vermiedene Leistungskosten und der Fahrplan zum Halten Ihrer Zielspitze.',
   },
 };
 

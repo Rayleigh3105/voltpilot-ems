@@ -24,6 +24,17 @@ import {
 import { eurAmount, fmtNum } from '../format';
 import { isoDate, PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
 import { SitePicker } from '../components/SitePicker';
+import {
+  VerlaufFuss,
+  VerlaufKopf,
+  ZeitBlaetterer,
+  ZeitLeisteRahmen,
+  ZeitSegment,
+} from '../components/HistorieWelt';
+import { historieHash } from '../historieWelten';
+import { parseVerlaufParams } from '../verlauf';
+import { ankerAusWert } from '../historieZeit';
+import { replaceCurrentNavigation } from '../navigationBlocker';
 import { InfoTip } from '../components/InfoTip';
 import { ChartHeadline, ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
@@ -218,6 +229,14 @@ function bezugpreisZeile(ct: number | null): string | null {
   return bezugspreisNote(ct);
 }
 
+/**
+ * Der Lead-Satz des früheren Seitenkopfs (`SUB_PAGES.marktpreise` in
+ * `AnlagenPage`, bis P1). Er lebt als Fuß-Aufklapper weiter — der Wortlaut ist
+ * unverändert Kunden-Sprache.
+ */
+const MARKTPREISE_LEAD =
+  'Was Strom an der Börse kostet - heute, morgen und im Rückblick.';
+
 export function MarktpreisePage(props: {
   sites: Site[];
   selectedSite: string | null;
@@ -226,14 +245,31 @@ export function MarktpreisePage(props: {
   embedded?: boolean;
 }) {
   const site = props.sites.find((s) => s.id === props.selectedSite) ?? null;
-  const [range, setRange] = useState<HistoryRange>('day');
-  const [anchor, setAnchor] = useState<Date>(() => new Date());
+  /**
+   * Der Zeitraum steht in der ADRESSE (P1, V3) — wie auf Messwerten und
+   * Erlösen, mit demselben Vokabular (`z=`/`at=`). Ein Lesezeichen OHNE
+   * Parameter bleibt gültig: `parseVerlaufParams` fällt auf Tag/heute zurück.
+   */
+  const [init] = useState(() => parseVerlaufParams(window.location.hash));
+  const [range, setRange] = useState<HistoryRange>(init.range);
+  const [anchor, setAnchor] = useState<Date>(() => ankerAusWert(init.at ?? '', init.range) ?? new Date());
   const [history, setHistory] = useState<PriceHistory | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   const at = isoDate(anchor);
+  /**
+   * Zeitraum + Anker in die Adresse — `replaceState`, wie auf Messwerten: eine
+   * Zeitraum-Wahl ist kein eigener Schritt im Verlauf des Browsers, sondern die
+   * Fortschreibung DERSELBEN Seite. Nur als REITER einer Anlage; als
+   * eigenständige Seite (`/marktpreise` mit Anlagen-Wähler) gehört die Adresse
+   * nicht dieser Anlage.
+   */
+  useEffect(() => {
+    if (!props.embedded || !site) return;
+    replaceCurrentNavigation(historieHash(site.id, 'marktpreise', range, at));
+  }, [props.embedded, site?.id, range, at]);
   useEffect(() => {
     if (!site) {
       setHistory(null);
@@ -334,45 +370,27 @@ export function MarktpreisePage(props: {
       }
       {...props}
     >
-      {/* Period navigation: Tag/Woche/Monat/Jahr + stepper + Heute. */}
-      <div className="vp-page-head" style={{ marginBottom: 'var(--vp-space-5)', alignItems: 'center' }}>
-        <div className="vp-seg" role="tablist" aria-label="Zeitraum">
-          {PERIOD_RANGES.map((r) => (
-            <button
-              key={r.id}
-              role="tab"
-              aria-selected={range === r.id}
-              className={range === r.id ? 'active' : ''}
-              onClick={() => setRange(r.id)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-        <div className="vp-period-nav" style={{ marginLeft: 'auto' }}>
-          <button
-            type="button"
-            className="step"
-            aria-label="Vorheriger Zeitraum"
-            onClick={() => setAnchor(shiftAnchor(anchor, range, -1))}
-          >
-            <Icon name="chevron-left" size={18} />
-          </button>
-          <span className="label">{periodLabel(anchor, range)}</span>
-          <button
-            type="button"
-            className="step"
-            aria-label="Nächster Zeitraum"
-            disabled={nextDisabled}
-            onClick={() => setAnchor(shiftAnchor(anchor, range, 1))}
-          >
-            <Icon name="chevron-right" size={18} />
-          </button>
-          <button type="button" className="step" onClick={() => setAnchor(new Date())}>
-            Heute
-          </button>
-        </div>
-      </div>
+      {/* V1 · Der Seitenkopf ist unsichtbar: was er sagte, sagen die
+          Bereichs-Reiter (Paket P1, Befund B1). Sein Lead-Satz steht am Fuß. */}
+      <VerlaufKopf titel="Marktpreise" />
+      {/* V3 · DIESELBE Zeit-Leiste wie auf Messwerten und Erlösen — vorher stand
+          hier eine zweite `.vp-seg` in einem eigenen `vp-page-head` (Befund B2:
+          drei Zeitraum-Bedienungen im selben Bereich). */}
+      <ZeitLeisteRahmen
+        mobil={isPhone}
+        zeile1={
+          <ZeitSegment label="Zeitraum" optionen={PERIOD_RANGES} wert={range} onWert={setRange} />
+        }
+        zeile2={
+          <ZeitBlaetterer
+            label={periodLabel(anchor, range)}
+            onZurueck={() => setAnchor(shiftAnchor(anchor, range, -1))}
+            onVor={() => setAnchor(shiftAnchor(anchor, range, 1))}
+            vorDisabled={nextDisabled}
+            onJetzt={() => setAnchor(new Date())}
+          />
+        }
+      />
 
       {loading && (
         <Card padding="lg" radius="lg">
@@ -531,6 +549,10 @@ export function MarktpreisePage(props: {
           </section>
         </>
       )}
+      {/* V1 · Der Lead-Satz des früheren Seitenkopfs — WÖRTLICH, nur an einem
+          anderen Ort. Er ist Nachschlage-Text, kein Scrollweg-Inhalt; ihn beim
+          Entfernen des Kopfes zu verlieren wäre kein Aufräumen. */}
+      <VerlaufFuss text={MARKTPREISE_LEAD} />
     </PageFrame>
   );
 }
@@ -538,6 +560,10 @@ export function MarktpreisePage(props: {
 // ---------------------------------------------------------------------------
 
 /** The Wetter subpage of one Anlage: the forecast feeding its PV-Prognose. */
+/** Der Lead-Satz des früheren Seitenkopfs (`SUB_PAGES.wetter`, bis P1). */
+const WETTER_LEAD =
+  'Die Vorhersage am Standort Ihrer Anlage - Grundlage der PV-Prognose.';
+
 export function WetterSection({ site }: { site: Site }) {
   const { data: forecast, loading, err, reload } = useSiteData<WeatherForecast>(site, (id) => api.weather(id));
   /**
@@ -584,7 +610,15 @@ export function WetterSection({ site }: { site: Site }) {
   );
 
   return (
-    <Card padding="lg" radius="lg">
+    <>
+      {/* V1 · Unsichtbarer Seitenkopf (Paket P1). Wetter hatte gar keine `h1` in
+          der Fläche selbst — der Titel stand im `SUB_PAGES`-Kopf über den
+          Reitern und schob sie von 140 auf 316 px.
+          ⚠ **Keine Zeit-Leiste** (§4.6): eine Vorhersage beginnt bei JETZT, ein
+          Zeitraum-Segment wäre hier ein Schalter ohne Wirkung. Das Datum steht
+          im Kopf der Karte. */}
+      <VerlaufKopf titel="Wetter" />
+      <Card padding="lg" radius="lg">
       <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
         <IconTile category="solar" size={40}>
           <Icon name="sun" size={20} />
@@ -654,7 +688,10 @@ export function WetterSection({ site }: { site: Site }) {
           </p>
         </>
       )}
-    </Card>
+      </Card>
+      {/* V1 · Der Lead-Satz des früheren Seitenkopfs — wörtlich, am Fuß. */}
+      <VerlaufFuss text={WETTER_LEAD} />
+    </>
   );
 }
 
