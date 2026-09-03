@@ -50,47 +50,12 @@
   background: var(--dot, var(--vp-gray, #adb5bd));
 }
 
-/* --- Quoten-/Kosten-Chips unter den Summen -------------------------------- */
-
-.vp-energie-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: var(--vp-space-4);
-}
-
-.vp-energie-chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  padding: 4px 10px;
-  border: 1px solid var(--vp-border);
-  border-radius: 999px;
-  background: #f7f9fc;
-  font-size: 0.8rem;
-  overflow-wrap: anywhere;
-}
-
-.vp-energie-chip b {
-  font-weight: 700;
-}
-
-.vp-energie-chip .sub {
-  color: var(--vp-text-muted, #6c757d);
-  font-size: 0.74rem;
-}
-
-/* --- Vorzeichen um die betonte Nulllinie ---------------------------------- */
-
-.vp-energie-nulllinie {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  margin: 0 0 8px;
-  font-size: 0.78rem;
-  color: var(--vp-text-muted, #6c757d);
-}
+/* --- Quoten-Chips und Nulllinien-Zeile: seit P3 ersatzlos ----------------- */
+/* Die zwei Quoten sind Ledger-Zeilen mit 24-px-Zahl (`messwerteZeilen.ts`),
+   die Richtungs-Erklärung steht im Aufklapper unter dem Bild
+   (`VerlaufLedger.css` `.vp-c-bild-richtung`). Beide Blöcke hatten hier ihre
+   letzten Nutzer verloren — `.vp-energie-chip*` und `.vp-energie-nulllinie`
+   samt der Telefon-Ausnahme sind entfallen. */
 
 /* --- Der ehrliche Grund einer fehlenden Reihe ------------------------------ */
 
@@ -890,60 +855,12 @@
     display: inline;
   }
 
-  /* --- Die Legende wird eine CHIP-Zeile (60 statt 220 px) --------------- */
-  /* Sie bleibt die BEDIENUNG (Serie an/aus) und behält jedes Wort - sie wohnt
-     nur enger. Gescoped auf die Welten, damit `index.css` unberührt bleibt. */
-  .vp-welt-body .vp-chart-legend {
-    /* ⚠ Der ZEILEN-Abstand ist die zweite Hälfte der 44-px-Zusage darunter:
-       das Overlay ragt 7 px über den Chip hinaus, bei 5 px Abstand ÜBERLAPPTEN
-       sich die Overlays zweier Zeilen um 9 px und die untere gewann — die
-       obere Zeile war nur noch 35 px tief antippbar (bei 375 mit
-       `elementFromPoint` nachgemessen). 14 px lassen sie sich exakt berühren,
-       ohne sich zu decken. Der Spalten-Abstand bleibt eng. */
-    gap: 14px 6px;
-    margin-bottom: 8px;
-  }
-
-  .vp-welt-body button.vp-cl-item.is-toggle {
-    padding: 3px 8px 3px 5px;
-    min-height: 30px;
-    gap: 5px;
-    position: relative;
-  }
-
-  /* B12: der Chip bleibt optisch 30 px (er spart am Telefon ~160 px Höhe),
-     seine TREFFERFLÄCHE wächst per Overlay auf 44 px — das Haus-Muster des
-     InfoTips. 30 + 2 × 7 = 44. */
-  .vp-welt-body button.vp-cl-item.is-toggle::after {
-    content: '';
-    position: absolute;
-    inset: -7px -2px;
-  }
-
-  .vp-welt-body .vp-cl-item {
-    /* ⚠ 0,76 rem sind 12,2 px — dieselbe Rechnung wie beim Titel darüber:
-       eine eigene Stufe direkt neben den 12 px der Skala. 0,75 rem sind die
-       12 px selbst. */
-    font-size: 0.75rem;
-    gap: 5px;
-  }
-
-  /* Die Einheit ist am Telefon Redundanz: „kWh" steht an jeder Zahl der
-     Summen-Liste, und sie kostet hier ~30 px je Chip. */
-  .vp-welt-body .vp-cl-unit {
-    display: none;
-  }
-
-  /* Das Richtungswort bleibt - es ist die Ehrlichkeitsregel, nicht Deko. */
-  .vp-welt-body .vp-energie-nulllinie {
-    gap: 0 12px;
-    margin-bottom: 4px;
-    /* ⚠ 0,7 rem sind 11,2 px — unter dem 12-px-Boden (Konzept §3.10, bei 375
-       in der laufenden App nachgemessen). Die Zeile bricht ohnehin, die
-       0,8 px kosten hier keine Breite. */
-    font-size: 0.75rem;
-    line-height: 1.35;
-  }
+  /* --- Die Legende: seit P3 in `VerlaufLedger.css` ---------------------- */
+  /* Der frühere Block (`.vp-welt-body .vp-chart-legend` + drei Ausnahmen)
+     hatte hier seinen letzten Nutzer verloren: die EINZIGE `ChartLegend` in
+     einem `.vp-welt-body` ist die des `HistoryChart`, und die steht seit P3
+     UNTER dem Bild in `.vp-c-bild-legende` — samt Chip-Optik, 44-px-Overlay
+     und dem 14-px-Zeilenabstand, der es trägt. */
 
   /* Der Kartenkopf bleibt EINE Zeile: Kachel · Titel · Abzeichen. Bricht er,
      kostet er 68 statt 32 px direkt über der Kurve (im Browser gemessen). */
@@ -960,76 +877,11 @@
     white-space: nowrap;
   }
 
-  /* Der „Was zeigt das?"-Satz steht direkt über der Kurve - eng gesetzt. */
-  .vp-welt-body .vp-chart-sub {
-    margin: 0 0 8px;
-    font-size: 0.78rem;
-    line-height: 1.35;
-  }
-
-  /* --- Die kWh-Summen: 2 Spalten, EINE Δ-Zeile ------------------------- */
-  .vp-esum-kompakt {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    /* 10 px Spaltenabstand, nicht 14: bei 375 px misst eine Zelle sonst 140 px
-       und „Verbraucht 22,6 kWh" braucht 144 (im Browser nachgemessen). */
-    gap: 2px 10px;
-    margin: 0 0 8px;
-  }
-
-  .vp-esum-k {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 6px;
-    min-width: 0;
-    padding: 4px 0;
-    border-bottom: 1px solid var(--vp-border);
-  }
-
-  .vp-esum-k > dt {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    min-width: 0;
-    font-size: 0.75rem;
-    color: var(--vp-text-muted, #6c757d);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .vp-esum-k > dd {
-    margin: 0;
-    flex: 0 0 auto;
-    font-family: 'Inter Tight', Inter, sans-serif;
-    font-weight: 700;
-    font-size: 0.84rem;
-    color: var(--vp-stat-ink, #1a1a1a);
-    white-space: nowrap;
-  }
-
-  .vp-esum-meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 12px;
-    margin: 0;
-    min-width: 0;
-    font-size: 0.78rem;
-    color: var(--vp-text-muted, #6c757d);
-  }
-
-  .vp-esum-meta > span {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 5px;
-    min-width: 0;
-  }
-
-  .vp-esum-meta-delta {
-    flex-wrap: wrap;
-  }
+  /* --- Das 2-Spalten-Raster des Telefons: seit P3 ersatzlos -------------- */
+  /* `.vp-esum-kompakt`/`.vp-esum-k`/`.vp-esum-meta` trugen am Telefon sechs
+     Zahlen OHNE Δ und darunter EINE zusammengefasste Vergleichszeile. Die
+     Ledger-Zeile trägt beides in einer Form (Konzept §3.2 V5), auf jeder
+     Breite — die drei Blöcke hatten hier ihren letzten Nutzer verloren. */
 
   /* --- Die Fußkarte als Aufklapper -------------------------------------- */
   .vp-welt-fusstext {

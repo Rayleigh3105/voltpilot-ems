@@ -34,6 +34,13 @@
   margin-top: var(--vp-c-space-3, 12px);
 }
 
+/* ⚠ Die Selektoren sind ausdrücklich EINE Stufe spezifischer als die
+   Telefon-Ausnahmen in `Historie.css` (`.vp-welt-body button.vp-cl-item…`,
+   0-3-1): der Verlauf-Körper trägt BEIDE Klassen, und bei gleicher Spezifität
+   entschiede die Import-Reihenfolge — also nichts Verlässliches. Solange
+   `PortfolioMesswerte` (P8) die alte Chip-Zeile fährt, müssen beide
+   nebeneinander leben können. */
+
 .vp-c-bild-legende .vp-chart-legend {
   /* ⚠ Der ZEILEN-Abstand ist die zweite Hälfte der 44-px-Zusage: das Overlay
      ragt 7 px über den Chip hinaus; bei engerem Abstand überlappten sich die
@@ -43,14 +50,14 @@
   margin: 0;
 }
 
-.vp-c-bild-legende .vp-cl-item {
+.vp-c-bild-legende .vp-chart-legend .vp-cl-item {
   font-size: var(--vp-c-fs-12, 12px);
   font-weight: var(--vp-c-fw-600, 600);
   line-height: var(--vp-c-lh-text, 1.5);
   gap: 6px;
 }
 
-.vp-c-bild-legende button.vp-cl-item.is-toggle {
+.vp-c-bild-legende .vp-chart-legend button.vp-cl-item {
   padding: 4px 10px;
   min-height: 30px;
   position: relative;
@@ -60,7 +67,7 @@
   color: var(--vp-c-fg, #1e293b);
 }
 
-.vp-c-bild-legende button.vp-cl-item.is-off {
+.vp-c-bild-legende .vp-chart-legend button.vp-cl-item.is-off {
   background: transparent;
   border: 1px solid var(--vp-c-border, #e2e8f0);
   color: var(--vp-c-muted-fg, #475569);
@@ -69,15 +76,29 @@
 /* Der Chip bleibt optisch 30 px (er spart am Telefon Höhe), seine
    TREFFERFLÄCHE wächst per Overlay auf 44 px — das Haus-Muster des InfoTips.
    30 + 2 × 7 = 44. */
-.vp-c-bild-legende button.vp-cl-item.is-toggle::after {
+/* ⚠ OHNE `.is-toggle`: die Trefferfläche gilt JEDEM Zustand des Chips (auch
+   `.is-off`), und der statische Wächter (`verlaufMobil`) bildet einen Zustand
+   auf seine Grundregel ab — hinge das Overlay am Zustand, läse er die
+   ausgeblendete Reihe als Ziel ohne 44 px. Ein `button.vp-cl-item` ist in
+   `ChartLegend` per Konstruktion immer der Schalter. */
+.vp-c-bild-legende .vp-chart-legend button.vp-cl-item::after {
   content: '';
   position: absolute;
   inset: -7px -2px;
 }
 
-.vp-c-bild-legende .vp-cl-unit {
+.vp-c-bild-legende .vp-chart-legend .vp-cl-unit {
   font-size: var(--vp-c-fs-12, 12px);
   color: var(--vp-c-muted-fg, #475569);
+}
+
+/* Die Einheit ist am Telefon Redundanz: „kWh" steht an jeder Zahl der
+   Ledger-Liste, und sie kostet hier ~30 px je Chip (aus `Historie.css`
+   übernommen, dort bei 375 gemessen). */
+@media (max-width: 720px) {
+  .vp-c-bild-legende .vp-chart-legend .vp-cl-unit {
+    display: none;
+  }
 }
 
 /* Die Erklärzeilen im Aufklapper — dieselbe Textgrösse wie jeder andere
@@ -127,4 +148,19 @@
   align-items: center;
   gap: var(--vp-c-space-2, 8px);
   flex: 0 0 auto;
+}
+
+/* --- Das Δ in der Sekundärzeile: EINE Stimme, NEUTRAL --------------------- */
+/* §4.1: „Δ-Sekundärzeile 14 (`--vp-c-muted-fg`, Vorzeichen aus dem Wert,
+   neutral, nie grün/rot)". `DeltaZeile` ist geteilt (Portfolio fährt sie
+   weiter in ihrer gewerteten Form) — gescoped bleibt beides möglich.
+   ⚠ Die Wertung verschwindet nicht, sie steht im Pfeil und im `title`: mehr
+   Erzeugung ist auf einer gemessenen Fläche keine gute NACHRICHT, sondern eine
+   Tatsache, und grün/rot machte aus sechs Energien sechs Urteile. */
+
+.vp-c-led-sek .vp-delta {
+  margin-top: 0;
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-400, 400);
+  color: inherit;
 }
