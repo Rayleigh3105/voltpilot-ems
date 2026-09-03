@@ -50,6 +50,7 @@ import { PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
 import { MiniShareBar } from './MiniChart';
 import { MonthStrip } from './MoneyView';
 
+import { Aufklapper } from './Aufklapper';
 import './Historie.css';
 
 /** Das Ehrlichkeits-Abzeichen einer Karte (genau eines je Karte, report §7). */
@@ -874,6 +875,11 @@ export function PeriodeFehlgeschlagen({
  *
  * Dasselbe DOM benutzt der Messwerte-Explorer seit dem Historie-Konzept; er ist
  * die Vorlage, aus der dieses Bauteil herausgelöst wurde.
+ *
+ * ⚠ **Seit P2b ist die ZEILE der geteilte {@link Aufklapper}** — ein natives
+ * `<details>`/`<summary>` in der EINEN Form des Bereichs (16/600 + Chevron,
+ * 48 px). Diese Hülle steuert nur noch die KARTE darum bei; die frühere
+ * `.vp-welt-disclosure`-Zeile samt ihrer drei Telefon-Ausnahmen ist entfallen.
  */
 export function WeltDisclosure({
   titel,
@@ -891,19 +897,14 @@ export function WeltDisclosure({
   return (
     <section className="vp-section">
       <Card padding="lg" radius="lg" className="vp-welt-disc-card">
-        <button
-          type="button"
-          className={open ? 'vp-welt-disclosure open' : 'vp-welt-disclosure'}
-          aria-expanded={open}
-          onClick={onToggle}
-        >
-          <span className="vp-wd-title">{titel}</span>
-          {sub && <span className="vp-wd-sub">{sub}</span>}
-          <span className="vp-wd-chev" aria-hidden="true">
-            <Icon name="chevron-down" size={20} />
-          </span>
-        </button>
-        {open && <div className="vp-welt-disclosure-body">{children}</div>}
+        <Aufklapper titel={titel} sub={sub} open={open} onToggle={onToggle}>
+          {/* ⚠ Der Inhalt wird erst beim Öffnen GEBAUT. Der Aufklapper selbst
+              lässt ihn stehen (dann findet ihn die Browser-Suche), aber hier
+              hängen Diagramme darin: ein ECharts-Knoten in einer zugeklappten
+              `details` misst 0 px Breite und rendert falsch, sobald er später
+              sichtbar wird — und das Bauen kostet, bevor jemand hinschaut. */}
+          {open ? children : null}
+        </Aufklapper>
       </Card>
     </section>
   );

@@ -391,6 +391,22 @@ describe('Welt A · Messwerte', () => {
   });
 });
 
+/**
+ * ⚠ Die Aufklapper des Verlaufs sind seit P2b ein natives `<details>`/`<summary>`
+ * (der geteilte `Aufklapper`, Konzept §3.2 V8) — kein `<button>` mehr, und
+ * `getByRole('button')` findet ein `summary` nicht. `aria-expanded` steht
+ * weiterhin daran und bleibt prüfbar.
+ */
+function aufklapper(name: RegExp): HTMLElement {
+  const treffer = [...document.querySelectorAll('summary.vp-c-aufk-sum')].filter((s) =>
+    name.test(s.textContent ?? ''),
+  );
+  if (treffer.length !== 1) {
+    throw new Error(`${treffer.length} Aufklapper für ${name} — erwartet genau einen`);
+  }
+  return treffer[0] as HTMLElement;
+}
+
 describe('Der Explorer ist ein Abschnitt DIESER Welt (der dritte Umschalter entfällt)', () => {
   it('ist zugeklappt und öffnet auf Klick die Messwert-Auswahl', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
@@ -399,7 +415,7 @@ describe('Der Explorer ist ein Abschnitt DIESER Welt (der dritte Umschalter entf
     const eh = vi.spyOn(api, 'entityHistory').mockResolvedValue(entityHistory(true));
 
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    const toggle = screen.getByRole('button', { name: /Einzelne Messwerte vergleichen/ });
+    const toggle = aufklapper(/Einzelne Messwerte vergleichen/);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('Batteriespeicher')).toBeNull();
 
@@ -424,10 +440,7 @@ describe('Der Explorer ist ein Abschnitt DIESER Welt (der dritte Umschalter entf
     });
 
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    expect(screen.getByRole('button', { name: /Einzelne Messwerte vergleichen/ })).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    );
+    expect(aufklapper(/Einzelne Messwerte vergleichen/)).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('tab', { name: 'Woche' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'grid', 'week', expect.any(String)));
   });

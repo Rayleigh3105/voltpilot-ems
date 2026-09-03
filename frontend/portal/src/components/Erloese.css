@@ -253,20 +253,23 @@
     padding: var(--vp-space-1, 4px) 0;
   }
 
-  /* --- Aufklapper-Körper: das Abzeichen führt, dann der volle Inhalt ---- */
-  .vp-welt-disclosure-body > .vp-prov {
+  /* --- Aufklapper-Körper: das Abzeichen führt, dann der volle Inhalt ----
+     ⚠ Seit P2b heisst er `.vp-c-aufk-body` — der EINE Aufklapper des Bereichs
+     (`components/Aufklapper.css`). Die frühere `.vp-welt-disclosure-body` gibt
+     es nicht mehr; wer sie hier stehen lässt, stylt ins Leere. */
+  .vp-c-aufk-body > .vp-prov {
     margin-bottom: var(--vp-space-2, 8px);
   }
 
   /* Im Aufklapper trägt die Karte schon einen Rahmen - die Kombinations-Karte
      (`SoVerdientCard`) darf ihren zweiten nicht dazulegen. */
-  .vp-welt-disclosure-body > .vp-card {
+  .vp-c-aufk-body > .vp-card {
     border: none;
     box-shadow: none;
     padding: 0 !important;
   }
 
-  .vp-welt-disclosure-body > .vp-card > .vp-card__accent {
+  .vp-c-aufk-body > .vp-card > .vp-card__accent {
     display: none;
   }
 
