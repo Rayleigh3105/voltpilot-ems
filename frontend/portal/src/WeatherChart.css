@@ -17,7 +17,9 @@
   align-items: center;
   gap: var(--vp-c-space-2, 8px);
   min-width: 0;
-  margin: 0 0 var(--vp-c-space-3, 12px);
+  /* Die Reihe steht ZWISCHEN dem Statement und dem Bild - ohne den Abstand
+     nach oben klebte sie am Satz des Statements (bei 375 gemessen). */
+  margin: var(--vp-c-space-4, 16px) 0 var(--vp-c-space-3, 12px);
 }
 .vp-himmel-titel {
   flex: 0 0 auto;
@@ -30,14 +32,24 @@
 .vp-himmel-bahn {
   flex: 1 1 auto;
   display: flex;
+  /* ⚠ Sie UMBRICHT, statt die Wörter zu beschneiden. Bei 375 blieben von sechs
+     Blöcken in einer 240-px-Bahn „chse · onni · edeck" übrig - ein Wisch mit
+     Buchstabenresten, also genau das, was K10 abschaffen wollte. Jetzt trägt
+     jeder Block sein Wort als Mindestbreite (`max-content`) und wächst darüber
+     hinaus proportional zu seinem Zeitanteil; was nicht mehr passt, rückt in
+     die nächste Zeile - die REIHENFOLGE bleibt, die Aussage bleibt lesbar. */
+  flex-wrap: wrap;
   gap: var(--vp-c-space-1, 4px);
   min-width: 0;
 }
 /* Der Block IST ein Chip: 24 px hoch, 12/600, Farbe nur als Bedeutung — die
    Aussage trägt das WORT im Block (K10), nie der Ton dahinter. */
 .vp-himmel-block {
-  flex: 1 1 0;
-  min-width: 0;
+  /* `flex-basis: auto` + `min-width: max-content`: die Basis IST das Wort, der
+     Rest der Bahn verteilt sich nach `flex-grow` (dem Zeitanteil, inline
+     gesetzt). Beschnitten wird nie. */
+  flex: 1 1 auto;
+  min-width: max-content;
   height: 24px;
   display: flex;
   align-items: center;
@@ -48,8 +60,6 @@
   font-weight: var(--vp-c-fw-600, 600);
   line-height: var(--vp-c-lh-text, 1.5);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   background: var(--vp-c-muted, #e9eff8);
   color: var(--vp-c-muted-fg, #475569);
 }
