@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { IconTile } from '../../designsystem/components/core/IconTile';
-import { Stat } from '../../designsystem/components/core/Stat';
 import {
   api,
   ApiError,
@@ -44,8 +42,10 @@ import {
 } from '../components/States';
 import { PriceHistoryChart } from '../PriceHistoryChart';
 import { WeatherChart } from '../WeatherChart';
-import { hoursAhead, nextHourIndex } from '../weather';
-import { erwarteteLeistung, wetterKern } from '../wetterLeistung';
+import { erwarteteLeistung } from '../wetterLeistung';
+import { vorhersageLabel, wetterStatement, wetterZeilen } from '../wetterKarte';
+import { VerlaufLedger, type VerlaufLedgerZeile } from '../components/VerlaufLedger';
+import { einstellungenHash } from '../settingsNav';
 import { ScheduleChart } from '../ScheduleChart';
 import { bankedValueLine, horizonHint, planStaleNote, savingsTodayEur } from '../schedule';
 import { consumerLayers, consumerSlotInfos, hasConsumerData } from '../consumerSchedule';
@@ -525,14 +525,44 @@ export function MarktpreisePage(props: {
 const WETTER_LEAD =
   'Die Vorhersage am Standort Ihrer Anlage - Grundlage der PV-Prognose.';
 
+/**
+ * **Paket P5 · der Reiter „Wetter" in den C-Bausteinen** (Konzept
+ * `data/vp-verlauf-sprache-konzept-v5` §3.2 V4–V8 und §4.6; Captain-Entscheide
+ * **E8 (a)** „Statement auf Marktpreise, Lastspitzen, Wetter" und **E7 (a)**
+ * „Tooltip + Legenden-Schalter, KEIN Zoom durch Ziehen am Telefon").
+ *
+ * Die Karte von oben nach unten — die REIHENFOLGE ist die Aussage:
+ *
+ *  1. **Statement** — die EINE Zahl des Reiters (36/800, ab 721 px 48) und der
+ *     Satz darunter. Der frühere Kernsatz („erwartete Spitze morgen gegen
+ *     12:00 Uhr") WIRD die Zahl; die Icon-Kachel 40 px und die `h2` in Inter
+ *     Tight sind ersatzlos entfallen.
+ *  2. **Himmel-Reihe** als 24-px-Chips (im Bild-Baustein, K10).
+ *  3. **Bild** (V6) direkt danach: erwartete Leistung + Sonnenstärke, darunter
+ *     die Chip-Legende, deren Einträge die Reihen SCHALTEN (E7 a).
+ *  4. **Vier Kennzahlen als Ledger-Zeilen** (V5) statt des 2×2-Rasters mit
+ *     seinen 21,6-px-Werten — die EINE Zahl der Fläche ist das Statement.
+ *  5. **„Mehr anzeigen" → Aufklapper** (V8) „Temperatur & Sonnenstärke im
+ *     Verlauf" mit dem zweiten Bild, danach die Quelle als `.vp-c-note`.
+ *
+ * ⚠ **Keine Zeit-Leiste** (§4.6): eine Vorhersage beginnt bei JETZT, ein
+ *   Zeitraum-Segment wäre ein Schalter ohne Wirkung. Das Datum steht deshalb im
+ *   LABEL der Karte („Vorhersage · Do., 03.09., 18:30") — ohne es stünde
+ *   nirgends, worauf sich die Zahl bezieht.
+ *
+ * ⚠ **Es wird keine Zahl neu gerechnet.** Statement, Zeilen und Kurve lesen
+ *   dieselbe kW-Reihe (`erwarteteLeistung`); zwei Rechenwege über dieselbe Zahl
+ *   auf EINER Karte wären zwei Wahrheiten. Fehlt ein Wert, trägt die Zeile „—",
+ *   nie eine 0.
+ */
 export function WetterSection({ site }: { site: Site }) {
   const { data: forecast, loading, err, reload } = useSiteData<WeatherForecast>(site, (id) => api.weather(id));
   /**
    * Die LEITGRÖSSE der Fläche ist seit Stufe 4 die erwartete Leistung in kW -
    * und die einzige Stelle, an der die PV-Prognose des aktiven Modells das
    * Portal erreicht, ist der FAHRPLAN (`schedule.pv_kw`). Der Abruf ist
-   * FAIL-SOFT: ohne Plan (kein Speicher, toter Optimierer) führt die Fläche
-   * wieder die Sonnenstärke und sagt im Kopf den Grund.
+   * FAIL-SOFT: ohne Plan (kein Speicher, toter Optimierer) führt das Statement
+   * wieder die Sonnenstärke und sagt im Satz den Grund (§4.6).
    */
   const [planSlots, setPlanSlots] = useState<ScheduleSlot[]>([]);
   useEffect(() => {
@@ -548,108 +578,82 @@ export function WetterSection({ site }: { site: Site }) {
       active = false;
     };
   }, [site.id]);
-  // Feinschliff (Mobil-Umbau Stufe 4): am Telefon lagen vier einspaltige
-  // Kennzahlen (~600 px) VOR der Kurve - die Kurve ist aber das, wofuer man die
-  // Seite oeffnet. Sie rueckt nach oben, die Kennzahlen werden ein 2x2-Raster.
-  const isPhone = useIsPhone();
+  /** V8 · Der Aufklapper mit dem ZWEITEN Bild — zu, bis jemand fragt. */
+  const [mehrOpen, setMehrOpen] = useState(false);
 
   const points = forecast?.points ?? [];
-  // The run's series starts at 00:00 UTC (hours already in the past) - the hero
-  // must pick the UPCOMING hour, never points[0] (the real "temperatures do not
-  // match the chart" bug; see weather.ts).
-  const nowMs = Date.now();
-  const nextIdx = nextHourIndex(points, nowMs);
-  const now = nextIdx >= 0 ? points[nextIdx] : null;
-  const horizon = hoursAhead(points, nowMs);
-  // K1 + die Kopf-Kennzahl aus DERSELBEN kW-Reihe, die das Diagramm zeichnet -
-  // sie können sich also nicht widersprechen.
+  const jetzt = new Date();
+  // Die Kopf-Zahl und die Kurve lesen DIESELBE kW-Reihe - sie können sich also
+  // nicht widersprechen.
   const kwReihe = erwarteteLeistung(points, planSlots);
-  const kern = points.length > 0 ? wetterKern(points, kwReihe, new Date(nowMs)) : null;
-  const spitze = kwReihe.reduce<number | null>(
-    (m, v) => (v != null && (m == null || v > m) ? v : m),
-    null,
-  );
+  const hatPunkte = points.length > 0;
+  const stmt = hatPunkte ? wetterStatement(points, kwReihe, jetzt) : null;
+  const zeilen: VerlaufLedgerZeile[] = hatPunkte ? wetterZeilen(points, kwReihe, jetzt) : [];
 
   return (
     <>
       {/* V1 · Unsichtbarer Seitenkopf (Paket P1). Wetter hatte gar keine `h1` in
           der Fläche selbst — der Titel stand im `SUB_PAGES`-Kopf über den
-          Reitern und schob sie von 140 auf 316 px.
-          ⚠ **Keine Zeit-Leiste** (§4.6): eine Vorhersage beginnt bei JETZT, ein
-          Zeitraum-Segment wäre hier ein Schalter ohne Wirkung. Das Datum steht
-          im Kopf der Karte. */}
+          Reitern und schob sie von 140 auf 316 px. */}
       <VerlaufKopf titel="Wetter" />
-      <Card padding="lg" radius="lg">
-      <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-        <IconTile category="solar" size={40}>
-          <Icon name="sun" size={20} />
-        </IconTile>
-        <h2>Vorhersage {site.name}</h2>
-      </div>
-      {loading && <ChartCardSkeleton />}
-      {err && (
-        <ErrorState
-          message={`Die Wettervorhersage konnte nicht geladen werden (${err}).`}
-          onRetry={reload}
-        />
-      )}
-      {!loading && !err && points.length === 0 && (
-        <p className="vp-muted">
-          Noch keine Vorhersage. Sie wird automatisch geladen - die Anlage benötigt
-          dafür einen Standort auf der Karte (auf der Anlagen-Seite unter
-          „Standort &amp; Einstellungen“ ergänzbar).
-        </p>
-      )}
-      {!loading && !err && points.length > 0 && (
-        <>
-          {(() => {
-            const kpis = (
-              <div
-                className={`vp-grid ${isPhone ? 'vp-grid-stats-4' : 'vp-grid-stats'}`}
-                style={
-                  isPhone
-                    ? { marginTop: 'var(--vp-space-4)' }
-                    : { marginBottom: 'var(--vp-space-5)' }
-                }
-              >
-                <Stat
-                  value={fmtNum(spitze, 'kW')}
-                  label="Erwartete Spitzenleistung"
-                  title="Die stärkste Stunde im Vorhersagezeitraum - aus der PV-Prognose Ihres Fahrplans."
-                />
-                <Stat value={fmtNum(now?.temperatureC, '°C')} label="Temperatur (nächste Stunde)" />
-                <Stat value={fmtNum(now?.cloudCoverPct, '%', 0)} label="Bewölkung" />
-                <Stat value={fmtNum(horizon, 'h', 0)} label="Vorhersagehorizont" />
-              </div>
-            );
-            const chart = (
-              <>
-                {/* K1: die Kernaussage als SATZ - abgeleitet, nie geschrieben.
-                    Ohne PV-Prognose steht dort der ehrliche Grund. */}
-                <ChartHeadline kern={kern} />
-                <WeatherChart points={points} planSlots={planSlots} />
-              </>
-            );
-            return isPhone ? (
-              <>
-                {chart}
-                {kpis}
-              </>
-            ) : (
-              <>
-                {kpis}
-                {chart}
-              </>
-            );
-          })()}
-          <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-            Wetterdaten: Open-Meteo, stündlich aktualisiert. Die erwartete Leistung ist
-            die PV-Prognose, mit der Ihr Fahrplan rechnet - sie reicht so weit wie der
-            Fahrplan.
-          </p>
-        </>
-      )}
-      </Card>
+      <VerlaufKarte label={vorhersageLabel(jetzt)}>
+        {loading && <VerlaufKarteSkeleton />}
+        {err && (
+          <VerlaufFehler
+            satz={`Die Wettervorhersage konnte nicht geladen werden (${err}).`}
+            onRetry={reload}
+          />
+        )}
+        {!loading && !err && !hatPunkte && (
+          /* §4.6 · Keine Koordinaten → V10 Leer MIT dem Weg. Der Satz nennt den
+             Grund, der Knopf führt dorthin, wo er sich beheben lässt. */
+          <VerlaufLeer
+            label="Vorhersage"
+            satz="Noch keine Vorhersage. Sie wird automatisch geladen - Ihre Anlage braucht dafür einen Standort auf der Karte."
+            weg="Standort in den Einstellungen ergänzen ›"
+            onWeg={() => {
+              window.location.hash = einstellungenHash(site.id);
+            }}
+          />
+        )}
+        {!loading && !err && hatPunkte && stmt && (
+          <>
+            {/* E8 (a) · Das Statement: die EINE Zahl des Reiters, auf der
+                Fläche statt in einer zweiten Karte. Ohne Fahrplan trägt sie die
+                Sonnenstärke, und der Satz sagt WARUM - eine Leistung zu
+                behaupten, die niemand prognostiziert hat, wäre erfunden. */}
+            <div className="vp-c-stm">
+              <p className="vp-c-stm-zahl">{stmt.zahl ?? '—'}</p>
+              <p className="vp-c-stm-ein">
+                <span>{stmt.satz}</span>
+              </p>
+            </div>
+            {/* V6 · Himmel-Reihe → Bild → Chip-Legende, in EINEM Baustein.
+                E7 (a): Tooltip per Tipp, KEIN Zoom durch Ziehen - auf keiner
+                Breite. */}
+            <WeatherChart points={points} planSlots={planSlots} detail />
+            {/* V5 · Die vier Kennzahlen als Zeilen: Name links, Wert rechts in
+                Tabellenziffern, Einheit mit schmalem Leerzeichen. */}
+            <VerlaufLedger label="Kennzahlen der Vorhersage" zeilen={zeilen} />
+            <Aufklapper
+              titel="Temperatur & Sonnenstärke im Verlauf"
+              open={mehrOpen}
+              onToggle={() => setMehrOpen((v) => !v)}
+            >
+              {/* ⚠ Das zweite Bild entsteht ERST beim Aufklappen. Ein `details`
+                  rendert seine Kinder auch zugeklappt, und ein ECharts-Canvas
+                  in einem `display:none`-Kasten misst 0 × 0 - es bliebe leer,
+                  bis irgendwann ein Resize kommt. */}
+              {mehrOpen && <WeatherChart points={points} planSlots={planSlots} modus="kontext" />}
+            </Aufklapper>
+            <p className="vp-c-note">
+              Wetterdaten: Open-Meteo, stündlich aktualisiert. Die erwartete Leistung ist
+              die PV-Prognose, mit der Ihr Fahrplan rechnet - sie reicht so weit wie der
+              Fahrplan.
+            </p>
+          </>
+        )}
+      </VerlaufKarte>
       {/* V1 · Der Lead-Satz des früheren Seitenkopfs — wörtlich, am Fuß. */}
       <VerlaufFuss text={WETTER_LEAD} />
     </>
