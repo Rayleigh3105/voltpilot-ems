@@ -44,7 +44,15 @@
   --vp-c-muted: #e9eff8; /* Chip-Grund, Balken-Spur, Summenzeile */
   --vp-c-muted-fg: #475569; /* Sekundärzeilen — 7,0:1 auf Weiss, 5,4:1 auf Muted */
   --vp-c-border: #e2e8f0;
-  --vp-c-destructive: #dc2626; /* Minus-Beträge und Hero < 0 — 4,8:1 auf Weiss */
+  /* ⚠ ANGEPASST gegenüber der Skill-Ausgabe (#DC2626): der Minus-Betrag steht
+     nicht nur auf `c-card`, sondern in der SUMMENZEILE auch auf `c-muted` —
+     dort maß #DC2626 nur 4,18:1 (im echten Browser an der Anlage Dachau
+     gesehen, deren Netto heute negativ ist; die Beweis-Fixtures haben alle ein
+     positives Netto und trafen den Fall nie). #B91C1C ist die nächste Stufe
+     derselben Familie und hält BEIDE Gründe: 6,5:1 auf Weiss, 5,6:1 auf Muted.
+     Der Wächter dafür ist das Paar `c-destructive`/`c-muted` in
+     `erloeseKontrast.test.ts` — es fehlte, deshalb blieb es unbemerkt. */
+  --vp-c-destructive: #b91c1c;
 
   /* --- Was der Skill nicht liefert (§3.10 „angepasst") ------------------- */
   /* Warnton: aus der Accent-Familie (Orange) abgeleitet, 7,1:1 — der Skill hat
@@ -1458,7 +1466,10 @@ button.vp-cl-item.is-off .vp-cl-label {
   border-radius: 999px;
   background: var(--vp-neutral-soft, #eef1f5);
   color: #4b5563;
-  font-size: 0.72rem;
+  /* ⚠ 0,72 rem sind 11,5 px — unter dem 12-px-Boden der Erlöse-Fläche
+     (Konzept §3.10, bei 1440 in der laufenden App nachgemessen). Das
+     Abzeichen ist `nowrap` und einzeilig, die 0,5 px kosten keine Zeile. */
+  font-size: 0.75rem;
   font-weight: 800;
   white-space: nowrap;
 }

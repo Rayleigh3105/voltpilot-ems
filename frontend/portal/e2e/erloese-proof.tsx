@@ -314,6 +314,75 @@ function budgetFuer(id: string): number {
     : WORT_BUDGET.eigenverbrauch;
 }
 
+/**
+ * **Das SKALEN-Budget der Ergebnis-Fläche (P7, Konzept §3.10/§4).** Es sind die
+ * bei der Abnahme in echtem Chrome bei 1440 / 768 / 375 GEMESSENEN Werte — an
+ * allen drei Breiten identisch, weil die Fläche ihre Skala nicht mit der Breite
+ * wechselt (nur die Leitzahl springt 48 ↔ 36).
+ *
+ * ⚠ Es steht HIER und nicht in einem Unit-Test, weil es nur im Browser
+ *   messbar ist: eine fünfte Schriftgröße, ein dritter Chip, eine zweite
+ *   Fläche oder eine Schrift unter 12 px entstehen aus KASKADIERTEM CSS, das
+ *   jsdom nicht rechnet. Der Beweis SIEHT die Überschreitung, statt sie zu
+ *   verschweigen — dasselbe Muster wie das Wortbudget darüber.
+ *
+ * ⚠ `textColors` = 4 plus den WARNTON: `eeg-ohne-tarif` und `eeg-ohne-mastr`
+ *   tragen zusätzlich `--vp-c-warn-fg` (#9A3412) und messen deshalb 5. Das ist
+ *   die im Konzept vorgesehene Ausnahme, kein Verstoß.
+ */
+const SKALA_BUDGET = {
+  fontSizes: 4,
+  textColors: 5,
+  backgrounds: 1,
+  chips: 3,
+  smallestPx: 12,
+} as const;
+
+/** Die im Browser gemessene Inventur EINER Fläche — ohne Fremdbibliothek. */
+function inventur(root: HTMLElement): {
+  fontSizes: number;
+  textColors: number;
+  backgrounds: number;
+  chips: number;
+  smallestPx: number;
+} {
+  const sizes = new Set<string>();
+  const colors = new Set<string>();
+  const bgs = new Set<string>();
+  let chips = 0;
+  let smallest = 99;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+  while (w.nextNode()) {
+    const el = w.currentNode as HTMLElement;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    const bg = cs.backgroundColor;
+    if (bg && !/rgba\(0, 0, 0, 0\)/.test(bg) && bg !== 'rgb(255, 255, 255)') bgs.add(bg);
+    if (/chip|badge|pill/i.test(String(el.className)) && el.children.length <= 2) chips += 1;
+    let hasText = false;
+    for (const c of Array.from(el.childNodes)) {
+      if (c.nodeType === 3 && (c.textContent ?? '').trim().length > 0) {
+        hasText = true;
+        break;
+      }
+    }
+    if (!hasText) continue;
+    const fs = parseFloat(cs.fontSize);
+    sizes.add(fs.toFixed(1));
+    colors.add(cs.color);
+    if (fs < smallest) smallest = fs;
+  }
+  return {
+    fontSizes: sizes.size,
+    textColors: colors.size,
+    backgrounds: bgs.size,
+    chips,
+    smallestPx: smallest === 99 ? 0 : +smallest.toFixed(1),
+  };
+}
+
 function WortBudget() {
   useEffect(() => {
     for (const slot of document.querySelectorAll<HTMLElement>('[data-woerter-slot]')) {
@@ -327,7 +396,25 @@ function WortBudget() {
       slot.setAttribute('data-woerter', String(n));
       slot.setAttribute('data-budget', String(budget));
       slot.setAttribute('data-ueber', n > budget ? '1' : '0');
-      slot.textContent = ` \u00b7 Ebene 0: ${n}/${budget} W\u00f6rter${n > budget ? ' \u26a0' : ''}`;
+      // P7: dieselbe Sicht auf die SKALA — gemessen, gestempelt, sichtbar.
+      const inv = karte ? inventur(karte) : null;
+      const verstoss = inv
+        ? [
+            inv.fontSizes > SKALA_BUDGET.fontSizes ? `${inv.fontSizes} Schriftgr\u00f6\u00dfen` : '',
+            inv.textColors > SKALA_BUDGET.textColors ? `${inv.textColors} Textfarben` : '',
+            inv.backgrounds > SKALA_BUDGET.backgrounds ? `${inv.backgrounds} Fl\u00e4chen` : '',
+            inv.chips > SKALA_BUDGET.chips ? `${inv.chips} Chips` : '',
+            inv.smallestPx < SKALA_BUDGET.smallestPx ? `${inv.smallestPx} px` : '',
+          ].filter(Boolean)
+        : [];
+      if (inv) {
+        slot.setAttribute('data-skala', `${inv.fontSizes}/${inv.textColors}/${inv.backgrounds}/${inv.chips}/${inv.smallestPx}`);
+        slot.setAttribute('data-skala-ueber', verstoss.length ? '1' : '0');
+      }
+      const skalaTxt = inv
+        ? ` \u00b7 Skala ${inv.fontSizes}\u00d7Gr\u00f6\u00dfe ${inv.textColors}\u00d7Farbe ${inv.backgrounds}\u00d7Fl\u00e4che ${inv.chips}\u00d7Chip min ${inv.smallestPx}px${verstoss.length ? ` \u26a0 ${verstoss.join(', ')}` : ''}`
+        : '';
+      slot.textContent = ` \u00b7 Ebene 0: ${n}/${budget} W\u00f6rter${n > budget ? ' \u26a0' : ''}${skalaTxt}`;
     }
   });
   return null;

@@ -554,7 +554,8 @@
   gap: 3px;
   margin-top: 4px;
   min-width: 0;
-  font-size: 0.74rem;
+  /* ⚠ 0,74 rem sind 11,8 px — unter dem 12-px-Boden (Konzept §3.10). */
+  font-size: 0.75rem;
   font-weight: 700;
   overflow-wrap: anywhere;
 }
@@ -924,7 +925,13 @@
   /* Sie bleibt die BEDIENUNG (Serie an/aus) und behält jedes Wort - sie wohnt
      nur enger. Gescoped auf die Welten, damit `index.css` unberührt bleibt. */
   .vp-welt-body .vp-chart-legend {
-    gap: 5px 6px;
+    /* ⚠ Der ZEILEN-Abstand ist die zweite Hälfte der 44-px-Zusage darunter:
+       das Overlay ragt 7 px über den Chip hinaus, bei 5 px Abstand ÜBERLAPPTEN
+       sich die Overlays zweier Zeilen um 9 px und die untere gewann — die
+       obere Zeile war nur noch 35 px tief antippbar (bei 375 mit
+       `elementFromPoint` nachgemessen). 14 px lassen sie sich exakt berühren,
+       ohne sich zu decken. Der Spalten-Abstand bleibt eng. */
+    gap: 14px 6px;
     margin-bottom: 8px;
   }
 
@@ -945,7 +952,10 @@
   }
 
   .vp-welt-body .vp-cl-item {
-    font-size: 0.76rem;
+    /* ⚠ 0,76 rem sind 12,2 px — dieselbe Rechnung wie beim Titel darüber:
+       eine eigene Stufe direkt neben den 12 px der Skala. 0,75 rem sind die
+       12 px selbst. */
+    font-size: 0.75rem;
     gap: 5px;
   }
 
@@ -959,7 +969,10 @@
   .vp-welt-body .vp-energie-nulllinie {
     gap: 0 12px;
     margin-bottom: 4px;
-    font-size: 0.7rem;
+    /* ⚠ 0,7 rem sind 11,2 px — unter dem 12-px-Boden (Konzept §3.10, bei 375
+       in der laufenden App nachgemessen). Die Zeile bricht ohnehin, die
+       0,8 px kosten hier keine Breite. */
+    font-size: 0.75rem;
     line-height: 1.35;
   }
 
@@ -1079,7 +1092,11 @@
     flex: 1 1 auto;
     min-width: 0;
     order: 0;
-    font-size: 0.92rem;
+    /* ⚠ 0,92 rem sind 14,7 px — eine EIGENE Stufe neben den 14 px der Skala,
+       und am Telefon die einzige, die sie sprengt (§3.10: die ganze Seite
+       trägt höchstens sechs). 0,875 rem sind exakt die 14 px, die die Fläche
+       ohnehin führt; 0,7 px kleiner sieht niemand. */
+    font-size: 0.875rem;
     line-height: 1.3;
   }
 
@@ -1091,7 +1108,11 @@
     flex: 1 1 100%;
     order: 2;
     min-width: 0;
-    font-size: 0.72rem;
+    /* ⚠ 0,72 rem sind 11,5 px — unter dem 12-px-Boden der Fläche (Konzept
+       §3.10, im echten Browser bei 375 nachgemessen). Sie steht hier ohnehin
+       auf einer EIGENEN vollen Zeile und darf umbrechen, die 0,5 px kosten
+       also keine Breite. Am Schreibtisch misst dieselbe Zeile schon 12. */
+    font-size: 0.75rem;
     /* Sie darf hier umbrechen - sie ist keine Spalte mehr, sondern eine Zeile. */
     white-space: normal;
   }
@@ -1183,12 +1204,27 @@
   color: var(--vp-c-fg, #1e293b);
 }
 
+/* ⚠ 768 px: die EINE Zeile hat dort ~712 px, ihre Bedienelemente brauchen 734
+   — und `.vp-period-nav` schrumpfte NICHT, weil sein `min-width: auto` (die
+   Vorgabe jedes Flex-Kindes) auf die min-content-Breite auflöst. Ohne diese
+   Regel schob der ⋯-Knopf 35..45 px über die Fläche (im echten Browser bei
+   768 nachgemessen, Befund aus PR 604). Bei 1440 ist Platz, dort schrumpft
+   nichts; unter 721 px gilt die Mobil-Fassung mit ihren zwei Zeilen. */
+.vp-zeitleiste:not(.vp-zeitleiste-mobil) .vp-period-nav {
+  min-width: 0;
+}
+
 .vp-zeitleiste:not(.vp-zeitleiste-mobil) .vp-period-nav > .label {
   /* Die Zeile ist jetzt EINE — der Name darf schrumpfen, statt sie zu sprengen. */
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--vp-c-fg, #1e293b);
+  /* ⚠ Der Blätterer trägt seinen Tag ZWEIMAL (diese Beschriftung und das
+     Sprungfeld daneben). Die Kürzung nimmt deshalb ZUERST die Beschriftung —
+     sie ellipsiert, während das Sprungfeld den Tag vollständig lesbar hält.
+     Die drei Schritt-Knöpfe halten ihre 44 px über ihr eigenes `min-width`. */
+  flex-shrink: 999;
 }
 
 /* Das Datum-Feld: gleiche Höhe wie seine Nachbarn (B12). Der Auslöser des

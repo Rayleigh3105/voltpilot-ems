@@ -200,6 +200,10 @@ describe('Variante C · jedes Paar hält AA (P0)', () => {
     ['Sekundärzeile auf dem Chip', 'c-muted-fg', 'c-muted'],
     ['Fliesstext auf dem Seitengrund', 'c-fg', 'c-bg'],
     ['Minus-Betrag auf der Karte', 'c-destructive', 'c-card'],
+    // ⚠ P7: DIESES Paar fehlte, und genau daran ging der Minus-Betrag der
+    //   Summenzeile durch (4,18:1 im echten Browser gemessen). Die Summenzeile
+    //   ist die EINE Stelle, an der `c-destructive` auf `c-muted` steht.
+    ['Minus-Betrag auf der Summenzeile', 'c-destructive', 'c-muted'],
     ['Warn-Wort auf dem Warn-Grund', 'c-warn-fg', 'c-warn-bg'],
     ['Primär-Wort auf der Karte', 'c-primary', 'c-card'],
   ];
