@@ -159,6 +159,92 @@ export function peakCounterfactualTip(peak: PeakShaving): string {
   );
 }
 
+/**
+ * EINE Abrechnungsperiode der Lastspitzen-Fläche, blätterbar (Paket P1, V3).
+ *
+ * ⚠ **Der Zeitraum dieses Reiters ist die ABRECHNUNGSPERIODE, nicht Tag/Woche/
+ * Monat** (§4.4): der Leistungspreis wird je Periode abgerechnet, alles andere
+ * wäre ein Segment ohne Bedeutung. Deshalb trägt die Leiste hier einen
+ * Blätterer und KEIN Segment.
+ */
+export interface LastspitzenPeriode {
+  /** Erster Berliner Tag der Periode (ISO). */
+  start: string;
+  /** „Abrechnungsjahr 2026" bzw. „Abrechnung September 2026". */
+  label: string;
+  peakKw: number | null;
+  avoidedKw: number | null;
+  avoidedEur: number | null;
+  /** Die LAUFENDE Periode — die einzige, für die es einen Fahrplan gibt. */
+  laufend: boolean;
+}
+
+/**
+ * Die blätterbaren Perioden, ÄLTESTE zuerst (wie `peak.history`).
+ *
+ * ⚠ **Es entsteht kein neuer Abruf.** `peak.history` trägt die letzten zwölf
+ * gemessenen Perioden EINSCHLIESSLICH der laufenden; einen Endpunkt für den
+ * Beweis einer VERGANGENEN Periode gibt es nicht — es gäbe also gar keine
+ * andere ehrliche Quelle.
+ *
+ * ⚠ Für die LAUFENDE Periode gewinnen die Kopf-Felder von `peak`
+ * (`peakKw`/`avoidedKw`/`avoidedEur`): sie sind der Stand von JETZT, während
+ * die Historien-Zeile ihr Abbild ist. Sie können sich nur unterscheiden, wenn
+ * beide aus verschiedenen Momenten stammen — dann ist der Kopf der jüngere.
+ *
+ * Eine Anlage ohne eine einzige gemessene Periode bekommt trotzdem einen
+ * Eintrag: den laufenden, mit den ehrlichen `null`-Werten des Kopfes. Ohne ihn
+ * hätte die Leiste nichts zu beschriften.
+ */
+export function lastspitzenPerioden(
+  peak: PeakShaving | null | undefined,
+): LastspitzenPeriode[] {
+  if (peak == null) return [];
+  const perioden: LastspitzenPeriode[] = peak.history.map((h) => ({
+    start: h.periodStart,
+    label: periodenLabel(h.periodStart, peak.abrechnung),
+    peakKw: h.peakKw,
+    avoidedKw: h.avoidedKw,
+    avoidedEur: h.avoidedEur,
+    laufend: h.periodStart === peak.periodStart,
+  }));
+  const laufend = perioden.find((p) => p.laufend);
+  if (laufend) {
+    laufend.peakKw = peak.peakKw;
+    laufend.avoidedKw = peak.avoidedKw;
+    laufend.avoidedEur = peak.avoidedEur;
+    return perioden;
+  }
+  return [
+    ...perioden,
+    {
+      start: peak.periodStart,
+      label: periodenLabel(peak.periodStart, peak.abrechnung),
+      peakKw: peak.peakKw,
+      avoidedKw: peak.avoidedKw,
+      avoidedEur: peak.avoidedEur,
+      laufend: true,
+    },
+  ];
+}
+
+/**
+ * Die Beschriftung EINER Periode im Blätterer. Sie nennt die ART der
+ * Abrechnung mit — „2026" allein sagt nicht, ob das ein Jahr oder ein Monat
+ * ist, und beide kommen im Feld vor.
+ */
+export function periodenLabel(
+  periodStart: string,
+  abrechnung: PeakShaving['abrechnung'],
+): string {
+  const d = new Date(`${periodStart}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return periodStart;
+  if (abrechnung === 'monat') {
+    return `Abrechnung ${d.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}`;
+  }
+  return `Abrechnungsjahr ${d.getFullYear()}`;
+}
+
 /** The proof numbers of the ACTIVE Lastspitzenkappung card, render-ready. */
 export interface LastspitzenProof {
   /**

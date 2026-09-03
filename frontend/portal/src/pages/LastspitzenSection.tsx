@@ -1,9 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { KpiCard } from '../../designsystem/components/shell/KpiCard';
 import { api, ApiError, type Earnings, type PeakShaving, type SchedulePlan, type Site } from '../api';
-import { abrechnungLabel, lastspitzenProof, peakCounterfactualTip } from '../moduleSurface';
+import {
+  abrechnungLabel,
+  lastspitzenPerioden,
+  lastspitzenProof,
+  peakCounterfactualTip,
+} from '../moduleSurface';
+import {
+  VerlaufFuss,
+  VerlaufKopf,
+  ZeitBlaetterer,
+  ZeitLeisteRahmen,
+} from '../components/HistorieWelt';
+import { useIsPhone } from '../useIsPhone';
 import { eur, fmtNum } from '../format';
 import { PeakHistoryChart } from '../components/PeakHistoryChart';
 import { ScheduleChart } from '../ScheduleChart';
@@ -23,7 +35,12 @@ import { ChartCardSkeleton, EmptyState, ErrorState, Skeleton } from '../componen
  * from GET /schedule) - no new endpoint. A site without an active peak-shaving
  * module gets the honest "nicht aktiv" state (deep-link safe, never a crash).
  */
+/** Der Lead-Satz des früheren Seitenkopfs (`SUB_PAGES.lastspitzen`, bis P1). */
+const LASTSPITZEN_LEAD =
+  'Lastspitzenkappung: gehaltene Spitze, vermiedene Leistungskosten und der Fahrplan zum Halten Ihrer Zielspitze.';
+
 export function LastspitzenSection({ site }: { site: Site }) {
+  const isPhone = useIsPhone();
   const [earnings, setEarnings] = useState<Earnings | null>(null);
   const [earnErr, setEarnErr] = useState<string | null>(null);
   const [plan, setPlan] = useState<SchedulePlan | null>(null);
@@ -59,6 +76,17 @@ export function LastspitzenSection({ site }: { site: Site }) {
   const peak: PeakShaving | null =
     earnings?.sites.find((s) => s.id === site.id)?.peakShaving ?? null;
 
+  /**
+   * Die blätterbaren Perioden + die gewählte. `idx` steht auf der LAUFENDEN
+   * (der letzten), sobald der Abruf da ist — ein Blätterer, der auf einer alten
+   * Periode startet, beantwortete die Frage nicht, mit der man herkommt.
+   */
+  const perioden = useMemo(() => lastspitzenPerioden(peak), [peak]);
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    setIdx(Math.max(0, perioden.length - 1));
+  }, [perioden.length, site.id]);
+
   if (earnErr && earnings == null) {
     return (
       <Card padding="lg" radius="lg">
@@ -90,32 +118,65 @@ export function LastspitzenSection({ site }: { site: Site }) {
   const proof = lastspitzenProof(peak);
   const hasHistory = peak.history.length > 0;
   const target = plan?.peakTargetKw ?? null;
+  const gezeigt = perioden[idx] ?? null;
+  const nichtsGemessen =
+    gezeigt == null ||
+    gezeigt.peakKw == null ||
+    gezeigt.avoidedKw == null ||
+    gezeigt.avoidedEur == null;
 
   return (
     <>
-      {/* 1 · PS-4 proof of the running billing period. */}
+      {/* V1 · Unsichtbarer Seitenkopf (Paket P1): sein Titel + Lead standen im
+          `SUB_PAGES`-Kopf ÜBER den Reitern und schoben sie von 140 auf 287 px. */}
+      <VerlaufKopf titel="Lastspitzen" />
+      {/* V3 · Der Zeitraum dieses Reiters ist die ABRECHNUNGSPERIODE (§4.4) —
+          ein Blätterer, kein Segment. Er liest ausschließlich `peak.history`
+          (die letzten zwölf gemessenen Perioden inkl. der laufenden); einen
+          Endpunkt für den Beweis einer vergangenen Periode gibt es nicht, es
+          entsteht also kein neuer Abruf. */}
+      <ZeitLeisteRahmen
+        mobil={isPhone}
+        zeile1={
+          <ZeitBlaetterer
+            label={gezeigt?.label ?? 'Laufende Periode'}
+            onZurueck={() => setIdx((i) => Math.max(0, i - 1))}
+            onVor={() => setIdx((i) => Math.min(perioden.length - 1, i + 1))}
+            zurueckDisabled={idx <= 0}
+            vorDisabled={idx >= perioden.length - 1}
+            jetztLabel="Aktuelle Periode"
+            onJetzt={
+              idx < perioden.length - 1 ? () => setIdx(perioden.length - 1) : undefined
+            }
+          />
+        }
+      />
+
+      {/* 1 · PS-4 proof of the SELECTED billing period. */}
       <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
         <span className="vp-card-label">
           Ihre Lastspitze · Abrechnung {abrechnungLabel(peak.abrechnung)}
         </span>
-        {proof == null || proof.note ? (
+        {proof == null || nichtsGemessen ? (
           <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
-            {proof?.note ??
-              'In der laufenden Abrechnungsperiode liegen noch keine Messwerte vor.'}
+            {gezeigt?.laufend !== false
+              ? (proof?.note ??
+                'In der laufenden Abrechnungsperiode liegen noch keine Messwerte vor.')
+              : `Für ${gezeigt.label} liegen keine Messwerte vor.`}
           </p>
         ) : (
           <div className="vp-kpis" style={{ marginTop: 'var(--vp-space-3)' }}>
             <KpiCard
               icon={<Icon name="activity" size={20} />}
               category="primary"
-              value={fmtNum(peak.peakKw, 'kW')}
-              label="Gehaltene Spitze diese Periode"
-              title="Die höchste Viertelstunden-Bezugsspitze der laufenden Abrechnungsperiode"
+              value={fmtNum(gezeigt.peakKw, 'kW')}
+              label={gezeigt.laufend ? 'Gehaltene Spitze diese Periode' : 'Gehaltene Spitze'}
+              title="Die höchste Viertelstunden-Bezugsspitze dieser Abrechnungsperiode"
             />
             <KpiCard
               icon={<Icon name="trending-up" size={20} />}
               category="dynamic"
-              value={`+${fmtNum(peak.avoidedKw, 'kW')}`}
+              value={`+${fmtNum(gezeigt.avoidedKw, 'kW')}`}
               label={
                 <>
                   Vermiedene Spitze
@@ -129,7 +190,7 @@ export function LastspitzenSection({ site }: { site: Site }) {
             <KpiCard
               icon={<Icon name="euro" size={20} />}
               category="dynamic"
-              value={`${peak.avoidedEur != null && peak.avoidedEur >= 0 ? '+' : ''}${eur(peak.avoidedEur ?? 0)} €`}
+              value={`${gezeigt.avoidedEur != null && gezeigt.avoidedEur >= 0 ? '+' : ''}${eur(gezeigt.avoidedEur ?? 0)} €`}
               label="Ersparte Leistungskosten"
               title="Vermiedene Spitze × Leistungspreis"
             />
@@ -150,9 +211,17 @@ export function LastspitzenSection({ site }: { site: Site }) {
         )}
       </Card>
 
-      {/* 3 · Fahrplan with the peak-target overlay. */}
+      {/* 3 · Fahrplan with the peak-target overlay.
+          ⚠ Der Fahrplan ist IMMER der kommende — es gibt keinen für eine
+          vergangene Periode. Wer zurückgeblättert hat, bekommt das gesagt,
+          statt den Plan stillschweigend der falschen Periode zuzuschreiben. */}
       <Card padding="lg" radius="lg" style={{ minWidth: 0, marginTop: 'var(--vp-gap)' }}>
         <span className="vp-card-label">Fahrplan & Ziel-Netzbezug</span>
+        {gezeigt != null && !gezeigt.laufend && (
+          <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
+            Der Fahrplan zeigt immer die kommenden Stunden, nicht {gezeigt.label}.
+          </p>
+        )}
         {plan == null ? (
           <ChartCardSkeleton stats={0} />
         ) : plan.slots.length === 0 ? (
@@ -172,6 +241,8 @@ export function LastspitzenSection({ site }: { site: Site }) {
           </>
         )}
       </Card>
+      {/* V1 · Der Lead-Satz des früheren Seitenkopfs — wörtlich, am Fuß. */}
+      <VerlaufFuss text={LASTSPITZEN_LEAD} />
     </>
   );
 }
