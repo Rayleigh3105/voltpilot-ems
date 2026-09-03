@@ -61,12 +61,3 @@
   background: #dfe4e8;
   color: #4b5563;
 }
-
-/* Die Temperatur-Zeile im Aufklapper (V8) — Sekundärgrösse, kein eigener Ton. */
-.vp-wetter-temp {
-  margin: 0;
-  font-size: var(--vp-c-fs-14, 14px);
-  font-weight: var(--vp-c-fw-400, 400);
-  line-height: var(--vp-c-lh-text, 1.5);
-  color: var(--vp-c-muted-fg, #475569);
-}
