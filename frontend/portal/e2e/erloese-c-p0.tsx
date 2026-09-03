@@ -24,7 +24,8 @@ import '../src/components/Historie.css';
 import '../src/components/Erloese.css';
 import '../src/shell/Shell.css';
 import '../src/components/BereichTabs.css';
-import '../src/components/SpeicherBlock.css';
+// ⚠ `SpeicherBlock.css` gibt es seit P1/P5 nicht mehr (die Speicher-Karte
+// wohnt in `src/components/erloese/`) — der Import brach die Fixture.
 import '../src/components/SteuerungFormel.css';
 import '../src/components/ErloesKomposition.css';
 
@@ -50,7 +51,7 @@ function Leisten({ children }: { children: React.ReactNode }) {
     <div className="vp-app">
       <aside className="vp-sidebar">
         <div className="brand">
-          <strong style={{ color: '#fff' }}>VoltPilot</strong>
+          <strong>VoltPilot</strong>
         </div>
         <nav aria-label="Hauptnavigation">
           {NAV.map(([ic, label, aktiv]) => (

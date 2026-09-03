@@ -39,7 +39,7 @@
   --vp-c-secondary: #3b82f6; /* zweite Reihen-Kennung (Eigenverbrauch) */
   --vp-c-accent: #ea580c; /* NUR eine echte Handlungsaufforderung — heute keine */
   --vp-c-bg: #f8fafc; /* Seitengrund */
-  --vp-c-fg: #1e293b; /* Tinte — und der Grund der App-Leisten (§3.10) */
+  --vp-c-fg: #1e293b; /* Tinte (die Leisten sind seit P8 wieder hell) */
   --vp-c-card: #ffffff;
   --vp-c-muted: #e9eff8; /* Chip-Grund, Balken-Spur, Summenzeile */
   --vp-c-muted-fg: #475569; /* Sekundärzeilen — 7,0:1 auf Weiss, 5,4:1 auf Muted */
@@ -59,12 +59,12 @@
      keinen Warn-Token, und Accent selbst bleibt der Handlung vorbehalten. */
   --vp-c-warn-bg: #fff7ed;
   --vp-c-warn-fg: #9a3412;
-  /* Zustandsfläche auf der DUNKLEN Leiste: der Skill leitet für Zustände auf
-     dunklem Grund nichts ab, und halbtransparentes Weiss wäre messtechnisch
-     nicht prüfbar (der gemessene Kontrast hinge am Untergrund). */
+  /* ⚠ Die zwei Töne für eine DUNKLE Fläche haben seit P8 keinen Leser mehr
+     (die Leisten sind wieder hell). Sie bleiben definiert, weil sie die
+     gemessene Grundlage für einen künftigen dunklen Grund sind — wer sie
+     benutzt, misst gegen #1E293B: Zustandsfläche 82 % + Weiss, gedämpfte
+     Schrift #CBD5E1 = 9,8:1. */
   --vp-c-fg-state: color-mix(in srgb, var(--vp-c-fg) 82%, #fff);
-  /* Die Schrift auf der dunklen Leiste, wenn sie NICHT führt (Pfad, inaktive
-     Einträge): #CBD5E1 auf #1E293B = 9,8:1. */
   --vp-c-on-fg-muted: #cbd5e1;
 
   /* --- Form (Skill: „sharp shadows if any" ⇒ keine) --------------------- */
@@ -5657,15 +5657,19 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-c-muted-fg, #475569);
 }
 
-/* --- 2 · Das Kleid der App-Leisten ---------------------------------------
- * §3.10 Anatomie C Punkt 5: „App-Leiste und Seitenleiste in Foreground mit
- * weisser Schrift (aktiver Eintrag mit 3-px-Primary-Kante), Bereichs-Reiter
- * als Unterstrich-Tabs". Der Skill nennt als Stil-Merkmal „high contrast,
- * geometric" — die dunkle Leiste ist KEIN Dunkelmodus: der Inhalt bleibt hell
- * (Anti-Pattern „Dark mode by default").
+/* --- 2 · Die App-Leisten: HELL, wie vor Variante C ------------------------
+ * ⚠ P8 (Captain-Korrektur 03.09.2026, wörtlich: „wieso sind der Header und
+ * Footer blau, bitte so wie davor.") NIMMT DEN DUNKLEN LEISTEN-ANSTRICH DES
+ * P0-PILOTEN ZURÜCK. Kopf-, Seiten- und Fussleiste tragen wieder die HAUS-
+ * Regeln (`--vp-surface` auf hellem Grund, `--vp-primary-deep`/`--vp-action`
+ * als Zustände) — es steht hier deshalb KEINE Farb-Regel mehr.
  *
- * Gemessen (Weiss auf #1E293B 14,6:1 · #CBD5E1 darauf 9,8:1) — nachgerechnet
- * im Skala-Wächter `src/erloeseSkala.test.ts`.
+ * §3.10 Anatomie C Punkt 5 („Leisten in Foreground mit weisser Schrift") ist
+ * damit BEWUSST nicht umgesetzt; wer sie wieder dunkel machen will, braucht
+ * eine neue Captain-Entscheidung, nicht diesen Block.
+ *
+ * Was BLEIBT: der Grund des Dokuments und die SCHRIFT der Variante C — beides
+ * ist keine Aussage über hell oder dunkel.
  * ------------------------------------------------------------------------ */
 body {
   background: var(--vp-c-bg, #f8fafc);
@@ -5674,127 +5678,8 @@ body {
 .vp-topbar,
 .vp-sidebar,
 .vp-bottombar {
-  /* Die Schrift der Variante C — hier, nicht auf `body`: P0 stellt die
-     LEISTEN um, die Inhalte anderer Seiten folgen mit P1–P6. */
+  /* Nur die Schrift, nie die Farbe (siehe die Warnung oben). */
   font-family: var(--vp-c-font);
-}
-
-.vp-topbar,
-.vp-sidebar {
-  background: var(--vp-c-fg, #1e293b);
-  border-color: transparent;
-  color: #fff;
-}
-.vp-topbar {
-  border-bottom: 0;
-  box-shadow: none;
-}
-.vp-sidebar {
-  border-right: 0;
-}
-.vp-sidebar .brand,
-.vp-sidebar .side-foot {
-  border-color: color-mix(in srgb, var(--vp-c-fg, #1e293b) 78%, #fff);
-}
-
-/* Der PFAD: der Anlagen-Name führt in Weiss, alles Begleitende gedämpft. */
-.vp-topbar .crumbs .here,
-.vp-topbar-anlage .here {
-  color: #fff;
-}
-.vp-crumb-up,
-.vp-crumb-sep,
-.vp-tb-caret,
-.vp-usermenu .meta .e {
-  color: var(--vp-c-on-fg-muted, #cbd5e1);
-}
-.vp-usermenu .meta .n {
-  color: #fff;
-}
-.vp-crumb-up:hover {
-  color: #fff;
-  background: var(--vp-c-fg-state, #414d5f);
-}
-.vp-hamburger {
-  color: #fff;
-}
-.vp-avatar {
-  background: var(--vp-c-primary, #2563eb);
-}
-
-/* Das Zustands-Abzeichen und der Mandanten-Umschalter sind eigene FLÄCHEN auf
-   der Leiste — sie bekommen den dunklen Zustandston statt einer hellen Pille,
-   die auf dem dunklen Grund als Leuchtfleck läse. */
-.vp-topbar .vp-healthbadge,
-.vp-topbar .vp-healthbadge.state-ok,
-.vp-topbar .vp-healthbadge.state-warnung,
-.vp-topbar .vp-context {
-  background: var(--vp-c-fg-state, #414d5f);
-  border-color: color-mix(in srgb, var(--vp-c-fg, #1e293b) 62%, #fff);
-  color: #fff;
-}
-.vp-topbar .vp-healthbadge:hover,
-.vp-topbar .vp-healthbadge.state-ok:hover {
-  border-color: #fff;
-}
-.vp-topbar .vp-context-ic,
-.vp-topbar .vp-healthbadge-cause,
-.vp-topbar .vp-healthbadge-caret {
-  color: var(--vp-c-on-fg-muted, #cbd5e1);
-}
-.vp-topbar .vp-context-picker,
-.vp-topbar .vp-context-picker * {
-  color: #fff;
-}
-
-/* Die Seitenleiste: gedämpfte Einträge, der aktive mit der 3-px-Kante in
-   Primary auf der Zustandsfläche. */
-.vp-sidebar .vp-navitem,
-.vp-sidebar .vp-nav-group-label,
-.vp-sidebar .vp-navitem .ic,
-.vp-sidebar .vp-navitem .count,
-.vp-sidebar .vp-nav-fold {
-  color: var(--vp-c-on-fg-muted, #cbd5e1);
-}
-.vp-sidebar .vp-navitem:hover {
-  background: var(--vp-c-fg-state, #414d5f);
-  color: #fff;
-}
-.vp-sidebar .vp-navitem.active {
-  background: var(--vp-c-fg-state, #414d5f);
-  color: #fff;
-  border-radius: 0 var(--vp-c-radius-sm, 10px) var(--vp-c-radius-sm, 10px) 0;
-  box-shadow: inset 3px 0 0 var(--vp-c-primary, #2563eb);
-}
-.vp-sidebar .vp-navitem.active .ic {
-  color: #fff;
-}
-.vp-sidebar .vp-health-dot {
-  border-color: var(--vp-c-fg, #1e293b);
-}
-
-/* Die Telefon-Leiste trägt dasselbe Kleid (die fünf Kacheln bleiben).
-   ⚠ Die FARBEN der Kacheln stehen in `src/shell/Shell.css` — dort, wo die
-   Leiste ihre Form bekommt: beide Regeln hätten dieselbe Spezifität, und ein
-   komponenten-lokales Blatt wird nach `index.css` ausgewertet. Hier steht nur,
-   was `Shell.css` nicht setzt. */
-.vp-bottombar-item.active {
-  box-shadow: inset 0 3px 0 var(--vp-c-primary, #2563eb);
-}
-.vp-bottombar-badge {
-  background: var(--vp-c-primary, #2563eb);
-}
-
-/* ⚠ DIE WORTMARKE IST SCHWARZE TINTE auf transparentem Grund
-   (`designsystem/assets/voltpilot-wordmark.png`, Palette #000/#171717 + der
-   blaue Akzent #95B9FF) — auf der dunklen Leiste wäre sie unsichtbar. Sie wird
-   deshalb auf REINES WEISS geflacht, wie die Wortmarke des Mockups (§3.10
-   Anatomie C Punkt 5: „Seitenleiste in Foreground mit weisser Schrift").
-   `invert(1)` allein reicht NICHT: es machte aus dem blauen Akzent ein
-   schmutziges Braun (#95B9FF → #6A4600). Der Preis ist der Akzent — eine
-   zweifarbige Marke auf dunklem Grund bräuchte eine eigene Datei. */
-.vp-sidebar .brand img {
-  filter: brightness(0) invert(1);
 }
 
 /* --- 3 · Die Bereichs-Reiter als Unterstrich-Tabs ------------------------

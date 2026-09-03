@@ -214,13 +214,11 @@ describe('Variante C · jedes Paar hält AA (P0)', () => {
     });
   }
 
-  it('die weisse Schrift der App-Leisten hält AA auf dem dunklen Grund', () => {
-    expect(contrast([255, 255, 255], token('c-fg'))).toBeGreaterThanOrEqual(AA);
-  });
-
-  it('die 3-px-Kante des aktiven Eintrags ist auf dem Leisten-Grund erkennbar', () => {
-    // Eine KANTE ist kein Text: der Maßstab ist die 3:1-Grenze für
-    // Bedien-Elemente (WCAG 1.4.11), nicht AA.
-    expect(contrast(token('c-secondary'), token('c-fg'))).toBeGreaterThanOrEqual(3);
-  });
+  /* ⚠ P8 (Captain-Korrektur 03.09.2026): die App-Leisten sind wieder HELL, die
+     zwei Paare der dunklen Leiste sind deshalb ERSATZLOS entfallen — sie hätten
+     eine Farbkombination geprüft, die auf keiner Fläche mehr steht. Der
+     Leisten-Kontrast trägt seither wieder die HAUS-Token, deren Paare in den
+     Haus-Flächen geprüft sind; hier bleibt nur, was die Variante C wirklich
+     rendert. Wer die Leisten je wieder dunkel macht, holt die zwei Fälle
+     zurück (Weiss auf `c-fg` ≥ AA, `c-secondary` auf `c-fg` ≥ 3:1). */
 });
