@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Card } from '../../designsystem/components/core/Card';
 import type { HistoryRange, Site } from '../api';
 import { chartTheme } from '../chartTheme';
 import { fmtNum } from '../format';
@@ -28,15 +27,16 @@ import {
   useVergleichsErloesePortfolio,
 } from '../usePortfolioHistorie';
 
-import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
-import { KartenKopf, PeriodeFehlgeschlagen } from '../components/HistorieWelt';
+import { VerlaufFehler, VerlaufKarteSkeleton, VerlaufLeer } from '../components/States';
+import { PeriodeFehlgeschlagen } from '../components/HistorieWelt';
+import { VerlaufKarte } from '../components/VerlaufKarte';
 import {
   AbdeckungsSatz,
-  AnlagenTabelle,
-  MiniTrend,
+  AnlagenBlock,
   PortfolioWeltFuss,
   PortfolioWeltKopf,
   PortfolioZeitLeiste,
+  type AnlagenZeileView,
 } from '../components/PortfolioWelt';
 import { oeffneAnlagenWelt } from './portfolioWeltNav';
 
@@ -79,59 +79,29 @@ import { oeffneAnlagenWelt } from './portfolioWeltNav';
  *   am wenigsten gefragte. Das macht CSS (`.vp-pf-col-kwh`), nicht diese Liste —
  *   die Kopfzelle muss zu ihrer Datenzelle passen.
  */
-const SPALTEN = ['Anlage', NETTO_WORT, 'Speicher', 'Eingespeist', 'Verlauf'] as const;
+/** Die drei Zahlen-Spalten der Anlagen-Liste — „Anlage" und „Verlauf" sind
+ *  die zwei festen Ränder und stehen im Baustein. */
+const SPALTEN = [NETTO_WORT, 'Speicher', 'Eingespeist'] as const;
 
-function Zeile({
-  zeile,
-  href,
-  onOpen,
-}: {
-  zeile: ErloeseZeile;
-  href: string;
-  onOpen: () => void;
-}) {
-  return (
-    <tr className="clickable" onClick={onOpen}>
-      <td data-label="Anlage">
-        <div className="vp-cell-main">
-          <a
-            href={href}
-            onClick={(e) => {
-              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-              e.preventDefault();
-              e.stopPropagation();
-              onOpen();
-            }}
-          >
-            <b>{zeile.name}</b>
-          </a>
-          {zeile.hinweis && <span className="vp-pf-row-note">{zeile.hinweis}</span>}
-        </div>
-      </td>
-      <td className="num" data-label={NETTO_WORT}>
-        <span className="vp-pf-v">
-          {zeile.nettoEur == null ? DASH : signedEuro(zeile.nettoEur)}
-        </span>
-      </td>
-      <td className="num" data-label="Speicher">
-        <span className="vp-pf-v">
-          {zeile.savedEur == null ? DASH : signedEuro(zeile.savedEur)}
-        </span>
-      </td>
-      <td className="num vp-pf-col-kwh" data-label="Eingespeist">
-        <span className="vp-pf-v">
-          {zeile.eingespeistKwh == null ? DASH : fmtNum(zeile.eingespeistKwh, 'kWh')}
-        </span>
-      </td>
-      <td data-label="Verlauf">
-        <MiniTrend
-          werte={zeile.spark}
-          titel={`Ertrag von ${zeile.name} je Abschnitt`}
-          farbe={chartTheme().price}
-        />
-      </td>
-    </tr>
-  );
+/** Eine Anlagen-Zeile in der geteilten Form beider Zwillinge (Liste/Tabelle). */
+function anlagenZeile(z: ErloeseZeile, range: HistoryRange, at: string): AnlagenZeileView {
+  return {
+    id: z.siteId,
+    name: z.name,
+    hinweis: z.hinweis,
+    href: historieHash(z.siteId, 'erloese', range, at),
+    onOpen: () => oeffneAnlagenWelt(z.siteId, 'erloese', range, at),
+    // ⚠ `DASH` ist die ehrliche Antwort, nie eine 0: eine Anlage ohne
+    //   bewertete Viertelstunde hat nicht null verdient, sie ist nicht bewertet.
+    werte: [
+      z.nettoEur == null ? DASH : signedEuro(z.nettoEur),
+      z.savedEur == null ? DASH : signedEuro(z.savedEur),
+      z.eingespeistKwh == null ? DASH : fmtNum(z.eingespeistKwh, 'kWh'),
+    ],
+    spark: z.spark,
+    sparkTitel: `Ertrag von ${z.name} je Abschnitt`,
+    sparkFarbe: chartTheme().price,
+  };
 }
 
 export function PortfolioErloese({ sites }: { sites: Site[] }) {
@@ -264,16 +234,20 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
             : 'vp-welt-body vp-pf-erloes-body'
         }
       >
+        {/* V10 (Paket P2b/P8): die drei Zustände leben IN der Karte und
+            reservieren den Platz des späteren Inhalts. */}
         {err && !aggregat ? (
-          <ErrorState
-            message="Die Erlöse Ihrer Anlagen konnten nicht geladen werden."
-            onRetry={retry}
-          />
+          <div className="vp-c-card">
+            <VerlaufFehler
+              satz="Die Erlöse Ihrer Anlagen konnten nicht geladen werden."
+              onRetry={retry}
+            />
+          </div>
         ) : !aggregat ? (
           loading ? (
-            <Card padding="lg" radius="lg">
-              <ChartCardSkeleton />
-            </Card>
+            <div className="vp-c-card">
+              <VerlaufKarteSkeleton chart={false} legende={false} />
+            </div>
           ) : null
         ) : (
           <>
@@ -291,20 +265,14 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
                 nicht: das Portfolio hat keinen EINEN Tarif. */}
             <section className="vp-section">
               {aggregat.nettoEur == null ? (
-                <Card padding="lg" radius="lg" className="vp-pf-summenkarte">
-                  <KartenKopf
-                    icon="euro"
-                    category="primary"
-                    titel={`${NETTO_WORT} · ${label}`}
-                    art="bewertet"
+                /* P8 · derselbe Leer-Zustand wie eine Ebene tiefer: Label,
+                   EIN Satz — kein Icon-Kopf, keine Illustration. */
+                <VerlaufKarte label={`${NETTO_WORT} · ${label}`} provenienz="bewertet">
+                  <VerlaufLeer
+                    label="Noch kein Ergebnis für diesen Zeitraum"
+                    satz="Für keine Ihrer Anlagen liegen in diesem Zeitraum bewertete Viertelstunden vor. Sobald Messwerte und Preise da sind, steht hier, was Ihr Portfolio eingebracht hat."
                   />
-                  <EmptyState
-                    icon="euro"
-                    category="dynamic"
-                    title="Noch kein Ergebnis für diesen Zeitraum"
-                    description="Für keine Ihrer Anlagen liegen in diesem Zeitraum bewertete Viertelstunden vor. Sobald Messwerte und Preise da sind, steht hier, was Ihr Portfolio eingebracht hat."
-                  />
-                </Card>
+                </VerlaufKarte>
               ) : (
                 <ErgebnisZeilen
                   view={{
@@ -354,18 +322,11 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
               )}
             </section>
 
-            <section className="vp-section">
-              <AnlagenTabelle kopf={SPALTEN}>
-                {aggregat.zeilen.map((z) => (
-                  <Zeile
-                    key={z.siteId}
-                    zeile={z}
-                    href={historieHash(z.siteId, 'erloese', range, at)}
-                    onOpen={() => oeffneAnlagenWelt(z.siteId, 'erloese', range, at)}
-                  />
-                ))}
-              </AnlagenTabelle>
-            </section>
+            <AnlagenBlock
+              label="Anlagen"
+              kopf={SPALTEN}
+              zeilen={aggregat.zeilen.map((z) => anlagenZeile(z, range, at))}
+            />
           </>
         )}
       </div>

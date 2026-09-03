@@ -84,101 +84,220 @@
   font-size: var(--vp-erl-fs-12, 12px);
 }
 
-/* --- Die Anlagen-Tabelle -------------------------------------------------- */
+/* --- Die Anlagen: Liste am Telefon, Tabelle ab 721 px (E6 · Paket P8) ------
+   Beide Zwillinge lesen dieselben Daten (`AnlagenBlock`); die frühere
+   `.vp-table.responsive`-Klappform samt ihrer `::before`-Etiketten und der
+   Notlösung „Eingespeist am Telefon ausblenden" ist ersatzlos entfallen. */
 
-.vp-pf-table td,
-.vp-pf-table th {
+/* V7 · Die Liste. Sie sitzt in der Karte, also trägt sie keinen zweiten
+   Rahmen — nur eine 1-px-Linie zwischen den Zeilen (V4: nie Karte in Karte). */
+.vp-c-pfl {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   min-width: 0;
 }
 
-/* Die Tabelle trägt dieselbe Skala wie die Fläche darüber (§3.7: Kopf
-   12/600 gedämpft, Zellen 16 tabular). Die Größen kommen aus den P0-Token,
-   damit der Skala-Wächter (`erloeseSkala.test.ts`) sie mitzählt. */
-.vp-pf-table thead th {
-  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
-  font-size: var(--vp-erl-fs-12, 12px);
-  font-weight: var(--vp-erl-fw-600, 600);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.vp-c-pfl-row + .vp-c-pfl-row {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+
+/* `Name | Wert | Chevron` in Zeile 1, die übrigen Spalten darunter. Die
+   min-height IST die Trefferfläche (§3.2 V7: 48 px), und weil der Link die
+   ganze Breite füllt, ist sie so breit wie die Karte statt wie der Name. */
+.vp-c-pfl-a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto var(--vp-c-space-4);
+  align-items: center;
+  column-gap: var(--vp-c-space-3);
+  row-gap: var(--vp-c-space-1);
+  min-height: 48px;
+  padding: var(--vp-c-space-3) 0;
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+
+.vp-c-pfl-a:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-sm);
+}
+
+.vp-c-pfl-name {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-fg, #1e293b);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Der führende Wert — die Spalte, nach der die Zeile gelesen wird. */
+.vp-c-pfl-wert {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-fg, #1e293b);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Derselbe Chevron wie im geteilten Aufklapper — der Weg ist sichtbar, ohne
+   ein zweites Wort zu kosten. */
+.vp-c-pfl-chev {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--vp-c-muted-fg, #475569);
+  border-bottom: 2px solid var(--vp-c-muted-fg, #475569);
+  transform: rotate(-45deg);
+}
+
+/* Die übrigen Spalten als „Etikett Wert"-Paare — das Etikett ist der frühere
+   Spaltenkopf, nicht ein `::before` an einer Tabellenzelle. */
+.vp-c-pfl-sek {
+  grid-column: 1 / 3;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--vp-c-space-3);
+  row-gap: var(--vp-c-space-1);
+  min-width: 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg, #475569);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-c-pfl-paar {
+  white-space: nowrap;
+}
+
+.vp-c-pfl-lab {
   color: var(--vp-c-muted-fg, #475569);
 }
 
-.vp-pf-table tbody td {
-  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
-  font-size: var(--vp-erl-fs-16, 16px);
+.vp-c-pfl-trend {
+  grid-column: 3;
+  grid-row: 2;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+}
+
+.vp-c-pfl-note {
+  grid-column: 1 / 4;
+  grid-row: 3;
+  min-width: 0;
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+
+/* V7 · Die Tabelle ab 721 px. Kopf 12/700 Versalien gedämpft, Zellen 16
+   tabular — dieselbe Skala wie die Fläche darüber. */
+.vp-c-pft {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 0;
+}
+
+.vp-c-pft th,
+.vp-c-pft td {
+  min-width: 0;
+  padding: var(--vp-c-space-3) var(--vp-c-space-3) var(--vp-c-space-3) 0;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.vp-c-pft th:last-child,
+.vp-c-pft td:last-child {
+  padding-right: 0;
+}
+
+/* Zwischen zwei Spalten steht immer eine Lücke — sonst klebt eine
+   rechtsbündige Zahlenspalte am Kopf der nächsten (bei 1440 px gemessen). */
+.vp-c-pft th + th,
+.vp-c-pft td + td {
+  padding-left: var(--vp-c-space-5);
+}
+
+.vp-c-pft thead th {
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  line-height: var(--vp-c-lh-text);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+  border-bottom: 1px solid var(--vp-c-border, #e2e8f0);
+}
+
+.vp-c-pft tbody tr + tr th,
+.vp-c-pft tbody tr + tr td {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+
+.vp-c-pft tbody th {
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+
+.vp-c-pft tbody td {
+  font-size: var(--vp-c-fs-16);
+  line-height: var(--vp-c-lh-text);
   color: var(--vp-c-fg, #1e293b);
 }
 
-/* Die Trefferfläche des Anlagen-Wegs — 44 px, gemessen bei 375 px. Sie ist
-   der einzige Klickweg der Zeile, also darf sie nie kleiner sein (§2). */
-.vp-pf-table tbody .vp-cell-main > a {
+/* Die ganze Zeile ist der Weg — auch am Schreibtisch ≥ 48 px hoch (in einer
+   Tabelle wirkt `height` als Mindesthöhe, nicht als feste). */
+.vp-c-pft tbody tr.clickable {
+  cursor: pointer;
+  height: 48px;
+}
+
+.vp-c-pft tbody tr.clickable:hover {
+  background: var(--vp-c-muted, #f1f5f9);
+}
+
+/* Die Trefferfläche des Anlagen-Wegs — 44 px, gemessen bei 1440 px. Sie ist
+   der Tastatur-Weg der Zeile, also darf sie nie kleiner sein (§2). */
+.vp-c-pft tbody th > a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  font-size: var(--vp-erl-fs-16, 16px);
+  color: inherit;
 }
 
-.vp-pf-table .num {
+.vp-c-pft .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-/* Der WERT bricht nie um; das Etikett schon. */
-.vp-pf-v {
+.vp-c-pft-v {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
-/* LOAD-BEARING (bei 375 px im echten Browser gemessen): unter 720 px klappt
-   `.vp-table.responsive` die Zelle zu einer Flex-Zeile aus `::before`-Etikett
-   und Wert. Bleibt dort `white-space: nowrap` auf der ZELLE stehen, kann das
-   Etikett nicht umbrechen - eine lange Spaltenüberschrift („Durch Steuerung")
-   schob die Zeile dann 26 px über den Bildschirmrand. Der Wert behält seine
-   eigene nowrap-Regel, bricht also trotzdem nie mitten im Betrag. */
-@media (max-width: 720px) {
-  /* Die globale Telefon-Regel hält Diagramm-Köpfe absichtlich einzeilig. Die
-     Portfolio-Summe ist kein Diagramm und hat einen längeren Titel: hier darf
-     der Titel vollständig umbrechen, Abzeichen + Vergleich stehen darunter. */
-  .vp-welt-body .vp-pf-summenkarte .vp-section-head {
-    flex-wrap: wrap;
-    align-items: center;
-  }
-
-  .vp-welt-body .vp-pf-summenkarte .vp-section-head > h2 {
-    flex: 1 1 calc(100% - 36px);
-    overflow: visible;
-    text-overflow: clip;
-    white-space: normal;
-  }
-
-  .vp-welt-body .vp-pf-summenkarte .vp-prov {
-    margin-left: 36px;
-  }
-
-  .vp-pf-table td.num {
-    white-space: normal;
-  }
-
-  /* „Eingespeist" fällt am Telefon weg (Skill-Regel „Table Handling", §3.7):
-     unter 720 px klappt die Zeile zur Karte, und die vierte Zahl ist dort die
-     am wenigsten gefragte — sie steht vollständig in der Erlöse-Welt der
-     Anlage, die ein Klick auf die Zeile öffnet. Die Kopfzelle braucht keine
-     eigene Regel: `.vp-table.responsive thead` ist hier schon ausgeblendet. */
-  .vp-pf-table td.vp-pf-col-kwh {
-    display: none;
-  }
-
-  .vp-pf-table td::before {
-    font-size: var(--vp-erl-fs-12, 12px);
-  }
-}
-
-.vp-pf-row-note {
+.vp-c-pft-note {
   display: block;
-  margin-top: 2px;
+  margin-top: var(--vp-c-space-1);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+  font-weight: var(--vp-c-fw-400);
   color: var(--vp-c-muted-fg, #475569);
-  font-size: var(--vp-erl-fs-12, 12px);
 }
 
 .vp-pf-spark {

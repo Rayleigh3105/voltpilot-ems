@@ -5,50 +5,12 @@
  * lange Zahl die Spur und die Seite scrollt horizontal.
  */
 
-/* --- Kennzahl-Zeile: die sechs Energiemengen des Zeitraums (B1-b) --------- */
-
-.vp-energie-summen {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(clamp(120px, 30vw, 150px), 1fr));
-  gap: var(--vp-space-3);
-  margin-bottom: var(--vp-space-4);
-}
-
-.vp-esum {
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--vp-border);
-  border-radius: var(--vp-radius-md);
-  background: #fff;
-}
-
-.vp-esum-v {
-  display: block;
-  font-family: 'Inter Tight', Inter, sans-serif;
-  font-weight: 700;
-  font-size: clamp(1rem, 3.4vw, 1.2rem);
-  line-height: 1.2;
-  color: var(--vp-stat-ink, #1a1a1a);
-  overflow-wrap: anywhere;
-}
-
-.vp-esum-l {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  font-size: 0.78rem;
-  color: var(--vp-text-muted, #6c757d);
-  min-width: 0;
-}
-
-.vp-esum-dot {
-  flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--dot, var(--vp-gray, #adb5bd));
-}
+/* --- Kennzahl-Zeile: seit P8 ersatzlos ------------------------------------ */
+/* Die sechs Energiemengen sind Ledger-Zeilen (`messwerteZeilen.ts` →
+   `VerlaufLedger`) — auf dem Anlagen-Reiter seit P3, im Portfolio seit P8.
+   `.vp-energie-summen` und `.vp-esum*` hatten damit ihren letzten Nutzer
+   verloren; mit ihnen sind die zwei letzten `clamp()`-Größen und die zweite
+   Schriftfamilie (Inter Tight) dieses Blattes entfallen. */
 
 /* --- Quoten-Chips und Nulllinien-Zeile: seit P3 ersatzlos ----------------- */
 /* Die zwei Quoten sind Ledger-Zeilen mit 24-px-Zahl (`messwerteZeilen.ts`),
@@ -293,7 +255,34 @@
    0,875 rem am Telefon, 0,72 rem Unterzeile) sind damit erledigt — sie waren
    drei der rohen Schriftgrößen, die die Ratsche dieses Blattes zählt. */
 
-/* --- Fußkarte „Was diese Zahlen sind" ------------------------------------- */
+/* --- Die Fußkarte des Bereichs „Verlauf" (V4 · Variante C) ---------------- */
+/* ⚠ Sie ist eine `.vp-c-card`, damit ihr Titel in `--vp-c-font` steht (Befund
+   der P4-Crew, behoben in P8). Die Größen kommen aus der C-Skala, nicht aus
+   den rem-Werten der alten Fußkarte darunter — die gehört noch den Welten. */
+
+.vp-c-fuss-titel {
+  display: block;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-c-fuss-text {
+  margin: var(--vp-c-space-2) 0 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Im Aufklapper trägt der Inhalt seinen eigenen Abstand nach oben schon. */
+.vp-c-fuss .vp-c-aufk-body > .vp-c-fuss-text {
+  margin-top: 0;
+}
+
+/* --- Fußkarte „Was diese Zahlen sind" (die Welten des Explorers) ---------- */
 
 .vp-welt-fuss {
   background: #fbfcfd;

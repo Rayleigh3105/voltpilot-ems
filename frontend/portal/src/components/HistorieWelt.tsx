@@ -51,6 +51,9 @@ import { MiniShareBar } from './MiniChart';
 import { MonthStrip } from './MoneyView';
 
 import { Aufklapper } from './Aufklapper';
+// ⚠ `.vp-c-card` (die Karte der Variante C) wohnt hier — `VerlaufFuss` trägt
+//   sie selbst, also holt dieses Modul das Blatt auch selbst.
+import './erloese/ErgebnisKarte.css';
 import './Historie.css';
 
 /** Das Ehrlichkeits-Abzeichen einer Karte (genau eines je Karte, report §7). */
@@ -320,34 +323,42 @@ export function VerlaufKopf({ titel }: { titel: string }) {
 }
 
 /**
- * Die Fußzeile der vier Reiter: der frühere Lead-Satz als Aufklapper, in der
- * Form von {@link WeltFuss}. Am Schreibtisch als ruhige Karte, am Telefon
- * zugeklappt — er kostet dort eine Zeile statt eines Absatzes.
+ * Die Fußzeile der Verlauf-Reiter: der frühere Lead-Satz als Aufklapper. Am
+ * Schreibtisch als ruhige Karte, am Telefon zugeklappt — er kostet dort eine
+ * Zeile statt eines Absatzes.
  *
  * ⚠ Der Satz wird WÖRTLICH übernommen. Er ist Kunden-Sprache und war die
  * einzige Stelle, an der die Fläche sagt, was sie überhaupt zeigt; ihn beim
  * Entfernen des Seitenkopfs zu verlieren wäre kein Aufräumen, sondern ein
  * Verlust.
+ *
+ * ⚠ **Die Hülle ist `.vp-c-card`, nicht `Card`** (Befund der P4-Crew, behoben
+ * in P8): `.vp-c-card` setzt `font-family: var(--vp-c-font)`, die Haus-Karte
+ * nicht. Über `WeltDisclosure` (eine `vp-card`) stand der Titel dieses
+ * Aufklappers bei 375 px deshalb in 16 px **Inter** statt in der Schrift der
+ * Variante C — auf einer Fläche, deren übriger Text Plus Jakarta Sans ist.
+ * Sie rendert ihre Hülle seither selbst; `WeltDisclosure` bleibt unangetastet,
+ * es gehört den Welt-Abschnitten des Explorers.
  */
 export function VerlaufFuss({ titel, text }: { titel?: string; text: string }) {
   const isPhone = useIsPhone();
   const [open, setOpen] = useState(false);
   const kopf = titel ?? 'Was diese Zahlen zeigen';
 
-  if (isPhone) {
-    return (
-      <WeltDisclosure titel={kopf} open={open} onToggle={() => setOpen((o) => !o)}>
-        <p className="vp-welt-fusstext">{text}</p>
-      </WeltDisclosure>
-    );
-  }
-
   return (
     <section className="vp-section">
-      <Card padding="lg" radius="lg" className="vp-welt-fuss">
-        <b>{kopf}</b>
-        <p>{text}</p>
-      </Card>
+      <div className="vp-c-card vp-c-fuss">
+        {isPhone ? (
+          <Aufklapper titel={kopf} open={open} onToggle={() => setOpen((o) => !o)}>
+            <p className="vp-c-fuss-text">{text}</p>
+          </Aufklapper>
+        ) : (
+          <>
+            <b className="vp-c-fuss-titel">{kopf}</b>
+            <p className="vp-c-fuss-text">{text}</p>
+          </>
+        )}
+      </div>
     </section>
   );
 }
