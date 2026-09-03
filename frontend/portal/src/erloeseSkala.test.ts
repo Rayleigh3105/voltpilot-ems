@@ -64,17 +64,32 @@ function deklarationen(css: string, eigenschaft: string): Array<{ wert: string; 
 
 // Die Skala steht EINMAL — in `index.css`. Der Test liest sie von dort, damit
 // er nicht zu einer zweiten Wahrheit über dieselben Zahlen wird.
+//
+// ⚠ SEIT DEM VERLAUF-PAKET P0 (Captain-Entscheid E2) heißt sie kanonisch
+//   `--vp-c-fs/fw-*`; `--vp-erl-*` ist nur noch ein zweiter Name
+//   (`--vp-erl-fs-12: var(--vp-c-fs-12)`). Der Wert steht also am C-Namen, und
+//   ein Muster, das hinter `--vp-erl-fs-12:` eine Pixelzahl sucht, findet
+//   nichts mehr. Gelesen wird deshalb der KANONISCHE Name — geprüft wird
+//   unverändert der Erlöse-Name, den die Blätter schreiben. Dasselbe Vorgehen
+//   wie `token()` in `erloeseKontrast.test.ts`, das einem Alias folgt.
 const SKALA = new Set(
-  [...index.matchAll(/--vp-erl-fs-([a-z0-9-]+):\s*(\d+)px/g)].map((m) => `--vp-erl-fs-${m[1]}`),
+  [...index.matchAll(/--vp-c-fs-([a-z0-9-]+):\s*(\d+)px/g)].map((m) => `--vp-erl-fs-${m[1]}`),
 );
 const SKALA_PX = new Set(
-  [...index.matchAll(/--vp-erl-fs-[a-z0-9-]+:\s*(\d+)px/g)].map((m) => `${m[1]}px`),
+  [...index.matchAll(/--vp-c-fs-[a-z0-9-]+:\s*(\d+)px/g)].map((m) => `${m[1]}px`),
 );
 const GEWICHTE = new Set(
-  [...index.matchAll(/--vp-erl-fw-(\d+):\s*(\d+)/g)].map((m) => `--vp-erl-fw-${m[1]}`),
+  [...index.matchAll(/--vp-c-fw-(\d+):\s*(\d+)/g)].map((m) => `--vp-erl-fw-${m[1]}`),
 );
 const GEWICHTE_ZAHL = new Set(
-  [...index.matchAll(/--vp-erl-fw-\d+:\s*(\d+)/g)].map((m) => m[1]),
+  [...index.matchAll(/--vp-c-fw-\d+:\s*(\d+)/g)].map((m) => m[1]),
+);
+
+/** Jeder Erlöse-Name MUSS ein Alias auf seinen C-Namen sein — sonst zwei Werte. */
+const ALIAS = new Set(
+  [...index.matchAll(/--vp-erl-(fs|fw|lh)-([a-z0-9-]+):\s*var\(--vp-c-\1-\2\)/g)].map(
+    (m) => `--vp-erl-${m[1]}-${m[2]}`,
+  ),
 );
 
 describe('Variante C · die Skala steht und ist vollständig', () => {
@@ -92,6 +107,21 @@ describe('Variante C · die Skala steht und ist vollständig', () => {
 
   it('und genau die vier erlaubten Gewichte', () => {
     expect([...GEWICHTE_ZAHL].sort()).toEqual(['400', '600', '700', '800']);
+  });
+
+  /* P0 des Verlaufs: der Alias darf NIE ein zweiter Wert werden. Stünde hinter
+     `--vp-erl-fs-16` eines Tages wieder eine Pixelzahl, hätten die Erlöse-
+     Blätter und der Rest des Verlaufs zwei Skalen, die sich lautlos trennen. */
+  it('jeder Erlöse-Name ist ein reiner Alias auf seinen C-Namen', () => {
+    for (const name of [...SKALA].map((n) => n)) {
+      expect(ALIAS.has(name), `${name} ist kein Alias auf --vp-c-fs-*`).toBe(true);
+    }
+    for (const name of GEWICHTE) {
+      expect(ALIAS.has(name), `${name} ist kein Alias auf --vp-c-fw-*`).toBe(true);
+    }
+    for (const stufe of ['tight', 'title', 'text']) {
+      expect(ALIAS.has(`--vp-erl-lh-${stufe}`), `--vp-erl-lh-${stufe} ist kein Alias`).toBe(true);
+    }
   });
 });
 
