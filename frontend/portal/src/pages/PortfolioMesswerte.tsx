@@ -16,6 +16,7 @@ import {
   type MesswerteZeile,
 } from '../portfolioHistorie';
 import { usePortfolioHistorie, useVergleichsHistorie } from '../usePortfolioHistorie';
+import { useIsPhone } from '../useIsPhone';
 
 import { VerlaufFehler, VerlaufKarteSkeleton, VerlaufLeer } from '../components/States';
 import { DeltaZeile, PeriodeFehlgeschlagen } from '../components/HistorieWelt';
@@ -78,6 +79,7 @@ export function PortfolioMesswerte({ sites }: { sites: Site[] }) {
     init.at ? new Date(`${init.at}T12:00:00`) : new Date(),
   );
 
+  const isPhone = useIsPhone();
   const at = isoDate(anchor);
   const liste = useMemo(() => sites.map((s) => ({ id: s.id, name: s.name })), [sites]);
   const { daten, loading, stale, err, retry } = usePortfolioHistorie(liste, range, at);
@@ -164,7 +166,14 @@ export function PortfolioMesswerte({ sites }: { sites: Site[] }) {
               chip={
                 <>
                   {zwischenstand && <span className="vp-chip">Zwischenstand</span>}
-                  {vorher && <span className="vp-chip">{vergleichsKopf(anchor, range)}</span>}
+                  {/* ⚠ Der Vergleichs-Kopf bleibt dem Rechner — wortgleich zur
+                      Regel des Anlagen-Reiters (P3): am Telefon stünden zwei
+                      Chips neben einem langen Label und schöben es 119 px über
+                      den Rand (bei 375 px gemessen). Der Vergleich steht in
+                      jeder Δ-Zeile darunter beim Namen. */}
+                  {vorher && !isPhone && (
+                    <span className="vp-chip">{vergleichsKopf(anchor, range)}</span>
+                  )}
                 </>
               }
             >

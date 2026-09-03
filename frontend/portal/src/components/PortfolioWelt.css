@@ -224,6 +224,13 @@
   padding-right: 0;
 }
 
+/* Zwischen zwei Spalten steht immer eine Lücke — sonst klebt eine
+   rechtsbündige Zahlenspalte am Kopf der nächsten (bei 1440 px gemessen). */
+.vp-c-pft th + th,
+.vp-c-pft td + td {
+  padding-left: var(--vp-c-space-5);
+}
+
 .vp-c-pft thead th {
   font-size: var(--vp-c-fs-12);
   font-weight: var(--vp-c-fw-700);
