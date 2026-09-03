@@ -1,14 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   BEDECKT_MIN_PCT,
-  KEINE_LEISTUNG_GRUND,
   MIN_BLOCK_STUNDEN,
   SONNIG_MAX_PCT,
   besteStunde,
   erwarteteLeistung,
   himmelBloecke,
-  temperaturZeile,
-  wetterKern,
   type PlanPvSlot,
   type WetterPunkt,
 } from './wetterLeistung';
@@ -131,45 +128,5 @@ describe('besteStunde · eine Ansage, kein Rückblick (K6)', () => {
     const punkte = stunden(HEUTE, 24, () => 20);
     expect(besteStunde(punkte, punkte.map(() => null), HEUTE)).toBeNull();
     expect(besteStunde(punkte, punkte.map(() => 0), HEUTE)).toBeNull();
-  });
-});
-
-describe('wetterKern · abgeleitet, sonst der ehrliche Grund (K1)', () => {
-  it('nennt Zeitpunkt und erwartete kW und vergleicht heute mit morgen (K8)', () => {
-    const punkte = stunden(HEUTE, 48, () => 20);
-    const kw = erwarteteLeistung(punkte, [
-      ...planSlots(HEUTE, 24, 8),
-      ...planSlots(new Date(2026, 7, 11), 24, 12),
-    ]);
-    const k = wetterKern(punkte, kw, HEUTE);
-    expect(k.satz).toMatch(/erwarten wir rund \d+,\d kW aus Ihrer Anlage\.$/);
-    expect(k.grund).toBeNull();
-    expect(k.anker).toMatch(/Spitze\)\.$/);
-  });
-
-  it('behauptet ohne PV-Prognose keinen Satz, sondern den GRUND', () => {
-    const punkte = stunden(HEUTE, 24, () => 20);
-    const k = wetterKern(punkte, erwarteteLeistung(punkte, []), HEUTE);
-    expect(k.satz).toBeNull();
-    expect(k.grund).toBe(KEINE_LEISTUNG_GRUND);
-  });
-
-  it('lässt den Vergleichsanker weg, wenn nur EIN Tag Werte trägt', () => {
-    const punkte = stunden(HEUTE, 24, () => 20);
-    const k = wetterKern(punkte, erwarteteLeistung(punkte, planSlots(HEUTE, 24)), HEUTE);
-    expect(k.satz).toBeTruthy();
-    expect(k.anker ?? null).toBeNull();
-  });
-});
-
-describe('temperaturZeile · die Temperatur ist ein Satz, keine dritte Achse (F8)', () => {
-  it('nennt den kommenden Wert und das Tageshoch', () => {
-    const punkte = stunden(HEUTE, 24, () => 20);
-    expect(temperaturZeile(punkte, HEUTE)).toMatch(/^Temperatur: \d+ °C jetzt, heute bis \d+ °C\.$/);
-  });
-
-  it('behauptet ohne Temperaturwerte nichts', () => {
-    const punkte = stunden(HEUTE, 24, () => 20).map((p) => ({ ...p, temperatureC: null }));
-    expect(temperaturZeile(punkte, HEUTE)).toBeNull();
   });
 });

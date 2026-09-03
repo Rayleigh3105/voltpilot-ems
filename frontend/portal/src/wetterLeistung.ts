@@ -1,4 +1,3 @@
-import type { Kernaussage } from './chartKopf';
 import { CLOUDY_MIN_CLOUD, SUNNY_MAX_CLOUD } from './weather';
 
 /**
@@ -249,82 +248,12 @@ export function tagesSpitze(
   return m;
 }
 
-/** Der ehrliche Grund, wenn die Leitgröße fehlt. */
-export const KEINE_LEISTUNG_GRUND =
-  'Für die kommenden Stunden liegt noch keine PV-Prognose Ihrer Anlage vor - hier steht solange die Sonnenstärke.';
-
-/**
- * K1 · „Morgen scheint die Sonne stärker als heute — mittags erwarten wir rund
- * 12 kW aus Ihrer Anlage."
+/*
+ * ⚠ **Ersatzlos entfallen mit Paket P5** (Konzept §4.6): `KEINE_LEISTUNG_GRUND`,
+ * `wetterKern` und `temperaturZeile`.
  *
- * ABGELEITET aus derselben kW-Reihe, die das Diagramm zeichnet: die stärkste
- * kommende Stunde trägt die Zahl, der Vergleich kommt aus den Tagesspitzen von
- * heute und morgen. Ohne Leitgröße steht dort der GRUND, nie ein erfundener
- * Satz.
+ * Der Kernsatz WURDE die Zahl des Statements (`wetterKarte.wetterStatement`),
+ * und die Temperatur ist eine Ledger-Zeile (`wetterKarte.wetterZeilen`). Sie
+ * daneben stehen zu lassen hiesse, zwei Ableitungen über dieselbe Aussage zu
+ * pflegen - genau die zweite Wahrheit, gegen die dieses Programm gebaut ist.
  */
-export function wetterKern(
-  punkte: readonly WetterPunkt[],
-  kw: readonly (number | null)[],
-  jetzt: Date,
-): Kernaussage {
-  const best = besteStunde(punkte, kw, jetzt);
-  if (!best) return { wert: null, satz: null, grund: KEINE_LEISTUNG_GRUND, ton: 'calm' };
-
-  const heute = tagesSpitze(punkte, kw, jetzt, 0);
-  const morgen = tagesSpitze(punkte, kw, jetzt, 1);
-
-  const wann = tagWort(punkte[best.index].ts, jetzt);
-  const stunde = new Date(punkte[best.index].ts).toLocaleTimeString('de-DE', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  const satz =
-    `Am stärksten wird es ${wann ? `${wann} ` : ''}gegen ${stunde} Uhr` +
-    ` - dann erwarten wir rund ${kw1(best.kw)} kW aus Ihrer Anlage.`;
-
-  // K8: der Vergleichsanker - nur behauptet, wo beide Tage wirklich Werte
-  // tragen (der Plan-Horizont reicht oft nicht über morgen hinaus).
-  let anker: string | null = null;
-  if (heute != null && morgen != null && Math.max(heute, morgen) > 0) {
-    const diff = morgen - heute;
-    anker =
-      Math.abs(diff) < 0.5
-        ? `Morgen etwa so viel wie heute (${kw1(heute)} kW Spitze).`
-        : diff > 0
-          ? `Morgen mehr als heute (${kw1(heute)} → ${kw1(morgen)} kW Spitze).`
-          : `Morgen weniger als heute (${kw1(heute)} → ${kw1(morgen)} kW Spitze).`;
-  }
-
-  return { wert: null, satz, grund: null, ton: 'ok', anker };
-}
-
-/* ---------------------------------------------------------------------------
- * F8 · Höchstens ZWEI Achsen — die Temperatur wird zur Zeile
- *
- * Das Bild hatte drei Y-Achsen (°C, %, W/m²) mit drei Strichstärken. Zwei
- * davon fallen weg: die Bewölkung ist jetzt der benannte Himmelsstreifen, und
- * die Temperatur beantwortet einem PV-Betreiber als Kurve über drei Tage
- * nichts, was ein Satz nicht besser sagt. Sie bleibt damit sichtbar (K3: eine
- * Stufe tiefer), ohne eine dritte Achse zu erzwingen.
- * ------------------------------------------------------------------------- */
-
-/**
- * „Temperatur: jetzt 18 °C, heute bis 24 °C." — `null`, wenn die Vorhersage
- * keine Temperatur trägt (dann wird nichts behauptet).
- */
-export function temperaturZeile(punkte: readonly WetterPunkt[], jetzt: Date): string | null {
-  const nowMs = jetzt.getTime();
-  const kommend = punkte.filter(
-    (p) => p.temperatureC != null && Date.parse(p.ts) >= nowMs,
-  );
-  if (kommend.length === 0) return null;
-  const jetztWert = Number(kommend[0].temperatureC);
-  const heute = kommend.filter(
-    (p) => new Date(p.ts).toDateString() === jetzt.toDateString(),
-  );
-  const grad = (v: number) =>
-    `${v.toLocaleString('de-DE', { maximumFractionDigits: 0 })} °C`;
-  if (heute.length === 0) return `Temperatur: ${grad(jetztWert)} in der nächsten Stunde.`;
-  const max = Math.max(...heute.map((p) => Number(p.temperatureC)));
-  return `Temperatur: ${grad(jetztWert)} jetzt, heute bis ${grad(max)}.`;
-}
