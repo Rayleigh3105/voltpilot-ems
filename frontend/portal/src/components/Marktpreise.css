@@ -21,6 +21,12 @@
 
 .vp-mp-stm {
   margin-bottom: var(--vp-c-space-4, 16px);
+  /* ⚠ Ausdrücklich, nicht geerbt: das Statement steht auf der FLÄCHE, nicht in
+     der Karte — `.vp-c-card` setzt die Schrift der Variante C, hier gibt es
+     keine Karte, und `body` trägt die Portal-Schrift (Inter). Ohne diese Zeile
+     stünde die EINE Zahl des Reiters als EINZIGES in einer zweiten Familie (im
+     Browser bei 375 gemessen; dieselbe Klippe wie beim `.vp-c-label`). */
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
 }
 
 /* Das Label des Statements steht ALLEIN — `.vp-c-label` ist `space-between`

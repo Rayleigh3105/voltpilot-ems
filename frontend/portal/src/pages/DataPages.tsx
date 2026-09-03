@@ -363,9 +363,12 @@ export function MarktpreisePage(props: {
       ? new Date(summary.coverageStart).getTime() - new Date(history.from).getTime() > 36 * 3600 * 1000
       : false;
 
+  // §4.3 nennt den Chip „15 min" — kurz, weil er NEBEN einem langen Label
+  // steht („DAY-AHEAD HEUTE & MORGEN · DE-LU"); „15-Minuten-Takt" schob ihn
+  // bei 375 px in eine eigene Zeile.
   const raster =
     history?.bucket === 'PT15M'
-      ? '15-Minuten-Takt'
+      ? '15 min'
       : history?.bucket === 'PT1H'
         ? 'stündlich'
         : 'täglich';
