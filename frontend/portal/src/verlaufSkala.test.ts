@@ -62,7 +62,7 @@ const BLAETTER: ReadonlyArray<{
   { reiter: 'Reiterleiste', datei: 'components/BereichTabs.css', fs: 0, ff: 0, fw: 0 },
   // --- noch nicht umgestellt — Ratsche auf dem IST-Stand vom 03.09.2026 --
   { reiter: 'Messwerte', datei: 'components/Historie.css', fs: 39, ff: 4, fw: 0 },
-  { reiter: 'Messwerte', datei: 'components/Verlauf.css', fs: 11, ff: 0, fw: 0 },
+  { reiter: 'Messwerte', datei: 'components/Verlauf.css', fs: 10, ff: 0, fw: 0 },
   { reiter: 'Messwerte', datei: 'components/Messwerte.css', fs: 18, ff: 0, fw: 3 },
   { reiter: 'Messwerte', datei: 'components/Ereignisse.css', fs: 3, ff: 0, fw: 0 },
   { reiter: 'Marktpreise', datei: 'components/Marktpreise.css', fs: 8, ff: 0, fw: 0 },
