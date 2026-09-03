@@ -129,20 +129,24 @@ export function WeatherChart({
             name: 'Temperatur',
             data: num('temperatureC'),
             achse: AXIS_NAME.temperatur(narrow),
-            farbe: t.pvLine,
+            farbe: t.cPv,
           }
         : hatLeistung
         ? {
             name: 'Erwartete Leistung',
             data: kw,
             achse: AXIS_NAME.leistung(narrow),
-            farbe: t.pvLine,
+            // P0 · die Reihen-Palette des Bereichs. `--vp-c-chart-pv` trägt
+            // heute exakt den Wert von `--vp-chart-pv-line`, ist aber der
+            // Name, unter dem `verlaufKontrast` die Reihe misst (3,79 : 1 auf
+            // der Karte, ΔE 95 gegen die Kontextkurve).
+            farbe: t.cPv,
           }
         : {
             name: 'Sonnenstärke',
             data: num('ghiWM2'),
             achse: AXIS_NAME.sonnenstaerke(narrow),
-            farbe: t.pvLine,
+            farbe: t.cPv,
           };
 
       // F8: NIE mehr als zwei Achsen. Die zweite entsteht nur, wenn die
@@ -337,13 +341,13 @@ export function WeatherChart({
   // was gezeichnet wird - eine Reihe hinter dem zugeklappten Aufklapper nicht.
   const legend: LegendItem[] = istKontext
     ? [
-        { color: t.pvLine, label: 'Temperatur', unit: '°C', shape: 'line' },
+        { color: t.cPv, label: 'Temperatur', unit: '°C', shape: 'line' },
         { color: t.temp, label: 'Sonnenstärke', unit: 'W/m²', shape: 'line' },
       ]
     : [
     hatLeistung
-      ? { color: t.pvLine, label: 'Erwartete Leistung', unit: 'kW', shape: 'area' }
-      : { color: t.pvLine, label: 'Sonnenstärke', unit: 'W/m²', shape: 'area' },
+      ? { color: t.cPv, label: 'Erwartete Leistung', unit: 'kW', shape: 'area' }
+      : { color: t.cPv, label: 'Sonnenstärke', unit: 'W/m²', shape: 'area' },
     ...(hatLeistung && detail
       ? [{ color: t.temp, label: 'Sonnenstärke', unit: 'W/m²', shape: 'line' as const }]
       : []),
@@ -352,12 +356,21 @@ export function WeatherChart({
   return (
     <>
       {!istKontext && <HimmelStreifen bloecke={bloecke} />}
-      <div ref={ref} className="vp-chart" />
-      <ChartLegend
-        items={legend}
-        hidden={verborgen}
-        onToggle={(label) => setVerborgen((prev) => toggleSerie(prev, label, legend.length))}
-      />
+      {/* ⚠ `vp-c-bild` / `vp-c-bild-legende` sind die Bild-Bausteine des
+          Bereichs (`components/VerlaufLedger.css`, Paket P3): sie tragen die
+          Chip-Form der Legende, ihre 44-px-Trefferfläche und - tragend - die
+          EINE Schriftfamilie. Ohne den Rahmen setzen `.vp-cl-label`/`.vp-cl-unit`
+          aus `index.css` die Anzeigeschrift (Inter Tight) und die Legende stünde
+          als EINZIGES Element der Karte in einer zweiten Familie (bei 375 im
+          Browser gemessen). */}
+      <div ref={ref} className="vp-c-bild vp-chart" />
+      <div className="vp-c-bild-legende">
+        <ChartLegend
+          items={legend}
+          hidden={verborgen}
+          onToggle={(label) => setVerborgen((prev) => toggleSerie(prev, label, legend.length))}
+        />
+      </div>
     </>
   );
 }
