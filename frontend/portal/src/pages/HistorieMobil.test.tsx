@@ -331,14 +331,17 @@ describe('Mobil · die klebende Bedienzeile hat GENAU ZWEI Zeilen (P4)', () => {
   });
 });
 
-describe('Mobil · der Welt-Kopf ist EINE Zeile, das Abzeichen bleibt', () => {
-  it('lässt das Kartenpaar weg (die Welten sind Bar-Plätze) und behält „Gemessen"', async () => {
+describe('Mobil · der Welt-Kopf ist ganz entfallen, das Abzeichen bleibt', () => {
+  it('rendert weder Kartenpaar noch Kopfzeile — und behält „Gemessen" an der Karte', async () => {
     await renderMesswerte();
     expect(screen.queryByRole('group', { name: 'Ansicht wechseln' })).toBeNull();
-    const zeile = document.querySelector('.vp-welt-zeile');
-    expect(zeile).toBeTruthy();
-    expect(within(zeile as HTMLElement).getByText('Messwerte')).toBeInTheDocument();
-    expect(within(zeile as HTMLElement).getByText('Gemessen')).toBeInTheDocument();
+    // E3: auch die eine Kopf-ZEILE des Telefons ist weg (Bar-Slot + Reiter
+    // sagen dasselbe). Übrig bleibt die unsichtbare Überschrift.
+    expect(document.querySelector('.vp-welt-zeile')).toBeNull();
+    const h1 = screen.getByRole('heading', { level: 1, name: /Messwerte/ });
+    expect(h1).toHaveClass('vp-sr-only');
+    // Das Ehrlichkeits-Abzeichen sitzt an den Karten, nicht am Kopf.
+    expect(document.querySelectorAll('.vp-prov-gemessen').length).toBeGreaterThan(0);
   });
 
   it('macht die Fußkarte zum Aufklapper — der Wortlaut bleibt erreichbar', async () => {
@@ -430,10 +433,12 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
 });
 
 describe('Der Schreibtisch bleibt, was er war', () => {
-  it('rendert ohne Telefon-Grenze den Welt-Kopf samt Kartenpaar und sechs Δ-fähige Kacheln', async () => {
+  it('rendert ohne Telefon-Grenze die volle Zeit-Leiste und sechs Δ-fähige Kacheln', async () => {
     stubPhone(false);
     await renderMesswerte();
-    expect(screen.getByRole('group', { name: 'Ansicht wechseln' })).toBeInTheDocument();
+    // E3: kein Welt-Kopf, in KEINER Breite — weder Karte noch Kopfzeile.
+    expect(screen.queryByRole('group', { name: 'Ansicht wechseln' })).toBeNull();
+    expect(document.querySelector('.vp-welt-kopf')).toBeNull();
     expect(document.querySelector('.vp-welt-zeile')).toBeNull();
     expect(document.querySelector('.vp-zeitleiste-mobil')).toBeNull();
     expect(document.querySelectorAll('.vp-esum')).toHaveLength(6);

@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import * as welten from './historieWelten';
 import {
   availableWelten,
   historieHash,
   PROVENIENZ,
   WELTEN,
-  WELT_ORDER,
   weltForSub,
-  weltSwitchCards,
 } from './historieWelten';
 import { anlageSurface, type AnlageSurfaceInput } from './surface';
 
@@ -47,29 +46,26 @@ describe('welche Welten es gibt — das Lese-Modell entscheidet', () => {
   });
 });
 
-describe('das Kartenpaar — Wechsel in einem Klick', () => {
-  it('zeigt beide Welten, die aktive markiert, in kanonischer Reihenfolge', () => {
-    const cards = weltSwitchCards('messwerte', ['messwerte', 'erloese']);
-    expect(cards.map((c) => c.welt.id)).toEqual([...WELT_ORDER]);
-    expect(cards.map((c) => c.active)).toEqual([true, false]);
-    expect(weltSwitchCards('erloese', ['messwerte', 'erloese']).map((c) => c.active)).toEqual([
-      false,
-      true,
-    ]);
+/**
+ * E3 (Konzept `vp-erloese-lesbar-konzept-u3` §3.5): der Welt-Kopf und sein
+ * Kartenpaar sind ERSATZLOS entfallen — der Wechsel wohnt in den
+ * Bereichs-Reitern (`anlageNav` Verlauf › Messwerte · Erlöse), und ein
+ * Kartenpaar daneben war derselbe Schalter ein zweites Mal (189 px vor der
+ * ersten Zahl, Befund B4).
+ */
+describe('der Welt-Wechsel wohnt in den Bereichs-Reitern', () => {
+  it('führt keine zweite Wechsel-Liste mehr', () => {
+    const modul = welten as Record<string, unknown>;
+    expect(modul.weltSwitchCards).toBeUndefined();
+    expect(modul.WELT_ORDER).toBeUndefined();
   });
 
-  it('rendert KEINEN einsamen Schalter, wenn es nur eine Welt gibt', () => {
-    // Eine Privat-Anlage hat nur die Messwerte-Welt - dann gibt es nichts zu
-    // wechseln, und der Kopf zeigt gar kein Kartenpaar.
-    expect(weltSwitchCards('messwerte', ['messwerte'])).toEqual([]);
-  });
-
-  it('ist per Lesezeichen nie eine Sackgasse', () => {
-    // Erlöse-Welt geöffnet, obwohl die Anlage keinen Geld-Modus hat: die Karte
-    // zurück in die Messwerte-Welt MUSS da sein.
-    const cards = weltSwitchCards('erloese', ['messwerte']);
-    expect(cards.map((c) => c.welt.id)).toEqual(['messwerte', 'erloese']);
-    expect(cards.find((c) => c.welt.id === 'erloese')?.active).toBe(true);
+  it('lässt die Welt nur sagen, WAS sie ist — nicht, wie man sie wechselt', () => {
+    for (const welt of Object.values(WELTEN)) {
+      expect(Object.keys(welt).sort()).toEqual(
+        ['badge', 'fussText', 'icon', 'id', 'label', 'sub'].sort(),
+      );
+    }
   });
 });
 
@@ -99,7 +95,6 @@ describe('Ehrlichkeits-Abzeichen (report §7)', () => {
     expect(WELTEN.erloese.badge).toBe('bewertet');
     for (const welt of Object.values(WELTEN)) {
       expect(welt.fussText.length).toBeGreaterThan(40);
-      expect(welt.lead.length).toBeGreaterThan(10);
     }
     // Die Erlöse-Welt sagt ausdrücklich, dass sie keine Abrechnung ist.
     expect(WELTEN.erloese.fussText).toMatch(/nicht abgerechnet/);

@@ -31,9 +31,13 @@ import { UeberlagerungLegendeZeile } from './HistorieWelt';
  * eine Reihe im Bild nie eine andere Farbe trägt als in ihrer Beschriftung.
  */
 const LEGENDEN_FARBE = (t: ReturnType<typeof chartTheme>): Record<GeldReihe['id'], string> => ({
-  einspeisung: t.price,
-  eigenverbrauchswert: t.charge,
-  stromkosten: t.discharge,
+  // E10 · die C-Palette (Zuordnungstabelle in `index.css`): Primary ·
+  // Secondary · Destructive. Vorher standen hier `price`/`charge`/`discharge`
+  // — die Kanäle des Fahrplans: Blau · GRÜN · Rot. Grün gehört im Portal dem
+  // Speicher (E8), und Grün/Rot als einzige Kennung ist `color-not-only`.
+  einspeisung: t.cReihe1,
+  eigenverbrauchswert: t.cReihe2,
+  stromkosten: t.cKosten,
 });
 
 export function ErloeseVerlaufChart({
@@ -82,7 +86,9 @@ export function ErloeseVerlaufChart({
       chart.setOption(
         {
           textStyle: { fontFamily: t.font },
-          grid: { left: 6, right: 6, top: 12, bottom: 4, containLabel: true },
+          // K2: rechts steht das Endlabel der kumulierten Linie — der Rand ist
+          // sein Platz, nicht Zierrat.
+          grid: { left: 6, right: 64, top: 12, bottom: 4, containLabel: true },
           tooltip: {
             trigger: 'axis',
             confine: true,
@@ -172,9 +178,19 @@ export function ErloeseVerlaufChart({
               ...SMOOTH_SERIES,
               symbol: 'none',
               // F1-Hierarchie: die kumulierte Linie IST die Aussage der Flaeche.
-              lineStyle: { color: t.plan, width: STROKE.lead },
-              itemStyle: { color: t.plan },
+              lineStyle: { color: t.cLead, width: STROKE.lead },
+              itemStyle: { color: t.cLead },
               data: view.kumuliert,
+              // K2 · DIREKTBESCHRIFTUNG: der Endstand steht an der Linie, nicht
+              // nur in einer Legende — „reduce eye travel". Der Grid rechts hat
+              // dafür Platz (siehe `grid.right`).
+              endLabel: {
+                show: true,
+                color: t.cLead,
+                fontSize: AXIS.fontSize,
+                fontWeight: 700,
+                formatter: (p: { value: number }) => eurAmount(p.value),
+              },
               // Die betonte Nulllinie: darüber Erlöse, darunter Kosten.
               markLine: {
                 silent: true,
@@ -222,12 +238,12 @@ export function ErloeseVerlaufChart({
             color: LEGENDEN_FARBE(t)[r.id],
             unit: '€',
           })),
-          { label: 'kumuliert', color: t.plan, unit: '€', shape: 'line' as const },
+          { label: 'kumuliert', color: t.cLead, unit: '€', shape: 'line' as const },
         ]}
       />
       {vglView && !vglView.leer && <UeberlagerungLegendeZeile legende={legende ?? null} />}
       <div
-        className="vp-chart compact"
+        className="vp-chart flach"
         ref={ref}
         role="img"
         aria-label="Erlöse und Stromkosten im Verlauf"

@@ -38,8 +38,6 @@ export type WeltId = 'messwerte' | 'erloese';
 /** Woraus eine Zahl entstanden ist — das Abzeichen an der Karte (report §7). */
 export type Provenienz = 'gemessen' | 'bewertet' | 'geplant';
 
-/** Kanonische Reihenfolge: erst die Basis-Welt, dann das Geld. */
-export const WELT_ORDER: readonly WeltId[] = ['messwerte', 'erloese'];
 
 /** Das Abzeichen: ein Wort plus der Satz, der seine Einschränkung ausspricht. */
 export interface ProvenienzInfo {
@@ -71,11 +69,14 @@ export interface Welt {
   sub: AnlagenSub;
   label: string;
   icon: IconName;
-  /** Der Einleitungssatz unter dem Titel. */
-  lead: string;
-  /** Die Unterzeile auf der Wechsel-Karte — sagt, was die Welt enthält. */
-  switchLead: string;
-  /** Das Abzeichen des Welt-Kopfs (die vorherrschende Art ihrer Zahlen). */
+  /**
+   * Das Abzeichen der Welt (die vorherrschende Art ihrer Zahlen).
+   *
+   * ⚠ Es sitzt seit E3 an den KARTEN (`KartenKopf` → `ProvBadge`), nicht mehr
+   * an einem Welt-Kopf: den gibt es nicht mehr. Die Welt behält es trotzdem,
+   * weil das Portfolio seinen eigenen Kopf hat und die Route ihn für den
+   * zugänglichen Namen der Seite braucht.
+   */
   badge: Provenienz;
   /** Die Fußkarte „Was diese Zahlen sind". */
   fussText: string;
@@ -87,8 +88,6 @@ export const WELTEN: Record<WeltId, Welt> = {
     sub: 'messwerte',
     label: 'Messwerte',
     icon: 'activity',
-    lead: 'Was Ihre Anlage erzeugt, verbraucht und gespeichert hat.',
-    switchLead: 'Energie & einzelne Messwerte',
     badge: 'gemessen',
     fussText:
       'Gemessene Werte Ihrer Anlage in Viertelstunden, zu Tages- und Monatssummen verdichtet. ' +
@@ -100,8 +99,6 @@ export const WELTEN: Record<WeltId, Welt> = {
     sub: 'erloese',
     label: 'Erlöse',
     icon: 'euro',
-    lead: 'Was Ihre Anlage eingebracht und der Strombezug gekostet hat.',
-    switchLead: 'Einspeisung · Steuerung · Kosten',
     badge: 'bewertet',
     fussText:
       'Bewertet, nicht abgerechnet: jede Viertelstunde wird mit dem heute gepflegten Preisblatt ' +
@@ -129,30 +126,6 @@ export function availableWelten(surface: AnlageSurface | null | undefined): Welt
   const welten: WeltId[] = ['messwerte'];
   if (surface?.deepViews?.includes('erloes-historie')) welten.push('erloese');
   return welten;
-}
-
-/** Eine Karte des Welt-Wechslers. */
-export interface WeltSwitchCard {
-  welt: Welt;
-  active: boolean;
-}
-
-/**
- * Das Kartenpaar im Welt-Kopf — der Wechsel in EINEM Klick.
- *
- * Es zeigt die verfügbaren Welten UND die gerade offene (eine per Lesezeichen
- * geöffnete Erlöse-Welt ohne Geld-Modus ist damit nie eine Sackgasse). Bleibt
- * nur eine Welt übrig, gibt es nichts zu wechseln: dann rendert der Kopf gar
- * kein Kartenpaar, statt eine einsame Karte zu zeigen, die wie ein toter
- * Schalter aussieht.
- */
-export function weltSwitchCards(
-  active: WeltId,
-  available: readonly WeltId[],
-): WeltSwitchCard[] {
-  const ids = WELT_ORDER.filter((id) => id === active || available.includes(id));
-  if (ids.length < 2) return [];
-  return ids.map((id) => ({ welt: WELTEN[id], active: id === active }));
 }
 
 /**

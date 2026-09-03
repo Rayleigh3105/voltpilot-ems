@@ -181,11 +181,24 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
+/**
+ * ⚠ Seit E3 (`vp-erloese-lesbar-konzept-u3` §3.5) liegt „Vergleichen" HINTER
+ * dem Datum-Feld der Zeit-Leiste — die Leiste klebt und trägt deshalb nur
+ * noch, was man ständig braucht. Jeder Zugriff auf den Umschalter geht also
+ * durch den ⋯-Knopf; der gesetzte Vergleich bleibt daneben als Chip sichtbar.
+ */
+async function oeffneVergleich() {
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Monat, Vergleich & Datenlage' }),
+  );
+}
+
 describe('F8 · der „Vergleichen"-Umschalter der Zeit-Leiste', () => {
   it('steht standardmäßig auf „Aus" und überlagert dann NICHTS', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(history());
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
+    await oeffneVergleich();
     const gruppe = await screen.findByRole('group', { name: 'Vergleichen' });
     expect(gruppe).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aus' })).toHaveAttribute('aria-pressed', 'true');
@@ -198,6 +211,7 @@ describe('F8 · der „Vergleichen"-Umschalter der Zeit-Leiste', () => {
     vi.spyOn(api, 'history').mockResolvedValue(history());
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
+    await oeffneVergleich();
     await screen.findByRole('group', { name: 'Vergleichen' });
     expect(screen.getByRole('button', { name: 'Juni 2026' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Juli 2025' })).toBeInTheDocument();
@@ -210,6 +224,7 @@ describe('F8 · der „Vergleichen"-Umschalter der Zeit-Leiste', () => {
     vi.spyOn(api, 'history').mockResolvedValue(history());
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
+    await oeffneVergleich();
     fireEvent.click(await screen.findByRole('button', { name: 'Juni 2026' }));
     const chart = await screen.findByTestId('energie-chart');
     await waitFor(() => expect(chart).toHaveAttribute('data-vergleich', 'ja'));
@@ -220,10 +235,13 @@ describe('F8 · der „Vergleichen"-Umschalter der Zeit-Leiste', () => {
     const spy = vi.spyOn(api, 'history').mockResolvedValue(history());
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
+    await oeffneVergleich();
     fireEvent.click(await screen.findByRole('button', { name: 'Juli 2025' }));
     await waitFor(() => expect(ankerDerAbrufe(spy)).toContain('2025-07-01'));
-    // Eine Quelle: derselbe Zeitraum steht im Karten-Kopf wie in der Legende.
-    await waitFor(() => expect(screen.getByText('Vergleich: Juli 2025')).toBeInTheDocument());
+    // Eine Quelle: derselbe Zeitraum steht im Karten-Kopf, im Zustands-Chip
+    // der Zeit-Leiste (E3) und in der Legende.
+    await waitFor(() => expect(screen.getAllByText('Vergleich: Juli 2025').length)
+      .toBeGreaterThan(0));
     expect(screen.getByTestId('energie-chart')).toHaveTextContent('blass gestrichelt: Juli 2025');
   });
 
@@ -235,6 +253,7 @@ describe('F8 · der „Vergleichen"-Umschalter der Zeit-Leiste', () => {
     // technisch derselbe. Einschalten darf ihn deshalb nicht wiederholen.
     await waitFor(() => expect(ankerDerAbrufe(spy)).toContain('2026-06-01'));
     const vorher = spy.mock.calls.length;
+    await oeffneVergleich();
     fireEvent.click(screen.getByRole('button', { name: 'Juni 2026' }));
     await waitFor(() =>
       expect(screen.getByTestId('energie-chart')).toHaveAttribute('data-vergleich', 'ja'),
@@ -248,6 +267,7 @@ describe('F8 · der „Vergleichen"-Umschalter der Zeit-Leiste', () => {
     );
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
+    await oeffneVergleich();
     fireEvent.click(await screen.findByRole('button', { name: 'Juli 2025' }));
     await waitFor(() =>
       expect(
@@ -263,14 +283,16 @@ describe('F8 · der Zustand reist in der Adresse und über den Welt-Wechsel', ()
     vi.spyOn(api, 'history').mockResolvedValue(history());
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
+    await oeffneVergleich();
     fireEvent.click(await screen.findByRole('button', { name: 'Juli 2025' }));
     await waitFor(() => expect(window.location.hash).toContain('v=vorjahr'));
     expect(window.location.hash).toContain('z=monat');
 
-    // Die Wechsel-Karte der anderen Welt trägt denselben Parameter — der
-    // Welt-Wechsel verliert den Vergleich also nicht.
-    const link = screen.getByRole('link', { name: /Erlöse/ });
-    expect(link.getAttribute('href')).toContain('v=vorjahr');
+    // E3: der Welt-Wechsel wohnt in den Bereichs-Reitern, die Fläche trägt
+    // keinen eigenen Link mehr. Der Zustand steht in der ADRESSE — genau die
+    // reicht `AnlageSeite.oeffneReiter` beim Wechsel weiter.
+    expect(screen.queryByRole('link', { name: /Erlöse/ })).toBeNull();
+    expect(window.location.hash).toMatch(/^#\/anlage\/s-1\/messwerte\?/);
   });
 
   it('nimmt einen mitgebrachten Vergleich aus dem Lesezeichen an', async () => {
@@ -278,6 +300,7 @@ describe('F8 · der Zustand reist in der Adresse und über den Welt-Wechsel', ()
     vi.spyOn(api, 'history').mockResolvedValue(history());
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
+    await oeffneVergleich();
     expect(await screen.findByRole('button', { name: 'Juli 2025' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -289,6 +312,7 @@ describe('F8 · der Zustand reist in der Adresse und über den Welt-Wechsel', ()
     vi.spyOn(api, 'history').mockResolvedValue(history({ range: 'day' }));
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
+    await oeffneVergleich();
     const gruppe = await screen.findByRole('group', { name: 'Vergleichen' });
     expect(gruppe).not.toHaveTextContent('2025');
     // Zurückgefallen auf die Vorperiode - überlagert wird trotzdem.
@@ -308,6 +332,7 @@ describe('F8 · dieselbe Geste in der Erlöse-Welt', () => {
     vi.spyOn(api, 'siteEarnings').mockResolvedValue(money);
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
+    await oeffneVergleich();
     fireEvent.click(await screen.findByRole('button', { name: 'Juni 2026' }));
     const chart = await screen.findByTestId('geld-chart');
     await waitFor(() => expect(chart).toHaveAttribute('data-vergleich', 'ja'));
@@ -321,6 +346,7 @@ describe('F8 · dieselbe Geste in der Erlöse-Welt', () => {
     );
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
+    await oeffneVergleich();
     fireEvent.click(await screen.findByRole('button', { name: 'Juni 2026' }));
     await waitFor(() =>
       expect(

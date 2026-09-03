@@ -104,6 +104,14 @@ export interface ChartTheme {
    * consumers get deterministic shades of THIS one hue.
    */
   consumer: string;
+  /** Variante C · Reihe 1 der Geld-Charts (Einspeise-Erlös) — Primary. */
+  cReihe1: string;
+  /** Variante C · Reihe 2 (Wert des Eigenverbrauchs) — Secondary. */
+  cReihe2: string;
+  /** Variante C · die Kosten-Reihe — Destructive, mit Vorzeichen im Text. */
+  cKosten: string;
+  /** Variante C · die FÜHRENDE Linie (kumuliert) — Foreground. */
+  cLead: string;
 }
 
 let cache: ChartTheme | null = null;
@@ -143,6 +151,17 @@ export function chartTheme(): ChartTheme {
     flowGrid: read('--vp-flow-grid', '#0ea5a3'),
     flowGridLine: read('--vp-chart-grid-line', '#036672'),
     consumer: read('--vp-flow-load', '#8b5cf6'),
+    // --- Variante C: die vier Reihen-Farben der ERLÖSE-Welt ---------------
+    // Sie kommen aus der Zuordnungstabelle in `index.css` (Konzept
+    // `vp-erloese-lesbar-konzept-u3` §3.10 Punkt 6: „Chart-Farben aus der
+    // Palette Primary/Secondary/Foreground/Destructive"). Bewusst EIGENE
+    // Einträge statt einer Umdefinition von `price`/`charge`/`discharge`:
+    // die tragen portalweit ihre Bedeutung (Preis, Laden, Entladen) und
+    // dürfen nicht die Farbe einer Geld-Reihe annehmen.
+    cReihe1: read('--vp-erl-chart-1', '#2563eb'),
+    cReihe2: read('--vp-erl-chart-2', '#3b82f6'),
+    cKosten: read('--vp-erl-chart-kosten', '#dc2626'),
+    cLead: read('--vp-erl-chart-lead', '#1e293b'),
   };
   return cache;
 }

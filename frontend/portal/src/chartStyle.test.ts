@@ -145,8 +145,13 @@ describe('Glättung und Grundzustand', () => {
     expect(BASE_SERIES_LIMIT).toBe(3);
   });
 
-  it('setzt die Achsentypo auf EINE Größe', () => {
-    expect(AXIS.fontSize).toBe(11);
+  it('setzt die Achsentypo auf EINE Größe — und nie unter 12 px', () => {
+    // E10/B7: 11 px lag unter der Lesbarkeitsgrenze des Skills („Don't render
+    // critical text below 12pt"). Die Zahl ist absichtlich EINE für das ganze
+    // Portal, und sie ist nach unten gedeckelt.
+    expect(AXIS.fontSize).toBe(12);
+    expect(AXIS.fontSize).toBeGreaterThanOrEqual(12);
+    expect(AXIS.nameFontSize).toBeGreaterThanOrEqual(12);
   });
 });
 

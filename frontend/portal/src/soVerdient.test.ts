@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { SiteEarnings } from './api';
 import {
   CHIP_MIN_ABSTAND,
+  CHIP_SPREIZUNG,
   KERNSATZ,
   MEHRERE_MONATE_HINWEIS,
   NICHTS_EINGESPEIST_HINWEIS,
@@ -470,9 +471,9 @@ describe('spreadChips · kollidierende Chips werden entzerrt, nicht verschoben',
   it('spreizt zwei zu nahe Chips symmetrisch um ihre Mitte', () => {
     const chips = [{ y: 100 }, { y: 110 }];
     spreadChips(chips);
-    expect(chips[0].y).toBe(105 - 17);
-    expect(chips[1].y).toBe(105 + 17);
-    expect(chips[1].y - chips[0].y).toBe(34);
+    expect(chips[0].y).toBe(105 - CHIP_SPREIZUNG);
+    expect(chips[1].y).toBe(105 + CHIP_SPREIZUNG);
+    expect(chips[1].y - chips[0].y).toBe(2 * CHIP_SPREIZUNG);
   });
 
   it('lässt weit auseinanderliegende Chips unangetastet', () => {
@@ -484,8 +485,8 @@ describe('spreadChips · kollidierende Chips werden entzerrt, nicht verschoben',
   it('spreizt auch, wenn der tiefere Chip zuerst kommt', () => {
     const chips = [{ y: 120 }, { y: 112 }];
     spreadChips(chips);
-    expect(chips[0].y).toBe(116 + 17); // war unten, bleibt unten
-    expect(chips[1].y).toBe(116 - 17);
+    expect(chips[0].y).toBe(116 + CHIP_SPREIZUNG); // war unten, bleibt unten
+    expect(chips[1].y).toBe(116 - CHIP_SPREIZUNG);
   });
 
   it('fasst einen einzelnen Chip nicht an', () => {
@@ -498,7 +499,7 @@ describe('spreadChips · kollidierende Chips werden entzerrt, nicht verschoben',
     const l = chartLayout(v.chart!);
     expect(l.chips).toHaveLength(2);
     // Entzerrt dargestellt …
-    expect(Math.abs(l.chips[0].y - l.chips[1].y)).toBe(34);
+    expect(Math.abs(l.chips[0].y - l.chips[1].y)).toBe(2 * CHIP_SPREIZUNG);
     // … aber die Leader-Linien zeigen weiterhin auf die ECHTEN Höhen.
     expect(l.chips[0].leader.y1).toBeCloseTo(l.chips[0].anchorY, 6);
     expect(l.chips[1].leader.y1).toBeCloseTo(l.chips[1].anchorY, 6);

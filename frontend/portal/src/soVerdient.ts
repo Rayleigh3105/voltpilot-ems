@@ -574,9 +574,9 @@ export interface ChartLayout {
 }
 
 /** Mindestabstand zweier Chips, bevor sie entzerrt werden. */
-export const CHIP_MIN_ABSTAND = 30;
+export const CHIP_MIN_ABSTAND = 36;
 /** Halber Abstand, auf den kollidierende Chips gespreizt werden. */
-export const CHIP_SPREIZUNG = 17;
+export const CHIP_SPREIZUNG = 20;
 
 /**
  * Zwei Chips, die übereinander liegen würden, werden symmetrisch um ihre Mitte
@@ -604,9 +604,21 @@ export function spreadChips<T extends { y: number }>(chips: T[]): T[] {
 export function chartLayout(data: ChartData, opts: ChartLayoutOpts = {}): ChartLayout {
   const wide = opts.wide === true;
   const width = wide ? 520 : 344;
-  const height = 252;
-  const padT = 30;
-  const padB = 46;
+  /**
+   * ⚠ **Höhe ≤ 240 und JEDE Beschriftung ≥ 12,5** (Konzept
+   * `vp-erloese-lesbar-konzept-u3` §3.6, Befunde B5 · B7).
+   *
+   * Die Zahlen hier sind BENUTZER-EINHEITEN der `viewBox`; im Browser skaliert
+   * das SVG auf die Container-Breite. Vorher war die Bühne 520 breit und die
+   * Karte bei 1440 px 1 136 — Faktor 2,18, aus dem 12,5-Label wurde ein
+   * 30-px-Label neben der Antwort. Deshalb ist die AUSGELIEFERTE Breite in
+   * `SoVerdient.css` auf 520 px gedeckelt: Skalierung ≤ 1, und 12,5 hier heißt
+   * höchstens 12,5 px dort. Umgekehrt gilt am Telefon (Container ≈ 343 px bei
+   * der 344er Bühne) Skalierung ≈ 1,0 — 12,5 bleibt ≥ 12.
+   */
+  const height = 236;
+  const padT = 28;
+  const padB = 48;
   const padL = 14;
   const padR = wide ? 150 : 120;
   const plotL = padL;
@@ -650,7 +662,7 @@ export function chartLayout(data: ChartData, opts: ChartLayoutOpts = {}): ChartL
     layout.oeLine = { x1: xOe + barW / 2, y1: yo, x2: plotR, y2: yo };
     layout.oeWert = { x: xOe, y: yo - 8, text: `${ctText(oeCt)} ct`, fontSize: 12.5 };
     if (data.vorlaeufig) {
-      layout.oeStand = { x: xOe, y: yo - 22, text: 'vorläufig', fontSize: 9.5 };
+      layout.oeStand = { x: xOe, y: yo - 25, text: 'vorläufig', fontSize: 12.5 };
     }
   } else {
     const mitte = padT + (plotB - padT) / 2;
@@ -659,9 +671,9 @@ export function chartLayout(data: ChartData, opts: ChartLayoutOpts = {}): ChartL
       dash: { x: xOe, y: mitte - 4, text: '—', fontSize: 15 },
       grund: OHNE_MONATSWERT_NOTE.map((t, i) => ({
         x: xOe,
-        y: mitte + 13 + i * 11,
+        y: mitte + 14 + i * 15,
         text: t,
-        fontSize: 9,
+        fontSize: 12.5,
       })),
     };
   }
@@ -680,10 +692,18 @@ export function chartLayout(data: ChartData, opts: ChartLayoutOpts = {}): ChartL
   }
 
   // Die Beschriftung darf weder links heraus- noch in die Chip-Zone laufen.
-  const fs = data.topLabel.length > 12 ? 11.5 : 12.5;
+  // ⚠ Nie unter 12,5 (B7). Ein längeres Label wird über `textLength` gestaucht,
+  // nicht verkleinert — sonst entsteht die zweite Unterkante der Skala.
+  const fs = 12.5;
   const halb = data.topLabel.length * fs * 0.34;
   const lx = Math.max(plotL + halb, Math.min(xEr, plotR + 4 - halb));
-  layout.erLabel = { x: lx, y: y(erCt + satzCt) - 8, text: data.topLabel, fontSize: fs };
+  layout.erLabel = {
+    x: lx,
+    y: y(erCt + satzCt) - 8,
+    text: data.topLabel,
+    fontSize: fs,
+    textLength: capTextLength(data.topLabel, fs, plotW * 0.62),
+  };
 
   // --- Rechte Chips: Garantie-Linie + Prämien-Block ------------------------
   const roh: { y: number; anchorY: number; titel: string; wert: string; punkt: boolean }[] = [];
@@ -719,18 +739,18 @@ export function chartLayout(data: ChartData, opts: ChartLayoutOpts = {}): ChartL
     leader: { x1: plotR, y1: c.anchorY, x2: chipX - 3, y2: c.y },
     titel: {
       x: chipX,
-      y: c.y - 2,
+      y: c.y - 4,
       text: c.titel,
-      fontSize: 10,
+      fontSize: 12.5,
       // Der Punkt vor dem Titel kostet Platz — er zählt in der Schätzung mit.
-      textLength: capTextLength(c.punkt ? `x ${c.titel}` : c.titel, 10, chipMax),
+      textLength: capTextLength(c.punkt ? `x ${c.titel}` : c.titel, 12.5, chipMax),
     },
     wert: {
       x: chipX,
-      y: c.y + 11,
+      y: c.y + 14,
       text: c.wert,
-      fontSize: 10.5,
-      textLength: capTextLength(c.wert, 10.5, chipMax),
+      fontSize: 12.5,
+      textLength: capTextLength(c.wert, 12.5, chipMax),
     },
   }));
 
@@ -738,19 +758,23 @@ export function chartLayout(data: ChartData, opts: ChartLayoutOpts = {}): ChartL
   if (awCt == null && oeCt != null) {
     layout.awFehltNote = OHNE_GARANTIEWERT_NOTE.map((t, i) => ({
       x: chipX,
-      y: padT + 14 + i * 12,
+      y: padT + 14 + i * 16,
       text: t,
-      fontSize: 9.5,
-      textLength: Math.min(chipMax, i === 0 ? 78 : 92),
+      fontSize: 12.5,
+      textLength: capTextLength(t, 12.5, chipMax),
     }));
   }
 
   // --- Beschriftungen unter den Säulen -------------------------------------
+  // Die Beschriftung unter den Säulen: zwei Zeilen à 12,5, gekappt auf die
+  // Säulenzone — der Ø-Text („Ø Monatsmarktwert") ist der längste und darf die
+  // Nachbarsäule nie erreichen.
+  const capMax = Math.max(barW + 46, plotW * 0.44);
   layout.captions = [
-    { x: xOe, y: plotB + 16, text: OE_CAPTION[0], fontSize: 10 },
-    { x: xOe, y: plotB + 28, text: OE_CAPTION[1], fontSize: 10 },
-    { x: xEr, y: plotB + 16, text: data.eigenCaption, fontSize: 10 },
-    { x: xEr, y: plotB + 28, text: data.eigenSubCaption, fontSize: 10 },
+    { x: xOe, y: plotB + 18, text: OE_CAPTION[0], fontSize: 12.5, textLength: capTextLength(OE_CAPTION[0], 12.5, capMax) },
+    { x: xOe, y: plotB + 34, text: OE_CAPTION[1], fontSize: 12.5, textLength: capTextLength(OE_CAPTION[1], 12.5, capMax) },
+    { x: xEr, y: plotB + 18, text: data.eigenCaption, fontSize: 12.5, textLength: capTextLength(data.eigenCaption, 12.5, capMax) },
+    { x: xEr, y: plotB + 34, text: data.eigenSubCaption, fontSize: 12.5, textLength: capTextLength(data.eigenSubCaption, 12.5, capMax) },
   ];
 
   return layout;

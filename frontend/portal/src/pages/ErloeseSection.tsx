@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import type { History, HistoryRange, PlantKind, ProtocolEvent, Site } from '../api';
@@ -22,9 +21,7 @@ import { ebene1, ebene2, speicherSchritte } from '../erloesEbenen';
 import { isCurrentPeriod } from '../energieBilanz';
 import { soVerdient } from '../soVerdient';
 import {
-  availableWelten,
   historieHash,
-  weltSwitchCards,
   WELTEN,
   type WeltId,
 } from '../historieWelten';
@@ -199,12 +196,21 @@ function TagesprotokollBody({ history }: { history: History }) {
 
 export function ErloeseSection({
   site,
-  surface,
-  onOpenWelt,
 }: {
   site: Site;
+  /**
+   * ⚠ Reserviert: seit E3 leitet die Seite daraus nichts mehr ab (die Welten
+   * stehen als Bereichs-Reiter, `anlageNav` entscheidet über sie). Die Prop
+   * bleibt in der Signatur, weil jeder Aufrufer sie führt.
+   */
   surface?: AnlageSurface | null;
-  onOpenWelt: (welt: WeltId) => void;
+  /**
+   * ⚠ Reserviert und derzeit ohne Wirkung: der Welt-Wechsel wohnt seit E3 in
+   * den Bereichs-Reitern (`anlageNav` Verlauf › Messwerte · Erlöse). Die Prop
+   * bleibt optional in der Signatur, damit ein Aufrufer, der sie noch übergibt,
+   * nicht bricht.
+   */
+  onOpenWelt?: (welt: WeltId) => void;
 }) {
   const [init] = useState(() => parseVerlaufParams(window.location.hash));
   const [range, setRange] = useState<HistoryRange>(init.range);
@@ -278,7 +284,6 @@ export function ErloeseSection({
   }, []);
 
   const welt = WELTEN.erloese;
-  const available = availableWelten(surface);
   const label = periodLabel(anchor, range);
   const now = new Date();
   const isDay = range === 'day';
@@ -427,12 +432,7 @@ export function ErloeseSection({
 
   return (
     <>
-      <WeltKopf
-        welt={welt}
-        cards={weltSwitchCards('erloese', available)}
-        hrefFor={(c) => mitVergleich(historieHash(site.id, c.welt.id, range, at), modus)}
-        onOpen={(c) => onOpenWelt(c.welt.id)}
-      />
+      <WeltKopf welt={welt} />
       <ZeitLeiste
         range={range}
         anchor={anchor}
@@ -615,11 +615,13 @@ export function ErloeseSection({
                         titel="Der Tag im Bild"
                         art="gemessen"
                         extra={
-                          history.plan.length > 0 ? (
-                            <Badge variant="tint">Plan &amp; Ist</Badge>
-                          ) : (
-                            <Badge variant="off">kein Plan</Badge>
-                          )
+                          /* B7: `Badge variant="tint"` war #5A8DE8 auf #95B9FF
+                             = 1,66:1 — auf einer Kunden-Karte unlesbar. Es ist
+                             ein ZUSTANDS-Wort wie jedes andere, also die eine
+                             Haus-Chip-Form (P0 `.vp-chip`, 4,8:1). */
+                          <span className="vp-chip">
+                            {history.plan.length > 0 ? 'Plan & Ist' : 'kein Plan'}
+                          </span>
                         }
                       />
                       <TagesbildBody history={history} geld={tagesGeld} plantKind={site.plantKind} />

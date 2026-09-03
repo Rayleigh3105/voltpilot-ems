@@ -1,20 +1,20 @@
 /**
  * Das gemeinsame SKELETT beider Historie-Welten (Konzept
- * `data/vp-historie-konzept-t4` §4.2): Welt-Kopf → klebende Zeit-Leiste →
- * Karten → Fußkarte. Reine Render-Bausteine; jede Ableitung/Copy lebt im reinen
- * `historieWelten.ts` (das `PeakBand`/`FleetOverview`-Muster).
+ * `data/vp-historie-konzept-t4` §4.2, seit E3 in der Form von
+ * `vp-erloese-lesbar-konzept-u3` §3.5): unsichtbare Überschrift → klebende
+ * Zeit-Leiste (EINE Zeile) → Karten → Fußkarte. Reine Render-Bausteine; jede
+ * Ableitung/Copy lebt im reinen `historieWelten.ts` (das
+ * `PeakBand`/`FleetOverview`-Muster).
  *
- * Warum ein eigener Kopf statt der generischen Seiten-Überschrift: die Frage
- * „was schaue ich gerade an?" wird hier an Icon, Farbe, Titel, Abzeichen UND
- * dem Kartenpaar gleichzeitig beantwortet — und der Kopf ersetzt die frühere
- * Titel-/Untertitelzeile, statt sie zu ergänzen. Genau daran hing die
- * 515-px-Kopfzone am Telefon (vier Bedienzeilen: Welt · Zeitraum · Blätterer ·
- * Modus); übrig bleiben zwei.
+ * ⚠ **Die Frage „was schaue ich gerade an?" beantworten die BEREICHS-REITER**
+ * (`anlageNav` Verlauf › Messwerte · Erlöse), nicht mehr eine Kopf-Karte. Sie
+ * kostete 189 px vor der ersten Zahl, und das Kartenpaar darin war der Reiter
+ * ein zweites Mal — gemessen stand die Antwort dadurch bei 779 px (1440).
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
-import { IconTile, type IconCategory } from '../../designsystem/components/core/IconTile';
+import { type IconCategory } from '../../designsystem/components/core/IconTile';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 import type { HistoryCoverage, HistoryRange } from '../api';
@@ -24,7 +24,6 @@ import {
   PROVENIENZ,
   type Provenienz,
   type Welt,
-  type WeltSwitchCard,
 } from '../historieWelten';
 import {
   abdeckungView,
@@ -62,13 +61,20 @@ export function ProvBadge({ art }: { art: Provenienz }) {
 }
 
 /**
- * Der Kopf einer Karte: Icon-Kachel, Überschrift, Abzeichen — die eine Zeile,
- * die jede Karte beider Welten gleich aufbaut.
+ * Der Kopf einer Karte: Überschrift, Abzeichen — die eine Zeile, die jede
+ * Karte beider Welten gleich aufbaut.
  *
- * **Am Telefon schrumpft die Kachel** (40 → 28 px) und der Abstand darunter mit
- * ihr: gemessen kostete der Kopf dort 76 px ÜBER dem Diagramm, das im ersten
- * Bildschirm stehen soll. **Das Abzeichen bleibt unangetastet** — es ist die
- * Ehrlichkeitsregel (report §7), nicht Zierrat; nur seine Kachel wird kleiner.
+ * **⚠ Er trägt seit E9 KEINE Icon-Kachel mehr** (Konzept
+ * `vp-erloese-lesbar-konzept-u3` §3.10 Punkt 6, Befund B5): fünf bis sechs
+ * 40-px-Kacheln in je eigener Kategoriefarbe machten jede Karte gleich laut —
+ * gemessen sprang das Auge im Fünf-Sekunden-Test Hero → grüne Fläche → grüne
+ * Zahl → Chart, nie in die Reihenfolge der Fragen. Die Hierarchie trägt jetzt
+ * Größe und Abstand (16/700 Titel), nicht Farbe. `icon`/`category` bleiben in
+ * der Signatur, weil jede Aufrufstelle sie führt und sie die Karte weiterhin
+ * BENENNEN (Tooltip/Debug) — sie rendern nur nichts mehr.
+ *
+ * **Das Abzeichen bleibt unangetastet** — es ist die Ehrlichkeitsregel
+ * (report §7), nicht Zierrat.
  */
 export function KartenKopf({
   icon,
@@ -83,15 +89,11 @@ export function KartenKopf({
   art: Provenienz;
   extra?: ReactNode;
 }) {
-  const isPhone = useIsPhone();
+  // `icon`/`category` sind seit E9 nur noch Metadaten der Aufrufstelle.
+  void icon;
+  void category;
   return (
-    <div
-      className="vp-section-head"
-      style={{ marginBottom: isPhone ? '10px' : 'var(--vp-space-4)' }}
-    >
-      <IconTile category={category} size={isPhone ? 28 : 40}>
-        <Icon name={icon} size={isPhone ? 15 : 20} />
-      </IconTile>
+    <div className="vp-section-head vp-kartenkopf">
       <h2>{titel}</h2>
       <ProvBadge art={art} />
       {extra}
@@ -100,94 +102,26 @@ export function KartenKopf({
 }
 
 /**
- * Welt-Kopf: Icon · Titel · Abzeichen · Einleitungssatz, darunter das
- * Kartenpaar für den Ein-Klick-Wechsel (leer = es gibt nur eine Welt, dann
- * rendert kein einsamer Schalter).
+ * Der Welt-Kopf ist seit E3 **eine unsichtbare Überschrift und sonst nichts**
+ * (Konzept `vp-erloese-lesbar-konzept-u3` §3.5, Befund B4).
  *
- * **Am Telefon (≤ 720 px) schrumpft er auf EINE Zeile** (Konzept
- * `data/vp-mobile-views-x1`, Captain-Abnahme 09.08.2026): Icon · Weltname ·
- * Ehrlichkeits-Abzeichen. Zwei Dinge entfallen dort und beide aus gutem Grund —
- * das **Kartenpaar**, weil Messwerte und Erlöse seit dem Mobil-Umbau Stufe 1
- * eigene Plätze der Bottom-Bar sind (der Wechsel ist einen Daumen entfernt,
- * 170 px Karten dafür sind Doppelung), und der **Einleitungssatz**, weil er die
- * Frage „was schaue ich an?" beantwortet, die der Bar-Slot schon beantwortet
- * hat. **Das Abzeichen bleibt** — es ist die Ehrlichkeitsregel, nicht Deko.
+ * Was er war: eine Karte mit 44-px-Icon-Kachel, Titel, Abzeichen,
+ * Einleitungssatz und dem Kartenpaar für den Welt-Wechsel — **189 px (1440)
+ * VOR der Antwort**, und dahinter klebte die Zeit-Leiste. Was er sagte, sagen
+ * die Bereichs-Reiter darüber schon (`anlageNav` Verlauf › Messwerte · Erlöse),
+ * das Abzeichen sitzt seit je an jeder Karte (`KartenKopf`), und das Kartenpaar
+ * war der Reiter ein zweites Mal.
+ *
+ * **Warum trotzdem ein `h1`:** ohne ihn hätte die Seite gar keine Überschrift —
+ * die Schale trägt nur den Pfad, keine Titelzeile. Er bleibt für die
+ * Dokumentstruktur und für Screenreader (`.vp-sr-only`), kostet 0 px und nennt
+ * dieselben zwei Dinge wie das Abzeichen: Welt und Art der Zahlen.
  */
-export function WeltKopf({
-  welt,
-  cards,
-  hrefFor,
-  onOpen,
-}: {
-  welt: Welt;
-  cards: WeltSwitchCard[];
-  /** Der Link der Welt — echtes `href`, damit Öffnen-in-neuem-Tab funktioniert. */
-  hrefFor: (card: WeltSwitchCard) => string;
-  onOpen: (card: WeltSwitchCard) => void;
-}) {
-  const isPhone = useIsPhone();
-
-  if (isPhone) {
-    return (
-      <div className={`vp-welt-zeile vp-welt-${welt.id}`}>
-        <span className="vp-welt-zeile-ico" aria-hidden="true">
-          <Icon name={welt.icon} size={17} />
-        </span>
-        <h1>{welt.label}</h1>
-        <ProvBadge art={welt.badge} />
-      </div>
-    );
-  }
-
+export function WeltKopf({ welt }: { welt: Welt }) {
   return (
-    <Card
-      padding="lg"
-      radius="lg"
-      className={`vp-welt-kopf vp-welt-${welt.id}`}
-      // Die Kartenpolsterung ist am Telefon der größte Posten der Kopfzone;
-      // `Card` setzt sie inline, also führen wir sie über eine Variable, die
-      // die Medienabfrage schrumpfen kann (`style` gewinnt gegen `padding`).
-      style={{ padding: 'var(--vp-welt-pad)' }}
-    >
-      <div className="vp-welt-head">
-        <IconTile category="dynamic" size={44} style={{ background: 'var(--vp-welt-grad)' }}>
-          <Icon name={welt.icon} size={22} />
-        </IconTile>
-        <div className="vp-welt-titles">
-          <h1>
-            {welt.label}
-            <ProvBadge art={welt.badge} />
-          </h1>
-          <p>{welt.lead}</p>
-        </div>
-      </div>
-      {cards.length > 1 && (
-        <div className="vp-welt-switch" role="group" aria-label="Ansicht wechseln">
-          {cards.map((card) => (
-            <a
-              key={card.welt.id}
-              className={`vp-wsw vp-welt-${card.welt.id}${card.active ? ' on' : ''}`}
-              href={hrefFor(card)}
-              aria-current={card.active ? 'page' : undefined}
-              onClick={(e) => {
-                // Modifier-Klicks (neuer Tab) dem Browser überlassen.
-                if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-                e.preventDefault();
-                onOpen(card);
-              }}
-            >
-              <span className="vp-wsw-ico" aria-hidden="true">
-                <Icon name={card.welt.icon} size={17} />
-              </span>
-              <span className="vp-wsw-text">
-                <span className="vp-wsw-label">{card.welt.label}</span>
-                <span className="vp-wsw-sub">{card.welt.switchLead}</span>
-              </span>
-            </a>
-          ))}
-        </div>
-      )}
-    </Card>
+    <h1 className="vp-sr-only">
+      {welt.label} — {PROVENIENZ[welt.badge].label}
+    </h1>
   );
 }
 
@@ -367,18 +301,21 @@ export function UeberlagerungLegendeZeile({
 }
 
 /**
- * Die klebende Zeit-Leiste — [Tag|Woche|Monat|Jahr] ‹ Anker › Heute 📅, darunter
- * der Monatsstreifen (Tag/Monat) und die Datenlage.
+ * Die klebende Zeit-Leiste — [Tag|Woche|Monat|Jahr] ‹ Anker › Heute + Datumsfeld,
+ * seit E3 **EINE Zeile** (58 px klebend am Schreibtisch, zwei nicht klebende am
+ * Telefon). Monatsstreifen, „Vergleichen" und Datenlage liegen hinter dem
+ * Datum-Feld.
  *
  * Sie steht in BEIDEN Welten an derselben Stelle und regiert alles darunter
  * (dieselbe Idee wie die Bilanz-Leiste des Cockpits: der Zeitraum steht bei den
  * Zahlen, die er regiert). Klebend, weil man beim Lesen langer Seiten sonst
- * nach oben scrollen muss, um die Periode zu wechseln.
+ * nach oben scrollen muss, um die Periode zu wechseln — aber nur so hoch, wie
+ * ein Bedienelement wirklich ist.
  *
  * **Der Schrittknopf ist nicht mehr die einzige Geste in die Vergangenheit**
- * (F2): daneben stehen das native Sprungfeld und — dort, wo Blättern wirklich
- * weh tut (Tag: 211 Klicks in den Januar, Monat: 7) — der Monatsstreifen aus
- * der Geld-Ansicht, hier als reiner Navigator ohne erfundene Zahlen.
+ * (F2): daneben stehen das Sprungfeld und — dort, wo Blättern wirklich weh tut
+ * (Tag: 211 Klicks in den Januar, Monat: 7) — der Monatsstreifen aus der
+ * Geld-Ansicht, hier als reiner Navigator ohne erfundene Zahlen.
  */
 /**
  * **Das ⋯-Blatt der Mobil-Bedienzeile** (P4, Konzept `data/vp-mobile-views-x1`).
@@ -415,6 +352,43 @@ function ZeitBlatt({
             <Icon name="x" size={20} />
           </button>
         </div>
+        {children}
+      </div>
+    </>
+  );
+}
+
+/**
+ * **Das Popover der Zeit-Leiste am Schreibtisch** (E3, §3.5).
+ *
+ * Es ist der Zwilling des Telefon-Blatts: dieselben drei Gelegenheits-Dinge
+ * (Monatsstreifen · „Vergleichen" · Datenlage), nur als Panel unter dem
+ * Datum-Feld statt als Bottom-Sheet. Vorher standen sie als drei zusätzliche
+ * ZEILEN in einer KLEBENDEN Leiste — 199 px, die bei jedem Scrollen 30 % des
+ * Bildschirms verdeckten (Befund B4).
+ *
+ * Escape schließt, ein Klick daneben schließt; der Scrim ist durchsichtig, weil
+ * dies keine Entscheidung ist, die den Rest der Seite ausblenden müsste.
+ */
+export function ZeitPopover({
+  onClose,
+  children,
+}: {
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <>
+      <div className="vp-zl-pop-scrim" onClick={onClose} aria-hidden="true" />
+      <div className="vp-zl-pop" role="dialog" aria-label="Zeitraum & Vergleich">
         {children}
       </div>
     </>
@@ -575,26 +549,64 @@ export function ZeitLeiste({
     );
   }
 
+  /**
+   * **Schreibtisch: EINE Zeile, 58 px klebend** (E3, §3.5). Segment · ‹ Datum ›
+   * · Heute · Datum-Feld — und dahinter, im Popover, Monatsstreifen,
+   * „Vergleichen" und die Datenlage. Vorher waren es bis zu vier gestapelte
+   * Zeilen (199 px), die zusammen mit der 68-px-Kopfzeile der Schale dauerhaft
+   * 267 px verdeckten und die Antwort auf 779 px hinunterdrückten (B4).
+   *
+   * Der gesetzte Vergleich bleibt in der Leiste SICHTBAR — genau wie am
+   * Telefon: eine überlagerte Reihe, deren Schalter im Popover wohnt, hätte
+   * sonst niemand bestellt.
+   */
+  const hatPopInhalt = streifen || schalter != null || abdeckungView(coverage) != null;
+
   return (
     <div className="vp-zeitleiste">
       <div className="vp-zl-row">
         {perioden}
         {blaetterer}
+        {chip && (
+          <button
+            type="button"
+            className="vp-zl-chip"
+            title="Vergleich ändern"
+            onClick={() => setBlattOffen(true)}
+          >
+            {chip}
+          </button>
+        )}
+        {hatPopInhalt && (
+          <button
+            type="button"
+            className="vp-zl-more"
+            aria-label="Monat, Vergleich & Datenlage"
+            aria-expanded={blattOffen}
+            onClick={() => setBlattOffen((o) => !o)}
+          >
+            <Icon name="more-horizontal" size={18} />
+          </button>
+        )}
       </div>
-      {streifen && (
-        <MonthStrip
-          slots={streifenSlots(now, coverage)}
-          selectedMonth={`${sprungWert(anchor, 'month')}-01`}
-          showValues={false}
-          ariaLabel="Monat anspringen"
-          onSelect={(monthIso) => {
-            const d = streifenAnker(monthIso, range, now);
-            if (d) onAnchor(d);
-          }}
-        />
+      {blattOffen && hatPopInhalt && (
+        <ZeitPopover onClose={() => setBlattOffen(false)}>
+          {streifen && (
+            <MonthStrip
+              slots={streifenSlots(now, coverage)}
+              selectedMonth={`${sprungWert(anchor, 'month')}-01`}
+              showValues={false}
+              ariaLabel="Monat anspringen"
+              onSelect={(monthIso) => {
+                const d = streifenAnker(monthIso, range, now);
+                if (d) onAnchor(d);
+              }}
+            />
+          )}
+          {schalter}
+          <AbdeckungZeile coverage={coverage} stale={stale} />
+        </ZeitPopover>
       )}
-      {schalter}
-      <AbdeckungZeile coverage={coverage} stale={stale} />
     </div>
   );
 }

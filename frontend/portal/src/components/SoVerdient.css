@@ -16,11 +16,13 @@
   gap: 6px;
   max-width: 100%;
   min-width: 0;
-  margin: 0 0 8px;
+  margin: 0 0 var(--vp-space-3, 12px);
   padding: 5px 12px;
   border-radius: 999px;
-  font-size: 0.85rem;
-  font-weight: 700;
+  /* §3.6: der K1-Satz dieser Karte ist ein SATZ in Textgröße, keine dritte
+     Schriftgröße. */
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-700, 700);
   line-height: 1.35;
   /* Der Prüf-Zusatz der „unter"-Lage ist ein ganzer Satz — er muss umbrechen
      dürfen, statt die Karte aufzuspannen. */
@@ -63,17 +65,22 @@
   display: block;
   width: 100%;
   height: auto;
-  /* Die Bühne skaliert über die viewBox — sie kann ihren Container nie sprengen. */
-  max-width: 100%;
+  /* Die Bühne skaliert über die viewBox — sie kann ihren Container nie sprengen.
+     ⚠ Und sie darf ihn auch nicht AUSFÜLLEN: bei 1440 px ist die Karte 1 136 px
+     breit, die Bühne 520 Einheiten — Faktor 2,18, aus dem 12,5-Label wurde ein
+     30-px-Label direkt unter der Antwort (Befund B5). Der Deckel hält die
+     Skalierung bei ≤ 1, also jede Beschriftung bei ihrer gemeinten Größe
+     (§3.6: „Chart ≤ 240 px hoch und ≤ 520 px breit"). */
+  max-width: min(100%, 520px);
 }
 
 /* --- Kernsatz + der ehrliche Ersatz für ein fehlendes Bild ---------------- */
 
 .vp-sv-kernsatz {
-  margin: 6px 0 0;
-  font-size: 0.82rem;
-  line-height: 1.45;
-  color: var(--vp-text-muted, #6c757d);
+  margin: var(--vp-space-2, 8px) 0 0;
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: 1.5;
+  color: var(--vp-c-muted-fg, #475569);
   overflow-wrap: anywhere;
 }
 
@@ -83,9 +90,9 @@
   border: 1px dashed var(--vp-border, #e9ecef);
   border-radius: 10px;
   background: var(--vp-surface-muted, #fafbfc);
-  font-size: 0.85rem;
-  line-height: 1.45;
-  color: var(--vp-text-muted, #6c757d);
+  font-size: var(--vp-erl-fs-16, 16px);
+  line-height: 1.5;
+  color: var(--vp-c-muted-fg, #475569);
   overflow-wrap: anywhere;
 }
 
@@ -107,17 +114,23 @@
 
 .vp-sv-praemie-lbl {
   min-width: 0;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--vp-text, #1a1a1a);
+  /* §3.6: „die Marktprämie des Monats wird eine Ledger-Zeile" — Name links in
+     Textgröße, Betrag rechts, die Rechnung als Sekundärzeile darunter. Damit
+     liest sie sich wie jede Zeile des Kontoauszugs eine Karte höher. */
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-600, 600);
+  color: var(--vp-c-fg, #1e293b);
   overflow-wrap: anywhere;
 }
 
 .vp-sv-praemie-val {
-  font-weight: 700;
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-600, 600);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  color: var(--vp-flow-batt-ink, #166534);
+  /* Ein Betrag ist ein Betrag — die Zurechnung steht im Wort davor, nicht in
+     einem grünen Ton (B10: vier Urteilsfarben für dieselbe Größe). */
+  color: var(--vp-c-fg, #1e293b);
 }
 
 /* „—" ist nie eine Null: gedämpft, damit es als Nicht-Zahl liest. */
@@ -127,23 +140,79 @@
 
 .vp-sv-praemie-note {
   margin: 2px 0 0;
-  font-size: 0.78rem;
+  font-size: var(--vp-erl-fs-14, 14px);
   line-height: 1.45;
-  color: var(--vp-text-muted, #6c757d);
+  color: var(--vp-c-muted-fg, #475569);
   overflow-wrap: anywhere;
 }
 
 .vp-sv-praemie-hint {
   margin: 2px 0 0;
-  font-size: 0.75rem;
-  font-style: italic;
+  /* Kursiv war die fünfte Auszeichnung auf dieser Karte — der Hinweis ist
+     dieselbe Sekundärzeile wie die Rechnung darüber. */
+  font-size: var(--vp-erl-fs-14, 14px);
   line-height: 1.45;
-  color: var(--vp-text-muted, #6c757d);
+  color: var(--vp-c-muted-fg, #475569);
   overflow-wrap: anywhere;
 }
 
 .vp-sv-praemie-link {
   display: inline-block;
   margin-top: 4px;
-  font-size: 0.78rem;
+  font-size: var(--vp-erl-fs-14, 14px);
+}
+
+/* --------------------------------------------------------------------------
+   E10 · die Marktwert-Zeilen (`vp-preistreiber`) waren OHNE jede Regel — die
+   drei Spans einer Zeile klebten aneinander („6,4 ct/kWhIhr erzielter
+   Marktwert0,6 ct über dem Monatsdurchschnitt", im echten Browser bei 1440
+   gelesen). Sie sind der Rückfall der Karte, wenn kein Bild getragen wird, und
+   müssen deshalb genauso lesbar sein wie das Bild (§3.6, Befund B5).
+   -------------------------------------------------------------------------- */
+
+.vp-preistreiber {
+  margin: var(--vp-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+
+.vp-preistreiber > li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+/* Die Zahl führt (K1): sie ist das Erste, was die Zeile sagt. */
+.vp-pt-wert {
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-700, 700);
+  color: var(--vp-c-fg, #1e293b);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-pt-label {
+  font-size: var(--vp-erl-fs-16, 16px);
+  color: var(--vp-c-fg, #1e293b);
+  min-width: 0;
+}
+
+.vp-pt-note,
+.vp-pt-hint {
+  flex: 1 1 100%;
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+
+/* Eine Zeile ohne Wert ist eine ehrliche Leerstelle, kein Fehler. */
+.vp-preistreiber > li.vp-pt-off .vp-pt-wert {
+  color: var(--vp-c-muted-fg, #475569);
+  font-weight: var(--vp-erl-fw-600, 600);
 }

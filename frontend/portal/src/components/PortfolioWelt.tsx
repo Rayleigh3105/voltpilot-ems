@@ -13,12 +13,13 @@
  * `MonthStrip` der Geld-Ansicht und die CSS-Klassen der Anlagen-Welt
  * (`Historie.css`) — die Leiste sieht deshalb überall gleich aus.
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { IconTile } from '../../designsystem/components/core/IconTile';
 import type { HistoryRange } from '../api';
 import { PROVENIENZ } from '../historieWelten';
+import { useIsPhone } from '../useIsPhone';
+import { ZeitPopover } from './HistorieWelt';
 import {
   ankerAusWert,
   sprungFeld,
@@ -43,10 +44,19 @@ import './PortfolioWelt.css';
 import { MiniLineSpark } from './MiniChart';
 
 /**
- * Welt-Kopf: Icon · Titel · Ehrlichkeits-Abzeichen · Einleitungssatz. Die
- * Seitennavigation übernimmt genau EINMAL `PortfolioTabs` darüber; der Kopf
- * nennt nur die Ebene („4 Anlagen · Juli 2026"), damit nie unklar ist, worüber
- * die Zahlen sprechen.
+ * Der Welt-Kopf ist seit E3 **eine unsichtbare Überschrift und sonst nichts** —
+ * der Zwilling von `WeltKopf` der Anlagen-Welt (Konzept
+ * `vp-erloese-lesbar-konzept-u3` §3.5/§3.10, Befund B4; E12 macht die Erlöse-
+ * Seite zum Piloten fürs ganze Portal, die Portfolio-Welt zieht deshalb mit).
+ *
+ * Was er war: eine Karte mit 44-px-Icon-Kachel, Titel, Abzeichen und
+ * Einleitungssatz — Höhe VOR der ersten Zahl, und dahinter klebte die
+ * Zeit-Leiste. Was er sagte, sagen `PortfolioTabs` darüber (die Welt) und
+ * `KartenKopf` an jeder Karte (die Art der Zahlen) schon.
+ *
+ * **Der Kontext-Satz geht nicht verloren:** „4 Anlagen · Juli 2026" nennt die
+ * EBENE, über die die Zahlen sprechen — er wandert in die Überschrift, die
+ * Screenreader vorlesen, und steht sichtbar in den Kartenköpfen darunter.
  */
 export function PortfolioWeltKopf({
   welt,
@@ -57,28 +67,9 @@ export function PortfolioWeltKopf({
   kontext: string;
 }) {
   return (
-    <Card
-      padding="lg"
-      radius="lg"
-      className={`vp-welt-kopf vp-welt-${welt.id}`}
-      style={{ padding: 'var(--vp-welt-pad)' }}
-    >
-      <div className="vp-welt-head">
-        <IconTile category="dynamic" size={44} style={{ background: 'var(--vp-welt-grad)' }}>
-          <Icon name={welt.icon} size={22} />
-        </IconTile>
-        <div className="vp-welt-titles">
-          <h1 aria-label={`${welt.label}, Portfolio, ${PROVENIENZ[welt.badge].label}`}>
-            {welt.label}
-            <span className="vp-pf-ebene">Portfolio</span>
-            <ProvBadge art={welt.badge} />
-          </h1>
-          <p>
-            {welt.lead} <span className="vp-pf-kontext">{kontext}</span>
-          </p>
-        </div>
-      </div>
-    </Card>
+    <h1 className="vp-sr-only">
+      {welt.label} — Portfolio, {PROVENIENZ[welt.badge].label} · {kontext}
+    </h1>
   );
 }
 
@@ -162,9 +153,29 @@ export function PortfolioZeitLeiste({
 }) {
   const nextDisabled = shiftAnchor(anchor, range, 1) > now;
   const streifen = zeigtStreifen(range);
+  /* E3: der Monatsstreifen war die ZWEITE Zeile der Leiste. Er wohnt jetzt
+     hinter dem ⋯-Knopf — wie in der Anlagen-Welt, mit demselben Bauteil. */
+  const [blattOffen, setBlattOffen] = useState(false);
+  /* E3: am Telefon klebt die Leiste NICHT (sie ässe sonst ein Drittel des
+     Bildschirms) und steht in zwei Zeilen — dieselbe Regel und dieselbe
+     Klasse wie in der Anlagen-Welt. */
+  const isPhone = useIsPhone();
+  /* Das ⋯-Blatt trägt den Monatsstreifen und — am Telefon — das Sprungfeld. */
+  const hatBlatt = streifen || isPhone;
+  const mehrKnopf = hatBlatt ? (
+    <button
+      type="button"
+      className="vp-zl-more"
+      aria-label="Zeitraum & Monat"
+      aria-expanded={blattOffen}
+      onClick={() => setBlattOffen((o) => !o)}
+    >
+      <Icon name="more-horizontal" size={18} />
+    </button>
+  ) : null;
   return (
-    <div className="vp-zeitleiste">
-      <div className="vp-zl-row">
+    <div className={isPhone ? 'vp-zeitleiste vp-zeitleiste-mobil' : 'vp-zeitleiste'}>
+      <div className={isPhone ? 'vp-zl-row vp-zl-row-1' : 'vp-zl-row'}>
         <div className="vp-seg" role="tablist" aria-label="Zeitraum">
           {portfolioRanges(welt.id).map((r) => (
             <button
@@ -178,6 +189,11 @@ export function PortfolioZeitLeiste({
             </button>
           ))}
         </div>
+        {/* Am Telefon steht der ⋯-Knopf neben dem Zeitraum (Zeile 1), sonst am
+            Ende der einen Zeile — dieselbe Anordnung wie in der Anlagen-Welt. */}
+        {isPhone && mehrKnopf}
+      </div>
+      <div className={isPhone ? 'vp-zl-row vp-zl-row-2' : 'vp-zl-row-inline'}>
         <div className="vp-period-nav">
           <button
             type="button"
@@ -200,20 +216,34 @@ export function PortfolioZeitLeiste({
           <button type="button" className="step" onClick={() => onAnchor(new Date())}>
             Heute
           </button>
-          <Sprungfeld range={range} anchor={anchor} now={now} onAnchor={onAnchor} />
+          {/* Am Telefon wohnt das Sprungfeld im ⋯-Blatt (E3) — sonst bräche die
+              Bedienzeile in eine dritte Zeile. Dieselbe Regel wie in der
+              Anlagen-Welt. */}
+          {!isPhone && (
+            <Sprungfeld range={range} anchor={anchor} now={now} onAnchor={onAnchor} />
+          )}
         </div>
+        {!isPhone && mehrKnopf}
       </div>
-      {streifen && (
-        <MonthStrip
-          slots={streifenSlots(now)}
-          selectedMonth={`${sprungWert(anchor, 'month')}-01`}
-          showValues={false}
-          ariaLabel="Monat anspringen"
-          onSelect={(monthIso) => {
-            const d = streifenAnker(monthIso, range, now);
-            if (d) onAnchor(d);
-          }}
-        />
+      {blattOffen && hatBlatt && (
+        <ZeitPopover onClose={() => setBlattOffen(false)}>
+          {isPhone && (
+            <Sprungfeld range={range} anchor={anchor} now={now} onAnchor={onAnchor} />
+          )}
+          {streifen && (
+          <MonthStrip
+            slots={streifenSlots(now)}
+            selectedMonth={`${sprungWert(anchor, 'month')}-01`}
+            showValues={false}
+            ariaLabel="Monat anspringen"
+            onSelect={(monthIso) => {
+              const d = streifenAnker(monthIso, range, now);
+              if (d) onAnchor(d);
+              setBlattOffen(false);
+            }}
+          />
+          )}
+        </ZeitPopover>
       )}
     </div>
   );

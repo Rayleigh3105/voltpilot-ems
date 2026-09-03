@@ -494,6 +494,30 @@ function AnlagenSubPage({
   // Ein Bereich, der EINE Seite ist (Cockpit, Steuerung), liefert keine.
   const sidebar = anlageSidebar(surface);
   const tabs = tabsFor(sidebar, sub);
+
+  /**
+   * **Der Welt-Wechsel wohnt seit E3 in DIESEN Reitern** (Konzept
+   * `vp-erloese-lesbar-konzept-u3` §3.5): die frühere Wechsel-Karte im
+   * Welt-Kopf ist entfallen, weil sie denselben Schalter ein zweites Mal war.
+   *
+   * ⚠ Sie brachte aber etwas mit, das eine nackte Route nicht kennt: den
+   * ZEITRAUM. Ihr `href` war `historieHash(...)` — mit `z=`, `at=` und seit F8
+   * `v=`. Ein Wechsel über den Reiter reicht diese Parameter deshalb weiter,
+   * sonst springt „Erlöse" beim Wechsel aus dem Juni 2026 zurück auf heute.
+   * Nur ZWISCHEN den beiden Historie-Welten — jeder andere Reiter ist eine
+   * andere Frage und startet mit seiner eigenen Vorgabe.
+   */
+  const oeffneReiter = (ziel: AnlagenSub) => {
+    const welten: AnlagenSub[] = ['messwerte', 'erloese'];
+    if (ziel !== sub && welten.includes(ziel) && welten.includes(sub)) {
+      const query = window.location.hash.split('?')[1];
+      if (query) {
+        window.location.hash = `#/anlage/${site.id}/${ziel}?${query}`;
+        return;
+      }
+    }
+    onOpenSub(ziel);
+  };
   // ⚠ Eine Unterseite EINE Ebene tiefer trägt ihren Rückweg selbst - als
   // Brotkrume `Anlage › Komponenten › {Gerät}` in ihrem eigenen Kopf. Der Knopf
   // hier stünde darüber als ZWEITER Rückweg auf denselben Weg (Stufe 0, §2.1,
@@ -519,7 +543,7 @@ function AnlagenSubPage({
         tabs={tabs}
         active={sub}
         label={`Reiter des Bereichs ${bereichLabel(sidebar, sub)}`}
-        onOpen={onOpenSub}
+        onOpen={oeffneReiter}
       />
       <LazyBoundary>
         {sub === 'fahrplan' && <FahrplanSection site={site} />}

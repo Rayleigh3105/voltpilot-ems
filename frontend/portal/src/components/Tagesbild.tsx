@@ -111,7 +111,10 @@ function panelTitel(
       : `{a|${titel.text}}  {b|${titel.einheit}}`,
     textStyle: {
       rich: {
-        a: { color: t.ink, fontSize: AXIS.fontSize + 1.5, fontWeight: 700 },
+        // §3.6: „die drei Panel-Titel 12/600 sekundär". Sie benennen ein
+        // Panel — sie sind nicht die Aussage der Karte (Befund B5: fünf
+        // gleich laute Köpfe je Seite).
+        a: { color: t.axis, fontSize: AXIS.fontSize, fontWeight: 600 },
         b: { color: t.axis, fontSize: AXIS.fontSize, fontWeight: 400 },
       },
     },

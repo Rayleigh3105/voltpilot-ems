@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import type { History, HistoryRange, Site } from '../api';
 import { NBSP } from '../format';
@@ -30,9 +29,7 @@ import {
 } from '../historieVergleich';
 import { chartTheme } from '../chartTheme';
 import {
-  availableWelten,
   historieHash,
-  weltSwitchCards,
   WELTEN,
   type WeltId,
 } from '../historieWelten';
@@ -314,7 +311,10 @@ function EnergieDiagrammKarte({
           icon="activity"
           titel="Ihre Energie im Verlauf"
           art="gemessen"
-          extra={isPhone ? undefined : <Badge variant="tint">{raster}</Badge>}
+          /* B7: `Badge variant="tint"` misst 1,66:1 (im echten Browser bei
+             1440 nachgemessen) — das Raster-Wort trägt seit E9 die EINE
+             Haus-Chip-Form (P0 `.vp-chip`, 4,8:1). */
+          extra={isPhone ? undefined : <span className="vp-chip">{raster}</span>}
         />
         <ChartHeadline kern={kern} />
         <ChartSubtitle>{diagrammUntertitel(isDay, isPhone, raster)}</ChartSubtitle>
@@ -410,13 +410,22 @@ function EnergieKarten({
 
 export function MesswerteSection({
   site,
-  surface,
-  onOpenWelt,
 }: {
   site: Site;
   /** Das M0-Lese-Modell der Anlage — entscheidet, ob es die Erlöse-Welt gibt. */
+  /**
+   * ⚠ Reserviert: seit E3 leitet die Seite daraus nichts mehr ab (die Welten
+   * stehen als Bereichs-Reiter, `anlageNav` entscheidet über sie). Die Prop
+   * bleibt in der Signatur, weil jeder Aufrufer sie führt.
+   */
   surface?: AnlageSurface | null;
-  onOpenWelt: (welt: WeltId) => void;
+  /**
+   * ⚠ Reserviert und derzeit ohne Wirkung: der Welt-Wechsel wohnt seit E3 in
+   * den Bereichs-Reitern (`anlageNav` Verlauf › Messwerte · Erlöse). Die Prop
+   * bleibt optional in der Signatur, damit ein Aufrufer, der sie noch übergibt,
+   * nicht bricht.
+   */
+  onOpenWelt?: (welt: WeltId) => void;
 }) {
   const [init] = useState(() => parseVerlaufParams(window.location.hash));
   const [range, setRange] = useState<HistoryRange>(init.range);
@@ -480,7 +489,6 @@ export function MesswerteSection({
   }, []);
 
   const welt = WELTEN.messwerte;
-  const available = availableWelten(surface);
 
   /**
    * **F5 · der Tagesdrilldown.** Ein Tipp auf einen Balken (oder einen
@@ -524,12 +532,7 @@ export function MesswerteSection({
 
   return (
     <>
-      <WeltKopf
-        welt={welt}
-        cards={weltSwitchCards('messwerte', available)}
-        hrefFor={(c) => mitVergleich(historieHash(site.id, c.welt.id, range, at), modus)}
-        onOpen={(c) => onOpenWelt(c.welt.id)}
-      />
+      <WeltKopf welt={welt} />
       <ZeitLeiste
         range={range}
         anchor={anchor}

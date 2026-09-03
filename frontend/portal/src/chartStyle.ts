@@ -186,10 +186,18 @@ export function dayBoundaryStyle(t: { axis: string }) {
  * überall — sie rahmen das Bild ein, statt es zu erklären.
  * ------------------------------------------------------------------------- */
 export const AXIS = {
-  /** Achsen- und Beschriftungsgröße (vorher 10–12 gemischt). */
-  fontSize: 11,
+  /**
+   * Achsen- und Beschriftungsgröße.
+   *
+   * ⚠ **12 ist eine Untergrenze, keine Vorliebe** (Konzept
+   * `vp-erloese-lesbar-konzept-u3` Befund B7, Skill-Regel „Base Font Size:
+   * Don't render critical text below 12pt"): bei 11 px lasen sich Achsen auf
+   * einem Telefon nicht mehr. Wer sie senkt, senkt sie in JEDEM Diagramm des
+   * Portals — die Zahl ist absichtlich EINE.
+   */
+  fontSize: 12,
   /** Größe einer Achsen-NAMENS-Beschriftung („Leistung (kW)"). */
-  nameFontSize: 11,
+  nameFontSize: 12,
 } as const;
 
 /**

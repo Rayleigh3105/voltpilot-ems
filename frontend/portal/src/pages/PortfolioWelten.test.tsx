@@ -174,6 +174,25 @@ describe('Portfolio · Welt A „Messwerte"', () => {
     await screen.findByLabelText('Energiemengen aller Anlagen');
   });
 
+  it('trägt seit E3 KEINE Welt-Kopf-Karte mehr und hält den Streifen im ⋯-Blatt', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(history(16));
+    const { container } = render(<PortfolioMesswerte sites={[DACHAU, LINDENBERG]} />);
+
+    // E3/E12: der Kopf ist eine unsichtbare Überschrift — die Icon-Kachel und
+    // die Karte sind weg, der Kontext-Satz reist IN der Überschrift mit.
+    const kopf = screen.getByRole('heading', { level: 1, name: /Messwerte/ });
+    expect(kopf).toHaveClass('vp-sr-only');
+    expect(kopf).toHaveTextContent('2 Anlagen · Juli 2026');
+    expect(container.querySelector('.vp-welt-kopf')).toBeNull();
+
+    // E3: der Monatsstreifen war die zweite Zeile der Leiste — er wohnt jetzt
+    // hinter dem ⋯-Knopf, damit die Leiste EINE Zeile bleibt.
+    const leiste = container.querySelector('.vp-zeitleiste') as HTMLElement;
+    expect(within(leiste).queryByLabelText('Monat anspringen')).toBeNull();
+    fireEvent.click(within(leiste).getByRole('button', { name: /Zeitraum & Monat/ }));
+    expect(screen.getByLabelText('Monat anspringen')).toBeInTheDocument();
+  });
+
   it('summiert über die Anlagen und zählt eine Anlage ohne Daten nie als 0', async () => {
     vi.spyOn(api, 'history').mockImplementation((siteId: string) =>
       Promise.resolve(history(siteId === 'a' ? 16 : null)),

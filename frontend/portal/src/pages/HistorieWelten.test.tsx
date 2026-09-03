@@ -5,6 +5,7 @@ import { ErloeseSection } from './ErloeseSection';
 import { clearHistoryCache } from '../historyCache';
 import { clearEarningsCache } from '../useSiteEarnings';
 import { isoDate } from '../periodNav';
+import { historieHash } from '../historieWelten';
 import { BESTAND_BADGE } from '../erloesKomposition';
 import { anlageSurface, type AnlageSurface } from '../surface';
 import {
@@ -317,16 +318,32 @@ describe('Welt A · Messwerte', () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
-    // Der Welt-Kopf beantwortet „wo bin ich?" - Titel + Abzeichen.
-    expect(screen.getByRole('heading', { level: 1, name: /Messwerte/ })).toBeInTheDocument();
+    // E3: die Überschrift beantwortet „wo bin ich?" für Screenreader und die
+    // Dokumentstruktur — SICHTBAR sagen es die Bereichs-Reiter der Schale.
+    const h1 = screen.getByRole('heading', { level: 1, name: /Messwerte/ });
+    expect(h1).toHaveClass('vp-sr-only');
     // Die früheren Umschalter „Energie | Erlöse" und „Übersicht | Messwerte"
     // existieren nicht mehr.
     expect(screen.queryByRole('tab', { name: 'Energie' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Übersicht' })).toBeNull();
-    // Übrig bleiben genau ZWEI Bedienzeilen: Welt-Kartenpaar + Zeit-Leiste.
-    expect(screen.getByRole('group', { name: 'Ansicht wechseln' })).toBeInTheDocument();
+    // Und das Welt-Kartenpaar auch nicht: es war der Bereichs-Reiter ein
+    // zweites Mal und kostete 189 px vor der ersten Zahl (Befund B4).
+    expect(screen.queryByRole('group', { name: 'Ansicht wechseln' })).toBeNull();
+    expect(document.querySelector('.vp-welt-kopf')).toBeNull();
+    // Übrig bleibt EINE Bedienzeile: die Zeit-Leiste.
     expect(screen.getByRole('tablist', { name: 'Zeitraum' })).toBeInTheDocument();
     await screen.findByLabelText('Energiemengen im Zeitraum');
+  });
+
+  it('nennt das Raster in der EINEN Chip-Form statt im getönten Abzeichen', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+
+    // B7: `Badge variant="tint"` mass 1,66:1 (im echten Browser bei 1440
+    // nachgemessen). Seit E9 trägt das Raster-Wort die EINE Haus-Chip-Form.
+    const raster = await screen.findByText('15-Minuten-Mittel');
+    expect(raster).toHaveClass('vp-chip');
+    expect(raster.className).not.toMatch(/tint/);
   });
 
   it('zeigt die sechs Energiemengen des Zeitraums, mit dem Abzeichen „Gemessen"', async () => {
@@ -585,21 +602,18 @@ describe('Welt B · Erlöse', () => {
 });
 
 describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf', () => {
-  it('führt in die andere Welt und trägt Zeitraum + Anker im Link', async () => {
+  it('hat KEINEN eigenen Welt-Link mehr — der Wechsel wohnt in den Reitern', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
-    const opened: string[] = [];
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={(w) => opened.push(w)} />);
+    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
     await screen.findByLabelText('Energiemengen im Zeitraum');
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Monat' }));
-    const link = screen.getByRole('link', { name: /Erlöse/ });
-    await waitFor(() =>
-      expect(link.getAttribute('href')).toMatch(
-        /^#\/anlage\/s-1\/erloese\?z=monat&at=\d{4}-\d{2}-\d{2}$/,
-      ),
+    // E3: die Fläche bietet den Wechsel nicht ein zweites Mal an.
+    expect(screen.queryByRole('link', { name: /Erlöse/ })).toBeNull();
+    // Der ZEITRAUM reist trotzdem mit — die Adresse baut `historieHash`, und
+    // die Bereichs-Reiter der Schale rufen dieselbe Route auf.
+    expect(historieHash('s-1', 'erloese', 'month', '2026-05-01')).toBe(
+      '#/anlage/s-1/erloese?z=monat&at=2026-05-01',
     );
-    fireEvent.click(link);
-    expect(opened).toEqual(['erloese']);
   });
 
   it('holt beim Wechsel NICHT dieselbe Antwort erneut (P2)', async () => {
@@ -730,6 +744,10 @@ describe('F2 · In der Vergangenheit navigieren', () => {
     );
     await screen.findByLabelText('Energiemengen im Zeitraum');
 
+    // E3: Monatsstreifen, „Vergleichen" und Datenlage liegen seit dem
+    // Chrome-Umbau HINTER dem Datum-Feld (⋯) — eine klebende Leiste trägt nur
+    // noch, was man ständig braucht.
+    fireEvent.click(screen.getByRole('button', { name: 'Monat, Vergleich & Datenlage' }));
     const streifen = screen.getByRole('tablist', { name: 'Monat anspringen' });
     const chips = within(streifen).getAllByRole('tab');
     expect(chips).toHaveLength(12);
@@ -748,9 +766,17 @@ describe('F2 · In der Vergangenheit navigieren', () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
     await screen.findByLabelText('Energiemengen im Zeitraum');
+    // E3: Monatsstreifen, „Vergleichen" und Datenlage liegen seit dem
+    // Chrome-Umbau HINTER dem Datum-Feld (⋯) — eine klebende Leiste trägt nur
+    // noch, was man ständig braucht.
+    fireEvent.click(screen.getByRole('button', { name: 'Monat, Vergleich & Datenlage' }));
     expect(screen.getByRole('tablist', { name: 'Monat anspringen' })).toBeInTheDocument();
 
+    // Im Jahres-Zeitraum gibt es den Streifen nicht — der ⋯-Knopf trägt dann
+    // nur noch „Vergleichen" und die Datenlage.
+    fireEvent.keyDown(window, { key: 'Escape' });
     fireEvent.click(screen.getByRole('tab', { name: 'Jahr' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Monat, Vergleich & Datenlage' }));
     expect(screen.queryByRole('tablist', { name: 'Monat anspringen' })).toBeNull();
   });
 });
@@ -766,6 +792,10 @@ describe('F4 · Datenabdeckung in der Zeit-Leiste', () => {
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
     await screen.findByLabelText('Energiemengen im Zeitraum');
 
+    // E3: Monatsstreifen, „Vergleichen" und Datenlage liegen seit dem
+    // Chrome-Umbau HINTER dem Datum-Feld (⋯) — eine klebende Leiste trägt nur
+    // noch, was man ständig braucht.
+    fireEvent.click(screen.getByRole('button', { name: 'Monat, Vergleich & Datenlage' }));
     expect(screen.getByText('Daten ab 19.06.2026')).toBeInTheDocument();
     expect(screen.getByText('94 % der Viertelstunden gemessen')).toBeInTheDocument();
     expect(screen.getByText('· 6 Lücken')).toBeInTheDocument();
@@ -855,7 +885,7 @@ describe('F3 · Vergleich mit der Vorperiode', () => {
 });
 
 describe('Die Erlöse-Welt folgt dem Lese-Modell, ist aber nie eine Sackgasse', () => {
-  it('bietet auf einer Privat-Anlage KEIN Kartenpaar (es gibt nur eine Welt)', async () => {
+  it('bietet nirgends ein Kartenpaar mehr (der Wechsel wohnt in den Reitern)', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
     render(<MesswerteSection site={site} surface={PRIVAT} onOpenWelt={() => {}} />);
     expect(screen.queryByRole('group', { name: 'Ansicht wechseln' })).toBeNull();
@@ -863,11 +893,15 @@ describe('Die Erlöse-Welt folgt dem Lese-Modell, ist aber nie eine Sackgasse', 
     await screen.findByText('Keine Messwerte in diesem Zeitraum');
   });
 
-  it('führt aus einer per Lesezeichen geöffneten Erlöse-Welt immer zurück', async () => {
+  it('ist per Lesezeichen keine Sackgasse — die Reiter tragen den Rückweg', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
     stubMoney(moneyEmpty);
     render(<ErloeseSection site={site} surface={PRIVAT} onOpenWelt={() => {}} />);
-    expect(screen.getByRole('link', { name: /Messwerte/ })).toBeInTheDocument();
+    // E3: die Fläche bietet den Rückweg nicht mehr selbst an; die
+    // Bereichs-Reiter der Schale tun es (`anlageNav.tabsFor` führt „Messwerte"
+    // auf JEDER Anlage, auch einer ohne Geld-Modus).
+    expect(screen.queryByRole('link', { name: /Messwerte/ })).toBeNull();
+    // Was die Fläche sagt, sagt sie ehrlich: kein Ergebnis, kein leeres Bild.
     await screen.findByText('Noch kein Ergebnis für diesen Zeitraum');
   });
 });

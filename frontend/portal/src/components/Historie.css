@@ -932,6 +932,16 @@
     padding: 3px 8px 3px 5px;
     min-height: 30px;
     gap: 5px;
+    position: relative;
+  }
+
+  /* B12: der Chip bleibt optisch 30 px (er spart am Telefon ~160 px Höhe),
+     seine TREFFERFLÄCHE wächst per Overlay auf 44 px — das Haus-Muster des
+     InfoTips. 30 + 2 × 7 = 44. */
+  .vp-welt-body button.vp-cl-item.is-toggle::after {
+    content: '';
+    position: absolute;
+    inset: -7px -2px;
   }
 
   .vp-welt-body .vp-cl-item {
@@ -1084,5 +1094,269 @@
     font-size: 0.72rem;
     /* Sie darf hier umbrechen - sie ist keine Spalte mehr, sondern eine Zeile. */
     white-space: normal;
+  }
+}
+
+/* ==========================================================================
+   E3 · Chrome der Welt-Seiten — die Antwort steht im ersten Bildschirm
+   (Konzept `data/vp-erloese-lesbar-konzept-u3` §3.5/§3.10 Punkt 5, Befunde
+   B4 · B5 · B7 · B12)
+
+   Gemessen war: Welt-Kopf-Karte 189 px + Zeit-Leiste 199 px vor der ersten
+   Zahl, davon 267 px DAUERHAFT klebend (Kopfzeile 68 + Leiste 199) — 30 % des
+   Viewports beim Scrollen verdeckt, die Antwort bei 779 px. Übrig bleibt EINE
+   Bedienzeile: Segment · ‹ Zeitraum › · Heute · Datum-Feld [· Vergleichs-Chip]
+   · ⋯. Alles Übrige (Monatsstreifen, „Vergleichen", Datenlage) wohnt hinter
+   dem ⋯-Knopf.
+
+   Die Farben kommen aus der Skill-Palette der Variante C (`--vp-c-*`, P0);
+   der Rückfallwert ist der Skill-Wert selbst, damit dieses Blatt auch vor P0
+   genau das rendert, was gemessen wurde.
+   ========================================================================== */
+
+.vp-zeitleiste:not(.vp-zeitleiste-mobil) {
+  /* Zurück zur EINEN Zeile: die Regel weiter oben machte die Leiste zur
+     Spalte (Bedienzeile · Monatsstreifen · Datenlage). */
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--vp-space-3);
+  /* 6 + 44 (Bedienelement) + 6 + 2 (Rahmen) = 58 px klebend. */
+  padding: 6px 12px;
+  border-radius: 10px;
+  /* ⚠ LOAD-BEARING: `sticky` muss hier WIEDERHOLT werden. Die Regel weiter
+     oben setzt es, aber dieser Selektor ist spezifischer — ein `relative`
+     (der naheliegende Anker für das ⋯-Panel) nähme der Leiste ihr Kleben,
+     und das Chrome wäre gar nicht mehr messbar. `sticky` ist selbst ein
+     Bezugsrahmen für absolut positionierte Kinder, das Panel braucht also
+     keinen zweiten. Im echten Browser bei 1440 nachgemessen. */
+  position: sticky;
+}
+
+.vp-zeitleiste:not(.vp-zeitleiste-mobil) > .vp-zl-row,
+.vp-zeitleiste:not(.vp-zeitleiste-mobil) > .vp-zl-row-inline {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: var(--vp-space-3);
+}
+
+/* Die Portfolio-Leiste teilt ihre Bedienelemente in ZWEI Gruppen (Zeitraum ·
+   Blätterer), damit sie am Telefon zwei Zeilen ergeben. Am Schreibtisch stehen
+   beide Gruppen in DERSELBEN 58-px-Zeile — der Wirt ist nur ein Bündel. */
+.vp-zl-row-inline {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Das Segment der Zeit-Leiste ist BLAU (§3.10 Punkt 5): der aktive Zeitraum
+   trägt weiße Schrift auf `--vp-c-primary` (5,2:1) statt der 3,28:1 des
+   Haus-Segments (Befund B7). Bewusst nur HIER — das Haus-Segment `.vp-seg`
+   lebt portalweit und gehört dem Token-Paket. */
+.vp-zeitleiste .vp-seg {
+  background: var(--vp-c-muted, #e9eff8);
+  /* Die Haus-Schiene trägt 3 px Polster und 1 px Rahmen: mit 44-px-Knöpfen
+     (B12) misst sie 52 und die Leiste 66 statt 58. Hier tragen die Knöpfe
+     selbst den Rand — die Schiene ist nur noch ihre Bahn. */
+  border: 0;
+  padding: 0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.vp-zeitleiste .vp-seg > button {
+  /* B12: 38 px waren zu klein — auch am Schreibtisch. */
+  min-height: 44px;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-zeitleiste .vp-seg > button.active {
+  background: var(--vp-c-primary, #2563eb);
+  color: #fff;
+  box-shadow: none;
+}
+
+.vp-zeitleiste .vp-period-nav > .step {
+  min-height: 44px;
+  min-width: 44px;
+  border-color: var(--vp-c-border, #e2e8f0);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-zeitleiste:not(.vp-zeitleiste-mobil) .vp-period-nav > .label {
+  /* Die Zeile ist jetzt EINE — der Name darf schrumpfen, statt sie zu sprengen. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--vp-c-fg, #1e293b);
+}
+
+/* Das Datum-Feld: gleiche Höhe wie seine Nachbarn (B12). Der Auslöser des
+   Hauspickers misst frei 46 px — in EINER 58-px-Leiste ist das die Zeile, die
+   sie sprengt, also wird er hier auf 44 festgenagelt (im echten Browser bei
+   1440 nachgemessen). */
+.vp-zeitleiste .vp-zl-jump {
+  min-height: 44px;
+}
+
+.vp-zeitleiste .vp-zl-jump,
+.vp-zeitleiste .vp-zl-jump .vp-picker-anker {
+  display: flex;
+  align-items: center;
+  height: 44px;
+}
+
+.vp-zeitleiste .vp-zl-jump .vp-picker-ausloeser {
+  min-height: 44px;
+  height: 44px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* Der ⋯-Knopf ist am Schreibtisch derselbe Knopf wie am Telefon — die Regeln
+   dort stehen in einer Medienabfrage, hier steht seine Schreibtisch-Fassung. */
+.vp-zeitleiste:not(.vp-zeitleiste-mobil) .vp-zl-more {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-fg, #1e293b);
+  cursor: pointer;
+}
+
+.vp-zeitleiste:not(.vp-zeitleiste-mobil) .vp-zl-more:hover {
+  border-color: var(--vp-c-primary, #2563eb);
+}
+
+/* Der Zustands-Chip eines gesetzten Vergleichs bleibt SICHTBAR, auch wenn
+   seine Bedienung im Popover wohnt (dieselbe Regel wie am Telefon). */
+.vp-zeitleiste:not(.vp-zeitleiste-mobil) .vp-zl-chip {
+  flex: 0 0 auto;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--vp-space-3);
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 999px;
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-muted-fg, #475569);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* --- Das Popover hinter dem Datum-Feld ----------------------------------- */
+
+.vp-zl-pop-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.vp-zl-pop {
+  position: absolute;
+  z-index: 41;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  padding: var(--vp-space-4);
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--vp-c-card, #fff);
+  box-shadow: 0 12px 32px rgb(15 23 42 / 14%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+
+.vp-zl-pop .vp-mstrip {
+  margin-bottom: 0;
+}
+
+.vp-zl-pop .vp-zl-cover,
+.vp-zl-pop .vp-zl-vgl {
+  padding: 0;
+}
+
+/* --- Telefon: zwei Zeilen, und sie kleben NICHT -------------------------- */
+
+@media (max-width: 720px) {
+  .vp-zeitleiste-mobil {
+    /* §3.5: „am Telefon zwei Zeilen, 112 px, nicht klebend über die Karte
+       hinaus". Gemessen klebten dort 184 px = 23 % des Bildschirms — auf
+       einem Telefon ist das der Preis für eine Bedienung, die man ein-, zweimal
+       je Sitzung braucht. */
+    position: static;
+    top: auto;
+  }
+}
+
+/* ==========================================================================
+   E9 · Kartenköpfe ohne Icon-Kachel (Befund B5)
+   ========================================================================== */
+
+.vp-kartenkopf {
+  gap: var(--vp-space-2) var(--vp-space-3);
+  margin-bottom: var(--vp-space-4);
+}
+
+.vp-kartenkopf > h2 {
+  /* 20 px + 40-px-Kachel in Kategoriefarbe machten jede der fünf Karten so
+     laut wie die Antwort. Der Titel ist jetzt ein Titel: 16/700. */
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--vp-c-fg, #1e293b);
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .vp-kartenkopf {
+    margin-bottom: var(--vp-space-3);
+  }
+}
+
+/* ==========================================================================
+   E10 · Tagesprotokoll — Zeit als SPALTE, Ereignis in Textgröße (§3.6)
+
+   Die Zeit stand in einer Monospace-Familie in 13,6 px, das Ereignis daneben
+   in derselben Größe: zwei gleich laute Dinge, von denen eines nur der Anker
+   ist. Jetzt: 14 px tabular in einer festen 120-px-Spalte (die Ziffern stehen
+   damit untereinander, ohne eine zweite Schriftfamilie), Ereignis 16.
+
+   Bewusst auf `.vp-welt-body` gescoped: `.vp-timeline` ist ein Haus-Bauteil,
+   und diese Regel ist die der ERLÖSE-Welt.
+   ========================================================================== */
+
+.vp-welt-body .vp-timeline .t {
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--vp-erl-fs-14, 14px);
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 120px;
+}
+
+.vp-welt-body .vp-timeline .txt {
+  font-size: var(--vp-erl-fs-16, 16px);
+  line-height: 1.5;
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-welt-body .vp-timeline .ico {
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+@media (max-width: 720px) {
+  .vp-welt-body .vp-timeline .t {
+    min-width: 0;
   }
 }
