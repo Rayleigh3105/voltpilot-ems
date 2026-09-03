@@ -62,6 +62,47 @@
     /* Am Telefon die volle Breite - sie IST die Navigation des Bereichs. */
     align-self: stretch;
     margin-bottom: var(--vp-space-3, 0.75rem);
+    /* --- S1: klebend unter der Kopfzeile (Captain-Ja 03.09.2026, wörtlich
+       „ja, klebend"; Konzept `vp-verlauf-sprache-konzept-v5` §6 Schalen-Kasten
+       S1, Mockup `concept.html` Block „Schale S1").
+
+       Nur das KLEBEN ändert sich: Farbe, Schrift, Höhe (44 px) und Unterstrich
+       der Reiter sind unangetastet (Captain-Lehre PR 606 - dunkle Leisten waren
+       NICHT gewollt).
+
+       ⚠ Die drei Zahlen hängen zusammen und sind GEMESSEN, nicht geraten:
+       die Kopfzeile ist 68 px hoch und klebt bei `top: 0` (`index.css`
+       `.vp-topbar`), diese Leiste misst 45 px (44 px Reiter + 1 px Linie),
+       die Zeit-Leiste klebt darunter bei 68 + 45 = 113 px (unten).
+
+       ⚠ Die z-Ordnung ist die Reihenfolge, in der sie übereinander laufen:
+       Kopfzeile 20 > diese Leiste 10 > Zeit-Leiste 5 (`Historie.css`). Die
+       Leiste MUSS über der Zeit-Leiste liegen - beim Zurückscrollen wandert
+       jene unter ihr hindurch.
+
+       Der Grund ist der SEITENgrund, nicht der Kartengrund: er ist genau das,
+       was heute hinter der Leiste steht, die Fläche sieht im Ruhezustand also
+       zeichengleich aus - klebend deckt er den Inhalt ab, statt ihn
+       durchscheinen zu lassen. Der Schatten verlängert ihn um die
+       Seitenpolsterung von `.vp-main` nach links und rechts (kein Layout, nur
+       Farbe), sonst liefe der Inhalt in den 16-px-Rinnen neben der Leiste
+       vorbei. */
+    position: sticky;
+    top: 68px;
+    z-index: 10;
+    background: var(--vp-c-bg, #f8fafc);
+    box-shadow:
+      calc(-1 * var(--vp-space-4, 1rem)) 0 0 var(--vp-c-bg, #f8fafc),
+      var(--vp-space-4, 1rem) 0 0 var(--vp-c-bg, #f8fafc);
+  }
+  /* ⚠ Die Zeit-Leiste rückt NUR nach, wo diese Leiste wirklich steht:
+     `tabsFor` gibt bei höchstens EINEM Reiter nichts zurück (BereichTabs.tsx),
+     und dort dürfte die Zeit-Leiste nicht 45 px unter der Kopfzeile schweben.
+     Der EINE Knopf dafür steht in `Historie.css` (`--vp-zeitleiste-top`, dort
+     ausdrücklich für S1 vorgesehen) - diese Datei setzt ihn, jene bleibt
+     unangetastet. */
+  .vp-main:has(.vp-bereich-tabs) {
+    --vp-zeitleiste-top: 113px;
   }
   .vp-bereich-tab {
     min-height: 44px;
