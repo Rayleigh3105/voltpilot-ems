@@ -1389,18 +1389,18 @@
     gap: 0;
   }
 
+  /* ⚠ Es gibt hier bewusst KEINEN eigenen `prefers-reduced-motion`-Block. Die
+     Dauer kommt aus `--vp-c-motion`, und das Token wird in `index.css` unter
+     reduced-motion auf 0 ms gesetzt (E3.4, „DIE EINE Stelle, an der die
+     Bewegung des Verlaufs verstummt"). Ein zweiter Block hier wäre eine zweite
+     Wahrheit über dieselbe Vorliebe. Der Fallback bleibt trotzdem stehen: er
+     kostet nichts und trägt die Fläche, falls das Token je fehlt. */
   .vp-zeitleiste-mobil > .vp-zl-row-2 {
     opacity: 1;
     transform: none;
     transition:
-      opacity var(--vp-c-motion, 200ms) var(--vp-ease, ease),
-      transform var(--vp-c-motion, 200ms) var(--vp-ease, ease);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .vp-zeitleiste-mobil > .vp-zl-row-2 {
-    transition: none;
+      opacity var(--vp-c-motion, 200ms) ease,
+      transform var(--vp-c-motion, 200ms) ease;
   }
 }
 
