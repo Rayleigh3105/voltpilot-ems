@@ -79,7 +79,7 @@ export function erwarteteLeistung(
 }
 
 /** „12,2" — eine Nachkommastelle, das Vokabular der kW-Flächen. */
-function kw1(v: number): string {
+export function kw1(v: number): string {
   return v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
@@ -218,6 +218,37 @@ export function besteStunde(
   };
 }
 
+/**
+ * Die stärkste Stunde EINES Tages (`tageVoraus` = 0 heute, 1 morgen) aus
+ * derselben kW-Reihe, die das Diagramm zeichnet.
+ *
+ * ⚠ Sie ist die EINE Ableitung dieser Frage: `wetterKern` baut damit seinen
+ * Vergleichsanker („morgen mehr als heute"), und die Kennzahl-Zeile „Spitze
+ * heute" (P5) liest dieselbe Funktion. Zwei Rechenwege über dieselbe Zahl
+ * wären zwei Wahrheiten auf EINER Karte.
+ *
+ * `null` heißt „für diesen Tag trägt die Reihe keinen Wert" — nie eine 0:
+ * eine Anlage, deren Plan-Horizont heute schon endet, hat nicht null erzeugt,
+ * wir wissen es nur nicht.
+ */
+export function tagesSpitze(
+  punkte: readonly WetterPunkt[],
+  kw: readonly (number | null)[],
+  jetzt: Date,
+  tageVoraus: number,
+): number | null {
+  const ziel = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate() + tageVoraus);
+  let m: number | null = null;
+  kw.forEach((v, i) => {
+    if (v == null) return;
+    const d = new Date(punkte[i]?.ts ?? '');
+    if (Number.isNaN(d.getTime())) return;
+    if (d.toDateString() !== ziel.toDateString()) return;
+    if (m == null || v > m) m = v;
+  });
+  return m;
+}
+
 /** Der ehrliche Grund, wenn die Leitgröße fehlt. */
 export const KEINE_LEISTUNG_GRUND =
   'Für die kommenden Stunden liegt noch keine PV-Prognose Ihrer Anlage vor - hier steht solange die Sonnenstärke.';
@@ -239,20 +270,8 @@ export function wetterKern(
   const best = besteStunde(punkte, kw, jetzt);
   if (!best) return { wert: null, satz: null, grund: KEINE_LEISTUNG_GRUND, ton: 'calm' };
 
-  const spitzeAm = (tage: number): number | null => {
-    const ziel = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate() + tage);
-    let m: number | null = null;
-    kw.forEach((v, i) => {
-      if (v == null) return;
-      const d = new Date(punkte[i]?.ts ?? '');
-      if (Number.isNaN(d.getTime())) return;
-      if (d.toDateString() !== ziel.toDateString()) return;
-      if (m == null || v > m) m = v;
-    });
-    return m;
-  };
-  const heute = spitzeAm(0);
-  const morgen = spitzeAm(1);
+  const heute = tagesSpitze(punkte, kw, jetzt, 0);
+  const morgen = tagesSpitze(punkte, kw, jetzt, 1);
 
   const wann = tagWort(punkte[best.index].ts, jetzt);
   const stunde = new Date(punkte[best.index].ts).toLocaleTimeString('de-DE', {

@@ -2,15 +2,15 @@ import type { ScheduleSlot, WeatherPoint } from './api';
 import { AXIS, FILL, nowLabel, nowLineStyle, SMOOTH_SERIES, STROKE, withAlpha } from './chartStyle';
 import { AXIS as AXIS_NAME } from './chartCopy';
 import { chartTheme } from './chartTheme';
-import { useChartDetail } from './useChartDetail';
+import { useState } from 'react';
 import { useEChart } from './useEChart';
-import { ChartDetailToggle, ChartLegend, type LegendItem } from './components/ChartExplain';
+import { ChartLegend, type LegendItem } from './components/ChartExplain';
+import { toggleSerie } from './energieBilanz';
 import { axisHourLabel, nowMarkerIndex, tooltipHeader } from './weather';
 import {
   besteStunde,
   erwarteteLeistung,
   himmelBloecke,
-  temperaturZeile,
   type HimmelBlock,
 } from './wetterLeistung';
 import './WeatherChart.css';
@@ -20,16 +20,24 @@ import './WeatherChart.css';
  * der Größe, nach der der Kunde fragt: der **erwarteten Leistung seiner Anlage
  * in kW**. „412 W/m²" sagt einem Anlagenbetreiber nichts.
  *
- * Der Aufbau, von oben nach unten:
+ * Der Aufbau, von oben nach unten (V6 seit Paket P5 — die REIHENFOLGE ist die
+ * Aussage: Himmel → **Bild** → Legende, nie eine Legende 175 px VOR der Kurve):
  *
- *  - der **Himmelsstreifen** mit BENANNTEN Blöcken („sonnig" · „wechselnd" ·
+ *  - die **Himmel-Reihe** mit BENANNTEN Chips („sonnig" · „wechselnd" ·
  *    „bedeckt") statt des früheren Wolken-Wischs, den die Legende erklären
  *    musste („dunkler = dichter"). Eine Kodierung mit Bedienungsanleitung ist
  *    keine (K10) — jeder Block trägt sein Wort;
  *  - die **kW-Kurve** als Leitserie (F1-Hierarchie, `STROKE.lead`) mit einer
  *    benannten Marke für die stärkste kommende Stunde (K6);
+ *  - die **Chip-Legende** darunter, deren Einträge die Reihen SCHALTEN
+ *    (E7 a, `<button aria-pressed>`);
  *  - dahinter, eine Stufe tiefer (K3), **Sonnenstärke** als Kontextkurve und
- *    **Temperatur** als ZEILE.
+ *    **Temperatur** als ZEILE — beide im Aufklapper der Sektion.
+ *
+ * ⚠ **E7 (a) · KEIN Zoom durch Ziehen** (Captain 03.09.2026): dieses Bild trägt
+ * gar keine `dataZoom`-Option, weder am Telefon noch am Rechner. Eine
+ * waagerechte Geste darin ist Scroll, wie überall sonst auf der Seite; der
+ * Tooltip erscheint per Tipp (`trigger: 'axis'`, `confine: true`).
  *
  * ⚠ **F8, verschärft: höchstens ZWEI Achsen.** Vorher waren es drei (°C, %,
  * W/m²) mit drei Strichstärken in einem Bild. Die Bewölkung ist jetzt der
@@ -51,20 +59,34 @@ import './WeatherChart.css';
 export function WeatherChart({
   points,
   planSlots = [],
+  detail = false,
 }: {
   points: WeatherPoint[];
   /** Der Fahrplan der Anlage — seine `pvKw` sind die PV-Prognose. */
   planSlots?: ScheduleSlot[];
+  /**
+   * V8 (P5) · Ist der Aufklapper „Temperatur & Sonnenstärke im Verlauf" offen?
+   *
+   * ⚠ Der Zustand lebt seit P5 in der SEKTION, nicht hier: der Aufklapper steht
+   *   nach §4.6 UNTER den vier Kennzahlen-Zeilen, also ausserhalb des Bildes.
+   *   Ein zweiter Zustand hier wäre eine zweite Wahrheit über dieselbe Frage.
+   */
+  detail?: boolean;
 }) {
-  const [detail, toggleDetail] = useChartDetail('wetter');
   const t = chartTheme();
+  /**
+   * **E7 (a) · der Legenden-Schalter** (Captain 03.09.2026, wörtlich: „Tooltip
+   * + Legenden-Schalter, KEIN Zoom durch Ziehen am Telefon"). Die letzte
+   * sichtbare Reihe lässt sich nicht ausblenden (`toggleSerie`) — ein leeres
+   * Bild beantwortet keine Frage.
+   */
+  const [verborgen, setVerborgen] = useState<Set<string>>(() => new Set());
 
   const kw = erwarteteLeistung(points, planSlots);
   const hatLeistung = kw.some((v) => v != null);
   const bloecke = himmelBloecke(points);
   const jetzt = new Date();
   const marke = hatLeistung ? besteStunde(points, kw, jetzt) : null;
-  const tempZeile = temperaturZeile(points, jetzt);
 
   const ref = useEChart(
     (chart, width) => {
@@ -97,8 +119,10 @@ export function WeatherChart({
           };
 
       // F8: NIE mehr als zwei Achsen. Die zweite entsteht nur, wenn die
-      // Kontext-Reihe wirklich gezeichnet wird.
-      const zeigtSonne = hatLeistung && detail;
+      // Kontext-Reihe wirklich gezeichnet wird — und der Legenden-Schalter
+      // (E7 a) sie nicht ausgeblendet hat.
+      const zeigtSonne = hatLeistung && detail && !verborgen.has('Sonnenstärke');
+      const zeigtLeit = !verborgen.has(leitReihe.name);
 
       chart.setOption(
         {
@@ -179,7 +203,7 @@ export function WeatherChart({
               : []),
           ],
           series: [
-            {
+            ...(zeigtLeit ? [{
               name: leitReihe.name,
               type: 'line',
               ...SMOOTH_SERIES,
@@ -249,7 +273,7 @@ export function WeatherChart({
                       ],
                     }
                   : undefined,
-            },
+            }] : []),
             ...(zeigtSonne
               ? [
                   {
@@ -272,13 +296,14 @@ export function WeatherChart({
         true,
       );
     },
-    [points, planSlots, detail, hatLeistung, marke?.index],
+    [points, planSlots, detail, hatLeistung, marke?.index, verborgen],
   );
 
-  // EINE Legenden-Grammatik im ganzen Portal: HTML statt Canvas, mit Einheit,
-  // ueber dem Bild. Die Farben sind die aufgeloesten Token, damit Punkt und
-  // Kurve garantiert denselben Ton tragen. Die Legende bewirbt NUR, was
-  // gezeichnet wird - eine Reihe hinter dem zugeklappten Umschalter nicht.
+  // EINE Legenden-Grammatik im ganzen Portal: HTML statt Canvas, mit Einheit.
+  // Seit P5 steht sie NACH dem Bild (V6: Label → Kernsatz → Bild → Legende) und
+  // schaltet ihre Reihen (E7 a). Die Farben sind die aufgeloesten Token, damit
+  // Punkt und Kurve garantiert denselben Ton tragen. Die Legende bewirbt NUR,
+  // was gezeichnet wird - eine Reihe hinter dem zugeklappten Aufklapper nicht.
   const legend: LegendItem[] = [
     hatLeistung
       ? { color: t.pvLine, label: 'Erwartete Leistung', unit: 'kW', shape: 'area' }
@@ -291,12 +316,12 @@ export function WeatherChart({
   return (
     <>
       <HimmelStreifen bloecke={bloecke} />
-      <ChartLegend items={legend} />
       <div ref={ref} className="vp-chart" />
-      {hatLeistung && (
-        <ChartDetailToggle open={detail} onToggle={toggleDetail} was="Sonnenstärke, Temperatur" />
-      )}
-      {hatLeistung && detail && tempZeile && <p className="vp-wetter-temp">{tempZeile}</p>}
+      <ChartLegend
+        items={legend}
+        hidden={verborgen}
+        onToggle={(label) => setVerborgen((prev) => toggleSerie(prev, label, legend.length))}
+      />
     </>
   );
 }
