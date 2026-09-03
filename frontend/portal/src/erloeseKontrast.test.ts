@@ -89,34 +89,48 @@ function anteil(css: string, regel: string, eigenschaft: string): number {
   return Number(m![1]) / 100;
 }
 
+/** Der Rumpf einer Regel AUS dem ausgelieferten Stylesheet. */
+function regel(css: string, selektor: string): string {
+  // ⚠ Kommentare zuerst RAUS — sie nennen Selektoren, und der Rumpf dahinter
+  // wäre dann der einer FREMDEN Regel.
+  css = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  // ⚠ Der Selektor braucht eine GRENZE: ohne sie trifft `.vp-chip` auch
+  // `.vp-chip-static` und der Test liest den Rumpf einer fremden Regel.
+  const block = new RegExp(
+    `${selektor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])[^{}]*\\{([^}]*)\\}`,
+  ).exec(css);
+  expect(block, `Regel ${selektor} fehlt`).not.toBeNull();
+  return block![1];
+}
+
 const WEISS = token('surface');
 const GRUEN = token('flow-batt-soft'); // der Grund des Speicher-Blocks
 const NEUTRAL = token('neutral-soft'); // der Grund der Chips
 const AA = 4.5;
 
 describe('Erlöse-Karte · Kontrast der Ebene 0 (P7-Browser-Beweis, nachgerechnet)', () => {
-  it('der Zeilen-Betrag im Minus hält AA auf Weiss', () => {
-    const p = anteil(erloese, '.vp-ez-t-minus', 'color');
-    const ton = mix(token('chart-discharge'), token('text'), p);
-    expect(contrast(ton, WEISS)).toBeGreaterThanOrEqual(AA);
+  it('der Zeilen-Betrag im Minus hält AA auf der Karte', () => {
+    // ⚠ Seit P0 ist das EINE Minus-Farbe (`--vp-c-destructive`) statt der
+    // P7-Mischung — die Rechnung hängt weiter an der ausgelieferten Datei.
+    expect(regel(erloese, '.vp-ez-t-minus')).toMatch(/color:\s*var\(--vp-c-destructive/);
+    expect(contrast(token('c-destructive'), token('c-card'))).toBeGreaterThanOrEqual(AA);
   });
 
-  it('die reine Haus-Rotfarbe REISST diese Grenze — deshalb gibt es die Mischung', () => {
+  it('die reine Haus-Rotfarbe REISST diese Grenze — deshalb hat C ein eigenes Token', () => {
     // Nicht-vakuum: ohne diesen Fall bewiese der Test oben nichts über die
     // Notwendigkeit der Änderung.
     expect(contrast(token('chart-discharge'), WEISS)).toBeLessThan(AA);
   });
 
-  it('bleibt trotzdem erkennbar dieselbe Kosten-Farbe (kein zweiter Farbwert)', () => {
-    const p = anteil(erloese, '.vp-ez-t-minus', 'color');
-    expect(p).toBeGreaterThanOrEqual(0.8);
-    expect(erloese).toContain('var(--vp-chart-discharge');
+  it('die Farbe steht nie allein — das Vorzeichen wird mitgeschrieben (E8)', () => {
+    expect(erloese).toMatch(/Das Vorzeichen wird immer mitgeschrieben|Vorzeichen wird immer mitgeschrieben/);
   });
 
-  it('der Warn-Chip hält AA auf seinem selbst gemischten Grund', () => {
-    const p = anteil(erloese, '.vp-ez-chip-warn', 'background');
-    const grund = mix(token('warn-ink'), WEISS, p);
-    expect(contrast(token('warn-ink'), grund)).toBeGreaterThanOrEqual(AA);
+  it('der Warn-Chip hält AA auf dem Warn-Grund der Variante C', () => {
+    // Der Chip trägt seine Form seit P0 nicht mehr selbst: `.vp-chip--warn`
+    // steht EINMAL in `index.css`.
+    expect(regel(index, '.vp-chip--warn')).toMatch(/background:\s*var\(--vp-c-warn-bg/);
+    expect(contrast(token('c-warn-fg'), token('c-warn-bg'))).toBeGreaterThanOrEqual(AA);
   });
 });
 
@@ -141,10 +155,15 @@ describe('Speicher-Block · Kontrast auf dem grünen Grund (P7)', () => {
   });
 
   it('Chip und Abzeichen tragen KEINEN harten Hex mehr, sondern Token-Mischungen', () => {
-    for (const regel of ['.vp-spb-chip', '.vp-spb-badge']) {
-      const p = anteil(speicher, regel, 'color');
-      expect(contrast(mix(token('text-gray'), token('text-dark'), p), NEUTRAL)).toBeGreaterThanOrEqual(
-        AA,
+    // Seit P0 tragen sie ihre Form gar nicht mehr selbst — sie hängen an der
+    // EINEN `.vp-chip` (`index.css`), und deren Paar wird dort nachgerechnet.
+    const basis = regel(index, '.vp-chip');
+    expect(basis).toMatch(/background:\s*var\(--vp-c-muted/);
+    expect(basis).toMatch(/color:\s*var\(--vp-c-muted-fg/);
+    for (const klasse of ['.vp-spb-chip', '.vp-spb-badge']) {
+      expect(index, `${klasse} hängt nicht an .vp-chip`).toContain(`${klasse},`);
+      expect(speicher, `${klasse} setzt seine Form wieder selbst`).not.toMatch(
+        new RegExp(`\\${klasse}\\s*\\{[^}]*border-radius`),
       );
     }
     // Ein Farbwert OHNE `var(--…)` daneben ist im Erlöse-CSS nicht erlaubt:
@@ -160,5 +179,38 @@ describe('Speicher-Block · Kontrast auf dem grünen Grund (P7)', () => {
         expect(zeile, `${datei}: harter Hex ohne Token — ${zeile.trim()}`).toMatch(/var\(--vp-/);
       }
     }
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * Die Paare der Variante C (Konzept `vp-erloese-lesbar-konzept-u3` §3.10).
+ * Sie werden AUS `index.css` gelesen, nicht hier hineingeschrieben — der Test
+ * hängt damit an den ausgelieferten Tokens.
+ * ------------------------------------------------------------------------ */
+describe('Variante C · jedes Paar hält AA (P0)', () => {
+  const paare: Array<[string, string, string]> = [
+    ['Fliesstext auf der Karte', 'c-fg', 'c-card'],
+    ['Sekundärzeile auf der Karte', 'c-muted-fg', 'c-card'],
+    ['Sekundärzeile auf dem Chip', 'c-muted-fg', 'c-muted'],
+    ['Fliesstext auf dem Seitengrund', 'c-fg', 'c-bg'],
+    ['Minus-Betrag auf der Karte', 'c-destructive', 'c-card'],
+    ['Warn-Wort auf dem Warn-Grund', 'c-warn-fg', 'c-warn-bg'],
+    ['Primär-Wort auf der Karte', 'c-primary', 'c-card'],
+  ];
+
+  for (const [was, vorne, hinten] of paare) {
+    it(`${was} (${vorne} auf ${hinten})`, () => {
+      expect(contrast(token(vorne), token(hinten))).toBeGreaterThanOrEqual(AA);
+    });
+  }
+
+  it('die weisse Schrift der App-Leisten hält AA auf dem dunklen Grund', () => {
+    expect(contrast([255, 255, 255], token('c-fg'))).toBeGreaterThanOrEqual(AA);
+  });
+
+  it('die 3-px-Kante des aktiven Eintrags ist auf dem Leisten-Grund erkennbar', () => {
+    // Eine KANTE ist kein Text: der Maßstab ist die 3:1-Grenze für
+    // Bedien-Elemente (WCAG 1.4.11), nicht AA.
+    expect(contrast(token('c-secondary'), token('c-fg'))).toBeGreaterThanOrEqual(3);
   });
 });

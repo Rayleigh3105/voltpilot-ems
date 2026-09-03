@@ -1,14 +1,21 @@
 /* Der SPEICHER-BLOCK der Erlöse-Karte (Konzept `vp-erloese-seite-konzept-e2`
    §3.5/§3.9). Eine eigene Fläche, EINE Speicher-Farbe (`--vp-flow-batt-*`,
    die Farbregel der Charts); der TON einer Zahl ist davon getrennt und trägt
-   immer ein Wort. */
+   immer ein Wort.
+
+   ⚠ Variante C / P0 (Konzept `vp-erloese-lesbar-konzept-u3` §3.1/§3.10): jede
+   Schriftgröße liegt auf der Sechser-Skala `--vp-erl-fs-*`, jedes Gewicht in
+   {400,600,700,800}, jeder Abstand auf `--vp-space-*`. Chip und Abzeichen
+   tragen ihre Form NICHT mehr selbst — sie hängen an der EINEN `.vp-chip`
+   (index.css); hier bleibt nur, was ihnen an DIESER Stelle eigen ist. Die
+   Fläche selbst (grüner Grund, Reihenfolge) ist unverändert — das räumt P2. */
 .vp-spb {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin: 10px 0 0;
-  padding: 8px 10px;
-  border-radius: 10px;
+  gap: var(--vp-space-1, 4px);
+  margin: var(--vp-space-3, 12px) 0 0;
+  padding: var(--vp-space-2, 8px) var(--vp-space-3, 12px);
+  border-radius: var(--vp-c-radius-sm, 10px);
   background: var(--vp-flow-batt-soft, rgba(46, 158, 91, 0.1));
   /* min-width: 0 an jedem Flex-Kind mit Text — sonst schiebt ein langer Satz
      die Karte am Telefon über den Rand (bei 375 px gemessen). */
@@ -19,10 +26,10 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--vp-space-2, 8px);
   margin: 0;
-  font-size: 0.85rem;
-  line-height: 1.5;
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: var(--vp-erl-lh-text, 1.5);
   min-width: 0;
 }
 
@@ -32,25 +39,31 @@
 }
 
 .vp-spb-label {
-  font-weight: 600;
+  font-weight: var(--vp-erl-fw-600, 600);
   color: var(--vp-text, #1a1a1a);
   min-width: 0;
 }
 
 /* Zeile 2 rückt unter Zeile 1 ein — sie ist ein TEIL der Zahl darüber. */
 .vp-spb-sub {
-  padding-left: 20px;
+  padding-left: var(--vp-space-4, 16px);
 }
 
+/* Die Unterzeile war 500 — ein Gewicht, das die Skala nicht kennt. Sie ist
+   ein SATZ, nicht ein Name (§3.1: Standardtext 400), und bleibt durch ihre
+   ruhigere Farbe von der Zeile darüber unterscheidbar. */
 .vp-spb-sub .vp-spb-label {
-  font-weight: 500;
-  color: var(--vp-text-muted, #5b6472);
+  font-weight: var(--vp-erl-fw-400, 400);
+  /* ⚠ `--vp-text-muted` (#5B6472) hält auf dem GRÜNEN Grund nur 4,45:1 — knapp
+     unter AA. Die Sekundärfarbe der Variante C schafft dort 6,78:1. */
+  color: var(--vp-c-muted-fg, #475569);
 }
 
-/* Der Betrag bricht nie um (§3.9). */
+/* Der Betrag bricht nie um (§3.9). 700 = die Zahl einer Sektion (§3.1); 800
+   bleibt dem EINEN Hero je Fläche vorbehalten. */
 .vp-spb-wert {
   margin-left: auto;
-  font-weight: 800;
+  font-weight: var(--vp-erl-fw-700, 700);
   white-space: nowrap;
 }
 
@@ -68,21 +81,14 @@
   color: var(--vp-text, #1a1a1a);
 }
 
-.vp-spb-chip {
-  flex: 0 0 auto;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--vp-neutral-soft, #eef1f5);
-  /* P7: war ein HARTER Hex (#4b5563) ohne Token. Der Wert wird jetzt AUS den
-     Haus-Tokens gemischt - gemessen 6,49:1 auf `--vp-neutral-soft`. */
-  color: color-mix(in srgb, var(--vp-text-gray, #66717c) 70%, var(--vp-text, #1a1a1a));
-  font-size: 0.72rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
+/* Form, Grund, Ton, Größe und Gewicht des Chips stehen an der EINEN Stelle
+   (`.vp-chip`, index.css). Hier steht nur noch der Link IM Chip. */
 .vp-spb-chip-link {
-  color: var(--vp-action, #2563eb);
+  /* ⚠ `--vp-c-primary` steht hier auf dem CHIP-Grund, nicht auf der Karte:
+     dort hält es nur 4,47:1 (12 px/600 = Normaltext). Eine Stufe tiefer
+     gemischt sind es 4,99:1 — dieselbe Primär-Identität, kein zweiter
+     Farbwert, und das geteilte Token bleibt unangetastet. */
+  color: color-mix(in srgb, var(--vp-c-primary, #2563eb) 90%, var(--vp-c-fg, #1e293b));
   text-decoration: none;
   /* P7 (375 px gemessen: 152x21): >=44 px Trefferflaeche ueber `::before`, ohne
      die Zeile auseinanderzuziehen - das `.vp-am-karte-go`-Muster des Hauses. */
@@ -113,19 +119,12 @@
   min-width: 0;
 }
 
+/* Das Abzeichen rückt nach rechts — alles Übrige kommt von `.vp-chip`. */
 .vp-spb-badge {
-  flex: 0 0 auto;
   margin-left: auto;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--vp-neutral-soft, #eef1f5);
-  color: color-mix(in srgb, var(--vp-text-gray, #66717c) 70%, var(--vp-text, #1a1a1a));
-  font-size: 0.72rem;
-  font-weight: 800;
-  white-space: nowrap;
 }
 
 /* Der Aufklapper „Wie wird das berechnet?" sitzt bündig im Block. */
 .vp-spb > .vp-formel {
-  margin-top: 4px;
+  margin-top: var(--vp-space-1, 4px);
 }

@@ -15,6 +15,82 @@
   --vp-text-stat-sm: clamp(1.35rem, 2.6vw, 1.75rem);
 }
 
+/* ==========================================================================
+ * ERLÖSE C · PORTAL-PILOT — die Token der Variante C „Neu modern"
+ * (Konzept `data/vp-erloese-lesbar-konzept-u3` §3.10, Liste „Neue Tokens";
+ * Captain 03.09.2026: „bitte umsetzen mit allen Empfehlungen" ⇒ E1 = (c),
+ * E12 = (a) Pilot für das ganze Portal, E5 = (a) Typo-Skala als Token).
+ *
+ * Die Werte sind WÖRTLICH die Ausgabe des ui-ux-pro-max-Design-System-Skills
+ * (`skill-log/design-system-1-modern-minimal-saas.md`, Stil „Minimalism &
+ * Swiss Style") — nichts hier ist gerundet oder nachgemischt. Was der Skill
+ * NICHT liefert, steht darunter als eigener Block mit seiner Begründung.
+ *
+ * ⚠ SIE STEHEN NEBEN DEN HAUS-TOKEN, NIE AN IHRER STELLE. Kein `--vp-*` des
+ * Designsystems wird hier umdefiniert: eine Umdefinition träfe in EINEM Schritt
+ * jede der ~90 Flächen des Portals, und der Pilot soll Fläche für Fläche
+ * nachziehen (P0 = Leisten + Erlöse-Blätter, P1–P6 der Rest). Wer eine Fläche
+ * umstellt, tauscht dort `var(--vp-…)` gegen `var(--vp-c-…)` — und misst.
+ * ========================================================================== */
+:root {
+  /* --- Palette (Skill-Ausgabe, unverändert) ----------------------------- */
+  --vp-c-primary: #2563eb; /* Links, aktive Kante, Balken; weiss darauf 5,2:1 */
+  --vp-c-on-primary: #ffffff;
+  --vp-c-secondary: #3b82f6; /* zweite Reihen-Kennung (Eigenverbrauch) */
+  --vp-c-accent: #ea580c; /* NUR eine echte Handlungsaufforderung — heute keine */
+  --vp-c-bg: #f8fafc; /* Seitengrund */
+  --vp-c-fg: #1e293b; /* Tinte — und der Grund der App-Leisten (§3.10) */
+  --vp-c-card: #ffffff;
+  --vp-c-muted: #e9eff8; /* Chip-Grund, Balken-Spur, Summenzeile */
+  --vp-c-muted-fg: #475569; /* Sekundärzeilen — 7,0:1 auf Weiss, 5,4:1 auf Muted */
+  --vp-c-border: #e2e8f0;
+  --vp-c-destructive: #dc2626; /* Minus-Beträge und Hero < 0 — 4,8:1 auf Weiss */
+
+  /* --- Was der Skill nicht liefert (§3.10 „angepasst") ------------------- */
+  /* Warnton: aus der Accent-Familie (Orange) abgeleitet, 7,1:1 — der Skill hat
+     keinen Warn-Token, und Accent selbst bleibt der Handlung vorbehalten. */
+  --vp-c-warn-bg: #fff7ed;
+  --vp-c-warn-fg: #9a3412;
+  /* Zustandsfläche auf der DUNKLEN Leiste: der Skill leitet für Zustände auf
+     dunklem Grund nichts ab, und halbtransparentes Weiss wäre messtechnisch
+     nicht prüfbar (der gemessene Kontrast hinge am Untergrund). */
+  --vp-c-fg-state: color-mix(in srgb, var(--vp-c-fg) 82%, #fff);
+  /* Die Schrift auf der dunklen Leiste, wenn sie NICHT führt (Pfad, inaktive
+     Einträge): #CBD5E1 auf #1E293B = 9,8:1. */
+  --vp-c-on-fg-muted: #cbd5e1;
+
+  /* --- Form (Skill: „sharp shadows if any" ⇒ keine) --------------------- */
+  --vp-c-font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, sans-serif;
+  --vp-c-radius: 16px;
+  --vp-c-radius-sm: 10px;
+  --vp-c-shadow: none;
+
+  /* --- Der MASSSTAB der Erlöse-Flächen (§3.1/§3.10, E5 = (a)) -----------
+   * Sechs Stufen, sonst nichts. 12 px trägt NUR Chips, Abzeichen und
+   * Einheiten — nie einen Satz (Prinzip 1). Der Wächter
+   * `src/erloeseSkala.test.ts` lässt in den vier Erlöse-Blättern keine
+   * siebte Größe zu; das ist seine Aufgabe, nicht sein Nebeneffekt. */
+  --vp-erl-fs-12: 12px; /* Chip · Abzeichen · Einheit · Achsenbeschriftung */
+  --vp-erl-fs-14: 14px; /* Sekundärzeile · Legende · Aufklapp-Link */
+  --vp-erl-fs-16: 16px; /* Standardtext: Name, Betrag, Satz, Rechenzeile */
+  --vp-erl-fs-20: 20px; /* Kartentitel · Summenbetrag */
+  --vp-erl-fs-24: 24px; /* Sektions-Zahl */
+  --vp-erl-fs-48: 48px; /* Hero — die EINE Zahl je Fläche */
+  --vp-erl-fs-hero-phone: 36px; /* derselbe Hero bei ≤ 720 px */
+
+  --vp-erl-fw-400: 400;
+  --vp-erl-fw-600: 600;
+  --vp-erl-fw-700: 700;
+  --vp-erl-fw-800: 800;
+
+  /* Unitless — der Komponenten-Treffer des Skills: „unitless line height /
+     Don't: Clip text in fixed-width or fixed-height boxes". */
+  --vp-erl-lh-tight: 1.1; /* Hero */
+  --vp-erl-lh-title: 1.25; /* Titel */
+  --vp-erl-lh-text: 1.5; /* Fliesstext, Sekundärzeilen, Chips */
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1785,7 +1861,11 @@ button.vp-cl-item.is-off .vp-cl-label {
   min-width: 0;
   gap: var(--vp-space-2);
 }
-.vp-chip {
+/* ⚠ Der INTERAKTIVE Chip (Auswahl-/Voreinstellungs-Taste, `cursor: pointer`,
+   `:hover`, `.is-on`) — bis P0 hiess er `.vp-chip`. Der Name gehört seit
+   Variante C dem ZUSTANDS-Chip weiter unten (Prinzip 5: „Chips tragen
+   Zustandswörter"); eine Taste ist kein Zustandswort. */
+.vp-chip-action {
   display: inline-flex;
   align-items: center;
   gap: var(--vp-space-1, 0.25rem);
@@ -1803,10 +1883,10 @@ button.vp-cl-item.is-off .vp-cl-label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.vp-chip:hover {
+.vp-chip-action:hover {
   border-color: var(--vp-primary-deep);
 }
-.vp-chip svg {
+.vp-chip-action svg {
   flex-shrink: 0;
 }
 /* Inline hint line with a leading line-icon (register auto-fill note) */
@@ -3873,7 +3953,7 @@ button.vp-tech-card-h.toggle {
   font-weight: 600;
   color: var(--vp-text-body);
 }
-.vp-chip.is-on {
+.vp-chip-action.is-on {
   background: var(--vp-action);
   border-color: var(--vp-action);
   color: #fff;
@@ -4975,7 +5055,7 @@ button.vp-tech-card-h.toggle {
   }
   /* Auswahl-Chips im Anlagen-Dialog und die Karten-Zoomtasten waren optisch
      nur 30–34 px hoch. */
-  .vp-chip {
+  .vp-chip-action {
     min-height: 44px;
   }
   /* Leaflet lädt seine `.leaflet-touch .leaflet-bar a`-Regel unabhängig von
@@ -5427,3 +5507,221 @@ button.vp-tech-card-h.toggle {
   border-radius: var(--vp-radius-md, 10px);
   background: var(--vp-surface-subtle, #f6f7f9);
 }
+
+/* ==========================================================================
+ * ERLÖSE C · PORTAL-PILOT — Teil 2: EINE Chip-Form und das Kleid der Leisten
+ * (Konzept `data/vp-erloese-lesbar-konzept-u3` §3.10 Anatomie C Punkt 5,
+ * §2 Prinzip 5, §6 Paket P0; Captain-Entscheide E1 = (c), E6 = (a), E12 = (a)).
+ *
+ * Warum am ENDE der Datei: `src/index.css` wird als LETZTES Blatt geladen
+ * (`main.tsx` — Token, `core.css`, `shell.css`, dann diese Datei). Das Kleid
+ * überschreibt damit die Basisregeln der Schale, ohne dass eine geteilte
+ * Designsystem-Datei angefasst wird (`designsystem/components/shell/shell.css`
+ * gehört ALLEN Flächen, nicht diesem Pilot).
+ * ========================================================================== */
+
+/* --- 1 · EINE Chip-Form ---------------------------------------------------
+ * Befund B3: elf Chips je Ergebnis-Karte in FÜNF Formen (Umriss, gefüllt,
+ * bernstein, Navy-Abzeichen, `Badge tint`), die Werte, Zustände, Herkunft und
+ * Aktionen in derselben Optik trugen. Prinzip 5: ein Chip ist ein
+ * ZUSTANDSWORT — 12/600, Radius 999, neutral oder Warnton, höchstens einer je
+ * Zeile. Werte gehören in die Sekundärzeile, Aktionen sind Textlinks.
+ *
+ * ⚠ Die Optik steht GENAU EINMAL. Die Alt-Klassen der Erlöse-Blätter hängen
+ * als Selektoren an derselben Regel, damit kein Markup und kein Test wandern
+ * muss (P0 ändert kein DOM) — wer die Chip-Form ändert, ändert sie hier und
+ * damit überall. `Badge` des Designsystems (`variant="tint"`) bleibt bewusst
+ * unberührt: er lebt ausserhalb der Erlöse-Flächen.
+ *
+ * `.vp-prov` ist das Ehrlichkeits-Abzeichen (Bewertet · Gemessen · Geplant) —
+ * ein Zustandswort im Sinne von Prinzip 5 und deshalb auf derselben Form. Es
+ * ist ein GETEILTES Bauteil (`KartenKopf`), die Messwerte-Welt trägt es also
+ * mit; das ist der Pilot-Schritt E12, kein Nebeneffekt.
+ * ------------------------------------------------------------------------ */
+.vp-chip,
+.vp-ez-chip,
+.vp-spb-chip,
+.vp-spb-badge,
+.vp-erg-bestand-badge,
+.vp-prov {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  /* ≥ 24 px hoch: 12 px × 1,5 Zeilenhöhe = 18 px + 2 × 3 px Polster. */
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-muted-fg, #475569);
+  /* Ausdrücklich, nicht geerbt: ein Chip in einem Wirt mit Anzeigeschrift
+     stünde sonst in einer zweiten Schrift. */
+  font-family: var(--vp-c-font);
+  font-size: var(--vp-erl-fs-12, 12px);
+  font-weight: var(--vp-erl-fw-600, 600);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  white-space: nowrap;
+}
+
+/* Der WARN-Modifikator — der einzige zweite Ton, und er steht nur, wo etwas
+   FEHLT und der Kunde einen Weg braucht (nie als Urteil über eine Zahl).
+   #9A3412 auf #FFF7ED = 7,1:1. */
+.vp-chip--warn,
+.vp-ez-chip-warn {
+  background: var(--vp-c-warn-bg, #fff7ed);
+  color: var(--vp-c-warn-fg, #9a3412);
+  border: 0;
+}
+
+/* Die drei Herkunfts-Töne des Abzeichens fallen auf die EINE Form zusammen
+   (Prinzip 5: „neutral oder Warnton", nichts dazwischen). Die Klassen bleiben
+   im Markup — sie sind die maschinenlesbare Herkunft, nicht ihre Farbe. */
+.vp-prov-gemessen,
+.vp-prov-bewertet,
+.vp-prov-geplant {
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* --- 2 · Das Kleid der App-Leisten ---------------------------------------
+ * §3.10 Anatomie C Punkt 5: „App-Leiste und Seitenleiste in Foreground mit
+ * weisser Schrift (aktiver Eintrag mit 3-px-Primary-Kante), Bereichs-Reiter
+ * als Unterstrich-Tabs". Der Skill nennt als Stil-Merkmal „high contrast,
+ * geometric" — die dunkle Leiste ist KEIN Dunkelmodus: der Inhalt bleibt hell
+ * (Anti-Pattern „Dark mode by default").
+ *
+ * Gemessen (Weiss auf #1E293B 14,6:1 · #CBD5E1 darauf 9,8:1) — nachgerechnet
+ * im Skala-Wächter `src/erloeseSkala.test.ts`.
+ * ------------------------------------------------------------------------ */
+body {
+  background: var(--vp-c-bg, #f8fafc);
+}
+
+.vp-topbar,
+.vp-sidebar,
+.vp-bottombar {
+  /* Die Schrift der Variante C — hier, nicht auf `body`: P0 stellt die
+     LEISTEN um, die Inhalte anderer Seiten folgen mit P1–P6. */
+  font-family: var(--vp-c-font);
+}
+
+.vp-topbar,
+.vp-sidebar {
+  background: var(--vp-c-fg, #1e293b);
+  border-color: transparent;
+  color: #fff;
+}
+.vp-topbar {
+  border-bottom: 0;
+  box-shadow: none;
+}
+.vp-sidebar {
+  border-right: 0;
+}
+.vp-sidebar .brand,
+.vp-sidebar .side-foot {
+  border-color: color-mix(in srgb, var(--vp-c-fg, #1e293b) 78%, #fff);
+}
+
+/* Der PFAD: der Anlagen-Name führt in Weiss, alles Begleitende gedämpft. */
+.vp-topbar .crumbs .here,
+.vp-topbar-anlage .here {
+  color: #fff;
+}
+.vp-crumb-up,
+.vp-crumb-sep,
+.vp-tb-caret,
+.vp-usermenu .meta .e {
+  color: var(--vp-c-on-fg-muted, #cbd5e1);
+}
+.vp-usermenu .meta .n {
+  color: #fff;
+}
+.vp-crumb-up:hover {
+  color: #fff;
+  background: var(--vp-c-fg-state, #414d5f);
+}
+.vp-hamburger {
+  color: #fff;
+}
+.vp-avatar {
+  background: var(--vp-c-primary, #2563eb);
+}
+
+/* Das Zustands-Abzeichen und der Mandanten-Umschalter sind eigene FLÄCHEN auf
+   der Leiste — sie bekommen den dunklen Zustandston statt einer hellen Pille,
+   die auf dem dunklen Grund als Leuchtfleck läse. */
+.vp-topbar .vp-healthbadge,
+.vp-topbar .vp-healthbadge.state-ok,
+.vp-topbar .vp-healthbadge.state-warnung,
+.vp-topbar .vp-context {
+  background: var(--vp-c-fg-state, #414d5f);
+  border-color: color-mix(in srgb, var(--vp-c-fg, #1e293b) 62%, #fff);
+  color: #fff;
+}
+.vp-topbar .vp-healthbadge:hover,
+.vp-topbar .vp-healthbadge.state-ok:hover {
+  border-color: #fff;
+}
+.vp-topbar .vp-context-ic,
+.vp-topbar .vp-healthbadge-cause,
+.vp-topbar .vp-healthbadge-caret {
+  color: var(--vp-c-on-fg-muted, #cbd5e1);
+}
+.vp-topbar .vp-context-picker,
+.vp-topbar .vp-context-picker * {
+  color: #fff;
+}
+
+/* Die Seitenleiste: gedämpfte Einträge, der aktive mit der 3-px-Kante in
+   Primary auf der Zustandsfläche. */
+.vp-sidebar .vp-navitem,
+.vp-sidebar .vp-nav-group-label,
+.vp-sidebar .vp-navitem .ic,
+.vp-sidebar .vp-navitem .count,
+.vp-sidebar .vp-nav-fold {
+  color: var(--vp-c-on-fg-muted, #cbd5e1);
+}
+.vp-sidebar .vp-navitem:hover {
+  background: var(--vp-c-fg-state, #414d5f);
+  color: #fff;
+}
+.vp-sidebar .vp-navitem.active {
+  background: var(--vp-c-fg-state, #414d5f);
+  color: #fff;
+  border-radius: 0 var(--vp-c-radius-sm, 10px) var(--vp-c-radius-sm, 10px) 0;
+  box-shadow: inset 3px 0 0 var(--vp-c-primary, #2563eb);
+}
+.vp-sidebar .vp-navitem.active .ic {
+  color: #fff;
+}
+.vp-sidebar .vp-health-dot {
+  border-color: var(--vp-c-fg, #1e293b);
+}
+
+/* Die Telefon-Leiste trägt dasselbe Kleid (die fünf Kacheln bleiben).
+   ⚠ Die FARBEN der Kacheln stehen in `src/shell/Shell.css` — dort, wo die
+   Leiste ihre Form bekommt: beide Regeln hätten dieselbe Spezifität, und ein
+   komponenten-lokales Blatt wird nach `index.css` ausgewertet. Hier steht nur,
+   was `Shell.css` nicht setzt. */
+.vp-bottombar-item.active {
+  box-shadow: inset 0 3px 0 var(--vp-c-primary, #2563eb);
+}
+.vp-bottombar-badge {
+  background: var(--vp-c-primary, #2563eb);
+}
+
+/* ⚠ DIE WORTMARKE IST SCHWARZE TINTE auf transparentem Grund
+   (`designsystem/assets/voltpilot-wordmark.png`, Palette #000/#171717 + der
+   blaue Akzent #95B9FF) — auf der dunklen Leiste wäre sie unsichtbar. Sie wird
+   deshalb auf REINES WEISS geflacht, wie die Wortmarke des Mockups (§3.10
+   Anatomie C Punkt 5: „Seitenleiste in Foreground mit weisser Schrift").
+   `invert(1)` allein reicht NICHT: es machte aus dem blauen Akzent ein
+   schmutziges Braun (#95B9FF → #6A4600). Der Preis ist der Akzent — eine
+   zweifarbige Marke auf dunklem Grund bräuchte eine eigene Datei. */
+.vp-sidebar .brand img {
+  filter: brightness(0) invert(1);
+}
+
+/* --- 3 · Die Bereichs-Reiter als Unterstrich-Tabs ------------------------
+ * §3.10 Anatomie C Punkt 5. Sie liegen in `BereichTabs.css` (komponenten-lokal,
+ * damit die Ladereihenfolge nicht entscheidet) — hier steht nur der Zeiger. */

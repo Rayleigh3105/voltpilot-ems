@@ -9,12 +9,18 @@
  */
 .vp-bereich-tabs {
   display: flex;
-  gap: 2px;
+  gap: 0;
   margin: 0 0 var(--vp-space-4, 1rem);
-  padding: 3px;
-  border: 1px solid var(--vp-border);
-  border-radius: var(--vp-radius-pill, 999px);
-  background: var(--vp-surface-alt, #f4f6f9);
+  padding: 0;
+  /* Erlöse C (Konzept u3 §3.10 Anatomie C Punkt 5): UNTERSTRICH-Reiter statt
+     Segment-Pille — „Tabs als Unterstrich" ist eines der Stil-Merkmale des
+     Skills („geometric, grid-based"), und die Pille sah aus wie die Zeit-Leiste
+     darunter, die etwas ganz anderes tut (Zeitraum wählen statt Seite
+     wechseln). Die Leiste selbst ist nur noch die Linie. */
+  border: 0;
+  border-bottom: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 0;
+  background: none;
   overflow-x: auto;
   scrollbar-width: none;
   /* Die Leiste ist so breit wie ihr Inhalt, nie breiter als die Spalte. */
@@ -27,27 +33,29 @@
 .vp-bereich-tab {
   flex: 0 0 auto;
   /* ≥44 px Trefferfläche - die Leiste ist am Telefon das Haupt-Bedienelement
-     des Bereichs. */
-  min-height: 40px;
-  padding: 0 var(--vp-space-4, 1rem);
+     des Bereichs. Sie war 40 px hoch (Befund B12) und ist es nicht mehr. */
+  min-height: 44px;
+  padding: 0 var(--vp-space-3, 0.75rem);
   border: 0;
-  border-radius: var(--vp-radius-pill, 999px);
-  background: transparent;
-  color: var(--vp-text-muted);
-  font-family: var(--vp-font-body);
-  font-size: 0.85rem;
-  font-weight: 600;
+  border-radius: 0;
+  background: none;
+  color: var(--vp-c-muted-fg, #475569);
+  font-family: var(--vp-c-font, inherit);
+  font-size: var(--vp-erl-fs-14, 14px);
+  font-weight: var(--vp-erl-fw-600, 600);
   white-space: nowrap;
   cursor: pointer;
   transition: var(--vp-transition-fast);
 }
 .vp-bereich-tab:hover {
-  color: var(--vp-action, #2c5282);
+  color: var(--vp-c-fg, #1e293b);
 }
 .vp-bereich-tab.active {
-  background: var(--vp-surface, #fff);
-  color: var(--vp-action, #2c5282);
-  box-shadow: 0 1px 2px rgba(30, 58, 95, 0.12);
+  background: none;
+  color: var(--vp-c-primary, #2563eb);
+  /* Der 2-px-Unterstrich sitzt INNEN, damit er die Zeilenhöhe nicht ändert
+     und die Leiste ihre eine Linie behält. */
+  box-shadow: inset 0 -2px 0 var(--vp-c-primary, #2563eb);
 }
 @media (max-width: 720px) {
   .vp-bereich-tabs {
@@ -57,6 +65,6 @@
   }
   .vp-bereich-tab {
     min-height: 44px;
-    padding: 0 0.85rem;
+    padding: 0 var(--vp-space-3, 0.75rem);
   }
 }

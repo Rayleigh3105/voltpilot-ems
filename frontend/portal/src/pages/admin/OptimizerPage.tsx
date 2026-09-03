@@ -1154,7 +1154,7 @@ function WhatIfPanel({
                 <button
                   key={p.id}
                   type="button"
-                  className={`vp-chip${preset === p.id ? ' is-on' : ''}`}
+                  className={`vp-chip-action${preset === p.id ? ' is-on' : ''}`}
                   aria-pressed={preset === p.id}
                   onClick={() => set('wearCostCtPerKwh')(String(p.wearCt))}
                   title={`${p.note} · ${p.wearCt} ct/kWh`}

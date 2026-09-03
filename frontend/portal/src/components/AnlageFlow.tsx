@@ -511,7 +511,7 @@ function AnlageStep({
                 <button
                   key={s.id}
                   type="button"
-                  className="vp-chip"
+                  className="vp-chip-action"
                   onClick={() => reuseLocation(s)}
                 >
                   <Icon name="map-pin" size={13} />

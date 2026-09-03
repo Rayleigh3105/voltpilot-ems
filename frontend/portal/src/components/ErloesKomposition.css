@@ -5,6 +5,13 @@
  * in `src/index.css`: M4 soll parallel zum Shell-Umbau (M1) und zur
  * Cockpit-Platzierung (M3) landen, ohne eine geteilte Datei anzufassen.
  * Tokens/Variablen kommen wie überall aus dem Design-System.
+ *
+ * ⚠ Variante C / P0 (Konzept `vp-erloese-lesbar-konzept-u3` §3.1/§3.10): jede
+ * Schriftgröße liegt auf der Sechser-Skala `--vp-erl-fs-*`, jedes Gewicht in
+ * {400,600,700,800}, jeder Abstand auf `--vp-space-*`. Die Zuordnung folgt der
+ * BEDEUTUNG, nicht dem gerundeten rem-Wert: Name und Betrag einer Zeile sind
+ * Standardtext (16), das Perioden-Etikett ist ein Chip (12/600), der
+ * Aufklapp-Link eine Sekundärzeile (14/600). Wächter: `src/erloeseSkala.test.ts`.
  */
 
 .vp-streams-block {
@@ -20,18 +27,22 @@
   margin-bottom: var(--vp-space-3, 12px);
 }
 
+/* Kartentitel — 16/700 (§3.10 „Karten 2–4"). */
 .vp-streams-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-700, 700);
   color: var(--vp-navy, #1a365d);
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-/* Das "von"-Etikett: welcher Block das hier ist (die Projektion bleibt lesbar). */
+/* Das "von"-Etikett: welcher Block das hier ist (die Projektion bleibt lesbar).
+   Label in Versalien — 12/700 (§3.10). Die Pillen-Polsterung ist optisch und
+   liegt bewusst unter der Skala, die bei 4 px beginnt. */
 .vp-streams-from {
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: var(--vp-erl-fs-12, 12px);
+  font-weight: var(--vp-erl-fw-700, 700);
   letter-spacing: 0.03em;
   text-transform: uppercase;
   border-radius: var(--vp-radius-pill, 999px);
@@ -41,19 +52,20 @@
   white-space: nowrap;
 }
 
+/* Aufklapp-Link = Sekundärzeile 14/600 (§3.1). */
 .vp-streams-drill {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--vp-space-1, 4px);
   min-height: 44px;
-  padding: 0 4px;
+  padding: 0 var(--vp-space-1, 4px);
   border: 0;
   background: none;
   cursor: pointer;
   font: inherit;
-  font-size: 0.84rem;
-  font-weight: 600;
+  font-size: var(--vp-erl-fs-14, 14px);
+  font-weight: var(--vp-erl-fw-600, 600);
   color: var(--vp-link, #2c5282);
   white-space: nowrap;
 }
@@ -86,6 +98,7 @@
   min-width: 0;
 }
 
+/* Der Farbpunkt ist eine Marke, kein Abstand — seine Maße bleiben optisch. */
 .vp-stream-dot {
   width: 9px;
   height: 9px;
@@ -93,28 +106,33 @@
   flex: 0 0 auto;
 }
 
+/* Zeilen-Name — Standardtext 16/600 (§3.10 „ledger"). */
 .vp-stream-label {
-  font-size: 0.86rem;
-  font-weight: 600;
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-600, 600);
   color: var(--vp-text-dark, #1a202c);
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
+/* Zeilen-Betrag — 16/600; 700 bleibt dem Ergebnis unten vorbehalten (§3.1). */
 .vp-stream-value {
   margin-left: auto;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  font-weight: 700;
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-600, 600);
+  font-variant-numeric: tabular-nums;
   color: var(--vp-stat-ink, #2c5282);
   white-space: nowrap;
 }
 
-/* Das Perioden-Etikett steht an JEDER Zeile - ohne es wäre der Stapel unehrlich. */
+/* Das Perioden-Etikett steht an JEDER Zeile - ohne es wäre der Stapel unehrlich.
+   Es ist ein Etikett, kein Satz: 12/600 (§3.1). */
 .vp-stream-period {
-  font-size: 0.68rem;
-  font-weight: 600;
+  font-size: var(--vp-erl-fs-12, 12px);
+  font-weight: var(--vp-erl-fw-600, 600);
   color: var(--vp-text-gray, #718096);
 }
 
@@ -129,7 +147,7 @@
 
 .vp-stream-note {
   flex: 1 1 100%;
-  font-size: 0.72rem;
+  font-size: var(--vp-erl-fs-12, 12px);
   color: var(--vp-text-gray, #718096);
   min-width: 0;
   overflow-wrap: anywhere;
@@ -141,24 +159,27 @@
   color: var(--vp-text-gray, #718096);
 }
 
+/* Die Ergebnis-Zeile: 16/700 (§3.1 „Ergebnis-Betrag"). 800 bleibt dem EINEN
+   Hero je Fläche vorbehalten. */
 .vp-stream-total .vp-stream-label {
-  font-weight: 800;
+  font-weight: var(--vp-erl-fw-700, 700);
   color: var(--vp-navy, #1a365d);
 }
 .vp-stream-total .vp-stream-value {
-  font-size: 1.05rem;
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-700, 700);
   color: var(--vp-navy, #1a365d);
 }
 
 .vp-streams-periodnote,
 .vp-streams-note {
   margin: var(--vp-space-2, 8px) 0 0;
-  font-size: 0.72rem;
+  font-size: var(--vp-erl-fs-12, 12px);
   color: var(--vp-text-gray, #718096);
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
 .vp-streams-periodnote {
-  font-weight: 600;
+  font-weight: var(--vp-erl-fw-600, 600);
 }

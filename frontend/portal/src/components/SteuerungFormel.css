@@ -5,24 +5,33 @@
    44 px Trefferfläche (Touch-Regel des Hauses), damit die Erlös-Karte durch
    ihn nicht wächst. Aufgeklappt ist er eine Erklärung, keine zweite
    Überschrift — dieselbe Haltung wie `.vp-fw-technik`.
+
+   ⚠ Variante C / P0 (Konzept `vp-erloese-lesbar-konzept-u3` §3.1/§3.10): jede
+   Schriftgröße liegt auf der Sechser-Skala `--vp-erl-fs-*`, jedes Gewicht in
+   {400,600,700,800}, jeder Abstand auf `--vp-space-*`. Die MONOSPACE der
+   Rechenzeile ist ERSATZLOS entfallen — untereinander stehen die Ziffern seit
+   P0 über `font-variant-numeric: tabular-nums`, und zwar in derselben Schrift
+   wie der Satz daneben (§3.1: „Kein Monospace mehr"). Wächter:
+   `src/erloeseSkala.test.ts`.
    --------------------------------------------------------------------------- */
 
 .vp-formel {
-  margin-top: 4px;
+  margin-top: var(--vp-space-1, 4px);
   min-width: 0;
   max-width: 100%;
 }
 
+/* Aufklapp-Link = Sekundärzeile 14/600 (§3.1). */
 .vp-formel > summary {
   list-style: none;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--vp-space-2, 8px);
   min-height: 44px;
-  padding: 2px 0;
-  font-size: 0.78rem;
-  font-weight: 600;
+  padding: var(--vp-space-1, 4px) 0;
+  font-size: var(--vp-erl-fs-14, 14px);
+  font-weight: var(--vp-erl-fw-600, 600);
   color: var(--vp-text-gray, #718096);
   min-width: 0;
 }
@@ -33,7 +42,7 @@
 
 .vp-formel > summary::after {
   content: '▾';
-  font-size: 0.7rem;
+  font-size: var(--vp-erl-fs-12, 12px);
   transition: transform 0.15s ease;
 }
 
@@ -54,19 +63,20 @@
      300 px breit. Deshalb entscheidet die eigene BREITE, nicht das Fenster. */
   container-type: inline-size;
   container-name: vp-formel;
-  padding: 10px 12px 12px;
-  margin-bottom: 4px;
+  padding: var(--vp-space-3, 12px);
+  margin-bottom: var(--vp-space-1, 4px);
   border: 1px solid var(--vp-border, #e2e8f0);
-  border-radius: var(--vp-radius-md, 10px);
+  border-radius: var(--vp-c-radius-sm, 10px);
   background: var(--vp-surface-2, #f8f9fb);
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
+/* Der Kernsatz IST eine Rechenzeile — Standardtext 16 (§3.1). */
 .vp-formel-kern {
   margin: 0;
-  font-size: 0.82rem;
-  line-height: 1.55;
+  font-size: var(--vp-erl-fs-16, 16px);
+  line-height: var(--vp-erl-lh-text, 1.5);
   color: var(--vp-text-dark, #1a202c);
 }
 
@@ -74,11 +84,11 @@
    bricht sie auf eine Spalte um (bei 375 px gemessen). */
 .vp-formel-rechnung,
 .vp-formel-preise {
-  margin: 10px 0 0;
-  padding: 10px 0 0;
+  margin: var(--vp-space-3, 12px) 0 0;
+  padding: var(--vp-space-3, 12px) 0 0;
   border-top: 1px solid var(--vp-border, #e2e8f0);
   display: grid;
-  gap: 8px;
+  gap: var(--vp-space-2, 8px);
   min-width: 0;
 }
 
@@ -87,6 +97,8 @@
 .vp-formel-zeile {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  /* 1 px ist eine optische Haarlinie zwischen Bezeichner und Wert, kein
+     Abstand der Skala — sie beginnt bei 4 px. */
   gap: 1px;
   min-width: 0;
 }
@@ -94,21 +106,22 @@
 @container vp-formel (min-width: 420px) {
   .vp-formel-zeile {
     grid-template-columns: minmax(0, 8.5rem) minmax(0, 1fr);
-    gap: 2px 12px;
+    gap: var(--vp-space-1, 4px) var(--vp-space-3, 12px);
   }
 }
 
+/* Der Bezeichner ist ein Tabellenkopf — Sekundärzeile 14/600 (§3.1). */
 .vp-formel-zeile dt {
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: var(--vp-erl-fs-14, 14px);
+  font-weight: var(--vp-erl-fw-600, 600);
   color: var(--vp-text-muted, #5b6472);
   min-width: 0;
 }
 
 .vp-formel-zeile dd {
   margin: 0;
-  font-size: 0.8rem;
-  line-height: 1.5;
+  font-size: var(--vp-erl-fs-16, 16px);
+  line-height: var(--vp-erl-lh-text, 1.5);
   color: var(--vp-text-dark, #1a202c);
   min-width: 0;
   overflow-wrap: anywhere;
@@ -116,26 +129,26 @@
 
 .vp-formel-zusatz {
   display: block;
-  margin-top: 2px;
-  font-size: 0.76rem;
+  margin-top: var(--vp-space-1, 4px);
+  font-size: var(--vp-erl-fs-14, 14px);
   color: var(--vp-text-muted, #5b6472);
 }
 
 /* Der Historik-Satz (B5) sitzt bei den Preis-Angaben und ist eine ruhige
    Fussnote, kein zweiter Hinweis-Kasten. */
 .vp-formel-historik {
-  margin: 8px 0 0;
-  font-size: 0.76rem;
-  line-height: 1.5;
+  margin: var(--vp-space-2, 8px) 0 0;
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: var(--vp-erl-lh-text, 1.5);
   color: var(--vp-text-muted, #5b6472);
 }
 
 .vp-formel-hinweis {
-  margin: 10px 0 0;
-  padding-top: 10px;
+  margin: var(--vp-space-3, 12px) 0 0;
+  padding-top: var(--vp-space-3, 12px);
   border-top: 1px solid var(--vp-border, #e2e8f0);
-  font-size: 0.78rem;
-  line-height: 1.55;
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: var(--vp-erl-lh-text, 1.5);
   color: var(--vp-text-muted, #5b6472);
 }
 
@@ -144,15 +157,18 @@
  * RECHENZEILEN — „Formel = Betrag" + Halbsatz Herkunft (Konzept
  * `vp-erloese-seite-konzept-e2` §3.3, Revision 2).
  *
- * Die Formel steht in Festbreitenschrift, damit Zahlen untereinander stehen
- * und ein Kunde sie mit dem Finger nachrechnen kann; die Herkunft ist bewusst
+ * ⚠ Die Formel stand in Festbreitenschrift, damit Zahlen untereinander
+ * stehen. Das leistet `font-variant-numeric: tabular-nums` in der Hausschrift
+ * genauso — ohne den Bruch im Schriftbild, den eine zweite Schriftfamilie
+ * mitten in einem Satz erzeugt (Variante C §3.1). Die Herkunft ist bewusst
  * KLEINER — sie erklärt, sie behauptet nicht.
  * ========================================================================== */
 
+/* Label in Versalien — 12/700 (§3.10). */
 .vp-rz-kopf {
-  margin: 0 0 4px;
-  font-size: 0.7rem;
-  font-weight: 700;
+  margin: 0 0 var(--vp-space-1, 4px);
+  font-size: var(--vp-erl-fs-12, 12px);
+  font-weight: var(--vp-erl-fw-700, 700);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--vp-text-muted, #6c757d);
@@ -167,8 +183,9 @@
 .vp-rz-list > li {
   display: flex;
   flex-direction: column;
+  /* Haarlinie zwischen Formel und Herkunft — siehe `.vp-formel-zeile`. */
   gap: 1px;
-  padding: 5px 0;
+  padding: var(--vp-space-1, 4px) 0;
   border-top: 1px dashed var(--vp-border, #dde3ea);
   min-width: 0;
 }
@@ -178,17 +195,17 @@
 }
 
 .vp-rz-fx {
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-700, 700);
   color: var(--vp-text, #1f2933);
   /* Eine lange Formel darf umbrechen, aber nie die Karte sprengen. */
   overflow-wrap: anywhere;
 }
 
 .vp-rz-hk {
-  font-size: 0.76rem;
-  line-height: 1.45;
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: var(--vp-erl-lh-text, 1.5);
   color: var(--vp-text-muted, #6c757d);
   overflow-wrap: anywhere;
 }

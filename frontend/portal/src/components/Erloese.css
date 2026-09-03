@@ -11,16 +11,24 @@
  * setzt hier nichts eine Basisregel außer Kraft — es sind ausschließlich neue
  * `.vp-erg-*`/`.vp-ekomp-*`-Klassen (die `.vp-pt-*` der Preis-Karte sind mit
  * ihr entfallen, P6/E5).
+ *
+ * ⚠ Variante C / P0 (Konzept `vp-erloese-lesbar-konzept-u3` §3.1/§3.10): jede
+ * Schriftgröße liegt auf der Sechser-Skala `--vp-erl-fs-*`, jedes Gewicht in
+ * {400,600,700,800}, jede Zeilenhöhe auf `--vp-erl-lh-*`. Ein Minus-Betrag
+ * trägt `--vp-c-destructive` (Prinzip 4: Farbe nur Bedeutung), Chips tragen
+ * ihre Form NICHT mehr selbst — sie hängen an der EINEN `.vp-chip`
+ * (`index.css`). Struktur, Reihenfolge und Inhalte sind unverändert; die
+ * Karten-ANATOMIE räumt P1/P2.
  */
 
 /* --- Karte 1 · Ergebnis --------------------------------------------------- */
 
 .vp-erg-netto {
   margin: 0;
-  font-family: var(--vp-font-display, inherit);
-  font-size: clamp(2rem, 6vw, 2.75rem);
-  font-weight: 700;
-  line-height: 1.1;
+  font-family: var(--vp-c-font);
+  font-size: var(--vp-erl-fs-48, 48px);
+  font-weight: var(--vp-erl-fw-800, 800);
+  line-height: var(--vp-erl-lh-tight, 1.1);
   letter-spacing: -0.02em;
   color: var(--vp-action, #2c5282);
   /* Die Zahl darf nie über die Karte hinauslaufen. */
@@ -28,13 +36,14 @@
 }
 
 .vp-erg-netto.vp-erg-kosten {
-  color: var(--vp-chart-discharge, #e53935);
+  color: var(--vp-c-destructive, #dc2626);
 }
 
 .vp-erg-satz {
-  margin: 6px 0 0;
-  font-size: 0.9rem;
-  color: var(--vp-text-muted, #6c757d);
+  margin: var(--vp-space-2, 8px) 0 0;
+  font-size: var(--vp-erl-fs-16, 16px);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
 }
 
 /* Der Steuerungs-Chip. Die FARBE steht in den Ton-Klassen darunter — bis
@@ -44,12 +53,12 @@
 .vp-erg-steering {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin: 10px 0 0;
-  padding: 4px 10px;
+  gap: var(--vp-space-2, 8px);
+  margin: var(--vp-space-3, 12px) 0 0;
+  padding: var(--vp-space-1, 4px) var(--vp-space-3, 12px);
   border-radius: 999px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: var(--vp-erl-fs-14, 14px);
+  font-weight: var(--vp-erl-fw-600, 600);
   /* min-width: 0 gehört zu jedem Flex-Kind mit Text (Telefon-Überlauf). */
   min-width: 0;
   max-width: 100%;
@@ -89,9 +98,9 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin: 8px 0 0;
-  font-size: 0.85rem;
+  gap: var(--vp-space-2, 8px);
+  margin: var(--vp-space-2, 8px) 0 0;
+  font-size: var(--vp-erl-fs-14, 14px);
   line-height: 1.5;
   color: var(--vp-text-muted, #5b6472);
   min-width: 0;
@@ -103,28 +112,18 @@
 
 .vp-erg-bestand-satz svg {
   vertical-align: -2px;
-  margin-right: 6px;
+  margin-right: var(--vp-space-2, 8px);
 }
 
-.vp-erg-bestand-badge {
-  flex: 0 0 auto;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--vp-neutral-soft, #eef1f5);
-  /* P7: war ein harter Hex (#4b5563) — jetzt aus den Haus-Tokens gemischt
-     (6,49:1 auf `--vp-neutral-soft`), wie `.vp-spb-chip`. */
-  color: color-mix(in srgb, var(--vp-text-gray, #66717c) 70%, var(--vp-text, #1a1a1a));
-  font-size: 0.72rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
+/* Das Bestands-Abzeichen trägt seine Form seit P0 nicht mehr selbst — sie
+   steht EINMAL in `.vp-chip` (`index.css`). */
 
 /* Die zwei Beträge des Vergleichs (P2/E3): „Bis 12 Uhr: heute … · gestern …"
    bzw. „bisher … · ganze Vorwoche …". Bewusst RUHIG und ohne Ton - der Chip
    darüber trägt die Richtung, diese Zeile trägt nur die Grundlage. */
 .vp-erg-vergleich {
-  margin: 4px 0 0;
-  font-size: 0.85rem;
+  margin: var(--vp-space-1, 4px) 0 0;
+  font-size: var(--vp-erl-fs-14, 14px);
   line-height: 1.5;
   color: var(--vp-text-muted, #5b6472);
   min-width: 0;
@@ -134,18 +133,18 @@
 
 .vp-ekomp {
   list-style: none;
-  margin: 18px 0 0;
+  margin: var(--vp-space-4, 16px) 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--vp-space-3, 12px);
 }
 
 .vp-ekomp-row {
   display: grid;
   grid-template-columns: 10px minmax(0, 1fr) minmax(0, 90px) auto;
   align-items: center;
-  gap: 10px;
+  gap: var(--vp-space-3, 12px);
   min-width: 0;
 }
 
@@ -159,13 +158,13 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  font-size: 0.92rem;
+  font-size: var(--vp-erl-fs-16, 16px);
   color: var(--vp-text, #1a1a1a);
   overflow-wrap: anywhere;
 }
 
 .vp-ekomp-period {
-  font-size: 0.75rem;
+  font-size: var(--vp-erl-fs-12, 12px);
   color: var(--vp-text-muted, #6c757d);
 }
 
@@ -181,21 +180,21 @@
 .vp-ekomp-value {
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: var(--vp-space-1, 4px);
   justify-self: end;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: var(--vp-erl-fw-600, 600);
 }
 
 .vp-ekomp-sign {
   color: var(--vp-text-muted, #6c757d);
-  font-weight: 500;
+  font-weight: var(--vp-erl-fw-400, 400);
 }
 
 .vp-ekomp-note {
   grid-column: 2 / -1;
-  font-size: 0.78rem;
+  font-size: var(--vp-erl-fs-12, 12px);
   color: var(--vp-text-muted, #6c757d);
   overflow-wrap: anywhere;
 }
@@ -238,26 +237,25 @@
   /* Der Falz: Zahl, Satz, Zurechnung und die drei Kompositionszeilen sollen
      gemeinsam in den ersten Bildschirm - also enger als am Schreibtisch. */
   .vp-erg-netto {
-    font-size: clamp(1.8rem, 8.5vw, 2.2rem);
+    font-size: var(--vp-erl-fs-hero-phone, 36px);
   }
 
   .vp-erg-satz {
-    margin-top: 4px;
-    font-size: 0.84rem;
-    line-height: 1.35;
+    margin-top: var(--vp-space-1, 4px);
+    line-height: var(--vp-erl-lh-text, 1.5);
   }
 
   .vp-ekomp {
-    margin-top: 10px;
+    margin-top: var(--vp-space-3, 12px);
   }
 
   .vp-ekomp-row {
-    padding: 5px 0;
+    padding: var(--vp-space-1, 4px) 0;
   }
 
   /* --- Aufklapper-Körper: das Abzeichen führt, dann der volle Inhalt ---- */
   .vp-welt-disclosure-body > .vp-prov {
-    margin-bottom: 8px;
+    margin-bottom: var(--vp-space-2, 8px);
   }
 
   /* Im Aufklapper trägt die Karte schon einen Rahmen - die Kombinations-Karte
@@ -303,31 +301,39 @@
 
 .vp-ez-hero {
   margin: 0;
-  font-family: var(--vp-font-display, 'Inter Tight', Inter, sans-serif);
-  font-size: clamp(2rem, 6vw, 2.75rem);
-  font-weight: 700;
-  line-height: 1.1;
+  font-family: var(--vp-c-font);
+  font-size: var(--vp-erl-fs-48, 48px);
+  font-weight: var(--vp-erl-fw-800, 800);
+  line-height: var(--vp-erl-lh-tight, 1.1);
   letter-spacing: -0.02em;
   color: var(--vp-action, #2c5282);
   overflow-wrap: anywhere;
 }
 
+/* Am Telefon fällt der Hero auf die Telefon-Stufe der Skala (§3.1) — die
+   Regel steht HIER, damit der Rumpf der Basis-Regel darüber lesbar bleibt. */
+@media (max-width: 720px) {
+  .vp-ez-hero {
+    font-size: var(--vp-erl-fs-hero-phone, 36px);
+  }
+}
+
 .vp-ez-hero-kosten {
-  color: var(--vp-chart-discharge, #e53935);
+  color: var(--vp-c-destructive, #dc2626);
 }
 
 .vp-ez-satz {
-  margin: 2px 0 10px;
-  font-size: 0.9rem;
-  line-height: 1.35;
-  color: var(--vp-text-muted, #6c757d);
+  margin: var(--vp-space-1, 4px) 0 var(--vp-space-2, 8px);
+  font-size: var(--vp-erl-fs-16, 16px);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
 }
 
 /* --- Die vier Zeilen ------------------------------------------------------ */
 
 .vp-ez-list {
   list-style: none;
-  margin: 6px 0 0;
+  margin: var(--vp-space-2, 8px) 0 0;
   padding: 0;
   border-top: 1px solid var(--vp-border, #e3e9f1);
 }
@@ -348,11 +354,11 @@
   display: grid;
   grid-template-columns: 12px minmax(0, 1fr) auto 14px;
   grid-template-rows: auto auto;
-  column-gap: 8px;
-  row-gap: 3px;
+  column-gap: var(--vp-space-2, 8px);
+  row-gap: var(--vp-space-1, 4px);
   align-items: center;
   min-height: 50px;
-  padding: 6px 2px;
+  padding: var(--vp-space-2, 8px) var(--vp-space-1, 4px);
   min-width: 0;
 }
 
@@ -372,8 +378,8 @@
   grid-row: 1;
   grid-column: 2;
   min-width: 0;
-  font-weight: 600;
-  font-size: 0.92rem;
+  font-weight: var(--vp-erl-fw-600, 600);
+  font-size: var(--vp-erl-fs-16, 16px);
   color: var(--vp-text, #1f2933);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -384,7 +390,7 @@
   grid-row: 1;
   grid-column: 3;
   justify-self: end;
-  font-weight: 700;
+  font-weight: var(--vp-erl-fw-700, 700);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   color: var(--vp-text, #1f2933);
@@ -394,18 +400,16 @@
    ist bewusst zurückhaltend: die Farbe der Zeile ist ihre Kennung, nicht ihr
    Urteil. */
 .vp-ez-t-minus {
-  /* ⚠ P7 (gemessen): `--vp-chart-discharge` (#E53935) ist die Kosten-/Warnfarbe
-     des Hauses und bleibt es — als BALKEN und in der Hero-Zahl (clamp ab 2rem,
-     also WCAG-„large", 3:1 genügt, 4,23:1 gemessen). Der Zeilen-BETRAG ist
-     dagegen 16 px/700, also Normaltext: dort fiel dieselbe Farbe mit 4,23:1
-     unter AA. Sie wird deshalb NUR HIER aus den Haus-Tokens nachgedunkelt
-     (5,07:1) — dieselbe Rot-Identität, eine Stufe tiefer, kein zweiter Farbwert
-     und keine Änderung am geteilten Token (es steht in sechs weiteren Dateien). */
-  color: color-mix(in srgb, var(--vp-chart-discharge, #e53935) 88%, var(--vp-text, #1f2933));
+  /* ⚠ Der Betrag ist 16 px/700, also Normaltext — die Kosten-Farbe muss hier
+     AA halten. Seit P0 ist das `--vp-c-destructive` (#DC2626, 4,83:1 auf
+     `--vp-c-card`), die EINE Minus-Farbe der Variante C; die frühere
+     P7-Mischung aus `--vp-chart-discharge` ist damit entfallen. Die Farbe
+     steht NIE allein: das Vorzeichen wird immer mitgeschrieben (E8). */
+  color: var(--vp-c-destructive, #dc2626);
 }
 
 .vp-ez-t-null {
-  color: var(--vp-text-muted, #6c757d);
+  color: var(--vp-c-muted-fg, #475569);
 }
 
 .vp-ez-chev {
@@ -455,37 +459,14 @@
   min-width: 0;
 }
 
-.vp-ez-chip {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1.5;
-  white-space: nowrap;
-  background: var(--vp-bg, #f7f9fc);
-  border: 1px solid var(--vp-border, #e3e9f1);
-  color: var(--vp-text-muted, #5b6472);
-}
-
-/* `warn` steht NUR, wo etwas FEHLT und der Kunde einen Weg braucht - nie als
-   Urteil über eine Zahl. */
-.vp-ez-chip-warn {
-  /* Kein eigenes Soft-Token im Designsystem - der Ton wird deshalb AUS dem
-     Warn-Token gemischt statt als Hex danebengeschrieben.
-     ⚠ P7 (375 px gemessen): bei 10 % Beimischung lag der Chip-Text auf seinem
-     eigenen Grund bei 4,16:1 - AA-FAIL fuer 11,5-px-Text. Der GRUND wird
-     aufgehellt (5 %) statt die Schrift nachzudunkeln: der Warnton ist ein
-     Haus-Token und wird an sechs weiteren Stellen als Text benutzt. */
-  background: color-mix(in srgb, var(--vp-warn-ink, #b45309) 5%, var(--vp-surface, #ffffff));
-  border-color: color-mix(in srgb, var(--vp-warn-ink, #b45309) 35%, var(--vp-surface, #ffffff));
-  color: var(--vp-warn-ink, #b45309);
-}
+/* Chip und Warn-Chip tragen ihre Form seit P0 nicht mehr selbst — sie steht
+   EINMAL in `.vp-chip` / `.vp-chip--warn` (`index.css`, Prinzip 5). `warn`
+   bleibt der einzige zweite Ton und steht NUR, wo etwas FEHLT und der Kunde
+   einen Weg braucht — nie als Urteil über eine Zahl. */
 
 .vp-ez-row-erg .vp-ez-name {
   color: var(--vp-action, #2c5282);
-  font-weight: 700;
+  font-weight: var(--vp-erl-fw-700, 700);
 }
 
 /* --- 768: der Name bekommt eine Spalte, der Balken die Mitte ------------- */
@@ -522,7 +503,7 @@
 @media (min-width: 1100px) {
   .vp-ez {
     grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
-    gap: 28px;
+    gap: var(--vp-space-5, 24px);
   }
 }
 
@@ -533,8 +514,8 @@
  * die Speicher-Farbe ist eine Kennung am Rand, nie eine Erfolgsfarbe. */
 
 .vp-ez-speicher {
-  margin: 12px 0 6px;
-  padding: 10px 12px;
+  margin: var(--vp-space-3, 12px) 0 var(--vp-space-2, 8px);
+  padding: var(--vp-space-3, 12px) var(--vp-space-3, 12px);
   border: 1px solid var(--vp-border, #e3e9f1);
   border-left: 3px solid var(--vp-flow-batt, #16a34a);
   border-radius: var(--vp-radius-md, 12px);
@@ -557,16 +538,16 @@
  * Zeile, aufgeklappt die volle Rechen-Tiefe. */
 
 .vp-e1 {
-  margin: 0 0 8px;
-  padding: 8px 10px;
+  margin: 0 0 var(--vp-space-2, 8px);
+  padding: var(--vp-space-2, 8px) var(--vp-space-3, 12px);
   border-radius: var(--vp-radius-md, 10px);
   background: var(--vp-bg, #f6f8fb);
   min-width: 0;
 }
 
 .vp-e2 {
-  margin: 6px 0 0;
-  padding-top: 4px;
+  margin: var(--vp-space-2, 8px) 0 0;
+  padding-top: var(--vp-space-1, 4px);
   border-top: 1px solid var(--vp-border, #e3e9f1);
 }
 
@@ -577,13 +558,13 @@
   display: flex;
   align-items: center;
   color: var(--vp-action, #2c5282);
-  font-weight: 600;
+  font-weight: var(--vp-erl-fw-600, 600);
 }
 
 .vp-e2 > summary {
   /* Touch-Ziel >= 44 px (§3.9). */
   min-height: 44px;
-  font-size: 0.86rem;
+  font-size: var(--vp-erl-fs-14, 14px);
 }
 
 .vp-e2 > summary::-webkit-details-marker,
@@ -594,7 +575,7 @@
 .vp-e2 > summary::after,
 .vp-gl > summary::after {
   content: ' ▾';
-  margin-left: 4px;
+  margin-left: var(--vp-space-1, 4px);
 }
 
 .vp-e2[open] > summary::after,
@@ -605,7 +586,7 @@
 .vp-e2t {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.82rem;
+  font-size: var(--vp-erl-fs-14, 14px);
   table-layout: fixed;
 }
 
@@ -613,15 +594,15 @@
   width: 38%;
   text-align: left;
   vertical-align: top;
-  padding: 5px 8px 5px 0;
-  font-weight: 600;
+  padding: var(--vp-space-1, 4px) var(--vp-space-2, 8px) var(--vp-space-1, 4px) 0;
+  font-weight: var(--vp-erl-fw-600, 600);
   color: var(--vp-text-muted, #6c757d);
   overflow-wrap: anywhere;
 }
 
 .vp-e2t td {
   vertical-align: top;
-  padding: 5px 0;
+  padding: var(--vp-space-1, 4px) 0;
   color: var(--vp-text, #1f2933);
   overflow-wrap: anywhere;
 }
@@ -632,28 +613,28 @@
 }
 
 .vp-gl {
-  margin-top: 4px;
+  margin-top: var(--vp-space-1, 4px);
 }
 
 .vp-gl > summary {
   min-height: 44px;
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: var(--vp-erl-fs-14, 14px);
+  font-weight: var(--vp-erl-fw-600, 600);
   color: var(--vp-text-muted, #6c757d);
 }
 
 .vp-gl-list {
   margin: 0;
-  font-size: 0.78rem;
+  font-size: var(--vp-erl-fs-14, 14px);
   line-height: 1.5;
 }
 
 .vp-gl-list > div + div {
-  margin-top: 6px;
+  margin-top: var(--vp-space-2, 8px);
 }
 
 .vp-gl-list dt {
-  font-weight: 600;
+  font-weight: var(--vp-erl-fw-600, 600);
   color: var(--vp-text, #1f2933);
 }
 

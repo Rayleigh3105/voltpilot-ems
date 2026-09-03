@@ -66,3 +66,34 @@
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
     U+2212, U+2215, U+FEFF, U+FFFD;
 }
+
+/* ------------------------------------------------------------------
+   Plus Jakarta Sans — die Schrift der Variante C („Erlöse neu modern",
+   Konzept `data/vp-erloese-lesbar-konzept-u3` §3.10, Captain-Entscheid
+   E1 = (c) am 03.09.2026; E12: Pilot fürs ganze Portal).
+
+   Sie kommt NEBEN Inter/Inter Tight, nicht an ihre Stelle: das Portal
+   zieht sie über `--vp-c-font` (`src/index.css`) dort ein, wo das
+   C-Kleid schon gilt — heute die App-Leisten und die Erlöse-Blätter,
+   mit den Paketen P1–P6 der Rest. Wer `--vp-font-body` umdefinieren
+   wollte, träfe damit auch die Anmeldeseite, die diesen Baum nicht
+   sehen kann (siehe den Keycloak-Hinweis oben) — deshalb ein eigenes
+   Token statt eines Tauschs.
+
+   EINE Datei für vier Schnitte: es ist eine VARIABLE Schrift
+   (`wght` 200–800), also gilt hier dasselbe wie oben — `font-weight:
+   200 800`, ein zusätzlicher Schnitt kostet nichts. Selbst gehostet aus
+   demselben Grund wie Inter (kein Google-Aufruf im Kundenbrowser; der
+   Skill-Abgleich §3.10 nennt genau das als die eine Abweichung von der
+   Skill-Vorgabe `@import url(…)`).
+
+   Lizenz: SIL Open Font License 1.1 — `../assets/fonts/OFL-plus-jakarta-sans.txt`.
+   ------------------------------------------------------------------ */
+
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  src: url('../assets/fonts/plus-jakarta-sans-latin.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}

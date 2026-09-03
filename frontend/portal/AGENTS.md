@@ -3030,6 +3030,41 @@ mit dem SPLIT beschrieb. Auf einer Stunde konnte damit „Steuerung −2,67 €"
   aus `derived.json` (`erwartet` == woertlich `neu.speicher`). Wer die Ableitung aendert, aendert
   sie gegen diese Datei — nicht gegen den eigenen Kopf.
 
+## Erlöse „Neu modern" (Variante C) · P0 — das Fundament für die ganze Fläche
+
+Konzept `data/vp-erloese-lesbar-konzept-u3` §3.10 (Captain-Entscheide E1 = Variante C,
+**E12 = Pilot fürs ganze Portal**, E5 Typo-Skala, E6 Chips nur Zustandswörter, E8 Minus mit
+Zeichen). P0 ist das FUNDAMENT — Tokens, Schrift, Leisten-Kleid, EINE Chip-Klasse, die Skala.
+Die Karten-ANATOMIE (Ergebnis-Karte, Ebenen, Kartenköpfe, Cockpit, Portfolio) räumen P1–P6.
+
+- **Die Tokens stehen in EINEM zweiten `:root`-Block in `src/index.css`** (`--vp-c-*` Palette,
+  `--vp-erl-fs-*`/`-fw-*`/`-lh-*` die Skala). **Kein Haus-Token ist umdefiniert** — die C-Werte
+  liegen NEBEN ihnen, damit jede weitere Fläche nachzieht, ohne dass eine bestehende kippt.
+- **Die Sechser-Skala ist 12 · 14 · 16 · 20 · 24 · 48** (+ 36 für den Hero am Telefon), die
+  Gewichte sind {400, 600, 700, 800}. Sie gilt für die VIER Erlöse-Blätter (`Erloese.css`,
+  `SpeicherBlock.css`, `SteuerungFormel.css`, `ErloesKomposition.css`) und wird von
+  `src/erloeseSkala.test.ts` an den AUSGELIEFERTEN Dateien nachgeprüft — eine neue Regel mit
+  `font-size: 0.82rem` fällt dort auf, bevor sie eine Fläche erreicht.
+- **`.vp-chip` ist die EINE Chip-Form** (`index.css`), `.vp-chip--warn` ihr einziger
+  Modifikator. Die fünf früheren Formen (`.vp-ez-chip`, `.vp-ez-chip-warn`, `.vp-spb-chip`,
+  `.vp-spb-badge`, `.vp-prov`) hängen daran und setzen ihre Form NICHT mehr selbst.
+  ⚠ Der frühere `.vp-chip` war eine interaktive TASTE und heißt seither **`.vp-chip-action`**
+  (Auswahl-Chips im Anlagen-Dialog, Voreinstellungen der Optimizer-Seite) — eine Taste ist kein
+  Zustandswort.
+- **⚠ DIE LADEREIHENFOLGE ENTSCHEIDET, WO EINE LEISTEN-FARBE STEHEN MUSS.** `src/index.css`
+  kommt aus `main.tsx`, `src/shell/Shell.css` aus `AppShell.tsx` — also SPÄTER. Zwei Regeln
+  gleicher Spezifität (je EINE Klasse) entscheidet damit die Reihenfolge, und das C-Kleid
+  verliert. Gemessen: die Telefon-Leiste blieb weiß mit dunkler Schrift (1,0:1), der Pfad der
+  Kopfzeile stand mit 2,9:1 auf dem dunklen Grund. **Regel: eine Farbe, die eine Regel in
+  `Shell.css` ebenfalls setzt, gehört NACH `Shell.css`** (`.vp-bottombar*`, `.vp-crumb-*`,
+  der Zähler der Anlagen-Navigation); nur was dort gar nicht vorkommt oder wo `index.css` die
+  höhere Spezifität hat (`.vp-sidebar .vp-navitem`), darf in `index.css` bleiben. Dasselbe gilt
+  für die Bereichs-Reiter — sie liegen deshalb in `BereichTabs.css`.
+- **Der Browser-Beweis ist `e2e/erloese-c-p0.html`** (Leisten mit den ECHTEN Klassennamen +
+  eine Typo-Probe) neben `e2e/erloese-proof.html` (die Fläche mit ihren 15 Zuständen). Der
+  Messweg steht im PR-Rumpf des P0-Merges; er misst NUR die Klassen der vier Blätter, denn
+  `#root` einer Fixture-Seite enthält auch die Seiten-Chrome (das ist P3).
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

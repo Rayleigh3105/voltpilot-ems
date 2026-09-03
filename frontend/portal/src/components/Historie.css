@@ -274,31 +274,12 @@
 
 /* --- Ehrlichkeits-Abzeichen (report §7) ----------------------------------- */
 
-.vp-prov {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.vp-prov-gemessen {
-  background: #e8f5e9;
-  color: #1b5e20;
-}
-
-.vp-prov-bewertet {
-  background: #edf2fa;
-  color: #1e3a5f;
-}
-
-.vp-prov-geplant {
-  background: var(--vp-neutral-soft, #eef1f5);
-  color: #4b5563;
-}
+/* ⚠ Das Abzeichen trägt seine FORM seit P0 (Variante C) nicht mehr hier — sie
+   steht EINMAL in `.vp-chip` (`index.css`), zusammen mit den vier anderen
+   Chip-Formen der Erlöse-Flächen. Auch die drei Herkunfts-TÖNE fallen dort auf
+   die eine neutrale Form zusammen (Prinzip 5: „neutral oder Warnton, nichts
+   dazwischen"); die Klassen bleiben im Markup, sie sind die maschinenlesbare
+   Herkunft und nicht ihre Farbe. */
 
 /* --- Zeit-Leiste: klebend, unter der Kopfzeile der Schale ----------------- */
 
