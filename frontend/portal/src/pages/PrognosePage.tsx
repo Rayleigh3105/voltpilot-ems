@@ -11,6 +11,7 @@ import {
   type ForecastModelId,
   type ForecastModelState,
   type ForecastQuality,
+  type HistoryRange,
   type Site,
 } from '../api';
 import { NBSP } from '../format';
@@ -50,6 +51,15 @@ import { showTechnicalLayer } from '../rollen';
 import { Button } from '../../designsystem/components/core/Button';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useIsPhone } from '../useIsPhone';
+import {
+  VerlaufFuss,
+  VerlaufKopf,
+  ZeitLeisteRahmen,
+  ZeitSegment,
+} from '../components/HistorieWelt';
+import { historieHash } from '../historieWelten';
+import { parseVerlaufParams } from '../verlauf';
+import { replaceCurrentNavigation } from '../navigationBlocker';
 import './Prognose.css';
 
 /**
@@ -84,6 +94,29 @@ function kw(v: number | null | undefined, digits = 2): string {
     : `${Number(v).toLocaleString('de-DE', { maximumFractionDigits: digits })}${NBSP}kW`;
 }
 
+/**
+ * Die drei Bewertungsfenster (§4.5). Sie reisen im `z=`-Parameter der Adresse,
+ * damit es EIN Vokabular für alle sechs Verlauf-Reiter gibt — die Wörter
+ * bedeuten hier nur etwas anderes als auf Messwerten (dort Kalenderzeiträume,
+ * hier die Zahl der bewerteten Tage).
+ */
+const PROGNOSE_FENSTER = [
+  { id: '7', label: '7 Tage' },
+  { id: '14', label: '14 Tage' },
+  { id: '30', label: '30 Tage' },
+] as const;
+
+const FENSTER_WORT: Record<number, HistoryRange> = { 7: 'day', 14: 'week', 30: 'month' };
+
+/** `z=`-Wort → Fenster. Alles Unbekannte fällt auf 7 zurück (die alte Vorgabe). */
+function fensterAusWort(range: HistoryRange): number {
+  const treffer = Object.entries(FENSTER_WORT).find(([, w]) => w === range);
+  return treffer ? Number(treffer[0]) : 7;
+}
+
+/** Der Lead-Satz des früheren Seitenkopfs (`SUB_PAGES.prognose`, bis P1). */
+const PROGNOSE_LEAD = 'Welches Prognosemodell Ihre Anlage plant und wie genau es ist.';
+
 export function PrognosePage(props: {
   sites: Site[];
   selectedSite: string | null;
@@ -100,6 +133,17 @@ export function PrognosePage(props: {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  /**
+   * Das BEWERTUNGSFENSTER (V3, Paket P1) — der Zeitraum dieses Reiters.
+   *
+   * ⚠ Er steht in der ADRESSE wie jeder andere Verlauf-Zeitraum, aber mit
+   * eigenem Vokabular: `z=tag|woche|monat` heißt hier 7 · 14 · 30 Tage. Ein
+   * Lesezeichen ohne Parameter landet auf 7 Tagen — der Wert, den `verdikt`
+   * schon vorher als Vorgabe rechnete, also ändert sich für einen Bestands-Link
+   * kein Zeichen.
+   */
+  const [init] = useState(() => parseVerlaufParams(window.location.hash));
+  const [tage, setTage] = useState<number>(() => fensterAusWort(init.range));
 
   useEffect(() => {
     if (!site) {
@@ -110,14 +154,26 @@ export function PrognosePage(props: {
     setLoading(true);
     setErr(null);
     api
-      .forecastQuality(site.id)
+      // Das Fenster des Segments ist AUCH das Fenster des Abrufs — sonst zeigte
+      // die Leiste „30 Tage" über Zahlen aus einem anderen Zeitraum.
+      .forecastQuality(site.id, tage)
       .then((q) => active && setQuality(q))
       .catch((e) => active && setErr(e instanceof ApiError ? e.message : 'Fehler'))
       .finally(() => active && setLoading(false));
     return () => {
       active = false;
     };
-  }, [site?.id, reloadKey]);
+  }, [site?.id, tage, reloadKey]);
+
+  /**
+   * Das Fenster in die ADRESSE (`replaceState`, wie auf den anderen Reitern).
+   * Nur als Reiter einer Anlage — als eigenständige Seite mit Anlagen-Wähler
+   * gehört die Adresse nicht dieser Anlage.
+   */
+  useEffect(() => {
+    if (!props.embedded || !site) return;
+    replaceCurrentNavigation(historieHash(site.id, 'prognose', FENSTER_WORT[tage] ?? 'day'));
+  }, [props.embedded, site?.id, tage]);
 
   /*
    * Der Prognose-Schalter (Captain-Auftrag 19.08.2026). Er gilt JE ANLAGE und
@@ -202,6 +258,28 @@ export function PrognosePage(props: {
 
   return (
     <>
+      {/* V1 · Als Reiter des Verlaufs ist der Seitenkopf unsichtbar (Paket P1):
+          sein Titel + Lead standen im `SUB_PAGES`-Kopf ÜBER den Bereichs-Reitern
+          und schoben sie von 140 auf 287 px. Als eigenständige Seite (mit
+          Anlagen-Wähler) behält er seinen sichtbaren Kopf. */}
+      {props.embedded && <VerlaufKopf titel="Prognosequalität" />}
+      {/* V3 · Das Bewertungs-FENSTER als Segment — dieselbe Leiste wie auf den
+          fünf anderen Reitern. Es ist ein ECHTER Schalter: er setzt das Fenster
+          des Abrufs (`forecastQuality(…, tage)`) UND die Zahl der Bewertungen,
+          über die das Verdikt mittelt. */}
+      {props.embedded && (
+        <ZeitLeisteRahmen
+          mobil={isPhone}
+          zeile1={
+            <ZeitSegment
+              label="Bewertungszeitraum"
+              optionen={PROGNOSE_FENSTER}
+              wert={String(tage)}
+              onWert={(w) => setTage(Number(w))}
+            />
+          }
+        />
+      )}
       {!props.embedded && (
         <div className="vp-page-head">
           <div className="titles">
@@ -319,7 +397,7 @@ export function PrognosePage(props: {
                       </InfoTip>
                     </div>
                     <div className="vp-pq-verdikt">
-                      {verdikt(quality.accuracy, activeByKind).map((z) => (
+                      {verdikt(quality.accuracy, activeByKind, tage).map((z) => (
                         <div key={z.kind} className="vp-pq-zeile">
                           <span className="vp-pq-art">{z.art}</span>
                           <span className="vp-pq-wert">
@@ -359,7 +437,7 @@ export function PrognosePage(props: {
                   <div className="vp-grid vp-grid-two">
                     {(['load', 'pv'] as const).map((kind) => {
                       const model = activeByKind[kind];
-                      const recent = mittlereMae(quality.accuracy, model);
+                      const recent = mittlereMae(quality.accuracy, model, tage);
                       return (
                         <div key={kind} className="vp-kind-card">
                           <div className="vp-kind-head">
@@ -670,6 +748,8 @@ export function PrognosePage(props: {
               )}
             </>
           )}
+          {/* V1 · Der Lead-Satz des früheren Seitenkopfs — wörtlich, am Fuß. */}
+          {props.embedded && <VerlaufFuss text={PROGNOSE_LEAD} />}
         </>
       )}
 
