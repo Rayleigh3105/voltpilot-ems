@@ -8,6 +8,7 @@ import {
   buildLastspitzenUpdate,
   isLeistungspreisActive,
   lastspitzenkappungCard,
+  lastspitzenPerioden,
   lastspitzenProof,
   marktoptimierungCard,
   marktoptimierungLine,
@@ -267,5 +268,56 @@ describe('admin contract fields (defensively probed, sibling task vp-peakshave-c
     expect(cleared.leistungspreisAbrechnung).toBeNull();
     expect(cleared.lastspitzenReserveKw).toBeNull();
     expect(cleared.wearCostCtPerKwh).toBe(4);
+  });
+});
+
+describe('P1 · die blätterbaren Abrechnungsperioden (V3)', () => {
+  const peak = (over: Partial<PeakShaving> = {}): PeakShaving => ({
+    leistungspreisEurKw: 120,
+    abrechnung: 'jahr',
+    periodStart: '2026-01-01',
+    peakKw: 8.7,
+    baselinePeakKw: 9.4,
+    avoidedKw: 0.7,
+    avoidedEur: 84,
+    history: [
+      { periodStart: '2025-01-01', peakKw: 11, baselinePeakKw: 12, avoidedKw: 1, avoidedEur: 120 },
+      { periodStart: '2026-01-01', peakKw: 8.5, baselinePeakKw: 9.4, avoidedKw: 0.9, avoidedEur: 108 },
+    ],
+    ...over,
+  });
+
+  it('nennt die Perioden beim Namen — die Art der Abrechnung steht mit drin', () => {
+    expect(lastspitzenPerioden(peak()).map((p) => p.label)).toEqual([
+      'Abrechnungsjahr 2025',
+      'Abrechnungsjahr 2026',
+    ]);
+    expect(lastspitzenPerioden(peak({ abrechnung: 'monat', periodStart: '2026-09-01', history: [] }))[0].label)
+      .toBe('Abrechnung September 2026');
+  });
+
+  it('für die LAUFENDE Periode gewinnt der Kopf — er ist der jüngere Stand', () => {
+    const p = lastspitzenPerioden(peak());
+    const laufend = p[p.length - 1];
+    expect(laufend.laufend).toBe(true);
+    // 8,7 aus dem Kopf, nicht 8,5 aus der Historien-Zeile.
+    expect(laufend.peakKw).toBe(8.7);
+    expect(laufend.avoidedEur).toBe(84);
+    // Eine vergangene Periode bleibt, was die Historie sagt.
+    expect(p[0].peakKw).toBe(11);
+    expect(p[0].laufend).toBe(false);
+  });
+
+  it('ohne eine einzige gemessene Periode bleibt der LAUFENDE Eintrag — ehrlich mit null', () => {
+    const p = lastspitzenPerioden(
+      peak({ history: [], peakKw: null, avoidedKw: null, avoidedEur: null }),
+    );
+    expect(p).toHaveLength(1);
+    expect(p[0].laufend).toBe(true);
+    expect(p[0].peakKw).toBeNull();
+  });
+
+  it('ohne Block gibt es nichts zu blättern', () => {
+    expect(lastspitzenPerioden(null)).toEqual([]);
   });
 });

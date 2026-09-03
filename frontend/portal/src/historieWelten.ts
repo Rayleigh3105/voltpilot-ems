@@ -129,15 +129,33 @@ export function availableWelten(surface: AnlageSurface | null | undefined): Welt
 }
 
 /**
+ * Ein Reiter des Verlaufs, der einen Zeitraum in seiner Adresse führt.
+ *
+ * ⚠ **Das ist ADDITIV zu {@link WeltId} und darf es bleiben.** Die zwei Welten
+ * teilen sich Kopf, Fuß und Ehrlichkeits-Abzeichen (`WELTEN`); die vier anderen
+ * Reiter teilen sich davon nur den Zeitraum in der Adresse (Paket P1). Sie in
+ * `WeltId` aufzunehmen hieße, ihnen eine `Welt`-Zeile zu erfinden, die niemand
+ * rendert.
+ */
+export type VerlaufZeitReiter = WeltId | 'marktpreise' | 'lastspitzen' | 'prognose';
+
+/**
  * Der Link in eine Welt — MIT Zeitraum, damit der Wechsel ihn mitnimmt.
  *
  * Die Parameter sind die des bestehenden Deep-Links (`z=` Zeitraum, `at=`
  * Anker, `verlauf.ts`), also bleibt es EIN Vokabular für Welt-Wechsel,
  * Lesezeichen und Cockpit-Sprung.
+ *
+ * ⚠ Seit P1 bauen ihn AUCH die vier Reiter ohne eigene Welt (Marktpreise,
+ * Lastspitzen, Prognose) — der Zeitraum ist dort dieselbe Sache und gehört in
+ * dieselbe Adresse. **Rein additiv:** ein Lesezeichen OHNE Parameter
+ * (`#/anlage/{id}/marktpreise`) bleibt gültig und landet auf dem Vorgabe-
+ * Zeitraum, denn `parseVerlaufParams` fällt für jeden unbekannten oder fehlenden
+ * Wert sicher zurück.
  */
 export function historieHash(
   siteId: string,
-  welt: WeltId,
+  welt: VerlaufZeitReiter,
   range: HistoryRange,
   at?: string | null,
 ): string {
