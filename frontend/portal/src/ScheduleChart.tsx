@@ -69,6 +69,7 @@ import {
 } from './components/ChartExplain';
 import { chartDetailKey } from './useChartDetail';
 import { consumerShade, type ConsumerLayer } from './consumerSchedule';
+import { Aufklapper } from './components/Aufklapper';
 import './components/Fahrplan.css';
 
 /**
@@ -143,6 +144,7 @@ export function ScheduleChart({
   selectedIndex,
   consumers,
   plantKind,
+  verlauf = false,
   showPhaseBand = false,
 }: {
   plan: SchedulePlan;
@@ -178,6 +180,21 @@ export function ScheduleChart({
    * ein falsch abgeleiteter Satz, und der ist schlimmer als keiner (r2 §10).
    */
   plantKind?: PlanWordingKind;
+  /**
+   * P6 · der Rahmen des Bereichs „Verlauf" (Konzept
+   * `vp-verlauf-sprache-konzept-v5` §3.2 V6, §4.4 Karte 3): **Bild zuerst**,
+   * die drei Schicht-Schalter als `.vp-chip`-Form DARUNTER (44-px-Ziel), die
+   * neun Legenden-Zeilen in einem V8-Aufklapper „Was die Linien zeigen", die
+   * Hinweise als `.vp-c-note` — und WEDER Kernsatz NOCH `vp-insight`: beide
+   * gehören dem Wirt, der sie als Kernsatz mit Sekundärzeile über das Bild
+   * setzt (V11: nie eine zweite Fläche in Kategoriefarbe).
+   *
+   * ⚠ **Dieses Bauteil ist mit der Fahrplan-Seite GETEILT.** Ohne die Prop ist
+   *   jede Zeile seines Baums byte-identisch zu vorher — die Reihenfolge, die
+   *   Klassen und die zwei Kästen bleiben, was sie sind. Wer hier etwas
+   *   GLOBAL ändert, ändert Fahrplan-Seite und Cockpit mit.
+   */
+  verlauf?: boolean;
   /**
    * UX-Runde r7 (Konzept A+C): das 0-24h-Phasen-Band als DRITTE Chart-Spur
    * DIREKT unter dem Leistungs-Panel, auf DERSELBEN Zeitachse. Es beantwortet
@@ -1417,36 +1434,40 @@ export function ScheduleChart({
     ? planKernaussage(plan.slots, plantKind, new Date(), plan.slotMinutes || 15)
     : null;
 
-  return (
-    <div>
-      <ChartHeadline kern={kern} />
-      <div className="vp-sched-layers" role="group" aria-label="Zusätzliche Schichten">
-        {SERIES_GROUPS.filter((g) => groupAvailable[g.id]).map((g) => {
-          const on = !hiddenGroups.has(g.id);
-          return (
-            <button
-              key={g.id}
-              type="button"
-              className={`vp-sched-layer${on ? ' on' : ''}`}
-              aria-pressed={on}
-              onClick={() =>
-                setHiddenGroups((cur) => {
-                  const next = toggleGroup(cur, g.id);
-                  try {
-                    sessionStorage.setItem(SCHED_GROUPS_KEY, [...next].join(','));
-                  } catch {
-                    /* Speicher nicht verfügbar - der Zustand lebt nur im Bild. */
-                  }
-                  return next;
-                })
-              }
-            >
-              {on ? g.label : `+ ${g.label}`}
-            </button>
-          );
-        })}
-      </div>
-      <ChartLegend items={legend} />
+  // ⚠ Die vier Bausteine werden EINMAL gebaut und in ZWEI Reihenfolgen
+  //   ausgegeben — so kann der Verlauf-Rahmen nie einen anderen Inhalt zeigen
+  //   als die Fahrplan-Seite, nur eine andere Ordnung.
+  const schalter = (
+    <div className="vp-sched-layers" role="group" aria-label="Zusätzliche Schichten">
+      {SERIES_GROUPS.filter((g) => groupAvailable[g.id]).map((g) => {
+        const on = !hiddenGroups.has(g.id);
+        return (
+          <button
+            key={g.id}
+            type="button"
+            className={`vp-sched-layer${on ? ' on' : ''}`}
+            aria-pressed={on}
+            onClick={() =>
+              setHiddenGroups((cur) => {
+                const next = toggleGroup(cur, g.id);
+                try {
+                  sessionStorage.setItem(SCHED_GROUPS_KEY, [...next].join(','));
+                } catch {
+                  /* Speicher nicht verfügbar - der Zustand lebt nur im Bild. */
+                }
+                return next;
+              })
+            }
+          >
+            {on ? g.label : `+ ${g.label}`}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const bild = (
+    <>
       {/* Zwei Panels brauchen mehr Höhe als eine Fläche - `panels` ist die
           Zwei-Panel-Stufe der `.vp-chart`-Höhenklassen. Am Telefon bleiben sie
           UNTEREINANDER in derselben Instanz (sie teilen ja die Zeitachse).
@@ -1471,16 +1492,58 @@ export function ScheduleChart({
           ))}
         </ul>
       )}
-      {istNote && (
-        <p className="vp-note vp-plan-ist" style={{ margin: 'var(--vp-space-2) 0 0' }}>
-          {istNote}
-        </p>
-      )}
-      {socLine && (
-        <p className="vp-note vp-plan-soc" style={{ margin: 'var(--vp-space-2) 0 0' }}>
-          {socLine}
-        </p>
-      )}
+    </>
+  );
+
+  // Die zwei Hinweise. Im Verlauf-Rahmen tragen sie die Fuß-Form des Bereichs
+  // (`.vp-c-note`, 14/400 muted, V11), sonst die Optik der Fahrplan-Seite.
+  const hinweise = (
+    <>
+      {istNote &&
+        (verlauf ? (
+          <p className="vp-c-note vp-plan-ist">{istNote}</p>
+        ) : (
+          <p className="vp-note vp-plan-ist" style={{ margin: 'var(--vp-space-2) 0 0' }}>
+            {istNote}
+          </p>
+        ))}
+      {socLine &&
+        (verlauf ? (
+          <p className="vp-c-note vp-plan-soc">{socLine}</p>
+        ) : (
+          <p className="vp-note vp-plan-soc" style={{ margin: 'var(--vp-space-2) 0 0' }}>
+            {socLine}
+          </p>
+        ))}
+    </>
+  );
+
+  if (verlauf) {
+    // V6 · Bild → Schalter → Legende (im Aufklapper) → Hinweise.
+    // ⚠ WEDER `ChartHeadline` NOCH `ChartInsight`: der Wirt trägt beide über
+    //   dem Bild (Kernsatz + Sekundärzeile). Stünden sie hier zusätzlich,
+    //   sagte die Karte dasselbe zweimal.
+    return (
+      <div>
+        {bild}
+        <div className="vp-c-bild-schichten">{schalter}</div>
+        <Aufklapper titel="Was die Linien zeigen">
+          <div className="vp-c-bild-legende vp-c-bild-legende--spalten">
+            <ChartLegend items={legend} />
+          </div>
+        </Aufklapper>
+        {hinweise}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <ChartHeadline kern={kern} />
+      {schalter}
+      <ChartLegend items={legend} />
+      {bild}
+      {hinweise}
       {insight && (
         <ChartInsight>
           {insight.map((part, i) =>

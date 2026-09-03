@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import type { PeakShaving } from '../api';
 import { NARROW_PX } from '../chartStyle';
 import { chartTheme } from '../chartTheme';
 import { eur, fmtNum } from '../format';
 import { useEChart } from '../useEChart';
+import { Aufklapper } from './Aufklapper';
 import { ChartInsight, ChartLegend, ChartSubtitle, type LegendItem } from './ChartExplain';
 
 /**
@@ -22,9 +24,34 @@ export function periodTick(periodStart: string, abrechnung: PeakShaving['abrechn
     : String(d.getFullYear());
 }
 
-export function PeakHistoryChart({ peak }: { peak: PeakShaving }) {
+/** Die zwei Reihen — ihre Namen tragen Legende UND Serie, damit ein Schalter
+ *  nie eine Reihe meint, die das Bild anders nennt. */
+const REIHE_OHNE = 'Bezugsspitze ohne Speicher';
+const REIHE_MIT = 'Gehaltene Spitze mit Speicher';
+
+export function PeakHistoryChart({
+  peak,
+  verlauf = false,
+}: {
+  peak: PeakShaving;
+  /**
+   * P6 · der Rahmen des Bereichs „Verlauf" (Konzept `vp-verlauf-sprache-konzept-v5`
+   * §3.2 V6): **Bild zuerst**, die Legende als `.vp-chip`-SCHALTER darunter
+   * (E7 = a), die Erklärung im Aufklapper, und die Kernaussage übernimmt der
+   * Wirt (er trägt sie als Kernsatz ÜBER dem Bild).
+   *
+   * ⚠ Ohne die Prop ist das Bauteil **byte-identisch** zu vorher — jeder andere
+   *   Aufrufer bleibt unberührt.
+   */
+  verlauf?: boolean;
+}) {
   const t = chartTheme();
   const history = peak.history;
+
+  // E7 = a · Legenden-SCHALTER statt Zoom-Geste. Nur im Verlauf-Rahmen: der
+  // alte Rahmen kennt keine schaltbare Legende, und ein stiller Zustand, den
+  // niemand umlegen kann, wäre eine Reihe weniger ohne Grund.
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set<string>());
 
   const ref = useEChart(
     (chart, width) => {
@@ -73,6 +100,9 @@ export function PeakHistoryChart({ peak }: { peak: PeakShaving }) {
             splitLine: { lineStyle: { color: t.grid } },
             axisLabel: { color: t.axis },
           },
+          // ⚠ Die Reihen werden GEFILTERT, nicht auf `[]` gesetzt: eine leere
+          //   Reihe bliebe in der Tooltip-Liste stehen und behauptete einen
+          //   Wert, den das Bild nicht zeichnet.
           series: [
             {
               name: 'Ohne Speicher',
@@ -89,20 +119,54 @@ export function PeakHistoryChart({ peak }: { peak: PeakShaving }) {
               itemStyle: { color: t.charge, borderRadius: 2 },
               z: 2,
             },
-          ],
+          ].filter((_, i) => !hidden.has(i === 0 ? REIHE_OHNE : REIHE_MIT)),
         },
         true,
       );
     },
-    [peak, t],
+    [peak, t, hidden],
   );
 
   const legend: LegendItem[] = [
-    { color: t.discharge, label: 'Bezugsspitze ohne Speicher', unit: 'kW', shape: 'bar' },
-    { color: t.charge, label: 'Gehaltene Spitze mit Speicher', unit: 'kW', shape: 'bar' },
+    { color: t.discharge, label: REIHE_OHNE, unit: 'kW', shape: 'bar' },
+    { color: t.charge, label: REIHE_MIT, unit: 'kW', shape: 'bar' },
   ];
 
   const totalAvoidedEur = history.reduce((s, h) => s + h.avoidedEur, 0);
+
+  const erklaerung =
+    'Ihre höchste Viertelstunden-Bezugsspitze je Abrechnungsperiode – mit und ohne ' +
+    'Speichereinsatz. Die Lücke ist die vermiedene Spitze. Tippen Sie eine Kachel der ' +
+    'Legende an, um eine Reihe aus- oder einzublenden.';
+
+  if (verlauf) {
+    // V6 · die Reihenfolge IST die Aussage: BILD → Legende → Erklärung. Der
+    // Kernsatz steht beim Wirt (er kennt die Periode, über die er spricht).
+    return (
+      <div>
+        <div ref={ref} className="vp-c-bild vp-chart" />
+        <div className="vp-c-bild-legende">
+          <ChartLegend
+            items={legend}
+            hidden={hidden}
+            onToggle={(label) =>
+              setHidden((prev) => {
+                const next = new Set(prev);
+                // ⚠ Die LETZTE sichtbare Reihe lässt sich nicht ausblenden — ein
+                //   leeres Bild ist keine Antwort (das `toggleSerie`-Muster).
+                if (next.has(label)) next.delete(label);
+                else if (next.size < legend.length - 1) next.add(label);
+                return next;
+              })
+            }
+          />
+        </div>
+        <Aufklapper titel="Wie lese ich das Bild?">
+          <p className="vp-c-bild-erklaerung">{erklaerung}</p>
+        </Aufklapper>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -120,4 +184,16 @@ export function PeakHistoryChart({ peak }: { peak: PeakShaving }) {
       )}
     </div>
   );
+}
+
+/**
+ * P6 · die Kernaussage des Bildes — ABGELEITET, nie behauptet: ohne vermiedene
+ * Kosten über dem Rauschboden steht dort nichts (der Wirt zeigt dann die
+ * Erklärung allein). Sie ist wörtlich der Satz, den der alte Rahmen als
+ * `ChartInsight` UNTER dem Bild trug.
+ */
+export function peakVerlaufKernsatz(peak: PeakShaving): string | null {
+  const total = peak.history.reduce((s, h) => s + h.avoidedEur, 0);
+  if (peak.history.length === 0 || total <= 0.005) return null;
+  return `Über die gezeigten Perioden hat der Speicher rund ${eur(total)} € an Leistungskosten vermieden.`;
 }

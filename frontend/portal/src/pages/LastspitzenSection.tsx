@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
-import { Icon } from '../../designsystem/components/core/Icon';
-import { KpiCard } from '../../designsystem/components/shell/KpiCard';
 import { api, ApiError, type Earnings, type PeakShaving, type SchedulePlan, type Site } from '../api';
+import { abrechnungLabel, lastspitzenPerioden } from '../moduleSurface';
 import {
-  abrechnungLabel,
-  lastspitzenPerioden,
-  lastspitzenProof,
-  peakCounterfactualTip,
-} from '../moduleSurface';
+  FAHRPLAN_LEER_SATZ,
+  VERLAUF_LEER_SATZ,
+  fahrplanKern,
+  fahrplanPeriodenNote,
+  hatPlan,
+  lastspitzeStatement,
+  lastspitzeZeilen,
+} from '../lastspitzenVerlauf';
+import { planInsightParts } from '../schedule';
 import {
   VerlaufFuss,
   VerlaufKopf,
@@ -16,11 +19,17 @@ import {
   ZeitLeisteRahmen,
 } from '../components/HistorieWelt';
 import { useIsPhone } from '../useIsPhone';
-import { eur, fmtNum } from '../format';
-import { PeakHistoryChart } from '../components/PeakHistoryChart';
+import { ChartHeadline } from '../components/ChartExplain';
+import { VerlaufKarte } from '../components/VerlaufKarte';
+import { VerlaufLedger } from '../components/VerlaufLedger';
+import { PeakHistoryChart, peakVerlaufKernsatz } from '../components/PeakHistoryChart';
 import { ScheduleChart } from '../ScheduleChart';
-import { InfoTip } from '../components/InfoTip';
-import { ChartCardSkeleton, EmptyState, ErrorState, Skeleton } from '../components/States';
+import {
+  EmptyState,
+  VerlaufFehler,
+  VerlaufKarteSkeleton,
+  VerlaufLeer,
+} from '../components/States';
 
 /**
  * U4 - the `Lastspitzen` subpage (`#/anlage/{id}/lastspitzen`, design §6 Face 2).
@@ -88,18 +97,22 @@ export function LastspitzenSection({ site }: { site: Site }) {
   }, [perioden.length, site.id]);
 
   if (earnErr && earnings == null) {
+    // V10 · der Fehler steht IN der Karte, unter der Überschrift, unter der
+    // sonst die Zahl stünde — nie in einer eigenen Kachel.
     return (
-      <Card padding="lg" radius="lg">
-        <ErrorState message={earnErr} onRetry={() => setReloadKey((k) => k + 1)} />
-      </Card>
+      <VerlaufKarte label="Ihre Lastspitze">
+        <VerlaufFehler satz={earnErr} onRetry={() => setReloadKey((k) => k + 1)} />
+      </VerlaufKarte>
     );
   }
 
   if (earnings == null) {
+    // V10 · das Skelett reserviert die Höhe des späteren Inhalts (Label + Satz),
+    // damit die Fläche beim Eintreffen der Zahl nicht springt.
     return (
-      <Card padding="lg" radius="lg">
-        <Skeleton height={140} radius="var(--vp-radius-md)" />
-      </Card>
+      <VerlaufKarte label="Ihre Lastspitze">
+        <VerlaufKarteSkeleton chart={false} legende={false} />
+      </VerlaufKarte>
     );
   }
 
@@ -115,15 +128,23 @@ export function LastspitzenSection({ site }: { site: Site }) {
     );
   }
 
-  const proof = lastspitzenProof(peak);
   const hasHistory = peak.history.length > 0;
   const target = plan?.peakTargetKw ?? null;
   const gezeigt = perioden[idx] ?? null;
-  const nichtsGemessen =
-    gezeigt == null ||
-    gezeigt.peakKw == null ||
-    gezeigt.avoidedKw == null ||
-    gezeigt.avoidedEur == null;
+
+  // ⚠ Jede Aussage der Fläche kommt aus DIESEN reinen Ableitungen
+  //   (`lastspitzenVerlauf.ts`) — der Reiter formuliert nichts selbst.
+  const statement = lastspitzeStatement(gezeigt, peak.abrechnung);
+  const zeilen = lastspitzeZeilen(gezeigt, peak);
+  const verlaufKern = peakVerlaufKernsatz(peak);
+  const periodenNote = fahrplanPeriodenNote(gezeigt);
+  // Der Insight-Satz des Plans — DIESELBE reine Ableitung, die `ScheduleChart`
+  // sonst selbst rendert; im Verlauf-Rahmen trägt ihn der Wirt als
+  // Sekundärzeile des Kernsatzes.
+  const planKern = fahrplanKern(
+    target,
+    plan != null ? planInsightParts(plan.slots, new Date()) : null,
+  );
 
   return (
     <>
@@ -152,95 +173,74 @@ export function LastspitzenSection({ site }: { site: Site }) {
         }
       />
 
-      {/* 1 · PS-4 proof of the SELECTED billing period. */}
-      <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-        <span className="vp-card-label">
-          Ihre Lastspitze · Abrechnung {abrechnungLabel(peak.abrechnung)}
-        </span>
-        {proof == null || nichtsGemessen ? (
-          <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
-            {gezeigt?.laufend !== false
-              ? (proof?.note ??
-                'In der laufenden Abrechnungsperiode liegen noch keine Messwerte vor.')
-              : `Für ${gezeigt.label} liegen keine Messwerte vor.`}
-          </p>
-        ) : (
-          <div className="vp-kpis" style={{ marginTop: 'var(--vp-space-3)' }}>
-            <KpiCard
-              icon={<Icon name="activity" size={20} />}
-              category="primary"
-              value={fmtNum(gezeigt.peakKw, 'kW')}
-              label={gezeigt.laufend ? 'Gehaltene Spitze diese Periode' : 'Gehaltene Spitze'}
-              title="Die höchste Viertelstunden-Bezugsspitze dieser Abrechnungsperiode"
-            />
-            <KpiCard
-              icon={<Icon name="trending-up" size={20} />}
-              category="dynamic"
-              value={`+${fmtNum(gezeigt.avoidedKw, 'kW')}`}
-              label={
-                <>
-                  Vermiedene Spitze
-                  <InfoTip label="Vermiedene Spitze erklären">
-                    {peakCounterfactualTip(peak)}
-                  </InfoTip>
-                </>
-              }
-              title="Um so viel liegt Ihre Spitze unter der einer Anlage ohne Speichereinsatz"
-            />
-            <KpiCard
-              icon={<Icon name="euro" size={20} />}
-              category="dynamic"
-              value={`${gezeigt.avoidedEur != null && gezeigt.avoidedEur >= 0 ? '+' : ''}${eur(gezeigt.avoidedEur ?? 0)} €`}
-              label="Ersparte Leistungskosten"
-              title="Vermiedene Spitze × Leistungspreis"
-            />
-          </div>
+      {/* KARTE 1 · das STATEMENT (§4.4, Captain-Entscheid E8 = a: „Statement auf
+          Marktpreise, Lastspitzen, Wetter"). Die drei `KpiCard`s — Icon-Kachel,
+          Wert 24 px, Karte in der Karte — sind entfallen: die EINE Zahl des
+          Reiters steht 36/800 auf der Fläche, die zwei anderen sind V5-Zeilen
+          mit ihrem Erklärtext als Sekundärzeile (bis P6 ein InfoTip bzw. ein
+          `title`, den am Telefon niemand erreichte). */}
+      <VerlaufKarte
+        label={`Ihre Lastspitze · Abrechnung ${abrechnungLabel(peak.abrechnung)}`}
+        provenienz="gemessen"
+        chip={
+          gezeigt?.laufend && statement.zahl ? (
+            <span className="vp-chip">Zwischenstand</span>
+          ) : undefined
+        }
+      >
+        {/* ⚠ „—" ist die ehrliche Antwort, nie eine 0 — der Grund steht im
+            Satz darunter (§4.4 Sonderzustände). */}
+        <p className="vp-c-stm-zahl" title={statement.titel ?? undefined}>
+          {statement.zahl ?? '—'}
+        </p>
+        <p className="vp-c-stm-satz">{statement.satz}</p>
+        {zeilen.length > 0 && (
+          <VerlaufLedger zeilen={zeilen} label="Beitrag des Speichers in dieser Periode" />
         )}
-      </Card>
+      </VerlaufKarte>
 
-      {/* 2 · Per-period history. */}
-      <Card padding="lg" radius="lg" style={{ minWidth: 0, marginTop: 'var(--vp-gap)' }}>
-        <span className="vp-card-label">Bezugsspitzen im Verlauf</span>
+      {/* KARTE 2 · V6 — Label → Kernsatz → BILD → Chip-Legende → Aufklapper.
+          Der 91-px-Untertitel und die Legende standen bis P6 VOR dem Bild und
+          schoben die Kurve aus dem ersten Bildschirm. */}
+      <VerlaufKarte label="Bezugsspitzen im Verlauf" provenienz="gemessen">
         {hasHistory ? (
-          <PeakHistoryChart peak={peak} />
+          <>
+            <ChartHeadline
+              kern={{
+                wert: null,
+                satz: verlaufKern,
+                grund: verlaufKern
+                  ? null
+                  : 'Für die gezeigten Perioden ist noch keine Ersparnis messbar.',
+                ton: 'ok',
+              }}
+            />
+            <PeakHistoryChart peak={peak} verlauf />
+          </>
         ) : (
-          <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
-            Sobald mehrere Abrechnungsperioden gemessen wurden, erscheint hier Ihr Verlauf –
-            mit und ohne Speichereinsatz.
-          </p>
+          <VerlaufLeer label="Bezugsspitzen im Verlauf" satz={VERLAUF_LEER_SATZ} />
         )}
-      </Card>
+      </VerlaufKarte>
 
-      {/* 3 · Fahrplan with the peak-target overlay.
-          ⚠ Der Fahrplan ist IMMER der kommende — es gibt keinen für eine
-          vergangene Periode. Wer zurückgeblättert hat, bekommt das gesagt,
-          statt den Plan stillschweigend der falschen Periode zuzuschreiben. */}
-      <Card padding="lg" radius="lg" style={{ minWidth: 0, marginTop: 'var(--vp-gap)' }}>
-        <span className="vp-card-label">Fahrplan & Ziel-Netzbezug</span>
-        {gezeigt != null && !gezeigt.laufend && (
-          <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
-            Der Fahrplan zeigt immer die kommenden Stunden, nicht {gezeigt.label}.
-          </p>
-        )}
+      {/* KARTE 3 · V6 + V8 + V11. Der Fahrplan ist IMMER der kommende — es gibt
+          keinen für eine vergangene Periode. Wer zurückgeblättert hat, bekommt
+          das gesagt, statt den Plan stillschweigend der falschen Periode
+          zuzuschreiben. */}
+      <VerlaufKarte label="Fahrplan & Ziel-Netzbezug" provenienz="geplant">
         {plan == null ? (
-          <ChartCardSkeleton stats={0} />
-        ) : plan.slots.length === 0 ? (
-          <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
-            Für heute liegt noch kein Fahrplan vor. Sobald Börsenpreise und Prognosen vorliegen,
-            plant VoltPilot den Speichereinsatz zum Halten Ihrer Zielspitze.
-          </p>
+          <VerlaufKarteSkeleton legende={false} />
+        ) : !hatPlan(plan) ? (
+          <VerlaufLeer label="Noch kein Fahrplan" satz={FAHRPLAN_LEER_SATZ} />
         ) : (
           <>
-            {target != null && (
-              <p className="vp-note" style={{ margin: 'var(--vp-space-1) 0 var(--vp-space-2)' }}>
-                Der Speicher plant so, dass Ihr Netzbezug unter dem Ziel von{' '}
-                <b>{fmtNum(target, 'kW', 0)}</b> bleibt (rote Linie).
-              </p>
-            )}
-            <ScheduleChart plan={plan} peakTargetKw={target} />
+            {/* V11 · der frühere `vp-insight`-Kasten ist die SEKUNDÄRZEILE des
+                Kernsatzes (`anker`) — nie eine zweite Fläche in Kategoriefarbe. */}
+            <ChartHeadline kern={planKern} />
+            <ScheduleChart plan={plan} peakTargetKw={target} verlauf />
+            {periodenNote && <p className="vp-c-note">{periodenNote}</p>}
           </>
         )}
-      </Card>
+      </VerlaufKarte>
       {/* V1 · Der Lead-Satz des früheren Seitenkopfs — wörtlich, am Fuß. */}
       <VerlaufFuss text={LASTSPITZEN_LEAD} />
     </>
