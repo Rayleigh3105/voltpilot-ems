@@ -33,6 +33,7 @@ import {
   RAHMUNG,
   skillBilanz,
   verdikt,
+  verdiktSekundaer,
 } from './prognose';
 import { NBSP } from './format';
 
@@ -114,6 +115,21 @@ describe('verdikt', () => {
       punkt('2026-08-09', 'load-persistence', 'load', 1),
     ];
     expect(verdikt(acc, AKTIV, 2)[0].wert).toBe(`±1${NBSP}kW`);
+  });
+});
+
+describe('verdiktSekundaer (P7)', () => {
+  it('sagt, WAS die Zahl ist - und rechnet dabei nichts nach', () => {
+    const acc = [punkt('2026-08-09', 'load-persistence', 'load', 0.7)];
+    expect(verdiktSekundaer(verdikt(acc, AKTIV)[0])).toBe(
+      'Mittlere Abweichung je Viertelstunde, letzte 1 Tag',
+    );
+  });
+
+  it('laesst bei „—" den GRUND allein stehen, statt eine Messung zu behaupten', () => {
+    // ⚠ „Mittlere Abweichung je Viertelstunde, noch keine Bewertung" waere ein
+    //   Satz ueber eine Messung, die es nicht gab.
+    expect(verdiktSekundaer(verdikt([], AKTIV)[0])).toBe('Noch keine Bewertung');
   });
 });
 

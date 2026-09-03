@@ -3,10 +3,18 @@ import { render, screen } from '@testing-library/react';
 import type { ForecastQuality } from '../api';
 
 /**
- * Die Mobil-Fassung der Prognosequalität (Mobil-Umbau Stufe 4) auf
- * Render-Ebene. Die Ableitungen sind in `prognose.test.ts` erschoepfend
- * geprueft - hier geht es um die REIHENFOLGE (Verdikt zuerst), darum, dass die
- * Essays erreichbar BLEIBEN, und darum, dass der Rechner unberuehrt ist.
+ * Der Reiter „Prognose" auf Render-Ebene (Konzept
+ * `vp-verlauf-sprache-konzept-v5` §4.5, Paket P7). Die Ableitungen sind in
+ * `prognose.test.ts` erschoepfend geprueft - hier geht es um die REIHENFOLGE
+ * (das Verdikt zuerst), darum, dass die Essays erreichbar BLEIBEN, und darum,
+ * dass BEIDE Breiten dieselbe Fläche zeigen.
+ *
+ * ⚠ **Der frühere Telefon/Rechner-Zwilling ist mit P7 entfallen.** Bis dahin
+ *   prüfte die letzte Zusicherung dieser Datei, dass der Rechner die alte
+ *   Fassung behält (Essay offen ganz oben, keine Aufklapper, keine
+ *   Verdikt-Karte). Genau das war die zweite Sprache, die der Bereich
+ *   abschafft: derselbe Essay lag zweimal im Baum. An ihrer Stelle steht jetzt
+ *   die Gegenprobe „an beiden Breiten dieselben Karten".
  */
 
 vi.mock('../ForecastQualityChart', () => ({
@@ -87,7 +95,7 @@ function rendere() {
   );
 }
 
-describe('Prognosequalität - Mobil-Fassung', () => {
+describe('Prognosequalität - der Reiter in den C-Bausteinen (P7)', () => {
   beforeEach(() => forecastQualityMock.mockResolvedValue(QUALITY));
   afterEach(() => {
     vi.clearAllMocks();
@@ -95,16 +103,22 @@ describe('Prognosequalität - Mobil-Fassung', () => {
     delete window.matchMedia;
   });
 
-  it('fuehrt am Telefon mit dem Verdikt: 2 Arten x Ø-Abweichung', async () => {
+  it('fuehrt mit dem Verdikt: 2 Arten x Ø-Abweichung als V5-Zeilen', async () => {
     setzeBreite(true);
     rendere();
 
     await screen.findByText('Wie gut Ihre Anlage vorhersagt');
+    // Die 24-px-Zahl der Sektion — E8 = a: KEIN Hero, sondern eine Zeile je Art.
     expect(screen.getByText(/±0,75\s?kW/)).toBeInTheDocument();
     expect(screen.getByText(/±1,36\s?kW/)).toBeInTheDocument();
-    // Beide Arten beim Namen - die Rahmung haengt daran.
-    expect(screen.getByText('Verbrauchsprognose (Last)')).toBeInTheDocument();
-    expect(screen.getByText('PV-Prognose (Erzeugung)')).toBeInTheDocument();
+    // Beide Arten beim Namen - die Rahmung haengt daran. Sie stehen seit P7 an
+    // mehreren Orten (Zeile, Aufklapper, Kurven-Label), deshalb `getAllByText`.
+    expect(screen.getAllByText('Verbrauchsprognose (Last)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('PV-Prognose (Erzeugung)').length).toBeGreaterThan(0);
+    // Die Sekundärzeile sagt, WAS die Zahl ist - nie nur „letzte 7 Tage".
+    expect(
+      screen.getAllByText(/Mittlere Abweichung je Viertelstunde/).length,
+    ).toBeGreaterThan(0);
   });
 
   it('das Verdikt steht VOR der ersten Kurve', async () => {
@@ -115,18 +129,30 @@ describe('Prognosequalität - Mobil-Fassung', () => {
     expect(verdikt.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('macht aus dem Kandidaten-Status eine Zwei-Zeilen-Wahrheit mit dem Ehrlichkeits-Satz', async () => {
+  it('macht aus jedem Kandidaten eine V5-Zeile mit dem Ehrlichkeits-Satz', async () => {
     setzeBreite(true);
     rendere();
     await screen.findByText('Wie gut Ihre Anlage vorhersagt');
 
+    // Der STAND steht in einem eigenen Element - er ist der Satz, den
+    // `kandidatenZeilen` formuliert, nicht ein Stueck einer laengeren Zeile.
     expect(screen.getByText('in 1 von 1 Bewertung genauer')).toBeInTheDocument();
     expect(screen.getByText('sammelt Daten · Tag 14/21')).toBeInTheDocument();
     expect(
       screen.getByText(/Kandidaten beeinflussen Ihre Steuerung nicht/),
     ).toBeInTheDocument();
-    // Die ausfuehrliche Kandidaten-Karte des Rechners ist am Telefon weg.
-    expect(screen.queryByText(/Zuletzt trainiert am/)).not.toBeInTheDocument();
+    // Der Fortschritt als Zahl RECHTS in der Zeile (Tabellenziffern) - der
+    // Satz „sammelt Daten · Tag 14/21" nennt ihn daneben in Worten.
+    const werte = screen
+      .getAllByText(/14\s?\/\s?21/)
+      .filter((e) => e.classList.contains('vp-c-led-val'));
+    expect(werte).toHaveLength(1);
+    // Und der Chip statt des `Badge variant="tint"` (gemessen 3,05 : 1).
+    const chip = screen.getByText('Schattenbetrieb');
+    expect(chip).toHaveClass('vp-chip');
+    // Die Vertiefung (Trainingsstand, Merkmale, Beleg) ist erreichbar, aber im
+    // Aufklapper - nicht mehr im taeglichen Scrollweg.
+    expect(screen.getByText(/Noch nicht trainiert/).closest('details')).not.toBeNull();
   });
 
   it('haelt die Essays erreichbar - als Aufklapper, Inhalt unveraendert', async () => {
@@ -152,17 +178,32 @@ describe('Prognosequalität - Mobil-Fassung', () => {
     expect(rahmung.closest('details')).toBeNull();
   });
 
-  it('laesst den Rechner unberuehrt: Essay zuerst, volle Kandidaten-Karte, kein Aufklapper', async () => {
-    setzeBreite(false);
+  it('zeigt an BEIDEN Breiten dieselben Karten - der Zwilling ist weg', async () => {
+    const karten = ['Wie gut Ihre Anlage vorhersagt', 'Aktive Modelle', 'Lernende Kandidaten'];
+    for (const phone of [true, false]) {
+      setzeBreite(phone);
+      const { unmount } = rendere();
+      await screen.findByText('Wie gut Ihre Anlage vorhersagt');
+      for (const k of karten) expect(screen.getByText(k)).toBeInTheDocument();
+      // Der Essay ist auf BEIDEN Breiten ein Aufklapper - er stand am Rechner
+      // offen VOR der Antwort, die man bei jedem Besuch sucht.
+      expect(screen.getByText('Was sehe ich hier?').closest('details')).not.toBeNull();
+      // ... und er liegt dabei GENAU EINMAL im Baum (bis P7 zweimal).
+      expect(screen.getAllByText('Was sehe ich hier?')).toHaveLength(1);
+      unmount();
+    }
+  });
+
+  it('nennt den leeren Zustand beim Namen, statt eine 0 zu behaupten', async () => {
+    forecastQualityMock.mockResolvedValue({ ...QUALITY, accuracy: [] });
+    setzeBreite(true);
     rendere();
 
-    await screen.findByText('Aktive Modelle');
-    // Der Einleitungs-Essay steht wie bisher offen ganz oben.
-    const essay = screen.getByText('Was sehe ich hier?');
-    expect(essay.closest('details')).toBeNull();
-    expect(screen.getByText('Lernende Kandidaten')).toBeInTheDocument();
-    expect(screen.getByText(/Noch nicht trainiert/)).toBeInTheDocument();
-    // Die Mobil-Verdikt-Karte existiert dort NICHT.
-    expect(screen.queryByText('Wie gut Ihre Anlage vorhersagt')).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/Die erste Bewertung entsteht nach dem ersten vollständigen Tag/),
+    ).toBeInTheDocument();
+    // Ohne Bewertung sagt die Zeile den GRUND, nie „±0 kW".
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Noch keine Bewertung').length).toBeGreaterThan(0);
   });
 });

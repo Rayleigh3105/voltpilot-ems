@@ -77,6 +77,20 @@ export function verdikt(
   });
 }
 
+/**
+ * P7 · Die Sekundärzeile der Verdikt-Zeile — sie sagt, WAS die Zahl darüber
+ * ist, und bei „—" ehrlich, warum es keine gibt.
+ *
+ * ⚠ Sie rechnet NICHTS: `note` kommt unverändert aus {@link verdikt}. Ohne
+ * Wert steht dort der Grund ALLEIN — „Mittlere Abweichung je Viertelstunde,
+ * noch keine Bewertung" behauptete eine Messung, die es nicht gab.
+ */
+export function verdiktSekundaer(z: VerdiktZeile): string {
+  return z.wert === '—'
+    ? z.note.charAt(0).toUpperCase() + z.note.slice(1)
+    : `Mittlere Abweichung je Viertelstunde, ${z.note}`;
+}
+
 /** Mittlere Ø-Abweichung EINES Modells über seine jüngsten `tage` Bewertungen. */
 export function mittlereMae(
   accuracy: readonly ForecastAccuracyPoint[],
