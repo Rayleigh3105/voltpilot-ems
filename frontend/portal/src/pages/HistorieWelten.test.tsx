@@ -443,7 +443,7 @@ describe('Welt B · Erlöse', () => {
     // zweites Mal als letzter Balken des Wasserfalls (die Zeile „Ergebnis"),
     // der die Addition beweist - deshalb wird der Hero gezielt adressiert.
     expect(
-      await screen.findByText('+ 999,26 €', { selector: '.vp-ez-hero' }),
+      await screen.findByText('+ 999,26 €', { selector: '.vp-c-stm-zahl' }),
     ).toBeInTheDocument();
     // ... und die Zeilen, aus denen sie entsteht (seit Revision 2 mit
     // 1-3-Wort-Namen, Konzept §3.12).
@@ -458,7 +458,7 @@ describe('Welt B · Erlöse', () => {
     expect(screen.getByText('Speicher an diesem Tag')).toBeInTheDocument();
     // Der Betrag steht ein zweites Mal in Schritt 3 der Rechenzeilen darunter
     // (dieselbe Rechnung, zweite Lesehöhe) - deshalb gezielt die Block-Zeile.
-    expect(screen.getByText(/\+ 161,44/, { selector: '.vp-spb-wert' })).toBeInTheDocument();
+    expect(screen.getByText(/\+ 161,44/, { selector: '.vp-c-sp-wert' })).toBeInTheDocument();
     expect(komposition).not.toHaveTextContent('161,44');
   });
 
@@ -479,13 +479,13 @@ describe('Welt B · Erlöse', () => {
 
     // Die Bestandszeile selbst - die Zahl steht seit Ebene 1 auch in der
     // Planwert-Rechnung der Speicher-Schritte, deshalb gezielt adressiert.
-    const satz = await screen.findByText(/44,2 kWh/, { selector: '.vp-spb-satz' });
+    const satz = await screen.findByText(/44,2 kWh/, { selector: '.vp-c-sp-bestand span' });
     expect(satz).toHaveTextContent('Speicherenergie für den Folgetag gespeichert');
     expect(satz).toHaveTextContent('Planwert 8,35 €');
     // Der Betrag bleibt sichtbar von der gemessenen Kasse getrennt.
     expect(satz.closest('p')).toHaveTextContent('Kein Abzug');
     // Die grosse Zahl bleibt die gemessene Kasse.
-    expect(screen.getByText('+ 999,26 €', { selector: '.vp-ez-hero' })).toBeInTheDocument();
+    expect(screen.getByText('+ 999,26 €', { selector: '.vp-c-stm-zahl' })).toBeInTheDocument();
     const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
     expect(komposition).not.toHaveTextContent('8,35');
   });
@@ -499,10 +499,10 @@ describe('Welt B · Erlöse', () => {
     // Speicher-Schritte (Ebene 1) ist eine andere Aussage und bleibt.
     // ⚠ Seit P1+P5 wohnt sie als Zeile 3 IM SpeicherBlock; ein Wächter auf dem
     //   abgelösten Wirt `.vp-erg-bestand` wäre stillschweigend wahr geworden.
-    // ⚠ `:not(.vp-spb-plan)`, weil Zeile 4 (der Planwert, P6/E6) dieselbe
-    //   ruhige Klasse trägt und HIER legitim steht — gesucht ist die
-    //   BESTANDSZEILE, und die fehlt ohne ihre Felder.
-    expect(document.querySelector('.vp-spb-still:not(.vp-spb-plan)')).toBeNull();
+    // ⚠ In Anatomie C hat der Bestand eine EIGENE Zeile in der Speicher-Karte
+    //   (§3.10 (3)); der Planwert wohnt seit E6 in den Schritten und kann sie
+    //   deshalb nicht mehr vortäuschen.
+    expect(document.querySelector('.vp-c-sp-bestand')).toBeNull();
     expect(screen.queryByText(BESTAND_BADGE)).not.toBeInTheDocument();
     expect(screen.queryByText(/Folgetag gespeichert/)).not.toBeInTheDocument();
   });
@@ -520,7 +520,7 @@ describe('Welt B · Erlöse', () => {
     expect(screen.queryByRole('heading', { level: 2, name: 'Was den Preis gemacht hat' })).toBeNull();
 
     // Der Bezugspreis steht in der Tabelle hinter „Preise & Vergütung".
-    const ebene2 = document.querySelector('details.vp-e2') as HTMLDetailsElement;
+    const ebene2 = document.querySelector('details.vp-c-preise') as HTMLDetailsElement;
     expect(ebene2).toBeTruthy();
     expect(within(ebene2).getByText('Bezugspreis')).toBeInTheDocument();
     expect(ebene2.textContent).toMatch(/4,9.ct/);
@@ -565,21 +565,22 @@ describe('Welt B · Erlöse', () => {
     );
   });
 
-  // P6/E6: die Karte „Geplante Speicher-Ersparnis" ist ENTFALLEN — die Zahl
-  // steht als Zeile 4 des Speicher-Blocks, direkt unter der gemessenen Zahl,
-  // mit der sie sich vergleicht. Die TRENNUNG der zwei Abzeichen bleibt.
-  it('trennt die BEWERTETE Zahl von der GEPLANTEN — Karte gegen Zeile', async () => {
+  // E6: die Karte „Geplante Speicher-Ersparnis" ist ENTFALLEN — die Zahl
+  // steht als SCHRITT der Speicher-Rechnung, direkt hinter der Rechnung, mit
+  // der sie sich vergleicht. Die TRENNUNG der zwei Abzeichen bleibt.
+  it('trennt die BEWERTETE Zahl von der GEPLANTEN — Fläche gegen Schritt', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
     await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
     expect(screen.queryByRole('heading', { level: 2, name: /Geplante Speicher-Ersparnis/ })).toBeNull();
-    const plan = document.querySelector('.vp-spb-plan') as HTMLElement;
-    expect(plan).toBeTruthy();
+    const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
+    expect(speicher).toBeTruthy();
+    const plan = within(speicher).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
     // Beide Abzeichen existieren - und zwar an verschiedenen Flächen.
     expect(screen.getAllByText('Bewertet').length).toBeGreaterThan(0);
-    expect(within(plan).getByText('Geplant')).toBeInTheDocument();
+    expect(plan.textContent).toMatch(/eine Plan-Zahl, keine Messung/);
     // Die geplante Zahl kommt weiterhin aus der Historie-Antwort.
     expect(plan.textContent).toMatch(/0,42/);
     // Der Tages-Nachweis + das Tagesprotokoll bleiben hier.

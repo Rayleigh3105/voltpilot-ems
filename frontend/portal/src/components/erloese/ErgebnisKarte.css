@@ -1,0 +1,560 @@
+/* ===========================================================================
+ * DIE ERGEBNIS-FLÄCHE, Variante C „Neu modern"
+ * (Konzept `vp-erloese-lesbar-konzept-u3` §3.10 „Anatomie C", Captain-Entscheid
+ * E1 = (c) vom 03.09.2026)
+ *
+ * Vier Bauteile, jedes mit typisierten Props (der react-Treffer des Skills,
+ * „single responsibility / typed props"):
+ *
+ *   1. `Statement`     — auf der FLÄCHE, keine Karte: Label, die eine Zahl,
+ *                        der eine Satz, die Einordnung.
+ *   2. `Kontoauszug`   — Karte mit den vier Ledger-Zeilen (Wasserfall).
+ *   3. `SpeicherKarte` — Karte „Ihr Speicher".
+ *   4. `PreiseZeile`   — flache Karte „Preise & Vergütung".
+ *
+ * ⚠ DIE TOKEN KOMMEN AUS P0 (`--vp-c-*`, `--vp-erl-fs-*`), das PARALLEL
+ *   gebaut wird. Jede Nennung trägt deshalb den Skill-Wert als Fallback —
+ *   liegt P0 noch nicht auf `main`, sieht die Fläche trotzdem exakt so aus,
+ *   wie sie soll, und der spätere Merge ändert kein Pixel.
+ *
+ * ⚠ EIN RAHMEN JE KARTE (§2 Prinzip 3): 1 px Rahmen, Radius 16, KEIN Schatten
+ *   (Skill: „sharp shadows if any" — wir nehmen keine). Sektionen trennen sich
+ *   durch Abstand, nie durch eine zweite Fläche.
+ *
+ * ⚠ FARBE NUR FÜR BEDEUTUNG (§2 Prinzip 4): die Reihenfarbe lebt AUSSCHLIESSLICH
+ *   im Balken (Kennung), die Vorzeichenfarbe ausschliesslich im Betrag (Urteil,
+ *   immer MIT Zeichen). Keine Fläche in Kategoriefarbe, kein farbiger Punkt.
+ * ========================================================================= */
+
+.vp-c {
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.vp-c-links,
+.vp-c-rechts {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  align-content: start;
+}
+
+/* --- 1100: zwei Spalten (E4 = a) ---------------------------------------- */
+
+@media (min-width: 1100px) {
+  .vp-c {
+    grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
+    gap: 24px;
+  }
+}
+
+/* --- Die Karte: ein Rahmen, kein Schatten ------------------------------- */
+
+.vp-c-card {
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 16px;
+  background: var(--vp-c-card, #ffffff);
+  padding: 18px;
+  min-width: 0;
+}
+
+@media (min-width: 700px) {
+  .vp-c-card {
+    padding: 24px;
+  }
+}
+
+/* --- Das Label jeder Sektion: 12/700 Versalien -------------------------- */
+
+.vp-c-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+  /* ⚠ Ausdrücklich, nicht geerbt: das Label IST eine Überschrift (`h2`/`h3`),
+     und die Überschriften-Regel des Portals setzt die Anzeigeschrift
+     (`Inter Tight`). Variante C hat EINE Schrift (§3.1) — ohne diese Zeile
+     stünden Label und Fläche in zwei Familien (im Browser-Beweis gemessen). */
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-erl-fs-12, 12px);
+  font-weight: var(--vp-erl-fw-700, 700);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+}
+
+.vp-c-label-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- EINE Chip-Form: sie steht in `index.css` (P0) --------------------- */
+/* `.vp-chip` / `.vp-chip--warn` gehören seit P0 der EINEN Regel in
+   `index.css`; hier steht bewusst KEINE zweite Definition — „die Optik steht
+   GENAU EINMAL" (P0), und ein Fallback mit denselben Werten wäre genau die
+   zweite Wahrheit, die der Kommentar dort ausschliesst. */
+
+/* ===========================================================================
+ * 1 · STATEMENT — auf der Fläche, keine Karte
+ * ========================================================================= */
+
+.vp-c-stm {
+  min-width: 0;
+}
+
+.vp-c-stm-zahl {
+  margin: 0;
+  font-size: var(--vp-erl-fs-hero-phone, 36px);
+  font-weight: var(--vp-erl-fw-800, 800);
+  line-height: var(--vp-erl-lh-tight, 1.1);
+  letter-spacing: -0.02em;
+  color: var(--vp-c-fg, #1e293b);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 700px) {
+  .vp-c-stm-zahl {
+    font-size: var(--vp-erl-fs-48, 48px);
+  }
+}
+
+/* Das Urteil trägt IMMER sein Zeichen — die Farbe ist die Zugabe (E8 = a). */
+.vp-c-stm-zahl.is-kosten {
+  color: var(--vp-c-destructive, #dc2626);
+}
+
+.vp-c-stm-satz {
+  margin: 6px 0 0;
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-400, 400);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* Die Einordnung: EINE Zeile, Chip OHNE Farbton (W1 = a). */
+.vp-c-stm-ein {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-400, 400);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+}
+
+/* ⚠ `:not(.vp-c-info)`: die Schrumpf-Erlaubnis gilt den TEXT-Spans (lange
+   Beträge dürfen umbrechen), nie dem ⓘ — der ist eine Trefferfläche und wurde
+   bei 375 auf 20 px gepresst. */
+.vp-c-stm-ein > span:not(.vp-c-info) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ===========================================================================
+ * 2 · KONTOAUSZUG — die vier Ledger-Zeilen
+ * ========================================================================= */
+
+.vp-c-led {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+
+.vp-c-led-row {
+  border-bottom: 1px solid var(--vp-c-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-c-led-det > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vp-c-led-det > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+/* 375: `Name | Betrag | Chevron` / Balken volle Breite / Sekundärzeile.
+   min-height 48 (§3.2 (3)) — die Trefferfläche des Aufklappers. */
+.vp-c-led-sum {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  grid-template-rows: auto auto auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+  padding: 10px 0;
+  min-height: 48px;
+  min-width: 0;
+  /* Ausdrücklich auf der Skala: `summary` erbt sonst die 1,6 des Portals. */
+  line-height: var(--vp-erl-lh-text, 1.5);
+}
+
+.vp-c-led-name {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-600, 600);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-fg, #1e293b);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-c-led-val {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-600, 600);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-fg, #1e293b);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-c-led-val.is-minus {
+  color: var(--vp-c-destructive, #dc2626);
+}
+
+.vp-c-led-val.is-null {
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-c-led-barwrap {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-width: 0;
+}
+
+.vp-c-led-bar {
+  display: block;
+  width: 100%;
+  height: 8px;
+}
+
+.vp-c-led-bar-base {
+  fill: var(--vp-c-muted, #e9eff8);
+}
+
+.vp-c-led-bar-zero {
+  stroke: var(--vp-c-border, #e2e8f0);
+  stroke-width: 1;
+}
+
+.vp-c-led-sek {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  margin: 0;
+  font-size: var(--vp-erl-fs-14, 14px);
+  font-weight: var(--vp-erl-fw-400, 400);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-c-led-sek.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+
+.vp-c-led-sek a {
+  color: var(--vp-c-primary, #2563eb);
+  font-weight: var(--vp-erl-fw-600, 600);
+  text-decoration: underline;
+}
+
+.vp-c-led-sek.is-warn a {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+
+/* ⚠ DIE TREFFERFLÄCHE EINES TEXTLINKS IST SEIN INLINE-KASTEN, NICHT SEINE
+   ZEILENHÖHE — bei 14 px sind das gemessene 18 px (die Schriftmetrik), nicht
+   die 21 px aus 14 × 1,5. Sie wird über ein unsichtbares `::before` geweitet,
+   statt den Link zu einem Knopf zu machen: 18 + 2 × 14 = 46 px ≥ 44, und das
+   Aussehen ändert sich um kein Pixel.
+   ⚠ Nachgemessen wird sie mit `elementFromPoint` über und unter dem Link —
+   `getBoundingClientRect()` des `<a>` kennt das `::before` nicht und meldet
+   weiter 18 px. Mit den ursprünglichen −12 px kamen so 42 px heraus. */
+.vp-c-led-sek a,
+.vp-c-sp-sek a {
+  position: relative;
+  /* ⚠ `inline-block`, damit der Link EIN Kasten bleibt: ein umbrechender
+     Inline-Link zerfällt in zwei Fragmente, und das `::before` deckt dann nur
+     noch eines davon — bei 375 gemessene 39 px statt 46. Als Ganzes rutscht er
+     stattdessen in die nächste Zeile (156 px passen in 313). */
+  display: inline-block;
+}
+
+.vp-c-led-sek a::before,
+.vp-c-sp-sek a::before {
+  content: '';
+  position: absolute;
+  inset: -14px;
+}
+
+/* Der Chevron — nur wo es wirklich etwas aufzuklappen gibt. */
+.vp-c-led-chev {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  width: 16px;
+  height: 16px;
+  position: relative;
+}
+
+.vp-c-led-chev::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 4px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--vp-c-muted-fg, #475569);
+  border-bottom: 2px solid var(--vp-c-muted-fg, #475569);
+  transform: rotate(-45deg);
+  transition: transform 200ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vp-c-led-chev::before {
+    transition: none;
+  }
+}
+
+.vp-c-led-det[open] .vp-c-led-chev::before {
+  transform: rotate(45deg);
+}
+
+/* Die SUMMENZEILE: Muted-Fläche, 2-px-Linie in Foreground (§3.10 (2)). */
+.vp-c-led-row-erg {
+  border-bottom: 0;
+}
+
+.vp-c-led-row-erg > .vp-c-led-sum,
+.vp-c-led-row-erg > .vp-c-led-det > .vp-c-led-sum {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-top: 2px solid var(--vp-c-fg, #1e293b);
+  border-radius: 0 0 10px 10px;
+  background: var(--vp-c-muted, #e9eff8);
+}
+
+.vp-c-led-row-erg .vp-c-led-name,
+.vp-c-led-row-erg .vp-c-led-val {
+  font-weight: var(--vp-erl-fw-700, 700);
+}
+
+.vp-c-led-row-erg .vp-c-led-bar-base {
+  fill: var(--vp-c-card, #ffffff);
+}
+
+/* --- 700: Name/Sekundärzeile links, Balken Mitte, Betrag rechts --------- */
+
+@media (min-width: 700px) {
+  .vp-c-led-sum {
+    grid-template-columns: minmax(120px, 1.1fr) minmax(0, 1.4fr) auto 16px;
+    grid-template-rows: auto auto;
+    column-gap: 16px;
+    row-gap: 2px;
+    min-height: 56px;
+  }
+
+  .vp-c-led-name {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: end;
+  }
+
+  .vp-c-led-sek {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: start;
+  }
+
+  .vp-c-led-barwrap {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  .vp-c-led-val {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  .vp-c-led-chev {
+    grid-column: 4;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+}
+
+/* Die Lastspitzen-Zeile: eigene Abrechnungsperiode, nie im Ergebnis. */
+.vp-c-led-extra {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-c-led-extra .vp-c-led-row {
+  border-bottom: 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+
+.vp-c-note {
+  margin: 12px 0 0;
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ===========================================================================
+ * 3 · SPEICHER-KARTE — ohne grüne Fläche (E7 = a)
+ * ========================================================================= */
+
+.vp-c-sp-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 2px;
+  margin: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  min-height: 44px;
+  align-content: center;
+  min-width: 0;
+}
+
+.vp-c-sp-zeile:first-of-type {
+  border-top: 0;
+}
+
+.vp-c-sp-label {
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-600, 600);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-fg, #1e293b);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-c-sp-wert {
+  justify-self: end;
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-600, 600);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-fg, #1e293b);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-c-sp-sek {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-c-sp-sek a {
+  color: var(--vp-c-primary, #2563eb);
+  font-weight: var(--vp-erl-fw-600, 600);
+  text-decoration: underline;
+}
+
+/* Bestand: ein Satz + Chip „Kein Abzug" — kein Betrag in Prosa. */
+.vp-c-sp-bestand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+}
+
+.vp-c-sp-bestand > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ===========================================================================
+ * 4 · PREISE & VERGÜTUNG — flache Karte, EIN Aufklapper
+ * ========================================================================= */
+
+.vp-c-preise {
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 16px;
+  background: var(--vp-c-card, #ffffff);
+  min-width: 0;
+}
+
+.vp-c-preise > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+  cursor: pointer;
+  padding: 14px 18px;
+  min-height: 48px;
+  font-size: var(--vp-erl-fs-16, 16px);
+  font-weight: var(--vp-erl-fw-600, 600);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-c-preise > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vp-c-preise-body {
+  padding: 0 18px 18px;
+}
+
+@media (min-width: 700px) {
+  .vp-c-preise > summary {
+    padding: 16px 24px;
+  }
+
+  .vp-c-preise-body {
+    padding: 0 24px 24px;
+  }
+}
+
+/* ===========================================================================
+ * Der ⓘ-Auslöser (W2, Lastspitzen) — Trefferfläche 44 px, ohne Fläche
+ * ========================================================================= */
+
+.vp-c-info {
+  display: inline-flex;
+  align-items: center;
+  /* ⚠ Der ⓘ-Knopf ist eine Trefferfläche, kein Text: er darf NICHT schrumpfen.
+     Die `min-width: 0`-Regel der Einordnungs-Zeile (sie gilt jedem `> span`,
+     damit lange Beträge umbrechen dürfen) presste ihn bei 375 zusammen.
+     ⚠ Seine 12 px `scrollWidth`-Überschuss bleiben — das ist das unsichtbare
+     `::before` des GETEILTEN `InfoTip` (`index.css`, Trefferflächen-Weitung),
+     nicht diese Fläche; das Dokument läuft bei 375/768/1440 mit 0 px über. */
+  flex: 0 0 auto;
+  min-width: auto;
+}

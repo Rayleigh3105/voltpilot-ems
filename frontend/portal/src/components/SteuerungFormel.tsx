@@ -16,17 +16,40 @@ import './SteuerungFormel.css';
  * Geteilt von Ebene 1 der Ergebnis-Zeilen und den Speicher-Schritten, damit
  * dieselbe Rechnung nirgends zweimal formuliert wird.
  */
+/**
+ * **Die Rechenzeile in ZWEI Spalten** (Konzept `vp-erloese-lesbar-konzept-u3`
+ * §3.2 (5), Paket P2): links der Term 16/400 mit Tabellenziffern, rechts das
+ * ERGEBNIS 16/600 — die eine Spalte, in der die Beträge untereinander stehen
+ * (§2 Prinzip 2).
+ *
+ * ⚠ **Der Schnitt ist ANZEIGE, keine zweite Rechnung.** Die Ableitung
+ *   (`erloesEbenen.ts`) formatiert die Zeile als ein Stück
+ *   („12,3 kWh × 18,90 ct = 2,32 €"); hier wird sie am LETZTEN „ = " getrennt.
+ *   Es entsteht keine neue Zahl und keine neue Rundung — nur ein Umbruch, den
+ *   die Fläche setzt. Eine Zeile ohne „ = " (eine reine Feststellung) bleibt
+ *   ungeteilt und trägt keine leere zweite Spalte.
+ */
+export function teileFormel(formel: string): { term: string; ergebnis: string | null } {
+  const i = formel.lastIndexOf(' = ');
+  if (i < 0) return { term: formel, ergebnis: null };
+  return { term: formel.slice(0, i), ergebnis: formel.slice(i + 3) };
+}
+
 export function RechenZeilen({ zeilen, kopf }: { zeilen: RechenZeile[]; kopf?: string }) {
   return (
     <div className="vp-rz">
       {kopf && <p className="vp-rz-kopf">{kopf}</p>}
       <ul className="vp-rz-list">
-        {zeilen.map((z, i) => (
-          <li key={`${i}-${z.formel}`}>
-            <span className="vp-rz-fx">{z.formel}</span>
-            <span className="vp-rz-hk">{z.herkunft}</span>
-          </li>
-        ))}
+        {zeilen.map((z, i) => {
+          const { term, ergebnis } = teileFormel(z.formel);
+          return (
+            <li key={`${i}-${z.formel}`}>
+              <span className="vp-rz-fx">{term}</span>
+              {ergebnis !== null && <span className="vp-rz-erg">{ergebnis}</span>}
+              <span className="vp-rz-hk">{z.herkunft}</span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

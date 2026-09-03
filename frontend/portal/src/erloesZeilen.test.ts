@@ -148,12 +148,19 @@ describe('erloesZeilen · alle 15 Fixtures', () => {
   );
 
   it.each(FX.map((f) => [f.id, f] as const))(
-    '%s — jeder Zeilenname hat 1–3 Wörter, jeder Chip höchstens 3 (§3.12)',
+    '%s — jeder Zeilenname hat 1–3 Wörter, jedes Sekundär-Teil höchstens 4 (§3.12)',
     (_id, f) => {
       for (const z of view(f).zeilen) {
         expect(woerter(z.name)).toBeGreaterThanOrEqual(1);
         expect(woerter(z.name)).toBeLessThanOrEqual(3);
-        if (z.chip) expect(woerter(z.chip.text)).toBeLessThanOrEqual(3);
+        // Die Sekundärzeile hat den Wert-Chip abgelöst (§2 Prinzip 5). Sie ist
+        // Text, darf also länger sein als eine Kapsel — aber kein Nebensatz:
+        // je Teil höchstens vier Wörter („Vergütung nicht hinterlegt",
+        // „kein Stromtarif hinterlegt").
+        for (const teil of z.sekundaer?.teile ?? []) {
+          expect(woerter(teil)).toBeLessThanOrEqual(4);
+        }
+        if (z.sekundaer?.link) expect(woerter(z.sekundaer.link.text)).toBeLessThanOrEqual(4);
       }
     },
   );
@@ -170,46 +177,57 @@ describe('erloesZeilen · alle 15 Fixtures', () => {
   });
 });
 
-describe('erloesZeilen · Chips nennen den WEG, wo etwas fehlt (B6)', () => {
-  it('ohne Stromtarif: „Tarif fehlt ›" statt einer erfundenen Zahl', () => {
+describe('erloesZeilen · Sekundärzeilen nennen den WEG, wo etwas fehlt (B6)', () => {
+  it('ohne Stromtarif: „Stromtarif hinterlegen ›" statt einer erfundenen Zahl', () => {
     const f = FX.find((x) => x.id === 'eeg-ohne-tarif')!;
     const v = view(f);
     expect(v.zeilen[1].eur).toBeNull();
     expect(v.zeilen[1].text).toBe('—');
-    expect(v.zeilen[1].chip).toEqual(
-      expect.objectContaining({ text: 'Tarif fehlt ›', ton: 'warn' }),
+    expect(v.zeilen[1].sekundaer).toEqual(
+      expect.objectContaining({
+        teile: ['kein Stromtarif hinterlegt'],
+        link: { text: 'Stromtarif hinterlegen ›', ziel: 'tarif' },
+        ton: 'warn',
+      }),
     );
     // Kein Segment über einer fehlenden Zahl.
     expect(v.zeilen[1].segment).toBeNull();
   });
 
-  it('ohne MaStR-Verknüpfung: „nicht verknüpft ›"', () => {
+  it('ohne MaStR-Verknüpfung: „Anlage verknüpfen ›"', () => {
     const f = FX.find((x) => x.id === 'eeg-ohne-mastr')!;
-    expect(view(f).zeilen[0].chip).toEqual(
-      expect.objectContaining({ text: 'nicht verknüpft ›', ton: 'warn' }),
+    expect(view(f).zeilen[0].sekundaer).toEqual(
+      expect.objectContaining({
+        teile: ['Börsenpreis', 'Vergütung nicht hinterlegt'],
+        link: { text: 'Anlage verknüpfen ›', ziel: 'mastr' },
+        ton: 'warn',
+      }),
     );
   });
 
   it('Negativpreis-Tag: die Prämie, die WIRKLICH angefallen ist — nicht „ruht"', () => {
     // Der Erlös ist negativ, die Prämie der Viertelstunden mit Börsenpreis >= 0
-    // ist trotzdem angefallen. Der Chip nennt sie; DASS sie in den negativen
-    // Stunden ruht, sagt Ebene 2 (§3.4) — nicht der Chip.
+    // ist trotzdem angefallen. Die Sekundärzeile nennt sie; DASS sie in den
+    // negativen Stunden ruht, sagt Ebene 2 (§3.4) — nicht die Zeile.
     const f = FX.find((x) => x.id === 'dv-praemie-ruht')!;
     expect(f.money.einspeiseErloesEur).toBeLessThan(0);
-    expect(view(f).zeilen[0].chip?.text).toBe(`Prämie ${eurAmount(0.61)}`);
+    expect(view(f).zeilen[0].sekundaer?.teile).toContain(`Prämie ${eurAmount(0.61)}`);
   });
 
-  it('ohne jede Marktprämie sagt der Chip „Prämie ruht"', () => {
+  it('ohne jede Marktprämie sagt die Sekundärzeile „Prämie ruht" — im NORMALEN Ton', () => {
     const f = FX.find((x) => x.id === 'dv-praemie-ruht')!;
     const money: SiteEarnings = { ...f.money, marktpraemieEur: 0 };
-    const chip = ergebnisZeilen({ money, periodLabel: f.label, laeuft: false, range: 'day' })
-      .zeilen[0].chip;
-    expect(chip).toEqual(expect.objectContaining({ text: 'Prämie ruht', ton: 'warn' }));
+    const sek = ergebnisZeilen({ money, periodLabel: f.label, laeuft: false, range: 'day' })
+      .zeilen[0].sekundaer;
+    // ⚠ Ton NORMAL, nicht `warn`: eine ruhende Prämie ist eine Tatsache, kein
+    //   Mangel — es gibt nichts zu hinterlegen, also auch keinen Weg (§3.4).
+    expect(sek).toEqual(expect.objectContaining({ ton: 'normal', link: null }));
+    expect(sek?.teile).toContain('Prämie ruht');
   });
 
   it('Standard-Satz statt „Ihr Stromtarif", wo keiner hinterlegt ist', () => {
     const f = FX.find((x) => x.id === 'eeg-ohne-tarif')!;
-    expect(view(f).zeilen[2].chip?.text).toBe('Standard-Satz');
+    expect(view(f).zeilen[2].sekundaer?.teile).toContain('Standard-Satz');
   });
 });
 
@@ -278,7 +296,9 @@ describe('erloesZeilen · Leer-Zustand', () => {
     const v = ergebnisZeilen({ money: null, periodLabel: 'Juli 2026', laeuft: false, range: 'month' });
     expect(v.hero).toBeNull();
     expect(v.satz).toBe('Für Juli 2026 lässt sich noch kein Ergebnis berechnen.');
-    expect(v.zeilen.every((z) => z.eur === null && z.segment === null && z.chip === null)).toBe(true);
+    expect(v.zeilen.every((z) => z.eur === null && z.segment === null && z.sekundaer === null)).toBe(
+      true,
+    );
   });
 
   it('heroSatz kennt den laufenden und den abgeschlossenen Zeitraum', () => {

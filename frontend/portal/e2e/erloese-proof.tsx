@@ -13,16 +13,15 @@ import '../src/components/Historie.css';
 import '../src/components/Erloese.css';
 import '../src/components/SteuerungFormel.css';
 
-import { Card } from '../designsystem/components/core/Card';
-import { KartenKopf } from '../src/components/HistorieWelt';
 import type { SiteEarnings } from '../src/api';
 import FIXTURES from '../src/erloeseFixtures.json';
 import { ebene1, ebene2, speicherSchritte } from '../src/erloesEbenen';
 import { ergebnisZeilen } from '../src/erloesZeilen';
 import { ErgebnisZeilen } from '../src/components/ErgebnisZeilen';
-import { Ebene1Panel, Ebene2Panel } from '../src/components/ErloesEbenen';
+import { Ebene1Panel } from '../src/components/ErloesEbenen';
 import { SpeicherSchritte } from '../src/components/SteuerungFormel';
-import { SpeicherBlock } from '../src/components/SpeicherBlock';
+import { SpeicherKarte } from '../src/components/erloese/SpeicherKarte';
+import { PreiseZeile } from '../src/components/erloese/PreiseZeile';
 import { speicherAussage } from '../src/speicherAussage';
 import { api, type History, type Site } from '../src/api';
 import { ErloeseSection } from '../src/pages/ErloeseSection';
@@ -126,24 +125,28 @@ function Karte({ f }: { f: Fixture }) {
         {f.titel}
         <span data-woerter-slot={f.id} style={{ marginLeft: 8 }} />
       </p>
-      <Card padding="lg" radius="lg">
-        <KartenKopf icon="euro" category="primary" titel={`Ergebnis · ${f.label}`} art="bewertet" />
-        <ErgebnisZeilen
-          view={view}
-          ebene1={(id) => {
-            const e1 = ebene1(f.money, view, id);
-            return e1 ? <Ebene1Panel ebene1={e1} /> : null;
-          }}
-          ebene2={<Ebene2Panel ebene2={ebene2({ money: f.money })} />}
-          speicher={
-            speicher && speicher.hatAussage ? (
-              <SpeicherBlock aussage={speicher} nachtragHref="#/anlage/demo/technik">
-                {schritte.length > 0 && <SpeicherSchritte input={schritteInput} />}
-              </SpeicherBlock>
-            ) : null
-          }
-        />
-      </Card>
+      {/* ⚠ Anatomie C (§3.10): KEINE Karte und kein `KartenKopf` mehr — die
+          Fläche besteht aus Statement (rahmenlos) + Kontoauszug + Speicher +
+          Preise, jedes mit seinem eigenen Rahmen. Ein Kartenrahmen darum wäre
+          „Fläche in der Fläche". */}
+      <ErgebnisZeilen
+        view={view}
+        label={`Ergebnis · ${f.label}`}
+        provenienz="bewertet"
+        ebene1={(id) => {
+          const e1 = ebene1(f.money, view, id);
+          return e1 ? <Ebene1Panel ebene1={e1} /> : null;
+        }}
+        hrefFor={() => '#/anlage/demo/technik'}
+        speicher={
+          speicher && speicher.hatAussage ? (
+            <SpeicherKarte aussage={speicher} nachtragHref="#/anlage/demo/technik">
+              {schritte.length > 0 && <SpeicherSchritte input={schritteInput} />}
+            </SpeicherKarte>
+          ) : null
+        }
+        preise={<PreiseZeile ebene2={ebene2({ money: f.money })} />}
+      />
     </section>
   );
 }
@@ -287,13 +290,44 @@ function SeitenBeweis() {
  * Stempelt nach dem Rendern je Fixture die GEMESSENE Wortzahl der Ebene 0 an
  * ihren Platzhalter — der Browser-Beweis liest sie über `[data-woerter]`.
  */
+/**
+ * Das Budget je Anlagenart (Runde 1 §3.12, für Variante C auf die gemessenen
+ * Mockup-Zahlen gesetzt — u3 §3.10/§5): 49 Wörter Direktvermarktung, 46 Wörter
+ * feste Einspeisevergütung. Es steht HIER, damit der Browser-Beweis die
+ * Überschreitung SIEHT statt sie zu verschweigen.
+ *
+ * ⚠ GEMESSEN (03.09.2026, Variante C): Direktvermarktung höchstens 47 — das
+ *   Budget hält. Drei EEG-Sonderzustände liegen mit 49/49/50 darüber, und der
+ *   Grund ist eine ENTSCHIEDENE Änderung: E6 = (a) hat die HANDLUNG aus dem
+ *   Chip in die Sekundärzeile geholt („kein Stromtarif hinterlegt ·
+ *   Stromtarif hinterlegen ›" = 6 Wörter statt „Tarif fehlt ›" = 3), und bei
+ *   `eeg-woche` nennt der Wochen-Zeitraum sich zweimal (Label + Satz, beide
+ *   vom Konzept wörtlich festgelegt). Die Zahl wird deshalb GEZEIGT statt
+ *   gesenkt — eine Kürzung wäre neuer Text, und den setzt das Konzept.
+ */
+const WORT_BUDGET = { direktvermarktung: 49, eigenverbrauch: 46 } as const;
+
+function budgetFuer(id: string): number {
+  const f = FX.find((x) => x.id === id);
+  return f?.money.plantKind === 'direktvermarktung'
+    ? WORT_BUDGET.direktvermarktung
+    : WORT_BUDGET.eigenverbrauch;
+}
+
 function WortBudget() {
   useEffect(() => {
     for (const slot of document.querySelectorAll<HTMLElement>('[data-woerter-slot]')) {
-      const karte = slot.closest('[data-fixture]')?.querySelector<HTMLElement>('.vp-card');
+      // ⚠ Anatomie C: die Ergebnis-Fläche ist keine Karte mehr, sondern der
+      //   Verbund `.vp-c` (Statement + Kontoauszug + Speicher + Preise).
+      //   `.vp-card` gäbe es hier gar nicht mehr — die Messung wäre still 0.
+      const karte = slot.closest('[data-fixture]')?.querySelector<HTMLElement>('.vp-c');
       const n = domWoerter(karte ?? null);
+      const id = slot.getAttribute('data-woerter-slot') ?? '';
+      const budget = budgetFuer(id);
       slot.setAttribute('data-woerter', String(n));
-      slot.textContent = ` \u00b7 Ebene 0: ${n} W\u00f6rter`;
+      slot.setAttribute('data-budget', String(budget));
+      slot.setAttribute('data-ueber', n > budget ? '1' : '0');
+      slot.textContent = ` \u00b7 Ebene 0: ${n}/${budget} W\u00f6rter${n > budget ? ' \u26a0' : ''}`;
     }
   });
   return null;

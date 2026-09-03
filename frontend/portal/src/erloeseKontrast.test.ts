@@ -30,7 +30,10 @@ const root = join(__dirname, '..');
 const colors = readFileSync(join(root, 'designsystem', 'tokens', 'colors.css'), 'utf8');
 const index = readFileSync(join(root, 'src', 'index.css'), 'utf8');
 const erloese = readFileSync(join(root, 'src', 'components', 'Erloese.css'), 'utf8');
-const speicher = readFileSync(join(root, 'src', 'components', 'SpeicherBlock.css'), 'utf8');
+const karte = readFileSync(
+  join(root, 'src', 'components', 'erloese', 'ErgebnisKarte.css'),
+  'utf8',
+);
 
 type RGB = [number, number, number];
 
@@ -108,11 +111,18 @@ const GRUEN = token('flow-batt-soft'); // der Grund des Speicher-Blocks
 const NEUTRAL = token('neutral-soft'); // der Grund der Chips
 const AA = 4.5;
 
+/** Der Rumpf der FARB-Regel von `.vp-c-sp-sek` (die zweite setzt nur die Trefferfläche). */
+function css_sek(css: string): string {
+  const m = /\.vp-c-sp-sek\s*\{([^}]*)\}/.exec(css.replace(/\/\*[\s\S]*?\*\//g, ''));
+  expect(m, 'Regel .vp-c-sp-sek fehlt').not.toBeNull();
+  return m![1];
+}
+
 describe('Erlöse-Karte · Kontrast der Ebene 0 (P7-Browser-Beweis, nachgerechnet)', () => {
   it('der Zeilen-Betrag im Minus hält AA auf der Karte', () => {
     // ⚠ Seit P0 ist das EINE Minus-Farbe (`--vp-c-destructive`) statt der
     // P7-Mischung — die Rechnung hängt weiter an der ausgelieferten Datei.
-    expect(regel(erloese, '.vp-ez-t-minus')).toMatch(/color:\s*var\(--vp-c-destructive/);
+    expect(regel(karte, '.vp-c-led-val.is-minus')).toMatch(/color:\s*var\(--vp-c-destructive/);
     expect(contrast(token('c-destructive'), token('c-card'))).toBeGreaterThanOrEqual(AA);
   });
 
@@ -123,7 +133,7 @@ describe('Erlöse-Karte · Kontrast der Ebene 0 (P7-Browser-Beweis, nachgerechne
   });
 
   it('die Farbe steht nie allein — das Vorzeichen wird mitgeschrieben (E8)', () => {
-    expect(erloese).toMatch(/Das Vorzeichen wird immer mitgeschrieben|Vorzeichen wird immer mitgeschrieben/);
+    expect(karte).toMatch(/Vorzeichen[\s\S]{0,80}(ZEICHEN|Zeichen)/);
   });
 
   it('der Warn-Chip hält AA auf dem Warn-Grund der Variante C', () => {
@@ -134,24 +144,24 @@ describe('Erlöse-Karte · Kontrast der Ebene 0 (P7-Browser-Beweis, nachgerechne
   });
 });
 
-describe('Speicher-Block · Kontrast auf dem grünen Grund (P7)', () => {
-  it('die ruhigen Zeilen halten AA auf --vp-flow-batt-soft', () => {
-    const p = anteil(speicher, '.vp-spb-still', 'color');
-    expect(contrast(mix(token('text-gray'), token('text-dark'), p), GRUEN)).toBeGreaterThanOrEqual(
-      AA,
-    );
+describe('Speicher-Karte · E7 = (a): die grüne Fläche ist WEG', () => {
+  it('sie trägt keinen Speicher-Grund und keine Kennlinie mehr', () => {
+    // §3.10 (3) / Befund B2: eine Fläche in der Fläche — und eine ERFOLGSfarbe
+    // über einer Zahl, die negativ sein darf. Die Karte ist seit P1 eine Karte
+    // wie jede andere; `--vp-flow-batt-soft` kommt in der Fläche nicht mehr vor.
+    expect(karte).not.toMatch(/flow-batt/);
+    expect(regel(karte, '.vp-c-card')).toMatch(/background:\s*var\(--vp-c-card/);
   });
 
-  it('das unvermischte --vp-text-gray REISST sie — es ist für Weiss bemessen', () => {
-    expect(contrast(token('text-gray'), GRUEN)).toBeLessThan(AA);
-    expect(contrast(token('text-gray'), WEISS)).toBeGreaterThanOrEqual(AA);
-  });
-
-  it('der Warn-Betrag hält AA auf demselben Grund', () => {
-    const p = anteil(speicher, '.vp-spb-ton-warn .vp-spb-wert', 'color');
-    expect(contrast(mix(token('warn-ink'), token('text-dark'), p), GRUEN)).toBeGreaterThanOrEqual(
-      AA,
-    );
+  it('ihre Zeilen stehen damit auf demselben Grund wie jede andere Karte', () => {
+    // Der Kontrast-Nachweis wandert dadurch in den Paar-Block unten
+    // (`c-fg`/`c-muted-fg` auf `c-card`) — hier bleibt der Beweis, dass die
+    // Karte wirklich diese Rollen benutzt und keine eigenen Farben erfindet.
+    expect(regel(karte, '.vp-c-sp-label')).toMatch(/color:\s*var\(--vp-c-fg/);
+    expect(regel(karte, '.vp-c-sp-wert')).toMatch(/color:\s*var\(--vp-c-fg/);
+    // ⚠ `.vp-c-sp-sek` steht in ZWEI Regeln (Farbe hier, Trefferfläche dort);
+    // `regel()` liefert die erste — deshalb wird die Farb-Regel gesucht.
+    expect(css_sek(karte)).toMatch(/color:\s*var\(--vp-c-muted-fg/);
   });
 
   it('Chip und Abzeichen tragen KEINEN harten Hex mehr, sondern Token-Mischungen', () => {
@@ -160,16 +170,12 @@ describe('Speicher-Block · Kontrast auf dem grünen Grund (P7)', () => {
     const basis = regel(index, '.vp-chip');
     expect(basis).toMatch(/background:\s*var\(--vp-c-muted/);
     expect(basis).toMatch(/color:\s*var\(--vp-c-muted-fg/);
-    for (const klasse of ['.vp-spb-chip', '.vp-spb-badge']) {
-      expect(index, `${klasse} hängt nicht an .vp-chip`).toContain(`${klasse},`);
-      expect(speicher, `${klasse} setzt seine Form wieder selbst`).not.toMatch(
-        new RegExp(`\\${klasse}\\s*\\{[^}]*border-radius`),
-      );
-    }
+    // Seit P1 benutzt die Fläche NUR noch `.vp-chip` — kein eigener Chip mehr.
+    expect(karte).not.toMatch(/\.vp-c-[a-z-]*chip/);
     // Ein Farbwert OHNE `var(--…)` daneben ist im Erlöse-CSS nicht erlaubt:
     // jeder Hex hier ist ein Rückfall in `var(--token, #fallback)`.
     for (const [datei, css] of [
-      ['SpeicherBlock.css', speicher],
+      ['erloese/ErgebnisKarte.css', karte],
       ['Erloese.css', erloese],
     ] as const) {
       // ⚠ Kommentare zuerst RAUS — sie nennen die alten Hex-Werte absichtlich.

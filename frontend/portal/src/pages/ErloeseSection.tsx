@@ -32,10 +32,10 @@ import type { AnlageSurface } from '../surface';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 
 import { ChartSubtitle } from '../components/ChartExplain';
+import { InfoTip } from '../components/InfoTip';
 import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
 import { Tagesbild, type TagesbildGeldReihe } from '../components/Tagesbild';
 import {
-  DeltaZeile,
   KartenKopf,
   PeriodeFehlgeschlagen,
   ProvBadge,
@@ -45,16 +45,16 @@ import {
   ZeitLeiste,
 } from '../components/HistorieWelt';
 import { ErgebnisZeilen } from '../components/ErgebnisZeilen';
-import { Ebene1Panel, Ebene2Panel } from '../components/ErloesEbenen';
+import { Ebene1Panel } from '../components/ErloesEbenen';
+import { PreiseZeile } from '../components/erloese/PreiseZeile';
+import { SpeicherKarte } from '../components/erloese/SpeicherKarte';
 import { ErloeseVerlaufChart } from '../components/ErloeseVerlaufChart';
 import { SoVerdientCard } from '../components/SoVerdient';
 import { SpeicherSchritte, SteuerungFormel } from '../components/SteuerungFormel';
-import { SpeicherBlock } from '../components/SpeicherBlock';
 import { speicherAussage } from '../speicherAussage';
 
 import '../components/Historie.css';
 import '../components/Erloese.css';
-import { MiniShareBar } from '../components/MiniChart';
 
 /**
  * **Welt B · „Erlöse"** (`#/anlage/{id}/erloese`) — die Geld-Welt der Historie
@@ -97,24 +97,36 @@ const EVENT_ICONS: Record<ProtocolEvent['type'], { icon: IconName; label: string
  * Perioden-Etikett steht NUR, wenn der Stapel wirklich mehrere Perioden mischt
  * — sonst sagt es die Überschrift der Karte schon.
  */
-function KompositionsZeile({ row, zeigePeriode }: { row: ErgebnisZeile; zeigePeriode: boolean }) {
+/**
+ * **Die Lastspitzen-Zeile** — sie steht AUSSERHALB des Wasserfalls (Konzept
+ * `vp-erloese-lesbar-konzept-u3` §3.2 „Lastspitzen-Zeile").
+ *
+ * Vermiedene Leistungskosten gehören einer EIGENEN Abrechnungsperiode und sind
+ * nie ein Summand der einen Zahl. Sie trägt deshalb ihr Perioden-Etikett in der
+ * Sekundärzeile; der frühere Nebensatz auf Ebene 0 („Verschiedene Zeiträume …
+ * werden getrennt ausgewiesen") wandert in ihr ⓘ — er erklärt eine Methode und
+ * kostete acht Wörter im Textbudget.
+ *
+ * ⚠ KEIN Balken: der Wasserfall hat eine gemeinsame Skala, und diese Zahl
+ *   gehört nicht auf sie. Kein Punkt: die Farbe wäre eine Kennung ohne Reihe.
+ */
+function LastspitzenZeile({ row, note }: { row: ErgebnisZeile; note: string | null }) {
   return (
-    <li className={row.eur == null ? 'vp-ekomp-row vp-ekomp-off' : 'vp-ekomp-row'}>
-      <span className="vp-ekomp-dot" style={{ background: row.hue }} aria-hidden="true" />
-      <span className="vp-ekomp-name">
-        {row.label}
-        {zeigePeriode && <span className="vp-ekomp-period">{row.periodLabel}</span>}
-      </span>
-      <MiniShareBar className="vp-ekomp-bar" fraction={row.barFraction} color={row.hue} />
-      <span className="vp-ekomp-value">
-        {row.eur != null && (
-          <span className="vp-ekomp-sign" aria-hidden="true">
-            {row.vorzeichen === 'minus' ? '−' : '+'}
-          </span>
-        )}
-        <span className="vp-ekomp-amount">{row.valueText}</span>
-      </span>
-      {row.note && <span className="vp-ekomp-note">{row.note}</span>}
+    <li className="vp-c-led-row">
+      <div className="vp-c-led-sum">
+        <span className="vp-c-led-name">{row.label}</span>
+        <span className={`vp-c-led-val is-${row.eur == null ? 'null' : row.vorzeichen}`}>
+          {row.eur == null ? '—' : `${row.vorzeichen === 'minus' ? '−' : '+'} ${row.valueText}`}
+        </span>
+        <span className="vp-c-led-sek">
+          {row.periodLabel} · eigene Periode, nicht im Ergebnis
+          {note && (
+            <span className="vp-c-info">
+              <InfoTip label="Warum steht das getrennt?">{note}</InfoTip>
+            </span>
+          )}
+        </span>
+      </div>
     </li>
   );
 }
@@ -392,13 +404,14 @@ export function ErloeseSection({
   //   Verwechslungs-Falle dieser Seite). Sie steht jetzt GENAU EINMAL, direkt
   //   unter der Zahl, mit der sie sich vergleicht, und behält ihr Abzeichen
   //   „Geplant". Ohne Fahrplan bleibt die Zeile weg — nie eine erfundene Null.
-  const speicher = speicherAussage(money, {
-    now,
-    geplantEur: history?.totals.batterySavingsPlannedEur ?? null,
-  });
+  // ⚠ OHNE `geplantEur` (E6, in u3 §3.2 (6) wiederhergestellt): der Planwert
+  //   verlässt Ebene 0 und wohnt in den SCHRITTEN des Aufklappers, direkt
+  //   hinter der Rechnung, mit der er sich vergleicht. Eine Plan-Zahl neben
+  //   lauter gemessenen hat sich mit ihnen verwechselt.
+  const speicher = speicherAussage(money, { now });
   const speicherBlock =
     speicher && speicher.hatAussage ? (
-      <SpeicherBlock aussage={speicher} nachtragHref={`#/anlage/${site.id}/technik`}>
+      <SpeicherKarte aussage={speicher} nachtragHref={`#/anlage/${site.id}/technik`}>
         {/* Die Rechnung hinter der Zahl - dieselbe Erklaerung wie im Cockpit
             (Captain 01.09.2026), zugeklappt genau EINE ruhige Zeile.
 
@@ -412,23 +425,35 @@ export function ErloeseSection({
         ) : ergebnis.steeringFormel ? (
           <SteuerungFormel input={ergebnis.steeringFormel} />
         ) : null}
-      </SpeicherBlock>
+      </SpeicherKarte>
     ) : null;
-  // Revision 2 (§3.12): auf Ebene 0 steht der Vergleich als CHIP („25 %
-  // weniger") und nur, wenn er abweicht; die Beträge stehen ruhig darunter, der
-  // Erklärsatz („bis 12 Uhr, der Vortag ebenso") ist der Satz, den die
-  // Ergebnis-Karte (P3/P4) in ihr Akkordeon übernimmt.
-  const vergleichsZeilen = (
-    <>
-      {vergleich?.chip && (
-        <p className="vp-kpi-delta">
-          <DeltaZeile delta={vergleich.chip} />
-        </p>
-      )}
-      {vergleich?.betraege && <p className="vp-erg-vergleich">{vergleich.betraege}</p>}
-      {vergleich?.satz && <p className="vp-note vp-note-laufend">{vergleich.satz}</p>}
-    </>
-  );
+  // DIE EINORDNUNG — EINE Zeile im Statement (Konzept
+  // `vp-erloese-lesbar-konzept-u3` §3.2 (7), §3.10 (1)).
+  //
+  // ⚠ W1 = (a): der Chip trägt KEINEN Farbton. „↓ 25 %" ist eine Beobachtung,
+  //   kein Urteil — ein grüner Aufwärts-Chip behauptete, mehr sei immer besser,
+  //   ein roter Abwärts-Chip, weniger Sonne sei ein Mangel. Das Wort „weniger"
+  //   des geteilten `kurzerChip` wandert dafür in den Titel; sichtbar bleibt
+  //   die Richtung als ZEICHEN (↑/↓), also nicht als Farbe allein.
+  //
+  // ⚠ W2 = (a): der Erklärsatz („Verglichen wird bis 11 Uhr — der Vortag
+  //   ebenfalls …") ist eine METHODEN-Auskunft und kostete auf Ebene 0 zwanzig
+  //   Wörter. Er steht jetzt im ⓘ des Statements.
+  const einordnung = {
+    betraege: vergleich?.betraege ?? null,
+    chip: vergleich?.chip
+      ? {
+          text: `${vergleich.chip.pct} %`,
+          richtung: vergleich.chip.richtung,
+          // ⚠ Das WORT bleibt erreichbar (W1): sichtbar trägt der Chip nur
+          //   Zeichen + Prozent, der Titel trägt „25 % weniger" samt beiden
+          //   Beträgen — die Richtung hängt damit nie an Farbe ODER Zeichen
+          //   allein.
+          titel: `${vergleich.chip.text} — ${vergleich.chip.titel}`,
+        }
+      : null,
+    satz: vergleich?.satz ?? null,
+  };
 
   return (
     <>
@@ -466,20 +491,29 @@ export function ErloeseSection({
             {/* Karte 1 — „Wie viel?": das Ergebnis des Zeitraums samt seiner
                 Herkunft. Sie ABSORBIERT seit P6 die zwei früheren Karten
                 „Was den Preis gemacht hat" (→ Ebene 2 „Preise & Vergütung",
-                E5) und „Geplante Speicher-Ersparnis" (→ Zeile 4 des
-                Speicher-Blocks, E6) — dieselbe Wahrheit stand zweimal auf der
-                Seite, und eine ganze Karte trug eine Zahl, die nur im
-                Vergleich zur gemessenen Zurechnung etwas sagt. */}
+                E5) und „Geplante Speicher-Ersparnis" (→ die Schritte des
+                Speicher-Aufklappers, E6) — dieselbe Wahrheit stand zweimal auf
+                der Seite, und eine ganze Karte trug eine Zahl, die nur im
+                Vergleich zur gemessenen Zurechnung etwas sagt.
+
+                ⚠ SEIT VARIANTE C IST SIE KEINE KARTE MEHR, sondern eine
+                FLÄCHE aus vier Bauteilen (Konzept
+                `vp-erloese-lesbar-konzept-u3` §3.10, Captain-Entscheid E1 = c):
+                das `Statement` steht ohne Rahmen auf dem Grund, `Kontoauszug`,
+                `SpeicherKarte` und `PreiseZeile` sind je EINE eigene Karte.
+                Der frühere `KartenKopf` (Icon-Kachel + Titel + Abzeichen) ist
+                damit entfallen — sein Titel ist das Label des Statements, sein
+                Abzeichen dessen Chip (E9: keine Icon-Kachel). */}
             <section className="vp-section">
-              <Card padding="lg" radius="lg">
-                <KartenKopf
-                  icon="euro"
-                  category="primary"
-                  titel={ergebnis.titel}
-                  art="bewertet"
-                  extra={kopfVergleich}
-                />
-                {ergebnis.nettoEur == null ? (
+              {ergebnis.nettoEur == null ? (
+                <Card padding="lg" radius="lg">
+                  <KartenKopf
+                    icon="euro"
+                    category="primary"
+                    titel={ergebnis.titel}
+                    art="bewertet"
+                    extra={kopfVergleich}
+                  />
                   <EmptyState
                     icon="euro"
                     category="dynamic"
@@ -489,56 +523,56 @@ export function ErloeseSection({
                       'Sobald Messwerte und Preise vorliegen, steht hier, was Ihre Anlage eingebracht hat.'
                     }
                   />
-                ) : (
-                  <>
-                    {/* Ebene 0 (Konzept §3.2, Revision 2): eine Zahl, ein Satz
-                        von hoechstens acht Woertern und die vier Zeilen, in
-                        denen der Wasserfall WOHNT. Die Reihenfolge ist auf
-                        jeder Breite dieselbe - das frühere `isPhone`-Umsortieren
-                        ist entfallen, weil der Falz ohnehin dem Ergebnis
-                        gehoert.
-
-                        ⚠ Der Speicher-Slot nimmt die ECHTE `SpeicherBlock`-
-                        Komponente (P1+P5) an ihrer dokumentierten Einbaustelle -
-                        die Karte kennt die Ableitung nicht, sie haelt nur den
-                        Platz. Ohne Aussage ist `speicherBlock` null und der
-                        Slot bleibt leer. */}
-                    <ErgebnisZeilen
-                      view={zeilenView}
-                      // Ebene 1 je Zeile (Konzept §3.3): die Rechnung mit den
-                      // EINGESETZTEN Zahlen. Eine Zeile ohne Rechnung bleibt
-                      // ruhig - ein Aufklapper ins Leere waere ein Versprechen.
-                      ebene1={(id) => {
-                        const e1 = ebene1(money, zeilenView, id);
-                        return e1 ? <Ebene1Panel ebene1={e1} /> : null;
-                      }}
-                      ebene2={
-                        money ? (
-                          <Ebene2Panel
-                            ebene2={ebene2({
-                              money,
-                              netzladenErlaubt: site.netzladenErlaubt ?? null,
-                            })}
-                          />
-                        ) : null
-                      }
-                      speicher={speicherBlock}
-                      einordnung={vergleichsZeilen}
-                    />
-                    {/* Die Lastspitzen-Zeile gehoert einer EIGENEN
-                        Abrechnungsperiode und geht nie in die grosse Zahl ein -
-                        sie steht deshalb ausserhalb des Wasserfalls. */}
-                    {lastspitzen.length > 0 && (
-                      <ul className="vp-ekomp" aria-label="Ausserhalb des Zeitraum-Ergebnisses">
+                </Card>
+              ) : (
+                <ErgebnisZeilen
+                  view={zeilenView}
+                  label={`Ergebnis · ${label}`}
+                  provenienz="bewertet"
+                  // Ebene 1 je Zeile (Konzept §3.3): die Rechnung mit den
+                  // EINGESETZTEN Zahlen. Eine Zeile ohne Rechnung bleibt
+                  // ruhig - ein Aufklapper ins Leere waere ein Versprechen.
+                  ebene1={(id) => {
+                    const e1 = ebene1(money, zeilenView, id);
+                    return e1 ? <Ebene1Panel ebene1={e1} /> : null;
+                  }}
+                  // Beide Wege der Sekundärzeile führen auf die Technik-Seite;
+                  // ohne Auflösung bliebe der Weg ruhiger Text (§3.2 (4)).
+                  hrefFor={() => `#/anlage/${site.id}/technik`}
+                  einordnung={einordnung}
+                  // Die Lastspitzen-Zeile gehoert einer EIGENEN
+                  // Abrechnungsperiode und geht nie in die grosse Zahl ein -
+                  // sie steht deshalb ausserhalb des Wasserfalls, mit ihrem
+                  // Perioden-Etikett und dem Nebensatz im ⓘ (§3.2).
+                  ausserhalb={
+                    lastspitzen.length > 0 ? (
+                      <ul
+                        className="vp-c-led vp-c-led-extra"
+                        aria-label="Ausserhalb des Zeitraum-Ergebnisses"
+                      >
                         {lastspitzen.map((row) => (
-                          <KompositionsZeile key={row.id} row={row} zeigePeriode />
+                          <LastspitzenZeile
+                            key={row.id}
+                            row={row}
+                            note={ergebnis.periodNote}
+                          />
                         ))}
                       </ul>
-                    )}
-                    {ergebnis.periodNote && <p className="vp-note">{ergebnis.periodNote}</p>}
-                  </>
-                )}
-              </Card>
+                    ) : null
+                  }
+                  speicher={speicherBlock}
+                  preise={
+                    money ? (
+                      <PreiseZeile
+                        ebene2={ebene2({
+                          money,
+                          netzladenErlaubt: site.netzladenErlaubt ?? null,
+                        })}
+                      />
+                    ) : null
+                  }
+                />
+              )}
             </section>
 
             {/* Karte 2 — „Ist das gut?": die Antwort gehört direkt hinter die

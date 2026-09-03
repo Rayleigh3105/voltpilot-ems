@@ -21,10 +21,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 const index = readFileSync(join(root, 'src', 'index.css'), 'utf8');
 
-/** Die vier Blätter der Erlöse-Flächen. */
+/**
+ * Die Blätter der Erlöse-Flächen.
+ *
+ * ⚠ `SpeicherBlock.css` ist mit P1 ENTFALLEN (die Speicher-Karte der Variante C
+ *   hat keine grüne Fläche und keine Kennlinie mehr, E7 = a); an seiner Stelle
+ *   steht `erloese/ErgebnisKarte.css` — das Blatt der ganzen Ergebnis-Fläche
+ *   (Statement · Kontoauszug · Speicher-Karte · Preise-Zeile). Wer ein Blatt
+ *   ergänzt, trägt es HIER ein, sonst prüft der Wächter es nie.
+ */
 const BLAETTER = [
   'Erloese.css',
-  'SpeicherBlock.css',
+  'erloese/ErgebnisKarte.css',
   'SteuerungFormel.css',
   'ErloesKomposition.css',
 ] as const;
@@ -142,8 +150,10 @@ describe('Variante C · die zwei Anti-Muster des Skills', () => {
 
 describe('Variante C · die Chips tragen ihre Form nur noch EINMAL', () => {
   // §3.10 / Prinzip 5: fünf Chip-Formen sind auf `.vp-chip` gefallen. Ein
-  // Blatt, das Form wieder selbst setzt, wäre die sechste.
-  const FORMEN = ['.vp-ez-chip', '.vp-spb-chip', '.vp-spb-badge', '.vp-prov'];
+  // Blatt, das Form wieder selbst setzt, wäre die sechste. Seit P1 tragen die
+  // Erlöse-Flächen nur noch `.vp-chip` selbst — die vier Alt-Klassen sind mit
+  // ihrem Markup entfallen.
+  const FORMEN = ['.vp-chip', '.vp-prov'];
 
   it('alle hängen an der EINEN Basis in index.css', () => {
     for (const form of FORMEN) {

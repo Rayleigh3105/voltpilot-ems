@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { ErloeseSection } from './ErloeseSection';
 import { clearHistoryCache } from '../historyCache';
 import { clearEarningsCache } from '../useSiteEarnings';
@@ -136,8 +136,11 @@ describe('Erlöse-Karte · laufender Tag (B3)', () => {
     stubTage();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
-    const chip = await screen.findByText('25 % weniger');
+    // Anatomie C (§3.10 (1)): der Chip trägt Zeichen + Prozent, das Wort
+    // steht im Titel — sichtbar bleibt die Richtung als ZEICHEN, nie als Ton.
+    const chip = await screen.findByText('↓ 25 %');
     expect(chip).toBeInTheDocument();
+    expect(chip).toHaveAttribute('title', expect.stringContaining('25 % weniger'));
     expect(screen.queryByText(/53 %/)).not.toBeInTheDocument();
     // Die Grundlage steht daneben, damit die Zahl nachprüfbar ist.
     expect(screen.getByText(/Bis 12 Uhr: heute/)).toHaveTextContent(
@@ -145,21 +148,27 @@ describe('Erlöse-Karte · laufender Tag (B3)', () => {
     );
   });
 
-  it('wertet den halben Tag NICHT — der Chip bleibt ruhig', async () => {
+  it('wertet den halben Tag NICHT — der Chip bleibt ohne Farbton (W1)', async () => {
     stubTage();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
-    const chip = await screen.findByText('25 % weniger');
-    expect(chip.closest('.vp-delta')).toHaveClass('vp-delta-neutral');
-    expect(chip.closest('.vp-delta')).not.toHaveClass('vp-delta-schlecht');
+    const chip = await screen.findByText('↓ 25 %');
+    // W1 = (a): EIN Chip-Skin, kein Wertungs-Ton — weder gut noch schlecht.
+    expect(chip).toHaveClass('vp-chip');
+    expect(chip.className).not.toMatch(/gut|schlecht|warn/);
+    expect(chip.closest('.vp-delta')).toBeNull();
   });
 
-  it('sagt, was mit was verglichen wurde — statt „gegen den vollständigen Zeitraum"', async () => {
+  it('sagt im ⓘ, was mit was verglichen wurde (W2)', async () => {
     stubTage();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
-    await screen.findByText('25 % weniger');
-    expect(screen.getByText(/Verglichen wird bis 12 Uhr/)).toHaveTextContent(
+    await screen.findByText('↓ 25 %');
+    // W2 = (a): der Methoden-Satz kostet auf Ebene 0 nichts mehr — er wohnt
+    // im ⓘ und erscheint erst auf Nachfrage.
+    expect(screen.queryByText(/Verglichen wird bis 12 Uhr/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Wie wird verglichen?' }));
+    expect(await screen.findByText(/Verglichen wird bis 12 Uhr/)).toHaveTextContent(
       'der Vortag ebenfalls bis 12 Uhr',
     );
     // Der alte, jetzt falsche Satz ist weg.
@@ -168,7 +177,7 @@ describe('Erlöse-Karte · laufender Tag (B3)', () => {
 });
 
 describe('Erlöse-Karte · abgeschlossener Tag bleibt unverändert', () => {
-  it('behält Wort UND Ton', async () => {
+  it('behält das Wort — im Titel, nicht als Ton', async () => {
     window.location.hash = '#/anlage/s-1/erloese?r=day&at=2026-09-01';
     vi.spyOn(api, 'history').mockRejectedValue(new Error('keine Historie im Test'));
     vi.spyOn(api, 'siteEarnings').mockImplementation(async (_id, _range, at) =>
@@ -178,8 +187,9 @@ describe('Erlöse-Karte · abgeschlossener Tag bleibt unverändert', () => {
     );
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
-    const zeile = await screen.findByText('13 % mehr als am Vortag');
-    expect(zeile.closest('.vp-delta')).toHaveClass('vp-delta-gut');
+    const chip = await screen.findByText('↑ 13 %');
+    expect(chip).toHaveAttribute('title', expect.stringContaining('13 % mehr als am Vortag'));
+    expect(chip.className).not.toMatch(/gut|schlecht/);
     expect(screen.queryByText(/Bis \d+ Uhr/)).not.toBeInTheDocument();
   });
 });

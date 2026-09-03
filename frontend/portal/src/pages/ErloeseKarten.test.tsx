@@ -228,34 +228,40 @@ describe('E1 · vier Karten in der Reihenfolge der Frage-Leiter', () => {
 });
 
 describe('E5/E6 · die zwei absorbierten Karten', () => {
-  it('zeigt „Was den Preis gemacht hat" nirgends mehr — die Preise stehen in Ebene 2', async () => {
+  it('zeigt „Was den Preis gemacht hat" nirgends mehr — die Preise stehen in der Preise-Zeile', async () => {
     stub();
     render(<ErloeseSection site={site()} surface={SURFACE('direktvermarktung')} onOpenWelt={() => {}} />);
     await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
 
     expect(screen.queryByText('Was den Preis gemacht hat')).toBeNull();
-    const ebene2 = document.querySelector('details.vp-e2') as HTMLElement;
-    expect(within(ebene2).getByText('Preise & Vergütung')).toBeInTheDocument();
+    // Anatomie C (§3.10 (4)): „Preise & Vergütung" ist eine EIGENE flache
+    // Karte, keine vierte Zeile in einer fremden.
+    const preise = document.querySelector('details.vp-c-preise') as HTMLElement;
+    expect(within(preise).getByText('Preise & Vergütung')).toBeInTheDocument();
     // Nur die TABELLE — das Glossar darunter nennt dieselben Begriffe noch
     // einmal, dort aber als Erklärung statt als Wert.
-    const tabelle = ebene2.querySelector('table.vp-e2t') as HTMLElement;
+    const tabelle = preise.querySelector('table.vp-e2t') as HTMLElement;
     for (const label of ['Bezugspreis', 'Monatsmarktwert Solar', 'Anzulegender Wert', 'Speicher']) {
       expect(within(tabelle).getByText(label)).toBeInTheDocument();
     }
   });
 
-  it('zeigt den Planwert als ZEILE des Speicher-Blocks, nicht als Karte', async () => {
+  it('zeigt den Planwert als SCHRITT der Speicher-Rechnung, nicht als Karte (E6)', async () => {
     stub();
     render(<ErloeseSection site={site()} surface={SURFACE('direktvermarktung')} onOpenWelt={() => {}} />);
     await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
 
     expect(screen.queryByText(/Geplante Speicher-Ersparnis/)).toBeNull();
-    const plan = document.querySelector('.vp-spb-plan') as HTMLElement;
-    expect(plan.textContent).toMatch(/Vorab geplant hatte der Fahrplan/);
+    // E6 aus Runde 1, in u3 §3.2 (6) wiederhergestellt: der Planwert steht
+    // direkt hinter der Rechnung, mit der er sich vergleicht — also IM
+    // Aufklapper der Speicher-Karte, nie neben lauter gemessenen Zahlen.
+    const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
+    expect(speicher).toBeTruthy();
+    const plan = within(speicher).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
     expect(plan.textContent).toMatch(/9,40/);
-    expect(within(plan).getByText('Geplant')).toBeInTheDocument();
-    // Die Zeile steht IM Speicher-Block, also innerhalb der Ergebnis-Karte.
-    expect(plan.closest('.vp-spb')).toBeTruthy();
+    expect(plan.textContent).toMatch(/eine Plan-Zahl, keine Messung/);
+    // … und zwar im Aufklapper, nicht auf Ebene 0.
+    expect(plan.closest('details.vp-formel')).toBeTruthy();
   });
 
   it('lässt die Plan-Zeile ohne Fahrplan weg — nie eine erfundene Null', async () => {
@@ -263,7 +269,9 @@ describe('E5/E6 · die zwei absorbierten Karten', () => {
     render(<ErloeseSection site={site()} surface={SURFACE('direktvermarktung')} onOpenWelt={() => {}} />);
     await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
 
-    expect(document.querySelector('.vp-spb-plan')).toBeNull();
+    const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
+    expect(speicher).toBeTruthy();
+    expect(within(speicher).queryByText(/^Fahrplan:/)).toBeNull();
   });
 });
 
@@ -273,10 +281,60 @@ describe('B10 · das Geld steht genau einmal', () => {
     render(<ErloeseSection site={site()} surface={SURFACE('direktvermarktung')} onOpenWelt={() => {}} />);
     await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
 
-    // Sie steht im Speicher-Block der Ergebnis-Karte …
-    expect(document.querySelector('.vp-spb')).toBeTruthy();
+    // Sie steht in der Speicher-Karte …
+    expect(document.querySelector('.vp-c-speicher')).toBeTruthy();
     // … und NUR dort: weder als Kopf-Satz des Tagesbilds noch als Karte.
     expect(screen.queryByText(/hat die Steuerung an diesem Tag/)).toBeNull();
     expect(screen.queryByText(/Ohne Speicher wären es/)).toBeNull();
+  });
+});
+
+/* ⚠ Die LASTSPITZEN-Zeile gehört einer EIGENEN Abrechnungsperiode und geht nie
+   in die grosse Zahl ein (u3 §3.2 „Lastspitzen-Zeile"). Sie steht deshalb
+   AUSSERHALB des Wasserfalls, mit ihrem Perioden-Etikett — und der Nebensatz,
+   der das erklärt, kostet auf Ebene 0 nichts mehr: er wohnt im ⓘ. */
+describe('Lastspitzen · eigene Periode, nie im Wasserfall', () => {
+  const PEAK_SURFACE = anlageSurface({
+    entities: [
+      {
+        id: 'batt',
+        entityType: 'battery-hybrid',
+        capabilities: { measure: [{ channel: 'soc_pct' }] },
+      },
+    ],
+    config: { plantKind: 'direktvermarktung', tarifArt: 'fest', leistungspreisEurKw: 120 },
+  });
+
+  it('steht neben dem Kontoauszug, nennt ihre Periode und erklärt sich erst im ⓘ', async () => {
+    stub({
+      peakShaving: {
+        leistungspreisEurKw: 120,
+        abrechnungLeistung: 'jahr',
+        periodStart: '2026-01-01',
+        avoidedKw: 10.04,
+        avoidedEur: 1204,
+        measuredPeakKw: 61.2,
+        baselinePeakKw: 71.24,
+        history: [],
+      },
+    } as Partial<SiteEarnings>);
+    render(<ErloeseSection site={site()} surface={PEAK_SURFACE} onOpenWelt={() => {}} />);
+    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+
+    const extra = document.querySelector('.vp-c-led-extra') as HTMLElement;
+    expect(extra).toBeTruthy();
+    expect(extra).toHaveAttribute('aria-label', 'Ausserhalb des Zeitraum-Ergebnisses');
+    // … und sie ist NICHT Teil des Wasserfalls.
+    const auszug = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    expect(auszug).not.toBe(extra);
+    expect(within(auszug).queryByText(/Vermiedene Leistungskosten/)).toBeNull();
+
+    expect(within(extra).getByText(/Vermiedene Leistungskosten/)).toBeInTheDocument();
+    expect(extra.textContent).toMatch(/eigene Periode, nicht im Ergebnis/);
+    // Der ERKLÄRSATZ steht im ⓘ, nicht auf Ebene 0 (B6/§3.12).
+    expect(screen.queryByText(/werden getrennt ausgewiesen/)).toBeNull();
+    expect(
+      within(extra).getByRole('button', { name: 'Warum steht das getrennt?' }),
+    ).toBeInTheDocument();
   });
 });

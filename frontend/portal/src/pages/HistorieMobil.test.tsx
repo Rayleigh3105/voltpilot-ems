@@ -228,7 +228,7 @@ async function renderErloese() {
   stubHistory();
   vi.spyOn(api, 'siteEarnings').mockResolvedValue(money);
   render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-  await screen.findByText('+ 9,84 €', { selector: '.vp-ez-hero' });
+  await screen.findByText('+ 9,84 €', { selector: '.vp-c-stm-zahl' });
 }
 
 describe('Mobil · Messwerte führt mit dem DIAGRAMM (P3)', () => {
@@ -358,20 +358,20 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     await renderErloese();
     // Die EINE grosse Zahl - und derselbe Betrag ein zweites Mal als letzter
     // Balken des Wasserfalls (die Zeile „Ergebnis"), der die Addition beweist.
-    expect(screen.getByText('+ 9,84 €', { selector: '.vp-ez-hero' })).toBeInTheDocument();
+    expect(screen.getByText('+ 9,84 €', { selector: '.vp-c-stm-zahl' })).toBeInTheDocument();
     const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
     // Seit Revision 2 tragen die Zeilen 1-3-Wort-Namen (Konzept §3.12).
     // Die NAMEN der Zeilen - gezielt adressiert, weil dieselben Wörter seit
     // Ebene 1 auch in den Rechenzeilen darunter vorkommen.
     expect(
-      [...komposition.querySelectorAll('.vp-ez-name')].map((n) => n.textContent),
+      [...komposition.querySelectorAll('.vp-c-led-name')].map((n) => n.textContent),
     ).toEqual(['Einspeise-Erlös', 'Eigenverbrauch', 'Netzbezug', 'Ergebnis']);
     // Der Speicher-Block (Erlöse-Konzept §3.5) haengt im Speicher-Slot der
     // Karte und steht damit NACH den vier Zeilen: der Falz zeigt zuerst, was
     // die Zahl ERGIBT.
     expect(screen.getAllByText(/^Speicher (heute|an diesem Tag|bisher|im Zeitraum)$/).length)
       .toBeGreaterThan(0);
-    expect(screen.getByText('+ 2,07 €', { selector: '.vp-spb-wert' })).toBeInTheDocument();
+    expect(screen.getByText('+ 2,07 €', { selector: '.vp-c-sp-wert' })).toBeInTheDocument();
     // ⚠ Und er nennt diesen Betrag NICHT „Steuerung": `savedEur` misst den
     //   GANZEN Speicher (Baseline = Anlage ohne Speicher), „Steuerung" ist
     //   erst `savedSteuerungEur` — ohne die Aufteilung wird sie nicht
@@ -403,16 +403,19 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     expect(within(koerper as HTMLElement).getByText('Gemessen')).toBeInTheDocument();
   });
 
-  // P6/E6: die geplante Ersparnis ist ZEILE 4 des Speicher-Blocks — direkt
-  // unter der gemessenen Zahl, mit der sie sich vergleicht. Weder Karte noch
-  // gerahmte Fußnotiz; ihr Abzeichen „Geplant" bleibt wörtlich.
-  it('stellt die GEPLANTE Ersparnis als Zeile 4 unter die gemessene Zahl', async () => {
+  // E6 (Runde 1, in u3 §3.2 (6) wiederhergestellt): die geplante Ersparnis
+  // steht in den SCHRITTEN der Speicher-Karte — direkt hinter der Rechnung,
+  // mit der sie sich vergleicht. Weder Karte noch gerahmte Fußnotiz, und
+  // NICHT auf Ebene 0: eine Plan-Zahl neben lauter gemessenen hat sich mit
+  // ihnen verwechselt.
+  it('stellt die GEPLANTE Ersparnis in die Schritte der Speicher-Karte', async () => {
     await renderErloese();
-    const zeile = document.querySelector('.vp-spb-plan') as HTMLElement;
-    expect(zeile).toBeTruthy();
-    expect(within(zeile).getByText('Geplant')).toBeInTheDocument();
-    expect(zeile.textContent).toMatch(/Vorab geplant hatte der Fahrplan/);
+    const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
+    expect(speicher).toBeTruthy();
+    const zeile = within(speicher).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
     expect(zeile.textContent).toMatch(/4,12/);
+    expect(zeile.textContent).toMatch(/eine Plan-Zahl, keine Messung/);
+    expect(zeile.closest('details.vp-formel')).toBeTruthy();
     // Weder Karte noch Fußnotiz — die Zahl steht genau einmal.
     expect(screen.queryByText(/Geplante Speicher-Ersparnis ·/)).toBeNull();
     expect(document.querySelector('.vp-geplant-notiz')).toBeNull();
@@ -426,8 +429,10 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     });
     vi.spyOn(api, 'siteEarnings').mockResolvedValue(money);
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByText('+ 9,84 €', { selector: '.vp-ez-hero' });
-    expect(document.querySelector('.vp-spb-plan')).toBeNull();
+    await screen.findByText('+ 9,84 €', { selector: '.vp-c-stm-zahl' });
+    const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
+    expect(speicher).toBeTruthy();
+    expect(within(speicher).queryByText(/^Fahrplan:/)).toBeNull();
     expect(document.querySelector('.vp-geplant-notiz')).toBeNull();
   });
 });
@@ -448,9 +453,10 @@ describe('Der Schreibtisch bleibt, was er war', () => {
   it('behält in der Geld-Welt die vollen Karten statt der Aufklapper', async () => {
     stubPhone(false);
     await renderErloese();
-    // Am Schreibtisch steht die Plan-Zeile in DERSELBEN Zeile 4 wie am Telefon
-    // (P6/E6: die Reihenfolge der Ergebnis-Karte ist auf jeder Breite gleich).
-    expect(document.querySelector('.vp-spb-plan')).toBeTruthy();
+    // Am Schreibtisch steht die Plan-Zeile an DERSELBEN Stelle wie am Telefon
+    // (E6: die Reihenfolge der Ergebnis-Fläche ist auf jeder Breite gleich).
+    const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
+    expect(within(speicher).getByText(/^Fahrplan:/)).toBeInTheDocument();
     expect(document.querySelector('.vp-geplant-notiz')).toBeNull();
     // Der Tagesnachweis steht offen da, nicht hinter einem Aufklapper.
     expect(screen.getByTestId('day-chart')).toBeInTheDocument();

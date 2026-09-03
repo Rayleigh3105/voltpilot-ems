@@ -34,16 +34,39 @@ export type ErloesZeileId = 'einspeisung' | 'eigenverbrauch' | 'stromkosten' | '
 /** Der Ton EINER Zahl (nie eine Erfolgsfarbe — er folgt dem Vorzeichen). */
 export type ZahlTon = 'plus' | 'minus' | 'null';
 
-/** Ein Chip trägt 1–3 Wörter: entweder eine Menge oder einen fehlenden Weg. */
-export interface ZeilenChip {
-  text: string;
+/**
+ * Wohin ein Textlink der Sekundärzeile führt — ein SEMANTISCHES Ziel, nie eine
+ * Adresse: die Ableitung kennt die Route der Seite nicht, und eine hier
+ * erfundene URL wäre ein Knopf, der ins Leere führt. Die Fläche löst es auf
+ * (`Kontoauszug.hrefFor`); ohne Auflösung bleibt der Link ruhiger Text — das
+ * `SpeicherBlock.nachtragHref`-Muster.
+ */
+export type SekundaerZiel = 'tarif' | 'mastr';
+
+/**
+ * **Die Sekundärzeile einer Ledger-Zeile** (Konzept `vp-erloese-lesbar-konzept-u3`
+ * §3.2 (4)): `345,4 kWh · Prämie 4,79 €` · `154,7 kWh` · `6,3 kWh`.
+ *
+ * ⚠ Sie ERSETZT den früheren Wert-Chip. Prinzip 5 (§2) lässt als Chip nur noch
+ * ZUSTANDSWÖRTER zu (Zwischenstand · unter Null · vorläufig · Bewertet ·
+ * Kein Abzug); Mengen, Preise und Wege sind Text, keine Kapsel — sonst
+ * konkurrieren elf Kapseln mit der einen Zahl, die zählt (Befund B3).
+ *
+ * ⚠ Sie ist DATEN, kein JSX: nur so greift der Copy-Wächter (`copy.test.ts`)
+ * auf die Wortlaute, und nur so sind die Sonderfälle ohne Browser prüfbar.
+ */
+export interface Sekundaerzeile {
+  /** Die Teile OHNE Trenner — die Fläche setzt „ · " dazwischen. */
+  teile: string[];
+  /** Der Weg, wo etwas fehlt: „Stromtarif hinterlegen ›". */
+  link: { text: string; ziel: SekundaerZiel } | null;
   /** `warn` nur, wo etwas FEHLT und der Kunde einen Weg braucht. */
-  ton: 'off' | 'warn';
-  /** Der Titel-Text; null, wo der Chip für sich spricht. */
+  ton: 'normal' | 'warn';
+  /** Der Titel-Text; null, wo die Zeile für sich spricht. */
   titel: string | null;
 }
 
-/** Eine Zeile der Ebene 0: Name · Betrag · Chip · ihr Stück des Wasserfalls. */
+/** Eine Zeile der Ebene 0: Name · Sekundärzeile · Balken · Betrag. */
 export interface ErloesZeile {
   id: ErloesZeileId;
   /** 1–3 Wörter (§3.12). */
@@ -53,7 +76,8 @@ export interface ErloesZeile {
   /** „+ 26,13 €" · „− 1,59 €" · „—". */
   text: string;
   ton: ZahlTon;
-  chip: ZeilenChip | null;
+  /** Menge, Preisherkunft, fehlender Weg — nie ein Chip (§2 Prinzip 5). */
+  sekundaer: Sekundaerzeile | null;
   /** Die Farb-Kennung der Zeile (CSS-Variable, Paare mit geprüftem Abstand). */
   farbe: string;
   /**
@@ -91,11 +115,21 @@ export interface ErgebnisZeilenView {
 }
 
 /** Die Farb-Kennung je Zeile (§3.9: Netz-Teal · Haus-Violett · Kosten-Rot · Aktion). */
+/**
+ * Die VIER Balkenfarben der Variante C (§3.10 (2)): Primary · Secondary ·
+ * Destructive · Foreground.
+ *
+ * ⚠ Sie sind eine KENNUNG, kein Urteil — der Balken sagt „welche Zeile", das
+ *   Vorzeichen sagt „gut oder schlecht" (E8). Deshalb tragen die zwei
+ *   Ertragszeilen zwei Blautöne DERSELBEN Familie statt Türkis und Violett:
+ *   die alten `--vp-flow-*` sind die Kanalfarben des Energieflusses und
+ *   behaupteten hier eine Bedeutung, die es auf dieser Fläche nicht gibt.
+ */
 export const ZEILEN_FARBE: Record<ErloesZeileId, string> = {
-  einspeisung: 'var(--vp-flow-grid, #0ea5a3)',
-  eigenverbrauch: 'var(--vp-flow-load, #8b5cf6)',
-  stromkosten: 'var(--vp-chart-discharge, #e53935)',
-  ergebnis: 'var(--vp-action, #2c5282)',
+  einspeisung: 'var(--vp-c-primary, #2563eb)',
+  eigenverbrauch: 'var(--vp-c-secondary, #3b82f6)',
+  stromkosten: 'var(--vp-c-destructive, #dc2626)',
+  ergebnis: 'var(--vp-c-fg, #1e293b)',
 };
 
 /** 1–3 Wörter je Zeile — die langen Namen leben auf Ebene 1 (§3.12). */
@@ -134,82 +168,107 @@ function tonVon(v: number): ZahlTon {
   return 'null';
 }
 
-/** Der Chip der Einspeise-Zeile — Menge oder fehlender Weg, nie ein Nebensatz. */
-function einspeiseChip(money: SiteEarnings): ZeilenChip {
+/* ---------------------------------------------------------------------------
+ * DIE SEKUNDÄRZEILEN (Konzept `vp-erloese-lesbar-konzept-u3` §3.2 (4))
+ *
+ * Sie tragen, was bis zur Runde 2 in Chips stand: Menge, Preisherkunft und —
+ * wo etwas fehlt — den WEG dorthin. Wortlaute wörtlich aus §3.2 (4) und §3.4;
+ * die Sonderfälle sind benannt, damit `erloesZeilen.test.ts` sie einzeln
+ * festnageln kann.
+ * ------------------------------------------------------------------------ */
+
+/** `345,4 kWh · Prämie 4,79 €` — Menge und Zuschlag, nie ein Nebensatz. */
+function einspeiseSekundaer(money: SiteEarnings): Sekundaerzeile {
+  const kwh = num(money.eingespeistKwh);
+  const menge = kwh == null ? [] : [fmtNum(kwh, 'kWh')];
   if (money.plantKind === 'direktvermarktung') {
     const praemie = num(money.marktpraemieEur);
     if (praemie != null && praemie >= TOTBAND_EUR) {
       return {
-        text: `Prämie ${eurAmount(praemie)}`,
-        ton: 'off',
+        teile: [...menge, `Prämie ${eurAmount(praemie)}`],
+        link: null,
+        ton: 'normal',
         titel:
           'Der Zuschlag je eingespeister Kilowattstunde, wenn der Monatsmarktwert unter Ihrem anzulegenden Wert liegt.',
       };
     }
+    // ⚠ „Prämie ruht" ist eine ehrliche TATSACHE, kein Mangel — deshalb der
+    //   normale Ton und kein Weg: es gibt nichts zu hinterlegen.
     return {
-      text: 'Prämie ruht',
-      ton: 'warn',
+      teile: [...menge, 'Prämie ruht'],
+      link: null,
+      ton: 'normal',
       titel: 'In Viertelstunden mit negativem Börsenpreis fällt keine Marktprämie an.',
     };
   }
   if (money.exportVerguetungPriced) {
     return {
-      text: 'feste Vergütung',
-      ton: 'off',
+      teile: [...menge, 'feste Vergütung'],
+      link: null,
+      ton: 'normal',
       titel: 'Bewertet mit Ihrer gesetzlichen Einspeisevergütung.',
     };
   }
   return {
-    text: 'nicht verknüpft ›',
+    teile: ['Börsenpreis', 'Vergütung nicht hinterlegt'],
+    link: { text: 'Anlage verknüpfen ›', ziel: 'mastr' },
     ton: 'warn',
     titel: 'Ohne Verknüpfung im Marktstammdatenregister rechnen wir mit dem Börsenpreis.',
   };
 }
 
-function eigenChip(money: SiteEarnings): ZeilenChip {
+/** `154,7 kWh` — oder der Weg zum fehlenden Tarif. */
+function eigenSekundaer(money: SiteEarnings): Sekundaerzeile {
   if (num(money.eigenverbrauchsWertEur) == null) {
     return {
-      text: 'Tarif fehlt ›',
+      teile: ['kein Stromtarif hinterlegt'],
+      link: { text: 'Stromtarif hinterlegen ›', ziel: 'tarif' },
       ton: 'warn',
       titel: 'Ohne hinterlegten Stromtarif lässt sich der Wert des Eigenverbrauchs nicht beziffern.',
     };
   }
   const kwh = num(money.selbstverbrauchKwh);
   return {
-    text: kwh == null ? 'selbst genutzt' : fmtNum(kwh, 'kWh'),
-    ton: 'off',
+    teile: [kwh == null ? 'selbst genutzt' : fmtNum(kwh, 'kWh')],
+    link: null,
+    ton: 'normal',
     titel: 'Strom, den Ihre Anlage selbst verbraucht hat, statt ihn zu kaufen.',
   };
 }
 
-function kostenChip(money: SiteEarnings): ZeilenChip {
+/** `6,3 kWh` (· `Standard-Satz`, wo kein Tarif hinterlegt ist). */
+function kostenSekundaer(money: SiteEarnings): Sekundaerzeile {
+  const kwh = num(money.bezogenKwh);
+  const menge = kwh == null ? [] : [fmtNum(kwh, 'kWh')];
   if (money.tarifArt === 'fest' || money.tarifArt === 'dynamisch') {
-    const kwh = num(money.bezogenKwh);
     return {
-      text: kwh == null ? 'Ihr Stromtarif' : fmtNum(kwh, 'kWh'),
-      ton: 'off',
+      teile: menge.length > 0 ? menge : ['Ihr Stromtarif'],
+      link: null,
+      ton: 'normal',
       titel: 'Aus dem Netz bezogener Strom, bewertet mit Ihrem Stromtarif.',
     };
   }
   if (money.tarifPriced) {
     return {
-      text: 'Standard-Satz',
-      ton: 'off',
+      teile: [...menge, 'Standard-Satz'],
+      link: null,
+      ton: 'normal',
       titel:
         'Ohne hinterlegten Tarif rechnen wir mit dem Börsenpreis plus üblichen Netzentgelten, Abgaben und Umsatzsteuer.',
     };
   }
   return {
-    text: 'Börsenpreis',
-    ton: 'off',
+    teile: [...menge, 'Börsenpreis'],
+    link: null,
+    ton: 'normal',
     titel: 'Bewertet mit dem Börsenpreis der jeweiligen Viertelstunde.',
   };
 }
 
-function chipFuer(money: SiteEarnings, id: ErloesZeileId): ZeilenChip | null {
-  if (id === 'einspeisung') return einspeiseChip(money);
-  if (id === 'eigenverbrauch') return eigenChip(money);
-  if (id === 'stromkosten') return kostenChip(money);
+export function sekundaerFuer(money: SiteEarnings, id: ErloesZeileId): Sekundaerzeile | null {
+  if (id === 'einspeisung') return einspeiseSekundaer(money);
+  if (id === 'eigenverbrauch') return eigenSekundaer(money);
+  if (id === 'stromkosten') return kostenSekundaer(money);
   return null;
 }
 
@@ -295,7 +354,7 @@ export function ergebnisZeilen(input: ErgebnisZeilenInput): ErgebnisZeilenView {
       eur: gerundet,
       text: gerundet == null ? '—' : vorzeichenEuro(gerundet),
       ton: gerundet == null ? 'null' : tonVon(gerundet),
-      chip: money ? chipFuer(money, id) : null,
+      sekundaer: money ? sekundaerFuer(money, id) : null,
       farbe: ZEILEN_FARBE[id],
       segment: segmente.get(id) ?? null,
     });
@@ -307,7 +366,7 @@ export function ergebnisZeilen(input: ErgebnisZeilenInput): ErgebnisZeilenView {
     eur: heroGerundet,
     text: heroGerundet == null ? '—' : vorzeichenEuro(heroGerundet),
     ton: heroGerundet == null ? 'null' : tonVon(heroGerundet),
-    chip: null,
+    sekundaer: null,
     farbe: ZEILEN_FARBE.ergebnis,
     segment: segmente.get('ergebnis') ?? null,
   });
@@ -346,7 +405,7 @@ export function ergebnisZeilen(input: ErgebnisZeilenInput): ErgebnisZeilenView {
 
 /** Der Koordinatenraum des Balkens (nicht seine Pixel — die kommen aus dem CSS). */
 export const BALKEN_BREITE = 1000;
-export const BALKEN_HOEHE = 10;
+export const BALKEN_HOEHE = 8;
 
 /** Damit ein winziger Beitrag nicht unsichtbar wird, bekommt er eine Mindestbreite. */
 const BALKEN_MIN = 2;

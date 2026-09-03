@@ -102,7 +102,7 @@
   margin: var(--vp-space-2, 8px) 0 0;
   font-size: var(--vp-erl-fs-14, 14px);
   line-height: 1.5;
-  color: var(--vp-text-muted, #5b6472);
+  color: var(--vp-c-muted-fg, #475569);
   min-width: 0;
 }
 
@@ -125,7 +125,7 @@
   margin: var(--vp-space-1, 4px) 0 0;
   font-size: var(--vp-erl-fs-14, 14px);
   line-height: 1.5;
-  color: var(--vp-text-muted, #5b6472);
+  color: var(--vp-c-muted-fg, #475569);
   min-width: 0;
 }
 
@@ -165,7 +165,7 @@
 
 .vp-ekomp-period {
   font-size: var(--vp-erl-fs-12, 12px);
-  color: var(--vp-text-muted, #6c757d);
+  color: var(--vp-c-muted-fg, #475569);
 }
 
 /* Dieselbe Geometrie wie der Cockpit-Zwilling `.vp-stream-bar` (Stufe 5) -
@@ -188,20 +188,20 @@
 }
 
 .vp-ekomp-sign {
-  color: var(--vp-text-muted, #6c757d);
+  color: var(--vp-c-muted-fg, #475569);
   font-weight: var(--vp-erl-fw-400, 400);
 }
 
 .vp-ekomp-note {
   grid-column: 2 / -1;
   font-size: var(--vp-erl-fs-12, 12px);
-  color: var(--vp-text-muted, #6c757d);
+  color: var(--vp-c-muted-fg, #475569);
   overflow-wrap: anywhere;
 }
 
 .vp-ekomp-off .vp-ekomp-name,
 .vp-ekomp-off .vp-ekomp-value {
-  color: var(--vp-text-muted, #6c757d);
+  color: var(--vp-c-muted-fg, #475569);
 }
 
 /* Am Telefon stapeln Name und Betrag; der Balken entfällt (er ist Beiwerk,
@@ -273,275 +273,33 @@
 }
 
 /* ==========================================================================
- * DIE NEUE ERGEBNIS-KARTE · EBENE 0 (Konzept `vp-erloese-seite-konzept-e2`
- * §3.2/§3.9, Revision 2; Captain-Freigabe 02.09.2026).
+ * ⚠ DIE ERGEBNIS-FLÄCHE WOHNT SEIT VARIANTE C IN
+ *   `components/erloese/ErgebnisKarte.css` (Konzept
+ *   `vp-erloese-lesbar-konzept-u3` §3.10, Captain-Entscheid E1 = c).
  *
- * Alles ist neu und additiv (`.vp-ez-*`): die alten `.vp-erg-*`/`.vp-ekomp-*`
- * bleiben unangetastet, damit die Umstellung EINER Karte keine andere Fläche
- * mitnimmt.
+ * Der frühere `.vp-ez-*`-Block (Hero + vier Zeilen IN einer Karte) ist
+ * ERSATZLOS entfallen — nicht umbenannt: Variante C hat eine andere Anatomie
+ * (Statement auf der Fläche, drei eigene Karten), und ein weiterlebendes
+ * Stylesheet für ein Markup, das es nicht mehr gibt, wäre genau die zweite
+ * Wahrheit, gegen die der Skala-Wächter gebaut ist.
  *
- * Drei Regeln, die den dokumentierten 375-px-Überlauf verhindern:
- *  - jedes Grid-/Flex-Kind mit Text trägt `min-width: 0`,
- *  - jeder Betrag ist `nowrap` (eine umbrechende Zahl liest sich als zwei),
- *  - Namen DÜRFEN umbrechen bzw. ellipsieren.
+ * Was HIER bleibt: die alten `.vp-erg-*`/`.vp-ekomp-*` (andere Flächen) und
+ * die Ebenen 1/2, die Variante C unverändert weiterbenutzt.
  * ========================================================================== */
 
-.vp-ez {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
-}
-
-.vp-ez-links,
-.vp-ez-rechts {
-  min-width: 0;
-}
-
-/* --- Hero + Kurzsatz ------------------------------------------------------ */
-
-.vp-ez-hero {
-  margin: 0;
-  font-family: var(--vp-c-font);
-  font-size: var(--vp-erl-fs-48, 48px);
-  font-weight: var(--vp-erl-fw-800, 800);
-  line-height: var(--vp-erl-lh-tight, 1.1);
-  letter-spacing: -0.02em;
-  color: var(--vp-action, #2c5282);
-  overflow-wrap: anywhere;
-}
-
-/* Am Telefon fällt der Hero auf die Telefon-Stufe der Skala (§3.1) — die
-   Regel steht HIER, damit der Rumpf der Basis-Regel darüber lesbar bleibt. */
-@media (max-width: 720px) {
-  .vp-ez-hero {
-    font-size: var(--vp-erl-fs-hero-phone, 36px);
-  }
-}
-
-.vp-ez-hero-kosten {
-  color: var(--vp-c-destructive, #dc2626);
-}
-
-.vp-ez-satz {
-  margin: var(--vp-space-1, 4px) 0 var(--vp-space-2, 8px);
-  font-size: var(--vp-erl-fs-16, 16px);
-  line-height: var(--vp-erl-lh-text, 1.5);
-  color: var(--vp-c-muted-fg, #475569);
-}
-
-/* --- Die vier Zeilen ------------------------------------------------------ */
-
-.vp-ez-list {
-  list-style: none;
-  margin: var(--vp-space-2, 8px) 0 0;
-  padding: 0;
-  border-top: 1px solid var(--vp-border, #e3e9f1);
-}
-
-.vp-ez-row {
-  border-bottom: 1px solid var(--vp-border, #e3e9f1);
-  min-width: 0;
-}
-
-.vp-ez-det > summary::-webkit-details-marker {
-  display: none;
-}
-
-/* Die Zeile selbst ist das Touch-Ziel (>= 44 px, §3.9). Am Telefon steht der
-   Name über dem Balken, der Betrag rechts daneben. */
-.vp-ez-sum {
-  list-style: none;
-  display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) auto 14px;
-  grid-template-rows: auto auto;
-  column-gap: var(--vp-space-2, 8px);
-  row-gap: var(--vp-space-1, 4px);
-  align-items: center;
-  min-height: 50px;
-  padding: var(--vp-space-2, 8px) var(--vp-space-1, 4px);
-  min-width: 0;
-}
-
-.vp-ez-det > .vp-ez-sum {
-  cursor: pointer;
-}
-
-.vp-ez-dot {
-  grid-row: 1;
-  grid-column: 1;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.vp-ez-name {
-  grid-row: 1;
-  grid-column: 2;
-  min-width: 0;
-  font-weight: var(--vp-erl-fw-600, 600);
-  font-size: var(--vp-erl-fs-16, 16px);
-  color: var(--vp-text, #1f2933);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.vp-ez-val {
-  grid-row: 1;
-  grid-column: 3;
-  justify-self: end;
-  font-weight: var(--vp-erl-fw-700, 700);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-  color: var(--vp-text, #1f2933);
-}
-
-/* Der TON folgt dem Vorzeichen des WERTES, nie der Rolle der Zeile (B1). Er
-   ist bewusst zurückhaltend: die Farbe der Zeile ist ihre Kennung, nicht ihr
-   Urteil. */
-.vp-ez-t-minus {
-  /* ⚠ Der Betrag ist 16 px/700, also Normaltext — die Kosten-Farbe muss hier
-     AA halten. Seit P0 ist das `--vp-c-destructive` (#DC2626, 4,83:1 auf
-     `--vp-c-card`), die EINE Minus-Farbe der Variante C; die frühere
-     P7-Mischung aus `--vp-chart-discharge` ist damit entfallen. Die Farbe
-     steht NIE allein: das Vorzeichen wird immer mitgeschrieben (E8). */
-  color: var(--vp-c-destructive, #dc2626);
-}
-
-.vp-ez-t-null {
-  color: var(--vp-c-muted-fg, #475569);
-}
-
-.vp-ez-chev {
-  grid-row: 1;
-  grid-column: 4;
-  width: 14px;
-  text-align: center;
-  color: var(--vp-text-muted, #6c757d);
-}
-
-.vp-ez-chev::before {
-  content: '▾';
-}
-
-.vp-ez-det[open] .vp-ez-chev::before {
-  content: '▴';
-}
-
-.vp-ez-barwrap {
-  grid-row: 2;
-  grid-column: 2;
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.vp-ez-bar {
-  display: block;
-  width: 100%;
-  height: 12px;
-}
-
-.vp-ez-bar-base {
-  fill: var(--vp-flow-base, #e3e9f1);
-}
-
-.vp-ez-bar-zero {
-  stroke: var(--vp-text-muted, #6c757d);
-  stroke-width: 1;
-  opacity: 0.55;
-}
-
-.vp-ez-chipwrap {
-  grid-row: 2;
-  grid-column: 3 / 5;
-  justify-self: end;
-  min-width: 0;
-}
-
-/* Chip und Warn-Chip tragen ihre Form seit P0 nicht mehr selbst — sie steht
-   EINMAL in `.vp-chip` / `.vp-chip--warn` (`index.css`, Prinzip 5). `warn`
-   bleibt der einzige zweite Ton und steht NUR, wo etwas FEHLT und der Kunde
-   einen Weg braucht — nie als Urteil über eine Zahl. */
-
-.vp-ez-row-erg .vp-ez-name {
-  color: var(--vp-action, #2c5282);
-  font-weight: var(--vp-erl-fw-700, 700);
-}
-
-/* --- 768: der Name bekommt eine Spalte, der Balken die Mitte ------------- */
-
-@media (min-width: 700px) {
-  .vp-ez-sum {
-    grid-template-columns: 12px 150px minmax(0, 1fr) 140px 96px 14px;
-    grid-template-rows: auto;
-    min-height: 44px;
-  }
-
-  .vp-ez-barwrap {
-    grid-row: 1;
-    grid-column: 3;
-  }
-
-  .vp-ez-chipwrap {
-    grid-row: 1;
-    grid-column: 4;
-    justify-self: start;
-  }
-
-  .vp-ez-val {
-    grid-column: 5;
-  }
-
-  .vp-ez-chev {
-    grid-column: 6;
-  }
-}
-
-/* --- 1440: die Karte bekommt zwei Spalten (~60/40) ----------------------- */
-
-@media (min-width: 1100px) {
-  .vp-ez {
-    grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
-    gap: var(--vp-space-5, 24px);
-  }
-}
-
-/* --- Der Speicher-Block als benannte EINBAUSTELLE (§3.5) -----------------
- * P3 füllt sie mit den HEUTIGEN Feldern (Zurechnungs-Chip + Bestandszeile),
- * damit die Karte für sich konsistent ist; P1+P5 ersetzt den Inhalt durch die
- * zwei Ebenen „Speicher gesamt / davon Steuerung". Die Fläche ist NEUTRAL —
- * die Speicher-Farbe ist eine Kennung am Rand, nie eine Erfolgsfarbe. */
-
-.vp-ez-speicher {
-  margin: var(--vp-space-3, 12px) 0 var(--vp-space-2, 8px);
-  padding: var(--vp-space-3, 12px) var(--vp-space-3, 12px);
-  border: 1px solid var(--vp-border, #e3e9f1);
-  border-left: 3px solid var(--vp-flow-batt, #16a34a);
-  border-radius: var(--vp-radius-md, 12px);
-  background: var(--vp-bg, #f7f9fc);
-  min-width: 0;
-}
-
-.vp-ez-speicher > :first-child {
-  margin-top: 0;
-}
-
-@media (min-width: 1100px) {
-  .vp-ez-rechts > .vp-ez-speicher {
-    margin-top: 0;
-  }
-}
 
 /* --- Ebene 1 (im Akkordeon der Zeile) und Ebene 2 (Preise & Vergütung) ---
  * Konzept §3.3/§3.4/§3.11. Beide sind Disclosure — zugeklappt eine ruhige
  * Zeile, aufgeklappt die volle Rechen-Tiefe. */
 
+/* ⚠ KEINE FLÄCHE (§3.2 (5), §2 Prinzip 3): ein eingerückter Block mit einer
+   2-px-Linie in `--vp-c-border`. Der frühere graue Grund war eine Fläche in
+   der Fläche (Befund B2) — und im Kontoauszug sässe sie in einer Karte, in
+   einer Karte. Die Linie sagt „das gehört zur Zeile darüber" genauso gut. */
 .vp-e1 {
-  margin: 0 0 var(--vp-space-2, 8px);
-  padding: var(--vp-space-2, 8px) var(--vp-space-3, 12px);
-  border-radius: var(--vp-radius-md, 10px);
-  background: var(--vp-bg, #f6f8fb);
+  margin: 0 0 var(--vp-space-3, 12px);
+  padding: var(--vp-space-1, 4px) 0 var(--vp-space-2, 8px) var(--vp-space-3, 12px);
+  border-left: 2px solid var(--vp-c-border, #e2e8f0);
   min-width: 0;
 }
 
@@ -557,7 +315,8 @@
   list-style: none;
   display: flex;
   align-items: center;
-  color: var(--vp-action, #2c5282);
+  /* Aktionsfarbe der Variante C (§3.10: Primary auf Links und Aufklapp-Zeilen). */
+  color: var(--vp-c-primary, #2563eb);
   font-weight: var(--vp-erl-fw-600, 600);
 }
 
@@ -596,14 +355,21 @@
   vertical-align: top;
   padding: var(--vp-space-1, 4px) var(--vp-space-2, 8px) var(--vp-space-1, 4px) 0;
   font-weight: var(--vp-erl-fw-600, 600);
-  color: var(--vp-text-muted, #6c757d);
+  color: var(--vp-c-muted-fg, #475569);
   overflow-wrap: anywhere;
+  line-height: var(--vp-erl-lh-text, 1.5);
 }
 
+/* ⚠ Die WERTE stehen in Textgrösse (§3.2 (8)): 16, nicht 14. Die Kopfzelle
+   bleibt 14/600 sekundär — sie beschriftet, sie behauptet nicht. Damit hat
+   Ebene 2 dieselbe Grösse wie Ebene 0 (Befund B11: „die Tiefe ist die
+   kleinste Schrift"). */
 .vp-e2t td {
   vertical-align: top;
   padding: var(--vp-space-1, 4px) 0;
-  color: var(--vp-text, #1f2933);
+  font-size: var(--vp-erl-fs-16, 16px);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-fg, #1e293b);
   overflow-wrap: anywhere;
 }
 
@@ -620,7 +386,8 @@
   min-height: 44px;
   font-size: var(--vp-erl-fs-14, 14px);
   font-weight: var(--vp-erl-fw-600, 600);
-  color: var(--vp-text-muted, #6c757d);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
 }
 
 .vp-gl-list {
@@ -635,11 +402,11 @@
 
 .vp-gl-list dt {
   font-weight: var(--vp-erl-fw-600, 600);
-  color: var(--vp-text, #1f2933);
+  color: var(--vp-c-fg, #1e293b);
 }
 
 .vp-gl-list dd {
   margin: 0;
-  color: var(--vp-text-muted, #6c757d);
+  color: var(--vp-c-muted-fg, #475569);
   overflow-wrap: anywhere;
 }
