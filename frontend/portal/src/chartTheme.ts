@@ -112,6 +112,30 @@ export interface ChartTheme {
   cKosten: string;
   /** Variante C · die FÜHRENDE Linie (kumuliert) — Foreground. */
   cLead: string;
+
+  /* --- Verlauf P0 (E3.2) · die Reihen-Farben der Verlauf-Charts ----------
+   * Die EINE Zuordnungstabelle steht in `index.css`; hier stehen nur ihre
+   * Leser. Sie sind bewusst EIGENE Einträge neben `pv`/`load`/`price`/… und
+   * ersetzen keinen davon: die alten tragen portalweit ihre Bedeutung, und
+   * ein Chart wechselt sein Kleid, wenn SEIN Reiter-Paket ihn umstellt
+   * (P1–P8) — nie als Nebenwirkung dieser Datei.
+   *
+   * ⚠ `cBatt` und `cSoc` sind EINE Rolle in zwei Stufen (Fläche/Balken satt,
+   * Linie tief), nicht zwei Reihen — die K-Regel „eine Speicher-Farbe". */
+  /** Verlauf · PV / Einstrahlung. */
+  cPv: string;
+  /** Verlauf · Hausverbrauch. */
+  cLoad: string;
+  /** Verlauf · Netz (Bezug/Einspeisung). */
+  cGrid: string;
+  /** Verlauf · Speicher als Fläche/Balken. */
+  cBatt: string;
+  /** Verlauf · derselbe Speicher als Linie (Ladestand). */
+  cSoc: string;
+  /** Verlauf · Preis-Reihe. */
+  cPrice: string;
+  /** Verlauf · die ZWEITE Preis-Reihe (Vergleich) — nie ein zweites Blau. */
+  cPrice2: string;
 }
 
 let cache: ChartTheme | null = null;
@@ -162,6 +186,14 @@ export function chartTheme(): ChartTheme {
     cReihe2: read('--vp-erl-chart-2', '#3b82f6'),
     cKosten: read('--vp-erl-chart-kosten', '#dc2626'),
     cLead: read('--vp-erl-chart-lead', '#1e293b'),
+    // --- Verlauf P0 (E3.2): die Reihen-Zuordnung des Verlaufs -------------
+    cPv: read('--vp-c-chart-pv', '#e65100'),
+    cLoad: read('--vp-c-chart-load', '#8b5cf6'),
+    cGrid: read('--vp-c-chart-grid', '#036672'),
+    cBatt: read('--vp-c-chart-batt', '#16a34a'),
+    cSoc: read('--vp-c-chart-soc', '#166534'),
+    cPrice: read('--vp-c-chart-price', '#2563eb'),
+    cPrice2: read('--vp-c-chart-price-2', '#475569'),
   };
   return cache;
 }

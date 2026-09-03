@@ -74,30 +74,156 @@
   --vp-c-radius-sm: 10px;
   --vp-c-shadow: none;
 
-  /* --- Der MASSSTAB der Erlöse-Flächen (§3.1/§3.10, E5 = (a)) -----------
+  /* --- Der MASSSTAB des VERLAUFS (§3.1, E2 = (a)) -----------------------
    * Sechs Stufen, sonst nichts. 12 px trägt NUR Chips, Abzeichen und
-   * Einheiten — nie einen Satz (Prinzip 1). Der Wächter
-   * `src/erloeseSkala.test.ts` lässt in den vier Erlöse-Blättern keine
-   * siebte Größe zu; das ist seine Aufgabe, nicht sein Nebeneffekt. */
-  --vp-erl-fs-12: 12px; /* Chip · Abzeichen · Einheit · Achsenbeschriftung */
-  --vp-erl-fs-14: 14px; /* Sekundärzeile · Legende · Aufklapp-Link */
-  --vp-erl-fs-16: 16px; /* Standardtext: Name, Betrag, Satz, Rechenzeile */
-  --vp-erl-fs-20: 20px; /* Kartentitel · Summenbetrag */
-  --vp-erl-fs-24: 24px; /* Sektions-Zahl */
-  --vp-erl-fs-48: 48px; /* Hero — die EINE Zahl je Fläche */
-  --vp-erl-fs-hero-phone: 36px; /* derselbe Hero bei ≤ 720 px */
+   * Einheiten — nie einen Satz (Prinzip 1).
+   *
+   * ⚠ ZWEI NAMEN FÜR EINE SKALA, und das ist ein Übergang mit Ende.
+   * Kanonisch ist seit dem Verlauf-Paket P0 `--vp-c-fs/fw/lh-*`: die Skala ist
+   * der Maßstab des PORTALS, nicht der Erlöse (Captain-Entscheid E2 vom
+   * 03.09.2026, wörtlich „a) → `--vp-c-fs-*` mit Alias"). Die alten
+   * `--vp-erl-*`-Namen bleiben als ALIAS stehen, damit die vier
+   * Erlöse-Blätter und ihr Wächter unverändert weiterlaufen — wer NEU
+   * schreibt, nimmt `--vp-c-*`. Wenn das letzte Blatt umgezogen ist, fällt
+   * der Alias-Block darunter ersatzlos weg; die Werte stehen HIER und nur
+   * hier, ein Auseinanderlaufen ist damit ausgeschlossen.
+   *
+   * Wächter: `src/verlaufSkala.test.ts` (Verlauf-weit) und
+   * `src/erloeseSkala.test.ts` (die Erlöse-Blätter, streng). */
+  --vp-c-fs-12: 12px; /* Chip · Abzeichen · Einheit · Achsenbeschriftung */
+  --vp-c-fs-14: 14px; /* Sekundärzeile · Legende · Aufklapp-Link · Reiter */
+  --vp-c-fs-16: 16px; /* Standardtext: Name, Betrag, Satz, Rechenzeile */
+  --vp-c-fs-20: 20px; /* Kartentitel · Summenbetrag */
+  --vp-c-fs-24: 24px; /* Sektions-Zahl */
+  --vp-c-fs-48: 48px; /* Hero — die EINE Zahl je Fläche */
+  --vp-c-fs-hero-phone: 36px; /* derselbe Hero bei ≤ 720 px */
 
-  --vp-erl-fw-400: 400;
-  --vp-erl-fw-600: 600;
-  --vp-erl-fw-700: 700;
-  --vp-erl-fw-800: 800;
+  --vp-c-fw-400: 400;
+  --vp-c-fw-600: 600;
+  --vp-c-fw-700: 700;
+  --vp-c-fw-800: 800;
 
   /* Unitless — der Komponenten-Treffer des Skills: „unitless line height /
      Don't: Clip text in fixed-width or fixed-height boxes". */
-  --vp-erl-lh-tight: 1.1; /* Hero */
-  --vp-erl-lh-title: 1.25; /* Titel */
-  --vp-erl-lh-text: 1.5; /* Fliesstext, Sekundärzeilen, Chips */
+  --vp-c-lh-tight: 1.1; /* Hero */
+  --vp-c-lh-title: 1.25; /* Titel */
+  --vp-c-lh-text: 1.5; /* Fliesstext, Sekundärzeilen, Chips */
+
+  /* --- ALIAS auf Zeit: die Namen der Erlöse-Runde (u3 §3.10, E5) --------
+   * Kein eigener Wert, nur ein zweiter Name. Ersatzlos zu löschen, sobald
+   * kein Blatt mehr `--vp-erl-*` schreibt. */
+  --vp-erl-fs-12: var(--vp-c-fs-12);
+  --vp-erl-fs-14: var(--vp-c-fs-14);
+  --vp-erl-fs-16: var(--vp-c-fs-16);
+  --vp-erl-fs-20: var(--vp-c-fs-20);
+  --vp-erl-fs-24: var(--vp-c-fs-24);
+  --vp-erl-fs-48: var(--vp-c-fs-48);
+  --vp-erl-fs-hero-phone: var(--vp-c-fs-hero-phone);
+  --vp-erl-fw-400: var(--vp-c-fw-400);
+  --vp-erl-fw-600: var(--vp-c-fw-600);
+  --vp-erl-fw-700: var(--vp-c-fw-700);
+  --vp-erl-fw-800: var(--vp-c-fw-800);
+  --vp-erl-lh-tight: var(--vp-c-lh-tight);
+  --vp-erl-lh-title: var(--vp-c-lh-title);
+  --vp-erl-lh-text: var(--vp-c-lh-text);
+
+  /* --- E3.1 · Die ABSTANDS-Skala des Verlaufs --------------------------
+   * Sechs Stufen in px (Captain-Entscheid E3 = „a) alle vier Kästen").
+   * Belegt durch die Token-Quote §1.2: 141 rohe Abstandswerte allein auf
+   * Messwerte. Kartenpolster 16/24, Kartenabstand 16, Ledger-Zeile 48,
+   * Chip-Abstand 8.
+   *
+   * ⚠ SIE ERSETZT DIE HAUS-SKALA NICHT. `--vp-space-*` (rem) trägt die
+   * SCHALE und bleibt unangetastet — zwei Skalen nebeneinander, jede mit
+   * sichtbarer Herkunft, ist der Preis des Pilotbetriebs (dieselbe Regel wie
+   * bei den Farb-Token oben). */
+  --vp-c-space-1: 4px;
+  --vp-c-space-2: 8px;
+  --vp-c-space-3: 12px;
+  --vp-c-space-4: 16px;
+  --vp-c-space-5: 24px;
+  --vp-c-space-6: 32px;
+
+  /* --- E3.3 · Die MASSE des Bottom-Sheets ------------------------------
+   * Ein Ort für die Zahlen, die heute in jedem Sheet einzeln stehen.
+   * `--vp-c-sheet-max` lässt 44 px Kopfhöhe stehen, damit der Griff und der
+   * Rand darüber greifbar bleiben; `dvh` statt `vh`, weil die Adressleiste
+   * am Telefon mitwandert. */
+  --vp-c-sheet-radius: 16px;
+  --vp-c-sheet-head: 44px;
+  --vp-c-sheet-grip-w: 36px;
+  --vp-c-sheet-grip-h: 4px;
+  --vp-c-scrim: color-mix(in srgb, var(--vp-c-fg) 40%, transparent);
+  --vp-c-sheet-max: calc(100dvh - 44px);
+
+  /* --- E3.4 · BEWEGUNG -------------------------------------------------
+   * Eine Dauer für jeden Zustandswechsel des Verlaufs (web · Duration &
+   * Easing „150–300 ms"), und EINE Stelle, an der sie unter
+   * `prefers-reduced-motion` auf 0 fällt — der Media-Block direkt unter
+   * diesem `:root`.
+   *
+   * ⚠ Die Kurve ist das HAUS-Token `--vp-ease` (effects.css). Es gibt keinen
+   * Grund, dem Verlauf eine eigene zu geben, und eine zweite Kurve wäre
+   * genau die Uneinheitlichkeit, die E3.4 abstellt. */
+  --vp-c-motion: 200ms;
+
+  /* --- E3.2 · Die REIHEN-Farben der Verlauf-Charts ----------------------
+   * Die EINE Zuordnungstabelle, nach der jeder Chart des Verlaufs seine
+   * Reihen einfärbt (u3 §3.10: „die einzige Stelle, an der ein Pilot fürs
+   * ganze Portal eine Zuordnungstabelle braucht").
+   *
+   * ⚠ SIE ERFINDET KEINE FARBE. Jeder Wert ist ein Ton, den das Portal
+   * heute schon führt — die Vier-Rollen-Palette des Energieflusses
+   * (`--vp-flow-*`, weiter unten) bzw. ihre gemessene LINIEN-Stufe. Damit
+   * liest eine PV-Reihe im Chart wie die PV im Flussbild; eine eigene
+   * Chart-Palette wäre eine zweite Bedeutung derselben Rolle.
+   *
+   * ⚠ EINE SPEICHER-FARBE (K-Regel): `-batt` und `-soc` sind derselbe
+   * grüne Ton in zwei Stufen — Fläche/Balken satt, Linie tief —, nicht zwei
+   * Rollen. Es ist wörtlich die Regel, die `--vp-flow-batt-lite` schon
+   * trägt: „der Verlauf traegt EINE Rolle".
+   *
+   * Gemessen (`src/verlaufKontrast.test.ts` rechnet es bei jedem Lauf nach):
+   * jede Reihe ≥ 3:1 auf `--vp-c-card` UND `--vp-c-bg` (dataviz
+   * `contrast-data`), jedes Paar ≥ ΔE 15 (CIE76) — engste Paare gemessen
+   * Netz × Vergleichspreis 20,2 und Verbrauch × Preis 23,1. */
+  --vp-c-chart-pv: #e65100; /* = --vp-chart-pv-line · 3,79:1 */
+  --vp-c-chart-load: #8b5cf6; /* = --vp-flow-load · 4,23:1 */
+  --vp-c-chart-grid: #036672; /* = --vp-chart-grid-line · 6,67:1 */
+  --vp-c-chart-batt: #16a34a; /* = --vp-flow-batt · 3,30:1 — Fläche/Balken */
+  --vp-c-chart-soc: #166534; /* = --vp-flow-batt-ink · 7,13:1 — Linie */
+  --vp-c-chart-price: #2563eb; /* = --vp-c-primary · 5,17:1 */
+  /* Die ZWEITE Preis-Reihe (Vergleich: Bezugspreis neben Börsenpreis,
+     morgen neben heute).
+     ⚠ Bewusst NICHT `--vp-c-secondary`, obwohl E3.2 die C-Palette nennt:
+     Primary gegen Secondary misst ΔE 19,0 — über der Grenze, aber knapp, und
+     Secondary ist mit 3,68:1 zugleich die dünnste Reihe des Satzes. Genau
+     diese Enge hat das Haus schon einmal gemessen und verworfen (siehe
+     `--vp-chart-grid-line`: „KEIN hellerer Türkis-Schritt reisst die
+     Grenze"), und ein Vergleichspreis ist ohnehin eine KONTEXT-Reihe — dafür
+     führt das Portal einen Neutral-Ton. `--vp-c-muted-fg` trennt mit ΔE 68,9
+     und liest sich als das, was es ist: die Bezugsgröße, nicht die zweite
+     Hauptreihe. */
+  --vp-c-chart-price-2: #475569; /* = --vp-c-muted-fg · 7,58:1 */
 }
+
+/* E3.4 · DIE EINE Stelle, an der die Bewegung des Verlaufs verstummt.
+   Wer eine Dauer aus `--vp-c-motion` liest, wird hier still — es braucht
+   dafür keinen zweiten Media-Block und keine Regel je Fläche.
+
+   ⚠ Die fünf `prefers-reduced-motion`-Blöcke weiter unten in dieser Datei
+   bleiben stehen: sie schalten je eine NAMENTLICHE Animation ab
+   (`animation: none` auf `.vp-flow-on`, `.vp-boot-spinner`, `.vp-fleet-dot`,
+   `.vp-flowport.accepts`, `.vp-ustate-busy`). Eine Dauer von 0 ms ersetzt das
+   nicht — eine laufende Keyframe-Animation bliebe laufen. Zusammengelegt wird
+   je Fläche erst, wenn sie ihre Übergänge auf `var(--vp-c-motion)` umgestellt
+   hat; das tun die Reiter-Pakete P1–P8. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --vp-c-motion: 0ms;
+  }
+}
+
 
 * {
   box-sizing: border-box;
