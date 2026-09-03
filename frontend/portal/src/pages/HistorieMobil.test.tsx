@@ -299,8 +299,13 @@ describe('Mobil · die klebende Bedienzeile hat GENAU ZWEI Zeilen (P4)', () => {
   it('schließt das Blatt mit Escape', async () => {
     await renderMesswerte();
     fireEvent.click(screen.getByRole('button', { name: 'Zeitraum & Vergleich' }));
-    await screen.findByRole('dialog', { name: 'Zeitraum & Vergleich' });
-    fireEvent.keyDown(window, { key: 'Escape' });
+    const blatt = await screen.findByRole('dialog', { name: 'Zeitraum & Vergleich' });
+    // ⚠ Seit P2 (V9) ist das Blatt ein echtes Bottom-Sheet: der Fokus liegt IM
+    // Sheet, und Escape hängt an ihm statt an `window`. Das ist die stärkere
+    // Zusage — dieselbe Fokus-Falle, die auch Tab einfängt (Haus-Muster
+    // `CenteredConfirmDialog`), nicht ein Fenster-Zuhörer, der auch feuert,
+    // wenn der Fokus ganz woanders steht.
+    fireEvent.keyDown(blatt, { key: 'Escape' });
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Zeitraum & Vergleich' })).toBeNull(),
     );

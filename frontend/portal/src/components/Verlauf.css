@@ -87,6 +87,10 @@
   gap: 8px;
   width: 100%;
   text-align: left;
+  /* P0-Ratsche `verlaufMobil`: eine antippbare Zeile ist ≥ 44 px. Sie war
+     36 px (8 + Text + 8) — in der Rail wie im Blatt. Im Sheet sind es 48 px
+     (V9), das steht in der Sheet-Regel weiter unten. */
+  min-height: 44px;
   padding: 8px 10px 8px 8px;
   border: 0;
   border-radius: 10px;
@@ -126,6 +130,8 @@
   justify-content: space-between;
   gap: 10px;
   width: 100%;
+  /* V9: „Messwerte wählen" ist 48 px — der Knopf, der das Sheet öffnet. */
+  min-height: 48px;
   padding: 12px 14px;
   margin-bottom: var(--vp-space-4);
   border: 1px solid var(--vp-border, #e2e8f0);
@@ -152,45 +158,10 @@
   color: var(--vp-text-muted, #667);
 }
 
-.vp-verlauf-sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  background: rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: flex-end;
-}
-.vp-verlauf-sheet {
-  width: 100%;
-  max-height: 80vh;
-  overflow: auto;
-  background: var(--vp-surface, #fff);
-  border-radius: 18px 18px 0 0;
-  padding: var(--vp-space-4);
-  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
-}
-.vp-vs-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--vp-space-3);
-}
-.vp-vs-head h3 {
-  margin: 0;
-  font-size: 1.05rem;
-}
-.vp-vs-close {
-  border: 0;
-  background: transparent;
-  color: var(--vp-text-muted, #667);
-  cursor: pointer;
-  padding: 4px;
-  min-width: 44px;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+/* Das Explorer-Blatt IST seit P2 das geteilte `BottomSheet` (V9): der eigene
+   Schleier, die 80 vh, der eigene Kopf und der eigene Schließen-Knopf sind
+   ersatzlos entfallen — sie waren die halbe Fassung dieser Zusagen (B8).
+   Übrig bleibt, was nur DIESES Sheet betrifft. */
 
 /* --- stats strip ---------------------------------------------------------- */
 .vp-verlauf-stats {
@@ -300,4 +271,165 @@
   .vp-verlauf-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* ==========================================================================
+   V9 · DAS BOTTOM-SHEET — eine Form für beide Blätter
+   (Konzept `data/vp-verlauf-sprache-konzept-v5` §3.2 V9, Captain-Entscheid E5
+   „a) echtes Bottom-Sheet (V9)").
+
+   Es löst die zwei halben Blätter ab (Befund B8): das Explorer-Blatt stand
+   `position: static` im Fluss mit `80vh`, das ⋯-Blatt der Zeit-Leiste ebenso.
+   Jede Zahl hier ist ein P0-Token — die Maße stehen an EINER Stelle
+   (`index.css` E3.3), nicht in jedem Sheet einzeln.
+
+   ⚠ KEIN eigener `prefers-reduced-motion`-Block. `--vp-c-motion` fällt unter
+   `prefers-reduced-motion` an EINER Stelle auf 0 (P0, der Media-Block unter
+   dem `:root`); eine zweite Abschaltung hier wäre ein Zwilling.
+   ========================================================================== */
+
+.vp-bs-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+}
+
+.vp-bs-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--vp-c-scrim, rgba(30, 41, 59, 0.4));
+  animation: vp-bs-fade var(--vp-c-motion, 200ms) var(--vp-ease, ease-out);
+}
+
+/* Der eigentliche Unterschied zu vorher: `fixed` am unteren Rand statt im
+   Fluss, `dvh` statt `vh` (die Adressleiste des Telefons wandert mit), und
+   das Safe-Area-Polster, ohne das „Fertig" unter der Home-Leiste liegt. */
+.vp-bs {
+  position: fixed;
+  inset: auto 0 0 0;
+  display: flex;
+  flex-direction: column;
+  max-height: var(--vp-c-sheet-max, calc(100dvh - 44px));
+  background: var(--vp-c-card, #fff);
+  border-radius: var(--vp-c-sheet-radius, 16px) var(--vp-c-sheet-radius, 16px) 0 0;
+  box-shadow: 0 -8px 30px rgba(15, 23, 42, 0.18);
+  animation: vp-bs-up var(--vp-c-motion, 200ms) var(--vp-ease, ease-out);
+}
+
+.vp-bs:focus {
+  outline: none;
+}
+
+@keyframes vp-bs-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes vp-bs-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Der Griff sagt „das hier zieht man weg" — 36 × 4 aus dem Token. */
+.vp-bs-grip {
+  flex: 0 0 auto;
+  width: var(--vp-c-sheet-grip-w, 36px);
+  height: var(--vp-c-sheet-grip-h, 4px);
+  margin: var(--vp-c-space-2, 8px) auto var(--vp-c-space-1, 4px);
+  border-radius: 999px;
+  background: var(--vp-c-border, #d7dfeb);
+}
+
+.vp-bs-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-3, 12px);
+  min-height: var(--vp-c-sheet-head, 44px);
+  padding: 0 var(--vp-c-space-2, 8px) 0 var(--vp-c-space-4, 16px);
+  border-bottom: 1px solid var(--vp-c-border, #d7dfeb);
+}
+
+.vp-bs-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--vp-c-font, Inter, sans-serif);
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-700, 700);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+
+.vp-bs-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: var(--vp-c-muted-fg, #475569);
+  cursor: pointer;
+}
+
+.vp-bs-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--vp-c-space-3, 12px) var(--vp-c-space-4, 16px);
+  /* ⚠ Die Scroll-Sperre am Körper ist die ERSTE Hälfte; sie hält den Zeiger
+     ab. Die zweite ist DIESE Zeile: ohne sie kettet ein Wisch, der am Ende
+     der Liste ankommt, an die Seite dahinter weiter — und iOS zieht dort
+     ohnehin am Gummiband vorbei an jedem `overflow: hidden`. */
+  overscroll-behavior: contain;
+}
+
+/* Klebend, damit „Fertig" bei langen Listen erreichbar bleibt; das
+   Safe-Area-Polster hängt HIER, weil dies der unterste Kasten ist. */
+.vp-bs-foot {
+  flex: 0 0 auto;
+  padding: var(--vp-c-space-3, 12px) var(--vp-c-space-4, 16px);
+  padding-bottom: calc(var(--vp-c-space-3, 12px) + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--vp-c-border, #d7dfeb);
+  background: var(--vp-c-card, #fff);
+}
+
+.vp-bs-foot > .vp-btn {
+  width: 100%;
+  min-height: 48px;
+}
+
+/* --- V9 · die Maße IM Sheet ------------------------------------------------
+   Zeilen 48, Suchfeld 44, „Fertig" 48 (Konzept §3.2 V9). Sie stehen hier
+   gescoped, damit die Rail am Rechner ihre eigene Dichte behält. */
+.vp-verlauf-sheet .vp-verlauf-item {
+  min-height: 48px;
+  border-radius: 12px;
+}
+
+/* ⚠ In der schmalen Rail lässt `space-between` die Beschriftung zwischen
+   Haken und Einheit stehen; über die volle Telefonbreite driftet sie in die
+   Mitte und die Liste liest sich nicht mehr als Liste. Im Blatt nimmt die
+   Beschriftung deshalb den freien Platz — die Rail bleibt unberührt. */
+.vp-verlauf-sheet .vp-verlauf-item .vp-vi-label {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+/* ⚠ Die 44 px gehören dem EINGABEFELD, nicht seinem Rahmen: der Rahmen ist ein
+   <div>, ein Tipp auf sein Polster fokussiert also nichts. Mit dem Polster am
+   Feld statt am Rahmen ist die Trefferfläche das, was sie zu sein verspricht. */
+.vp-verlauf-sheet .vp-verlauf-search {
+  min-height: 44px;
+  padding: 0 10px;
+}
+
+.vp-verlauf-sheet .vp-verlauf-search input {
+  min-height: 44px;
 }

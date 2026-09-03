@@ -15,6 +15,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { type IconCategory } from '../../designsystem/components/core/IconTile';
+import { BottomSheet } from './BottomSheet';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 import type { HistoryCoverage, HistoryRange } from '../api';
@@ -552,34 +553,33 @@ export function UeberlagerungLegendeZeile({
  * das Haus hat EIN Bottom-Sheet-Aussehen, und `AppShell` ist der Wirt jeder
  * dieser Seiten, das Stylesheet ist also garantiert geladen.
  */
+/**
+ * Das ⋯-Blatt der Zeit-Leiste — seit P2 dasselbe {@link BottomSheet} wie der
+ * Explorer (V9, Captain-Entscheid E5).
+ *
+ * Vorher stand es `position: static` IM FLUSS und ließ die Seite um 226 px
+ * wachsen (Befund B8): der Scrim lag über der Fläche, das Blatt aber darunter,
+ * der Seiten-Scroll lief weiter und der Fokus blieb draußen. Escape schloss es
+ * bereits — das war die einzige der fünf Zusagen, die es hielt.
+ */
 function ZeitBlatt({
+  offen,
   onClose,
   children,
 }: {
+  offen: boolean;
   onClose: () => void;
   children: ReactNode;
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   return (
-    <>
-      <div className="vp-sheet-scrim" onClick={onClose} aria-hidden="true" />
-      <div className="vp-sheet vp-zl-blatt" role="dialog" aria-label="Zeitraum & Vergleich">
-        <div className="vp-sheet-head">
-          <span>Zeitraum &amp; Vergleich</span>
-          <button type="button" aria-label="Schließen" onClick={onClose}>
-            <Icon name="x" size={20} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </>
+    <BottomSheet
+      open={offen}
+      title="Zeitraum & Vergleich"
+      onClose={onClose}
+      className="vp-zl-blatt"
+    >
+      {children}
+    </BottomSheet>
   );
 }
 
@@ -732,22 +732,26 @@ export function ZeitLeiste({
           </>
         }
       >
-        {blattOffen && (
-          <ZeitBlatt onClose={() => setBlattOffen(false)}>
-            <div className="vp-zl-blatt-feld">
+        {/* V9: das Sheet montiert sich selbst (Fokus/Scroll-Sperre hängen an
+            seinem `open`) — es darf deshalb NICHT hinter einem `&&` liegen. */}
+        <ZeitBlatt offen={blattOffen} onClose={() => setBlattOffen(false)}>
+          {blattOffen && (
+            <>
+              <div className="vp-zl-blatt-feld">
               <span className="vp-zl-blatt-label">{sprungLabel(range)}</span>
-              <Sprungfeld
-                range={range}
-                anchor={anchor}
-                now={now}
-                coverage={coverage}
-                onAnchor={onAnchor}
-              />
-            </div>
-            {schalter}
-            <AbdeckungZeile coverage={coverage} stale={stale} />
-          </ZeitBlatt>
-        )}
+                <Sprungfeld
+                  range={range}
+                  anchor={anchor}
+                  now={now}
+                  coverage={coverage}
+                  onAnchor={onAnchor}
+                />
+              </div>
+              {schalter}
+              <AbdeckungZeile coverage={coverage} stale={stale} />
+            </>
+          )}
+        </ZeitBlatt>
       </ZeitLeisteRahmen>
     );
   }

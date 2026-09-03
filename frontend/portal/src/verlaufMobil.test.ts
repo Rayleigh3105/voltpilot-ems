@@ -79,12 +79,9 @@ const BLAETTER: ReadonlyArray<{
       '.vp-zeitleiste-mobil .vp-zl-row-1 > .vp-seg > button',
     ],
   },
-  {
-    reiter: 'Messwerte',
-    datei: 'components/Verlauf.css',
-    offen: 2,
-    bekannt: ['.vp-verlauf-item', '.vp-verlauf-pick'],
-  },
+  // P2a hat das Sheet gebaut und dabei die letzten zwei offenen Ziele dieses
+  // Blattes geschlossen — die Ratsche geht damit auf 0 und nie wieder hoch.
+  { reiter: 'Messwerte', datei: 'components/Verlauf.css', offen: 0, bekannt: [] },
   { reiter: 'Messwerte', datei: 'components/Messwerte.css', offen: 0, bekannt: [] },
   {
     reiter: 'Messwerte',

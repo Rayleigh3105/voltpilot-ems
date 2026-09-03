@@ -33,6 +33,7 @@ import {
   type VerlaufSeries,
   type VerlaufTarget,
 } from '../verlauf';
+import { BottomSheet } from './BottomSheet';
 import { ChartCardSkeleton, EmptyState, ErrorState } from './States';
 import { ChartSubtitle } from './ChartExplain';
 import { VerlaufChart, seriesColor, type VerlaufSelection } from './VerlaufChart';
@@ -509,36 +510,26 @@ export function VerlaufExplorer({
         </Card>
       </div>
 
-      {sheetOpen && (
-        <div className="vp-verlauf-sheet-backdrop" onClick={() => setSheetOpen(false)}>
-          <div
-            className="vp-verlauf-sheet"
-            role="dialog"
-            aria-label="Messwerte wählen"
-            onClick={(e) => e.stopPropagation()}
+      {/* V9: das echte Bottom-Sheet statt des Blatts im Fluss (Befund B8) —
+          Scroll-Sperre, Fokus hinein und zurück, `dvh` und Safe-Area kommen
+          aus dem geteilten Baustein, nicht aus dieser Fläche. */}
+      <BottomSheet
+        open={sheetOpen}
+        title="Messwerte wählen"
+        onClose={() => setSheetOpen(false)}
+        className="vp-verlauf-sheet"
+        footer={
+          <button
+            type="button"
+            className="vp-btn vp-btn-primary vp-verlauf-sheet-done"
+            onClick={() => setSheetOpen(false)}
           >
-            <div className="vp-vs-head">
-              <h3>Messwerte wählen</h3>
-              <button
-                type="button"
-                className="vp-vs-close"
-                aria-label="Schließen"
-                onClick={() => setSheetOpen(false)}
-              >
-                <Icon name="x" size={20} />
-              </button>
-            </div>
-            {railBody}
-            <button
-              type="button"
-              className="vp-btn vp-btn-primary vp-verlauf-sheet-done"
-              onClick={() => setSheetOpen(false)}
-            >
-              Fertig
-            </button>
-          </div>
-        </div>
-      )}
+            Fertig
+          </button>
+        }
+      >
+        {railBody}
+      </BottomSheet>
     </div>
   );
 }
