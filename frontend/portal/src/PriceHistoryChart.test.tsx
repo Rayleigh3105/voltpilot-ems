@@ -169,23 +169,23 @@ describe('PriceHistoryChart - die Preis-Grammatik (Stufe 4)', () => {
     }
   });
 
-  it('traegt sein WORT unter dem Bild - samt Zeitraum, nie „Viertel" (K10/K4)', () => {
+  it('traegt sein Wort seit P4 NICHT mehr selbst - nur noch die Baender (K10/K4)', () => {
+    /**
+     * ⚠ Die Wortzeile zog nach P4 in die KARTE (Ledger-Zeilen, 16 px) — sie war
+     * hier mit 0,74 rem die kleinste Schrift des Reiters. Was BLEIBT, ist die
+     * Regel dahinter: die Woerter stehen NICHT als `markArea`-Label im Canvas
+     * (ein 2½-Stunden-Band ist auf 48 Stunden ~40 px breit, sein Wort ~150 px —
+     * zwei solche Etiketten ueberlappten sich prompt gegenseitig UND die
+     * Datums-Beschriftung der Tagesgrenze).
+     */
     const { container } = render(
       <PriceHistoryChart history={historie(zweiTage())} fokus="heute" />,
     );
-    const zeile = container.querySelector('.vp-preisfenster');
-    expect(zeile).toBeTruthy();
-    expect(screen.getByText(/Strom kostet nichts · \d{2}:\d{2}–\d{2}:\d{2}/)).toBeTruthy();
-    expect(screen.getByText(/die teuersten 2½ Stunden · \d{2}:\d{2}–\d{2}:\d{2}/)).toBeTruthy();
-    expect(zeile!.textContent ?? '').not.toMatch(/Viertel/);
-    // ⚠ Die Woerter stehen NICHT als markArea-Label im Canvas: ein
-    // 2½-Stunden-Band ist auf 48 Stunden ~40 px breit, sein Wort ~150 px -
-    // zwei solche Etiketten ueberlappten sich prompt gegenseitig UND die
-    // Datums-Beschriftung der Tagesgrenze.
-    const benannt = (lastOption.series[0].markArea.data as any[]).filter(
-      (b) => b[0].label?.show,
-    );
-    expect(benannt).toEqual([]);
+    expect(container.querySelector('.vp-preisfenster')).toBeNull();
+    // Nicht vakuum: die BAENDER sind weiterhin da, nur ohne Etikett.
+    const flaechen = lastOption.series[0].markArea.data as any[];
+    expect(flaechen.length).toBeGreaterThan(0);
+    expect(flaechen.filter((b) => b[0].label?.show)).toEqual([]);
     expect(alleTexte(lastOption).join(' ')).not.toMatch(/Viertel/);
   });
 

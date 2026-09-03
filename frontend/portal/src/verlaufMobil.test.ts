@@ -100,13 +100,10 @@ const BLAETTER: ReadonlyArray<{
   },
   // Die neuen Bausteine des Rumpfes (P3) — von Anfang an auf 0.
   { reiter: 'Messwerte', datei: 'components/VerlaufLedger.css', offen: 0, bekannt: [] },
-  {
-    reiter: 'Marktpreise',
-    datei: 'components/Marktpreise.css',
-    offen: 1,
-    bekannt: ['.vp-mp-profi > summary'],
-  },
-  { reiter: 'Marktpreise', datei: 'preisFenster.css', offen: 0, bekannt: [] },
+  // P4 hat den Profi-Aufklapper auf den geteilten `Aufklapper` (48 px)
+  // umgestellt und `preisFenster.css` ersatzlos aufgelöst — die Ratsche geht
+  // damit auf 0 und nie wieder hoch.
+  { reiter: 'Marktpreise', datei: 'components/Marktpreise.css', offen: 0, bekannt: [] },
   {
     reiter: 'Marktpreise',
     datei: 'components/StrompreisStrip.css',

@@ -1,168 +1,176 @@
-/* ============================================================
-   Marktpreise - Mobil-Fassung (Mobil-Umbau Stufe 4)
-   Komponenten-lokal; `index.css` bleibt unangetastet. Jede Regel gilt nur
-   unterhalb der Telefon-Grenze bzw. haengt an Knoten, die es NUR am Telefon
-   gibt - der Desktop ist damit per Konstruktion byte-gleich.
-   ============================================================ */
+/*
+ * Der Reiter „Marktpreise" in der Sprache der Variante C (Konzept
+ * `data/vp-verlauf-sprache-konzept-v5` §4.3, Paket P4).
+ *
+ * ⚠ **Dieses Blatt trägt KEINE rohe Größe und KEINE rohe Farbe mehr.** Bis P4
+ *   standen hier acht eigene Schriftgrößen (0,66 rem Kicker, `clamp(1.7rem,
+ *   9vw, 2.1rem)` Preis, 0,72 rem Wort, 0,74 rem Chips …) und vier rohe
+ *   Tonflächen (#FDECEC/#E6F4EC) — die Ratsche in `verlaufSkala.test.ts` stand
+ *   deshalb auf `fs: 8`. Sie steht jetzt auf 0 und geht nie wieder hoch.
+ *
+ * Was hier NICHT steht, weil es geteilten Bausteinen gehört: das Statement
+ * (`.vp-c-stm*`, `ErgebnisKarte.css`), die Ledger-Zeile (`.vp-c-led*`), der
+ * Chip (`.vp-chip`, `index.css`), die Karte (`.vp-c-card`) und der Aufklapper
+ * (`.vp-c-aufk*`). Dieses Blatt fügt nur hinzu, was es sonst nirgends gibt:
+ * das TAG-Segment, das Profi-RASTER und die Weg-Zeile.
+ */
 
-/* ---------- Der „Jetzt"-Held ---------- */
-.vp-mp-jetzt {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--vp-space-3);
-  min-width: 0;
-}
-.vp-mp-jetzt-left {
-  min-width: 0;
-}
-.vp-mp-kicker {
-  display: block;
-  font-size: 0.66rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--vp-text-muted, #6c757d);
-  font-weight: 700;
-}
-.vp-mp-preis {
-  display: block;
-  font-size: clamp(1.7rem, 9vw, 2.1rem);
-  font-weight: 800;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
-  margin-top: 2px;
-  /* Der Preis kann lang werden (-12,34 ct/kWh) - er darf die Karte nie
-     sprengen, aber auch nicht mitten in der Zahl brechen. */
-  overflow-wrap: anywhere;
-}
-.vp-mp-preis.ton-negativ,
-.vp-mp-preis.ton-guenstig {
-  color: var(--vp-chart-charge, #2e9e5b);
-}
-.vp-mp-preis.ton-teuer {
-  color: var(--vp-chart-discharge, #e53935);
-}
-.vp-mp-sub {
-  display: block;
-  margin-top: 2px;
-  font-size: var(--vp-text-sm);
-  color: var(--vp-text-muted, #6c757d);
-}
-.vp-mp-wort {
-  flex: 0 0 auto;
-  align-self: flex-start;
-  white-space: nowrap;
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  background: var(--vp-chart-grid, #f1f3f5);
-  color: var(--vp-text-muted, #6c757d);
-}
-.vp-mp-wort.ton-negativ,
-.vp-mp-wort.ton-teuer {
-  background: #fdecec;
-  color: #b91c1c;
-}
-.vp-mp-wort.ton-guenstig {
-  background: #e6f4ec;
-  color: #166534;
+/* ===========================================================================
+ * 1 · STATEMENT — auf der Fläche, keine Karte
+ * ========================================================================= */
+
+.vp-mp-stm {
+  margin-bottom: var(--vp-c-space-4, 16px);
+  /* ⚠ Ausdrücklich, nicht geerbt: das Statement steht auf der FLÄCHE, nicht in
+     der Karte — `.vp-c-card` setzt die Schrift der Variante C, hier gibt es
+     keine Karte, und `body` trägt die Portal-Schrift (Inter). Ohne diese Zeile
+     stünde die EINE Zahl des Reiters als EINZIGES in einer zweiten Familie (im
+     Browser bei 375 gemessen; dieselbe Klippe wie beim `.vp-c-label`). */
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
 }
 
-/* ---------- Tagesgrenze + Sprung-Chip unter der Kurve ---------- */
-.vp-mp-tagzeile {
+/* Das Label des Statements steht ALLEIN — `.vp-c-label` ist `space-between`
+   für Label + Chips, hier gibt es nur das Label. */
+.vp-mp-stm-label {
+  justify-content: flex-start;
+}
+
+/* ===========================================================================
+ * 2 · TAG-SEGMENT (V3-Form, 44 px) — Heute / Morgen
+ * ========================================================================= */
+
+.vp-mp-tag {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--vp-space-2);
-  margin-top: var(--vp-space-2);
   flex-wrap: wrap;
+  gap: var(--vp-c-space-2, 8px);
+  margin-top: var(--vp-c-space-3, 12px);
 }
-.vp-mp-tagname {
-  font-size: var(--vp-text-sm);
-  color: var(--vp-text-muted, #6c757d);
-  font-weight: 600;
+
+/* ⚠ Bewusst NICHT das Haus-Segment `.vp-seg`: dessen aktiver Knopf misst
+   3,28 : 1 (Befund B7 des Konzepts) und es lebt portalweit. Die Form ist die
+   der Zeit-Leiste (`.vp-zeitleiste .vp-seg`, P1) — die Schiene ist nur die
+   Bahn, den Rand tragen die Knöpfe. */
+.vp-mp-tagseg {
+  display: inline-flex;
+  background: var(--vp-c-muted, #e9eff8);
+  border-radius: var(--vp-c-radius-sm, 10px);
+  overflow: hidden;
 }
-.vp-mp-sprung {
-  appearance: none;
-  border: 1px solid var(--vp-border);
+
+.vp-mp-tagseg > button {
+  /* B12 · 44 px ist die Trefferfläche, auch am Schreibtisch. */
+  min-height: 44px;
+  padding: 0 var(--vp-c-space-4, 16px);
+  border: 0;
   background: transparent;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: var(--vp-text-sm);
-  font-weight: 600;
-  color: var(--vp-action);
+  color: var(--vp-c-muted-fg, #475569);
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-600, 600);
+  line-height: var(--vp-c-lh-text, 1.5);
   cursor: pointer;
-  position: relative;
-}
-/* Die sichtbare Pille ist 30 px hoch - die Trefferflaeche muss 44 sein. */
-.vp-mp-sprung::before {
-  content: '';
-  position: absolute;
-  inset: -7px -4px;
-}
-.vp-mp-sprung:hover {
-  background: var(--vp-chart-grid, #f1f3f5);
 }
 
-/* ---------- Tief / Hoch / Ø als Chips ---------- */
-.vp-mp-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: var(--vp-space-3);
-}
-.vp-mp-chip {
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  background: var(--vp-chart-grid, #f1f3f5);
-  color: var(--vp-text-muted, #6c757d);
-  white-space: nowrap;
-}
-.vp-mp-chip.ton-gut {
-  background: #e6f4ec;
-  color: #166534;
-}
-.vp-mp-chip.ton-teuer {
-  background: #fdecec;
-  color: #b91c1c;
+/* Weiß auf `--vp-c-primary` = 5,2 : 1. */
+.vp-mp-tagseg > button.is-on {
+  background: var(--vp-c-primary, #2563eb);
+  color: #fff;
 }
 
-/* ---------- Der Profi-Aufklapper (EUR/MWh + Quelle) ---------- */
-.vp-mp-profi {
-  margin-top: var(--vp-space-4);
-  border-top: 1px solid var(--vp-border);
-  padding-top: var(--vp-space-3);
+.vp-mp-tagseg > button:focus-visible {
+  outline: 2px solid var(--vp-c-primary, #2563eb);
+  outline-offset: -2px;
 }
-.vp-mp-profi > summary {
-  cursor: pointer;
-  list-style: none;
+
+/* ===========================================================================
+ * 3 · KENNZAHLEN + PROFI-DETAIL
+ * ========================================================================= */
+
+.vp-mp-led {
+  margin-top: var(--vp-c-space-3, 12px);
+}
+
+/* E6 · ab 721 px darf das Profi-Detail eine Tabelle sein — darunter ist es
+   eine Liste aus denselben Daten (`ProfiZahlen`). */
+.vp-mp-tab {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-c-fs-16, 16px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-mp-tab thead th {
+  padding: var(--vp-c-space-2, 8px) 0;
+  border-bottom: 1px solid var(--vp-c-border, #e2e8f0);
+  color: var(--vp-c-muted-fg, #475569);
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700, 700);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.vp-mp-tab thead th:last-child,
+.vp-mp-tab tbody td {
+  text-align: right;
+}
+
+.vp-mp-tab tbody th,
+.vp-mp-tab tbody td {
+  padding: var(--vp-c-space-3, 12px) 0;
+  border-bottom: 1px solid var(--vp-c-border, #e2e8f0);
+  font-weight: var(--vp-c-fw-600, 600);
+  text-align: left;
+}
+
+.vp-mp-tab tbody tr:last-child th,
+.vp-mp-tab tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.vp-mp-tab tbody td {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ===========================================================================
+ * 4 · DIE WEG-ZEILE — „zum Fahrplan ›"
+ * ========================================================================= */
+
+.vp-mp-weg {
   display: flex;
   align-items: center;
-  gap: var(--vp-space-2);
-  font-size: var(--vp-text-sm);
-  font-weight: 600;
-  color: var(--vp-text-muted, #6c757d);
-  /* 44-px-Trefferflaeche ohne die Zeile optisch aufzublasen. */
-  padding: 11px 0;
-  margin: -11px 0;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2, 8px);
+  /* 48 px Trefferfläche (§3.2 V4-Fuß / V8). */
+  min-height: 48px;
+  margin-top: var(--vp-c-space-2, 8px);
+  padding: 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  color: var(--vp-c-primary, #2563eb);
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-600, 600);
+  line-height: var(--vp-c-lh-text, 1.5);
+  text-decoration: none;
 }
-.vp-mp-profi > summary::-webkit-details-marker {
-  display: none;
+
+.vp-mp-weg:hover,
+.vp-mp-weg:focus-visible {
+  text-decoration: underline;
 }
-.vp-mp-profi > summary svg {
-  transition: transform 0.15s ease;
-  flex: 0 0 auto;
-}
-.vp-mp-profi[open] > summary svg {
-  transform: rotate(180deg);
-}
-.vp-mp-profi-body {
-  padding-top: var(--vp-space-3);
-}
-.vp-mp-profi-body .vp-grid-stats-4 {
-  gap: var(--vp-space-3);
+
+/* ===========================================================================
+ * 5 · DER HINWEIS UNTER DEN ZAHLEN
+ * ========================================================================= */
+
+.vp-mp-note {
+  margin: var(--vp-c-space-3, 12px) 0 0;
+  color: var(--vp-c-muted-fg, #475569);
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: var(--vp-c-lh-text, 1.5);
 }
