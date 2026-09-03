@@ -254,6 +254,7 @@ function EnergieKarten({
   modus,
   isPhone,
   onTagOeffnen,
+  onLetzterTag,
 }: {
   history: History;
   /** Die Vorperiode für das Δ (F3) — null, solange sie nicht geladen ist. */
@@ -265,6 +266,8 @@ function EnergieKarten({
   isPhone: boolean;
   /** Der Tagesdrilldown (F5) — im Tages-Zeitraum gibt es nichts zu öffnen. */
   onTagOeffnen?: (at: string) => void;
+  /** Der Weg aus dem Leer-Zustand (§4.1) — er gilt in JEDEM Zeitraum. */
+  onLetzterTag?: (at: string) => void;
 }) {
   const bilanz = energieBilanz(history);
   // Der letzte Tag, an dem diese Anlage überhaupt gemessen hat — die Antwort
@@ -281,7 +284,7 @@ function EnergieKarten({
              eine je gemessene Viertelstunde führt „Zum letzten Tag mit Daten"
              nirgends hin, und ein toter Link ist schlimmer als keiner. */
           weg={letzterTag ? 'Zum letzten Tag mit Daten ›' : undefined}
-          onWeg={letzterTag && onTagOeffnen ? () => onTagOeffnen(letzterTag) : undefined}
+          onWeg={letzterTag && onLetzterTag ? () => onLetzterTag(letzterTag) : undefined}
         />
       </div>
     );
@@ -434,6 +437,28 @@ export function MesswerteSection({
     [range, site.id, modus],
   );
 
+  /**
+   * **Der Weg aus dem Leer-Zustand** (§4.1): auf DEN Tag springen, an dem
+   * diese Anlage zuletzt gemessen hat.
+   *
+   * ⚠ Bewusst NICHT `oeffneTag`: der ist der Tages-Drilldown aus einer
+   * gröberen Periode und im Tages-Zeitraum absichtlich `undefined` (dort gibt
+   * es nichts Feineres zu öffnen) — genau in dem Zeitraum also, in dem der
+   * Leer-Zustand am häufigsten steht. Zwei Wege, zwei Fragen.
+   */
+  const springeAufTag = useCallback(
+    (wert: string) => {
+      const ziel = ankerAusWert(wert, 'day');
+      if (!ziel) return;
+      setRange('day');
+      setAnchor(ziel);
+      replaceCurrentNavigation(
+        mitVergleich(historieHash(site.id, 'messwerte', 'day', wert), modus),
+      );
+    },
+    [site.id, modus],
+  );
+
   const toggleExplorer = useCallback(() => {
     setExplorerOpen((open) => {
       // Beim Zuklappen die Messwert-Parameter aus der Adresse nehmen, damit ein
@@ -502,6 +527,7 @@ export function MesswerteSection({
               modus={modus}
               isPhone={isPhone}
               onTagOeffnen={oeffneTag}
+              onLetzterTag={springeAufTag}
             />
           </>
         )}

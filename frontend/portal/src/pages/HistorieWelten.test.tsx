@@ -389,6 +389,41 @@ describe('Welt A · Messwerte', () => {
     expect(screen.getByText(/für eine Abrechnung/)).toBeInTheDocument();
     await screen.findByText('Keine Messwerte in diesem Zeitraum');
   });
+
+  /**
+   * §4.1 · der Leer-Zustand nennt den ZEITRAUM und bietet den einen Weg, den es
+   * WIRKLICH gibt. Ohne je gemessene Viertelstunde bleibt er weg — ein toter
+   * Link ist schlimmer als keiner (P3).
+   */
+  it('nennt im Leer-Zustand den Zeitraum und führt zum letzten Tag mit Daten', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue({
+      ...historyEmpty,
+      coverage: {
+        firstDataAt: '2026-08-01T00:00:00Z',
+        lastDataAt: '2026-08-28T21:45:00Z',
+        expectedFrom: '2026-09-03T00:00:00Z',
+        expectedTo: '2026-09-04T00:00:00Z',
+        expectedBuckets: 96,
+        measuredBuckets: 0,
+        gaps: 1,
+        resolutionMinutes: 15,
+      },
+    } as History);
+    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await screen.findByText('Keine Messwerte in diesem Zeitraum');
+    expect(screen.getByText(/liegen keine Messwerte vor/)).toBeInTheDocument();
+    const weg = screen.getByRole('button', { name: /Zum letzten Tag mit Daten/ });
+    fireEvent.click(weg);
+    // Der Weg führt auf GENAU diesen Tag — er ist nicht dekorativ.
+    await waitFor(() => expect(window.location.hash).toContain('at=2026-08-28'));
+  });
+
+  it('bietet ohne je gemessene Viertelstunde GAR KEINEN Weg an', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
+    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await screen.findByText('Keine Messwerte in diesem Zeitraum');
+    expect(screen.queryByRole('button', { name: /Zum letzten Tag mit Daten/ })).toBeNull();
+  });
 });
 
 /**
