@@ -2,7 +2,7 @@ import type { Kernaussage } from './chartKopf';
 import type { InsightPart } from './schedule';
 import type { PeakShaving, SchedulePlan } from './api';
 import type { LastspitzenPeriode } from './moduleSurface';
-import { abrechnungLabel, peakCounterfactualTip } from './moduleSurface';
+import { peakCounterfactualTip } from './moduleSurface';
 import type { VerlaufLedgerZeile } from './components/VerlaufLedger';
 import { eur, fmtNum } from './format';
 
@@ -100,7 +100,10 @@ export function lastspitzeZeilen(
       id: 'erspart',
       name: 'Ersparte Leistungskosten',
       wert: `${euro >= 0 ? '+' : ''}${eur(euro)} €`,
-      sekundaer: `Vermiedene Spitze × Leistungspreis (${eur(peak.leistungspreisEurKw)} €/kW ${abrechnungLabel(peak.abrechnung)})`,
+      // ⚠ Wörtlich der `title` der abgelösten KPI-Karte — der Leistungspreis
+      //   selbst steht schon in der Zeile darüber; ihn hier zu wiederholen
+      //   wäre dieselbe Zahl zweimal.
+      sekundaer: 'Vermiedene Spitze × Leistungspreis',
     },
   ];
 }
