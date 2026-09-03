@@ -4,15 +4,17 @@ import { CockpitHero } from './CockpitHero';
 import { ControlStrip } from './ControlStrip';
 import type { CockpitHeroView } from '../cockpitWidgets';
 import type { LiveSnapshot } from '../live';
-import type { SiteTopology } from '../api';
+import type { SiteEarnings, SiteTopology } from '../api';
+import FIXTURES from '../erloeseFixtures.json';
+import { speicherAussage } from '../speicherAussage';
 
 /**
  * **Die Bühne** (abgenommenes Konzept `data/vp-cockpit-konzept-f4`, Richtung A).
  *
  * Hier wird der Aufbau festgenagelt, den der Captain abgenommen hat:
  *
- *  - Fluss links, **Bilanz-Leiste rechts** (Zeitraum-Segment → Geld mit
- *    Zurechnung → Ringe → Fahrplan-Zeile) — die Leiste verteilt die
+ *  - Fluss links, **Bilanz-Leiste rechts** (seit P5: die Erlöskarte im
+ *    C-Kleid → Fahrplan-Zeile) — die Leiste verteilt die
  *    VORHANDENEN Blöcke über die volle Bühnenhöhe, deshalb gibt es die tote
  *    Zone unter dem Geldblock nicht mehr.
  *  - Die Steuerung ist der **Bühnenfuß** über die volle Kartenbreite, kein
@@ -39,6 +41,30 @@ const SNAP: LiveSnapshot = {
   socAt: '2026-07-30T12:00:00Z',
 };
 
+/**
+ * DIESELBE Speicher-Aussage, die die Erlöse-Seite zeigt (§3.5/§3.6): das
+ * Fixture `dv-tag-laufend` — laufender Tag, Speicher unter Null, Steuerung
+ * darüber, gemessener Bestand ohne Abzug. Sie wird ABGELEITET, nie
+ * abgeschrieben — zwei Formulierungen über dieselbe Zahl wären der Bruch,
+ * gegen den §3.5 gebaut ist.
+ */
+const SPEICHER = (() => {
+  const f = (FIXTURES.fixtures as unknown as Array<{
+    id: string;
+    now: string;
+    savedSpeicherEur: number | null;
+    money: SiteEarnings;
+  }>).find((x) => x.id === 'dv-tag-laufend')!;
+  const stur = f.savedSpeicherEur;
+  const money: SiteEarnings = {
+    ...f.money,
+    savedSpeicherEur: stur,
+    savedSteuerungEur: stur == null || f.money.savedEur == null ? null : f.money.savedEur - stur,
+    steuerungSplitReason: stur == null ? 'no_battery_data' : null,
+  };
+  return speicherAussage(money, { now: new Date(f.now) })!;
+})();
+
 /** Pilsting: Direktvermarktung, alle vier Leisten-Blöcke. */
 function pilstingView(over: Partial<CockpitHeroView> = {}): CockpitHeroView {
   return {
@@ -54,9 +80,11 @@ function pilstingView(over: Partial<CockpitHeroView> = {}): CockpitHeroView {
     ],
     ringsNote: null,
     money: {
-      label: 'Verdient · Heute',
+      label: 'Unterm Strich · Heute',
       value: '371,43 €',
-      attribution: 'davon 79,87 € durch VoltPilots Steuerung',
+      kosten: false,
+      speicher: SPEICHER,
+      attribution: 'Speicher + 79,87 € · davon Steuerung + 12,10 €',
     },
     planSentence: 'Nachmittags laden, abends verkaufen (19–24 Uhr).',
     ...over,
@@ -91,44 +119,52 @@ describe('Die Bilanz-Leiste', () => {
     const rail = container.querySelector('.vp-hero-side');
     expect(rail).not.toBeNull();
     const blocks = [...rail!.querySelectorAll(':scope > .vp-rail-blk')];
-    expect(blocks).toHaveLength(4);
-    // 1 · das kompakte Segment steht bei den Zahlen, die es regiert.
-    expect(blocks[0].querySelector('.vp-seg')).not.toBeNull();
-    expect(blocks[0].textContent).toContain('Bilanz');
-    // 2 · Geld mit der Zurechnung als UNTERZEILE (nie ein eigener Summand).
-    expect(blocks[1].classList.contains('vp-hero-money')).toBe(true);
-    expect(blocks[1].querySelector('.vp-hero-money-value')?.textContent).toBe('371,43 €');
-    expect(blocks[1].querySelector('.vp-hero-money-attr')?.textContent).toContain(
-      'durch VoltPilots Steuerung',
-    );
-    // 3 · die Ringe, 4 · die Fahrplan-Zeile.
-    expect(blocks[2].querySelectorAll('.vp-hero-ring')).toHaveLength(2);
-    expect(blocks[3].querySelector('.vp-hero-plan')?.textContent).toContain('abends verkaufen');
+    // Seit P5 sind es ZWEI Blöcke: die Erlöskarte im C-Kleid (Label, Zahl,
+    // Segment, Speicher-Sektion, Ringe) und die Fahrplan-Zeile.
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].classList.contains('vp-hero-money')).toBe(true);
+    // 1 · Label 12/700 Versalien + Provenienz-Abzeichen.
+    expect(blocks[0].querySelector('.vp-c-label')?.textContent).toContain('Unterm Strich · Heute');
+    // 2 · die EINE Zahl.
+    expect(blocks[0].querySelector('.vp-c-stm-zahl')?.textContent).toBe('371,43 €');
+    // 3 · das Segment steht DIREKT unter der Zahl, die es regiert.
+    expect(blocks[0].querySelector('.vp-c-ck-seg .vp-seg')).not.toBeNull();
+    // 4 · DIESELBE Speicher-Sektion wie auf der Erlöse-Seite — ohne eigenen
+    //     Rahmen (ein Rahmen je Karte).
+    const sek = blocks[0].querySelector('.vp-c-speicher');
+    expect(sek?.classList.contains('is-sektion')).toBe(true);
+    expect(sek?.classList.contains('vp-c-card')).toBe(false);
+    expect(sek?.textContent).toContain('Speicher heute');
+    expect(sek?.textContent).toContain('davon Steuerung');
+    // 5 · die zwei Ringe wohnen IN der Karte, nicht in einem eigenen Block.
+    expect(blocks[0].querySelectorAll('.vp-c-ck-ring')).toHaveLength(2);
+    // Die frühere Kopfzeile „Bilanz" ist entfallen — das Label sagt es schon.
+    expect(rail!.textContent).not.toContain('Bilanz');
+    expect(blocks[1].querySelector('.vp-hero-plan')?.textContent).toContain('abends verkaufen');
     // Die Bühne bleibt zweispaltig.
     expect(container.querySelector('.vp-cockpit-hero.vp-stage-norail')).toBeNull();
   });
 
-  it('rendert laufenden Geldfluss und geplanten Speicherbestand als zwei getrennte Zeilen', () => {
+  it('trägt den gemessenen Speicherbestand als eigene Zeile, nie in der Kasse', () => {
+    const { container } = renderStage(pilstingView());
+    const bestand = container.querySelector('.vp-c-sp-bestand');
+    // NBSP vor der Einheit — deshalb wird nur die Zahl geprüft.
+    expect(bestand?.textContent).toContain('35,8');
+    expect(bestand?.textContent).toContain('kWh');
+    expect(bestand?.querySelector('.vp-chip')?.textContent).toBe('Kein Abzug');
+    // Der laufende Zeitraum sagt sein Wort statt nur seine Farbe.
+    expect(container.querySelector('.vp-c-speicher .vp-chip')?.textContent).toBe('Zwischenstand');
+  });
+
+  it('färbt ein negatives Netto und behält sein Vorzeichen im Text', () => {
     const { container } = renderStage(
       pilstingView({
-        money: {
-          label: 'Verdient · Heute',
-          value: '39,26 €',
-          attribution: 'Zwischenstand Steuerung: −2,84 € bisher',
-          attributionInterim: true,
-          bestand: {
-            text: '44,2 kWh Speicherenergie seit Tagesbeginn gespeichert · Planwert 8,35 €',
-            badge: 'Kein Abzug',
-            titel: 'Der Planwert wird nicht vom Verdienst abgezogen.',
-            deltaKwh: 44.2,
-            wertEur: 8.35,
-          },
-        },
+        money: { label: 'Unterm Strich · Heute', value: '− 4,12 €', kosten: true, speicher: SPEICHER },
       }),
     );
-    expect(container.querySelector('.vp-hero-money-attr.is-interim')?.textContent).toContain('−2,84');
-    expect(container.querySelector('.vp-hero-money-bestand')?.textContent).toContain('44,2 kWh');
-    expect(container.querySelector('.vp-hero-money-bestand-badge')?.textContent).toBe('Kein Abzug');
+    const zahl = container.querySelector('.vp-c-stm-zahl');
+    expect(zahl?.classList.contains('is-kosten')).toBe(true);
+    expect(zahl?.textContent).toContain('−');
   });
 
   it('Haushalt: ohne Zeitraum-Segment bleibt die Leiste voll (Ringe führen)', () => {
@@ -137,19 +173,20 @@ describe('Die Bilanz-Leiste', () => {
     const { container } = renderStage(pilstingView({ money: null }));
     const rail = container.querySelector('.vp-hero-side')!;
     expect(rail.querySelector('.vp-seg')).toBeNull();
-    expect(rail.querySelector('.vp-hero-money')).toBeNull();
+    // Ohne Geld-Zahl gibt es keine Zahl und keine Speicher-Sektion — die
+    // Ringe tragen sich selbst, damit die Leiste nie leer dasteht.
+    expect(rail.querySelector('.vp-c-stm-zahl')).toBeNull();
+    expect(rail.querySelector('.vp-c-speicher')).toBeNull();
     expect(rail.querySelectorAll(':scope > .vp-rail-blk')).toHaveLength(2);
-    expect(rail.querySelectorAll('.vp-hero-ring')).toHaveLength(2);
+    expect(rail.querySelectorAll('.vp-c-ck-ring')).toHaveLength(2);
   });
 
   it('hält den Ring-Platz mit dem ehrlichen Satz statt mit „0 %"', () => {
     const { container } = renderStage(
       pilstingView({ rings: [], ringsNote: 'Autarkie und Eigenverbrauch gibt es je Zeitraum.' }),
     );
-    expect(container.querySelector('.vp-hero-ring')).toBeNull();
-    expect(container.querySelector('.vp-hero-rings-empty')?.textContent).toContain(
-      'je Zeitraum',
-    );
+    expect(container.querySelector('.vp-c-ck-ring')).toBeNull();
+    expect(container.querySelector('.vp-c-note')?.textContent).toContain('je Zeitraum');
     expect(container.textContent).not.toContain('0 %');
   });
 

@@ -58,7 +58,6 @@ import {
 import {
   DASH,
   bestandZeile,
-  erloesKomposition,
   signedEuro,
   type BestandZeile,
   type SteuerungFormelInput,
@@ -67,7 +66,7 @@ import { NETTO_WORT, nettoEur } from './erloesNetto';
 import { fmtNum } from './format';
 import type { PeakBandView } from './peakBand';
 import { planSentence, type PlanWordingKind } from './schedule';
-import { speicherAussage } from './speicherAussage';
+import { speicherAussage, type SpeicherAussage } from './speicherAussage';
 import type { ActiveMode, CockpitBlock, CockpitBlockId, MoneyStream } from './surface';
 import type { SiteCharging } from './ladepunkte';
 import { widgetTarget, type WidgetTarget } from './verlaufTarget';
@@ -166,9 +165,14 @@ export function cockpitWidgets(input: CockpitWidgetsInput): WidgetDef[] {
       case 'peak-band':
         push(out, lastspitzeWidget(input), b.id === lead);
         break;
-      case 'erloes-komposition':
-        push(out, erloesWidget(input), b.id === lead);
-        break;
+      // ⚠ `erloes-komposition` steuert seit P5 KEINE Kachel mehr bei
+      // (Captain-Entscheid **E11 = (a)**, 03.09.2026, Befund B14): die Kachel
+      // „Erlöse 9,95 € · Heute gesamt" trug den GESAMTERTRAG brutto und stand
+      // damit als ZWEITE Geldzahl neben „Unterm Strich + 5,14 €" derselben
+      // Karte — E9 („Netto überall") lässt genau eine Geldzahl je Schirm zu.
+      // Der BLOCK bleibt: er trägt weiter Nav-Eintrag und Lead-Slot der
+      // Erlöse-Welt (`surface.ts`), also hinterlässt eine gespeicherte
+      // `cockpit_layout`-Schicht, die ihn nennt, keine Lücke.
       // 'energiefluss' steuert seit dem Merge KEINE Kacheln mehr bei: der Hero
       // (Diagramm) und das Komponenten-Board tragen die Live-Werte (R1/R2).
       case 'handel':
@@ -211,25 +215,6 @@ function lastspitzeWidget(input: CockpitWidgetsInput): WidgetBase | null {
     value: peak.currentLabel,
     sub: peak.targetLabel ? `Ziel ${peak.targetLabel}` : peak.note,
     accent: 'pv',
-  };
-}
-
-function erloesWidget(input: CockpitWidgetsInput): WidgetBase | null {
-  const view = erloesKomposition({
-    streams: input.streams ?? [],
-    money: input.money ?? null,
-    range: input.range,
-    at: input.at,
-    now: input.now,
-  });
-  if (view.isEmpty) return null;
-  const total = view.totals[0] ?? null;
-  return {
-    id: 'erloes',
-    label: 'Erlöse',
-    value: total?.valueText ?? DASH,
-    sub: total?.label ?? null,
-    accent: 'money',
   };
 }
 
@@ -321,6 +306,19 @@ export interface HeroRing {
 export interface HeroMoney {
   label: string;
   value: string;
+  /**
+   * true = das Netto ist NEGATIV (mehr Stromkosten als Ertrag). Das Zeichen
+   * steht ohnehin im Text — die Farbe ist die Zugabe (Erlöse-Konzept §2
+   * Prinzip 4, E8 = a).
+   */
+  kosten: boolean;
+  /**
+   * Die volle Speicher-Aussage — dieselbe Ableitung, die die Erlöse-Seite in
+   * der Langform zeigt (§3.5/§3.6). Seit P5 rendert die Cockpit-Erlöskarte
+   * daraus DIESELBE `SpeicherKarte`; `attribution` bleibt die Kurzform für
+   * Flächen, die nur eine Zeile haben (Sticky-Kopf, Portfolio).
+   */
+  speicher: SpeicherAussage | null;
   /**
    * Die Speicher-Aussage in Kurzform: „Speicher + 12,40 € · davon Steuerung
    * + 3,10 €" (Erlöse-Konzept §3.6). null = es gibt nichts zu sagen.
@@ -466,6 +464,8 @@ export function cockpitHero(input: {
           // (mehr Stromkosten als Ertrag), und derselbe Wert darf hier nicht
           // anders aussehen als eine Ebene tiefer.
           value: signedEuro(total),
+          kosten: total < 0,
+          speicher: speicher?.hatAussage ? speicher : null,
           attribution,
           attributionTitel: speicher?.kurzTitel ?? null,
           attributionInterim: running && attribution != null,
@@ -557,31 +557,11 @@ export function mobileWidgets(widgets: WidgetDef[], opts: { hasRings: boolean })
   });
 }
 
-/** Ein Ring als Chip der Geld-Karte („Autarkie 64 %"). */
-export interface HeroChip {
-  id: HeroRing['id'];
-  /** Die kurze Form für den Chip. */
-  text: string;
-  /** Das volle Etikett samt Periode — als `title`, damit nichts verloren geht. */
-  title: string;
-}
-
-/**
- * Die Hero-Ringe als Chips (Konzept: „Ringe als Chips" in der EINEN Geld-Karte).
- * Am Telefon kostet ein SVG-Ring-Paar ~120 px Höhe für zwei Prozentzahlen; die
- * Chips sagen dasselbe in einer Zeile.
- *
- * Die Periode wird im Chip-Text WEGGELASSEN und wandert in den `title`: sie
- * steht in derselben Karte bereits zweimal — im Zeitraum-Segment darüber und im
- * Geld-Etikett („Verdient · Juli") daneben. Der Wert selbst wird nie verändert.
- */
-export function heroChips(rings: HeroRing[]): HeroChip[] {
-  return rings.map((r) => ({
-    id: r.id,
-    text: `${r.label.split('·')[0].trim()} ${r.valueText}`,
-    title: `${r.label}: ${r.valueText}`,
-  }));
-}
+/* ⚠ `HeroChip`/`heroChips` sind mit P5 ERSATZLOS entfallen (Konzept
+   `vp-erloese-lesbar-konzept-u3` §3.7): die Telefon-Geld-Karte trug die zwei
+   Ring-Kennzahlen als CHIPS, während die Bühne dieselbe Zahl als Ring zeigte —
+   eine Kennzahl in zwei Formen (Befund B7). Seit dem C-Kleid rendern beide
+   Breiten dasselbe Bauteil mit denselben Ringen und 14-px-Labels. */
 
 /** Eine Zeile der Telefon-Fassung: EINE Aussage + ein Absprung. */
 export interface MobileRow {

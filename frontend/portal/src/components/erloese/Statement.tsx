@@ -40,14 +40,29 @@ export interface StatementEinordnung {
 export interface StatementProps {
   /** „ERGEBNIS · MI., 02.09.2026" — die Fläche versalisiert, die Daten nicht. */
   label: string;
-  /** Das Ehrlichkeits-Abzeichen der Karte (genau eines). */
-  provenienz: Provenienz;
+  /**
+   * Das Ehrlichkeits-Abzeichen der Karte (genau eines).
+   *
+   * ⚠ OPTIONAL seit P5: die Cockpit-Erlöskarte trägt es NICHT (Mockup
+   *   `rvC-375-cockpit.png`) — dort sind „Zwischenstand" und „Kein Abzug"
+   *   die zwei Chips, die §3.7 misst, und ein drittes Abzeichen sprengte das
+   *   Chip-Budget (§2 Prinzip 5). Die BEWERTUNG steht eine Ebene tiefer, auf
+   *   der Erlöse-Seite, über derselben Zahl.
+   */
+  provenienz?: Provenienz | null;
   /** Die eine Zahl, fertig formatiert und MIT Vorzeichen. */
   betrag: string;
   /** `true` färbt sie zusätzlich — das Zeichen steht ohnehin im Text. */
   kosten: boolean;
-  /** Der eine Satz, höchstens acht Wörter. */
-  satz: string;
+  /**
+   * Der eine Satz, höchstens acht Wörter.
+   *
+   * ⚠ OPTIONAL seit P5: die Cockpit-Erlöskarte trägt ihn NICHT (§3.10 misst
+   *   sie bei 32 Wörtern — der Obergrenze der Abnahme). Dort sagt der Kontext
+   *   schon, worüber gesprochen wird; auf der Erlöse-Seite ist er der Einstieg
+   *   in eine ganze Welt und bleibt Pflicht-Lesestoff.
+   */
+  satz?: string;
   /** Der Vergleich in EINER Zeile; ohne Vortag bleibt sie weg. */
   einordnung?: StatementEinordnung | null;
   /** Zusatz unter der Einordnung (die Seite hängt hier nichts ein). */
@@ -70,7 +85,7 @@ export function Statement({
   einordnung,
   children,
 }: StatementProps) {
-  const prov = PROVENIENZ[provenienz];
+  const prov = provenienz ? PROVENIENZ[provenienz] : null;
   const ein = einordnung ?? null;
   const zeigeEinordnung = Boolean(ein && (ein.betraege || ein.chip));
   return (
@@ -82,12 +97,14 @@ export function Statement({
           sind `h3` (Kontoauszug, Ihr Speicher). */}
       <h2 className="vp-c-label">
         <span className="vp-c-label-text">{label}</span>
-        <span className="vp-chip" title={prov.satz}>
-          {prov.label}
-        </span>
+        {prov && (
+          <span className="vp-chip" title={prov.satz}>
+            {prov.label}
+          </span>
+        )}
       </h2>
       <p className={kosten ? 'vp-c-stm-zahl is-kosten' : 'vp-c-stm-zahl'}>{betrag}</p>
-      <p className="vp-c-stm-satz">{satz}</p>
+      {satz && <p className="vp-c-stm-satz">{satz}</p>}
       {zeigeEinordnung && ein && (
         <p className="vp-c-stm-ein">
           {ein.betraege && <span>{ein.betraege}</span>}

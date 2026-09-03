@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
-import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { SiteEntity, SiteSource, SiteTopology } from '../api';
-import type { CockpitHeroView, HeroRing } from '../cockpitWidgets';
+import type { CockpitHeroView } from '../cockpitWidgets';
 import type { LiveSnapshot } from '../live';
 import type { AnlagenSub } from '../nav';
 import { flowHasValues } from '../liveDetail';
@@ -13,7 +12,7 @@ import { AdaptiveEnergyFlow } from './AdaptiveEnergyFlow';
 import { EnergyFlow } from './EnergyFlow';
 import { PvBreakdownLine } from './PvBreakdown';
 import { ConsumerStrip } from './ConsumerStrip';
-import { SteuerungFormel } from './SteuerungFormel';
+import { CockpitErgebnis, ErgebnisRing } from './erloese/CockpitErgebnis';
 import './CockpitBlocks.css';
 
 /**
@@ -65,6 +64,7 @@ export function CockpitHero({
   charging = null,
   chargingOwn = null,
   showRail = true,
+  nachtragHref,
   rename = null,
   consumers = null,
   onOpenConsumers,
@@ -122,6 +122,12 @@ export function CockpitHero({
    */
   showRail?: boolean;
   /**
+   * Wohin „Speicher-Daten fehlen ›" in der Speicher-Sektion führt (die
+   * Technik-Seite). Ohne Ziel bleibt der Hinweis ruhiger Text — nie ein Knopf,
+   * der nirgends hinführt.
+   */
+  nachtragHref?: string;
+  /**
    * Aktiviert die Umbenennen-Stifte in der PV-Zusammensetzung (Konzept
    * `vp-entity-alias-k1` §5): der Wunsch entsteht beim Blick auf DIESE Liste.
    * Es führt in denselben Bearbeitungsort wie das Anlagen-Modell.
@@ -136,26 +142,18 @@ export function CockpitHero({
   onOpenConsumers?: () => void;
 }) {
   const hasFlow = flowHasValues(topology, snapshot);
-  const rings =
-    view.rings.length > 0 ? (
-      <div className="vp-hero-rings">
-        {view.rings.map((r) => (
-          <Ring key={r.id} ring={r} />
-        ))}
-      </div>
-    ) : view.ringsNote ? (
-      /* V13: der Platz bleibt reserviert und sagt, warum er leer ist -
-         die Seitenhöhe springt nicht mehr bei jedem Tab-Wechsel. */
-      <div className="vp-hero-rings vp-hero-rings-empty">
-        <p className="vp-muted">{view.ringsNote}</p>
-      </div>
-    ) : null;
+  // ⚠ SEIT P5 wohnen die Ringe IN der Erlöskarte (Konzept §3.7): Label · Zahl
+  //   · Zeitraum-Segment · Speicher-Sektion · Ringe. Sie sind deshalb kein
+  //   eigener Leisten-Block mehr — ein zweiter Block hätte dieselbe Kennzahl
+  //   ein zweites Mal getragen. Ohne Geld-Zahl (kein Ergebnis für den
+  //   Zeitraum) tragen sie sich selbst, damit die Leiste nie leer dasteht.
+  const hasRings = view.rings.length > 0 || view.ringsNote != null;
   // Die Leiste verteilt die VORHANDENEN Blöcke über die Höhe. Steuert eine
   // Komposition keinen einzigen bei, gibt es keine Leiste (und keinen leeren
   // Rahmen) - die Bühne wird dann einspaltig und der Fluss nimmt sie ganz ein.
   const hasRail =
     showRail &&
-    (periodSeg != null || view.money != null || rings != null || view.planSentence != null);
+    (periodSeg != null || view.money != null || hasRings || view.planSentence != null);
   return (
     <Card
       padding="lg"
@@ -193,43 +191,37 @@ export function CockpitHero({
 
       {hasRail && (
         <div className="vp-hero-side">
-          {periodSeg && (
-            <div className="vp-rail-blk vp-hero-seg">
-              <span className="vp-card-label">Bilanz</span>
-              {periodSeg}
-            </div>
-          )}
-
-          {view.money && (
+          {/* DIE BILANZ — EIN Block, das C-Kleid (§3.7 + §3.10 (7)): Label,
+              die eine Zahl, das Zeitraum-Segment, die Speicher-Sektion und
+              die Ringe. Vorher waren das DREI Blöcke („Bilanz"-Segment,
+              Geld, Ringe) mit einer eigenen Kopfzeile „Bilanz" über dem
+              Segment — sie erklärte nichts, was das Label nicht schon sagt. */}
+          {(view.money || periodSeg || hasRings) && (
             <div className="vp-rail-blk vp-hero-money">
-              <span className="vp-hero-money-label">{view.money.label}</span>
-              <span className="vp-hero-money-value">{view.money.value}</span>
-              {/* Zurechnung IMMER als Unterzeile, nie als eigener Summand. */}
-              {view.money.attribution && (
-                <span
-                  className={`vp-hero-money-attr${view.money.attributionInterim ? ' is-interim' : ''}`}
-                  title={view.money.attributionTitel ?? undefined}
-                >
-                  {view.money.attribution}
-                </span>
-              )}
-              {view.money.bestand && (
-                <span className="vp-hero-money-bestand" title={view.money.bestand.titel ?? undefined}>
-                  <span>{view.money.bestand.text}</span>
-                  {view.money.bestand.badge && (
-                    <Badge variant="tint" className="vp-hero-money-bestand-badge">
-                      {view.money.bestand.badge}
-                    </Badge>
+              {view.money ? (
+                <CockpitErgebnis
+                  money={view.money}
+                  periodSeg={periodSeg}
+                  rings={view.rings}
+                  ringsNote={view.ringsNote}
+                  nachtragHref={nachtragHref}
+                />
+              ) : (
+                <div className="vp-c-ck">
+                  {periodSeg && <div className="vp-c-ck-seg">{periodSeg}</div>}
+                  {view.rings.length > 0 ? (
+                    <p className="vp-c-ck-ringe">
+                      {view.rings.map((r) => (
+                        <ErgebnisRing key={r.id} ring={r} />
+                      ))}
+                    </p>
+                  ) : (
+                    view.ringsNote && <p className="vp-c-note">{view.ringsNote}</p>
                   )}
-                </span>
+                </div>
               )}
-              {/* „Wie wird das berechnet?" - die Rechnung hinter dem Chip,
-                  zugeklappt genau EINE ruhige Zeile (Captain 01.09.2026). */}
-              {view.money.formel && <SteuerungFormel input={view.money.formel} />}
             </div>
           )}
-
-          {rings && <div className="vp-rail-blk">{rings}</div>}
 
           {view.planSentence && (
             <div className="vp-rail-blk">
@@ -276,39 +268,3 @@ function NoFlowGuidance({ onOpenSub }: { onOpenSub: (sub: AnlagenSub) => void })
   );
 }
 
-/** Ein Ring-KPI — reines SVG, keine neue Abhängigkeit. */
-function Ring({ ring }: { ring: HeroRing }) {
-  const R = 26;
-  const C = 2 * Math.PI * R;
-  const on = (ring.pct / 100) * C;
-  return (
-    <div className="vp-hero-ring">
-      <svg viewBox="0 0 64 64" role="img" aria-label={`${ring.label}: ${ring.valueText}`}>
-        <circle cx="32" cy="32" r={R} fill="none" stroke="var(--vp-flow-base)" strokeWidth={6} />
-        <circle
-          cx="32"
-          cy="32"
-          r={R}
-          fill="none"
-          stroke={ring.hue}
-          strokeWidth={6}
-          strokeLinecap="round"
-          strokeDasharray={`${on.toFixed(2)} ${(C - on).toFixed(2)}`}
-          transform="rotate(-90 32 32)"
-        />
-        <text
-          x="32"
-          y="36"
-          textAnchor="middle"
-          fontWeight={800}
-          fontSize={14}
-          fill="var(--vp-stat-ink, #2c5282)"
-          fontFamily="Inter, sans-serif"
-        >
-          {ring.valueText}
-        </text>
-      </svg>
-      <span className="vp-hero-ring-label">{ring.label}</span>
-    </div>
-  );
-}

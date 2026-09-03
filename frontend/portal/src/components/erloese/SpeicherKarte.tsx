@@ -42,6 +42,13 @@ export interface SpeicherKarteProps {
   nachtragHref?: string;
   /** Das Label der Karte, 12/700 Versalien. */
   label?: string;
+  /**
+   * `karte` (Vorgabe) = eigener Rahmen, wie auf der Erlöse-Seite.
+   * `sektion` = OHNE Rahmen und ohne Fläche — die Form, in der die
+   * Cockpit-Erlöskarte sie trägt (§2 Prinzip 3 „ein Rahmen je Karte"; eine
+   * Karte in der Karte war Befund B2 der Runde).
+   */
+  variant?: 'karte' | 'sektion';
   /** Der Aufklapper „Wie wird das berechnet?" — er wohnt UNTER den Zeilen. */
   children?: ReactNode;
 }
@@ -50,11 +57,16 @@ export function SpeicherKarte({
   aussage,
   nachtragHref,
   label = 'Ihr Speicher',
+  variant = 'karte',
   children,
 }: SpeicherKarteProps) {
   const nachtrag = aussage.nachtragLink && nachtragHref;
   return (
-    <section className="vp-c-card vp-c-speicher">
+    <section
+      className={
+        variant === 'sektion' ? 'vp-c-speicher is-sektion' : 'vp-c-card vp-c-speicher'
+      }
+    >
       <h3 className="vp-c-label">
         <span className="vp-c-label-text">{label}</span>
         {aussage.gesamtChip && <span className="vp-chip">{aussage.gesamtChip}</span>}

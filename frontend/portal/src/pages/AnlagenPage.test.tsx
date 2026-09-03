@@ -484,12 +484,11 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    // `.vp-hero-rings` trägt AUCH den leeren Platzhalter (`vp-hero-rings-empty`,
-    // solange `rangeHistory` noch lädt - die Ring-Daten werden erst geholt,
-    // sobald die Entscheidung wirklich "stack" ist) - abgewartet wird deshalb
-    // die ECHTE Ring-Beschriftung, nicht nur der (mehrdeutige) Container.
-    await waitFor(() => expect(container.querySelectorAll('.vp-hero-ring-label')).toHaveLength(2));
-    const labels = [...container.querySelectorAll('.vp-hero-ring-label')].map((n) => n.textContent);
+    // Seit P5 wohnen die Ringe IN der Erlöskarte (`vp-c-ck-ring`); der leere
+    // Platz trägt stattdessen den ehrlichen Satz (`vp-c-note`) - abgewartet
+    // wird deshalb die ECHTE Ring-Beschriftung, nicht nur der Container.
+    await waitFor(() => expect(container.querySelectorAll('.vp-c-ck-ring-label')).toHaveLength(2));
+    const labels = [...container.querySelectorAll('.vp-c-ck-ring-label')].map((n) => n.textContent);
     // Default-Tab „Heute" (Captain 2026-07-30): die Ringe tragen die Periode
     // des gewählten Zeitraums.
     const now = new Date();
@@ -515,8 +514,8 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
     // V13: KEIN Ring (nie „0 %") - aber der Platz bleibt reserviert und sagt,
     // warum er leer ist, damit die Seitenhöhe beim Tab-Wechsel nicht springt.
-    expect(container.querySelector('.vp-hero-ring')).toBeNull();
-    expect(container.querySelector('.vp-hero-rings-empty')).toBeTruthy();
+    expect(container.querySelector('.vp-c-ck-ring')).toBeNull();
+    expect(container.querySelector('.vp-c-note')).toBeTruthy();
     expect(container.textContent).not.toContain('0 %');
   });
 
@@ -734,11 +733,11 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
   }
 
   function ringLabels(container: HTMLElement): (string | null)[] {
-    return [...container.querySelectorAll('.vp-hero-ring-label')].map((n) => n.textContent);
+    return [...container.querySelectorAll('.vp-c-ck-ring-label')].map((n) => n.textContent);
   }
 
   function ringValues(container: HTMLElement): (string | null)[] {
-    return [...container.querySelectorAll('.vp-hero-ring svg text')].map((n) => n.textContent);
+    return [...container.querySelectorAll('.vp-c-ck-ring svg text')].map((n) => n.textContent);
   }
 
   it('wechselt Kennzahl UND Etikett mit Heute/Monat/Jahr — Gesamt hat keinen Ring', async () => {
@@ -746,7 +745,7 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-hero-rings')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.vp-c-ck-ring')).toBeTruthy());
 
     const now = new Date();
 
@@ -773,11 +772,9 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
     // „Gesamt": kein All-Zeit-Historie-Endpunkt → keine Ringe (nie ein falscher
     // Wert), aber der Energiefluss bleibt live sichtbar.
     fireEvent.click(tab(container, 'Gesamt'));
-    await waitFor(() => expect(container.querySelector('.vp-hero-ring')).toBeNull());
+    await waitFor(() => expect(container.querySelector('.vp-c-ck-ring')).toBeNull());
     // V13: statt eines Höhensprungs steht dort der ehrliche Satz.
-    expect(container.querySelector('.vp-hero-rings-empty')?.textContent).toContain(
-      'Monat oder Jahr',
-    );
+    expect(container.querySelector('.vp-c-note')?.textContent).toContain('Monat oder Jahr');
     expect(container.textContent).not.toContain('0 %');
     expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy();
   });
@@ -806,10 +803,11 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     mockSurface(MULTI);
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
-    // Das Segment steht in der Leiste, unter dem Etikett „Bilanz" ...
-    const seg = container.querySelector('.vp-hero-side .vp-seg.vp-seg-compact');
+    // Seit P5 steht das Segment DIREKT unter der Zahl, die es regiert — die
+    // frühere Kopfzeile „Bilanz" ist entfallen (das Label sagt es schon).
+    const seg = container.querySelector('.vp-hero-side .vp-c-ck-seg .vp-seg.vp-seg-compact');
     expect(seg).toBeTruthy();
-    expect(container.querySelector('.vp-hero-seg')?.textContent).toContain('Bilanz');
+    expect(container.querySelector('.vp-hero-side')?.textContent).not.toContain('Bilanz');
     // ... und die alte Seitenzeile gibt es auf der Bühne nicht mehr (P2).
     expect(container.querySelector('.vp-period-tabs')).toBeNull();
   });
@@ -823,7 +821,7 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     expect(active?.textContent).toBe('Heute');
     expect([...container.querySelectorAll('[role="tab"][aria-selected="true"]')]).toHaveLength(1);
     // Die Kennzahlen, die der Umschalter regiert, tragen dieselbe Periode.
-    expect(container.querySelector('.vp-hero-ring-label')?.textContent).toBe('Autarkie · Heute');
+    expect(container.querySelector('.vp-c-ck-ring-label')?.textContent).toBe('Autarkie · Heute');
   });
 
   it('der Kopfsatz schweigt im Normalfall - der Fluss IST der Satz', async () => {
@@ -1059,13 +1057,14 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
     // nicht ausgelöst wurde.
     const sticky = container.querySelector('.vp-mob-sticky');
     expect(sticky?.getAttribute('aria-hidden')).toBe('true');
-    // Die Karte trägt das Zeitraum-Segment UND die Ringe als Chips - beide
-    // Blöcke der abgelösten Leiste, in EINER Karte direkt unterm Fluss.
+    // Die Karte trägt das Zeitraum-Segment UND die Ringe - beide Blöcke der
+    // abgelösten Leiste, in EINER Karte direkt unterm Fluss. Seit P5 sind die
+    // Ringe echte Ringe (kein zweites Chip-Vokabular über derselben Zahl).
     const money = container.querySelector('.vp-mob-money') as HTMLElement;
-    expect(money.querySelector('.vp-mob-money-seg')).toBeTruthy();
-    expect(money.querySelectorAll('.vp-mob-chip').length).toBe(2);
-    // Und die Ringe stehen nur noch dort - kein zweites SVG-Ringpaar daneben.
-    expect(container.querySelectorAll('.vp-hero-ring').length).toBe(0);
+    expect(money.querySelector('.vp-c-ck-seg .vp-seg')).toBeTruthy();
+    expect(money.querySelectorAll('.vp-c-ck-ring').length).toBe(2);
+    // Und sie stehen nur noch dort - kein zweites Ringpaar daneben.
+    expect(container.querySelectorAll('.vp-c-ck-ring').length).toBe(2);
   });
 
   it('macht Fahrplan und Börsenpreis zu je EINER Zeile mit Absprung', async () => {
@@ -1122,12 +1121,15 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
     expect(container.querySelector('.vp-hero-side')).toBeTruthy();
-    // Die Ringe leben am Rechner weiter als SVG in der Leiste.
-    expect(container.querySelectorAll('.vp-hero-ring').length).toBe(2);
+    // Die Ringe leben am Rechner weiter als SVG in der Erlöskarte der Leiste.
+    expect(container.querySelectorAll('.vp-hero-side .vp-c-ck-ring').length).toBe(2);
     // Kein einziger Telefon-Knoten - die Bühne ist unangetastet.
     expect(container.querySelectorAll('[class*="vp-mob-"]').length).toBe(0);
     const tiles = [...container.querySelectorAll('.vp-widget-label')].map((e) => e.textContent);
-    expect(tiles).toContain('Erlöse');
+    // ⚠ „Erlöse" steht hier NICHT mehr: die Kachel ist mit P5 entfallen
+    // (E11 = a) — sie trug den Gesamtertrag brutto als ZWEITE Geldzahl neben
+    // „Unterm Strich" derselben Bühne (Befund B14).
+    expect(tiles).not.toContain('Erlöse');
     expect(tiles).toContain('Lastspitze');
     const head = container.querySelector('.vp-anlage-head') as HTMLElement;
     expect(head.className).not.toContain('is-phone');

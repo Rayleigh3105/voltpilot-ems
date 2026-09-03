@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { AnlagenSub } from '../nav';
@@ -13,12 +12,11 @@ import {
   type AutomationRow,
 } from '../cockpit';
 import {
-  heroChips,
   type CockpitHeroView,
   type MobileRow,
   type StickyHead,
 } from '../cockpitWidgets';
-import { SteuerungFormel } from './SteuerungFormel';
+import { CockpitErgebnis, ErgebnisRing } from './erloese/CockpitErgebnis';
 import './CockpitBlocks.css';
 
 /**
@@ -167,73 +165,56 @@ export function ToolboxPointer({ onOpen }: { onOpen: () => void }) {
 // ---------------------------------------------------------------------------
 //
 // Render-only, wie alles hier: JEDE Regel steht im reinen `cockpitWidgets.ts`
-// (`heroChips`/`fahrplanZeile`/`preisZeile`/`stickyHead`/`mobileWidgets`).
+// (`fahrplanZeile`/`preisZeile`/`stickyHead`/`mobileWidgets`).
 // Diese Bausteine erscheinen ausschliesslich unterhalb der Telefon-Grenze
 // (`useIsPhone`), die Buehne oberhalb bleibt unangetastet.
 
 /**
- * Die EINE Geld-Karte, direkt unter dem Fluss: Zeitraum-Segment, Zahl,
- * Zurechnung und die Ringe als Chips. Am Telefon ersetzt sie die Bilanz-Leiste
- * der Buehne UND die Kacheln „Erloese"/„Handel" — dieselbe Aussage stand dort
- * bis zu viermal auf einem halben Bildschirm.
+ * Die EINE Geld-Karte, direkt unter dem Fluss. Am Telefon ersetzt sie die
+ * Bilanz-Leiste der Buehne UND die Kacheln „Erloese"/„Handel" — dieselbe
+ * Aussage stand dort bis zu viermal auf einem halben Bildschirm.
+ *
+ * ⚠ SEIT P5 traegt sie das C-Kleid (`CockpitErgebnis`): Label · Zahl ·
+ *   Zeitraum-Segment · DIESELBE Speicher-Sektion wie die Erloese-Seite · die
+ *   zwei Ringe. Die frueheren Ring-CHIPS („82 % Autarkie") sind damit
+ *   entfallen — sie sagten dasselbe in einer zweiten Form.
  */
 export function MobileMoneyCard({
   view,
   periodSeg,
+  nachtragHref,
 }: {
   view: CockpitHeroView;
   periodSeg?: ReactNode;
+  /** Wohin „Speicher-Daten fehlen ›" führt; ohne Ziel bleibt es ruhiger Text. */
+  nachtragHref?: string;
 }) {
-  const chips = heroChips(view.rings);
-  // Eine Karte ohne Geld, ohne Chips und ohne Zeitraum-Wahl haette nichts zu
+  // Eine Karte ohne Geld, ohne Ringe und ohne Zeitraum-Wahl haette nichts zu
   // sagen - dann gibt es sie nicht (kein leerer Rahmen).
-  if (!view.money && chips.length === 0 && !periodSeg) return null;
+  if (!view.money && view.rings.length === 0 && !periodSeg) return null;
   return (
     <Card padding="lg" radius="lg" className="vp-mob-money" style={{ minWidth: 0 }}>
-      {/* Zahl links, Zeitraum-Segment rechts DANEBEN (nicht darüber): das
-          Segment regiert genau diese Zahl, und eine eigene Zeile dafür kostet
-          am Telefon ~40 px, ohne etwas zu erklären. */}
-      <div className="vp-mob-money-top">
-        <span className="vp-mob-money-main">
-          {view.money && (
-            <>
-              <span className="vp-mob-money-label">{view.money.label}</span>
-              <span className="vp-mob-money-value">{view.money.value}</span>
-            </>
-          )}
-        </span>
-        {periodSeg && <span className="vp-mob-money-seg">{periodSeg}</span>}
-      </div>
-      {view.money?.attribution && (
-        <span
-          className={`vp-mob-money-attr${view.money.attributionInterim ? ' is-interim' : ''}`}
-          title={view.money.attributionTitel ?? undefined}
-        >
-          {view.money.attribution}
-        </span>
-      )}
-      {view.money?.bestand && (
-        <span className="vp-mob-money-bestand" title={view.money.bestand.titel ?? undefined}>
-          <span>{view.money.bestand.text}</span>
-          {view.money.bestand.badge && (
-            <Badge variant="tint" className="vp-mob-money-bestand-badge">
-              {view.money.bestand.badge}
-            </Badge>
-          )}
-        </span>
-      )}
-      {/* Dieselbe Erklaerung wie am Rechner - der Chip erklaert sich ueberall. */}
-      {view.money?.formel && <SteuerungFormel input={view.money.formel} />}
-      {chips.length > 0 ? (
-        <div className="vp-mob-chips">
-          {chips.map((c) => (
-            <span key={c.id} className={`vp-mob-chip vp-mob-chip-${c.id}`} title={c.title}>
-              {c.text}
-            </span>
-          ))}
-        </div>
+      {view.money ? (
+        <CockpitErgebnis
+          money={view.money}
+          periodSeg={periodSeg}
+          rings={view.rings}
+          ringsNote={view.ringsNote}
+          nachtragHref={nachtragHref}
+        />
       ) : (
-        view.ringsNote && <p className="vp-mob-money-note">{view.ringsNote}</p>
+        <div className="vp-c-ck">
+          {periodSeg && <div className="vp-c-ck-seg">{periodSeg}</div>}
+          {view.rings.length > 0 ? (
+            <p className="vp-c-ck-ringe">
+              {view.rings.map((r) => (
+                <ErgebnisRing key={r.id} ring={r} />
+              ))}
+            </p>
+          ) : (
+            view.ringsNote && <p className="vp-c-note">{view.ringsNote}</p>
+          )}
+        </div>
       )}
     </Card>
   );

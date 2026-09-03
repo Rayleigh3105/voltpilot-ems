@@ -3,7 +3,6 @@ import {
   cockpitHero,
   cockpitWidgets,
   fahrplanZeile,
-  heroChips,
   historyRangeForCockpit,
   mobileWidgets,
   preisZeile,
@@ -254,6 +253,20 @@ describe('Ehrlichkeit: weglassen statt 0', () => {
     expect(ids(PRIVAT, { weather: { nextHourTempC: null, why: null } })).not.toContain('wetter');
   });
 
+  it('E11: der Block „erloes-komposition" steuert KEINE Kachel mehr bei — und reisst keine Luecke', () => {
+    // Eine gespeicherte `cockpit_layout`-Schicht nennt weiter den BLOCK; er
+    // traegt Nav-Eintrag und Lead-Slot der Erloese-Welt. Nur die KACHEL ist
+    // entfallen (Befund B14: zweite Geldzahl neben „Unterm Strich").
+    const w = cockpitWidgets(build(MULTI, {}));
+    expect(w.map((x) => x.id)).not.toContain('erloes');
+    // Die Nachbarn der Komposition bleiben unangetastet.
+    expect(w.map((x) => x.id)).toContain('automatik');
+    // Auch als LEAD erzeugt der Block keine Kachel — und keinen Absturz.
+    expect(() =>
+      cockpitWidgets({ ...build(MULTI, {}), lead: 'erloes-komposition' }),
+    ).not.toThrow();
+  });
+
   it('jede Kachel trägt ihr Absprung-Ziel — auf ihre Seite (kein Modal)', () => {
     const w = cockpitWidgets(
       build(MULTI, {
@@ -263,7 +276,13 @@ describe('Ehrlichkeit: weglassen statt 0', () => {
       }),
     );
     const target = (id: WidgetId) => w.find((x) => x.id === id)?.target;
-    expect(target('erloes')).toEqual({ kind: 'sub', sub: 'erloese' });
+    // ⚠ `erloes` steht hier NICHT mehr: die Kachel „Erlöse" ist mit P5
+    // entfallen (E11 = a, Befund B14) — sie trug den Gesamtertrag brutto und
+    // war damit die zweite Geldzahl neben „Unterm Strich" derselben Karte.
+    // Ihr Absprung-Ziel bleibt gepflegt (`verlaufTarget.test.ts`), damit eine
+    // gespeicherte Layout-Schicht, die sie noch nennt, ins Leere zeigen kann
+    // statt zu stürzen.
+    expect(target('erloes')).toBeUndefined();
     expect(target('handel')).toEqual({ kind: 'sub', sub: 'fahrplan' });
     expect(target('automatik')).toEqual({ kind: 'sub', sub: 'steuerung' });
   });
@@ -450,20 +469,6 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung des Cockpits', () => {
     });
   });
 
-  describe('heroChips', () => {
-    it('macht aus den Ringen Chips und behält die Periode im title', () => {
-      const view = cockpitHero({ totals: TOTALS, money: money(), range: 'day', now: NOW });
-      const chips = heroChips(view.rings);
-      expect(chips.map((c) => c.text)).toEqual([`Autarkie 82${NBSP}%`, `Eigenverbrauch 64${NBSP}%`]);
-      // Die Periode geht nicht verloren - sie steht im title (und im Etikett
-      // der Geld-Zeile derselben Karte).
-      expect(chips[0].title).toBe(`Autarkie · Heute: 82${NBSP}%`);
-    });
-
-    it('ohne Ringe gibt es keine Chips (nie eine erfundene 0)', () => {
-      expect(heroChips([])).toEqual([]);
-    });
-  });
 
   describe('fahrplanZeile', () => {
     const eur = (v: number) => `${v.toFixed(2).replace('.', ',')} €`;

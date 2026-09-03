@@ -558,3 +558,121 @@
   flex: 0 0 auto;
   min-width: auto;
 }
+
+/* ===========================================================================
+ * 5 · DIE COCKPIT-ERLÖSKARTE (P5, §3.7 + §3.10 (7))
+ *
+ * Dasselbe Kleid wie die Ergebnis-Fläche, EINE Karte hoch: Label · Zahl ·
+ * Zeitraum-Segment · Speicher-Sektion · Ringe. Der Rahmen kommt von der
+ * `Card` des Cockpits bzw. von der Bilanz-Leiste der Bühne — dieses Blatt
+ * setzt hier deshalb KEINEN zweiten (§2 Prinzip 3).
+ * ========================================================================= */
+
+.vp-c-ck {
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* Das Segment steht DIREKT unter der Zahl, die es regiert — nicht darüber
+   (eine eigene Kopfzeile kostete am Telefon ~40 px, ohne etwas zu erklären). */
+.vp-c-ck-seg {
+  margin: 10px 0 0;
+  font-size: var(--vp-erl-fs-14, 14px);
+  font-weight: var(--vp-erl-fw-600, 600);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  min-width: 0;
+}
+
+/* Die Speicher-Sektion OHNE eigene Fläche: sie trennt sich durch eine Linie
+   und Abstand, nie durch einen zweiten Rahmen (E7 = a, Befund B2). */
+.vp-c-speicher.is-sektion {
+  border: 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 0;
+  background: none;
+  padding: 14px 0 0;
+}
+
+/* Die zwei Ringe mit 14-px-Labels (§3.7). */
+.vp-c-ck-ringe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin: 0;
+  min-width: 0;
+}
+
+.vp-c-ck-ring {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vp-c-ck-ring > svg {
+  width: 56px;
+  height: 56px;
+  flex: none;
+}
+
+.vp-c-ck-ring-label {
+  font-size: var(--vp-erl-fs-14, 14px);
+  font-weight: var(--vp-erl-fw-400, 400);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------------
+ * DAS ZEITRAUM-SEGMENT IM C-KLEID
+ *
+ * Das Haus-Segment (`.vp-seg`) brachte in die gemessene Karte vier Dinge, die
+ * die Anatomie C nicht zulässt: eine FÜNFTE Schriftgröße (0,78 rem = 12,5 px
+ * neben 36/16/14/12), eine ZWEITE Fläche (die eigene Spur `--vp-bg-light`),
+ * ZWEI weitere Textfarben (`--vp-text-muted` + `--vp-primary-deep`) und einen
+ * SCHATTEN auf dem aktiven Knopf. Der aktive Knopf fiel dabei mit **3,28:1**
+ * unter die 4,5:1-Schwelle (gemessen, 375).
+ *
+ * Deshalb erbt es hier die C-Token: 14/600 auf der Skala, der aktive Knopf in
+ * der Chip-Fläche `--vp-c-muted` (dieselbe, die die zwei Chips tragen — also
+ * bleibt es EINE Fläche), Tinte statt Aktionsblau, kein Schatten. Die
+ * 44-px-Trefferfläche des Haus-Segments bleibt unangetastet.
+ * ------------------------------------------------------------------------- */
+
+.vp-c-ck-seg .vp-seg.vp-seg-compact,
+.vp-c-ck-seg .vp-seg {
+  background: none;
+  border-color: var(--vp-c-border, #e2e8f0);
+  flex-wrap: wrap;
+}
+
+.vp-c-ck-seg .vp-seg.vp-seg-compact button,
+.vp-c-ck-seg .vp-seg button {
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  /* ⚠ Doppelklasse `.vp-seg.vp-seg-compact button` NÖTIG: die Leisten-Fassung
+     in `CockpitBlocks.css` setzt `0.78rem` mit (0,3,1) und gewinnt sonst. */
+  font-size: var(--vp-erl-fs-14, 14px);
+  font-weight: var(--vp-erl-fw-600, 600);
+  color: var(--vp-c-muted-fg, #475569);
+  /* 44 px auf JEDEM Zeiger, nicht nur auf dem Finger: das Haus-Segment fällt
+     am Rechner auf 36 px zurück (`.vp-seg.vp-seg-compact button`), und die
+     Abnahme dieser Karte misst die Trefferfläche breitenunabhängig. */
+  min-height: 44px;
+}
+
+.vp-c-ck-seg .vp-seg.vp-seg-compact button:hover,
+.vp-c-ck-seg .vp-seg.vp-seg-compact button.active,
+.vp-c-ck-seg .vp-seg button:hover,
+.vp-c-ck-seg .vp-seg button.active {
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-c-ck-seg .vp-seg.vp-seg-compact button.active,
+.vp-c-ck-seg .vp-seg button.active {
+  background: var(--vp-c-muted, #e9eff8);
+  box-shadow: none;
+}

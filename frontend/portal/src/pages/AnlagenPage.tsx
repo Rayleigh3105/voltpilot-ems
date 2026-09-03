@@ -1591,6 +1591,7 @@ export function AnlageSeite({
       ) : (
         <CockpitHero
           view={heroView}
+          nachtragHref={`#/anlage/${site.id}/technik`}
           topology={adaptiveLive.topology}
           snapshot={siteSnapshot(ovSite.live)}
           stale={heroStale}
@@ -1657,6 +1658,7 @@ export function AnlageSeite({
       <div ref={moneyRef}>
         <MobileMoneyCard
           view={heroView}
+          nachtragHref={`#/anlage/${site.id}/technik`}
           periodSeg={
             hasBlock(blocks, 'erloes-komposition') ? (
               <PeriodTabs range={range} onRange={switchRange} variant="seg" />

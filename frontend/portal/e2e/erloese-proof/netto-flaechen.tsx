@@ -28,6 +28,7 @@ import '../../src/components/PortfolioWelt.css';
 
 import type { EarningsSite, SiteEarnings } from '../../src/api';
 import { cockpitHero } from '../../src/cockpitWidgets';
+import { CockpitErgebnis } from '../../src/components/erloese/CockpitErgebnis';
 import { erloesErgebnis, signedEuro, steeringAttributionNote } from '../../src/erloesKomposition';
 import { NETTO_WORT } from '../../src/erloesNetto';
 import { erloeseAggregat } from '../../src/portfolioHistorie';
@@ -123,21 +124,11 @@ function CockpitHeld({ titel, money }: { titel: string; money: SiteEarnings }) {
   return (
     <section className="probe">
       <h2>{titel}</h2>
+      {/* ⚠ SEIT P5 rendert die Cockpit-Erlöskarte das C-Bauteil (§3.7). Diese
+          Probe hielt vorher eine HANDKOPIE der alten Leisten-Markup — und wäre
+          damit eine zweite, widersprechbare Fassung derselben Karte geworden. */}
       <div className="vp-rail-blk vp-hero-money">
-        <span className="vp-hero-money-label">{view.money.label}</span>
-        <span className="vp-hero-money-value">{view.money.value}</span>
-        {view.money.attribution && (
-          <span
-            className={`vp-hero-money-attr${view.money.attributionInterim ? ' is-interim' : ''}`}
-          >
-            {view.money.attribution}
-          </span>
-        )}
-        {view.money.bestand && (
-          <span className="vp-hero-money-bestand">
-            <span>{view.money.bestand.text}</span>
-          </span>
-        )}
+        <CockpitErgebnis money={view.money} rings={view.rings} ringsNote={view.ringsNote} />
       </div>
     </section>
   );
