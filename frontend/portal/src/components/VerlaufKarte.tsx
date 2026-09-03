@@ -37,7 +37,7 @@ export function VerlaufKarte({
   return (
     <section className="vp-section">
       <div className="vp-c-card">
-        <h2 className="vp-c-label">
+        <h2 className="vp-c-label vp-c-label-vl">
           <span className="vp-c-label-text">{label}</span>
           {/* ⚠ Die Chips stehen in EINER Gruppe: `.vp-c-label` ist
               `space-between`, drei direkte Kinder schöben den mittleren in die

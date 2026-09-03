@@ -598,13 +598,6 @@ export function HistoryEnergieChart({
 
   return (
     <div>
-      {tiefereReihen.length > 0 && (
-        <ChartDetailToggle
-          open={tiefe}
-          onToggle={tiefeUmschalten}
-          was={tiefereReihen.map((s) => s.label).join(', ')}
-        />
-      )}
       {fehlend.length > 0 && (
         <p className="vp-note vp-energie-fehlt">
           {fehlend.map((s) => s.fehlt).join(' ')}
@@ -620,7 +613,17 @@ export function HistoryEnergieChart({
         }
       />
       {spur && <EreignisSpur spur={spur} onTagOeffnen={onTagOeffnen} />}
+      {/* V6 · der Detail-Umschalter gehört zur LEGENDE, nicht über das Bild:
+          er entscheidet, WELCHE Reihen gezeichnet werden — genau die Frage der
+          Legende. Über dem Bild schob er es aus dem ersten Bildschirm. */}
       <div className="vp-c-bild-legende">
+        {tiefereReihen.length > 0 && (
+          <ChartDetailToggle
+            open={tiefe}
+            onToggle={tiefeUmschalten}
+            was={tiefereReihen.map((s) => s.label).join(', ')}
+          />
+        )}
         <ChartLegend
           items={legend}
           hidden={hidden}

@@ -59,6 +59,11 @@
   background: var(--vp-c-card, #ffffff);
   padding: 18px;
   min-width: 0;
+  /* ⚠ **Die EINE Schrift gehört der KARTE, nicht nur der Ergebnis-Fläche**
+     (P3): auf der Erlöse-Seite setzte `.vp-c` sie eine Ebene höher, eine
+     C-Karte anderswo erbte deshalb die Portal-Schrift (Inter). Für Erlöse ist
+     die Zeile ein NO-OP — derselbe Wert, nur eine Ebene tiefer gesetzt. */
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
 }
 
 /* ⚠ **721, nicht 700** (Paket P1): `useIsPhone` fragt `(max-width: 720px)`, die

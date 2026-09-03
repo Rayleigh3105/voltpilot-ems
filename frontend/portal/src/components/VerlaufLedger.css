@@ -51,6 +51,11 @@
 }
 
 .vp-c-bild-legende .vp-chart-legend .vp-cl-item {
+  /* ⚠ Ausdrücklich, nicht geerbt: `.vp-cl-label`/`.vp-cl-unit` setzen in
+     `index.css` die Anzeigeschrift (Inter Tight). Ohne diese Zeile stünde die
+     Legende als EINZIGES Element der Karte in einer zweiten Familie (im
+     Browser bei 375 gemessen) — dieselbe Klippe wie beim `.vp-c-label`. */
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
   font-size: var(--vp-c-fs-12, 12px);
   font-weight: var(--vp-c-fw-600, 600);
   line-height: var(--vp-c-lh-text, 1.5);
@@ -88,6 +93,7 @@
 }
 
 .vp-c-bild-legende .vp-chart-legend .vp-cl-unit {
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
   font-size: var(--vp-c-fs-12, 12px);
   color: var(--vp-c-muted-fg, #475569);
 }
@@ -139,6 +145,22 @@
   }
 }
 
+/* --- Das Label des Verlaufs darf UMBRECHEN ------------------------------- */
+/* ⚠ Eine eigene Klasse, kein `.vp-c-card > .vp-c-label`: der Kontoauszug der
+   Erlöse-Seite steht im selben Rahmen, und seine Kopfzeile ist gemessen und
+   abgenommen. Hier bricht sie, weil zwei Chips („Zwischenstand" + Abzeichen)
+   den Text bei 375 sonst auf vier Zeilen pressen (im Browser gemessen: aus
+   „ENERGIE IM ZEITRAUM" wurden vier Zeilen à ein Wort). */
+
+.vp-c-label-vl {
+  flex-wrap: wrap;
+  row-gap: var(--vp-c-space-2, 8px);
+}
+
+.vp-c-label-vl > .vp-c-label-text {
+  flex: 1 1 auto;
+}
+
 /* --- Die Chip-Gruppe im Kartenlabel -------------------------------------- */
 /* `.vp-c-label` ist `space-between`; ohne diese Gruppe stünde ein zweiter Chip
    („Zwischenstand") zwischen Text und Abzeichen statt neben ihm. */
@@ -163,4 +185,42 @@
   font-size: var(--vp-c-fs-14, 14px);
   font-weight: var(--vp-c-fw-400, 400);
   color: inherit;
+}
+
+/* --- Der Kernsatz und der Detail-Umschalter auf der Skala ----------------- */
+/* `.vp-chart-kern*` und `.vp-chart-more*` wohnen in `index.css` (portalweit,
+   0,95 rem / 0,85 rem) — sie darf P3 nicht anfassen. Gescoped auf die C-Karte
+   sprechen sie die Sprache des Bereichs, überall sonst bleiben sie, was sie
+   sind. Der Kernsatz ist §3.2 V6: **16/600**, die Zahl darin 24 (E8 = a: kein
+   Hero auf Messwerte). */
+
+.vp-c-card .vp-chart-kern {
+  margin: var(--vp-c-space-2, 8px) 0 0;
+  font-size: var(--vp-c-fs-16, 16px);
+  line-height: var(--vp-c-lh-text, 1.5);
+}
+
+.vp-c-card .vp-chart-kern-satz {
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-600, 600);
+  line-height: var(--vp-c-lh-text, 1.5);
+}
+
+.vp-c-card .vp-chart-kern-wert {
+  font-size: var(--vp-c-fs-24, 24px);
+  font-weight: var(--vp-c-fw-700, 700);
+  line-height: var(--vp-c-lh-title, 1.25);
+}
+
+.vp-c-card .vp-chart-kern-anker {
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-400, 400);
+  line-height: var(--vp-c-lh-text, 1.5);
+}
+
+.vp-c-card .vp-chart-more,
+.vp-c-card .vp-chart-more-was {
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: var(--vp-c-lh-text, 1.5);
 }
