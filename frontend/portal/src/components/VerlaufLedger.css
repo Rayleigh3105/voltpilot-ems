@@ -1,0 +1,130 @@
+/*
+ * **Die Verlauf-Ergänzungen zur Ledger-Zeile** (Konzept
+ * `vp-verlauf-sprache-konzept-v5` §3.2 V5/V6, Paket P3).
+ *
+ * ⚠ **Die Ledger-OPTIK steht genau einmal** — in
+ *   `components/erloese/ErgebnisKarte.css` (`.vp-c-led*`, P7 der Erlöse-Runde).
+ *   Dieses Blatt definiert KEINE davon neu; es trägt nur, was der Verlauf
+ *   zusätzlich braucht: die grosse Quoten-Zahl, die Legende UNTER dem Bild und
+ *   den Abstand des Bildes zum Kernsatz. Ein Fallback mit denselben Werten wäre
+ *   genau die zweite Wahrheit, die P0 ausschliesst.
+ */
+
+/* --- Die Quoten-Zeile: Name links, 24-px-Zahl rechts, Satz darunter ------- */
+
+.vp-c-led-val.is-zahl {
+  font-size: var(--vp-c-fs-24, 24px);
+  font-weight: var(--vp-c-fw-700, 700);
+  line-height: var(--vp-c-lh-title, 1.25);
+}
+
+/* --- Der Chart-Rahmen: Kernsatz → Bild → Legende → Aufklapper ------------- */
+
+/* Das Bild steht SOFORT nach dem Kernsatz (§4.1 „Bild sofort"): der Abstand
+   ist der einzige Träger dieser Reihenfolge, die Erklärung wohnt darunter im
+   Aufklapper. */
+.vp-c-bild {
+  margin-top: var(--vp-c-space-3, 12px);
+  min-width: 0;
+}
+
+/* Die Legende wandert unter das Bild und wird die Chip-Form der Skala
+   (12/600). Gescoped auf diesen Rahmen, damit `index.css` unberührt bleibt. */
+.vp-c-bild-legende {
+  margin-top: var(--vp-c-space-3, 12px);
+}
+
+.vp-c-bild-legende .vp-chart-legend {
+  /* ⚠ Der ZEILEN-Abstand ist die zweite Hälfte der 44-px-Zusage: das Overlay
+     ragt 7 px über den Chip hinaus; bei engerem Abstand überlappten sich die
+     Overlays zweier Zeilen und die untere gewann (aus `Historie.css`
+     übernommen, dort bei 375 mit `elementFromPoint` nachgemessen). */
+  gap: 14px 6px;
+  margin: 0;
+}
+
+.vp-c-bild-legende .vp-cl-item {
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-600, 600);
+  line-height: var(--vp-c-lh-text, 1.5);
+  gap: 6px;
+}
+
+.vp-c-bild-legende button.vp-cl-item.is-toggle {
+  padding: 4px 10px;
+  min-height: 30px;
+  position: relative;
+  border-radius: 999px;
+  background: var(--vp-c-muted, #e9eff8);
+  border: 0;
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-c-bild-legende button.vp-cl-item.is-off {
+  background: transparent;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* Der Chip bleibt optisch 30 px (er spart am Telefon Höhe), seine
+   TREFFERFLÄCHE wächst per Overlay auf 44 px — das Haus-Muster des InfoTips.
+   30 + 2 × 7 = 44. */
+.vp-c-bild-legende button.vp-cl-item.is-toggle::after {
+  content: '';
+  position: absolute;
+  inset: -7px -2px;
+}
+
+.vp-c-bild-legende .vp-cl-unit {
+  font-size: var(--vp-c-fs-12, 12px);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* Die Erklärzeilen im Aufklapper — dieselbe Textgrösse wie jeder andere
+   Aufklapp-Inhalt, nur mit der Richtungs-Aufteilung. */
+.vp-c-bild-richtung {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-1, 4px) var(--vp-c-space-4, 16px);
+  margin: 0 0 var(--vp-c-space-2, 8px);
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-c-bild-erklaerung {
+  margin: 0;
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-c-bild-erklaerung + .vp-c-bild-erklaerung {
+  margin-top: var(--vp-c-space-2, 8px);
+}
+
+/* --- Ohne Chevron: die 16-px-Spur des Aufklappers entfällt ---------------- */
+/* Die Erlöse-Zeile ist antippbar und reserviert rechts 16 px für ihren
+   Chevron. Die Verlauf-Zeile ist RUHIG (es gibt nichts aufzuklappen) — ohne
+   diese Regel stünde der Wert 16 px vor dem rechten Rand statt daran. */
+
+.vp-c-led-ruhig .vp-c-led-sum {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+@media (min-width: 721px) {
+  .vp-c-led-ruhig .vp-c-led-sum {
+    grid-template-columns: minmax(120px, 1.1fr) minmax(0, 1.4fr) auto;
+  }
+}
+
+/* --- Die Chip-Gruppe im Kartenlabel -------------------------------------- */
+/* `.vp-c-label` ist `space-between`; ohne diese Gruppe stünde ein zweiter Chip
+   („Zwischenstand") zwischen Text und Abzeichen statt neben ihm. */
+
+.vp-c-label-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-2, 8px);
+  flex: 0 0 auto;
+}
