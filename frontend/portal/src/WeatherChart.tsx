@@ -60,6 +60,7 @@ export function WeatherChart({
   points,
   planSlots = [],
   detail = false,
+  modus = 'leistung',
 }: {
   points: WeatherPoint[];
   /** Der Fahrplan der Anlage — seine `pvKw` sind die PV-Prognose. */
@@ -72,6 +73,20 @@ export function WeatherChart({
    *   Ein zweiter Zustand hier wäre eine zweite Wahrheit über dieselbe Frage.
    */
   detail?: boolean;
+  /**
+   * V8 (P5) · Welches der ZWEI Bilder der Karte dies ist.
+   *
+   * `leistung` (Vorgabe) ist das Bild direkt unter dem Statement: erwartete
+   * Leistung, dahinter die Sonnenstärke als Kontextkurve. `kontext` ist das
+   * ZWEITE Bild im Aufklapper „Temperatur & Sonnenstärke im Verlauf" — dieselbe
+   * Vorhersage, andere Frage.
+   *
+   * ⚠ Es ist bewusst ein MODUS derselben Komponente und keine zweite: Tooltip,
+   *   Jetzt-Marke, Achsen-Grammatik und die Legenden-Schalter sind dieselben.
+   *   Zwei Wetter-Diagramme mit eigener Achsenlogik wären zwei Wahrheiten über
+   *   dieselbe Reihe.
+   */
+  modus?: 'leistung' | 'kontext';
 }) {
   const t = chartTheme();
   /**
@@ -86,7 +101,10 @@ export function WeatherChart({
   const hatLeistung = kw.some((v) => v != null);
   const bloecke = himmelBloecke(points);
   const jetzt = new Date();
-  const marke = hatLeistung ? besteStunde(points, kw, jetzt) : null;
+  const istKontext = modus === 'kontext';
+  // Die K6-Marke benennt die stärkste erwartete STUNDE - im Kontext-Bild gäbe
+  // es dafür keine Aussage, also trägt es sie nicht.
+  const marke = hatLeistung && !istKontext ? besteStunde(points, kw, jetzt) : null;
 
   const ref = useEChart(
     (chart, width) => {
@@ -98,13 +116,22 @@ export function WeatherChart({
       const unitBySeries: Record<string, string> = {
         'Erwartete Leistung': 'kW',
         Sonnenstärke: 'W/m²',
+        Temperatur: '°C',
       };
 
       // "Jetzt": the last hour at/before now (the elapsed part is shaded).
       const nowIdx = nowMarkerIndex(points, Date.now());
 
-      // Die Leitserie: erwartete Leistung, sonst (kein Plan) die Sonnenstärke.
-      const leitReihe = hatLeistung
+      // Die Leitserie: im Aufklapper die Temperatur, sonst die erwartete
+      // Leistung - und ohne Plan die Sonnenstärke.
+      const leitReihe = istKontext
+        ? {
+            name: 'Temperatur',
+            data: num('temperatureC'),
+            achse: AXIS_NAME.temperatur(narrow),
+            farbe: t.pvLine,
+          }
+        : hatLeistung
         ? {
             name: 'Erwartete Leistung',
             data: kw,
@@ -121,7 +148,8 @@ export function WeatherChart({
       // F8: NIE mehr als zwei Achsen. Die zweite entsteht nur, wenn die
       // Kontext-Reihe wirklich gezeichnet wird — und der Legenden-Schalter
       // (E7 a) sie nicht ausgeblendet hat.
-      const zeigtSonne = hatLeistung && detail && !verborgen.has('Sonnenstärke');
+      const zeigtSonne =
+        (istKontext || (hatLeistung && detail)) && !verborgen.has('Sonnenstärke');
       const zeigtLeit = !verborgen.has(leitReihe.name);
 
       chart.setOption(
@@ -179,7 +207,10 @@ export function WeatherChart({
               nameGap: 12,
               nameTextStyle: { align: 'left' },
               position: 'left',
-              min: 0,
+              // ⚠ Nur eine ENERGIE-Achse beginnt bei null. Eine Temperatur tut
+              //   es nicht - ein erzwungener Nullpunkt drückte jeden Frosttag
+              //   an den Rand und behauptete eine Skala, die es nicht gibt.
+              ...(istKontext ? {} : { min: 0 }),
               splitLine: { lineStyle: { color: t.grid } },
               axisTick: { show: false },
               axisLine: { show: false },
@@ -296,7 +327,7 @@ export function WeatherChart({
         true,
       );
     },
-    [points, planSlots, detail, hatLeistung, marke?.index, verborgen],
+    [points, planSlots, detail, hatLeistung, marke?.index, verborgen, istKontext],
   );
 
   // EINE Legenden-Grammatik im ganzen Portal: HTML statt Canvas, mit Einheit.
@@ -304,7 +335,12 @@ export function WeatherChart({
   // schaltet ihre Reihen (E7 a). Die Farben sind die aufgeloesten Token, damit
   // Punkt und Kurve garantiert denselben Ton tragen. Die Legende bewirbt NUR,
   // was gezeichnet wird - eine Reihe hinter dem zugeklappten Aufklapper nicht.
-  const legend: LegendItem[] = [
+  const legend: LegendItem[] = istKontext
+    ? [
+        { color: t.pvLine, label: 'Temperatur', unit: '°C', shape: 'line' },
+        { color: t.temp, label: 'Sonnenstärke', unit: 'W/m²', shape: 'line' },
+      ]
+    : [
     hatLeistung
       ? { color: t.pvLine, label: 'Erwartete Leistung', unit: 'kW', shape: 'area' }
       : { color: t.pvLine, label: 'Sonnenstärke', unit: 'W/m²', shape: 'area' },
@@ -315,7 +351,7 @@ export function WeatherChart({
 
   return (
     <>
-      <HimmelStreifen bloecke={bloecke} />
+      {!istKontext && <HimmelStreifen bloecke={bloecke} />}
       <div ref={ref} className="vp-chart" />
       <ChartLegend
         items={legend}
