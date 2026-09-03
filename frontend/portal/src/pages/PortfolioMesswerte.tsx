@@ -1,38 +1,33 @@
 import { useMemo, useState } from 'react';
-import { Card } from '../../designsystem/components/core/Card';
 import type { HistoryRange, Site } from '../api';
 import { chartTheme } from '../chartTheme';
 import { NBSP } from '../format';
 import { isoDate, periodLabel } from '../periodNav';
 import { parseVerlaufParams } from '../verlauf';
-import type { EnergieFarbe } from '../energieBilanz';
-import {
-  delta,
-  ENERGIE_WERTUNG,
-  laufendHinweis,
-  vergleichsKopf,
-  vergleichsName,
-} from '../historieVergleich';
+import { isCurrentPeriod } from '../energieBilanz';
+import { laufendHinweis, vergleichsKopf, vergleichsName } from '../historieVergleich';
 import { historieHash } from '../historieWelten';
+import { messwerteZeilen } from '../messwerteZeilen';
 import {
   messwerteAggregat,
   PORTFOLIO_TABELLE_KEYS,
   PORTFOLIO_WELTEN,
   portfolioRange,
   type MesswerteZeile,
-  type PortfolioSumme,
 } from '../portfolioHistorie';
 import { usePortfolioHistorie, useVergleichsHistorie } from '../usePortfolioHistorie';
 
-import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
-import { DeltaZeile, KartenKopf, PeriodeFehlgeschlagen } from '../components/HistorieWelt';
+import { VerlaufFehler, VerlaufKarteSkeleton, VerlaufLeer } from '../components/States';
+import { DeltaZeile, PeriodeFehlgeschlagen } from '../components/HistorieWelt';
+import { VerlaufKarte } from '../components/VerlaufKarte';
+import { VerlaufLedger, type VerlaufLedgerZeile } from '../components/VerlaufLedger';
 import {
   AbdeckungsSatz,
-  AnlagenTabelle,
-  MiniTrend,
+  AnlagenBlock,
   PortfolioWeltFuss,
   PortfolioWeltKopf,
   PortfolioZeitLeiste,
+  type AnlagenZeileView,
 } from '../components/PortfolioWelt';
 import { oeffneAnlagenWelt } from './portfolioWeltNav';
 
@@ -56,90 +51,23 @@ function kwh(v: number | null | undefined): string {
     : `${Number(v).toLocaleString('de-DE', { maximumFractionDigits: 1 })}${NBSP}kWh`;
 }
 
-/** Der reine `EnergieFarbe`-Schlüssel → die aufgelöste Diagrammfarbe (die Punkte). */
-function dotColor(key: EnergieFarbe): string {
-  const t = chartTheme();
-  const map: Record<EnergieFarbe, string> = {
-    pv: t.pv,
-    load: t.load,
-    grid: t.flowGrid,
-    gridImport: t.discharge,
-    gridExport: t.charge,
-    charge: t.charge,
-    battDischarge: t.battDischarge,
-    soc: t.soc,
+/** Die vier Zahlen-Spalten der Anlagen-Liste — „Anlage" und „Verlauf" sind
+ *  die zwei festen Ränder und stehen im Baustein. */
+const SPALTEN = ['Erzeugt', 'Verbraucht', 'Bezogen', 'Eingespeist'] as const;
+
+/** Eine Anlagen-Zeile in der geteilten Form beider Zwillinge (Liste/Tabelle). */
+function anlagenZeile(z: MesswerteZeile, range: HistoryRange, at: string): AnlagenZeileView {
+  return {
+    id: z.siteId,
+    name: z.name,
+    hinweis: z.hinweis,
+    href: historieHash(z.siteId, 'messwerte', range, at),
+    onOpen: () => oeffneAnlagenWelt(z.siteId, 'messwerte', range, at),
+    werte: PORTFOLIO_TABELLE_KEYS.map((_, i) => kwh(z.werte[i])),
+    spark: z.spark,
+    sparkTitel: `PV-Erzeugung von ${z.name} je Abschnitt`,
+    sparkFarbe: chartTheme().pv,
   };
-  return map[key];
-}
-
-/** Eine Summen-Kachel des Portfolios — dieselbe Kachel wie in der Anlagen-Welt. */
-function SummeTile({
-  summe,
-  vergleichKwh,
-  vergleichName,
-}: {
-  summe: PortfolioSumme;
-  vergleichKwh?: number | null;
-  vergleichName: string;
-}) {
-  const d = delta(summe.kwh, vergleichKwh, ENERGIE_WERTUNG[summe.key], vergleichName);
-  return (
-    <div className="vp-esum" title={summe.hinweis}>
-      <span className="vp-esum-v">{kwh(summe.kwh)}</span>
-      <span className="vp-esum-l">
-        <span className="vp-esum-dot" style={{ ['--dot' as string]: dotColor(summe.farbe) }} />
-        {summe.label}
-      </span>
-      <DeltaZeile delta={d} />
-    </div>
-  );
-}
-
-const SPALTEN = ['Anlage', 'Erzeugt', 'Verbraucht', 'Bezogen', 'Eingespeist', 'Verlauf'] as const;
-
-function Zeile({
-  zeile,
-  href,
-  onOpen,
-}: {
-  zeile: MesswerteZeile;
-  href: string;
-  onOpen: () => void;
-}) {
-  return (
-    <tr className="clickable" onClick={onOpen}>
-      <td data-label="Anlage">
-        <div className="vp-cell-main">
-          {/* Ein echter Link: Tastatur, Mittelklick und „in neuem Tab öffnen"
-              funktionieren, die ganze Zeile bleibt trotzdem klickbar. */}
-          <a
-            href={href}
-            onClick={(e) => {
-              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-              e.preventDefault();
-              e.stopPropagation();
-              onOpen();
-            }}
-          >
-            <b>{zeile.name}</b>
-          </a>
-          {zeile.hinweis && <span className="vp-pf-row-note">{zeile.hinweis}</span>}
-        </div>
-      </td>
-      {PORTFOLIO_TABELLE_KEYS.map((key, i) => (
-        <td key={key} className="num" data-label={SPALTEN[i + 1]}>
-          <span className="vp-pf-v">{kwh(zeile.werte[i])}</span>
-        </td>
-      ))}
-      <td data-label="Verlauf">
-        <MiniTrend
-          werte={zeile.spark}
-          titel={`PV-Erzeugung von ${zeile.name} je Abschnitt`}
-          farbe={chartTheme().pv}
-        />
-      </td>
-    </tr>
-  );
 }
 
 export function PortfolioMesswerte({ sites }: { sites: Site[] }) {
@@ -172,6 +100,30 @@ export function PortfolioMesswerte({ sites }: { sites: Site[] }) {
   const vergleichName = vergleichsName(anchor, range);
   const laufend = vorher ? laufendHinweis(anchor, range, now) : null;
   const kontext = `${sites.length} ${sites.length === 1 ? 'Anlage' : 'Anlagen'} · ${label}`;
+  // Ein laufender Zeitraum sagt das am Label — die Zahlen sind ein
+  // Zwischenstand, kein Ergebnis (wortgleich zum Anlagen-Reiter).
+  const zwischenstand = isCurrentPeriod(anchor, range, now);
+
+  // ⚠ DIESELBE Ableitung wie der Anlagen-Reiter (E1 b): `PortfolioSumme` ist
+  //   eine `EnergieSumme` plus dem Zähler „wie viele Anlagen" — die sechs
+  //   Zeilen, ihre Balken, ihre Gründe und ihr Δ entstehen deshalb in
+  //   `messwerteZeilen.ts` und nirgends ein zweites Mal.
+  const zeilen: VerlaufLedgerZeile[] = useMemo(() => {
+    if (!aggregat) return [];
+    return messwerteZeilen(aggregat.summen, vorher ? vorher.summen : null, vergleichName).map(
+      (z) => ({
+        id: z.key,
+        name: z.name,
+        wert: z.wert,
+        anteil: z.anteil,
+        farbe: z.farbe,
+        hinweis: z.hinweis,
+        // Der Grund gewinnt gegen das Δ: eine Zeile ohne Wert hat auch keinen
+        // Vergleich, und der Grund ist die Auskunft, die fehlt.
+        sekundaer: z.grund ? z.grund : z.delta ? <DeltaZeile delta={z.delta} /> : undefined,
+      }),
+    );
+  }, [aggregat, vorher, vergleichName]);
 
   return (
     <>
@@ -186,71 +138,55 @@ export function PortfolioMesswerte({ sites }: { sites: Site[] }) {
       />
 
       <div className={stale ? 'vp-welt-body vp-welt-stale' : 'vp-welt-body'}>
+        {/* V10 (Paket P2b/P8): die drei Zustände leben IN der Karte und
+            reservieren den Platz des späteren Inhalts — beim Zeitraumwechsel
+            springt damit nichts. */}
         {err && !aggregat ? (
-          <ErrorState
-            message="Die Messwerte Ihrer Anlagen konnten nicht geladen werden."
-            onRetry={retry}
-          />
+          <div className="vp-c-card">
+            <VerlaufFehler
+              satz="Die Messwerte Ihrer Anlagen konnten nicht geladen werden."
+              onRetry={retry}
+            />
+          </div>
         ) : !aggregat ? (
           loading ? (
-            <Card padding="lg" radius="lg">
-              <ChartCardSkeleton />
-            </Card>
+            <div className="vp-c-card">
+              <VerlaufKarteSkeleton chart={false} legende={false} />
+            </div>
           ) : null
         ) : (
           <>
             {err && stale && <PeriodeFehlgeschlagen periode={label} onRetry={retry} />}
 
-            <section className="vp-section">
-              <Card padding="lg" radius="lg" className="vp-pf-summenkarte">
-                <KartenKopf
-                  icon="zap"
-                  titel={`Energie aller Anlagen · ${label}`}
-                  art="gemessen"
-                  extra={
-                    vorher ? (
-                      <span className="vp-karten-vergleich">{vergleichsKopf(anchor, range)}</span>
-                    ) : undefined
-                  }
+            <VerlaufKarte
+              label={`Energie aller Anlagen · ${label}`}
+              provenienz="gemessen"
+              chip={
+                <>
+                  {zwischenstand && <span className="vp-chip">Zwischenstand</span>}
+                  {vorher && <span className="vp-chip">{vergleichsKopf(anchor, range)}</span>}
+                </>
+              }
+            >
+              {aggregat.leer ? (
+                <VerlaufLeer
+                  label="Keine Messwerte in diesem Zeitraum"
+                  satz="Keine Ihrer Anlagen hat in diesem Zeitraum gemessen. Wählen Sie einen anderen Zeitraum oder schauen Sie später wieder vorbei."
                 />
-                {aggregat.leer ? (
-                  <EmptyState
-                    icon="history"
-                    category="dynamic"
-                    title="Keine Messwerte in diesem Zeitraum"
-                    description="Keine Ihrer Anlagen hat in diesem Zeitraum gemessen. Wählen Sie einen anderen Zeitraum oder schauen Sie später wieder vorbei."
-                  />
-                ) : (
-                  <>
-                    <div className="vp-energie-summen" aria-label="Energiemengen aller Anlagen">
-                      {aggregat.summen.map((s, i) => (
-                        <SummeTile
-                          key={s.key}
-                          summe={s}
-                          vergleichKwh={vorher ? vorher.summen[i]?.kwh : null}
-                          vergleichName={vergleichName}
-                        />
-                      ))}
-                    </div>
-                    {laufend && <p className="vp-note vp-note-laufend">{laufend}</p>}
-                    <AbdeckungsSatz abdeckung={aggregat.abdeckung} />
-                  </>
-                )}
-              </Card>
-            </section>
+              ) : (
+                <>
+                  <VerlaufLedger zeilen={zeilen} label="Energiemengen aller Anlagen" />
+                  {laufend && <p className="vp-c-note">{laufend}</p>}
+                  <AbdeckungsSatz abdeckung={aggregat.abdeckung} />
+                </>
+              )}
+            </VerlaufKarte>
 
-            <section className="vp-section">
-              <AnlagenTabelle kopf={SPALTEN}>
-                {aggregat.zeilen.map((z) => (
-                  <Zeile
-                    key={z.siteId}
-                    zeile={z}
-                    href={historieHash(z.siteId, 'messwerte', range, at)}
-                    onOpen={() => oeffneAnlagenWelt(z.siteId, 'messwerte', range, at)}
-                  />
-                ))}
-              </AnlagenTabelle>
-            </section>
+            <AnlagenBlock
+              label="Anlagen"
+              kopf={SPALTEN}
+              zeilen={aggregat.zeilen.map((z) => anlagenZeile(z, range, at))}
+            />
           </>
         )}
       </div>

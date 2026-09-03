@@ -72,14 +72,24 @@ function deklarationen(css: string, eigenschaft: string): Array<{ wert: string; 
 //   nichts mehr. Gelesen wird deshalb der KANONISCHE Name — geprüft wird
 //   unverändert der Erlöse-Name, den die Blätter schreiben. Dasselbe Vorgehen
 //   wie `token()` in `erloeseKontrast.test.ts`, das einem Alias folgt.
+// ⚠ **BEIDE Namen zählen** (E2, P0): `--vp-c-*` ist seit dem Entscheid der
+//   KANONISCHE Name, `--vp-erl-*` nur noch sein Alias — wer neu schreibt,
+//   nimmt den C-Namen (so tut es der Portfolio-Zwilling seit P8). Ein Wächter,
+//   der nur den Alias annimmt, verböte genau die richtige Schreibweise.
 const SKALA = new Set(
-  [...index.matchAll(/--vp-c-fs-([a-z0-9-]+):\s*(\d+)px/g)].map((m) => `--vp-erl-fs-${m[1]}`),
+  [...index.matchAll(/--vp-c-fs-([a-z0-9-]+):\s*(\d+)px/g)].flatMap((m) => [
+    `--vp-erl-fs-${m[1]}`,
+    `--vp-c-fs-${m[1]}`,
+  ]),
 );
 const SKALA_PX = new Set(
   [...index.matchAll(/--vp-c-fs-[a-z0-9-]+:\s*(\d+)px/g)].map((m) => `${m[1]}px`),
 );
 const GEWICHTE = new Set(
-  [...index.matchAll(/--vp-c-fw-(\d+):\s*(\d+)/g)].map((m) => `--vp-erl-fw-${m[1]}`),
+  [...index.matchAll(/--vp-c-fw-(\d+):\s*(\d+)/g)].flatMap((m) => [
+    `--vp-erl-fw-${m[1]}`,
+    `--vp-c-fw-${m[1]}`,
+  ]),
 );
 const GEWICHTE_ZAHL = new Set(
   [...index.matchAll(/--vp-c-fw-\d+:\s*(\d+)/g)].map((m) => m[1]),
@@ -113,10 +123,11 @@ describe('Variante C · die Skala steht und ist vollständig', () => {
      `--vp-erl-fs-16` eines Tages wieder eine Pixelzahl, hätten die Erlöse-
      Blätter und der Rest des Verlaufs zwei Skalen, die sich lautlos trennen. */
   it('jeder Erlöse-Name ist ein reiner Alias auf seinen C-Namen', () => {
-    for (const name of [...SKALA].map((n) => n)) {
+    // Seit P8 trägt `SKALA` beide Namen — geprüft wird hier nur der Alias.
+    for (const name of [...SKALA].filter((n) => n.startsWith('--vp-erl-'))) {
       expect(ALIAS.has(name), `${name} ist kein Alias auf --vp-c-fs-*`).toBe(true);
     }
-    for (const name of GEWICHTE) {
+    for (const name of [...GEWICHTE].filter((n) => n.startsWith('--vp-erl-'))) {
       expect(ALIAS.has(name), `${name} ist kein Alias auf --vp-c-fw-*`).toBe(true);
     }
     for (const stufe of ['tight', 'title', 'text']) {
@@ -131,7 +142,7 @@ describe('Variante C · jede Schriftgröße der Erlöse-Blätter liegt auf der S
       const treffer = deklarationen(blatt[datei], 'font-size');
       expect(treffer.length, `${datei} setzt gar keine Schriftgröße`).toBeGreaterThan(0);
       for (const { wert, zeile } of treffer) {
-        const tokenName = /var\((--vp-erl-fs-[a-z0-9-]+)/.exec(wert)?.[1];
+        const tokenName = /var\((--vp-(?:erl|c)-fs-[a-z0-9-]+)/.exec(wert)?.[1];
         expect(
           tokenName !== undefined && SKALA.has(tokenName),
           `${datei}: Schriftgröße neben der Skala — ${zeile}`,
@@ -150,7 +161,7 @@ describe('Variante C · jedes Gewicht liegt in {400,600,700,800}', () => {
   for (const datei of BLAETTER) {
     it(datei, () => {
       for (const { wert, zeile } of deklarationen(blatt[datei], 'font-weight')) {
-        const tokenName = /var\((--vp-erl-fw-\d+)/.exec(wert)?.[1];
+        const tokenName = /var\((--vp-(?:erl|c)-fw-\d+)/.exec(wert)?.[1];
         expect(
           tokenName !== undefined && GEWICHTE.has(tokenName),
           `${datei}: Gewicht neben der Skala — ${zeile}`,

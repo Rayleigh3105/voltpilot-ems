@@ -13,13 +13,13 @@
  * `MonthStrip` der Geld-Ansicht und die CSS-Klassen der Anlagen-Welt
  * (`Historie.css`) — die Leiste sieht deshalb überall gleich aus.
  */
-import { useState, type ReactNode } from 'react';
-import { Card } from '../../designsystem/components/core/Card';
+import { useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { HistoryRange } from '../api';
 import { PROVENIENZ } from '../historieWelten';
 import { useIsPhone } from '../useIsPhone';
 import { ZeitPopover } from './HistorieWelt';
+import { VerlaufKarte } from './VerlaufKarte';
 import {
   ankerAusWert,
   sprungFeld,
@@ -35,7 +35,6 @@ import { periodLabel, shiftAnchor } from '../periodNav';
 import type { PortfolioAbdeckung, PortfolioWelt } from '../portfolioHistorie';
 import { portfolioRanges } from '../portfolioHistorie';
 import { MonthStrip } from './MoneyView';
-import { ProvBadge } from './HistorieWelt';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 
@@ -303,31 +302,167 @@ export function MiniTrend({
 /** Die Haus-Farbe des Portfolio-Trends (der Baustein setzt sie als Vorgabe). */
 const DEFAULT_TREND_COLOR = 'var(--vp-navy, #1e3a5f)';
 
+/** Eine Anlage der Flotte — die EINE Form, aus der beide Zwillinge lesen. */
+export interface AnlagenZeileView {
+  id: string;
+  name: string;
+  /** Der ehrliche Grund, wenn diese Anlage nichts beiträgt. */
+  hinweis?: string | null;
+  /** Die Adresse derselben Welt DIESER Anlage im GLEICHEN Zeitraum. */
+  href: string;
+  onOpen: () => void;
+  /** Die fertigen Werte — in der Reihenfolge von `kopf`, samt Einheit. */
+  werte: readonly string[];
+  /** Die Mini-Kurve der Spalte „Verlauf". */
+  spark: readonly (number | null)[];
+  sparkTitel: string;
+  sparkFarbe: string;
+}
+
 /**
- * Die Anlagen-Tabelle beider Welten: `.vp-table.responsive` (der Portfolio-
- * Präzedenzfall — sie klappt unter 720 px zu Etikett/Wert-Karten), jede Zeile
- * ein Absprung in DIESELBE Welt DIESER Anlage.
+ * **E6 · Liste statt Tabelle am Telefon** (Captain-Entscheid 03.09.2026,
+ * wörtlich: „a) am Telefon immer Liste (V7), ab 700 px Tabelle") — für die
+ * Anlagen-Tabelle beider Portfolio-Welten (Paket P8, E1 b).
+ *
+ * ⚠ Es sind ZWEI Bäume aus DENSELBEN Daten, nicht eine Tabelle mit
+ *   `data-label`: eine Etikett/Wert-Karte MIT Tabellen-Semantik lässt einen
+ *   Screenreader Spaltenköpfe vorlesen, die es optisch gar nicht gibt (die
+ *   verworfene Option (c) des Entscheids). Die Grenze ist die Haus-Grenze
+ *   720 px (`useIsPhone`), also dieselbe, an der der Bereich sonst umschaltet.
+ *
+ * ⚠ Am Telefon fällt seit P8 KEINE Spalte mehr weg. Die frühere Regel
+ *   „Eingespeist wird unter 720 px ausgeblendet" (`.vp-pf-col-kwh`) war eine
+ *   Notlösung der Tabellen-Klappform; die Liste trägt alle Werte in ihrer
+ *   Sekundärzeile, also gibt es nichts mehr zu verstecken.
+ *
+ * `kopf` nennt NUR die Zahlen-Spalten. „Anlage" und „Verlauf" sind die zwei
+ * festen Ränder jeder Zeile und stehen deshalb nicht in der Liste — so kann
+ * kein Aufrufer sie an eine andere Stelle rutschen lassen.
  */
-export function AnlagenTabelle({
+export function AnlagenBlock({
+  label,
   kopf,
-  children,
+  zeilen,
+}: {
+  /** Das Label der Karte, 12/700 (V4). */
+  label: string;
+  /** Die Zahlen-Spalten, ohne „Anlage" und „Verlauf". */
+  kopf: readonly string[];
+  zeilen: readonly AnlagenZeileView[];
+}) {
+  const isPhone = useIsPhone();
+  return (
+    <VerlaufKarte label={label}>
+      {isPhone ? (
+        <ZeilenListe kopf={kopf} zeilen={zeilen} label={label} />
+      ) : (
+        <ZeilenTabelle kopf={kopf} zeilen={zeilen} />
+      )}
+    </VerlaufKarte>
+  );
+}
+
+/**
+ * Der Klick-Weg einer Zeile: ein ECHTER Link (Tastatur, Mittelklick und
+ * „in neuem Tab öffnen" funktionieren), der den gewöhnlichen Klick abfängt und
+ * die Welt im Rahmen der Anwendung öffnet.
+ */
+function beiKlick(onOpen: () => void) {
+  return (e: ReactMouseEvent<HTMLElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onOpen();
+  };
+}
+
+/** V7 · Die Liste am Telefon: Name links, führender Wert rechts, Rest darunter.
+ *  ⚠ Nicht zu verwechseln mit `components/AnlagenTabelle.tsx` — das ist die
+ *  Flotten-Tabelle des PORTFOLIO-COCKPITS (Stufe 4), eine andere Fläche. */
+function ZeilenListe({
+  kopf,
+  zeilen,
+  label,
 }: {
   kopf: readonly string[];
-  children: ReactNode;
+  zeilen: readonly AnlagenZeileView[];
+  label: string;
 }) {
   return (
-    <Card style={{ padding: 0, overflow: 'hidden' }}>
-      <table className="vp-table responsive vp-pf-table">
-        <thead>
-          <tr>
-            {kopf.map((k) => (
-              <th key={k}>{k}</th>
+    <ul className="vp-c-pfl" aria-label={label}>
+      {zeilen.map((z) => (
+        <li key={z.id} className="vp-c-pfl-row">
+          {/* ⚠ Die ganze Zeile ist der Weg — 48 px hoch (V7), damit die
+              Trefferfläche nicht so breit ist wie der Name der Anlage. */}
+          <a className="vp-c-pfl-a" href={z.href} onClick={beiKlick(z.onOpen)}>
+            <span className="vp-c-pfl-name">{z.name}</span>
+            <span className="vp-c-pfl-wert">{z.werte[0] ?? '—'}</span>
+            <span className="vp-c-pfl-chev" aria-hidden="true" />
+            {kopf.length > 1 && (
+              <span className="vp-c-pfl-sek">
+                {kopf.slice(1).map((k, i) => (
+                  <span key={k} className="vp-c-pfl-paar">
+                    <span className="vp-c-pfl-lab">{k}</span> {z.werte[i + 1] ?? '—'}
+                  </span>
+                ))}
+              </span>
+            )}
+            <span className="vp-c-pfl-trend">
+              <MiniTrend werte={z.spark} titel={z.sparkTitel} farbe={z.sparkFarbe} />
+            </span>
+            {z.hinweis && <span className="vp-c-pfl-note">{z.hinweis}</span>}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Die Tabelle ab 721 px — die EINZIGE echte `<table>` des Bereichs „Verlauf"
+ * (Bauplan §7, Zeile P8). Kopf 12/700 Versalien auf `--vp-c-muted` (V7).
+ */
+function ZeilenTabelle({
+  kopf,
+  zeilen,
+}: {
+  kopf: readonly string[];
+  zeilen: readonly AnlagenZeileView[];
+}) {
+  return (
+    <table className="vp-c-pft">
+      <thead>
+        <tr>
+          <th scope="col">Anlage</th>
+          {kopf.map((k) => (
+            <th key={k} scope="col" className="num">
+              {k}
+            </th>
+          ))}
+          <th scope="col">Verlauf</th>
+        </tr>
+      </thead>
+      <tbody>
+        {zeilen.map((z) => (
+          <tr key={z.id} className="clickable" onClick={z.onOpen}>
+            <th scope="row">
+              <a href={z.href} onClick={beiKlick(z.onOpen)}>
+                {z.name}
+              </a>
+              {z.hinweis && <span className="vp-c-pft-note">{z.hinweis}</span>}
+            </th>
+            {kopf.map((k, i) => (
+              <td key={k} className="num">
+                <span className="vp-c-pft-v">{z.werte[i] ?? '—'}</span>
+              </td>
             ))}
+            <td>
+              <MiniTrend werte={z.spark} titel={z.sparkTitel} farbe={z.sparkFarbe} />
+            </td>
           </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
-    </Card>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -335,13 +470,18 @@ export function AnlagenTabelle({
 export function PortfolioWeltFuss({ welt }: { welt: PortfolioWelt }) {
   return (
     <section className="vp-section">
-      <Card padding="lg" radius="lg" className="vp-welt-fuss">
-        <b>Was diese Zahlen sind</b>
-        <p>{welt.fussText}</p>
-        <p className="vp-pf-fuss-badge">
-          <ProvBadge art={welt.badge} /> {PROVENIENZ[welt.badge].satz}
+      {/* P8 · dieselbe Hülle und dieselbe Schrift wie der Fuß der Reiter
+          (`VerlaufFuss`): `.vp-c-card` setzt `--vp-c-font`, die Haus-Karte
+          nicht. Das Abzeichen wechselt dabei auf die EINE Chip-Optik des
+          Bereichs (E9/P0) — es bleibt, es sieht nur aus wie sein Nachbar. */}
+      <div className="vp-c-card vp-c-fuss">
+        <b className="vp-c-fuss-titel">Was diese Zahlen sind</b>
+        <p className="vp-c-fuss-text">{welt.fussText}</p>
+        <p className="vp-c-fuss-text vp-pf-fuss-badge">
+          <span className="vp-chip">{PROVENIENZ[welt.badge].label}</span>{' '}
+          {PROVENIENZ[welt.badge].satz}
         </p>
-      </Card>
+      </div>
     </section>
   );
 }

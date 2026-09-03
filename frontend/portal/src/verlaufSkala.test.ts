@@ -74,10 +74,11 @@ const BLAETTER: ReadonlyArray<{
   // und die vierte fremde Familie sind damit weg. P3 hat die Quoten-Chips,
   // die Nulllinien-Zeile, das 2-Spalten-Raster des Telefons, die
   // Legenden-Ausnahmen und den Untertitel-Block herausgelöst (35 → 26,
-  // 3 → 2). Was bleibt, gehört anderen Paketen: der Zeit-Leiste (Chrome,
-  // P1/S1), dem Explorer, der geteilten Fußkarte und `PortfolioMesswerte`
-  // (P8, das `.vp-esum*` weiterfährt).
-  { reiter: 'Messwerte', datei: 'components/Historie.css', fs: 26, ff: 2, fw: 0 },
+  // 3 → 2). P8 hat `.vp-esum*` ersatzlos aufgelöst — das Portfolio führt
+  // seine Kennzahlen als Ledger-Zeilen; damit sind die zwei `clamp()`-Größen
+  // und die letzte Inter-Tight-Zeile weg (26 → 24, 2 → 1). Was bleibt,
+  // gehört der Zeit-Leiste (Chrome, P1/S1) und dem Explorer.
+  { reiter: 'Messwerte', datei: 'components/Historie.css', fs: 24, ff: 1, fw: 0 },
   { reiter: 'Messwerte', datei: 'components/Verlauf.css', fs: 10, ff: 0, fw: 0 },
   { reiter: 'Messwerte', datei: 'components/Messwerte.css', fs: 18, ff: 0, fw: 3 },
   // Der Rumpf des Reiters „Marktpreise“ (P4) — vollständig auf der Skala und

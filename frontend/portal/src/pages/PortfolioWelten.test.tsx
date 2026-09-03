@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PortfolioMesswerte } from './PortfolioMesswerte';
 import { PortfolioErloese } from './PortfolioErloese';
@@ -313,7 +313,7 @@ describe('Portfolio · Welt B „Erlöse"', () => {
     expect(screen.getByText('1 von 2 Anlagen mit Daten in diesem Zeitraum')).toBeInTheDocument();
   });
 
-  it('nennt die Speicher-Spalte „Speicher" und lässt „Eingespeist" markiert für das Telefon', async () => {
+  it('nennt die Speicher-Spalte „Speicher" und zeigt am Schreibtisch alle vier Spalten', async () => {
     vi.spyOn(api, 'earnings').mockResolvedValue(earnings);
     render(<PortfolioErloese sites={[DACHAU, LINDENBERG]} />);
 
@@ -323,11 +323,12 @@ describe('Portfolio · Welt B „Erlöse"', () => {
     expect(kopf).toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'Durch Steuerung' })).toBeNull();
 
-    // „Eingespeist" traegt die Klasse, mit der das Blatt sie unter 720 px
-    // ausblendet (das CSS entscheidet, nicht die Spaltenliste).
-    const kwh = document.querySelectorAll('td.vp-pf-col-kwh');
-    expect(kwh.length).toBeGreaterThan(0);
-    expect(kwh[0].getAttribute('data-label')).toBe('Eingespeist');
+    // ⚠ Seit P8 (E6 a) fällt am Telefon KEINE Spalte mehr weg: die frühere
+    //   Notlösung `.vp-pf-col-kwh` („Eingespeist unter 720 px ausblenden")
+    //   gehörte der Tabellen-Klappform. Die Liste trägt alle Werte in ihrer
+    //   Sekundärzeile — die Klasse ist ersatzlos entfallen.
+    expect(document.querySelectorAll('.vp-pf-col-kwh').length).toBe(0);
+    expect(screen.getByRole('columnheader', { name: 'Eingespeist' })).toBeInTheDocument();
   });
 
   it('öffnet aus einer Zeile die Erlöse-Welt DIESER Anlage im gleichen Zeitraum', async () => {
@@ -351,5 +352,80 @@ describe('Portfolio · Welt B „Erlöse"', () => {
 
     expect(await screen.findByText('Noch kein Ergebnis für diesen Zeitraum')).toBeInTheDocument();
     expect(screen.queryByLabelText('Woraus sich das Ergebnis zusammensetzt')).toBeNull();
+  });
+});
+
+/**
+ * **E6 · die Weiche Liste/Tabelle** (Captain-Entscheid 03.09.2026, wörtlich:
+ * „a) am Telefon immer Liste (V7), ab 700 px Tabelle").
+ *
+ * Ohne `matchMedia` sagt `useIsPhone` „Schreibtisch" — die übrigen Tests
+ * dieser Datei prüfen deshalb unverändert die Tabelle. Dieser Block stubbt
+ * das Telefon ausdrücklich und prüft den ZWEITEN Baum aus DENSELBEN Daten.
+ */
+function stubPhone(matches: boolean) {
+  const mql = {
+    matches,
+    media: '(max-width: 720px)',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    onchange: null,
+    dispatchEvent: () => false,
+  };
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: () => mql,
+  });
+}
+
+describe('Portfolio · E6 · am Telefon Liste, ab 721 px Tabelle', () => {
+  beforeEach(() => stubPhone(true));
+  afterEach(() => {
+    // Die Attrappe darf keine andere Datei erreichen.
+    Reflect.deleteProperty(window as unknown as Record<string, unknown>, 'matchMedia');
+  });
+
+  it('Messwerte: keine `table`, sondern eine Liste mit ALLEN vier Spalten', async () => {
+    window.location.hash = '#/portfolio/messwerte?z=monat&at=2026-07-15';
+    vi.spyOn(api, 'history').mockResolvedValue(history(16));
+    const { container } = render(<PortfolioMesswerte sites={[DACHAU, LINDENBERG]} />);
+
+    const liste = await screen.findByLabelText('Anlagen');
+    expect(container.querySelector('table')).toBeNull();
+
+    // Der führende Wert steht rechts, die übrigen drei als Etikett/Wert-Paare
+    // darunter — kein `data-label`, also auch keine erfundene Tabellen-Semantik.
+    const zeile = within(liste).getByRole('link', { name: /Hof Lindenberg/ });
+    expect(zeile).toHaveAttribute('href', '#/anlage/b/messwerte?z=monat&at=2026-07-15');
+    for (const etikett of ['Verbraucht', 'Bezogen', 'Eingespeist']) {
+      expect(within(liste).getAllByText(etikett).length).toBeGreaterThan(0);
+    }
+    expect(liste.querySelectorAll('[data-label]').length).toBe(0);
+  });
+
+  it('Erlöse: keine `table`, und „Eingespeist" fällt am Telefon NICHT mehr weg', async () => {
+    window.location.hash = '#/portfolio/erloese?z=monat&at=2026-07-15';
+    vi.spyOn(api, 'earnings').mockResolvedValue(earnings);
+    const { container } = render(<PortfolioErloese sites={[DACHAU, LINDENBERG]} />);
+
+    const liste = await screen.findByLabelText('Anlagen');
+    expect(container.querySelector('table')).toBeNull();
+    expect(within(liste).getAllByText('Eingespeist').length).toBeGreaterThan(0);
+  });
+
+  it('ab 721 px ist es dieselbe Zeile als echte Tabelle', async () => {
+    stubPhone(false);
+    window.location.hash = '#/portfolio/messwerte?z=monat&at=2026-07-15';
+    vi.spyOn(api, 'history').mockResolvedValue(history(16));
+    const { container } = render(<PortfolioMesswerte sites={[DACHAU, LINDENBERG]} />);
+
+    await screen.findByRole('columnheader', { name: 'Erzeugt' });
+    expect(container.querySelector('table.vp-c-pft')).not.toBeNull();
+    expect(
+      screen.getByRole('link', { name: 'Hof Lindenberg' }),
+    ).toHaveAttribute('href', '#/anlage/b/messwerte?z=monat&at=2026-07-15');
   });
 });
