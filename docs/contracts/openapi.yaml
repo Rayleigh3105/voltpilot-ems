@@ -9639,6 +9639,46 @@ components:
           type: array
           items: { $ref: "#/components/schemas/EarningsSite" }
         totals: { $ref: "#/components/schemas/EarningsTotals" }
+        vergleich:
+          allOf: [{ $ref: "#/components/schemas/EarningsVergleich" }]
+          nullable: true
+          description: >
+            Die Einordnung der Flotten-Zahl (Konzept vp-erloese-lesbar-konzept-u3
+            §3.7 Befund B13, Entscheid E3). Absent/null, sobald es nichts
+            ehrlich zu vergleichen gibt - dann bleibt die Zeile weg, NIE ein
+            Prozentsatz eines laufenden Tages gegen einen vollen Vortag.
+            Nur fuer range=day belegt; Monat/Jahr/Gesamt holt das Portal ueber
+            seinen zweiten Abruf mit verschobenem Anker (dort waere ein Prozent
+            per E3 ohnehin verboten, und eine zweite Monats-Aggregation auf
+            jedem Aufruf ist die Verschwendung, die Audit vp-portal-perf-a4 B5
+            abgestellt hat).
+    EarningsVergleich:
+      type: object
+      description: >
+        Zwei Betraege derselben Groesse ueber gleich lange Grundlagen - das
+        Netto der Flotte (Summe von eigenverbrauchsWertEur - actualEur ueber die
+        Anlagen mit bewerteten Viertelstunden), aus DERSELBEN Preiskomposition
+        wie die Zeilen (EarningsRepository.aggregate; kein zweites SQL).
+      properties:
+        modus:
+          type: string
+          enum: [gleicher_zeitpunkt, ganze_periode]
+          description: >
+            gleicher_zeitpunkt = ein LAUFENDER Tag, beide Seiten bis bisStunde
+            summiert (die laufende Stunde bleibt bei BEIDEN draussen) - nur hier
+            darf ein Prozentsatz stehen. ganze_periode = ein abgeschlossener
+            Tag, beide Seiten vollstaendig.
+        bisStunde:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 23
+          description: >
+            Die Berliner WANDUHR-Stunde, BIS zu der beide Seiten summiert sind;
+            null bei modus=ganze_periode.
+        jetztEur: { type: number, format: double }
+        vorherEur: { type: number, format: double }
+      required: [modus, jetztEur, vorherEur]
     EarningsSite:
       type: object
       description: >

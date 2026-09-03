@@ -262,25 +262,48 @@ describe('Portfolio · Welt B „Erlöse"', () => {
     await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
   });
 
-  it('führt mit der Summe, ihren Teilen und der Zurechnung der Steuerung', async () => {
+  it('führt mit dem Statement, dem Kontoauszug und der Speicher-Karte (Variante C, P6)', async () => {
     vi.spyOn(api, 'earnings').mockResolvedValue(earnings);
     render(<PortfolioErloese sites={[DACHAU, LINDENBERG]} />);
 
-    // Die große Zahl ist seit E9 / P9 das Ergebnis UNTERM STRICH - dieselbe
-    // Größe, die die Anlagen-Seite zeigt, in die ein Klick auf eine Zeile
-    // führt - und sie IST die Summe der drei gezeigten Teile
-    // (900 + 99,26 - 40). Sie steht oben UND in der Zeile ihrer Anlage,
-    // deshalb wird sie hier gezielt in der Summenzeile gesucht.
-    expect(await screen.findByText(/959,26 €/, { selector: '.vp-pf-summe' })).toBeInTheDocument();
-    expect(screen.getByText('Unterm Strich im Zeitraum')).toBeInTheDocument();
+    // DIE EINE ZAHL — das `Statement` der Variante C, ohne Rahmen auf dem
+    // Grund (§3.10 Punkt 7: „Portfolio trägt dasselbe Kleid"). Sie ist seit
+    // E9/P9 das Ergebnis UNTERM STRICH und IST die Summe der drei Teile
+    // (900 + 99,26 − 40); sie steht oben UND in der Zeile ihrer Anlage,
+    // deshalb wird sie gezielt im Statement gesucht.
+    expect(
+      await screen.findByText('+ 959,26 €', { selector: '.vp-c-stm-zahl' }),
+    ).toBeInTheDocument();
+    // Das Label IST die Überschrift der Fläche (die Versalien macht das CSS).
+    expect(screen.getByRole('heading', { name: /Unterm Strich · Juli 2026/ })).toBeInTheDocument();
+    // Der Satz nennt zusätzlich, über wie viele Anlagen summiert wurde — und
+    // zählt nur die BEITRAGENDEN (die zweite Anlage fehlt in der Summe).
+    expect(screen.getByText('Juli 2026 unterm Strich · 1 Anlage')).toBeInTheDocument();
+
+    // DER KONTOAUSZUG — vier Zeilen mit Balken statt der früheren Prosa-Liste
+    // (Befund B13 „die drei Teile als Prosa").
     const teile = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
     expect(teile).toHaveTextContent('Einspeise-Erlös');
-    expect(teile).toHaveTextContent('900,00 €');
-    expect(teile).toHaveTextContent('Wert des Eigenverbrauchs');
-    expect(teile).toHaveTextContent('Stromkosten (Netzbezug)');
+    expect(teile).toHaveTextContent('+ 900,00 €');
+    expect(teile).toHaveTextContent('Eigenverbrauch');
+    expect(teile).toHaveTextContent('Netzbezug');
     expect(teile).toHaveTextContent('− 40,00 €');
-    // Die Steuerung ist eine ZURECHNUNG unter der Zahl, nie ein Summand.
-    expect(screen.getByText(/davon 161,44 € durch VoltPilots Steuerung/)).toBeInTheDocument();
+    expect(teile).toHaveTextContent('Ergebnis');
+
+    // DIE SPEICHER-KARTE — der Wortlaut ist „Speicher", nicht „durch
+    // VoltPilots Steuerung" (Befund B13: `savedEur` ist der Wert des GANZEN
+    // Speichersystems).
+    expect(screen.getByText('Speicher im Zeitraum')).toBeInTheDocument();
+    // Der Betrag steht auch in der Tabellenzeile der Anlage — hier gezielt in
+    // der Karte gesucht.
+    expect(
+      screen.getByText('+ 161,44 €', { selector: '.vp-c-sp-wert' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/durch VoltPilots Steuerung/)).toBeNull();
+    // Statt einer erfundenen Flotten-Aufteilung der Ort, an dem sie steht.
+    expect(screen.getByText('je Anlage in der Tabelle')).toBeInTheDocument();
+    expect(screen.queryByText('davon Steuerung')).toBeNull();
+
     // Und die Anlage ohne bewertete Viertelstunde nennt ihren Grund - UND sie
     // wird an der Summe genannt, statt still als 0 mitgezählt zu werden.
     expect(screen.getByText('Noch keine Börsenpreise für den Zeitraum.')).toBeInTheDocument();
@@ -288,6 +311,23 @@ describe('Portfolio · Welt B „Erlöse"', () => {
       screen.getByText(/Für eine Anlage liegt in diesem Zeitraum noch kein Ergebnis vor/),
     ).toBeInTheDocument();
     expect(screen.getByText('1 von 2 Anlagen mit Daten in diesem Zeitraum')).toBeInTheDocument();
+  });
+
+  it('nennt die Speicher-Spalte „Speicher" und lässt „Eingespeist" markiert für das Telefon', async () => {
+    vi.spyOn(api, 'earnings').mockResolvedValue(earnings);
+    render(<PortfolioErloese sites={[DACHAU, LINDENBERG]} />);
+
+    // ⚠ Befund B13: die Spalte hiess „Durch Steuerung" — dieselbe Zahl, die
+    //   die Karte darüber „Speicher" nennt. Ein Wort je Zahl.
+    const kopf = await screen.findByRole('columnheader', { name: 'Speicher' });
+    expect(kopf).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Durch Steuerung' })).toBeNull();
+
+    // „Eingespeist" traegt die Klasse, mit der das Blatt sie unter 720 px
+    // ausblendet (das CSS entscheidet, nicht die Spaltenliste).
+    const kwh = document.querySelectorAll('td.vp-pf-col-kwh');
+    expect(kwh.length).toBeGreaterThan(0);
+    expect(kwh[0].getAttribute('data-label')).toBe('Eingespeist');
   });
 
   it('öffnet aus einer Zeile die Erlöse-Welt DIESER Anlage im gleichen Zeitraum', async () => {

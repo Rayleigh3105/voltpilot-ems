@@ -313,10 +313,70 @@ export function heroSatz(
  */
 export function ergebnisZeilen(input: ErgebnisZeilenInput): ErgebnisZeilenView {
   const money = input.money;
-  const einspeisung = num(money?.einspeiseErloesEur ?? null);
-  const eigen = num(money?.eigenverbrauchsWertEur ?? null);
-  const kosten = num(money?.stromkostenEur ?? null);
-  const netto = num(money?.nettoErgebnisEur ?? null);
+  return zeilenKern({
+    einspeisung: money?.einspeiseErloesEur ?? null,
+    eigenverbrauch: money?.eigenverbrauchsWertEur ?? null,
+    stromkosten: money?.stromkostenEur ?? null,
+    netto: money?.nettoErgebnisEur ?? null,
+    periodLabel: input.periodLabel,
+    laeuft: input.laeuft,
+    range: input.range,
+    sekundaer: money ? (id) => sekundaerFuer(money, id) : null,
+  });
+}
+
+/**
+ * **Dieselben vier Zeilen für die FLOTTE** (Portfolio › Erlöse, Paket P6 ·
+ * Entscheid E2 = „beide": die Leseprinzipien gelten auch eine Ebene höher).
+ *
+ * Die Zahlen sind die Summen des Portfolio-Aggregats — dieselben vier Größen,
+ * derselbe Wasserfall, dieselben Worte. Sie hier durch `ergebnisZeilen` zu
+ * schicken ginge nicht: das nimmt eine `SiteEarnings`, und ein zusammengebautes
+ * Fantasie-Objekt wäre eine zweite Wahrheit über eine Antwort, die es nicht
+ * gibt.
+ *
+ * **⚠ Die Sekundärzeile bleibt hier LEER, und das ist eine Aussage** (kein
+ * Versäumnis): sie nennt auf der Anlagen-Seite den Tarif bzw. die
+ * MaStR-Referenz — beides gibt es je Anlage, nicht je Flotte. Das Portfolio ist
+ * bewusst tarifneutral (siehe `SteuerungFormel` `tarifneutral`), also
+ * behauptet es keinen.
+ */
+export function flottenZeilen(input: {
+  einspeiseEur: number | null | undefined;
+  eigenverbrauchEur: number | null | undefined;
+  stromkostenEur: number | null | undefined;
+  nettoEur: number | null | undefined;
+  periodLabel: string;
+  laeuft: boolean;
+  range: HistoryRange;
+}): ErgebnisZeilenView {
+  return zeilenKern({
+    einspeisung: input.einspeiseEur ?? null,
+    eigenverbrauch: input.eigenverbrauchEur ?? null,
+    stromkosten: input.stromkostenEur ?? null,
+    netto: input.nettoEur ?? null,
+    periodLabel: input.periodLabel,
+    laeuft: input.laeuft,
+    range: input.range,
+    sekundaer: null,
+  });
+}
+
+/** Der geteilte Kern beider Eingänge — die Zahlen, nie die Herkunft. */
+function zeilenKern(input: {
+  einspeisung: number | null;
+  eigenverbrauch: number | null;
+  stromkosten: number | null;
+  netto: number | null;
+  periodLabel: string;
+  laeuft: boolean;
+  range: HistoryRange;
+  sekundaer: ((id: ErloesZeileId) => Sekundaerzeile | null) | null;
+}): ErgebnisZeilenView {
+  const einspeisung = num(input.einspeisung);
+  const eigen = num(input.eigenverbrauch);
+  const kosten = num(input.stromkosten);
+  const netto = num(input.netto);
 
   // Die drei Beiträge in der Reihenfolge des Wasserfalls; der Netzbezug geht
   // mit GEDREHTEM Vorzeichen ein, weil der Server Kosten positiv liefert.
@@ -354,7 +414,7 @@ export function ergebnisZeilen(input: ErgebnisZeilenInput): ErgebnisZeilenView {
       eur: gerundet,
       text: gerundet == null ? '—' : vorzeichenEuro(gerundet),
       ton: gerundet == null ? 'null' : tonVon(gerundet),
-      sekundaer: money ? sekundaerFuer(money, id) : null,
+      sekundaer: input.sekundaer ? input.sekundaer(id) : null,
       farbe: ZEILEN_FARBE[id],
       segment: segmente.get(id) ?? null,
     });

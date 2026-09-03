@@ -2369,6 +2369,27 @@ The hero's money number is MEASURED, not planned: "Erlös mit VoltPilot vs. unge
   - **Ranges are the HISTORIE vocabulary** (`day|week|month|year|all`) - unlike the fleet endpoint, `week` is offered, because the Erlöse world's time bar always had it; the series bucket follows the period (P6: hour / day / day / month). `savedEur` stays an ATTRIBUTION inside the result and is never a sibling summand. RLS fences it like every site route (foreign site 404, admins via the `X-Tenant-Id` switcher).
   - **Tests:** `PortalApiTest.siteEarningsAnswerOneAnlageWithItsReconcilingComposition` (hand-computed two current-month CH slots on a `fest` 30-ct site: both identities, the Ø Bezugspreis, the day-bucketed series, `week` accepted / an unknown range 400, honest nulls + `reason` for a site without data, RLS 404); portal `src/erloesKomposition.test.ts` + `src/pages/HistorieWelten.test.tsx`.
 
+- **Der Gleiche-Stunde-Vergleich der FLOTTE (`EarningsDto.vergleich`, P6 · Entscheid E3 · Befund B13).**
+  Das Portfolio verglich einen LAUFENDEN Tag mit dem GANZEN Vortag („↑ 532 % mehr als am Vortag" —
+  fünf Stunden gegen vierundzwanzig). `GET /api/v1/earnings` trägt seither für den **Tages**-Zeitraum
+  einen additiven `vergleich`-Block: bei einem laufenden Tag beide Seiten bis zur gleichen Berliner
+  **Wanduhr**-Stunde (`modus: gleicher_zeitpunkt` + `bisStunde`; die laufende Stunde bleibt bei BEIDEN
+  draußen), bei einem abgeschlossenen Tag beide vollständig (`ganze_periode`). **`null`, sobald eine
+  Seite keine bewertete Viertelstunde trägt** — dann bleibt die Zeile weg, nie eine erfundene Null.
+  **Kein zweites SQL und keine Migration:** beide Beträge kommen aus `EarningsRepository.aggregate`
+  über ein enger gespanntes Fenster, das Netto ist wörtlich das der Zeilen
+  (`Σ (eigenverbrauchsWertEur − actualEur)` über die Anlagen mit bewerteten Slots — dieselbe
+  Ableitung wie das Portal-`erloesNetto.nettoEur`). **⚠ Die Stunde wird über `LocalDate#atTime` in
+  die Zone gehängt, nie über `plusHours` auf Mitternacht** — an einem Zeitumstellungstag hat der Tag
+  23 bzw. 25 Stunden, und „bis 3 Uhr" meint die Wanduhr (der Portal-Zwilling
+  `vergleichLaufend.summeBisStunde` liest sie je Eimer aus seinem Zeitstempel).
+  **⚠ Bewusst NUR der Tages-Zeitraum:** für Monat/Jahr/Gesamt ist er `null` — das Portal holt dort
+  die zwei Beträge über seinen zweiten Abruf mit verschobenem Anker, ein Prozentsatz wäre per E3
+  ohnehin verboten (verschieden lange Grundlagen), und eine zweite Monats-/Jahres-Aggregation auf
+  JEDEM Aufruf ist genau die Verschwendung, die Audit `vp-portal-perf-a4` B5 beim Monats-Streifen
+  abgestellt hat. Beweis: `PortalApiTest.portfolioComparisonIsBoundedToTheSameBerlinHourOfBothDays`
+  (echte DB, Mandant B, Lockvogel in Stunde 23, alle drei Zeiträume).
+
 ## Das BESTANDSKONTO des gemessenen Zeitraums (die FK2-Gutschrift auf der Erlöse-Seite)
 
 Diagnose `data/vp-tagesbild-minus-f3` §6 (Live-Fall Pilsting/Herzogau, 21.08.2026 12:19).

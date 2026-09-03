@@ -36,17 +36,25 @@ import type {
   EarningsRange,
   EarningsReason,
   EarningsSite,
+  EarningsVergleich,
   History,
   HistoryRange,
   Site,
 } from './api';
 import {
   energieSummen,
+  isCurrentPeriod,
   type EnergieFarbe,
   type EnergieSumme,
   type EnergieSummeKey,
 } from './energieBilanz';
 import { nettoEur } from './erloesNetto';
+import { delta } from './historieVergleich';
+import {
+  erloesVergleich,
+  gleicheStundeZeile,
+  type ErloesVergleich,
+} from './vergleichLaufend';
 import { WELTEN, type Provenienz, type WeltId } from './historieWelten';
 import type { PageId } from './nav';
 import { activeModes } from './surface';
@@ -538,3 +546,106 @@ export function erloeseAggregat(
     leer: summeNetto == null,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Die Einordnung der Flotten-Zahl (P6 · E3 · Befund B13)
+// ---------------------------------------------------------------------------
+
+/**
+ * **Der Vergleich der Flotten-Zahl** — Erlöse-Konzept
+ * `vp-erloese-lesbar-konzept-u3` §3.7 Befund **B13**, Runde-1-Entscheid
+ * **E3** (Captain 03.09.2026).
+ *
+ * Der behobene Befund stand wörtlich auf der Live-Seite: „↑ 532 % mehr als am
+ * Vortag" über einem LAUFENDEN Tag — fünf Stunden gegen vierundzwanzig. Genau
+ * dieser Befund war für die Anlagen-Seite schon per E3 entschieden; das
+ * Portfolio konnte ihn nicht anwenden, weil es die Stunden-Auflösung der
+ * Flotte nicht kannte.
+ *
+ * **⚠ DIE REGEL, an der alles hängt: ein laufender TAG vergleicht sich NUR mit
+ * dem Server-Wert.** Liefert der Server keinen (ein älteres Backend, oder es
+ * gibt nichts ehrlich zu vergleichen), bleibt die Zeile **WEG** — nie
+ * ersatzweise gegen den vollen Vortag, das wäre wieder B13. Für jeden anderen
+ * Zeitraum gilt unverändert die Ableitung der Anlagen-Seite
+ * (`erloesVergleich`): eine laufende Woche/ein laufender Monat/ein laufendes
+ * Jahr bekommen NUR die zwei Beträge, ein abgeschlossener Zeitraum seinen
+ * gewerteten Chip.
+ *
+ * **Formuliert wird an EINER Stelle** — `gleicheStundeZeile` teilt sich die
+ * Portfolio-Zeile mit der Anlagen-Seite, damit derselbe Vergleich nicht
+ * zweimal anders klingt.
+ */
+export function portfolioVergleich(input: {
+  range: HistoryRange;
+  anchor: Date;
+  now: Date;
+  /** Der Server-Block aus `GET /api/v1/earnings`. */
+  server?: EarningsVergleich | null;
+  /** Die Zahl des gezeigten Zeitraums (aus dem Aggregat). */
+  jetztEur: number | null | undefined;
+  /** Die Zahl der Vergleichsperiode (zweiter Abruf mit verschobenem Anker). */
+  vorherEur: number | null | undefined;
+}): ErloesVergleich | null {
+  const { range, anchor, now, server } = input;
+  const laeuft = isCurrentPeriod(anchor, range, now);
+
+  if (server && server.modus === 'gleicher_zeitpunkt' && server.bisStunde != null) {
+    // Beide Seiten sind serverseitig auf dieselbe Berliner Stunde begrenzt —
+    // die einzige Lesart, in der am laufenden Tag ein Prozentsatz stehen darf.
+    // Gewertet wird dabei nicht (`null` = neutral): ein trüber Vormittag sagt
+    // nichts über den Tag.
+    const d = delta(server.jetztEur, server.vorherEur, null, 'dem Vortag');
+    return gleicheStundeZeile({
+      bisStunde: server.bisStunde,
+      jetztEur: server.jetztEur,
+      vorherEur: server.vorherEur,
+      delta: d,
+    });
+  }
+
+  if (laeuft && range === 'day') {
+    // B13: ohne den Server-Wert gibt es am laufenden Tag NICHTS ehrlich zu
+    // vergleichen. Lieber keine Zeile als eine falsche.
+    return null;
+  }
+
+  return erloesVergleich({
+    range,
+    anchor,
+    now,
+    jetztEur: input.jetztEur,
+    vorherEur: server && server.modus === 'ganze_periode' ? server.vorherEur : input.vorherEur,
+  });
+}
+
+/**
+ * **Der Satz unter der Flotten-Zahl** — höchstens acht Wörter (§2 Prinzip 3).
+ *
+ * Er nimmt den Satz der Anlagen-Seite (`erloesZeilen.heroSatz`, über
+ * `flottenZeilen` schon gebildet) und hängt EINE Auskunft an, die es nur eine
+ * Ebene höher gibt: über wie viele Anlagen summiert wurde. Die Zahl der
+ * Anlagen ist die Frage, die im Portfolio sofort kommt („aus wie vielen?"), und
+ * sie kostet zwei Wörter.
+ *
+ * **⚠ Gezählt werden die BEITRAGENDEN Anlagen, nie alle.** Eine Anlage ohne
+ * berechenbares Ergebnis fehlt in der Summe (die Ehrlichkeitsregel des
+ * Aggregats) — sie mitzuzählen behauptete, sie stecke darin. Die fehlenden
+ * werden darunter beim Namen genannt.
+ */
+export function flottenSatz(satz: string, beitragende: number): string {
+  const kern = satz.replace(/\.$/, '');
+  const wort = beitragende === 1 ? 'Anlage' : 'Anlagen';
+  return `${kern} · ${beitragende} ${wort}`;
+}
+
+/**
+ * Die Sekundärzeile der Speicher-Karte im Portfolio (Mockup `rvC-1440-portfolio`).
+ *
+ * **⚠ Sie ersetzt die Zeile „davon Steuerung", die es hier NICHT geben kann:**
+ * der Flotten-Endpunkt führt die Dreiteilung `saved = speicher + steuerung`
+ * bewusst nicht als Summe (eine Anlage ohne gepflegte Batterie-Stammdaten
+ * risse dort eine unbeweisbare Lücke — siehe `EarningsTotalsDto`). Statt eine
+ * Zahl zu erfinden, nennt die Karte den Ort, an dem die Aufteilung wirklich
+ * steht: die Anlagen-Seite hinter jeder Tabellenzeile.
+ */
+export const SPEICHER_JE_ANLAGE = 'je Anlage in der Tabelle';

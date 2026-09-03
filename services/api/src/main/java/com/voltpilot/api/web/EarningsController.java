@@ -10,12 +10,14 @@ import com.voltpilot.api.web.dto.EarningsDto.EarningsMonthDto;
 import com.voltpilot.api.web.dto.EarningsDto.EarningsSeriesPointDto;
 import com.voltpilot.api.web.dto.EarningsDto.EarningsSiteDto;
 import com.voltpilot.api.web.dto.EarningsDto.EarningsTotalsDto;
+import com.voltpilot.api.web.dto.EarningsDto.EarningsVergleichDto;
 import com.voltpilot.api.web.dto.EarningsDto.PeakPeriodDto;
 import com.voltpilot.api.web.dto.EarningsDto.PeakShavingDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
@@ -298,7 +300,88 @@ public class EarningsController {
                         totalArbitrage,
                         totalArbitrage != null ? totalSaved.subtract(totalArbitrage) : null,
                         totalCovered,
-                        firstCovered));
+                        firstCovered),
+                vergleich(parsed, effectiveAt, today));
+    }
+
+    /**
+     * <b>Die Einordnung der Flotten-Zahl</b> (Konzept
+     * {@code vp-erloese-lesbar-konzept-u3} §3.7 Befund B13, Entscheid E3): der
+     * laufende Tag vergleicht sich nur bis zur GLEICHEN Stunde, nie mit dem
+     * vollen Vortag.
+     *
+     * <p>Nur der Tages-Zeitraum bekommt ihn (siehe
+     * {@link EarningsVergleichDto} - Monat/Jahr wären eine zweite große
+     * Aggregation auf jedem Aufruf, und ein Prozentsatz wäre dort ohnehin
+     * verboten). {@code null}, sobald eine der beiden Seiten keine bewertete
+     * Viertelstunde trägt - nie eine erfundene Null.
+     *
+     * <p><b>Die Stunde ist die BERLINER WANDUHR-Stunde</b>, und sie wird über
+     * {@code LocalDate#atTime} in die Zone gehängt statt über {@code plusHours}
+     * auf Mitternacht: an einem Zeitumstellungstag hat der Tag 23 bzw. 25
+     * Stunden, und „bis 3 Uhr" meint die Wanduhr - genau das, was der
+     * Portal-Zwilling {@code vergleichLaufend.summeBisStunde} je Eimer aus
+     * seinem Zeitstempel liest.
+     */
+    private EarningsVergleichDto vergleich(HistoryRange parsed, LocalDate at, LocalDate today) {
+        if (parsed != HistoryRange.DAY) {
+            return null;
+        }
+        LocalDate vortag = at.minusDays(1);
+        boolean laufend = at.equals(today);
+        Instant jetztVon = at.atStartOfDay(HistoryRange.ZONE).toInstant();
+        Instant vorherVon = vortag.atStartOfDay(HistoryRange.ZONE).toInstant();
+        Integer bisStunde = null;
+        Instant jetztBis;
+        Instant vorherBis;
+        if (laufend) {
+            int stunde = LocalTime.now(HistoryRange.ZONE).getHour();
+            // Vor der ersten vollen Stunde gibt es nichts ehrlich zu
+            // vergleichen (00:30) - dann bleibt die Zeile weg.
+            if (stunde <= 0) {
+                return null;
+            }
+            bisStunde = stunde;
+            jetztBis = at.atTime(stunde, 0).atZone(HistoryRange.ZONE).toInstant();
+            vorherBis = vortag.atTime(stunde, 0).atZone(HistoryRange.ZONE).toInstant();
+        } else {
+            jetztBis = HistoryRange.DAY.window(at).to();
+            vorherBis = HistoryRange.DAY.window(vortag).to();
+        }
+        BigDecimal jetzt = flottenNetto(jetztVon, jetztBis);
+        BigDecimal vorher = flottenNetto(vorherVon, vorherBis);
+        if (jetzt == null || vorher == null) {
+            return null;
+        }
+        return new EarningsVergleichDto(
+                laufend ? "gleicher_zeitpunkt" : "ganze_periode", bisStunde, jetzt, vorher);
+    }
+
+    /**
+     * Das Netto der Flotte über EIN Fenster - wörtlich die Zahl der Zeilen,
+     * aufsummiert: {@code eigenverbrauchsWertEur − actualEur} je Anlage (der
+     * Server sichert {@code stromkostenEur − einspeiseErloesEur == actualEur}
+     * exakt zu, also fällt die Einspeisung aus {@code einspeise + eigen −
+     * stromkosten} heraus - dieselbe Ableitung wie im Portal,
+     * {@code erloesNetto.nettoEur}).
+     *
+     * <p>{@code null}, wenn KEINE Anlage im Fenster eine bewertete
+     * Viertelstunde trägt. Eine Anlage ohne bewertete Viertelstunde zählt
+     * nicht als 0, sie fehlt schlicht - dieselbe Regel wie in der Summenkarte.
+     */
+    private BigDecimal flottenNetto(Instant from, Instant to) {
+        BigDecimal summe = null;
+        for (EarningsRepository.SiteAggregate agg : earnings.aggregate(from, to).values()) {
+            if (agg == null || agg.coveredSlots() <= 0 || agg.actualEur() == null) {
+                continue;
+            }
+            BigDecimal eigen = agg.eigenverbrauchsWertEur() == null
+                    ? BigDecimal.ZERO
+                    : agg.eigenverbrauchsWertEur();
+            BigDecimal netto = eigen.subtract(agg.actualEur());
+            summe = summe == null ? netto : summe.add(netto);
+        }
+        return summe;
     }
 
     /**

@@ -203,6 +203,31 @@ function kurzerChip(d: DeltaView | null): DeltaView | null {
 }
 
 /**
+ * **Die EINE Formulierung des Gleiche-Stunde-Vergleichs** — Chip, Beträge-Zeile
+ * und Methoden-Satz aus einem schon BEGRENZTEN Paar.
+ *
+ * Sie steht hier, weil zwei Flächen sie brauchen und derselbe Vergleich nicht
+ * zweimal formuliert werden darf: die Anlagen-Seite rechnet die Grenze selbst
+ * aus ihren Stunden-Eimern ({@link vergleichBisStunde}), das Portfolio bekommt
+ * sie fertig vom Server (`GET /api/v1/earnings` → `vergleich`, Paket P6) —
+ * beide gehen durch DIESE Funktion.
+ *
+ * **Am laufenden Tag wird nicht gewertet** (Regel 3): der Chip ist immer
+ * `neutral`, die Richtung steht als Wort darin.
+ */
+export function gleicheStundeZeile(v: BisStundeVergleich): ErloesVergleich {
+  return {
+    modus: 'gleicher_zeitpunkt',
+    chip: kurzerChip(v.delta),
+    betraege: `Bis ${v.bisStunde} Uhr: heute ${eurAmount(v.jetztEur)} · gestern ${eurAmount(v.vorherEur)}`,
+    satz: `Verglichen wird bis ${v.bisStunde} Uhr — der Vortag ebenfalls bis ${v.bisStunde} Uhr; die laufende Stunde bleibt bei beiden draußen.`,
+    bisStunde: v.bisStunde,
+    jetztEur: v.jetztEur,
+    vorherEur: v.vorherEur,
+  };
+}
+
+/**
  * **Die EINE Ableitung der Vergleichszeile der Erlöse-Karte.**
  *
  * - abgeschlossener Zeitraum → unverändert `delta()` mit Pfeil, Wort UND Ton;
@@ -237,15 +262,7 @@ export function erloesVergleich(input: ErloesVergleichInput): ErloesVergleich | 
   if (range === 'day') {
     const bis = vergleichBisStunde(input.jetztSeries, input.vorherSeries, now, name);
     if (bis) {
-      return {
-        modus: 'gleicher_zeitpunkt',
-        chip: kurzerChip(bis.delta),
-        betraege: `Bis ${bis.bisStunde} Uhr: heute ${eurAmount(bis.jetztEur)} · gestern ${eurAmount(bis.vorherEur)}`,
-        satz: `Verglichen wird bis ${bis.bisStunde} Uhr — der Vortag ebenfalls bis ${bis.bisStunde} Uhr; die laufende Stunde bleibt bei beiden draußen.`,
-        bisStunde: bis.bisStunde,
-        jetztEur: bis.jetztEur,
-        vorherEur: bis.vorherEur,
-      };
+      return gleicheStundeZeile(bis);
     }
   }
 

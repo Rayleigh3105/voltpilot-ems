@@ -28,7 +28,8 @@ public record EarningsDto(
         Instant from,
         Instant to,
         List<EarningsSiteDto> sites,
-        EarningsTotalsDto totals) {
+        EarningsTotalsDto totals,
+        EarningsVergleichDto vergleich) {
 
     /**
      * One site's realized earnings over the window. All money values are null
@@ -263,5 +264,56 @@ public record EarningsDto(
 
     /** One Europe/Berlin day of realized savings. */
     public record EarningsDailyDto(LocalDate day, BigDecimal savedEur) {
+    }
+
+    /**
+     * <b>Die Einordnung der Flotten-Zahl</b> - Erlöse-Konzept
+     * {@code vp-erloese-lesbar-konzept-u3} §3.7 Befund <b>B13</b>, Runde-1-Entscheid
+     * <b>E3</b> (Captain 03.09.2026: „bitte umsetzen mit allen Empfehlungen").
+     *
+     * <p><b>Der behobene Befund:</b> das Portfolio verglich einen LAUFENDEN Tag
+     * mit dem GANZEN Vortag und schrieb „↑ 532 % mehr als am Vortag" darüber -
+     * arithmetisch richtig, als Aussage falsch (fünf Stunden gegen
+     * vierundzwanzig). Genau dieser Befund war für die Anlagen-Seite schon per
+     * E3 entschieden; das Portfolio konnte ihn nicht anwenden, weil es die
+     * Stunden-Auflösung der Flotte nicht kannte. Sie kommt jetzt vom Server.
+     *
+     * <p><b>Es ist DIESELBE Preiswahrheit, kein zweites SQL.</b> Beide Beträge
+     * entstehen aus {@link com.voltpilot.api.repo.EarningsRepository#aggregate}
+     * über ein enger gespanntes Fenster - also aus derselben Komposition
+     * ({@code importPriceCtSql}/{@code exportValueCtSql}), aus der auch
+     * {@code actualEur} und {@code eigenverbrauchsWertEur} der Zeilen kommen.
+     * Das Netto ist wörtlich das der Zeilen: {@code eigenverbrauchsWertEur −
+     * actualEur} je Anlage, aufsummiert über die Anlagen, die im Fenster
+     * überhaupt eine bewertete Viertelstunde tragen.
+     *
+     * <p><b>{@code modus} sagt, WIE verglichen werden darf</b> - das Portal
+     * formuliert daraus, es entscheidet es nicht:
+     * <ul>
+     *   <li>{@code gleicher_zeitpunkt} - ein LAUFENDER Tag: beide Seiten sind
+     *       bis {@code bisStunde} (Berliner Wanduhr, die laufende Stunde bleibt
+     *       bei BEIDEN draußen) summiert. Nur hier darf ein Prozentsatz stehen.</li>
+     *   <li>{@code ganze_periode} - ein ABGESCHLOSSENER Tag: beide Seiten sind
+     *       vollständig, {@code bisStunde} ist {@code null}.</li>
+     * </ul>
+     *
+     * <p><b>{@code null} statt einer erfundenen Null.</b> Trägt eine der beiden
+     * Seiten keine bewertete Viertelstunde (der frühe Morgen, eine Flotte ohne
+     * Preise am Vortag), gibt es diesen Block gar nicht - und die Zeile bleibt
+     * weg. Ein Vergleich gegen eine gemessene Null wäre „+∞ %".
+     *
+     * <p><b>Bewusste Grenze: nur der Tages-Zeitraum.</b> Für Monat/Jahr/Gesamt
+     * ist der Block {@code null} - dort holt sich das Portal die zwei Beträge
+     * über seinen zweiten Abruf mit verschobenem Anker (die bestehende Geste),
+     * und ein Prozentsatz wäre ohnehin verboten (E3: verschieden lange
+     * Grundlagen). Ihn hier zu rechnen kostete eine zweite Monats- bzw.
+     * Jahres-Aggregation auf JEDEM Aufruf - genau die Klasse Verschwendung, die
+     * Audit {@code vp-portal-perf-a4} B5 beim Monats-Streifen abgestellt hat.
+     */
+    public record EarningsVergleichDto(
+            String modus,
+            Integer bisStunde,
+            BigDecimal jetztEur,
+            BigDecimal vorherEur) {
     }
 }

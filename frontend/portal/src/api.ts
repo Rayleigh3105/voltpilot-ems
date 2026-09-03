@@ -2791,12 +2791,44 @@ export interface EarningsTotals {
   firstCoveredDate: string | null;
 }
 
+/**
+ * **Die Einordnung der Flotten-Zahl** — Erlöse-Konzept
+ * `vp-erloese-lesbar-konzept-u3` §3.7 Befund **B13**, Runde-1-Entscheid **E3**
+ * (Paket P6).
+ *
+ * Der behobene Befund: das Portfolio verglich einen LAUFENDEN Tag mit dem
+ * GANZEN Vortag und schrieb „↑ 532 % mehr als am Vortag" darüber. Der Server
+ * liefert jetzt zwei Beträge über GLEICH LANGE Grundlagen — aus derselben
+ * Preiskomposition wie die Zeilen (kein zweites SQL).
+ *
+ * **`modus` sagt, WIE verglichen werden darf** — das Portal formuliert daraus,
+ * es entscheidet es nicht:
+ * `gleicher_zeitpunkt` (laufender Tag, beide Seiten bis `bisStunde`; NUR hier
+ * darf ein Prozentsatz stehen) · `ganze_periode` (abgeschlossener Tag, beide
+ * Seiten vollständig).
+ *
+ * **Absent heißt: es gibt nichts ehrlich zu vergleichen** — dann bleibt die
+ * Zeile WEG, nie eine erfundene Null und nie ein halber Tag gegen einen
+ * ganzen. Für Monat/Jahr/Gesamt ist er per Vertrag absent; dort liefert der
+ * zweite Abruf mit verschobenem Anker die zwei Beträge, und ein Prozentsatz
+ * wäre per E3 ohnehin verboten.
+ */
+export interface EarningsVergleich {
+  modus: 'gleicher_zeitpunkt' | 'ganze_periode';
+  /** Die Berliner WANDUHR-Stunde, bis zu der BEIDE Seiten summiert sind. */
+  bisStunde: number | null;
+  jetztEur: number;
+  vorherEur: number;
+}
+
 export interface Earnings {
   range: EarningsRange;
   from: string;
   to: string;
   sites: EarningsSite[];
   totals: EarningsTotals;
+  /** Absent auf einem älteren Backend — die Zeile bleibt dann weg. */
+  vergleich?: EarningsVergleich | null;
 }
 
 // ---- Anlagen-scharfe Erlöse (GET /api/v1/sites/{id}/earnings) ---------------

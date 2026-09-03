@@ -14,8 +14,10 @@
   border-radius: 999px;
   background: var(--vp-welt-soft, #eef2f7);
   color: var(--vp-welt-ink, #1e3a5f);
-  font-size: 0.75rem;
-  font-weight: 700;
+  /* Auf der C-Skala (E12 = a, der Pilot zieht jede Fläche nach): das
+     Ebenen-Etikett ist ein Chip, also 12/700 wie jedes Label der Fläche. */
+  font-size: var(--vp-erl-fs-12, 12px);
+  font-weight: var(--vp-erl-fw-700, 700);
   letter-spacing: 0.02em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -24,68 +26,49 @@
 .vp-pf-kontext {
   display: inline-block;
   color: var(--vp-welt-ink, #1e3a5f);
-  font-weight: 600;
+  font-weight: var(--vp-erl-fw-600, 600);
 }
 
 /* --- Die Portfolio-Summe -------------------------------------------------- */
+/*
+ * ⚠ SEIT PAKET P6 GIBT ES SIE HIER NICHT MEHR (Konzept
+ *   `vp-erloese-lesbar-konzept-u3` §3.7 Befund B13, §3.10 Punkt 7, Entscheid
+ *   E2 = „beide"): die Flotten-Zahl ist dasselbe `Statement` wie auf der
+ *   Anlagen-Seite, ihre drei Teile derselbe `Kontoauszug`, der Speicher
+ *   dieselbe `SpeicherKarte`. Alle drei bringen ihr Blatt selbst mit
+ *   (`components/erloese/ErgebnisKarte.css`) — deshalb sind
+ *   `.vp-pf-summe`, `.vp-pf-summe-l`, `.vp-pf-zurechnung` und
+ *   `.vp-pf-teile*` ERSATZLOS entfallen. Zwei Kleider über derselben Zahl
+ *   waren genau der Befund.
+ *
+ *   Übrig bleibt, was NUR das Portfolio hat: die Anlagen-Tabelle, ihre
+ *   Abdeckungs-Zeile und der Hinweis „je Anlage in der Tabelle".
+ */
 
-.vp-pf-summe {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 10px;
-  min-width: 0;
-  margin: 0;
-  font-size: clamp(1.6rem, 6vw, 2.2rem);
-  font-weight: 700;
-  line-height: 1.15;
-  color: var(--vp-welt-ink, #1e3a5f);
-  overflow-wrap: anywhere;
+/* ⚠ FREISTELLUNG UNTER DER KLEBENDEN ZEIT-LEISTE (bei 1440 px im echten
+   Browser gemessen: Label 98..122, Leiste bis 126 — es war VOLLSTÄNDIG
+   verdeckt).
+
+   Der Portfolio-Kopf ist `vp-sr-only` (P3/P4: die Leiste trägt die
+   Identität), die Leiste hat also keine sichtbare Überschrift über sich und
+   wird 68 px UNTER ihrem Fluss-Platz angeheftet — der Rumpf beginnt trotzdem
+   an seinem Fluss-Platz und rutscht darunter. Bis P6 fing das die Polsterung
+   der Summen-Karte auf; seit die Variante C das `Statement` OHNE Rahmen auf
+   den Grund setzt, braucht es die Freistellung hier.
+
+   Nur ab 721 px: unter 720 px umbricht die Leiste, wird höher als ihr
+   Anheft-Versatz und der Rumpf steht ohnehin frei (bei 375 px gemessen:
+   0 px verdeckt). Dort wäre die Polsterung verschenkte Höhe über der einen
+   Zahl. */
+@media (min-width: 721px) {
+  .vp-pf-erloes-body {
+    padding-top: 36px;
+  }
 }
 
-.vp-pf-summe-l {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--vp-text-muted, #6c757d);
-}
-
-/* Die Zurechnung UNTER der Zahl — nie ein weiterer Summand. */
-.vp-pf-zurechnung {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 6px 0 0;
-  color: var(--vp-flow-batt-ink, #166534);
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-/* Die zwei Teile, aus denen die große Zahl besteht. */
-.vp-pf-teile {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  margin: var(--vp-space-4) 0 0;
-  padding: 0;
-  list-style: none;
-  min-width: 0;
-}
-
-.vp-pf-teile li {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.vp-pf-teil-l {
-  color: var(--vp-text-muted, #6c757d);
-  font-size: 0.85rem;
-}
-
-.vp-pf-teil-v {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+/* Der Ort der Aufteilung statt einer erfundenen Flotten-Zahl (SPEICHER_JE_ANLAGE). */
+.vp-pf-sp-hinweis {
+  margin: 2px 0 0;
 }
 
 /* --- Abdeckung („3 von 4 Anlagen mit Daten") ------------------------------ */
@@ -97,8 +80,8 @@
   flex-wrap: wrap;
   min-width: 0;
   margin: var(--vp-space-3) 0 0;
-  color: var(--vp-text-muted, #6c757d);
-  font-size: 0.8rem;
+  color: var(--vp-c-muted-fg, #475569);
+  font-size: var(--vp-erl-fs-12, 12px);
 }
 
 /* --- Die Anlagen-Tabelle -------------------------------------------------- */
@@ -106,6 +89,33 @@
 .vp-pf-table td,
 .vp-pf-table th {
   min-width: 0;
+}
+
+/* Die Tabelle trägt dieselbe Skala wie die Fläche darüber (§3.7: Kopf
+   12/600 gedämpft, Zellen 16 tabular). Die Größen kommen aus den P0-Token,
+   damit der Skala-Wächter (`erloeseSkala.test.ts`) sie mitzählt. */
+.vp-pf-table thead th {
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-erl-fs-12, 12px);
+  font-weight: var(--vp-erl-fw-600, 600);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-pf-table tbody td {
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-erl-fs-16, 16px);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+/* Die Trefferfläche des Anlagen-Wegs — 44 px, gemessen bei 375 px. Sie ist
+   der einzige Klickweg der Zeile, also darf sie nie kleiner sein (§2). */
+.vp-pf-table tbody .vp-cell-main > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: var(--vp-erl-fs-16, 16px);
 }
 
 .vp-pf-table .num {
@@ -146,25 +156,29 @@
     margin-left: 36px;
   }
 
-  .vp-welt-body .vp-pf-summenkarte .vp-karten-vergleich {
-    width: auto;
-    margin-left: 0;
-  }
-
   .vp-pf-table td.num {
     white-space: normal;
   }
 
+  /* „Eingespeist" fällt am Telefon weg (Skill-Regel „Table Handling", §3.7):
+     unter 720 px klappt die Zeile zur Karte, und die vierte Zahl ist dort die
+     am wenigsten gefragte — sie steht vollständig in der Erlöse-Welt der
+     Anlage, die ein Klick auf die Zeile öffnet. Die Kopfzelle braucht keine
+     eigene Regel: `.vp-table.responsive thead` ist hier schon ausgeblendet. */
+  .vp-pf-table td.vp-pf-col-kwh {
+    display: none;
+  }
+
   .vp-pf-table td::before {
-    font-size: 0.75rem;
+    font-size: var(--vp-erl-fs-12, 12px);
   }
 }
 
 .vp-pf-row-note {
   display: block;
   margin-top: 2px;
-  color: var(--vp-text-muted, #6c757d);
-  font-size: 0.78rem;
+  color: var(--vp-c-muted-fg, #475569);
+  font-size: var(--vp-erl-fs-12, 12px);
 }
 
 .vp-pf-spark {

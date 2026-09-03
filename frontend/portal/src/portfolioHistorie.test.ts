@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hashForRoute, pageRoute, parseRoute } from './nav';
 import { WELTEN } from './historieWelten';
-import type { EarningsSite, History, HistoryBucket, Site } from './api';
+import type { EarningsSite, EarningsVergleich, History, HistoryBucket, Site } from './api';
 import {
   abdeckung,
   earningsRangeFor,
@@ -13,7 +13,10 @@ import {
   portfolioHash,
   portfolioRange,
   portfolioRanges,
+  portfolioVergleich,
   portfolioWeltForPage,
+  flottenSatz,
+  SPEICHER_JE_ANLAGE,
   zeilenHinweis,
   type PortfolioHistoryInput,
 } from './portfolioHistorie';
@@ -393,5 +396,158 @@ describe('erloeseAggregat', () => {
     expect(a.nettoEur).toBeNull();
     expect(a.stromkostenEur).toBeNull();
     expect(a.savedEur).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Der Vergleich der Flotten-Zahl (P6 · E3 · Befund B13)
+// ---------------------------------------------------------------------------
+
+describe('portfolioVergleich: gleiche Stunde oder gar nichts', () => {
+  // Ein Zeitpunkt MITTEN im laufenden Tag; `anchor` ist derselbe Tag.
+  const now = new Date('2026-09-03T09:12:00+02:00');
+  const heute = new Date('2026-09-03T12:00:00+02:00');
+  const server = (o: Partial<EarningsVergleich> = {}): EarningsVergleich => ({
+    modus: 'gleicher_zeitpunkt',
+    bisStunde: 9,
+    jetztEur: 50.9,
+    vorherEur: 67.71,
+    ...o,
+  });
+
+  it('nimmt am laufenden Tag den Server-Wert und nennt die Schnitt-Stunde', () => {
+    const v = portfolioVergleich({
+      range: 'day',
+      anchor: heute,
+      now,
+      server: server(),
+      jetztEur: 50.9,
+      vorherEur: 400,
+    });
+    expect(v?.modus).toBe('gleicher_zeitpunkt');
+    expect(v?.bisStunde).toBe(9);
+    expect(v?.jetztEur).toBe(50.9);
+    // ⚠ Der VORTAG kommt vom Server (bis zur gleichen Stunde), nie aus dem
+    //   zweiten Abruf mit dem VOLLEN Vortag (400) — genau das war B13.
+    expect(v?.vorherEur).toBe(67.71);
+    // ⚠ `eurAmount` setzt ein GESCHÜTZTES Leerzeichen vor das €-Zeichen —
+    //   deshalb eine Regex statt eines Literals.
+    expect(v?.betraege).toMatch(/^Bis 9 Uhr: heute 50,90\s€ · gestern 67,71\s€$/);
+    expect(v?.satz).toContain('bis 9 Uhr');
+  });
+
+  it('wertet am laufenden Tag NICHT — der Chip bleibt neutral', () => {
+    const v = portfolioVergleich({
+      range: 'day',
+      anchor: heute,
+      now,
+      server: server(),
+      jetztEur: 50.9,
+      vorherEur: 67.71,
+    });
+    expect(v?.chip?.wertung).toBe('neutral');
+    expect(v?.chip?.richtung).toBe('weniger');
+  });
+
+  it('BEFUND B13: ohne Server-Wert bleibt die Zeile am laufenden Tag WEG', () => {
+    // Die alte Seite rechnete hier 0,53 € gegen 3,35 € und schrieb
+    // „532 % mehr als am Vortag" über einen halben Tag.
+    expect(
+      portfolioVergleich({
+        range: 'day',
+        anchor: heute,
+        now,
+        server: null,
+        jetztEur: 3.35,
+        vorherEur: 0.53,
+      }),
+    ).toBeNull();
+  });
+
+  it('ein abgeschlossener Tag wird gewertet und nennt keine Stunde', () => {
+    const gestern = new Date('2026-09-02T12:00:00+02:00');
+    const v = portfolioVergleich({
+      range: 'day',
+      anchor: gestern,
+      now,
+      server: { modus: 'ganze_periode', bisStunde: null, jetztEur: 10.6, vorherEur: 0.4 },
+      jetztEur: 10.6,
+      vorherEur: 0.4,
+    });
+    expect(v?.modus).toBe('ganze_periode');
+    expect(v?.bisStunde).toBeNull();
+    expect(v?.betraege).toBeNull();
+    // Mehr unterm Strich ist eindeutig besser — hier DARF gewertet werden.
+    expect(v?.chip?.wertung).toBe('gut');
+  });
+
+  it('eine laufende Woche/ein laufender Monat bekommen NUR die zwei Beträge', () => {
+    for (const range of ['week', 'month', 'year'] as const) {
+      const v = portfolioVergleich({
+        range,
+        anchor: heute,
+        now,
+        // Der Server liefert für diese Zeiträume per Vertrag nichts.
+        server: null,
+        jetztEur: 39.3,
+        vorherEur: 41.1,
+      });
+      expect(v?.modus).toBe('nur_betraege');
+      expect(v?.chip).toBeNull();
+      expect(v?.betraege).toMatch(/^bisher 39,30\s€ · ganze[sr]? /);
+    }
+  });
+
+  it('ohne Vergleichsperiode gibt es gar keine Zeile', () => {
+    expect(
+      portfolioVergleich({
+        range: 'month',
+        anchor: heute,
+        now,
+        server: null,
+        jetztEur: 39.3,
+        vorherEur: null,
+      }),
+    ).toBeNull();
+  });
+
+  it('ein unvollständiger Server-Block wird NICHT als gleiche Stunde gelesen', () => {
+    // `bisStunde: null` bei `gleicher_zeitpunkt` wäre ein Widerspruch — dann
+    // gilt die B13-Regel und die Zeile bleibt am laufenden Tag weg.
+    expect(
+      portfolioVergleich({
+        range: 'day',
+        anchor: heute,
+        now,
+        server: server({ bisStunde: null }),
+        jetztEur: 3.35,
+        vorherEur: 0.53,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('flottenSatz: der Satz nennt die BEITRAGENDEN Anlagen', () => {
+  it('hängt die Zahl an und schluckt den Punkt', () => {
+    expect(flottenSatz('Heute bisher unterm Strich.', 3)).toBe(
+      'Heute bisher unterm Strich · 3 Anlagen',
+    );
+  });
+
+  it('bleibt bei einer Anlage im Singular', () => {
+    expect(flottenSatz('Juli 2026 unterm Strich.', 1)).toBe('Juli 2026 unterm Strich · 1 Anlage');
+  });
+
+  it('nennt eine leere Flotte ehrlich mit 0', () => {
+    expect(flottenSatz('Heute bisher unterm Strich.', 0)).toBe(
+      'Heute bisher unterm Strich · 0 Anlagen',
+    );
+  });
+
+  it('der Hinweis der Speicher-Karte nennt den ORT, nie eine Zahl', () => {
+    // ⚠ Er ersetzt die Zeile „davon Steuerung", die es im Portfolio nicht
+    //   geben kann (der Flotten-Endpunkt führt die Aufteilung nicht als Summe).
+    expect(SPEICHER_JE_ANLAGE).toBe('je Anlage in der Tabelle');
+    expect(SPEICHER_JE_ANLAGE).not.toMatch(/\d/);
   });
 });

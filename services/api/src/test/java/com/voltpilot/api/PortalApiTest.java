@@ -4194,6 +4194,149 @@ class PortalApiTest {
     }
 
     /**
+     * <b>Der Portfolio-Vergleich bis zur GLEICHEN Stunde</b> (Erlöse-Konzept
+     * {@code vp-erloese-lesbar-konzept-u3} §3.7 Befund <b>B13</b>, Entscheid
+     * <b>E3</b>; Paket P6).
+     *
+     * <p>Der behobene Befund: das Portfolio schrieb „↑ 532 % mehr als am
+     * Vortag" über einen LAUFENDEN Tag - fünf Stunden gegen vierundzwanzig.
+     * Der Server liefert dafür jetzt zwei Beträge über GLEICH LANGE
+     * Grundlagen, aus derselben Preiskomposition wie die Zeilen.
+     *
+     * <p>Handgerechnet über zwei frische Anlagen und drei Berliner Tage. Beide
+     * Vergleichstage tragen einen groben Lockvogel in Stunde 23 - er darf im
+     * laufenden Tag NIE mitzählen (die laufende Stunde ist höchstens 23, und
+     * der Schnitt liegt dann bei 23:00, also davor).
+     *
+     * <p><b>Warum Mandant B:</b> die Flotten-Zahl ist eine SUMME, also müssen
+     * die Zeilen des Fensters bekannt sein. Mandant A trägt die Dev-Seed-
+     * Anlagen Dachau/Lindenberg mit 30 Tagen Rollups; Mandant B trägt nur
+     * Nordwind, dessen aus der V100-Telemetrie zurückgerechnete Rollups im
+     * Fenster hier einmal abgeräumt werden (die Haus-Disziplin der
+     * handgerechneten Slots). Kein anderer Erlöse-Test rechnet auf Mandant B.
+     */
+    @Test
+    void portfolioComparisonIsBoundedToTheSameBerlinHourOfBothDays() {
+        String demo2 = token("demo2", "demo2");
+        String tenantB = "10000000-0000-0000-0000-000000000001";
+        java.time.ZoneId berlin = java.time.ZoneId.of("Europe/Berlin");
+
+        String a = createSiteWithTarif(demo2, "PF Vergleich A", "CH", "eigenverbrauch", "fest", "30");
+        String b = createSiteWithTarif(demo2, "PF Vergleich B", "CH", "eigenverbrauch", "fest", "30");
+
+        // Das Fenster gehört diesem Test - vorgestern 00:00 bis morgen 00:00.
+        String fensterVon = "(date_trunc('day', now() AT TIME ZONE 'Europe/Berlin')"
+                + " - interval '2 days') AT TIME ZONE 'Europe/Berlin'";
+        String fensterBis = "(date_trunc('day', now() AT TIME ZONE 'Europe/Berlin')"
+                + " + interval '1 day') AT TIME ZONE 'Europe/Berlin'";
+        exec("DELETE FROM telemetry_rollup_15m WHERE tenant_id = '" + tenantB + "'"
+                + " AND bucket >= " + fensterVon + " AND bucket < " + fensterBis);
+
+        String vorgestern12 = tag(-2, 12);
+        String gestern0 = tag(-1, 0);
+        String gestern23 = tag(-1, 23);
+        String heute0 = tag(0, 0);
+        String heute23 = tag(0, 23);
+        String[] slots = {vorgestern12, gestern0, gestern23, heute0, heute23};
+
+        // Die Preise gehören diesem Test - deshalb DO UPDATE (die Haus-Regel
+        // der handgerechneten Slots; ein Sammler-Eintrag gewönne sonst).
+        StringBuilder preise = new StringBuilder(
+                "INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES ");
+        for (int i = 0; i < slots.length; i++) {
+            preise.append(i == 0 ? "" : ", ").append("(").append(slots[i])
+                    .append(", 'CH', 'PT15M', 100.0, 'EUR', 'test')");
+        }
+        preise.append(" ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
+        exec(preise.toString());
+
+        // netto = eigenverbrauchsWert − actual, mit actual = import*Bezugspreis
+        //         − export*Exportwert (hier nackter Spot: keine PV-Anlage).
+        //   Bezugspreis fest 30 ct, Spot 100 EUR/MWh = 10 ct.
+        //   „klein":  pv 1.0, load 0.5, export 0.5  -> eigen 0.5*0.30 = 0.15
+        //             actual = −0.05  ->  netto 0.20  ->  Flotte (2) 0.40
+        //   „gross":  pv 2.0, load 0.5, export 1.0  -> eigen 0.15
+        //             actual = −0.10  ->  netto 0.25  ->  Flotte 0.50
+        //   „lockvogel": export 49.5  -> netto 0.15 + 4.95 = 5.10 -> Flotte 10.20
+        for (String site : new String[] {a, b}) {
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                    + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                    + "(" + vorgestern12 + ", '" + tenantB + "', '" + site + "', 1.0, 0.5, 0.0, 0.5, 0.0, 0.0, 90), "
+                    + "(" + gestern0 + ", '" + tenantB + "', '" + site + "', 1.0, 0.5, 0.0, 0.5, 0.0, 0.0, 90), "
+                    + "(" + gestern23 + ", '" + tenantB + "', '" + site + "', 50.0, 0.5, 0.0, 49.5, 0.0, 0.0, 90), "
+                    + "(" + heute0 + ", '" + tenantB + "', '" + site + "', 2.0, 0.5, 0.0, 1.0, 0.0, 0.0, 90), "
+                    + "(" + heute23 + ", '" + tenantB + "', '" + site + "', 50.0, 0.5, 0.0, 49.5, 0.0, 0.0, 90) "
+                    + "ON CONFLICT (site_id, bucket) DO UPDATE SET pv_kwh = EXCLUDED.pv_kwh, "
+                    + "load_kwh = EXCLUDED.load_kwh, grid_import_kwh = EXCLUDED.grid_import_kwh, "
+                    + "grid_export_kwh = EXCLUDED.grid_export_kwh");
+        }
+
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-6);
+        int berlinStunde = java.time.LocalTime.now(berlin).getHour();
+
+        // 1) Der LAUFENDE Tag - gleiche Stunde gegen gleiche Stunde. Der
+        //    Lockvogel in Stunde 23 zählt auf KEINER Seite mit.
+        ResponseEntity<Map<String, Object>> heute = rest.exchange(
+                url("/api/v1/earnings?range=day"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo2)), new ParameterizedTypeReference<>() {});
+        assertThat(heute.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> v = (Map<String, Object>) heute.getBody().get("vergleich");
+        if (v == null) {
+            // Die EINZIGE Lage, in der der Block fehlen darf: zwischen 00:00
+            // und 01:00 Berliner Zeit gibt es keine abgeschlossene Stunde, also
+            // nichts ehrlich zu vergleichen. Das ist selbst eine Zusicherung.
+            assertThat(berlinStunde).isZero();
+        } else {
+            assertThat(v.get("modus")).isEqualTo("gleicher_zeitpunkt");
+            assertThat(((Number) v.get("bisStunde")).intValue()).isEqualTo(berlinStunde);
+            assertThat(num(v, "jetztEur")).isCloseTo(0.50, eps);
+            assertThat(num(v, "vorherEur")).isCloseTo(0.40, eps);
+        }
+
+        // 2) Ein ABGESCHLOSSENER Tag - beide Seiten VOLLSTÄNDIG, keine Stunde.
+        //    Gestern trägt damit auch seinen Lockvogel: 0.40 + 10.20 = 10.60.
+        String gesternIso = java.time.LocalDate.now(berlin).minusDays(1).toString();
+        ResponseEntity<Map<String, Object>> zurueck = rest.exchange(
+                url("/api/v1/earnings?range=day&at=" + gesternIso), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo2)), new ParameterizedTypeReference<>() {});
+        assertThat(zurueck.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> vz = (Map<String, Object>) zurueck.getBody().get("vergleich");
+        assertThat(vz).isNotNull();
+        assertThat(vz.get("modus")).isEqualTo("ganze_periode");
+        assertThat(vz.get("bisStunde")).isNull();
+        assertThat(num(vz, "jetztEur")).isCloseTo(10.60, eps);
+        assertThat(num(vz, "vorherEur")).isCloseTo(0.40, eps);
+
+        // 3) Monat/Jahr/Gesamt bekommen ihn bewusst NICHT - dort holt das
+        //    Portal die zwei Beträge über seinen zweiten Abruf, und ein
+        //    Prozentsatz wäre per E3 ohnehin verboten.
+        for (String range : new String[] {"month", "year", "all"}) {
+            ResponseEntity<Map<String, Object>> other = rest.exchange(
+                    url("/api/v1/earnings?range=" + range), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo2)), new ParameterizedTypeReference<>() {});
+            assertThat(other.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(other.getBody().get("vergleich")).isNull();
+        }
+
+        // ⚠ Aufräumen ist hier PFLICHT, nicht Höflichkeit: `eachTenantSeesOnlyItsOwnSites`
+        //    nagelt Mandant B auf GENAU eine Anlage fest (Nordwind). JUnit fährt die
+        //    Methoden einer Klasse sequenziell, also genügt das Ende dieses Tests.
+        exec("DELETE FROM telemetry_rollup_15m WHERE site_id IN ('" + a + "','" + b + "')");
+        exec("DELETE FROM site WHERE id IN ('" + a + "','" + b + "')");
+    }
+
+    /** Ein Berliner Slot: {@code tage} relativ zu heute, {@code stunde} als Wanduhr. */
+    private static String tag(int tage, int stunde) {
+        return "(date_trunc('day', now() AT TIME ZONE 'Europe/Berlin')"
+                + (tage == 0 ? "" : " + interval '" + tage + " days'")
+                + (stunde == 0 ? "" : " + interval '" + stunde + " hours'")
+                + ") AT TIME ZONE 'Europe/Berlin'";
+    }
+
+    /**
      * The DYNAMIC tariff (captain decision 2026-07-08, "Meine Anlage
      * nachvollziehbar"): a dynamisch site's self-consumed energy is valued
      * SLOT BY SLOT at that quarter hour's Börsenpreis + the fixed Aufschlag -
