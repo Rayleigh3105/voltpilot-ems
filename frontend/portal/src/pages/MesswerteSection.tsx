@@ -1,22 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Card } from '../../designsystem/components/core/Card';
 import type { History, HistoryRange, Site } from '../api';
-import { NBSP } from '../format';
 import { isoDate, periodLabel } from '../periodNav';
 import { parseVerlaufParams } from '../verlauf';
 import {
   energieBilanz,
+  isCurrentPeriod,
   messwerteKernaussage,
   summenTitel,
   zeitraumHinweis,
   zeitraumWort,
-  type EnergieFarbe,
-  type EnergieSumme,
 } from '../energieBilanz';
 import {
-  delta,
-  ENERGIE_WERTUNG,
-  fuehrendesDelta,
   keineVergleichsDatenText,
   laufendHinweis,
   normalisiereModus,
@@ -27,7 +21,6 @@ import {
   wirksamerModus,
   type VergleichsModus,
 } from '../historieVergleich';
-import { chartTheme } from '../chartTheme';
 import {
   historieHash,
   WELTEN,
@@ -39,18 +32,18 @@ import { useIsPhone } from '../useIsPhone';
 import type { AnlageSurface } from '../surface';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 
-import { InfoTip } from '../components/InfoTip';
-import { ChartHeadline, ChartSubtitle } from '../components/ChartExplain';
+import { ChartHeadline } from '../components/ChartExplain';
+import { Aufklapper } from '../components/Aufklapper';
+import { VerlaufKarte } from '../components/VerlaufKarte';
+import { VerlaufLedger, type VerlaufLedgerZeile } from '../components/VerlaufLedger';
+import { messwerteQuoten, messwerteZeilen } from '../messwerteZeilen';
 import { VerlaufFehler, VerlaufKarteSkeleton, VerlaufLeer } from '../components/States';
 import { VerlaufExplorer } from '../components/VerlaufExplorer';
 import { SiteMeasurementComparison } from '../components/SiteMeasurementComparison';
 import { HistoryEnergieChart } from '../HistoryChart';
 import {
   DeltaZeile,
-  KartenKopf,
   PeriodeFehlgeschlagen,
-  WeltDisclosure,
-  WeltFuss,
   WeltKopf,
   ZeitLeiste,
 } from '../components/HistorieWelt';
@@ -75,69 +68,23 @@ import '../components/Historie.css';
  *   Karte; sie leben jetzt in der Erlöse-Welt (report §7).
  */
 
-function kwh(v: number | null | undefined): string {
-  return v == null
-    ? '-'
-    : `${Number(v).toLocaleString('de-DE', { maximumFractionDigits: 1 })}${NBSP}kWh`;
-}
-
-function pct(v: number | null | undefined): string {
-  return v == null ? '-' : `${Number(v).toLocaleString('de-DE', { maximumFractionDigits: 1 })}${NBSP}%`;
-}
-
-/** The pure `EnergieFarbe` key -> the resolved chart hex (the KPI dots). */
-function dotColor(key: EnergieFarbe): string {
-  const t = chartTheme();
-  const map: Record<EnergieFarbe, string> = {
-    pv: t.pv,
-    load: t.load,
-    grid: t.flowGrid,
-    gridImport: t.discharge,
-    gridExport: t.charge,
-    charge: t.charge,
-    battDischarge: t.battDischarge,
-    soc: t.soc,
-  };
-  return map[key];
-}
-
 /**
- * One period-total tile: value + coloured dot + plain-German hint, darunter das
- * Δ zur Vorperiode (F3) — das rendert sich selbst weg, wenn es keinen ehrlichen
- * Vergleich gibt.
- */
-function SummeTile({
-  summe,
-  vergleichKwh,
-  vergleichName,
-}: {
-  summe: EnergieSumme;
-  /** Dieselbe Summe der Vorperiode — null/undefined = kein Vergleich. */
-  vergleichKwh?: number | null;
-  vergleichName: string;
-}) {
-  const d = delta(summe.kwh, vergleichKwh, ENERGIE_WERTUNG[summe.key], vergleichName);
-  return (
-    <div className="vp-esum" title={summe.hinweis}>
-      <span className="vp-esum-v">{kwh(summe.kwh)}</span>
-      <span className="vp-esum-l">
-        <span className="vp-esum-dot" style={{ ['--dot' as string]: dotColor(summe.farbe) }} />
-        {summe.label}
-      </span>
-      <DeltaZeile delta={d} />
-    </div>
-  );
-}
-
-/**
- * Die Energiemengen des Zeitraums.
+ * **Karte 2 · „Energie im Zeitraum"** in der Ledger-Form (Konzept
+ * `vp-verlauf-sprache-konzept-v5` §3.2 V5, §4.1 Karte 2; Paket P3).
  *
- * **Am Telefon ist es ein kompaktes 2-Spalten-Raster mit EINER Δ-Zeile**
- * (Konzept `data/vp-mobile-views-x1` §5): sechs Kacheln mit je eigener Δ-Zeile
- * kosteten dort ~540 px VOR dem Diagramm. Die Zahlen bleiben alle sechs, der
- * Vergleich wird auf `fuehrendesDelta` eingedampft — das seine Größe NENNT,
- * statt wie im Entwurf gegenstandslos „etwa gleich" zu behaupten. Die Quoten
- * ziehen in dieselbe Zeile.
+ * Sechs Zeilen `Name · Wert · Balken · Δ`, danach die zwei Quoten mit ihrer
+ * 24-px-Zahl und der Vergleichs-Satz als `.vp-c-note`. Das frühere 2-spaltige
+ * Kachel-Raster (Label 12,5 / Wert 16, sechs Kacheln mit eigenem Rahmen) ist
+ * ersatzlos entfallen — es war die Kachel-Form, die Variante C abschafft.
+ *
+ * ⚠ **Es ändert sich die FORM, nicht die Aussage.** Jede Zahl kommt aus
+ *   derselben `energieBilanz`, jedes Δ aus demselben `delta`; die Ableitung
+ *   liegt rein in `messwerteZeilen.ts` und ist ohne Browser prüfbar.
+ *
+ * ⚠ **Am Telefon UND am Rechner dieselbe Liste.** Die frühere Gabelung (dort
+ *   ein `dl`-Raster mit EINEM Δ, hier sechs Kacheln mit je eigenem) machte aus
+ *   einer Fläche zwei; die Ledger-Zeile trägt beide Fälle, weil sie ihre
+ *   Sekundärzeile ohnehin unter den Namen legt.
  */
 function EnergieSummenKarte({
   history,
@@ -160,91 +107,55 @@ function EnergieSummenKarte({
   const vergleichName = vergleichsName(anchor, range, modus);
   const vorherSummen = vorher ? energieBilanz(vorher).summen : null;
   const laufend = vorher ? laufendHinweis(anchor, range, now, modus) : null;
-  const einDelta = isPhone
-    ? fuehrendesDelta(bilanz.summen, vorherSummen, vergleichName)
-    : null;
+
+  // §4.1 · ein laufender Zeitraum sagt das am Label, nicht erst im Kleingedruckten:
+  // die Zahlen sind ein Zwischenstand, kein Ergebnis.
+  const zwischenstand = isCurrentPeriod(anchor, range, now);
+
+  const energien = messwerteZeilen(bilanz.summen, vorherSummen, vergleichName);
+  const quoten = messwerteQuoten(bilanz);
+
+  const zeilen: VerlaufLedgerZeile[] = [
+    ...energien.map((z) => ({
+      id: z.key,
+      name: z.name,
+      wert: z.wert,
+      anteil: z.anteil,
+      farbe: z.farbe,
+      hinweis: z.hinweis,
+      // Der Grund gewinnt gegen das Δ: eine Zeile ohne Wert hat auch keinen
+      // Vergleich, und der Grund ist die Auskunft, die fehlt.
+      sekundaer: z.grund ? z.grund : z.delta ? <DeltaZeile delta={z.delta} /> : undefined,
+    })),
+    ...quoten.map((q) => ({
+      id: q.key,
+      name: q.name,
+      wert: q.wert,
+      gross: true,
+      sekundaer: q.satz,
+    })),
+  ];
 
   return (
-    <section className="vp-section">
-      <Card padding="lg" radius="lg">
-        <KartenKopf
-          icon="zap"
-          titel={summenTitel(anchor, range, isPhone)}
-          art="gemessen"
-          extra={
-            vorherSummen && !isPhone ? (
-              <span className="vp-karten-vergleich">{vergleichsKopf(anchor, range, modus)}</span>
-            ) : undefined
-          }
-        />
-
-        {isPhone ? (
-          <dl className="vp-esum-kompakt" aria-label="Energiemengen im Zeitraum">
-            {bilanz.summen.map((s) => (
-              <div key={s.key} className="vp-esum-k" title={s.hinweis}>
-                <dt>
-                  <span
-                    className="vp-esum-dot"
-                    style={{ ['--dot' as string]: dotColor(s.farbe) }}
-                  />
-                  {s.label}
-                </dt>
-                <dd>{kwh(s.kwh)}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <div className="vp-energie-summen" aria-label="Energiemengen im Zeitraum">
-            {bilanz.summen.map((s, i) => (
-              <SummeTile
-                key={s.key}
-                summe={s}
-                vergleichKwh={vorherSummen ? vorherSummen[i]?.kwh : null}
-                vergleichName={vergleichName}
-              />
-            ))}
-          </div>
-        )}
-
-        {laufend && <p className="vp-note vp-note-laufend">{laufend}</p>}
-
-        {isPhone ? (
-          // Quoten UND der eine Vergleich in einer ruhigen Meta-Zeile.
-          <p className="vp-esum-meta">
-            <span>
-              Autarkie <b>{pct(bilanz.autarkiePct)}</b>
-            </span>
-            <span>
-              Eigenverbrauch <b>{pct(bilanz.eigenverbrauchPct)}</b>
-            </span>
-            {einDelta && (
-              <span className="vp-esum-meta-delta">
-                {einDelta.label} <DeltaZeile delta={einDelta.view} />
-              </span>
-            )}
-          </p>
-        ) : (
-          <div className="vp-energie-chips">
-            <span className="vp-energie-chip">
-              Autarkie <b>{pct(bilanz.autarkiePct)}</b>
-              <InfoTip title="Autarkiegrad">
-                Anteil Ihres Verbrauchs, den Sie selbst gedeckt haben (aus PV und Speicher) -
-                der Rest kam aus dem Netz. Formel: 1 − Netzbezug/Verbrauch.
-              </InfoTip>
-            </span>
-            <span className="vp-energie-chip">
-              Eigenverbrauch <b>{pct(bilanz.eigenverbrauchPct)}</b>
-              <InfoTip title="Eigenverbrauchsquote">
-                Anteil Ihrer PV-Erzeugung, den Sie selbst genutzt statt eingespeist haben.
-                Formel: selbst genutzte PV / PV-Erzeugung.
-              </InfoTip>
-            </span>
-          </div>
-        )}
-
-        {hinweis && <p className="vp-note">{hinweis}</p>}
-      </Card>
-    </section>
+    <VerlaufKarte
+      label={summenTitel(anchor, range, isPhone)}
+      provenienz="gemessen"
+      chip={
+        <>
+          {zwischenstand && <span className="vp-chip">Zwischenstand</span>}
+          {/* Der Vergleichs-Kopf bleibt dem Rechner: am Telefon stünden zwei
+              Chips neben einem Label, das dort ohnehin schon kurz ist — und
+              der Vergleich steht in jeder Δ-Zeile darunter beim Namen. */}
+          {vorherSummen && !isPhone && (
+            <span className="vp-chip">{vergleichsKopf(anchor, range, modus)}</span>
+          )}
+        </>
+      }
+    >
+      <VerlaufLedger zeilen={zeilen} label="Energiemengen im Zeitraum" />
+      {laufend && <p className="vp-c-note">{laufend}</p>}
+      {hinweis && <p className="vp-c-note">{hinweis}</p>}
+    </VerlaufKarte>
   );
 }
 
@@ -305,27 +216,24 @@ function EnergieDiagrammKarte({
   );
 
   return (
-    <section className="vp-section">
-      <Card padding="lg" radius="lg">
-        <KartenKopf
-          icon="activity"
-          titel="Ihre Energie im Verlauf"
-          art="gemessen"
-          /* B7: `Badge variant="tint"` misst 1,66:1 (im echten Browser bei
-             1440 nachgemessen) — das Raster-Wort trägt seit E9 die EINE
-             Haus-Chip-Form (P0 `.vp-chip`, 4,8:1). */
-          extra={isPhone ? undefined : <span className="vp-chip">{raster}</span>}
-        />
-        <ChartHeadline kern={kern} />
-        <ChartSubtitle>{diagrammUntertitel(isDay, isPhone, raster)}</ChartSubtitle>
-        <HistoryEnergieChart
-          history={history}
-          onTagOeffnen={onTagOeffnen}
-          vergleich={ueberlagern}
-          legende={ueberlagerungLegende(anchor, range, modus)}
-        />
-      </Card>
-    </section>
+    <VerlaufKarte
+      label="Ihre Energie im Verlauf"
+      provenienz="gemessen"
+      chip={isPhone ? undefined : <span className="vp-chip">{raster}</span>}
+    >
+      {/* V6 · die Reihenfolge IST die Aussage: Label → Kernsatz → BILD →
+          Legende → Erklärung. Der Untertitel und die zwei Richtungszeilen
+          standen bis P3 VOR dem Bild (~91 + 30 px direkt über der Kurve) —
+          sie erklären es, also stehen sie jetzt darunter im Aufklapper. */}
+      <ChartHeadline kern={kern} />
+      <HistoryEnergieChart
+        history={history}
+        onTagOeffnen={onTagOeffnen}
+        vergleich={ueberlagern}
+        legende={ueberlagerungLegende(anchor, range, modus)}
+        erklaerung={diagrammUntertitel(isDay, isPhone, raster)}
+      />
+    </VerlaufKarte>
   );
 }
 
@@ -346,6 +254,7 @@ function EnergieKarten({
   modus,
   isPhone,
   onTagOeffnen,
+  onLetzterTag,
 }: {
   history: History;
   /** Die Vorperiode für das Δ (F3) — null, solange sie nicht geladen ist. */
@@ -357,17 +266,27 @@ function EnergieKarten({
   isPhone: boolean;
   /** Der Tagesdrilldown (F5) — im Tages-Zeitraum gibt es nichts zu öffnen. */
   onTagOeffnen?: (at: string) => void;
+  /** Der Weg aus dem Leer-Zustand (§4.1) — er gilt in JEDEM Zeitraum. */
+  onLetzterTag?: (at: string) => void;
 }) {
   const bilanz = energieBilanz(history);
+  // Der letzte Tag, an dem diese Anlage überhaupt gemessen hat — die Antwort
+  // steht schon in der Abdeckung der Antwort, sie wird hier nur gelesen.
+  const letzterTag = history.coverage?.lastDataAt?.slice(0, 10) ?? null;
 
   if (history.buckets.length === 0 || bilanz.empty) {
     return (
-      <Card padding="lg" radius="lg">
+      <div className="vp-c-card">
         <VerlaufLeer
           label="Keine Messwerte in diesem Zeitraum"
-          satz="Sobald Ihre Anlage misst, entsteht hier die Energiegeschichte: PV-Erzeugung, Hausverbrauch, Netz und Speicher in einem Bild. Wählen Sie einen anderen Zeitraum oder schauen Sie später wieder vorbei."
+          satz={`Für ${periodLabel(anchor, range)} liegen keine Messwerte vor. Sobald Ihre Anlage misst, entsteht hier die Energiegeschichte: Erzeugung, Verbrauch, Netz und Speicher in einem Bild.`}
+          /* §4.1 · der Weg wird nur angeboten, wenn es ihn WIRKLICH gibt: ohne
+             eine je gemessene Viertelstunde führt „Zum letzten Tag mit Daten"
+             nirgends hin, und ein toter Link ist schlimmer als keiner. */
+          weg={letzterTag ? 'Zum letzten Tag mit Daten ›' : undefined}
+          onWeg={letzterTag && onLetzterTag ? () => onLetzterTag(letzterTag) : undefined}
         />
-      </Card>
+      </div>
     );
   }
 
@@ -433,6 +352,9 @@ export function MesswerteSection({
   // Der Explorer ist ein Abschnitt dieser Welt; ein Deep-Link auf einen
   // Messwert öffnet ihn direkt aufgeklappt (bestehende Links bleiben gültig).
   const [explorerOpen, setExplorerOpen] = useState(init.target != null);
+  // Der Fuß „Was diese Zahlen sind" ist seit P3 die letzte Zeile der letzten
+  // Karte; sein Zustand gehört dieser Fläche, nicht dem Baustein.
+  const [fussOffen, setFussOffen] = useState(false);
   // F8: der Vergleichs-Zustand reist in der Adresse (`v=`), damit ein Link ihn
   // mitbringt und der Welt-Wechsel ihn behält.
   const [modusWahl, setModusWahl] = useState<VergleichsModus>(() =>
@@ -515,6 +437,28 @@ export function MesswerteSection({
     [range, site.id, modus],
   );
 
+  /**
+   * **Der Weg aus dem Leer-Zustand** (§4.1): auf DEN Tag springen, an dem
+   * diese Anlage zuletzt gemessen hat.
+   *
+   * ⚠ Bewusst NICHT `oeffneTag`: der ist der Tages-Drilldown aus einer
+   * gröberen Periode und im Tages-Zeitraum absichtlich `undefined` (dort gibt
+   * es nichts Feineres zu öffnen) — genau in dem Zeitraum also, in dem der
+   * Leer-Zustand am häufigsten steht. Zwei Wege, zwei Fragen.
+   */
+  const springeAufTag = useCallback(
+    (wert: string) => {
+      const ziel = ankerAusWert(wert, 'day');
+      if (!ziel) return;
+      setRange('day');
+      setAnchor(ziel);
+      replaceCurrentNavigation(
+        mitVergleich(historieHash(site.id, 'messwerte', 'day', wert), modus),
+      );
+    },
+    [site.id, modus],
+  );
+
   const toggleExplorer = useCallback(() => {
     setExplorerOpen((open) => {
       // Beim Zuklappen die Messwert-Parameter aus der Adresse nehmen, damit ein
@@ -548,17 +492,24 @@ export function MesswerteSection({
             reservieren den Platz des späteren Inhalts — beim Zeitraumwechsel
             springt damit nichts. */}
         {err && !history ? (
-          <Card padding="lg" radius="lg">
-            <VerlaufFehler
-              satz={`Die Historie konnte nicht geladen werden (${err}).`}
-              onRetry={retry}
-            />
-          </Card>
+          /* §4.1 · der Fehler steht in Karte 1, Karte 2 BLEIBT Skeleton in
+             ihrer Inhaltshöhe — sonst springt die Seite beim Wiederholen. */
+          <>
+            <div className="vp-c-card">
+              <VerlaufFehler
+                satz={`Die Historie konnte nicht geladen werden (${err}).`}
+                onRetry={retry}
+              />
+            </div>
+            <div className="vp-c-card">
+              <VerlaufKarteSkeleton chart={false} legende={false} />
+            </div>
+          </>
         ) : !history ? (
           loading ? (
-            <Card padding="lg" radius="lg">
+            <div className="vp-c-card">
               <VerlaufKarteSkeleton />
-            </Card>
+            </div>
           ) : null
         ) : (
           <>
@@ -576,28 +527,52 @@ export function MesswerteSection({
               modus={modus}
               isPhone={isPhone}
               onTagOeffnen={oeffneTag}
+              onLetzterTag={springeAufTag}
             />
           </>
         )}
       </div>
 
-      {/* Karte 3: der Messwerte-Explorer - ein Abschnitt DIESER Welt. */}
-      <WeltDisclosure
-        titel="Einzelne Messwerte vergleichen"
-        sub="bis zu 3 gleichzeitig"
-        open={explorerOpen}
-        onToggle={toggleExplorer}
-      >
-        <VerlaufExplorer
-          site={site}
-          range={range}
-          anchor={anchor}
-          initialTargets={init.targets}
-        />
-        <SiteMeasurementComparison siteId={site.id} />
-      </WeltDisclosure>
-
-      <WeltFuss welt={welt} />
+      {/* Karte 3: der Messwerte-Explorer — ein Abschnitt DIESER Welt, und
+          seit P3 zugleich die LETZTE Karte: der Fuß „Was diese Zahlen sind"
+          ist ihre letzte Zeile statt eines eigenen Kastens (Konzept §4.1
+          „Fuß: V8 als letzte Zeile der letzten Karte"). */}
+      <section className="vp-section">
+        <div className="vp-c-card">
+          <Aufklapper
+            titel="Einzelne Messwerte vergleichen"
+            sub="bis zu 3 gleichzeitig"
+            open={explorerOpen}
+            onToggle={toggleExplorer}
+          >
+            {/* ⚠ Der Inhalt wird erst beim Öffnen GEBAUT: ein ECharts-Knoten in
+                einer zugeklappten `details` misst 0 px Breite und rendert
+                falsch, sobald er später sichtbar wird. */}
+            {explorerOpen ? (
+              <>
+                <VerlaufExplorer
+                  site={site}
+                  range={range}
+                  anchor={anchor}
+                  initialTargets={init.targets}
+                />
+                <SiteMeasurementComparison siteId={site.id} />
+              </>
+            ) : null}
+          </Aufklapper>
+          {/* ⚠ Kontrolliert wie der Explorer darüber: nur so trägt der
+              `summary` sein `aria-expanded` (der Aufklapper setzt es
+              ausschliesslich im kontrollierten Betrieb — nativ sagt das
+              `details` es selbst, aber die Fläche hatte es schon vor P3). */}
+          <Aufklapper
+            titel="Was diese Zahlen sind"
+            open={fussOffen}
+            onToggle={() => setFussOffen((o) => !o)}
+          >
+            <p className="vp-c-bild-erklaerung">{welt.fussText}</p>
+          </Aufklapper>
+        </div>
+      </section>
     </>
   );
 }

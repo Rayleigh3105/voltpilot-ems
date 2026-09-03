@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import type { History } from './api';
 import { endsCollide, useDirectLabels } from './chartKopf';
 import { useChartDetail } from './useChartDetail';
@@ -40,9 +40,10 @@ import { useEChart } from './useEChart';
 import {
   ChartDetailToggle,
   ChartLegend,
-  ChartInsight,
   type LegendItem,
 } from './components/ChartExplain';
+import { Aufklapper } from './components/Aufklapper';
+import { useIsPhone } from './useIsPhone';
 import { EreignisSpur, ereignisFarbe } from './components/EreignisSpur';
 import { UeberlagerungLegendeZeile } from './components/HistorieWelt';
 
@@ -177,6 +178,7 @@ export function HistoryEnergieChart({
   onTagOeffnen,
   vergleich,
   legende,
+  erklaerung,
 }: {
   history: History;
   /**
@@ -194,6 +196,13 @@ export function HistoryEnergieChart({
   vergleich?: History | null;
   /** Wer oben/unten liegt, in Worten — kommt aus `historieVergleich`. */
   legende?: UeberlagerungLegende | null;
+  /**
+   * **P3 · der Untertitel des Bildes.** Er steht seit dem Verlauf-Umbau IM
+   * Aufklapper „Wie lese ich das Bild?" (Konzept §3.2 V6: Label → Kernsatz →
+   * BILD → Legende → Erklärung), nicht mehr davor. Ohne ihn bleibt der
+   * Aufklapper bei den zwei Richtungszeilen — er verschwindet nie.
+   */
+  erklaerung?: ReactNode;
 }) {
   // K3: der Grundzustand zeigt HÖCHSTENS drei Reihen. Was darüber hinausgeht
   // (Batterie, Ladestand) liegt hinter „Mehr anzeigen ▾" - weniger
@@ -203,6 +212,18 @@ export function HistoryEnergieChart({
   const [tiefe, tiefeUmschalten] = useChartDetail('messwerte.reihen');
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   const t = chartTheme();
+  /**
+   * **E7 · am Telefon zieht niemand mehr einen Ausschnitt** (Captain-Entscheid
+   * 03.09.2026, wörtlich: „Tooltip + Legenden-Schalter, KEIN Zoom durch Ziehen
+   * am Telefon"). Jede waagerechte Geste im Bild war bis P3 ein Zoom und nie
+   * ein Scroll — auf einer langen Seite kollidiert das mit dem Lesen.
+   *
+   * ⚠ **Die Grenze ist die VIEWPORT-Breite (`useIsPhone`, ≤ 720 px), nicht die
+   *   gemessene Chart-Breite (`NARROW_PX` = 480).** Zwischen 481 und 720 sagt
+   *   der Entscheid „Telefon", der Chart aber „breit genug für den Streifen" —
+   *   dort hätte ein Tablet die Geste behalten, die der Entscheid abschafft.
+   */
+  const isPhone = useIsPhone();
   const diagramm = energieDiagramm(history);
   // Nur Reihen mit Werten sind überhaupt schaltbar/zeichenbar.
   const vorhanden = diagramm.serien.filter((s) => !s.leer);
@@ -510,13 +531,17 @@ export function HistoryEnergieChart({
               },
             },
           ],
-          // Zoom/Brush: am Telefon entfällt der Streifen (Entwurf), das
-          // Pinch-/Wheel-Zoom bleibt.
+          // **E7 · am Telefon GAR KEIN Zoom** (Captain 03.09.2026): kein
+          // Streifen und kein `inside` — eine waagerechte Geste im Bild ist
+          // dort wieder Scroll, so wie überall sonst auf der Seite. Am Rechner
+          // bleibt beides.
           // `zoomOnMouseWheel: false` is load-bearing: the chart sits on a long
           // scrollable page, so a wheel over it must scroll the page (the same
           // reason LocationMap disables scrollWheelZoom). Zooming is the slider
-          // brush on desktop and pinch on touch.
-          dataZoom: narrow
+          // brush on desktop.
+          dataZoom: isPhone
+            ? []
+            : narrow
             ? [{ type: 'inside', xAxisIndex: 0, zoomOnMouseWheel: false, moveOnMouseWheel: false }]
             : [
                 { type: 'inside', xAxisIndex: 0, zoomOnMouseWheel: false, moveOnMouseWheel: false },
@@ -557,7 +582,7 @@ export function HistoryEnergieChart({
         true,
       );
     },
-    [history, diagramm, sichtbar, vergleich, legende, t],
+    [history, diagramm, sichtbar, vergleich, legende, t, isPhone],
   );
 
   // Die Legende bewirbt nur, was gezeichnet WERDEN KANN: eine Reihe hinter dem
@@ -573,43 +598,62 @@ export function HistoryEnergieChart({
 
   return (
     <div>
-      {tiefereReihen.length > 0 && (
-        <ChartDetailToggle
-          open={tiefe}
-          onToggle={tiefeUmschalten}
-          was={tiefereReihen.map((s) => s.label).join(', ')}
-        />
-      )}
-      <ChartLegend
-        items={legend}
-        hidden={hidden}
-        onToggle={(label) => setHidden((prev) => toggleSerie(prev, label, vorhanden.length))}
-      />
-      {vglSerien.size > 0 && <UeberlagerungLegendeZeile legende={legende ?? null} />}
-      {sichtbar.some((s) => s.signed) && (
-        <p className="vp-energie-nulllinie">
-          <span>↑ über der Nulllinie: Bezug · Laden</span>
-          <span>↓ darunter: Einspeisung · Entladen</span>
-        </p>
-      )}
       {fehlend.length > 0 && (
         <p className="vp-note vp-energie-fehlt">
           {fehlend.map((s) => s.fehlt).join(' ')}
         </p>
       )}
+      {/* V6 · das BILD steht sofort nach dem Kernsatz. Legende und Erklärung
+          wohnen darunter — bis P3 standen sie davor und schoben die Kurve aus
+          dem ersten Bildschirm. */}
       <div
         ref={ref}
-        className={sprungHinweis ? 'vp-chart tall vp-chart-clickable' : 'vp-chart tall'}
+        className={
+          sprungHinweis ? 'vp-c-bild vp-chart tall vp-chart-clickable' : 'vp-c-bild vp-chart tall'
+        }
       />
       {spur && <EreignisSpur spur={spur} onTagOeffnen={onTagOeffnen} />}
-      <ChartInsight icon="activity">
-        <strong>PV-Erzeugung</strong> und <strong>Hausverbrauch</strong> stehen über der
-        Nulllinie. Was darunter liegt, verlässt Ihr Haus: <strong>Einspeisung</strong> ins
-        Netz und <strong>Entladen</strong> des Speichers. Der <strong>Ladestand</strong> läuft
-        auf der rechten Achse mit. Tippen Sie eine Kachel der Legende an, um eine Reihe aus-
-        oder einzublenden; im Diagramm können Sie einen Ausschnitt ziehen.
-        {sprungHinweis ? ` ${sprungHinweis}` : ''}
-      </ChartInsight>
+      {/* V6 · der Detail-Umschalter gehört zur LEGENDE, nicht über das Bild:
+          er entscheidet, WELCHE Reihen gezeichnet werden — genau die Frage der
+          Legende. Über dem Bild schob er es aus dem ersten Bildschirm. */}
+      <div className="vp-c-bild-legende">
+        {tiefereReihen.length > 0 && (
+          <ChartDetailToggle
+            open={tiefe}
+            onToggle={tiefeUmschalten}
+            was={tiefereReihen.map((s) => s.label).join(', ')}
+          />
+        )}
+        <ChartLegend
+          items={legend}
+          hidden={hidden}
+          onToggle={(label) => setHidden((prev) => toggleSerie(prev, label, vorhanden.length))}
+        />
+        {vglSerien.size > 0 && <UeberlagerungLegendeZeile legende={legende ?? null} />}
+      </div>
+      {/* V8 · die Erklärung des Bildes in EINEM Aufklapper. Sie verschwindet
+          nicht — sie wartet, bis jemand sie braucht. */}
+      <Aufklapper titel="Wie lese ich das Bild?">
+        {erklaerung && <p className="vp-c-bild-erklaerung">{erklaerung}</p>}
+        {sichtbar.some((s) => s.signed) && (
+          <p className="vp-c-bild-richtung">
+            <span>↑ über der Nulllinie: Bezug · Laden</span>
+            <span>↓ darunter: Einspeisung · Entladen</span>
+          </p>
+        )}
+        <p className="vp-c-bild-erklaerung">
+          <strong>PV-Erzeugung</strong> und <strong>Hausverbrauch</strong> stehen über der
+          Nulllinie. Was darunter liegt, verlässt Ihr Haus: <strong>Einspeisung</strong> ins
+          Netz und <strong>Entladen</strong> des Speichers. Der <strong>Ladestand</strong> läuft
+          auf der rechten Achse mit. Tippen Sie eine Kachel der Legende an, um eine Reihe aus-
+          oder einzublenden.
+          {/* ⚠ Der Satz „im Diagramm können Sie einen Ausschnitt ziehen" steht
+              nur am Rechner: am Telefon gibt es die Geste seit E7 nicht mehr,
+              und ein Versprechen ohne Handlung ist schlimmer als keines. */}
+          {isPhone ? '' : ' Am Rechner können Sie im Diagramm einen Ausschnitt ziehen.'}
+          {sprungHinweis ? ` ${sprungHinweis}` : ''}
+        </p>
+      </Aufklapper>
     </div>
   );
 }

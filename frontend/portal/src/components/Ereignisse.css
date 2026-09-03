@@ -27,8 +27,11 @@
   flex-wrap: wrap;
   gap: 6px 14px;
   margin: 0;
-  font-size: 0.76rem;
-  font-weight: 700;
+  /* P3 · auf der Skala: 0,76 rem waren 12,16 px — eine eigene Stufe neben den
+     12 px. Regeln und Farben der Ereignisse (F6) bleiben unangetastet, nur
+     ihre Grösse spricht jetzt die Sprache des Bereichs. */
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700, 700);
   color: var(--vp-muted, #6c757d);
 }
 
@@ -64,9 +67,19 @@
   border: 1px solid var(--vp-border, #e9ecef);
   border-radius: 999px;
   background: #fff;
-  font-size: 0.78rem;
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-600, 600);
   color: var(--vp-text, #1a1a1a);
   text-align: left;
+  /* Das Overlay macht aus dem optisch 30-px-Chip ein 44-px-Ziel — das
+     Haus-Muster des InfoTips, dasselbe wie an der Legende. */
+  position: relative;
+}
+
+.vp-ereignis-chip.is-link::after {
+  content: '';
+  position: absolute;
+  inset: -7px -2px;
 }
 
 .vp-ereignis-zeit {
@@ -102,8 +115,8 @@
   border: 0;
   background: none;
   padding: 5px 4px;
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700, 700);
   color: var(--vp-link, #2c5282);
   cursor: pointer;
   text-decoration: underline;
@@ -114,7 +127,10 @@
   margin: 0;
 }
 
-@media (max-width: 560px) {
+/* ⚠ 720, nicht 560: die Telefon-Grenze des Hauses ist `useIsPhone`
+   (`max-width: 720px`). Zwischen 561 und 720 sagte das JS „Telefon" und diese
+   Regel „Schreibtisch" — dort war der Chip weder voll breit noch 44 px tief. */
+@media (max-width: 720px) {
   /* Am Telefon bleibt jeder Chip ein 44-px-Ziel und darf die ganze Zeile
      einnehmen - ein abgeschnittener Grund wäre keiner. */
   .vp-ereignis-chip {

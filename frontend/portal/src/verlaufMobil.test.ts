@@ -90,8 +90,16 @@ const BLAETTER: ReadonlyArray<{
     reiter: 'Messwerte',
     datei: 'components/Ereignisse.css',
     offen: 1,
+    /* ⚠ KEIN Mangel, sondern dieselbe Grenze der statischen Prüfung wie beim
+       Erlöse-`summary`: `.vp-chart-clickable` ist das DIAGRAMM (260 px hoch,
+       `.vp-chart.tall` in `index.css`), nicht ein Chip — der Wächter liest
+       Regeln, nicht Höhen aus einem fremden Blatt. P3 hat die echten Ziele
+       dieses Blattes geschlossen: die Ereignis-Chips tragen jetzt das
+       44-px-Overlay und ihre Telefon-Grenze ist die Haus-Grenze 720. */
     bekannt: ['.vp-chart-clickable'],
   },
+  // Die neuen Bausteine des Rumpfes (P3) — von Anfang an auf 0.
+  { reiter: 'Messwerte', datei: 'components/VerlaufLedger.css', offen: 0, bekannt: [] },
   {
     reiter: 'Marktpreise',
     datei: 'components/Marktpreise.css',

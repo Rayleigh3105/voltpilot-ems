@@ -63,14 +63,23 @@ const BLAETTER: ReadonlyArray<{
   // Die geteilten Bausteine des Bereichs (P2b) — von Anfang an streng.
   { reiter: 'Bausteine', datei: 'components/Aufklapper.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Bausteine', datei: 'components/VerlaufZustaende.css', fs: 0, ff: 0, fw: 0 },
+  // Der Rumpf des Reiters „Messwerte" (P3) — die Ereignis-Chips sind damit
+  // vollständig auf der Skala und stehen ab jetzt streng.
+  { reiter: 'Messwerte', datei: 'components/Ereignisse.css', fs: 0, ff: 0, fw: 0 },
+  // Die neuen Bausteine des Rumpfes (P3) — von Anfang an streng.
+  { reiter: 'Messwerte', datei: 'components/VerlaufLedger.css', fs: 0, ff: 0, fw: 0 },
   // --- noch nicht umgestellt — Ratsche auf dem IST-Stand vom 03.09.2026 --
   // P2b hat die Aufklapp-ZEILE aus diesem Blatt in den geteilten Baustein
   // gehoben; ihre drei Telefon-Ausnahmen (1,05 rem · 0,875 rem · 0,72 rem)
-  // und die vierte fremde Familie sind damit weg — die Ratsche zieht nach.
-  { reiter: 'Messwerte', datei: 'components/Historie.css', fs: 35, ff: 3, fw: 0 },
+  // und die vierte fremde Familie sind damit weg. P3 hat die Quoten-Chips,
+  // die Nulllinien-Zeile, das 2-Spalten-Raster des Telefons, die
+  // Legenden-Ausnahmen und den Untertitel-Block herausgelöst (35 → 26,
+  // 3 → 2). Was bleibt, gehört anderen Paketen: der Zeit-Leiste (Chrome,
+  // P1/S1), dem Explorer, der geteilten Fußkarte und `PortfolioMesswerte`
+  // (P8, das `.vp-esum*` weiterfährt).
+  { reiter: 'Messwerte', datei: 'components/Historie.css', fs: 26, ff: 2, fw: 0 },
   { reiter: 'Messwerte', datei: 'components/Verlauf.css', fs: 10, ff: 0, fw: 0 },
   { reiter: 'Messwerte', datei: 'components/Messwerte.css', fs: 18, ff: 0, fw: 3 },
-  { reiter: 'Messwerte', datei: 'components/Ereignisse.css', fs: 3, ff: 0, fw: 0 },
   { reiter: 'Marktpreise', datei: 'components/Marktpreise.css', fs: 8, ff: 0, fw: 0 },
   { reiter: 'Marktpreise', datei: 'preisFenster.css', fs: 1, ff: 0, fw: 0 },
   { reiter: 'Marktpreise', datei: 'components/StrompreisStrip.css', fs: 12, ff: 0, fw: 1 },

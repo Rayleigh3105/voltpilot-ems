@@ -251,15 +251,23 @@ describe('Mobil · Messwerte führt mit dem DIAGRAMM (P3)', () => {
     }
   });
 
-  it('fasst die sechs Δ-Zeilen zu EINER zusammen, die ihre Größe NENNT', async () => {
+  /**
+   * ⚠ **P3 hat die Telefon-Eindampfung ERSETZT, nicht verloren.** Bis dahin
+   * standen am Telefon sechs Kacheln OHNE Δ und darunter EINE zusammengefasste
+   * Zeile — die Ledger-Zeile trägt ihre Sekundärzeile ohnehin unter dem Namen,
+   * also steht der Vergleich jetzt AN SEINER Zahl, auf jeder Breite.
+   */
+  it('trägt das Δ in der ZEILE, zu der es gehört — auf jeder Breite', async () => {
     await renderMesswerte();
     // Die Vorperiode erzeugte 3 kWh, dieser Tag 4 → +33 % auf „Erzeugt".
     expect(HEUTE).not.toEqual(GESTERN);
-    const meta = await screen.findByText(/33 % mehr als am Vortag/);
-    expect(meta.closest('.vp-esum-meta')).toBeTruthy();
-    expect(screen.getByText(/Erzeugt/, { selector: '.vp-esum-meta-delta' })).toBeInTheDocument();
-    // Genau EINE Δ-Zeile auf der ganzen Fläche - nicht sechs.
-    expect(document.querySelectorAll('.vp-delta')).toHaveLength(1);
+    const delta = await screen.findByText(/33 % mehr als am Vortag/);
+    // Es steht in der Sekundärzeile der Ledger-Zeile, nicht in einer Meta-Zeile.
+    expect(delta.closest('.vp-c-led-sek')).toBeTruthy();
+    const zeile = delta.closest('.vp-c-led-row') as HTMLElement;
+    expect(within(zeile).getByText('Erzeugt')).toBeInTheDocument();
+    // Die zusammengefasste Telefon-Zeile ist ersatzlos entfallen.
+    expect(document.querySelector('.vp-esum-meta')).toBeNull();
   });
 });
 
@@ -362,8 +370,10 @@ describe('Mobil · der Welt-Kopf ist ganz entfallen, das Abzeichen bleibt', () =
     expect(document.querySelector('.vp-welt-zeile')).toBeNull();
     const h1 = screen.getByRole('heading', { level: 1, name: /Messwerte/ });
     expect(h1).toHaveClass('vp-sr-only');
-    // Das Ehrlichkeits-Abzeichen sitzt an den Karten, nicht am Kopf.
-    expect(document.querySelectorAll('.vp-prov-gemessen').length).toBeGreaterThan(0);
+    // Das Ehrlichkeits-Abzeichen sitzt an den Karten, nicht am Kopf — seit P3
+    // in der EINEN Chip-Form des Bereichs, im Label der Karte.
+    const abzeichen = screen.getAllByText('Gemessen', { selector: '.vp-c-label .vp-chip' });
+    expect(abzeichen.length).toBeGreaterThan(0);
   });
 
   it('macht die Fußkarte zum Aufklapper — der Wortlaut bleibt erreichbar', async () => {
@@ -472,7 +482,12 @@ describe('Der Schreibtisch bleibt, was er war', () => {
     expect(document.querySelector('.vp-welt-kopf')).toBeNull();
     expect(document.querySelector('.vp-welt-zeile')).toBeNull();
     expect(document.querySelector('.vp-zeitleiste-mobil')).toBeNull();
-    expect(document.querySelectorAll('.vp-esum')).toHaveLength(6);
+    // P3: am Rechner steht DIESELBE Ledger-Liste wie am Telefon — die frühere
+    // Gabelung (dort ein `dl`-Raster, hier sechs Kacheln) ist entfallen.
+    const liste = screen.getByLabelText('Energiemengen im Zeitraum');
+    expect(within(liste).getAllByText(/^(Erzeugt|Verbraucht|Bezogen|Eingespeist|Geladen|Entladen)$/))
+      .toHaveLength(6);
+    expect(document.querySelector('.vp-esum')).toBeNull();
     expect(document.querySelector('.vp-esum-kompakt')).toBeNull();
   });
 
