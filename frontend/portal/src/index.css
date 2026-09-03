@@ -194,10 +194,16 @@
   --vp-c-chart-soc: #166534; /* = --vp-flow-batt-ink · 7,13:1 — Linie */
   --vp-c-chart-price: #2563eb; /* = --vp-c-primary · 5,17:1 */
   /* Die ZWEITE Preis-Reihe (Vergleich: Bezugspreis neben Börsenpreis,
-     morgen neben heute). Bewusst NICHT `--vp-c-secondary`: zwei Blautöne
-     nebeneinander messen ΔE 9,6 und sind als Linienpaar nicht zu trennen.
-     `--vp-c-muted-fg` ist der Ton, den das Portal für „zweite Reihe,
-     Bezugsgröße" ohnehin führt. */
+     morgen neben heute).
+     ⚠ Bewusst NICHT `--vp-c-secondary`, obwohl E3.2 die C-Palette nennt:
+     Primary gegen Secondary misst ΔE 19,0 — über der Grenze, aber knapp, und
+     Secondary ist mit 3,68:1 zugleich die dünnste Reihe des Satzes. Genau
+     diese Enge hat das Haus schon einmal gemessen und verworfen (siehe
+     `--vp-chart-grid-line`: „KEIN hellerer Türkis-Schritt reisst die
+     Grenze"), und ein Vergleichspreis ist ohnehin eine KONTEXT-Reihe — dafür
+     führt das Portal einen Neutral-Ton. `--vp-c-muted-fg` trennt mit ΔE 68,9
+     und liest sich als das, was es ist: die Bezugsgröße, nicht die zweite
+     Hauptreihe. */
   --vp-c-chart-price-2: #475569; /* = --vp-c-muted-fg · 7,58:1 */
 }
 
