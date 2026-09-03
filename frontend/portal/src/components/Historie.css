@@ -818,16 +818,24 @@
     cursor: pointer;
   }
 
-  /* Zeile 2: ‹ Zeitraum › Heute — in EINER Zeile. Die 560-px-Regel darüber
+  /* Der Blätterer ‹ Zeitraum › Heute — in EINER Zeile. Die 560-px-Regel darüber
      bricht sie in zwei (sie rechnet mit dem Sprungfeld, das hier ins Blatt
      gewandert ist); diese Regeln haben einen Spezifitäts-Schritt mehr und
-     gewinnen deshalb unabhängig von der Reihenfolge. */
-  .vp-zeitleiste-mobil .vp-zl-row-2 {
+     gewinnen deshalb unabhängig von der Reihenfolge.
+
+     ⚠ Seit P1 gilt das für JEDE Zeile, nicht nur die zweite: auf Lastspitzen
+     IST der Blätterer die erste Zeile (der Zeitraum dort ist die
+     Abrechnungsperiode, es gibt kein Segment). Mit `-2` im Selektor maß die
+     Leiste dort gemessene 90 statt 58 px, weil der Blätterer auf die
+     Basis-Regeln zurückfiel (`min-width: 170px` am Label) und umbrach.
+     Messwerte/Erlöse/Marktpreise tragen in Zeile 1 kein `.vp-period-nav`, für
+     sie ändert die Weitung also nichts. */
+  .vp-zeitleiste-mobil .vp-zl-row {
     flex-wrap: wrap;
     gap: 6px;
   }
 
-  .vp-zeitleiste-mobil .vp-zl-row-2 > .vp-period-nav {
+  .vp-zeitleiste-mobil .vp-zl-row > .vp-period-nav {
     margin-left: 0;
     width: 100%;
     flex-wrap: nowrap;
@@ -835,7 +843,7 @@
     gap: 4px;
   }
 
-  .vp-zeitleiste-mobil .vp-zl-row-2 > .vp-period-nav > .label {
+  .vp-zeitleiste-mobil .vp-zl-row > .vp-period-nav > .label {
     order: 0;
     flex: 1 1 auto;
     /* LOAD-BEARING: die Basisregel setzt `min-width: 170px` + `nowrap`. Bei
@@ -847,7 +855,7 @@
     font-size: 0.9rem;
   }
 
-  .vp-zeitleiste-mobil .vp-zl-row-2 > .vp-period-nav > .step {
+  .vp-zeitleiste-mobil .vp-zl-row > .vp-period-nav > .step {
     flex: 0 0 auto;
     min-width: 44px;
     min-height: 44px;
