@@ -5,11 +5,12 @@ import {
   ctFromEurMwh,
   ctLabel,
   fokusFenster,
-  fokusUmschalter,
   jetztPreis,
-  preisChips,
+  preisZeilen,
+  profiZeilen,
   slotTime,
   tagesGrenze,
+  tagWahl,
 } from './marktpreise';
 import { NBSP } from './format';
 
@@ -91,7 +92,7 @@ describe('jetztPreis', () => {
     const held = jetztPreis(history(buckets), new Date('2026-08-09T12:20:00Z'));
     expect(held?.ct).toBe(-2);
     expect(held?.ton).toBe('negativ');
-    expect(held?.wort).toBe('Negativpreis');
+    expect(held?.wort).toBe('unter Null');
   });
 
   it('nimmt den Slot ab seiner Startsekunde und bis eine ms vor dem Ende', () => {
@@ -143,9 +144,9 @@ describe('bezugspreisNote', () => {
   });
 });
 
-describe('preisChips', () => {
-  it('macht aus Tief/Hoch/Ø drei Chips mit Uhrzeit', () => {
-    const chips = preisChips(
+describe('preisZeilen (V5) — Tief/Hoch/Ø, im Rückblick plus Abdeckung', () => {
+  it('führt am TAG mit dem Tief und nennt die Viertelstunde', () => {
+    const z = preisZeilen(
       summary({
         minEurMwh: -26,
         maxEurMwh: 150,
@@ -153,28 +154,70 @@ describe('preisChips', () => {
         cheapestTs: '2026-08-09T13:15:00Z',
         mostExpensiveTs: '2026-08-09T19:15:00Z',
       }),
-      true,
+      'day',
+      'PT15M',
     );
-    expect(chips.map((c) => c.id)).toEqual(['tief', 'hoch', 'schnitt']);
-    expect(chips[0].label).toContain('Tief -2,6 ct');
-    expect(chips[0].ton).toBe('gut');
-    expect(chips[1].label).toContain('Hoch 15,0 ct');
-    expect(chips[1].ton).toBe('teuer');
-    expect(chips[2].label).toBe('Ø 7,6 ct');
+    expect(z.map((r) => r.id)).toEqual(['tief', 'hoch', 'schnitt']);
+    expect(z[0].name).toBe('Günstigste Zeit');
+    expect(z[0].wert).toBe(`-2,60${NBSP}ct/kWh`);
+    expect(z[0].sekundaer).toMatch(/^\d{2}:\d{2} Uhr$/);
+    expect(z[2].wert).toBe(`7,60${NBSP}ct/kWh`);
+    // Am Tag gibt es KEINE Abdeckungs-Zeile — der Tag ist entweder da oder nicht.
+    expect(z.some((r) => r.id === 'abdeckung')).toBe(false);
   });
 
-  it('laesst die Uhrzeit im Rueckblick weg (dort ist sie ein Datum, kein Slot)', () => {
-    const chips = preisChips(
-      summary({ minEurMwh: -26, cheapestTs: '2026-08-09T13:15:00Z' }),
-      false,
+  it('führt im RÜCKBLICK mit dem Durchschnitt und trägt die Abdeckung', () => {
+    const z = preisZeilen(
+      summary({
+        minEurMwh: -26,
+        maxEurMwh: 150,
+        avgEurMwh: 76,
+        cheapestTs: '2026-08-09T13:15:00Z',
+        mostExpensiveTs: '2026-08-11T19:15:00Z',
+        count: 168,
+        coverageStart: '2026-08-05T00:00:00Z',
+      }),
+      'week',
+      'PT1H',
     );
-    expect(chips[0].label).toBe('Tief -2,6 ct');
+    expect(z.map((r) => r.id)).toEqual(['schnitt', 'tief', 'hoch', 'abdeckung']);
+    // Der Zeitpunkt trägt im Rückblick das DATUM, nicht nur die Uhr.
+    expect(z[1].sekundaer).toMatch(/\d{2}\.\d{2}/);
+    expect(z[3].wert).toBe(`168${NBSP}Stunden`);
+    expect(z[3].sekundaer).toMatch(/^Preise ab \d{2}\.\d{2}\.\d{4}$/);
   });
 
-  it('erzeugt fuer eine fehlende Zahl KEINEN Chip', () => {
-    expect(preisChips(summary({ avgEurMwh: 76 }), true).map((c) => c.id)).toEqual(['schnitt']);
-    expect(preisChips(summary({}), true)).toEqual([]);
-    expect(preisChips(null, true)).toEqual([]);
+  it('erzeugt für eine fehlende Zahl KEINE Zeile', () => {
+    expect(preisZeilen(summary({ avgEurMwh: 76 }), 'day', 'PT15M').map((r) => r.id)).toEqual([
+      'schnitt',
+    ]);
+    expect(preisZeilen(summary({}), 'day', 'PT15M')).toEqual([]);
+    expect(preisZeilen(null, 'day', 'PT15M')).toEqual([]);
+  });
+
+  it('benennt den Abschnitt nach dem Raster des Zeitraums', () => {
+    const w = (bucket: string, count: number) =>
+      preisZeilen(summary({ avgEurMwh: 10, count }), 'month', bucket).find(
+        (r) => r.id === 'abdeckung',
+      )?.wert;
+    expect(w('PT15M', 96)).toBe(`96${NBSP}Viertelstunden`);
+    expect(w('P1D', 30)).toBe(`30${NBSP}Tage`);
+    expect(w('P1D', 1)).toBe(`1${NBSP}Tag`);
+  });
+});
+
+describe('profiZeilen (V7/V8) — dieselben vier Zahlen in EUR/MWh', () => {
+  it('nennt Minimum, Ø, Maximum und Spanne', () => {
+    const z = profiZeilen(summary({ minEurMwh: -26, maxEurMwh: 150, avgEurMwh: 76 }));
+    expect(z.map((r) => r.id)).toEqual(['min', 'avg', 'max', 'spanne']);
+    expect(z[0].wert).toBe(`-26,00${NBSP}EUR/MWh`);
+    expect(z[3].wert).toBe(`176,00${NBSP}EUR/MWh`);
+  });
+
+  it('lässt aus, was der Zeitraum nicht trägt — nie ein „—"', () => {
+    expect(profiZeilen(summary({ avgEurMwh: 76 })).map((r) => r.id)).toEqual(['avg']);
+    expect(profiZeilen(summary({}))).toEqual([]);
+    expect(profiZeilen(null)).toEqual([]);
   });
 });
 
@@ -191,18 +234,28 @@ describe('Tagesgrenze und Fokus', () => {
     expect(tagesGrenze([])).toBe(-1);
   });
 
-  it('bietet den Umschalter nur an, wenn es einen Folgetag gibt', () => {
-    expect(fokusUmschalter(ueberNacht, 'heute')).toEqual({
-      label: 'Morgen ›',
-      ziel: 'morgen',
-      aktuell: 'Heute',
+  it('bietet BEIDE Tage an, sobald die Reihe den Folgetag trägt', () => {
+    expect(tagWahl(ueberNacht, true)).toEqual({
+      optionen: [
+        { id: 'heute', label: 'Heute' },
+        { id: 'morgen', label: 'Morgen' },
+      ],
+      chip: null,
     });
-    expect(fokusUmschalter(ueberNacht, 'morgen')).toEqual({
-      label: '‹ Heute',
-      ziel: 'heute',
-      aktuell: 'Morgen',
+    // Auch auf einem vergangenen Tag: die Reihe trägt ihn, also ist er wählbar.
+    expect(tagWahl(ueberNacht, false)?.optionen).toHaveLength(2);
+  });
+
+  it('nennt am HEUTIGEN Tag den Grund, statt die Zeile verschwinden zu lassen', () => {
+    const ohne = reihe(lokal(2026, 8, 9, 10), [1, 2]);
+    expect(tagWahl(ohne, true)).toEqual({
+      optionen: [{ id: 'heute', label: 'Heute' }],
+      chip: 'Morgen ab ca. 13 Uhr',
     });
-    expect(fokusUmschalter(reihe(lokal(2026, 8, 9, 10), [1, 2]), 'heute')).toBeNull();
+  });
+
+  it('sagt auf einem vergangenen Tag GAR NICHTS — dort gibt es kein „morgen"', () => {
+    expect(tagWahl(reihe(lokal(2026, 8, 9, 10), [1, 2]), false)).toBeNull();
   });
 
   it('schneidet das Fenster genau an der Grenze', () => {

@@ -6,16 +6,13 @@ import { fokusFenster, tagesGrenze, type TagFokus } from './marktpreise';
 import {
   ctReihe,
   fensterFuerSlot,
-  fensterZeilen,
   preisFenster,
   preisMarken,
   type FensterArt,
-  type FensterZeile,
 } from './preisFenster';
 import { useEChart } from './useEChart';
 import { kopf, tooltip, TOOLTIP_CSS } from './chartTooltip';
 
-import './preisFenster.css';
 
 /** ct/kWh (die Kunden-Einheit) + EUR/MWh (das Profi-Detail) für einen Tooltip. */
 function fmtPrice(ct: number | null): string {
@@ -458,33 +455,13 @@ export function PriceHistoryChart({
     [history, fokus],
   );
 
-  // K10: die Bänder tragen ihr Wort - unmittelbar unter dem Bild, im selben
-  // Block, samt Zeitraum. Ohne Fenster (flacher Tag, Rückblick) erscheint die
-  // Zeile gar nicht.
-  const zeilen: FensterZeile[] =
-    history.bucket === 'PT15M'
-      ? fensterZeilen(
-          preisFenster(
-            ctReihe(history.buckets.map((b) => b.avgEurMwh)),
-            15,
-          ),
-          history.buckets.map((b) => b.ts),
-        )
-      : [];
-
-  return (
-    <>
-      <div ref={ref} className="vp-chart" />
-      {zeilen.length > 0 && (
-        <div className="vp-preisfenster">
-          {zeilen.map((f) => (
-            <span key={f.art} className={`vp-preisfenster-item art-${f.art}`}>
-              <i aria-hidden="true" />
-              {f.wort} · {f.zeit}
-            </span>
-          ))}
-        </div>
-      )}
-    </>
-  );
+  /**
+   * ⚠ **Die Wortzeile der Fenster steht seit P4 NICHT mehr hier**, sondern als
+   * zwei Ledger-Zeilen (16 px) in der Karte — sie war mit 0,74 rem die
+   * kleinste Schrift des Reiters und die einzige Aussage des Bildes, die man
+   * nicht lesen konnte (Konzept `vp-verlauf-sprache-konzept-v5` §4.3). Die
+   * BÄNDER bleiben im Bild; nur ihr Wort zieht um. Abgeleitet wird es weiter
+   * aus derselben `preisFenster.ts`, also kann es dem Bild nie widersprechen.
+   */
+  return <div ref={ref} className="vp-chart" />;
 }

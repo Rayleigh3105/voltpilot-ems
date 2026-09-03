@@ -1,4 +1,4 @@
-import type { PriceBucket, PriceHistory, PriceRangeSummary } from './api';
+import type { HistoryRange, PriceBucket, PriceHistory, PriceRangeSummary } from './api';
 import { NBSP } from './format';
 
 /**
@@ -40,12 +40,6 @@ export function ctLabel(ct: number | null): string {
   })}${NBSP}ct/kWh`;
 }
 
-/** Kurzform ohne Einheit für die Chips („−2,60"). */
-export function ctShort(ct: number | null): string {
-  if (ct == null) return '—';
-  return ct.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-}
-
 /** „13:15" — die Viertelstunde, in der ein Extremwert lag. */
 export function slotTime(iso: string | null): string | null {
   if (!iso) return null;
@@ -85,7 +79,7 @@ function tonVon(ct: number): PreisTon {
 }
 
 const WORT: Record<PreisTon, { wort: string; bedeutung: string }> = {
-  negativ: { wort: 'Negativpreis', bedeutung: 'Einspeisen kostet gerade Geld' },
+  negativ: { wort: 'unter Null', bedeutung: 'Einspeisen kostet gerade Geld' },
   guenstig: { wort: 'Günstig', bedeutung: 'gute Zeit zum Laden' },
   normal: { wort: 'Normal', bedeutung: 'im üblichen Bereich' },
   teuer: { wort: 'Teuer', bedeutung: 'gute Zeit zum Entladen' },
@@ -128,40 +122,133 @@ export function bezugspreisNote(importPriceCtKwh: number | null | undefined): st
   return `Ihr Bezugspreis ${ctLabel(n)}`;
 }
 
-export interface PreisChip {
-  id: 'tief' | 'hoch' | 'schnitt';
-  label: string;
-  ton: 'gut' | 'teuer' | 'neutral';
+export interface PreisZeile {
+  id: string;
+  name: string;
+  /** Der fertige Wert samt Einheit. */
+  wert: string;
+  /** WANN bzw. WORAUF — die ruhige Zeile darunter. */
+  sekundaer?: string;
+}
+
+/** „14:15 Uhr" · „Mo, 01.09., 14:15 Uhr" · „01.09.2026" — je nach Zeitraum. */
+function zeitpunkt(iso: string | null, range: HistoryRange): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const uhr = () => `${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`;
+  if (range === 'day') return uhr();
+  if (range === 'week') {
+    return `${d.toLocaleDateString('de-DE', {
+      weekday: 'short',
+      day: '2-digit',
+      month: '2-digit',
+    })}, ${uhr()}`;
+  }
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/** Wie ein Abschnitt des Zeitraums heisst — für die Abdeckungs-Zeile. */
+function abschnittWort(bucket: string, n: number): string {
+  if (bucket === 'PT15M') return n === 1 ? 'Viertelstunde' : 'Viertelstunden';
+  if (bucket === 'PT1H') return n === 1 ? 'Stunde' : 'Stunden';
+  return n === 1 ? 'Tag' : 'Tage';
 }
 
 /**
- * Tief/Hoch/Ø als Chips UNTER der Kurve statt als drei Karten davor — dieselben
- * drei Zahlen, ein Fünftel der Höhe, und sie stehen dort, wo man sie nach dem
- * Blick auf die Kurve sucht.
+ * Tief / Hoch / Ø als **Ledger-Zeilen** (V5) statt als KPI-Karten (Rechner) und
+ * Chips (Telefon) — dieselben drei Zahlen, EINE Form, und sie stehen dort, wo
+ * man sie nach dem Blick auf die Kurve sucht.
  *
- * Eine Zahl, die der Zeitraum nicht trägt, bekommt KEINEN Chip (ein „—"-Chip
- * wäre eine Behauptung über eine Messung, die es nicht gibt).
+ * Der Rückblick trägt zusätzlich die **Abdeckung**: der Sammler holt nur heute
+ * und morgen, ein Jahresfenster füllt sich also Tag für Tag — wie viel davon
+ * wirklich gemessen ist, gehört neben die drei Zahlen und nicht in eine
+ * Fußnote (§4.3, „die vier Kennzahlen als V5-Zeilen").
+ *
+ * Eine Zahl, die der Zeitraum nicht trägt, bekommt KEINE Zeile — ein „—" wäre
+ * eine Behauptung über eine Messung, die es nicht gibt.
  */
-export function preisChips(summary: PriceRangeSummary | null, withTime: boolean): PreisChip[] {
+export function preisZeilen(
+  summary: PriceRangeSummary | null,
+  range: HistoryRange,
+  bucket: string,
+): PreisZeile[] {
   if (!summary) return [];
-  const chips: PreisChip[] = [];
+  const zeilen: PreisZeile[] = [];
   const tief = ctFromEurMwh(summary.minEurMwh);
   const hoch = ctFromEurMwh(summary.maxEurMwh);
   const schnitt = ctFromEurMwh(summary.avgEurMwh);
-  const zeit = (iso: string | null) => (withTime ? slotTime(iso) : null);
+  const istTag = range === 'day';
 
+  // Am Tag führt das Tief (die Frage lautet „wann laden?"), im Rückblick der
+  // Durchschnitt (die Frage lautet „wie teuer war der Zeitraum?").
+  const tiefHoch: PreisZeile[] = [];
   if (tief != null) {
-    const t = zeit(summary.cheapestTs);
-    chips.push({ id: 'tief', label: `Tief ${ctShort(tief)} ct${t ? ` · ${t}` : ''}`, ton: 'gut' });
+    tiefHoch.push({
+      id: 'tief',
+      name: 'Günstigste Zeit',
+      wert: ctLabel(tief),
+      sekundaer: zeitpunkt(summary.cheapestTs, range) ?? undefined,
+    });
   }
   if (hoch != null) {
-    const t = zeit(summary.mostExpensiveTs);
-    chips.push({ id: 'hoch', label: `Hoch ${ctShort(hoch)} ct${t ? ` · ${t}` : ''}`, ton: 'teuer' });
+    tiefHoch.push({
+      id: 'hoch',
+      name: 'Teuerste Zeit',
+      wert: ctLabel(hoch),
+      sekundaer: zeitpunkt(summary.mostExpensiveTs, range) ?? undefined,
+    });
   }
-  if (schnitt != null) {
-    chips.push({ id: 'schnitt', label: `Ø ${ctShort(schnitt)} ct`, ton: 'neutral' });
+  const mittel: PreisZeile[] =
+    schnitt == null
+      ? []
+      : [{ id: 'schnitt', name: 'Ø im Zeitraum', wert: ctLabel(schnitt) }];
+
+  zeilen.push(...(istTag ? [...tiefHoch, ...mittel] : [...mittel, ...tiefHoch]));
+
+  if (!istTag && summary.count != null && summary.count > 0) {
+    const n = Number(summary.count);
+    zeilen.push({
+      id: 'abdeckung',
+      name: 'Abdeckung',
+      wert: `${n.toLocaleString('de-DE')}${NBSP}${abschnittWort(bucket, n)}`,
+      sekundaer: summary.coverageStart
+        ? `Preise ab ${zeitpunkt(summary.coverageStart, 'year')}`
+        : undefined,
+    });
   }
-  return chips;
+  return zeilen;
+}
+
+/**
+ * Das Profi-Detail (V7/V8): dieselben vier Zahlen in EUR/MWh, die der Reiter
+ * seit je führt — nur nicht mehr als offenes `Stat`-Raster über der Kurve.
+ *
+ * Der EUR/MWh-Grundsatz der Seite bleibt: ct/kWh ist die Kunden-Einheit,
+ * EUR/MWh das Profi-Detail. Es zieht nur um.
+ */
+export function profiZeilen(summary: PriceRangeSummary | null): PreisZeile[] {
+  if (!summary) return [];
+  const zahl = (v: number | null | undefined): string | null => {
+    if (v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n)
+      ? n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : null;
+  };
+  const spanne =
+    summary.minEurMwh == null || summary.maxEurMwh == null
+      ? null
+      : Number(summary.maxEurMwh) - Number(summary.minEurMwh);
+  const roh: [string, string, string | null][] = [
+    ['min', 'Minimum', zahl(summary.minEurMwh)],
+    ['avg', 'Ø im Zeitraum', zahl(summary.avgEurMwh)],
+    ['max', 'Maximum', zahl(summary.maxEurMwh)],
+    ['spanne', 'Spanne', zahl(spanne)],
+  ];
+  return roh
+    .filter(([, , w]) => w != null)
+    .map(([id, name, w]) => ({ id, name, wert: `${w as string}${NBSP}EUR/MWh` }));
 }
 
 /**
@@ -179,34 +266,54 @@ export function tagesGrenze(buckets: readonly PriceBucket[]): number {
   return -1;
 }
 
-/** Welchen Tag die Kurve am Telefon gerade zeigt. */
+/** Welchen Tag die Kurve gerade zeigt. */
 export type TagFokus = 'heute' | 'morgen';
 
-export interface FokusUmschalter {
-  /** Der Chip rechts unter der Kurve („Morgen ›" / „‹ Heute"). */
-  label: string;
-  ziel: TagFokus;
-  /** Die Beschriftung links („Heute" / „Morgen") — was gerade zu sehen ist. */
-  aktuell: string;
+export interface TagWahl {
+  /** Die Segment-Einträge — einer, wenn es morgen noch nicht gibt. */
+  optionen: readonly { id: TagFokus; label: string }[];
+  /**
+   * Statt des Eintrags „Morgen" der ehrliche GRUND, warum es ihn nicht gibt.
+   * `null`, sobald die Reihe den Folgetag trägt.
+   */
+  chip: string | null;
 }
 
 /**
- * Bei 375 px liegen 96 (oder 192) Balken in ~343 px — die Kurve ist dann ein
- * Farbverlauf, kein Verlauf. Am Telefon zeigt sie deshalb EINEN Tag und der
- * Chip springt zum anderen; die Tagesgrenze ist damit nicht nur sichtbar,
- * sondern begehbar.
+ * V3 · Heute/Morgen als **Segment**, nicht als Sprung-Chip.
  *
- * Null, wenn die Reihe gar keinen Folgetag enthält — dann gibt es nichts
- * umzuschalten und der Chip erschiene ins Leere.
+ * Bei 375 px liegen 96 (oder 192) Balken in ~343 px — die Kurve ist dann ein
+ * Farbverlauf, kein Verlauf. Die Fläche zeigt deshalb EINEN Tag; das Segment
+ * sagt zugleich, welcher zu sehen IST (der frühere Chip „Morgen ›" sagte nur,
+ * wohin er springt).
+ *
+ * **Der Sonderzustand ist der eigentliche Gewinn** (§4.3): vor ~12:45 hat die
+ * Börse den Folgetag noch nicht veröffentlicht. Bis P4 verschwand die Zeile
+ * dann ersatzlos — der Kunde sah nicht, ob es morgen NICHT gibt oder ob die
+ * Fläche es nur nicht zeigt. Jetzt steht dort der Grund.
+ *
+ * `null`, wenn es GAR NICHTS zu sagen gibt: ein vergangener Tag hat kein
+ * „morgen", und ein einzelner Eintrag ohne Grund wäre ein Segment, das nichts
+ * schaltet.
  */
-export function fokusUmschalter(
+export function tagWahl(
   buckets: readonly PriceBucket[],
-  fokus: TagFokus,
-): FokusUmschalter | null {
-  if (tagesGrenze(buckets) <= 0) return null;
-  return fokus === 'heute'
-    ? { label: 'Morgen ›', ziel: 'morgen', aktuell: 'Heute' }
-    : { label: '‹ Heute', ziel: 'heute', aktuell: 'Morgen' };
+  zeigtHeute: boolean,
+): TagWahl | null {
+  if (tagesGrenze(buckets) > 0) {
+    return {
+      optionen: [
+        { id: 'heute', label: 'Heute' },
+        { id: 'morgen', label: 'Morgen' },
+      ],
+      chip: null,
+    };
+  }
+  if (!zeigtHeute) return null;
+  return {
+    optionen: [{ id: 'heute', label: 'Heute' }],
+    chip: 'Morgen ab ca. 13 Uhr',
+  };
 }
 
 /**

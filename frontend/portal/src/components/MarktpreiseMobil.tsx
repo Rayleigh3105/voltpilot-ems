@@ -1,91 +1,151 @@
-import { Icon } from '../../designsystem/components/core/Icon';
-import type { JetztPreis, PreisChip, FokusUmschalter } from '../marktpreise';
+import type { ReactNode } from 'react';
+import type { JetztPreis, PreisZeile, TagFokus, TagWahl } from '../marktpreise';
 import { ctLabel } from '../marktpreise';
+import { useIsPhone } from '../useIsPhone';
 import './Marktpreise.css';
 
 /**
- * Die drei Render-Teile der Mobil-Fassung der Marktpreise (Konzept
- * `data/vp-mobile-views-x1` §7). Sie rechnen NICHTS — jede Zahl und jedes Wort
- * kommt aus `src/marktpreise.ts`.
+ * Die Render-Teile des Reiters „Marktpreise" in der Sprache der Variante C
+ * (Konzept `data/vp-verlauf-sprache-konzept-v5` §4.3, Paket P4). Sie rechnen
+ * NICHTS — jede Zahl und jedes Wort kommt aus `src/marktpreise.ts`.
  */
 
 /**
- * Der „Jetzt"-Held: aktueller Börsenpreis + Bezugspreis + EIN Wort. Das ist die
- * Frage, mit der fast jeder Besuch beginnt, und sie hatte auf dieser Seite
- * keinen Ort.
+ * **E8 · das Statement** (Captain-Entscheid 03.09.2026, wörtlich: „a) Statement
+ * auf Marktpreise, Lastspitzen, Wetter"): die EINE Zahl des Reiters steht auf
+ * der FLÄCHE, nicht in einer Karte — Label 12/700, Zahl 36/800, Satz 16.
+ *
+ * ⚠ **Die Zahl steht in TINTE** (`--vp-c-fg`), auch bei einem Negativpreis
+ *   (§4.3 Sonderzustand). Bis P4 trug sie den Ton als Farbe und der
+ *   Negativpreis-Fall stand in Grün — eine Farbe, die dem Kunden „gut" sagte,
+ *   wo die Fläche „Einspeisen kostet gerade Geld" meinte. Der Ton lebt jetzt
+ *   ausschliesslich im WORT (`.vp-chip`, EINE Chip-Optik ohne Farbton).
  */
-export function MarktJetztHeld({ preis, bezug }: { preis: JetztPreis; bezug: string | null }) {
+export function MarktStatement({ preis, bezug }: { preis: JetztPreis; bezug: string | null }) {
   return (
-    <div className="vp-mp-jetzt">
-      <div className="vp-mp-jetzt-left">
-        <span className="vp-mp-kicker">
-          Börsenpreis jetzt{preis.zeit ? ` · ${preis.zeit}` : ''}
-        </span>
-        <span className={`vp-mp-preis ton-${preis.ton}`}>{ctLabel(preis.ct)}</span>
-        <span className="vp-mp-sub">
+    <div className="vp-c-stm vp-mp-stm">
+      <h2 className="vp-c-label vp-mp-stm-label">
+        <span>Börsenpreis jetzt{preis.zeit ? ` · ${preis.zeit}` : ''}</span>
+      </h2>
+      <p className="vp-c-stm-zahl">{ctLabel(preis.ct)}</p>
+      <p className="vp-c-stm-ein">
+        <span className="vp-chip">{preis.wort}</span>
+        <span>
           {preis.bedeutung}
           {bezug ? ` · ${bezug}` : ''}
         </span>
-      </div>
-      <span className={`vp-mp-wort ton-${preis.ton}`}>{preis.wort}</span>
+      </p>
     </div>
   );
 }
 
 /**
- * Die Zeile unter der Kurve: links, welcher Tag zu sehen ist, rechts der Sprung
- * zum anderen. Ohne Folgetag rendert sie GAR NICHT — ein Chip, der nirgendwohin
- * springt, ist schlimmer als kein Chip.
+ * V3 · Heute/Morgen als Segment (44 px), nicht als Sprung-Chip.
+ *
+ * Es rendert GAR NICHT, wo es nichts zu sagen gibt — ein Segment mit einem
+ * einzigen Eintrag und ohne Grund schaltet nichts (`tagWahl` gibt dort `null`).
  */
-export function TagZeile({
-  umschalter,
-  onSpringen,
+export function TagSegment({
+  wahl,
+  wert,
+  onWert,
 }: {
-  umschalter: FokusUmschalter | null;
-  onSpringen: (ziel: FokusUmschalter['ziel']) => void;
+  wahl: TagWahl | null;
+  wert: TagFokus;
+  onWert: (w: TagFokus) => void;
 }) {
-  if (!umschalter) return null;
+  if (!wahl) return null;
   return (
-    <div className="vp-mp-tagzeile">
-      <span className="vp-mp-tagname">{umschalter.aktuell}</span>
-      <button
-        type="button"
-        className="vp-mp-sprung"
-        onClick={() => onSpringen(umschalter.ziel)}
-      >
-        {umschalter.label}
-      </button>
-    </div>
-  );
-}
-
-/** Tief / Hoch / Ø als Chips UNTER der Kurve statt als drei Karten davor. */
-export function PreisChips({ chips }: { chips: PreisChip[] }) {
-  if (chips.length === 0) return null;
-  return (
-    <div className="vp-mp-chips">
-      {chips.map((c) => (
-        <span key={c.id} className={`vp-mp-chip ton-${c.ton}`}>
-          {c.label}
-        </span>
-      ))}
+    <div className="vp-mp-tag">
+      <div className="vp-mp-tagseg" role="tablist" aria-label="Tag">
+        {wahl.optionen.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            role="tab"
+            aria-selected={wert === o.id}
+            className={wert === o.id ? 'is-on' : ''}
+            onClick={() => onWert(o.id)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+      {/* ⚠ Der Grund, nicht die Leere: vor ~12:45 hat die Börse den Folgetag
+          noch nicht veröffentlicht. */}
+      {wahl.chip && <span className="vp-chip">{wahl.chip}</span>}
     </div>
   );
 }
 
 /**
- * Der Profi-Aufklapper. Der EUR/MWh-Grundsatz der Seite bleibt (die Einheit ist
- * das Profi-Detail, ct/kWh die Rechnungs-Einheit des Kunden) — er zieht nur aus
- * dem täglichen Scrollweg heraus.
+ * V5 · Die Kennzahlen als Ledger-Zeilen. Name links, Wert rechts in
+ * Tabellenziffern, der Zeitpunkt als ruhige Zeile darunter.
+ *
+ * Sie ersetzt BEIDE alten Formen auf einmal: die drei `KpiCard` des Rechners
+ * und die drei Chips des Telefons (§3.2 V5 „keine KPI-Karten, keine
+ * Icon-Kacheln").
  */
-export function ProfiDetail({ children }: { children: React.ReactNode }) {
+export function PreisZeilen({ zeilen, label }: { zeilen: readonly PreisZeile[]; label: string }) {
+  if (zeilen.length === 0) return null;
   return (
-    <details className="vp-mp-profi">
-      <summary>
-        <Icon name="chevron-down" size={16} />
-        Profi-Detail (EUR/MWh · Quelle)
-      </summary>
-      <div className="vp-mp-profi-body">{children}</div>
-    </details>
+    <ul className="vp-c-led vp-c-led-ruhig vp-mp-led" aria-label={label}>
+      {zeilen.map((z) => (
+        <li key={z.id} className="vp-c-led-row">
+          <div className="vp-c-led-sum">
+            <span className="vp-c-led-name">{z.name}</span>
+            <span className="vp-c-led-val">{z.wert}</span>
+            {z.sekundaer && <span className="vp-c-led-sek">{z.sekundaer}</span>}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * **E6 · Liste statt Tabelle am Telefon** (Captain-Entscheid 03.09.2026,
+ * wörtlich: „a) am Telefon immer Liste (V7), ab 700 px Tabelle").
+ *
+ * ⚠ Es sind ZWEI Bäume aus DENSELBEN Daten, nicht eine Tabelle mit
+ *   `data-label`: eine Label/Wert-Karte MIT Tabellen-Semantik lässt einen
+ *   Screenreader Spaltenköpfe vorlesen, die es optisch gar nicht gibt (die
+ *   verworfene Option (c) des Entscheids). Die Grenze ist die Haus-Grenze
+ *   720 px (`useIsPhone`), also dieselbe, an der der Reiter sonst umschaltet.
+ */
+export function ProfiZahlen({ zeilen }: { zeilen: readonly PreisZeile[] }) {
+  const isPhone = useIsPhone();
+  if (zeilen.length === 0) return null;
+  if (isPhone) return <PreisZeilen zeilen={zeilen} label="Profi-Detail in EUR/MWh" />;
+  return (
+    <table className="vp-mp-tab">
+      <thead>
+        <tr>
+          <th scope="col">Kennzahl</th>
+          <th scope="col">Wert</th>
+        </tr>
+      </thead>
+      <tbody>
+        {zeilen.map((z) => (
+          <tr key={z.id}>
+            <th scope="row">{z.name}</th>
+            <td>{z.wert}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/**
+ * Der Weg zum Fahrplan als 48-px-Zeile (§4.3) statt als Satzfragment in einer
+ * `vp-note`. Er BLEIBT sichtbar — er erklärt, warum es diesen Reiter gibt.
+ */
+export function WegZeile({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a className="vp-mp-weg" href={href}>
+      <span>{children}</span>
+      <span aria-hidden="true">›</span>
+    </a>
   );
 }

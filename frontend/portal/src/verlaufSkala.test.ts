@@ -80,8 +80,10 @@ const BLAETTER: ReadonlyArray<{
   { reiter: 'Messwerte', datei: 'components/Historie.css', fs: 26, ff: 2, fw: 0 },
   { reiter: 'Messwerte', datei: 'components/Verlauf.css', fs: 10, ff: 0, fw: 0 },
   { reiter: 'Messwerte', datei: 'components/Messwerte.css', fs: 18, ff: 0, fw: 3 },
-  { reiter: 'Marktpreise', datei: 'components/Marktpreise.css', fs: 8, ff: 0, fw: 0 },
-  { reiter: 'Marktpreise', datei: 'preisFenster.css', fs: 1, ff: 0, fw: 0 },
+  // Der Rumpf des Reiters „Marktpreise“ (P4) — vollständig auf der Skala und
+  // ab jetzt streng. `preisFenster.css` ist ERSATZLOS entfallen: seine
+  // 0,74-rem-Wortzeile lebt als Ledger-Zeile (16 px) in der Karte.
+  { reiter: 'Marktpreise', datei: 'components/Marktpreise.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Marktpreise', datei: 'components/StrompreisStrip.css', fs: 12, ff: 0, fw: 1 },
   { reiter: 'Prognose', datei: 'pages/Prognose.css', fs: 10, ff: 0, fw: 0 },
   { reiter: 'Wetter', datei: 'WeatherChart.css', fs: 3, ff: 0, fw: 0 },

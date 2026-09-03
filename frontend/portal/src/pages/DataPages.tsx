@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Stat } from '../../designsystem/components/core/Stat';
-import { KpiCard } from '../../designsystem/components/shell/KpiCard';
 import {
   api,
   ApiError,
@@ -14,7 +12,6 @@ import {
   type HistoryRange,
   type PriceHistory,
   type ConsumerSchedule,
-  type PriceRangeSummary,
   type SchedulePlan,
   type ScheduleSlot,
   type Site,
@@ -37,7 +34,14 @@ import { ankerAusWert } from '../historieZeit';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { InfoTip } from '../components/InfoTip';
 import { ChartHeadline, ChartSubtitle } from '../components/ChartExplain';
-import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
+import {
+  ChartCardSkeleton,
+  EmptyState,
+  ErrorState,
+  VerlaufFehler,
+  VerlaufKarteSkeleton,
+  VerlaufLeer,
+} from '../components/States';
 import { PriceHistoryChart } from '../PriceHistoryChart';
 import { WeatherChart } from '../WeatherChart';
 import { hoursAhead, nextHourIndex } from '../weather';
@@ -64,18 +68,23 @@ import { ProvBadge } from '../components/HistorieWelt';
 import {
   bezugspreisNote,
   fokusFenster,
-  fokusUmschalter,
   jetztPreis,
-  preisChips,
+  preisZeilen,
+  profiZeilen,
+  tagWahl,
+  type PreisZeile,
   type TagFokus,
 } from '../marktpreise';
-import { ctReihe, preisFenster, preisKern } from '../preisFenster';
+import { ctReihe, fensterZeilen, preisFenster, preisKern } from '../preisFenster';
 import {
-  MarktJetztHeld,
-  PreisChips,
-  ProfiDetail,
-  TagZeile,
+  MarktStatement,
+  PreisZeilen,
+  ProfiZahlen,
+  TagSegment,
+  WegZeile,
 } from '../components/MarktpreiseMobil';
+import { Aufklapper } from '../components/Aufklapper';
+import { VerlaufKarte } from '../components/VerlaufKarte';
 import { aktuellerPreisSlot } from '../settingsSurface';
 
 /** Shared frame for the site-scoped data pages (picker + load/error states). */
@@ -166,62 +175,9 @@ function PageFrame({
 
 // ---------------------------------------------------------------------------
 
-/**
- * EUR/MWh -> "12,34 ct/kWh" (÷10), German-formatted. A regular space (not NBSP)
- * so the unit can wrap under the number in a narrow KPI card instead of being
- * clipped; the digits themselves stay grouped by the locale formatter.
- */
-function ctPerKwh(eurMwh: number | null | undefined): string {
-  if (eurMwh == null) return '-';
-  return `${(Number(eurMwh) / 10).toLocaleString('de-DE', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })} ct/kWh`;
-}
-
-/** When the cheapest/most-expensive slot fell, at the range's granularity. */
-function whenLabel(iso: string | null, range: HistoryRange): string {
-  if (!iso) return '-';
-  const d = new Date(iso);
-  if (range === 'day') {
-    return `${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`;
-  }
-  if (range === 'week') {
-    return `${d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}, ${d.toLocaleTimeString(
-      'de-DE',
-      { hour: '2-digit', minute: '2-digit' },
-    )} Uhr`;
-  }
-  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-/** Short date for the coverage/partial-data note. */
+/** Kurzes Datum für den Abdeckungs-Hinweis und den Leer-Zustand. */
 function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-/**
- * Die vier EUR/MWh-Kennzahlen. EINE Definition, zwei Wohnorte: am Rechner offen
- * ueber der Kurve, am Telefon im Profi-Aufklapper darunter - so koennen die
- * beiden Fassungen nicht auseinanderlaufen.
- */
-function eurMwhStats(summary: PriceRangeSummary) {
-  return (
-    <>
-      <Stat value={fmtNum(summary.minEurMwh, '')} label="Minimum (EUR/MWh)" />
-      <Stat value={fmtNum(summary.avgEurMwh, '')} label="Ø im Zeitraum (EUR/MWh)" />
-      <Stat value={fmtNum(summary.maxEurMwh, '')} label="Maximum (EUR/MWh)" />
-      <Stat
-        value={fmtNum(
-          summary.minEurMwh == null || summary.maxEurMwh == null
-            ? null
-            : summary.maxEurMwh - summary.minEurMwh,
-          '',
-        )}
-        label="Spanne (EUR/MWh)"
-      />
-    </>
-  );
 }
 
 /** „Ihr Bezugspreis 32,50 ct/kWh" - oder gar nichts. Nie eine erfundene Zahl. */
@@ -237,6 +193,31 @@ function bezugpreisZeile(ct: number | null): string | null {
 const MARKTPREISE_LEAD =
   'Was Strom an der Börse kostet - heute, morgen und im Rückblick.';
 
+/**
+ * **Der Reiter „Marktpreise" in den C-Bausteinen** (Paket P4, Konzept
+ * `data/vp-verlauf-sprache-konzept-v5` §4.3).
+ *
+ * Drei Captain-Entscheide vom 03.09.2026 (Lavish-Review 19:40 Uhr) tragen den
+ * Umbau, wörtlich:
+ *
+ *  - **E8** „a) Statement auf Marktpreise, Lastspitzen, Wetter" — die EINE Zahl
+ *    des Reiters (der Börsenpreis JETZT) steht auf der Fläche, nicht in einer
+ *    Karte, und **auf jeder Breite**. Bis P4 gab es sie nur am Telefon; der
+ *    Rechner trug stattdessen drei `KpiCard` mit den ZEITRAUM-Zahlen — also
+ *    genau nicht die Antwort auf „was kostet Strom gerade?".
+ *  - **E6** „a) am Telefon immer Liste (V7), ab 700 px Tabelle" — das
+ *    Profi-Detail (EUR/MWh) ist unter 721 px eine Ledger-Liste und darüber eine
+ *    echte Tabelle, aus denselben Daten.
+ *  - **E7** „a) Tooltip + Legenden-Schalter, KEIN Zoom durch Ziehen am Telefon"
+ *    — der `dataZoom` der Kurve ist der FOKUS-Ausschnitt (`zoomLock`), keine
+ *    Geste; er bleibt es.
+ *
+ * ⚠ **Die Zahlen und die Aussagen sind unverändert** — sie wechseln nur die
+ *   Form: die drei KPI-Karten und die drei Chips wurden Ledger-Zeilen
+ *   (`preisZeilen`), das `Stat`-Raster wurde das Profi-Detail (`profiZeilen`),
+ *   und die Wortzeile der Preisfenster zog aus dem Chart-Fuß (0,74 rem) in die
+ *   Karte (16 px).
+ */
 export function MarktpreisePage(props: {
   sites: Site[];
   selectedSite: string | null;
@@ -295,7 +276,6 @@ export function MarktpreisePage(props: {
   const hasData = buckets.length > 0 && (summary?.count ?? 0) > 0;
   const isDay = range === 'day';
 
-  // --- Mobil-Fassung (Stufe 4). Am Rechner ist nichts hiervon aktiv. -------
   const isPhone = useIsPhone();
   const [now, setNow] = useState<Date>(() => new Date());
   const [fokus, setFokus] = useState<TagFokus>('heute');
@@ -311,7 +291,10 @@ export function MarktpreisePage(props: {
 
   useEffect(() => {
     setBezugCt(null);
-    if (!site || !isPhone || !isDay) return;
+    // E8: das Statement steht auf JEDER Breite, also braucht auch der Rechner
+    // seinen Bezugspreis. Der Abruf hängt weiterhin am Tages-Zeitraum - im
+    // Rückblick gibt es kein „jetzt", das er einordnen könnte.
+    if (!site || !isDay) return;
     let active = true;
     api
       .schedule(site.id)
@@ -324,15 +307,23 @@ export function MarktpreisePage(props: {
     return () => {
       active = false;
     };
-  }, [site?.id, isPhone, isDay]);
+  }, [site?.id, isDay]);
 
   // Ein Zeitraumwechsel setzt den Tages-Fokus zurueck - sonst zeigte der
   // Rueckblick auf "Morgen".
   useEffect(() => setFokus('heute'), [range, at]);
 
-  const jetzt = isPhone && isDay ? jetztPreis(history, now) : null;
-  const chips = isPhone ? preisChips(summary, isDay) : [];
-  const umschalter = isPhone && isDay ? fokusUmschalter(buckets, fokus) : null;
+  const jetzt = isDay ? jetztPreis(history, now) : null;
+  /**
+   * V3 · Heute/Morgen als Segment. Der Fokus-Ausschnitt bleibt dem TELEFON
+   * vorbehalten (bei 375 px liegen 192 Viertelstunden in ~343 px); am Rechner
+   * zeigt die Kurve beide Tage, und das Segment schaltet dort nur mit, wenn es
+   * überhaupt einen Folgetag gibt.
+   */
+  const zeigtHeute = isDay && isoDate(new Date()) === at;
+  const wahl = isDay ? tagWahl(buckets, zeigtHeute) : null;
+  const zeilen = preisZeilen(summary, range, history?.bucket ?? '');
+  const profi = profiZeilen(summary);
 
   /**
    * K1 · Der Kernaussage-Satz über der Tageskurve — ABGELEITET aus denselben
@@ -349,6 +340,21 @@ export function MarktpreisePage(props: {
     return preisKern(cts, sicht.map((b) => b.ts), preisFenster(cts, 15));
   }, [isDay, hasData, isPhone, buckets, fokus]);
 
+  /**
+   * V5 · Die benannten Preisfenster als Ledger-Zeilen (16 px) — bis P4 standen
+   * sie als 0,74-rem-Zeile im Fuß des Diagramms. Abgeleitet aus DERSELBEN
+   * `preisFenster.ts`, die die Bänder im Bild hinterlegt.
+   */
+  const fensterRows: PreisZeile[] = useMemo(() => {
+    if (!isDay || !hasData || history?.bucket !== 'PT15M') return [];
+    const cts = ctReihe(buckets.map((b) => b.avgEurMwh));
+    return fensterZeilen(preisFenster(cts, 15), buckets.map((b) => b.ts)).map((f) => ({
+      id: f.art,
+      name: f.wort,
+      wert: f.zeit,
+    }));
+  }, [isDay, hasData, history?.bucket, buckets]);
+
   // Partial coverage: the collector only fetches today+tomorrow, so week/month/
   // year fill in over time. Flag when the stored data starts well after the
   // window opens (older prices were never collected).
@@ -356,6 +362,13 @@ export function MarktpreisePage(props: {
     !isDay && hasData && summary?.coverageStart && history
       ? new Date(summary.coverageStart).getTime() - new Date(history.from).getTime() > 36 * 3600 * 1000
       : false;
+
+  const raster =
+    history?.bucket === 'PT15M'
+      ? '15-Minuten-Takt'
+      : history?.bucket === 'PT1H'
+        ? 'stündlich'
+        : 'täglich';
 
   return (
     <PageFrame
@@ -392,161 +405,106 @@ export function MarktpreisePage(props: {
         }
       />
 
+      {/* V10 · Laden — dieselbe Höhe, die das Bild später wirklich einnimmt. */}
       {loading && (
-        <Card padding="lg" radius="lg">
-          <ChartCardSkeleton />
-        </Card>
-      )}
-      {err && (
-        <ErrorState
-          message={`Die Börsenpreise konnten nicht geladen werden (${err}).`}
-          onRetry={() => setReloadKey((k) => k + 1)}
-        />
+        <section className="vp-section">
+          <div className="vp-c-card">
+            <VerlaufKarteSkeleton legende={false} />
+          </div>
+        </section>
       )}
 
+      {/* V10 · Fehler — IN der Karte, damit die Fläche ihre Überschrift behält. */}
+      {err && (
+        <VerlaufKarte label={isDay ? 'Day-Ahead heute & morgen' : 'Preisverlauf'}>
+          <VerlaufFehler
+            satz={`Die Börsenpreise konnten nicht geladen werden (${err}).`}
+            onRetry={() => setReloadKey((k) => k + 1)}
+          />
+        </VerlaufKarte>
+      )}
+
+      {/* V10 · Leer — EIN Satz, und wo es einen gibt: der Weg. */}
       {!loading && !err && !hasData && (
-        <Card padding="lg" radius="lg">
-          <div className="vp-empty">
-            <IconTile category="dynamic" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>
-              <Icon name="euro" size={24} />
-            </IconTile>
-            <h3>Keine Börsenpreise in diesem Zeitraum</h3>
-            <p>
-              {isDay
+        <VerlaufKarte label={isDay ? 'Day-Ahead heute & morgen' : 'Preisverlauf'}>
+          <VerlaufLeer
+            label="Keine Börsenpreise in diesem Zeitraum"
+            satz={
+              isDay
                 ? 'Die Börsenpreise werden automatisch geladen, sobald die Strombörse sie veröffentlicht (täglich am frühen Nachmittag für den Folgetag).'
-                : 'Für diesen Zeitraum liegen noch keine gespeicherten Preise vor. Der Rückblick füllt sich Tag für Tag - schauen Sie später wieder vorbei oder wählen Sie einen jüngeren Zeitraum.'}
-            </p>
-          </div>
-        </Card>
+                : summary?.coverageStart
+                  ? `Preise liegen erst ab dem ${shortDate(summary.coverageStart)} vor - der Rückblick füllt sich Tag für Tag.`
+                  : 'Für diesen Zeitraum liegen noch keine gespeicherten Preise vor. Der Rückblick füllt sich Tag für Tag - schauen Sie später wieder vorbei oder wählen Sie einen jüngeren Zeitraum.'
+            }
+            weg={isDay ? undefined : 'Zum heutigen Tag'}
+            onWeg={
+              isDay
+                ? undefined
+                : () => {
+                    setRange('day');
+                    setAnchor(new Date());
+                  }
+            }
+          />
+        </VerlaufKarte>
       )}
 
       {!loading && !err && hasData && summary && history && (
         <>
-          {/* Mobil: „Was kostet Strom JETZT" ist die erste Antwort - am Rechner
-              tragen das die drei KPI-Karten darunter. */}
+          {/* E8 · Das Statement: die EINE Zahl des Reiters, auf der Fläche.
+              Ohne laufende Viertelstunde steht dort GAR NICHTS - nie der
+              zuletzt bekannte Preis als „jetzt". */}
           {jetzt && (
             <section className="vp-section">
-              <Card padding="lg" radius="lg">
-                <MarktJetztHeld preis={jetzt} bezug={bezugpreisZeile(bezugCt)} />
-              </Card>
+              <MarktStatement preis={jetzt} bezug={bezugpreisZeile(bezugCt)} />
             </section>
           )}
 
-          {/* Headline: relatable ct/kWh average + the cheapest/most expensive slot. */}
-          {!isPhone && (
-          <section className="vp-kpis" aria-label="Preis-Kennzahlen">
-            <KpiCard
-              icon={<Icon name="euro" size={20} />}
-              category="dynamic"
-              value={ctPerKwh(summary.avgEurMwh)}
-              label="Ø-Preis im Zeitraum"
-              title={`Durchschnitt aller Viertelstunden im Zeitraum · ${fmtNum(summary.avgEurMwh, 'EUR/MWh')}`}
+          <VerlaufKarte
+            label={`${isDay ? 'Day-Ahead heute & morgen' : 'Preisverlauf'}${
+              site ? ` · ${site.biddingZone}` : ''
+            }`}
+            chip={<span className="vp-chip">{raster}</span>}
+          >
+            {/* V6 · die Reihenfolge IST die Aussage: Label → Kernsatz → BILD →
+                Zeilen → Erklärung im Aufklapper. */}
+            <ChartHeadline kern={kern} />
+            <PriceHistoryChart history={history} fokus={isPhone && isDay ? fokus : null} />
+            <TagSegment wahl={wahl} wert={fokus} onWert={setFokus} />
+
+            {/* V5 · Die benannten Fenster - Wort links, Zeitraum rechts. */}
+            <PreisZeilen zeilen={fensterRows} label="Benannte Preisfenster" />
+            {/* V5 · Tief / Hoch / Ø (und im Rückblick die Abdeckung). */}
+            <PreisZeilen
+              zeilen={zeilen}
+              label={isDay ? 'Preis-Kennzahlen des Tages' : 'Preis-Kennzahlen im Zeitraum'}
             />
-            <KpiCard
-              icon={<Icon name="trending-down" size={20} />}
-              category="battery"
-              value={ctPerKwh(summary.minEurMwh)}
-              label={`Günstigste Zeit · ${whenLabel(summary.cheapestTs, range)}`}
-              title={`Niedrigster Preis im Zeitraum · ${fmtNum(summary.minEurMwh, 'EUR/MWh')}`}
-            />
-            <KpiCard
-              icon={<Icon name="trending-up" size={20} />}
-              category="industry"
-              value={ctPerKwh(summary.maxEurMwh)}
-              label={`Teuerste Zeit · ${whenLabel(summary.mostExpensiveTs, range)}`}
-              title={`Höchster Preis im Zeitraum · ${fmtNum(summary.maxEurMwh, 'EUR/MWh')}`}
-            />
-          </section>
-          )}
 
-          <section className="vp-section">
-            <Card padding="lg" radius="lg">
-              <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-                <IconTile category="dynamic" size={40}>
-                  <Icon name="euro" size={20} />
-                </IconTile>
-                <h2>
-                  {isDay ? 'Day-Ahead heute & morgen' : 'Preisverlauf'} {site?.biddingZone ?? ''}
-                </h2>
-                <Badge variant="tint">
-                  {history.bucket === 'PT15M'
-                    ? '15-Minuten-Takt'
-                    : history.bucket === 'PT1H'
-                      ? 'stündlich'
-                      : 'täglich (Ø, Min/Max)'}
-                </Badge>
-                <InfoTip title="Was zeigt dieser Zeitraum?" label="Erläuterung Preisverlauf">
-                  {isDay
-                    ? 'Die Day-Ahead-Preise der Strombörse in 15-Minuten-Schritten. Für heute enthält der Verlauf auch die bereits veröffentlichten Preise für morgen (gestrichelte Linie „Morgen“) - genau diese Preise nutzt Ihr Batterie-Fahrplan.'
-                    : 'Der Rückblick fasst die Preise zusammen: die blaue Linie ist der Durchschnitt je ' +
-                      (range === 'week' ? 'Stunde' : 'Tag') +
-                      ', das hellblaue Band zeigt die Spanne zwischen dem günstigsten und teuersten Preis im jeweiligen Abschnitt.'}
-                </InfoTip>
-              </div>
+            {partialFrom && summary.coverageStart && (
+              <p className="vp-mp-note">
+                Für diesen Zeitraum liegen erst Preise ab dem {shortDate(summary.coverageStart)} vor
+                - ältere Börsenpreise wurden noch nicht erfasst.
+              </p>
+            )}
 
-              {/* EUR/MWh detail for the professional reader. Am Telefon zieht
-                  es in den Profi-Aufklapper unter der Kurve - eine Botschaft,
-                  eine Einheit (ct/kWh), aber verlustfrei erreichbar. */}
-              {!isPhone && (
-                <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
-                  {eurMwhStats(summary)}
-                </div>
-              )}
+            {/* V8 · Das Profi-Detail. Der EUR/MWh-Grundsatz der Seite bleibt -
+                die Zahlen sind da, nur eine Ebene tiefer, auf JEDER Breite. */}
+            <Aufklapper titel="Profi-Detail (EUR/MWh · Quelle)">
+              <ProfiZahlen zeilen={profi} />
+              <p className="vp-mp-note">
+                Quelle: energy-charts.info (Fraunhofer ISE).{' '}
+                {isDay ? '' : 'Preise sind marktweit je Gebotszone (nicht pro Anlage).'}
+              </p>
+            </Aufklapper>
 
-              {/* K1: die Kernaussage als SATZ über dem Bild - das Diagramm
-                  wird damit zum Beleg statt zur Aufgabe. */}
-              <ChartHeadline kern={kern} />
-
-              <PriceHistoryChart history={history} fokus={isPhone && isDay ? fokus : null} />
-
-              <TagZeile umschalter={umschalter} onSpringen={setFokus} />
-              <PreisChips chips={chips} />
-
-              {partialFrom && summary.coverageStart && (
-                <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-                  Hinweis: Für diesen Zeitraum liegen erst Preise ab dem{' '}
-                  {shortDate(summary.coverageStart)} vor - ältere Börsenpreise wurden noch
-                  nicht erfasst.
-                </p>
-              )}
-              {isPhone ? (
-                <>
-                  {/* Der Fahrplan-Querverweis BLEIBT sichtbar - er erklaert,
-                      warum es diese Seite ueberhaupt gibt. Die Quellenangabe
-                      zieht mit den EUR/MWh ins Profi-Detail. */}
-                  <p className="vp-note" style={{ marginTop: partialFrom ? 4 : 12 }}>
-                    {isDay ? (
-                      <>
-                        Ihr Fahrplan nutzt genau diese Preise
-                        {site ? (
-                          <>
-                            {' '}
-                            - <a href={`#/anlage/${site.id}/fahrplan`}>zum Fahrplan →</a>
-                          </>
-                        ) : (
-                          '.'
-                        )}
-                      </>
-                    ) : (
-                      'Preise sind marktweit je Gebotszone (nicht pro Anlage).'
-                    )}
-                  </p>
-                  <ProfiDetail>
-                    <div className="vp-grid vp-grid-stats-4">{eurMwhStats(summary)}</div>
-                    <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-                      Quelle: energy-charts.info (Fraunhofer ISE).
-                    </p>
-                  </ProfiDetail>
-                </>
-              ) : (
-                <p className="vp-note" style={{ marginTop: partialFrom ? 4 : 12 }}>
-                  Quelle: energy-charts.info (Fraunhofer ISE). {isDay
-                    ? 'Ihr Batterie-Fahrplan nutzt genau diese Day-Ahead-Preise.'
-                    : 'Preise sind marktweit je Gebotszone (nicht pro Anlage).'}
-                </p>
-              )}
-            </Card>
-          </section>
+            {/* Der Fahrplan-Querverweis BLEIBT sichtbar - er erklaert, warum es
+                diesen Reiter ueberhaupt gibt. */}
+            {isDay && site && (
+              <WegZeile href={`#/anlage/${site.id}/fahrplan`}>
+                Ihr Fahrplan nutzt genau diese Preise
+              </WegZeile>
+            )}
+          </VerlaufKarte>
         </>
       )}
       {/* V1 · Der Lead-Satz des früheren Seitenkopfs — WÖRTLICH, nur an einem
