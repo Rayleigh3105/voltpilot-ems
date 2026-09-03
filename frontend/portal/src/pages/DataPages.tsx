@@ -640,7 +640,11 @@ export function WetterSection({ site }: { site: Site }) {
               open={mehrOpen}
               onToggle={() => setMehrOpen((v) => !v)}
             >
-              <WeatherChart points={points} planSlots={planSlots} modus="kontext" />
+              {/* ⚠ Das zweite Bild entsteht ERST beim Aufklappen. Ein `details`
+                  rendert seine Kinder auch zugeklappt, und ein ECharts-Canvas
+                  in einem `display:none`-Kasten misst 0 × 0 - es bliebe leer,
+                  bis irgendwann ein Resize kommt. */}
+              {mehrOpen && <WeatherChart points={points} planSlots={planSlots} modus="kontext" />}
             </Aufklapper>
             <p className="vp-c-note">
               Wetterdaten: Open-Meteo, stündlich aktualisiert. Die erwartete Leistung ist
