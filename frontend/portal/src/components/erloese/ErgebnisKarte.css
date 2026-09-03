@@ -61,7 +61,13 @@
   min-width: 0;
 }
 
-@media (min-width: 700px) {
+/* ⚠ **721, nicht 700** (Paket P1): `useIsPhone` fragt `(max-width: 720px)`, die
+   C-Karten fragten `(min-width: 700px)`. Zwischen 701 und 720 sagte das JS
+   „Telefon" und das CSS „Schreibtisch" — dort rendert die Fläche ihre
+   Telefon-Fassung in Schreibtisch-Maßen. Die vier Blöcke dieser Datei sind die
+   EINZIGE Stelle im Verlauf mit dieser zweiten Grenze; 721 ist die exakte
+   Ergänzung zu `max-width: 720px`. */
+@media (min-width: 721px) {
   .vp-c-card {
     padding: 24px;
   }
@@ -119,7 +125,7 @@
   overflow-wrap: anywhere;
 }
 
-@media (min-width: 700px) {
+@media (min-width: 721px) {
   .vp-c-stm-zahl {
     font-size: var(--vp-erl-fs-48, 48px);
   }
@@ -362,7 +368,7 @@
 
 /* --- 700: Name/Sekundärzeile links, Balken Mitte, Betrag rechts --------- */
 
-@media (min-width: 700px) {
+@media (min-width: 721px) {
   .vp-c-led-sum {
     grid-template-columns: minmax(120px, 1.1fr) minmax(0, 1.4fr) auto 16px;
     grid-template-rows: auto auto;
@@ -532,7 +538,7 @@
   padding: 0 18px 18px;
 }
 
-@media (min-width: 700px) {
+@media (min-width: 721px) {
   .vp-c-preise > summary {
     padding: 16px 24px;
   }

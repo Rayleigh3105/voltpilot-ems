@@ -292,6 +292,58 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
   });
 });
 
+describe('Verlauf-Sprache P1 · das Chrome der sechs Reiter', () => {
+  /**
+   * ⚠ **Der Wächter über Befund B1.** Vier der sechs Verlauf-Reiter trugen
+   * einen SICHTBAREN Seitenkopf (`SUB_PAGES` in `AnlagenPage`), die anderen
+   * zwei nie — die Bereichs-Reiter standen dadurch je nach Reiter bei 140 oder
+   * 287/316 px und SPRANGEN bei jedem Wechsel. Ein neu eingetragener Kopf
+   * bräche das still wieder: er sieht wie eine Verbesserung aus und ist die
+   * teuerste Verletzung der stabilen Bühne (App-Kriterien A5/A8).
+   *
+   * Die Bereiche AUSSERHALB des Verlaufs behalten ihren Kopf — sie sind nicht
+   * Teil von P1, und ein halb umgestelltes Portal wäre ein zweiter Sprung
+   * statt keinem.
+   */
+  it('kein Verlauf-Reiter trägt einen sichtbaren Seitenkopf', () => {
+    const code = ohneKommentare(readFileSync(join(SRC, 'pages/AnlagenPage.tsx'), 'utf8'));
+    const block = code.slice(code.indexOf('const SUB_PAGES'));
+    const gedeckelt = block.slice(0, block.indexOf('\n};'));
+    for (const reiter of ['marktpreise', 'lastspitzen', 'prognose', 'wetter']) {
+      expect(gedeckelt, reiter).not.toMatch(new RegExp(`\\n\\s*${reiter}\\s*:`));
+    }
+    // Nicht-vakuum: die Bereiche außerhalb des Verlaufs stehen weiterhin drin.
+    expect(gedeckelt).toMatch(/\n\s*fahrplan\s*:/);
+    expect(gedeckelt).toMatch(/\n\s*steuerung\s*:/);
+  });
+
+  /**
+   * ⚠ Es gibt GENAU EINE Zeit-Leiste (V3). Vorher baute Marktpreise sie in
+   * einem zweiten `vp-page-head` nach (Befund B2: drei Zeitraum-Bedienungen im
+   * selben Bereich). Eine Kopie sieht im Browser gleich aus und driftet beim
+   * ersten Feinschliff auseinander.
+   */
+  it('die Zeit-Leiste wird von den Reitern benutzt, nie nachgebaut', () => {
+    for (const f of sourceFiles()) {
+      if (/components\/HistorieWelt\.tsx$/.test(f)) continue;
+      const code = ohneKommentare(readFileSync(f, 'utf8'));
+      expect(code, f).not.toMatch(/className="vp-zeitleiste/);
+    }
+  });
+
+  /**
+   * ⚠ EINE Telefon-Grenze im Verlauf. `useIsPhone` fragt `(max-width: 720px)`;
+   * eine zweite Grenze (700) ließ die Fläche zwischen 701 und 720 ihre
+   * Telefon-Fassung in Schreibtisch-Maßen rendern.
+   */
+  it('kein Verlauf-Stylesheet trägt eine zweite Telefon-Grenze', () => {
+    for (const f of sourceFiles()) {
+      if (!/\.css$/.test(f)) continue;
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(/@media\s*\((?:min|max)-width:\s*700px\)/);
+    }
+  });
+});
+
 describe('Abbau-Invarianten (M6)', () => {
   it('der Picker-Nullbestand gilt für jede Produktionsdatei, auch neue Geräteflächen', () => {
     for (const file of sourceFiles()) {
