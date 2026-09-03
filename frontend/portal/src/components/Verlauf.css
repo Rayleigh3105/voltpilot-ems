@@ -383,6 +383,11 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: var(--vp-c-space-3, 12px) var(--vp-c-space-4, 16px);
+  /* ⚠ Die Scroll-Sperre am Körper ist die ERSTE Hälfte; sie hält den Zeiger
+     ab. Die zweite ist DIESE Zeile: ohne sie kettet ein Wisch, der am Ende
+     der Liste ankommt, an die Seite dahinter weiter — und iOS zieht dort
+     ohnehin am Gummiband vorbei an jedem `overflow: hidden`. */
+  overscroll-behavior: contain;
 }
 
 /* Klebend, damit „Fertig" bei langen Listen erreichbar bleibt; das
@@ -408,6 +413,23 @@
   border-radius: 12px;
 }
 
+/* ⚠ In der schmalen Rail lässt `space-between` die Beschriftung zwischen
+   Haken und Einheit stehen; über die volle Telefonbreite driftet sie in die
+   Mitte und die Liste liest sich nicht mehr als Liste. Im Blatt nimmt die
+   Beschriftung deshalb den freien Platz — die Rail bleibt unberührt. */
+.vp-verlauf-sheet .vp-verlauf-item .vp-vi-label {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+/* ⚠ Die 44 px gehören dem EINGABEFELD, nicht seinem Rahmen: der Rahmen ist ein
+   <div>, ein Tipp auf sein Polster fokussiert also nichts. Mit dem Polster am
+   Feld statt am Rahmen ist die Trefferfläche das, was sie zu sein verspricht. */
 .vp-verlauf-sheet .vp-verlauf-search {
+  min-height: 44px;
+  padding: 0 10px;
+}
+
+.vp-verlauf-sheet .vp-verlauf-search input {
   min-height: 44px;
 }
