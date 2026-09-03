@@ -110,12 +110,7 @@ const BLAETTER: ReadonlyArray<{
     offen: 1,
     bekannt: ['.vp-sp-link'],
   },
-  {
-    reiter: 'Prognose',
-    datei: 'pages/Prognose.css',
-    offen: 2,
-    bekannt: ['.vp-pq-fold > summary', '.vp-pq-beleg > summary'],
-  },
+  { reiter: 'Prognose', datei: 'pages/Prognose.css', offen: 0, bekannt: [] },
   { reiter: 'Wetter', datei: 'WeatherChart.css', offen: 0, bekannt: [] },
   {
     reiter: 'Nachbar',

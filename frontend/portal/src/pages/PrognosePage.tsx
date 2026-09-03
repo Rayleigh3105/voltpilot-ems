@@ -1,9 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Badge } from '../../designsystem/components/core/Badge';
-import { Card } from '../../designsystem/components/core/Card';
-import { Icon } from '../../designsystem/components/core/Icon';
-import { IconTile } from '../../designsystem/components/core/IconTile';
-import { Stat } from '../../designsystem/components/core/Stat';
 import {
   api,
   ApiError,
@@ -16,8 +11,10 @@ import {
 } from '../api';
 import { NBSP } from '../format';
 import { SitePicker } from '../components/SitePicker';
-import { InfoTip } from '../components/InfoTip';
-import { ChartCardSkeleton, ErrorState } from '../components/States';
+import { Aufklapper } from '../components/Aufklapper';
+import { VerlaufKarte } from '../components/VerlaufKarte';
+import { VerlaufLedger, type VerlaufLedgerZeile } from '../components/VerlaufLedger';
+import { VerlaufFehler, VerlaufKarteSkeleton, VerlaufLeer } from '../components/States';
 import { ChartHeadline } from '../components/ChartExplain';
 import { ForecastQualityChart } from '../ForecastQualityChart';
 import {
@@ -43,6 +40,7 @@ import {
   uebernahmeDialog,
   uebernahmeKnopf,
   verdikt,
+  verdiktSekundaer,
   wahlFuer,
   type BewertungsZeile,
   type ModellWahlZustand,
@@ -248,11 +246,15 @@ export function PrognosePage(props: {
   }, [quality]);
 
   /*
-   * Mobil-Umbau Stufe 4: am Telefon führt das VERDIKT (2 Arten × Ø-Abweichung),
-   * dann die Kurven, dann der Kandidaten-Stand in zwei Zeilen; die zwei
-   * Erklär-Essays werden Aufklapper. Gemessen begann die Seite vorher mit dem
-   * Essay und zeigte das erste Diagramm bei 3.437 px. Am Rechner ist die
-   * Reihenfolge unverändert — dort trägt die Breite beides nebeneinander.
+   * **Seit P7 ist die REIHENFOLGE an jeder Breite dieselbe** (Konzept
+   * `vp-verlauf-sprache-konzept-v5` §4.5): Verdikt → aktive Modelle → die zwei
+   * Kurven → Kandidaten → Fuß-Karte. Der frühere Telefon/Rechner-Zwilling ist
+   * ersatzlos entfallen — er hielt denselben Essay zweimal im Baum (einmal
+   * offen, einmal im Aufklapper), und zwei Fassungen desselben Satzes sind
+   * genau die zweite Wahrheit, die der Bereich abschafft.
+   *
+   * `isPhone` trägt nur noch, was wirklich von der Breite abhängt: den
+   * Lead-Satz des eigenständigen Seitenkopfs und die zweizeilige Zeit-Leiste.
    */
   const isPhone = useIsPhone();
 
@@ -299,268 +301,122 @@ export function PrognosePage(props: {
       )}
 
       {props.sites.length === 0 ? (
-        <Card padding="lg" radius="lg">
-          <p className="vp-muted">
-            Noch keine Anlage - legen Sie zuerst unter „Meine Anlage“ eine an.
-          </p>
-        </Card>
+        <VerlaufKarte label="Prognosequalität">
+          <VerlaufLeer
+            label="Noch keine Anlage"
+            satz="Legen Sie zuerst unter „Meine Anlage“ eine Anlage an — die Bewertung braucht deren Messwerte."
+          />
+        </VerlaufKarte>
       ) : (
         <>
-          {/* Intro: what this page is, and what "live" vs "Schattenbetrieb" mean.
-              Am Telefon zieht dieser Essay in den Aufklapper am Seitenfuß - er
-              beantwortet eine Frage, die man EINMAL stellt, und stand vor der
-              Antwort, die man bei jedem Besuch sucht. */}
-          {!isPhone && (
-          <section className="vp-section" style={{ marginTop: 'var(--vp-space-5)' }}>
-            <Card padding="lg" radius="lg">
-              <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-                <IconTile category="primary" size={40}>
-                  <Icon name="info" size={20} />
-                </IconTile>
-                <h2>Was sehe ich hier?</h2>
-              </div>
-              <p style={{ margin: 0, maxWidth: '74ch' }}>
-                Diese Seite zeigt, wie treffsicher die Prognosen sind, mit denen Ihre
-                Anlage ihren Batterie-Fahrplan plant. Ihre Anlage nutzt dafür{' '}
-                <strong>zwei getrennte Prognosen</strong>: eine für den{' '}
-                <strong>Verbrauch (Last)</strong> und eine für die{' '}
-                <strong>PV-Erzeugung</strong>. Aus beiden berechnet die Optimierung, wann
-                sich Laden und Entladen lohnt - je genauer die Prognose, desto besser der
-                Plan.
-              </p>
-              <p style={{ margin: 'var(--vp-space-3) 0 0', maxWidth: '74ch' }}>
-                Jede der beiden Prognosen hat genau <strong>ein aktives Modell</strong>,
-                das den Fahrplan steuert - und optional einen{' '}
-                <strong>lernenden Kandidaten</strong>, der im Hintergrund mitrechnet, ohne
-                etwas zu steuern. Unten stehen beide Prognosen getrennt: erst die aktiven
-                Modelle, dann die Kandidaten.
-              </p>
-              <div className="vp-legend" style={{ marginTop: 'var(--vp-space-4)' }}>
-                <div className="vp-legend-item">
-                  <span className="vp-badge-hold">
-                    <Badge variant="ok" dot>
-                      live
-                    </Badge>
-                  </span>
-                  <span>
-                    Das aktive Modell - genau diese Prognosen nutzt die Optimierung, um
-                    Ihre Anlage zu steuern.
-                  </span>
-                </div>
-                <div className="vp-legend-item">
-                  <span className="vp-badge-hold">
-                    <Badge variant="tint">Schattenbetrieb</Badge>
-                  </span>
-                  <span>
-                    Lernende Kandidaten - sie rechnen mit und werden bewertet, haben aber
-                    keinerlei Einfluss auf die Steuerung.
-                  </span>
-                </div>
-              </div>
-              <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-                Ein Kandidat wird nie automatisch aktiv: Das Umschalten des aktiven Modells
-                ist immer eine bewusste Entscheidung anhand dieser Auswertung.
-              </p>
-            </Card>
-          </section>
-          )}
-
+          {/* V10 · Lade. Der Platz des späteren Inhalts bleibt reserviert, damit
+              die Fläche beim Eintreffen nicht springt. */}
           {loading && (
-            <Card padding="lg" radius="lg">
-              <ChartCardSkeleton stats={2} />
-            </Card>
+            <VerlaufKarte label="Wie gut Ihre Anlage vorhersagt">
+              <VerlaufKarteSkeleton chart={false} legende={false} />
+            </VerlaufKarte>
           )}
           {err && (
-            <ErrorState
-              message={`Die Prognosequalität konnte nicht geladen werden (${err}).`}
-              onRetry={() => setReloadKey((k) => k + 1)}
-            />
+            <VerlaufKarte label="Wie gut Ihre Anlage vorhersagt">
+              <VerlaufFehler
+                satz={`Die Prognosequalität konnte nicht geladen werden (${err}).`}
+                onRetry={() => setReloadKey((k) => k + 1)}
+              />
+            </VerlaufKarte>
           )}
 
           {!loading && !err && quality && (
             <>
-              {/* MOBIL: das Verdikt zuerst. Es rechnet nichts Neues - es sind
-                  dieselben Zahlen wie in „Aktive Modelle" darunter, nur an der
-                  Stelle, an der die Frage gestellt wird. */}
-              {isPhone && (
-                <section className="vp-section" style={{ marginTop: 'var(--vp-space-5)' }}>
-                  <Card padding="lg" radius="lg">
-                    <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-                      <IconTile category="dynamic" size={40}>
-                        <Icon name="check" size={20} />
-                      </IconTile>
-                      <h2>Wie gut Ihre Anlage vorhersagt</h2>
-                      <InfoTip title="Ø Abweichung (MAE)">
-                        Mittlerer absoluter Fehler in kW: der durchschnittliche Abstand
-                        zwischen Prognose und tatsächlichem Messwert - berechnet je
-                        Viertelstunde und über die Tage gemittelt. Niedriger = genauer.
-                      </InfoTip>
-                    </div>
-                    <div className="vp-pq-verdikt">
-                      {verdikt(quality.accuracy, activeByKind, tage).map((z) => (
-                        <div key={z.kind} className="vp-pq-zeile">
-                          <span className="vp-pq-art">{z.art}</span>
-                          <span className="vp-pq-wert">
-                            <b>{z.wert}</b>
-                            <span>{z.note}</span>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="vp-pq-rahmung">
-                      Je Viertelstunde verglichen mit dem, was wirklich gemessen wurde.
-                      Diese zwei Prognosen planen Ihren Batterie-Fahrplan.
-                    </p>
-                  </Card>
-                </section>
-              )}
-
-              {/* Which model is live, and how accurate it was. */}
-              {!isPhone && (
-              <section className="vp-section">
-                <Card padding="lg" radius="lg">
-                  <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-                    <IconTile category="dynamic" size={40}>
-                      <Icon name="check" size={20} />
-                    </IconTile>
-                    <h2>Aktive Modelle</h2>
-                    <InfoTip title="Ø Abweichung (MAE)">
-                      Mittlerer absoluter Fehler in kW: der durchschnittliche Abstand
-                      zwischen Prognose und tatsächlichem Messwert - berechnet je
-                      Viertelstunde und über die Tage gemittelt. Niedriger = genauer.
-                    </InfoTip>
-                  </div>
-                  <p className="vp-muted" style={{ margin: '0 0 var(--vp-space-4)' }}>
-                    Je ein aktives Modell steuert die beiden Prognosen. Genau diese Modelle
-                    plant Ihre Anlage - keine Doppelung, sondern zwei verschiedene Arten.
-                  </p>
-                  <div className="vp-grid vp-grid-two">
-                    {(['load', 'pv'] as const).map((kind) => {
-                      const model = activeByKind[kind];
-                      const recent = mittlereMae(quality.accuracy, model, tage);
-                      return (
-                        <div key={kind} className="vp-kind-card">
-                          <div className="vp-kind-head">
-                            <span className="vp-kind-title">{KIND_LABELS[kind]}</span>
-                            <Badge variant="ok" dot>
-                              aktiv
-                            </Badge>
-                          </div>
-                          <p style={{ margin: '0 0 var(--vp-space-2)', fontWeight: 600 }}>
-                            {modelLabel(model)}
-                          </p>
-                          <Stat
-                            value={recent ? kw(recent.mae) : '-'}
-                            label={
-                              recent
-                                ? `Ø Abweichung, letzte ${recent.tage} ${recent.tage === 1 ? 'Tag' : 'Tage'}`
-                                : 'Ø Abweichung (noch keine Bewertung)'
-                            }
-                          />
-                          {/* Rolle + Herkunft: „seit wann, umgestellt von wem" -
-                              nach einer Umstellung ist genau das die Frage. Sie
-                              gehört dem KUNDEN: es ist seine Anlage und seine
-                              Entscheidung. Nur die Plattform-Vorgabe daneben
-                              ist eine Betreiber-Auskunft. */}
-                          {wahl && (
-                            <>
-                              <p className="vp-note" style={{ marginTop: 'var(--vp-space-2)' }}>
-                                {rolleZeile(wahlFuer(wahl, kind))}
-                              </p>
-                              {istBetreiber
-                                && plattformVorgabeZeile(wahlFuer(wahl, kind), MODEL_LABELS) && (
-                                <p className="vp-note" style={{ marginTop: 'var(--vp-space-1)' }}>
-                                  {plattformVorgabeZeile(wahlFuer(wahl, kind), MODEL_LABELS)}
-                                </p>
-                              )}
-                              {historieZeilen(wahl, kind, MODEL_LABELS).length > 0 && (
-                                <ul className="vp-pq-historie">
-                                  {historieZeilen(wahl, kind, MODEL_LABELS).map((z) => (
-                                    <li key={z}>{z}</li>
-                                  ))}
-                                </ul>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-                    Die Abweichung vergleicht jede Viertelstunden-Prognose mit dem
-                    tatsächlichen Messwert Ihrer Anlage - je niedriger, desto genauer.
-                  </p>
-                </Card>
-              </section>
-              )}
-
-              {/* The learning candidates (shadow mode). Am Telefon steht der
-                  Kandidaten-Stand als Zwei-Zeilen-Wahrheit UNTER den Kurven -
-                  drei Karten mit Fortschrittsbalken, Trainingsdatum und
-                  Merkmalsliste sind dort die Vertiefung, nicht die Aussage. */}
-              {!isPhone && (
-              <section className="vp-section">
-                <Card padding="lg" radius="lg">
-                  <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-                    <IconTile category="battery" size={40}>
-                      <Icon name="trending-up" size={20} />
-                    </IconTile>
-                    <h2>Lernende Kandidaten</h2>
-                    <Badge variant="tint">Schattenbetrieb</Badge>
-                    <InfoTip title="Skill: besser als das aktive Modell?">
-                      Skill = 1 − (Fehler des Kandidaten ÷ Fehler des aktiven Modells).
-                      0 = so gut wie das aktive Modell, positiv = besser, negativ =
-                      schlechter. „In X von Y Bewertungen genauer“ zählt die Tage mit
-                      positivem Skill.
-                    </InfoTip>
-                  </div>
-                  {/* Der Erklär-Kopf: WAS Schattenbetrieb ist, in zwei Sätzen -
-                      der Captain konnte sich unter „Lernende Kandidaten"
-                      zunächst nichts vorstellen. */}
-                  {SCHATTEN_ERKLAERUNG.map((satz) => (
-                    <p key={satz} style={{ margin: '0 0 var(--vp-space-2)', maxWidth: '74ch' }}>
-                      {satz}
-                    </p>
-                  ))}
-                  <p className="vp-muted" style={{ margin: 'var(--vp-space-2) 0 var(--vp-space-4)' }}>
-                    Zu jeder der beiden Prognosen kann höchstens ein Kandidat mitlernen. Er
-                    wird gegen genau das aktive Modell derselben Art bewertet - der
-                    Verbrauchs-Kandidat gegen die Verbrauchsprognose, der PV-Kandidat gegen
-                    die PV-Prognose.
-                  </p>
-                  {schaltFehler && (
-                    <p className="vp-pq-fehler" role="alert">
-                      {schaltFehler}
-                    </p>
+              {/* ------------------------------------------------------------
+                  Karte 1 (§4.5) · WIE GUT — zwei V5-Zeilen statt der zwei
+                  1,15-rem-Verdikt-Zeilen. E8 = a: dieser Reiter führt mit einem
+                  KERNSATZ und einer Ledger-Zeile je Prognoseart, NICHT mit einer
+                  Hero-Zahl — er hat zwei Arten, eine erzwungene Hero-Zahl wäre
+                  eine von beiden willkürlich bevorzugt.
+                  ------------------------------------------------------------ */}
+              <VerlaufKarte label="Wie gut Ihre Anlage vorhersagt" provenienz="gemessen">
+                <VerlaufLedger
+                  label="Mittlere Abweichung je Prognoseart"
+                  zeilen={verdikt(quality.accuracy, activeByKind, tage).map<VerlaufLedgerZeile>(
+                    (z) => ({
+                      id: z.kind,
+                      name: z.art,
+                      wert: z.wert,
+                      // Die 24-px-Zahl der Sektion (V5) — sie IST die Antwort.
+                      gross: true,
+                      sekundaer: verdiktSekundaer(z),
+                    }),
                   )}
+                />
+                <p className="vp-c-note">
+                  Je Viertelstunde verglichen mit dem, was wirklich gemessen wurde. Diese
+                  zwei Prognosen planen Ihren Batterie-Fahrplan.
+                </p>
+              </VerlaufKarte>
 
-                  {challengers.length === 0 ? (
-                    <div className="vp-empty">
-                      <h3>Noch keine Kandidaten aktiv</h3>
-                      <p>
-                        Sobald Messdaten eintreffen, beginnt je Prognoseart ein lernendes
-                        Modell im Hintergrund mitzurechnen. Die Bewertung startet nach dem
-                        ersten vollen Tag mit Daten.
+              {/* ------------------------------------------------------------
+                  „Aktive Modelle" · die PROVENIENZ.
+                  ⚠ Bewusste Ergänzung zur Karten-Liste des Konzepts (§4.5): die
+                  Tabelle dort beschreibt die Telefon-Fassung, auf der diese Karte
+                  fehlte. Sie beantwortet aber eine ANDERE Frage als Karte 1 —
+                  nicht „wie genau", sondern „welches Modell plant, seit wann, auf
+                  wessen Entscheidung". Sie zu streichen hätte eine kundensichtbare
+                  Tatsache gelöscht; sie wechselt deshalb nur die Form: Aufklapper
+                  statt zweispaltiger Karten-Grid. Der lange Modellname steht in der
+                  ruhigen Beistellung (`sub`), nicht im Ledger-Wert — der bricht
+                  nicht um (`white-space: nowrap`).
+                  ------------------------------------------------------------ */}
+              <VerlaufKarte label="Aktive Modelle">
+                {(['load', 'pv'] as const).map((kind) => {
+                  const model = activeByKind[kind];
+                  const recent = mittlereMae(quality.accuracy, model, tage);
+                  const historie = wahl ? historieZeilen(wahl, kind, MODEL_LABELS) : [];
+                  const vorgabe =
+                    wahl && istBetreiber
+                      ? plattformVorgabeZeile(wahlFuer(wahl, kind), MODEL_LABELS)
+                      : null;
+                  return (
+                    <Aufklapper
+                      key={kind}
+                      titel={KIND_LABELS[kind]}
+                      sub={modelLabel(model)}
+                    >
+                      <p className="vp-c-note" style={{ marginTop: 0 }}>
+                        {recent
+                          ? `Ø Abweichung ${kw(recent.mae)}, letzte ${recent.tage} ${
+                              recent.tage === 1 ? 'Tag' : 'Tage'
+                            }.`
+                          : 'Noch keine Bewertung — sie beginnt nach dem ersten vollen Tag mit Daten.'}
                       </p>
-                    </div>
-                  ) : (
-                    <div className="vp-grid" style={{ gap: 'var(--vp-space-4)' }}>
-                      {challengers.map((m) => (
-                        <ChallengerCard
-                          key={m.model}
-                          state={m}
-                          accuracy={quality.accuracy}
-                          activeModel={activeByKind[m.kind]}
-                          onPromote={() => setSchalten({ kind: m.kind, model: m.model })}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </Card>
-              </section>
-              )}
+                      {/* Rolle + Herkunft: „seit wann, umgestellt von wem" —
+                          nach einer Umstellung ist genau das die Frage. Sie
+                          gehört dem KUNDEN: es ist seine Anlage und seine
+                          Entscheidung. Nur die Plattform-Vorgabe daneben ist
+                          eine Betreiber-Auskunft. */}
+                      {wahl && <p className="vp-c-note">{rolleZeile(wahlFuer(wahl, kind))}</p>}
+                      {vorgabe && <p className="vp-c-note">{vorgabe}</p>}
+                      {historie.length > 0 && (
+                        <ul className="vp-pq-historie">
+                          {historie.map((z) => (
+                            <li key={z}>{z}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </Aufklapper>
+                  );
+                })}
+                <p className="vp-c-note">
+                  Genau diese zwei Modelle plant Ihre Anlage — keine Doppelung, sondern
+                  zwei verschiedene Prognosearten.
+                </p>
+              </VerlaufKarte>
 
-              {/* Accuracy over time, per kind - the comparison line. */}
+              {/* ------------------------------------------------------------
+                  Karten 2+3 (§4.5) · TREFFSICHERHEIT je Prognoseart, im
+                  V6-Rahmen: Label → Kernsatz → BILD → Legende → Erklärung im
+                  Aufklapper. Die zwei Notes standen vorher VOR und NACH dem Bild;
+                  sie erklären es, also stehen sie jetzt darunter.
+                  ------------------------------------------------------------ */}
               {(['load', 'pv'] as const).map((kind) => {
                 const points = quality.accuracy.filter((a) => a.kind === kind);
                 if (points.length === 0) return null;
@@ -572,180 +428,124 @@ export function PrognosePage(props: {
                     (m) => m !== activeByKind[kind],
                   ) ?? null;
                 return (
-                  <section className="vp-section" key={kind}>
-                    <Card padding="lg" radius="lg">
-                      <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-                        <IconTile category="dynamic" size={40}>
-                          <Icon name="activity" size={20} />
-                        </IconTile>
-                        <h2>Treffsicherheit {KIND_LABELS[kind]}</h2>
-                        <InfoTip title="Ø Abweichung (MAE) je Tag">
-                          Jeder Punkt ist die mittlere Abweichung eines Modells an einem
-                          Tag in kW (Prognose gegen Messwert). Niedriger = genauer.
-                          Durchgezogen: aktives Modell. Gestrichelt: lernender Kandidat
-                          (ohne Einfluss auf die Steuerung).
-                        </InfoTip>
-                      </div>
-                      <ChartHeadline kern={kandidatKern(points, kandidat)} />
-                      <ForecastQualityChart
-                        points={points}
-                        modelLabels={MODEL_LABELS}
-                        activeModel={activeByKind[kind]}
-                      />
-                      <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-                        Tägliche mittlere Abweichung je Modell - je niedriger die Linie,
-                        desto genauer die Prognose. Gestrichelt: der lernende Kandidat
-                        (ohne Einfluss auf die Steuerung).
+                  <VerlaufKarte key={kind} label={`Treffsicherheit ${KIND_LABELS[kind]}`}>
+                    <ChartHeadline kern={kandidatKern(points, kandidat)} />
+                    <ForecastQualityChart
+                      points={points}
+                      modelLabels={MODEL_LABELS}
+                      activeModel={activeByKind[kind]}
+                    />
+                    <Aufklapper titel="Was zeigt diese Kurve?">
+                      <p className="vp-c-note" style={{ marginTop: 0 }}>
+                        Jeder Punkt ist die mittlere Abweichung eines Modells an einem Tag
+                        in kW (Prognose gegen Messwert) — je niedriger die Linie, desto
+                        genauer die Prognose.
                       </p>
-                    </Card>
-                  </section>
+                      <p className="vp-c-note">
+                        Durchgezogen: das aktive Modell, das Ihren Fahrplan plant.
+                        Gestrichelt: der lernende Kandidat — er rechnet mit, ohne etwas zu
+                        steuern.
+                      </p>
+                    </Aufklapper>
+                  </VerlaufKarte>
                 );
               })}
 
-              {/* MOBIL: der Kandidaten-Stand als Zwei-Zeilen-Wahrheit, darunter
-                  EINMAL der Ehrlichkeits-Satz - der Schattenbetrieb-Kern in
-                  ~90 px statt in drei Karten. */}
-              {isPhone && challengers.length > 0 && (
-                <section className="vp-section">
-                  <Card padding="lg" radius="lg">
-                    <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-                      <IconTile category="battery" size={40}>
-                        <Icon name="trending-up" size={20} />
-                      </IconTile>
-                      <h2>Lernende Kandidaten</h2>
-                      <Badge variant="tint">Schattenbetrieb</Badge>
-                    </div>
-                    {kandidatenZeilen(challengers, quality.accuracy).map((z) => {
-                      const m = challengers.find((c) => c.model === z.model)!;
-                      const zeilen = bewertungsListe(
-                        quality.accuracy,
-                        m.model,
-                        activeByKind[m.kind],
-                      );
-                      return (
-                        <div key={z.model}>
-                          <div className="vp-pq-kandidat">
-                            <span>{z.art}</span>
-                            <span className={`vp-pq-stand ton-${z.ton}`}>{z.stand}</span>
-                          </div>
-                          <BewertungsBeleg zeilen={zeilen} />
-                          <UebernahmeAktion
-                            state={m}
-                            bewertet={bewerteteTage(quality.accuracy, m.model)}
-                            onClick={() => setSchalten({ kind: m.kind, model: m.model })}
-                          />
-                        </div>
-                      );
-                    })}
-                    {schaltFehler && (
-                      <p className="vp-pq-fehler" role="alert">
-                        {schaltFehler}
-                      </p>
-                    )}
-                    <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-                      {KANDIDAT_EHRLICHKEIT}
-                    </p>
-                    {/* Am Telefon ist das der Ort für „seit wann, von wem" -
-                        die Karten „Aktive Modelle" gibt es hier nicht. */}
-                    {wahl &&
-                      (['load', 'pv'] as const).map((kind) => (
-                        <p key={kind} className="vp-note" style={{ marginTop: 'var(--vp-space-1)' }}>
-                          {KIND_LABELS[kind]}: {rolleZeile(wahlFuer(wahl, kind))}
-                        </p>
-                      ))}
-                  </Card>
-                </section>
-              )}
+              {/* ------------------------------------------------------------
+                  Karte 4 (§4.5) · LERNENDE KANDIDATEN. `Badge variant="tint"`
+                  („Schattenbetrieb", gemessen 3,05 : 1) ist der `.vp-chip` des
+                  Bereichs geworden; die drei Kandidaten-Karten mit
+                  Fortschrittsbalken, Trainingsdatum und Merkmalsliste sind je eine
+                  V5-Zeile plus ihr Aufklapper.
+                  ------------------------------------------------------------ */}
+              <VerlaufKarte
+                label="Lernende Kandidaten"
+                chip={<span className="vp-chip">Schattenbetrieb</span>}
+              >
+                {/* Der Erklär-Kopf: WAS Schattenbetrieb ist, in zwei Sätzen -
+                    der Captain konnte sich unter „Lernende Kandidaten"
+                    zunächst nichts vorstellen. */}
+                {SCHATTEN_ERKLAERUNG.map((satz) => (
+                  <p key={satz} className="vp-c-note">
+                    {satz}
+                  </p>
+                ))}
 
-              {/* No evaluated day yet: honest empty state. */}
+                {challengers.length === 0 ? (
+                  <VerlaufLeer
+                    label="Noch keine Kandidaten"
+                    satz="Sobald Messdaten eintreffen, beginnt je Prognoseart ein lernendes Modell im Hintergrund mitzurechnen. Die Bewertung startet nach dem ersten vollen Tag mit Daten."
+                  />
+                ) : (
+                  challengers.map((m) => (
+                    <KandidatZeileKarte
+                      key={m.model}
+                      state={m}
+                      accuracy={quality.accuracy}
+                      activeModel={activeByKind[m.kind]}
+                      stand={
+                        kandidatenZeilen(challengers, quality.accuracy).find(
+                          (z) => z.model === m.model,
+                        )?.stand ?? ''
+                      }
+                      onPromote={() => setSchalten({ kind: m.kind, model: m.model })}
+                    />
+                  ))
+                )}
+
+                {/* V10 · Fehler. Die Ablehnung des Servers steht dort, wo geklickt
+                    wurde — als `role="alert"`, nie als Stille. */}
+                {schaltFehler && <VerlaufFehler satz={schaltFehler} />}
+
+                <p className="vp-c-note">{KANDIDAT_EHRLICHKEIT}</p>
+              </VerlaufKarte>
+
+              {/* V10 · Leer: noch kein bewerteter Tag (§4.5). */}
               {quality.accuracy.length === 0 && (
-                <section className="vp-section">
-                  <Card padding="lg" radius="lg">
-                    <div className="vp-empty">
-                      <IconTile category="dynamic" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>
-                        <Icon name="activity" size={24} />
-                      </IconTile>
-                      <h3>Noch zu wenig Daten</h3>
-                      <p>
-                        Die Bewertung vergleicht Prognosen mit den tatsächlichen
-                        Messwerten und beginnt nach dem ersten vollen Tag mit Daten.
-                        Schauen Sie morgen wieder vorbei.
-                      </p>
-                    </div>
-                  </Card>
-                </section>
+                <VerlaufKarte label="Bewertung">
+                  <VerlaufLeer
+                    label="Noch keine Bewertung"
+                    satz="Die erste Bewertung entsteht nach dem ersten vollständigen Tag — sie vergleicht die Prognosen mit den tatsächlichen Messwerten Ihrer Anlage."
+                  />
+                </VerlaufKarte>
               )}
 
-              {/* The shadow-mode principle, in plain German. */}
-              {!isPhone && (
-              <section className="vp-section">
-                <Card padding="lg" radius="lg">
-                  <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-                    <IconTile category="home" size={40}>
-                      <Icon name="list" size={20} />
-                    </IconTile>
-                    <h2>So funktioniert der Schattenbetrieb</h2>
-                  </div>
+              {/* ------------------------------------------------------------
+                  Karte 5 (§4.5) · die Fuß-Karte. Der INHALT der zwei Essays ist
+                  unverändert — sie wechseln nur die Form (V8) und stehen nicht
+                  mehr VOR der Antwort, die man bei jedem Besuch sucht. Die
+                  Rahmung bleibt dabei SICHTBAR: sie ist die Antwort auf die
+                  dokumentierte Verwirrung „zwei aktive Prognosen".
+                  ------------------------------------------------------------ */}
+              <VerlaufKarte label="Hintergrund">
+                <p className="vp-c-note" style={{ marginTop: 0 }}>
+                  {RAHMUNG}
+                </p>
+                <Aufklapper titel="Was sehe ich hier?">
+                  <p className="vp-c-note" style={{ marginTop: 0 }}>
+                    Diese Seite zeigt, wie treffsicher die Prognosen sind, mit denen Ihre
+                    Anlage ihren Batterie-Fahrplan plant. Ihre Anlage nutzt dafür{' '}
+                    <strong>zwei getrennte Prognosen</strong>: eine für den{' '}
+                    <strong>Verbrauch (Last)</strong> und eine für die{' '}
+                    <strong>PV-Erzeugung</strong>. Aus beiden berechnet die Optimierung,
+                    wann sich Laden und Entladen lohnt - je genauer die Prognose, desto
+                    besser der Plan.
+                  </p>
+                  <p className="vp-c-note">
+                    Jede der beiden Prognosen hat genau <strong>ein aktives Modell</strong>,
+                    das den Fahrplan steuert - und optional einen{' '}
+                    <strong>lernenden Kandidaten</strong>, der im Hintergrund mitrechnet,
+                    ohne etwas zu steuern.
+                  </p>
+                </Aufklapper>
+                <Aufklapper titel="So funktioniert der Schattenbetrieb">
                   {SCHATTEN_PRINZIP.map((satz, i) => (
-                    <p
-                      key={satz}
-                      style={{ margin: i === 0 ? 0 : 'var(--vp-space-3) 0 0', maxWidth: '70ch' }}
-                    >
+                    <p key={satz} className="vp-c-note" style={i === 0 ? { marginTop: 0 } : undefined}>
                       {satz}
                     </p>
                   ))}
-                </Card>
-              </section>
-              )}
-
-              {/* MOBIL: die zwei Erklär-Essays als Aufklapper am Seitenfuß.
-                  Der INHALT ist unverändert - er wandert nur aus dem täglichen
-                  Scrollweg heraus. Die Rahmung „2 Arten × (1 aktiv + höchstens
-                  1 Schatten)" bleibt dabei SICHTBAR, sie ist die Antwort auf die
-                  dokumentierte Verwirrung „zwei aktive Prognosen". */}
-              {isPhone && (
-                <section className="vp-section">
-                  <Card padding="lg" radius="lg">
-                    <p className="vp-pq-rahmung" style={{ marginTop: 0 }}>
-                      {RAHMUNG}
-                    </p>
-                    <details className="vp-pq-fold">
-                      <summary>
-                        <Icon name="chevron-down" size={16} />
-                        Was sehe ich hier?
-                      </summary>
-                      <div className="vp-pq-fold-body">
-                        <p>
-                          Diese Seite zeigt, wie treffsicher die Prognosen sind, mit denen
-                          Ihre Anlage ihren Batterie-Fahrplan plant. Ihre Anlage nutzt dafür{' '}
-                          <strong>zwei getrennte Prognosen</strong>: eine für den{' '}
-                          <strong>Verbrauch (Last)</strong> und eine für die{' '}
-                          <strong>PV-Erzeugung</strong>. Aus beiden berechnet die
-                          Optimierung, wann sich Laden und Entladen lohnt - je genauer die
-                          Prognose, desto besser der Plan.
-                        </p>
-                        <p>
-                          Jede der beiden Prognosen hat genau{' '}
-                          <strong>ein aktives Modell</strong>, das den Fahrplan steuert -
-                          und optional einen <strong>lernenden Kandidaten</strong>, der im
-                          Hintergrund mitrechnet, ohne etwas zu steuern.
-                        </p>
-                      </div>
-                    </details>
-                    <details className="vp-pq-fold">
-                      <summary>
-                        <Icon name="chevron-down" size={16} />
-                        So funktioniert der Schattenbetrieb
-                      </summary>
-                      <div className="vp-pq-fold-body">
-                        {SCHATTEN_PRINZIP.map((satz) => (
-                          <p key={satz}>{satz}</p>
-                        ))}
-                      </div>
-                    </details>
-                  </Card>
-                </section>
-              )}
+                </Aufklapper>
+              </VerlaufKarte>
             </>
           )}
           {/* V1 · Der Lead-Satz des früheren Seitenkopfs — wörtlich, am Fuß. */}
@@ -771,126 +571,133 @@ export function PrognosePage(props: {
   );
 }
 
-function ChallengerCard({
+/**
+ * **Ein lernender Kandidat als V5-ZEILE** (Konzept §4.5, Karte 4).
+ *
+ * Name 16/600 links, rechts der Fortschritt in Tabellenziffern („14 / 21" beim
+ * Sammeln, „1 / 2" beim Rechnen), darunter die eine Aussage („sammelt Daten",
+ * „in 1 von 2 Bewertungen genauer"). Alles Weitere — Trainingsstand,
+ * Merkmalsgewichte und der BELEG der Bewertungen — liegt im Aufklapper.
+ *
+ * ⚠ **Der Schalter bleibt in BEIDEN Zuständen sichtbar**, auch gesperrt.
+ *   Das Konzept notiert „Knopf ‚Übernehmen‘ nur wenn möglich"; die geprüfte
+ *   Zusage dieses Schreibpfads ist aber „ein gesperrter Knopf MIT Grund ist die
+ *   ehrliche Antwort auf ‚warum kann ich nicht?‘" (`PrognoseSchalter.test.tsx`).
+ *   Der Knopf wechselt deshalb nur die Größe (44 px), nicht sein Verhalten.
+ */
+function KandidatZeileKarte({
   state,
   accuracy,
   activeModel,
+  stand,
   onPromote,
 }: {
   state: ForecastModelState;
   accuracy: ForecastAccuracyPoint[];
   activeModel: ForecastModelId;
+  /** Die eine Aussage aus `kandidatenZeilen` — die Fläche formuliert sie nicht neu. */
+  stand: string;
   onPromote: () => void;
 }) {
   const collecting = state.status === 'collecting';
   const record = skillBilanz(accuracy, state.model);
   const zeilen = bewertungsListe(accuracy, state.model, activeModel);
-  const progress =
-    collecting && state.daysCollected != null && state.daysRequired
-      ? Math.min(100, Math.round((state.daysCollected / state.daysRequired) * 100))
+  const gesammelt = state.daysCollected ?? 0;
+  const noetig = state.daysRequired ?? 21;
+  const progress = collecting ? Math.min(100, Math.round((gesammelt / noetig) * 100)) : null;
+  // Der WERT rechts ist der Fortschritt — beim Sammeln gegen die nötigen Tage,
+  // beim Rechnen die Bilanz. Ohne Bewertung steht dort „—" statt einer 0.
+  const wert = collecting
+    ? `${gesammelt}${NBSP}/${NBSP}${noetig}`
+    : record
+      ? `${record.besser}${NBSP}/${NBSP}${record.gesamt}`
       : null;
 
   return (
-    <div
-      style={{
-        border: '1px solid var(--vp-border)',
-        borderRadius: 'var(--vp-radius-md)',
-        padding: 'var(--vp-space-4)',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--vp-space-2)', flexWrap: 'wrap' }}>
-        <strong>{modelLabel(state.model)}</strong>
-        {collecting ? (
-          <Badge variant="warn" dot>
-            sammelt Daten
-          </Badge>
-        ) : (
-          <Badge variant="tint" dot>
-            rechnet mit
-          </Badge>
-        )}
-        <span className="vp-muted" style={{ fontSize: 'var(--vp-text-sm)' }}>
-          {KIND_LABELS[state.kind]}
-        </span>
-      </div>
+    <div className="vp-pq-kandidat-block">
+      <VerlaufLedger
+        label={`Kandidat ${KIND_LABELS[state.kind]}`}
+        zeilen={[
+          {
+            id: state.model,
+            name: modelLabel(state.model),
+            wert,
+            // ⚠ Art und Stand stehen in EIGENEN Elementen: „in 1 von 1
+            //   Bewertung genauer" ist der Satz, den `kandidatenZeilen`
+            //   formuliert — in einer zusammengesetzten Zeichenkette wäre er
+            //   für Leser und Test nicht mehr als GANZES auffindbar.
+            sekundaer: (
+              <>
+                <span>{KIND_LABELS[state.kind]}</span>
+                {' · '}
+                <span>{stand}</span>
+              </>
+            ),
+          },
+        ]}
+      />
+      {progress != null && (
+        <div
+          className="vp-pq-fortschritt"
+          role="progressbar"
+          aria-valuenow={progress}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Datensammlung ${progress} %`}
+        >
+          <span style={{ width: `${progress}%` }} />
+        </div>
+      )}
 
-      {collecting ? (
-        <>
-          <p style={{ margin: 'var(--vp-space-3) 0 var(--vp-space-2)' }}>
-            Sammelt Daten: Tag {state.daysCollected ?? 0} von {state.daysRequired ?? 21}.
-          </p>
-          {progress != null && (
-            <div
-              role="progressbar"
-              aria-valuenow={progress}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={`Datensammlung ${progress} %`}
-              style={{
-                height: 6,
-                borderRadius: 3,
-                background: 'var(--vp-border)',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  width: `${progress}%`,
-                  height: '100%',
-                  background: 'var(--vp-action)',
-                }}
-              />
-            </div>
-          )}
-          <p className="vp-note" style={{ marginTop: 'var(--vp-space-2)' }}>
-            Das ist normal: Ein lernendes Modell trainiert erst nach 21 vollständigen
+      <Aufklapper titel={collecting ? 'Warum sammelt er noch?' : 'Wie gut rechnet er mit?'}>
+        {collecting ? (
+          <p className="vp-c-note" style={{ marginTop: 0 }}>
+            Das ist normal: Ein lernendes Modell trainiert erst nach {noetig} vollständigen
             Messtagen. Bis dahin sammelt es nur Daten und gibt bewusst keine Prognose ab.
             Danach erstellt es automatisch eigene Vorhersagen und wird täglich gegen das
             aktive Modell bewertet.
           </p>
-        </>
-      ) : (
-        <>
-          <p style={{ margin: 'var(--vp-space-3) 0 var(--vp-space-1)' }}>
-            {record
-              ? `In ${record.besser} der letzten ${record.gesamt} ${
-                  record.gesamt === 1 ? 'Bewertung' : 'Bewertungen'
-                } genauer als das aktive Modell.`
-              : 'Rechnet mit - die erste Tagesbewertung folgt nach dem nächsten vollen Tag.'}
-          </p>
-          {/* Der BELEG zu genau dieser Zahl - dieselben Tage, aufklappbar. */}
-          <BewertungsBeleg zeilen={zeilen} />
-          <p className="vp-muted" style={{ margin: '0 0 var(--vp-space-2)', fontSize: 'var(--vp-text-sm)' }}>
-            {state.trainedAt
-              ? `Zuletzt trainiert am ${new Date(state.trainedAt).toLocaleDateString('de-DE', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                })}` +
-                (state.trainRows
-                  ? ` mit ${state.trainRows.toLocaleString('de-DE')} Messwerten.`
-                  : '.')
-              : 'Noch nicht trainiert.'}
-          </p>
-          {state.featureImportance.length > 0 && (
-            <>
-              <p style={{ margin: 'var(--vp-space-2) 0 var(--vp-space-1)', fontWeight: 600, fontSize: 'var(--vp-text-sm)' }}>
-                {MERKMALE_EINLEITUNG}
-              </p>
-              <ul style={{ margin: 0, paddingLeft: 'var(--vp-space-5)' }}>
-                {state.featureImportance.slice(0, 5).map((fi) => (
-                  <li key={fi.feature} style={{ fontSize: 'var(--vp-text-sm)' }}>
-                    {fi.label}{' '}
-                    <span className="vp-muted">
-                      ({Math.round(fi.weight * 100).toLocaleString('de-DE')}{NBSP}%)
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </>
-      )}
+        ) : (
+          <>
+            <p className="vp-c-note" style={{ marginTop: 0 }}>
+              {record
+                ? `In ${record.besser} der letzten ${record.gesamt} ${
+                    record.gesamt === 1 ? 'Bewertung' : 'Bewertungen'
+                  } genauer als das aktive Modell.`
+                : 'Rechnet mit - die erste Tagesbewertung folgt nach dem nächsten vollen Tag.'}
+            </p>
+            <p className="vp-c-note">
+              {state.trainedAt
+                ? `Zuletzt trainiert am ${new Date(state.trainedAt).toLocaleDateString('de-DE', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                  })}` +
+                  (state.trainRows
+                    ? ` mit ${state.trainRows.toLocaleString('de-DE')} Messwerten.`
+                    : '.')
+                : 'Noch nicht trainiert.'}
+            </p>
+            {state.featureImportance.length > 0 && (
+              <>
+                <p className="vp-c-note">{MERKMALE_EINLEITUNG}</p>
+                <ul className="vp-pq-merkmale">
+                  {state.featureImportance.slice(0, 5).map((fi) => (
+                    <li key={fi.feature}>
+                      {fi.label} ({Math.round(fi.weight * 100).toLocaleString('de-DE')}
+                      {NBSP}%)
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        )}
+      </Aufklapper>
+
+      {/* Der BELEG zu genau dieser Zahl - dieselben Tage, aufklappbar. */}
+      <BewertungsBeleg zeilen={zeilen} />
+
       {/* Der Schalter - in BEIDEN Zuständen, denn ein gesperrter Knopf MIT
           Grund ist die ehrliche Antwort auf „warum kann ich nicht?". */}
       <UebernahmeAktion
@@ -911,52 +718,43 @@ function ChallengerCard({
  * gespeicherten Vergleich - die Fläche belegt, sie rechnet nicht nach. Die
  * Metrik steht ausgeschrieben darüber: „Ø Abweichung je Tag (kW)", nie eine
  * erfundene „Genauigkeit in %".
+ *
+ * ⚠ **Seit P7 eine LISTE, keine Tabelle** (V7): vier Spalten aus Datum und drei
+ *   Werten standen bei 375 px nebeneinander; die Liste trägt dieselben Zahlen
+ *   in der Ledger-Form, die der ganze Bereich spricht.
  */
 function BewertungsBeleg({ zeilen }: { zeilen: BewertungsZeile[] }) {
   if (zeilen.length === 0) return null;
   return (
-    <details className="vp-pq-beleg">
-      <summary>
-        <Icon name="chevron-down" size={14} />
-        Die letzten {zeilen.length} Bewertungen ansehen
-      </summary>
-      <div className="vp-pq-beleg-body">
-        {/* Der Zähler und die Liste stammen aus DENSELBEN Zeilen - hier stehen
-            sie nebeneinander, damit man das sehen kann. */}
-        <p style={{ margin: '0 0 var(--vp-space-1)', fontWeight: 600 }}>
-          {bewertungsBilanzSatz(zeilen)}
-        </p>
-        <p className="vp-note" style={{ marginTop: 0 }}>{BEWERTUNG_METRIK}</p>
-        <table className="vp-pq-beleg-tabelle">
-          <thead>
-            <tr>
-              <th scope="col">Tag</th>
-              <th scope="col">Kandidat</th>
-              <th scope="col">Aktiv</th>
-              <th scope="col">Näher dran</th>
-            </tr>
-          </thead>
-          <tbody>
-            {zeilen.map((z) => (
-              <tr key={z.day}>
-                <td>{z.datum}</td>
-                <td>{kw(z.kandidatMae)}</td>
-                <td>{z.aktivMae == null ? '—' : kw(z.aktivMae)}</td>
-                <td>
-                  {z.gewinner === 'kandidat' ? (
-                    <span className="vp-pq-sieg">Kandidat</span>
-                  ) : z.gewinner === 'aktiv' ? (
-                    <span className="vp-muted">aktives Modell</span>
-                  ) : (
-                    <span className="vp-muted">gleichauf</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </details>
+    <Aufklapper titel={`Die letzten ${zeilen.length} Bewertungen ansehen`}>
+      {/* Der Zähler und die Liste stammen aus DENSELBEN Zeilen - hier stehen
+          sie nebeneinander, damit man das sehen kann. */}
+      <p className="vp-c-note" style={{ marginTop: 0 }}>
+        {bewertungsBilanzSatz(zeilen)}
+      </p>
+      <p className="vp-c-note">{BEWERTUNG_METRIK}</p>
+      <ul className="vp-pq-beleg-liste">
+        {zeilen.map((z) => (
+          <li key={z.day}>
+            <span className="vp-pq-beleg-tag">{z.datum}</span>
+            <span className="vp-pq-beleg-werte">
+              Kandidat {kw(z.kandidatMae)} · aktiv{' '}
+              {z.aktivMae == null ? '—' : kw(z.aktivMae)}
+            </span>
+            <span className="vp-pq-beleg-sieger">
+              Näher dran:{' '}
+              {z.gewinner === 'kandidat' ? (
+                <span className="vp-pq-sieg">Kandidat</span>
+              ) : z.gewinner === 'aktiv' ? (
+                'aktives Modell'
+              ) : (
+                'gleichauf'
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Aufklapper>
   );
 }
 
@@ -965,6 +763,9 @@ function BewertungsBeleg({ zeilen }: { zeilen: BewertungsZeile[] }) {
  * gilt nur für sie), und nennt seinen Einwand VOR dem Klick (die
  * `applyView`-Disziplin). Der Dialog dahinter gehört der Seite, damit es genau
  * einen gibt.
+ *
+ * ⚠ **Beschriftung, Einwand und Rückfrage sind unverändert** (P7 fasst diesen
+ *   Kunden-Schreibpfad nur in der FORM an): 44 px hoch, Outline, Grund daneben.
  */
 function UebernahmeAktion({
   state,
@@ -981,7 +782,7 @@ function UebernahmeAktion({
       <Button variant="outline" size="sm" onClick={onClick} disabled={knopf.grund != null}>
         {knopf.label}
       </Button>
-      {knopf.grund && <span className="vp-note">{knopf.grund}</span>}
+      {knopf.grund && <span className="vp-c-note">{knopf.grund}</span>}
     </div>
   );
 }

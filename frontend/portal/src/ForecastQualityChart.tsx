@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ForecastAccuracyPoint, ForecastModelId } from './api';
 import {
   AXIS,
@@ -56,6 +57,23 @@ export function ForecastQualityChart({
   );
   /** Der EINE Kandidat der Prognoseart (mehr als einen gibt es nicht). */
   const kandidat = models.find((m) => m !== activeModel) ?? null;
+  const etikettVon = (model: ForecastModelId) => modelLabels[model] ?? model;
+
+  /**
+   * **E7 · die Legende ist der Schalter** (Captain-Entscheid 03.09.2026,
+   * wörtlich: „Tooltip + Legenden-Schalter, KEIN Zoom durch Ziehen am
+   * Telefon"; Paket P7).
+   *
+   * Am Touch gibt es keinen Hover, also braucht das Bild eine Handlung, die
+   * eine Reihe isoliert — sie ist die Legende. Der Zustand liegt HIER und
+   * nicht in der Legende, weil das Bild ihn genauso braucht: eine
+   * ausgeblendete Reihe zeichnet nichts, und die Verbesserungs-Fläche
+   * zwischen den Kurven verschwindet mit ihr (sie behauptete sonst einen
+   * Abstand zu einer Kurve, die niemand sieht).
+   */
+  const [aus, setAus] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const sichtbar = (model: ForecastModelId | null) =>
+    model != null && !aus.has(etikettVon(model));
 
   const ref = useEChart(
     (chart, width) => {
@@ -63,7 +81,9 @@ export function ForecastQualityChart({
       const days = [...new Set(points.map((p) => p.day))].sort();
       const byKey = new Map(points.map((p) => [`${p.model}|${p.day}`, p.maeKw]));
       const reihe = (model: ForecastModelId | null) =>
-        model == null ? days.map(() => null) : days.map((d) => byKey.get(`${model}|${d}`) ?? null);
+        model == null || !sichtbar(model)
+          ? days.map(() => null)
+          : days.map((d) => byKey.get(`${model}|${d}`) ?? null);
 
       const aktivWerte = reihe(activeModel);
       // Der obere Polaritäts-Anker haengt am hoechsten GEZEICHNETEN Wert. Ein
@@ -259,7 +279,7 @@ export function ForecastQualityChart({
         true,
       );
     },
-    [points, modelLabels, activeModel, kandidat],
+    [points, modelLabels, activeModel, kandidat, aus],
   );
 
   const legend: LegendItem[] = models.map((model) => ({
@@ -271,8 +291,33 @@ export function ForecastQualityChart({
 
   return (
     <div>
-      <ChartLegend items={legend} />
-      <div ref={ref} className="vp-chart compact" />
+      {/* V6 · die Reihenfolge IST die Aussage: Kernsatz → BILD → Legende. Bis
+          P7 stand die Legende ÜBER dem Bild und schob es bei 375 px unter die
+          Falz.
+
+          ⚠ Der Rahmen ist der GETEILTE `.vp-c-bild`/`.vp-c-bild-legende` aus
+            P3 (`components/VerlaufLedger.css`) — er trägt die Chip-Form der
+            Skala und das 44-px-Overlay des Schalters. Ohne ihn stünde die
+            Legende als einziges Element der Karte in der Anzeigeschrift
+            (Inter Tight 14/12, bei 375 px gemessen). */}
+      <div ref={ref} className="vp-chart compact vp-c-bild" />
+      <div className="vp-c-bild-legende">
+      <ChartLegend
+        items={legend}
+        hidden={aus}
+        onToggle={(label) =>
+          setAus((vorher) => {
+            const naechste = new Set(vorher);
+            // ⚠ Die LETZTE sichtbare Reihe bleibt an: ein leeres Bild ist
+            //   keine Auskunft, und der Weg zurück wäre nicht mehr sichtbar.
+            if (!naechste.has(label) && naechste.size + 1 >= legend.length) return vorher;
+            if (naechste.has(label)) naechste.delete(label);
+            else naechste.add(label);
+            return naechste;
+          })
+        }
+      />
+      </div>
     </div>
   );
 }

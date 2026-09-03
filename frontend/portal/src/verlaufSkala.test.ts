@@ -85,7 +85,7 @@ const BLAETTER: ReadonlyArray<{
   // 0,74-rem-Wortzeile lebt als Ledger-Zeile (16 px) in der Karte.
   { reiter: 'Marktpreise', datei: 'components/Marktpreise.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Marktpreise', datei: 'components/StrompreisStrip.css', fs: 12, ff: 0, fw: 1 },
-  { reiter: 'Prognose', datei: 'pages/Prognose.css', fs: 10, ff: 0, fw: 0 },
+  { reiter: 'Prognose', datei: 'pages/Prognose.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Wetter', datei: 'WeatherChart.css', fs: 3, ff: 0, fw: 0 },
   { reiter: 'Nachbar', datei: 'components/Fahrplan.css', fs: 41, ff: 3, fw: 1 },
 ];
