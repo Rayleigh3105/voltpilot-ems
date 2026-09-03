@@ -293,8 +293,15 @@ export function ForecastQualityChart({
     <div>
       {/* V6 · die Reihenfolge IST die Aussage: Kernsatz → BILD → Legende. Bis
           P7 stand die Legende ÜBER dem Bild und schob es bei 375 px unter die
-          Falz. */}
-      <div ref={ref} className="vp-chart compact" />
+          Falz.
+
+          ⚠ Der Rahmen ist der GETEILTE `.vp-c-bild`/`.vp-c-bild-legende` aus
+            P3 (`components/VerlaufLedger.css`) — er trägt die Chip-Form der
+            Skala und das 44-px-Overlay des Schalters. Ohne ihn stünde die
+            Legende als einziges Element der Karte in der Anzeigeschrift
+            (Inter Tight 14/12, bei 375 px gemessen). */}
+      <div ref={ref} className="vp-chart compact vp-c-bild" />
+      <div className="vp-c-bild-legende">
       <ChartLegend
         items={legend}
         hidden={aus}
@@ -310,6 +317,7 @@ export function ForecastQualityChart({
           })
         }
       />
+      </div>
     </div>
   );
 }

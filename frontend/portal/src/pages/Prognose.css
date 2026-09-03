@@ -33,6 +33,13 @@
    Größe: 44 px Trefferfläche wie jeder andere Knopf des Bereichs. */
 .vp-pq-aktion .vp-btn {
   min-height: 44px;
+  /* ⚠ Ausdrücklich, nicht geerbt: `.vp-btn--sm` setzt in der Haus-Bibliothek
+     die Anzeigeschrift (Inter Tight 14,4 px). Ohne diese zwei Zeilen stünde
+     der Knopf als EINZIGES Element der Karte in einer zweiten Familie und
+     einer Größe neben der Skala (bei 375 px gemessen) — dieselbe Klippe wie
+     bei der Legende. Beschriftung und Verhalten bleiben unberührt. */
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-c-fs-14, 14px);
 }
 
 .vp-pq-aktion .vp-c-note {
