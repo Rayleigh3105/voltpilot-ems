@@ -20,6 +20,7 @@ import { VpPicker } from './VpPicker';
 import type { HistoryCoverage, HistoryRange } from '../api';
 import { vergleichName } from '../chartCopy';
 import { useIsPhone } from '../useIsPhone';
+import { useScrolledPast } from '../useScrolledPast';
 import {
   PROVENIENZ,
   type Provenienz,
@@ -122,6 +123,230 @@ export function WeltKopf({ welt }: { welt: Welt }) {
     <h1 className="vp-sr-only">
       {welt.label} — {PROVENIENZ[welt.badge].label}
     </h1>
+  );
+}
+
+/**
+ * **Die geteilte Zeit-Leiste: EIN Rahmen für alle sechs Verlauf-Reiter**
+ * (Konzept `vp-verlauf-sprache-konzept-v5` §3.2 V3, Paket P1).
+ *
+ * Vorher gab es DREI Zeitraum-Bedienungen und drei Reiter ganz ohne (Befund
+ * B2): `ZeitLeiste` (Messwerte/Erlöse), die alte `.vp-seg` in einem zweiten
+ * `vp-page-head` (Marktpreise) — und Lastspitzen/Prognose/Wetter hatten keine.
+ * Dieser Rahmen ist der EINE Wirt; die Reiter füllen ihn nur mit ihren
+ * Bedienelementen (`ZeitSegment`, `ZeitBlaetterer`), sie bauen ihn nicht nach.
+ *
+ * ⚠ **Er KLEBT am Telefon und kollabiert dabei auf die erste Zeile**
+ * (Captain-Entscheid E4 b2, 03.09.2026, wörtlich: „b2) klebend, beim Scrollen
+ * auf die Segment-Zeile (58 px) kollabiert"). Das löst den Widerspruchs-Kasten
+ * W1 auf: die frühere Festlegung „am Telefon NICHT klebend" (E3 aus `u3`) gilt
+ * für den Verlauf — und damit auch für die Erlöse-Seite — nicht mehr. Ohne
+ * Kleben war der Zeitraum ab der ersten Karte (345 px) nicht mehr erreichbar;
+ * mit zwei dauerhaft klebenden Zeilen (108 px) wäre das Bild kleiner geworden.
+ *
+ * ⚠ **Der Kollaps hängt an einem 1-px-WÄCHTER über der Leiste, nicht an einem
+ * Scroll-Ereignis je Bild.** Ein `scroll`-Listener rechnete auf jedem Frame und
+ * flackerte an der Umschaltschwelle; der `IntersectionObserver` feuert genau
+ * zweimal je Richtung. Verlässt der Wächter das Bild, klebt die Leiste ⇒ zweite
+ * Zeile weg; kommt er zurück, ist man wieder oben ⇒ zwei Zeilen.
+ *
+ * ⚠ **Die HÖHE wird NICHT animiert.** Eine Höhen-Transition auf einem
+ * klebenden Element schiebt den Inhalt darunter für die Dauer der Bewegung —
+ * genau der Layout-Sprung, den das Kleben verhindern soll. Bewegt werden nur
+ * Deckkraft und ein 4-px-Versatz der zweiten Zeile (`--vp-c-motion`), und unter
+ * `prefers-reduced-motion` gar nichts (Regel in `Historie.css`).
+ */
+export function ZeitLeisteRahmen({
+  zeile1,
+  zeile2,
+  mobil,
+  className,
+  children,
+}: {
+  /** Die IMMER sichtbare Zeile (Segment bzw. Blätterer) — sie bleibt beim Kollaps. */
+  zeile1: ReactNode;
+  /** Die zweite Zeile am Telefon; am Schreibtisch steht sie in DERSELBEN Zeile. */
+  zeile2?: ReactNode;
+  /** Ohne `mobil` rendert der Rahmen die Schreibtisch-Fassung (eine 58-px-Zeile). */
+  mobil: boolean;
+  className?: string;
+  /** Was NACH der Leiste im selben Fragment steht (Blatt/Popover). */
+  children?: ReactNode;
+}) {
+  // ⚠ Der Wächter hängt an `useScrolledPast` — dem HAUS-Haken für genau diese
+  // Frage (Mobil-Umbau Stufe 2). Er bringt zwei Lehren mit, die eine eigene
+  // Fassung hier neu bezahlen müsste: die Anbindung ist ein CALLBACK-Ref (ein
+  // Effekt auf `ref.current` liefe gegen `null`, solange die Leiste noch lädt —
+  // im Browser genau so aufgefallen), und er zählt nur ein Hinausscrollen nach
+  // OBEN. Ohne `IntersectionObserver` (jsdom) bleibt er `false`: dann kollabiert
+  // nichts, statt dass etwas kollabiert, das niemand ausgelöst hat.
+  const [wache, klebt] = useScrolledPast<HTMLDivElement>(mobil && zeile2 != null);
+
+  if (mobil) {
+    return (
+      <>
+        {/* Der 1-px-Wächter: er steht IM Fluss über der Leiste und sagt allein
+            durch sein Verschwinden, dass die Leiste klebt. */}
+        <div ref={wache} className="vp-zl-wache" aria-hidden="true" />
+        <div
+          className={`vp-zeitleiste vp-zeitleiste-mobil${className ? ` ${className}` : ''}`}
+          data-kollabiert={klebt && zeile2 ? 'ja' : undefined}
+        >
+          <div className="vp-zl-row vp-zl-row-1">{zeile1}</div>
+          {zeile2 && <div className="vp-zl-row vp-zl-row-2">{zeile2}</div>}
+        </div>
+        {children}
+      </>
+    );
+  }
+
+  return (
+    <div className={`vp-zeitleiste${className ? ` ${className}` : ''}`}>
+      <div className="vp-zl-row">
+        {zeile1}
+        {zeile2}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Das Zeitraum-SEGMENT der Leiste — die 44-px-Bahn, die auf allen sechs Reitern
+ * gleich aussieht. Generisch über den Wert, damit Marktpreise (Zeiträume) und
+ * Prognose (Bewertungsfenster) DIESELBE Bedienung tragen statt zweier eigener.
+ */
+export function ZeitSegment<T extends string>({
+  label,
+  optionen,
+  wert,
+  onWert,
+}: {
+  label: string;
+  optionen: readonly { id: T; label: string }[];
+  wert: T;
+  onWert: (w: T) => void;
+}) {
+  return (
+    <div className="vp-seg" role="tablist" aria-label={label}>
+      {optionen.map((o) => (
+        <button
+          key={o.id}
+          role="tab"
+          aria-selected={wert === o.id}
+          className={wert === o.id ? 'active' : ''}
+          onClick={() => onWert(o.id)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Der BLÄTTERER der Leiste — ‹ Zeitraum › (+ „Heute", wo es einen gibt).
+ *
+ * ⚠ Der Sprung-Knopf heißt bewusst NICHT überall „Heute": auf Lastspitzen
+ * blättert man über Abrechnungsperioden, dort ist „Aktuelle Periode" die
+ * ehrliche Beschriftung. Ohne `onJetzt` gibt es ihn gar nicht — ein Knopf, der
+ * nichts anspringen kann, wäre ein Versprechen ohne Deckung.
+ */
+export function ZeitBlaetterer({
+  label,
+  onZurueck,
+  onVor,
+  zurueckDisabled,
+  vorDisabled,
+  jetztLabel,
+  onJetzt,
+  extra,
+}: {
+  label: string;
+  onZurueck: () => void;
+  onVor: () => void;
+  zurueckDisabled?: boolean;
+  vorDisabled?: boolean;
+  jetztLabel?: string;
+  onJetzt?: () => void;
+  extra?: ReactNode;
+}) {
+  return (
+    <div className="vp-period-nav">
+      <button
+        type="button"
+        className="step"
+        aria-label="Vorheriger Zeitraum"
+        disabled={zurueckDisabled}
+        onClick={onZurueck}
+      >
+        <Icon name="chevron-left" size={18} />
+      </button>
+      <span className="label">{label}</span>
+      <button
+        type="button"
+        className="step"
+        aria-label="Nächster Zeitraum"
+        disabled={vorDisabled}
+        onClick={onVor}
+      >
+        <Icon name="chevron-right" size={18} />
+      </button>
+      {onJetzt && (
+        <button type="button" className="step" onClick={onJetzt}>
+          {jetztLabel ?? 'Heute'}
+        </button>
+      )}
+      {extra}
+    </div>
+  );
+}
+
+/**
+ * Der unsichtbare Seitenkopf der vier Reiter, die bis P1 einen SICHTBAREN
+ * trugen (`SUB_PAGES` in `AnlagenPage`, Befund B1): sein Titel + Lead-Absatz
+ * standen ÜBER den Bereichs-Reitern und schoben sie von 140 auf 287/316 px —
+ * die Reiterleiste sprang also bei jedem Reiterwechsel.
+ *
+ * Es ist wörtlich die Form von {@link WeltKopf}: eine `h1` für die
+ * Dokumentstruktur und für Screenreader, 0 px auf der Fläche. Was der Kopf
+ * SAGTE, sagen die Reiter darüber; der Lead-Satz lebt in {@link VerlaufFuss}
+ * weiter — er ist Nachschlage-Text, kein Scrollweg-Inhalt.
+ */
+export function VerlaufKopf({ titel }: { titel: string }) {
+  return <h1 className="vp-sr-only">{titel}</h1>;
+}
+
+/**
+ * Die Fußzeile der vier Reiter: der frühere Lead-Satz als Aufklapper, in der
+ * Form von {@link WeltFuss}. Am Schreibtisch als ruhige Karte, am Telefon
+ * zugeklappt — er kostet dort eine Zeile statt eines Absatzes.
+ *
+ * ⚠ Der Satz wird WÖRTLICH übernommen. Er ist Kunden-Sprache und war die
+ * einzige Stelle, an der die Fläche sagt, was sie überhaupt zeigt; ihn beim
+ * Entfernen des Seitenkopfs zu verlieren wäre kein Aufräumen, sondern ein
+ * Verlust.
+ */
+export function VerlaufFuss({ titel, text }: { titel?: string; text: string }) {
+  const isPhone = useIsPhone();
+  const [open, setOpen] = useState(false);
+  const kopf = titel ?? 'Was diese Zahlen zeigen';
+
+  if (isPhone) {
+    return (
+      <WeltDisclosure titel={kopf} open={open} onToggle={() => setOpen((o) => !o)}>
+        <p className="vp-welt-fusstext">{text}</p>
+      </WeltDisclosure>
+    );
+  }
+
+  return (
+    <section className="vp-section">
+      <Card padding="lg" radius="lg" className="vp-welt-fuss">
+        <b>{kopf}</b>
+        <p>{text}</p>
+      </Card>
+    </section>
   );
 }
 
@@ -432,54 +657,28 @@ export function ZeitLeiste({
   const chip = vergleichsChip(anchor, range, vergleich ?? 'aus');
 
   const blaetterer = (
-    <div className="vp-period-nav">
-      <button
-        type="button"
-        className="step"
-        aria-label="Vorheriger Zeitraum"
-        onClick={() => onAnchor(shiftAnchor(anchor, range, -1))}
-      >
-        <Icon name="chevron-left" size={18} />
-      </button>
-      <span className="label">{periodLabel(anchor, range)}</span>
-      <button
-        type="button"
-        className="step"
-        aria-label="Nächster Zeitraum"
-        disabled={nextDisabled}
-        onClick={() => onAnchor(shiftAnchor(anchor, range, 1))}
-      >
-        <Icon name="chevron-right" size={18} />
-      </button>
-      <button type="button" className="step" onClick={() => onAnchor(new Date())}>
-        Heute
-      </button>
-      {!isPhone && (
-        <Sprungfeld
-          range={range}
-          anchor={anchor}
-          now={now}
-          coverage={coverage}
-          onAnchor={onAnchor}
-        />
-      )}
-    </div>
+    <ZeitBlaetterer
+      label={periodLabel(anchor, range)}
+      onZurueck={() => onAnchor(shiftAnchor(anchor, range, -1))}
+      onVor={() => onAnchor(shiftAnchor(anchor, range, 1))}
+      vorDisabled={nextDisabled}
+      onJetzt={() => onAnchor(new Date())}
+      extra={
+        !isPhone ? (
+          <Sprungfeld
+            range={range}
+            anchor={anchor}
+            now={now}
+            coverage={coverage}
+            onAnchor={onAnchor}
+          />
+        ) : undefined
+      }
+    />
   );
 
   const perioden = (
-    <div className="vp-seg" role="tablist" aria-label="Zeitraum">
-      {PERIOD_RANGES.map((r) => (
-        <button
-          key={r.id}
-          role="tab"
-          aria-selected={range === r.id}
-          className={range === r.id ? 'active' : ''}
-          onClick={() => onRange(r.id)}
-        >
-          {r.label}
-        </button>
-      ))}
-    </div>
+    <ZeitSegment label="Zeitraum" optionen={PERIOD_RANGES} wert={range} onWert={onRange} />
   );
 
   const schalter = onVergleich ? (
@@ -501,9 +700,10 @@ export function ZeitLeiste({
    */
   if (isPhone) {
     return (
-      <>
-        <div className="vp-zeitleiste vp-zeitleiste-mobil">
-          <div className="vp-zl-row vp-zl-row-1">
+      <ZeitLeisteRahmen
+        mobil
+        zeile1={
+          <>
             {perioden}
             <button
               type="button"
@@ -514,8 +714,10 @@ export function ZeitLeiste({
             >
               <Icon name="more-horizontal" size={18} />
             </button>
-          </div>
-          <div className="vp-zl-row vp-zl-row-2">
+          </>
+        }
+        zeile2={
+          <>
             {blaetterer}
             {chip && (
               <button
@@ -527,8 +729,9 @@ export function ZeitLeiste({
                 {chip}
               </button>
             )}
-          </div>
-        </div>
+          </>
+        }
+      >
         {blattOffen && (
           <ZeitBlatt onClose={() => setBlattOffen(false)}>
             <div className="vp-zl-blatt-feld">
@@ -545,7 +748,7 @@ export function ZeitLeiste({
             <AbdeckungZeile coverage={coverage} stale={stale} />
           </ZeitBlatt>
         )}
-      </>
+      </ZeitLeisteRahmen>
     );
   }
 
@@ -563,11 +766,13 @@ export function ZeitLeiste({
   const hatPopInhalt = streifen || schalter != null || abdeckungView(coverage) != null;
 
   return (
-    <div className="vp-zeitleiste">
-      <div className="vp-zl-row">
-        {perioden}
-        {blaetterer}
-        {chip && (
+    <ZeitLeisteRahmen
+      mobil={false}
+      zeile1={
+        <>
+          {perioden}
+          {blaetterer}
+          {chip && (
           <button
             type="button"
             className="vp-zl-chip"
@@ -588,7 +793,9 @@ export function ZeitLeiste({
             <Icon name="more-horizontal" size={18} />
           </button>
         )}
-      </div>
+        </>
+      }
+    >
       {blattOffen && hatPopInhalt && (
         <ZeitPopover onClose={() => setBlattOffen(false)}>
           {streifen && (
@@ -607,7 +814,7 @@ export function ZeitLeiste({
           <AbdeckungZeile coverage={coverage} stale={stale} />
         </ZeitPopover>
       )}
-    </div>
+    </ZeitLeisteRahmen>
   );
 }
 

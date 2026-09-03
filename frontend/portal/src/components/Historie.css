@@ -1323,16 +1323,76 @@
   padding: 0;
 }
 
-/* --- Telefon: zwei Zeilen, und sie kleben NICHT -------------------------- */
+/* --- Telefon: klebend, beim Scrollen auf die Segment-Zeile kollabiert ----
+   (Captain-Entscheid E4 b2, 03.09.2026, wörtlich: „b2) klebend, beim Scrollen
+   auf die Segment-Zeile (58 px) kollabiert" — Konzept
+   `vp-verlauf-sprache-konzept-v5` §6 E4, Auflösung des Kastens W1).
+
+   ⚠ Das ERSETZT die frühere Regel `position: static` an genau dieser Stelle.
+   Sie kam aus E3 (`u3` §3.5) — „am Telefon zwei Zeilen, nicht klebend über die
+   Karte hinaus", weil zwei dauerhaft klebende Zeilen 108 px = 13 % der
+   812-px-Höhe kosten. Gemessen war der Preis dafür aber höher: ab der ersten
+   Karte (345 px) war der Zeitraum gar nicht mehr erreichbar. b2 hält beide
+   Anliegen — klebend, aber nur die 58 px der ersten Zeile, sobald gescrollt
+   wird. Die Festlegung „nicht klebend" gilt für den Verlauf nicht mehr, die
+   Erlöse-Seite eingeschlossen. */
 
 @media (max-width: 720px) {
   .vp-zeitleiste-mobil {
-    /* §3.5: „am Telefon zwei Zeilen, 112 px, nicht klebend über die Karte
-       hinaus". Gemessen klebten dort 184 px = 23 % des Bildschirms — auf
-       einem Telefon ist das der Preis für eine Bedienung, die man ein-, zweimal
-       je Sitzung braucht. */
-    position: static;
-    top: auto;
+    position: sticky;
+    /* ⚠ EIN Knopf für die Schale. Heute klebt nur die 68-px-Kopfzeile
+       (`index.css` `.vp-topbar`), die Bereichs-Reiter stehen im Fluss. Nimmt
+       der Schalen-Kasten S1 sie mit ins Kleben, setzt er hier `112px` — und
+       muss diese Datei nicht anfassen. */
+    top: var(--vp-zeitleiste-top, 68px);
+  }
+
+  /* Der 1-px-Wächter ÜBER der Leiste: er sagt allein durch sein Verschwinden,
+     dass die Leiste klebt (`ZeitLeisteRahmen` → `useScrolledPast`). Er darf
+     NICHT `display: none` sein — ein Knoten ohne Kasten schneidet nie den
+     Viewport, und der Wächter feuerte nie. Der negative Rand hält seine
+     Anwesenheit bei 0 px Layout-Wirkung. */
+  .vp-zl-wache {
+    height: 1px;
+    margin-bottom: -1px;
+    pointer-events: none;
+  }
+
+  /* Kollabiert: 6 + 44 (Segment) + 6 + 2 (Rahmen) = 58 px — die Rechnung aus
+     P3+P4. Die HÖHE springt bewusst OHNE Übergang: eine animierte Höhe auf
+     einem klebenden Element schöbe den Inhalt darunter für die Dauer der
+     Bewegung, also genau den Layout-Sprung, den das Kleben verhindern soll.
+     Bewegt werden nur Deckkraft und ein 4-px-Versatz der zweiten Zeile. */
+  .vp-zeitleiste-mobil[data-kollabiert='ja'] > .vp-zl-row-2 {
+    height: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  /* Der Zeilen-Abstand gehört der LEISTE (`gap`), nicht der Zeile — beim
+     Kollaps muss er mit, sonst misst sie 64 statt 58 px. */
+  .vp-zeitleiste-mobil[data-kollabiert='ja'] {
+    gap: 0;
+  }
+
+  .vp-zeitleiste-mobil > .vp-zl-row-2 {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity var(--vp-c-motion, 200ms) var(--vp-ease, ease),
+      transform var(--vp-c-motion, 200ms) var(--vp-ease, ease);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vp-zeitleiste-mobil > .vp-zl-row-2 {
+    transition: none;
   }
 }
 
