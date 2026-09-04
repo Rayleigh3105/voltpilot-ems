@@ -78,15 +78,17 @@ function stub() {
 describe('EigeneAuswertungDialog', () => {
   it('führt in fünf Schritten und lädt den Messwert-Baum erst beim Öffnen', async () => {
     stub();
-    const { getByText, container } = mount();
+    const { getByText } = mount();
     await waitFor(() => expect(getByText('1 · Komponente')).toBeTruthy());
     expect(getByText('2 · Messwert')).toBeTruthy();
     expect(getByText('3 · Kennzahl')).toBeTruthy();
     expect(getByText('4 · Darstellung')).toBeTruthy();
     expect(getByText('5 · Überschrift')).toBeTruthy();
     // Die zwei ARTEN kommen aus dem Katalog, nicht aus dieser Datei.
-    expect(container.textContent).toContain('Eigene Kachel');
-    expect(container.textContent).toContain('Eigener Verlauf');
+    // ⚠ Das Modal rendert seit dem 04.09.2026 nach `document.body` (createPortal),
+    // der Render-Container des Aufrufers ist also leer.
+    expect(document.body.textContent).toContain('Eigene Kachel');
+    expect(document.body.textContent).toContain('Eigener Verlauf');
   });
 
   /** Wählt Komponente + Messwert über die zwei Picker (sie liegen im Portal). */

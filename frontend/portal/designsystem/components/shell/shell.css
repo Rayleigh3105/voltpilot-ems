@@ -1,6 +1,6 @@
 /* ============================================================
    VoltPilot design system - dashboard shell primitives.
-   Styles for NavItem, Drawer and KpiCard plus the tenant context
+   Styles for NavItem, Modal and KpiCard plus the tenant context
    chip and the status checklist. Built ENTIRELY on the shared
    tokens (no new colors/spacings). Import once at the app root,
    after the tokens (see frontend/portal/src/main.tsx).

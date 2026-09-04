@@ -10,7 +10,7 @@ import '../designsystem/tokens/spacing.css';
 import '../designsystem/tokens/effects.css';
 // Core component styles (Button / Card / Skeleton affordance + focus rings).
 import '../designsystem/components/core/core.css';
-// Shell primitives (NavItem / Drawer / KpiCard) styles.
+// Shell primitives (NavItem / Modal / KpiCard) styles.
 import '../designsystem/components/shell/shell.css';
 import './index.css';
 
