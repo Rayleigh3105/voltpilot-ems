@@ -177,17 +177,17 @@ describe('Verlauf P0 · die Skala steht in index.css', () => {
   });
 });
 
-describe('Verlauf P0 · E3.4: EINE Dauer, EINE Stelle an der sie verstummt', () => {
-  it('`--vp-c-motion` steht als Dauer da', () => {
-    expect(/--vp-c-motion:\s*200ms/.test(index)).toBe(true);
-  });
-
-  it('genau EIN prefers-reduced-motion-Block setzt sie auf 0', () => {
-    const bloecke = [
-      ...index.matchAll(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/g),
-    ].filter((m) => /--vp-c-motion/.test(m[1]));
-    expect(bloecke.length, 'die Dauer wird an mehr als einer Stelle abgeschaltet').toBe(1);
-    expect(bloecke[0][1]).toMatch(/--vp-c-motion:\s*0ms/);
+/**
+ * ⚠ SEIT DEM BEWEGUNGS-PROGRAMM P0 ist `--vp-c-motion` ein ALIAS der
+ * Haus-Familie (`--vp-motion-base`), und der EINE Schalter heisst
+ * `--vp-motion-scale`. Die Familie selbst, ihre Registrierung, die Gleichheit
+ * mit `motionPresets.ts` und der EINE `prefers-reduced-motion`-Block werden
+ * deshalb in `src/motionTokens.test.ts` bewacht — hier bleibt nur, was der
+ * VERLAUF zusagt: er nimmt die Haus-Dauer und erfindet keine zweite Kurve.
+ */
+describe('Verlauf P0 · E3.4: EINE Dauer, und sie ist die des Hauses', () => {
+  it('`--vp-c-motion` ist ein Alias von `--vp-motion-base`, kein zweiter Wert', () => {
+    expect(/--vp-c-motion:\s*var\(--vp-motion-base\)/.test(index)).toBe(true);
   });
 
   it('der Verlauf erfindet keine zweite Kurve — die Kurve ist das Haus-Token', () => {
