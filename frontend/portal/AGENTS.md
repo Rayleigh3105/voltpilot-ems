@@ -3466,7 +3466,7 @@ Namen. Fachlogik, Formulare und Texte sind unverändert; es änderte sich nur, W
   Importe ist ein eigenes, rein mechanisches Folgepaket — es hätte den Diff dieser Runde
   verdeckt, in dem es um das VERHALTEN geht.
 
-## Bewegung (Motion-Programm P0 · P6)
+## Bewegung (Motion-Programm P0 · P1 · P3 · P6)
 
 **Spec-Quelle:** firstmate `data/vp-motion-konzept-m1/report.md` §4 (Captain-Entscheid 04.09.2026, E1–E10 = a).
 
@@ -3479,6 +3479,15 @@ Namen. Fachlogik, Formulare und Texte sind unverändert; es änderte sich nur, W
 - **P6 · Zustandswechsel haben zwei Stufen, und die Grenze ist der Auslöser.** Was ein ZEIGER auslöst (Chip-Farbe, Link, Kachel-Rahmen, Hover-Lift) ist Feedback und läuft 120 ms über die benannte Liste `--vp-motion-chrome`; was das SYSTEM umlegt (Schalter, `.vp-stale`, Chevron) ist ein Zustand und läuft 200 ms `--vp-motion-base` mit `--vp-ease-inout`. Am Telefon gibt es statt Hover den Druck (`@media (hover: none)`, `scale .98`, ohne Verzögerung hinein) — es geht um das Eingabegerät, nicht um die Fensterbreite.
 - **P6 · Skelett → Inhalt blendet über, im reservierten Rahmen.** `Blende` (`src/components/Lazy.tsx`) legt das gehende Skelett `position: absolute` über den Inhalt, der vom ersten Frame an die Höhe bestimmt — gemessen CLS 0. **⚠ Am Suspense-Rand geht das nicht**: React tauscht Platzhalter und Inhalt im selben Commit. Dort bleibt die halbe Zusage (die Zustands-Flächen aus `States.tsx` tragen `.vp-blende` und erscheinen, statt zu springen); ein echtes Überblenden braucht einen Aufrufer, dem beide Seiten gehören.
 - **Wächter:** `src/motionTokens.test.ts` (Familie, CSS ≡ `motionPresets.ts`, EIN Block + seine Lage, die zwei Ratschen, der statische Import-Graph ab `main.tsx`) und `npm run test:bundle` (`test/bundle-smoke.sh`: Einstieg ≤ 230 kB gz, kein Motion-Modul in den `sources` des Einstiegs-Chunks — ein Namens-`grep` reicht dafür nicht, der Minifizierer benennt um). Browser-Beweis: `e2e/motion-p0/` (jsdom sieht weder `@property` noch Kaskade).
+
+### P1 — der EINE Chart-Hebel
+
+- **Jede ECharts-Fläche des Portals geht durch `src/useEChart.ts`**, also sitzt die Bewegung DORT: kein einziger der 16 Konsumenten wurde dafür angefasst, und ein neuer Chart bekommt sie automatisch. Der Haken legt seine Optionen mit `mergeMotion()` **UNTER** die des Konsumenten — **wer selbst `animation: false` setzt, bleibt still** (3 Flächen tun das bewusst).
+- **⚠ EINSTIEG IST NIE ECHARTS-WACHSTUM (die Ehrlichkeitsregel).** Gezeichnet wird mit `animation: false` — jeder Balken steht ab Bild 1 auf seinem wahren Wert —, aufgebaut wird nur die FORM: eine CSS-Maske von links am Container (`.vp-chart-motion.is-entering` + `@keyframes vp-chart-reveal`, Banner „Bewegung · P1" am ENDE von `src/index.css`). Werkseitig wächst ECharts aus der Null, und ein Balken auf halber Höhe ist ein **lesbarer Falschwert**. **Morph gibt es nur zwischen zwei ECHTEN Zuständen** (Update-Phase: Zeitraumwechsel, neuer Live-Punkt) — dort ist der Zwischenwert die Interpolation zweier gemessener Zustände.
+- **Aufgedeckt wird GENAU EINMAL**, beim ersten Sichtbarwerden (IntersectionObserver, erst wenn gezeichnet UND `clientWidth > 0`): ein Chart im zugeklappten Aufklapper wartet aufs Öffnen, ein sichtbares deckt sofort auf, ein Resize löst KEIN zweites Aufdecken aus. **Die Phase hängt am Aufdecken, nicht an einem Zähler** — sonst wäre der Sprung von Breite 0 auf volle Breite ein Morph aus einem entarteten Zustand, also wieder Balken aus der Null.
+- **`chartMotion()` liest die Tokens EINMAL je Aufruf** aus dem `:root` (Canvas kennt kein `var()`; das `chartTheme()`-Muster) und merkt sie bewusst **NICHT** — der Schalter hängt an `prefers-reduced-motion` und darf mitten in der Sitzung umgelegt werden. `scale === 0` ⇒ keine Klasse, keine Dauer, das Bild steht; deshalb braucht P1 keinen zweiten reduced-motion-Block.
+- **Der Anker ist `.vp-chart-motion`** (setzt `useEChart` selbst), nicht `.vp-chart` — nicht jeder Behälter trägt die Layout-Klasse, und ihr `height: clamp(...)` mitzuerben wäre ein Höhenstreit in einem Lazy-Stück. **Aufgeräumt wird per Frist, nie über `animationend`** (ein Tabwechsel liefert das Ereignis nie, und `both` liesse die Maske stehen).
+- **Wächter:** `src/chartMotion.test.ts` + `src/useEChart.test.tsx`; Browser-Beweis `e2e/motion-lab/` (jsdom sieht weder Maske noch angehaltene Frames — `shoot.mjs` hält die Aufdeckung an und `analyze-frames.py` misst je Frame, ob jede aufgedeckte Spalte schon ihre ENDGÜLTIGE Höhe hat).
 
 ### P3 — Minis, Ringe, Zahlenwechsel, Energiefluss (§5 E–H)
 
