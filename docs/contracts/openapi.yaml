@@ -9828,11 +9828,20 @@ components:
             Realized savings per Europe/Berlin day, last 14 days incl. today,
             independent of `range` (spark bars + "Heute" teaser). Days without
             a computable slot are absent.
+
+            `savedEur` measures against a plant WITHOUT a battery and is an
+            ADMIN number since the Messlatte decision (2026-09-04);
+            `savedSteuerungEur` measures the intelligent control against the
+            SAME plant with a stubborn (price-blind) battery and is the only
+            storage figure a customer surface renders. The latter is null when
+            the site has no maintained battery master data (see
+            steuerungSplitReason) - the total is never a stand-in.
           items:
             type: object
             properties:
               day: { type: string, format: date }
               savedEur: { type: number }
+              savedSteuerungEur: { type: number, nullable: true }
         tarifArt:
           type: string
           enum: [dynamisch, fest, ohne]

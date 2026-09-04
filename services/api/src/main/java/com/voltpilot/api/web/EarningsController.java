@@ -211,7 +211,8 @@ public class EarningsController {
 
             List<EarningsDailyDto> dailySaved = daily
                     .getOrDefault(site.id(), List.of()).stream()
-                    .map(d -> new EarningsDailyDto(d.day(), d.savedEur()))
+                    .map(d -> new EarningsDailyDto(
+                            d.day(), d.savedEur(), d.savedSteuerungEur()))
                     .toList();
 
             // The money-centric Gesamtertrag = Einspeise-Erlös + the

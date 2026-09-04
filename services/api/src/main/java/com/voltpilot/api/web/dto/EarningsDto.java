@@ -262,8 +262,24 @@ public record EarningsDto(
             LocalDate firstCoveredDate) {
     }
 
-    /** One Europe/Berlin day of realized savings. */
-    public record EarningsDailyDto(LocalDate day, BigDecimal savedEur) {
+    /**
+     * One Europe/Berlin day of realized savings.
+     *
+     * <p><b>Die MESSLATTE der Kundenansicht</b> (Captain 04.09.2026, "du musst
+     * Anlage immer mit Speicher berechnen, einer halt ohne smart Steuerung"):
+     * {@code savedEur} misst gegen eine Anlage OHNE Speicher und ist damit eine
+     * ADMIN-Zahl; {@code savedSteuerungEur} misst gegen dieselbe Anlage MIT
+     * Speicher, aber ohne intelligente Steuerung - nur diese Zahl darf eine
+     * Kundenflaeche zeigen. Beides bleibt in der Antwort, weil die Flotten- und
+     * Optimizer-Flaechen der Plattform die Gesamtzahl weiter fuehren.
+     *
+     * <p>{@code savedSteuerungEur} ist {@code null}, wenn die Anlage keine
+     * gepflegten Batterie-Stammdaten hat (der Grund steht als
+     * {@code steuerungSplitReason} an der Anlage) - dann zeigt die
+     * Kundenflaeche KEINE Zahl, nie die Gesamtzahl als Ersatz.
+     */
+    public record EarningsDailyDto(
+            LocalDate day, BigDecimal savedEur, BigDecimal savedSteuerungEur) {
     }
 
     /**
