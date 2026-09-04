@@ -84,6 +84,8 @@ const history: History = {
     gridCostEur: 0.06,
     tarifArt: 'dynamisch',
     batterySavingsPlannedEur: 4.12,
+    // ⚠ Die Plan-Zeile der Kundenansicht hängt NUR hieran (Captain 04.09.2026).
+    steuerungPlannedEur: 1.4,
     autarkiePct: 64,
     eigenverbrauchPct: 21,
   },
@@ -138,6 +140,10 @@ const money: SiteEarnings = {
   stromkostenEur: 0.76,
   nettoErgebnisEur: 9.84,
   savedEur: 2.07,
+  // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG.
+  savedSpeicherEur: 1.0,
+  savedSteuerungEur: 1.07,
+  steuerungSplitReason: null,
   arbitrageEur: null,
   pvShiftEur: null,
   baselineEur: 5,
@@ -401,14 +407,13 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     // Der Speicher-Block (Erlöse-Konzept §3.5) haengt im Speicher-Slot der
     // Karte und steht damit NACH den vier Zeilen: der Falz zeigt zuerst, was
     // die Zahl ERGIBT.
-    expect(screen.getAllByText(/^Speicher (heute|an diesem Tag|bisher|im Zeitraum)$/).length)
+    expect(screen.getAllByText(/^Steuerung (heute|an diesem Tag|bisher|im Zeitraum)$/).length)
       .toBeGreaterThan(0);
-    expect(screen.getByText('+ 2,07 €', { selector: '.vp-c-sp-wert' })).toBeInTheDocument();
-    // ⚠ Und er nennt diesen Betrag NICHT „Steuerung": `savedEur` misst den
-    //   GANZEN Speicher (Baseline = Anlage ohne Speicher), „Steuerung" ist
-    //   erst `savedSteuerungEur` — ohne die Aufteilung wird sie nicht
-    //   behauptet (§2.2 / §3.6, die zweite Wahrheit, die P1+P5 abgeräumt hat).
-    expect(screen.queryByText(/durch VoltPilots Steuerung/)).not.toBeInTheDocument();
+    // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG (Captain
+    //   04.09.2026): der Betrag ist `savedSteuerungEur`; die Gesamtzahl
+    //   (`savedEur` = 2,07 €) steht auf keiner Kundenfläche mehr.
+    expect(screen.getByText('+ 1,07 €', { selector: '.vp-c-sp-wert' })).toBeInTheDocument();
+    expect(screen.queryByText(/^Speicher (heute|an diesem Tag|bisher|im Zeitraum)$/)).toBeNull();
   });
 
   it('faltet Erklärendes in BENANNTE Aufklapper — zugeklappt, aber nie versteckt', async () => {
@@ -449,7 +454,10 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
     expect(speicher).toBeTruthy();
     const zeile = within(speicher).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
-    expect(zeile.textContent).toMatch(/4,12/);
+    // ⚠ `steuerungPlannedEur`, nie `batterySavingsPlannedEur` (4,12 € misst
+    //   gegen „ohne Speicher").
+    expect(zeile.textContent).toMatch(/1,40/);
+    expect(zeile.textContent).not.toMatch(/4,12/);
     expect(zeile.textContent).toMatch(/eine Plan-Zahl, keine Messung/);
     expect(zeile.closest('details.vp-formel')).toBeTruthy();
     // Weder Karte noch Fußnotiz — die Zahl steht genau einmal.
@@ -461,7 +469,7 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     stubHistory();
     vi.spyOn(api, 'history').mockResolvedValue({
       ...history,
-      totals: { ...history.totals, batterySavingsPlannedEur: null },
+      totals: { ...history.totals, steuerungPlannedEur: null },
     });
     vi.spyOn(api, 'siteEarnings').mockResolvedValue(money);
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);

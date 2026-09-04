@@ -188,6 +188,10 @@ const historyWithData: History = {
     gridCostEur: 0.06,
     tarifArt: 'ohne',
     batterySavingsPlannedEur: 0.42,
+    // ⚠ Die Plan-Zeile der Kundenansicht hängt seit dem 04.09.2026 NUR hieran
+    //   — `batterySavingsPlannedEur` misst gegen „ohne Speicher" und ist eine
+    //   Betreiber-Zahl.
+    steuerungPlannedEur: 0.18,
     autarkiePct: 60,
     eigenverbrauchPct: 40,
   },
@@ -243,6 +247,12 @@ const moneyWithData: SiteEarnings = {
   stromkostenEur: 60.14,
   nettoErgebnisEur: 999.26,
   savedEur: 161.44,
+  // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG (Captain
+  //   04.09.2026): die Kundenfläche zeigt `savedSteuerungEur`; `savedEur`
+  //   bleibt als ADMIN-Zahl (und Prüfsumme) daneben stehen.
+  savedSpeicherEur: 100.0,
+  savedSteuerungEur: 61.44,
+  steuerungSplitReason: null,
   arbitrageEur: null,
   pvShiftEur: null,
   baselineEur: 100,
@@ -500,14 +510,15 @@ describe('Welt B · Erlöse', () => {
     expect(komposition).toHaveTextContent('1.059,40 €');
     expect(komposition).toHaveTextContent('Netzbezug');
     expect(komposition).toHaveTextContent('60,14 €');
-    // Der SPEICHER-BLOCK (Erlöse-Konzept §3.5) ist eine UNTERZEILE, kein
-    // weiterer Summand: derselbe Wert misst den GANZEN Speicher, „Steuerung"
-    // ist erst `savedSteuerungEur`.
-    expect(screen.getByText('Speicher an diesem Tag')).toBeInTheDocument();
+    // Die STEUERUNGS-KARTE ist eine UNTERZEILE, kein weiterer Summand — und
+    // sie trägt seit dem 04.09.2026 `savedSteuerungEur`, nie mehr `savedEur`.
+    expect(screen.getByText('Steuerung an diesem Tag')).toBeInTheDocument();
     // Der Betrag steht ein zweites Mal in Schritt 3 der Rechenzeilen darunter
     // (dieselbe Rechnung, zweite Lesehöhe) - deshalb gezielt die Block-Zeile.
-    expect(screen.getByText(/\+ 161,44/, { selector: '.vp-c-sp-wert' })).toBeInTheDocument();
-    expect(komposition).not.toHaveTextContent('161,44');
+    expect(screen.getByText(/\+ 61,44/, { selector: '.vp-c-sp-wert' })).toBeInTheDocument();
+    expect(komposition).not.toHaveTextContent('61,44');
+    // ⚠ Die Gesamtzahl gegen „ohne Speicher" steht NIRGENDS mehr.
+    expect(screen.queryByText(/161,44/)).toBeNull();
   });
 
   // Diagnose vp-tagesbild-minus-f3: die gemessene Kasse kennt eingelagerte
@@ -518,6 +529,8 @@ describe('Welt B · Erlöse', () => {
     stubMoney({
       ...moneyWithData,
       savedEur: -4.69,
+      savedSpeicherEur: -6.0,
+      savedSteuerungEur: 1.31,
       speicherDeltaKwh: 44.2,
       speicherWertCtKwh: 18.9,
       speicherWertEur: 8.3538,
@@ -629,8 +642,12 @@ describe('Welt B · Erlöse', () => {
     // Beide Abzeichen existieren - und zwar an verschiedenen Flächen.
     expect(screen.getAllByText('Bewertet').length).toBeGreaterThan(0);
     expect(plan.textContent).toMatch(/eine Plan-Zahl, keine Messung/);
-    // Die geplante Zahl kommt weiterhin aus der Historie-Antwort.
-    expect(plan.textContent).toMatch(/0,42/);
+    // Die geplante Zahl kommt weiterhin aus der Historie-Antwort — seit dem
+    // 04.09.2026 aus `steuerungPlannedEur`, nie mehr aus
+    // `batterySavingsPlannedEur` (0,42 misst gegen „ohne Speicher").
+    expect(plan.textContent).toMatch(/0,18/);
+    expect(plan.textContent).not.toMatch(/0,42/);
+    expect(plan.textContent).toMatch(/Mehrwert der Steuerung/);
     // Der Tages-Nachweis + das Tagesprotokoll bleiben hier.
     expect(screen.getByTestId('day-chart')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: 'Tagesprotokoll' })).toBeInTheDocument();

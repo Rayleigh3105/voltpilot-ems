@@ -77,6 +77,11 @@ function money(over: Partial<SiteEarnings> = {}): SiteEarnings {
     stromkostenEur: 1.585,
     nettoErgebnisEur: 63.233,
     savedEur: 2.67,
+    // ⚠ Die Kundenfläche zeigt seit dem 04.09.2026 `savedSteuerungEur` gegen
+    //   DENSELBEN Speicher ohne smarte Steuerung.
+    savedSpeicherEur: 1.22,
+    savedSteuerungEur: 1.45,
+    steuerungSplitReason: null,
     savedSpeicherEur: 1.22,
     savedSteuerungEur: 1.45,
     arbitrageEur: null,
@@ -132,6 +137,9 @@ const history: History = {
     gridCostEur: 0.3,
     tarifArt: 'fest',
     batterySavingsPlannedEur: 9.4,
+    // ⚠ Die Plan-Zeile hängt NUR hieran; `batterySavingsPlannedEur` misst
+    //   gegen „ohne Speicher" und ist eine Betreiber-Zahl.
+    steuerungPlannedEur: 3.2,
     autarkiePct: 0.7,
     eigenverbrauchPct: 0.6,
   },
@@ -258,14 +266,19 @@ describe('E5/E6 · die zwei absorbierten Karten', () => {
     const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
     expect(speicher).toBeTruthy();
     const plan = within(speicher).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
-    expect(plan.textContent).toMatch(/9,40/);
+    // ⚠ Die Zahl ist `steuerungPlannedEur` — der geplante Mehrwert DER
+    //   STEUERUNG; `batterySavingsPlannedEur` (9,40 €) misst gegen „ohne
+    //   Speicher" und erreicht die Kundenfläche nicht mehr.
+    expect(plan.textContent).toMatch(/3,20/);
+    expect(plan.textContent).not.toMatch(/9,40/);
+    expect(plan.textContent).toMatch(/Mehrwert der Steuerung/);
     expect(plan.textContent).toMatch(/eine Plan-Zahl, keine Messung/);
     // … und zwar im Aufklapper, nicht auf Ebene 0.
     expect(plan.closest('details.vp-formel')).toBeTruthy();
   });
 
   it('lässt die Plan-Zeile ohne Fahrplan weg — nie eine erfundene Null', async () => {
-    stub({}, { ...history, totals: { ...history.totals, batterySavingsPlannedEur: null } });
+    stub({}, { ...history, totals: { ...history.totals, steuerungPlannedEur: null } });
     render(<ErloeseSection site={site()} surface={SURFACE('direktvermarktung')} onOpenWelt={() => {}} />);
     await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
 
