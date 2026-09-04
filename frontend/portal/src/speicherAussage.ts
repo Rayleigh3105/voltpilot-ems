@@ -61,6 +61,16 @@ export const MESSLATTE_DATIV = 'demselben Speicher ohne smarte Steuerung';
 /** Dieselbe Messlatte als Attribut („dieselbe Anlage, aber …“). */
 export const MESSLATTE_KURZ = 'ohne smarte Steuerung';
 
+/**
+ * Dieselbe Messlatte im DATIV mit unbestimmtem Artikel („Vergleich mit …").
+ *
+ * ⚠ Es sind vier Formen, weil das Deutsche vier Fälle hat — nicht vier
+ * Wahrheiten: wer die Formulierung ändert, ändert alle vier zusammen. Ein
+ * Satz, der `MESSLATTE` in eine Dativ-Lücke setzt, liest sich als „Vergleich
+ * mit EIN Speicher" (genau so im Test aufgefallen).
+ */
+export const MESSLATTE_DATIV_UNBESTIMMT = 'einem Speicher ohne smarte Steuerung';
+
 /** Das VORZEICHEN einer Zahl als Wort — nie Farbe allein (§3.9). */
 export type SpeicherVorzeichen = 'plus' | 'minus' | 'null';
 
@@ -208,7 +218,7 @@ function anzeigeTonVon(eur: number, laeuft: boolean): SpeicherTon {
 
 /** Der Klartext-Grund, wenn kein Vergleich möglich ist — inkl. Nachtrag-Weg. */
 export const OHNE_VERGLEICH_SATZ =
-  `Für diese Anlage fehlen die Speicher-Stammdaten — ohne sie ist kein Vergleich mit ${MESSLATTE} ` +
+  `Für diese Anlage fehlen die Speicher-Stammdaten — ohne sie ist kein Vergleich mit ${MESSLATTE_DATIV_UNBESTIMMT} ` +
   'möglich: Kapazität sowie Lade- und Entladeleistung nachtragen ›';
 
 /**

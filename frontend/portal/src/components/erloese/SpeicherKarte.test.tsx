@@ -6,18 +6,19 @@ import { speicherAussage } from '../../speicherAussage';
 import { SpeicherKarte } from './SpeicherKarte';
 
 /**
- * **Die Karte „Ihr Speicher" als FLÄCHE** (Konzept
+ * **Die Karte „VoltPilots Steuerung" als FLÄCHE** (Konzept
  * `vp-erloese-lesbar-konzept-u3` §3.10 „Anatomie C" (3), Captain-Entscheid
- * **E7 = (a): ohne grüne Fläche**).
+ * **E7 = (a): ohne grüne Fläche**; Überschrift und Inhalt seit der
+ * Captain-Order vom **04.09.2026**).
  *
- * Sie ist die Nachfolgerin des abgelösten `SpeicherBlock` — dieselbe Aussage,
- * dieselben Wörter, aber eine KARTE neben dem Kontoauszug statt eines
- * eingefärbten Kastens IN einer fremden Karte („Fläche in der Fläche", §B2).
+ * ⚠ **EINE Zahl, EINE Messlatte:** die Karte trug bis dahin ZWEI Zeilen
+ * („Speicher im Zeitraum + 92,02 €" über „davon Steuerung + 43,65 €"). Die
+ * erste maß gegen eine Anlage OHNE Speicher und ist ERSATZLOS entfallen.
  *
  * Geprüft wird hier, was nur die Fläche beantworten kann: dass kein Betrag in
  * einem Chip steht (Prinzip 2), dass das Chip-Vokabular GESCHLOSSEN ist
- * (Prinzip 5) und dass ein fehlender Wert seinen Weg NENNT statt eine Null zu
- * erfinden.
+ * (Prinzip 5) und dass ein fehlender Wert seinen GRUND nennt statt eine Null
+ * zu erfinden.
  */
 
 interface Fixture {
@@ -41,13 +42,10 @@ const CHIP_VOKABULAR = [
 
 function karte(id: string) {
   const f = FX.find((x) => x.id === id)!;
-  const stur = f.savedSpeicherEur;
-  const steuerung = stur == null || f.money.savedEur == null ? null : f.money.savedEur - stur;
   const money: SiteEarnings = {
     ...f.money,
-    savedSpeicherEur: stur,
-    savedSteuerungEur: steuerung,
-    steuerungSplitReason: stur == null ? 'no_battery_data' : null,
+    steuerungSplitReason:
+      f.money.savedSteuerungEur == null ? 'no_battery_data' : f.money.steuerungSplitReason,
   };
   const aussage = speicherAussage(money, { now: new Date(f.now) });
   if (!aussage || !aussage.hatAussage) throw new Error(`Fixture ${id} hat keine Speicher-Aussage`);
@@ -59,7 +57,7 @@ describe('SpeicherKarte · die Anatomie C', () => {
     const { container } = karte('dv-tag-laufend');
     const sec = container.querySelector('section.vp-c-card.vp-c-speicher') as HTMLElement;
     expect(sec).toBeTruthy();
-    expect(within(sec).getByText('Ihr Speicher')).toBeInTheDocument();
+    expect(within(sec).getByText('VoltPilots Steuerung')).toBeInTheDocument();
     // Der laufende Tag trägt „Zwischenstand" — ein ZUSTANDSWORT, kein Betrag.
     const chips = [...sec.querySelectorAll('.vp-chip')].map((c) => c.textContent?.trim() ?? '');
     expect(chips).toContain('Zwischenstand');
@@ -70,16 +68,18 @@ describe('SpeicherKarte · die Anatomie C', () => {
     }
   });
 
-  it('nennt beide Zeilen mit ihrem Betrag rechts und die sture Referenz als Sekundärzeile', () => {
+  it('trägt GENAU EINE Zahl-Zeile — die Gesamtzahl ist ersatzlos weg', () => {
     const { container } = karte('dv-tag-laufend');
     const zeilen = [...container.querySelectorAll('.vp-c-sp-zeile')];
-    expect(zeilen).toHaveLength(2);
-    expect(zeilen[0].textContent).toMatch(/Speicher heute/);
-    expect(zeilen[1].textContent).toMatch(/davon Steuerung/);
-    // Die sture Referenz steht als ruhige Sekundärzeile, nicht als Chip.
-    const sek = container.querySelector('.vp-c-sp-sek') as HTMLElement;
-    expect(sek.textContent).toMatch(/^stur/);
-    expect(sek.classList.contains('vp-chip')).toBe(false);
+    expect(zeilen).toHaveLength(1);
+    expect(zeilen[0].textContent).toMatch(/Steuerung heute/);
+    // ⚠ Weder das alte Wort noch die alte Zahl (savedEur = −2,67 €) stehen da.
+    const text = container.textContent ?? '';
+    expect(text).not.toMatch(/Speicher heute/);
+    expect(text).not.toMatch(/davon Steuerung/);
+    expect(text).not.toMatch(/2,67/);
+    // Ohne fehlende Stammdaten gibt es auch keine Sekundärzeile.
+    expect(container.querySelector('.vp-c-sp-sek')).toBeNull();
   });
 
   it('trägt den Bestand mit „Kein Abzug" — der Betrag im Satz, das Wort im Chip', () => {
@@ -90,16 +90,26 @@ describe('SpeicherKarte · die Anatomie C', () => {
     expect(within(bestand).getByText('Kein Abzug')).toHaveClass('vp-chip');
   });
 
-  it('sagt ohne Batterie-Stammdaten „—" und NENNT den Weg statt eine Null zu erfinden', () => {
+  it('sagt ohne Batterie-Stammdaten „—", NENNT den Grund und den Weg — nie die Gesamtzahl', () => {
     const { container } = karte('dv-kein-split');
     expect(container.querySelector('.vp-c-speicher')).toBeTruthy();
     // Die Zeile STEHT DA — der Kunde sieht, dass die Frage gestellt wurde —,
     // aber sie trägt „—" statt einer erfundenen Null.
     const zeilen = [...container.querySelectorAll('.vp-c-sp-zeile')];
     const werte = zeilen.map((z) => z.querySelector('.vp-c-sp-wert')?.textContent?.trim());
-    expect(werte).toContain('—');
+    expect(werte).toEqual(['—']);
     // … und daneben steht der Weg, und der ist ein echter Link.
     const link = screen.getByRole('link', { name: /Speicher-Daten fehlen/ });
     expect(link).toHaveAttribute('href', '#/anlage/demo/technik');
+    // Der GRUND steht im Klartext, mit der Messlatte beim Namen.
+    const text = container.textContent ?? '';
+    expect(text).toMatch(/kein Vergleich mit einem Speicher ohne smarte Steuerung/);
+    // ⚠ Und die Gesamtzahl ist ausdrücklich KEIN Ersatz.
+    const gesamt = FX.find((x) => x.id === 'dv-kein-split')!.money.savedEur;
+    if (gesamt != null) {
+      expect(text).not.toContain(
+        Math.abs(gesamt).toLocaleString('de-DE', { minimumFractionDigits: 2 }),
+      );
+    }
   });
 });

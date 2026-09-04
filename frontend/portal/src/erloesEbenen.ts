@@ -23,7 +23,11 @@
 import type { SiteEarnings } from './api';
 import { eurAmount, fmtNum, NBSP } from './format';
 import { rundeKaufmaennisch, type ErgebnisZeilenView, type ErloesZeileId } from './erloesZeilen';
-import { MESSLATTE, MESSLATTE_DATIV, MESSLATTE_KURZ } from './speicherAussage';
+import {
+  MESSLATTE_DATIV,
+  MESSLATTE_DATIV_UNBESTIMMT,
+  MESSLATTE_KURZ,
+} from './speicherAussage';
 
 /** Eine Rechenzeile: „345,4 kWh × 6,18 ct = 21,34 €" plus ein Halbsatz Herkunft. */
 export interface RechenZeile {
@@ -585,7 +589,7 @@ export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
   } else {
     out.push({
       formel: 'Schritt 2 · Steuerung: —',
-      herkunft: `ohne Kapazität sowie Lade- und Entladeleistung gibt es keinen Vergleich mit ${MESSLATTE}: Speicher-Daten nachtragen ›`,
+      herkunft: `ohne Kapazität sowie Lade- und Entladeleistung gibt es keinen Vergleich mit ${MESSLATTE_DATIV_UNBESTIMMT}: Speicher-Daten nachtragen ›`,
     });
   }
 
