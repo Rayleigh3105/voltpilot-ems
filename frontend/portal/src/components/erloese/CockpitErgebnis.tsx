@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { HeroMoney, HeroRing } from '../../cockpitWidgets';
 import { SteuerungFormel } from '../SteuerungFormel';
+import { SwapText } from '../SwapNumber';
 import { SpeicherKarte } from './SpeicherKarte';
 import { Statement } from './Statement';
 import './ErgebnisKarte.css';
@@ -102,6 +103,23 @@ export function CockpitErgebnis({
 /**
  * Ein Kennzahlen-Ring im C-Kleid: derselbe SVG-Donut wie bisher, aber mit
  * einem 14-px-Label auf der Skala (§3.7). Reines SVG, keine Abhängigkeit.
+ *
+ * ## ⚠ DER BOGEN GLEITET ÜBER `stroke-dashoffset`, NICHT ÜBER `stroke-dasharray`
+ *
+ * Bewegungs-Programm P3, §5 Zeile F. Bis hierher trug der Bogen sein Mass als
+ * ZWEIER-Liste (`dasharray: "an aus"`) — CSS kann eine Liste zwar
+ * interpolieren, aber beide Zahlen laufen gegenläufig und der Rundungs-Deckel
+ * (`toFixed(2)`) macht daraus einen unruhigen Übergang. Als EINE Zahl
+ * (`dasharray` = ganzer Umfang, `dashoffset` = was fehlt) ist es genau eine
+ * Grösse, die über 300 ms in `--vp-ease-inout` wandert. Der Kreis sieht in
+ * jedem Frame identisch aus wie vorher — geprüft im Browser-Beweis.
+ *
+ * ## ⚠ DIE ZAHL ZÄHLT NICHT
+ *
+ * Sie wechselt über {@link SwapText} (alt nach oben aus, neu von unten ein) —
+ * und der BOGEN füllt sich beim Erscheinen NICHT von Null: eine Transition
+ * läuft beim ersten Rendern nicht, der Ring steht also sofort auf seinem Wert
+ * (Captain-Antwort 3, „Kein Count-up, kein Wachsen von Null").
  */
 export function ErgebnisRing({ ring }: { ring: HeroRing }) {
   const R = 26;
@@ -112,6 +130,7 @@ export function ErgebnisRing({ ring }: { ring: HeroRing }) {
       <svg viewBox="0 0 64 64" role="img" aria-label={`${ring.label}: ${ring.valueText}`}>
         <circle cx="32" cy="32" r={R} fill="none" stroke="var(--vp-flow-base)" strokeWidth={6} />
         <circle
+          className="vp-c-ck-ring-bogen"
           cx="32"
           cy="32"
           r={R}
@@ -119,10 +138,12 @@ export function ErgebnisRing({ ring }: { ring: HeroRing }) {
           stroke={ring.hue}
           strokeWidth={6}
           strokeLinecap="round"
-          strokeDasharray={`${on.toFixed(2)} ${(C - on).toFixed(2)}`}
+          strokeDasharray={C.toFixed(2)}
+          strokeDashoffset={(C - on).toFixed(2)}
           transform="rotate(-90 32 32)"
         />
-        <text
+        <SwapText
+          value={ring.valueText}
           x="32"
           y="36"
           textAnchor="middle"
@@ -130,9 +151,7 @@ export function ErgebnisRing({ ring }: { ring: HeroRing }) {
           fontSize={14}
           fill="var(--vp-c-fg, #1e293b)"
           fontFamily="'Plus Jakarta Sans', Inter, sans-serif"
-        >
-          {ring.valueText}
-        </text>
+        />
       </svg>
       <span className="vp-c-ck-ring-label">{ring.label}</span>
     </span>

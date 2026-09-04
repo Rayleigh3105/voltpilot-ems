@@ -22,6 +22,7 @@ import { preisZeile } from '../cockpitWidgets';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { MobileRowCard } from './CockpitBlocks';
 import './StrompreisStrip.css';
+import { SwapNumber } from './SwapNumber';
 
 /**
  * Der Börsenpreis-Streifen (Konzept `vp-cockpit-unten-ux-n3`, PR 1) — der
@@ -159,7 +160,10 @@ export function StrompreisStrip({
         <>
           {view.jetztWert != null && (
             <div className="vp-sp-now">
-              <span className="vp-sp-val">{view.jetztWert}</span>
+              {/* Der Wert blendet durch, er zaehlt nie (§5 Zeile H). */}
+              <span className="vp-sp-val">
+                <SwapNumber value={view.jetztWert} />
+              </span>
               <span className={`vp-sp-urteil tone-${view.urteil}`}>· {view.urteilLabel}</span>
             </div>
           )}
@@ -353,11 +357,20 @@ function Kurve({ view }: { view: ReturnType<typeof strompreisView> }) {
             />
           ),
         )}
+        {/* Bewegungs-Programm P3 (§5 Zeile H): der Jetzt-Marker GLEITET, statt
+            je Minuten-Uhr um eine Viertelstunden-Spalte zu springen. Er sitzt
+            deshalb bei x = 0 und wird per `transform` verschoben — eine
+            Compositor-Eigenschaft (Prinzip 9), im Gegensatz zu `x1`/`x2`.
+            Der Punkt bekommt seine EIGENE Verschiebung, damit auch die Höhe
+            gleitet, wenn der Preis des Slots wechselt. */}
         {jetztIdx >= 0 && (
-          <>
+          <g
+            className="vp-sp-jetzt"
+            style={{ transform: `translateX(${(x(jetztIdx) + bw / 2).toFixed(1)}px)` }}
+          >
             <line
-              x1={x(jetztIdx) + bw / 2}
-              x2={x(jetztIdx) + bw / 2}
+              x1={0}
+              x2={0}
               y1={0}
               y2={H}
               stroke={t.ink}
@@ -367,13 +380,15 @@ function Kurve({ view }: { view: ReturnType<typeof strompreisView> }) {
             />
             {bars[jetztIdx].ct != null && (
               <circle
-                cx={x(jetztIdx) + bw / 2}
-                cy={y(bars[jetztIdx].ct as number)}
+                className="vp-sp-jetzt-punkt"
+                style={{ transform: `translateY(${y(bars[jetztIdx].ct as number).toFixed(1)}px)` }}
+                cx={0}
+                cy={0}
                 r={3}
                 fill={t.price}
               />
             )}
-          </>
+          </g>
         )}
       </svg>
     </div>

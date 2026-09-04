@@ -681,3 +681,15 @@
   background: var(--vp-c-muted, #e9eff8);
   box-shadow: none;
 }
+
+/* === Bewegung · P3 · der Ring-Bogen gleitet ==============================
+ * Konzept `data/vp-motion-konzept-m1/report.md` §5 Zeile F. EINE Grösse
+ * (`stroke-dashoffset`) statt der gegenläufigen `dasharray`-Liste; sie ist
+ * keine Layout-Eigenschaft, der Ring bewegt nichts ausser sich selbst.
+ *
+ * ⚠ Beim ERSTEN Rendern läuft eine Transition nicht — der Ring steht damit
+ *   sofort auf seinem Wert und füllt sich NIE von Null (Captain-Antwort 3).
+ */
+.vp-c-ck-ring-bogen {
+  transition: stroke-dashoffset var(--vp-motion-chart-update) var(--vp-ease-inout);
+}

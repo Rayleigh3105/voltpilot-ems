@@ -346,7 +346,6 @@ const DAUER_RATSCHE: Record<string, number> = {
   'src/components/GeraetRahmen.css': 2,
   'src/components/Historie.css': 1,
   'src/components/KomponentenSection.css': 1,
-  'src/components/MiniChart.css': 1,
   'src/components/Profile.css': 2,
   'src/components/SteuerungFormel.css': 1,
   'src/components/ZustandCard.css': 1,

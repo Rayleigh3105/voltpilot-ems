@@ -221,5 +221,54 @@
 }
 .vp-share-fill {
   background: var(--vp-action, #2c5282);
-  transition: width 0.4s ease;
+}
+
+/* === Bewegung · P3 =========================================================
+ * Konzept `data/vp-motion-konzept-m1/report.md` §5 Zeile E („Minis/Sparks/
+ * Ministreifen/Anteil, 16 Flächen"): Einstieg = Maske 200 ms, Übergang =
+ * Höhe/Breite morphen 200 ms. Löst `width 0.4s ease` ab (die einzige nackte
+ * Dauer, die dieses Blatt hatte).
+ *
+ * ⚠ MASKE, NICHT WACHSEN — die tragende Ehrlichkeitsregel (Captain-Antwort 3,
+ *   Prinzip 4). Der Balken steht ab Frame 1 auf seiner vollen Höhe; aufgedeckt
+ *   wird nur die FLÄCHE, von links, am Träger. Ein `height: 0 → h` wäre ein
+ *   lesbarer Falschwert in jedem Zwischenframe.
+ *
+ * ⚠ DIE MASKE LÄUFT AM TRÄGER, NICHT AM BALKEN. Ein `clip-path` je Balken
+ *   deckte 24 Rechtecke einzeln auf (eine Welle); am Träger ist es EINE
+ *   Bewegung über die ganze Reihe — und `clip-path` ist eine
+ *   Compositor-Eigenschaft (Prinzip 9).
+ */
+@keyframes vp-mini-reveal {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.vp-mini,
+.vp-mini-cell,
+.vp-mini-line,
+.vp-share {
+  animation: vp-mini-reveal var(--vp-motion-base) var(--vp-ease-out) both;
+}
+
+/* Der Übergang zwischen zwei WAHREN Zuständen darf morphen (Prinzip 4): der
+ * Zwischenwert ist eine Interpolation zweier echter Werte und als Bewegung
+ * lesbar, nicht als Zahl.
+ *
+ * ⚠ `top`/`height` sind hier ausdrücklich erlaubt, obwohl Prinzip 9 Layout
+ *   verbietet: der Balken liegt `position: absolute` in seiner Säule, bewegt
+ *   also NICHTS ausser sich selbst — und §5 Zeile E schreibt genau diesen
+ *   Morph vor. Beim ERSTEN Rendern läuft er nicht (ein Element startet ohne
+ *   Übergang), also wächst auch hier nichts aus der Null. */
+.vp-mini-bar {
+  transition:
+    top var(--vp-motion-base) var(--vp-ease-inout),
+    height var(--vp-motion-base) var(--vp-ease-inout);
+}
+.vp-share-seg,
+.vp-share-fill {
+  transition: width var(--vp-motion-base) var(--vp-ease-inout);
 }
