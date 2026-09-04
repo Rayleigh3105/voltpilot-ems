@@ -5882,6 +5882,40 @@ span.vp-swap-out {
   transition: transform var(--vp-motion-chart-update) var(--vp-ease-inout);
 }
 
+/* --- 4 · DIE MASKE: der EINE Einstieg jeder kleinen Grafik ----------------
+ * §5 Zeilen E und H („Maske 200 ms"). Sie deckt eine fertig gezeichnete
+ * Fläche von links auf; sie lässt NICHTS wachsen. Das ist die tragende
+ * Ehrlichkeitsregel dieses Programms (Captain-Antwort 3, Prinzip 4): ein
+ * Balken, der von 0 auf seine Höhe fährt, zeigt in jedem Zwischenframe einen
+ * Wert, den die Anlage nie hatte — eine aufgedeckte Fläche zeigt nur weniger
+ * von einem Wert, der schon richtig dasteht.
+ *
+ * Sie steht HIER, weil zwei Blätter sie brauchen (`MiniChart.css` für die 16
+ * Mini-Flächen, `StrompreisStrip.css` für die Preiskurve) und ein Keyframe in
+ * einem Komponenten-Blatt eine unsichtbare Abhängigkeit wäre: er gölte nur,
+ * solange jenes Blatt zufällig geladen ist. Angewandt wird sie in den
+ * Blättern — dort steht, WAS aufgedeckt wird.
+ *
+ * ⚠ SENKRECHT WIRD NIE GESCHNITTEN, UND DER SCHNITT ÜBERLEBT DIE BEWEGUNG
+ *   NICHT. Beides sind belegte Regressionen, keine Vorsicht: `.vp-mini` trägt
+ *   einen Fokus-Ring mit `outline-offset: 3px`, und `.vp-mini-line` setzt
+ *   ausdrücklich `overflow: visible`, damit die Linie über ihren Rahmen ragen
+ *   darf. Ein bleibender `inset(0 0 0 0)` (Füllung `both`/`forwards`) schnitte
+ *   beides ab. Deshalb: senkrecht immer grosszügig (−50 %), und die Füllung
+ *   ist `backwards` — der Anfangszustand gilt VOR dem Start, danach trägt das
+ *   Element gar keinen Schnitt mehr.
+ *
+ * ⚠ Unter reduzierter Bewegung braucht sie KEINEN Eintrag im Schalter-Block:
+ *   sie ist einmalig, läuft also mit 0 s ab und steht sofort offen. */
+@keyframes vp-reveal-x {
+  from {
+    clip-path: inset(-50% 100% -50% -50%);
+  }
+  to {
+    clip-path: inset(-50% -50% -50% -50%);
+  }
+}
+
 /* =========================================================================
    DIE EINE STELLE, AN DER DAS PORTAL VERSTUMMT (Bewegungs-Programm P0)
    Konzept `data/vp-motion-konzept-m1/report.md` §4.2, Prinzip 8

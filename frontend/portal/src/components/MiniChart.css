@@ -238,20 +238,17 @@
  *   deckte 24 Rechtecke einzeln auf (eine Welle); am Träger ist es EINE
  *   Bewegung über die ganze Reihe — und `clip-path` ist eine
  *   Compositor-Eigenschaft (Prinzip 9).
+ *
+ * ⚠ DAS KEYFRAME `vp-reveal-x` WOHNT IN `index.css` (P3-Block Abschnitt 4),
+ *   weil die Preiskurve dieselbe Maske fährt. Dort steht auch, warum sie
+ *   senkrecht nie schneidet und warum die Füllung `backwards` ist (Fokus-Ring
+ *   und überstehende Linie würden sonst dauerhaft abgeschnitten).
  */
-@keyframes vp-mini-reveal {
-  from {
-    clip-path: inset(0 100% 0 0);
-  }
-  to {
-    clip-path: inset(0 0 0 0);
-  }
-}
 .vp-mini,
 .vp-mini-cell,
 .vp-mini-line,
 .vp-share {
-  animation: vp-mini-reveal var(--vp-motion-base) var(--vp-ease-out) both;
+  animation: vp-reveal-x var(--vp-motion-base) var(--vp-ease-out) backwards;
 }
 
 /* Der Übergang zwischen zwei WAHREN Zuständen darf morphen (Prinzip 4): der
