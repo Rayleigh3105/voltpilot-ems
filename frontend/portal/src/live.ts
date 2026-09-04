@@ -139,6 +139,42 @@ export interface FlowState {
 }
 
 /**
+ * **Das Tempo einer Speiche aus ihrer Leistung** (Bewegungs-Programm P3,
+ * Captain-Entscheid E4 a: „Tempo ∝ Leistung, Ruhe bei Null, Zahlen blenden —
+ * sonst nichts"; Konzept `data/vp-motion-konzept-m1/report.md` §5 Zeile G).
+ *
+ * `clamp(0.45 s, 1.8 s / (1 + kW/2), 1.8 s)` — die Umlaufdauer EINES
+ * Punkt-Zyklus. Weniger Dauer = schnellere Punkte, also erzählt jede Bewegung
+ * einen Messwert statt einer Werkseinstellung (heute laufen alle vier Speichen
+ * mit denselben 0,9 s, egal ob 0,3 oder 30 kW fliessen).
+ *
+ * Drei Eigenschaften, alle in `live.test.ts` festgenagelt:
+ *
+ *  - **monoton**: mehr kW ⇒ nie langsamer. Sonst läse sich ein Anstieg als
+ *    Rückgang.
+ *  - **gedeckelt in BEIDE Richtungen**: 0,45 s ist die Grenze, ab der ein
+ *    Punktband nur noch flimmert; 1,8 s ist das Ruhetempo, das die Login-Bühne
+ *    teilt (eine Uhr, §6).
+ *  - **vorzeichenblind**: die Richtung sagt `Spoke.reverse`, nicht das Tempo.
+ *
+ * ⚠ **RUHE BEI NULL STEHT NICHT HIER.** Unter {@link DEADBAND_KW} ist die
+ *   Speiche gar nicht aktiv ({@link flowState}), und eine inaktive Speiche
+ *   zeichnet keine Punktlinie — sie ist damit still UND ausgeblendet, ohne dass
+ *   das Tempo davon wissen müsste. Diese Funktion beantwortet genau eine Frage:
+ *   wie schnell, wenn überhaupt.
+ *
+ * @param kW Leistung der Speiche (Vorzeichen egal); nicht endlich ⇒ Ruhetempo.
+ * @returns Umlaufdauer in SEKUNDEN (CSS-Konvention der Animation).
+ */
+export const FLOW_TEMPO_FAST_S = 0.45;
+export const FLOW_TEMPO_SLOW_S = 1.8;
+export function flowTempo(kW: number): number {
+  if (!Number.isFinite(kW)) return FLOW_TEMPO_SLOW_S;
+  const raw = FLOW_TEMPO_SLOW_S / (1 + Math.abs(kW) / 2);
+  return Math.min(FLOW_TEMPO_SLOW_S, Math.max(FLOW_TEMPO_FAST_S, raw));
+}
+
+/**
  * Flow directions for the four spokes, mirroring the edge `renderFlow`/setSpoke:
  * PV always flows into the hub (generation), Haus always draws from it, Netz
  * reverses on export (grid < 0), Batterie reverses on charge (batt > 0).

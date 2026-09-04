@@ -10,6 +10,9 @@ import {
 import { pvComposition } from '../pvComposition';
 import type { EntityPin } from '../pvReconcile';
 import { PvCompositionDetails } from './PvBreakdown';
+import { DirectionArrow } from './FlowArrow';
+import { SwapText } from './SwapNumber';
+import { useFlowTempo } from './useFlowTempo';
 import type { EnergyFlowSize } from './EnergyFlow';
 import { geraetKomponenteBearbeitenHash, komponenteBearbeitenHash } from '../nav';
 
@@ -101,6 +104,11 @@ export function AdaptiveEnergyFlow({
   rename?: { siteId: string; boxRef: string | null; onRenamed: () => void } | null;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  // Bewegungs-Programm P3 (E4 a): das Punkt-Tempo kommt aus der Leistung
+  // (`data-vp-kw` je Speiche). Siehe `useFlowTempo.ts`, warum eine Aenderung
+  // von `animation-duration` die Punkte springen liesse.
+  useFlowTempo(svgRef);
   const [width, setWidth] = useState(0);
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -143,6 +151,7 @@ export function AdaptiveEnergyFlow({
     >
       <div ref={wrapRef} className="vp-flow-wrap vp-flow-adaptive">
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${L.W} ${L.H}`}
           preserveAspectRatio="xMidYMid meet"
           // V12: „nach Rollen gruppiert" was internal v2 vocabulary (D3 says
@@ -177,15 +186,31 @@ export function AdaptiveEnergyFlow({
                   strokeLinecap="round"
                 />
                 {v.spokeActive && (
-                  <line
-                    className={`vp-flow-line ${v.reverse ? 'vp-flow-rev' : 'vp-flow-on'}`}
-                    x1={v.spokeX}
-                    y1={v.spokeY}
-                    x2={toX}
-                    y2={toY}
-                    stroke={v.color}
-                    strokeWidth={v.strokeWidth.toFixed(1)}
-                  />
+                  <>
+                    <line
+                      className={`vp-flow-line ${v.reverse ? 'vp-flow-rev' : 'vp-flow-on'}`}
+                      data-vp-kw={v.flowKw.toFixed(3)}
+                      x1={v.spokeX}
+                      y1={v.spokeY}
+                      x2={toX}
+                      y2={toY}
+                      stroke={v.color}
+                      strokeWidth={v.strokeWidth.toFixed(1)}
+                    />
+                    <DirectionArrow
+                      from={
+                        v.reverse
+                          ? { x: toX, y: toY }
+                          : { x: v.spokeX, y: v.spokeY }
+                      }
+                      to={
+                        v.reverse
+                          ? { x: v.spokeX, y: v.spokeY }
+                          : { x: toX, y: toY }
+                      }
+                      color={v.color}
+                    />
+                  </>
                 )}
               </g>
             );
@@ -299,7 +324,8 @@ function Node({
       />
       {/* Only the VALUE stays inside the circle - it always fits. The name sits
           below, wrapped, so it is never clipped (G2). */}
-      <text
+      <SwapText
+        value={v.value}
         x={v.x}
         y={v.y + L.nodeR * 0.4}
         textAnchor="middle"
@@ -307,9 +333,7 @@ function Node({
         fontSize={L.valF}
         fill={v.color}
         fontFamily="Inter, sans-serif"
-      >
-        {v.value}
-      </text>
+      />
       {v.labelLines.map((line, li) => (
         <text
           key={li}

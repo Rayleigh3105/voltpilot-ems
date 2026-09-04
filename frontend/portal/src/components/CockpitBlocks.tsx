@@ -18,6 +18,7 @@ import {
 } from '../cockpitWidgets';
 import { CockpitErgebnis, ErgebnisRing } from './erloese/CockpitErgebnis';
 import './CockpitBlocks.css';
+import { SwapNumber } from './SwapNumber';
 
 /**
  * M3 (#531) — die Render-Hälfte des **Modul-Stapels**. Jede Ableitung liegt im
@@ -82,7 +83,9 @@ function Tiles({ tiles }: { tiles: BlockTile[] }) {
           style={{ ['--tile-hue' as string]: `var(--vp-flow-${t.hue})` }}
         >
           <span className="vp-block-tile-label">{t.label}</span>
-          <span className="vp-block-tile-value">{t.value}</span>
+          <span className="vp-block-tile-value">
+            <SwapNumber value={t.value} />
+          </span>
           {t.sub && <span className="vp-block-tile-sub">{t.sub}</span>}
         </div>
       ))}

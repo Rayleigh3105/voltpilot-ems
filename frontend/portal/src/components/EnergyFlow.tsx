@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { fmtNum } from '../format';
 import { flowState, type LiveSnapshot, type Spoke } from '../live';
+import { DirectionArrow } from './FlowArrow';
+import { SwapText } from './SwapNumber';
+import { useFlowTempo } from './useFlowTempo';
 
 /**
  * Energy-flow diagram: four spokes (PV top, Batterie left, Haus right, Netz
@@ -106,6 +109,7 @@ export function EnergyFlow({
   stale?: boolean;
   size?: EnergyFlowSize;
 }) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(400);
 
@@ -131,6 +135,10 @@ export function EnergyFlow({
   const flow = flowState(snapshot);
   const spokeClass = (s: Spoke): string =>
     !s.active ? '' : s.reverse ? 'vp-flow-line vp-flow-rev' : 'vp-flow-line vp-flow-on';
+  // Bewegungs-Programm P3 (E4 a): das Punkt-Tempo kommt aus der Leistung. Der
+  // Hook liest `data-vp-kw` am Element und setzt die `playbackRate` — siehe
+  // dort, warum eine Aenderung von `animation-duration` nicht genuegt.
+  useFlowTempo(svgRef);
 
   return (
     <div
@@ -140,7 +148,7 @@ export function EnergyFlow({
       role="img"
       aria-label="Energiefluss: Solar, Batterie, Haus und Netz"
     >
-      <svg viewBox={`0 0 ${L.W} ${L.H}`} preserveAspectRatio="xMidYMid meet">
+      <svg ref={svgRef} viewBox={`0 0 ${L.W} ${L.H}`} preserveAspectRatio="xMidYMid meet">
         {/* Base spokes (grey) + animated flow overlays (coloured, node<->hub). */}
         {KEYS.map((k) => {
           const p = L.pos[k];
@@ -157,15 +165,23 @@ export function EnergyFlow({
                 strokeLinecap="round"
               />
               {s.active && (
-                <line
-                  className={spokeClass(s)}
-                  x1={p.x}
-                  y1={p.y}
-                  x2={L.hub.x}
-                  y2={L.hub.y}
-                  stroke={META[k].color}
-                  strokeWidth={strokeWidth(s.magnitude).toFixed(1)}
-                />
+                <>
+                  <line
+                    className={spokeClass(s)}
+                    data-vp-kw={Math.abs(s.magnitude).toFixed(3)}
+                    x1={p.x}
+                    y1={p.y}
+                    x2={L.hub.x}
+                    y2={L.hub.y}
+                    stroke={META[k].color}
+                    strokeWidth={strokeWidth(s.magnitude).toFixed(1)}
+                  />
+                  <DirectionArrow
+                    from={s.reverse ? L.hub : p}
+                    to={s.reverse ? p : L.hub}
+                    color={META[k].color}
+                  />
+                </>
               )}
             </g>
           );
@@ -214,7 +230,8 @@ export function EnergyFlow({
               >
                 {META[k].label}
               </text>
-              <text
+              <SwapText
+                value={nodeValue(k, snapshot)}
                 x={p.x}
                 y={p.y + L.nodeR * 0.44}
                 textAnchor="middle"
@@ -222,9 +239,7 @@ export function EnergyFlow({
                 fontSize={L.valF}
                 fill={META[k].color}
                 fontFamily="Inter, sans-serif"
-              >
-                {nodeValue(k, snapshot)}
-              </text>
+              />
             </g>
           );
         })}

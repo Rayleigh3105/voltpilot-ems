@@ -203,3 +203,23 @@
   background: var(--vp-surface, #fff);
   white-space: nowrap;
 }
+
+/* === Bewegung · P3 · die Kurve wird aufgedeckt ============================
+ * Konzept `data/vp-motion-konzept-m1/report.md` §5 Zeile H („Maske 200 ms").
+ * Dieselbe Maske wie die Mini-Flächen (`vp-reveal-x`, definiert im P3-Block
+ * von `index.css` — dort steht auch, warum sie senkrecht nie schneidet).
+ *
+ * ⚠ SIE LÄUFT AM `svg`, NICHT AM TRÄGER. `.vp-sp-curve` trägt die absolut
+ *   positionierten Beschriftungen der Zeile darüber; sie sind Text und dürfen
+ *   nicht mit weggeschnitten werden — aufgedeckt wird die GRAFIK.
+ *
+ * ⚠ NICHTS WÄCHST: die Stufenlinie, die Fenster und der Jetzt-Marker sind ab
+ *   Frame 1 fertig gezeichnet, es wandert nur der rechte Rand des Schnitts
+ *   (Captain-Antwort 3, Prinzip 4).
+ *
+ * Der Jetzt-Marker selbst gleitet — seine Transition steht im P3-Block von
+ * `index.css` (Abschnitt 3), weil sie zum Zahlen-/Marker-Verhalten gehört.
+ */
+.vp-sp-curve svg {
+  animation: vp-reveal-x var(--vp-motion-base) var(--vp-ease-out) backwards;
+}

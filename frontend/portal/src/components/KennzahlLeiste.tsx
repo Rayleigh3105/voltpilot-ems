@@ -1,5 +1,6 @@
 import type { KennzahlZelle } from '../kennzahl';
 import './KennzahlLeiste.css';
+import { SwapNumber } from './SwapNumber';
 
 /**
  * DIE KENNZAHLEN-LEISTE — die eine Form, in der eine Zahl im Portal steht
@@ -49,7 +50,8 @@ export function KennzahlLeiste({
         >
           <span className="vp-leiste-label">{z.label}</span>
           <span className="vp-leiste-wert">
-            {z.wert}
+            {/* Bewegungs-Programm P3: Wertwechsel blendet durch, zaehlt nie. */}
+            <SwapNumber value={z.wert} />
             {z.einheit && <span className="vp-leiste-einheit">{z.einheit}</span>}
           </span>
           {z.unterzeile && (

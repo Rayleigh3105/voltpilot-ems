@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { InfoTip } from '../InfoTip';
 import { PROVENIENZ, type Provenienz } from '../../historieWelten';
+import { SwapNumber } from '../SwapNumber';
 
 /**
  * **Das Statement** — Bauteil 1 der Variante C (Konzept
@@ -103,7 +104,11 @@ export function Statement({
           </span>
         )}
       </h2>
-      <p className={kosten ? 'vp-c-stm-zahl is-kosten' : 'vp-c-stm-zahl'}>{betrag}</p>
+      {/* Bewegungs-Programm P3: die Hero-Zahl blendet durch, sie zaehlt nie
+          (Konzept §6 „Zahlenwechsel", Captain-Antwort 3). */}
+      <p className={kosten ? 'vp-c-stm-zahl is-kosten' : 'vp-c-stm-zahl'}>
+        <SwapNumber value={betrag} />
+      </p>
       {satz && <p className="vp-c-stm-satz">{satz}</p>}
       {zeigeEinordnung && ein && (
         <p className="vp-c-stm-ein">

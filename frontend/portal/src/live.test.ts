@@ -6,6 +6,9 @@ import {
   composeStatusSentence,
   deriveBatteryKw,
   flowState,
+  FLOW_TEMPO_FAST_S,
+  FLOW_TEMPO_SLOW_S,
+  flowTempo,
   gridState,
   loadState,
   pvState,
@@ -192,5 +195,83 @@ describe('composeStatusSentence', () => {
 
   it('degrades to a minimal live line when only unknowns are present', () => {
     expect(text({})).toBe('Ihre Anlage liefert gerade Daten.');
+  });
+});
+
+/**
+ * Der Tempo-Waechter des Energieflusses (Bewegungs-Programm P3, E4 a).
+ *
+ * Er misst die DREI Zusagen, mit denen die Bewegung einen Messwert erzaehlt:
+ * Deckel in beide Richtungen, Ruhe bei Null (ueber `flowState.active`) und
+ * Monotonie — mehr Leistung darf nie langsamer aussehen.
+ */
+describe('flowTempo', () => {
+  it('haelt die Formel clamp(0.45, 1.8/(1+kW/2), 1.8)', () => {
+    expect(flowTempo(0)).toBeCloseTo(1.8, 6); // 1.8 / 1
+    expect(flowTempo(1)).toBeCloseTo(1.2, 6); // 1.8 / 1.5
+    expect(flowTempo(2)).toBeCloseTo(0.9, 6); // 1.8 / 2  == das heutige Tempo
+    expect(flowTempo(4)).toBeCloseTo(0.6, 6); // 1.8 / 3
+  });
+
+  it('deckelt nach OBEN beim Ruhetempo', () => {
+    expect(flowTempo(0)).toBe(FLOW_TEMPO_SLOW_S);
+    expect(flowTempo(0.05)).toBeLessThanOrEqual(FLOW_TEMPO_SLOW_S);
+  });
+
+  it('deckelt nach UNTEN, damit das Punktband nie flimmert', () => {
+    expect(flowTempo(6)).toBe(FLOW_TEMPO_FAST_S); // 1.8/4 = 0.45 exakt
+    expect(flowTempo(30)).toBe(FLOW_TEMPO_FAST_S);
+    expect(flowTempo(1e9)).toBe(FLOW_TEMPO_FAST_S);
+  });
+
+  it('ist MONOTON: mehr kW ist nie langsamer', () => {
+    let prev = flowTempo(0);
+    for (let kw = 0.1; kw <= 40; kw += 0.1) {
+      const cur = flowTempo(kw);
+      expect(cur).toBeLessThanOrEqual(prev + 1e-12);
+      prev = cur;
+    }
+  });
+
+  it('ist vorzeichenblind - die Richtung sagt `reverse`, nicht das Tempo', () => {
+    expect(flowTempo(-3.4)).toBe(flowTempo(3.4));
+    expect(flowTempo(-30)).toBe(flowTempo(30));
+  });
+
+  it('faellt bei unbrauchbarer Zahl auf das RUHETEMPO, nie auf NaN', () => {
+    expect(flowTempo(Number.NaN)).toBe(FLOW_TEMPO_SLOW_S);
+    expect(flowTempo(Number.POSITIVE_INFINITY)).toBe(FLOW_TEMPO_SLOW_S);
+  });
+
+  it('RUHE BEI NULL: unter dem Totband ist die Speiche inaktiv, also punktlos', () => {
+    const snap: LiveSnapshot = {
+      ts: new Date('2026-09-04T10:00:00Z'),
+      pvKw: 0.04,
+      loadKw: 0,
+      gridKw: -0.049,
+      battKw: null,
+      socPct: null,
+    };
+    const f = flowState(snap);
+    expect(f.pv.active).toBe(false);
+    expect(f.load.active).toBe(false);
+    expect(f.grid.active).toBe(false);
+    expect(f.batt.active).toBe(false);
+    // Die Richtung bleibt trotzdem definiert - sie ist eine Eigenschaft der
+    // Rolle, nicht der Leistung.
+    expect(f.load.reverse).toBe(true);
+  });
+
+  it('bleibt ueber dem Totband aktiv und bekommt dort ein echtes Tempo', () => {
+    const f = flowState({
+      ts: new Date('2026-09-04T10:00:00Z'),
+      pvKw: 8,
+      loadKw: 2,
+      gridKw: -6,
+      battKw: null,
+      socPct: null,
+    });
+    expect(f.pv.active).toBe(true);
+    expect(flowTempo(f.pv.magnitude)).toBeLessThan(flowTempo(f.load.magnitude));
   });
 });
