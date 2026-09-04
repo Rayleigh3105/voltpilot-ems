@@ -66,12 +66,10 @@ function Segment() {
 
 function view(id: string): CockpitHeroView {
   const f = FX.find((x) => x.id === id)!;
-  const stur = f.savedSpeicherEur;
   const money: SiteEarnings = {
     ...f.money,
-    savedSpeicherEur: stur,
-    savedSteuerungEur: stur == null || f.money.savedEur == null ? null : f.money.savedEur - stur,
-    steuerungSplitReason: stur == null ? 'no_battery_data' : null,
+    steuerungSplitReason:
+      f.money.savedSteuerungEur == null ? 'no_battery_data' : f.money.steuerungSplitReason,
   };
   const speicher = speicherAussage(money, { now: new Date(f.now) });
   const netto = 63.23;
@@ -98,8 +96,6 @@ function view(id: string): CockpitHeroView {
         anzulegenderWertCtKwh: money.anzulegenderWertCtKwh ?? null,
         marketValueSolarCtKwh: money.marketValueSolarCtKwh ?? null,
         bestandSichtbar: true,
-        savedEur: money.savedEur ?? null,
-        savedSpeicherEur: money.savedSpeicherEur ?? null,
         savedSteuerungEur: money.savedSteuerungEur ?? null,
       },
     },
