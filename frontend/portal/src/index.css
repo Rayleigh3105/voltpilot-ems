@@ -215,63 +215,6 @@
   --vp-c-chart-price-2: #475569; /* = --vp-c-muted-fg · 7,58:1 */
 }
 
-/* =========================================================================
-   DIE EINE STELLE, AN DER DAS PORTAL VERSTUMMT (Bewegungs-Programm P0)
-   Konzept `data/vp-motion-konzept-m1/report.md` §4.2, Prinzip 8
-   („EIN Schalter für alles"), Captain-Entscheid 04.09.2026.
-
-   Zwei Dinge passieren hier, und beide müssen hier passieren:
-
-   1. **Der Schalter.** `--vp-motion-scale: 0` nullt JEDE Dauer der Familie
-      (`--vp-motion-*` in `effects.css` rechnen `calc(<ms> * scale)`), und mit
-      ihr `--vp-c-motion` (Alias) sowie alles, was JS daraus liest —
-      `motionPresets.ts` und, ab P1, ECharts über `chartMotion()`. Wer eine
-      Dauer aus der Familie liest, wird hier still; es braucht dafür keinen
-      zweiten Media-Block und keine Regel je Fläche.
-
-   2. **Die benannten DAUER-Animationen.** Eine Media-Query kann eine Custom
-      Property nicht LESEN (`@media (--vp-motion-scale: 0)` gibt es nicht),
-      und eine Loop mit Dauer 0 ms wäre ein stehendes Bild ohne Richtung, kein
-      Stillstand. Deshalb stehen die Loops hier namentlich — und NUR sie.
-      Sie sind die vollständige Liste der `infinite`-Animationen des Portals
-      (`grep -n infinite src/index.css`):
-        · `.vp-flow-on/.vp-flow-rev`  — der Energiefluss
-        · `.vp-boot-spinner`, `.vp-spinner`, `.vp-auth-flow .spoke` — lädt/Bühne
-        · `.vp-fleet-dot`             — Flotten-Puls
-        · `.vp-flowport.accepts`      — Ablege-Ziel
-        · `.vp-ustate-busy .vp-ustate-dot` — „hier bewegt sich etwas ohne Sie"
-      Der einzige Loop AUSSERHALB dieser Datei ist der Skelett-Schimmer des
-      Design-Systems; er behält seinen Stopp in
-      `designsystem/components/core/core.css` (Begründung dort).
-
-   ⚠ WER EINE NEUE `infinite`-ANIMATION EINFÜHRT, TRÄGT SIE HIER EIN. Eine
-     EINMALIGE Animation (Sheet-Einblendung, Chart-Maske) gehört NICHT hierher:
-     die läuft mit 0 s ab und steht damit sofort auf ihrem Endzustand.
-   ========================================================================= */
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --vp-motion-scale: 0;
-  }
-
-  .vp-flow-on,
-  .vp-flow-rev,
-  .vp-boot-spinner,
-  .vp-spinner,
-  .vp-auth-flow .spoke,
-  .vp-flowport.accepts,
-  .vp-ustate-busy .vp-ustate-dot {
-    animation: none;
-  }
-
-  /* Der Flotten-Punkt braucht `!important` (sein Puls steht in einer
-     spezifischeren Regel) und einen ruhenden Ring statt des pulsierenden. */
-  .vp-fleet-dot {
-    animation: none !important;
-    box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.18);
-  }
-}
-
-
 * {
   box-sizing: border-box;
 }
@@ -657,7 +600,6 @@ svg [tabindex]:focus-visible {
   filter: grayscale(0.35);
   transition: opacity 0.3s ease;
 }
-
 
 /* ---------------------------------------------------------------------------
    Live-Daten status hero (report direction B): a status-first layer that
@@ -5833,3 +5775,67 @@ body {
 /* --- 3 · Die Bereichs-Reiter als Unterstrich-Tabs ------------------------
  * §3.10 Anatomie C Punkt 5. Sie liegen in `BereichTabs.css` (komponenten-lokal,
  * damit die Ladereihenfolge nicht entscheidet) — hier steht nur der Zeiger. */
+
+/* =========================================================================
+   DIE EINE STELLE, AN DER DAS PORTAL VERSTUMMT (Bewegungs-Programm P0)
+   Konzept `data/vp-motion-konzept-m1/report.md` §4.2, Prinzip 8
+   („EIN Schalter für alles"), Captain-Entscheid 04.09.2026.
+
+   Zwei Dinge passieren hier, und beide müssen hier passieren:
+
+   1. **Der Schalter.** `--vp-motion-scale: 0` nullt JEDE Dauer der Familie
+      (`--vp-motion-*` in `effects.css` rechnen `calc(<ms> * scale)`), und mit
+      ihr `--vp-c-motion` (Alias) sowie alles, was JS daraus liest —
+      `motionPresets.ts` und, ab P1, ECharts über `chartMotion()`. Wer eine
+      Dauer aus der Familie liest, wird hier still; es braucht dafür keinen
+      zweiten Media-Block und keine Regel je Fläche.
+
+   2. **Die benannten DAUER-Animationen.** Eine Media-Query kann eine Custom
+      Property nicht LESEN (`@media (--vp-motion-scale: 0)` gibt es nicht),
+      und eine Loop mit Dauer 0 ms wäre ein stehendes Bild ohne Richtung, kein
+      Stillstand. Deshalb stehen die Loops hier namentlich — und NUR sie.
+      Sie sind die vollständige Liste der `infinite`-Animationen des Portals
+      (`grep -n infinite src/index.css`):
+        · `.vp-flow-on/.vp-flow-rev`  — der Energiefluss
+        · `.vp-boot-spinner`, `.vp-spinner`, `.vp-auth-flow .spoke` — lädt/Bühne
+        · `.vp-fleet-dot`             — Flotten-Puls
+        · `.vp-flowport.accepts`      — Ablege-Ziel
+        · `.vp-ustate-busy .vp-ustate-dot` — „hier bewegt sich etwas ohne Sie"
+      Der einzige Loop AUSSERHALB dieser Datei ist der Skelett-Schimmer des
+      Design-Systems; er behält seinen Stopp in
+      `designsystem/components/core/core.css` (Begründung dort).
+
+   ⚠ DIESER BLOCK MUSS AM ENDE DER DATEI STEHEN, und das ist keine Kosmetik:
+     eine Media-Query erhöht die Spezifität NICHT, es entscheidet die
+     Quell-Reihenfolge. Stand er oben (so gebaut, im Browser gemessen), gewann
+     `.vp-auth-flow .spoke { animation: … infinite }` aus Zeile ~1130 — die
+     Login-Bühne lief unter reduzierter Bewegung weiter, obwohl der Block sie
+     namentlich nannte. Der Wächter `src/motionTokens.test.ts` prüft die Lage
+     seither gegen die LETZTE `infinite`-Animation der Datei.
+
+   ⚠ WER EINE NEUE `infinite`-ANIMATION EINFÜHRT, TRÄGT SIE HIER EIN. Eine
+     EINMALIGE Animation (Sheet-Einblendung, Chart-Maske) gehört NICHT hierher:
+     die läuft mit 0 s ab und steht damit sofort auf ihrem Endzustand.
+   ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --vp-motion-scale: 0;
+  }
+
+  .vp-flow-on,
+  .vp-flow-rev,
+  .vp-boot-spinner,
+  .vp-spinner,
+  .vp-auth-flow .spoke,
+  .vp-flowport.accepts,
+  .vp-ustate-busy .vp-ustate-dot {
+    animation: none;
+  }
+
+  /* Der Flotten-Punkt braucht `!important` (sein Puls steht in einer
+     spezifischeren Regel) und einen ruhenden Ring statt des pulsierenden. */
+  .vp-fleet-dot {
+    animation: none !important;
+    box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.18);
+  }
+}

@@ -238,6 +238,21 @@ describe('Bewegung P0 · EIN Schalter, EINE Stelle', () => {
     }
   });
 
+  it('der EINE Block steht NACH jeder `infinite`-Animation (Kaskade)', () => {
+    // ⚠ Im Browser gemessen, nicht theoretisch: eine Media-Query erhöht die
+    // Spezifität NICHT. Stand der Block oben in der Datei, gewann
+    // `.vp-auth-flow .spoke { animation: … infinite }` aus Zeile ~1130 und die
+    // Login-Bühne lief unter reduzierter Bewegung weiter — obwohl der Block sie
+    // namentlich nennt. Ein Text-Wächter kann die Kaskade nur so prüfen.
+    const letzteLoop = index.lastIndexOf('infinite;');
+    const blockStart = index.indexOf('@media (prefers-reduced-motion: reduce)');
+    expect(letzteLoop, 'keine `infinite`-Animation gefunden — Test wäre vakuum').toBeGreaterThan(0);
+    expect(
+      blockStart,
+      'der EINE Block steht VOR einer Dauer-Animation und verliert die Kaskade gegen sie',
+    ).toBeGreaterThan(letzteLoop);
+  });
+
   it('das Design-System hat GENAU EINE Ausnahme: den Skelett-Schimmer', () => {
     const alle: string[] = [];
     for (const datei of blaetter('designsystem')) {
