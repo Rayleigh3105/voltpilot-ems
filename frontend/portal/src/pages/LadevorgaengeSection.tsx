@@ -7,6 +7,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LadeBudgetBand } from '../components/LadeBudgetBand';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import { fmtNum } from '../format';
+import { useStaffel } from '../staffel';
 import {
   ANBINDEN_ALLOWLIST,
   ANBINDEN_EINSTIEG,
@@ -61,6 +62,8 @@ export function LadevorgaengeSection({
    */
   devices?: Device[];
 }) {
+  // Bewegung P6: die Ladevorgänge staffeln beim ersten Blick (`src/staffel.ts`).
+  const ladeStaffel = useStaffel('ladevorgaenge');
   const boxRef = boxRefOf(devices, site.id);
   // Die Box kennt ihre eigene Adresse (D5) - der Assistent baut daraus den
   // `ws://`-Endpunkt. Ohne EINE eindeutige Box nennt er ehrlich den Weg.
@@ -170,7 +173,7 @@ export function LadevorgaengeSection({
         {idle && <p className="vp-lade-idle">{idle}</p>}
         {actionError && <p className="vp-lade-note">{actionError}</p>}
         {rows.length > 0 && (
-          <ul className="vp-lade-rows">
+          <ul className={ladeStaffel ? `vp-lade-rows ${ladeStaffel}` : 'vp-lade-rows'}>
             {rows.map((r) => (
               <li key={r.key} className={`vp-lade-row tone-${r.tone}`}>
                 <span className="vp-lade-dot" aria-hidden="true" />

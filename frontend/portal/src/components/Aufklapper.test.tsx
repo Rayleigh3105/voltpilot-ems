@@ -8,7 +8,8 @@ import { Aufklapper } from './Aufklapper';
  *
  * Geprüft wird die FORM, nicht ein Reiter: 48 px Trefferfläche über die volle
  * Breite, `<details>`/`<summary>` (also Tastatur und Ansage vom Browser), der
- * Chevron dreht über `--vp-c-motion`, und die HÖHE bewegt sich nie.
+ * Chevron dreht über `--vp-motion-base`, der Inhalt blendet ein (P6/E6 a),
+ * und die HÖHE bewegt sich nie.
  */
 
 function Kontrolliert({ start = false }: { start?: boolean }) {
@@ -101,14 +102,20 @@ describe('P2b · das Blatt hält die Zusagen der Form', () => {
     expect(regel(css, '.vp-c-aufk-body')).toMatch(/font-size:\s*var\(--vp-c-fs-16\)/);
   });
 
-  it('NUR der Chevron bewegt sich, und zwar über --vp-c-motion', () => {
+  it('die Höhe springt, der Inhalt blendet, der Chevron dreht — alles aus der Familie (E6 a)', () => {
     expect(regel(css, '.vp-c-aufk-chev::before')).toMatch(
-      /transition:\s*transform\s+var\(--vp-c-motion/,
+      /transition:\s*transform\s+var\(--vp-motion-base\)/,
+    );
+    // P6: der Inhalt eines OFFENEN Aufklappers blendet ein — Opazität und ein
+    // halber `--vp-motion-distance`, nie eine Höhe.
+    expect(regel(css, '.vp-c-aufk[open] > .vp-c-aufk-body')).toMatch(
+      /animation:\s*vp-c-aufk-inhalt\s+var\(--vp-motion-base\)/,
     );
     // Keine Höhen-Animation und kein zweiter reduced-motion-Block — die Dauer
     // führt `index.css` (P0). ⚠ Kommentare zuerst RAUS: sie nennen beides.
     const ohneKommentar = css.replace(/\/\*[\s\S]*?\*\//g, '');
     expect(ohneKommentar).not.toMatch(/transition:[^;]*(?:max-)?height/);
+    expect(ohneKommentar).not.toMatch(/(?:transition|animation):[^;]*\bheight\b/);
     expect(ohneKommentar).not.toMatch(/prefers-reduced-motion/);
   });
 });

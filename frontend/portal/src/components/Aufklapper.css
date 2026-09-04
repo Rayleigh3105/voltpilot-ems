@@ -10,11 +10,17 @@
  * Kontoauszugs-VARIANTE derselben Form; dieses Blatt ist die freie Form für
  * jeden anderen Abschnitt (Fußkarte, Explorer-Abschnitt, Profi-Detail).
  *
- * ⚠ **Es gibt KEINE Höhen-Animation.** Ein aufklappender Abschnitt springt
+ * ⚠ **Es gibt KEINE Höhen-Animation** (Bewegungs-Programm P6, Captain-Entscheid
+ * **E6 a**: „nein, Inhalt blendet 200 ms"). Ein aufklappender Abschnitt springt
  * sonst gegen den klebenden Kopf (S1) und der Scrollweg rutscht unter dem
- * Daumen weg. Bewegt wird ausschließlich der Chevron, über `--vp-c-motion` —
- * die Dauer steht in `index.css` und ist dort unter `prefers-reduced-motion`
- * EINMAL auf 0 gesetzt (P0). Ein eigener Media-Block hier wäre ein Zwilling.
+ * Daumen weg — die Höhe springt deshalb weiter, wie seit PR 611.
+ *
+ * Bewegt werden GENAU ZWEI Dinge, und beide über die Token-Familie: der
+ * Chevron dreht in `--vp-motion-base`, und der INHALT blendet in derselben
+ * Dauer ein (Opazität + 4 px von unten). Das ist der Unterschied zwischen
+ * „etwas ist erschienen" und „etwas war schon immer da" — ohne dass ein
+ * einziges Pixel Layout wandert. Die Dauern sind Token, und der EINE Schalter
+ * nullt sie (P0); ein eigener Media-Block hier wäre ein Zwilling.
  *
  * ⚠ **Keine rohe Schriftgröße, keine fremde Familie** — die Ratsche in
  * `verlaufSkala.test.ts` führt dieses Blatt streng auf 0.
@@ -96,11 +102,25 @@
   border-right: 2px solid var(--vp-c-muted-fg, #475569);
   border-bottom: 2px solid var(--vp-c-muted-fg, #475569);
   transform: rotate(-45deg);
-  transition: transform var(--vp-c-motion, 200ms) ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
 }
 
 .vp-c-aufk[open] > .vp-c-aufk-sum .vp-c-aufk-chev::before {
   transform: rotate(45deg);
+}
+
+/* ⚠ Die 4 px sind bewusst die HALBE `--vp-motion-distance`: der Inhalt kommt
+   aus dem Aufklapper heraus, nicht von weit her — ein Weg wie bei einem Modal
+   läse sich als „neue Fläche" statt als „der Abschnitt ist offen". */
+.vp-c-aufk[open] > .vp-c-aufk-body {
+  animation: vp-c-aufk-inhalt var(--vp-motion-base) var(--vp-ease-out);
+}
+
+@keyframes vp-c-aufk-inhalt {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--vp-motion-distance) / 2));
+  }
 }
 
 .vp-c-aufk-body {

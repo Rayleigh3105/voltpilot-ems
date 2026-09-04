@@ -35,6 +35,7 @@ import { NeueRegelDialog } from './NeueRegelDialog';
 import { RegelDrawer } from './RegelDrawer';
 import { ConfirmDialog } from './ConfirmDialog';
 import { RegelKarteView } from './RegelKarten';
+import { useStaffel } from '../staffel';
 import { RegelProtokoll } from './RegelProtokoll';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { VorschlagsKarten } from './VorschlagsKarten';
@@ -153,6 +154,9 @@ export function RegelnKapsel({
    */
   onSteuerart?: (entityId: string, wunsch: SteuerartWunsch) => void;
 }) {
+  // Bewegung P6: die Regel-Karten staffeln beim ersten Blick auf die
+  // Steuerung dieser Anlage, danach stehen sie sofort (`src/staffel.ts`).
+  const regelStaffel = useStaffel('steuerung-regeln');
   const [options, setOptions] = useState<ConsumerOptions | null>(null);
   const [consumers, setConsumers] = useState<Consumer[]>([]);
   const [status, setStatus] = useState<ConsumerRuntimeStatus[]>([]);
@@ -706,7 +710,7 @@ export function RegelnKapsel({
             )}
           </div>
         ) : (
-          <ul className="vp-regeln">
+          <ul className={regelStaffel ? `vp-regeln ${regelStaffel}` : 'vp-regeln'}>
             {karten.map((k) => (
               <RegelKarteView
                 key={k.key}
