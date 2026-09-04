@@ -6125,3 +6125,49 @@ span.vp-swap-out {
     box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.18);
   }
 }
+
+/* =====================================================================
+   === Bewegung · P1 · Chart-Reveal ===
+   Konzept `data/vp-motion-konzept-m1/report.md` §4.3/§5, Captain-Entscheid
+   04.09.2026 (E1 a · E2 a · E3 a). Der Hebel dazu ist `src/useEChart.ts`.
+
+   ⚠ **DIE MASKE ERSETZT DAS WACHSEN, sie schmückt es nicht.** ECharts wächst
+   werkseitig aus der Null (gemessen: 0 % Tinte bis 126 ms, 26 % bei 405 ms) —
+   ein Balken auf halber Höhe ist ein LESBARER FALSCHWERT. Deshalb zeichnet der
+   Hebel mit `animation: false`, und aufgebaut wird nur die FORM: von links, in
+   Leserichtung, sodass die ältesten Werte zuerst dastehen (E3 a) und der
+   Jetzt-Bereich weich ankommt.
+
+   ⚠ **NUR `clip-path` UND `opacity`** (Prinzip 9): beides läuft auf dem
+   Compositor, nichts davon bewegt Layout. Gemessen bei 375 px und 4×
+   CPU-Drosselung: 44 Frames, Ø 17 ms, kein Frame über 17 ms.
+
+   ⚠ **DER ANKER IST `.vp-chart-motion`**, die Marke, die `useEChart` selbst
+   setzt — nicht `.vp-chart`. Nicht jeder Diagramm-Behälter trägt die
+   Layout-Klasse (`.vp-measure-chart` in `components/Messwerte.css`), und wer
+   ihr `.vp-chart` überstülpt, erbt deren `height: clamp(...)` und überlässt
+   der Kaskade eines Lazy-Stücks die Entscheidung über die Höhe. So deckt die
+   Maske dagegen JEDE Variante ab — `tall`, `compact`, `panels`, `panels3`,
+   `flach`, `vp-measure-chart` und alles, was noch kommt.
+
+   ⚠ **Unter reduzierter Bewegung wird die Klasse gar nicht erst gesetzt**
+   (`useEChart`, `chartMotion().scale === 0`) — das Bild steht sofort. Deshalb
+   braucht es hier keinen zweiten `prefers-reduced-motion`-Block; der EINE
+   Block des Portals bleibt der EINE.
+   ===================================================================== */
+.vp-chart-motion.is-entering {
+  animation: vp-chart-reveal var(--vp-motion-chart) var(--vp-ease-out) both;
+}
+@keyframes vp-chart-reveal {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
