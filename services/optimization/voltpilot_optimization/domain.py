@@ -676,6 +676,16 @@ class PlanSlot:
     price_eur_mwh: float  # the day-ahead SPOT price (portal price curve)
     cost_eur: float  # projected slot cashflow with the plan (asymmetric pricing)
     baseline_cost_eur: float  # projected slot cashflow with the battery idle
+    # Die MESSLATTE (Captain 04.09.2026): projizierter Cashflow desselben
+    # Speichers OHNE smarte Steuerung - der sture Eigenverbrauchs-Speicher aus
+    # :mod:`voltpilot_optimization.stur` (das Greedy-Modell der
+    # Ersparnis-Simulation, Java-Zwilling StandardSpeicher). Die geplante
+    # STEUERUNGS-Ersparnis eines Slots ist stur_cost_eur - cost_eur; sie ist
+    # per Konstruktion kleiner als baseline_cost_eur - cost_eur, denn ein
+    # sturer Speicher ist besser als gar keiner. None auf einem Lauf ohne die
+    # Messlatte (Vor-Feature-Plan) - die Flaeche zeigt die Zeile dann nicht,
+    # nie eine erfundene Zahl.
+    stur_cost_eur: float | None = None
     # Planned PV curtailment (kW discarded, 0 <= curtail_kw <= pv_kw). Non-zero
     # only when feeding in would COST money (negative EXPORT VALUE, e.g. a
     # Direktvermarktung plant at negative spot) - see solver.py.
@@ -839,6 +849,24 @@ class SchedulePlan:
     @property
     def baseline_cost_eur(self) -> float:
         return sum(s.baseline_cost_eur for s in self.slots)
+
+    @property
+    def stur_cost_eur(self) -> float | None:
+        """Der Horizont-Cashflow der MESSLATTE (sturer Speicher), oder None,
+        wenn auch nur EIN Slot sie nicht traegt - eine Teil-Summe waere eine
+        Aussage ueber ein Fenster, das so nie gerechnet wurde."""
+        if any(s.stur_cost_eur is None for s in self.slots):
+            return None
+        return sum(s.stur_cost_eur for s in self.slots)
+
+    @property
+    def steuerung_savings_eur(self) -> float | None:
+        """Die geplante Ersparnis der STEUERUNG: was der Plan gegenueber
+        demselben Speicher OHNE smarte Steuerung erwirtschaftet
+        (:mod:`voltpilot_optimization.stur`). None, solange die Messlatte
+        nicht vollstaendig vorliegt."""
+        stur = self.stur_cost_eur
+        return None if stur is None else stur - self.cost_eur
 
     @property
     def wear_cost_eur(self) -> float:

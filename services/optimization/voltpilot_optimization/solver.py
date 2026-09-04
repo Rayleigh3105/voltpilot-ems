@@ -281,6 +281,7 @@ from voltpilot_optimization.domain import (
     PlanSlot,
     SchedulePlan,
 )
+from voltpilot_optimization.stur import stur_cost_eur
 
 logger = logging.getLogger("voltpilot.optimization.solver")
 
@@ -904,6 +905,21 @@ def _extract_plan(
 ) -> SchedulePlan:
     dt = inp.slot_hours
     wear_eur_per_kwh = inp.battery.wear_cost_eur_per_kwh_each_way
+    # Die MESSLATTE (Captain 04.09.2026): derselbe Speicher ohne smarte
+    # Steuerung, ueber DIESELBEN Eingaben, bewertet mit DERSELBEN Preisformel
+    # - siehe voltpilot_optimization.stur. Sie beschreibt nur die Bewertung
+    # und beruehrt den geloesten Plan mit keinem Byte.
+    # FAIL-SOFT wie die Erklaer-Schicht: die Messlatte ist reine BEWERTUNG.
+    # Eine fehlende Zahl ist eine fehlende Zeile im Portal, eine geworfene
+    # Ausnahme waere GAR KEIN Fahrplan - das waere der teurere Fehler.
+    try:
+        stur_costs: list[float | None] = list(stur_cost_eur(inp))
+    except Exception:  # pragma: no cover - defensive, the reference is pure
+        logger.warning(
+            "stur reference failed for site=%s - planning without it", inp.site_id,
+            exc_info=True,
+        )
+        stur_costs = [None] * inp.slots
     slots: list[PlanSlot] = []
     for t in range(inp.slots):
         charge = float(value(model.charge[t]))
@@ -927,6 +943,9 @@ def _extract_plan(
                 price_eur_mwh=price,
                 cost_eur=round(inp.cashflow_cost_eur(t, grid_kw), 6),
                 baseline_cost_eur=round(inp.baseline_cost_eur(t), 6),
+                stur_cost_eur=(
+                    None if stur_costs[t] is None else round(stur_costs[t], 6)
+                ),
                 curtail_kw=round(curtail_kw, 4),
                 wear_cost_eur=round(
                     wear_eur_per_kwh * (charge + discharge) * dt, 6

@@ -165,21 +165,59 @@ public class HistoryRepository {
     }
 
     /**
+     * Die ZWEI geplanten Ersparnis-Zahlen eines Fensters, aus derselben
+     * Slot-Menge gelesen.
+     *
+     * <p>{@code batteryEur} ist die alte, unveraenderte Zahl: was der Plan
+     * gegenueber einer Anlage OHNE Speicher erwirtschaftet. {@code steuerungEur}
+     * ist die MESSLATTE, die der Captain am 04.09.2026 verlangt hat ("du musst
+     * Anlage immer mit Speicher berechnen, einer halt ohne smart Steuerung"):
+     * was der Plan gegenueber DEMSELBEN Speicher OHNE smarte Steuerung
+     * erwirtschaftet - das geplante Gegenstueck zu {@code savedSteuerungEur}
+     * der gemessenen Seite.
+     *
+     * <p><b>{@code steuerungEur} ist null, sobald auch nur EIN abgedeckter
+     * Slot des Fensters keine Messlatte traegt</b> (ein Lauf vor Migration
+     * V20260867000000, oder eine Anlage ohne Batterie-Stammdaten, fuer die der
+     * Optimierer gar nicht plant): eine Teil-Summe waere eine Aussage ueber ein
+     * Fenster, das so nie gerechnet wurde - die Flaeche zeigt die Zeile dann
+     * nicht, statt eine zu kleine Zahl zu behaupten. {@code batteryEur} bleibt
+     * davon unberuehrt.
+     */
+    public record PlannedSavings(BigDecimal batteryEur, BigDecimal steuerungEur) {
+    }
+
+    /**
      * Battery savings over a window from the persisted optimizer plans:
      * sum(baseline_cost - cost) taking, per 15-min slot, the LATEST run that
      * planned it (DISTINCT ON) so overlapping MPC runs never double-count.
      * Returns null when no plan slot covers the window ("where plans exist").
      */
     public BigDecimal savings(UUID siteId, Instant from, Instant to) {
-        List<BigDecimal> result = jdbc.query(
-                "SELECT sum(baseline_cost_eur - cost_eur) AS savings FROM ("
-                        + "  SELECT DISTINCT ON (time) baseline_cost_eur, cost_eur"
+        return plannedSavings(siteId, from, to).batteryEur();
+    }
+
+    /** Both planned figures in ONE pass over the window's plan slots. */
+    public PlannedSavings plannedSavings(UUID siteId, Instant from, Instant to) {
+        List<PlannedSavings> result = jdbc.query(
+                "SELECT sum(baseline_cost_eur - cost_eur) AS savings,"
+                        // count(stur_cost_eur) counts only the NON-NULL ones, so
+                        // the two counts differ exactly when a covered slot is
+                        // missing its Messlatte - then the steering sum stays
+                        // null instead of summing a partial window.
+                        + " CASE WHEN count(*) = count(stur_cost_eur)"
+                        + "      THEN sum(stur_cost_eur - cost_eur) END AS steuerung"
+                        + " FROM ("
+                        + "  SELECT DISTINCT ON (time) baseline_cost_eur, cost_eur,"
+                        + "    stur_cost_eur"
                         + "  FROM schedule WHERE site_id = ? AND time >= ? AND time < ?"
                         + "  ORDER BY time, generated_at DESC) s "
                         + "WHERE baseline_cost_eur IS NOT NULL AND cost_eur IS NOT NULL",
-                (rs, i) -> rs.getBigDecimal("savings"),
+                (rs, i) -> new PlannedSavings(
+                        rs.getBigDecimal("savings"), rs.getBigDecimal("steuerung")),
                 siteId, Timestamp.from(from), Timestamp.from(to));
-        return result.isEmpty() ? null : result.get(0);
+        return result.isEmpty()
+                ? new PlannedSavings(null, null) : result.get(0);
     }
 
     /**

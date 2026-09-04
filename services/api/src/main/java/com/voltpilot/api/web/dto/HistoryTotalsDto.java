@@ -38,6 +38,22 @@ import java.math.BigDecimal;
  *       {@code GET /api/v1/earnings}, and the two legitimately differ by a
  *       large factor. Any surface rendering it MUST say "geplant" (audit
  *       H3/X2).</li>
+ *   <li>{@code steuerungPlannedEur} = sum of (stur_cost_eur - cost_eur) over
+ *       the SAME plan slots: what the plan earns against <b>the same battery
+ *       WITHOUT smart control</b> - the stur self-consumption reference of
+ *       {@code services/optimization/voltpilot_optimization/stur.py}, whose
+ *       measured twin is {@code savedSteuerungEur} on {@code /earnings}.
+ *       <b>This is the number the customer surface shows</b> (Captain
+ *       04.09.2026: "du musst Anlage immer mit Speicher berechnen, einer halt
+ *       ohne smart Steuerung"); {@code batterySavingsPlannedEur} keeps
+ *       answering the operator/optimizer question. It is <b>null when even ONE
+ *       covered slot of the window carries no Messlatte</b> (a run that
+ *       predates migration V20260867000000, or a site the optimizer plans no
+ *       battery for) - a partial sum would describe a window nobody computed,
+ *       so the surface hides the line instead of understating it. By
+ *       construction {@code steuerungPlannedEur <= batterySavingsPlannedEur}:
+ *       a stur battery is better than none. Like its sibling it is EX-ANTE
+ *       PLANNED money - any surface rendering it MUST say "geplant".</li>
  *   <li>{@code batterySavingsEur} - <b>deprecated</b> alias of
  *       {@code batterySavingsPlannedEur}, kept for one release so the portal can
  *       switch independently. Same value; do not add new readers.</li>
@@ -60,6 +76,7 @@ public record HistoryTotalsDto(
         BigDecimal batterySavingsPlannedEur,
         // DEPRECATED alias of batterySavingsPlannedEur - same value, one release.
         BigDecimal batterySavingsEur,
+        BigDecimal steuerungPlannedEur,
         BigDecimal autarkiePct,
         BigDecimal eigenverbrauchPct) {
 
@@ -71,8 +88,20 @@ public record HistoryTotalsDto(
             BigDecimal gridImportKwh, BigDecimal gridExportKwh, BigDecimal gridCostEur,
             String tarifArt, Boolean tarifPriced, BigDecimal batterySavingsPlannedEur,
             BigDecimal autarkiePct, BigDecimal eigenverbrauchPct) {
+        return of(consumptionKwh, pvGenerationKwh, gridImportKwh, gridExportKwh, gridCostEur,
+                tarifArt, tarifPriced, batterySavingsPlannedEur, null,
+                autarkiePct, eigenverbrauchPct);
+    }
+
+    /** Canonical constructor carrying BOTH planned figures (see above). */
+    public static HistoryTotalsDto of(BigDecimal consumptionKwh, BigDecimal pvGenerationKwh,
+            BigDecimal gridImportKwh, BigDecimal gridExportKwh, BigDecimal gridCostEur,
+            String tarifArt, Boolean tarifPriced, BigDecimal batterySavingsPlannedEur,
+            BigDecimal steuerungPlannedEur,
+            BigDecimal autarkiePct, BigDecimal eigenverbrauchPct) {
         return new HistoryTotalsDto(consumptionKwh, pvGenerationKwh, gridImportKwh, gridExportKwh,
                 gridCostEur, tarifArt, tarifPriced, batterySavingsPlannedEur,
-                batterySavingsPlannedEur, autarkiePct, eigenverbrauchPct);
+                batterySavingsPlannedEur, steuerungPlannedEur,
+                autarkiePct, eigenverbrauchPct);
     }
 }

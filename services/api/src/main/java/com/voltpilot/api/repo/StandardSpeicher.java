@@ -16,9 +16,14 @@ import java.math.BigDecimal;
  * sofort, deckt jedes Defizit sofort, lädt nie aus dem Netz, null
  * Preisbewusstsein. <b>Diese Klasse ist der Java-Zwilling dieses Modells -
  * wer die Greedy-Semantik dort ändert, ändert sie hier mit</b> (die
- * SlotEconomics⟷pricing.py-Disziplin; die Vektoren von
- * {@code test_simulation.py} sind in {@code StandardSpeicherTest}
- * gespiegelt). Es wird bewusst KEINE neue Ökonomie erfunden: die Bewertung
+ * SlotEconomics⟷pricing.py-Disziplin). <b>Die EINE Regel und die geteilten
+ * Vektoren stehen in {@code docs/contracts/stur-speicher-vectors.json}</b> -
+ * beide Zwillinge lesen sie PER PFAD ({@code StandardSpeicherTest} hier,
+ * {@code services/optimization/tests/test_stur.py} drüben), damit die
+ * GEPLANTE Messlatte des Optimierers ({@code steuerungPlannedEur}) und die
+ * GEMESSENE ({@code savedSteuerungEur}) denselben sturen Speicher meinen;
+ * die Vektoren von {@code test_simulation.py} sind zusätzlich in
+ * {@code StandardSpeicherTest} gespiegelt). Es wird bewusst KEINE neue Ökonomie erfunden: die Bewertung
  * der Slots übernimmt der Aufrufer mit denselben Preis-Kompositionen wie
  * {@code savedEur} ({@code importPriceCtSql}/{@code exportValueCtSql}).
  *

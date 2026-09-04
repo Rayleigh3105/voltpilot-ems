@@ -1,0 +1,79 @@
+{
+  "$comment": "Die GETEILTEN Vektoren des STUREN Speichers - der Referenz-Physik, gegen die die geplante UND die gemessene Ersparnis der Steuerung gerechnet wird (Captain 04.09.2026: 'du musst Anlage immer mit Speicher berechnen, einer halt ohne smart Steuerung'). ZWEI Zwillinge lesen diese Datei PER PFAD und muessen je Fall dieselbe Trajektorie und denselben Euro-Betrag liefern - Python services/optimization/voltpilot_optimization/simulation/greedy.py (KANONISCH; der Optimierer bewertet damit seine Messlatte, siehe voltpilot_optimization/stur.py) und Java services/api .../repo/StandardSpeicher.java (die gemessene Seite, savedSpeicherEur). Wer die Greedy-Semantik auf einer Seite aendert, aendert BEIDE Seiten UND diese Datei zusammen - das Muster von topology-vectors.json / lan-host-vectors.json / consumer-policy-vectors.json.",
+
+  "$regel": "Gleiche Physik wie der Plan (Kapazitaet, Leistungsgrenzen, sqrt(eta)-Split der Round-Trip-Effizienz, SoC-Band inkl. Reservations-Stack als Boden), NULL Preis-Bewusstsein: jeder PV-Ueberschuss laedt sofort bis an Leistungs- und SoC-Grenze, jedes Defizit entlaedt sofort bis an Leistungs- und Boden-Grenze. Der sture Speicher laedt NIE aus dem Netz (per Konstruktion: er laedt nur aus Ueberschuss), speist NIE aus dem Speicher ein (per Konstruktion: er entlaedt nur bis zum Defizit), regelt NIE ab und kennt weder Paragraph 14a noch eine Einspeisegrenze.",
+
+  "$einheiten": "pv_kw/load_kw/charge_kw/discharge_kw sind LEISTUNGEN im Slot (kW), soc_kwh ist der Ladestand am SLOT-ENDE (kWh), grid_kw ist die resultierende Netzleistung (+Bezug/-Einspeisung). Der Java-Zwilling rechnet in kWh je Slot - seine Testseite multipliziert mit slot_hours. Preise sind EUR/kWh.",
+
+  "$speicher_eur": "speicher_eur = SUMME ueber die Slots von (discharge_kwh * import_price_eur_kwh - charge_kwh * export_value_eur_kwh) - der Wert des STUREN Speichers gegenueber GAR KEINEM Speicher (Herleitung im Javadoc von StandardSpeicher). Genau diese Groesse berechnet der Java-Walk direkt; die Python-Seite leitet sie aus ihrer Dispatch-Trajektorie ab. In einem Negativpreis-Slot ist -charge*ev POSITIV: der sture Speicher vermeidet dort bezahlten Export.",
+
+  "faelle": [
+    {
+      "name": "ein-tag-jede-kante",
+      "why": "Ein Durchlauf, der JEDE Kante der Regel beruehrt: Leerlauf am Boden, teilweises Laden (Ueberschuss < Leistungsgrenze), leistungsbegrenztes Laden, SoC-Decke bindet (Ladung 0 trotz Ueberschuss), leistungsbegrenztes Entladen, teilweises Entladen am Boden, leerer Speicher. Der Negativpreis-Slot 5 zeigt das Vorzeichen des Export-Terms.",
+      "batterie": {
+        "capacity_kwh": 10.0,
+        "max_charge_kw": 5.0,
+        "max_discharge_kw": 5.0,
+        "roundtrip_efficiency": 0.64,
+        "one_way_efficiency": 0.8,
+        "soc_min_fraction": 0.05,
+        "soc_max_fraction": 0.95,
+        "soc_floor_kwh": 0.5,
+        "soc_max_kwh": 9.5
+      },
+      "slot_hours": 0.25,
+      "initial_soc_kwh": 0.5,
+      "slots": [
+        { "pv_kw": 0.0,  "load_kw": 2.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 0.0, "discharge_kw": 0.0, "soc_kwh": 0.5,    "grid_kw": 2.0,   "why": "am Boden: nichts zu entladen" },
+        { "pv_kw": 8.0,  "load_kw": 2.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 5.0, "discharge_kw": 0.0, "soc_kwh": 1.5,    "grid_kw": -1.0,  "why": "Ueberschuss 6 > Leistungsgrenze 5: leistungsbegrenzt, Rest wird eingespeist" },
+        { "pv_kw": 12.0, "load_kw": 2.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 5.0, "discharge_kw": 0.0, "soc_kwh": 2.5,    "grid_kw": -5.0,  "why": "leistungsbegrenztes Laden" },
+        { "pv_kw": 12.0, "load_kw": 2.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 5.0, "discharge_kw": 0.0, "soc_kwh": 3.5,    "grid_kw": -5.0,  "why": "leistungsbegrenztes Laden" },
+        { "pv_kw": 12.0, "load_kw": 2.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": -0.05, "charge_kw": 5.0, "discharge_kw": 0.0, "soc_kwh": 4.5,   "grid_kw": -5.0,  "why": "NEGATIVER Exportwert: der sture Speicher laedt unveraendert (er kennt keine Preise) - der Euro-Term dreht das Vorzeichen" },
+        { "pv_kw": 12.0, "load_kw": 2.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 5.0, "discharge_kw": 0.0, "soc_kwh": 5.5,    "grid_kw": -5.0,  "why": "leistungsbegrenztes Laden" },
+        { "pv_kw": 12.0, "load_kw": 2.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 5.0, "discharge_kw": 0.0, "soc_kwh": 6.5,    "grid_kw": -5.0,  "why": "leistungsbegrenztes Laden" },
+        { "pv_kw": 12.0, "load_kw": 2.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 5.0, "discharge_kw": 0.0, "soc_kwh": 7.5,    "grid_kw": -5.0,  "why": "leistungsbegrenztes Laden" },
+        { "pv_kw": 12.0, "load_kw": 2.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 5.0, "discharge_kw": 0.0, "soc_kwh": 8.5,    "grid_kw": -5.0,  "why": "leistungsbegrenztes Laden" },
+        { "pv_kw": 12.0, "load_kw": 2.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 5.0, "discharge_kw": 0.0, "soc_kwh": 9.5,    "grid_kw": -5.0,  "why": "letzte volle Ladung: der Speicher erreicht die Decke exakt" },
+        { "pv_kw": 12.0, "load_kw": 2.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 0.0, "discharge_kw": 0.0, "soc_kwh": 9.5,    "grid_kw": -10.0, "why": "SoC-DECKE bindet: trotz 10 kW Ueberschuss wird nichts geladen, alles eingespeist" },
+        { "pv_kw": 0.0,  "load_kw": 8.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 0.0, "discharge_kw": 5.0, "soc_kwh": 7.9375, "grid_kw": 3.0,   "why": "Defizit 8 > Leistungsgrenze 5: leistungsbegrenztes Entladen, Rest aus dem Netz" },
+        { "pv_kw": 0.0,  "load_kw": 8.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 0.0, "discharge_kw": 5.0, "soc_kwh": 6.375,  "grid_kw": 3.0,   "why": "leistungsbegrenztes Entladen" },
+        { "pv_kw": 0.0,  "load_kw": 8.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 0.0, "discharge_kw": 5.0, "soc_kwh": 4.8125, "grid_kw": 3.0,   "why": "leistungsbegrenztes Entladen" },
+        { "pv_kw": 0.0,  "load_kw": 8.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 0.0, "discharge_kw": 5.0, "soc_kwh": 3.25,   "grid_kw": 3.0,   "why": "leistungsbegrenztes Entladen" },
+        { "pv_kw": 0.0,  "load_kw": 8.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 0.0, "discharge_kw": 5.0, "soc_kwh": 1.6875, "grid_kw": 3.0,   "why": "leistungsbegrenztes Entladen" },
+        { "pv_kw": 0.0,  "load_kw": 8.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 0.0, "discharge_kw": 3.8, "soc_kwh": 0.5,    "grid_kw": 4.2,   "why": "BODEN bindet teilweise: nur noch 3,8 kW moeglich, der Speicher endet exakt am Boden" },
+        { "pv_kw": 0.0,  "load_kw": 8.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 0.0, "discharge_kw": 0.0, "soc_kwh": 0.5,    "grid_kw": 8.0,   "why": "leer: das ganze Defizit kommt aus dem Netz" }
+      ],
+      "charge_kwh_total": 11.25,
+      "discharge_kwh_total": 7.2,
+      "speicher_eur": 1.4225,
+      "$speicher_eur_rechnung": "7,2 kWh * 0,30 - (10,0 kWh * 0,08 + 1,25 kWh * (-0,05)) = 2,16 - (0,80 - 0,0625) = 1,4225 EUR. Energiebilanz: 11,25 kWh AC geladen * 0,8 = 9,0 kWh gespeichert; 7,2 kWh AC entladen / 0,8 = 9,0 kWh entnommen - der Speicher endet exakt dort, wo er begann."
+    },
+    {
+      "name": "start-ueber-dem-boden",
+      "why": "Der Start-Ladestand wird UEBERNOMMEN, nicht auf den Boden gesetzt - die Messlatte tritt aus derselben Vergangenheit an wie der Plan. Ausserdem: ein Slot ohne Ueberschuss und ohne Defizit (pv == load) laesst den Speicher in Ruhe.",
+      "batterie": {
+        "capacity_kwh": 10.0,
+        "max_charge_kw": 5.0,
+        "max_discharge_kw": 5.0,
+        "roundtrip_efficiency": 0.64,
+        "one_way_efficiency": 0.8,
+        "soc_min_fraction": 0.05,
+        "soc_max_fraction": 0.95,
+        "soc_floor_kwh": 0.5,
+        "soc_max_kwh": 9.5
+      },
+      "slot_hours": 0.25,
+      "initial_soc_kwh": 4.0,
+      "slots": [
+        { "pv_kw": 3.0, "load_kw": 3.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 0.0, "discharge_kw": 0.0, "soc_kwh": 4.0,  "grid_kw": 0.0,  "why": "pv == load: weder Ueberschuss noch Defizit, der Speicher bleibt unberuehrt" },
+        { "pv_kw": 5.0, "load_kw": 3.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 2.0, "discharge_kw": 0.0, "soc_kwh": 4.4,  "grid_kw": 0.0,  "why": "Ueberschuss 2 < Leistungsgrenze: der GANZE Ueberschuss geht in den Speicher, Netz exakt 0" },
+        { "pv_kw": 0.0, "load_kw": 1.0, "import_price_eur_kwh": 0.30, "export_value_eur_kwh": 0.08, "charge_kw": 0.0, "discharge_kw": 1.0, "soc_kwh": 4.0875, "grid_kw": 0.0,  "why": "Defizit 1 < Leistungsgrenze: das GANZE Defizit kommt aus dem Speicher, Netz exakt 0" }
+      ],
+      "charge_kwh_total": 0.5,
+      "discharge_kwh_total": 0.25,
+      "speicher_eur": 0.035,
+      "$speicher_eur_rechnung": "0,25 kWh * 0,30 - 0,5 kWh * 0,08 = 0,075 - 0,04 = 0,035 EUR."
+    }
+  ]
+}

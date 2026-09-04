@@ -3,7 +3,11 @@ package com.voltpilot.api.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -238,5 +242,74 @@ class StandardSpeicherTest {
         walk.slot(1.5, 1.5, 0.30, 0.10);
         assertThat(walk.socKwh()).isCloseTo(1.0, EPS);
         assertThat(walk.speicherEur()).isCloseTo(0.0, within(1e-12));
+    }
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * ⚠ Der Beweis, dass die GEPLANTE und die GEMESSENE Seite denselben
+     * sturen Speicher meinen: die Vektoren kommen aus der GETEILTEN Datei, die
+     * auch der Python-Zwilling PER PFAD liest
+     * ({@code services/optimization/tests/test_stur.py}, der damit
+     * {@code simulation/greedy.py} und die Messlatte des Optimierers
+     * festnagelt). Eine eigene Liste hier wäre eine zweite Wahrheit, die
+     * lautlos auseinanderläuft - genau das Muster von
+     * {@code lan-host-vectors.json} / {@code topology-vectors.json}.
+     *
+     * <p>Die Vektoren geben LEISTUNGEN (kW), dieser Walk rechnet in kWh je
+     * Slot - deshalb die Multiplikation mit {@code slot_hours}.
+     */
+    @Test
+    void theSharedVectorsPinTheSameSturBatteryAsThePythonTwin() throws Exception {
+        JsonNode vectors = MAPPER.readTree(Files.readString(
+                Path.of("..", "..", "docs", "contracts", "stur-speicher-vectors.json")));
+        assertThat(vectors.path("faelle")).isNotEmpty();
+
+        for (JsonNode fall : vectors.path("faelle")) {
+            String name = fall.path("name").asText();
+            JsonNode spec = fall.path("batterie");
+            double dt = fall.path("slot_hours").asDouble();
+            assertThat(dt)
+                    .as("%s: der Walk rechnet auf StandardSpeicher.SLOT_HOURS", name)
+                    .isEqualTo(StandardSpeicher.SLOT_HOURS);
+
+            StandardSpeicher.Batterie b = StandardSpeicher.batterie(
+                    BigDecimal.valueOf(spec.path("capacity_kwh").asDouble()),
+                    BigDecimal.valueOf(spec.path("max_charge_kw").asDouble()),
+                    BigDecimal.valueOf(spec.path("max_discharge_kw").asDouble()),
+                    BigDecimal.valueOf(spec.path("roundtrip_efficiency").asDouble() * 100.0),
+                    BigDecimal.valueOf(spec.path("soc_min_fraction").asDouble() * 100.0),
+                    BigDecimal.valueOf(spec.path("soc_max_fraction").asDouble() * 100.0),
+                    null, null);
+            assertThat(b).as("%s: Stammdaten aufloesbar", name).isNotNull();
+            // Die abgeleiteten Zahlen der Vektoren muessen zu den Parametern
+            // passen - sonst beschreiben sie eine Batterie, die niemand baut.
+            assertThat(b.etaOneWay())
+                    .as("%s: eta", name)
+                    .isCloseTo(spec.path("one_way_efficiency").asDouble(), EPS);
+            assertThat(b.socFloorKwh())
+                    .as("%s: Boden", name)
+                    .isCloseTo(spec.path("soc_floor_kwh").asDouble(), EPS);
+            assertThat(b.socMaxKwh())
+                    .as("%s: Decke", name)
+                    .isCloseTo(spec.path("soc_max_kwh").asDouble(), EPS);
+
+            StandardSpeicher.Walk walk =
+                    new StandardSpeicher.Walk(b, fall.path("initial_soc_kwh").asDouble());
+            int i = 0;
+            for (JsonNode slot : fall.path("slots")) {
+                walk.slot(slot.path("pv_kw").asDouble() * dt,
+                        slot.path("load_kw").asDouble() * dt,
+                        slot.path("import_price_eur_kwh").asDouble(),
+                        slot.path("export_value_eur_kwh").asDouble());
+                assertThat(walk.socKwh())
+                        .as("%s slot %d (%s)", name, i, slot.path("why").asText())
+                        .isCloseTo(slot.path("soc_kwh").asDouble(), EPS);
+                i++;
+            }
+            assertThat(walk.speicherEur())
+                    .as("%s: der Euro-Wert des sturen Speichers", name)
+                    .isCloseTo(fall.path("speicher_eur").asDouble(), EPS);
+        }
     }
 }
