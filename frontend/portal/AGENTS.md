@@ -3466,6 +3466,16 @@ Namen. Fachlogik, Formulare und Texte sind unverändert; es änderte sich nur, W
   Importe ist ein eigenes, rein mechanisches Folgepaket — es hätte den Diff dieser Runde
   verdeckt, in dem es um das VERHALTEN geht.
 
+## Bewegung (Motion-Programm P0)
+
+**Spec-Quelle:** firstmate `data/vp-motion-konzept-m1/report.md` §4 (Captain-Entscheid 04.09.2026, E1–E10 = a).
+
+- **EINE Familie** in `designsystem/tokens/effects.css`, per `@property` als `<time>` registriert (damit `getComputedStyle` die AUFGELÖSTE Dauer liefert — die Bedingung dafür, dass ECharts sie ab P1 lesen kann): `--vp-motion-fast` 120 · `-base` 200 · `-enter` 260 · `-exit` 160 · `-page` 300 · `-chart` 400 · `-chart-update` 300 · `-stagger` 30 ms, `--vp-motion-distance` 8 px, Kurven `--vp-ease-out/-in/-inout` (`--vp-ease` = Alias von `-inout`). `--vp-c-motion` ist Alias von `--vp-motion-base`.
+- **EIN Schalter:** jede Dauer rechnet `calc(<ms> * var(--vp-motion-scale))`. `--vp-motion-scale: 0` wird an GENAU EINER Stelle gesetzt — dem `@media (prefers-reduced-motion: reduce)`-Block **am ENDE** von `src/index.css`. ⚠ Das Ende ist keine Kosmetik: eine Media-Query erhöht die Spezifität nicht, und weiter oben verlor der Block gegen `.vp-auth-flow .spoke` (im Browser gemessen). Derselbe Block nullt zusätzlich die benannten `infinite`-Animationen — eine Loop mit 0 ms wäre ein stehendes Bild. **Wer eine neue Loop einführt, trägt sie dort ein.** Einzige Ausnahme ausserhalb: der Skelett-Schimmer in `designsystem/components/core/core.css` (Begründung dort).
+- **Zwei Verbote:** kein `transition: all` (`--vp-transition`/`--vp-transition-fast` sind ersatzlos entfallen; Nachfolger ist `--vp-motion-chrome` = Farbe/Fläche/Rand/Schatten) und **keine nackte Dauer** — eine Zahl, die nicht aus der Familie kommt, entzieht sich dem Schalter. Ein `var(--token, 200ms)`-Rückfall zählt nicht als nackt.
+- **`src/motionPresets.ts`** trägt dieselben Zahlen als TS-Konstanten und importiert NICHTS aus `motion` (es liegt im Einstieg). **Motion 13.2.0 lebt nur in Lazy-Stücken** (E10 a, gemessen: voll im Einstieg +45,1 kB gz, lazy +0,07): `src/motionFeatures.ts` ist das dynamische Ziel, `components/MotionRoot.tsx` der Wirt (`LazyMotion strict`).
+- **Wächter:** `src/motionTokens.test.ts` (Familie, CSS ≡ `motionPresets.ts`, EIN Block + seine Lage, die zwei Ratschen, der statische Import-Graph ab `main.tsx`) und `npm run test:bundle` (`test/bundle-smoke.sh`: Einstieg ≤ 230 kB gz, kein Motion-Modul in den `sources` des Einstiegs-Chunks — ein Namens-`grep` reicht dafür nicht, der Minifizierer benennt um). Browser-Beweis: `e2e/motion-p0/` (jsdom sieht weder `@property` noch Kaskade).
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
