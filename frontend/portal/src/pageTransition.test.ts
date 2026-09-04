@@ -123,59 +123,80 @@ describe('Bewegung P5 · das Vorladen wartet, aber nicht ewig', () => {
 });
 
 /* ------------------------------------------------------------------------
-   Der STRUKTUR-Wächter: wer eine neue Seite `lazy()` schneidet, trägt sie in
-   `pageTransition.ts` ein. Vergisst er es, läuft der Übergang in den Deckel
-   und schiebt ein Skelett herein — schlechter, aber nie falsch; der Test macht
-   es sichtbar, statt es still geschehen zu lassen.
+   Der STRUKTUR-Wächter: `pageChunks.ts` ist die EINE Schnitt-Grenze, und sie
+   hat GENAU ZWEI Abnehmer — die `lazy()`-Komponenten (was der Browser beim
+   Rendern holt) und die Vorlade-Tabellen (was der Seitenwechsel VORHER holt).
+   Läuft eines der beiden Enden auseinander, wechselt eine Seite still ohne
+   Vorladen: der Übergang läuft in den Deckel und schiebt ein Skelett herein —
+   schlechter, aber nie falsch. Diese drei Tests machen es sichtbar, statt es
+   geschehen zu lassen.
    ------------------------------------------------------------------------ */
 
 const root = resolve(__dirname, '..');
 const lies = (rel: string) => readFileSync(resolve(root, rel), 'utf8');
 
-/** Die Pfade, die ein Blatt per `lazy(() => import('…'))` nachlädt. */
-function lazyPfade(quelltext: string): Set<string> {
+/** Die Schlüssel EINER Tabelle in `pageChunks.ts`. */
+function stueckSchluessel(tabelle: 'PAGE_CHUNK' | 'SUB_CHUNK'): Set<string> {
+  const s = lies('src/pageChunks.ts');
+  const start = s.indexOf(`export const ${tabelle}`);
+  expect(start).toBeGreaterThan(-1);
+  const block = s.slice(start, s.indexOf('} as const;', start));
+  return new Set([...block.matchAll(/^\s*'?([a-z-]+)'?:\s*\(\)\s*=>/gm)].map((m) => m[1]));
+}
+
+/** Die Schlüssel, die eine Datei aus dieser Tabelle wirklich ABRUFT. */
+function abgerufen(datei: string, tabelle: 'PAGE_CHUNK' | 'SUB_CHUNK'): Set<string> {
+  const s = lies(datei);
   const out = new Set<string>();
-  for (const m of quelltext.matchAll(/lazy\(\(\)\s*=>[\s\S]{0,80}?import\('([^']+)'\)/g)) {
-    out.add(m[1]);
+  // Die zwei Abrufformen: `X.key()` (die `lazy()`-Seite ruft es sofort)
+  // und `X.key` (die Vorlade-Tabelle merkt es sich als Funktion).
+  for (const m of s.matchAll(new RegExp(`${tabelle}(?:\\.([a-zA-Z-]+)|\\['([^']+)'\\])`, 'g'))) {
+    out.add(m[1] ?? m[2]);
   }
   return out;
 }
 
-/** Die Pfade, die `pageTransition.ts` in einer seiner zwei Tabellen vorlädt. */
-function vorgeladen(tabelle: 'PAGE_CHUNKS' | 'SUB_CHUNKS'): Set<string> {
-  const s = lies('src/pageTransition.ts');
-  const start = s.indexOf(`const ${tabelle}`);
-  const block = s.slice(start, s.indexOf('};', start));
-  return new Set([...block.matchAll(/import\('([^']+)'\)/g)].map((m) => m[1]));
-}
-
 describe('Bewegung P5 · jedes Lazy-Stück ist vorladbar', () => {
-  it('die Seiten der Flotten-/Plattform-Ebene sind vollständig', () => {
-    const app = lazyPfade(lies('src/App.tsx'));
-    // Der Anlege-Assistent ist keine ROUTE (er ist ein Overlay über der
-    // Übersicht) und gehört deshalb nicht in die Tabelle.
-    app.delete('./Onboarding');
-    expect([...app].sort()).toEqual([...vorgeladen('PAGE_CHUNKS')].sort());
+  it('jedes Stück der Flotten-/Plattform-Ebene wird gerendert UND vorgeladen', () => {
+    const stuecke = stueckSchluessel('PAGE_CHUNK');
+    expect(stuecke.size).toBeGreaterThan(10);
+    // Gerendert: `App.tsx` baut aus JEDEM Schlüssel eine `lazy()`-Komponente.
+    expect([...abgerufen('src/App.tsx', 'PAGE_CHUNK')].sort()).toEqual([...stuecke].sort());
+    // Vorgeladen: bis auf `onboarding` — der Anlege-Assistent ist keine ROUTE,
+    // sondern ein Overlay über der Übersicht, es gibt also nichts anzusteuern.
+    const vorgeladen = abgerufen('src/pageTransition.ts', 'PAGE_CHUNK');
+    const erwartet = new Set(stuecke);
+    erwartet.delete('onboarding');
+    expect([...vorgeladen].sort()).toEqual([...erwartet].sort());
   });
 
-  it('die Unterseiten einer Anlage sind vollständig', () => {
-    const seiten = lazyPfade(lies('src/pages/AnlagenPage.tsx'));
-    // `AnlagenPage.tsx` schneidet relativ zu `src/pages/`, `pageTransition.ts`
-    // relativ zu `src/` — dieselben Stücke, ein Punkt Unterschied.
-    const gemappt = new Set([...vorgeladen('SUB_CHUNKS')].map((p) => p.replace('./pages/', './')));
-    expect([...seiten].sort()).toEqual([...gemappt].sort());
+  it('jedes Stück einer Anlagen-Unterseite wird gerendert UND vorgeladen', () => {
+    const stuecke = stueckSchluessel('SUB_CHUNK');
+    expect(stuecke.size).toBeGreaterThan(10);
+    expect([...abgerufen('src/pages/AnlagenPage.tsx', 'SUB_CHUNK')].sort())
+      .toEqual([...stuecke].sort());
+    expect([...abgerufen('src/pageTransition.ts', 'SUB_CHUNK')].sort())
+      .toEqual([...stuecke].sort());
   });
 
   it('jede Unterseite EINER Anlage findet ihr Stück', () => {
-    const subs = [...lies('src/nav.ts').matchAll(/^\s*\|\s*'([a-z]+)'/gm)];
-    expect(subs.length).toBeGreaterThan(10);
-    const keys = new Set(
-      [...lies('src/pageTransition.ts')
-        .slice(lies('src/pageTransition.ts').indexOf('const SUB_CHUNKS'))
-        .matchAll(/^\s*'?([a-z-]+)'?:\s*\(\)/gm)].map((m) => m[1]),
+    // Das Vokabular von `AnlagenSub` in `nav.ts` …
+    const s = lies('src/nav.ts');
+    const start = s.indexOf('export type AnlagenSub');
+    expect(start).toBeGreaterThan(-1);
+    const subs = new Set(
+      [...s.slice(start, s.indexOf(';', start)).matchAll(/'([a-z]+)'/g)].map((m) => m[1]),
     );
-    // Die 14 Unterseiten der Anlage sind genau die 14 Einträge der Tabelle.
-    expect(keys.size).toBe(14);
+    expect(subs.size).toBeGreaterThan(10);
+    // … und die Zuordnung Unterseite → Stück in `pageTransition.ts` sind
+    // dieselbe Menge. Eine Unterseite ohne Eintrag liefe in den Deckel.
+    const t = lies('src/pageTransition.ts');
+    const tabStart = t.indexOf('const SUB_LOADER');
+    const zugeordnet = new Set(
+      [...t.slice(tabStart, t.indexOf('};', tabStart))
+        .matchAll(/^\s*([a-z]+):\s*SUB_CHUNK/gm)].map((m) => m[1]),
+    );
+    expect([...zugeordnet].sort()).toEqual([...subs].sort());
   });
 
   it('eine Flotten-Seite ohne eigenes Stück ist ehrlich `null`', () => {
