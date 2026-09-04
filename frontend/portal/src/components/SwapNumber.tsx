@@ -10,15 +10,35 @@ import { swapInit, swapNext, swapSettle, type SwapState } from '../swapNumber';
  * selben Frame. Neu: der alte Wert blendet 200 ms nach oben aus, der neue von
  * unten ein — und **es wird nie gezählt** (Captain-Antwort 3).
  *
+ * ## ⚠ IM RUHEZUSTAND STEHT NUR DER WERT — KEIN ZUSÄTZLICHES ELEMENT
+ *
+ * Solange nichts wechselt, rendert dieser Baustein GENAU das, was ohne ihn
+ * dastünde: einen nackten Textknoten (HTML) bzw. das eine `<text>` (SVG). Der
+ * Träger für die zwei überlagerten Werte entsteht erst FÜR die 200 ms des
+ * Wechsels und verschwindet danach wieder.
+ *
+ * Das ist keine Sparsamkeit, sondern die Bedingung dafür, dass er überall
+ * eingesetzt werden DARF. Ein bleibendes `<span>` um jede Zahl ändert die
+ * DOM-Form jeder Fläche, die ihn benutzt — und damit jede Abfrage der Art
+ * `getByText('301,46 €', { selector: '.vp-c-stm-zahl' })`: die
+ * Testing-Library liest dort NUR die direkten Textkinder eines Elements, ein
+ * Wrapper macht den Treffer also unsichtbar. Beim Bau sind daran neun Prüfungen
+ * aus drei fremden Flächen gefallen. Der Ruhezustand ist deshalb byte-gleich
+ * mit dem Zustand vor P3, und der Endzustand des Wechsels sieht identisch aus
+ * (die Animation endet bei Deckkraft 1 und Versatz 0) — der Rücktausch auf den
+ * nackten Text ist unsichtbar.
+ *
  * ## ⚠ ES GIBT ZWEI FASSUNGEN, WEIL ES ZWEI LAUFZEITEN GIBT
  *
  * {@link SwapNumber} ist HTML (Kennzahl-Zeilen, Hero-Betrag, Preisleiste),
  * {@link SwapText} ist SVG (`<text>` im Energiefluss und im Ring-Donut). Sie
  * teilen die Regel ({@link useSwap}) und die zwei Keyframes; sie unterscheiden
- * sich nur darin, WIE der alte Wert aus dem Fluss genommen wird — im HTML per
- * `position: absolute`, im SVG gar nicht, weil `x`/`y` dort ohnehin absolut
- * sind. Ein gemeinsames Bauteil hätte für den SVG-Fall ein `<foreignObject>`
- * gebraucht: eine zweite Textrasterung mitten im Diagramm.
+ * sich nur darin, WIE der alte Wert aus dem Fluss genommen wird — im HTML
+ * braucht es dafür für die Dauer des Wechsels einen `position: relative`
+ * Träger, im SVG gar nichts, weil `x`/`y` dort ohnehin absolut sind und zwei
+ * `<text>` auf derselben Stelle sich per Konstruktion überlagern. Ein
+ * gemeinsames Bauteil hätte für den SVG-Fall ein `<foreignObject>` gebraucht:
+ * eine zweite Textrasterung mitten im Diagramm.
  *
  * ## ⚠ DER TEXT STEHT IMMER FERTIG IM DOM
  *
@@ -78,21 +98,23 @@ function useSwap(value: string): SwapState {
 export interface SwapNumberProps {
   /** Der fertige, formatierte Wert. Es wird nie gerechnet und nie gezählt. */
   value: string;
-  className?: string;
-  /** `title` wandert auf den Träger, damit der Tooltip beim Wechsel bleibt. */
-  title?: string;
 }
 
-/** Die HTML-Fassung: Kennzahl-Zeilen, Hero-Betrag, Preisleisten-Wert. */
-export function SwapNumber({ value, className, title }: SwapNumberProps): ReactElement {
+/**
+ * Die HTML-Fassung: Kennzahl-Zeilen, Hero-Betrag, Preisleisten-Wert.
+ *
+ * ⚠ Der Träger `.vp-swap` (er stellt den `position: relative`-Bezug für den
+ *   ausblendenden Vorgänger) existiert NUR während des Wechsels — siehe
+ *   „IM RUHEZUSTAND STEHT NUR DER WERT" oben.
+ */
+export function SwapNumber({ value }: SwapNumberProps): ReactElement {
   const s = useSwap(value);
+  if (s.prev === null) return <>{value}</>;
   return (
-    <span className={className ? `vp-swap ${className}` : 'vp-swap'} title={title}>
-      {s.prev !== null && (
-        <span key={`o${s.seq}`} className="vp-swap-out" aria-hidden="true">
-          {s.prev}
-        </span>
-      )}
+    <span className="vp-swap">
+      <span key={`o${s.seq}`} className="vp-swap-out" aria-hidden="true">
+        {s.prev}
+      </span>
       <span key={`n${s.seq}`} className="vp-swap-in">
         {value}
       </span>
@@ -116,14 +138,20 @@ export type SwapTextProps = Omit<SVGProps<SVGTextElement>, 'children'> & {
  */
 export function SwapText({ value, className, ...rest }: SwapTextProps): ReactElement {
   const s = useSwap(value);
+  if (s.prev === null) {
+    // Ruhezustand: genau das eine `<text>`, das ohne diesen Baustein dastünde.
+    return (
+      <text {...rest} className={className}>
+        {value}
+      </text>
+    );
+  }
   const cls = (extra: string) => (className ? `${extra} ${className}` : extra);
   return (
     <>
-      {s.prev !== null && (
-        <text key={`o${s.seq}`} {...rest} className={cls('vp-swap-out')} aria-hidden="true">
-          {s.prev}
-        </text>
-      )}
+      <text key={`o${s.seq}`} {...rest} className={cls('vp-swap-out')} aria-hidden="true">
+        {s.prev}
+      </text>
       <text key={`n${s.seq}`} {...rest} className={cls('vp-swap-in')}>
         {value}
       </text>
