@@ -63,7 +63,9 @@ import {
 const STREAM_FIELD: Record<MoneyStreamId, ((e: EarningsSite) => number | null) | null> = {
   eigenverbrauchswert: (e) => e.eigenverbrauchsWertEur,
   einspeisung: (e) => e.einspeiseErloesEur,
-  handel: (e) => e.savedEur,
+  // ⚠ Der Steuerungs-Beitrag, nie `savedEur` (Captain 04.09.2026 — jenes misst
+  //   gegen eine Anlage OHNE Speicher und ist eine ADMIN-Zahl).
+  handel: (e) => e.savedSteuerungEur ?? null,
   lastspitzen: (e) => e.peakShaving?.avoidedEur ?? null,
   automation: null,
 };
@@ -126,8 +128,6 @@ export function contributionRows(
               plantKind: earnings.plantKind,
               anzulegenderWertCtKwh: earnings.anzulegenderWertCtKwh,
               marketValueSolarCtKwh: earnings.marketValueSolarCtKwh,
-              savedEur: earnings.savedEur,
-              savedSpeicherEur: earnings.savedSpeicherEur ?? null,
               savedSteuerungEur: earnings.savedSteuerungEur ?? null,
             },
       note: stream.unattributed

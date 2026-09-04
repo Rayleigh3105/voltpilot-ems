@@ -23,6 +23,7 @@
 import type { SiteEarnings } from './api';
 import { eurAmount, fmtNum, NBSP } from './format';
 import { rundeKaufmaennisch, type ErgebnisZeilenView, type ErloesZeileId } from './erloesZeilen';
+import { MESSLATTE, MESSLATTE_DATIV, MESSLATTE_KURZ } from './speicherAussage';
 
 /** Eine Rechenzeile: „345,4 kWh × 6,18 ct = 21,34 €" plus ein Halbsatz Herkunft. */
 export interface RechenZeile {
@@ -512,18 +513,21 @@ export function ebene2(input: Ebene2Input): Ebene2 {
 export interface SpeicherSchritteInput {
   money: SiteEarnings;
   /**
-   * Der Anteil eines STUR arbeitenden Speichers (`savedSpeicherEur`, #591).
-   * `undefined` = ein älteres Backend liefert das Feld nicht — dann entfallen
-   * die Schritte 4 und 5 wortlos; ein fehlendes Feld ist kein fehlendes
-   * Stammdatum (§3.6).
+   * Der Mehrwert der Steuerung gegenüber {@link MESSLATTE} (`savedSteuerungEur`).
+   * `undefined`/`null` = kein Vergleich möglich — dann sagt Schritt 2 den
+   * GRUND, und es gibt keine Zahl; die Gesamtzahl ist dafür ausdrücklich kein
+   * Ersatz.
    */
-  sturEur?: number | null;
-  /** Der Anteil der Steuerung (`savedSteuerungEur`). */
   steuerungEur?: number | null;
-  /** `no_battery_data` = die Stammdaten FEHLEN — das sagt Schritt 4 dann. */
+  /** `no_battery_data` = die Stammdaten FEHLEN — das sagt Schritt 2 dann. */
   splitReason?: 'no_battery_data' | null;
-  /** Die vorab GEPLANTE Ersparnis des Fahrplans (Historie-Antwort). */
-  geplantEur?: number | null;
+  /**
+   * Der vorab GEPLANTE Mehrwert der Steuerung (`history.totals.steuerungPlannedEur`).
+   * ⚠ Nicht `batterySavingsPlannedEur` — der misst gegen eine Anlage OHNE
+   * Speicher und gehört damit einer anderen Messlatte; bis der Optimierer die
+   * neue Zahl liefert, bleibt die Zeile weg.
+   */
+  steuerungGeplantEur?: number | null;
 }
 
 /** „24,55 € Gutschrift" / „3,12 € Kosten" — das Vorzeichen wird zum Wort. */
@@ -542,52 +546,46 @@ function vorzeichen(v: number): string {
 
 export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
   const money = input.money;
-  const saved = num(money.savedEur);
   const actual = num(money.actualEur);
-  const baseline = num(money.baselineEur);
-  if (saved == null || actual == null || baseline == null) return [];
+  if (actual == null) return [];
 
-  // Die Stromrechnung ist eine KOSTEN-Größe; als Gutschrift gelesen dreht sie
+  const steuerung = num(input.steuerungEur ?? null);
+  if (steuerung == null && input.splitReason !== 'no_battery_data') return [];
+
+  // Die Stromrechnung ist eine KOSTEN-Groesse; als Gutschrift gelesen dreht sie
   // ihr Vorzeichen genau einmal.
   const mit = -actual;
-  const ohne = -baseline;
   const out: RechenZeile[] = [
     {
       formel: `Schritt 1 · gemessen: ${gutschrift(mit)}`,
       herkunft:
         'Ihre Stromrechnung mit VoltPilot: Netzbezug × Bezugspreis − Einspeisung × Einspeisepreis, je Viertelstunde',
     },
-    {
-      formel: `Schritt 2 · gerechnet: ${gutschrift(ohne)}`,
-      herkunft:
-        'dieselbe Anlage ohne Speicher: gleiche Sonne, gleicher Verbrauch, Speicher aus',
-    },
-    {
-      formel: `Schritt 3 · Speicher gesamt: ${differenz(rundeKaufmaennisch(mit, 2), rundeKaufmaennisch(ohne, 2))} = ${vorzeichen(rundeKaufmaennisch(saved, 2))}`,
-      // ⚠ Der Bestandskonto-Hinweis steht GENAU EINMAL (§3.12) — hier.
-      herkunft:
-        'Kassenrechnung — was jetzt im Speicher liegt, zählt erst beim späteren Netzbezug; deshalb kann die Zahl mittags sinken',
-      probe: { ist: rundeKaufmaennisch(mit, 2) - rundeKaufmaennisch(ohne, 2), soll: saved },
-    },
   ];
 
-  const stur = num(input.sturEur ?? null);
-  const steuerung = num(input.steuerungEur ?? null);
-  if (stur != null && steuerung != null) {
+  if (steuerung != null) {
+    // ⚠ DIE MESSLATTE (Captain 04.09.2026): derselbe Speicher, nur ohne
+    //   smarte Steuerung. Als Gutschrift gelesen ist sie exakt `mit −
+    //   Steuerungs-Mehrwert` — denn `savedSteuerungEur = sturKosten −
+    //   actualEur` (Identität der Dreiteilung, `EarningsDto`). Es wird hier
+    //   also NICHTS zusätzlich gerechnet, nur umgestellt; die `probe` prüft es.
+    const sturGutschrift = rundeKaufmaennisch(mit, 2) - rundeKaufmaennisch(steuerung, 2);
     out.push({
-      formel: `Schritt 4 · sturer Speicher: ${vorzeichen(rundeKaufmaennisch(stur, 2))}`,
-      herkunft: 'lädt jeden Überschuss, deckt jeden Bedarf, kennt keine Preise, hält nie für später',
+      formel: `Schritt 2 · gerechnet: ${gutschrift(sturGutschrift)}`,
+      herkunft: `dieselbe Anlage mit Speicher, aber ${MESSLATTE_KURZ}: lädt jeden Überschuss, deckt jeden Bedarf, kennt keine Preise, hält nie für später`,
     });
     out.push({
-      formel: `Schritt 5 · Steuerung: ${differenz(rundeKaufmaennisch(saved, 2), rundeKaufmaennisch(stur, 2))} = ${vorzeichen(rundeKaufmaennisch(steuerung, 2))}`,
-      herkunft: 'Preisfenster, Halten für den Abend, Abregelung',
-      probe: { ist: rundeKaufmaennisch(saved, 2) - rundeKaufmaennisch(stur, 2), soll: steuerung },
-    });
-  } else if (input.splitReason === 'no_battery_data') {
-    out.push({
-      formel: 'Schritt 4 · Steuerung: —',
+      formel: `Schritt 3 · Steuerung: ${differenz(rundeKaufmaennisch(mit, 2), sturGutschrift)} = ${vorzeichen(rundeKaufmaennisch(steuerung, 2))}`,
+      // ⚠ Der Bestandskonto-Hinweis steht GENAU EINMAL (§3.12) — hier, an der
+      //   Zahl, die er erklärt.
       herkunft:
-        'ohne Kapazität sowie Lade- und Entladeleistung gibt es keinen Vergleichsspeicher: Speicher-Daten nachtragen ›',
+        'Preisfenster, Halten für den Abend, Abregelung — Kassenrechnung: was jetzt im Speicher liegt, zählt erst beim späteren Netzbezug; deshalb kann die Zahl mittags sinken',
+      probe: { ist: rundeKaufmaennisch(mit, 2) - sturGutschrift, soll: steuerung },
+    });
+  } else {
+    out.push({
+      formel: 'Schritt 2 · Steuerung: —',
+      herkunft: `ohne Kapazität sowie Lade- und Entladeleistung gibt es keinen Vergleich mit ${MESSLATTE}: Speicher-Daten nachtragen ›`,
     });
   }
 
@@ -603,11 +601,15 @@ export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
     });
   }
 
-  const geplant = num(input.geplantEur ?? null);
+  // ⚠ Die Plan-Zeile erscheint NUR mit `steuerungPlannedEur` — der Zahl, die
+  //   der Optimierer gegen DIESELBE Messlatte rechnet. Solange er sie nicht
+  //   liefert, bleibt die Zeile weg; die alte, gegen „ohne Speicher“ geplante
+  //   Zahl erreicht diese Fläche nicht mehr (Captain 04.09.2026).
+  const geplant = num(input.steuerungGeplantEur ?? null);
   if (geplant != null) {
     out.push({
       formel: `Fahrplan: ${vorzeichen(rundeKaufmaennisch(geplant, 2))} geplant`,
-      herkunft: 'vorab geplante Speicher-Ersparnis des Fahrplans — eine Plan-Zahl, keine Messung',
+      herkunft: `vorab geplanter Mehrwert der Steuerung gegenüber ${MESSLATTE_DATIV} — eine Plan-Zahl, keine Messung`,
     });
   }
   return out;

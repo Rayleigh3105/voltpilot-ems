@@ -58,6 +58,9 @@ export const MESSLATTE = 'ein Speicher ohne smarte Steuerung';
 /** Dieselbe Messlatte im Dativ („gegenüber DEMSELBEN Speicher …"). */
 export const MESSLATTE_DATIV = 'demselben Speicher ohne smarte Steuerung';
 
+/** Dieselbe Messlatte als Attribut („dieselbe Anlage, aber …“). */
+export const MESSLATTE_KURZ = 'ohne smarte Steuerung';
+
 /** Das VORZEICHEN einer Zahl als Wort — nie Farbe allein (§3.9). */
 export type SpeicherVorzeichen = 'plus' | 'minus' | 'null';
 

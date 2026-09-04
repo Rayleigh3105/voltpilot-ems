@@ -146,7 +146,7 @@ export const UNATTRIBUTED_FOOTNOTE =
 export const STREAM_SOURCES: Record<MoneyStreamId, string[]> = {
   eigenverbrauchswert: ['eigenverbrauchsWertEur'],
   einspeisung: ['einspeiseErloesEur'],
-  handel: ['savedEur', 'arbitrageEur'],
+  handel: ['savedSteuerungEur', 'arbitrageEur'],
   lastspitzen: ['peakShaving.avoidedEur'],
   automation: [],
 };
@@ -201,11 +201,17 @@ function num(v: number | null | undefined): number | null {
 /**
  * Die Zurechnungs-Zeile UNTER dem Erlös: was VoltPilots Steuerung an diesem
  * Erlös beigetragen hat (MIG §5). Sie ist bewusst **kein eigener Summand** —
- * `savedEur` ist das Delta gegenüber einer ungeregelten Anlage und steckt
- * bereits im Erlös. Null (kein Wert / rauschfrei 0) → keine Zeile, nie eine 0.
+ * die Zahl ist ein Delta und steckt bereits im Erlös. Null (kein Wert /
+ * rauschfrei 0) → keine Zeile, nie eine 0.
+ *
+ * ⚠ **DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG** (Captain
+ * 04.09.2026). Übergeben wird deshalb `savedSteuerungEur`, NICHT `savedEur` —
+ * jenes misst gegen eine Anlage GANZ OHNE Speicher und ist damit eine
+ * ADMIN-Zahl. Ohne Aufteilung gibt es keine Zeile; die Gesamtzahl ist
+ * ausdrücklich kein Ersatz.
  */
-export function steeringAttributionNote(savedEur: number | null | undefined): string | null {
-  const eur = num(savedEur ?? null);
+export function steeringAttributionNote(steuerungEur: number | null | undefined): string | null {
+  const eur = num(steuerungEur ?? null);
   if (eur == null || Math.abs(eur) < 0.005) return null;
   return eur > 0
     ? `davon ${eurAmount(eur)} durch VoltPilots Steuerung`
@@ -248,10 +254,10 @@ export interface SteeringChip {
  * Fläche ihn erraten.
  */
 export function steeringChip(
-  savedEur: number | null | undefined,
+  steuerungEur: number | null | undefined,
   laeuft: boolean,
 ): SteeringChip | null {
-  const eur = num(savedEur ?? null);
+  const eur = num(steuerungEur ?? null);
   if (eur == null || Math.abs(eur) < 0.005) return null;
   if (eur > 0) {
     return { text: `davon ${eurAmount(eur)} durch VoltPilots Steuerung`, ton: 'ok' };
@@ -259,7 +265,7 @@ export function steeringChip(
   const betrag = eurAmount(Math.abs(eur));
   return laeuft
     ? { text: `VoltPilots Steuerung: −${betrag} — Zwischenstand`, ton: 'neutral' }
-    : { text: `VoltPilots Steuerung: ${betrag} weniger als ohne Steuerung`, ton: 'warn' };
+    : { text: `VoltPilots Steuerung: ${betrag} weniger als ein Speicher ohne smarte Steuerung`, ton: 'warn' };
 }
 
 /* ---------------------------------------------------------------------------
@@ -367,14 +373,14 @@ export interface SteuerungFormelInput {
    */
   bestandSichtbar?: boolean;
   /**
-   * Die DREITEILUNG (Erlöse-Konzept §3.5, E2/E6): `savedEur` misst den GANZEN
-   * Speicher, `savedSpeicherEur` den STUR arbeitenden Vergleichs-Speicher und
-   * `savedSteuerungEur` den Rest — den Beitrag der Steuerung. Liegen alle drei
-   * vor, bekommt die Erklärung einen vierten Schritt mit den EINGESETZTEN
-   * Zahlen; fehlt eine, gibt es ihn nicht (nie eine geratene Aufteilung).
+   * Der Beitrag der Steuerung gegenüber DEMSELBEN Speicher ohne smarte
+   * Steuerung (`savedSteuerungEur`). Liegt er vor, bekommt die Erklärung
+   * ihren Ergebnis-Schritt mit der EINGESETZTEN Zahl; fehlt er, gibt es ihn
+   * nicht (nie eine geratene Aufteilung).
+   *
+   * ⚠ `savedEur`/`savedSpeicherEur` stehen hier NICHT mehr: sie messen gegen
+   * eine Anlage OHNE Speicher und sind seit dem 04.09.2026 ADMIN-Zahlen.
    */
-  savedEur?: number | null;
-  savedSpeicherEur?: number | null;
   savedSteuerungEur?: number | null;
 }
 
@@ -523,47 +529,43 @@ function einspeiseZusatz(input: SteuerungFormelInput): string | null {
  * verschieden ist nur, wie viel wir über die PREISE sagen können.
  */
 /**
- * Der Aufteilungs-Schritt mit eingesetzten Zahlen. `null`, sobald eine der drei
- * Zahlen fehlt (älteres Backend, keine Batterie-Stammdaten) ODER die Summe
- * nicht aufgeht — dann wird lieber nichts erklärt als etwas Falsches
- * (derselbe Wächter wie in `speicherAussage`).
+ * Der ERGEBNIS-Schritt mit der eingesetzten Zahl. `null` ohne
+ * `savedSteuerungEur` (älteres Backend, keine Batterie-Stammdaten) — dann wird
+ * lieber nichts behauptet als eine geratene Zahl, und die Gesamtzahl ist
+ * ausdrücklich kein Ersatz (Captain 04.09.2026).
  */
-function splitZeile(input: SteuerungFormelInput): FormelZeile | null {
-  const gesamt = num(input.savedEur ?? null);
-  const stur = num(input.savedSpeicherEur ?? null);
+function ergebnisZeile(input: SteuerungFormelInput): FormelZeile | null {
   const steuerung = num(input.savedSteuerungEur ?? null);
-  if (gesamt == null || stur == null || steuerung == null) return null;
-  if (Math.abs(stur + steuerung - gesamt) > 0.005) return null;
+  if (steuerung == null) return null;
   return {
-    label: 'Aufteilung',
-    // „Sturer Speicher" ist das Glossar-Wort (Konzept §3.11): ein Speicher, der
-    // jeden Überschuss lädt und jeden Bedarf deckt, aber keine Preise kennt.
-    text:
-      `Ein stur arbeitender Speicher hätte ${signedEuro(stur)} gebracht, ` +
-      `die Steuerung ${signedEuro(steuerung)} mehr — zusammen ${signedEuro(gesamt)}.`,
+    label: 'Im Zeitraum',
+    text: `Die Steuerung hat ${signedEuro(steuerung)} gebracht — gegenüber demselben Speicher ohne smarte Steuerung.`,
   };
 }
 
 export function steuerungFormel(input: SteuerungFormelInput): SteuerungFormel {
   const bezugKurz = bezugKurzText(input);
 
+  // ⚠ DIE MESSLATTE (Captain 04.09.2026): dieselbe Anlage MIT Speicher, nur
+  //   ohne smarte Steuerung. Bis hierher stand hier „ohne Speicher-Steuerung"
+  //   und beschrieb damit eine Anlage OHNE Speicher — also eine ANDERE Zahl
+  //   als die, die der Chip darüber zeigt.
   const kern =
     'Wir vergleichen jede Viertelstunde Ihre tatsächliche Stromrechnung mit der Rechnung, ' +
-    'die dieselbe Anlage ohne Speicher-Steuerung gehabt hätte — bewertet mit ' +
+    'die dieselbe Anlage mit demselben Speicher, aber ohne smarte Steuerung gehabt hätte — bewertet mit ' +
     `${bezugKurz} für den Netzbezug und ${einspeisePreisKurz(input)} für die Einspeisung. ` +
     'Die Differenz ist das, was die Steuerung verdient hat.';
 
   const zeilen: FormelZeile[] = [
     {
-      label: 'Ohne Steuerung',
-      // ⚠ Die Vergleichs-Anlage verbraucht ihren Solarstrom weiterhin DIREKT
-      // (Netting im Slot: `max(load−pv,0) × p − max(pv−load,0) × s`). Der frühere
-      // Satz beschrieb `load × p − pv × s` und wäre für einen nachrechnenden
-      // Kunden eine andere Baseline gewesen (B4).
+      label: 'Ohne smarte Steuerung',
+      // ⚠ Die Vergleichs-Anlage hat DENSELBEN Speicher — sie fährt ihn nur
+      //   stur: jeder Überschuss hinein, jeder Bedarf heraus. Bewertet wird
+      //   mit denselben Preisen wie die gemessene Rechnung.
       text:
-        'Speicher aus, Solarstrom wird direkt verbraucht und der Rest sofort eingespeist: ' +
-        'Netzbezug nach Abzug des direkt verbrauchten Solarstroms × Bezugspreis − ' +
-        'Solarüberschuss × Einspeisepreis.',
+        'Derselbe Speicher, stur betrieben: lädt jeden Solarüberschuss, deckt jeden Bedarf, ' +
+        'kennt keine Preise und hält nie für später — Netzbezug × Bezugspreis − ' +
+        'Netzeinspeisung × Einspeisepreis.',
     },
     {
       label: 'Mit Steuerung',
@@ -571,16 +573,15 @@ export function steuerungFormel(input: SteuerungFormelInput): SteuerungFormel {
     },
     {
       label: 'Beitrag der Steuerung',
-      text: 'Kosten ohne Steuerung − Kosten mit Steuerung, über alle Viertelstunden des Zeitraums summiert.',
+      text:
+        'Kosten ohne smarte Steuerung − Kosten mit Steuerung, über alle Viertelstunden des Zeitraums summiert.',
     },
   ];
 
-  // Die AUFTEILUNG (Erlöse-Konzept §3.5, E2): dieselbe Summe, zerlegt in den
-  // sturen Vergleichs-Speicher und den Mehrwert der Steuerung. Sie steht hier
-  // mit EINGESETZTEN Zahlen, weil genau das die Frage hinter dem Chip ist —
-  // und sie erscheint nur, wenn der Server alle drei Zahlen liefert.
-  const aufteilung = splitZeile(input);
-  if (aufteilung) zeilen.push(aufteilung);
+  // Das ERGEBNIS mit der eingesetzten Zahl — genau die Frage hinter dem Chip.
+  // Es erscheint nur, wenn der Server `savedSteuerungEur` liefert.
+  const ergebnis = ergebnisZeile(input);
+  if (ergebnis) zeilen.push(ergebnis);
 
   const bezugSchnitt = num(input.bezugspreisCtKwh ?? null);
   const preise: PreisAngabe[] = [
@@ -768,14 +769,16 @@ function resolve(stream: MoneyStream, money: CockpitMoney | null): Resolved {
           ? 'inkl. Marktprämie (anzulegender Wert hinterlegt)'
           : null;
       const steering =
-        stream.attribution === 'steering' ? steeringAttributionNote(money.savedEur) : null;
+        stream.attribution === 'steering' ? steeringAttributionNote(money.savedSteuerungEur) : null;
       return {
         eur: num(money.einspeiseErloesEur),
         note: [steering, praemie].filter(Boolean).join(' · ') || null,
       };
     }
     case 'handel': {
-      const saved = num(money.savedEur);
+      // ⚠ Der Steuerungs-Beitrag misst gegen DENSELBEN Speicher ohne smarte
+      //   Steuerung (Captain 04.09.2026) — nie mehr gegen „ohne Speicher".
+      const saved = num(money.savedSteuerungEur);
       const arbitrage = num(money.arbitrageEur);
       return {
         eur: saved,
@@ -1150,7 +1153,7 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
   }
 
   const jetzt = input.now ?? new Date();
-  const chip = steeringChip(money?.savedEur, zeitraumLaeuft(money?.to, jetzt));
+  const chip = steeringChip(money?.savedSteuerungEur, zeitraumLaeuft(money?.to, jetzt));
   const mehrerePerioden = new Set(rows.map((r) => r.period)).size > 1;
   const richtung = netto == null ? null : netto < 0 ? 'kosten' : 'ertrag';
   const leerText =
@@ -1184,8 +1187,6 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
             // Die DREITEILUNG (Erlöse-Konzept §3.5): der Aufklapper zerlegt
             // dieselbe Summe in den sturen Vergleichs-Speicher und den
             // Mehrwert der Steuerung — mit den EINGESETZTEN Zahlen.
-            savedEur: money.savedEur,
-            savedSpeicherEur: money.savedSpeicherEur ?? null,
             savedSteuerungEur: money.savedSteuerungEur ?? null,
           },
     bestand: bestandZeile(money, jetzt),
@@ -1244,10 +1245,11 @@ function kostenNote(money: SiteEarnings | null): string | null {
 }
 
 function steeringTitel(money: SiteEarnings | null): string | null {
-  if (!money || num(money.savedEur) == null) return null;
+  if (!money || num(money.savedSteuerungEur) == null) return null;
   return (
-    'Gegenüber derselben Anlage ohne Speicher und ohne Steuerung — gleiche Sonne, ' +
-    'gleicher Verbrauch, Speicher aus. Der Betrag steckt bereits im Ergebnis.'
+    'Gegenüber derselben Anlage mit demselben Speicher, aber ohne smarte Steuerung — ' +
+    'gleiche Sonne, gleicher Verbrauch, der Speicher stur betrieben. ' +
+    'Der Betrag steckt bereits im Ergebnis.'
   );
 }
 

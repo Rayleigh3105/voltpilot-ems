@@ -632,6 +632,22 @@ export interface HistoryTotals {
    * one release; it is deliberately absent here so no new reader can appear.
    */
   batterySavingsPlannedEur: number | null;
+  /**
+   * The EX-ANTE **planned** value of VoltPilot's STEERING, measured against
+   * the SAME plant with a battery but without smart control - the yardstick
+   * every customer surface uses since the captain's 04.09.2026 call ("du musst
+   * Anlage immer mit Speicher berechnen, einer halt ohne smart Steuerung").
+   *
+   * ⚠ It is NOT {@link HistoryTotals.batterySavingsPlannedEur}, which measures
+   * against a plant WITHOUT a battery and is therefore an ADMIN number. The two
+   * legitimately differ by a large factor; a surface must never substitute one
+   * for the other.
+   *
+   * OPTIONAL because the optimizer only starts persisting it with its own
+   * increment: `undefined`/`null` = no plan figure on this yardstick, and the
+   * customer-facing plan line stays ABSENT rather than showing the old one.
+   */
+  steuerungPlannedEur?: number | null;
   autarkiePct: number | null;
   eigenverbrauchPct: number | null;
 }

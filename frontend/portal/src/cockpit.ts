@@ -354,7 +354,7 @@ export function windowHours(w: PlanWindow): string {
 /**
  * Der **Handel-Block** (§3, Ausprägung Marktvermarktung): was der Handel heute
  * eingebracht hat, wann geladen wurde und wann verkauft wird. Alle drei
- * Kacheln lesen aus bestehenden Feldern (`savedEur`/`arbitrageEur` +
+ * Kacheln lesen aus bestehenden Feldern (`savedSteuerungEur`/`arbitrageEur` +
  * Fahrplan-Slots); eine Kachel ohne Datengrundlage entfällt ersatzlos.
  */
 export function handelBlock(input: {
@@ -366,15 +366,20 @@ export function handelBlock(input: {
   periodLabel: string;
 }): HandelBlockView {
   const tiles: BlockTile[] = [];
-  const saved = numOrNull(input.money?.savedEur);
+  // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG (Captain
+  //   04.09.2026): die Kachel liest `savedSteuerungEur`, nicht `savedEur` —
+  //   jenes misst gegen eine Anlage OHNE Speicher und trug damit unter dem
+  //   Wort „Durch Steuerung" eine ganz andere Zahl. Ohne Aufteilung entfällt
+  //   die Kachel ersatzlos; die Gesamtzahl ist kein Ersatz.
+  const saved = numOrNull(input.money?.savedSteuerungEur);
   if (saved != null) {
     const arbitrage = numOrNull(input.money?.arbitrageEur);
     tiles.push({
       // V3 (Audit): NIE zweimal dasselbe Etikett mit zwei Zahlen auf einem
       // Bildschirm. Der Hero sagt „Verdient · Juli" = `gesamtertragEur`; DIESE
-      // Kachel ist `savedEur`, also die Zurechnung zur Steuerung - genau das,
-      // was der Hero darunter schon ausschreibt („davon X € durch VoltPilots
-      // Steuerung"). Also heißt sie auch so.
+      // Kachel ist der Steuerungs-Beitrag - genau das, was der Hero darunter
+      // schon ausschreibt („davon X € durch VoltPilots Steuerung"). Also
+      // heißt sie auch so.
       label: `Durch Steuerung · ${input.periodLabel}`,
       value: eurAmount(saved),
       sub: arbitrage != null ? `davon Arbitrage ${eurAmount(arbitrage)}` : null,
