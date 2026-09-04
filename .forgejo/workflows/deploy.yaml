@@ -164,6 +164,16 @@ jobs:
         working-directory: ${{ matrix.path }}
         run: npm run test:cache
 
+      # Buendel-Waechter (Bewegungs-Programm P0, E10 a): das Einstiegs-Buendel
+      # traegt NUR das erste Bild. Er baut mit Sourcemap in ein eigenes
+      # Verzeichnis und liest aus der `sources`-Liste des Einstiegs-Chunks, ob
+      # ein Motion-Modul hineingeflossen ist - ein Namens-`grep` reicht dafuer
+      # nicht, der Minifizierer benennt die Symbole um.
+      - name: Bundle smoke (Einstieg <= 230 kB gz, Motion nur in Lazy-Stuecken)
+        if: matrix.type == 'frontend'
+        working-directory: ${{ matrix.path }}
+        run: npm run test:bundle
+
       # ---- Repo-Werkzeuge (Shell) -----------------------------------------
       # PyYAML, weil test-gitops-bump-workflow.sh den echten `run:`-Text des
       # Tag-Bump-Schritts AUS den Workflow-Dateien liest und ihn ausfuehrt.
