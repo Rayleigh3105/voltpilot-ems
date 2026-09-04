@@ -20,7 +20,7 @@
 import { useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import type { SiteTopology } from '../api';
 import { GuidedRuleBuilder } from './GuidedRuleBuilder';
 import type { EditorEntity, FlowDocument } from '../flows/model';
@@ -93,7 +93,7 @@ export function NeueRegelDialog({
   };
 
   return (
-    <Drawer open onClose={close} title="Neue Regel" icon={<Icon name="zap" size={20} />}>
+    <Modal open onClose={close} title="Neue Regel" icon={<Icon name="zap" size={20} />}>
       <div className="vp-neuregel">
         {/* ⚠ Der Schlüssel ist tragend: der Baukasten liest `initialRule` NUR
             beim Montieren (`useState`-Seed). Ohne ihn bliebe das Formular
@@ -159,6 +159,6 @@ export function NeueRegelDialog({
           )}
         </div>
       </div>
-    </Drawer>
+    </Modal>
   );
 }

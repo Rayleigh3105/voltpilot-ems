@@ -3,7 +3,7 @@ import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
-import { Drawer } from '../../../designsystem/components/shell/Drawer';
+import { Modal } from '../../../designsystem/components/shell/Modal';
 import { ApiError } from '../../api';
 import { adminApi } from '../../admin/adminApi';
 import { MiniShareBar } from '../../components/MiniChart';
@@ -563,7 +563,7 @@ function StartRolloutDrawer({
   const allChosen = cands.length > 0 && chosen.length === cands.length;
 
   return (
-    <Drawer open title={`Aktualisieren auf ${release.version}`} onClose={onClose}>
+    <Modal open title={`Aktualisieren auf ${release.version}`} onClose={onClose}>
       <p className="vp-muted">
         Die gewählten Geräte bekommen das Release sofort zugewiesen und aktualisieren sich
         selbst. Es gibt keinen zweiten Schritt - niemand muss an ein Gerät.
@@ -630,6 +630,6 @@ function StartRolloutDrawer({
       >
         Aktualisieren
       </Button>
-    </Drawer>
+    </Modal>
   );
 }

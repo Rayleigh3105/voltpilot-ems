@@ -116,8 +116,8 @@ describe('fetchNewBundle', () => {
 });
 
 describe('hasUnsavedInput', () => {
-  it('eine offene Aufgabenfläche (Drawer/Dialog) blockiert den stillen Reload', () => {
-    document.body.innerHTML = '<aside class="vp-drawer" role="dialog" aria-modal="true"></aside>';
+  it('eine offene Aufgabenfläche (Modal/Dialog) blockiert den stillen Reload', () => {
+    document.body.innerHTML = '<div class="vp-modal" role="dialog" aria-modal="true"></div>';
     expect(hasUnsavedInput()).toBe(true);
   });
 

@@ -130,55 +130,58 @@
   color: var(--vp-text-gray);
 }
 
-/* ---------- Drawer (right side panel: add / detail) ----------
+/* ---------- Modal (centred panel: add / detail) ----------
+   Captain-Entscheid 04.09.2026: „Every Sidebar should be a modal." Das frühere
+   rechts einfahrende Drawer ist ERSATZLOS hierin aufgegangen — gleicher Aufbau
+   (.dhead/.dbody/.dfoot), nur zentriert statt seitlich verankert.
+
    Die z-Ebenen 60/61 sind DIESELBEN wie die des „Mehr"-Blatts der Schale
-   (`src/shell/Shell.css`), und das ist der Punkt: ein Drawer ist eine MODALE
+   (`src/shell/Shell.css`), und das ist der Punkt: ein Modal ist eine MODALE
    Flaeche, die Bottom-Bar (z-index 50) ist Navigation - eine Navigationsleiste
    gehoert nie ueber einen Dialog. Vorher lagen Schleier (40) und Panel (50)
    unter bzw. gleichauf mit der Bar, also blieb sie am Telefon sichtbar UND
    antippbar ueber dem offenen „Neue Automation"-Dialog (gemessener Befund,
    Konzept `data/vp-mobile-views-x1` §9). */
-.vp-drawer-scrim {
+.vp-modal-scrim {
   position: fixed;
   inset: 0;
   background: rgba(30, 58, 95, 0.35);
   z-index: 60;
+  display: grid;
+  place-items: center;
+  /* Der Rand des Schleiers IST die Gasse der Fläche: mit `width: min(640px,
+     100%)` darin ergibt das die geforderten `min(640px, calc(100% - 2rem))`. */
+  padding: var(--vp-space-4);
 }
-.vp-drawer {
+.vp-modal {
   outline: none; /* panel takes programmatic focus on open */
-  position: fixed;
-  top: 0;
-  right: 0;
-  height: 100vh;
-  height: 100dvh; /* mobile browsers: exclude the dynamic URL bar */
-  width: min(560px, 100%);
+  position: relative;
+  width: min(640px, 100%);
+  max-height: calc(100dvh - 2rem);
   background: var(--vp-surface);
   z-index: 61;
   box-shadow: var(--vp-shadow-md);
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--vp-border);
-  /* Als installierte Web-App saesse der Fuss sonst im Home-Indicator; in
-     Landscape frisst die Notch die Seite. Das Panel ist bildschirmhoch, also
-     traegt es das Polster selbst (Stufe-1-Muster). */
-  padding-bottom: env(safe-area-inset-bottom, 0);
-  padding-right: env(safe-area-inset-right, 0);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-lg);
+  overflow: hidden; /* der Radius schneidet Kopf- und Fußleiste mit */
 }
-.vp-drawer .dhead {
+.vp-modal .dhead {
   display: flex;
   align-items: center;
   gap: var(--vp-space-3);
   padding: var(--vp-space-5) var(--vp-space-6);
   border-bottom: 1px solid var(--vp-border);
 }
-.vp-drawer .dhead h2 {
+.vp-modal .dhead h2 {
   font-size: 1.2rem;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.vp-drawer .dhead .x {
+.vp-modal .dhead .x {
   margin-left: auto;
   background: none;
   border: none;
@@ -189,14 +192,14 @@
   min-width: 44px;
   min-height: 44px;
 }
-.vp-drawer .dbody {
+.vp-modal .dbody {
   padding: var(--vp-space-6);
   overflow-y: auto;
   overflow-x: hidden;
   flex: 1;
   min-width: 0;
 }
-.vp-drawer .dfoot {
+.vp-modal .dfoot {
   padding: var(--vp-space-5) var(--vp-space-6);
   border-top: 1px solid var(--vp-border);
   display: flex;
@@ -205,15 +208,29 @@
   flex-wrap: wrap;
 }
 @media (max-width: 720px) {
-  .vp-drawer {
-    width: 100%; /* full-screen sheet on phones */
+  /* Am Telefon ist die Fläche das ganze Blatt — wie beim früheren Drawer. */
+  .vp-modal-scrim {
+    padding: 0;
+    place-items: stretch;
+  }
+  .vp-modal {
+    width: 100%;
+    max-height: none;
+    height: 100dvh;
+    border: none;
+    border-radius: 0;
+    /* Als installierte Web-App saesse der Fuss sonst im Home-Indicator; in
+       Landscape frisst die Notch die Seite. Das Blatt ist bildschirmhoch, also
+       traegt es das Polster selbst (Stufe-1-Muster). */
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-right: env(safe-area-inset-right, 0);
   }
   /* Zwei nebeneinander liegende Aktionen passen bei 375 px nicht in eine
      Zeile: der `flex-wrap` warf sie in zwei rechtsbündige Zeilen (die
      Abbrechen-Zeile stand einsam über dem Primärknopf). Auf dem Telefon
      stapeln sie in voller Breite - Reihenfolge bleibt unverändert, der
      Primärknopf liegt damit am Daumen. */
-  .vp-drawer .dfoot {
+  .vp-modal .dfoot {
     flex-direction: column;
     align-items: stretch;
   }

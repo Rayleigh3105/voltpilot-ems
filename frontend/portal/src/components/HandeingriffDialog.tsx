@@ -9,7 +9,7 @@
  * „nicht abschätzbar" MIT ihrem Grund — hier wird nichts gerechnet.
  */
 import { Button } from '../../designsystem/components/core/Button';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { VpPicker } from './VpPicker';
 import { DAUERN, type DauerOption, type HandeingriffFolgen } from '../handeingriff';
 
@@ -50,7 +50,7 @@ export function HandeingriffDialog({
   const gewaehlt = dauern.find((d) => d.key === dauerKey) ?? dauern[2] ?? dauern[0];
 
   return (
-    <Drawer open onClose={onCancel} title={folgen.titel}>
+    <Modal open onClose={onCancel} title={folgen.titel}>
       <div className="vp-vb-override-dialog">
         {folgen.bloecke.map((b) => (
           <div key={b.key} className="vp-handeingriff-block">
@@ -80,6 +80,6 @@ export function HandeingriffDialog({
           </Button>
         </div>
       </div>
-    </Drawer>
+    </Modal>
   );
 }

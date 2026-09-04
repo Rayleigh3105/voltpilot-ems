@@ -6,7 +6,7 @@ import { Icon } from '../../../designsystem/components/core/Icon';
 import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
-import { Drawer } from '../../../designsystem/components/shell/Drawer';
+import { Modal } from '../../../designsystem/components/shell/Modal';
 import { VpPicker } from '../../components/VpPicker';
 import { ApiError, type Site } from '../../api';
 import { fmtCoords, fmtNum } from '../../format';
@@ -221,7 +221,7 @@ function CreateTenantDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open={open}
       onClose={onClose}
       title="Mandant anlegen"
@@ -260,7 +260,7 @@ function CreateTenantDrawer({
         />
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
-    </Drawer>
+    </Modal>
   );
 }
 
@@ -376,7 +376,7 @@ function TenantDetailDrawer({
   // Offboarding done: show the report instead of the (now gone) tenant data.
   if (report) {
     return (
-      <Drawer
+      <Modal
         open
         onClose={onDeleted}
         title={`Mandant gelöscht: ${report.tenantName}`}
@@ -420,13 +420,13 @@ function TenantDetailDrawer({
             Nacharbeit: <b>{report.failedUsers.join(', ')}</b>
           </div>
         )}
-      </Drawer>
+      </Modal>
     );
   }
 
   return (
     <>
-      <Drawer
+      <Modal
         open
         onClose={onClose}
         title={tenant.name}
@@ -614,7 +614,7 @@ function TenantDetailDrawer({
           error={deleteError}
           onConfirm={() => void offboard()}
         />
-      </Drawer>
+      </Modal>
 
       <CreateUserDrawer
         open={userDrawer}

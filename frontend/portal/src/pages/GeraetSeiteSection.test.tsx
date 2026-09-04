@@ -893,7 +893,7 @@ describe('GeraetSeiteSection', () => {
     expect(await screen.findByTestId('geraet-bearbeiten')).toBeVisible();
     expect(window.location.hash).toBe('#/anlage/s-1/geraet/edge-45gz7da/cp-CP-1');
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.querySelector('.vp-drawer')).toBeNull();
+    expect(document.querySelector('.vp-modal')).toBeNull();
     expect(screen.queryByTestId('ocpp-rahmen')).toBeNull();
     fireEvent.change(screen.getByLabelText('Anzeigename'), { target: { value: 'Carport' } });
     const editorHref = window.location.href;

@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { VpPicker } from './VpPicker';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import {
   OVERRIDE_DURATIONS,
   RESUME_CONSEQUENCES,
@@ -48,7 +48,7 @@ export function ConsumerOverrideDialog({
         : RESUME_CONSEQUENCES;
 
   return (
-    <Drawer open onClose={onCancel} title={title}>
+    <Modal open onClose={onCancel} title={title}>
       <div className="vp-vb-override-dialog">
         <ul className="vp-vb-consequences">
           {consequences.map((c, i) => (
@@ -78,6 +78,6 @@ export function ConsumerOverrideDialog({
           </Button>
         </div>
       </div>
-    </Drawer>
+    </Modal>
   );
 }

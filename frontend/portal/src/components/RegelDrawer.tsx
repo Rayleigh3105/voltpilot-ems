@@ -11,7 +11,7 @@
  */
 import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { DangerZone } from './DangerZone';
 import type { RegelDetailView, RegelAbschnitt } from '../regeln/detail';
 import type { RegelKarte } from '../regeln/zustand';
@@ -53,7 +53,7 @@ export function RegelDrawer({
 }) {
   const z = karte.zustand;
   return (
-    <Drawer open onClose={onClose} title={view.name}>
+    <Modal open onClose={onClose} title={view.name}>
       <div className="vp-regeld">
         <p className={`vp-regeld-zustand ton-${z.ton}`}>{z.zeile}</p>
         {z.geraet && (
@@ -117,6 +117,6 @@ export function RegelDrawer({
           onConfirm={onLoeschen}
         />
       </div>
-    </Drawer>
+    </Modal>
   );
 }

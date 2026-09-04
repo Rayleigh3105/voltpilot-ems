@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { Input } from '../../designsystem/components/forms/Input';
 import { api, ApiError, type Site, type SiteEntities } from '../api';
 import { entitiesApi } from '../entitiesApi';
@@ -291,7 +291,7 @@ function GuidedAdoptDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title="Gerät übernehmen"
@@ -334,6 +334,6 @@ function GuidedAdoptDrawer({
           </div>
         )}
       </div>
-    </Drawer>
+    </Modal>
   );
 }

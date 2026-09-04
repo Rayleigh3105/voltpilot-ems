@@ -90,7 +90,7 @@ describe('VorlagenPage', () => {
 
     // ⚠ Der Zeilen-Knopf und der Bestätigen-Knopf heißen gleich - der Dialog
     // ist das, was jetzt zählt, also wird auf ihn eingegrenzt.
-    const dialog = folgen.closest('.vp-drawer') ?? document.body;
+    const dialog = folgen.closest('.vp-modal') ?? document.body;
     fireEvent.click(within(dialog as HTMLElement).getByRole('button', { name: 'Zurückziehen' }));
     await waitFor(() =>
       expect(setComponentTemplateWithdrawn).toHaveBeenCalledWith('certified:acme:relais', 1, true),

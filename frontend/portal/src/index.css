@@ -270,7 +270,7 @@ a:focus-visible,
 .vp-geo-result:focus-visible,
 .vp-table tbody tr.clickable:focus-visible,
 .vp-hamburger:focus-visible,
-.vp-drawer .dhead .x:focus-visible {
+.vp-modal .dhead .x:focus-visible {
   outline: 2px solid var(--vp-focus-ring-color);
   outline-offset: 2px;
   border-radius: var(--vp-radius-sm);

@@ -1,7 +1,7 @@
 import React from 'react';
 
-export interface DrawerProps {
-  /** Render the drawer (with scrim). */
+export interface ModalProps {
+  /** Render the modal (with scrim). */
   open: boolean;
   /** Called on scrim click, ✕ and Escape. */
   onClose: () => void;
@@ -15,7 +15,7 @@ export interface DrawerProps {
 }
 
 /**
- * Right-side drawer for the repeatable list + add + detail entity pattern.
- * Full-screen sheet below 720px.
+ * Centred modal for the repeatable list + add + detail entity pattern.
+ * Rendered into `document.body`; full-screen sheet below 720px.
  */
-export function Drawer(props: DrawerProps): JSX.Element | null;
+export function Modal(props: ModalProps): JSX.Element | null;

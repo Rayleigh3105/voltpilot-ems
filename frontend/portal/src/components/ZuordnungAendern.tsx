@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { ApiError, type EntityLocalSetup, type SiteEntity, type SiteSource } from '../api';
 import { entitiesApi } from '../entitiesApi';
 import {
@@ -97,7 +97,7 @@ export function ZuordnungAendernDialog({
   }
 
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title="Zuordnung ändern"
@@ -169,7 +169,7 @@ export function ZuordnungAendernDialog({
           </div>
         )}
       </div>
-    </Drawer>
+    </Modal>
   );
 }
 
@@ -207,7 +207,7 @@ export function KomponenteLoeschenDialog({
   }
 
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title="Komponente löschen"
@@ -239,6 +239,6 @@ export function KomponenteLoeschenDialog({
           </div>
         )}
       </div>
-    </Drawer>
+    </Modal>
   );
 }

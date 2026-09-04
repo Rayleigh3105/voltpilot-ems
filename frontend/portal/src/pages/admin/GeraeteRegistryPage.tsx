@@ -5,7 +5,7 @@ import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
-import { Drawer } from '../../../designsystem/components/shell/Drawer';
+import { Modal } from '../../../designsystem/components/shell/Modal';
 import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
 import { VpPicker } from '../../components/VpPicker';
 import { ApiError } from '../../api';
@@ -605,7 +605,7 @@ function ProvisionDeviceDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open={open}
       onClose={onClose}
       title="Geräte-ID registrieren"
@@ -659,6 +659,6 @@ function ProvisionDeviceDrawer({
         />
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
-    </Drawer>
+    </Modal>
   );
 }

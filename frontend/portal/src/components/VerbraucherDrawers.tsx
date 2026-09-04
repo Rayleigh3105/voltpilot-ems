@@ -21,7 +21,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { VpPicker } from './VpPicker';
 import { VpTimePicker } from './VpTimePicker';
 import type { EntityStrategy, Site } from '../api';
@@ -116,7 +116,7 @@ export function VerbraucherAnlegenDrawer({
   };
 
   return (
-    <Drawer open={open} onClose={close} title="Verbraucher hinzufügen">
+    <Modal open={open} onClose={close} title="Verbraucher hinzufügen">
       {created ? (
         <div className="vp-vb-success">
           <p>
@@ -207,7 +207,7 @@ export function VerbraucherAnlegenDrawer({
           </Button>
         </div>
       )}
-    </Drawer>
+    </Modal>
   );
 }
 
@@ -360,7 +360,7 @@ export function VerbraucherRegelDrawer({
   ) : undefined;
 
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title={`Regel für ${consumer.name}`}
@@ -439,7 +439,7 @@ export function VerbraucherRegelDrawer({
           )}
         </div>
       )}
-    </Drawer>
+    </Modal>
   );
 }
 

@@ -2,7 +2,7 @@ import type React from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 
 /**
  * Die Rückfrage im HAUS-MUSTER: ein Drawer mit einer FOLGENLISTE, nicht ein
@@ -61,7 +61,7 @@ export function ConfirmDialog({
   if (!open) return null;
   const danger = tone === 'danger';
   return (
-    <Drawer
+    <Modal
       open
       onClose={onCancel}
       title={title}
@@ -98,6 +98,6 @@ export function ConfirmDialog({
         ))}
       </ul>
       {extra}
-    </Drawer>
+    </Modal>
   );
 }

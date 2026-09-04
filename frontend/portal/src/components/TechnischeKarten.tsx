@@ -3,7 +3,7 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { Input } from '../../designsystem/components/forms/Input';
 import { VpPicker } from './VpPicker';
 import {
@@ -556,7 +556,7 @@ export function EntityDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title={editing ? 'Entität bearbeiten' : 'Entität anlegen'}
@@ -629,7 +629,7 @@ export function EntityDrawer({
           </div>
         )}
       </div>
-    </Drawer>
+    </Modal>
   );
 }
 
@@ -705,7 +705,7 @@ export function AdoptDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title="Gerät übernehmen"
@@ -769,6 +769,6 @@ export function AdoptDrawer({
           </div>
         )}
       </div>
-    </Drawer>
+    </Modal>
   );
 }
