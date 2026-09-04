@@ -511,6 +511,3 @@ a.vp-ab-mobile-service:hover {
   .vp-ab-hover-values { grid-template-columns: minmax(0, 1fr); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .vp-ab-node { transition: none; }
-}

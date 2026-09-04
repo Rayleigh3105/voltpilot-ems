@@ -288,6 +288,3 @@
   .vp-ocpp-dialog footer button { width: 100%; min-height: 48px; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .vp-ocpp *, .vp-ocpp *::before, .vp-ocpp *::after { scroll-behavior: auto !important; transition: none !important; }
-}

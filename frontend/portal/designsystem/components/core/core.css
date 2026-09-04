@@ -20,7 +20,8 @@
   border-radius: var(--vp-radius-btn);
   cursor: pointer;
   white-space: nowrap;
-  transition: var(--vp-transition);
+  transition: var(--vp-motion-chrome), transform var(--vp-motion-fast) var(--vp-ease-out),
+    filter var(--vp-motion-fast) var(--vp-ease-inout);
   /* size defaults (md); overridden by the size modifiers below */
   padding: 0.85rem 1.75rem;
   font-size: 1rem;
@@ -89,11 +90,11 @@
   border-radius: var(--vp-radius-md);
   box-shadow: var(--vp-shadow-sm);
   overflow: hidden;
-  transition: var(--vp-transition);
+  transition: var(--vp-motion-chrome), transform var(--vp-motion-fast) var(--vp-ease-out);
 }
 .vp-card--interactive { cursor: pointer; }
 .vp-card--interactive:hover {
-  transform: var(--vp-lift-lg);
+  transform: var(--vp-lift);
   box-shadow: var(--vp-shadow-hover);
 }
 .vp-card__accent {
@@ -104,7 +105,7 @@
   height: 4px;
   transform: scaleX(0);
   transform-origin: left;
-  transition: var(--vp-transition);
+  transition: transform var(--vp-motion-base) var(--vp-ease-out);
 }
 .vp-card--interactive:hover .vp-card__accent,
 .vp-card--interactive:focus-visible .vp-card__accent { transform: scaleX(1); }
@@ -130,6 +131,14 @@
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+/* ⚠ DER EINZIGE `prefers-reduced-motion`-Block ausserhalb von `src/index.css`,
+   und er bleibt hier mit Absicht: `.vp-skeleton` ist eine DAUER-Animation
+   (Loop) des DESIGN-SYSTEMS. Eine Dauer von 0 ms hielte sie nicht an, und
+   eine Media-Query kann `--vp-motion-scale` nicht lesen — es braucht also
+   `animation: none`. Ihn nach `src/index.css` zu ziehen hiesse, dem
+   Design-System seine eigene Zusage zu nehmen: seine Blätter (Guideline-
+   Karten, jeder künftige Abnehmer) laden `core.css` OHNE das Portal-Blatt.
+   Der Wächter `src/motionTokens.test.ts` kennt genau diese eine Ausnahme. */
 @media (prefers-reduced-motion: reduce) {
   .vp-skeleton { animation: none; }
 }

@@ -13,12 +13,14 @@
     "test:e2e": "playwright test",
     "test:watch": "vitest",
     "test:csp": "test/csp-smoke.sh",
-    "test:cache": "test/cache-smoke.sh"
+    "test:cache": "test/cache-smoke.sh",
+    "test:bundle": "test/bundle-smoke.sh"
   },
   "dependencies": {
     "echarts": "^5.5.1",
     "keycloak-js": "^26.0.5",
     "leaflet": "^1.9.4",
+    "motion": "13.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

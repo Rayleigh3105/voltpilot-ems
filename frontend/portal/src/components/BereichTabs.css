@@ -45,7 +45,7 @@
   font-weight: var(--vp-erl-fw-600, 600);
   white-space: nowrap;
   cursor: pointer;
-  transition: var(--vp-transition-fast);
+  transition: var(--vp-motion-chrome);
 }
 .vp-bereich-tab:hover {
   color: var(--vp-c-fg, #1e293b);

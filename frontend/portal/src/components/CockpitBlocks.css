@@ -729,7 +729,8 @@
   opacity: 0;
   transform: translateY(-6px);
   pointer-events: none;
-  transition: opacity 140ms ease, transform 140ms ease;
+  transition: opacity var(--vp-motion-fast) var(--vp-ease-out),
+    transform var(--vp-motion-fast) var(--vp-ease-out);
 }
 .vp-mob-sticky.is-shown {
   opacity: 1;
@@ -765,11 +766,6 @@
   font-weight: 600;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .vp-mob-sticky {
-    transition: none;
-  }
-}
 
 /* Inkrement 5: Cockpit-Verbraucherstreifen (§14.10) unter dem Energiefluss */
 .vp-cstrip {

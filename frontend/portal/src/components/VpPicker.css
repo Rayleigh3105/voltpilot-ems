@@ -51,7 +51,7 @@
   border-radius: var(--vp-radius-btn);
   padding: 0.75rem 1rem;
   cursor: pointer;
-  transition: var(--vp-transition-fast);
+  transition: var(--vp-motion-chrome);
   /* ⚠ Mindestens 44 px hoch: der Picker ist am Telefon ein Daumen-Ziel, und
      das ist der Grund, aus dem er das native Feld ablöst. */
   min-height: 44px;
@@ -95,7 +95,7 @@
 .vp-picker-caret {
   flex: 0 0 auto;
   color: var(--vp-text-gray);
-  transition: transform 0.16s ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
 }
 .vp-picker-ausloeser[aria-expanded='true'] .vp-picker-caret {
   transform: rotate(180deg);
@@ -502,7 +502,7 @@
   box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.22);
   /* Die Fingerleiste des Systems darf das letzte Element nicht verdecken. */
   padding-bottom: env(safe-area-inset-bottom, 0);
-  animation: vp-picker-hoch 0.18s ease-out;
+  animation: vp-picker-hoch var(--vp-motion-page) var(--vp-ease-out);
 }
 @keyframes vp-picker-hoch {
   from {
@@ -510,14 +510,6 @@
   }
   to {
     transform: translateY(0);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .vp-picker-panel.is-sheet {
-    animation: none;
-  }
-  .vp-picker-caret {
-    transition: none;
   }
 }
 .vp-picker-griff {

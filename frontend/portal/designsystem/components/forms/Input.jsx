@@ -58,7 +58,7 @@ export const Input = React.forwardRef(function Input({
           padding: '0.75rem 1rem',
           outline: 'none',
           boxShadow: focused ? '0 0 0 3px var(--vp-focus-ring)' : 'none',
-          transition: 'var(--vp-transition-fast)',
+          transition: 'var(--vp-motion-chrome)',
           width: '100%',
           boxSizing: 'border-box',
           ...style,
