@@ -350,22 +350,32 @@ export function gesamtertragProvenance(money: EarningsSite): string | null {
 }
 
 /**
- * "davon durch VoltPilots Steuerung" provenance: the measured extra vs. an
- * unregulated plant (battery off, PV fed in immediately) - what the steering
- * concretely earned/saved. Since the structured Bezugspreis (Stufe 3) the
- * avoided grid import inside this number is valued at the SITE'S TARIFF -
- * the same composition the steering optimizes against - so the sentence says
- * so when it applies (`tarifPriced`); a site without any price data stays
- * spot-valued and keeps the plain sentence, never an over-claim.
+ * "davon durch VoltPilots Steuerung" provenance: the measured extra of the
+ * STEERING - what it earned/saved over THE SAME PLANT WITH THE SAME BATTERY
+ * run dumb.
+ *
+ * ⚠ **THE YARDSTICK IS THE SAME BATTERY WITHOUT SMART CONTROL** (captain
+ * 04.09.2026: "du musst Anlage immer mit Speicher berechnen, einer halt ohne
+ * smart Steuerung"). Until then this read `savedEur` and named the unregulated
+ * plant - a number the customer never asked for, since their battery is
+ * already in the basement. Without `savedSteuerungEur` there is NO sentence;
+ * the total is deliberately not a substitute.
+ *
+ * Since the structured Bezugspreis (Stufe 3) the avoided grid import inside
+ * this number is valued at the SITE'S TARIFF - the same composition the
+ * steering optimizes against - so the sentence says so when it applies
+ * (`tarifPriced`); a site without any price data stays spot-valued and keeps
+ * the plain sentence, never an over-claim.
  */
 export function savedProvenance(money: EarningsSite): string | null {
-  if (money.savedEur == null) return null;
+  if (money.savedSteuerungEur == null) return null;
   const verb = money.plantKind === 'direktvermarktung' ? 'mehr verdient' : 'gespart';
   const tarif = money.tarifPriced
     ? ' Vermiedener Netzbezug ist dabei zu Ihrem Stromtarif bewertet statt zum Börsenpreis - dieselbe Rechnung, mit der die Steuerung plant.'
     : '';
   return (
-    `Gemessen gegenüber einer ungeregelten Anlage (Speicher aus, Solarstrom sofort eingespeist): ` +
+    `Gemessen gegenüber derselben Anlage mit demselben Speicher, aber ohne smarte Steuerung ` +
+    `(er lädt jeden Überschuss, deckt jeden Bedarf und kennt keine Preise): ` +
     `so viel hat VoltPilots Steuerung ${verb}.${tarif}`
   );
 }

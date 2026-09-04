@@ -1,11 +1,10 @@
 {
-  "_quelle": "firstmate data/vp-erloese-seite-konzept-e2/derived.json (15 Fixtures, Generator scratch/fixtures.gen.test.ts) — `erwartet` ist woertlich `neu.speicher`.",
+  "_quelle": "firstmate data/vp-erloese-seite-konzept-e2/derived.json (15 Fixtures, Generator scratch/fixtures.gen.test.ts) - es reisen nur noch die EINGABEN. Die frueheren erwartet-Bloecke beschrieben die zweizeilige Form (Ihr Speicher ... + davon Steuerung), die der Captain am 04.09.2026 ersatzlos gestrichen hat; sie waren damit eine Erwartung an eine Flaeche, die es nicht mehr gibt. Die Erwartungen stehen seither ausgeschrieben in speicherAussage.test.ts.",
   "fixtures": [
     {
       "id": "dv-tag-laufend",
       "titel": "Direktvermarktung · laufender Tag (12:19) — der Screenshot-Fall",
       "now": "2026-09-02T12:19:00+02:00",
-      "geplantEur": 9.4,
       "money": {
         "savedEur": -2.67,
         "baselineEur": -27.219,
@@ -21,37 +20,12 @@
         "savedSteuerungEur": 1.45,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": -2.67,
-          "ton": "minus",
-          "wort": "− 2,67 €"
-        },
-        "stur": {
-          "eur": -4.12,
-          "ton": "minus",
-          "wort": "− 4,12 €"
-        },
-        "steuerung": {
-          "eur": 1.45,
-          "ton": "plus",
-          "wort": "+ 1,45 €"
-        },
-        "splitReason": null,
-        "zwischenstand": true,
-        "satz": "Zwischenstand: − 2,67 € — die Kasse zählt noch nicht, was gerade im Speicher liegt.",
-        "steuerungSatz": "davon + 1,45 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (− 4,12 €)",
-        "bestand": "35,8 kWh Speicherenergie seit Tagesbeginn gespeichert · Planwert 8,87 €",
-        "bestandBadge": "Kein Abzug",
-        "geplant": "Vorab geplant hatte der Fahrplan + 9,40 €",
-        "anker": "Erlös mit VoltPilot 24,55 € · Ungeregelt wären es 27,22 €."
-      }
+      "steuerungGeplantEur": 9.4
     },
     {
       "id": "dv-tag-abgeschlossen",
       "titel": "Direktvermarktung · abgeschlossener Tag (Di., 01.09.)",
       "now": "2026-09-02T12:19:00+02:00",
-      "geplantEur": 14.9,
       "money": {
         "savedEur": 12.4,
         "baselineEur": -51.804,
@@ -67,37 +41,12 @@
         "savedSteuerungEur": 3.1,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 12.4,
-          "ton": "plus",
-          "wort": "+ 12,40 €"
-        },
-        "stur": {
-          "eur": 9.3,
-          "ton": "plus",
-          "wort": "+ 9,30 €"
-        },
-        "steuerung": {
-          "eur": 3.1,
-          "ton": "plus",
-          "wort": "+ 3,10 €"
-        },
-        "splitReason": null,
-        "zwischenstand": false,
-        "satz": "Ihr Speicher hat an diesem Tag + 12,40 € gebracht",
-        "steuerungSatz": "davon + 3,10 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 9,30 €)",
-        "bestand": "12,4 kWh Speicherenergie aus dem Vortag genutzt · Planwert 3,07 €",
-        "bestandBadge": "Kein Abzug",
-        "geplant": "Vorab geplant hatte der Fahrplan + 14,90 €",
-        "anker": "Erlös mit VoltPilot 64,20 € · Ungeregelt wären es 51,80 €."
-      }
+      "steuerungGeplantEur": 14.9
     },
     {
       "id": "dv-tag-vortag",
       "titel": "Direktvermarktung · Vortag des abgeschlossenen Tags (Mo., 31.08.) — nur als Vergleichsbasis",
       "now": "2026-09-02T12:19:00+02:00",
-      "geplantEur": 12.8,
       "money": {
         "savedEur": 10.9,
         "baselineEur": -45.683,
@@ -113,37 +62,12 @@
         "savedSteuerungEur": 2.3,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 10.9,
-          "ton": "plus",
-          "wort": "+ 10,90 €"
-        },
-        "stur": {
-          "eur": 8.6,
-          "ton": "plus",
-          "wort": "+ 8,60 €"
-        },
-        "steuerung": {
-          "eur": 2.3,
-          "ton": "plus",
-          "wort": "+ 2,30 €"
-        },
-        "splitReason": null,
-        "zwischenstand": false,
-        "satz": "Ihr Speicher hat an diesem Tag + 10,90 € gebracht",
-        "steuerungSatz": "davon + 2,30 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 8,60 €)",
-        "bestand": "8,0 kWh Speicherenergie aus dem Vortag genutzt · Planwert 1,98 €",
-        "bestandBadge": "Kein Abzug",
-        "geplant": "Vorab geplant hatte der Fahrplan + 12,80 €",
-        "anker": "Erlös mit VoltPilot 56,58 € · Ungeregelt wären es 45,68 €."
-      }
+      "steuerungGeplantEur": 12.8
     },
     {
       "id": "dv-monat",
       "titel": "Direktvermarktung · Monat (August 2026, Monatsmarktwert amtlich)",
       "now": "2026-09-02T12:19:00+02:00",
-      "geplantEur": 431.2,
       "money": {
         "savedEur": 402.1,
         "baselineEur": -405.02,
@@ -159,37 +83,12 @@
         "savedSteuerungEur": 113.5,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 402.1,
-          "ton": "plus",
-          "wort": "+ 402,10 €"
-        },
-        "stur": {
-          "eur": 288.6,
-          "ton": "plus",
-          "wort": "+ 288,60 €"
-        },
-        "steuerung": {
-          "eur": 113.5,
-          "ton": "plus",
-          "wort": "+ 113,50 €"
-        },
-        "splitReason": null,
-        "zwischenstand": false,
-        "satz": "Ihr Speicher hat in diesem Zeitraum + 402,10 € gebracht",
-        "steuerungSatz": "davon + 113,50 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 288,60 €)",
-        "bestand": "3,1 kWh Speicherenergie im Zeitraum gespeichert · Planwert 0,69 €",
-        "bestandBadge": "Kein Abzug",
-        "geplant": "Vorab geplant hatte der Fahrplan + 431,20 €",
-        "anker": "Erlös mit VoltPilot 807,12 € · Ungeregelt wären es 405,02 €."
-      }
+      "steuerungGeplantEur": 431.2
     },
     {
       "id": "dv-praemie-ruht",
       "titel": "Direktvermarktung · Negativpreis-Tag (Prämie ruht, Einspeise-Erlös negativ)",
       "now": "2026-09-02T12:19:00+02:00",
-      "geplantEur": 7.2,
       "money": {
         "savedEur": 6.8,
         "baselineEur": 9.2,
@@ -205,37 +104,12 @@
         "savedSteuerungEur": 0.9,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 6.8,
-          "ton": "plus",
-          "wort": "+ 6,80 €"
-        },
-        "stur": {
-          "eur": 5.9,
-          "ton": "plus",
-          "wort": "+ 5,90 €"
-        },
-        "steuerung": {
-          "eur": 0.9,
-          "ton": "plus",
-          "wort": "+ 0,90 €"
-        },
-        "splitReason": null,
-        "zwischenstand": false,
-        "satz": "Ihr Speicher hat an diesem Tag + 6,80 € gebracht",
-        "steuerungSatz": "davon + 0,90 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 5,90 €)",
-        "bestand": "1,2 kWh Speicherenergie für den Folgetag gespeichert · Planwert 0,26 €",
-        "bestandBadge": "Kein Abzug",
-        "geplant": "Vorab geplant hatte der Fahrplan + 7,20 €",
-        "anker": "Stromkosten mit VoltPilot 2,40 € · Ungeregelt wären es 9,20 €."
-      }
+      "steuerungGeplantEur": 7.2
     },
     {
       "id": "dv-kein-split",
       "titel": "Direktvermarktung · keine Batterie-Stammdaten (kein Split)",
       "now": "2026-09-02T12:19:00+02:00",
-      "geplantEur": 14.9,
       "money": {
         "savedEur": 12.4,
         "baselineEur": -51.804,
@@ -251,29 +125,12 @@
         "savedSteuerungEur": null,
         "steuerungSplitReason": "no_battery_data"
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 12.4,
-          "ton": "plus",
-          "wort": "+ 12,40 €"
-        },
-        "stur": null,
-        "steuerung": null,
-        "splitReason": "no_battery_data",
-        "zwischenstand": false,
-        "satz": "Ihr Speicher hat an diesem Tag + 12,40 € gebracht",
-        "steuerungSatz": "Wie viel davon VoltPilots Steuerung war, lässt sich ohne Speicher-Stammdaten nicht sagen — Kapazität sowie Lade- und Entladeleistung nachtragen ›",
-        "bestand": null,
-        "bestandBadge": null,
-        "geplant": "Vorab geplant hatte der Fahrplan + 14,90 €",
-        "anker": "Erlös mit VoltPilot 64,20 € · Ungeregelt wären es 51,80 €."
-      }
+      "steuerungGeplantEur": 14.9
     },
     {
       "id": "dv-provisorisch-knapp",
       "titel": "Direktvermarktung · Monatsmarktwert vorläufig UND knapp am anzulegenden Wert",
       "now": "2026-09-02T12:19:00+02:00",
-      "geplantEur": 14.9,
       "money": {
         "savedEur": 12.4,
         "baselineEur": -35.906,
@@ -289,37 +146,12 @@
         "savedSteuerungEur": 3.1,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 12.4,
-          "ton": "plus",
-          "wort": "+ 12,40 €"
-        },
-        "stur": {
-          "eur": 9.3,
-          "ton": "plus",
-          "wort": "+ 9,30 €"
-        },
-        "steuerung": {
-          "eur": 3.1,
-          "ton": "plus",
-          "wort": "+ 3,10 €"
-        },
-        "splitReason": null,
-        "zwischenstand": false,
-        "satz": "Ihr Speicher hat an diesem Tag + 12,40 € gebracht",
-        "steuerungSatz": "davon + 3,10 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 9,30 €)",
-        "bestand": "12,4 kWh Speicherenergie aus dem Vortag genutzt · Planwert 3,07 €",
-        "bestandBadge": "Kein Abzug",
-        "geplant": "Vorab geplant hatte der Fahrplan + 14,90 €",
-        "anker": "Erlös mit VoltPilot 48,31 € · Ungeregelt wären es 35,91 €."
-      }
+      "steuerungGeplantEur": 14.9
     },
     {
       "id": "eeg-tag-abgeschlossen",
       "titel": "EEG-Privathaushalt · abgeschlossener Tag (Di., 01.09.)",
       "now": "2026-09-02T14:05:00+02:00",
-      "geplantEur": 4.3,
       "money": {
         "savedEur": 3.9,
         "baselineEur": 3.121,
@@ -335,37 +167,12 @@
         "savedSteuerungEur": 0.35,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 3.9,
-          "ton": "plus",
-          "wort": "+ 3,90 €"
-        },
-        "stur": {
-          "eur": 3.55,
-          "ton": "plus",
-          "wort": "+ 3,55 €"
-        },
-        "steuerung": {
-          "eur": 0.35,
-          "ton": "plus",
-          "wort": "+ 0,35 €"
-        },
-        "splitReason": null,
-        "zwischenstand": false,
-        "satz": "Ihr Speicher hat an diesem Tag + 3,90 € gebracht",
-        "steuerungSatz": "davon + 0,35 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 3,55 €)",
-        "bestand": "4,2 kWh Speicherenergie für den Folgetag gespeichert · Planwert 1,28 €",
-        "bestandBadge": "Kein Abzug",
-        "geplant": "Vorab geplant hatte der Fahrplan + 4,30 €",
-        "anker": "Mit VoltPilot verdient 0,78 € · Ohne Speicher hätten Sie gezahlt 3,12 €."
-      }
+      "steuerungGeplantEur": 4.3
     },
     {
       "id": "eeg-tag-vortag",
       "titel": "EEG-Privathaushalt · Vortag des abgeschlossenen Tags (Mo., 31.08.) — nur als Vergleichsbasis",
       "now": "2026-09-02T14:05:00+02:00",
-      "geplantEur": 3.9,
       "money": {
         "savedEur": 3.5,
         "baselineEur": 3.14,
@@ -381,37 +188,12 @@
         "savedSteuerungEur": 0.3,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 3.5,
-          "ton": "plus",
-          "wort": "+ 3,50 €"
-        },
-        "stur": {
-          "eur": 3.2,
-          "ton": "plus",
-          "wort": "+ 3,20 €"
-        },
-        "steuerung": {
-          "eur": 0.3,
-          "ton": "plus",
-          "wort": "+ 0,30 €"
-        },
-        "splitReason": null,
-        "zwischenstand": false,
-        "satz": "Ihr Speicher hat an diesem Tag + 3,50 € gebracht",
-        "steuerungSatz": "davon + 0,30 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 3,20 €)",
-        "bestand": "3,1 kWh Speicherenergie für den Folgetag gespeichert · Planwert 0,95 €",
-        "bestandBadge": "Kein Abzug",
-        "geplant": "Vorab geplant hatte der Fahrplan + 3,90 €",
-        "anker": "Mit VoltPilot verdient 0,36 € · Ohne Speicher hätten Sie gezahlt 3,14 €."
-      }
+      "steuerungGeplantEur": 3.9
     },
     {
       "id": "eeg-tag-laufend",
       "titel": "EEG-Privathaushalt · laufender Tag (14:05)",
       "now": "2026-09-02T14:05:00+02:00",
-      "geplantEur": 4.1,
       "money": {
         "savedEur": -0.85,
         "baselineEur": -1.73,
@@ -427,37 +209,12 @@
         "savedSteuerungEur": 0.25,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": -0.85,
-          "ton": "minus",
-          "wort": "− 0,85 €"
-        },
-        "stur": {
-          "eur": -1.1,
-          "ton": "minus",
-          "wort": "− 1,10 €"
-        },
-        "steuerung": {
-          "eur": 0.25,
-          "ton": "plus",
-          "wort": "+ 0,25 €"
-        },
-        "splitReason": null,
-        "zwischenstand": true,
-        "satz": "Zwischenstand: − 0,85 € — die Kasse zählt noch nicht, was gerade im Speicher liegt.",
-        "steuerungSatz": "davon + 0,25 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (− 1,10 €)",
-        "bestand": "6,8 kWh Speicherenergie seit Tagesbeginn gespeichert · Planwert 2,07 €",
-        "bestandBadge": "Kein Abzug",
-        "geplant": "Vorab geplant hatte der Fahrplan + 4,10 €",
-        "anker": "Erlös mit VoltPilot 0,88 € · Ungeregelt wären es 1,73 €."
-      }
+      "steuerungGeplantEur": 4.1
     },
     {
       "id": "eeg-ohne-tarif",
       "titel": "EEG-Privathaushalt · kein Stromtarif hinterlegt (Produktions-Standard-Satz)",
       "now": "2026-09-02T14:05:00+02:00",
-      "geplantEur": 4.3,
       "money": {
         "savedEur": 3.4,
         "baselineEur": 2.523,
@@ -473,37 +230,12 @@
         "savedSteuerungEur": 0.3,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 3.4,
-          "ton": "plus",
-          "wort": "+ 3,40 €"
-        },
-        "stur": {
-          "eur": 3.1,
-          "ton": "plus",
-          "wort": "+ 3,10 €"
-        },
-        "steuerung": {
-          "eur": 0.3,
-          "ton": "plus",
-          "wort": "+ 0,30 €"
-        },
-        "splitReason": null,
-        "zwischenstand": false,
-        "satz": "Ihr Speicher hat an diesem Tag + 3,40 € gebracht",
-        "steuerungSatz": "davon + 0,30 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 3,10 €)",
-        "bestand": "4,2 kWh Speicherenergie für den Folgetag gespeichert · Planwert 1,28 €",
-        "bestandBadge": "Kein Abzug",
-        "geplant": "Vorab geplant hatte der Fahrplan + 4,30 €",
-        "anker": "Mit VoltPilot verdient 0,88 € · Ohne Speicher hätten Sie gezahlt 2,52 €."
-      }
+      "steuerungGeplantEur": 4.3
     },
     {
       "id": "eeg-ohne-mastr",
       "titel": "EEG-Privathaushalt · keine MaStR-Verknüpfung (Einspeisung zum Börsenpreis)",
       "now": "2026-09-02T14:05:00+02:00",
-      "geplantEur": 4.3,
       "money": {
         "savedEur": 3.7,
         "baselineEur": 2.973,
@@ -519,37 +251,12 @@
         "savedSteuerungEur": 0.3,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 3.7,
-          "ton": "plus",
-          "wort": "+ 3,70 €"
-        },
-        "stur": {
-          "eur": 3.4,
-          "ton": "plus",
-          "wort": "+ 3,40 €"
-        },
-        "steuerung": {
-          "eur": 0.3,
-          "ton": "plus",
-          "wort": "+ 0,30 €"
-        },
-        "splitReason": null,
-        "zwischenstand": false,
-        "satz": "Ihr Speicher hat an diesem Tag + 3,70 € gebracht",
-        "steuerungSatz": "davon + 0,30 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 3,40 €)",
-        "bestand": "4,2 kWh Speicherenergie für den Folgetag gespeichert · Planwert 1,28 €",
-        "bestandBadge": "Kein Abzug",
-        "geplant": "Vorab geplant hatte der Fahrplan + 4,30 €",
-        "anker": "Mit VoltPilot verdient 0,73 € · Ohne Speicher hätten Sie gezahlt 2,97 €."
-      }
+      "steuerungGeplantEur": 4.3
     },
     {
       "id": "eeg-woche",
       "titel": "EEG-Privathaushalt · Woche (KW 36)",
       "now": "2026-09-02T14:05:00+02:00",
-      "geplantEur": 23.5,
       "money": {
         "savedEur": 21.6,
         "baselineEur": 15.7,
@@ -565,37 +272,12 @@
         "savedSteuerungEur": 1.7,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 21.6,
-          "ton": "plus",
-          "wort": "+ 21,60 €"
-        },
-        "stur": {
-          "eur": 19.9,
-          "ton": "plus",
-          "wort": "+ 19,90 €"
-        },
-        "steuerung": {
-          "eur": 1.7,
-          "ton": "plus",
-          "wort": "+ 1,70 €"
-        },
-        "splitReason": null,
-        "zwischenstand": true,
-        "satz": "Ihr Speicher hat in diesem Zeitraum bisher + 21,60 € gebracht",
-        "steuerungSatz": "davon + 1,70 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 19,90 €)",
-        "bestand": "2,1 kWh Speicherenergie seit Beginn des Zeitraums gespeichert · Planwert 0,63 €",
-        "bestandBadge": "Kein Abzug",
-        "geplant": "Vorab geplant hatte der Fahrplan + 23,50 €",
-        "anker": "Mit VoltPilot verdient 5,90 € · Ohne Speicher hätten Sie gezahlt 15,70 €."
-      }
+      "steuerungGeplantEur": 23.5
     },
     {
       "id": "eeg-monat",
       "titel": "EEG-Privathaushalt · Monat (August 2026)",
       "now": "2026-09-02T14:05:00+02:00",
-      "geplantEur": 104.7,
       "money": {
         "savedEur": 98.3,
         "baselineEur": 64.5,
@@ -611,37 +293,12 @@
         "savedSteuerungEur": 9.2,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 98.3,
-          "ton": "plus",
-          "wort": "+ 98,30 €"
-        },
-        "stur": {
-          "eur": 89.1,
-          "ton": "plus",
-          "wort": "+ 89,10 €"
-        },
-        "steuerung": {
-          "eur": 9.2,
-          "ton": "plus",
-          "wort": "+ 9,20 €"
-        },
-        "splitReason": null,
-        "zwischenstand": false,
-        "satz": "Ihr Speicher hat in diesem Zeitraum + 98,30 € gebracht",
-        "steuerungSatz": "davon + 9,20 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 89,10 €)",
-        "bestand": null,
-        "bestandBadge": null,
-        "geplant": "Vorab geplant hatte der Fahrplan + 104,70 €",
-        "anker": "Mit VoltPilot verdient 33,80 € · Ohne Speicher hätten Sie gezahlt 64,50 €."
-      }
+      "steuerungGeplantEur": 104.7
     },
     {
       "id": "eeg-jahr",
       "titel": "EEG-Privathaushalt · Jahr 2026 (bisher)",
       "now": "2026-09-02T14:05:00+02:00",
-      "geplantEur": 548,
       "money": {
         "savedEur": 520.4,
         "baselineEur": 420.6,
@@ -657,31 +314,7 @@
         "savedSteuerungEur": 50.3,
         "steuerungSplitReason": null
       },
-      "erwartet": {
-        "gesamt": {
-          "eur": 520.4,
-          "ton": "plus",
-          "wort": "+ 520,40 €"
-        },
-        "stur": {
-          "eur": 470.1,
-          "ton": "plus",
-          "wort": "+ 470,10 €"
-        },
-        "steuerung": {
-          "eur": 50.3,
-          "ton": "plus",
-          "wort": "+ 50,30 €"
-        },
-        "splitReason": null,
-        "zwischenstand": true,
-        "satz": "Ihr Speicher hat in diesem Zeitraum bisher + 520,40 € gebracht",
-        "steuerungSatz": "davon + 50,30 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 470,10 €)",
-        "bestand": null,
-        "bestandBadge": null,
-        "geplant": "Vorab geplant hatte der Fahrplan + 548,00 €",
-        "anker": "Mit VoltPilot verdient 99,80 € · Ohne Speicher hätten Sie gezahlt 420,60 €."
-      }
+      "steuerungGeplantEur": 548
     }
   ]
 }
