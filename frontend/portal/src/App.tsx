@@ -34,9 +34,12 @@ import {
   pageRoute,
   PLATFORM_PAGES,
   routeFromHash,
+  transitionKind,
   type PageId,
   type Route,
 } from './nav';
+import { PAGE_CHUNK } from './pageChunks';
+import { awaitRouteChunk, runPageTransition, supportsViewTransitions } from './pageTransition';
 import { hatGeldWelt } from './portfolioHistorie';
 import { showAddAnlageButton } from './addAnlage';
 import { activeAreaKey, anlageSidebar, resolveAnlage } from './anlageNav';
@@ -73,7 +76,7 @@ import { PortfolioTabs } from './components/PortfolioTabs';
 // steht zu diesem Zeitpunkt ohnehin, ein Skelett darunter wäre ein zweiter
 // Ladezustand für dieselbe Sekunde.
 const OnboardingWizard = lazy(() =>
-  import('./Onboarding').then((m) => ({ default: m.OnboardingWizard })),
+  PAGE_CHUNK.onboarding().then((m) => ({ default: m.OnboardingWizard })),
 );
 // Die Anlagen-Seite ist das Ziel fast jedes Besuchs und bleibt deshalb im
 // Einstiegs-Bündel. Jede ANDERE Seite wird lazy geladen: die Plattform-Seiten
@@ -82,46 +85,46 @@ const OnboardingWizard = lazy(() =>
 // Automations-Editor in den Startpfad (siehe `components/Lazy.tsx`).
 import { AnlagenPage } from './pages/AnlagenPage';
 const UebersichtPage = lazy(() =>
-  import('./pages/UebersichtPage').then((m) => ({ default: m.UebersichtPage })),
+  PAGE_CHUNK.uebersicht().then((m) => ({ default: m.UebersichtPage })),
 );
 const PortfolioPage = lazy(() =>
-  import('./pages/PortfolioPage').then((m) => ({ default: m.PortfolioPage })),
+  PAGE_CHUNK.portfolio().then((m) => ({ default: m.PortfolioPage })),
 );
 const PortfolioMesswerte = lazy(() =>
-  import('./pages/PortfolioMesswerte').then((m) => ({ default: m.PortfolioMesswerte })),
+  PAGE_CHUNK['portfolio-messwerte']().then((m) => ({ default: m.PortfolioMesswerte })),
 );
 const PortfolioErloese = lazy(() =>
-  import('./pages/PortfolioErloese').then((m) => ({ default: m.PortfolioErloese })),
+  PAGE_CHUNK['portfolio-erloese']().then((m) => ({ default: m.PortfolioErloese })),
 );
 const MandantenPage = lazy(() =>
-  import('./pages/admin/MandantenPage').then((m) => ({ default: m.MandantenPage })),
+  PAGE_CHUNK.mandanten().then((m) => ({ default: m.MandantenPage })),
 );
 const PlattformUebersichtPage = lazy(() =>
-  import('./pages/admin/PlattformUebersichtPage').then((m) => ({
+  PAGE_CHUNK['plattform-uebersicht']().then((m) => ({
     default: m.PlattformUebersichtPage,
   })),
 );
 // Stufe 3: EIN Nav-Punkt „Geräte" mit zwei Tabs - beide Routen rendern denselben
 // Bereich, also gibt es auch nur einen Lade-Einstieg.
 const GeraeteBereich = lazy(() =>
-  import('./pages/admin/GeraeteBereich').then((m) => ({ default: m.GeraeteBereich })),
+  PAGE_CHUNK['geraete-registry']().then((m) => ({ default: m.GeraeteBereich })),
 );
 const OptimizerPage = lazy(() =>
-  import('./pages/admin/OptimizerPage').then((m) => ({ default: m.OptimizerPage })),
+  PAGE_CHUNK.optimizer().then((m) => ({ default: m.OptimizerPage })),
 );
 const FlowsPage = lazy(() =>
-  import('./pages/admin/FlowsPage').then((m) => ({ default: m.FlowsPage })),
+  PAGE_CHUNK.flows().then((m) => ({ default: m.FlowsPage })),
 );
 const SteuerungsFreigabePage = lazy(() =>
-  import('./pages/admin/SteuerungsFreigabePage').then((m) => ({
+  PAGE_CHUNK['steuerungs-freigabe']().then((m) => ({
     default: m.SteuerungsFreigabePage,
   })),
 );
 const VorlagenPage = lazy(() =>
-  import('./pages/admin/VorlagenPage').then((m) => ({ default: m.VorlagenPage })),
+  PAGE_CHUNK.vorlagen().then((m) => ({ default: m.VorlagenPage })),
 );
 const KomponentenFlottePage = lazy(() =>
-  import('./pages/admin/KomponentenFlottePage').then((m) => ({
+  PAGE_CHUNK['komponenten-flotte']().then((m) => ({
     default: m.KomponentenFlottePage,
   })),
 );
@@ -500,6 +503,51 @@ function UnifiedPortal() {
   // APIs sind additiv, die alte App läuft klaglos - Scout vp-stale-view-w2).
   const updateAvailable = useDeployWatch();
 
+  /* ---------------------------------------------------------------------
+     DER SEITENWECHSEL LÄUFT DURCH GENAU EINE HÜLLE (Bewegungs-Programm P5)
+     Konzept `data/vp-motion-konzept-m1/report.md` §6, Empfehlung E5 (a).
+
+     Jede Navigation des Portals endet in `window.location.hash = …` und damit
+     in `onHash` — die zwei Ausnahmen sind `navigate()` (setzt den Hash SELBST
+     und stellt die Route sofort, damit ein Klick nicht auf ein Ereignis
+     wartet) und die zwei Umleitungen beim Start, die ERSETZEN statt zu
+     navigieren und deshalb bewusst keinen Übergang zeigen (das Ankommen der
+     Anwendung gehört P4).
+
+     ⚠ `commit` ist die EINZIGE Stelle, die `setRoute` für einen echten
+       Wechsel ruft. Wer eine neue Navigationsart einführt, ruft sie hier —
+       nicht ein zweites `setRoute` daneben, sonst hätte das Portal zwei
+       Übergänge für dieselbe Sache.
+     --------------------------------------------------------------------- */
+  const routeRef = useRef<Route>(route);
+  useEffect(() => { routeRef.current = route; }, [route]);
+  // Der Verlaufs-Index, den `navigationBlocker` ohnehin mitführt: SINKT er,
+  // war es ein Zurück — die einzige belastbare Quelle dafür (ein Vergleich am
+  // Hash-Text rät, siehe `nav.transitionKind`).
+  const navIndex = useRef<number>(-1);
+  // Welche Adresse gerade durch die Hülle läuft. Sie verhindert, dass das
+  // `hashchange`-Echo eines `navigate()` einen ZWEITEN Übergang auf dasselbe
+  // Ziel startet (das Vorladen kann zwischen beiden liegen).
+  const committedHref = useRef<string>(window.location.href);
+
+  const commit = useCallback((next: Route, back: boolean) => {
+    committedHref.current = window.location.href;
+    // Ohne die Browser-API gibt es keinen Übergang und damit auch nichts
+    // vorzuladen: die Suspense-Grenze zeigt ihr Skelett wie bisher, und jeder
+    // bestehende Test (jsdom kennt die API nicht) bleibt synchron.
+    if (!supportsViewTransitions()) {
+      setRoute(next);
+      return;
+    }
+    const kind = transitionKind(routeRef.current, next, back);
+    const chunk = awaitRouteChunk(next);
+    if (!chunk) {
+      runPageTransition(kind, () => setRoute(next));
+      return;
+    }
+    void chunk.then(() => runPageTransition(kind, () => setRoute(next)));
+  }, []);
+
   const navigate = useCallback(
     (target: Route | PageId) => {
       let r: Route = typeof target === 'string' ? pageRoute(target) : target;
@@ -507,26 +555,30 @@ function UnifiedPortal() {
       const nextHash = hashForRoute(r);
       if (requestNavigation(new URL(nextHash, window.location.href).href)) return;
       window.location.hash = nextHash;
-      recordNewNavigation();
-      setRoute(r);
+      navIndex.current = recordNewNavigation();
+      commit(r, false);
       // A page switch is a navigation, not a scroll continuation.
       window.scrollTo({ top: 0 });
     },
-    [isAdmin],
+    [isAdmin, commit],
   );
 
   // Hash routing: back/forward + direct edits.
   useEffect(() => {
-    recordCurrentNavigation();
+    navIndex.current = recordCurrentNavigation();
     const onHash = () => {
       if (requestNavigation(window.location.href, true)) return;
-      recordNewNavigation();
+      const index = recordNewNavigation();
+      const back = index < navIndex.current;
+      navIndex.current = index;
+      // Das Echo eines `navigate()`: der Wechsel läuft schon.
+      if (window.location.href === committedHref.current) return;
       const r = routeFromHash();
-      setRoute(!isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page) ? pageRoute('uebersicht') : r);
+      commit(!isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page) ? pageRoute('uebersicht') : r, back);
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
-  }, [isAdmin]);
+  }, [isAdmin, commit]);
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {

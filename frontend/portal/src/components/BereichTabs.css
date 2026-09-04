@@ -46,6 +46,8 @@
   white-space: nowrap;
   cursor: pointer;
   transition: var(--vp-motion-chrome);
+  /* Anker für den gleitenden Unterstrich (Bewegung · P5, siehe unten). */
+  position: relative;
 }
 .vp-bereich-tab:hover {
   color: var(--vp-c-fg, #1e293b);
@@ -53,9 +55,73 @@
 .vp-bereich-tab.active {
   background: none;
   color: var(--vp-c-primary, #2563eb);
-  /* Der 2-px-Unterstrich sitzt INNEN, damit er die Zeilenhöhe nicht ändert
-     und die Leiste ihre eine Linie behält. */
-  box-shadow: inset 0 -2px 0 var(--vp-c-primary, #2563eb);
+}
+
+/* =========================================================================
+   DER UNTERSTRICH GLEITET (Bewegungs-Programm P5)
+   Konzept `data/vp-motion-konzept-m1/report.md` §6 Zeile „Seitenwechsel
+   Rechner" („Reiter-Unterstrich gleitet 200 ms"), Empfehlung E5 (a).
+
+   ⚠ **Er ist seit P5 ein ELEMENT, kein `box-shadow: inset` mehr** — und das
+     ist der ganze Grund für die Änderung: nur ein echtes Element trägt einen
+     `view-transition-name`, ein Innenschatten kann nicht von einem Reiter zum
+     nächsten wandern. Optisch ist es derselbe 2-px-Balken an derselben Stelle
+     (unten INNEN, also ändert er die Zeilenhöhe weiterhin nicht).
+
+   ⚠ **Der Name gilt NUR beim Geschwister-Wechsel** (`html.vp-vt-fade`). Bei
+     einem Blatt-Wechsel (`push`/`pop`, Telefon) schiebt die ganze Seite; ein
+     benannter Unterstrich wäre dann aus dem Seiten-Schnappschuss
+     HERAUSGELÖST und bliebe stehen, während seine Leiste davonwandert. Die
+     Klasse steht am `<html>`, bevor der Browser das alte Bild aufnimmt
+     (`src/pageTransition.ts`), also gilt sie für BEIDE Schnappschüsse.
+
+   ⚠ **Zwei Namen, weil es zwei Leisten sind** — die Reiter einer Anlage und
+     die Welten des Portfolios. Sie stehen nie zugleich im Bild; hießen sie
+     gleich, bräche ein Doppelname den ganzen Übergang ab, sobald es doch
+     einmal passiert.
+
+   Ohne die Browser-API springt er wie bisher: es gibt nichts zu ersetzen.
+   ========================================================================= */
+.vp-tab-strich,
+.vp-welt-strich {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--vp-c-primary, #2563eb);
+}
+
+html.vp-vt-fade .vp-tab-strich {
+  view-transition-name: vp-tab-strich;
+}
+html.vp-vt-fade .vp-welt-strich {
+  view-transition-name: vp-welt-strich;
+}
+
+/* Die GRUPPE trägt die Bewegung: sie morpht die Kiste des alten Balkens auf
+   die des neuen — Bewegen/Morphen, also `--vp-ease-inout` (Prinzip 3).
+   Sie läuft im Übergangs-Baum, nicht im Layout: die Reiterleiste selbst rührt
+   sich nicht (Prinzip 9). */
+::view-transition-group(vp-tab-strich),
+::view-transition-group(vp-welt-strich) {
+  animation-duration: var(--vp-motion-base);
+  animation-timing-function: var(--vp-ease-inout);
+}
+
+/* Alt und Neu sind DERSELBE einfarbige Balken — ein Überblenden hätte nichts
+   zu erzählen und die Vorgabe-Mischung `plus-lighter` machte die Überlappung
+   nur heller. Also: das alte Bild weg, das neue steht. */
+::view-transition-old(vp-tab-strich),
+::view-transition-old(vp-welt-strich) {
+  animation: none;
+  opacity: 0;
+}
+::view-transition-new(vp-tab-strich),
+::view-transition-new(vp-welt-strich) {
+  animation: none;
+  opacity: 1;
+  mix-blend-mode: normal;
 }
 @media (max-width: 720px) {
   .vp-bereich-tabs {

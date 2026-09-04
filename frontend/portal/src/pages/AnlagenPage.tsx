@@ -1,5 +1,6 @@
 import { Fragment, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { SUB_CHUNK } from '../pageChunks';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -120,49 +121,49 @@ import { anlageSidebar, bereichLabel, tabsFor } from '../anlageNav';
 // Karte auf „Einstellungen"), den Automations-Editor. Gemessen war das der
 // grösste Einzelposten der Ladezeit - siehe `components/Lazy.tsx`.
 const FahrplanSection = lazy(() =>
-  import('./DataPages').then((m) => ({ default: m.FahrplanSection })),
+  SUB_CHUNK.daten().then((m) => ({ default: m.FahrplanSection })),
 );
 const WetterSection = lazy(() =>
-  import('./DataPages').then((m) => ({ default: m.WetterSection })),
+  SUB_CHUNK.daten().then((m) => ({ default: m.WetterSection })),
 );
 const MesswerteSection = lazy(() =>
-  import('./MesswerteSection').then((m) => ({ default: m.MesswerteSection })),
+  SUB_CHUNK.messwerte().then((m) => ({ default: m.MesswerteSection })),
 );
 const ErloeseSection = lazy(() =>
-  import('./ErloeseSection').then((m) => ({ default: m.ErloeseSection })),
+  SUB_CHUNK.erloese().then((m) => ({ default: m.ErloeseSection })),
 );
 const AnlagenModellSection = lazy(() =>
-  import('./AnlagenModellSection').then((m) => ({ default: m.AnlagenModellSection })),
+  SUB_CHUNK.modell().then((m) => ({ default: m.AnlagenModellSection })),
 );
 const GeraetSeiteSection = lazy(() =>
-  import('./GeraetSeiteSection').then((m) => ({ default: m.GeraetSeiteSection })),
+  SUB_CHUNK.geraet().then((m) => ({ default: m.GeraetSeiteSection })),
 );
 const BoxSeiteSection = lazy(() =>
-  import('./BoxSeiteSection').then((m) => ({ default: m.BoxSeiteSection })),
+  SUB_CHUNK.box().then((m) => ({ default: m.BoxSeiteSection })),
 );
 const LadevorgaengeSection = lazy(() =>
-  import('./LadevorgaengeSection').then((m) => ({ default: m.LadevorgaengeSection })),
+  SUB_CHUNK.ladevorgaenge().then((m) => ({ default: m.LadevorgaengeSection })),
 );
 const LastspitzenSection = lazy(() =>
-  import('./LastspitzenSection').then((m) => ({ default: m.LastspitzenSection })),
+  SUB_CHUNK.lastspitzen().then((m) => ({ default: m.LastspitzenSection })),
 );
 const SteuerungSection = lazy(() =>
-  import('./SteuerungSection').then((m) => ({ default: m.SteuerungSection })),
+  SUB_CHUNK.steuerung().then((m) => ({ default: m.SteuerungSection })),
 );
 const TechnikSection = lazy(() =>
-  import('./AnlageTechnik').then((m) => ({ default: m.TechnikSection })),
+  SUB_CHUNK.technik().then((m) => ({ default: m.TechnikSection })),
 );
 const BefehleSection = lazy(() =>
-  import('./BefehleSection').then((m) => ({ default: m.BefehleSection })),
+  SUB_CHUNK.befehle().then((m) => ({ default: m.BefehleSection })),
 );
 // Marktpreise und Prognose sind seit der Navigations-Runde „zwei Ebenen" (E3)
 // REITER des Verlaufs, also gewöhnliche Unterseiten dieser Anlage - ihre alten
 // Adressen leiten um (`nav.ts` LEGACY_ROUTES).
 const MarktpreisePage = lazy(() =>
-  import('./DataPages').then((m) => ({ default: m.MarktpreisePage })),
+  SUB_CHUNK.daten().then((m) => ({ default: m.MarktpreisePage })),
 );
 const PrognosePage = lazy(() =>
-  import('./PrognosePage').then((m) => ({ default: m.PrognosePage })),
+  SUB_CHUNK.prognose().then((m) => ({ default: m.PrognosePage })),
 );
 
 /** Re-render cadence of the "Stand vor X" freshness note. */

@@ -18,6 +18,8 @@ import {
   pageRoute,
   parseGeraetRef,
   parseRoute,
+  routeDepth,
+  transitionKind,
   komponenteBearbeitenHash,
   modellBearbeitenKomponente,
   ohneModellBearbeiten,
@@ -679,5 +681,67 @@ describe('komponenteBearbeitenHash', () => {
     expect(modellBearbeitenKomponente(hash)).toBe('pv/garage');
     expect(ohneModellBearbeiten(hash)).toBe('#/anlage/s-1/modell');
     expect(modellBearbeitenKomponente(komponenteHash('s-1', 'pv/garage'))).toBeNull();
+  });
+});
+
+describe('Bewegung P5 · die Richtung eines Seitenwechsels', () => {
+  const portfolio = pageRoute('portfolio');
+  const mandanten = pageRoute('mandanten');
+  const anlage = anlageRoute('s-1');
+  const messwerte = anlageRoute('s-1', 'messwerte');
+  const erloese = anlageRoute('s-1', 'erloese');
+  const geraet = anlageRoute('s-1', 'geraet');
+
+  it('die Tiefe folgt der Brotkrume, die der Kunde liest', () => {
+    expect(routeDepth(portfolio)).toBe(0);
+    expect(routeDepth(mandanten)).toBe(0);
+    expect(routeDepth(anlage)).toBe(1);
+    expect(routeDepth(messwerte)).toBe(2);
+    // Geräte- und Box-Seite wohnen EINE Ebene unter dem Anlagen-Modell
+    // (`anlageNav.OHNE_BEREICHS_REITER`: sie tragen keinen Reiter).
+    expect(routeDepth(geraet)).toBe(3);
+    expect(routeDepth(anlageRoute('s-1', 'box'))).toBe(3);
+  });
+
+  it('`#/anlagen` OHNE Anlage ist Flotten-Ebene, keine geöffnete Anlage', () => {
+    // Die Umleitungs-Adresse der Flotten-Ebene — sie zeigt nie einen
+    // Anlagen-Kopf, also darf sie auch nicht als Anlage zählen.
+    expect(routeDepth({ page: 'anlagen', siteId: null, sub: null })).toBe(0);
+  });
+
+  it('tiefer schiebt, flacher zieht zurück', () => {
+    expect(transitionKind(portfolio, anlage)).toBe('push');
+    expect(transitionKind(anlage, messwerte)).toBe('push');
+    expect(transitionKind(anlageRoute('s-1', 'modell'), geraet)).toBe('push');
+    expect(transitionKind(anlage, portfolio)).toBe('pop');
+    expect(transitionKind(messwerte, anlage)).toBe('pop');
+    expect(transitionKind(geraet, anlageRoute('s-1', 'modell'))).toBe('pop');
+  });
+
+  it('Geschwister blenden — auf jeder Ebene', () => {
+    // Reiter neben Reiter (der Fall, für den es die Regel gibt) …
+    expect(transitionKind(messwerte, erloese)).toBe('fade');
+    // … Flotten-Seite neben Flotten-Seite …
+    expect(transitionKind(portfolio, mandanten)).toBe('fade');
+    // … und Anlage neben Anlage (der Umschalter in der Kopfzeile).
+    expect(transitionKind(anlage, anlageRoute('s-2'))).toBe('fade');
+  });
+
+  it('ZURÜCK gewinnt gegen die Tiefe — sonst führe das Browser-Zurück vorwärts', () => {
+    // Genau der Fall, den eine Heuristik am Hash falsch macht: über die
+    // Brotkrume flacher (pop), dann Browser-Zurück — die Tiefe sagt `push`,
+    // der Kunde erlebt ein Zurück.
+    expect(transitionKind(anlage, messwerte, true)).toBe('pop');
+    expect(transitionKind(portfolio, geraet, true)).toBe('pop');
+    expect(transitionKind(messwerte, erloese, true)).toBe('pop');
+  });
+
+  it('das erste Bild ist kein Wechsel — es blendet (das Ankommen gehört P4)', () => {
+    expect(transitionKind(null, anlage)).toBe('fade');
+    expect(transitionKind(null, portfolio)).toBe('fade');
+  });
+
+  it('dieselbe Route auf sich selbst schiebt nichts', () => {
+    expect(transitionKind(messwerte, anlageRoute('s-1', 'messwerte'))).toBe('fade');
   });
 });

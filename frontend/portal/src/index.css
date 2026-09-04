@@ -6050,6 +6050,190 @@ span.vp-swap-out {
 }
 
 /* =========================================================================
+   === Bewegung · P5 ===
+   DER SEITENWECHSEL (Bewegungs-Programm P5)
+   Konzept `data/vp-motion-konzept-m1/report.md` §6 („Seitenwechsel Telefon" /
+   „Seitenwechsel Rechner"), Empfehlung E5 (a), Captain-Antwort 8 wörtlich:
+   „Handy wie eine App — Blätter schieben; Rechner nur blenden."
+
+   Die Arbeit ist auf DREI Orte verteilt, und die Teilung ist die Aussage:
+     · `src/nav.ts`      — WOHIN es geht (`transitionKind`, rein, testbar)
+     · `src/App.tsx`     — DASS es GENAU EINMAL geschieht (`commit`)
+     · dieser Block      — WIE es aussieht
+   Wer die Hierarchie des Portals ändert, ändert die Bewegung in `nav.ts` mit;
+   wer das Aussehen ändert, kommt hierher. Keiner der drei kennt die anderen
+   beiden über die Klasse `vp-vt-push|pop|fade` am `<html>` hinaus.
+
+   ⚠ **DIE DAUERN STEHEN NIE NACKT.** Alles rechnet über `--vp-motion-*`, also
+     verstummt der Seitenwechsel über den EINEN Schalter am Dateiende
+     (`--vp-motion-scale: 0` ⇒ `animation-duration: 0s` ⇒ Schnitt). Ein
+     ZWEITER `prefers-reduced-motion`-Block wäre genau der Wildwuchs, den P0
+     abgeschafft hat.
+
+   ⚠ **Ohne `document.startViewTransition` passiert hier GAR NICHTS** (E5):
+     die Pseudo-Elemente entstehen nur, wo der Browser sie kennt. Chrome < 111,
+     Safari < 18, Firefox < 144 und jsdom bekommen den Schnitt von heute — es
+     gibt kein selbst gebautes Ersatz-Blenden.
+   ========================================================================= */
+
+/* --- 1 · Die feste Schale bleibt stehen ---------------------------------
+ * Ein Element mit eigenem `view-transition-name` wird aus dem Wurzel-Bild
+ * HERAUSGELÖST und bekommt eine eigene Gruppe. Genau das wollen wir für die
+ * Schale: schiebt das Wurzel-Bild (Telefon), schiebt der INHALT — Kopfzeile,
+ * Seitenleiste und Telefon-Leiste bleiben, wo sie sind, und decken dabei die
+ * Löcher ab, die sie im Wurzel-Bild hinterlassen.
+ *
+ * ⚠ Jeder Name darf je Bild GENAU EINMAL vorkommen; ein Doppelname bricht den
+ *   ganzen Übergang ab. Die drei rendert `shell/AppShell.tsx` je höchstens
+ *   einmal (die Telefon-Leiste gar nicht auf der Flotten-Ebene — dann gibt es
+ *   ihre Gruppe eben nur im neuen Bild und sie blendet ein). */
+.vp-sidebar {
+  view-transition-name: vp-schale-seite;
+}
+.vp-topbar {
+  view-transition-name: vp-schale-kopf;
+}
+.vp-bottombar {
+  view-transition-name: vp-schale-fuss;
+}
+
+/* Die Schale WECHSELT ihren Inhalt (die Brotkrume wird länger), sie BEWEGT
+   sich aber nicht. Also: dieselbe Blende wie am Rechner, kein Schieben. */
+::view-transition-group(vp-schale-seite),
+::view-transition-group(vp-schale-kopf),
+::view-transition-group(vp-schale-fuss) {
+  animation-duration: var(--vp-motion-base);
+  animation-timing-function: var(--vp-ease-inout);
+}
+::view-transition-old(vp-schale-seite),
+::view-transition-old(vp-schale-kopf),
+::view-transition-old(vp-schale-fuss) {
+  animation-duration: var(--vp-motion-exit);
+  animation-timing-function: var(--vp-ease-in);
+}
+::view-transition-new(vp-schale-seite),
+::view-transition-new(vp-schale-kopf),
+::view-transition-new(vp-schale-fuss) {
+  animation-duration: var(--vp-motion-base);
+  animation-timing-function: var(--vp-ease-out);
+}
+
+/* --- 2 · Rechner: NUR blenden (Antwort 8) -------------------------------
+ * Die Grundlage für JEDE Breite und JEDE Richtung — das Telefon überschreibt
+ * sie unten für `push`/`pop`. Aus schnell (160 ms, `--vp-ease-in`), ein weich
+ * (200 ms, `--vp-ease-out`) mit den halben 8 px der Familie: Prinzip 3
+ * („ankommen weich, verlassen schnell") in seiner kleinsten Form.
+ *
+ * Die Vorgabe-Mischung `plus-lighter` des Browsers bleibt: sie ist genau für
+ * dieses Überblenden gebaut und verhindert den Durchblick auf den Grund,
+ * den ein gewöhnliches Übereinander in der Mitte hätte. */
+/* ⚠ Auch die GRUPPE des Wurzelbildes rechnet über die Familie. Der Browser
+   gäbe ihr sonst seine 250-ms-Vorgabe, und der EINE Schalter am Dateiende
+   ließe genau sie stehen — der Übergang wäre unter `reduced` zwar unsichtbar
+   (alt und neu sind gleich groß, die Gruppe morpht also nichts), hielte den
+   Wechsel aber weiter 250 ms auf. „Ein Schalter für alles" (Prinzip 8) heißt
+   auch: keine Dauer, die er nicht erreicht. */
+::view-transition-group(root) {
+  animation-duration: var(--vp-motion-base);
+  animation-timing-function: var(--vp-ease-inout);
+}
+::view-transition-old(root) {
+  animation-name: vp-vt-blende-aus;
+  animation-duration: var(--vp-motion-exit);
+  animation-timing-function: var(--vp-ease-in);
+  animation-fill-mode: both;
+}
+::view-transition-new(root) {
+  animation-name: vp-vt-blende-ein;
+  animation-duration: var(--vp-motion-base);
+  animation-timing-function: var(--vp-ease-out);
+  animation-fill-mode: both;
+}
+@keyframes vp-vt-blende-aus {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vp-vt-blende-ein {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--vp-motion-distance) / 2));
+  }
+}
+
+/* --- 3 · Telefon: Blätter schieben (Antwort 8) --------------------------
+ * Die Grenze ist die HAUS-Grenze: dieselbe Zahl wie `PHONE_MAX_PX` in
+ * `src/useIsPhone.ts` (720) — Struktur und Aussehen schalten an derselben
+ * Zahl (`frontend/portal/AGENTS.md`).
+ *
+ * ⚠ **`mix-blend-mode: normal` ist beim Schieben Pflicht.** `plus-lighter`
+ *   addiert die Farben der Überlappung; bei einem Überblenden ist das genau
+ *   richtig, bei zwei nebeneinander liegenden Blättern wäre der überlappende
+ *   Streifen ausgewaschen.
+ *
+ * ⚠ **Beim Zurück liegt das ALTE Blatt oben** (`z-index: 1`): es wandert nach
+ *   rechts hinaus und gibt das darunterliegende frei. Beim Vorwärts ist die
+ *   Vorgabe-Reihenfolge schon richtig (neu über alt).
+ *
+ * Ein Geschwister-Wechsel (`fade`) fällt hier NICHT hinein — er blendet auch
+ * am Telefon, weil nichts tiefer geht (Report §6: „Geschwister-Reiter blenden
+ * statt schieben"). */
+@media (max-width: 720px) {
+  html.vp-vt-push::view-transition-group(root),
+  html.vp-vt-pop::view-transition-group(root),
+  html.vp-vt-push::view-transition-old(root),
+  html.vp-vt-push::view-transition-new(root),
+  html.vp-vt-pop::view-transition-old(root),
+  html.vp-vt-pop::view-transition-new(root) {
+    mix-blend-mode: normal;
+    animation-duration: var(--vp-motion-page);
+    animation-timing-function: var(--vp-ease-out);
+    animation-fill-mode: both;
+  }
+
+  html.vp-vt-push::view-transition-old(root) {
+    animation-name: vp-vt-weicht-nach-links;
+  }
+  html.vp-vt-push::view-transition-new(root) {
+    animation-name: vp-vt-kommt-von-rechts;
+  }
+
+  html.vp-vt-pop::view-transition-old(root) {
+    animation-name: vp-vt-geht-nach-rechts;
+    z-index: 1;
+  }
+  html.vp-vt-pop::view-transition-new(root) {
+    animation-name: vp-vt-kommt-von-links;
+  }
+}
+
+/* 28 % statt 100 %: das alte Blatt WEICHT, es geht nicht weg — die Parallaxe
+   sagt „das war die Ebene darüber, sie wartet dort". Das leichte Abdunkeln
+   ist dieselbe Aussage in Helligkeit. */
+@keyframes vp-vt-weicht-nach-links {
+  to {
+    transform: translateX(-28%);
+    filter: brightness(0.88);
+  }
+}
+@keyframes vp-vt-kommt-von-rechts {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes vp-vt-geht-nach-rechts {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes vp-vt-kommt-von-links {
+  from {
+    transform: translateX(-28%);
+    filter: brightness(0.88);
+  }
+}
+
+/* =========================================================================
    DIE EINE STELLE, AN DER DAS PORTAL VERSTUMMT (Bewegungs-Programm P0)
    Konzept `data/vp-motion-konzept-m1/report.md` §4.2, Prinzip 8
    („EIN Schalter für alles"), Captain-Entscheid 04.09.2026.

@@ -79,6 +79,10 @@ export function PortfolioTabs({
         onClick={() => open('portfolio')}
       >
         Übersicht
+        {/* siehe `BereichTabs.tsx`: ein eigenes Element, damit der Unterstrich
+            gleiten kann (P5). Eigener Name, weil zwei gleichnamige Elemente in
+            EINEM Bild den ganzen Übergang abbrechen würden. */}
+        {page === 'portfolio' && <span className="vp-welt-strich" aria-hidden="true" />}
       </button>
       {welten.map((p) => (
         <button
@@ -90,6 +94,7 @@ export function PortfolioTabs({
           onClick={() => open(p.id)}
         >
           {p.label}
+          {page === p.id && <span className="vp-welt-strich" aria-hidden="true" />}
         </button>
       ))}
     </div>

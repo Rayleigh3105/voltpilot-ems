@@ -44,6 +44,12 @@ export function BereichTabs({
             onClick={() => onOpen(t.sub)}
           >
             {t.label}
+            {/* Der Unterstrich ist ein eigenes Element, damit er GLEITEN kann
+                (Bewegungs-Programm P5): nur ein echtes Element trägt einen
+                `view-transition-name`, ein `::after` nicht. Ohne die
+                Browser-API springt er wie bisher — es ist derselbe 2-px-Balken
+                an derselben Stelle. */}
+            {ist && <span className="vp-tab-strich" aria-hidden="true" />}
           </button>
         );
       })}
