@@ -59,7 +59,8 @@ _UPSERT_SQL = """
 INSERT INTO schedule
     (time, tenant_id, site_id, device_id, plan_id, generated_at,
      battery_kw, grid_kw, soc_pct, load_kw, pv_kw,
-     price_eur_mwh, cost_eur, baseline_cost_eur, curtail_kw, wear_cost_eur,
+     price_eur_mwh, cost_eur, baseline_cost_eur, stur_cost_eur,
+     curtail_kw, wear_cost_eur,
      terminal_value_eur_per_kwh, peak_target_kw,
      slot_role, slot_flags, stored_value_ct_kwh, grid_value_ct_kwh,
      peak_pressure_eur_kw, fallback_14a,
@@ -69,7 +70,7 @@ INSERT INTO schedule
      why_next_best, why_next_best_margin_ct,
      pv_anchor_ratio)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (site_id, generated_at, time)
 DO UPDATE SET
     device_id         = EXCLUDED.device_id,
@@ -82,6 +83,7 @@ DO UPDATE SET
     price_eur_mwh     = EXCLUDED.price_eur_mwh,
     cost_eur          = EXCLUDED.cost_eur,
     baseline_cost_eur = EXCLUDED.baseline_cost_eur,
+    stur_cost_eur     = EXCLUDED.stur_cost_eur,
     curtail_kw        = EXCLUDED.curtail_kw,
     wear_cost_eur     = EXCLUDED.wear_cost_eur,
     terminal_value_eur_per_kwh = EXCLUDED.terminal_value_eur_per_kwh,
@@ -142,6 +144,12 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
     the columns - the surfaces then stay observational, which is exactly the
     Stufe-0 behaviour, never a fabricated cause.
 
+    ``stur_cost_eur`` (Messlatte, api migration V20260867000000) is the
+    projected slot cashflow of the SAME battery WITHOUT smart control (the
+    greedy self-consumption reference of
+    :mod:`voltpilot_optimization.stur`). NULL on runs that predate the column
+    - the planned STEUERUNG figure then honestly stays absent.
+
     ``pv_anchor_ratio`` (Morgenprognose, api migration V20260836000000) is
     RUN-level too: the measured-over-predicted ratio the run corrected its
     near-horizon PV forecast by (:mod:`voltpilot_optimization.nowcast`). NULL =
@@ -164,6 +172,7 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
             slot.price_eur_mwh,
             slot.cost_eur,
             slot.baseline_cost_eur,
+            slot.stur_cost_eur,
             slot.curtail_kw,
             slot.wear_cost_eur,
             plan.terminal_value_eur_per_kwh,

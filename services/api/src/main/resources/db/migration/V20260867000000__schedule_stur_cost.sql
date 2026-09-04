@@ -1,0 +1,36 @@
+-- =============================================================================
+-- V20260867000000 - Die MESSLATTE des Fahrplans: der Cashflow desselben
+-- Speichers OHNE smarte Steuerung, je geplantem Slot.
+-- -----------------------------------------------------------------------------
+-- Captain-Auftrag 04.09.2026, woertlich: "Das ist doch Quatsch, du musst
+-- Anlage immer mit Speicher berechnen, einer halt ohne smart Steuerung."
+--
+-- Bis hierher rechnete die geplante Ersparnis gegen eine Anlage OHNE Speicher
+-- (schedule.baseline_cost_eur). Die GEMESSENE Seite trennt seit dem Audit
+-- vp-geldzahlen-audit-x7 §2.5 laengst savedEur = savedSpeicherEur +
+-- savedSteuerungEur - der Kunde sah deshalb "442 EUR geplant" neben "43 EUR
+-- gemessen", zwei Zahlen, die Verschiedenes messen.
+--
+-- schedule.stur_cost_eur schliesst die Luecke: der projizierte Cashflow des
+-- STUREN Speichers - gleiche Batterie, gleiche Prognosen, gleicher
+-- Start-Ladestand, gleiche Preisformel, aber null Preis-Bewusstsein (jeden
+-- Ueberschuss sofort laden, jedes Defizit sofort decken, nie aus dem Netz
+-- laden, nie abregeln). Geschrieben von services/optimization je Slot
+-- (voltpilot_optimization/stur.py, das Greedy-Modell der Ersparnis-Simulation;
+-- Java-Zwilling der gemessenen Seite: repo/StandardSpeicher.java; die geteilten
+-- Vektoren docs/contracts/stur-speicher-vectors.json nageln beide gegeneinander
+-- fest).
+--
+-- Der api liest daraus steuerungPlannedEur = sum(stur_cost_eur - cost_eur) und
+-- laesst batterySavingsPlannedEur (sum(baseline_cost_eur - cost_eur))
+-- UNVERAENDERT stehen - die Admin-/Optimierer-Sicht liest sie weiter.
+--
+-- Nullable: Zeilen aus Laeufen vor dieser Migration tragen NULL, die
+-- Steuerungs-Zahl fehlt dort dann ehrlich statt eine erfundene zu zeigen. Der
+-- V20260701020000-SELECT-Grant auf schedule ist spaltenunabhaengig.
+-- Bootstrap-Spiegel: infra/local/timescale/04-schedule.sql (in sync gehalten).
+-- Der eingefrorene MQTT-Fahrplan-Kontrakt ist unberuehrt - die Messlatte
+-- erreicht das Geraet nie.
+-- =============================================================================
+
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS stur_cost_eur NUMERIC(12, 6);

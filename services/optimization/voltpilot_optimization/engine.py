@@ -59,10 +59,20 @@ class CycleSummary:
             + (f", {len(self.skipped)} site(s) skipped" if self.skipped else "")
         ]
         for plan in self.planned:
-            parts.append(
+            # Das Log nennt IMMER die Messlatte (Haus-Regel). Zwei Zahlen, zwei
+            # Fragen: savings = der Wert des Speichers SAMT Steuerung gegen eine
+            # Anlage ohne Speicher (die Admin-/Optimierer-Sicht, unveraendert),
+            # steuerung = der Mehrwert der STEUERUNG gegen denselben Speicher
+            # ohne sie (die Kunden-Zahl seit Captain 04.09.2026). Fehlt die
+            # Messlatte, wird sie weggelassen statt mit 0,00 behauptet.
+            line = (
                 f"  site={plan.site_id} slots={len(plan.slots)} "
                 f"savings={plan.savings_eur:.2f} EUR vs. no-battery baseline"
             )
+            steuerung = plan.steuerung_savings_eur
+            if steuerung is not None:
+                line += f", steuerung={steuerung:.2f} EUR vs. stur battery"
+            parts.append(line)
         return "\n".join(parts)
 
 

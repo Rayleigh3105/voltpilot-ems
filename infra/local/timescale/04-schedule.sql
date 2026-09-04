@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS schedule (
     price_eur_mwh     NUMERIC(12, 4),           -- day-ahead price of the slot
     cost_eur          NUMERIC(12, 6),           -- projected slot cost WITH the plan
     baseline_cost_eur NUMERIC(12, 6),           -- projected slot cost with the battery idle
+    stur_cost_eur     NUMERIC(12, 6),           -- projected slot cost of the STUR battery, no smart control (V20260867000000)
     curtail_kw        NUMERIC(12, 4),           -- planned PV curtailment (V20260706040000)
     wear_cost_eur     NUMERIC(12, 6),           -- priced battery degradation of the slot (V20260710000000)
     terminal_value_eur_per_kwh NUMERIC(12, 6),  -- run's P3 terminal value per stored kWh (V20260716010000)
