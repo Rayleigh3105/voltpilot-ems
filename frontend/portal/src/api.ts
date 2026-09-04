@@ -632,6 +632,22 @@ export interface HistoryTotals {
    * one release; it is deliberately absent here so no new reader can appear.
    */
   batterySavingsPlannedEur: number | null;
+  /**
+   * The EX-ANTE **planned** value of VoltPilot's STEERING, measured against
+   * the SAME plant with a battery but without smart control - the yardstick
+   * every customer surface uses since the captain's 04.09.2026 call ("du musst
+   * Anlage immer mit Speicher berechnen, einer halt ohne smart Steuerung").
+   *
+   * ⚠ It is NOT {@link HistoryTotals.batterySavingsPlannedEur}, which measures
+   * against a plant WITHOUT a battery and is therefore an ADMIN number. The two
+   * legitimately differ by a large factor; a surface must never substitute one
+   * for the other.
+   *
+   * OPTIONAL because the optimizer only starts persisting it with its own
+   * increment: `undefined`/`null` = no plan figure on this yardstick, and the
+   * customer-facing plan line stays ABSENT rather than showing the old one.
+   */
+  steuerungPlannedEur?: number | null;
   autarkiePct: number | null;
   eigenverbrauchPct: number | null;
 }
@@ -2552,7 +2568,24 @@ export type EarningsReason = 'no_data' | 'missing_channels' | 'no_prices';
 /** One Europe/Berlin day of realized savings. */
 export interface EarningsDaily {
   day: string;
+  /**
+   * The whole battery's value on that Berlin day, measured against a plant
+   * WITHOUT a battery. ⚠ **ADMIN number since the captain's 04.09.2026 call** —
+   * no customer surface may render it; the customer yardstick is
+   * {@link EarningsDaily.savedSteuerungEur}.
+   */
   savedEur: number;
+  /**
+   * What VoltPilot's STEERING was worth on that Berlin day, measured against
+   * the SAME plant with the SAME battery run dumb (charge every surplus, cover
+   * every need, no prices, never hold for later) - the one yardstick every
+   * customer surface uses.
+   *
+   * `null`/absent = no comparison for that day (the plant has no battery master
+   * data, or an older backend does not ship the field). A surface then shows
+   * NOTHING for that day - never the total as a substitute, never a fake zero.
+   */
+  savedSteuerungEur?: number | null;
 }
 
 /** One Ertrag-chart bucket: its Berlin start (ISO) + the Gesamtertrag. */

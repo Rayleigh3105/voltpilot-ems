@@ -3,286 +3,223 @@ import { describe, expect, it, vi } from 'vitest';
 import vektoren from './test/fixtures/speicherAussage.vektoren.json';
 import { NBSP } from './format';
 import {
+  MESSLATTE,
+  MESSLATTE_DATIV,
+  OHNE_VERGLEICH_SATZ,
   speicherAussage,
-  type SpeicherAussage,
   type SpeicherEingabe,
 } from './speicherAussage';
 
 /**
- * Die 15 Fixtures des Erlöse-Konzepts (`vp-erloese-seite-konzept-e2`,
- * `derived.json` → `neu.speicher`) sind die ERWARTUNG dieser Ableitung: der
- * Generator des Konzepts wird damit zum Test des Codes (§5, Beweis-Pflicht 1).
+ * ⚠ **DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG** (Captain
+ * 04.09.2026, wörtlich zum Screenshot der Live-Anlage Pilsting/Herzogau: „Das
+ * ist doch Quatsch, du musst Anlage immer mit Speicher berechnen, einer halt
+ * ohne smart Steuerung.").
  *
- * ⚠ Verglichen wird eine PROJEKTION auf genau die elf Felder, die das Konzept
- * ableitet. Die Aussage trägt zusätzlich die ANZEIGE-Felder (E8-Ton, die
- * Revision-2-Chips, die Kurzform) — sie sind neu und haben im Konzept-JSON
- * keine Entsprechung; sie stehen in eigenen Fällen weiter unten.
+ * Die 15 Fixtures des Erlöse-Konzepts (`vp-erloese-seite-konzept-e2`) reisen
+ * weiter als EINGABEN — es sind echte, aus Live-Zahlen abgeleitete Fälle. Ihre
+ * `erwartet`-Blöcke sind entfallen: sie beschrieben die zweizeilige Form („Ihr
+ * Speicher hat … gebracht" über „davon Steuerung"), die der Captain gestrichen
+ * hat.
  */
 interface Vektor {
   id: string;
   titel: string;
   now: string;
-  geplantEur: number | null;
+  steuerungGeplantEur: number | null;
   money: Record<string, unknown>;
-  erwartet: Record<string, unknown>;
 }
 
 const FIXTURES = (vektoren as { fixtures: Vektor[] }).fixtures;
 
-/**
- * Jeder Betrag trägt ein GESCHÜTZTES Leerzeichen vor dem € (`eurAmount`), damit
- * Zahl und Einheit nie umbrechen. In den Erwartungen steht es lesbar als
- * normales Leerzeichen und wird hier eingesetzt.
- */
+/** Jeder Betrag trägt ein GESCHÜTZTES Leerzeichen vor dem €. */
 const nb = (s: string) => s.replace(/ €/g, `${NBSP}€`);
 
-/** Genau die Felder, die `derived.json` unter `neu.speicher` führt. */
-function konzeptForm(a: SpeicherAussage) {
-  return {
-    gesamt: a.gesamt,
-    stur: a.stur,
-    steuerung: a.steuerung,
-    splitReason: a.splitReason,
-    zwischenstand: a.zwischenstand,
-    satz: a.satz,
-    steuerungSatz: a.steuerungSatz,
-    bestand: a.bestand,
-    bestandBadge: a.bestandBadge,
-    geplant: a.geplant,
-    anker: a.anker,
-  };
-}
-
-function ausVektor(v: Vektor): SpeicherAussage {
+function ausVektor(v: Vektor) {
   const a = speicherAussage(v.money as SpeicherEingabe, {
     now: new Date(v.now),
-    geplantEur: v.geplantEur,
+    steuerungGeplantEur: v.steuerungGeplantEur,
   });
-  expect(a, `${v.id}: die Ableitung darf hier nicht null sein`).not.toBeNull();
-  return a as SpeicherAussage;
+  if (!a) throw new Error(`speicherAussage() lieferte null für ${v.id}`);
+  return a;
 }
 
-describe('speicherAussage — die 15 Konzept-Fixtures als Vektoren', () => {
-  it('deckt alle 15 Fixtures ab', () => {
-    expect(FIXTURES).toHaveLength(15);
-  });
-
-  for (const v of FIXTURES) {
-    it(`${v.id} — ${v.titel}`, () => {
-      expect(konzeptForm(ausVektor(v))).toEqual(v.erwartet);
-    });
-  }
-});
-
-/* ---------------------------------------------------------------------------
- * Die Zustände (§3.5) — jeder mit seinem Ton (E8) und seinen Chips (Rev. 2)
- * ------------------------------------------------------------------------- */
-
-const BASIS: SpeicherEingabe = {
-  savedEur: 12.4,
-  savedSpeicherEur: 9.3,
-  savedSteuerungEur: 3.1,
-  steuerungSplitReason: null,
-  range: 'day',
-  to: '2026-09-01T22:00:00Z',
-  plantKind: 'eigenverbrauch',
-};
 const NOW = new Date('2026-09-02T12:19:00+02:00');
+const ABGESCHLOSSEN = '2026-09-01T22:00:00Z';
+const LAEUFT = '2026-09-02T22:00:00Z';
 
-function ausw(patch: Partial<SpeicherEingabe>, laeuft?: boolean): SpeicherAussage {
-  const a = speicherAussage({ ...BASIS, ...patch }, { now: NOW, laeuft });
-  expect(a).not.toBeNull();
-  return a as SpeicherAussage;
+/** Eine konsistente Eingabe: `savedSpeicherEur + savedSteuerungEur == savedEur`. */
+function eingabe(patch: Partial<SpeicherEingabe> = {}): SpeicherEingabe {
+  return {
+    savedEur: 92.02,
+    savedSpeicherEur: 48.37,
+    savedSteuerungEur: 43.65,
+    steuerungSplitReason: null,
+    range: 'month',
+    to: ABGESCHLOSSEN,
+    ...patch,
+  } as SpeicherEingabe;
 }
 
-describe('Ton nach E8 — nie Grün auf einem Zwischenstand, nie Rot auf einem Minus', () => {
-  it('abgeschlossen und positiv ist ok, ohne Chip', () => {
-    const a = ausw({});
-    expect(a.anzeigeTon).toBe('ok');
-    expect(a.steuerungTon).toBe('ok');
-    expect(a.gesamtChip).toBeNull();
-    expect(a.zwischenstand).toBe(false);
+function ausw(patch: Partial<SpeicherEingabe> = {}, now = NOW) {
+  const a = speicherAussage(eingabe(patch), { now });
+  if (!a) throw new Error('speicherAussage() lieferte null');
+  return a;
+}
+
+describe('speicherAussage — DIE Zahl ist der Steuerungs-Mehrwert', () => {
+  it('zeigt `savedSteuerungEur`, nie die Gesamtzahl', () => {
+    const a = ausw();
+    expect(a.steuerung).toEqual({ eur: 43.65, ton: 'plus', wort: nb('+ 43,65 €') });
+    expect(a.wert).toBe(nb('+ 43,65 €'));
+    // Die Gesamtzahl des Screenshots taucht NIRGENDS auf.
+    const alles = [a.wert, a.satz, a.kurz, a.kurzTitel, a.label, a.chip, a.geplant]
+      .filter(Boolean)
+      .join(' | ');
+    expect(alles).not.toContain('92,02');
+    expect(alles).not.toContain('48,37');
   });
 
-  it('laufend ist IMMER neutral — auch wenn die Zahl positiv ist', () => {
-    const a = ausw({ to: '2026-09-02T22:00:00Z' });
+  it('nennt die Messlatte im Satz — und nie „ohne Speicher"', () => {
+    const a = ausw();
+    expect(a.satz).toBe(`Die Steuerung hat in diesem Zeitraum ${nb('+ 43,65 €')} gebracht — gegenüber ${MESSLATTE_DATIV}`);
+    expect(a.satz).not.toMatch(/ohne Speicher/);
+  });
+
+  it('sagt beim Minus auf einem LAUFENDEN Zeitraum „Zwischenstand" und WARUM', () => {
+    const a = ausw({ savedEur: -2.67, savedSpeicherEur: -4.12, savedSteuerungEur: 1.45, to: LAEUFT });
+    expect(a.zwischenstand).toBe(true);
+    expect(a.chip).toBe('Zwischenstand');
     expect(a.anzeigeTon).toBe('neutral');
-    expect(a.steuerungTon).toBe('neutral');
-    expect(a.gesamtChip).toBe('Zwischenstand');
+
+    const b = ausw({ savedEur: -6.79, savedSpeicherEur: -4.12, savedSteuerungEur: -2.67, to: LAEUFT });
+    expect(b.satz).toContain('Zwischenstand Steuerung');
+    expect(b.satz).toContain('hält Energie für später');
+    expect(b.anzeigeTon).toBe('neutral');
   });
 
-  it('abgeschlossen und negativ ist warn mit dem Chip „unter Null" — nie Rot-Vokabular', () => {
-    const a = ausw({ savedEur: -0.4, savedSpeicherEur: -0.1, savedSteuerungEur: -0.3 });
+  it('ist auf einem ABGESCHLOSSENEN Minus „unter Null" und bernstein', () => {
+    const a = ausw({ savedEur: 45.7, savedSpeicherEur: 48.37, savedSteuerungEur: -2.67 });
+    expect(a.chip).toBe('unter Null');
     expect(a.anzeigeTon).toBe('warn');
-    expect(a.gesamtChip).toBe('unter Null');
-    expect(a.satz).toBe(
-      nb('Ihr Speicher hat an diesem Tag − 0,40 € gebracht — weniger als eine Anlage ohne Speicher.'),
-    );
+    expect(a.satz).toContain(`weniger als ${MESSLATTE_DATIV}`);
   });
 
-  it('eine Zahl im Totband behauptet keine Richtung', () => {
-    const a = ausw({ savedEur: 0.002, savedSpeicherEur: 0.001, savedSteuerungEur: 0.001 });
+  it('sagt beim Gleichstand „gleichauf" und bleibt neutral', () => {
+    const a = ausw({ savedEur: 48.37, savedSpeicherEur: 48.37, savedSteuerungEur: 0 });
+    expect(a.steuerung?.ton).toBe('null');
     expect(a.anzeigeTon).toBe('neutral');
-    expect(a.gesamt.ton).toBe('null');
-    expect(a.gesamt.wort).toBe(nb('0,00 €'));
+    expect(a.satz).toBe(`Die Steuerung und ${MESSLATTE} liegen in diesem Zeitraum gleichauf.`);
+  });
+
+  it('trägt das Label des Zeitraums', () => {
+    expect(ausw({ range: 'day', to: LAEUFT }).label).toBe('Steuerung heute');
+    expect(ausw({ range: 'month', to: LAEUFT }).label).toBe('Steuerung bisher');
+    expect(ausw({ range: 'day' }).label).toBe('Steuerung an diesem Tag');
+    expect(ausw({ range: 'month' }).label).toBe('Steuerung im Zeitraum');
   });
 });
 
-describe('Zeile 2 — die vier Lagen der Steuerungs-Zahl', () => {
-  it('Steuerung positiv nennt den sturen Speicher als Maßstab', () => {
-    expect(ausw({}).steuerungSatz).toBe(
-      nb('davon + 3,10 € durch VoltPilots Steuerung — gegenüber einem stur arbeitenden Speicher (+ 9,30 €)'),
-    );
-  });
-
-  it('Steuerung negativ sagt es ehrlich — sie hält Energie für später', () => {
-    const a = ausw({ savedEur: 9.0, savedSpeicherEur: 9.3, savedSteuerungEur: -0.3 });
-    expect(a.steuerungSatz).toBe(
-      nb('Zwischenstand Steuerung: − 0,30 € gegenüber einem stur arbeitenden Speicher (+ 9,30 €) — er hält Energie für später'),
-    );
-    expect(a.steuerungTon).toBe('warn');
-  });
-
-  it('Steuerung ≈ 0 heißt „gleichauf", nie eine erfundene 0-Zurechnung', () => {
-    const a = ausw({ savedEur: 9.3, savedSpeicherEur: 9.3, savedSteuerungEur: 0 });
-    expect(a.steuerungSatz).toBe(
-      nb('Steuerung und sturer Speicher liegen an diesem Tag gleichauf (+ 9,30 €)'),
-    );
-    expect(a.steuerungTon).toBe('neutral');
-  });
-
-  it('laufend + gleichauf nennt den laufenden Zeitraum', () => {
-    const a = ausw(
-      { savedEur: 9.3, savedSpeicherEur: 9.3, savedSteuerungEur: 0, range: 'month' },
-      true,
-    );
-    expect(a.steuerungSatz).toBe(
-      nb('Steuerung und sturer Speicher liegen in diesem Zeitraum bisher gleichauf (+ 9,30 €)'),
-    );
-  });
-
-  it('ohne Batterie-Stammdaten nennt den WEG und verlinkt — Zeile 1 bleibt ehrlich stehen', () => {
-    const a = ausw({
-      savedSpeicherEur: null,
-      savedSteuerungEur: null,
-      steuerungSplitReason: 'no_battery_data',
-    });
-    expect(a.stur).toBeNull();
+describe('speicherAussage — ohne Vergleich gibt es KEINE Zahl', () => {
+  it('nennt bei fehlenden Stammdaten den GRUND und bietet den Nachtrag an', () => {
+    const a = ausw({ savedSpeicherEur: null, savedSteuerungEur: null, steuerungSplitReason: 'no_battery_data' });
     expect(a.steuerung).toBeNull();
-    expect(a.splitReason).toBe('no_battery_data');
-    expect(a.steuerungWert).toBe('—');
-    expect(a.steuerungChip).toBe('Speicher-Daten fehlen ›');
+    expect(a.wert).toBe('—');
+    expect(a.ohneVergleich).toBe(OHNE_VERGLEICH_SATZ);
+    expect(a.hinweis).toBe('Speicher-Daten fehlen ›');
     expect(a.nachtragLink).toBe(true);
-    expect(a.satz).toContain(nb('+ 12,40 €'));
+    expect(a.hatAussage).toBe(true);
+    // Die Gesamtzahl ist ausdrücklich KEIN Ersatz.
+    expect([a.wert, a.satz, a.kurz, a.ohneVergleich].join(' | ')).not.toContain('92,02');
   });
-});
 
-describe('ein älteres Backend — ein fehlendes FELD ist kein fehlendes STAMMDATUM', () => {
-  it('ohne die drei Felder gibt es nur Zeile 1, keinen Grund und keinen Nachtrag-Link', () => {
+  it('schweigt bei einem ÄLTEREN Backend ganz — ein fehlendes FELD ist kein fehlendes STAMMDATUM', () => {
     const a = speicherAussage(
-      { savedEur: 12.4, range: 'day', to: '2026-09-01T22:00:00Z', plantKind: 'eigenverbrauch' },
+      { savedEur: 92.02, range: 'month', to: ABGESCHLOSSEN } as SpeicherEingabe,
       { now: NOW },
     );
-    expect(a).not.toBeNull();
-    expect(a?.stur).toBeNull();
-    expect(a?.steuerung).toBeNull();
-    expect(a?.splitReason).toBeNull();
-    expect(a?.steuerungSatz).toBeNull();
-    expect(a?.steuerungChip).toBeNull();
-    expect(a?.nachtragLink).toBe(false);
-    expect(a?.kurz).toBe(nb('Speicher + 12,40 €'));
+    expect(a).toBeNull();
   });
 
-  it('ohne savedEur gibt es gar keine Aussage — nie eine erfundene 0', () => {
-    expect(speicherAussage({ savedEur: null }, { now: NOW })).toBeNull();
+  it('behauptet nichts, wenn die Prüfsumme nicht aufgeht', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const a = speicherAussage(
+      eingabe({ savedSpeicherEur: 10, savedSteuerungEur: 5 }),
+      { now: NOW },
+    );
+    expect(a).toBeNull();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('liefert gar nichts ohne berechenbare Kasse', () => {
+    expect(speicherAussage({ savedEur: null } as SpeicherEingabe, { now: NOW })).toBeNull();
     expect(speicherAussage(null, { now: NOW })).toBeNull();
   });
 });
 
-describe('der Identitäts-Wächter — nie zwei Zahlen, die nicht aufgehen', () => {
-  it('lässt Zeile 2 weg und protokolliert, wenn die Summe nicht aufgeht', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const a = ausw({ savedEur: 12.4, savedSpeicherEur: 9.3, savedSteuerungEur: 1.0 });
-    expect(a.stur).toBeNull();
-    expect(a.steuerung).toBeNull();
-    expect(a.steuerungSatz).toBeNull();
-    // Kein erfundener Grund: die Stammdaten fehlen ja NICHT.
-    expect(a.splitReason).toBeNull();
-    expect(a.nachtragLink).toBe(false);
-    expect(warn).toHaveBeenCalledOnce();
-    warn.mockRestore();
+describe('speicherAussage — die Plan-Zeile', () => {
+  it('bleibt ohne `steuerungPlannedEur` WEG', () => {
+    expect(ausw().geplant).toBeNull();
+    const a = speicherAussage(eingabe(), { now: NOW, steuerungGeplantEur: null });
+    expect(a?.geplant).toBeNull();
   });
 
-  it('duldet einen halben Cent Gleitkomma-Reise', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const a = ausw({ savedEur: 12.4, savedSpeicherEur: 9.3, savedSteuerungEur: 3.102 });
-    expect(a.steuerung?.eur).toBe(3.102);
-    expect(warn).not.toHaveBeenCalled();
-    warn.mockRestore();
+  it('nennt mit dem Feld den geplanten Mehrwert DER STEUERUNG', () => {
+    const a = speicherAussage(eingabe(), { now: NOW, steuerungGeplantEur: 12.8 });
+    expect(a?.geplant).toBe(`Vorab geplant hatte der Fahrplan ${nb('+ 12,80 €')} durch die Steuerung`);
   });
 });
 
-describe('die Kurzform — Cockpit und Steuerungs-Bereich sagen dasselbe', () => {
-  it('trägt beide Ebenen in EINER Zeile', () => {
-    expect(ausw({}).kurz).toBe(nb('Speicher + 12,40 € · davon Steuerung + 3,10 €'));
+describe('speicherAussage — die Kurzform von Cockpit und Steuerungs-Bereich', () => {
+  it('ist EINE Zeile mit derselben Zahl wie die Langform', () => {
+    expect(ausw().kurz).toBe(nb('Steuerung + 43,65 €'));
+    expect(ausw({ to: LAEUFT }).kurz).toBe(nb('Zwischenstand Steuerung + 43,65 €'));
+    expect(ausw().kurzTitel).toBe(ausw().satz);
   });
 
-  it('nennt den Zwischenstand, solange der Zeitraum läuft', () => {
-    const a = ausw({ to: '2026-09-02T22:00:00Z' });
-    expect(a.kurz).toBe(nb('Zwischenstand Speicher + 12,40 € · davon Steuerung + 3,10 €'));
-  });
-
-  it('der Tooltip trägt den vollen Wortlaut beider Zeilen', () => {
-    const a = ausw({});
-    expect(a.kurzTitel).toBe(`${a.satz} · ${a.steuerungSatz}`);
-  });
-
-  it('der Bildschirm-Fall des Konzepts liest sich wie der Captain-Satz', () => {
-    const v = FIXTURES.find((f) => f.id === 'dv-tag-laufend') as Vektor;
-    expect(ausVektor(v).kurz).toBe(
-      nb('Zwischenstand Speicher − 2,67 € · davon Steuerung + 1,45 €'),
-    );
+  it('sagt ohne Vergleich „—" und trägt den Grund als Tooltip', () => {
+    const a = ausw({ savedSpeicherEur: null, savedSteuerungEur: null, steuerungSplitReason: 'no_battery_data' });
+    expect(a.kurz).toBe('Steuerung —');
+    expect(a.kurzTitel).toBe(OHNE_VERGLEICH_SATZ);
   });
 });
 
-describe('das Label der Zeile 1 bleibt bei 1–3 Wörtern (Textbudget §3.12)', () => {
-  it.each([
-    [{ range: 'day' as const }, false, 'Speicher an diesem Tag'],
-    [{ range: 'day' as const }, true, 'Speicher heute'],
-    [{ range: 'month' as const }, false, 'Speicher im Zeitraum'],
-    [{ range: 'month' as const }, true, 'Speicher bisher'],
-  ])('%o laeuft=%s → %s', (patch, laeuft, erwartet) => {
-    expect(ausw(patch, laeuft).gesamtLabel).toBe(erwartet);
-  });
-});
-
-describe('eine Flotten-Zeile ohne Fensterende behauptet keinen Zwischenstand', () => {
-  it('fällt auf „abgeschlossen" zurück statt einen laufenden Zeitraum zu erfinden', () => {
-    const a = speicherAussage(
-      { savedEur: 12.4, savedSpeicherEur: 9.3, savedSteuerungEur: 3.1 },
-      { now: NOW },
-    );
-    expect(a?.zwischenstand).toBe(false);
-    expect(a?.gesamtLabel).toBe('Speicher im Zeitraum');
-  });
-});
-
-describe('hatAussage — nie eine Speicher-Zeile über nichts', () => {
-  it('ist false, wenn die Gesamtzahl im Totband liegt und es keine Aufteilung gibt', () => {
-    const a = speicherAussage(
-      { savedEur: 0.002, range: 'day', to: '2026-09-01T22:00:00Z' },
-      { now: NOW },
-    );
-    expect(a?.hatAussage).toBe(false);
+describe('speicherAussage — die 15 Konzept-Fixtures', () => {
+  it.each(FIXTURES.map((v) => [v.id, v] as const))('%s spiegelt genau den Server-Wert', (_id, v) => {
+    const a = ausVektor(v);
+    const erwartet = v.money.savedSteuerungEur as number | null | undefined;
+    if (typeof erwartet === 'number') {
+      expect(a.steuerung?.eur).toBe(erwartet);
+    } else {
+      expect(a.steuerung).toBeNull();
+    }
   });
 
-  it('ist true, sobald es eine Aufteilung gibt — auch bei einer Gesamtzahl im Totband', () => {
-    expect(
-      ausw({ savedEur: 0.002, savedSpeicherEur: -3.1, savedSteuerungEur: 3.102 }).hatAussage,
-    ).toBe(true);
+  it('nennt in KEINEM Fixture die Anlage ohne Speicher', () => {
+    for (const v of FIXTURES) {
+      const a = ausVektor(v);
+      const text = [a.satz, a.kurz, a.kurzTitel, a.label, a.chip, a.geplant, a.ohneVergleich]
+        .filter(Boolean)
+        .join(' | ');
+      expect(text, v.id).not.toMatch(/ohne Speicher\b/);
+      expect(text, v.id).not.toMatch(/ungeregelt/i);
+      expect(text, v.id).not.toMatch(/Speicher gesamt/);
+    }
   });
 
-  it('ist true für jede Zahl außerhalb des Totbands', () => {
-    expect(ausw({}).hatAussage).toBe(true);
+  it('zeigt in KEINEM Fixture die Gesamtzahl als Betrag', () => {
+    for (const v of FIXTURES) {
+      const gesamt = v.money.savedEur as number | null;
+      const steuerung = v.money.savedSteuerungEur as number | null | undefined;
+      if (gesamt == null || typeof steuerung !== 'number') continue;
+      if (Math.abs(gesamt - steuerung) < 0.005) continue;
+      const a = ausVektor(v);
+      const betrag = Math.abs(gesamt).toLocaleString('de-DE', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      expect([a.wert, a.satz, a.kurz].filter(Boolean).join(' | '), v.id).not.toContain(betrag);
+    }
   });
 });

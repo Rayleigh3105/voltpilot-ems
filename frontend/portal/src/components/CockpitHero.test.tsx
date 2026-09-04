@@ -42,27 +42,21 @@ const SNAP: LiveSnapshot = {
 };
 
 /**
- * DIESELBE Speicher-Aussage, die die Erlöse-Seite zeigt (§3.5/§3.6): das
- * Fixture `dv-tag-laufend` — laufender Tag, Speicher unter Null, Steuerung
- * darüber, gemessener Bestand ohne Abzug. Sie wird ABGELEITET, nie
- * abgeschrieben — zwei Formulierungen über dieselbe Zahl wären der Bruch,
- * gegen den §3.5 gebaut ist.
+ * DIESELBE Steuerungs-Aussage, die die Erlöse-Seite zeigt: das Fixture
+ * `dv-tag-laufend` — laufender Tag, gemessener Bestand ohne Abzug. Sie wird
+ * ABGELEITET, nie abgeschrieben — zwei Formulierungen über dieselbe Zahl wären
+ * der Bruch, gegen den §3.5 gebaut ist.
+ *
+ * ⚠ Seit dem 04.09.2026 trägt das Fixture seine Aufteilung selbst
+ * (`money.savedSteuerungEur`); die Kundenfläche liest ausschliesslich sie.
  */
 const SPEICHER = (() => {
   const f = (FIXTURES.fixtures as unknown as Array<{
     id: string;
     now: string;
-    savedSpeicherEur: number | null;
     money: SiteEarnings;
   }>).find((x) => x.id === 'dv-tag-laufend')!;
-  const stur = f.savedSpeicherEur;
-  const money: SiteEarnings = {
-    ...f.money,
-    savedSpeicherEur: stur,
-    savedSteuerungEur: stur == null || f.money.savedEur == null ? null : f.money.savedEur - stur,
-    steuerungSplitReason: stur == null ? 'no_battery_data' : null,
-  };
-  return speicherAussage(money, { now: new Date(f.now) })!;
+  return speicherAussage(f.money, { now: new Date(f.now) })!;
 })();
 
 /** Pilsting: Direktvermarktung, alle vier Leisten-Blöcke. */
@@ -84,7 +78,7 @@ function pilstingView(over: Partial<CockpitHeroView> = {}): CockpitHeroView {
       value: '371,43 €',
       kosten: false,
       speicher: SPEICHER,
-      attribution: 'Speicher + 79,87 € · davon Steuerung + 12,10 €',
+      attribution: 'Steuerung + 12,10 €',
     },
     planSentence: 'Nachmittags laden, abends verkaufen (19–24 Uhr).',
     ...over,
@@ -129,13 +123,16 @@ describe('Die Bilanz-Leiste', () => {
     expect(blocks[0].querySelector('.vp-c-stm-zahl')?.textContent).toBe('371,43 €');
     // 3 · das Segment steht DIREKT unter der Zahl, die es regiert.
     expect(blocks[0].querySelector('.vp-c-ck-seg .vp-seg')).not.toBeNull();
-    // 4 · DIESELBE Speicher-Sektion wie auf der Erlöse-Seite — ohne eigenen
+    // 4 · DIESELBE Steuerungs-Sektion wie auf der Erlöse-Seite — ohne eigenen
     //     Rahmen (ein Rahmen je Karte).
+    // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG (Captain
+    //   04.09.2026): EINE Zahl, und die Gesamtzahl steht nirgends mehr.
     const sek = blocks[0].querySelector('.vp-c-speicher');
     expect(sek?.classList.contains('is-sektion')).toBe(true);
     expect(sek?.classList.contains('vp-c-card')).toBe(false);
-    expect(sek?.textContent).toContain('Speicher heute');
-    expect(sek?.textContent).toContain('davon Steuerung');
+    expect(sek?.textContent).toContain('Steuerung heute');
+    expect(sek?.textContent).not.toContain('Speicher heute');
+    expect(sek?.textContent).not.toContain('davon Steuerung');
     // 5 · die zwei Ringe wohnen IN der Karte, nicht in einem eigenen Block.
     expect(blocks[0].querySelectorAll('.vp-c-ck-ring')).toHaveLength(2);
     // Die frühere Kopfzeile „Bilanz" ist entfallen — das Label sagt es schon.

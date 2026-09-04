@@ -17,7 +17,7 @@ import { mitVergleich, parseVergleichModus } from '../historieZeit';
 import { erloesVergleich } from '../vergleichLaufend';
 import { erloesAufklapper, erloesErgebnis, type ErgebnisZeile } from '../erloesKomposition';
 import { ergebnisZeilen } from '../erloesZeilen';
-import { ebene1, ebene2, speicherSchritte } from '../erloesEbenen';
+import { ebene1, ebene2, speicherSchritte, type SpeicherSchritteInput } from '../erloesEbenen';
 import { isCurrentPeriod } from '../energieBilanz';
 import { soVerdient } from '../soVerdient';
 import {
@@ -367,18 +367,20 @@ export function ErloeseSection({
   // freigegebene Erklaerung; nur die FORM wechselt von Prosa zu Schritten.
   // Ohne die Kassen-Zahlen liefert sie NICHTS, dann bleibt die Prosa-Fassung.
   //
-  // ⚠ Die AUFTEILUNG (`savedSpeicherEur`/`savedSteuerungEur`, #591) reist mit —
-  //   sonst blieben die Schritte 4 und 5 stumm, und der Aufklapper erklärte
-  //   ausgerechnet die Zeile 2 des Blocks darüber („davon Steuerung") nicht.
-  //   Ein ÄLTERES Backend liefert die Felder nicht; dann entfallen die zwei
-  //   Schritte wortlos (§3.6), der Rest der Rechnung bleibt.
-  const speicherSchritteInput = money
+  // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG (Captain
+  //   04.09.2026). Es reist nur noch `savedSteuerungEur` — die Schritte 1–3
+  //   rechnen die gemessene Kasse gegen den sturen Speicher, nicht mehr gegen
+  //   eine Anlage OHNE Speicher. Ein ÄLTERES Backend liefert das Feld nicht;
+  //   dann gibt es keine Schritte (der Rest der Karte bleibt).
+  // ⚠ Der PLANWERT ist `steuerungPlannedEur` — NICHT `batterySavingsPlannedEur`
+  //   (der misst gegen „ohne Speicher" und gehört einer anderen Messlatte).
+  //   Solange der Optimierer ihn nicht liefert, bleibt die Plan-Zeile weg.
+  const speicherSchritteInput: SpeicherSchritteInput | null = money
     ? {
         money,
-        sturEur: money.savedSpeicherEur ?? null,
         steuerungEur: money.savedSteuerungEur ?? null,
         splitReason: money.steuerungSplitReason ?? null,
-        geplantEur: history?.totals.batterySavingsPlannedEur ?? null,
+        steuerungGeplantEur: history?.totals.steuerungPlannedEur ?? null,
       }
     : null;
   const hatSpeicherSchritte =

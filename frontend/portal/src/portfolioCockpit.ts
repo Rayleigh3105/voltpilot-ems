@@ -401,11 +401,15 @@ function namenListe(namen: readonly string[]): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Das Wort für das Steuerungs-Delta (`savedEur`) — der Befund P7 des Scouts:
- * „Erlös heute" ist kein Erlös, sondern der VORTEIL gegenüber der ungeregelten
- * Anlage, und im Cockpit derselben Anlage heißt dieselbe Zahl „durch
- * Steuerung". Beide Flächen tragen deshalb seit Revision 2 dieselbe
- * Unterzeile.
+ * Das Wort für das Steuerungs-Delta — der Befund P7 des Scouts: „Erlös heute"
+ * ist kein Erlös, sondern der VORTEIL, und im Cockpit derselben Anlage heißt
+ * dieselbe Zahl „durch Steuerung". Beide Flächen tragen deshalb seit
+ * Revision 2 dieselbe Unterzeile.
+ *
+ * ⚠ **DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG** (Captain
+ * 04.09.2026). Die Zahl ist `savedSteuerungEur` je Tag ({@link tagesSteuerung}),
+ * nicht mehr `savedEur` gegenüber einer Anlage OHNE Speicher — und die
+ * Unterzeile sagt das.
  *
  * ⚠ Das Wort folgt der TONALITÄT (`fleetTonalitaet` aus `site.profil` bzw.
  * `plantKind`), nicht der Betriebsart: die Tonalität ist im Haus seit Stufe 2
@@ -418,7 +422,7 @@ export function vorteilLabel(kind: FleetKind): string {
 }
 
 /** Die Unterzeile des Vorteils — sie sagt den BEZUG, in beiden Flächen gleich. */
-export const VORTEIL_BEZUG = 'gegenüber ungeregelt';
+export const VORTEIL_BEZUG = 'gegenüber Speicher ohne Steuerung';
 
 /** „+33,13" / „-0,80" / „0,00" — eine echte Null trägt kein Vorzeichen. */
 export function signiertesGeld(v: number): string {

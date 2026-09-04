@@ -460,13 +460,13 @@ export function tagesbildBestand(
 
 /**
  * Der Satz, der die geteilte Zeitachse ERKLÄRT (K9) — und, wo Panel 3
- * gezeichnet wird, die eine Ehrlichkeit dazu: die Gegenwelt „ohne Speicher"
- * ist für den TAGESVERLAUF nicht gemessen, nur ihr Tagesergebnis ist bekannt
- * (und steht im Kopf).
+ * gezeichnet wird, die eine Ehrlichkeit dazu: die VERGLEICHSWELT (derselbe
+ * Speicher ohne smarte Steuerung) ist für den TAGESVERLAUF nicht gemessen,
+ * nur ihr Tagesergebnis ist bekannt (und steht im Kopf).
  */
 export function tagesbildAussage(hatErtrag: boolean): string {
   const geteilt =
     'Alle Flächen teilen eine Zeitachse: was senkrecht übereinander liegt, gehört zusammen.';
   if (!hatErtrag) return geteilt;
-  return `${geteilt} Die untere Kurve summiert das Geld des Tages auf; wie eine Anlage ohne Speicher im Tagesverlauf dagestanden hätte, ist nicht gemessen — ihr Tagesergebnis steht oben.`;
+  return `${geteilt} Die untere Kurve summiert das Geld des Tages auf; wie derselbe Speicher ohne smarte Steuerung im Tagesverlauf dagestanden hätte, ist nicht gemessen — sein Tagesergebnis steht oben.`;
 }

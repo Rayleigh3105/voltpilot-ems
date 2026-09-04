@@ -485,8 +485,6 @@ export function cockpitHero(input: {
                   anzulegenderWertCtKwh: input.money?.anzulegenderWertCtKwh ?? null,
                   marketValueSolarCtKwh: input.money?.marketValueSolarCtKwh ?? null,
                   bestandSichtbar: bestandZeile(input.money, input.now) != null,
-                  savedEur: input.money?.savedEur ?? null,
-                  savedSpeicherEur: input.money?.savedSpeicherEur ?? null,
                   savedSteuerungEur: input.money?.savedSteuerungEur ?? null,
                 },
         };

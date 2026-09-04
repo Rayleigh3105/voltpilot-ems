@@ -38,7 +38,9 @@ describe('SteuerungFormel (Fläche)', () => {
     details.open = true;
 
     expect(container.textContent).toContain('Wir vergleichen jede Viertelstunde');
-    expect(container.textContent).toContain('Ohne Steuerung');
+    // ⚠ Die MESSLATTE heisst seit dem 04.09.2026 „ein Speicher ohne smarte
+    //   Steuerung" — die Rechenzeile nennt sie beim Namen.
+    expect(container.textContent).toContain('Ohne smarte Steuerung');
     expect(container.textContent).toContain('Mit Steuerung');
     expect(container.textContent).toContain('Beitrag der Steuerung');
     expect(container.textContent).toContain('Bezugspreis');

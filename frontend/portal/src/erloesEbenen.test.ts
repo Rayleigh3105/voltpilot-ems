@@ -26,7 +26,7 @@ interface Fixture {
   label: string;
   laeuft: boolean;
   savedSpeicherEur: number | null;
-  geplantEur: number | null;
+  steuerungGeplantEur: number | null;
   money: SiteEarnings;
   checks: Record<string, boolean>;
 }
@@ -236,50 +236,99 @@ describe('erloesEbenen · Ebene 2', () => {
 });
 
 describe('erloesEbenen · Speicher-Schritte', () => {
-  it('der Screenshot-Fall rechnet Schritt 1 bis 5 mit eingesetzten Zahlen', () => {
+  /**
+   * ⚠ **DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG** (Captain
+   * 04.09.2026). Die Schritte sind deshalb DREI, nicht fünf: gemessen →
+   * derselbe Speicher stur → die Differenz. Die frühere Schrittfolge rechnete
+   * gegen eine Anlage OHNE Speicher und wies die Gesamtzahl als „Schritt 3 ·
+   * Speicher gesamt" aus — genau die Zahl, die keine Kundenfläche mehr zeigt.
+   */
+  it('der Screenshot-Fall rechnet Schritt 1 bis 3 mit eingesetzten Zahlen', () => {
     const f = FX.find((x) => x.id === 'dv-tag-laufend')!;
-    const stur = f.savedSpeicherEur!;
+    const steuerung = f.money.savedSteuerungEur!;
     const schritte = speicherSchritte({
       money: f.money,
-      sturEur: stur,
-      steuerungEur: f.money.savedEur! - stur,
-      geplantEur: f.geplantEur,
+      steuerungEur: steuerung,
+      steuerungGeplantEur: f.steuerungGeplantEur,
     });
     const formeln = schritte.map((s) => s.formel);
     expect(formeln[0]).toMatch(/^Schritt 1 · gemessen: .* Gutschrift$/);
     expect(formeln[1]).toMatch(/^Schritt 2 · gerechnet: .* Gutschrift$/);
-    expect(formeln[2]).toMatch(/^Schritt 3 · Speicher gesamt: 24,55 − 27,22 = − /);
-    expect(formeln[3]).toMatch(/^Schritt 4 · sturer Speicher: − /);
-    expect(formeln[4]).toMatch(/^Schritt 5 · Steuerung: − 2,67 \+ 4,12 = \+ /);
+    // 24,55 (gemessen) − 1,45 (Steuerung) = 23,10 (derselbe Speicher, stur).
+    expect(formeln[2]).toMatch(/^Schritt 3 · Steuerung: 24,55 − 23,10 = \+ /);
+    expect(schritte[1].herkunft).toContain('ohne smarte Steuerung');
     expect(formeln.some((x) => x.startsWith('Planwert:'))).toBe(true);
     expect(formeln.some((x) => x.startsWith('Fahrplan:'))).toBe(true);
   });
 
-  it('der Bestandskonto-Hinweis steht GENAU EINMAL (§3.12)', () => {
+  it('nennt NIRGENDS die Anlage ohne Speicher und nirgends die Gesamtzahl', () => {
     const f = FX.find((x) => x.id === 'dv-tag-laufend')!;
-    const schritte = speicherSchritte({ money: f.money, sturEur: f.savedSpeicherEur });
+    const schritte = speicherSchritte({
+      money: f.money,
+      steuerungEur: f.money.savedSteuerungEur,
+      steuerungGeplantEur: f.steuerungGeplantEur,
+    });
+    const text = schritte.map((s) => `${s.formel} ${s.herkunft}`).join(' | ');
+    expect(text).not.toMatch(/ohne Speicher\b/);
+    expect(text).not.toMatch(/Speicher gesamt/);
+    expect(text).not.toMatch(/sturer Speicher:/);
+    // `savedEur` des Fixtures (−2,67 €) taucht als Betrag nicht auf.
+    expect(schritte.map((s) => s.formel).join(' | ')).not.toContain('2,67');
+  });
+
+  it('der Bestandskonto-Hinweis steht GENAU EINMAL, an Schritt 3', () => {
+    const f = FX.find((x) => x.id === 'dv-tag-laufend')!;
+    const schritte = speicherSchritte({
+      money: f.money,
+      steuerungEur: f.money.savedSteuerungEur,
+    });
     const treffer = schritte.filter((s) => /zählt erst beim späteren Netzbezug/.test(s.herkunft));
     expect(treffer).toHaveLength(1);
     expect(treffer[0].formel).toMatch(/^Schritt 3/);
   });
 
-  it('ohne Batterie-Stammdaten sagt Schritt 4 den WEG statt einer Zahl', () => {
-    const f = FX.find((x) => x.id === 'dv-kein-split')!;
-    const schritte = speicherSchritte({ money: f.money, splitReason: 'no_battery_data' });
-    expect(schritte[3].formel).toBe('Schritt 4 · Steuerung: —');
-    expect(schritte[3].herkunft).toMatch(/Speicher-Daten nachtragen ›$/);
+  it('die Probe von Schritt 3 geht auf', () => {
+    const f = FX.find((x) => x.id === 'dv-tag-laufend')!;
+    const s3 = speicherSchritte({
+      money: f.money,
+      steuerungEur: f.money.savedSteuerungEur,
+    })[2];
+    expect(Math.abs(s3.probe!.ist - s3.probe!.soll)).toBeLessThanOrEqual(0.011);
   });
 
-  it('ein älteres Backend ohne die Split-Felder schweigt — es behauptet keine fehlenden Stammdaten', () => {
+  it('ohne Batterie-Stammdaten sagt Schritt 2 den WEG statt einer Zahl', () => {
+    const f = FX.find((x) => x.id === 'dv-kein-split')!;
+    const schritte = speicherSchritte({ money: f.money, splitReason: 'no_battery_data' });
+    expect(schritte[1].formel).toBe('Schritt 2 · Steuerung: —');
+    expect(schritte[1].herkunft).toMatch(/Speicher-Daten nachtragen ›$/);
+    // Und keine erfundene Vergleichszahl.
+    expect(schritte.map((s) => s.formel).some((x) => x.startsWith('Schritt 3'))).toBe(false);
+  });
+
+  it('ein älteres Backend ohne den Steuerungs-Anteil schweigt ganz', () => {
     const f = FX.find((x) => x.id === 'dv-tag-laufend')!;
-    const schritte = speicherSchritte({ money: f.money });
-    expect(schritte.map((s) => s.formel).some((x) => x.startsWith('Schritt 4'))).toBe(false);
-    expect(schritte.map((s) => s.herkunft).join(' ')).not.toMatch(/nachtragen/);
+    expect(speicherSchritte({ money: f.money })).toEqual([]);
   });
 
   it('ohne die Kassen-Zahlen gibt es GAR KEINE Schritte', () => {
     const f = FX.find((x) => x.id === 'dv-tag-laufend')!;
-    expect(speicherSchritte({ money: { ...f.money, actualEur: null } })).toEqual([]);
+    expect(
+      speicherSchritte({ money: { ...f.money, actualEur: null }, steuerungEur: 1.45 }),
+    ).toEqual([]);
+  });
+
+  it('die Fahrplan-Zeile erscheint NUR mit `steuerungPlannedEur`', () => {
+    const f = FX.find((x) => x.id === 'dv-tag-laufend')!;
+    const ohne = speicherSchritte({ money: f.money, steuerungEur: f.money.savedSteuerungEur });
+    expect(ohne.some((s) => s.formel.startsWith('Fahrplan:'))).toBe(false);
+    const mit = speicherSchritte({
+      money: f.money,
+      steuerungEur: f.money.savedSteuerungEur,
+      steuerungGeplantEur: 12.8,
+    });
+    const zeile = mit.find((s) => s.formel.startsWith('Fahrplan:'))!;
+    expect(zeile.herkunft).toContain('Mehrwert der Steuerung');
+    expect(zeile.herkunft).toContain('keine Messung');
   });
 
   it('eine ENTNAHME aus dem Speicher rechnet mit dem Betrag, nicht mit dem Vorzeichen', () => {
@@ -290,7 +339,9 @@ describe('erloesEbenen · Speicher-Schritte', () => {
       speicherWertCtKwh: 20,
       speicherWertEur: -2.4,
     };
-    const planwert = speicherSchritte({ money }).find((s) => s.formel.startsWith('Planwert:'))!;
+    const planwert = speicherSchritte({ money, steuerungEur: f.money.savedSteuerungEur }).find(
+      (s) => s.formel.startsWith('Planwert:'),
+    )!;
     // NBSP zwischen Zahl und Einheit (format.ts) — die Regex bleibt tolerant.
     expect(planwert.formel.replace(/\u00a0/g, ' ')).toMatch(/12,0 kWh × 20,00 ct = 2,40/);
     expect(Math.abs(planwert.probe!.ist - planwert.probe!.soll)).toBeLessThanOrEqual(0.011);

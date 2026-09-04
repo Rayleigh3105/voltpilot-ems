@@ -35,6 +35,11 @@ function makeMoney(over: Partial<EarningsSite> = {}): EarningsSite {
     baselineEur: null,
     actualEur: null,
     savedEur: 38.42,
+    // Die Aufteilung geht per Konstruktion auf (24,10 + 14,32 = 38,42) — die
+    // Kundenfläche liest seit dem 04.09.2026 ausschliesslich den Steuerungs-Teil.
+    savedSpeicherEur: 24.1,
+    savedSteuerungEur: 14.32,
+    steuerungSplitReason: null,
     arbitrageEur: null,
     pvShiftEur: null,
     coveredSlots: 100,
@@ -294,7 +299,16 @@ describe('gesamtertrag / saved provenance', () => {
   it('saved provenance uses the plant-kind verb (gespart vs. mehr verdient)', () => {
     expect(savedProvenance(makeMoney())).toContain('gespart');
     expect(savedProvenance(makeMoney({ plantKind: 'direktvermarktung' }))).toContain('mehr verdient');
-    expect(savedProvenance(makeMoney({ savedEur: null }))).toBeNull();
+    // ⚠ Ohne den STEUERUNGS-Anteil gibt es keinen Satz — die Gesamtzahl ist
+    //   ausdrücklich kein Ersatz (Captain 04.09.2026).
+    expect(savedProvenance(makeMoney({ savedSteuerungEur: null }))).toBeNull();
+    expect(savedProvenance(makeMoney({ savedEur: null }))).not.toBeNull();
+  });
+  it('nennt die MESSLATTE — derselbe Speicher ohne smarte Steuerung, nie „ohne Speicher"', () => {
+    const t = savedProvenance(makeMoney())!;
+    expect(t).toContain('demselben Speicher, aber ohne smarte Steuerung');
+    expect(t).not.toMatch(/ungeregelt/i);
+    expect(t).not.toMatch(/ohne Speicher\b/);
   });
   it('saved provenance names the tariff valuation exactly when it applies (Stufe 3)', () => {
     // tarifPriced = the backend really valued avoided import at the tariff.

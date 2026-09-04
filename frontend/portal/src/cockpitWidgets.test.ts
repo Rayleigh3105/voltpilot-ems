@@ -130,6 +130,11 @@ function money(over: Partial<EarningsSite> = {}): EarningsSite {
     stromkostenEur: 1.6,
     nettoErgebnisEur: 15.4,
     savedEur: 3.25,
+    // Die Aufteilung geht auf (2,15 + 1,10 = 3,25); die Kundenfläche liest seit
+    // dem 04.09.2026 ausschliesslich den Steuerungs-Teil.
+    savedSpeicherEur: 2.15,
+    savedSteuerungEur: 1.1,
+    steuerungSplitReason: null,
     arbitrageEur: null,
     anzulegenderWertCtKwh: null,
     peakShaving: null,
@@ -320,28 +325,32 @@ describe('Der Hero', () => {
     expect(gesamt.ringsNote).not.toContain('0 %');
   });
 
-  it('stellt die Speicher-Aussage als UNTERZEILE, nie als eigenen Summanden', () => {
+  it('stellt die Steuerungs-Aussage als UNTERZEILE, nie als eigenen Summanden', () => {
     const hero = cockpitHero({ totals: TOTALS, money: money(), range: 'month', now: NOW });
     expect(hero.money?.value).toBe(`+ 15,40${NBSP}€`);
-    // Erlöse-Konzept §3.5: derselbe Wert misst den GANZEN Speicher — „Steuerung"
-    // ist erst `savedSteuerungEur`. Ohne Aufteilung steht deshalb nur Zeile 1.
-    expect(hero.money?.attribution).toBe(`Speicher + 3,25${NBSP}€`);
+    // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG (Captain
+    //   04.09.2026): die Unterzeile trägt `savedSteuerungEur`, nie die
+    //   Gesamtzahl `savedEur` (3,25 €).
+    expect(hero.money?.attribution).toBe(`Steuerung + 1,10${NBSP}€`);
+    expect(hero.money?.attribution).not.toContain('3,25');
     // Die Zurechnung wird NICHT zur Summe addiert.
     expect(hero.money?.value).not.toContain('20');
   });
 
-  it('nennt die Aufteilung, sobald der Server sie liefert (Erlöse-Konzept §3.6)', () => {
+  it('hängt den vollen Wortlaut als Tooltip an — nie zwei Formulierungen', () => {
+    const hero = cockpitHero({ totals: TOTALS, money: money(), range: 'month', now: NOW });
+    expect(hero.money?.attributionTitel).toContain('ohne smarte Steuerung');
+    expect(hero.money?.attributionTitel).not.toMatch(/ohne Speicher\b/);
+  });
+
+  it('schweigt ohne Aufteilung — die Gesamtzahl ist kein Ersatz', () => {
     const hero = cockpitHero({
       totals: TOTALS,
-      money: money({ savedSpeicherEur: 2.15, savedSteuerungEur: 1.1 }),
+      money: money({ savedSpeicherEur: null, savedSteuerungEur: null }),
       range: 'month',
       now: NOW,
     });
-    expect(hero.money?.attribution).toBe(
-      `Speicher + 3,25${NBSP}€ · davon Steuerung + 1,10${NBSP}€`,
-    );
-    // Der volle Wortlaut hängt als Tooltip daran — nie zwei Formulierungen.
-    expect(hero.money?.attributionTitel).toContain('stur arbeitenden Speicher');
+    expect(hero.money?.attribution).toBeNull();
   });
 
   it('zeigt am laufenden Tag den negativen Geldfluss als Zwischenstand plus geplanten Bestand', () => {
@@ -349,6 +358,8 @@ describe('Der Hero', () => {
       totals: TOTALS,
       money: money({
         savedEur: -2.84,
+        savedSpeicherEur: -4.29,
+        savedSteuerungEur: 1.45,
         range: 'day',
         to: '2026-07-23T00:00:00+02:00',
         speicherDeltaKwh: 44.2,
@@ -359,7 +370,7 @@ describe('Der Hero', () => {
       range: 'day',
       now: NOW,
     });
-    expect(hero.money?.attribution).toBe(`Zwischenstand Speicher − 2,84${NBSP}€`);
+    expect(hero.money?.attribution).toBe(`Zwischenstand Steuerung + 1,45${NBSP}€`);
     expect(hero.money?.attributionInterim).toBe(true);
     expect(hero.money?.bestand?.text).toContain('Speicherenergie seit Tagesbeginn gespeichert');
     expect(hero.money?.bestand?.badge).toBe('Kein Abzug');

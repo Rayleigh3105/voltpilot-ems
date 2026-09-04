@@ -124,6 +124,11 @@ const earnings: Earnings = {
       // Ergebnis unterm Strich sind 900 + 99,26 - 40 = 959,26 EUR (E9 / P9).
       actualEur: -860,
       savedEur: 161.44,
+      // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG (Captain
+      //   04.09.2026): die Spalte und die Karte zeigen `savedSteuerungEur`.
+      savedSpeicherEur: 100.0,
+      savedSteuerungEur: 61.44,
+      steuerungSplitReason: null,
       eingespeistKwh: 9573.8,
       coveredSlots: 2880,
       series: [
@@ -290,16 +295,18 @@ describe('Portfolio · Welt B „Erlöse"', () => {
     expect(teile).toHaveTextContent('− 40,00 €');
     expect(teile).toHaveTextContent('Ergebnis');
 
-    // DIE SPEICHER-KARTE — der Wortlaut ist „Speicher", nicht „durch
-    // VoltPilots Steuerung" (Befund B13: `savedEur` ist der Wert des GANZEN
-    // Speichersystems).
-    expect(screen.getByText('Speicher im Zeitraum')).toBeInTheDocument();
+    // DIE STEUERUNGS-KARTE — der Wortlaut ist „Steuerung" (Captain 04.09.2026,
+    // Befund B13 in seiner Auflösung: der Wert des GANZEN Speichersystems ist
+    // eine ADMIN-Zahl und steht auf keiner Kundenfläche).
+    expect(screen.getByText('Steuerung im Zeitraum')).toBeInTheDocument();
     // Der Betrag steht auch in der Tabellenzeile der Anlage — hier gezielt in
     // der Karte gesucht.
     expect(
-      screen.getByText('+ 161,44 €', { selector: '.vp-c-sp-wert' }),
+      screen.getByText('+ 61,44 €', { selector: '.vp-c-sp-wert' }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/durch VoltPilots Steuerung/)).toBeNull();
+    // ⚠ Die Gesamtzahl gegen „ohne Speicher" steht NIRGENDS mehr.
+    expect(screen.queryByText(/161,44/)).toBeNull();
     // Statt einer erfundenen Flotten-Aufteilung der Ort, an dem sie steht.
     expect(screen.getByText('je Anlage in der Tabelle')).toBeInTheDocument();
     expect(screen.queryByText('davon Steuerung')).toBeNull();
@@ -313,14 +320,16 @@ describe('Portfolio · Welt B „Erlöse"', () => {
     expect(screen.getByText('1 von 2 Anlagen mit Daten in diesem Zeitraum')).toBeInTheDocument();
   });
 
-  it('nennt die Speicher-Spalte „Speicher" und zeigt am Schreibtisch alle vier Spalten', async () => {
+  it('nennt die Spalte „Steuerung" und zeigt am Schreibtisch alle vier Spalten', async () => {
     vi.spyOn(api, 'earnings').mockResolvedValue(earnings);
     render(<PortfolioErloese sites={[DACHAU, LINDENBERG]} />);
 
-    // ⚠ Befund B13: die Spalte hiess „Durch Steuerung" — dieselbe Zahl, die
-    //   die Karte darüber „Speicher" nennt. Ein Wort je Zahl.
-    const kopf = await screen.findByRole('columnheader', { name: 'Speicher' });
+    // ⚠ Captain 04.09.2026: die Spalte heisst wie die Karte darüber, und beide
+    //   zeigen `savedSteuerungEur`. Ein Wort je Zahl — und nie mehr „Speicher"
+    //   über einer Zahl, die gegen „ohne Speicher" misst.
+    const kopf = await screen.findByRole('columnheader', { name: 'Steuerung' });
     expect(kopf).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Speicher' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Durch Steuerung' })).toBeNull();
 
     // ⚠ Seit P8 (E6 a) fällt am Telefon KEINE Spalte mehr weg: die frühere

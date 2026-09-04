@@ -28,7 +28,7 @@ describe('steuerungFormel — Gerüst', () => {
     expect(f.ausloeser).toBe(FORMEL_AUSLOESER);
     expect(f.ausloeser).toBe('Wie wird das berechnet?');
     expect(f.zeilen.map((z) => z.label)).toEqual([
-      'Ohne Steuerung',
+      'Ohne smarte Steuerung',
       'Mit Steuerung',
       'Beitrag der Steuerung',
     ]);
@@ -38,20 +38,26 @@ describe('steuerungFormel — Gerüst', () => {
   it('nennt in der Rechnung beide Seiten und die Differenz', () => {
     const f = steuerungFormel({ tarifArt: 'fest', tarifParamCtKwh: 30 });
     const [ohne, mit, diff] = f.zeilen;
-    expect(ohne.text).toContain('Speicher aus');
-    expect(ohne.text).toContain('sofort eingespeist');
+    expect(ohne.text).toContain('Derselbe Speicher, stur betrieben');
     expect(mit.text).toContain('Zähler');
-    expect(diff.text).toContain('Kosten ohne Steuerung − Kosten mit Steuerung');
+    expect(diff.text).toContain('Kosten ohne smarte Steuerung − Kosten mit Steuerung');
     expect(diff.text).toContain('über alle Viertelstunden des Zeitraums summiert');
   });
 
-  it('B4 · „Ohne Steuerung" beschreibt die WIRKLICHE Baseline: Solarstrom wird direkt verbraucht', () => {
-    const ohne = steuerungFormel({ tarifArt: 'fest', tarifParamCtKwh: 30 }).zeilen[0];
-    expect(ohne.text).toContain('Solarstrom wird direkt verbraucht');
-    expect(ohne.text).toContain('nach Abzug des direkt verbrauchten Solarstroms');
-    expect(ohne.text).toContain('Solarüberschuss × Einspeisepreis');
-    // NICHT die falsche „ohne Solarstrom gebraucht hätte"-Baseline (load × p − pv × s).
-    expect(ohne.text).not.toContain('ohne Solarstrom');
+  /**
+   * ⚠ **DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG** (Captain
+   * 04.09.2026). Der frühere B4-Fall nagelte die Baseline „Speicher aus,
+   * Solarstrom direkt verbraucht" fest — die beschreibt eine Anlage OHNE
+   * Speicher und damit `savedEur`, nicht die Zahl, die der Chip zeigt.
+   */
+  it('beschreibt die Vergleichs-Anlage MIT Speicher — und nennt nie „Speicher aus"', () => {
+    const f = steuerungFormel({ tarifArt: 'fest', tarifParamCtKwh: 30 });
+    const ohne = f.zeilen[0];
+    expect(ohne.text).toContain('lädt jeden Solarüberschuss');
+    expect(ohne.text).toContain('kennt keine Preise und hält nie für später');
+    expect(ohne.text).not.toContain('Speicher aus');
+    expect(f.kern).toContain('mit demselben Speicher, aber ohne smarte Steuerung');
+    expect(`${f.kern} ${ohne.text}`).not.toMatch(/ohne Speicher\b/);
   });
 
   it('benutzt keine internen Begriffe', () => {
@@ -376,31 +382,31 @@ describe('steuerungFormel — der Historik-Satz (B5)', () => {
  * den Mehrwert der Steuerung — mit den EINGESETZTEN Zahlen, weil genau das die
  * Frage hinter dem Chip ist.
  */
-describe('steuerungFormel — der Aufteilungs-Schritt (§3.5)', () => {
+describe('steuerungFormel — der Ergebnis-Schritt', () => {
   const zeile = (input: SteuerungFormelInput) =>
-    steuerungFormel(input).zeilen.find((z) => z.label === 'Aufteilung') ?? null;
+    steuerungFormel(input).zeilen.find((z) => z.label === 'Im Zeitraum') ?? null;
 
-  it('nennt beide Teile und die Summe mit ihren Vorzeichen', () => {
-    const z = zeile({ savedEur: 12.4, savedSpeicherEur: 9.3, savedSteuerungEur: 3.1 });
+  it('nennt die Zahl mit ihrem Vorzeichen UND ihre Messlatte', () => {
+    const z = zeile({ savedSteuerungEur: 3.1 });
     expect(z).not.toBeNull();
-    expect(z?.text).toContain('stur arbeitender Speicher');
-    expect(z?.text).toMatch(/9,30/);
     expect(z?.text).toMatch(/3,10/);
-    expect(z?.text).toMatch(/12,40/);
+    expect(z?.text).toContain('gegenüber demselben Speicher ohne smarte Steuerung');
   });
 
   it('erklärt auch die Lage, in der die Steuerung hinten liegt', () => {
-    const z = zeile({ savedEur: 9.0, savedSpeicherEur: 9.3, savedSteuerungEur: -0.3 });
+    const z = zeile({ savedSteuerungEur: -0.3 });
     expect(z?.text).toMatch(/− ?0,30|-0,30/);
   });
 
-  it('gibt es ohne die drei Zahlen gar nicht — nie eine geratene Aufteilung', () => {
-    expect(zeile({ savedEur: 12.4 })).toBeNull();
-    expect(zeile({ savedEur: 12.4, savedSpeicherEur: 9.3 })).toBeNull();
+  it('gibt es ohne den Steuerungs-Anteil gar nicht — nie eine geratene Zahl', () => {
     expect(zeile({})).toBeNull();
+    expect(zeile({ savedSteuerungEur: null })).toBeNull();
   });
 
-  it('schweigt, wenn die Summe nicht aufgeht (Identitäts-Wächter, fail-soft)', () => {
-    expect(zeile({ savedEur: 12.4, savedSpeicherEur: 9.3, savedSteuerungEur: 9.9 })).toBeNull();
+  it('zeigt NIRGENDS die Gesamtzahl — sie erreicht diese Eingabe gar nicht mehr', () => {
+    const f = steuerungFormel({ tarifArt: 'fest', tarifParamCtKwh: 30, savedSteuerungEur: 3.1 });
+    const alles = [f.kern, ...f.zeilen.map((z) => `${z.label} ${z.text}`)].join(' ');
+    expect(alles).not.toContain('12,40');
+    expect(alles).not.toContain('stur arbeitender Speicher hätte');
   });
 });
