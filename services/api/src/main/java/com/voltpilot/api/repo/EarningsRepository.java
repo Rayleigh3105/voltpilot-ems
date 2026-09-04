@@ -435,8 +435,22 @@ public class EarningsRepository {
             BigDecimal stromkostenEur) {
     }
 
-    /** One Europe/Berlin day of realized savings of one site. */
-    public record DailySaved(LocalDate day, BigDecimal savedEur) {
+    /**
+     * One Europe/Berlin day of realized savings of one site.
+     *
+     * <p>{@code savedEur} is the whole storage system's contribution against a
+     * plant WITHOUT a battery - an ADMIN number since the Messlatte decision
+     * (Captain 04.09.2026). {@code savedSteuerungEur} is the day's share of the
+     * INTELLIGENT control against a STUR working battery, i.e. the same
+     * {@code savedEur - savedSpeicherEur} remainder the window aggregate ships,
+     * cut per day out of ONE continuous greedy walk (see
+     * {@link #savedSpeicherPerDay}). It is the ONLY storage figure a customer
+     * surface may render.
+     *
+     * <p>Null when the site has no maintained battery master data - never a
+     * fabricated zero, and never the whole-storage number as a stand-in.
+     */
+    public record DailySaved(LocalDate day, BigDecimal savedEur, BigDecimal savedSteuerungEur) {
     }
 
     /**
@@ -871,19 +885,63 @@ public class EarningsRepository {
         return savedSpeicher(from, to, site).get(site);
     }
 
+    /**
+     * Der Speicher-Anteil JE BERLINER TAG - dieselbe Messlatte, feiner
+     * geschnitten (Captain 04.09.2026): die 14-Tage-Reihe hinter dem
+     * Flotten-Spark und dem "Heute"-Teaser braucht je Tag den Anteil eines
+     * sturen Speichers, damit der Aufrufer daraus den Steuerungs-Anteil bilden
+     * kann.
+     *
+     * <p><b>EIN Lauf, zwei Ausgaben.</b> Es ist derselbe Walk wie
+     * {@link #savedSpeicher} - der Ladestand des Referenz-Speichers laeuft
+     * UEBER die Tagesgrenzen hinweg weiter, und ein Tag ist die DIFFERENZ
+     * seines laufenden Gesamtstands an dessen Rand. Ein zweiter, je Tag neu
+     * gestarteter Walk waere eine andere Referenz (jeder Tag begaenne am
+     * Boden), also eine zweite Geldwahrheit ueber dieselbe Anlage.
+     */
+    private Map<UUID, Map<LocalDate, BigDecimal>> savedSpeicherPerDay(Instant from, Instant to) {
+        return speicherWalk(from, to, null).perDay();
+    }
+
+    /** Was ein Walk hergibt: die Fenster-Summe je Anlage und ihre Tages-Zuwaechse. */
+    private record SpeicherWalk(
+            Map<UUID, BigDecimal> total,
+            Map<UUID, Map<LocalDate, BigDecimal>> perDay) {
+    }
+
     private Map<UUID, BigDecimal> savedSpeicher(Instant from, Instant to, UUID site) {
+        return speicherWalk(from, to, site).total();
+    }
+
+    private SpeicherWalk speicherWalk(Instant from, Instant to, UUID site) {
         Map<UUID, BigDecimal> startSocPct = startSocPct(from, site);
         Map<UUID, BigDecimal> result = new HashMap<>();
+        Map<UUID, Map<LocalDate, BigDecimal>> perDay = new HashMap<>();
         // One mutable walk state; rows arrive ordered by (site_id, bucket), so
         // a site change closes the previous site's walk (the arbitrageSplit
         // shape). walk == null cannot happen for a joined row unless the
         // asset's values are non-positive - then the master data is broken and
         // nothing is claimed (StandardSpeicher.batterie returns null).
+        //
+        // The day checkpoint rides the SAME loop: `day`/`dayStartEur` hold the
+        // Berlin day currently accumulating and the walk's running total when
+        // it began, so a day's share is the increment - never a restarted walk.
         var state = new Object() {
             UUID site;
             StandardSpeicher.Walk walk;
+            LocalDate day;
+            double dayStartEur;
+
+            void closeDay() {
+                if (site != null && walk != null && day != null) {
+                    perDay.computeIfAbsent(site, k -> new HashMap<>())
+                            .put(day, BigDecimal.valueOf(walk.speicherEur() - dayStartEur));
+                }
+                day = null;
+            }
 
             void finish() {
+                closeDay();
                 if (site != null && walk != null) {
                     result.put(site, BigDecimal.valueOf(walk.speicherEur()));
                 }
@@ -892,6 +950,7 @@ public class EarningsRepository {
         jdbc.query(
                 "WITH " + PRICE_SLOT_CTE
                         + "SELECT r.site_id, r.pv_kwh, r.load_kwh,"
+                        + " time_bucket('1 day', r.bucket, 'Europe/Berlin') AS day,"
                         + " " + importPriceEurKwh + " AS import_price_eur_kwh,"
                         + " " + exportValueEurKwh + " AS export_value_eur_kwh,"
                         + " b.capacity_kwh, b.max_charge_kw, b.max_discharge_kw,"
@@ -929,6 +988,13 @@ public class EarningsRepository {
                                                 * batterie.capacityKwh());
                     }
                     if (state.walk != null) {
+                        LocalDate day = rs.getTimestamp("day").toInstant()
+                                .atZone(ZONE).toLocalDate();
+                        if (!day.equals(state.day)) {
+                            state.closeDay();
+                            state.day = day;
+                            state.dayStartEur = state.walk.speicherEur();
+                        }
                         state.walk.slot(
                                 rs.getDouble("pv_kwh"),
                                 rs.getDouble("load_kwh"),
@@ -938,7 +1004,7 @@ public class EarningsRepository {
                 },
                 args(from, to, site));
         state.finish();
-        return result;
+        return new SpeicherWalk(result, perDay);
     }
 
     /**
@@ -976,6 +1042,11 @@ public class EarningsRepository {
      */
     public Map<UUID, List<DailySaved>> dailySavedPerSite(Instant from, Instant to) {
         Map<UUID, List<DailySaved>> result = new HashMap<>();
+        // Die MESSLATTE der Kundenansicht (Captain 04.09.2026): der Anteil des
+        // sturen Speichers je Tag, aus dem der Steuerungs-Anteil als exakter
+        // Rest entsteht - derselbe Rest-Trick wie im Fenster-Aggregat, damit
+        // Reihe und Summe nie Verschiedenes behaupten.
+        Map<UUID, Map<LocalDate, BigDecimal>> speicherPerDay = savedSpeicherPerDay(from, to);
         jdbc.query(
                 "WITH " + PRICE_SLOT_CTE
                         + "SELECT r.site_id,"
@@ -995,11 +1066,17 @@ public class EarningsRepository {
                 rs -> {
                     BigDecimal saved = rs.getBigDecimal("saved_eur");
                     if (saved != null) {
-                        result.computeIfAbsent(rs.getObject("site_id", UUID.class),
-                                        k -> new ArrayList<>())
-                                .add(new DailySaved(
-                                        rs.getTimestamp("day").toInstant().atZone(ZONE).toLocalDate(),
-                                        saved));
+                        UUID siteId = rs.getObject("site_id", UUID.class);
+                        LocalDate day = rs.getTimestamp("day").toInstant()
+                                .atZone(ZONE).toLocalDate();
+                        // Kein Speicher-Anteil (keine gepflegten Stammdaten, oder
+                        // der Walk hat diesen Tag nicht gesehen) => KEINE
+                        // Steuerungs-Zahl. Die Gesamtzahl ist dafuer kein Ersatz.
+                        BigDecimal speicher = speicherPerDay
+                                .getOrDefault(siteId, Map.of()).get(day);
+                        result.computeIfAbsent(siteId, k -> new ArrayList<>())
+                                .add(new DailySaved(day, saved,
+                                        speicher == null ? null : saved.subtract(speicher)));
                     }
                 },
                 Timestamp.from(from), Timestamp.from(to),

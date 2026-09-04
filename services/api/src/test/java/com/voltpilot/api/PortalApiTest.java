@@ -4025,6 +4025,10 @@ class PortalApiTest {
         Map<String, Object> todayEntry = evDaily.stream()
                 .filter(x -> recentDay.equals(x.get("day"))).findFirst().orElseThrow();
         assertThat(num(todayEntry, "savedEur")).isCloseTo(0.06, eps);
+        // Die MESSLATTE der Kundenansicht (Captain 04.09.2026): ohne gepflegte
+        // Batterie-Stammdaten gibt es KEINEN Steuerungs-Anteil - und die
+        // Gesamtzahl ist dafuer ausdruecklich kein Ersatz.
+        assertThat(todayEntry).containsEntry("savedSteuerungEur", null);
 
         // Honest degradation, machine-readable.
         assertThat(siteRow(body, genOnly)).containsEntry("savedEur", null)
@@ -7236,6 +7240,104 @@ class PortalApiTest {
                 exec("DELETE FROM telemetry_rollup_15m WHERE site_id = '" + siteId + "'");
                 exec("DELETE FROM site WHERE id = '" + siteId + "'");
             }
+        }
+    }
+
+    /**
+     * <b>Die MESSLATTE der 14-Tage-Reihe</b> - Captain 04.09.2026, woertlich:
+     * „Das ist doch Quatsch, du musst Anlage immer mit Speicher berechnen,
+     * einer halt ohne smart Steuerung."
+     *
+     * <p>Der Spark und der „Heute"-Teaser der Kundenansicht lasen bis hierher
+     * {@code dailySaved[].savedEur} - also den GANZEN Speicher gegenueber einer
+     * Anlage OHNE Speicher. Die Reihe traegt seither je Tag zusaetzlich
+     * {@code savedSteuerungEur}: denselben Rest {@code saved − savedSpeicher},
+     * den das Fenster-Aggregat schon liefert, aus EINEM durchlaufenden Walk
+     * geschnitten (der Ladestand des Referenz-Speichers laeuft ueber die
+     * Tagesgrenze weiter - ein je Tag neu gestarteter Walk waere eine andere
+     * Referenz).
+     *
+     * <p>Handgerechnet auf zwei Viertelstunden des HEUTIGEN Berliner Tages
+     * (Mittag + Mittag&nbsp;+&nbsp;15&nbsp;min, damit weder Mitternacht noch
+     * das 14-Tage-Fenster den Tag zerschneiden), {@code fest} 30&nbsp;ct
+     * Bezug, Spot 200&nbsp;EUR/MWh Einspeisung, Batterie 10&nbsp;kWh /
+     * 5&nbsp;kW / eta&nbsp;=&nbsp;1, Start am SoC-Boden 0,5&nbsp;kWh -
+     *
+     * <pre>
+     *   Slot A  pv 3,0  load 1,0  gemessen: Ladung 2,0, kein Netz
+     *     stur:  laedt min(2,0; 1,25; 9,0) = 1,25   → −1,25 × 0,20 = −0,250
+     *     saved: baseline −0,40 − actual 0,00       =        −0,400
+     *   Slot B  pv 0,0  load 2,0  gemessen: Entladung 2,0, kein Netz
+     *     stur:  entlaedt min(2,0; 1,25; 1,25) = 1,25 → +1,25 × 0,30 = +0,375
+     *     saved: baseline +0,60 − actual 0,00       =        +0,600
+     *   ------------------------------------------------------------------
+     *   savedSpeicher = +0,125   saved = +0,200   savedSteuerung = +0,075
+     * </pre>
+     *
+     * <p>Die Zahl ist damit NICHT die Gesamtzahl: der sture Speicher haette
+     * dieselbe Sonne mittags verschenkt und abends zurueckgekauft, die
+     * Steuerung setzt 7,5&nbsp;Cent obendrauf - genau die Aussage, die die
+     * Kundenansicht seither trifft.
+     *
+     * <p>⚠ Der Seed liegt auf HEUTE und wird im {@code finally} wieder
+     * abgeraeumt (die Haus-Disziplin der Preis-Slots): eine liegengebliebene
+     * Anlage mit covered Slots von heute verschoebe die handgerechneten
+     * Flotten-Zahlen der Nachbarn, je nach JUnit-Methodenreihenfolge.
+     */
+    @Test
+    void theDailySeriesCarriesTheSteeringShareAgainstAStubbornBattery() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String site = createSiteWithTarif(demo, "Messlatte Tagesreihe", "CH",
+                "eigenverbrauch", "fest", "30");
+        try {
+            exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                    + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantA + "', '"
+                    + site + "', 'battery', 10, 5, 5, 100)");
+            // Berliner Mittag von HEUTE - deterministisch im 14-Tage-Fenster und
+            // nie ueber einer Tagesgrenze.
+            String noon = "(date_trunc('day', now() AT TIME ZONE 'Europe/Berlin')"
+                    + " + interval '12 hours') AT TIME ZONE 'Europe/Berlin'";
+            for (String offset : new String[] {"0", "15"}) {
+                exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh,"
+                        + " currency, source) SELECT " + noon + " + interval '" + offset
+                        + " minutes', 'CH', 'PT15M', 200.0, 'EUR', 'test' ON CONFLICT DO NOTHING");
+            }
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
+                    + " grid_import_kwh, grid_export_kwh, battery_charge_kwh,"
+                    + " battery_discharge_kwh, n_samples) SELECT " + noon + ", '" + tenantA
+                    + "', '" + site + "', 3.0, 1.0, 0.0, 0.0, 2.0, 0.0, 90 ON CONFLICT DO NOTHING");
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
+                    + " grid_import_kwh, grid_export_kwh, battery_charge_kwh,"
+                    + " battery_discharge_kwh, n_samples) SELECT " + noon
+                    + " + interval '15 minutes', '" + tenantA + "', '" + site
+                    + "', 0.0, 2.0, 0.0, 0.0, 0.0, 2.0, 90 ON CONFLICT DO NOTHING");
+
+            Map<String, Object> body = rest.exchange(
+                    url("/api/v1/earnings?range=day"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+            org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+            Map<String, Object> row = siteRow(body, site);
+            // Das Fenster-Aggregat und die Tages-Reihe beschreiben denselben Tag.
+            assertThat(num(row, "savedEur")).isCloseTo(0.20, eps);
+            assertThat(num(row, "savedSpeicherEur")).isCloseTo(0.125, eps);
+            assertThat(num(row, "savedSteuerungEur")).isCloseTo(0.075, eps);
+
+            String today = java.time.LocalDate.now(com.voltpilot.api.history.HistoryRange.ZONE)
+                    .toString();
+            Map<String, Object> entry = list(row, "dailySaved").stream()
+                    .filter(x -> today.equals(x.get("day"))).findFirst().orElseThrow();
+            assertThat(num(entry, "savedEur")).isCloseTo(0.20, eps);
+            assertThat(num(entry, "savedSteuerungEur")).isCloseTo(0.075, eps);
+            // Und sie ist NICHT die Gesamtzahl - sonst waere die Messlatte
+            // stillschweigend wieder „ohne Speicher".
+            assertThat(num(entry, "savedSteuerungEur"))
+                    .isNotCloseTo(num(entry, "savedEur"), eps);
+        } finally {
+            exec("DELETE FROM telemetry_rollup_15m WHERE site_id = '" + site + "'");
+            exec("DELETE FROM asset WHERE site_id = '" + site + "'");
+            exec("DELETE FROM site WHERE id = '" + site + "'");
         }
     }
 
