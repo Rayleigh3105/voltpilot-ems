@@ -2,32 +2,34 @@ import type { ReactNode } from 'react';
 import type { SpeicherAussage } from '../../speicherAussage';
 
 /**
- * **Die Speicher-Karte** — Bauteil 3 der Variante C (Konzept
- * `vp-erloese-lesbar-konzept-u3` §3.10 „Anatomie C" (3), Anatomie §3.2 (6)).
+ * **Die Steuerungs-Karte** — Bauteil 3 der Variante C (Konzept
+ * `vp-erloese-lesbar-konzept-u3` §3.10 „Anatomie C" (3), Anatomie §3.2 (6)),
+ * bis zum 04.09.2026 die „Speicher-Karte".
  *
- * Sie löst den früheren Speicher-KASTEN ab: keine grüne Fläche, keine
- * 3-px-Kennlinie, kein Batterie-Icon — eine Karte wie jede andere, mit Label
- * und Chip. **E7 = (a)** vom 03.09.2026: die Fläche in Speicherfarbe war eine
- * Fläche in der Fläche (Befund B2) UND eine Erfolgsfarbe über einer Zahl, die
- * negativ sein darf.
+ * ⚠ **DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG** (Captain
+ * 04.09.2026). Die Karte trug bis hierher ZWEI Zeilen: „Speicher im Zeitraum
+ * + 92,02 €" (der ganze Speicher gegenüber einer Anlage OHNE Speicher) und
+ * darunter „davon Steuerung + 43,65 €". Die erste ist ERSATZLOS entfallen —
+ * sie beantwortete eine Frage, die kein Kunde hat, und stand als große Zahl
+ * über der kleinen, die zählt. Es bleibt EINE Zahl und EINE Geschichte.
  *
  * Zeilen, in dieser Reihenfolge —
  *
- *   „Speicher heute"     · Betrag           (der ganze Speicher, `savedEur`)
- *   „davon Steuerung"    · Betrag + „stur …" (der Mehrwert der Steuerung)
+ *   „Steuerung heute"    · Betrag            (`savedSteuerungEur`)
+ *                        · bzw. „—" + Grund  (ohne Batterie-Stammdaten)
  *   Bestand              · Chip „Kein Abzug"
  *   „Wie wird das berechnet?" (Aufklapper, `children`)
  *
  * ⚠ **REINE ANZEIGE.** Jede Zahl, jedes Wort und jeder Ton kommt aus
  *   `speicherAussage()`; dieselbe Ableitung speist Cockpit und Steuerungs-
- *   Bereich in der Kurzform (§3.6). Zwei Formulierungen über dieselbe Zahl
- *   wären genau der Bruch, den §3.5 beschreibt.
+ *   Bereich in der Kurzform. Zwei Formulierungen über dieselbe Zahl wären
+ *   genau der Bruch, den §3.5 beschreibt.
  *
- * ⚠ **Der Planwert steht NICHT mehr hier** (E6, Runde 1, in u3 §3.2 (6)
- *   wiederhergestellt): „Vorab geplant hatte der Fahrplan …" ist eine
- *   PLAN-Zahl neben lauter gemessenen — auf Ebene 0 hat sie sich mit ihnen
- *   verwechselt. Sie wohnt in den Schritten des Aufklappers, direkt hinter der
- *   Rechnung, mit der sie sich vergleicht.
+ * ⚠ **Der Planwert steht NICHT hier**: „Vorab geplant hatte der Fahrplan …"
+ *   ist eine PLAN-Zahl neben lauter gemessenen — auf Ebene 0 hat sie sich mit
+ *   ihnen verwechselt. Sie wohnt in den Schritten des Aufklappers, direkt
+ *   hinter der Rechnung, mit der sie sich vergleicht — und erst, wenn der
+ *   Fahrplan sie gegen dieselbe Messlatte rechnet.
  *
  * ⚠ **Der TON trägt immer ein WORT.** „Zwischenstand" bzw. „unter Null" stehen
  *   als Chip am Label, damit die Aussage ohne Farbe ankommt (§3.9).
@@ -56,7 +58,7 @@ export interface SpeicherKarteProps {
 export function SpeicherKarte({
   aussage,
   nachtragHref,
-  label = 'Ihr Speicher',
+  label = 'VoltPilots Steuerung',
   variant = 'karte',
   children,
 }: SpeicherKarteProps) {
@@ -69,30 +71,30 @@ export function SpeicherKarte({
     >
       <h3 className="vp-c-label">
         <span className="vp-c-label-text">{label}</span>
-        {aussage.gesamtChip && <span className="vp-chip">{aussage.gesamtChip}</span>}
+        {aussage.chip && <span className="vp-chip">{aussage.chip}</span>}
       </h3>
 
-      {/* Zeile 1 — der ganze Speicher. */}
-      <p className="vp-c-sp-zeile" title={aussage.satz}>
-        <span className="vp-c-sp-label">{aussage.gesamtLabel}</span>
-        <span className="vp-c-sp-wert">{aussage.gesamt.wort}</span>
+      {/* Die EINE Zahl — der Mehrwert der Steuerung gegenüber demselben
+          Speicher ohne smarte Steuerung. Ohne Vergleich steht hier „—" und
+          der GRUND darunter; die Gesamtzahl ist dafür ausdrücklich kein
+          Ersatz (Captain 04.09.2026). */}
+      <p className="vp-c-sp-zeile" title={aussage.satz ?? undefined}>
+        <span className="vp-c-sp-label">{aussage.label}</span>
+        <span className="vp-c-sp-wert">{aussage.wert}</span>
+        {aussage.hinweis && (
+          <span className="vp-c-sp-sek">
+            {nachtrag ? <a href={nachtragHref}>{aussage.hinweis}</a> : aussage.hinweis}
+          </span>
+        )}
       </p>
 
-      {/* Zeile 2 — der Anteil der Steuerung. Sie steht AUCH ohne Aufteilung da
-          (dann „—" plus der Grund), damit der Kunde sieht, dass die Frage
-          gestellt wurde — statt einer stillschweigend fehlenden Zeile. */}
-      {(aussage.steuerung || aussage.splitReason) && (
-        <p className="vp-c-sp-zeile" title={aussage.steuerungSatz ?? undefined}>
-          <span className="vp-c-sp-label">{aussage.steuerungLabel}</span>
-          <span className="vp-c-sp-wert">{aussage.steuerungWert}</span>
-          {aussage.steuerungChip && (
-            <span className="vp-c-sp-sek">
-              {nachtrag ? (
-                <a href={nachtragHref}>{aussage.steuerungChip}</a>
-              ) : (
-                aussage.steuerungChip
-              )}
-            </span>
+      {/* Ohne Vergleich: der Grund im Klartext, nie eine Ersatzzahl. */}
+      {aussage.ohneVergleich && (
+        <p className="vp-c-sp-bestand">
+          {nachtrag ? (
+            <a href={nachtragHref}>{aussage.ohneVergleich}</a>
+          ) : (
+            <span>{aussage.ohneVergleich}</span>
           )}
         </p>
       )}
