@@ -1,5 +1,6 @@
 import { flushSync } from 'react-dom';
-import type { Route, TransitionKind } from './nav';
+import { PAGE_CHUNK, SUB_CHUNK } from './pageChunks';
+import type { AnlagenSub, PageId, Route, TransitionKind } from './nav';
 
 /* =========================================================================
    DIE EINE STELLE, AN DER DAS PORTAL DIE SEITE WECHSELT (Programm P5)
@@ -95,51 +96,70 @@ export function runPageTransition(kind: TransitionKind, apply: () => void): void
    Übergang auf das Skelett, und der Kunde sieht wenigstens, dass sein Klick
    angekommen ist. Das Überblenden Skelett → Inhalt ist P6.
 
-   ⚠ **Ein fehlender Eintrag ist ein NO-OP, kein Fehler.** Wer eine neue Seite
-     per `lazy()` schneidet und sie hier vergisst, bekommt den Deckel statt des
-     Vorladens — schlechter, aber nie falsch. Dieselben Adressen wie in
-     `App.tsx`/`pages/AnlagenPage.tsx` treffen dasselbe Stück (Vite löst einen
-     dynamischen Import einmal auf), es entsteht also kein zweites Bündel.
+   ⚠ **Die `import()`-Aufrufe stehen NICHT hier, sondern in `pageChunks.ts`.**
+     Vite erzeugt je AUFRUFSTELLE einen eigenen Vorlade-Rumpf samt
+     Abhängigkeitsliste; eine zweite Liste derselben Adressen kostete das
+     Einstiegs-Bündel gemessene 1,03 kB gz für null zusätzliche Funktion
+     (Begründung dort). Hier steht nur, WELCHE Route WELCHES Stück braucht.
+
+   ⚠ **Ein fehlender Eintrag ist ein NO-OP, kein Fehler.** Wer eine Route
+     vergisst, bekommt den Deckel statt des Vorladens — schlechter, aber nie
+     falsch.
    ------------------------------------------------------------------------- */
 
 export const PRELOAD_DEADLINE_MS = 300;
 
 type Loader = () => Promise<unknown>;
 
-/** Seiten der Flotten-/Plattform-Ebene (die `lazy()`-Liste aus `App.tsx`). */
-const PAGE_CHUNKS: Record<string, Loader> = {
-  uebersicht: () => import('./pages/UebersichtPage'),
-  portfolio: () => import('./pages/PortfolioPage'),
-  'portfolio-messwerte': () => import('./pages/PortfolioMesswerte'),
-  'portfolio-erloese': () => import('./pages/PortfolioErloese'),
-  mandanten: () => import('./pages/admin/MandantenPage'),
-  'plattform-uebersicht': () => import('./pages/admin/PlattformUebersichtPage'),
-  'geraete-registry': () => import('./pages/admin/GeraeteBereich'),
-  'edge-updates': () => import('./pages/admin/GeraeteBereich'),
-  optimizer: () => import('./pages/admin/OptimizerPage'),
-  flows: () => import('./pages/admin/FlowsPage'),
-  'steuerungs-freigabe': () => import('./pages/admin/SteuerungsFreigabePage'),
-  vorlagen: () => import('./pages/admin/VorlagenPage'),
-  'komponenten-flotte': () => import('./pages/admin/KomponentenFlottePage'),
+/**
+ * Die Unterseiten, die sich EIN Stück teilen, nennen dasselbe: Fahrplan,
+ * Wetter und Marktpreise wohnen zu dritt in `DataPages`.
+ */
+const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
+  fahrplan: SUB_CHUNK.daten,
+  wetter: SUB_CHUNK.daten,
+  marktpreise: SUB_CHUNK.daten,
+  messwerte: SUB_CHUNK.messwerte,
+  erloese: SUB_CHUNK.erloese,
+  modell: SUB_CHUNK.modell,
+  geraet: SUB_CHUNK.geraet,
+  box: SUB_CHUNK.box,
+  ladevorgaenge: SUB_CHUNK.ladevorgaenge,
+  lastspitzen: SUB_CHUNK.lastspitzen,
+  steuerung: SUB_CHUNK.steuerung,
+  technik: SUB_CHUNK.technik,
+  befehle: SUB_CHUNK.befehle,
+  prognose: SUB_CHUNK.prognose,
 };
 
-/** Unterseiten einer Anlage (die `lazy()`-Liste aus `pages/AnlagenPage.tsx`). */
-const SUB_CHUNKS: Record<string, Loader> = {
-  fahrplan: () => import('./pages/DataPages'),
-  wetter: () => import('./pages/DataPages'),
-  marktpreise: () => import('./pages/DataPages'),
-  messwerte: () => import('./pages/MesswerteSection'),
-  erloese: () => import('./pages/ErloeseSection'),
-  modell: () => import('./pages/AnlagenModellSection'),
-  geraet: () => import('./pages/GeraetSeiteSection'),
-  box: () => import('./pages/BoxSeiteSection'),
-  ladevorgaenge: () => import('./pages/LadevorgaengeSection'),
-  lastspitzen: () => import('./pages/LastspitzenSection'),
-  steuerung: () => import('./pages/SteuerungSection'),
-  technik: () => import('./pages/AnlageTechnik'),
-  befehle: () => import('./pages/BefehleSection'),
-  prognose: () => import('./pages/PrognosePage'),
+/**
+ * `anlagen` fehlt mit Absicht: ohne Anlage ist es die Umleitungs-Adresse der
+ * Flotten-Ebene, mit Anlage das Cockpit — beides ohne eigenes Stück.
+ * Geräte-Registry und Edge-Updates teilen sich `GeraeteBereich`.
+ */
+const PAGE_LOADER: Partial<Record<PageId, Loader>> = {
+  uebersicht: PAGE_CHUNK.uebersicht,
+  portfolio: PAGE_CHUNK.portfolio,
+  'portfolio-messwerte': PAGE_CHUNK['portfolio-messwerte'],
+  'portfolio-erloese': PAGE_CHUNK['portfolio-erloese'],
+  mandanten: PAGE_CHUNK.mandanten,
+  'plattform-uebersicht': PAGE_CHUNK['plattform-uebersicht'],
+  'geraete-registry': PAGE_CHUNK['geraete-registry'],
+  'edge-updates': PAGE_CHUNK['geraete-registry'],
+  optimizer: PAGE_CHUNK.optimizer,
+  flows: PAGE_CHUNK.flows,
+  'steuerungs-freigabe': PAGE_CHUNK['steuerungs-freigabe'],
+  vorlagen: PAGE_CHUNK.vorlagen,
+  'komponenten-flotte': PAGE_CHUNK['komponenten-flotte'],
 };
+
+/** Route → Stück. `undefined` heisst „diese Seite liegt im Einstieg". */
+function loaderFor(route: Route): Loader | undefined {
+  if (route.page !== 'anlagen') return PAGE_LOADER[route.page];
+  // Das Anlagen-COCKPIT (`sub === null`) ist nicht geschnitten — es ist das
+  // Ziel fast jedes Besuchs und liegt im Einstiegs-Bündel.
+  return route.siteId != null && route.sub != null ? SUB_LOADER[route.sub] : undefined;
+}
 
 /** Schon geholte Stücke — ein zweiter Besuch wartet auf nichts. */
 const loaded = new Set<Loader>();
@@ -150,9 +170,7 @@ const loaded = new Set<Loader>();
  * Seite, schon geladen) — der Aufrufer schiebt dann sofort los.
  */
 export function preloadRoute(route: Route): Promise<unknown> | null {
-  const loader = route.page === 'anlagen' && route.siteId
-    ? (route.sub ? SUB_CHUNKS[route.sub] : undefined)
-    : PAGE_CHUNKS[route.page];
+  const loader = loaderFor(route);
   if (!loader || loaded.has(loader)) return null;
   return loader().then(
     () => loaded.add(loader),

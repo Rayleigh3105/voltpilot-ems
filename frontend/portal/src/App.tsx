@@ -38,6 +38,7 @@ import {
   type PageId,
   type Route,
 } from './nav';
+import { PAGE_CHUNK } from './pageChunks';
 import { awaitRouteChunk, runPageTransition, supportsViewTransitions } from './pageTransition';
 import { hatGeldWelt } from './portfolioHistorie';
 import { showAddAnlageButton } from './addAnlage';
@@ -75,7 +76,7 @@ import { PortfolioTabs } from './components/PortfolioTabs';
 // steht zu diesem Zeitpunkt ohnehin, ein Skelett darunter wäre ein zweiter
 // Ladezustand für dieselbe Sekunde.
 const OnboardingWizard = lazy(() =>
-  import('./Onboarding').then((m) => ({ default: m.OnboardingWizard })),
+  PAGE_CHUNK.onboarding().then((m) => ({ default: m.OnboardingWizard })),
 );
 // Die Anlagen-Seite ist das Ziel fast jedes Besuchs und bleibt deshalb im
 // Einstiegs-Bündel. Jede ANDERE Seite wird lazy geladen: die Plattform-Seiten
@@ -84,46 +85,46 @@ const OnboardingWizard = lazy(() =>
 // Automations-Editor in den Startpfad (siehe `components/Lazy.tsx`).
 import { AnlagenPage } from './pages/AnlagenPage';
 const UebersichtPage = lazy(() =>
-  import('./pages/UebersichtPage').then((m) => ({ default: m.UebersichtPage })),
+  PAGE_CHUNK.uebersicht().then((m) => ({ default: m.UebersichtPage })),
 );
 const PortfolioPage = lazy(() =>
-  import('./pages/PortfolioPage').then((m) => ({ default: m.PortfolioPage })),
+  PAGE_CHUNK.portfolio().then((m) => ({ default: m.PortfolioPage })),
 );
 const PortfolioMesswerte = lazy(() =>
-  import('./pages/PortfolioMesswerte').then((m) => ({ default: m.PortfolioMesswerte })),
+  PAGE_CHUNK['portfolio-messwerte']().then((m) => ({ default: m.PortfolioMesswerte })),
 );
 const PortfolioErloese = lazy(() =>
-  import('./pages/PortfolioErloese').then((m) => ({ default: m.PortfolioErloese })),
+  PAGE_CHUNK['portfolio-erloese']().then((m) => ({ default: m.PortfolioErloese })),
 );
 const MandantenPage = lazy(() =>
-  import('./pages/admin/MandantenPage').then((m) => ({ default: m.MandantenPage })),
+  PAGE_CHUNK.mandanten().then((m) => ({ default: m.MandantenPage })),
 );
 const PlattformUebersichtPage = lazy(() =>
-  import('./pages/admin/PlattformUebersichtPage').then((m) => ({
+  PAGE_CHUNK['plattform-uebersicht']().then((m) => ({
     default: m.PlattformUebersichtPage,
   })),
 );
 // Stufe 3: EIN Nav-Punkt „Geräte" mit zwei Tabs - beide Routen rendern denselben
 // Bereich, also gibt es auch nur einen Lade-Einstieg.
 const GeraeteBereich = lazy(() =>
-  import('./pages/admin/GeraeteBereich').then((m) => ({ default: m.GeraeteBereich })),
+  PAGE_CHUNK['geraete-registry']().then((m) => ({ default: m.GeraeteBereich })),
 );
 const OptimizerPage = lazy(() =>
-  import('./pages/admin/OptimizerPage').then((m) => ({ default: m.OptimizerPage })),
+  PAGE_CHUNK.optimizer().then((m) => ({ default: m.OptimizerPage })),
 );
 const FlowsPage = lazy(() =>
-  import('./pages/admin/FlowsPage').then((m) => ({ default: m.FlowsPage })),
+  PAGE_CHUNK.flows().then((m) => ({ default: m.FlowsPage })),
 );
 const SteuerungsFreigabePage = lazy(() =>
-  import('./pages/admin/SteuerungsFreigabePage').then((m) => ({
+  PAGE_CHUNK['steuerungs-freigabe']().then((m) => ({
     default: m.SteuerungsFreigabePage,
   })),
 );
 const VorlagenPage = lazy(() =>
-  import('./pages/admin/VorlagenPage').then((m) => ({ default: m.VorlagenPage })),
+  PAGE_CHUNK.vorlagen().then((m) => ({ default: m.VorlagenPage })),
 );
 const KomponentenFlottePage = lazy(() =>
-  import('./pages/admin/KomponentenFlottePage').then((m) => ({
+  PAGE_CHUNK['komponenten-flotte']().then((m) => ({
     default: m.KomponentenFlottePage,
   })),
 );
