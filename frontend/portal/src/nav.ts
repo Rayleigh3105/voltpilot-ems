@@ -628,6 +628,78 @@ export function anlageRoute(siteId: string, sub: AnlagenSub | null = null): Rout
   return { page: 'anlagen', siteId, sub };
 }
 
+/* =========================================================================
+   DIE RICHTUNG EINES SEITENWECHSELS (Bewegungs-Programm P5)
+   Konzept `data/vp-motion-konzept-m1/report.md` §6 („Seitenwechsel Telefon"
+   / „Seitenwechsel Rechner"), Empfehlung E5 (a), Captain-Antwort 8
+   („Handy wie eine App — Blätter schieben; Rechner nur blenden").
+
+   Sie ist REIN und wohnt hier, weil sie eine Aussage über ROUTEN ist, nicht
+   über Pixel: `App.tsx` schreibt daraus nur eine Klasse ans `<html>`, das CSS
+   macht daraus Bewegung. Wer die Hierarchie des Portals ändert, ändert die
+   Bewegung damit an EINER Stelle mit.
+   ========================================================================= */
+
+/** Wohin ein Wechsel führt — tiefer (`push`), flacher (`pop`), daneben (`fade`). */
+export type TransitionKind = 'push' | 'pop' | 'fade';
+
+/**
+ * Die TIEFE einer Route in der Hierarchie des Portals.
+ *
+ * Sie folgt der Navigations-Runde „zwei Ebenen" (`vp-portfolio-konzept-r2`
+ * §5.5) und der Anlagen-Zentrale Stufe 1 — also genau der Brotkrume, die der
+ * Kunde liest:
+ *
+ * | Tiefe | Route | Brotkrume |
+ * |---|---|---|
+ * | 0 | jede Seite der FLOTTEN-Ebene (Portfolio, Übersicht, Plattform-Seiten) | — |
+ * | 1 | eine geöffnete Anlage (`#/anlage/{id}`) | Anlage |
+ * | 2 | ein REITER dieser Anlage (`…/messwerte`, `…/modell`, …) | Anlage › Reiter |
+ * | 3 | eine Geräte-/Box-Seite (`…/geraet/…`, `…/box/…`) | Anlage › Komponenten › Gerät |
+ *
+ * ⚠ `#/anlagen` OHNE Anlage ist Tiefe 0: das ist die Umleitungs-Adresse der
+ * Flotten-Ebene, keine geöffnete Anlage — sie zeigt nie den Kopf einer Anlage.
+ */
+export function routeDepth(route: Route): number {
+  if (route.page !== 'anlagen' || route.siteId == null) return 0;
+  if (route.sub == null) return 1;
+  // Die Geräte- und die Box-Seite wohnen EINE Ebene unter dem Anlagen-Modell
+  // (`anlageNav.OHNE_BEREICHS_REITER`: sie tragen deshalb keinen Reiter,
+  // sondern ihren eigenen Rückweg als Brotkrume).
+  return route.sub === 'geraet' || route.sub === 'box' ? 3 : 2;
+}
+
+/**
+ * Die Richtung eines Seitenwechsels.
+ *
+ * ⚠ **`back` ist KEINE Heuristik am Hash, sondern die gemessene
+ * Verlaufstiefe.** Sie zu raten geht nachweislich schief: wer von einem Reiter
+ * über die Brotkrume auf die Anlage zurückgeht (flacher = `pop`) und dann
+ * BROWSER-ZURÜCK drückt, landet wieder tiefer — die Tiefe sagt `push`, der
+ * Kunde erlebt aber ein Zurück. `App.tsx` liest dafür den Verlaufs-Index, den
+ * `navigationBlocker.ts` ohnehin mitführt, und reicht das Urteil hier herein.
+ *
+ * Ohne Vorgänger (`from == null`, das erste Bild) gibt es keinen Wechsel zu
+ * beschreiben — das Ankommen der Anwendung gehört dem App-Start (P4), nicht
+ * dieser Regel. Sie antwortet dann `fade`.
+ */
+export function transitionKind(
+  from: Route | null,
+  to: Route,
+  back = false,
+): TransitionKind {
+  if (back) return 'pop';
+  if (from == null) return 'fade';
+  const a = routeDepth(from);
+  const b = routeDepth(to);
+  if (b > a) return 'push';
+  if (b < a) return 'pop';
+  // Gleiche Tiefe = Geschwister: ein Reiter neben dem Reiter, eine Anlage
+  // neben der Anlage, eine Flotten-Seite neben der Flotten-Seite. Nichts
+  // wird tiefer, also schiebt auch nichts.
+  return 'fade';
+}
+
 /**
  * Die Adresse der BEFEHLE-Seite einer Komponente (Kommando-Transparenz V1,
  * Captain-Entscheid F2: eine eigene Unterseite je Komponente).
