@@ -2112,6 +2112,92 @@ class PortalApiTest {
      * (1.25-0.5)/1.25*100 = 60 %. Two overlapping optimizer runs cover the
      * 10:00Z slot; only the latest counts: savings 0.10-0.06 = 0.04 EUR.
      */
+    /**
+     * Die MESSLATTE des Fahrplans (Captain 04.09.2026: "du musst Anlage immer
+     * mit Speicher berechnen, einer halt ohne smart Steuerung"): neben der
+     * alten, unveraenderten {@code batterySavingsPlannedEur} (gegen eine Anlage
+     * OHNE Speicher) traegt die Historie jetzt {@code steuerungPlannedEur} -
+     * gegen DENSELBEN Speicher ohne smarte Steuerung.
+     *
+     * <p>Eigene Anlage, damit die handgerechneten Zahlen der Nachbar-Tests auf
+     * BERLIN_SITE unberuehrt bleiben; am Ende wieder abgeraeumt.
+     */
+    @Test
+    void historyCarriesTheSteeringMesslatteNextToTheWholeBatteryValue() {
+        String tenant = "00000000-0000-0000-0000-000000000001";
+        String device = "00000000-0000-0000-0000-000000000003";
+        String site = "5c000000-0000-0000-0000-0000000000e1";
+        String plan = "5c000000-0000-0000-0000-0000000000e2";
+        java.time.ZoneId berlin = java.time.ZoneId.of("Europe/Berlin");
+        java.time.ZonedDateTime day0 = java.time.LocalDate.now(berlin).atStartOfDay(berlin);
+        String demo = token("demo", "demo");
+        exec("INSERT INTO site (id, tenant_id, name, bidding_zone) VALUES ('" + site
+                + "', '" + tenant + "', 'Messlatte', 'DE-LU') ON CONFLICT DO NOTHING");
+        try {
+            // Drei Slots. Slot 0 ist von ZWEI Laeufen geplant - nur der SPAETERE
+            // zaehlt (DISTINCT ON), und zwar fuer BEIDE Zahlen.
+            String older = iso(day0.plusHours(1));
+            String newer = iso(day0.plusHours(2));
+            exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, "
+                    + "generated_at, battery_kw, grid_kw, soc_pct, price_eur_mwh, "
+                    + "cost_eur, baseline_cost_eur, stur_cost_eur) VALUES "
+                    // verworfener aelterer Lauf desselben Slots
+                    + row(iso(day0.plusHours(4)), older, plan, site, tenant, device,
+                            "9.00", "9.90", "9.50")
+                    + ", " + row(iso(day0.plusHours(4)), newer, plan, site, tenant, device,
+                            "0.10", "1.00", "0.40")
+                    + ", " + row(iso(day0.plusHours(5)), newer, plan, site, tenant, device,
+                            "0.20", "0.90", "0.50")
+                    + ", " + row(iso(day0.plusHours(6)), newer, plan, site, tenant, device,
+                            "0.30", "1.10", "0.60")
+                    + " ON CONFLICT DO NOTHING");
+
+            Map<String, Object> totals = map(rest.exchange(
+                    url("/api/v1/sites/" + site + "/history?range=day"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody(),
+                    "totals");
+            // (1,00-0,10) + (0,90-0,20) + (1,10-0,30) = 2,40 - der WERT DES
+            // SPEICHERS SAMT STEUERUNG, unveraendert.
+            assertThat(num(totals, "batterySavingsPlannedEur")).isEqualTo(2.4);
+            assertThat(num(totals, "batterySavingsEur")).isEqualTo(2.4);
+            // (0,40-0,10) + (0,50-0,20) + (0,60-0,30) = 0,90 - der Mehrwert der
+            // STEUERUNG gegen denselben Speicher ohne sie. Kleiner, per
+            // Konstruktion: ein sturer Speicher ist besser als gar keiner.
+            assertThat(num(totals, "steuerungPlannedEur")).isEqualTo(0.9);
+            assertThat(num(totals, "steuerungPlannedEur"))
+                    .isLessThan(num(totals, "batterySavingsPlannedEur"));
+
+            // EIN Slot ohne Messlatte (ein Lauf vor der Migration) -> die
+            // Steuerungs-Zahl faellt ehrlich weg, statt ein Teil-Fenster zu
+            // behaupten; die alte Zahl bleibt unberuehrt.
+            exec("UPDATE schedule SET stur_cost_eur = NULL WHERE site_id = '" + site
+                    + "' AND time = '" + iso(day0.plusHours(5)) + "'");
+            Map<String, Object> partial = map(rest.exchange(
+                    url("/api/v1/sites/" + site + "/history?range=day"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody(),
+                    "totals");
+            assertThat(partial).containsEntry("steuerungPlannedEur", null);
+            assertThat(num(partial, "batterySavingsPlannedEur")).isEqualTo(2.4);
+
+            // Ein FREMDER Mandant sieht die Anlage nicht (RLS => 404).
+            assertThat(rest.exchange(url("/api/v1/sites/" + site + "/history?range=day"),
+                    HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                    String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            exec("DELETE FROM schedule WHERE site_id = '" + site + "'");
+            exec("DELETE FROM site WHERE id = '" + site + "'");
+        }
+    }
+
+    private static String row(String time, String generatedAt, String plan, String site,
+            String tenant, String device, String cost, String baseline, String stur) {
+        return String.format(
+                "('%s', '%s', '%s', '%s', '%s', '%s', 0, 0, 50.0, 100.0, %s, %s, %s)",
+                time, tenant, site, device, plan, generatedAt, cost, baseline, stur);
+    }
+
     private void seedHistoryDay() {
         String t = "'00000000-0000-0000-0000-000000000001'";
         String d = "'00000000-0000-0000-0000-000000000003'";

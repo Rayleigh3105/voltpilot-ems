@@ -57,7 +57,8 @@ public class HistoryService {
                     cutover);
         }
 
-        HistoryTotalsDto totals = totals(buckets, repo.savings(siteId, window.from(), window.to()),
+        HistoryTotalsDto totals = totals(buckets,
+                repo.plannedSavings(siteId, window.from(), window.to()),
                 repo.tariffContext(siteId));
 
         List<ProtocolEventDto> protocol = range == HistoryRange.DAY
@@ -242,7 +243,7 @@ public class HistoryService {
 
     /** Period totals; see {@link HistoryTotalsDto} for the formulas. */
     static HistoryTotalsDto totals(List<HistoryBucketDto> buckets, BigDecimal savings) {
-        return totals(buckets, savings, null);
+        return totals(buckets, new HistoryRepository.PlannedSavings(savings, null), null);
     }
 
     /**
@@ -253,8 +254,17 @@ public class HistoryService {
      * {@code gridCostEur} (kind + whether the import valuation engaged a real
      * tariff/Preisblatt - Stufe 3 of the structured Bezugspreis; audit H8).
      */
-    static HistoryTotalsDto totals(List<HistoryBucketDto> buckets, BigDecimal savings,
+    /**
+     * Period totals carrying BOTH planned figures: the unchanged
+     * no-battery-baseline number and the Messlatte against the same battery
+     * WITHOUT smart control ({@code steuerungPlannedEur}, Captain 04.09.2026).
+     * The steering figure is passed through EXACTLY as the repository judged
+     * it - null stays null; this layer never sums a partial window itself.
+     */
+    static HistoryTotalsDto totals(List<HistoryBucketDto> buckets,
+            HistoryRepository.PlannedSavings planned,
             HistoryRepository.TariffContext tariff) {
+        BigDecimal savings = planned.batteryEur();
         BigDecimal consumption = sum(buckets, HistoryBucketDto::loadKwh);
         BigDecimal pv = sum(buckets, HistoryBucketDto::pvKwh);
         BigDecimal gridImport = sum(buckets, HistoryBucketDto::gridImportKwh);
@@ -289,6 +299,8 @@ public class HistoryService {
                 tariff == null ? null : tariff.tarifArt(),
                 tariff == null ? null : tariff.tarifPriced(),
                 savings == null ? null : savings.setScale(4, RoundingMode.HALF_UP),
+                planned.steuerungEur() == null
+                        ? null : planned.steuerungEur().setScale(4, RoundingMode.HALF_UP),
                 autarkie, eigenverbrauch);
     }
 
