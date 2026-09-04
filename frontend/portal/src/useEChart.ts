@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
+import { chartMotion, mergeMotion, type ChartPhase } from './chartMotion';
 
 /**
  * Shared ECharts lifecycle for every portal chart: init once on mount, dispose
@@ -9,6 +10,32 @@ import * as echarts from 'echarts';
  * chart plus its current pixel width, so width-aware options (tick density,
  * axis names, legend room) re-evaluate at every size, and the canvas can never
  * end up wider than its container (the fluid-resize requirement).
+ *
+ * ## ⚠ DER EINE BEWEGUNGS-HEBEL (Bewegungs-Programm P1)
+ *
+ * Konzept `data/vp-motion-konzept-m1/report.md` §4.3/§5, Captain-Entscheid
+ * 04.09.2026. **Jede ECharts-Flaeche des Portals geht durch diesen Haken**,
+ * also sitzt die Bewegung HIER — und kein einziger der 16 Konsumenten wurde
+ * dafuer angefasst:
+ *
+ * 1. **Einstieg = Maske, nie Wachstum.** Gezeichnet wird mit `animation: false`
+ *    (jeder Wert steht ab Bild 1), aufgebaut wird die FORM von einer CSS-Maske
+ *    am Container (`is-entering` + `@keyframes vp-chart-reveal`, `index.css`).
+ * 2. **Genau EINMAL, beim ersten Sichtbarwerden.** Ein IntersectionObserver
+ *    wartet, bis das Bild GEZEICHNET ist UND Breite hat UND im Blick liegt —
+ *    ein Diagramm im zugeklappten Aufklapper deckt sich erst beim Oeffnen auf,
+ *    ein schon sichtbares sofort. Ein Groessenwechsel loest KEINEN zweiten
+ *    Einstieg aus (`aufgedeckt` rastet ein).
+ * 3. **Danach Morph.** Ab dem Aufdecken traegt jedes weitere `setOption` die
+ *    Update-Phase: alt → neu in `--vp-motion-chart-update`.
+ * 4. **Die Optionen des Konsumenten gewinnen** (`mergeMotion`).
+ *
+ * ⚠ **Warum die Phase am AUFDECKEN haengt und nicht an einem Zaehler:** ein
+ * Diagramm, das im zugeklappten Aufklapper montiert, zeichnet zuerst mit Breite
+ * 0 und danach mit voller Breite. Wuerde die Phase schon beim zweiten
+ * `setOption` umschlagen, waere genau dieser Sprung ein Morph aus einem
+ * entarteten Zustand — also Balken, die aus der Null wachsen. Die Phase schlaegt
+ * deshalb erst um, wenn das Bild nachweislich richtig und sichtbar stand.
  */
 export function useEChart(
   render: (chart: echarts.ECharts, width: number) => void,
@@ -20,16 +47,99 @@ export function useEChart(
   renderRef.current = render;
 
   useEffect(() => {
-    if (!ref.current) return;
-    chart.current = echarts.init(ref.current);
+    const el = ref.current;
+    if (!el) return;
+    const inst = echarts.init(el);
+    chart.current = inst;
+    // ⚠ Der Aufdeck-Haken haengt an DIESER Marke, nicht an `.vp-chart`: nicht
+    // jeder Behaelter traegt sie (`.vp-measure-chart` in `Messwerte.css`), und
+    // `.vp-chart` einfach dazuzuschreiben brächte deren `height: clamp(...)`
+    // mit - ein Hoehenstreit, den die Kaskade in einem Lazy-Stueck entscheidet.
+    // Die Marke selbst traegt KEIN Aussehen, nur den Anker fuer die Maske.
+    el.classList.add('vp-chart-motion');
+
+    // --- Bewegung: Phase + Aufdecken (P1) --------------------------------
+    const phase: { current: ChartPhase } = { current: 'enter' };
+    let gezeichnet = false;
+    let imBlick = false;
+    let aufgedeckt = false;
+    let aufraeumen: number | undefined;
+
+    const fertig = () => {
+      window.clearTimeout(aufraeumen);
+      el.removeEventListener('animationend', fertig);
+      el.classList.remove('is-entering');
+    };
+
+    const aufdecken = () => {
+      if (aufgedeckt) return;
+      aufgedeckt = true;
+      // Ab jetzt morpht jeder weitere Zustand.
+      phase.current = 'update';
+      const m = chartMotion();
+      // Schalter 0: kein Aufdecken, kein Klassenwechsel - das Bild steht.
+      if (m.scale === 0 || m.enter <= 0) return;
+      el.classList.add('is-entering');
+      // ⚠ Nie von `animationend` ABHAENGEN (Konzept §7.4): ein Tabwechsel
+      // mitten in der Maske liefert das Ereignis nie, und die Klasse bliebe
+      // mit ihrem `both`-Fuellmodus stehen. Die Frist ist der Endzustand.
+      el.addEventListener('animationend', fertig);
+      aufraeumen = window.setTimeout(fertig, m.enter + 120);
+    };
+
+    const vielleichtAufdecken = () => {
+      if (aufgedeckt || !gezeichnet || !imBlick) return;
+      if (el.clientWidth === 0) return;
+      aufdecken();
+    };
+
+    // --- Die Huelle um `setOption` ---------------------------------------
+    const orig = inst.setOption.bind(inst);
+    type SetOption = typeof inst.setOption;
+    (inst as unknown as { setOption: SetOption }).setOption = ((
+      opt: echarts.EChartsCoreOption,
+      ...rest: unknown[]
+    ) => {
+      const gemischt = mergeMotion(
+        opt as Record<string, unknown>,
+        chartMotion(),
+        phase.current,
+      ) as echarts.EChartsCoreOption;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r = (orig as any)(gemischt, ...rest);
+      gezeichnet = true;
+      // Ein schon sichtbares Diagramm deckt sich sofort auf: der Beobachter
+      // meldet nur AENDERUNGEN, und wer beim Zeichnen bereits im Blick lag,
+      // bekaeme sonst nie ein zweites Ereignis.
+      vielleichtAufdecken();
+      return r;
+    }) as SetOption;
+
+    // ⚠ jsdom (und sehr alte Maschinen) kennen den Beobachter nicht. Dann gibt
+    // es kein Aufdecken - und damit auch keine Maske, die haengen bleiben
+    // koennte; die Diagramme stehen einfach, wie vor P1.
+    const io =
+      typeof IntersectionObserver === 'function'
+        ? new IntersectionObserver(
+            (entries) => {
+              imBlick = entries.some((e) => e.isIntersecting);
+              vielleichtAufdecken();
+            },
+            { threshold: 0.15 },
+          )
+        : null;
+    io?.observe(el);
+
     const observer = new ResizeObserver(() => {
       if (!chart.current || !ref.current) return;
       if (ref.current.clientWidth === 0) return; // hidden - nothing to lay out
       chart.current.resize();
       renderRef.current(chart.current, chart.current.getWidth());
     });
-    observer.observe(ref.current);
+    observer.observe(el);
     return () => {
+      fertig();
+      io?.disconnect();
       observer.disconnect();
       chart.current?.dispose();
       chart.current = null;
