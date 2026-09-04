@@ -5976,7 +5976,22 @@ span.vp-swap-out {
    Ausblenden mit `--vp-motion-exit`. */
 .vp-blende {
   animation: vp-blende-ein var(--vp-motion-base) var(--vp-ease-out);
+}
+
+/* ⚠ Das gehende Skelett wird `absolute` — DAS ist der reservierte Rahmen.
+   Läge es weiter im Fluss, wäre die Höhe des Rahmens für 160 ms die SUMME aus
+   Skelett und Inhalt, und der Sprung, den die Blende verhindern soll, wäre
+   genau ihr eigenes Werk. `inset: 0` legt es exakt über die Fläche, auf der es
+   eben noch allein stand. */
+.vp-blende-rahmen {
+  position: relative;
   min-width: 0;
+}
+
+.vp-blende-rahmen > .vp-blende.is-weg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
 }
 
 .vp-blende.is-weg {
