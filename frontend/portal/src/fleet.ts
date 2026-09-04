@@ -402,24 +402,40 @@ export function tarifArtLabel(tarifArt: TarifArt, tarifParamCtKwh: number | null
 }
 
 /**
- * The per-site money teaser on a fleet card, in the SITE's own wording - now
- * the MEASURED value for today. Null when nothing is computable today (e.g.
- * the rollups still trail live data) - the card then stays silent about money
- * instead of showing a fake zero.
+ * Der Geld-Teaser einer Flotten-Karte, in der Sprache DIESER Anlage — der
+ * GEMESSENE Steuerungs-Beitrag von heute ({@link tagesSteuerung}). Null, wenn
+ * heute nichts berechenbar ist (die Rollups hinken der Live-Ansicht nach, oder
+ * es fehlen die Batterie-Stammdaten) — die Karte schweigt dann über Geld,
+ * statt eine 0 oder eine Zahl auf der falschen Messlatte zu zeigen.
  */
-export function siteEarnText(kind: PlantKind, savedTodayEur: number | null): string | null {
-  if (savedTodayEur == null) return null;
+export function siteEarnText(kind: PlantKind, steuerungTodayEur: number | null): string | null {
+  if (steuerungTodayEur == null) return null;
   // A value that ROUNDS to zero must render "+0,00 €", never "-0,00 €".
-  const value = Math.abs(savedTodayEur) < 0.005 ? 0 : savedTodayEur;
+  const value = Math.abs(steuerungTodayEur) < 0.005 ? 0 : steuerungTodayEur;
   const signed = `${value >= 0 ? '+' : ''}${eurAmount(value)}`;
   const verb = kind === 'direktvermarktung' ? 'mehr verdient' : 'gespart';
-  return `Heute ${signed} ${verb}`;
+  return `Heute ${signed} ${verb} durch die Steuerung`;
 }
 
-/** The realized savings of one Berlin day, from a site's 14-day series. */
+/**
+ * Der GEMESSENE Steuerungs-Beitrag eines Tages.
+ *
+ * ⚠ **DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG** (Captain
+ * 04.09.2026). `savedEur` — der ganze Speicher gegenüber einer Anlage OHNE
+ * Speicher — ist seither eine ADMIN-Zahl und wird hier ausdrücklich NICHT als
+ * Rückfall gelesen: fehlt der Steuerungs-Anteil (keine Batterie-Stammdaten,
+ * älteres Backend), zeigt die Fläche für diesen Tag NICHTS. Eine Zahl auf der
+ * falschen Messlatte wäre schlimmer als keine.
+ */
+export function tagesSteuerung(eintrag: EarningsDaily): number | null {
+  const eur = eintrag.savedSteuerungEur;
+  return typeof eur === 'number' && Number.isFinite(eur) ? eur : null;
+}
+
+/** Der Steuerungs-Beitrag eines Berliner Tages aus der 14-Tage-Reihe. */
 export function savedOnDay(dailySaved: EarningsDaily[], day: string): number | null {
   const entry = dailySaved.find((d) => d.day === day);
-  return entry ? entry.savedEur : null;
+  return entry ? tagesSteuerung(entry) : null;
 }
 
 /**
@@ -433,7 +449,7 @@ export function sparkDays(
   now: Date,
   days = 14,
 ): { day: string; savedEur: number | null }[] {
-  const byDay = new Map(dailySaved.map((d) => [d.day, d.savedEur]));
+  const byDay = new Map(dailySaved.map((d) => [d.day, tagesSteuerung(d)]));
   const result: { day: string; savedEur: number | null }[] = [];
   for (let i = days - 1; i >= 0; i--) {
     const day = berlinDay(new Date(now.getTime() - i * 24 * 60 * 60 * 1000));
@@ -541,16 +557,31 @@ function signedEur(eur: number): string {
   return `${value >= 0 ? '+' : ''}${eurAmount(value)}`;
 }
 
-/** Merge the sites' per-day series into one fleet-wide series (sorted by day). */
+/**
+ * Die Tages-Reihen der Anlagen zu EINER Flotten-Reihe (nach Tag sortiert).
+ *
+ * ⚠ **EINE TEIL-SUMME IST KEINE MESSUNG.** Trägt an einem Tag auch nur eine
+ * Anlage keinen Steuerungs-Beitrag (keine Batterie-Stammdaten, älteres
+ * Backend), fällt der GANZE Tag aus der Flotten-Reihe — sonst stünde eine zu
+ * kleine Summe da, die wie eine gemessene aussieht. Dieselbe Regel wie beim
+ * Ladepark-Budget der Box.
+ */
 export function fleetDailySaved(sites: EarningsSite[]): EarningsDaily[] {
   const byDay = new Map<string, number>();
+  const luecke = new Set<string>();
   for (const s of sites) {
     for (const d of s.dailySaved) {
-      byDay.set(d.day, (byDay.get(d.day) ?? 0) + d.savedEur);
+      const eur = tagesSteuerung(d);
+      if (eur == null) {
+        luecke.add(d.day);
+        continue;
+      }
+      byDay.set(d.day, (byDay.get(d.day) ?? 0) + eur);
     }
   }
   return [...byDay.entries()]
-    .map(([day, savedEur]) => ({ day, savedEur }))
+    .filter(([day]) => !luecke.has(day))
+    .map(([day, savedSteuerungEur]) => ({ day, savedEur: savedSteuerungEur, savedSteuerungEur }))
     .sort((a, b) => a.day.localeCompare(b.day));
 }
 

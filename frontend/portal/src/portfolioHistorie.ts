@@ -399,8 +399,15 @@ export interface ErloeseZeile {
    * Anlagen-Seite, die derselbe Klick öffnet (Befund B11/B12).
    */
   nettoEur: number | null;
-  /** Die ZURECHNUNG der Steuerung — steckt bereits im Ergebnis. */
-  savedEur: number | null;
+  /**
+   * Die ZURECHNUNG der Steuerung — steckt bereits im Ergebnis.
+   *
+   * ⚠ **DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG** (Captain
+   * 04.09.2026): `savedSteuerungEur`, nie `savedEur` (das misst gegen eine
+   * Anlage OHNE Speicher und ist eine ADMIN-Zahl). `null` = kein Vergleich —
+   * die Zelle zeigt „—", nie die Gesamtzahl als Ersatz.
+   */
+  steuerungEur: number | null;
   eingespeistKwh: number | null;
   /**
    * Der ERTRAG je Abschnitt — die Mini-Trend-Spalte. Sie bleibt bewusst der
@@ -424,8 +431,11 @@ export interface ErloeseAggregat {
    * als 0 mitgezählt.
    */
   ohneErgebnis: number;
-  /** Σ der Steuerungs-Zurechnung (nie ein weiterer Summand). */
-  savedEur: number | null;
+  /**
+   * Σ der Steuerungs-Zurechnung gegenüber demselben Speicher ohne smarte
+   * Steuerung (nie ein weiterer Summand, nie `savedEur`).
+   */
+  steuerungEur: number | null;
   /** Σ der bewerteten Viertelstunden — die Datenbasis in einer Zahl. */
   coveredSlots: number;
   zeilen: ErloeseZeile[];
@@ -467,7 +477,7 @@ export function zeilenHinweis(reason: EarningsReason | null): string {
  *
  * **Die drei gezeigten Teile ERGEBEN sie** (Einspeise-Erlös + Wert des
  * Eigenverbrauchs − Stromkosten) — genau die Regel der Anlagen-Welt, eine
- * Ebene höher. `savedEur` ist die ZURECHNUNG der Steuerung und steckt bereits
+ * Ebene höher. `savedSteuerungEur` ist die ZURECHNUNG der Steuerung und steckt bereits
  * darin (MIG §5); die vermiedenen Leistungskosten gehören einer anderen
  * Periode und tauchen hier bewusst gar nicht auf.
  *
@@ -501,7 +511,7 @@ export function erloeseAggregat(
       name: s.name,
       zustand,
       nettoEur: zeilenNetto,
-      savedEur: money?.savedEur ?? null,
+      steuerungEur: money?.savedSteuerungEur ?? null,
       eingespeistKwh: money?.eingespeistKwh ?? null,
       spark: money ? money.series.map((p) => p.gesamtertragEur) : [],
       hinweis: zustand === 'daten' ? null : zeilenHinweis(money?.reason ?? null),
@@ -539,7 +549,7 @@ export function erloeseAggregat(
     eigenverbrauchEur,
     stromkostenEur,
     ohneErgebnis: zeilen.filter((z) => z.zustand !== 'daten' && byId.has(z.siteId)).length,
-    savedEur: summe(beitragende.map((m) => m.savedEur)),
+    steuerungEur: summe(beitragende.map((m) => m.savedSteuerungEur ?? null)),
     coveredSlots: beitragende.reduce((n, m) => n + (m.coveredSlots ?? 0), 0),
     zeilen,
     abdeckung: abdeckung(zeilen.map((z) => z.zustand)),

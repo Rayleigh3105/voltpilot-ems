@@ -67,12 +67,13 @@ import { oeffneAnlagenWelt } from './portfolioWeltNav';
 /**
  * Die Spalten der Anlagen-Tabelle.
  *
- * ⚠ **„Speicher", nicht „Durch Steuerung"** (Befund **B13**): `savedEur` ist
- *   der Wert des GANZEN Speichersystems gegenüber einer Anlage ohne Speicher —
- *   der Anteil der intelligenten Steuerung daran ist eine ANDERE Zahl
- *   (`savedSteuerungEur`), die der Flotten-Endpunkt bewusst nicht als Summe
- *   führt. Das Wort ist dasselbe wie in der Speicher-Karte darüber und auf der
- *   Anlagen-Seite (`speicherAussage.gesamtLabel`).
+ * ⚠ **„Steuerung", nicht „Speicher"** (Captain 04.09.2026, der Befund B13 in
+ *   seiner Auflösung): die Spalte zeigt `savedSteuerungEur` — den Mehrwert
+ *   gegenüber DEMSELBEN Speicher ohne smarte Steuerung. Der Wert des GANZEN
+ *   Speichersystems (`savedEur`, gegen eine Anlage OHNE Speicher) ist seither
+ *   eine ADMIN-Zahl und steht auf keiner Kundenfläche. Das Wort ist dasselbe
+ *   wie in der Karte darüber und auf der Anlagen-Seite
+ *   (`speicherAussage.label`).
  *
  * ⚠ **„Eingespeist" fällt am Telefon weg** (Skill-Regel „Table Handling", §3.7):
  *   unter 720 px klappt die Zeile zur Karte, und die vierte Zahl ist dort die
@@ -81,7 +82,7 @@ import { oeffneAnlagenWelt } from './portfolioWeltNav';
  */
 /** Die drei Zahlen-Spalten der Anlagen-Liste — „Anlage" und „Verlauf" sind
  *  die zwei festen Ränder und stehen im Baustein. */
-const SPALTEN = [NETTO_WORT, 'Speicher', 'Eingespeist'] as const;
+const SPALTEN = [NETTO_WORT, 'Steuerung', 'Eingespeist'] as const;
 
 /** Eine Anlagen-Zeile in der geteilten Form beider Zwillinge (Liste/Tabelle). */
 function anlagenZeile(z: ErloeseZeile, range: HistoryRange, at: string): AnlagenZeileView {
@@ -95,7 +96,7 @@ function anlagenZeile(z: ErloeseZeile, range: HistoryRange, at: string): Anlagen
     //   bewertete Viertelstunde hat nicht null verdient, sie ist nicht bewertet.
     werte: [
       z.nettoEur == null ? DASH : signedEuro(z.nettoEur),
-      z.savedEur == null ? DASH : signedEuro(z.savedEur),
+      z.steuerungEur == null ? DASH : signedEuro(z.steuerungEur),
       z.eingespeistKwh == null ? DASH : fmtNum(z.eingespeistKwh, 'kWh'),
     ],
     spark: z.spark,
@@ -193,15 +194,21 @@ export function PortfolioErloese({ sites }: { sites: Site[] }) {
 
   // DIE SPEICHER-KARTE — dieselbe Ableitung wie Cockpit und Anlagen-Seite.
   //
-  // ⚠ Der Wortlaut ist „Speicher heute" (`gesamtLabel`), NICHT „durch
-  //   VoltPilots Steuerung" (Befund B13): `savedEur` ist der Wert des GANZEN
-  //   Speichersystems. Die Zeile „davon Steuerung" bleibt hier per
-  //   Konstruktion weg — der Flotten-Endpunkt führt die Aufteilung nicht als
-  //   Summe, und `speicherAussage` behauptet ohne sie nichts.
+  // ⚠ **DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG** (Captain
+  //   04.09.2026). Es reist die Σ der Steuerungs-Zurechnung; `savedEur` (der
+  //   ganze Speicher gegenüber einer Anlage OHNE Speicher) erreicht diese
+  //   Fläche nicht mehr. `savedEur` bleibt trotzdem gesetzt, weil
+  //   `speicherAussage` es als PRÜFSUMME liest — hier ist beides dieselbe
+  //   Zahl, also kann der Identitäts-Wächter nicht anschlagen.
   const speicher = useMemo(
     () =>
       speicherAussage(
-        { savedEur: aggregat?.savedEur ?? null, range, to: daten?.to ?? null },
+        {
+          savedEur: aggregat?.steuerungEur ?? null,
+          savedSteuerungEur: aggregat?.steuerungEur ?? null,
+          range,
+          to: daten?.to ?? null,
+        },
         { now, laeuft },
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
