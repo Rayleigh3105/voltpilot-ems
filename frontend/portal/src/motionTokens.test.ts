@@ -330,15 +330,16 @@ describe('Bewegung P0 · Ratsche „kein `transition: all`" (Ziel 0, erreicht)',
 
 /**
  * Der IST-Stand. Jede Zahl ist eine offene Baustelle für P7 („restliche
- * `transition:` auf Tokens, Ratsche → 0", Konzept §9 P7); P6 hat sie von
- * 27 auf 7 gesenkt.
+ * `transition:` auf Tokens, Ratsche → 0", Konzept §9 P7); P6 hat sie auf 6
+ * gesenkt.
  *
  * ⚠ WER EIN BLATT ERGÄNZT, TRÄGT ES HIER EIN — sonst prüft der Wächter es nie
  *   (der Test unten läuft über ALLE Blätter und verlangt einen Eintrag).
  */
 const DAUER_RATSCHE: Record<string, number> = {
-  // P6 hat 20 der 27 Stellen abgeräumt (Zustandswechsel, Chevrons, Chips,
-  // Hover). Was bleibt, bleibt aus je einem Grund:
+  // P6 hat 20 der damals 26 Stellen abgeräumt (Zustandswechsel, Chevrons,
+  // Chips, Hover); `MiniChart.css` hatte P3 schon geräumt. Was bleibt, bleibt
+  // aus je einem Grund:
   //
   // - `index.css`: die BREITE des Batterie-Balkens (0,6 s). Sie ist sein WERT,
   //   nicht sein Layout — und die Dauer gehört zur Aussage, nicht zur Familie.
