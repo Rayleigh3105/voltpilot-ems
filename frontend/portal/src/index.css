@@ -805,11 +805,34 @@ svg [tabindex]:focus-visible {
     stroke-dashoffset: -24;
   }
 }
+/* Die Punkte blenden beim Erscheinen ein (Bewegungs-Programm P3, §5 Zeile G).
+   Sie stehen dabei schon an ihrer Stelle — es wächst nichts. */
+@keyframes vp-flow-dots-in {
+  from {
+    opacity: 0;
+  }
+}
+/* ⚠ ZWEI ANIMATIONEN, EINE KURZSCHREIBWEISE JE RICHTUNG — und das ist kein
+   Stil, sondern Notwendigkeit: `animation-direction` gilt für die GANZE Liste.
+   Als Langform (`animation-name: a, b`) hätte `.vp-flow-rev`s `reverse` auch
+   das Einblenden umgedreht, die Punkte wären beim Erscheinen AUSgeblendet.
+   Deshalb trägt jede Richtung ihr eigenes Paar.
+
+   ⚠ DIE 0,9 s SIND DAS REFERENZ-TEMPO, NICHT DAS GEZEIGTE. Das echte Tempo
+   kommt aus `flowTempo(kW)` (`live.ts`) und wird als `Animation.playbackRate`
+   gesetzt (`useFlowTempo.ts`) — die einzige Form, bei der ein Leistungswechsel
+   die Punkte nicht springen lässt (eine Änderung von `animation-duration`
+   behält die verstrichene Zeit und setzt damit die PHASE um). 0,9 s ist das
+   Tempo bei 2 kW, also `playbackRate` 1. */
 .vp-flow-on {
-  animation: vp-flow 0.9s linear infinite;
+  animation:
+    vp-flow-dots-in var(--vp-motion-base) var(--vp-ease-out) both,
+    vp-flow 0.9s linear infinite;
 }
 .vp-flow-rev {
-  animation: vp-flow 0.9s linear infinite reverse;
+  animation:
+    vp-flow-dots-in var(--vp-motion-base) var(--vp-ease-out) both,
+    vp-flow 0.9s linear infinite reverse;
 }
 /* Verlauf window toggle (1 Std / 3 Std / Heute) - reuses the .vp-seg look. */
 .vp-live-verlauf-head {
@@ -5777,6 +5800,89 @@ body {
  * damit die Ladereihenfolge nicht entscheidet) — hier steht nur der Zeiger. */
 
 /* =========================================================================
+   === Bewegung · P3 ===  Zahlenwechsel · Energiefluss · Jetzt-Marker
+   Konzept `data/vp-motion-konzept-m1/report.md` §5 Zeilen E–H, §6 Zeile
+   „Zahlenwechsel", Captain-Entscheide E4 a und E9 a (04.09.2026).
+
+   ⚠ DIESER BLOCK STEHT AM DATEIENDE, VOR dem reduced-motion-Block — aus
+     demselben Grund wie jener: eine Media-Query erhöht die Spezifität nicht,
+     es entscheidet die Quell-Reihenfolge. Der Schalter muss nach allem stehen,
+     was er anhalten soll.
+
+   Drei Dinge liegen hier, weil sie über Flächen hinweg gelten; alles
+   Flächen-Eigene wohnt in seinem Blatt (`MiniChart.css`, `StrompreisStrip.css`,
+   `erloese/ErgebnisKarte.css`).
+   ========================================================================= */
+
+/* --- 1 · Der Zahlenwechsel (`SwapNumber` / `SwapText`) --------------------
+ * Alt blendet nach OBEN aus, neu kommt von UNTEN — die Leserichtung eines
+ * Zählwerks, ohne je zu zählen (Captain-Antwort 3). Beide Werte standen
+ * wirklich da; die Regel dazu ist `src/swapNumber.ts`.
+ *
+ * ⚠ NUR `opacity` UND `transform` (Prinzip 9). Der alte Wert liegt im HTML
+ *   absolut, damit der Kasten seine Grösse vom NEUEN Wert nimmt und nichts
+ *   springt; im SVG braucht es das nicht, dort sind `x`/`y` ohnehin absolut. */
+@keyframes vp-swap-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--vp-motion-distance));
+  }
+}
+@keyframes vp-swap-out {
+  to {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--vp-motion-distance)));
+  }
+}
+.vp-swap {
+  position: relative;
+  display: inline-block;
+}
+.vp-swap-in {
+  animation: vp-swap-in var(--vp-motion-base) var(--vp-ease-out) both;
+}
+.vp-swap-out {
+  animation: vp-swap-out var(--vp-motion-base) var(--vp-ease-in) both;
+}
+/* Der Vorgänger darf den Fluss nicht mehr bewegen — er ist nur noch Bild. */
+span.vp-swap-out {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+/* --- 2 · Energiefluss: Punkte blenden ein, Richtung bleibt lesbar ---------
+ * Das Tempo selbst steht NICHT hier: es kommt aus `flowTempo(kW)` (`live.ts`)
+ * und wird als `Animation.playbackRate` gesetzt (`useFlowTempo.ts`) — die
+ * einzige Form, die die Punkte beim Leistungswechsel nicht springen lässt.
+ * Die Loop-Regel oben (`vp-flow 0.9s linear infinite`) bleibt unverändert; sie
+ * ist das REFERENZ-Tempo, das die Rate skaliert.
+ *
+ * ⚠ „Ruhe bei Null" braucht hier keine Regel: unter 0,05 kW ist die Speiche
+ *   nicht aktiv, also zeichnet React gar keine Punktlinie (`live.ts`
+ *   `DEADBAND_KW`). Still UND ausgeblendet — beides durch Abwesenheit. */
+/* Die Richtungs-Spitze. Sie ist im Normalbetrieb NICHT da: dort erzählt die
+   Bewegung die Richtung, und ein zusätzliches Dreieck wäre Dekoration über
+   einer Aussage, die schon steht (Owner-Auflage „Art und Geometrie des
+   Flusses bleiben"). Sie erscheint ausschliesslich unter reduzierter Bewegung
+   — dort stehen die Punkte, und ohne sie wäre die Richtung UNGESAGT (im
+   Browser nachgemessen: der einzige Richtungs-Hinweis war die Animation). */
+.vp-flow-arrow {
+  display: none;
+}
+
+/* --- 3 · Der Jetzt-Marker der Preisleiste gleitet ------------------------
+ * Er sprang bisher je Minuten-Uhr um eine Viertelstunden-Spalte weiter.
+ * `transform` statt `x1`/`x2`: eine Compositor-Eigenschaft, und der Kreis auf
+ * der Kurve bekommt seine eigene Verschiebung, damit auch die Höhe gleitet. */
+.vp-sp-jetzt,
+.vp-sp-jetzt-punkt {
+  transition: transform var(--vp-motion-chart-update) var(--vp-ease-inout);
+}
+
+/* =========================================================================
    DIE EINE STELLE, AN DER DAS PORTAL VERSTUMMT (Bewegungs-Programm P0)
    Konzept `data/vp-motion-konzept-m1/report.md` §4.2, Prinzip 8
    („EIN Schalter für alles"), Captain-Entscheid 04.09.2026.
@@ -5830,6 +5936,19 @@ body {
   .vp-flowport.accepts,
   .vp-ustate-busy .vp-ustate-dot {
     animation: none;
+  }
+
+  /* ⚠ EINE Aussage, die durch das Anhalten VERLOREN GINGE, muss ersetzt
+     werden (Bewegungs-Programm P3, Konzept §5 Zeile G: „reduced: Punkte
+     statisch, Richtung bleibt"). Beim Energiefluss ist das die RICHTUNG: das
+     Dash-Muster ist symmetrisch, der Knotenwert trägt kein Vorzeichen, und
+     `aria-label` nennt nur die vier Rollen — ohne die laufenden Punkte sagt
+     nichts mehr, wohin die Energie fliesst (im Browser nachgemessen). Die
+     Spitze steht deshalb NUR hier, nicht im Normalbetrieb: dort wäre sie
+     Dekoration über einer Aussage, die schon steht (Owner-Auflage „Art und
+     Geometrie des Flusses bleiben"). */
+  .vp-flow-arrow {
+    display: block;
   }
 
   /* Der Flotten-Punkt braucht `!important` (sein Puls steht in einer

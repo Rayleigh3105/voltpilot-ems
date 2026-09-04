@@ -185,6 +185,16 @@ export interface FlowVertex {
   reverse: boolean;
   strokeWidth: number;
   /**
+   * Der BETRAG der fliessenden Leistung in kW (Bewegungs-Programm P3, E4 a).
+   *
+   * ⚠ Er steht hier als eigenes Feld, statt aus `strokeWidth` zurückgerechnet
+   *   zu werden: die Breite ist bei 6,4 kW gedeckelt (`strokeWidth()`), das
+   *   Tempo aber erst bei 6,0 — eine Umkehrung wäre ab dort blind. Das Tempo
+   *   rechnet `flowTempo(kW)` in `live.ts`, gesetzt wird es in
+   *   `components/useFlowTempo.ts`.
+   */
+  flowKw: number;
+  /**
    * x the label block is centred on. Normally the circle centre; on a narrow
    * (phone) viewBox an outer column's long name would stick out past the
    * viewBox edge and be clipped ("3atteriespeicher"), so it is nudged inwards.
@@ -485,6 +495,7 @@ export function layoutFlow(
       spokeActive: node.flow_active,
       reverse,
       strokeWidth: strokeWidth(mag),
+      flowKw: Math.abs(mag),
       spokeX,
       spokeY,
       memberCount: count,
@@ -566,6 +577,7 @@ export function layoutFlow(
       strokeWidth: amHaus
         ? Math.max(2, strokeWidth(laden.kw ?? 0) - 1)
         : strokeWidth(laden.kw ?? 0),
+      flowKw: Math.abs(laden.kw ?? 0),
       spokeX: x,
       spokeY: y,
       toX,
