@@ -186,7 +186,9 @@
   display: block;
   height: 100%;
   background: var(--vp-action, #2c5282);
-  transition: width 0.2s ease;
+  /* ⚠ Hier ist die Breite der WERT, nicht das Layout: der Balken zeigt den
+     Fortschritt. Die Ausnahme von Prinzip 9 ist bewusst und bleibt. */
+  transition: width var(--vp-motion-base) var(--vp-ease-inout);
 }
 
 /* Nur fuer Vorlesesoftware - die Schritt-Ansage bei einem Wechsel. Bewusst

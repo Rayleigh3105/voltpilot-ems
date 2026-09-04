@@ -243,7 +243,7 @@
 
 .vp-welt-stale {
   opacity: 0.55;
-  transition: opacity 120ms ease-in;
+  transition: opacity var(--vp-motion-fast) var(--vp-ease-in);
 }
 
 /* --- Der aufklappbare Abschnitt (Messwerte-Explorer) ----------------------

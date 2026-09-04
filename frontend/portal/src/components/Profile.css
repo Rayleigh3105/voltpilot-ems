@@ -88,7 +88,11 @@
   border-radius: 999px;
   background: var(--vp-surface-2, #f2f4f7);
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  /* Ein Schalter wechselt einen ZUSTAND, kein Hover-Feedback: 200 ms
+     `--vp-motion-base` (Konzept §6 „Schalter-Knopf 200 ms"). */
+  transition:
+    background-color var(--vp-motion-base) var(--vp-ease-inout),
+    border-color var(--vp-motion-base) var(--vp-ease-inout);
 }
 
 .vp-switch::before {
@@ -117,7 +121,7 @@
   background: #fff;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.2);
   transform: translateX(0);
-  transition: transform 0.15s ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
 }
 
 .vp-switch.on .vp-switch-knob {

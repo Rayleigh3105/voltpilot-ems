@@ -128,7 +128,10 @@
   padding: var(--vp-space-2) var(--vp-space-3);
   min-width: 0;
   cursor: pointer;
-  transition: opacity 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    opacity var(--vp-motion-fast) var(--vp-ease-inout),
+    border-color var(--vp-motion-fast) var(--vp-ease-inout),
+    box-shadow var(--vp-motion-fast) var(--vp-ease-inout);
 }
 
 .vp-am-dev:hover {
@@ -246,7 +249,9 @@
   padding: var(--vp-space-2) var(--vp-space-3);
   border-top: 1px solid var(--vp-border, #f1f3f5);
   min-width: 0;
-  transition: background 0.15s ease, opacity 0.15s ease;
+  transition:
+    background-color var(--vp-motion-fast) var(--vp-ease-inout),
+    opacity var(--vp-motion-fast) var(--vp-ease-inout);
 }
 
 .vp-am-comp:first-of-type {

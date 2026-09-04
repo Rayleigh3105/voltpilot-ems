@@ -329,26 +329,25 @@ describe('Bewegung P0 · Ratsche „kein `transition: all`" (Ziel 0, erreicht)',
 });
 
 /**
- * Der IST-Stand am Tag von P0. Jede Zahl ist eine offene Baustelle für P6/P7
- * („restliche `transition:` auf Tokens, Ratsche → 0", Konzept §9 P7).
+ * Der IST-Stand. Jede Zahl ist eine offene Baustelle für P7 („restliche
+ * `transition:` auf Tokens, Ratsche → 0", Konzept §9 P7); P6 hat sie von
+ * 27 auf 7 gesenkt.
  *
  * ⚠ WER EIN BLATT ERGÄNZT, TRÄGT ES HIER EIN — sonst prüft der Wächter es nie
  *   (der Test unten läuft über ALLE Blätter und verlangt einen Eintrag).
  */
 const DAUER_RATSCHE: Record<string, number> = {
-  'src/index.css': 8,
-  'src/components/AnlagenModell.css': 2,
-  'src/components/AnlagenTabelle.css': 1,
-  'src/components/AnlegenDialog.css': 1,
-  'src/components/CockpitBlocks.css': 1,
+  // P6 hat 20 der 27 Stellen abgeräumt (Zustandswechsel, Chevrons, Chips,
+  // Hover). Was bleibt, bleibt aus je einem Grund:
+  //
+  // - `index.css`: die BREITE des Batterie-Balkens (0,6 s). Sie ist sein WERT,
+  //   nicht sein Layout — und die Dauer gehört zur Aussage, nicht zur Familie.
+  //   P3 (Minis/Fluss/Ringe) entscheidet darüber, nicht P6.
+  // - `Fahrplan.css`, `FahrplanWhy.css`: Diagramm-Flächen. Sie gehören P1/P3 —
+  //   zwei Pakete an derselben Zeile wären ein Konflikt ohne Gewinn.
+  'src/index.css': 1,
   'src/components/Fahrplan.css': 4,
   'src/components/FahrplanWhy.css': 1,
-  'src/components/GeraetRahmen.css': 2,
-  'src/components/Historie.css': 1,
-  'src/components/KomponentenSection.css': 1,
-  'src/components/Profile.css': 2,
-  'src/components/SteuerungFormel.css': 1,
-  'src/components/ZustandCard.css': 1,
 };
 describe('Bewegung P0 · Ratsche „keine nackte Dauer"', () => {
   it('jedes Blatt liegt auf oder unter seinem Stand', () => {

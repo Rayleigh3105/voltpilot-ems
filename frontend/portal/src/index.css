@@ -598,7 +598,7 @@ svg [tabindex]:focus-visible {
 .vp-stale {
   opacity: 0.55;
   filter: grayscale(0.35);
-  transition: opacity 0.3s ease;
+  transition: opacity var(--vp-motion-base) var(--vp-ease-inout);
 }
 
 /* ---------------------------------------------------------------------------
@@ -2903,7 +2903,7 @@ button.vp-cl-item.is-off .vp-cl-label {
   background: var(--vp-surface, #fff);
   color: var(--vp-text-gray, #6c757d);
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s;
+  transition: var(--vp-motion-chrome);
 }
 .vp-gear-btn:hover {
   color: var(--vp-action, #2c5282);
@@ -2966,7 +2966,7 @@ button.vp-cl-item.is-off .vp-cl-label {
   border-left: 2px solid transparent;
   border-radius: 0 var(--vp-radius-sm) var(--vp-radius-sm) 0;
   text-decoration: none;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition: var(--vp-motion-chrome);
 }
 .vp-technik-nav a svg {
   color: var(--vp-tech-faint);
@@ -3068,7 +3068,7 @@ button.vp-tech-card-h.toggle {
   margin-left: auto;
   flex: 0 0 auto;
   color: var(--vp-tech-faint);
-  transition: transform 0.2s;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
 }
 .vp-tech-card.open .vp-tech-chev {
   transform: rotate(180deg);
@@ -3153,7 +3153,7 @@ button.vp-tech-card-h.toggle {
 }
 .vp-tech-disc-chev {
   flex: 0 0 auto;
-  transition: transform 0.2s;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
 }
 .vp-tech-disc.open .vp-tech-disc-chev {
   transform: rotate(180deg);
@@ -3210,7 +3210,7 @@ button.vp-tech-card-h.toggle {
   border: 1px solid var(--vp-border);
   border-radius: var(--vp-radius-sm);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: var(--vp-motion-chrome);
 }
 .vp-tech-device:hover {
   border-color: var(--vp-action);
@@ -3264,7 +3264,7 @@ button.vp-tech-card-h.toggle {
   border: 1px solid var(--vp-border);
   border-radius: var(--vp-radius-sm);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: var(--vp-motion-chrome);
 }
 .vp-tech-edit:hover {
   border-color: var(--vp-action);

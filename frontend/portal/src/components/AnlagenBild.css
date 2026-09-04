@@ -113,6 +113,12 @@
   text-align: left;
   text-decoration: none;
   font: inherit;
+  /* Bewegung P6 / E8 a: der Knoten hatte einen Hover-Zustand, aber keinen Weg
+     dorthin — Rahmen und Schatten sprangen. Jetzt die benannte Liste des
+     Hauses (Farbe/Hintergrund/Rahmen/Schatten, 120 ms) plus der 1-px-Lift.
+     ⚠ Nur benannte Eigenschaften: `all` bewegte hier auch `top`/`left`, und
+     die sind bei einem absolut gesetzten Knoten das LAYOUT. */
+  transition: var(--vp-motion-chrome), transform var(--vp-motion-fast) var(--vp-ease-out);
 }
 
 a.vp-ab-node,
@@ -128,6 +134,7 @@ a.vp-ab-node:hover,
 button.vp-ab-node:hover {
   border-color: var(--vp-action);
   box-shadow: 0 0 0 3px var(--vp-tint), var(--vp-shadow-md);
+  transform: var(--vp-lift);
 }
 
 .vp-ab-node:hover,

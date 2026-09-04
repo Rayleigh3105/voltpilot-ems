@@ -125,7 +125,7 @@
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition: var(--vp-motion-chrome);
 }
 
 .vp-rahmen-nav button .nm {
@@ -273,7 +273,7 @@
 .vp-rahmen-sek > summary > svg:first-child {
   flex: none;
   color: var(--vp-tech-faint, #a0aec0);
-  transition: transform 0.15s ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
 }
 
 .vp-rahmen-sek[open] > summary > svg:first-child {

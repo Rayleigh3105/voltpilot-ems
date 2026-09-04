@@ -45,7 +45,7 @@
 .vp-formel > summary::after {
   content: '▾';
   font-size: var(--vp-erl-fs-12, 12px);
-  transition: transform 0.15s ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
 }
 
 .vp-formel[open] > summary::after {
