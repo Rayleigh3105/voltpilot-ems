@@ -502,7 +502,7 @@
   box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.22);
   /* Die Fingerleiste des Systems darf das letzte Element nicht verdecken. */
   padding-bottom: env(safe-area-inset-bottom, 0);
-  animation: vp-picker-hoch var(--vp-motion-page) var(--vp-ease-out);
+  animation: vp-picker-hoch var(--vp-motion-page) var(--vp-ease-feder);
 }
 @keyframes vp-picker-hoch {
   from {
@@ -510,6 +510,30 @@
   }
   to {
     transform: translateY(0);
+  }
+}
+
+/* Bewegungs-Programm P6 (Konzept §6 Zeile „Bottom-Sheet / Picker"): das Blatt
+   BLENDET AUS. Bis P6 verschwand es im selben Frame — es kam, aber es ging
+   nicht. `is-closing` trägt `VpPanel.tsx` über `useAusblenden`, denselben
+   Baustein wie Modal und Bottom-Sheet. Der Schleier wird dabei durchklickbar-
+   tot: ein Klick auf ein Blatt, das schon geht, ist kein zweites Schliessen. */
+.vp-picker-backdrop.is-closing {
+  pointer-events: none;
+  animation: vp-picker-schleier-aus var(--vp-motion-exit) var(--vp-ease-in) forwards;
+}
+.vp-picker-panel.is-sheet.is-closing {
+  pointer-events: none;
+  animation: vp-picker-ab var(--vp-motion-exit) var(--vp-ease-in) forwards;
+}
+@keyframes vp-picker-ab {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes vp-picker-schleier-aus {
+  to {
+    opacity: 0;
   }
 }
 .vp-picker-griff {

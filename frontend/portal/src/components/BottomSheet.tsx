@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, type KeyboardEvent as ReactKeyboardEvent, typ
 import { createPortal } from 'react-dom';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { fokussierbare } from './VpPanel';
+import { useAusblenden } from '../../designsystem/components/shell/ausblenden';
 
 /**
  * **Das Bottom-Sheet des Verlaufs** (Konzept `data/vp-verlauf-sprache-konzept-v5`
@@ -21,11 +22,19 @@ import { fokussierbare } from './VpPanel';
  * zweiter Mechanismus für dieselbe Zusage wäre genau die Uneinheitlichkeit,
  * die dieses Paket abstellt.
  *
- * ⚠ ES GIBT KEINEN EIGENEN `prefers-reduced-motion`-BLOCK. Die Einblendung
- * hängt an `--vp-c-motion`, und P0 setzt genau dieses Token unter
- * `prefers-reduced-motion` auf 0 — an EINER Stelle, dem Media-Block unter dem
- * `:root` von `index.css`. Ein zweiter Block hier wäre ein Zwilling, der
- * abdriften kann.
+ * ⚠ ES BLENDET AUS, NICHT NUR EIN (Bewegungs-Programm P6, Konzept §6 Zeile
+ * „Bottom-Sheet / Picker"): das Blatt federt in `--vp-motion-page` von unten
+ * herein (`--vp-ease-feder`, leichtes Überschwingen) und geht in
+ * `--vp-motion-exit` wieder nach unten. Bis dahin bleibt es im Baum und trägt
+ * `is-closing` — derselbe `useAusblenden`-Baustein wie im Modal, damit „geht
+ * gerade" im ganzen Haus dasselbe Wort und dieselbe Dauer hat. Das Wischen
+ * bleibt der ZUSATZ; das sichtbare Schließen gilt weiter.
+ *
+ * ⚠ ES GIBT KEINEN EIGENEN `prefers-reduced-motion`-BLOCK. Die Dauern SIND die
+ * Token der Familie `--vp-motion-*`, und P0 nullt sie unter
+ * `prefers-reduced-motion` an EINER Stelle, dem Media-Block unter dem `:root`
+ * von `index.css` — auch die WARTEZEIT, denn `useAusblenden` misst dasselbe
+ * Token. Ein zweiter Block hier wäre ein Zwilling, der abdriften kann.
  *
  * ⚠ ES IST DIE TELEFON-FORM. Am Rechner (≥ 721 px) bleibt der Explorer seine
  * Rail; der Aufrufer entscheidet über `useIsPhone`, ob er dieses Sheet
@@ -51,12 +60,13 @@ export function BottomSheet({
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
+  const { sichtbar, schliessend } = useAusblenden(open, panelRef);
 
   /* Scroll-Sperre + Fokus hinein und beim Schließen ZURÜCK auf den Auslöser.
      Der Auslöser wird beim Öffnen gemerkt, nicht beim Schließen gesucht: zu
      dem Zeitpunkt liegt der Fokus im Sheet, das gleich verschwindet. */
   useEffect(() => {
-    if (!open) return undefined;
+    if (!sichtbar) return undefined;
     const vorherigerFokus = document.activeElement as HTMLElement | null;
     const vorherigerOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -65,9 +75,9 @@ export function BottomSheet({
       document.body.style.overflow = vorherigerOverflow;
       vorherigerFokus?.focus();
     };
-  }, [open]);
+  }, [sichtbar]);
 
-  if (!open) return null;
+  if (!sichtbar) return null;
 
   const tastatur = (event: ReactKeyboardEvent) => {
     if (event.key === 'Escape') {
@@ -88,7 +98,7 @@ export function BottomSheet({
   };
 
   return createPortal(
-    <div className="vp-bs-wrap">
+    <div className={schliessend ? 'vp-bs-wrap is-closing' : 'vp-bs-wrap'}>
       <div className="vp-bs-scrim" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}

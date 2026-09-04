@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { BottomSheet } from './BottomSheet';
 
 /**
@@ -121,5 +121,47 @@ describe('BottomSheet', () => {
     oeffne();
     expect(document.querySelector('.vp-bs-foot')).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Fertig' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * **Bewegung P6 · das Sheet blendet AUS** (Konzept §6: „Feder von unten 300 ms
+ * … Ausblenden 160 ms"). Bis hierher kam es und verschwand im selben Frame.
+ *
+ * ⚠ Die Dauer wird an der `documentElement` gesetzt, weil `useAusblenden` sie
+ * dort MISST und jsdom kein Stylesheet lädt — ohne gemessene Dauer wird nicht
+ * gewartet. Genau deshalb laufen die Tests oben unverändert synchron.
+ */
+describe('BottomSheet · Bewegung P6 (Ausblenden)', () => {
+  afterEach(() => {
+    document.documentElement.style.removeProperty('--vp-motion-exit');
+    vi.useRealTimers();
+  });
+
+  it('bleibt beim Schliessen noch die Ausblend-Dauer im Baum und trägt `is-closing`', () => {
+    vi.useFakeTimers();
+    document.documentElement.style.setProperty('--vp-motion-exit', '160ms');
+    render(<Buehne />);
+    oeffne();
+    expect(document.querySelector('.vp-bs')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
+    expect(document.querySelector('.vp-bs')).not.toBeNull();
+    expect(document.querySelector('.vp-bs-wrap')).toHaveClass('is-closing');
+    expect(document.body.style.overflow).toBe('hidden');
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(document.querySelector('.vp-bs')).toBeNull();
+    expect(document.body.style.overflow).not.toBe('hidden');
+  });
+
+  it('verschwindet bei Schalter 0 sofort', () => {
+    document.documentElement.style.setProperty('--vp-motion-exit', '0s');
+    render(<Buehne />);
+    oeffne();
+    fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
+    expect(document.querySelector('.vp-bs')).toBeNull();
   });
 });
