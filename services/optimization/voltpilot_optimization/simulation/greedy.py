@@ -14,6 +14,13 @@ immediately, every deficit discharges immediately. Greedy never grid-charges
 by construction (EEG-conform), consistent with valuing its export at the EEG
 remuneration like scenario (c) in EEG mode.
 
+Die EINE Regel und die geteilten Vektoren stehen in
+``docs/contracts/stur-speicher-vectors.json``. Dieses Modul ist die KANONISCHE
+Seite; der Java-Zwilling ist ``services/api .../repo/StandardSpeicher.java``,
+und beide lesen die Datei PER PFAD im Test - damit die GEPLANTE Messlatte des
+Optimierers (``voltpilot_optimization/stur.py`` -> ``steuerungPlannedEur``) und
+die GEMESSENE (``savedSteuerungEur``) denselben sturen Speicher meinen.
+
 Wear fairness: (b) is charged the SAME preset wear rate POST-HOC
 (throughput x ct/2 per direction) so the "netto" comparison is one currency;
 the measured pointe is that greedy cycles MORE than the optimizer.
