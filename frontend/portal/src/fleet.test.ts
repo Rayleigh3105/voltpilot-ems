@@ -402,8 +402,12 @@ describe('parseFeedInCapInput (maximale Einspeiseleistung form field, FK1)', () 
 
 describe('siteEarnText (per-site wording, measured)', () => {
   it('uses the SITE kind and a German amount', () => {
-    expect(siteEarnText('eigenverbrauch', 1.1)).toBe('Heute +1,10\u00a0\u20ac gespart');
-    expect(siteEarnText('direktvermarktung', 0.85)).toBe('Heute +0,85\u00a0\u20ac mehr verdient');
+    expect(siteEarnText('eigenverbrauch', 1.1)).toBe(
+      'Heute +1,10\u00a0\u20ac gespart durch die Steuerung',
+    );
+    expect(siteEarnText('direktvermarktung', 0.85)).toBe(
+      'Heute +0,85\u00a0\u20ac mehr verdient durch die Steuerung',
+    );
   });
 
   it('is silent (null) without a computable value - never a fake zero', () => {
@@ -411,11 +415,15 @@ describe('siteEarnText (per-site wording, measured)', () => {
   });
 
   it('keeps a negative measured value honest (losses debit VoltPilot)', () => {
-    expect(siteEarnText('direktvermarktung', -0.2)).toBe('Heute -0,20\u00a0\u20ac mehr verdient');
+    expect(siteEarnText('direktvermarktung', -0.2)).toBe(
+      'Heute -0,20\u00a0\u20ac mehr verdient durch die Steuerung',
+    );
   });
 
   it('never renders a negative zero', () => {
-    expect(siteEarnText('eigenverbrauch', -0.0001)).toBe('Heute +0,00\u00a0\u20ac gespart');
+    expect(siteEarnText('eigenverbrauch', -0.0001)).toBe(
+      'Heute +0,00\u00a0\u20ac gespart durch die Steuerung',
+    );
   });
 });
 
@@ -451,7 +459,22 @@ describe('battery-without-device warning copy', () => {
 });
 
 describe('daily saved helpers', () => {
-  const earnSite = (id: string, dailySaved: { day: string; savedEur: number }[]): EarningsSite => ({
+  /**
+   * ⚠ **DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG** (Captain
+   * 04.09.2026): die Tages-Reihe wird über `savedSteuerungEur` gelesen.
+   * `savedEur` steht daneben als die ADMIN-Zahl, die keine Fläche mehr zeigt —
+   * hier bewusst mit einem ANDEREN Betrag, damit ein Rückfall auffiele.
+   */
+  const tag = (day: string, steuerung: number) => ({
+    day,
+    savedEur: steuerung + 100,
+    savedSteuerungEur: steuerung,
+  });
+
+  const earnSite = (
+    id: string,
+    dailySaved: { day: string; savedEur: number; savedSteuerungEur?: number | null }[],
+  ): EarningsSite => ({
     id,
     name: id,
     plantKind: 'eigenverbrauch',
@@ -481,12 +504,14 @@ describe('daily saved helpers', () => {
   });
 
   it('savedOnDay picks the exact Berlin day, else null', () => {
-    const daily = [
-      { day: '2026-07-05', savedEur: 0.4 },
-      { day: '2026-07-06', savedEur: 1.2 },
-    ];
+    const daily = [tag('2026-07-05', 0.4), tag('2026-07-06', 1.2)];
     expect(savedOnDay(daily, '2026-07-06')).toBe(1.2);
     expect(savedOnDay(daily, '2026-07-04')).toBeNull();
+  });
+
+  it('liest NIE `savedEur` als Rückfall — ohne Steuerungs-Anteil gibt es nichts', () => {
+    const daily = [{ day: '2026-07-06', savedEur: 92.02 }];
+    expect(savedOnDay(daily, '2026-07-06')).toBeNull();
   });
 
   it('berlinDay converts an instant to the Berlin calendar day', () => {
@@ -496,16 +521,23 @@ describe('daily saved helpers', () => {
 
   it('fleetDailySaved merges the sites per day, sorted', () => {
     const merged = fleetDailySaved([
-      earnSite('a', [
-        { day: '2026-07-06', savedEur: 1.0 },
-        { day: '2026-07-05', savedEur: 0.5 },
-      ]),
-      earnSite('b', [{ day: '2026-07-06', savedEur: 0.25 }]),
+      earnSite('a', [tag('2026-07-06', 1.0), tag('2026-07-05', 0.5)]),
+      earnSite('b', [tag('2026-07-06', 0.25)]),
     ]);
     expect(merged).toEqual([
-      { day: '2026-07-05', savedEur: 0.5 },
-      { day: '2026-07-06', savedEur: 1.25 },
+      { day: '2026-07-05', savedEur: 0.5, savedSteuerungEur: 0.5 },
+      { day: '2026-07-06', savedEur: 1.25, savedSteuerungEur: 1.25 },
     ]);
+  });
+
+  it('lässt einen Tag WEG, an dem eine Anlage keinen Steuerungs-Anteil trägt', () => {
+    // Eine Teil-Summe ist keine Messung: der 06.07. fällt ganz heraus, statt
+    // 1,00 € statt 1,25 € zu behaupten.
+    const merged = fleetDailySaved([
+      earnSite('a', [tag('2026-07-06', 1.0), tag('2026-07-05', 0.5)]),
+      earnSite('b', [{ day: '2026-07-06', savedEur: 92.02 }]),
+    ]);
+    expect(merged.map((d) => d.day)).toEqual(['2026-07-05']);
   });
 });
 
@@ -513,8 +545,8 @@ describe('sparkDays (fixed 14-day axis)', () => {
   it('pads missing days with null slots, oldest first, ending today (Berlin)', () => {
     const days = sparkDays(
       [
-        { day: '2026-07-05', savedEur: 0.4 },
-        { day: '2026-07-06', savedEur: 1.2 },
+        { day: '2026-07-05', savedEur: 100.4, savedSteuerungEur: 0.4 },
+        { day: '2026-07-06', savedEur: 101.2, savedSteuerungEur: 1.2 },
       ],
       NOW,
     );
@@ -530,7 +562,11 @@ describe('sparkAussage (K1/K8: der Satz zum 14-Tage-Spark)', () => {
     sparkDays(
       Object.entries(over)
         .filter(([, v]) => v != null)
-        .map(([day, savedEur]) => ({ day, savedEur: savedEur as number })),
+        .map(([day, eur]) => ({
+          day,
+          savedEur: (eur as number) + 100,
+          savedSteuerungEur: eur as number,
+        })),
       NOW,
     );
 

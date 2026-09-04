@@ -49,7 +49,7 @@ interface Fixture {
   laeuft: boolean;
   now: string;
   savedSpeicherEur: number | null;
-  geplantEur: number | null;
+  steuerungGeplantEur: number | null;
   money: SiteEarnings;
 }
 const FX = FIXTURES.fixtures as unknown as Fixture[];
@@ -90,22 +90,18 @@ function Karte({ f }: { f: Fixture }) {
     laeuft: f.laeuft,
     range: f.range,
   });
-  // Die Aufteilung (#591) liegt in den Fixtures NEBEN der Kassen-Antwort; der
-  // echte Endpunkt liefert sie IN ihr. Hier wird sie deshalb eingesetzt - so
-  // fährt die Harness genau die Daten, die die Seite bekommt.
-  const stur = f.savedSpeicherEur;
-  const steuerung = stur == null || f.money.savedEur == null ? null : f.money.savedEur - stur;
+  // Die Aufteilung liegt in den Fixtures IN der Kassen-Antwort (wie beim echten
+  // Endpunkt); ohne sie gilt der `no_battery_data`-Fall.
   const money: SiteEarnings = {
     ...f.money,
-    savedSpeicherEur: stur,
-    savedSteuerungEur: steuerung,
-    steuerungSplitReason: stur == null ? 'no_battery_data' : null,
+    steuerungSplitReason:
+      f.money.savedSteuerungEur == null ? 'no_battery_data' : f.money.steuerungSplitReason,
   };
   const schritteInput = {
     money,
-    sturEur: stur,
-    steuerungEur: steuerung,
-    geplantEur: f.geplantEur,
+    steuerungEur: money.savedSteuerungEur,
+    splitReason: money.steuerungSplitReason,
+    steuerungGeplantEur: f.steuerungGeplantEur,
   };
   const schritte = speicherSchritte(schritteInput);
   // Der ECHTE Speicher-Block (P1+P5) an der Einbaustelle der Karte - Props sind
@@ -173,6 +169,10 @@ const PROOF_HISTORY: History = {
     gridCostEur: 1.59,
     tarifArt: 'fest',
     batterySavingsPlannedEur: 9.4,
+    // ⚠ Die Plan-Zeile der Kundenansicht hängt NUR an diesem Feld (Captain
+    //   04.09.2026); `batterySavingsPlannedEur` misst gegen „ohne Speicher"
+    //   und erreicht die Fläche nicht mehr.
+    steuerungPlannedEur: 4.2,
     autarkiePct: 0.96,
     eigenverbrauchPct: 0.31,
   },
@@ -230,13 +230,10 @@ function raster(nettoGesamt: number, tagBeginnUtc: string, mitEigenverbrauch = t
 const ECHT_EARNINGS = api.siteEarnings;
 api.siteEarnings = (async (siteId: string) => {
   const f = fixtureOf(String(siteId).replace(/^proof-/, ''));
-  const stur = f.savedSpeicherEur;
-  const steuerung = stur == null || f.money.savedEur == null ? null : f.money.savedEur - stur;
   return {
     ...f.money,
-    savedSpeicherEur: stur,
-    savedSteuerungEur: steuerung,
-    steuerungSplitReason: stur == null ? 'no_battery_data' : null,
+    steuerungSplitReason:
+      f.money.savedSteuerungEur == null ? 'no_battery_data' : f.money.steuerungSplitReason,
     series: raster(f.money.nettoErgebnisEur ?? 0, f.money.from, f.money.eigenverbrauchsWertEur != null),
   };
 }) as typeof ECHT_EARNINGS;

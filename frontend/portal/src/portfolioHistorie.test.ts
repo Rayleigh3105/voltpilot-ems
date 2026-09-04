@@ -316,6 +316,8 @@ describe('erloeseAggregat', () => {
     // ist 900 + 99,26 - 40 = 959,26 (die Identitaet, die `nettoEur` fuehrt).
     actualEur: -860,
     savedEur: 161.44,
+    savedSpeicherEur: 93.2,
+    savedSteuerungEur: 68.24,
     eingespeistKwh: 9573.8,
     coveredSlots: 2880,
     series: [
@@ -331,6 +333,8 @@ describe('erloeseAggregat', () => {
     // Stromkosten 12,21 EUR => actual = -50; Netto = 62,21 - 12,21 = 50,00.
     actualEur: -50,
     savedEur: 16.79,
+    savedSpeicherEur: 9.5,
+    savedSteuerungEur: 7.29,
     eingespeistKwh: 1028.3,
     coveredSlots: 859,
   });
@@ -347,8 +351,10 @@ describe('erloeseAggregat', () => {
     expect(
       (a.einspeiseEur ?? 0) + (a.eigenverbrauchEur ?? 0) - (a.stromkostenEur ?? 0),
     ).toBeCloseTo(a.nettoEur ?? 0, 6);
-    // Die Steuerung ist eine ZURECHNUNG - sie steckt schon darin.
-    expect(a.savedEur).toBeCloseTo(178.23, 6);
+    // Die Steuerung ist eine ZURECHNUNG - sie steckt schon darin. ⚠ Seit dem
+    // 04.09.2026 misst sie gegen DENSELBEN Speicher ohne smarte Steuerung
+    // (68,24 + 7,29), nie mehr gegen eine Anlage OHNE Speicher (178,23).
+    expect(a.steuerungEur).toBeCloseTo(75.53, 6);
     expect(a.coveredSlots).toBe(3739);
   });
 
@@ -395,7 +401,7 @@ describe('erloeseAggregat', () => {
     expect(a.leer).toBe(true);
     expect(a.nettoEur).toBeNull();
     expect(a.stromkostenEur).toBeNull();
-    expect(a.savedEur).toBeNull();
+    expect(a.steuerungEur).toBeNull();
   });
 });
 

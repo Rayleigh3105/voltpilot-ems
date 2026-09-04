@@ -136,7 +136,10 @@ describe('erloesKomposition — Multi-Modus-Komposition', () => {
     ]);
     expect(view.rows[0].valueText).toBe(`1.204,00${NBSP}€`);
     expect(view.rows[1].valueText).toBe(`301,46${NBSP}€`);
-    expect(view.rows[1].note).toContain(`davon 89,00${NBSP}€ durch VoltPilots Steuerung`);
+    // ⚠ Die Zurechnung ist der STEUERUNGS-Anteil (55,00 €), nie die Gesamtzahl
+    //   (89,00 €) — Captain 04.09.2026.
+    expect(view.rows[1].note).toContain(`davon 55,00${NBSP}€ durch VoltPilots Steuerung`);
+    expect(view.rows[1].note).not.toContain('89,00');
     expect(view.rows[2].valueText).toBe(`41,00${NBSP}€`);
     expect(view.isEmpty).toBe(false);
   });
@@ -501,6 +504,9 @@ function siteMoney(over: Partial<SiteEarnings> = {}): SiteEarnings {
     stromkostenEur: 60.14,
     nettoErgebnisEur: 999.26,
     savedEur: 161.44,
+    savedSpeicherEur: 93.2,
+    savedSteuerungEur: 68.24,
+    steuerungSplitReason: null,
     arbitrageEur: null,
     pvShiftEur: null,
     baselineEur: 100,
@@ -551,11 +557,16 @@ describe('erloesErgebnis · Karte 1 der Erlöse-Welt', () => {
 
   it('zeigt die Zurechnung der Steuerung als UNTERZEILE, nie als weiteren Summanden', () => {
     const view = erloesErgebnis({ money: siteMoney(), periodLabel: 'Juli 2026' });
-    expect(view.steering).toContain('161,44');
+    // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG (Captain
+    //   04.09.2026): die Zurechnung ist `savedSteuerungEur`, und die
+    //   Gesamtzahl steht nirgends.
+    expect(view.steering).toContain('68,24');
+    expect(view.steering).not.toContain('161,44');
     expect(view.steering).toContain('durch VoltPilots Steuerung');
-    expect(view.steeringTitel).toContain('ohne Speicher');
-    // savedEur darf in keiner Komposition-Zeile auftauchen.
-    expect(view.rows.some((r) => r.eur === 161.44)).toBe(false);
+    expect(view.steeringTitel).toContain('ohne smarte Steuerung');
+    expect(view.steeringTitel).not.toMatch(/ohne Speicher\b/);
+    // Die Zurechnung darf in keiner Komposition-Zeile als Summand auftauchen.
+    expect(view.rows.some((r) => r.eur === 68.24)).toBe(false);
   });
 
   it('schreibt „—“ statt einer erfundenen Null - und nennt seit E7 nur noch fehlende Daten', () => {
@@ -619,6 +630,8 @@ describe('erloesErgebnis · Karte 1 der Erlöse-Welt', () => {
         stromkostenEur: null,
         nettoErgebnisEur: null,
         savedEur: null,
+        savedSpeicherEur: null,
+        savedSteuerungEur: null,
       }),
       periodLabel: 'Juli 2026',
     });
@@ -1070,8 +1083,8 @@ function tagLaufend(over: Partial<SiteEarnings> = {}): SiteEarnings {
     stromkostenEur: 1.585,
     nettoErgebnisEur: 63.233,
     savedEur: -2.67,
-    savedSpeicherEur: -4.12,
-    savedSteuerungEur: 1.45,
+    savedSpeicherEur: -1.22,
+    savedSteuerungEur: -1.45,
     steuerungSplitReason: null,
     marktpraemieEur: 4.79,
     selbstverbrauchKwh: 154.736,
@@ -1180,7 +1193,7 @@ describe('P0/B2 · der Steuerungs-Chip trägt seinen Ton (E8)', () => {
       periodLabel: 'Mo., 24.08.2026',
       now: new Date('2026-09-02T10:19:00Z'),
     });
-    expect(v.steering).toBe(`davon 6,80${NBSP}€ durch VoltPilots Steuerung`);
+    expect(v.steering).toBe(`davon 4,40${NBSP}€ durch VoltPilots Steuerung`);
     expect(v.steeringTon).toBe('ok');
   });
 
@@ -1192,7 +1205,7 @@ describe('P0/B2 · der Steuerungs-Chip trägt seinen Ton (E8)', () => {
       now: new Date('2026-09-02T10:19:00Z'),
     });
     expect(v.steeringTon).toBe('neutral');
-    expect(v.steering).toBe(`VoltPilots Steuerung: −2,67${NBSP}€ — Zwischenstand`);
+    expect(v.steering).toBe(`VoltPilots Steuerung: −1,45${NBSP}€ — Zwischenstand`);
   });
 
   it('färbt ein Minus im ABGESCHLOSSENEN Zeitraum bernstein und sagt „weniger als"', () => {
@@ -1203,12 +1216,16 @@ describe('P0/B2 · der Steuerungs-Chip trägt seinen Ton (E8)', () => {
       now: new Date('2026-09-03T10:19:00Z'),
     });
     expect(v.steeringTon).toBe('warn');
-    expect(v.steering).toBe(`VoltPilots Steuerung: 2,67${NBSP}€ weniger als ohne Steuerung`);
+    expect(v.steering).toBe(
+      `VoltPilots Steuerung: 1,45${NBSP}€ weniger als ein Speicher ohne smarte Steuerung`,
+    );
   });
 
   it('sagt ohne Zurechnung gar nichts — kein Chip, kein Ton', () => {
     const v = erloesErgebnis({
-      money: tagLaufend({ savedEur: null }),
+      // ⚠ Ohne den STEUERUNGS-Anteil gibt es keinen Chip — die Gesamtzahl ist
+      //   ausdrücklich kein Ersatz.
+      money: tagLaufend({ savedSteuerungEur: null, savedSpeicherEur: null }),
       periodLabel: 'Mi., 02.09.2026',
       now: new Date('2026-09-02T10:19:00Z'),
     });

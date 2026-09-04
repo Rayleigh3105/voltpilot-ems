@@ -203,7 +203,7 @@ describe('per-row derivations', () => {
   });
 
   it('siteSavedToday reads the site 14-day series at the Berlin day', () => {
-    const es = earningsSite({ dailySaved: [{ day: '2026-07-20', savedEur: 3.5 }] });
+    const es = earningsSite({ dailySaved: [{ day: '2026-07-20', savedEur: 103.5, savedSteuerungEur: 3.5 }] });
     expect(siteSavedToday(es, NOW)).toBe(3.5);
     expect(siteSavedToday(earningsSite({ dailySaved: [] }), NOW)).toBeNull();
     expect(siteSavedToday(null, NOW)).toBeNull();
@@ -237,7 +237,7 @@ describe('portfolioKpis (aggregate KPI row)', () => {
       earningsSite({
         id: 'a',
         savedEur: 20,
-        dailySaved: [{ day: '2026-07-20', savedEur: 2 }],
+        dailySaved: [{ day: '2026-07-20', savedEur: 102, savedSteuerungEur: 2 }],
         peakShaving: {
           leistungspreisEurKw: 100,
           abrechnung: 'jahr',
@@ -252,7 +252,7 @@ describe('portfolioKpis (aggregate KPI row)', () => {
       earningsSite({
         id: 'b',
         savedEur: 12,
-        dailySaved: [{ day: '2026-07-20', savedEur: 1.5 }],
+        dailySaved: [{ day: '2026-07-20', savedEur: 101.5, savedSteuerungEur: 1.5 }],
         peakShaving: null,
       }),
     ],
