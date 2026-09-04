@@ -6127,6 +6127,16 @@ span.vp-swap-out {
  * Die Vorgabe-Mischung `plus-lighter` des Browsers bleibt: sie ist genau für
  * dieses Überblenden gebaut und verhindert den Durchblick auf den Grund,
  * den ein gewöhnliches Übereinander in der Mitte hätte. */
+/* ⚠ Auch die GRUPPE des Wurzelbildes rechnet über die Familie. Der Browser
+   gäbe ihr sonst seine 250-ms-Vorgabe, und der EINE Schalter am Dateiende
+   ließe genau sie stehen — der Übergang wäre unter `reduced` zwar unsichtbar
+   (alt und neu sind gleich groß, die Gruppe morpht also nichts), hielte den
+   Wechsel aber weiter 250 ms auf. „Ein Schalter für alles" (Prinzip 8) heißt
+   auch: keine Dauer, die er nicht erreicht. */
+::view-transition-group(root) {
+  animation-duration: var(--vp-motion-base);
+  animation-timing-function: var(--vp-ease-inout);
+}
 ::view-transition-old(root) {
   animation-name: vp-vt-blende-aus;
   animation-duration: var(--vp-motion-exit);
@@ -6169,6 +6179,8 @@ span.vp-swap-out {
  * am Telefon, weil nichts tiefer geht (Report §6: „Geschwister-Reiter blenden
  * statt schieben"). */
 @media (max-width: 720px) {
+  html.vp-vt-push::view-transition-group(root),
+  html.vp-vt-pop::view-transition-group(root),
   html.vp-vt-push::view-transition-old(root),
   html.vp-vt-push::view-transition-new(root),
   html.vp-vt-pop::view-transition-old(root),
