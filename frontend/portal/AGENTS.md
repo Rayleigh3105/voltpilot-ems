@@ -3001,34 +3001,62 @@ die FLÄCHE trägt. **Ohne ein einziges Profil rendert alles Zeichen für Zeiche
   375** gemessen: 0 px horizontaler Überlauf, 0 überstehende Elemente, keine
   Konsolenmeldungen.
 
-## Die SPEICHER-AUSSAGE ist EINE Ableitung fuer drei Flaechen (`speicherAussage.ts`)
+## Die STEUERUNGS-AUSSAGE: die Kundenansicht misst gegen einen STUREN Speicher (`speicherAussage.ts`)
 
-Erloese-Konzept `data/vp-erloese-seite-konzept-e2` §3.5/§3.6 (Captain-Entscheide E2=a, E8),
-Paket P1+P5. **Der behobene Befund war eine ZWEITE WAHRHEIT ueber dasselbe Wort:** `savedEur`
-misst den GANZEN Speicher (Baseline = Anlage ohne Speicher, siehe die api-Doku zur Dreiteilung),
-das Cockpit stellte ihn aber unter „Steuerung" — waehrend die Erloese-Seite denselben Zeitraum
-mit dem SPLIT beschrieb. Auf einer Stunde konnte damit „Steuerung −2,67 €" neben „Steuerung
-+1,45 €" stehen.
+**Captain-Order 04.09.2026, wörtlich zum Screenshot der Live-Anlage Pilsting/Herzogau (Erlöse →
+Monat): „Das ist doch Quatsch, du musst Anlage immer mit Speicher berechnen, einer halt ohne
+smart Steuerung."** Sie ERSETZT die Entscheide E2/E8 vom 02.09.2026 („BEIDES", `savedEur` über
+`savedSteuerungEur`, `data/vp-erloese-seite-konzept-e2` §3.5/§3.6).
 
-- **⚠ `speicherAussage(money, ctx)` (`src/speicherAussage.ts`, rein) ist die EINE Ableitung** —
-  Langform (`zeilen` 1–4 fuer `components/SpeicherBlock.tsx` auf der Erloese-Karte) UND Kurzform
-  (`kurz`/`kurzTitel` fuer `cockpitWidgets.cockpitHero` und `steuerungArea.contributionRows`).
-  `steeringAttributionNote` ist damit ERSATZLOS entfallen. Wer eine vierte Flaeche baut,
-  konsumiert sie — nie `savedEur` roh unter dem Wort „Steuerung".
-- **⚠ `savedSpeicherEur`/`savedSteuerungEur`/`steuerungSplitReason` sind OPTIONAL auf
-  `SiteEarnings`/`EarningsSite`:** `undefined` heisst „aelteres Backend" ⇒ nur Zeile 1, nie eine
-  erfundene Aufteilung. `steuerungSplitReason: 'no_battery_data'` ist die GEMELDETE Leere und
-  fuehrt auf die Technik-Seite; ohne gemeldeten Grund wird gar nichts behauptet.
-- **⚠ Der IDENTITAETS-WAECHTER ist fail-soft:** ergibt `savedSpeicherEur + savedSteuerungEur`
-  nicht `savedEur` (Toleranz 0,005 €), faellt Zeile 2 WEG und es gibt eine `console.warn` — eine
-  falsche Zahl waere schlimmer als eine fehlende. Serverseitig ist die Rekonziliation exakt
-  (BigDecimal-Subtraktion), der Waechter faengt nur Drift ueber die Draht-Grenze.
-- **Der Aufteilungs-Schritt der Erklaerung** („Wie wird das berechnet?") wohnt als
-  `splitZeile` in `erloesKomposition.steuerungFormel` — mit eingesetzten Zahlen und dem
-  Glossar-Wort „stur arbeitender Speicher" (§3.11), nie „Baseline".
-- **Vektoren:** `src/test/fixtures/speicherAussage.vektoren.json` sind die **15 Konzept-Fixtures**
-  aus `derived.json` (`erwartet` == woertlich `neu.speicher`). Wer die Ableitung aendert, aendert
-  sie gegen diese Datei — nicht gegen den eigenen Kopf.
+- **⚠ DIE EINE REGEL, an der alles hängt: eine KUNDENFLÄCHE zeigt AUSSCHLIESSLICH
+  `savedSteuerungEur`** — den Mehrwert gegenüber DEMSELBEN Speicher ohne smarte Steuerung.
+  **`savedEur`/`savedSpeicherEur`/`baselineEur` sind ADMIN-Zahlen** (Plattform-Optimizer,
+  Flotten-Admin führen sie weiter); sie messen gegen eine Anlage GANZ OHNE Speicher und
+  beantworten damit eine Frage, die kein Kunde hat — sein Speicher steht bereits im Keller.
+  Der Screenshot zeigte „Speicher im Zeitraum + 92,02 €" als große Zahl über den 43,65 €, die
+  wirklich zählen.
+- **⚠ OHNE VERGLEICH GIBT ES KEINE ZAHL — und die Gesamtzahl ist KEIN ERSATZ.** Fehlen die
+  Batterie-Stammdaten (`steuerungSplitReason: 'no_battery_data'`), sagt die Fläche den GRUND im
+  Klartext (`speicherAussage.ohneVergleich`) und bietet den Nachtrag-Weg an. Ein ÄLTERES Backend,
+  das die Felder gar nicht kennt, bekommt GAR KEINE Aussage (`null`) und keine
+  Nachtrag-Aufforderung — **ein fehlendes FELD ist kein fehlendes STAMMDATUM**.
+- **⚠ `speicherAussage(money, ctx)` (rein) ist die EINE Ableitung** für die Steuerungs-Karte
+  (`components/erloese/SpeicherKarte.tsx`, Überschrift „VoltPilots Steuerung"), die
+  Cockpit-Erlöskarte und den Steuerungs-Bereich (beide `kurz`). Wer eine vierte Fläche baut,
+  konsumiert sie — nie eine Geld-Zahl roh unter dem Wort „Steuerung".
+- **Die RECHENSCHRITTE sind DREI** (`erloesEbenen.speicherSchritte`): ① gemessen (Ihre
+  Stromrechnung mit VoltPilot) → ② gerechnet: dieselbe Anlage mit Speicher, aber ohne smarte
+  Steuerung → ③ Steuerung = die Differenz, mit dem Kassenrechnungs-Hinweis. **Schritt ② wird
+  NICHT zusätzlich gerechnet, sondern umgestellt:** als Gutschrift gelesen ist er exakt
+  `gemessen − savedSteuerungEur` (die Identität `savedSteuerungEur = sturKosten − actualEur` der
+  Dreiteilung, `EarningsDto`), und die `probe` der Zeile prüft es. „Schritt 4 · sturer Speicher"
+  und „Schritt 3 · Speicher gesamt" sind ERSATZLOS entfallen.
+- **⚠ Die PLAN-ZEILE hängt an `history.totals.steuerungPlannedEur`**, NIE an
+  `batterySavingsPlannedEur` (das misst gegen „ohne Speicher"). Ohne das Feld bleibt die Zeile
+  WEG — nie die alte Zahl unter dem neuen Wort.
+- **⚠ Der IDENTITÄTS-WÄCHTER ist fail-soft, aber strenger als vorher:** ergibt
+  `savedSpeicherEur + savedSteuerungEur` nicht `savedEur` (Toleranz 0,005 €), wird GAR KEINE
+  Steuerungs-Zahl behauptet (`console.warn`) — eine Zahl, der die eigene Prüfsumme widerspricht,
+  ist schlimmer als keine. `savedEur`/`savedSpeicherEur` werden dort NUR als Prüfsumme gelesen.
+- **⚠ Die TAGES-REIHE liest `EarningsDaily.savedSteuerungEur`** (`fleet.tagesSteuerung` — die EINE
+  Stelle; `savedOnDay`/`sparkDays`/`fleetDailySaved` hängen daran). Ein Tag ohne den Anteil zeigt
+  NICHTS, nie einen Rückfall auf `savedEur`; und **`fleetDailySaved` lässt den GANZEN Tag weg,
+  sobald auch nur eine Anlage ihn nicht trägt** (eine Teil-Summe ist keine Messung).
+- **DER WÄCHTER ist `src/messlatte.test.ts`** und hat zwei Hälften: eine GIFT-Zahl als `savedEur`
+  durch jede Kunden-Ableitung (sie darf in keinem erzeugten Text stehen) UND ein Text-Scan der
+  Kunden-Ableitungsdateien auf die Wörter der alten Messlatte („ohne Speicher", „ungeregelt",
+  „sturer Speicher", „Speicher gesamt", „Ihr Speicher hat"). **Die Ausnahmen-Liste ist eine
+  RATSCHE — sie wird nur kürzer;** heute stehen dort genau die drei `proofLine`/`realizedFinePrint`-
+  Literale von `fleet.ts` mit ihrem Grund.
+- **⚠ BEWUSST NICHT umgestellt: die FAHRPLAN-Welt** (`schedule.ts` `plannedSavingLabel`/
+  `planKernaussage`/`fleet.proofAnchor`, die Fahrplan-Seite und `pages/DataPages.tsx`). Ihre
+  Sätze beschreiben die Plan-Baseline DES OPTIMIERERS je Slot (`schedule.baselineCostEur`), nicht
+  die gemessene Kasse — sie nennen ihre Messlatte ausdrücklich und sind damit ehrlich. Wer sie
+  umstellt, stellt zuerst den Optimierer um.
+- **Vektoren:** `src/test/fixtures/speicherAussage.vektoren.json` trägt die **15 Konzept-Fixtures**
+  aus `derived.json` — seit dem 04.09.2026 nur noch als EINGABEN; ihre `erwartet`-Blöcke
+  beschrieben die gestrichene zweizeilige Form. Die Erwartungen stehen ausgeschrieben in
+  `speicherAussage.test.ts`.
 
 ## Erlöse „Neu modern" (Variante C) · P0 — das Fundament für die ganze Fläche
 
@@ -3171,10 +3199,10 @@ gleichen Stunde), **E9** („Netto überall"), **E12 = (a)** (Pilot). Behoben: *
   zusammengebautes Fantasie-Objekt wäre eine zweite Wahrheit über eine Antwort, die es nicht gibt.
   **Die Sekundärzeile bleibt dort LEER**, und das ist eine Aussage: sie nennt Tarif bzw.
   MaStR-Referenz, beides gibt es je ANLAGE, nicht je Flotte (das Portfolio ist tarifneutral).
-- **⚠ B13, die drei behobenen Abweichungen:** „davon … durch VoltPilots Steuerung" → **„Speicher"**
-  (`speicherAussage.gesamtLabel`; `savedEur` ist der Wert des GANZEN Speichersystems) — auch die
-  Tabellenspalte; „↑ 532 % mehr als am Vortag" → siehe die Vergleichsregel unten; die drei Teile
-  stehen im Wasserfall statt als Prosa.
+- **⚠ B13, die drei behobenen Abweichungen:** „davon … durch VoltPilots Steuerung" → **„Steuerung"**
+  (`speicherAussage.label`; die Spalte zeigt seit dem 04.09.2026 `savedSteuerungEur` — der Wert des
+  GANZEN Speichersystems ist eine ADMIN-Zahl, siehe „Die STEUERUNGS-AUSSAGE"); „↑ 532 % mehr als am
+  Vortag" → siehe die Vergleichsregel unten; die drei Teile stehen im Wasserfall statt als Prosa.
 - **⚠ DIE VERGLEICHSREGEL: am LAUFENDEN Tag entscheidet ausschließlich der SERVER-Wert.**
   `portfolioHistorie.portfolioVergleich` liest `Earnings.vergleich` (neu, `GET /api/v1/earnings`:
   beide Seiten bis zur gleichen Berliner Wanduhr-Stunde, aus derselben Preiskomposition wie die
@@ -3183,9 +3211,10 @@ gleichen Stunde), **E9** („Netto überall"), **E12 = (a)** (Pilot). Behoben: *
   **Formuliert wird an EINER Stelle:** `vergleichLaufend.gleicheStundeZeile` teilt sich Chip,
   Beträge-Zeile und Methoden-Satz mit der Anlagen-Seite.
 - **⚠ Die Flotten-Totals führen die Dreiteilung NICHT** (`EarningsTotalsDto`: eine Anlage ohne
-  gepflegte Batterie-Stammdaten risse dort eine unbeweisbare Lücke). Die Speicher-Karte zeigt
-  deshalb keine „davon Steuerung"-Zeile, sondern `portfolioHistorie.SPEICHER_JE_ANLAGE`
-  („je Anlage in der Tabelle") — der ORT der Aufteilung statt einer erfundenen Zahl.
+  gepflegte Batterie-Stammdaten risse dort eine unbeweisbare Lücke). Die Steuerungs-Karte des
+  Portfolios summiert deshalb die ZEILEN (`ErloeseAggregat.steuerungEur` = Σ `savedSteuerungEur`
+  der beitragenden Anlagen) und verweist mit `portfolioHistorie.SPEICHER_JE_ANLAGE` („je Anlage in
+  der Tabelle") auf den ORT der Aufteilung statt auf eine erfundene Zahl.
 - **⚠ Der Portfolio-Kopf ist `vp-sr-only`** (P3/P4: die Zeit-Leiste trägt die Identität), die Leiste
   wird also 68 px UNTER ihrem Fluss-Platz angeheftet und der Rumpf rutscht darunter. Bis P6 fing das
   die Polsterung der Summen-Karte auf; seit das `Statement` OHNE Rahmen auf dem Grund steht, lag

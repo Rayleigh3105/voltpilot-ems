@@ -513,7 +513,9 @@ function money(overrides: Partial<EarningsSite> = {}): EarningsSite {
 describe('handelBlock — die Handels-Erzählung aus BESTEHENDEN Daten', () => {
   it('nennt Verdienst, Ladefenster und geplanten Verkauf', () => {
     const view = handelBlock({
-      money: money({ savedEur: 38.4, arbitrageEur: 21.1 }),
+      // ⚠ Die Kachel liest den STEUERUNGS-Anteil (Captain 04.09.2026), nicht
+      //   `savedEur` — jenes misst gegen eine Anlage OHNE Speicher.
+      money: money({ savedEur: 61.9, savedSpeicherEur: 23.5, savedSteuerungEur: 38.4, arbitrageEur: 21.1 }),
       slots: TRADING_DAY,
       now: NOW,
       periodLabel: 'Heute',
@@ -529,17 +531,32 @@ describe('handelBlock — die Handels-Erzählung aus BESTEHENDEN Daten', () => {
 
   it('zeigt das Marktprämien-Kleingedruckte nur bei hinterlegtem anzulegendem Wert', () => {
     expect(
-      handelBlock({ money: money({ savedEur: 1 }), slots: [], now: NOW, periodLabel: 'Heute' })
-        .praemieNote,
+      handelBlock({
+        money: money({ savedSteuerungEur: 1 }),
+        slots: [],
+        now: NOW,
+        periodLabel: 'Heute',
+      }).praemieNote,
     ).toBeNull();
     expect(
       handelBlock({
-        money: money({ savedEur: 1, anzulegenderWertCtKwh: 8.11 }),
+        money: money({ savedSteuerungEur: 1, anzulegenderWertCtKwh: 8.11 }),
         slots: [],
         now: NOW,
         periodLabel: 'Heute',
       }).praemieNote,
     ).toMatch(/Marktprämie/);
+  });
+
+  it('bleibt ohne Aufteilung STUMM — die Gesamtzahl ist kein Ersatz', () => {
+    const view = handelBlock({
+      money: money({ savedEur: 92.02, savedSteuerungEur: null }),
+      slots: TRADING_DAY,
+      now: NOW,
+      periodLabel: 'Heute',
+    });
+    expect(view.tiles.map((t) => t.label)).not.toContain('Durch Steuerung · Heute');
+    expect(view.tiles.map((t) => t.value).join(' | ')).not.toContain('92,02');
   });
 
   it('erfindet nichts: ohne Zahlen entfällt die Kachel, ohne Kacheln der Inhalt', () => {
