@@ -257,8 +257,5 @@
   outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
   outline-offset: 2px;
 }
-.vp-puls-fold svg { transition: transform .15s ease; }
+.vp-puls-fold svg { transition: transform var(--vp-motion-base) var(--vp-ease-inout); }
 .vp-puls-fold.open svg { transform: rotate(180deg); }
-@media (prefers-reduced-motion: reduce) {
-  .vp-puls-fold svg { transition: none; }
-}

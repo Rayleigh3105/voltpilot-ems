@@ -36,7 +36,7 @@ export function Switch({
           flexShrink: 0,
           borderRadius: 'var(--vp-radius-pill)',
           background: checked ? 'var(--vp-grad-button)' : 'var(--vp-gray)',
-          transition: 'var(--vp-transition-fast)',
+          transition: 'var(--vp-motion-chrome)',
         }}
       >
         <span
@@ -49,7 +49,7 @@ export function Switch({
             borderRadius: '50%',
             background: '#fff',
             boxShadow: 'var(--vp-shadow-sm)',
-            transition: 'var(--vp-transition-fast)',
+            transition: 'var(--vp-motion-chrome)',
           }}
         />
       </span>

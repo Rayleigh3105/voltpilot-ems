@@ -1045,13 +1045,7 @@
 .vp-am-comp.is-angesprungen {
   border-radius: var(--vp-radius-sm, 8px);
   box-shadow: 0 0 0 2px var(--vp-brand-300, #93b4e6);
-  transition: box-shadow 0.4s ease-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .vp-am-comp.is-angesprungen {
-    transition: none;
-  }
+  transition: box-shadow var(--vp-motion-base) var(--vp-ease-out);
 }
 
 /* ===========================================================================

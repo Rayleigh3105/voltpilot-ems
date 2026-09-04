@@ -1,6 +1,52 @@
 /* ============================================================
    VoltPilot — Effects: radius, shadows, motion
    ============================================================ */
+
+/* --- DIE BEWEGUNGS-FAMILIE (Bewegungs-Programm P0) -----------------------
+ * Konzept: firstmate `data/vp-motion-konzept-m1/report.md` §4 (Spec-Quelle),
+ * Captain-Entscheid 04.09.2026 „alle Empfehlungen nehmen" (E1–E10 = a).
+ *
+ * EINE Skala, vier Stufen: 120 ms Feedback · 200 ms Zustand · 260/160 ms
+ * Erscheinen/Verschwinden · 300 ms Seite und Chart-Übergang · 400 ms
+ * Chart-Einstieg (die eine benannte Ausnahme, E2 a). Drei Kurven: ankommen
+ * weich, verlassen schnell, bewegen dazwischen (E3 a).
+ *
+ * ⚠ WARUM `@property`: die Dauern sind `calc(<ms> * var(--vp-motion-scale))`.
+ *   Erst die Registrierung als `<time>` macht `getComputedStyle` die AUFGELÖSTE
+ *   Dauer liefern (`"0.4s"` statt `"calc(...)"`) — das ist die Bedingung, unter
+ *   der JS (ECharts über `chartMotion()`, P1) dieselbe Zahl liest wie CSS.
+ *   Ohne die Registrierung gäbe es zwei Wahrheiten über dieselbe Dauer.
+ *
+ * ⚠ DER SCHALTER ist `--vp-motion-scale`, und er wird an GENAU EINER Stelle
+ *   umgelegt: dem `@media (prefers-reduced-motion: reduce)`-Block in
+ *   `src/index.css`. `scale: 0` ⇒ jede Dauer dieser Familie ist `0s` — CSS,
+ *   Motion und ECharts verstummen zusammen. Eine Media-Query kann eine Custom
+ *   Property nicht LESEN, deshalb nullt derselbe Block zusätzlich die
+ *   benannten Dauer-Animationen (`animation: none`): eine Loop mit 0 ms wäre
+ *   ein stehendes Bild ohne Richtung, kein Stillstand.
+ *
+ * ⚠ EINE WAHRHEIT: dieselben Zahlen stehen als TS-Konstanten in
+ *   `src/motionPresets.ts`. Der Wächter `src/motionTokens.test.ts` rechnet die
+ *   Gleichheit bei jedem Lauf nach — wer hier eine Zahl ändert, ändert sie
+ *   dort mit.
+ *
+ * ⚠ SAFARI < 16.4 kennt `@property` nicht. Dort fällt `calc()` nicht aus,
+ *   sondern rechnet mit dem `:root`-Wert `--vp-motion-scale: 1` — die Dauern
+ *   sind also korrekt, nur nicht per `getComputedStyle` aufgelöst. Deshalb
+ *   steht der Schalter ZUSÄTZLICH als gewöhnliche Custom Property im `:root`
+ *   (nicht nur als `initial-value`), und `chartMotion()` (P1) trägt seine
+ *   Vorgabewerte als Rückfall. */
+@property --vp-motion-scale { syntax: '<number>'; inherits: true; initial-value: 1; }
+@property --vp-motion-fast { syntax: '<time>'; inherits: true; initial-value: 120ms; }
+@property --vp-motion-base { syntax: '<time>'; inherits: true; initial-value: 200ms; }
+@property --vp-motion-enter { syntax: '<time>'; inherits: true; initial-value: 260ms; }
+@property --vp-motion-exit { syntax: '<time>'; inherits: true; initial-value: 160ms; }
+@property --vp-motion-page { syntax: '<time>'; inherits: true; initial-value: 300ms; }
+@property --vp-motion-chart { syntax: '<time>'; inherits: true; initial-value: 400ms; }
+@property --vp-motion-chart-update { syntax: '<time>'; inherits: true; initial-value: 300ms; }
+@property --vp-motion-stagger { syntax: '<time>'; inherits: true; initial-value: 30ms; }
+@property --vp-motion-distance { syntax: '<length>'; inherits: true; initial-value: 8px; }
+
 :root {
   /* --- Border radius --- */
   --vp-radius-sm:    10px;   /* inputs, nav items */
@@ -13,13 +59,45 @@
   /* --- Shadows --- */
   --vp-shadow-sm:    0 2px 8px rgba(0, 0, 0, 0.04);
   --vp-shadow-md:    0 4px 20px rgba(0, 0, 0, 0.08);
-  --vp-shadow-hover: 0 12px 48px rgba(149, 185, 255, 0.25); /* brand glow */
+  /* E8 a: Hover am Rechner ist FEEDBACK, keine Bewegung — 1 px plus ein
+     ZARTER Schatten. Der frühere 48-px-Markenschein (`0 12px 48px …/.25`) war
+     ein Marketing-Lift; in einem Betriebswerkzeug liest sich das als Unernst
+     (Konzept §2 Ursache 3). */
+  --vp-shadow-hover: 0 4px 16px rgba(149, 185, 255, 0.22); /* brand glow, zart */
   --vp-shadow-btn:   0 4px 20px rgba(149, 185, 255, 0.4);
 
-  /* --- Motion --- */
-  --vp-transition:      all 0.4s cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
-  --vp-transition-fast: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
-  --vp-ease:            cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
-  --vp-lift:            translateY(-3px); /* @kind other */
-  --vp-lift-lg:         translateY(-8px); /* @kind other */
+  /* --- Motion: die Familie (Werte oben begründet) --- */
+  --vp-motion-scale:        1;
+  --vp-motion-fast:         calc(120ms * var(--vp-motion-scale)); /* Druck, Hover, Chip, Tooltip, Fokus */
+  --vp-motion-base:         calc(200ms * var(--vp-motion-scale)); /* Zustandswechsel, Zahlen, Chevron */
+  --vp-motion-enter:        calc(260ms * var(--vp-motion-scale)); /* Erscheinen: Karte, Zeile, Modal */
+  --vp-motion-exit:         calc(160ms * var(--vp-motion-scale)); /* Verschwinden (≈ 60 % von enter) */
+  --vp-motion-page:         calc(300ms * var(--vp-motion-scale)); /* Blatt, Sheet, Drawer */
+  --vp-motion-chart:        calc(400ms * var(--vp-motion-scale)); /* Chart-Einstieg (E2 a) */
+  --vp-motion-chart-update: calc(300ms * var(--vp-motion-scale)); /* Chart-Morph, Marker, Ring */
+  --vp-motion-stagger:      calc(30ms * var(--vp-motion-scale));  /* Staffel, Deckel 8 */
+  --vp-motion-distance:     8px;                                  /* Weg beim Erscheinen */
+
+  /* Der SCHMALE Nachfolger von `--vp-transition-fast`: genau die vier
+     Eigenschaften, mit denen ein Bedienelement ANTWORTET (Farbe, Fläche,
+     Rand, Schatten) — nie `all`. `all` animiert auch Layout-Eigenschaften,
+     die niemand animieren wollte, und war der Grund, warum eine Cockpit-Seite
+     23 von 28 Übergängen als `all` gemessen hat (Konzept §2). Wer zusätzlich
+     `transform` oder `opacity` bewegt, schreibt seine Liste selbst. */
+  --vp-motion-chrome:
+    color var(--vp-motion-fast) var(--vp-ease-inout),
+    background-color var(--vp-motion-fast) var(--vp-ease-inout),
+    border-color var(--vp-motion-fast) var(--vp-ease-inout),
+    box-shadow var(--vp-motion-fast) var(--vp-ease-inout);
+
+  /* Drei Kurven, drei Aufgaben (E3 a). `--vp-ease` ist das Haus-Token und
+     bleibt — `--vp-ease-inout` ist sein zweiter Name, kein Zwilling. */
+  --vp-ease-out:   cubic-bezier(0.2, 0.7, 0.2, 1); /* ankommen */
+  --vp-ease-in:    cubic-bezier(0.4, 0, 1, 1);     /* verlassen */
+  --vp-ease-inout: cubic-bezier(0.4, 0, 0.2, 1);   /* bewegen / morphen */
+  --vp-ease:       var(--vp-ease-inout); /* @kind other */
+
+  /* E8 a: 1 px statt 3/8 px. `--vp-lift-lg` ist ERSATZLOS entfallen — ein
+     8-px-Sprung unter dem Zeiger ist Bewegung ohne Aussage. */
+  --vp-lift:       translateY(-1px); /* @kind other */
 }

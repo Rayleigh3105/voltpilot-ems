@@ -23,7 +23,7 @@
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: var(--vp-transition-fast);
+  transition: var(--vp-motion-chrome);
   margin-bottom: 2px;
 }
 .vp-navitem .ic {
@@ -78,7 +78,7 @@
   font-weight: 600;
   max-width: 280px;
   min-height: 38px;
-  transition: var(--vp-transition-fast);
+  transition: var(--vp-motion-chrome);
 }
 .vp-context:hover {
   border-color: var(--vp-gray);

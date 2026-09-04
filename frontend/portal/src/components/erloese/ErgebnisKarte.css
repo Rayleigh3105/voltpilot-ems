@@ -335,13 +335,7 @@
   border-right: 2px solid var(--vp-c-muted-fg, #475569);
   border-bottom: 2px solid var(--vp-c-muted-fg, #475569);
   transform: rotate(-45deg);
-  transition: transform 200ms ease;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .vp-c-led-chev::before {
-    transition: none;
-  }
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
 }
 
 .vp-c-led-det[open] .vp-c-led-chev::before {

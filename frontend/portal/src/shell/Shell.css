@@ -492,7 +492,7 @@
   font-size: 0.7rem;
   font-weight: 600;
   cursor: pointer;
-  transition: var(--vp-transition-fast);
+  transition: var(--vp-motion-chrome);
 }
 .vp-bottombar-item .ic {
   position: relative;
