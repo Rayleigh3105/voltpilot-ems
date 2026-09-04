@@ -3,7 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, ApiError, type Device } from '../api';
 import {
   ANBINDEN_ALLOWLIST,
@@ -398,7 +398,7 @@ export function LadesaeuleAnbindenDrawer({
 }) {
   if (!open) return null;
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title="Ladesäule anbinden"
@@ -409,6 +409,6 @@ export function LadesaeuleAnbindenDrawer({
       }
     >
       <LadesaeuleAnbinden siteId={siteId} device={device} onChanged={onChanged} />
-    </Drawer>
+    </Modal>
   );
 }

@@ -57,7 +57,7 @@ import type { BoundFlowApi, FlowDeviceAck, FlowSummary } from '../flows/flowsApi
 import type { EditorEntity, FlowDocument } from '../flows/model';
 import { rolloutMessage } from '../flows/rollout';
 import { GuidedRuleBuilder } from './GuidedRuleBuilder';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { showTechnicalLayer } from '../rollen';
 import {
   KOMPONENTE_ANLEGEN,
@@ -769,7 +769,7 @@ export function RegelnKapsel({
 
       {/* --- „Bearbeiten → Baukasten" -------------------------------------- */}
       {bearbeiten && (
-        <Drawer
+        <Modal
           open
           onClose={() => setBearbeiten(null)}
           title={`Regel bearbeiten: ${bearbeiten.flow.name}`}
@@ -790,7 +790,7 @@ export function RegelnKapsel({
               onEditedFlow(f.flowId, f.latestVersion, name, doc);
             }}
           />
-        </Drawer>
+        </Modal>
       )}
 
       {/* --- Die drei Türen ------------------------------------------------- */}

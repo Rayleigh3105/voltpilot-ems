@@ -4,7 +4,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, ApiError, type MastrApplyInput, type MastrPreview, type Site, type SiteAsset } from '../api';
 import { validateSeeNummer } from '../anlageFlow';
 import { fmtNum } from '../format';
@@ -213,7 +213,7 @@ export function MastrDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open={open}
       onClose={close}
       title="Anlage verknüpfen"
@@ -304,6 +304,6 @@ export function MastrDrawer({
           {error && <div className="vp-alert vp-alert-err">{error}</div>}
         </>
       )}
-    </Drawer>
+    </Modal>
   );
 }

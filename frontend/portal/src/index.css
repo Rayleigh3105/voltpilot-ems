@@ -1,6 +1,6 @@
 /* VoltPilot portal - global styles built on the design-system tokens.
    Shell layout (sidebar + top bar + main) per the unified dashboard redesign;
-   the shell primitives (NavItem/Drawer/KpiCard) style themselves via
+   the shell primitives (NavItem/Modal/KpiCard) style themselves via
    designsystem/components/shell/shell.css. */
 :root {
   font-family: var(--vp-font-body);
@@ -260,7 +260,7 @@ button {
 }
 
 /* Token'd keyboard focus ring for the interactive chrome that isn't a Button
-   (nav items, segmented tabs, steppers, links, clickable rows, drawer/hamburger
+   (nav items, segmented tabs, steppers, links, clickable rows, modal/hamburger
    controls). Button/Card carry their own :focus-visible in core.css. */
 a:focus-visible,
 .vp-linklike:focus-visible,
@@ -270,7 +270,7 @@ a:focus-visible,
 .vp-geo-result:focus-visible,
 .vp-table tbody tr.clickable:focus-visible,
 .vp-hamburger:focus-visible,
-.vp-drawer .dhead .x:focus-visible {
+.vp-modal .dhead .x:focus-visible {
   outline: 2px solid var(--vp-focus-ring-color);
   outline-offset: 2px;
   border-radius: var(--vp-radius-sm);
@@ -2353,7 +2353,7 @@ button.vp-cl-item.is-off .vp-cl-label {
   }
 }
 
-/* Drawer form stack */
+/* Modal form stack */
 .vp-form-stack {
   display: flex;
   flex-direction: column;

@@ -3,7 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Switch } from '../../designsystem/components/forms/Switch';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import {
   api,
   downloadMeasurementExport,
@@ -605,7 +605,7 @@ export function BeobachteteRegister({
         )}
       </div>
 
-      <Drawer open={open} onClose={() => setOpen(false)} title={katalogTitel(wahl, geraetName)} footer={
+      <Modal open={open} onClose={() => setOpen(false)} title={katalogTitel(wahl, geraetName)} footer={
         eigeneErlaubt && registerFaehig
           ? <Button variant="outline" onClick={() => setCustomOpen(true)}>Eigenen Messwert hinzufügen</Button>
           : null
@@ -627,7 +627,7 @@ export function BeobachteteRegister({
         <p className="vp-measure-result" aria-live="polite">{catalog ? resultLabel(catalog.total + visibleCustomPoints.length) : 'Liste wird geladen …'}</p>
         <div className="vp-measure-list">{[...visibleCustomPoints, ...(catalog?.points ?? [])].map((point) => <PointRow key={point.pointKey} point={point} onToggle={toggle} onHistory={openHistory} />)}</div>
         {catalog && catalog.total > catalog.limit && <nav className="vp-measure-pages" aria-label="Ergebnisseiten"><Button variant="ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - catalog.limit))}>Zurück</Button><span>{offset + 1}–{Math.min(offset + catalog.limit, catalog.total)} von {catalog.total}</span><Button variant="ghost" disabled={offset + catalog.limit >= catalog.total} onClick={() => setOffset(offset + catalog.limit)}>Weiter</Button></nav>}
-      </Drawer>
+      </Modal>
 
       <ConfirmDialog
         open={pending != null}
@@ -650,14 +650,14 @@ export function BeobachteteRegister({
         extra={pending?.enabled ? <Input label="Kadenz in Sekunden" type="number" min={pending?.minCadence ?? 1} max={86400} value={pendingCadence} onChange={(e) => setPendingCadence(Number(e.target.value))} error={estimate?.hardRejected ? estimate.reasons.join(' ') : null} /> : null}
       />
 
-      <Drawer open={historyPoint != null} onClose={closeHistory} title={historyPoint ? `Verlauf · ${historyPoint.label}` : 'Verlauf'} footer={history && historyPoint ? <Button variant="outline" onClick={() => void downloadMeasurementExport(deviceId, historyPoint.pointKey, range, representation, range === 'free' ? isoOrUndefined(freeFrom) : undefined, range === 'free' ? isoOrUndefined(freeTo) : undefined, siteId, entityId)}>CSV mit Metadaten exportieren</Button> : null}>
+      <Modal open={historyPoint != null} onClose={closeHistory} title={historyPoint ? `Verlauf · ${historyPoint.label}` : 'Verlauf'} footer={history && historyPoint ? <Button variant="outline" onClick={() => void downloadMeasurementExport(deviceId, historyPoint.pointKey, range, representation, range === 'free' ? isoOrUndefined(freeFrom) : undefined, range === 'free' ? isoOrUndefined(freeTo) : undefined, siteId, entityId)}>CSV mit Metadaten exportieren</Button> : null}>
         <div className="vp-measure-range" aria-label="Zeitraum">{ranges.map(([key, label]) => <button type="button" key={key} aria-pressed={range === key} className={range === key ? 'is-active' : ''} onClick={() => setRange(key)}>{label}</button>)}</div>
         {range === 'free' && <div className="vp-measure-free"><div><VpDatePicker label="Von · Datum" value={freeFrom.split('T')[0]} onChange={(value) => setFreePart('from', 'date', value)} /><VpTimePicker label="Von · Uhrzeit" value={freeFrom.split('T')[1] ?? ''} onChange={(value) => setFreePart('from', 'time', value)} /></div><div><VpDatePicker label="Bis · Datum" value={freeTo.split('T')[0]} onChange={(value) => setFreePart('to', 'date', value)} /><VpTimePicker label="Bis · Uhrzeit" value={freeTo.split('T')[1] ?? ''} onChange={(value) => setFreePart('to', 'time', value)} /></div></div>}
         {(history?.meta.rawAvailable || representation === 'raw') && <div className="vp-measure-range" aria-label="Wertdarstellung"><button type="button" aria-pressed={representation === 'decoded'} className={representation === 'decoded' ? 'is-active' : ''} onClick={() => setRepresentation('decoded')}>Dekodiert</button><button type="button" aria-pressed={representation === 'raw'} className={representation === 'raw' ? 'is-active' : ''} onClick={() => setRepresentation('raw')}>Rohwert</button></div>}
         {historyError ? <div className="vp-assist-error" role="alert"><p>{historyError}</p>{representation === 'raw' && <Button size="sm" variant="outline" onClick={() => setRepresentation('decoded')}>Dekodierte Werte laden</Button>}</div> : !history ? <p role="status">Verlauf wird geladen …</p> : history.data.length === 0 ? <p className="vp-measure-empty">Für diesen Zeitraum sind keine Werte gespeichert. Eine frühere Abwahl löscht die Historie nicht.</p> : <><HistoryChart history={history} /><p className="vp-measure-hint">{history.meta.aggregationExplanation}</p><ul className="vp-measure-marker-list">{history.markers.map((m) => <li key={`${m.time}-${m.kind}`}><time>{new Date(m.time).toLocaleString('de-DE')}</time> · {m.label}</li>)}</ul></>}
-      </Drawer>
+      </Modal>
 
-      <Drawer open={customOpen} onClose={() => setCustomOpen(false)} title="Eigenen Messwert hinzufügen" footer={<><Button variant="ghost" onClick={checkCustom}>Last und Volumen prüfen</Button><Button onClick={addCustom} disabled={!customEstimate || customEstimate.hardRejected || busy}>Jetzt aufzeichnen</Button></>}>
+      <Modal open={customOpen} onClose={() => setCustomOpen(false)} title="Eigenen Messwert hinzufügen" footer={<><Button variant="ghost" onClick={checkCustom}>Last und Volumen prüfen</Button><Button onClick={addCustom} disabled={!customEstimate || customEstimate.hardRejected || busy}>Jetzt aufzeichnen</Button></>}>
         <p>Nur lesbare Modbus-Register. VoltPilot erfindet keine Semantik: Name, Einheit, Datentyp und Skala stammen aus Ihrer Gerätedokumentation.</p>
         <div className="vp-measure-custom">
           <Input label="Bezeichnung" value={custom.label} onChange={(e) => { setCustom({ ...custom, label: e.target.value }); setCustomEstimate(null); }} />
@@ -671,7 +671,7 @@ export function BeobachteteRegister({
         </div>
         <p className="vp-measure-readonly"><Icon name="lock" size={15} /> Ausschließlich lesbar. Keine Schreibparameter.</p>
         {customEstimate && <p role="status" className="vp-measure-global-status">{customEstimate.samplesPerMinute} Samples/min · {customEstimate.dutyCyclePercent} % Buslast · {customEstimate.totalGbPerYear.toFixed(3)} GB/Jahr. Start jetzt, kein Backfill.</p>}
-      </Drawer>
+      </Modal>
     </section>
   );
 }

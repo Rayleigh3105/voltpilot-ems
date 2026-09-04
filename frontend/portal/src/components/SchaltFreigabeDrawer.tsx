@@ -3,7 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { VpPicker } from './VpPicker';
 import { api, ApiError } from '../api';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -172,7 +172,7 @@ export function SchaltFreigabeDrawer({
 
   return (
     <>
-      <Drawer
+      <Modal
         open
         onClose={onClose}
         title={bereitsFreigegeben ? 'Steuerung dieses Geräts' : 'Steuern freigeben'}
@@ -603,7 +603,7 @@ export function SchaltFreigabeDrawer({
             </>
           )}
         </section>
-      </Drawer>
+      </Modal>
 
       <ConfirmDialog
         open={freigabeFrage}

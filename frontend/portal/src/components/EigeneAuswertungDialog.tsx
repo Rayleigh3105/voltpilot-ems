@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import type { VpOption } from '../picker/optionen';
 import { VpPicker } from './VpPicker';
 import {
@@ -159,7 +159,7 @@ export function EigeneAuswertungDialog({
   const einheitText = item ? einheit(entwurf.channel, item.unit) : '';
 
   return (
-    <Drawer
+    <Modal
       open={open}
       onClose={onAbbrechen}
       title={bearbeiten ? 'Eigene Auswertung ändern' : 'Eigene Auswertung'}
@@ -306,6 +306,6 @@ export function EigeneAuswertungDialog({
           </>
         )}
       </div>
-    </Drawer>
+    </Modal>
   );
 }

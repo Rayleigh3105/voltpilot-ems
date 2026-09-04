@@ -3,7 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import {
   ApiError, api,
   type RegisterWriteEvent, type RegisterWriteOutcome, type RegisterWriteTarget,
@@ -237,7 +237,7 @@ export function RegisterWriteDrawer({
 
   return (
     <>
-      <Drawer
+      <Modal
         open
         onClose={onClose}
         title="Register schreiben"
@@ -432,7 +432,7 @@ export function RegisterWriteDrawer({
             </div>
           )}
         </section>
-      </Drawer>
+      </Modal>
 
       <ConfirmDialog
         open={frage}

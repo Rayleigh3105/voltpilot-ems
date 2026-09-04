@@ -13,7 +13,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { ApiError } from '../api';
@@ -202,7 +202,7 @@ export function UmbenennenDialog({
   }
 
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title="Komponente umbenennen"
@@ -246,6 +246,6 @@ export function UmbenennenDialog({
           </div>
         )}
       </div>
-    </Drawer>
+    </Modal>
   );
 }

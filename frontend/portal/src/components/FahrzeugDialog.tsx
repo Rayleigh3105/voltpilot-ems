@@ -16,7 +16,7 @@
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { VpPicker } from './VpPicker';
 import {
   entfernenFolgen,
@@ -91,7 +91,7 @@ export function FahrzeugDialog({
   };
 
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title={zeile.name}
@@ -188,7 +188,7 @@ export function FahrzeugDialog({
 
         {fehler && <p className="vp-fz-fehler">{fehler}</p>}
       </div>
-    </Drawer>
+    </Modal>
   );
 }
 

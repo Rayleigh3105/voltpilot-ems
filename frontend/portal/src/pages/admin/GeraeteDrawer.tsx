@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
-import { Drawer } from '../../../designsystem/components/shell/Drawer';
+import { Modal } from '../../../designsystem/components/shell/Modal';
 import { VpPicker } from '../../components/VpPicker';
 import { deviceKindLabel, fmtRelative } from '../../format';
 import { REGISTRY_AUFKLEBER, REGISTRY_SELBST } from '../../adminGeraet';
@@ -102,7 +102,7 @@ export function GeraeteDrawer({
   const connected = device.deviceId != null;
 
   return (
-    <Drawer open title={device.siteName ?? device.label ?? device.externalRef} onClose={onClose}>
+    <Modal open title={device.siteName ?? device.label ?? device.externalRef} onClose={onClose}>
       <p className="vp-muted">
         {[device.tenantName, device.externalRef].filter(Boolean).join(' · ')}
       </p>
@@ -276,6 +276,6 @@ export function GeraeteDrawer({
           )}
         </>
       )}
-    </Drawer>
+    </Modal>
   );
 }

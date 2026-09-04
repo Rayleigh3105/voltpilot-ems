@@ -36,11 +36,13 @@ change**.
 
 ## What's strong (keep)
 
-1. **Design-system discipline.** Everything is tokens + `Card`/`Badge`/`Drawer`/
+1. **Design-system discipline.** Everything is tokens + `Card`/`Badge`/`Modal`/
    `RowMenu`/`IconTile`, the `States.tsx` skeletons + `ErrorState`, the `Icon`
    component, and `format.ts`. No emoji glyphs, essentially no rogue hex.
-2. **The list-in-card + right-Drawer pattern** is consistent and appropriate for
-   entity management (create drawer, detail drawer, inline edit, `DangerZone`).
+2. **The list-in-card + centred-`Modal` pattern** is consistent and appropriate for
+   entity management (create modal, detail modal, inline edit, `DangerZone`). It
+   was a right-side drawer until 04.09.2026; the captain retired sidebars, so the
+   same panel is now centred — see `frontend/portal/AGENTS.md` "Keine Seitenleisten".
 3. **Careful German copy** and the internal-name discipline (no broker/RLS/
    Keycloak vocabulary leaking to the surface).
 4. **The Optimizer page is genuinely good** — it is the right bar for the rest.

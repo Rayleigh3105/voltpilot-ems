@@ -87,7 +87,7 @@ describe('EigeneVorlagenPanel', () => {
     expect(folgen).toHaveTextContent(/laufen unverändert weiter/);
     expect(deleteSiteComponentTemplate).not.toHaveBeenCalled();
 
-    const dialog = (folgen.closest('.vp-drawer') ?? document.body) as HTMLElement;
+    const dialog = (folgen.closest('.vp-modal') ?? document.body) as HTMLElement;
     fireEvent.click(within(dialog).getByRole('button', { name: 'Löschen' }));
     await waitFor(() =>
       expect(deleteSiteComponentTemplate).toHaveBeenCalledWith('s1', 'custom:abc'),

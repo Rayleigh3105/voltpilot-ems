@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import type { Site } from '../api';
 import { AnlageFlow } from './AnlageFlow';
 
@@ -43,7 +43,7 @@ export function AnlageAnlegenDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open={open}
       onClose={close}
       title="Anlage anlegen"
@@ -66,6 +66,6 @@ export function AnlageAnlegenDrawer({
           onDone={close}
         />
       )}
-    </Drawer>
+    </Modal>
   );
 }

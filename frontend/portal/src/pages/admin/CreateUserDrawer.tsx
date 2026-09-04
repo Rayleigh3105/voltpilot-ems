@@ -3,7 +3,7 @@ import { Button } from '../../../designsystem/components/core/Button';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
-import { Drawer } from '../../../designsystem/components/shell/Drawer';
+import { Modal } from '../../../designsystem/components/shell/Modal';
 import { ApiError } from '../../api';
 import { adminApi, type AdminUser, type CreateUserInput, type Tenant } from '../../admin/adminApi';
 
@@ -58,7 +58,7 @@ export function CreateUserDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open={open}
       onClose={onClose}
       title="Benutzer anlegen"
@@ -96,6 +96,6 @@ export function CreateUserDrawer({
         />
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
-    </Drawer>
+    </Modal>
   );
 }

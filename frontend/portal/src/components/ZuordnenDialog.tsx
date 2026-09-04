@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { Input } from '../../designsystem/components/forms/Input';
 import { VpPicker } from './VpPicker';
 import { api, ApiError, type TopologyRoleAssignment } from '../api';
@@ -161,7 +161,7 @@ export function ZuordnenDialog({
   }
 
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title="Gerät zuordnen"
@@ -285,6 +285,6 @@ export function ZuordnenDialog({
           </div>
         )}
       </div>
-    </Drawer>
+    </Modal>
   );
 }

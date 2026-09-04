@@ -21,7 +21,7 @@ import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
-import { Drawer } from '../../../designsystem/components/shell/Drawer';
+import { Modal } from '../../../designsystem/components/shell/Modal';
 import { VpPicker } from '../../components/VpPicker';
 import { ApiError } from '../../api';
 import { adminApi, type SaveComponentTemplateInput } from '../../admin/adminApi';
@@ -411,7 +411,7 @@ function VorlageDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open={open}
       onClose={onClose}
       title={base ? `Neue Fassung: ${base.modelLabel}` : 'Vorlage eintragen'}
@@ -507,7 +507,7 @@ function VorlageDrawer({
           </span>
         </label>
       </div>
-    </Drawer>
+    </Modal>
   );
 }
 

@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { fokussierbareElemente } from '../../designsystem/components/shell/fokus';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { IconName } from '../../designsystem/components/core/Icon';
 import './VpPicker.css';
@@ -86,13 +87,14 @@ export function platziere(
 }
 
 /** Alles Fokussierbare im Panel - die Fokus-Falle braucht die Ränder. */
+/**
+ * ⚠ Die Liste selbst wohnt im Design-System (`shell/fokus`) — dort entsteht
+ * die Fläche, die den Fokus halten muss (`Modal`). Diese Funktion ist nur der
+ * eingeführte Name, unter dem Bottom-Sheet, Picker und die zentrierten
+ * Rückfragen sie lesen; ein zweiter Selektor wäre ein Zwilling, der driftet.
+ */
 export function fokussierbare(el: HTMLElement | null): HTMLElement[] {
-  if (!el) return [];
-  return Array.from(
-    el.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ),
-  );
+  return fokussierbareElemente(el);
 }
 
 export function VpPanel({

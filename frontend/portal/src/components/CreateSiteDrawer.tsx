@@ -3,7 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { ApiError, type CreateSiteInput, type PlantKind, type Site, type TarifArt } from '../api';
 import { VERAEUSSERUNGSFORM_FRAGE, VERAEUSSERUNGSFORM_LABEL } from '../glossar';
 import { parsePremiumInput } from '../fleet';
@@ -102,7 +102,7 @@ export function CreateSiteDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open={open}
       onClose={onClose}
       title="Anlage anlegen"
@@ -217,6 +217,6 @@ export function CreateSiteDrawer({
         </div>
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
-    </Drawer>
+    </Modal>
   );
 }

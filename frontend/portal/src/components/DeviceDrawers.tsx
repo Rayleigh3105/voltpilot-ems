@@ -4,7 +4,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import {
   api,
   ApiError,
@@ -112,7 +112,7 @@ export function AddDeviceDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open={open}
       onClose={close}
       title="Gerät hinzufügen"
@@ -228,7 +228,7 @@ export function AddDeviceDrawer({
           {error && <div className="vp-alert vp-alert-err">{error}</div>}
         </>
       )}
-    </Drawer>
+    </Modal>
   );
 }
 
@@ -314,7 +314,7 @@ export function DeviceDetailDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title={device.name || device.externalRef}
@@ -467,7 +467,7 @@ export function DeviceDetailDrawer({
           />
         </>
       )}
-    </Drawer>
+    </Modal>
   );
 }
 

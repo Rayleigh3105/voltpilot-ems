@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Input } from '../../../designsystem/components/forms/Input';
-import { Drawer } from '../../../designsystem/components/shell/Drawer';
+import { Modal } from '../../../designsystem/components/shell/Modal';
 import { ApiError } from '../../api';
 import { adminApi, type AdminUser, type Tenant } from '../../admin/adminApi';
 
@@ -58,7 +58,7 @@ export function EditUserDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title={`Benutzer bearbeiten: ${user.username}`}
@@ -100,7 +100,7 @@ export function EditUserDrawer({
         />
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
-    </Drawer>
+    </Modal>
   );
 }
 
@@ -156,7 +156,7 @@ export function ResetPasswordDrawer({
   }
 
   return (
-    <Drawer
+    <Modal
       open
       onClose={onClose}
       title={`Passwort zurücksetzen: ${user.username}`}
@@ -194,6 +194,6 @@ export function ResetPasswordDrawer({
         </label>
       </div>
       {msg && <div className={`vp-alert ${msg.ok ? 'vp-alert-ok' : 'vp-alert-err'}`}>{msg.text}</div>}
-    </Drawer>
+    </Modal>
   );
 }

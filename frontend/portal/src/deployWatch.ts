@@ -142,7 +142,7 @@ export function resetUserInput(): void {
  * vorbelegtes umgekehrt verändert) — die Erkennung wäre in BEIDE Richtungen
  * falsch. Stattdessen drei belastbare Signale:
  *
- *  1. eine offene Aufgabenfläche (`.vp-drawer` / `[aria-modal="true"]` /
+ *  1. eine offene Aufgabenfläche (`.vp-modal` / `[aria-modal="true"]` /
  *     `dialog[open]`) — im Portal ist das immer ein Anlegen/Bearbeiten/
  *     Bestätigen, nie eine reine Erklärfläche (`.vp-fw-panel`, das Mehr-Blatt,
  *     das Hilfe-Panel tragen `role="dialog"` OHNE `aria-modal`),
@@ -153,7 +153,7 @@ export function resetUserInput(): void {
  */
 export function hasUnsavedInput(doc: Document = document, now: number = Date.now()): boolean {
   if (now - lastInputAt < INPUT_GRACE_MS) return true;
-  if (doc.querySelector('.vp-drawer, [aria-modal="true"], dialog[open]')) return true;
+  if (doc.querySelector('.vp-modal, [aria-modal="true"], dialog[open]')) return true;
   const active = doc.activeElement as HTMLElement | null;
   if (!active) return false;
   const tag = active.tagName;

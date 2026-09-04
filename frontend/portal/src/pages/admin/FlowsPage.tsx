@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
-import { Drawer } from '../../../designsystem/components/shell/Drawer';
+import { Modal } from '../../../designsystem/components/shell/Modal';
 import { ApiError, type Site } from '../../api';
 import { adminApi, type Tenant } from '../../admin/adminApi';
 import { EmptyState, ErrorState, TextSkeleton } from '../../components/States';
@@ -326,7 +326,7 @@ export function FlowsPage({ tenants }: { tenants: Tenant[] }) {
         </>
       )}
 
-      <Drawer
+      <Modal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         title="Neuer Flow"
@@ -368,7 +368,7 @@ export function FlowsPage({ tenants }: { tenants: Tenant[] }) {
           onChange={(v) => setCreateTemplate(v as 'pilot' | 'leer')}
         />
         {createError && <p className="vp-flowed-notice error">{createError}</p>}
-      </Drawer>
+      </Modal>
     </>
   );
 }

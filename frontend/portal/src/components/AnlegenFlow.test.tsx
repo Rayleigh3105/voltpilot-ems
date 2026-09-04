@@ -905,7 +905,7 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Änderungen verwerfen?' });
     expect(dialog).toBeVisible();
     expect(dialog.closest('.vp-center-confirm-backdrop')).not.toBeNull();
-    expect(document.querySelector('.vp-drawer')).toBeNull();
+    expect(document.querySelector('.vp-modal')).toBeNull();
     expect(onClose).not.toHaveBeenCalled();
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Änderungen verwerfen' }));
