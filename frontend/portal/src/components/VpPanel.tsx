@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { fokussierbareElemente } from '../../designsystem/components/shell/fokus';
+import { useAusblenden } from '../../designsystem/components/shell/ausblenden';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { IconName } from '../../designsystem/components/core/Icon';
 import './VpPicker.css';
@@ -172,6 +173,7 @@ export function VpPanel({
   const wischStart = useRef<number | null>(null);
   const ausloeserRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const { sichtbar, schliessend } = useAusblenden(offen, panelRef);
 
   const anhaengen = useCallback(() => {
     const feld = ausloeserRef.current;
@@ -256,12 +258,20 @@ export function VpPanel({
     ziel?.focus();
   };
 
+  /* Bewegungs-Programm P6: das Telefon-Blatt des Pickers blendet AUS wie jedes
+     andere Blatt des Hauses — derselbe `useAusblenden`-Baustein wie Modal und
+     Bottom-Sheet, damit es EINE Dauer und EIN Wort für „geht gerade" gibt.
+     ⚠ Die Ausblend-Keyframe schlägt das Inline-`transform` des Wischens: eine
+     laufende CSS-Animation gewinnt im Kaskaden-Ursprung gegen Autoren-Stil,
+     also auch gegen `style=`. Beim Wischen selbst läuft keine — die
+     Einblendung ist da längst durch. */
   const panel = (
     <div
       ref={panelRef}
       className={
         `vp-picker-panel${isPhone ? ' is-sheet' : ''}`
         + (!isPhone && platz?.oben ? ' is-oben' : '')
+        + (schliessend ? ' is-closing' : '')
       }
       style={
         isPhone
@@ -385,12 +395,12 @@ export function VpPanel({
         </button>
         )}
       </div>
-      {offen
+      {sichtbar
         && createPortal(
           isPhone ? (
             <>
               <div
-                className="vp-picker-backdrop"
+                className={schliessend ? 'vp-picker-backdrop is-closing' : 'vp-picker-backdrop'}
                 role="presentation"
                 onClick={() => schliessen()}
               />

@@ -5,6 +5,7 @@ import { SPALTEN_KOPF, signiertesGeld } from '../portfolioCockpit';
 import { VORSCHAU_ABSPRUNG, type VorschauZeile } from '../portfolioVorschau';
 import { Icon } from '../../designsystem/components/core/Icon';
 import './AnlagenTabelle.css';
+import { useStaffel } from '../staffel';
 
 /**
  * DIE ANLAGEN-TABELLE — EINE Fläche in zwei Dichten (Scout
@@ -167,6 +168,10 @@ function VorschauBlock({
 // ---------------------------------------------------------------------------
 
 function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau }: AnlagenTabelleProps) {
+  // Bewegung P6: die Zeilen staffeln beim ERSTEN Blick auf das Portfolio, nie
+  // beim zweiten (`src/staffel.ts`). Beide Formen teilen den Schlüssel — es
+  // ist dieselbe Liste, nur einmal als Tabelle und einmal als Karten.
+  const staffel = useStaffel('portfolio-anlagen');
   return (
     <div className="vp-at-wrap">
       <table className="vp-at" data-dichte={dichte}>
@@ -184,7 +189,7 @@ function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau
             <th scope="col">Zustand</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className={staffel}>
           {zeilen.map((z) => {
             const auf = offen === z.id;
             return [
@@ -268,8 +273,9 @@ function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau
  */
 function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau }: AnlagenTabelleProps) {
   const zeigt = new Set(spalten);
+  const staffel = useStaffel('portfolio-anlagen');
   return (
-    <div className="vp-at-karten">
+    <div className={staffel ? `vp-at-karten ${staffel}` : 'vp-at-karten'}>
       {zeilen.map((z) => {
         const auf = offen === z.id;
         const nums: { id: SpaltenId; label: string }[] = [];

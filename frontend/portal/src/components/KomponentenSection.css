@@ -39,7 +39,7 @@
   color: var(--vp-navy-2, #2c5282);
 }
 .vp-verlauf-toggle svg {
-  transition: transform 0.15s ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
   transform: rotate(-90deg);
 }
 .vp-verlauf-toggle.is-open svg {

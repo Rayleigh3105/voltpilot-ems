@@ -283,9 +283,15 @@
    Jede Zahl hier ist ein P0-Token — die Maße stehen an EINER Stelle
    (`index.css` E3.3), nicht in jedem Sheet einzeln.
 
-   ⚠ KEIN eigener `prefers-reduced-motion`-Block. `--vp-c-motion` fällt unter
-   `prefers-reduced-motion` an EINER Stelle auf 0 (P0, der Media-Block unter
-   dem `:root`); eine zweite Abschaltung hier wäre ein Zwilling.
+   ⚠ KEIN eigener `prefers-reduced-motion`-Block. Die Dauern SIND die Token der
+   Familie `--vp-motion-*`, und P0 nullt sie an EINER Stelle (dem Media-Block
+   unter dem `:root`); eine zweite Abschaltung hier wäre ein Zwilling.
+
+   ⚠ ES BLENDET AUS (Bewegungs-Programm P6, Konzept §6): das Blatt federt
+   `--vp-motion-page` mit `--vp-ease-feder` herein und geht `--vp-motion-exit`
+   nach unten wieder hinaus. Der Zustand dazwischen ist die Klasse
+   `is-closing`, die `BottomSheet.tsx` über `useAusblenden` so lange trägt, wie
+   die Fläche im Baum bleibt — derselbe Baustein wie im Modal.
    ========================================================================== */
 
 .vp-bs-wrap {
@@ -298,7 +304,7 @@
   position: absolute;
   inset: 0;
   background: var(--vp-c-scrim, rgba(30, 41, 59, 0.4));
-  animation: vp-bs-fade var(--vp-c-motion, 200ms) var(--vp-ease, ease-out);
+  animation: vp-bs-fade var(--vp-motion-base) var(--vp-ease-out);
 }
 
 /* Der eigentliche Unterschied zu vorher: `fixed` am unteren Rand statt im
@@ -313,7 +319,7 @@
   background: var(--vp-c-card, #fff);
   border-radius: var(--vp-c-sheet-radius, 16px) var(--vp-c-sheet-radius, 16px) 0 0;
   box-shadow: 0 -8px 30px rgba(15, 23, 42, 0.18);
-  animation: vp-bs-up var(--vp-c-motion, 200ms) var(--vp-ease, ease-out);
+  animation: vp-bs-up var(--vp-motion-page) var(--vp-ease-feder);
 }
 
 .vp-bs:focus {
@@ -328,6 +334,34 @@
 
 @keyframes vp-bs-fade {
   from {
+    opacity: 0;
+  }
+}
+
+/* Verlassen schnell und ohne Feder: eine Fläche, die geht, soll nicht noch
+   einmal nachwippen (Prinzip 3). Der Schleier ist dabei durchklickbar-tot,
+   damit ein Klick auf ein Blatt, das schon geht, nicht ein zweites Mal
+   schliesst. */
+.vp-bs-wrap.is-closing {
+  pointer-events: none;
+}
+
+.vp-bs-wrap.is-closing .vp-bs-scrim {
+  animation: vp-bs-fade-aus var(--vp-motion-exit) var(--vp-ease-in) forwards;
+}
+
+.vp-bs-wrap.is-closing .vp-bs {
+  animation: vp-bs-ab var(--vp-motion-exit) var(--vp-ease-in) forwards;
+}
+
+@keyframes vp-bs-ab {
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes vp-bs-fade-aus {
+  to {
     opacity: 0;
   }
 }

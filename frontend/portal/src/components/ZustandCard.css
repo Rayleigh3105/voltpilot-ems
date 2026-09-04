@@ -61,7 +61,7 @@
   text-decoration: underline;
 }
 .vp-zustand-details svg {
-  transition: transform 0.12s ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
 }
 .vp-zustand-details.is-open svg {
   transform: rotate(90deg);

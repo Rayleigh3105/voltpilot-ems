@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../core/Icon';
 import { fokussierbareElemente } from './fokus';
+import { useAusblenden } from './ausblenden';
 
 /*
  * Modals may be stacked (for example the measurement library plus its
@@ -47,10 +48,17 @@ function lockBodyScroll() {
  * nicht am `overflow`/`transform` eines Vorfahren hängen; ein Test sucht sie
  * deshalb über `screen`/`document.body`, nie im Render-Container.
  *
- * ⚠ ES GIBT KEINEN EIGENEN `prefers-reduced-motion`-BLOCK. Die Einblendung
- * hängt an `--vp-c-motion`, und dieses Token steht unter
+ * ⚠ ES BLENDET IMMER AUS (Bewegungs-Programm P6, Konzept §6). Geht `open` auf
+ * `false`, bleibt die Fläche noch `--vp-motion-exit` lang im Baum und trägt
+ * `is-closing`; erst danach gibt sie Scroll-Sperre und Fokus zurück. Der
+ * Zustand kommt aus `useAusblenden` — reines CSS + `useState`, KEIN Motion:
+ * das Modal liegt im Einstiegs-Bündel (E10 a, `test/bundle-smoke.sh`).
+ *
+ * ⚠ ES GIBT KEINEN EIGENEN `prefers-reduced-motion`-BLOCK. Ein- und
+ * Ausblenden hängen an der Token-Familie `--vp-motion-*`, und die steht unter
  * `prefers-reduced-motion` an EINER Stelle (dem Media-Block unter dem `:root`
- * von `index.css`) auf 0. Ein zweiter Block wäre ein Zwilling.
+ * von `index.css`) auf 0 — auch die WARTEZEIT, denn `useAusblenden` misst
+ * dasselbe Token. Ein zweiter Block wäre ein Zwilling.
  */
 export function Modal({
   open,
@@ -67,8 +75,13 @@ export function Modal({
   closeRef.current = onClose;
   if (tokenRef.current === null) tokenRef.current = { panelRef };
 
+  // Scroll-Sperre, Fokus-Falle und Escape hängen bewusst an `sichtbar`, nicht
+  // an `open`: solange die Fläche noch ausblendet, steht sie im Baum und darf
+  // die Seite darunter weder scrollen noch den Fokus verlieren lassen.
+  const { sichtbar, schliessend } = useAusblenden(open, panelRef);
+
   React.useEffect(() => {
-    if (!open) return undefined;
+    if (!sichtbar) return undefined;
     const token = tokenRef.current;
     const unlockBodyScroll = lockBodyScroll();
     const prevFocus = document.activeElement;
@@ -97,9 +110,9 @@ export function Modal({
     // modal commonly rerender their owner on every key. An inline callback
     // must not tear down the modal effect, steal focus, and re-lock scrolling
     // after each character.
-  }, [open]);
+  }, [sichtbar]);
 
-  if (!open) return null;
+  if (!sichtbar) return null;
 
   // Die Fokusfalle hält Tab/Shift-Tab in der Fläche. Escape läuft bewusst
   // NICHT hier, sondern über den Stapel oben: er trifft auch dann noch das
@@ -119,7 +132,7 @@ export function Modal({
 
   const modal = (
     <div
-      className="vp-modal-scrim"
+      className={schliessend ? 'vp-modal-scrim is-closing' : 'vp-modal-scrim'}
       role="presentation"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >

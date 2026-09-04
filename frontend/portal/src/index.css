@@ -598,7 +598,7 @@ svg [tabindex]:focus-visible {
 .vp-stale {
   opacity: 0.55;
   filter: grayscale(0.35);
-  transition: opacity 0.3s ease;
+  transition: opacity var(--vp-motion-base) var(--vp-ease-inout);
 }
 
 /* ---------------------------------------------------------------------------
@@ -2903,7 +2903,7 @@ button.vp-cl-item.is-off .vp-cl-label {
   background: var(--vp-surface, #fff);
   color: var(--vp-text-gray, #6c757d);
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s;
+  transition: var(--vp-motion-chrome);
 }
 .vp-gear-btn:hover {
   color: var(--vp-action, #2c5282);
@@ -2966,7 +2966,7 @@ button.vp-cl-item.is-off .vp-cl-label {
   border-left: 2px solid transparent;
   border-radius: 0 var(--vp-radius-sm) var(--vp-radius-sm) 0;
   text-decoration: none;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition: var(--vp-motion-chrome);
 }
 .vp-technik-nav a svg {
   color: var(--vp-tech-faint);
@@ -3068,7 +3068,7 @@ button.vp-tech-card-h.toggle {
   margin-left: auto;
   flex: 0 0 auto;
   color: var(--vp-tech-faint);
-  transition: transform 0.2s;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
 }
 .vp-tech-card.open .vp-tech-chev {
   transform: rotate(180deg);
@@ -3153,7 +3153,7 @@ button.vp-tech-card-h.toggle {
 }
 .vp-tech-disc-chev {
   flex: 0 0 auto;
-  transition: transform 0.2s;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
 }
 .vp-tech-disc.open .vp-tech-disc-chev {
   transform: rotate(180deg);
@@ -3210,7 +3210,7 @@ button.vp-tech-card-h.toggle {
   border: 1px solid var(--vp-border);
   border-radius: var(--vp-radius-sm);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: var(--vp-motion-chrome);
 }
 .vp-tech-device:hover {
   border-color: var(--vp-action);
@@ -3264,7 +3264,7 @@ button.vp-tech-card-h.toggle {
   border: 1px solid var(--vp-border);
   border-radius: var(--vp-radius-sm);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: var(--vp-motion-chrome);
 }
 .vp-tech-edit:hover {
   border-color: var(--vp-action);
@@ -5913,6 +5913,139 @@ span.vp-swap-out {
   }
   to {
     clip-path: inset(-50% -50% -50% -50%);
+  }
+}
+
+/* =========================================================================
+   === Bewegung · P6 ===  Überlagerungen · Listen · Zustände · Skelett
+   Konzept `data/vp-motion-konzept-m1/report.md` §6, Captain-Entscheide E6/E8.
+
+   Hier steht NUR, was keiner Komponente allein gehört. Modal und Sheet
+   bringen ihre Bewegung selbst mit (`shell.css`, `Verlauf.css`,
+   `VpPicker.css`); der Aufklapper seine (`Aufklapper.css`).
+
+   ⚠ Kein `prefers-reduced-motion`-Block hier drin — jede Dauer unten ist ein
+   Token der Familie, und der EINE Schalter darunter nullt sie alle (P0).
+   ========================================================================= */
+
+/* --- Listen-Staffel (Konzept §6 Zeile „Listen/Karten") -------------------
+   `.vp-stagger` gehört dem BEHÄLTER, die Verzögerung steht am Kind. Zwei
+   Eigenschaften fallen dabei ab, ohne dass jemand sie bauen müsste:
+
+   - **Beim Nachladen staffelt nur die NEUE Zeile.** Eine CSS-Animation läuft,
+     wenn ein Element in den Baum kommt — die stehenden haben ihre hinter sich.
+   - **Der Deckel ist ein Selektor, keine Rechnung.** Ab dem zehnten Kind gilt
+     dieselbe Verzögerung wie beim neunten (Prinzip 5: „höchstens 8 verzögert",
+     8 × 30 ms = 240 ms), also reist kein Index durch TSX.
+
+   ⚠ `backwards` ist tragend: ohne die Rückwärts-Füllung stünde das fünfte
+   Kind seine 120 ms Verzögerung lang VOLL sichtbar da und spränge dann auf
+   Null zurück, um einzublenden — ein Blitzen statt eines Erscheinens.
+
+   „Nie beim zweiten Besuch" kann CSS nicht wissen; das entscheidet
+   `useStaffel` (`src/staffel.ts`) und lässt die Klasse dann einfach weg. */
+.vp-stagger > * {
+  animation: vp-stagger-ein var(--vp-motion-enter) var(--vp-ease-out) backwards;
+}
+.vp-stagger > *:nth-child(2) { animation-delay: calc(var(--vp-motion-stagger) * 1); }
+.vp-stagger > *:nth-child(3) { animation-delay: calc(var(--vp-motion-stagger) * 2); }
+.vp-stagger > *:nth-child(4) { animation-delay: calc(var(--vp-motion-stagger) * 3); }
+.vp-stagger > *:nth-child(5) { animation-delay: calc(var(--vp-motion-stagger) * 4); }
+.vp-stagger > *:nth-child(6) { animation-delay: calc(var(--vp-motion-stagger) * 5); }
+.vp-stagger > *:nth-child(7) { animation-delay: calc(var(--vp-motion-stagger) * 6); }
+.vp-stagger > *:nth-child(8) { animation-delay: calc(var(--vp-motion-stagger) * 7); }
+.vp-stagger > *:nth-child(n + 9) { animation-delay: calc(var(--vp-motion-stagger) * 8); }
+
+@keyframes vp-stagger-ein {
+  from {
+    opacity: 0;
+    transform: translateY(var(--vp-motion-distance));
+  }
+}
+
+/* --- Skelett → Inhalt (Konzept §6 Zeile „Skelett → Inhalt") --------------
+   Der Inhalt kommt in `--vp-motion-base` über die Fläche, auf der eben noch
+   das Skelett stand — im RESERVIERTEN Rahmen, also ohne einen einzigen
+   Layout-Sprung (CLS 0). Bewegt wird ausschliesslich die Opazität: ein Weg
+   hiesse „das hier ist neu", und der Inhalt ist nicht neu, er ist derselbe
+   Platz, nur endlich gefüllt.
+
+   ⚠ Das Skelett selbst blendet NICHT aus, wo React es unmontiert (der
+   Suspense-Rand tauscht Platzhalter und Inhalt im selben Commit). Wo das
+   Skelett UNS gehört, übernimmt `Blende` (`src/components/Lazy.tsx`) das
+   Ausblenden mit `--vp-motion-exit`. */
+.vp-blende {
+  animation: vp-blende-ein var(--vp-motion-base) var(--vp-ease-out);
+}
+
+/* ⚠ Das gehende Skelett wird `absolute` — DAS ist der reservierte Rahmen.
+   Läge es weiter im Fluss, wäre die Höhe des Rahmens für 160 ms die SUMME aus
+   Skelett und Inhalt, und der Sprung, den die Blende verhindern soll, wäre
+   genau ihr eigenes Werk. `inset: 0` legt es exakt über die Fläche, auf der es
+   eben noch allein stand. */
+.vp-blende-rahmen {
+  position: relative;
+  min-width: 0;
+}
+
+.vp-blende-rahmen > .vp-blende.is-weg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.vp-blende.is-weg {
+  animation: vp-blende-aus var(--vp-motion-exit) var(--vp-ease-in) forwards;
+  pointer-events: none;
+}
+
+@keyframes vp-blende-ein {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes vp-blende-aus {
+  to {
+    opacity: 0;
+  }
+}
+
+/* --- Der Aktualisierungs-Hinweis (Konzept §6 Zeile „Fehler/Leer/Toast") ---
+   8 px von unten, `--vp-motion-enter`. Ein Ausblenden hat er nicht: er
+   verschwindet, weil jemand ihn wegklickt oder neu lädt — beides sind
+   Handlungen, keine Zustandswechsel. */
+.vp-update-toast {
+  animation: vp-toast-ein var(--vp-motion-enter) var(--vp-ease-out);
+}
+
+@keyframes vp-toast-ein {
+  from {
+    opacity: 0;
+    transform: translate(-50%, var(--vp-motion-distance));
+  }
+}
+
+/* --- Druck am Telefon (E8 a, Konzept §6 Zeile „Hover/Press") -------------
+   Am Rechner gibt es den 1-px-Lift (`--vp-lift`, P0). Am Telefon gibt es
+   keinen Hover — dort ist die Antwort der DRUCK, und er muss SOFORT kommen:
+   eine Verzögerung fühlt sich wie ein hängender Knopf an. Deshalb `:active`
+   ohne Übergang hinein und mit Übergang zurück.
+
+   ⚠ `@media (hover: none)` statt einer Breite: es geht um das Eingabegerät,
+   nicht um die Fensterbreite (ein Touch-Notebook ist beides). */
+@media (hover: none) {
+  .vp-card--interactive,
+  .vp-at-karte,
+  .vp-ab-node {
+    transition: transform var(--vp-motion-fast) var(--vp-ease-out);
+  }
+
+  .vp-card--interactive:active,
+  .vp-at-karte:active,
+  .vp-ab-node:active {
+    transform: scale(0.98);
+    transition: none;
   }
 }
 

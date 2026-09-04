@@ -56,9 +56,16 @@ export function TextSkeleton({ lines = 3 }: { lines?: number }) {
  * chart placeholder. Matches the Stat-row + chart layout so there is no jump
  * when the real content arrives.
  */
+/**
+ * ⚠ Bewegung P6 (Konzept §6 Zeile „Fehler/Leer/Toast": „wie Inhalt, kein
+ * Hüpfen/Blinken"): jede Zustands-Fläche dieses Moduls trägt `.vp-blende` und
+ * erscheint damit in `--vp-motion-base` statt zu springen. Sie sind alle
+ * höhen-reservierend gebaut, also bewegt sich dabei kein Layout — es ist
+ * ausschliesslich Opazität.
+ */
 export function ChartCardSkeleton({ stats = 4, chartHeight = 240 }: { stats?: number; chartHeight?: number }) {
   return (
-    <div role="status" aria-live="polite" aria-busy="true">
+    <div className="vp-blende" role="status" aria-live="polite" aria-busy="true">
       <span className="vp-note vp-sr-only">Wird geladen…</span>
       <div
         style={{
@@ -83,7 +90,13 @@ export function ChartCardSkeleton({ stats = 4, chartHeight = 240 }: { stats?: nu
 /** Table-shaped skeleton (header-less): N rows of a few cells. */
 export function TableSkeleton({ rows = 4, cols = 4 }: { rows?: number; cols?: number }) {
   return (
-    <div role="status" aria-live="polite" aria-busy="true" style={{ padding: 'var(--vp-space-4)' }}>
+    <div
+      className="vp-blende"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      style={{ padding: 'var(--vp-space-4)' }}
+    >
       <span className="vp-note vp-sr-only">Wird geladen…</span>
       {Array.from({ length: rows }).map((_, r) => (
         <div
@@ -119,7 +132,7 @@ export function ErrorState({
   style?: React.CSSProperties;
 }) {
   return (
-    <div className="vp-alert vp-alert-err" role="alert" style={{ marginTop: 0, ...style }}>
+    <div className="vp-alert vp-alert-err vp-blende" role="alert" style={{ marginTop: 0, ...style }}>
       <div style={{ marginBottom: onRetry ? 'var(--vp-space-3)' : 0 }}>{message}</div>
       {onRetry && (
         <Button variant="outline" size="sm" iconLeft={<Icon name="refresh-cw" size={16} />} onClick={onRetry}>
@@ -148,7 +161,7 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="vp-empty">
+    <div className="vp-empty vp-blende">
       <IconTile category={category} size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>
         <Icon name={icon} size={24} />
       </IconTile>
@@ -206,7 +219,7 @@ export function VerlaufKarteSkeleton({
   legende?: boolean;
 }) {
   return (
-    <div className="vp-c-zst-lade" role="status" aria-live="polite" aria-busy="true">
+    <div className="vp-c-zst-lade vp-blende" role="status" aria-live="polite" aria-busy="true">
       <span className="vp-note vp-sr-only">Wird geladen…</span>
       {label && <div className="vp-skeleton vp-c-zst-label" aria-hidden="true" />}
       {satz && <div className="vp-skeleton vp-c-zst-satz" aria-hidden="true" />}
@@ -239,7 +252,7 @@ export function VerlaufLeer({
   onWeg?: () => void;
 }) {
   return (
-    <div className="vp-c-zst-leer">
+    <div className="vp-c-zst-leer vp-blende">
       <span className="vp-c-zst-leer-label">{label}</span>
       <p className="vp-c-zst-text">{satz}</p>
       {weg && onWeg ? (
@@ -266,7 +279,7 @@ export function VerlaufFehler({
   onRetry?: () => void;
 }) {
   return (
-    <div className="vp-c-zst-fehler" role="alert">
+    <div className="vp-c-zst-fehler vp-blende" role="alert">
       <p className="vp-c-zst-text">{satz}</p>
       {onRetry && (
         <Button

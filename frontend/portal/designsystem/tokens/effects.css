@@ -97,6 +97,16 @@
   --vp-ease-inout: cubic-bezier(0.4, 0, 0.2, 1);   /* bewegen / morphen */
   --vp-ease:       var(--vp-ease-inout); /* @kind other */
 
+  /* Die EINE Feder des Hauses, als Kurve (Bewegungs-Programm P6, Konzept §6
+     Zeile „Bottom-Sheet / Picker": „Feder von unten 300 ms, leichtes
+     Ueberschwingen"). Sie ist der CSS-Zwilling von `SHEET_SPRING`
+     (`src/motionPresets.ts`, stiffness 380 / damping 36 ⇒ Daempfungsgrad 0,92,
+     also knapp unterdaempft) — dieselbe Bewegung, einmal fuer Motion und
+     einmal fuer Blaetter, die kein JS anfassen darf (Sheet und Picker liegen
+     im Einstiegs-Buendel, E10 a). Das Ueberschwingen sind ~6 %: sichtbar
+     genug, dass das Blatt „ankommt", zu wenig, um zu wackeln. */
+  --vp-ease-feder: cubic-bezier(0.22, 1.06, 0.36, 1); /* @kind other */
+
   /* E8 a: 1 px statt 3/8 px. `--vp-lift-lg` ist ERSATZLOS entfallen — ein
      8-px-Sprung unter dem Zeiger ist Bewegung ohne Aussage. */
   --vp-lift:       translateY(-1px); /* @kind other */

@@ -85,7 +85,9 @@ export function NeueRegelDialog({
   const [editorOffen, setEditorOffen] = useState(false);
   const start = useMemo(() => startpunkte({ entities, topology }), [entities, topology]);
 
-  if (!open) return null;
+  // ⚠ Bewegung P6: kein früher Ausstieg — er nähme dem Modal die Frames
+  // seiner Ausblendung. Das Modal rendert selbst nichts, solange es
+  // unsichtbar ist; die Haken darüber laufen ohnehin bei jedem Rendern.
 
   const close = () => {
     setEditorOffen(false);
@@ -93,7 +95,7 @@ export function NeueRegelDialog({
   };
 
   return (
-    <Modal open onClose={close} title="Neue Regel" icon={<Icon name="zap" size={20} />}>
+    <Modal open={open} onClose={close} title="Neue Regel" icon={<Icon name="zap" size={20} />}>
       <div className="vp-neuregel">
         {/* ⚠ Der Schlüssel ist tragend: der Baukasten liest `initialRule` NUR
             beim Montieren (`useState`-Seed). Ohne ihn bliebe das Formular

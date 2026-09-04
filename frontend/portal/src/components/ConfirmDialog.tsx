@@ -58,11 +58,16 @@ export function ConfirmDialog({
    */
   extra?: React.ReactNode;
 }) {
-  if (!open) return null;
   const danger = tone === 'danger';
+  /* ⚠ Bewegung P6: KEIN `if (!open) return null` mehr. Das Modal blendet seit
+     P6 aus (Zustand „closing"), und ein früher Ausstieg hier nähme ihm genau
+     die Frames, in denen es das tut — der Dialog verschwände wieder im selben
+     Frame. Das Modal selbst rendert nichts, solange es unsichtbar ist; dieser
+     Dialog ist rein darstellend (nur Props, keine Effekte), also kostet das
+     Durchreichen nichts. */
   return (
     <Modal
-      open
+      open={open}
       onClose={onCancel}
       title={title}
       icon={

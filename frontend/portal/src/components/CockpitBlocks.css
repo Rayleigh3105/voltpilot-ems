@@ -585,7 +585,9 @@
   color: var(--vp-link, #2c5282);
   opacity: 0;
   transform: translateY(2px);
-  transition: opacity 120ms ease, transform 120ms ease;
+  transition:
+    opacity var(--vp-motion-fast) var(--vp-ease-out),
+    transform var(--vp-motion-fast) var(--vp-ease-out);
   min-width: 0;
 }
 .vp-widget:hover .vp-widget-jump,

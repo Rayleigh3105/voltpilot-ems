@@ -149,6 +149,15 @@
   z-index: 60;
   display: grid;
   place-items: center;
+  /* Bewegungs-Programm P6 (Konzept §6): Schleier 200 ms ein, Panel 260 ms von
+     97 % + 8 px unten — und BEIDE gehen wieder, 160 ms mit `--vp-ease-in`
+     (Prinzip 3: „ankommen weich, verlassen schnell"). Das Ausblenden hängt an
+     der Klasse `is-closing`, die `Modal.jsx` so lange trägt, wie
+     `useAusblenden` die Fläche im Baum hält.
+
+     Kein eigener `prefers-reduced-motion`-Block: die Dauern SIND die Tokens,
+     und der EINE Schalter nullt sie (P0). */
+  animation: vp-modal-schleier-ein var(--vp-motion-base) var(--vp-ease-out);
   /* Der Rand des Schleiers IST die Gasse der Fläche: mit `width: min(640px,
      100%)` darin ergibt das die geforderten `min(640px, calc(100% - 2rem))`. */
   padding: var(--vp-space-4);
@@ -156,6 +165,7 @@
 .vp-modal {
   outline: none; /* panel takes programmatic focus on open */
   position: relative;
+  animation: vp-modal-ein var(--vp-motion-enter) var(--vp-ease-out);
   width: min(640px, 100%);
   max-height: calc(100dvh - 2rem);
   background: var(--vp-surface);
@@ -166,6 +176,39 @@
   border: 1px solid var(--vp-border);
   border-radius: var(--vp-radius-lg);
   overflow: hidden; /* der Radius schneidet Kopf- und Fußleiste mit */
+}
+
+/* Der Schleier lässt sich beim Verschwinden nicht mehr anklicken — ein Klick
+   auf eine Fläche, die schon geht, wäre ein zweites `onClose()`. */
+.vp-modal-scrim.is-closing {
+  pointer-events: none;
+  animation: vp-modal-schleier-aus var(--vp-motion-exit) var(--vp-ease-in) forwards;
+}
+.vp-modal-scrim.is-closing .vp-modal {
+  animation: vp-modal-aus var(--vp-motion-exit) var(--vp-ease-in) forwards;
+}
+
+@keyframes vp-modal-schleier-ein {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes vp-modal-schleier-aus {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vp-modal-ein {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(var(--vp-motion-distance));
+  }
+}
+@keyframes vp-modal-aus {
+  to {
+    opacity: 0;
+    transform: scale(0.97) translateY(var(--vp-motion-distance));
+  }
 }
 .vp-modal .dhead {
   display: flex;

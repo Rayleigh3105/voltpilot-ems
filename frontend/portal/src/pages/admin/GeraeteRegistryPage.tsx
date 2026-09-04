@@ -17,6 +17,7 @@ import {
 } from '../../admin/adminApi';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
+import { Blende } from '../../components/Lazy';
 import { AdminPageHead } from './AdminPageHead';
 import { normalizeDeviceIdInput } from '../../anlageFlow';
 import { fmtRelative } from '../../format';
@@ -234,18 +235,26 @@ export function GeraeteRegistryPage({
 
       {loadError ? (
         <ErrorState message={loadError} onRetry={() => void reload()} />
-      ) : devices == null ? (
-        <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <TableSkeleton rows={4} cols={6} />
-        </Card>
       ) : (
-        <DeviceInventory
-          fleet={fleet}
-          releases={updates?.releases ?? []}
-          onOpen={oeffneGeraet}
-          onRemove={setRemoving}
-          registerButton={registerButton}
-        />
+        /* Bewegung P6: das Skelett blendet in den Inhalt über, im reservierten
+           Rahmen — die Tabelle bestimmt vom ersten Frame an die Höhe, das
+           Skelett verblasst darüber (`Blende`, `src/components/Lazy.tsx`). */
+        <Blende
+          laedt={devices == null}
+          skelett={
+            <Card style={{ padding: 0, overflow: 'hidden' }}>
+              <TableSkeleton rows={4} cols={6} />
+            </Card>
+          }
+        >
+          <DeviceInventory
+            fleet={fleet}
+            releases={updates?.releases ?? []}
+            onOpen={oeffneGeraet}
+            onRemove={setRemoving}
+            registerButton={registerButton}
+          />
+        </Blende>
       )}
 
       {removing && (

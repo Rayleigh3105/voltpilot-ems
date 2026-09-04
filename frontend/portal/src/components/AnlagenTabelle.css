@@ -153,7 +153,7 @@
 .vp-at-chev {
   display: inline-flex;
   color: var(--vp-text-muted, #6c757d);
-  transition: transform 0.15s ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
   flex: 0 0 auto;
 }
 

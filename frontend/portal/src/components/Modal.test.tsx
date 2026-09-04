@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Modal } from '../../designsystem/components/shell/Modal';
 
 /**
@@ -147,5 +147,159 @@ describe('Modal', () => {
   it('lässt den Fuß weg, wenn es keinen gibt', () => {
     render(<Modal open onClose={() => {}} title="T">x</Modal>);
     expect(document.body.querySelector('.vp-modal .dfoot')).toBeNull();
+  });
+});
+
+/**
+ * **Bewegung P6 · das Modal blendet AUS** (Konzept §6 Zeile „Modal / Drawer":
+ * „Ausblenden immer … Zustand ‚closing' im Modal").
+ *
+ * ⚠ Warum die Tests das Token selbst setzen: `useAusblenden` misst
+ * `--vp-motion-exit` an der `documentElement`, und jsdom lädt kein
+ * Stylesheet — ohne gemessene Dauer wird nicht gewartet. Das ist die
+ * Ehrlichkeitsregel des Bausteins und zugleich der Grund, warum die anderen
+ * Modal-Tests oben unverändert synchron durchlaufen.
+ */
+describe('Modal · Bewegung P6 (Ausblenden)', () => {
+  const setzeDauer = (wert: string | null) => {
+    if (wert === null) document.documentElement.style.removeProperty('--vp-motion-exit');
+    else document.documentElement.style.setProperty('--vp-motion-exit', wert);
+  };
+
+  afterEach(() => {
+    setzeDauer(null);
+    vi.useRealTimers();
+  });
+
+  it('bleibt nach dem Schließen im Baum und geht erst nach der Ausblend-Dauer', () => {
+    vi.useFakeTimers();
+    setzeDauer('160ms');
+    const { rerender } = render(
+      <Modal open onClose={() => {}} title="Anlage anlegen">
+        <p>Inhalt</p>
+      </Modal>,
+    );
+    expect(document.body.querySelector('.vp-modal')).not.toBeNull();
+
+    rerender(
+      <Modal open={false} onClose={() => {}} title="Anlage anlegen">
+        <p>Inhalt</p>
+      </Modal>,
+    );
+    // Noch da — und sichtbar als „geht gerade".
+    expect(document.body.querySelector('.vp-modal')).not.toBeNull();
+    expect(document.body.querySelector('.vp-modal-scrim')).toHaveClass('is-closing');
+    // Die Seite ist noch gesperrt: darunter darf nichts scrollen, solange die
+    // Fläche steht.
+    expect(document.body.style.overflow).toBe('hidden');
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(document.body.querySelector('.vp-modal')).toBeNull();
+    expect(document.body.style.overflow).not.toBe('hidden');
+  });
+
+  it('verschwindet bei Schalter 0 (reduced motion) SOFORT — kein Hänger', () => {
+    setzeDauer('0s');
+    const { rerender } = render(
+      <Modal open onClose={() => {}} title="T">
+        x
+      </Modal>,
+    );
+    rerender(
+      <Modal open={false} onClose={() => {}} title="T">
+        x
+      </Modal>,
+    );
+    expect(document.body.querySelector('.vp-modal')).toBeNull();
+    expect(document.body.style.overflow).not.toBe('hidden');
+  });
+
+  it('gibt den Fokus erst zurück, wenn die Fläche wirklich fort ist', () => {
+    vi.useFakeTimers();
+    setzeDauer('160ms');
+    const ausloeser = document.createElement('button');
+    document.body.appendChild(ausloeser);
+    ausloeser.focus();
+
+    const { rerender } = render(
+      <Modal open onClose={() => {}} title="T">
+        <button type="button">drin</button>
+      </Modal>,
+    );
+    expect(document.activeElement).toBe(document.body.querySelector('.vp-modal'));
+
+    rerender(
+      <Modal open={false} onClose={() => {}} title="T">
+        <button type="button">drin</button>
+      </Modal>,
+    );
+    expect(document.activeElement).not.toBe(ausloeser);
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(document.activeElement).toBe(ausloeser);
+    ausloeser.remove();
+  });
+
+  it('ein `animationend` beendet das Warten früher als der Zeitgeber', () => {
+    vi.useFakeTimers();
+    setzeDauer('160ms');
+    const { rerender } = render(
+      <Modal open onClose={() => {}} title="T">
+        x
+      </Modal>,
+    );
+    rerender(
+      <Modal open={false} onClose={() => {}} title="T">
+        x
+      </Modal>,
+    );
+    const panel = document.body.querySelector('.vp-modal') as HTMLElement;
+    act(() => {
+      panel.dispatchEvent(new Event('animationend'));
+    });
+    expect(document.body.querySelector('.vp-modal')).toBeNull();
+  });
+
+  it('gestapelte Modale blenden je für sich — die Sperre bleibt bis zum letzten', () => {
+    vi.useFakeTimers();
+    setzeDauer('160ms');
+    function Stapel({ unten, oben }: { unten: boolean; oben: boolean }) {
+      return (
+        <>
+          <Modal open={unten} onClose={() => {}} title="Unten">
+            u
+          </Modal>
+          <Modal open={oben} onClose={() => {}} title="Oben">
+            o
+          </Modal>
+        </>
+      );
+    }
+    const { rerender } = render(<Stapel unten oben />);
+    expect(document.body.querySelectorAll('.vp-modal')).toHaveLength(2);
+
+    // Nur das obere geht.
+    rerender(<Stapel unten oben={false} />);
+    const schleier = document.body.querySelectorAll('.vp-modal-scrim');
+    expect(schleier).toHaveLength(2);
+    expect(schleier[0]).not.toHaveClass('is-closing');
+    expect(schleier[1]).toHaveClass('is-closing');
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(document.body.querySelectorAll('.vp-modal')).toHaveLength(1);
+    expect(document.body.style.overflow).toBe('hidden');
+
+    rerender(<Stapel unten={false} oben={false} />);
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(document.body.querySelectorAll('.vp-modal')).toHaveLength(0);
+    expect(document.body.style.overflow).not.toBe('hidden');
   });
 });
