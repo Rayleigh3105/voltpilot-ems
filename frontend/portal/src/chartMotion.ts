@@ -95,6 +95,18 @@ export type ChartPhase = 'enter' | 'update';
 /** Die Bewegungs-Optionen, die {@link motionOptions} unter die Konsumenten legt. */
 export interface MotionOptions {
   animation: boolean;
+  /**
+   * ⚠ 0 in BEIDEN Phasen — die Dauer der ERSTEN Zeichnung einer Serie.
+   *
+   * Sie wird gebraucht, seit der Uebergang mischt statt neu zu bauen (P2): eine
+   * Serie, die MITTEN im Leben dazukommt (Vergleich an, eine Reihe wieder
+   * eingeblendet), ist fuer ECharts brandneu und liefe sonst die
+   * WERKS-Einstiegsanimation — 1000 ms aus der Null. Genau der lesbare
+   * Falschwert, den P1 fuer das erste Bild abgeschafft hat. Eine dazukommende
+   * Serie steht deshalb sofort auf ihrem wahren Wert.
+   */
+  animationDuration: number;
+  animationEasing: 'cubicOut';
   animationDurationUpdate: number;
   animationEasingUpdate: 'cubicInOut';
   animationDelayUpdate: 0;
@@ -126,6 +138,8 @@ export function motionOptions(m: ChartMotion, phase: ChartPhase): MotionOptions 
   const fast = aus ? 0 : m.fast;
   return {
     animation: phase === 'update' && !aus,
+    animationDuration: 0,
+    animationEasing: 'cubicOut',
     animationDurationUpdate: update,
     animationEasingUpdate: 'cubicInOut',
     animationDelayUpdate: 0,
@@ -164,11 +178,193 @@ export function mergeMotion<T extends Record<string, unknown>>(
   opt: T,
   m: ChartMotion,
   phase: ChartPhase,
+  spur?: TypSpur,
 ): T {
   const mo = motionOptions(m, phase);
   const { tooltip, axisPointer, ...basis } = mo;
   const gemischt: Record<string, unknown> = { ...basis, ...opt };
   if (istObjekt(opt.tooltip)) gemischt.tooltip = { ...tooltip, ...opt.tooltip };
   if (istObjekt(opt.axisPointer)) gemischt.axisPointer = { ...axisPointer, ...opt.axisPointer };
+  if (opt.series !== undefined) gemischt.series = serienMitBewegung(opt.series, mo, spur);
   return gemischt as T;
+}
+
+// ---------------------------------------------------------------------------
+// P2 · je Serie: Fokus/Dimmen, stabile Kennung, Morph statt Neubau
+// ---------------------------------------------------------------------------
+
+/**
+ * Die Komponenten, die ein Update ERSETZT statt zu mischen.
+ *
+ * ## ⚠ WARUM ES DIESE LISTE UEBERHAUPT GIBT
+ *
+ * Bis P2 rief JEDE Flaeche `setOption(option, true)` — die alte Stellungs-Form
+ * von `notMerge`. Damit war jeder Zustandswechsel ein NEUBAU: ECharts warf alle
+ * Serien weg und legte sie als brandneu wieder an, also lief die
+ * Einstiegsanimation statt eines Uebergangs (gemessen: Balken wachsen 1000 ms
+ * aus der Null, bei JEDEM Zeitraumwechsel und bei JEDEM Live-Takt). Der Morph
+ * war damit strukturell unmoeglich — nicht abgeschaltet, sondern nie gebaut.
+ *
+ * `replaceMerge` ist die Antwort: Komponenten mit GLEICHER Kennung werden
+ * gemischt (und morphen), verschwundene werden entfernt. Deshalb bekommt jede
+ * Serie hier eine stabile Kennung — ohne sie faellt `replaceMerge` auf
+ * „alles brandneu" zurueck (echarts `mappingToExists`: im `replaceMerge`-Modus
+ * gibt es KEIN Abbilden ueber den Namen, nur ueber `id`).
+ *
+ * ⚠ Die Liste ist bewusst so BREIT wie das frueher gesetzte `notMerge`: eine
+ * Anlage ohne Ladestand hat eine y-Achse weniger, ein Zeitraum ohne Vergleich
+ * eine Legende weniger. Wuerden die MISCHEN, blieben Geister stehen — genau
+ * der Grund, aus dem die Flaechen einst `notMerge` gesetzt haben.
+ */
+export const REPLACE_MERGE = [
+  'series',
+  'xAxis',
+  'yAxis',
+  'grid',
+  'legend',
+  'graphic',
+  'dataZoom',
+  'visualMap',
+  'title',
+] as const;
+
+/** Wie stark eine NICHT fokussierte Serie zurueckgenommen wird (Spec §5). */
+export const BLUR_FAKTOR = 0.25;
+
+/**
+ * Das Gedaechtnis EINES Diagramms ueber die Formtypen seiner Serien.
+ *
+ * Gehalten von {@link useEChart} je Instanz, gelesen und fortgeschrieben von
+ * {@link mergeMotion}. Es beantwortet genau eine Frage: hat DIESE Serie ihren
+ * Formtyp gewechselt (Linie ↔ Balken)? Nur dann wird `universalTransition`
+ * eingeschaltet — siehe {@link serienMitBewegung}.
+ */
+export interface TypSpur {
+  typen: Map<string, string>;
+}
+
+function opazitaet(stil: unknown, fallback = 1): number {
+  if (istObjekt(stil) && typeof stil.opacity === 'number') return stil.opacity;
+  return fallback;
+}
+
+/** 0,25 × die EIGENE Deckkraft der Serie — nie ein fester Wert. */
+function gedimmt(stil: unknown): { opacity: number } {
+  return { opacity: Math.round(opazitaet(stil) * BLUR_FAKTOR * 1000) / 1000 };
+}
+
+/**
+ * Der Dimm-Zustand einer Serie, passend zu ihrem Formtyp.
+ *
+ * ## ⚠ 0,25 IST EIN FAKTOR, KEIN ABSOLUTWERT
+ *
+ * Eine Geister-Reihe des Vergleichs zeichnet schon bei 0,45; eine Flaeche liegt
+ * bei 0,10. Wuerde hier stur `opacity: 0.25` stehen, wuerden diese beim Dimmen
+ * HELLER — das Gegenteil der Aussage. Deshalb wird die eigene Deckkraft
+ * gelesen und multipliziert.
+ */
+function blurFuer(s: Record<string, unknown>): Record<string, unknown> {
+  const typ = typeof s.type === 'string' ? s.type : 'line';
+  const blur: Record<string, unknown> = { itemStyle: gedimmt(s.itemStyle) };
+  if (typ === 'line') blur.lineStyle = gedimmt(s.lineStyle);
+  // Nur ergaenzen, was es gibt: `areaStyle`/`endLabel` sind eigene Bausteine,
+  // und wer sie in den Dimm-Zustand schreibt, ohne dass die Serie sie hat,
+  // erfindet nichts — aber wer sie AUSLAESST, laesst eine Flaeche hell stehen,
+  // waehrend ihre Linie verblasst.
+  if (istObjekt(s.areaStyle)) blur.areaStyle = gedimmt(s.areaStyle);
+  if (istObjekt(s.label)) blur.label = gedimmt(s.label);
+  if (istObjekt(s.endLabel)) blur.endLabel = gedimmt(s.endLabel);
+  return blur;
+}
+
+/**
+ * Die stabile Kennung EINER Serie — bewusst OHNE ihren Formtyp.
+ *
+ * ⚠ Der Formtyp darf nicht in die Kennung: Messwerte zeichnen denselben
+ * „Hausverbrauch" am Tag als Linie und ab der Woche als Balken. Stuende der Typ
+ * darin, waeren das zwei verschiedene Serien — `replaceMerge` warfe die eine weg
+ * und legte die andere neu an, und der Uebergang Linie → Balken koennte gar
+ * nicht morphen. Genau dafuer gibt es sie.
+ */
+function stabileId(
+  s: Record<string, unknown>,
+  ohneNamen: { n: number },
+  benutzt: Set<string>,
+): string {
+  const name = typeof s.name === 'string' && s.name ? s.name : '';
+  let id = name ? `vp:${name}` : `vp:#${ohneNamen.n++}`;
+  // Zwei Serien duerfen denselben Namen tragen (Legende blendet sie zusammen).
+  // Eine doppelte Kennung waere fuer ECharts eine Warnung und ein Abbildungs-
+  // Fehler, also bekommt die zweite ihre eigene.
+  let k = 2;
+  while (benutzt.has(id)) id = `${name ? `vp:${name}` : `vp:#${ohneNamen.n}`}~${k++}`;
+  benutzt.add(id);
+  return id;
+}
+
+/** Die Marker-Bausteine einer Serie erben die Bewegung der Phase. */
+function markerMitBewegung(
+  s: Record<string, unknown>,
+  ziel: Record<string, unknown>,
+  mo: MotionOptions,
+): void {
+  for (const schluessel of ['markLine', 'markArea', 'markPoint'] as const) {
+    const v = s[schluessel];
+    if (!istObjekt(v)) continue;
+    ziel[schluessel] = {
+      animation: mo.animation,
+      animationDuration: mo.animationDuration,
+      animationDurationUpdate: mo.animationDurationUpdate,
+      animationEasingUpdate: mo.animationEasingUpdate,
+      ...v,
+    };
+  }
+}
+
+/**
+ * Jede Serie bekommt Fokus/Dimmen, eine stabile Kennung und ihre Marker-Uhr.
+ *
+ * ## ⚠ DER KONSUMENT GEWINNT AUCH HIER
+ *
+ * `emphasis`, `blur`, `id` und `universalTransition` werden nur ERGAENZT. Eine
+ * Flaeche, die selbst etwas dazu sagt, behaelt ihr Wort — dieselbe Regel wie
+ * bei {@link mergeMotion} eine Ebene hoeher.
+ *
+ * ## ⚠ `universalTransition` NUR BEIM FORMWECHSEL
+ *
+ * Sie ist die einzige Technik, mit der eine Linie in einen Balken morpht
+ * (Spec §5 Zeile A: „Tag↔Woche"). Sie DAUERHAFT einzuschalten waere aber
+ * teuer und riskant: ECharts ersetzt dann bei JEDEM Update seine eingebaute
+ * Datenanimation durch einen Element-Morph, auch dort, wo bloss ein Live-Punkt
+ * dazukommt. Deshalb haengt sie an der {@link TypSpur}: eingeschaltet genau
+ * fuer die Serien, deren Formtyp sich seit dem letzten Bild GEAENDERT hat.
+ */
+export function serienMitBewegung(
+  series: unknown,
+  mo: MotionOptions,
+  spur?: TypSpur,
+): unknown {
+  const liste = Array.isArray(series) ? series : [series];
+  const ohneNamen = { n: 0 };
+  const benutzt = new Set<string>();
+  const gesehen = new Map<string, string>();
+  const heraus = liste.map((roh) => {
+    if (!istObjekt(roh)) return roh;
+    const s = roh as Record<string, unknown>;
+    const id = typeof s.id === 'string' && s.id ? s.id : stabileId(s, ohneNamen, benutzt);
+    const typ = typeof s.type === 'string' ? s.type : '';
+    if (typ) gesehen.set(id, typ);
+    const formwechsel = Boolean(spur && typ && spur.typen.has(id) && spur.typen.get(id) !== typ);
+    const ziel: Record<string, unknown> = {
+      id,
+      emphasis: { focus: 'series', blurScope: 'coordinateSystem' },
+      blur: blurFuer(s),
+      ...(formwechsel ? { universalTransition: { enabled: true } } : {}),
+      ...s,
+    };
+    markerMitBewegung(s, ziel, mo);
+    return ziel;
+  });
+  if (spur) spur.typen = gesehen;
+  return Array.isArray(series) ? heraus : heraus[0];
 }
