@@ -1,7 +1,7 @@
 import { useRef, type ReactNode } from 'react';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { kopfView, type Kernaussage } from '../chartKopf';
-import { fokusGriff, zeigerSchwebt } from '../chartMotion';
+import { fokusGriff, zeigerSchwebt } from '../chartFokus';
 
 /**
  * Self-explaining chart chrome (captain's pain: "it takes me a while to

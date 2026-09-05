@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
+import { FOKUS_GRIFF } from './chartFokus';
 import {
-  FOKUS_GRIFF,
   chartMotion,
   mergeArt,
   mergeMotion,

@@ -29,12 +29,11 @@ import {
   mergeArt,
   mergeMotion,
   motionOptions,
-  fokusGriff,
   serienMitBewegung,
-  zeigerSchwebt,
   type ChartMotion,
   type TypSpur,
 } from './chartMotion';
+import { fokusGriff, zeigerSchwebt } from './chartFokus';
 
 const M: ChartMotion = { scale: 1, enter: 400, update: 300, base: 200, fast: 120 };
 const AUS: ChartMotion = { scale: 0, enter: 0, update: 0, base: 0, fast: 0 };
