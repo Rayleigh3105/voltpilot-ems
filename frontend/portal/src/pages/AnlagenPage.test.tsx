@@ -1067,6 +1067,52 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
     expect(container.querySelectorAll('.vp-c-ck-ring').length).toBe(2);
   });
 
+  /**
+   * **Bewegung · P7 — der Frische-Chip springt nicht mehr.**
+   *
+   * Gemessener Befund (`e2e/motion-p7/proof.mjs` (c), Produktions-Build,
+   * 375 px · CPU 4× · Fast 3G, 5 von 5 Läufen gleich): der Chip traf erst mit
+   * den Übersichts-Daten ein, belegte am Telefon eine EIGENE Zeile und schob
+   * damit `.vp-anlage-pending` um 30 px nach unten — der größte Einzelsprung
+   * des ganzen App-Starts (CLS 0,308 von 0,333 gesamt). Seither steht die
+   * Zeile von Anfang an da; ein unsichtbarer Zwilling hält ihre Höhe frei.
+   *
+   * ⚠ Der Beweis ist BEIDSEITIG: am Telefon muss die Zeile schon VOR den
+   *   Daten stehen, am Rechner darf es sie GAR NICHT geben (dort bestimmt die
+   *   Überschrift die Kopfhöhe, der Chip schiebt nichts — und eine Zeile, die
+   *   niemand braucht, wäre dort eine zweite Wahrheit über dieselbe Kopfzeile).
+   */
+  it('hält die Chip-Zeile am Telefon von Anfang an frei — auch ohne Daten', async () => {
+    stubPhone(true);
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+
+    // SOFORT, im allerersten Bild: die Zeile steht, und sie trägt bereits
+    // einen Körper (den unsichtbaren Zwilling) — sonst wäre sie 0 px hoch und
+    // reservierte nichts.
+    const zeileVorher = container.querySelector('.vp-anlage-chipzeile');
+    expect(zeileVorher).toBeTruthy();
+    const platz = zeileVorher?.firstElementChild as HTMLElement | null;
+    expect(platz).toBeTruthy();
+    expect(platz?.style.visibility).toBe('hidden');
+    expect(platz?.getAttribute('aria-hidden')).toBe('true');
+
+    // … und nachdem die Daten da sind, ist es DIESELBE Zeile — kein zweiter
+    // Behälter, der daneben aufginge.
+    await waitFor(() => expect(container.querySelector('.vp-mob-money')).toBeTruthy());
+    expect(container.querySelectorAll('.vp-anlage-chipzeile').length).toBe(1);
+  });
+
+  it('kennt die Chip-Zeile am Rechner NICHT (der breite Kopf ist unangetastet)', async () => {
+    stubPhone(false);
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-anlage-head')).toBeTruthy());
+    expect(container.querySelector('.vp-anlage-chipzeile')).toBeNull();
+  });
+
   it('macht Fahrplan und Börsenpreis zu je EINER Zeile mit Absprung', async () => {
     stubPhone(true);
     const base = new Date(Date.now() - 60 * 60 * 1000);

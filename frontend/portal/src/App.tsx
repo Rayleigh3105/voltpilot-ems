@@ -14,7 +14,7 @@ import {
   type Device,
   type Site,
 } from './api';
-import { adminApi, type Tenant } from './admin/adminApi';
+import { type Tenant } from './admin/adminApi';
 import {
   canonicalShellHash,
   canonicalShellRoute,
@@ -613,8 +613,8 @@ function UnifiedPortal() {
   const reloadTenants = useCallback(
     (selectId?: string) => {
       if (!isAdmin) return;
-      adminApi
-        .listTenants()
+      import('./admin/adminApi')
+        .then(({ adminApi }) => adminApi.listTenants())
         .then((t) => {
           setTenants(t);
           if (selectId) setTenantId(selectId);

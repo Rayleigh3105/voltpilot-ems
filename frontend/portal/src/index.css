@@ -777,7 +777,12 @@ svg [tabindex]:focus-visible {
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--vp-flow-batt-lite, #34c77b), var(--vp-flow-batt));
-  transition: width 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+  /* Die BREITE ist hier der WERT (Ladestand), nicht Layout: der Balken lebt in
+     einem `overflow: hidden`-Rohr fester Größe, verschiebt also nichts. Ein
+     `scaleX` würde die Pillen-Rundung und den Verlauf verzerren — deshalb
+     bleibt es `width`, aber im Tempo eines WERTWECHSELS (Konzept §3 Punkt 4:
+     Übergang zwischen zwei wahren Zuständen morpht in 300 ms). */
+  transition: width var(--vp-motion-chart-update) var(--vp-ease-inout);
 }
 
 /* Energy-flow diagram wrapper: centered, fills its column width. */

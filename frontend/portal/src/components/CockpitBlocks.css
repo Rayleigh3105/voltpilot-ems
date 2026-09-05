@@ -620,8 +620,38 @@
 .vp-anlage-head.is-phone .titles {
   display: none;
 }
+/* --- ⚠ DER RESERVIERTE RAHMEN DES FRISCHE-CHIPS (Bewegung · P7) -----------
+   Der Chip ist am Telefon der EINZIGE Text der Kopfzeile (`.titles` steht
+   darüber auf `display: none`) und misst bei 375 px 201–318 px — er belegt
+   also eine EIGENE Zeile. Bis P7 kam er erst mit den Übersichts-Daten, und
+   sein Eintreffen war der größte Einzelsprung des ganzen App-Starts:
+
+     375 px · CPU 4× · Fast 3G, Produktions-Build, 5 Läufe, jedes Mal gleich
+     ~5,5 s  Kopf-Abzeichen 38 px hoch, ein Zahnrad rechts bei x = 321
+     ~5,7 s  Chip da → zwei Zeilen, 68 px, Zahnräder links bei x = 16
+             ⇒ `.vp-anlage-pending` rutscht y 134 → 164, CLS 0,308
+
+   Zwei Sprünge in einem: 30 px nach unten für den halben Bildschirm UND die
+   Zahnräder quer über die Zeile. Deshalb steht die Chip-Zeile jetzt VON
+   ANFANG AN da (`.vp-anlage-chipzeile`, immer gerendert), und die Zahnräder
+   stehen von Anfang an rechts. Die Höhe hält ein UNSICHTBARER Zwilling frei,
+   solange der Chip unbekannt ist — er misst sich selbst, es gibt hier also
+   keine Pixelzahl, die veralten könnte (`AnlagenPage.tsx`, `AnlageKopf`).
+
+   ⚠ Nur das Telefon. Breit stehen Titel und Abzeichen in EINER Zeile, deren
+   Höhe die Überschrift bestimmt — dort schiebt der Chip nichts. */
 .vp-anlage-head.is-phone .vp-anlage-badges {
+  /* `flex: 1` statt Schrumpfen-auf-Inhalt: sonst ist die Zeile so breit wie
+     der Platzhalter (73 px) und der echte Chip käme von rechts hereingerutscht
+     — wieder ein Sprung, nur waagerecht (gemessen: 0,025). */
+  flex: 1 1 auto;
   margin-left: auto;
+  justify-content: flex-end;
+}
+.vp-anlage-head.is-phone .vp-anlage-chipzeile {
+  flex: 0 0 100%;
+  display: flex;
+  min-width: 0;
 }
 
 /* --- Die EINE Geld-Karte -------------------------------------------------- */

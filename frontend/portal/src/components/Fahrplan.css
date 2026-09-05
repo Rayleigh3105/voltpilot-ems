@@ -315,7 +315,7 @@
   cursor: pointer;
 }
 .vp-kompakt-fold svg {
-  transition: transform 0.15s ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
   transform: rotate(-90deg);
 }
 .vp-kompakt-fold.is-open svg {
@@ -517,7 +517,7 @@
 }
 
 .vp-film-more svg {
-  transition: transform 0.15s ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
   transform: rotate(-90deg);
 }
 .vp-film-more.is-open svg {
@@ -677,7 +677,7 @@
   cursor: pointer;
 }
 .vp-strahl-more svg {
-  transition: transform 0.15s ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
   transform: rotate(-90deg);
 }
 .vp-strahl-more.is-open svg {
@@ -748,7 +748,7 @@
 }
 
 .vp-fp-fold-toggle svg {
-  transition: transform 0.15s ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
   transform: rotate(-90deg);
 }
 .vp-fp-fold-toggle.is-open svg {

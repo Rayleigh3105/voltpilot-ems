@@ -21,7 +21,7 @@
 #   1. `vite build` läuft durch (in ein EIGENES Ausgabeverzeichnis, damit der
 #      Wächter das echte `dist/` des Deploys nie überschreibt).
 #   2. Der Einstiegs-Chunk `index-*.js` bleibt unter der Grenze (gz, siehe
-#      LIMIT_KB) — Basis am Tag von P0: 228,15 kB gz, heute 230,99 (P5).
+#      LIMIT_KB) — Basis am Tag von P0: 228,15 kB gz, heute 226,01 (P7 mit P2).
 #   3. In den QUELLEN des Einstiegs-Chunks steht kein Motion-Modul.
 #
 # ⚠ WARUM ÜBER DIE SOURCEMAP UND NICHT PER `grep` IM CHUNK: der Minifizierer
@@ -48,6 +48,22 @@ cd "$(dirname "$0")/.."
 #   228,15  P0 (Grenze 230)   — Basis am Tag des Wächters
 #   229,84  nach P1/P3/P4/P6  — der Kopfraum von 1,85 kB war damit aufgebraucht
 #   230,99  P5 (Grenze 232)   — Captain-Entscheid 04.09.2026, Option (A)
+#   225,74  P7 (Grenze 230)   — die Ratsche geht ZURÜCK, wie eine Ratsche soll
+#
+# WAS P7 HERAUSGENOMMEN HAT (−5,20 kB gz, ohne eine Funktion zu ändern):
+#   −4,77  `components/DeviceDrawers.tsx` — der Einrichtungspfad renderte die
+#          GESCHLOSSENE „Gerät hinzufügen"-Fläche vorsorglich mit; sie ist
+#          jetzt ein Lazy-Stück (`DeviceDrawers-*.js`, 3,97 kB gz) und kommt
+#          mit dem Klick, der sie öffnet.
+#   −0,56  `admin/adminApi` in `App.tsx` — der Einstieg trug die Admin-Anbindung
+#          für JEDEN Kunden mit, obwohl nur ein Plattform-Admin sie je aufruft.
+#
+#   226,01  mit P2 darin     — Chart-Familien kosten +0,27 kB gz
+#
+# ⚠ DIE KNAPP 4 kB LUFT SIND ABSICHT, NICHT NACHLÄSSIGKEIT: sie ist der
+#   Kopfraum, den P0 mit 1,85 kB zu klein bemessen hatte — er war nach vier
+#   Paketen aufgebraucht und zwang P5, die Grenze zu heben. Wer sie jetzt
+#   wieder auf den Messwert zurückzieht, baut dieselbe Falle noch einmal.
 #
 # WARUM P5 DIE GRENZE BEWEGEN DURFTE: die Seitenwechsel-Hülle ist per Entscheid
 # E5 (a) EINSTIEGS-Code — sie ist die Browser-eigene View-Transitions-API, kein
@@ -57,7 +73,7 @@ cd "$(dirname "$0")/.."
 # `nav.ts` raus, `commit` = nacktes `setRoute`) liegt bei 230,28 kB — immer noch
 # über 230, weil der Kopfraum von main (158 Byte) kleiner war als die reine
 # Vorlade-Grenze `pageChunks.ts` plus die `view-transition-name`-Attribute.
-LIMIT_KB="${LIMIT_KB:-232}"
+LIMIT_KB="${LIMIT_KB:-230}"
 
 OUT="dist-bundle-smoke"
 trap 'rm -rf "$OUT"' EXIT
