@@ -1,0 +1,8 @@
+# Die Seite heißt „Geräte" und ist EIN Inventar (Admin-UX P2, Konzept data/vp-admin-geraete-ux-k2 §4 · E1/E2/E4).
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 2, Punkt 074).
+
+- **Die Seite heißt „Geräte" und ist EIN Inventar (Admin-UX P2, Konzept `data/vp-admin-geraete-ux-k2` §4 · E1/E2/E4).** Der behobene Befund war Zuschnitt, nicht Darstellung: ein Gerät war über drei Teil-Wahrheiten verstreut, und **die Seite namens „Geräte-Registry" enthielt die echte Flotte gar nicht** (nur `VP-`Aufkleber-IDs; die Bestandsboxen verbinden sich über selbst generierte `edge-`Referenzen und hatten dort NULL Zeilen).
+  - **Vier Funnel-Stufen** (`onboardingFunnel.funnelStages(registry, pending, fleet)`): die vierte, **„Vertrauen gekreuzt"**, schließt ihn — „verbunden" ist nicht das Onboarding-Ende. Gezählt wird nur BELEGTES (ein Gerät ohne gemeldeten Anker ist „unbekannt" und geht weder in den Zähler noch in die offene Zahl), und **ohne Flotte erscheint die Kachel gar nicht** — eine „0 von 0"-Kachel ist kein Befund. `verbunden` zählt seit dem Umbau die ECHTE Flotte; ohne Inventar (älteres Backend) bleibt die alte Aufkleber-Quelle gültig.
+  - **EINE Tabelle** (`deviceRows`): verbundene Flotte vor gedruckten IDs, innerhalb der Flotte warn-first (dieselbe Rangfolge wie der Puls). Eine gedruckte ID ist noch kein Gerät: ihre Zeile ist NICHT klickbar, und die „Entfernen"-Bedingung kommt aus der Zeile selbst (`provisioned && !connected`), nie aus einer zweiten Liste.
+  - **`versionLabel` ist die Tag+Build-Aufbereitung** (`edge-2026.08.1 (Build 9b37439a)`): getrennt wird nach der PRÄFIX-Regel des Hauses, und **eine nackte SHA bleibt VERBATIM** — sie zu zerlegen erfände ein Release-Tag, mit dem der Bau nie erzeugt wurde.

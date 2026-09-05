@@ -1,0 +1,11 @@
+# Der EINSPEISEWÄCHTER ist eine STEHENDE Aussage und hängt an keinem fremden Tor („Grenzen & Wächter" Stufe 0; Backend + F
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 2, Punkt 094).
+
+- **Der EINSPEISEWÄCHTER ist eine STEHENDE Aussage und hängt an keinem fremden Tor („Grenzen & Wächter" Stufe 0; Backend + Feldnamen in der Root-`AGENTS.md`).** Die Box meldet ihn in JEDEM Herzschlag, cloud-seitig las ihn bis dahin niemand — „welche Einspeisegrenze hält die Box, und wirkt sie überhaupt?" kostete zwei Untersuchungsrunden per Wartungstunnel. Ableitung ist die reine `curtailment.exportGuardView(status, now)` (`curtailment.test.ts`), gerendert von `ControlStrip`.
+  - **⚠ Sie geht ausdrücklich NICHT durch `curtailTruthForSlot`.** Die Abregel-Wahrheit gilt der LAUFENDEN Viertelstunde und nur bei Rolle `abregeln`; eine geltende Grenze durch denselben Filter zu schicken hieße, sie 23 von 24 Stunden zu verschweigen.
+  - **⚠ Und sie hängt NICHT an `controlView`.** `ControlStrip` nimmt seit dieser Stufe ein NULLABLES `view` plus `guard` und rendert, sobald EINES von beiden etwas sagt: ein Gerät ohne Batterie-Rücklesung liefert gar keine Steuerzeile, hält aber sehr wohl eine Einspeisegrenze — genau die Herzogau-Konstellation. Eine wichtige Aussage hinter einem fremden Tor zu verstecken ist der Fehler, den die Stufe behebt.
+  - **Die SÄTZE kommen aus der Box und werden DURCHGEREICHT** (`reach` gewinnt vor `reason`, weil eine Grenze, die kein Gerät erreicht, die schärfere Aussage ist), nie neu formuliert — sonst benennen `:8484` und Portal dasselbe Urteil verschieden. Ton ist `warn`, sobald `!effective || reach || blind`.
+  - **Ein VERALTETER Block verschweigt nichts, er bekommt sein Alter dazu** („zuletzt gemeldet vor 12 Min.") — eine stehende Grenze verschwindet nicht, weil die Box kurz still ist, aber sie darf auch nicht so tun, als wäre die Aussage von jetzt.
+  - **⚠ Die Diskrepanz-Zeile lastet dem Gerät nie UNSERE eigene Kappe an:** sie verlangt beide Hälften, eine spürbar niedrigere Geräte-Grenze — UND dass unsere kommandierte `capKw` NICHT auf/unter dem gelesenen Wert liegt. Auf dem alten ToU-Steuerpfad kann VoltPilot dasselbe Register selbst mit einer Fahrplan-Kappe beschreiben; dann wird geschwiegen. CSS: `.vp-guard-line` in `index.css`.
+

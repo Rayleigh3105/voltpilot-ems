@@ -1,0 +1,14 @@
+# Market data (ENTSO-E day-ahead prices)
+
+Ausgelagert aus `AGENTS.md` am 05.09.2026 (Abschnitt Nr. 72).
+
+
+`services/market-data` is the anti-corruption adapter that feeds day-ahead spot prices into the optimizer (architecture section 11/13: "Marktdaten: ENTSO-E Transparency, hinter Adapter").
+
+- **Port / providers.** `DayAheadPriceSource` (in `source.py`) is the provider-agnostic port; every caller depends on it, never on ENTSO-E. `EntsoeDayAheadPriceSource` is the first implementation; a commercial provider is a drop-in replacement. `ResilientPriceSource` decorates any source with retry (exponential backoff), a circuit breaker, and a **last-good cache**, so the optimizer always gets a usable series even when ENTSO-E is down.
+- **Internal representation.** `PriceSeries` / `PricePoint` (EUR/MWh, UTC slot bounds, `PT15M`/`PT60M`). No vendor vocabulary crosses this boundary.
+- **Zone -> EIC mapping** lives only in `zones.py`: `DE-LU -> 10Y1001A1001A82H`, `AT -> 10YAT-APG------L`, `CH -> 10YCH-SWISSGRIDZ`. DE-LU is implemented end to end; adding AT/CH is a one-line edit there.
+- **Storage.** Prices are timeseries -> the `day_ahead_prices` **hypertable**, keyed by `(bidding_zone, resolution, ts)`. Prices are market-wide **per bidding zone, not per tenant**, so there is deliberately **no `tenant_id`** (and no RLS) on this table, unlike `telemetry`. Schema is owned by the forward-only migration `services/market-data/db/migration/V20260701001200__day_ahead_prices_hypertable.sql` (Flyway/Liquibase-compatible; **date-based version chosen so it does not collide with the api service's future `V1, V2, ...` baseline** - coordinate future market-data migrations to stay in this `V2026...` scope). The local dev stack mirrors it via `infra/local/timescale/02-day-ahead-prices.sql` (additive; the existing `01-init.sql` is untouched).
+- **Token.** `ENTSOE_SECURITY_TOKEN` is a **captain-provided secret** (blank in `.env.example`); obtain via ENTSO-E Transparency registration + a "Restful API access" email (see `services/market-data/README.md`). It is **not** needed for tests/CI - parsing, mapping and resilience run entirely off recorded fixtures in `tests/fixtures/`. A live token is needed only for a real end-to-end fetch; that end-to-end verification is still open.
+- **Fetch cadence.** ENTSO-E publishes the next day's prices ~12:45 market time; run `python -m voltpilot_market_data fetch --zone DE-LU --persist` daily after that (cron `0 13 * * *`, or a future K8s CronJob from the service `Dockerfile`). The CLI `--zone` defaults to the `MARKET_DATA_ZONE` env var (fallback `DE-LU`) when omitted, so the container `CMD` is just `fetch --persist` and picks its zone from the environment. Following the backbone-first convention, the service is **not** wired into `docker-compose.yml`.
+

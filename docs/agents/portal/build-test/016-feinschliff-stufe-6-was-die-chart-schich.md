@@ -1,0 +1,5 @@
+# Feinschliff (Stufe 6) — was die Chart-Schicht seither NICHT mehr hat
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 2, Punkt 016).
+
+- **Feinschliff (Stufe 6) — was die Chart-Schicht seither NICHT mehr hat:** `smooth: true` (der 0,5-Footgun lebte zuletzt im Erlöse-Verlauf — auf einer KUMULIERTEN Geldkurve heißt Überschwingen, sie fällt unter einen Stand, den sie nie hatte), eine dreifach ausgeschriebene Tagesgrenze (jetzt `chartStyle.dayBoundaryStyle`, die zweite Referenzlinie neben `nowLineStyle`) und acht Kopien von `width < 480` (jetzt `NARROW_PX`; die zwei begründeten 520-px-Abweichungen — Wetter, Was-wäre-wenn — stehen im Doc-Kommentar). **Nachweislich sauber und nicht anzufassen:** `axisLine`/`axisTick` (die drei `show: true` sind die dokumentierte SoC-Miniskala-Ausnahme), die Legendenposition (`ChartLegend` steht auf JEDER Fläche über dem Canvas), tote Importe (`tsc --noUnusedLocals`), und jedes `--vp-chart-*`-Token, jedes `chartTheme()`-Feld und jede `.vp-chart*`-Klasse hat einen Leser.

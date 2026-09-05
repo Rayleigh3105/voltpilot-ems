@@ -1,0 +1,5 @@
+# Routing (src/nav.ts, unit-tested in nav.test.ts + shell canonicalization in routeCanonical.test.ts)
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 2, Punkt 035).
+
+- **Routing (`src/nav.ts`, unit-tested in `nav.test.ts` + shell canonicalization in `routeCanonical.test.ts`):** `Route = {page, siteId, sub}`; `parseRoute`/`hashForRoute`/`anlageRoute`/`pageRoute`. The RETIRED hashes redirect so bookmarks keep working: `#/live|fahrplan|historie|wetter` → the Anlage subpage (via `siteId: null`, resolved to the single Anlage or the list), `#/standorte|geraete` → die Anlage selbst. `anlagenLabel(siteCount)` renders "Meine Anlage" (0-1) vs "Meine Anlagen" (2+, with the count badge) - AppShell passes `counts.sites`. Single-Anlage customers LAND directly on `#/anlage/{soleSiteId}` through the loaded, tenant-ready `canonicalShellRoute`; the bare hash, Übersicht, naked Anlagen route and forbidden Portfolio never form a redirect chain, while valid deep links and admins are untouched.

@@ -1,0 +1,6 @@
+# Per-source PV breakdown under the live PV figure (#524).
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 1, Punkt 051).
+
+- **Per-source PV breakdown under the live PV figure (#524).** A multi-inverter site's Solar number is explained by `components/PvBreakdown.tsx` ("39,0 kW verteilt sich auf Deye 8,3 · Fronius 21,3 · Fronius WR 2 9,3", one freshness dot per device), rendered since the Cockpit+Live merge under the cockpit hero's flow diagram (`CockpitHero` `sources` prop on the projected path; the v1 „Jetzt gerade" card on the zone dashboard) from `api.siteSources(siteId)` (`GET /api/v1/sites/{id}/sources`, fetched fail-soft - an older edge/backend simply yields nothing). ALL derivation is the pure, unit-tested `src/pvSources.ts`: it returns null below 2 measuring devices (**a single-inverter site is byte-identical to before**), skips grid meters/consumers, keeps a stale part's last value with a grey dot, and NAMES a producer that delivers nothing in a note instead of counting it as 0 - so the shown parts always sum to what they say. CSS block "Per-source PV breakdown (#524)" at the end of `index.css`. Backend: root AGENTS.md "Multi-source Anlage" → Increment 2. **Seit A1 (siehe nächster Punkt) rendert diese Zeile nur noch auf einer NICHT migrierten Anlage** — die migrierte trägt ihre Zusammensetzung im PV-Knoten selbst.
+

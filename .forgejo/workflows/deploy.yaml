@@ -85,6 +85,11 @@ jobs:
           # `run:`-Text des Tag-Laufs. Ohne Forgejo, ohne Portal, ohne Docker.
           - name: ota-release
             type: shell
+          # Das Projekt-Gedaechtnis prueft seine eigene Groesse: die drei
+          # AGENTS.md werden bei JEDEM Sitzungsstart in den Agenten-Kontext
+          # geladen. Sekunden, kein Netz, kein Docker.
+          - name: agents-md
+            type: shell
 
     steps:
       - name: Checkout Repository
@@ -207,6 +212,14 @@ jobs:
           pip install pyyaml
           bash tools/ota/test-release-publish.sh
           bash tools/ota/test-release-workflow.sh
+
+      # Die drei AGENTS.md sind Wegweiser, das Detail wohnt in `docs/agents/`.
+      # Waechst eine ueber ihr Budget, faellt dieser Schritt - das Budget wird
+      # NICHT angehoben, der neue Abschnitt zieht um (siehe "Maintaining this
+      # file" in der jeweiligen Datei).
+      - name: AGENTS.md-Groessenbudget
+        if: matrix.name == 'agents-md'
+        run: bash tools/agents-md-budget.sh
 
   # Build + push every deployed image in parallel. The tag-bump job waits for
   # the whole matrix. Tags: :latest and :${{ github.sha }} (the gitops overlay

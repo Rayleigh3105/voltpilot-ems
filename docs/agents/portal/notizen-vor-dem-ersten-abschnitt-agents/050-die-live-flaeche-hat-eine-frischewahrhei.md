@@ -1,0 +1,6 @@
+# Die Live-Fläche hat EINE Frischewahrheit: adaptiveLive.ts liveState({entityFresh, siteFresh}) (UX-Audit G3).
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 1, Punkt 050).
+
+- **Die Live-Fläche hat EINE Frischewahrheit: `adaptiveLive.ts` `liveState({entityFresh, siteFresh})` (UX-Audit G3).** Zwei unabhängige Quellen speisen sie - die v1-Telemetrie der ANLAGE („Stand vor X"-Chip + Verlauf-Chart) und die per-ENTITÄT-Health der v2-Registry - und beide sprachen früher für die ganze Seite: eine migrierte Anlage, deren Entitäten nie gemeldet haben, während v1-Telemetrie normal fließt, zeigte grün „Stand vor 7 Sek." NEBEN „meldet gerade keine aktuellen Daten" und ausgegraute Kacheln über einem vollen Verlauf. Der Zustand ist jetzt dreiwertig: `live` (eine Entität liefert) · `site-only` (die Anlage liefert, die Geräte-Aufschlüsselung nicht - eigenes ehrliches Chip-Wording, KEINE Ausgrauung) · `stale` (keine der beiden). Seit dem Cockpit+Live-Merge konsumiert ihn EIN Ort: `AnlagenPage` leitet daraus den Kopf-Chip (`liveDetail.liveChip`) UND das `stale`-Dimmen von Hero + Komponenten-Board ab. Nie beschönigen: `site-only` behauptet keine Gerätedaten, es sagt genau, was da ist und was nicht.
+

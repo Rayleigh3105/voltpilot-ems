@@ -1,0 +1,9 @@
+# Das Einstiegs-Bündel trägt NUR das erste Bild - alles andere wird nachgeladen (components/Lazy.tsx, Ladezeit-Messung 06.
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 1, Punkt 054).
+
+- **Das Einstiegs-Bündel trägt NUR das erste Bild - alles andere wird nachgeladen (`components/Lazy.tsx`, Ladezeit-Messung 06.08.2026).** Gemessen gegen den ECHTEN Prod-Dump in einem Wegwerf-Stack (Chrome, `emulate`): das Bündel war **2.152 kB in EINEM Stück**, weil `AnlagenPage` JEDE Unterseite und `App` JEDE Plattform-Seite statisch importierte - das Cockpit zog damit ECharts, Leaflet und den Automations-Editor mit, ohne eines davon zu zeichnen. Jetzt sind alle Route-Seiten, alle Anlagen-Unterseiten, das Verlauf-Diagramm (`KomponentenSection`) und der Anlege-Assistent `React.lazy`; Einstiegs-Bündel **681 kB** (gzip 693 → 211 kB), ECharts liegt in einem eigenen Stück, das erst ein Diagramm holt.
+  - **Die Regel für neue Flächen: was das Cockpit nicht ZEICHNET, wird nicht mitgeliefert.** Ein statischer Import einer Unterseite in `AnlagenPage`/`App` macht die Aufteilung still wieder zunichte - `npm run build` zeigt es am Einstiegs-Chunk.
+  - **⚠ `AnlageAnlegenDrawerLazy` ist ein WRAPPER, kein blosses `lazy`:** die Aufrufer halten den Drawer dauerhaft montiert und steuern ihn nur über `open` (damit seine Schliess-Animation zu Ende läuft) - ein direktes `lazy` lüde deshalb sofort beim Rendern und spärte nichts. Der Wrapper rendert erst, nachdem er einmal geöffnet WURDE. Dasselbe Muster braucht jede künftige „immer montiert, per `open` gesteuert"-Fläche.
+  - **Ein nachgeladenes Stück kann nach einem Deploy 404en** (die alten gehashten Dateien sind weg). Das ist abgedeckt: `/assets/` antwortet hart 404 statt SPA-Fallback, `deployWatch` lädt beim Ankommen neu, und die `BootErrorBoundary` fängt eine gescheiterte Nachladung auf der deutschen Wiederherstellungs-Karte ab - nie eine weisse Seite.
+

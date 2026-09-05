@@ -1,0 +1,5 @@
+# Kundencopy nennt nie einen Kanalnamen: src/channels.ts ist DIE deutsche Zuordnung (UX-Audit G4).
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 1, Punkt 049).
+
+- **Kundencopy nennt nie einen Kanalnamen: `src/channels.ts` ist DIE deutsche Zuordnung (UX-Audit G4).** `channelLabel(channel)` / `commandLabel(command)` übersetzen die v2-Entitäts-Kanäle (`pv_power_kw`→„PV-Leistung", `soc_pct`→„Ladestand", `battery_power_kw`→„Batterieleistung", `setpoint_kw`→„Sollwert", `limit_kw`→„Grenzwert", …) und fallen bei einem UNBEKANNTEN Kanal **auf den Rohnamen zurück** - die Kanal-Vokabular ist offen (edge-entity `CHANNEL_RE`, MB-M1 lässt Betreiber eigene Kanäle deklarieren), also wäre Raten oder Verstecken unehrlich. Jede Fläche, die einen Kanal zeigt, geht hier durch (`EntitaetenSection` „Misst"/„Steuert" + `rollen.ts`); der Rohname bleibt als `title` am Chip für Support. Unit-getestet in `channels.test.ts`. **Der Admin-Editor für `modbus-generic`-Kanäle bleibt bewusst roh** - dort tippt der Betreiber die Namen selbst.

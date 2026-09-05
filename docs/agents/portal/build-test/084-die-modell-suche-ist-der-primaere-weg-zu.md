@@ -1,0 +1,12 @@
+# Die MODELL-SUCHE ist der PRIMÄRE Weg zum Gerät (Geräteseiten Stufe 2, Scout data/vp-geraeteseite-rev-b8 NACHTRAG 5, Capt
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 2, Punkt 084).
+
+- **Die MODELL-SUCHE ist der PRIMÄRE Weg zum Gerät (Geräteseiten Stufe 2, Scout `data/vp-geraeteseite-rev-b8` NACHTRAG 5, Captain-Punkt 3).** Über dem Marken-Stufenmenü steht ein Suchfeld, das über ALLE Marken und Modelle sucht; das Menü BLEIBT als Stöber-Weg darunter. Der behobene Befund: wer den Namen vom Typenschild abtippt, muss ihn vorher der richtigen Katalog-Marke zuordnen — „SUN-30K-SG01HP3-EU" steht dort, „Deye" oft nirgends —, und beide Wege schöpfen aus derselben Liste, also kann keiner etwas finden, das der andere nicht hat.
+  - **ALLE Regeln liegen rein in `komponentenAssistent.ts`** (`komponentenAssistentSuche.test.ts`): `normalisiereSuche` · `suchBegriffe` · `hervorheben` · `modellZusatz` · `modellSuche`. Der Drawer rendert nur.
+  - **⚠ Verglichen wird NORMALISIERT, hervorgehoben im ORIGINAL.** Klein, ohne Umlaute/ß, ohne `[\s\-_./]` — nur so finden „SUN-30K", „sun 30k" und „sun30k" dasselbe Gerät. Markiert werden muss aber der Text, den der Kunde LIEST, deshalb bildet `hervorheben` die Fundstelle Zeichen für Zeichen zurück und schließt einen Trenner ein, der ZWISCHEN zwei markierten Zeichen liegt (sonst zerfiele „SUN-30K" sichtbar in zwei Treffer). **⚠ Die deutsche Umschrift läuft VOR der NFD-Zerlegung** — andersherum ist das „ä" längst zerlegt und aus „Zähler" würde „zahler".
+  - **Die Begriffe sind UND-verknüpft** (`suchBegriffe`): „deye 30k" meint ein Gerät, nicht jede Deye UND jedes 30K-Gerät. Sortiert wird Modell-Anfang vor Modell-Vorkommen vor Marken-Treffer — wer „SG04" tippt, meint das Modell.
+  - **Der Zusatz beantwortet „ist das meins?" ohne Klick** (`modellZusatz`: Leistung · Bauart · Anbindung). **Eine unbekannte Nennleistung wird WEGGELASSEN, nie als 0 kW erfunden** — die Haus-Regel gilt auch für eine Trefferzeile.
+  - **Drei Ehrlichkeitsregeln:** eine LEERE Eingabe liefert weder Treffer noch Zähler noch Fehlschlag (die Suche behauptet dann gar nichts, das Menü führt); ohne Treffer steht der WEG da („sonst hilft die Marken-Auswahl darunter"), nicht nur Leere; und die Kappung bei `MAX_TREFFER` (12) wird GESAGT, nie verschwiegen.
+  - **Ein Treffer nimmt die MARKE mit** (`setBrand` vor `waehleTemplate`): sonst stünde der Rückweg über das Stufenmenü bei der Marke davor. Es entsteht kein zweiter Auswahl-Pfad — geklickt wird dieselbe `waehleTemplate`, die auch das Menü ruft.
+

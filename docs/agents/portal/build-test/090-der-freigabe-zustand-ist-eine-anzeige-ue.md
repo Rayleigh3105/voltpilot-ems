@@ -1,0 +1,5 @@
+# Der Freigabe-ZUSTAND ist EINE Anzeige über alle drei Vertrauens-Stufen (Anforderung 8).
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 2, Punkt 090).
+
+- **Der Freigabe-ZUSTAND ist EINE Anzeige über alle drei Vertrauens-Stufen (Anforderung 8).** `freigabeZustand` liefert Wort + Satz + Ton; „gesperrt" (= „Nur messen") ist ein ZUSTAND, kein Fehler, also ruhiger Ton und kein Wort, das nach Defekt klingt. `PlantComponent` trägt dafür drei additive Felder: **`schaltbar`** = die SCHREIB-Fähigkeit der Entität (`capabilities.actuate` nicht leer — genau das, was die Freigabe schreibt und worauf die Guard-Kette am Gerät keyt; ein `control`-Flag ohne Schreibweg wäre eine Behauptung), **`freigabeQuelle`** aus der HERKUNFT (ein selbst gebautes Gerät kann sie ausschließlich über den Kunden-Test bekommen, alles andere hat sie von VoltPilot) und **`freigabeFaehig`** = darf der Kunde hier selbst freigeben (nur `modbus-generic`/`modbus-load`) — an einer plattform-komponierten Zeile wird der Weg gar nicht erst angeboten, ein Knopf ins Leere.
