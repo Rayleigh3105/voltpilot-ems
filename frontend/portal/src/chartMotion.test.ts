@@ -116,7 +116,13 @@ describe('mergeMotion() · der Konsument gewinnt', () => {
   it('legt die Bewegung UNTER die Optionen des Diagramms', () => {
     const o = mergeMotion({ series: [{ type: 'bar' }] }, M, 'update');
     expect(o.animation).toBe(true);
-    expect(o.series).toEqual([{ type: 'bar' }]);
+    // ⚠ Seit P2 reist die Serie nicht mehr unveraendert durch: sie bekommt
+    // ihre stabile Kennung und ihren Fokus/Dimm-Zustand dazu (dort geprueft,
+    // in `chartFamilien.test.ts`). Was die Flaeche SELBST gesagt hat, bleibt
+    // aber unangetastet — genau das ist die Aussage dieses Falls.
+    const s = (o.series as Record<string, unknown>[])[0];
+    expect(s.type).toBe('bar');
+    expect(s.id).toBe('vp:#0');
   });
 
   it('ein eigenes `animation: false` des Diagramms bleibt stehen (die 3 stillen Flaechen)', () => {

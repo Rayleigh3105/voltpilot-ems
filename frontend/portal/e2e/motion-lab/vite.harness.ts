@@ -22,7 +22,7 @@ export default defineConfig({
   plugins: [react()],
   envDir: 'e2e/motion-lab',
   server: {
-    port: 5181,
+    port: Number(process.env.VP_PORT || 5181),
     strictPort: true,
     proxy: {
       '/api': { target: 'http://localhost:8090', changeOrigin: true },
