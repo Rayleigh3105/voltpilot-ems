@@ -1,0 +1,6 @@
+# Eine entwertende Aktion nennt ihre Folge VORHER - auch die Abkürzung (E3, components/DangerZone.tsx + DeviceDrawers.tsx)
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 2, Punkt 072).
+
+- **Eine entwertende Aktion nennt ihre Folge VORHER - auch die Abkürzung (E3, `components/DangerZone.tsx` + `DeviceDrawers.tsx`).** In der „wartet ungewöhnlich lange"-Warnung des Geräte-Drawers entfernte „Gerät entfernen und neu verbinden" das Gerät mit EINEM Klick - Anspruch weg, alle aufgezeichneten Messdaten weg, ohne Folgenliste und ohne Rückfrage, während dieselbe Aktion am Fuß desselben Drawers beides hatte. Jetzt geht sie durch DIESELBE `DangerZone`; die Folgenliste ist die eine exportierte `unclaimConsequences(device)`, damit die zwei Wege nie Verschiedenes versprechen können. `DangerZone` hat dafür die additive `variant="inline"` (ohne Trennlinie/Abstand, `description` optional) - Default `section` ist byte-gleich wie bisher, die anderen Aufrufer sind unangetastet. Beweise in `DeviceDrawers.test.tsx` (erster Klick entfernt nichts · die Folgen stehen VOR der Bestätigung · Abbrechen ändert nichts · Bestätigen führt aus), gegengeprüft an der Vor-Fix-Form: genau diese vier Tests fallen dort. Die Regel selbst + die Edge-Seite: `edge-app/CLAUDE.md` „Wer etwas ANDERES entwertet, nennt die Folge VORHER".
+

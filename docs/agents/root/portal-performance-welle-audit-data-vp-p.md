@@ -1,0 +1,13 @@
+# Portal-Performance-Welle (audit `data/vp-portal-perf-a4`)
+
+Ausgelagert aus `AGENTS.md` am 05.09.2026 (Abschnitt Nr. 106).
+
+
+Five measured fixes to the portal's data-load latency (audit `vp-portal-perf-a4`, EXPLAIN-belegt). **The one root cause is `schedule`'s write amplification** - the optimizer re-plans every 15 min over a 24 h horizon, so every quarter-hour slot is stored ~96×, making the "newest-run-per-slot" `DISTINCT ON` scans the #1 DB cost.
+
+- **B1 · Index `idx_schedule_site_time_gen` on `schedule (site_id, time, generated_at DESC)`** (migration `V20260809010000`, date-versioned above the retention one). Turns the latest-run-per-slot `DISTINCT ON (time) … ORDER BY time, generated_at DESC` into a TimescaleDB **`Custom Scan (SkipScan)`** per chunk. Measured: `/history?range=year` savings 757 ms → 26 ms, curtailSlots 653 ms → 22 ms, e2e 1.39 s → 0.20 s (6.8×). The site-scoped Historie/earnings queries carry a `site_id = ?` bound and skip-scan directly.
+- **B4 · The FLEET overview savings need a per-site LATERAL** (`OverviewRepository.savingsPerSite`/`dailySavings`): a fleet-wide `DISTINCT ON (site_id, time)` has no `site_id` equality bound and can't SkipScan (474 ms + 22 MB disk sort). Rewritten as `FROM site s JOIN LATERAL (SELECT DISTINCT ON (time) … WHERE site_id = s.id …) x` (the `latestLivePerSite`/v2-fanout shape) → each Anlage skip-scans, 474 ms → 17 ms, byte-identical result (pinned exact by `PortalApiTest.overviewAggregatesFleetTenantScopedWithBerlinDaySavings`).
+- **B2 · The cockpit money hero reads the site-scoped `GET /api/v1/sites/{id}/earnings`** (3 queries, ~0.42 s) instead of the tenant-wide `/earnings` (8 queries, 1.8 s @ year) it filtered client-side - see `frontend/portal/AGENTS.md`. `SiteEarningsController`/`SiteEarningsDto` gained additive `gesamtertragEur` + `expectedMarketValue*` for parity with the fleet twin (`openapi.yaml` updated). The fleet `/earnings` stays for the Portfolio pages.
+- **B5 · The 12-month strip (`monthlyStrip`) is opt-in via `?strip=true`** (default false) on the fleet `/earnings` - it was a fixed ~173 ms 12-month scan on every call incl. the 30 s poll, and NO portal surface renders the fleet strip's values (the `MonthStrip` is a value-less jump navigator; pinned by `frontend/portal/src/monthStripStrip.test.ts`). Chosen over a shared server TTL cache, whose tenant key carries the RLS-leak risk the audit flagged.
+- **B3 · Response compression is ON** - nginx `gzip` (`gzip_proxied any` so /api + /auth compress too, the single web entry) + Spring `server.compression` (dev/non-nginx paths + prod api, passed through by nginx). Portal JSON is 79-93% compressible; smoke-guarded by the existing `test:csp`/`test:cache` running the real nginx image.
+

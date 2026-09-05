@@ -1,0 +1,5 @@
+# src/topology.ts is the TS twin of the AE1 topology derivation (derive/defaultRole).
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 2, Punkt 062).
+
+- **`src/topology.ts` is the TS twin of the AE1 topology derivation (`derive`/`defaultRole`).** It is the portal half of the ONE shared, byte-identical-across-Go/TS/Java derivation of the Anlagen-Topologie-Read-Model — {resolved capabilities + live values} → role-grouped hub nodes + directed flows — pinned to `docs/contracts/v2/topology-vectors.json` (`topology.test.ts`; contract `docs/contracts/v2/topology-read-model.md`; full rules + sign conventions in the root AGENTS.md "Anlagen-Topologie-Read-Model (AE1)"). **Keep it in lockstep with `edge-app/core/internal/topology` (canonical) and the api's `TopologyDeriver` — change all three + the vectors together.** The `makeNode`/`member` key insertion order deliberately matches Go `json.Marshal` field order so `JSON.stringify` is byte-identical. AE2 will consume `GET /api/v1/sites/{id}/topology` and render `derive()`'s output as the adaptive `EnergyFlow` (this ticket is the read-model only; the SVG generalization to N nodes/role is AE2).

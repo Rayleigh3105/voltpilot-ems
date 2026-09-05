@@ -1,0 +1,5 @@
+# M9 (Stufe 6) · Die GEISTER-EBENE ist EINE Grammatik und heißt überall gleich.
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 2, Punkt 015).
+
+- **M9 (Stufe 6) · Die GEISTER-EBENE ist EINE Grammatik und heißt überall gleich.** Drei Flächen legen einen zweiten Zeitraum bzw. einen Gegenentwurf hinter ihre Hauptreihen (Messwerte-Welt · Erlöse-Verlauf · Admin-Was-wäre-wenn) und taten das in drei Dialekten (0,38 · 0,38 · 0,55/0,6, teils mit eigenem Rahmen). GEOMETRIE ist jetzt `chartStyle.GHOST` + `ghostLine`/`ghostItem`/`ghostBar`: Kontext-Stärke, gestrichelt, EIN Alpha. **Die FARBE bleibt die der Größe** — die Wiedererkennung ist der Punkt einer Überlagerung —, zurückgenommen wird ausschließlich die Deckkraft; ein Vergleichs-BALKEN ist ein Umriss, damit die Hauptreihe davor lesbar bleibt. WORT ist `chartCopy.VERGLEICH`/`vergleichName`/`vergleichReihe`: aus vier Formulierungen wird überall „Vergleich: <womit>", und ohne Bezeichnung steht dort das nackte Wort statt eines erfundenen Zeitraums. Die Überlagerungs-Legende beider Historie-Welten trägt es jetzt sichtbar, statt die Ebene nur zu stricheln.

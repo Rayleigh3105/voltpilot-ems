@@ -1,0 +1,5 @@
+# Stufe 4 · Prognosequalität: die Polarität steht IM Bild.
+
+Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 2, Punkt 019).
+
+- **Stufe 4 · Prognosequalität: die Polarität steht IM Bild.** Die aktive Linie liegt oben, oben ist hier aber SCHLECHTER — ein Laie liest das verkehrt herum. `prognose.POLARITAET` („↑ schlechter"/„↓ besser") wird deshalb **innen** am Rand gerendert (außen lief der Text in der Revision 1 aus der Fläche), die Verbesserungs-Fläche zwischen aktiv und Kandidat trägt ihr WORT (`verbesserung`, gezeichnet NUR wo der Kandidat wirklich näher lag), `kandidatKern` ist der K1-Satz aus derselben `skillBilanz`, die die Kandidaten-Zeile nennt, und `chartCopy.AXIS.abweichung` sagt **„Kilowatt Abweichung"** statt „Ø kW" (das liest sich als Durchschnittsleistung). Der Kandidat ist jetzt ein neutraler KONTEXT-Strich (`chartTheme().temp`) statt einer zweiten Leitfarbe — gegen die grüne Fläche maß sein früheres Orange ΔE 3,6 (harter CVD-FAIL), das Neutral misst 12,2. Die Fläche hat außerdem erstmals einen Responsive-Zweig.

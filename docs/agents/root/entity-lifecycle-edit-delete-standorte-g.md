@@ -1,0 +1,25 @@
+# Entity lifecycle: edit + delete (Standorte/Geräte/Mandanten/Benutzer/Registry)
+
+Ausgelagert aus `AGENTS.md` am 05.09.2026 (Abschnitt Nr. 32).
+
+
+Every entity the portal can create can now also be edited and deleted - by customers for their own tenant and by Portal-Admins for any tenant.
+Migration **`V20260702030000`** carries the groundwork; a checked fact worth knowing: the V2 (and later) RLS policies have no FOR clause, so they already cover UPDATE/DELETE - what was missing were table GRANTs (app role: DELETE on the series tables + SELECT/DELETE on `forecast`; admin role: explicit grants on the collector tables, because V4's default privileges never applied to tables the dev init scripts created before Flyway ran).
+The migration also adds **`device.name`** (optional customer-facing label "Bezeichnung").
+
+- **Standort:** `PUT /api/v1/sites/{id}` (name/zone/coords, validation mirrors create) and `DELETE /api/v1/sites/{id}` - GUARDED: 409 while devices exist; on success assets cascade by FK and the site's series rows (telemetry/rollups/forecast/schedule/weather/quality - no FKs on hypertables, deleted by `SeriesRepository` in the same transaction) go with it, all through the RLS-scoped app datasource.
+  `GET /api/v1/sites/{id}/deletion-preview` feeds the portal confirm dialog (device count, telemetry range/count, series counts).
+- **Gerät:** `PUT /api/v1/devices/{id}` edits ONLY kind + label - `external_ref` is identity (MQTT topics, registry gate) and immutable, the UI says so.
+  `DELETE /api/v1/devices/{id}` = unclaim: deletes the device row + its telemetry AND cleans MQTT best-effort (`ProvisioningPublisher.clearRetained` publishes empty retained payloads to `provision/{ref}/config` and the schedule topic, so the physical device falls back to its watchdog default and a rebooting device gets no stale identity).
+  A sticker ref stays in the manufacturing registry and is claimable again - claim -> unclaim -> re-claim re-publishes the retained config (proven by `ProvisioningClaimTest.unclaimClearsRetainedConfigAndReclaimRepublishesIt`).
+- **Admin any-tenant for sites/devices = the tenant switcher.** Admin edit/delete of a tenant's sites/devices deliberately reuses the CUSTOMER endpoints with `X-Tenant-Id` (the RLS-scoped path; BYPASSRLS stays behind `/api/v1/admin/**` only). Proven by `AdminApiTest.adminUpdatesTenantAndEditsCustomerSitesViaTenantSwitcher`.
+- **Mandant (admin only):** `PUT /api/v1/admin/tenants/{id}` (name/segment); offboarding via `POST /api/v1/admin/tenants/{id}/delete` with a **type-to-confirm** body (`confirmName` must equal the exact tenant name, else 400 before anything happens).
+  The DB cascade (series rows by tenant, then the tenant row whose FKs cascade site/device/asset) runs in ONE transaction (`TenantRepository.offboard`); if Keycloak cannot even be enumerated the whole thing is refused (502).
+  Afterwards the devices' retained MQTT topics are cleared and the tenant's Keycloak users deleted best-effort - the `TenantOffboardingReport` lists `deletedUsers` and `failedUsers`, so a partial directory failure is visible, never silent (portal shows a report screen; failed users flagged for manual cleanup).
+- **Benutzer (admin only):** `PUT .../users/{userId}` (email/name; username immutable), `POST .../enable` (counterpart to disable), `DELETE .../users/{userId}`.
+  **Self-guard:** an admin can never disable or delete their OWN account - checked against the token `sub` BEFORE any tenant check, so it also fires through an arbitrary tenant path (409; `AdminController.requireNotSelf`).
+- **Geräte-Registry (admin only):** `DELETE /api/v1/admin/provisioned-devices/{ref}` removes a wrongly registered sticker ID - 409 while a claim references it (unclaim first), path canonicalized like the claim.
+- **Portal:** the detail drawers grew "Bearbeiten" (inline forms mirroring the create forms) and a `DangerZone` component (`src/components/DangerZone.tsx`): collapsed red button -> explicit consequence list -> confirm; the tenant delete additionally requires typing the tenant name.
+  Design-system `Icon` gained `pencil`/`trash`.
+- **Tests:** `PortalApiTest` (site edit incl. cross-tenant 404 + validation, guarded delete + series cascade, device edit/unclaim/re-claim), `AdminApiTest` (tenant edit, switcher-based admin site edit/delete, type-to-confirm offboarding cascade incl. Keycloak login gone, user edit/enable/delete + self-guard, registry delete guard), `ProvisioningClaimTest` (retained-config clear + re-claim republish against real EMQX).
+
