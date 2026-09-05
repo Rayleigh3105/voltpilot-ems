@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import {
+  FOKUS_GRIFF,
   chartMotion,
   mergeArt,
   mergeMotion,
@@ -62,7 +63,36 @@ export function useEChart(
     // `.vp-chart` einfach dazuzuschreiben brächte deren `height: clamp(...)`
     // mit - ein Hoehenstreit, den die Kaskade in einem Lazy-Stueck entscheidet.
     // Die Marke selbst traegt KEIN Aussehen, nur den Anker fuer die Maske.
-    el.classList.add('vp-chart-motion');
+    //
+    // ## ⚠ SIE MUSS NACHGESETZT WERDEN — REACT SCHREIBT `class` GANZ
+    //
+    // Hier steht ein IMPERATIVES `classList.add` an einem Element, dessen
+    // `className` REACT gehoert. Aendert die Flaeche ihre Klassenkette (die
+    // Messwerte-Historie haengt `vp-chart-clickable` an, sobald ein Sprung-
+    // hinweis dazukommt), schreibt React das Attribut als GANZES neu — und die
+    // Marke ist weg. Im Browser gemessen: nach einem Wechsel Tag→Woche trug
+    // der Behaelter `vp-c-bild vp-chart tall vp-chart-clickable` und KEIN
+    // `vp-chart-motion` mehr; die Maske haette danach keinen Anker.
+    //
+    // Deshalb wird sie in der `setOption`-Huelle bei jedem Bild nachgesetzt
+    // (`marke()`): das ist die eine Stelle, die ohnehin bei jedem Zustand
+    // laeuft, und `classList.add` auf eine schon vorhandene Klasse ist ein
+    // No-op. Kein Beobachter, kein zweiter Lebenszyklus.
+    const marke = () => el.classList.add('vp-chart-motion');
+    marke();
+
+    // --- Der Fokus-Griff fuer die HTML-Legende (P2) -----------------------
+    // Die Legende des Portals ist HTML und kann von sich aus nichts
+    // hervorheben. Sie bekommt hier EINE Funktion an den Behaelter gehaengt
+    // statt Zugriff auf die Instanz — siehe {@link fokusGriff}. `downplay`
+    // ohne Namen nimmt jede Hervorhebung zurueck, auch die einer anderen
+    // Serie: ein haengender Dimm-Zustand ist die eine Sache, die hier nicht
+    // passieren darf.
+    (el as unknown as Record<string, unknown>)[FOKUS_GRIFF] = (serie: string | null) => {
+      if (!chart.current) return;
+      if (serie) chart.current.dispatchAction({ type: 'highlight', seriesName: serie });
+      else chart.current.dispatchAction({ type: 'downplay' });
+    };
 
     // --- Bewegung: Phase + Aufdecken (P1) --------------------------------
     const phase: { current: ChartPhase } = { current: 'enter' };
@@ -119,6 +149,7 @@ export function useEChart(
       ) as echarts.EChartsCoreOption;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = (orig as any)(gemischt, ...mergeArt(rest));
+      marke();
       gezeichnet = true;
       // Ein schon sichtbares Diagramm deckt sich sofort auf: der Beobachter
       // meldet nur AENDERUNGEN, und wer beim Zeichnen bereits im Blick lag,
@@ -151,6 +182,7 @@ export function useEChart(
     observer.observe(el);
     return () => {
       fertig();
+      delete (el as unknown as Record<string, unknown>)[FOKUS_GRIFF];
       io?.disconnect();
       observer.disconnect();
       chart.current?.dispose();

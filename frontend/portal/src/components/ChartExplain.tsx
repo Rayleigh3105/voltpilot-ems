@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { kopfView, type Kernaussage } from '../chartKopf';
+import { fokusGriff, zeigerSchwebt } from '../chartMotion';
 
 /**
  * Self-explaining chart chrome (captain's pain: "it takes me a while to
@@ -142,8 +143,36 @@ export function ChartLegend({
   hidden?: ReadonlySet<string>;
   onToggle?: (label: string) => void;
 }) {
+  const wurzel = useRef<HTMLDivElement>(null);
+  // ## ⚠ FOKUS NUR, WO EIN ZEIGER SCHWEBEN KANN (Bewegung P2)
+  //
+  // Auf einem Beruehrungs-Bildschirm gibt es kein verlaessliches „Zeiger weg":
+  // ein Tipp auf eine Legenden-Zeile liesse die anderen Serien auf einem
+  // Viertel stehen. Am Telefon ist die Legende deshalb nur Beschriftung (und
+  // ggf. Umschalter), nie ein Fokus — dieselbe Regel, die `chartMotion` den
+  // Serien selbst gibt.
+  const schwebt = useRef<boolean | null>(null);
+  if (schwebt.current === null) schwebt.current = zeigerSchwebt();
+  const fokus = (label: string | null) => {
+    if (!schwebt.current) return;
+    fokusGriff(wurzel.current)?.(label);
+  };
+  // Die Zeilen sind Geschwister EINES Diagramms: `mouseleave` einer Zeile und
+  // `mouseenter` der naechsten folgen unmittelbar aufeinander, das Ergebnis
+  // ist trotzdem eindeutig (die letzte Meldung gewinnt).
+  const zeigen = (label: string) => ({
+    onMouseEnter: () => fokus(label),
+    onMouseLeave: () => fokus(null),
+    onFocus: () => fokus(label),
+    onBlur: () => fokus(null),
+  });
   return (
-    <div className="vp-chart-legend" role={onToggle ? 'group' : undefined} aria-label="Legende">
+    <div
+      className="vp-chart-legend"
+      role={onToggle ? 'group' : undefined}
+      aria-label="Legende"
+      ref={wurzel}
+    >
       {items.map((it) => {
         const off = hidden?.has(it.label) ?? false;
         const body = (
@@ -162,13 +191,14 @@ export function ChartLegend({
               aria-pressed={!off}
               onClick={() => onToggle(it.label)}
               title={off ? `„${it.label}“ einblenden` : `„${it.label}“ ausblenden`}
+              {...(off ? {} : zeigen(it.label))}
             >
               {body}
             </button>
           );
         }
         return (
-          <span key={it.label} className="vp-cl-item">
+          <span key={it.label} className="vp-cl-item" {...zeigen(it.label)}>
             {body}
           </span>
         );

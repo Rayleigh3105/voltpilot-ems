@@ -115,6 +115,39 @@ export function zeigerSchwebt(): boolean {
   return window.matchMedia('(hover: hover)').matches;
 }
 
+/**
+ * Der Fokus-Griff, den {@link useEChart} an seinen Behaelter haengt.
+ *
+ * Die Legende des Portals ist HTML (`ChartLegend`), nicht die von ECharts —
+ * sie kann also nicht von selbst hervorheben. Sie braucht dafuer den Zugriff
+ * auf die Diagramm-Instanz, und den soll sie NICHT bekommen: `ChartExplain`
+ * duerfte sonst `echarts` importieren, und die Bibliothek haenge damit auch an
+ * jeder Seite, die nur eine Legende zeigt. Stattdessen legt die Huelle EINE
+ * Funktion an den Behaelter, und die Legende ruft sie.
+ */
+export type FokusGriff = (serie: string | null) => void;
+
+/** Der Name des Griffs am DOM-Knoten. */
+export const FOKUS_GRIFF = '__vpFokus';
+
+/**
+ * Den Fokus-Griff des Diagramms finden, in dessen Karte dieses Element steckt.
+ *
+ * ⚠ Gesucht wird nach OBEN und dann nach unten: die Legende ist ein
+ * Geschwister des Diagramms, kein Vorfahr. Der Aufstieg ist auf wenige Ebenen
+ * begrenzt, damit eine Legende nie das Diagramm einer FREMDEN Karte fokussiert
+ * (auf einer Flaeche mit mehreren Diagrammen waere das die falsche Antwort).
+ */
+export function fokusGriff(von: Element | null, ebenen = 4): FokusGriff | null {
+  let knoten: Element | null = von;
+  for (let i = 0; knoten && i <= ebenen; i++, knoten = knoten.parentElement) {
+    const ziel = knoten.querySelector?.('.vp-chart-motion');
+    const griff = (ziel as unknown as Record<string, unknown> | null)?.[FOKUS_GRIFF];
+    if (typeof griff === 'function') return griff as FokusGriff;
+  }
+  return null;
+}
+
 /** Die zwei Phasen eines Diagramms: erstes Bild vs. jeder spaetere Zustand. */
 export type ChartPhase = 'enter' | 'update';
 

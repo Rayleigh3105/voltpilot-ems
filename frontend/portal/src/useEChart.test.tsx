@@ -279,3 +279,19 @@ describe('useEChart · der EINE Schalter und das Aufraeumen', () => {
     expect(gesetzt[0].animation).toBe(false);
   });
 });
+
+describe('Die Bewegungs-Marke ueberlebt einen Klassenwechsel der Flaeche (P2)', () => {
+  it('wird bei jedem Bild nachgesetzt', () => {
+    // React schreibt `class` als GANZES: haengt die Flaeche eine Klasse an
+    // (die Messwerte-Historie tut das mit `vp-chart-clickable`), ist die
+    // imperativ gesetzte Marke weg — und die Maske haette keinen Anker mehr.
+    // Im Browser gemessen, nicht ausgedacht.
+    const { getByTestId } = render(<Diagramm />);
+    const el = getByTestId('d');
+    expect(el.classList.contains('vp-chart-motion')).toBe(true);
+    el.className = 'vp-c-bild vp-chart tall vp-chart-clickable';
+    expect(el.classList.contains('vp-chart-motion')).toBe(false);
+    act(() => instanz!.setOption({ series: [{ type: 'line' }] }));
+    expect(el.classList.contains('vp-chart-motion')).toBe(true);
+  });
+});

@@ -29,6 +29,7 @@ import {
   mergeArt,
   mergeMotion,
   motionOptions,
+  fokusGriff,
   serienMitBewegung,
   zeigerSchwebt,
   type ChartMotion,
@@ -345,6 +346,43 @@ describe('Live: ein Re-Plan bewegt nur die geänderten Slots (Spec §5 Zeile C)'
     const ml = b.markLine as Record<string, unknown>;
     expect(ml.animationDurationUpdate).toBe(M.update);
     expect((ml.data as unknown[])[0]).toEqual({ xAxis: 3 });
+  });
+});
+
+describe('Der Fokus-Griff verbindet die HTML-Legende mit ihrem Diagramm', () => {
+  /** Karte: Legende und Diagramm sind GESCHWISTER, nicht Vorfahr und Kind. */
+  const karte = (griff?: unknown) => {
+    const wurzel = document.createElement('div');
+    const legende = document.createElement('div');
+    const chart = document.createElement('div');
+    chart.className = 'vp-chart-motion';
+    if (griff) (chart as unknown as Record<string, unknown>).__vpFokus = griff;
+    wurzel.append(legende, chart);
+    return { wurzel, legende, chart };
+  };
+
+  it('findet das Diagramm derselben Karte', () => {
+    const gerufen: (string | null)[] = [];
+    const { legende } = karte((n: string | null) => gerufen.push(n));
+    fokusGriff(legende)?.('PV');
+    fokusGriff(legende)?.(null);
+    expect(gerufen).toEqual(['PV', null]);
+  });
+
+  it('greift NICHT in eine fremde Karte', () => {
+    // Zwei Karten nebeneinander: die Legende der einen darf die Serien der
+    // anderen nicht blass machen.
+    const a = karte(() => {});
+    const b = karte(() => {});
+    const seite = document.createElement('div');
+    seite.append(a.wurzel, b.wurzel);
+    a.chart.remove(); // Karte A hat (noch) kein Diagramm
+    expect(fokusGriff(a.legende, 1)).toBeNull();
+  });
+
+  it('ohne Griff wird nichts behauptet', () => {
+    const { legende } = karte();
+    expect(fokusGriff(legende)).toBeNull();
   });
 });
 
