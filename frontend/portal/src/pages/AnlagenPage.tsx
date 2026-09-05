@@ -1788,10 +1788,33 @@ export function AnlageSeite({
         <div className="vp-anlage-badges">
           {/* R4: the ONE freshness chip of the merged home (head sentence +
               chip; the hero/board dim on `stale` from the same signal). */}
-          {chip && (
-            <Badge variant={chip.tone} dot>
-              {chip.label}
-            </Badge>
+          {/* ⚠ AM TELEFON WOHNT DER CHIP IN EINEM RESERVIERTEN RAHMEN
+              (Bewegung · P7). Er trifft erst mit den Übersichts-Daten ein und
+              belegt bei 375 px eine eigene Zeile — bis P7 schob dieses
+              Eintreffen den halben Bildschirm um 30 px nach unten (gemessener
+              größter Einzelsprung des App-Starts, CLS 0,308). Die Zeile steht
+              deshalb von Anfang an da; solange der Chip unbekannt ist, hält
+              ein UNSICHTBARER Zwilling genau seine Höhe frei. Er misst sich
+              selbst — hier steht keine Pixelzahl, die veralten kann.
+              Geometrie und Begründung: `components/CockpitBlocks.css`. */}
+          {isPhone && !showSetup ? (
+            <span className="vp-anlage-chipzeile">
+              {chip ? (
+                <Badge variant={chip.tone} dot>
+                  {chip.label}
+                </Badge>
+              ) : (
+                <Badge aria-hidden="true" style={{ visibility: 'hidden' }}>
+                  &nbsp;
+                </Badge>
+              )}
+            </span>
+          ) : (
+            chip && (
+              <Badge variant={chip.tone} dot>
+                {chip.label}
+              </Badge>
+            )
           )}
           {/* Stammdaten-Abzeichen: sie ändern sich nie und beantworten keine
               Tagesfrage — am Telefon wohnen sie in den Einstellungen. */}
