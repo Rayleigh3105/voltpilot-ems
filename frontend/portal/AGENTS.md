@@ -143,7 +143,7 @@ Der Umbau ist wiederholbar: `python3 tools/agents-md-split.py` erzeugt aus dem K
 (`tools/agents-md-kern/<bereich>.md`) plus dem Bestand denselben Zustand, `--verify` beweist
 die Byte-Gleichheit jedes ausgelagerten Abschnitts.
 
-## Bewegung (Motion-Programm P0 · P1 · P3 · P4 · P6)
+## Bewegung (Motion-Programm P0 · P1 · P2 · P3 · P4 · P6)
 
 **Spec-Quelle:** firstmate `data/vp-motion-konzept-m1/report.md` §4 (Captain-Entscheid 04.09.2026, E1–E10 = a).
 
@@ -169,6 +169,17 @@ die Byte-Gleichheit jedes ausgelagerten Abschnitts.
 - **`chartMotion()` liest die Tokens EINMAL je Aufruf** aus dem `:root` (Canvas kennt kein `var()`; das `chartTheme()`-Muster) und merkt sie bewusst **NICHT** — der Schalter hängt an `prefers-reduced-motion` und darf mitten in der Sitzung umgelegt werden. `scale === 0` ⇒ keine Klasse, keine Dauer, das Bild steht; deshalb braucht P1 keinen zweiten reduced-motion-Block.
 - **Der Anker ist `.vp-chart-motion`** (setzt `useEChart` selbst), nicht `.vp-chart` — nicht jeder Behälter trägt die Layout-Klasse, und ihr `height: clamp(...)` mitzuerben wäre ein Höhenstreit in einem Lazy-Stück. **Aufgeräumt wird per Frist, nie über `animationend`** (ein Tabwechsel liefert das Ereignis nie, und `both` liesse die Maske stehen).
 - **Wächter:** `src/chartMotion.test.ts` + `src/useEChart.test.tsx`; Browser-Beweis `e2e/motion-lab/` (jsdom sieht weder Maske noch angehaltene Frames — `shoot.mjs` hält die Aufdeckung an und `analyze-frames.py` misst je Frame, ob jede aufgedeckte Spalte schon ihre ENDGÜLTIGE Höhe hat).
+
+### P2 — die Chart-FAMILIEN: Fokus, Morph, wandernder Marker (§5 A–D)
+
+- **Der Übergang MISCHT, er baut nicht neu.** Bis P2 rief jede Fläche `setOption(option, true)` — ein `notMerge`, also bei JEDEM Zustandswechsel ein Neubau samt Einstiegsanimation. `mergeArt()` übersetzt das in der HÜLLE zu `replaceMerge` (Liste in `REPLACE_MERGE`, so breit wie das frühere `notMerge`, damit eine weggefallene Achse/Legende kein Geist bleibt), und jede Serie bekommt eine **stabile `id` OHNE ihren Formtyp** — ohne sie bildet `replaceMerge` gar nicht ab (echarts kennt dort kein Abbilden über den Namen). **Kein Diagramm ruft `clear()`** (im Repo geprüft: 0 Stellen) — das verlöre den Morph; `chartFamilien.test.ts` hält beide Ratschen auf 0. Kehrseite des Mischens: ein Feld, das der Aufrufer nicht mehr nennt, wird ausdrücklich genullt, sonst überlebte ein Jetzt-Marker seinen Tag.
+- **`universalTransition` NUR beim Formwechsel** (Linie ↔ Balken, Tag↔Woche): sie hängt an der `TypSpur` je Diagramm-Instanz, nicht dauerhaft — sonst ersetzte ECharts auch bei einem bloßen Live-Punkt seine Datenanimation durch einen Element-Morph. Wo ein Zeitraumwechsel die KOMPONENTE tauscht (Marktpreise), gibt es keinen Morph: dort blendet die P1-Maske das neue Diagramm ein — das ist die Spec-Antwort „kein Sprung, kein Wachsen", nicht ein Mangel.
+- **⚠ Am Telefon gibt es KEINEN Fokus.** Fokus/Dimmen sind ein SCHWEBE-Zustand (ECharts hebt an `mouseover` hervor, nimmt an `mouseout` zurück); auf einem Berührungs-Bildschirm fehlt das zweite Ereignis, ein Tipp ließe die anderen Serien auf einem Viertel stehen — und ein hängendes Dimmen liest sich wie eine AUSSAGE über die Zahlen. `zeigerSchwebt()` fragt `(hover: hover)` (die Frage, die `InfoTip` seit je stellt): ohne Schweben `emphasis.focus: 'none'`, kein `blur`, und der Tooltip wird zur Fahne auf einen ABSICHTLICHEN Tipp (`triggerOn: 'click'` statt des Werks-Auslösers, der schon beim Wischen aufblitzt).
+- **⚠ Die HTML-Legende dimmt über einen GRIFF, nicht über einen echarts-Import.** `ChartLegend` ist HTML, kann also von sich aus nichts hervorheben. `useEChart` hängt dafür EINE Funktion an seinen Behälter (`FOKUS_GRIFF`), die Legende sucht sie mit `fokusGriff()` in ihrer EIGENEN Karte (Aufstieg auf 4 Ebenen begrenzt — sonst fokussierte sie das Diagramm der Nachbarkarte). Beides wohnt in **`src/chartFokus.ts`**, einem eigenen winzigen Modul: die Legende liegt im EINSTIEG, und ein Import von `chartMotion` hänge die ganze Bewegungs-Schicht dorthin (gemessen 230,89 → 232,29 kB gz = über die Grenze; mit dem Modul 231,12).
+- **⚠ Die Marke `vp-chart-motion` muss NACHGESETZT werden.** Sie wird imperativ gesetzt, aber `className` gehört REACT: ändert eine Fläche ihre Klassenkette (die Historie hängt `vp-chart-clickable` an), schreibt React das Attribut als GANZES neu und die Marke ist weg — im Browser nach Tag→Woche genau so beobachtet, der Maske fehlte danach ihr Anker. Die `setOption`-Hülle setzt sie deshalb bei jedem Bild nach.
+- **Die Schwelle bleibt 2000** (Werk, §7.3): ein Verlauf über 2000 Punkten schaltet den Morph SELBST ab. Das ist gewollt — der Schutz vor einem Ruckler im Jahres-Explorer, keine Bewegungs-Entscheidung von uns.
+- **Wächter:** `src/chartFamilien.test.ts` (Fokus/Blur, Ersetz-Liste, stabile Kennung, Formwechsel, Telefon-Regel, Re-Plan, die zwei Ratschen); Browser-Beweis `e2e/motion-lab/proof-p2.sh` (EIN Aufruf, vier Geräte-Lagen) — er filmt die LEINWAND alle 40 ms und unterscheidet einen Morph (viele kleine Stufen) von einem Knall (ein Bild, davor und danach Ruhe).
+
 
 ### P3 — Minis, Ringe, Zahlenwechsel, Energiefluss (§5 E–H)
 
