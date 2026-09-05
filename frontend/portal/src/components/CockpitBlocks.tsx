@@ -274,7 +274,17 @@ export function MobileRowCard({
  */
 export function MobileStickyHead({ head, shown }: { head: StickyHead; shown: boolean }) {
   return (
-    <div className={`vp-mob-sticky${shown ? ' is-shown' : ''}`} aria-hidden={!shown}>
+    <div
+      className={`vp-mob-sticky${shown ? ' is-shown' : ''}`}
+      aria-hidden={!shown}
+      /* ⚠ Nimmt sich aus der Staffel des ersten Bildes heraus
+         (Bewegungs-Programm P4, `.vp-stagger` in `src/index.css`): diese
+         Kopfzeile haelt ihren Ruhezustand selbst ueber `opacity: 0` und
+         `translateY(-6px)`. Das Endbild der Staffel wuerde beides
+         ueberschreiben - sie blitzte fuer 260 ms sichtbar auf, obwohl noch
+         niemand gescrollt hat. */
+      data-vp-no-stagger=""
+    >
       {head.value && (
         <span className="vp-mob-sticky-money">
           <b>{head.value}</b>

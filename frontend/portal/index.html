@@ -158,6 +158,31 @@
           transform: rotate(360deg);
         }
       }
+      /*
+        Das Ausblenden (Bewegungs-Programm P4, Konzept
+        `data/vp-motion-konzept-m1/report.md` §6 Zeile "App-Start").
+        Frueher wurde das Skelett hart entfernt - Skelett und Cockpit lagen in
+        DEMSELBEN Frame uebereinander, der Wechsel war ein Schnitt. Jetzt
+        blendet es ueber dem schon fertigen ersten Bild aus.
+
+        ⚠ WARUM DIE REGEL HIER STEHT UND NICHT IN src/index.css: dieses
+          Skelett lebt VOR dem Buendel. Das Buendel ist beim Ausblenden zwar
+          laengst da (React hat gerendert), aber die Regel muss auch dann
+          greifen, wenn es das NICHT ist - deshalb liest sie die Tokens nur
+          MIT Rueckfall. Die Zahlen sind die der Familie
+          (`--vp-motion-exit` 160 ms, `--vp-ease-in`); wer sie dort aendert,
+          aendert hier den Rueckfall mit.
+
+        ⚠ UNTER REDUZIERTER BEWEGUNG steht das Token auf 0 ms (der EINE
+          Schalter `--vp-motion-scale`), der Uebergang ist dann von selbst
+          ein Schnitt - und `removeBootSkeleton` wartet gar nicht erst.
+      */
+      #vp-boot-skeleton.vp-bs-leaving {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity var(--vp-motion-exit, 160ms)
+          var(--vp-ease-in, cubic-bezier(0.4, 0, 1, 1));
+      }
       /* Breite Fassung: Marke links, Formularseite rechts - wie `.vp-auth`. */
       @media (min-width: 900px) {
         #vp-boot-skeleton .vp-bs-split {

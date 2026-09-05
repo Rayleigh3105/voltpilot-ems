@@ -1099,7 +1099,13 @@ svg [tabindex]:focus-visible {
     stroke-width: 2.5;
     stroke-linecap: round;
     stroke-dasharray: 6 7;
-    animation: vp-auth-flow 1.6s linear infinite;
+    /* EINE Uhr fuer das ganze Portal (Bewegungs-Programm P4, E7 a): 1,8 s ist
+       das RUHETEMPO, das der Energiefluss ab P3 bei Null-Last faehrt (die
+       Obergrenze seines `flowTempo`). Vorher lief die Buehne mit
+       1,6 s in ihrem eigenen Takt - zwei Geschwindigkeiten fuer dieselbe
+       Aussage („hier fliesst etwas"). Ihr Stopp unter reduzierter Bewegung
+       steht im P0-Block am Dateiende. */
+    animation: vp-auth-flow 1.8s linear infinite;
   }
   .vp-auth-flow .spoke.rev {
     animation-direction: reverse;
@@ -5799,6 +5805,74 @@ body {
  * §3.10 Anatomie C Punkt 5. Sie liegen in `BereichTabs.css` (komponenten-lokal,
  * damit die Ladereihenfolge nicht entscheidet) — hier steht nur der Zeiger. */
 
+/* === Bewegung · P4 ======================================================
+   App-Start und Login-Bühne.
+   Konzept `data/vp-motion-konzept-m1/report.md` §6 Zeilen „App-Start" und
+   „Login-Bühne" sowie E7 (a), Captain-Entscheid 04.09.2026.
+
+   Zwei Dinge, die P4 liefert, stehen bewusst NICHT hier:
+
+   1. **Das Ausblenden des Skeletts** wohnt inline in `index.html` — es lebt
+      vor diesem Bündel (Begründung dort).
+   2. **Die Staffel `.vp-stagger`** wohnt im P6-Block weiter unten. Beide
+      Pakete brauchten dieselbe Bewegung — Karten beim Start, Zeilen beim
+      Nachladen —, und zwei Regelsätze für EINE Klasse wären zwei Wahrheiten.
+      P4 benutzt deshalb die Regel des Nachbarn und trägt dort nur seinen
+      einen Vorbehalt ein (`data-vp-no-stagger`).
+   ========================================================================= */
+
+
+/* --- ⚠ DIE ERSTE BILDSCHIRMHÖHE STEHT STILL -----------------------------
+   Die zwei obersten Kinder des Cockpit-Stapels laufen NICHT mit. Das ist
+   eine MESSUNG, keine Vorliebe, und sie hat einen scharfen Grund:
+
+   CLS zählt nur, was IM SICHTFELD springt. Bei 375 × 812 ist beim ersten
+   Bild praktisch nur die oberste Karte zu sehen — und genau in ihrer
+   Ankunftszeit tauscht die Anlagenseite ihren ruhigen Platzhalter
+   (`.vp-anlage-pending`) gegen den echten Stapel. Dieser Umbau ist ein
+   ECHTER Layout-Sprung, den es auch ohne Bewegung gibt; steht die oberste
+   Karte dabei um `--vp-motion-distance` versetzt, wird er gegen die
+   VERSCHOBENE Lage verrechnet und vervielfacht sich.
+
+   Gemessen am Produktions-Build (`e2e/motion-p4/proof.mjs`, je 9 Läufe,
+   375 px):
+
+     vorher (origin/main)                      CLS 0,033
+     Staffel über ALLE Karten                  CLS 0,313   ← der Befund
+     Staffel ohne Weg (`--vp-motion-distance: 0`)  CLS 0,033
+     nur die OBERSTE Karte steht still         CLS 0,033
+     die obersten ZWEI stehen still            CLS 0,033   ← ausgeliefert
+
+   Also: es ist der WEG der obersten Karte, nicht ihre Deckkraft. Zwei statt
+   einer, weil das erste Kind je nach Anlage die mobile Kopfzeile sein kann
+   (`.vp-mob-sticky`, siehe ihren eigenen Vorbehalt) — dann wäre die erste
+   ECHTE Karte das zweite Kind und der Sprung wäre zurück.
+
+   ⚠ Der Vorbehalt gilt NUR dem Cockpit-Stapel, nie der Klasse: eine Liste,
+   die nach dem ersten Bild nachlädt (P6), springt beim Start nicht und darf
+   ihre obersten Zeilen bewegen. Und die Versätze bleiben unangetastet — die
+   dritte Karte kommt weiterhin nach 60 ms, der Rhythmus ist derselbe.
+   Firstmate-Entscheid 04.09.2026: die Start-Staffel ist kein
+   Signaturmoment (E9 a nennt Fluss, Chart-Einstieg, Kennzahl), sie darf
+   leiser sein — LCP und CLS dürfen sie nicht bezahlen. */
+.vp-cockpit-stack.vp-stagger > *:nth-child(-n + 2):not([data-vp-no-stagger]) {
+  animation: none;
+}
+
+
+/* --- Die Login-Bühne ----------------------------------------------------
+   E7 (a): „ja, im Cockpit-Tempo, reduced still". Die Karte kommt wie jede
+   andere Karte (260 ms von unten); die Laufpunkte der Bühne BLEIBEN — auf
+   der Bühne konkurriert ihre Bewegung mit nichts Lesbarem — laufen aber im
+   Ruhetempo des Energieflusses, damit das Portal EINE Uhr hat und nicht zwei.
+
+   Ihr Stopp unter reduzierter Bewegung steht im P0-Block am Dateiende
+   (`.vp-auth-flow .spoke`), nicht hier: dort wohnt die vollständige Liste
+   der Dauer-Animationen. */
+.vp-auth-card {
+  animation: vp-stagger-ein var(--vp-motion-enter) var(--vp-ease-out) backwards;
+}
+
 /* =========================================================================
    === Bewegung · P3 ===  Zahlenwechsel · Energiefluss · Jetzt-Marker
    Konzept `data/vp-motion-konzept-m1/report.md` §5 Zeilen E–H, §6 Zeile
@@ -5944,7 +6018,15 @@ span.vp-swap-out {
 
    „Nie beim zweiten Besuch" kann CSS nicht wissen; das entscheidet
    `useStaffel` (`src/staffel.ts`) und lässt die Klasse dann einfach weg. */
-.vp-stagger > * {
+/* ⚠ WER SICH AUSNEHMEN MUSS, TRÄGT `data-vp-no-stagger` (Bewegungs-Programm
+   P4, das dieselbe Klasse für das erste Bild des Cockpits benutzt). Das ist
+   kein Komfort: ein Kind, das seinen eigenen Ruhezustand über `opacity` /
+   `transform` hält — die mobile Sticky-Kopfzeile `.vp-mob-sticky` steht
+   genau so ausserhalb des Bildes —, würde vom Endbild dieser Animation
+   ÜBERSCHRIEBEN und blitzte für ihre ganze Dauer sichtbar auf, obwohl
+   niemand gescrollt hat. Für eine LISTE ändert die Ausnahme nichts: keine
+   Zeile trägt das Attribut. */
+.vp-stagger > *:not([data-vp-no-stagger]) {
   animation: vp-stagger-ein var(--vp-motion-enter) var(--vp-ease-out) backwards;
 }
 .vp-stagger > *:nth-child(2) { animation-delay: calc(var(--vp-motion-stagger) * 1); }
@@ -5956,9 +6038,22 @@ span.vp-swap-out {
 .vp-stagger > *:nth-child(8) { animation-delay: calc(var(--vp-motion-stagger) * 7); }
 .vp-stagger > *:nth-child(n + 9) { animation-delay: calc(var(--vp-motion-stagger) * 8); }
 
+/* ⚠ DIE STAFFEL BEGINNT SICHTBAR (0,6), NICHT BEI NULL — und das ist eine
+   MESSUNG, keine Vorliebe. Chrome nimmt ein vollständig durchsichtiges
+   Element nicht als LCP-Kandidaten an: mit `opacity: 0` wird der grösste
+   Inhalt erst gezählt, wenn seine Karte an der Reihe ist, und der Start
+   verschiebt sich um den ganzen Versatz. Gemessen am Produktions-Build
+   (`e2e/motion-p4/proof.mjs`, 9 Paare): LCP 272 → 520 ms mit Null, und ein
+   Diagnose-Arm ohne Deckkraft holte die Zahl zurück.
+   0,6 ist der Kompromiss mit dem Auge: die Karte steht vom ersten Frame an
+   da (also zählt sie), und die restlichen 40 % plus die 8 px von unten sind
+   die Ankunft, die man sehen soll. **Wer hier auf 0 zurückgeht, verschiebt
+   den gemessenen Start jeder Fläche, die staffelt.**
+   Firstmate-Entscheid 04.09.2026: die Start-Staffel ist kein Signaturmoment
+   (E9 a nennt Fluss, Chart-Einstieg, Kennzahl), sie darf leiser sein. */
 @keyframes vp-stagger-ein {
   from {
-    opacity: 0;
+    opacity: 0.6;
     transform: translateY(var(--vp-motion-distance));
   }
 }
