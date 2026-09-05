@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -18,8 +18,25 @@ import {
   type AdoptionPlan,
   type SetupStep,
 } from '../setupPath';
-import { AddDeviceDrawer } from './DeviceDrawers';
 import { TextSkeleton } from './States';
+
+/**
+ * **Der Geräte-Schub wird NACHGELADEN** (Bewegung · P7, Bündel-Kopfraum).
+ *
+ * `DeviceDrawers.tsx` lag bis hierher STATISCH im Einstiegs-Bündel — nur weil
+ * dieser Pfad die geschlossene Fläche vorsorglich mitrenderte. Gemessen kostete
+ * das 4,77 kB gz im ersten Bild, für eine Fläche, die erst nach einem Klick
+ * überhaupt erscheint (Haus-Regel `test/bundle-smoke.sh`: der Einstieg trägt
+ * nur das erste Bild).
+ *
+ * ⚠ EINMAL GELADEN, BLEIBT SIE IM BAUM. Das Modal blendet beim Schließen aus
+ *   (P6, `Modal.jsx`); würde es beim Schließen ausgehängt, wäre das Ausblenden
+ *   ein Schnitt. Deshalb steuert `claimOpen` nur noch das `open`-Merkmal, und
+ *   `claimGeladen` bleibt stehen, sobald es einmal `true` war.
+ */
+const AddDeviceDrawer = lazy(() =>
+  import('./DeviceDrawers').then((m) => ({ default: m.AddDeviceDrawer })),
+);
 import './AnlageSetup.css';
 
 /**
@@ -63,6 +80,7 @@ export function AnlageSetup({
   const [loading, setLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [claimOpen, setClaimOpen] = useState(false);
+  const [claimGeladen, setClaimGeladen] = useState(false);
   const [adopting, setAdopting] = useState<AdoptionPlan | null>(null);
   const [bridge, setBridge] = useState<AdoptedBridge | null>(null);
 
@@ -100,6 +118,7 @@ export function AnlageSetup({
   function runAction(step: SetupStep) {
     switch (step.action?.kind) {
       case 'claim':
+        setClaimGeladen(true);
         setClaimOpen(true);
         break;
       case 'adopt':
@@ -203,17 +222,24 @@ export function AnlageSetup({
         </button>
       </p>
 
-      <AddDeviceDrawer
-        open={claimOpen}
-        onClose={() => setClaimOpen(false)}
-        sites={[site]}
-        onClaimed={() => {
-          // Die Anlagen-Seite lädt ihren Status neu (Gerätezahl), der Pfad
-          // seine gemeldeten Quellen.
-          onReload(site.id);
-          reload();
-        }}
-      />
+      {claimGeladen && (
+        // Kein Platzhalter: bis das Stück da ist, gibt es die Fläche noch
+        // nicht — ein Skelett würde eine Fläche ankündigen, die der Kunde noch
+        // gar nicht sieht (Ehrlichkeits-Regel, `Lazy.tsx`).
+        <Suspense fallback={null}>
+          <AddDeviceDrawer
+            open={claimOpen}
+            onClose={() => setClaimOpen(false)}
+            sites={[site]}
+            onClaimed={() => {
+              // Die Anlagen-Seite lädt ihren Status neu (Gerätezahl), der Pfad
+              // seine gemeldeten Quellen.
+              onReload(site.id);
+              reload();
+            }}
+          />
+        </Suspense>
+      )}
 
       {adopting && (
         <GuidedAdoptDrawer
