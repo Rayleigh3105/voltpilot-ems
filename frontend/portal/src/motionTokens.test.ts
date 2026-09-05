@@ -474,6 +474,75 @@ describe('Bewegung P7 · die benannten Dauer-Loops', () => {
       .toEqual([]);
   });
 
+  /**
+   * ⚠ DIE ZUSAGE, DIE DIESE LISTE ERST TRAGBAR MACHT. Ein Dauer-Loop darf sein
+   * eigenes Tempo behalten — aber NICHT den EINEN Schalter überleben. Genau
+   * das war beim Flotten-Punkt passiert: er pulsierte unter reduzierter
+   * Bewegung weiter, weil er als einziger nicht in der Halt-Liste stand und
+   * ihn keine Zeile bewachte (P7 hat ihn nachgetragen).
+   *
+   * Geprüft wird über die SELEKTOREN: zu jedem Loop wird der Regelkopf davor
+   * gelesen, und mindestens eine seiner Klassen muss in einem
+   * `prefers-reduced-motion`-Block wieder auftauchen.
+   */
+  it('jeder Loop wird vom EINEN Schalter angehalten', () => {
+    const bloecke = ALLE_CSS.map((d) => readFileSync(d, 'utf8')).flatMap((t) =>
+      [...t.matchAll(/@media[^{]*prefers-reduced-motion[^{]*\{/g)].map((m) => {
+        let tiefe = 1;
+        let i = m.index + m[0].length;
+        for (; i < t.length && tiefe > 0; i++) {
+          if (t[i] === '{') tiefe++;
+          else if (t[i] === '}') tiefe--;
+        }
+        return t.slice(m.index, i);
+      }),
+    );
+    // ⚠ ZWEI FALLEN, BEIDE BEIM MUTATIONSTEST DIESES WÄCHTERS AUFGEGANGEN:
+    //   1. KLASSEN-TOKEN, KEIN TEILSTRING — ein `includes('.vp-fleet-dot')`
+    //      fände auch `.vp-fleet-dot-XX`.
+    //   2. OHNE KOMMENTARE — eine Klasse, die im Halt-Block nur BESPROCHEN
+    //      wird, hält nichts an.
+    const angehalten = new Set(
+      bloecke
+        .join('\n')
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .match(/\.[A-Za-z][\w-]*/g) ?? [],
+    );
+    expect(bloecke.length, 'ohne Halt-Block prüft der Test nichts').toBeGreaterThan(0);
+
+    const gefunden: string[] = [];
+    const offen: string[] = [];
+    for (const datei of ALLE_CSS) {
+      const t = readFileSync(datei, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const m of t.matchAll(/animation\s*:\s*([^;{}]*)/g)) {
+        for (const schicht of schichten(m[1])) {
+          const name = /\binfinite\b/.test(schicht) ? loopName(schicht) : null;
+          if (!name) continue;
+          // Der Regelkopf: von der öffnenden Klammer DIESER Regel zurück bis
+          // zur vorigen Klammer. Ein flacher `{…}`-Ausdruck über die ganze
+          // Datei ginge an `@media`/`@keyframes` verloren (nachgemessen: er
+          // fand die Flotten-Punkte gar nicht und überlebte die Mutation).
+          const auf = t.lastIndexOf('{', m.index);
+          const davor = Math.max(t.lastIndexOf('}', auf), t.lastIndexOf('{', auf - 1));
+          const kopf = t.slice(davor + 1, auf);
+          gefunden.push(`${relative(root, datei)}: ${kopf.trim()} → ${name}`);
+          const klassen = kopf.match(/\.[A-Za-z][\w-]*/g) ?? [];
+          if (!klassen.some((k) => angehalten.has(k))) {
+            offen.push(`${relative(root, datei)}: ${kopf.trim()} → ${name}`);
+          }
+        }
+      }
+    }
+    // Nicht-vakuum: es müssen so viele Loop-REGELN gefunden werden, wie der
+    // Test darüber Loop-SCHICHTEN zählt.
+    expect(gefunden.length).toBe(loops.length);
+    expect(
+      offen,
+      'Ein Loop, den der Schalter nicht erreicht, ist keine Ausnahme — er ist ein Leck:\n' +
+        offen.join('\n'),
+    ).toEqual([]);
+  });
+
   it('jeder Grund ist ein Satz, kein Wort', () => {
     const duenn = Object.entries(LOOP_AUSNAHMEN)
       .filter(([, grund]) => grund.trim().length < 20)
