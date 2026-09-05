@@ -21,7 +21,7 @@
 #   1. `vite build` läuft durch (in ein EIGENES Ausgabeverzeichnis, damit der
 #      Wächter das echte `dist/` des Deploys nie überschreibt).
 #   2. Der Einstiegs-Chunk `index-*.js` bleibt unter der Grenze (gz, siehe
-#      LIMIT_KB) — Basis am Tag von P0: 228,15 kB gz, heute 225,74 (P7).
+#      LIMIT_KB) — Basis am Tag von P0: 228,15 kB gz, heute 226,01 (P7 mit P2).
 #   3. In den QUELLEN des Einstiegs-Chunks steht kein Motion-Modul.
 #
 # ⚠ WARUM ÜBER DIE SOURCEMAP UND NICHT PER `grep` IM CHUNK: der Minifizierer
@@ -58,10 +58,12 @@ cd "$(dirname "$0")/.."
 #   −0,56  `admin/adminApi` in `App.tsx` — der Einstieg trug die Admin-Anbindung
 #          für JEDEN Kunden mit, obwohl nur ein Plattform-Admin sie je aufruft.
 #
-# ⚠ DIE 4,26 kB LUFT SIND ABSICHT, NICHT NACHLÄSSIGKEIT: P2 (Chart-Familien)
-#   war beim Setzen dieser Zahl noch unterwegs und fasst zwölf Chart-Dateien an.
-#   Eine Grenze, die am Tag ihres Setzens schon reißt, bewacht nichts — wer
-#   nach P2 misst und Luft findet, zieht sie nach.
+#   226,01  mit P2 darin     — Chart-Familien kosten +0,27 kB gz
+#
+# ⚠ DIE KNAPP 4 kB LUFT SIND ABSICHT, NICHT NACHLÄSSIGKEIT: sie ist der
+#   Kopfraum, den P0 mit 1,85 kB zu klein bemessen hatte — er war nach vier
+#   Paketen aufgebraucht und zwang P5, die Grenze zu heben. Wer sie jetzt
+#   wieder auf den Messwert zurückzieht, baut dieselbe Falle noch einmal.
 #
 # WARUM P5 DIE GRENZE BEWEGEN DURFTE: die Seitenwechsel-Hülle ist per Entscheid
 # E5 (a) EINSTIEGS-Code — sie ist die Browser-eigene View-Transitions-API, kein
