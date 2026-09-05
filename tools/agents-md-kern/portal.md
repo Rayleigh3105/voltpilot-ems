@@ -47,9 +47,11 @@ gezielt lokal fahren.
   (`src/keineSeitenleisten.test.ts` verweigert schon den Bausteinnamen `Drawer`).
 - **Kunden-Vokabular.** Interne Wörter (Entität, Messpunkt, Mandant, Modus, Broker, RLS …)
   stehen in keinem Kundentext; `src/copy.test.ts` liest die Quellen und wacht darüber.
-- **Bewegung** ist die letzte Sektion dieser Datei (verbatim, weil parallel gepflegt): EIN
-  Token-Satz, Presets in `src/motionPresets.ts`, Wächter `src/motionTokens.test.ts` +
-  `src/chartMotion.test.ts`, `prefers-reduced-motion` an EINER Stelle.
+- **Bewegung** ist die letzte Sektion dieser Datei — seit P7 (05.09.2026) EIN
+  zusammenhängender Abschnitt, das Detail jedes Pakets in
+  `docs/agents/portal/bewegung.md`: EIN Token-Satz, Presets in `src/motionPresets.ts`,
+  Wächter `src/motionTokens.test.ts` + `src/chartMotion.test.ts`, `prefers-reduced-motion`
+  an EINER Stelle.
 
 ## Die Text-Wächter (quellenlesende Tests — das Muster für neue Regeln)
 

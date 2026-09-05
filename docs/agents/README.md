@@ -180,7 +180,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Zusätzliche Messwerte: Bibliothek und Historie (Slice 9)](root/zusaetzliche-messwerte-bibliothek-und-hi.md)
 - [Zusätzliche Messwerte: Desired State bis Timescale (Slices 6–8)](root/zusaetzliche-messwerte-desired-state-bis.md)
 
-## `portal/` — aus `frontend/portal/AGENTS.md` (45 Einträge)
+## `portal/` — aus `frontend/portal/AGENTS.md` (46 Einträge)
 
 - [Anzeige-Ehrlichkeit: Daten-Alter, die gemessene Null, der behauptete Verkauf](portal/anzeige-ehrlichkeit-daten-alter-die-geme.md)
 - [Build & test](portal/build-test/README.md) *(Sammlung, 94 Punkte)*
@@ -207,6 +207,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Geräteseiten Stufe 1: DER RAHMEN, durch den JEDE Geräteseite fährt](portal/geraeteseiten-stufe-1-der-rahmen-durch-d.md)
 - [Geräteseiten Stufe 3a: „Beobachtete Register" — die Messbibliothek, richtig herum](portal/geraeteseiten-stufe-3a-beobachtete-regis.md)
 - [Geräteseiten Stufe 4: DIE NEUN BLÄTTER — je Gerätetyp genau das, was er braucht](portal/geraeteseiten-stufe-4-die-neun-blaetter.md)
+- [Bewegung — das Motion-Programm P0–P7 im Detail](portal/bewegung.md)
 - [Keine Seitenleisten: jede Aufgabenfläche ist das zentrierte `Modal`](portal/keine-seitenleisten-jede-aufgabenflaeche.md)
 - [Ladepark-Lastmanagement: die Ladepunkt-Flächen (Lastmanagement Stufe 3)](portal/ladepark-lastmanagement-die-ladepunkt-fl.md)
 - [Maintaining this file](portal/maintaining-this-file.md)
