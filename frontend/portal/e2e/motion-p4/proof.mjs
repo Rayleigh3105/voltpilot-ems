@@ -124,10 +124,14 @@ async function abschnittA(browser) {
     return {
       klasse: stack.className.includes('vp-stagger'),
       n: kinder.length,
-      // Das erste Kind ist der Kopf und traegt `data-vp-no-stagger` — seine
-      // Dauer waere 0s und saegte damit die Aussage ab.
-      dauer: getComputedStyle(kinder.find((k) => !k.hasAttribute('data-vp-no-stagger')) ?? kinder[0]).animationDuration,
+      // ⚠ Nicht jedes Kind laeuft mit: der Kopf traegt `data-vp-no-stagger`,
+      //   und die ersten zwei Kinder stehen seit der CLS-Korrektur still
+      //   (Begruendung am Selektor in `src/index.css`). Die Dauer wird
+      //   deshalb am ersten Kind gelesen, das WIRKLICH animiert - sonst
+      //   stuende hier 0s und saegte die Aussage ab.
+      dauer: getComputedStyle(kinder.find((k) => parseFloat(getComputedStyle(k).animationDuration) > 0) ?? kinder[0]).animationDuration,
       verz,
+      stehen: kinder.filter((k) => !(parseFloat(getComputedStyle(k).animationDuration) > 0)).length,
       ausgenommen: kinder.filter((k) => k.hasAttribute('data-vp-no-stagger')).length,
     };
   });
@@ -150,8 +154,8 @@ async function abschnittA(browser) {
   say(`(a) 375 px real: clientWidth=${breite} · CPU 4x + Fast 3G`);
   say(`    Frames a 40 ms: ${frames.length} (Skelett ab Frame ${ab}) · Luecke ohne Skelett UND ohne Inhalt: ${luecken.length} · Ueberblendung (beide zugleich): ${doppel.length} Frames = ${doppel.length * 40} ms`);
   if (staffel) {
-    const echte = staffel.verz.filter((_, i) => !staffel.ausgenommen || i > 0);
-    say(`    Staffel: Klasse=${staffel.klasse} · ${staffel.n} Kinder · Dauer ${staffel.dauer} · Versatz ${echte.slice(0, 11).join(' ')}`);
+    const echte = staffel.verz.filter((_, i) => i >= staffel.stehen);
+    say(`    Staffel: Klasse=${staffel.klasse} · ${staffel.n} Kinder, davon ${staffel.stehen} stehend (erste Bildschirmhoehe) · Dauer ${staffel.dauer} · Versatz ab dem ${staffel.stehen + 1}. Kind ${echte.slice(0, 11).join(' ')}`);
   }
   {
     const zahl = deckel.map((v) => Math.round(parseFloat(v) * 1000));

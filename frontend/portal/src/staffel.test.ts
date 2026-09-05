@@ -107,4 +107,25 @@ describe('.vp-stagger · 260 ms, 30 ms je Zeile, Deckel 8', () => {
     expect(Number(start)).toBeGreaterThan(0);
     expect(Number(start)).toBeLessThan(1);
   });
+
+  it('die erste Bildschirmhoehe des Cockpits steht still — und NUR das Cockpit', () => {
+    // ⚠ Der Weg der obersten Karte fiel bei 375 px mit dem Umbau des
+    //   Platzhalters `.vp-anlage-pending` zusammen und vervielfachte dessen
+    //   echten Sprung (CLS 0,033 → 0,313; gemessen in `e2e/motion-p4/`).
+    //   Zwei Kinder, weil das erste je nach Anlage die mobile Kopfzeile ist.
+    const regel = /\.vp-cockpit-stack\.vp-stagger > \*:nth-child\(-n \+ 2\)[^{]*\{([^}]*)\}/.exec(index)?.[1];
+    expect(regel).toBeDefined();
+    expect(regel).toMatch(/animation:\s*none/);
+    // Nur der Cockpit-Stapel — eine nachladende Liste (P6) springt beim Start
+    // nicht und darf ihre obersten Zeilen weiterhin bewegen.
+    expect(index).not.toMatch(/^\.vp-stagger > \*:nth-child\(-n \+ 2\)/m);
+  });
+
+  it('die Versaetze bleiben unangetastet — der Rhythmus ist derselbe', () => {
+    // Die dritte Karte kommt weiterhin nach 2 x 30 ms; das Stillstehen der
+    // ersten zwei verschiebt niemanden.
+    expect(index).toMatch(
+      /\.vp-stagger > \*:nth-child\(3\) \{ animation-delay: calc\(var\(--vp-motion-stagger\) \* 2\); \}/,
+    );
+  });
 });
