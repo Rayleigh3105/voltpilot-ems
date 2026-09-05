@@ -203,7 +203,7 @@
 .vp-fw-technik > summary::after {
   content: '▾';
   font-size: 0.7rem;
-  transition: transform 0.15s ease;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
 }
 
 .vp-fw-technik[open] > summary::after {

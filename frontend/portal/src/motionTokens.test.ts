@@ -304,12 +304,68 @@ function verstoesseDauer(s: string): string[] {
   const out: string[] = [];
   const re = /(transition|animation)(-duration)?\s*:\s*([^;{}]*)/g;
   for (const m of ohneKommentar.matchAll(re)) {
-    const wert = m[3];
-    if (/\binfinite\b/.test(wert)) continue;
-    const ohneVar = wert.replace(/var\([^()]*(?:\([^()]*\)[^()]*)*\)/g, ' ');
-    if (/(^|[\s,(])-?[\d.]+m?s([\s,)]|$)/.test(ohneVar)) out.push(`${m[1]}: ${wert.trim()}`);
+    // JEDE SCHICHT EINZELN. `animation: a var(--x) both, b 0.9s infinite` ist
+    // zwei Animationen in einer Zeile — würde der benannte Loop die ganze
+    // Zeile freistellen, dürfte die Schicht daneben still eine nackte Dauer
+    // tragen. Kommas INNERHALB von `cubic-bezier(…)` trennen dabei nichts.
+    for (const schicht of schichten(m[3])) {
+      // Ein Endlos-Loop ist NUR dann frei, wenn er als Ausnahme benannt ist
+      // (`LOOP_AUSNAHMEN`) — jeder andere zählt wie eine nackte Dauer.
+      if (/\binfinite\b/.test(schicht) && loopName(schicht) !== null) continue;
+      const ohneVar = schicht.replace(/var\([^()]*(?:\([^()]*\)[^()]*)*\)/g, ' ');
+      if (/(^|[\s,(])-?[\d.]+m?s([\s,)]|$)/.test(ohneVar)) out.push(`${m[1]}: ${schicht.trim()}`);
+    }
   }
   return out;
+}
+
+/** Ein Kurzschreibweise-Wert, an den Kommas der OBERSTEN Ebene zerlegt. */
+function schichten(wert: string): string[] {
+  const out: string[] = [];
+  let tiefe = 0;
+  let akt = '';
+  for (const c of wert) {
+    if (c === '(') tiefe++;
+    else if (c === ')') tiefe--;
+    if (c === ',' && tiefe === 0) {
+      out.push(akt);
+      akt = '';
+    } else akt += c;
+  }
+  out.push(akt);
+  return out.filter((t) => t.trim() !== '');
+}
+
+/**
+ * **Die benannten Dauer-Loops** (Konzept §3 Punkt 6 „eine Dauer-Animation =
+ * eine Aussage", §7.4). Sie behalten ihr eigenes Tempo, weil das Tempo hier
+ * die AUSSAGE trägt und nicht die Familie — aber jeder einzelne steht mit
+ * seinem Grund hier, sonst zählt er als Ratschen-Verstoß.
+ *
+ * ⚠ Diese Liste wächst NICHT ohne Grund. Wer einen Loop ergänzt, ergänzt eine
+ *   Aussage — und muss zeigen, dass sie nicht schon eine andere trägt.
+ */
+const LOOP_AUSNAHMEN: Record<string, string> = {
+  'vp-spin': 'Spinner: die eine Aussage „busy". 0,9 s ist sein Lesetempo.',
+  'vp-boot-spin': 'derselbe Spinner im App-Start, vor dem ersten Stylesheet.',
+  'vp-skeleton-shimmer': 'Skelett: die Aussage „lädt" (Design-System, eigener reduced-Block).',
+  'vp-fleet-pulse-ok': 'Flotten-Punkt „lebt": 2,4 s ist ein Herzschlag, kein Feedback.',
+  'vp-fleet-pulse-warn': 'derselbe Herzschlag in Warn-Farbe.',
+  'vp-flowport-pulse': 'Fluss-Andockpunkt: gehört zum Energiefluss (Tempo aus `useFlowTempo`).',
+  'vp-ustate-pulse': 'Zustands-Punkt „Auftrag unterwegs": Wartezeit, nicht Zustandswechsel.',
+  'vp-auth-flow': 'Login-Bühne — die benannte Ausnahme E7 des Konzepts (1,8 s).',
+  'vp-flow':
+    'Energiefluss: 0,9 s ist nur das Referenztempo bei 2 kW — das GEZEIGTE ' +
+    'Tempo kommt aus `flowTempo(kW)` per `Animation.playbackRate` ' +
+    '(`useFlowTempo.ts`), damit ein Leistungswechsel die Punkte nicht springen lässt.',
+};
+
+/** Der Keyframe-Name einer `animation:`-Kurzschreibweise, wenn sie eine hat. */
+function loopName(wert: string): string | null {
+  for (const w of wert.trim().split(/[\s,]+/)) {
+    if (Object.prototype.hasOwnProperty.call(LOOP_AUSNAHMEN, w)) return w;
+  }
+  return null;
 }
 
 describe('Bewegung P0 · Ratsche „kein `transition: all`" (Ziel 0, erreicht)', () => {
@@ -329,27 +385,26 @@ describe('Bewegung P0 · Ratsche „kein `transition: all`" (Ziel 0, erreicht)',
 });
 
 /**
- * Der IST-Stand. Jede Zahl ist eine offene Baustelle für P7 („restliche
- * `transition:` auf Tokens, Ratsche → 0", Konzept §9 P7); P6 hat sie auf 6
- * gesenkt.
+ * **Die Ratsche steht auf NULL** (P7, Konzept §9 Zeile P7 „restliche
+ * `transition:` auf Tokens, Ratsche → 0"). Was P6 als offene Baustelle
+ * übergab, ist geräumt:
  *
- * ⚠ WER EIN BLATT ERGÄNZT, TRÄGT ES HIER EIN — sonst prüft der Wächter es nie
- *   (der Test unten läuft über ALLE Blätter und verlangt einen Eintrag).
+ * - `index.css`: die BREITE des Batterie-Balkens läuft jetzt im Tempo eines
+ *   Wertwechsels (`--vp-motion-chart-update`, 300 ms) — die Breite IST der
+ *   Wert, und ein Wertwechsel morpht (§3 Punkt 4).
+ * - `Fahrplan.css` (4×), `FahrplanWhy.css` (1×): Aufklapper-Chevrons, jetzt
+ *   `transform var(--vp-motion-base) var(--vp-ease-inout)` wie jeder andere
+ *   Chevron im Portal.
+ *
+ * ⚠ EIN EINTRAG HIER IST EIN RÜCKSCHRITT. Die Ratsche ist leer, und leer
+ *   heißt: jede neue nackte Dauer ist ein Fehler, keine Verhandlung. Wer eine
+ *   Ausnahme braucht, braucht einen GRUND — und der gehört als benannter
+ *   Loop nach `LOOP_AUSNAHMEN`, nicht als Zahl hierher.
+ *
+ * ⚠ WER EIN BLATT ERGÄNZT, muss nichts mehr eintragen — der Test unten läuft
+ *   über ALLE Blätter und erlaubt jedem genau 0.
  */
-const DAUER_RATSCHE: Record<string, number> = {
-  // P6 hat 20 der damals 26 Stellen abgeräumt (Zustandswechsel, Chevrons,
-  // Chips, Hover); `MiniChart.css` hatte P3 schon geräumt. Was bleibt, bleibt
-  // aus je einem Grund:
-  //
-  // - `index.css`: die BREITE des Batterie-Balkens (0,6 s). Sie ist sein WERT,
-  //   nicht sein Layout — und die Dauer gehört zur Aussage, nicht zur Familie.
-  //   P3 (Minis/Fluss/Ringe) entscheidet darüber, nicht P6.
-  // - `Fahrplan.css`, `FahrplanWhy.css`: Diagramm-Flächen. Sie gehören P1/P3 —
-  //   zwei Pakete an derselben Zeile wären ein Konflikt ohne Gewinn.
-  'src/index.css': 1,
-  'src/components/Fahrplan.css': 4,
-  'src/components/FahrplanWhy.css': 1,
-};
+const DAUER_RATSCHE: Record<string, number> = {};
 describe('Bewegung P0 · Ratsche „keine nackte Dauer"', () => {
   it('jedes Blatt liegt auf oder unter seinem Stand', () => {
     const zuViel: string[] = [];
@@ -371,6 +426,60 @@ describe('Bewegung P0 · Ratsche „keine nackte Dauer"', () => {
       if (v.length !== erlaubt) luft.push(`${rel}: Ratsche ${erlaubt}, gemessen ${v.length}`);
     }
     expect(luft, `eine Zahl mit Luft bewacht nichts:\n${luft.join('\n')}`).toEqual([]);
+  });
+
+  it('die Ratsche ist LEER — P7 hat sie auf 0 gefahren', () => {
+    expect(
+      Object.keys(DAUER_RATSCHE),
+      'Die Ratsche stand seit P7 auf null. Ein Eintrag hier ist ein Rückschritt:\n' +
+        'eine neue nackte Dauer gehört auf ein Familien-Token, ein neuer\n' +
+        'Dauer-Loop mit Aussage nach `LOOP_AUSNAHMEN` — nicht als Zahl hierher.',
+    ).toEqual([]);
+  });
+});
+
+describe('Bewegung P7 · die benannten Dauer-Loops', () => {
+  /** Jede `animation:`-Kurzschreibweise mit Endlos-Lauf, über alle Blätter. */
+  const loops = ALLE_CSS.flatMap((datei) => {
+    const s = readFileSync(datei, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const out: { datei: string; wert: string }[] = [];
+    for (const m of s.matchAll(/animation\s*:\s*([^;{}]*)/g)) {
+      for (const schicht of schichten(m[1])) {
+        if (/\binfinite\b/.test(schicht)) {
+          out.push({ datei: relative(root, datei), wert: schicht.trim() });
+        }
+      }
+    }
+    return out;
+  });
+
+  it('es gibt überhaupt Loops zu bewachen', () => {
+    expect(loops.length).toBeGreaterThan(0);
+  });
+
+  it('jeder laufende Loop steht mit seinem Grund in der Liste', () => {
+    const fremd = loops.filter((l) => loopName(l.wert) === null);
+    expect(
+      fremd.map((l) => `${l.datei}: ${l.wert}`),
+      'Ein Dauer-Loop ohne Eintrag ist Dekoration, bis das Gegenteil dasteht.\n' +
+        'Entweder er trägt eine Aussage — dann nach `LOOP_AUSNAHMEN` mit Grund —\n' +
+        'oder er gehört auf ein Familien-Token.',
+    ).toEqual([]);
+  });
+
+  it('kein Eintrag der Liste ist tot', () => {
+    const benutzt = new Set(loops.map((l) => loopName(l.wert)));
+    const tot = Object.keys(LOOP_AUSNAHMEN).filter((n) => !benutzt.has(n));
+    expect(tot, `eine Ausnahme ohne Loop erlaubt nur noch Zukünftiges:\n${tot.join('\n')}`)
+      .toEqual([]);
+  });
+
+  it('jeder Grund ist ein Satz, kein Wort', () => {
+    const duenn = Object.entries(LOOP_AUSNAHMEN)
+      .filter(([, grund]) => grund.trim().length < 20)
+      .map(([n]) => n);
+    expect(duenn, `ein Grund, den niemand nachprüfen kann, ist keiner:\n${duenn.join('\n')}`)
+      .toEqual([]);
   });
 });
 
