@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { BootErrorBoundary, BootSplash, removeBootSkeleton } from './Boot';
 
@@ -75,10 +75,74 @@ describe('BootErrorBoundary', () => {
 });
 
 describe('removeBootSkeleton', () => {
+  afterEach(() => {
+    document.documentElement.style.removeProperty('--vp-motion-exit');
+    vi.useRealTimers();
+  });
+
   it('is idempotent and safe when the skeleton is absent', () => {
     mountSkeleton();
     removeBootSkeleton();
     expect(() => removeBootSkeleton()).not.toThrow();
     expect(document.getElementById('vp-boot-skeleton')).toBeNull();
+  });
+
+  /*
+   * Bewegungs-Programm P4. Der Nachweis, der wirklich zaehlt: das Skelett
+   * verschwindet AUCH DANN, wenn gar nicht ausgeblendet wird. Unter
+   * reduzierter Bewegung steht `--vp-motion-exit` auf 0 ms (der EINE
+   * Schalter `--vp-motion-scale`), und ein Uebergang ueber 0 ms feuert kein
+   * `transitionend` - wer nur darauf hoert, laesst das Skelett fuer immer
+   * ueber dem Portal stehen.
+   */
+  it('entfernt das Skelett SOFORT, wenn die Ausblend-Dauer 0 ms ist', () => {
+    document.documentElement.style.setProperty('--vp-motion-exit', '0ms');
+    mountSkeleton();
+    removeBootSkeleton();
+    expect(document.getElementById('vp-boot-skeleton')).toBeNull();
+  });
+
+  it('entfernt das Skelett SOFORT, wenn die Dauer gar nicht zu ermitteln ist', () => {
+    // Keine aufgeloeste Custom Property (Buendel noch nicht da, jsdom, ...):
+    // im Zweifel wird nicht gewartet.
+    mountSkeleton();
+    removeBootSkeleton();
+    expect(document.getElementById('vp-boot-skeleton')).toBeNull();
+  });
+
+  it('blendet aus und entfernt DANACH - der Zeitgeber traegt es, nicht das Ereignis', () => {
+    vi.useFakeTimers();
+    document.documentElement.style.setProperty('--vp-motion-exit', '160ms');
+    const el = mountSkeleton();
+
+    removeBootSkeleton();
+    // Waehrend des Ausblendens steht es noch da - genau das ist die
+    // Ueberblendung ueber das schon fertige erste Bild.
+    expect(el.classList.contains('vp-bs-leaving')).toBe(true);
+    expect(document.getElementById('vp-boot-skeleton')).not.toBeNull();
+
+    // KEIN `transitionend` - der Zeitgeber allein muss es schaffen.
+    vi.advanceTimersByTime(400);
+    expect(document.getElementById('vp-boot-skeleton')).toBeNull();
+  });
+
+  it('raeumt beim Uebergangs-Ende frueher auf, und der Zeitgeber danach tut nichts mehr', () => {
+    vi.useFakeTimers();
+    document.documentElement.style.setProperty('--vp-motion-exit', '160ms');
+    const el = mountSkeleton();
+
+    removeBootSkeleton();
+    el.dispatchEvent(new Event('transitionend'));
+    expect(document.getElementById('vp-boot-skeleton')).toBeNull();
+
+    // ⚠ Geprueft wird der ZUSTAND, nicht die Zahl der Aufrufe: `remove()`
+    //   kehrt ohne Eltern einfach zurueck (`ChildNode.remove()`), der
+    //   Rueckfall-Zeitgeber darf also ruhig ein zweites Mal feuern. Eine
+    //   Aufruf-Zaehlung wuerde die DOM-Spezifikation pruefen, nicht uns —
+    //   und zwaenge dem Einstiegs-Buendel eine Merke-Fahne auf, die nichts
+    //   verhindert.
+    expect(() => vi.advanceTimersByTime(400)).not.toThrow();
+    expect(document.getElementById('vp-boot-skeleton')).toBeNull();
+    expect(el.isConnected).toBe(false);
   });
 });

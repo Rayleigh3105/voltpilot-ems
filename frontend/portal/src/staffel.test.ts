@@ -64,7 +64,8 @@ describe('useStaffel · nie beim zweiten Besuch', () => {
 
 describe('.vp-stagger · 260 ms, 30 ms je Zeile, Deckel 8', () => {
   it('jedes Kind blendet in `--vp-motion-enter` mit `backwards` ein', () => {
-    const regel = /\.vp-stagger > \* \{([^}]*)\}/.exec(index)?.[1] ?? '';
+    // Der Vorbehalt `:not([data-vp-no-stagger])` kam mit P4 dazu (siehe unten).
+    const regel = /\.vp-stagger > \*(?::not\([^)]*\))? \{([^}]*)\}/.exec(index)?.[1] ?? '';
     expect(regel).toMatch(/animation:\s*vp-stagger-ein\s+var\(--vp-motion-enter\)/);
     // Ohne `backwards` stünde ein verzögertes Kind seine Wartezeit lang VOLL
     // sichtbar da und spränge dann zum Einblenden auf Null zurück.
@@ -91,8 +92,19 @@ describe('.vp-stagger · 260 ms, 30 ms je Zeile, Deckel 8', () => {
 
   it('bewegt nur Opazität und Weg — nie Höhe, nie Breite (Prinzip 9)', () => {
     const kf = /@keyframes vp-stagger-ein \{([\s\S]*?)\n\}/.exec(index)?.[1] ?? '';
-    expect(kf).toMatch(/opacity:\s*0/);
     expect(kf).toMatch(/transform:\s*translateY\(var\(--vp-motion-distance\)\)/);
     expect(kf).not.toMatch(/height|width|margin|padding/);
+  });
+
+  it('beginnt SICHTBAR — eine Null naehme dem groessten Inhalt seinen LCP', () => {
+    const kf = /@keyframes vp-stagger-ein \{([\s\S]*?)\n\}/.exec(index)?.[1] ?? '';
+    const start = /opacity:\s*([\d.]+)/.exec(kf)?.[1];
+    // ⚠ Chrome zaehlt ein vollstaendig durchsichtiges Element nicht als
+    //   LCP-Kandidaten. Gemessen: mit `0` verschob sich LCP um den ganzen
+    //   Versatz (272 → 520 ms). Der Wert darf leiser oder lauter werden —
+    //   NULL darf er nie sein, und die Begruendung steht am Keyframe.
+    expect(start).toBeDefined();
+    expect(Number(start)).toBeGreaterThan(0);
+    expect(Number(start)).toBeLessThan(1);
   });
 });

@@ -35,6 +35,7 @@ import {
   type GeraetTarget,
   type Route,
 } from '../nav';
+import { useStaffel, mitStaffel } from '../staffel';
 import { boxRefOf, chargerGeraetId } from '../geraetSeite';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 // LIVE für alles Gemessene (Cockpit, Steuerung, Viertelstunden-Band), LIST für
@@ -956,6 +957,11 @@ export function AnlageSeite({
     failed: surfaceFailed,
   } = useAnlageSurface(site, reloadKey);
   const blocks = surface?.cockpitBlocks ?? [];
+  // Die Staffel des ersten Bildes (Bewegungs-Programm P4). Sie fährt auf der
+  // Erinnerung von P6 (`src/staffel.ts`): dieselbe Klasse, dieselbe Regel
+  // „einmal je Sitzung" — der Stapel stellt sich beim ersten Mal vor und
+  // steht bei jeder Rückkehr still.
+  const staffel = useStaffel('cockpit-stapel');
   const modes = surface?.modes ?? [];
   const lead = leadBlock(blocks);
   const isPeakLead = hasBlock(blocks, 'peak-band');
@@ -1868,8 +1874,14 @@ export function AnlageSeite({
            (`.vp-cockpit-stack` in CockpitBlocks.css): vorher brachte jeder
            Block seinen eigenen Aussenabstand mit und drei brachten gar keinen,
            also standen Kacheln, Boersenpreis und Fahrplan mit 0 px
-           aneinander. */
-        <div className="vp-cockpit-stack">
+           aneinander.
+
+           `staffel` ist NUR beim ersten Bild dieser Sitzung gesetzt
+           (Bewegungs-Programm P4 auf der Erinnerung von P6, `src/staffel.ts`)
+           - danach ist es die leere Zeichenkette und der Stapel rendert
+           Zeichen fuer Zeichen wie vorher. Der Versatz je Karte samt Deckel 8
+           steht als reines CSS im P6-Block von `src/index.css`. */
+        <div className={mitStaffel('vp-cockpit-stack', staffel)}>
           {sticky && !layout.anpassen && (
             <MobileStickyHead head={sticky} shown={scrolledPastMoney} />
           )}

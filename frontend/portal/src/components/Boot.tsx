@@ -1,6 +1,10 @@
 import React from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { AuthScreen } from './AuthScreen';
+// EINE Messung der Ausblend-Dauer fuer das ganze Portal: dieselbe Funktion,
+// mit der P6 seine Modale wartet (`designsystem/components/shell/ausblenden.js`).
+// Ein zweiter Leser desselben Tokens waere ein Zwilling, der abdriften kann.
+import { ausblendDauerMs } from '../../designsystem/components/shell/ausblenden';
 
 /**
  * Synchronously rendered boot state (white-page fix): shown the moment the
@@ -20,14 +24,49 @@ export function BootSplash() {
 }
 
 /**
- * Removes the inline first-paint skeleton from index.html (Sofort-Skelett gegen
- * Chromes Paint-Holding). Called from componentDidMount, i.e. AFTER React wrote
- * its first DOM but BEFORE the browser paints that frame - so the swap happens
- * within one frame and never flickers. Idempotent + jsdom-safe.
+ * Wie lange laenger als die Ausblend-Dauer gewartet wird, bevor der
+ * Rueckfall-Zeitgeber das Skelett entfernt. Deckt den Frame ab, in dem der
+ * Uebergang startet - `transitionend` kaeme sonst knapp NACH dem Zeitgeber
+ * und das Skelett verschwaende einen Hauch zu frueh (sichtbarer Sprung).
+ */
+const SKELETON_FADE_SLACK_MS = 60;
+
+/**
+ * Blendet das Inline-Skelett aus index.html aus (Sofort-Skelett gegen Chromes
+ * Paint-Holding) und entfernt es DANACH.
+ *
+ * Aufgerufen aus `componentDidMount`, also NACHDEM React sein erstes DOM
+ * geschrieben hat: das Skelett blendet ueber dem fertigen ersten Bild aus,
+ * statt einen Schnitt zu machen (Bewegungs-Programm P4, Konzept
+ * `data/vp-motion-konzept-m1/report.md` §6 Zeile "App-Start").
+ *
+ * ⚠ DER ZEITGEBER IST DIE WAHRHEIT, `transitionend` NUR DIE ABKUERZUNG.
+ *   Ein Uebergang, der nie startet, feuert auch nie sein Ende - ein
+ *   Hintergrund-Tab, ein `display:none` durch fremdes CSS oder ein Browser,
+ *   der den Frame verschluckt, liessen das Skelett fuer immer ueber dem
+ *   Portal stehen. Deshalb entfernt IMMER ein Zeitgeber, und das
+ *   Uebergangs-Ende raeumt hoechstens frueher auf.
+ *
+ * Idempotent (mehrfacher Aufruf ist ein No-op) und jsdom-sicher.
  */
 export function removeBootSkeleton(): void {
   if (typeof document === 'undefined') return;
-  document.getElementById('vp-boot-skeleton')?.remove();
+  const skeleton = document.getElementById('vp-boot-skeleton');
+  if (!skeleton) return;
+
+  const fade = ausblendDauerMs();
+  if (fade <= 0) {
+    skeleton.remove();
+    return;
+  }
+
+  // ⚠ Zweimal entfernen ist erlaubt: `ChildNode.remove()` kehrt ohne Eltern
+  //   einfach zurueck. Deshalb braucht es hier KEINE Merke-Fahne — Zeitgeber
+  //   und `transitionend` duerfen beide feuern.
+  const drop = () => skeleton.remove();
+  skeleton.addEventListener('transitionend', drop, { once: true });
+  window.setTimeout(drop, fade + SKELETON_FADE_SLACK_MS);
+  skeleton.classList.add('vp-bs-leaving');
 }
 
 /**
