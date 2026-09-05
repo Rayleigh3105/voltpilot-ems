@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:agents-md": "vitest run src/agentsMdBudget.test.ts",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
     "test:csp": "test/csp-smoke.sh",
