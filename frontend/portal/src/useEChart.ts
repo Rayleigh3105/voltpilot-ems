@@ -1,6 +1,12 @@
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
-import { chartMotion, mergeMotion, type ChartPhase } from './chartMotion';
+import {
+  chartMotion,
+  mergeArt,
+  mergeMotion,
+  type ChartPhase,
+  type TypSpur,
+} from './chartMotion';
 
 /**
  * Shared ECharts lifecycle for every portal chart: init once on mount, dispose
@@ -60,6 +66,11 @@ export function useEChart(
 
     // --- Bewegung: Phase + Aufdecken (P1) --------------------------------
     const phase: { current: ChartPhase } = { current: 'enter' };
+    // Das Gedaechtnis DIESES Diagramms ueber seine Serien (P2). Es lebt genau
+    // so lange wie die ECharts-Instanz: eine neu montierte Flaeche faengt bei
+    // null an, und das ist richtig — sie hat kein Vorbild, gegen das sie
+    // morphen koennte.
+    const spur: TypSpur = { serien: new Map() };
     let gezeichnet = false;
     let imBlick = false;
     let aufgedeckt = false;
@@ -104,9 +115,10 @@ export function useEChart(
         opt as Record<string, unknown>,
         chartMotion(),
         phase.current,
+        spur,
       ) as echarts.EChartsCoreOption;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const r = (orig as any)(gemischt, ...rest);
+      const r = (orig as any)(gemischt, ...mergeArt(rest));
       gezeichnet = true;
       // Ein schon sichtbares Diagramm deckt sich sofort auf: der Beobachter
       // meldet nur AENDERUNGEN, und wer beim Zeichnen bereits im Blick lag,

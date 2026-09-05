@@ -232,15 +232,30 @@ export const REPLACE_MERGE = [
 export const BLUR_FAKTOR = 0.25;
 
 /**
- * Das Gedaechtnis EINES Diagramms ueber die Formtypen seiner Serien.
+ * Was eine Serie im LETZTEN Bild war — je Diagramm gehalten.
  *
  * Gehalten von {@link useEChart} je Instanz, gelesen und fortgeschrieben von
- * {@link mergeMotion}. Es beantwortet genau eine Frage: hat DIESE Serie ihren
- * Formtyp gewechselt (Linie ↔ Balken)? Nur dann wird `universalTransition`
- * eingeschaltet — siehe {@link serienMitBewegung}.
+ * {@link mergeMotion}. Es beantwortet zwei Fragen, die nur der Vergleich mit
+ * dem Vorbild beantworten kann:
+ *
+ * 1. Hat DIESE Serie ihren Formtyp gewechselt (Linie ↔ Balken)? Nur dann wird
+ *    `universalTransition` eingeschaltet — siehe {@link serienMitBewegung}.
+ * 2. Welche Felder hatte sie, die sie jetzt NICHT mehr hat? Siehe unten.
+ *
+ * ## ⚠ WARUM DER FELDBESTAND MITWANDERT — DIE KEHRSEITE DES MISCHENS
+ *
+ * `notMerge` warf eine Serie weg und baute sie neu; ein weggelassenes Feld war
+ * damit weg. `replaceMerge` MISCHT (das ist der Morph), und Mischen kennt kein
+ * Weglassen: eine `markLine`, die es gestern gab und heute nicht mehr, bliebe
+ * stehen — der Jetzt-Marker eines vergangenen Tages, die Flaeche einer Linie,
+ * die keine mehr sein will. Ein Feld, das der Aufrufer NICHT MEHR nennt, wird
+ * deshalb ausdruecklich auf `null` gesetzt; ECharts liest das als „gibt es
+ * nicht". Die Aufrufer bauen ihr Serien-Objekt bei jedem Bild komplett neu
+ * (reine Render-Funktionen), also heisst „nicht genannt" hier wirklich
+ * „nicht gewollt".
  */
 export interface TypSpur {
-  typen: Map<string, string>;
+  serien: Map<string, { typ: string; felder: readonly string[] }>;
 }
 
 function opazitaet(stil: unknown, fallback = 1): number {
@@ -347,24 +362,76 @@ export function serienMitBewegung(
   const liste = Array.isArray(series) ? series : [series];
   const ohneNamen = { n: 0 };
   const benutzt = new Set<string>();
-  const gesehen = new Map<string, string>();
+  const gesehen: TypSpur['serien'] = new Map();
   const heraus = liste.map((roh) => {
     if (!istObjekt(roh)) return roh;
     const s = roh as Record<string, unknown>;
     const id = typeof s.id === 'string' && s.id ? s.id : stabileId(s, ohneNamen, benutzt);
     const typ = typeof s.type === 'string' ? s.type : '';
-    if (typ) gesehen.set(id, typ);
-    const formwechsel = Boolean(spur && typ && spur.typen.has(id) && spur.typen.get(id) !== typ);
+    const felder = Object.keys(s);
+    gesehen.set(id, { typ, felder });
+    const vorbild = spur?.serien.get(id);
+    const formwechsel = Boolean(vorbild && typ && vorbild.typ && vorbild.typ !== typ);
     const ziel: Record<string, unknown> = {
       id,
       emphasis: { focus: 'series', blurScope: 'coordinateSystem' },
       blur: blurFuer(s),
       ...(formwechsel ? { universalTransition: { enabled: true } } : {}),
+      ...vergesseneFelder(vorbild?.felder, s),
       ...s,
     };
     markerMitBewegung(s, ziel, mo);
     return ziel;
   });
-  if (spur) spur.typen = gesehen;
+  if (spur) spur.serien = gesehen;
   return Array.isArray(series) ? heraus : heraus[0];
+}
+
+/**
+ * Die Felder des Vorbilds, die diesmal fehlen — jedes ausdruecklich auf `null`.
+ *
+ * ⚠ Betrachtet werden NUR die Felder des Aufrufers. Was {@link serienMitBewegung}
+ * selbst dazulegt (`id`, `emphasis`, `blur`, `universalTransition`), steht in
+ * jedem Bild und kann gar nicht verschwinden; es zu nullen wuerde den Fokus
+ * beim naechsten Zustand abschalten.
+ */
+function vergesseneFelder(
+  vorher: readonly string[] | undefined,
+  jetzt: Record<string, unknown>,
+): Record<string, null> {
+  if (!vorher) return {};
+  const weg: Record<string, null> = {};
+  for (const k of vorher) if (!(k in jetzt)) weg[k] = null;
+  return weg;
+}
+
+// ---------------------------------------------------------------------------
+// P2 · Mischen statt Neubauen: die Uebersetzung von `notMerge`
+// ---------------------------------------------------------------------------
+
+/** Die zweite Stellung von `setOption` — positionell `true` oder ein Objekt. */
+type MergeArt = boolean | { notMerge?: boolean; replaceMerge?: unknown; lazyUpdate?: boolean };
+
+/**
+ * `notMerge: true` in ein `replaceMerge` uebersetzen — die EINE Stelle.
+ *
+ * ## ⚠ SIE SITZT IN DER HUELLE, NICHT IN DEN 14 FLAECHEN
+ *
+ * Jede Flaeche rief `setOption(option, true)`. Dieselbe Zeile 17-mal zu aendern
+ * hiesse, 17 Gelegenheiten zu schaffen, sie beim naechsten Chart zu vergessen —
+ * und ein vergessenes `notMerge` ist NICHT laut: das Diagramm zeigt weiter die
+ * richtigen Zahlen, es springt nur wieder. Die Huelle laesst das gar nicht erst
+ * zu; ein neuer Chart bekommt den Morph, ohne davon zu wissen.
+ *
+ * Was uebrig bleibt, bleibt: eine Flaeche, die selbst ein `replaceMerge` nennt,
+ * behaelt ihres, und `lazyUpdate` reist unveraendert mit.
+ */
+export function mergeArt(rest: readonly unknown[]): unknown[] {
+  const erste = rest[0] as MergeArt | undefined;
+  if (erste === true) return [{ replaceMerge: [...REPLACE_MERGE], lazyUpdate: rest[1] === true }];
+  if (istObjekt(erste) && erste.notMerge === true) {
+    const { notMerge: _weg, ...rest0 } = erste as Record<string, unknown>;
+    return [{ ...rest0, replaceMerge: rest0.replaceMerge ?? [...REPLACE_MERGE] }, ...rest.slice(1)];
+  }
+  return [...rest];
 }

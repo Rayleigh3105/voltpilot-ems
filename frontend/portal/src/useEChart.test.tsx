@@ -146,7 +146,11 @@ describe('useEChart · Phase: Einstieg steht, danach wird gemorpht', () => {
     sichtbar();
     act(() => instanz!.setOption({ animation: false, series: [{ type: 'line' }] }));
     expect(gesetzt[1].animation).toBe(false);
-    expect(gesetzt[1].series).toEqual([{ type: 'line' }]);
+    // Die Serie behaelt ihr Wort; P2 legt nur Fokus/Dimmen und die stabile
+    // Kennung DARUNTER (siehe `serienMitBewegung`).
+    expect((gesetzt[1].series as Record<string, unknown>[])[0]).toMatchObject({
+      type: 'line',
+    });
   });
 });
 
