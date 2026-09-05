@@ -89,6 +89,32 @@ export function chartMotion(): ChartMotion {
   };
 }
 
+/**
+ * Kann der Zeiger dieses Geraets SCHWEBEN?
+ *
+ * ## ⚠ WARUM DAS FUER DIE BEWEGUNG ZAEHLT (Spec §5, „Telefon: Tipp statt Hover")
+ *
+ * Fokus und Dimmen sind ein SCHWEBE-Zustand: ECharts hebt an `mouseover` hervor
+ * und nimmt an `mouseout` zurueck. Auf einem Beruehrungs-Bildschirm gibt es das
+ * zweite Ereignis nicht verlaesslich — ein Tipp auf eine Linie liesse die
+ * anderen Serien auf einem Viertel stehen, und der Kunde haette keine Geste,
+ * das rueckgaengig zu machen. Ein haengendes Dimmen ist schlimmer als gar kein
+ * Fokus: es liest sich wie „diese Daten sind ausgegraut", also wie eine
+ * AUSSAGE ueber die Zahlen.
+ *
+ * Deshalb ist der Fokus an das Schweben-Koennen gebunden, nicht an die Breite:
+ * ein Tablet mit Maus bekommt ihn, ein 1440er Touch-Bildschirm nicht.
+ * Dieselbe Frage stellt {@link InfoTip} seit je (`(hover: hover)`).
+ *
+ * **Ohne `matchMedia` (jsdom, Server-Rendern) gilt `true`** — die Maus-Fassung
+ * ist die Vorgabe, und ohne Zeiger gibt es ohnehin keinen Schwebe-Zustand, der
+ * haengen bleiben koennte.
+ */
+export function zeigerSchwebt(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+  return window.matchMedia('(hover: hover)').matches;
+}
+
 /** Die zwei Phasen eines Diagramms: erstes Bild vs. jeder spaetere Zustand. */
 export type ChartPhase = 'enter' | 'update';
 
@@ -112,8 +138,18 @@ export interface MotionOptions {
   animationDelayUpdate: 0;
   animationThreshold: number;
   stateAnimation: { duration: number; easing: 'cubicOut' };
-  /** Nur ergaenzt, wo das Diagramm selbst einen Tooltip erklaert — siehe {@link mergeMotion}. */
-  tooltip: { transitionDuration: number };
+  /**
+   * Nur ergaenzt, wo das Diagramm selbst einen Tooltip erklaert — siehe
+   * {@link mergeMotion}.
+   *
+   * ⚠ `triggerOn` reist NUR auf einem Beruehrungs-Bildschirm mit: dort ist der
+   * Tooltip die einzige Geste, und die Werks-Einstellung `'mousemove|click'`
+   * laesst ihn schon beim Wischen ueber das Diagramm aufblitzen. `'click'`
+   * macht ihn zu dem, was er am Telefon sein soll — eine Fahne, die auf einen
+   * ABSICHTLICHEN Tipp erscheint. Am Schreibtisch bleibt die Werks-Einstellung,
+   * sonst verloere die Maus ihren Schwebe-Tooltip.
+   */
+  tooltip: { transitionDuration: number; triggerOn?: 'click' };
   /** dito fuer die Achsen-Fahne. */
   axisPointer: { animationDurationUpdate: number };
 }
@@ -132,7 +168,11 @@ export interface MotionOptions {
  * Morph selbst ab — richtig so, das ist der Schutz vor einem Ruckler bei einem
  * Jahres-Explorer, keine Bewegungs-Entscheidung von uns.
  */
-export function motionOptions(m: ChartMotion, phase: ChartPhase): MotionOptions {
+export function motionOptions(
+  m: ChartMotion,
+  phase: ChartPhase,
+  schwebt = true,
+): MotionOptions {
   const aus = m.scale === 0;
   const update = aus ? 0 : m.update;
   const fast = aus ? 0 : m.fast;
@@ -145,7 +185,7 @@ export function motionOptions(m: ChartMotion, phase: ChartPhase): MotionOptions 
     animationDelayUpdate: 0,
     animationThreshold: 2000,
     stateAnimation: { duration: fast, easing: 'cubicOut' },
-    tooltip: { transitionDuration: fast / 1000 },
+    tooltip: { transitionDuration: fast / 1000, ...(schwebt ? {} : { triggerOn: 'click' as const }) },
     axisPointer: { animationDurationUpdate: fast },
   };
 }
@@ -180,12 +220,18 @@ export function mergeMotion<T extends Record<string, unknown>>(
   phase: ChartPhase,
   spur?: TypSpur,
 ): T {
-  const mo = motionOptions(m, phase);
+  // EINMAL je `setOption` gefragt und an beide Stellen gereicht, die davon
+  // abhaengen (Tooltip-Ausloeser und Serien-Fokus) — zwei Abfragen fuer
+  // dieselbe Antwort koennten sich mitten im Bild widersprechen.
+  const schwebt = zeigerSchwebt();
+  const mo = motionOptions(m, phase, schwebt);
   const { tooltip, axisPointer, ...basis } = mo;
   const gemischt: Record<string, unknown> = { ...basis, ...opt };
   if (istObjekt(opt.tooltip)) gemischt.tooltip = { ...tooltip, ...opt.tooltip };
   if (istObjekt(opt.axisPointer)) gemischt.axisPointer = { ...axisPointer, ...opt.axisPointer };
-  if (opt.series !== undefined) gemischt.series = serienMitBewegung(opt.series, mo, spur);
+  if (opt.series !== undefined) {
+    gemischt.series = serienMitBewegung(opt.series, mo, spur, schwebt);
+  }
   return gemischt as T;
 }
 
@@ -358,6 +404,7 @@ export function serienMitBewegung(
   series: unknown,
   mo: MotionOptions,
   spur?: TypSpur,
+  schwebt = true,
 ): unknown {
   const liste = Array.isArray(series) ? series : [series];
   const ohneNamen = { n: 0 };
@@ -374,8 +421,14 @@ export function serienMitBewegung(
     const formwechsel = Boolean(vorbild && typ && vorbild.typ && vorbild.typ !== typ);
     const ziel: Record<string, unknown> = {
       id,
-      emphasis: { focus: 'series', blurScope: 'coordinateSystem' },
-      blur: blurFuer(s),
+      // Ohne Schweben KEIN Fokus und KEIN Dimm-Zustand — siehe
+      // {@link zeigerSchwebt}. `focus: 'none'` ist dabei ausdruecklich gesetzt
+      // statt bloss weggelassen: die Serie selbst darf ihre Hervorhebung
+      // behalten, nur die ANDEREN duerfen nicht blass zurueckbleiben.
+      emphasis: schwebt
+        ? { focus: 'series', blurScope: 'coordinateSystem' }
+        : { focus: 'none' },
+      ...(schwebt ? { blur: blurFuer(s) } : {}),
       ...(formwechsel ? { universalTransition: { enabled: true } } : {}),
       ...vergesseneFelder(vorbild?.felder, s),
       ...s,

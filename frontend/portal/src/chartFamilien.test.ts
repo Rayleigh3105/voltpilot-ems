@@ -22,7 +22,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   BLUR_FAKTOR,
   REPLACE_MERGE,
@@ -30,6 +30,7 @@ import {
   mergeMotion,
   motionOptions,
   serienMitBewegung,
+  zeigerSchwebt,
   type ChartMotion,
   type TypSpur,
 } from './chartMotion';
@@ -251,6 +252,101 @@ function treffer(muster: RegExp): string[] {
   }
   return raus;
 }
+
+describe('Telefon: der Tipp ist die Fahne, kein Schwebe-Zustand bleibt hängen (Spec §5)', () => {
+  const zeiger = (schwebt: boolean) => {
+    (window as unknown as { matchMedia: unknown }).matchMedia = (q: string) => ({
+      matches: q === '(hover: hover)' ? schwebt : false,
+      media: q,
+      addEventListener() {},
+      removeEventListener() {},
+    });
+  };
+  afterEach(() => {
+    delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+  });
+
+  it('ohne Schweben trägt KEINE Serie einen Dimm-Zustand', () => {
+    zeiger(false);
+    const raus = mergeMotion({ series: [{ name: 'PV', type: 'line' }] }, M, 'update');
+    const s = (raus.series as Record<string, unknown>[])[0];
+    // Ein Tipp auf dem Touchscreen hebt hervor und nimmt nie zurück: ein
+    // gesetztes `blur` bliebe auf einem Viertel stehen und läse sich als
+    // Aussage über die Zahlen.
+    expect(s.blur).toBeUndefined();
+    expect(s.emphasis).toEqual({ focus: 'none' });
+  });
+
+  it('mit Schweben bleibt alles wie am Schreibtisch', () => {
+    zeiger(true);
+    const raus = mergeMotion({ series: [{ name: 'PV', type: 'line' }] }, M, 'update');
+    const s = (raus.series as Record<string, unknown>[])[0];
+    expect(s.emphasis).toEqual({ focus: 'series', blurScope: 'coordinateSystem' });
+    expect(s.blur).toBeTruthy();
+  });
+
+  it('ohne Schweben erscheint die Fahne auf einen ABSICHTLICHEN Tipp', () => {
+    zeiger(false);
+    const raus = mergeMotion({ tooltip: { trigger: 'axis', confine: true } }, M, 'update');
+    // Werkseitig (`mousemove|click`) blitzt sie schon beim Wischen auf.
+    expect((raus.tooltip as Record<string, unknown>).triggerOn).toBe('click');
+    expect((raus.tooltip as Record<string, unknown>).confine).toBe(true);
+  });
+
+  it('am Schreibtisch wird der Auslöser NICHT angefasst', () => {
+    zeiger(true);
+    const raus = mergeMotion({ tooltip: { trigger: 'axis' } }, M, 'update');
+    // Sonst verlöre die Maus ihren Schwebe-Tooltip.
+    expect((raus.tooltip as Record<string, unknown>).triggerOn).toBeUndefined();
+  });
+
+  it('was die Fläche selbst über den Auslöser sagt, gewinnt', () => {
+    zeiger(false);
+    const raus = mergeMotion({ tooltip: { trigger: 'axis', triggerOn: 'none' } }, M, 'update');
+    expect((raus.tooltip as Record<string, unknown>).triggerOn).toBe('none');
+  });
+
+  it('ohne `matchMedia` gilt die Maus-Fassung — kein Test verliert seinen Fokus', () => {
+    delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+    expect(zeigerSchwebt()).toBe(true);
+  });
+});
+
+describe('Live: ein Re-Plan bewegt nur die geänderten Slots (Spec §5 Zeile C)', () => {
+  /** Zwei Fahrplan-Stände: derselbe Tag, ein Re-Plan hat drei Slots geändert. */
+  const vorher = [0, 0, 4.2, 4.2, -1.1, -1.1, 0, 0];
+  const nachher = [0, 0, 4.2, 6.8, -3.5, -1.1, 0, 0];
+
+  it('dieselbe Serie behält ihre Kennung — ECharts mischt, statt neu zu bauen', () => {
+    const sp = spur();
+    const a = eine({ name: 'Batterie', type: 'bar', data: vorher }, sp);
+    const b = eine({ name: 'Batterie', type: 'bar', data: nachher }, sp);
+    // Gleiche Kennung ⇒ `replaceMerge` bildet Slot auf Slot ab; ECharts
+    // interpoliert dann je Datenpunkt, und ein Punkt, dessen Wert gleich
+    // bleibt, hat nichts zu interpolieren — er steht still.
+    expect(a.id).toBe(b.id);
+    expect(b.data).toEqual(nachher);
+  });
+
+  it('ein Re-Plan ist KEIN Formwechsel — der teure Element-Morph bleibt aus', () => {
+    const sp = spur();
+    eine({ name: 'Batterie', type: 'bar', data: vorher }, sp);
+    const b = eine({ name: 'Batterie', type: 'bar', data: nachher }, sp);
+    expect(b.universalTransition).toBeUndefined();
+  });
+
+  it('der Jetzt-Marker wandert mit derselben Uhr wie die Balken', () => {
+    const sp = spur();
+    eine({ name: 'Batterie', type: 'bar', data: vorher, markLine: { data: [{ xAxis: 2 }] } }, sp);
+    const b = eine(
+      { name: 'Batterie', type: 'bar', data: nachher, markLine: { data: [{ xAxis: 3 }] } },
+      sp,
+    );
+    const ml = b.markLine as Record<string, unknown>;
+    expect(ml.animationDurationUpdate).toBe(M.update);
+    expect((ml.data as unknown[])[0]).toEqual({ xAxis: 3 });
+  });
+});
 
 describe('Ratschen — nur kleiner werden (Konzept §9 Zeile P2)', () => {
   it('kein Diagramm ruft `clear()` — das verliert den Morph', () => {
