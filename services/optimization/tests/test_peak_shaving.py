@@ -507,7 +507,8 @@ SLOTS = 16
 
 class _FakeCursor:
     """Minimal psycopg stand-in (the test_pricing pattern) serving prices,
-    forecasts, and the two peak_so_far queries."""
+    forecasts, the two peak_so_far queries and the two reads of the night value
+    function (P3, which answer EMPTY here - this file is about the peak)."""
 
     captured_rollup_since: list[datetime] = []
 
@@ -525,8 +526,18 @@ class _FakeCursor:
         sql = " ".join(sql.split())
         if "FROM day_ahead_prices" in sql:
             self._rows = [(ts, "PT15M", 100.0) for ts in self.slot_starts]
+        elif "FROM forecast" in sql and "run_at, time" in sql:
+            # The night value function's evening-run lookup (P3): three columns,
+            # and no run in the window - so it finds no distribution and the
+            # peak assertions below stay about the PEAK queries alone.
+            self._rows = []
         elif "FROM forecast" in sql:
             self._rows = [(ts, 1.0) for ts in self.slot_starts]
+        elif "FROM telemetry_rollup_15m" in sql and "load_kwh" in sql:
+            # The night value function's measured-load read (P3) - a DIFFERENT
+            # rollup consumer than the peak anchor below, so it must not land in
+            # captured_rollup_since.
+            self._rows = []
         elif "FROM telemetry_rollup_15m" in sql:
             _FakeCursor.captured_rollup_since.append(params[1])
             # Descending import buckets: a lone 80-kW spike over a real

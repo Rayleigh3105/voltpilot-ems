@@ -457,6 +457,37 @@ def surplus_charge_enabled(env=None) -> bool:
     raise ValueError(f"{SURPLUS_CHARGE_ENABLED_ENV} must be a boolean, got {raw!r}")
 
 
+#: Instant off-switch for the NACHT-WERTFUNKTION (P3 of the Nachtreserve
+#: analysis vp-nachtreserve-konzept-k2): the piecewise-linear value the
+#: objective puts on the charge left at SUNRISE, priced from the site's OWN
+#: night-error distribution (see
+#: :mod:`voltpilot_optimization.night_reserve`). Default ON (Hausregel: ein
+#: Flag hat die Vorgabe AN - it has to be pulled through the gitops repo as
+#: OPTIMIZER_NIGHT_RESERVE_ENABLED to be switchable there).
+#:
+#: ITS OWN LEVER because it is the first term that makes the plan hold energy
+#: against an UNCERTAINTY rather than against a price: an operator must be able
+#: to take exactly that back without touching the terminal value, the reserve
+#: stack or the in-slot duties. Off = byte-identical plans (the term is simply
+#: not built), exactly like a site without an error distribution.
+NIGHT_RESERVE_ENABLED_ENV = "OPTIMIZER_NIGHT_RESERVE_ENABLED"
+
+
+def night_reserve_enabled(env=None) -> bool:
+    """Whether the objective carries the night value function (P3). Default ON;
+    garbage values raise loudly, exactly like :func:`slot_trim_enabled`."""
+    env = os.environ if env is None else env
+    raw = env.get(NIGHT_RESERVE_ENABLED_ENV)
+    if raw is None or raw.strip() == "":
+        return True
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{NIGHT_RESERVE_ENABLED_ENV} must be a boolean, got {raw!r}")
+
+
 #: Master gate for co-optimizing steuerbare Verbraucher (Verbrauchssteuerung
 #: §19 Inkrement 5). Default OFF: even a VOLTPILOT_V2_PLAN_SITES-flagged site's
 #: ACTIVE consumer policies are NOT loaded into the shadow co-optimization, so

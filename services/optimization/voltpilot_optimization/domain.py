@@ -28,6 +28,7 @@ from voltpilot_optimization.config import (
     TERMINAL_VALUE_MARGIN_EUR_PER_KWH,
     terminal_value_quantile,
 )
+from voltpilot_optimization.night_reserve import NightErrorQuantiles
 
 SLOT_MINUTES = 15
 #: One day of slots. Since 28.08.2026 this is NOT the planning horizon (that is
@@ -537,6 +538,18 @@ class OptimizationInput:
     #: unlösbare Vorschau ist keine Antwort.
     forced_charge_slots: int = 0
     forced_charge_kw: float = 0.0
+    #: Die Nacht-Fehlerverteilung DIESER Anlage (P3, Nachtreserve
+    #: vp-nachtreserve-konzept-k2 §3): die Quantile des relativen Lastfehlers
+    #: ihrer letzten vollstaendigen Naechte, gelesen einmal je Takt von
+    #: :func:`voltpilot_optimization.night_reserve.night_error_quantiles`. Sie
+    #: ist die einzige Eingabe der Nacht-Wertfunktion, die den Ladestand bei
+    #: SONNENAUFGANG bepreist.
+    #:
+    #: ``None`` (die Vorgabe) = keine belegte Verteilung, also KEIN Term und ein
+    #: byte-identischer Plan - der Zustand jeder jungen Anlage, jedes
+    #: Modellwechsels und jedes Aufrufers, der seine Eingaben selbst baut
+    #: (What-if, Ersparnis-Simulation).
+    night_error_quantiles: NightErrorQuantiles | None = None
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -857,6 +870,19 @@ class SchedulePlan:
     # anchor established (too little evidence / kill switch off / pre-feature
     # plan); the readout then says nothing rather than "1,0".
     pv_anchor_ratio: float | None = None
+    # Nacht-Wertfunktion (P3, Konzept vp-nachtreserve-konzept-k2 §3 P3c): WAS
+    # der Lauf fuer eine schwerere Nacht zurueckgehalten hat und mit welcher
+    # Wahrscheinlichkeit diese Menge noetig wird - ein RUN-Fakt wie
+    # terminal_value_eur_per_kwh. Die Schluessel sind die des Reports:
+    # ``sunrise`` (Slot-Index des Sonnenaufgangs), ``levels_kwh``/``q`` (die
+    # Stufen der Wertfunktion und ihre Quantilslagen), ``p_imp_ct``/``v_left_ct``
+    # (der Preisabstand, der sie ueberhaupt rechtfertigt) plus ``held_kwh``/
+    # ``held_q`` - die hoechste Stufe, die der GELOESTE Plan bei Sonnenaufgang
+    # tatsaechlich deckt (das Ergebnis, nicht die Absicht; sie traegt den
+    # Portal-Satz). None = kein Term (keine Verteilung, kein Preisabstand, kein
+    # Ueberschuss-Slot nach der Nacht, Flag aus, Explain aus) - die Flaechen
+    # sagen dann nichts, nie eine erfundene 0.
+    why_night_reserve: dict | None = None
 
     @property
     def cost_eur(self) -> float:

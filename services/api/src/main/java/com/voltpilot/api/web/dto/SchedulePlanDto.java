@@ -50,6 +50,19 @@ import java.util.UUID;
  * measure against - never a fabricated 0, which would read as "the horizon
  * offers nothing". An anchor word this portal does not know is IGNORED by the
  * consumer, never guessed at.
+ *
+ * <p><b>Nacht-Wertfunktion</b> (P3, migration V20260868000000, Konzept
+ * vp-nachtreserve-konzept-k2 §3): {@code whyNightReserveKwh} is how much charge
+ * this run holds at SUNRISE, above the reserve floor, because its own night
+ * history says a heavier night is plausible, and {@code whyNightReserveQ} is
+ * that amount's quantile ({@code 0.75} = it is needed in 1 of 4 nights). It is
+ * NOT a fixed reserve: the plan holds exactly as much as price spread times
+ * error probability justifies, so the pair moves every quarter hour. Both null
+ * whenever the run held nothing back - a young site without an error
+ * distribution, a night without a price spread, a winter horizon without a
+ * sunrise, the kill switch off, or a run predating the columns. Null is
+ * "nothing established", never a claimed 0, and the sentence is simply absent
+ * then.
  */
 public record SchedulePlanDto(
         UUID planId,
@@ -65,11 +78,13 @@ public record SchedulePlanDto(
         Boolean fallback14a,
         String whyTerminalAnchor,
         BigDecimal whyRefillFreePct,
+        BigDecimal whyNightReserveKwh,
+        BigDecimal whyNightReserveQ,
         List<ScheduleSlotDto> slots) {
 
     public static SchedulePlanDto empty() {
         return new SchedulePlanDto(
                 null, null, null, 15, null, null, null, null, null, null, null, null, null,
-                List.of());
+                null, null, List.of());
     }
 }

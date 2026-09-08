@@ -551,6 +551,21 @@ export interface SchedulePlan {
    * die als „der Horizont bietet nichts" gelesen würde.
    */
   whyRefillFreePct?: number | null;
+  /**
+   * Nacht-Wertfunktion (P3): wie viel Ladung dieser Lauf bei SONNENAUFGANG
+   * über dem Reserve-Boden hält, weil die eigene Nacht-Historie eine
+   * schwerere Nacht plausibel macht (kWh). KEINE feste Reserve - der Plan
+   * hält genau so viel, wie Preisabstand mal Fehlerwahrscheinlichkeit
+   * rechtfertigt, also bewegt sich die Zahl mit jedem Lauf. Null, wenn nichts
+   * zurückgehalten wurde; **nie eine erfundene 0**.
+   */
+  whyNightReserveKwh?: number | null;
+  /**
+   * Die Quantilslage dieser Menge (0,75 = in 1 von 4 Nächten wird sie
+   * gebraucht). Sie ist die ZWEITE Hälfte derselben Aussage: ohne sie steht
+   * eine kWh-Zahl ohne ihre Häufigkeit da, und der Satz entfällt.
+   */
+  whyNightReserveQ?: number | null;
   slots: ScheduleSlot[];
 }
 

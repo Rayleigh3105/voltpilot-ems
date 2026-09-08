@@ -42,6 +42,7 @@ export function FahrplanLage({
         <div className="vp-lage">
           {view.bogen && <p className="vp-lage-satz">{view.bogen}</p>}
           {view.ausblick && <p className="vp-lage-satz">{view.ausblick}</p>}
+          {view.nachtreserve && <p className="vp-lage-satz">{view.nachtreserve}</p>}
         </div>
       </Card>
     );
@@ -55,6 +56,7 @@ export function FahrplanLage({
       <div className="vp-lage">
         {view.bogen && <p className="vp-lage-satz">{view.bogen}</p>}
         {view.ausblick && <p className="vp-lage-satz">{view.ausblick}</p>}
+        {view.nachtreserve && <p className="vp-lage-satz">{view.nachtreserve}</p>}
         <p className="vp-lage-bedingung">{view.bedingung}</p>
         <p className="vp-lage-quelle">{view.quelle}</p>
       </div>

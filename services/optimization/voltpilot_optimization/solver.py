@@ -275,11 +275,21 @@ from pyomo.environ import (
     value,
 )
 
-from voltpilot_optimization.config import peak_ratchet_eur_per_kw
+from voltpilot_optimization.config import (
+    night_reserve_enabled,
+    peak_ratchet_eur_per_kw,
+)
 from voltpilot_optimization.domain import (
     OptimizationInput,
     PlanSlot,
     SchedulePlan,
+)
+from voltpilot_optimization.night_reserve import (
+    NightReserveTerms,
+    held_level,
+    night_reserve_of,
+    night_reserve_terms,
+    stash_night_reserve,
 )
 from voltpilot_optimization.stur import stur_cost_eur
 
@@ -609,7 +619,75 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         - v_end * (m.soc[n] - soc0),
         sense=minimize,
     )
+    _add_night_reserve(m, inp, soc_floor)
     return m
+
+
+def _add_night_reserve(
+    m: ConcreteModel, inp: OptimizationInput, soc_floor: float
+) -> NightReserveTerms | None:
+    """The NIGHT VALUE FUNCTION (P3, Konzept vp-nachtreserve-konzept-k2 §3):
+    price the charge left at SUNRISE against the site's OWN night-error
+    distribution, and add that price to the objective.
+
+    The whole point of the shape is that it is NOT a reserve: nothing is
+    forbidden, no floor moves, no minimum spread is imposed. The plan simply
+    learns what an empty battery at 03:00 costs in the cases its own history
+    says are plausible - ``Preisabstand mal Fehlerwahrscheinlichkeit`` - and
+    then sells exactly as much as that price still justifies. The marginal rule
+    it implements is the newsvendor one:
+    ``p_sale - wear > v_left + (p_imp - v_left) * P(eps > slack)``.
+
+    Structurally it costs the model ONE epigraph per quantile over ONE node
+    (``soc[i1]``): no scenario tree, no second SoC path, and above all NO
+    influence on the running slot's setpoint - a value on the sunrise node can
+    only change HOW MUCH is sold tonight, never the ramp of the quarter hour
+    that is already executing.
+
+    Returns the terms it used (stashed on the model for the explain layer), or
+    ``None`` when no term was built - the byte-identical case, which is the
+    normal one for a young site, a flat night price, a winter horizon without a
+    sunrise, and for every caller that builds its own inputs.
+    """
+    stash_night_reserve(m, None)
+    if inp.night_error_quantiles is None or not night_reserve_enabled():
+        return None
+    # A battery an ACTIVE customer rule claims is not the plan's to command
+    # (Steuerung Stufe 3): its power bounds are 0, so the SoC path is flat and
+    # the term could only add a constant to the objective - but the explanation
+    # would then claim the PLAN holds that charge for the night, when in truth
+    # the rule holds it. The customer rule wins, and it also gets the credit.
+    if inp.battery_held:
+        return None
+    terms = night_reserve_terms(
+        load_kw=inp.load_kw,
+        pv_kw=inp.pv_kw,
+        import_price_eur_mwh=inp.import_prices,
+        export_value_eur_mwh=inp.export_values,
+        slot_hours=inp.slot_hours,
+        one_way_efficiency=inp.battery.one_way_efficiency,
+        soc_floor_kwh=soc_floor,
+        errors=inp.night_error_quantiles,
+    )
+    if terms is None:
+        return None
+    K = terms.levels
+    levels = terms.levels_kwh
+    coefficients = terms.coefficients_eur_kwh
+    i1 = terms.i1
+    m.vf_s = Var(RangeSet(1, K), domain=NonNegativeReals)
+    m.vf_c = Constraint(
+        RangeSet(1, K),
+        rule=lambda model, k: model.vf_s[k]
+        >= levels[k - 1] - (model.soc[i1] - soc_floor),
+    )
+    m.total_cost.set_value(
+        m.total_cost.expr
+        + sum(coefficients[k - 1] * m.vf_s[k] for k in range(1, K + 1))
+    )
+    stash_night_reserve(m, terms)
+    return terms
+
 
 
 def optimize(
@@ -755,6 +833,11 @@ def _with_explanation(
             why_refill_free_pct=(
                 None if tv.refill_free_pct is None else round(tv.refill_free_pct, 1)
             ),
+            # P3c: what the night value function held back, and how often that
+            # much is actually needed. Read off the SOLVED plan (not the
+            # intention), so a run whose economics rejected every step honestly
+            # reports nothing.
+            why_night_reserve=_night_reserve_fact(plan, model),
         )
     except Exception:
         logger.warning(
@@ -763,6 +846,38 @@ def _with_explanation(
             exc_info=True,
         )
         return plan
+
+
+def _night_reserve_fact(plan: SchedulePlan, model: ConcreteModel) -> dict | None:
+    """The run-level night-reserve fact (P3c), or ``None`` when there is
+    nothing established to say.
+
+    ``held_kwh``/``held_q`` are the plan's OWN outcome - the highest step its
+    sunrise charge actually covers - and they are what a customer surface may
+    turn into a sentence ("hält bis zu X kWh … in 1 von N Nächten nötig"). The
+    remaining keys are the derivation behind it, for the admin readout: the
+    sunrise slot, all steps with their quantiles, and the price spread that
+    justified them at all. A run that held nothing above the floor reports
+    ``None`` rather than a step it did not reach.
+    """
+    terms = night_reserve_of(model)
+    if terms is None or not plan.slots:
+        return None
+    # soc[i1] is the SoC at the END of slot i1-1 - the plan slot list is
+    # end-of-slot too, so the sunrise node is slots[i1 - 1].
+    held = held_level(terms, plan.slots[terms.i1 - 1].soc_kwh)
+    if held is None:
+        return None
+    held_kwh, held_q = held
+    return {
+        "sunrise": terms.i1,
+        "levels_kwh": [round(x, 3) for x in terms.levels_kwh],
+        "q": list(terms.q),
+        "p_imp_ct": round(terms.p_imp_ct, 3),
+        "v_left_ct": round(terms.v_left_ct, 3),
+        "held_kwh": round(held_kwh, 3),
+        "held_q": held_q,
+    }
 
 
 def _charge_from_surplus_only(inp: OptimizationInput, t: int, slot, why) -> bool:

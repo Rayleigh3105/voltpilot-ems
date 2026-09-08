@@ -673,6 +673,14 @@ services:
       # the economic sibling is silent, which on a fixed-tariff site is exactly
       # when the battery gets scarce.
       OPTIMIZER_LIMIT_DISCHARGE_ENABLED: ${OPTIMIZER_LIMIT_DISCHARGE_ENABLED:-true}
+      # Nacht-Wertfunktion (P3, 2026-09-08): the price the objective puts on the
+      # charge left at SUNRISE, from the site's OWN night-error distribution.
+      # Its OWN lever because it is the first term that makes the plan hold
+      # energy against an UNCERTAINTY rather than against a price - an operator
+      # must be able to take exactly that back without touching the terminal
+      # value, the reserve stack or the in-slot duties. Off = the term is not
+      # built and plans are byte-identical.
+      OPTIMIZER_NIGHT_RESERVE_ENABLED: ${OPTIMIZER_NIGHT_RESERVE_ENABLED:-true}
       # MIG v1->v2 migration switch (see docs/migration-v1-to-v2.md): comma-
       # separated site UUIDs to ALSO publish a v2 shadow plan for. Empty (the
       # default) = nothing flagged = byte-identical v1.

@@ -59,6 +59,17 @@ import java.util.UUID;
  * {@code OPTIMIZER_PV_ANCHOR_ENABLED} kill switch off, or a run predating the
  * column) - the UI then says nothing rather than a misleading "1,0", which is
  * itself a real, established statement.
+ *
+ * <p>{@code nightReserveKwh}/{@code nightReserveQ} (Nacht-Wertfunktion P3,
+ * {@code schedule.why_night_reserve_*}) are the same kind of pair: how much
+ * charge the run holds at SUNRISE for a heavier night than its own forecast,
+ * above the reserve floor, and how often that much is needed
+ * ({@code 0.75} = in 1 of 4 nights). Priced from the site's OWN night-error
+ * distribution against the night's price spread, so it is never a fixed
+ * reserve and moves with every run. Both null when nothing was held back - a
+ * site without enough night history, a night without a price spread, a winter
+ * horizon without a sunrise, the kill switch off, or a run predating the
+ * columns.
  */
 public record OptimizerDiagnosticsDto(
         UUID siteId,
@@ -81,6 +92,8 @@ public record OptimizerDiagnosticsDto(
         String priceSource,
         boolean storedEnergyValueIsApproximation,
         BigDecimal pvAnchorRatio,
+        BigDecimal nightReserveKwh,
+        BigDecimal nightReserveQ,
         List<OptimizerDiagnosticsSlotDto> slots) {
 
     /**

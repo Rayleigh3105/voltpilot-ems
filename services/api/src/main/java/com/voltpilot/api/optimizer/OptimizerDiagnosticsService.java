@@ -118,7 +118,7 @@ public class OptimizerDiagnosticsService {
         }
         if (run == null) {
             return dto(site, null, null, day, firstRunDate, lastRunDate, availableRuns,
-                    priceSource, true, null, List.of());
+                    priceSource, true, null, new BigDecimal[] {null, null}, List.of());
         }
         List<SlotRow> rows = repo.slots(site.siteId(), run);
         Map<LocalDate, MarketValue> marketValues = rows.isEmpty() ? Map.of()
@@ -182,7 +182,8 @@ public class OptimizerDiagnosticsService {
         }
         return dto(site, repo.planId(site.siteId(), run), run, day, firstRunDate, lastRunDate,
                 availableRuns, priceSource, anyApproximated,
-                repo.pvAnchorRatio(site.siteId(), run), slots);
+                repo.pvAnchorRatio(site.siteId(), run),
+                repo.nightReserve(site.siteId(), run), slots);
     }
 
     /**
@@ -217,7 +218,8 @@ public class OptimizerDiagnosticsService {
     private OptimizerDiagnosticsDto dto(SiteContext site, UUID planId, Instant run,
             LocalDate availableRunsDate, LocalDate firstRunDate, LocalDate lastRunDate,
             List<Instant> availableRuns, String priceSource, boolean storedValueIsApproximation,
-            BigDecimal pvAnchorRatio, List<OptimizerDiagnosticsSlotDto> slots) {
+            BigDecimal pvAnchorRatio, BigDecimal[] nightReserve,
+            List<OptimizerDiagnosticsSlotDto> slots) {
         return new OptimizerDiagnosticsDto(
                 site.siteId(),
                 planId,
@@ -239,6 +241,8 @@ public class OptimizerDiagnosticsService {
                 priceSource,
                 storedValueIsApproximation,
                 pvAnchorRatio,
+                nightReserve[0],
+                nightReserve[1],
                 slots);
     }
 

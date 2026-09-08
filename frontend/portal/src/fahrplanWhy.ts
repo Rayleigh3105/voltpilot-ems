@@ -186,6 +186,32 @@ export interface PlanWhyFacts {
   whyRefillFreePct?: number | null;
   generatedAt?: string | null;
   effectiveFloorSocPct?: number | null;
+  /** Nacht-Wertfunktion (P3): die gehaltene Menge und ihre Häufigkeit. */
+  whyNightReserveKwh?: number | null;
+  whyNightReserveQ?: number | null;
+}
+
+/**
+ * Die Nacht-Reserve als EINE Aussage: „so viel, so oft". Fehlt eine Hälfte,
+ * gilt beides als leer - eine kWh-Zahl ohne ihre Häufigkeit wäre eine
+ * Behauptung über eine Wahrscheinlichkeit, die niemand exportiert hat, und
+ * eine Häufigkeit ohne Menge sagt gar nichts.
+ *
+ * `naechte` ist die Häufigkeit als Nenner: q = 0,75 → „in 1 von 4 Nächten".
+ * Ein q außerhalb (0, 1) und eine Menge <= 0 sind KEINE Aussage - der Lauf hat
+ * dann nichts zurückgehalten (oder eine Zahl geliefert, die dieser
+ * Portal-Stand nicht deuten kann), und die Fläche schweigt.
+ */
+export function nightReserveOf(
+  plan?: PlanWhyFacts | null,
+): { kwh: number; q: number; naechte: number } | null {
+  const kwh = plan?.whyNightReserveKwh;
+  const q = plan?.whyNightReserveQ;
+  if (kwh == null || !Number.isFinite(Number(kwh)) || Number(kwh) <= 0) return null;
+  if (q == null || !Number.isFinite(Number(q))) return null;
+  const qv = Number(q);
+  if (qv <= 0 || qv >= 1) return null;
+  return { kwh: Number(kwh), q: qv, naechte: Math.round(1 / (1 - qv)) };
 }
 
 /**
@@ -365,6 +391,13 @@ export const BEGRUENDUNGEN: Begruendung[] = [
     id: 'lage_auffuellung',
     gates: ['plan.whyRefillFreePct>=REFILL_HIGH_PCT'],
     aussage: 'Der eigene Überschuss füllt den Speicher ohnehin wieder auf.',
+  },
+  {
+    // Nacht-Wertfunktion (P3): die Menge und ihre Häufigkeit sind EIN Fakt.
+    // Der Satz nennt beide Zahlen - ohne eine davon gibt es ihn nicht.
+    id: 'lage_nachtreserve',
+    gates: ['plan.whyNightReserveKwh', 'plan.whyNightReserveQ'],
+    aussage: 'Der Plan hält eine benannte Menge für eine schwerere Nacht zurück.',
   },
   {
     id: 'lambda_ueber_fenster',

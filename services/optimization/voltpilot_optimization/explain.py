@@ -65,6 +65,7 @@ from dataclasses import dataclass
 from pyomo.environ import ConcreteModel, Constraint, Reals, value
 
 from voltpilot_optimization.domain import BatteryParams, OptimizationInput
+from voltpilot_optimization.night_reserve import night_reserve_of
 
 logger = logging.getLogger("voltpilot.optimization.explain")
 
@@ -91,6 +92,9 @@ KNOWN_CONSTRAINTS: frozenset[str] = frozenset(
         "peak_epigraph",
         "peak_anchor",
         "peak_below_epigraph",
+        # Nacht-Wertfunktion (P3, night_reserve.py): the epigraph per quantile
+        # over the sunrise SoC node. It can bind, and the scan below says so.
+        "vf_c",
     }
 )
 
@@ -167,12 +171,23 @@ def explain(
     """
     _check_constraint_inventory(model)
     primal = [_slot_primal(model, inp, t) for t in range(inp.slots)]
+    # Read BEFORE slot_duals: that call re-solves the model as an LP with the
+    # binaries fixed, and every primal this layer reports must come from the
+    # MILP solution the plan was extracted from (the same reason `primal` is
+    # captured above).
+    night_flags = _night_reserve_flags(model)
     duals = slot_duals(model, inp)
     whys: list[SlotWhy] = []
     for t in range(inp.slots):
         flags = _binding_flags(model, inp, primal[t], fallback_14a)
         role = _classify_role(inp, primal[t], flags, duals[t])
         next_best, margin_ct = next_best_alternative(inp, t, primal[t], flags, duals[t])
+        # The night value function is scanned AFTER the role tree and the
+        # next-best verdict, and deliberately so: P3 changes HOW MUCH the plan
+        # sells, never what a slot IS. A holding slot keeps saying `warten` with
+        # `verkaufen` as its rejected alternative - the reserve flag only names
+        # the price that made the margin come out the way it did.
+        flags = flags + night_flags.get(t, [])
         whys.append(
             SlotWhy(
                 slot_role=role,
@@ -424,6 +439,31 @@ def _binding_flags(
     if s.curtail_kw > CURTAIL_DEADBAND_KW:
         flags.append("curtailing")
     return flags
+
+
+def _night_reserve_flags(model: ConcreteModel) -> dict[int, list[str]]:
+    """``reserve_q<k>`` for every binding night-value-function epigraph, keyed
+    by the slot it belongs to - always the LAST slot of the night (``i1 - 1``),
+    the slot whose end-of-slot SoC the whole term is about (P3,
+    :mod:`voltpilot_optimization.night_reserve`).
+
+    ``k`` is the quantile index of the formula (``q_0`` = the median = the
+    plan's OWN forecast, whose step is free by construction), so ``reserve_q2``
+    reads as "the q-index-2 step of the night value function is priced here".
+    Binding means the epigraph sits ON its lower bound: the sunrise charge does
+    not reach that step, so the objective is paying for the shortfall. An empty
+    dict is the normal case - no term was built, or the plan clears every step.
+    """
+    terms = night_reserve_of(model)
+    if terms is None:
+        return {}
+    slack = float(value(model.soc[terms.i1])) - terms.soc_floor_kwh
+    flags: list[str] = []
+    for k, level in enumerate(terms.levels_kwh):
+        shortfall = level - slack
+        if float(value(model.vf_s[k + 1])) - shortfall <= BINDING_TOL:
+            flags.append(f"reserve_q{k}")
+    return {terms.i1 - 1: flags} if flags else {}
 
 
 def _argmax_reserve(p: BatteryParams) -> str | None:

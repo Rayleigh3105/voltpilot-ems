@@ -1425,7 +1425,8 @@ class PortalApiTest {
                 + "slot_role = 'guenstig_laden', slot_flags = 'charge_cap,peak_defining', "
                 + "stored_value_ct_kwh = 24.2, grid_value_ct_kwh = 10.1, "
                 + "peak_pressure_eur_kw = 1.25, fallback_14a = FALSE, "
-                + "why_terminal_anchor = 'bezugspreis', why_refill_free_pct = 13.0 "
+                + "why_terminal_anchor = 'bezugspreis', why_refill_free_pct = 13.0, "
+                + "why_night_reserve_kwh = 4.920, why_night_reserve_q = 0.750 "
                 + "WHERE plan_id = 'aaaaaaaa-0000-0000-0000-000000000002'");
         exec("UPDATE schedule SET why_next_best = 'decken', why_next_best_margin_ct = 0.0 "
                 + "WHERE plan_id = 'aaaaaaaa-0000-0000-0000-000000000002' "
@@ -1453,6 +1454,13 @@ class PortalApiTest {
         assertThat(banked.getBody()).containsEntry("whyTerminalAnchor", "bezugspreis");
         assertThat(((Number) banked.getBody().get("whyRefillFreePct")).doubleValue())
                 .isEqualTo(13.0);
+        // Nacht-Wertfunktion (P3): dieselbe Bauart - ein RUN-Fakt aus ZWEI
+        // Zahlen ("so viel, so oft"), aus denen die Fahrplan-Seite ihren einen
+        // Satz baut. Fehlte eine, gaebe es den Satz nicht.
+        assertThat(((Number) banked.getBody().get("whyNightReserveKwh")).doubleValue())
+                .isEqualTo(4.92);
+        assertThat(((Number) banked.getBody().get("whyNightReserveQ")).doubleValue())
+                .isEqualTo(0.75);
         // ... and the KNAPPHEIT reaches the slot that actually rested, while the
         // active one stays empty (its marginal benefit is 0 by construction).
         @SuppressWarnings("unchecked")

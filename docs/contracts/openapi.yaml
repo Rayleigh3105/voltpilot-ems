@@ -10757,6 +10757,27 @@ components:
             "morgen fuellt Ihr Ueberschuss den Speicher ohnehin". Null when not
             evaluable (no usable band) - never a fabricated 0, which would read
             as "the horizon offers nothing".
+        whyNightReserveKwh:
+          type: number
+          nullable: true
+          description: >-
+            Nacht-Wertfunktion P3 (schedule.why_night_reserve_kwh, migration
+            V20260868000000): how much charge this run holds at SUNRISE, above
+            the reserve floor, because the site's OWN night-error history makes
+            a heavier night than the forecast plausible (kWh). NOT a fixed
+            reserve - the plan holds exactly as much as price spread times error
+            probability justifies, so it moves with every run. Null when nothing
+            was held back (too little night history, no price spread, a winter
+            horizon without a sunrise, the OPTIMIZER_NIGHT_RESERVE_ENABLED
+            switch off, or a pre-feature run) - never a fabricated 0.
+        whyNightReserveQ:
+          type: number
+          nullable: true
+          description: >-
+            The quantile of that amount (0.75 = it is needed in 1 of 4 nights) -
+            the SECOND half of one statement. Without it the kWh figure stands
+            without its frequency, and the customer sentence is omitted. Null
+            exactly when whyNightReserveKwh is null.
         slots:
           type: array
           items:
@@ -12391,6 +12412,26 @@ components:
             OPTIMIZER_PV_ANCHOR_ENABLED kill switch off, or a run predating the
             column) - render nothing then, never "1,0", which is itself a real
             established statement ("belegt, und das Modell lag richtig").
+        nightReserveKwh:
+          type: number
+          nullable: true
+          example: 4.92
+          description: >
+            Nacht-Wertfunktion P3 (schedule.why_night_reserve_kwh): how much
+            charge this RUN holds at SUNRISE, above the reserve floor, because
+            the site's OWN night-error distribution makes a heavier night
+            plausible. Priced against the night's price spread, so it is never a
+            fixed reserve and moves with every run. Null = nothing was held back
+            (too little night history, no price spread, no sunrise in the
+            horizon, the OPTIMIZER_NIGHT_RESERVE_ENABLED kill switch off, or a
+            run predating the column).
+        nightReserveQ:
+          type: number
+          nullable: true
+          example: 0.75
+          description: >
+            That amount's quantile - 0.75 means it is needed in 1 of 4 nights.
+            Null exactly when nightReserveKwh is null.
         slots:
           type: array
           items: { $ref: "#/components/schemas/OptimizerDiagnosticsSlot" }

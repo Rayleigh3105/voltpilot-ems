@@ -99,7 +99,8 @@ public class ScheduleRepository {
         slots = MeasuredSlots.assign(slots, measuredPerSlot(siteId, slots, 15));
         List<Object[]> meta = jdbc.query(
                 "SELECT plan_id, device_id, terminal_value_eur_per_kwh, peak_target_kw, effective_floor_soc_pct, "
-                        + "fallback_14a, why_terminal_anchor, why_refill_free_pct FROM schedule "
+                        + "fallback_14a, why_terminal_anchor, why_refill_free_pct, "
+                        + "why_night_reserve_kwh, why_night_reserve_q FROM schedule "
                         + "WHERE site_id = ? AND generated_at = ? LIMIT 1",
                 (rs, i) -> new Object[] {
                         rs.getObject("plan_id", UUID.class),
@@ -109,7 +110,9 @@ public class ScheduleRepository {
                         rs.getBigDecimal("effective_floor_soc_pct"),
                         rs.getObject("fallback_14a", Boolean.class),
                         rs.getString("why_terminal_anchor"),
-                        rs.getBigDecimal("why_refill_free_pct")
+                        rs.getBigDecimal("why_refill_free_pct"),
+                        rs.getBigDecimal("why_night_reserve_kwh"),
+                        rs.getBigDecimal("why_night_reserve_q")
                 },
                 siteId, Timestamp.from(generatedAt));
         UUID planId = meta.isEmpty() ? null : (UUID) meta.get(0)[0];
@@ -122,13 +125,17 @@ public class ScheduleRepository {
         // run (the terminal_value pattern), so ONE row answers for the plan.
         String whyAnchor = meta.isEmpty() ? null : (String) meta.get(0)[6];
         BigDecimal whyRefillFreePct = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[7];
+        // P3 (Nacht-Wertfunktion): what this run holds at sunrise for a heavier
+        // night, and how often that much is needed. Null = nothing held back.
+        BigDecimal nightReserveKwh = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[8];
+        BigDecimal nightReserveQ = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[9];
         BigDecimal savings = slots.stream()
                 .map(s -> nz(s.baselineCostEur()).subtract(nz(s.costEur())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         Banked banked = bankedValue(siteId, slots, terminalValue, 15);
         return new SchedulePlanDto(planId, deviceId, generatedAt, 15, savings,
                 banked.valueEur(), banked.socStartPct(), banked.socEndPct(), peakTargetKw, effectiveFloor,
-                fallback14a, whyAnchor, whyRefillFreePct, slots);
+                fallback14a, whyAnchor, whyRefillFreePct, nightReserveKwh, nightReserveQ, slots);
     }
 
     /**
@@ -218,11 +225,12 @@ public class ScheduleRepository {
                 .map(s -> nz(s.baselineCostEur()).subtract(nz(s.costEur())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         // Run-level facts (plan id, banked value, SoC bounds, peak target,
-        // §14a fallback, and the Erklärbarkeit-Stufe-1 anchor/refill share)
-        // describe ONE run and are therefore null on a spliced day - a day
-        // stitched from a dozen runs has no single anchor to name.
+        // §14a fallback, the Erklärbarkeit-Stufe-1 anchor/refill share and the
+        // P3 night reserve) describe ONE run and are therefore null on a
+        // spliced day - a day stitched from a dozen runs has no single anchor
+        // to name, and no single amount it held for the night.
         return new SchedulePlanDto(null, runDevice[0], newestRun[0], 15, savings,
-                null, null, null, null, null, null, null, null, slots);
+                null, null, null, null, null, null, null, null, null, null, slots);
     }
 
     /** One row of the {@link #SLOT_COLUMNS} projection as a slot DTO. */

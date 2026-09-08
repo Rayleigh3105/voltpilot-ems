@@ -52,6 +52,7 @@ import { fmtNum } from './format';
 import {
   REFILL_HIGH_PCT,
   REFILL_LOW_PCT,
+  nightReserveOf,
   refillFreePct,
   terminalAnchor,
   type PlanWhyFacts,
@@ -317,6 +318,26 @@ export function speicherHalbsatz(plan?: PlanWhyFacts | null): string | null {
 }
 
 /**
+ * Der Nacht-Satz (Erklärbarkeit, Gate-Tabelle `BEGRUENDUNGEN` Eintrag
+ * `lage_nachtreserve`): was der Plan HEUTE für eine schwerere Nacht
+ * zurückhält, und wie oft diese Menge gebraucht wird.
+ *
+ * Bewusst nüchtern und ohne Versprechen: die Menge ist keine feste Reserve,
+ * sondern das, was Preisabstand mal Fehlerwahrscheinlichkeit gerade
+ * rechtfertigt - sie steht in jedem Lauf neu. Der Satz existiert nur, wenn
+ * BEIDE Zahlen des Fakts vorliegen (siehe {@link nightReserveOf}); sonst gibt
+ * es nichts Belegtes zu sagen und die Zeile bleibt, wie sie war.
+ */
+export function nachtreserveSatz(plan?: PlanWhyFacts | null): string | null {
+  const reserve = nightReserveOf(plan);
+  if (reserve == null) return null;
+  return (
+    `Hält heute bis zu ${kwh(reserve.kwh)} für eine schwerere Nacht ` +
+    `(in 1 von ${reserve.naechte} Nächten nötig).`
+  );
+}
+
+/**
  * Der Morgen-Ausblick als EIN Satz-Block (oder `null`).
  *
  * Reihenfolge und Gates: das Wetter-WORT (aus der 48-h-Vorhersage), dann
@@ -385,6 +406,8 @@ export interface LageView {
   bogen: string | null;
   /** Der Morgen-Ausblick bzw. der ehrliche Horizont-Hinweis. */
   ausblick: string | null;
+  /** Was der Plan für eine schwerere Nacht hält (P3); `null` = nichts. */
+  nachtreserve: string | null;
   /** {@link BEDINGUNGS_SATZ} - immer dabei, sobald die Zeile überhaupt steht. */
   bedingung: string;
   /** Woher die Aussagen kommen. */
@@ -408,12 +431,14 @@ export function lageView(input: LageInput): LageView | null {
     weather: input.weather,
     plan: input.plan,
   });
-  if (bogen == null && ausblick == null) return null;
+  const nachtreserve = nachtreserveSatz(input.plan);
+  if (bogen == null && ausblick == null && nachtreserve == null) return null;
   const nutztWetter =
     input.weather != null && weatherWhyTomorrow(input.weather, input.now) != null;
   return {
     bogen,
     ausblick,
+    nachtreserve,
     bedingung: BEDINGUNGS_SATZ,
     quelle: nutztWetter ? `${LAGE_QUELLE_PLAN} ${LAGE_QUELLE_WETTER}` : LAGE_QUELLE_PLAN,
   };

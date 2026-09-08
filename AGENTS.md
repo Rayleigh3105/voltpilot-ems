@@ -229,6 +229,7 @@ Bereiche: `docs/agents/README.md`.
 - **Price-aware in-slot trim: the cloud prices, the edge enforces (2026-07-30)** — The 15-min setpoint stands for the whole … · `price-aware-in-slot-trim-the-cloud-price.md`
 - **In-slot load following: the DISCHARGE mirror of the trim (2026-07-30, P1)** — The same quarter-hour gap with the sign … · `in-slot-load-following-the-discharge-mir.md`
 - **Netz-null-Reduzieren: die Reduzieren-Erlaubnis ohne Wirtschafts-Test (2026-09-08, P1)** — Begrenzen ist nie unwirtschaftlich … · `netz-null-reduzieren-die-reduzieren-erl.md`
+- **Nacht-Wertfunktion: der Ladestand bei Sonnenaufgang bekommt einen Preis (2026-09-08, P3)** — Preisabstand mal Fehlerwahrscheinlichkeit statt fester Reserve … · `nacht-wertfunktion-der-ladestand-bei-son.md`
 - **In-slot surplus absorption: the only duty that RAISES a charge (2026-08-02)** — PV 23,9 · Haus 4,3 · Netz-EINSPEISUNG … · `in-slot-surplus-absorption-the-only-duty.md`
 - **Die ABREGELUNG folgt der Messung statt dem 15-Minuten-Planwert (2026-08-29)** — §2 Glied 1b / §8 Fix D) · `die-abregelung-folgt-der-messung-statt-d.md`
 - **Dynamische Einspeisebegrenzung: der Netzpunkt wird GEREGELT, nicht nur geplant (2026-08-06)** — Der Echtzeit-Wächter, der die … · `dynamische-einspeisebegrenzung-der-netzp.md`

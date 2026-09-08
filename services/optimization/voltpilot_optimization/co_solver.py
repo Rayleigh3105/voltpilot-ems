@@ -134,7 +134,12 @@ from voltpilot_optimization.entities import (
     StorageSlot,
     UnservedRequirement,
 )
+from voltpilot_optimization.config import night_reserve_enabled
 from voltpilot_optimization.modules import SolverModule, select_modules
+from voltpilot_optimization.night_reserve import (
+    night_reserve_terms,
+    stash_night_reserve,
+)
 from voltpilot_optimization.solver import (
     BATTERY_WEAR_TIEBREAK_EUR_PER_KW,
     CURTAIL_TIEBREAK_EUR_PER_KW,
@@ -420,7 +425,64 @@ def build_co_model(
         - terminal_credit,
         sense=minimize,
     )
+    _add_night_reserve(m, inp, storages, producers, floors)
     return m
+
+
+def _add_night_reserve(m, inp, storages, producers, floors) -> None:
+    """The NIGHT VALUE FUNCTION (P3), generalized by summation: the site has ONE
+    night, so it has ONE sunrise node - the SUM of the storages' SoC.
+
+    Everything else is the v1 term verbatim (same module, same numbers, same
+    ``vf_s``/``vf_c`` names), which is what keeps the golden suite exact for
+    N=1: the summed SoC, floor and efficiency each collapse to the single
+    storage's own value. ``eta`` is capacity-weighted because ``D_Rest`` asks
+    what the night costs in STORED kWh, and a fleet of storages answers that
+    question in proportion to how much of it each of them holds.
+    """
+    stash_night_reserve(m, None)
+    if inp.night_error_quantiles is None or not night_reserve_enabled():
+        return
+    capacity = sum(s.params.capacity_kwh for s in storages)
+    if capacity <= 0.0:  # pragma: no cover - defensive
+        return
+    eta = (
+        sum(s.params.one_way_efficiency * s.params.capacity_kwh for s in storages)
+        / capacity
+    )
+    pv_kw = [
+        sum(max(p.generation_kw[t], 0.0) for p in producers)
+        for t in range(len(inp.slot_starts))
+    ]
+    floor = sum(floors)
+    terms = night_reserve_terms(
+        load_kw=inp.base_load_kw,
+        pv_kw=pv_kw,
+        import_price_eur_mwh=inp.import_prices,
+        export_value_eur_mwh=inp.export_values,
+        slot_hours=inp.slot_hours,
+        one_way_efficiency=eta,
+        soc_floor_kwh=floor,
+        errors=inp.night_error_quantiles,
+    )
+    if terms is None:
+        return
+    K = terms.levels
+    levels = terms.levels_kwh
+    coefficients = terms.coefficients_eur_kwh
+    i1 = terms.i1
+    E = range(len(storages))
+    m.vf_s = Var(RangeSet(1, K), domain=NonNegativeReals)
+    m.vf_c = Constraint(
+        RangeSet(1, K),
+        rule=lambda model, k: model.vf_s[k]
+        >= levels[k - 1] - (sum(model.soc[e, i1] for e in E) - floor),
+    )
+    m.total_cost.set_value(
+        m.total_cost.expr
+        + sum(coefficients[k - 1] * m.vf_s[k] for k in range(1, K + 1))
+    )
+    stash_night_reserve(m, terms)
 
 
 # ---------------------------------------------------------------------------

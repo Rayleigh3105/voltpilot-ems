@@ -1,0 +1,43 @@
+-- =============================================================================
+-- V20260868000000 - Die NACHT-WERTFUNKTION im Fahrplan: was der Lauf fuer eine
+-- schwerere Nacht zurueckgehalten hat, und wie oft diese Menge noetig wird.
+-- -----------------------------------------------------------------------------
+-- Anlass: die Nacht 04./05.09.2026 in Pilsting/Herzogau. Der Fahrplan plante
+-- sie mit der Persistenz-Lastprognose OHNE jeden Unsicherheitsaufschlag, die
+-- Nacht kam mit +24 % Last, und der Speicher stand um 02:45 leer statt um
+-- 08:00. Captain-Entscheid 08.09.2026: KEINE feste Reserve, sondern die
+-- oekonomische Fortsetzung von "Nachtdeckung rein oekonomisch" (29.07.2026) -
+-- der Plan haelt so viel zurueck, wie Preisabstand mal Fehlerwahrscheinlichkeit
+-- rechtfertigt (services/optimization, voltpilot_optimization/night_reserve.py,
+-- Konzept vp-nachtreserve-konzept-k2 §3 P3).
+--
+-- Damit die Fahrplan-Seite den einen Satz dazu sagen darf ("Haelt heute bis zu
+-- 4,9 kWh fuer eine schwerere Nacht - in 1 von 4 Naechten noetig"), reisen zwei
+-- Zahlen mit, beide RUN-Fakten und je Zeile wiederholt wie
+-- terminal_value_eur_per_kwh:
+--
+--   why_night_reserve_kwh - die hoechste Stufe der Wertfunktion, die der
+--       GELOESTE Plan bei Sonnenaufgang tatsaechlich ueber dem Boden deckt
+--       (das ERGEBNIS, nicht die Absicht).
+--   why_night_reserve_q   - ihre Quantilslage (0,75 = in 1 von 4 Naechten wird
+--       diese Menge gebraucht), die Zahl HINTER dem "in 1 von N".
+--
+-- Die Herleitung dahinter (alle Stufen, der Preisabstand p_imp/v_left) bleibt
+-- am Plan-Objekt des Optimierers: sie erklaert diese Zahl, sie ist keine
+-- zweite Zahl, und eine Hypertable-Zeile ist der falsche Ort fuer eine 192-mal
+-- wiederholte Herleitung.
+--
+-- Nullable, und NULL heisst hier "es wurde nichts zurueckgehalten" - nie eine
+-- erfundene 0, die behauptete, die Wertfunktion habe hingesehen. Genauso NULL
+-- bei jedem Lauf ohne Fehlerverteilung (junge Anlage, Modellwechsel), ohne
+-- Preisabstand, ohne Ueberschuss-Slot nach der Nacht, mit ausgeschaltetem
+-- OPTIMIZER_NIGHT_RESERVE_ENABLED und bei jedem Lauf vor dieser Migration.
+--
+-- Der V20260701020000-SELECT-Grant auf schedule ist spaltenunabhaengig.
+-- Bootstrap-Spiegel: infra/local/timescale/04-schedule.sql (in sync gehalten).
+-- Der eingefrorene MQTT-Fahrplan-Kontrakt ist UNBERUEHRT - der Erklaer-Fakt
+-- haengt am Plan, nicht am Vertrag, und erreicht das Geraet nie.
+-- =============================================================================
+
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS why_night_reserve_kwh NUMERIC(12, 3);
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS why_night_reserve_q NUMERIC(4, 3);

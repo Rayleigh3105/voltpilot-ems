@@ -50,6 +50,7 @@ from voltpilot_optimization.config import (
     pv_nowcast_enabled,
     pv_nowcast_lookback,
     pv_nowcast_max_age,
+    night_reserve_enabled,
     soc_max_age,
     terminal_value_override_eur_per_kwh,
 )
@@ -65,6 +66,10 @@ from voltpilot_optimization.domain import (
     horizon_slot_starts,
 )
 from voltpilot_optimization.fallback import night_floor_pv, persistence_forecast
+from voltpilot_optimization.night_reserve import (
+    NightErrorQuantiles,
+    night_error_quantiles,
+)
 from voltpilot_optimization.nowcast import AnchorEvidence, NO_EVIDENCE, anchor_evidence, apply_anchor
 from voltpilot_optimization.load_nowcast import (
     apply_load_nowcast,
@@ -659,6 +664,12 @@ def gather_inputs(
             dsn, site.site_id, now, site.abrechnung_leistung
         )
 
+    # P3 (Nachtreserve): die Nacht-Fehlerverteilung DIESER Anlage - EIN Lesen je
+    # Takt und Anlage, wie die Modellwahl darueber. Sie bepreist den Ladestand
+    # bei Sonnenaufgang; ohne sie entsteht im Solver kein Term und der Plan ist
+    # byte-identisch (siehe voltpilot_optimization.night_reserve).
+    night_errors = _night_error_quantiles(dsn, site, now, site_choices)
+
     return OptimizationInput(
         tenant_id=site.tenant_id,
         site_id=site.site_id,
@@ -686,7 +697,37 @@ def gather_inputs(
         # Steuerung Stufe 3: an active customer rule owns this battery, so the
         # plan holds it instead of dispatching it (§3.7 A4).
         battery_held=held_by is not None,
+        # P3: the site's own night-error distribution (None = no term).
+        night_error_quantiles=night_errors,
     )
+
+
+def _night_error_quantiles(
+    dsn: str, site: BatterySite, now: datetime, site_choices
+) -> NightErrorQuantiles | None:
+    """The site's night-load-error distribution for the value function (P3), or
+    ``None``.
+
+    FAIL-SOFT on purpose, like the explain layer and the Messlatte: this is a
+    STATISTIC over history, and a statistic that cannot be read is a missing
+    price, never a missing plan. A raise here would cost the site its whole
+    dispatch over a slow history query - by far the more expensive failure.
+    Compared against the ACTIVE load model, because a distribution of another
+    model's errors describes a forecast this run is not using.
+    """
+    if not night_reserve_enabled():
+        return None
+    try:
+        return night_error_quantiles(
+            dsn, site, now, active_model("load", choices=site_choices)
+        )
+    except Exception:
+        logger.warning(
+            "night_reserve.unavailable - planning without the night value function",
+            extra={"context": {"site_id": str(site.site_id)}},
+            exc_info=True,
+        )
+        return None
 
 
 def billing_period_start(now: datetime, abrechnung_leistung: str) -> datetime:

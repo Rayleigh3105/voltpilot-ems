@@ -58,7 +58,12 @@ import {
   type WhySlot,
 } from './fahrplanWhy';
 import { bestandZeile } from './erloesKomposition';
-import { lageView, speicherHalbsatz, type LageSlot } from './fahrplanLage';
+import {
+  lageView,
+  nachtreserveSatz,
+  speicherHalbsatz,
+  type LageSlot,
+} from './fahrplanLage';
 import { grenzenView, gruende, leitgrund } from './grenzenWarum';
 import { planInsightParts, planSentence, type PlanSlotLike } from './schedule';
 import { vorschlaege } from './vorschlaege';
@@ -252,6 +257,7 @@ describe('Warum-Wächter: die Stufe-1-Zweige hängen an ihren Gates', () => {
     // Erklärbarkeit Stufe 2
     'lage_aufheben',
     'lage_auffuellung',
+    'lage_nachtreserve',
     // Erklärbarkeit Stufe 3
     'grenze_14a',
     'grenze_einspeisung',
@@ -359,6 +365,15 @@ describe('Warum-Wächter: die Lage-Zeile erfindet keine Ursache', () => {
     expect(
       speicherHalbsatz({ whyTerminalAnchor: 'einspeisewert', whyRefillFreePct: 62 }),
     ).toContain('ohnehin wieder auf');
+  });
+
+  it('der Nacht-Satz ist ohne Menge ODER ohne Häufigkeit unerreichbar', () => {
+    expect(
+      nachtreserveSatz({ whyNightReserveKwh: 4.92, whyNightReserveQ: 0.75 }),
+    ).not.toBeNull();
+    expect(nachtreserveSatz({ whyNightReserveKwh: 4.92 })).toBeNull();
+    expect(nachtreserveSatz({ whyNightReserveQ: 0.75 })).toBeNull();
+    expect(nachtreserveSatz(null)).toBeNull();
   });
 
   it('ohne eine einzige belegte Aussage entsteht die Zeile gar nicht', () => {

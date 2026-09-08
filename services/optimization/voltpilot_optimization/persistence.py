@@ -68,9 +68,10 @@ INSERT INTO schedule
      charge_from_surplus_only, effective_floor_soc_pct,
      why_terminal_anchor, why_refill_free_pct,
      why_next_best, why_next_best_margin_ct,
-     pv_anchor_ratio)
+     pv_anchor_ratio,
+     why_night_reserve_kwh, why_night_reserve_q)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (site_id, generated_at, time)
 DO UPDATE SET
     device_id         = EXCLUDED.device_id,
@@ -102,8 +103,26 @@ DO UPDATE SET
     why_refill_free_pct = EXCLUDED.why_refill_free_pct,
     why_next_best = EXCLUDED.why_next_best,
     why_next_best_margin_ct = EXCLUDED.why_next_best_margin_ct,
-    pv_anchor_ratio   = EXCLUDED.pv_anchor_ratio;
+    pv_anchor_ratio   = EXCLUDED.pv_anchor_ratio,
+    why_night_reserve_kwh = EXCLUDED.why_night_reserve_kwh,
+    why_night_reserve_q = EXCLUDED.why_night_reserve_q;
 """
+
+
+def _night_reserve_columns(plan: SchedulePlan) -> tuple[float | None, float | None]:
+    """``(kWh, q)`` of the night value function's held step (P3c), or
+    ``(None, None)``.
+
+    Only the RESULT travels into the schedule table - how much the run held
+    back for a heavier night and how often that much is actually needed. The
+    derivation behind it (all steps, the price spread) stays on the plan
+    object: it explains the number, it is not a second number, and a hypertable
+    row is the wrong place for a derivation repeated 192 times.
+    """
+    fact = plan.why_night_reserve
+    if not fact:
+        return None, None
+    return fact.get("held_kwh"), fact.get("held_q")
 
 
 def plan_rows(plan: SchedulePlan) -> list[tuple]:
@@ -155,7 +174,14 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
     near-horizon PV forecast by (:mod:`voltpilot_optimization.nowcast`). NULL =
     no anchor established, the kill switch is off, or the run predates the
     column - the readout then says nothing instead of a misleading "1,0".
+
+    ``why_night_reserve_kwh``/``why_night_reserve_q`` (P3c) are RUN-level too:
+    how much charge the night value function held for a heavier night and how
+    often that much is needed (see :func:`_night_reserve_columns`). NULL when
+    the run held nothing - never a 0, which would claim the value function had
+    looked and found no reason.
     """
+    night_reserve = _night_reserve_columns(plan)
     return [
         (
             slot.start,
@@ -192,6 +218,8 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
             slot.why_next_best,
             slot.why_next_best_margin_ct,
             plan.pv_anchor_ratio,
+            night_reserve[0],
+            night_reserve[1],
         )
         for slot in plan.slots
     ]

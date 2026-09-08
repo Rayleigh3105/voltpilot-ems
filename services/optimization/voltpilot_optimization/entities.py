@@ -60,6 +60,7 @@ from voltpilot_optimization.domain import (
     TerminalValue,
     derive_terminal_value,
 )
+from voltpilot_optimization.night_reserve import NightErrorQuantiles
 
 # The mqtt-schedule-2.0 contract's entity_id pattern (MQTT-topic-safe).
 ENTITY_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -427,6 +428,12 @@ class CoOptimizationInput:
     leistungspreis_eur_kw: float | None = None
     peak_so_far_kw: float = 0.0
     dv_konform: bool = False
+    #: Die Nacht-Fehlerverteilung dieser Anlage (P3) - die v1-Semantik
+    #: verbatim (siehe
+    #: :attr:`~voltpilot_optimization.domain.OptimizationInput.night_error_quantiles`);
+    #: sie ist eine Eigenschaft des STANDORTS, nicht eines Speichers, und der
+    #: Term laeuft deshalb ueber die SUMME der Ladestaende.
+    night_error_quantiles: NightErrorQuantiles | None = None
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -624,6 +631,7 @@ def from_v1_input(
         terminal_value_eur_per_kwh=inp.terminal_value_eur_per_kwh,
         leistungspreis_eur_kw=inp.leistungspreis_eur_kw,
         peak_so_far_kw=inp.peak_so_far_kw,
+        night_error_quantiles=inp.night_error_quantiles,
     )
 
 

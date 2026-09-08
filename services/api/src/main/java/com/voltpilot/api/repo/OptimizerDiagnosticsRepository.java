@@ -215,6 +215,31 @@ public class OptimizerDiagnosticsRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /**
+     * The NIGHT RESERVE of the run (P3, Nacht-Wertfunktion): how much charge it
+     * holds at sunrise for a heavier night, in kWh above the reserve floor, and
+     * that amount's quantile - {@code [kWh, q]}, either entry null on its own.
+     *
+     * <p>A RUN-level pair repeated on every slot row (the
+     * {@code pv_anchor_ratio} pattern above), read in ONE query because the two
+     * numbers are ONE statement: "so viel, so oft". Null is a real state:
+     * nothing was held back - no error distribution, no price spread, no
+     * sunrise in the horizon, the kill switch off, or a run older than the
+     * columns. It is NOT a 0 kWh reserve, which would claim the value function
+     * had looked.
+     */
+    public BigDecimal[] nightReserve(UUID siteId, Instant generatedAt) {
+        List<BigDecimal[]> rows = jdbc.query(
+                "SELECT why_night_reserve_kwh, why_night_reserve_q FROM schedule "
+                        + "WHERE site_id = ? AND generated_at = ? LIMIT 1",
+                (rs, i) -> new BigDecimal[] {
+                        rs.getBigDecimal("why_night_reserve_kwh"),
+                        rs.getBigDecimal("why_night_reserve_q")
+                },
+                siteId, Timestamp.from(generatedAt));
+        return rows.isEmpty() ? new BigDecimal[] {null, null} : rows.get(0);
+    }
+
     /** The plan_id of the run (first row's - constant per run). */
     public UUID planId(UUID siteId, Instant generatedAt) {
         List<UUID> ids = jdbc.query(

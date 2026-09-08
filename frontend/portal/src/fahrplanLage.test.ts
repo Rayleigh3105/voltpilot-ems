@@ -26,6 +26,7 @@ import {
   ausblickSatz,
   bogenSatz,
   lageView,
+  nachtreserveSatz,
   morgenEnergie,
   speicherHalbsatz,
   tagesbogen,
@@ -248,6 +249,53 @@ describe('Stufe 2: der Speicher-Halbsatz hängt an den Stufe-1-Lauf-Fakten', () 
     expect(
       speicherHalbsatz({ whyTerminalAnchor: 'bezugspreis', whyRefillFreePct: 40 }),
     ).toBeNull();
+  });
+});
+
+// ---- Der Nacht-Satz (P3) --------------------------------------------------
+
+describe('P3: der Satz über die Nacht-Reserve', () => {
+  it('nennt Menge UND Häufigkeit - das Beispiel der Nacht 04./05.09.', () => {
+    expect(
+      nachtreserveSatz({ whyNightReserveKwh: 4.92, whyNightReserveQ: 0.75 }),
+      // \u00a0 = das schmale feste Leerzeichen, das `fmtNum` zwischen Zahl und
+      // Einheit setzt (dieselbe Schreibweise wie überall sonst in der Zeile).
+    ).toBe(
+      'Hält heute bis zu 4,9\u00a0kWh für eine schwerere Nacht (in 1 von 4 Nächten nötig).',
+    );
+  });
+
+  it('rechnet die Häufigkeit aus der Quantilslage', () => {
+    expect(nachtreserveSatz({ whyNightReserveKwh: 13.4, whyNightReserveQ: 0.9 })).toContain(
+      'in 1 von 10 Nächten',
+    );
+    expect(nachtreserveSatz({ whyNightReserveKwh: 27, whyNightReserveQ: 0.95 })).toContain(
+      'in 1 von 20 Nächten',
+    );
+  });
+
+  it('rundet die Menge wie jede andere kWh-Zahl der Zeile', () => {
+    expect(nachtreserveSatz({ whyNightReserveKwh: 13.39, whyNightReserveQ: 0.9 })).toContain(
+      '13\u00a0kWh',
+    );
+  });
+
+  it('schweigt ohne eine der beiden Zahlen - und bei einer 0', () => {
+    expect(nachtreserveSatz({ whyNightReserveKwh: 4.9 })).toBeNull();
+    expect(nachtreserveSatz({ whyNightReserveQ: 0.75 })).toBeNull();
+    expect(nachtreserveSatz({ whyNightReserveKwh: 0, whyNightReserveQ: 0.75 })).toBeNull();
+    expect(nachtreserveSatz({ whyNightReserveKwh: 4.9, whyNightReserveQ: 1 })).toBeNull();
+    expect(nachtreserveSatz(null)).toBeNull();
+  });
+
+  it('trägt die Zeile auch allein - ein Plan ohne Bogen und Ausblick sagt sie trotzdem', () => {
+    const view = lageView({
+      slots: [],
+      now: NOW,
+      plan: { whyNightReserveKwh: 4.92, whyNightReserveQ: 0.75 },
+    });
+    expect(view?.nachtreserve).toContain('4,9\u00a0kWh');
+    expect(view?.bogen).toBeNull();
   });
 });
 
