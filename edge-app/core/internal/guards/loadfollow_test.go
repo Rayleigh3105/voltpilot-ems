@@ -10,7 +10,10 @@ package guards
 // setpoint cadence.
 
 import (
+	"encoding/json"
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -75,7 +78,7 @@ func TestAuthorizedIdleFollowerReplaysTheUnforeseenLoadScreenshots(t *testing.T)
 	floor := 30.0
 	f := NewLoadFollower()
 	a := Reading{SocPct: 95, PvKw: 22.1, LoadKw: 36.8, GridLimitKw: Unknown()}
-	got := f.ApplyAuthorized(followBase(), 0, false, true, false, &floor, true, followLimits(), a)
+	got := f.ApplyAuthorized(followBase(), 0, false, true, false, false, &floor, true, followLimits(), a)
 	if !got.Active || got.Path != "idle_follow" || math.Abs(got.Kw+14.7) > 1e-9 {
 		t.Fatalf("screenshot A: %+v, want idle_follow at -14.7 kW", got)
 	}
@@ -86,7 +89,7 @@ func TestAuthorizedIdleFollowerReplaysTheUnforeseenLoadScreenshots(t *testing.T)
 	// Keep the SAME engaged follower instance: this is the real A -> B
 	// transition, not a reset-assisted test.
 	b := Reading{SocPct: 95, PvKw: 22.6, LoadKw: 16.6, GridLimitKw: Unknown()}
-	got = f.ApplyAuthorized(followBase().Add(10*time.Second), 0, false, true, false, &floor, true, followLimits(), b)
+	got = f.ApplyAuthorized(followBase().Add(10*time.Second), 0, false, true, false, false, &floor, true, followLimits(), b)
 	if got.Kw != 0 || got.Active || got.Path != "" {
 		t.Fatalf("screenshot B: %+v, want neutral 0 kW with no active correction path", got)
 	}
@@ -113,19 +116,19 @@ func TestAuthorizedIdleFollowerFailsClosedOnEveryMissingSafetyFact(t *testing.T)
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := NewLoadFollower().ApplyAuthorized(followBase(), 0, false, true, false, tc.floor, tc.fresh, followLimits(), tc.read)
+			got := NewLoadFollower().ApplyAuthorized(followBase(), 0, false, true, false, false, tc.floor, tc.fresh, followLimits(), tc.read)
 			if got.Active || got.Kw != 0 {
 				t.Fatalf("unsafe correction: %+v", got)
 			}
 		})
 	}
-	if got := NewLoadFollower().ApplyAuthorized(followBase(), 2, false, true, false, &floor, true, followLimits(), valid); got.Active || got.Kw != 2 {
+	if got := NewLoadFollower().ApplyAuthorized(followBase(), 2, false, true, false, false, &floor, true, followLimits(), valid); got.Active || got.Kw != 2 {
 		t.Fatalf("planned charge must not be reinterpreted: %+v", got)
 	}
-	if got := NewLoadFollower().ApplyAuthorized(followBase(), -2, false, true, false, &floor, true, followLimits(), valid); got.Active || got.Kw != -2 {
+	if got := NewLoadFollower().ApplyAuthorized(followBase(), -2, false, true, false, false, &floor, true, followLimits(), valid); got.Active || got.Kw != -2 {
 		t.Fatalf("planned sale/discharge must not be reinterpreted: %+v", got)
 	}
-	if got := NewLoadFollower().ApplyAuthorized(followBase(), 0, true, true, false, &floor, true, followLimits(), valid); got.Active || got.Kw != 0 {
+	if got := NewLoadFollower().ApplyAuthorized(followBase(), 0, true, true, false, false, &floor, true, followLimits(), valid); got.Active || got.Kw != 0 {
 		t.Fatalf("conflicting old/new duties must fail closed: %+v", got)
 	}
 }
@@ -528,7 +531,7 @@ func TestDeficitCoverStartsTheDischargeFromAnIdleCommand(t *testing.T) {
 	// 92 % storage, PV 1.3 kW, house 2.7 kW, plan 0 - the reported case.
 	r := Reading{SocPct: 92, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: Unknown()}
 	got := NewLoadFollower().ApplyAuthorized(
-		followBase(), 0, false, false, true, deficitCoverFloor(), true, followLimits(), r)
+		followBase(), 0, false, false, true, false, deficitCoverFloor(), true, followLimits(), r)
 	if !got.Active || got.Direction != FollowDeepen || got.Path != "deficit_cover" {
 		t.Fatalf("idle command: %+v, want a named deepen", got)
 	}
@@ -542,7 +545,7 @@ func TestDeficitCoverStartsTheDischargeFromAnIdleCommand(t *testing.T) {
 
 func TestDeficitCoverWidensAPartialPlannedDischargeToTheMeasuredHouse(t *testing.T) {
 	got := NewLoadFollower().ApplyAuthorized(
-		followBase(), -4.332, false, false, true, deficitCoverFloor(), true,
+		followBase(), -4.332, false, false, true, false, deficitCoverFloor(), true,
 		followLimits(), pilstingNight())
 	if !got.Active || got.Direction != FollowDeepen || got.Path != "deficit_cover" {
 		t.Fatalf("partial discharge: %+v, want a named deepen", got)
@@ -557,14 +560,14 @@ func TestDeficitCoverNeverLimitsADischargeThatOvershootsTheHouse(t *testing.T) {
 	// would reduce this to -1.4; the local rule must not.
 	r := Reading{SocPct: 92, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: Unknown()}
 	got := NewLoadFollower().ApplyAuthorized(
-		followBase(), -27, false, false, true, deficitCoverFloor(), true, followLimits(), r)
+		followBase(), -27, false, false, true, false, deficitCoverFloor(), true, followLimits(), r)
 	if got.Active || got.Kw != -27 {
 		t.Fatalf("planned sale: %+v, want it untouched", got)
 	}
 	// The cloud duty on the SAME numbers is the contrast that makes this
 	// non-vacuous: it exists precisely to limit such an overshoot.
 	cloud := NewLoadFollower().ApplyAuthorized(
-		followBase(), -27, true, false, false, deficitCoverFloor(), true, followLimits(), r)
+		followBase(), -27, true, false, false, false, deficitCoverFloor(), true, followLimits(), r)
 	if !cloud.Active || cloud.Direction != FollowReduce {
 		t.Fatalf("the cloud duty must still limit the same command: %+v", cloud)
 	}
@@ -586,7 +589,7 @@ func TestDeficitCoverRefusesWithoutTheFullFactSet(t *testing.T) {
 	}
 	for _, tc := range cases {
 		got := NewLoadFollower().ApplyAuthorized(
-			followBase(), 0, false, false, true, tc.floor, tc.fresh, followLimits(), tc.read)
+			followBase(), 0, false, false, true, false, tc.floor, tc.fresh, followLimits(), tc.read)
 		if got.Active || got.Kw != 0 {
 			t.Fatalf("%s: %+v, want the plan value untouched", tc.name, got)
 		}
@@ -596,7 +599,7 @@ func TestDeficitCoverRefusesWithoutTheFullFactSet(t *testing.T) {
 func TestDeficitCoverNeverFlipsAPlannedChargeIntoADischarge(t *testing.T) {
 	r := Reading{SocPct: 60, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: Unknown()}
 	got := NewLoadFollower().ApplyAuthorized(
-		followBase(), 5, false, false, true, deficitCoverFloor(), true, followLimits(), r)
+		followBase(), 5, false, false, true, false, deficitCoverFloor(), true, followLimits(), r)
 	if got.Active || got.Kw != 5 {
 		t.Fatalf("planned charge: %+v, want it untouched", got)
 	}
@@ -607,8 +610,191 @@ func TestDeficitCoverStopsAtTheRatedDischargeAndTheSocFloor(t *testing.T) {
 	l.MaxDischargeKw = 3
 	r := Reading{SocPct: 92, PvKw: 0, LoadKw: 20, GridLimitKw: Unknown()}
 	got := NewLoadFollower().ApplyAuthorized(
-		followBase(), 0, false, false, true, deficitCoverFloor(), true, l, r)
+		followBase(), 0, false, false, true, false, deficitCoverFloor(), true, l, r)
 	if !got.Active || got.Kw != -3 {
 		t.Fatalf("rated band: %+v, want -3 kW", got)
+	}
+}
+
+// ---- Netz-null-Reduzieren (2026-09-08) -------------------------------------
+//
+// The REDUCE-only right and its exact reach, proven against the SHARED vectors
+// docs/contracts/v2/load-follow-vectors.json - the same file the cloud twin
+// (services/optimization/tests/test_load_follow.py) reads for the EMISSION side.
+// Numbers from the night of 04./05.09.2026 at Pilsting/Herzogau.
+
+// followVectors is the parsed shared vector file. Read BY PATH on purpose:
+// moving it must break both twins, not silently skip one.
+type followVectors struct {
+	Ausfuehrung []struct {
+		Name              string  `json:"name"`
+		Why               string  `json:"why"`
+		Kw                float64 `json:"kw"`
+		LoadKw            float64 `json:"load_kw"`
+		PvKw              float64 `json:"pv_kw"`
+		SocPct            float64 `json:"soc_pct"`
+		FloorSocPct       float64 `json:"floor_soc_pct"`
+		MeasurementsFresh bool    `json:"measurements_fresh"`
+		CoverLoad         bool    `json:"cover_load"`
+		LimitToLoad       bool    `json:"limit_to_load"`
+		DeficitCover      bool    `json:"deficit_cover"`
+		ErwartetKw        float64 `json:"erwartet_kw"`
+		ErwartetRichtung  *string `json:"erwartet_richtung"`
+		ErwartetPfad      string  `json:"erwartet_pfad"`
+	} `json:"ausfuehrung"`
+}
+
+func loadFollowVectors(t *testing.T) followVectors {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "..", "docs", "contracts", "v2",
+		"load-follow-vectors.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("shared vectors: %v", err)
+	}
+	var v followVectors
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatalf("shared vectors: %v", err)
+	}
+	if len(v.Ausfuehrung) == 0 {
+		t.Fatal("the shared vectors carry no execution cases")
+	}
+	return v
+}
+
+// THE twin test: every shared execution vector run through the REAL guard.
+func TestTheSharedLoadFollowVectorsHold(t *testing.T) {
+	for _, tc := range loadFollowVectors(t).Ausfuehrung {
+		t.Run(tc.Name, func(t *testing.T) {
+			floor := tc.FloorSocPct
+			r := Reading{
+				SocPct: tc.SocPct, PvKw: tc.PvKw, LoadKw: tc.LoadKw,
+				GridLimitKw: Unknown(),
+			}
+			got := NewLoadFollower().ApplyAuthorized(
+				followBase(), tc.Kw, tc.CoverLoad, false, tc.DeficitCover,
+				tc.LimitToLoad, &floor, tc.MeasurementsFresh, followLimits(), r)
+			if math.Abs(got.Kw-tc.ErwartetKw) > 1e-9 {
+				t.Fatalf("%s: setpoint = %v, want %v (%s)",
+					tc.Name, got.Kw, tc.ErwartetKw, tc.Why)
+			}
+			wantDir := ""
+			if tc.ErwartetRichtung != nil {
+				wantDir = *tc.ErwartetRichtung
+			}
+			if got.Direction != wantDir {
+				t.Fatalf("%s: direction = %q, want %q", tc.Name, got.Direction, wantDir)
+			}
+			if got.Path != tc.ErwartetPfad {
+				t.Fatalf("%s: path = %q, want %q", tc.Name, got.Path, tc.ErwartetPfad)
+			}
+			if got.Active != (wantDir != "") {
+				t.Fatalf("%s: active = %v, want %v", tc.Name, got.Active, wantDir != "")
+			}
+		})
+	}
+}
+
+// THE money case as a standalone property (the vector above is the table, this
+// is the sentence): the economic duty is OFF - lambda has risen past the fixed
+// 25 ct import - and the box may still stop giving the surplus away.
+func TestTheReduceRightBitesWhereTheEconomicDutyIsSilent(t *testing.T) {
+	floor := 5.0
+	r := Reading{SocPct: 41, PvKw: 0, LoadKw: 4.35, GridLimitKw: Unknown()}
+	got := NewLoadFollower().ApplyAuthorized(
+		followBase(), -6.06, false, false, true, true, &floor, true, followLimits(), r)
+	if !got.Active || got.Direction != FollowReduce || got.Path != "limit" {
+		t.Fatalf("night leak: %+v, want a named limitation", got)
+	}
+	if math.Abs(got.Kw+4.35) > 1e-9 {
+		t.Fatalf("setpoint = %v, want the measured deficit -4.35 (grid 0)", got.Kw)
+	}
+	if math.Abs(got.DeficitKw-4.35) > 1e-9 {
+		t.Fatalf("deficit = %v, want 4.35 (the card names the measurement)", got.DeficitKw)
+	}
+	if got.CommandedKw != -6.06 {
+		t.Fatalf("commanded = %v, want the pre-correction -6.06", got.CommandedKw)
+	}
+	// The SAME numbers without the right are the shipped leak: 1.71 kW exported.
+	leak := NewLoadFollower().ApplyAuthorized(
+		followBase(), -6.06, false, false, true, false, &floor, true, followLimits(), r)
+	if leak.Active || leak.Kw != -6.06 {
+		t.Fatalf("without the right the plan value must stand: %+v", leak)
+	}
+}
+
+// The right is REDUCE-ONLY: it may never spend stored energy, whatever the
+// house does. Only the (economic or trust) deepen half may.
+func TestTheReduceRightNeverDeepensOnItsOwn(t *testing.T) {
+	floor := 5.0
+	r := Reading{SocPct: 41, PvKw: 0, LoadKw: 7.12, GridLimitKw: Unknown()}
+	alone := NewLoadFollower().ApplyAuthorized(
+		followBase(), -4.30, false, false, false, true, &floor, true, followLimits(), r)
+	if alone.Active || alone.Kw != -4.30 {
+		t.Fatalf("limit right alone: %+v, want the plan value untouched", alone)
+	}
+	// With the local trust rule alongside it, the SAME slot may deepen - and the
+	// reported path names THAT authority, not the one that stayed idle.
+	both := NewLoadFollower().ApplyAuthorized(
+		followBase(), -4.30, false, false, true, true, &floor, true, followLimits(), r)
+	if !both.Active || both.Direction != FollowDeepen || both.Path != "deficit_cover" {
+		t.Fatalf("limit + deficit cover: %+v, want a deepen named deficit_cover", both)
+	}
+	if math.Abs(both.Kw+7.12) > 1e-9 {
+		t.Fatalf("setpoint = %v, want the measured deficit -7.12", both.Kw)
+	}
+}
+
+// The economic duty stays the more capable one: where it is granted it keeps
+// BOTH halves and its own name, even when the reduce right rides along (the
+// cloud emits it as a superset on exactly those slots).
+func TestTheEconomicDutyKeepsItsNameWhenTheReduceRightRidesAlong(t *testing.T) {
+	floor := 5.0
+	r := Reading{SocPct: 41, PvKw: 0, LoadKw: 4.35, GridLimitKw: Unknown()}
+	got := NewLoadFollower().ApplyAuthorized(
+		followBase(), -6.06, true, false, false, true, &floor, true, followLimits(), r)
+	if !got.Active || got.Direction != FollowReduce || got.Path != "follow" {
+		t.Fatalf("both grants: %+v, want the established follow path", got)
+	}
+}
+
+// The reduce right is held to the SAME fact set as every other additive
+// authorization - a box that cannot see the house does not regulate against it.
+func TestTheReduceRightRefusesWithoutTheFullFactSet(t *testing.T) {
+	r := Reading{SocPct: 41, PvKw: 0, LoadKw: 4.35, GridLimitKw: Unknown()}
+	blind := Reading{SocPct: 41, PvKw: Unknown(), LoadKw: 4.35, GridLimitKw: Unknown()}
+	atFloor := Reading{SocPct: 5, PvKw: 0, LoadKw: 4.35, GridLimitKw: Unknown()}
+	floor := 5.0
+	cases := []struct {
+		name  string
+		fresh bool
+		floor *float64
+		read  Reading
+	}{
+		{"stale measurements", false, &floor, r},
+		{"no reserve stack", true, nil, r},
+		{"unknown PV", true, &floor, blind},
+		{"unknown SoC", true, &floor, Reading{SocPct: Unknown(), PvKw: 0, LoadKw: 4.35, GridLimitKw: Unknown()}},
+		{"at the reserve floor", true, &floor, atFloor},
+	}
+	for _, tc := range cases {
+		got := NewLoadFollower().ApplyAuthorized(
+			followBase(), -6.06, false, false, false, true, tc.floor, tc.fresh,
+			followLimits(), tc.read)
+		if got.Active || got.Kw != -6.06 {
+			t.Fatalf("%s: %+v, want the plan value untouched", tc.name, got)
+		}
+	}
+}
+
+// A limitation stops at a STOPPED discharge - never at a charge, whatever the
+// PV does. The floor of the reduce half is zero, in every authorization.
+func TestTheReduceRightStopsAtZeroDischarge(t *testing.T) {
+	floor := 5.0
+	r := Reading{SocPct: 41, PvKw: 6.0, LoadKw: 2.0, GridLimitKw: Unknown()}
+	got := NewLoadFollower().ApplyAuthorized(
+		followBase(), -6.06, false, false, false, true, &floor, true, followLimits(), r)
+	if !got.Active || got.Direction != FollowReduce || got.Kw != 0 {
+		t.Fatalf("PV covers the house: %+v, want the discharge stopped at 0", got)
 	}
 }

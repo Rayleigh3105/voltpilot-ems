@@ -706,6 +706,49 @@ func TestCommittedContractFixturesParse(t *testing.T) {
 		}
 	}
 
+	// The REDUCE-ONLY fixture (the Herzogau night shape, 2026-09-08): a slot
+	// that carries ONLY the limit right, one that carries it ALONGSIDE the
+	// economic duty (the cloud emits it as a superset), a planned sale and a
+	// planned charge that carry neither.
+	limiting, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.valid.limit-discharge.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nightRx2 := time.Date(2026, 9, 4, 21, 16, 0, 0, time.UTC)
+	dp, err := Parse(limiting, nightRx2)
+	if err != nil {
+		t.Fatalf("limit-discharge fixture: %v", err)
+	}
+	if !dp.ActiveLimitDischargeToLoad(nightRx2) {
+		t.Fatal("the limit-discharge fixture's active slot must carry the right")
+	}
+	// Its FIRST slot deliberately carries the right WITHOUT the economic duty -
+	// that combination IS the fix (lambda above the fixed import price).
+	if dp.ActiveCoverLoadFromBattery(nightRx2) {
+		t.Fatal("the fixture's first slot must carry no economic duty")
+	}
+	if kw, _, ok := dp.ActiveSetpoint(nightRx2); !ok || kw != -6.06 {
+		t.Fatalf("limit-discharge fixture setpoint = %v ok=%v, want -6.06", kw, ok)
+	}
+	// The second slot carries BOTH - the superset case an edge must handle.
+	if !dp.Slots[1].LimitDischargeToLoad || !dp.Slots[1].CoverLoadFromBattery {
+		t.Fatal("the fixture's second slot must carry both grants")
+	}
+	// The sale and the charge carry neither.
+	for _, i := range []int{2, 3} {
+		if dp.Slots[i].LimitDischargeToLoad || dp.Slots[i].CoverLoadFromBattery {
+			t.Fatalf("limit-discharge fixture slot %d must carry no grant", i)
+		}
+	}
+	// ...and no OTHER fixture carries the new right: absent means absent.
+	for name, other := range map[string]*Plan{"plain": pp, "surplus-only": tp, "cover-load": cp, "absorb": ap} {
+		for i := range other.Slots {
+			if other.Slots[i].LimitDischargeToLoad {
+				t.Fatalf("%s fixture slot %d must carry no limit right", name, i)
+			}
+		}
+	}
+
 	// The FEED-IN LIMIT fixture (the Pilsting shape: a 30 kW connection-point
 	// limit alongside an ordinary plan, one of whose slots also curtails).
 	limited, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.valid.export-limit.json"))

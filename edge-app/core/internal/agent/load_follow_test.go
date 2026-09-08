@@ -692,3 +692,126 @@ func TestThePeakReserveBoundsTheLoadFollowing(t *testing.T) {
 		t.Fatalf("setpoint = %v, want the plan's -4.332 (the reserve is protected)", snap.SetpointKw)
 	}
 }
+
+// ---- Netz-null-Reduzieren (2026-09-08) -------------------------------------
+//
+// The REDUCE-only right end to end: the committed contract fixture (whose first
+// slot carries limit_discharge_to_load WITHOUT the economic duty - which is the
+// whole point, that combination is what a scarce battery on a fixed tariff
+// produces) must reach Layer 1 as the MEASURED house, and the heartbeat must
+// name it "limit" / "reduce" so the Befehls-Verlauf can say what happened.
+
+func TestTheCommittedLimitFixtureStopsTheNightLeak(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(
+		"..", "..", "..", "..", "docs", "contracts", "examples",
+		"mqtt-schedule.valid.limit-discharge.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rx := time.Date(2026, 9, 4, 21, 16, 0, 0, time.UTC)
+	p, err := plan.Parse(raw, rx)
+	if err != nil {
+		t.Fatalf("limit-discharge fixture: %v", err)
+	}
+
+	a := followAgent(t)
+	a.mu.Lock()
+	a.currentPlan = p
+	// The measured night: 4.35 kW house, no PV, storage at 41 % - the plan's
+	// -6.06 kW carries the nowcast reserve, so 1.71 kW would leave the site.
+	a.lastReading = guards.Reading{SocPct: 41, PvKw: 0, LoadKw: 4.35, GridLimitKw: guards.Unknown()}
+	a.lastReadingAt = time.Date(2026, 9, 4, 21, 20, 0, 0, time.UTC)
+	a.mu.Unlock()
+
+	a.applySetpoint(time.Date(2026, 9, 4, 21, 20, 0, 0, time.UTC))
+
+	snap := a.State.Get()
+	if snap.SetpointKw != -4.35 {
+		t.Fatalf("setpoint = %v, want the measured deficit -4.35 (grid 0)", snap.SetpointKw)
+	}
+	if snap.Follow == nil || snap.Follow.Direction != guards.FollowReduce {
+		t.Fatalf("follow = %+v, want the limiting direction named", snap.Follow)
+	}
+	if snap.Follow.Path != execModeLimit {
+		t.Fatalf("follow.path = %q, want %q", snap.Follow.Path, execModeLimit)
+	}
+	if snap.Follow.PlannedKw != -6.06 {
+		t.Fatalf("follow.planned_kw = %v, want the fixture's -6.06", snap.Follow.PlannedKw)
+	}
+	// The heartbeat is what the Befehls-Verlauf (stream "batterie") reads: the
+	// path must arrive as its OWN word with the direction, never as a bare
+	// "follow" (which would claim the cloud priced this slot) and never dropped.
+	ex := executionSummary(snap)
+	if ex == nil || ex.Mode != execModeLimit || ex.Direction != guards.FollowReduce {
+		t.Fatalf("execution = %+v, want mode %q / direction reduce", ex, execModeLimit)
+	}
+	if ex.DeficitKw == nil || math.Abs(*ex.DeficitKw-4.35) > 1e-9 {
+		t.Fatalf("execution.deficit_kw = %v, want the measured 4.35", ex.DeficitKw)
+	}
+}
+
+// The same fixture slot when the house draws MORE than the plan commands: the
+// right is reduce-only, so nothing is spent. (The local deficit-cover rule may
+// still deepen; it is gated separately and needs its own live write gates.)
+func TestTheLimitRightNeverSpendsStoredEnergy(t *testing.T) {
+	now := time.Date(2026, 9, 4, 21, 20, 0, 0, time.UTC)
+	limit := true
+	floor := 5.0
+	p := &plan.Plan{
+		SlotMinutes:          15,
+		ReceivedAt:           now.Add(-time.Minute),
+		GeneratedAt:          now.Add(-time.Minute),
+		EffectiveFloorSocPct: &floor,
+		Slots: []plan.Slot{{
+			Start:                now.Add(-5 * time.Minute),
+			BatterySetpointKw:    -4.30,
+			LimitDischargeToLoad: limit,
+		}},
+	}
+	a := followAgent(t)
+	a.mu.Lock()
+	a.currentPlan = p
+	a.lastReading = guards.Reading{SocPct: 41, PvKw: 0, LoadKw: 7.12, GridLimitKw: guards.Unknown()}
+	a.lastReadingAt = now
+	a.mu.Unlock()
+
+	a.applySetpoint(now)
+
+	snap := a.State.Get()
+	if snap.SetpointKw != -4.30 {
+		t.Fatalf("setpoint = %v, want the plan's -4.30 (the right never deepens)", snap.SetpointKw)
+	}
+}
+
+// A plan WITHOUT the new field behaves exactly as the shipped build does - the
+// field is fail-open, so an older cloud changes nothing.
+func TestAPlanWithoutTheLimitFieldKeepsTheOldBehaviour(t *testing.T) {
+	now := time.Date(2026, 9, 4, 21, 20, 0, 0, time.UTC)
+	floor := 5.0
+	p := &plan.Plan{
+		SlotMinutes:          15,
+		ReceivedAt:           now.Add(-time.Minute),
+		GeneratedAt:          now.Add(-time.Minute),
+		EffectiveFloorSocPct: &floor,
+		Slots: []plan.Slot{{
+			Start:             now.Add(-5 * time.Minute),
+			BatterySetpointKw: -6.06,
+		}},
+	}
+	a := followAgent(t)
+	a.mu.Lock()
+	a.currentPlan = p
+	a.lastReading = guards.Reading{SocPct: 41, PvKw: 0, LoadKw: 4.35, GridLimitKw: guards.Unknown()}
+	a.lastReadingAt = now
+	a.mu.Unlock()
+
+	a.applySetpoint(now)
+
+	snap := a.State.Get()
+	if snap.SetpointKw != -6.06 {
+		t.Fatalf("setpoint = %v, want the plan's -6.06 (this IS the shipped leak)", snap.SetpointKw)
+	}
+	if snap.Follow != nil {
+		t.Fatalf("follow = %+v, want none without any grant", snap.Follow)
+	}
+}

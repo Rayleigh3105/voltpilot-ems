@@ -94,7 +94,7 @@ func TestASmallDeficitArmsTheRuleButNeverMovesTheSetpoint(t *testing.T) {
 		t.Fatal("a real 0.15 kW purchase arms the rule")
 	}
 	got := NewLoadFollower().ApplyAuthorized(
-		followBase(), 0, false, false, true, &floor, true, followLimits(), r)
+		followBase(), 0, false, false, true, false, &floor, true, followLimits(), r)
 	if got.Active || got.Kw != 0 {
 		t.Fatalf("below the follower engage margin nothing is written: %+v", got)
 	}

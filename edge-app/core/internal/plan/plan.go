@@ -70,6 +70,25 @@ type Slot struct {
 	// slot. It may start discharge from 0 kW, so execution additionally
 	// requires a fresh full measurement set and EffectiveFloorSocPct.
 	UnplannedLoadDischarge bool `json:"unplanned_load_discharge,omitempty"`
+	// LimitDischargeToLoad is the OPTIONAL REDUCE-ONLY right of the slot
+	// (2026-09-08, Netz-null-Reduzieren): true = the cloud plans a real
+	// DISCHARGE here AND a grid exchange of ~ 0, so the executor may LIMIT the
+	// commanded discharge down to the MEASURED deficit max(load - pv, 0) - never
+	// RAISE it, hard floor at zero discharge, never a charge.
+	//
+	// It is the half of CoverLoadFromBattery that needs NO price: limiting only
+	// ever keeps energy the plan itself values above the export in this slot.
+	// The cloud's economic verdict flips to false exactly when the battery gets
+	// scarce on a fixed-tariff site, and the box then fell back to deepen-only
+	// while the running slot's setpoint (carrying the nowcast reserve) exported
+	// 0,1-1,8 kW - 3,8 kWh per night at Pilsting/Herzogau (report
+	// vp-nachtreserve-konzept-k2 P1). DEEPENING stays bound to
+	// CoverLoadFromBattery / the local deficit-cover rule; this flag widens
+	// nothing but the REDUCE half.
+	//
+	// FAIL-OPEN exactly like its siblings: absent/false = no right to limit =
+	// byte-for-byte pre-feature behavior.
+	LimitDischargeToLoad bool `json:"limit_discharge_to_load,omitempty"`
 	// ChargeSurplusToBattery is the OPTIONAL in-slot SURPLUS-ABSORPTION duty of
 	// the slot (2026-08-02, the charge-side counterpart that RAISES): true = the
 	// cloud determined that STORING one more kWh beats SELLING it here
@@ -214,6 +233,7 @@ type wire struct {
 		ChargeFromSurplusOnly  *bool    `json:"charge_from_surplus_only"`
 		CoverLoadFromBattery   *bool    `json:"cover_load_from_battery"`
 		UnplannedLoadDischarge *bool    `json:"unplanned_load_discharge"`
+		LimitDischargeToLoad   *bool    `json:"limit_discharge_to_load"`
 		ChargeSurplusToBattery *bool    `json:"charge_surplus_to_battery"`
 	} `json:"slots"`
 }
@@ -308,6 +328,10 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		}
 		if s.UnplannedLoadDischarge != nil && *s.UnplannedLoadDischarge {
 			slot.UnplannedLoadDischarge = true
+		}
+		// ...and for the REDUCE-only right: only an EXPLICIT true carries it.
+		if s.LimitDischargeToLoad != nil && *s.LimitDischargeToLoad {
+			slot.LimitDischargeToLoad = true
 		}
 		// ...and for the charge-side counterpart that RAISES: only an EXPLICIT
 		// true carries the surplus-absorption duty.
@@ -408,6 +432,26 @@ func (p *Plan) ActiveCoverLoadFromBattery(now time.Time) bool {
 	for _, s := range p.Slots {
 		if !now.Before(s.Start) && now.Before(s.Start.Add(width)) {
 			return s.CoverLoadFromBattery
+		}
+	}
+	return false
+}
+
+// ActiveLimitDischargeToLoad reports whether the slot active at now carries the
+// REDUCE-only right (see Slot.LimitDischargeToLoad). It mirrors
+// ActiveCoverLoadFromBattery exactly - false when the plan is nil, STALE, or no
+// slot is active - and for the same reason: it is a per-slot fact about the
+// PLAN's own shape that cannot be extrapolated, and the stale-plan fallback
+// (guards.SelfConsumption = pv - load) already follows the measured load by
+// construction, so there is nothing left to protect there.
+func (p *Plan) ActiveLimitDischargeToLoad(now time.Time) bool {
+	if !p.Fresh(now) {
+		return false
+	}
+	width := time.Duration(p.SlotMinutes) * time.Minute
+	for _, s := range p.Slots {
+		if !now.Before(s.Start) && now.Before(s.Start.Add(width)) {
+			return s.LimitDischargeToLoad
 		}
 	}
 	return false

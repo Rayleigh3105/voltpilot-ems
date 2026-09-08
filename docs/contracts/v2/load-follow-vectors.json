@@ -1,0 +1,126 @@
+{
+  "$comment": "Die GETEILTEN Vektoren des Netz-null-Reduzierens (P1 des Nachtreserve-Berichts vp-nachtreserve-konzept-k2, 08.09.2026). ZWEI Zwillinge lesen diese Datei PER PFAD: Go edge-app/core/internal/guards/loadfollow_test.go faehrt den Block 'ausfuehrung' durch den ECHTEN Waechter guards.LoadFollower, Python services/optimization/tests/test_load_follow.py faehrt den Block 'emission' durch die ECHTE Regel voltpilot_optimization.slot_trim. Zusammen beweisen sie, dass die Cloud genau die Slots markiert, auf denen die Box das Recht dann auch braucht - das Muster von stur-speicher-vectors.json / topology-vectors.json / lan-host-vectors.json. Wer eine der beiden Seiten aendert, aendert BEIDE Seiten UND diese Datei zusammen.",
+
+  "$regel": "Der Waechter autorisiert die beiden HAELFTEN der Nachfuehrung GETRENNT: deepenAllowed = coverLoad || unplannedLoad || deficitCover, reduceAllowed = coverLoad || unplannedLoad || limitToLoad. VERTIEFEN gibt gespeicherte Energie aus und bleibt deshalb an ein wirtschaftliches Urteil (die Cloud) oder an die lokale Vertrauensregel gebunden; BEGRENZEN haelt nur Energie, die der Plan in einem Netz~0-Slot selbst hoeher bewertet als den Export (sonst haette er dort verkauft) - es ist nie unwirtschaftlich und braucht deshalb keinen Preis. Ziel des Begrenzens ist das GEMESSENE Defizit max(load - pv, 0), Untergrenze 0 kW, nie ein Laden, nie eine Richtungsumkehr.",
+
+  "$einheiten": "kw ist der bereits guard-begrenzte Sollwert des Slots (negativ = Entladung, positiv = Ladung), load_kw/pv_kw sind die gemessenen Leistungen am Netzverknuepfungspunkt, soc_pct der Ladestand, floor_soc_pct der volle Reserve-Boden aus dem Plan. erwartet_kw ist der Sollwert NACH dem Waechter; erwartet_richtung ist 'deepen', 'reduce' oder null (keine Korrektur), erwartet_pfad benennt die Autoritaet, die TATSAECHLICH gehandelt hat.",
+
+  "$herkunft": "Zahlen aus der Nacht 04./05.09.2026, Anlage Pilsting/Herzogau (Bezug 25 ct fest, Exportwert Spot). Box-Regel: 'Sollwert negativ = Entladung'.",
+
+  "ausfuehrung": [
+    {
+      "name": "23-15-lambda-hoch-das-leck-von-heute",
+      "why": "DER Geldfall. Der Plan haelt -6,06 kW gegen ein 4,35-kW-Haus, weil sein Sollwert die Nowcast-Reserve traegt. Das Flag cover_load_from_battery ist AUS (25,0 ct < lambda 23,5/0,959 + 0,5 + 0,5), also durfte die Box bisher nur vertiefen - und 1,71 kW gingen zu 6-12 ct ins Netz. Mit dem Reduzieren-Recht landet der Slot auf dem gemessenen Defizit, Netz 0.",
+      "kw": -6.06, "load_kw": 4.35, "pv_kw": 0.0, "soc_pct": 41.0, "floor_soc_pct": 5.0,
+      "measurements_fresh": true,
+      "cover_load": false, "limit_to_load": true, "deficit_cover": true,
+      "erwartet_kw": -4.35, "erwartet_richtung": "reduce", "erwartet_pfad": "limit"
+    },
+    {
+      "name": "dasselbe-mit-dem-alten-flagbild",
+      "why": "Die AUSGELIEFERTE Box auf denselben Zahlen: ohne das neue Recht bleibt nur die Vertiefen-Haelfte der lokalen Vertrauensregel, und die greift hier nicht (der Plan entlaedt schon tiefer als das Haus). Der Sollwert bleibt -6,06 - das ist das Leck, nicht ein Rundungsfehler.",
+      "kw": -6.06, "load_kw": 4.35, "pv_kw": 0.0, "soc_pct": 41.0, "floor_soc_pct": 5.0,
+      "measurements_fresh": true,
+      "cover_load": false, "limit_to_load": false, "deficit_cover": true,
+      "erwartet_kw": -6.06, "erwartet_richtung": null, "erwartet_pfad": ""
+    },
+    {
+      "name": "haus-ueber-plan-beide-rechte",
+      "why": "Die andere Richtung auf demselben Slot: das Haus zieht mehr als der Plan kommandiert. Vertieft wird ueber die lokale Vertrauensregel (deficitCover), nicht ueber das Reduzieren-Recht - und der gemeldete Pfad sagt genau das, damit der Befehls-Verlauf keine Ursache behauptet, die nicht gehandelt hat.",
+      "kw": -4.30, "load_kw": 7.12, "pv_kw": 0.0, "soc_pct": 41.0, "floor_soc_pct": 5.0,
+      "measurements_fresh": true,
+      "cover_load": false, "limit_to_load": true, "deficit_cover": true,
+      "erwartet_kw": -7.12, "erwartet_richtung": "deepen", "erwartet_pfad": "deficit_cover"
+    },
+    {
+      "name": "haus-ueber-plan-nur-das-reduzieren-recht",
+      "why": "DIE Grenze des neuen Rechts: es ist REIN reduzierend. Ohne deficitCover darf derselbe Slot nicht vertiefen - gespeicherte Energie auszugeben bleibt an ein Urteil gebunden, das dieses Flag nicht faellt.",
+      "kw": -4.30, "load_kw": 7.12, "pv_kw": 0.0, "soc_pct": 41.0, "floor_soc_pct": 5.0,
+      "measurements_fresh": true,
+      "cover_load": false, "limit_to_load": true, "deficit_cover": false,
+      "erwartet_kw": -4.30, "erwartet_richtung": null, "erwartet_pfad": ""
+    },
+    {
+      "name": "geplanter-verkauf-19-45",
+      "why": "Der Abendverkauf: 30 kW hinaus gegen ein 7,10-kW-Haus. Die Cloud markiert einen solchen Slot NIE (sein grid_kw liegt weit ausserhalb des Netz~0-Totbands, siehe Emissions-Vektor 'verkaufs-slot'), also kommt das Recht hier gar nicht an - und der Verkauf bleibt unangetastet.",
+      "kw": -30.0, "load_kw": 7.10, "pv_kw": 0.14, "soc_pct": 78.0, "floor_soc_pct": 5.0,
+      "measurements_fresh": true,
+      "cover_load": false, "limit_to_load": false, "deficit_cover": true,
+      "erwartet_kw": -30.0, "erwartet_richtung": null, "erwartet_pfad": ""
+    },
+    {
+      "name": "geplantes-laden-wird-nie-angefasst",
+      "why": "Eine kommandierte LADUNG ist tabu: sie zu beschneiden waere eine Richtungsumkehr, und die darf ein wirtschaftlicher Waechter nicht vornehmen. Verteidigung in der Tiefe - die Cloud markiert einen Ladeslot ohnehin nicht (Emissions-Vektor 'lade-slot').",
+      "kw": 8.0, "load_kw": 3.0, "pv_kw": 12.0, "soc_pct": 41.0, "floor_soc_pct": 5.0,
+      "measurements_fresh": true,
+      "cover_load": false, "limit_to_load": true, "deficit_cover": true,
+      "erwartet_kw": 8.0, "erwartet_richtung": null, "erwartet_pfad": ""
+    },
+    {
+      "name": "messung-veraltet",
+      "why": "Never regulate blind: ohne frische Messung regelt der Waechter in KEINE Richtung. Die Zahlen sind die des Geldfalls, nur die Frische fehlt.",
+      "kw": -6.06, "load_kw": 4.35, "pv_kw": 0.0, "soc_pct": 41.0, "floor_soc_pct": 5.0,
+      "measurements_fresh": false,
+      "cover_load": false, "limit_to_load": true, "deficit_cover": true,
+      "erwartet_kw": -6.06, "erwartet_richtung": null, "erwartet_pfad": ""
+    }
+  ],
+
+  "$emissions_parameter": {
+    "$why": "Die Marge und der Verschleiss sind Plattform-Vorgaben (config.SLOT_TRIM_MARGIN_CT_PER_KWH bzw. die halbe Zyklus-Verschleisskosten je Richtung); der Wirkungsgrad ist der Einweg-Wirkungsgrad des 92-%-Umlaufs der Anlage. Sie stehen hier, damit der Zwilling die Vektoren OHNE eine zweite Wahrheit rechnen kann.",
+    "one_way_efficiency": 0.959,
+    "wear_ct_per_kwh_each_way": 0.5,
+    "margin_ct_per_kwh": 0.5
+  },
+
+  "emission": [
+    {
+      "name": "netz-null-slot-lambda-hoch",
+      "why": "Der Slot aus dem Geldfall oben, wie der Optimierer ihn sieht: eine echte Entladung, Netzaustausch ~ 0, aber lambda/eta + Verschleiss + Marge liegt UEBER dem Festpreis-Bezug von 25 ct. Das wirtschaftliche Flag schweigt (und darf das), das Reduzieren-Recht nicht.",
+      "battery_kw": -6.06, "grid_kw": 0.0,
+      "import_price_ct_kwh": 25.0, "stored_value_ct_kwh": 23.5,
+      "erwartet_cover_load_from_battery": false,
+      "erwartet_limit_discharge_to_load": true
+    },
+    {
+      "name": "netz-null-slot-lambda-niedrig",
+      "why": "Derselbe Slot in einer billigen Nacht: jetzt sagen BEIDE ja. Der Beweis, dass das neue Feld eine OBERMENGE des alten ist und keine Ablehnung erbt.",
+      "battery_kw": -6.06, "grid_kw": 0.0,
+      "import_price_ct_kwh": 25.0, "stored_value_ct_kwh": 14.0,
+      "erwartet_cover_load_from_battery": true,
+      "erwartet_limit_discharge_to_load": true
+    },
+    {
+      "name": "verkaufs-slot",
+      "why": "Der Abendverkauf: der Plan speist bewusst 23 kW ein. Beide Flags bleiben aus - die Box kann eine gewollte Einspeisung nicht von einem Prognose-Ueberschuss unterscheiden, also faellt die Unterscheidung hier, wo beide Zahlen bekannt sind.",
+      "battery_kw": -30.0, "grid_kw": -23.0,
+      "import_price_ct_kwh": 25.0, "stored_value_ct_kwh": 14.0,
+      "erwartet_cover_load_from_battery": false,
+      "erwartet_limit_discharge_to_load": false
+    },
+    {
+      "name": "lade-slot",
+      "why": "Ein Slot, der laedt: keine der beiden Erlaubnisse betrifft eine Ladung, also bleiben beide aus.",
+      "battery_kw": 8.0, "grid_kw": 0.0,
+      "import_price_ct_kwh": 25.0, "stored_value_ct_kwh": 14.0,
+      "erwartet_cover_load_from_battery": false,
+      "erwartet_limit_discharge_to_load": false
+    },
+    {
+      "name": "guenstige-stunde-mit-geplantem-bezug",
+      "why": "Ein bewusster Billig-Einkauf (Netzbezug im Plan) ist auf beiden Seiten ausgeschlossen - die Box darf ihn nicht rueckgaengig machen. Hier zusaetzlich mit einer Entladung, damit die Ausschluss-Ursache eindeutig das Netz-Totband ist.",
+      "battery_kw": -2.0, "grid_kw": 3.5,
+      "import_price_ct_kwh": 25.0, "stored_value_ct_kwh": 14.0,
+      "erwartet_cover_load_from_battery": false,
+      "erwartet_limit_discharge_to_load": false
+    },
+    {
+      "name": "ruhender-slot",
+      "why": "Ein Slot ohne kommandierte Entladung (Totband 0,05 kW): es gibt nichts zu begrenzen, also markiert die Cloud auch nichts.",
+      "battery_kw": -0.02, "grid_kw": 0.0,
+      "import_price_ct_kwh": 25.0, "stored_value_ct_kwh": 14.0,
+      "erwartet_cover_load_from_battery": false,
+      "erwartet_limit_discharge_to_load": false
+    }
+  ]
+}

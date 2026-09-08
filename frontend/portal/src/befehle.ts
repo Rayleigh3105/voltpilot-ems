@@ -166,6 +166,7 @@ const EREIGNIS: Record<string, { satz: string; ton: BefehlTon }> = {
 const MODUS: Record<string, string> = {
   plan: 'Fahrplan',
   follow: 'nachgeführt nach dem gemessenen Verbrauch',
+  limit: 'begrenzt auf den gemessenen Verbrauch',
   trim: 'begrenzt auf den gemessenen Solarüberschuss',
   absorb: 'angehoben auf den gemessenen Solarüberschuss',
   fallback: 'Eigenverbrauchs-Sicherung',

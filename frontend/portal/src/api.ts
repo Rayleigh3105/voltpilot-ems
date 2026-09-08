@@ -1984,6 +1984,10 @@ export interface EdgeVersion {
  *
  *   plan     - der Plan-Wert selbst, unkorrigiert
  *   follow   - Nachführung: die Entladung folgt dem GEMESSENEN Hausbedarf
+ *   limit    - reine BEGRENZUNG: die Entladung wurde auf den gemessenen
+ *              Hausbedarf gedeckelt, ohne dass die Cloud den Slot für
+ *              wirtschaftlich erklärt hat (`limit_discharge_to_load`); die
+ *              Richtung ist immer `reduce`
  *   trim     - preisbewusste Begrenzung: die Ladung hält beim gemessenen
  *              PV-Überschuss
  *   fallback - kein aktueller Fahrplan: die eingebaute Eigenverbrauchs-Regel
@@ -1991,6 +1995,7 @@ export interface EdgeVersion {
 export type ExecutionMode =
   | 'plan'
   | 'follow'
+  | 'limit'
   | 'trim'
   | 'absorb'
   | 'fallback'

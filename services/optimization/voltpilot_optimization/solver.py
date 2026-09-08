@@ -671,6 +671,7 @@ def _with_explanation(
     try:
         from voltpilot_optimization.config import (
             explain_enabled,
+            limit_discharge_enabled,
             load_follow_enabled,
             slot_trim_enabled,
             surplus_charge_enabled,
@@ -686,6 +687,7 @@ def _with_explanation(
         follow = load_follow_enabled()
         absorb = surplus_charge_enabled()
         unforeseen = unplanned_load_discharge_enabled()
+        limiting = limit_discharge_enabled()
         slots = [
             replace(
                 slot,
@@ -713,6 +715,16 @@ def _with_explanation(
                     _unplanned_load_discharge(inp, t, slot, why)
                     if unforeseen
                     else None
+                ),
+                # The REDUCE-only right, from the plan's own shape alone (no
+                # lambda, no price): on a discharging "Netz = 0" slot the edge
+                # may LIMIT the discharge to the measured deficit even where the
+                # economic duty above is silent - which on a fixed-tariff site
+                # is exactly when the battery gets scarce. Its own kill-switch
+                # because it widens the edge's authority without an economic
+                # test.
+                limit_discharge_to_load=(
+                    _limit_discharge_to_load(inp, t, slot, why) if limiting else None
                 ),
                 # The CHARGE-side counterpart that RAISES (2026-08-02): storing
                 # one more kWh beats selling it here, so the edge may charge the
@@ -806,6 +818,31 @@ def _cover_load_from_battery(inp: OptimizationInput, t: int, slot, why) -> bool:
         stored_value_ct_kwh=why.stored_value_ct_kwh,
         wear_ct_per_kwh_each_way=p.wear_cost_ct_per_kwh / 2.0,
         one_way_efficiency=p.one_way_efficiency,
+    )
+
+
+def _limit_discharge_to_load(inp: OptimizationInput, t: int, slot, why) -> bool:
+    """The slot's REDUCE-only right (the ``limit_discharge_to_load`` contract
+    flag), from the plan's own numbers ALONE.
+
+    Deliberately the only one of the four per-slot duties that reads NEITHER a
+    price NOR the why-record's lambda: limiting a discharge to the measured
+    house can never be uneconomic - it keeps energy the plan itself values above
+    the export in a "Netz = 0" slot, otherwise the plan would have sold it here
+    and the grid condition would refuse the flag. ``inp``/``t``/``why`` are kept
+    in the signature so this helper reads and composes exactly like its three
+    siblings; see :func:`voltpilot_optimization.slot_trim.limit_discharge_to_load`
+    for the full argument.
+    """
+    from voltpilot_optimization.slot_trim import limit_discharge_to_load
+
+    return limit_discharge_to_load(
+        battery_kw=slot.battery_kw,
+        # The SOLVED grid power of the slot - the same both-sided exclusion the
+        # economic sibling makes, and for the same reason: a planned EXPORT is a
+        # deliberate sale the edge would otherwise cut back to zero grid, a
+        # planned IMPORT a deliberate cheap-hour purchase.
+        grid_kw=slot.grid_kw,
     )
 
 

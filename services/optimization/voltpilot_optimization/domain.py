@@ -749,6 +749,22 @@ class PlanSlot:
     # established cover_load_from_battery duty continues to mean "adjust an
     # already-planned discharge" and is not silently widened to start one.
     unplanned_load_discharge: bool | None = None
+    # ---- Netz-null-Reduzieren (2026-09-08) -----------------------------------
+    # True = this slot plans a real DISCHARGE and a grid exchange of ~ 0, so the
+    # edge may LIMIT the commanded discharge down to the MEASURED deficit
+    # max(load - pv, 0) - never raise it, floor at 0 kW, never a charge. The
+    # REDUCE half of the load following, deliberately WITHOUT the economic test
+    # cover_load_from_battery carries: on a fixed-tariff site that test flips to
+    # false exactly when the battery gets scarce (lambda above the import
+    # price), and the edge then exported the nowcast reserve of the running slot
+    # - 3,8 kWh per night at Pilsting/Herzogau (report
+    # vp-nachtreserve-konzept-k2 P1). Limiting only ever KEEPS energy the plan
+    # itself values above the export here, so it needs no price;
+    # see :mod:`voltpilot_optimization.slot_trim`. Reaches the MQTT payload as
+    # the optional per-slot ``limit_discharge_to_load``; None/False =
+    # pre-feature behavior. NOT persisted (like its siblings) - it is a pure
+    # function of the persisted battery_kw/grid_kw of the same row.
+    limit_discharge_to_load: bool | None = None
     # ---- In-slot surplus absorption (2026-08-02) ------------------------------
     # True = storing one more kWh beats selling it in THIS slot (eta*lambda -
     # wear above the slot's export value), so the edge may RAISE the commanded

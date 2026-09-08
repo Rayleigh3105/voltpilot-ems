@@ -47,6 +47,13 @@ would make a fixture invalid for the wrong reason):
   forecast-derived watt value whose blindness to the real surplus this flag
   exists to correct - and it would be the one place a payload could RAISE a
   charge past what the plan itself committed.
+- `mqtt-schedule.invalid.limit-discharge-not-boolean.json` - and once more for the
+  REDUCE-only right `limit_discharge_to_load`: it is a BOOLEAN permission ("you may
+  limit the commanded discharge to the MEASURED deficit in this slot"), never a kW
+  bound. A number there would read like a cloud-supplied discharge cap - i.e. a
+  SECOND setpoint next to `battery_setpoint_kw`, which the plan already carries -
+  and it would let a payload dictate a value the flag exists to take from the
+  MEASUREMENT instead of from the forecast.
 - `ota-release-manifest.invalid.tag-not-digest.json` - the artifact `ref` is a
   TAG (`:latest`) instead of a full `@sha256:` digest. A tag is not a pin: the
   whole at-rest/in-transit integrity of a release rests on the digest nailing

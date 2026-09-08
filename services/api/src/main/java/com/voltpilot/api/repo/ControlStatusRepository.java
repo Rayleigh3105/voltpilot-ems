@@ -34,9 +34,12 @@ public class ControlStatusRepository {
      *                  the general {@code deficit_cover}, the bounded
      *                  {@code high_soc_charge} (and its retired discharge
      *                  sibling {@code high_soc_follow}, which only a box on an
-     *                  older image still reports), and the separately certified
-     *                  {@code autonomous_discharge}.
-     * @param direction {@code deepen|reduce}, only for {@code follow}.
+     *                  older image still reports), the REDUCE-only
+     *                  {@code limit} (the cloud's unpriced
+     *                  {@code limit_discharge_to_load} right) and the separately
+     *                  certified {@code autonomous_discharge}.
+     * @param direction {@code deepen|reduce}, only for {@code follow} and
+     *                  {@code limit} (where it is always {@code reduce}).
      * @param plannedKw the setpoint BEFORE the correction.
      * @param targetKw  the MEASURED value the correction tracks (house deficit
      *                  for follower modes, PV surplus for {@code trim}/{@code absorb}/

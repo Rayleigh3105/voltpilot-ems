@@ -149,6 +149,27 @@ class ControlStatusListenerTest {
     }
 
     /**
+     * The REDUCE-only right (2026-09-08, Netz-null-Reduzieren) is its own word
+     * AND the second mode whose direction is stored: the Befehls-Verlauf builds
+     * its sentence from mode + direction, and "limit" without "reduce" would
+     * degrade to a generic "adjusted" - exactly the wording the separate word
+     * exists to replace.
+     */
+    @Test
+    void theReduceOnlyRightIsUnderstoodAndKeepsItsDirection() {
+        var ex = ingest("{" + BASE + ",\"execution\":{\"mode\":\"limit\"," +
+                "\"direction\":\"reduce\",\"planned_kw\":-6.06,\"deficit_kw\":4.35," +
+                "\"effective_floor_soc_pct\":5,\"measurements_fresh\":true}}", "schedule");
+
+        assertThat(ex.mode()).isEqualTo("limit");
+        assertThat(ex.direction()).isEqualTo("reduce");
+        assertThat(ex.plannedKw()).isEqualTo(-6.06);
+        // The target of a follower mode is the measured DEFICIT, never a surplus.
+        assertThat(ex.targetKw()).isEqualTo(4.35);
+        assertThat(ex.effectiveFloorSocPct()).isEqualTo(5);
+    }
+
+    /**
      * The charge-side trust floor (2026-08-29, Herzogau) is its own word too,
      * and its target is the measured SURPLUS - not a deficit. Without the word
      * the listener would DROP the whole execution block of a current box and

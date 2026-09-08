@@ -31,6 +31,17 @@ import java.time.Instant;
  * <li>{@code slotRole}/{@code slotFlags} - the optimizer-persisted
  * Fahrplan-Warum role (§6 vocabulary) and binding-constraint codes; null on
  * pre-feature runs (the decision label above remains the fallback).</li>
+ * <li>{@code limitDischargeToLoad} - whether this slot meets the emission rule
+ * of the REDUCE-only right {@code limit_discharge_to_load} (Netz-null-Reduzieren,
+ * 2026-09-08): a real planned DISCHARGE ({@code batteryKw < -0.05}) into a
+ * planned grid exchange of ~ 0 ({@code |gridKw| <= 0.05}). ⚠ It is DERIVED here,
+ * from this row's own two persisted numbers, because the flag is deliberately
+ * not persisted (like its three siblings) - it needs neither lambda nor a price,
+ * which is exactly why it can be recomputed exactly. So it states "this slot's
+ * SHAPE grants the right", never "the box received the flag": a run published
+ * while {@code OPTIMIZER_LIMIT_DISCHARGE_ENABLED} was off, or by an optimizer
+ * older than the field, carries the same shape and would read the same. Null =
+ * the row carries no battery or grid power at all, so nothing can be said.</li>
  * </ul>
  */
 public record OptimizerDiagnosticsSlotDto(
@@ -52,5 +63,6 @@ public record OptimizerDiagnosticsSlotDto(
         String decisionLabel,
         String whyText,
         String slotRole,
-        java.util.List<String> slotFlags) {
+        java.util.List<String> slotFlags,
+        Boolean limitDischargeToLoad) {
 }

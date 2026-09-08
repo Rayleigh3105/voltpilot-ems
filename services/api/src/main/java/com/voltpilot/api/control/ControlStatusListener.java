@@ -61,13 +61,27 @@ public class ControlStatusListener {
      * and {@code surplus_store}, which drop the narrow SoC band). They stay in
      * the set because a box on an older image still reports them and the cloud
      * must keep understanding it.
+     *
+     * <p>{@code limit} (2026-09-08, Netz-null-Reduzieren) is the REDUCE-only
+     * right {@code limit_discharge_to_load}: the discharge was LIMITED to the
+     * measured house on a "grid ~ 0" slot whose economic duty is silent. Its own
+     * word on purpose - {@code follow} would claim the cloud weighed the import
+     * price for this slot, which is exactly what it did NOT do.
      */
     private static final Set<String> EXECUTION_MODES = Set.of(
             "plan", "follow", "trim", "absorb", "fallback", "idle_follow",
             "deficit_cover", "high_soc_follow", "high_soc_charge", "surplus_store",
-            "autonomous_discharge");
+            "autonomous_discharge", "limit");
     /** The two follow directions - only meaningful for mode {@code follow}. */
     private static final Set<String> FOLLOW_DIRECTIONS = Set.of("deepen", "reduce");
+    /**
+     * The modes whose {@code direction} is a real fact. {@code limit} joins
+     * {@code follow} because it IS a follower correction and the direction is
+     * the load-bearing half of the sentence the Befehls-Verlauf builds from it
+     * (it is always {@code reduce}, and a dropped direction would make the
+     * customer wording fall back to a generic "adjusted").
+     */
+    private static final Set<String> DIRECTED_MODES = Set.of("follow", "limit");
     /** The three certification sources the core may report - anything else is ignored. */
     private static final Set<String> CERT_SOURCES = Set.of("env", "device", "platform");
     /** The four platform-register verdicts - anything else is ignored. */
@@ -255,7 +269,8 @@ public class ControlStatusListener {
             log.warn("unknown control execution mode '{}' ignored", mode);
             mode = null;
         }
-        String direction = "follow".equals(mode) ? optText(ex, "direction") : null;
+        String direction = mode != null && DIRECTED_MODES.contains(mode)
+                ? optText(ex, "direction") : null;
         if (direction != null && !FOLLOW_DIRECTIONS.contains(direction)) {
             log.warn("unknown control follow direction '{}' ignored", direction);
             direction = null;

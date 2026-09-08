@@ -214,6 +214,20 @@ describe('periodenSatz - was befohlen wurde', () => {
     expect(satz).toContain('nachgeführt');
   });
 
+  it('nennt die reine Begrenzung mit eigenem Wort, nicht als Nachführung', () => {
+    // Netz-null-Reduzieren (08.09.2026): der Verlauf muss den Pfad `limit`
+    // ausweisen - „Fahrplan" allein verschwiege die bewusste Abweichung, und
+    // „nachgeführt" behauptete eine Preis-Abwägung, die es hier nicht gab.
+    const satz = periodenSatz(periode({
+      mode: 'limit',
+      commandedKwMin: -4.35,
+      commandedKwMax: -4.35,
+      commandedKwLast: -4.35,
+    }));
+    expect(satz).toContain('begrenzt auf den gemessenen Verbrauch');
+    expect(satz).not.toContain('nachgeführt');
+  });
+
   it('nennt den Not-Aus und den Fremdeinfluss, statt sie zu verschweigen', () => {
     expect(periodenSatz(periode({ controlEnabled: false }))).toContain('Not-Aus aktiv');
     const fremd = film(

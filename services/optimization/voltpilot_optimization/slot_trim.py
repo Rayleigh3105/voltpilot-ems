@@ -398,6 +398,54 @@ def cover_load_from_battery(
     )
 
 
+def limit_discharge_to_load(
+    *,
+    battery_kw: float,
+    grid_kw: float,
+) -> bool:
+    """The per-slot contract flag ``limit_discharge_to_load``: may the edge
+    LIMIT this slot's discharge down to the MEASURED house deficit?
+
+    The REDUCE half of the load following, deliberately WITHOUT the economic
+    test :func:`cover_load_from_battery` applies - two conditions, both read off
+    the plan's own shape:
+
+    1. **The plan commands a real DISCHARGE here** (the
+       :data:`PLANNED_DISCHARGE_DEADBAND_KW` deadband, exactly as in the
+       sibling): the right changes the MAGNITUDE of an existing discharge, it
+       never starts one and never touches a commanded charge.
+    2. **The plan itself plans NO grid exchange worth the name**
+       (``|grid_kw| <= PLANNED_GRID_EXCHANGE_DEADBAND_KW``): the "Netz = 0" kink
+       of the ``eigenverbrauch`` role. A planned EXPORT is a deliberate sale the
+       edge must not cut back to zero grid, a planned IMPORT a deliberate
+       cheap-hour purchase - the same both-sided exclusion, for the same reason.
+
+    WHY NO LAMBDA (report vp-nachtreserve-konzept-k2 §2 F, the measured defect):
+    :func:`cover_load_from_battery` grants BOTH directions on ONE economic test,
+    and on a FIXED-tariff site that test flips to false exactly when the battery
+    gets scarce - lambda rises until the stored kWh is worth more than the 25 ct
+    of import it would displace. The edge then falls back to deepen-only, and
+    the running slot's setpoint (which stands 0,1-1,8 kW above the measured
+    house, because it carries the nowcast reserve) settles the difference as an
+    EXPORT: 3,8 kWh per night left Pilsting/Herzogau at 6-12 ct that were missing
+    hours later at 25 ct.
+
+    LIMITING is never uneconomic, which is why it needs no price: it only KEEPS
+    energy that the plan itself values ABOVE the export in this slot - otherwise
+    the plan would have sold it here, and then condition (2) refuses the flag.
+    The rising lambda that switches the economic sibling OFF is precisely the
+    number that makes limiting MORE valuable, not less.
+
+    Consequence for the pair: on a discharging "Netz = 0" slot this flag is a
+    SUPERSET of :func:`cover_load_from_battery` - both may be published on the
+    same slot, and the edge composes them (see the contract's x-failsafe: only
+    the REDUCE half is widened, DEEPENING stays bound to the economic verdict).
+    """
+    if battery_kw >= -PLANNED_DISCHARGE_DEADBAND_KW:
+        return False
+    return abs(grid_kw) <= PLANNED_GRID_EXCHANGE_DEADBAND_KW
+
+
 def unplanned_load_discharge(
     *,
     battery_kw: float,

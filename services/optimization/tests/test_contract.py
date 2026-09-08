@@ -231,6 +231,7 @@ def test_committed_fixtures_match_the_schema_both_ways():
         "mqtt-schedule.valid.cover-load.json",
         "mqtt-schedule.valid.absorb-surplus.json",
         "mqtt-schedule.valid.export-limit.json",
+        "mqtt-schedule.valid.limit-discharge.json",
     ):
         payload = json.loads((EXAMPLES / name).read_text())
         errors = list(validator.iter_errors(payload))
@@ -244,6 +245,10 @@ def test_committed_fixtures_match_the_schema_both_ways():
             "charge_surplus_to_battery",
         ),
         ("mqtt-schedule.invalid.export-limit-negative.json", "grid_export_limit_kw"),
+        (
+            "mqtt-schedule.invalid.limit-discharge-not-boolean.json",
+            "limit_discharge_to_load",
+        ),
     ):
         bad = json.loads((EXAMPLES / name).read_text())
         messages = [e.message for e in validator.iter_errors(bad)]
@@ -298,6 +303,66 @@ def test_the_cover_load_fixture_is_what_the_publisher_actually_emits():
     assert set(emitted) == set(fixture["slots"][0])
     assert emitted["battery_setpoint_kw"] == fixture["slots"][0]["battery_setpoint_kw"]
     assert emitted["cover_load_from_battery"] is True
+
+
+def test_the_limit_discharge_fixture_is_what_the_publisher_actually_emits():
+    """Fixture-vs-producer for the REDUCE-only right: the committed fixture is
+    not hand-fiction - the publisher builds the same slot shapes from a plan
+    carrying it, including the SUPERSET slot that carries both grants."""
+    import dataclasses
+
+    fixture = json.loads(
+        (EXAMPLES / "mqtt-schedule.valid.limit-discharge.json").read_text()
+    )
+    plan = make_plan(slots=2)
+    alone = dataclasses.replace(
+        plan.slots[0],
+        battery_kw=-6.06,
+        limit_discharge_to_load=True,
+        curtail_kw=0.0,
+    )
+    both = dataclasses.replace(
+        plan.slots[1],
+        battery_kw=-5.42,
+        limit_discharge_to_load=True,
+        cover_load_from_battery=True,
+        curtail_kw=0.0,
+    )
+    emitted = build_schedule_payload(
+        dataclasses.replace(plan, slots=[alone, both])
+    )["slots"]
+    assert set(emitted[0]) == set(fixture["slots"][0])
+    assert emitted[0]["battery_setpoint_kw"] == fixture["slots"][0]["battery_setpoint_kw"]
+    assert emitted[0]["limit_discharge_to_load"] is True
+    assert "cover_load_from_battery" not in emitted[0]
+    # The superset slot: BOTH grants ride on the same slot, and the economic one
+    # is not implied by the plain one - each is emitted from its own verdict.
+    assert set(emitted[1]) == set(fixture["slots"][1])
+    assert emitted[1]["limit_discharge_to_load"] is True
+    assert emitted[1]["cover_load_from_battery"] is True
+
+
+def test_the_limit_discharge_flag_is_omitted_unless_true_and_validates():
+    """Same omit-unless-true discipline as its three siblings: False and None
+    are the same state (no right) and must both keep the payload byte-identical
+    to before, because the contract makes an absent field FAIL-OPEN."""
+    import dataclasses
+
+    validator = load_validator()
+    plan = make_plan(slots=3)
+    limiting = dataclasses.replace(
+        plan.slots[0], battery_kw=-6.06, limit_discharge_to_load=True, curtail_kw=0.0
+    )
+    explicit_false = dataclasses.replace(plan.slots[1], limit_discharge_to_load=False)
+    payload = build_schedule_payload(
+        dataclasses.replace(plan, slots=[limiting, explicit_false, plan.slots[2]])
+    )
+    assert list(validator.iter_errors(payload)) == []
+
+    first, second, third = payload["slots"]
+    assert first["limit_discharge_to_load"] is True
+    assert "limit_discharge_to_load" not in second
+    assert "limit_discharge_to_load" not in third
 
 
 def test_the_cover_load_flag_is_omitted_unless_true_and_validates():

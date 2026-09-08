@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "plan_id": "e4a70c31-8b26-4d95-a0f7-1c3d5b98ee42",
+  "generated_at": "2026-09-04T21:10:00Z",
+  "horizon_slots": 1,
+  "slot_minutes": 15,
+  "slots": [
+    {
+      "start": "2026-09-04T21:15:00Z",
+      "battery_setpoint_kw": -6.06,
+      "limit_discharge_to_load": 4.35
+    }
+  ]
+}

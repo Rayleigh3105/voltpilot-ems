@@ -704,7 +704,7 @@ function resolveState(
   // Fahrplan führt keinen aus, egal wie gut der Wert zum Plan passt.
   const mode = input.control?.executionMode ?? null;
   if (mode === 'fallback') return 'sicherung';
-  if (mode === 'follow' || mode === 'trim' || mode === 'absorb' ||
+  if (mode === 'follow' || mode === 'limit' || mode === 'trim' || mode === 'absorb' ||
       mode === 'idle_follow' || mode === 'deficit_cover' || mode === 'high_soc_follow' ||
       mode === 'high_soc_charge' || mode === 'surplus_store' ||
       mode === 'autonomous_discharge') return 'angepasst';

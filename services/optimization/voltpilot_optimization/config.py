@@ -374,6 +374,37 @@ def load_follow_enabled(env=None) -> bool:
     raise ValueError(f"{LOAD_FOLLOW_ENABLED_ENV} must be a boolean, got {raw!r}")
 
 
+#: Instant off-switch for publishing the per-slot ``limit_discharge_to_load``
+#: flag - the REDUCE-only right, separated from the economic verdict
+#: (Netz-null-Reduzieren, P1 of the Nachtreserve analysis
+#: vp-nachtreserve-konzept-k2). ITS OWN LEVER for the same reason the two
+#: siblings have theirs: this one widens what the edge may do on a
+#: safety-relevant control path WITHOUT an economic test, so an operator must be
+#: able to stop it without losing the economic load following. Default ON
+#: (Hausregel: ein Flag hat die Vorgabe AN - it has to be pulled through the
+#: gitops repo as OPTIMIZER_LIMIT_DISCHARGE_ENABLED to be switchable there); off
+#: = byte-identical payloads to before and every edge behaves exactly as it did
+#: (the field is FAIL-OPEN on the edge by contract).
+LIMIT_DISCHARGE_ENABLED_ENV = "OPTIMIZER_LIMIT_DISCHARGE_ENABLED"
+
+
+def limit_discharge_enabled(env=None) -> bool:
+    """Whether the optimizer marks discharging "Netz = 0" slots with the
+    REDUCE-only right (the edge may then limit the commanded discharge to the
+    MEASURED deficit even where the economic sibling is silent). Default ON;
+    garbage values raise loudly, exactly like :func:`load_follow_enabled`."""
+    env = os.environ if env is None else env
+    raw = env.get(LIMIT_DISCHARGE_ENABLED_ENV)
+    if raw is None or raw.strip() == "":
+        return True
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{LIMIT_DISCHARGE_ENABLED_ENV} must be a boolean, got {raw!r}")
+
+
 #: Independent kill switch for the additive idle-slot authorization.  Keeping
 #: it separate from LOAD_FOLLOW_ENABLED_ENV is operationally important: this
 #: duty may start a discharge from zero whereas the older duty only adjusts an

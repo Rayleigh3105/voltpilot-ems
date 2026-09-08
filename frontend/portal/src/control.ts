@@ -213,6 +213,7 @@ export function directionLabel(direction: ExecutionDirection | null | undefined)
 export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
   plan: 'Fahrplan',
   follow: 'Nachführung',
+  limit: 'Begrenzung auf den Verbrauch',
   trim: 'Solar-Überschuss',
   absorb: 'Überschuss-Aufnahme',
   fallback: 'Eingebaute Sicherung',
@@ -271,6 +272,16 @@ export function executionNote(status: ControlStatus | null): string | null {
   if (mode === 'idle_follow' || mode === 'autonomous_discharge') {
     const path = mode === 'idle_follow' ? 'der 10-Sekunden-Nachführung' : 'der Wechselrichter-Automatik';
     return `${plannedPart}Unerwarteter Verbrauch wird live mit ${path}${measured} gedeckt.`;
+  }
+  if (mode === 'limit') {
+    // Netz-null-Reduzieren: die Box hat die geplante Entladung auf den
+    // gemessenen Verbrauch gedeckelt, statt den Rest ins Netz zu schicken.
+    // Der Satz behauptet KEINE Preis-Abwägung - die hat für diesen Slot
+    // niemand gemacht, genau darum gibt es das eigene Wort.
+    return (
+      `${plannedPart}Ihre Entladung wird gerade auf den gemessenen Verbrauch${measured} ` +
+      'begrenzt: Der Rest bleibt im Speicher, statt ins Netz zu gehen.'
+    );
   }
   if (mode === 'deficit_cover') {
     return (

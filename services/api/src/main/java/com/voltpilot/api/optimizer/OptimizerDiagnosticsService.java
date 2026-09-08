@@ -33,6 +33,13 @@ public class OptimizerDiagnosticsService {
     /** 15-min platform slot grid (domain.py SLOT_MINUTES). */
     static final int SLOT_MINUTES = 15;
     private static final double SLOT_HOURS = SLOT_MINUTES / 60.0;
+    /**
+     * The plan-shape deadband the optimizer's per-slot duties share
+     * (voltpilot_optimization/slot_trim.py PLANNED_DISCHARGE_DEADBAND_KW /
+     * PLANNED_GRID_EXCHANGE_DEADBAND_KW, both 0,05 kW). Kept as ONE constant
+     * here because the two are one number by construction on the Python side.
+     */
+    private static final double PLANNED_DEADBAND_KW = 0.05;
 
     /** The v1 platform timezone for run-day navigation (the HistoryRange rule). */
     private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
@@ -170,11 +177,32 @@ public class OptimizerDiagnosticsService {
                             importCt.get(i), exportCt.get(i), storedCt,
                             row.whyNextBest(), toDouble(row.whyNextBestMarginCt())),
                     row.slotRole(),
-                    splitFlags(row.slotFlags())));
+                    splitFlags(row.slotFlags()),
+                    limitDischargeToLoad(batteryKw, gridKw)));
         }
         return dto(site, repo.planId(site.siteId(), run), run, day, firstRunDate, lastRunDate,
                 availableRuns, priceSource, anyApproximated,
                 repo.pvAnchorRatio(site.siteId(), run), slots);
+    }
+
+    /**
+     * Whether this slot's SHAPE grants the REDUCE-only right
+     * {@code limit_discharge_to_load} (Netz-null-Reduzieren, 2026-09-08): a real
+     * planned discharge into a planned grid exchange of ~ 0.
+     *
+     * <p>DERIVED from the row's own two persisted numbers rather than read from
+     * a column, because the flag is deliberately not persisted - and it can be,
+     * because unlike its three siblings the rule reads NO price and NO lambda
+     * (voltpilot_optimization/slot_trim.py {@code limit_discharge_to_load}: the
+     * same deadbands, no economics). It therefore answers "did this slot qualify",
+     * never "did the box get the flag" - see the DTO's Javadoc. Null when the
+     * row carries no battery or grid power: an unknown shape makes no claim.
+     */
+    private static Boolean limitDischargeToLoad(Double batteryKw, Double gridKw) {
+        if (batteryKw == null || gridKw == null) {
+            return null;
+        }
+        return batteryKw < -PLANNED_DEADBAND_KW && Math.abs(gridKw) <= PLANNED_DEADBAND_KW;
     }
 
     /** The persisted binding CSV as a list (null stays null - pre-feature row). */

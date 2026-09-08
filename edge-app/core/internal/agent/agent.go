@@ -1854,6 +1854,13 @@ const (
 	execModeFollow       = "follow"
 	execModeIdleFollow   = "idle_follow"
 	execModeDeficitCover = "deficit_cover"
+	// execModeLimit is the cloud's REDUCE-only right (2026-09-08,
+	// limit_discharge_to_load): the commanded discharge was LIMITED to the
+	// measured house on a slot whose economic duty is silent. A separate word
+	// from execModeFollow on purpose - "follow" claims the cloud weighed the
+	// import price for this slot, "limit" claims only that the plan discharges
+	// into a grid ~ 0 slot, which is all this right rests on.
+	execModeLimit = "limit"
 	// execModeHighSocFollow is the RETIRED narrow full-battery relief
 	// (2026-08-28, superseded by execModeDeficitCover, which covers every SoC
 	// above the reserve stack instead of a five-point top band). No build
@@ -1929,6 +1936,8 @@ func executionSummary(snap state.Snapshot) *cloud.ExecutionSummary {
 			mode = execModeIdleFollow
 		} else if f.Path == execModeDeficitCover {
 			mode = execModeDeficitCover
+		} else if f.Path == execModeLimit {
+			mode = execModeLimit
 		}
 		floor := snap.EffectiveFloorSocPct
 		if f.FloorSocPct != nil {
@@ -2591,6 +2600,17 @@ func (a *Agent) applySetpoint(now time.Time) {
 	}
 	measurementFresh := !readingAt.IsZero() && !now.Before(readingAt) && now.Sub(readingAt) <= freshWindow
 	coverLoad := marketCorrectionsAllowed && p.ActiveCoverLoadFromBattery(now)
+	// The REDUCE-only right (2026-09-08, Netz-null-Reduzieren): a discharging
+	// "grid ~ 0" slot lets the box LIMIT the commanded discharge to the measured
+	// house even where the economic duty above is silent - which on a
+	// fixed-tariff site is exactly when the battery gets scarce and the nowcast
+	// reserve of the running slot would otherwise be exported. It needs NO extra
+	// live gate beyond the shared marketCorrectionsAllowed boundary: unlike the
+	// two authorizations that may START or WIDEN a discharge, it only ever
+	// SHRINKS one the plan already commands, so it spends nothing and cannot
+	// flip a direction. The follower's own fact set (fresh measurements, the
+	// full floor stack, known SoC) still gates it.
+	limitToLoad := marketCorrectionsAllowed && p.ActiveLimitDischargeToLoad(now)
 	economicUnplannedRequested := marketCorrectionsAllowed && p.ActiveUnplannedLoadDischarge(now)
 	portableReady := false
 	// This additive economic permission belongs exclusively to an idle MARKET
@@ -2650,7 +2670,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	preFollowKw := kw
 	followed := a.follow.ApplyAuthorized(now, kw,
 		coverLoad,
-		unplanned, deficitCover.Active, floor, measurementFresh, limits, r)
+		unplanned, deficitCover.Active, limitToLoad, floor, measurementFresh, limits, r)
 	kw = followed.Kw
 
 	// In-slot SURPLUS ABSORPTION (2026-08-02, the charge-side counterpart that

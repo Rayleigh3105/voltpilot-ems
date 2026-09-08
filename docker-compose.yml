@@ -666,6 +666,13 @@ services:
       OPTIMIZER_SLOT_TRIM_ENABLED: ${OPTIMIZER_SLOT_TRIM_ENABLED:-true}
       OPTIMIZER_LOAD_FOLLOW_ENABLED: ${OPTIMIZER_LOAD_FOLLOW_ENABLED:-true}
       OPTIMIZER_SURPLUS_CHARGE_ENABLED: ${OPTIMIZER_SURPLUS_CHARGE_ENABLED:-true}
+      # ...and the FOURTH lever (Netz-null-Reduzieren, 2026-09-08): the
+      # REDUCE-only right limit_discharge_to_load. Its OWN switch because it is
+      # the one duty granted WITHOUT an economic test - a discharging "grid ~ 0"
+      # slot lets the box limit the discharge to the measured house even where
+      # the economic sibling is silent, which on a fixed-tariff site is exactly
+      # when the battery gets scarce.
+      OPTIMIZER_LIMIT_DISCHARGE_ENABLED: ${OPTIMIZER_LIMIT_DISCHARGE_ENABLED:-true}
       # MIG v1->v2 migration switch (see docs/migration-v1-to-v2.md): comma-
       # separated site UUIDs to ALSO publish a v2 shadow plan for. Empty (the
       # default) = nothing flagged = byte-identical v1.

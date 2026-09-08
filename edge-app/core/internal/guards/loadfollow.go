@@ -17,6 +17,20 @@
 // least the deficit" but TRACK the measured deficit: the target is
 // grid power = 0, and the correction serves it in BOTH directions.
 //
+// 2026-09-08 - THE TWO HALVES GOT SEPARATE PERMISSIONS (report
+// vp-nachtreserve-konzept-k2 P1). Until then ONE economic flag granted both
+// directions, and on a FIXED-tariff site (Pilsting/Herzogau, 25 ct flat) that
+// flag switched OFF exactly when the battery got scarce: lambda rose past the
+// import price, so covering the house from the battery stopped being "economic"
+// - and with it the box lost the right to REDUCE. The running slot's setpoint
+// carries the nowcast reserve, i.e. it stands 0,1-1,8 kW ABOVE the measured
+// house, so the difference then left the site as an EXPORT: 3,8 kWh per night,
+// sold at 6-12 ct and missing hours later at 25 ct. Limiting is NEVER
+// uneconomic - it keeps energy the plan itself values above the export in a
+// "grid ~ 0" slot, otherwise the plan would have sold it there - so the reduce
+// half now has its own unpriced contract bit (limit_discharge_to_load) while the
+// deepen half stays bound to the economic verdict.
+//
 // THE SPLIT IS THE POINT, identical to the price-aware trim (slottrim.go): the
 // CLOUD decides whether covering the house from the battery is economic in this
 // slot (ONE price truth - services/optimization slot_trim.py, published as the
@@ -157,8 +171,12 @@ type FollowResult struct {
 	// regulate blind).
 	DeficitKw float64
 	// Path distinguishes adjustment of an already-planned discharge ("follow")
-	// from the additive 0-kW idle fallback ("idle_follow") and the local
-	// customer-trust deficit coverage ("deficit_cover").
+	// from the additive 0-kW idle fallback ("idle_follow"), the local
+	// customer-trust deficit coverage ("deficit_cover") and the cloud's
+	// REDUCE-only right ("limit"). It names the authority that ACTUALLY acted,
+	// so a deepen granted by deficit_cover keeps saying so even on a slot that
+	// also carries the limit right - an unnamed or misnamed correction reads as
+	// a defect.
 	Path string
 	// FloorSocPct is the actual floor applied while one of the two local
 	// authorizations starts or widens a discharge: the FULL cloud-computed
@@ -202,27 +220,51 @@ func (f *LoadFollower) Apply(
 	reserveSocPct *float64,
 	r Reading,
 ) FollowResult {
-	return f.ApplyAuthorized(now, kw, coverLoad, false, false, reserveSocPct, true, l, r)
+	return f.ApplyAuthorized(now, kw, coverLoad, false, false, false, reserveSocPct, true, l, r)
 }
 
-// ApplyAuthorized composes the established follow duty with the two additive
-// local authorizations. Both are strictly fail-closed - fresh load/PV/SoC and an
-// explicit effective floor - and they differ only in reach:
+// ApplyAuthorized composes the established follow duty with the three additive
+// authorizations. All three are strictly fail-closed - fresh load/PV/SoC and an
+// explicit effective floor - and they differ in REACH, i.e. in which HALF of the
+// correction they grant:
 //
 //   - unplannedLoad is the cloud's ECONOMIC idle-slot duty
 //     (unplanned_load_discharge): it starts from a real zero command only;
 //   - deficitCover is the local CUSTOMER-TRUST rule (guards.CoverDeficit): it
 //     may also widen a partial planned discharge, and it is DEEPEN-ONLY, so a
-//     planned sale can never be cut back by it.
+//     planned sale can never be cut back by it;
+//   - limitToLoad is the cloud's REDUCE-ONLY right (limit_discharge_to_load,
+//     2026-09-08): it may only ever SHRINK a planned discharge toward the
+//     measured deficit, never raise one.
+//
+// THE AUTHORIZATION IS PER DIRECTION, and that split is the whole point of the
+// 2026-09-08 fix:
+//
+//	deepenAllowed = coverLoad || unplannedLoad || deficitCover
+//	reduceAllowed = coverLoad || unplannedLoad || limitToLoad
+//
+// Raising a discharge SPENDS stored energy, so it must stay bound to an
+// economic verdict (the cloud's) or to the local trust rule. Limiting one only
+// ever KEEPS energy that the plan itself values above the export in a "grid ~ 0"
+// slot - otherwise the plan would have sold it there and the cloud would not
+// have marked the slot at all. That is why the reduce half needs no price and
+// gets its own contract bit: cover_load_from_battery couples BOTH halves to one
+// economic test, and on a FIXED-tariff site that test flips to false exactly
+// when the battery gets scarce (lambda above the import price). The box then
+// fell back to deepen-only and exported the running slot's nowcast reserve -
+// 3,8 kWh per night at Pilsting/Herzogau, sold at 6-12 ct and missing hours
+// later at 25 ct (report vp-nachtreserve-konzept-k2 P1).
 //
 // Existing cover_load_from_battery semantics stay unchanged through the Apply
-// wrapper above.
+// wrapper above: where the economic duty is granted it keeps BOTH halves and
+// the "follow" name.
 func (f *LoadFollower) ApplyAuthorized(
 	now time.Time,
 	kw float64,
 	coverLoad bool,
 	unplannedLoad bool,
 	deficitCover bool,
+	limitToLoad bool,
 	effectiveFloorSocPct *float64,
 	measurementsFresh bool,
 	l Limits,
@@ -231,7 +273,7 @@ func (f *LoadFollower) ApplyAuthorized(
 	res := FollowResult{Kw: kw, CommandedKw: kw, DeficitKw: math.NaN()}
 
 	// Nothing to enforce: not worth covering / no duty / no plan.
-	if !coverLoad && !unplannedLoad && !deficitCover {
+	if !coverLoad && !unplannedLoad && !deficitCover && !limitToLoad {
 		f.release()
 		return res
 	}
@@ -242,15 +284,25 @@ func (f *LoadFollower) ApplyAuthorized(
 		f.release()
 		return res
 	}
-	path := "follow"
-	deepenOnly := false
-	// The cloud's own duty is the more capable one (it may also LIMIT), so it
-	// keeps the tick whenever it is granted; the two local authorizations only
-	// ever act where no cloud duty does.
-	if !coverLoad {
+	// The two halves are authorized SEPARATELY, and each carries the NAME of the
+	// authority that grants it - "" means "this direction is not permitted here".
+	// Naming per direction (rather than one path per tick) keeps the reported
+	// word true: a deepen granted by the local trust rule stays "deficit_cover"
+	// even when the same slot also carries the cloud's reduce right.
+	deepenPath, reducePath := "", ""
+	// The cloud's own economic duty is the more capable one (it may also LIMIT),
+	// so it keeps the tick whenever it is granted; the additive authorizations
+	// only ever act where it does not.
+	if coverLoad {
+		deepenPath, reducePath = "follow", "follow"
+	} else {
 		// Starting - or widening - a discharge is a larger authority than
 		// adjusting one the plan already asked for. Refuse on every ambiguity:
-		// stale measurements, unknown SoC or a missing reserve stack.
+		// stale measurements, unknown SoC or a missing reserve stack. The
+		// REDUCE-only right is held to the SAME fact set even though shrinking a
+		// discharge spends nothing: one gate for every additive authorization is
+		// what keeps this guard reviewable, and a box that cannot see the house
+		// must not regulate against it in either direction.
 		if !measurementsFresh || effectiveFloorSocPct == nil ||
 			!known(r.SocPct) || r.SocPct <= *effectiveFloorSocPct {
 			f.release()
@@ -266,14 +318,21 @@ func (f *LoadFollower) ApplyAuthorized(
 				f.release()
 				return res
 			}
-			path = "idle_follow"
+			deepenPath, reducePath = "idle_follow", "idle_follow"
 		} else {
-			// The local trust rule. It may widen a partial planned discharge,
-			// but it must never SHRINK one: limiting a discharge is a price
-			// decision (is the surplus worth more stored than sold?) and that
-			// decision stays entirely with the cloud's cover_load_from_battery.
-			deepenOnly = true
-			path = "deficit_cover"
+			// The local trust rule may WIDEN a partial planned discharge, but it
+			// must never SHRINK one: cutting a discharge back is a statement
+			// about a planned SALE, and that judgement stays with the cloud.
+			if deficitCover {
+				deepenPath = "deficit_cover"
+			}
+			// ...and the cloud's REDUCE-only right is its exact mirror: it may
+			// only ever shrink the discharge toward the measured house, never
+			// raise it. A slot carrying only this right therefore limits and
+			// nothing else.
+			if limitToLoad {
+				reducePath = "limit"
+			}
 		}
 	}
 	// Never regulate blind (the economic-guard convention, cf. PeakShave).
@@ -322,6 +381,13 @@ func (f *LoadFollower) ApplyAuthorized(
 	}
 
 	if predicted > 0 {
+		if deepenPath == "" {
+			// Only the REDUCE half is granted here (the cloud's limit right
+			// without an economic duty and without the local trust rule): the
+			// house draws more than the plan commands, and raising the discharge
+			// would SPEND stored energy on an unpriced judgement.
+			return res
+		}
 		// DEEPEN. The correction IS the peak guard's bounded import correction
 		// with a zero target - rated discharge, SoC floor and never-raise all
 		// come from there, so the two economic guards share ONE piece of safety
@@ -338,14 +404,15 @@ func (f *LoadFollower) ApplyAuthorized(
 			return res
 		}
 		res.Kw = math.Round(target*1000) / 1000
-		res.Active, res.Direction, res.Path = true, FollowDeepen, path
+		res.Active, res.Direction, res.Path = true, FollowDeepen, deepenPath
 		return res
 	}
 
-	if deepenOnly {
-		// Local trust rule: nothing to deepen (the command already covers the
-		// house or discharges past it). Never reduce - see the path selection
-		// above.
+	if reducePath == "" {
+		// Only the DEEPEN half is granted here (the local trust rule, or the
+		// idle duty on a slot the cloud did not mark): nothing to deepen - the
+		// command already covers the house or discharges past it - and shrinking
+		// it is not this authorization's to do.
 		return res
 	}
 
@@ -366,7 +433,7 @@ func (f *LoadFollower) ApplyAuthorized(
 		return res // engaged but not biting (inside the release dwell)
 	}
 	res.Kw = math.Round(target*1000) / 1000
-	res.Active, res.Direction, res.Path = true, FollowReduce, path
+	res.Active, res.Direction, res.Path = true, FollowReduce, reducePath
 	return res
 }
 

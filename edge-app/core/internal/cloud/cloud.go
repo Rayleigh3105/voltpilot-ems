@@ -1233,6 +1233,12 @@ type ExecutionSummary struct {
 	//
 	//	"plan"     - the fresh cloud plan's own value, uncorrected
 	//	"follow"   - in-slot load following (guards.LoadFollower)
+	//	"limit"    - the cloud's REDUCE-only right (limit_discharge_to_load):
+	//	             the commanded DISCHARGE was LIMITED to the measured house on
+	//	             a "grid ~ 0" slot whose economic duty is silent. Distinct
+	//	             from "follow": there the cloud weighed the import price for
+	//	             this slot, here it only stated that the plan discharges into
+	//	             a slot it does not trade in. Always direction "reduce"
 	//	"trim"     - price-aware in-slot trim (guards.PriceTrimmer)
 	//	"absorb"   - in-slot surplus absorption (guards.SurplusCharger): the
 	//	             commanded CHARGE was RAISED to the measured PV surplus

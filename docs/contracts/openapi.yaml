@@ -12438,6 +12438,22 @@ components:
             charge_cap, discharge_cap, solar_only, grid_limit_14a,
             feed_in_cap, peak_defining, curtailing. Null = no binding
             recorded / pre-feature run.
+        limitDischargeToLoad:
+          type: boolean
+          nullable: true
+          description: >-
+            Netz-null-Reduzieren (2026-09-08): whether this slot's SHAPE grants
+            the REDUCE-only right limit_discharge_to_load - a real planned
+            DISCHARGE (batteryKw < -0.05) into a planned grid exchange of ~ 0
+            (|gridKw| <= 0.05). The box may then LIMIT the commanded discharge
+            to the measured deficit max(load - pv, 0), never raise it, floor at
+            0 kW. DERIVED from this row's own batteryKw/gridKw, because the flag
+            is deliberately not persisted and - unlike its three siblings - needs
+            neither lambda nor a price. It therefore says "this slot qualified",
+            NOT "the box received the flag": a run published with the
+            OPTIMIZER_LIMIT_DISCHARGE_ENABLED switch off, or by an optimizer
+            older than the field, has the same shape and reads the same. Null =
+            the row carries no battery or grid power, so nothing is claimed.
     OptimizerConfig:
       type: object
       description: The optimizer knobs of one site (see the endpoint description).

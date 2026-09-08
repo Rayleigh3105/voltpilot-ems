@@ -13,14 +13,17 @@ The mirror of :mod:`tests.test_slot_trim`, and proven in the same two layers:
 from __future__ import annotations
 
 import importlib.util
+import json
 import math
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
 from voltpilot_optimization.config import (
     SLOT_TRIM_MARGIN_CT_PER_KWH,
+    limit_discharge_enabled,
     load_follow_enabled,
 )
 from voltpilot_optimization.domain import (
@@ -34,6 +37,7 @@ from voltpilot_optimization.slot_trim import (
     cover_load_economic,
     cover_load_from_battery,
     grid_charge_uneconomic,
+    limit_discharge_to_load,
 )
 
 needs_highs = pytest.mark.skipif(
@@ -448,4 +452,207 @@ def test_the_flag_never_changes_the_committed_setpoints():
             b.grid_kw,
             b.soc_kwh,
             b.curtail_kw,
+        )
+
+
+# ---- Netz-null-Reduzieren: the REDUCE-only right (2026-09-08) ----------------
+#
+# P1 of the Nachtreserve analysis (scout vp-nachtreserve-konzept-k2): the ONE
+# economic flag granted BOTH halves of the correction, and on a FIXED-tariff
+# site (Pilsting/Herzogau, 25 ct flat) it flips to false exactly when the
+# battery gets scarce - lambda rises past the import price. The box then fell
+# back to deepen-only and EXPORTED the running slot's nowcast reserve: 3,8 kWh
+# per night, sold at 6-12 ct and missing hours later at 25 ct.
+#
+# The EMISSION half is proven here, the EXECUTION half in the Go twin
+# (edge-app/core/internal/guards/loadfollow_test.go) - both against the SHARED
+# vectors docs/contracts/v2/load-follow-vectors.json, read BY PATH so moving the
+# file breaks both.
+
+VECTORS = Path(__file__).resolve().parents[3] / "docs" / "contracts" / "v2" / (
+    "load-follow-vectors.json"
+)
+
+
+def _vectors() -> dict:
+    return json.loads(VECTORS.read_text(encoding="utf-8"))
+
+
+def test_the_shared_emission_vectors_hold():
+    """Every shared emission vector run through the REAL rules. The pair is the
+    point: on a discharging "Netz = 0" slot the new right is a SUPERSET of the
+    economic duty, and outside that kink both are silent together."""
+    data = _vectors()
+    params = data["$emissions_parameter"]
+    cases = data["emission"]
+    assert cases, "the shared vectors carry no emission cases"
+    for case in cases:
+        got_cover = cover_load_from_battery(
+            battery_kw=case["battery_kw"],
+            grid_kw=case["grid_kw"],
+            import_price_ct_kwh=case["import_price_ct_kwh"],
+            stored_value_ct_kwh=case["stored_value_ct_kwh"],
+            one_way_efficiency=params["one_way_efficiency"],
+            wear_ct_per_kwh_each_way=params["wear_ct_per_kwh_each_way"],
+            margin_ct_per_kwh=params["margin_ct_per_kwh"],
+        )
+        got_limit = limit_discharge_to_load(
+            battery_kw=case["battery_kw"], grid_kw=case["grid_kw"]
+        )
+        assert got_cover is case["erwartet_cover_load_from_battery"], (
+            case["name"],
+            "cover_load_from_battery",
+            case["why"],
+        )
+        assert got_limit is case["erwartet_limit_discharge_to_load"], (
+            case["name"],
+            "limit_discharge_to_load",
+            case["why"],
+        )
+        # The superset property, stated on every single vector rather than once:
+        # wherever the economic duty grants, the unpriced right grants too.
+        if got_cover:
+            assert got_limit, (case["name"], "the right must never be narrower")
+
+
+def test_the_reduce_right_ignores_the_economics_that_switch_its_sibling_off():
+    """THE anchor (report §2 F, the measured 23:15 slot): 25 ct fixed import
+    against lambda 23,5 ct - the cover duty says no (23,5/0,959 + 0,5 + 0,5 =
+    25,5 ct > 25,0), and the right to LIMIT says yes on the very same numbers.
+    Limiting keeps energy the plan itself values above the export here; the
+    rising lambda that silences the sibling is what makes it MORE valuable."""
+    assert not cover_load_from_battery(
+        battery_kw=-6.06,
+        grid_kw=0.0,
+        import_price_ct_kwh=25.0,
+        stored_value_ct_kwh=23.5,
+        one_way_efficiency=0.959,
+        wear_ct_per_kwh_each_way=0.5,
+        margin_ct_per_kwh=0.5,
+    )
+    assert limit_discharge_to_load(battery_kw=-6.06, grid_kw=0.0)
+    # ...and it stays true however the price moves, because it never reads one.
+    assert limit_discharge_to_load(battery_kw=-6.06, grid_kw=0.0)
+
+
+def test_only_the_netz_zero_kink_carries_the_reduce_right():
+    """The both-sided exclusion is INHERITED from the economic sibling and for
+    the same reason: a planned EXPORT is a deliberate sale the edge would cut
+    back to zero grid, a planned IMPORT a deliberate cheap-hour purchase. The
+    edge cannot tell either from a forecast error, so the cloud decides."""
+    deadband = PLANNED_GRID_EXCHANGE_DEADBAND_KW
+    assert limit_discharge_to_load(battery_kw=-6.06, grid_kw=deadband)
+    assert limit_discharge_to_load(battery_kw=-6.06, grid_kw=-deadband)
+    assert not limit_discharge_to_load(battery_kw=-6.06, grid_kw=deadband + 0.01)
+    assert not limit_discharge_to_load(battery_kw=-6.06, grid_kw=-deadband - 0.01)
+    # A charge and an idle hold have no discharge to limit.
+    assert not limit_discharge_to_load(battery_kw=8.0, grid_kw=0.0)
+    assert not limit_discharge_to_load(battery_kw=-0.02, grid_kw=0.0)
+
+
+def test_the_reduce_right_is_env_switchable_and_defaults_on():
+    """Hausregel: a flag defaults ON - and it is its OWN lever, because it widens
+    what the edge may do WITHOUT an economic test."""
+    assert limit_discharge_enabled({}) is True
+    assert limit_discharge_enabled({"OPTIMIZER_LIMIT_DISCHARGE_ENABLED": "false"}) is False
+    assert limit_discharge_enabled({"OPTIMIZER_LIMIT_DISCHARGE_ENABLED": "on"}) is True
+    with pytest.raises(ValueError):
+        limit_discharge_enabled({"OPTIMIZER_LIMIT_DISCHARGE_ENABLED": "vielleicht"})
+
+
+@needs_highs
+def test_the_fixed_tariff_night_gets_the_right_where_the_duty_goes_silent():
+    """The whole fix in ONE solved plan: a fixed 25 ct night with a battery
+    scarce enough that the plan's own lambda exceeds the import price. Slots the
+    economic duty refuses must still carry the right - otherwise the leak stays
+    open exactly where it was measured."""
+    n = 20
+    pv = [0.0] * n
+    load = [4.35] * n
+    spot = [139.0] * n  # 13,9 ct/kWh export value - the measured sale price
+    imp = [250.0] * n  # 25 ct FIXED, the site's real tariff
+    # A battery that cannot serve the whole night: scarcity is what raises
+    # lambda past the import price and silences cover_load_from_battery.
+    plan = solve(
+        make_input(spot, load, pv, import_price=imp, export_value=spot, soc0_kwh=6.0)
+    )
+
+    discharging = [
+        s
+        for s in plan.slots
+        if s.battery_kw < -0.05 and abs(s.grid_kw) <= PLANNED_GRID_EXCHANGE_DEADBAND_KW
+    ]
+    assert discharging, "the scenario must plan cover-the-house slots"
+    # EVERY one of them carries the right - unconditionally, that is the point.
+    assert all(s.limit_discharge_to_load for s in discharging)
+    # ...and no slot outside the kink carries it.
+    assert all(
+        not s.limit_discharge_to_load
+        for s in plan.slots
+        if s.battery_kw >= -0.05
+        or abs(s.grid_kw) > PLANNED_GRID_EXCHANGE_DEADBAND_KW
+    )
+
+
+@needs_highs
+def test_the_right_is_a_superset_of_the_duty_in_a_real_plan():
+    """Not a rule property but a PLAN property: in a solved plan no slot may
+    carry the economic duty without the right - the edge would then be allowed
+    to limit under economics and forbidden to under the plain shape."""
+    n = 12
+    plan = solve(
+        make_input(
+            [212.0] * n,
+            [7.1] * n,
+            [0.0] * n,
+            import_price=[325.3] * n,
+            export_value=[212.0] * n,
+        )
+    )
+    covering = [s for s in plan.slots if s.cover_load_from_battery]
+    assert covering, "the scenario must flag the economic duty somewhere"
+    assert all(s.limit_discharge_to_load for s in covering)
+
+
+@needs_highs
+def test_the_reduce_right_has_its_own_switch_and_changes_no_setpoint(monkeypatch):
+    """Its own lever (the operator must be able to stop it without losing the
+    economic load following), and - like every stamped duty - it is POST-HOC:
+    the committed decisions are byte-identical with it on and off."""
+    n = 12
+    inp = make_input(
+        [212.0] * n,
+        [7.1] * n,
+        [0.0] * n,
+        import_price=[325.3] * n,
+        export_value=[212.0] * n,
+    )
+    on = solve(inp)
+    assert any(s.limit_discharge_to_load for s in on.slots)
+
+    monkeypatch.setenv("OPTIMIZER_LIMIT_DISCHARGE_ENABLED", "false")
+    off = solve(inp)
+    assert all(s.limit_discharge_to_load is None for s in off.slots)
+    # The economic sibling keeps working - the levers are independent.
+    assert any(s.cover_load_from_battery for s in off.slots)
+    for a, b in zip(on.slots, off.slots):
+        assert (a.battery_kw, a.grid_kw, a.soc_kwh, a.curtail_kw) == (
+            b.battery_kw,
+            b.grid_kw,
+            b.soc_kwh,
+            b.curtail_kw,
+        )
+
+
+def test_the_execution_vectors_name_only_words_the_guard_can_report():
+    """The shared file is read by TWO twins, so its vocabulary is part of the
+    contract: a path or direction the Go guard cannot produce would make the
+    Python side pass while the edge side fails."""
+    for case in _vectors()["ausfuehrung"]:
+        assert case["erwartet_pfad"] in ("", "follow", "idle_follow", "deficit_cover", "limit"), case["name"]
+        assert case["erwartet_richtung"] in (None, "deepen", "reduce"), case["name"]
+        # A named path needs a direction and vice versa - a correction that
+        # cannot say what it did reads as a defect.
+        assert (case["erwartet_pfad"] == "") == (case["erwartet_richtung"] is None), (
+            case["name"]
         )

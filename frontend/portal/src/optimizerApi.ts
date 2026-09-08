@@ -59,6 +59,22 @@ export interface OptimizerSlot {
   valueOfStoredEnergyCtKwh: number | null;
   decisionLabel: DecisionLabel | string;
   whyText: string | null;
+  /**
+   * Netz-null-Reduzieren (2026-09-08): ob die FORM dieses Slots der Box das
+   * REINE Begrenzungs-Recht `limit_discharge_to_load` gibt - eine echte
+   * geplante Entladung (batteryKw < -0,05) in einen geplanten Netzaustausch
+   * von ~ 0 (|gridKw| <= 0,05). Die Box darf die kommandierte Entladung dann
+   * auf das GEMESSENE Defizit begrenzen, nie erhöhen, Untergrenze 0 kW.
+   *
+   * ⚠ Das ist eine ABGELEITETE Aussage über den Slot, keine Quittung der Box:
+   * das Flag wird (wie seine drei Geschwister) nicht persistiert, und weil
+   * diese Regel weder lambda noch einen Preis liest, lässt sie sich aus den
+   * beiden gespeicherten Zahlen der Zeile exakt nachrechnen. Sie sagt also
+   * „dieser Slot erfüllt die Regel", nie „die Box hat das Recht bekommen".
+   * `null` = die Zeile trägt keine Batterie-/Netzleistung; optional, damit ein
+   * älteres Backend einfach nichts liefert.
+   */
+  limitDischargeToLoad?: boolean | null;
 }
 
 /** The admin "why" view of one persisted optimizer run. */

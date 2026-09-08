@@ -491,6 +491,27 @@ describe('executionNote', () => {
     expect(EXECUTION_MODE_LABEL.deficit_cover).toBe('Live-Lastdeckung');
   });
 
+  it('names the pure limitation without claiming a price verdict for the slot', () => {
+    // Netz-null-Reduzieren (08.09.2026): das eigene Wort existiert genau, weil
+    // die Cloud diesen Slot NICHT für wirtschaftlich erklärt hat - der Satz
+    // darf deshalb keine Abwägung behaupten, nur die Begrenzung nennen.
+    const note = executionNote(
+      status({
+        executionMode: 'limit',
+        executionDirection: 'reduce',
+        executionPlannedKw: -6.06,
+        executionTargetKw: 4.35,
+      }),
+    )!;
+    expect(note).toContain('begrenzt');
+    expect(note).toContain('4,4');
+    expect(note).toContain('6,1');
+    expect(note).toContain('statt ins Netz');
+    expect(note).not.toMatch(/teurer|billiger|lohnt|Preis/i);
+    expect(EXECUTION_MODE_LABEL.limit).toBe('Begrenzung auf den Verbrauch');
+    expect(directionLabel('reduce')).toBe('begrenzt');
+  });
+
   it('names the bounded full-battery correction instead of pretending it was an economic grant', () => {
     const note = executionNote(
       status({

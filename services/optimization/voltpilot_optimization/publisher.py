@@ -125,6 +125,15 @@ def _slot_payload(slot) -> dict:
         payload["cover_load_from_battery"] = True
     if slot.unplanned_load_discharge:
         payload["unplanned_load_discharge"] = True
+    # OPTIONAL per the contract (Netz-null-Reduzieren, 2026-09-08): the
+    # REDUCE-only right, present only on discharging "Netz = 0" slots. Same
+    # omit-unless-true discipline as its three siblings, so every other payload
+    # stays byte-identical, and absence is fail-OPEN on the edge for the same
+    # reason. It may ride ALONGSIDE cover_load_from_battery on the same slot -
+    # that one is the economic superset for the DEEPEN half, this one the
+    # unconditional right for the REDUCE half.
+    if slot.limit_discharge_to_load:
+        payload["limit_discharge_to_load"] = True
     # OPTIONAL per the contract (in-slot surplus absorption, 2026-08-02): the
     # charge-side counterpart that RAISES, present only on slots where storing
     # the measured surplus beats selling it. Same omit-unless-true discipline,

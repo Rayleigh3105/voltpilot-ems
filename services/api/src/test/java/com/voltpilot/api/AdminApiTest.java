@@ -1032,6 +1032,9 @@ class AdminApiTest {
         assertThat(num(s1, "valueOfStoredEnergyCtKwh"))
                 .isCloseTo(eta * (28.0 - 2.0), org.assertj.core.data.Offset.offset(1e-6));
         assertThat((String) s1.get("whyText")).contains("aus dem Netz");
+        // Netz-null-Reduzieren (08.09.2026): a CHARGING slot never grants the
+        // REDUCE-only right - there is no discharge to limit.
+        assertThat(s1).containsEntry("limitDischargeToLoad", false);
 
         Map<String, Object> s2 = dvSlots.get(1);
         // Spot -40: the Marktprämie is SUSPENDED (§51), export = bare spot.
@@ -1043,6 +1046,10 @@ class AdminApiTest {
         assertThat(num(s2, "valueOfStoredEnergyCtKwh"))
                 .isCloseTo(eta * (14.0 - 2.0), org.assertj.core.data.Offset.offset(1e-6));
         assertThat((String) s2.get("whyText")).contains("Drosselt");
+        // ...and a slot the plan deliberately EXPORTS from is excluded too: the
+        // box cannot tell an intended sale from a forecast overshoot, so the
+        // grid deadband (|grid_kw| <= 0,05) decides here, where both numbers are.
+        assertThat(s2).containsEntry("limitDischargeToLoad", false);
         // Pre-Fahrplan-Warum rows carry no persisted role/flags.
         assertThat(s1.get("slotRole")).isNull();
         assertThat(s1.get("slotFlags")).isNull();
@@ -1149,6 +1156,24 @@ class AdminApiTest {
         assertThat(num(evSheetSlots.get(0), "importPriceCtKwh")).isEqualTo(30.0);
         // fest wins even with a maintained sheet => the flat all-in source.
         assertThat(evSheet.getBody()).containsEntry("priceSource", "fest");
+
+        // ---- Netz-null-Reduzieren: the DERIVED reduce right -------------------
+        // The flag is deliberately NOT persisted (like its three siblings), but
+        // unlike them its rule reads no price and no lambda - so the diagnostics
+        // recompute it EXACTLY from the row's own battery/grid power. Turning
+        // slot 2 into a "grid ~ 0" discharge is therefore the whole test.
+        exec("UPDATE schedule SET grid_kw = 0.0 WHERE plan_id = "
+                + "'bbbbbbbb-0000-0000-0000-000000000002' AND time = '" + slot2 + "'");
+        ResponseEntity<Map<String, Object>> limiting = rest.exchange(
+                url("/api/v1/admin/sites/" + dvSite + "/optimizer-diagnostics"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> limitSlots =
+                (List<Map<String, Object>>) limiting.getBody().get("slots");
+        assertThat(limitSlots.get(1)).containsEntry("limitDischargeToLoad", true);
+        // The charging slot of the same run stays false - the field is per slot,
+        // never a run-level claim.
+        assertThat(limitSlots.get(0)).containsEntry("limitDischargeToLoad", false);
 
         // ---- auth + tenant scoping -------------------------------------------
         // A customer token is refused outright (backend boundary, not UI).

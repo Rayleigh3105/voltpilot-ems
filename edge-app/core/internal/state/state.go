@@ -251,8 +251,11 @@ type FollowInfo struct {
 	// the house needs, at most down to zero). The card names it - an unnamed
 	// correction reads as a defect.
 	Direction string `json:"direction,omitempty"`
-	// Path is "follow" for the established planned-discharge correction or
-	// "idle_follow" when the additive idle-slot authorization started it.
+	// Path is "follow" for the established planned-discharge correction,
+	// "idle_follow" when the additive idle-slot authorization started it,
+	// "deficit_cover" for the local trust rule and "limit" for the cloud's
+	// REDUCE-only right (limit_discharge_to_load) - it names the authority that
+	// ACTUALLY acted, never merely one the slot also carries.
 	Path string `json:"path,omitempty"`
 	// PlannedKw is the setpoint BEFORE the correction - what the Fahrplan/holder
 	// asked for, so the card can say "der Fahrplan wollte X kW".
