@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -48,17 +49,17 @@ func TestThePortalOverrideReachesTheSameCoreAsTheLocalButton(t *testing.T) {
 	a, st := boostAgent(t)
 	measureSurplus(t, a, 20, 0, 0, st) // no sun at all
 	a.ocppStep(context.Background())
-	nearKw(t, "paused without sun", st.DrawKw(1), 0)
+	nearKwSoon(t, "paused without sun", drawOf(st, 1), 0)
 
 	a.onChargingBoost([]byte(boostPayload(false, time.Now())))
 	measureSurplus(t, a, 20, 0, 0, st)
 	a.ocppStep(context.Background())
-	nearKw(t, "the portal override reached the allocator", st.DrawKw(1), 229.3)
+	nearKwSoon(t, "the portal override reached the allocator", drawOf(st, 1), 229.3)
 
 	a.onChargingBoost([]byte(boostPayload(true, time.Now())))
 	measureSurplus(t, a, 20, 0, 0, st)
 	a.ocppStep(context.Background())
-	nearKw(t, "and its withdrawal too", st.DrawKw(1), 0)
+	nearKwSoon(t, "and its withdrawal too", drawOf(st, 1), 0)
 }
 
 // TestEveryRefusedOverrideChangesNothing: a foreign identity, an expired
@@ -124,14 +125,12 @@ func TestTheSecondDirectionPausesExactlyOneChargeAndGivesItBack(t *testing.T) {
 	// Plenty of sun, so nothing but the customer's own hand can hold it.
 	measureSurplus(t, a, 20, 260, 0, st)
 	a.ocppStep(context.Background())
-	if kw := st.DrawKw(1); kw < 100 {
-		t.Fatalf("the charge must be running before it can be paused: %v kW", kw)
-	}
+	minKwSoon(t, "the charge must be running before it can be paused", drawOf(st, 1), 100)
 
 	a.onChargingBoost([]byte(pausePayload(time.Now())))
 	measureSurplus(t, a, 20, 260, 0, st)
 	a.ocppStep(context.Background())
-	nearKw(t, "the paused charge draws nothing", st.DrawKw(1), 0)
+	nearKwSoon(t, "the paused charge draws nothing", drawOf(st, 1), 0)
 
 	// ⚠ Und der Grund NENNT den Hebel: „wartet - kein Überschuss" schickte den
 	// Kunden zu seiner Quellen-Wahl statt zu seinem eigenen Eingriff.
@@ -147,9 +146,7 @@ func TestTheSecondDirectionPausesExactlyOneChargeAndGivesItBack(t *testing.T) {
 	a.onChargingBoost([]byte(boostPayload(true, time.Now())))
 	measureSurplus(t, a, 20, 260, 0, st)
 	a.ocppStep(context.Background())
-	if kw := st.DrawKw(1); kw < 100 {
-		t.Fatalf("„Automatik fortsetzen\" must give the charge back: %v kW", kw)
-	}
+	minKwSoon(t, "„Automatik fortsetzen“ must give the charge back", drawOf(st, 1), 100)
 }
 
 // TestAPauseLeavesEveryOtherChargeUntouched - the whole promise of the dialog:
@@ -166,18 +163,13 @@ func TestAPauseLeavesEveryOtherChargeUntouched(t *testing.T) {
 	})
 	measureSurplus(t, a, 20, 260, 0, st, st2)
 	a.ocppStep(context.Background())
-	before := st2.DrawKw(1)
-	if before < 50 {
-		t.Fatalf("the neighbour must be charging first: %v kW", before)
-	}
+	before := minKwSoon(t, "the neighbour must be charging first", drawOf(st2, 1), 50)
 
 	a.onChargingBoost([]byte(pausePayload(time.Now())))
 	measureSurplus(t, a, 20, 260, 0, st, st2)
 	a.ocppStep(context.Background())
-	nearKw(t, "the addressed charge pauses", st.DrawKw(1), 0)
-	if after := st2.DrawKw(1); after < before-0.5 {
-		t.Fatalf("the neighbour lost power: %v -> %v kW", before, after)
-	}
+	nearKwSoon(t, "the addressed charge pauses", drawOf(st, 1), 0)
+	minKwSoon(t, fmt.Sprintf("the neighbour must keep its %.3f kW", before), drawOf(st2, 1), before-0.5)
 }
 
 // TestAPauseEndsWhenTheVehicleLeaves - the session binding of BOTH directions:
@@ -189,7 +181,7 @@ func TestAPauseEndsWhenTheVehicleLeaves(t *testing.T) {
 	a.onChargingBoost([]byte(pausePayload(time.Now())))
 	measureSurplus(t, a, 20, 260, 0, st)
 	a.ocppStep(context.Background())
-	nearKw(t, "paused", st.DrawKw(1), 0)
+	nearKwSoon(t, "paused", drawOf(st, 1), 0)
 
 	if err := st.Unplug(1); err != nil {
 		t.Fatalf("unplug: %v", err)
@@ -207,9 +199,7 @@ func TestAPauseEndsWhenTheVehicleLeaves(t *testing.T) {
 	})
 	measureSurplus(t, a, 20, 260, 0, st)
 	a.ocppStep(context.Background())
-	if kw := st.DrawKw(1); kw < 100 {
-		t.Fatalf("the NEXT vehicle must not inherit the pause: %v kW", kw)
-	}
+	minKwSoon(t, "the NEXT vehicle must not inherit the pause", drawOf(st, 1), 100)
 }
 
 // TestAConfigWithoutAnActionIsStillTheOldBoost - the compatibility promise of
@@ -219,14 +209,12 @@ func TestAConfigWithoutAnActionIsStillTheOldBoost(t *testing.T) {
 	a, st := boostAgent(t)
 	measureSurplus(t, a, 20, 0, 0, st) // no sun: only a boost can move it
 	a.ocppStep(context.Background())
-	nearKw(t, "paused without sun", st.DrawKw(1), 0)
+	nearKwSoon(t, "paused without sun", drawOf(st, 1), 0)
 
 	a.onChargingBoost([]byte(boostPayload(false, time.Now())))
 	measureSurplus(t, a, 20, 0, 0, st)
 	a.ocppStep(context.Background())
-	if kw := st.DrawKw(1); kw < 100 {
-		t.Fatalf("an action-less envelope must still boost: %v kW", kw)
-	}
+	minKwSoon(t, "an action-less envelope must still boost", drawOf(st, 1), 100)
 	full, paused := a.ocpp.boostKeys(time.Now().UTC())
 	if len(full) != 1 || len(paused) != 0 {
 		t.Fatalf("it must count as a FULL override, got full=%v paused=%v", full, paused)

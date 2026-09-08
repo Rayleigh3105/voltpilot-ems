@@ -82,10 +82,21 @@ func ocppStation(t *testing.T, a *Agent, id string, connectors int, ratedKw floa
 		t.Fatalf("register %s: %v", id, err)
 	}
 	st := ocppsim.New(ocppsim.Config{ID: id, Connectors: connectors})
-	if err := st.Connect(ocppEndpoint(a)); err != nil {
-		t.Fatalf("station %s: %v", id, err)
-	}
 	t.Cleanup(st.Stop)
+	// ⚠ The dial is the rig's OWN race: a listener that has just been bound can
+	// still refuse the first connection on a loaded runner (seen once under
+	// GOMAXPROCS=1 with -race). A station in the field redials too, so the rig
+	// does - a refused first packet is never the verdict of the test.
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		err := st.Connect(ocppEndpoint(a))
+		if err == nil {
+			break
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("station %s: %v", id, err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	waitUntil(t, "the CSMS saw "+id, func() bool {
 		c, ok := a.ocpp.srv.Snapshot().ChargerByID(id)
 		return ok && c.Connected && len(c.Connectors) == connectors
@@ -135,6 +146,48 @@ func nearKw(t *testing.T, what string, got, want float64) {
 	if math.Abs(got-want) > 0.05 {
 		t.Fatalf("%s = %.3f kW, want %.3f kW", what, got, want)
 	}
+}
+
+// ⚠ A draw read straight after ocppStep is a RACE, not a measurement:
+// ocppStep only SENDS the allocation (SetChargingProfile), and the simulated
+// station applies it on its own websocket goroutine. A loaded runner (`-race`,
+// GOMAXPROCS=1) loses that race and reads the value from BEFORE the step. Every
+// assertion on a STATION-measured draw therefore goes through the two helpers
+// below: same thresholds as nearKw, but the station gets its moment to answer.
+// Values the box computes itself (state, budget, notes) stay on nearKw - those
+// are synchronous.
+func awaitKw(t *testing.T, what string, read func() float64, ok func(float64) bool) float64 {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		kw := read()
+		if ok(kw) {
+			return kw
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("%s: the draw settled at %.3f kW", what, kw)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// drawOf is the reading these helpers poll: one connector of one station.
+func drawOf(st *ocppsim.Station, connector int) func() float64 {
+	return func() float64 { return st.DrawKw(connector) }
+}
+
+// nearKwSoon is nearKw for a draw measured AT THE STATION.
+func nearKwSoon(t *testing.T, what string, read func() float64, want float64) float64 {
+	t.Helper()
+	return awaitKw(t, fmt.Sprintf("%s, want %.3f kW", what, want), read,
+		func(kw float64) bool { return math.Abs(kw-want) <= 0.05 })
+}
+
+// minKwSoon is the floor version: the charge must REACH min.
+func minKwSoon(t *testing.T, what string, read func() float64, min float64) float64 {
+	t.Helper()
+	return awaitKw(t, fmt.Sprintf("%s, want at least %.3f kW", what, min), read,
+		func(kw float64) bool { return kw >= min })
 }
 
 // TestTheFlagOffLeavesTheBoxByteForByteAsItWas.
@@ -188,12 +241,11 @@ func TestTheBudgetIsHeldAtTheStations(t *testing.T) {
 
 	a.ocppStep(context.Background())
 
-	total := s1.TotalDrawKw() + s2.TotalDrawKw()
 	budget := 82.3
+	total := nearKwSoon(t, "site draw", func() float64 { return s1.TotalDrawKw() + s2.TotalDrawKw() }, budget)
 	if total > budget+0.05 {
 		t.Fatalf("the stations draw %.3f kW against a %.1f kW budget", total, budget)
 	}
-	nearKw(t, "site draw", total, budget)
 
 	charging, waiting := 0, 0
 	for _, st := range []*ocppsim.Station{s1, s2} {
@@ -290,7 +342,7 @@ func TestWithoutTheControlSwitchesTheProtectionIsStillInstalled(t *testing.T) {
 		}
 	}
 	// ... and the vehicle runs on the safe default, which is under the budget.
-	nearKw(t, "the gated vehicle", s1.DrawKw(1), 48.5)
+	nearKwSoon(t, "the gated vehicle", drawOf(s1, 1), 48.5)
 
 	// ... and the surface says WHY: a refusal nobody can see is a riddle.
 	info := a.State.Get().Ocpp
@@ -399,7 +451,7 @@ func TestAnUnreachableStationIsNotTreatedAsDrawingNothing(t *testing.T) {
 		return n == 2
 	})
 	a.ocppStep(context.Background())
-	nearKw(t, "each of two", s1.DrawKw(1), 41.15)
+	nearKwSoon(t, "each of two", drawOf(s1, 1), 41.15)
 
 	// Station 2 vanishes. Its session STAYS recorded (a dead socket says
 	// nothing about the car), but it is no longer a claimant - and station 1
@@ -415,8 +467,7 @@ func TestAnUnreachableStationIsNotTreatedAsDrawingNothing(t *testing.T) {
 	// Two stations, one plug each -> the emergency default is (277-180)/2 =
 	// 48.5 kW. Station 2 is holding it, so only 82.3 - 48.5 = 33.8 kW is ours
 	// to hand out.
-	got := s1.DrawKw(1)
-	nearKw(t, "station 1 after the other vanished", got, 33.8)
+	nearKwSoon(t, "station 1 after the other vanished", drawOf(s1, 1), 33.8)
 	info := a.State.Get().Ocpp
 	nearKw(t, "reserved for the unreachable station", info.ReservedKw, 48.5)
 	// The sum of what the site can now draw still fits: 33.8 (ours) + 48.5

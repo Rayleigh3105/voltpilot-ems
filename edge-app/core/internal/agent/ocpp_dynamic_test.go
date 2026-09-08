@@ -69,7 +69,7 @@ func TestTheMeasuredBudgetReplacesTheMaintainedReserveAtTheStations(t *testing.T
 	if got := a.State.Get().Ocpp.BudgetMode; got != string(lastmgmt.BudgetStatic) {
 		t.Fatalf("budget mode = %q before any measurement, want statisch", got)
 	}
-	nearKw(t, "static site draw", s1.TotalDrawKw()+s2.TotalDrawKw(), 82.3)
+	nearKwSoon(t, "static site draw", func() float64 { return s1.TotalDrawKw() + s2.TotalDrawKw() }, 82.3)
 
 	// Now the box MEASURES the connection point: the building is only taking
 	// 20 kW, so 249,3 - 20 = 229,3 kW may charge.
@@ -86,11 +86,10 @@ func TestTheMeasuredBudgetReplacesTheMaintainedReserveAtTheStations(t *testing.T
 	}
 	nearKw(t, "measured rest of the site", *info.SiteLoadKw, 20)
 
-	total := s1.TotalDrawKw() + s2.TotalDrawKw()
+	total := nearKwSoon(t, "site draw", func() float64 { return s1.TotalDrawKw() + s2.TotalDrawKw() }, 229.3)
 	if total > info.BudgetKw+0.05 {
 		t.Fatalf("the stations draw %.3f kW against a %.1f kW budget", total, info.BudgetKw)
 	}
-	nearKw(t, "site draw", total, 229.3)
 	charging := 0
 	for _, st := range []*ocppsim.Station{s1, s2} {
 		for c := 1; c <= 2; c++ {
@@ -130,7 +129,7 @@ func TestGrantingTheBudgetDoesNotShrinkTheBudget(t *testing.T) {
 			t.Fatalf("pass %d: mode %q (%s)", i, info.BudgetMode, info.BudgetNote)
 		}
 		nearKw(t, "budget while the car draws it", info.BudgetKw, 229.3)
-		nearKw(t, "the car's draw", s1.DrawKw(1), 229.3)
+		nearKwSoon(t, "the car's draw", drawOf(s1, 1), 229.3)
 	}
 }
 
@@ -161,7 +160,7 @@ func TestAChargingConnectorThatStopsMeteringFallsBackInsteadOfOscillating(t *tes
 	if info.SiteLoadKw != nil {
 		t.Fatal("no usable measurement, so no measured rest may be claimed")
 	}
-	nearKw(t, "the car's draw", s1.DrawKw(1), 82.3)
+	nearKwSoon(t, "the car's draw", drawOf(s1, 1), 82.3)
 }
 
 // TestTheUnreachableReserveIsNotSubtractedTwiceWhileMeasuring: an unreachable
@@ -233,9 +232,9 @@ func TestTheGridOperatorsEnvelopeReachesTheStations(t *testing.T) {
 		t.Fatalf("the envelope must bind: %+v", info)
 	}
 	nearKw(t, "budget under §14a", info.BudgetKw, 70) // 100*0,9 - 20
-	nearKw(t, "the car's draw", s1.DrawKw(1), 70)
-	if s1.DrawKw(1) > 90 {
-		t.Fatalf("the site draws %.1f kW against a 100 kW envelope", s1.DrawKw(1))
+	got := nearKwSoon(t, "the car's draw", drawOf(s1, 1), 70)
+	if got > 90 {
+		t.Fatalf("the site draws %.1f kW against a 100 kW envelope", got)
 	}
 }
 

@@ -71,7 +71,7 @@ func TestNurSonnenstromCapsTheVehiclesAtTheMeasuredSurplus(t *testing.T) {
 			t.Fatalf("pass %d: the source lane is not measured (%q / %s)", i, info.SurplusMode, info.SurplusNote)
 		}
 		nearKw(t, "the physical budget stays wide", info.BudgetKw, 249.3)
-		nearKw(t, "the car draws the surplus, not the connection", s1.DrawKw(1), 100)
+		nearKwSoon(t, "the car draws the surplus, not the connection", drawOf(s1, 1), 100)
 	}
 	if note := a.State.Get().Ocpp.SurplusNote; !strings.Contains(note, "Nur Sonnenstrom") {
 		t.Fatalf("the sentence must name the customer's own priority: %q", note)
@@ -100,7 +100,7 @@ func TestWithoutASourceChoiceTheStationsAreByteForByteStufe3(t *testing.T) {
 		t.Fatalf("a site nobody asked must have no source lane: %+v", info.SurplusNote)
 	}
 	// Its own nameplate is now the only ceiling (249,3 kW would be free).
-	nearKw(t, "the car keeps everything its station can deliver", s1.DrawKw(1), 240)
+	nearKwSoon(t, "the car keeps everything its station can deliver", drawOf(s1, 1), 240)
 }
 
 // TestJetztVollLadenExemptsOneSessionAndSaysSo - the override, measured.
@@ -121,7 +121,7 @@ func TestJetztVollLadenExemptsOneSessionAndSaysSo(t *testing.T) {
 		measureSurplus(t, a, 20, 0, 0, s1)
 		a.ocppStep(context.Background())
 	}
-	nearKw(t, "paused without sun", s1.DrawKw(1), 0)
+	nearKwSoon(t, "paused without sun", drawOf(s1, 1), 0)
 	if con := ocppConnectorView(t, a, "SAEULE-1", 1); con.Reason != lastmgmt.ReasonNoSurplus {
 		t.Fatalf("reason = %q, want the source word", con.Reason)
 	} else if !strings.Contains(con.ReasonText, "Nur Sonnenstrom") {
@@ -140,7 +140,7 @@ func TestJetztVollLadenExemptsOneSessionAndSaysSo(t *testing.T) {
 	// 249,3 kW planable minus the 20 kW the building is MEASURED taking - the
 	// physical budget still binds a boosted session, which is exactly the
 	// dialog's third consequence.
-	nearKw(t, "the boosted car draws the connection budget", s1.DrawKw(1), 229.3)
+	nearKwSoon(t, "the boosted car draws the connection budget", drawOf(s1, 1), 229.3)
 	if con := ocppConnectorView(t, a, "SAEULE-1", 1); !con.Boost {
 		t.Fatal("the surface must show that this charge is an override")
 	}
@@ -153,7 +153,7 @@ func TestJetztVollLadenExemptsOneSessionAndSaysSo(t *testing.T) {
 	}
 	measureSurplus(t, a, 20, 0, 0, s1)
 	a.ocppStep(context.Background())
-	nearKw(t, "back to the customer's priority", s1.DrawKw(1), 0)
+	nearKwSoon(t, "back to the customer's priority", drawOf(s1, 1), 0)
 }
 
 // TestABoostBelongsToItsSession - „bis das Fahrzeug voll ist" ends when its
@@ -191,7 +191,7 @@ func TestABoostBelongsToItsSession(t *testing.T) {
 		measureSurplus(t, a, 20, 0, 0, s1)
 		a.ocppStep(context.Background())
 	}
-	nearKw(t, "the next vehicle keeps the customer's priority", s1.DrawKw(1), 0)
+	nearKwSoon(t, "the next vehicle keeps the customer's priority", drawOf(s1, 1), 0)
 }
 
 // TestABoostIsRefusedOnAnEmptyPlug - a promise about a vehicle that is not
@@ -229,7 +229,7 @@ func TestAutoVorSpeicherCapsTheBatteryAndNothingElse(t *testing.T) {
 		measureSurplus(t, a, 20, 120, 20, s1)
 		a.ocppStep(context.Background())
 	}
-	nearKw(t, "cars get the remainder", s1.DrawKw(1), 80)
+	nearKwSoon(t, "cars get the remainder", drawOf(s1, 1), 80)
 	if _, ok := a.OcppBatteryChargeCap(time.Now().UTC()); ok {
 		t.Fatal("storage-first must never touch the battery")
 	}
@@ -241,7 +241,7 @@ func TestAutoVorSpeicherCapsTheBatteryAndNothingElse(t *testing.T) {
 		measureSurplus(t, a, 20, 120, 20, s1)
 		a.ocppStep(context.Background())
 	}
-	nearKw(t, "cars get the whole surplus", s1.DrawKw(1), 100)
+	nearKwSoon(t, "cars get the whole surplus", drawOf(s1, 1), 100)
 	cap, ok := a.OcppBatteryChargeCap(time.Now().UTC())
 	if !ok {
 		t.Fatal("cars-first with a measured surplus must cap the battery")
