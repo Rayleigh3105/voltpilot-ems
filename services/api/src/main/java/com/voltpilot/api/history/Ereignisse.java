@@ -8,6 +8,8 @@ import com.voltpilot.api.web.dto.HistoryEventDto;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -210,6 +212,140 @@ public final class Ereignisse {
         return String.format(Locale.GERMANY,
                 "Speicher aus dem Netz geladen: %s (ca. %.1f kWh)", dauer(r.dauer()), r.sum());
     }
+
+    // ---- Abendverkauf (P2 des Nachtreserve-Konzepts vp-nachtreserve-konzept-k2)
+
+    /** Unter dieser verkauften Energie ist ein Abendverkauf kein Ereignis. */
+    static final BigDecimal ABENDVERKAUF_MIN_KWH = new BigDecimal("1.0");
+
+    /** Ab diesem Ladestand gilt der Speicher als LEER (der „Boden" der Nacht). */
+    static final BigDecimal BODEN_SOC_PCT = new BigDecimal("5.5");
+
+    /**
+     * Eine geplante Verkaufs-Viertelstunde mit ihrer Energie und ihrem Wert.
+     *
+     * @param slot   Beginn der Viertelstunde
+     * @param kwh    die eingespeiste Energie (positiv)
+     * @param ctKwh  der Erlös je kWh in ct - {@code null}, wenn der Slot keinen
+     *               Preis trägt (dann nennt der Text keinen)
+     */
+    public record VerkaufSlotWert(Instant slot, BigDecimal kwh, BigDecimal ctKwh) {
+    }
+
+    /**
+     * <b>Das Ereignis „Abendverkauf"</b> - die Antwort auf die Kundenfrage
+     * „warum wurde abends verkauft, wenn ich nachts Strom kaufen musste?"
+     * (Konzept {@code data/vp-nachtreserve-konzept-k2} §P2).
+     *
+     * <p><b>Jeder Satz ist ein persistierter Fakt</b> (Erklärbarkeits-Stufe 0):
+     * der Verkauf steht im gespeicherten Fahrplan, die Prognose im Lauf des
+     * Abends, die Nachtlast/der Boden/der Nachtbezug in der Messreihe. Ein Fakt,
+     * den es nicht gibt, LÄSST SEINEN SATZ WEG - er wird nie geschätzt: ohne
+     * Preis kein Erlös, ohne gemessenen Boden kein „Speicher leer", ohne
+     * Nachtbezug kein Bezugs-Satz. Der Satz „ohne den Verkauf hätte der Speicher
+     * bis … gereicht" fehlt bewusst: er wäre eine RECHNUNG, keine Messung.
+     *
+     * <p>{@code null}, wenn nichts verkauft wurde oder die verkaufte Menge unter
+     * {@link #ABENDVERKAUF_MIN_KWH} bleibt - ein halbes Kilowatt erklärt keine
+     * Nacht.
+     *
+     * @param verkauf       die geplanten Verkaufs-Viertelstunden des Abends
+     * @param prognoseKwh   die Lastprognose der Nacht (Lauf vor 19:00), oder null
+     * @param gemessenKwh   die gemessene Nachtlast, oder null
+     * @param bodenAt       die erste Viertelstunde mit leerem Speicher, oder null
+     * @param bezugKwh      der gemessene Netzbezug der Nacht, oder null
+     * @param bezugEur      dessen Kosten, oder null
+     * @param nachtEnde     das Ende des Nachtfensters (für „bis 07:00")
+     * @param zone          die Zeitzone der Anlage (Europe/Berlin)
+     */
+    public static HistoryEventDto abendverkauf(
+            List<VerkaufSlotWert> verkauf,
+            BigDecimal prognoseKwh,
+            BigDecimal gemessenKwh,
+            Instant bodenAt,
+            BigDecimal bezugKwh,
+            BigDecimal bezugEur,
+            Instant nachtEnde,
+            ZoneId zone) {
+
+        List<VerkaufSlotWert> slots = new ArrayList<>(verkauf == null ? List.of() : verkauf);
+        slots.removeIf(s -> s == null || s.slot() == null || s.kwh() == null);
+        if (slots.isEmpty()) {
+            return null;
+        }
+        slots.sort(Comparator.comparing(VerkaufSlotWert::slot));
+
+        BigDecimal kwh = BigDecimal.ZERO;
+        BigDecimal erloesEur = null;
+        BigDecimal minCt = null;
+        BigDecimal maxCt = null;
+        for (VerkaufSlotWert s : slots) {
+            kwh = kwh.add(s.kwh());
+            if (s.ctKwh() != null) {
+                minCt = minCt == null ? s.ctKwh() : minCt.min(s.ctKwh());
+                maxCt = maxCt == null ? s.ctKwh() : maxCt.max(s.ctKwh());
+                BigDecimal anteil = s.kwh().multiply(s.ctKwh())
+                        .divide(BigDecimal.valueOf(100), java.math.MathContext.DECIMAL64);
+                erloesEur = erloesEur == null ? anteil : erloesEur.add(anteil);
+            }
+        }
+        if (kwh.compareTo(ABENDVERKAUF_MIN_KWH) < 0) {
+            return null;
+        }
+        Instant start = slots.get(0).slot();
+        Instant end = slots.get(slots.size() - 1).slot().plus(SLOT);
+
+        StringBuilder text = new StringBuilder();
+        text.append(String.format(Locale.GERMANY, "Abendverkauf %s bis %s · %.1f kWh",
+                uhr(start, zone), uhr(end, zone), kwh));
+        if (minCt != null) {
+            text.append(minCt.compareTo(maxCt) == 0
+                    ? String.format(Locale.GERMANY, " zu %.1f ct", minCt)
+                    : String.format(Locale.GERMANY, " zu %.1f bis %.1f ct", minCt, maxCt));
+            if (erloesEur != null) {
+                text.append(String.format(Locale.GERMANY, " (%.2f €)", erloesEur));
+            }
+        }
+        text.append('.');
+
+        if (prognoseKwh != null && gemessenKwh != null) {
+            text.append(String.format(Locale.GERMANY,
+                    " Prognose für die Nacht %.0f kWh, gemessen %.0f kWh",
+                    prognoseKwh, gemessenKwh));
+            if (prognoseKwh.signum() > 0) {
+                BigDecimal abweichung = gemessenKwh
+                        .divide(prognoseKwh, java.math.MathContext.DECIMAL64)
+                        .subtract(BigDecimal.ONE)
+                        .multiply(BigDecimal.valueOf(100));
+                text.append(String.format(Locale.GERMANY, " (%+.0f %%)", abweichung));
+            }
+            text.append('.');
+        }
+
+        List<String> nacht = new ArrayList<>();
+        if (bodenAt != null) {
+            nacht.add("Speicher leer um " + uhr(bodenAt, zone));
+        }
+        if (bezugKwh != null && bezugKwh.compareTo(new BigDecimal("0.05")) > 0) {
+            StringBuilder b = new StringBuilder(String.format(Locale.GERMANY,
+                    "Netzbezug bis %s %.1f kWh", uhr(nachtEnde, zone), bezugKwh));
+            if (bezugEur != null) {
+                b.append(String.format(Locale.GERMANY, " (%.2f €)", bezugEur));
+            }
+            nacht.add(b.toString());
+        }
+        if (!nacht.isEmpty()) {
+            text.append(' ').append(String.join("; ", nacht)).append('.');
+        }
+        return new HistoryEventDto("abendverkauf", start, end, text.toString());
+    }
+
+    /** „19:45" in der Zeitzone der Anlage. */
+    private static String uhr(Instant at, ZoneId zone) {
+        return UHR.format(at.atZone(zone == null ? ZoneId.of("Europe/Berlin") : zone));
+    }
+
+    private static final DateTimeFormatter UHR = DateTimeFormatter.ofPattern("HH:mm");
 
     // ---- Fehlstellen ----------------------------------------------------------
 

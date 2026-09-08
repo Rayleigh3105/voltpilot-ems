@@ -610,6 +610,69 @@ public class HistoryRepository {
                 siteId, Timestamp.from(from), Timestamp.from(to));
     }
 
+    // ---- Abendverkauf (P2 des Nachtreserve-Konzepts) --------------------------
+
+    /**
+     * Ein GEPLANTER Verkaufs-Slot des Abends: die Netzleistung des Fahrplans
+     * (negativ = Einspeisung) und der Börsenpreis, mit dem der Optimierer sie
+     * bewertet hat. Beides steht so in {@code schedule}; die Energie und der
+     * Erlös daraus rechnet {@link com.voltpilot.api.history.Ereignisse}.
+     */
+    public record VerkaufSlot(Instant slot, BigDecimal gridKw, BigDecimal priceEurMwh) {
+    }
+
+    /**
+     * Die Viertelstunden des Fensters, die der Fahrplan als VERKAUF geplant hat
+     * ({@code slot_role = 'verkaufen'} bei gleichzeitiger Netz-EINSPEISUNG,
+     * {@code grid_kw &lt; 0}), je Slot aus dem NEUESTEN Lauf, der ihn geplant hat -
+     * dieselbe {@code DISTINCT ON}-Regel wie {@link #curtailSlots}, damit
+     * überlappende MPC-Läufe nie doppelt zählen.
+     *
+     * <p>Die Rolle wird NACH dem {@code DISTINCT ON} gefiltert: sonst könnte ein
+     * älterer Lauf, der denselben Slot noch als Verkauf plante, den jüngeren
+     * überstimmen - die Spur zeigt immer, was zuletzt geplant war.
+     */
+    public List<VerkaufSlot> verkaufSlots(UUID siteId, Instant from, Instant to) {
+        return jdbc.query(
+                "SELECT time, grid_kw, price_eur_mwh FROM ("
+                        + "  SELECT DISTINCT ON (time) time, grid_kw, price_eur_mwh, slot_role"
+                        + "  FROM schedule WHERE site_id = ? AND time >= ? AND time < ?"
+                        + "  ORDER BY time, generated_at DESC) s "
+                        + "WHERE slot_role = 'verkaufen' AND grid_kw IS NOT NULL AND grid_kw < 0 "
+                        + "ORDER BY time",
+                (rs, i) -> new VerkaufSlot(rs.getTimestamp("time").toInstant(),
+                        rs.getBigDecimal("grid_kw"),
+                        rs.getBigDecimal("price_eur_mwh")),
+                siteId, Timestamp.from(from), Timestamp.from(to));
+    }
+
+    /**
+     * Die LASTPROGNOSE der Nacht in kWh, wie sie der Abend-Lauf gesehen hat:
+     * Σ {@code load_kw · 0,25} über {@code [from, to)} aus dem LETZTEN Lauf, der
+     * VOR {@code runBefore} erzeugt wurde und dieses Fenster überhaupt geplant
+     * hat. {@code null}, wenn es einen solchen Lauf nicht gibt - dann behauptet
+     * der Ereignistext keine Prognose (Ehrlichkeitsregel 1).
+     *
+     * <p><b>Warum genau EIN Lauf</b> und nicht die {@code DISTINCT ON}-Sicht der
+     * übrigen Abfragen: die Frage ist „womit hat der Fahrplan den Abendverkauf
+     * begründet?" - das ist der Wissensstand jenes einen Laufs, nicht die später
+     * korrigierte Sicht.
+     */
+    public BigDecimal nachtPrognoseKwh(UUID siteId, Instant from, Instant to, Instant runBefore) {
+        List<BigDecimal> rows = jdbc.query(
+                "WITH lauf AS ("
+                        + "  SELECT max(generated_at) AS g FROM schedule"
+                        + "   WHERE site_id = ? AND generated_at < ?"
+                        + "     AND time >= ? AND time < ?) "
+                        + "SELECT sum(s.load_kw) * 0.25 AS kwh FROM schedule s, lauf"
+                        + " WHERE lauf.g IS NOT NULL AND s.site_id = ? AND s.generated_at = lauf.g"
+                        + "   AND s.time >= ? AND s.time < ? AND s.load_kw IS NOT NULL",
+                (rs, i) -> rs.getBigDecimal("kwh"),
+                siteId, Timestamp.from(runBefore), Timestamp.from(from), Timestamp.from(to),
+                siteId, Timestamp.from(from), Timestamp.from(to));
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     private static Instant instantOrNull(Timestamp ts) {
         return ts == null ? null : ts.toInstant();
     }

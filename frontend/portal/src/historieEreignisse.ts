@@ -36,6 +36,7 @@ export type EreignisArt =
   | 'abregelung'
   | 'netzgrenze'
   | 'netzladen'
+  | 'abendverkauf'
   | 'datenluecke'
   | 'geraet-still';
 
@@ -60,6 +61,7 @@ export const ART_ORDER: readonly EreignisArt[] = [
   'abregelung',
   'netzgrenze',
   'netzladen',
+  'abendverkauf',
   'datenluecke',
   'geraet-still',
 ];
@@ -87,6 +89,15 @@ export const EREIGNIS_ARTEN: Record<EreignisArt, EreignisArtInfo> = {
     farbe: 'gridCharge',
     erklaerung:
       'Der Speicher hat mehr geladen, als die Sonne in dieser Zeit lieferte — der Rest kam aus dem Netz.',
+  },
+  // NEUTRAL, nie grün und nie rot: der Abendverkauf war weder ein Gewinn noch
+  // ein Fehler, sondern eine ENTSCHEIDUNG, die der Text erklärt. Deshalb das
+  // ruhige Blaugrau (`cloud`) und kein Ertrags- oder Kostenton.
+  abendverkauf: {
+    label: 'Abendverkauf',
+    farbe: 'cloud',
+    erklaerung:
+      'Der Fahrplan hat abends Energie verkauft. Der Text nennt die Menge, den Preis und die Nacht, die darauf folgte.',
   },
   datenluecke: {
     label: 'Datenlücke',

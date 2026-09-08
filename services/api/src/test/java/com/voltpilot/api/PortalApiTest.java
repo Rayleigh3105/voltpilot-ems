@@ -2191,6 +2191,129 @@ class PortalApiTest {
         }
     }
 
+    /**
+     * <b>Das Ereignis „Abendverkauf"</b> (P2 des Nachtreserve-Konzepts
+     * {@code data/vp-nachtreserve-konzept-k2}) - die Antwort auf die
+     * Kundenfrage aus der Nacht 04./05.09.2026: „warum wurde abends verkauft,
+     * wenn ich nachts Strom kaufen musste?"
+     *
+     * <p>Die Nacht ist hier nachgestellt: EIN Lauf um 18:45 Berlin plant die 52
+     * Viertelstunden von 18:00 bis 07:00, vier davon als Verkauf; gemessen wird
+     * mehr Last als prognostiziert, der Speicher fällt nach Mitternacht auf den
+     * Boden und ab da wird bezogen. Jede Zahl des Textes muss GENAU aus diesen
+     * Zeilen folgen - eine erfundene wäre der Bruch der Echtheits-Regel.
+     */
+    @Test
+    void derAbendverkaufErklaertDieNachtAusPersistiertenFakten() {
+        String tenant = "00000000-0000-0000-0000-000000000001";
+        String device = "00000000-0000-0000-0000-000000000003";
+        String site = "5c000000-0000-0000-0000-0000000000f1";
+        String plan = "5c000000-0000-0000-0000-0000000000f2";
+        String demo = token("demo", "demo");
+        // 04.09.2026 18:00 Berlin = 16:00Z (CEST); die Nacht endet 07:00 Berlin
+        // = 05:00Z des 05.09. -> 52 Viertelstunden.
+        Instant nachtVon = Instant.parse("2026-09-04T16:00:00Z");
+        String lauf = "2026-09-04T16:45:00Z";          // 18:45 Berlin, VOR 19:00
+        String spaeterLauf = "2026-09-04T18:00:00Z";   // 20:00 Berlin, danach
+        String frueherLauf = "2026-09-04T10:00:00Z";   // 12:00 Berlin, davor
+
+        // Ein Standort mit FESTEM Bezugstarif 25 ct - wie der Kunde, der gefragt
+        // hat. plant_kind bleibt der Vorgabewert ohne PV-Inbetriebnahme, die
+        // Einspeisung wird also mit dem reinen Börsenpreis bewertet.
+        exec("INSERT INTO site (id, tenant_id, name, bidding_zone, tarif_art,"
+                + " tarif_param_ct_kwh) VALUES ('" + site + "', '" + tenant
+                + "', 'Abendverkauf', 'DE-LU', 'fest', 25.0) ON CONFLICT DO NOTHING");
+        try {
+            StringBuilder plaene = new StringBuilder();
+            StringBuilder mess = new StringBuilder();
+            for (int i = 0; i < 52; i++) {
+                Instant slot = nachtVon.plus(java.time.Duration.ofMinutes(15L * i));
+                // Der Fahrplan des Abend-Laufs: 4,0 kW Lastprognose je Slot
+                // -> 52 x 4,0 x 0,25 h = 52,0 kWh für die Nacht.
+                String rolle = "NULL";
+                String gridKw = "0";
+                String preis = "NULL";
+                if (i >= 7 && i <= 10) { // 17:45Z-18:30Z = 19:45-20:45 Berlin
+                    rolle = "'verkaufen'";
+                    gridKw = "-13.7";        // 4 x 13,7 kW x 0,25 h = 13,7 kWh
+                    preis = String.valueOf(136 + (i - 7)); // 13,6 .. 13,9 ct
+                }
+                plaene.append(String.format(
+                        "('%s', '%s', '%s', '%s', '%s', '%s', 0, %s, 50.0, %s, 4.0, %s),",
+                        slot, tenant, site, device, plan, lauf, gridKw, preis, rolle));
+                // Gemessen: 5,0 kW Last je Viertelstunde -> 65,0 kWh (+25 %).
+                // Der Ladestand fällt um 02:45 Berlin (00:45Z) auf 4 % (Boden),
+                // und ab da werden 3,2 kW bezogen -> 17 x 3,2 x 0,25 = 13,6 kWh.
+                boolean leer = !slot.isBefore(Instant.parse("2026-09-05T00:45:00Z"));
+                mess.append(String.format(
+                        "('%s', '%s', '%s', '%s', %s, %s, 0.0, 5.0),",
+                        slot, tenant, site, device, leer ? "3.2" : "0.0", leer ? "4.0" : "50.0"));
+            }
+            plaene.setLength(plaene.length() - 1);
+            mess.setLength(mess.length() - 1);
+            exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id,"
+                    + " generated_at, battery_kw, grid_kw, soc_pct, price_eur_mwh, load_kw,"
+                    + " slot_role) VALUES " + plaene + " ON CONFLICT DO NOTHING");
+            // Zwei Läufe, die NICHT gelten dürfen: einer nach 19:00 (er kannte
+            // den Abendverkauf schon nicht mehr als Begründung) und ein
+            // früherer, den der 18:45-Lauf überstimmt.
+            exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id,"
+                    + " generated_at, battery_kw, grid_kw, soc_pct, price_eur_mwh, load_kw,"
+                    + " slot_role) VALUES "
+                    + String.format("('%s', '%s', '%s', '%s', '%s', '%s',"
+                            + " 0, 0, 50.0, NULL, 99.0, NULL),",
+                            Instant.parse("2026-09-05T03:00:00Z"), tenant, site, device, plan,
+                            spaeterLauf)
+                    + String.format("('%s', '%s', '%s', '%s', '%s', '%s',"
+                            + " 0, 0, 50.0, NULL, 1.0, NULL)",
+                            Instant.parse("2026-09-05T03:15:00Z"), tenant, site, device, plan,
+                            frueherLauf)
+                    + " ON CONFLICT DO NOTHING");
+            exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw,"
+                    + " soc_pct, pv_power_kw, load_kw) VALUES " + mess
+                    + " ON CONFLICT DO NOTHING");
+
+            HistoryEventDto_ ereignis = abendverkauf(site, demo);
+            assertThat(ereignis).isNotNull();
+            assertThat(ereignis.start).isEqualTo("2026-09-04T17:45:00Z");
+            assertThat(ereignis.end).isEqualTo("2026-09-04T18:45:00Z");
+            assertThat(ereignis.text).isEqualTo(
+                    "Abendverkauf 19:45 bis 20:45 · 13,7 kWh zu 13,6 bis 13,9 ct (1,88 €)."
+                            + " Prognose für die Nacht 52 kWh, gemessen 65 kWh (+25 %)."
+                            + " Speicher leer um 02:45; Netzbezug bis 07:00 13,6 kWh (3,40 €).");
+
+            // Ein Verkauf UNTER einer Kilowattstunde erklärt keine Nacht.
+            exec("UPDATE schedule SET grid_kw = -0.5 WHERE site_id = '" + site
+                    + "' AND slot_role = 'verkaufen'");
+            assertThat(abendverkauf(site, demo)).isNull();
+
+            // Ohne Verkaufs-Slots gibt es das Ereignis gar nicht.
+            exec("UPDATE schedule SET slot_role = NULL WHERE site_id = '" + site + "'");
+            assertThat(abendverkauf(site, demo)).isNull();
+        } finally {
+            exec("DELETE FROM telemetry WHERE site_id = '" + site + "'");
+            exec("DELETE FROM schedule WHERE site_id = '" + site + "'");
+            exec("DELETE FROM site WHERE id = '" + site + "'");
+        }
+    }
+
+    /** Ein Ereignis der Spur, so wie die Antwort es trägt. */
+    private record HistoryEventDto_(String type, String start, String end, String text) {
+    }
+
+    /** Das „abendverkauf"-Ereignis des 04.09.2026 dieser Anlage, oder null. */
+    private HistoryEventDto_ abendverkauf(String site, String bearer) {
+        Map<String, Object> body = rest.exchange(
+                url("/api/v1/sites/" + site + "/history?range=day&at=2026-09-04"),
+                HttpMethod.GET, new HttpEntity<>(bearer(bearer)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        return list(body, "events").stream()
+                .filter(e -> "abendverkauf".equals(e.get("type")))
+                .map(e -> new HistoryEventDto_((String) e.get("type"), (String) e.get("start"),
+                        (String) e.get("end"), (String) e.get("text")))
+                .findFirst().orElse(null);
+    }
+
     private static String row(String time, String generatedAt, String plan, String site,
             String tenant, String device, String cost, String baseline, String stur) {
         return String.format(

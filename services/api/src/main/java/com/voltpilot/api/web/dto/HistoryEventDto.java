@@ -24,6 +24,10 @@ import java.time.Instant;
  *   <li>{@code netzladen} - der Speicher wurde aus dem Netz geladen
  *       (gemessene Viertelstunde: Ladung über der PV-Erzeugung bei
  *       gleichzeitigem Netzbezug).</li>
+ *   <li>{@code abendverkauf} - der Fahrplan hat abends Energie VERKAUFT,
+ *       erzählt mit der Nacht, die darauf folgte (Prognose gegen gemessene
+ *       Last, leerer Speicher, Netzbezug). Nur im Tages-Zeitraum; jeder Satz
+ *       ein persistierter Fakt, ein fehlender Fakt lässt seinen Satz weg.</li>
  *   <li>{@code datenluecke} - eine Fehlstelle in der Messreihe.</li>
  *   <li>{@code geraet-still} - die Messreihe bricht ab und es kam nichts mehr
  *       nach: das Gerät meldet sich nicht.</li>

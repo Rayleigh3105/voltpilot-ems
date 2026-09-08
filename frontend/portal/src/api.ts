@@ -687,6 +687,7 @@ export type HistoryEventType =
   | 'abregelung'
   | 'netzgrenze'
   | 'netzladen'
+  | 'abendverkauf'
   | 'datenluecke'
   | 'geraet-still';
 

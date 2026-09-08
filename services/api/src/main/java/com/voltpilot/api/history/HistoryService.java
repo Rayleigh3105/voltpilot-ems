@@ -1,5 +1,7 @@
 package com.voltpilot.api.history;
 
+import com.voltpilot.api.optimizer.OptimizerDiagnosticsService;
+import com.voltpilot.api.optimizer.SlotEconomics;
 import com.voltpilot.api.repo.HistoryRepository;
 import com.voltpilot.api.web.dto.HistoryBucketDto;
 import com.voltpilot.api.web.dto.HistoryCoverageDto;
@@ -14,6 +16,7 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -33,8 +36,17 @@ public class HistoryService {
 
     private final HistoryRepository repo;
 
-    public HistoryService(HistoryRepository repo) {
+    /**
+     * Nur zum LESEN der Anlagen-Ökonomie ({@link SlotEconomics}) für den
+     * Erlös-Satz des Abendverkaufs - dieselbe Rekomposition, die auch die
+     * Fahrplan-Seite liest ({@code SchedulePricingService}). Die Erlös-Rechnung
+     * selbst bleibt unangetastet.
+     */
+    private final OptimizerDiagnosticsService diagnostics;
+
+    public HistoryService(HistoryRepository repo, OptimizerDiagnosticsService diagnostics) {
         this.repo = repo;
+        this.diagnostics = diagnostics;
     }
 
     public HistoryDto history(UUID siteId, String biddingZone, HistoryRange range, LocalDate at) {
@@ -47,15 +59,7 @@ public class HistoryService {
         // start is either < or >= the instant). Totals/protocol/plan are then
         // computed over the merged bucket list unchanged (era-agnostic).
         Instant cutover = repo.v2HistoryCutover(siteId);
-        List<HistoryBucketDto> buckets;
-        if (cutover == null) {
-            buckets = v1Buckets(siteId, biddingZone, range, window);
-        } else {
-            buckets = splice(
-                    v1Buckets(siteId, biddingZone, range, window),
-                    v2Buckets(siteId, biddingZone, range, window),
-                    cutover);
-        }
+        List<HistoryBucketDto> buckets = buckets(siteId, biddingZone, range, window, cutover);
 
         HistoryTotalsDto totals = totals(buckets,
                 repo.plannedSavings(siteId, window.from(), window.to()),
@@ -78,7 +82,8 @@ public class HistoryService {
 
         return new HistoryDto(range.name().toLowerCase(java.util.Locale.ROOT),
                 window.from(), window.to(), range.bucketMinutes(), buckets, totals, protocol, plan,
-                coverage, events(siteId, biddingZone, range, window, coverageRow, coverage));
+                coverage, events(siteId, biddingZone, range, window, coverageRow, coverage,
+                        at, cutover));
     }
 
     /**
@@ -94,8 +99,8 @@ public class HistoryService {
      */
     private List<HistoryEventDto> events(UUID siteId, String biddingZone, HistoryRange range,
             HistoryRange.Window window, HistoryRepository.CoverageRow coverageRow,
-            HistoryCoverageDto coverage) {
-        return Ereignisse.build(
+            HistoryCoverageDto coverage, LocalDate at, Instant cutover) {
+        List<HistoryEventDto> events = new java.util.ArrayList<>(Ereignisse.build(
                 repo.negativePriceSlots(biddingZone, window.from(), window.to()),
                 repo.curtailSlots(siteId, window.from(), window.to()),
                 Ereignisse.evaluatesGridLimit(range)
@@ -103,8 +108,98 @@ public class HistoryService {
                         : List.of(),
                 repo.gridChargeSlots(siteId, window.from(), window.to()),
                 repo.dataGaps(siteId, window.from(), window.to()),
-                coverageRow, coverage);
+                coverageRow, coverage));
+        if (range == HistoryRange.DAY) {
+            HistoryEventDto abendverkauf = abendverkauf(siteId, biddingZone, at, cutover);
+            if (abendverkauf != null) {
+                events.add(abendverkauf);
+                events.sort(java.util.Comparator.comparing(HistoryEventDto::start));
+            }
+        }
+        return events;
     }
+
+    // ---- Abendverkauf (P2 des Nachtreserve-Konzepts) --------------------------
+
+    /**
+     * Das Ereignis „Abendverkauf" des angezeigten Tages, oder {@code null}.
+     *
+     * <p><b>Nur im Tages-Zeitraum</b>: die Erklärung besteht aus Viertelstunden
+     * eines Abends und der darauf folgenden Nacht - in einem Monatsfenster wären
+     * das dreißig Nächte und dreißig Abfragen. Genau wie das Tagesprotokoll und
+     * die Plan-Überlagerung bleibt sie deshalb dem Tag vorbehalten.
+     *
+     * <p><b>Die Nacht reicht über den Zeitraum hinaus</b> (18:00 bis 07:00 des
+     * Folgetags): sie wird mit demselben Bucket-Weg gelesen wie die
+     * Tagesreihe - inklusive v1/v2-Naht -, damit dieselbe Zahl herauskommt, die
+     * der Kunde am nächsten Tag im Diagramm sieht.
+     */
+    private HistoryEventDto abendverkauf(UUID siteId, String biddingZone, LocalDate at,
+            Instant cutover) {
+        ZoneId zone = HistoryRange.ZONE;
+        List<HistoryRepository.VerkaufSlot> geplant = repo.verkaufSlots(siteId,
+                at.atTime(VERKAUF_VON, 0).atZone(zone).toInstant(),
+                at.atTime(VERKAUF_BIS, 0).atZone(zone).toInstant());
+        if (geplant.isEmpty()) {
+            return null;
+        }
+        // Der Erlös je kWh entsteht aus DERSELBEN Rechnung wie auf der
+        // Fahrplan-Seite (SlotEconomics wird hier nur GELESEN). Fehlt die
+        // Anlagen-Ökonomie (RLS), bleibt der reine Börsenpreis - und fehlt auch
+        // der, nennt der Text keinen Preis.
+        SlotEconomics economics = diagnostics.economicsFor(siteId,
+                geplant.get(0).slot(), geplant.get(geplant.size() - 1).slot());
+        List<Ereignisse.VerkaufSlotWert> werte = new java.util.ArrayList<>(geplant.size());
+        for (HistoryRepository.VerkaufSlot s : geplant) {
+            BigDecimal kwh = s.gridKw().negate().multiply(new BigDecimal("0.25"));
+            Double spot = s.priceEurMwh() == null ? null : s.priceEurMwh().doubleValue();
+            Double ct = economics == null ? null : economics.exportValueCtKwh(spot, s.slot());
+            if (ct == null && spot != null) {
+                ct = spot / 10.0;
+            }
+            werte.add(new Ereignisse.VerkaufSlotWert(s.slot(), kwh,
+                    ct == null ? null : BigDecimal.valueOf(ct)));
+        }
+
+        Instant nachtVon = at.atTime(NACHT_VON, 0).atZone(zone).toInstant();
+        Instant nachtBis = at.plusDays(1).atTime(NACHT_BIS, 0).atZone(zone).toInstant();
+        BigDecimal prognose = repo.nachtPrognoseKwh(siteId, nachtVon, nachtBis,
+                at.atTime(PROGNOSE_LAUF_VOR, 0).atZone(zone).toInstant());
+
+        List<HistoryBucketDto> nacht = buckets(siteId, biddingZone, HistoryRange.DAY,
+                new HistoryRange.Window(nachtVon, nachtBis), cutover);
+        Instant bodenAb = at.atTime(BODEN_AB, 0).atZone(zone).toInstant();
+        Instant boden = null;
+        for (HistoryBucketDto b : nacht) {
+            if (!b.start().isBefore(bodenAb) && b.socLastPct() != null
+                    && b.socLastPct().compareTo(Ereignisse.BODEN_SOC_PCT) <= 0) {
+                boden = b.start();
+                break;
+            }
+        }
+        Instant bezugAb = at.atTime(BEZUG_AB, 0).atZone(zone).toInstant();
+        List<HistoryBucketDto> spaet = nacht.stream()
+                .filter(b -> !b.start().isBefore(bezugAb)).toList();
+
+        return Ereignisse.abendverkauf(werte, prognose,
+                sum(nacht, HistoryBucketDto::loadKwh), boden,
+                sum(spaet, HistoryBucketDto::gridImportKwh),
+                sum(spaet, HistoryBucketDto::costEur),
+                nachtBis, zone);
+    }
+
+    /** Das Verkaufsfenster des Abends (Berliner Stunden, Konzept §P2). */
+    static final int VERKAUF_VON = 17;
+    static final int VERKAUF_BIS = 23;
+    /** Das Nachtfenster, über das Prognose und Messung verglichen werden. */
+    static final int NACHT_VON = 18;
+    static final int NACHT_BIS = 7;
+    /** Bis wann der Lauf erzeugt sein muss, dessen Prognose den Verkauf trug. */
+    static final int PROGNOSE_LAUF_VOR = 19;
+    /** Ab wann ein leerer Speicher als „Boden der Nacht" zählt. */
+    static final int BODEN_AB = 20;
+    /** Ab wann der Netzbezug der Nacht zählt. */
+    static final int BEZUG_AB = 22;
 
     // ---- Datenabdeckung (F4/P7) ---------------------------------------------
 
@@ -191,6 +286,23 @@ public class HistoryService {
 
     private static Instant min(Instant a, Instant b) {
         return a.isBefore(b) ? a : b;
+    }
+
+    /**
+     * Die Buckets eines Fensters in der Era-Sicht der Anlage: unmigriert = rein
+     * v1, sonst die an {@code cutover} gespleißte Reihe. Der EINE Weg, auf dem
+     * sowohl die angezeigte Reihe als auch das Nachtfenster des Abendverkaufs
+     * gelesen werden - damit beide dieselbe Zahl sehen.
+     */
+    private List<HistoryBucketDto> buckets(UUID siteId, String biddingZone, HistoryRange range,
+            HistoryRange.Window window, Instant cutover) {
+        if (cutover == null) {
+            return v1Buckets(siteId, biddingZone, range, window);
+        }
+        return splice(
+                v1Buckets(siteId, biddingZone, range, window),
+                v2Buckets(siteId, biddingZone, range, window),
+                cutover);
     }
 
     /** v1-era buckets for a range (day = raw telemetry, else = rollups + cost). */

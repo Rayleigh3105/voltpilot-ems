@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.IntStream;
@@ -248,5 +249,94 @@ class EreignisseTest {
         // 15.07. beginnt um 22:00 UTC des Vortags.
         assertThat(TAG.from()).isEqualTo(Instant.parse("2026-07-14T22:00:00Z"));
         assertThat(TAG.to()).isEqualTo(Instant.parse("2026-07-15T22:00:00Z"));
+    }
+
+    // ---- Abendverkauf ----------------------------------------------------------
+
+    private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
+
+    /** Ein Zeitpunkt der Nacht 04./05.09.2026 (Sommerzeit, UTC+2). */
+    private static Instant n(String isoUtc) {
+        return Instant.parse("2026-09-" + isoUtc + ":00Z");
+    }
+
+    private static Ereignisse.VerkaufSlotWert verkauf(String isoUtc, String kwh, String ct) {
+        return new Ereignisse.VerkaufSlotWert(n(isoUtc), new BigDecimal(kwh),
+                ct == null ? null : new BigDecimal(ct));
+    }
+
+    /** Die vier Verkaufs-Viertelstunden 19:45-20:45 Berlin, 13,7 kWh zu 13,6-13,9 ct. */
+    private static List<Ereignisse.VerkaufSlotWert> abendVerkauf() {
+        return List.of(
+                verkauf("04T17:45", "3.425", "13.6"),
+                verkauf("04T18:00", "3.425", "13.7"),
+                verkauf("04T18:15", "3.425", "13.8"),
+                verkauf("04T18:30", "3.425", "13.9"));
+    }
+
+    @Test
+    void derAbendverkaufErzaehltDenVerkaufUndDieNachtDieIhmFolgte() {
+        HistoryEventDto e = Ereignisse.abendverkauf(abendVerkauf(),
+                new BigDecimal("52"), new BigDecimal("65"),
+                n("05T00:45"), new BigDecimal("13.6"), new BigDecimal("3.40"),
+                n("05T05:00"), BERLIN);
+
+        assertThat(e).isNotNull();
+        assertThat(e.type()).isEqualTo("abendverkauf");
+        // start = erster Verkaufs-Slot, end = letzter + eine Viertelstunde.
+        assertThat(e.start()).isEqualTo(n("04T17:45"));
+        assertThat(e.end()).isEqualTo(n("04T18:45"));
+        assertThat(e.text()).isEqualTo(
+                "Abendverkauf 19:45 bis 20:45 · 13,7 kWh zu 13,6 bis 13,9 ct (1,88 €)."
+                        + " Prognose für die Nacht 52 kWh, gemessen 65 kWh (+25 %)."
+                        + " Speicher leer um 02:45; Netzbezug bis 07:00 13,6 kWh (3,40 €).");
+    }
+
+    @Test
+    void ohneVerkaufOderUnterEinerKilowattstundeGibtEsKeinEreignis() {
+        assertThat(Ereignisse.abendverkauf(List.of(), null, null, null, null, null,
+                n("05T05:00"), BERLIN)).isNull();
+        // 4 x 0,125 kWh = 0,5 kWh - ein halbes Kilowatt erklärt keine Nacht.
+        List<Ereignisse.VerkaufSlotWert> winzig = abendVerkauf().stream()
+                .map(s -> new Ereignisse.VerkaufSlotWert(s.slot(), new BigDecimal("0.125"),
+                        s.ctKwh()))
+                .toList();
+        assertThat(Ereignisse.abendverkauf(winzig, new BigDecimal("52"), new BigDecimal("65"),
+                n("05T00:45"), new BigDecimal("13.6"), new BigDecimal("3.40"),
+                n("05T05:00"), BERLIN)).isNull();
+    }
+
+    @Test
+    void einFehlenderFaktLaesstSeinenSatzWegStattIhnZuSchaetzen() {
+        // Weder Prognose noch Boden noch Nachtbezug: NUR der Verkauf bleibt.
+        HistoryEventDto nur = Ereignisse.abendverkauf(abendVerkauf(),
+                null, null, null, null, null, n("05T05:00"), BERLIN);
+        assertThat(nur.text()).isEqualTo(
+                "Abendverkauf 19:45 bis 20:45 · 13,7 kWh zu 13,6 bis 13,9 ct (1,88 €).");
+
+        // Der Speicher wurde NICHT leer -> kein Boden-Satz, der Bezug bleibt.
+        HistoryEventDto ohneBoden = Ereignisse.abendverkauf(abendVerkauf(),
+                new BigDecimal("52"), new BigDecimal("65"), null,
+                new BigDecimal("13.6"), null, n("05T05:00"), BERLIN);
+        assertThat(ohneBoden.text()).doesNotContain("Speicher leer")
+                .endsWith("Netzbezug bis 07:00 13,6 kWh.");
+
+        // Ohne einen einzigen Preis nennt der Text keinen - und keinen Erlös.
+        List<Ereignisse.VerkaufSlotWert> preislos = abendVerkauf().stream()
+                .map(s -> new Ereignisse.VerkaufSlotWert(s.slot(), s.kwh(), null))
+                .toList();
+        assertThat(Ereignisse.abendverkauf(preislos, null, null, null, null, null,
+                n("05T05:00"), BERLIN).text())
+                .isEqualTo("Abendverkauf 19:45 bis 20:45 · 13,7 kWh.");
+    }
+
+    @Test
+    void einEinzigerPreisWirdNichtAlsSpanneGeschrieben() {
+        List<Ereignisse.VerkaufSlotWert> gleich = abendVerkauf().stream()
+                .map(s -> new Ereignisse.VerkaufSlotWert(s.slot(), s.kwh(), new BigDecimal("13.6")))
+                .toList();
+        assertThat(Ereignisse.abendverkauf(gleich, null, null, null, null, null,
+                n("05T05:00"), BERLIN).text())
+                .startsWith("Abendverkauf 19:45 bis 20:45 · 13,7 kWh zu 13,6 ct (1,86 €).");
     }
 }

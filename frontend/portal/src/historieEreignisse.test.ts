@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { History, HistoryBucket, HistoryEvent, HistoryRange } from './api';
 import {
   ART_ORDER,
+  EREIGNIS_ARTEN,
   bandSpanne,
   drilldownHinweis,
   ereignisSpur,
@@ -219,5 +220,42 @@ describe('spurHinweis — was der Zeitraum nicht auswertet, sagt die Spur', () =
 
   it('reist als Teil der Spur mit', () => {
     expect(ereignisSpur(hist([local(2026, 7, 15)], []))!.hinweis).toBe(spurHinweis('month'));
+  });
+});
+
+describe('Abendverkauf — die Erklärung der Nacht ist NEUTRAL', () => {
+  const abendverkauf = ereignis({
+    type: 'abendverkauf',
+    start: local(2026, 9, 4, 19, 45),
+    end: local(2026, 9, 4, 20, 45),
+    text:
+      'Abendverkauf 19:45 bis 20:45 · 13,7 kWh zu 13,6 bis 13,9 ct (1,88 €).' +
+      ' Prognose für die Nacht 52 kWh, gemessen 65 kWh (+25 %).' +
+      ' Speicher leer um 02:45; Netzbezug bis 07:00 13,6 kWh (3,40 €).',
+  });
+
+  it('trägt das Label „Abendverkauf" und einen neutralen Ton — nie grün, nie rot', () => {
+    const info = EREIGNIS_ARTEN.abendverkauf;
+    expect(info.label).toBe('Abendverkauf');
+    // `cloud` ist das ruhige Blaugrau; die Ertrags-/Kosten-Töne (`pv`,
+    // `discharge`) blieben den Ereignissen vorbehalten, die BEWERTEN.
+    expect(info.farbe).toBe('cloud');
+    expect(['pv', 'discharge']).not.toContain(info.farbe);
+  });
+
+  it('wird als Chip gezeigt, mit Zeit davor und dem Servertext unangetastet', () => {
+    const spur = ereignisSpur(
+      hist([local(2026, 9, 4, 19, 45)], [abendverkauf], 'day'),
+    )!;
+    expect(spur.chips.map((c) => c.art)).toEqual(['abendverkauf']);
+    expect(spur.chips[0].zeit).toBe('19:45–20:45 Uhr');
+    expect(spur.chips[0].text).toBe(abendverkauf.text);
+    expect(spur.arten.map((a) => a.art)).toEqual(['abendverkauf']);
+  });
+
+  it('steht in der kanonischen Reihenfolge zwischen Anlage und Lücken', () => {
+    expect(ART_ORDER).toContain('abendverkauf');
+    expect(ART_ORDER.indexOf('abendverkauf')).toBeGreaterThan(ART_ORDER.indexOf('netzladen'));
+    expect(ART_ORDER.indexOf('abendverkauf')).toBeLessThan(ART_ORDER.indexOf('datenluecke'));
   });
 });

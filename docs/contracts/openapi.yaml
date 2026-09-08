@@ -12043,12 +12043,17 @@ components:
             client must SAY so rather than let a missing marker read as "no grid
             limit". abregelung comes from the persisted plans
             (`schedule.curtail_kw`), so its text says "eingeplant".
+            abendverkauf is emitted for range=day only: the plan SOLD energy in
+            the evening, told together with the night that followed (forecast vs
+            measured load, an empty battery, the night's grid import). Every
+            sentence is a persisted fact - a fact that is missing DROPS ITS
+            SENTENCE instead of being estimated.
           items:
             type: object
             properties:
               type:
                 type: string
-                enum: [negativpreis, abregelung, netzgrenze, netzladen, datenluecke, geraet-still]
+                enum: [negativpreis, abregelung, netzgrenze, netzladen, abendverkauf, datenluecke, geraet-still]
               start: { type: string, format: date-time }
               end: { type: string, format: date-time, description: Exclusive. }
               text: { type: string, description: Plain-German statement without a time. }
