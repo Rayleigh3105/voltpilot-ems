@@ -44,10 +44,10 @@ export type Anschlussart = {
 export const ANSCHLUSSARTEN: Anschlussart[] = [
   {
     id: 'mqtt',
-    label: 'MQTT-Broker in Ihrem Netzwerk',
+    label: 'MQTT-Server in Ihrem Netzwerk',
     hint:
       'Ihr BMS (DIYBMS, Seplos, JK, ein ESP am Shunt …) veröffentlicht seine Werte auf einem '
-      + 'lokalen Broker. VoltPilot hört zu und ordnet die Felder zu.',
+      + 'lokalen MQTT-Server. VoltPilot hört zu und ordnet die Felder zu.',
     verfuegbar: true,
   },
   {
@@ -433,7 +433,7 @@ export function zuordnungenFehler(zeilen: ZuordnungZeile[]): string[] {
 /** Was am BROKER fehlt (Schritt 1). */
 export function brokerFehler(b: BrokerForm): string[] {
   const out: string[] = [];
-  if (b.host.trim() === '') out.push('Bitte tragen Sie die Adresse Ihres MQTT-Brokers ein.');
+  if (b.host.trim() === '') out.push('Bitte tragen Sie die Adresse Ihres MQTT-Servers ein.');
   else if (!isPrivateHost(b.host)) out.push(HOST_NOT_PRIVATE);
   const port = zahl(b.port);
   if (port === null || !Number.isInteger(port) || port < 1 || port > 65535) {
@@ -1575,7 +1575,7 @@ export type VorschauErgebnis = {
 
 const VORSCHAU_FEHLER: Record<string, string> = {
   invalid_request: 'Ihre Box konnte mit dieser Zuordnung nichts anfangen.',
-  unreachable: 'Ihre Box erreicht diesen Broker nicht. Bitte Adresse und Port prüfen.',
+  unreachable: 'Ihre Box erreicht diesen MQTT-Server nicht. Bitte Adresse und Port prüfen.',
   no_answer: 'Im Lauschfenster kam auf keinem der Topics eine Nachricht an.',
   invalid_response: 'Die Nachrichten waren nicht lesbar - passt der Wertepfad zum Format?',
   timeout: 'Ihre Anlage hat nicht rechtzeitig geantwortet. Bitte erneut versuchen.',
@@ -1750,7 +1750,7 @@ export function pruefen(
         wert: `${endpunkt.tls ? 'https' : 'http'}://${endpunkt.host.trim()}`
           + `:${endpunkt.port.trim()}${endpunkt.path.trim()}`,
       }
-      : { label: 'Broker', wert: `${broker.host.trim()}:${broker.port.trim()}` },
+      : { label: 'MQTT-Server', wert: `${broker.host.trim()}:${broker.port.trim()}` },
     ...(http
       ? [{
         label: 'Anmeldung',

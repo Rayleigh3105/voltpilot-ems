@@ -874,7 +874,7 @@ describe('Prüfen & anlegen', () => {
       zeilen,
       { ...neueSoc(), methode: 'direct' },
     );
-    expect(rows.find((r) => r.label === 'Broker')?.wert).toBe('192.168.0.44:1883');
+    expect(rows.find((r) => r.label === 'MQTT-Server')?.wert).toBe('192.168.0.44:1883');
     expect(rows.find((r) => r.label === 'Zugeordnete Messwerte')?.wert).toContain('Ladestand');
     expect(rows.find((r) => r.label === 'Ladestand')?.wert).toBe('Gemessen übernehmen');
   });

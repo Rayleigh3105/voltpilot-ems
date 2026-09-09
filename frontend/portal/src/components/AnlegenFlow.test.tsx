@@ -1314,7 +1314,7 @@ describe('AnlegenFlow · der Batterie-Weg (P5d)', () => {
     );
     expect(await screen.findByTestId('batterie-bearbeiten')).toBeVisible();
     expect(screen.queryByTestId('geraet-bearbeiten')).toBeNull();
-    expect((screen.getByLabelText('Adresse des Brokers') as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText('Adresse des MQTT-Servers') as HTMLInputElement).value).toBe(
       '192.168.0.44',
     );
   });
