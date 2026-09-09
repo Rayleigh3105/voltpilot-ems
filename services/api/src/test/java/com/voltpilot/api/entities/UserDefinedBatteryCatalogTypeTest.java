@@ -31,21 +31,26 @@ class UserDefinedBatteryCatalogTypeTest {
         assertThat(t.composed())
                 .as("sie ist ein echtes Gerät, nie aus Stammdaten komponiert").isFalse();
 
-        // ⚠ Genau diese elf Kanäle sind die geschlossene Ziel-Abbildung aus
-        // §3.2b. Wer hier einen wegnimmt, nimmt ihn dem ganzen Anschluss weg -
-        // UserDefinedBatteryDefinition liest diese Liste, statt eine zweite zu
-        // führen.
+        // ⚠ Die ersten elf Kanäle sind die geschlossene Ziel-Abbildung der
+        // EBENE 1 aus §3.2b. Wer hier einen wegnimmt, nimmt ihn dem ganzen
+        // Anschluss weg - UserDefinedBatteryDefinition liest diese Liste, statt
+        // eine zweite zu führen. Der zwölfte, soc_source_code, ist der einzige,
+        // den NIEMAND zuordnet: er entsteht in der Ebene 2 (P5b) zusammen mit
+        // dem abgeleiteten Ladestand und trägt dessen Herkunft je
+        // Messzeitpunkt - deshalb behält die Historie die damalige Quelle.
         assertThat(measureChannels(t)).containsExactly("soc_pct", "voltage_v", "current_a",
                 "power_kw", "cell_min_mv", "cell_max_mv", "temp_max_c", "charge_allowed",
-                "discharge_allowed", "charge_limit_a", "discharge_limit_a");
+                "discharge_allowed", "charge_limit_a", "discharge_limit_a", "soc_source_code");
 
         // Die Einheiten reisen mit - der Ladestand ist %, eine Zellspannung mV.
         assertThat(unitOf(t, "soc_pct")).isEqualTo("%");
         assertThat(unitOf(t, "cell_min_mv")).isEqualTo("mV");
         assertThat(unitOf(t, "temp_max_c")).isEqualTo("°C");
         // Ein Wahrheitswert hat keine Einheit - eine erfundene wäre schlimmer
-        // als keine (er reist als 0/1).
+        // als keine (er reist als 0/1). Der Herkunfts-CODE genauso: er ist ein
+        // geschlossenes Vokabular in Zahlenform, keine Messgröße.
         assertThat(unitOf(t, "charge_allowed")).isEmpty();
+        assertThat(unitOf(t, "soc_source_code")).isEmpty();
     }
 
     /**

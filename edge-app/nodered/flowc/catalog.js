@@ -904,6 +904,70 @@ const TYPES = {
     },
   },
 
+  // vp.soc.derive (P5b Ebene 2, Konzept vp-deye-diybms-luecke-l5 §3.2b): the
+  // GENERATED-ONLY SoC DERIVATION of a self-connected battery. It takes the
+  // standard battery channels a level-1 source just delivered (today
+  // vp.mqtt.read, tomorrow an HTTP read type) and turns them into ONE state of
+  // charge - taken over directly, computed from the OCV curve, or counted from
+  // charge - published as ordinary telemetry together with its ORIGIN
+  // (soc_source_code), so cloud, optimizer and portal read it like any other
+  // SoC and the history keeps the source of the time.
+  //
+  // It hangs on an EDGE from the read node, never on the trigger (triggerable
+  // is false, and that is load-bearing): the tick hits the SOURCE, and this
+  // node computes on what the source just sent. Fired by the tick itself it
+  // would compute on the PREVIOUS tick's values, and the order of two
+  // simultaneously fired nodes is nothing to build a state of charge on.
+  //
+  // Same origin kind as vp.mqtt.read: the api's UserDefinedBatteryFlowCompiler
+  // is the single author of both, and neither is a free editor block while the
+  // mapping/curve UI (P5d) is still to come.
+  'vp.soc.derive': {
+    version: '1.0.0',
+    label: 'Ladestand ableiten (generiert)',
+    runtimes: ['edge'],
+    minPalette: '0.11.0',
+    generatedOrigin: 'mqtt-device',
+    triggerable: false,
+    ports: {
+      in: { channels: { type: 'number', required: true } },
+      out: { value: { type: 'number' } },
+    },
+    validate(p) {
+      return validateSocDerive(p);
+    },
+    // The node PRODUCES soc_pct + soc_source_code, so the entity must declare
+    // them - the honesty mirror of vp.mqtt.read's rule: a derivation whose
+    // result the battery does not declare would record nowhere.
+    requires(p) {
+      if (!p || !p.entity_id) return [];
+      return [{
+        entity_id: p.entity_id,
+        capabilities: ['measure:soc_pct', 'measure:soc_source_code'],
+      }];
+    },
+    // A derivation never claims: it drives no actuation.
+    claims() {
+      return [];
+    },
+    compile(ctx, node) {
+      const p = node.parameters || {};
+      return [{
+        id: ctx.nrId(node.id),
+        type: 'vp-soc-derive',
+        z: ctx.tabId,
+        name: node.label || 'Ladestand',
+        core: ctx.coreId,
+        entity: p.entity_id,
+        method: p.method,
+        prefer_direct: p.prefer_direct !== false,
+        hold_s: Number.isInteger(p.hold_s) ? p.hold_s : SOC_DEFAULT_HOLD_S,
+        inputs: normalizeSocInputs(p.inputs),
+        params: normalizeSocParams(p.params),
+      }];
+    },
+  },
+
   // vp.consumer.reactive (D-19, Verbrauchssteuerung Inkrement 4 §13.2): the
   // GENERATED-ONLY reactive consumer-policy node. The cloud policy compiler is
   // its single author (compile.js refuses it in a document without the
@@ -1076,6 +1140,192 @@ function normalizeMqttMappings(list) {
     if (Array.isArray(m.false_values)) out.false_values = m.false_values.slice();
     return out;
   });
+}
+
+// --- vp.soc.derive validation (P5b Ebene 2). Der ZWILLING der Cloud-Regel
+// (services/api .../components/UserDefinedBatteryDefinition.checkSoc) und der
+// Laufzeit (vp-palette/lib/soc-derivation.js): dieselben Methoden, dieselben
+// Schranken, dieselbe Kurven-Regel. Wer eines aendert, aendert alle drei.
+const SOC_METHODS = ['direct', 'ocv_curve', 'coulomb'];
+const SOC_INPUT_ROLES = ['soc', 'cell_min', 'cell_max', 'voltage', 'current', 'power'];
+const SOC_INPUT_DEFAULTS = {
+  soc: 'soc_pct',
+  cell_min: 'cell_min_mv',
+  cell_max: 'cell_max_mv',
+  voltage: 'voltage_v',
+  current: 'current_a',
+  power: 'power_kw',
+};
+const SOC_MIN_CURVE_POINTS = 2;
+const SOC_MAX_CURVE_POINTS = 64;
+const SOC_MIN_CELL_V = 0.5;
+const SOC_MAX_CELL_V = 5.0;
+const SOC_DEFAULT_HOLD_S = 900;
+const SOC_MIN_HOLD_S = 60;
+const SOC_MAX_HOLD_S = 86400;
+const SOC_DEFAULT_ROUND_PCT = 0.1;
+const SOC_MAX_ROUND_PCT = 5.0;
+const SOC_MAX_CELLS = 1024;
+const SOC_MAX_CAPACITY_KWH = 10000;
+
+// Eine Kennlinie STEIGT. Eine, die bei hoeherer Spannung einen kleineren
+// Ladestand nennt, beschreibt keine Lithium-Zelle - sie ist ein Tippfehler, der
+// stillschweigend einen falschen Ladestand ausgerechnet haette.
+function validSocCurve(raw, where, errs) {
+  if (!Array.isArray(raw)) {
+    errs.push(where + ' ist keine Kennlinie');
+    return false;
+  }
+  if (raw.length < SOC_MIN_CURVE_POINTS || raw.length > SOC_MAX_CURVE_POINTS) {
+    errs.push(where + ' braucht ' + SOC_MIN_CURVE_POINTS + '..' + SOC_MAX_CURVE_POINTS
+      + ' Stuetzpunkte');
+    return false;
+  }
+  const pts = [];
+  for (const p of raw) {
+    if (!Array.isArray(p) || p.length < 2 || !num(p[0]) || !num(p[1])) {
+      errs.push(where + ': ein Stuetzpunkt braucht Spannung und Ladestand');
+      return false;
+    }
+    if (p[0] < SOC_MIN_CELL_V || p[0] > SOC_MAX_CELL_V) {
+      errs.push(where + ': Zellspannung ausserhalb ' + SOC_MIN_CELL_V + '..' + SOC_MAX_CELL_V);
+      return false;
+    }
+    if (p[1] < 0 || p[1] > 100) {
+      errs.push(where + ': Ladestand ausserhalb 0..100');
+      return false;
+    }
+    pts.push([p[0], p[1]]);
+  }
+  pts.sort((a, b) => a[0] - b[0]);
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i][0] === pts[i - 1][0]) {
+      errs.push(where + ': die Zellspannung ' + pts[i][0] + ' V steht zweimal');
+      return false;
+    }
+    if (pts[i][1] < pts[i - 1][1]) {
+      errs.push(where + ': eine Kennlinie faellt nicht mit steigender Spannung');
+      return false;
+    }
+  }
+  return true;
+}
+
+function validateSocDerive(p) {
+  const errs = [];
+  if (!p || typeof p !== 'object') return ['Parameter fehlen'];
+  if (!ID_RE.test(p.entity_id || '')) errs.push('entity_id fehlt oder ist ungueltig');
+  if (SOC_METHODS.indexOf(p.method) < 0) {
+    errs.push('method muss ' + SOC_METHODS.join('/') + ' sein');
+    return errs;
+  }
+  if (p.hold_s !== undefined && !(Number.isInteger(p.hold_s)
+      && p.hold_s >= SOC_MIN_HOLD_S && p.hold_s <= SOC_MAX_HOLD_S)) {
+    errs.push('hold_s muss ' + SOC_MIN_HOLD_S + '..' + SOC_MAX_HOLD_S + ' sein');
+  }
+  const inputs = p.inputs && typeof p.inputs === 'object' ? p.inputs : {};
+  for (const role of Object.keys(inputs)) {
+    if (SOC_INPUT_ROLES.indexOf(role) < 0) {
+      errs.push('unbekannter Eingang: ' + role);
+    } else if (!CHANNEL_RE.test(inputs[role] || '')) {
+      errs.push('Eingang ' + role + ' nennt keinen gueltigen Kanal');
+    }
+  }
+  const params = p.params && typeof p.params === 'object' ? p.params : {};
+  if (params.curve_charge !== undefined) {
+    validSocCurve(params.curve_charge, 'curve_charge', errs);
+  }
+  if (params.curve_discharge !== undefined) {
+    validSocCurve(params.curve_discharge, 'curve_discharge', errs);
+  }
+  if (params.cells_in_series !== undefined && !(Number.isInteger(params.cells_in_series)
+      && params.cells_in_series >= 1 && params.cells_in_series <= SOC_MAX_CELLS)) {
+    errs.push('cells_in_series muss 1..' + SOC_MAX_CELLS + ' sein');
+  }
+  if (params.round_pct !== undefined && !(num(params.round_pct) && params.round_pct > 0
+      && params.round_pct <= SOC_MAX_ROUND_PCT)) {
+    errs.push('round_pct muss > 0 und <= ' + SOC_MAX_ROUND_PCT + ' sein');
+  }
+  if (params.capacity_kwh !== undefined && !(num(params.capacity_kwh)
+      && params.capacity_kwh > 0 && params.capacity_kwh <= SOC_MAX_CAPACITY_KWH)) {
+    errs.push('capacity_kwh muss > 0 und <= ' + SOC_MAX_CAPACITY_KWH + ' sein');
+  }
+  if (params.efficiency_pct !== undefined && !(num(params.efficiency_pct)
+      && params.efficiency_pct > 0 && params.efficiency_pct <= 100)) {
+    errs.push('efficiency_pct muss > 0 und <= 100 sein');
+  }
+  if (params.nominal_voltage_v !== undefined && !(num(params.nominal_voltage_v)
+      && params.nominal_voltage_v > 0 && params.nominal_voltage_v <= 1500)) {
+    errs.push('nominal_voltage_v muss > 0 und <= 1500 sein');
+  }
+  if (params.anchor !== undefined) {
+    const a = params.anchor;
+    if (!a || typeof a !== 'object' || !num(a.soc_pct) || a.soc_pct < 0 || a.soc_pct > 100) {
+      errs.push('anchor.soc_pct muss 0..100 sein');
+    }
+  }
+
+  // Die EHRLICHKEITSREGEL, die diese Stufe traegt: kein Ladestand ohne Eingang.
+  // Sie steht hier ein zweites Mal, weil ein ausgerolltes Dokument nie darauf
+  // bauen darf, dass es sauber erzeugt wurde.
+  if (p.method === 'ocv_curve' && !Array.isArray(params.curve_charge)) {
+    errs.push('ocv_curve ohne curve_charge - eine Kennlinie ohne Stuetzpunkte rechnet nichts');
+  }
+  if (p.method === 'coulomb') {
+    if (!num(params.capacity_kwh)) {
+      errs.push('coulomb ohne capacity_kwh - ohne Kapazitaet zaehlt niemand');
+    }
+    // Ob der ANKER-Ersatz da ist (ein zugeordnetes soc_pct), sieht nur die
+    // Cloud: flowc kennt die Feld-Zuordnung des Lese-Knotens nicht, und ein
+    // Verbot, das hier raten muesste, waere schlechter als keines. Die Regel
+    // steht deshalb vollstaendig in UserDefinedBatteryDefinition.checkSoc.
+  }
+  return errs;
+}
+
+// Die kompilierte Form ist VOLLSTAENDIG: jede Vorgabe steht ausgeschrieben im
+// Artefakt (dieselbe Regel wie bei den MQTT-Zuordnungen).
+function normalizeSocInputs(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const out = {};
+  for (const role of SOC_INPUT_ROLES.slice().sort()) {
+    out[role] = typeof src[role] === 'string' && src[role] !== ''
+      ? src[role] : SOC_INPUT_DEFAULTS[role];
+  }
+  return out;
+}
+
+function normalizeSocParams(raw) {
+  const p = raw && typeof raw === 'object' ? raw : {};
+  const out = {
+    conservative_min: p.conservative_min !== false,
+    round_pct: num(p.round_pct) && p.round_pct > 0 ? p.round_pct : SOC_DEFAULT_ROUND_PCT,
+  };
+  if (Array.isArray(p.curve_charge)) out.curve_charge = p.curve_charge.map((q) => q.slice());
+  if (Array.isArray(p.curve_discharge)) {
+    out.curve_discharge = p.curve_discharge.map((q) => q.slice());
+  }
+  if (Number.isInteger(p.cells_in_series)) out.cells_in_series = p.cells_in_series;
+  if (num(p.capacity_kwh)) out.capacity_kwh = p.capacity_kwh;
+  if (num(p.efficiency_pct)) out.efficiency_pct = p.efficiency_pct;
+  if (num(p.nominal_voltage_v)) out.nominal_voltage_v = p.nominal_voltage_v;
+  if (p.anchor && typeof p.anchor === 'object' && num(p.anchor.soc_pct)) {
+    out.anchor = { soc_pct: p.anchor.soc_pct };
+    if (typeof p.anchor.at === 'string' && p.anchor.at !== '') out.anchor.at = p.anchor.at;
+  }
+  if (p.recalibrate && typeof p.recalibrate === 'object') {
+    const r = {};
+    if (num(p.recalibrate.full_cell_mv) && num(p.recalibrate.full_soc_pct)) {
+      r.full_cell_mv = p.recalibrate.full_cell_mv;
+      r.full_soc_pct = p.recalibrate.full_soc_pct;
+    }
+    if (num(p.recalibrate.empty_cell_mv) && num(p.recalibrate.empty_soc_pct)) {
+      r.empty_cell_mv = p.recalibrate.empty_cell_mv;
+      r.empty_soc_pct = p.recalibrate.empty_soc_pct;
+    }
+    if (Object.keys(r).length > 0) out.recalibrate = r;
+  }
+  return out;
 }
 
 // --- vp.consumer.reactive spec validation (shared shape with the cloud

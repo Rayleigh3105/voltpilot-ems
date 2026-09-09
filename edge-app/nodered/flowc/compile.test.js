@@ -37,7 +37,7 @@ function assertPinned(artifact, pinName) {
 // (and would break the "no user code paths" isolation guarantee).
 const WHITELISTED_NR_TYPES = new Set([
   'tab', 'vp-entity-read', 'vp-feed', 'vp-desired', 'vp-notify', 'vp-modbus-read',
-  'vp-consumer-policy', 'vp-mqtt-read', 'function', 'inject',
+  'vp-consumer-policy', 'vp-mqtt-read', 'vp-soc-derive', 'function', 'inject',
 ]);
 
 test('pv-surplus-heatrod fixture compiles deterministically', () => {
@@ -393,17 +393,96 @@ test('mqtt-battery fixture compiles to ONE data-only vp-mqtt-read node', () => {
   // Jeder gemappte Kanal wird als measure-Anforderung gefordert - eine
   // Zuordnung auf einen Kanal, den die Batterie nicht misst, faellt bei der
   // Aktivierung auf.
+  // Seit P5b stehen soc_pct und soc_source_code mit drin: sie werden nicht
+  // GELESEN, sondern vom Ableiter GESCHRIEBEN - und eine Entitaet, die sie
+  // nicht fuehrt, haette nichts, worin der Ladestand landet.
   assert.deepStrictEqual(a.required_entities, [{
     entity_id: '7b3c9d21-8e4f-4a56-9c07-0123456789ab',
     capabilities: [
       'measure:cell_max_mv', 'measure:cell_min_mv', 'measure:charge_allowed',
-      'measure:discharge_allowed', 'measure:temp_max_c', 'measure:voltage_v',
+      'measure:discharge_allowed', 'measure:soc_pct', 'measure:soc_source_code',
+      'measure:temp_max_c', 'measure:voltage_v',
     ],
   }]);
 
-  // Die Palette-Untergrenze hebt sich auf 0.10.0 (deploy.go quittiert darunter
-  // mit `unsupported` statt still nichts zu tun).
-  assert.strictEqual(a.min_palette_version, '0.10.0');
+  // Die Palette-Untergrenze hebt sich mit P5b auf 0.11.0 (deploy.go quittiert
+  // darunter mit `unsupported` statt still nichts zu tun).
+  assert.strictEqual(a.min_palette_version, '0.11.0');
+});
+
+// --- P5b Ebene 2: der SoC-Ableiter im selben generierten Flow --------------
+
+test('mqtt-battery fixture wires the soc derivation BEHIND the read node', () => {
+  const g = fixture('flow-graph.valid.mqtt-battery.json');
+  const a = compile(g);
+  const flows = a.bundle.nodered_flows;
+  const mqtt = flows.find((n) => n.type === 'vp-mqtt-read');
+  const soc = flows.find((n) => n.type === 'vp-soc-derive');
+  const inject = flows.find((n) => n.type === 'inject');
+
+  assert.ok(soc, 'the fixture carries exactly one derivation');
+  assert.strictEqual(flows.filter((n) => n.type === 'vp-soc-derive').length, 1);
+  assert.strictEqual(soc.func, undefined, 'data-only config - never generated code');
+
+  // DIE Kette: Takt -> Quelle -> Ableiter. Der Takt trifft NUR die Quelle;
+  // haenge der Ableiter selbst am Takt, rechnete er auf dem Stand des VORIGEN
+  // Taktes, und die Reihenfolge zweier gleichzeitig gefeuerter Knoten ist
+  // nichts, worauf man einen Ladestand baut.
+  assert.deepStrictEqual(inject.wires, [[mqtt.id]], 'the tick hits ONLY the source');
+  assert.deepStrictEqual(mqtt.wires, [[soc.id]], 'the source feeds the derivation');
+
+  // Jede Vorgabe steht AUSGESCHRIEBEN im Artefakt - danach raet die Box nicht.
+  assert.strictEqual(soc.method, 'ocv_curve');
+  assert.strictEqual(soc.prefer_direct, true);
+  assert.strictEqual(soc.hold_s, 900);
+  assert.strictEqual(soc.params.conservative_min, true);
+  assert.strictEqual(soc.params.round_pct, 0.1);
+  assert.strictEqual(soc.params.curve_charge.length, 21);
+  assert.strictEqual(soc.params.curve_discharge.length, 21);
+  assert.deepStrictEqual(soc.inputs, {
+    cell_max: 'cell_max_mv', cell_min: 'cell_min_mv', current: 'current_a',
+    power: 'power_kw', soc: 'soc_pct', voltage: 'voltage_v',
+  });
+});
+
+test('vp.soc.derive is GENERATED-ONLY and refuses a nonsense derivation', () => {
+  const base = fixture('flow-graph.valid.mqtt-battery.json');
+  const mutate = (fn) => {
+    const g = JSON.parse(JSON.stringify(base));
+    fn(g);
+    return g;
+  };
+  const findRule = (g, rule) => validate(g).some((f) => f.rule === rule);
+  const S = (g) => g.nodes.find((n) => n.type === 'vp.soc.derive').parameters;
+
+  // Ohne die EIGENE origin-Art gibt es den Baustein nicht - genau wie bei
+  // vp.mqtt.read; die Herkunft ist server-gestempelt und nie faelschbar.
+  assert.ok(findRule(mutate((g) => { delete g.origin; }), 'V-4'), 'no origin at all');
+  assert.ok(findRule(mutate((g) => {
+    g.origin = { kind: 'consumer-policy', policy_id: g.origin.point_id, revision: 1 };
+  }), 'V-4'), 'a foreign generated origin must not unlock it');
+
+  assert.ok(findRule(mutate((g) => { S(g).method = 'raten'; }), 'V-4'), 'unknown method');
+  assert.ok(findRule(mutate((g) => { delete S(g).params.curve_charge; }), 'V-4'),
+    'ocv_curve without a curve computes nothing');
+  assert.ok(findRule(mutate((g) => { S(g).params.curve_charge = [[3.26, 0]]; }), 'V-4'),
+    'a single point is not a curve');
+  assert.ok(findRule(mutate((g) => {
+    S(g).params.curve_charge = [[3.26, 60], [4.18, 10]];
+  }), 'V-4'), 'a curve that FALLS with rising voltage is a typo with a result');
+  assert.ok(findRule(mutate((g) => { S(g).params.curve_charge[0] = [9.9, 0]; }), 'V-4'),
+    'a cell voltage of 9.9 V is no lithium cell');
+  assert.ok(findRule(mutate((g) => { S(g).hold_s = 5; }), 'V-4'), 'hold_s below the floor');
+  assert.ok(findRule(mutate((g) => { S(g).inputs.erfunden = 'soc_pct'; }), 'V-4'),
+    'an unknown input role is refused, never guessed');
+  assert.ok(findRule(mutate((g) => {
+    S(g).method = 'coulomb';
+    delete S(g).params.capacity_kwh;
+  }), 'V-4'), 'coulomb without a usable capacity counts nothing');
+
+  // Der Ableiter haengt an einer KANTE. Ohne sie fehlt sein Pflicht-Eingang.
+  assert.ok(findRule(mutate((g) => { g.edges = []; }), 'V-1'),
+    'the derivation must be fed by the read node');
 });
 
 test('pinned content hash of the mqtt-battery fixture', () => {

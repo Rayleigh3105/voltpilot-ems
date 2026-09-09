@@ -7697,7 +7697,9 @@ components:
             `power_kw`, `cell_min_mv`, `cell_max_mv`, `temp_max_c`,
             `charge_allowed`, `discharge_allowed`, `charge_limit_a`,
             `discharge_limit_a`. Anything else is REFUSED, never guessed. Each
-            channel has exactly one source.
+            channel has exactly one source. `soc_source_code` is deliberately
+            NOT mappable: it is DERIVED in level 2 and no BMS publishes it -
+            mapping it would pass a computation off as a measurement.
         topic:
           type: string
           maxLength: 200
@@ -7753,13 +7755,160 @@ components:
       type: object
       description: >
         How the state of charge comes about (level 2, `vp-deye-diybms-luecke-l5`
-        §3.2b). Today only `direct` exists - "the source delivers a real state of
-        charge" - and it requires `soc_pct` to be mapped (no state of charge
-        without an input). `ocv_curve` and `coulomb` are refused BY NAME rather
-        than stored unexecuted; they ship with P5b. Omitted on create: `direct`
-        when `soc_pct` is mapped, otherwise no derivation at all.
+        §3.2b, package P5b). All three methods exist. `direct` takes over a
+        measured `soc_pct`; `ocv_curve` interpolates two OCV->SoC curves and
+        takes the CONSERVATIVE minimum of the highest and the lowest cell;
+        `coulomb` counts SoC(t) = SoC(t-1) + P*dt/E*100 from an anchor.
+
+        THE ONE RULE UNDER ALL OF THEM: no state of charge without an INPUT.
+        `direct` needs a mapped `soc_pct`; `ocv_curve` needs a cell voltage (or
+        pack voltage plus cells in series) AND a charge curve; `coulomb` needs
+        power (or current plus voltage), a usable capacity and an anchor - a
+        count that starts from a guessed value is a claim with decimal places.
+        Omitted on create: `direct` when `soc_pct` is mapped, otherwise no
+        derivation at all, which is a legitimate state (the optimizer then
+        plans no battery, P7).
+
+        The derived value is published as ORDINARY telemetry - `soc_pct`
+        together with `soc_source_code` (1 = measured, 2 = computed from the
+        curve, 3 = counted from charge) - so cloud, optimizer and portal read it
+        like any other state of charge AND the history keeps the source of the
+        time. There is deliberately no code 0: an unknown state of charge is an
+        ABSENT channel, never a reported zero.
+
+        With `direct` the SAME channel carries the value twice in one second -
+        once as the raw level-1 reading and once from the derivation that TAKES
+        IT OVER. The second one therefore travels VERBATIM, neither rounded nor
+        clamped: two different numbers for one state of charge in one second
+        would be a truth that hangs on delivery order. Only what the derivation
+        computed ITSELF is rounded and clamped.
       properties:
         method: { type: string, enum: [direct, ocv_curve, coulomb] }
+        preferDirect:
+          type: boolean
+          default: true
+          description: >
+            The selection logic of §3.2b: a FRESH measured state of charge beats
+            the computation, whatever method is configured. Only a comparison
+            run turns this off.
+        template:
+          type: string
+          maxLength: 64
+          description: >
+            A shipped curve TEMPLATE that fills `curveCharge`/`curveDischarge`
+            (and cells in series / reference temperature) when they are absent -
+            own points always win. Today: `diybms-176s-nmc`, the measured tables
+            of a 176s NMC pack. An unknown name is refused, never ignored.
+            ⚠ A curve belongs to a CHEMISTRY: the same voltage means a
+            completely different state of charge on a LiFePO4 cell.
+        holdS:
+          type: integer
+          minimum: 60
+          maximum: 86400
+          default: 900
+          description: >
+            How long a FROZEN value is still held. A frozen value is never
+            republished with a fresh timestamp - it simply ages; after this
+            window it is absent, and a charge count needs a new anchor (what a
+            battery did while unobserved is unknown).
+        inputs: { $ref: "#/components/schemas/UserDefinedBatterySocInputs" }
+        params: { $ref: "#/components/schemas/UserDefinedBatterySocParams" }
+    UserDefinedBatterySocInputs:
+      type: object
+      description: >
+        Role -> channel. Every field is optional; an absent role uses the
+        like-named standard channel. A channel outside the type catalog is
+        REFUSED, never guessed.
+      properties:
+        soc: { type: string, maxLength: 64, default: soc_pct }
+        cellMin: { type: string, maxLength: 64, default: cell_min_mv }
+        cellMax: { type: string, maxLength: 64, default: cell_max_mv }
+        voltage: { type: string, maxLength: 64, default: voltage_v }
+        current: { type: string, maxLength: 64, default: current_a }
+        power: { type: string, maxLength: 64, default: power_kw }
+    UserDefinedBatterySocParams:
+      type: object
+      description: >
+        The computing values. A curve is a list of [cell voltage in V, state of
+        charge in %] pairs; outside its ends the result is CLAMPED, never
+        extrapolated - an extrapolation beyond a measured curve would be an
+        invented chemistry.
+      properties:
+        curveCharge:
+          type: array
+          minItems: 2
+          maxItems: 64
+          description: >
+            Applied to the HIGHEST cell. A curve must RISE with voltage - one
+            that falls describes no lithium cell and is refused.
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items: { type: number }
+        curveDischarge:
+          type: array
+          minItems: 2
+          maxItems: 64
+          description: >
+            Applied to the LOWEST cell. Absent, the charge curve serves both
+            ends - an invented second curve would be worse than one honestly
+            named single curve.
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items: { type: number }
+        cellsInSeries:
+          type: integer
+          minimum: 1
+          maximum: 1024
+          description: >
+            Only for the SIMPLIFIED variant (pack voltage / n). It cannot see
+            the cell spread and is therefore never the first choice.
+        conservativeMin:
+          type: boolean
+          default: true
+          description: >
+            The HA method: `min(f(vmax, charge), f(vmin, discharge))` - the pack
+            can only give what its weakest cell holds. `false` is the explicitly
+            chosen optimistic reading (the maximum); an AVERAGE is not offered
+            because it would be an invented cell.
+        roundPct: { type: number, default: 0.1, maximum: 5 }
+        capacityKwh:
+          type: number
+          maximum: 10000
+          description: "Usable capacity - required for `coulomb`."
+        efficiencyPct:
+          type: number
+          maximum: 100
+          description: >
+            Damps the CHARGE side only. Absent means the count runs lossless,
+            and the drift is the known price of the method.
+        nominalVoltageV:
+          type: number
+          maximum: 1500
+          description: "Used only when current is mapped but no voltage is."
+        refTempC: { type: number, minimum: -40, maximum: 100 }
+        anchor:
+          type: object
+          description: >
+            The starting point of a charge count. A mapped measured `soc_pct` is
+            the best anchor there is and counts as one.
+          properties:
+            socPct: { type: number, minimum: 0, maximum: 100 }
+            at: { type: string, maxLength: 40 }
+        recalibrate:
+          type: object
+          description: >
+            Straightens the count at a voltage ENDPOINT - a measurement beats an
+            integration. Each endpoint needs BOTH its voltage and its state of
+            charge; half an endpoint would have left the box guessing.
+          properties:
+            fullCellMv: { type: number }
+            fullSocPct: { type: number, minimum: 0, maximum: 100 }
+            emptyCellMv: { type: number }
+            emptySocPct: { type: number, minimum: 0, maximum: 100 }
     SwitchDefinition:
       type: object
       description: >

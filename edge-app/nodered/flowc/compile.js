@@ -536,6 +536,12 @@ function outputsOf(n) {
     case 'vp-feed':
     case 'vp-desired':
     case 'vp-modbus-read':
+    // ⚠ Beide gehoeren hierher, seit der SoC-Ableiter (P5b) an einer KANTE
+    // hinter dem Lese-Knoten haengt: ohne Ausgangszahl stempelt der Compiler
+    // dem Lese-Knoten keine `wires`, und die Kante waere ein Draht ins Leere -
+    // der Flow liefe, und der Ladestand entstuende nie.
+    case 'vp-mqtt-read':
+    case 'vp-soc-derive':
     case 'inject':
       return 1;
     default:

@@ -106,6 +106,7 @@ public class FlowGraphValidator {
         checkEntityReads(doc, findings, nodesById, entities);
         checkModbusReads(doc, findings, nodesById, entities);
         checkMqttReads(doc, findings, nodesById, entities);
+        checkSocDerivations(doc, findings, nodesById, entities);
         return findings;
     }
 
@@ -247,6 +248,15 @@ public class FlowGraphValidator {
                             findings.add(paramError(type, spec, nodeId,
                                     "darf höchstens " + spec.get("max").asDouble() + " sein"));
                         }
+                    }
+                }
+                // Ein Ja/Nein-Parameter (P5b `prefer_direct`). Er faellt NICHT
+                // in den Text-Zweig: "true" als Zeichenkette waere ein Wert,
+                // den niemand geschrieben hat - und ein Schalter, der auf jeden
+                // nicht-leeren Text hoert, ist kein Schalter.
+                case "bool" -> {
+                    if (!value.isBoolean()) {
+                        findings.add(paramError(type, spec, nodeId, "muss ja oder nein sein"));
                     }
                 }
                 case "enum" -> {
@@ -770,6 +780,60 @@ public class FlowGraphValidator {
                             "Zwei MQTT-Zuordnungen zeichnen denselben Messkanal \"" + channel
                                     + "\" der Entität \"" + entityId + "\" auf."));
                 }
+            }
+        }
+    }
+
+    /**
+     * P5b-Ebene-2-Regeln für {@code vp.soc.derive}: die SoC-ABLEITUNG einer
+     * selbst angebundenen Batterie.
+     *
+     * <p>Der Spiegel von {@link #checkMqttReads}, nur auf der SCHREIB-Seite der
+     * Kanäle: dieser Baustein zeichnet {@code soc_pct} und
+     * {@code soc_source_code} auf, also muss die Entität beide DEKLARIEREN -
+     * sonst liefe der Flow und der Messwert entstünde nie. Zwei Ableitungen auf
+     * DERSELBEN Batterie sind ein V-5-Konflikt: zwei Ladestände für einen
+     * Speicher wären zwei Wahrheiten, und welche in der Historie landet, hinge
+     * an der Zustellreihenfolge.
+     */
+    private void checkSocDerivations(JsonNode doc, List<FlowValidationFinding> findings,
+            Map<String, JsonNode> nodesById, Map<String, EntityCapabilities> entities) {
+        Map<String, String> derivedBy = new HashMap<>();
+        for (Map.Entry<String, JsonNode> entry : nodesById.entrySet()) {
+            JsonNode node = entry.getValue();
+            if (!"vp.soc.derive".equals(node.path("type").asText())) {
+                continue;
+            }
+            String entityId = node.path("parameters").path("entity_id").asText("");
+            if (entityId.isEmpty()) {
+                continue; // V-4 meldet den fehlenden Parameter
+            }
+            EntityCapabilities caps = entities.get(entityId);
+            if (caps == null) {
+                findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
+                        "Unbekannte Entität \"" + entityId + "\"."));
+                continue;
+            }
+            if (caps.composed()) {
+                findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
+                        "Die Entität \"" + entityId + "\" wird aus den Stammdaten der Anlage "
+                                + "abgeleitet - ihr Ladestand kann hier nicht berechnet werden."));
+                continue;
+            }
+            for (String channel : List.of("soc_pct", "soc_source_code")) {
+                if (!caps.measure().contains(channel)) {
+                    findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()),
+                            List.of(), "Die Entität \"" + entityId + "\" führt den Kanal \""
+                                    + channel + "\" nicht - ein abgeleiteter Ladestand hätte "
+                                    + "nichts, worin er landet."));
+                }
+            }
+            String previous = derivedBy.putIfAbsent(entityId, entry.getKey());
+            if (previous != null) {
+                findings.add(FlowValidationFinding.error("V-5",
+                        List.of(previous, entry.getKey()), List.of(),
+                        "Zwei Bausteine leiten den Ladestand derselben Batterie \"" + entityId
+                                + "\" ab - ein Speicher hat genau einen Ladestand."));
             }
         }
     }

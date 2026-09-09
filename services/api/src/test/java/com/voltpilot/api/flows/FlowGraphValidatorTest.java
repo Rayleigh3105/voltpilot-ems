@@ -50,9 +50,14 @@ class FlowGraphValidatorTest {
             // flow-graph.valid.mqtt-battery-Fixture. Sie misst GENAU die
             // Kanaele, die der Kunde zugeordnet hat - nie die ganze
             // Standardliste.
+            // soc_pct und soc_source_code stehen mit drin, seit die Ebene 2
+            // (P5b) sie ABLEITET: sie werden nicht gemessen, sondern
+            // geschrieben - und eine Entitaet, die sie nicht fuehrt, haette
+            // nichts, worin der Ladestand landet.
             "7b3c9d21-8e4f-4a56-9c07-0123456789ab", new EntityCapabilities(
                     Set.of("cell_min_mv", "cell_max_mv", "temp_max_c", "voltage_v",
-                            "charge_allowed", "discharge_allowed"),
+                            "charge_allowed", "discharge_allowed", "soc_pct",
+                            "soc_source_code"),
                     Set.of()));
 
     private static JsonNode fixture(String name) throws IOException {
@@ -142,8 +147,36 @@ class FlowGraphValidatorTest {
         ObjectNode doc = (ObjectNode) fixture("flow-graph.valid.mqtt-battery.json");
         ObjectNode mapping = (ObjectNode) doc.path("nodes").get(0).path("parameters")
                 .path("mappings").get(0);
-        mapping.put("channel", "soc_pct");
+        mapping.put("channel", "charge_limit_a");
         assertThat(errors(validate(doc))).contains("V-6");
+    }
+
+    /**
+     * P5b Ebene 2: der SoC-Ableiter schreibt {@code soc_pct} und
+     * {@code soc_source_code} - eine Batterie, die sie nicht führt, hätte
+     * nichts, worin der Ladestand landet. Und ZWEI Ableitungen auf derselben
+     * Batterie wären zwei Wahrheiten über einen Speicher.
+     */
+    @Test
+    void socDerivationNeedsTheChannelsItWritesAndOnlyOnePerBattery() throws IOException {
+        assertThat(errors(validate(fixture("flow-graph.valid.mqtt-battery.json")))).isEmpty();
+
+        // Eine Batterie ohne den Herkunfts-Kanal: der Ableiter faellt VOR der
+        // Aktivierung auf, statt still ins Leere zu rechnen.
+        Map<String, EntityCapabilities> ohneHerkunft = new java.util.HashMap<>(FIXTURE_ENTITIES);
+        ohneHerkunft.put("7b3c9d21-8e4f-4a56-9c07-0123456789ab", new EntityCapabilities(
+                Set.of("cell_min_mv", "cell_max_mv", "soc_pct"), Set.of()));
+        assertThat(errors(validator.validate(fixture("flow-graph.valid.mqtt-battery.json"),
+                ohneHerkunft, List.of()))).contains("V-6");
+
+        // Zwei Ableitungen auf DERSELBEN Batterie: ein Speicher hat genau einen
+        // Ladestand, und welcher in der Historie landet, darf nicht an der
+        // Zustellreihenfolge haengen.
+        ObjectNode doc = (ObjectNode) fixture("flow-graph.valid.mqtt-battery.json");
+        ObjectNode zweite = doc.path("nodes").get(1).deepCopy();
+        zweite.put("id", "soc2");
+        ((com.fasterxml.jackson.databind.node.ArrayNode) doc.get("nodes")).add(zweite);
+        assertThat(errors(validate(doc))).contains("V-5");
     }
 
     @Test

@@ -3,7 +3,7 @@
   "flow_id": "b1a2c3d4-5e6f-4071-8234-56789abcdef0",
   "flow_version": 1,
   "name": "Batterie: DIYBMS 176s",
-  "description": "Der GENERIERTE Lese-Flow einer SELBST ANGEBUNDENEN Batterie (P5 Ebene 1, Konzept vp-deye-diybms-luecke-l5 §3.2b): EIN vp.mqtt.read je Gerät - eine Broker-Verbindung für alle Zuordnungen, nie eine je Kanal. Der Ground-Truth-Fall des Kunden: ein DIYBMS veröffentlicht 11 Bänke × 16 Zellen unter emon/diybms/<bank>/<cell> mit dem JSON-Feld .voltage in Volt. EINE Topic-Zuordnung mit Aggregat min bzw. max macht daraus cell_min_mv und cell_max_mv (Skalierung 1000 = V→mV) - aus 176 Topics werden zwei Kanäle. Die Freigabe-Flags kommen aus einem zweiten Topic und reisen als 0/1 (die Telemetrie kennt nur Zahlen). Ein Kanal ohne frische Probe fehlt in der Telemetrie, statt als 0 zu erscheinen.",
+  "description": "Der GENERIERTE Lese-Flow einer SELBST ANGEBUNDENEN Batterie (P5 Ebene 1, Konzept vp-deye-diybms-luecke-l5 §3.2b): EIN vp.mqtt.read je Gerät - eine Broker-Verbindung für alle Zuordnungen, nie eine je Kanal. Der Ground-Truth-Fall des Kunden: ein DIYBMS veröffentlicht 11 Bänke × 16 Zellen unter emon/diybms/<bank>/<cell> mit dem JSON-Feld .voltage in Volt. EINE Topic-Zuordnung mit Aggregat min bzw. max macht daraus cell_min_mv und cell_max_mv (Skalierung 1000 = V→mV) - aus 176 Topics werden zwei Kanäle. Die Freigabe-Flags kommen aus einem zweiten Topic und reisen als 0/1 (die Telemetrie kennt nur Zahlen). Ein Kanal ohne frische Probe fehlt in der Telemetrie, statt als 0 zu erscheinen. SEIT P5b (Ebene 2) haengt ein ZWEITER Knoten an einer KANTE hinter dem Lese-Knoten: vp.soc.derive rechnet aus cell_min_mv/cell_max_mv den Ladestand - zwei OCV->SoC-Kennlinien (Laden/Entladen), linear interpoliert, geklemmt, und aus der hoechsten und der niedrigsten Zelle das KONSERVATIVE Minimum (die Kundenkurven aus docs/contracts/v2/soc-derivation-vectors.json). Er haengt bewusst NICHT am Takt: der Auslöser trifft die Quelle, und der Ableiter rechnet auf dem, was sie gerade gesendet hat.",
   "runtime": "edge",
   "site_id": "00000000-0000-0000-0000-000000000002",
   "tenant_id": "00000000-0000-0000-0000-000000000001",
@@ -87,10 +87,223 @@
           }
         ]
       }
+    },
+    {
+      "id": "soc",
+      "type": "vp.soc.derive",
+      "type_version": "1.0.0",
+      "label": "Ladestand",
+      "parameters": {
+        "entity_id": "7b3c9d21-8e4f-4a56-9c07-0123456789ab",
+        "method": "ocv_curve",
+        "prefer_direct": true,
+        "hold_s": 900,
+        "inputs": {
+          "cell_max": "cell_max_mv",
+          "cell_min": "cell_min_mv",
+          "current": "current_a",
+          "power": "power_kw",
+          "soc": "soc_pct",
+          "voltage": "voltage_v"
+        },
+        "params": {
+          "curve_charge": [
+            [
+              3.26,
+              0
+            ],
+            [
+              3.38,
+              5
+            ],
+            [
+              3.43,
+              10
+            ],
+            [
+              3.49,
+              15
+            ],
+            [
+              3.54,
+              20
+            ],
+            [
+              3.58,
+              25
+            ],
+            [
+              3.6,
+              30
+            ],
+            [
+              3.62,
+              35
+            ],
+            [
+              3.65,
+              40
+            ],
+            [
+              3.67,
+              45
+            ],
+            [
+              3.71,
+              50
+            ],
+            [
+              3.77,
+              55
+            ],
+            [
+              3.83,
+              60
+            ],
+            [
+              3.88,
+              65
+            ],
+            [
+              3.92,
+              70
+            ],
+            [
+              3.96,
+              75
+            ],
+            [
+              4.01,
+              80
+            ],
+            [
+              4.06,
+              85
+            ],
+            [
+              4.09,
+              90
+            ],
+            [
+              4.12,
+              95
+            ],
+            [
+              4.18,
+              100
+            ]
+          ],
+          "curve_discharge": [
+            [
+              3.26,
+              0
+            ],
+            [
+              3.37,
+              5
+            ],
+            [
+              3.42,
+              10
+            ],
+            [
+              3.47,
+              15
+            ],
+            [
+              3.52,
+              20
+            ],
+            [
+              3.56,
+              25
+            ],
+            [
+              3.59,
+              30
+            ],
+            [
+              3.61,
+              35
+            ],
+            [
+              3.64,
+              40
+            ],
+            [
+              3.67,
+              45
+            ],
+            [
+              3.71,
+              50
+            ],
+            [
+              3.76,
+              55
+            ],
+            [
+              3.82,
+              60
+            ],
+            [
+              3.87,
+              65
+            ],
+            [
+              3.91,
+              70
+            ],
+            [
+              3.95,
+              75
+            ],
+            [
+              4.0,
+              80
+            ],
+            [
+              4.06,
+              85
+            ],
+            [
+              4.09,
+              90
+            ],
+            [
+              4.11,
+              95
+            ],
+            [
+              4.18,
+              100
+            ]
+          ],
+          "cells_in_series": 176,
+          "conservative_min": true,
+          "round_pct": 0.1
+        }
+      }
     }
   ],
-  "edges": [],
+  "edges": [
+    {
+      "id": "mqtt-soc",
+      "from": {
+        "node": "mqtt",
+        "port": "value"
+      },
+      "to": {
+        "node": "soc",
+        "port": "channels"
+      }
+    }
+  ],
   "triggers": [
-    { "id": "takt", "kind": "interval", "every_s": 15 }
+    {
+      "id": "takt",
+      "kind": "interval",
+      "every_s": 15
+    }
   ]
 }

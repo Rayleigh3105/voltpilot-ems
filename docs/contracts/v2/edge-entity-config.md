@@ -176,7 +176,7 @@ Marke „dieses Gerät wird von seinem eigenen generierten Flow gelesen":
 | `communication` | Entitätstyp | Woher der Leseplan kommt |
 |---|---|---|
 | `modbus_baukasten` | `modbus-generic` / `modbus-load` | ein generierter Flow mit je Kanal einem `vp.modbus.read` (Einheitsmodell Stufe 3/4) |
-| `mqtt_local` | `user-defined-battery` | ein generierter Flow mit GENAU EINEM `vp.mqtt.read`, der die ganze Feld-Zuordnung trägt (P5 Ebene 1, `vp-deye-diybms-luecke-l5` §3.2b) |
+| `mqtt_local` | `user-defined-battery` | ein generierter Flow mit GENAU EINEM `vp.mqtt.read`, der die ganze Feld-Zuordnung trägt (P5 Ebene 1, `vp-deye-diybms-luecke-l5` §3.2b) — seit P5b zusätzlich EIN `vp.soc.derive` dahinter, wenn die Batterie einen Ladestand hat |
 
 Der Applier der Box ÜBERSPRINGT beide, bevor er nach einer Marke fragt
 (`componentapply.isSelfRead`) — und dieser Sprung ist tragend, nicht kosmetisch: `Derive` ist
@@ -191,6 +191,38 @@ Box, BEVOR die Cloud das erste solche Gerät auf einer Anlage anlegt.
 `driver.connection` trägt bei beiden die gespeicherte Definition VERBATIM (bei `mqtt_local`:
 `broker` + `mappings` + optional `soc_derivation`); sie ist Anzeige und Zusammenhang, nie der
 Lesepfad. **Der Lesepfad reist im Flow.**
+
+### 5.3 Der ABGELEITETE Ladestand und seine HERKUNFT (P5b Ebene 2, ADDITIV)
+
+Eine selbst angebundene Batterie meldet ihren Ladestand seit P5b als ganz normale Telemetrie
+(§3) — aber in EINER Nachricht mit zwei Kanälen:
+
+| Kanal | Bedeutung |
+|---|---|
+| `soc_pct` | der Ladestand, übernommen (`direct`), aus der Spannungskennlinie gerechnet (`ocv_curve`) oder aus der Ladung gezählt (`coulomb`) |
+| `soc_source_code` | die HERKUNFT genau dieses Wertes: `1` = gemessen · `2` = berechnet:kennlinie · `3` = berechnet:ladungszählung |
+
+**Warum ein CODE und kein Wort:** die Kanäle sind per Vertrag ZAHLEN
+(`$defs/channels`, `telemetry_v2.value` ist `DOUBLE PRECISION`). Ein Wort hätte einen Umbau der
+ganzen Ingest-Kette gebraucht; der Code reist durch die BEWIESENE Kette unverändert und steht
+JE MESSZEITPUNKT in der Historie — eine später geänderte Definition fälscht keine alte Zeile.
+
+**Es gibt bewusst keine `0` für „unbekannt".** Ein unbekannter Ladestand ist ein ABWESENDER
+Kanal, nie eine gemeldete Null — und ein eingefrorener Wert wird nie mit einem frischen
+Zeitstempel erneut gesendet, er altert. Nach der Haltefrist (`hold_s`, Vorgabe 900 s) ist er
+abwesend, und eine Ladungszählung braucht einen neuen Anker.
+
+`soc_source_code` ist der EINZIGE Kanal des Typs, den niemand ZUORDNEN darf: kein BMS der Welt
+veröffentlicht ihn, und ihn zuzuordnen hieße, eine Rechnung als Messung auszugeben.
+
+⚠ Bei der Methode `direct` trägt `soc_pct` in derselben Sekunde ZWEIMAL denselben Wert: einmal
+als rohe Messung aus der Ebene 1 und einmal aus der Ableitung, die ihn ÜBERNIMMT. Der zweite
+Wert reist deshalb VERBATIM — weder gerundet noch geklemmt: zwei verschiedene Zahlen für
+denselben Ladestand in derselben Sekunde wären eine Wahrheit, die an der Zustellreihenfolge
+hinge. Gerundet und geklemmt wird ausschließlich, was die Ableitung SELBST gerechnet hat.
+
+⚠ Ein älterer Cloud-Stand überliest den Kanal (er ist eine Zahl wie jede andere), eine ältere
+Box erzeugt ihn nicht — beides ist der additive Normalfall.
 
 
 The cloud compares `revision` against the latest push and the `observed` map against the

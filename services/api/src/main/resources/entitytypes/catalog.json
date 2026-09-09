@@ -287,6 +287,11 @@
         "einen Ladestand zu versprechen, den niemand liest, waere eine erfundene Messung.",
         "Boolesche Kanaele (charge_allowed/discharge_allowed) reisen als 0/1 - die",
         "Telemetrie kennt nur Zahlen (edge-entity.schema.json $defs.channels).",
+        "soc_source_code ist der EINZIGE Kanal, den niemand zuordnet: er entsteht in der",
+        "Ebene 2 (P5b) zusammen mit dem abgeleiteten soc_pct und traegt dessen HERKUNFT",
+        "je Messzeitpunkt (1 = gemessen, 2 = berechnet:kennlinie, 3 =",
+        "berechnet:ladungszaehlung). Es gibt bewusst keine 0 fuer 'unbekannt' - ein",
+        "unbekannter Ladestand ist ein ABWESENDER Kanal, nie eine gemeldete Null.",
         "controllable=false mit Absicht: diese Stufe LIEST. Die BMS-Grenzen als",
         "Waechter-Eingabe und der Schutzbaustein sind P5c, die Speiser-Bindung an einen",
         "Hybrid-Wechselrichter ist P6."
@@ -335,6 +340,10 @@
         {
           "channel": "discharge_limit_a",
           "unit": "A"
+        },
+        {
+          "channel": "soc_source_code",
+          "unit": ""
         }
       ],
       "default_actuate": []
