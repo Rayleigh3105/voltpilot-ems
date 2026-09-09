@@ -8,6 +8,17 @@
 //	edge/telemetry  Layer 1 -> core   flat measurement JSON:
 //	                {"ts"?: RFC3339, "power_kw"?, "soc_pct"?, "pv_power_kw"?,
 //	                 "load_kw"?, "grid_limit_kw"?: number}
+//	                ADDITIVE, beside (never among) the measurements: `bms_*`
+//	                channels (P4) - what the primary inverter reports about a
+//	                battery COUPLED TO IT over CAN (the Deye block
+//	                0x00D2..0x00DF): bms_soc_pct, bms_voltage_v, bms_current_a,
+//	                the charge/discharge limits, bms_alarm/bms_fault, bms_type.
+//	                ABSENT on every plant without such a coupling - an all-zero
+//	                BMS block is the documented "no coupling" signature and
+//	                Layer 1 publishes nothing for it. Display + heartbeat
+//	                visibility only: they never become measurement channels
+//	                (the frozen v1 cloud contract is untouched) and nothing
+//	                controls from them.
 //	edge/setpoint   core -> Layer 1   RETAINED battery setpoint command:
 //	                {"battery_setpoint_kw": number, "source": "schedule"|"default",
 //	                 "slot_start"?: RFC3339, "ts": RFC3339,

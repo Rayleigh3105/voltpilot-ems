@@ -1,6 +1,7 @@
 package com.voltpilot.api.web.dto;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -16,8 +17,19 @@ import java.util.UUID;
  *
  * <p>Display-only: nothing downstream consumes it; the composite telemetry the
  * site publishes is untouched.
+ *
+ * @param bms was dieses Gerät über eine per CAN GEKOPPELTE Batterie meldet
+ *        (P4): der Ladestand des BMS selbst, seine gemessene Spannung/Strom,
+ *        die Grenzen, die es gerade erlaubt, seine Alarm-/Fehler-Bitfelder und
+ *        welches BMS-Protokoll antwortet - unter den {@code bms_*}-Kanalnamen,
+ *        die die Box dekodiert. {@code null} auf jeder Anlage OHNE eine solche
+ *        Kopplung, und das ist heute jede: ein Block voller Nullen ist die
+ *        belegte Signatur „nicht gekoppelt", und die Box veröffentlicht dafür
+ *        gar keinen Kanal - nie eine erfundene 0 %. Wie der Rest dieses
+ *        Datensatzes reine ANZEIGE; die Grenzen, die einen Sollwert wirklich
+ *        kappen, sind die v2-Kanäle des Schutzbausteins (P5c), nicht diese.
  */
 public record SiteSourceDto(UUID deviceId, String sourceId, String kind, String role,
         String label, String brand, String model, Double pvKw, Double powerKw, Double loadKw,
-        String health, Instant readAt, Instant reportedAt) {
+        String health, Instant readAt, Instant reportedAt, Map<String, Double> bms) {
 }

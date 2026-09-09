@@ -133,6 +133,15 @@ export interface GeraetSeiteView {
   /** C · Misst & steuert. */
   komponenten: PlantComponent[];
   komponentenLeer: string | null;
+  /**
+   * „BMS" - was dieses Gerät über eine per CAN GEKOPPELTE Batterie meldet (P4).
+   *
+   * **Leer, wenn keine gekoppelt ist** - und das ist heute jede Anlage. Der
+   * Block bleibt dann WEG (kein leerer Kasten, keine erfundene 0 %): ein Deye
+   * im Spannungsmodus antwortet auf die BMS-Register mit lauter Nullen, und die
+   * Box veröffentlicht dafür ausdrücklich keinen einzigen Kanal.
+   */
+  bms: Zeile[];
   /** G · Steuerungs-Bezüge. */
   steuerung: Zeile[];
   /** H · Software. */
@@ -596,6 +605,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     liveLeer: null,
     komponenten: [],
     komponentenLeer: null,
+    bms: [],
     steuerung: [],
     software: [],
     diagnose: [],
@@ -913,11 +923,104 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     liveLeer,
     komponenten,
     komponentenLeer,
+    bms: bmsZeilen(src ?? null),
     steuerung,
     software,
     diagnose,
   };
 }
+
+/**
+ * Die BMS-Kanäle als Zeilen, in einer festen, lesbaren Ordnung (P4).
+ *
+ * <p>Vier Regeln, alle aus dem Haus:
+ *
+ * 1. **Keine Kopplung, kein Block.** Ohne `bms` gibt es keine Zeile - nie ein
+ *    leerer Kasten und nie eine 0, die als Messung gelesen würde.
+ * 2. **Nur was da ist.** Jede Zeile entsteht aus genau einem gemeldeten Kanal;
+ *    ein fehlender Kanal fehlt, er wird nicht mit `—` aufgefüllt.
+ * 3. **Codes bleiben Codes.** Alarm/Fehler sind Bitfelder und der BMS-Typ eine
+ *    Kennung des Protokolls; sie werden GEZEIGT, nicht gedeutet. Eine Fläche,
+ *    die eine URSACHE behauptet, bräuchte einen Fakt, der genau sie trägt - den
+ *    hat hier niemand, also sagt sie die BEOBACHTUNG.
+ * 4. **Die Grenzen sind zwei Paare, und sie heißen verschieden.** Was das BMS
+ *    GERADE erlaubt, ist nicht das statische Maximum des Packs; beides
+ *    zusammenzuziehen behauptete Spielraum, den niemand gewährt.
+ */
+export function bmsZeilen(src: SiteSource | null): Zeile[] {
+  const bms = src?.bms;
+  if (!bms) return [];
+  const out: Zeile[] = [];
+  const zahl = (key: string, label: string, einheit: string, stellen = 1) => {
+    const v = bms[key];
+    if (typeof v !== 'number' || !Number.isFinite(v)) return;
+    out.push({ label, wert: fmtNum(v, einheit, stellen) });
+  };
+  const paar = (a: string, b: string, label: string) => {
+    const laden = bms[a];
+    const abgeben = bms[b];
+    const f = (v: number | undefined) =>
+      typeof v === 'number' && Number.isFinite(v) ? fmtNum(v, 'A', 0) : NO_DATA;
+    if (typeof laden !== 'number' && typeof abgeben !== 'number') return;
+    out.push({ label, wert: `${f(laden)} laden · ${f(abgeben)} abgeben` });
+  };
+  zahl('bms_soc_pct', 'Ladestand laut BMS', '%', 0);
+  zahl('bms_voltage_v', 'Spannung', 'V');
+  zahl('bms_current_a', 'Strom', 'A');
+  paar('bms_charge_limit_a', 'bms_discharge_limit_a', 'Erlaubt gerade');
+  paar('bms_max_charge_limit_a', 'bms_max_discharge_limit_a', 'Maximum des Speichers');
+  const von = bms.bms_discharge_voltage_v;
+  const bis = bms.bms_charge_voltage_v;
+  if (typeof von === 'number' || typeof bis === 'number') {
+    const f = (v: number | undefined) =>
+      typeof v === 'number' && Number.isFinite(v) ? fmtNum(v, 'V', 1) : NO_DATA;
+    out.push({ label: 'Spannungsfenster', wert: `${f(von)} bis ${f(bis)}` });
+  }
+  // ⚠ Ein Bitfeld wird GEZEIGT, nie gedeutet: 0 heißt „das BMS meldet keine",
+  // alles andere ist ein Code, den der Hersteller auflöst - VoltPilot erfindet
+  // dafür keinen Satz.
+  for (const [key, label] of [['bms_alarm', 'Alarm'], ['bms_fault', 'Fehler']] as const) {
+    const v = bms[key];
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    out.push({
+      label,
+      wert: v === 0 ? 'keiner gemeldet' : `Code ${v}`,
+      ton: v === 0 ? 'ok' : 'warn',
+      mono: v !== 0,
+    });
+  }
+  const typ = bms.bms_type;
+  if (typeof typ === 'number' && Number.isFinite(typ)) {
+    out.push({
+      label: 'BMS-Protokoll',
+      wert: BMS_TYP_NAMEN[typ] ?? `Kennung ${typ}`,
+      detail: 'die Batterie ist per CAN an diesem Gerät angemeldet',
+      mono: BMS_TYP_NAMEN[typ] == null,
+    });
+  }
+  return out;
+}
+
+/**
+ * Die Protokoll-Namen des BMS-Typ-Registers, wörtlich aus der Registerkarte des
+ * Herstellers (`catalog/measurement-points/sources/deye/deye_p3.yaml`,
+ * „Battery BMS Type"). Eine unbekannte Kennung wird als KENNUNG gezeigt, nie
+ * auf einen Vorgabewert aufgelöst - ein Wort außerhalb eines geschlossenen
+ * Vokabulars wird nie geraten.
+ */
+const BMS_TYP_NAMEN: Record<number, string> = {
+  0: 'PYLON',
+  1: 'Tianbangda',
+  2: 'KOK',
+  3: 'Keith',
+  4: 'Toppai',
+  5: 'Peneng 485',
+  6: 'Jeris 485',
+  7: 'Sunwoda 485',
+  8: 'Xinrui 485',
+  9: 'Tianbangda 485',
+  10: 'Shenggao Electric CAN',
+};
 
 /** „wird im Portal gepflegt (Fassung 3)" - null, solange nichts bekannt ist. */
 function fassungsSatz(

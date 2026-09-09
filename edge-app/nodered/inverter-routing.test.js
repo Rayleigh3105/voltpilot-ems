@@ -98,9 +98,13 @@ test('route: solarman_v5 -> Deye reader with family register plan', () => {
   // (the soc_from_voltage estimate) sits one address BELOW the SoC, and the
   // block still reaches the External-CT grid pair 0x026B/0x02C4 (the connection
   // point) while staying under the 125-register fn-0x03 limit.
+  // Dritter Block (P4): der BMS-Block 0x00D2..0x00DF, den nur eine per CAN
+  // gekoppelte Batterie fuellt - OPTIONAL, damit eine Firmware, die ihn
+  // ablehnt, den Poll nicht reisst.
   assert.deepStrictEqual(r.reads, [
     { start: 0x0000, count: 0x0001 },
     { start: 0x024b, count: 0x007a },
+    { start: 0x00d2, count: 0x000e, optional: true },
   ]);
 });
 

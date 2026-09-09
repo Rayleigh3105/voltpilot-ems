@@ -2610,6 +2610,18 @@ export interface SiteSource {
   health: 'ok' | 'stale' | 'never';
   readAt: string | null;
   reportedAt: string;
+  /**
+   * Was dieses Gerät über eine per CAN GEKOPPELTE Batterie meldet (P4) - beim
+   * Deye der Registerblock 0x00D2..0x00DF: `bms_soc_pct`, `bms_voltage_v`,
+   * `bms_current_a`, die Lade-/Entladegrenzen, `bms_alarm`/`bms_fault` und
+   * `bms_type`.
+   *
+   * `null`/abwesend heißt „keine solche Kopplung", und das ist heute JEDE
+   * Anlage: ein Block voller Nullen ist die belegte Signatur „nicht gekoppelt",
+   * und die Box veröffentlicht dafür gar keinen Kanal - nie eine erfundene 0 %.
+   * Ein älteres Backend lässt das Feld schlicht weg. Reine ANZEIGE.
+   */
+  bms?: Record<string, number> | null;
 }
 
 // ---- Realized earnings (GET /api/v1/earnings) -------------------------------

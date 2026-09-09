@@ -303,6 +303,8 @@ function stub(over: {
   consumers?: Consumer[];
   targets?: RegisterWriteTarget[];
   writes?: RegisterWriteEvent[];
+  /** Überschreibt die gemeldeten Messpunkte (P4: der BMS-Block). */
+  sources?: SiteSource[];
 } = {}) {
   vi.spyOn(api, 'measurementSelection').mockResolvedValue({
     deviceId: 'gw', siteId: 's-1', desiredRevision: 0, catalogVersion: '2026.08.26.1',
@@ -322,7 +324,7 @@ function stub(over: {
     over.entities ?? (() => Promise.resolve(entities)),
   );
   vi.spyOn(api, 'topology').mockResolvedValue(topology);
-  vi.spyOn(api, 'siteSources').mockResolvedValue(sources);
+  vi.spyOn(api, 'siteSources').mockResolvedValue(over.sources ?? sources);
   vi.spyOn(api, 'siteComponents').mockResolvedValue({
     componentAuthority: 'portal',
     components: [
@@ -450,6 +452,32 @@ describe('GeraetSeiteSection', () => {
     expect(screen.getAllByText(/Wechselrichter Scheune/).length).toBeGreaterThanOrEqual(2);
     const zentrale = screen.getAllByRole('link', { name: /In der Zentrale/ });
     expect(zentrale[0].getAttribute('href')).toBe('#/anlage/s-1/modell');
+  });
+
+  // P4: „BMS" - nur da, wenn eine Batterie per CAN am Gerät hängt. Heute hängt
+  // an keiner Anlage eine, also ist die Abwesenheit des Kastens der Normalfall
+  // (und ausdrücklich kein Kasten, der erklärt, dass er nichts weiß).
+  it('zeigt KEINEN BMS-Kasten, solange keine Batterie per CAN gekoppelt ist', async () => {
+    stub();
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
+    );
+    expect(await screen.findByTestId('sektion-komponenten')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'BMS' })).not.toBeInTheDocument();
+  });
+
+  it('zeigt den BMS-Kasten mit dem gemeldeten Ladestand, sobald gekoppelt ist', async () => {
+    stub({
+      sources: sources.map((s) => (s.sourceId === 'inverter'
+        ? { ...s, bms: { bms_soc_pct: 47, bms_voltage_v: 642, bms_type: 10 } }
+        : s)),
+    });
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
+    );
+    expect(await screen.findByRole('heading', { name: 'BMS' })).toBeInTheDocument();
+    expect(screen.getByText('Ladestand laut BMS')).toBeInTheDocument();
+    expect(screen.getByText('Shenggao Electric CAN')).toBeInTheDocument();
   });
 
   it('zeigt die gespeicherte Anbindung eines Geräts', async () => {

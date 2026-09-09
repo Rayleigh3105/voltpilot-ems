@@ -165,10 +165,15 @@ test('hybrid_3p decode: high-map registers, PV summed, SoC & signs', () => {
   assert.strictEqual(batt_kw, 0.5);
 });
 
-test('hybrid_3p read plan is [device 0x0000, measurement 0x024B..0x02C4]', () => {
+test('hybrid_3p read plan is [device 0x0000, measurement 0x024B..0x02C4, BMS 0x00D2]', () => {
   const reads = D.planReads({ family: 'hybrid_3p' });
-  assert.strictEqual(reads.length, 2, 'device-identity block + measurement block');
+  assert.strictEqual(reads.length, 3, 'device-identity + measurement + the optional BMS block');
   assert.deepStrictEqual(reads[0], { start: 0x0000, count: 0x0001 }, 'device register 0x0000');
+  // P4: the BMS block a CAN-coupled battery fills. LAST, so it can never come
+  // between the identity register and the measurements, and OPTIONAL, because a
+  // firmware that refuses it must not cost the plant every other channel.
+  assert.deepStrictEqual(reads[2], { start: 0x00d2, count: 0x000e, optional: true },
+    '0x00D2..0x00DF as an optional third block');
   const m = reads[1];
   // Widened DOWN by exactly one register for the Battery Voltage at 0x024B
   // (the soc_from_voltage estimate); every other field keeps its address.
@@ -873,4 +878,157 @@ test('32-bit grid + HV scale compose: grid stays watts even at HV, big value sti
   const { reading } = D.decode([deviceBlock(0x0008), b], { family: 'hybrid_3p' });
   assert.strictEqual(reading.power_kw, 45, 'grid is watts regardless of HV class');
   assert.strictEqual(reading.pv_power_kw, 20, 'PV still x10 (2000 raw -> 20 kW)');
+});
+
+// =============================================================================
+// P4 - der BMS-Block ueber den Deye (0x00D2..0x00DF), nur bei CAN-Kopplung
+// =============================================================================
+// Wenn eine Batterie per CAN am Deye haengt, meldet der Deye den Ladestand und
+// die Grenzen des BMS selbst ueber Modbus (deye_p3.yaml Gruppe "BMS"). An der
+// Anlage, die den Bauplan ausgeloest hat (Muehlfeldweg 2, 09.09.2026), besteht
+// diese Kopplung NICHT: der Deye laeuft im Spannungsmodus und antwortet auf
+// den Block mit vierzehn Nullen. Genau das ist der Fall, den die Tests unten
+// zuerst festnageln - vierzehn Nullen sind KEINE Batterie, die 0 V/0 A/0 %
+// meldet, sondern die Signatur "keine Kopplung", und dann entsteht kein
+// einziger bms_*-Kanal.
+//
+// HV-Fixture: Geraetecode 0x0008 (HV) -> Spannungen x0,1 V/LSB, der BMS-STROM
+// dagegen x0,1 A/LSB (deye_p3.yaml `scale: [1, 0.1]` - die Doppelskala des
+// Stroms zeigt nach UNTEN, weil ein HV-Pack ~1/4 des Stroms fuehrt).
+
+// Eine per CAN gekoppelte Batterie, wie sie der Deye meldet:
+//   0x00D2 7360 -> 736,0 V Ladeschluss   0x00D3 5740 -> 574,0 V Entladeschluss
+//   0x00D4  270 -> 270 A erlaubtes Laden 0x00D5  342 -> 342 A erlaubtes Entladen
+//   0x00D6   47 -> 47 %                  0x00D7 6420 -> 642,0 V
+//   0x00D8 -300 -> -30,0 A (entlaedt)    0x00DA/0x00DB 400/500 A Maxima
+//   0x00DC/0x00DD 0/0 (keine Meldung)    0x00DF 10 -> Shenggao Electric CAN
+const BMS_COUPLED = {
+  0x00d2: 7360, 0x00d3: 5740, 0x00d4: 270, 0x00d5: 342, 0x00d6: 47,
+  0x00d7: 6420, 0x00d8: 0x10000 - 300, 0x00da: 400, 0x00db: 500,
+  0x00dc: 0, 0x00dd: 0, 0x00df: 10,
+};
+const bmsBlock = (overrides) => block(0x00d2, 0x000e, overrides || {});
+
+test('P4: ein NICHT gekoppeltes BMS (vierzehn Nullen) erzeugt KEINEN bms_*-Kanal', () => {
+  // Der Live-Fall: der Messblock lebt, der BMS-Block ist leer.
+  const b = block(0x024b, 0x7a, { ...MW_VOLT, 0x024c: 57 });
+  const { reading } = D.decode([HV_ID, b, bmsBlock()], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.soc_pct, 57, 'der Rest der Messung ist unberuehrt');
+  const bmsKeys = Object.keys(reading).filter((k) => k.startsWith('bms_'));
+  assert.deepStrictEqual(bmsKeys, [], 'keine 0 %, keine 0 V, kein "BMS-Typ PYLON"');
+  assert.strictEqual(D.bmsCoupled([HV_ID, b, bmsBlock()], D.FAMILIES.hybrid_3p), false);
+});
+
+test('P4: ein FEHLENDER BMS-Block ist ebenso still - fail-soft, kein Fehler', () => {
+  // Die Firmware hat den Block abgelehnt: der Leser meldet ihn als Fehlblock
+  // (regs: []), der Poll laeuft weiter, die Messung bleibt vollstaendig.
+  const b = block(0x024b, 0x7a, { ...MW_VOLT, 0x024c: 57 });
+  const refused = { start: 0x00d2, regs: [] };
+  const { reading } = D.decode([HV_ID, b, refused], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.soc_pct, 57);
+  assert.deepStrictEqual(Object.keys(reading).filter((k) => k.startsWith('bms_')), []);
+  // Und ganz ohne den Block (eine Box mit altem Leseplan) genauso.
+  const { reading: r2 } = D.decode([HV_ID, b], { family: 'hybrid_3p' });
+  assert.deepStrictEqual(Object.keys(r2).filter((k) => k.startsWith('bms_')), []);
+});
+
+test('P4: ein gekoppeltes BMS liefert alle Kanaele mit der HV-Skala', () => {
+  const b = block(0x024b, 0x7a, { ...MW_VOLT, 0x024c: 57 });
+  const { reading } = D.decode([HV_ID, b, bmsBlock(BMS_COUPLED)], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.bms_soc_pct, 47);
+  assert.strictEqual(reading.bms_voltage_v, 642, 'HV: 6420 x 0,01 x 10');
+  assert.strictEqual(reading.bms_current_a, -30, 'HV-Strom: -300 x 1 x 0,1 (nicht -3000)');
+  assert.strictEqual(reading.bms_charge_voltage_v, 736);
+  assert.strictEqual(reading.bms_discharge_voltage_v, 574);
+  assert.strictEqual(reading.bms_charge_limit_a, 270);
+  assert.strictEqual(reading.bms_discharge_limit_a, 342);
+  assert.strictEqual(reading.bms_max_charge_limit_a, 400);
+  assert.strictEqual(reading.bms_max_discharge_limit_a, 500);
+  assert.strictEqual(reading.bms_alarm, 0);
+  assert.strictEqual(reading.bms_fault, 0);
+  assert.strictEqual(reading.bms_type, 10, 'Shenggao Electric CAN - der Nachweis der Kopplung');
+  assert.strictEqual(reading.soc_pct, 57, 'der Deye-eigene SoC fuehrt, solange er antwortet');
+  assert.ok(!('soc_source' in reading), 'ein gemessener 0x024C wird nicht markiert');
+});
+
+test('P4: dieselben Register auf einem LV-Geraet tragen die LV-Skala', () => {
+  const LV_ID = { start: 0x0000, regs: [0x0005] };
+  const b = block(0x024b, 0x7a, { 0x024c: 57, 0x028d: 4300 });
+  const { reading } = D.decode([LV_ID, b, bmsBlock(BMS_COUPLED)], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.bms_voltage_v, 64.2, 'LV: 6420 x 0,01');
+  assert.strictEqual(reading.bms_current_a, -300, 'LV: -300 x 1 (der Faktor 0,1 gilt nur HV)');
+  assert.strictEqual(reading.bms_charge_voltage_v, 73.6);
+});
+
+test('P4: 0x00D6 ist die ZWEITE Ausfahrt aus `missing` - ohne Opt-in, und markiert', () => {
+  // Der Kern des Pakets: 0x024C meldet 0 (die Deye-eigene SoC-Quelle schweigt),
+  // 0x00D6 meldet 47 % - also faehrt die Anlage auf dem GEMESSENEN BMS-Wert.
+  const b = block(0x024b, 0x7a, MW_VOLT); // 0x024C = 0
+  const { reading } = D.decode([HV_ID, b, bmsBlock(BMS_COUPLED)], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.soc_pct, 47);
+  assert.strictEqual(reading.soc_source, 'bms', 'die Herkunft reist mit');
+  assert.strictEqual(reading.load_kw, 4.3, 'die uebrigen Kanaele bleiben');
+  assert.strictEqual(reading.bms_soc_pct, 47, 'Kanal und Ladestand sind DIESELBE Zahl');
+});
+
+test('P4: der gemessene BMS-Wert schlaegt die Spannungsschaetzung', () => {
+  const b = block(0x024b, 0x7a, MW_VOLT); // 636,0 V -> Schaetzung waere 36 %
+  const cfg = { family: 'hybrid_3p', allow_missing_soc: true, soc_from_voltage: VBOUNDS };
+  const { reading } = D.decode([HV_ID, b, bmsBlock(BMS_COUPLED)], cfg);
+  assert.strictEqual(reading.soc_pct, 47, 'Messung vor Interpolation');
+  assert.strictEqual(reading.soc_source, 'bms');
+  // Ohne den BMS-Block bleibt es bei der Schaetzung - der Beweis, dass genau
+  // dieser Block den Unterschied macht.
+  assert.strictEqual(D.decode([HV_ID, b], cfg).reading.soc_pct, 36);
+});
+
+test('P4: die Verbindungspruefung NENNT den BMS-Wert neben dem Befund', () => {
+  const b = block(0x024b, 0x7a, MW_VOLT);
+  const out = D.decodeVerbose([HV_ID, b, bmsBlock(BMS_COUPLED)], { family: 'hybrid_3p' });
+  assert.strictEqual(out.drop.rule, D.SOC_DROP_MISSING);
+  assert.deepStrictEqual(out.drop.bms, { soc_pct: 47 });
+  assert.ok(!('soc_pct' in out.reading), 'der verworfene Kanal steht NIE in der Messung');
+  assert.strictEqual(out.reading.bms_soc_pct, 47, 'der BMS-Kanal dagegen schon - er ist eigen');
+});
+
+test('P4: 0x00D6 = 0 auf einem sonst gefuellten Block ist KEIN Ladestand', () => {
+  // Ein BMS, das an 0x00D6 exakt 0 meldet, meldet die Leerantwort-Signatur -
+  // dieselbe Plausibilitaetsregel wie fuer 0x024C, an genau einer Stelle.
+  const b = block(0x024b, 0x7a, MW_VOLT);
+  const blocks = [HV_ID, b, bmsBlock({ ...BMS_COUPLED, 0x00d6: 0 })];
+  assert.strictEqual(D.decode(blocks, { family: 'hybrid_3p' }), null, 'ohne Opt-in weiterhin verworfen');
+  const out = D.decodeVerbose(blocks, { family: 'hybrid_3p' });
+  assert.strictEqual(out.drop.bms, undefined);
+  assert.ok(!('bms_soc_pct' in out.reading), 'kein Kanal aus einer 0');
+  assert.strictEqual(out.reading.bms_voltage_v, 642, 'die uebrigen BMS-Kanaele bleiben');
+});
+
+test('P4: die BMS-Ausfahrt rettet NUR `missing` - Leerantwort und kaputter Rahmen bleiben harte Verwerfer', () => {
+  const cfg = { family: 'hybrid_3p' };
+  // Leerantwort des Loggers: der ganze Messblock ist 0. Dass der BMS-Block
+  // etwas sagt, aendert daran nichts - dem RAHMEN ist nicht zu trauen.
+  const empty = block(0x024b, 0x7a, {});
+  const withBms = [HV_ID, empty, bmsBlock(BMS_COUPLED)];
+  assert.strictEqual(D.decodeVerbose(withBms, cfg).drop.rule, D.SOC_DROP_NO_ANSWER);
+  assert.strictEqual(D.decode(withBms, cfg), null);
+  // Kaputter Rahmen (SoC 125 %): ebenso.
+  const broken = block(0x024b, 0x7a, { ...MW_VOLT, 0x024c: 1250 });
+  const brokenBlocks = [HV_ID, broken, bmsBlock(BMS_COUPLED)];
+  assert.strictEqual(D.decodeVerbose(brokenBlocks, cfg).drop.rule, D.SOC_DROP_OUT_OF_RANGE);
+  assert.strictEqual(D.decode(brokenBlocks, cfg), null);
+});
+
+test('P4: blockAlive urteilt NICHT ueber den BMS-Block', () => {
+  // Sonst verschoebe ein antwortendes BMS die Grenze zwischen "Leerantwort" und
+  // "BMS meldet nichts" fuer jede Anlage - der Wechselrichter hat nicht
+  // geantwortet, nur weil seine Batterie es tat.
+  const dead = block(0x024b, 0x7a, {});
+  assert.strictEqual(D.blockAlive([HV_ID, dead, bmsBlock(BMS_COUPLED)], D.FAMILIES.hybrid_3p), false);
+});
+
+test('P4: eine Familie ohne BMS-Block bleibt zeichengleich', () => {
+  for (const fam of ['string', 'micro', 'hybrid_1p']) {
+    assert.strictEqual(D.FAMILIES[fam].bms, undefined, fam + ' hat keinen BMS-Block');
+    assert.strictEqual(D.planReads({ family: fam }).some((r) => r.optional), false);
+  }
 });

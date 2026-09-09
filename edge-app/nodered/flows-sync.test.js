@@ -2008,3 +2008,82 @@ test('ohne grid_test plant der Knoten byte-identisch wie vorher', () => {
     )),
   );
 });
+
+// --- P4: der BMS-Block des Deye (0x00D2..0x00DF) im Flow-Knoten --------------
+// Der Flow traegt eine SYNCHRONE Kopie des Moduls; diese Faelle pinnen genau
+// die drei Entscheidungen des Pakets: vierzehn Nullen sind keine Batterie, die
+// HV-Skalen (Spannung x10, Strom x0,1) und die zweite SoC-Ausfahrt ueber
+// 0x00D6, die OHNE Opt-in gilt, weil sie eine Messung ist.
+const BMS_COUPLED_REGS = {
+  0x00d2: 7360, 0x00d3: 5740, 0x00d4: 270, 0x00d5: 342, 0x00d6: 47,
+  0x00d7: 6420, 0x00d8: 0x10000 - 300, 0x00da: 400, 0x00db: 500,
+  0x00dc: 0, 0x00dd: 0, 0x00df: 10,
+};
+function bmsBlock(overrides) {
+  const regs = new Array(0x000e).fill(0);
+  for (const [addr, val] of Object.entries(overrides || {})) {
+    regs[Number(addr) - 0x00d2] = val & 0xffff;
+  }
+  return { start: 0x00d2, regs };
+}
+
+test('flow Deye decoder publishes NO bms_* channel for an uncoupled BMS, like the module', () => {
+  const cfg = { family: 'hybrid_3p' };
+  const blocks = muehlfeldwegVoltageBlocks();
+  blocks[1].regs[0x024c - 0x024b] = 57;
+  blocks.push(bmsBlock()); // fourteen zeros = the live Muehlfeldweg answer
+  const flowReading = runDeyeDecode(cfg, blocks).ret[0].payload;
+  delete flowReading.ts;
+  delete flowReading.battery_power_kw;
+  assert.deepStrictEqual(flowReading, deyeDecode.decode(blocks, cfg).reading);
+  assert.deepStrictEqual(Object.keys(flowReading).filter((k) => k.startsWith('bms_')), []);
+});
+
+test('flow Deye decoder decodes the coupled BMS block with the HV scales, like the module', () => {
+  const cfg = { family: 'hybrid_3p' };
+  const blocks = muehlfeldwegVoltageBlocks();
+  blocks[1].regs[0x024c - 0x024b] = 57;
+  blocks.push(bmsBlock(BMS_COUPLED_REGS));
+  const flowReading = runDeyeDecode(cfg, blocks).ret[0].payload;
+  delete flowReading.ts;
+  delete flowReading.battery_power_kw;
+  assert.deepStrictEqual(flowReading, deyeDecode.decode(blocks, cfg).reading);
+  assert.strictEqual(flowReading.bms_voltage_v, 642);
+  assert.strictEqual(flowReading.bms_current_a, -30);
+  assert.strictEqual(flowReading.bms_type, 10);
+});
+
+test('flow Deye decoder takes the SoC from 0x00D6 without the opt-in, like the module', () => {
+  const cfg = { family: 'hybrid_3p' };
+  const blocks = muehlfeldwegVoltageBlocks(); // 0x024C = 0
+  blocks.push(bmsBlock(BMS_COUPLED_REGS));
+  const flowReading = runDeyeDecode(cfg, blocks).ret[0].payload;
+  delete flowReading.ts;
+  delete flowReading.battery_power_kw;
+  assert.deepStrictEqual(flowReading, deyeDecode.decode(blocks, cfg).reading);
+  assert.strictEqual(flowReading.soc_pct, 47);
+  assert.strictEqual(flowReading.soc_source, 'bms');
+});
+
+test('flow Deye decoder prefers the measured BMS SoC over the estimate, like the module', () => {
+  const cfg = {
+    family: 'hybrid_3p',
+    allow_missing_soc: true,
+    soc_from_voltage: { v_empty: 600, v_full: 700 },
+  };
+  const blocks = muehlfeldwegVoltageBlocks();
+  blocks.push(bmsBlock(BMS_COUPLED_REGS));
+  const flowReading = runDeyeDecode(cfg, blocks).ret[0].payload;
+  delete flowReading.ts;
+  delete flowReading.battery_power_kw;
+  assert.deepStrictEqual(flowReading, deyeDecode.decode(blocks, cfg).reading);
+  assert.strictEqual(flowReading.soc_pct, 47, 'not the 36 % the voltage would estimate');
+});
+
+test('flow Deye decoder still DROPS an all-zero read even with a coupled BMS, like the module', () => {
+  const cfg = { family: 'hybrid_3p', allow_missing_soc: true };
+  const blocks = [{ start: 0x0000, regs: [0x0008] },
+    { start: 0x024b, regs: new Array(0x7a).fill(0) }, bmsBlock(BMS_COUPLED_REGS)];
+  assert.strictEqual(runDeyeDecode(cfg, blocks).ret, null);
+  assert.strictEqual(deyeDecode.decode(blocks, cfg), null);
+});

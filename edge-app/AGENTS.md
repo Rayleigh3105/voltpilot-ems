@@ -130,6 +130,7 @@ Bereiche: `../docs/agents/README.md`.
 - **Deye REMOTE MODE (registers 1100-1121) is the PRIMARY Deye control path** — Deye protocol V105.1+ added a "Customized register" block … · `deye-remote-mode-registers-1100-1121-is.md`
 - **A register READBACK is not a value comparison: semantics, then debounce** — The hold check ("hat der Wechselrichter den Sollwert … · `a-register-readback-is-not-a-value-compa.md`
 - **Deye N1: an UNKNOWN HV/LV power scale now REFUSES the whole ToU plan** — The live 10x bug (report §2.3): power_scale "Automatisch" … · `deye-n1-an-unknown-hv-lv-power-scale-now.md`
+- **Deye P4: der BMS-Block `0x00D2` — OPTIONAL gelesen, sonst reißt er den ganzen Poll** — ein Pflichtblock, den eine Firmware ablehnt, kostet die Anlage JEDEN Kanal; `optional` reist durch Leseplan, Router, Quellen-Executor und Verbindungstest · `deye-p4-der-bms-block-0x00d2.md`
 - **Die Zertifizierung hat ZWEI Hälften: Flotten-Allowlist + Laufzeit-Freigabe pro Gerät** — Der Schreib-Gate im Executor lautet · `die-zertifizierung-hat-zwei-haelften-flo.md`
 - **Gate-Flags im Heartbeat kommen aus dem KERN, nie aus einem Readback-Stempel** — Ein Readback-Stempel ist eine Layer-1-BEOBACHTUNG und … · `gate-flags-im-heartbeat-kommen-aus-dem-k.md`
 - **Modbus-Datenspiegel: read-only LAN Modbus slave, NEVER a socket consumer** — core/internal/mirror + agent/mirror.go serve every register … · `modbus-datenspiegel-read-only-lan-modbus.md`

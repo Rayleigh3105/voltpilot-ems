@@ -491,3 +491,136 @@ test('kostal_modbus: refused connect classifies unreachable, garbage as invalid_
     server.close();
   }
 });
+
+// =============================================================================
+// P4 - der BMS-Block im Verbindungstest (Deye ueber Solarman-V5)
+// =============================================================================
+// Zwei Zusagen des Pakets, die genau hier sichtbar werden:
+//   1. Ein BMS-Block, den die Firmware ABLEHNT, darf den Test nie scheitern
+//      lassen - er ist optional, keine kaputte Verbindung.
+//   2. Meldet 0x024C nichts, das gekoppelte BMS an 0x00D6 aber einen echten
+//      Ladestand, dann ist die Anlage KEINE Sackgasse: der Test besteht mit
+//      genau dem Wert, den der laufende Poll spaeter veroeffentlicht.
+
+// Ein Solarman-V5-Logger im Prozess: beantwortet V5-gerahmte FC03-Lesungen aus
+// einem Registerbild. `refuse` nennt Startadressen, auf die er mit einer
+// Modbus-Ausnahme antwortet (so verhaelt sich eine Firmware ohne das Register).
+function startSolarmanLogger(img, refuse = []) {
+  const modbusResp = (slave, startReg, count) => {
+    if (refuse.includes(startReg)) {
+      const body = Buffer.from([slave, 0x83, 0x02]);
+      const crc = solarman.modbusCrc16(body);
+      return Buffer.concat([body, Buffer.from([crc & 0xff, (crc >> 8) & 0xff])]);
+    }
+    const bc = count * 2;
+    const body = Buffer.alloc(3 + bc);
+    body[0] = slave; body[1] = 0x03; body[2] = bc;
+    for (let i = 0; i < count; i++) body.writeUInt16BE((img.get(startReg + i) || 0) & 0xffff, 3 + i * 2);
+    const crc = solarman.modbusCrc16(body);
+    return Buffer.concat([body, Buffer.from([crc & 0xff, (crc >> 8) & 0xff])]);
+  };
+  const wrap = (serial, seq, mb) => {
+    const length = 14 + mb.length;
+    const h = Buffer.alloc(11);
+    h[0] = 0xa5; h.writeUInt16LE(length, 1); h.writeUInt16LE(0x1510, 3);
+    h.writeUInt16LE(seq & 0xffff, 5); h.writeUInt32LE(serial >>> 0, 7);
+    const pre = Buffer.alloc(14); pre[0] = 0x02;
+    const frame = Buffer.concat([h, pre, mb, Buffer.from([0x00, 0x15])]);
+    frame[frame.length - 2] = solarman.v5Checksum(frame);
+    return frame;
+  };
+  return new Promise((resolve) => {
+    const server = net.createServer((sock) => {
+      let acc = Buffer.alloc(0);
+      sock.on('data', (chunk) => {
+        acc = Buffer.concat([acc, chunk]);
+        for (;;) {
+          let need;
+          try { need = solarman.expectedFrameLength(acc); } catch (e) { sock.destroy(); return; }
+          if (need === null || acc.length < need) return;
+          const frame = acc.slice(0, need); acc = acc.slice(need);
+          const seq = frame.readUInt16LE(5);
+          const serial = frame.readUInt32LE(7);
+          const mbReq = frame.slice(26, frame.length - 2);
+          sock.write(wrap(serial, seq, modbusResp(mbReq[0], mbReq.readUInt16BE(2), mbReq.readUInt16BE(4))));
+        }
+      });
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
+}
+
+// Ein HV-Hybrid (Geraetecode 0x0008) mit lebendem Messblock; `soc` ist der
+// Deye-eigene 0x024C, `bms` das per CAN gekoppelte BMS (leer = keine Kopplung).
+function hybrid3pImage({ soc = 0, bms = null } = {}) {
+  const img = new Map();
+  img.set(0x0000, 0x0008);
+  img.set(0x024b, 6360);   // Packspannung 636,0 V
+  img.set(0x024c, soc);
+  img.set(0x024e, 0xfff4); // der Block ist nachweislich lebendig
+  img.set(0x028d, 4300);   // Last 4,3 kW
+  img.set(0x02a0, 6100);   // PV 6,1 kW
+  img.set(0x026b, 1200);   // Netz 1,2 kW
+  if (bms) for (const [addr, val] of Object.entries(bms)) img.set(Number(addr), val & 0xffff);
+  return img;
+}
+
+const BMS_COUPLED_IMG = {
+  0x00d2: 7360, 0x00d3: 5740, 0x00d4: 270, 0x00d5: 342, 0x00d6: 47,
+  0x00d7: 6420, 0x00d8: 0x10000 - 300, 0x00da: 400, 0x00db: 500, 0x00df: 10,
+};
+
+const deyeForm = (port) => ({
+  communication: 'solarman_v5', family: 'hybrid_3p',
+  connection: { ip: '127.0.0.1', port, serial: '2985159064', mb_slave_id: 1 },
+});
+
+test('P4: eine ABGELEHNTE BMS-Lesung laesst den Verbindungstest bestehen', async () => {
+  const { server, port } = await startSolarmanLogger(hybrid3pImage({ soc: 57 }), [0x00d2]);
+  try {
+    const res = await testRead.makeReadOnce(deps())(deyeForm(port));
+    assert.strictEqual(res.ok, true, JSON.stringify(res));
+    assert.strictEqual(res.reading.soc_pct, 57);
+    // HV-Geraet (0x0008): PV traegt die Skala 10 -> 6100 roh = 61,0 kW.
+    assert.strictEqual(res.reading.pv_kw, 61);
+  } finally {
+    server.close();
+  }
+});
+
+test('P4: ein NICHT gekoppeltes BMS (Block voller Nullen) aendert am Test nichts', async () => {
+  const { server, port } = await startSolarmanLogger(hybrid3pImage({ soc: 57 }));
+  try {
+    const res = await testRead.makeReadOnce(deps())(deyeForm(port));
+    assert.strictEqual(res.ok, true, JSON.stringify(res));
+    assert.strictEqual(res.reading.soc_pct, 57);
+  } finally {
+    server.close();
+  }
+});
+
+test('P4: 0x024C schweigt, das gekoppelte BMS antwortet -> der Test BESTEHT mit dem BMS-Ladestand', async () => {
+  const img = hybrid3pImage({ soc: 0, bms: BMS_COUPLED_IMG });
+  const { server, port } = await startSolarmanLogger(img);
+  try {
+    const res = await testRead.makeReadOnce(deps())(deyeForm(port));
+    assert.strictEqual(res.ok, true, JSON.stringify(res));
+    assert.strictEqual(res.reading.soc_pct, 47, 'genau der Wert, den der Poll spaeter veroeffentlicht');
+    assert.strictEqual(res.reading.load_kw, 4.3);
+  } finally {
+    server.close();
+  }
+});
+
+test('P4: ohne BMS und ohne 0x024C bleibt der Befund unveraendert `unplausibel`', async () => {
+  const { server, port } = await startSolarmanLogger(hybrid3pImage({ soc: 0 }));
+  try {
+    const res = await testRead.makeReadOnce(deps())(deyeForm(port));
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.error_code, testRead.ERR_IMPLAUSIBLE);
+    assert.strictEqual(res.finding.rule, deye.SOC_DROP_MISSING);
+    assert.strictEqual(res.finding.bms, undefined, 'nichts erfunden, wo nichts gekoppelt ist');
+  } finally {
+    server.close();
+  }
+});

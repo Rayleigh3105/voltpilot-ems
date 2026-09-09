@@ -231,7 +231,12 @@ function makeReadOnce(deps) {
         try {
           block = solarman.registerBlock(r.start, acc, { expectLoggerSerial: plan.serial });
         } catch (e) {
-          return ok({ ok: false, error_code: ERR_INVALID_RESPONSE });
+          // An OPTIONAL block (the Deye BMS block 0x00D2, P4) must never fail
+          // the connection test: a firmware that does not carry it is not a
+          // broken connection, and the decoder simply publishes no bms_*
+          // channel. Every mandatory block keeps failing the test as before.
+          if (!r.optional) return ok({ ok: false, error_code: ERR_INVALID_RESPONSE });
+          block = { start: r.start, regs: [] };
         }
         blocks.push(block);
         idx += 1;
@@ -251,6 +256,17 @@ function makeReadOnce(deps) {
           // decodeVerbose returns null only for an unknown family - a wrong
           // family / malformed block, never a plausibility verdict.
           return ok({ ok: false, error_code: ERR_INVALID_RESPONSE });
+        }
+        if (out.drop && out.drop.bms) {
+          // P4: the headline SoC register says nothing, but the CAN-coupled BMS
+          // reports its own MEASURED percentage (0x00D6). That is not a dead
+          // end - it is a plant with a state of charge, and decode() publishes
+          // exactly this value, so the test must agree with the poll. It stays
+          // a MEASUREMENT, so no override is asked of the customer.
+          return ok({
+            ok: true,
+            reading: toReading({ ...out.reading, soc_pct: out.drop.bms.soc_pct }, role),
+          });
         }
         if (out.drop) {
           // The plausibility gate bit. It used to answer with a bare

@@ -445,6 +445,15 @@ func (a *Agent) sourcesSummary() *cloud.SourcesSummary {
 			e.PvKw = channel(snap.LastReading, "pv_power_kw")
 			e.PowerKw = channel(snap.LastReading, "power_kw")
 			e.LoadKw = channel(snap.LastReading, "load_kw")
+			// The coupled BMS's own channels (P4). Copied, so a later sample
+			// cannot mutate a heartbeat already on its way; nil (and therefore
+			// ABSENT on the wire) whenever nothing is coupled.
+			if len(snap.BmsReading) > 0 {
+				e.Bms = make(map[string]float64, len(snap.BmsReading))
+				for k, v := range snap.BmsReading {
+					e.Bms[k] = v
+				}
+			}
 		}
 		sum.Entries = append(sum.Entries, e)
 	}

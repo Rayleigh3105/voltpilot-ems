@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1316,6 +1317,12 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		slog.Warn("local telemetry malformed; skipped", "err", err)
 		return
 	}
+	// The COUPLED BMS's channels (P4), read out of the SAME payload but kept
+	// strictly beside the measurements: they are the inverter's view of a
+	// battery that talks to it over CAN, not site measurement channels, and the
+	// frozen v1 telemetry contract has no room for them. Empty on every plant
+	// without such a coupling.
+	bms := bmsChannels(payload)
 	ts := time.Now().UTC()
 	if m.Ts != "" {
 		if t, err := time.Parse(time.RFC3339, m.Ts); err == nil {
@@ -1665,6 +1672,9 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 			}
 		}
 		s.LastReading = primary
+		// The last sample's view of a coupled BMS, verbatim - no hold-last: a
+		// coupling that stopped answering must stop claiming numbers.
+		s.BmsReading = bms
 		if v, ok := measurements["soc_pct"]; ok {
 			s.SocPct = v
 		}
@@ -1681,6 +1691,63 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	if !bufferPaused {
 		a.kick()
 	}
+}
+
+// bmsChannelPrefix + maxBmsChannels bound what a Layer-1 sample may say about a
+// coupled BMS. The prefix is the whole vocabulary rule: every channel the Deye
+// BMS block produces is named `bms_<thing>` (deye/deye-decode.js), so a payload
+// can never smuggle a measurement channel in through this door, and the bound
+// means a misbehaving flow cannot inflate the state snapshot or the heartbeat.
+const bmsChannelPrefix = "bms_"
+
+const maxBmsChannels = 24
+
+// bmsChannels pulls the `bms_*` channels out of a raw edge/telemetry payload.
+//
+// A SECOND pass over the same bytes, deliberately: the measurement struct above
+// is an explicit whitelist and must stay one (that whitelist IS the frozen v1
+// contract), while the BMS block is an open, additive set that only ever
+// travels beside it. Only finite numbers are taken - a malformed value is
+// dropped, never coerced - and nil comes back for a payload that says nothing,
+// which is every plant without a CAN-coupled battery.
+func bmsChannels(payload []byte) map[string]float64 {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return nil
+	}
+	// Sorted, so the CAP cuts the same channels every time. Map order in Go is
+	// random; a bound that dropped a different channel each sample would make a
+	// misbehaving flow look like a flickering BMS.
+	keys := make([]string, 0, len(raw))
+	for k := range raw {
+		if strings.HasPrefix(k, bmsChannelPrefix) && len(k) > len(bmsChannelPrefix) {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	var out map[string]float64
+	for _, k := range keys {
+		if len(out) >= maxBmsChannels {
+			break
+		}
+		v := raw[k]
+		// json.Number, not float64: unmarshalling a JSON `null` into a float
+		// SUCCEEDS and leaves a 0 behind - exactly the fabricated zero this
+		// house forbids. A Number stays empty for null and errors for a string.
+		var num json.Number
+		if err := json.Unmarshal(v, &num); err != nil {
+			continue
+		}
+		f, err := num.Float64()
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			continue
+		}
+		if out == nil {
+			out = map[string]float64{}
+		}
+		out[k] = f
+	}
+	return out
 }
 
 // logDespike records dropped spike samples for field diagnosis, rate-limited to
