@@ -224,6 +224,7 @@ Bereiche: `docs/agents/README.md`.
 - **Die MORGENPROGNOSE: der Optimierer korrigiert die PV-Prognose um ihren eigenen GEMESSENEN Fehler** — Der Fahrplan-Lauf von 09:36 hatte die · `die-morgenprognose-der-optimierer-korrig.md`
 - **Die DÄMMERUNG: eine Stundenprognose wird sonnenstandsgerecht auf Viertelstunden verteilt** — Der Plan von 19:30 Uhr · `die-daemmerung-eine-stundenprognose-wird.md`
 - **Optimization engine (`services/optimization`)** — The product's heart: a deterministic … · `optimization-engine-services-optimizatio.md`
+- **Optimierer ehrlich ohne Ladestand (P7)** — ohne frische ECHTE SoC-Messung plant der Optimierer den Speicher GAR NICHT (Ruhe-Plan, `soc_source=unbekannt`, keine SoC-Bahn, keine geplante Ersparnis) · `optimierer-ehrlich-ohne-ladestand-p7.md`
 - **Planungshorizont: 48 h angefragt, auf echte Eingaben gekürzt (28.08.2026)** — Der produktive Zyklus plante eine harte … · `planungshorizont-48-h-angefragt-auf-echt.md`
 - **Fahrplan-Warum backend (per-slot "why" facts: optimizer explain layer + schedule columns)** — The optimizer computes + persists the … · `fahrplan-warum-backend-per-slot-why-fact.md`
 - **Price-aware in-slot trim: the cloud prices, the edge enforces (2026-07-30)** — The 15-min setpoint stands for the whole … · `price-aware-in-slot-trim-the-cloud-price.md`

@@ -8,6 +8,8 @@ import {
   bandRoleColor,
   bandRoles,
   bankedValueLine,
+  ladestandHerkunftNote,
+  planOhneLadestand,
   chargeKind,
   CURTAIL_BAND_CAUSE,
   CURTAIL_BAND_WORD,
@@ -1776,5 +1778,33 @@ describe('bandLabelWidthPx schätzt die Wortbreite je Rolle', () => {
   it('ein längeres Wort ist breiter (Zeichenzahl × Zeichenbreite + Luft)', () => {
     expect(bandLabelWidthPx('solarladen')).toBeGreaterThan(bandLabelWidthPx('ruhe'));
     expect(bandLabelWidthPx('solarladen')).toBe('Solar laden'.length * 7 + 4);
+  });
+});
+
+describe('P7 · planOhneLadestand / ladestandHerkunftNote', () => {
+  it('erkennt nur das Wort "unbekannt" als "kein Ladestand"', () => {
+    expect(planOhneLadestand({ socSource: 'unbekannt' })).toBe(true);
+    expect(planOhneLadestand({ socSource: 'gemessen' })).toBe(false);
+    expect(planOhneLadestand({ socSource: 'berechnet' })).toBe(false);
+  });
+
+  it('liest einen Lauf VOR der Spalte wie gemessen, nie wie "kein Ladestand"', () => {
+    // Sonst behauptete jeder Alt-Lauf rückwirkend, er habe ohne Ladestand
+    // geplant - und die Seite erklärte einen Zustand, den es nie gab.
+    expect(planOhneLadestand({ socSource: null })).toBe(false);
+    expect(planOhneLadestand({})).toBe(false);
+    expect(planOhneLadestand(null)).toBe(false);
+    expect(planOhneLadestand(undefined)).toBe(false);
+  });
+
+  it('rät bei einem unbekannten Wort nicht (der Vertrag ist additiv)', () => {
+    expect(planOhneLadestand({ socSource: 'geschaetzt' })).toBe(false);
+  });
+
+  it('benennt einen BERECHNETEN Ladestand als berechnet - und sonst nichts', () => {
+    expect(ladestandHerkunftNote({ socSource: 'berechnet' })).toContain('berechnet, nicht gemessen');
+    expect(ladestandHerkunftNote({ socSource: 'gemessen' })).toBeNull();
+    expect(ladestandHerkunftNote({ socSource: 'unbekannt' })).toBeNull();
+    expect(ladestandHerkunftNote(null)).toBeNull();
   });
 });

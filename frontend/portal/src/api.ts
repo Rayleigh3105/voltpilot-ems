@@ -566,6 +566,23 @@ export interface SchedulePlan {
    * eine kWh-Zahl ohne ihre Häufigkeit da, und der Satz entfällt.
    */
   whyNightReserveQ?: number | null;
+  /**
+   * P7 (Scout `vp-deye-diybms-luecke-l5` §3.3, `schedule.soc_source`): WOHER
+   * der Anfangs-Ladestand dieses Laufs kam — `gemessen` (echte Telemetrie im
+   * Frischefenster) | `berechnet` (ein abgeleiteter Stand; der generische
+   * SoC-Baustein folgt in einem eigenen Paket) | `unbekannt`.
+   *
+   * Bei `unbekannt` hat der Optimierer den Speicher GAR NICHT geplant: jeder
+   * `batteryKw` ist 0, `socPct` und `baselineCostEur` sind null, `savingsEur`
+   * ist null — und die Fahrplan-Seite sagt den GRUND, statt eine flache
+   * 50-%-Linie zu zeichnen, die niemand gemessen hat.
+   *
+   * Null = ein Lauf vor der Spalte und wird wie `gemessen` gelesen, **nie** wie
+   * `unbekannt` (sonst behauptete jeder Alt-Lauf rückwirkend, er habe keinen
+   * Ladestand gehabt). Der Tages-Splice trägt es ebenfalls null: er ist aus
+   * vielen Läufen genäht und hat keine EINE Herkunft.
+   */
+  socSource?: string | null;
   slots: ScheduleSlot[];
 }
 

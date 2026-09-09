@@ -10730,7 +10730,13 @@ components:
         savingsEur:
           type: number
           nullable: true
-          description: Projected savings over the horizon vs. leaving the battery idle (the no-battery baseline).
+          description: >-
+            Projected savings over the horizon vs. leaving the battery idle
+            (the no-battery baseline). Null when the run makes no such
+            statement - since P7 that is any run whose socSource is
+            `unbekannt`: no measured start SoC means no battery was planned, so
+            there is no baseline to measure a saving against. Null is "nothing
+            planned", never a claimed 0,00 EUR.
         bankedValueEur:
           type: number
           nullable: true
@@ -10816,6 +10822,26 @@ components:
             the SECOND half of one statement. Without it the kWh figure stands
             without its frequency, and the customer sentence is omitted. Null
             exactly when whyNightReserveKwh is null.
+        socSource:
+          type: string
+          nullable: true
+          enum: [gemessen, berechnet, unbekannt]
+          description: >-
+            P7 (Scout vp-deye-diybms-luecke-l5 §3.3, schedule.soc_source,
+            migration V20260910000000): WHERE this run's start state of charge
+            came from - `gemessen` (real soc_pct telemetry inside the freshness
+            window), `berechnet` (a DERIVED state of charge; the generic SoC
+            building block ships in its own package - it may feed planning, but
+            it never passes itself off as a measurement) or `unbekannt`.
+            On `unbekannt` the optimizer planned NO battery at all: every slot's
+            batteryKw is 0, socPct and baselineCostEur are null, savingsEur is
+            null, and the Fahrplan page says why ("ohne Ladestand keine
+            Speicherplanung") instead of drawing a flat 50 % line nobody
+            measured. Null = a run predating the column, read as `gemessen`
+            (pre-P7 behaviour), NEVER as `unbekannt`; the day splice carries
+            null too, because it is stitched from many runs and has no single
+            origin. Additively extensible; a consumer that does not know a word
+            IGNORES it rather than guessing.
         slots:
           type: array
           items:
@@ -10824,10 +10850,25 @@ components:
               start: { type: string, format: date-time }
               batteryKw: { type: number, description: "Planned battery power; + = charge, - = discharge." }
               gridKw: { type: number, description: "Projected net grid power; + = import, - = export." }
-              socPct: { type: number, description: "Planned state of charge at slot end." }
+              socPct:
+                type: number
+                nullable: true
+                description: >-
+                  Planned state of charge at slot end. Null on a run without a
+                  start SoC (socSource `unbekannt`, P7): the solver needs some
+                  start value to stay solvable, but that value is a model
+                  placeholder and never leaves it.
               priceEurMwh: { type: number }
               costEur: { type: number, description: "Projected slot cost with the plan." }
-              baselineCostEur: { type: number, description: "Projected slot cost with the battery idle." }
+              baselineCostEur:
+                type: number
+                nullable: true
+                description: >-
+                  Projected slot cost with the battery idle - the reference the
+                  planned saving is measured against. Null on a run without a
+                  start SoC (socSource `unbekannt`, P7): no battery was planned,
+                  so there is nothing to compare, and a 0,00 EUR would claim
+                  "planned and worth nothing" instead of "not planned".
               curtailKw: { type: number, nullable: true, description: "Planned PV curtailment for the slot (kW held back, >= 0); the optimizer curtails feed-in at negative prices. Null on pre-curtailment runs." }
               pvKw: { type: number, nullable: true, description: "PV forecast the slot planned with (kW, schedule.pv_kw). Feeds the pv-aware 'Laden aus dem Netz' derivation: grid-charging = charge beyond the slot's available PV (FK3 PV-bus semantics), not merely charging while importing. Null on rows without a persisted PV input." }
               loadKw: { type: number, nullable: true, description: "Load (consumption) forecast the slot planned with (kW, schedule.load_kw). Rendered with pvKw as the two forecast lines over the Fahrplan bars, so the plan explains itself. Null on rows without a persisted load input - the line is absent then, never a fabricated 0." }

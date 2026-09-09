@@ -65,7 +65,7 @@ public class SchedulePricingService {
                 plan.slotMinutes(), plan.savingsEur(), plan.bankedValueEur(), plan.socStartPct(),
                 plan.socEndPct(), plan.peakTargetKw(), plan.effectiveFloorSocPct(), plan.fallback14a(),
                 plan.whyTerminalAnchor(), plan.whyRefillFreePct(),
-                plan.whyNightReserveKwh(), plan.whyNightReserveQ(), priced);
+                plan.whyNightReserveKwh(), plan.whyNightReserveQ(), plan.socSource(), priced);
     }
 
     private static BigDecimal ct(Double value) {

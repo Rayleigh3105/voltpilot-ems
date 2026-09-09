@@ -429,13 +429,26 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     # a constraint: nothing is added to the model, so the explain layer's
     # KNOWN_CONSTRAINTS inventory and the golden suite are untouched, and an
     # unclaimed battery (the default) is byte-identical.
-    charge_cap = 0.0 if inp.battery_held else p.max_charge_kw
-    discharge_cap = 0.0 if inp.battery_held else p.max_discharge_kw
+    # P7 (Scout vp-deye-diybms-luecke-l5 §3.3 / Paket P7, Captain-Entscheid
+    # E4=b): OHNE Ladestand plant niemand einen Speicher. Ein Lauf, dessen
+    # Start-SoC weder gemessen noch berechnet ist, weiss nicht, wie voll die
+    # Batterie ist - jede Ladung koennte an die Decke stossen, jede Entladung
+    # in den Boden. Die Bounds kollabieren deshalb auf 0, GENAU wie bei einer
+    # von einer Kundenregel beanspruchten Batterie: derselbe Mechanismus, zwei
+    # Gruende. Der Plan ist dann "Ruhe", und `soc_source` traegt das WARUM bis
+    # in die Fahrplan-Seite.
+    #
+    # Ebenfalls eine BOUND, kein Constraint: KNOWN_CONSTRAINTS und die
+    # Golden-Suite bleiben unberuehrt, und ein Lauf mit Ladestand (die Vorgabe
+    # jedes Aufrufers, der seine Eingaben selbst baut) ist byte-identisch.
+    battery_ruht = inp.battery_held or inp.soc_unbekannt
+    charge_cap = 0.0 if battery_ruht else p.max_charge_kw
+    discharge_cap = 0.0 if battery_ruht else p.max_discharge_kw
     # Steuerung Stufe 7: „Speicher jetzt laden" als Vorschau - die ersten N
     # Slots tragen eine UNTERGRENZE auf der Ladung. Ebenfalls eine BOUND (siehe
     # OptimizationInput.forced_charge_slots), also nichts im Modell und nichts
     # in KNOWN_CONSTRAINTS; die Vorgabe 0 ist byte-identisch zu jedem Lauf davor.
-    forced_kw = 0.0 if inp.battery_held else max(inp.forced_charge_kw, 0.0)
+    forced_kw = 0.0 if battery_ruht else max(inp.forced_charge_kw, 0.0)
     forced_n = max(min(inp.forced_charge_slots, n), 0) if forced_kw > 0 else 0
 
     def _charge_bounds(model, t):
@@ -659,6 +672,13 @@ def _add_night_reserve(
     # the rule holds it. The customer rule wins, and it also gets the credit.
     if inp.battery_held:
         return None
+    # P7: dieselbe Logik fuer einen Lauf OHNE Ladestand. Die Wertfunktion
+    # bepreist den Ladestand bei SONNENAUFGANG - ohne Anfangs-Ladestand gibt es
+    # keinen Pfad dorthin, den sie bewerten koennte, und der Term wuerde nur
+    # eine Konstante addieren, deren Erklaerung ("haelt X kWh fuer die Nacht")
+    # eine Menge behauptet, die niemand kennt.
+    if inp.soc_unbekannt:
+        return None
     terms = night_reserve_terms(
         load_kw=inp.load_kw,
         pv_kw=inp.pv_kw,
@@ -766,6 +786,19 @@ def _with_explanation(
         absorb = surplus_charge_enabled()
         unforeseen = unplanned_load_discharge_enabled()
         limiting = limit_discharge_enabled()
+        # P7 - der Punkt, an dem "Ruhe" sonst keine Ruhe waere. Die fuenf
+        # In-Slot-Vollmachten sind VOLLMACHTEN, keine Sollwerte: sie erlauben
+        # der Box, in der laufenden Viertelstunde von den 0 kW abzuweichen und
+        # gegen GEMESSENE Werte zu laden oder zu entladen
+        # (`unplanned_load_discharge` zielt sogar ausdruecklich auf einen
+        # RUHENDEN Slot). Ein Lauf ohne Ladestand darf sie nicht erteilen: die
+        # Cloud kennt den Fuellstand nicht, gegen den die Box sie ausfuehren
+        # wuerde, und die Box hat auf so einer Anlage aus demselben Grund
+        # keinen eigenen Wert zum Nachhalten. Alle fuenf entfallen also - im
+        # Kontrakt heisst ein abwesendes Feld "keine Pflicht", die Box faehrt
+        # den Sollwert 0 starr, und der Speicher ruht wirklich.
+        if inp.soc_unbekannt:
+            trim = follow = absorb = unforeseen = limiting = False
         slots = [
             replace(
                 slot,
@@ -1064,14 +1097,23 @@ def _extract_plan(
     # FAIL-SOFT wie die Erklaer-Schicht: die Messlatte ist reine BEWERTUNG.
     # Eine fehlende Zahl ist eine fehlende Zeile im Portal, eine geworfene
     # Ausnahme waere GAR KEIN Fahrplan - das waere der teurere Fehler.
-    try:
-        stur_costs: list[float | None] = list(stur_cost_eur(inp))
-    except Exception:  # pragma: no cover - defensive, the reference is pure
-        logger.warning(
-            "stur reference failed for site=%s - planning without it", inp.site_id,
-            exc_info=True,
-        )
-        stur_costs = [None] * inp.slots
+    # P7: ohne Ladestand gibt es KEINE Messlatte. Der sture Speicher startet
+    # per Definition aus einem Anfangs-Ladestand und faehrt eine eigene
+    # SoC-Bahn - aus einem Platzhalter gerechnet waere er eine zweite
+    # Erfindung neben der, die P7 gerade abgeschafft hat. Der bestehende
+    # NULL-Weg traegt das bis in die api (`steuerungPlannedEur` bleibt null,
+    # sobald auch nur EIN Slot die Messlatte nicht traegt).
+    if inp.soc_unbekannt:
+        stur_costs: list[float | None] = [None] * inp.slots
+    else:
+        try:
+            stur_costs = list(stur_cost_eur(inp))
+        except Exception:  # pragma: no cover - defensive, the reference is pure
+            logger.warning(
+                "stur reference failed for site=%s - planning without it", inp.site_id,
+                exc_info=True,
+            )
+            stur_costs = [None] * inp.slots
     slots: list[PlanSlot] = []
     for t in range(inp.slots):
         charge = float(value(model.charge[t]))
@@ -1094,7 +1136,19 @@ def _extract_plan(
                 pv_kw=round(inp.pv_kw[t], 4),
                 price_eur_mwh=price,
                 cost_eur=round(inp.cashflow_cost_eur(t, grid_kw), 6),
-                baseline_cost_eur=round(inp.baseline_cost_eur(t), 6),
+                # P7: die no-battery-Baseline ist die Referenz, GEGEN die eine
+                # geplante Ersparnis rechnet. Ohne Ladestand wurde kein
+                # Speicher geplant, also gibt es nichts zu vergleichen - und
+                # eine 0,00 EUR waere die Behauptung "geplant und nichts wert"
+                # statt der Wahrheit "gar nicht geplant". NULL traegt genau
+                # das: jeder Ersparnis-Leser (api HistoryRepository /
+                # OverviewRepository, Portal `plannedDayCosts`) filtert schon
+                # immer auf "Baseline vorhanden".
+                baseline_cost_eur=(
+                    None
+                    if inp.soc_unbekannt
+                    else round(inp.baseline_cost_eur(t), 6)
+                ),
                 stur_cost_eur=(
                     None if stur_costs[t] is None else round(stur_costs[t], 6)
                 ),
@@ -1139,4 +1193,8 @@ def _extract_plan(
         # corrected by (already inside inp.pv_kw) - carried so the persisted
         # run and the admin readout can name it. Pass-through, like above.
         pv_anchor_ratio=inp.pv_anchor_ratio,
+        # P7: WOHER der Start-Ladestand dieses Laufs kam. Auf `unbekannt` ist
+        # er zugleich der GRUND des Ruhe-Plans - persistiert je Slot-Zeile, so
+        # dass die Fahrplan-Seite ihn aussprechen kann.
+        soc_source=inp.soc_source,
     )

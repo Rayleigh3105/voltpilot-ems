@@ -184,6 +184,45 @@ ANCHOR_MARKTPREIS = "marktpreis"  # grid charging allowed: cheapest refill
 ANCHOR_VORGABE = "vorgabe"  # env-pinned override, nothing derived
 
 
+# ---------------------------------------------------------------------------
+# WOHER der Anfangs-Ladestand eines Laufs kommt (P7, Scout-Report
+# ``vp-deye-diybms-luecke-l5`` §3.3 / Paket P7, Captain-Entscheid E4=b).
+#
+# Bis P7 startete ein Lauf ohne frische SoC-Messung aus einer ERFUNDENEN
+# Annahme (``inputs.DEFAULT_SOC_PCT`` = 50 %) und wies fuer den daraus
+# gerechneten Fahrplan geplante Speicher-Ersparnisse aus. An einer Anlage, die
+# gar keinen echten Ladestand liefert (ein Deye im Spannungsmodus ohne
+# BMS-SoC), war jede dieser Zahlen eine Behauptung ueber einen Speicherstand,
+# den niemand kennt - genau der Fall, den die Hausregel „`null` statt einer
+# erfundenen `0`" verbietet.
+#
+# Seither ist die Herkunft ein FAKT des Laufs, aus einem GESCHLOSSENEN
+# Vokabular (ein Wort ausserhalb wird abgelehnt, nie geraten):
+#
+#   ``gemessen``  - eine echte, frische ``soc_pct``-Messung im Frischefenster
+#                   (:func:`voltpilot_optimization.config.soc_max_age`). Der
+#                   Normalfall, und der einzige Zustand, in dem alles genau so
+#                   geplant und ausgewiesen wird wie vor P7.
+#   ``berechnet`` - ein ABGELEITETER Ladestand (der generische SoC-Baustein
+#                   folgt in einem eigenen Paket). Planungstechnisch dem
+#                   gemessenen gleichgestellt, aber als „berechnet"
+#                   GEKENNZEICHNET, damit jede Flaeche die schwaechere Herkunft
+#                   benennen kann. Bis der Baustein existiert, setzt ihn
+#                   niemand - der Wert ist der vorbereitete Haken, kein
+#                   toter Code-Pfad mit einer erfundenen Quelle.
+#   ``unbekannt`` - KEIN Ladestand. Die Speicher-Terme des Solvers werden
+#                   deaktiviert (Lade-/Entladegrenzen 0, keine
+#                   Nacht-Wertfunktion, keine In-Slot-Vollmachten fuer die
+#                   Box), der Plan ist „Ruhe", und weder eine SoC-Bahn noch
+#                   eine geplante Ersparnis wird ausgewiesen.
+SOC_SOURCE_GEMESSEN = "gemessen"
+SOC_SOURCE_BERECHNET = "berechnet"
+SOC_SOURCE_UNBEKANNT = "unbekannt"
+SOC_SOURCES = frozenset(
+    {SOC_SOURCE_GEMESSEN, SOC_SOURCE_BERECHNET, SOC_SOURCE_UNBEKANNT}
+)
+
+
 @dataclass(frozen=True)
 class TerminalValue:
     """The terminal energy value AND the facts that produced it.
@@ -550,6 +589,15 @@ class OptimizationInput:
     #: Modellwechsels und jedes Aufrufers, der seine Eingaben selbst baut
     #: (What-if, Ersparnis-Simulation).
     night_error_quantiles: NightErrorQuantiles | None = None
+    #: WOHER ``initial_soc_kwh`` kommt (P7) - eines der drei Woerter aus
+    #: :data:`SOC_SOURCES`, siehe deren Kommentar fuer die volle Regel.
+    #: ``gemessen`` ist die Vorgabe, also ist JEDER Aufrufer, der seine
+    #: Eingaben selbst baut (What-if, Ersparnis-Simulation, Golden-Suite),
+    #: byte-identisch zu vor P7 - er reicht eine bekannte Zahl herein.
+    #: ``unbekannt`` ist der EINZIGE Zustand, der den Plan aendert, und
+    #: ``initial_soc_kwh`` ist dann ein reiner MODELL-PLATZHALTER, der den
+    #: Solver nie verlaesst (siehe :meth:`SchedulePlan.soc_pct`).
+    soc_source: str = SOC_SOURCE_GEMESSEN
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -586,6 +634,25 @@ class OptimizationInput:
             math.isfinite(self.pv_anchor_ratio) and self.pv_anchor_ratio > 0.0
         ):
             raise ValueError("pv_anchor_ratio must be finite and > 0 when set")
+        # Geschlossenes Vokabular (Hausregel): ein Wort ausserhalb wird
+        # VERWORFEN, nie auf einen Vorgabewert aufgeloest - ein stiller
+        # Ruecksprung auf "gemessen" waere genau die Erfindung, die P7
+        # abschafft.
+        if self.soc_source not in SOC_SOURCES:
+            raise ValueError(
+                f"soc_source must be one of {sorted(SOC_SOURCES)}, "
+                f"got {self.soc_source!r}"
+            )
+
+    @property
+    def soc_unbekannt(self) -> bool:
+        """Kein Ladestand - weder gemessen noch berechnet (P7).
+
+        Der EINE Schalter, an dem der Solver die Speicher-Terme abhaengt: ein
+        ``berechnet``er Ladestand ist eine Planungseingabe wie ein gemessener,
+        nur mit schwaecherer Herkunft, und aendert hier gar nichts.
+        """
+        return self.soc_source == SOC_SOURCE_UNBEKANNT
 
     @property
     def slots(self) -> int:
@@ -688,7 +755,17 @@ class PlanSlot:
     pv_kw: float  # PV forecast input used
     price_eur_mwh: float  # the day-ahead SPOT price (portal price curve)
     cost_eur: float  # projected slot cashflow with the plan (asymmetric pricing)
-    baseline_cost_eur: float  # projected slot cashflow with the battery idle
+    # Projizierter Cashflow desselben Slots mit RUHENDEM Speicher - die
+    # no-battery-Baseline, gegen die die geplante Ersparnis rechnet.
+    # ``None`` seit P7 auf jedem Lauf OHNE Ladestand
+    # (``OptimizationInput.soc_unbekannt``): ohne Ladestand plant niemand einen
+    # Speicher, also gibt es auch keine Referenz, gegen die sich eine Ersparnis
+    # messen liesse - und eine 0,00 EUR waere die Behauptung „geplant und
+    # nichts wert" statt der Wahrheit „gar nicht geplant". Jeder Leser der
+    # Ersparnis (api ``HistoryRepository``/``OverviewRepository``, Portal
+    # ``plannedDayCosts``) filtert schon immer auf „Baseline vorhanden", also
+    # traegt das NULL die Aussage bis in jede Flaeche.
+    baseline_cost_eur: float | None
     # Die MESSLATTE (Captain 04.09.2026): projizierter Cashflow desselben
     # Speichers OHNE smarte Steuerung - der sture Eigenverbrauchs-Speicher aus
     # :mod:`voltpilot_optimization.stur` (das Greedy-Modell der
@@ -883,13 +960,29 @@ class SchedulePlan:
     # Ueberschuss-Slot nach der Nacht, Flag aus, Explain aus) - die Flaechen
     # sagen dann nichts, nie eine erfundene 0.
     why_night_reserve: dict | None = None
+    # P7 (Scout vp-deye-diybms-luecke-l5 §3.3 / Paket P7): WOHER der
+    # Anfangs-Ladestand dieses Laufs kam - ``gemessen`` | ``berechnet`` |
+    # ``unbekannt`` (siehe SOC_SOURCES). Ein RUN-Fakt wie
+    # terminal_value_eur_per_kwh, je Slot-Zeile wiederholt persistiert
+    # (schedule.soc_source), damit EINE Zeile fuer den Lauf antwortet.
+    #
+    # Er ist zugleich der GRUND des Ruhe-Plans: bei ``unbekannt`` sind die
+    # Speicher-Terme aus, die SoC-Bahn ist NULL und es wird keine Ersparnis
+    # ausgewiesen - die Fahrplan-Seite sagt dann „ohne Ladestand keine
+    # Speicherplanung", statt eine Zahl zu erfinden oder zu schweigen.
+    soc_source: str = SOC_SOURCE_GEMESSEN
 
     @property
     def cost_eur(self) -> float:
         return sum(s.cost_eur for s in self.slots)
 
     @property
-    def baseline_cost_eur(self) -> float:
+    def baseline_cost_eur(self) -> float | None:
+        """Der Horizont-Cashflow der no-battery-Baseline, oder ``None``, wenn
+        auch nur EIN Slot sie nicht traegt (P7: ein Lauf ohne Ladestand) - die
+        Teil-Summen-Regel von :attr:`stur_cost_eur`, aus demselben Grund."""
+        if any(s.baseline_cost_eur is None for s in self.slots):
+            return None
         return sum(s.baseline_cost_eur for s in self.slots)
 
     @property
@@ -916,16 +1009,31 @@ class SchedulePlan:
         return sum(s.wear_cost_eur for s in self.slots)
 
     @property
-    def savings_eur(self) -> float:
+    def savings_eur(self) -> float | None:
         """Projected GRID savings vs. the no-battery baseline over the horizon
         (gross of battery wear - subtract :attr:`wear_cost_eur` for the honest
         net figure; the persisted per-slot columns carry both). Since P3
         (terminal energy value) this may include realizing energy the battery
         already held at the plan start - the realized-earnings engine, not the
-        planned figure, remains the honest money number."""
-        return self.baseline_cost_eur - self.cost_eur
+        planned figure, remains the honest money number.
 
-    def soc_pct(self, slot: PlanSlot) -> float:
+        ``None`` seit P7, wenn der Lauf keinen Ladestand hatte: dann wurde kein
+        Speicher geplant, also gibt es keine Ersparnis auszuweisen - nicht
+        einmal eine von 0,00 EUR."""
+        baseline = self.baseline_cost_eur
+        return None if baseline is None else baseline - self.cost_eur
+
+    def soc_pct(self, slot: PlanSlot) -> float | None:
+        """Die geplante Ladestands-Bahn eines Slots in Prozent.
+
+        ``None`` seit P7 auf einem Lauf OHNE Ladestand
+        (:attr:`soc_source` = ``unbekannt``): der Solver braucht einen
+        Startwert, um ueberhaupt ein loesbares Modell zu bauen, aber dieser
+        Wert ist ein reiner MODELL-PLATZHALTER. Ihn als „geplanter Ladestand"
+        zu persistieren und ins Diagramm zu zeichnen waere exakt die Erfindung,
+        die P7 abschafft - also verlaesst er den Solver nie."""
+        if self.soc_source == SOC_SOURCE_UNBEKANNT:
+            return None
         return 100.0 * slot.soc_kwh / self.battery.capacity_kwh
 
     def __len__(self) -> int:

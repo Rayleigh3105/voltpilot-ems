@@ -5,10 +5,17 @@ every future plan (a single historical 4.2 kW section-14a event forced 67% PV
 curtailment at positive prices in the critique's reproduction), and a battery
 that stopped reporting kept planning from yesterday's SoC. These tests drive
 the REAL ``gather_inputs`` SQL against a fake in-memory psycopg (the
-test_active_model pattern) and prove: a stale reading is ignored (no cap /
-default SoC) and flagged, a fresh one is used, and the windows are
+test_active_model pattern) and prove: a stale reading is ignored (no cap / no
+Ladestand) and flagged, a fresh one is used, and the windows are
 env-configurable. Also covers the per-asset wear override resolution in
 ``load_battery_sites``.
+
+⚠ Seit P7 (Scout ``vp-deye-diybms-luecke-l5`` §3.3, Captain-Entscheid E4=b)
+faellt die SoC-Haelfte NICHT mehr auf ``DEFAULT_SOC_PCT`` zurueck: eine
+verworfene Messung heisst „kein Ladestand", und der Optimierer plant den
+Speicher dann gar nicht. Die Freschefenster-Regel selbst - die dieses Modul
+prueft - ist unveraendert; nur ihre FOLGE ist eine andere. Die Folge selbst
+wohnt in ``test_soc_source.py``.
 """
 
 from __future__ import annotations
@@ -21,9 +28,9 @@ from uuid import UUID, uuid4
 import pytest
 
 from voltpilot_optimization.domain import BatteryParams, horizon_slot_starts
+from voltpilot_optimization.domain import SOC_SOURCE_UNBEKANNT
 from voltpilot_optimization.inputs import (
     BatterySite,
-    DEFAULT_SOC_PCT,
     gather_inputs,
     load_battery_sites,
 )
@@ -141,13 +148,15 @@ def test_fresh_soc_is_used(readings):
     assert inp.initial_soc_kwh == pytest.approx(8.0)  # 80% of 10 kWh
 
 
-def test_stale_soc_falls_back_to_the_default(readings, caplog):
-    # 3 hours old vs. the 120-min default window: plan from the neutral 50%
-    # default, never from yesterday's value - and flag it.
+def test_stale_soc_means_no_ladestand_at_all(readings, caplog):
+    # 3 hours old vs. the 120-min default window. Never yesterday's value -
+    # and since P7 never the neutral 50% either: a discarded reading leaves
+    # the run WITHOUT a Ladestand, so the battery is not planned at all.
     readings["soc_pct"] = (NOW - timedelta(hours=3), 80.0)
     with caplog.at_level("WARNING"):
         inp = gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
-    assert inp.initial_soc_kwh == pytest.approx(DEFAULT_SOC_PCT / 100.0 * 10.0)
+    assert inp.soc_source == SOC_SOURCE_UNBEKANNT
+    assert inp.initial_soc_kwh != pytest.approx(5.0)  # the old 50%-of-10-kWh
     assert any("stale_reading_ignored" in r.message for r in caplog.records)
 
 
@@ -158,10 +167,13 @@ def test_soc_window_is_env_configurable(readings, monkeypatch):
     assert inp.initial_soc_kwh == pytest.approx(8.0)
 
 
-def test_no_reading_at_all_keeps_the_old_defaults(readings):
+def test_no_reading_at_all_means_no_limit_and_no_ladestand(readings):
     inp = gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
     assert inp.grid_limit_kw is None
-    assert inp.initial_soc_kwh == pytest.approx(5.0)
+    # The two halves differ ON PURPOSE. An absent §14a reading means "no limit
+    # is active" - a statement the plant's physics backs up. An absent SoC
+    # means "we do not know", which is NOT a number (P7).
+    assert inp.soc_source == SOC_SOURCE_UNBEKANNT
 
 
 def test_site_max_feed_in_flows_into_the_optimization_input(readings):

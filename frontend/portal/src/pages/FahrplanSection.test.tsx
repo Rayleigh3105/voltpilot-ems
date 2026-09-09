@@ -522,3 +522,62 @@ describe('FahrplanSection · die „Lage"-Zeile', () => {
     expect(text).not.toContain('Wettervorhersage');
   });
 });
+
+describe('P7 · eine Anlage ohne Ladestand', () => {
+  /**
+   * Der Lauf, den der Optimierer für einen Deye im Spannungsmodus schreibt:
+   * `socSource: 'unbekannt'`, lauter 0-kW-Balken, keine SoC-Bahn, keine
+   * Baseline - also auch keine Ersparnis. Genau so kommt er aus der api.
+   */
+  function ohneLadestand(): SchedulePlan {
+    const base = plan();
+    return {
+      ...base,
+      socSource: 'unbekannt',
+      savingsEur: null,
+      slots: base.slots.map((s) => ({
+        ...s,
+        batteryKw: 0,
+        socPct: null,
+        baselineCostEur: null,
+        slotRole: 'warten',
+      })),
+    };
+  }
+
+  it('nennt den Grund, statt die leeren Balken unerklärt zu lassen', async () => {
+    schedule.mockResolvedValue(ohneLadestand());
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
+    expect(container.textContent).toContain('meldet derzeit keinen Ladestand');
+    expect(container.textContent).toContain('weist für ihn auch keine Ersparnis aus');
+  });
+
+  it('weist KEINE Speicher-Ersparnis aus - und sagt nicht "kein Fahrplan"', async () => {
+    schedule.mockResolvedValue(ohneLadestand());
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
+    // Keine Euro-Zahl: weder eine erfundene 0,00 € noch irgendeine andere.
+    expect(container.querySelector('.vp-fp-euro')).toBeNull();
+    // Und NICHT der Leer-Satz: es GIBT einen Fahrplan, er plant nur den
+    // Speicher nicht - „kein Fahrplan" wäre hier die zweite Unwahrheit.
+    expect(container.textContent).not.toContain('Für heute liegt noch kein Fahrplan vor');
+  });
+
+  it('lässt eine Anlage MIT Ladestand unverändert', async () => {
+    schedule.mockResolvedValue(plan());
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
+    expect(container.textContent).not.toContain('meldet derzeit keinen Ladestand');
+    expect(container.querySelector('.vp-fp-euro')).toBeTruthy();
+  });
+
+  it('liest einen Lauf VOR der Spalte wie gemessen, nie wie "kein Ladestand"', async () => {
+    // socSource fehlt (älterer Lauf / ältere api) - die Seite darf ihm nicht
+    // rückwirkend unterstellen, er habe ohne Ladestand geplant.
+    schedule.mockResolvedValue({ ...plan(), socSource: undefined });
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
+    expect(container.textContent).not.toContain('meldet derzeit keinen Ladestand');
+  });
+});

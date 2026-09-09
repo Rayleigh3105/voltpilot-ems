@@ -51,6 +51,7 @@ from voltpilot_optimization.config import (
     pv_nowcast_lookback,
     pv_nowcast_max_age,
     night_reserve_enabled,
+    require_measured_soc,
     soc_max_age,
     terminal_value_override_eur_per_kwh,
 )
@@ -61,6 +62,8 @@ from voltpilot_optimization.domain import (
     OptimizationInput,
     SLOT_MINUTES,
     SLOTS_24H,
+    SOC_SOURCE_GEMESSEN,
+    SOC_SOURCE_UNBEKANNT,
     ensure_utc,
     floor_to_slot,
     horizon_slot_starts,
@@ -134,6 +137,14 @@ def real_forecast_horizon(
 # "same slot yesterday" always has a candidate).
 FALLBACK_HISTORY = timedelta(days=3)
 
+#: Der Start-Ladestand, aus dem ein Lauf OHNE frische SoC-Messung frueher
+#: geplant hat. Seit P7 (Scout ``vp-deye-diybms-luecke-l5`` §3.3 / Paket P7,
+#: Captain-Entscheid E4=b) ist das eine ERFINDUNG und kein Vorgabewert mehr:
+#: ohne echten Ladestand plant der Optimierer den Speicher gar nicht
+#: (``soc_source = unbekannt``, Ruhe-Plan). Die Zahl lebt nur noch als
+#: Notausgang weiter - sie greift ausschliesslich, wenn ein Operator
+#: ``OPTIMIZER_REQUIRE_MEASURED_SOC`` ausdruecklich ausschaltet (siehe
+#: :func:`voltpilot_optimization.config.require_measured_soc`).
 DEFAULT_SOC_PCT = 50.0
 
 # Billing-period boundaries for the Leistungspreis peak follow the platform
@@ -548,6 +559,11 @@ def gather_inputs(
     (:func:`load_battery_claims`, Steuerung Stufe 3 §3.7 A4), same convention:
     ``None`` = load it here. A claimed battery is planned as HELD - see
     :attr:`~voltpilot_optimization.domain.OptimizationInput.battery_held`.
+
+    **Der Ladestand ist seit P7 eine Bedingung, kein Vorgabewert.** Ohne frische
+    ECHTE ``soc_pct``-Messung im Frischefenster traegt das Ergebnis
+    ``soc_source = unbekannt``, und der Solver plant den Speicher gar nicht
+    (Ruhe-Plan, Grund „kein Ladestand"). Details am Zuweisungs-Block unten.
     """
     if model_choices is None:
         model_choices = load_model_choices(dsn)
@@ -629,8 +645,48 @@ def gather_inputs(
     soc_pct = _fresh_measurement(
         dsn, site.site_id, "soc_pct", now, soc_max_age()
     )
-    if soc_pct is None:
-        soc_pct = DEFAULT_SOC_PCT
+    # P7 (Scout ``vp-deye-diybms-luecke-l5`` §3.3 / Paket P7, Captain-Entscheid
+    # E4=b): OHNE frische, ECHTE Messung wird kein Ladestand ERFUNDEN. Bis hier
+    # sprang der Lauf auf DEFAULT_SOC_PCT (50 %) und plante - inklusive
+    # Entladungen aus einem Stand, den niemand kannte, und inklusive der
+    # geplanten Ersparnis, die daraus folgte. An einer Anlage, die nie einen
+    # echten SoC liefert (Deye im Spannungsmodus ohne BMS-SoC), war das keine
+    # Naeherung, sondern eine Behauptung.
+    #
+    # Stattdessen: ``soc_source = unbekannt``. Der Solver haengt daran seine
+    # Speicher-Terme ab (Lade-/Entladegrenzen 0, keine Nacht-Wertfunktion,
+    # keine In-Slot-Vollmachten fuer die Box), der Plan ist Ruhe, und weder
+    # SoC-Bahn noch Ersparnis werden ausgewiesen. Die Anlage wird NICHT
+    # uebersprungen: Abregelung, Netzgrenzen und die Prognose-Sicht bleiben ein
+    # echter Plan, nur eben ohne Speicher.
+    #
+    # ⚠ ``initial_soc_kwh`` traegt dann einen reinen MODELL-PLATZHALTER - den
+    # technischen Boden, weil ein flacher SoC-Pfad auf dem Boden immer loesbar
+    # ist. Er verlaesst den Solver nie (``SchedulePlan.soc_pct`` -> None).
+    #
+    # Der Notausgang ``OPTIMIZER_REQUIRE_MEASURED_SOC=false`` stellt den
+    # dokumentierten Vor-P7-Zustand wieder her, Erfindung inklusive.
+    if soc_pct is not None:
+        soc_source = SOC_SOURCE_GEMESSEN
+        initial_soc_kwh = float(soc_pct) / 100.0 * site.battery.capacity_kwh
+    elif require_measured_soc():
+        soc_source = SOC_SOURCE_UNBEKANNT
+        initial_soc_kwh = site.battery.soc_min_kwh
+        logger.warning(
+            "soc.missing_no_battery_planning",
+            extra={
+                "context": {
+                    "site_id": str(site.site_id),
+                    "max_age_minutes": round(
+                        soc_max_age().total_seconds() / 60.0, 1
+                    ),
+                    "reason": "kein Ladestand",
+                }
+            },
+        )
+    else:
+        soc_source = SOC_SOURCE_GEMESSEN
+        initial_soc_kwh = DEFAULT_SOC_PCT / 100.0 * site.battery.capacity_kwh
     grid_limit = _fresh_measurement(
         dsn, site.site_id, "grid_limit_kw", now, grid_limit_max_age()
     )
@@ -679,7 +735,7 @@ def gather_inputs(
         prices_eur_mwh=spot,
         load_kw=load_kw,
         pv_kw=pv_kw,
-        initial_soc_kwh=float(soc_pct) / 100.0 * site.battery.capacity_kwh,
+        initial_soc_kwh=initial_soc_kwh,
         netzladen_erlaubt=site.netzladen_erlaubt,
         grid_limit_kw=float(grid_limit) if grid_limit is not None else None,
         max_feed_in_kw=site.max_feed_in_kw,
@@ -699,6 +755,8 @@ def gather_inputs(
         battery_held=held_by is not None,
         # P3: the site's own night-error distribution (None = no term).
         night_error_quantiles=night_errors,
+        # P7: WOHER der Start-Ladestand kam. `unbekannt` ist der Ruhe-Plan.
+        soc_source=soc_source,
     )
 
 

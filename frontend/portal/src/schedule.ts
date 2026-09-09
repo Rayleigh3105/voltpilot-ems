@@ -997,6 +997,57 @@ export function bankedValueLine(bankedValueEur: number | null | undefined): stri
   return `aus dem Vortag entnommen: ${eurAmount(-v)}`;
 }
 
+/**
+ * P7 · Der Satz, den eine Anlage OHNE Ladestand auf der Fahrplan-Seite
+ * bekommt (Scout `vp-deye-diybms-luecke-l5` §3.3 / Paket P7,
+ * Captain-Entscheid E4=b).
+ *
+ * Er existiert, weil das Schweigen an dieser Stelle die schlechtere Lüge wäre:
+ * ohne ihn sieht der Kunde einen Fahrplan mit lauter 0-kW-Balken, keiner
+ * Ladestandslinie und keiner Ersparnis und liest daraus einen DEFEKT — wo in
+ * Wahrheit eine ehrliche Entscheidung steht. Der Satz nennt die Ursache und
+ * den Weg heraus, ohne dem Kunden ein Gerät zu unterstellen, das er nicht hat.
+ */
+export const KEIN_LADESTAND_NOTE =
+  'Diese Anlage meldet derzeit keinen Ladestand. VoltPilot plant Ihren ' +
+  'Speicher deshalb nicht und weist für ihn auch keine Ersparnis aus – ' +
+  'geplant wird nur, was gemessen ist. Sobald ein Ladestand ankommt, ' +
+  'nimmt der nächste Planungslauf den Speicher automatisch wieder auf.';
+
+/** Vokabular von `SchedulePlan.socSource` (Spalte `schedule.soc_source`). */
+export const SOC_SOURCE_GEMESSEN = 'gemessen';
+export const SOC_SOURCE_BERECHNET = 'berechnet';
+export const SOC_SOURCE_UNBEKANNT = 'unbekannt';
+
+/**
+ * Hat dieser Lauf den Speicher mangels Ladestand gar nicht geplant?
+ *
+ * ⚠ Ausschliesslich `unbekannt` zählt. `null`/`undefined` ist ein Lauf VOR der
+ * Spalte und wird wie `gemessen` gelesen — sonst behauptete jeder Alt-Lauf
+ * rückwirkend, er habe ohne Ladestand geplant. Ein unbekanntes Wort (der
+ * Vertrag ist additiv erweiterbar) wird ebenfalls nicht als „kein Ladestand"
+ * gelesen: geraten wird hier nichts.
+ */
+export function planOhneLadestand(plan: { socSource?: string | null } | null | undefined): boolean {
+  return plan?.socSource === SOC_SOURCE_UNBEKANNT;
+}
+
+/**
+ * Der Herkunfts-Zusatz für einen BERECHNETEN Ladestand (P7, vorbereitet).
+ *
+ * Der generische SoC-Baustein folgt in einem eigenen Paket; sobald er einen
+ * Stand liefert, darf er planen — aber die Fläche muss sagen, dass er
+ * gerechnet und nicht gemessen ist. Bis dahin liefert diese Funktion für jeden
+ * heutigen Lauf `null` und ändert kein Pixel.
+ */
+export function ladestandHerkunftNote(
+  plan: { socSource?: string | null } | null | undefined,
+): string | null {
+  return plan?.socSource === SOC_SOURCE_BERECHNET
+    ? 'Der Ladestand dieser Anlage wird berechnet, nicht gemessen – der Fahrplan ist entsprechend ungenauer.'
+    : null;
+}
+
 export const HORIZON_HINT =
   'Der Fahrplan reicht bis zum Tagesende – sobald die Börsenpreise für morgen ' +
   'vorliegen (ab ca. 13 Uhr), plant VoltPilot darüber hinaus.';

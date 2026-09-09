@@ -66,7 +66,11 @@ CREATE TABLE IF NOT EXISTS schedule (
     pv_anchor_ratio   NUMERIC(12, 4),           -- run: PV nowcast anchor ratio measured/predicted (V20260836000000)
     why_night_reserve_kwh NUMERIC(12, 3),       -- run: charge held for a heavier night, kWh over the floor (V20260868000000)
     why_night_reserve_q NUMERIC(4, 3),          -- run: its quantile (0.75 = needed in 1 of 4 nights) (V20260868000000)
-    PRIMARY KEY (site_id, generated_at, time)
+    soc_source        TEXT,                     -- run: where the start SoC came from - gemessen|berechnet|unbekannt (V20260910000000)
+    PRIMARY KEY (site_id, generated_at, time),
+    CONSTRAINT schedule_soc_source_check
+        CHECK (soc_source IS NULL
+               OR soc_source IN ('gemessen', 'berechnet', 'unbekannt'))
 );
 
 SELECT create_hypertable('schedule', 'time',

@@ -53,7 +53,7 @@ class SchedulePricingServiceTest {
 
     private static SchedulePlanDto plan(ScheduleSlotDto... slots) {
         return new SchedulePlanDto(UUID.randomUUID(), UUID.randomUUID(), SLOT, 15,
-                BigDecimal.ONE, null, null, null, null, null, null, null, null, null, null,
+                BigDecimal.ONE, null, null, null, null, null, null, null, null, null, null, null,
                 List.of(slots));
     }
 
