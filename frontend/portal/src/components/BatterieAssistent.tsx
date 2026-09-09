@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
+import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
+import { VpTimePicker } from './VpTimePicker';
 import { api, ApiError, type SiteComponents } from '../api';
 import {
   AGGREGATE,
@@ -126,6 +128,21 @@ export function BatterieAssistent({
   const [laeuft, setLaeuft] = useState(false);
   const [speichern, setSpeichern] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
+
+  /*
+    Der Anker-Zeitpunkt reist als EIN Feld (`JJJJ-MM-TTTHH:MM`, byte-gleich mit
+    dem abgelösten nativen Feld), bedient wird er - wie überall im Portal - aus
+    den beiden Haus-Pickern. Leer heißt „ab jetzt": erst ein DATUM macht den
+    Anker zu einem Zeitpunkt, eine Uhrzeit allein ist keiner.
+  */
+  const setAnkerTeil = (teil: 'datum' | 'zeit', wert: string) => {
+    setSoc((s) => {
+      const [datum = '', zeit = ''] = s.anchorAt.split('T');
+      const d = teil === 'datum' ? wert : datum;
+      const z = teil === 'zeit' ? wert : zeit;
+      return { ...s, anchorAt: d === '' ? '' : `${d}T${z === '' ? '00:00' : z}` };
+    });
+  };
 
   /*
     Die Vorlagen kommen vom Server - nie aus einer Konstante im Portal. Eine
@@ -279,7 +296,7 @@ export function BatterieAssistent({
           {!http && (
             <>
               <div className="vp-assist-field">
-                <label htmlFor="bat-host">Adresse des Brokers</label>
+                <label htmlFor="bat-host">Adresse des MQTT-Servers</label>
                 <Input
                   id="bat-host"
                   value={broker.host}
@@ -287,7 +304,7 @@ export function BatterieAssistent({
                   onChange={(e) => setBroker((b) => ({ ...b, host: e.target.value }))}
                 />
                 <p className="vp-assist-help">
-                  Die IP-Adresse des Rechners, auf dem Ihr MQTT-Broker läuft - meist Ihr
+                  Die IP-Adresse des Rechners, auf dem Ihr MQTT-Server läuft - meist Ihr
                   Home-Assistant- oder Node-RED-Host.
                 </p>
               </div>
@@ -970,12 +987,16 @@ export function BatterieAssistent({
                   </p>
                 </div>
                 <div className="vp-assist-field">
-                  <label htmlFor="bat-anchor-at">Anker: Zeitpunkt</label>
-                  <Input
+                  <VpDatePicker
                     id="bat-anchor-at"
-                    type="datetime-local"
-                    value={soc.anchorAt}
-                    onChange={(e) => setSoc((s) => ({ ...s, anchorAt: e.target.value }))}
+                    label="Anker: Datum"
+                    value={soc.anchorAt.split('T')[0] ?? ''}
+                    onChange={(wert) => setAnkerTeil('datum', wert)}
+                  />
+                  <VpTimePicker
+                    label="Anker: Uhrzeit"
+                    value={soc.anchorAt.split('T')[1] ?? ''}
+                    onChange={(wert) => setAnkerTeil('zeit', wert)}
                   />
                   <p className="vp-assist-help">
                     Wann dieser Ladestand galt. Leer lassen heißt „ab jetzt".

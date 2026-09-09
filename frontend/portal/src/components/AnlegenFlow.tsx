@@ -783,8 +783,8 @@ export function AnlegenFlow({
             <p className="vp-geraet-edit-eyebrow">Bearbeitungsmodus</p>
             <h1>{edit.label?.trim() || 'Batterie'} bearbeiten</h1>
             <p>
-              Ändern Sie Broker, Feld-Zuordnung oder die Art, wie der Ladestand entsteht. Die
-              bisherige Fassung läuft bis zur Bestätigung der Box weiter.
+              Ändern Sie die Verbindung, die Feld-Zuordnung oder die Art, wie der Ladestand
+              entsteht. Die bisherige Fassung läuft bis zur Bestätigung der Box weiter.
             </p>
           </div>
           <span className="vp-pill vp-pill-info">Fassung {edit.definitionVersion}</span>

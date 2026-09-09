@@ -122,7 +122,7 @@ describe('Schritt 1 · die Web-Auskunft (HTTP/JSON)', () => {
     await aufHttp();
     expect(screen.getByLabelText('Adresse des BMS')).toBeVisible();
     expect(screen.getByLabelText('Pfad der JSON-Auskunft')).toBeVisible();
-    expect(screen.queryByLabelText('Adresse des Brokers')).toBeNull();
+    expect(screen.queryByLabelText('Adresse des MQTT-Servers')).toBeNull();
   });
 
   it('lässt erst weiter, wenn die Adresse im eigenen Netz steht', async () => {
@@ -269,12 +269,12 @@ describe('Schritt 1 · Wie ist die Batterie erreichbar?', () => {
   it('lässt erst weiter, wenn der Broker im eigenen Netz steht', async () => {
     const { onSchritt } = await zeichne(1);
     expect(knopf('Weiter')).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Adresse des Brokers'), {
+    fireEvent.change(screen.getByLabelText('Adresse des MQTT-Servers'), {
       target: { value: '8.8.8.8' },
     });
     expect(screen.getByRole('status').textContent).toContain('eigenen Netzwerk');
     expect(knopf('Weiter')).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Adresse des Brokers'), {
+    fireEvent.change(screen.getByLabelText('Adresse des MQTT-Servers'), {
       target: { value: '192.168.0.44' },
     });
     fireEvent.click(knopf('Weiter'));
@@ -551,7 +551,7 @@ describe('Bearbeiten', () => {
 
   it('füllt das Formular aus der GESPEICHERTEN Fassung vor', async () => {
     await zeichne(1, gespeichert);
-    expect((screen.getByLabelText('Adresse des Brokers') as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText('Adresse des MQTT-Servers') as HTMLInputElement).value).toBe(
       '192.168.0.44',
     );
     expect((screen.getByLabelText('Sende-Abstand (s)') as HTMLInputElement).value).toBe('20');

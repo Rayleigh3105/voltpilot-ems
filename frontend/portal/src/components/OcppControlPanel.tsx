@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { LIVE_POLL_MS } from '../pollCadence';
 import { VpPicker } from './VpPicker';
 import { finiteInput, initialOcppControl, observedOcpp, ocppReadiness, withOcppLimit,
   type OcppControlPolicy, type OcppControlView } from '../ocppControl';
@@ -27,7 +28,7 @@ export function OcppControlPanel({ siteId, stationId, deviceId, canEdit }: {
       try { const v = await api.ocppControl(siteId); if (active) { setView((old) => old && (old.desired?.revision ?? 0) > (v.desired?.revision ?? 0) ? old : v); setNow(Date.now()); } }
       catch { if (active) setError('OCPP-Einrichtung konnte nicht geladen werden.'); }
     };
-    void load(); const timer = window.setInterval(() => { void load(); }, 10_000);
+    void load(); const timer = window.setInterval(() => { void load(); }, LIVE_POLL_MS);
     return () => { active = false; window.clearInterval(timer); };
   }, [siteId]);
 
