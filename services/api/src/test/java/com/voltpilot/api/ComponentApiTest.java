@@ -796,6 +796,85 @@ class ComponentApiTest {
         }
     }
 
+    /**
+     * P1 (Scout {@code data/vp-deye-diybms-luecke-l5} §2.2/§3.1): der über den
+     * Assistenten eingerichtete Wechselrichter trägt die drei Messkanäle SEINES
+     * TYPS - und behält sie über das Bearbeiten hinweg.
+     *
+     * <p>Der behobene Befund lief über zwei Stationen: die Anlege-Vorgaben
+     * schrieben für jede Rolle außer Erzeuger genau {@code power_kw}, und
+     * {@code applyEditDefinition} schob diesen einen Kanal bei JEDEM
+     * „Verbindung &amp; Modell"-Klick über die aus dem Speicher-Asset
+     * komponierten drei. Ohne {@code pv_power_kw} leitet der
+     * {@code TopologyDeriver} keine PV-Rolle ab - das Energiefluss-Schaltbild
+     * hatte dann keinen PV-Knoten und einen leeren Speicher-Knoten („das
+     * Cockpit zeigt kein PV").
+     *
+     * <p>Deshalb prüft der Test die ganze Strecke bis zum Read-Model: die
+     * Kanäle nach dem Anlegen, dieselben Kanäle nach dem Bearbeiten, und den
+     * PV-Knoten in der Topologie.
+     */
+    @Test
+    void derAssistentWechselrichterBehaeltSeineDreiMesskanaeleUeberDasBearbeitenHinweg()
+            throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Kanalweg 3");
+        try {
+            claim(customer, site, "edge-kanalweg-01");
+            saveBattery(customer, site);
+            Map<String, Object> conn = deyeConnection();
+            receipts.record(site, DEYE, 1, conn);
+
+            assertThat(post("/api/v1/sites/" + site + "/components", customer,
+                    saveBody(DEYE, "inverter", conn)).getStatusCode())
+                    .isEqualTo(HttpStatus.OK);
+
+            JsonNode row = byRole(getJson("/api/v1/sites/" + site + "/components", customer),
+                    "battery-hybrid");
+            assertThat(measureChannels(site, customer, "battery-hybrid"))
+                    .as("die Kanäle des TYPS, nicht ein Rollen-Default")
+                    .containsExactly("soc_pct", "battery_power_kw", "pv_power_kw");
+
+            // Bearbeiten OHNE Typwechsel - hier ging der PV-Kanal bisher verloren.
+            Map<String, Object> edit = saveBody(DEYE, "inverter", conn);
+            edit.put("label", "Speicher Nord");
+            edit.put("expectedRevision", row.get("definitionVersion").asInt());
+            assertThat(put("/api/v1/sites/" + site + "/components/" + row.get("id").asText(),
+                    customer, edit).getStatusCode()).isEqualTo(HttpStatus.OK);
+
+            assertThat(measureChannels(site, customer, "battery-hybrid"))
+                    .as("Bearbeiten stuft die Fähigkeiten nicht herunter")
+                    .containsExactly("soc_pct", "battery_power_kw", "pv_power_kw");
+
+            // ... und genau daran hängt der PV-Knoten des Schaltbilds.
+            JsonNode topology = getJson("/api/v1/sites/" + site + "/topology", customer);
+            List<String> roles = new java.util.ArrayList<>();
+            for (JsonNode node : topology.path("topology").path("nodes")) {
+                roles.add(node.path("role").asText());
+            }
+            assertThat(roles).as("ohne pv_power_kw fehlte dieser Knoten ganz")
+                    .contains("pv", "storage");
+        } finally {
+            deleteSite(customer, site);
+        }
+    }
+
+    /** Die Messkanäle, die das Read-Model für diesen Entitätstyp ausweist. */
+    private List<String> measureChannels(UUID siteId, String token, String entityType)
+            throws Exception {
+        JsonNode topology = getJson("/api/v1/sites/" + siteId + "/topology", token);
+        for (JsonNode entity : topology.path("entities")) {
+            if (entityType.equals(entity.path("entityType").asText())) {
+                List<String> out = new java.util.ArrayList<>();
+                for (JsonNode cap : entity.path("capabilities")) {
+                    out.add(cap.path("channel").asText());
+                }
+                return out;
+            }
+        }
+        throw new AssertionError("keine Entität vom Typ " + entityType);
+    }
+
     // ---- Helfer ------------------------------------------------------------
 
     private static Map<String, Object> saveBody(String templateRef, String role,

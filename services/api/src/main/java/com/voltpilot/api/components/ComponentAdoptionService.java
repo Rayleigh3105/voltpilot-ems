@@ -93,6 +93,7 @@ public class ComponentAdoptionService {
     private final ComponentTemplateRepository templates;
     private final EntityRegistryService entityRegistry;
     private final AssetRepository assets;
+    private final com.voltpilot.api.entities.EntityTypeCatalog entityTypes;
     private final Clock clock;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper =
             new com.fasterxml.jackson.databind.ObjectMapper();
@@ -106,21 +107,23 @@ public class ComponentAdoptionService {
     public ComponentAdoptionService(EntityRegistryRepository entityRepo,
             EntityObservedRepository observed, ComponentDefinitionRepository definitions,
             ComponentTemplateRepository templates, EntityRegistryService entityRegistry,
-            AssetRepository assets) {
-        this(entityRepo, observed, definitions, templates, entityRegistry, assets,
+            AssetRepository assets, com.voltpilot.api.entities.EntityTypeCatalog entityTypes) {
+        this(entityRepo, observed, definitions, templates, entityRegistry, assets, entityTypes,
                 Clock.systemUTC());
     }
 
     ComponentAdoptionService(EntityRegistryRepository entityRepo,
             EntityObservedRepository observed, ComponentDefinitionRepository definitions,
             ComponentTemplateRepository templates, EntityRegistryService entityRegistry,
-            AssetRepository assets, Clock clock) {
+            AssetRepository assets, com.voltpilot.api.entities.EntityTypeCatalog entityTypes,
+            Clock clock) {
         this.entityRepo = entityRepo;
         this.observed = observed;
         this.definitions = definitions;
         this.templates = templates;
         this.entityRegistry = entityRegistry;
         this.assets = assets;
+        this.entityTypes = entityTypes;
         this.clock = clock;
     }
 
@@ -368,7 +371,8 @@ public class ComponentAdoptionService {
             assets.addPvCapacity(tenantId, siteId, item.capacityKwp());
         }
         entityRepo.setEntityConfig(created, item.entityType(),
-                ComponentDefaults.capabilities(mapper, item.role()),
+                ComponentDefaults.capabilities(mapper, entityTypes, item.entityType(),
+                        item.role()),
                 ComponentDefaults.guards(mapper, item.role(), item.capacityKwp()));
         return created;
     }
@@ -428,7 +432,8 @@ public class ComponentAdoptionService {
             return;
         }
         entityRepo.setEntityConfig(row.id(), item.entityType(),
-                ComponentDefaults.capabilities(mapper, item.role()),
+                ComponentDefaults.capabilities(mapper, entityTypes, item.entityType(),
+                        item.role()),
                 ComponentDefaults.guards(mapper, item.role(), item.capacityKwp()));
     }
 
