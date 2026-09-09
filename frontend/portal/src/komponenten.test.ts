@@ -1255,3 +1255,63 @@ describe('orphaned pins + reconnect candidates', () => {
     expect(reconnectCandidates(source, [healthyWr2])).toEqual([]);
   });
 });
+
+/**
+ * P5b/P5d: WOHER der Ladestand kommt, steht in `soc_source_code` NEBEN dem
+ * Wert - je Messzeitpunkt. Die Komponenten-Zeile liest ihn, damit Cockpit,
+ * Geräteseite und Komponenten-Liste DIESELBE Wahrheit aus DERSELBEN Quelle
+ * zeigen statt drei Vermutungen über den Gerätetyp.
+ */
+describe('plantModel — die Herkunft eines berechneten Ladestands (P5d)', () => {
+  function batterieMit(code: number | null): ReturnType<typeof plantModel> {
+    const entities = [
+      entity('batt', 'user-defined-battery', {
+        label: 'Selbstbau-Pack',
+        capabilities: {
+          measure: [
+            { channel: 'soc_pct', unit: '%' },
+            { channel: 'soc_source_code', unit: '' },
+          ],
+        },
+      }),
+    ];
+    const caps = [
+      { channel: 'soc_pct', unit: '%', role: 'storage', primary: true, value: 41 },
+      ...(code == null
+        ? []
+        : [{ channel: 'soc_source_code', unit: '', role: null, primary: false, value: code }]),
+    ];
+    const topology: SiteTopology = {
+      schemaVersion: '1.0',
+      entities: [{ ...topoEntity('batt', 'user-defined-battery', 'storage', 'ok'), capabilities: caps }],
+      topology: { schema_version: '1.0', nodes: [] },
+    };
+    return plantModel(entities, topology, [], null);
+  }
+
+  function ladestand(code: number | null) {
+    return batterieMit(code).components.find((c) => c.entityId === 'batt')!.reading;
+  }
+
+  it('nennt die berechnete Herkunft als Wort unter der Zahl', () => {
+    expect(ladestand(2)).toEqual({ value: 41, unit: '%', caption: 'berechnet: Kennlinie' });
+    expect(ladestand(3)).toEqual({ value: 41, unit: '%', caption: 'berechnet: Ladungszählung' });
+  });
+
+  /**
+   * Ohne den Kanal bleibt es beim neutralen „geladen": „gemessen" zu
+   * schreiben, weil nichts dagegenspricht, wäre eine Behauptung über eine
+   * Herkunft, die niemand gemeldet hat - und fast jede Katalog-Batterie
+   * meldet den Kanal nie.
+   */
+  it('behauptet ohne den Kanal keine Herkunft', () => {
+    expect(ladestand(null)?.caption).toBe('geladen');
+    expect(ladestand(1)?.caption).toBe('geladen');
+  });
+
+  /** Ein Code außerhalb des Vokabulars wird verworfen, nie geraten. */
+  it('rät bei einem unbekannten Code nicht', () => {
+    expect(ladestand(7)?.caption).toBe('geladen');
+    expect(ladestand(0)?.caption).toBe('geladen');
+  });
+});

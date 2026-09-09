@@ -29,32 +29,63 @@ public record ProbeResult(String requestId, String errorCode, String message,
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record OpResult(String id, boolean ok, Double raw, List<Integer> registers,
             Double value, String errorCode, String message, Reading reading, Switched switched,
-            Finding finding) {
+            Finding finding, List<Sample> samples) {
 
         /** The register-read shape (no {@code reading}, no {@code switched}). */
         public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
                 Double value, String errorCode, String message) {
-            this(id, ok, raw, registers, value, errorCode, message, null, null, null);
+            this(id, ok, raw, registers, value, errorCode, message, null, null, null, null);
         }
 
         /** The connection-test shape. */
         public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
                 Double value, String errorCode, String message, Reading reading) {
-            this(id, ok, raw, registers, value, errorCode, message, reading, null, null);
+            this(id, ok, raw, registers, value, errorCode, message, reading, null, null, null);
         }
 
         /** The connection-test shape with a plausibility finding. */
         public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
                 Double value, String errorCode, String message, Reading reading, Finding finding) {
-            this(id, ok, raw, registers, value, errorCode, message, reading, null, finding);
+            this(id, ok, raw, registers, value, errorCode, message, reading, null, finding, null);
         }
 
         /** The switch shape. */
         public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
                 Double value, String errorCode, String message, Reading reading,
                 Switched switched) {
-            this(id, ok, raw, registers, value, errorCode, message, reading, switched, null);
+            this(id, ok, raw, registers, value, errorCode, message, reading, switched, null, null);
         }
+
+        /**
+         * The SELF-CONNECTED battery's preview shape (P5/P5d): one row per
+         * field mapping instead of the closed four-channel {@code reading}.
+         */
+        public OpResult(String id, boolean ok, String errorCode, String message,
+                List<Sample> samples) {
+            this(id, ok, null, null, null, errorCode, message, null, null, null, samples);
+        }
+    }
+
+    /**
+     * What ONE field mapping of a self-connected device received during the
+     * listening window (contract {@code op_result.samples}, P5 {@code
+     * mqtt_local} + the P5d mapping surface).
+     *
+     * <p>Its OWN block, never {@link Reading}: {@code reading} is the closed
+     * four-channel snapshot of a CATALOG device, while these rows are named by
+     * the CUSTOMER - the topic and value path they just typed. Squeezing them
+     * into four fixed fields would mean either dropping the rows that do not
+     * fit or renaming the customer's channels, and both are lies about what
+     * was measured.
+     *
+     * <p>{@code raw} and {@code value} are boxed and travel with {@code count}:
+     * a mapping that received NOTHING carries {@code count = 0} and no number
+     * at all - never a 0 that reads like a measurement. That is the same
+     * gap-instead-of-zero rule the edge already applies when it publishes.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Sample(String channel, String topic, Double raw, Double value, int count,
+            String at) {
     }
 
     /**

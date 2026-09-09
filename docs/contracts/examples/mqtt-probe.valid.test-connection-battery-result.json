@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_result",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "9f2c41ab77de0135",
+  "answered_at": "2026-09-09T18:04:09Z",
+  "results": [
+    {
+      "id": "batterie",
+      "ok": true,
+      "samples": [
+        {
+          "channel": "cell_min_mv",
+          "topic": "diybms/bank/3/cell/11",
+          "raw": 3.393,
+          "value": 3393.0,
+          "count": 176,
+          "at": "2026-09-09T18:04:08Z"
+        },
+        {
+          "channel": "charge_allowed",
+          "count": 0
+        }
+      ]
+    }
+  ]
+}

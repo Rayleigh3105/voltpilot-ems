@@ -7,7 +7,7 @@ geloescht.** Die drei AGENTS.md sind seither Wegweiser mit einem Themen-Index.
 **Nicht ganze Dateien in den Kontext lesen — greppen.** Diese Sammlung ist die
 Projekt-Chronik; einzelne Dateien sind gross.
 
-## `root/` — aus `AGENTS.md` (170 Einträge)
+## `root/` — aus `AGENTS.md` (171 Einträge)
 
 - [Admin API & the Portal-Admin / Portal-User split (services/api + frontend)](root/admin-api-the-portal-admin-portal-user-s.md)
 - [ALIAS-KONTINUITÄT: ein Kundenname überlebt jeden Reparatur- und Anlege-Weg](root/alias-kontinuitaet-ein-kundenname-ueberl.md)
@@ -29,6 +29,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Customer flow release (E3b): the Kunden-Freigabe of the flow editor](root/customer-flow-release-e3b-the-kunden-fre.md)
 - [Der generische Batterie-Anschluss, Ebene 1 (P5): `user-defined-battery` + `vp.mqtt.read`](root/der-generische-batterie-anschluss-p5-ebe.md)
 - [Der SoC-Ableitungs-Baustein, Ebene 2 (P5b): `vp.soc.derive` + `soc_source_code`](root/der-soc-ableitungs-baustein-p5b-ebene-2.md)
+- [Die VORSCHAU und die KURVEN-VORLAGEN (P5d, api-Hälfte)](root/die-vorschau-und-die-kurven-vorlagen-p5d.md)
 - [D5: die Box meldet ihre Adresse im KUNDEN-LAN, getrennt vom Zugriffsweg](root/d5-die-box-meldet-ihre-adresse-im-kunden.md)
 - [Das BESTANDSKONTO des gemessenen Zeitraums (die FK2-Gutschrift auf der Erlöse-Seite)](root/das-bestandskonto-des-gemessenen-zeitrau.md)
 - [Das PORTFOLIO-COCKPIT: EINE Flotten-Fläche für jeden Mehr-Anlagen-Kunden (Stufe 4, Rev. 2)](root/das-portfolio-cockpit-eine-flotten-flaec.md)
@@ -182,10 +183,11 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Zusätzliche Messwerte: Bibliothek und Historie (Slice 9)](root/zusaetzliche-messwerte-bibliothek-und-hi.md)
 - [Zusätzliche Messwerte: Desired State bis Timescale (Slices 6–8)](root/zusaetzliche-messwerte-desired-state-bis.md)
 
-## `portal/` — aus `frontend/portal/AGENTS.md` (46 Einträge)
+## `portal/` — aus `frontend/portal/AGENTS.md` (47 Einträge)
 
 - [Anzeige-Ehrlichkeit: Daten-Alter, die gemessene Null, der behauptete Verkauf](portal/anzeige-ehrlichkeit-daten-alter-die-geme.md)
 - [Build & test](portal/build-test/README.md) *(Sammlung, 94 Punkte)*
+- [Der BATTERIE-ASSISTENT (P5d): Anschluss, Zuordnung, Kurve — und die Herkunft des Ladestands](portal/der-batterie-assistent-p5d-anschluss-zuo.md)
 - [Cockpit anpassen: die Fläche des Layout-Speichers (Anwendungs-Programm Stufe 3)](portal/cockpit-anpassen-die-flaeche-des-layout.md)
 - [Cockpit Phase 1: die Ladepunkt-kW kommen ueber die ENTITAET, und ein alter Messwert liest nie als aktuell](portal/cockpit-phase-1-die-ladepunkt-kw-kommen.md)
 - [Das PORTFOLIO-COCKPIT: die Flotten-Fläche (Stufe 4, **Revision 2**)](portal/das-portfolio-cockpit-die-flotten-flaech.md)

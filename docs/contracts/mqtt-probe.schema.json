@@ -541,6 +541,49 @@
             }
           }
         },
+        "samples": {
+          "type": "array",
+          "maxItems": 16,
+          "description": "Nur bei op 'test_connection' eines SELBST ANGEBUNDENEN Geraets (P5 mqtt_local): was in dem Lauschfenster je ZUORDNUNG wirklich hereinkam - die Zeile, an der ein falscher Topic, ein falscher Wertepfad oder eine falsche Skalierung sichtbar wird.\n\nEIGENER Block, nicht 'reading': 'reading' ist die geschlossene Vier-Kanal-Momentaufnahme eines KATALOG-Geraets, hier steht dagegen je Zuordnung eine Zeile mit dem Namen, den der Kunde gerade eingetippt hat.\n\nEhrlichkeit wie ueberall: eine Zuordnung, die im Fenster NICHTS empfangen hat, steht mit count=0 und OHNE raw/value da - nie mit einer erfundenen 0. Eine aeltere Box sendet den Block gar nicht; das heisst 'diese Box kann noch nicht lauschen', nie 'es kam nichts an'.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "channel",
+              "count"
+            ],
+            "properties": {
+              "channel": {
+                "type": "string",
+                "maxLength": 64,
+                "description": "Der ZIEL-Kanal dieser Zuordnung (soc_pct, cell_min_mv, ...) - der Schluessel, an dem die Flaeche die Zeile ihrer Tabelle wiederfindet."
+              },
+              "topic": {
+                "type": "string",
+                "maxLength": 200,
+                "description": "Das KONKRETE Topic, aus dem der Wert kam (bei einem Filter mit Platzhalter also eines der getroffenen). Fehlt, wenn nichts ankam."
+              },
+              "raw": {
+                "type": "number",
+                "description": "Der ROHE Wert vor Skalierung/Offset - die Zahl, an der ein Skalierungsfehler sichtbar wird. Fehlt bei count=0."
+              },
+              "value": {
+                "type": "number",
+                "description": "raw * scale + offset, nach dem Aggregat ueber alle getroffenen Topics. Fehlt bei count=0."
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Wie viele Nachrichten diese Zuordnung im Fenster getroffen haben. 0 heisst 'nichts empfangen' und ist eine ehrliche Aussage, kein Fehler."
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Wann die letzte davon ankam. Fehlt bei count=0."
+              }
+            }
+          }
+        },
         "finding": {
           "type": "object",
           "additionalProperties": false,

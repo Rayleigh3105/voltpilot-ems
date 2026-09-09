@@ -64,6 +64,8 @@ const updateComponent = vi.fn();
 const readCustomComponent = vi.fn();
 const createCustomComponent = vi.fn();
 const matchComponent = vi.fn();
+// P5d: der Batterie-Weg holt seine Kurven-Vorlagen selbst.
+const socCurveTemplates = vi.fn();
 // Der Anbinde-Assistent hinter der Ladesäulen-Karte holt sich seine zwei Listen
 // selbst (Allowlist + gemeldete Säulen).
 const chargingConfig = vi.fn();
@@ -87,6 +89,7 @@ vi.mock('../api', async () => {
       readCustomComponent: (...a: unknown[]) => readCustomComponent(...a),
       createCustomComponent: (...a: unknown[]) => createCustomComponent(...a),
       matchComponent: (...a: unknown[]) => matchComponent(...a),
+      socCurveTemplates: () => socCurveTemplates(),
     },
   };
 });
@@ -135,6 +138,7 @@ function standardMocks() {
   });
   siteChargers.mockResolvedValue({ budget: null, chargers: [] });
   siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [] });
+  socCurveTemplates.mockResolvedValue([]);
   testComponentConnection.mockResolvedValue({
     results: [{ id: 'verbindung', ok: true, reading: { pvKw: 12.4, socPct: 87 } }],
   });
@@ -1249,5 +1253,69 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     await waitFor(() => expect(updateComponent).toHaveBeenCalledWith(
       's1', 'wr-1', expect.objectContaining({ role: 'pv-generation', capacityKwp: 28 }),
     ));
+  });
+});
+
+/**
+ * P5d: die eigene Batterie ist eine EIGENE Karte und ein EIGENER Assistent -
+ * beim Anlegen wie beim Bearbeiten.
+ */
+describe('AnlegenFlow · der Batterie-Weg (P5d)', () => {
+  beforeEach(() => {
+    standardMocks();
+  });
+
+  it('führt von der Batterie-Karte in den Batterie-Assistenten', async () => {
+    render(<AnlegenFlow siteId="s1" onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByTestId('typ-batterie'));
+    expect(await screen.findByTestId('anschlussart-mqtt')).toBeVisible();
+    // NICHT der Katalog-Weg: dort stünde jetzt die Geräte-Auswahl.
+    expect(screen.queryByRole('combobox', { name: 'Gerät' })).toBeNull();
+  });
+
+  /**
+   * Der ENTITÄTSTYP entscheidet, nicht die Rolle: eine selbst angebundene
+   * Batterie ist Rolle „storage" und liefe sonst in das Katalog-Formular, das
+   * nach Marke und Modell fragt, die es bei ihr nicht gibt.
+   */
+  it('bearbeitet eine selbst angebundene Batterie in ihrem eigenen Assistenten', async () => {
+    const batterie = {
+      id: 'batt-1',
+      role: 'storage',
+      entityType: 'user-defined-battery',
+      label: 'Selbstbau-Pack',
+      brand: null,
+      model: null,
+      family: null,
+      communication: 'mqtt_local',
+      connection: {
+        schema_version: '1.0',
+        transport: 'mqtt_local',
+        broker: { host: '192.168.0.44', port: 1883 },
+        publish_interval_s: 15,
+        mappings: [],
+      },
+      templateRef: null,
+      templateVersion: null,
+      definitionVersion: 2,
+      edgeSourceId: null,
+      syncStatus: 'in_sync',
+    };
+    render(
+      <AnlegenFlow
+        siteId="s1"
+        siteName="Pilsting"
+        geraetKennung="batt-1"
+        bearbeiten={batterie}
+        inlineBearbeitung
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    expect(await screen.findByTestId('batterie-bearbeiten')).toBeVisible();
+    expect(screen.queryByTestId('geraet-bearbeiten')).toBeNull();
+    expect((screen.getByLabelText('Adresse des Brokers') as HTMLInputElement).value).toBe(
+      '192.168.0.44',
+    );
   });
 });

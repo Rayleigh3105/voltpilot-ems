@@ -367,4 +367,106 @@ class ProbeResultListenerTest {
         assertThat(line.finding()).isNull();
         assertThat(line.reading().socPct()).isEqualTo(87.0);
     }
+
+    // ---- Die Zuordnungs-Vorschau der selbst angebundenen Batterie (P5d) ----
+
+    /**
+     * Die Vorschau-Zeile: je Zuordnung Roh- UND skalierter Wert nebeneinander -
+     * genau das Paar, an dem ein Skalierungsfehler sichtbar wird.
+     */
+    @Test
+    void aBatteryPreviewCarriesOneRowPerMappingWithRawAndValue() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"batterie\",\"ok\":true,\"samples\":["
+                        + "{\"channel\":\"cell_min_mv\",\"topic\":\"diybms/bank/3/cell/11\""
+                        + ",\"raw\":3.393,\"value\":3393.0,\"count\":176"
+                        + ",\"at\":\"2026-09-09T18:04:08Z\"}]}")));
+
+        ProbeResult.OpResult line = get(f).results().get(0);
+        assertThat(line.ok()).isTrue();
+        assertThat(line.reading()).isNull();
+        assertThat(line.samples()).hasSize(1);
+        ProbeResult.Sample s = line.samples().get(0);
+        assertThat(s.channel()).isEqualTo("cell_min_mv");
+        assertThat(s.topic()).isEqualTo("diybms/bank/3/cell/11");
+        assertThat(s.raw()).isEqualTo(3.393);
+        assertThat(s.value()).isEqualTo(3393.0);
+        assertThat(s.count()).isEqualTo(176);
+        assertThat(s.at()).isEqualTo("2026-09-09T18:04:08Z");
+    }
+
+    /**
+     * „Nichts empfangen" ist eine ehrliche Aussage - und sie trägt KEINE Zahl.
+     * Selbst wenn die Box eine mitschickte, wird sie verworfen: eine Zahl ohne
+     * Empfang wäre eine erfundene Messung, und die Fläche würde sie anzeigen.
+     */
+    @Test
+    void aMappingThatReceivedNothingCarriesNoNumberAtAll() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"batterie\",\"ok\":true,\"samples\":["
+                        + "{\"channel\":\"charge_allowed\",\"count\":0"
+                        + ",\"raw\":0,\"value\":0,\"topic\":\"diybms/status\"}]}")));
+
+        ProbeResult.Sample s = get(f).results().get(0).samples().get(0);
+        assertThat(s.count()).isZero();
+        assertThat(s.raw()).isNull();
+        assertThat(s.value()).isNull();
+        assertThat(s.topic()).isNull();
+        assertThat(s.at()).isNull();
+    }
+
+    /**
+     * Dieselbe Paar-Regel wie beim Register-Lesen: ohne BEIDE Zahlen ist es
+     * keine Lesung. Die Zeile bleibt (sie belegt den Empfang), die Zahlen
+     * fallen weg - eine halbe Lesung sähe aus wie eine ganze.
+     */
+    @Test
+    void aSampleWithOnlyOneOfTheTwoNumbersKeepsNeither() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"batterie\",\"ok\":true,\"samples\":["
+                        + "{\"channel\":\"soc_pct\",\"count\":3,\"value\":41.5}]}")));
+
+        ProbeResult.Sample s = get(f).results().get(0).samples().get(0);
+        assertThat(s.count()).isEqualTo(3);
+        assertThat(s.raw()).isNull();
+        assertThat(s.value()).isNull();
+    }
+
+    /**
+     * Eine ABGELEHNTE Vorschau darf trotzdem Zeilen tragen: „im Fenster kam
+     * nichts an" ist genau die Auskunft, wegen der die Vorschau existiert - und
+     * die benannte Klasse reist daneben, nie statt ihrer.
+     */
+    @Test
+    void aRefusedPreviewStillCarriesItsRowsAndItsNamedClass() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"batterie\",\"ok\":false,\"error_code\":\"no_answer\""
+                        + ",\"message\":\"Im Lauschfenster kam nichts an.\""
+                        + ",\"samples\":[{\"channel\":\"soc_pct\",\"count\":0}]}")));
+
+        ProbeResult.OpResult line = get(f).results().get(0);
+        assertThat(line.ok()).isFalse();
+        assertThat(line.errorCode()).isEqualTo("no_answer");
+        assertThat(line.samples()).hasSize(1);
+        assertThat(line.samples().get(0).count()).isZero();
+    }
+
+    /** Eine Zeile ohne Kanal ist keine Zeile - sie ließe sich nirgends zuordnen. */
+    @Test
+    void aSampleWithoutAChannelIsDropped() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"batterie\",\"ok\":true,\"samples\":["
+                        + "{\"count\":5,\"raw\":1,\"value\":1},"
+                        + "{\"channel\":\"voltage_v\",\"count\":5,\"raw\":574,"
+                        + "\"value\":574}]}")));
+
+        List<ProbeResult.Sample> samples = get(f).results().get(0).samples();
+        assertThat(samples).hasSize(1);
+        assertThat(samples.get(0).channel()).isEqualTo("voltage_v");
+    }
 }

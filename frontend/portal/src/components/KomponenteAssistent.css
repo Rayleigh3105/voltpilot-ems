@@ -782,3 +782,108 @@
   font-size: var(--vp-text-sm, 0.875rem);
   color: var(--vp-text-muted, #64748b);
 }
+
+/* ---------------------------------------------------------------------------
+   Der BATTERIE-Weg (P5d): Kurven-Editor und die zwei ehrlichen Zustände der
+   Zuordnungs-Vorschau. Alles andere teilt sich die Flächen des Selbstbau-Wegs
+   (vp-sb-*) - zwei Stylesheets für dieselbe Zeile wären zwei Wahrheiten.
+   --------------------------------------------------------------------------- */
+
+/* „Nichts empfangen" ist eine AUSSAGE, kein Fehler: sie steht ruhig da, nicht
+   in Alarmrot - der Kunde hat nichts falsch gemacht, das Topic passt (noch)
+   nicht. */
+.vp-bat-leer {
+  margin: var(--vp-space-3, 12px) 0 0;
+  font-size: var(--vp-text-sm, 0.875rem);
+  color: var(--vp-text-muted, #64748b);
+}
+
+/* Die Chemie-Warnung einer Vorlage - sie ist die HALBE Aussage einer
+   Kennlinie und darf deshalb nicht wie eine Fußnote aussehen. */
+.vp-bat-warn {
+  margin: var(--vp-space-2, 8px) 0 0;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--vp-radius-md, 12px);
+  background: rgba(180, 83, 9, 0.08);
+  color: var(--vp-alert-warn-ink, #b45309);
+  font-size: var(--vp-text-sm, 0.875rem);
+}
+
+.vp-bat-kurve {
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 12px);
+  padding: var(--vp-space-4, 16px);
+  margin: var(--vp-space-4, 16px) 0;
+  min-width: 0;
+}
+
+.vp-bat-punkte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+  margin-bottom: var(--vp-space-3, 12px);
+}
+
+/* Spannung → Ladestand in EINER Zeile: der Zusammenhang IST die Aussage des
+   Editors. Die Eingabefelder tragen `minmax(0, 1fr)`, damit sie am Telefon
+   schrumpfen statt die Zeile aufzureißen. */
+.vp-bat-punkt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-bat-punkt > span {
+  font-size: var(--vp-text-sm, 0.875rem);
+  color: var(--vp-text-muted, #64748b);
+  white-space: nowrap;
+}
+
+.vp-bat-punkt input {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Am Telefon rutscht der Löschknopf in eine eigene Spalte am Rand und die
+   beiden Zahlenfelder teilen sich die Zeile - unter ~380 px sind fünf Spalten
+   nicht mehr mit dem Daumen zu treffen. */
+@media (max-width: 420px) {
+  .vp-bat-punkt {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    row-gap: var(--vp-space-1, 4px);
+  }
+
+  .vp-bat-punkt > :nth-child(3) {
+    grid-column: 1;
+  }
+
+  .vp-bat-punkt > :nth-child(4) {
+    grid-column: 2;
+  }
+
+  .vp-bat-punkt > .vp-sb-del {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+}
+
+.vp-bat-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-2, 8px);
+  margin: var(--vp-space-3, 12px) 0;
+  font-size: var(--vp-text-sm, 0.875rem);
+  color: var(--vp-text-muted, #64748b);
+  cursor: pointer;
+}
+
+.vp-bat-check input {
+  /* Die Trefferfläche einer Kästchen-Zeile am Telefon - ein 13-px-Kästchen
+     ist mit dem Daumen nicht bedienbar. */
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex: none;
+}

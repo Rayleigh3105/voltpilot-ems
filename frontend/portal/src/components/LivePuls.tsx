@@ -85,6 +85,12 @@ function Row({
             )}
             {row.stateLabel}
             {row.subLine && <span className="vp-puls-sub"> · {row.subLine}</span>}
+            {/* P5d: ein BERECHNETER Ladestand gibt sich hier zu erkennen. Er
+                steht NEBEN dem Zustand, nicht statt seiner - „Lädt" bleibt
+                wahr, auch wenn die Zahl daneben gerechnet ist. */}
+            {row.herkunft && (
+              <span className="vp-puls-sub vp-puls-herkunft"> · {row.herkunft}</span>
+            )}
           </span>
         </span>
       </span>

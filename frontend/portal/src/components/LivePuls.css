@@ -135,6 +135,14 @@
   white-space: nowrap;
 }
 
+/* P5d: die HERKUNFT des Ladestands („berechnet: Kennlinie"). Sie darf am
+   Telefon umbrechen statt die Zeile zu sprengen - sie ist die eine Angabe
+   dieser Zeile, die länger als drei Wörter wird, und wegzukürzen wäre genau
+   die Beschönigung, die sie verhindern soll. */
+.vp-puls-herkunft {
+  white-space: normal;
+}
+
 /* K4: der Ladestand ist eine kompakte Anzeige AM Wert, kein Banner mehr. */
 /* Geometrie aus dem `MiniShareBar`-Baustein (kleinste Höhe, vorher 7 px = eine
    von sieben); hier bleiben Breite, Lage und der Ladestand-Ton. */

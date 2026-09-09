@@ -48,14 +48,39 @@ const unbekannt = tpl({ templateRef: 'certified:acme:x', kind: 'certified', devi
 const alle = [wechselrichter, wallbox, schalter, unbekannt];
 
 describe('typKarten', () => {
-  it('bietet die sechs Karten des Konzepts an', () => {
+  it('bietet die sieben Karten des Konzepts an', () => {
     expect(typKarten(alle).map((k) => k.id)).toEqual([
       'wechselrichter',
       'wallbox',
       'ladesaeule',
       'verbraucher',
       'zaehler',
+      'batterie',
       'eigenbau',
+    ]);
+  });
+
+  /**
+   * P5d: die eigene Batterie ist eine EIGENE Karte, keine Unter-Tür des
+   * Eigenbaus - der Weg fragt andere Dinge und mündet in einen anderen
+   * Entitätstyp. Und sie behauptet nie eine Vorlage: es gibt keine.
+   */
+  it('fuehrt die Batterie-Karte ohne Vorlagen und ohne Vorlagen-Satz', () => {
+    const batterie = typKarten(alle).find((k) => k.id === 'batterie');
+    expect(batterie?.treffer).toBe(0);
+    expect(batterie?.hinweis).toBeNull();
+    expect(geraeteFuerTyp(alle, 'batterie')).toEqual({ templates: [], erweitert: false });
+  });
+
+  /** Die Schrittleiste des Batterie-Wegs stellt SEINE Fragen, nicht die des Katalogs. */
+  it('gibt dem Batterie-Weg seine eigene Schrittleiste', () => {
+    expect(schritte('batterie')).toEqual([
+      'Was anbinden',
+      'Erreichbar',
+      'Zuordnung',
+      'Ladestand',
+      'Prüfen',
+      'Fertig',
     ]);
   });
 

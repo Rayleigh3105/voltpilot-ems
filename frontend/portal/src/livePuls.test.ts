@@ -205,6 +205,39 @@ const pt = (over: Partial<TelemetryPoint>): TelemetryPoint => ({
   ...over,
 });
 
+/**
+ * P5d: die Speicher-Zeile des Cockpits trägt die HERKUNFT des Ladestands
+ * durch - dieselbe Wahrheit wie Geräteseite und Fahrplan, aus demselben Kanal.
+ */
+describe('componentRows — die Herkunft des Ladestands (P5d)', () => {
+  function mitHerkunft(code: number | null): SiteTopology {
+    const batt = ent('batt', 'user-defined-battery', []);
+    batt.capabilities = [
+      { channel: 'soc_pct', unit: '%', role: 'storage', primary: true, value: 87 },
+      { channel: 'soc_source_code', unit: '', role: null, primary: false, value: code },
+    ];
+    return {
+      ...TOPO,
+      entities: TOPO.entities.map((e) => (e.id === 'batt' ? batt : e)),
+    };
+  }
+
+  it('reicht das Herkunfts-Wort an die Zeile durch', () => {
+    const zeile = componentRows(mitHerkunft(2)).find((r) => r.role === 'storage')!;
+    expect(zeile.herkunft).toBe('berechnet: Kennlinie');
+    // Es ERSETZT nichts: Wert, Zustand und Detail bleiben, wie sie waren.
+    expect(zeile.value).toBe(`87${NBSP}%`);
+    expect(zeile.stateLabel).toBe('Lädt');
+  });
+
+  it('behauptet ohne den Kanal keine Herkunft', () => {
+    expect(componentRows(TOPO).find((r) => r.role === 'storage')!.herkunft).toBeUndefined();
+    expect(
+      componentRows(mitHerkunft(null)).find((r) => r.role === 'storage')!.herkunft,
+    ).toBeUndefined();
+  });
+});
+
 describe('v1FallbackRows (site-level, reusing live.ts states)', () => {
   const rows = v1FallbackRows([pt({ pvPowerKw: 4.7, loadKw: 1.1, powerKw: -2.4, socPct: 76 })]);
 

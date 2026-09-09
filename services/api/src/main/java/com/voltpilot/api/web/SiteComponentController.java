@@ -3,6 +3,7 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.components.ComponentConnectionReceipts;
 import com.voltpilot.api.components.ComponentService;
 import com.voltpilot.api.components.SelfBuildComponentService;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition;
 import com.voltpilot.api.components.UserDefinedBatteryService;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
@@ -200,6 +201,32 @@ public class SiteComponentController {
             @Valid @RequestBody SaveUserDefinedBatteryRequest request,
             @AuthenticationPrincipal Jwt jwt) {
         return batteries.create(siteId, request, subject(jwt));
+    }
+
+    /**
+     * Die ZUORDNUNGS-VORSCHAU einer selbst angebundenen Batterie (P5d): die
+     * Box lauscht kurz auf dem Broker des Kunden und antwortet je Zuordnung
+     * mit dem, was wirklich hereinkam - Roh- UND skalierter Wert nebeneinander,
+     * genau wie beim „Jetzt lesen" des Modbus-Baukastens.
+     *
+     * <p><b>Sie schreibt nichts und hinterlegt keinen Beleg.</b> Anders als
+     * {@link #test} ist sie KEINE Voraussetzung des Speicherns: eine
+     * MQTT-Vorschau braucht ein Lauschfenster, das ältere Boxen nicht haben,
+     * und eine Pflicht ohne Tür wäre eine Sackgasse statt eines Schutzes.
+     *
+     * <p>Deshalb ist auch jeder Ausgang ein 200 mit einer benannten Klasse:
+     * {@code not_supported} ist eine Aussage über die BOX („kann noch nicht
+     * lauschen"), {@code timeout} über die Verbindung - keiner von beiden ist
+     * ein Urteil über die Zuordnung, und die Fläche sagt das genau so.
+     */
+    @PostMapping("/components/battery/preview")
+    public ProbeResult previewBattery(@PathVariable UUID siteId,
+            @Valid @RequestBody SaveUserDefinedBatteryRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        Map<String, Object> connection = batteries.previewConnection(siteId, request);
+        return probes.testConnection(siteId, null, "batterie",
+                UserDefinedBatteryDefinition.ENTITY_TYPE, null, null, null, connection,
+                subject(jwt));
     }
 
     /** Eine selbst angebundene Batterie ändern - eine NEUE Fassung. */
