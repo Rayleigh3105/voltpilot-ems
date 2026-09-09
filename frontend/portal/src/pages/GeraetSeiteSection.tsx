@@ -1323,6 +1323,20 @@ export function GeraetSeiteSection({
                 ))}
               </ul>
             )}
+            {/* ⚠ Der BMS-Block steht NUR da, wenn eine Batterie per CAN an
+                diesem Gerät hängt (P4) - sonst gar nicht. Ein Kasten, der
+                erklärt, dass er nichts weiß, ist genau die Wand, die dieser
+                Rahmen beendet; und eine 0 wäre eine Messung, die niemand
+                gemacht hat. */}
+            {view.bms.length > 0 && (
+              <Block titel="BMS" icon="battery">
+                <p className="vp-note">
+                  Diese Werte meldet der Wechselrichter über die Batterie, die per CAN an ihm
+                  angemeldet ist - er misst sie nicht selbst.
+                </p>
+                <ZeilenListe zeilen={view.bms} />
+              </Block>
+            )}
           </RahmenSektion>
 
           {/* 5 · Register - Lesen, Beobachten und Schreiben an EINEM Ort. */}

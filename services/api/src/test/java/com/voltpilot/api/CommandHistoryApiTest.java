@@ -365,7 +365,7 @@ class CommandHistoryApiTest {
                 List.of(new com.voltpilot.api.repo.DeviceSourceStatusRepository.SourceRow(
                         "src-fronius-1", "source", "pv-generation", null, "fronius_sunspec",
                         "Eco 27.0-3-S", 21.2, null, null, "ok",
-                        java.time.Instant.parse("2026-08-16T10:00:00Z")))));
+                        java.time.Instant.parse("2026-08-16T10:00:00Z"), null))));
 
         // Zwei Ströme: der Verbraucher hängt an SEINER Komponente, die
         // Abregelung ist gerätebezogen (entity_id IS NULL).
@@ -448,11 +448,11 @@ class CommandHistoryApiTest {
                 List.of(new com.voltpilot.api.repo.DeviceSourceStatusRepository.SourceRow(
                                 "inverter", "primary", null, null, "deye", "SUN-30K-SG01HP3",
                                 23.9, 3.4, 7.6, "ok",
-                                java.time.Instant.parse("2026-08-16T10:00:00Z")),
+                                java.time.Instant.parse("2026-08-16T10:00:00Z"), null),
                         new com.voltpilot.api.repo.DeviceSourceStatusRepository.SourceRow(
                                 "src-fronius-1", "source", "pv-generation", null,
                                 "fronius_sunspec", "Eco 27.0-3-S", 21.2, null, null, "ok",
-                                java.time.Instant.parse("2026-08-16T10:00:00Z")))));
+                                java.time.Instant.parse("2026-08-16T10:00:00Z"), null))));
 
         ControlStatusListener control = controlListener();
         control.handle(TOPIC, control("2026-08-16T10:00:00Z", 11.1, true, true, true, "plan", 11.1,

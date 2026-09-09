@@ -622,6 +622,17 @@ type SourceEntry struct {
 	Health string `json:"health"`
 	// ReadAt is when the latest reading arrived (RFC 3339); empty for never.
 	ReadAt string `json:"read_at,omitempty"`
+	// Bms is what THIS device reported about a battery coupled to it over CAN
+	// (the Deye BMS block 0x00D2..0x00DF, P4), keyed by the `bms_*` channel
+	// names Layer 1 decodes: bms_soc_pct, bms_voltage_v, bms_current_a, the
+	// charge/discharge limits, the alarm/fault codes and bms_type.
+	//
+	// ADDITIVE and rare: absent on every plant without such a coupling (an
+	// all-zero BMS block is the documented "no coupling" signature and produces
+	// no channel at all), and absent on every device that is not a Deye hybrid.
+	// It rides the SAME status channel as the rest of this block - pure added
+	// visibility, read at the same moment as ReadAt, decided by nobody.
+	Bms map[string]float64 `json:"bms,omitempty"`
 }
 
 // ChargersSummary is the additive status-heartbeat block reporting the site's

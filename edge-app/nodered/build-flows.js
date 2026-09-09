@@ -98,8 +98,14 @@ const routerFunc = [
   // measurement block 0x024B..0x02C4 (122 regs) covering the Battery Voltage at
   // 0x024B (the soc_from_voltage estimate), the External-CT grid pair
   // 0x026B/0x02C4 (the connection point) plus the 32-bit alias/load words.
-  // Must equal deye-decode.planReads({family:'hybrid_3p'}) (flows-sync guard).
-  "  hybrid_3p: [{ start: 0x0000, count: 0x0001 }, { start: 0x024b, count: 0x007a }],",
+  // Der DRITTE Block (P4) ist der BMS-Block 0x00D2..0x00DF, den nur eine per CAN
+  // gekoppelte Batterie fuellt: ein FC03-Umlauf mehr je Poll auf derselben
+  // Socket-Lane, ANGEHAENGT (nie zwischen Kennung und Messblock) und als
+  // `optional` markiert - der Solarman-Leser reisst bei einem Pflichtblock den
+  // GANZEN Poll ab, eine Firmware ohne dieses Register kostete die Anlage sonst
+  // jeden Kanal. Must equal deye-decode.planReads({family:'hybrid_3p'})
+  // (flows-sync guard).
+  "  hybrid_3p: [{ start: 0x0000, count: 0x0001 }, { start: 0x024b, count: 0x007a }, { start: 0x00d2, count: 0x000e, optional: true }],",
   "  micro:     [{ start: 0x0056, count: 0x0002 }]",
   "};",
   "const MODBUS_PROFILES = { sunspec: { fc: 3, addr: 0, count: 9 } };",
@@ -135,7 +141,7 @@ const routerFunc = [
   // pass it through unchanged so the decoder resolves the LV/HV scale.
   "    power_scale: num(conn.power_scale, 0)",
   "  };",
-  "  msg.deye = { cfg, target: ip + ':' + port, reads: reads.map((r) => ({ start: r.start, count: r.count })), i: 0, blocks: [] };",
+  "  msg.deye = { cfg, target: ip + ':' + port, reads: reads.map((r) => (r.optional ? { start: r.start, count: r.count, optional: true } : { start: r.start, count: r.count })), i: 0, blocks: [] };",
   // Modbus-Datenspiegel (edge-app/MODBUS-SPIEGEL.md): merge AT MOST ONE
   // auto-learned block per poll cycle into the read plan - round-robin over the
   // mirror's want list (flow.mirror_want, set by vp-register-want), appended
@@ -2423,7 +2429,11 @@ const sourcesReadFunc = [
   "      let need; try { need = __SV5.expectedFrameLength(acc); } catch (e) { clearTimeout(t); return finish(null); }",
   "      if (need === null || acc.length < need) return;",
   "      const r = reads[idx];",
-  "      let block; try { block = __SV5.registerBlock(r.start, acc.slice(0, need), { expectLoggerSerial: conn.serial }); } catch (e) { clearTimeout(t); return finish(null); }",
+  // Ein OPTIONALER Block (der Deye-BMS-Block 0x00D2, P4) darf die Lesung EINER
+  // Quelle nie scheitern lassen: eine Firmware ohne dieses Register ist keine
+  // kaputte Verbindung, und der Decoder veroeffentlicht dann schlicht keinen
+  // bms_*-Kanal. Jeder Pflichtblock scheitert weiterhin wie bisher.
+  "      let block; try { block = __SV5.registerBlock(r.start, acc.slice(0, need), { expectLoggerSerial: conn.serial }); } catch (e) { if (!r.optional) { clearTimeout(t); return finish(null); } block = { start: r.start, regs: [] }; }",
   "      blocks.push(block); idx += 1;",
   "      if (idx < reads.length) { sendNext(); return; }",
   "      clearTimeout(t);",

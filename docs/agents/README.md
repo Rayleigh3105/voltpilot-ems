@@ -30,6 +30,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Der generische Batterie-Anschluss, Ebene 1 (P5): `user-defined-battery` + `vp.mqtt.read`](root/der-generische-batterie-anschluss-p5-ebe.md)
 - [Der HTTP/JSON-Lesetyp (P5-HTTP): `vp.http.read` neben `vp.mqtt.read`](root/der-http-json-lesetyp-p5-http-ebene-1.md)
 - [Der SoC-Ableitungs-Baustein, Ebene 2 (P5b): `vp.soc.derive` + `soc_source_code`](root/der-soc-ableitungs-baustein-p5b-ebene-2.md)
+- [Der BMS-Block über den Deye (P4): bei CAN-Kopplung meldet der Wechselrichter die Batterie selbst](root/der-bms-block-ueber-den-deye-p4.md)
 - [Der SCHUTZ-/GRENZBAUSTEIN (P5c): die Batterie sagt, was sie zulässt](root/der-schutz-grenzbaustein-p5c.md)
 - [Die SPEISER-BINDUNG (P6): die eigene Batterie speist den Speicher-Knoten](root/die-speiser-bindung-p6-die-eigene-batter.md)
 - [Die VORSCHAU und die KURVEN-VORLAGEN (P5d, api-Hälfte)](root/die-vorschau-und-die-kurven-vorlagen-p5d.md)
@@ -238,7 +239,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Verlauf-Sprache P8: die Portfolio-Zwillinge, und die Tabelle als LISTE](portal/verlauf-sprache-p8-die-portfolio-zwillin.md)
 - [VpPicker: EIN Picker fuer die ganze Plattform - kein natives `<select>` mehr](portal/vppicker-ein-picker-fuer-die-ganze-platt.md)
 
-## `edge/` — aus `edge-app/AGENTS.md` (90 Einträge)
+## `edge/` — aus `edge-app/AGENTS.md` (91 Einträge)
 
 - [A register READBACK is not a value comparison: semantics, then debounce](edge/a-register-readback-is-not-a-value-compa.md)
 - [AE6 :8484 adaptive energy picture (edge half of AE2/AE3)](edge/ae6-8484-adaptive-energy-picture-edge-ha.md)
@@ -261,6 +262,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Der ZWEITE Trigger auf denselben Einmal-Schreib-Kern: der Portal-Downlink](edge/der-zweite-trigger-auf-denselben-einmal.md)
 - [Deye control WRITE: bidirectional single-socket lock + First-Light evidence gate](edge/deye-control-write-bidirectional-single.md)
 - [Deye N1: an UNKNOWN HV/LV power scale now REFUSES the whole ToU plan](edge/deye-n1-an-unknown-hv-lv-power-scale-now.md)
+- [Deye P4: der BMS-Block `0x00D2` — OPTIONAL gelesen, sonst reißt er den ganzen Poll](edge/deye-p4-der-bms-block-0x00d2.md)
 - [Deye REMOTE MODE (registers 1100-1121) is the PRIMARY Deye control path](edge/deye-remote-mode-registers-1100-1121-is.md)
 - [Die `:8484`-Ladepunkt-Flaeche ist die EINZIGE bedingte Accordion-Gruppe](edge/die-8484-ladepunkt-flaeche-ist-die-einzi.md)
 - [Die ABREGELUNG folgt der Messung, nicht dem 15-Minuten-Planwert](edge/die-abregelung-folgt-der-messung-nicht-d.md)

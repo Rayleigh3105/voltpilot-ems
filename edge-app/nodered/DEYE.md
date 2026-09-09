@@ -240,7 +240,7 @@ Deckt zwei Baureihen mit **derselben** high-map ab:
 | `batt` (nur Kalibrierung) | `0x024E` (590) | 16-Bit, vorzeichenbehaftet | **`[1,10]` LV/HV** | ha-solarman ("Battery Power") |
 | Batteriespannung (nur SoC-Schätzung) | `0x024B` (587) | 16-Bit, ×0,01 → V | **`[0,01/0,1]` LV/HV** | ha-solarman ("Battery Voltage") |
 
-Zwei Leseblöcke: `-xmb 00000001` (Geräte-Kennung 0x0000) und `-xmb 024B007A` (0x024B..0x02C4, 122 Register - deckt die **Batteriespannung 0x024B**, SoC bis PV4, die 32-Bit-Last-Highwords **und** das externe CT-Paar `0x026B`/`0x02C4` ab, weiter unter dem 125-Register-Limit).
+Drei Leseblöcke: `-xmb 00000001` (Geräte-Kennung 0x0000), `-xmb 024B007A` (0x024B..0x02C4, 122 Register - deckt die **Batteriespannung 0x024B**, SoC bis PV4, die 32-Bit-Last-Highwords **und** das externe CT-Paar `0x026B`/`0x02C4` ab, weiter unter dem 125-Register-Limit) und `-xmb 00D2000E` (der **OPTIONALE** BMS-Block 0x00D2..0x00DF, siehe den Kasten weiter unten - er ist nur bei CAN-gekoppelter Batterie belegt und darf den Poll nie reißen).
 
 > **Warum der externe CT und nicht "Grid Power" (`0x0271`)?** `deye_p3.yaml` führt DREI Netz-Messungen: **Internal Power** `0x025F`/`0x02BF` (wechselrichterseitig), **External Power** `0x026B`/`0x02C4` (der externe CT am Netzverknüpfungspunkt) und **Grid Power** `0x0271`/`0x02B2` unter dem Kommentar *"The following three (four) registers change according to the built-in and external settings"* - ein **konfigurationsabhängiger Alias**. Live am Captain-`SUN-30K-SG01HP3` falsifiziert (2026-07-17): der Alias las **−23,7 kW** (exakt die eigene Deye-PV = der wechselrichterseitige Wert), während der wahre Export am Hausanschluss **54,2 kW** betrug (ganze Anlage inkl. ~49 kW AC-gekoppelter Fronius; das eigene Last-Register −30,5 = 23,7 − 54,2 beweist, dass der Deye intern selbst den externen CT nutzt). Der Decoder liest daher den externen CT als `power_kw`; der Alias bleibt **Rückfall** für Lesungen, die das externe Highword nicht abdecken (alter, schmalerer Block). **VERIFY-on-device bleibt:** eine Installation **ohne** externe CT-Klemmen liest hier 0 - Import/Export bei bekanntem Zustand prüfen (Vorzeichen-Kalibrierung wie gehabt).
 
@@ -295,6 +295,47 @@ Die **PV-Summe umfasst alle vier MPPT-Register** (BM3 nutzt 3, BM4 nutzt 4). Ein
 > Eingetragen wird sie im **Portal** (Anlege-Assistent, im selben Kasten wie
 > „Trotzdem fortfahren"); auf `:8484` gibt es dafür bewusst **kein** Formularfeld
 > - dieselbe Zurückhaltung wie bei `allow_missing_soc`.
+
+> **Der BMS-Block `0x00D2..0x00DF` - nur bei CAN-Kopplung** (Paket **P4**, Report
+> `data/vp-deye-diybms-luecke-l5` §3.1). Hängt eine Batterie **per CAN** am Deye, meldet er
+> ihren Ladestand und ihre Grenzen selbst; die Box liest den Block als **dritten, OPTIONALEN**
+> FC03-Umlauf je Poll (`-xmb 00D2000E`, angehängt NACH Kennung und Messblock, dieselbe
+> Socket-Lane).
+>
+> | Register | Kanal | Skala |
+> |---|---|---|
+> | `0x00D2` / `0x00D3` (210/211) | `bms_charge_voltage_v` / `bms_discharge_voltage_v` | ×0,01 · **`[0,01/0,1]` LV/HV** |
+> | `0x00D4` / `0x00D5` (212/213) | `bms_charge_limit_a` / `bms_discharge_limit_a` - was das BMS **gerade** erlaubt | 1 |
+> | `0x00D6` (214) | `bms_soc_pct` - der Ladestand des BMS **selbst** | 1 |
+> | `0x00D7` (215) | `bms_voltage_v` | ×0,01 · **`[0,01/0,1]` LV/HV** |
+> | `0x00D8` (216) | `bms_current_a`, vorzeichenbehaftet | **`[1 / 0,1]` LV/HV** |
+> | `0x00DA` / `0x00DB` (218/219) | `bms_max_charge_limit_a` / `bms_max_discharge_limit_a` - die **statischen** Maxima | 1 |
+> | `0x00DC` / `0x00DD` (220/221) | `bms_alarm` / `bms_fault` (Bitfelder) | 1 |
+> | `0x00DF` (223) | `bms_type` (0 = PYLON … 10 = Shenggao Electric CAN) | 1 |
+>
+> **⚠ Die Doppelskala des STROMS zeigt nach unten** (`scale: [1, 0.1]`, nicht `[1, 10]`): ein
+> HV-Pack führt bei ~4-facher Spannung ~1/4 des Stroms, seine Firmware gibt die 16 Bit deshalb
+> in **Auflösung** statt in Reichweite aus. Deshalb trägt dieses eine Feld `hvFactor` statt
+> `hvScale`; mit `hvScale` läse sich ein 30-A-Packstrom als 300 A.
+>
+> **Vierzehn Nullen sind KEINE Batterie.** Ein Deye **ohne** CAN-Kopplung (Batteriemodus „User
+> defined"/„Use battery voltage") beantwortet den Block mit lauter Nullen - live bestätigt an
+> Mühlfeldweg 2 (09.09.2026). Das ist die Signatur „nicht gekoppelt", nicht ein Pack, das
+> „0 V / 0 A / 0 %" meldet: der Decoder erzeugt dafür **keinen einzigen** `bms_*`-Kanal. Ein
+> fehlender oder von der Firmware **abgelehnter** Block genauso - er ist `optional`, ein Fehler
+> dort meldet einen leeren Block und der Poll läuft weiter (ein Pflichtblock hätte die Anlage
+> jeden Kanal gekostet).
+>
+> **`0x00D6` ist die ZWEITE Ausfahrt aus `missing`**, neben der Spannungsschätzung im Kasten
+> oben. Meldet `0x024C` exakt 0 auf einem nachweislich lebenden Block, `0x00D6` aber einen
+> plausiblen Prozentwert, dann fährt die Anlage auf **diesem** Wert (`soc_source: 'bms'` auf dem
+> lokalen Bus) - und der **Verbindungstest besteht** damit. Sie braucht **kein**
+> `allow_missing_soc`: das Opt-in erlaubt eine Messung *ohne* Ladestand, hier gibt es einen, vom
+> Gerät gemeldet. `no_answer` und `out_of_range` bleiben harte Verwerfer, ein echter `0x024C`
+> wird nie überschrieben, und eine Messung schlägt die Interpolation. Die Kanäle reisen als
+> reine **Sichtbarkeit** im `sources`-Block des Herzschlags weiter (Geräteseite, Kasten „BMS");
+> der eingefrorene v1-Telemetrievertrag bleibt unberührt, und **gesteuert** wird aus ihnen
+> nichts.
 
 > **Adressen sind autoritativ** aus StephanJoubert/home_assistant_solarman (`deye_sg04lp3.yaml`, das die SG01HP3-Nutzer laut Repo-Issue #444 ebenfalls verwenden) plus dem Deye-Modbus-Manual für PV3/PV4 (674/675).
 >

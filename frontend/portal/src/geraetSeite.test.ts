@@ -575,3 +575,72 @@ describe('geraetSeite · die Ladesäule', () => {
   });
 
 });
+
+// ============================================================================
+// P4 - „BMS": was das Gerät über eine per CAN GEKOPPELTE Batterie meldet
+// ============================================================================
+// Der Block existiert nur, wenn die Kopplung besteht. Heute besteht sie an
+// KEINER Anlage (der Deye läuft im Spannungsmodus und antwortet auf die
+// BMS-Register mit lauter Nullen), also ist „keine Zeile" der Normalfall -
+// und ausdrücklich nicht „0 %".
+describe('geraetSeite · BMS (P4)', () => {
+  const mitBms = (bms: Record<string, number> | null | undefined): SiteSource[] =>
+    SOURCES.map((s) => (s.sourceId === 'inverter' ? { ...s, bms } : s));
+
+  it('bleibt LEER, solange keine Batterie per CAN gekoppelt ist', () => {
+    expect(geraetSeite(input({ geraetId: 'inverter' })).bms).toEqual([]);
+    expect(geraetSeite(input({ geraetId: 'inverter', sources: mitBms(null) })).bms).toEqual([]);
+    // Auch ein leeres Objekt ist keine Kopplung - es entsteht keine Zeile.
+    expect(geraetSeite(input({ geraetId: 'inverter', sources: mitBms({}) })).bms).toEqual([]);
+  });
+
+  it('zeigt Ladestand, Messwerte, beide Grenzpaare und die Codes', () => {
+    const v = geraetSeite(input({
+      geraetId: 'inverter',
+      sources: mitBms({
+        bms_soc_pct: 47, bms_voltage_v: 642, bms_current_a: -30,
+        bms_charge_limit_a: 270, bms_discharge_limit_a: 342,
+        bms_max_charge_limit_a: 400, bms_max_discharge_limit_a: 500,
+        bms_charge_voltage_v: 736, bms_discharge_voltage_v: 574,
+        bms_alarm: 0, bms_fault: 0, bms_type: 10,
+      }),
+    }));
+    expect(zeile(v.bms, 'Ladestand laut BMS')?.wert).toMatch(/^47/);
+    expect(zeile(v.bms, 'Strom')?.wert).toMatch(/^-30,0/);
+    // Zwei GETRENNTE Paare: „gerade erlaubt" ist nicht „Maximum des Speichers".
+    expect(zeile(v.bms, 'Erlaubt gerade')?.wert).toMatch(/270.*laden.*342.*abgeben/);
+    expect(zeile(v.bms, 'Maximum des Speichers')?.wert).toMatch(/400.*laden.*500.*abgeben/);
+    expect(zeile(v.bms, 'Spannungsfenster')?.wert).toMatch(/574,0.*bis.*736,0/);
+    expect(zeile(v.bms, 'Alarm')?.wert).toBe('keiner gemeldet');
+    expect(zeile(v.bms, 'BMS-Protokoll')?.wert).toBe('Shenggao Electric CAN');
+  });
+
+  it('zeigt einen Alarm-Code als CODE - es wird nichts gedeutet', () => {
+    const v = geraetSeite(input({
+      geraetId: 'inverter',
+      sources: mitBms({ bms_alarm: 4, bms_fault: 0 }),
+    }));
+    const alarm = zeile(v.bms, 'Alarm');
+    expect(alarm?.wert).toBe('Code 4');
+    expect(alarm?.ton).toBe('warn');
+    expect(zeile(v.bms, 'Fehler')?.ton).toBe('ok');
+  });
+
+  it('löst eine unbekannte BMS-Kennung NICHT auf einen Vorgabewert auf', () => {
+    const v = geraetSeite(input({ geraetId: 'inverter', sources: mitBms({ bms_type: 42 }) }));
+    expect(zeile(v.bms, 'BMS-Protokoll')?.wert).toBe('Kennung 42');
+  });
+
+  it('füllt einen fehlenden Kanal NICHT auf - er fehlt einfach', () => {
+    const v = geraetSeite(input({ geraetId: 'inverter', sources: mitBms({ bms_soc_pct: 47 }) }));
+    expect(v.bms.map((z) => z.label)).toEqual(['Ladestand laut BMS']);
+  });
+
+  it('nennt eine halbe Grenze halb - der fehlende Teil ist —, nie eine 0', () => {
+    const v = geraetSeite(input({
+      geraetId: 'inverter',
+      sources: mitBms({ bms_charge_limit_a: 270 }),
+    }));
+    expect(zeile(v.bms, 'Erlaubt gerade')?.wert).toMatch(/270.*laden.*—.*abgeben/);
+  });
+});

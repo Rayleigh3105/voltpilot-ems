@@ -185,6 +185,26 @@ type Snapshot struct {
 	// Timestamp = LastTelemetry. Display-only; nothing consumes it downstream.
 	LastReading map[string]float64 `json:"last_reading,omitempty"`
 
+	// BmsReading is what the primary inverter reported about a battery COUPLED
+	// TO IT over CAN (the Deye BMS block 0x00D2..0x00DF, P4): the pack's own
+	// state of charge, voltage/current, the charge/discharge envelope it
+	// permits, its alarm/fault codes and which BMS protocol answered - keyed by
+	// the same `bms_*` channel names Layer 1 publishes on edge/telemetry.
+	//
+	// nil on every plant WITHOUT such a coupling, which is the normal case: an
+	// all-zero BMS block is the documented "no coupling" signature and Layer 1
+	// publishes nothing for it, so nothing arrives here either. Absent stays
+	// absent - never a fabricated 0 %, 0 V or "BMS type PYLON". It carries the
+	// LAST sample's view (no hold-last): a coupling that goes away must stop
+	// claiming numbers, and LastTelemetry is its timestamp.
+	//
+	// Display + heartbeat visibility only. It is deliberately NOT a measurement
+	// channel: the frozen v1 cloud telemetry contract stays untouched, and
+	// nothing on the box CONTROLS from these values - the BMS cap that guards
+	// setpoints is the v2 entity-channel envelope (guards.BmsEnvelope, P5c),
+	// which comes from an entity the portal bound on purpose.
+	BmsReading map[string]float64 `json:"bms_reading,omitempty"`
+
 	// DespikedDropped is the running count of transient garbage samples the
 	// despike gate has rejected (drop-don't-fabricate). Exposed for field
 	// diagnosis - a steadily climbing count points at a flaky Layer-1 read.

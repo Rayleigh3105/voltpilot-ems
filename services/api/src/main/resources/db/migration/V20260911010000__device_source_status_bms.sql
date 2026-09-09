@@ -1,0 +1,43 @@
+-- =============================================================================
+-- V20260911010000 - der BMS-Block, den ein Wechselrichter ueber eine per CAN
+-- gekoppelte Batterie meldet (Paket P4 aus data/vp-deye-diybms-luecke-l5 §3.1).
+-- ADDITIV: ohne diese Spalte verhaelt sich alles zeichengleich wie vorher.
+-- -----------------------------------------------------------------------------
+-- Haengt eine Batterie per CAN am Wechselrichter, meldet der Wechselrichter
+-- ihren Ladestand und ihre Grenzen SELBST ueber Modbus (beim Deye der Block
+-- 0x00D2..0x00DF, deye_p3.yaml Gruppe „BMS"). Die Box liest diesen Block seit
+-- P4 mit und traegt die dekodierten Kanaele im `sources`-Block des Herzschlags
+-- weiter - dieselbe reine SICHTBARKEIT wie die uebrigen Spalten dieser Tabelle:
+-- nichts hier speist Telemetrie, Rollups, Erloese oder den Optimierer.
+--
+-- Die Kanaele (Namensraum `bms_*`, aus edge-app/nodered/deye/deye-decode.js):
+--
+--   bms_soc_pct                                   der Ladestand des BMS SELBST
+--   bms_voltage_v / bms_current_a                 seine gemessene Klemmengroesse
+--   bms_charge_limit_a / bms_discharge_limit_a    was es GERADE erlaubt
+--   bms_max_charge_limit_a / …_max_discharge_…    die statischen Maxima des Packs
+--   bms_charge_voltage_v / bms_discharge_voltage_v die Spannungs-Endpunkte
+--   bms_alarm / bms_fault                         Bitfelder (Codes, keine Groessen)
+--   bms_type                                      welches BMS-Protokoll antwortet
+--
+-- ⚠ WARUM JSONB und nicht zwoelf Spalten: es ist ein OFFENER, additiver
+-- Kanalsatz derselben Bauart wie die freien Kanaele der v2-Telemetrie - eine
+-- weitere Marke mit einem dreizehnten Kanal darf keine Migration kosten. Es ist
+-- hier UNPROBLEMATISCH (anders als bei `edge_release.manifest`): ueber diese
+-- Bytes laeuft keine Signatur, verglichen wird nie byteweise, und der Listener
+-- schreibt ausschliesslich eine WEISSE LISTE - Schluessel mit dem Praefix
+-- `bms_` und endliche Zahlen, gedeckelt. Ein Fremdfeld kommt nicht herein.
+--
+-- NULL heisst „diese Anlage hat keine CAN-Kopplung" - und das ist heute JEDE
+-- Anlage: ein Block voller Nullen ist die belegte Signatur „nicht gekoppelt"
+-- (Muehlfeldweg 2, 09.09.2026, F16), und die Box veroeffentlicht dafuer gar
+-- keinen Kanal. Kein Default, kein Backfill: eine erfundene 0 % oder ein
+-- erfundener „BMS-Typ PYLON" waere genau die Behauptung, die die Hausregel
+-- „‚nicht gemessen' ist nie ‚gemessen 0'" verbietet. Jede Zeile heilt sich
+-- ohnehin mit dem naechsten Herzschlag selbst (replaceForDevice ersetzt den
+-- ganzen Satz des Geraets).
+--
+-- Der V20260721000000-Grant auf device_source_status ist spaltenunabhaengig.
+-- =============================================================================
+
+ALTER TABLE device_source_status ADD COLUMN IF NOT EXISTS bms JSONB;

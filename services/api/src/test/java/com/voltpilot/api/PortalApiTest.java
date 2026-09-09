@@ -6877,6 +6877,76 @@ class PortalApiTest {
                 .getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * P4 - der BMS-Block einer per CAN GEKOPPELTEN Batterie (Report
+     * {@code data/vp-deye-diybms-luecke-l5} §3.1).
+     *
+     * <p>Haengt eine Batterie per CAN am Wechselrichter, meldet der
+     * Wechselrichter ihren Ladestand und ihre Grenzen selbst ueber Modbus; die
+     * Box liest den Block mit und traegt die dekodierten {@code bms_*}-Kanaele
+     * im {@code sources}-Block des Herzschlags weiter. Diese Route ist der Ort,
+     * an dem die Geraeteseite sie liest.
+     *
+     * <p>Die drei Zusagen, die hier haengen: OHNE Kopplung entsteht KEIN Feld
+     * (nie eine erfundene 0&nbsp;% oder ein „BMS-Typ PYLON"), MIT Kopplung
+     * reisen genau die gemeldeten Kanaele, und der Block ist eine WEISSE LISTE -
+     * ein Fremdfeld kommt durch diese Tuer nicht herein.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void siteSourcesCarryTheCoupledBmsBlockAndNothingElse() {
+        var listener = new com.voltpilot.api.sources.SourceStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, sourceStatusRepo);
+        String topic = "ems/00000000-0000-0000-0000-000000000001/"
+                + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
+        String identity = "\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"site_id\":\"00000000-0000-0000-0000-000000000002\","
+                + "\"device_id\":\"00000000-0000-0000-0000-000000000003\",";
+        String sourcesUrl = url("/api/v1/sites/" + BERLIN_SITE + "/sources");
+
+        // 1. Der Live-Fall Muehlfeldweg: kein CAN, also gar kein bms-Block.
+        listener.handle(topic, ("{" + identity + "\"sources\":{\"entries\":["
+                + "{\"id\":\"inverter\",\"kind\":\"primary\",\"brand\":\"deye\","
+                + "\"model\":\"SUN-30K-SG02HP3\",\"pv_kw\":6.1,\"health\":\"ok\"}]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        List<Map<String, Object>> uncoupled = rest.exchange(sourcesUrl, HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), List.class).getBody();
+        assertThat(uncoupled).hasSize(1);
+        assertThat(uncoupled.get(0).get("bms")).isNull();
+
+        // 2. Mit Kopplung: genau die gemeldeten Kanaele, unveraendert - und ein
+        //    Fremdfeld (`soc_pct`) sowie ein Nicht-Zahlwert werden verworfen.
+        listener.handle(topic, ("{" + identity + "\"sources\":{\"entries\":["
+                + "{\"id\":\"inverter\",\"kind\":\"primary\",\"brand\":\"deye\","
+                + "\"model\":\"SUN-30K-SG02HP3\",\"pv_kw\":6.1,\"health\":\"ok\","
+                + "\"bms\":{\"bms_soc_pct\":47,\"bms_voltage_v\":642.0,"
+                + "\"bms_current_a\":-30.0,\"bms_charge_limit_a\":270,"
+                + "\"bms_type\":10,\"soc_pct\":99,\"bms_junk\":\"x\"}}]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        List<Map<String, Object>> coupled = rest.exchange(sourcesUrl, HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), List.class).getBody();
+        assertThat(coupled).hasSize(1);
+        Map<String, Object> bms = (Map<String, Object>) coupled.get(0).get("bms");
+        assertThat(bms).containsOnlyKeys("bms_soc_pct", "bms_voltage_v", "bms_current_a",
+                "bms_charge_limit_a", "bms_type");
+        assertThat(((Number) bms.get("bms_soc_pct")).doubleValue()).isEqualTo(47.0);
+        assertThat(((Number) bms.get("bms_current_a")).doubleValue()).isEqualTo(-30.0);
+        assertThat(((Number) bms.get("bms_type")).doubleValue()).isEqualTo(10.0);
+
+        // 3. Die Kopplung faellt weg: der Block verschwindet, er wird nicht
+        //    festgehalten - eine Grenze, die niemand mehr gewaehrt, ist keine.
+        listener.handle(topic, ("{" + identity + "\"sources\":{\"entries\":["
+                + "{\"id\":\"inverter\",\"kind\":\"primary\",\"pv_kw\":6.1,"
+                + "\"health\":\"ok\"}]}}").getBytes(StandardCharsets.UTF_8));
+        List<Map<String, Object>> gone = rest.exchange(sourcesUrl, HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), List.class).getBody();
+        assertThat(gone.get(0).get("bms")).isNull();
+
+        // Aufraeumen fuer die Geschwistertests auf derselben Anlage.
+        listener.handle(topic, ("{" + identity + "\"sources\":{\"entries\":[]}}")
+                .getBytes(StandardCharsets.UTF_8));
+    }
+
     /** Run a statement as the Postgres superuser (bypasses RLS) to seed feed rows. */
     @Test
     @SuppressWarnings("unchecked")

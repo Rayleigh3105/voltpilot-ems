@@ -11,7 +11,10 @@ import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
@@ -53,6 +56,17 @@ public class SourceStatusListener {
     private static final String STATUS_FILTER = "ems/+/+/+/status";
     /** Same bound as the edge's own cap - a heartbeat can never inflate the set. */
     private static final int MAX_ENTRIES = 16;
+    /**
+     * Der Namensraum der Kanäle einer per CAN gekoppelten Batterie (P4) und ihr
+     * Deckel. Das Präfix IST die ganze Vokabel-Regel: jeder Kanal, den die Box
+     * aus dem BMS-Block dekodiert, heißt {@code bms_<sache>}, also kann durch
+     * diese Tür kein fremdes Feld hereinkommen; der Deckel spiegelt den der Box
+     * (maxBmsChannels), damit ein fehlgeleiteter Herzschlag nichts aufblähen
+     * kann.
+     */
+    private static final String BMS_PREFIX = "bms_";
+
+    private static final int MAX_BMS_CHANNELS = 24;
 
     private final String brokerUrl;
     private final String username;
@@ -190,7 +204,7 @@ public class SourceStatusListener {
             rows.add(new SourceRow(id, e.path("kind").asText("source"), textOrNull(e, "role"),
                     textOrNull(e, "label"), textOrNull(e, "brand"), textOrNull(e, "model"),
                     optDouble(e, "pv_kw"), optDouble(e, "power_kw"), optDouble(e, "load_kw"),
-                    health(e), optInstant(e, "read_at")));
+                    health(e), optInstant(e, "read_at"), bms(e)));
         }
         TenantContext.set(tenantId);
         try {
@@ -204,6 +218,41 @@ public class SourceStatusListener {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * Der {@code bms}-Block eines Eintrags (P4): die Kanäle einer per CAN
+     * gekoppelten Batterie, die der Wechselrichter selbst meldet.
+     *
+     * <p>Eine WEISSE LISTE, kein Durchreichen: nur Schlüssel mit dem Präfix
+     * {@code bms_} (und nie das nackte Präfix), nur endliche Zahlen, gedeckelt.
+     * {@code null}, wenn nichts gekoppelt ist - das ist der Normalfall und
+     * bedeutet ABWESENHEIT, nie „0 %".
+     */
+    private static Map<String, Double> bms(JsonNode entry) {
+        JsonNode node = entry.get("bms");
+        if (node == null || !node.isObject()) {
+            return null;
+        }
+        Map<String, Double> out = new LinkedHashMap<>();
+        Iterator<Map.Entry<String, JsonNode>> it = node.fields();
+        while (it.hasNext() && out.size() < MAX_BMS_CHANNELS) {
+            Map.Entry<String, JsonNode> f = it.next();
+            String key = f.getKey();
+            if (!key.startsWith(BMS_PREFIX) || key.length() == BMS_PREFIX.length()) {
+                continue;
+            }
+            JsonNode v = f.getValue();
+            if (v == null || !v.isNumber()) {
+                continue;
+            }
+            double d = v.asDouble();
+            if (!Double.isFinite(d)) {
+                continue;
+            }
+            out.put(key, d);
+        }
+        return out.isEmpty() ? null : out;
     }
 
     /** ok | stale | never; an unknown/absent value degrades to "never". */

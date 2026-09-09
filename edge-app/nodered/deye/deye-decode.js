@@ -75,6 +75,29 @@ const DEVICE_REG = 0x0000;
 const DEVICE_TYPES_LV = [0x0005, 0x0500]; // mod 0 -> scale 1
 const DEVICE_TYPES_HV = [0x0006, 0x0007, 0x0600, 0x0008, 0x0601]; // mod 1 -> scale 10
 
+// --- the BMS block a CAN-COUPLED battery fills (P4) --------------------------
+// deye_p3.yaml group "BMS", 0x00D2..0x00DF (14 registers, ONE fn-0x03 round trip
+// on the SAME socket lane as the rest of the poll). It is the inverter's own
+// view of a battery that talks to it over CAN: the pack's OWN state of charge,
+// its measured terminal voltage/current, the charge/discharge envelope it
+// permits, its alarm/fault bitfields and which BMS protocol answered.
+//
+// ⚠ It is EMPTY on a plant whose battery is NOT CAN-coupled. Live evidence
+// (Muehlfeldweg 2, 09.09.2026, scout `vp-deye-diybms-luecke-l5` F16): a Deye
+// running in VOLTAGE mode answers this block with fourteen zeros - the pack is
+// there, the coupling is not. Fourteen zeros are therefore NOT a battery that
+// reports "0 V / 0 A / 0 %"; they are the documented signature of "no coupling",
+// and the decoder publishes NOTHING for them (bmsCoupled below). That is the
+// same drop-don't-fabricate rule the SoC gate follows, applied to a whole block.
+//
+// The read itself is OPTIONAL (see the family's read plan): a firmware that
+// refuses the address must cost the poll nothing.
+const BMS_BLOCK_START = 0x00d2;
+const BMS_BLOCK_COUNT = 0x000e; // 0x00D2..0x00DF
+// The BMS's OWN state of charge (deye_p3.yaml "Battery BMS SOC"). Named because
+// it is BOTH a published channel and the second way out of the `missing` rule.
+const BMS_SOC_REG = 0x00d6;
+
 const FAMILIES = {
   // Deye grid-tie STRING inverter, NO battery, NO house-load/grid meter
   // (ha-solarman deye_string.yaml; SUN-*-G03/G04 string models, 1-2 MPPT).
@@ -161,9 +184,18 @@ const FAMILIES = {
     // register the soc_from_voltage estimate needs sits ONE address BELOW the
     // SoC. Widening down by one keeps every existing field at its address and
     // lands at 122 registers - still under the 125-register fn-0x03 limit.
+    // The BMS block 0x00D2..0x00DF rides as a THIRD, OPTIONAL block (P4): one
+    // more fn-0x03 round trip per poll under the same socket lane, appended
+    // LAST so it can never come between the identity register and the
+    // measurements. `optional` is load-bearing, not decoration: the Solarman
+    // reader aborts the WHOLE poll when a mandatory block errors, so a firmware
+    // that refuses 0x00D2 would cost the plant every channel it has. An
+    // optional block that errors is recorded as an EMPTY block and the cycle
+    // continues - the same treatment the mirror's auto-learned blocks get.
     reads: [
       { start: DEVICE_REG, count: 0x0001 },
       { start: 0x024b, count: 0x007a },
+      { start: BMS_BLOCK_START, count: BMS_BLOCK_COUNT, optional: true },
     ],
     // The register whose device-type code drives the LV/HV PV+battery scale.
     scaleReg: DEVICE_REG,
@@ -188,6 +220,45 @@ const FAMILIES = {
       load: { addrs: [0x028d, 0x0293], bits: 32, signed: true }, // house load (inverter's own view)
       // PV1..PV4 power (BM3 uses 3, BM4 uses 4; PV4=0 on LV/BM3).
       pv: { addrs: [0x02a0, 0x02a1, 0x02a2, 0x02a3], bits: 16, signed: false, sum: true, hvScale: true },
+    },
+    // The BMS block's channels (P4). Deliberately a SEPARATE map from `fields`:
+    // these are LOCAL-bus channels of the coupled battery, not the site
+    // measurement the frozen cloud telemetry contract governs, and they must
+    // never take part in `blockAlive` (whether the BMS answers says nothing
+    // about whether the INVERTER answered - and letting it speak there would
+    // move the no_answer/missing boundary for every plant).
+    //
+    // Scales are deye_p3.yaml verbatim. Three of them carry the ha-solarman
+    // dual LV/HV scale, and NOT all in the same direction:
+    //   voltages  scale: [0.01, 0.1]  -> base 0.01, HV multiplies by 10 (hvScale)
+    //   current   scale: [1, 0.1]     -> base 1,    HV multiplies by 0.1 (hvFactor)
+    // An HV pack carries its energy at ~4x the voltage and therefore ~1/4 the
+    // current, so its firmware spends the 16 bits on RESOLUTION instead of
+    // range - which is why the current's HV factor points the other way. Using
+    // hvScale for it would report a 30 A pack current as 300 A.
+    bms: {
+      // 0x00D2/0x00D3 - the charge/discharge voltage limits the BMS states.
+      bms_charge_voltage_v: { addr: 0x00d2, bits: 16, signed: false, scale: 0.01, hvScale: true },
+      bms_discharge_voltage_v: { addr: 0x00d3, bits: 16, signed: false, scale: 0.01, hvScale: true },
+      // 0x00D4/0x00D5 - the current the BMS permits RIGHT NOW (its dynamic
+      // envelope); 0x00DA/0x00DB below are the pack's STATIC maxima. Both pairs
+      // are kept and named apart: a surface that showed the static maximum as
+      // "the limit" would claim headroom the BMS is not granting this minute.
+      bms_charge_limit_a: { addr: 0x00d4, bits: 16, signed: false, scale: 1 },
+      bms_discharge_limit_a: { addr: 0x00d5, bits: 16, signed: false, scale: 1 },
+      bms_soc_pct: { addr: BMS_SOC_REG, bits: 16, signed: false, scale: 1, kind: 'pct' },
+      bms_voltage_v: { addr: 0x00d7, bits: 16, signed: false, scale: 0.01, hvScale: true },
+      // Signed (deye_p3.yaml rule 2): + = charge / - = discharge at the pack.
+      bms_current_a: { addr: 0x00d8, bits: 16, signed: true, scale: 1, hvFactor: 0.1 },
+      bms_max_charge_limit_a: { addr: 0x00da, bits: 16, signed: false, scale: 1 },
+      bms_max_discharge_limit_a: { addr: 0x00db, bits: 16, signed: false, scale: 1 },
+      // 0x00DC/0x00DD/0x00DF are CODES, not quantities: two alarm/fault
+      // bitfields and the BMS protocol id (0 = PYLON .. 10 = Shenggao CAN).
+      // `code: true` keeps them integral - a bitfield rounded to one decimal
+      // would be a number nobody can decode back into bits.
+      bms_alarm: { addr: 0x00dc, bits: 16, signed: false, scale: 1, code: true },
+      bms_fault: { addr: 0x00dd, bits: 16, signed: false, scale: 1, code: true },
+      bms_type: { addr: 0x00df, bits: 16, signed: false, scale: 1, code: true },
     },
   },
 
@@ -342,6 +413,88 @@ function estimateSocFromVoltage(volts, cfg) {
   return Math.max(SOC_ESTIMATE_MIN_PCT, Math.min(SOC_ESTIMATE_MAX_PCT, round1(pct)));
 }
 
+// --- SoC read from the COUPLED BMS: the SECOND way out of `missing` (P4) -----
+// The voltage estimate above is the FIRST way out, and it is an interpolation.
+// This one is a MEASUREMENT: on a CAN-coupled battery the Deye publishes the
+// pack's own state of charge at 0x00D6, next to the limits the BMS grants. Some
+// firmwares fill that register while leaving the headline SoC 0x024C at 0 - the
+// plant then looks exactly like the "BMS reports nothing" case although the BMS
+// is right there and answering.
+//
+// The rules, mirroring the voltage estimate's four but with ONE deliberate
+// difference:
+//
+//   1. Same gate: it applies ONLY to the `missing` rule. `no_answer` (the
+//      logger's all-zero empty answer) and `out_of_range` (a broken frame)
+//      stay HARD drops - reading a SoC out of a frame we already decided we
+//      cannot trust is the very fabrication the July rule prevents.
+//   2. A REAL 0x024C SoC (> 0) is never overwritten. This exists only where the
+//      headline register reports nothing.
+//   3. The BMS value passes the SAME plausibility gate as any SoC: > 0 and
+//      <= 100. An exact 0 at 0x00D6 is the un-coupled signature (fourteen
+//      zeros), never "the pack is empty".
+//   4. It BEATS the voltage estimate when both are available - a measured
+//      percentage is worth more than an interpolation between two datasheet
+//      voltages, and both travel with their provenance so nobody has to guess
+//      which one they are looking at (`soc_source` = 'bms' vs 'voltage').
+//
+//   ⚠ THE DIFFERENCE: it does NOT require the `allow_missing_soc` opt-in. That
+//   opt-in governs one specific decision - "publish a reading that has NO state
+//   of charge at all" - and here there IS one, reported by the device itself.
+//   Requiring the opt-in would mean discarding a measured SoC because an
+//   operator had not ticked a box about missing SoCs. The July rule is
+//   untouched: the block still has to be demonstrably alive, and the value
+//   still has to be a plausible percentage.
+const SOC_SOURCE_BMS = 'bms';
+const SOC_SOURCE_VOLTAGE = 'voltage';
+
+/**
+ * bmsCoupled - is there a BMS behind this block at all?
+ *
+ * The block is present AND at least one of its registers is non-zero. Fourteen
+ * zeros are the documented "no CAN coupling" signature (Muehlfeldweg 2, F16),
+ * an unreadable block is an absent answer - both mean the same thing here:
+ * publish nothing. Never a fabricated 0 %, 0 V or "BMS type PYLON".
+ */
+function bmsCoupled(blocks, fam) {
+  if (!fam || !fam.bms) return false;
+  for (let a = BMS_BLOCK_START; a < BMS_BLOCK_START + BMS_BLOCK_COUNT; a++) {
+    const v = readReg(blocks, a);
+    if (v !== undefined && (v & 0xffff) !== 0) return true;
+  }
+  return false;
+}
+
+/**
+ * decodeBms - the coupled BMS's channels, or {} when nothing is coupled.
+ *
+ * `scaleOf` is the caller's LV/HV-resolved scaler (the same one PV, battery and
+ * the pack voltage ride), so the HV firmware's decawatt/decivolt world is
+ * applied here exactly once and in exactly one place.
+ */
+function decodeBms(blocks, fam, scaleOf) {
+  const out = {};
+  if (!bmsCoupled(blocks, fam)) return out;
+  for (const name of Object.keys(fam.bms)) {
+    const spec = fam.bms[name];
+    const v = scaleOf(spec);
+    if (v === undefined || !isFinite(v)) continue;
+    if (spec.kind === 'pct' && !socPlausible(v)) continue; // 0 % is the un-coupled signature
+    out[name] = spec.code ? Math.round(v) : round1(v);
+  }
+  return out;
+}
+
+/**
+ * bmsSocOf - the plausible BMS state of charge in a decoded BMS channel set, or
+ * undefined. One reader for the one register, so the channel the surfaces show
+ * and the SoC the plant runs on can never be two different numbers.
+ */
+function bmsSocOf(bms) {
+  const v = bms && bms.bms_soc_pct;
+  return socPlausible(v) ? v : undefined;
+}
+
 /**
  * blockAlive - does this read show any life at all, or is it the logger's
  * all-zero empty answer? Judged over the family's OWN measurement fields (never
@@ -473,6 +626,16 @@ function decode(blocks, config) {
   const out = decodeVerbose(blocks, config);
   if (!out) return null;
   if (!out.drop) return { reading: out.reading, batt_kw: out.batt_kw };
+  // The COUPLED BMS answered where the headline register did not (P4): the
+  // reading keeps its OTHER channels AND gets a MEASURED soc_pct, without the
+  // opt-in - there is nothing missing to opt into. Still only out of `missing`;
+  // `no_answer` and `out_of_range` fall through to the hard drop below.
+  if (out.drop.rule === SOC_DROP_MISSING && out.drop.bms) {
+    return {
+      reading: { ...out.reading, soc_pct: out.drop.bms.soc_pct, soc_source: SOC_SOURCE_BMS },
+      batt_kw: out.batt_kw,
+    };
+  }
   // The July rule, unchanged by default: an implausible SoC means the whole
   // read is untrustworthy. Only the narrow opt-in above, and only on the
   // exact-0 "BMS reports nothing" signature, keeps the other channels.
@@ -488,7 +651,7 @@ function decode(blocks, config) {
     const est = out.drop.estimate;
     if (est) {
       return {
-        reading: { ...out.reading, soc_pct: est.soc_pct, soc_source: 'voltage' },
+        reading: { ...out.reading, soc_pct: est.soc_pct, soc_source: SOC_SOURCE_VOLTAGE },
         batt_kw: out.batt_kw,
       };
     }
@@ -525,26 +688,46 @@ function decodeVerbose(blocks, config) {
     hvScale = detected !== undefined ? detected : 1;
   }
 
+  // The HV multiplier ONE field gets on top of its base scale.
+  //   hvScale: true  -> x hvScale (1 on LV, 10 on HV) - PV, battery, voltages
+  //   hvFactor: <n>  -> x n on HV, x1 on LV          - the BMS current [1, 0.1]
+  // Both come straight from deye_p3.yaml's dual `scale: [LV, HV]`; hvFactor
+  // exists because that pair does not always point upwards (see the family's
+  // `bms` map). A field with neither is a plain-unit field (grid/load/SoC).
+  const isHv = hvScale === 10;
+  const hvMult = (spec) => {
+    if (spec.hvFactor !== undefined) return isHv ? spec.hvFactor : 1;
+    return spec.hvScale ? hvScale : 1;
+  };
   // A field's kW: raw (already ×its base scale) → optional sign flip → ×hvScale
   // for [1,10]-scaled fields (PV/battery), ×1 for the always-watt grid/load.
   const toKw = (spec, invert) => {
     let w = fieldValue(blocks, spec);
     if (w === undefined) return undefined;
     if (invert) w = -w;
-    return round3((w * (spec.hvScale ? hvScale : 1)) / 1000);
+    return round3((w * hvMult(spec)) / 1000);
   };
   // The same [1,10] LV/HV resolution WITHOUT the watt->kW division: the battery
   // VOLTAGE carries the identical dual scale (deye_p3.yaml `scale: [0.01, 0.1]`)
   // but is already a physical unit. Dividing it by 1000 would silently turn
-  // 636 V into 0,636 and the estimate would read 1 % on a full pack.
+  // 636 V into 0,636 and the estimate would read 1 % on a full pack. The BMS
+  // channels (P4) are physical units too and ride the very same resolver.
   const scaled = (spec) => {
     const v = fieldValue(blocks, spec);
     if (v === undefined) return undefined;
-    return v * (spec.hvScale ? hvScale : 1);
+    return v * hvMult(spec);
   };
 
   const reading = {};
   let batt_kw;
+
+  // The COUPLED BMS's own channels (P4). Decoded BEFORE the SoC gate because
+  // 0x00D6 is the gate's second way out, and computed exactly once: the very
+  // same numbers are published as channels and consulted for the SoC, so a
+  // surface can never show one figure while the plant runs on another.
+  // {} on every plant without a CAN coupling - which is every plant today.
+  const bms = decodeBms(blocks, fam, scaled);
+  for (const name of Object.keys(bms)) reading[name] = bms[name];
 
   // Battery-family SoC plausibility gate FIRST: an unreadable or out-of-band SoC
   // marks a degraded/unanswered logger read (see socPlausible above). It is
@@ -569,12 +752,19 @@ function decodeVerbose(blocks, config) {
       // NEXT TO the drop, never inside `reading` - that invariant ("the dropped
       // channel is NEVER in the reading") is what lets every consumer trust the
       // reading verbatim.
-      if (rule === SOC_DROP_MISSING && f.battVolt) {
-        const vcfg = socFromVoltageConfig(config);
-        const volts = vcfg ? scaled(f.battVolt) : undefined;
-        const est = estimateSocFromVoltage(volts, vcfg);
-        if (est !== undefined) {
-          drop.estimate = { soc_pct: est, voltage_v: round1(volts) };
+      if (rule === SOC_DROP_MISSING) {
+        // The SECOND way out, and the stronger one: the coupled BMS's own
+        // measured percentage (P4). It is recorded next to the drop like the
+        // estimate, so the connection test can name it too.
+        const fromBms = bmsSocOf(bms);
+        if (fromBms !== undefined) drop.bms = { soc_pct: fromBms };
+        if (f.battVolt) {
+          const vcfg = socFromVoltageConfig(config);
+          const volts = vcfg ? scaled(f.battVolt) : undefined;
+          const est = estimateSocFromVoltage(volts, vcfg);
+          if (est !== undefined) {
+            drop.estimate = { soc_pct: est, voltage_v: round1(volts) };
+          }
         }
       }
     }
@@ -604,10 +794,18 @@ function decodeVerbose(blocks, config) {
   return drop ? { reading, batt_kw, drop } : { reading, batt_kw };
 }
 
-/** planReads - the { start, count } blocks a family needs per poll. */
+/**
+ * planReads - the { start, count } blocks a family needs per poll.
+ *
+ * An OPTIONAL block carries its flag through: the reader must know that a
+ * failure there is a missing block, not a failed poll (see the hybrid_3p read
+ * plan). Every other block stays byte-for-byte the two-field object it was.
+ */
 function planReads(config) {
   const fam = FAMILIES[config && config.family];
-  return fam ? fam.reads.map((r) => ({ start: r.start, count: r.count })) : [];
+  if (!fam) return [];
+  return fam.reads.map((r) =>
+    r.optional ? { start: r.start, count: r.count, optional: true } : { start: r.start, count: r.count });
 }
 
 /** readCmd - argv for `deye` to read one block, e.g. ['-t','ip:port','-xmb','00A90016']. */
@@ -667,6 +865,14 @@ module.exports = {
   blockAlive,
   socFromVoltageConfig,
   estimateSocFromVoltage,
+  bmsCoupled,
+  decodeBms,
+  bmsSocOf,
+  BMS_BLOCK_START,
+  BMS_BLOCK_COUNT,
+  BMS_SOC_REG,
+  SOC_SOURCE_BMS,
+  SOC_SOURCE_VOLTAGE,
   SOC_ESTIMATE_MIN_PCT,
   SOC_ESTIMATE_MAX_PCT,
   SOC_DROP_NO_ANSWER,
