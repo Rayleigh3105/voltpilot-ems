@@ -35,7 +35,11 @@ export function useFreshnessPoll(
 
   useEffect(() => {
     if (!enabled) return;
-    const run = () => pollRef.current();
+    // Verdeckte Tabs brauchen keine Live-Abfragen. Bei der Rückkehr holen
+    // beide Wiederaufnahme-Ereignisse weiterhin sofort den aktuellen Stand.
+    const run = () => {
+      if (document.visibilityState !== 'hidden') pollRef.current();
+    };
     const timer = window.setInterval(run, intervalMs);
     const onVisibility = () => {
       if (document.visibilityState === 'visible') run();

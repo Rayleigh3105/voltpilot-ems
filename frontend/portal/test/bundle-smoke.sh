@@ -78,7 +78,7 @@ LIMIT_KB="${LIMIT_KB:-230}"
 OUT="dist-bundle-smoke"
 trap 'rm -rf "$OUT"' EXIT
 
-echo "== 1/3 · Bündel bauen =="
+echo "== 1/4 · Bündel bauen =="
 rm -rf "$OUT"
 npx vite build --sourcemap --outDir "$OUT" --emptyOutDir >/tmp/vp-bundle-build.log 2>&1 || {
   echo "FAIL: vite build ist gescheitert"; tail -30 /tmp/vp-bundle-build.log; exit 1;
@@ -88,7 +88,7 @@ echo "ok"
 entry=$(ls "$OUT"/assets/index-*.js 2>/dev/null | head -1)
 [ -n "$entry" ] || { echo "FAIL: kein Einstiegs-Chunk $OUT/assets/index-*.js"; exit 1; }
 
-echo "== 2/3 · Einstiegs-Chunk unter $LIMIT_KB kB gz =="
+echo "== 2/4 · Einstiegs-Chunk unter $LIMIT_KB kB gz =="
 # ⚠ DIE ZAHL KOMMT AUS VITES EIGENER AUSGABE, nicht aus `gzip -9`. Vite
 # komprimiert mit einer anderen Stufe (gemessen: 228,16 gegen 222,46 kB für
 # dasselbe Artefakt) — nähme der Wächter seine eigene Zahl, stünde im PR eine
@@ -105,7 +105,7 @@ awk -v g="$gz_kb" -v l="$LIMIT_KB" 'BEGIN{ exit !(g <= l) }' || {
 }
 echo "ok"
 
-echo "== 3/3 · kein Motion im Einstiegs-Chunk =="
+echo "== 3/4 · kein Motion im Einstiegs-Chunk =="
 map="$entry.map"
 [ -f "$map" ] || { echo "FAIL: keine Sourcemap neben $entry"; exit 1; }
 # `motion` re-exportiert `framer-motion`; dazu kommen `motion-dom` und
@@ -128,5 +128,17 @@ node -e '
 ' "$map"
 echo "ok"
 
+echo "== 4/4 · Chart-Bündel unter 210 kB gz =="
+# Nur benötigte ECharts-Module: 344,50 -> 203,28 kB gz (09.09.2026).
+# Ein erneuter Vollimport muss am ausgelieferten Artefakt auffallen.
+chart_line=$(grep -E 'assets/useEChart-[^ ]+\.js[[:space:]]' /tmp/vp-bundle-build.log | tail -1)
+chart_gz_kb=$(printf '%s' "$chart_line" | sed -nE 's/.*gzip:[[:space:]]*([0-9.,]+) kB.*/\1/p' | tr -d ',')
+[ -n "$chart_gz_kb" ] || { echo "FAIL: Chart-Bündel fehlt in der Build-Ausgabe"; exit 1; }
+awk -v g="$chart_gz_kb" 'BEGIN{ exit !(g <= 210) }' || {
+  echo "FAIL: Chart-Bündel ${chart_gz_kb} kB gz (Grenze 210 kB)."
+  exit 1
+}
+echo "ok: ${chart_gz_kb} kB gz"
+
 echo
-echo "PASS · Einstieg ${gz_kb} kB gz, kein Motion darin."
+echo "PASS · Einstieg ${gz_kb} kB gz, Charts ${chart_gz_kb} kB gz, kein Motion im Einstieg."

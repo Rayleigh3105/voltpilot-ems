@@ -16,7 +16,7 @@ const gesetzt: Record<string, unknown>[] = [];
 const dispose = vi.fn();
 let instanz: { setOption: (o: unknown) => void } | null = null;
 
-vi.mock('echarts', () => ({
+vi.mock('./echarts', () => ({
   init: () => {
     const inst = {
       setOption(o: Record<string, unknown>) {

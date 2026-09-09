@@ -106,24 +106,9 @@ export function useAnlageSurface(
       // Fail-soft like everything else here - an older backend simply yields
       // no states, and the surface is byte-identical to before M3.
       api.siteProfiles(siteId).catch(() => null),
-      // Steuerung Stufe 8 · die zwei Quellen des Aufmerksamkeits-Abzeichens.
-      // Fail-soft wie alles hier: ohne Antwort zählt die Ableitung schlicht
-      // nichts - nie eine erfundene Zahl an der Seitenleiste.
-      api.siteInterventions(siteId).catch(() => null),
-      api.entityStrategies(siteId).catch(() => null),
-    ]).then(([profile, entities, flows, shelf, eingriffe, strategien]) => {
+    ]).then(([profile, entities, flows, shelf]) => {
       if (!active) return;
       setProfiles(shelf);
-      setAufmerksam(
-        aufmerksamkeit({
-          automationPaused: eingriffe?.automationPaused ?? null,
-          eingriffe: eingriffe?.interventions ?? null,
-          ansprueche: strategien ?? null,
-          // NICHT bewertet - siehe den Kopf von `steuerungAufmerksamkeit.ts`.
-          vorschlaege: null,
-          now: new Date(),
-        }),
-      );
       setEntityList(entities?.entities ?? null);
       setSurface(
         anlageSurface({
@@ -142,6 +127,22 @@ export function useAnlageSurface(
       );
       setFailed(entitiesFailed);
       setLoading(false);
+    });
+    // Das Nav-Abzeichen entscheidet nicht über das Cockpit-Layout. Eine
+    // langsame Antwort hier darf die fertigen Layout-Eingaben nicht aufhalten.
+    setAufmerksam(aufmerksamkeit(null));
+    Promise.all([
+      api.siteInterventions(siteId).catch(() => null),
+      api.entityStrategies(siteId).catch(() => null),
+    ]).then(([eingriffe, strategien]) => {
+      if (!active) return;
+      setAufmerksam(aufmerksamkeit({
+        automationPaused: eingriffe?.automationPaused ?? null,
+        eingriffe: eingriffe?.interventions ?? null,
+        ansprueche: strategien ?? null,
+        vorschlaege: null,
+        now: new Date(),
+      }));
     });
     return () => {
       active = false;

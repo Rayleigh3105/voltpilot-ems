@@ -2,13 +2,23 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { anlageRoute, pageRoute } from './nav';
+import { SUB_CHUNK } from './pageChunks';
 import {
   awaitRouteChunk,
   PRELOAD_DEADLINE_MS,
   preloadRoute,
   runPageTransition,
   supportsViewTransitions,
+  transitionToRoute,
 } from './pageTransition';
+
+vi.mock('./pageChunks', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./pageChunks')>();
+  return {
+    ...actual,
+    SUB_CHUNK: { ...actual.SUB_CHUNK, steuerung: vi.fn(actual.SUB_CHUNK.steuerung) },
+  };
+});
 
 /**
  * **Der Wächter der EINEN Hülle** (Bewegungs-Programm P5, Empfehlung E5 (a)).
@@ -29,6 +39,7 @@ afterEach(() => {
   html.className = '';
   delete (document as unknown as Record<string, unknown>).startViewTransition;
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 /** Eine Attrappe der Browser-API mit Fäden, an denen der Test ziehen kann. */
@@ -60,6 +71,28 @@ describe('Bewegung P5 · ohne die Browser-API bleibt der Schnitt', () => {
     // Kein `await`: der Wechsel ist beim Rücksprung schon geschehen.
     expect(gesehen).toEqual(['angewandt']);
     expect(html.className).toBe('');
+  });
+});
+
+describe('Latest navigation wins while a page chunk is loading', () => {
+  it('does not let a delayed page replace a newer cockpit selection', async () => {
+    fakeApi();
+    let finish!: () => void;
+    vi.mocked(SUB_CHUNK.steuerung).mockReturnValueOnce(new Promise<void>((r) => { finish = r; }) as never);
+    const shown: string[] = [];
+    transitionToRoute(anlageRoute('a', 'steuerung'), 'push', () => shown.push('old'));
+    transitionToRoute(anlageRoute('b'), 'fade', () => shown.push('new'));
+    expect(shown).toEqual(['new']);
+    finish();
+    // Drain the preload -> race -> commit promise chain before the assertion.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(shown).toEqual(['new']);
+  });
+
+  it('keeps navigation synchronous without View Transitions', () => {
+    const apply = vi.fn();
+    transitionToRoute(anlageRoute('a', 'steuerung'), 'push', apply);
+    expect(apply).toHaveBeenCalledOnce();
   });
 });
 

@@ -16,6 +16,10 @@ Env (all optional, defaults match the compose stack): `VITE_API_BASE` (default `
 
 Deps install from **public npm** (`.npmrc` in this folder); override it if you build behind a corporate mirror.
 
+Repeatable cockpit/site-switch measurements and customer-page screenshots:
+[performance audit](e2e/performance/README.md). `npm run test:bundle` checks both
+the entry bundle (230 kB gzip) and shared chart bundle (210 kB gzip).
+
 ## Design system
 
 `designsystem/` holds the shared VoltPilot design system - CSS tokens (`tokens/*.css`), core/form components (`.jsx` + `.d.ts` + `.prompt.md`) and guideline cards. Tokens are imported once in `src/main.tsx`; build new UI on these components, not hand-rolled ones.

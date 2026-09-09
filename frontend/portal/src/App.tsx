@@ -39,7 +39,7 @@ import {
   type Route,
 } from './nav';
 import { PAGE_CHUNK } from './pageChunks';
-import { awaitRouteChunk, runPageTransition, supportsViewTransitions } from './pageTransition';
+import { transitionToRoute } from './pageTransition';
 import { hatGeldWelt } from './portfolioHistorie';
 import { showAddAnlageButton } from './addAnlage';
 import { activeAreaKey, anlageSidebar, resolveAnlage } from './anlageNav';
@@ -532,20 +532,8 @@ function UnifiedPortal() {
 
   const commit = useCallback((next: Route, back: boolean) => {
     committedHref.current = window.location.href;
-    // Ohne die Browser-API gibt es keinen Übergang und damit auch nichts
-    // vorzuladen: die Suspense-Grenze zeigt ihr Skelett wie bisher, und jeder
-    // bestehende Test (jsdom kennt die API nicht) bleibt synchron.
-    if (!supportsViewTransitions()) {
-      setRoute(next);
-      return;
-    }
     const kind = transitionKind(routeRef.current, next, back);
-    const chunk = awaitRouteChunk(next);
-    if (!chunk) {
-      runPageTransition(kind, () => setRoute(next));
-      return;
-    }
-    void chunk.then(() => runPageTransition(kind, () => setRoute(next)));
+    transitionToRoute(next, kind, () => setRoute(next));
   }, []);
 
   const navigate = useCallback(

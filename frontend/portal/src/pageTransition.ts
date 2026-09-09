@@ -189,3 +189,20 @@ export function awaitRouteChunk(route: Route): Promise<void> | null {
     new Promise<void>((resolve) => { window.setTimeout(resolve, PRELOAD_DEADLINE_MS); }),
   ]).then(() => undefined);
 }
+
+let navigationVersion = 0;
+
+/** A late chunk from a previous click must never replace the latest route. */
+export function transitionToRoute(route: Route, kind: TransitionKind, apply: () => void): void {
+  const version = ++navigationVersion;
+  if (!supportsViewTransitions()) {
+    apply();
+    return;
+  }
+  const commit = () => {
+    if (version === navigationVersion) runPageTransition(kind, apply);
+  };
+  const chunk = awaitRouteChunk(route);
+  if (chunk) void chunk.then(commit);
+  else commit();
+}

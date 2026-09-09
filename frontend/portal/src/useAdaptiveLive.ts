@@ -51,20 +51,22 @@ export function useAdaptiveLive(siteId: string, retryKey: number | string = 0): 
     setProfile(null);
     // Topology drives the stack decision; the profile is best-effort emphasis,
     // so only a topology failure counts as decision-critical.
-    let topologyFailed = false;
-    Promise.all([
-      api.topology(siteId).catch(() => {
-        topologyFailed = true;
-        return null;
-      }),
-      api.usageProfile(siteId).catch(() => null),
-    ]).then(([topo, prof]) => {
-      if (!active) return;
-      setTopology(topo);
-      setProfile(prof);
-      setFailed(topologyFailed);
-      setLoading(false);
-    });
+    api.topology(siteId).then(
+      (topo) => {
+        if (!active) return;
+        setTopology(topo);
+        setLoading(false);
+      },
+      () => {
+        if (!active) return;
+        setFailed(true);
+        setLoading(false);
+      },
+    );
+    api.usageProfile(siteId).then(
+      (prof) => { if (active) setProfile(prof); },
+      () => {},
+    );
     return () => {
       active = false;
     };

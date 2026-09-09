@@ -66,6 +66,19 @@ describe('useFreshnessPoll', () => {
     expect(poll).not.toHaveBeenCalled();
   });
 
+  it('überspringt Takte im Hintergrund und holt beim Sichtbarwerden sofort nach', () => {
+    const poll = vi.fn();
+    renderHook(() => useFreshnessPoll(poll, 30_000));
+    setVisibility('hidden');
+    vi.advanceTimersByTime(120_000);
+    firePageShow(true);
+    expect(poll).not.toHaveBeenCalled();
+    setVisibility('visible');
+    expect(poll).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(30_000);
+    expect(poll).toHaveBeenCalledTimes(2);
+  });
+
   it('läuft nicht, solange sie abgeschaltet ist (z. B. Admin ohne Mandant)', () => {
     const poll = vi.fn();
     renderHook(() => useFreshnessPoll(poll, 30_000, false));

@@ -743,6 +743,27 @@ export function AnlageSeite({
   // nach oben aus dem Bild gescrollt ist.
   const [moneyRef, scrolledPastMoney] = useScrolledPast<HTMLDivElement>(isPhone);
 
+  // Start the layout inputs before secondary reads can occupy the available
+  // browser connections. The loading gate below still waits for real facts.
+  // AE1/AE7: the compact "Jetzt gerade" flow becomes the adaptive N-node
+  // diagram once the site has a renderable topology; otherwise the cockpit
+  // falls back to the plain `EnergyFlow` (`CockpitHero` decides internally).
+  // `reloadKey` doubles as the retry key: bumping it (an "Erneut versuchen"
+  // click) forces a fresh fetch of the SAME site.
+  const adaptiveLive = useAdaptiveLive(site.id, reloadKey);
+
+  // M3 (#531): the cockpit is the PROJECTION of the Anlage — a deterministic
+  // module stack derived from the ACTIVE MODES (M0 `surface.ts`). `blocks`/
+  // `modes` come straight from the read-model - `cockpitBlocks` already
+  // returns `[]` for a site without entities, so there is no separate
+  // "projected ? … : []" ternary any more.
+  const {
+    surface,
+    entities: siteEntityPins,
+    loading: surfaceLoading,
+    failed: surfaceFailed,
+  } = useAnlageSurface(site, reloadKey);
+
   // Status + live snapshot: the site's overview row (device health + newest
   // sample) - the same source the fleet cards render from.
   useEffect(() => {
@@ -938,24 +959,6 @@ export function AnlageSeite({
   const ovSite = overview?.sites.find((x) => x.id === site.id) ?? null;
   const sentence = ovSite ? composeSiteSentence(ovSite, now) : null;
   const fresh = ovSite ? siteLiveFresh(ovSite, now) : false;
-  // AE1/AE7: the compact "Jetzt gerade" flow becomes the adaptive N-node
-  // diagram once the site has a renderable topology; otherwise the cockpit
-  // falls back to the plain `EnergyFlow` (`CockpitHero` decides internally).
-  // `reloadKey` doubles as the retry key: bumping it (an "Erneut versuchen"
-  // click) forces a fresh fetch of the SAME site.
-  const adaptiveLive = useAdaptiveLive(site.id, reloadKey);
-
-  // M3 (#531): the cockpit is the PROJECTION of the Anlage — a deterministic
-  // module stack derived from the ACTIVE MODES (M0 `surface.ts`). `blocks`/
-  // `modes` come straight from the read-model - `cockpitBlocks` already
-  // returns `[]` for a site without entities, so there is no separate
-  // "projected ? … : []" ternary any more.
-  const {
-    surface,
-    entities: siteEntityPins,
-    loading: surfaceLoading,
-    failed: surfaceFailed,
-  } = useAnlageSurface(site, reloadKey);
   const blocks = surface?.cockpitBlocks ?? [];
   // Die Staffel des ersten Bildes (Bewegungs-Programm P4). Sie fährt auf der
   // Erinnerung von P6 (`src/staffel.ts`): dieselbe Klasse, dieselbe Regel
