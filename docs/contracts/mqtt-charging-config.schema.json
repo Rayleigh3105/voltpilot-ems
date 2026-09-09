@@ -282,6 +282,190 @@
           }
         }
       }
+    },
+    "ocpp_control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "authorization"
+      ],
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "authorization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode"
+          ],
+          "properties": {
+            "mode": {
+              "enum": [
+                "free",
+                "allowlist"
+              ]
+            },
+            "allowed_tags": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "maxItems": 128,
+              "items": {
+                "type": "string",
+                "pattern": "^tagref_[0-9a-f]{24}$"
+              }
+            }
+          }
+        },
+        "electrical": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "maxItems": 2048,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "charge_point_id",
+              "connector_id",
+              "voltage_v",
+              "phases",
+              "max_current_a"
+            ],
+            "properties": {
+              "charge_point_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+              },
+              "connector_id": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 32
+              },
+              "voltage_v": {
+                "type": "number",
+                "minimum": 100,
+                "maximum": 300
+              },
+              "phases": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 3,
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3
+                }
+              },
+              "max_current_a": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 2000
+              }
+            }
+          }
+        },
+        "phase_limits_a": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2000
+          }
+        },
+        "limits": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "maxItems": 2048,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "charge_point_id",
+              "connector_id",
+              "limit_kw",
+              "requested_at",
+              "expires_at"
+            ],
+            "properties": {
+              "charge_point_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+              },
+              "connector_id": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 32
+              },
+              "limit_kw": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "requested_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        },
+        "test": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "charge_point_id",
+            "connector_id",
+            "limit_kw",
+            "requested_at"
+          ],
+          "properties": {
+            "charge_point_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+            },
+            "connector_id": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 32
+            },
+            "limit_kw": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 1000
+            },
+            "requested_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      },
+      "description": "Durable, revisioned local OCPP policy. Absent preserves legacy enable/free authorization; false disables OCPP only. Limits restrict allocation and expire within 24 hours. Tests restrict for 3 x 60 seconds. Phases require declared upper line-neutral voltage and all three reserved circuit budgets, without assuming wiring. Cross-field uniqueness/time/phase rules are pinned by v2/ocpp-control-vectors.json. Phase reservations are fixed across declared connectors including disconnected ones; changing wiring requires all stations on one box, connected and idle. Card policy applies to new transactions; running transactions are not stopped by revocation."
     }
   }
 }

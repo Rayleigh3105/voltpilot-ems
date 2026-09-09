@@ -2140,6 +2140,44 @@ paths:
               schema: { $ref: "#/components/schemas/SiteCharging" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/ocpp/control:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [sites]
+      summary: OCPP-Einrichtung und getrennte Bestätigungen der Boxen.
+      description: Operatoren und Anlagenverwaltung lesen desired und observed; fremde Anlage 404.
+      responses:
+        "200":
+          description: Gewünschte Konfiguration (null ohne Einstellung) und zeitgestempelte Meldungen je Box.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  desired: { type: object, nullable: true, additionalProperties: true }
+                  observed: { type: array, items: { type: object, additionalProperties: true } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+    put:
+      tags: [sites]
+      summary: OCPP-Freigabe, Anschlussdaten, Karten oder zeitlich begrenzte Ladegrenzen speichern.
+      description: >-
+        Anlagen-, Mandanten- oder Plattformverwaltung. Payload entspricht ocpp_control
+        in mqtt-charging-config.schema.json, mit der zuvor gelesenen Revision (0 initial).
+        Der Server erhöht die Revision und versendet erst nach Commit. Eine Speicherung
+        ist keine Bestätigung der Box oder der physischen Wirkung. Grenzen sind rein
+        begrenzend, maximal 24 Stunden; beaufsichtigte Tests dauern 3 x 60 Sekunden.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+      responses:
+        "200": { description: Gespeichertes desired mit neuer Revision und getrenntem observed. }
+        "400": { description: Ungültige Revision, Anschlussdaten, Karten oder Zeitgrenzen. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Keine Berechtigung zur Anlagenverwaltung. }
+        "404": { description: Site not found for this tenant. }
+        "409": { description: Revision inzwischen geändert; neu laden. }
   /api/v1/sites/{siteId}/ocpp/stations:
     get:
       tags: [sites]

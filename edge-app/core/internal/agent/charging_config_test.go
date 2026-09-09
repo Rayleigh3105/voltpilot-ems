@@ -537,3 +537,18 @@ func TestAFrameWithoutTheNewFieldsIsByteForByteAsBefore(t *testing.T) {
 }
 
 func ptrStr(s string) *string { return &s }
+
+func TestPendingPhaseSetupDoesNotPreventStationAdmission(t *testing.T) {
+	a := ocppAgent(t, nil)
+	a.entMu.Lock()
+	a.entIdentity = entities.Identity{TenantID: "t", SiteID: "s", DeviceID: "d"}
+	a.entMu.Unlock()
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s","device_id":"d","published_at":"2026-09-09T12:00:00Z",
+ "charge_points":[{"id":"NEW","connectors":1}],"ocpp_control":{"revision":1,"authorization":{"mode":"free"},"electrical":[{"charge_point_id":"NEW","connector_id":1,"voltage_v":253,"phases":[1],"max_current_a":32}],"phase_limits_a":[32,32,32]}}`))
+	if len(a.OcppChargers()) != 1 || a.OcppChargers()[0].ID != "NEW" {
+		t.Fatal("pending phase policy prevented admission")
+	}
+	if a.ocpp.srv.ControlPolicy().Revision != 0 {
+		t.Fatal("phase policy activated before station was connected and idle")
+	}
+}

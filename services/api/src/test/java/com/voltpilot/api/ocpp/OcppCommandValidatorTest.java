@@ -22,6 +22,16 @@ class OcppCommandValidatorTest {
     }
 
     @Test
+    void profileOwnershipMatchesEdgeVectors() throws Exception {
+        var vectors = mapper.readTree(java.nio.file.Path.of("../../docs/contracts/v2/ocpp-profile-ownership-vectors.json").toFile()).path("vectors");
+        for (var v : vectors) {
+            if (v.path("allowed").asBoolean()) validator.validate(v.path("action").asText(), v.path("request"));
+            else assertThatThrownBy(() -> validator.validate(v.path("action").asText(), v.path("request")))
+                    .as(v.path("name").asText()).hasMessageContaining("Lastmanagement");
+        }
+    }
+
+    @Test
     void requiredFieldsAndUnknownFieldsFailBeforeTransport() throws Exception {
         assertThatThrownBy(() -> validator.validate("RemoteStartTransaction", mapper.readTree("{}")))
                 .hasMessageContaining("idTag");

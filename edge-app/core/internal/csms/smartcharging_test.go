@@ -107,6 +107,8 @@ type station struct {
 
 type storedProfile struct {
 	purpose   types.ChargingProfilePurposeType
+	rateUnit  types.ChargingRateUnitType
+	phases    int
 	limitW    float64
 	startsAt  time.Time
 	duration  time.Duration
@@ -138,6 +140,10 @@ func (s *station) OnSetChargingProfile(r *smartcharging.SetChargingProfileReques
 	if sch := p.ChargingSchedule; sch != nil {
 		if len(sch.ChargingSchedulePeriod) > 0 {
 			sp.limitW = sch.ChargingSchedulePeriod[0].Limit
+			sp.rateUnit = sch.ChargingRateUnit
+			if n := sch.ChargingSchedulePeriod[0].NumberPhases; n != nil {
+				sp.phases = *n
+			}
 		}
 		if sch.StartSchedule != nil {
 			sp.startsAt = sch.StartSchedule.Time
@@ -154,8 +160,8 @@ func (s *station) OnClearChargingProfile(r *smartcharging.ClearChargingProfileRe
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	found := false
-	for k := range s.profiles {
-		if r.Id != nil && k[1] == *r.Id {
+	for k, p := range s.profiles {
+		if (r.Id == nil || k[1] == *r.Id) && (r.ChargingProfilePurpose == "" || p.purpose == r.ChargingProfilePurpose) && (r.ConnectorId == nil || k[0] == *r.ConnectorId) {
 			delete(s.profiles, k)
 			found = true
 		}
@@ -220,8 +226,19 @@ func (s *station) OnGetCompositeSchedule(r *smartcharging.GetCompositeScheduleRe
 	}
 	if ok {
 		conf.ScheduleStart = types.NewDateTime(s.now())
-		conf.ChargingSchedule = types.NewChargingSchedule(types.ChargingRateUnitWatts,
-			types.NewChargingSchedulePeriod(0, limit))
+		unit := types.ChargingRateUnitWatts
+		phases := 0
+		for _, p := range s.profiles {
+			if p.connector == r.ConnectorId {
+				unit, phases = p.rateUnit, p.phases
+				break
+			}
+		}
+		period := types.NewChargingSchedulePeriod(0, limit)
+		if phases > 0 {
+			period.NumberPhases = &phases
+		}
+		conf.ChargingSchedule = types.NewChargingSchedule(unit, period)
 	}
 	return conf, nil
 }
@@ -624,7 +641,7 @@ func TestARefusedProfileIsNamedNeverAssumed(t *testing.T) {
 	}
 	c, _ = s.Snapshot().ChargerByID("SAEULE-1")
 	con := c.ConnectorByID(1)
-	if con == nil || con.CommandStatus != "Rejected" {
+	if con == nil || !strings.Contains(con.CommandStatus, "Sicherheitsprofile fehlen") {
 		t.Fatalf("connector command status: %+v", con)
 	}
 }

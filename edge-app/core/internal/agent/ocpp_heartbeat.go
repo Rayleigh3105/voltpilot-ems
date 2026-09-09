@@ -26,6 +26,7 @@ func (a *Agent) chargersSummary() *cloud.ChargersSummary {
 		return nil
 	}
 	out := &cloud.ChargersSummary{
+		ControlStatus:    info.ControlStatus,
 		ReportedAt:       time.Now().UTC().Format(time.RFC3339),
 		Enabled:          info.Enabled,
 		ControlEnabled:   info.ControlEnabled,

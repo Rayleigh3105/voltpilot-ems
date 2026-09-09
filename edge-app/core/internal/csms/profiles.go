@@ -52,9 +52,12 @@ const TxProfileDuration = 120 * time.Second
 
 // ChargingProfile is one profile in plain types.
 type ChargingProfile struct {
-	ID         int
-	StackLevel int
-	Purpose    string
+	RateUnit     string
+	LimitA       float64
+	NumberPhases int
+	ID           int
+	StackLevel   int
+	Purpose      string
 	// TransactionID binds a TxProfile to the running transaction (0 = none).
 	TransactionID int
 	// LimitKw is the ceiling. 0 is a LEGITIMATE value and means "do not
@@ -182,11 +185,8 @@ func (c Capabilities) Usable() (bool, string) {
 	if !c.Read {
 		return false, "Die Ladesäule hat ihre Smart-Charging-Fähigkeiten noch nicht gemeldet."
 	}
-	if c.WattsAllowed {
+	if c.WattsAllowed || c.AmpsAllowed {
 		return true, ""
-	}
-	if c.AmpsAllowed {
-		return false, "Diese Ladesäule nimmt Ladegrenzen nur in Ampere entgegen. VoltPilot rechnet in kW und müsste Spannung und Phasenzahl raten — deshalb wird hier nichts vorgegeben."
 	}
 	return false, "Diese Ladesäule hat keine unterstützte Einheit für Ladegrenzen gemeldet."
 }

@@ -3,6 +3,7 @@
 package state
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -626,9 +627,10 @@ func (s *Store) Get() Snapshot {
 // OcppInfo is the whole charge-point picture. nil on the snapshot = the
 // feature flag is off and the box behaves as it did before it existed.
 type OcppInfo struct {
-	Enabled   bool   `json:"enabled"`
-	Listening bool   `json:"listening"`
-	Error     string `json:"error,omitempty"`
+	ControlStatus json.RawMessage `json:"control_status,omitempty"`
+	Enabled       bool            `json:"enabled"`
+	Listening     bool            `json:"listening"`
+	Error         string          `json:"error,omitempty"`
 	// Endpoint is the BASE url an operator types into a station; the full one
 	// carries the station's own ChargePointId after it.
 	Endpoint string `json:"endpoint,omitempty"`

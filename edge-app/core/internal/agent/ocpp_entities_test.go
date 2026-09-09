@@ -24,7 +24,7 @@ func TestAChargePointPublishesItsMeasuredPowerAsEntityTelemetry(t *testing.T) {
 		Charger: csms.Charger{ID: "WB-1"},
 		Connectors: []csms.Connector{{
 			ID: 1, Status: csms.StatusCharging,
-			PowerKw: f64(11.04), EnergyKwh: f64(1234.5), MeteredAt: metered,
+			PowerKw: f64(11.04), EnergyKwh: f64(1234.5), EnergyMeasuredAt: metered, MeteredAt: metered,
 		}},
 	})
 	got := ocppEntityReadings(snap, map[string]string{"WB-1": "ent-wb1"}, now, ocppMeterMaxAge)
@@ -50,8 +50,8 @@ func TestTheConnectorsOfOneStationSumIntoItsComponent(t *testing.T) {
 	snap := snapWith(csms.ChargerState{
 		Charger: csms.Charger{ID: "WB-1"},
 		Connectors: []csms.Connector{
-			{ID: 1, PowerKw: f64(7.2), EnergyKwh: f64(100), MeteredAt: older},
-			{ID: 2, PowerKw: f64(3.8), EnergyKwh: f64(50), MeteredAt: newer},
+			{ID: 1, PowerKw: f64(7.2), EnergyKwh: f64(100), EnergyMeasuredAt: older, MeteredAt: older},
+			{ID: 2, PowerKw: f64(3.8), EnergyKwh: f64(50), EnergyMeasuredAt: newer, MeteredAt: newer},
 		},
 	})
 	got := ocppEntityReadings(snap, map[string]string{"WB-1": "ent"}, now, ocppMeterMaxAge)
@@ -218,7 +218,7 @@ func TestThePublishedTelemetryIsTheE1bShapeAndDeduplicates(t *testing.T) {
 	snap := snapWith(csms.ChargerState{
 		Charger: csms.Charger{ID: "WB-1"},
 		Connectors: []csms.Connector{{
-			ID: 1, PowerKw: f64(11.04), EnergyKwh: f64(42), MeteredAt: metered,
+			ID: 1, PowerKw: f64(11.04), EnergyKwh: f64(42), EnergyMeasuredAt: metered, MeteredAt: metered,
 		}},
 	})
 	a.publishOcppEntityTelemetry(snap, now)
@@ -250,5 +250,23 @@ func TestThePublishedTelemetryIsTheE1bShapeAndDeduplicates(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if again := got(); len(again) != 1 {
 		t.Fatalf("an unchanged sample must not be published twice, got %d", len(again))
+	}
+}
+
+func TestEntityTelemetryKeepsIndependentChannelClocks(t *testing.T) {
+	now := time.Now().UTC()
+	powerAt := now.Add(-5 * time.Second)
+	snap := snapWith(csms.ChargerState{Charger: csms.Charger{ID: "CP"}, Connectors: []csms.Connector{{ID: 1, PowerKw: f64(7), MeteredAt: powerAt, EnergyKwh: f64(12), EnergyMeasuredAt: now}}})
+	readings := ocppEntityReadings(snap, map[string]string{"CP": "entity"}, now, ocppMeterMaxAge)
+	if len(readings) != 2 || !readings[0].Ts.Equal(powerAt) || readings[0].Channels["power_kw"] != 7 || !readings[1].Ts.Equal(now) || readings[1].Channels["energy_kwh"] != 12 {
+		t.Fatalf("channel clocks merged: %+v", readings)
+	}
+	readings = ocppEntityReadings(snap, map[string]string{"CP": "entity"}, now.Add(28*time.Second), ocppMeterMaxAge)
+	if len(readings) != 1 || readings[0].Channels["energy_kwh"] != 12 {
+		t.Fatalf("energy revived old power: %+v", readings)
+	}
+	snap.Chargers[0].Connectors[0].EnergyMeasuredAt = now.Add(time.Second)
+	if len(ocppEntityReadings(snap, map[string]string{"CP": "entity"}, now, ocppMeterMaxAge)) != 1 {
+		t.Fatal("future energy published")
 	}
 }

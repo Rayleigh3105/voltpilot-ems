@@ -284,24 +284,25 @@ func (h *coreHandler) OnStatusNotification(id string, req *core.StatusNotificati
 	return core.NewStatusNotificationConfirmation(), nil
 }
 
-// OnAuthorize ACCEPTS every tag.
-//
-// ⚠ This is the scope fence (Konzept E4), not an oversight: this product is
-// LOAD MANAGEMENT, not a charge point operator backend. There is no billing,
-// no calibration law, no roaming and no user management here, so there is
-// nothing an authorization decision could be based on — and a fabricated
-// "Invalid" would stop a customer's car for a reason we invented. Access
-// control at a private site is the site's own (gate, parking, RFID inside the
-// station). A local allow list is the natural additive follow-up.
+// OnAuthorize uses the same durable local card policy as StartTransaction.
 func (h *coreHandler) OnAuthorize(id string, req *core.AuthorizeRequest) (*core.AuthorizeConfirmation, error) {
 	h.srv.touch(id, h.srv.opts.Now())
+	if !h.srv.authorized(req.IdTag) || !h.srv.startReady(id) {
+		return core.NewAuthorizationConfirmation(types.NewIdTagInfo(types.AuthorizationStatusInvalid)), nil
+	}
 	return core.NewAuthorizationConfirmation(types.NewIdTagInfo(types.AuthorizationStatusAccepted)), nil
 }
 
 // OnStartTransaction opens a session and hands back its id.
 func (h *coreHandler) OnStartTransaction(id string, req *core.StartTransactionRequest) (*core.StartTransactionConfirmation, error) {
-	now := h.srv.opts.Now()
-	txID := h.srv.onStartTransaction(id, req.ConnectorId, req.IdTag, req.MeterStart, now)
+	h.srv.authorized(req.IdTag) // also observes the pseudonym; admission is atomic below
+	txID := h.srv.onStartTransaction(id, req.ConnectorId, req.IdTag, req.MeterStart, req.Timestamp.Time)
+	if txID == 0 {
+		if !h.srv.authorized(req.IdTag) || !h.srv.startReady(id) {
+			return core.NewStartTransactionConfirmation(types.NewIdTagInfo(types.AuthorizationStatusInvalid), 0), nil
+		}
+		return nil, errors.New("Ladevorgang konnte nicht eindeutig und dauerhaft angenommen werden")
+	}
 	return core.NewStartTransactionConfirmation(types.NewIdTagInfo(types.AuthorizationStatusAccepted), txID), nil
 }
 
@@ -310,10 +311,12 @@ func (h *coreHandler) OnStopTransaction(id string, req *core.StopTransactionRequ
 	now := h.srv.opts.Now()
 	for _, mv := range req.TransactionData {
 		samples := mapSamples(mv.SampledValue)
-		h.srv.emitSampledValues(samples, now)
-		h.srv.onMeterValues(id, connectorOfTransaction(h.srv, id, req.TransactionId), ParseMeterValues(samples), now)
+		h.srv.emitLiveSampledValues(samples, mv.Timestamp.Time, now)
+		h.srv.onMeterSample(id, connectorOfTransaction(h.srv, id, req.TransactionId), ParseMeterValues(samples), mv.Timestamp.Time, now, &req.TransactionId)
 	}
-	h.srv.onStopTransaction(id, req.TransactionId, now)
+	if err := h.srv.onStopTransaction(id, req.TransactionId, now); err != nil {
+		return nil, err
+	}
 	return core.NewStopTransactionConfirmation(), nil
 }
 
@@ -322,13 +325,13 @@ func (h *coreHandler) OnMeterValues(id string, req *core.MeterValuesRequest) (*c
 	now := h.srv.opts.Now()
 	for _, mv := range req.MeterValue {
 		samples := mapSamples(mv.SampledValue)
-		h.srv.emitSampledValues(samples, now)
+		h.srv.emitLiveSampledValues(samples, mv.Timestamp.Time, now)
 		r := ParseMeterValues(samples)
 		if r.Dropped > 0 {
 			h.srv.log.Debug("Messwerte einer Ladesäule teilweise verworfen",
 				"charge_point_id", id, "connector", req.ConnectorId, "dropped", r.Dropped)
 		}
-		h.srv.onMeterValues(id, req.ConnectorId, r, now)
+		h.srv.onMeterSample(id, req.ConnectorId, r, mv.Timestamp.Time, now, req.TransactionId)
 	}
 	return core.NewMeterValuesConfirmation(), nil
 }
@@ -387,6 +390,12 @@ func (s *Server) emitSampledValues(samples []SampledReading, now time.Time) {
 	}
 }
 
+func (s *Server) emitLiveSampledValues(samples []SampledReading, sampled, received time.Time) {
+	if liveMeterTime(sampled, received) {
+		s.emitSampledValues(samples, sampled)
+	}
+}
+
 // --- Smart Charging + configuration, CSMS -> station ---
 //
 // ocpp-go sends every CSMS-initiated request asynchronously with a callback.
@@ -441,6 +450,11 @@ func toOcppProfile(p ChargingProfile) *types.ChargingProfile {
 	// The limit unit is WATTS: our model is kW and the station's is W.
 	period.Limit = p.LimitKw * 1000
 	schedule := types.NewChargingSchedule(types.ChargingRateUnitWatts, period)
+	if p.RateUnit == "A" {
+		period.Limit = p.LimitA
+		period.NumberPhases = &p.NumberPhases
+		schedule = types.NewChargingSchedule(types.ChargingRateUnitAmperes, period)
+	}
 	schedule.StartSchedule = types.NewDateTime(p.StartsAt)
 	if p.Duration > 0 {
 		d := int(p.Duration / time.Second)
@@ -482,11 +496,33 @@ func (t *transport) clearChargingProfile(ctx context.Context, id string, profile
 	return string(conf.Status), nil
 }
 
+func (t *transport) clearProfilePurpose(ctx context.Context, id, purpose string) error {
+	conf, err := await(ctx, func(cb func(*smartcharging.ClearChargingProfileConfirmation, error)) error {
+		return t.cs.ClearChargingProfile(id, cb, func(r *smartcharging.ClearChargingProfileRequest) {
+			r.ChargingProfilePurpose = types.ChargingProfilePurposeType(purpose)
+		})
+	})
+	if err != nil {
+		return err
+	}
+	if conf == nil || (conf.Status != smartcharging.ClearChargingProfileStatusAccepted && conf.Status != smartcharging.ClearChargingProfileStatusUnknown) {
+		return errors.New("Profilbestand konnte nicht bereinigt werden")
+	}
+	return nil
+}
+
 func (t *transport) getCompositeSchedule(ctx context.Context, id string, connectorID int, d time.Duration) (CompositeSchedule, error) {
+	p, prepErr := t.srv.stationProfile(id, connectorID, ChargingProfile{})
+	if prepErr != nil {
+		return CompositeSchedule{}, prepErr
+	}
 	conf, err := await(ctx, func(cb func(*smartcharging.GetCompositeScheduleConfirmation, error)) error {
 		return t.cs.GetCompositeSchedule(id, cb, connectorID, int(d/time.Second),
 			func(r *smartcharging.GetCompositeScheduleRequest) {
 				r.ChargingRateUnit = types.ChargingRateUnitWatts
+				if p.RateUnit == "A" {
+					r.ChargingRateUnit = types.ChargingRateUnitAmperes
+				}
 			})
 	})
 	if err != nil {
@@ -511,6 +547,16 @@ func (t *transport) getCompositeSchedule(ctx context.Context, id string, connect
 		case types.ChargingRateUnitWatts:
 			kw := limit / 1000
 			out.LimitKw = &kw
+		case types.ChargingRateUnitAmperes:
+			wiring, known := t.srv.ControlPolicy().Wiring(id, connectorID)
+			phases := 3
+			if n := sch.ChargingSchedulePeriod[0].NumberPhases; n != nil {
+				phases = *n
+			}
+			if known && phases == len(wiring.Phases) && limit >= 0 {
+				kw := limit * wiring.VoltageV * float64(phases) / 1000
+				out.LimitKw = &kw
+			}
 		default:
 			// An answer in amperes cannot be converted without voltage and
 			// phase count - see Capabilities.Usable. Reporting it as kW would

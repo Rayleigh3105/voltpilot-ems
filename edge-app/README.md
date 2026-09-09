@@ -116,13 +116,17 @@ Drei Dinge, die man wissen sollte:
 - **Nur eingetragene Kennungen kommen herein.** Eine Ladesäule, die nicht in
   der Liste steht, wird schon beim Verbindungsaufbau abgewiesen. Der Port ist
   **LAN-only** wie `:8484` — nie öffentlich erreichbar machen.
-- **Die Verteilung braucht zusätzlich** `VP_CONTROL_ENABLED` **und**
-  `VP_CONSUMER_CONTROL_ENABLED`. Ohne sie hält jede Säule ihr hinterlegtes
-  Sicherheitsprofil — sicher, nur nicht optimiert, und die Oberfläche sagt es.
+- **Die Verteilung braucht die globale Steuerungsfreigabe** und die OCPP-Freigabe
+  im Portal. Ohne explizite OCPP-Einstellung gilt weiterhin
+  `VP_CONSUMER_CONTROL_ENABLED`. Andere Verbraucher werden dadurch nicht freigegeben.
 - **Fällt die Box aus, begrenzt sich jede Säule selbst** (das OCPP-eigene
   Ladeprofil läuft ab) und lädt langsamer weiter. Die Zahl dafür wird aus
   Anschlussgrenze, höchster bekannter Gebäudelast und Steckerzahl abgeleitet
   und auf der Fläche vorgerechnet.
+
+Einrichtung, zeitlich begrenzte Ladegrenzen, Ampere-Steuerung mit erklärten
+Phasen, lokale Kartenfreigabe und beaufsichtigte Regelprüfung sind in
+[OCPP-Steuerung](../docs/ocpp-control.md) beschrieben.
 
 Der Stand ist **simulator-bewiesen** (`./test/e2e-ocpp.sh`); eine echte Säule
 braucht je Typ eine beaufsichtigte Bench-Session, bevor sie „zertifiziert"

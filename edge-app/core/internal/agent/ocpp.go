@@ -355,6 +355,20 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	if a.arb != nil {
 		ocppApplyBridge(sessions, a.chargePointEntities(), byKey, a.arb.DecisionFor)
 	}
+	control := rt.srv.ControlPolicy()
+	for i := range sessions {
+		if claim, ok := byKey[sessions[i].Key]; ok {
+			physical := control.PhaseCaps(claim.chargerID, claim.connectorID, sessions[i].MaxKw)
+			cap := control.LimitKw(claim.chargerID, claim.connectorID, now, physical)
+			if cap < sessions[i].MaxKw && (sessions[i].CapKw == nil || cap < *sessions[i].CapKw) {
+				sessions[i].CapKw = &cap
+				sessions[i].CapReason = lastmgmt.ReasonManual
+				if cap == physical {
+					sessions[i].CapReason = lastmgmt.ReasonNoBudget
+				}
+			}
+		}
+	}
 	plan := lastmgmt.Decide(lastmgmt.Input{
 		Settings: set, Sessions: sessions, BudgetKw: &allocKw,
 		SourceBudgetKw: ocppSourceBudget(surplus, allocKw),
@@ -505,7 +519,7 @@ func (a *Agent) ocppCommission(ctx context.Context, c csms.ChargerState, planabl
 	}
 	// The fingerprint includes the CONNECTION generation, so a station that
 	// rebooted and may have lost its profiles is set up again.
-	fp := fmt.Sprintf("%d|%.3f|%.3f", c.ConnectedAt.UnixNano(), maxKw, safe.PerConnectorKw)
+	fp := fmt.Sprintf("%d|%d|%s|%.3f|%.3f", c.ConnectedAt.UnixNano(), c.BootedAt.UnixNano(), rt.srv.ControlPolicy().SafetyKey(), maxKw, safe.PerConnectorKw)
 	rt.mu.Lock()
 	same := rt.commissioned[c.ID] == fp
 	rt.mu.Unlock()
@@ -583,6 +597,7 @@ func (a *Agent) ocppApply(ctx context.Context, plan lastmgmt.Plan, byKey map[str
 // measured it".
 func (a *Agent) ocppReadback(ctx context.Context, snap csms.Snapshot, now time.Time) {
 	rt := a.ocpp
+	test := rt.srv.ControlPolicy().Test
 	for _, c := range snap.Chargers {
 		if !c.Connected {
 			continue
@@ -592,6 +607,9 @@ func (a *Agent) ocppReadback(ctx context.Context, snap csms.Snapshot, now time.T
 			rt.mu.Lock()
 			last := rt.lastReadback[key]
 			due := now.Sub(last) >= ocppReadbackInterval
+			if test != nil && test.ChargePointID == c.ID && test.ConnectorID == con.ID && !now.Before(test.RequestedAt) && now.Before(test.RequestedAt.Add(180*time.Second)) {
+				due = true
+			}
 			if due {
 				rt.lastReadback[key] = now
 			}
@@ -770,6 +788,14 @@ func (a *Agent) ocppControlAllowed() (bool, string) {
 	if !a.Cfg.ControlEnabled {
 		return false, "Die Steuerung ist an dieser Box abgeschaltet (Not-Aus). Die Ladesäulen halten ihr hinterlegtes Sicherheitsprofil."
 	}
+	if a.ocpp != nil {
+		if enabled := a.ocpp.srv.ControlPolicy().Enabled; enabled != nil {
+			if !*enabled {
+				return false, "Die OCPP-Steuerung wurde in der Einrichtung abgeschaltet."
+			}
+			return true, ""
+		}
+	}
 	if !a.Cfg.ConsumerControlEnabled {
 		return false, "Die Verbrauchersteuerung ist an dieser Box noch nicht freigegeben. Die Ladesäulen halten ihr hinterlegtes Sicherheitsprofil."
 	}
@@ -849,8 +875,10 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 		paused[k] = true
 	}
 
+	controlStatus, _ := json.Marshal(rt.srv.ControlStatus(allowed, now))
 	info := &state.OcppInfo{
-		Enabled: snap.Enabled, Listening: snap.Listening, Error: snap.Error,
+		ControlStatus: controlStatus,
+		Enabled:       snap.Enabled, Listening: snap.Listening, Error: snap.Error,
 		Endpoint: rt.srv.Endpoint(a.ocppHost()),
 		Port:     snap.Port, URLPath: snap.URLPath,
 		ControlEnabled: allowed, ControlNote: note,
@@ -903,7 +931,7 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 		oc := state.OcppCharger{
 			ID: c.ID, Label: c.Label, Priority: c.Priority, Connected: c.Connected,
 			Vendor: c.Vendor, Model: c.Model, Firmware: c.Firmware,
-			Ready: !c.CommissionedAt.IsZero(), Note: c.CommissionError,
+			Ready: !c.CommissionedAt.IsZero() && c.Connected && !c.CommissionedAt.Before(c.BootedAt) && !c.CommissionedAt.Before(c.ConnectedAt), Note: c.CommissionError,
 			// Der AUFGELÖSTE Wert (abwesend = hinter dem Haus): die Karte und
 			// der Herzschlag sollen nicht beide dieselbe Vorgabe-Regel führen.
 			Connection: c.ConnectionOrHaus(),
@@ -917,10 +945,10 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 		for _, con := range c.Connectors {
 			ocn := state.OcppConnector{
 				ID: con.ID, Status: con.Status,
-				Charging:      con.Session != nil && (con.Status == "" || csms.ChargingStatus(con.Status)),
+				Charging:      con.Session != nil && !con.Session.Reconciling && (con.Status == "" || csms.ChargingStatus(con.Status)),
 				PowerKw:       con.PowerKw,
-				EnergyKwh:     con.EnergyKwh,
-				SocPct:        con.SocPct,
+				EnergyKwh:     freshOcppValue(con.EnergyKwh, con.EnergyMeasuredAt, now),
+				SocPct:        freshOcppValue(con.SocPct, con.SocMeasuredAt, now),
 				CommandStatus: con.CommandStatus,
 				Readback:      con.Readback,
 				ReadbackNote:  con.ReadbackNote,
@@ -940,8 +968,8 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 				// here and nowhere else without a second data source (the
 				// cloud had to join the Slice-10 journal for it). Absent
 				// register = absent balance, never a fabricated 0.
-				if con.EnergyKwh != nil {
-					kwh := *con.EnergyKwh - float64(con.Session.MeterStartWh)/1000
+				if ocn.EnergyKwh != nil {
+					kwh := *ocn.EnergyKwh - float64(con.Session.MeterStartWh)/1000
 					// A negative balance is a register that moved backwards
 					// (a reset, a swapped meter): we do not know what was
 					// delivered, so we say nothing instead of a wrong number.
@@ -1093,4 +1121,13 @@ func (a *Agent) ocppForget(id string) {
 	rt.mu.Lock()
 	delete(rt.commissioned, id)
 	rt.mu.Unlock()
+}
+
+// Legacy heartbeat consumers have only a power timestamp. Do not let that
+// clock make an older energy/SoC value look like a fresh measurement.
+func freshOcppValue(value *float64, sampled, now time.Time) *float64 {
+	if sampled.IsZero() || sampled.After(now) || now.Sub(sampled) > ocppMeterMaxAge {
+		return nil
+	}
+	return value
 }

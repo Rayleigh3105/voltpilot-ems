@@ -79,6 +79,21 @@ public class DeviceChargerStatusRepository {
         this.jdbc = jdbc;
     }
 
+    public void replaceOcppControlStatus(UUID deviceId, String state) {
+        jdbc.update("UPDATE device_charging_budget SET ocpp_control_status = ?::jsonb WHERE device_id = ?", state, deviceId);
+    }
+
+    public List<Map<String, Object>> ocppControlStatus(UUID siteId) {
+        return jdbc.query("SELECT device_id, reported_at, ocpp_control_status::text FROM device_charging_budget "
+                + "WHERE site_id = ? AND ocpp_control_status IS NOT NULL ORDER BY device_id", (rs, n) -> {
+            try {
+                return Map.<String, Object>of("deviceId", rs.getObject("device_id", UUID.class),
+                        "reportedAt", rs.getTimestamp("reported_at").toInstant(), "state",
+                        new com.fasterxml.jackson.databind.ObjectMapper().readTree(rs.getString("ocpp_control_status")));
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new IllegalStateException(e); }
+        }, siteId);
+    }
+
     /** Ersetzt den ganzen gemeldeten Satz eines Geräts durch die Sicht EINES Herzschlags. */
     @Transactional
     public void replaceForDevice(UUID deviceId, UUID tenantId, UUID siteId, Instant reportedAt,

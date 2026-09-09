@@ -31,17 +31,15 @@ Arbeitsteilung zwischen ihnen IST die Ausfallsicherheit:
   Einheiten-Schlüssel gilt als „W erlaubt"** — er ist in 1.6 optional und viel
   Firmware lässt ihn weg, während sie Watt-Grenzen anstandslos nimmt; die
   Antwort der Säule auf `SetChargingProfile` bleibt das echte Urteil.
-- **⚠ Nur WATT in dieser Stufe.** kW in Ampere umzurechnen braucht Spannung UND
-  Phasenzahl, und OCPP nennt beides nicht. Genau so überschreitet ein
-  Lastmanagement einen Anschluss — deshalb wird eine Ampere-only-Säule BENANNT
-  abgelehnt und bekommt GAR KEIN Profil (statt einer geratenen Grenze).
-  Ampere mit betreiber-erklärter Spannung/Phasenzahl ist die erste Folgearbeit
-  und ein Bench-Punkt je Säulen-Typ.
+- **Ampere braucht bestätigte Anschlussdaten.** Ohne obere Betriebsspannung,
+  tatsächliche Phasen und reservierte Phasenbudgets bleibt eine Ampere-only-Säule
+  gesperrt. Profile und Rücklesung verwenden diese Daten; keine geratenen Werte.
+  Die Grenzen und der Kundenablauf stehen in `docs/ocpp-control.md`.
 - **Rücklesen ist Pflicht, und Schweigen ist keine Zustimmung**
   (`GetCompositeSchedule` → `CompareReadback`): `ok` · `abweichend` ·
   `unbekannt`. Ein angenommener Befehl ist kein Befehl in Kraft — die
-  PR-280-/Deye-Lehre auf OCPP übertragen. Eine Antwort in AMPERE wird nicht
-  umgerechnet, sondern bleibt ehrlich `unbekannt`.
+  PR-280-/Deye-Lehre auf OCPP übertragen. Eine Antwort in AMPERE wird nur mit passender erklärter Verdrahtung
+  umgerechnet; fehlende oder abweichende Phasen bleiben `unbekannt`.
 - **`Commission` läuft bei JEDEM (Wieder-)Verbinden**, nicht einmal beim
   Koppeln: eine Säule, die neu gestartet hat, kann ihr Sicherheitsprofil
   verloren haben, und eine Anlage mit geänderten Grenzen muss die neuen lernen.

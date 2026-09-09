@@ -45,6 +45,15 @@ public class OcppActionService {
         this.transactions = new TransactionTemplate(transactionManager);
     }
 
+    private void validateAuthorizationOwnership(UUID siteId, String action, JsonNode request) {
+        boolean owned = "SendLocalList".equals(action) || ("ChangeConfiguration".equals(action)
+                && Set.of("AllowOfflineTxForUnknownId", "AuthorizationCacheEnabled", "LocalPreAuthorize", "LocalAuthorizeOffline",
+                    "LocalAuthListEnabled", "StopTransactionOnInvalidId", "MaxEnergyOnInvalidId", "AuthorizeRemoteTxRequests")
+                    .contains(request.path("key").asText()));
+        if (owned && actions.managedAuthorization(siteId))
+            throw bad("Diese Einstellung wird von der OCPP-Einrichtung verwaltet. Bitte dort die Kartenfreigabe ändern.");
+    }
+
     public OcppActionDto.Intent intent(UUID siteId, String cp, OcppActionDto.IntentRequest req, String actor) {
         requireAction(req.action());
         if (!requiresIntent(req.action(), req.request())) throw bad("Für diese Aktion ist kein Hochrisiko-Intent vorgesehen.");
@@ -52,6 +61,7 @@ public class OcppActionService {
         try { validator.validate(req.action(), req.request()); }
         catch (IllegalArgumentException e) { throw bad(e.getMessage()); }
         validateArtifactPolicy(req.action(), req.request());
+        validateAuthorizationOwnership(siteId, req.action(), req.request());
         Integer connectorId = boundIdentifier(req.connectorId(), req.request(), "connectorId");
         Integer transactionId = boundIdentifier(req.transactionId(), req.request(), "transactionId");
         String requestHash = requestHash(siteId, target.deviceId(), cp, req.action(), connectorId, transactionId, req.request());
@@ -74,6 +84,7 @@ public class OcppActionService {
         try { wireRequest = validator.validate(req.action(), originalRequest); }
         catch (IllegalArgumentException e) { throw bad(e.getMessage()); }
         validateArtifactPolicy(req.action(), originalRequest);
+        validateAuthorizationOwnership(siteId, req.action(), originalRequest);
         Integer connectorId = boundIdentifier(req.connectorId(), originalRequest, "connectorId");
         Integer transactionId = boundIdentifier(req.transactionId(), originalRequest, "transactionId");
         if ("CancelReservation".equals(req.action()) && connectorId == null)

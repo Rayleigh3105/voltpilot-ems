@@ -12,6 +12,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppcontrol"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppsim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
@@ -510,4 +511,34 @@ func TestTheStateSnapshotNeverInventsAMeasurement(t *testing.T) {
 	nearKw(t, "budget on the surface", info.BudgetKw, 82.3)
 	// One station with two plugs: (277 - 180) / 2, floored.
 	nearKw(t, "safe default on the surface", info.SafeDefaultKw, 48.5)
+}
+
+func TestOcppEnableIsIndependentAndGlobalStopStillWins(t *testing.T) {
+	a := ocppAgent(t, func(c *config.Config) { c.ConsumerControlEnabled = false })
+	enabled := true
+	p := ocppcontrol.Policy{Revision: 1, Enabled: &enabled, Authorization: ocppcontrol.Authorization{Mode: "free"}}
+	if err := a.ocpp.srv.SetControlPolicy(p); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, note := a.ocppControlAllowed(); !allowed {
+		t.Fatalf("OCPP override did not enable: %s", note)
+	}
+	if a.Cfg.ConsumerControlEnabled {
+		t.Fatal("OCPP enabled non-OCPP consumers")
+	}
+	b := ocppAgent(t, func(c *config.Config) { c.ControlEnabled = false })
+	if err := b.ocpp.srv.SetControlPolicy(p); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, _ := b.ocppControlAllowed(); allowed {
+		t.Fatal("OCPP override bypassed global stop")
+	}
+	enabled = false
+	p.Revision++
+	if err := a.ocpp.srv.SetControlPolicy(p); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, _ := a.ocppControlAllowed(); allowed {
+		t.Fatal("explicit OCPP disable ignored")
+	}
 }

@@ -45,7 +45,7 @@ type ocppEntityReading struct {
 //
 // Three honesty rules, each the house rule applied to this transport:
 //
-//  1. **Only FRESH measurements count.** A connector's MeteredAt older than
+//  1. **Only FRESH measurements count.** Each channel's own measurement timestamp older than
 //     maxAge is not a reading at all - it is the last thing we heard. The same
 //     window ChargingTotal uses (ocppMeterMaxAge), so the value that reaches
 //     the cloud and the value that shapes the budget can never disagree about
@@ -60,7 +60,7 @@ type ocppEntityReading struct {
 //     is a different thing and IS published - a plugged-in car taking nothing
 //     is a fact the station reported.
 //  3. **The timestamp is the OBSERVATION, not the tick.** Ts is the newest
-//     contributing MeteredAt, so re-publishing an unchanged sample is a no-op
+//     contributing timestamp for that channel, so re-publishing an unchanged sample is a no-op
 //     at the idempotent (entity, channel, time) insert, and the recorded time
 //     is when the station measured - not when we got round to asking.
 //
@@ -80,54 +80,48 @@ func ocppEntityReadings(snap csms.Snapshot, entityByChargePoint map[string]strin
 		if entityID == "" {
 			continue
 		}
-		var power, energy float64
-		havePower, haveEnergy := false, false
-		incomplete := false
-		var newest time.Time
-		for _, con := range c.Connectors {
-			if con.MeteredAt.IsZero() {
-				// Never metered: not part of this station's sum at all.
-				continue
+		// Each channel owns its timestamp. An energy-only update must never
+		// republish old power with the energy clock (and vice versa).
+		byTime := map[time.Time]map[string]float64{}
+		for _, channel := range []string{"power_kw", "energy_kwh"} {
+			sum, have, incomplete := 0.0, false, false
+			var newest time.Time
+			for _, con := range c.Connectors {
+				value, at := con.PowerKw, con.MeteredAt
+				if channel == "energy_kwh" {
+					value, at = con.EnergyKwh, con.EnergyMeasuredAt
+				}
+				if value == nil && at.IsZero() {
+					continue
+				}
+				if value == nil || at.IsZero() || at.After(now) || now.Sub(at) > maxAge {
+					incomplete = true
+					continue
+				}
+				sum += *value
+				have = true
+				if at.After(newest) {
+					newest = at
+				}
 			}
-			if now.Sub(con.MeteredAt) > maxAge {
-				// Metered before, silent now - the station's total cannot be
-				// formed without inventing this plug's share.
-				incomplete = true
-				continue
-			}
-			contributed := false
-			if con.PowerKw != nil {
-				power += *con.PowerKw
-				havePower = true
-				contributed = true
-			}
-			// The energy register is CUMULATIVE. Summing the registers of a
-			// station's plugs is the station's own delivered energy, and it
-			// stays monotone as long as each plug's register does - which is
-			// exactly what the counter rollup expects.
-			if con.EnergyKwh != nil {
-				energy += *con.EnergyKwh
-				haveEnergy = true
-				contributed = true
-			}
-			if contributed && con.MeteredAt.After(newest) {
-				newest = con.MeteredAt
+			if have && !incomplete {
+				if byTime[newest] == nil {
+					byTime[newest] = map[string]float64{}
+				}
+				byTime[newest][channel] = round3(sum)
 			}
 		}
-		if incomplete || (!havePower && !haveEnergy) {
-			continue
+		for at, channels := range byTime {
+			out = append(out, ocppEntityReading{EntityID: entityID, Ts: at, Channels: channels})
 		}
-		ch := map[string]float64{}
-		if havePower {
-			ch["power_kw"] = round3(power)
-		}
-		if haveEnergy {
-			ch["energy_kwh"] = round3(energy)
-		}
-		out = append(out, ocppEntityReading{EntityID: entityID, Ts: newest, Channels: ch})
 	}
 	// Deterministic order so a test - and a log - sees the same sequence twice.
-	sort.Slice(out, func(i, j int) bool { return out[i].EntityID < out[j].EntityID })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].EntityID == out[j].EntityID {
+			return out[i].Ts.Before(out[j].Ts)
+		}
+		return out[i].EntityID < out[j].EntityID
+	})
 	return out
 }
 
@@ -218,12 +212,16 @@ func (a *Agent) ocppMarkPublished(r ocppEntityReading) bool {
 	if rt.entityPublished == nil {
 		rt.entityPublished = map[string]ocppEntityReading{}
 	}
-	prev, ok := rt.entityPublished[r.EntityID]
-	if ok && prev.Ts.Equal(r.Ts) && sameChannels(prev.Channels, r.Channels) {
-		return false
+	changed := false
+	for channel, value := range r.Channels {
+		key := r.EntityID + "#" + channel
+		prev, ok := rt.entityPublished[key]
+		if !ok || !prev.Ts.Equal(r.Ts) || prev.Channels[channel] != value {
+			changed = true
+		}
+		rt.entityPublished[key] = ocppEntityReading{EntityID: r.EntityID, Ts: r.Ts, Channels: map[string]float64{channel: value}}
 	}
-	rt.entityPublished[r.EntityID] = r
-	return true
+	return changed
 }
 
 // round3 keeps the published channels at the topology/telemetry precision so a

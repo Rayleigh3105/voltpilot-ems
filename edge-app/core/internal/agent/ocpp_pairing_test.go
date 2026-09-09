@@ -42,6 +42,7 @@ func TestAGridSampleIsNotPairedWithAPreChangeChargingPower(t *testing.T) {
 	// trailing maximum discards the sample on its own: it is conservative
 	// against OVER-estimating the surplus, never against under-estimating it.)
 	tx := transactionOf(t, a, "SAEULE-B1", 1)
+	a.ocppStep(context.Background())
 	if err := a.ocpp.srv.ApplyLimit(context.Background(), "SAEULE-B1", 1, tx, 8); err != nil {
 		t.Fatalf("apply: %v", err)
 	}

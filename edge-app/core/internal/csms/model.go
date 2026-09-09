@@ -173,6 +173,10 @@ func (c Charger) OwnConnection() bool { return c.Connection == ConnectionEigen }
 
 // Session is one running transaction on one connector.
 type Session struct {
+	EvidenceAt time.Time `json:"-"`
+	// Reconciling sessions survived a core restart but have no fresh matching
+	// transaction evidence from the station yet. They cannot claim power.
+	Reconciling   bool      `json:"reconciling,omitempty"`
 	TransactionID int       `json:"transaction_id"`
 	IDTag         string    `json:"id_tag,omitempty"`
 	StartedAt     time.Time `json:"started_at"`
@@ -213,6 +217,11 @@ type Connector struct {
 	EnergyKwh *float64  `json:"energy_kwh,omitempty"`
 	SocPct    *float64  `json:"soc_pct,omitempty"`
 	MeteredAt time.Time `json:"metered_at,omitzero"`
+	// MeteredAt remains the POWER sample time for existing readers. Receipt
+	// and the other measurands have independent clocks; energy cannot freshen power.
+	MeterReceivedAt  time.Time `json:"meter_received_at,omitzero"`
+	EnergyMeasuredAt time.Time `json:"energy_measured_at,omitzero"`
+	SocMeasuredAt    time.Time `json:"soc_measured_at,omitzero"`
 
 	// --- the live allocation, as commanded and as read back ---
 
@@ -247,6 +256,7 @@ type Connector struct {
 // ChargerState is the LIVE view of one charge point: its declared identity
 // plus whatever it has told us about itself since it connected.
 type ChargerState struct {
+	SafetyKey string `json:"-"`
 	Charger
 	Connected   bool      `json:"connected"`
 	ConnectedAt time.Time `json:"connected_at,omitzero"`
@@ -347,7 +357,7 @@ func (c ChargerState) Connectors2Declared() int { return c.Charger.Connectors }
 func (c ChargerState) ActiveConnectors() []Connector {
 	var out []Connector
 	for _, con := range c.Connectors {
-		if con.Session == nil {
+		if con.Session == nil || con.Session.Reconciling {
 			continue
 		}
 		// A session whose connector reports a NON-charging status (Finishing,
@@ -442,7 +452,7 @@ func (s Snapshot) ChargingTotal(now time.Time, maxAge time.Duration) (kw float64
 			// caller then drops the whole pair instead of pairing a
 			// post-change grid reading with a pre-change charging power.
 			if con.PowerKw == nil || con.MeteredAt.IsZero() ||
-				now.Sub(con.MeteredAt) > maxAge || con.MeterInTransit() {
+				con.MeteredAt.After(now) || now.Sub(con.MeteredAt) > maxAge || con.MeterInTransit() {
 				complete = false
 				continue
 			}

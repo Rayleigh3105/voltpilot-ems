@@ -30,8 +30,8 @@ const action = (overrides: Partial<OcppAction>): OcppAction => ({
 
 describe('OCPP wallbox view model', () => {
   it('contains every OCPP 1.6 action exactly once in the three progressive groups', () => {
-    expect(OCPP_ACTIONS).toHaveLength(20);
-    expect(new Set(OCPP_ACTIONS.map((item) => item.action)).size).toBe(20);
+    expect(OCPP_ACTIONS).toHaveLength(18);
+    expect(new Set(OCPP_ACTIONS.map((item) => item.action)).size).toBe(18);
     expect(new Set(OCPP_ACTIONS.map((item) => item.group))).toEqual(new Set(['alltag', 'betrieb', 'protokoll']));
     expect(OCPP_ACTIONS.filter((item) => item.role === 'operator').map((item) => item.action))
       .toEqual(['RemoteStartTransaction', 'RemoteStopTransaction', 'UnlockConnector']);
@@ -47,10 +47,9 @@ describe('OCPP wallbox view model', () => {
     expect(actionRequest('GetConfiguration', { keys: 'HeartbeatInterval, MeterValueSampleInterval' }))
       .toEqual({ key: ['HeartbeatInterval', 'MeterValueSampleInterval'] });
     const limitedStart = { connectorId: '1', idTag: 'TAG-1', profileLimit: '11' };
-    expect(actionRequest('RemoteStartTransaction', limitedStart, 'same-operation'))
-      .toEqual(actionRequest('RemoteStartTransaction', limitedStart, 'same-operation'));
-    expect(actionRequest('RemoteStartTransaction', limitedStart, 'same-operation'))
-      .not.toEqual(actionRequest('RemoteStartTransaction', limitedStart, 'new-operation'));
+    expect(() => actionRequest('RemoteStartTransaction', limitedStart)).toThrow('Lastmanagement');
+    expect(actionRequest('RemoteStartTransaction', { connectorId: '1', idTag: 'TAG-1' }))
+      .toEqual({ connectorId: 1, idTag: 'TAG-1' });
   });
 
   it('requires a server intent for hard reset, firmware and full LocalAuth replacement', () => {

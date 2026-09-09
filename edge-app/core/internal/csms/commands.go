@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/lorenzodonini/ocpp-go/ocpp"
@@ -84,9 +85,27 @@ func (s *Server) ExecuteCloudCommand(ctx context.Context, raw []byte, identity C
 	if !now.Add(commandWriteReserve).Before(deadline) {
 		return reject("deadline_too_close", "OCPP-Ausführungsfrist reicht für ein sicheres Senden nicht mehr aus")
 	}
+	if err := validateProfileOwnership(cmd.Action, cmd.Request); err != nil {
+		return reject("allocator_owned_profiles", err.Error())
+	}
 	request, wireAction, err := commandRequest(cmd.Action, cmd.Request)
 	if err != nil {
 		return reject("invalid_payload", err.Error())
+	}
+	if start, ok := request.(*core.RemoteStartTransactionRequest); ok && (!s.authorized(start.IdTag) || !s.startReady(cmd.ChargePointID)) {
+		return reject("card_not_authorized", "Diese Ladekarte ist lokal nicht freigegeben")
+	}
+	policy := s.ControlPolicy()
+	if policy.Authorization.Mode == "allowlist" || len(policy.PhaseLimitsA) > 0 {
+		if cmd.Action == "SendLocalList" {
+			return reject("authorization_owned", "Die Kartenliste wird von der lokalen Kartenfreigabe verwaltet")
+		}
+		if change, ok := request.(*core.ChangeConfigurationRequest); ok {
+			switch change.Key {
+			case "AllowOfflineTxForUnknownId", "AuthorizationCacheEnabled", "LocalPreAuthorize", "LocalAuthorizeOffline", "LocalAuthListEnabled", "StopTransactionOnInvalidId", "MaxEnergyOnInvalidId", "AuthorizeRemoteTxRequests":
+				return reject("authorization_owned", "Dieser Schlüssel wird von der lokalen Kartenfreigabe verwaltet")
+			}
+		}
 	}
 	if cmd.Action == "DataTransfer" && cmd.DataTransferSchemaID != "voltpilot.health-check.v1" {
 		return reject("unknown_schema", "DataTransfer-Schema ist auf dieser Edge nicht registriert")
@@ -160,6 +179,29 @@ func (s *Server) ExecuteCloudCommand(ctx context.Context, raw []byte, identity C
 		// The durable claim already exists, so even this post-send disk failure
 		// cannot cause a replay. Surface it instead of pretending all is well.
 		return reject("ledger_finish_failed", "OCPP-Befehl wurde gesendet, Abschluss des Edge-Ledgers ist fehlgeschlagen")
+	}
+	return nil
+}
+
+// The allocator owns ALL profiles on its stations, including unknown IDs,
+// higher stacks and profiles embedded in a remote start. An ID-only guard
+// cannot protect the expiry/default relationship. Manual limits use the
+// bounded allocator request, never raw OCPP profile mutation.
+func validateProfileOwnership(action string, raw json.RawMessage) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return err
+	}
+	embedded := false
+	// encoding/json also accepts case-insensitive struct field names. Apply
+	// ownership before that decoding step, with the same matching semantics.
+	for key := range fields {
+		if strings.EqualFold(key, "chargingProfile") {
+			embedded = true
+		}
+	}
+	if action == "SetChargingProfile" || action == "ClearChargingProfile" || (action == "RemoteStartTransaction" && embedded) {
+		return errors.New("Ladeprofile werden vom lokalen Lastmanagement verwaltet. Bitte eine zeitlich begrenzte Ladegrenze im Lastmanagement verwenden.")
 	}
 	return nil
 }

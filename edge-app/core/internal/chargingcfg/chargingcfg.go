@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppcontrol"
 	"math"
 	"strings"
 )
@@ -74,6 +75,7 @@ var ErrEmpty = errors.New("das Konfigurations-Dokument wurde zurückgenommen")
 //	Priorities  == nil  -> the portal says nothing; keep the box's own choice.
 //	Priorities  == []   -> an ASSERTION ("no station has priority") and applied.
 type Config struct {
+	OcppControl *ocppcontrol.Policy
 	TenantID    string
 	SiteID      string
 	DeviceID    string
@@ -238,19 +240,20 @@ type VehicleProfile struct {
 
 // wire is the on-the-wire shape. Pointers where absence differs from a value.
 type wire struct {
-	SchemaVersion   string     `json:"schema_version"`
-	TenantID        string     `json:"tenant_id"`
-	SiteID          string     `json:"site_id"`
-	DeviceID        string     `json:"device_id"`
-	GridLimitKw     *float64   `json:"grid_limit_kw"`
-	Priorities      *[]string  `json:"priority_charge_point_ids"`
-	SurplusPolicy   *string    `json:"surplus_policy"`
-	StoragePriority *string    `json:"storage_priority"`
-	ChargePoints    []wireCP   `json:"charge_points"`
-	Removed         []string   `json:"removed_charge_point_ids"`
-	Frame           *wireFrame `json:"frame"`
-	StorageRank     *int       `json:"storage_rank"`
-	Wallboxes       *[]wireWB  `json:"wallboxes"`
+	OcppControl     *ocppcontrol.Policy `json:"ocpp_control"`
+	SchemaVersion   string              `json:"schema_version"`
+	TenantID        string              `json:"tenant_id"`
+	SiteID          string              `json:"site_id"`
+	DeviceID        string              `json:"device_id"`
+	GridLimitKw     *float64            `json:"grid_limit_kw"`
+	Priorities      *[]string           `json:"priority_charge_point_ids"`
+	SurplusPolicy   *string             `json:"surplus_policy"`
+	StoragePriority *string             `json:"storage_priority"`
+	ChargePoints    []wireCP            `json:"charge_points"`
+	Removed         []string            `json:"removed_charge_point_ids"`
+	Frame           *wireFrame          `json:"frame"`
+	StorageRank     *int                `json:"storage_rank"`
+	Wallboxes       *[]wireWB           `json:"wallboxes"`
 	// A POINTER because empty and absent differ: `[]` withdraws every profile,
 	// absent keeps what the box has.
 	VehicleProfiles *[]wireVehicle `json:"vehicle_profiles"`
@@ -313,6 +316,12 @@ func Parse(payload []byte) (Config, error) {
 		return Config{}, errors.New("das Konfigurations-Dokument nennt keine vollständige Identität")
 	}
 	cfg := Config{TenantID: w.TenantID, SiteID: w.SiteID, DeviceID: w.DeviceID}
+	if w.OcppControl != nil {
+		if err := w.OcppControl.Validate(); err != nil {
+			return Config{}, err
+		}
+		cfg.OcppControl = w.OcppControl
+	}
 	if w.GridLimitKw != nil {
 		v := *w.GridLimitKw
 		// ⚠ Eine 0 oder ein unsinniger Wert wird ABGELEHNT, nicht angewandt:

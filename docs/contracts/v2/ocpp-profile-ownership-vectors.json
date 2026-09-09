@@ -1,0 +1,131 @@
+{
+  "schema_version": "1.0",
+  "vectors": [
+    {
+      "name": "station_cap",
+      "action": "ClearChargingProfile",
+      "request": {
+        "id": 1
+      },
+      "allowed": false
+    },
+    {
+      "name": "fallback",
+      "action": "ClearChargingProfile",
+      "request": {
+        "id": 2
+      },
+      "allowed": false
+    },
+    {
+      "name": "all_profiles",
+      "action": "ClearChargingProfile",
+      "request": {},
+      "allowed": false
+    },
+    {
+      "name": "live_profile",
+      "action": "ClearChargingProfile",
+      "request": {
+        "id": 11
+      },
+      "allowed": false
+    },
+    {
+      "name": "foreign_default",
+      "action": "SetChargingProfile",
+      "request": {
+        "connectorId": 0,
+        "csChargingProfiles": {
+          "chargingProfileId": 900,
+          "stackLevel": 9,
+          "chargingProfilePurpose": "TxDefaultProfile",
+          "chargingProfileKind": "Absolute",
+          "chargingSchedule": {
+            "chargingRateUnit": "W",
+            "chargingSchedulePeriod": [
+              {
+                "startPeriod": 0,
+                "limit": 90000
+              }
+            ]
+          }
+        }
+      },
+      "allowed": false
+    },
+    {
+      "name": "embedded_start",
+      "action": "RemoteStartTransaction",
+      "request": {
+        "idTag": "TEST",
+        "chargingProfile": {
+          "chargingProfileId": 900,
+          "stackLevel": 9,
+          "chargingProfilePurpose": "TxProfile",
+          "chargingProfileKind": "Relative",
+          "chargingSchedule": {
+            "chargingRateUnit": "W",
+            "chargingSchedulePeriod": [
+              {
+                "startPeriod": 0,
+                "limit": 90000
+              }
+            ]
+          }
+        }
+      },
+      "allowed": false
+    },
+    {
+      "name": "plain_start",
+      "action": "RemoteStartTransaction",
+      "request": {
+        "idTag": "TEST",
+        "connectorId": 1
+      },
+      "allowed": true
+    },
+    {
+      "name": "schedule_read",
+      "action": "GetCompositeSchedule",
+      "request": {
+        "connectorId": 1,
+        "duration": 120
+      },
+      "allowed": true
+    },
+    {
+      "name": "embedded_case_insensitive_start",
+      "action": "RemoteStartTransaction",
+      "request": {
+        "idTag": "TEST",
+        "ChargingProfile": {
+          "chargingProfileId": 900,
+          "stackLevel": 9,
+          "chargingProfilePurpose": "TxProfile",
+          "chargingProfileKind": "Relative",
+          "chargingSchedule": {
+            "chargingRateUnit": "W",
+            "chargingSchedulePeriod": [
+              {
+                "startPeriod": 0,
+                "limit": 90000
+              }
+            ]
+          }
+        }
+      },
+      "allowed": false
+    },
+    {
+      "name": "embedded_mixed_case_null",
+      "action": "RemoteStartTransaction",
+      "request": {
+        "idTag": "TEST",
+        "CHARGINGprofile": null
+      },
+      "allowed": false
+    }
+  ]
+}

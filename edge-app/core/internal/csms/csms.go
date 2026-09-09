@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppcontrol"
 	"log/slog"
 	"net"
 	"strconv"
@@ -113,6 +114,13 @@ type Server struct {
 	transport *transport
 
 	measurementApplyMu sync.Mutex
+	profileMu          sync.Mutex
+	control            ocppcontrol.Policy
+	startWatermarks    map[string]startWatermark
+	controlTest        *ControlTest
+	seenTags           []string
+	rejectedRevision   int64
+	controlRejection   string
 	measurementDesired MeasurementConfiguration
 }
 
@@ -124,7 +132,7 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	list, next, _, err := st.Load()
+	saved, _, err := st.loadState()
 	if err != nil {
 		return nil, err
 	}
@@ -147,13 +155,38 @@ func New(opts Options) (*Server, error) {
 		commands:           commands,
 		log:                opts.Log,
 		chargers:           map[string]*ChargerState{},
-		nextTxID:           next,
+		nextTxID:           saved.NextTransactionID,
 		changed:            make(chan struct{}, 1),
 		measurementDesired: measurementDesired,
 	}
 	journal.RestoreCommandMappings(commands.wireMappings())
-	for _, c := range list {
+	if saved.Control != nil {
+		if err := saved.Control.Validate(); err != nil {
+			return nil, err
+		}
+		s.control = *saved.Control
+	}
+	s.controlTest = saved.ControlTest
+	s.startWatermarks = saved.StartWatermarks
+	if s.startWatermarks == nil {
+		s.startWatermarks = map[string]startWatermark{}
+	}
+	for _, c := range saved.Chargers {
 		s.chargers[c.ID] = &ChargerState{Charger: c}
+	}
+	for _, tx := range saved.Sessions {
+		c, ok := s.chargers[tx.ChargePointID]
+		if !ok || tx.ConnectorID < 1 || tx.ConnectorID > maxConnectors || tx.TransactionID < 1 || tx.StartedAt.IsZero() {
+			continue
+		}
+		if key := ocppcontrol.Key(tx.ChargePointID, tx.ConnectorID); tx.StartedAt.After(s.startWatermarks[key].At) {
+			s.startWatermarks[key] = startWatermark{At: tx.StartedAt, MeterStartWh: tx.MeterStartWh, TagRef: tx.TagRef}
+		}
+		c.connector(tx.ConnectorID).Session = &Session{TransactionID: tx.TransactionID,
+			StartedAt: tx.StartedAt, MeterStartWh: tx.MeterStartWh, TagRef: tx.TagRef, Reconciling: true}
+		if s.nextTxID <= tx.TransactionID {
+			s.nextTxID = tx.TransactionID + 1
+		}
 	}
 	journal.onCommandResult = func(chargePointID, wireID, action string, payload json.RawMessage) {
 		s.commandReadback(chargePointID, wireID, action, payload)
@@ -340,10 +373,13 @@ func (s *Server) Add(req AddRequest) (Charger, error) {
 		return Charger{}, err
 	}
 	s.chargers[c.ID] = &ChargerState{Charger: c}
-	list, next := s.listLocked()
+	err = s.persistLocked()
+	if err != nil {
+		delete(s.chargers, c.ID)
+	}
 	s.mu.Unlock()
 
-	if err := s.store.Save(list, next); err != nil {
+	if err != nil {
 		return Charger{}, err
 	}
 	s.log.Info("Ladepunkt eingetragen", "charge_point_id", c.ID)
@@ -360,12 +396,16 @@ func (s *Server) Remove(id string) error {
 		s.mu.Unlock()
 		return ErrNotFound
 	}
+	previous := s.chargers[id]
 	delete(s.chargers, id)
-	list, next := s.listLocked()
+	err := s.persistLocked()
+	if err != nil {
+		s.chargers[id] = previous
+	}
 	t := s.transport
 	s.mu.Unlock()
 
-	if err := s.store.Save(list, next); err != nil {
+	if err != nil {
 		return err
 	}
 	if t != nil {
@@ -448,12 +488,16 @@ func (s *Server) Update(id string, req UpdateRequest) (Charger, error) {
 		return Charger{}, err
 	}
 	checked.AddedAt = next.AddedAt
+	previous := c.Charger
 	c.Charger = checked
 	out := c.Charger
-	list, nextTx := s.listLocked()
+	err = s.persistLocked()
+	if err != nil {
+		c.Charger = previous
+	}
 	s.mu.Unlock()
 
-	if err := s.store.Save(list, nextTx); err != nil {
+	if err != nil {
 		return Charger{}, err
 	}
 	s.notifyChanged()
@@ -468,6 +512,35 @@ func (s *Server) listLocked() ([]Charger, int) {
 	}
 	SortChargers(out)
 	return out, s.nextTxID
+}
+
+// Serialise the snapshot AND the durable write under s.mu. A slower earlier
+// write must never resurrect a stopped transaction or an older counter.
+func (s *Server) persistLocked() error {
+	list, next := s.listLocked()
+	var sessions []storedSession
+	for _, charger := range list {
+		for _, con := range s.chargers[charger.ID].Connectors {
+			if tx := con.Session; tx != nil {
+				sessions = append(sessions, storedSession{ChargePointID: charger.ID, ConnectorID: con.ID,
+					TransactionID: tx.TransactionID, StartedAt: tx.StartedAt, MeterStartWh: tx.MeterStartWh, TagRef: tx.TagRef})
+			}
+		}
+	}
+	var control *ocppcontrol.Policy
+	if s.control.Revision > 0 {
+		control = &s.control
+	}
+	starts := map[string]startWatermark{}
+	for _, c := range list {
+		for plug := 1; plug <= maxConnectors; plug++ {
+			key := ocppcontrol.Key(c.ID, plug)
+			if mark, ok := s.startWatermarks[key]; ok {
+				starts[key] = mark
+			}
+		}
+	}
+	return s.store.save(list, next, sessions, control, s.controlTest, starts)
 }
 
 // freePort asks the OS for an unused TCP port and hands it back. Used only

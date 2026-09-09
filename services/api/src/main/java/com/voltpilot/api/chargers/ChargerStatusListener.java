@@ -269,6 +269,9 @@ public class ChargerStatusListener {
             }
             chargerStatus.replaceForDevice(deviceId, tenantId, siteId, reportedAt, budget,
                     chargers);
+            JsonNode controlStatus = block.get("control_status");
+            if (validControlStatus(controlStatus))
+                chargerStatus.replaceOcppControlStatus(deviceId, controlStatus.toString());
             // P7: die SICHTUNGEN der Ladekarten. Sie sind das, woraus im Portal
             // überhaupt erst eine benennbare Zeile wird - ohne sie gäbe es
             // nichts, dem der Kunde einen Namen geben könnte.
@@ -485,6 +488,32 @@ public class ChargerStatusListener {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    static boolean validControlStatus(JsonNode report) {
+        if (report == null || !report.isObject() || report.toString().length() > 1_048_576
+                || !report.path("revision").isIntegralNumber() || report.path("revision").asLong() < 0
+                || !report.path("enabled").isBoolean()
+                || !java.util.Set.of("free", "allowlist").contains(report.path("authorization_mode").asText())
+                || !report.path("stations").isArray() || report.path("stations").size() > 64
+                || !report.path("seen_tags").isArray() || report.path("seen_tags").size() > 128) return false;
+        for (var tag : report.path("seen_tags")) if (!tag.isTextual() || !tag.asText().matches("tagref_[0-9a-f]{24}")) return false;
+        for (var station : report.path("stations")) {
+            if (!station.path("id").asText().matches("[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+                    || !station.path("connected").isBoolean() || !station.path("capabilities_read").isBoolean()
+                    || !station.path("profiles_accepted").isBoolean() || !station.path("connectors").isArray()
+                    || station.path("connectors").size() > 32) return false;
+            for (var con : station.path("connectors")) {
+                if (!con.path("id").isIntegralNumber() || con.path("id").asInt() < 1 || con.path("id").asInt() > 32
+                        || !con.path("reconciling").isBoolean() || !con.path("fresh_power").isBoolean()) return false;
+            }
+        }
+        if (report.hasNonNull("test")) {
+            var test = report.path("test");
+            if (!java.util.Set.of("running", "confirmed", "not_confirmed", "cancelled").contains(test.path("state").asText())
+                    || !test.path("limited").isBoolean() || !test.path("paused").isBoolean() || !test.path("resumed").isBoolean()) return false;
+        }
+        return true;
     }
 
     private static UUID parseUuid(String raw) {

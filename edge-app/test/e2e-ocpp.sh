@@ -1026,7 +1026,10 @@ warte_l15() { # warte_l15 <sekunden> <beschreibung> <kommando...>
 # nur die 12 kW, die der Speicher uebrig laesst.
 cfg2 '"grid_limit_kw":277,"surplus_policy":"nur_sonne","storage_priority":"speicher_vor_auto",
  "storage_rank":1,"charge_points":[{"id":"SAEULE-B1","rank":2},{"id":"SAEULE-B2","rank":3}]'
-l15b_unten() { b1_near 12 1.5; }
+# Die vorherigen 13,5 kW duerfen die 12-kW-Zusage noch nicht erfuellen:
+# erst den neuen Sollwert erreichen, dann seine Stabilitaet pruefen. Beim
+# Neuaufbau der Schutzprofile liegt dazwischen bewusst eine kurze Begrenzung.
+l15b_unten() { b1_near 12 0.5; }
 warte_l15 90 "die Saeule unter dem Speicher sieht nur den Rest" l15b_unten
 pass "L15b: B1 UNTER dem Speicher zieht $(b1_kw) kW - der Speicher geht vor"
 

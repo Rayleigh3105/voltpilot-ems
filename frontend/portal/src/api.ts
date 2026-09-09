@@ -3327,6 +3327,9 @@ export const api = {
    */
   siteChargers: (siteId: string) =>
     request<SiteCharging>(`/api/v1/sites/${siteId}/chargers`),
+  ocppControl: (siteId: string) => request<import('./ocppControl').OcppControlView>(`/api/v1/sites/${siteId}/ocpp/control`),
+  saveOcppControl: (siteId: string, policy: import('./ocppControl').OcppControlPolicy) =>
+    request<import('./ocppControl').OcppControlView>(`/api/v1/sites/${siteId}/ocpp/control`, { method: 'PUT', body: JSON.stringify(policy) }),
   /**
    * Die Zone „Verbraucher" der Steuerungsseite (Konzept
    * `vp-verbrauchsmgmt-konzept-v1` §6, Paket P1) — EIN Lese-Aggregat: je

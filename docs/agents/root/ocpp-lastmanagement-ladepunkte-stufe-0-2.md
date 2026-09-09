@@ -25,8 +25,8 @@ was jede Session wissen muss:
 - **⚠ Drei Schalter, zwei Tore — und `VP_OCPP_ENABLED` ist seit dem 24.08.2026
   ein OPT-OUT (Vorgabe AN, Captain-Order „ohne .env brauch ich nicht"):** es
   startet den Server und hinterlegt die SCHÜTZENDEN Profile; die LEBENDE
-  Zuteilung braucht unverändert zusätzlich `VP_CONTROL_ENABLED` ∧
-  `VP_CONSUMER_CONTROL_ENABLED`. Ohne sie läuft die Anlage sicher auf
+  Zuteilung braucht `VP_CONTROL_ENABLED` und die explizite OCPP-Freigabe;
+  abwesend gilt weiter `VP_CONSUMER_CONTROL_ENABLED`. Ohne sie läuft die Anlage sicher auf
   `n × Sicherheitsprofil`, und die `:8484`-Fläche sagt welcher Schalter fehlt.
   **Das Tor bleibt die ALLOWLIST, nicht dieses Flag:** eine unbekannte Kennung
   wird beim Websocket-Aufbau abgewiesen und protokolliert, die LAN-Grenze ist
@@ -35,7 +35,8 @@ was jede Session wissen muss:
   erspart nur den `.env`-Schritt (das `VP_OTA_PRUNE`-Muster: Vorgabe an, ein
   ausdrückliches `false` gewinnt).
 - **Scope-Zaun (E4): Lastmanagement pur** — keine Abrechnung, kein Eichrecht,
-  kein OCPI, kein RFID; `Authorize` akzeptiert, Sitzungen sind BETRIEBSdaten.
+  kein OCPI; freies Laden bleibt Vorgabe, eine explizite lokale Kartenfreigabe
+  ist additiv verfügbar. Sitzungen bleiben BETRIEBSdaten (siehe `docs/ocpp-control.md`).
 - **Katalog-Typ `ev-charger` („Ladepunkt")**, additiv, Kommando
   ausschließlich `limit_kw`, Status ehrlich `simulator_only` — der Flip auf
   zertifiziert braucht EINE beaufsichtigte Bench-Session je Säulen-TYP

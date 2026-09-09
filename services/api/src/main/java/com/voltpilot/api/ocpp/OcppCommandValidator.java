@@ -57,6 +57,9 @@ public final class OcppCommandValidator {
         if (shape == null) throw new IllegalArgumentException("OCPP-Aktion wird nicht unterstützt.");
         JsonNode request = input == null ? mapper.createObjectNode() : input;
         if (!request.isObject()) throw new IllegalArgumentException("OCPP-Anforderung muss ein JSON-Objekt sein.");
+        if ("SetChargingProfile".equals(action) || "ClearChargingProfile".equals(action)
+                || ("RemoteStartTransaction".equals(action) && hasChargingProfile(request)))
+            throw new IllegalArgumentException("Ladeprofile werden vom lokalen Lastmanagement verwaltet. Bitte eine zeitlich begrenzte Ladegrenze im Lastmanagement verwenden.");
         if (request.toString().length() > 262_144) throw new IllegalArgumentException("OCPP-Anforderung ist zu groß.");
         request.fieldNames().forEachRemaining(field -> {
             if (!shape.allowed().contains(field)) throw new IllegalArgumentException("Unbekanntes Feld für " + action + ": " + field);
@@ -88,6 +91,14 @@ public final class OcppCommandValidator {
         ObjectNode wire = request.deepCopy();
         wire.remove(Set.of("sha256", "signature"));
         return wire;
+    }
+
+    private static boolean hasChargingProfile(JsonNode request) {
+        var fields = request.fieldNames();
+        while (fields.hasNext()) {
+            if ("chargingProfile".equalsIgnoreCase(fields.next())) return true;
+        }
+        return false;
     }
 
     private static void positive(JsonNode n, String field, boolean allowZero) {

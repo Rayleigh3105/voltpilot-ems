@@ -33,6 +33,7 @@ describe('OcppWallboxPage integration', () => {
       lastSeen: reportedAt,
       connectors: station.connectors.map((connector) => ({ ...connector, reportedAt })),
     }]);
+    vi.spyOn(api, 'ocppControl').mockResolvedValue({ desired: null, observed: [] });
     vi.spyOn(api, 'ocppEvents').mockResolvedValue([]);
     vi.spyOn(api, 'ocppGaps').mockResolvedValue([]);
     vi.spyOn(api, 'ocppTransactions').mockResolvedValue([{ deviceId: 'd', chargePointId: 'CP-1', transactionId: 42, connectorId: 1, startedAt: new Date(Date.now() - 42 * 60_000).toISOString(), stoppedAt: null, meterStart: 1000, meterStop: null, stopReason: null, startIdTagRef: 'private-reference', stopIdTagRef: null, reservationId: null, chargingProfileId: null, chargingProfilePurpose: null, startAuthStatus: 'Accepted', stopAuthStatus: null, parentIdTagRef: null, transactionData: null, transactionDataPurgedAt: null }]);

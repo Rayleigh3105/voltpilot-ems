@@ -640,6 +640,7 @@ type SourceEntry struct {
 // maxChargerEntries / maxChargerConnectors so a misconfigured plant can never
 // inflate the heartbeat.
 type ChargersSummary struct {
+	ControlStatus json.RawMessage `json:"control_status,omitempty"`
 	// ReportedAt is when the edge assembled this view (RFC 3339).
 	ReportedAt string `json:"reported_at"`
 

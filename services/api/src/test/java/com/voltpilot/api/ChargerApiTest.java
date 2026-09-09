@@ -120,6 +120,57 @@ class ChargerApiTest {
     private final ObjectMapper json = new ObjectMapper();
 
     @Test
+    void ocppControlIsRevisionedTenantFencedAndSeparatesDesiredFromObserved() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "OCPP-Einrichtung");
+        String path = "/api/v1/sites/" + site + "/ocpp/control";
+        try {
+            assertThat(getJson(path, customer).path("desired").isNull()).isTrue();
+            assertThat(getJson(path, customer).path("observed")).isEmpty();
+            var policy = json.readTree("""
+                {"revision":0,"enabled":true,"authorization":{"mode":"allowlist","allowed_tags":[]},
+                 "electrical":[],"phase_limits_a":[],"limits":[]}
+                """);
+            // An operator can read, but cannot enable physical regulation.
+            assertThat(rest.exchange(url(path), HttpMethod.PUT, new HttpEntity<>(policy, bearer(customer)), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+            HttpHeaders admin = bearer(token("admin", "admin"));
+            admin.set("X-Tenant-Id", TENANT_A);
+            var saved = rest.exchange(url(path), HttpMethod.PUT, new HttpEntity<>(policy, admin), String.class);
+            assertThat(saved.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(json.readTree(saved.getBody()).path("desired").path("revision").asLong()).isEqualTo(1);
+            assertThat(json.readTree(saved.getBody()).path("observed")).isEmpty();
+            assertThat(getJson(path, customer).path("desired").path("authorization").path("mode").asText()).isEqualTo("allowlist");
+            UUID device = claim(customer, site, "edge-control-proof");
+            var block = (com.fasterxml.jackson.databind.node.ObjectNode)json.readTree(twoStations());
+            block.set("control_status", json.readTree("""
+                {"revision":1,"enabled":true,"authorization_mode":"allowlist","seen_tags":[],"stations":[]}
+                """));
+            heartbeat(site, device, block.toString());
+            var observed = getJson(path, customer).path("observed");
+            assertThat(observed).hasSize(1);
+            assertThat(observed.get(0).path("state").path("revision").asLong()).isEqualTo(1);
+            assertThat(observed.get(0).path("reportedAt").asText()).isEqualTo("2026-08-20T11:24:00Z");
+            // A subsequent legacy heartbeat cannot refresh that old proof.
+            heartbeat(site, device, twoStations());
+            assertThat(getJson(path, customer).path("observed")).isEmpty();
+
+            assertThat(rest.exchange(url(path), HttpMethod.PUT, new HttpEntity<>(policy, admin), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            ((com.fasterxml.jackson.databind.node.ObjectNode)policy).put("revision",1);
+            ((com.fasterxml.jackson.databind.node.ObjectNode)policy.path("authorization")).put("mode","guess");
+            assertThat(rest.exchange(url(path), HttpMethod.PUT, new HttpEntity<>(policy, admin), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(getJson(path, customer).path("desired").path("revision").asLong()).isEqualTo(1);
+            assertThat(rest.exchange(url(path), HttpMethod.GET, new HttpEntity<>(bearer(token("demo2","demo2"))),String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+            admin.set("X-Tenant-Id","10000000-0000-0000-0000-000000000001");
+            assertThat(rest.exchange(url(path), HttpMethod.PUT, new HttpEntity<>(policy, admin),String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally { deleteSite(site); }
+    }
+
+    @Test
     void theChargePointsReachTheCloudAndBecomeComponentsWithoutASingleClick() throws Exception {
         String customer = token("demo", "demo");
         UUID site = createSite(customer, "Ladepark-Anlage");

@@ -63,6 +63,16 @@ func (a *Agent) onChargingConfig(payload []byte) {
 		slog.Info("charging config received but OCPP is off on this box - nothing applied")
 		return
 	}
+	// Reject stale/conflicting policy revisions before touching the other
+	// fields. Admission must nevertheless precede a NEW phase policy: otherwise
+	// a retained document containing a new station could never register it.
+	if cfg.OcppControl != nil && cfg.OcppControl.Revision <= a.ocpp.srv.ControlPolicy().Revision {
+		if err := a.ocpp.srv.SetControlPolicy(*cfg.OcppControl); err != nil {
+			slog.Warn("OCPP-Steuerung abgelehnt", "err", err)
+			return
+		}
+	}
+
 	// ⚠ ONE Apply for every field the document carries: Settings.Apply is
 	// PATCH, so a second call would be pointless churn - and splitting them
 	// could leave the box half-configured if one refused.
@@ -134,6 +144,12 @@ func (a *Agent) onChargingConfig(payload []byte) {
 	}
 	if cfg.Priorities != nil {
 		a.applyChargingPriorities(cfg.Priorities)
+	}
+	if cfg.OcppControl != nil {
+		if err := a.ocpp.srv.SetControlPolicy(*cfg.OcppControl); err != nil {
+			slog.Warn("OCPP-Steuerung abgelehnt", "err", err)
+			return
+		}
 	}
 }
 

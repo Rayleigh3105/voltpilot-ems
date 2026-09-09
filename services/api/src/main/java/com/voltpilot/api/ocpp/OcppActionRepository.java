@@ -18,6 +18,12 @@ import org.springframework.transaction.annotation.Transactional;
 /** JDBC persistence for command intent, audit and evidence. */
 @Repository
 public class OcppActionRepository {
+    public boolean managedAuthorization(UUID siteId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM site_charging_config WHERE site_id = ? AND "
+                + "(ocpp_control->'authorization'->>'mode' = 'allowlist' OR jsonb_array_length(COALESCE(NULLIF(ocpp_control->'phase_limits_a', 'null'::jsonb), '[]'::jsonb)) > 0))",
+                Boolean.class, siteId));
+    }
+
     public record StationTarget(UUID deviceId, boolean connected) {}
     public record StoredAction(OcppActionDto.Action action, UUID tenantId, UUID siteId,
             String requestHash, String conflictKey) {}
