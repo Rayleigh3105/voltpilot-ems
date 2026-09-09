@@ -69,9 +69,11 @@ INSERT INTO schedule
      why_terminal_anchor, why_refill_free_pct,
      why_next_best, why_next_best_margin_ct,
      pv_anchor_ratio,
-     why_night_reserve_kwh, why_night_reserve_q)
+     why_night_reserve_kwh, why_night_reserve_q,
+     soc_source)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+        %s)
 ON CONFLICT (site_id, generated_at, time)
 DO UPDATE SET
     device_id         = EXCLUDED.device_id,
@@ -105,8 +107,15 @@ DO UPDATE SET
     why_next_best_margin_ct = EXCLUDED.why_next_best_margin_ct,
     pv_anchor_ratio   = EXCLUDED.pv_anchor_ratio,
     why_night_reserve_kwh = EXCLUDED.why_night_reserve_kwh,
-    why_night_reserve_q = EXCLUDED.why_night_reserve_q;
+    why_night_reserve_q = EXCLUDED.why_night_reserve_q,
+    soc_source        = EXCLUDED.soc_source;
 """
+
+
+def _round_or_none(value: float | None, digits: int) -> float | None:
+    """``round``, but ``None`` survives as ``None`` (P7: a missing SoC is a
+    NULL column, never a rounded placeholder)."""
+    return None if value is None else round(value, digits)
 
 
 def _night_reserve_columns(plan: SchedulePlan) -> tuple[float | None, float | None]:
@@ -192,7 +201,10 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
             plan.generated_at,
             slot.battery_kw,
             slot.grid_kw,
-            round(plan.soc_pct(slot), 2),
+            # P7: NULL auf einem Lauf ohne Ladestand - der Solver-Startwert
+            # war ein Platzhalter, und eine flache 50-%-Linie im
+            # Fahrplan-Diagramm waere genau die Erfindung, die P7 abschafft.
+            _round_or_none(plan.soc_pct(slot), 2),
             slot.load_kw,
             slot.pv_kw,
             slot.price_eur_mwh,
@@ -220,6 +232,9 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
             plan.pv_anchor_ratio,
             night_reserve[0],
             night_reserve[1],
+            # P7: der RUN-Fakt, je Zeile wiederholt wie
+            # terminal_value_eur_per_kwh - eine Zeile antwortet fuer den Lauf.
+            plan.soc_source,
         )
         for slot in plan.slots
     ]

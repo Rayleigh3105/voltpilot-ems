@@ -488,6 +488,40 @@ def night_reserve_enabled(env=None) -> bool:
     raise ValueError(f"{NIGHT_RESERVE_ENABLED_ENV} must be a boolean, got {raw!r}")
 
 
+#: Instant off-switch for the P7 EHRLICHKEITS-REGEL „ohne Ladestand keine
+#: Speicherplanung" (Scout-Report ``vp-deye-diybms-luecke-l5`` §3.3 / Paket P7,
+#: Captain-Entscheid E4=b). Default AN (Hausregel: ein Flag hat die Vorgabe AN -
+#: es muss als OPTIMIZER_REQUIRE_MEASURED_SOC durch das gitops-Repo gezogen
+#: werden, um dort ueberhaupt schaltbar zu sein).
+#:
+#: AN  = eine Anlage ohne frischen, ECHTEN Ladestand bekommt einen RUHE-Plan mit
+#:       dem Grund „kein Ladestand": Speicher-Terme aus, SoC-Bahn NULL, keine
+#:       geplante Ersparnis.
+#: AUS = der dokumentierte Zustand VOR P7 kehrt zurueck - der Lauf startet aus
+#:       der Annahme ``inputs.DEFAULT_SOC_PCT`` (50 %) und weist die daraus
+#:       gerechneten Zahlen aus. Das ist ausdruecklich eine ERFINDUNG und
+#:       ausschliesslich der Notausgang fuer den Fall, dass eine kaputte
+#:       Telemetrie-Spalte sonst eine ganze Flotte stilllegt; wer ihn zieht,
+#:       schuldet der Flotte die Rueckkehr.
+REQUIRE_MEASURED_SOC_ENV = "OPTIMIZER_REQUIRE_MEASURED_SOC"
+
+
+def require_measured_soc(env=None) -> bool:
+    """Whether a run without a fresh REAL SoC plans no battery at all (P7).
+    Default ON; garbage values raise loudly, exactly like
+    :func:`night_reserve_enabled`."""
+    env = os.environ if env is None else env
+    raw = env.get(REQUIRE_MEASURED_SOC_ENV)
+    if raw is None or raw.strip() == "":
+        return True
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{REQUIRE_MEASURED_SOC_ENV} must be a boolean, got {raw!r}")
+
+
 #: Master gate for co-optimizing steuerbare Verbraucher (Verbrauchssteuerung
 #: §19 Inkrement 5). Default OFF: even a VOLTPILOT_V2_PLAN_SITES-flagged site's
 #: ACTIVE consumer policies are NOT loaded into the shadow co-optimization, so

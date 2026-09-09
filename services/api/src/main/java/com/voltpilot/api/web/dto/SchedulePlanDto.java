@@ -63,6 +63,23 @@ import java.util.UUID;
  * sunrise, the kill switch off, or a run predating the columns. Null is
  * "nothing established", never a claimed 0, and the sentence is simply absent
  * then.
+ *
+ * <p><b>P7 - der Ladestand als Bedingung</b> (Scout {@code vp-deye-diybms-luecke-l5}
+ * §3.3 / Paket P7, Captain-Entscheid E4=b): {@code socSource} sagt, WOHER der
+ * Anfangs-Ladestand des Laufs kam - {@code gemessen} (echte Telemetrie im
+ * Frischefenster), {@code berechnet} (ein abgeleiteter Stand; der generische
+ * SoC-Baustein folgt in einem eigenen Paket) oder {@code unbekannt}. Bei
+ * {@code unbekannt} hat der Optimierer den Speicher GAR NICHT geplant: der
+ * Fahrplan ist Ruhe, {@code savingsEur} und die SoC-Felder sind null, und die
+ * Fahrplan-Seite sagt den Grund („ohne Ladestand keine Speicherplanung")
+ * statt eine Zahl zu erfinden. Null = ein Lauf vor der Spalte
+ * ({@code V20260910000000}) und wird wie {@code gemessen} gelesen, nie wie
+ * {@code unbekannt} - der Tages-Splice traegt es ebenfalls null, weil er aus
+ * vielen Laeufen genaeht ist und keine EINE Herkunft hat.
+ *
+ * <p>{@code savingsEur} ist seit P7 NULLABLE: null heisst „dieser Lauf weist
+ * keine geplante Ersparnis aus" (kein Slot traegt eine no-battery-Baseline),
+ * nie „0,00 EUR verdient".
  */
 public record SchedulePlanDto(
         UUID planId,
@@ -80,11 +97,12 @@ public record SchedulePlanDto(
         BigDecimal whyRefillFreePct,
         BigDecimal whyNightReserveKwh,
         BigDecimal whyNightReserveQ,
+        String socSource,
         List<ScheduleSlotDto> slots) {
 
     public static SchedulePlanDto empty() {
         return new SchedulePlanDto(
                 null, null, null, 15, null, null, null, null, null, null, null, null, null,
-                null, null, List.of());
+                null, null, null, List.of());
     }
 }

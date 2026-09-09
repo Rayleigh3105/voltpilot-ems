@@ -65,10 +65,15 @@ class CycleSummary:
             # steuerung = der Mehrwert der STEUERUNG gegen denselben Speicher
             # ohne sie (die Kunden-Zahl seit Captain 04.09.2026). Fehlt die
             # Messlatte, wird sie weggelassen statt mit 0,00 behauptet.
-            line = (
-                f"  site={plan.site_id} slots={len(plan.slots)} "
-                f"savings={plan.savings_eur:.2f} EUR vs. no-battery baseline"
-            )
+            line = f"  site={plan.site_id} slots={len(plan.slots)}"
+            savings = plan.savings_eur
+            if savings is None:
+                # P7: ein Lauf ohne Ladestand hat keinen Speicher geplant, also
+                # gibt es keine Ersparnis - auch nicht im Log. Der GRUND steht
+                # da, damit ein stiller Ruhe-Plan im Betrieb sofort auffaellt.
+                line += f" RUHE ({plan.soc_source}) - kein Ladestand, kein Speicher geplant"
+            else:
+                line += f" savings={savings:.2f} EUR vs. no-battery baseline"
             steuerung = plan.steuerung_savings_eur
             if steuerung is not None:
                 line += f", steuerung={steuerung:.2f} EUR vs. stur battery"
@@ -165,6 +170,24 @@ def _shadow_publish_v2(
         return
     flagged = v2_plan_site_ids() if v2_sites is None else v2_sites
     if site.site_id not in flagged:
+        return
+    # P7: ohne Ladestand entsteht auch kein SCHATTEN-Plan. Der Co-Optimizer
+    # bekaeme ueber `from_v1_input` nur den Modell-Platzhalter als Start-SoC
+    # und wuerde daraus einen vollen Speicher-Fahrplan rechnen, persistieren
+    # (site_plan_run/entity_plan_slot) und auf dem v2-Topic veroeffentlichen -
+    # also genau die Erfindung, die der v1-Pfad eine Zeile weiter oben gerade
+    # verweigert hat, nur eine Etage tiefer. Ein ausgelassener Schatten kostet
+    # nichts: er wird nie ausgefuehrt.
+    if inp.soc_unbekannt:
+        logger.info(
+            "publish_v2.shadow_skipped_no_soc",
+            extra={
+                "context": {
+                    "site_id": str(site.site_id),
+                    "reason": "kein Ladestand",
+                }
+            },
+        )
         return
     try:
         co_inp = from_v1_input(inp)

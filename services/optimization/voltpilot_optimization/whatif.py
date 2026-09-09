@@ -424,6 +424,9 @@ def plan_document(plan: SchedulePlan, inp: OptimizationInput, fallback_14a: bool
     curtailed = sum(s.curtail_kw for s in plan.slots) * slot_hours
     soc_start = inp.battery.clamp_soc_kwh(inp.initial_soc_kwh)
     soc_end = plan.slots[-1].soc_kwh if plan.slots else soc_start
+    # P7: ein Lauf ohne Ladestand traegt eine SoC-Bahn, die reiner
+    # Modell-Platzhalter ist - sie darf die Vorschau nicht verlassen.
+    blind = inp.soc_unbekannt
     v_end = inp.effective_terminal_value_eur_per_kwh()
     return {
         "slotMinutes": inp.slot_minutes,
@@ -433,11 +436,18 @@ def plan_document(plan: SchedulePlan, inp: OptimizationInput, fallback_14a: bool
         "wearCostEur": _round(plan.wear_cost_eur, 4),
         # The honest net: gross grid savings minus the battery wear the plan
         # spends buying them (the persisted columns carry both, never folded).
-        "netSavingsEur": _round(plan.savings_eur - plan.wear_cost_eur, 4),
+        "netSavingsEur": (
+            None
+            if plan.savings_eur is None
+            else _round(plan.savings_eur - plan.wear_cost_eur, 4)
+        ),
         "terminalValueEurPerKwh": _round(v_end, 6),
         # What the plan banks into the next day, priced at its own V_end - on a
         # bank day savingsEur alone reads negative although real value moved.
-        "bankedValueEur": _round(v_end * (soc_end - soc_start), 4),
+        # P7: ohne Ladestand gibt es weder einen Anfangs- noch einen
+        # Endbestand, also auch keinen gebankten Wert und keine SoC-Zahlen -
+        # `blind` ist derselbe Schalter, den der Solver benutzt hat.
+        "bankedValueEur": None if blind else _round(v_end * (soc_end - soc_start), 4),
         "chargedKwh": _round(charged),
         "dischargedKwh": _round(discharged),
         "gridImportKwh": _round(imported),
@@ -445,8 +455,12 @@ def plan_document(plan: SchedulePlan, inp: OptimizationInput, fallback_14a: bool
         "curtailedKwh": _round(curtailed),
         # One "cycle" = one full usable-band round trip of throughput.
         "cycles": _round((charged + discharged) / (2.0 * capacity), 3) if capacity else None,
-        "socStartPct": _round(100.0 * soc_start / capacity, 2) if capacity else None,
-        "socEndPct": _round(100.0 * soc_end / capacity, 2) if capacity else None,
+        "socStartPct": (
+            _round(100.0 * soc_start / capacity, 2) if capacity and not blind else None
+        ),
+        "socEndPct": (
+            _round(100.0 * soc_end / capacity, 2) if capacity and not blind else None
+        ),
         "peakTargetKw": _round(plan.peak_target_kw),
         "fallback14a": fallback_14a,
         "knobs": knob_document(inp),
@@ -455,7 +469,11 @@ def plan_document(plan: SchedulePlan, inp: OptimizationInput, fallback_14a: bool
                 "time": s.start.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
                 "batteryKw": _round(s.battery_kw),
                 "gridKw": _round(s.grid_kw),
-                "socPct": _round(100.0 * s.soc_kwh / capacity, 2) if capacity else None,
+                "socPct": (
+                    _round(100.0 * s.soc_kwh / capacity, 2)
+                    if capacity and not blind
+                    else None
+                ),
                 "pvKw": _round(s.pv_kw),
                 "loadKw": _round(s.load_kw),
                 "curtailKw": _round(s.curtail_kw),

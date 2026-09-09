@@ -100,7 +100,7 @@ public class ScheduleRepository {
         List<Object[]> meta = jdbc.query(
                 "SELECT plan_id, device_id, terminal_value_eur_per_kwh, peak_target_kw, effective_floor_soc_pct, "
                         + "fallback_14a, why_terminal_anchor, why_refill_free_pct, "
-                        + "why_night_reserve_kwh, why_night_reserve_q FROM schedule "
+                        + "why_night_reserve_kwh, why_night_reserve_q, soc_source FROM schedule "
                         + "WHERE site_id = ? AND generated_at = ? LIMIT 1",
                 (rs, i) -> new Object[] {
                         rs.getObject("plan_id", UUID.class),
@@ -112,7 +112,8 @@ public class ScheduleRepository {
                         rs.getString("why_terminal_anchor"),
                         rs.getBigDecimal("why_refill_free_pct"),
                         rs.getBigDecimal("why_night_reserve_kwh"),
-                        rs.getBigDecimal("why_night_reserve_q")
+                        rs.getBigDecimal("why_night_reserve_q"),
+                        rs.getString("soc_source")
                 },
                 siteId, Timestamp.from(generatedAt));
         UUID planId = meta.isEmpty() ? null : (UUID) meta.get(0)[0];
@@ -129,13 +130,15 @@ public class ScheduleRepository {
         // night, and how often that much is needed. Null = nothing held back.
         BigDecimal nightReserveKwh = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[8];
         BigDecimal nightReserveQ = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[9];
-        BigDecimal savings = slots.stream()
-                .map(s -> nz(s.baselineCostEur()).subtract(nz(s.costEur())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // P7: WOHER der Start-Ladestand kam. Auf 'unbekannt' hat der Lauf den
+        // Speicher gar nicht geplant, und die Fahrplan-Seite sagt genau das.
+        String socSource = meta.isEmpty() ? null : (String) meta.get(0)[10];
+        BigDecimal savings = plannedSavings(slots);
         Banked banked = bankedValue(siteId, slots, terminalValue, 15);
         return new SchedulePlanDto(planId, deviceId, generatedAt, 15, savings,
                 banked.valueEur(), banked.socStartPct(), banked.socEndPct(), peakTargetKw, effectiveFloor,
-                fallback14a, whyAnchor, whyRefillFreePct, nightReserveKwh, nightReserveQ, slots);
+                fallback14a, whyAnchor, whyRefillFreePct, nightReserveKwh, nightReserveQ, socSource,
+                slots);
     }
 
     /**
@@ -221,16 +224,14 @@ public class ScheduleRepository {
             return null;
         }
         slots = MeasuredSlots.assign(slots, measuredPerSlot(siteId, slots, 15));
-        BigDecimal savings = slots.stream()
-                .map(s -> nz(s.baselineCostEur()).subtract(nz(s.costEur())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal savings = plannedSavings(slots);
         // Run-level facts (plan id, banked value, SoC bounds, peak target,
         // §14a fallback, the Erklärbarkeit-Stufe-1 anchor/refill share and the
         // P3 night reserve) describe ONE run and are therefore null on a
         // spliced day - a day stitched from a dozen runs has no single anchor
         // to name, and no single amount it held for the night.
         return new SchedulePlanDto(null, runDevice[0], newestRun[0], 15, savings,
-                null, null, null, null, null, null, null, null, null, null, slots);
+                null, null, null, null, null, null, null, null, null, null, null, slots);
     }
 
     /** One row of the {@link #SLOT_COLUMNS} projection as a slot DTO. */
@@ -410,7 +411,30 @@ public class ScheduleRepository {
                 socStart, socEnd);
     }
 
-    private static BigDecimal nz(BigDecimal v) {
-        return v == null ? BigDecimal.ZERO : v;
+    /**
+     * Die geplante Ersparnis einer Slot-Menge: {@code sum(baseline - cost)}
+     * ueber die Slots, die BEIDE Zahlen tragen - und {@code null}, sobald KEIN
+     * Slot sie traegt.
+     *
+     * <p>Genau die Semantik, die {@link HistoryRepository#plannedSavings} und
+     * {@link OverviewRepository} seit je in ihrem SQL fahren
+     * ({@code WHERE baseline_cost_eur IS NOT NULL AND cost_eur IS NOT NULL}) -
+     * hier stand als einzige Stelle des Hauses noch ein {@code nz()}, das ein
+     * fehlendes NULL in eine 0 verwandelte. Seit P7 ist das der Unterschied
+     * zwischen einer Aussage und einer Erfindung: ein Lauf ohne Ladestand
+     * schreibt {@code baseline_cost_eur = NULL}, weil er keinen Speicher
+     * geplant hat, und mit {@code nz()} haette dieselbe Zeile
+     * {@code -sum(cost)} als „Ersparnis" ausgewiesen.
+     */
+    private static BigDecimal plannedSavings(List<ScheduleSlotDto> slots) {
+        List<ScheduleSlotDto> priced = slots.stream()
+                .filter(s -> s.baselineCostEur() != null && s.costEur() != null)
+                .toList();
+        if (priced.isEmpty()) {
+            return null;
+        }
+        return priced.stream()
+                .map(s -> s.baselineCostEur().subtract(s.costEur()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 }

@@ -47,7 +47,15 @@ import { vorhersageLabel, wetterStatement, wetterZeilen } from '../wetterKarte';
 import { VerlaufLedger, type VerlaufLedgerZeile } from '../components/VerlaufLedger';
 import { einstellungenHash } from '../settingsNav';
 import { ScheduleChart } from '../ScheduleChart';
-import { bankedValueLine, horizonHint, planStaleNote, savingsTodayEur } from '../schedule';
+import {
+  KEIN_LADESTAND_NOTE,
+  bankedValueLine,
+  horizonHint,
+  ladestandHerkunftNote,
+  planOhneLadestand,
+  planStaleNote,
+  savingsTodayEur,
+} from '../schedule';
 import { consumerLayers, consumerSlotInfos, hasConsumerData } from '../consumerSchedule';
 import { FALLBACK_14A_NOTE, FORECAST_FOOTNOTE, phases } from '../fahrplanWhy';
 import { FahrplanWhyPanel } from '../components/FahrplanWhy';
@@ -836,6 +844,13 @@ export function FahrplanSection({ site }: { site: Site }) {
   // Null (never a fabricated 0,00 €) when today carries no priced plan slot -
   // e.g. the newest run is yesterday's (audit F1).
   const savingsToday = savingsTodayEur(slots, now);
+  // P7: der Lauf hatte keinen Ladestand, also wurde der Speicher gar nicht
+  // geplant. Ohne diesen Schalter läse der Kunde denselben Zustand als
+  // Defekt - lauter 0-kW-Balken, keine Ladestandslinie, keine Ersparnis.
+  const ohneLadestand = planOhneLadestand(plan);
+  // Vorbereitet für den generischen SoC-Baustein: ein BERECHNETER Ladestand
+  // darf planen, muss sich aber als berechnet zu erkennen geben. Heute null.
+  const herkunftNote = ladestandHerkunftNote(plan);
   // Honest freshness banner: the newest run is stale.
   const staleNote = planStaleNote(plan?.generatedAt, slots, now, slotMinutes);
   // Energy = mean power over each slot × slot length in hours. Derive slots-per-
@@ -1075,6 +1090,20 @@ export function FahrplanSection({ site }: { site: Site }) {
           Oben der Preis, unten Ihr Speicher, darunter das Phasen-Band -
           tippen Sie eine Spalte fürs Warum.
         </ChartSubtitle>
+        {/* P7: direkt über dem Diagramm, weil genau dort die leeren
+            Speicher-Balken und die fehlende Ladestandslinie stehen. */}
+        {ohneLadestand && (
+          <div
+            className="vp-alert vp-alert-warn"
+            role="status"
+            style={{ margin: '0 0 var(--vp-space-4)' }}
+          >
+            {KEIN_LADESTAND_NOTE}
+          </div>
+        )}
+        {herkunftNote && (
+          <p className="vp-note" style={{ margin: '0 0 var(--vp-space-3)' }}>{herkunftNote}</p>
+        )}
         <ScheduleChart
           plan={plan!}
           showPhaseBand
@@ -1105,7 +1134,13 @@ export function FahrplanSection({ site }: { site: Site }) {
           <span className="vp-card-label">Ihr Vorteil</span>
           <ProvBadge art="geplant" />
         </div>
-        {savingsToday == null ? (
+        {ohneLadestand ? (
+          /* P7: „kein Fahrplan" wäre hier falsch - es GIBT einen Fahrplan, er
+             plant nur den Speicher nicht. Der Grund steht an der Stelle, an der
+             sonst die Euro-Zahl stünde, damit die fehlende Zahl erklärt ist und
+             nicht als Fehler gelesen wird. */
+          <p className="vp-note" style={{ margin: 0 }}>{KEIN_LADESTAND_NOTE}</p>
+        ) : savingsToday == null ? (
           <p className="vp-note" style={{ margin: 0 }}>
             Für heute liegt noch kein Fahrplan vor.
           </p>
