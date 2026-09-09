@@ -1,6 +1,8 @@
 package com.voltpilot.api.topology;
 
 import java.sql.PreparedStatement;
+import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -28,20 +30,43 @@ public class TopologyRepository {
     public record RoleOverride(UUID entityId, String capability, String role, boolean primary) {}
 
     /**
+     * How far back one probe may walk - the FLOOR under the backward search,
+     * on {@code time}, the hypertable's OWN partition column, so chunks older
+     * than this are excluded instead of read (prod defect 2026-09-09, see
+     * {@link #latestValues(UUID, List, Instant)}).
+     *
+     * <p>Deliberately generous against every real display need: the read-model
+     * calls a value FRESH for {@code TopologyService.LIVENESS_WINDOW} = 5 min,
+     * so everything this window still admits was already rendered "stale". Three
+     * days is 864x that window and survives a long box outage plus a weekend;
+     * a channel silent for LONGER reports {@code null} -&gt; health {@code never}
+     * ("keine Daten"), never a multi-day-old number worn as the current one.
+     */
+    public static final Duration LATEST_VALUE_LOOKBACK = Duration.ofDays(3);
+
+    /**
      * One backward probe per requested pair. {@code unnest} of the two
      * parallel arrays drives a nested loop; each iteration is an equality on
      * {@code (entity_id, channel)} plus {@code ORDER BY time DESC LIMIT 1},
      * i.e. exactly the {@code uq_telemetry_v2_entity_channel_time} prefix, and
      * TimescaleDB's ordered ChunkAppend stops at the newest chunk that holds a
      * row (the older ones read "never executed").
+     *
+     * <p>{@code t.time >= ?} is the FLOOR that makes "stops" true for a pair
+     * that holds NO row at all - without it that probe has no reason to stop and
+     * walks the site's whole retained history (see
+     * {@link #latestValues(UUID, List, Instant)}).
      */
-    private static final String LATEST_VALUES =
+    // Package-private (not private) on purpose: TopologyLatestValueWindowTest
+    // asserts the FORM of the statement that actually ships - a copy would only
+    // prove the copy.
+    static final String LATEST_VALUES =
             "SELECT k.entity_id, k.channel, x.value, x.received_at "
                     + "FROM unnest(?::text[], ?::text[]) AS k(entity_id, channel) "
                     + "CROSS JOIN LATERAL ("
                     + "  SELECT t.value, t.received_at FROM telemetry_v2 t"
                     + "  WHERE t.site_id = ? AND t.entity_id = k.entity_id"
-                    + "    AND t.channel = k.channel"
+                    + "    AND t.channel = k.channel AND t.time >= ?"
                     + "  ORDER BY t.time DESC LIMIT 1) x";
 
     private final JdbcTemplate jdbc;
@@ -85,14 +110,51 @@ public class TopologyRepository {
      * path. A pair that never reported yields no row - {@code null} value, as
      * before.
      *
+     * <p><b>And the probe needs a FLOOR (measured, prod defect 2026-09-09).</b>
+     * "Stops at the newest chunk that holds a row" is only true for a pair that
+     * HAS a row. A DECLARED channel that never reported - Pilsting/Herzogau ran
+     * with two of seven pairs like that, both Fronius {@code pv_power_kw} - has
+     * no such chunk, so the probe found no reason to stop and walked the site's
+     * whole retained history backwards to return nothing. Measured on the live
+     * site: {@code GET /sites/{id}/topology} <b>4,5-14,4 s</b> (cold above 10 s),
+     * which tripped the cockpit's {@code ANLAGE_DECISION_TIMEOUT_MS} = 10 s and
+     * showed the customer "Diese Anlage konnte gerade nicht geladen werden".
+     * Same failure class as the form this replaced (AGENTS.md
+     * "Portal-Performance-Welle II": a bound that is NOT on the partition column
+     * bounds the RESULT, not the chunks read) - the LATERAL rewrite fixed the
+     * pairs that DO report and left the ones that do not unbounded.
+     * {@link #LATEST_VALUE_LOOKBACK} is that missing bound, and it sits on
+     * {@code time}, the partition column, so an empty pair is answered out of
+     * the newest chunks alone.
+     *
+     * <p>The read-model is UNCHANGED for every pair that reported inside the
+     * window - byte-identical value and received_at, proven against the retired
+     * statement by {@code HotReadRewriteEqualityTest}. Outside it the answer
+     * moves from a days-old number to {@code null} (health {@code never}) ON
+     * PURPOSE: liveness is 5 min, so such a number was never current, and the
+     * house rule is null over an invented value.
+     *
      * <p>The pairs travel as TWO parallel {@code text[]} arrays through
-     * {@code unnest}, so the statement has THREE bind parameters whatever the
+     * {@code unnest}, so the statement has FOUR bind parameters whatever the
      * site's size: one fixed SQL string (the driver's statement cache works),
      * and no way to approach Postgres' 65535-parameter ceiling. A per-pair
      * {@code VALUES} list plans identically but would need a fresh string per
      * pair count.
      */
     public List<LatestValue> latestValues(UUID siteId, List<ChannelKey> keys) {
+        return latestValues(siteId, keys, Instant.now().minus(LATEST_VALUE_LOOKBACK));
+    }
+
+    /**
+     * {@link #latestValues(UUID, List)} with the freshness floor spelled out -
+     * the seam the window's tests bind, so they pin the cutoff instead of racing
+     * the wall clock. Production always passes
+     * {@code now - }{@link #LATEST_VALUE_LOOKBACK}.
+     *
+     * @param notBefore oldest {@code time} a probe may return; a pair whose
+     *     newest sample is older yields NO row (value {@code null}).
+     */
+    public List<LatestValue> latestValues(UUID siteId, List<ChannelKey> keys, Instant notBefore) {
         if (keys == null || keys.isEmpty()) {
             return List.of();
         }
@@ -104,6 +166,7 @@ public class TopologyRepository {
                     ps.setArray(1, con.createArrayOf("text", entityIds));
                     ps.setArray(2, con.createArrayOf("text", channels));
                     ps.setObject(3, siteId);
+                    ps.setTimestamp(4, Timestamp.from(notBefore));
                     return ps;
                 },
                 (rs, n) -> new LatestValue(
