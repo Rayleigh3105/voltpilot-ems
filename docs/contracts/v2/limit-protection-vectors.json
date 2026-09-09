@@ -1,0 +1,251 @@
+{
+  "$comment": "Die GETEILTEN Vektoren des SCHUTZ-/GRENZBAUSTEINS (P5c, Konzept vp-deye-diybms-luecke-l5 §3.2b 'OPTIONAL - Schutz-/Grenzbaustein' + §3.3, Bauplan-Paket P5c). DREI Seiten lesen diese Datei PER PFAD: JavaScript edge-app/nodered/vp-palette/test/limit_guard_spec.js faehrt den Block 'faelle' durch die ECHTE Rechnung lib/limit-protection.js, Go edge-app/core/internal/guards/bmslimit_test.go faehrt den Block 'waechter' durch die ECHTE Waechter-Kappe guards.ClampTraced, und Java services/api/.../components/ProtectionProfileTest.java prueft, dass die AUSGELIEFERTE Vorlage (services/api/src/main/resources/protectionprofiles/catalog.json) Stuetzpunkt fuer Stuetzpunkt diese Tabellen traegt. Zusammen beweisen sie, dass die Box genau die Treppe rechnet, die das Portal anbietet, und dass der Waechter genau diese Grenze klemmt - das Muster von soc-derivation-vectors.json / load-follow-vectors.json / topology-vectors.json. Wer eine der drei Seiten aendert, aendert ALLE Seiten UND diese Datei zusammen.",
+  "$herkunft": "Die beiden Strom-Treppen und die vier Hysterese-Schwellen sind VERBATIM der Home-Assistant-/Node-RED-Flow des Kunden (Ground Truth 09.09.2026, firstmate data/vp-deye-diybms-luecke-l5/evidence/ha-nodered-soc-flow-note.md, Tab 'BMS -> (Ent-)Ladestromlimit 176s'). Derselbe Pack wie in soc-derivation-vectors.json: ein 176s-Selbstbau (11 Baenke x 16 Zellen, DIYBMS v4) mit dem Zellfenster 3,26-4,18 V, also NMC/NCA-artig. ⚠ Der Baustein selbst ist GENERISCH und vollstaendig konfigurierbar - diese Tabelle ist eine VORLAGE, kein eingebauter Wert. Eine LiFePO4-Zelle braucht andere Schwellen, und die hier ersatzweise zu benutzen waere ein Hartstopp an der falschen Spannung.",
+  "$regel": "Die TREPPE: 'der letzte Stuetzpunkt mit Schwelle <= SoC gewinnt' - keine Interpolation, die Stufe gilt bis zur naechsten Schwelle. UNTERHALB der ersten Schwelle wird auf den ERSTEN Stuetzpunkt GEKLEMMT statt extrapoliert - dieselbe Regel wie bei socFromVoltage in lib/soc-derivation.js, und in der Ladekurve zugleich die physikalisch richtige: eine fast leere Batterie darf mit dem groessten Strom laden. Das Ergebnis wird auf [0, max_a] geklemmt und auf round_a gerundet. Die HYSTERESE ist ein Riegel, kein Vergleich: Laden sperrt, sobald die HOECHSTE Zelle charge_stop_v erreicht, und oeffnet erst wieder bei charge_resume_v; Entladen sperrt, sobald die NIEDRIGSTE Zelle discharge_stop_v erreicht, und oeffnet erst wieder bei discharge_resume_v. Zwischen den beiden Schwellen gilt der VORIGE Zustand - und ohne vorigen Zustand gilt 'nicht gesperrt', denn ein Riegel wird nur durch das UEBERSCHREITEN der Stopp-Schwelle zugeschoben. Eine Sperre setzt die Grenze der betroffenen Richtung auf 0 A.",
+  "$ehrlichkeit": "Ein Kanal, den der Baustein nicht sagen KANN, FEHLT - er wird nie als 0 und nie als 'erlaubt' erfunden. Ohne Ladestand gibt es keine Treppe (aber die Hysterese spricht weiter, denn ein Hartstopp braucht keinen SoC); ohne Zellspannung gibt es keine Freigabe (aber die Treppe rechnet weiter). Eine gesperrte Richtung meldet BEIDES: allowed = 0 UND limit_a = 0.",
+  "$einheiten": "cell_min_mv/cell_max_mv sind MILLIVOLT (so sagt es der Typkatalog user-defined-battery.default_measure), die Hysterese-Schwellen stehen - wie die OCV-Kurven - in VOLT je Zelle. Der Faktor 1000 lebt genau einmal, in lib/soc-derivation.cellVolt, und dieser Baustein benutzt ihn von dort. Die Treppen stehen in AMPERE auf der Gleichstromseite; der Waechter rechnet in KILOWATT und braucht dafuer die gemessene Packspannung (guards.BmsKw).",
+  "vorlage": {
+    "id": "diybms-176s-deye-hp3",
+    "label": "DIYBMS 176s an Deye HP3 (Kundenwerte, 09.09.2026)",
+    "description": "Die Strom-Treppen und Zellspannungs-Riegel, die der Kunde heute in seinem eigenen Node-RED faehrt. Die Geraete-Maxima sind bewusst 40 A, obwohl der Deye HP3 50 A koennte - der Kunde faehrt so.",
+    "chemistry": "nmc",
+    "cells_in_series": 176,
+    "source": "Kunden-Node-RED, Tab 'BMS -> (Ent-)Ladestromlimit 176s', 09.09.2026",
+    "charge": {
+      "max_a": 40,
+      "max_a_comment": "Deye HP3 max 50 A - der Kunde klemmt auf 40 A.",
+      "steps": [[5, 270], [10, 236], [15, 236], [20, 236], [35, 202], [50, 135], [65, 118], [80, 43], [85, 22]]
+    },
+    "discharge": {
+      "max_a": 40,
+      "steps": [[5, 74], [10, 181], [15, 342], [20, 342], [35, 342], [50, 342], [65, 342], [80, 342], [85, 342]]
+    },
+    "hysteresis": {
+      "charge_stop_v": 4.06,
+      "charge_resume_v": 4.0,
+      "discharge_stop_v": 3.4,
+      "discharge_resume_v": 3.5
+    },
+    "round_a": 1
+  },
+  "faelle": [
+    {
+      "name": "der-gemessene-tag-des-kunden",
+      "why": "DER Beleg-Fall, dieselbe Stunde wie in soc-derivation-vectors.json: der Pack stand bei 7,3 % (vmin 3,393 V, vmax 3,606 V). Die Ladetreppe nennt bei 5 % noch 270 A - weit ueber dem Geraete-Maximum, also 40 A. Die niedrigste Zelle liegt mit 3,393 V aber UNTER dem Entlade-Stopp (3,40 V): der Riegel ist zu, und genau das ist der beobachtete „Boden ~8 %“ der Anlage. Entladen meldet deshalb 0 A UND discharge_allowed = 0, waehrend Laden voll erlaubt bleibt - eine leere Zelle will geladen werden.",
+      "channels": { "soc_pct": 7.3, "cell_min_mv": 3393, "cell_max_mv": 3606 },
+      "erwartet": {
+        "charge_limit_a": 40,
+        "discharge_limit_a": 0,
+        "charge_allowed": 1,
+        "discharge_allowed": 0
+      },
+      "erwartet_zustand": { "charge_blocked": false, "discharge_blocked": true }
+    },
+    {
+      "name": "die-treppe-beisst-erst-ganz-oben",
+      "why": "Bei 86 % gewinnt der letzte Stuetzpunkt (85 % -> 22 A), und 22 A liegen UNTER dem Geraete-Maximum: hier taucht die Treppe zum ersten Mal wirklich im Ergebnis auf. Genau das ist der Zweck des Bausteins - die letzten Prozent werden schonend geladen. Die Entladetreppe steht bei 342 A und klemmt weiter auf 40 A.",
+      "channels": { "soc_pct": 86, "cell_min_mv": 3900, "cell_max_mv": 4020 },
+      "erwartet": {
+        "charge_limit_a": 22,
+        "discharge_limit_a": 40,
+        "charge_allowed": 1,
+        "discharge_allowed": 1
+      }
+    },
+    {
+      "name": "die-stufe-gilt-bis-zur-naechsten-schwelle",
+      "why": "80 % und 84,9 % ergeben BEIDE 43 A: eine Treppe interpoliert nicht. Waere hier interpoliert worden, stuende bei 84,9 % ein Wert nahe 22 A - eine Zahl, die in der Tabelle des Kunden nirgends steht.",
+      "channels": { "soc_pct": 84.9, "cell_min_mv": 3880, "cell_max_mv": 3990 },
+      "erwartet": {
+        "charge_limit_a": 40,
+        "discharge_limit_a": 40,
+        "charge_allowed": 1,
+        "discharge_allowed": 1
+      },
+      "erwartet_roh": { "charge_step_a": 43, "discharge_step_a": 342 }
+    },
+    {
+      "name": "unter-der-ersten-schwelle-wird-geklemmt",
+      "why": "3 % liegt unter dem ersten Stuetzpunkt (5 %). Die Treppe hat dort nichts zu sagen; geklemmt auf den ERSTEN Punkt statt extrapoliert - dieselbe Regel wie bei der OCV-Kurve. In der Ladekurve ist das zugleich die physikalisch richtige Lesart: eine fast leere Batterie darf mit dem groessten Strom laden. Die geklemmten ROHwerte stehen in erwartet_roh (270 A bzw. 74 A); im Ergebnis ist die Entlade-Seite ohnehin 0, denn bei 3,30 V an der schwaechsten Zelle ist der Entlade-Riegel zu - so tief entlaedt niemand weiter.",
+      "channels": { "soc_pct": 3, "cell_min_mv": 3300, "cell_max_mv": 3350 },
+      "erwartet": {
+        "charge_limit_a": 40,
+        "discharge_limit_a": 0,
+        "charge_allowed": 1,
+        "discharge_allowed": 0
+      },
+      "erwartet_roh": { "charge_step_a": 270, "discharge_step_a": 74 },
+      "erwartet_zustand": { "charge_blocked": false, "discharge_blocked": true }
+    },
+    {
+      "name": "der-lade-riegel-schiebt-sich-zu",
+      "why": "Die hoechste Zelle erreicht 4,06 V - die Stopp-Schwelle. Laden wird GESPERRT, und eine Sperre meldet BEIDES: charge_allowed = 0 UND charge_limit_a = 0. Die Entlade-Seite bleibt davon voellig unberuehrt; ein voller Pack darf entladen.",
+      "channels": { "soc_pct": 92, "cell_min_mv": 3950, "cell_max_mv": 4060 },
+      "erwartet": {
+        "charge_limit_a": 0,
+        "discharge_limit_a": 40,
+        "charge_allowed": 0,
+        "discharge_allowed": 1
+      },
+      "erwartet_zustand": { "charge_blocked": true, "discharge_blocked": false }
+    },
+    {
+      "name": "der-riegel-haelt-im-zwischenband",
+      "why": "4,03 V liegt ZWISCHEN Freigabe (4,00 V) und Stopp (4,06 V). Ohne Riegel waere Laden wieder erlaubt und der Pack pendelte im Sekundentakt - genau das, wogegen eine Hysterese gebaut wird. Der VORIGE Zustand gilt weiter.",
+      "zustand": { "charge_blocked": true, "discharge_blocked": false },
+      "channels": { "soc_pct": 90, "cell_min_mv": 3940, "cell_max_mv": 4030 },
+      "erwartet": {
+        "charge_limit_a": 0,
+        "discharge_limit_a": 40,
+        "charge_allowed": 0,
+        "discharge_allowed": 1
+      },
+      "erwartet_zustand": { "charge_blocked": true, "discharge_blocked": false }
+    },
+    {
+      "name": "ohne-vorigen-zustand-ist-das-zwischenband-frei",
+      "why": "Dieselben 4,03 V, aber ohne Riegel-Gedaechtnis (frischer Start der Box). Ein Riegel wird NUR durch das Ueberschreiten der Stopp-Schwelle zugeschoben - ihn hier von selbst zuzuschieben hiesse, eine Sperre zu erfinden, die niemand ausgeloest hat.",
+      "channels": { "soc_pct": 90, "cell_min_mv": 3940, "cell_max_mv": 4030 },
+      "erwartet": {
+        "charge_limit_a": 22,
+        "discharge_limit_a": 40,
+        "charge_allowed": 1,
+        "discharge_allowed": 1
+      },
+      "erwartet_zustand": { "charge_blocked": false, "discharge_blocked": false }
+    },
+    {
+      "name": "die-freigabe-oeffnet-den-riegel",
+      "why": "4,00 V ist die Freigabe-Schwelle - erst hier wird Laden wieder erlaubt, und die Treppe gilt wieder.",
+      "zustand": { "charge_blocked": true, "discharge_blocked": false },
+      "channels": { "soc_pct": 88, "cell_min_mv": 3930, "cell_max_mv": 4000 },
+      "erwartet": {
+        "charge_limit_a": 22,
+        "discharge_limit_a": 40,
+        "charge_allowed": 1,
+        "discharge_allowed": 1
+      },
+      "erwartet_zustand": { "charge_blocked": false, "discharge_blocked": false }
+    },
+    {
+      "name": "der-entlade-riegel-schuetzt-die-schwaechste-zelle",
+      "why": "Die NIEDRIGSTE Zelle faellt auf 3,40 V. Entladen wird gesperrt (0 A, discharge_allowed = 0), Laden bleibt erlaubt - eine leere Zelle will geladen werden. Der Spiegel des Lade-Riegels, und der Grund, warum der Baustein Min UND Max braucht.",
+      "zustand": { "charge_blocked": false, "discharge_blocked": false },
+      "channels": { "soc_pct": 4, "cell_min_mv": 3400, "cell_max_mv": 3620 },
+      "erwartet": {
+        "charge_limit_a": 40,
+        "discharge_limit_a": 0,
+        "charge_allowed": 1,
+        "discharge_allowed": 0
+      },
+      "erwartet_zustand": { "charge_blocked": false, "discharge_blocked": true }
+    },
+    {
+      "name": "der-entlade-riegel-haelt-bis-zur-freigabe",
+      "why": "3,45 V liegt zwischen Stopp (3,40 V) und Freigabe (3,50 V) - der Riegel haelt. Erst 3,50 V oeffnet ihn (naechster Fall).",
+      "zustand": { "charge_blocked": false, "discharge_blocked": true },
+      "channels": { "soc_pct": 8, "cell_min_mv": 3450, "cell_max_mv": 3650 },
+      "erwartet": {
+        "charge_limit_a": 40,
+        "discharge_limit_a": 0,
+        "charge_allowed": 1,
+        "discharge_allowed": 0
+      },
+      "erwartet_zustand": { "charge_blocked": false, "discharge_blocked": true }
+    },
+    {
+      "name": "ohne-ladestand-spricht-nur-der-riegel",
+      "why": "Ein Hartstopp braucht KEINEN Ladestand: die Zellspannung allein beweist ihn. 4,07 V an der hoechsten Zelle sperrt das Laden, und die gesperrte Richtung meldet ihre 0 A auch ohne SoC. Die ENTLADE-Grenze fehlt dagegen - sie kaeme aus der Treppe, und eine Treppe auf einem geratenen Ladestand waere genau die Zahl mit Nachkommastellen, die dieses Produkt nicht schreibt.",
+      "channels": { "cell_min_mv": 3600, "cell_max_mv": 4070 },
+      "erwartet": {
+        "charge_limit_a": 0,
+        "charge_allowed": 0,
+        "discharge_allowed": 1
+      },
+      "erwartet_fehlt": ["discharge_limit_a"],
+      "erwartet_zustand": { "charge_blocked": true, "discharge_blocked": false }
+    },
+    {
+      "name": "ohne-zellspannung-spricht-nur-die-treppe",
+      "why": "Der Spiegelfall: eine Quelle, die einen gemessenen Ladestand liefert, aber keine Zellspannungen. Die Treppe rechnet, die Freigaben FEHLEN - eine Freigabe ohne Zellspannung waere eine Erlaubnis, die niemand geprueft hat, und ein abwesendes Feld heisst 'nicht gesagt', nie 'ja'.",
+      "channels": { "soc_pct": 55 },
+      "erwartet": { "charge_limit_a": 40, "discharge_limit_a": 40 },
+      "erwartet_fehlt": ["charge_allowed", "discharge_allowed"]
+    },
+    {
+      "name": "ohne-eingang-gar-nichts",
+      "why": "Weder Ladestand noch Zellspannung: der Baustein hat NICHTS zu sagen und sagt nichts. Kein Kanal, keine 0, keine Vorgabe.",
+      "channels": { "temp_max_c": 21.5 },
+      "erwartet": {},
+      "erwartet_fehlt": ["charge_limit_a", "discharge_limit_a", "charge_allowed", "discharge_allowed"],
+      "erwartet_leer": true
+    }
+  ],
+  "$waechter_regel": "Die BMS-Kappe ist eine harte OBERGRENZE ZUSAETZLICH zu Nennband, SoC-Fenster, EEG-Solarladung und §14a-Huelle (Konzept §3.3 'Was nie verletzt werden darf'). Sie wird - wie das Nennband - ZWEIMAL angelegt: vor der §14a-Rechnung, damit die mit einem erreichbaren Wert rechnet, und danach, damit deren Korrektur die Kappe nie sprengt. Sie RESTRINGIERT nur; sie hebt nie einen Sollwert an. Eine gesperrte Richtung ist 0 kW. Die Umrechnung Ampere -> Kilowatt braucht die GEMESSENE Packspannung (guards.BmsKw): ohne sie gibt es keine Strom-Kappe - eine geratene Spannung waere eine erfundene Leistungsgrenze. Die EINE Ausnahme ist die 0: 0 A sind bei JEDER Spannung 0 kW.",
+  "waechter": [
+    {
+      "name": "die-treppe-kappt-den-sollwert",
+      "why": "Der Fall, fuer den es P5c gibt: die Cloud plant +20 kW Laden, das BMS erlaubt bei 86 % nur noch 22 A. Bei 560 V Packspannung sind das 12,32 kW - und genau dort steht der Sollwert danach.",
+      "befehl_kw": 20,
+      "nennband": { "max_charge_kw": 30, "max_discharge_kw": 30 },
+      "bms": { "charge_limit_a": 22, "discharge_limit_a": 342, "pack_voltage_v": 560 },
+      "erwartet_kw": 12.32,
+      "erwartet_stufe": "guard:bms_limit"
+    },
+    {
+      "name": "die-sperre-ist-null",
+      "why": "charge_allowed = 0 heisst 0 kW, unabhaengig von jeder Zahl daneben. Ein Verbot ist keine Grenze, die man noch verhandelt.",
+      "befehl_kw": 8,
+      "nennband": { "max_charge_kw": 30, "max_discharge_kw": 30 },
+      "bms": { "charge_blocked": true, "pack_voltage_v": 560 },
+      "erwartet_kw": 0,
+      "erwartet_stufe": "guard:bms_limit"
+    },
+    {
+      "name": "die-entlade-sperre-spiegelt-sie",
+      "why": "Derselbe Satz mit umgekehrtem Vorzeichen: discharge_allowed = 0 stoppt jede Entladung, und die Lade-Seite bleibt unberuehrt.",
+      "befehl_kw": -9,
+      "nennband": { "max_charge_kw": 30, "max_discharge_kw": 30 },
+      "bms": { "discharge_blocked": true, "pack_voltage_v": 560 },
+      "erwartet_kw": 0,
+      "erwartet_stufe": "guard:bms_limit"
+    },
+    {
+      "name": "ohne-packspannung-keine-strom-kappe",
+      "why": "Eine Ampere-Grenze ohne gemessene Spannung laesst sich nicht in Kilowatt umrechnen. Statt eine Nennspannung zu RATEN - und damit eine Leistungsgrenze zu erfinden, die kein Geraet genannt hat - entfaellt die Kappe; Nennband, SoC-Fenster und §14a binden unveraendert weiter.",
+      "befehl_kw": 20,
+      "nennband": { "max_charge_kw": 30, "max_discharge_kw": 30 },
+      "bms": { "charge_limit_a": 22 },
+      "erwartet_kw": 20,
+      "erwartet_stufe": null
+    },
+    {
+      "name": "null-ampere-brauchen-keine-spannung",
+      "why": "Die EINE Ausnahme der Regel darueber: 0 A sind bei jeder Spannung 0 kW. Eine Null-Grenze faellt deshalb nie durch, nur weil die Packspannung fehlt - und genau so meldet der Baustein eine Sperre.",
+      "befehl_kw": 20,
+      "nennband": { "max_charge_kw": 30, "max_discharge_kw": 30 },
+      "bms": { "charge_limit_a": 0 },
+      "erwartet_kw": 0,
+      "erwartet_stufe": "guard:bms_limit"
+    },
+    {
+      "name": "die-kappe-restringiert-nur",
+      "why": "Das BMS erlaubt 342 A (191,5 kW bei 560 V) - viel mehr als das Nennband. Der Sollwert bleibt, wo das Nennband ihn hat: eine BMS-Grenze hebt nie etwas an.",
+      "befehl_kw": -40,
+      "nennband": { "max_charge_kw": 30, "max_discharge_kw": 30 },
+      "bms": { "discharge_limit_a": 342, "pack_voltage_v": 560 },
+      "erwartet_kw": -30,
+      "erwartet_stufe": "guard:rated_band"
+    },
+    {
+      "name": "sie-ueberlebt-die-huellen-korrektur",
+      "why": "Die §14a-Huelle wuerde die Ladung auf 18 kW ANHEBEN, um den Netzpunkt zu halten. Die BMS-Kappe steht danach noch einmal und laesst 12,32 kW stehen - deshalb wird sie, wie das Nennband, ZWEIMAL angelegt. Physik gewinnt: was der Pack nicht aufnimmt, nimmt er nicht auf, und die Einhaltung der Huelle ist dann Sache der Abregelung, nicht des Speichers.",
+      "befehl_kw": 5,
+      "nennband": { "max_charge_kw": 30, "max_discharge_kw": 30 },
+      "messung": { "pv_kw": 25, "load_kw": 2, "grid_limit_kw": 5 },
+      "bms": { "charge_limit_a": 22, "pack_voltage_v": 560 },
+      "erwartet_kw": 12.32,
+      "erwartet_stufe": "guard:bms_limit"
+    }
+  ]
+}

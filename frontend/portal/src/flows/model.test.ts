@@ -173,15 +173,16 @@ describe('customer visibility (audit N-1)', () => {
   it('flags exactly the not-offered nodes: undeliverable promises + the generated rule', () => {
     // vp.logic.gate / vp.notify.push: promises the platform cannot keep (N-1).
     // vp.consumer.reactive / vp.modbus.switch / vp.mqtt.read / vp.http.read /
-    // vp.soc.derive: GENERATED (D-19/D-22/D-23) - valid only in server-stamped
-    // documents, never authorable. The switch additionally exists ONLY after a
-    // per-device release, so offering it would be a button that promises a
-    // write nothing has proven; the two level-1 battery reads carry a field
-    // mapping and the SoC derivation a pair of curves that belong to the
-    // battery assistant, not the flow editor - offering either here would be a
-    // form nobody can fill in.
+    // vp.soc.derive / vp.bms.limit: GENERATED (D-19/D-22/D-23/P5c) - valid only
+    // in server-stamped documents, never authorable. The switch additionally
+    // exists ONLY after a per-device release, so offering it would be a button
+    // that promises a write nothing has proven; the two level-1 battery reads
+    // carry a field mapping, the SoC derivation a pair of curves and the
+    // protection block a pair of current staircases plus four cell-voltage
+    // thresholds - all of them belong to the battery assistant, not the flow
+    // editor, and offering any here would be a form nobody can fill in.
     expect(diagnosticOnlyTypes().sort())
-      .toEqual(['vp.consumer.reactive', 'vp.http.read', 'vp.logic.gate',
+      .toEqual(['vp.bms.limit', 'vp.consumer.reactive', 'vp.http.read', 'vp.logic.gate',
         'vp.modbus.switch', 'vp.mqtt.read', 'vp.notify.push', 'vp.soc.derive']);
   });
 

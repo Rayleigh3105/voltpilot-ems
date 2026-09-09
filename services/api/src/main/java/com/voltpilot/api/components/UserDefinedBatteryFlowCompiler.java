@@ -6,7 +6,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Auth;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Broker;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Endpoint;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.Hysteresis;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.NormalizedMapping;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.Protection;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.ProtectionDirection;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Result;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.SocDerivation;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.SocParams;
@@ -76,6 +79,10 @@ public class UserDefinedBatteryFlowCompiler {
     private static final String SOC_NODE = "vp.soc.derive";
     private static final String SOC_NODE_VERSION = "1.0.0";
 
+    /** Der Katalog-Baustein, der daraus die zulässigen Grenzen ableitet (P5c). */
+    private static final String LIMIT_NODE = "vp.bms.limit";
+    private static final String LIMIT_NODE_VERSION = "1.0.0";
+
     /** Die Herkunfts-Art dieses generierten Flows (flow-graph.schema.json). */
     public static final String ORIGIN_KIND = "mqtt-device";
 
@@ -119,7 +126,7 @@ public class UserDefinedBatteryFlowCompiler {
             SocDerivation soc) {
         return compile(siteId, tenantId, entityId, version, label,
                 UserDefinedBatteryDefinition.TRANSPORT_MQTT, broker, null, null, mappings,
-                publishIntervalS, soc);
+                publishIntervalS, soc, null);
     }
 
     /**
@@ -132,7 +139,7 @@ public class UserDefinedBatteryFlowCompiler {
             Result def) {
         return compile(siteId, tenantId, entityId, version, label, def.transport(), def.broker(),
                 def.endpoint(), def.authOrNone(), def.mappings(), def.publishIntervalS(),
-                def.socDerivation());
+                def.socDerivation(), def.protection());
     }
 
     /**
@@ -152,7 +159,8 @@ public class UserDefinedBatteryFlowCompiler {
      */
     public ObjectNode compile(UUID siteId, UUID tenantId, UUID entityId, int version, String label,
             String transport, Broker broker, Endpoint endpoint, Auth auth,
-            List<NormalizedMapping> mappings, int publishIntervalS, SocDerivation soc) {
+            List<NormalizedMapping> mappings, int publishIntervalS, SocDerivation soc,
+            Protection protection) {
         boolean http = UserDefinedBatteryDefinition.TRANSPORT_HTTP.equals(transport);
         String readId = http ? "http" : "mqtt";
         ObjectNode doc = mapper.createObjectNode();
@@ -233,12 +241,26 @@ public class UserDefinedBatteryFlowCompiler {
         }
 
         ArrayNode edges = doc.putArray("edges");
+        String tail = readId;
         if (soc != null) {
             appendSocNode(doc, entityId, soc);
             ObjectNode edge = edges.addObject();
             edge.put("id", readId + "-soc");
             edge.putObject("from").put("node", readId).put("port", "value");
             edge.putObject("to").put("node", "soc").put("port", "channels");
+            tail = "soc";
+        }
+        // Der SCHUTZ-/GRENZBAUSTEIN (P5c) hängt am ENDE derselben KETTE, nie am
+        // Takt: seine Treppe braucht den ABGELEITETEN Ladestand, und jede Stufe
+        // reicht weiter, was sie weiß. Gibt es keine Ableitung, hängt er direkt
+        // am Lese-Knoten - der Riegel steht auf der Zellspannung allein und
+        // braucht gar keinen Ladestand.
+        if (protection != null) {
+            appendLimitNode(doc, entityId, protection);
+            ObjectNode edge = edges.addObject();
+            edge.put("id", tail + "-limit");
+            edge.putObject("from").put("node", tail).put("port", "value");
+            edge.putObject("to").put("node", "limit").put("port", "channels");
         }
 
         ObjectNode trigger = doc.putArray("triggers").addObject();
@@ -310,6 +332,62 @@ public class UserDefinedBatteryFlowCompiler {
                 r.put("empty_soc_pct", sp.recalibrate().emptySocPct());
             }
         }
+    }
+
+    /**
+     * Der SCHUTZ-/GRENZBAUSTEIN als letzter Knoten desselben Flows (P5c).
+     *
+     * <p>Wie beim SoC-Ableiter steht jede Vorgabe AUSGESCHRIEBEN im Artefakt:
+     * danach rät auf der Box niemand mehr an einer Vorgabe herum, und eine
+     * geänderte Vorgabe wäre sonst eine stille Verhaltensänderung auf jeder
+     * schon ausgerollten Batterie - bei einer SCHUTZgrenze die schlechteste
+     * Sorte Überraschung.
+     *
+     * <p>⚠ Der Knoten trägt KEINEN Schreibpfad: er veröffentlicht Grenzen und
+     * Freigaben als Telemetrie, mehr nicht. Geräte-Stromgrenzen zu schreiben
+     * bleibt einem zertifizierten Steuerpfad vorbehalten.
+     */
+    private void appendLimitNode(ObjectNode doc, UUID entityId, Protection p) {
+        ObjectNode node = ((ArrayNode) doc.get("nodes")).addObject();
+        node.put("id", "limit");
+        node.put("type", LIMIT_NODE);
+        node.put("type_version", LIMIT_NODE_VERSION);
+        node.put("label", "Schutzgrenzen");
+        ObjectNode par = node.putObject("parameters");
+        par.put("entity_id", entityId.toString());
+        ObjectNode inputs = par.putObject("inputs");
+        // Feste Feldreihenfolge (TreeMap) - dieselbe Definition muss ein
+        // BYTE-GLEICHES Dokument ergeben, sonst rollt die Box grundlos neu aus.
+        new java.util.TreeMap<>(p.inputs()).forEach(inputs::put);
+        putDirection(par, "charge", p.charge());
+        putDirection(par, "discharge", p.discharge());
+        ObjectNode h = par.putObject("hysteresis");
+        Hysteresis hy = p.hysteresis();
+        if (hy != null && hy.chargeStopV() != null) {
+            h.put("charge_stop_v", hy.chargeStopV());
+            h.put("charge_resume_v", hy.chargeResumeV());
+        }
+        if (hy != null && hy.dischargeStopV() != null) {
+            h.put("discharge_stop_v", hy.dischargeStopV());
+            h.put("discharge_resume_v", hy.dischargeResumeV());
+        }
+        par.put("round_a", p.roundA());
+        par.put("hold_s", p.holdS());
+    }
+
+    /** Eine Strom-Treppe samt Geräte-Maximum - nur, wenn es sie gibt. */
+    private static void putDirection(ObjectNode parent, String field, ProtectionDirection dir) {
+        if (dir == null) {
+            return;
+        }
+        ObjectNode out = parent.putObject(field);
+        ArrayNode steps = out.putArray("steps");
+        for (double[] step : dir.steps()) {
+            ArrayNode pair = steps.addArray();
+            pair.add(step[0]);
+            pair.add(step[1]);
+        }
+        out.put("max_a", dir.maxA());
     }
 
     /** Eine Kennlinie als Liste von Paaren - nur, wenn es sie gibt. */

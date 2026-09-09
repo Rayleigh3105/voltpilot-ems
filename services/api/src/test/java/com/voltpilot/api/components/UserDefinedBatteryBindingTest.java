@@ -98,7 +98,8 @@ class UserDefinedBatteryBindingTest {
 
         service = new UserDefinedBatteryService(sites, entityRepo, entityRegistry,
                 new EntityTypeCatalog(mapper), definitions, components,
-                new SocCurveTemplateCatalog(mapper), new UserDefinedBatteryFlowCompiler(mapper),
+                new SocCurveTemplateCatalog(mapper), new ProtectionProfileCatalog(mapper),
+                new UserDefinedBatteryFlowCompiler(mapper),
                 flows, deployments, flowc, topology, mapper);
         TenantContext.set(TENANT);
     }
@@ -216,7 +217,7 @@ class UserDefinedBatteryBindingTest {
                 0.001, 0.0, null, 300, null, null));
         return new SaveUserDefinedBatteryRequest("DIY-Speicher", null,
                 new SaveUserDefinedBatteryRequest.Broker("192.168.40.20", 1883), null, null,
-                mappings, 15, null, binding, null);
+                mappings, 15, null, binding, null, null);
     }
 
     private static EntityRow battery() {

@@ -1255,6 +1255,90 @@
           "help": "curve_charge/curve_discharge (Listen von [Zellspannung in V, Ladestand in %]), cells_in_series, conservative_min, round_pct, capacity_kwh, efficiency_pct, nominal_voltage_v, anchor {soc_pct, at} und recalibrate {full_cell_mv, full_soc_pct, empty_cell_mv, empty_soc_pct}."
         }
       ]
+    },
+    {
+      "type": "vp.bms.limit",
+      "type_version": "1.0.0",
+      "label": "Schutzgrenzen (generiert)",
+      "description": "GENERIERT aus dem Anschluss einer selbst angebundenen Batterie (P5c Schutz-/Grenzbaustein, Konzept vp-deye-diybms-luecke-l5 §3.2b \"OPTIONAL - Schutz-/Grenzbaustein\" und §3.3). Der Knoten leitet aus dem Ladestand und den Zellspannungen ab, WAS DIE BATTERIE GERADE ZULAESST: eine Strom-Treppe je Richtung (der letzte Stuetzpunkt mit Schwelle <= SoC gewinnt - keine Interpolation -, das Ergebnis geklemmt auf das Geraete-Maximum) und einen Zellspannungs-Riegel mit Hysterese (Laden sperrt, sobald die HOECHSTE Zelle die Stopp-Schwelle erreicht, und oeffnet erst wieder an der Freigabe-Schwelle; Entladen spiegelbildlich an der NIEDRIGSTEN Zelle). Veroeffentlicht werden bis zu vier Kanaele: charge_limit_a, discharge_limit_a, charge_allowed, discharge_allowed (Freigaben reisen als 0/1 - die Telemetrie kennt nur Zahlen). Eine gesperrte Richtung meldet BEIDES: allowed = 0 UND limit_a = 0. Was der Knoten nicht sagen kann, sagt er nicht: ohne Ladestand keine Treppe, ohne Zellspannung keine Freigabe - ein abwesender Kanal heisst \"nicht gesagt\", nie \"0\" und nie \"erlaubt\". ⚠ Er SCHREIBT AUF KEIN GERAET: die Grenzen werden BEREITGESTELLT - fuer die Anzeige und als Kappe des Waechters auf der Box (jeder VoltPilot-Sollwert muss darunter bleiben). Geraete-Stromgrenzen zu schreiben bleibt einem zertifizierten Steuerpfad vorbehalten. Der Knoten haengt an einer KANTE hinter dem Lese- bzw. Ableitungs-Knoten, nie am Takt. Im Editor nie anzubieten; Bearbeiten oeffnet den Batterie-Assistenten der Komponente.",
+      "group": "daten",
+      "generated": true,
+      "generated_origin": ["mqtt-device", "http-device"],
+      "generated_origin_label": "dem generierten Batterie-Flow",
+      "customer_visible": false,
+      "runtimes": [
+        "edge"
+      ],
+      "inputs": [
+        {
+          "name": "channels",
+          "type": "number",
+          "label": "Messwerte",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "number",
+          "label": "Grenzen"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "entity_id",
+          "kind": "entity",
+          "label": "Batterie",
+          "required": true
+        },
+        {
+          "name": "charge",
+          "kind": "json",
+          "label": "Lade-Treppe",
+          "required": false,
+          "help": "steps (Liste von [Ladestand in %, Strom in A]) und max_a (Geraete-Maximum). Fehlt der Block, gibt es keine Lade-Grenze - der Riegel spricht trotzdem."
+        },
+        {
+          "name": "discharge",
+          "kind": "json",
+          "label": "Entlade-Treppe",
+          "required": false,
+          "help": "Wie die Lade-Treppe, fuer die Entladeseite."
+        },
+        {
+          "name": "hysteresis",
+          "kind": "json",
+          "label": "Zellspannungs-Riegel",
+          "required": false,
+          "help": "charge_stop_v/charge_resume_v (die Freigabe liegt UNTER dem Stopp) und discharge_stop_v/discharge_resume_v (die Freigabe liegt DARUEBER), je Zelle in Volt."
+        },
+        {
+          "name": "round_a",
+          "kind": "number",
+          "label": "Rundung (A)",
+          "required": false,
+          "min": 0.1,
+          "max": 10,
+          "default": 1
+        },
+        {
+          "name": "hold_s",
+          "kind": "number",
+          "label": "Haltefrist (s)",
+          "required": false,
+          "min": 60,
+          "max": 86400,
+          "default": 900,
+          "help": "Wie lange ein Riegel-Zustand ohne frische Zellspannung noch gilt. Danach faengt er bei der naechsten Messung an - was ein Pack in einer unbeobachteten Viertelstunde getan hat, weiss niemand."
+        },
+        {
+          "name": "inputs",
+          "kind": "json",
+          "label": "Eingänge",
+          "required": false,
+          "help": "Rolle → Kanal: soc, cell_min, cell_max. Fehlt eine Rolle, gilt der gleichnamige Standard-Kanal (soc_pct, cell_min_mv, cell_max_mv)."
+        }
+      ]
     }
   ]
 }

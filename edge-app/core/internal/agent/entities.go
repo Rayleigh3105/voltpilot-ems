@@ -695,6 +695,131 @@ func (a *Agent) entityGuardReading(id string) guards.Reading {
 	return r
 }
 
+// bmsEnvelopeWindow is how fresh a BMS statement must be to CONSTRAIN a
+// setpoint. It mirrors entityHealthWindow (and the protection block repeats an
+// unchanged limit well inside it, see vp-limit-guard REPEAT_AFTER_MS): a limit
+// nobody has restated for five minutes is no longer a statement about NOW.
+//
+// Letting it expire is the right direction and the honest one. An expired
+// envelope removes the CAP - it does not clamp to 0 - because a protection
+// block that went silent has said nothing, and "nothing" is not "forbidden".
+// The rated band, the SoC window, the EEG clamp and the §14a envelope all keep
+// binding; and the pack's own BMS plus its CAN coupling remain its physical
+// protection, which is exactly what §3.3 says they are.
+const bmsEnvelopeWindow = 5 * time.Minute
+
+// The four channels the P5c protection block publishes, plus the pack voltage
+// the ampere->kilowatt conversion needs. Wortgleich mit
+// topology.chargeLimitChannel & Co. and with lib/limit-protection.js.
+const (
+	chargeLimitChannel      = "charge_limit_a"
+	dischargeLimitChannel   = "discharge_limit_a"
+	chargeAllowedChannel    = "charge_allowed"
+	dischargeAllowedChannel = "discharge_allowed"
+	packVoltageChannel      = "voltage_v"
+)
+
+// bmsEnvelope builds the guard chain's BMS cap for ONE commanded entity (P5c,
+// Konzept vp-deye-diybms-luecke-l5 §3.2b/§3.3): what the battery's own
+// protection currently allows, in kilowatts.
+//
+// WHERE IT COMES FROM. The limits are published by the BATTERY, while the
+// setpoint is commanded to the STORAGE node - on a hybrid plant those are two
+// different entities, and the Speiser-Bindung (P6) is what ties them together:
+// it writes a role assignment (`storage`) for exactly these channels on the
+// battery. This function therefore looks in two places, in this order:
+//
+//  1. the commanded entity ITSELF - the standalone case, where the battery IS
+//     the storage node,
+//  2. the entity whose role assignment feeds the storage role with these
+//     channels - the feeds_inverter case. A maßgebliche (primary) assignment
+//     wins; otherwise the first in registry order.
+//
+// ⚠ ALL of it comes from ONE entity, exactly like topology.limitsOf: a charge
+// limit from one BMS next to a discharge limit from another would describe an
+// envelope neither of them has.
+//
+// nil = nothing said. That is the answer for every plant without a protection
+// block (the overwhelming majority), and clamping stays byte-for-byte what it
+// was before P5c.
+func (a *Agent) bmsEnvelope(entityID string) *guards.BmsEnvelope {
+	now := time.Now()
+	a.entMu.Lock()
+	defer a.entMu.Unlock()
+
+	if env := a.bmsEnvelopeOf(entityID, now); env != nil {
+		return env
+	}
+	// The bound feeder: whoever assigned one of the limit channels to the
+	// storage role. Primary wins; registry order decides among equals, so the
+	// answer is deterministic.
+	owner, ownerPrimary := "", false
+	for _, e := range a.entRegistry.Entities {
+		for _, ra := range e.RoleAssignment {
+			if ra.Role != topology.RoleStorage || !isBmsLimitChannel(ra.Channel) {
+				continue
+			}
+			if owner == "" || (ra.Primary && !ownerPrimary) {
+				owner, ownerPrimary = e.ID, ra.Primary
+			}
+		}
+	}
+	if owner == "" || owner == entityID {
+		return nil
+	}
+	return a.bmsEnvelopeOf(owner, now)
+}
+
+// bmsEnvelopeOf reads ONE entity's protection channels. Caller holds entMu.
+func (a *Agent) bmsEnvelopeOf(id string, now time.Time) *guards.BmsEnvelope {
+	er, ok := a.entReadings[id]
+	if !ok || now.Sub(er.recv) > bmsEnvelopeWindow {
+		// Deliberately NOT a.entityReading: the local composition (M-B3-local)
+		// is a display fallback for a MIGRATED plant, and a display fallback
+		// must never become a control input.
+		return nil
+	}
+	volt := guards.Unknown()
+	if v, has := er.channels[packVoltageChannel]; has {
+		volt = v
+	}
+	env := guards.BmsEnvelope{ChargeKw: guards.Unknown(), DischargeKw: guards.Unknown()}
+	said := false
+	if v, has := er.channels[chargeLimitChannel]; has {
+		env.ChargeKw = guards.BmsKw(v, volt)
+		said = true
+	}
+	if v, has := er.channels[dischargeLimitChannel]; has {
+		env.DischargeKw = guards.BmsKw(v, volt)
+		said = true
+	}
+	// A permission travels as a NUMBER through telemetry (the v2 channel
+	// contract knows only numbers); anything but 0 is "yes". An ABSENT flag is
+	// never read as a block - and never as a permission either: it simply says
+	// nothing.
+	if v, has := er.channels[chargeAllowedChannel]; has {
+		env.ChargeBlocked = v == 0
+		said = true
+	}
+	if v, has := er.channels[dischargeAllowedChannel]; has {
+		env.DischargeBlocked = v == 0
+		said = true
+	}
+	if !said {
+		return nil
+	}
+	return &env
+}
+
+func isBmsLimitChannel(channel string) bool {
+	switch channel {
+	case chargeLimitChannel, dischargeLimitChannel, chargeAllowedChannel,
+		dischargeAllowedChannel:
+		return true
+	}
+	return false
+}
+
 // restoreEntities loads the persisted registry at boot (before Start
 // republishes the retained configs).
 func (a *Agent) restoreEntities() {

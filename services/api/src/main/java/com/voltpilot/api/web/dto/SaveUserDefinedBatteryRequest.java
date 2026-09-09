@@ -51,7 +51,71 @@ public record SaveUserDefinedBatteryRequest(
         Integer publishIntervalS,
         @Valid SocDerivationRequest socDerivation,
         @Valid BindingRequest binding,
+        @Valid ProtectionRequest protection,
         @Size(max = 200) String note) {
+
+    /**
+     * Der SCHUTZ-/GRENZBAUSTEIN (P5c) - was die Batterie zulässt.
+     *
+     * <p>Beide Hälften sind einzeln optional: {@code charge}/{@code discharge}
+     * sind die Strom-TREPPEN je Richtung, {@code hysteresis} der
+     * Zellspannungs-RIEGEL. Fehlt der ganze Block, hat die Batterie keinen
+     * Schutzbaustein - der Normalfall, und ein legitimer Zustand.
+     *
+     * <p>⚠ Dieser Block SCHREIBT auf kein Gerät. Er lässt VoltPilot die Grenzen
+     * BERECHNEN und als Messkanäle führen; wirksam werden sie als Kappe des
+     * Wächters auf der Box. Geräte-Stromgrenzen zu schreiben bleibt einem
+     * zertifizierten Steuerpfad vorbehalten.
+     *
+     * <p>⚠ <b>Ein FEHLENDER Block heisst „unverändert", nicht „weg".</b> Das ist
+     * die Ausnahme von der Regel, die bei der Bindung (P6) gilt - und sie hat
+     * einen handfesten Grund: dies ist eine SCHUTZgrenze. Ein Formular, das den
+     * Block noch nicht kennt (oder ein Aufruf, der ihn schlicht nicht
+     * mitschickt), darf sie nicht stillschweigend entfernen; eine verschwundene
+     * Abschaltspannung merkt niemand, bis sie gebraucht wird. Entfernt wird sie
+     * nur AUSDRÜCKLICH, mit {@code remove = true}.
+     *
+     * @param remove entfernt den gespeicherten Schutz - der EINZIGE Weg, ihn
+     *     loszuwerden; alle anderen Felder werden dann ignoriert
+     * @param template die VORLAGE, aus der Treppen und Schwellen kommen, wenn
+     *     keine eigenen dastehen (heute {@code diybms-176s-deye-hp3})
+     * @param roundA das Rundungsraster der Ströme (Vorgabe 1 A)
+     * @param holdS wie lange ein Riegel-Zustand ohne frische Zellspannung noch
+     *     gilt
+     */
+    public record ProtectionRequest(
+            @Valid DirectionRequest charge,
+            @Valid DirectionRequest discharge,
+            @Valid HysteresisRequest hysteresis,
+            @Valid ProtectionInputsRequest inputs,
+            Double roundA,
+            Integer holdS,
+            @Size(max = 64) String template,
+            Boolean remove) {}
+
+    /**
+     * Eine Strom-Treppe: Stufen {@code [Ladestand in %, Strom in A]} plus das
+     * GERÄTE-Maximum, auf das jedes Ergebnis geklemmt wird.
+     */
+    public record DirectionRequest(
+            @Size(max = 32) List<List<Double>> steps,
+            Double maxA) {}
+
+    /**
+     * Der Zellspannungs-Riegel, in VOLT je Zelle. Die Lade-Freigabe liegt UNTER
+     * der Lade-Abschaltung, die Entlade-Freigabe DARÜBER.
+     */
+    public record HysteresisRequest(
+            Double chargeStopV,
+            Double chargeResumeV,
+            Double dischargeStopV,
+            Double dischargeResumeV) {}
+
+    /** Welcher KANAL welche Rolle im Schutz spielt (soc, cellMin, cellMax). */
+    public record ProtectionInputsRequest(
+            @Size(max = 64) String soc,
+            @Size(max = 64) String cellMin,
+            @Size(max = 64) String cellMax) {}
 
     /**
      * Der ENDPUNKT der Web-Auskunft (P5-HTTP) - nur beim Transport

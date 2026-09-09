@@ -20,6 +20,10 @@ type Deps struct {
 	// Reading returns the guard context for one entity (its own latest
 	// channels, falling back to the site reading - the E1a entityGuardReading).
 	Reading func(entityID string) guards.Reading
+	// BmsEnvelope is what the battery's own protection block currently allows
+	// for ONE entity (P5c), already in kilowatts. nil (or a nil result) = no
+	// statement, and the guard chain is byte-for-byte what it was before.
+	BmsEnvelope func(entityID string) *guards.BmsEnvelope
 	// EnvLimits is the v1 device-config band/SoC window composed into every
 	// STORAGE setpoint clamp (most restrictive wins). nil = registry only.
 	EnvLimits func() *guards.Limits
@@ -635,6 +639,25 @@ func (a *Arbiter) clampFor(st *entState, d *Desired, now time.Time, r guards.Rea
 	var extra *guards.Limits
 	if a.deps.EnvLimits != nil {
 		extra = a.deps.EnvLimits()
+	}
+	// The BMS envelope (P5c) rides in on the same `extra` limits, per entity:
+	// what the battery's own protection allows is a HARD cap on top of the
+	// rated band, the SoC window, the EEG clamp and the §14a envelope. nil =
+	// the pack said nothing, and then nothing changes. A COPY is taken because
+	// EnvLimits may hand out a shared struct - stamping an entity's envelope
+	// onto it would leak that entity's cap onto the next one.
+	if a.deps.BmsEnvelope != nil {
+		if env := a.deps.BmsEnvelope(st.entity.ID); env != nil {
+			var l guards.Limits
+			if extra != nil {
+				l = *extra
+			} else {
+				l = guards.Limits{MaxChargeKw: math.Inf(1), MaxDischargeKw: math.Inf(1),
+					SocMinPct: math.Inf(-1), SocMaxPct: math.Inf(1)}
+			}
+			l.Bms = env
+			extra = &l
+		}
 	}
 	solarExtra := d.SolarOnly
 	if a.deps.ExtraSolarOnly != nil && a.deps.ExtraSolarOnly() {
