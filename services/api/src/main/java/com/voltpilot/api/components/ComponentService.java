@@ -6,6 +6,7 @@ import com.voltpilot.api.entities.EntityObservedRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
@@ -105,6 +106,7 @@ public class ComponentService {
     private final AssetRepository assets;
     private final ComponentActivationOutboxService activationOutbox;
     private final DeviceRepository deviceTopology;
+    private final EntityTypeCatalog entityTypes;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public ComponentService(SiteRepository sites, MeasurementPointRepository points,
@@ -112,7 +114,8 @@ public class ComponentService {
             ComponentDefinitionRepository definitions, ComponentApplyRepository applyState,
             ComponentTemplateRepository templates, ComponentConnectionReceipts receipts,
             AssetRepository assets, EntityObservedRepository observed,
-            ComponentActivationOutboxService activationOutbox, DeviceRepository deviceTopology) {
+            ComponentActivationOutboxService activationOutbox, DeviceRepository deviceTopology,
+            EntityTypeCatalog entityTypes) {
         this.sites = sites;
         this.points = points;
         this.entityRepo = entityRepo;
@@ -125,6 +128,7 @@ public class ComponentService {
         this.assets = assets;
         this.activationOutbox = activationOutbox;
         this.deviceTopology = deviceTopology;
+        this.entityTypes = entityTypes;
     }
 
     // ---- Lesen ------------------------------------------------------------
@@ -325,7 +329,7 @@ public class ComponentService {
                 SOURCE_KIND_CERTIFIED.equals(template.kind()) ? SOURCE_KIND_CERTIFIED
                         : SOURCE_KIND_BUILTIN,
                 template.templateRef(), template.version(),
-                ComponentDefaults.capabilities(mapper, role),
+                capabilitiesForEdit(role, existing),
                 ComponentDefaults.guards(mapper, role, req.capacityKwp()));
         if (applied == null) {
             EntityRow current = entityRepo.entityForSite(siteId, entityId);
@@ -645,7 +649,7 @@ public class ComponentService {
             if (row != null && (row.entityType() == null || row.entityType().isBlank())
                     && entityType != null) {
                 entityRepo.setEntityConfig(takeover, entityType,
-                        ComponentDefaults.capabilities(mapper, role),
+                        ComponentDefaults.capabilities(mapper, entityTypes, entityType, role),
                         ComponentDefaults.guards(mapper, role, req.capacityKwp()));
             }
             return takeover;
@@ -659,7 +663,7 @@ public class ComponentService {
         }
         if (entityType != null) {
             entityRepo.setEntityConfig(id, entityType,
-                    ComponentDefaults.capabilities(mapper, role),
+                    ComponentDefaults.capabilities(mapper, entityTypes, entityType, role),
                     ComponentDefaults.guards(mapper, role, req.capacityKwp()));
         }
         return id;
@@ -826,6 +830,33 @@ public class ComponentService {
         String entityType = ROLE_ENTITY_TYPE.get(role);
         return entityType != null
                 && (entityType.equals(stored) || entityType.equals(existing.entityType()));
+    }
+
+    /**
+     * Die Fähigkeiten, die das BEARBEITEN schreibt - {@code null} heißt „die
+     * vorhandenen bleiben stehen" ({@code COALESCE} in
+     * {@link ComponentDefinitionRepository#applyEditDefinition}).
+     *
+     * <p>⚠ Bleibt der Entitätstyp derselbe, wird hier NICHTS geschrieben. Der
+     * gespeicherte Block ist dann der reichere: ein {@code battery-hybrid} trägt
+     * aus dem Speicher-Asset komponierte {@code actuate}-Befehle und seine
+     * Grenzen, ein Kunde kann Kanäle zugeschaltet haben (Mess-Selektion je
+     * Komponente). Ihn beim Ändern von Name, Nennwert oder Verbindung durch den
+     * Anlege-Vorgabewert zu ersetzen war genau die zweite Hälfte des Befunds:
+     * eine korrekt komponierte Anlage verlor ihren PV-Knoten beim ersten
+     * „Verbindung &amp; Modell"-Klick.
+     *
+     * <p>Nur ein ECHTER Typwechsel (oder eine Zeile, die noch gar keinen Typ
+     * trägt) setzt sie neu - dann sind die alten Kanäle Aussagen über ein
+     * anderes Gerät.
+     */
+    private String capabilitiesForEdit(String role, EntityRow existing) {
+        String targetType = ROLE_ENTITY_TYPE.get(role);
+        String storedType = existing.entityType();
+        if (targetType != null && storedType != null && targetType.equals(storedType.trim())) {
+            return null;
+        }
+        return ComponentDefaults.capabilities(mapper, entityTypes, targetType, role);
     }
 
     private void requireCompatibleRoleChange(UUID siteId, UUID entityId, String role,

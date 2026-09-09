@@ -76,6 +76,17 @@ class ComponentAdoptionWiringTest {
         AssetRepository assetRepository() {
             return mock(AssetRepository.class);
         }
+
+        /**
+         * ECHT statt Mock: die Anlege-Vorgaben lesen ihre Messkanäle seit dem
+         * Typkatalog-Umbau aus genau diesem Katalog - er ist eine Bohne wie im
+         * echten Kontext, nur ohne Datenbank dahinter.
+         */
+        @Bean
+        com.voltpilot.api.entities.EntityTypeCatalog entityTypeCatalog() {
+            return new com.voltpilot.api.entities.EntityTypeCatalog(
+                    new com.fasterxml.jackson.databind.ObjectMapper());
+        }
     }
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()

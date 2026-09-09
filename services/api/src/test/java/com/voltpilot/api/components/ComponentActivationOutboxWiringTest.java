@@ -67,9 +67,18 @@ class ComponentActivationOutboxWiringTest {
             mock(ComponentActivationOutboxService.class);
     private final DeviceRepository devices = mock(DeviceRepository.class);
 
+    /**
+     * ECHT statt Mock: die Anlege-Vorgaben lesen ihre Messkanaele seit dem
+     * Typkatalog-Umbau aus genau diesem Katalog - ein Mock wuerde die
+     * Verdrahtung hier stillschweigend leer halten.
+     */
+    private final com.voltpilot.api.entities.EntityTypeCatalog entityTypes =
+            new com.voltpilot.api.entities.EntityTypeCatalog(
+                    new com.fasterxml.jackson.databind.ObjectMapper());
+
     private final ComponentService service = new ComponentService(sites, points, entityRepo,
             registry, definitions, applyState, templates, receipts, assets, observed, outbox,
-            devices);
+            devices, entityTypes);
 
     @AfterEach
     void clearTenant() {
