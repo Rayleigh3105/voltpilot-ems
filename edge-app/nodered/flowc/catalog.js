@@ -846,6 +846,64 @@ const TYPES = {
   'vp.strategy.peakshaving': strategyType('Lastspitzenkappung', STRATEGY_INPUTS.peakshaving),
   'vp.strategy.atypical-grid': strategyType('Atypische Netznutzung', STRATEGY_INPUTS.atypicalGrid),
 
+  // vp.mqtt.read (P5 Ebene 1, Konzept vp-deye-diybms-luecke-l5 §3.2b): the
+  // GENERATED-ONLY MQTT read of a self-connected battery. The api's
+  // UserDefinedBatteryFlowCompiler is its single author (`generatedOrigin`
+  // makes compile.js refuse it in any document that is not the device's own
+  // origin-stamped flow) - there is deliberately no free MQTT block yet: the
+  // field-mapping UI with its live preview is a later package (P5d), and a
+  // free block whose aggregate semantics no editor can render would be a
+  // promise the product does not keep.
+  //
+  // ONE node per device, never one per channel: a single broker connection
+  // serves every mapping, and two mappings on the same topic filter share one
+  // subscription (the "never a second path to one device" discipline). It
+  // compiles to the DATA-ONLY vp-mqtt-read palette node (0.10.0) - no
+  // generated code, the whitelisted-codegen stance is untouched.
+  'vp.mqtt.read': {
+    version: '1.0.0',
+    label: 'MQTT lesen (generiert)',
+    runtimes: ['edge'],
+    minPalette: '0.10.0',
+    generatedOrigin: 'mqtt-device',
+    triggerable: true,
+    ports: { in: { trigger: { type: 'event' } }, out: { value: { type: 'number' } } },
+    validate(p) {
+      return validateMqttRead(p);
+    },
+    // Every mapped channel must be DECLARED by the entity - the same rule
+    // vp.modbus.read follows, so a mapping onto a channel the battery does not
+    // measure is refused before it can record nowhere.
+    requires(p) {
+      if (!p || !p.entity_id || !Array.isArray(p.mappings)) return [];
+      const caps = [];
+      for (const m of p.mappings) {
+        if (m && typeof m.channel === 'string' && CHANNEL_RE.test(m.channel)) {
+          caps.push('measure:' + m.channel);
+        }
+      }
+      return caps.length ? [{ entity_id: p.entity_id, capabilities: caps }] : [];
+    },
+    // A read node never claims: it drives no actuation.
+    claims() {
+      return [];
+    },
+    compile(ctx, node) {
+      const p = node.parameters || {};
+      return [{
+        id: ctx.nrId(node.id),
+        type: 'vp-mqtt-read',
+        z: ctx.tabId,
+        name: node.label || 'MQTT lesen',
+        core: ctx.coreId,
+        host: p.host,
+        port: Number.isInteger(p.port) ? p.port : 1883,
+        entity: p.entity_id,
+        mappings: normalizeMqttMappings(p.mappings),
+      }];
+    },
+  },
+
   // vp.consumer.reactive (D-19, Verbrauchssteuerung Inkrement 4 §13.2): the
   // GENERATED-ONLY reactive consumer-policy node. The cloud policy compiler is
   // its single author (compile.js refuses it in a document without the
@@ -895,6 +953,130 @@ const TYPES = {
     },
   },
 };
+
+// --- vp.mqtt.read mapping validation (P5 Ebene 1). Der ZWILLING der
+// Cloud-Regel (services/api .../batteries/UserDefinedBatteryDefinition.java)
+// und der Laufzeit (vp-palette/lib/mqtt-mapping.js): dieselben Vokabulare,
+// dieselben Schranken. Wer eines aendert, aendert alle drei - sonst nimmt der
+// Compiler an, was die Box verwirft, oder umgekehrt.
+const MQTT_AGGREGATES = ['last', 'min', 'max', 'sum', 'avg', 'count'];
+const MQTT_VALUE_TYPES = ['number', 'bool'];
+// Ein Wahrheitswert kennt nur last/min/max: min ist das konservative UND,
+// max das ODER. Die SUMME von Freigaben ist keine Freigabe, und ein Mittel
+// von 0,5 waere eine Zahl, die kein Geraet je gemeldet hat.
+const MQTT_BOOL_AGGREGATES = ['last', 'min', 'max'];
+const MQTT_MAX_MAPPINGS = 16;
+const MQTT_MAX_TOPIC = 200;
+const MQTT_MAX_PATH = 200;
+const MQTT_MIN_STALE_S = 5;
+const MQTT_MAX_STALE_S = 86400;
+const MQTT_DEFAULT_STALE_S = 300;
+// Ein Wertepfad ist punkt-getrennt; `__proto__` & Co. sind ueberall verboten
+// (Prototyp-Vergiftung - dieselbe Regel wie vp-feed.topicFor).
+const MQTT_PATH_RE = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}(\.[A-Za-z0-9_][A-Za-z0-9_-]{0,63})*$/;
+const MQTT_FORBIDDEN_SEGMENTS = ['__proto__', 'constructor', 'prototype'];
+
+// Ein MQTT-Filter: `+` steht fuer GENAU ein Segment, `#` nur als letztes.
+function validTopicFilter(v) {
+  if (typeof v !== 'string' || v.length < 1 || v.length > MQTT_MAX_TOPIC) return false;
+  if (v.indexOf(' ') >= 0) return false;
+  const parts = v.split('/');
+  for (let i = 0; i < parts.length; i++) {
+    const seg = parts[i];
+    if (seg === '#') {
+      if (i !== parts.length - 1) return false;
+    } else if (seg.indexOf('#') >= 0 || (seg.indexOf('+') >= 0 && seg !== '+')) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function validValuePath(v) {
+  if (v === undefined || v === null || v === '') return true; // Nutzlast IST der Wert
+  if (typeof v !== 'string' || v.length > MQTT_MAX_PATH) return false;
+  if (!MQTT_PATH_RE.test(v)) return false;
+  return v.split('.').every((seg) => MQTT_FORBIDDEN_SEGMENTS.indexOf(seg) < 0);
+}
+
+function validateMqttRead(p) {
+  const errs = [];
+  if (!p || typeof p !== 'object') return ['Parameter fehlen'];
+  if (!ID_RE.test(p.entity_id || '')) errs.push('entity_id fehlt oder ist ungueltig');
+  if (!validHost(p.host)) errs.push('Broker-Adresse fehlt oder ist keine gueltige IP/Hostname');
+  if (p.port !== undefined && !(Number.isInteger(p.port) && p.port >= 1 && p.port <= 65535)) {
+    errs.push('port muss 1..65535 sein');
+  }
+  const list = p.mappings;
+  if (!Array.isArray(list) || list.length === 0) {
+    errs.push('mappings fehlt - ohne Feld-Zuordnung entsteht kein Messwert');
+    return errs;
+  }
+  if (list.length > MQTT_MAX_MAPPINGS) {
+    errs.push('hoechstens ' + MQTT_MAX_MAPPINGS + ' Zuordnungen je Geraet');
+  }
+  const seen = {};
+  list.forEach((m, i) => {
+    const where = 'Zuordnung ' + (i + 1) + ': ';
+    if (!m || typeof m !== 'object') {
+      errs.push(where + 'ist leer');
+      return;
+    }
+    if (!CHANNEL_RE.test(m.channel || '')) {
+      errs.push(where + 'channel fehlt oder ist ungueltig');
+    } else if (Object.prototype.hasOwnProperty.call(seen, m.channel)) {
+      errs.push(where + 'der Kanal "' + m.channel + '" ist schon zugeordnet');
+    } else {
+      seen[m.channel] = true;
+    }
+    if (!validTopicFilter(m.topic)) errs.push(where + 'topic fehlt oder ist kein gueltiger Filter');
+    if (!validValuePath(m.path)) errs.push(where + 'path ist kein gueltiger Wertepfad');
+    if (m.aggregate !== undefined && MQTT_AGGREGATES.indexOf(m.aggregate) < 0) {
+      errs.push(where + 'aggregate ist unbekannt');
+    }
+    if (m.value_type !== undefined && MQTT_VALUE_TYPES.indexOf(m.value_type) < 0) {
+      errs.push(where + 'value_type muss number oder bool sein');
+    } else if (m.value_type === 'bool' && m.aggregate !== undefined
+        && MQTT_BOOL_AGGREGATES.indexOf(m.aggregate) < 0) {
+      errs.push(where + 'ein Ja/Nein-Wert kennt nur last, min oder max');
+    }
+    if (m.scale !== undefined && (!num(m.scale) || m.scale === 0)) {
+      errs.push(where + 'scale muss eine Zahl ungleich 0 sein');
+    }
+    if (m.offset !== undefined && !num(m.offset)) errs.push(where + 'offset muss eine Zahl sein');
+    if (m.sentinel !== undefined && m.sentinel !== null && !num(m.sentinel)) {
+      errs.push(where + 'sentinel muss eine Zahl sein');
+    }
+    if (m.stale_s !== undefined && !(Number.isInteger(m.stale_s)
+        && m.stale_s >= MQTT_MIN_STALE_S && m.stale_s <= MQTT_MAX_STALE_S)) {
+      errs.push(where + 'stale_s muss ' + MQTT_MIN_STALE_S + '..' + MQTT_MAX_STALE_S + ' sein');
+    }
+  });
+  return errs;
+}
+
+// Die kompilierte Form ist VOLLSTAENDIG: jede Vorgabe steht ausgeschrieben im
+// Artefakt. Danach raet auf der Box niemand mehr an einer Vorgabe herum - und
+// eine geaenderte Vorgabe waere sonst eine stille Verhaltensaenderung auf
+// jeder schon ausgerollten Batterie.
+function normalizeMqttMappings(list) {
+  return (Array.isArray(list) ? list : []).map((m) => {
+    const out = {
+      channel: m.channel,
+      topic: m.topic,
+      path: typeof m.path === 'string' ? m.path : '',
+      aggregate: MQTT_AGGREGATES.indexOf(m.aggregate) >= 0 ? m.aggregate : 'last',
+      value_type: m.value_type === 'bool' ? 'bool' : 'number',
+      scale: num(m.scale) ? m.scale : 1,
+      offset: num(m.offset) ? m.offset : 0,
+      stale_s: Number.isInteger(m.stale_s) ? m.stale_s : MQTT_DEFAULT_STALE_S,
+    };
+    if (num(m.sentinel)) out.sentinel = m.sentinel;
+    if (Array.isArray(m.true_values)) out.true_values = m.true_values.slice();
+    if (Array.isArray(m.false_values)) out.false_values = m.false_values.slice();
+    return out;
+  });
+}
 
 // --- vp.consumer.reactive spec validation (shared shape with the cloud
 // policy compiler and the vp-consumer-policy runtime; reactive-eval.js is the

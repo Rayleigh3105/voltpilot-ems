@@ -105,6 +105,7 @@ public class FlowGraphValidator {
         checkClaims(doc, findings, nodesById, entities, foreignClaims);
         checkEntityReads(doc, findings, nodesById, entities);
         checkModbusReads(doc, findings, nodesById, entities);
+        checkMqttReads(doc, findings, nodesById, entities);
         return findings;
     }
 
@@ -707,6 +708,68 @@ public class FlowGraphValidator {
                         List.of(previous, entry.getKey()), List.of(),
                         "Zwei Modbus-Lesen-Bausteine zeichnen denselben Messkanal \"" + channel
                                 + "\" der Entität \"" + entityId + "\" auf."));
+            }
+        }
+    }
+
+    /**
+     * P5-Ebene-1-Regeln für {@code vp.mqtt.read}: die Feld-Zuordnung einer
+     * selbst angebundenen Batterie.
+     *
+     * <p>Es ist die {@link #checkModbusReads}-Regel auf den zweiten Lese-Typ
+     * angewandt, und sie ist aus demselben Grund nötig: eine Zuordnung auf
+     * einen Kanal, den die Entität nicht DEKLARIERT, zeichnet nirgends auf -
+     * der Flow liefe, und der Messwert entstünde nie. Zusätzlich darf ein
+     * komponierter Typ (Wechselrichter, Netz-Zähler) hier nie Ziel sein: ein
+     * Flow darf niemals Messwerte in die Eingänge der Wächter-Kette einspeisen.
+     * Zwei Zuordnungen auf denselben Kanal sind ein V-5-Konflikt - ein Messwert
+     * hat genau eine Quelle.
+     */
+    private void checkMqttReads(JsonNode doc, List<FlowValidationFinding> findings,
+            Map<String, JsonNode> nodesById, Map<String, EntityCapabilities> entities) {
+        Map<String, String> mappedBy = new HashMap<>();
+        for (Map.Entry<String, JsonNode> entry : nodesById.entrySet()) {
+            JsonNode node = entry.getValue();
+            if (!"vp.mqtt.read".equals(node.path("type").asText())) {
+                continue;
+            }
+            String entityId = node.path("parameters").path("entity_id").asText("");
+            if (entityId.isEmpty()) {
+                continue; // V-4 meldet den fehlenden Parameter
+            }
+            EntityCapabilities caps = entities.get(entityId);
+            if (caps == null) {
+                findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
+                        entities.isEmpty()
+                                ? "Diese Anlage hat noch keine v2-Entitäten - bitte zuerst das "
+                                        + "Entitäten-Bootstrap ausführen (Plattform → Anlage)."
+                                : "Unbekannte Entität \"" + entityId + "\"."));
+                continue;
+            }
+            if (caps.composed()) {
+                findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
+                        "Die Entität \"" + entityId + "\" wird aus den Stammdaten der Anlage "
+                                + "abgeleitet - Messwerte können hier nicht per MQTT-Baustein "
+                                + "eingespeist werden."));
+                continue;
+            }
+            for (JsonNode mapping : node.path("parameters").path("mappings")) {
+                String channel = mapping.path("channel").asText("");
+                if (channel.isEmpty()) {
+                    continue; // flowc meldet die kaputte Zeile
+                }
+                if (!caps.measure().contains(channel)) {
+                    findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()),
+                            List.of(), "Die Entität \"" + entityId + "\" misst den Kanal \""
+                                    + channel + "\" nicht."));
+                }
+                String previous = mappedBy.putIfAbsent(entityId + "#" + channel, entry.getKey());
+                if (previous != null) {
+                    findings.add(FlowValidationFinding.error("V-5",
+                            List.of(previous, entry.getKey()), List.of(),
+                            "Zwei MQTT-Zuordnungen zeichnen denselben Messkanal \"" + channel
+                                    + "\" der Entität \"" + entityId + "\" auf."));
+                }
             }
         }
     }

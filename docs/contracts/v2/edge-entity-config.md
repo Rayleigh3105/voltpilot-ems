@@ -168,6 +168,31 @@ wäre die Übernahme kein No-op mehr, sondern eine stille Verschlechterung der l
 The cloud reconciles the block as drift by default; the automatic takeover of a box-managed
 plant (Stufe 2) is the ONE path that turns it into a Soll, and only when it is complete.
 
+### 5.2 Geräte, die ihren EIGENEN Leseplan mitbringen (`communication` als Marke)
+
+Zwei `communication`-Werte sind KEIN Transport, den die Box selbst fahren soll — sie sind die
+Marke „dieses Gerät wird von seinem eigenen generierten Flow gelesen":
+
+| `communication` | Entitätstyp | Woher der Leseplan kommt |
+|---|---|---|
+| `modbus_baukasten` | `modbus-generic` / `modbus-load` | ein generierter Flow mit je Kanal einem `vp.modbus.read` (Einheitsmodell Stufe 3/4) |
+| `mqtt_local` | `user-defined-battery` | ein generierter Flow mit GENAU EINEM `vp.mqtt.read`, der die ganze Feld-Zuordnung trägt (P5 Ebene 1, `vp-deye-diybms-luecke-l5` §3.2b) |
+
+Der Applier der Box ÜBERSPRINGT beide, bevor er nach einer Marke fragt
+(`componentapply.isSelfRead`) — und dieser Sprung ist tragend, nicht kosmetisch: `Derive` ist
+alles-oder-nichts, und so ein Gerät trägt konstruktionsbedingt keine Marke. Ohne den Sprung
+verlöre eine Anlage mit ihrem ERSTEN eigenen Gerät die Anwendung ihres Wechselrichters und
+aller Quellen.
+
+**⚠ Daraus folgt eine ROLLOUT-Reihenfolge**: eine Box, die einen dieser Werte noch nicht kennt,
+lehnt den Treiber ab und lässt den GANZEN Push fallen. Ein neuer Wert gehört deshalb auf die
+Box, BEVOR die Cloud das erste solche Gerät auf einer Anlage anlegt.
+
+`driver.connection` trägt bei beiden die gespeicherte Definition VERBATIM (bei `mqtt_local`:
+`broker` + `mappings` + optional `soc_derivation`); sie ist Anzeige und Zusammenhang, nie der
+Lesepfad. **Der Lesepfad reist im Flow.**
+
+
 The cloud compares `revision` against the latest push and the `observed` map against the
 registry Soll (api `EntityStatusListener` → `entity_observed_state`); drift is surfaced in the
 portal, never silently resolved.

@@ -410,6 +410,72 @@ func TestAPlantWithOnlySelfBuiltDevicesDerivesNoConfigurationAtAll(t *testing.T)
 	}
 }
 
+// --- Die selbst angebundene BATTERIE ueber MQTT (P5 Ebene 1) ---------------
+
+// Die Cloud pusht sie mit communication mqtt_local und der GANZEN gespeicherten
+// Definition als driver.connection (UserDefinedBatteryService.definitionJson -
+// ein Broker plus die Feld-Zuordnung), NIE mit einer Marke.
+const mqttBatteryDriver = `{"communication":"mqtt_local",
+  "connection":{"schema_version":"1.0","transport":"mqtt_local",
+    "broker":{"host":"192.168.40.20","port":1883},"publish_interval_s":15,
+    "mappings":[{"channel":"cell_min_mv","unit":"mV","topic":"emon/diybms/+/+",
+      "path":"voltage","aggregate":"min","value_type":"number","scale":1000,
+      "offset":0,"stale_s":300}]}}`
+
+// Dieselbe Gefahr wie beim Selbstbau-Geraet, ein Transport weiter: Derive ist
+// alles-oder-nichts, und eine MQTT-Batterie traegt keine Marke. Ohne den
+// erweiterten Skip verloere die Anlage mit ihrer ERSTEN eigenen Batterie die
+// Anwendung ihres Wechselrichters und aller Quellen.
+func TestAnMqttBatteryIsSkippedAndNeverSinksTheWholePush(t *testing.T) {
+	reg := portal(
+		ent("6a1e3d0f-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
+		ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer, froniusDriver),
+		ent("bbbb0000-0000-0000-0000-00000000000f", "user-defined-battery", mqttBatteryDriver),
+	)
+	plan, err := Derive(reg, cat(), nil, now)
+	if err != nil {
+		t.Fatalf("eine selbst angebundene Batterie darf den Push nicht scheitern lassen: %v", err)
+	}
+	if plan.Inverter == nil {
+		t.Fatal("der Wechselrichter fehlt - genau das waere der Schaden")
+	}
+	if len(plan.Sources) != 1 {
+		t.Fatalf("Quellen = %d, will 1 (der Erzeuger; die MQTT-Batterie gehoert NICHT dazu)",
+			len(plan.Sources))
+	}
+	for _, s := range plan.Sources {
+		if strings.Contains(s.Communication, "mqtt") {
+			t.Fatalf("eine MQTT-Batterie ist in sources.json gelandet: %+v", s)
+		}
+	}
+}
+
+// ParseDriver ueberspringt sie ausdruecklich - und zwar VOR der Marken-Pruefung.
+// Ihr Leseplan reist als generierter Flow ueber v2/flows, nicht ueber diesen
+// Weg.
+func TestParseDriverSkipsAnMqttBatteryBeforeTheBrandCheck(t *testing.T) {
+	e := entities.Entity{ID: "batt", Type: "user-defined-battery",
+		Driver: json.RawMessage(mqttBatteryDriver)}
+	d, ok, err := ParseDriver(e)
+	if err != nil {
+		t.Fatalf("kein Fehler erwartet, bekam %v", err)
+	}
+	if ok {
+		t.Fatalf("die Batterie darf kein Treiber-Ziel sein, bekam %+v", d)
+	}
+}
+
+// Die :8484-Geraetekarte ist Modbus-geformt (Adresse, Unit-ID, Kanalliste). Die
+// MQTT-Batterie hat davon nichts - sie wird uebersprungen, aber bewusst NICHT
+// als Selbstbau-Geraet gelistet, sonst stuende dort eine leere Adresse.
+func TestAnMqttBatteryIsSkippedButNotListedAsASelfBuiltDevice(t *testing.T) {
+	e := entities.Entity{ID: "batt", Type: "user-defined-battery",
+		Driver: json.RawMessage(mqttBatteryDriver)}
+	if IsSelfBuilt(e) {
+		t.Fatal("die MQTT-Batterie gehoert nicht auf die Modbus-Geraetekarte")
+	}
+}
+
 // TestARoleAssignmentNeverTouchesTheDerivedPlan ist die Abgrenzung von Befund
 // L4: die Rollen-Zuordnung des Portals ist ANZEIGE. Sie darf die abgeleitete
 // Geraete-Konfiguration (inverter.json / sources.json) um kein Byte veraendern

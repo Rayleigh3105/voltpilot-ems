@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "b1a2c3d4-5e6f-4071-8234-56789abcdef0",
+  "flow_version": 1,
+  "name": "Batterie: DIYBMS 176s",
+  "description": "Der GENERIERTE Lese-Flow einer SELBST ANGEBUNDENEN Batterie (P5 Ebene 1, Konzept vp-deye-diybms-luecke-l5 §3.2b): EIN vp.mqtt.read je Gerät - eine Broker-Verbindung für alle Zuordnungen, nie eine je Kanal. Der Ground-Truth-Fall des Kunden: ein DIYBMS veröffentlicht 11 Bänke × 16 Zellen unter emon/diybms/<bank>/<cell> mit dem JSON-Feld .voltage in Volt. EINE Topic-Zuordnung mit Aggregat min bzw. max macht daraus cell_min_mv und cell_max_mv (Skalierung 1000 = V→mV) - aus 176 Topics werden zwei Kanäle. Die Freigabe-Flags kommen aus einem zweiten Topic und reisen als 0/1 (die Telemetrie kennt nur Zahlen). Ein Kanal ohne frische Probe fehlt in der Telemetrie, statt als 0 zu erscheinen.",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "active",
+  "origin": {
+    "kind": "mqtt-device",
+    "point_id": "7b3c9d21-8e4f-4a56-9c07-0123456789ab",
+    "definition_version": 1
+  },
+  "nodes": [
+    {
+      "id": "mqtt",
+      "type": "vp.mqtt.read",
+      "type_version": "1.0.0",
+      "label": "DIYBMS 176s",
+      "parameters": {
+        "host": "192.168.40.20",
+        "port": 1883,
+        "entity_id": "7b3c9d21-8e4f-4a56-9c07-0123456789ab",
+        "mappings": [
+          {
+            "channel": "cell_min_mv",
+            "topic": "emon/diybms/+/+",
+            "path": "voltage",
+            "aggregate": "min",
+            "value_type": "number",
+            "scale": 1000,
+            "offset": 0,
+            "stale_s": 300
+          },
+          {
+            "channel": "cell_max_mv",
+            "topic": "emon/diybms/+/+",
+            "path": "voltage",
+            "aggregate": "max",
+            "value_type": "number",
+            "scale": 1000,
+            "offset": 0,
+            "stale_s": 300
+          },
+          {
+            "channel": "temp_max_c",
+            "topic": "emon/diybms/+/+",
+            "path": "external_temp",
+            "aggregate": "max",
+            "value_type": "number",
+            "scale": 1,
+            "offset": 0,
+            "sentinel": -40,
+            "stale_s": 300
+          },
+          {
+            "channel": "voltage_v",
+            "topic": "emon/diybms/pack",
+            "path": "voltage",
+            "aggregate": "last",
+            "value_type": "number",
+            "scale": 1,
+            "offset": 0,
+            "stale_s": 300
+          },
+          {
+            "channel": "charge_allowed",
+            "topic": "emon/diybms/status",
+            "path": "charge_allowed",
+            "aggregate": "last",
+            "value_type": "bool",
+            "scale": 1,
+            "offset": 0,
+            "stale_s": 300
+          },
+          {
+            "channel": "discharge_allowed",
+            "topic": "emon/diybms/status",
+            "path": "discharge_allowed",
+            "aggregate": "last",
+            "value_type": "bool",
+            "scale": 1,
+            "offset": 0,
+            "stale_s": 300
+          }
+        ]
+      }
+    }
+  ],
+  "edges": [],
+  "triggers": [
+    { "id": "takt", "kind": "interval", "every_s": 15 }
+  ]
+}

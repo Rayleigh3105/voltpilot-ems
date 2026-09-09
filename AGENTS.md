@@ -175,6 +175,7 @@ Bereiche: `docs/agents/README.md`.
 - **Die RE-PIN-BRÜCKE: eine gerissene Geräte-Bindung heilt sich selbst** — Der Live-Defekt (Anlage Pilsting/Herzogau … · `die-re-pin-bruecke-eine-gerissene-geraet.md`
 - **ALIAS-KONTINUITÄT: ein Kundenname überlebt jeden Reparatur- und Anlege-Weg** — „beim neu hinzufügen sind · `alias-kontinuitaet-ein-kundenname-ueberl.md`
 - **Einheitsmodell Stufe 3: die SELBSTBAU-TÜR — der Kunde legt sein eigenes Modbus-Gerät an** — vp-komponenten-einheit-h2 §4.1 Tür c … · `einheitsmodell-stufe-3-die-selbstbau-tue.md`
+- **Der generische Batterie-Anschluss (P5 Ebene 1): `user-defined-battery` + `vp.mqtt.read`** — BMS-unabhaengig lesen und per Feld-Zuordnung (inkl. Aggregat min/max ueber viele Topics) auf die Standard-Batteriekanaele abbilden · `der-generische-batterie-anschluss-p5-ebe.md`
 - **Einheitsmodell Stufe 6: die VORLAGEN-VERWALTUNG — eine geprüfte Vorlage ist ein DATENSATZ** — vp-modbus-baukasten-k6 §2.8 Stufe 3) · `einheitsmodell-stufe-6-die-vorlagen-verw.md`
 - **Einheitsmodell Stufe 4: „STEUERN FREIGEBEN" — aus dem Sensor wird ein schaltbares Gerät** — Die Stufe, die die Captain-Vision einlöst … · `einheitsmodell-stufe-4-steuern-freigeben.md`
 - **Verbrauchsmanagement v1 — Paket 3b: „Laden pausieren" als Geschwister des Boosts** — des Boosts: charging-boost.action … · `verbrauchsmanagement-v1-paket-3b-laden-p.md`

@@ -3,6 +3,7 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.components.ComponentConnectionReceipts;
 import com.voltpilot.api.components.ComponentService;
 import com.voltpilot.api.components.SelfBuildComponentService;
+import com.voltpilot.api.components.UserDefinedBatteryService;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
 import com.voltpilot.api.repo.SiteRepository;
@@ -13,6 +14,7 @@ import com.voltpilot.api.web.dto.ComponentActivationStatusDto;
 import com.voltpilot.api.web.dto.ComponentTestRequest;
 import com.voltpilot.api.web.dto.SaveComponentRequest;
 import com.voltpilot.api.web.dto.SaveSelfBuildRequest;
+import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest;
 import com.voltpilot.api.web.dto.RollbackComponentRequest;
 import com.voltpilot.api.web.dto.SelfBuildReadRequest;
 import com.voltpilot.api.web.dto.SelfBuildReadResult;
@@ -71,11 +73,14 @@ public class SiteComponentController {
     private final ComponentConnectionReceipts receipts;
     private final ProbeService probes;
     private final SelfBuildComponentService selfBuild;
+    private final UserDefinedBatteryService batteries;
 
     public SiteComponentController(SiteRepository sites, ComponentService components,
             ComponentConnectionReceipts receipts,
-            ProbeService probes, SelfBuildComponentService selfBuild) {
+            ProbeService probes, SelfBuildComponentService selfBuild,
+            UserDefinedBatteryService batteries) {
         this.selfBuild = selfBuild;
+        this.batteries = batteries;
         this.sites = sites;
         this.components = components;
         this.receipts = receipts;
@@ -174,6 +179,42 @@ public class SiteComponentController {
     public SiteComponentsDto deleteCustom(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.delete(siteId, entityId, subject(jwt));
+    }
+
+    // ---- Die eigene BATTERIE (P5 Ebene 1, MQTT) ---------------------------
+
+    /**
+     * Eine selbst angebundene Batterie anlegen (Konzept
+     * {@code vp-deye-diybms-luecke-l5} §3.2b): ein lokaler MQTT-Broker plus die
+     * Feld-Zuordnung auf die Standard-Batteriekanäle. Sie entsteht über
+     * DENSELBEN Weg wie ein Selbstbau-Modbus-Gerät - Entität, Fassung,
+     * generierter Flow über {@code v2/flows} - nur mit einem anderen Transport.
+     *
+     * <p>Anders als der Modbus-Baukasten fordert dieser Weg (noch) KEINEN
+     * Verbindungstest: eine MQTT-Vorschau braucht ein Lauschfenster statt einer
+     * Einmal-Lesung, und die kommt mit dem Zuordnungs-Assistenten (P5d). Eine
+     * Pflicht ohne Tür wäre eine Sackgasse. Die LAN-Regel gilt unverändert.
+     */
+    @PostMapping("/components/battery")
+    public SiteComponentsDto createBattery(@PathVariable UUID siteId,
+            @Valid @RequestBody SaveUserDefinedBatteryRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return batteries.create(siteId, request, subject(jwt));
+    }
+
+    /** Eine selbst angebundene Batterie ändern - eine NEUE Fassung. */
+    @PutMapping("/components/battery/{entityId}")
+    public SiteComponentsDto updateBattery(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @Valid @RequestBody SaveUserDefinedBatteryRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return batteries.update(siteId, entityId, request, subject(jwt));
+    }
+
+    /** Eine selbst angebundene Batterie entfernen - samt ihrem Lese-Flow. */
+    @DeleteMapping("/components/battery/{entityId}")
+    public SiteComponentsDto deleteBattery(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @AuthenticationPrincipal Jwt jwt) {
+        return batteries.delete(siteId, entityId, subject(jwt));
     }
 
     // ---- Steuern freigeben (Einheitsmodell Stufe 4) -----------------------

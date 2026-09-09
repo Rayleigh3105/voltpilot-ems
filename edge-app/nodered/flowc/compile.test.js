@@ -37,7 +37,7 @@ function assertPinned(artifact, pinName) {
 // (and would break the "no user code paths" isolation guarantee).
 const WHITELISTED_NR_TYPES = new Set([
   'tab', 'vp-entity-read', 'vp-feed', 'vp-desired', 'vp-notify', 'vp-modbus-read',
-  'vp-consumer-policy', 'function', 'inject',
+  'vp-consumer-policy', 'vp-mqtt-read', 'function', 'inject',
 ]);
 
 test('pv-surplus-heatrod fixture compiles deterministically', () => {
@@ -351,6 +351,112 @@ test('modbus-read fixture compiles to the data-only palette node', () => {
   const desired = a.bundle.nodered_flows.find((n) => n.type === 'vp-desired');
   assert.deepStrictEqual(mb.wires, [[threshold.id]]);
   assert.deepStrictEqual(threshold.wires, [[desired.id]]);
+});
+
+// --- P5 Ebene 1: der GENERIERTE MQTT-Batterie-Flow ------------------------
+
+test('mqtt-battery fixture compiles to ONE data-only vp-mqtt-read node', () => {
+  const g = fixture('flow-graph.valid.mqtt-battery.json');
+  assert.deepStrictEqual(validate(g), [], 'the committed fixture validates clean');
+  const a = compile(g);
+
+  // EIN Knoten je Geraet, nie einer je Kanal: eine Broker-Verbindung bedient
+  // alle Zuordnungen (die "nie ein zweiter Pfad zum selben Geraet"-Disziplin).
+  const nodes = a.bundle.nodered_flows.filter((n) => n.type === 'vp-mqtt-read');
+  assert.strictEqual(nodes.length, 1);
+  const n = nodes[0];
+  assert.strictEqual(n.host, '192.168.40.20');
+  assert.strictEqual(n.port, 1883);
+  assert.strictEqual(n.entity, '7b3c9d21-8e4f-4a56-9c07-0123456789ab');
+  assert.strictEqual(n.func, undefined, 'data-only config - never generated code');
+  assert.strictEqual(n.mappings.length, 6);
+
+  // Der DIYBMS-Zellspannungsfall: EIN Topic-Filter, zwei Aggregate.
+  const min = n.mappings.find((m) => m.channel === 'cell_min_mv');
+  const max = n.mappings.find((m) => m.channel === 'cell_max_mv');
+  assert.strictEqual(min.topic, 'emon/diybms/+/+');
+  assert.strictEqual(max.topic, 'emon/diybms/+/+');
+  assert.strictEqual(min.path, 'voltage');
+  assert.strictEqual(min.aggregate, 'min');
+  assert.strictEqual(max.aggregate, 'max');
+  assert.strictEqual(min.scale, 1000, 'V -> mV');
+
+  // Jede Vorgabe steht AUSGESCHRIEBEN im Artefakt - danach raet die Box nicht.
+  for (const m of n.mappings) {
+    assert.ok(['last', 'min', 'max', 'sum', 'avg', 'count'].includes(m.aggregate));
+    assert.ok(['number', 'bool'].includes(m.value_type));
+    assert.strictEqual(typeof m.scale, 'number');
+    assert.strictEqual(typeof m.offset, 'number');
+    assert.strictEqual(typeof m.stale_s, 'number');
+  }
+
+  // Jeder gemappte Kanal wird als measure-Anforderung gefordert - eine
+  // Zuordnung auf einen Kanal, den die Batterie nicht misst, faellt bei der
+  // Aktivierung auf.
+  assert.deepStrictEqual(a.required_entities, [{
+    entity_id: '7b3c9d21-8e4f-4a56-9c07-0123456789ab',
+    capabilities: [
+      'measure:cell_max_mv', 'measure:cell_min_mv', 'measure:charge_allowed',
+      'measure:discharge_allowed', 'measure:temp_max_c', 'measure:voltage_v',
+    ],
+  }]);
+
+  // Die Palette-Untergrenze hebt sich auf 0.10.0 (deploy.go quittiert darunter
+  // mit `unsupported` statt still nichts zu tun).
+  assert.strictEqual(a.min_palette_version, '0.10.0');
+});
+
+test('pinned content hash of the mqtt-battery fixture', () => {
+  const a = compile(fixture('flow-graph.valid.mqtt-battery.json'));
+  assert.strictEqual(JSON.stringify(a), JSON.stringify(compile(
+    fixture('flow-graph.valid.mqtt-battery.json'))), 'compilation must be deterministic');
+  assertPinned(a, 'pinned-mqtt-battery-hash.txt');
+});
+
+test('vp.mqtt.read is GENERATED-ONLY and refused without its own origin', () => {
+  const base = fixture('flow-graph.valid.mqtt-battery.json');
+  const mutate = (fn) => {
+    const g = JSON.parse(JSON.stringify(base));
+    fn(g);
+    return g;
+  };
+  const findRule = (g, rule) => validate(g).some((f) => f.rule === rule);
+
+  // Ohne origin: ein Kundendokument bekommt den Baustein nie.
+  assert.ok(findRule(mutate((g) => { delete g.origin; }), 'V-4'), 'no origin at all');
+  // Und auch nicht unter der FREMDEN origin-Art: jede generierte Art ist nur
+  // unter IHRER eigenen gueltig (die modbus-device/consumer-policy-Regel).
+  assert.ok(findRule(mutate((g) => {
+    g.origin = { kind: 'modbus-device', point_id: g.origin.point_id, definition_version: 1 };
+  }), 'V-4'), 'a foreign generated origin must not unlock it');
+});
+
+test('mqtt-battery validator rules: host, mapping shape, duplicate channel', () => {
+  const base = fixture('flow-graph.valid.mqtt-battery.json');
+  const mutate = (fn) => {
+    const g = JSON.parse(JSON.stringify(base));
+    fn(g);
+    return g;
+  };
+  const findRule = (g, rule) => validate(g).some((f) => f.rule === rule);
+  const P = (g) => g.nodes[0].parameters;
+
+  assert.ok(findRule(mutate((g) => { delete P(g).host; }), 'V-4'), 'missing broker host');
+  assert.ok(findRule(mutate((g) => { P(g).host = 'kein host!'; }), 'V-4'), 'invalid host chars');
+  assert.ok(findRule(mutate((g) => { P(g).port = 70000; }), 'V-4'), 'port out of range');
+  assert.ok(findRule(mutate((g) => { P(g).mappings = []; }), 'V-4'), 'no mapping = no measurement');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[0].topic = 'a/#/b'; }), 'V-4'),
+    '# is only ever the last segment');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[0].path = '__proto__'; }), 'V-4'),
+    'prototype-poisoning segments are refused');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[0].aggregate = 'median'; }), 'V-4'),
+    'unknown aggregate');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[0].scale = 0; }), 'V-4'),
+    'a scale of 0 would erase every reading');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[1].channel = 'cell_min_mv'; }), 'V-4'),
+    'two mappings onto ONE channel');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[0].stale_s = 1; }), 'V-4'),
+    'stale_s below the floor');
 });
 
 test('pinned content hash of the modbus-read fixture', () => {

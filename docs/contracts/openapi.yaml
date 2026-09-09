@@ -5305,6 +5305,90 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site or component not found for this tenant. }
         "422": { description: Not a self-built component. }
+  /api/v1/sites/{siteId}/components/battery:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: Connect a SELF-BUILT battery over a local MQTT broker (P5 Ebene 1).
+      description: >
+        Creates a normal v2 entity (`user-defined-battery`, measure-only) whose
+        capabilities are exactly the MAPPED standard channels, stores the
+        definition as version 1 and compiles + rolls out its generated READ flow
+        (ONE `vp.mqtt.read` node, origin `mqtt-device`) through the existing
+        flowc / `v2/flows` machinery - the same path a self-built Modbus device
+        takes, one transport further. Only on a PORTAL-managed plant (409 on a
+        box-managed one).
+
+
+        Unlike the Modbus Baukasten this path requires NO connection receipt: an
+        MQTT preview needs a LISTENING WINDOW rather than the probe channel's
+        one-shot read, and that ships with the mapping assistant (P5d). A duty
+        without a door would be a dead end, not a safeguard. The LAN-only rule
+        applies unchanged.
+
+
+        ⚠ Rollout order: a box that does not yet know the `mqtt_local`
+        communication refuses the pushed driver and drops the WHOLE registry
+        push. The edge release has to reach a plant BEFORE the first such
+        battery is created there.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveUserDefinedBatteryRequest" }
+      responses:
+        "200":
+          description: The plant's components, including the new battery.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteComponents" }
+        "400": { description: Mapping/topic/LAN rule violated - the reason is German. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+        "409": { description: The plant's devices are managed on the box, or it has no connected device. }
+        "503": { description: The read plan could not be built or distributed. }
+  /api/v1/sites/{siteId}/components/battery/{entityId}:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [components]
+      summary: Change a self-connected battery - a NEW version, the old stays retrievable.
+      description: >
+        The mapping list IS the capability list: a removed target channel also
+        disappears as a measurement, or the battery would promise a value nobody
+        reads any more.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveUserDefinedBatteryRequest" }
+      responses:
+        "200":
+          description: The plant's components.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteComponents" }
+        "400": { description: Mapping/topic/LAN rule violated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or component not found for this tenant. }
+        "422": { description: Not a self-connected battery. }
+    delete:
+      tags: [components]
+      summary: Remove a self-connected battery - together with its generated read flow.
+      description: >
+        Recorded measurements stay in the history - they WERE measured, and
+        removing a device does not un-measure its past.
+      responses:
+        "200":
+          description: The plant's remaining components.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteComponents" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or component not found for this tenant. }
+        "422": { description: Not a self-connected battery. }
   /api/v1/sites/{siteId}/components/custom/{entityId}/switch-test:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -7554,6 +7638,128 @@ components:
           maxItems: 16
           items: { $ref: "#/components/schemas/SelfBuildChannel" }
         note: { type: string, maxLength: 200 }
+    SaveUserDefinedBatteryRequest:
+      type: object
+      description: >
+        The SELF-CONNECTED battery (P5 Ebene 1, `vp-deye-diybms-luecke-l5`
+        §3.2b): a local MQTT broker plus the user-defined field mapping onto the
+        standard battery channels. The mapping vocabulary is CLOSED - the
+        allowed target channels are exactly `user-defined-battery.default_measure`
+        in the entity-type catalog, and a created battery declares only the
+        channels actually mapped.
+      required: [broker, mappings]
+      properties:
+        label: { type: string, maxLength: 200 }
+        broker: { $ref: "#/components/schemas/UserDefinedBatteryBroker" }
+        mappings:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items: { $ref: "#/components/schemas/UserDefinedBatteryMapping" }
+        publishIntervalS:
+          type: integer
+          minimum: 5
+          maximum: 3600
+          default: 15
+          description: >
+            The cadence at which the box publishes ONE telemetry message with
+            every channel that currently has a fresh value. It IS the flow's
+            trigger interval - there is no second cadence concept.
+        socDerivation: { $ref: "#/components/schemas/UserDefinedBatterySocDerivation" }
+        note: { type: string, maxLength: 200 }
+    UserDefinedBatteryBroker:
+      type: object
+      description: >
+        The LOCAL MQTT broker. Same LAN-only rule as the Modbus Baukasten - only
+        a provably private target is accepted. Credentials are deliberately NOT
+        part of this contract: a password inside a retained, rolled-out flow
+        document would be a cleartext secret; the secret path ships with the
+        HTTP read type.
+      required: [host]
+      properties:
+        host: { type: string, maxLength: 253 }
+        port: { type: integer, minimum: 1, maximum: 65535, default: 1883 }
+    UserDefinedBatteryMapping:
+      type: object
+      description: >
+        ONE source field onto ONE standard battery channel. A mapping may span
+        MANY topics via a filter and fold them with an aggregate - that is what
+        turns 11x16 DIYBMS cell topics (`emon/diybms/+/+`, `.voltage`) into
+        `cell_min_mv`/`cell_max_mv`. Scale/offset are applied PER SAMPLE, then
+        the aggregate runs, so "min over all cells in mV" means exactly that.
+      required: [channel, topic]
+      properties:
+        channel:
+          type: string
+          maxLength: 64
+          description: >
+            A standard battery channel - `soc_pct`, `voltage_v`, `current_a`,
+            `power_kw`, `cell_min_mv`, `cell_max_mv`, `temp_max_c`,
+            `charge_allowed`, `discharge_allowed`, `charge_limit_a`,
+            `discharge_limit_a`. Anything else is REFUSED, never guessed. Each
+            channel has exactly one source.
+        topic:
+          type: string
+          maxLength: 200
+          description: "MQTT topic filter; `+` is exactly one level, `#` only the last."
+        path:
+          type: string
+          maxLength: 200
+          description: >
+            Dot-separated value path inside the JSON payload (`voltage`,
+            `bms.soc`). Empty means the payload ITSELF is the value.
+        aggregate:
+          type: string
+          enum: [last, min, max, sum, avg, count]
+          default: last
+          description: >
+            Folded over every FRESH sample of every matching topic. A `bool`
+            mapping accepts only `last`, `min` (the conservative AND - every
+            source allows it) and `max` (OR): the SUM of permissions is not a
+            permission, and an average of 0.5 would be a number no device ever
+            reported.
+        valueType:
+          type: string
+          enum: [number, bool]
+          default: number
+          description: >
+            `bool` travels as 0/1 (telemetry channels are numbers) and knows no
+            scaling - 0/1 IS the statement.
+        scale: { type: number, default: 1, description: "Must not be 0." }
+        offset: { type: number, default: 0 }
+        sentinel:
+          type: number
+          description: >
+            A RAW value that means "not measured" (a sensor reporting -40). Such
+            a sample is absent, never a reading.
+        staleS:
+          type: integer
+          minimum: 5
+          maximum: 86400
+          default: 300
+          description: >
+            How long ONE sample counts. A channel with no fresh sample is ABSENT
+            from the telemetry - never 0.
+        trueValues:
+          type: array
+          maxItems: 16
+          items: { type: string, maxLength: 32 }
+          description: "Extra words meaning true; a word outside the vocabulary is DISCARDED."
+        falseValues:
+          type: array
+          maxItems: 16
+          items: { type: string, maxLength: 32 }
+    UserDefinedBatterySocDerivation:
+      type: object
+      description: >
+        How the state of charge comes about (level 2, `vp-deye-diybms-luecke-l5`
+        §3.2b). Today only `direct` exists - "the source delivers a real state of
+        charge" - and it requires `soc_pct` to be mapped (no state of charge
+        without an input). `ocv_curve` and `coulomb` are refused BY NAME rather
+        than stored unexecuted; they ship with P5b. Omitted on create: `direct`
+        when `soc_pct` is mapped, otherwise no derivation at all.
+      properties:
+        method: { type: string, enum: [direct, ocv_curve, coulomb] }
     SwitchDefinition:
       type: object
       description: >
