@@ -119,6 +119,28 @@ type Driver struct {
 // together, or the box would start refusing pushes it should ignore.
 const CommunicationSelfBuild = "modbus_baukasten"
 
+// CommunicationMqttLocal marks a BATTERY the customer connected themselves over
+// a LOCAL MQTT broker (P5 Ebene 1, Konzept vp-deye-diybms-luecke-l5 §3.2b).
+// Same story as CommunicationSelfBuild: such a component is read by its own
+// generated flow (one vp-mqtt-read node with the user's field mapping), never
+// by the self-wiring tab - so this applier deliberately does NOT turn it into a
+// source.
+//
+// ⚠ The value is shared verbatim with the cloud
+// (services/api .../components/UserDefinedBatteryDefinition.COMMUNICATION).
+// ⚠ ROLLOUT ORDER: a box WITHOUT this constant refuses the driver of such a
+// component ("nennt keine Marke") and Derive is all-or-nothing - the site would
+// lose the application of its inverter and every source. The edge release
+// therefore has to reach a site BEFORE the first battery is connected there.
+const CommunicationMqttLocal = "mqtt_local"
+
+// selfReadCommunications are the communications whose devices carry their own
+// generated read flow. They are skipped here - never refused: refusing would
+// sink the WHOLE push over a device this applier is not responsible for.
+func isSelfRead(communication string) bool {
+	return communication == CommunicationSelfBuild || communication == CommunicationMqttLocal
+}
+
 // Plan is the derived local configuration of one push: at most one primary
 // inverter plus the additional read-only sources, all already validated against
 // the box's own catalog.
@@ -170,18 +192,20 @@ func ParseDriver(e entities.Entity) (Driver, bool, error) {
 	if len(d.Connection) == 0 {
 		return Driver{}, false, nil
 	}
-	// ⚠ A SELF-BUILT device is not part of the local read path at all, and
+	// ⚠ A SELF-READ device is not part of the local read path at all, and
 	// skipping it HERE - before the brand check - is load-bearing, not
 	// cosmetic: Derive is all-or-nothing, roleFor does not know the
-	// `modbus-generic` type, and a self-built device carries no brand by
-	// construction. Without this branch ONE customer-defined sensor would sink
-	// the WHOLE push, so a plant would lose the application of its inverter and
-	// every source the moment it defines its first own device.
+	// `modbus-generic` / `user-defined-battery` types, and such a device
+	// carries no brand by construction. Without this branch ONE
+	// customer-defined sensor would sink the WHOLE push, so a plant would lose
+	// the application of its inverter and every source the moment it defines
+	// its first own device.
 	//
 	// Its READ PLAN travels elsewhere: as a generated flow over v2/flows (one
-	// vp-modbus-read per channel, publishing its own per-entity telemetry). The
-	// driver block carries display/context only.
-	if d.Communication == CommunicationSelfBuild {
+	// vp-modbus-read per channel, or ONE vp-mqtt-read carrying the whole field
+	// mapping of a self-connected battery), publishing its own per-entity
+	// telemetry. The driver block carries display/context only.
+	if isSelfRead(d.Communication) {
 		return Driver{}, false, nil
 	}
 	if strings.TrimSpace(d.Brand) == "" {

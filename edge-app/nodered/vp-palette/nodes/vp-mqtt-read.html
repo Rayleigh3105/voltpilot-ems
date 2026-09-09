@@ -1,0 +1,62 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-mqtt-read', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: false },
+      host: { value: '' },
+      port: { value: 1883 },
+      entity: { value: '' },
+      mappings: { value: [] }
+    },
+    inputs: 1,
+    outputs: 1,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-mqtt-read'; },
+    paletteLabel: 'vp-mqtt-read'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-mqtt-read">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+  <div class="form-row">
+    <label for="node-input-host"><i class="fa fa-globe"></i> Broker</label>
+    <input type="text" id="node-input-host" placeholder="192.168.0.10">
+  </div>
+  <div class="form-row">
+    <label for="node-input-port"><i class="fa fa-plug"></i> Port</label>
+    <input type="number" id="node-input-port" placeholder="1883">
+  </div>
+  <div class="form-row">
+    <label for="node-input-entity"><i class="fa fa-battery-half"></i> Entität</label>
+    <input type="text" id="node-input-entity" placeholder="entity-id">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-mqtt-read">
+  <p>GENERIERT aus dem Anschluss einer selbst angebundenen Batterie (P5 Ebene 1).
+  Der Knoten abonniert auf einem lokalen MQTT-Broker im Kundennetz die Topics
+  der Batterie und bildet ihre Felder ueber eine nutzer-definierte Zuordnung auf
+  die Standard-Batteriekanaele ab (<code>soc_pct</code>, <code>voltage_v</code>,
+  <code>current_a</code>, <code>power_kw</code>, <code>cell_min_mv</code>,
+  <code>cell_max_mv</code>, <code>temp_max_c</code>,
+  <code>charge_allowed</code>, <code>discharge_allowed</code>,
+  <code>charge_limit_a</code>, <code>discharge_limit_a</code>).</p>
+  <p>Eine Zuordnung darf VIELE Topics umfassen und daraus ein Aggregat bilden
+  (<code>min</code>/<code>max</code>/<code>sum</code>/<code>avg</code>/<code>count</code>/<code>last</code>)
+  - so werden aus 176 Zellspannungen unter <code>emon/diybms/+/+</code> genau
+  <code>cell_min_mv</code> und <code>cell_max_mv</code>.</p>
+  <p>Veroeffentlicht wird im Takt des Trigger-Eingangs: EINE Nachricht auf
+  <code>edge/entities/&lt;entity&gt;/telemetry</code> mit allen Kanaelen, die
+  gerade einen frischen Wert haben. Ein Kanal ohne frische Probe FEHLT - er wird
+  nie als 0 erfunden. Nur Lesen: auf den Kunden-Broker schreibt dieser Knoten
+  nie. Nur Ziele im Heimnetz werden abonniert.</p>
+</script>

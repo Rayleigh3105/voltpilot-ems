@@ -271,6 +271,75 @@
       ]
     },
     {
+      "type": "user-defined-battery",
+      "label": "Batterie (selbst angebunden)",
+      "category": "storage",
+      "controllable": false,
+      "composed": false,
+      "default_failsafe": "measure-only",
+      "_comment": [
+        "Der BMS-UNABHAENGIGE Batterie-Anschluss (Konzept vp-deye-diybms-luecke-l5 §3.2b, Paket P5).",
+        "Diese default_measure-Liste IST die geschlossene Ziel-Abbildung der Ebene 1: eine",
+        "selbstgebaute Batterie (DIYBMS, Seplos, JK, ein ESP am Shunt) liefert IRGENDWELCHE",
+        "Felder, und der Nutzer bildet sie auf GENAU diese Standard-Kanaele ab. Ein Kanal",
+        "ausserhalb dieser Liste wird abgelehnt, nie geraten - und die Faehigkeiten einer",
+        "angelegten Batterie sind die TATSAECHLICH gemappten Kanaele, nie die ganze Liste:",
+        "einen Ladestand zu versprechen, den niemand liest, waere eine erfundene Messung.",
+        "Boolesche Kanaele (charge_allowed/discharge_allowed) reisen als 0/1 - die",
+        "Telemetrie kennt nur Zahlen (edge-entity.schema.json $defs.channels).",
+        "controllable=false mit Absicht: diese Stufe LIEST. Die BMS-Grenzen als",
+        "Waechter-Eingabe und der Schutzbaustein sind P5c, die Speiser-Bindung an einen",
+        "Hybrid-Wechselrichter ist P6."
+      ],
+      "default_measure": [
+        {
+          "channel": "soc_pct",
+          "unit": "%"
+        },
+        {
+          "channel": "voltage_v",
+          "unit": "V"
+        },
+        {
+          "channel": "current_a",
+          "unit": "A"
+        },
+        {
+          "channel": "power_kw",
+          "unit": "kW"
+        },
+        {
+          "channel": "cell_min_mv",
+          "unit": "mV"
+        },
+        {
+          "channel": "cell_max_mv",
+          "unit": "mV"
+        },
+        {
+          "channel": "temp_max_c",
+          "unit": "\u00b0C"
+        },
+        {
+          "channel": "charge_allowed",
+          "unit": ""
+        },
+        {
+          "channel": "discharge_allowed",
+          "unit": ""
+        },
+        {
+          "channel": "charge_limit_a",
+          "unit": "A"
+        },
+        {
+          "channel": "discharge_limit_a",
+          "unit": "A"
+        }
+      ],
+      "default_actuate": []
+    },
+    {
       "type": "modbus-generic",
       "label": "Modbus-Gerät (generisch)",
       "category": "meter",

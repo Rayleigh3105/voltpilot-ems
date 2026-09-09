@@ -95,12 +95,19 @@ type selfBuildDefinition struct {
 }
 
 // IsSelfBuilt reports whether this descriptor is a device the customer defined
-// themselves. The discriminator is the driver's COMMUNICATION, not the entity
-// type: the type vocabulary is the cloud's and grows, the communication word is
-// the one this box shares verbatim with the cloud (CommunicationSelfBuild) and
-// the one ParseDriver already keys its skip on. Keeping both on the same word
-// makes "skipped by the applier" and "listed as a self-built device" provably
-// the same set.
+// themselves IN THE MODBUS BAUKASTEN. The discriminator is the driver's
+// COMMUNICATION, not the entity type: the type vocabulary is the cloud's and
+// grows, the communication word is the one this box shares verbatim with the
+// cloud (CommunicationSelfBuild).
+//
+// ⚠ Since P5 the SKIPPED set (isSelfRead) is WIDER than this LISTED set: a
+// battery connected over a local MQTT broker (CommunicationMqttLocal) is
+// skipped by the applier just the same, but it is deliberately not listed
+// here. The setup page's device card is Modbus-shaped - it reads
+// transport.host/port/unit_id and a channel list out of the stored definition,
+// and an MQTT battery has neither. Listing it would print an empty address
+// card, which is a worse answer than not listing it; the battery gets its own
+// card the day the box UI learns that shape.
 func IsSelfBuilt(e entities.Entity) bool {
 	if len(e.Driver) == 0 {
 		return false

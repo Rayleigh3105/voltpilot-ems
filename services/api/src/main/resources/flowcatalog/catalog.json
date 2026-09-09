@@ -1041,6 +1041,58 @@
         "command_parameter": "kind",
         "delegated": false
       }
+    },
+    {
+      "type": "vp.mqtt.read",
+      "type_version": "1.0.0",
+      "label": "MQTT lesen (generiert)",
+      "description": "GENERIERT aus dem Anschluss einer selbst angebundenen Batterie (P5 Ebene 1, Konzept vp-deye-diybms-luecke-l5 §3.2b). Der Knoten abonniert auf einem lokalen MQTT-Broker im Kundennetz die Topics der Batterie und bildet ihre Felder ueber eine NUTZER-DEFINIERTE Zuordnung auf die Standard-Batteriekanaele des Entitaetstyps user-defined-battery ab. Eine Zuordnung darf VIELE Topics umfassen und daraus ein Aggregat bilden (min/max/sum/avg/count/last) - so werden aus 176 Zellspannungen unter emon/diybms/+/+ genau cell_min_mv und cell_max_mv. Veroeffentlicht wird im Takt des Auslösers: EINE Telemetrie-Nachricht mit allen Kanaelen, die gerade einen frischen Wert haben; ein Kanal ohne frische Probe FEHLT, statt als 0 zu erscheinen. Es gibt bewusst noch KEINEN freien MQTT-Baustein: die Feld-Zuordnung mit Live-Vorschau ist ein spaeteres Paket (P5d), und ein freier Baustein, dessen Aggregat-Bedeutung kein Editor zeigen kann, waere ein Versprechen ohne Flaeche. Im Editor nie anzubieten; Bearbeiten oeffnet den Batterie-Assistenten der Komponente.",
+      "group": "daten",
+      "generated": true,
+      "generated_origin": "mqtt-device",
+      "generated_origin_label": "dem generierten Batterie-Flow",
+      "customer_visible": false,
+      "runtimes": [
+        "edge"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "number",
+          "label": "Kanäle"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "host",
+          "kind": "host",
+          "label": "Broker-Adresse (IP/Host)",
+          "required": true
+        },
+        {
+          "name": "port",
+          "kind": "number",
+          "label": "Port",
+          "required": false,
+          "min": 1,
+          "max": 65535,
+          "default": 1883
+        },
+        {
+          "name": "entity_id",
+          "kind": "entity",
+          "label": "Batterie",
+          "required": true
+        },
+        {
+          "name": "mappings",
+          "kind": "json",
+          "label": "Feld-Zuordnung",
+          "required": true,
+          "help": "Je Standard-Kanal eine Zeile: topic (MQTT-Filter, + und # erlaubt), path (Wertepfad im JSON, leer = die Nutzlast IST der Wert), aggregate (last|min|max|sum|avg|count über alle passenden Topics), value_type (number|bool), scale, offset, sentinel (Rohwert, der \"nicht gemessen\" bedeutet) und stale_s."
+        }
+      ]
     }
   ]
 }
