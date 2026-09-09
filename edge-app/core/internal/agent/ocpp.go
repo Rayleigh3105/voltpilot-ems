@@ -415,7 +415,10 @@ func (a *Agent) ocppStep(ctx context.Context) {
 // ⚠ WHAT WE CANNOT SEE IS STILL DRAWING: an unreachable station holds its own
 // safe default and its cars may be taking it, so that share is RESERVED out of
 // the budget (the import-side twin of the exportlimit doctrine, blind never
-// means unlimited). EXCEPT while the budget is MEASURED — then that draw is
+// means unlimited). This also applies to connected sessions still reconciling
+// after a restart: they receive no live allocation yet, but may draw their
+// default. ChargingTotal excludes both groups from its measured add-back.
+// EXCEPT while the budget is MEASURED — then that draw is
 // already inside the measured grid power, where it counts as building load and
 // has therefore already shrunk the budget; reserving on top would subtract the
 // same power twice, over-conservative in a way no surface could explain ("4 ×
@@ -427,7 +430,7 @@ func (a *Agent) ocppBudget(now time.Time, set lastmgmt.Settings, snap csms.Snaps
 	verdict := a.ocpp.budget.Budget(now, set)
 	reserved := 0.0
 	if safe.Computable && !verdict.Measured() {
-		reserved = safe.PerConnectorKw * float64(ocppUnreachableConnectors(snap))
+		reserved = safe.PerConnectorKw * float64(ocppUncontrolledConnectors(snap))
 	}
 	return verdict, reserved
 }
@@ -751,12 +754,18 @@ func ocppSessions(snap csms.Snapshot, budgetKw float64, set lastmgmt.Settings) (
 	return out, byKey
 }
 
-// ocppUnreachableConnectors counts the plugs of stations we cannot currently
-// reach — the ones whose draw we must assume rather than know.
-func ocppUnreachableConnectors(snap csms.Snapshot) int {
+// ocppUncontrolledConnectors counts plugs that may draw their safe default
+// without receiving a live allocation: disconnected stations and connected
+// sessions whose persisted transaction has not yet been reconciled.
+func ocppUncontrolledConnectors(snap csms.Snapshot) int {
 	total := 0
 	for _, c := range snap.Chargers {
 		if c.Connected {
+			for _, con := range c.Connectors {
+				if con.Session != nil && con.Session.Reconciling {
+					total++
+				}
+			}
 			continue
 		}
 		n := len(c.Connectors)

@@ -659,10 +659,10 @@ type OcppInfo struct {
 	MarginPct      float64 `json:"margin_pct"`
 	MinPowerKw     float64 `json:"min_power_kw"`
 	BudgetKw       float64 `json:"budget_kw"`
-	// ReservedKw is held back for charge points the box cannot currently
-	// reach: they are holding their own safe default, and their cars may be
-	// taking it, so that power is not ours to hand out. 0 while every station
-	// is reachable. The allocatable budget is BudgetKw - ReservedKw.
+	// ReservedKw is held back for disconnected charge points and connected
+	// sessions still reconciling after restart. They may draw their safe
+	// default without a live allocation. Measured budgets already account for
+	// that draw as rest load. The allocatable budget is BudgetKw - ReservedKw.
 	ReservedKw  float64 `json:"reserved_kw,omitempty"`
 	AllocatedKw float64 `json:"allocated_kw"`
 	// MeasuredKw is the sum of what the stations REPORT drawing right now.

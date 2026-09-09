@@ -1,6 +1,6 @@
 # OCPP im gesamten Projekt
 
-Stand: 09.09.2026. Bestandsaufnahme des lokalen Arbeitsstands auf codex/ocpp-control-hardening. Vorhanden bedeutet: im untersuchten Code vorhanden. Der installierte Stand einer Kundenanlage wurde dafür nicht geprüft. Neue lokale Ergänzungen sind noch nicht ausgeliefert.
+Stand: 09.09.2026. Bestandsaufnahme der implementierten OCPP-Funktionen einschließlich der OCPP-Härtung. Vorhanden bedeutet: im untersuchten Code vorhanden. Der installierte Stand einer Kundenanlage wurde dafür nicht geprüft. Neue Funktionen benötigen die Auslieferung von API/Portal und einen passenden Edge-Release.
 
 Diese Übersicht beschreibt den implementierten Funktionsumfang und die Einstiegspunkte. Sie ist kein neuer UI-Entwurf und kein Nachweis des produktiven Release-Stands.
 
@@ -115,7 +115,7 @@ Quellen: [LadevorgaengeSection.tsx](../frontend/portal/src/pages/LadevorgaengeSe
 
 ### 8. Geräteseite · Betrieb und Details
 
-**Vorhanden; lokal erweitert** · Anlage → Komponenten → Ladesäule → Geräteseite; ebenfalls erreichbar aus Cockpit, Ladevorgängen und Box-Geräteliste
+**Vorhanden; mit OCPP-Härtung erweitert** · Anlage → Komponenten → Ladesäule → Geräteseite; ebenfalls erreichbar aus Cockpit, Ladevorgängen und Box-Geräteliste
 
 **Kundenfrage:** Was macht genau diese Station und was kann ich dort bedienen?
 
@@ -129,7 +129,7 @@ Quellen: [GeraetSeiteSection.tsx](../frontend/portal/src/pages/GeraetSeiteSectio
 
 ### 9. Geräteseite · OCPP einrichten und prüfen
 
-**NEU · nur lokal** · Geräteseite → Steuerung & Grenzen → OCPP einrichten und prüfen
+**NEU · OCPP-Härtung** · Geräteseite → Steuerung & Grenzen → OCPP einrichten und prüfen
 
 **Kundenfrage:** Ist die Regelung eingerichtet, übernommen und an diesem Stecker nachgewiesen?
 
@@ -220,7 +220,7 @@ Quellen: [BoxSeiteSection.tsx](../frontend/portal/src/pages/BoxSeiteSection.tsx)
 | Anlagenadministrator / bisherige admin-Rolle | Zusätzlich reservieren/aufheben, Verfügbarkeit ändern, sanft neu starten, angewandten Plan lesen, Konfiguration lesen und erlaubte Werte ändern, Nachrichten anfordern, Cache/Liste verwalten. Außerdem neue OCPP-Einrichtung bearbeiten. |
 | Plattformverwaltung | Zusätzlich harter Neustart, Diagnoseupload, Firmware-Aktion und der registrierte Hersteller-Healthcheck. Technische Ladepark-Rahmenwerte bearbeiten. Das ist nicht der normale Kundenumfang. |
 
-Stationsfähigkeiten, Zustand und serverseitige Validierung schränken jede erlaubte Aktion zusätzlich ein. Rohes SetChargingProfile/ClearChargingProfile und eingebettete Profile beim Fernstart sind im neuen lokalen Stand gesperrt. Im verwalteten Kartenzugang sind SendLocalList und Änderungen der verwalteten Autorisierungsschlüssel ebenfalls gesperrt.
+Stationsfähigkeiten, Zustand und serverseitige Validierung schränken jede erlaubte Aktion zusätzlich ein. Rohes SetChargingProfile/ClearChargingProfile und eingebettete Profile beim Fernstart sind mit der OCPP-Härtung gesperrt. Im verwalteten Kartenzugang sind SendLocalList und Änderungen der verwalteten Autorisierungsschlüssel ebenfalls gesperrt.
 
 ## Begriffe, die unterschiedliche Handlungen meinen
 
@@ -240,11 +240,11 @@ Stationsfähigkeiten, Zustand und serverseitige Validierung schränken jede erla
 | Leistungsverteilung | edge-app/core/internal/lastmgmt; internal/agent/ocpp_bridge.go; internal/chargingcfg; internal/chargingboost | Lokale Verteilung nach Budget, Schutz, Quelle, Vorrang und Rotation; Plan/Regel/Handeingriff werden berücksichtigt. Cloud-Ausfall und Ausfall der Box sind unterschiedliche Fälle. |
 | Optimierung | services/optimization; services/api/src/main/java/com/voltpilot/api/consumers; internal/agent/ocpp_bridge.go | Allgemeine Verbraucherplanung, keine zweite cloudseitige OCPP-Zentrale. Die lokale Box setzt den erlaubten Wunsch unter ihren Grenzen um. |
 | Tests / Nachweise | edge-app/test/e2e-ocpp.sh; edge-app/core/internal/ocppsim; frontend/portal/e2e/ocpp-wallbox.spec.ts; docs/contracts/v2/ocpp-*-vectors.json | Simulator, echte Websocket-Teststrecke, Komponenten- und API-Prüfungen, Browserabläufe und gemeinsame Java/Go-Vektoren. |
-| Neue lokale Dokumentation | docs/ocpp-control.md; docs/ocpp-uebersicht.md; .lavish/ocpp-bewertung-20260909; OCPP-Audit.html | Einrichtungsbeschreibung, diese Bestandsaufnahme sowie der vorhandene Audit mit Testnachweisen und Screenshots. |
+| Dokumentation / Audit | docs/ocpp-control.md; docs/ocpp-uebersicht.md; lokale, nicht versionierte Arbeitsmaterialien: .lavish/ocpp-bewertung-20260909 und OCPP-Audit.html | Einrichtungsbeschreibung, diese Bestandsaufnahme sowie der vorhandene Audit mit Testnachweisen und Screenshots. |
 
 ## Bereits vorhanden und neu ergänzt
 
-Neu lokal sind die explizite OCPP-Freigabe, befristete Steckergrenzen, AC-/Phasenangaben, verwaltete Kartenfreigabe und die beaufsichtigte Regelprüfung auf der Geräteseite. Im Unterbau wurden Profil-Eigentümerschaft, Messwertalter und Wiederanlauf laufender Transaktionen abgesichert. Cockpit, Steuerart, Rangliste, Fahrzeugprofile, Ladevorgänge, Anbindung und die grundsätzliche Fernbedienung waren bereits vorhanden. Eine Vereinfachung der gesamten Portal-UX wurde noch nicht umgesetzt.
+Mit der OCPP-Härtung hinzugekommen sind die explizite OCPP-Freigabe, befristete Steckergrenzen, AC-/Phasenangaben, verwaltete Kartenfreigabe und die beaufsichtigte Regelprüfung auf der Geräteseite. Im Unterbau wurden Profil-Eigentümerschaft, Messwertalter und Wiederanlauf laufender Transaktionen abgesichert. Cockpit, Steuerart, Rangliste, Fahrzeugprofile, Ladevorgänge, Anbindung und die grundsätzliche Fernbedienung waren bereits vorhanden. Eine Vereinfachung der gesamten Portal-UX wurde noch nicht umgesetzt.
 
 ## Einordnung der Bedienung
 

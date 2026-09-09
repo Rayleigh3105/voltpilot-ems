@@ -68,6 +68,9 @@ behalten ihre jeweiligen Berechtigungen.
 - Aktive Sitzungen werden mit Transaktions-ID, Startzeit, Anfangszähler und
   Kartenpseudonym atomar gespeichert. Klartext-Karten werden nicht persistiert.
   Nach Neustart braucht die Sitzung eine frische passende Transaktionsmeldung.
+  Solange dieser Abgleich fehlt, bleibt ihr Sicherheitsprofil im ungemessenen
+  Ladebudget reserviert. Bei gemessenem Netzbezug zählt ihre Leistung bereits
+  zum nicht wieder zugeteilten Verbrauch und wird nicht doppelt abgezogen.
   Wiederholte Starts behalten ihre ID; geschlossene Starts werden nicht neu eröffnet.
   Für einen neuen Vorgang braucht es unterscheidbare Startdaten, insbesondere bei
   Säulen mit Zeitstempeln auf ganze Sekunden.

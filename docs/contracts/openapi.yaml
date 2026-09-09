@@ -11420,7 +11420,7 @@ components:
         minPowerKw: { type: number, nullable: true, description: "Unter dieser Leistung wird pausiert statt ausgehungert." }
         budgetKw: { type: number, nullable: true }
         allocatedKw: { type: number, nullable: true }
-        reservedKw: { type: number, nullable: true, description: "Zurückgehalten für Säulen, die die Box nicht erreicht." }
+        reservedKw: { type: number, nullable: true, description: "Zurückgehalten für nicht erreichbare Ladepunkte oder noch nicht abgeglichene Sitzungen beim Wiederanlauf." }
         measuredKw: { type: number, nullable: true, description: "Was die Säulen wirklich ziehen." }
         siteLoadKw: { type: number, nullable: true }
         siteGridKw: { type: number, nullable: true }
