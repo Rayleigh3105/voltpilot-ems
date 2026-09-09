@@ -47,18 +47,19 @@ public class ComponentTemplateRepository {
      * (ein vergessenes Feld würde sonst nie aufgefrischt).
      */
     private static final List<String> CONTENT_COLUMNS = List.of(
-            "brand", "brand_label", "model", "model_label", "device_type", "superseded_by",
+            "brand", "brand_label", "model", "model_label", "model_aliases", "device_type",
+            "superseded_by",
             "family", "family_label",
             "communication", "communication_label", "transport_schema", "channels", "writes",
             "rated_kw", "control_tier", "certification_status", "note");
 
     /** Spalten, die als JSONB geschrieben werden (die Bindung braucht den Cast). */
     private static final List<String> JSON_COLUMNS =
-            List.of("transport_schema", "channels", "writes");
+            List.of("model_aliases", "transport_schema", "channels", "writes");
 
     private static final String READ_COLUMNS =
-            "template_ref, kind, version, brand, brand_label, model, model_label, device_type, "
-                    + "superseded_by, family, "
+            "template_ref, kind, version, brand, brand_label, model, model_label, "
+                    + "model_aliases, device_type, superseded_by, family, "
                     + "family_label, communication, communication_label, transport_schema, "
                     + "channels, writes, rated_kw, control_tier, certification_status, "
                     + "certified_at, certification_note, note, updated_at";
@@ -211,7 +212,8 @@ public class ComponentTemplateRepository {
      */
     public boolean upsertBuiltin(BuiltinTemplate t, String actor) {
         Object[] content = {
-            t.brand(), t.brandLabel(), t.model(), t.modelLabel(), t.deviceType(), t.supersededBy(),
+            t.brand(), t.brandLabel(), t.model(), t.modelLabel(), t.modelAliasesJson(),
+            t.deviceType(), t.supersededBy(),
             t.family(), t.familyLabel(),
             t.communication(), t.communicationLabel(), t.transportSchemaJson(), t.channelsJson(),
             t.writesJson(), t.ratedKw(), t.controlTier(), t.certificationStatus(), t.note()
@@ -260,6 +262,7 @@ public class ComponentTemplateRepository {
                 rs.getString("brand_label"),
                 rs.getString("model"),
                 rs.getString("model_label"),
+                rs.getString("model_aliases"),
                 rs.getString("device_type"),
                 rs.getString("superseded_by"),
                 rs.getString("family"),

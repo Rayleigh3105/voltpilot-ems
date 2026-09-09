@@ -181,6 +181,17 @@ class ComponentTemplateApiTest {
         JsonNode single = getJson("/api/v1/component-templates/builtin:deye:sun-30k-sg01hp3",
                 customer);
         assertThat(single.get("modelLabel").asText()).isEqualTo("SUN-30K-SG01HP3-EU");
+        // Die TYPENSCHILD-VARIANTEN reisen mit (Bauplan P8) - als NAMEN, nicht
+        // als zweite Vorlage: gewählt wird weiter `sun-30k-sg01hp3`, an dem die
+        // Steuerungs-Freigabe hängt (brand+model, V20260814000000).
+        List<String> varianten = new ArrayList<>();
+        single.get("modelAliases").forEach(a -> varianten.add(a.asText()));
+        assertThat(varianten)
+                .containsExactly("SUN-30K-SG01HP3-EU-BM3", "SUN-30K-SG01HP3-EU-BM4");
+        assertThat(single.get("model").asText()).isEqualTo("sun-30k-sg01hp3");
+        // Ein Modell ohne Varianten behauptet nichts: null, nie [].
+        assertThat(one(list, "builtin:deye:sun-12k-sg04lp3").get("modelAliases").isNull())
+                .as("„hat nur seinen einen Namen\" ist nicht „hat keine\"").isTrue();
         assertThat(rest.exchange(url("/api/v1/component-templates/builtin:deye:gibtsnicht"),
                 HttpMethod.GET, new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);

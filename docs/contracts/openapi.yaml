@@ -8601,6 +8601,25 @@ components:
         brandLabel: { type: string, example: Deye }
         model: { type: string, example: sun-30k-sg01hp3 }
         modelLabel: { type: string, example: SUN-30K-SG01HP3-EU }
+        modelAliases:
+          type: array
+          nullable: true
+          items: { type: string }
+          example: ["SUN-30K-SG01HP3-EU-BM3", "SUN-30K-SG01HP3-EU-BM4"]
+          description: >
+            Further NAMEPLATE names of the SAME model - the variant labels a
+            customer reads off the device (Deye ships this HV hybrid line as
+            "...-EU-BM3" / "...-EU-BM4" while the catalog calls it
+            "SUN-30K-SG01HP3-EU").
+
+            An alias is ONLY a name: it carries no own key, no own template and
+            no behaviour. It is searched and may be displayed; what gets picked
+            is always the model itself - a second catalog entry would be an
+            UNCERTIFIED model, because the control certification is keyed on
+            brand+model.
+
+            null/absent = this model has only its one name - never "it has no
+            variants".
         deviceType:
           type: string
           nullable: true

@@ -735,6 +735,10 @@
       "brand_label": "Deye",
       "model": "sun-29.9k-sg01hp3",
       "model_label": "SUN-29.9K-SG01HP3-EU",
+      "model_aliases": [
+        "SUN-29.9K-SG01HP3-EU-BM3",
+        "SUN-29.9K-SG01HP3-EU-BM4"
+      ],
       "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
@@ -880,6 +884,10 @@
       "brand_label": "Deye",
       "model": "sun-30k-sg01hp3",
       "model_label": "SUN-30K-SG01HP3-EU",
+      "model_aliases": [
+        "SUN-30K-SG01HP3-EU-BM3",
+        "SUN-30K-SG01HP3-EU-BM4"
+      ],
       "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
@@ -1025,6 +1033,10 @@
       "brand_label": "Deye",
       "model": "sun-35k-sg01hp3",
       "model_label": "SUN-35K-SG01HP3-EU",
+      "model_aliases": [
+        "SUN-35K-SG01HP3-EU-BM3",
+        "SUN-35K-SG01HP3-EU-BM4"
+      ],
       "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
@@ -1170,6 +1182,10 @@
       "brand_label": "Deye",
       "model": "sun-40k-sg01hp3",
       "model_label": "SUN-40K-SG01HP3-EU",
+      "model_aliases": [
+        "SUN-40K-SG01HP3-EU-BM3",
+        "SUN-40K-SG01HP3-EU-BM4"
+      ],
       "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
@@ -1315,6 +1331,10 @@
       "brand_label": "Deye",
       "model": "sun-50k-sg01hp3",
       "model_label": "SUN-50K-SG01HP3-EU",
+      "model_aliases": [
+        "SUN-50K-SG01HP3-EU-BM3",
+        "SUN-50K-SG01HP3-EU-BM4"
+      ],
       "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",

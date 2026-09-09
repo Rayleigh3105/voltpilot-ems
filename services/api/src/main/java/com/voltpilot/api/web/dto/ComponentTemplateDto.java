@@ -22,6 +22,10 @@ import java.time.Instant;
  * einen Deye-Hybriden schlicht falsch. Ebenso {@code ratedKw}: {@code null} =
  * im Katalog unbekannt, nie 0.
  *
+ * @param modelAliases        weitere TYPENSCHILD-Namen desselben Modells, roh
+ *                            (JSON-Array). {@code null} = dieses Modell hat nur
+ *                            seinen einen Namen. Reine Anzeige + Suche: KEINE
+ *                            eigene Kennung, keine eigene Vorlage, kein Verhalten
  * @param templateRef         der stabile, OPAQUE Schlüssel - nie zerlegen
  * @param kind                Herkunft: builtin | certified (custom liefert die
  *                            Kunden-Route bis Stufe 3 nicht aus)
@@ -46,6 +50,7 @@ public record ComponentTemplateDto(
         String brandLabel,
         String model,
         String modelLabel,
+        @JsonRawValue String modelAliases,
         String deviceType,
         String supersededBy,
         String family,
