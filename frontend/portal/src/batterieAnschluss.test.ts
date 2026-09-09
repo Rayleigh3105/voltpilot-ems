@@ -11,19 +11,26 @@ import {
   chemieWort,
   istTopicFilter,
   istWertePfad,
+  bindungFehler,
+  bindungWort,
+  bindungsKanaele,
   kanalGewaehlt,
   kurveFehler,
+  ladestandVon,
   neuerBroker,
+  neueBindung,
   neueSoc,
   neueZuordnung,
   pruefen,
   socFehler,
   speicherRumpf,
+  speicherZiele,
   vorlageWarnung,
   vorschauErgebnis,
   vorschauRumpf,
   zuordnungFehler,
   zuordnungenFehler,
+  type BindungForm,
   type SocCurveTemplate,
   type ZuordnungZeile,
 } from './batterieAnschluss';
@@ -643,5 +650,123 @@ describe('Prüfen & anlegen', () => {
   it('sagt ehrlich, wenn diese Batterie vorerst keinen Ladestand meldet', () => {
     const rows = pruefen('Pack', neuerBroker(), [zelle()], neueSoc());
     expect(rows.find((r) => r.label === 'Ladestand')?.wert).toContain('keiner');
+  });
+});
+
+describe('Die SPEISER-BINDUNG (P6)', () => {
+  const soc = (): ZuordnungZeile => zelle({ channel: 'soc_pct', scale: '1', aggregate: 'last' });
+  const grenze = (): ZuordnungZeile =>
+    zelle({ channel: 'charge_limit_a', scale: '1', aggregate: 'last' });
+  const leistung = (): ZuordnungZeile =>
+    zelle({ channel: 'power_kw', scale: '0,001', aggregate: 'last' });
+  const anInverter = (id = 'inv-1'): BindungForm => ({
+    modus: 'feeds_inverter',
+    inverterEntityId: id,
+  });
+
+  /**
+   * ⚠ DER Entscheid dieses Pakets (Captain E6 (a)): NICHTS geschieht von
+   * selbst. Eine frisch angelegte Batterie ist ungebunden, auch wenn sie einen
+   * Ladestand meldet - der Kanalname sagt nicht, WESSEN Ladestand das ist.
+   */
+  it('ist ohne Angabe ungebunden und speist nichts ein', () => {
+    const b = neueBindung();
+    expect(b.modus).toBe('unbound');
+    expect(bindungsKanaele(b, [soc()], neueSoc())).toEqual([]);
+    expect(bindungFehler(b, [soc()], neueSoc())).toEqual([]);
+  });
+
+  /**
+   * Der Speiser gibt Ladestand und Grenzen weiter - die LEISTUNG nie: sie wird
+   * am Wechselrichter gemessen, und dieselben Kilowatt zweimal zu zählen wäre
+   * schlicht falsch.
+   */
+  it('gibt beim Speiser Ladestand und Grenzen weiter, nie die Leistung', () => {
+    const zeilen = [soc(), grenze(), leistung()];
+    expect(bindungsKanaele(anInverter(), zeilen, neueSoc()))
+      .toEqual(['soc_pct', 'charge_limit_a']);
+  });
+
+  it('gibt bei der eigenständigen Batterie auch die Leistung weiter', () => {
+    const zeilen = [soc(), leistung()];
+    expect(bindungsKanaele({ modus: 'standalone', inverterEntityId: '' }, zeilen, neueSoc()))
+      .toEqual(['soc_pct', 'power_kw']);
+  });
+
+  /** Ein BERECHNETER Ladestand zählt - er ist der Grund für dieses Paket. */
+  it('zählt den berechneten Ladestand als einspeisbaren Kanal', () => {
+    const zeilen = [zelle()];
+    const s = { ...neueSoc(), methode: 'ocv_curve' as const };
+    expect(bindungsKanaele({ modus: 'standalone', inverterEntityId: '' }, zeilen, s))
+      .toEqual(['soc_pct']);
+  });
+
+  it('verlangt beim Speiser den Wechselrichter', () => {
+    expect(bindungFehler(anInverter(''), [soc()], neueSoc())[0]).toContain('Wechselrichter');
+    expect(bindungFehler(anInverter(), [soc()], neueSoc())).toEqual([]);
+  });
+
+  /**
+   * Eine Bindung, die nichts einspeisen kann, wäre ein Versprechen ohne
+   * Wirkung: der Kunde bindet und die Speicher-Kachel bleibt leer.
+   */
+  it('lehnt eine Bindung ohne einzuspeisenden Kanal ab', () => {
+    expect(bindungFehler(anInverter(), [zelle()], neueSoc())[0]).toContain('noch nicht speisen');
+  });
+
+  it('schickt die Bindung IMMER mit - auch als „ungebunden"', () => {
+    const offen = speicherRumpf('Pack', neuerBroker(), [soc()], neueSoc());
+    expect(offen.binding).toEqual({ mode: 'unbound' });
+    const gebunden = speicherRumpf('Pack', neuerBroker(), [soc()], neueSoc(), anInverter('inv-9'));
+    expect(gebunden.binding).toEqual({ mode: 'feeds_inverter', inverterEntityId: 'inv-9' });
+  });
+
+  /** Ein Anschluss von VOR P6 trägt keinen Block - er ist ungebunden. */
+  it('liest die gespeicherte Bindung zurück und behandelt alte Fassungen als ungebunden', () => {
+    const alt = ausConnection({
+      transport: 'mqtt_local',
+      broker: { host: '192.168.0.5', port: 1883 },
+      publish_interval_s: 15,
+      mappings: [],
+    });
+    expect(alt?.bindung.modus).toBe('unbound');
+
+    const neu = ausConnection({
+      transport: 'mqtt_local',
+      broker: { host: '192.168.0.5', port: 1883 },
+      publish_interval_s: 15,
+      mappings: [],
+      binding: { mode: 'feeds_inverter', inverter_entity_id: 'inv-7' },
+    });
+    expect(neu?.bindung).toEqual({ modus: 'feeds_inverter', inverterEntityId: 'inv-7' });
+  });
+
+  /**
+   * Eine Batterie an eine Batterie zu hängen wäre keine Bindung, sondern eine
+   * Schleife - und sich selbst zu wählen erst recht.
+   */
+  it('bietet nur fremde Speicher-Wechselrichter als Ziel an', () => {
+    const rows = [
+      { id: 'inv-1', role: 'storage', entityType: 'battery-hybrid', label: 'Deye SUN-30K' },
+      { id: 'bat-1', role: 'storage', entityType: 'user-defined-battery', label: 'DIY' },
+      { id: 'pv-1', role: 'pv', entityType: 'producer', label: 'Fronius' },
+      { id: 'inv-2', role: 'storage', entityType: 'battery-hybrid', label: 'Zweiter' },
+    ];
+    expect(speicherZiele(rows, 'inv-2')).toEqual([{ id: 'inv-1', label: 'Deye SUN-30K' }]);
+  });
+
+  it('nennt den Wechselrichter beim Namen und formuliert „Ladestand von"', () => {
+    const ziele = [{ id: 'inv-1', label: 'Deye SUN-30K' }];
+    expect(bindungWort(anInverter(), ziele)).toContain('Deye SUN-30K');
+    expect(bindungWort({ modus: 'unbound', inverterEntityId: '' }, ziele))
+      .toContain('Energiebilanz');
+    expect(ladestandVon('DIY-Speicher')).toBe('Ladestand von: DIY-Speicher');
+    expect(ladestandVon('   ')).toBeNull();
+  });
+
+  it('führt die Zuordnung in der Zusammenfassung', () => {
+    const rows = pruefen('Pack', neuerBroker(), [soc()], neueSoc(), anInverter(),
+      [{ id: 'inv-1', label: 'Deye SUN-30K' }]);
+    expect(rows.find((r) => r.label === 'Speicher-Zuordnung')?.wert).toContain('Deye SUN-30K');
   });
 });

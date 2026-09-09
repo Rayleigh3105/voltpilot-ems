@@ -9,6 +9,7 @@ import {
   AGGREGATE,
   ANSCHLUSSARTEN,
   BATTERIE_HINWEIS,
+  BINDUNGEN,
   BOOL_AGGREGATE,
   MAX_ZUORDNUNGEN,
   SOC_METHODEN,
@@ -16,16 +17,20 @@ import {
   ZIEL_KANAELE,
   ausConnection,
   ausVorlage,
+  bindungFehler,
+  bindungsKanaele,
   brokerFehler,
   kanalGewaehlt,
   kurveFehler,
   neuerPunkt,
   neuerBroker,
+  neueBindung,
   neueSoc,
   neueZuordnung,
   pruefen,
   socFehler,
   speicherRumpf,
+  speicherZiele,
   vorlageWarnung,
   vorschauErgebnis,
   vorschauRumpf,
@@ -33,10 +38,12 @@ import {
   zuordnungFehler,
   zuordnungenFehler,
   type AnschlussartId,
+  type BindungForm,
   type BrokerForm,
   type SocCurveTemplate,
   type SocForm,
   type SocMethode,
+  type SpeicherZiel,
   type VorschauErgebnis,
   type ZuordnungZeile,
 } from '../batterieAnschluss';
@@ -92,7 +99,9 @@ export function BatterieAssistent({
     start && start.zeilen.length > 0 ? start.zeilen : [neueZuordnung('soc_pct')],
   );
   const [soc, setSoc] = useState<SocForm>(start?.soc ?? neueSoc());
+  const [bindung, setBindung] = useState<BindungForm>(start?.bindung ?? neueBindung());
   const [name, setName] = useState(bearbeiten?.label ?? '');
+  const [ziele, setZiele] = useState<SpeicherZiel[]>([]);
   const [vorlagen, setVorlagen] = useState<SocCurveTemplate[]>([]);
   const [vorschau, setVorschau] = useState<VorschauErgebnis | null>(null);
   const [laeuft, setLaeuft] = useState(false);
@@ -117,6 +126,24 @@ export function BatterieAssistent({
     };
   }, []);
 
+  /*
+    P6: die Wechselrichter, an die sich diese Batterie hängen lässt. Sie kommen
+    aus der Komponenten-Liste der Anlage - eine Auswahl aus einer Konstante wäre
+    eine Behauptung über eine fremde Anlage. Ein Fehlschlag lässt die Liste LEER,
+    und dann steht die Speiser-Wahl gesperrt da mit dem ehrlichen Grund: es gibt
+    hier (noch) keinen Wechselrichter, an dem eine Batterie hängen könnte.
+  */
+  useEffect(() => {
+    let lebt = true;
+    api
+      .siteComponents(siteId)
+      .then((c) => lebt && setZiele(speicherZiele(c?.components, bearbeiten?.entityId ?? null)))
+      .catch(() => lebt && setZiele([]));
+    return () => {
+      lebt = false;
+    };
+  }, [siteId, bearbeiten?.entityId]);
+
   /** Die Bedienzeile - im Wirt-Fuß, wo es einen gibt, sonst hier. */
   const Nav = ({ children }: { children: ReactNode }) =>
     navPortal ? (
@@ -129,6 +156,7 @@ export function BatterieAssistent({
   const listenMangel = zuordnungenFehler(zeilen);
   const zeilenMangel = zeilen.flatMap((z) => zuordnungFehler(z));
   const socMangel = socFehler(soc, zeilen);
+  const bindungMangel = bindungFehler(bindung, zeilen, soc);
   const gewaehlteVorlage = vorlagen.find((v) => v.id === soc.template) ?? null;
 
   function setzeZeile(key: string, patch: Partial<ZuordnungZeile>) {
@@ -174,7 +202,7 @@ export function BatterieAssistent({
     setSpeichern(true);
     setFehler(null);
     try {
-      const body = speicherRumpf(name, broker, zeilen, soc);
+      const body = speicherRumpf(name, broker, zeilen, soc, bindung);
       const result = bearbeiten
         ? await api.updateBattery(siteId, bearbeiten.entityId, body)
         : await api.createBattery(siteId, body);
@@ -765,6 +793,76 @@ export function BatterieAssistent({
             </p>
           )}
 
+          {/* P6 Speiser-Bindung (Captain-Entscheid E6 (a)): die AUSDRÜCKLICHE
+              Antwort auf „wozu gehört diese Batterie?". Sie steht hier, direkt
+              unter dem Ladestand, weil sie genau darüber entscheidet - wessen
+              Ladestand das ist. Nichts davon geschieht von selbst. */}
+          <div className="vp-bat-bindung" data-testid="bindung-block">
+            <h4 className="vp-assist-h4">Wozu gehört diese Batterie?</h4>
+            <p className="vp-assist-sub">
+              VoltPilot ordnet sie NICHT von selbst zu - nur Sie wissen, ob dieser Ladestand
+              der Ihres Anlagen-Speichers ist.
+            </p>
+            <div className="vp-assist-roles">
+              {BINDUNGEN.map((b) => {
+                const gesperrt = b.id === 'feeds_inverter' && ziele.length === 0;
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    data-testid={`bindung-${b.id}`}
+                    className={`vp-assist-role${bindung.modus === b.id ? ' is-on' : ''}${
+                      gesperrt ? ' is-soon' : ''
+                    }`}
+                    disabled={gesperrt}
+                    aria-disabled={gesperrt}
+                    onClick={() => setBindung((v) => ({ ...v, modus: b.id }))}
+                  >
+                    <strong>{b.label}</strong>
+                    <span>{b.hint}</span>
+                    {gesperrt && (
+                      <em className="vp-assist-soon">
+                        Diese Anlage hat noch keinen Speicher-Wechselrichter
+                      </em>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {bindung.modus === 'feeds_inverter' && ziele.length > 0 && (
+              <div className="vp-assist-field">
+                <VpPicker
+                  id="bat-inverter"
+                  label="An welchem Wechselrichter hängt sie?"
+                  value={bindung.inverterEntityId}
+                  onChange={(v) => setBindung((b) => ({ ...b, inverterEntityId: v }))}
+                  placeholder="Wechselrichter wählen"
+                  options={ziele.map((z) => ({ value: z.id, label: z.label }))}
+                />
+                <p className="vp-assist-help">
+                  Seine Speicher-Kachel zeigt danach den Ladestand dieser Batterie - die
+                  Batterieleistung bleibt beim Wechselrichter, wo sie gemessen wird.
+                </p>
+              </div>
+            )}
+
+            {bindung.modus !== 'unbound' && bindungMangel.length === 0 && (
+              <p className="vp-assist-help" data-testid="bindung-kanaele">
+                Eingespeist werden:{' '}
+                {bindungsKanaele(bindung, zeilen, soc)
+                  .map((c) => zielKanal(c)?.label ?? c)
+                  .join(', ')}
+                .
+              </p>
+            )}
+            {bindungMangel.length > 0 && (
+              <p className="vp-assist-error" role="status">
+                {bindungMangel[0]}
+              </p>
+            )}
+          </div>
+
           <div className="vp-assist-field">
             <label htmlFor="bat-name">Name</label>
             <Input
@@ -780,7 +878,10 @@ export function BatterieAssistent({
             <Button variant="ghost" onClick={() => setSchritt(2)}>
               Zurück
             </Button>
-            <Button onClick={() => setSchritt(4)} disabled={socMangel.length > 0}>
+            <Button
+              onClick={() => setSchritt(4)}
+              disabled={socMangel.length > 0 || bindungMangel.length > 0}
+            >
               Weiter
             </Button>
           </Nav>
@@ -791,7 +892,7 @@ export function BatterieAssistent({
         <>
           <h3 className="vp-assist-h">Prüfen &amp; anlegen</h3>
           <dl className="vp-assist-check">
-            {pruefen(name, broker, zeilen, soc).map((row) => (
+            {pruefen(name, broker, zeilen, soc, bindung, ziele).map((row) => (
               <div key={row.label}>
                 <dt>{row.label}</dt>
                 <dd>{row.wert}</dd>

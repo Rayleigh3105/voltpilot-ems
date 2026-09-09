@@ -26,6 +26,10 @@ import java.util.List;
  *     {@code coulomb} zählt ihn ab einem Anker. Fehlt der Block ganz, gilt
  *     {@code direct}, falls {@code soc_pct} zugeordnet ist - sonst hat die
  *     Batterie keinen Ladestand, und das ist ein legitimer Zustand.
+ * @param binding die SPEISER-BINDUNG (P6): wozu diese Batterie in der Anlage
+ *     gehört. Fehlt der Block, bleibt sie UNGEBUNDEN - ein Topologie-Knoten mit
+ *     eigenen Messwerten, der nicht in die Energiebilanz eingeht. Eine Bindung
+ *     entsteht nie von selbst (Captain-Entscheid E6).
  */
 public record SaveUserDefinedBatteryRequest(
         @Size(max = 200) String label,
@@ -33,7 +37,19 @@ public record SaveUserDefinedBatteryRequest(
         @NotNull @Valid List<MappingRequest> mappings,
         Integer publishIntervalS,
         @Valid SocDerivationRequest socDerivation,
+        @Valid BindingRequest binding,
         @Size(max = 200) String note) {
+
+    /**
+     * Wozu diese Batterie gehört (P6).
+     *
+     * @param mode {@code unbound} | {@code feeds_inverter} | {@code standalone}
+     * @param inverterEntityId der Hybrid-Wechselrichter, dessen Speicher-Knoten
+     *     sie speist - nur bei {@code feeds_inverter}, und dort Pflicht
+     */
+    public record BindingRequest(
+            @Size(max = 32) String mode,
+            @Size(max = 64) String inverterEntityId) {}
 
     /** Wo der MQTT-Broker im Netz des Kunden steht. */
     public record Broker(

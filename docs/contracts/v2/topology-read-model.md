@@ -50,6 +50,18 @@ the edge (no DB) and in the cloud:
 | `power_kw` | `meter` / `measure-only` | `grid` |
 | anything else (`energy_kwh`, …) | any | `` (informational, no role) |
 
+**Self-built entity types never get a default role** (`IsSelfBuiltType`:
+`modbus-generic`, `modbus-load`, `user-defined-battery`) — the TYPE is checked
+FIRST, before the channel/category table above. Two reasons, and the first is a
+promise the assistant already prints: Bilanz-Ehrlichkeit (Einheitsmodell
+Stufe 3) — a self-built device is a topology node with its own measurements and
+does NOT enter the energy balance; and the category would otherwise decide
+(a `modbus-generic` is `meter`, a `user-defined-battery` is `storage`), so a
+channel merely NAMED `power_kw` or `soc_pct` would walk into the grid resp. the
+storage node by itself. For the customer's own battery that automatic binding is
+exactly what captain decision **E6** (09.09.2026) rules out — it joins the
+storage node only through the explicit Speiser-Bindung below.
+
 `category` is `storage|producer|meter|consumer` on the cloud (the type catalog)
 and the edge's `entities.Entity.category()` (`measure-only` == `meter` here) — the
 pilot types are pinned on both sides, so they never drift.
@@ -94,9 +106,19 @@ FlowNode {
   role: "pv"|"storage"|"consumer"|"grid"
   value_kw?: number        // DISPLAY magnitude (≥0, 3dp) — drives the value text AND the spoke width; absent when unknown
   soc_pct?: number         // storage only; absent otherwise / when unknown
+  soc_source?: NodeSource  // WHICH entity supplied soc_pct; present whenever soc_pct is (P6)
+  limits?: NodeLimits      // storage only; the BMS envelope, absent when nobody reports one (P6)
   flow_active: boolean     // value_kw present AND > deadband
   direction?: "in"|"out"   // absent when idle/unknown
   members: FlowMember[]
+}
+NodeSource { entity_id: string, label: string }
+NodeLimits {
+  source: NodeSource       // ALL fields come from this ONE entity
+  charge_limit_a?: number
+  discharge_limit_a?: number
+  charge_allowed?: boolean
+  discharge_allowed?: boolean
 }
 FlowMember {
   entity_id: string
@@ -117,6 +139,19 @@ input order (a `soc_pct` capability feeds the node SoC, not a member). Optional
 fields are OMITTED when absent (never `null` in the wire form) so the three
 implementations serialize congruently.
 
+**Storage ATTRIBUTE channels** (`soc_pct`, `charge_limit_a`,
+`discharge_limit_a`, `charge_allowed`, `discharge_allowed`) are never flow
+members and never sum into `value_kw` — an ampere and a yes/no are not
+kilowatts, and summing them would make the spoke width a number with two
+meanings. `soc_pct` feeds `soc_pct` + `soc_source`; the other four feed
+`limits`, all of them from the ONE entity that wins the same primary-else-first
+rule the SoC uses (a charge limit from one BMS next to a discharge limit from
+another would be one block with two meanings). A permission travels as a NUMBER
+through telemetry (the v2 channel contract knows only numbers): anything but 0
+is `true`. An unmapped or silent limit channel is ABSENT — never a fabricated 0
+(which on a limit would read as "charging forbidden") and never a fabricated
+`true`.
+
 ## Surfaces
 
 - **Cloud:** `GET /api/v1/sites/{siteId}/topology` (RLS-scoped, foreign site
@@ -129,6 +164,35 @@ implementations serialize congruently.
   `topology` block (schema-versioned) built from the applied entity registry +
   the latest per-entity local readings. The existing scalar
   `pv_kw`/`load_kw`/`grid_limit_kw`/`soc_pct` fields stay for backward compat.
+
+## Die SPEISER-BINDUNG (P6, captain decision E6 (a))
+
+A `user-defined-battery` (the customer's own BMS read over MQTT, P5/P5b) joins
+the storage node ONLY through an **explicit** binding made in the assistant —
+never by channel name. Three answers, stored in the battery's own
+`connection_json` as `binding: {mode, inverter_entity_id?}`:
+
+| mode | meaning | what it feeds into the storage node |
+|---|---|---|
+| `unbound` (default) | it stands on its own | nothing — a topology node with its own measurements, outside the energy balance |
+| `feeds_inverter` | it hangs on hybrid inverter X (`inverter_entity_id`, mandatory) | `soc_pct` + the four limit/permission channels. **Never `power_kw`** — the inverter measures the battery power, and counting the same kilowatts twice would be plainly wrong |
+| `standalone` | there is no hybrid; it IS the storage node | the same, PLUS `power_kw` |
+
+Only channels the battery ACTUALLY delivers are fed (a derived `soc_pct` from
+P5b counts); a binding that could feed nothing is refused rather than promising
+an effect that never arrives.
+
+**The binding IS a role assignment.** Saving the battery writes one
+`entity_role_assignment` row (role `storage`, `is_primary` true) per fed channel
+and deletes the rows for every channel no longer fed. Nothing new travels: the
+read-model resolves the override before the default, and the registry push
+carries it to the box as `descriptor.role_assignment` (Befund L4), so `:8484`
+draws the same energy flow as the portal. `is_primary` is half the statement —
+the customer says THIS battery supplies the storage SoC, so a hybrid inverter
+reporting its own (in voltage mode: invented) value must not outvote it. Should
+the bound battery fall silent, the derivation still falls back to another
+member's SoC — but `soc_source` then names that other device, so the surface
+says whose number it shows instead of quietly substituting one.
 
 ## Assignment overrides (`entity_role_assignment`)
 

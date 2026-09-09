@@ -1,6 +1,7 @@
 package com.voltpilot.api.components;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -183,6 +184,52 @@ public final class UserDefinedBatteryDefinition {
     public static final int MAX_CELLS_IN_SERIES = 1024;
     public static final double MAX_CAPACITY_KWH = 10000.0;
 
+    // ---- Die SPEISER-BINDUNG (P6) -----------------------------------------
+
+    /**
+     * Die drei AUSDRÜCKLICHEN Antworten auf „wozu gehört diese Batterie?"
+     * (Captain-Entscheid E6 (a), 09.09.2026).
+     *
+     * <ul>
+     *   <li>{@link #BINDING_UNBOUND} - sie steht für sich. Ein Topologie-Knoten
+     *       mit eigenen Messwerten, der NICHT in die Energiebilanz eingeht: die
+     *       Stufe-3-Zusage, die der Assistent dem Kunden schon gedruckt hat.
+     *       <b>Das ist die Vorgabe</b>, denn eine Bindung, die von selbst
+     *       entsteht, ist geraten - und ein geratener Ladestand ist genau die
+     *       erfundene Messung, die P7 gerade aus dem Optimierer entfernt hat.</li>
+     *   <li>{@link #BINDING_FEEDS_INVERTER} - sie hängt an einem
+     *       Hybrid-Wechselrichter und ist dessen SPEISER: Ladestand, Grenzen und
+     *       Freigaben des Speicher-Knotens kommen von ihr, die LEISTUNG bleibt
+     *       beim Wechselrichter, wo sie gemessen wird.</li>
+     *   <li>{@link #BINDING_STANDALONE} - es gibt keinen Hybriden; sie IST der
+     *       Speicher-Knoten und liefert dann auch die Leistung.</li>
+     * </ul>
+     */
+    public static final String BINDING_UNBOUND = "unbound";
+    public static final String BINDING_FEEDS_INVERTER = "feeds_inverter";
+    public static final String BINDING_STANDALONE = "standalone";
+    public static final Set<String> BINDING_MODES =
+            Set.of(BINDING_UNBOUND, BINDING_FEEDS_INVERTER, BINDING_STANDALONE);
+
+    /**
+     * Die Kanäle, die eine GEBUNDENE Batterie in den Speicher-Knoten einspeist -
+     * in dieser Reihenfolge, damit die geschriebenen Rollen-Zuordnungen
+     * deterministisch sind.
+     *
+     * <p>⚠ {@code power_kw} steht bewusst NICHT dabei: es ist der eine Kanal,
+     * über den die beiden Fälle sich unterscheiden. Beim Speiser misst der
+     * Wechselrichter die Batterieleistung ohnehin - sie ein zweites Mal zu
+     * zählen wäre schlicht falsch.
+     */
+    public static final List<String> BOUND_CHANNELS = List.of(
+            SOC_CHANNEL, "charge_limit_a", "discharge_limit_a",
+            "charge_allowed", "discharge_allowed");
+
+    /**
+     * Der Leistungs-Kanal, den NUR der eigenständige Fall mitgibt (Fall (2)).
+     */
+    public static final String POWER_CHANNEL = "power_kw";
+
     private static final java.util.regex.Pattern PATH_SEGMENT =
             java.util.regex.Pattern.compile("^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$");
     private static final Set<String> FORBIDDEN_SEGMENTS =
@@ -197,6 +244,56 @@ public final class UserDefinedBatteryDefinition {
         public int effectivePort() {
             return port == null ? DEFAULT_PORT : port;
         }
+    }
+
+    /**
+     * Die SPEISER-BINDUNG einer Batterie (P6): wozu sie in dieser Anlage
+     * gehört, und - beim Speiser - an WELCHEM Wechselrichter sie hängt.
+     *
+     * @param mode einer aus {@link #BINDING_MODES}
+     * @param inverterEntityId die Entität des Hybrid-Wechselrichters; nur bei
+     *     {@link #BINDING_FEEDS_INVERTER} gesetzt und dort PFLICHT - „hängt an
+     *     irgendeinem" wäre keine ausdrückliche Bindung
+     */
+    public record Binding(String mode, String inverterEntityId) {
+
+        /** Speist diese Batterie den Speicher-Knoten überhaupt? */
+        public boolean feedsStorage() {
+            return BINDING_FEEDS_INVERTER.equals(mode) || BINDING_STANDALONE.equals(mode);
+        }
+
+        /** Liefert sie AUCH die Leistung (nur der eigenständige Fall)? */
+        public boolean suppliesPower() {
+            return BINDING_STANDALONE.equals(mode);
+        }
+    }
+
+    /** Die Vorgabe: ungebunden - nichts geschieht von selbst (E6). */
+    public static final Binding UNBOUND = new Binding(BINDING_UNBOUND, null);
+
+    /**
+     * WELCHE Kanäle diese Bindung in den Speicher-Knoten einspeist - die EINE
+     * Wahrheit, aus der die Rollen-Zuordnungen entstehen und gegen die sie beim
+     * Ändern wieder aufgeräumt werden.
+     *
+     * <p>Nur Kanäle, die diese Batterie WIRKLICH liefert, stehen darin: eine
+     * Rolle für einen Kanal zu schreiben, den niemand meldet, verspräche einen
+     * Messwert, den es nicht gibt.
+     */
+    public static List<String> boundChannels(Binding binding, Collection<String> available) {
+        if (binding == null || !binding.feedsStorage()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String c : BOUND_CHANNELS) {
+            if (available.contains(c)) {
+                out.add(c);
+            }
+        }
+        if (binding.suppliesPower() && available.contains(POWER_CHANNEL)) {
+            out.add(POWER_CHANNEL);
+        }
+        return List.copyOf(out);
     }
 
     /** Eine Feld-Zuordnung, wie sie der Assistent schickt. */
@@ -250,15 +347,41 @@ public final class UserDefinedBatteryDefinition {
 
     /** Das Ergebnis einer Prüfung: entweder Fehler, oder die normalisierte Form. */
     public record Result(List<String> errors, Broker broker, List<NormalizedMapping> mappings,
-            int publishIntervalS, SocDerivation socDerivation) {
+            int publishIntervalS, SocDerivation socDerivation, Binding binding) {
 
         public boolean ok() {
             return errors.isEmpty();
         }
 
-        /** Die Messkanäle, die diese Batterie WIRKLICH liefert. */
+        /**
+         * Die Messkanäle, die diese Batterie WIRKLICH liefert - die
+         * zugeordneten UND die aus ihnen abgeleiteten.
+         *
+         * <p>⚠ Der abgeleitete Ladestand gehört dazu, und aus demselben Grund,
+         * aus dem die Liste sonst so knapp ist: rechnet eine Kennlinie ihn aus,
+         * dann liefert diese Batterie {@code soc_pct} - er steht nur nicht in
+         * der Zuordnung, weil ihn niemand sendet. Ohne ihn könnte die
+         * Speiser-Bindung (P6) genau den Kanal nicht einspeisen, für den es sie
+         * gibt.
+         */
         public List<String> channels() {
-            return mappings.stream().map(NormalizedMapping::channel).toList();
+            LinkedHashSet<String> out = new LinkedHashSet<>();
+            mappings.forEach(m -> out.add(m.channel()));
+            if (socDerivation != null) {
+                out.add(SOC_CHANNEL);
+                out.add(SOC_SOURCE_CHANNEL);
+            }
+            return List.copyOf(out);
+        }
+
+        /** Die Bindung, nie {@code null} - ohne Angabe die ungebundene Vorgabe. */
+        public Binding bindingOrUnbound() {
+            return binding == null ? UNBOUND : binding;
+        }
+
+        /** Die Kanäle, die diese Batterie in den Speicher-Knoten einspeist (P6). */
+        public List<String> boundChannels() {
+            return UserDefinedBatteryDefinition.boundChannels(bindingOrUnbound(), channels());
         }
     }
 
@@ -275,6 +398,19 @@ public final class UserDefinedBatteryDefinition {
      */
     public static Result validate(Broker broker, List<Mapping> mappings, Integer publishIntervalS,
             SocDerivation soc, Map<String, String> allowedChannels) {
+        return validate(broker, mappings, publishIntervalS, soc, allowedChannels, null);
+    }
+
+    /**
+     * Dieselbe Prüfung samt der SPEISER-BINDUNG (P6).
+     *
+     * @param binding wozu diese Batterie in der Anlage gehört; {@code null} =
+     *     ungebunden. Ob der genannte Wechselrichter EXISTIERT, entscheidet der
+     *     {@link UserDefinedBatteryService} - das ist eine Frage an die
+     *     Datenbank, und diese Klasse bleibt rein.
+     */
+    public static Result validate(Broker broker, List<Mapping> mappings, Integer publishIntervalS,
+            SocDerivation soc, Map<String, String> allowedChannels, Binding binding) {
         List<String> errors = new ArrayList<>();
         checkBroker(broker, errors);
 
@@ -306,7 +442,66 @@ public final class UserDefinedBatteryDefinition {
         }
 
         SocDerivation derivation = checkSoc(soc, taken, allowed, errors);
-        return new Result(List.copyOf(errors), broker, List.copyOf(out), interval, derivation);
+        Binding bound = checkBinding(binding, taken, derivation != null, errors);
+        return new Result(List.copyOf(errors), broker, List.copyOf(out), interval, derivation,
+                bound);
+    }
+
+    /**
+     * Prüft die SPEISER-BINDUNG (P6, Captain-Entscheid E6 (a)).
+     *
+     * <p><b>Die Regeln, und warum es sie gibt:</b>
+     *
+     * <ul>
+     *   <li><b>Ein unbekanntes Wort wird VERWORFEN, nie geraten</b> - die
+     *       Hausregel über geschlossene Vokabulare. Eine stillschweigend als
+     *       „ungebunden" gelesene Bindung wäre der schlimmste Ausgang: der Kunde
+     *       hätte sie ausgesprochen und die Anlage täte, als habe er
+     *       geschwiegen.</li>
+     *   <li><b>Ein Speiser braucht seinen Wechselrichter.</b> „Hängt an
+     *       irgendeinem" ist keine ausdrückliche Bindung, und die Anzeige
+     *       „Ladestand von: …" hätte kein Gegenüber.</li>
+     *   <li><b>Eine Bindung ohne einzuspeisenden Kanal wird abgelehnt.</b> Wer
+     *       nur Zellspannungen abbildet und weder Ladestand noch Grenzen
+     *       liefert, kann den Speicher-Knoten nicht speisen - die Bindung
+     *       anzunehmen hiesse, eine Wirkung zu versprechen, die ausbleibt.</li>
+     * </ul>
+     */
+    private static Binding checkBinding(Binding binding, Set<String> taken, boolean derivesSoc,
+            List<String> errors) {
+        if (binding == null || binding.mode() == null || binding.mode().isBlank()) {
+            return UNBOUND;
+        }
+        String mode = binding.mode().trim();
+        if (!BINDING_MODES.contains(mode)) {
+            errors.add("„" + mode + "“ ist keine bekannte Zuordnung für diese Batterie. "
+                    + "Möglich sind: " + BINDING_UNBOUND + ", " + BINDING_FEEDS_INVERTER + ", "
+                    + BINDING_STANDALONE + ".");
+            return null;
+        }
+        String inverter = binding.inverterEntityId() == null ? ""
+                : binding.inverterEntityId().trim();
+        if (BINDING_UNBOUND.equals(mode)) {
+            return UNBOUND;
+        }
+        if (BINDING_FEEDS_INVERTER.equals(mode) && inverter.isEmpty()) {
+            errors.add("Bitte wählen Sie den Wechselrichter, an dem diese Batterie hängt - "
+                    + "ohne ihn bleibt offen, wessen Ladestand sie liefert.");
+            return null;
+        }
+        LinkedHashSet<String> available = new LinkedHashSet<>(taken);
+        if (derivesSoc) {
+            available.add(SOC_CHANNEL);
+        }
+        Binding out = new Binding(mode,
+                BINDING_FEEDS_INVERTER.equals(mode) ? inverter : null);
+        if (boundChannels(out, available).isEmpty()) {
+            errors.add("Diese Batterie kann den Speicher noch nicht speisen: dafür braucht sie "
+                    + "einen Ladestand oder wenigstens eine Grenze bzw. Freigabe. Ordnen Sie "
+                    + "einen dieser Messwerte zu - oder lassen Sie die Batterie für sich stehen.");
+            return null;
+        }
+        return out;
     }
 
     private static void checkBroker(Broker b, List<String> errors) {

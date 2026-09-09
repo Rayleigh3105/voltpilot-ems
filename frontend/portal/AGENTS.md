@@ -75,6 +75,7 @@ wohnt nur woanders. **Alle Pfade unten sind relativ zu `../../docs/agents/portal
 **Nicht ganze Dateien in den Kontext lesen - greppen.** Inhaltsverzeichnis aller
 Bereiche: `../../docs/agents/README.md`.
 
+- **Die Speicher-Kachel nennt ihre QUELLE (P6 Speiser-Bindung)** — die ausdrückliche Frage „wozu gehört diese Batterie?“ im Assistenten und „Ladestand von: <Batterie>“ auf Kachel und Geräteseite · `die-speicher-kachel-nennt-ihre-quelle-p6.md`
 - **Der BATTERIE-ASSISTENT (P5d): Anschluss, Zuordnung, Kurve — und die Herkunft des Ladestands** — die Fläche des BMS-unabhängigen Anschlusses; `soc_source_code` als EIN Wort auf Cockpit, Geräteseite und Fahrplan · `der-batterie-assistent-p5d-anschluss-zuo.md`
 - **Notizen vor dem ersten Abschnitt (AGENTS.md)** — This file is the project's committed home for … · `notizen-vor-dem-ersten-abschnitt-agents/README.md`
 - **Build & test** — npm run build = tsc && vite build (the type-check is … · `build-test/README.md`

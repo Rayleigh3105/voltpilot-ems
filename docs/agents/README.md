@@ -29,6 +29,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Customer flow release (E3b): the Kunden-Freigabe of the flow editor](root/customer-flow-release-e3b-the-kunden-fre.md)
 - [Der generische Batterie-Anschluss, Ebene 1 (P5): `user-defined-battery` + `vp.mqtt.read`](root/der-generische-batterie-anschluss-p5-ebe.md)
 - [Der SoC-Ableitungs-Baustein, Ebene 2 (P5b): `vp.soc.derive` + `soc_source_code`](root/der-soc-ableitungs-baustein-p5b-ebene-2.md)
+- [Die SPEISER-BINDUNG (P6): die eigene Batterie speist den Speicher-Knoten](root/die-speiser-bindung-p6-die-eigene-batter.md)
 - [Die VORSCHAU und die KURVEN-VORLAGEN (P5d, api-Hälfte)](root/die-vorschau-und-die-kurven-vorlagen-p5d.md)
 - [D5: die Box meldet ihre Adresse im KUNDEN-LAN, getrennt vom Zugriffsweg](root/d5-die-box-meldet-ihre-adresse-im-kunden.md)
 - [Das BESTANDSKONTO des gemessenen Zeitraums (die FK2-Gutschrift auf der Erlöse-Seite)](root/das-bestandskonto-des-gemessenen-zeitrau.md)
@@ -187,6 +188,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 
 - [Anzeige-Ehrlichkeit: Daten-Alter, die gemessene Null, der behauptete Verkauf](portal/anzeige-ehrlichkeit-daten-alter-die-geme.md)
 - [Build & test](portal/build-test/README.md) *(Sammlung, 94 Punkte)*
+- [Die Speicher-Kachel nennt ihre QUELLE (P6 Speiser-Bindung)](portal/die-speicher-kachel-nennt-ihre-quelle-p6.md)
 - [Der BATTERIE-ASSISTENT (P5d): Anschluss, Zuordnung, Kurve — und die Herkunft des Ladestands](portal/der-batterie-assistent-p5d-anschluss-zuo.md)
 - [Cockpit anpassen: die Fläche des Layout-Speichers (Anwendungs-Programm Stufe 3)](portal/cockpit-anpassen-die-flaeche-des-layout.md)
 - [Cockpit Phase 1: die Ladepunkt-kW kommen ueber die ENTITAET, und ein alter Messwert liest nie als aktuell](portal/cockpit-phase-1-die-ladepunkt-kw-kommen.md)
@@ -322,6 +324,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Verbrauchssteuerung Inkrement 4 (edge half): the generated reactive rule](edge/verbrauchssteuerung-inkrement-4-edge-hal.md)
 - [Verbrauchssteuerung Inkrement 6 (edge half): the deadline fallback](edge/verbrauchssteuerung-inkrement-6-edge-hal.md)
 - [vp-mqtt-read (P5 Ebene 1): die selbst angebundene Batterie auf der Box](edge/vp-mqtt-read-p5-die-selbst-angebundene.md)
+- [Die SPEISER-BINDUNG auf der Box (P6)](edge/die-speiser-bindung-auf-der-box-p6.md)
 - [vp-soc-derive (P5b Ebene 2): die SoC-Ableitung auf der Box](edge/vp-soc-derive-p5b-die-soc-ableitung.md)
 - [vp-modbus-read (MB-M1): generic Modbus flow read + the shared connection manager](edge/vp-modbus-read-mb-m1-generic-modbus-flow.md)
 - [Wechselrichter-Automatik: der Sollwert wird ABGEGEBEN, die Aufsicht NIE](edge/wechselrichter-automatik-der-sollwert-wi.md)

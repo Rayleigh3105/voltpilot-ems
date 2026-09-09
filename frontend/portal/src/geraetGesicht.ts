@@ -43,6 +43,7 @@
 import type {
   ControlStatus, CurtailmentStatus, SiteEntity, SiteSource, TopologyEntity,
 } from './api';
+import { ladestandVon } from './batterieAnschluss';
 import { channelLabel } from './channels';
 import { NACHWEIS_FREIGABE, type NachweisArt } from './consumers/questions';
 import { controlStrip, freigabeWort } from './control';
@@ -53,6 +54,7 @@ import { NUR_GELESEN } from './geraetSeite';
 import type { PlantComponent } from './komponenten';
 import type { ChargeConnector, ChargePoint } from './ladepunkte';
 import { NO_DATA } from './nodata';
+import type { FlowNode } from './topology';
 
 /**
  * Die Gattung einer Geräteseite - sie entscheidet Held und Sektions-Folge.
@@ -196,6 +198,17 @@ export interface GesichtInput {
    * ohne sie fehlen genau diese Kacheln, nie eine erfundene 0.
    */
   topologie?: TopologyEntity[] | null;
+  /**
+   * Der SPEICHER-KNOTEN des Lesemodells (P6 Speiser-Bindung). Er trägt als
+   * einziger die Auskunft, WOHER der Ladestand kommt (`soc_source`) und was
+   * das BMS zulässt (`limits`) - beides muss nicht von diesem Gerät stammen:
+   * eine ausdrücklich gebundene Selbstbau-Batterie liefert den Ladestand,
+   * während der Hybrid-Wechselrichter die Leistung weiter misst.
+   *
+   * `null`/absent = die Anlage hat keinen Speicher-Knoten; dann steht hier
+   * nichts, nie ein geratener Wert.
+   */
+  speicherKnoten?: FlowNode | null;
   /**
    * Die Erfüllungs-Zeile eines Verbrauchers - WÖRTLICH die geteilte
    * `fulfilmentSummary(...).headline` (§5.4/§5.7). Leer = keine wiederkehrende
@@ -486,7 +499,29 @@ function speicherKacheln(input: GesichtInput): HeldKachel[] {
   const c = input.komponenten.find((k) => k.role === 'storage');
   if (!c) return [];
   const out: HeldKachel[] = [];
-  if (c.reading) {
+  const knoten = input.speicherKnoten ?? null;
+  /*
+    P6 Speiser-Bindung: der Ladestand des Speicher-KNOTENS gewinnt, sobald er
+    von einem ANDEREN Gerät kommt als diesem - und die Kachel sagt dann, von
+    welchem. Der Grund ist der Live-Fall, für den es dieses Paket gibt: der Deye
+    im Spannungsmodus MISST keinen Ladestand, das DIYBMS des Kunden schon (über
+    die Kennlinie). Ohne diesen Zweig zeigte die Geräteseite weiter das
+    Schweigen des Wechselrichters, während das Cockpit daneben den gebundenen
+    Wert führt - zwei Flächen, eine Anlage, zwei Antworten.
+  */
+  const quelle = knoten?.soc_source ?? null;
+  const gebundenerSoc = quelle != null && quelle.entity_id !== c.entityId
+    ? knoten?.soc_pct ?? null
+    : null;
+  if (gebundenerSoc != null && quelle != null) {
+    out.push({
+      key: SPEICHER_KACHEL,
+      label: 'Ladestand',
+      wert: fmtNum(gebundenerSoc, '%'),
+      wort: ladestandVon(quelle.label),
+      gross: true,
+    });
+  } else if (c.reading) {
     out.push({
       key: SPEICHER_KACHEL,
       label: 'Ladestand',
@@ -509,6 +544,33 @@ function speicherKacheln(input: GesichtInput): HeldKachel[] {
   const reserve = guardZahl(input.entities, c.entityId, 'soc_min_pct');
   if (reserve != null) {
     out.push({ key: 'reserve', label: 'Reserve', wert: `${reserve} %`, wort: 'nicht unterschritten' });
+  }
+  /*
+    P6: was das BMS gerade ZULÄSST. Eine gesperrte Richtung ist die wichtigere
+    Aussage als eine Zahl - sie erklärt einen ruhenden Speicher, den sonst
+    niemand erklärt. Ein abwesendes Feld wird ÜBERGANGEN, nie als „erlaubt"
+    gelesen.
+  */
+  const l = knoten?.limits ?? null;
+  if (l) {
+    if (l.charge_allowed === false || l.charge_limit_a != null) {
+      out.push({
+        key: 'bms-laden',
+        label: 'Laden (BMS)',
+        wert: l.charge_allowed === false ? 'gesperrt' : fmtNum(l.charge_limit_a ?? 0, 'A', 0),
+        wort: l.charge_allowed === false ? null : 'höchstens',
+      });
+    }
+    if (l.discharge_allowed === false || l.discharge_limit_a != null) {
+      out.push({
+        key: 'bms-entladen',
+        label: 'Entladen (BMS)',
+        wert: l.discharge_allowed === false
+          ? 'gesperrt'
+          : fmtNum(l.discharge_limit_a ?? 0, 'A', 0),
+        wort: l.discharge_allowed === false ? null : 'höchstens',
+      });
+    }
   }
   return out;
 }

@@ -189,8 +189,18 @@ lehnt den Treiber ab und lässt den GANZEN Push fallen. Ein neuer Wert gehört d
 Box, BEVOR die Cloud das erste solche Gerät auf einer Anlage anlegt.
 
 `driver.connection` trägt bei beiden die gespeicherte Definition VERBATIM (bei `mqtt_local`:
-`broker` + `mappings` + optional `soc_derivation`); sie ist Anzeige und Zusammenhang, nie der
-Lesepfad. **Der Lesepfad reist im Flow.**
+`broker` + `mappings` + optional `soc_derivation` + seit P6 `binding`); sie ist Anzeige und
+Zusammenhang, nie der Lesepfad. **Der Lesepfad reist im Flow.**
+
+⚠ **`binding` ist für die Box eine ANGABE, keine Anweisung** (P6 Speiser-Bindung,
+Captain-Entscheid E6): sie sagt, wozu diese Batterie in der Anlage gehört
+(`unbound` | `feeds_inverter` + `inverter_entity_id` | `standalone`). Was die Box daraus
+WIRKLICH zeichnet, kommt wie bei jeder anderen Zuordnung aus dem additiven
+`role_assignment`-Block desselben Descriptors (Befund L4) — die Cloud materialisiert die
+Bindung dorthin, damit `:8484` und das Portal denselben Energiefluss zeigen. Eine Box, die
+`binding` nicht kennt, ÜBERLIEST es und bleibt trotzdem richtig; eine zweite Auswertung hier
+wäre eine zweite Wahrheit über denselben Speicher-Knoten. Ohne Bindung bekommt eine
+`user-defined-battery` GAR KEINE Rolle: ihr Typ ist seit P6 in `topology.IsSelfBuiltType`.
 
 ### 5.3 Der ABGELEITETE Ladestand und seine HERKUNFT (P5b Ebene 2, ADDITIV)
 

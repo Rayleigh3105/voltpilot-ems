@@ -54,7 +54,9 @@
             ]
           },
           {
-            "role": "storage", "value_kw": 12.4, "soc_pct": 62.5, "flow_active": true, "direction": "out",
+            "role": "storage", "value_kw": 12.4, "soc_pct": 62.5,
+            "soc_source": { "entity_id": "A", "label": "Deye SUN-30K" },
+            "flow_active": true, "direction": "out",
             "members": [
               { "entity_id": "A", "label": "Deye SUN-30K", "primary": true, "value_kw": 12.4 }
             ]
@@ -150,7 +152,9 @@
             ]
           },
           {
-            "role": "storage", "value_kw": 5.5, "soc_pct": 40, "flow_active": true, "direction": "in",
+            "role": "storage", "value_kw": 5.5, "soc_pct": 40,
+            "soc_source": { "entity_id": "A", "label": "Speicher" },
+            "flow_active": true, "direction": "in",
             "members": [
               { "entity_id": "A", "label": "Speicher", "primary": true, "value_kw": -5.5 }
             ]
@@ -194,7 +198,9 @@
         "schema_version": "1.0",
         "nodes": [
           {
-            "role": "storage", "soc_pct": 55, "flow_active": false,
+            "role": "storage", "soc_pct": 55,
+            "soc_source": { "entity_id": "A", "label": "Speicher" },
+            "flow_active": false,
             "members": [
               { "entity_id": "A", "label": "Speicher", "primary": true }
             ]
@@ -363,6 +369,90 @@
           }
         ]
       }
+    },
+    {
+      "name": "p6-speiser-bindung-feeds-hybrid",
+      "note": "P6 Speiser-Bindung, Fall (1): die AUSDRÜCKLICH gebundene Selbstbau-Batterie liefert Ladestand, Grenzen und Freigaben des Speicher-Knotens; die LEISTUNG bleibt beim Hybrid-Wechselrichter, wo sie gemessen wird. Ihr power_kw traegt deshalb keine Rolle - dieselben Kilowatt zweimal zu zaehlen waere schlicht falsch. Die Grenz-Kanaele sind Speicher-EIGENSCHAFTEN, nie Fluss-Mitglieder: 22 A und 74 A in value_kw zu summieren machte aus der Speichen-Breite eine Zahl mit zwei Bedeutungen.",
+      "input": {
+        "entities": [
+          {
+            "id": "A", "type": "battery-hybrid", "label": "Deye SUN-30K", "category": "storage", "health": "ok",
+            "capabilities": [
+              { "channel": "battery_power_kw", "role": "storage", "primary": true, "value": -4.2 },
+              { "channel": "pv_power_kw", "role": "pv", "primary": true, "value": 6.1 }
+            ]
+          },
+          {
+            "id": "B", "type": "user-defined-battery", "label": "DIY-Speicher Keller", "category": "storage", "health": "ok",
+            "capabilities": [
+              { "channel": "soc_pct", "role": "storage", "primary": true, "value": 7.4 },
+              { "channel": "cell_min_mv", "role": "", "primary": false, "value": 3393 },
+              { "channel": "charge_limit_a", "role": "storage", "primary": true, "value": 22 },
+              { "channel": "discharge_limit_a", "role": "storage", "primary": true, "value": 74 },
+              { "channel": "charge_allowed", "role": "storage", "primary": true, "value": 1 },
+              { "channel": "discharge_allowed", "role": "storage", "primary": true, "value": 0 },
+              { "channel": "power_kw", "role": "", "primary": false, "value": -4.1 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "pv", "value_kw": 6.1, "flow_active": true, "direction": "in",
+            "members": [
+              { "entity_id": "A", "label": "Deye SUN-30K", "primary": true, "value_kw": 6.1 }
+            ]
+          },
+          {
+            "role": "storage", "value_kw": 4.2, "soc_pct": 7.4,
+            "soc_source": { "entity_id": "B", "label": "DIY-Speicher Keller" },
+            "limits": {
+              "source": { "entity_id": "B", "label": "DIY-Speicher Keller" },
+              "charge_limit_a": 22, "discharge_limit_a": 74,
+              "charge_allowed": true, "discharge_allowed": false
+            },
+            "flow_active": true, "direction": "in",
+            "members": [
+              { "entity_id": "A", "label": "Deye SUN-30K", "primary": true, "value_kw": -4.2 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "p6-speiser-bindung-standalone",
+      "note": "P6 Speiser-Bindung, Fall (2): ohne Hybrid-Wechselrichter IST die gebundene Batterie der Speicher-Knoten - dann liefert sie auch die Leistung und ist Fluss-Mitglied. soc_source nennt sie selbst; eine Flaeche kann daran erkennen, dass hier nichts umgeleitet wurde.",
+      "input": {
+        "entities": [
+          {
+            "id": "B", "type": "user-defined-battery", "label": "DIY-Speicher Keller", "category": "storage", "health": "ok",
+            "capabilities": [
+              { "channel": "soc_pct", "role": "storage", "primary": true, "value": 63 },
+              { "channel": "power_kw", "role": "storage", "primary": true, "value": 3.5 },
+              { "channel": "charge_limit_a", "role": "storage", "primary": true, "value": 40 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "storage", "value_kw": 3.5, "soc_pct": 63,
+            "soc_source": { "entity_id": "B", "label": "DIY-Speicher Keller" },
+            "limits": {
+              "source": { "entity_id": "B", "label": "DIY-Speicher Keller" },
+              "charge_limit_a": 40
+            },
+            "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "B", "label": "DIY-Speicher Keller", "primary": true, "value_kw": 3.5 }
+            ]
+          }
+        ]
+      }
     }
   ],
   "default_role_cases": [
@@ -390,6 +480,11 @@
       "note": "L5 (vp-portal-box-spiegel-s2): a customer-defined sensor is category meter, so before the self-built branch a channel merely NAMED power_kw rendered as the grid connection point. The grid node may only be built from a real grid meter, and the Stufe-3 promise is that a self-built sensor never enters the energy balance." },
     { "name": "self-built-measure-only-alias", "type": "modbus-generic", "category": "measure-only", "channel": "power_kw", "connection": "", "expected": "" },
     { "name": "self-built-free-channel", "type": "modbus-generic", "category": "meter", "channel": "fuellstand_pct", "connection": "", "expected": "" },
+    { "name": "user-defined-battery-soc-is-never-automatic", "type": "user-defined-battery", "category": "storage", "channel": "soc_pct", "connection": "", "expected": "",
+      "note": "E6 (Captain, 09.09.2026): eine selbst angebundene Batterie speist den Speicher-Knoten NUR ueber die ausdrueckliche Bindung, nie von selbst. Ohne diese Zeile faellt ihr soc_pct in die Speicher-Regel und beginnt, den Ladestand der Hausbatterie zu fuellen - eine automatische Bindung per Kanalname, also genau die Namens-Heuristik, die der Entscheid ausschliesst." },
+    { "name": "user-defined-battery-power-is-never-automatic", "type": "user-defined-battery", "category": "storage", "channel": "power_kw", "connection": "", "expected": "",
+      "note": "Bilanz-Ehrlichkeit: die Batterie-LEISTUNG einer Hybrid-Anlage wird am Wechselrichter gemessen. Ohne diese Zeile entschiede die Kategorie storage und dieselben Kilowatt zaehlten zweimal." },
+    { "name": "user-defined-battery-charge-limit-is-never-automatic", "type": "user-defined-battery", "category": "storage", "channel": "charge_limit_a", "connection": "", "expected": "" },
     { "name": "self-built-pv-channel-is-still-not-a-role", "type": "modbus-generic", "category": "meter", "channel": "pv_power_kw", "connection": "", "expected": "",
       "note": "The TYPE is checked FIRST: a customer-named channel can never buy its way into a role by matching one of the pilot channel names." },
     { "name": "self-built-switch-never-double-counts-the-house", "type": "modbus-load", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "",

@@ -171,6 +171,88 @@ describe('P5d · die HERKUNFT des Ladestands auf der Speicherkachel', () => {
   });
 });
 
+describe('P6 · die Speiser-Bindung auf der Speicherkachel', () => {
+  /**
+   * Die gebundene Selbstbau-Batterie liefert den Ladestand, der
+   * Hybrid-Wechselrichter die Leistung - genau der Live-Fall dieses Pakets: der
+   * Deye im Spannungsmodus MISST keinen Ladestand, das DIYBMS rechnet ihn.
+   */
+  function gebunden(over: Partial<FlowNode> = {}): SiteTopology {
+    const topo = privatTopo();
+    const node = topo.topology.nodes.find((n) => n.role === 'storage')!;
+    node.soc_source = { entity_id: 'diy', label: 'DIY-Speicher Keller' };
+    node.soc_pct = 7.4;
+    Object.assign(node, over);
+    topo.entities.push({
+      ...entity('diy', 'user-defined-battery', 'DIY-Speicher Keller'),
+      capabilities: [
+        { channel: 'soc_pct', unit: '%', role: 'storage', primary: true, value: 7.4 },
+        { channel: 'soc_source_code', unit: '', role: null, primary: false, value: 2 },
+      ],
+    });
+    return topo;
+  }
+
+  function speicher(topo: SiteTopology) {
+    return deriveTiles(topo).find((t) => t.role === 'storage')!;
+  }
+
+  it('sagt, von WELCHER Batterie der Ladestand kommt', () => {
+    expect(speicher(gebunden()).socQuelle).toBe('Ladestand von: DIY-Speicher Keller');
+  });
+
+  /**
+   * ⚠ Der Befund, den P6 nebenbei behebt: die Herkunft wurde bisher unter den
+   * FLUSS-Mitgliedern gesucht. Eine gebundene Batterie ist keines - ihre
+   * Kilowatt bleiben beim Wechselrichter -, also kam ein GERECHNETER Ladestand
+   * ungekennzeichnet an der Kachel an.
+   */
+  it('findet die Herkunft an der gebundenen Batterie, nicht nur an den Mitgliedern', () => {
+    expect(speicher(gebunden()).herkunft).toBe('berechnet: Kennlinie');
+  });
+
+  /**
+   * Ein Hybrid, der seinen EIGENEN Ladestand meldet, bekommt die Zeile nicht:
+   * „Ladestand von: Speicher" an einer Kachel, die schon „Speicher" heißt, ist
+   * keine Auskunft.
+   */
+  it('schweigt, wenn der Ladestand vom Gerät der Kachel selbst kommt', () => {
+    const topo = privatTopo();
+    const node = topo.topology.nodes.find((n) => n.role === 'storage')!;
+    node.soc_source = { entity_id: 'batt', label: 'Speicher' };
+    expect(speicher(topo).socQuelle).toBeUndefined();
+  });
+
+  /** Ohne Ladestand gibt es nichts, dessen Quelle man nennen könnte. */
+  it('nennt keine Quelle ohne Ladestand', () => {
+    const topo = gebunden({ soc_pct: undefined });
+    expect(speicher(topo).socQuelle).toBeUndefined();
+  });
+
+  it('zeigt die BMS-Grenzen, sobald eine Batterie welche meldet', () => {
+    const topo = gebunden({
+      limits: {
+        source: { entity_id: 'diy', label: 'DIY-Speicher Keller' },
+        charge_limit_a: 22,
+        discharge_allowed: false,
+      },
+    });
+    expect(speicher(topo).grenzen).toBe(`max. 22${NBSP}A laden · Entladen gesperrt`);
+  });
+
+  /**
+   * ⚠ Ein ABWESENDES Feld wird übergangen, nie als „erlaubt" gelesen: eine
+   * Batterie, die nur ihre Ladegrenze meldet, sagt nichts über das Entladen.
+   */
+  it('schreibt keine Freigabe hin, die niemand gegeben hat', () => {
+    const topo = gebunden({
+      limits: { source: { entity_id: 'diy', label: 'DIY' }, charge_limit_a: 22 },
+    });
+    expect(speicher(topo).grenzen).toBe(`max. 22${NBSP}A laden`);
+    expect(speicher(gebunden()).grenzen).toBeUndefined();
+  });
+});
+
 describe('hasTopology', () => {
   it('is true only with entities AND nodes', () => {
     expect(hasTopology(privatTopo())).toBe(true);

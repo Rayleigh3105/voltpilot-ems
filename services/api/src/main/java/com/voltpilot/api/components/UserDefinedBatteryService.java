@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.Binding;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Broker;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Mapping;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.NormalizedMapping;
@@ -23,6 +24,8 @@ import com.voltpilot.api.flows.FlowDeployment;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.topology.TopologyDeriver;
+import com.voltpilot.api.topology.TopologyRepository;
 import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest;
 import com.voltpilot.api.web.dto.SiteComponentsDto;
 import java.util.ArrayList;
@@ -97,6 +100,7 @@ public class UserDefinedBatteryService {
     private final FlowRepository flows;
     private final FlowActivationService deployments;
     private final ObjectProvider<FlowCompiler> flowc;
+    private final TopologyRepository topology;
     private final ObjectMapper mapper;
 
     public UserDefinedBatteryService(SiteRepository sites, EntityRegistryRepository entityRepo,
@@ -105,7 +109,7 @@ public class UserDefinedBatteryService {
             SocCurveTemplateCatalog curves, UserDefinedBatteryFlowCompiler compiler,
             FlowRepository flows,
             FlowActivationService deployments, ObjectProvider<FlowCompiler> flowc,
-            ObjectMapper mapper) {
+            TopologyRepository topology, ObjectMapper mapper) {
         this.sites = sites;
         this.entityRepo = entityRepo;
         this.entityRegistry = entityRegistry;
@@ -117,6 +121,7 @@ public class UserDefinedBatteryService {
         this.flows = flows;
         this.deployments = deployments;
         this.flowc = flowc;
+        this.topology = topology;
         this.mapper = mapper;
     }
 
@@ -130,6 +135,7 @@ public class UserDefinedBatteryService {
         requirePortalManaged(siteId);
         requireGateway(siteId);
         Result def = requireValid(req);
+        requireBindingTarget(siteId, null, def.bindingOrUnbound());
 
         UUID tenantId = TenantContext.get();
         String label = label(req);
@@ -153,6 +159,7 @@ public class UserDefinedBatteryService {
         requireGateway(siteId);
         EntityRow existing = requireUserDefinedBattery(siteId, entityId);
         Result def = requireValid(req);
+        requireBindingTarget(siteId, existing.id(), def.bindingOrUnbound());
 
         String label = label(req);
         // Die Zuordnungs-Liste ist zugleich die Fähigkeiten-Liste: ein
@@ -238,12 +245,64 @@ public class UserDefinedBatteryService {
 
     private Result requireValid(SaveUserDefinedBatteryRequest req) {
         Result def = UserDefinedBatteryDefinition.validate(broker(req), mappings(req),
-                req == null ? null : req.publishIntervalS(), soc(req), allowedChannels());
+                req == null ? null : req.publishIntervalS(), soc(req), allowedChannels(),
+                binding(req));
         if (!def.ok()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     String.join(" ", def.errors()));
         }
         return def;
+    }
+
+    private static Binding binding(SaveUserDefinedBatteryRequest req) {
+        SaveUserDefinedBatteryRequest.BindingRequest b = req == null ? null : req.binding();
+        return b == null ? null : new Binding(b.mode(), b.inverterEntityId());
+    }
+
+    /**
+     * Der gebundene Wechselrichter muss EXISTIEREN und ein Speicher sein.
+     *
+     * <p>Zwei Prüfungen, zwei Gründe. Die Existenz, weil eine Bindung an eine
+     * fremde oder gelöschte Entität eine Anzeige „Ladestand von: …" ergäbe, die
+     * ins Leere zeigt - und weil RLS eine fremde Anlage ohnehin verbirgt, ist
+     * die ehrliche Antwort dort 404, nie 403. Die KATEGORIE, weil ein Speiser
+     * einen Speicher speist: eine Batterie an eine Wallbox zu hängen wäre eine
+     * Aussage über die Anlage, die niemand belegen kann.
+     *
+     * <p>Und sie darf nicht sie selbst sein: eine Batterie, die sich an sich
+     * selbst hängt, ist der eigenständige Fall - dafür gibt es
+     * {@code standalone}, und die beiden Wege auseinanderzuhalten ist genau
+     * der Punkt der ausdrücklichen Bindung.
+     */
+    private void requireBindingTarget(UUID siteId, UUID selfEntityId, Binding binding) {
+        if (binding == null
+                || !UserDefinedBatteryDefinition.BINDING_FEEDS_INVERTER.equals(binding.mode())) {
+            return;
+        }
+        UUID target;
+        try {
+            target = UUID.fromString(binding.inverterEntityId());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Der gewählte Wechselrichter ist keine gültige Gerätekennung.");
+        }
+        if (target.equals(selfEntityId)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Eine Batterie kann nicht an sich selbst hängen. Wenn es keinen "
+                            + "Wechselrichter gibt, ist sie selbst der Speicher.");
+        }
+        EntityRow row = entityRepo.entityForSite(siteId, target);
+        if (row == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Der gewählte Wechselrichter gehört nicht zu dieser Anlage.");
+        }
+        EntityTypeCatalog.EntityType type = typeCatalog.find(row.entityType());
+        if (type == null || !"storage".equals(type.category())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "„" + (row.label() == null ? row.entityType() : row.label())
+                            + "“ ist kein Speicher-Wechselrichter - eine Batterie kann nur an "
+                            + "einem hängen.");
+        }
     }
 
     /**
@@ -292,8 +351,52 @@ public class UserDefinedBatteryService {
         String text = note == null || note.isBlank() ? defaultNote : note.trim();
         definitions.recordStoredVersion(tenantId, siteId, entityId, version, subject, text);
 
+        applyBinding(siteId, tenantId, entityId, def);
         deployReadFlow(siteId, tenantId, entityId, version, label, def);
         entityRegistry.pushRegistryBestEffort(siteId);
+    }
+
+    /**
+     * Die SPEISER-BINDUNG (P6) als das, was sie IST: eine ausdrückliche
+     * Rollen-Zuordnung.
+     *
+     * <p><b>Warum sie in {@code entity_role_assignment} landet und nicht in
+     * einem eigenen Mechanismus:</b> die Tabelle ist genau dafür da („diese
+     * Fähigkeit gehört zu …", AE1) und ihre Kette ist bewiesen - das
+     * Lesemodell löst sie vor der Vorgabe auf, und der Registry-Push trägt sie
+     * als {@code role_assignment} zur Box (Befund L4), damit {@code :8484}
+     * denselben Energiefluss zeichnet wie das Portal. Ein zweiter Weg zum
+     * selben Ziel wären zwei Wahrheiten über einen Speicher-Knoten.
+     *
+     * <p><b>Was hier NICHT passiert:</b> ein Kanal bekommt nie eine Rolle,
+     * weil er so heißt. Die Vorgabe für diesen Typ ist seit P6 „keine Rolle"
+     * ({@code TopologyDeriver.isSelfBuiltType}), und nur diese Zeilen holen ihn
+     * in die Bilanz - genau der Captain-Entscheid E6 (a).
+     *
+     * <p><b>Aufgeräumt wird immer vollständig:</b> jeder Kanal, der nicht mehr
+     * eingespeist wird, verliert seine Zeile. Sonst überlebte die Zuordnung
+     * einer entfernten Feld-Abbildung ihre Quelle und der Speicher-Knoten
+     * behielte einen Ladestand, den niemand mehr liefert.
+     */
+    private void applyBinding(UUID siteId, UUID tenantId, UUID entityId, Result def) {
+        List<String> bound = def.boundChannels();
+        for (String channel : UserDefinedBatteryDefinition.BOUND_CHANNELS) {
+            if (!bound.contains(channel)) {
+                topology.deleteOverride(siteId, entityId, channel);
+            }
+        }
+        if (!bound.contains(UserDefinedBatteryDefinition.POWER_CHANNEL)) {
+            topology.deleteOverride(siteId, entityId,
+                    UserDefinedBatteryDefinition.POWER_CHANNEL);
+        }
+        for (String channel : bound) {
+            // maßgeblich, und das ist die halbe Aussage der Bindung: der Kunde
+            // sagt, DIESE Batterie liefert den Ladestand des Speichers - ein
+            // Hybrid-Wechselrichter, der daneben einen eigenen (im
+            // Spannungsmodus erfundenen) meldet, darf ihn nicht überstimmen.
+            topology.upsertOverride(tenantId, siteId, entityId, channel,
+                    TopologyDeriver.ROLE_STORAGE, true);
+        }
     }
 
     /**
@@ -442,6 +545,16 @@ public class UserDefinedBatteryService {
         SocDerivation soc = def.socDerivation();
         if (soc != null) {
             root.set("soc_derivation", socJson(soc));
+        }
+        // Die SPEISER-BINDUNG (P6) reist immer mit - auch als „unbound". Sie
+        // ist eine ANTWORT des Kunden, und ein fehlender Block hiesse „nicht
+        // gefragt"; das Bearbeiten-Formular könnte die beiden dann nicht
+        // auseinanderhalten.
+        Binding binding = def.bindingOrUnbound();
+        ObjectNode bind = root.putObject("binding");
+        bind.put("mode", binding.mode());
+        if (binding.inverterEntityId() != null) {
+            bind.put("inverter_entity_id", binding.inverterEntityId());
         }
         return root.toString();
     }
