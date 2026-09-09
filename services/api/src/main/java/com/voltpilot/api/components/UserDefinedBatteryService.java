@@ -341,6 +341,57 @@ public class UserDefinedBatteryService {
         }
     }
 
+    // ---- Vorschau (P5d) ---------------------------------------------------
+
+    /**
+     * Wie lange die Box lauscht, bevor sie die Vorschau beantwortet.
+     *
+     * <p>Der Grund für ein FENSTER statt einer Einmal-Lesung: MQTT wird nicht
+     * abgefragt, es kommt an. Ein BMS, das alle 10 s sendet, hätte auf eine
+     * Momentaufnahme in aller Regel nichts zu sagen - und „nichts empfangen"
+     * wäre dann eine Aussage über den Zeitpunkt, nicht über die Zuordnung.
+     * Kurz genug, dass der Assistent nicht einfriert (der Probe-Kanal wartet
+     * ohnehin nur wenige Sekunden auf eine Antwort).
+     */
+    public static final int PREVIEW_LISTEN_S = 8;
+
+    /**
+     * Die Zuordnungs-VORSCHAU (P5d): dieselbe geprüfte Definition, die ein
+     * Speichern schreiben würde, als {@code connection}-Block einer
+     * {@code test_connection}-Anfrage an die Box.
+     *
+     * <p><b>Sie schreibt NICHTS</b> - keine Entität, keine Fassung, kein Flow,
+     * kein Beleg. Sie beantwortet genau eine Frage: „kommt unter diesem Topic
+     * mit diesem Wertepfad wirklich etwas an, und ergibt meine Skalierung eine
+     * plausible Zahl?" Genau der Moment, in dem ein Skalierungsfehler sichtbar
+     * wird, den der Modbus-Baukasten mit „Jetzt lesen" hat.
+     *
+     * <p><b>Sie ist bewusst KEINE Pflicht.</b> Anders als beim Katalog-Gerät
+     * gibt es hier keinen Verbindungstest-Zwang: eine Box, die noch nicht
+     * lauschen kann, würde ihn zur Sackgasse machen, und eine Pflicht ohne Tür
+     * ist kein Schutz. Sie ist ein ANGEBOT - und ihr Ausbleiben ist nie ein
+     * bewiesener Fehlschlag.
+     *
+     * <p>Der Block ist WÖRTLICH die gespeicherte Definition (plus dem
+     * Lauschfenster): eine zweite, nur für die Vorschau gebaute Form wäre ein
+     * Zwilling, der von dem abdriften darf, was hinterher wirklich gelesen
+     * wird - und damit eine Vorschau auf etwas anderes als das Ergebnis.
+     */
+    public Map<String, Object> previewConnection(UUID siteId,
+            SaveUserDefinedBatteryRequest req) {
+        requireSite(siteId);
+        Result def = requireValid(req);
+        try {
+            ObjectNode root = (ObjectNode) mapper.readTree(definitionJson(def));
+            root.put("listen_s", PREVIEW_LISTEN_S);
+            return mapper.convertValue(root, new com.fasterxml.jackson.core.type
+                    .TypeReference<LinkedHashMap<String, Object>>() {});
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Die Vorschau konnte nicht vorbereitet werden.");
+        }
+    }
+
     // ---- Formen -----------------------------------------------------------
 
     /**

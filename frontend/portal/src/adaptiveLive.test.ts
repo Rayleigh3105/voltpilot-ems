@@ -122,6 +122,55 @@ describe('deriveTiles', () => {
   });
 });
 
+describe('P5d · die HERKUNFT des Ladestands auf der Speicherkachel', () => {
+  function mitHerkunft(code: number | null): SiteTopology {
+    const topo = privatTopo();
+    const batt = topo.entities.find((e) => e.id === 'batt')!;
+    batt.capabilities = [
+      { channel: 'soc_pct', unit: '%', role: 'storage', primary: true, value: 78 },
+      { channel: 'soc_source_code', unit: '', role: null, primary: false, value: code },
+    ];
+    return topo;
+  }
+
+  function speicher(topo: SiteTopology) {
+    return deriveTiles(topo).find((t) => t.role === 'storage')!;
+  }
+
+  it('nennt einen berechneten Ladestand berechnet', () => {
+    expect(speicher(mitHerkunft(2)).herkunft).toBe('berechnet: Kennlinie');
+    expect(speicher(mitHerkunft(3)).herkunft).toBe('berechnet: Ladungszählung');
+    expect(speicher(mitHerkunft(1)).herkunft).toBe('gemessen');
+  });
+
+  /**
+   * Fast jede über einen Katalog-Treiber gelesene Batterie meldet den Kanal
+   * NIE. „gemessen" zu schreiben, weil nichts dagegenspricht, hätte sich die
+   * Kachel ausgedacht - also steht dort gar nichts.
+   */
+  it('behauptet ohne den Herkunfts-Kanal gar nichts', () => {
+    expect(speicher(privatTopo()).herkunft).toBeUndefined();
+    expect(speicher(mitHerkunft(null)).herkunft).toBeUndefined();
+    expect(speicher(mitHerkunft(0)).herkunft).toBeUndefined();
+  });
+
+  /** Ohne Ladestand gibt es nichts, dessen Herkunft man nennen könnte. */
+  it('nennt keine Herkunft, wenn der Ladestand fehlt', () => {
+    const topo = mitHerkunft(2);
+    const node = topo.topology.nodes.find((n) => n.role === 'storage')!;
+    delete (node as { soc_pct?: number }).soc_pct;
+    expect(speicher(topo).herkunft).toBeUndefined();
+    expect(speicher(topo).value).toBe(NO_DATA);
+  });
+
+  /** Der Zustand bleibt wahr: „Lädt" gilt auch, wenn die Zahl gerechnet ist. */
+  it('ersetzt das Zustandswort NICHT', () => {
+    const kachel = speicher(mitHerkunft(2));
+    expect(kachel.stateLabel).toBe('Lädt');
+    expect(kachel.subLine).toContain('Ladeleistung');
+  });
+});
+
 describe('hasTopology', () => {
   it('is true only with entities AND nodes', () => {
     expect(hasTopology(privatTopo())).toBe(true);

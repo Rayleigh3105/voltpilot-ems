@@ -36,14 +36,16 @@ export type TypId =
   | 'ladesaeule'
   | 'verbraucher'
   | 'zaehler'
+  | 'batterie'
   | 'eigenbau';
 
 /**
  * Die Gerätetyp-Dimension des Katalogs, auf die eine Karte hört.
  *
- * ⚠ `ladesaeule` und `eigenbau` haben KEINE: die eine erklärt nur den Weg (die
- * Säule wählt VoltPilot selbst an), die andere beschreibt das Gerät selbst.
- * Eine Vorlagen-Auswahl an ihnen wäre ein Formular ohne Wirkung.
+ * ⚠ `ladesaeule`, `batterie` und `eigenbau` haben KEINE: die erste erklärt nur
+ * den Weg (die Säule wählt VoltPilot selbst an), die beiden anderen
+ * beschreiben das Gerät selbst. Eine Vorlagen-Auswahl an ihnen wäre ein
+ * Formular ohne Wirkung.
  */
 const TYP_DEVICE_TYPES: Record<TypId, string[]> = {
   wechselrichter: ['inverter'],
@@ -51,6 +53,7 @@ const TYP_DEVICE_TYPES: Record<TypId, string[]> = {
   verbraucher: ['switch'],
   zaehler: ['meter'],
   ladesaeule: [],
+  batterie: [],
   eigenbau: [],
 };
 
@@ -77,6 +80,7 @@ const TYP_ROLLEN: Record<TypId, KomponentenRolle[]> = {
   verbraucher: ['consumer'],
   zaehler: ['grid-meter'],
   ladesaeule: [],
+  batterie: [],
   eigenbau: [],
 };
 
@@ -125,6 +129,22 @@ const KARTEN: Omit<TypKarte, 'treffer' | 'hinweis'>[] = [
     label: 'Zähler',
     hint: 'Misst am Hausanschluss, was Sie beziehen und einspeisen.',
     icon: 'activity',
+  },
+  /*
+    P5d: die eigene BATTERIE hat eine EIGENE Karte, nicht die Eigenbau-Tür.
+
+    ⚠ Der Grund ist nicht Kosmetik: der Weg fragt völlig andere Dinge
+    (Broker, Topics, Wertepfade, wie der Ladestand entsteht) und mündet in
+    einen anderen Entitätstyp. Ihn unter „Eigenbau (Modbus)" zu verstecken
+    hieße, den einen Kunden, der genau dieses Problem hat - ein BMS, das
+    VoltPilot nicht kennt -, an einer Modbus-Register-Tabelle scheitern zu
+    lassen, die es bei ihm gar nicht gibt.
+  */
+  {
+    id: 'batterie',
+    label: 'Eigene Batterie (BMS)',
+    hint: 'Ein Speicher mit eigenem Batteriemanagement - DIYBMS, Seplos, JK, ESP am Shunt.',
+    icon: 'battery',
   },
   {
     id: 'eigenbau',
@@ -191,7 +211,7 @@ export function geraeteFuerTyp(
   return { templates, erweitert: templates.length > 0 };
 }
 
-/** Die sechs Karten, mit ihrer Trefferzahl und ihrem ehrlichen Satz. */
+/** Die sieben Karten, mit ihrer Trefferzahl und ihrem ehrlichen Satz. */
 export function typKarten(templates: ComponentTemplate[]): TypKarte[] {
   return KARTEN.map((k) => {
     const { erweitert } = geraeteFuerTyp(templates, k.id);
@@ -283,6 +303,9 @@ export function vorschlagRolle(
 export function schritte(typ: TypId | null): string[] {
   if (typ === 'eigenbau') {
     return ['Was anbinden', 'Adresse', 'Messwerte', 'Was ist es?', 'Prüfen', 'Fertig'];
+  }
+  if (typ === 'batterie') {
+    return ['Was anbinden', 'Erreichbar', 'Zuordnung', 'Ladestand', 'Prüfen', 'Fertig'];
   }
   if (typ === 'ladesaeule') return ['Was anbinden', 'Anbinden'];
   return ['Was anbinden', 'Gerät wählen', 'Verbinden', 'Testen', 'Fertig'];

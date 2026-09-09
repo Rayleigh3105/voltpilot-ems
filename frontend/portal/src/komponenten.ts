@@ -69,6 +69,7 @@ import { deviceName } from './entityLabel';
 import { fmtNum } from './format';
 import { reconcileProducerPv } from './pvReconcile';
 import { adoptableSources, suggestEntityType, type AdoptableSource } from './rollen';
+import { socHerkunft, SOC_HERKUNFT_KANAL } from './socHerkunft';
 
 /** The customer-facing component role buckets. */
 export type ComponentRole = 'pv' | 'storage' | 'grid' | 'house' | 'consumer';
@@ -922,7 +923,21 @@ function readingFor(
     }
     case 'storage': {
       const soc = caps.get(SOC_CHANNEL);
-      if (soc != null) return { value: round1(soc), unit: '%', caption: 'geladen' };
+      if (soc != null) {
+        /*
+          P5b/P5d: ein BERECHNETER Ladestand sagt es. Die Herkunft steht in
+          `soc_source_code` NEBEN dem Wert (je Messzeitpunkt), also gibt es
+          nichts zu raten - und ohne diesen Kanal bleibt es beim neutralen
+          „geladen": „gemessen" zu schreiben, weil nichts dagegenspricht, wäre
+          eine Behauptung über eine Herkunft, die niemand gemeldet hat.
+        */
+        const herkunft = socHerkunft(caps.get(SOC_HERKUNFT_KANAL));
+        return {
+          value: round1(soc),
+          unit: '%',
+          caption: herkunft?.berechnet ? herkunft.kurz : 'geladen',
+        };
+      }
       const p = caps.get(BATTERY_CHANNEL);
       if (p == null) return null;
       return { value: round1(Math.abs(p)), unit: 'kW', caption: batteryWord(p) };

@@ -63,6 +63,14 @@ public class ProbeResultListener {
 
     /** A bound on what one answer may carry - the contract says at most 8 ops. */
     private static final int MAX_RESULTS = 8;
+
+    /**
+     * Wie viele Zuordnungs-Zeilen eine Vorschau höchstens trägt - genau die
+     * Obergrenze, die {@code UserDefinedBatteryDefinition.MAX_MAPPINGS} für
+     * eine Batterie erlaubt. Mehr Zeilen als es Zuordnungen geben KANN wären
+     * keine Antwort auf die gestellte Frage.
+     */
+    private static final int MAX_SAMPLES = 16;
     /** A bound on the German sentence a device may hand to a customer. */
     private static final int MAX_MESSAGE = 400;
 
@@ -216,6 +224,18 @@ public class ProbeResultListener {
                     continue;
                 }
                 boolean ok = line.path("ok").asBoolean(false);
+                JsonNode samplesNode = line.get("samples");
+                if (samplesNode != null && samplesNode.isArray()) {
+                    // Die VORSCHAU einer selbst angebundenen Batterie (P5d): je
+                    // Zuordnung eine Zeile. Sie steht VOR dem reading-Zweig, weil
+                    // sie den Vier-Kanal-Block gar nicht benutzt - und sie darf
+                    // auch bei ok=false stehen: „im Fenster kam nichts an" ist
+                    // genau die Auskunft, wegen der die Vorschau existiert.
+                    List<ProbeResult.Sample> samples = samples(samplesNode);
+                    results.add(new ProbeResult.OpResult(id, ok, ok ? null : code(line),
+                            ok ? null : text(line), samples));
+                    continue;
+                }
                 JsonNode readingNode = line.get("reading");
                 if (readingNode != null && readingNode.isObject()) {
                     // A test_connection line (Einheitsmodell Stufe 1). Its honesty
@@ -313,6 +333,50 @@ public class ProbeResultListener {
      * Parses the plausibility finding, or {@code null} when it is absent or
      * carries a word outside the contract's vocabulary.
      */
+    /**
+     * Die Zeilen der Zuordnungs-Vorschau, in Ankunftsreihenfolge.
+     *
+     * <p>Die Ehrlichkeits-Regel wird HIER erzwungen, nicht der Box geglaubt:
+     * eine Zeile ohne Kanal ist keine Zeile; {@code count <= 0} heißt „nichts
+     * empfangen", und dann werden {@code raw}/{@code value} VERWORFEN, selbst
+     * wenn die Box sie mitgeschickt hätte - eine Zahl ohne Empfang wäre eine
+     * erfundene Messung. Umgekehrt gilt dieselbe Paar-Regel wie beim
+     * Register-Lesen: ohne BEIDE Zahlen ist es keine Lesung, und die Zeile
+     * steht dann als „empfangen, aber nicht auswertbar" da.
+     */
+    private static List<ProbeResult.Sample> samples(JsonNode arr) {
+        List<ProbeResult.Sample> out = new ArrayList<>();
+        for (JsonNode n : arr) {
+            if (out.size() >= MAX_SAMPLES) {
+                break;
+            }
+            String channel = n.path("channel").asText("");
+            if (channel.isBlank() || channel.length() > 64) {
+                continue;
+            }
+            int count = Math.max(0, n.path("count").asInt(0));
+            Double raw = count > 0 ? optDouble(n, "raw") : null;
+            Double value = count > 0 ? optDouble(n, "value") : null;
+            if (raw == null || value == null) {
+                raw = null;
+                value = null;
+            }
+            out.add(new ProbeResult.Sample(channel, count > 0 ? text(n, "topic") : null, raw,
+                    value, count, count > 0 ? text(n, "at") : null));
+        }
+        return List.copyOf(out);
+    }
+
+    /** Ein optionales kurzes Textfeld - leer/zu lang zählt als abwesend. */
+    private static String text(JsonNode node, String field) {
+        JsonNode v = node.get(field);
+        if (v == null || !v.isTextual()) {
+            return null;
+        }
+        String s = v.asText().trim();
+        return s.isEmpty() || s.length() > 200 ? null : s;
+    }
+
     private static ProbeResult.Finding finding(JsonNode line) {
         JsonNode n = line.get("finding");
         if (n == null || !n.isObject()) {

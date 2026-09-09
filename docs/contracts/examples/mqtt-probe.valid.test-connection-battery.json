@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_request",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "9f2c41ab77de0135",
+  "requested_at": "2026-09-09T18:04:00Z",
+  "requested_by": "a1b2c3d4-0000-0000-0000-000000000009",
+  "ops": [
+    {
+      "op": "test_connection",
+      "id": "batterie",
+      "brand": "user-defined-battery",
+      "connection": {
+        "schema_version": "1.0",
+        "transport": "mqtt_local",
+        "listen_s": 8,
+        "broker": {
+          "host": "192.168.0.44",
+          "port": 1883
+        },
+        "publish_interval_s": 15,
+        "mappings": [
+          {
+            "channel": "cell_min_mv",
+            "unit": "mV",
+            "topic": "diybms/bank/+/cell/+",
+            "path": "voltage",
+            "aggregate": "min",
+            "value_type": "number",
+            "scale": 1000.0,
+            "offset": 0.0,
+            "stale_s": 300
+          },
+          {
+            "channel": "charge_allowed",
+            "unit": "",
+            "topic": "diybms/status",
+            "path": "charge_allowed",
+            "aggregate": "min",
+            "value_type": "bool",
+            "scale": 1.0,
+            "offset": 0.0,
+            "stale_s": 300,
+            "true_values": ["true", "on"],
+            "false_values": ["false", "off"]
+          }
+        ]
+      }
+    }
+  ]
+}

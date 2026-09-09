@@ -4891,6 +4891,36 @@ paths:
         "400": { description: Bad range. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Entity/site not found. }
+  /api/v1/soc-curve-templates:
+    get:
+      tags: [components]
+      summary: The OCV curve templates of the SoC derivation (P5b/P5d).
+      description: >
+        Fills the `curve_charge`/`curve_discharge` fields of a `soc_derivation`
+        in the battery assistant. It exists so the portal does NOT rebuild the
+        support points: a curve in the frontend would be a twin of
+        `soccurves/catalog.json` and free to drift from it - and a drifted curve
+        is a wrong state of charge with decimal places.
+
+
+        Authenticated, NOT plant-scoped - a curve is a statement about a CELL
+        CHEMISTRY, not about a plant. Every template carries its `chemistry` and
+        its cell window visibly, so the surface can NAME them: the same voltage
+        means a completely different state of charge on a LiFePO4 cell than on
+        an NMC one.
+
+
+        The list grows only with MEASURED tables; an invented "LiFePO4 generic"
+        would not be a template but a trap with a seal of approval.
+      responses:
+        "200":
+          description: All templates in catalog order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SocCurveTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/component-templates:
     get:
       tags: [templates]
@@ -5348,6 +5378,46 @@ paths:
         "404": { description: Site not found for this tenant. }
         "409": { description: The plant's devices are managed on the box, or it has no connected device. }
         "503": { description: The read plan could not be built or distributed. }
+  /api/v1/sites/{siteId}/components/battery/preview:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: Preview a battery field mapping - the box listens briefly and reports what arrived (P5d).
+      description: >
+        The mapping assistant's live preview: the SAME checked definition a save
+        would write travels to the box as the `connection` block of a
+        `test_connection` op, plus a short listening window (`listen_s`). The
+        answer carries one `samples` row per mapping with the RAW and the scaled
+        value side by side - the moment a wrong topic, a wrong value path or a
+        wrong scale becomes visible.
+
+
+        It writes NOTHING: no entity, no version, no flow, no connection
+        receipt. And unlike `POST /component-test` it is deliberately NOT a
+        precondition of saving - a box that cannot listen yet would turn the
+        duty into a dead end, and a duty without a door is not a safeguard.
+
+
+        Every outcome is therefore a 200 with a NAMED class: `not_supported` is
+        a statement about the BOX ("cannot listen yet"), `timeout` one about the
+        connection. Neither is a verdict about the mapping, and the surface says
+        exactly that.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveUserDefinedBatteryRequest" }
+      responses:
+        "200":
+          description: The box's answer - `samples` per mapping, or a named class.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProbeResult" }
+        "400": { description: Mapping/topic/LAN rule violated - the reason is German. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant, or it has no connected device. }
+        "503": { description: The plant is not reachable right now. }
   /api/v1/sites/{siteId}/components/battery/{entityId}:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -7638,6 +7708,40 @@ components:
           maxItems: 16
           items: { $ref: "#/components/schemas/SelfBuildChannel" }
         note: { type: string, maxLength: 200 }
+    SocCurveTemplate:
+      type: object
+      required: [id, label, curveCharge]
+      description: >
+        ONE measured OCV->SoC table. A template is DATA, not code: it prefills
+        the curve fields of a `soc_derivation`, nothing more - whoever has their
+        own support points enters them and needs no template.
+      properties:
+        id: { type: string, description: kebab-case key, e.g. `diybms-176s-nmc`. }
+        label: { type: string }
+        description: { type: string }
+        chemistry:
+          type: string
+          description: >
+            nmc | lfp | ... - carried visibly BECAUSE the same voltage means a
+            different state of charge on a different chemistry.
+        cellsInSeries: { type: integer, nullable: true }
+        refTempC: { type: number, nullable: true }
+        cellMinV: { type: number, nullable: true }
+        cellMaxV: { type: number, nullable: true }
+        source: { type: string, description: Where the table was measured, verbatim. }
+        curveCharge:
+          type: array
+          description: Support points `[cell voltage in V, state of charge in %]`, applied to the HIGHEST cell.
+          items:
+            type: array
+            items: { type: number }
+        curveDischarge:
+          type: array
+          nullable: true
+          description: The discharge table, applied to the LOWEST cell. The conservative minimum of both wins.
+          items:
+            type: array
+            items: { type: number }
     SaveUserDefinedBatteryRequest:
       type: object
       description: >
@@ -8608,6 +8712,42 @@ components:
           type: string
           enum: [invalid_request, unreachable, no_answer, invalid_response, implausible, timeout, not_supported, rate_limited]
         message: { type: string }
+        samples:
+          type: array
+          maxItems: 16
+          items: { $ref: "#/components/schemas/ProbeSample" }
+          description: >
+            Only for the SELF-CONNECTED battery preview (P5d): one row per field
+            mapping - what really arrived during the listening window. ABSENT
+            when the box cannot listen yet, which means "this box cannot do it",
+            never "nothing arrived".
+    ProbeSample:
+      type: object
+      required: [channel, count]
+      description: >
+        What ONE field mapping received during the listening window. Its own
+        block, never `reading`: `reading` is the closed four-channel snapshot of
+        a CATALOG device, while these rows are named by the customer.
+      properties:
+        channel:
+          type: string
+          description: The TARGET channel of this mapping (soc_pct, cell_min_mv, ...).
+        topic:
+          type: string
+          description: The concrete topic the value came from. Absent when nothing arrived.
+        raw:
+          type: number
+          description: The RAW value before scale/offset - the number a scaling mistake shows up in. Absent when count is 0.
+        value:
+          type: number
+          description: raw * scale + offset, after the aggregate over all matched topics. Absent when count is 0.
+        count:
+          type: integer
+          description: >
+            How many messages hit this mapping in the window. 0 means "nothing
+            received" and is an honest statement, not an error - and it travels
+            WITHOUT raw/value rather than with a fabricated 0.
+        at: { type: string, format: date-time, description: When the last of them arrived. Absent when count is 0. }
     CommandHistory:
       type: object
       description: >

@@ -16,6 +16,7 @@ import {
 import { AnlegenDialog } from './AnlegenDialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import { CenteredConfirmDialog } from './CenteredConfirmDialog';
+import { BatterieAssistent } from './BatterieAssistent';
 import { SelbstbauAssistent } from './SelbstbauAssistent';
 import { LadesaeuleAnbinden } from './LadesaeuleAnbinden';
 import { HEBEL_HINWEIS, HEBEL_INTRO, SKALIERUNG_X10, hebel } from '../testHebel';
@@ -76,6 +77,22 @@ function typFuerRolle(rolle: KomponentenRolle): TypId {
   if (rolle === 'grid-meter') return 'zaehler';
   return 'wechselrichter';
 }
+
+/**
+ * Der Weg, auf dem eine BESTEHENDE Zeile bearbeitet wird.
+ *
+ * ⚠ Der ENTITÄTSTYP entscheidet zuerst, nicht die Rolle: eine selbst
+ * angebundene Batterie ist Rolle „storage" und liefe über `typFuerRolle` in
+ * den Katalog-Weg - der nach Marke und Modell fragt, die es bei ihr nicht
+ * gibt. Sie gehört in ihren eigenen Assistenten, so wie sie angelegt wurde.
+ */
+function typFuerZeile(row: SiteComponentRow): TypId {
+  if (row.entityType === UDB_TYP) return 'batterie';
+  return typFuerRolle(kundenRolle(row));
+}
+
+/** Der Entitätstyp der selbst angebundenen Batterie (P5 Ebene 1). */
+const UDB_TYP = 'user-defined-battery';
 
 /**
  * Der NEUE ANLEGE-FLUSS (Anlegen-Rework Stufe 2, Konzept
@@ -150,7 +167,7 @@ export function AnlegenFlow({
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
   const edit = bearbeiten ?? null;
   const [typ, setTyp] = useState<TypId | null>(
-    vorlage ? 'eigenbau' : (edit ? typFuerRolle(kundenRolle(edit)) : (initialTyp ?? null)),
+    vorlage ? 'eigenbau' : (edit ? typFuerZeile(edit) : (initialTyp ?? null)),
   );
   const [schritt, setSchritt] = useState(vorlage || initialTyp || edit ? 2 : 1);
   const [rolle, setRolle] = useState<KomponentenRolle | null>(() =>
@@ -366,7 +383,8 @@ export function AnlegenFlow({
    */
   const laeuft = useRef(false);
   useEffect(() => {
-    if (schritt !== 4 || typ === 'eigenbau' || typ === 'ladesaeule') return;
+    if (schritt !== 4 || typ === 'eigenbau' || typ === 'batterie' || typ === 'ladesaeule')
+      return;
     if (!template || !testNoetig || testZustand !== 'ungeprueft' || laeuft.current) return;
     void testen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -656,7 +674,9 @@ export function AnlegenFlow({
   /** Die Bedienzeile am Fuß - je Schritt genau die zwei Wege, die es gibt. */
   // Die Ladesäulen-Karte legt nichts an - sie hat deshalb keinen „Fertig".
   const istFertig =
-    typ !== null && legtAn(typ) && schritt === (typ === 'eigenbau' ? 6 : 5);
+    typ !== null
+    && legtAn(typ)
+    && schritt === (typ === 'eigenbau' || typ === 'batterie' ? 6 : 5);
 
   function fuss() {
     if (istFertig) {
@@ -680,11 +700,11 @@ export function AnlegenFlow({
         </>
       );
     }
-    if (typ === 'eigenbau') {
+    if (typ === 'eigenbau' || typ === 'batterie') {
       /*
-        Der Selbstbau-Assistent BEHÄLT seine Bedienzeile (nur er weiß, wann
-        „Weiter" freigibt) - sie wird hier nur hineingerendert, damit auch
-        dieser Weg am Telefon eine klebende Fußzeile hat.
+        Der Selbstbau- bzw. Batterie-Assistent BEHÄLT seine Bedienzeile (nur er
+        weiß, wann „Weiter" freigibt) - sie wird hier nur hineingerendert, damit
+        auch diese Wege am Telefon eine klebende Fußzeile haben.
       */
       return <div className="vp-anlegen-navslot" ref={setFussEl} />;
     }
@@ -747,6 +767,48 @@ export function AnlegenFlow({
    * wird aber erst auf Wunsch sichtbar. Alle Zustands- und Speicherregeln oben
    * sind dieselben wie im bisherigen Assistenten.
    */
+  /*
+   * Eine SELBST ANGEBUNDENE BATTERIE bearbeitet ihr eigener Assistent - auch
+   * hier auf der Geräteseite. Das Formular darunter fragt nach Marke, Modell
+   * und Verbindungsfeldern einer VORLAGE; diese Batterie hat keine, und ihre
+   * ganze Definition (Broker, Topics, Wertepfade, wie der Ladestand entsteht)
+   * käme darin gar nicht vor. Ein zweites Formular für dieselben Felder wären
+   * zwei Wahrheiten über denselben Anschluss.
+   */
+  if (edit && inlineBearbeitung && edit.entityType === UDB_TYP) {
+    return (
+      <section className="vp-geraet-edit" data-testid="batterie-bearbeiten">
+        <header className="vp-geraet-edit-head">
+          <div>
+            <p className="vp-geraet-edit-eyebrow">Bearbeitungsmodus</p>
+            <h1>{edit.label?.trim() || 'Batterie'} bearbeiten</h1>
+            <p>
+              Ändern Sie Broker, Feld-Zuordnung oder die Art, wie der Ladestand entsteht. Die
+              bisherige Fassung läuft bis zur Bestätigung der Box weiter.
+            </p>
+          </div>
+          <span className="vp-pill vp-pill-info">Fassung {edit.definitionVersion}</span>
+        </header>
+        <BatterieAssistent
+          siteId={siteId}
+          schritt={selbstbauSchritt}
+          onSchritt={(st) => setSchritt(st + 1)}
+          navPortal={null}
+          bearbeiten={{
+            entityId: edit.id,
+            label: edit.label ?? null,
+            connection: edit.connection ?? null,
+          }}
+          onBack={onClose}
+          onSaved={(result) => {
+            onSaved(result);
+            onClose();
+          }}
+        />
+      </section>
+    );
+  }
+
   if (edit && inlineBearbeitung) {
     const modell = template
       ? `${template.brandLabel} ${template.modelLabel}`.trim()
@@ -1131,8 +1193,33 @@ export function AnlegenFlow({
         />
       )}
 
+      {/* Der Batterie-Weg (P5d): der EIGENE Anschluss eines Batteriemanagements.
+          Seine vier Fragen SIND die Schritte 2-5 dieses Flusses - dieselbe
+          Bauform wie der Selbstbau-Weg darüber. */}
+      {schritt >= 2 && schritt <= 5 && typ === 'batterie' && (
+        <BatterieAssistent
+          siteId={siteId}
+          schritt={selbstbauSchritt}
+          onSchritt={(s) => setSchritt(s + 1)}
+          navPortal={fussEl}
+          bearbeiten={
+            edit && edit.entityType === UDB_TYP
+              ? { entityId: edit.id, label: edit.label ?? null, connection: edit.connection ?? null }
+              : null
+          }
+          onBack={() => (edit ? onClose() : setSchritt(1))}
+          onSaved={(result) => {
+            setNeueId(neueKomponente(vorherigeIds, result.components));
+            setUebernommen(false);
+            setVorherigeIds(result.components.map((r) => ({ id: r.id })));
+            setSchritt(6);
+            onSaved(result);
+          }}
+        />
+      )}
+
       {/* 2 · Gerät wählen - EIN Picker mit den Marken als Gruppen. */}
-      {schritt === 2 && typ && typ !== 'eigenbau' && typ !== 'ladesaeule' && (
+      {schritt === 2 && typ && typ !== 'eigenbau' && typ !== 'batterie' && typ !== 'ladesaeule' && (
         <section>
           <h3 className="vp-assist-h">{edit ? 'Gerät und Aufgabe' : 'Welches Gerät ist es?'}</h3>
           {edit && (

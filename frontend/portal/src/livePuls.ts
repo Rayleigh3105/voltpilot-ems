@@ -82,6 +82,11 @@ export interface LivePulsRow {
   socPct?: number;
   /** Detail der JETZT-Zeile ("Ladeleistung 3,4 kW"); nie eine Tagessumme. */
   subLine?: string;
+  /**
+   * WOHER der Ladestand kommt („gemessen" / „berechnet: Kennlinie"), P5b/P5d.
+   * Absent = unbekannt, nie stillschweigend „gemessen".
+   */
+  herkunft?: string;
   health: ComponentHealth;
   /** Representative measurement — the „Verlauf"-jump target. */
   target: { entityId: string; channel: string } | null;
@@ -204,6 +209,7 @@ export function componentRows(topo: SiteTopology): LivePulsRow[] {
       arrow: tile.arrow,
       socPct: tile.socPct,
       subLine: tile.role === 'pv' || tile.role === 'grid' ? undefined : tile.subLine,
+      herkunft: tile.herkunft,
       health: worstMemberHealth(topo, members),
       target,
       today: null,

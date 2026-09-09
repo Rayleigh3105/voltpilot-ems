@@ -1807,4 +1807,23 @@ describe('P7 · planOhneLadestand / ladestandHerkunftNote', () => {
     expect(ladestandHerkunftNote({ socSource: 'unbekannt' })).toBeNull();
     expect(ladestandHerkunftNote(null)).toBeNull();
   });
+
+  /**
+   * P5b/P5d: nennt der Lauf die METHODE, steht sie im Satz - „aus der
+   * Kennlinie" und „mitgezählt" führen zu verschiedenen Handlungen.
+   */
+  it('nennt die Methode, wenn der Lauf sie kennt', () => {
+    const kennlinie = ladestandHerkunftNote({ socSource: 'berechnet:kennlinie' });
+    expect(kennlinie).toContain('berechnet, nicht gemessen');
+    expect(kennlinie).toContain('Kennlinie');
+    const zaehlung = ladestandHerkunftNote({ socSource: 'berechnet:ladungszaehlung' });
+    expect(zaehlung).toContain('mitgezählt');
+    expect(zaehlung).toContain('Nachkalibrierung');
+  });
+
+  /** Ein Wort außerhalb des Vokabulars ergibt keinen Satz - geraten wird nichts. */
+  it('rät auch beim Herkunfts-Satz nicht', () => {
+    expect(ladestandHerkunftNote({ socSource: 'berechnet:irgendwas' })).toBeNull();
+    expect(ladestandHerkunftNote({ socSource: 'geschaetzt' })).toBeNull();
+  });
 });

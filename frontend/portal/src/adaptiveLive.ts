@@ -28,6 +28,7 @@ import {
 import { shortEntityLabel, shortLabelsForRole } from './entityLabel';
 import { fmtNum } from './format';
 import { NO_DATA, numOrNoData } from './nodata';
+import { herkunftUeberEntitaeten } from './socHerkunft';
 import type { FlowNode, Role } from './topology';
 
 export interface AdaptiveTile {
@@ -54,6 +55,15 @@ export interface AdaptiveTile {
   socPct?: number;
   /** Optional detail sub-line ("Ladeleistung 3,4 kW", "2 Erzeuger"). */
   subLine?: string;
+  /**
+   * WOHER der Ladestand kommt ("gemessen" / "berechnet: Kennlinie"), P5b/P5d.
+   *
+   * ⚠ Nur der Speicher hat sie, und nur wenn die Batterie den Herkunfts-Kanal
+   * WIRKLICH meldet. Absent = unbekannt - eine Kachel, die dort „gemessen"
+   * schriebe, hätte sich das ausgedacht: fast jede über einen Katalog-Treiber
+   * gelesene Batterie meldet den Kanal nie.
+   */
+  herkunft?: string;
   /** Read-only device switches for a controllable consumer (v1 display-only). */
   control?: ControlPreset;
 }
@@ -88,6 +98,15 @@ function pvTile(n: FlowNode, byId: Map<string, TopologyEntity>): AdaptiveTile {
 
 function storageTile(n: FlowNode, byId: Map<string, TopologyEntity>): AdaptiveTile {
   const soc = n.soc_pct ?? null;
+  /*
+    P5d: ein BERECHNETER Ladestand gibt sich zu erkennen - überall, wo er
+    auftaucht. Die Herkunft kommt aus dem Kanal `soc_source_code` der
+    Mitglieder dieses Knotens, nie aus einer Vermutung über den Gerätetyp; ohne
+    Kanal bleibt sie ABWESEND statt „gemessen" zu behaupten.
+  */
+  const herkunft = herkunftUeberEntitaeten(
+    n.members.map((m) => byId.get(m.entity_id)?.capabilities),
+  );
   const batt = signedBattery(n);
   const title = n.members.length === 1 ? roleMemberLabel(n, 'storage', byId) : 'Speicher';
   let stateLabel = 'Bereit';
@@ -126,6 +145,8 @@ function storageTile(n: FlowNode, byId: Map<string, TopologyEntity>): AdaptiveTi
     arrow,
     socPct: soc == null ? undefined : Math.max(0, Math.min(100, soc)),
     subLine,
+    // Ohne Ladestand gibt es nichts, dessen Herkunft man nennen könnte.
+    herkunft: soc == null || herkunft == null ? undefined : herkunft.kurz,
   };
 }
 

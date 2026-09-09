@@ -116,6 +116,17 @@ would make a fixture invalid for the wrong reason):
   register read; what is added is evidence that was measured, never invented -
   a bare "unplausibel" with not a single number is a riddle, and a real new
   plant got stuck on it.
+  `mqtt-probe.valid.test-connection-battery.json` / `-battery-result.json` are
+  the SELF-CONNECTED battery's preview (P5/P5d): the same `test_connection` op,
+  but its `connection` carries the whole `mqtt_local` definition the customer
+  just typed - broker, listening window and one row per field mapping - and the
+  answer carries its own `samples` block instead of `reading`. `reading` is the
+  closed four-channel snapshot of a CATALOG device; a self-connected battery's
+  rows are named by the customer, so they need their own shape. The fixture also
+  shows the honesty rule of that block: `charge_allowed` received nothing in the
+  window and stands there with `count: 0` and NO `raw`/`value` - never a
+  fabricated 0 - while a box that cannot listen yet omits `samples` entirely,
+  which means "this box cannot do it", never "nothing arrived".
 
 ## `mqtt-charging-config` (Lastmanagement Stufe 3)
 
