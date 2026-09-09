@@ -37,7 +37,8 @@ function assertPinned(artifact, pinName) {
 // (and would break the "no user code paths" isolation guarantee).
 const WHITELISTED_NR_TYPES = new Set([
   'tab', 'vp-entity-read', 'vp-feed', 'vp-desired', 'vp-notify', 'vp-modbus-read',
-  'vp-consumer-policy', 'vp-mqtt-read', 'vp-http-read', 'vp-soc-derive', 'function', 'inject',
+  'vp-consumer-policy', 'vp-mqtt-read', 'vp-http-read', 'vp-soc-derive', 'vp-limit-guard',
+  'function', 'inject',
 ]);
 
 test('pv-surplus-heatrod fixture compiles deterministically', () => {
@@ -599,6 +600,115 @@ test('pinned content hash of the http-battery fixture', () => {
   assert.strictEqual(JSON.stringify(a), JSON.stringify(compile(
     fixture('flow-graph.valid.http-battery.json'))), 'compilation must be deterministic');
   assertPinned(a, 'pinned-http-battery-hash.txt');
+});
+
+// --- P5c: der Schutz-/Grenzbaustein am ENDE derselben Kette ---------------
+
+test('mqtt-battery-protected fixture wires the protection block LAST', () => {
+  const g = fixture('flow-graph.valid.mqtt-battery-protected.json');
+  const a = compile(g);
+  const flows = a.bundle.nodered_flows;
+  const mqtt = flows.find((n) => n.type === 'vp-mqtt-read');
+  const soc = flows.find((n) => n.type === 'vp-soc-derive');
+  const limit = flows.find((n) => n.type === 'vp-limit-guard');
+  const inject = flows.find((n) => n.type === 'inject');
+
+  assert.ok(limit, 'the fixture carries exactly one protection block');
+  assert.strictEqual(flows.filter((n) => n.type === 'vp-limit-guard').length, 1);
+  assert.strictEqual(limit.func, undefined, 'data-only config - never generated code');
+
+  // DIE KETTE ist linear: Takt -> Quelle -> Ableiter -> Schutz. Der Schutz
+  // haengt am ENDE, weil die Treppe den ABGELEITETEN Ladestand braucht; jede
+  // Stufe reicht weiter, was sie weiss.
+  assert.deepStrictEqual(inject.wires, [[mqtt.id]], 'the tick hits ONLY the source');
+  assert.deepStrictEqual(mqtt.wires, [[soc.id]], 'the source feeds the derivation');
+  assert.deepStrictEqual(soc.wires, [[limit.id]], 'the derivation feeds the protection');
+
+  // Jede Vorgabe steht AUSGESCHRIEBEN im Artefakt - danach raet die Box nicht.
+  assert.strictEqual(limit.charge.max_a, 40);
+  assert.strictEqual(limit.discharge.max_a, 40);
+  assert.deepStrictEqual(limit.charge.steps[0], [5, 270]);
+  assert.deepStrictEqual(limit.charge.steps[limit.charge.steps.length - 1], [85, 22]);
+  assert.deepStrictEqual(limit.hysteresis, {
+    charge_stop_v: 4.06, charge_resume_v: 4.0,
+    discharge_stop_v: 3.4, discharge_resume_v: 3.5,
+  });
+  assert.strictEqual(limit.round_a, 1);
+  assert.strictEqual(limit.hold_s, 900);
+
+  // Der Baustein SCHREIBT NICHT: er fordert nur measure-Faehigkeiten an und
+  // beansprucht kein einziges Kommando. Genau das ist P5c - er RESTRINGIERT,
+  // was andere befehlen duerfen, statt selbst zu befehlen.
+  assert.deepStrictEqual(a.required_entities, [{
+    entity_id: '8c4d0e32-9f50-4b67-ad18-1234567890bc',
+    capabilities: [
+      'measure:cell_max_mv', 'measure:cell_min_mv', 'measure:charge_allowed',
+      'measure:charge_limit_a', 'measure:discharge_allowed', 'measure:discharge_limit_a',
+      'measure:soc_pct', 'measure:soc_source_code', 'measure:temp_max_c', 'measure:voltage_v',
+    ],
+  }]);
+  assert.deepStrictEqual(a.claims || [], []);
+
+  // Die Palette-Untergrenze hebt sich mit P5c auf 0.13.0 (deploy.go quittiert
+  // darunter mit `unsupported` statt still nichts zu tun).
+  assert.strictEqual(a.min_palette_version, '0.13.0');
+});
+
+test('pinned content hash of the mqtt-battery-protected fixture', () => {
+  const a = compile(fixture('flow-graph.valid.mqtt-battery-protected.json'));
+  assert.strictEqual(JSON.stringify(a), JSON.stringify(compile(
+    fixture('flow-graph.valid.mqtt-battery-protected.json'))), 'compilation must be deterministic');
+  assertPinned(a, 'pinned-mqtt-battery-protected-hash.txt');
+});
+
+test('vp.bms.limit is GENERATED-ONLY and never triggerable', () => {
+  const base = fixture('flow-graph.valid.mqtt-battery-protected.json');
+  const mutate = (fn) => {
+    const g = JSON.parse(JSON.stringify(base));
+    fn(g);
+    return g;
+  };
+  const findRule = (g, rule) => validate(g).some((f) => f.rule === rule);
+
+  // Ein KUNDEN-Dokument darf den Baustein nicht tragen: die api ist sein
+  // einziger Autor, und die Schutzgrenzen-Flaeche ist der Batterie-Assistent.
+  assert.ok(findRule(mutate((g) => { delete g.origin; }), 'V-4'),
+    'a customer document must not carry vp.bms.limit');
+
+  // Er gehoert BEIDEN Ebene-1-Herkuenften - der Schutz rechnet auf den
+  // Standard-Kanaelen und kennt den Transport gar nicht.
+  assert.deepStrictEqual(TYPES['vp.bms.limit'].generatedOrigin,
+    ['mqtt-device', 'http-device']);
+
+  // Er haengt an einer KANTE, nie am Takt: am Takt rechnete er auf dem Stand
+  // des VORIGEN Taktes.
+  assert.strictEqual(TYPES['vp.bms.limit'].triggerable, false);
+
+  // Und er beansprucht NIE ein Kommando - ein Schutzbaustein, der etwas
+  // befehlen koennte, waere kein Schutzbaustein.
+  assert.deepStrictEqual(TYPES['vp.bms.limit'].claims(), []);
+});
+
+test('vp.bms.limit refuses a protection that protects nothing', () => {
+  const t = TYPES['vp.bms.limit'];
+  // Weder Treppe noch Riegel: der Baustein haette nichts zu pruefen.
+  assert.ok(t.validate({ entity_id: 'e1' }).some(
+    (e) => /prueft nichts/.test(e)));
+  // Eine Freigabe, die UEBER dem Stopp liegt, waere ein Riegel, der sich im
+  // Moment des Zuschiebens selbst wieder oeffnet.
+  assert.ok(t.validate({
+    entity_id: 'e1',
+    hysteresis: { charge_stop_v: 4.0, charge_resume_v: 4.06 },
+  }).some((e) => /Lade-Freigabe muss unter dem Lade-Stopp/.test(e)));
+  assert.ok(t.validate({
+    entity_id: 'e1',
+    hysteresis: { discharge_stop_v: 3.5, discharge_resume_v: 3.4 },
+  }).some((e) => /Entlade-Freigabe muss ueber dem Entlade-Stopp/.test(e)));
+  // Eine doppelte Schwelle waere zweideutig.
+  assert.ok(t.validate({
+    entity_id: 'e1',
+    charge: { steps: [[5, 270], [5, 22]], max_a: 40 },
+  }).some((e) => /steht zweimal/.test(e)));
 });
 
 test('vp.http.read is GENERATED-ONLY and refused under a SIBLING origin', () => {

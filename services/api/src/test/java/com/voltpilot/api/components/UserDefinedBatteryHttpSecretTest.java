@@ -103,7 +103,8 @@ class UserDefinedBatteryHttpSecretTest {
 
         service = new UserDefinedBatteryService(sites, entityRepo, entityRegistry,
                 new EntityTypeCatalog(mapper), definitions, components,
-                new SocCurveTemplateCatalog(mapper), new UserDefinedBatteryFlowCompiler(mapper),
+                new SocCurveTemplateCatalog(mapper), new ProtectionProfileCatalog(mapper),
+                new UserDefinedBatteryFlowCompiler(mapper),
                 flows, deployments, flowc, topology, mapper);
         TenantContext.set(TENANT);
     }
@@ -264,7 +265,7 @@ class UserDefinedBatteryHttpSecretTest {
                 new EndpointRequest("192.168.40.21", 80, "/ha", false, 5000), auth,
                 List.of(new MappingRequest("soc_pct", null, "soc", "last", "number", 1.0, 0.0,
                         null, null, null, null)),
-                15, null, null, null);
+                15, null, null, null, null);
     }
 
     private String connectionJson(String secret) {

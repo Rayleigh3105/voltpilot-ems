@@ -1041,6 +1041,92 @@ const TYPES = {
     },
   },
 
+  // vp.bms.limit (P5c, Konzept vp-deye-diybms-luecke-l5 §3.2b "OPTIONAL -
+  // Schutz-/Grenzbaustein" + §3.3): the GENERATED-ONLY PROTECTION block of a
+  // self-connected battery. From the state of charge it computes a per-
+  // direction CURRENT STAIRCASE (last support point with threshold <= SoC
+  // wins, clamped to the device maximum) and from the cell voltages a
+  // HYSTERESIS LATCH (charging stops at the highest cell's stop threshold and
+  // only resumes at its resume threshold; discharging mirrors it on the lowest
+  // cell). It publishes what the battery currently ALLOWS as ordinary
+  // telemetry: charge_limit_a / discharge_limit_a / charge_allowed /
+  // discharge_allowed.
+  //
+  // ⚠ IT WRITES TO NO DEVICE. The customer flow this block reproduces writes
+  // the Deye's current limits (0x006C/0x006D); VoltPilot deliberately does not.
+  // The limits are PROVIDED - for the surface and as the BMS cap of the box's
+  // guard chain (guards.Clamp), which every VoltPilot setpoint must stay under.
+  // An actual write path only ever opens behind the certification gate
+  // (vp-deye-bench-cert / hybrid-control-p2); until then the customer flow
+  // remains the active writer (§3.3).
+  //
+  // Like vp.soc.derive it hangs on an EDGE, never on the trigger, and belongs
+  // to BOTH level-1 origins: the protection works on the standard channels and
+  // does not care which read type delivered them. It sits LAST in the chain
+  // (read -> [soc] -> limit) because the staircase needs the derived state of
+  // charge, while the latch needs only the cell voltages - which is why the
+  // block is still useful on a battery that has no state of charge at all.
+  'vp.bms.limit': {
+    version: '1.0.0',
+    label: 'Schutzgrenzen (generiert)',
+    runtimes: ['edge'],
+    minPalette: '0.13.0',
+    generatedOrigin: ['mqtt-device', 'http-device'],
+    triggerable: false,
+    ports: {
+      in: { channels: { type: 'number', required: true } },
+      out: { value: { type: 'number' } },
+    },
+    validate(p) {
+      return validateBmsLimit(p);
+    },
+    // The node PRODUCES the channels it can actually say something about, so
+    // the entity must declare exactly those - the honesty mirror of
+    // vp.mqtt.read's rule: a limit the battery does not declare would record
+    // nowhere. A direction without a staircase still yields its permission
+    // flag, so the two limit channels are required only when their staircase
+    // exists.
+    requires(p) {
+      if (!p || !p.entity_id) return [];
+      const caps = [];
+      if (p.charge) caps.push('measure:charge_limit_a');
+      if (p.discharge) caps.push('measure:discharge_limit_a');
+      const h = p.hysteresis && typeof p.hysteresis === 'object' ? p.hysteresis : {};
+      if (num(h.charge_stop_v)) {
+        caps.push('measure:charge_allowed');
+        // A latched direction reports BOTH: allowed = 0 AND limit_a = 0.
+        if (!p.charge) caps.push('measure:charge_limit_a');
+      }
+      if (num(h.discharge_stop_v)) {
+        caps.push('measure:discharge_allowed');
+        if (!p.discharge) caps.push('measure:discharge_limit_a');
+      }
+      return caps.length ? [{ entity_id: p.entity_id, capabilities: caps }] : [];
+    },
+    // A protection block never claims: it drives no actuation. That is the
+    // whole point of P5c - it RESTRICTS what others may command.
+    claims() {
+      return [];
+    },
+    compile(ctx, node) {
+      const p = node.parameters || {};
+      return [{
+        id: ctx.nrId(node.id),
+        type: 'vp-limit-guard',
+        z: ctx.tabId,
+        name: node.label || 'Schutzgrenzen',
+        core: ctx.coreId,
+        entity: p.entity_id,
+        inputs: normalizeLimitInputs(p.inputs),
+        charge: normalizeLimitDirection(p.charge),
+        discharge: normalizeLimitDirection(p.discharge),
+        hysteresis: normalizeLimitHysteresis(p.hysteresis),
+        round_a: num(p.round_a) && p.round_a > 0 ? p.round_a : LIMIT_DEFAULT_ROUND_A,
+        hold_s: Number.isInteger(p.hold_s) ? p.hold_s : LIMIT_DEFAULT_HOLD_S,
+      }];
+    },
+  },
+
   // vp.consumer.reactive (D-19, Verbrauchssteuerung Inkrement 4 §13.2): the
   // GENERATED-ONLY reactive consumer-policy node. The cloud policy compiler is
   // its single author (compile.js refuses it in a document without the
@@ -1562,6 +1648,171 @@ function normalizeSocParams(raw) {
       r.empty_soc_pct = p.recalibrate.empty_soc_pct;
     }
     if (Object.keys(r).length > 0) out.recalibrate = r;
+  }
+  return out;
+}
+
+// --- vp.bms.limit validation (P5c Schutz-/Grenzbaustein). Der ZWILLING der
+// Cloud-Regel (services/api .../components/UserDefinedBatteryDefinition
+// .checkProtection) und der Laufzeit (vp-palette/lib/limit-protection.js):
+// dieselben Schranken, dieselbe Treppen-Regel, dieselbe Hysterese-Richtung.
+// Wer eines aendert, aendert alle drei - sonst nimmt der Compiler an, was die
+// Box verwirft, oder umgekehrt.
+const LIMIT_INPUT_ROLES = ['soc', 'cell_min', 'cell_max'];
+const LIMIT_INPUT_DEFAULTS = {
+  soc: 'soc_pct',
+  cell_min: 'cell_min_mv',
+  cell_max: 'cell_max_mv',
+};
+const LIMIT_MIN_STEPS = 1;
+const LIMIT_MAX_STEPS = 32;
+const LIMIT_MAX_CURRENT_A = 2000;
+const LIMIT_MIN_CELL_V = 0.5;
+const LIMIT_MAX_CELL_V = 5.0;
+const LIMIT_DEFAULT_ROUND_A = 1;
+const LIMIT_MAX_ROUND_A = 10;
+const LIMIT_DEFAULT_HOLD_S = 900;
+const LIMIT_MIN_HOLD_S = 60;
+const LIMIT_MAX_HOLD_S = 86400;
+
+// Eine Strom-Treppe darf FALLEN (die Ladekurve des Kunden geht von 270 A auf
+// 22 A) und darf ebenso STEIGEN (seine Entladekurve von 74 A auf 342 A) - es
+// gibt hier also bewusst keine Monotonie-Regel wie bei einer OCV-Kennlinie.
+// Verboten ist nur die doppelte Schwelle: sie waere zweideutig.
+function validLimitSteps(raw, where, errs) {
+  if (!Array.isArray(raw)) {
+    errs.push(where + ' ist keine Treppe');
+    return false;
+  }
+  if (raw.length < LIMIT_MIN_STEPS || raw.length > LIMIT_MAX_STEPS) {
+    errs.push(where + ' braucht ' + LIMIT_MIN_STEPS + '..' + LIMIT_MAX_STEPS + ' Stufen');
+    return false;
+  }
+  const seen = new Set();
+  for (const p of raw) {
+    if (!Array.isArray(p) || p.length < 2 || !num(p[0]) || !num(p[1])) {
+      errs.push(where + ': eine Stufe braucht Ladestand und Strom');
+      return false;
+    }
+    if (p[0] < 0 || p[0] > 100) {
+      errs.push(where + ': Ladestand ausserhalb 0..100');
+      return false;
+    }
+    if (p[1] < 0 || p[1] > LIMIT_MAX_CURRENT_A) {
+      errs.push(where + ': Strom ausserhalb 0..' + LIMIT_MAX_CURRENT_A + ' A');
+      return false;
+    }
+    if (seen.has(p[0])) {
+      errs.push(where + ': der Ladestand ' + p[0] + ' % steht zweimal');
+      return false;
+    }
+    seen.add(p[0]);
+  }
+  return true;
+}
+
+function validLimitDirection(raw, where, errs) {
+  if (raw === undefined || raw === null) return true;
+  if (typeof raw !== 'object') {
+    errs.push(where + ' ist keine Richtung');
+    return false;
+  }
+  if (!validLimitSteps(raw.steps, where + '.steps', errs)) return false;
+  if (!(num(raw.max_a) && raw.max_a >= 0 && raw.max_a <= LIMIT_MAX_CURRENT_A)) {
+    errs.push(where + '.max_a muss 0..' + LIMIT_MAX_CURRENT_A + ' sein');
+    return false;
+  }
+  return true;
+}
+
+// Die Freigabe liegt beim Laden UNTER dem Stopp und beim Entladen darueber.
+// Andersherum waere es keine Hysterese, sondern ein Riegel, der sich im Moment
+// des Zuschiebens selbst wieder oeffnet.
+function validLimitHysteresis(stopV, resumeV, charging, where, errs) {
+  if (stopV === undefined && resumeV === undefined) return true;
+  const ok = (v) => num(v) && v >= LIMIT_MIN_CELL_V && v <= LIMIT_MAX_CELL_V;
+  if (!ok(stopV) || !ok(resumeV)) {
+    errs.push(where + ' braucht Stopp UND Freigabe zwischen ' + LIMIT_MIN_CELL_V + ' und '
+      + LIMIT_MAX_CELL_V + ' V je Zelle');
+    return false;
+  }
+  if (charging && !(resumeV < stopV)) {
+    errs.push(where + ': die Lade-Freigabe muss unter dem Lade-Stopp liegen');
+    return false;
+  }
+  if (!charging && !(resumeV > stopV)) {
+    errs.push(where + ': die Entlade-Freigabe muss ueber dem Entlade-Stopp liegen');
+    return false;
+  }
+  return true;
+}
+
+function validateBmsLimit(p) {
+  const errs = [];
+  if (!p || typeof p !== 'object') return ['Parameter fehlen'];
+  if (!ID_RE.test(p.entity_id || '')) errs.push('entity_id fehlt oder ist ungueltig');
+
+  const inputs = p.inputs && typeof p.inputs === 'object' ? p.inputs : {};
+  for (const role of Object.keys(inputs)) {
+    if (LIMIT_INPUT_ROLES.indexOf(role) < 0) {
+      errs.push('unbekannter Eingang: ' + role);
+    } else if (!CHANNEL_RE.test(inputs[role] || '')) {
+      errs.push('Eingang ' + role + ' nennt keinen gueltigen Kanal');
+    }
+  }
+
+  validLimitDirection(p.charge, 'charge', errs);
+  validLimitDirection(p.discharge, 'discharge', errs);
+
+  const h = p.hysteresis && typeof p.hysteresis === 'object' ? p.hysteresis : {};
+  validLimitHysteresis(h.charge_stop_v, h.charge_resume_v, true, 'hysteresis.charge', errs);
+  validLimitHysteresis(h.discharge_stop_v, h.discharge_resume_v, false,
+    'hysteresis.discharge', errs);
+
+  if (p.round_a !== undefined && !(num(p.round_a) && p.round_a > 0
+      && p.round_a <= LIMIT_MAX_ROUND_A)) {
+    errs.push('round_a muss > 0 und <= ' + LIMIT_MAX_ROUND_A + ' sein');
+  }
+  if (p.hold_s !== undefined && !(Number.isInteger(p.hold_s)
+      && p.hold_s >= LIMIT_MIN_HOLD_S && p.hold_s <= LIMIT_MAX_HOLD_S)) {
+    errs.push('hold_s muss ' + LIMIT_MIN_HOLD_S + '..' + LIMIT_MAX_HOLD_S + ' sein');
+  }
+
+  // Die Regel, die diesen Baustein ueberhaupt rechtfertigt: ein Schutz, der
+  // WEDER eine Treppe NOCH einen Riegel hat, prueft nichts. Sie steht hier ein
+  // zweites Mal, weil ein ausgerolltes Dokument nie darauf bauen darf, dass es
+  // sauber erzeugt wurde.
+  if (!p.charge && !p.discharge && !num(h.charge_stop_v) && !num(h.discharge_stop_v)) {
+    errs.push('ein Schutzbaustein ohne Treppe und ohne Riegel prueft nichts');
+  }
+  return errs;
+}
+
+function normalizeLimitInputs(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const out = {};
+  for (const role of LIMIT_INPUT_ROLES.slice().sort()) {
+    out[role] = typeof src[role] === 'string' && src[role] !== ''
+      ? src[role] : LIMIT_INPUT_DEFAULTS[role];
+  }
+  return out;
+}
+
+function normalizeLimitDirection(raw) {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.steps)) return null;
+  return { steps: raw.steps.map((q) => q.slice()), max_a: raw.max_a };
+}
+
+function normalizeLimitHysteresis(raw) {
+  const h = raw && typeof raw === 'object' ? raw : {};
+  const out = {};
+  if (num(h.charge_stop_v) && num(h.charge_resume_v)) {
+    out.charge_stop_v = h.charge_stop_v;
+    out.charge_resume_v = h.charge_resume_v;
+  }
+  if (num(h.discharge_stop_v) && num(h.discharge_resume_v)) {
+    out.discharge_stop_v = h.discharge_stop_v;
+    out.discharge_resume_v = h.discharge_resume_v;
   }
   return out;
 }

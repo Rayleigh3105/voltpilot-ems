@@ -235,6 +235,42 @@ hinge. Gerundet und geklemmt wird ausschließlich, was die Ableitung SELBST gere
 ⚠ Ein älterer Cloud-Stand überliest den Kanal (er ist eine Zahl wie jede andere), eine ältere
 Box erzeugt ihn nicht — beides ist der additive Normalfall.
 
+### 5.4 Die SCHUTZGRENZEN und ihre Wirkung im Wächter (P5c, ADDITIV)
+
+Seit P5c kann dieselbe Batterie zusätzlich melden, WAS SIE ZULÄSST — dieselbe Telemetrie (§3),
+bis zu vier Kanäle, die der Typkatalog seit P5 kennt:
+
+| Kanal | Bedeutung |
+|---|---|
+| `charge_limit_a` / `discharge_limit_a` | der zulässige Strom je Richtung, aus der SoC→Strom-TREPPE, geklemmt auf das Geräte-Maximum |
+| `charge_allowed` / `discharge_allowed` | die Freigabe aus dem Zellspannungs-RIEGEL; sie reist als ZAHL (alles außer 0 heißt „ja") |
+
+Der zweite AUTOR dieser Kanäle ist der generierte Knoten `vp.bms.limit`; der erste bleibt die
+Feld-Zuordnung der Ebene 1. **Beide zugleich sind verboten** — ein Kanal hat genau EINEN Autor,
+sonst entschiede die Zustellreihenfolge, welche Grenze galt. Die Cloud lehnt die Überschneidung
+benannt ab.
+
+**Was sie auf der Box BEWIRKEN:** sie sind eine harte Obergrenze für JEDEN VoltPilot-Sollwert
+(`guards.Limits.Bms`, Stufe `guard:bms_limit`) — zusätzlich zu Nennband, SoC-Fenster,
+EEG-Solarladen und §14a-Hülle. Ampere werden mit der GEMESSENEN Packspannung in Kilowatt
+gerechnet; ohne sie gibt es keine Strom-Kappe (eine geratene Nennspannung wäre eine erfundene
+Leistungsgrenze), und 0 A sind bei jeder Spannung 0 kW. Eine gesperrte Richtung meldet BEIDES:
+`allowed = 0` UND `limit_a = 0`.
+
+**⚠ Eine abwesende Grenze ist KEINE Sperre.** Ein Kanal, den niemand mehr meldet, altert aus
+dem Frischefenster und entfällt als Kappe — er wird nie zu 0. Eine Anlage ohne Schutzbaustein
+verhält sich byte-genau wie vor P5c; alles andere hieße, jede solche Anlage stillzulegen. Und
+umgekehrt: ein abwesendes Freigabe-Feld heißt „nicht gesagt", nie „erlaubt".
+
+**⚠ Es wird NICHTS geschrieben.** Diese Kanäle sind Anzeige und Wächter-Kappe. Die
+Geräte-Stromgrenzen eines Wechselrichters zu schreiben bleibt einem zertifizierten Steuerpfad
+vorbehalten (`ControlCertificationService`); bis dahin bleibt ein etwaiger Kundenflow der
+aktive Schreiber und gilt als fremder Einfluss.
+
+`driver.connection` trägt den geprüften Block als `protection` mit (Anzeige und Zusammenhang,
+nie der Rechenpfad — der reist im Flow). Eine ältere Box überliest ihn; eine ältere Cloud
+erzeugt ihn nicht.
+
 
 The cloud compares `revision` against the latest push and the `observed` map against the
 registry Soll (api `EntityStatusListener` → `entity_observed_state`); drift is surfaced in the

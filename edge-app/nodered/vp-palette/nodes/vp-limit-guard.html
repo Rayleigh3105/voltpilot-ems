@@ -1,0 +1,72 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-limit-guard', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: false },
+      entity: { value: '' },
+      inputs: { value: {} },
+      charge: { value: null },
+      discharge: { value: null },
+      hysteresis: { value: {} },
+      round_a: { value: 1 },
+      hold_s: { value: 900 }
+    },
+    inputs: 1,
+    outputs: 1,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-limit-guard'; },
+    paletteLabel: 'vp-limit-guard'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-limit-guard">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+  <div class="form-row">
+    <label for="node-input-entity"><i class="fa fa-battery-half"></i> Entität</label>
+    <input type="text" id="node-input-entity" placeholder="entity-id">
+  </div>
+  <div class="form-row">
+    <label for="node-input-round_a"><i class="fa fa-bolt"></i> Rundung (A)</label>
+    <input type="number" id="node-input-round_a" placeholder="1">
+  </div>
+  <div class="form-row">
+    <label for="node-input-hold_s"><i class="fa fa-clock-o"></i> Haltefrist (s)</label>
+    <input type="number" id="node-input-hold_s" placeholder="900">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-limit-guard">
+  <p>GENERIERT aus dem Anschluss einer selbst angebundenen Batterie (P5c
+  Schutz-/Grenzbaustein). Der Knoten leitet aus dem Ladestand und den
+  Zellspannungen ab, WAS DIE BATTERIE GERADE ZULAESST:</p>
+  <ul>
+    <li><b>Strom-Treppe</b> je Richtung: der letzte Stuetzpunkt mit Schwelle
+      &le; Ladestand gewinnt (keine Interpolation), das Ergebnis wird auf das
+      Geraete-Maximum geklemmt.</li>
+    <li><b>Zellspannungs-Riegel</b> mit Hysterese: Laden sperrt, sobald die
+      hoechste Zelle die Stopp-Schwelle erreicht, und oeffnet erst wieder an
+      der Freigabe-Schwelle; Entladen spiegelbildlich an der niedrigsten
+      Zelle. Eine gesperrte Richtung ist 0&nbsp;A.</li>
+  </ul>
+  <p>Veroeffentlicht werden bis zu vier Kanaele auf
+  <code>edge/entities/&lt;entity&gt;/telemetry</code>:
+  <code>charge_limit_a</code>, <code>discharge_limit_a</code>,
+  <code>charge_allowed</code>, <code>discharge_allowed</code> (Freigaben reisen
+  als 0/1 - die Telemetrie kennt nur Zahlen).</p>
+  <p><b>Dieser Knoten schreibt auf kein Geraet.</b> Die Grenzen werden
+  BEREITGESTELLT: fuer die Anzeige und als Kappe fuer den Waechter auf der Box
+  (jeder VoltPilot-Sollwert muss darunter bleiben). Geraete-Stromgrenzen zu
+  SCHREIBEN bleibt einem zertifizierten Steuerpfad vorbehalten.</p>
+  <p>Was der Knoten nicht sagen kann, sagt er nicht: ohne Ladestand keine
+  Treppe, ohne Zellspannung keine Freigabe. Ein abwesender Kanal heisst „nicht
+  gesagt", nie „0" und nie „erlaubt".</p>
+</script>

@@ -260,6 +260,54 @@ public final class UserDefinedBatteryDefinition {
     public static final int MAX_CELLS_IN_SERIES = 1024;
     public static final double MAX_CAPACITY_KWH = 10000.0;
 
+    // ---- Der SCHUTZ-/GRENZBAUSTEIN (P5c) ----------------------------------
+
+    /**
+     * Die vier Kanäle, die der Schutzbaustein FÜLLT (P5c, Konzept
+     * {@code vp-deye-diybms-luecke-l5} §3.2b „OPTIONAL - Schutz-/Grenzbaustein"
+     * und §3.3).
+     *
+     * <p>Er ist der GENERISCHE Nachbau dessen, was der Kunde heute in seinem
+     * eigenen Node-RED fährt: aus dem Ladestand eine Strom-TREPPE je Richtung,
+     * aus den Zellspannungen ein RIEGEL mit Hysterese. Ergebnis sind
+     * {@code charge_limit_a} / {@code discharge_limit_a} und die beiden
+     * Freigaben.
+     *
+     * <p>⚠ <b>Diese Stufe SCHREIBT auf kein Gerät.</b> Die Grenzen werden
+     * BEREITGESTELLT - als Messkanäle für die Anzeige und als Kappe für den
+     * Wächter auf der Box ({@code guards.Clamp}), unter der jeder
+     * VoltPilot-Sollwert bleiben muss. Geräte-Stromgrenzen zu SCHREIBEN bleibt
+     * einem zertifizierten Steuerpfad vorbehalten ({@code
+     * ControlCertificationService}); bis dahin ist der Kundenflow der aktive
+     * Schreiber, und die Kommando-Transparenz kennt ihn als fremden Einfluss.
+     */
+    public static final String CHARGE_LIMIT_CHANNEL = "charge_limit_a";
+    public static final String DISCHARGE_LIMIT_CHANNEL = "discharge_limit_a";
+    public static final String CHARGE_ALLOWED_CHANNEL = "charge_allowed";
+    public static final String DISCHARGE_ALLOWED_CHANNEL = "discharge_allowed";
+
+    /**
+     * Die EINGÄNGE des Schutzbausteins: Rolle → Vorgabe-Kanal.
+     *
+     * <p>Weniger als bei der SoC-Ableitung, und mit Absicht: der Schutz kennt
+     * nur den Ladestand (für die Treppe) und die beiden Extremzellen (für den
+     * Riegel). Eine Leistung oder ein Strom wäre hier kein Eingang, sondern
+     * eine zweite Rechnung.
+     */
+    public static final Map<String, String> PROTECTION_INPUT_DEFAULTS = Map.of(
+            "soc", SOC_CHANNEL,
+            "cell_min", "cell_min_mv",
+            "cell_max", "cell_max_mv");
+
+    /** Schranken einer Strom-Treppe - der Zwilling von {@code lib/limit-protection.js}. */
+    public static final int MIN_STEPS = 1;
+    public static final int MAX_STEPS = 32;
+    public static final double MAX_CURRENT_A = 2000.0;
+
+    /** Das Rundungsraster eines Stroms (der Kundenflow: ganze Ampere). */
+    public static final double DEFAULT_ROUND_A = 1.0;
+    public static final double MAX_ROUND_A = 10.0;
+
     // ---- Die SPEISER-BINDUNG (P6) -----------------------------------------
 
     /**
@@ -450,6 +498,83 @@ public final class UserDefinedBatteryDefinition {
             SocParams params, String template, int holdS) {
     }
 
+    /**
+     * Der SCHUTZ-/GRENZBAUSTEIN (P5c) - Treppen, Riegel, Rundung, Haltefrist.
+     *
+     * <p>Beide Hälften sind OPTIONAL und unabhängig: eine Richtung ohne Treppe
+     * hat keine Strom-Grenze (der Riegel spricht trotzdem), ein Riegel ohne
+     * Treppe schützt trotzdem. Nur BEIDES wegzulassen wird abgelehnt - ein
+     * Schutzbaustein, der nichts prüft, wäre eine Zusage ohne Wirkung.
+     *
+     * @param inputs Rolle → Kanalname, nach der Prüfung immer VOLLSTÄNDIG
+     *     gefüllt
+     * @param template die VORLAGE, aus der Treppen und Schwellen kommen, wenn
+     *     keine eigenen dastehen
+     */
+    public record Protection(ProtectionDirection charge, ProtectionDirection discharge,
+            Hysteresis hysteresis, Map<String, String> inputs, double roundA, int holdS,
+            String template) {
+
+        /** Sagt dieser Baustein über das LADEN überhaupt etwas? */
+        public boolean speaksAboutCharge() {
+            return charge != null || (hysteresis != null && hysteresis.chargeStopV() != null);
+        }
+
+        /** Und über das ENTLADEN? */
+        public boolean speaksAboutDischarge() {
+            return discharge != null
+                    || (hysteresis != null && hysteresis.dischargeStopV() != null);
+        }
+
+        /**
+         * Die Kanäle, die dieser Baustein WIRKLICH füllt.
+         *
+         * <p>Eine gesperrte Richtung meldet BEIDES (Freigabe = 0 UND Grenze =
+         * 0), deshalb bringt schon ein Riegel den Grenz-Kanal seiner Richtung
+         * mit - sonst hätte die Sperre keinen Platz, an dem sie steht.
+         */
+        public List<String> channels() {
+            List<String> out = new ArrayList<>();
+            if (speaksAboutCharge()) {
+                out.add(CHARGE_LIMIT_CHANNEL);
+            }
+            if (speaksAboutDischarge()) {
+                out.add(DISCHARGE_LIMIT_CHANNEL);
+            }
+            if (hysteresis != null && hysteresis.chargeStopV() != null) {
+                out.add(CHARGE_ALLOWED_CHANNEL);
+            }
+            if (hysteresis != null && hysteresis.dischargeStopV() != null) {
+                out.add(DISCHARGE_ALLOWED_CHANNEL);
+            }
+            return List.copyOf(out);
+        }
+    }
+
+    /**
+     * EINE Richtung des Schutzbausteins: die Strom-Treppe samt Geräte-Maximum.
+     *
+     * @param steps Stützpunkte {@code [Ladestand in %, Strom in A]}; „der
+     *     letzte Stützpunkt mit Schwelle &le; SoC gewinnt"
+     * @param maxA das GERÄTE-Maximum, auf das jedes Treppen-Ergebnis geklemmt
+     *     wird - die halbe Aussage einer Treppe und deshalb Pflicht
+     */
+    public record ProtectionDirection(List<double[]> steps, double maxA) {
+    }
+
+    /**
+     * Der ZELLSPANNUNGS-RIEGEL, in VOLT je Zelle.
+     *
+     * <p>Beide Richtungen sind einzeln optional; wo eine Schwelle steht, muss
+     * auch ihre Geschwister-Schwelle stehen. Beim LADEN liegt die Freigabe
+     * UNTER dem Stopp, beim ENTLADEN darüber - andersherum wäre es keine
+     * Hysterese, sondern ein Riegel, der sich im Moment des Zuschiebens selbst
+     * wieder öffnet.
+     */
+    public record Hysteresis(Double chargeStopV, Double chargeResumeV, Double dischargeStopV,
+            Double dischargeResumeV) {
+    }
+
     /** Der Anker einer Ladungszählung: hier stand der Speicher, und zwar da. */
     public record SocAnchor(double socPct, String at) {
     }
@@ -493,7 +618,8 @@ public final class UserDefinedBatteryDefinition {
      */
     public record Result(List<String> errors, String transport, Broker broker,
             Endpoint endpoint, Auth auth, List<NormalizedMapping> mappings,
-            int publishIntervalS, SocDerivation socDerivation, Binding binding) {
+            int publishIntervalS, SocDerivation socDerivation, Binding binding,
+            Protection protection) {
 
         public boolean ok() {
             return errors.isEmpty();
@@ -531,6 +657,15 @@ public final class UserDefinedBatteryDefinition {
             if (socDerivation != null) {
                 out.add(SOC_CHANNEL);
                 out.add(SOC_SOURCE_CHANNEL);
+            }
+            // Und seit P5c dasselbe für die Grenzen: rechnet der Schutzbaustein
+            // sie aus, dann LIEFERT diese Batterie sie - sie stehen nur nicht
+            // in der Zuordnung, weil sie niemand sendet. Ohne sie könnte die
+            // Speiser-Bindung (P6) genau die Kanäle nicht einspeisen, für die
+            // es diesen Baustein gibt, und der generierte Flow fiele bei der
+            // Aktivierung durch (er fordert sie als `measure:` an).
+            if (protection != null) {
+                out.addAll(protection.channels());
             }
             return List.copyOf(out);
         }
@@ -577,6 +712,17 @@ public final class UserDefinedBatteryDefinition {
     }
 
     /**
+     * Dieselbe Prüfung ohne den SCHUTZ-/GRENZBAUSTEIN (P5c) - der Weg, den jede
+     * Batterie ohne einen solchen Block geht.
+     */
+    public static Result validate(String transport, Broker broker, Endpoint endpoint, Auth auth,
+            List<Mapping> mappings, Integer publishIntervalS, SocDerivation soc,
+            Map<String, String> allowedChannels, Binding binding) {
+        return validate(transport, broker, endpoint, auth, mappings, publishIntervalS, soc,
+                allowedChannels, binding, null);
+    }
+
+    /**
      * Dieselbe Prüfung für BEIDE Ebene-1-Transporte (P5-HTTP).
      *
      * <p><b>Was sich zwischen ihnen unterscheidet und was nicht.</b> Alles
@@ -603,7 +749,7 @@ public final class UserDefinedBatteryDefinition {
      */
     public static Result validate(String transport, Broker broker, Endpoint endpoint, Auth auth,
             List<Mapping> mappings, Integer publishIntervalS, SocDerivation soc,
-            Map<String, String> allowedChannels, Binding binding) {
+            Map<String, String> allowedChannels, Binding binding, Protection protection) {
         List<String> errors = new ArrayList<>();
         String kind = transport == null || transport.isBlank() ? TRANSPORT_MQTT
                 : transport.trim().toLowerCase(Locale.ROOT);
@@ -613,7 +759,7 @@ public final class UserDefinedBatteryDefinition {
             // Broker abonnieren, den der Kunde nie genannt hat.
             errors.add("„" + transport + "“ ist keine bekannte Anschlussart für diese Batterie.");
             return new Result(List.copyOf(errors), null, broker, endpoint, auth, List.of(),
-                    DEFAULT_PUBLISH_INTERVAL_S, null, UNBOUND);
+                    DEFAULT_PUBLISH_INTERVAL_S, null, UNBOUND, null);
         }
         boolean http = TRANSPORT_HTTP.equals(kind);
         Auth checkedAuth = null;
@@ -653,10 +799,19 @@ public final class UserDefinedBatteryDefinition {
         }
 
         SocDerivation derivation = checkSoc(soc, taken, allowed, errors);
-        Binding bound = checkBinding(binding, taken, derivation != null, errors);
+        Protection guard = checkProtection(protection, taken, derivation, allowed, errors);
+        // Die Bindung sieht seit P5c AUCH die Kanäle des Schutzbausteins: eine
+        // Batterie, die nur Grenzen und Freigaben liefert, kann den
+        // Speicher-Knoten sehr wohl speisen - ihre Hülle ist genau das, was er
+        // von ihr braucht.
+        Set<String> supplied = new LinkedHashSet<>(taken);
+        if (guard != null) {
+            supplied.addAll(guard.channels());
+        }
+        Binding bound = checkBinding(binding, supplied, derivation != null, errors);
         return new Result(List.copyOf(errors), kind, http ? null : broker,
                 http ? endpoint : null, http ? checkedAuth : null, List.copyOf(out), interval,
-                derivation, bound);
+                derivation, bound, guard);
     }
 
     /**
@@ -1168,6 +1323,245 @@ public final class UserDefinedBatteryDefinition {
         String template = soc.template() == null || soc.template().isBlank() ? null
                 : soc.template().trim();
         return new SocDerivation(method, soc.preferDirect(), inputs, params, template, holdS);
+    }
+
+    /**
+     * Prüft den SCHUTZ-/GRENZBAUSTEIN (P5c).
+     *
+     * <p><b>Die Regeln, und warum es sie gibt:</b>
+     *
+     * <ul>
+     *   <li><b>Ein Baustein ohne Treppe UND ohne Riegel wird abgelehnt.</b> Er
+     *       prüfte nichts, veröffentlichte nichts und stünde trotzdem als
+     *       „Schutz" im Formular - eine Zusage ohne Wirkung ist schlimmer als
+     *       keine.</li>
+     *   <li><b>Ein Kanal hat genau EINEN Autor.</b> Wer {@code charge_limit_a}
+     *       schon aus seinem BMS ZUORDNET, bekommt ihn nicht zusätzlich
+     *       gerechnet: zwei Schreiber auf einem Kanal ergeben eine Historie, in
+     *       der die Zustellreihenfolge entscheidet, welche Grenze galt. Der
+     *       Kunde wählt - Zuordnung oder Baustein.</li>
+     *   <li><b>Eine Treppe braucht den LADESTAND.</b> Ohne Ableitung und ohne
+     *       zugeordneten {@code soc_pct} rechnet sie nie etwas aus; sie
+     *       anzunehmen hiesse, eine Grenze zu versprechen, die ausbleibt. Der
+     *       RIEGEL braucht ihn ausdrücklich NICHT - ein Hartstopp steht auf der
+     *       Zellspannung allein.</li>
+     *   <li><b>Ein Riegel braucht seine Zellspannung.</b> Wer den Lade-Riegel
+     *       setzt, muss {@code cell_max_mv} liefern, wer den Entlade-Riegel
+     *       setzt, {@code cell_min_mv} - dieselbe „kein Ergebnis ohne
+     *       Eingang"-Regel wie bei der SoC-Ableitung.</li>
+     *   <li><b>Die Freigabe liegt beim Laden UNTER dem Stopp</b> und beim
+     *       Entladen darüber. Andersherum wäre es keine Hysterese, sondern ein
+     *       Riegel, der sich im Moment des Zuschiebens selbst wieder öffnet.</li>
+     * </ul>
+     *
+     * @param mappedChannels die Kanäle, die die Zuordnung wirklich liefert
+     * @param soc die geprüfte SoC-Ableitung ({@code null} = es gibt keinen
+     *     Ladestand)
+     */
+    private static Protection checkProtection(Protection p, Set<String> mappedChannels,
+            SocDerivation soc, Map<String, String> allowed, List<String> errors) {
+        if (p == null) {
+            return null;
+        }
+        int before = errors.size();
+
+        ProtectionDirection charge = checkDirection(p.charge(), "Die Ladegrenze", errors);
+        ProtectionDirection discharge = checkDirection(p.discharge(), "Die Entladegrenze",
+                errors);
+        Hysteresis hysteresis = checkHysteresis(p.hysteresis(), errors);
+        Map<String, String> inputs = protectionInputs(p, allowed, errors);
+        double round = p.roundA() <= 0 ? DEFAULT_ROUND_A : p.roundA();
+        if (round <= 0 || round > MAX_ROUND_A) {
+            errors.add("Das Rundungsraster der Ströme muss größer als 0 und höchstens "
+                    + MAX_ROUND_A + " Ampere sein.");
+        }
+        int holdS = p.holdS() <= 0 ? DEFAULT_HOLD_S : p.holdS();
+        if (holdS < MIN_HOLD_S || holdS > MAX_HOLD_S) {
+            errors.add("Die Haltefrist des Schutzbausteins muss zwischen " + MIN_HOLD_S + " und "
+                    + MAX_HOLD_S + " Sekunden liegen.");
+        }
+        if (errors.size() != before || inputs == null) {
+            return null;
+        }
+
+        boolean hasCharge = hysteresis != null && hysteresis.chargeStopV() != null;
+        boolean hasDischarge = hysteresis != null && hysteresis.dischargeStopV() != null;
+        if (charge == null && discharge == null && !hasCharge && !hasDischarge) {
+            errors.add("Dieser Schutz prüft nichts. Tragen Sie eine Strom-Treppe ein oder "
+                    + "legen Sie eine Zellspannungs-Grenze fest.");
+            return null;
+        }
+
+        Protection checked = new Protection(charge, discharge, hysteresis, inputs, round, holdS,
+                p.template() == null || p.template().isBlank() ? null : p.template().trim());
+
+        // Ein Kanal hat genau EINEN Autor.
+        for (String channel : checked.channels()) {
+            if (mappedChannels.contains(channel)) {
+                errors.add("„" + channel + "“ wird schon aus Ihrer Quelle gelesen und kann "
+                        + "nicht zusätzlich berechnet werden. Entfernen Sie entweder die "
+                        + "Zuordnung oder diesen Teil des Schutzes - ein Messwert hat genau "
+                        + "eine Quelle.");
+                return null;
+            }
+        }
+
+        // Eine Treppe ohne Ladestand rechnet nie.
+        boolean hasSoc = soc != null || mappedChannels.contains(inputs.get("soc"));
+        if ((charge != null || discharge != null) && !hasSoc) {
+            errors.add("Die Strom-Treppe braucht einen Ladestand. Ordnen Sie „"
+                    + inputs.get("soc") + "“ zu oder lassen Sie ihn berechnen - eine Treppe "
+                    + "ohne Ladestand ergibt nie eine Grenze.");
+            return null;
+        }
+        if (hasCharge && !mappedChannels.contains(inputs.get("cell_max"))) {
+            errors.add("Die Lade-Abschaltung braucht die höchste Zellspannung („"
+                    + inputs.get("cell_max") + "“) - ohne sie kann VoltPilot sie nie auslösen.");
+            return null;
+        }
+        if (hasDischarge && !mappedChannels.contains(inputs.get("cell_min"))) {
+            errors.add("Die Entlade-Abschaltung braucht die niedrigste Zellspannung („"
+                    + inputs.get("cell_min") + "“) - ohne sie kann VoltPilot sie nie auslösen.");
+            return null;
+        }
+        return checked;
+    }
+
+    /**
+     * Eine Strom-Treppe: 1 bis {@value #MAX_STEPS} Stufen
+     * {@code [Ladestand in %, Strom in A]}, plus das Geräte-Maximum.
+     *
+     * <p>⚠ Anders als eine OCV-Kennlinie darf eine Treppe FALLEN (die Ladekurve
+     * des Kunden geht von 270 A auf 22 A) und ebenso STEIGEN (seine
+     * Entladekurve von 74 A auf 342 A). Es gibt hier deshalb bewusst KEINE
+     * Monotonie-Regel - verboten ist nur die doppelte Schwelle, die zweideutig
+     * wäre.
+     *
+     * <p>Öffentlich, weil {@code ProtectionProfileCatalog} die ausgelieferten
+     * VORLAGEN durch exakt dieselbe Prüfung schickt.
+     */
+    public static ProtectionDirection checkDirection(ProtectionDirection dir, String what,
+            List<String> errors) {
+        if (dir == null) {
+            return null;
+        }
+        List<double[]> raw = dir.steps();
+        if (raw == null || raw.size() < MIN_STEPS || raw.size() > MAX_STEPS) {
+            errors.add(what + " braucht " + MIN_STEPS + " bis " + MAX_STEPS + " Stufen.");
+            return null;
+        }
+        List<double[]> out = new ArrayList<>();
+        for (double[] step : raw) {
+            if (step == null || step.length < 2) {
+                errors.add(what + ": eine Stufe braucht Ladestand und Strom.");
+                return null;
+            }
+            double pct = step[0];
+            double amps = step[1];
+            if (!Double.isFinite(pct) || pct < 0 || pct > 100) {
+                errors.add(what + ": der Ladestand " + pct + " % liegt außerhalb von 0 bis 100.");
+                return null;
+            }
+            if (!Double.isFinite(amps) || amps < 0 || amps > MAX_CURRENT_A) {
+                errors.add(what + ": der Strom " + amps + " A liegt außerhalb von 0 bis "
+                        + MAX_CURRENT_A + " A.");
+                return null;
+            }
+            out.add(new double[] {pct, amps});
+        }
+        out.sort((a, b) -> Double.compare(a[0], b[0]));
+        for (int i = 1; i < out.size(); i++) {
+            if (out.get(i)[0] == out.get(i - 1)[0]) {
+                errors.add(what + ": der Ladestand " + out.get(i)[0]
+                        + " % steht zweimal in der Tabelle.");
+                return null;
+            }
+        }
+        double maxA = dir.maxA();
+        if (!Double.isFinite(maxA) || maxA < 0 || maxA > MAX_CURRENT_A) {
+            errors.add(what + " braucht ein Geräte-Maximum zwischen 0 und " + MAX_CURRENT_A
+                    + " A - ohne es wäre die Treppe nur die halbe Aussage.");
+            return null;
+        }
+        return new ProtectionDirection(List.copyOf(out), maxA);
+    }
+
+    /** Der Zellspannungs-Riegel; öffentlich aus demselben Grund wie oben. */
+    public static Hysteresis checkHysteresis(Hysteresis h, List<String> errors) {
+        if (h == null) {
+            return null;
+        }
+        Double cs = h.chargeStopV();
+        Double cr = h.chargeResumeV();
+        Double ds = h.dischargeStopV();
+        Double dr = h.dischargeResumeV();
+        if ((cs == null) != (cr == null)) {
+            errors.add("Die Lade-Abschaltung braucht BEIDE Spannungen: die, bei der sie "
+                    + "abschaltet, und die, bei der sie wieder freigibt.");
+            return null;
+        }
+        if ((ds == null) != (dr == null)) {
+            errors.add("Die Entlade-Abschaltung braucht BEIDE Spannungen: die, bei der sie "
+                    + "abschaltet, und die, bei der sie wieder freigibt.");
+            return null;
+        }
+        if (cs == null && ds == null) {
+            return null;
+        }
+        if (cs != null) {
+            if (!inCellRange(cs) || !inCellRange(cr)) {
+                errors.add("Die Lade-Abschaltung muss zwischen " + MIN_CELL_V + " und "
+                        + MAX_CELL_V + " V je Zelle liegen.");
+                return null;
+            }
+            if (!(cr < cs)) {
+                errors.add("Die Lade-Freigabe muss UNTER der Lade-Abschaltung liegen - sonst "
+                        + "gibt der Schutz im selben Moment wieder frei, in dem er abschaltet.");
+                return null;
+            }
+        }
+        if (ds != null) {
+            if (!inCellRange(ds) || !inCellRange(dr)) {
+                errors.add("Die Entlade-Abschaltung muss zwischen " + MIN_CELL_V + " und "
+                        + MAX_CELL_V + " V je Zelle liegen.");
+                return null;
+            }
+            if (!(dr > ds)) {
+                errors.add("Die Entlade-Freigabe muss ÜBER der Entlade-Abschaltung liegen - "
+                        + "sonst gibt der Schutz im selben Moment wieder frei, in dem er "
+                        + "abschaltet.");
+                return null;
+            }
+        }
+        return new Hysteresis(cs, cr, ds, dr);
+    }
+
+    private static boolean inCellRange(Double v) {
+        return v != null && Double.isFinite(v) && v >= MIN_CELL_V && v <= MAX_CELL_V;
+    }
+
+    /**
+     * Rolle → Kanal für den Schutzbaustein, vollständig gefüllt. Ein Kanal
+     * außerhalb des Typkatalogs wird VERWORFEN, nie geraten.
+     */
+    private static Map<String, String> protectionInputs(Protection p,
+            Map<String, String> allowed, List<String> errors) {
+        Map<String, String> raw = p.inputs() == null ? Map.of() : p.inputs();
+        Map<String, String> out = new LinkedHashMap<>();
+        boolean ok = true;
+        for (Map.Entry<String, String> role : new java.util.TreeMap<>(PROTECTION_INPUT_DEFAULTS)
+                .entrySet()) {
+            String named = raw.get(role.getKey());
+            String channel = named == null || named.isBlank() ? role.getValue() : named.trim();
+            if (!allowed.containsKey(channel)) {
+                errors.add("Der Eingang „" + role.getKey() + "“ des Schutzes zeigt auf „"
+                        + channel + "“ - das ist kein Batterie-Messwert.");
+                ok = false;
+                continue;
+            }
+            out.put(role.getKey(), channel);
+        }
+        return ok ? Map.copyOf(out) : null;
     }
 
     /** Die leeren Rechenwerte - was {@code direct} braucht, und sonst nichts. */

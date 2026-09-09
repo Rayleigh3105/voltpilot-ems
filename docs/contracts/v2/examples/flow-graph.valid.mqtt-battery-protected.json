@@ -1,0 +1,404 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "c2b3d4e5-6f70-4182-9345-6789abcdef01",
+  "flow_version": 1,
+  "name": "Batterie: DIYBMS 176s mit Schutzgrenzen",
+  "description": "Derselbe generierte Batterie-Flow wie flow-graph.valid.mqtt-battery.json, um den SCHUTZ-/GRENZBAUSTEIN erweitert (P5c, Konzept vp-deye-diybms-luecke-l5 §3.2b 'OPTIONAL - Schutz-/Grenzbaustein' + §3.3). Die Kette ist LINEAR: Takt -> vp.mqtt.read -> vp.soc.derive -> vp.bms.limit. Jede Stufe reicht weiter, was sie weiss - der Ableiter gibt die Rohkanaele samt dem eben gerechneten Ladestand an den Schutzbaustein, der daraus die Strom-Treppe (letzter Stuetzpunkt mit Schwelle <= SoC gewinnt, geklemmt auf das Geraete-Maximum) und den Zellspannungs-Riegel mit Hysterese ableitet. Er veroeffentlicht, WAS DIE BATTERIE ZULAESST: charge_limit_a / discharge_limit_a / charge_allowed / discharge_allowed. Die Treppen und die vier Schwellen sind verbatim der Kundenflow (docs/contracts/v2/limit-protection-vectors.json). ⚠ Der Baustein SCHREIBT AUF KEIN GERAET: die Grenzen sind Anzeige und Waechter-Kappe, ein echter Schreibpfad entsteht erst hinter dem Zertifizierungs-Gate. Deshalb fehlen hier die beiden Freigabe-ZUORDNUNGEN des Geschwister-Fixtures - ein Kanal hat genau EINEN Autor.",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "active",
+  "origin": {
+    "kind": "mqtt-device",
+    "point_id": "8c4d0e32-9f50-4b67-ad18-1234567890bc",
+    "definition_version": 1
+  },
+  "nodes": [
+    {
+      "id": "mqtt",
+      "type": "vp.mqtt.read",
+      "type_version": "1.0.0",
+      "label": "DIYBMS 176s",
+      "parameters": {
+        "host": "192.168.40.20",
+        "port": 1883,
+        "entity_id": "8c4d0e32-9f50-4b67-ad18-1234567890bc",
+        "mappings": [
+          {
+            "channel": "cell_min_mv",
+            "topic": "emon/diybms/+/+",
+            "path": "voltage",
+            "aggregate": "min",
+            "value_type": "number",
+            "scale": 1000,
+            "offset": 0,
+            "stale_s": 300
+          },
+          {
+            "channel": "cell_max_mv",
+            "topic": "emon/diybms/+/+",
+            "path": "voltage",
+            "aggregate": "max",
+            "value_type": "number",
+            "scale": 1000,
+            "offset": 0,
+            "stale_s": 300
+          },
+          {
+            "channel": "temp_max_c",
+            "topic": "emon/diybms/+/+",
+            "path": "external_temp",
+            "aggregate": "max",
+            "value_type": "number",
+            "scale": 1,
+            "offset": 0,
+            "sentinel": -40,
+            "stale_s": 300
+          },
+          {
+            "channel": "voltage_v",
+            "topic": "emon/diybms/pack",
+            "path": "voltage",
+            "aggregate": "last",
+            "value_type": "number",
+            "scale": 1,
+            "offset": 0,
+            "stale_s": 300
+          }
+        ]
+      }
+    },
+    {
+      "id": "soc",
+      "type": "vp.soc.derive",
+      "type_version": "1.0.0",
+      "label": "Ladestand",
+      "parameters": {
+        "entity_id": "8c4d0e32-9f50-4b67-ad18-1234567890bc",
+        "method": "ocv_curve",
+        "prefer_direct": true,
+        "hold_s": 900,
+        "inputs": {
+          "cell_max": "cell_max_mv",
+          "cell_min": "cell_min_mv",
+          "current": "current_a",
+          "power": "power_kw",
+          "soc": "soc_pct",
+          "voltage": "voltage_v"
+        },
+        "params": {
+          "curve_charge": [
+            [
+              3.26,
+              0
+            ],
+            [
+              3.38,
+              5
+            ],
+            [
+              3.43,
+              10
+            ],
+            [
+              3.49,
+              15
+            ],
+            [
+              3.54,
+              20
+            ],
+            [
+              3.58,
+              25
+            ],
+            [
+              3.6,
+              30
+            ],
+            [
+              3.62,
+              35
+            ],
+            [
+              3.65,
+              40
+            ],
+            [
+              3.67,
+              45
+            ],
+            [
+              3.71,
+              50
+            ],
+            [
+              3.77,
+              55
+            ],
+            [
+              3.83,
+              60
+            ],
+            [
+              3.88,
+              65
+            ],
+            [
+              3.92,
+              70
+            ],
+            [
+              3.96,
+              75
+            ],
+            [
+              4.01,
+              80
+            ],
+            [
+              4.06,
+              85
+            ],
+            [
+              4.09,
+              90
+            ],
+            [
+              4.12,
+              95
+            ],
+            [
+              4.18,
+              100
+            ]
+          ],
+          "curve_discharge": [
+            [
+              3.26,
+              0
+            ],
+            [
+              3.37,
+              5
+            ],
+            [
+              3.42,
+              10
+            ],
+            [
+              3.47,
+              15
+            ],
+            [
+              3.52,
+              20
+            ],
+            [
+              3.56,
+              25
+            ],
+            [
+              3.59,
+              30
+            ],
+            [
+              3.61,
+              35
+            ],
+            [
+              3.64,
+              40
+            ],
+            [
+              3.67,
+              45
+            ],
+            [
+              3.71,
+              50
+            ],
+            [
+              3.76,
+              55
+            ],
+            [
+              3.82,
+              60
+            ],
+            [
+              3.87,
+              65
+            ],
+            [
+              3.91,
+              70
+            ],
+            [
+              3.95,
+              75
+            ],
+            [
+              4.0,
+              80
+            ],
+            [
+              4.06,
+              85
+            ],
+            [
+              4.09,
+              90
+            ],
+            [
+              4.11,
+              95
+            ],
+            [
+              4.18,
+              100
+            ]
+          ],
+          "cells_in_series": 176,
+          "conservative_min": true,
+          "round_pct": 0.1
+        }
+      }
+    },
+    {
+      "id": "limit",
+      "type": "vp.bms.limit",
+      "type_version": "1.0.0",
+      "label": "Schutzgrenzen",
+      "parameters": {
+        "entity_id": "8c4d0e32-9f50-4b67-ad18-1234567890bc",
+        "inputs": {
+          "cell_max": "cell_max_mv",
+          "cell_min": "cell_min_mv",
+          "soc": "soc_pct"
+        },
+        "charge": {
+          "steps": [
+            [
+              5,
+              270
+            ],
+            [
+              10,
+              236
+            ],
+            [
+              15,
+              236
+            ],
+            [
+              20,
+              236
+            ],
+            [
+              35,
+              202
+            ],
+            [
+              50,
+              135
+            ],
+            [
+              65,
+              118
+            ],
+            [
+              80,
+              43
+            ],
+            [
+              85,
+              22
+            ]
+          ],
+          "max_a": 40
+        },
+        "discharge": {
+          "steps": [
+            [
+              5,
+              74
+            ],
+            [
+              10,
+              181
+            ],
+            [
+              15,
+              342
+            ],
+            [
+              20,
+              342
+            ],
+            [
+              35,
+              342
+            ],
+            [
+              50,
+              342
+            ],
+            [
+              65,
+              342
+            ],
+            [
+              80,
+              342
+            ],
+            [
+              85,
+              342
+            ]
+          ],
+          "max_a": 40
+        },
+        "hysteresis": {
+          "charge_stop_v": 4.06,
+          "charge_resume_v": 4.0,
+          "discharge_stop_v": 3.4,
+          "discharge_resume_v": 3.5
+        },
+        "round_a": 1,
+        "hold_s": 900
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "mqtt-soc",
+      "from": {
+        "node": "mqtt",
+        "port": "value"
+      },
+      "to": {
+        "node": "soc",
+        "port": "channels"
+      }
+    },
+    {
+      "id": "soc-limit",
+      "from": {
+        "node": "soc",
+        "port": "value"
+      },
+      "to": {
+        "node": "limit",
+        "port": "channels"
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "id": "takt",
+      "kind": "interval",
+      "every_s": 15
+    }
+  ]
+}

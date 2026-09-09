@@ -98,6 +98,7 @@ public class UserDefinedBatteryService {
     private final ComponentDefinitionRepository definitions;
     private final ComponentService components;
     private final SocCurveTemplateCatalog curves;
+    private final ProtectionProfileCatalog profiles;
     private final UserDefinedBatteryFlowCompiler compiler;
     private final FlowRepository flows;
     private final FlowActivationService deployments;
@@ -108,8 +109,8 @@ public class UserDefinedBatteryService {
     public UserDefinedBatteryService(SiteRepository sites, EntityRegistryRepository entityRepo,
             EntityRegistryService entityRegistry, EntityTypeCatalog typeCatalog,
             ComponentDefinitionRepository definitions, ComponentService components,
-            SocCurveTemplateCatalog curves, UserDefinedBatteryFlowCompiler compiler,
-            FlowRepository flows,
+            SocCurveTemplateCatalog curves, ProtectionProfileCatalog profiles,
+            UserDefinedBatteryFlowCompiler compiler, FlowRepository flows,
             FlowActivationService deployments, ObjectProvider<FlowCompiler> flowc,
             TopologyRepository topology, ObjectMapper mapper) {
         this.sites = sites;
@@ -119,6 +120,7 @@ public class UserDefinedBatteryService {
         this.definitions = definitions;
         this.components = components;
         this.curves = curves;
+        this.profiles = profiles;
         this.compiler = compiler;
         this.flows = flows;
         this.deployments = deployments;
@@ -264,7 +266,7 @@ public class UserDefinedBatteryService {
         Result def = UserDefinedBatteryDefinition.validate(transport(req), broker(req),
                 endpoint(req), auth(req, existingConnectionJson), mappings(req),
                 req == null ? null : req.publishIntervalS(), soc(req), allowedChannels(),
-                binding(req));
+                binding(req), protection(req, existingConnectionJson));
         if (!def.ok()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     String.join(" ", def.errors()));
@@ -683,6 +685,12 @@ public class UserDefinedBatteryService {
         if (soc != null) {
             root.set("soc_derivation", socJson(soc));
         }
+        // Der SCHUTZ-/GRENZBAUSTEIN (P5c) reist nur mit, wenn es ihn gibt: er
+        // ist ausdrücklich OPTIONAL, und ein leerer Block wäre ein Schutz, den
+        // das Bearbeiten-Formular als vorhanden läse.
+        if (def.protection() != null) {
+            root.set("protection", protectionJson(def.protection()));
+        }
         // Die SPEISER-BINDUNG (P6) reist immer mit - auch als „unbound". Sie
         // ist eine ANTWORT des Kunden, und ein fehlender Block hiesse „nicht
         // gefragt"; das Bearbeiten-Formular könnte die beiden dann nicht
@@ -725,6 +733,15 @@ public class UserDefinedBatteryService {
                     allowed.getOrDefault(UserDefinedBatteryDefinition.SOC_CHANNEL, "%"));
             out.put(UserDefinedBatteryDefinition.SOC_SOURCE_CHANNEL,
                     allowed.getOrDefault(UserDefinedBatteryDefinition.SOC_SOURCE_CHANNEL, ""));
+        }
+        // Dasselbe für die Grenzen (P5c): rechnet der Schutzbaustein sie aus,
+        // dann LIEFERT diese Batterie sie - der generierte Flow fordert sie als
+        // measure:-Fähigkeit an, und ohne sie fiele er bei der Aktivierung
+        // durch. Nur die Kanäle, über die der Baustein wirklich etwas sagt.
+        if (def.protection() != null) {
+            for (String channel : def.protection().channels()) {
+                out.put(channel, allowed.getOrDefault(channel, ""));
+            }
         }
         ObjectNode caps = mapper.createObjectNode();
         ArrayNode measure = caps.putArray("measure");
@@ -815,6 +832,52 @@ public class UserDefinedBatteryService {
         return root;
     }
 
+    /**
+     * Die gespeicherte Form des SCHUTZBAUSTEINS - VOLLSTÄNDIG ausgeschrieben.
+     *
+     * <p>Sie entsteht aus DERSELBEN geprüften {@code Protection} wie der
+     * generierte Flow; eine zweite Ableitung der Felder wäre eine zweite
+     * Wahrheit darüber, was die Batterie zulässt.
+     */
+    private ObjectNode protectionJson(UserDefinedBatteryDefinition.Protection p) {
+        ObjectNode root = mapper.createObjectNode();
+        if (p.template() != null) {
+            root.put("template", p.template());
+        }
+        ObjectNode inputs = root.putObject("inputs");
+        new java.util.TreeMap<>(p.inputs()).forEach(inputs::put);
+        putSteps(root, "charge", p.charge());
+        putSteps(root, "discharge", p.discharge());
+        ObjectNode h = root.putObject("hysteresis");
+        UserDefinedBatteryDefinition.Hysteresis hy = p.hysteresis();
+        if (hy != null && hy.chargeStopV() != null) {
+            h.put("charge_stop_v", hy.chargeStopV());
+            h.put("charge_resume_v", hy.chargeResumeV());
+        }
+        if (hy != null && hy.dischargeStopV() != null) {
+            h.put("discharge_stop_v", hy.dischargeStopV());
+            h.put("discharge_resume_v", hy.dischargeResumeV());
+        }
+        root.put("round_a", p.roundA());
+        root.put("hold_s", p.holdS());
+        return root;
+    }
+
+    private static void putSteps(ObjectNode root, String field,
+            UserDefinedBatteryDefinition.ProtectionDirection dir) {
+        if (dir == null) {
+            return;
+        }
+        ObjectNode out = root.putObject(field);
+        ArrayNode steps = out.putArray("steps");
+        for (double[] step : dir.steps()) {
+            ArrayNode pair = steps.addArray();
+            pair.add(step[0]);
+            pair.add(step[1]);
+        }
+        out.put("max_a", dir.maxA());
+    }
+
     private static void putCurve(ObjectNode params, String field, List<double[]> curve) {
         if (curve == null || curve.isEmpty()) {
             return;
@@ -898,6 +961,152 @@ public class UserDefinedBatteryService {
         return new SocDerivation(s.method(), s.preferDirect() == null || s.preferDirect(),
                 inputs, params, templateId,
                 s.holdS() == null ? UserDefinedBatteryDefinition.DEFAULT_HOLD_S : s.holdS());
+    }
+
+    /**
+     * Die Anfrage-Form des SCHUTZBAUSTEINS in die geprüfte Form - inklusive der
+     * VORLAGE (P5c).
+     *
+     * <p>Wie bei der Kennlinie FÜLLT eine Vorlage nur, was leer ist: eigene
+     * Treppen und Schwellen gewinnen immer. Ein unbekannter Vorlagen-Name wird
+     * BENANNT abgelehnt statt stillschweigend ignoriert - sonst hätte der Kunde
+     * einen Schutz gewählt und keinen bekommen, und genau das ist bei einer
+     * SCHUTZgrenze die gefährlichste Art zu scheitern.
+     */
+    private UserDefinedBatteryDefinition.Protection protection(
+            SaveUserDefinedBatteryRequest req, String existingConnectionJson) {
+        SaveUserDefinedBatteryRequest.ProtectionRequest p = req == null ? null : req.protection();
+        if (p == null) {
+            // ⚠ FEHLT der Block, bleibt der gespeicherte Schutz STEHEN - anders
+            // als die Bindung (P6), die immer mitreist. Der Grund ist keine
+            // Inkonsequenz, sondern die Natur der Sache: dies ist eine
+            // SCHUTZgrenze. Ein Formular, das den Block noch nicht kennt, darf
+            // sie nicht stillschweigend entfernen - eine verschwundene
+            // Abschaltspannung merkt niemand, bis sie gebraucht wird. Entfernt
+            // wird sie nur AUSDRÜCKLICH (remove = true).
+            return storedProtection(existingConnectionJson);
+        }
+        if (Boolean.TRUE.equals(p.remove())) {
+            return null;
+        }
+        UserDefinedBatteryDefinition.ProtectionDirection charge = direction(p.charge());
+        UserDefinedBatteryDefinition.ProtectionDirection discharge = direction(p.discharge());
+        UserDefinedBatteryDefinition.Hysteresis hysteresis = hysteresis(p.hysteresis());
+        Double roundA = p.roundA();
+
+        String templateId = p.template() == null || p.template().isBlank() ? null
+                : p.template().trim();
+        if (templateId != null) {
+            ProtectionProfileCatalog.Profile prof = profiles.find(templateId);
+            if (prof == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Diese Schutz-Vorlage kennen wir nicht.");
+            }
+            if (charge == null) {
+                charge = prof.charge();
+            }
+            if (discharge == null) {
+                discharge = prof.discharge();
+            }
+            if (hysteresis == null) {
+                hysteresis = prof.hysteresis();
+            }
+            if (roundA == null) {
+                roundA = prof.roundA();
+            }
+        }
+
+        Map<String, String> inputs = new LinkedHashMap<>();
+        SaveUserDefinedBatteryRequest.ProtectionInputsRequest in = p.inputs();
+        if (in != null) {
+            putInput(inputs, "soc", in.soc());
+            putInput(inputs, "cell_min", in.cellMin());
+            putInput(inputs, "cell_max", in.cellMax());
+        }
+        return new UserDefinedBatteryDefinition.Protection(charge, discharge, hysteresis, inputs,
+                roundA == null ? UserDefinedBatteryDefinition.DEFAULT_ROUND_A : roundA,
+                p.holdS() == null ? UserDefinedBatteryDefinition.DEFAULT_HOLD_S : p.holdS(),
+                templateId);
+    }
+
+    /**
+     * Der GESPEICHERTE Schutzbaustein aus {@code connection_json}, zurück in
+     * die Anfrage-Form.
+     *
+     * <p>Er läuft danach durch dieselbe Prüfung wie ein neu eingetragener - was
+     * einmal gültig war, ist es wieder, und was durch eine geänderte Regel
+     * ungültig geworden ist, fällt ehrlich auf statt still weiterzuleben.
+     */
+    private UserDefinedBatteryDefinition.Protection storedProtection(String connectionJson) {
+        if (connectionJson == null || connectionJson.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode p = mapper.readTree(connectionJson).path("protection");
+            if (p.isMissingNode() || p.isNull()) {
+                return null;
+            }
+            Map<String, String> inputs = new LinkedHashMap<>();
+            JsonNode in = p.path("inputs");
+            in.fieldNames().forEachRemaining(role -> inputs.put(role, in.path(role).asText()));
+            return new UserDefinedBatteryDefinition.Protection(
+                    storedDirection(p.path("charge")), storedDirection(p.path("discharge")),
+                    storedHysteresis(p.path("hysteresis")), inputs,
+                    p.path("round_a").asDouble(UserDefinedBatteryDefinition.DEFAULT_ROUND_A),
+                    p.path("hold_s").asInt(UserDefinedBatteryDefinition.DEFAULT_HOLD_S),
+                    p.hasNonNull("template") ? p.get("template").asText() : null);
+        } catch (Exception e) {
+            // Ein unlesbarer Block ist kein Grund, eine Schutzgrenze zu ERFINDEN
+            // - die Batterie hat dann eben keine, und das steht so im Ergebnis.
+            return null;
+        }
+    }
+
+    private static UserDefinedBatteryDefinition.ProtectionDirection storedDirection(JsonNode n) {
+        if (n == null || n.isMissingNode() || n.isNull()) {
+            return null;
+        }
+        List<double[]> steps = new java.util.ArrayList<>();
+        for (JsonNode s : n.path("steps")) {
+            steps.add(new double[] {s.get(0).asDouble(), s.get(1).asDouble()});
+        }
+        return new UserDefinedBatteryDefinition.ProtectionDirection(steps,
+                n.path("max_a").asDouble(Double.NaN));
+    }
+
+    private static UserDefinedBatteryDefinition.Hysteresis storedHysteresis(JsonNode n) {
+        if (n == null || n.isMissingNode() || n.isNull() || n.isEmpty()) {
+            return null;
+        }
+        return new UserDefinedBatteryDefinition.Hysteresis(
+                n.hasNonNull("charge_stop_v") ? n.get("charge_stop_v").asDouble() : null,
+                n.hasNonNull("charge_resume_v") ? n.get("charge_resume_v").asDouble() : null,
+                n.hasNonNull("discharge_stop_v") ? n.get("discharge_stop_v").asDouble() : null,
+                n.hasNonNull("discharge_resume_v") ? n.get("discharge_resume_v").asDouble()
+                        : null);
+    }
+
+    /** Eine Strom-Treppe aus der Anfrage; ein unvollständiges Paar bleibt drin. */
+    private static UserDefinedBatteryDefinition.ProtectionDirection direction(
+            SaveUserDefinedBatteryRequest.DirectionRequest raw) {
+        if (raw == null || raw.steps() == null) {
+            return null;
+        }
+        return new UserDefinedBatteryDefinition.ProtectionDirection(pairs(raw.steps()),
+                raw.maxA() == null ? Double.NaN : raw.maxA());
+    }
+
+    private static UserDefinedBatteryDefinition.Hysteresis hysteresis(
+            SaveUserDefinedBatteryRequest.HysteresisRequest raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw.chargeStopV() == null && raw.chargeResumeV() == null
+                && raw.dischargeStopV() == null && raw.dischargeResumeV() == null) {
+            return null;
+        }
+        return new UserDefinedBatteryDefinition.Hysteresis(raw.chargeStopV(), raw.chargeResumeV(),
+                raw.dischargeStopV(), raw.dischargeResumeV());
     }
 
     private static void putInput(Map<String, String> out, String role, String channel) {

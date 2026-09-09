@@ -1,0 +1,130 @@
+{
+  "_comment": [
+    "Die SCHUTZ-VORLAGEN des Grenzbausteins (P5c, Konzept vp-deye-diybms-luecke-l5",
+    "§3.2b 'OPTIONAL - Schutz-/Grenzbaustein' und §3.3, Bauplan-Paket P5c).",
+    "",
+    "Eine Vorlage ist ein DATENSATZ, kein Code: sie fuellt die Strom-Treppen und",
+    "die vier Zellspannungs-Schwellen einer protection vor, mehr nicht. Der",
+    "Baustein selbst bleibt generisch und vollstaendig konfigurierbar - wer eigene",
+    "Werte hat, traegt sie ein und braucht keine Vorlage.",
+    "",
+    "⚠ WARUM HIER NUR EINE VORLAGE STEHT - derselbe Grund wie bei den",
+    "OCV-Kennlinien nebenan (soccurves/catalog.json): eine Schutzgrenze ist eine",
+    "Aussage ueber EINE bestimmte Zelle an EINEM bestimmten Geraet. Die Tabelle",
+    "unten ist byte-verbatim der Node-RED-Flow des Kunden vom 09.09.2026",
+    "(docs/contracts/v2/limit-protection-vectors.json traegt dieselben Zahlen, und",
+    "ProtectionProfileTest beweist die Gleichheit). Eine 'LiFePO4 generisch'-",
+    "Vorlage haette VoltPilot ERFINDEN muessen - und ein erfundener Hartstopp ist",
+    "keine Vorlage, sondern eine Abschaltung an der falschen Spannung.",
+    "",
+    "⚠ CHEMIE-WARNUNG: der Pack des Kunden ist NMC/NCA (Zellfenster 3,26-4,18 V).",
+    "An einer LiFePO4-Zelle waeren 3,40 V kein Entlade-Ende, sondern die Mitte -",
+    "deshalb traegt jede Vorlage ihre 'chemistry' sichtbar mit.",
+    "",
+    "⚠ Diese Grenzen werden NICHT an ein Geraet geschrieben. Sie werden berechnet,",
+    "als Messkanaele gefuehrt und wirken als Kappe des Waechters auf der Box;",
+    "Geraete-Stromgrenzen zu schreiben bleibt einem zertifizierten Steuerpfad",
+    "vorbehalten (vp-deye-bench-cert / hybrid-control-p2)."
+  ],
+  "schema_version": "1.0",
+  "profiles": [
+    {
+      "id": "diybms-176s-deye-hp3",
+      "label": "DIYBMS 176s an Deye HP3 (Kundenwerte, 09.09.2026)",
+      "description": "Die Strom-Treppen und Zellspannungs-Riegel, die der Kunde heute in seinem eigenen Node-RED faehrt. Die Geraete-Maxima sind bewusst 40 A, obwohl der Deye HP3 50 A koennte - der Kunde faehrt so.",
+      "chemistry": "nmc",
+      "cells_in_series": 176,
+      "source": "Kunden-Node-RED, Tab 'BMS -> (Ent-)Ladestromlimit 176s', 09.09.2026",
+      "round_a": 1,
+      "charge": {
+        "max_a": 40,
+        "max_a_comment": "Deye HP3 max 50 A - der Kunde klemmt auf 40 A.",
+        "steps": [
+          [
+            5,
+            270
+          ],
+          [
+            10,
+            236
+          ],
+          [
+            15,
+            236
+          ],
+          [
+            20,
+            236
+          ],
+          [
+            35,
+            202
+          ],
+          [
+            50,
+            135
+          ],
+          [
+            65,
+            118
+          ],
+          [
+            80,
+            43
+          ],
+          [
+            85,
+            22
+          ]
+        ]
+      },
+      "discharge": {
+        "max_a": 40,
+        "steps": [
+          [
+            5,
+            74
+          ],
+          [
+            10,
+            181
+          ],
+          [
+            15,
+            342
+          ],
+          [
+            20,
+            342
+          ],
+          [
+            35,
+            342
+          ],
+          [
+            50,
+            342
+          ],
+          [
+            65,
+            342
+          ],
+          [
+            80,
+            342
+          ],
+          [
+            85,
+            342
+          ]
+        ]
+      },
+      "hysteresis": {
+        "charge_stop_v": 4.06,
+        "charge_resume_v": 4.0,
+        "discharge_stop_v": 3.4,
+        "discharge_resume_v": 3.5
+      }
+    }
+  ]
+}

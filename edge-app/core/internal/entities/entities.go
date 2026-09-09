@@ -689,7 +689,42 @@ func tightenLimits(a, b guards.Limits) guards.Limits {
 		SocMinPct:       math.Max(a.SocMinPct, b.SocMinPct),
 		SocMaxPct:       math.Min(a.SocMaxPct, b.SocMaxPct),
 		SolarOnlyCharge: a.SolarOnlyCharge || b.SolarOnlyCharge,
+		// The BMS envelope (P5c) rides through the tightening like every
+		// other bound. The registry side never carries one - it is a LIVE
+		// statement of the pack, not stored configuration - so in practice
+		// exactly one side has it; two would compose the same way as the
+		// numbers above.
+		Bms: tightenBms(a.Bms, b.Bms),
 	}
+}
+
+// tightenBms composes two BMS envelopes into the more restrictive one. nil on
+// a side means "said nothing" and never restricts.
+func tightenBms(a, b *guards.BmsEnvelope) *guards.BmsEnvelope {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	return &guards.BmsEnvelope{
+		ChargeKw:         minKnown(a.ChargeKw, b.ChargeKw),
+		DischargeKw:      minKnown(a.DischargeKw, b.DischargeKw),
+		ChargeBlocked:    a.ChargeBlocked || b.ChargeBlocked,
+		DischargeBlocked: a.DischargeBlocked || b.DischargeBlocked,
+	}
+}
+
+// minKnown is math.Min with NaN meaning "no statement" instead of poisoning
+// the result: an absent limit must not silently erase a present one.
+func minKnown(a, b float64) float64 {
+	if math.IsNaN(a) {
+		return b
+	}
+	if math.IsNaN(b) {
+		return a
+	}
+	return math.Min(a, b)
 }
 
 // clampLimitKw keeps a generation cap non-negative and within the nameplate.

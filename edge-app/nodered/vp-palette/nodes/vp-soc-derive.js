@@ -229,7 +229,24 @@ module.exports = function (RED) {
         shape: 'dot',
         text: fmt(result.soc_pct) + ' % · ' + label(result.source),
       });
-      send({ payload: out, topic: entity, soc_source: result.source });
+      // ⚠ Der AUSGANG reicht weiter, was der Strang bis hier WEISS: die
+      // Kanaele der Ebene 1 samt dem eben abgeleiteten Ladestand (der
+      // abgeleitete Wert steht zuletzt und gewinnt deshalb ueber einen
+      // gleichnamigen Rohwert - er IST die Antwort dieses Knotens). Die
+      // TELEMETRIE oben bleibt davon unberuehrt: sie meldet weiterhin genau
+      // die zwei Kanaele, die dieser Knoten verantwortet.
+      //
+      // Der Grund ist der Schutzbaustein dahinter (P5c): er braucht den
+      // Ladestand fuer die Strom-Treppe UND die Zellspannungen fuer den
+      // Riegel. Ohne diese Weitergabe haette er zwei Kanten und muesste sich
+      // aus zwei Nachrichten ein Bild zusammensetzen - zwei Nachrichten, deren
+      // Reihenfolge nichts garantiert. So bleibt der Strang eine Kette, und
+      // jede Stufe reicht weiter, was sie weiss.
+      send({
+        payload: Object.assign({}, channels, out),
+        topic: entity,
+        soc_source: result.source,
+      });
       done();
     });
   }
