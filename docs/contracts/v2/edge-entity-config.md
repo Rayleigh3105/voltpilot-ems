@@ -177,6 +177,7 @@ Marke „dieses Gerät wird von seinem eigenen generierten Flow gelesen":
 |---|---|---|
 | `modbus_baukasten` | `modbus-generic` / `modbus-load` | ein generierter Flow mit je Kanal einem `vp.modbus.read` (Einheitsmodell Stufe 3/4) |
 | `mqtt_local` | `user-defined-battery` | ein generierter Flow mit GENAU EINEM `vp.mqtt.read`, der die ganze Feld-Zuordnung trägt (P5 Ebene 1, `vp-deye-diybms-luecke-l5` §3.2b) — seit P5b zusätzlich EIN `vp.soc.derive` dahinter, wenn die Batterie einen Ladestand hat |
+| `http_local` | `user-defined-battery` | dasselbe über eine HTTP/JSON-Auskunft im Heimnetz: EIN `vp.http.read` mit den Wertepfaden (P5-HTTP), dahinter derselbe `vp.soc.derive`. ⚠ EINZIGER Fall, in dem der `driver.connection`-Block der Box wirklich etwas liefert, das sie braucht: `auth_secret`, das Geheimnis des Endpunkts. Es reist NUR hier — nie im Flow-Dokument, das über die Portal-API lesbar ist. |
 
 Der Applier der Box ÜBERSPRINGT beide, bevor er nach einer Marke fragt
 (`componentapply.isSelfRead`) — und dieser Sprung ist tragend, nicht kosmetisch: `Derive` ist

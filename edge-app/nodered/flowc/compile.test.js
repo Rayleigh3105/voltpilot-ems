@@ -37,7 +37,7 @@ function assertPinned(artifact, pinName) {
 // (and would break the "no user code paths" isolation guarantee).
 const WHITELISTED_NR_TYPES = new Set([
   'tab', 'vp-entity-read', 'vp-feed', 'vp-desired', 'vp-notify', 'vp-modbus-read',
-  'vp-consumer-policy', 'vp-mqtt-read', 'vp-soc-derive', 'function', 'inject',
+  'vp-consumer-policy', 'vp-mqtt-read', 'vp-http-read', 'vp-soc-derive', 'function', 'inject',
 ]);
 
 test('pv-surplus-heatrod fixture compiles deterministically', () => {
@@ -536,6 +536,137 @@ test('mqtt-battery validator rules: host, mapping shape, duplicate channel', () 
     'two mappings onto ONE channel');
   assert.ok(findRule(mutate((g) => { P(g).mappings[0].stale_s = 1; }), 'V-4'),
     'stale_s below the floor');
+});
+
+// --- P5 Ebene 1 „HTTP/JSON": der ZWEITE Lesetyp desselben Anschlusses -------
+
+test('http-battery fixture compiles to ONE data-only vp-http-read node', () => {
+  const g = fixture('flow-graph.valid.http-battery.json');
+  assert.deepStrictEqual(validate(g), [], 'the committed fixture validates clean');
+  const a = compile(g);
+
+  // EIN Knoten je Geraet, nie einer je Kanal: EIN Endpunkt, ein GET je Takt,
+  // alle Zuordnungen aus DERSELBEN Antwort.
+  const nodes = a.bundle.nodered_flows.filter((n) => n.type === 'vp-http-read');
+  assert.strictEqual(nodes.length, 1);
+  const n = nodes[0];
+  assert.strictEqual(n.host, '192.168.40.21');
+  assert.strictEqual(n.port, 80);
+  assert.strictEqual(n.path, '/ha');
+  assert.strictEqual(n.tls, false);
+  assert.strictEqual(n.timeout_ms, 5000);
+  assert.strictEqual(n.entity, '9d5e1f34-2a6b-4c78-8e90-fedcba987654');
+  assert.strictEqual(n.func, undefined, 'data-only config - never generated code');
+  assert.strictEqual(n.mappings.length, 9);
+
+  // ⚠ DIE Kernregel dieses Lesetyps: die ART der Anmeldung reist, der WERT nie.
+  // Ein Flow-Dokument ist ueber die Portal-API lesbar - ein Kennwort darin
+  // waere ein Kennwort im Browser.
+  assert.deepStrictEqual(n.auth, { mode: 'header', header: 'ApiKey' });
+  assert.strictEqual(JSON.stringify(a.bundle).includes('auth_secret'), false);
+
+  // Der Zell-Aggregat-Fall, HTTP-seitig: ein PLATZHALTER im Wertepfad ist das
+  // Gegenstueck zum Topic-Filter `emon/diybms/+/+`.
+  const temp = n.mappings.find((m) => m.channel === 'temp_max_c');
+  assert.strictEqual(temp.path, 'modules.*.exttemp');
+  assert.strictEqual(temp.aggregate, 'max');
+  assert.strictEqual(temp.sentinel, -40);
+
+  // Jede Vorgabe steht AUSGESCHRIEBEN im Artefakt - danach raet die Box nicht.
+  // stale_s gehoert bewusst NICHT dazu: eine HTTP-Antwort ist EIN Zeitpunkt.
+  for (const m of n.mappings) {
+    assert.ok(['last', 'min', 'max', 'sum', 'avg', 'count'].includes(m.aggregate));
+    assert.ok(['number', 'bool'].includes(m.value_type));
+    assert.strictEqual(typeof m.scale, 'number');
+    assert.strictEqual(typeof m.offset, 'number');
+    assert.strictEqual(m.stale_s, undefined);
+  }
+
+  // Der SoC-Ableiter (P5b) haengt an der Kante DIESES Knotens - derselbe
+  // Baustein wie beim MQTT-Fall, ohne Sonderpfad.
+  const soc = a.bundle.nodered_flows.find((x) => x.type === 'vp-soc-derive');
+  const inject = a.bundle.nodered_flows.find((x) => x.type === 'inject');
+  assert.deepStrictEqual(inject.wires, [[n.id]], 'the tick hits ONLY the source');
+  assert.deepStrictEqual(n.wires, [[soc.id]], 'the source feeds the derivation');
+  assert.strictEqual(soc.method, 'direct');
+
+  // Die Palette-Untergrenze dieses Lesetyps ist 0.12.0.
+  assert.strictEqual(a.min_palette_version, '0.12.0');
+});
+
+test('pinned content hash of the http-battery fixture', () => {
+  const a = compile(fixture('flow-graph.valid.http-battery.json'));
+  assert.strictEqual(JSON.stringify(a), JSON.stringify(compile(
+    fixture('flow-graph.valid.http-battery.json'))), 'compilation must be deterministic');
+  assertPinned(a, 'pinned-http-battery-hash.txt');
+});
+
+test('vp.http.read is GENERATED-ONLY and refused under a SIBLING origin', () => {
+  const base = fixture('flow-graph.valid.http-battery.json');
+  const mutate = (fn) => {
+    const g = JSON.parse(JSON.stringify(base));
+    fn(g);
+    return g;
+  };
+  const findRule = (g, rule) => validate(g).some((f) => f.rule === rule);
+
+  assert.ok(findRule(mutate((g) => { delete g.origin; }), 'V-4'), 'no origin at all');
+  // ⚠ Auch nicht unter `mqtt-device`: die beiden Lesetypen sind Geschwister,
+  // aber ein Lesetyp, der unter der origin-Art des anderen gaelte, liesse ein
+  // gefaelschtes MQTT-Dokument eine HTTP-Abfrage aufsperren.
+  assert.ok(findRule(mutate((g) => {
+    g.origin = { kind: 'mqtt-device', point_id: g.origin.point_id, definition_version: 1 };
+  }), 'V-4'), 'the sibling transport origin must not unlock it');
+});
+
+test('vp.soc.derive belongs to BOTH level-1 origins', () => {
+  // Der Ableiter rechnet auf den STANDARD-Kanaelen und kennt den Transport
+  // gar nicht - er ist unter mqtt-device wie unter http-device gueltig. Die
+  // beiden Fixtures beweisen beide Richtungen.
+  assert.deepStrictEqual(validate(fixture('flow-graph.valid.http-battery.json')), []);
+  assert.deepStrictEqual(validate(fixture('flow-graph.valid.mqtt-battery.json')), []);
+});
+
+test('http-battery validator rules: path, auth, value path, no stale_s', () => {
+  const base = fixture('flow-graph.valid.http-battery.json');
+  const mutate = (fn) => {
+    const g = JSON.parse(JSON.stringify(base));
+    fn(g);
+    return g;
+  };
+  const findRule = (g, rule) => validate(g).some((f) => f.rule === rule);
+  const P = (g) => g.nodes[0].parameters;
+
+  assert.ok(findRule(mutate((g) => { delete P(g).host; }), 'V-4'), 'missing host');
+  assert.ok(findRule(mutate((g) => { delete P(g).path; }), 'V-4'), 'missing url path');
+  assert.ok(findRule(mutate((g) => { P(g).path = 'ha'; }), 'V-4'), 'a path starts with /');
+  assert.ok(findRule(mutate((g) => { P(g).path = '//evil.example/x'; }), 'V-4'),
+    '//host would be a foreign address, not a path');
+  assert.ok(findRule(mutate((g) => { P(g).timeout_ms = 60000; }), 'V-4'), 'timeout out of range');
+  // ⚠ Ein Geheimnis im Flow wird BENANNT abgelehnt, nie still verworfen.
+  assert.ok(findRule(mutate((g) => { P(g).auth.secret = 'hunter2'; }), 'V-4'),
+    'a secret does not belong in the flow document');
+  assert.ok(findRule(mutate((g) => { P(g).auth.header = 'Api Key'; }), 'V-4'),
+    'a header name is a token - a space would smuggle a second header');
+  assert.ok(findRule(mutate((g) => { P(g).auth = { mode: 'basic' }; }), 'V-4'),
+    'basic without a user name');
+  assert.ok(findRule(mutate((g) => { P(g).auth = { mode: 'raten' }; }), 'V-4'),
+    'unknown auth mode');
+  assert.ok(findRule(mutate((g) => { P(g).mappings = []; }), 'V-4'), 'no mapping = no measurement');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[0].path = ''; }), 'V-4'),
+    'an empty value path: an HTTP answer is a document, never a bare value');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[0].path = '__proto__'; }), 'V-4'),
+    'prototype-poisoning segments are refused');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[0].aggregate = 'median'; }), 'V-4'),
+    'unknown aggregate');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[0].scale = 0; }), 'V-4'),
+    'a scale of 0 would erase every reading');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[1].channel = 'soc_pct'; }), 'V-4'),
+    'two mappings onto ONE channel');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[0].stale_s = 300; }), 'V-4'),
+    'stale_s would be permission to resend an old reading with a fresh timestamp');
+  assert.ok(findRule(mutate((g) => { P(g).mappings[7].aggregate = 'avg'; }), 'V-4'),
+    'a yes/no value is never averaged');
 });
 
 test('pinned content hash of the modbus-read fixture', () => {

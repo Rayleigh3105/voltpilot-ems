@@ -1,0 +1,84 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-http-read', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: false },
+      host: { value: '' },
+      port: { value: 80 },
+      path: { value: '/' },
+      tls: { value: false },
+      timeout_ms: { value: 5000 },
+      entity: { value: '' },
+      auth: { value: { mode: 'none' } },
+      mappings: { value: [] }
+    },
+    inputs: 1,
+    outputs: 1,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-http-read'; },
+    paletteLabel: 'vp-http-read'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-http-read">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+  <div class="form-row">
+    <label for="node-input-host"><i class="fa fa-globe"></i> Adresse</label>
+    <input type="text" id="node-input-host" placeholder="192.168.0.10">
+  </div>
+  <div class="form-row">
+    <label for="node-input-port"><i class="fa fa-plug"></i> Port</label>
+    <input type="number" id="node-input-port" placeholder="80">
+  </div>
+  <div class="form-row">
+    <label for="node-input-path"><i class="fa fa-link"></i> Pfad</label>
+    <input type="text" id="node-input-path" placeholder="/ha">
+  </div>
+  <div class="form-row">
+    <label for="node-input-timeout_ms"><i class="fa fa-clock-o"></i> Zeitgrenze (ms)</label>
+    <input type="number" id="node-input-timeout_ms" placeholder="5000">
+  </div>
+  <div class="form-row">
+    <label for="node-input-entity"><i class="fa fa-battery-half"></i> Entität</label>
+    <input type="text" id="node-input-entity" placeholder="entity-id">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-http-read">
+  <p>GENERIERT aus dem Anschluss einer selbst angebundenen Batterie (P5 Ebene 1,
+  Anschlussart HTTP/JSON). Der Knoten fragt im Takt des Trigger-Eingangs EINE
+  JSON-Auskunft im Kundennetz ab (<code>GET http://&lt;host&gt;:&lt;port&gt;&lt;pfad&gt;</code>)
+  und bildet ihre Felder ueber eine nutzer-definierte Zuordnung auf DIESELBEN
+  Standard-Batteriekanaele ab wie <code>vp-mqtt-read</code>
+  (<code>soc_pct</code>, <code>voltage_v</code>, <code>current_a</code>,
+  <code>power_kw</code>, <code>cell_min_mv</code>, <code>cell_max_mv</code>,
+  <code>temp_max_c</code>, <code>charge_allowed</code>,
+  <code>discharge_allowed</code>, <code>charge_limit_a</code>,
+  <code>discharge_limit_a</code>).</p>
+  <p>Ein Wertepfad ist punkt-getrennt und darf den Platzhalter <code>*</code>
+  tragen: <code>cells.*.v</code> liest jede Zelle der Liste, und mit den
+  Aggregaten <code>min</code>/<code>max</code> werden daraus genau
+  <code>cell_min_mv</code> und <code>cell_max_mv</code> - der Zwilling des
+  Topic-Filters <code>emon/diybms/+/+</code> im MQTT-Knoten.</p>
+  <p>Veroeffentlicht wird EINE Nachricht auf
+  <code>edge/entities/&lt;entity&gt;/telemetry</code> mit allen Kanaelen, die
+  die Antwort wirklich hergibt. Ein Kanal ohne Wert FEHLT - er wird nie als 0
+  erfunden, und ein Fehlschlag veroeffentlicht gar nichts. Es laeuft immer nur
+  EINE Abfrage je Host: ein Takt, der auf eine noch laufende trifft, wird
+  uebersprungen.</p>
+  <p>Nur Lesen (GET), und nur Ziele im Heimnetz. Das Geheimnis der Anmeldung
+  steht NICHT in diesem Flow: hier stehen nur die Anmelde-Art und der Name der
+  Kopfzeile, der Wert kommt aus der ausgerollten Entitaets-Konfiguration
+  (<code>edge/entities/&lt;entity&gt;/config</code>). Fehlt er, wird nicht
+  abgefragt - der Knoten sagt „Zugangsdaten fehlen" statt einen 401 als
+  Geraetefehler auszugeben.</p>
+</script>

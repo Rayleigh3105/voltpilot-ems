@@ -156,8 +156,17 @@ function validate(graph) {
     // (vp.modbus.switch, origin kind `modbus-device`), and a hardcoded
     // `consumer-policy` would either have let it through everywhere or blocked
     // it everywhere.
-    if (type.generatedOrigin
-        && !(graph.origin && graph.origin.kind === type.generatedOrigin)) {
+    //
+    // ⚠ `generatedOrigin` may name SEVERAL kinds (P5-HTTP): the level-2
+    // SoC derivation belongs to the MQTT and the HTTP read type alike, because
+    // it works on the standard battery channels and does not care which level-1
+    // type delivered them. A level-1 read type still names exactly one kind -
+    // one that were valid under a sibling's origin would let a forged document
+    // unlock a different transport.
+    const wantedOrigins = type.generatedOrigin === undefined ? null
+      : [].concat(type.generatedOrigin);
+    if (wantedOrigins
+        && !(graph.origin && wantedOrigins.indexOf(graph.origin.kind) >= 0)) {
       push('V-4', n.type + ' ist einem generierten Flow vorbehalten (origin fehlt)', [n.id]);
     }
     // D-13: explicit claims must equal the catalog-derived ones.
@@ -541,6 +550,7 @@ function outputsOf(n) {
     // dem Lese-Knoten keine `wires`, und die Kante waere ein Draht ins Leere -
     // der Flow liefe, und der Ladestand entstuende nie.
     case 'vp-mqtt-read':
+    case 'vp-http-read':
     case 'vp-soc-derive':
     case 'inject':
       return 1;

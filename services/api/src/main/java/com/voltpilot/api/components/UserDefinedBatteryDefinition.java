@@ -74,6 +74,28 @@ public final class UserDefinedBatteryDefinition {
      */
     public static final String COMMUNICATION = "mqtt_local";
 
+    /**
+     * Dieselbe Marke für den ZWEITEN Ebene-1-Lesetyp: die Batterie hängt an
+     * ihrer eigenen HTTP/JSON-Auskunft im Heimnetz (P5-HTTP).
+     *
+     * <p>⚠ Auch dieser Wert wird VERBATIM mit der Box geteilt
+     * ({@code edge-app/core/internal/componentapply.CommunicationHTTPLocal}),
+     * und die ROLLOUT-Reihenfolge gilt wörtlich wie bei {@link #COMMUNICATION}:
+     * eine Box OHNE die Konstante lässt den ganzen Registry-Push fallen, statt
+     * diese eine Komponente zu überspringen. Das Edge-Release muss eine Anlage
+     * also erreichen, BEVOR dort die erste HTTP-Batterie entsteht.
+     */
+    public static final String COMMUNICATION_HTTP = "http_local";
+
+    /**
+     * Die beiden TRANSPORTE der Ebene 1 - das Wort, das in
+     * {@code connection_json.transport} steht und im Portal die Anschlussart
+     * ist. Ein Wort außerhalb dieser Liste wird VERWORFEN, nie geraten.
+     */
+    public static final String TRANSPORT_MQTT = "mqtt_local";
+    public static final String TRANSPORT_HTTP = "http_local";
+    public static final Set<String> TRANSPORTS = Set.of(TRANSPORT_MQTT, TRANSPORT_HTTP);
+
     /** Die Herkunft, mit der eine so angelegte Batterie gestempelt wird. */
     public static final String SOURCE_KIND = "custom";
 
@@ -82,6 +104,60 @@ public final class UserDefinedBatteryDefinition {
 
     /** Der voreingestellte Port eines lokalen MQTT-Brokers. */
     public static final int DEFAULT_PORT = 1883;
+
+    // ---- Der HTTP/JSON-Lesetyp (P5-HTTP) ----------------------------------
+
+    /** Die voreingestellten Ports einer Web-Auskunft im Heimnetz. */
+    public static final int DEFAULT_HTTP_PORT = 80;
+    public static final int DEFAULT_HTTPS_PORT = 443;
+
+    /** Wie lange die Box auf eine Antwort wartet, bevor sie „keine Antwort" sagt. */
+    public static final int DEFAULT_TIMEOUT_MS = 5000;
+    public static final int MIN_TIMEOUT_MS = 500;
+    public static final int MAX_TIMEOUT_MS = 30000;
+
+    public static final int MAX_URL_PATH_LENGTH = 200;
+
+    /**
+     * Die Anmelde-Arten, die dieser Lesetyp kennt - der Zwilling von
+     * {@code flowc/catalog.js HTTP_AUTH_MODES} und
+     * {@code vp-palette/lib/http-mapping.js AUTH_MODES}.
+     *
+     * <p>{@code header} ist der DIYBMS-Fall (ein frei benannter Kopfzeilen-
+     * Schlüssel, typisch {@code ApiKey}), {@code bearer} das
+     * {@code Authorization: Bearer …}, {@code basic} das klassische HTTP-Basic.
+     * {@code none} ist die Vorgabe, weil die meisten BMS im Heimnetz gar nichts
+     * verlangen.
+     */
+    public static final String AUTH_NONE = "none";
+    public static final String AUTH_HEADER = "header";
+    public static final String AUTH_BEARER = "bearer";
+    public static final String AUTH_BASIC = "basic";
+    public static final Set<String> AUTH_MODES =
+            Set.of(AUTH_NONE, AUTH_HEADER, AUTH_BEARER, AUTH_BASIC);
+
+    /**
+     * Der SCHLÜSSEL, unter dem das Geheimnis in {@code connection_json} wohnt.
+     *
+     * <p>⚠ Er steht auf der OBERSTEN Ebene und heißt so, weil
+     * {@link ComponentSecrets#isSecretKey} genau daran greift: jede Auflistung
+     * maskiert ihn dadurch OHNE eine Vorlage, aus der die Geheimnis-Schlüssel
+     * sonst kämen. Ein verschachteltes {@code auth.secret} wäre der Maske
+     * entgangen - und ein Kennwort im Browser gewesen.
+     *
+     * <p>⚠ Und er reist NIE im Flow-Dokument: das ist über
+     * {@code GET /sites/{siteId}/flows/{flowId}/versions/{v}} für jeden
+     * Portal-Benutzer des Mandanten lesbar. Der Weg zur Box ist der
+     * Registry-Push ({@code driver.connection.auth_secret}), aus dem der
+     * {@code vp-http-read}-Knoten ihn über die per-Gerät ausgerollte
+     * Entitäts-Konfiguration liest.
+     */
+    public static final String SECRET_FIELD = "auth_secret";
+
+    private static final java.util.regex.Pattern HEADER_NAME =
+            java.util.regex.Pattern.compile("^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$");
+    private static final java.util.regex.Pattern VALUE_PATH_SEGMENT =
+            java.util.regex.Pattern.compile("^(\\*|[A-Za-z0-9_][A-Za-z0-9_-]{0,63})$");
 
     /** Höchstens so viele Zuordnungen je Batterie (11 Standard-Kanäle + Luft). */
     public static final int MAX_MAPPINGS = 16;
@@ -247,6 +323,67 @@ public final class UserDefinedBatteryDefinition {
     }
 
     /**
+     * Der ENDPUNKT der Web-Auskunft (P5-HTTP): die Adresse, die die Box im Takt
+     * abfragt.
+     *
+     * <p>Der Pfad reist AUSGESCHRIEBEN - inklusive einer etwaigen
+     * Abfrage-Zeichenkette. Die Box hängt nichts an und rät nichts dazu; ein
+     * Endpunkt, den der Kunde aus seiner BMS-Dokumentation abschreibt, ist genau
+     * der, der abgefragt wird.
+     */
+    public record Endpoint(String host, Integer port, String path, Boolean tls,
+            Integer timeoutMs) {
+
+        public boolean secure() {
+            return Boolean.TRUE.equals(tls);
+        }
+
+        public int effectivePort() {
+            return port == null ? (secure() ? DEFAULT_HTTPS_PORT : DEFAULT_HTTP_PORT) : port;
+        }
+
+        public String effectivePath() {
+            return path == null || path.isBlank() ? "/" : path.trim();
+        }
+
+        public int effectiveTimeoutMs() {
+            return timeoutMs == null ? DEFAULT_TIMEOUT_MS : timeoutMs;
+        }
+    }
+
+    /**
+     * Die ANMELDUNG am Endpunkt (P5-HTTP) - Art, Name und (nur serverseitig)
+     * der Wert.
+     *
+     * <p>⚠ {@code secret} verlässt den Server nur in EINE Richtung: in den
+     * Registry-Push zur Box. Zum Portal reist an seiner Stelle die Maske
+     * ({@link ComponentSecrets#MASK}), und ein Speichern, das die Maske oder gar
+     * nichts schickt, BEHÄLT den gespeicherten Wert - dieselbe Disziplin wie
+     * beim Katalog-Gerät. Im Flow-Dokument kommt er überhaupt nicht vor.
+     *
+     * @param mode einer aus {@link #AUTH_MODES}
+     * @param header der Name der Kopfzeile - nur bei {@link #AUTH_HEADER}, und
+     *     dort Pflicht
+     * @param username der Benutzername - nur bei {@link #AUTH_BASIC}, und dort
+     *     Pflicht. Er ist KEIN Geheimnis und reist deshalb auch im Flow.
+     * @param secret der Wert; {@code null} heißt „unverändert" (beim Ändern)
+     *     bzw. „keiner" (beim Anlegen)
+     */
+    public record Auth(String mode, String header, String username, String secret) {
+
+        public String effectiveMode() {
+            return mode == null || mode.isBlank() ? AUTH_NONE : mode.trim().toLowerCase(Locale.ROOT);
+        }
+
+        public boolean needsSecret() {
+            return !AUTH_NONE.equals(effectiveMode());
+        }
+    }
+
+    /** Die Vorgabe: keine Anmeldung - die meisten BMS im Heimnetz verlangen keine. */
+    public static final Auth NO_AUTH = new Auth(AUTH_NONE, null, null, null);
+
+    /**
      * Die SPEISER-BINDUNG einer Batterie (P6): wozu sie in dieser Anlage
      * gehört, und - beim Speiser - an WELCHEM Wechselrichter sie hängt.
      *
@@ -345,12 +482,36 @@ public final class UserDefinedBatteryDefinition {
             int staleS, List<String> trueValues, List<String> falseValues) {
     }
 
-    /** Das Ergebnis einer Prüfung: entweder Fehler, oder die normalisierte Form. */
-    public record Result(List<String> errors, Broker broker, List<NormalizedMapping> mappings,
+    /**
+     * Das Ergebnis einer Prüfung: entweder Fehler, oder die normalisierte Form.
+     *
+     * <p>{@code transport} entscheidet, WELCHE Hälfte gefüllt ist: bei
+     * {@link #TRANSPORT_MQTT} der {@code broker}, bei {@link #TRANSPORT_HTTP}
+     * {@code endpoint} + {@code auth}. Beide Hälften gleichzeitig zu führen
+     * wäre eine Anbindung mit zwei Adressen - genau die Doppeldeutigkeit, die
+     * dieser Bausatz vermeidet.
+     */
+    public record Result(List<String> errors, String transport, Broker broker,
+            Endpoint endpoint, Auth auth, List<NormalizedMapping> mappings,
             int publishIntervalS, SocDerivation socDerivation, Binding binding) {
 
         public boolean ok() {
             return errors.isEmpty();
+        }
+
+        /** Liest diese Batterie über ihre Web-Auskunft statt über MQTT? */
+        public boolean http() {
+            return TRANSPORT_HTTP.equals(transport);
+        }
+
+        /** Die Marke, mit der die Komponente gestempelt wird (die Box liest sie). */
+        public String communication() {
+            return http() ? COMMUNICATION_HTTP : COMMUNICATION;
+        }
+
+        /** Die Anmeldung, nie {@code null} - ohne Angabe „keine". */
+        public Auth authOrNone() {
+            return auth == null ? NO_AUTH : auth;
         }
 
         /**
@@ -411,8 +572,57 @@ public final class UserDefinedBatteryDefinition {
      */
     public static Result validate(Broker broker, List<Mapping> mappings, Integer publishIntervalS,
             SocDerivation soc, Map<String, String> allowedChannels, Binding binding) {
+        return validate(TRANSPORT_MQTT, broker, null, null, mappings, publishIntervalS, soc,
+                allowedChannels, binding);
+    }
+
+    /**
+     * Dieselbe Prüfung für BEIDE Ebene-1-Transporte (P5-HTTP).
+     *
+     * <p><b>Was sich zwischen ihnen unterscheidet und was nicht.</b> Alles
+     * hinter der Zuordnung ist IDENTISCH - dieselben Ziel-Kanäle, dieselben
+     * Aggregate, dieselbe Ehrlichkeitsregel, dieselbe SoC-Ableitung (P5b),
+     * dieselbe Speiser-Bindung (P6). Verschieden ist nur, WOHER der Rohwert
+     * kommt:
+     *
+     * <ul>
+     *   <li><b>MQTT</b>: ein Broker plus je Zuordnung ein Topic-FILTER und eine
+     *       Haltbarkeit ({@code stale_s}) - viele Nachrichten, je eine
+     *       Quelle.</li>
+     *   <li><b>HTTP</b>: ein Endpunkt plus je Zuordnung ein WERTEPFAD, der den
+     *       Platzhalter {@code *} tragen darf ({@code cells.*.v}) - EIN Dokument,
+     *       und das Aggregat lebt darin. Eine Haltbarkeit gibt es nicht: eine
+     *       Antwort ist EIN Zeitpunkt, und was sie nicht enthält, fehlt. Ein
+     *       {@code stale_s} wäre die stille Erlaubnis, einen alten Messwert mit
+     *       frischem Zeitstempel zu senden.</li>
+     * </ul>
+     *
+     * @param transport {@link #TRANSPORT_MQTT} oder {@link #TRANSPORT_HTTP}
+     * @param endpoint nur beim HTTP-Transport; dort Pflicht
+     * @param auth nur beim HTTP-Transport; {@code null} = keine Anmeldung
+     */
+    public static Result validate(String transport, Broker broker, Endpoint endpoint, Auth auth,
+            List<Mapping> mappings, Integer publishIntervalS, SocDerivation soc,
+            Map<String, String> allowedChannels, Binding binding) {
         List<String> errors = new ArrayList<>();
-        checkBroker(broker, errors);
+        String kind = transport == null || transport.isBlank() ? TRANSPORT_MQTT
+                : transport.trim().toLowerCase(Locale.ROOT);
+        if (!TRANSPORTS.contains(kind)) {
+            // Ein Wort außerhalb des Vokabulars wird VERWORFEN, nie geraten -
+            // ein stillschweigend als MQTT gelesener Anschluss würde einen
+            // Broker abonnieren, den der Kunde nie genannt hat.
+            errors.add("„" + transport + "“ ist keine bekannte Anschlussart für diese Batterie.");
+            return new Result(List.copyOf(errors), null, broker, endpoint, auth, List.of(),
+                    DEFAULT_PUBLISH_INTERVAL_S, null, UNBOUND);
+        }
+        boolean http = TRANSPORT_HTTP.equals(kind);
+        Auth checkedAuth = null;
+        if (http) {
+            checkEndpoint(endpoint, errors);
+            checkedAuth = checkAuth(auth, errors);
+        } else {
+            checkBroker(broker, errors);
+        }
 
         int interval = publishIntervalS == null ? DEFAULT_PUBLISH_INTERVAL_S : publishIntervalS;
         if (interval < MIN_PUBLISH_INTERVAL_S || interval > MAX_PUBLISH_INTERVAL_S) {
@@ -435,7 +645,8 @@ public final class UserDefinedBatteryDefinition {
         int i = 0;
         for (Mapping m : list) {
             i++;
-            NormalizedMapping n = checkMapping(m, i, taken, allowed, errors);
+            NormalizedMapping n = http ? checkHttpMapping(m, i, taken, allowed, errors)
+                    : checkMapping(m, i, taken, allowed, errors);
             if (n != null) {
                 out.add(n);
             }
@@ -443,8 +654,9 @@ public final class UserDefinedBatteryDefinition {
 
         SocDerivation derivation = checkSoc(soc, taken, allowed, errors);
         Binding bound = checkBinding(binding, taken, derivation != null, errors);
-        return new Result(List.copyOf(errors), broker, List.copyOf(out), interval, derivation,
-                bound);
+        return new Result(List.copyOf(errors), kind, http ? null : broker,
+                http ? endpoint : null, http ? checkedAuth : null, List.copyOf(out), interval,
+                derivation, bound);
     }
 
     /**
@@ -502,6 +714,232 @@ public final class UserDefinedBatteryDefinition {
             return null;
         }
         return out;
+    }
+
+    /**
+     * Prüft den ENDPUNKT der Web-Auskunft (P5-HTTP).
+     *
+     * <p><b>Dieselbe LAN-Regel wie überall</b> ({@link
+     * SelfBuildDefinition#isPrivateHost}) - ohne sie wäre dieser Anschluss ein
+     * Weg, die Box mit einem Kunden-Zugangsschlüssel gegen einen fremden Server
+     * im Internet zu richten.
+     *
+     * <p><b>Und der PFAD ist ein Pfad, keine zweite Adresse.</b> Er beginnt mit
+     * „/“, trägt keinen Leerraum und darf nicht mit „//“ beginnen: „//host/x“
+     * wäre eine protokoll-relative URL und damit ein anderes Ziel als das
+     * geprüfte.
+     */
+    private static void checkEndpoint(Endpoint e, List<String> errors) {
+        String host = e == null || e.host() == null ? "" : e.host().trim();
+        if (host.isEmpty()) {
+            errors.add("Bitte tragen Sie die Adresse ein, unter der die Web-Auskunft Ihres "
+                    + "BMS erreichbar ist.");
+        } else if (!SelfBuildDefinition.isPrivateHost(host)) {
+            errors.add(SelfBuildDefinition.HOST_NOT_PRIVATE);
+        }
+        if (e == null) {
+            errors.add("Bitte tragen Sie den Pfad der JSON-Auskunft ein, zum Beispiel /ha.");
+            return;
+        }
+        if (e.port() != null && (e.port() < 1 || e.port() > 65535)) {
+            errors.add("Der Port muss zwischen 1 und 65535 liegen.");
+        }
+        String path = e.path() == null ? "" : e.path().trim();
+        if (path.isEmpty()) {
+            errors.add("Bitte tragen Sie den Pfad der JSON-Auskunft ein, zum Beispiel /ha.");
+        } else if (!isValidUrlPath(path)) {
+            errors.add("„" + path + "“ ist kein gültiger Pfad. Er beginnt mit „/“ und enthält "
+                    + "keine Leerzeichen - zum Beispiel /ha oder /api/status?filter=soc.");
+        }
+        if (e.timeoutMs() != null
+                && (e.timeoutMs() < MIN_TIMEOUT_MS || e.timeoutMs() > MAX_TIMEOUT_MS)) {
+            errors.add("Die Zeitgrenze muss zwischen " + MIN_TIMEOUT_MS + " und " + MAX_TIMEOUT_MS
+                    + " Millisekunden liegen.");
+        }
+    }
+
+    /**
+     * Prüft die ANMELDUNG (P5-HTTP).
+     *
+     * <p><b>Das Geheimnis wird hier NICHT verlangt</b>, und das ist Absicht:
+     * beim Ändern schickt das Portal die Maske oder gar nichts, und der Server
+     * setzt den gespeicherten Wert wieder ein
+     * ({@link UserDefinedBatteryService}). Was hier geprüft wird, ist die FORM -
+     * die Art, der Name der Kopfzeile, der Benutzername.
+     *
+     * <p>Der Kopfzeilen-NAME ist ein RFC-7230-Token: alles andere wäre eine
+     * Einladung, über einen Zeilenumbruch eine zweite Kopfzeile
+     * einzuschmuggeln.
+     */
+    private static Auth checkAuth(Auth auth, List<String> errors) {
+        Auth a = auth == null ? NO_AUTH : auth;
+        String mode = a.effectiveMode();
+        if (!AUTH_MODES.contains(mode)) {
+            errors.add("Diese Art der Anmeldung kennen wir nicht.");
+            return null;
+        }
+        String header = a.header() == null ? "" : a.header().trim();
+        String user = a.username() == null ? "" : a.username().trim();
+        if (AUTH_HEADER.equals(mode)) {
+            if (header.isEmpty()) {
+                errors.add("Bitte tragen Sie den Namen der Kopfzeile ein, in der der Schlüssel "
+                        + "erwartet wird - beim DIYBMS zum Beispiel „ApiKey“.");
+                return null;
+            }
+            if (!HEADER_NAME.matcher(header).matches()) {
+                errors.add("„" + header + "“ ist kein gültiger Name für eine Kopfzeile.");
+                return null;
+            }
+        }
+        if (AUTH_BASIC.equals(mode)) {
+            if (user.isEmpty() || user.length() > 64 || user.contains(":")
+                    || user.chars().anyMatch(Character::isWhitespace)) {
+                errors.add("Bitte tragen Sie den Benutzernamen ein, mit dem sich VoltPilot "
+                        + "anmelden soll.");
+                return null;
+            }
+        }
+        String secret = a.secret() == null ? null : a.secret();
+        return new Auth(mode, AUTH_HEADER.equals(mode) ? header : null,
+                AUTH_BASIC.equals(mode) ? user : null, secret);
+    }
+
+    /** Ein URL-Pfad: mit „/“ beginnend, ohne Leerraum, nie protokoll-relativ. */
+    public static boolean isValidUrlPath(String path) {
+        if (path == null || path.isEmpty() || path.length() > MAX_URL_PATH_LENGTH) {
+            return false;
+        }
+        if (path.charAt(0) != '/' || path.startsWith("//")) {
+            return false;
+        }
+        for (int i = 0; i < path.length(); i++) {
+            char c = path.charAt(i);
+            if (Character.isWhitespace(c) || c < 0x20 || c == '\\' || c == '<' || c == '>'
+                    || c == '"' || c == '\'' || c == '`') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Ein WERTEPFAD des HTTP-Lesetyps: punkt-getrennt, mit dem Platzhalter
+     * {@code *} als GANZEM Segment.
+     *
+     * <p>⚠ Er darf - anders als beim MQTT-Lesetyp - nicht LEER sein. Bei MQTT
+     * heißt ein leerer Pfad „die Nachricht IST der Wert" (der häufigste
+     * MQTT-Fall: ein Topic, eine nackte Zahl); eine HTTP-Antwort ist dagegen ein
+     * Dokument, und ein leerer Pfad wäre die Aufforderung, es als Zahl zu lesen.
+     *
+     * <p>Der Platzhalter ist das Gegenstück zum Topic-Filter: {@code cells.*.v}
+     * trifft jede Zelle einer Liste, so wie {@code emon/diybms/+/+} jedes
+     * Zell-Topic trifft - und erst dadurch bekommt {@code min}/{@code max} an
+     * einem HTTP-Anschluss überhaupt eine Bedeutung.
+     */
+    public static boolean isValidHttpValuePath(String path) {
+        if (path == null || path.isEmpty() || path.length() > MAX_PATH_LENGTH) {
+            return false;
+        }
+        for (String segment : path.split("\\.", -1)) {
+            if (!VALUE_PATH_SEGMENT.matcher(segment).matches()
+                    || FORBIDDEN_SEGMENTS.contains(segment)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Eine Feld-Zuordnung des HTTP-Lesetyps.
+     *
+     * <p>Sie ist die MQTT-Prüfung Zeile für Zeile - dieselben Ziel-Kanäle,
+     * dieselben Aggregate, dieselbe Wahrheitswert-Regel, dieselbe
+     * Skalierungs-Regel - mit genau zwei Unterschieden: statt eines Topic-
+     * Filters steht ein Wertepfad (der pflicht ist), und es gibt keine
+     * Haltbarkeit.
+     */
+    private static NormalizedMapping checkHttpMapping(Mapping m, int index, Set<String> taken,
+            Map<String, String> allowed, List<String> errors) {
+        String where = "Zuordnung " + index;
+        if (m == null) {
+            errors.add(where + " ist leer.");
+            return null;
+        }
+        String channel = m.channel() == null ? "" : m.channel().trim();
+        if (!allowed.containsKey(channel)) {
+            errors.add(where + ": „" + channel + "“ ist kein Batterie-Messwert. Möglich sind: "
+                    + String.join(", ", allowed.keySet()) + ".");
+            return null;
+        }
+        if (SOC_SOURCE_CHANNEL.equals(channel)) {
+            errors.add(where + ": „" + SOC_SOURCE_CHANNEL + "“ lässt sich nicht zuordnen - "
+                    + "die Herkunft des Ladestands entsteht bei der Ableitung, sie wird nicht "
+                    + "gemessen.");
+            return null;
+        }
+        if (!taken.add(channel)) {
+            errors.add(where + ": der Messwert „" + channel + "“ ist schon zugeordnet. "
+                    + "Ein Messwert hat genau eine Quelle.");
+            return null;
+        }
+
+        String path = m.path() == null ? "" : m.path().trim();
+        if (path.isEmpty()) {
+            errors.add(where + ": bitte tragen Sie ein, wo der Wert in der Antwort steht - "
+                    + "zum Beispiel soc oder bms.soc; „*“ steht für jede Ebene.");
+            return null;
+        }
+        if (!isValidHttpValuePath(path)) {
+            errors.add(where + ": „" + path + "“ ist kein gültiger Wertepfad. Beispiele: soc, "
+                    + "bms.soc, cells.*.v.");
+            return null;
+        }
+
+        String aggregate = m.aggregate() == null || m.aggregate().isBlank() ? "last"
+                : m.aggregate().trim().toLowerCase(Locale.ROOT);
+        if (!AGGREGATES.contains(aggregate)) {
+            errors.add(where + ": diese Zusammenfassung kennen wir nicht (möglich: "
+                    + String.join(", ", new java.util.TreeSet<>(AGGREGATES)) + ").");
+            return null;
+        }
+        String valueType = m.valueType() == null || m.valueType().isBlank() ? "number"
+                : m.valueType().trim().toLowerCase(Locale.ROOT);
+        if (!VALUE_TYPES.contains(valueType)) {
+            errors.add(where + ": der Werttyp muss „number“ oder „bool“ sein.");
+            return null;
+        }
+
+        double scale = m.scale() == null ? 1.0 : m.scale();
+        double offset = m.offset() == null ? 0.0 : m.offset();
+        if (!Double.isFinite(scale) || scale == 0.0) {
+            errors.add(where + ": die Skalierung muss eine Zahl ungleich 0 sein.");
+            return null;
+        }
+        if (!Double.isFinite(offset)) {
+            errors.add(where + ": der Offset muss eine Zahl sein.");
+            return null;
+        }
+        if (m.sentinel() != null && !Double.isFinite(m.sentinel())) {
+            errors.add(where + ": der Wert für „nicht gemessen“ muss eine Zahl sein.");
+            return null;
+        }
+        if ("bool".equals(valueType) && !BOOL_AGGREGATES.contains(aggregate)) {
+            errors.add(where + ": ein Ja/Nein-Wert lässt sich so nicht zusammenfassen. "
+                    + "Möglich sind: letzter Wert, min (alle erlauben es) und max "
+                    + "(mindestens einer erlaubt es).");
+            return null;
+        }
+        if ("bool".equals(valueType) && (scale != 1.0 || offset != 0.0)) {
+            errors.add(where + ": ein Ja/Nein-Wert kennt keine Skalierung - er reist als 0 "
+                    + "oder 1.");
+            return null;
+        }
+        // topic und staleS bleiben leer: dieser Lesetyp hat weder ein Topic
+        // noch eine Haltbarkeit, und ein gefüllter Vorgabewert wäre ein Feld,
+        // das etwas verspricht, was nirgends stattfindet.
+        return new NormalizedMapping(channel, allowed.get(channel), "", path, aggregate,
+                valueType, scale, offset, m.sentinel(), 0,
+                words(m.trueValues()), words(m.falseValues()));
     }
 
     private static void checkBroker(Broker b, List<String> errors) {

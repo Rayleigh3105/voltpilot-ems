@@ -195,9 +195,17 @@ public class FlowGraphValidator {
             // never reads a generic "einem generierten Flow vorbehalten".
             // A generated type without an origin kind is a catalog bug and
             // fails CLOSED (never a silent default onto someone else's origin).
+            //
+            // ⚠ `generated_origin` darf SEVERAL Arten nennen (eine Liste,
+            // P5-HTTP): der Ableiter vp.soc.derive gehört dem MQTT- und dem
+            // HTTP-Lesetyp gleichermaßen, weil er auf den STANDARD-Kanälen
+            // rechnet und den Transport gar nicht kennt. Ein Ebene-1-Lesetyp
+            // nennt weiterhin genau eine - einer, der unter der Herkunft seines
+            // Geschwisters gälte, ließe ein gefälschtes Dokument den anderen
+            // Transport aufsperren.
             if (type.path("generated").asBoolean(false)) {
-                String want = type.path("generated_origin").asText("");
-                if (want.isEmpty() || !want.equals(doc.path("origin").path("kind").asText())) {
+                java.util.List<String> want = originKinds(type.path("generated_origin"));
+                if (want.isEmpty() || !want.contains(doc.path("origin").path("kind").asText())) {
                     String owner = type.path("generated_origin_label")
                             .asText("einem generierten Flow");
                     findings.add(FlowValidationFinding.error("V-4", List.of(id), List.of(),
@@ -723,8 +731,30 @@ public class FlowGraphValidator {
     }
 
     /**
-     * P5-Ebene-1-Regeln für {@code vp.mqtt.read}: die Feld-Zuordnung einer
-     * selbst angebundenen Batterie.
+     * Die Herkunfts-Arten, die ein generierter Katalog-Typ aufsperrt - ein
+     * einzelnes Wort ODER eine Liste.
+     *
+     * <p>Ein Typ ohne jede Angabe ist ein Katalog-Fehler und schlägt CLOSED
+     * fehl (nie ein stiller Vorgabewert auf die Herkunft eines anderen).
+     */
+    private static java.util.List<String> originKinds(com.fasterxml.jackson.databind.JsonNode raw) {
+        if (raw.isArray()) {
+            java.util.List<String> out = new java.util.ArrayList<>();
+            for (com.fasterxml.jackson.databind.JsonNode kind : raw) {
+                String value = kind.asText("");
+                if (!value.isEmpty()) {
+                    out.add(value);
+                }
+            }
+            return out;
+        }
+        String single = raw.asText("");
+        return single.isEmpty() ? java.util.List.of() : java.util.List.of(single);
+    }
+
+    /**
+     * P5-Ebene-1-Regeln für {@code vp.mqtt.read} UND {@code vp.http.read}: die
+     * Feld-Zuordnung einer selbst angebundenen Batterie.
      *
      * <p>Es ist die {@link #checkModbusReads}-Regel auf den zweiten Lese-Typ
      * angewandt, und sie ist aus demselben Grund nötig: eine Zuordnung auf
@@ -740,7 +770,10 @@ public class FlowGraphValidator {
         Map<String, String> mappedBy = new HashMap<>();
         for (Map.Entry<String, JsonNode> entry : nodesById.entrySet()) {
             JsonNode node = entry.getValue();
-            if (!"vp.mqtt.read".equals(node.path("type").asText())) {
+            String type = node.path("type").asText();
+            // BEIDE Ebene-1-Lesetypen, und aus demselben Grund: die Regel gilt
+            // der ZUORDNUNG, nicht dem Transport.
+            if (!"vp.mqtt.read".equals(type) && !"vp.http.read".equals(type)) {
                 continue;
             }
             String entityId = node.path("parameters").path("entity_id").asText("");
@@ -759,7 +792,7 @@ public class FlowGraphValidator {
             if (caps.composed()) {
                 findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
                         "Die Entität \"" + entityId + "\" wird aus den Stammdaten der Anlage "
-                                + "abgeleitet - Messwerte können hier nicht per MQTT-Baustein "
+                                + "abgeleitet - Messwerte können hier nicht per Batterie-Baustein "
                                 + "eingespeist werden."));
                 continue;
             }
@@ -777,7 +810,7 @@ public class FlowGraphValidator {
                 if (previous != null) {
                     findings.add(FlowValidationFinding.error("V-5",
                             List.of(previous, entry.getKey()), List.of(),
-                            "Zwei MQTT-Zuordnungen zeichnen denselben Messkanal \"" + channel
+                            "Zwei Batterie-Zuordnungen zeichnen denselben Messkanal \"" + channel
                                     + "\" der Entität \"" + entityId + "\" auf."));
                 }
             }

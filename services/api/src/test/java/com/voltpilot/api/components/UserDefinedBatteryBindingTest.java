@@ -214,9 +214,9 @@ class UserDefinedBatteryBindingTest {
                 1.0, 0.0, null, 300, null, null));
         mappings.add(new MappingRequest("power_kw", "emon/pack", "p", "last", "number",
                 0.001, 0.0, null, 300, null, null));
-        return new SaveUserDefinedBatteryRequest("DIY-Speicher",
-                new SaveUserDefinedBatteryRequest.Broker("192.168.40.20", 1883), mappings, 15,
-                null, binding, null);
+        return new SaveUserDefinedBatteryRequest("DIY-Speicher", null,
+                new SaveUserDefinedBatteryRequest.Broker("192.168.40.20", 1883), null, null,
+                mappings, 15, null, binding, null);
     }
 
     private static EntityRow battery() {

@@ -5340,28 +5340,34 @@ paths:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
     post:
       tags: [components]
-      summary: Connect a SELF-BUILT battery over a local MQTT broker (P5 Ebene 1).
+      summary: Connect a SELF-BUILT battery - over a local MQTT broker or its HTTP/JSON endpoint (P5 Ebene 1).
       description: >
         Creates a normal v2 entity (`user-defined-battery`, measure-only) whose
         capabilities are exactly the MAPPED standard channels, stores the
         definition as version 1 and compiles + rolls out its generated READ flow
-        (ONE `vp.mqtt.read` node, origin `mqtt-device`) through the existing
-        flowc / `v2/flows` machinery - the same path a self-built Modbus device
-        takes, one transport further. Only on a PORTAL-managed plant (409 on a
-        box-managed one).
+        through the existing flowc / `v2/flows` machinery - the same path a
+        self-built Modbus device takes, one transport further. Only on a
+        PORTAL-managed plant (409 on a box-managed one).
 
 
-        Unlike the Modbus Baukasten this path requires NO connection receipt: an
-        MQTT preview needs a LISTENING WINDOW rather than the probe channel's
-        one-shot read, and that ships with the mapping assistant (P5d). A duty
-        without a door would be a dead end, not a safeguard. The LAN-only rule
-        applies unchanged.
+        `transport` picks the level-1 READ TYPE, and it is the only thing that
+        differs: `mqtt_local` compiles ONE `vp.mqtt.read` under origin
+        `mqtt-device`, `http_local` ONE `vp.http.read` under origin
+        `http-device`. Everything behind the mapping is identical - the same
+        standard channels, the same aggregates, the same SoC derivation (P5b) and
+        the same feeder binding (P6).
 
 
-        ⚠ Rollout order: a box that does not yet know the `mqtt_local`
-        communication refuses the pushed driver and drops the WHOLE registry
-        push. The edge release has to reach a plant BEFORE the first such
-        battery is created there.
+        Unlike the Modbus Baukasten this path requires NO connection receipt: the
+        preview is an OFFER, not a duty - a box that cannot run it yet would turn
+        the duty into a dead end, and a duty without a door is not a safeguard.
+        The LAN-only rule applies unchanged to both transports.
+
+
+        ⚠ Rollout order: a box that does not yet know the `mqtt_local` /
+        `http_local` communication refuses the pushed driver and drops the WHOLE
+        registry push. The edge release has to reach a plant BEFORE the first
+        such battery is created there.
       requestBody:
         required: true
         content:
@@ -5381,16 +5387,28 @@ paths:
   /api/v1/sites/{siteId}/components/battery/preview:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - name: entityId
+        in: query
+        required: false
+        schema: { type: string, format: uuid }
+        description: >
+          When EDITING, the component - only then can the server re-insert a
+          stored auth secret, so the preview does exactly what a save would do.
+          Without it the customer would have to retype the BMS key for every
+          preview, or it would have to come back into the browser so he does not
+          have to. Both are the wrong answer.
     post:
       tags: [components]
-      summary: Preview a battery field mapping - the box listens briefly and reports what arrived (P5d).
+      summary: Preview a battery field mapping - the box reads once and reports what it got (P5d).
       description: >
         The mapping assistant's live preview: the SAME checked definition a save
         would write travels to the box as the `connection` block of a
-        `test_connection` op, plus a short listening window (`listen_s`). The
-        answer carries one `samples` row per mapping with the RAW and the scaled
-        value side by side - the moment a wrong topic, a wrong value path or a
-        wrong scale becomes visible.
+        `test_connection` op. For `mqtt_local` it carries a short listening
+        window (`listen_s`) - MQTT is not polled, it arrives; for `http_local`
+        there is NO window, because the box fetches exactly once. The answer
+        carries one `samples` row per mapping with the RAW and the scaled value
+        side by side - the moment a wrong topic, a wrong value path or a wrong
+        scale becomes visible.
 
 
         It writes NOTHING: no entity, no version, no flow, no connection
@@ -7746,15 +7764,30 @@ components:
       type: object
       description: >
         The SELF-CONNECTED battery (P5 Ebene 1, `vp-deye-diybms-luecke-l5`
-        §3.2b): a local MQTT broker plus the user-defined field mapping onto the
-        standard battery channels. The mapping vocabulary is CLOSED - the
-        allowed target channels are exactly `user-defined-battery.default_measure`
-        in the entity-type catalog, and a created battery declares only the
-        channels actually mapped.
-      required: [broker, mappings]
+        §3.2b): a source in the customer LAN plus the user-defined field mapping
+        onto the standard battery channels. The mapping vocabulary is CLOSED -
+        the allowed target channels are exactly
+        `user-defined-battery.default_measure` in the entity-type catalog, and a
+        created battery declares only the channels actually mapped.
+
+
+        `transport` picks which HALF must be filled: `mqtt_local` (the default
+        when the field is absent - every connection made before P5-HTTP) needs
+        `broker` and a `topic` per mapping; `http_local` needs `endpoint` (plus
+        optional `auth`) and only a `path` per mapping - there without `staleS`,
+        because an HTTP answer is ONE point in time. Sending both halves would be
+        a connection with two addresses; the server takes the one that matches
+        the transport and ignores the other.
+      required: [mappings]
       properties:
         label: { type: string, maxLength: 200 }
+        transport:
+          type: string
+          enum: [mqtt_local, http_local]
+          default: mqtt_local
         broker: { $ref: "#/components/schemas/UserDefinedBatteryBroker" }
+        endpoint: { $ref: "#/components/schemas/UserDefinedBatteryEndpoint" }
+        auth: { $ref: "#/components/schemas/UserDefinedBatteryAuth" }
         mappings:
           type: array
           minItems: 1
@@ -7772,6 +7805,68 @@ components:
         socDerivation: { $ref: "#/components/schemas/UserDefinedBatterySocDerivation" }
         binding: { $ref: "#/components/schemas/UserDefinedBatteryBinding" }
         note: { type: string, maxLength: 200 }
+    UserDefinedBatteryEndpoint:
+      type: object
+      description: >
+        The HTTP/JSON endpoint of the battery (P5-HTTP) - only with
+        `transport: http_local`, and there mandatory. The box GETs exactly this
+        address once per tick; it appends nothing and guesses nothing.
+
+
+        The LAN-only rule is the same one every self-built connection follows,
+        and `path` is a PATH, never a second address: it starts with `/`, carries
+        no whitespace and must not begin with `//` (which would be a
+        protocol-relative URL, i.e. a target other than the checked one).
+      required: [host, path]
+      properties:
+        host: { type: string, maxLength: 253 }
+        port: { type: integer, minimum: 1, maximum: 65535, default: 80 }
+        path:
+          type: string
+          maxLength: 200
+          example: "/ha"
+          description: The URL path written out, query string included.
+        tls: { type: boolean, default: false }
+        timeoutMs: { type: integer, minimum: 500, maximum: 30000, default: 5000 }
+    UserDefinedBatteryAuth:
+      type: object
+      description: >
+        How VoltPilot authenticates at that endpoint (P5-HTTP): `header` is the
+        DIYBMS case (a freely named header key, typically `ApiKey`), `bearer` the
+        usual `Authorization: Bearer …`, `basic` classic HTTP basic. `none` is the
+        default, because most BMS in a home network demand nothing.
+
+
+        ⚠ `secret` is the one value that never comes BACK: listings carry the
+        fixed mask instead, and a save that sends the mask - or nothing - KEEPS
+        the stored value; only a genuinely re-entered key replaces it. It is
+        stored as the top-level `auth_secret` of the connection (so the secret
+        heuristic masks it without needing a template) and reaches the box in the
+        registry push. It is deliberately NOT part of the generated flow
+        document, which the flow API hands to every portal user of the tenant.
+
+
+        Creating with an auth mode but no secret is refused BY NAME: the box
+        would not even ask, and the battery would silently read nothing.
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [none, header, bearer, basic]
+          default: none
+        header:
+          type: string
+          maxLength: 64
+          example: ApiKey
+          description: The header name - only with `header`, and there mandatory. An RFC-7230 token.
+        username:
+          type: string
+          maxLength: 64
+          description: Only with `basic`, and there mandatory. Not a secret - it travels in the flow too.
+        secret:
+          type: string
+          maxLength: 512
+          description: Absent, empty or the mask means "unchanged". Never returned.
     UserDefinedBatteryBinding:
       type: object
       description: >

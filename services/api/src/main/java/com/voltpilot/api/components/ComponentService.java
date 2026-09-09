@@ -917,12 +917,37 @@ public class ComponentService {
                         + "). Bitte laden Sie die neuen Werte und prüfen Sie Ihre Änderungen erneut.");
     }
 
+    /**
+     * Eine SELBST GESCHRIEBENE Definition ist keine unbekannte Vorlage.
+     *
+     * <p>Die Fail-closed-Regel von {@link ComponentSecrets#maskedJson} greift,
+     * wenn die Vorlage einer Komponente nicht (mehr) auflösbar ist: dann ist
+     * JEDER gespeicherte Schlüssel verdächtig. Für die drei Anschlüsse, die die
+     * api SELBST schreibt - der Modbus-Baukasten und die beiden Lesetypen der
+     * eigenen Batterie - gibt es aber gar keine Vorlage, die verschwinden
+     * könnte: ihre Form ist Code, und sie ist bekannt.
+     *
+     * <p>Fail-closed dort anzuwenden wäre nicht sicherer, sondern nur
+     * unbrauchbar: das Bearbeiten-Formular bekäme statt Topic, Wertepfad und
+     * Skalierung acht Punkte zurück. Die Geheimnis-HEURISTIK bleibt dabei
+     * unverändert scharf - genau deshalb heißt der Schlüssel des HTTP-Anschlusses
+     * {@code auth_secret} und wohnt auf der obersten Ebene
+     * ({@link UserDefinedBatteryDefinition#SECRET_FIELD}): {@code isSecretKey}
+     * maskiert ihn auch ohne Vorlage.
+     */
+    private static boolean selfAuthored(String communication) {
+        return SelfBuildDefinition.COMMUNICATION.equals(communication)
+                || UserDefinedBatteryDefinition.COMMUNICATION.equals(communication)
+                || UserDefinedBatteryDefinition.COMMUNICATION_HTTP.equals(communication);
+    }
+
     private ComponentDefinitionDto masked(ComponentDefinitionDto row) {
         ComponentTemplateDto template = exactTemplate(row.templateRef(), row.templateVersion());
+        boolean failClosed = template == null && !selfAuthored(row.communication());
         return new ComponentDefinitionDto(row.entityId(), row.version(), row.role(), row.label(),
                 row.brand(), row.model(), row.family(), row.communication(),
                 row.connection() == null ? null
-                        : ComponentSecrets.maskedJson(row.connection(), ComponentSecrets.keys(template), template == null),
+                        : ComponentSecrets.maskedJson(row.connection(), ComponentSecrets.keys(template), failClosed),
                 row.sourceKind(), row.templateRef(), row.templateVersion(), row.createdAt(),
                 row.createdBy(), row.note());
     }
@@ -930,10 +955,11 @@ public class ComponentService {
     private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied,
             String held, String reportedAuthority, boolean gatewayAmbiguous) {
         ComponentTemplateDto template = exactTemplate(row.templateRef(), row.templateVersion());
+        boolean failClosed = template == null && !selfAuthored(row.communication());
         return new SiteComponentsDto.ComponentRowDto(row.id(), row.role(), row.entityType(),
                 row.label(), row.brand(), row.model(), row.family(), row.communication(),
                 row.connectionJson() == null ? null
-                        : ComponentSecrets.maskedJson(row.connectionJson(), ComponentSecrets.keys(template), template == null),
+                        : ComponentSecrets.maskedJson(row.connectionJson(), ComponentSecrets.keys(template), failClosed),
                 row.sourceKind(), row.templateRef(), row.templateVersion(),
                 row.definitionVersion(), row.capacityKwp(), row.edgeSourceId(),
                 syncStatus(soll, applied, held, reportedAuthority, gatewayAmbiguous));

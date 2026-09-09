@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.Auth;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Binding;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Broker;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.Endpoint;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Mapping;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.NormalizedMapping;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Result;
@@ -134,7 +136,9 @@ public class UserDefinedBatteryService {
         requireSite(siteId);
         requirePortalManaged(siteId);
         requireGateway(siteId);
-        Result def = requireValid(req);
+        // Beim ANLEGEN gibt es keinen gespeicherten Schlüssel, den man behalten
+        // könnte: was hier ankommt, ist alles, was es gibt.
+        Result def = requireValid(req, null);
         requireBindingTarget(siteId, null, def.bindingOrUnbound());
 
         UUID tenantId = TenantContext.get();
@@ -158,7 +162,12 @@ public class UserDefinedBatteryService {
         requirePortalManaged(siteId);
         requireGateway(siteId);
         EntityRow existing = requireUserDefinedBattery(siteId, entityId);
-        Result def = requireValid(req);
+        // ⚠ Der SERVER setzt den gespeicherten Schlüssel wieder ein, wenn das
+        // Formular „unverändert" meint (Maske oder gar nichts). Ohne diese Zeile
+        // müsste der Kunde sein BMS-Kennwort bei jeder Namensänderung neu
+        // eintippen - oder es käme im Klartext zurück in den Browser, damit er
+        // es nicht muss. Beides ist die falsche Antwort.
+        Result def = requireValid(req, existing.connectionJson());
         requireBindingTarget(siteId, existing.id(), def.bindingOrUnbound());
 
         String label = label(req);
@@ -235,7 +244,8 @@ public class UserDefinedBatteryService {
         if (row == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
-        if (!UserDefinedBatteryDefinition.COMMUNICATION.equals(row.communication())) {
+        if (!UserDefinedBatteryDefinition.COMMUNICATION.equals(row.communication())
+                && !UserDefinedBatteryDefinition.COMMUNICATION_HTTP.equals(row.communication())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Diese Komponente wurde nicht als eigene Batterie angebunden und lässt sich "
                             + "hier nicht bearbeiten.");
@@ -243,15 +253,86 @@ public class UserDefinedBatteryService {
         return row;
     }
 
-    private Result requireValid(SaveUserDefinedBatteryRequest req) {
-        Result def = UserDefinedBatteryDefinition.validate(broker(req), mappings(req),
+    /**
+     * Prüft die Anfrage - und setzt beim Ändern das gespeicherte Geheimnis
+     * wieder ein.
+     *
+     * @param existingConnectionJson die gespeicherte Definition, oder
+     *     {@code null} beim Anlegen
+     */
+    private Result requireValid(SaveUserDefinedBatteryRequest req, String existingConnectionJson) {
+        Result def = UserDefinedBatteryDefinition.validate(transport(req), broker(req),
+                endpoint(req), auth(req, existingConnectionJson), mappings(req),
                 req == null ? null : req.publishIntervalS(), soc(req), allowedChannels(),
                 binding(req));
         if (!def.ok()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     String.join(" ", def.errors()));
         }
+        // Eine Anmeldung ohne Schlüssel liest NICHTS - die Box fragt dann gar
+        // nicht erst ab (ein 401 wäre ein Fehler, den niemand verschuldet hat).
+        // Deshalb wird sie hier benannt abgelehnt statt still gespeichert.
+        if (def.http() && def.authOrNone().needsSecret()
+                && (def.authOrNone().secret() == null || def.authOrNone().secret().isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Für diese Art der Anmeldung fehlt der Schlüssel bzw. das Kennwort - ohne "
+                            + "ihn würde VoltPilot von dieser Batterie nichts lesen.");
+        }
         return def;
+    }
+
+    /** Die Anschlussart; ohne Angabe der MQTT-Weg (jede Anbindung vor P5-HTTP). */
+    private static String transport(SaveUserDefinedBatteryRequest req) {
+        String t = req == null || req.transport() == null ? "" : req.transport().trim();
+        return t.isEmpty() ? UserDefinedBatteryDefinition.TRANSPORT_MQTT : t;
+    }
+
+    private static Endpoint endpoint(SaveUserDefinedBatteryRequest req) {
+        SaveUserDefinedBatteryRequest.EndpointRequest e = req == null ? null : req.endpoint();
+        return e == null ? null
+                : new Endpoint(e.host(), e.port(), e.path(), e.tls(), e.timeoutMs());
+    }
+
+    /**
+     * Die Anmeldung aus der Anfrage - mit dem SERVER-seitigen Wiedereinsetzen
+     * des gespeicherten Geheimnisses.
+     *
+     * <p>Die Regel ist wörtlich die von {@link ComponentSecrets#merge}: absent,
+     * leer oder die Maske heißt „behalten"; nur ein wirklich neu eingegebener
+     * Wert ersetzt. Sie steht hier und nicht dort, weil der Schlüssel dieses
+     * Anschlusses nicht aus einer Vorlage kommt, sondern an einer festen Stelle
+     * der eigenen Definition wohnt
+     * ({@link UserDefinedBatteryDefinition#SECRET_FIELD}).
+     */
+    private Auth auth(SaveUserDefinedBatteryRequest req, String existingConnectionJson) {
+        SaveUserDefinedBatteryRequest.AuthRequest a = req == null ? null : req.auth();
+        if (a == null) {
+            return null;
+        }
+        String incoming = a.secret();
+        boolean unchanged = incoming == null || incoming.isBlank()
+                || ComponentSecrets.MASK.equals(incoming);
+        String secret = unchanged ? storedSecret(existingConnectionJson) : incoming;
+        return new Auth(a.mode(), a.header(), a.username(), secret);
+    }
+
+    /** Der gespeicherte Schlüssel, oder {@code null} - er verlässt den Server nie. */
+    private String storedSecret(String connectionJson) {
+        if (connectionJson == null || connectionJson.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode root = mapper.readTree(connectionJson);
+            JsonNode value = root.path(UserDefinedBatteryDefinition.SECRET_FIELD);
+            String stored = value.isTextual() ? value.asText() : null;
+            // Sollte je eine MASKE in der Datenbank gelandet sein, ist sie kein
+            // Kennwort - sie als eines zu benutzen hiesse, mit acht Punkten
+            // gegen ein BMS anzuklopfen.
+            return stored == null || stored.isBlank() || ComponentSecrets.MASK.equals(stored)
+                    ? null : stored;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static Binding binding(SaveUserDefinedBatteryRequest req) {
@@ -342,7 +423,7 @@ public class UserDefinedBatteryService {
     private void write(UUID siteId, UUID tenantId, UUID entityId, Result def, String label,
             String note, String subject, String defaultNote) {
         ComponentDefinitionRepository.Applied applied = definitions.applyDefinition(siteId,
-                entityId, label, null, null, null, UserDefinedBatteryDefinition.COMMUNICATION,
+                entityId, label, null, null, null, def.communication(),
                 definitionJson(def), UserDefinedBatteryDefinition.SOURCE_KIND, null, null);
         if (applied == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
@@ -410,8 +491,7 @@ public class UserDefinedBatteryService {
      */
     private void deployReadFlow(UUID siteId, UUID tenantId, UUID entityId, int version,
             String label, Result def) {
-        ObjectNode document = compiler.compile(siteId, tenantId, entityId, version, label,
-                def.broker(), def.mappings(), def.publishIntervalS(), def.socDerivation());
+        ObjectNode document = compiler.compile(siteId, tenantId, entityId, version, label, def);
         FlowCompiler compilerBean = flowc.getIfAvailable();
         if (compilerBean == null) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
@@ -482,11 +562,35 @@ public class UserDefinedBatteryService {
      */
     public Map<String, Object> previewConnection(UUID siteId,
             SaveUserDefinedBatteryRequest req) {
+        return previewConnection(siteId, req, null);
+    }
+
+    /**
+     * Dieselbe Vorschau beim BEARBEITEN: der gespeicherte Schlüssel wird
+     * serverseitig eingesetzt, damit die Vorschau EXAKT das tut, was das
+     * Speichern täte.
+     *
+     * <p>Ohne ihn müsste der Kunde sein BMS-Kennwort für jede Vorschau neu
+     * eintippen - oder es käme in den Browser zurück, damit er es nicht muss.
+     * Beides ist die falsche Antwort; die Maske reicht dem Server.
+     */
+    public Map<String, Object> previewConnection(UUID siteId, SaveUserDefinedBatteryRequest req,
+            UUID entityId) {
         requireSite(siteId);
-        Result def = requireValid(req);
+        String existing = null;
+        if (entityId != null) {
+            EntityRow row = entityRepo.entityForSite(siteId, entityId);
+            existing = row == null ? null : row.connectionJson();
+        }
+        Result def = requireValid(req, existing);
         try {
             ObjectNode root = (ObjectNode) mapper.readTree(definitionJson(def));
-            root.put("listen_s", PREVIEW_LISTEN_S);
+            // Das LAUSCHFENSTER gehört dem MQTT-Lesetyp: dort kommt eine
+            // Nachricht an, wenn sie kommt. Der HTTP-Lesetyp fragt EINMAL ab -
+            // ein Fenster wäre dort ein Versprechen ohne Bedeutung.
+            if (!def.http()) {
+                root.put("listen_s", PREVIEW_LISTEN_S);
+            }
             return mapper.convertValue(root, new com.fasterxml.jackson.core.type
                     .TypeReference<LinkedHashMap<String, Object>>() {});
         } catch (Exception e) {
@@ -513,17 +617,46 @@ public class UserDefinedBatteryService {
     private String definitionJson(Result def) {
         ObjectNode root = mapper.createObjectNode();
         root.put("schema_version", "1.0");
-        root.put("transport", "mqtt_local");
-        ObjectNode broker = root.putObject("broker");
-        broker.put("host", def.broker().host().trim());
-        broker.put("port", def.broker().effectivePort());
+        root.put("transport", def.transport());
+        if (def.http()) {
+            Endpoint e = def.endpoint();
+            ObjectNode endpoint = root.putObject("endpoint");
+            endpoint.put("host", e.host().trim());
+            endpoint.put("port", e.effectivePort());
+            endpoint.put("path", e.effectivePath());
+            endpoint.put("tls", e.secure());
+            root.put("timeout_ms", e.effectiveTimeoutMs());
+            Auth a = def.authOrNone();
+            ObjectNode auth = root.putObject("auth");
+            auth.put("mode", a.effectiveMode());
+            if (UserDefinedBatteryDefinition.AUTH_HEADER.equals(a.effectiveMode())) {
+                auth.put("header", a.header());
+            }
+            if (UserDefinedBatteryDefinition.AUTH_BASIC.equals(a.effectiveMode())) {
+                auth.put("username", a.username());
+            }
+            // ⚠ DER SCHLÜSSEL steht auf der OBERSTEN Ebene und heißt
+            // `auth_secret`, weil ComponentSecrets.isSecretKey genau daran
+            // greift: jede Auflistung maskiert ihn dadurch, OHNE dass es eine
+            // Vorlage bräuchte. In einem verschachtelten `auth.secret` wäre er
+            // der Maske entgangen und im Browser gelandet.
+            if (a.needsSecret() && a.secret() != null && !a.secret().isBlank()) {
+                root.put(UserDefinedBatteryDefinition.SECRET_FIELD, a.secret());
+            }
+        } else {
+            ObjectNode broker = root.putObject("broker");
+            broker.put("host", def.broker().host().trim());
+            broker.put("port", def.broker().effectivePort());
+        }
         root.put("publish_interval_s", def.publishIntervalS());
         ArrayNode mappings = root.putArray("mappings");
         for (NormalizedMapping m : def.mappings()) {
             ObjectNode n = mappings.addObject();
             n.put("channel", m.channel());
             n.put("unit", m.unit());
-            n.put("topic", m.topic());
+            if (!def.http()) {
+                n.put("topic", m.topic());
+            }
             n.put("path", m.path());
             n.put("aggregate", m.aggregate());
             n.put("value_type", m.valueType());
@@ -532,7 +665,11 @@ public class UserDefinedBatteryService {
             if (m.sentinel() != null) {
                 n.put("sentinel", m.sentinel());
             }
-            n.put("stale_s", m.staleS());
+            // Eine Haltbarkeit gibt es nur beim MQTT-Lesetyp - eine HTTP-Antwort
+            // ist EIN Zeitpunkt.
+            if (!def.http()) {
+                n.put("stale_s", m.staleS());
+            }
             if (!m.trueValues().isEmpty()) {
                 ArrayNode t = n.putArray("true_values");
                 m.trueValues().forEach(t::add);

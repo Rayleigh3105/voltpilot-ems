@@ -134,11 +134,34 @@ const CommunicationSelfBuild = "modbus_baukasten"
 // therefore has to reach a site BEFORE the first battery is connected there.
 const CommunicationMqttLocal = "mqtt_local"
 
+// CommunicationHTTPLocal marks a BATTERY the customer connected themselves over
+// its own HTTP/JSON endpoint in the LAN (P5 Ebene 1 "HTTP/JSON", Konzept
+// vp-deye-diybms-luecke-l5 §3.2b) - the sibling of CommunicationMqttLocal, and
+// the same story: read by its own generated flow (one vp-http-read node with
+// the user's value-path mapping), never by the self-wiring tab.
+//
+// ⚠ Unlike the other two, this driver block DOES carry something the box needs:
+// `connection.auth_secret`, the credential of the endpoint. It reaches the read
+// node through the per-entity retained config, NOT through the flow document -
+// a flow document is readable through the portal API, so a credential in it
+// would be a credential in the browser.
+//
+// ⚠ The value is shared verbatim with the cloud
+// (services/api .../components/UserDefinedBatteryDefinition.COMMUNICATION_HTTP).
+// ⚠ ROLLOUT ORDER, exactly as for mqtt_local: a box WITHOUT this constant
+// refuses the driver of such a component ("nennt keine Marke") and Derive is
+// all-or-nothing - the site would lose the application of its inverter and
+// every source. The edge release therefore has to reach a site BEFORE the first
+// HTTP-connected battery is created there.
+const CommunicationHTTPLocal = "http_local"
+
 // selfReadCommunications are the communications whose devices carry their own
 // generated read flow. They are skipped here - never refused: refusing would
 // sink the WHOLE push over a device this applier is not responsible for.
 func isSelfRead(communication string) bool {
-	return communication == CommunicationSelfBuild || communication == CommunicationMqttLocal
+	return communication == CommunicationSelfBuild ||
+		communication == CommunicationMqttLocal ||
+		communication == CommunicationHTTPLocal
 }
 
 // Plan is the derived local configuration of one push: at most one primary
@@ -202,9 +225,11 @@ func ParseDriver(e entities.Entity) (Driver, bool, error) {
 	// its first own device.
 	//
 	// Its READ PLAN travels elsewhere: as a generated flow over v2/flows (one
-	// vp-modbus-read per channel, or ONE vp-mqtt-read carrying the whole field
-	// mapping of a self-connected battery), publishing its own per-entity
-	// telemetry. The driver block carries display/context only.
+	// vp-modbus-read per channel, or ONE vp-mqtt-read / vp-http-read carrying
+	// the whole field mapping of a self-connected battery), publishing its own
+	// per-entity telemetry. The driver block carries display/context - and, for
+	// the HTTP read type, the endpoint credential the read node picks up from
+	// the per-entity retained config.
 	if isSelfRead(d.Communication) {
 		return Driver{}, false, nil
 	}
