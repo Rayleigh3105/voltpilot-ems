@@ -172,15 +172,16 @@ describe('display derivation', () => {
 describe('customer visibility (audit N-1)', () => {
   it('flags exactly the not-offered nodes: undeliverable promises + the generated rule', () => {
     // vp.logic.gate / vp.notify.push: promises the platform cannot keep (N-1).
-    // vp.consumer.reactive / vp.modbus.switch / vp.mqtt.read: GENERATED
-    // (D-19/D-22) - valid only in server-stamped documents, never authorable.
-    // The switch additionally exists ONLY after a per-device release, so
-    // offering it would be a button that promises a write nothing has proven;
-    // the MQTT read carries a field mapping the editor cannot yet render
-    // (P5d), so offering it would be a form nobody can fill in.
+    // vp.consumer.reactive / vp.modbus.switch / vp.mqtt.read / vp.soc.derive:
+    // GENERATED (D-19/D-22/D-23) - valid only in server-stamped documents,
+    // never authorable. The switch additionally exists ONLY after a per-device
+    // release, so offering it would be a button that promises a write nothing
+    // has proven; the MQTT read carries a field mapping and the SoC derivation
+    // a pair of curves that the editor cannot yet render (P5d), so offering
+    // either would be a form nobody can fill in.
     expect(diagnosticOnlyTypes().sort())
       .toEqual(['vp.consumer.reactive', 'vp.logic.gate', 'vp.modbus.switch',
-        'vp.mqtt.read', 'vp.notify.push']);
+        'vp.mqtt.read', 'vp.notify.push', 'vp.soc.derive']);
   });
 
   it('treats an unflagged node as customer-visible (the default)', () => {

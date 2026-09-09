@@ -1093,6 +1093,86 @@
           "help": "Je Standard-Kanal eine Zeile: topic (MQTT-Filter, + und # erlaubt), path (Wertepfad im JSON, leer = die Nutzlast IST der Wert), aggregate (last|min|max|sum|avg|count über alle passenden Topics), value_type (number|bool), scale, offset, sentinel (Rohwert, der \"nicht gemessen\" bedeutet) und stale_s."
         }
       ]
+    },
+    {
+      "type": "vp.soc.derive",
+      "type_version": "1.0.0",
+      "label": "Ladestand ableiten (generiert)",
+      "description": "GENERIERT aus dem Anschluss einer selbst angebundenen Batterie (P5b Ebene 2, Konzept vp-deye-diybms-luecke-l5 §3.2b). Der Knoten nimmt die Standard-Batteriekanaele, die eine Ebene-1-Quelle gerade geliefert hat, und leitet daraus den Ladestand ab: direct uebernimmt einen gemessenen soc_pct; ocv_curve interpoliert zwei OCV->SoC-Kennlinien (Laden/Entladen) linear, klemmt auf 0..100 und nimmt aus der hoechsten und der niedrigsten Zelle das KONSERVATIVE Minimum; coulomb zaehlt SoC(t) = SoC(t-1) + P*dt/E_nutz*100 ab einem Anker, mit optionaler Rekalibrierung an den Spannungs-Endpunkten. Veroeffentlicht wird EINE Telemetrie-Nachricht mit soc_pct UND soc_source_code (1 = gemessen, 2 = berechnet:kennlinie, 3 = berechnet:ladungszaehlung) - so behaelt die Historie die damalige Quelle. Ohne Eingang entsteht KEIN Ladestand: fehlt die Zellspannung bzw. der Anker, wird nichts veroeffentlicht, und nach der Haltefrist ist auch der eingefrorene Wert abwesend. Der Knoten haengt an einer KANTE aus dem Lese-Knoten, nie am Takt - sonst rechnete er auf dem Stand des vorigen Taktes. Im Editor nie anzubieten; Bearbeiten oeffnet den Batterie-Assistenten der Komponente.",
+      "group": "daten",
+      "generated": true,
+      "generated_origin": "mqtt-device",
+      "generated_origin_label": "dem generierten Batterie-Flow",
+      "customer_visible": false,
+      "runtimes": [
+        "edge"
+      ],
+      "inputs": [
+        {
+          "name": "channels",
+          "type": "number",
+          "label": "Messwerte",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "number",
+          "label": "Ladestand"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "entity_id",
+          "kind": "entity",
+          "label": "Batterie",
+          "required": true
+        },
+        {
+          "name": "method",
+          "kind": "enum",
+          "label": "Methode",
+          "required": true,
+          "options": [
+            "direct",
+            "ocv_curve",
+            "coulomb"
+          ]
+        },
+        {
+          "name": "prefer_direct",
+          "kind": "bool",
+          "label": "Messung schlägt Rechnung",
+          "required": false,
+          "default": true,
+          "help": "Vorgabe an: liegt ein FRISCHER gemessener Ladestand vor, gewinnt er - auch wenn eine Kennlinie konfiguriert ist. Nur der Vergleichsbetrieb schaltet das ab."
+        },
+        {
+          "name": "hold_s",
+          "kind": "number",
+          "label": "Haltefrist (s)",
+          "required": false,
+          "min": 60,
+          "max": 86400,
+          "default": 900,
+          "help": "Wie lange ein eingefrorener Ladestand noch gehalten wird. Danach ist er abwesend, und eine Ladungszählung braucht einen neuen Anker."
+        },
+        {
+          "name": "inputs",
+          "kind": "json",
+          "label": "Eingänge",
+          "required": false,
+          "help": "Rolle → Kanal: soc, cell_min, cell_max, voltage, current, power. Fehlt eine Rolle, gilt der gleichnamige Standard-Kanal (soc_pct, cell_min_mv, cell_max_mv, voltage_v, current_a, power_kw)."
+        },
+        {
+          "name": "params",
+          "kind": "json",
+          "label": "Rechenwerte",
+          "required": false,
+          "help": "curve_charge/curve_discharge (Listen von [Zellspannung in V, Ladestand in %]), cells_in_series, conservative_min, round_pct, capacity_kwh, efficiency_pct, nominal_voltage_v, anchor {soc_pct, at} und recalibrate {full_cell_mv, full_soc_pct, empty_cell_mv, empty_soc_pct}."
+        }
+      ]
     }
   ]
 }

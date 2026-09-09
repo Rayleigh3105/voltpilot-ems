@@ -1,0 +1,109 @@
+{
+  "$comment": "Die GETEILTEN Vektoren der SoC-ABLEITUNG (P5b Ebene 2, Konzept vp-deye-diybms-luecke-l5 §3.2b, Bauplan-Paket P5b). ZWEI Seiten lesen diese Datei PER PFAD: JavaScript edge-app/nodered/vp-palette/test/soc_derive_spec.js faehrt den Block 'faelle' durch die ECHTE Rechnung lib/soc-derivation.js, Java services/api/.../components/SocCurveTemplateTest.java prueft, dass die AUSGELIEFERTE Kurven-Vorlage (services/api/src/main/resources/soccurves/catalog.json) Punkt fuer Punkt diese Tabellen traegt. Zusammen beweisen sie, dass die Box genau die Kurve rechnet, die das Portal anbietet - das Muster von load-follow-vectors.json / topology-vectors.json. Wer eine der beiden Seiten aendert, aendert BEIDE Seiten UND diese Datei zusammen.",
+
+  "$herkunft": "Die beiden Tabellen sind VERBATIM der Home-Assistant-/Node-RED-Flow des Kunden (Ground Truth 09.09.2026, firstmate data/vp-deye-diybms-luecke-l5/evidence/ha-nodered-soc-flow-note.md, Tab 'BMS -> (Ent-)Ladestromlimit 176s'). Der Pack ist ein 176s-Selbstbau (11 Baenke x 16 Zellen, DIYBMS v4 auf emon/diybms/<bank>/<cell>) mit dem Zellfenster 3,26-4,18 V - also NMC/NCA-artig. ⚠ Eine LiFePO4-Vorlage darf hier NIE ersatzweise stehen: dieselbe Spannung bedeutet dort einen voellig anderen Ladestand.",
+
+  "$regel": "socFromVoltage(v, kurve) interpoliert LINEAR zwischen den Stuetzpunkten und KLEMMT ausserhalb (nie extrapolieren - eine Extrapolation ueber das Ende einer gemessenen Kurve hinaus waere eine erfundene Chemie). Der Packwert ist das KONSERVATIVE MINIMUM aus soc_high = f(hoechste Zelle, Ladekurve) und soc_low = f(niedrigste Zelle, Entladekurve): der Pack kann nur so viel hergeben wie seine schwaechste Zelle. Gerundet wird auf 0,1 %.",
+
+  "$einheiten": "cell_min_mv/cell_max_mv sind MILLIVOLT (so sagt es der Typkatalog user-defined-battery.default_measure), die Kurven stehen in VOLT je Zelle. Der Faktor 1000 lebt genau einmal, in lib/soc-derivation.cellVolt.",
+
+  "vorlage": {
+    "id": "diybms-176s-nmc",
+    "label": "DIYBMS 176s NMC (Kundenkurven, 25 °C)",
+    "chemistry": "nmc",
+    "cells_in_series": 176,
+    "ref_temp_c": 25,
+    "cell_min_v": 3.26,
+    "cell_max_v": 4.18,
+    "curve_charge": [
+      [3.26, 0], [3.38, 5], [3.43, 10], [3.49, 15], [3.54, 20], [3.58, 25],
+      [3.60, 30], [3.62, 35], [3.65, 40], [3.67, 45], [3.71, 50], [3.77, 55],
+      [3.83, 60], [3.88, 65], [3.92, 70], [3.96, 75], [4.01, 80], [4.06, 85],
+      [4.09, 90], [4.12, 95], [4.18, 100]
+    ],
+    "curve_discharge": [
+      [3.26, 0], [3.37, 5], [3.42, 10], [3.47, 15], [3.52, 20], [3.56, 25],
+      [3.59, 30], [3.61, 35], [3.64, 40], [3.67, 45], [3.71, 50], [3.76, 55],
+      [3.82, 60], [3.87, 65], [3.91, 70], [3.95, 75], [4.00, 80], [4.06, 85],
+      [4.09, 90], [4.11, 95], [4.18, 100]
+    ]
+  },
+
+  "faelle": [
+    {
+      "name": "der-gemessene-tag-des-kunden",
+      "why": "DER Beleg-Fall. Am 09.09.2026 stand der Pack bei vmin 3,393 V und vmax 3,606 V. Die Ladekurve auf der HOECHSTEN Zelle ergaebe 31,5 %, die Entladekurve auf der NIEDRIGSTEN 7,3 % - und das konservative Minimum ist genau der Ladestand, den der Kunde in Home Assistant sieht. Es ist zugleich der Grund fuer seinen beobachteten 'Boden ~8 %'.",
+      "method": "ocv_curve",
+      "channels": { "cell_min_mv": 3393, "cell_max_mv": 3606 },
+      "erwartet_soc_pct": 7.3,
+      "erwartet_soc_high": 31.5,
+      "erwartet_soc_low": 7.3,
+      "erwartet_source": "berechnet:kennlinie"
+    },
+    {
+      "name": "optimistische-lesart-derselben-zahlen",
+      "why": "conservative_min=false ist die AUSDRUECKLICH gewaehlte optimistische Lesart und liefert das MAXIMUM. Ein MITTEL waere hier keine dritte Lesart, sondern eine erfundene Zelle - deshalb gibt es nur diese beiden.",
+      "method": "ocv_curve",
+      "conservative_min": false,
+      "channels": { "cell_min_mv": 3393, "cell_max_mv": 3606 },
+      "erwartet_soc_pct": 31.5,
+      "erwartet_source": "berechnet:kennlinie"
+    },
+    {
+      "name": "unter-dem-kurvenanfang-wird-geklemmt",
+      "why": "3,20 V liegt unter dem ersten Stuetzpunkt (3,26 V / 0 %). Geklemmt auf 0, nie extrapoliert - eine negative Ladung gibt es nicht.",
+      "method": "ocv_curve",
+      "channels": { "cell_min_mv": 3200, "cell_max_mv": 3250 },
+      "erwartet_soc_pct": 0,
+      "erwartet_source": "berechnet:kennlinie"
+    },
+    {
+      "name": "ueber-dem-kurvenende-wird-geklemmt",
+      "why": "4,30 V liegt ueber dem letzten Stuetzpunkt (4,18 V / 100 %). Geklemmt auf 100 - mehr als voll gibt es nicht.",
+      "method": "ocv_curve",
+      "channels": { "cell_min_mv": 4300, "cell_max_mv": 4300 },
+      "erwartet_soc_pct": 100,
+      "erwartet_source": "berechnet:kennlinie"
+    },
+    {
+      "name": "genau-auf-einem-stuetzpunkt",
+      "why": "3,71 V ist in BEIDEN Tabellen der 50-%-Punkt - die Interpolation darf einen exakten Stuetzpunkt nicht verschieben.",
+      "method": "ocv_curve",
+      "channels": { "cell_min_mv": 3710, "cell_max_mv": 3710 },
+      "erwartet_soc_pct": 50,
+      "erwartet_source": "berechnet:kennlinie"
+    },
+    {
+      "name": "nur-die-niedrigste-zelle-gemappt",
+      "why": "Wer nur cell_min_mv abbildet, bekommt den Wert aus der Entladekurve - und NICHT etwa ein Minimum gegen einen erfundenen zweiten Kandidaten.",
+      "method": "ocv_curve",
+      "channels": { "cell_min_mv": 3500 },
+      "erwartet_soc_pct": 18.0,
+      "erwartet_source": "berechnet:kennlinie"
+    },
+    {
+      "name": "keine-zellspannung-kein-ladestand",
+      "why": "EHRLICHKEITSREGEL 1: ohne Eingang gibt es keinen Ladestand. Kein Vorgabewert, kein letzter Wert mit neuem Zeitstempel - schlicht nichts.",
+      "method": "ocv_curve",
+      "channels": { "temp_max_c": 21.5 },
+      "erwartet_soc_pct": null,
+      "erwartet_grund": "keine frische Zellspannung"
+    },
+    {
+      "name": "eine-messung-schlaegt-die-rechnung",
+      "why": "DIE AUSWAHL-LOGIK: liegt ein FRISCHER gemessener Ladestand vor, gewinnt er - auch wenn die Kennlinie konfiguriert ist und rechnen koennte. Die Herkunft sagt es.",
+      "method": "ocv_curve",
+      "channels": { "soc_pct": 42.0, "cell_min_mv": 3393, "cell_max_mv": 3606 },
+      "erwartet_soc_pct": 42.0,
+      "erwartet_source": "gemessen"
+    },
+    {
+      "name": "direct-ohne-eingang",
+      "why": "Auch die DIREKTE Methode erfindet nichts: ohne gemappten, frischen soc_pct gibt es keinen Ladestand.",
+      "method": "direct",
+      "channels": { "voltage_v": 612.0 },
+      "erwartet_soc_pct": null,
+      "erwartet_grund": "kein gemessener Ladestand"
+    }
+  ]
+}

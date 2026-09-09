@@ -1,0 +1,51 @@
+{
+  "_comment": [
+    "Die KURVEN-VORLAGEN der SoC-Ableitung (P5b Ebene 2, Konzept",
+    "vp-deye-diybms-luecke-l5 §3.2b, Bauplan-Paket P5b).",
+    "",
+    "Eine Vorlage ist ein DATENSATZ, kein Code: sie fuellt die Felder",
+    "curve_charge/curve_discharge einer soc_derivation vor, mehr nicht. Die",
+    "Methode selbst bleibt generisch und vollstaendig konfigurierbar - wer",
+    "eigene Stuetzpunkte hat, traegt sie ein und braucht keine Vorlage.",
+    "",
+    "⚠ WARUM HIER NUR EINE VORLAGE STEHT: eine Kennlinie ist eine MESSUNG an",
+    "einer bestimmten Zellchemie. Die eine Tabelle unten ist byte-verbatim der",
+    "Kundenflow von 09.09.2026 (docs/contracts/v2/soc-derivation-vectors.json",
+    "traegt dieselben Zahlen und der Test beweist die Gleichheit). Eine",
+    "'LiFePO4 generisch'-Vorlage haette VoltPilot an dieser Stelle ERFINDEN",
+    "muessen - und eine erfundene Kennlinie ist keine Vorlage, sondern ein",
+    "falscher Ladestand mit Nachkommastellen. Sie kommt, wenn eine gemessene",
+    "Tabelle vorliegt, nicht vorher.",
+    "",
+    "⚠ CHEMIE-WARNUNG: der Pack des Kunden ist NMC/NCA (Zellfenster 3,26-4,18",
+    "V). Dieselbe Spannung bedeutet an einer LiFePO4-Zelle einen voellig",
+    "anderen Ladestand - deshalb traegt jede Vorlage ihre 'chemistry' und ihr",
+    "Zellfenster sichtbar mit, damit die Flaeche (P5d) sie nennen kann."
+  ],
+  "schema_version": "1.0",
+  "templates": [
+    {
+      "id": "diybms-176s-nmc",
+      "label": "DIYBMS 176s NMC (Kundenkurven, 25 °C)",
+      "description": "Die gemessenen OCV→SoC-Tabellen eines 176s-Selbstbau-Packs mit DIYBMS v4 (11 Bänke × 16 Zellen). Zwei Kurven: die Ladekurve wird auf die HÖCHSTE, die Entladekurve auf die NIEDRIGSTE Zelle angewandt, und das konservative Minimum gewinnt.",
+      "chemistry": "nmc",
+      "cells_in_series": 176,
+      "ref_temp_c": 25,
+      "cell_min_v": 3.26,
+      "cell_max_v": 4.18,
+      "source": "Kunden-Node-RED-Flow „BMS → (Ent-)Ladestromlimit 176s“, erhoben am 09.09.2026",
+      "curve_charge": [
+        [3.26, 0], [3.38, 5], [3.43, 10], [3.49, 15], [3.54, 20], [3.58, 25],
+        [3.60, 30], [3.62, 35], [3.65, 40], [3.67, 45], [3.71, 50], [3.77, 55],
+        [3.83, 60], [3.88, 65], [3.92, 70], [3.96, 75], [4.01, 80], [4.06, 85],
+        [4.09, 90], [4.12, 95], [4.18, 100]
+      ],
+      "curve_discharge": [
+        [3.26, 0], [3.37, 5], [3.42, 10], [3.47, 15], [3.52, 20], [3.56, 25],
+        [3.59, 30], [3.61, 35], [3.64, 40], [3.67, 45], [3.71, 50], [3.76, 55],
+        [3.82, 60], [3.87, 65], [3.91, 70], [3.95, 75], [4.00, 80], [4.06, 85],
+        [4.09, 90], [4.11, 95], [4.18, 100]
+      ]
+    }
+  ]
+}

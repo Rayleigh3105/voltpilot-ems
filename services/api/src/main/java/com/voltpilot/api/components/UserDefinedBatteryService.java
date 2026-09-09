@@ -8,7 +8,10 @@ import com.voltpilot.api.components.UserDefinedBatteryDefinition.Broker;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Mapping;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.NormalizedMapping;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Result;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.SocAnchor;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.SocDerivation;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.SocParams;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.SocRecalibrate;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryService;
@@ -89,6 +92,7 @@ public class UserDefinedBatteryService {
     private final EntityTypeCatalog typeCatalog;
     private final ComponentDefinitionRepository definitions;
     private final ComponentService components;
+    private final SocCurveTemplateCatalog curves;
     private final UserDefinedBatteryFlowCompiler compiler;
     private final FlowRepository flows;
     private final FlowActivationService deployments;
@@ -98,7 +102,8 @@ public class UserDefinedBatteryService {
     public UserDefinedBatteryService(SiteRepository sites, EntityRegistryRepository entityRepo,
             EntityRegistryService entityRegistry, EntityTypeCatalog typeCatalog,
             ComponentDefinitionRepository definitions, ComponentService components,
-            UserDefinedBatteryFlowCompiler compiler, FlowRepository flows,
+            SocCurveTemplateCatalog curves, UserDefinedBatteryFlowCompiler compiler,
+            FlowRepository flows,
             FlowActivationService deployments, ObjectProvider<FlowCompiler> flowc,
             ObjectMapper mapper) {
         this.sites = sites;
@@ -107,6 +112,7 @@ public class UserDefinedBatteryService {
         this.typeCatalog = typeCatalog;
         this.definitions = definitions;
         this.components = components;
+        this.curves = curves;
         this.compiler = compiler;
         this.flows = flows;
         this.deployments = deployments;
@@ -129,7 +135,7 @@ public class UserDefinedBatteryService {
         String label = label(req);
         EntityRow row = entityRegistry.createEntity(siteId,
                 UserDefinedBatteryDefinition.ENTITY_TYPE, label, null,
-                capabilities(def.mappings()), guards());
+                capabilities(def), guards());
 
         write(siteId, tenantId, row.id(), def, label, req.note(), subject, "Angelegt");
         return components.list(siteId);
@@ -153,7 +159,7 @@ public class UserDefinedBatteryService {
         // entferntes Ziel muss auch als Messwert verschwinden, sonst verspräche
         // die Batterie einen Wert, den niemand mehr liest.
         entityRegistry.updateEntity(siteId, existing.id(), label, null,
-                capabilities(def.mappings()), null);
+                capabilities(def), null);
         write(siteId, TenantContext.get(), existing.id(), def, label, req.note(), subject,
                 "Geändert");
         return components.list(siteId);
@@ -302,7 +308,7 @@ public class UserDefinedBatteryService {
     private void deployReadFlow(UUID siteId, UUID tenantId, UUID entityId, int version,
             String label, Result def) {
         ObjectNode document = compiler.compile(siteId, tenantId, entityId, version, label,
-                def.broker(), def.mappings(), def.publishIntervalS());
+                def.broker(), def.mappings(), def.publishIntervalS(), def.socDerivation());
         FlowCompiler compilerBean = flowc.getIfAvailable();
         if (compilerBean == null) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
@@ -384,7 +390,7 @@ public class UserDefinedBatteryService {
         }
         SocDerivation soc = def.socDerivation();
         if (soc != null) {
-            root.putObject("soc_derivation").put("method", soc.method());
+            root.set("soc_derivation", socJson(soc));
         }
         return root.toString();
     }
@@ -392,13 +398,37 @@ public class UserDefinedBatteryService {
     /**
      * Die Messkanäle der Batterie - die ZUGEORDNETEN, samt ihrer
      * Standard-Einheit aus dem Typkatalog.
+     *
+     * <p><b>Seit P5b kommen ABGELEITETE Kanäle dazu, und zwar aus demselben
+     * Grund, aus dem die Liste sonst so knapp ist:</b> sie nennt, was die
+     * Batterie WIRKLICH liefert. Rechnet eine Kennlinie oder eine
+     * Ladungszählung den Ladestand aus, dann liefert diese Batterie
+     * {@code soc_pct} - er steht nur nicht in der Zuordnung, weil ihn niemand
+     * sendet. Ihn zu verschweigen wäre derselbe Fehler wie ihn zu versprechen,
+     * bloß mit umgekehrtem Vorzeichen: der generierte Flow fordert
+     * {@code measure:soc_pct} an, und ohne die Fähigkeit fiele er bei der
+     * Aktivierung durch.
+     *
+     * <p>{@code soc_source_code} reist immer mit, sobald es überhaupt einen
+     * Ladestand gibt - er ist die HERKUNFT dieses Wertes, je Messzeitpunkt, und
+     * damit das, was die Historie später die damalige Quelle nennen lässt.
      */
-    private JsonNode capabilities(List<NormalizedMapping> mappings) {
+    private JsonNode capabilities(Result def) {
+        Map<String, String> allowed = allowedChannels();
+        Map<String, String> out = new LinkedHashMap<>();
+        for (NormalizedMapping m : def.mappings()) {
+            out.put(m.channel(), m.unit());
+        }
+        if (def.socDerivation() != null) {
+            out.put(UserDefinedBatteryDefinition.SOC_CHANNEL,
+                    allowed.getOrDefault(UserDefinedBatteryDefinition.SOC_CHANNEL, "%"));
+            out.put(UserDefinedBatteryDefinition.SOC_SOURCE_CHANNEL,
+                    allowed.getOrDefault(UserDefinedBatteryDefinition.SOC_SOURCE_CHANNEL, ""));
+        }
         ObjectNode caps = mapper.createObjectNode();
         ArrayNode measure = caps.putArray("measure");
-        for (NormalizedMapping m : mappings) {
-            measure.addObject().put("channel", m.channel()).put("unit", m.unit());
-        }
+        out.forEach((channel, unit) ->
+                measure.addObject().put("channel", channel).put("unit", unit));
         return caps;
     }
 
@@ -423,10 +453,174 @@ public class UserDefinedBatteryService {
         return b == null ? new Broker(null, null) : new Broker(b.host(), b.port());
     }
 
-    private static SocDerivation soc(SaveUserDefinedBatteryRequest req) {
+    /**
+     * Die gespeicherte Form der SoC-Ableitung - VOLLSTÄNDIG ausgeschrieben.
+     *
+     * <p>Sie reist als {@code driver.connection} zur Box (die sie überspringt)
+     * und ist die Anzeige-Wahrheit über diesen Anschluss; der ausführende
+     * Leseplan reist im Flow. Beide entstehen aus DERSELBEN geprüften
+     * {@code SocDerivation} - eine zweite Ableitung der Felder hier wäre eine
+     * zweite Wahrheit.
+     */
+    private ObjectNode socJson(SocDerivation soc) {
+        ObjectNode root = mapper.createObjectNode();
+        root.put("method", soc.method());
+        root.put("prefer_direct", soc.preferDirect());
+        root.put("hold_s", soc.holdS());
+        if (soc.template() != null) {
+            root.put("template", soc.template());
+        }
+        ObjectNode inputs = root.putObject("inputs");
+        new java.util.TreeMap<>(soc.inputs()).forEach(inputs::put);
+        ObjectNode params = root.putObject("params");
+        SocParams p = soc.params();
+        putCurve(params, "curve_charge", p.curveCharge());
+        putCurve(params, "curve_discharge", p.curveDischarge());
+        if (p.cellsInSeries() != null) {
+            params.put("cells_in_series", p.cellsInSeries());
+        }
+        params.put("conservative_min", p.conservativeMin());
+        params.put("round_pct", p.roundPct());
+        if (p.capacityKwh() != null) {
+            params.put("capacity_kwh", p.capacityKwh());
+        }
+        if (p.efficiencyPct() != null) {
+            params.put("efficiency_pct", p.efficiencyPct());
+        }
+        if (p.nominalVoltageV() != null) {
+            params.put("nominal_voltage_v", p.nominalVoltageV());
+        }
+        if (p.refTempC() != null) {
+            params.put("ref_temp_c", p.refTempC());
+        }
+        if (p.anchor() != null) {
+            ObjectNode anchor = params.putObject("anchor");
+            anchor.put("soc_pct", p.anchor().socPct());
+            if (p.anchor().at() != null && !p.anchor().at().isBlank()) {
+                anchor.put("at", p.anchor().at().trim());
+            }
+        }
+        if (p.recalibrate() != null) {
+            ObjectNode r = params.putObject("recalibrate");
+            if (p.recalibrate().fullCellMv() != null) {
+                r.put("full_cell_mv", p.recalibrate().fullCellMv());
+                r.put("full_soc_pct", p.recalibrate().fullSocPct());
+            }
+            if (p.recalibrate().emptyCellMv() != null) {
+                r.put("empty_cell_mv", p.recalibrate().emptyCellMv());
+                r.put("empty_soc_pct", p.recalibrate().emptySocPct());
+            }
+        }
+        return root;
+    }
+
+    private static void putCurve(ObjectNode params, String field, List<double[]> curve) {
+        if (curve == null || curve.isEmpty()) {
+            return;
+        }
+        ArrayNode out = params.putArray(field);
+        for (double[] point : curve) {
+            ArrayNode pair = out.addArray();
+            pair.add(point[0]);
+            pair.add(point[1]);
+        }
+    }
+
+    /**
+     * Die Anfrage-Form der Ableitung in die geprüfte Form - inklusive der
+     * KURVEN-VORLAGE.
+     *
+     * <p>Eine Vorlage FÜLLT nur, was leer ist: eigene Stützpunkte gewinnen
+     * immer. Ein unbekannter Vorlagen-Name wird BENANNT abgelehnt statt
+     * stillschweigend ignoriert - sonst hätte der Kunde eine Kurve gewählt und
+     * eine leere Kennlinie bekommen.
+     */
+    private SocDerivation soc(SaveUserDefinedBatteryRequest req) {
         SaveUserDefinedBatteryRequest.SocDerivationRequest s =
                 req == null ? null : req.socDerivation();
-        return s == null ? null : new SocDerivation(s.method());
+        if (s == null) {
+            return null;
+        }
+        SaveUserDefinedBatteryRequest.SocParamsRequest p = s.params();
+        List<double[]> charge = pairs(p == null ? null : p.curveCharge());
+        List<double[]> discharge = pairs(p == null ? null : p.curveDischarge());
+        Integer cells = p == null ? null : p.cellsInSeries();
+        Double refTemp = p == null ? null : p.refTempC();
+
+        String templateId = s.template() == null || s.template().isBlank() ? null
+                : s.template().trim();
+        if (templateId != null) {
+            SocCurveTemplateCatalog.Template t = curves.find(templateId);
+            if (t == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Diese Kennlinien-Vorlage kennen wir nicht.");
+            }
+            if (charge == null) {
+                charge = t.curveCharge();
+            }
+            if (discharge == null) {
+                discharge = t.curveDischarge();
+            }
+            if (cells == null) {
+                cells = t.cellsInSeries();
+            }
+            if (refTemp == null) {
+                refTemp = t.refTempC();
+            }
+        }
+
+        Map<String, String> inputs = new LinkedHashMap<>();
+        SaveUserDefinedBatteryRequest.SocInputsRequest in = s.inputs();
+        if (in != null) {
+            putInput(inputs, "soc", in.soc());
+            putInput(inputs, "cell_min", in.cellMin());
+            putInput(inputs, "cell_max", in.cellMax());
+            putInput(inputs, "voltage", in.voltage());
+            putInput(inputs, "current", in.current());
+            putInput(inputs, "power", in.power());
+        }
+
+        SocAnchor anchor = p == null || p.anchor() == null || p.anchor().socPct() == null ? null
+                : new SocAnchor(p.anchor().socPct(), p.anchor().at());
+        SocRecalibrate recal = p == null || p.recalibrate() == null ? null
+                : new SocRecalibrate(p.recalibrate().fullCellMv(), p.recalibrate().fullSocPct(),
+                        p.recalibrate().emptyCellMv(), p.recalibrate().emptySocPct());
+
+        SocParams params = new SocParams(charge, discharge, cells,
+                p == null || p.conservativeMin() == null || p.conservativeMin(),
+                p == null || p.roundPct() == null
+                        ? UserDefinedBatteryDefinition.DEFAULT_ROUND_PCT : p.roundPct(),
+                p == null ? null : p.capacityKwh(),
+                p == null ? null : p.efficiencyPct(),
+                p == null ? null : p.nominalVoltageV(),
+                refTemp, anchor, recal);
+        return new SocDerivation(s.method(), s.preferDirect() == null || s.preferDirect(),
+                inputs, params, templateId,
+                s.holdS() == null ? UserDefinedBatteryDefinition.DEFAULT_HOLD_S : s.holdS());
+    }
+
+    private static void putInput(Map<String, String> out, String role, String channel) {
+        if (channel != null && !channel.isBlank()) {
+            out.put(role, channel.trim());
+        }
+    }
+
+    /** Kennlinien-Paare aus der Anfrage; ein unvollständiges Paar bleibt drin. */
+    private static List<double[]> pairs(List<List<Double>> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return null;
+        }
+        List<double[]> out = new ArrayList<>();
+        for (List<Double> p : raw) {
+            if (p == null || p.size() < 2 || p.get(0) == null || p.get(1) == null) {
+                // Ein kaputtes Paar wird NICHT verschluckt - es reist als
+                // leeres Paar weiter und die Prüfung nennt es beim Namen.
+                out.add(new double[0]);
+                continue;
+            }
+            out.add(new double[] {p.get(0), p.get(1)});
+        }
+        return out;
     }
 
     private static List<Mapping> mappings(SaveUserDefinedBatteryRequest req) {
