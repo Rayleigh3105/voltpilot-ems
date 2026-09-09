@@ -33,6 +33,14 @@ func TestTheHeartbeatCarriesTheChargePointsAndTheBoxOwnWords(t *testing.T) {
 	if sum == nil {
 		t.Fatal("a plant with charge points must report them")
 	}
+	var report struct {
+		Revision int
+		Enabled  bool
+		Stations []json.RawMessage
+	}
+	if err := json.Unmarshal(sum.ControlStatus, &report); err != nil || len(report.Stations) != 2 || !report.Enabled {
+		t.Fatalf("control evidence missing from actual cloud heartbeat: %s (%v)", sum.ControlStatus, err)
+	}
 	if len(sum.Chargers) != 2 {
 		t.Fatalf("chargers = %d, want 2", len(sum.Chargers))
 	}
@@ -289,6 +297,8 @@ func TestTheHeartbeatCarriesThePseudonymAndNeverThePlaintextCard(t *testing.T) {
 		c, ok := a.ocpp.srv.Snapshot().ChargerByID("saeule-1")
 		return ok && len(c.ActiveConnectors()) == 0
 	})
+	// Distinguish the new session from a duplicate Start at OCPP second resolution.
+	time.Sleep(time.Second)
 	if err := st.Plug(1, ocppsim.Vehicle{DemandKw: 22, MinKw: 5, IdTag: karte}); err != nil {
 		t.Fatal(err)
 	}

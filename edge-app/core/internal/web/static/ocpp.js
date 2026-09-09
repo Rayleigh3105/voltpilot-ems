@@ -51,7 +51,7 @@
     }
     var line = fmt1(o.allocated_kw) + " von " + fmt1(o.budget_kw) + " kW vergeben";
     if (o.reserved_kw > 0) {
-      line += " (" + fmt1(o.reserved_kw) + " kW für nicht erreichbare Säulen zurückgehalten)";
+      line += " (" + fmt1(o.reserved_kw) + " kW für derzeit nicht geregelte Ladepunkte zurückgehalten)";
     }
     if (o.measured_kw !== null && o.measured_kw !== undefined) {
       line += " · gemessen " + fmt1(o.measured_kw) + " kW";

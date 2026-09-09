@@ -41,7 +41,8 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
   selbst auf ihr hinterlegtes Default zurück. Es wechselt nur `Connected`,
   worauf jede Fläche schlüsselt.
 - **⚠ Transaktions-Ids werden PERSISTIERT** (`chargers.json` trägt neben der
-  Freigabeliste den Zähler). Eine Box, die sie beim Neustart vergisst, vergibt
+  Freigabeliste den Zähler und aktive pseudonymisierte Sitzungen).
+  Nach einem Neustart braucht jede Sitzung frische passende Transaktionsdaten. Eine Box, die sie beim Neustart vergisst, vergibt
   eine Id neu, die eine Säule für eine LAUFENDE Sitzung noch hält.
 - **Der Messwert-Parser ist rein und kennt die Fallen** (`meter.go`,
   Vektor-Tests): ein FEHLENDES `measurand` IST das Energieregister
@@ -69,11 +70,10 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
   allen Schnittstellen (keine Bind-Adresse wählbar) — die Grenze sind
   Compose-Port-Mapping + Host-Firewall, genau wie bei `:8484` und dem
   Node-RED-Editor, plus die Freigabeliste.
-- **Scope-Zaun (E4): Lastmanagement pur.** `Authorize` akzeptiert JEDEN Tag —
-  es gibt keine Abrechnung, kein Eichrecht, kein Roaming und keine
-  Nutzerverwaltung, auf die sich eine Entscheidung stützen könnte, und ein
-  erfundenes „Invalid" hielte ein Kundenauto aus einem Grund an, den wir
-  erfunden haben. Sitzungen sind BETRIEBS-, keine Abrechnungsdaten.
+- **Scope-Zaun (E4): Lastmanagement, keine Abrechnung.** Ohne neue Einstellung
+  akzeptiert `Authorize` jeden Tag. Die additive lokale Kartenfreigabe prüft
+  `Authorize` und `StartTransaction` gegen dieselbe dauerhaft gespeicherte Liste.
+  Einrichtung, Cache-Abgleich und Nachweise: `docs/ocpp-control.md`.
 
 ### OCPP-Datenjournal (Slice 10): unter dem Typ-System, vor der ersten Platte
 

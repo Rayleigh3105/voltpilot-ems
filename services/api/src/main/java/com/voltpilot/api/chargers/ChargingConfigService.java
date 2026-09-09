@@ -222,7 +222,14 @@ public class ChargingConfigService {
         // GANZE Aussage und geht deshalb auch LEER hinaus: nur so kommt eine
         // Rücknahme bei einer Box an, die gerade offline war.
         List<VehicleProfileDto> vehicles = vehicleProfiles(siteId);
+        String control = configs.ocppControl(siteId);
         for (UUID deviceId : configs.deviceIds(siteId)) {
+            if (control != null) {
+                pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(), config.priorityChargePointIds(),
+                        config.surplusPolicy(), config.storagePriority(), config.chargePoints(), config.removedChargePointIds(),
+                        config.frame(), config.storageRank(), config.wallboxes(), vehicles, control, now);
+                continue;
+            }
             pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(),
                     config.priorityChargePointIds(), config.surplusPolicy(),
                     config.storagePriority(), config.chargePoints(),

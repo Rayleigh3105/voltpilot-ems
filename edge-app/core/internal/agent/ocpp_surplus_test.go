@@ -180,6 +180,9 @@ func TestABoostBelongsToItsSession(t *testing.T) {
 		c, _ := a.ocpp.srv.Snapshot().ChargerByID("SAEULE-1")
 		return len(c.ActiveConnectors()) == 0
 	})
+	// OCPP library emits whole-second Start timestamps. The next identical
+	// card/meter session must have distinct evidence from a closed replay.
+	time.Sleep(time.Second)
 	if err := s1.Plug(1, ocppsim.Vehicle{DemandKw: 240, MinKw: 5}); err != nil {
 		t.Fatalf("re-plug: %v", err)
 	}

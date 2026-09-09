@@ -48,7 +48,7 @@ export const OCPP_ACTIONS: OcppActionDefinition[] = [
   { action: 'RemoteStartTransaction', label: 'Laden starten', group: 'alltag', role: 'operator',
     impact: 'Fordert die Station auf, am gewählten freien Stecker eine Transaktion zu beginnen.',
     confirmation: 'Stecker und Autorisierung prüfen; danach wartet VoltPilot auf StartTransaction.',
-    fields: [connector, idTag, { key: 'profileLimit', label: 'Optionales Limit', kind: 'number', placeholder: '11', help: 'kW; leer lässt das Stationsprofil unverändert.' }] },
+    fields: [connector, idTag] },
   { action: 'RemoteStopTransaction', label: 'Laden stoppen', group: 'alltag', role: 'operator',
     impact: 'Beendet den ausgewählten laufenden Ladevorgang.', confirmation: 'Aktive Transaktion und bisher geladene Energie unmittelbar vor dem Senden prüfen.',
     fields: [{ key: 'transactionId', label: 'Transaktion', kind: 'number', required: true }] },
@@ -64,21 +64,6 @@ export const OCPP_ACTIONS: OcppActionDefinition[] = [
   { action: 'CancelReservation', label: 'Reservierung aufheben', group: 'alltag', role: 'site-admin', capability: 'Reservation',
     impact: 'Hebt eine aktive Reservierung auf.', confirmation: 'Reservierungs-ID und zugehörigen Stecker prüfen.', fields: [connector,
       { key: 'reservationId', label: 'Reservierungs-ID', kind: 'number', required: true }] },
-  { action: 'SetChargingProfile', label: 'Ladeprofil setzen', group: 'alltag', role: 'site-admin', capability: 'SmartCharging',
-    impact: 'Setzt ein OCPP-TxProfile; die aktuell geltende Freigabe bleibt bis zum Readback ehrlich getrennt.',
-    confirmation: 'Leistung, Einheit, Zweck und Stack-Level prüfen.', fields: [connector,
-      { key: 'profileId', label: 'Profil-ID', kind: 'number', required: true, defaultValue: '1' },
-      { key: 'stackLevel', label: 'Stack-Level', kind: 'number', required: true, defaultValue: '0' },
-      { key: 'purpose', label: 'Zweck', kind: 'select', required: true, defaultValue: 'TxProfile', options: [
-        { value: 'TxProfile', label: 'TxProfile' }, { value: 'TxDefaultProfile', label: 'TxDefaultProfile' }, { value: 'ChargePointMaxProfile', label: 'ChargePointMaxProfile' }] },
-      { key: 'rateUnit', label: 'Einheit', kind: 'select', required: true, defaultValue: 'W', options: [{ value: 'W', label: 'Watt' }, { value: 'A', label: 'Ampere' }] },
-      { key: 'limit', label: 'Limit', kind: 'number', required: true, placeholder: '11000' },
-      { key: 'duration', label: 'Dauer in Sekunden', kind: 'number', placeholder: '3600' }] },
-  { action: 'ClearChargingProfile', label: 'Ladeprofil löschen', group: 'alltag', role: 'site-admin', capability: 'SmartCharging',
-    impact: 'Löscht nur Profile, die den angegebenen Filtern entsprechen.', confirmation: 'Filter und betroffene Profile prüfen.', fields: [
-      { key: 'profileId', label: 'Profil-ID', kind: 'number' }, connector,
-      { key: 'purpose', label: 'Zweck', kind: 'select', options: [{ value: '', label: 'alle Zwecke' }, { value: 'TxProfile', label: 'TxProfile' }, { value: 'TxDefaultProfile', label: 'TxDefaultProfile' }, { value: 'ChargePointMaxProfile', label: 'ChargePointMaxProfile' }] },
-      { key: 'stackLevel', label: 'Stack-Level', kind: 'number' }] },
   { action: 'GetCompositeSchedule', label: 'Angewandten Ladeplan lesen', group: 'alltag', role: 'site-admin', capability: 'SmartCharging',
     impact: 'Liest den von der Station zusammengesetzten, tatsächlich angewandten Plan.', confirmation: 'Stecker, Zeitraum und Einheit prüfen.', fields: [connector,
       { key: 'duration', label: 'Dauer in Sekunden', kind: 'number', required: true, defaultValue: '3600' },
@@ -152,40 +137,21 @@ const compact = (obj: Record<string, unknown>): Record<string, unknown> => Objec
   Object.entries(obj).filter(([, value]) => value !== undefined && value !== ''),
 );
 
-function numericOperationSeed(seed: string): number {
-  let hash = 2166136261;
-  for (const char of seed) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); }
-  return Math.abs(hash % 1_000_000) || 1;
-}
-
 /** Build only server-allowlisted OCPP fields; no arbitrary JSON crosses this boundary. */
-export function actionRequest(action: string, values: Record<string, string>, operationSeed = 'preview'): Record<string, unknown> {
+export function actionRequest(action: string, values: Record<string, string>, _operationSeed = 'preview'): Record<string, unknown> {
   const connectorId = number(values.connectorId ?? '');
   switch (action) {
     case 'RemoteStartTransaction': {
-      const limit = number(values.profileLimit ?? '');
-      return compact({ connectorId, idTag: values.idTag,
-        chargingProfile: limit == null ? undefined : {
-          // One dialog intention owns one seed: retries are byte-identical,
-          // while a changed form intention gets a new profile identity.
-          chargingProfileId: numericOperationSeed(operationSeed), stackLevel: 0,
-          chargingProfilePurpose: 'TxProfile', chargingProfileKind: 'Relative',
-          chargingSchedule: { chargingRateUnit: 'W', chargingSchedulePeriod: [{ startPeriod: 0, limit: limit * 1000 }] },
-        } });
+      if (values.profileLimit?.trim()) throw new Error('Ladegrenzen bitte im Lastmanagement einstellen.');
+      return compact({ connectorId, idTag: values.idTag });
     }
     case 'RemoteStopTransaction': return { transactionId: number(values.transactionId)! };
     case 'UnlockConnector': return { connectorId };
     case 'ReserveNow': return compact({ connectorId, expiryDate: instant(values.expiryDate), idTag: values.idTag,
       reservationId: number(values.reservationId), parentIdTag: values.parentIdTag });
     case 'CancelReservation': return { reservationId: number(values.reservationId)! };
-    case 'SetChargingProfile': return { connectorId, csChargingProfiles: compact({
-      chargingProfileId: number(values.profileId), stackLevel: number(values.stackLevel),
-      chargingProfilePurpose: values.purpose, chargingProfileKind: 'Relative',
-      chargingSchedule: compact({ duration: number(values.duration), chargingRateUnit: values.rateUnit,
-        chargingSchedulePeriod: [{ startPeriod: 0, limit: number(values.limit) }] }),
-    }) };
-    case 'ClearChargingProfile': return compact({ id: number(values.profileId), connectorId,
-      chargingProfilePurpose: values.purpose, stackLevel: number(values.stackLevel) });
+    case 'SetChargingProfile': case 'ClearChargingProfile':
+      throw new Error('Ladeprofile werden vom lokalen Lastmanagement verwaltet.');
     case 'GetCompositeSchedule': return compact({ connectorId, duration: number(values.duration), chargingRateUnit: values.rateUnit });
     case 'ChangeAvailability': return { connectorId, type: values.type };
     case 'SoftReset': case 'HardReset': case 'ClearCache': case 'GetLocalListVersion': return {};

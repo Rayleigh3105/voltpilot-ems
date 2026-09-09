@@ -90,7 +90,7 @@ func TestCapabilitiesRefuseRatherThanGuess(t *testing.T) {
 		{"watts", map[string]string{KeyAllowedChargingRateUnit: "W"}, true},
 		{"the spelt-out form", map[string]string{KeyAllowedChargingRateUnit: "Power"}, true},
 		{"both units offered", map[string]string{KeyAllowedChargingRateUnit: "Current,Power"}, true},
-		{"amperes only", map[string]string{KeyAllowedChargingRateUnit: "Current"}, false},
+		{"amperes only (wiring checked at commissioning)", map[string]string{KeyAllowedChargingRateUnit: "Current"}, true},
 		{"a nonsense unit", map[string]string{KeyAllowedChargingRateUnit: "Furlongs"}, false},
 		// ⚠ The key is OPTIONAL in OCPP 1.6 and plenty of firmware omits it
 		// while happily taking watt limits. Reading the omission as "cannot"

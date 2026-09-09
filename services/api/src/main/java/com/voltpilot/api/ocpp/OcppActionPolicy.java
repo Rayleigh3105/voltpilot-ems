@@ -39,6 +39,8 @@ public class OcppActionPolicy {
         put(out, CUSTOMER, customer);
         put(out, SITE_ADMIN, siteAdmin);
         put(out, PLATFORM, platform);
+        out.put("SetChargingProfile", false);
+        out.put("ClearChargingProfile", false);
         return new OcppDto.ActionPermissions(out);
     }
 

@@ -27,9 +27,8 @@ var ErrDisabled = errors.New("die Ladepunkt-Anbindung ist nicht eingeschaltet")
 //  1. ASK what it can do (GetConfiguration) — never assume;
 //  2. ask for meter values at a useful cadence — without measurements the
 //     whole thing is blind;
-//  3. install the whole-station cap (ChargePointMaxProfile);
-//  4. install the SAFE per-connector default (TxDefaultProfile) — the value
-//     the station falls back to when we go silent.
+//  3. block with a zero cap while reconciling foreign profile stacks;
+//  4. install the safe default, then replace the whole-station cap.
 //
 // ⚠ Steps 3 and 4 are what makes the box's own death harmless, so they run at
 // EVERY (re)connect, not once at pairing: a station that rebooted may have
@@ -40,12 +39,20 @@ var ErrDisabled = errors.New("die Ladepunkt-Anbindung ist nicht eingeschaltet")
 // meter-interval key still charges, and refusing to command it over that
 // would be the tail wagging the dog.
 func (s *Server) Commission(ctx context.Context, chargerID string, maxKw, defaultKw float64, meterInterval time.Duration) error {
+	s.profileMu.Lock()
+	defer s.profileMu.Unlock()
+	if math.IsNaN(maxKw) || math.IsInf(maxKw, 0) || maxKw < 0 || math.IsNaN(defaultKw) || math.IsInf(defaultKw, 0) || defaultKw < 0 {
+		return errors.New("Ungültige Sicherheitsgrenzen")
+	}
+	defaultKw = math.Min(defaultKw, maxKw)
 	t, err := s.liveTransport(chargerID)
 	if err != nil {
 		s.recordCommission(chargerID, nil, nil, err)
 		return err
 	}
 	now := s.opts.Now()
+	// Previous acknowledgements are no evidence for this connection/setup.
+	s.recordCommission(chargerID, nil, nil, errors.New("Sicherheitsprofile werden geprüft"))
 
 	values, unknown, err := t.getConfiguration(ctx, chargerID, CapabilityKeys())
 	if err != nil {
@@ -65,6 +72,21 @@ func (s *Server) Commission(ctx context.Context, chargerID string, maxKw, defaul
 		s.recordCommission(chargerID, nil, nil, e)
 		return e
 	}
+	maximum, err := s.stationProfile(chargerID, 0, MaxProfile(maxKw, now))
+	if err != nil {
+		s.recordCommission(chargerID, nil, nil, err)
+		return err
+	}
+	fallback, err := s.stationProfile(chargerID, 0, DefaultProfile(defaultKw, now))
+	if err != nil {
+		s.recordCommission(chargerID, nil, nil, err)
+		return err
+	}
+	maxKw, defaultKw = maximum.LimitKw, fallback.LimitKw
+	if err := s.configureAuthorization(ctx, t, chargerID); err != nil {
+		s.recordCommission(chargerID, nil, nil, err)
+		return err
+	}
 
 	// Best-effort: measurements make the loop see, but a firmware that refuses
 	// the key still charges.
@@ -76,7 +98,13 @@ func (s *Server) Commission(ctx context.Context, chargerID string, maxKw, defaul
 		}
 	}
 
-	if st, err := t.setChargingProfile(ctx, chargerID, 0, MaxProfile(maxKw, now)); err != nil {
+	// Take ownership of the entire profile stack under a temporary zero cap.
+	// Old foreign IDs, connector-specific defaults and higher Tx stacks must
+	// not survive commissioning and defeat the 120-second fallback later.
+	guard := maximum
+	guard.LimitKw, guard.LimitA = 0, 0
+	guard.StackLevel = caps.MaxStackLevel
+	if st, err := t.setChargingProfile(ctx, chargerID, 0, guard); err != nil {
 		e := fmt.Errorf("die Höchstgrenze konnte nicht hinterlegt werden: %w", err)
 		s.recordCommission(chargerID, nil, nil, e)
 		return e
@@ -85,14 +113,31 @@ func (s *Server) Commission(ctx context.Context, chargerID string, maxKw, defaul
 		s.recordCommission(chargerID, nil, nil, e)
 		return e
 	}
+	for _, purpose := range []string{PurposeTx, PurposeTxDefault} {
+		if err := t.clearProfilePurpose(ctx, chargerID, purpose); err != nil {
+			s.recordCommission(chargerID, nil, nil, err)
+			return err
+		}
+	}
 
-	if st, err := t.setChargingProfile(ctx, chargerID, 0, DefaultProfile(defaultKw, now)); err != nil {
+	if st, err := t.setChargingProfile(ctx, chargerID, 0, fallback); err != nil {
 		e := fmt.Errorf("das Sicherheitsprofil konnte nicht hinterlegt werden: %w", err)
 		s.recordCommission(chargerID, &maxKw, nil, e)
 		return e
 	} else if st != "Accepted" {
 		e := fmt.Errorf("die Ladesäule hat das Sicherheitsprofil abgelehnt (%s)", st)
 		s.recordCommission(chargerID, &maxKw, nil, e)
+		return e
+	}
+	// There are no Tx profiles left and the freshly installed connector-0
+	// default bounds every plug while the old Max stack is replaced.
+	if err := t.clearProfilePurpose(ctx, chargerID, PurposeMax); err != nil {
+		s.recordCommission(chargerID, nil, nil, err)
+		return err
+	}
+	if st, err := t.setChargingProfile(ctx, chargerID, 0, maximum); err != nil || st != "Accepted" {
+		e := fmt.Errorf("die Höchstgrenze wurde nicht bestätigt (%s): %v", st, err)
+		s.recordCommission(chargerID, nil, &defaultKw, e)
 		return e
 	}
 
@@ -126,6 +171,7 @@ func (s *Server) recordCommission(chargerID string, maxKw, defaultKw *float64, e
 	}
 	c.CommissionError = ""
 	c.CommissionedAt = s.opts.Now()
+	c.SafetyKey = s.control.SafetyKey()
 }
 
 // ApplyLimit pushes the live allocation for ONE connector as a TxProfile with
@@ -137,12 +183,33 @@ func (s *Server) recordCommission(chargerID string, maxKw, defaultKw *float64, e
 // unanswered request is recorded as a German reason, never as silence:
 // silence is not agreement.
 func (s *Server) ApplyLimit(ctx context.Context, chargerID string, connectorID, transactionID int, limitKw float64) error {
+	s.profileMu.Lock()
+	defer s.profileMu.Unlock()
 	t, err := s.liveTransport(chargerID)
 	if err != nil {
 		s.recordCommand(chargerID, connectorID, nil, err.Error())
 		return err
 	}
-	p := TxProfile(connectorID, transactionID, limitKw, s.opts.Now(), TxProfileDuration)
+	s.mu.Lock()
+	c := s.chargers[chargerID]
+	ready := c != nil && !c.CommissionedAt.IsZero() && !c.CommissionedAt.Before(c.ConnectedAt) && !c.CommissionedAt.Before(c.BootedAt) && c.SafetyKey == s.control.SafetyKey() && s.startReadyLocked(chargerID)
+	valid := ready && c.MaxKw != nil && limitKw >= 0 && !math.IsNaN(limitKw) && !math.IsInf(limitKw, 0)
+	if valid {
+		limitKw = math.Min(limitKw, *c.MaxKw)
+	}
+	s.mu.Unlock()
+	if !valid {
+		err := errors.New("Ladegrenze nicht gesendet: Sicherheitsprofile fehlen oder die Grenze ist ungültig")
+		s.recordCommand(chargerID, connectorID, nil, err.Error())
+		return err
+	}
+	policy := s.ControlPolicy()
+	limitKw = policy.LimitKw(chargerID, connectorID, s.opts.Now(), limitKw)
+	p, err := s.stationProfile(chargerID, connectorID, TxProfile(connectorID, transactionID, limitKw, s.opts.Now(), policy.ProfileDuration(chargerID, connectorID, s.opts.Now(), TxProfileDuration)))
+	if err != nil {
+		s.recordCommand(chargerID, connectorID, nil, err.Error())
+		return err
+	}
 	status, err := t.setChargingProfile(ctx, chargerID, connectorID, p)
 	if err != nil {
 		s.recordCommand(chargerID, connectorID, nil, "Keine Antwort der Ladesäule: "+err.Error())

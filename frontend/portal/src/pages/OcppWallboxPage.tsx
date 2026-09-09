@@ -17,6 +17,7 @@ import {
 } from '../api';
 import { fokussierbare } from '../components/VpPanel';
 import { VpPicker } from '../components/VpPicker';
+import { OcppControlPanel } from '../components/OcppControlPanel';
 import type { ChargePoint } from '../ladepunkte';
 import {
   ACTION_GROUP_LABEL,
@@ -229,12 +230,10 @@ export function OcppWallboxPage({
         data.actions.length > 0 ? `${data.actions.length} im Journal` : null,
       ),
     } : null,
-    charger
-      ? {
+    {
         id: 'steuerung',
-        kurzfassung: charger.priority ? 'hat Vorrang' : 'normal eingeordnet',
-      }
-      : null,
+        kurzfassung: charger?.priority ? 'hat Vorrang' : 'Einrichtung, Grenzen und Regelprüfung',
+    },
     {
       id: 'komponenten',
       titel: 'Anschlüsse',
@@ -400,6 +399,8 @@ export function OcppWallboxPage({
 
         {/* 3 · Steuerung & Grenzen - was diese Säule darf. */}
         <RahmenSektion id="steuerung">
+          <OcppControlPanel siteId={siteId} stationId={chargePointId} deviceId={station?.deviceId}
+            canEdit={data.permissions.actions.ChangeConfiguration === true} />
           {charger && (
             <>
               <dl className="vp-ocpp-compact-kv">

@@ -1,0 +1,573 @@
+{
+  "description": "Shared Go/API validation at the local and cloud trust boundaries. Absent ocpp_control preserves previous behavior.",
+  "vectors": [
+    {
+      "name": "legacy-free-explicit",
+      "valid": true,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": []
+      }
+    },
+    {
+      "name": "explicit-disable",
+      "valid": true,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": [],
+        "enabled": false
+      }
+    },
+    {
+      "name": "closed-empty-allowlist",
+      "valid": true,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "allowlist",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": []
+      }
+    },
+    {
+      "name": "unknown-mode",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "guess"
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": []
+      }
+    },
+    {
+      "name": "raw-card-forbidden",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "allowlist",
+          "allowed_tags": [
+            "RFID-123"
+          ]
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": []
+      }
+    },
+    {
+      "name": "pseudonym",
+      "valid": true,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "allowlist",
+          "allowed_tags": [
+            "tagref_aaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": []
+      }
+    },
+    {
+      "name": "duplicate-card",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "allowlist",
+          "allowed_tags": [
+            "tagref_aaaaaaaaaaaaaaaaaaaaaaaa",
+            "tagref_aaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": []
+      }
+    },
+    {
+      "name": "declared-three-phase",
+      "valid": true,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "voltage_v": 253,
+            "phases": [
+              1,
+              2,
+              3
+            ],
+            "max_current_a": 32
+          }
+        ],
+        "phase_limits_a": [
+          32,
+          32,
+          32
+        ],
+        "limits": []
+      }
+    },
+    {
+      "name": "missing-voltage",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "phases": [
+              1,
+              2,
+              3
+            ],
+            "max_current_a": 32
+          }
+        ],
+        "phase_limits_a": [
+          32,
+          32,
+          32
+        ],
+        "limits": []
+      }
+    },
+    {
+      "name": "missing-circuit-reservation",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "voltage_v": 253,
+            "phases": [
+              1,
+              2,
+              3
+            ],
+            "max_current_a": 32
+          }
+        ],
+        "phase_limits_a": [],
+        "limits": []
+      }
+    },
+    {
+      "name": "duplicate-phase",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "voltage_v": 253,
+            "phases": [
+              1,
+              1
+            ],
+            "max_current_a": 32
+          }
+        ],
+        "phase_limits_a": [
+          32,
+          32,
+          32
+        ],
+        "limits": []
+      }
+    },
+    {
+      "name": "zero-phase",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "voltage_v": 253,
+            "phases": [
+              0
+            ],
+            "max_current_a": 32
+          }
+        ],
+        "phase_limits_a": [
+          32,
+          32,
+          32
+        ],
+        "limits": []
+      }
+    },
+    {
+      "name": "fractional-connector",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1.5,
+            "voltage_v": 253,
+            "phases": [
+              1,
+              2,
+              3
+            ],
+            "max_current_a": 32
+          }
+        ],
+        "phase_limits_a": [
+          32,
+          32,
+          32
+        ],
+        "limits": []
+      }
+    },
+    {
+      "name": "unknown-connector",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 0,
+            "voltage_v": 253,
+            "phases": [
+              1,
+              2,
+              3
+            ],
+            "max_current_a": 32
+          }
+        ],
+        "phase_limits_a": [
+          32,
+          32,
+          32
+        ],
+        "limits": []
+      }
+    },
+    {
+      "name": "zero-circuit-budget",
+      "valid": true,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "voltage_v": 253,
+            "phases": [
+              1,
+              2,
+              3
+            ],
+            "max_current_a": 32
+          }
+        ],
+        "phase_limits_a": [
+          0,
+          32,
+          32
+        ],
+        "limits": []
+      }
+    },
+    {
+      "name": "negative-circuit",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [
+          -1,
+          32,
+          32
+        ],
+        "limits": []
+      }
+    },
+    {
+      "name": "pause-for-24-hours",
+      "valid": true,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "limit_kw": 0,
+            "requested_at": "2026-09-09T12:00:00Z",
+            "expires_at": "2026-09-10T12:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "negative-power",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "limit_kw": -1,
+            "requested_at": "2026-09-09T12:00:00Z",
+            "expires_at": "2026-09-10T12:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "over-24-hours",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "limit_kw": 0,
+            "requested_at": "2026-09-09T12:00:00Z",
+            "expires_at": "2026-09-10T12:00:01Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "non-positive-duration",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "limit_kw": 0,
+            "requested_at": "2026-09-09T12:00:00Z",
+            "expires_at": "2026-09-09T12:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate-limit",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "limit_kw": 0,
+            "requested_at": "2026-09-09T12:00:00Z",
+            "expires_at": "2026-09-10T12:00:00Z"
+          },
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "limit_kw": 0,
+            "requested_at": "2026-09-09T12:00:00Z",
+            "expires_at": "2026-09-10T12:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid-clock",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "limit_kw": 0,
+            "requested_at": "yesterday",
+            "expires_at": "2026-09-10T12:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "test-three-steps",
+      "valid": true,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": [],
+        "test": {
+          "charge_point_id": "CP-1",
+          "connector_id": 1,
+          "limit_kw": 2,
+          "requested_at": "2026-09-09T12:00:00Z"
+        }
+      }
+    },
+    {
+      "name": "test-too-large",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": [],
+        "test": {
+          "charge_point_id": "CP-1",
+          "connector_id": 1,
+          "limit_kw": 1001,
+          "requested_at": "2026-09-09T12:00:00Z"
+        }
+      }
+    },
+    {
+      "name": "zero-revision",
+      "valid": false,
+      "policy": {
+        "revision": 0,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": []
+      }
+    },
+    {
+      "name": "dc-test-with-50-kw",
+      "valid": true,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [],
+        "phase_limits_a": [],
+        "limits": [],
+        "test": {
+          "charge_point_id": "CP-1",
+          "connector_id": 1,
+          "limit_kw": 50,
+          "requested_at": "2026-09-09T12:00:00Z"
+        }
+      }
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppcontrol"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -47,9 +48,31 @@ const maxChargers = 64
 // and a box that forgot them across a reboot would re-issue ids that a station
 // still holds for a running session.
 type persisted struct {
-	SchemaVersion     string    `json:"schema_version"`
-	Chargers          []Charger `json:"chargers"`
-	NextTransactionID int       `json:"next_transaction_id"`
+	SchemaVersion     string                    `json:"schema_version"`
+	Chargers          []Charger                 `json:"chargers"`
+	NextTransactionID int                       `json:"next_transaction_id"`
+	StartWatermarks   map[string]startWatermark `json:"start_watermarks,omitempty"`
+	Sessions          []storedSession           `json:"sessions,omitempty"`
+	Control           *ocppcontrol.Policy       `json:"ocpp_control,omitempty"`
+	ControlTest       *ControlTest              `json:"ocpp_control_test,omitempty"`
+}
+
+// The last accepted start per connector prevents closed Start replays without
+// retaining a card history. Same-second starts with different evidence remain distinct.
+type startWatermark struct {
+	At           time.Time `json:"at"`
+	MeterStartWh int       `json:"meter_start_wh"`
+	TagRef       string    `json:"tag_ref,omitempty"`
+}
+
+// Separate wire type deliberately excludes the live plaintext IDTag.
+type storedSession struct {
+	ChargePointID string    `json:"charge_point_id"`
+	ConnectorID   int       `json:"connector_id"`
+	TransactionID int       `json:"transaction_id"`
+	StartedAt     time.Time `json:"started_at"`
+	MeterStartWh  int       `json:"meter_start_wh"`
+	TagRef        string    `json:"tag_ref,omitempty"`
 }
 
 // Store persists the charge-point allowlist + the transaction-id counter.
@@ -69,46 +92,80 @@ func (s *Store) Path() string { return s.path }
 // Load returns the persisted allowlist and the next transaction id. ok=false
 // when nothing has been stored yet.
 func (s *Store) Load() ([]Charger, int, bool, error) {
+	p, ok, err := s.loadState()
+	return p.Chargers, p.NextTransactionID, ok, err
+}
+
+func (s *Store) loadState() (persisted, bool, error) {
+	p := persisted{NextTransactionID: 1}
 	raw, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, 1, false, nil
+		return p, false, nil
 	}
 	if err != nil {
-		return nil, 1, false, err
+		return p, false, err
 	}
-	var p persisted
 	if err := json.Unmarshal(raw, &p); err != nil {
-		return nil, 1, false, fmt.Errorf("gespeicherte Ladepunkte beschädigt: %w", err)
+		return p, false, fmt.Errorf("gespeicherte Ladepunkte beschädigt: %w", err)
 	}
-	next := p.NextTransactionID
-	if next < 1 {
-		next = 1
+	if p.NextTransactionID < 1 {
+		p.NextTransactionID = 1
 	}
-	return p.Chargers, next, true, nil
+	return p, true, nil
 }
 
 // Save writes the list atomically (tmp+rename, the house discipline: a reboot
 // in the middle of a write must leave a readable file).
-func (s *Store) Save(list []Charger, nextTransactionID int) error {
+func (s *Store) Save(list []Charger, nextTransactionID int, sessions ...[]storedSession) error {
+	var tx []storedSession
+	if len(sessions) > 0 {
+		tx = sessions[0]
+	}
+	return s.save(list, nextTransactionID, tx, nil, nil, nil)
+}
+
+func (s *Store) save(list []Charger, nextTransactionID int, sessions []storedSession, control *ocppcontrol.Policy, test *ControlTest, starts map[string]startWatermark) error {
 	if list == nil {
 		list = []Charger{}
 	}
 	if nextTransactionID < 1 {
 		nextTransactionID = 1
 	}
-	raw, err := json.Marshal(persisted{
+	p := persisted{
 		SchemaVersion:     SchemaVersion,
 		Chargers:          list,
 		NextTransactionID: nextTransactionID,
-	})
+	}
+	p.Sessions, p.Control = sessions, control
+	p.ControlTest, p.StartWatermarks = test, starts
+	raw, err := json.Marshal(p)
 	if err != nil {
 		return err
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
+	f, err := os.CreateTemp(filepath.Dir(s.path), ".chargers-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	defer os.Remove(f.Name())
+	if _, err = f.Write(raw); err == nil {
+		err = f.Sync()
+	}
+	closeErr := f.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err := os.Rename(f.Name(), s.path); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(s.path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 
 // AddRequest is what the setup surface posts to register a charge point BEFORE

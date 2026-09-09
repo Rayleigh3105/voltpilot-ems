@@ -1882,9 +1882,9 @@ test("the budget line never claims a measurement nobody reported", () => {
 
   assert.strictEqual(O.budgetLine(base), "82,3 von 82,3 kW vergeben.");
   assert.match(O.budgetLine({ ...base, measured_kw: 79.8 }), /gemessen 79,8 kW/);
-  // A held-back share for unreachable stations is NAMED, not silently
-  // subtracted: the arithmetic on the page has to add up.
-  assert.match(O.budgetLine({ ...base, reserved_kw: 48.5 }), /48,5 kW für nicht erreichbare/);
+  // A held-back share is NAMED without claiming a lost connection: a
+  // connected session still reconciling after restart also needs that reserve.
+  assert.match(O.budgetLine({ ...base, reserved_kw: 48.5 }), /48,5 kW für derzeit nicht geregelte Ladepunkte/);
   // An unconfigured site says so instead of showing a 0-kW budget as if it
   // were a decision.
   assert.match(O.budgetLine({ enabled: true, listening: true, budget_kw: 0 }), /keine Anschlussgrenze/);

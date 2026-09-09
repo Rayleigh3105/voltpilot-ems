@@ -241,6 +241,9 @@ func TestVendorStringsNeverReachTheMechanism(t *testing.T) {
 		c.ConnectedAt, c.LastSeen, c.BootedAt, c.AddedAt = time.Time{}, time.Time{}, time.Time{}, time.Time{}
 		for i := range c.Connectors {
 			c.Connectors[i].MeteredAt = time.Time{}
+			c.Connectors[i].MeterReceivedAt = time.Time{}
+			c.Connectors[i].EnergyMeasuredAt = time.Time{}
+			c.Connectors[i].SocMeasuredAt = time.Time{}
 			if c.Connectors[i].Session != nil {
 				c.Connectors[i].Session.StartedAt = time.Time{}
 				// The transaction id is a monotonic counter, not a vendor fact.
@@ -349,7 +352,10 @@ func TestTransactionIdsSurviveARestart(t *testing.T) {
 	defer s2.Stop()
 	snap2 := s2.Snapshot()
 	cp2, _ := connectCP(t, fmt.Sprintf("ws://127.0.0.1:%d%s", snap2.Port, snap2.URLPath), "SAEULE-1")
-	second, err := cp2.StartTransaction(1, "TAG", 0, types.NewDateTime(time.Now()))
+	if _, err := cp2.StopTransaction(10, types.NewDateTime(time.Now()), first.TransactionId); err != nil {
+		t.Fatal(err)
+	}
+	second, err := cp2.StartTransaction(1, "TAG", 0, types.NewDateTime(time.Now().Add(time.Second)))
 	if err != nil {
 		t.Fatalf("start transaction after restart: %v", err)
 	}

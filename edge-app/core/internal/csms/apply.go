@@ -1,6 +1,9 @@
 package csms
 
-import "time"
+import (
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppcontrol"
+	"time"
+)
 
 // This file holds the STATE TRANSITIONS the OCPP handlers cause. It has no
 // ocpp-go import on purpose: the mapping from library types to these plain
@@ -127,6 +130,10 @@ func (s *Server) onStatus(id string, connectorID int, status, errorCode string, 
 			// normal cycle and must not drop a running transaction.
 			if con.Session != nil && (status == StatusAvailable || status == StatusUnavailable || status == StatusFaulted) {
 				con.Session = nil
+				con.PowerKw = nil
+				if err := s.persistLocked(); err != nil {
+					s.log.Error("Transaktionsende konnte nicht gespeichert werden", "err", err)
+				}
 			}
 		}
 	}
@@ -142,13 +149,35 @@ func (s *Server) onStatus(id string, connectorID int, status, errorCode string, 
 func (s *Server) onStartTransaction(id string, connectorID int, idTag string, meterStartWh int, now time.Time) int {
 	s.mu.Lock()
 	c, ok := s.chargers[id]
-	if !ok {
+	if !ok || connectorID < 1 || connectorID > maxConnectors {
 		s.mu.Unlock()
 		return 0
 	}
+	con := c.connector(connectorID)
+	if tx := con.Session; tx != nil {
+		// A repeated StartTransaction (lost confirmation / reconnect) keeps
+		// its durable ID. Different evidence cannot silently replace a live car.
+		if tx.StartedAt.Equal(now) && tx.MeterStartWh == meterStartWh && tx.TagRef == s.tagRefOf(idTag) {
+			txID := tx.TransactionID
+			s.mu.Unlock()
+			return txID
+		}
+		s.mu.Unlock()
+		return 0
+	}
+	if !s.startReadyLocked(id) || !s.control.Allows(s.tagRefOf(idTag)) {
+		s.mu.Unlock()
+		return 0
+	}
+	key := ocppcontrol.Key(id, connectorID)
+	previousStart := s.startWatermarks[key]
+	if now.IsZero() || now.Before(previousStart.At) || (now.Equal(previousStart.At) && previousStart.MeterStartWh == meterStartWh && previousStart.TagRef == s.tagRefOf(idTag)) {
+		s.mu.Unlock()
+		return 0
+	}
+	s.startWatermarks[key] = startWatermark{At: now, MeterStartWh: meterStartWh, TagRef: s.tagRefOf(idTag)}
 	txID := s.nextTxID
 	s.nextTxID++
-	con := c.connector(connectorID)
 	con.Session = &Session{
 		TransactionID: txID,
 		IDTag:         idTag,
@@ -162,15 +191,18 @@ func (s *Server) onStartTransaction(id string, connectorID int, idTag string, me
 		// that have nothing in common (the journal's own rule, `redactValue`).
 		TagRef: s.tagRefOf(idTag),
 	}
-	c.LastSeen = now
+	c.LastSeen = s.opts.Now()
 	c.Connected = true
-	list, next := s.listLocked()
+	err := s.persistLocked()
+	if err != nil {
+		s.startWatermarks[key] = previousStart
+		con.Session = nil
+	}
 	s.mu.Unlock()
 
-	// Persist the counter. A failure is logged, never fatal: refusing to start
-	// a customer's charge because a disk hiccuped would be the wrong trade.
-	if err := s.store.Save(list, next); err != nil {
-		s.log.Error("Transaktionszähler konnte nicht gespeichert werden", "err", err)
+	if err != nil {
+		s.log.Error("Ladevorgang konnte nicht dauerhaft gespeichert werden", "err", err)
+		return 0
 	}
 	s.log.Info("Ladevorgang gestartet",
 		"charge_point_id", id, "connector", connectorID, "transaction_id", txID)
@@ -179,7 +211,8 @@ func (s *Server) onStartTransaction(id string, connectorID int, idTag string, me
 }
 
 // onStopTransaction closes the session carrying txID, wherever it sits.
-func (s *Server) onStopTransaction(id string, txID int, now time.Time) {
+func (s *Server) onStopTransaction(id string, txID int, now time.Time) error {
+	var persistErr error
 	s.mu.Lock()
 	c, ok := s.chargers[id]
 	if ok {
@@ -194,34 +227,73 @@ func (s *Server) onStopTransaction(id string, txID int, now time.Time) {
 				c.Connectors[i].PowerKw = nil
 			}
 		}
+		if err := s.persistLocked(); err != nil {
+			persistErr = err
+			s.log.Error("Transaktionsende konnte nicht gespeichert werden", "err", err)
+		}
 	}
 	s.mu.Unlock()
 	if !ok {
-		return
+		return nil
 	}
 	s.log.Info("Ladevorgang beendet", "charge_point_id", id, "transaction_id", txID)
 	s.notifyChanged()
+	return persistErr
 }
 
 // onMeterValues folds a parsed reading into a connector.
 func (s *Server) onMeterValues(id string, connectorID int, r MeterReading, now time.Time) {
+	s.onMeterSample(id, connectorID, r, now, now, nil)
+}
+
+// MaxLiveMeterAge bounds admission into the realtime loop. The protocol
+// journal still retains every original sample, including historical batches.
+const MaxLiveMeterAge = 30 * time.Second
+
+func liveMeterTime(sampled, received time.Time) bool {
+	return !sampled.IsZero() && !sampled.After(received) && received.Sub(sampled) <= MaxLiveMeterAge
+}
+
+func (s *Server) onMeterSample(id string, connectorID int, r MeterReading, sampled, received time.Time, transactionID *int) {
 	s.mu.Lock()
 	c, ok := s.chargers[id]
 	if ok {
-		c.LastSeen = now
+		c.LastSeen = received
 		c.Connected = true
 		if connectorID > 0 && !r.Empty() {
 			con := c.connector(connectorID)
-			if r.PowerKw != nil {
+			con.MeterReceivedAt = received
+			if !liveMeterTime(sampled, received) {
+				s.mu.Unlock()
+				return
+			}
+			if tx := con.Session; tx != nil && transactionID != nil {
+				if sampled.Before(tx.StartedAt) || sampled.Before(tx.EvidenceAt) {
+					s.mu.Unlock()
+					return
+				}
+				tx.EvidenceAt = sampled
+				if *transactionID != tx.TransactionID {
+					tx.Reconciling = true
+					con.PowerKw = nil
+					s.mu.Unlock()
+					s.notifyChanged()
+					return
+				}
+				tx.Reconciling = false
+			}
+			if r.PowerKw != nil && (con.MeteredAt.IsZero() || sampled.After(con.MeteredAt)) {
 				con.PowerKw = r.PowerKw
+				con.MeteredAt = sampled
 			}
-			if r.EnergyKwh != nil {
+			if r.EnergyKwh != nil && (con.EnergyMeasuredAt.IsZero() || sampled.After(con.EnergyMeasuredAt)) {
 				con.EnergyKwh = r.EnergyKwh
+				con.EnergyMeasuredAt = sampled
 			}
-			if r.SocPct != nil {
+			if r.SocPct != nil && (con.SocMeasuredAt.IsZero() || sampled.After(con.SocMeasuredAt)) {
 				con.SocPct = r.SocPct
+				con.SocMeasuredAt = sampled
 			}
-			con.MeteredAt = now
 		}
 	}
 	s.mu.Unlock()

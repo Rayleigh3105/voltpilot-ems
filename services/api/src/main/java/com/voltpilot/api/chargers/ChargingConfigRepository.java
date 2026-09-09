@@ -37,6 +37,19 @@ public class ChargingConfigRepository {
         this.jdbc = jdbc;
     }
 
+    public String ocppControl(UUID siteId) {
+        return jdbc.query("SELECT ocpp_control::text FROM site_charging_config WHERE site_id = ?",
+                (rs, n) -> rs.getString(1), siteId).stream().filter(java.util.Objects::nonNull).findFirst().orElse(null);
+    }
+
+    @Transactional
+    public boolean saveOcppControl(UUID tenantId, UUID siteId, String value, long expectedRevision, String actor) {
+        jdbc.update("INSERT INTO site_charging_config(site_id, tenant_id) VALUES (?, ?) ON CONFLICT (site_id) DO NOTHING", siteId, tenantId);
+        return jdbc.update("UPDATE site_charging_config SET ocpp_control = ?::jsonb, updated_at = now(), updated_by = ? "
+                + "WHERE site_id = ? AND COALESCE((ocpp_control->>'revision')::bigint, 0) = ?",
+                value, actor, siteId, expectedRevision) == 1;
+    }
+
     /** Die gepflegte Konfiguration; leere Felder = noch nichts gepflegt. */
     public ChargingConfigDto forSite(UUID siteId) {
         List<Object[]> head = jdbc.query(

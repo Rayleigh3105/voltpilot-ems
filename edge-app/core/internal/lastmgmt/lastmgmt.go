@@ -237,7 +237,7 @@ func (s Session) capPauses() bool {
 
 // capReason names the cap-induced pause; an unnamed one is still a rule.
 func (s Session) capReason() string {
-	if s.CapReason == ReasonPlan || s.CapReason == ReasonRule {
+	if s.CapReason == ReasonPlan || s.CapReason == ReasonRule || s.CapReason == ReasonManual || s.CapReason == ReasonNoBudget {
 		return s.CapReason
 	}
 	return ReasonRule

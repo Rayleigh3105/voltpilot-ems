@@ -106,11 +106,28 @@ public class ChargingConfigPublisher {
             List<String> removedChargePointIds, LadeparkRahmenDto frame, Integer storageRank,
             List<WallboxDto> wallboxes, List<VehicleProfileDto> vehicleProfiles,
             Instant publishedAt) {
+        return publish(tenantId, siteId, deviceId, gridLimitKw, priorities, surplusPolicy,
+                storagePriority, chargePoints, removedChargePointIds, frame, storageRank,
+                wallboxes, vehicleProfiles, null, publishedAt);
+    }
+
+    public synchronized boolean publish(UUID tenantId, UUID siteId, UUID deviceId,
+            Double gridLimitKw, List<String> priorities, String surplusPolicy,
+            String storagePriority, List<AllowedChargePointDto> chargePoints,
+            List<String> removedChargePointIds, LadeparkRahmenDto frame, Integer storageRank,
+            List<WallboxDto> wallboxes, List<VehicleProfileDto> vehicleProfiles,
+            String ocppControl, Instant publishedAt) {
         String topic = configTopic(tenantId, siteId, deviceId);
         byte[] payload = document(tenantId, siteId, deviceId, gridLimitKw, priorities,
                 surplusPolicy, storagePriority, chargePoints, removedChargePointIds, frame,
                 storageRank, wallboxes, vehicleProfiles, publishedAt);
         try {
+            if (ocppControl != null) {
+                var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                var root = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(payload);
+                root.set("ocpp_control", mapper.readTree(ocppControl));
+                payload = mapper.writeValueAsBytes(root);
+            }
             MqttMessage message = new MqttMessage(payload);
             message.setQos(1);
             message.setRetained(true);

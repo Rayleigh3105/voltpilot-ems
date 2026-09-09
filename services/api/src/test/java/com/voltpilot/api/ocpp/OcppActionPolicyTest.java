@@ -27,7 +27,7 @@ class OcppActionPolicyTest {
 
         assertThat(policy.allowed(siteAdmin, "RemoteStopTransaction")).isTrue();
         assertThat(policy.allowed(siteAdmin, "ReserveNow")).isTrue();
-        assertThat(policy.allowed(siteAdmin, "SetChargingProfile")).isTrue();
+        assertThat(policy.allowed(siteAdmin, "SetChargingProfile")).isFalse();
         assertThat(policy.allowed(siteAdmin, "GetCompositeSchedule")).isTrue();
         assertThat(policy.allowed(siteAdmin, "SoftReset")).isTrue();
         assertThat(policy.allowed(siteAdmin, "HardReset")).isFalse();

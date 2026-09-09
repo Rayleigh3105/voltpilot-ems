@@ -54,6 +54,17 @@ class ChargerStatusListenerTest {
     private SiteVehicleRepository vehicles;
     private ChargerStatusListener listener;
 
+    @Test void incompleteControlProofNeverBecomesAFalseConfirmation() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var report = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree("""
+            {"revision":1,"enabled":true,"authorization_mode":"free","seen_tags":[],"stations":[]}
+            """);
+        assertThat(ChargerStatusListener.validControlStatus(report)).isTrue();
+        report.put("stations", "malformed");
+        assertThat(ChargerStatusListener.validControlStatus(report)).isFalse();
+        assertThat(ChargerStatusListener.validControlStatus(json.readTree("{}"))).isFalse();
+    }
+
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {

@@ -1,0 +1,17 @@
+.vp-ocpp-control { display: grid; gap: 1rem; min-width: 0; }
+.vp-ocpp-control p { margin: 0; overflow-wrap: anywhere; }
+.vp-ocpp-control h3 { margin: 0; }
+.vp-ocpp-control fieldset, .vp-ocpp-control details { border: 1px solid var(--vp-border); border-radius: var(--vp-radius-md, 8px); padding: 1rem; display: grid; gap: .8rem; min-width: 0; }
+.vp-ocpp-control summary { cursor: pointer; font-weight: 600; }
+.vp-ocpp-control-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: .8rem; }
+.vp-ocpp-control label { display: grid; gap: .35rem; min-width: 0; }
+.vp-ocpp-control input:not([type=checkbox]) { width: 100%; box-sizing: border-box; padding: .6rem; border: 1px solid var(--vp-field-border, var(--vp-border)); border-radius: 6px; font: inherit; color: inherit; background: var(--vp-surface); }
+.vp-ocpp-control-buttons { display: flex; flex-wrap: wrap; gap: .6rem; }
+.vp-ocpp-control button { padding: .6rem .85rem; border: 1px solid var(--vp-border); border-radius: 6px; background: var(--vp-surface); color: inherit; font: inherit; cursor: pointer; }
+.vp-ocpp-control button:disabled { opacity: .5; cursor: default; }
+.vp-ocpp-control-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: .8rem; margin: 0; }
+.vp-ocpp-control-facts dt { font-size: .85rem; opacity: .7; }
+.vp-ocpp-control-facts dd { margin: .2rem 0 0; overflow-wrap: anywhere; }
+.vp-ocpp-control label.vp-ocpp-card-choice { display: flex; align-items: center; gap: .5rem; }
+
+.vp-ocpp-test-steps { margin: 0; padding-left: 1.2rem; }
