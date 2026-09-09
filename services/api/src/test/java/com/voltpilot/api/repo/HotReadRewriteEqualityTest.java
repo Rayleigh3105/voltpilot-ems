@@ -57,6 +57,13 @@ import org.testcontainers.utility.DockerImageName;
  * forecast join -&gt; site), and a fence that silently widened would be a
  * tenant leak, not a perf win.
  *
+ * <p><b>2026-09-09 - the topology probe gained a FLOOR</b>
+ * ({@link TopologyRepository#LATEST_VALUE_LOOKBACK}, the Pilsting cockpit
+ * timeout). Equality is therefore claimed, and asserted, exactly where the
+ * captain scoped it: for every pair that reported INSIDE the window the answer
+ * is byte-identical to the oracle. Outside it the two forms DIVERGE on purpose -
+ * pinned by its own test below, so the divergence can never widen unnoticed.
+ *
  * <p>Auto-skips where Docker is unavailable ({@code disabledWithoutDocker}).
  */
 @Testcontainers(disabledWithoutDocker = true)
@@ -94,17 +101,41 @@ class HotReadRewriteEqualityTest {
     private static final UUID DEV_A2 = UUID.fromString("aaaaaaaa-0000-0000-0000-0000000000d2");
     private static final UUID DEV_B1 = UUID.fromString("bbbbbbbb-0000-0000-0000-0000000000d1");
 
-    /** The registry pairs of SITE_A1 - exactly what the read-model consumes. */
     private static final String E1 = "aaaaaaaa-0000-0000-0000-0000000000e1";
     private static final String E2 = "aaaaaaaa-0000-0000-0000-0000000000e2";
+    private static final String E3 = "aaaaaaaa-0000-0000-0000-0000000000e3";
+
+    /**
+     * The registry pairs of SITE_A1 whose newest sample lies INSIDE the
+     * freshness window - the set the oracle comparison covers.
+     */
     private static final List<ChannelKey> KEYS_A1 = List.of(
             new ChannelKey(E1, "soc_pct"),
-            new ChannelKey(E1, "battery_power_kw"),
             new ChannelKey(E1, "pv_power_kw"),
-            new ChannelKey(E2, "power_kw"));
+            new ChannelKey(E2, "power_kw"),
+            new ChannelKey(E2, "energy_kwh"));
+
+    /**
+     * Registry pairs of the SAME site whose newest sample lies OUTSIDE it -
+     * where the floor deliberately parts from the retired form.
+     */
+    private static final ChannelKey STALE_PAIR = new ChannelKey(E1, "battery_power_kw");
+    private static final ChannelKey AT_CUTOFF = new ChannelKey(E2, "at_cutoff_kw");
+    private static final ChannelKey BEFORE_CUTOFF = new ChannelKey(E2, "before_cutoff_kw");
 
     private static final Instant NOW = Instant.parse("2026-06-01T12:00:00Z");
     private static final Instant PLAN_WINDOW = NOW.minusSeconds(7 * 86400);
+
+    /** The floor the shipped read applies, anchored on this test's fixed NOW. */
+    private static final Instant CUTOFF =
+            NOW.minus(TopologyRepository.LATEST_VALUE_LOOKBACK);
+
+    /**
+     * Wall-clock anchor for the ONE pair that proves the no-arg production call
+     * derives its floor from {@code Instant.now()} (everything else here lives
+     * around the fixed NOW and would fall out of a real-time window).
+     */
+    private static final Instant REAL_NOW = Instant.now();
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -142,12 +173,24 @@ class HotReadRewriteEqualityTest {
             v2(c, SITE_A1, DEV_A1, TENANT_A, E1, "soc_pct", NOW.minusSeconds(20 * 86400), 11);
             v2(c, SITE_A1, DEV_A1, TENANT_A, E1, "soc_pct", NOW.minusSeconds(5 * 86400), 22);
             v2(c, SITE_A1, DEV_A1, TENANT_A, E1, "soc_pct", NOW.minusSeconds(60), 33);
-            // (b) exactly ONE sample, and an OLD one - must still be found
-            //     (the probe walks back chunk by chunk).
+            // (b) exactly ONE sample, older than the newest of the site but
+            //     INSIDE the window - must still be found (the probe walks back).
+            v2(c, SITE_A1, DEV_A1, TENANT_A, E2, "energy_kwh",
+                    NOW.minusSeconds(2 * 86400), 44);
+            // (b2) exactly ONE sample, OUTSIDE the window: the oracle finds it,
+            //      the shipped form deliberately does not (2026-09-09 floor).
             v2(c, SITE_A1, DEV_A1, TENANT_A, E1, "battery_power_kw",
-                    NOW.minusSeconds(30 * 86400), 44);
+                    NOW.minusSeconds(30 * 86400), 4444);
+            // (b3) the two sides of the floor itself: `time >= cutoff`, so the
+            //      sample ON the boundary counts and the one a second earlier
+            //      does not.
+            v2(c, SITE_A1, DEV_A1, TENANT_A, E2, "at_cutoff_kw", CUTOFF, 111);
+            v2(c, SITE_A1, DEV_A1, TENANT_A, E2, "before_cutoff_kw",
+                    CUTOFF.minusSeconds(1), 222);
             // (c) a registry channel that NEVER reported -> no row, value null.
-            //     (pv_power_kw deliberately gets nothing.)
+            //     Pilsting/Herzogau ran with two of these (both Fronius
+            //     pv_power_kw) and they are what dragged the unbounded probe
+            //     through the whole history.
             // (d) received_at deliberately != time (store-and-forward replay):
             //     the newest TIME wins, and its own received_at is reported.
             v2(c, SITE_A1, DEV_A1, TENANT_A, E2, "power_kw", NOW.minusSeconds(3 * 86400),
@@ -159,6 +202,11 @@ class HotReadRewriteEqualityTest {
             //     change anything - and its value is the NEWEST of the site, so
             //     an off-by-one in the key filter would surface loudly.
             v2(c, SITE_A1, DEV_A1, TENANT_A, E1, "ghost_channel", NOW, 999);
+            // (h) the ONLY wall-clock-anchored pair: one sample now, one ten
+            //     days ago, so the no-arg call's own floor is observable.
+            v2(c, SITE_A1, DEV_A1, TENANT_A, E3, "live_kw", REAL_NOW, 7);
+            v2(c, SITE_A1, DEV_A1, TENANT_A, E3, "dead_kw",
+                    REAL_NOW.minusSeconds(10 * 86400), 8);
             // (f) the SAME entity+channel under ANOTHER site, NEWER: the site_id
             //     predicate must still fence it out (regression guard for
             //     keeping site_id in the probe).
@@ -196,10 +244,12 @@ class HotReadRewriteEqualityTest {
                 String key = k.entityId() + "|" + k.channel();
                 assertThat(shipped.get(key)).as("pair %s", key).isEqualTo(oracle.get(key));
             }
-            // (a) newest sample wins, (b) a lone old sample is still found,
+            // (a) newest sample wins - and the samples 5 and 20 days back, now
+            //     outside the floor, were never the answer anyway.
+            // (b) a lone older-but-fresh sample is still found.
             // (c) a never-reported channel yields NOTHING (null, not zero).
             assertThat(shipped.get(E1 + "|soc_pct").value()).isEqualTo(33.0);
-            assertThat(shipped.get(E1 + "|battery_power_kw").value()).isEqualTo(44.0);
+            assertThat(shipped.get(E2 + "|energy_kwh").value()).isEqualTo(44.0);
             assertThat(shipped).doesNotContainKey(E1 + "|pv_power_kw");
             assertThat(oracle).doesNotContainKey(E1 + "|pv_power_kw");
             // (d) the newest TIME wins and reports ITS received_at, not max(received_at).
@@ -233,6 +283,56 @@ class HotReadRewriteEqualityTest {
             // (g) RLS: tenant B sees nothing of A1 - through the new form AND the old.
             assertThat(shippedLatestValues(ds, SITE_A1, KEYS_A1)).isEmpty();
             assertThat(oracleLatestValues(ds, SITE_A1)).isEmpty();
+        }
+    }
+
+    /**
+     * The 2026-09-09 floor, stated as the ONE place the two forms are allowed to
+     * differ: a pair whose newest sample is older than
+     * {@link TopologyRepository#LATEST_VALUE_LOOKBACK} stops being reported.
+     *
+     * <p>That is the point of the fix, not a side effect. Such a pair is what
+     * made the unbounded probe walk the site's whole retained history (Pilsting:
+     * {@code /topology} up to 14,4 s, past the cockpit's 10-s decision), and the
+     * value it used to return was days old on a read-model whose liveness window
+     * is 5 minutes - already rendered "stale", never current. It now reads
+     * {@code null} -&gt; health {@code never} ("keine Daten").
+     */
+    @Test
+    void aPairWhoseNewestSampleFellOutOfTheWindowIsDroppedInsteadOfShownStale() throws Exception {
+        try (SingleConnectionDataSource ds = appRole(TENANT_A)) {
+            List<ChannelKey> keys = List.of(STALE_PAIR, AT_CUTOFF, BEFORE_CUTOFF);
+            Map<String, Row> oracle = oracleLatestValues(ds, SITE_A1);
+            Map<String, Row> shipped = shippedLatestValues(ds, SITE_A1, keys);
+
+            // The retired form answered all three - the floor is the difference.
+            assertThat(oracle.get(E1 + "|battery_power_kw").value()).isEqualTo(4444.0);
+            assertThat(oracle.get(E2 + "|before_cutoff_kw").value()).isEqualTo(222.0);
+
+            // 30 days old -> gone (the divergence the captain scoped).
+            assertThat(shipped).doesNotContainKey(E1 + "|battery_power_kw");
+            // `time >= cutoff`: ON the boundary counts, one second earlier does not.
+            assertThat(shipped.get(E2 + "|at_cutoff_kw").value()).isEqualTo(111.0);
+            assertThat(shipped).doesNotContainKey(E2 + "|before_cutoff_kw");
+        }
+    }
+
+    /**
+     * The no-arg call production uses derives its floor from the WALL CLOCK, and
+     * the window is wide enough that a live channel survives it: one sample
+     * written "now" is returned, its ten-day-old neighbour is not. (Every other
+     * pair here hangs off the fixed {@link #NOW}, which is why this needs its
+     * own real-time pair.)
+     */
+    @Test
+    void theProductionCallDerivesItsFloorFromTheWallClock() throws Exception {
+        try (SingleConnectionDataSource ds = appRole(TENANT_A)) {
+            Map<String, Row> shipped = index(new TopologyRepository(new JdbcTemplate(ds))
+                    .latestValues(SITE_A1, List.of(
+                            new ChannelKey(E3, "live_kw"), new ChannelKey(E3, "dead_kw"))));
+
+            assertThat(shipped.get(E3 + "|live_kw").value()).isEqualTo(7.0);
+            assertThat(shipped).doesNotContainKey(E3 + "|dead_kw");
         }
     }
 
@@ -300,10 +400,16 @@ class HotReadRewriteEqualityTest {
 
     private record Row(double value, Instant receivedAt) {}
 
+    /** The shipped read at this test's fixed clock (floor = {@link #CUTOFF}). */
     private static Map<String, Row> shippedLatestValues(DataSource ds, UUID site,
             List<ChannelKey> keys) {
+        return index(new TopologyRepository(new JdbcTemplate(ds))
+                .latestValues(site, keys, CUTOFF));
+    }
+
+    private static Map<String, Row> index(List<LatestValue> values) {
         Map<String, Row> m = new LinkedHashMap<>();
-        for (LatestValue v : new TopologyRepository(new JdbcTemplate(ds)).latestValues(site, keys)) {
+        for (LatestValue v : values) {
             m.put(v.entityId() + "|" + v.channel(), new Row(v.value(), v.receivedAt()));
         }
         return m;

@@ -53,6 +53,28 @@ geändertes Ergebnis.**
   prüft deshalb JEDEN der drei Umbauten gegen die WÖRTLICH einkopierte alte Anweisung als
   Orakel, auf EINER Verbindung als RLS-gefencte App-Rolle mit gesetztem `app.tenant_id`
   (das `PriceSlotEqualityTest`-Muster; mutationsgeprüft in beide Richtungen).
+- **Nachzug 09.09.2026 · T1 war nur für die Paare gefixt, die MELDEN** (Produktionsvorfall
+  Pilsting/Herzogau): „hält beim neuesten Chunk mit Treffer an" gilt nur, wenn es einen
+  Treffer GIBT. Ein im Register DEKLARIERTER Kanal ohne aktuelle Telemetrie — dort zwei von
+  sieben Paaren, beide Fronius-`pv_power_kw` — hat keinen solchen Chunk, also fand die
+  Rückwärts-Sonde keinen Grund anzuhalten und lief durch die GANZE aufbewahrte Historie, um
+  nichts zurückzugeben: `/topology` **4,5–14,4 s** (kalt über 10 s), damit über der
+  Ladefrist des Cockpits (`ANLAGE_DECISION_TIMEOUT_MS` = 10 s in `AnlagenPage.tsx`) → der
+  Kunde sah „Diese Anlage konnte gerade nicht geladen werden". **Dieselbe Fehlerklasse wie
+  die Form, die T1 ersetzt hat** — die drei Gleichheiten `(site_id, entity_id, channel)`
+  begrenzen das ERGEBNIS, keine davon ist die Partitionsspalte. Der Fix ist ein BODEN auf
+  `time` selbst: `TopologyRepository.LATEST_VALUE_LOOKBACK` (3 Tage) reist als vierter
+  Bind-Parameter in derselben festen SQL-Zeichenkette (`AND t.time >= ?`), die älteren
+  Chunks werden ausgeschlossen statt gelesen. **Die Lehre für jede künftige LATERAL-Sonde:
+  eine Sonde ohne Boden ist nur für den GLÜCKSFALL schnell — sie braucht eine Grenze auf der
+  Partitionsspalte, damit auch die LEERE Antwort billig ist.** Bewusste Semantik-Änderung,
+  vom Captain gedeckt: ein Kanal, der länger als 3 Tage schweigt, liefert `null` →
+  Gesundheit `never` („keine Daten") statt einer tagealten Zahl — die Anzeige-Frische ist
+  ohnehin `LIVENESS_WINDOW` = 5 min, so eine Zahl war nie aktuell. Für jedes Paar INNERHALB
+  des Fensters ist die Antwort byte-gleich (`HotReadRewriteEqualityTest`); dass ein stummes
+  Paar die alten Chunks nicht mehr betritt, beweist `TopologyLatestValueWindowTest` an
+  `EXPLAIN ANALYZE` (Chunk-Ausführung, keine Stoppuhr) gegen die wörtlich einkopierte
+  ungebundene Vorgängerform.
 - **Nachzug 31.08.2026 · die zwei vergessenen Zwillinge von T2** (Scout
   `vp-scale-readiness-p4` §3.2): `FleetMetricsRepository.lastPlanPerSite` (alle 60 s im
   Metrik-Sammler) und `AdminFleetRepository.lastPlanPerSite` (je Admin-Puls) trugen bis
